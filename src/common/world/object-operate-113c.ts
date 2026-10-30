@@ -34,7 +34,7 @@ const OPERATE_FN_KIND_113C: Readonly<Record<number, ObjectOperateKind113c>> = {
   5: 'destructible', // Barrel (0x6fc8d7b0)
   7: 'destructible', // Exploding Barrel (0x6fc8d900)
   8: 'door', // Door (0x6fc8c640)
-  10: 'destructible', // Gibbet (0x6fc8cb90)
+  10: 'mode', // Cain's Gibbet 26 (0x6fc88fc0 / 0x6fc8cb90: quest release only, 0 container loot)
   14: 'container', // Crate / Corpse / Hollow Log (0x6fc8ec20)
   15: 'portal', // Portal (0x6fc8c090)
   16: 'door', // TrapDoor (0x6fc8ae00)
@@ -120,6 +120,74 @@ export function rollChestLocked113c(
   if (!INIT_FN_3_LOCKABLE_CLASS_IDS_113C.has(classId)) return false
   return rng.rand(100) < computeChestLockChancePct113c(areaLevel)
 }
+
+/**
+ * 1.13c `Objects.txt` compiled rows (`0..572`) with `InitFn === 2` (`OBJECTS_Init02_Urn` `0x6FC4EB90`)
+ * or `InitFn === 3` (`OBJECTS_Init03_Chest` `0x6FC4ECB0`), which roll container traps (`bInteractType` bits `0..6` = `1..9`).
+ */
+export const INIT_FN_2_OR_3_TRAP_CLASS_IDS_113C: ReadonlySet<number> = new Set<number>([
+  4, 5, 6, 9, 52, 87, 88, 94, 95, 139, 140, 141, 144, 146, 147, 148, 171, 176, 177, 178, 179, 180,
+  181, 183, 185, 186, 187, 188, 198, 208, 209, 223, 224, 240, 241, 242, 243, 244, 246, 247, 248,
+  270, 329, 330, 331, 332, 333, 334, 335, 336, 363, 364, 372, 383, 384, 387, 388, 389, 390, 391,
+  413, 416, 418, 420, 424, 425, 430, 431, 432, 433, 443, 444, 445, 448, 463, 466, 467, 468, 469,
+  470, 471, 477, 485, 486, 487, 500, 501, 502, 504, 505, 516, 517, 518, 524, 525, 526, 529, 530,
+  531, 532, 533, 534, 535, 540, 541, 544, 545, 556,
+])
+
+/**
+ * 1.13c `Objects.txt` compiled rows (`0..572`) with `PreOperate === 1` (`60` rows).
+ * `D2Game.dll` `OBJECTS_Init` (`0x6FC4F480`): if `!isLocked && PreOperate === 1 && rand(14) === 0`,
+ * spawns in pre-opened `OBJMODE_OPENED (2)` decorative state (`1/14` = `7.14%`).
+ */
+export const PRE_OPERATE_CLASS_IDS_113C: ReadonlySet<number> = new Set<number>([
+  4, 7, 9, 11, 13, 14, 15, 16, 28, 38, 46, 50, 51, 52, 53, 62, 63, 64, 94, 95, 125, 126, 127, 128,
+  142, 143, 185, 186, 187, 188, 203, 204, 205, 208, 209, 222, 223, 224, 233, 290, 291, 292, 293,
+  294, 295, 360, 362, 363, 372, 410, 443, 444, 445, 467, 468, 469, 470, 471, 518, 535,
+])
+
+/**
+ * 1.13c `D2Game.dll` `OBJECTS_Init02_Urn` / `OBJECTS_Init03_Chest` (`0x6FC4EC20..0x6FC4ED60`):
+ * Container trap percentage = `Math.floor(areaLevel / 8) + 5` (clamped to `[0, 100]`).
+ */
+export function computeChestTrapChancePct113c(areaLevel: number): number {
+  const lvl = Math.max(0, Math.trunc(areaLevel))
+  return Math.min(100, Math.max(0, (lvl >> 3) + 5))
+}
+
+/**
+ * 1.13c `D2Game.dll` `gpTrapFnTable[1..9]` (`0x6FD27B8C`):
+ * Rolls `1..9` when `InitFn` is `2` or `3` (or `isSparkling` / `397` / `455` SparklyChest), else `0`.
+ */
+export function rollChestTrapType113c(
+  classId: number,
+  areaLevel: number,
+  isSparkling: boolean,
+  rng: { rand(max: number): number },
+): number {
+  if (!isSparkling && !SPARKLY_CHEST_INIT57_CLASS_IDS_113C.has(classId) && !INIT_FN_2_OR_3_TRAP_CLASS_IDS_113C.has(classId)) {
+    return 0
+  }
+  if (rng.rand(100) >= computeChestTrapChancePct113c(areaLevel)) {
+    return 0
+  }
+  return 1 + rng.rand(9)
+}
+
+/**
+ * 1.13c `D2Game.dll` `OBJECTS_Init` (`0x6FC4F480`):
+ * Un-locked objects with `PreOperate === 1` have a `1/14` (`7.14%`) chance to spawn already opened (`mode = 2`).
+ */
+export function rollPreOperateOpen113c(
+  classId: number,
+  isLocked: boolean,
+  rng: { rand(max: number): number },
+): boolean {
+  if (isLocked || !PRE_OPERATE_CLASS_IDS_113C.has(classId)) return false
+  return rng.rand(14) === 0
+}
+
+/** Tracks bootstrap objects whose `PreOperate` (`1/14`) roll has already been evaluated in `buildAreaBootstrap`. */
+export const PRE_OPERATE_ROLLED_OBJECTS_113C = new WeakSet<object>()
 
 /**
  * 1.13c container drop chance (%) keyed by `Objects.txt` `OperateFn` (`D2Game.dll` `gpObjectOperateFnTable`):

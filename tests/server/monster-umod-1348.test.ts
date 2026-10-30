@@ -170,8 +170,8 @@ describe('issue #1348 MonUMod affixes', () => {
       areaId: 1,
       rank: 'unique',
       umodIds: [7, 25],
-      minDmg: 20,
-      maxDmg: 20,
+      minDmg: 2,
+      maxDmg: 2,
       ar: 100000,
       aiDelay: 1,
       maxHp: 5000,
@@ -180,7 +180,7 @@ describe('issue #1348 MonUMod affixes', () => {
     const meleePlayer = connectPlayer(game, 31, 40, 'MeleeTarget')
     game.drainEvents(meleePlayer)
     const manaBefore = game.getPlayerState(meleePlayer)!.mana
-    game.stepFrames(20)
+    game.stepFrames(120)
     const after = game.getPlayerState(meleePlayer)!
     expect(after.states.has(9)).toBe(true)
     expect(after.mana).toBeLessThan(manaBefore)

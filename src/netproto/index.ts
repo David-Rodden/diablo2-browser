@@ -218,12 +218,14 @@ export {
   encodeC2sScrollToBook,
   encodeC2sSelectMainItem,
   encodeC2sSocketItem,
+  encodeC2sStackItems,
   encodeC2sSwap2HandedDual,
   encodeC2sSwap2HandedItem,
   encodeC2sSwapBodyItem,
   encodeC2sSwapContainerItem,
   encodeC2sSwapEquippedItem,
   encodeC2sSwapTwo1HandedWithOne2HandedItem,
+  encodeC2sUnstackItems,
 } from './d2gs/c2s/items.ts'
 export {
   encode0x59MakeEntityMove,
@@ -298,8 +300,11 @@ export {
 } from './d2gs/s2c/misc.ts'
 export {
   decode0x11UnitOverlay,
+  decode0xACAssignNpc,
   encode0x11UnitOverlay,
+  encode0xACAssignNpc,
 } from './d2gs/s2c/units.ts'
+export { decode0x9C0x9DItemAction } from './d2gs/s2c/items.ts'
 export {
   decode0x63WaypointMenu,
   encode0x63WaypointMenu,

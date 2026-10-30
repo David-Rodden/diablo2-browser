@@ -471,7 +471,7 @@ describe('Milestone M5 — HudModel, CommandMapper, and OnlineSession', () => {
       const npcScreen = camera.subtileToScreen(95, 100)
       const npcRec = mapper.handlePointerDown(npcScreen.x, npcScreen.y, 0, 4500)
       expect(npcRec?.command.type).toBe('MoveToUnit')
-      // At dx = 5 (#10407 = 4 > 2 1.13c click interact range), clicking dispatches MoveToUnit + MakeEntityMove and defers Interact/NpcInit until arrival
+      // At dx = 5 (#10407 = 4 > 2 1.13c click interact range), clicking dispatches MoveToUnit + MakeEntityMove and defers Interact until arrival
       expect(dispatched.slice(npcBeforeCount).map((c) => c.type)).toEqual([
         'MoveToUnit',
         'MakeEntityMove',
@@ -483,7 +483,6 @@ describe('Milestone M5 — HudModel, CommandMapper, and OnlineSession', () => {
         'MoveToUnit',
         'MakeEntityMove',
         'Interact',
-        'NpcInit',
       ])
 
       // 6. Resize to 1024x768 and verify HUD interception & keyboard hotkeys
@@ -751,7 +750,14 @@ describe('Milestone M5 — HudModel, CommandMapper, and OnlineSession', () => {
       session.commandMapper.handleKeyDown({ key: 'Escape' }, 4000)
       expect(dispatched.some((c) => c.type === 'Resurrect')).toBe(true)
 
-      // R5.1/R5.2: Party ('P') and Mercenary ('O') hotkeys + player click trade interaction
+      // R5.1/R5.2: Corpse state (mode 17) + LifeMana revives to mode 5 (#1709), then Party ('P') and Mercenary ('O') hotkeys + player click trade interaction
+      session.handleServerEvent({
+        type: 'UnitMode',
+        unitType: 0,
+        id: 1,
+        mode: 17,
+        lifePct: 0,
+      })
       session.handleServerEvent({
         type: 'LifeMana',
         life: 100,

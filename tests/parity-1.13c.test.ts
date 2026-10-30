@@ -847,9 +847,11 @@ describe('Superior, Low Quality, Ethereal & Sockets, and Rare Slot-by-Slot Alloc
     dropTables = getEmbeddedDropTables()
   })
 
-  it('1. A3 — Superior weapons and armor generate +5..15% Enhanced Damage/Defense in rolledProps & stats and render enhanced blue stats in formatItemTooltip', () => {
+  it('1. A3 — Superior weapons and armor generate QualityItems.txt mods (+5..15% ED, +1..3 AR, +10..15% MaxDur) and render enhanced blue stats in formatItemTooltip', () => {
     const monarchBase = dropTables.getBase('uit')! // Monarch: defense 148
     const swordBase = dropTables.getBase('crs')! // Crystal Sword: mindam 5, maxdam 15
+    let sawArmorAcPct = false
+    let sawWeaponDmgPct = false
 
     for (let s = 1; s <= 30; s++) {
       const supArmor = createDroppedItem(monarchBase, 'superior', {
@@ -858,16 +860,18 @@ describe('Superior, Low Quality, Ethereal & Sockets, and Rare Slot-by-Slot Alloc
       })
       expect(supArmor.name).toBe(`Superior ${monarchBase.name}`)
       expect(supArmor.rolledProps).toBeDefined()
+      expect(supArmor.rolledProps!.length).toBeGreaterThan(0)
       const acPctProp = supArmor.rolledProps!.find(p => p.code === 'ac%')
-      expect(acPctProp).toBeDefined()
-      expect(acPctProp!.value).toBeGreaterThanOrEqual(5)
-      expect(acPctProp!.value).toBeLessThanOrEqual(15)
-      expect(supArmor.stats['ac%']).toBe(acPctProp!.value)
+      if (acPctProp) {
+        sawArmorAcPct = true
+        expect(acPctProp.value).toBeGreaterThanOrEqual(5)
+        expect(acPctProp.value).toBeLessThanOrEqual(15)
+        expect(supArmor.stats['ac%']).toBe(acPctProp.value)
 
-      const armorTooltip = formatItemTooltip(supArmor)
-      expect(armorTooltip.lines.map(l => l.text)).toContain(`+${acPctProp!.value}% Enhanced Defense`)
-      expect(armorTooltip.defense).toBe(Math.floor(monarchBase.defense * (100 + acPctProp!.value) / 100))
-      expect(armorTooltip.baseDefense).toBe(monarchBase.defense)
+        const armorTooltip = formatItemTooltip(supArmor)
+        expect(armorTooltip.lines.map(l => l.text)).toContain(`+${acPctProp.value}% Enhanced Defense`)
+        expect(armorTooltip.defense).toBe(Math.floor(monarchBase.defense * (100 + acPctProp.value) / 100))
+      }
 
       const supWeapon = createDroppedItem(swordBase, 'superior', {
         ilvl: 85,
@@ -875,25 +879,30 @@ describe('Superior, Low Quality, Ethereal & Sockets, and Rare Slot-by-Slot Alloc
       })
       expect(supWeapon.name).toBe(`Superior ${swordBase.name}`)
       expect(supWeapon.rolledProps).toBeDefined()
+      expect(supWeapon.rolledProps!.length).toBeGreaterThan(0)
       const dmgPctProp = supWeapon.rolledProps!.find(p => p.code === 'dmg%')
-      expect(dmgPctProp).toBeDefined()
-      expect(dmgPctProp!.value).toBeGreaterThanOrEqual(5)
-      expect(dmgPctProp!.value).toBeLessThanOrEqual(15)
-      expect(supWeapon.stats['dmg%']).toBe(dmgPctProp!.value)
+      if (dmgPctProp) {
+        sawWeaponDmgPct = true
+        expect(dmgPctProp.value).toBeGreaterThanOrEqual(5)
+        expect(dmgPctProp.value).toBeLessThanOrEqual(15)
+        expect(supWeapon.stats['dmg%']).toBe(dmgPctProp.value)
 
-      const weaponTooltip = formatItemTooltip(supWeapon)
-      expect(weaponTooltip.lines.map(l => l.text)).toContain(`+${dmgPctProp!.value}% Enhanced Damage`)
-      expect(weaponTooltip.oneHandDamage?.isEnhanced).toBe(true)
-      expect(weaponTooltip.oneHandDamage?.baseMin).toBe((swordBase as any).mindam)
-      expect(weaponTooltip.oneHandDamage?.baseMax).toBe((swordBase as any).maxdam)
+        const weaponTooltip = formatItemTooltip(supWeapon)
+        expect(weaponTooltip.lines.map(l => l.text)).toContain(`+${dmgPctProp.value}% Enhanced Damage`)
+        expect(weaponTooltip.oneHandDamage?.isEnhanced).toBe(true)
+        expect(weaponTooltip.oneHandDamage?.baseMin).toBe((swordBase as any).mindam)
+        expect(weaponTooltip.oneHandDamage?.baseMax).toBe((swordBase as any).maxdam)
+      }
     }
+    expect(sawArmorAcPct).toBe(true)
+    expect(sawWeaponDmgPct).toBe(true)
   })
 
-  it('2. A4 — Low Quality items pick from LOW_QUALITY_PREFIXES (4 subtypes) and apply 1/3 durability & 0.75x base defense/damage penalty', () => {
+  it('2. A4 — Low Quality items pick from LOW_QUALITY_PREFIXES (4 subtypes) and apply 33% max durability, [maxDur>>1, maxDur-1] curdur, & 0.75x base defense/damage penalty', () => {
     expect(LOW_QUALITY_PREFIXES).toEqual(['Low Quality', 'Cracked', 'Crude', 'Damaged'])
 
     const monarchBase = dropTables.getBase('uit')! // defense 148, durability 86
-    const axeBase = dropTables.getBase('btx')! // mindam 12, maxdam 32, twoHandedMindam 21, twoHandedMaxdam 49, durability 32
+    const axeBase = dropTables.getBase('btx')! // twoHandedMindam 12, twoHandedMaxdam 32, durability 32
     const seenPrefixes = new Set<string>()
 
     for (let s = 1; s <= 60; s++) {
@@ -905,9 +914,10 @@ describe('Superior, Low Quality, Ethereal & Sockets, and Rare Slot-by-Slot Alloc
       expect(prefixUsed).toBeDefined()
       seenPrefixes.add(prefixUsed!)
 
-      const expectedDur = Math.max(1, Math.floor((monarchBase as any).durability / 3))
+      const expectedDur = Math.max(1, Math.trunc(((monarchBase as any).durability * 33) / 100))
       expect(lowArmor.maxDurability).toBe(expectedDur)
-      expect(lowArmor.durability).toBe(expectedDur)
+      expect(lowArmor.durability).toBeGreaterThanOrEqual(Math.max(1, expectedDur >> 1))
+      expect(lowArmor.durability).toBeLessThanOrEqual(Math.max(1, expectedDur - 1))
 
       const armorTip = formatItemTooltip(lowArmor)
       expect(armorTip.title).toBe(lowArmor.name)
@@ -1261,10 +1271,10 @@ describe('Data-Driven Tooltip Properties (C1/C3) & 1.13c Drop Pipeline Alignment
     ])
   })
 
-  it('3. A6 & A8 — executeDropPipeline clamps effectiveIlvl to [1, 99], uses 1.13c [floor(lvl/2), lvl*6] gold range, and prevents qlvl > effectiveIlvl inflation', () => {
+  it('3. A6 & A8 — executeDropPipeline clamps lower bound >= 1 without capping nLevel > 99 (#1470), uses 1.13c gold range, and prevents qlvl > effectiveIlvl inflation', () => {
     const dropTables = getEmbeddedDropTables()
 
-    // Test A6 gold range & A8 nLevel clamping at nLevel = 120 (clamped to 99 -> gold base [49, 594])
+    // Test A6 gold range & #1470 unclamped nLevel = 120 (D2Game!0x6FC32D60 only clamps >= 1; diabloclone/Ubers are 110)
     for (let i = 0; i < 40; i++) {
       const dropsHigh = executeDropPipeline({
         tcName: 'Act 1 H2H A',
@@ -1280,7 +1290,7 @@ describe('Data-Driven Tooltip Properties (C1/C3) & 1.13c Drop Pipeline Alignment
           const amt = item.stack ?? item.value ?? 0
           expect(amt).toBeGreaterThanOrEqual(49)
         } else {
-          expect(item.ilvl).toBe(99)
+          expect(item.ilvl).toBe(120)
         }
       }
     }

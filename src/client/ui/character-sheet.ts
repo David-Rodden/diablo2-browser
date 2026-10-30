@@ -565,6 +565,13 @@ export const STAT_ALLOC_BUTTONS: Readonly<Record<BaseStatKey, { x: number; y: nu
   ene: { x: 80 + 122, y: 60 + 285, w: 30, h: 30 },
 }
 
+export const STAT_BATCH5_BUTTONS: Readonly<Record<BaseStatKey, { x: number; y: number; w: number; h: number }>> = {
+  str: { x: 80 + 122, y: 60 + 107, w: 30, h: 20 },
+  dex: { x: 80 + 122, y: 60 + 169, w: 30, h: 20 },
+  vit: { x: 80 + 122, y: 60 + 255, w: 30, h: 20 },
+  ene: { x: 80 + 122, y: 60 + 317, w: 30, h: 20 },
+}
+
 export const STAT_ROW_BOUNDS: Readonly<Record<BaseStatKey, { x: number; y: number; w: number; h: number }>> = {
   str: { x: 80 + 12, y: 60 + 78, w: 140, h: 30 },
   dex: { x: 80 + 12, y: 60 + 140, w: 140, h: 30 },
@@ -965,6 +972,9 @@ export class CharacterSheetPanel {
   readonly dexPlusButton = new LevelPlusButton('dex', () => STAT_ALLOC_BUTTONS.dex)
   readonly vitPlusButton = new LevelPlusButton('vit', () => STAT_ALLOC_BUTTONS.vit)
   readonly enePlusButton = new LevelPlusButton('ene', () => STAT_ALLOC_BUTTONS.ene)
+  /** Enabled when mobile touch controls are active so players can batch-allocate +5 points without Shift. */
+  touchBatchAllocEnabled = false
+  private pressedBatch5Stat: BaseStatKey | null = null
 
   private readonly plusButtonEntries: readonly (readonly [BaseStatKey, LevelPlusButton])[] = [
     ['str', this.strPlusButton],
@@ -1194,6 +1204,21 @@ export class CharacterSheetPanel {
     // lit cells (buttons hidden from drawing with 0 unspent points never latch).
     const lit = this.attrs.statPoints > 0
     for (const [, button] of this.plusButtonEntries) button.press(logicalX, logicalY, lit)
+    this.pressedBatch5Stat = null
+    if (this.touchBatchAllocEnabled && this.attrs.statPoints >= 2) {
+      for (const key of ['str', 'dex', 'vit', 'ene'] as const) {
+        const b5 = STAT_BATCH5_BUTTONS[key]
+        if (
+          logicalX >= b5.x &&
+          logicalX <= b5.x + b5.w &&
+          logicalY >= b5.y &&
+          logicalY <= b5.y + b5.h
+        ) {
+          this.pressedBatch5Stat = key
+          break
+        }
+      }
+    }
     return true
   }
 
@@ -1202,13 +1227,18 @@ export class CharacterSheetPanel {
    * button — dragging off the button and releasing cancels the allocation. The close
    * `X` and `?` Advanced Stats buttons follow the same semantics.
    */
-  handleMouseUp(logicalX: number, logicalY: number, onStatAllocated?: (key: BaseStatKey) => void): boolean {
+  handleMouseUp(
+    logicalX: number,
+    logicalY: number,
+    onStatAllocated?: (key: BaseStatKey, count?: number) => void,
+  ): boolean {
     let fired = false
     if (this.closeButton.release(logicalX, logicalY) && this.visible) {
       this.visible = false
       this.hoveredStat = null
       this.hoveredDamageHand = null
       this.advStatsBtnPressed = false
+      this.pressedBatch5Stat = null
       fired = true
     }
     if (this.advStatsBtnPressed) {
@@ -1227,12 +1257,32 @@ export class CharacterSheetPanel {
         fired = true
       }
     }
-    if (!this.visible) return fired
+    if (!this.visible) {
+      this.pressedBatch5Stat = null
+      return fired
+    }
     for (const [key, button] of this.plusButtonEntries) {
       if (button.release(logicalX, logicalY)) {
         // Server-authoritative: only request `AddStatPoint (0x3A)`; the new values arrive via 0x1D..0x1F.
         onStatAllocated?.(key)
         fired = true
+      }
+    }
+    if (this.pressedBatch5Stat !== null) {
+      const batchKey = this.pressedBatch5Stat
+      this.pressedBatch5Stat = null
+      if (this.touchBatchAllocEnabled && this.attrs.statPoints >= 2) {
+        const b5 = STAT_BATCH5_BUTTONS[batchKey]
+        if (
+          logicalX >= b5.x &&
+          logicalX <= b5.x + b5.w &&
+          logicalY >= b5.y &&
+          logicalY <= b5.y + b5.h
+        ) {
+          const count = Math.min(5, Math.floor(this.attrs.statPoints))
+          onStatAllocated?.(batchKey, count)
+          fired = true
+        }
       }
     }
     return fired
@@ -1373,6 +1423,21 @@ export class CharacterSheetPanel {
           )
         } else {
           reportMissingArt('ui-button', 'level-btn', 'Missing stat allocation button Level.dc6')
+        }
+        if (this.touchBatchAllocEnabled && this.attrs.statPoints >= 2) {
+          const b5 = STAT_BATCH5_BUTTONS[r.key]
+          const batchCount = Math.min(5, Math.floor(this.attrs.statPoints))
+          const isBatchPressed = this.pressedBatch5Stat === r.key
+          ctx.fillStyle = isBatchPressed ? 'rgba(98, 28, 22, 0.96)' : 'rgba(54, 18, 14, 0.92)'
+          ctx.fillRect(b5.x, b5.y, b5.w, b5.h)
+          ctx.strokeStyle = isBatchPressed ? '#ffd54f' : '#c7a158'
+          ctx.lineWidth = 1.2
+          ctx.strokeRect(b5.x + 0.5, b5.y + 0.5, b5.w - 1, b5.h - 1)
+          font.drawText(ctx, `+${batchCount}`, Math.round(b5.x + b5.w / 2), b5.y + 14, {
+            font: 'font6',
+            color: 'gold',
+            align: 'center',
+          })
         }
       }
     }

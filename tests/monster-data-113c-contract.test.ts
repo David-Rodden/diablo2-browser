@@ -334,15 +334,16 @@ describe('1.13c Monster & Hireling Data Contract (Milestone M1)', () => {
       expect(minionNorm.maxHp).toBe(Math.round(base.hp * 2.0))
       expect(minionHell.maxHp).toBe(Math.round(base.hp * 1.5))
 
-      // Champion subtype 38 (Possessed): 3x champion HP
+      // Champion subtype 38 (Possessed): 2x regular-champion HP (6x base in Normal) + uncursable
       const champBase = applyChampionSubtypeStats(base, 16, 'normal')
       const champPossessed = applyChampionSubtypeStats(base, 38, 'normal')
-      expect(champPossessed.maxHp).toBe((champBase.maxHp ?? champBase.hp) * 3)
+      expect(champPossessed.maxHp).toBe((champBase.maxHp ?? champBase.hp) * 2)
+      expect(champPossessed.uncursable).toBe(true)
 
-      // Champion subtype 39 (Berserk): 1.5x base HP, >= 3x base damage
+      // Champion subtype 39 (Berserk): 0.75x regular-champion HP (2.25x base in Normal), 4x base damage
       const champBerserk = applyChampionSubtypeStats(base, 39, 'normal')
-      expect(champBerserk.maxHp).toBe(Math.max(1, Math.round(base.hp * 1.5)))
-      expect(champBerserk.damage).toBeGreaterThanOrEqual(base.damage * 3)
+      expect(champBerserk.maxHp).toBe(Math.max(1, Math.round((champBase.maxHp ?? champBase.hp) * 0.75)))
+      expect(champBerserk.damage).toBe(base.damage * 4)
 
       // Champion subtype 36 (Ghostly): 0.5x velocity, 80% physical resist
       const champGhostly = applyChampionSubtypeStats(base, 36, 'normal')
@@ -423,7 +424,8 @@ describe('1.13c Monster & Hireling Data Contract (Milestone M1)', () => {
         rank: 'champion',
         championSubtype: 'possessed',
       })
-      expect(fallenPossessed.maxHp).toBe((fallenChamp.maxHp ?? fallenChamp.hp) * 3)
+      expect(fallenPossessed.maxHp).toBe((fallenChamp.maxHp ?? fallenChamp.hp) * 2)
+      expect(fallenPossessed.uncursable).toBe(true)
       expect(fallenPossessed.modifiers).toEqual(['possessed'])
 
       const fallenBerserk = resolveMonsterStats(fallen, {
@@ -431,8 +433,8 @@ describe('1.13c Monster & Hireling Data Contract (Milestone M1)', () => {
         rank: 'champion',
         championSubtype: 'berserk',
       })
-      expect(fallenBerserk.maxHp).toBe(Math.max(1, Math.round(fallenNormBase.hp * 1.5)))
-      expect(fallenBerserk.damage).toBeGreaterThanOrEqual(fallenNormBase.damage * 3)
+      expect(fallenBerserk.maxHp).toBe(Math.max(1, Math.round((fallenChamp.maxHp ?? fallenChamp.hp) * 0.75)))
+      expect(fallenBerserk.damage).toBeGreaterThanOrEqual(fallenNormBase.damage * 4)
 
       const skelUniqueMods = resolveMonsterStats(0, {
         difficulty: 'normal',

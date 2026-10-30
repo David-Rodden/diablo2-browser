@@ -231,7 +231,8 @@ describe('Issue #1000: Barbarian Combat Masteries (#127–#153) 4-Layer 1.13c Pa
     expect(stats.getAccruedStat('fireresist')).toBe(54)
     expect(stats.getAccruedStat('coldresist')).toBe(54)
     expect(stats.getAccruedStat('lightresist')).toBe(54)
-    expect(stats.getAccruedStat('poisonresist')).toBe(10)
+    // MPQ Skills.txt row 153: passivestat4 = poisonresist (dm12 0..80, #1803)
+    expect(stats.getAccruedStat('poisonresist')).toBe(54)
   })
 
   it('4. gates Weapon Mastery (%AR, %ED, Crit) by equipped weapon type and enforces CS + DS mutual exclusion in executeSUnitDmg', () => {

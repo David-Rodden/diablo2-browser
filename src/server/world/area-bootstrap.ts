@@ -37,8 +37,13 @@ import {
   getSuperUniqueByIndex,
 } from '../../common/units/monsters-data.ts'
 import { resolveMonPlacePreset113c } from '../../common/units/monai-113c.ts'
+import { D2Rng } from '../../common/rng/d2-rng.ts'
 import { getTownNpcDescriptorByHcIdx } from '../../common/units/npc-table.ts'
-import { SPARKLY_CHEST_INIT57_CLASS_IDS_113C } from '../../common/world/object-operate-113c.ts'
+import {
+  PRE_OPERATE_ROLLED_OBJECTS_113C,
+  SPARKLY_CHEST_INIT57_CLASS_IDS_113C,
+  rollPreOperateOpen113c,
+} from '../../common/world/object-operate-113c.ts'
 import { WAYPOINT_CLASS_IDS_113C } from '../../common/world/objects-meta.ts'
 import { OBJECTS_TXT_113C } from '../../common/world/objects-txt-113c.ts'
 import {
@@ -48,6 +53,7 @@ import {
   isBlockedWithUnitSize,
 } from '../../common/world/act-spawn-location.ts'
 import { populateAreaObjGroups113c } from './objgroup-113c.ts'
+import { applyPandemoniumAreaBootstrap113c } from './pandemonium-113c.ts'
 
 /**
  * Canonical 1.13c progression portal destination areas (`D2Game.dll` `OperateFn 34, 46, 50, 66`):
@@ -367,6 +373,17 @@ export function buildAreaBootstrap(
       ? createActSpawnLocator(level)(ACT_SPAWN_TILE_ENTRY, PLAYER_UNIT_SIZE)
       : spawnFromGeometryTile(level)
 
+  // #1841: 1.13c Pandemonium Event (`D2Game.dll` `0x6FD01470..0x6FD01566` & `0x6FD0E7B0`):
+  // replace preset anchors in `133..136` with Lilith (#707), Uber Duriel (#708), Uber Izual (#706),
+  // and the Uber Tristram Trio (#704, #705, #709) while suppressing normal Tristram preset monsters in `136`.
+  applyPandemoniumAreaBootstrap113c({
+    level,
+    objects,
+    monsters,
+    spawn,
+    findStandable: (ax, ay) => findStandableNear(walkable, ax, ay, 45),
+  })
+
   // #1840: 1.13c `OBJECTS_PopulateRoom` (`D2Game.dll` `0x6FC4F1C3`): populate procedural shrines,
   // wells, and field/dungeon containers across all DRLG rooms (`Levels.txt` `ObjGrp0..7` / `ObjPrb0..7`).
   const proceduralObjects = populateAreaObjGroups113c({
@@ -377,6 +394,33 @@ export function buildAreaBootstrap(
   })
   if (proceduralObjects.length > 0) {
     objects.push(...proceduralObjects)
+  }
+
+  // #1918: 1.13c `OBJECTS_Init` (`D2Game.dll` `0x6FC4F480`): un-locked containers with `PreOperate === 1`
+  // have a `1/14` (`7.14%`) chance to spawn in `OBJMODE_OPENED (2)` decorative state.
+  if (!isTown) {
+    const fallbackRng =
+      rng === undefined
+        ? new D2Rng(
+            (((level.roomRects[0]?.seed ?? Math.imul(areaId, 0x9e3779b9)) ^
+              Math.imul(level.originX ^ (level.originY << 8), 0x85ebca6b)) >>>
+              0) || 1,
+          )
+        : null
+    const preOpRng =
+      rng !== undefined
+        ? { rand: (max: number) => Math.max(0, Math.trunc(rng(max))) % Math.max(1, max) }
+        : { rand: (max: number) => fallbackRng!.rand(max) }
+    for (let i = 0; i < objects.length; i += 1) {
+      const obj = objects[i]!
+      if (obj.mode === 0 && rollPreOperateOpen113c(obj.classId, false, preOpRng)) {
+        const opened: LocalAreaPresetObject = { ...obj, mode: 2 }
+        PRE_OPERATE_ROLLED_OBJECTS_113C.add(opened)
+        objects[i] = opened
+      } else {
+        PRE_OPERATE_ROLLED_OBJECTS_113C.add(obj)
+      }
+    }
   }
 
   return {

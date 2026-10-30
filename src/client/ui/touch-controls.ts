@@ -5,7 +5,11 @@
 
 import type { D2FontRenderer } from './font.ts'
 import type { MonsterTargetHudInfo } from './world-panels.ts'
-import type { HudLayoutMode, SkillWheelBankMode } from '../settings/client-settings.ts'
+import {
+  DEFAULT_SKILL_WHEEL_BANK_MODE,
+  type HudLayoutMode,
+  type SkillWheelBankMode,
+} from '../settings/client-settings.ts'
 import { isUsableRightClickItem, type EquipSlotId, type UiInventoryItem } from './inventory.ts'
 import { isAutoBeltablePotion } from './belt.ts'
 import type { BaseStatKey } from './character-sheet.ts'
@@ -92,7 +96,28 @@ export interface ConeTargetSelectionResult {
   readonly coneHalfAngleRad: number
 }
 
+export type TouchHudContext = 'world' | 'panel' | 'dialog' | 'menu'
+
 export type CompactUtilityAction = 'char' | 'inv' | 'skill' | 'automap' | 'altLabels' | 'menu'
+
+export type CompactExtendedUtilityAction =
+  | 'quest'
+  | 'party'
+  | 'msg'
+  | 'merc'
+  | 'chat'
+  | 'closePanels'
+
+export interface CompactHudLayoutOptions {
+  readonly context?: TouchHudContext | undefined
+  readonly panelOffsetY?: number | undefined
+  readonly leftPanel?: string | undefined
+  readonly rightPanel?: string | undefined
+  readonly utilityMenuExpanded?: boolean | undefined
+  readonly beltMaxRows?: number | undefined
+  readonly marginRightPx?: number | undefined
+  readonly pendingBindSkillId?: number | null | undefined
+}
 
 export interface CompactD2rHudMetrics {
   readonly logicalWidth: number
@@ -145,6 +170,56 @@ export interface CompactD2rHudMetrics {
       readonly height: number
     }[]
   }
+  readonly moreUtilityBtn: {
+    readonly x: number
+    readonly y: number
+    readonly width: number
+    readonly height: number
+  }
+  readonly extendedUtilityDrawer: {
+    readonly x: number
+    readonly y: number
+    readonly width: number
+    readonly height: number
+    readonly buttons: readonly {
+      readonly action: CompactExtendedUtilityAction
+      readonly labelZh: string
+      readonly labelEn: string
+      readonly x: number
+      readonly y: number
+      readonly width: number
+      readonly height: number
+    }[]
+  }
+  readonly panelContextStrip: {
+    readonly x: number
+    readonly y: number
+    readonly width: number
+    readonly height: number
+    readonly buttons: readonly {
+      readonly action: CompactUtilityAction | CompactExtendedUtilityAction
+      readonly labelZh: string
+      readonly labelEn: string
+      readonly x: number
+      readonly y: number
+      readonly width: number
+      readonly height: number
+    }[]
+  }
+  readonly skillBindBar: {
+    readonly x: number
+    readonly y: number
+    readonly width: number
+    readonly height: number
+    readonly slots: readonly {
+      readonly hotkeyIndex: number
+      readonly keyLabel: string
+      readonly x: number
+      readonly y: number
+      readonly width: number
+      readonly height: number
+    }[]
+  }
 }
 
 export type CompactHudHitResult =
@@ -160,6 +235,9 @@ export type CompactHudHitResult =
   | { readonly kind: 'contextLootInteract' }
   | { readonly kind: 'weaponSwap' }
   | { readonly kind: 'utilityAction'; readonly action: CompactUtilityAction }
+  | { readonly kind: 'moreUtilityToggle' }
+  | { readonly kind: 'extendedUtilityAction'; readonly action: CompactExtendedUtilityAction }
+  | { readonly kind: 'skillBindSlot'; readonly hotkeyIndex: number }
   | { readonly kind: 'compactBarChrome' }
 
 export interface SkillWheelSlotDescriptor {
@@ -339,6 +417,15 @@ export function scoreConeMonsterCandidate(
   }
 }
 
+export const DIRECTIONAL_AIM_SKILL_IDS = new Set<number>([
+  28, 32, 51, 54, 56, 59, 62, 64, 78, 88, 143, 144, 229, 234, 244, 247, 261, 262, 271, 272, 276,
+  277, 278,
+])
+
+export function isDirectionalAimSkill(skillId: number): boolean {
+  return DIRECTIONAL_AIM_SKILL_IDS.has(skillId)
+}
+
 export function selectBestConeTargets(
   playerScreenX: number,
   playerScreenY: number,
@@ -348,6 +435,7 @@ export function selectBestConeTargets(
   coneHalfAngleRad: number = DEFAULT_CONE_HALF_ANGLE_RAD,
   maxMonsterRangePx: number = DEFAULT_CONE_MAX_SCREEN_RANGE,
   maxInteractRangePx: number = DEFAULT_INTERACT_MAX_SCREEN_RANGE,
+  previousLockedUnitId: number | null = null,
 ): ConeTargetSelectionResult {
   let bestMonster: ScoredMonsterTarget | null = null
   for (let i = 0; i < monsters.length; i++) {
@@ -362,8 +450,14 @@ export function selectBestConeTargets(
       maxMonsterRangePx,
     )
     if (!scored) continue
-    if (bestMonster === null || scored.score > bestMonster.score) {
-      bestMonster = scored
+    const effectiveScore =
+      previousLockedUnitId !== null && m.unitId === previousLockedUnitId
+        ? scored.score + 0.15
+        : scored.score
+    const candidateWithSticky: ScoredMonsterTarget =
+      effectiveScore === scored.score ? scored : { ...scored, score: effectiveScore }
+    if (bestMonster === null || candidateWithSticky.score > bestMonster.score) {
+      bestMonster = candidateWithSticky
     }
   }
 
@@ -422,19 +516,22 @@ export function toMonsterTargetHudInfo(candidate: ConeMonsterCandidate): Monster
 
 /**
  * Compute pixel-exact geometry for the Phase 3 (#1383) D2R 524px Compact Center Bar,
- * Top-Right 6-in-1 Utility Bar, and Bottom-Right 6x2 Skill Wheel for any logical viewport size.
+ * Top-Right 6-in-1 Utility Bar (+ expandable secondary utility drawer), Bottom-Right 6x2 Skill Wheel,
+ * and zero-occlusion Panel Context Strip (`y >= panelOffsetY + 556`) + Skill Bind Bar (`F1–F12`).
  */
 export function computeCompactD2rHudMetrics(
   logicalWidth: number = 1280,
   logicalHeight: number = 600,
+  options?: CompactHudLayoutOptions,
 ): CompactD2rHudMetrics {
   const barWidth = COMPACT_HUD_WIDTH
   const barHeight = COMPACT_HUD_HEIGHT
   const barX = Math.round((logicalWidth - barWidth) / 2)
   const barY = logicalHeight - barHeight
 
-  const leftGlobe = { cx: barX + 64, cy: barY + 46, r: 40 }
-  const rightGlobe = { cx: barX + barWidth - 64, cy: barY + 46, r: 40 }
+  // Authentic 1.13c 80x80 globe socket centers inside 117x104 Demon/Angel wings (`globes.ts:152-160`)
+  const leftGlobe = { cx: barX + 69, cy: barY + 51, r: 40 }
+  const rightGlobe = { cx: barX + barWidth - 71, cy: barY + 51, r: 40 }
   const consoleBox = { x: barX + 102, y: barY + 28, width: barWidth - 204, height: 74 }
 
   const beltStartX = consoleBox.x + 18
@@ -458,7 +555,8 @@ export function computeCompactD2rHudMetrics(
   const refillBtn = { x: utilColX, y: beltRow0Y, width: 48, height: 20 }
   const runBtn = { x: utilColX, y: beltRow0Y + 24, width: 48, height: 22 }
 
-  const wheelCx = logicalWidth - 134
+  const rightInset = Math.max(0, Math.min(48, Math.round(options?.marginRightPx ?? 0)))
+  const wheelCx = logicalWidth - 134 - rightInset
   const wheelCy = logicalHeight - 122
   const arcSlots = ([0, 1, 2, 3, 4] as const).map((arcIndex) => {
     const rad = (SKILL_WHEEL_ARC_ANGLES_DEG[arcIndex] * Math.PI) / 180
@@ -470,7 +568,7 @@ export function computeCompactD2rHudMetrics(
     }
   })
 
-  const previewStartX = logicalWidth - 260
+  const previewStartX = logicalWidth - 260 - rightInset
   const previewY = logicalHeight - 310
   const l2PreviewBar = {
     x: previewStartX - 68,
@@ -480,7 +578,11 @@ export function computeCompactD2rHudMetrics(
     l2Btn: { x: previewStartX - 62, y: previewY - 14, width: 56, height: 40 },
   }
 
-  const lootBtn = { cx: wheelCx - 98, cy: wheelCy + 56, r: 27 }
+  // Zero-overlap placement on narrow 800x600 vs widescreen 1068x600 / 1280x720
+  const lootBtn =
+    logicalWidth < 960
+      ? { cx: wheelCx + 2, cy: Math.min(logicalHeight - 30, wheelCy + 82), r: 26 }
+      : { cx: wheelCx - 98, cy: wheelCy + 56, r: 27 }
   const weaponSwapBtn = { x: wheelCx + 56, y: wheelCy + 34, width: 56, height: 36 }
 
   const utilDefinitions: readonly {
@@ -490,15 +592,15 @@ export function computeCompactD2rHudMetrics(
   }[] = [
     { action: 'char', labelZh: '人物', labelEn: 'Char' },
     { action: 'inv', labelZh: '背包', labelEn: 'Inv' },
-    { action: 'skill', labelZh: '技能树', labelEn: 'Skills' },
-    { action: 'automap', labelZh: '小地图', labelEn: 'Map' },
-    { action: 'altLabels', labelZh: '物品名', labelEn: 'Loot' },
+    { action: 'skill', labelZh: '技能', labelEn: 'Skills' },
+    { action: 'automap', labelZh: '地图', labelEn: 'Map' },
+    { action: 'altLabels', labelZh: '拾取显名', labelEn: 'Loot' },
     { action: 'menu', labelZh: '菜单', labelEn: 'Menu' },
   ]
   const utilBtnSize = 44
   const utilBtnGap = 8
   const utilTotalW = utilDefinitions.length * utilBtnSize + (utilDefinitions.length - 1) * utilBtnGap
-  const utilBarX = logicalWidth - utilTotalW - 22
+  const utilBarX = logicalWidth - utilTotalW - 22 - rightInset
   const utilBarY = 10
   const topUtilityBar = {
     x: utilBarX - 8,
@@ -512,6 +614,122 @@ export function computeCompactD2rHudMetrics(
       width: utilBtnSize,
       height: utilBtnSize,
     })),
+  }
+
+  const moreUtilityBtn = {
+    x: Math.max(8, topUtilityBar.x - 46),
+    y: utilBarY,
+    width: 40,
+    height: utilBtnSize,
+  }
+
+  const extDefs: readonly {
+    action: CompactExtendedUtilityAction
+    labelZh: string
+    labelEn: string
+  }[] = [
+    { action: 'quest', labelZh: '任务', labelEn: 'Quests' },
+    { action: 'merc', labelZh: '佣兵', labelEn: 'Merc' },
+    { action: 'party', labelZh: '队伍', labelEn: 'Party' },
+    { action: 'msg', labelZh: '日志', labelEn: 'Log' },
+    { action: 'chat', labelZh: '聊天', labelEn: 'Chat' },
+  ]
+  const extBtnW = 54
+  const extBtnH = 38
+  const extGap = 6
+  const extTotalW = extDefs.length * extBtnW + (extDefs.length - 1) * extGap
+  const extDrawerX = Math.max(8, topUtilityBar.x + topUtilityBar.width - extTotalW - 12)
+  const extDrawerY = topUtilityBar.y + topUtilityBar.height + 4
+  const extendedUtilityDrawer = {
+    x: extDrawerX,
+    y: extDrawerY,
+    width: extTotalW + 12,
+    height: extBtnH + 10,
+    buttons: extDefs.map((def, idx) => ({
+      ...def,
+      x: extDrawerX + 6 + idx * (extBtnW + extGap),
+      y: extDrawerY + 5,
+      width: extBtnW,
+      height: extBtnH,
+    })),
+  }
+
+  // Non-overlapping Panel Context Strip strictly below 1.13c 400x553 dock panels (`panelOffsetY + 556`)
+  const panelOffsetY =
+    options?.panelOffsetY ?? (logicalHeight > 600 ? Math.floor((logicalHeight - 600) / 2) : 0)
+  const stripDefs: readonly {
+    action: CompactUtilityAction | CompactExtendedUtilityAction
+    labelZh: string
+    labelEn: string
+  }[] = [
+    { action: 'char', labelZh: '人物', labelEn: 'Char' },
+    { action: 'inv', labelZh: '背包', labelEn: 'Inv' },
+    { action: 'skill', labelZh: '技能', labelEn: 'Skills' },
+    { action: 'quest', labelZh: '任务', labelEn: 'Quests' },
+    { action: 'merc', labelZh: '佣兵', labelEn: 'Merc' },
+    { action: 'party', labelZh: '队伍', labelEn: 'Party' },
+    { action: 'closePanels', labelZh: '返回战斗', labelEn: 'Resume' },
+  ]
+  const stripBtnW = 76
+  const stripBtnH = 34
+  const stripGap = 6
+  const stripInnerW = stripDefs.length * stripBtnW + (stripDefs.length - 1) * stripGap
+  const stripW = stripInnerW + 16
+  const stripH = stripBtnH + 8
+  const stripX = Math.max(8, Math.round((logicalWidth - stripW) / 2))
+  const stripY = Math.min(logicalHeight - stripH - 2, panelOffsetY + 555)
+  const panelContextStrip = {
+    x: stripX,
+    y: stripY,
+    width: stripW,
+    height: stripH,
+    buttons: stripDefs.map((def, idx) => ({
+      ...def,
+      x: stripX + 8 + idx * (stripBtnW + stripGap),
+      y: stripY + 4,
+      width: stripBtnW,
+      height: stripBtnH,
+    })),
+  }
+
+  // Touch Skill Binding Bar (`F1..F12` in 2 rows of 6) placed strictly in unoccluded space outside dock panels
+  const bindSlotW = 48
+  const bindSlotH = 32
+  const bindGap = 6
+  const bindInnerW = 6 * bindSlotW + 5 * bindGap
+  const bindW = bindInnerW + 16
+  const bindH = 2 * bindSlotH + bindGap + 30
+  const leftOpen = options?.leftPanel !== undefined && options.leftPanel !== 'none'
+  const bindX = !leftOpen
+    ? Math.max(12, Math.min(400 - bindW - 12, Math.round((Math.min(400, logicalWidth - 400) - bindW) / 2)))
+    : Math.max(12, Math.round((logicalWidth - bindW) / 2))
+  const bindY = Math.max(panelOffsetY + 12, panelOffsetY + 553 - bindH - 12)
+  const bindSlots: {
+    readonly hotkeyIndex: number
+    readonly keyLabel: string
+    readonly x: number
+    readonly y: number
+    readonly width: number
+    readonly height: number
+  }[] = []
+  for (let idx = 0; idx < 12; idx++) {
+    const row = idx < 6 ? 0 : 1
+    const col = idx % 6
+    bindSlots.push({
+      hotkeyIndex: idx,
+      keyLabel: `F${idx + 1}`,
+      x: bindX + 8 + col * (bindSlotW + bindGap),
+      y: bindY + 24 + row * (bindSlotH + bindGap),
+      width: bindSlotW,
+      height: bindSlotH,
+    })
+  }
+  const skillBindBar = {
+    x: bindX,
+    y: bindY,
+    width: bindW,
+    height: bindH,
+    slots: bindSlots,
   }
 
   return {
@@ -540,6 +758,10 @@ export function computeCompactD2rHudMetrics(
     lootBtn,
     weaponSwapBtn,
     topUtilityBar,
+    moreUtilityBtn,
+    extendedUtilityDrawer,
+    panelContextStrip,
+    skillBindBar,
   }
 }
 
@@ -556,7 +778,8 @@ function pointInCircle(x: number, y: number, cx: number, cy: number, r: number):
 }
 
 /**
- * Hit-test the Phase 3 D2R Compact Center Bar, 6x2 Skill Wheel, and Top-Right 6-in-1 Utility Bar.
+ * Hit-test the Phase 3 D2R Compact Center Bar, 6x2 Skill Wheel, Top-Right Utility Bar,
+ * or non-overlapping Panel Context Strip when `options.context === 'panel'`.
  */
 export function hitTestCompactD2rHud(
   x: number,
@@ -565,36 +788,99 @@ export function hitTestCompactD2rHud(
   logicalHeight: number,
   beltExpanded: boolean = false,
   activeBank: 0 | 1 = 0,
+  options?: CompactHudLayoutOptions,
 ): CompactHudHitResult | null {
-  const m = computeCompactD2rHudMetrics(logicalWidth, logicalHeight)
+  const context: TouchHudContext = options?.context ?? 'world'
+  if (context === 'menu' || context === 'dialog') {
+    return null
+  }
+  const m = computeCompactD2rHudMetrics(logicalWidth, logicalHeight, options)
+
+  if (context === 'panel') {
+    for (const btn of m.panelContextStrip.buttons) {
+      if (pointInRect(x, y, btn)) {
+        if (
+          btn.action === 'char' ||
+          btn.action === 'inv' ||
+          btn.action === 'skill' ||
+          btn.action === 'automap' ||
+          btn.action === 'altLabels' ||
+          btn.action === 'menu'
+        ) {
+          return { kind: 'utilityAction', action: btn.action }
+        }
+        return { kind: 'extendedUtilityAction', action: btn.action }
+      }
+    }
+    if (pointInRect(x, y, m.panelContextStrip)) {
+      return { kind: 'compactBarChrome' }
+    }
+    const leftOpen = options?.leftPanel !== undefined && options.leftPanel !== 'none'
+    const skillBindVisible =
+      options?.rightPanel === 'skill' &&
+      (!leftOpen || logicalWidth >= 1060 || (options.pendingBindSkillId ?? null) !== null)
+    if (skillBindVisible && pointInRect(x, y, m.skillBindBar)) {
+      for (const slot of m.skillBindBar.slots) {
+        if (pointInRect(x, y, slot)) {
+          return { kind: 'skillBindSlot', hotkeyIndex: slot.hotkeyIndex }
+        }
+      }
+      return { kind: 'compactBarChrome' }
+    }
+    return null
+  }
+
   const bankOffset = activeBank === 1 ? 6 : 0
 
-  // 1. Top-Right 6-in-1 Utility Bar
+  // 1. Top-Right 6-in-1 Utility Bar + More Toggle + Extended Drawer
   for (const btn of m.topUtilityBar.buttons) {
     if (pointInRect(x, y, btn)) {
       return { kind: 'utilityAction', action: btn.action }
     }
   }
-
-  // 2. Popbelt 4x4 Expanded Drawer (rows 1..3)
-  if (beltExpanded && pointInRect(x, y, m.popbeltDrawer)) {
-    const beltStartX = m.beltSlots[0]!.x
-    const beltRow0Y = m.beltSlots[0]!.y
-    for (const r of [1, 2, 3] as const) {
-      const cellY = beltRow0Y - r * (COMPACT_BELT_SLOT_SIZE + 4)
-      for (const c of [0, 1, 2, 3] as const) {
-        const cellX = beltStartX + c * (COMPACT_BELT_SLOT_SIZE + COMPACT_BELT_SLOT_GAP)
-        if (
-          x >= cellX &&
-          x <= cellX + COMPACT_BELT_SLOT_SIZE &&
-          y >= cellY &&
-          y <= cellY + COMPACT_BELT_SLOT_SIZE
-        ) {
-          return { kind: 'popbeltCell', col: c, row: r }
-        }
+  if (pointInRect(x, y, m.moreUtilityBtn)) {
+    return { kind: 'moreUtilityToggle' }
+  }
+  if (options?.utilityMenuExpanded && pointInRect(x, y, m.extendedUtilityDrawer)) {
+    for (const btn of m.extendedUtilityDrawer.buttons) {
+      if (pointInRect(x, y, btn)) {
+        return { kind: 'extendedUtilityAction', action: btn.action }
       }
     }
     return { kind: 'compactBarChrome' }
+  }
+
+  // 2. Popbelt Expanded Drawer (rows 1..maxRows-1)
+  if (beltExpanded) {
+    const maxExtraRows = Math.max(1, Math.min(3, (options?.beltMaxRows ?? 4) - 1))
+    const dynamicDrawerY =
+      m.beltSlots[0]!.y - maxExtraRows * (COMPACT_BELT_SLOT_SIZE + 4) - 22
+    const dynamicDrawer = {
+      x: m.popbeltDrawer.x,
+      y: dynamicDrawerY,
+      width: m.popbeltDrawer.width,
+      height: m.beltSlots[0]!.y - dynamicDrawerY - 2,
+    }
+    if (pointInRect(x, y, dynamicDrawer)) {
+      const beltStartX = m.beltSlots[0]!.x
+      const beltRow0Y = m.beltSlots[0]!.y
+      for (const r of [1, 2, 3] as const) {
+        if (r > maxExtraRows) continue
+        const cellY = beltRow0Y - r * (COMPACT_BELT_SLOT_SIZE + 4)
+        for (const c of [0, 1, 2, 3] as const) {
+          const cellX = beltStartX + c * (COMPACT_BELT_SLOT_SIZE + COMPACT_BELT_SLOT_GAP)
+          if (
+            x >= cellX &&
+            x <= cellX + COMPACT_BELT_SLOT_SIZE &&
+            y >= cellY &&
+            y <= cellY + COMPACT_BELT_SLOT_SIZE
+          ) {
+            return { kind: 'popbeltCell', col: c, row: r }
+          }
+        }
+      }
+      return { kind: 'compactBarChrome' }
+    }
   }
 
   // 3. L2 Bank Switcher Pill Button
@@ -618,7 +904,7 @@ export function hitTestCompactD2rHud(
     }
   }
 
-  // 6. Dedicated Context Loot / Interact Button ([A 拾取])
+  // 6. Dedicated Context Loot / Interact Button ([A])
   if (pointInCircle(x, y, m.lootBtn.cx, m.lootBtn.cy, m.lootBtn.r + 2)) {
     return { kind: 'contextLootInteract' }
   }
@@ -689,7 +975,7 @@ export function detectMobileTouchEnvironment(
     if (
       shortSide > 0 &&
       shortSide <= 540 &&
-      (coarsePointer || (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0) || w > h)
+      (coarsePointer || (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0))
     ) {
       return true
     }
@@ -753,8 +1039,14 @@ export class TouchControlsHud {
     this.lockedMonster = null
     this.lockedInteractable = null
     this.selectedPanelItem = null
+    this.utilityMenuExpanded = false
+    this.pendingBindSkillId = null
+    this.l2HeldPointers.clear()
     if (this.footLootQueue.length > 0) {
       this.footLootQueue = []
+    }
+    if (this.activeGroundLabelBoxes.length > 0) {
+      this.activeGroundLabelBoxes = []
     }
     this.activeSkillBank = 0
   }
@@ -790,8 +1082,8 @@ export class TouchControlsHud {
   }
 
   /**
-   * Resolve a 6x2 Skill Wheel slot (`hotkeyIndex` `0..11`, i.e. `F1..F12`) from custom `wheelSlots`
-   * or dynamically from the player's `SkillHotkeysHud` bindings and available skills.
+   * Resolve a 6x2 Skill Wheel slot (`hotkeyIndex` `0..11`, i.e. `F1..F12` / `SKILL9..SKILL12`)
+   * from custom `wheelSlots` or dynamically from the player's `SkillHotkeysHud` bindings and available skills.
    */
   resolveWheelSlot(
     hotkeyIndex: number,
@@ -803,31 +1095,50 @@ export class TouchControlsHud {
         readonly skillId: number
         readonly name?: string
         readonly nameZh?: string
+        readonly manaCost?: number
+        readonly charges?: number
         readonly leftUsable?: boolean
       }[]
     } | null,
+    lang: string = 'CHI',
   ): SkillWheelSlotDescriptor {
     const custom = this.wheelSlots[hotkeyIndex]
     if (custom) return custom
+    const isZh = lang !== 'ENG'
+    const attackLabel = isZh ? '普通攻击' : 'Attack'
     const keyLabel = `F${hotkeyIndex + 1}`
     if (!hotkeys) {
       return {
         hotkeyIndex,
         keyLabel,
         skillId: hotkeyIndex === 5 ? 0 : -1,
-        name: hotkeyIndex === 5 ? '普通攻击' : keyLabel,
+        name: hotkeyIndex === 5 ? attackLabel : keyLabel,
         hand: hotkeyIndex === 5 ? 'left' : 'right',
       }
     }
-    const bound = hotkeys.bindings?.get(keyLabel)
+    const bound =
+      hotkeys.bindings?.get(keyLabel) ??
+      (hotkeyIndex >= 8 ? hotkeys.bindings?.get(`SKILL${hotkeyIndex + 1}`) : undefined)
+    const resolveName = (
+      skillId: number,
+      entry?: { readonly name?: string; readonly nameZh?: string },
+    ): string => {
+      if (isZh) {
+        return entry?.nameZh || entry?.name || (skillId === 0 ? attackLabel : `#${skillId}`)
+      }
+      return entry?.name || entry?.nameZh || (skillId === 0 ? attackLabel : `#${skillId}`)
+    }
     if (bound && bound.skillId >= 0) {
       const entry = hotkeys.availableSkills?.find((s) => s.skillId === bound.skillId)
       return {
         hotkeyIndex,
         keyLabel,
         skillId: bound.skillId,
-        name: entry?.nameZh || entry?.name || (bound.skillId === 0 ? '普通攻击' : `技能#${bound.skillId}`),
+        name: resolveName(bound.skillId, entry),
         hand: bound.side,
+        manaCost: entry?.manaCost,
+        charges: entry?.charges,
+        directionalAim: isDirectionalAimSkill(bound.skillId),
       }
     }
     if (hotkeyIndex === 5) {
@@ -837,8 +1148,11 @@ export class TouchControlsHud {
         hotkeyIndex,
         keyLabel,
         skillId: primaryId,
-        name: entry?.nameZh || entry?.name || (primaryId === 0 ? '普通攻击' : `技能#${primaryId}`),
+        name: resolveName(primaryId, entry),
         hand: hotkeys.rightSkillId > 0 ? 'right' : 'left',
+        manaCost: entry?.manaCost,
+        charges: entry?.charges,
+        directionalAim: isDirectionalAimSkill(primaryId),
       }
     }
     if (hotkeyIndex === 11) {
@@ -848,11 +1162,17 @@ export class TouchControlsHud {
         hotkeyIndex,
         keyLabel,
         skillId: secId,
-        name: entry?.nameZh || entry?.name || (secId === 0 ? '普通攻击' : `技能#${secId}`),
+        name: resolveName(secId, entry),
         hand: 'left',
+        manaCost: entry?.manaCost,
+        charges: entry?.charges,
+        directionalAim: isDirectionalAimSkill(secId),
       }
     }
-    const avail = hotkeys.availableSkills ?? []
+    // Filter out Scroll/Book of TP/Identify (217..220) from automatic wheel fill unless explicitly bound
+    const avail = (hotkeys.availableSkills ?? []).filter(
+      (s) => s.skillId < 217 || s.skillId > 220,
+    )
     const candidateIdx = hotkeyIndex < 5 ? hotkeyIndex : hotkeyIndex - 1
     const candidate = avail[candidateIdx]
     if (candidate && candidate.skillId >= 0) {
@@ -860,8 +1180,11 @@ export class TouchControlsHud {
         hotkeyIndex,
         keyLabel,
         skillId: candidate.skillId,
-        name: candidate.nameZh || candidate.name || (candidate.skillId === 0 ? '普通攻击' : `技能#${candidate.skillId}`),
+        name: resolveName(candidate.skillId, candidate),
         hand: candidate.leftUsable && candidate.skillId === 0 ? 'left' : 'right',
+        manaCost: candidate.manaCost,
+        charges: candidate.charges,
+        directionalAim: isDirectionalAimSkill(candidate.skillId),
       }
     }
     return {
@@ -873,16 +1196,24 @@ export class TouchControlsHud {
     }
   }
 
-  /** L2 Bank switching behavior (`'toggle'` on tap or `'hold'` while pressed). */
-  skillWheelBankMode: SkillWheelBankMode = 'toggle'
+  /** L2 Bank switching behavior (`'hold'` while pressed per D2R default, or `'toggle'` on tap). */
+  skillWheelBankMode: SkillWheelBankMode = DEFAULT_SKILL_WHEEL_BANK_MODE
   /** Active skill wheel bank: `0` = Bank 1 (`F1–F6`), `1` = Bank 2 (`F7–F12`). */
   activeSkillBank: 0 | 1 = 0
+  /** Active pointers holding the L2/LT bank shift button when `skillWheelBankMode === 'hold'`. */
+  readonly l2HeldPointers = new Set<number>()
   /** Custom 12-slot skill wheel descriptors (`F1..F12`). */
   wheelSlots: SkillWheelSlotDescriptor[] = []
   /** Active hold-to-drag vector aiming state for directional skills (e.g. Teleport, Blizzard). */
   vectorAim: VectorAimState | null = null
   /** Currently tap-locked panel item for Phase 4 (#1384) zero-drag inspection & context actions. */
   selectedPanelItem: TouchSelectedPanelItem | null = null
+  /** Whether the secondary utility drawer (`[任务][佣兵][队伍][日志][聊天]`) is expanded. */
+  utilityMenuExpanded = false
+  /** Currently selected skill ID in Skill Tree awaiting touch `F1..F12` slot binding. */
+  pendingBindSkillId: number | null = null
+  /** Latest non-overlapping spring-repulsion ground label boxes rendered this frame. */
+  activeGroundLabelBoxes: TouchGroundLabelBox[] = []
   /** Priority-sorted foot-proximity ground loot queue for Phase 5 (#1385) sequential [拾取 A] pickup. */
   footLootQueue: FootLootCandidate[] = []
   /** Optional mobile walk-over auto-pickup for gold and beltable potions. */
@@ -906,6 +1237,24 @@ export class TouchControlsHud {
   toggleSkillBank(): 0 | 1 {
     this.activeSkillBank = this.activeSkillBank === 0 ? 1 : 0
     return this.activeSkillBank
+  }
+
+  beginL2BankPress(pointerId: number): 0 | 1 {
+    if (this.skillWheelBankMode === 'hold') {
+      this.l2HeldPointers.add(pointerId)
+      this.activeSkillBank = 1
+      return this.activeSkillBank
+    }
+    return this.toggleSkillBank()
+  }
+
+  endL2BankPress(pointerId: number): boolean {
+    if (!this.l2HeldPointers.has(pointerId)) return false
+    this.l2HeldPointers.delete(pointerId)
+    if (this.skillWheelBankMode === 'hold' && this.l2HeldPointers.size === 0) {
+      this.activeSkillBank = 0
+    }
+    return true
   }
 
   beginVectorAim(
@@ -1057,6 +1406,7 @@ export class TouchControlsHud {
       this.joystick.active && this.joystick.magnitude > 0
         ? this.joystick.angleRad
         : this.lastFacingAngleRad
+    const prevLockedId = this.lockedMonster?.candidate.unitId ?? null
     const result = selectBestConeTargets(
       playerScreenX,
       playerScreenY,
@@ -1064,6 +1414,9 @@ export class TouchControlsHud {
       monsters,
       interactables,
       this.coneHalfAngleRad,
+      DEFAULT_CONE_MAX_SCREEN_RANGE,
+      DEFAULT_INTERACT_MAX_SCREEN_RANGE,
+      prevLockedId,
     )
     this.lockedMonster = result.lockedMonster
     this.lockedInteractable = result.lockedInteractable
@@ -1134,6 +1487,18 @@ export class TouchControlsHud {
     if (this.vectorAim && this.vectorAim.active) {
       const { targetScreenX, targetScreenY } = this.vectorAim
       ctx.save()
+      ctx.beginPath()
+      ctx.moveTo(playerScreenX, playerScreenY)
+      ctx.lineTo(targetScreenX, targetScreenY)
+      ctx.strokeStyle = 'rgba(79, 195, 247, 0.48)'
+      ctx.lineWidth = 1.5
+      if (typeof ctx.setLineDash === 'function') {
+        ctx.setLineDash([4, 4])
+      }
+      ctx.stroke()
+      if (typeof ctx.setLineDash === 'function') {
+        ctx.setLineDash([])
+      }
       ctx.translate(targetScreenX, targetScreenY)
       ctx.scale(1, 0.5)
       ctx.beginPath()
@@ -1146,17 +1511,21 @@ export class TouchControlsHud {
     ctx.restore()
   }
 
-  drawJoystick(ctx: CanvasRenderingContext2D, font: D2FontRenderer): void {
+  drawJoystick(ctx: CanvasRenderingContext2D, font: D2FontRenderer, lang: string = 'CHI'): void {
     if (!this.enabled) return
-    const { originX, originY, knobX, knobY, angleRad, locomotionMode } = this.joystick
+    const { active, originX, originY, knobX, knobY, angleRad, locomotionMode } = this.joystick
     const outerR = JOYSTICK_OUTER_RADIUS
     const walkR = JOYSTICK_WALK_RADIUS
     const knobR = JOYSTICK_KNOB_RADIUS
+    const isZh = lang !== 'ENG'
 
     ctx.save()
+    if (!active) {
+      ctx.globalAlpha = 0.28
+    }
     ctx.beginPath()
     ctx.arc(originX, originY, outerR, 0, Math.PI * 2)
-    ctx.fillStyle = 'rgba(10, 8, 6, 0.48)'
+    ctx.fillStyle = 'rgba(10, 8, 6, 0.45)'
     ctx.fill()
     ctx.strokeStyle =
       locomotionMode === 'run' ? 'rgba(255, 213, 79, 0.88)' : 'rgba(199, 161, 88, 0.58)'
@@ -1175,7 +1544,7 @@ export class TouchControlsHud {
       ctx.setLineDash([])
     }
 
-    if (locomotionMode === 'run') {
+    if (active && locomotionMode === 'run') {
       ctx.beginPath()
       ctx.arc(originX, originY, outerR + 3, angleRad - 0.5, angleRad + 0.5)
       ctx.strokeStyle = '#ffd54f'
@@ -1183,12 +1552,14 @@ export class TouchControlsHud {
       ctx.stroke()
     }
 
-    ctx.beginPath()
-    ctx.moveTo(originX, originY)
-    ctx.lineTo(knobX, knobY)
-    ctx.strokeStyle = 'rgba(232, 200, 120, 0.65)'
-    ctx.lineWidth = 2.5
-    ctx.stroke()
+    if (active) {
+      ctx.beginPath()
+      ctx.moveTo(originX, originY)
+      ctx.lineTo(knobX, knobY)
+      ctx.strokeStyle = 'rgba(232, 200, 120, 0.65)'
+      ctx.lineWidth = 2.5
+      ctx.stroke()
+    }
 
     ctx.beginPath()
     ctx.arc(knobX, knobY, knobR, 0, Math.PI * 2)
@@ -1198,23 +1569,26 @@ export class TouchControlsHud {
     ctx.lineWidth = 1.8
     ctx.stroke()
 
-    font.drawText(
-      ctx,
-      locomotionMode === 'run' ? '自动奔跑' : '直控摇杆',
-      Math.round(originX),
-      Math.round(originY + outerR + 14),
-      {
-        font: 'font6',
-        color: 'gold',
-        align: 'center',
-      },
-    )
+    if (active && locomotionMode === 'run') {
+      font.drawText(
+        ctx,
+        isZh ? '奔跑' : 'RUN',
+        Math.round(originX),
+        Math.round(originY + outerR + 13),
+        {
+          font: 'font6',
+          color: 'gold',
+          align: 'center',
+        },
+      )
+    }
     ctx.restore()
   }
 
   /**
-   * Draw the Phase 3 (#1383) D2R 524px Compact Center Bar (Demon/Angel Gargoyle Island + 4x1/4x4 Belt),
-   * Top-Right 6-in-1 Utility Bar, and Bottom-Right 6x2 Skill Wheel (`F1–F6` / `F7–F12` + `[L2 翻页]` + `[✋ 拾取 A]`).
+   * Draw the Phase 3 (#1383) D2R 524px Compact Center Bar (1.13c Demon/Angel Gargoyle Island + 4x1/4x4 Belt),
+   * Top-Right Utility Bar, and Bottom-Right 6x2 Skill Wheel (`F1–F6` / `F7–F12` + `LT/L2` + Context `[A]`),
+   * or the zero-occlusion Panel Context Strip (`y >= panelOffsetY + 555`) when panels are open.
    */
   drawCompactD2rHudAndWheel(
     ctx: CanvasRenderingContext2D,
@@ -1238,6 +1612,22 @@ export class TouchControlsHud {
       readonly leftPanel: string
       readonly rightPanel: string
       readonly images: ReadonlyMap<string, HTMLImageElement>
+      readonly context?: TouchHudContext | undefined
+      readonly panelOffsetY?: number | undefined
+      readonly marginRightPx?: number | undefined
+      readonly lang?: string | undefined
+      readonly nowMs?: number | undefined
+      readonly poisoned?: boolean | undefined
+      readonly healthPotActive?: boolean | undefined
+      readonly potionLifePercent?: number | undefined
+      readonly manaPotActive?: boolean | undefined
+      readonly potionManaPercent?: number | undefined
+      readonly showLifeText?: boolean | undefined
+      readonly showManaText?: boolean | undefined
+      readonly beltMaxRows?: number | undefined
+      readonly itemRects?: Readonly<
+        Record<string, { readonly x: number; readonly y: number; readonly w: number; readonly h: number }>
+      > | undefined
       readonly hotkeys?: {
         readonly leftSkillId: number
         readonly rightSkillId: number
@@ -1246,53 +1636,90 @@ export class TouchControlsHud {
           readonly skillId: number
           readonly name?: string
           readonly nameZh?: string
+          readonly manaCost?: number
+          readonly charges?: number
           readonly leftUsable?: boolean
         }[]
         readonly getSkillIcon?: (skillId: number) => HTMLImageElement | undefined
         readonly swordImage?: HTMLImageElement | null
+        readonly hasEnoughMana?: (skillId: number) => boolean
+        readonly isSkillOnCooldown?: (skillId: number, nowMs: number) => boolean
       } | null
       readonly belt?: {
+        readonly maxRows?: number | undefined
         readonly getSlot: (
           col: number,
           row: number,
-        ) => { readonly code?: string; readonly name?: string; readonly nameZh?: string } | null
+        ) => {
+          readonly code?: string
+          readonly invFile?: string
+          readonly name?: string
+          readonly nameZh?: string
+        } | null
       } | null
     },
   ): void {
-    const m = computeCompactD2rHudMetrics(state.logicalWidth, state.logicalHeight)
-    const ctrlPnl = state.images.get('ctrlPnl')
-    const globeLife = state.images.get('globeLife')
-    const globeMana = state.images.get('globeMana')
-    const overlapLeft = state.images.get('overlapLeft')
-    const overlapRight = state.images.get('overlapRight')
-    const isBank2 = this.activeSkillBank === 1
+    const hudContext: TouchHudContext = state.context ?? 'world'
+    if (hudContext === 'menu' || hudContext === 'dialog') {
+      return
+    }
+    const isZh = (state.lang ?? 'CHI') !== 'ENG'
+    const lang = state.lang ?? 'CHI'
+    const nowMs = state.nowMs ?? 0
+    const beltMaxRows = Math.max(1, Math.min(4, state.beltMaxRows ?? state.belt?.maxRows ?? 4))
+    const m = computeCompactD2rHudMetrics(state.logicalWidth, state.logicalHeight, {
+      context: hudContext,
+      panelOffsetY: state.panelOffsetY,
+      leftPanel: state.leftPanel,
+      rightPanel: state.rightPanel,
+      utilityMenuExpanded: this.utilityMenuExpanded,
+      beltMaxRows,
+      marginRightPx: state.marginRightPx,
+      pendingBindSkillId: this.pendingBindSkillId,
+    })
 
-    const drawPotionGlyph = (x: number, y: number, size: number, code: string) => {
-      const lc = code.trim().toLowerCase()
-      const isRejuv = lc.startsWith('rv')
-      const isMana = lc.startsWith('mp')
-      const isLife = lc.startsWith('hp')
-      const fillColor = isRejuv
-        ? '#8e24aa'
-        : isMana
-          ? '#1565c0'
-          : isLife
-            ? '#c62828'
-            : '#f9a825'
-      ctx.save()
-      ctx.beginPath()
-      ctx.arc(Math.round(x + size / 2), Math.round(y + size / 2 + 2), Math.round(size * 0.28), 0, Math.PI * 2)
-      ctx.fillStyle = fillColor
-      ctx.fill()
-      ctx.strokeStyle = '#ffe082'
-      ctx.lineWidth = 1.2
-      ctx.stroke()
-      ctx.fillStyle = '#d7ccc8'
-      ctx.fillRect(Math.round(x + size / 2 - 3), Math.round(y + 5), 6, 5)
-      ctx.restore()
+    const miniPanelBtns = state.images.get('miniPanelBtns')
+    const drawMiniPanelIcon = (
+      action: string,
+      isActive: boolean,
+      cx: number,
+      topY: number,
+    ): boolean => {
+      const iconGroupMap: Record<string, number> = {
+        char: 0,
+        inv: 1,
+        skill: 2,
+        party: 3,
+        automap: 4,
+        msg: 5,
+        quest: 6,
+        menu: 7,
+      }
+      const grp = iconGroupMap[action]
+      if (grp === undefined || !miniPanelBtns) return false
+      const frameIdx = grp * 2 + (isActive ? 1 : 0)
+      ctx.drawImage(
+        miniPanelBtns,
+        frameIdx * 20,
+        0,
+        20,
+        20,
+        Math.round(cx - 10),
+        Math.round(topY),
+        20,
+        20,
+      )
+      return true
     }
 
-    const drawSkillSlotIcon = (cx: number, cy: number, r: number, skillId: number) => {
+    const drawSkillSlotIcon = (
+      cx: number,
+      cy: number,
+      r: number,
+      skillId: number,
+      lowMana: boolean,
+      onCooldown: boolean,
+    ) => {
       if (skillId < 0 || !state.hotkeys) return
       const iconImg =
         skillId === 0 && state.hotkeys.swordImage
@@ -1305,12 +1732,200 @@ export class TouchControlsHud {
       if (typeof ctx.clip === 'function') {
         ctx.clip()
       }
-      ctx.drawImage(iconImg, cx - r, cy - r, r * 2, r * 2)
+      const drawSize = Math.round(r * 1.92)
+      ctx.drawImage(
+        iconImg,
+        Math.round(cx - drawSize / 2),
+        Math.round(cy - drawSize / 2),
+        drawSize,
+        drawSize,
+      )
+      if (lowMana) {
+        ctx.fillStyle = 'rgba(155, 18, 18, 0.52)'
+        ctx.fillRect(cx - r, cy - r, r * 2, r * 2)
+      } else if (onCooldown) {
+        ctx.fillStyle = 'rgba(8, 8, 14, 0.64)'
+        ctx.fillRect(cx - r, cy - r, r * 2, r * 2)
+      }
+      ctx.restore()
+    }
+
+    // Panel Context Mode: zero occlusion over [0..400, panelOffsetY..panelOffsetY+553] & [W-400..W, panelOffsetY..panelOffsetY+553]
+    if (hudContext === 'panel') {
+      ctx.save()
+      ctx.fillStyle = 'rgba(10, 8, 6, 0.94)'
+      ctx.fillRect(
+        m.panelContextStrip.x,
+        m.panelContextStrip.y,
+        m.panelContextStrip.width,
+        m.panelContextStrip.height,
+      )
+      ctx.strokeStyle = '#9c7e47'
+      ctx.lineWidth = 1.6
+      ctx.strokeRect(
+        m.panelContextStrip.x,
+        m.panelContextStrip.y,
+        m.panelContextStrip.width,
+        m.panelContextStrip.height,
+      )
+      for (const btn of m.panelContextStrip.buttons) {
+        const isActive =
+          (btn.action === 'char' && state.leftPanel === 'char') ||
+          (btn.action === 'inv' && state.rightPanel === 'inv') ||
+          (btn.action === 'skill' && state.rightPanel === 'skill') ||
+          (btn.action === 'quest' && state.leftPanel === 'quest') ||
+          (btn.action === 'merc' && state.leftPanel === 'merc') ||
+          (btn.action === 'party' && state.leftPanel === 'party')
+        const isResume = btn.action === 'closePanels'
+        ctx.fillStyle = isResume
+          ? 'rgba(58, 24, 18, 0.96)'
+          : isActive
+            ? 'rgba(64, 48, 22, 0.96)'
+            : 'rgba(22, 18, 14, 0.94)'
+        ctx.fillRect(btn.x, btn.y, btn.width, btn.height)
+        ctx.strokeStyle = isResume ? '#ef9a9a' : isActive ? '#ffd54f' : '#7e653a'
+        ctx.lineWidth = 1.2
+        ctx.strokeRect(btn.x, btn.y, btn.width, btn.height)
+        const hasIcon = drawMiniPanelIcon(btn.action, isActive, btn.x + 14, btn.y + 7)
+        font.drawText(
+          ctx,
+          isZh ? btn.labelZh : btn.labelEn,
+          hasIcon ? Math.round(btn.x + 48) : Math.round(btn.x + btn.width / 2),
+          Math.round(btn.y + 21),
+          {
+            font: 'font6',
+            color: isResume || isActive ? 'gold' : 'white',
+            align: 'center',
+          },
+        )
+      }
+
+      const leftOpen = state.leftPanel !== 'none'
+      const skillBindVisible =
+        state.rightPanel === 'skill' &&
+        (!leftOpen || state.logicalWidth >= 1060 || this.pendingBindSkillId !== null)
+      if (skillBindVisible) {
+        ctx.fillStyle = 'rgba(12, 10, 8, 0.95)'
+        ctx.fillRect(
+          m.skillBindBar.x,
+          m.skillBindBar.y,
+          m.skillBindBar.width,
+          m.skillBindBar.height,
+        )
+        ctx.strokeStyle = this.pendingBindSkillId !== null ? '#ffd54f' : '#8d703b'
+        ctx.lineWidth = 1.6
+        ctx.strokeRect(
+          m.skillBindBar.x,
+          m.skillBindBar.y,
+          m.skillBindBar.width,
+          m.skillBindBar.height,
+        )
+        const pendingEntry =
+          this.pendingBindSkillId !== null
+            ? state.hotkeys?.availableSkills?.find((s) => s.skillId === this.pendingBindSkillId)
+            : undefined
+        const pendingTitle =
+          this.pendingBindSkillId !== null
+            ? isZh
+              ? `点选槽位绑定: ${pendingEntry?.nameZh || pendingEntry?.name || `#${this.pendingBindSkillId}`}`
+              : `Tap F1-F12 to Bind: ${pendingEntry?.name || `#${this.pendingBindSkillId}`}`
+            : isZh
+              ? '轮盘快捷栏 F1-F12 (先在右侧技能树点选技能)'
+              : 'Skill Wheel F1-F12 (Tap a Skill on Right to Bind)'
+        font.drawText(
+          ctx,
+          pendingTitle,
+          Math.round(m.skillBindBar.x + m.skillBindBar.width / 2),
+          Math.round(m.skillBindBar.y + 16),
+          {
+            font: 'font6',
+            color: this.pendingBindSkillId !== null ? 'gold' : 'white',
+            align: 'center',
+          },
+        )
+        for (const slot of m.skillBindBar.slots) {
+          const desc = this.resolveWheelSlot(slot.hotkeyIndex, state.hotkeys, lang)
+          const isBoundToPending =
+            this.pendingBindSkillId !== null && desc.skillId === this.pendingBindSkillId
+          ctx.fillStyle = isBoundToPending ? 'rgba(64, 48, 22, 0.96)' : 'rgba(20, 16, 12, 0.94)'
+          ctx.fillRect(slot.x, slot.y, slot.width, slot.height)
+          ctx.strokeStyle = isBoundToPending ? '#ffd54f' : '#6c5834'
+          ctx.lineWidth = 1.2
+          ctx.strokeRect(slot.x, slot.y, slot.width, slot.height)
+          if (desc.skillId >= 0) {
+            drawSkillSlotIcon(
+              slot.x + 14,
+              Math.round(slot.y + slot.height / 2),
+              11,
+              desc.skillId,
+              false,
+              false,
+            )
+          }
+          font.drawText(
+            ctx,
+            slot.keyLabel,
+            desc.skillId >= 0 ? slot.x + 34 : Math.round(slot.x + slot.width / 2),
+            Math.round(slot.y + 20),
+            {
+              font: 'font6',
+              color: 'gold',
+              align: 'center',
+            },
+          )
+        }
+      }
+      ctx.restore()
+      return
+    }
+
+    const ctrlPnl = state.images.get('ctrlPnl')
+    const globeLife = state.images.get('globeLife')
+    const globePoison = state.images.get('globePoison')
+    const globeMana = state.images.get('globeMana')
+    const overlapLeft = state.images.get('overlapLeft')
+    const overlapRight = state.images.get('overlapRight')
+    const itemsAtlas = state.images.get('itemsAtlas')
+    const popbeltImg = state.images.get('popbelt')
+    const runBtnImg = state.images.get('runBtn')
+    const isBank2 = this.activeSkillBank === 1
+
+    const drawBeltPotionSprite = (
+      x: number,
+      y: number,
+      size: number,
+      pot: { readonly code?: string; readonly invFile?: string } | null | undefined,
+    ) => {
+      if (!pot?.code) return
+      const rect = pot.invFile ? state.itemRects?.[pot.invFile] : undefined
+      if (itemsAtlas && rect) {
+        const dstX = Math.round(x + (size - rect.w) / 2)
+        const dstY = Math.round(y + (size - rect.h) / 2)
+        ctx.drawImage(itemsAtlas, rect.x, rect.y, rect.w, rect.h, dstX, dstY, rect.w, rect.h)
+        return
+      }
+      // Fallback solely for headless unit tests without loaded itemsAtlas
+      const lc = pot.code.trim().toLowerCase()
+      const fillColor = lc.startsWith('rv')
+        ? '#8e24aa'
+        : lc.startsWith('mp')
+          ? '#1565c0'
+          : lc.startsWith('hp')
+            ? '#c62828'
+            : '#f9a825'
+      ctx.save()
+      ctx.beginPath()
+      ctx.arc(Math.round(x + size / 2), Math.round(y + size / 2 + 2), Math.round(size * 0.26), 0, Math.PI * 2)
+      ctx.fillStyle = fillColor
+      ctx.fill()
+      ctx.strokeStyle = '#ffe082'
+      ctx.lineWidth = 1.2
+      ctx.stroke()
       ctx.restore()
     }
 
     ctx.save()
-    // 1. Top-Right 6-in-1 Utility Bar
+    // 1. Top-Right 6-in-1 Utility Bar + Secondary Utility Toggle ("⋯")
     ctx.fillStyle = 'rgba(12, 10, 8, 0.88)'
     ctx.fillRect(
       m.topUtilityBar.x,
@@ -1338,11 +1953,25 @@ export class TouchControlsHud {
       ctx.strokeStyle = isActive ? '#ffd54f' : '#8d703b'
       ctx.lineWidth = 1.2
       ctx.strokeRect(btn.x, btn.y, btn.width, btn.height)
-      font.drawText(ctx, btn.labelZh, Math.round(btn.x + btn.width / 2), Math.round(btn.y + 30), {
-        font: 'font6',
-        color: isActive ? 'gold' : 'white',
-        align: 'center',
-      })
+      const drewIcon = drawMiniPanelIcon(btn.action, isActive, btn.x + btn.width / 2, btn.y + 4)
+      if (!drewIcon && btn.action === 'altLabels') {
+        font.drawText(ctx, 'ALT', Math.round(btn.x + btn.width / 2), Math.round(btn.y + 18), {
+          font: 'font6',
+          color: isActive ? 'gold' : 'gray',
+          align: 'center',
+        })
+      }
+      font.drawText(
+        ctx,
+        isZh ? btn.labelZh : btn.labelEn,
+        Math.round(btn.x + btn.width / 2),
+        Math.round(btn.y + 38),
+        {
+          font: 'font6',
+          color: isActive ? 'gold' : 'white',
+          align: 'center',
+        },
+      )
       const badgeCount =
         btn.action === 'char'
           ? state.unspentStatPoints
@@ -1359,6 +1988,59 @@ export class TouchControlsHud {
           color: 'white',
           align: 'center',
         })
+      }
+    }
+
+    // Secondary Utility Toggle Button ("⋯")
+    ctx.fillStyle = this.utilityMenuExpanded ? 'rgba(62, 46, 22, 0.95)' : 'rgba(18, 15, 11, 0.9)'
+    ctx.fillRect(m.moreUtilityBtn.x, m.moreUtilityBtn.y, m.moreUtilityBtn.width, m.moreUtilityBtn.height)
+    ctx.strokeStyle = this.utilityMenuExpanded ? '#ffd54f' : '#7e653a'
+    ctx.lineWidth = 1.2
+    ctx.strokeRect(m.moreUtilityBtn.x, m.moreUtilityBtn.y, m.moreUtilityBtn.width, m.moreUtilityBtn.height)
+    font.drawText(
+      ctx,
+      '...',
+      Math.round(m.moreUtilityBtn.x + m.moreUtilityBtn.width / 2),
+      Math.round(m.moreUtilityBtn.y + 18),
+      { font: 'font6', color: 'gold', align: 'center' },
+    )
+    font.drawText(
+      ctx,
+      isZh ? '更多' : 'More',
+      Math.round(m.moreUtilityBtn.x + m.moreUtilityBtn.width / 2),
+      Math.round(m.moreUtilityBtn.y + 38),
+      { font: 'font6', color: 'white', align: 'center' },
+    )
+
+    if (this.utilityMenuExpanded) {
+      ctx.fillStyle = 'rgba(12, 10, 8, 0.94)'
+      ctx.fillRect(
+        m.extendedUtilityDrawer.x,
+        m.extendedUtilityDrawer.y,
+        m.extendedUtilityDrawer.width,
+        m.extendedUtilityDrawer.height,
+      )
+      ctx.strokeStyle = '#9c7e47'
+      ctx.lineWidth = 1.4
+      ctx.strokeRect(
+        m.extendedUtilityDrawer.x,
+        m.extendedUtilityDrawer.y,
+        m.extendedUtilityDrawer.width,
+        m.extendedUtilityDrawer.height,
+      )
+      for (const btn of m.extendedUtilityDrawer.buttons) {
+        ctx.fillStyle = 'rgba(24, 20, 15, 0.94)'
+        ctx.fillRect(btn.x, btn.y, btn.width, btn.height)
+        ctx.strokeStyle = '#8d703b'
+        ctx.strokeRect(btn.x, btn.y, btn.width, btn.height)
+        drawMiniPanelIcon(btn.action, false, btn.x + btn.width / 2, btn.y + 3)
+        font.drawText(
+          ctx,
+          isZh ? btn.labelZh : btn.labelEn,
+          Math.round(btn.x + btn.width / 2),
+          Math.round(btn.y + 33),
+          { font: 'font6', color: 'gold', align: 'center' },
+        )
       }
     }
 
@@ -1382,7 +2064,7 @@ export class TouchControlsHud {
     ctx.lineWidth = 2
     ctx.strokeRect(m.consoleBox.x, m.consoleBox.y, m.consoleBox.width, m.consoleBox.height)
 
-    // Enlarged 4x1 Belt Slots
+    // Enlarged 4x1 Belt Slots using authentic itemsAtlas + itemRects[pot.invFile]
     for (const slot of m.beltSlots) {
       ctx.fillStyle = 'rgba(8, 6, 5, 0.92)'
       ctx.fillRect(slot.x, slot.y, slot.size, slot.size)
@@ -1390,36 +2072,40 @@ export class TouchControlsHud {
       ctx.lineWidth = 1.4
       ctx.strokeRect(slot.x, slot.y, slot.size, slot.size)
       const pot = state.belt?.getSlot(slot.col, 0)
-      if (pot?.code) {
-        drawPotionGlyph(slot.x, slot.y, slot.size, pot.code)
-      }
-      font.drawText(ctx, String(slot.col + 1), slot.x + 6, slot.y + slot.size - 5, {
+      drawBeltPotionSprite(slot.x, slot.y, slot.size, pot)
+      font.drawText(ctx, String(slot.col + 1), slot.x + 5, slot.y + slot.size - 4, {
         font: 'font6',
         color: 'gold',
         align: 'left',
       })
     }
 
-    // Expanded 4x4 Popbelt Drawer
-    if (state.beltExpanded) {
+    // Expanded Popbelt Drawer respecting beltMaxRows (1..4)
+    if (state.beltExpanded && beltMaxRows > 1) {
+      const extraRows = beltMaxRows - 1
+      const drawerY = m.beltSlots[0]!.y - extraRows * (COMPACT_BELT_SLOT_SIZE + 4) - 22
+      const drawerH = extraRows * (COMPACT_BELT_SLOT_SIZE + 4) + 20
       ctx.fillStyle = 'rgba(12, 9, 6, 0.95)'
-      ctx.fillRect(
-        m.popbeltDrawer.x,
-        m.popbeltDrawer.y,
-        m.popbeltDrawer.width,
-        m.popbeltDrawer.height,
-      )
+      ctx.fillRect(m.popbeltDrawer.x, drawerY, m.popbeltDrawer.width, drawerH)
+      if (popbeltImg) {
+        ctx.save()
+        ctx.globalAlpha = 0.35
+        ctx.drawImage(
+          popbeltImg,
+          m.popbeltDrawer.x + 2,
+          drawerY + 2,
+          m.popbeltDrawer.width - 4,
+          drawerH - 4,
+        )
+        ctx.restore()
+      }
       ctx.strokeStyle = '#c7a158'
       ctx.lineWidth = 1.6
-      ctx.strokeRect(
-        m.popbeltDrawer.x,
-        m.popbeltDrawer.y,
-        m.popbeltDrawer.width,
-        m.popbeltDrawer.height,
-      )
+      ctx.strokeRect(m.popbeltDrawer.x, drawerY, m.popbeltDrawer.width, drawerH)
       const beltStartX = m.beltSlots[0]!.x
       const beltRow0Y = m.beltSlots[0]!.y
       for (const r of [1, 2, 3] as const) {
+        if (r > extraRows) continue
         const cellY = beltRow0Y - r * (COMPACT_BELT_SLOT_SIZE + 4)
         for (const c of [0, 1, 2, 3] as const) {
           const cellX = beltStartX + c * (COMPACT_BELT_SLOT_SIZE + COMPACT_BELT_SLOT_GAP)
@@ -1429,16 +2115,14 @@ export class TouchControlsHud {
           ctx.lineWidth = 1
           ctx.strokeRect(cellX, cellY, COMPACT_BELT_SLOT_SIZE, COMPACT_BELT_SLOT_SIZE)
           const pot = state.belt?.getSlot(c, r)
-          if (pot?.code) {
-            drawPotionGlyph(cellX, cellY, COMPACT_BELT_SLOT_SIZE, pot.code)
-          }
+          drawBeltPotionSprite(cellX, cellY, COMPACT_BELT_SLOT_SIZE, pot)
         }
       }
       font.drawText(
         ctx,
-        '▲ 4×4 腰带抽屉',
+        `▲ 4×${beltMaxRows} ${isZh ? '腰带' : 'Belt'}`,
         Math.round(m.popbeltDrawer.x + m.popbeltDrawer.width / 2),
-        Math.round(m.popbeltDrawer.y + 13),
+        Math.round(drawerY + 13),
         {
           font: 'font6',
           color: 'gold',
@@ -1447,16 +2131,16 @@ export class TouchControlsHud {
       )
     }
 
-    // Refill & Run Buttons
+    // Refill & Run Buttons (with authentic runbutton.dc6 sprite)
     ctx.fillStyle = 'rgba(28, 22, 16, 0.94)'
     ctx.fillRect(m.refillBtn.x, m.refillBtn.y, m.refillBtn.width, m.refillBtn.height)
     ctx.strokeStyle = '#8d703b'
     ctx.strokeRect(m.refillBtn.x, m.refillBtn.y, m.refillBtn.width, m.refillBtn.height)
     font.drawText(
       ctx,
-      '补满R3',
+      isZh ? '补腰带' : 'Refill',
       Math.round(m.refillBtn.x + m.refillBtn.width / 2),
-      Math.round(m.refillBtn.y + 13),
+      Math.round(m.refillBtn.y + 14),
       { font: 'font6', color: 'gold', align: 'center' },
     )
 
@@ -1464,13 +2148,25 @@ export class TouchControlsHud {
     ctx.fillRect(m.runBtn.x, m.runBtn.y, m.runBtn.width, m.runBtn.height)
     ctx.strokeStyle = state.isRunning ? '#ffd54f' : '#6c5834'
     ctx.strokeRect(m.runBtn.x, m.runBtn.y, m.runBtn.width, m.runBtn.height)
-    font.drawText(
-      ctx,
-      state.isRunning ? '奔跑' : '行走',
-      Math.round(m.runBtn.x + m.runBtn.width / 2),
-      Math.round(m.runBtn.y + 14),
-      { font: 'font6', color: state.isRunning ? 'gold' : 'white', align: 'center' },
-    )
+    if (runBtnImg) {
+      const runFrame = state.isRunning ? 2 : 0
+      ctx.drawImage(runBtnImg, runFrame * 16, 0, 16, 20, m.runBtn.x + 2, m.runBtn.y + 1, 16, 20)
+      font.drawText(
+        ctx,
+        isZh ? (state.isRunning ? '跑' : '走') : state.isRunning ? 'Run' : 'Wlk',
+        Math.round(m.runBtn.x + 33),
+        Math.round(m.runBtn.y + 15),
+        { font: 'font6', color: state.isRunning ? 'gold' : 'white', align: 'center' },
+      )
+    } else {
+      font.drawText(
+        ctx,
+        isZh ? (state.isRunning ? '奔跑' : '行走') : state.isRunning ? 'Run' : 'Walk',
+        Math.round(m.runBtn.x + m.runBtn.width / 2),
+        Math.round(m.runBtn.y + 15),
+        { font: 'font6', color: state.isRunning ? 'gold' : 'white', align: 'center' },
+      )
+    }
 
     // EXP & Stamina Bars
     const barTrackX = m.beltSlots[0]!.x
@@ -1497,112 +2193,151 @@ export class TouchControlsHud {
     ctx.fillStyle = '#e0a938'
     ctx.fillRect(barTrackX + 1, staY + 1, Math.round((barTrackW - 2) * staRatio), 4)
 
-    // Left Demon Wing + Life Globe & Right Angel Wing + Mana Globe
-    const drawCompactWingAndGlobe = (
-      cx: number,
-      cy: number,
-      r: number,
-      ratio: number,
-      isLife: boolean,
-    ) => {
+    // Authentic 1.13c Demon/Angel Gargoyle Wings FIRST, then bottom-up clipped 80x80 liquid, then overlapLeft/overlapRight ON TOP (`globes.ts:290-409`)
+    const drawAuthenticWingAndGlobe = (isLife: boolean, ratio: number) => {
+      const globe = isLife ? m.leftGlobe : m.rightGlobe
+      const boundsX = globe.cx - 40
+      const boundsY = globe.cy - 40
       ctx.save()
-      ctx.beginPath()
-      ctx.arc(cx, cy, r + 3, 0, Math.PI * 2)
-      ctx.fillStyle = '#070504'
-      ctx.fill()
 
-      ctx.save()
-      ctx.beginPath()
-      ctx.arc(cx, cy, r, 0, Math.PI * 2)
-      if (typeof ctx.clip === 'function') {
-        ctx.clip()
-      }
-      const fillH = Math.round(r * 2 * ratio)
-      const fillTop = cy + r - fillH
-      const globeImg = isLife ? globeLife : globeMana
-      if (globeImg) {
-        ctx.drawImage(globeImg, cx - r, fillTop, r * 2, fillH)
-      } else {
-        ctx.fillStyle = isLife ? '#b71c1c' : '#0d47a1'
-        ctx.fillRect(cx - r, fillTop, r * 2, fillH)
-      }
-      ctx.restore()
-
-      ctx.beginPath()
-      ctx.arc(cx, cy, r + 1, 0, Math.PI * 2)
-      ctx.strokeStyle = '#a8894e'
-      ctx.lineWidth = 2.2
-      ctx.stroke()
-
-      if (isLife) {
-        if (ctrlPnl) {
+      // 1) Wing background (`800CtrlPnl7.dc6`) drawn FIRST behind liquid
+      if (ctrlPnl) {
+        if (isLife) {
           ctx.drawImage(ctrlPnl, 0, 0, 117, 104, m.barX, m.barY, 117, 104)
-        }
-        if (overlapLeft) {
-          ctx.drawImage(overlapLeft, m.barX, m.barY - 4)
-        }
-      } else {
-        if (ctrlPnl) {
+        } else {
           ctx.drawImage(ctrlPnl, 683, 0, 117, 104, m.barX + m.barWidth - 117, m.barY, 117, 104)
         }
-        if (overlapRight) {
-          ctx.drawImage(overlapRight, cx - r - 4, m.barY + 4)
-        }
       }
 
-      font.drawText(
-        ctx,
-        isLife ? `${state.hp} / ${state.maxHp}` : `${state.mana} / ${state.maxMana}`,
-        cx,
-        cy - r - 10,
-        {
-          font: 'font6',
-          color: isLife ? 'red' : 'blue',
-          align: 'center',
-        },
-      )
+      // 2) Translucent dark socket bowl inside the 80x80 globe socket
+      ctx.beginPath()
+      ctx.arc(globe.cx, globe.cy, globe.r, 0, Math.PI * 2)
+      ctx.fillStyle = 'rgba(8, 6, 5, 0.58)'
+      ctx.fill()
+
+      // 3) Optional 25%-alpha potion regeneration preview + bottom-up source-clipped 80x80 liquid
+      const liquidImg = isLife ? (state.poisoned && globePoison ? globePoison : globeLife) : globeMana
+      const potActive = isLife ? state.healthPotActive : state.manaPotActive
+      const potPct = isLife ? (state.potionLifePercent ?? 0) / 100 : (state.potionManaPercent ?? 0) / 100
+      if (liquidImg) {
+        if (potActive && potPct > ratio) {
+          const prevH = Math.round(80 * Math.min(1, potPct))
+          if (prevH > 0) {
+            ctx.save()
+            ctx.globalAlpha = 0.28
+            ctx.drawImage(
+              liquidImg,
+              0,
+              80 - prevH,
+              80,
+              prevH,
+              boundsX,
+              boundsY + (80 - prevH),
+              80,
+              prevH,
+            )
+            ctx.restore()
+          }
+        }
+        const clipH = Math.round(80 * ratio)
+        if (clipH > 0) {
+          ctx.drawImage(
+            liquidImg,
+            0,
+            80 - clipH,
+            80,
+            clipH,
+            boundsX,
+            boundsY + (80 - clipH),
+            80,
+            clipH,
+          )
+        }
+      } else {
+        ctx.save()
+        ctx.beginPath()
+        ctx.arc(globe.cx, globe.cy, globe.r, 0, Math.PI * 2)
+        if (typeof ctx.clip === 'function') ctx.clip()
+        const fillH = Math.round(80 * ratio)
+        ctx.fillStyle = isLife ? (state.poisoned ? '#2e7d32' : '#b71c1c') : '#0d47a1'
+        ctx.fillRect(boundsX, boundsY + (80 - fillH), 80, fillH)
+        ctx.restore()
+      }
+
+      // 4) Glass highlight & gargoyle claw overlap (`overlap.dc6`) drawn ON TOP
+      if (isLife && overlapLeft) {
+        ctx.drawImage(overlapLeft, m.barX + 28, m.barY + 11)
+      } else if (!isLife && overlapRight) {
+        ctx.drawImage(overlapRight, m.barX + m.barWidth - 110, m.barY + 7)
+      }
+
+      const showNumeric = isLife
+        ? Boolean(state.showLifeText) || ratio < 0.999
+        : Boolean(state.showManaText) || ratio < 0.999
+      if (showNumeric) {
+        font.drawText(
+          ctx,
+          isLife ? `${state.hp}/${state.maxHp}` : `${state.mana}/${state.maxMana}`,
+          globe.cx,
+          m.barY - 3,
+          {
+            font: 'font6',
+            color: 'white',
+            align: 'center',
+          },
+        )
+      }
       ctx.restore()
     }
 
-    drawCompactWingAndGlobe(
-      m.leftGlobe.cx,
-      m.leftGlobe.cy,
-      m.leftGlobe.r,
-      hpRatio,
-      true,
-    )
-    drawCompactWingAndGlobe(
-      m.rightGlobe.cx,
-      m.rightGlobe.cy,
-      m.rightGlobe.r,
-      manaRatio,
-      false,
-    )
+    drawAuthenticWingAndGlobe(true, hpRatio)
+    drawAuthenticWingAndGlobe(false, manaRatio)
 
-    // 3. Bottom-Right D2R 6x2 Skill Wheel + L2 Bank Switcher + [A 拾取] + [W 武器切换]
-    ctx.fillStyle = 'rgba(12, 10, 8, 0.9)'
-    ctx.fillRect(
-      m.l2PreviewBar.x,
-      m.l2PreviewBar.y,
-      m.l2PreviewBar.width,
-      m.l2PreviewBar.height,
-    )
-    ctx.strokeStyle = isBank2 ? '#4fc3f7' : '#7e653a'
-    ctx.strokeRect(
-      m.l2PreviewBar.x,
-      m.l2PreviewBar.y,
-      m.l2PreviewBar.width,
-      m.l2PreviewBar.height,
-    )
+    // 3. Bottom-Right D2R 6x2 Skill Wheel + Compact LT/L2 Switcher + Context [A] + Weapon Swap [W]
+    const showBankPreview = isBank2 || this.l2HeldPointers.size > 0
+    if (showBankPreview) {
+      ctx.fillStyle = 'rgba(12, 10, 8, 0.88)'
+      ctx.fillRect(
+        m.l2PreviewBar.x,
+        m.l2PreviewBar.y,
+        m.l2PreviewBar.width,
+        m.l2PreviewBar.height,
+      )
+      ctx.strokeStyle = '#4fc3f7'
+      ctx.strokeRect(
+        m.l2PreviewBar.x,
+        m.l2PreviewBar.y,
+        m.l2PreviewBar.width,
+        m.l2PreviewBar.height,
+      )
+      const inactiveBankOffset = isBank2 ? 0 : 6
+      const miniStartX = m.l2PreviewBar.l2Btn.x + m.l2PreviewBar.l2Btn.width + 22
+      const miniCy = Math.round(m.l2PreviewBar.y + m.l2PreviewBar.height / 2)
+      for (let i = 0; i < 6; i++) {
+        const miniCx = miniStartX + i * 36
+        const miniSlot = this.resolveWheelSlot(inactiveBankOffset + i, state.hotkeys, lang)
+        ctx.beginPath()
+        ctx.arc(miniCx, miniCy, 14, 0, Math.PI * 2)
+        ctx.fillStyle = 'rgba(18, 15, 11, 0.92)'
+        ctx.fill()
+        drawSkillSlotIcon(miniCx, miniCy, 14, miniSlot.skillId, false, false)
+        ctx.beginPath()
+        ctx.arc(miniCx, miniCy, 14, 0, Math.PI * 2)
+        ctx.strokeStyle = '#6c5834'
+        ctx.lineWidth = 1.2
+        ctx.stroke()
+      }
+    }
 
-    ctx.fillStyle = isBank2 ? 'rgba(13, 71, 161, 0.95)' : 'rgba(44, 34, 20, 0.95)'
+    ctx.fillStyle = isBank2 ? 'rgba(13, 71, 161, 0.95)' : 'rgba(38, 30, 18, 0.94)'
     ctx.fillRect(
       m.l2PreviewBar.l2Btn.x,
       m.l2PreviewBar.l2Btn.y,
       m.l2PreviewBar.l2Btn.width,
       m.l2PreviewBar.l2Btn.height,
     )
-    ctx.strokeStyle = isBank2 ? '#4fc3f7' : '#ffd54f'
+    ctx.strokeStyle = isBank2 ? '#4fc3f7' : '#c7a158'
+    ctx.lineWidth = 1.5
     ctx.strokeRect(
       m.l2PreviewBar.l2Btn.x,
       m.l2PreviewBar.l2Btn.y,
@@ -1611,111 +2346,134 @@ export class TouchControlsHud {
     )
     font.drawText(
       ctx,
-      isBank2 ? 'L2 2/2页' : 'L2 1/2页',
+      isBank2 ? 'LT 2/2' : 'LT 1/2',
       Math.round(m.l2PreviewBar.l2Btn.x + m.l2PreviewBar.l2Btn.width / 2),
       Math.round(m.l2PreviewBar.l2Btn.y + 24),
       {
         font: 'font6',
-        color: 'gold',
+        color: isBank2 ? 'blue' : 'gold',
         align: 'center',
       },
     )
-
-    // 6 Inactive Bank Mini Preview Circles inside L2 Preview Bar
-    const inactiveBankOffset = isBank2 ? 0 : 6
-    const miniStartX = m.l2PreviewBar.l2Btn.x + m.l2PreviewBar.l2Btn.width + 22
-    const miniCy = Math.round(m.l2PreviewBar.y + m.l2PreviewBar.height / 2)
-    for (let i = 0; i < 6; i++) {
-      const miniCx = miniStartX + i * 36
-      const miniSlot = this.resolveWheelSlot(inactiveBankOffset + i, state.hotkeys)
-      ctx.beginPath()
-      ctx.arc(miniCx, miniCy, 14, 0, Math.PI * 2)
-      ctx.fillStyle = 'rgba(18, 15, 11, 0.92)'
-      ctx.fill()
-      drawSkillSlotIcon(miniCx, miniCy, 14, miniSlot.skillId)
-      ctx.beginPath()
-      ctx.arc(miniCx, miniCy, 14, 0, Math.PI * 2)
-      ctx.strokeStyle = '#6c5834'
-      ctx.lineWidth = 1.2
-      ctx.stroke()
-      font.drawText(ctx, miniSlot.keyLabel, miniCx, miniCy + 4, {
-        font: 'font6',
-        color: 'gold',
-        align: 'center',
-      })
-    }
 
     // 5 Satellite Arc Skill Slots
     const bankOffset = isBank2 ? 6 : 0
     for (const arcSlot of m.wheel.arcSlots) {
-      const slotDesc = this.resolveWheelSlot(bankOffset + arcSlot.arcIndex, state.hotkeys)
-      const keyLabel = slotDesc.keyLabel
-      const skillName = slotDesc.name
+      const slotDesc = this.resolveWheelSlot(bankOffset + arcSlot.arcIndex, state.hotkeys, lang)
+      const lowMana =
+        slotDesc.skillId >= 0 && state.hotkeys?.hasEnoughMana
+          ? !state.hotkeys.hasEnoughMana(slotDesc.skillId)
+          : false
+      const onCooldown =
+        slotDesc.skillId >= 0 && state.hotkeys?.isSkillOnCooldown
+          ? state.hotkeys.isSkillOnCooldown(slotDesc.skillId, nowMs)
+          : false
       ctx.beginPath()
       ctx.arc(arcSlot.cx, arcSlot.cy, arcSlot.r, 0, Math.PI * 2)
       ctx.fillStyle = 'rgba(16, 13, 10, 0.92)'
       ctx.fill()
-      drawSkillSlotIcon(arcSlot.cx, arcSlot.cy, arcSlot.r, slotDesc.skillId)
+      drawSkillSlotIcon(arcSlot.cx, arcSlot.cy, arcSlot.r, slotDesc.skillId, lowMana, onCooldown)
       ctx.beginPath()
       ctx.arc(arcSlot.cx, arcSlot.cy, arcSlot.r, 0, Math.PI * 2)
-      ctx.strokeStyle = isBank2 ? '#64b5f6' : '#c7a158'
+      ctx.strokeStyle = lowMana
+        ? '#ef5350'
+        : onCooldown
+          ? '#ffd54f'
+          : isBank2
+            ? '#64b5f6'
+            : '#c7a158'
       ctx.lineWidth = 2.2
       ctx.stroke()
 
-      font.drawText(ctx, keyLabel, arcSlot.cx, arcSlot.cy + 4, {
+      // Small corner key badge at bottom rim (does not obscure icon center)
+      ctx.fillStyle = 'rgba(10, 8, 6, 0.88)'
+      ctx.fillRect(arcSlot.cx - 11, arcSlot.cy + arcSlot.r - 8, 22, 12)
+      font.drawText(ctx, slotDesc.keyLabel, arcSlot.cx, arcSlot.cy + arcSlot.r + 1, {
         font: 'font6',
-        color: 'gold',
+        color: lowMana ? 'red' : 'gold',
         align: 'center',
       })
-      font.drawText(ctx, skillName, arcSlot.cx, arcSlot.cy + arcSlot.r + 11, {
-        font: 'font6',
-        color: 'white',
-        align: 'center',
-      })
+      if (slotDesc.charges !== undefined) {
+        font.drawText(ctx, `${slotDesc.charges}`, arcSlot.cx + arcSlot.r - 3, arcSlot.cy - arcSlot.r + 8, {
+          font: 'font6',
+          color: 'blue',
+          align: 'right',
+        })
+      }
     }
 
     // Center Primary Skill Slot
-    const primaryDesc = this.resolveWheelSlot(bankOffset + 5, state.hotkeys)
-    const primaryKey = primaryDesc.keyLabel
-    const primaryName = primaryDesc.name || '主技能'
+    const primaryDesc = this.resolveWheelSlot(bankOffset + 5, state.hotkeys, lang)
+    const primaryLowMana =
+      primaryDesc.skillId >= 0 && state.hotkeys?.hasEnoughMana
+        ? !state.hotkeys.hasEnoughMana(primaryDesc.skillId)
+        : false
+    const primaryCooldown =
+      primaryDesc.skillId >= 0 && state.hotkeys?.isSkillOnCooldown
+        ? state.hotkeys.isSkillOnCooldown(primaryDesc.skillId, nowMs)
+        : false
     ctx.beginPath()
     ctx.arc(m.wheel.cx, m.wheel.cy, m.wheel.mainR, 0, Math.PI * 2)
     ctx.fillStyle = 'rgba(20, 16, 12, 0.95)'
     ctx.fill()
-    drawSkillSlotIcon(m.wheel.cx, m.wheel.cy, m.wheel.mainR, primaryDesc.skillId)
+    drawSkillSlotIcon(
+      m.wheel.cx,
+      m.wheel.cy,
+      m.wheel.mainR,
+      primaryDesc.skillId,
+      primaryLowMana,
+      primaryCooldown,
+    )
     ctx.beginPath()
     ctx.arc(m.wheel.cx, m.wheel.cy, m.wheel.mainR, 0, Math.PI * 2)
-    ctx.strokeStyle = '#ffd54f'
+    ctx.strokeStyle = primaryLowMana ? '#ef5350' : '#ffd54f'
     ctx.lineWidth = 3
     ctx.stroke()
-    font.drawText(
-      ctx,
-      `主槽 ${primaryKey} · ${primaryName}`,
-      m.wheel.cx,
-      m.wheel.cy + m.wheel.mainR + 14,
-      {
-        font: 'font6',
-        color: 'gold',
-        align: 'center',
-      },
-    )
-
-    // Dedicated Context Loot / Interact Button ([A 拾取])
-    ctx.beginPath()
-    ctx.arc(m.lootBtn.cx, m.lootBtn.cy, m.lootBtn.r, 0, Math.PI * 2)
-    ctx.fillStyle =
-      this.lockedInteractable !== null ? 'rgba(93, 67, 24, 0.95)' : 'rgba(28, 22, 16, 0.92)'
-    ctx.fill()
-    ctx.strokeStyle = this.lockedInteractable !== null ? '#ffd54f' : '#8d703b'
-    ctx.lineWidth = 2
-    ctx.stroke()
-    font.drawText(ctx, '拾取 A', m.lootBtn.cx, m.lootBtn.cy + 4, {
+    ctx.fillStyle = 'rgba(10, 8, 6, 0.9)'
+    ctx.fillRect(m.wheel.cx - 13, m.wheel.cy + m.wheel.mainR - 8, 26, 13)
+    font.drawText(ctx, primaryDesc.keyLabel, m.wheel.cx, m.wheel.cy + m.wheel.mainR + 2, {
       font: 'font6',
-      color: 'gold',
+      color: primaryLowMana ? 'red' : 'gold',
       align: 'center',
     })
 
-    // Weapon Swap Button ([W 武器 I/II])
+    // Dedicated Context Interact / Loot Button ([A])
+    const interactKind = this.lockedInteractable?.kind ?? (this.footLootQueue.length > 0 ? 'item' : null)
+    const interactLabel =
+      interactKind === 'npc'
+        ? isZh
+          ? '对话 A'
+          : 'Talk A'
+        : interactKind === 'object'
+          ? isZh
+            ? '开启 A'
+            : 'Open A'
+          : interactKind === 'warp'
+            ? isZh
+              ? '进入 A'
+              : 'Enter A'
+            : interactKind === 'item'
+              ? isZh
+                ? '拾取 A'
+                : 'Loot A'
+              : isZh
+                ? '互动 A'
+                : 'Act A'
+    ctx.beginPath()
+    ctx.arc(m.lootBtn.cx, m.lootBtn.cy, m.lootBtn.r, 0, Math.PI * 2)
+    ctx.fillStyle =
+      interactKind !== null ? 'rgba(93, 67, 24, 0.95)' : 'rgba(28, 22, 16, 0.92)'
+    ctx.fill()
+    ctx.strokeStyle = interactKind !== null ? '#ffd54f' : '#8d703b'
+    ctx.lineWidth = 2
+    ctx.stroke()
+    font.drawText(ctx, interactLabel, m.lootBtn.cx, m.lootBtn.cy + 4, {
+      font: 'font6',
+      color: interactKind !== null ? 'gold' : 'white',
+      align: 'center',
+    })
+
+    // Weapon Swap Button ([W I/II])
     ctx.fillStyle = 'rgba(28, 22, 16, 0.92)'
     ctx.fillRect(
       m.weaponSwapBtn.x,
@@ -1732,7 +2490,7 @@ export class TouchControlsHud {
     )
     font.drawText(
       ctx,
-      state.weaponSwapSet === 1 ? '武器 II (W)' : '武器 I (W)',
+      state.weaponSwapSet === 1 ? (isZh ? '副手 II' : 'Swap II') : isZh ? '主手 I' : 'Swap I',
       Math.round(m.weaponSwapBtn.x + m.weaponSwapBtn.width / 2),
       Math.round(m.weaponSwapBtn.y + 22),
       {
@@ -1785,9 +2543,11 @@ export class TouchControlsHud {
       readonly rightPanel: string
       readonly vendorMode?: 'trade' | 'gamble' | undefined
       readonly equipped: Partial<Record<EquipSlotId, UiInventoryItem>>
+      readonly lang?: string | undefined
     },
   ): TouchActionBarLayout | null {
     if (!this.selectedPanelItem) return null
+    const isZh = (context.lang ?? 'CHI') !== 'ENG'
     const actions = buildTouchContextActions(this.selectedPanelItem, {
       leftPanel: context.leftPanel,
       rightPanel: context.rightPanel,
@@ -1805,6 +2565,65 @@ export class TouchControlsHud {
       context.logicalHeight,
     )
 
+    const resolveQualityColor = (
+      item: UiInventoryItem,
+    ): 'gold' | 'green' | 'yellow' | 'blue' | 'gray' | 'white' | 'orange' => {
+      switch (item.quality) {
+        case 'unique':
+          return 'gold'
+        case 'set':
+          return 'green'
+        case 'rare':
+          return 'yellow'
+        case 'magic':
+          return 'blue'
+        case 'craft':
+        case 'rune':
+          return 'orange'
+        default:
+          return item.ethereal || (item.sockets ?? 0) > 0 ? 'gray' : 'white'
+      }
+    }
+
+    const drawItemStatCard = (
+      rect: { readonly x: number; readonly y: number; readonly width: number; readonly height: number },
+      item: UiInventoryItem,
+      badge: string,
+      borderColor: string,
+    ) => {
+      ctx.fillStyle = 'rgba(10, 8, 6, 0.96)'
+      ctx.fillRect(rect.x, rect.y, rect.width, rect.height)
+      ctx.strokeStyle = borderColor
+      ctx.lineWidth = 1.6
+      ctx.strokeRect(rect.x, rect.y, rect.width, rect.height)
+      const displayName = isZh ? item.nameZh || item.name : item.name || item.nameZh || item.code
+      font.drawText(ctx, `${badge} ${displayName}`, rect.x + 8, rect.y + 16, {
+        font: 'font6',
+        color: resolveQualityColor(item),
+        align: 'left',
+      })
+      const stats = item.stats ?? []
+      const maxLines = Math.min(stats.length, Math.max(1, Math.floor((rect.height - 24) / 13)))
+      for (let i = 0; i < maxLines; i++) {
+        const st = stats[i]
+        if (!st) continue
+        font.drawText(ctx, st.text, rect.x + 8, rect.y + 30 + i * 13, {
+          font: 'font6',
+          color: st.color ?? 'blue',
+          align: 'left',
+        })
+      }
+      if (!item.identified) {
+        font.drawText(
+          ctx,
+          isZh ? '未鉴定' : 'Unidentified',
+          rect.x + 8,
+          rect.y + 30 + maxLines * 13,
+          { font: 'font6', color: 'red', align: 'left' },
+        )
+      }
+    }
+
     ctx.save()
     // 1. Highlight frame around tap-locked item slot
     ctx.strokeStyle = '#ffd54f'
@@ -1816,53 +2635,21 @@ export class TouchControlsHud {
       (this.selectedPanelItem.item.invHeight || 1) * 29 + 4,
     )
 
-    // 2. Side-by-Side Comparison Cards ([已穿戴] vs [当前选中])
+    // 2. Side-by-Side Comparison Cards ([已穿戴] vs [选中]) with full item stats
     if (layout.equippedCard && equippedCounterpart) {
-      ctx.fillStyle = 'rgba(10, 8, 6, 0.94)'
-      ctx.fillRect(
-        layout.equippedCard.x,
-        layout.equippedCard.y,
-        layout.equippedCard.width,
-        layout.equippedCard.height,
-      )
-      ctx.strokeStyle = '#7e653a'
-      ctx.lineWidth = 1.5
-      ctx.strokeRect(
-        layout.equippedCard.x,
-        layout.equippedCard.y,
-        layout.equippedCard.width,
-        layout.equippedCard.height,
-      )
-      font.drawText(
-        ctx,
-        `[已穿戴] ${equippedCounterpart.nameZh || equippedCounterpart.name}`,
-        layout.equippedCard.x + 8,
-        layout.equippedCard.y + 18,
-        { font: 'font6', color: 'gold', align: 'left' },
+      drawItemStatCard(
+        layout.equippedCard,
+        equippedCounterpart,
+        isZh ? '[已穿戴]' : '[Equipped]',
+        '#7e653a',
       )
     }
 
-    ctx.fillStyle = 'rgba(12, 10, 8, 0.96)'
-    ctx.fillRect(
-      layout.selectedCard.x,
-      layout.selectedCard.y,
-      layout.selectedCard.width,
-      layout.selectedCard.height,
-    )
-    ctx.strokeStyle = '#ffd54f'
-    ctx.lineWidth = 1.8
-    ctx.strokeRect(
-      layout.selectedCard.x,
-      layout.selectedCard.y,
-      layout.selectedCard.width,
-      layout.selectedCard.height,
-    )
-    font.drawText(
-      ctx,
-      `[选中] ${this.selectedPanelItem.item.nameZh || this.selectedPanelItem.item.name}`,
-      layout.selectedCard.x + 8,
-      layout.selectedCard.y + 18,
-      { font: 'font6', color: 'gold', align: 'left' },
+    drawItemStatCard(
+      layout.selectedCard,
+      this.selectedPanelItem.item,
+      isZh ? '[选中]' : '[Selected]',
+      '#ffd54f',
     )
 
     // 3. Context Action Bar Buttons
@@ -1880,7 +2667,7 @@ export class TouchControlsHud {
       ctx.strokeRect(btn.x, btn.y, btn.width, btn.height)
       font.drawText(
         ctx,
-        btn.labelZh,
+        isZh ? btn.labelZh : btn.labelEn,
         Math.round(btn.x + btn.width / 2),
         Math.round(btn.y + 21),
         {
@@ -2082,23 +2869,33 @@ export function computeTouchActionBarLayout(
   }))
 
   const cardW = 196
-  const cardH = Math.max(68, 28 + (selected.item.stats?.length ?? 0) * 14)
+  const maxStatLines = Math.min(
+    12,
+    Math.max(selected.item.stats?.length ?? 0, equippedCounterpart?.stats?.length ?? 0),
+  )
+  const cardH = Math.max(68, 30 + maxStatLines * 13)
   const selectedCardX = Math.max(
     12,
     Math.min(logicalWidth - cardW - 12, barX),
   )
-  const selectedCardY = Math.max(12, barY - cardH - 6)
+  const selectedCardY =
+    barY - cardH - 6 >= 10
+      ? barY - cardH - 6
+      : Math.min(logicalHeight - cardH - 48, barY + barHeight + 6)
   const selectedCard = {
     x: selectedCardX,
-    y: selectedCardY,
+    y: Math.max(10, selectedCardY),
     width: cardW,
     height: cardH,
   }
 
   const equippedCard = equippedCounterpart
     ? {
-        x: Math.max(12, selectedCardX - cardW - 8),
-        y: selectedCardY,
+        x:
+          selectedCardX >= cardW + 20
+            ? selectedCardX - cardW - 8
+            : Math.min(logicalWidth - cardW - 12, selectedCardX + cardW + 8),
+        y: Math.max(10, selectedCardY),
         width: cardW,
         height: cardH,
       }

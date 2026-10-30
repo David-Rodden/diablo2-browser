@@ -11,6 +11,11 @@
 import { requireTbl } from '../i18n/lang.ts'
 import { getInventoryGoldLimit, getStashGoldLimit } from '../../common/items/inventory-model.ts'
 import { drawStoneBoxFrame } from './world-panels.ts'
+import {
+  buildMobileSoftKeyboardInputAttrs,
+  resolveGoldQuickPresetAmount,
+  type GoldQuickPreset,
+} from './touch-controls.ts'
 import type { HudCommandSink, HudManager } from './hud-manager.ts'
 
 export type GoldDialogMode = 0 | 2 | 3 | 4
@@ -35,6 +40,68 @@ export interface GoldDialogLayout {
   readonly h: number
   readonly ok: GoldDialogRect
   readonly cancel: GoldDialogRect
+  readonly amountBox?: GoldDialogRect | undefined
+  readonly presets?: readonly {
+    readonly preset: GoldQuickPreset
+    readonly label: string
+    readonly rect: GoldDialogRect
+  }[] | undefined
+}
+
+let activeMobileGoldInput: HTMLInputElement | null = null
+
+function dismissMobileGoldSoftInput(): void {
+  if (!activeMobileGoldInput) return
+  try {
+    activeMobileGoldInput.blur()
+    activeMobileGoldInput.remove()
+  } catch {
+    // ignore DOM teardown errors
+  }
+  activeMobileGoldInput = null
+}
+
+function focusMobileGoldSoftInput(hud: HudManager): void {
+  if (typeof document === 'undefined' || !document.body || !hud.goldDialog) return
+  dismissMobileGoldSoftInput()
+  const attrs = buildMobileSoftKeyboardInputAttrs('gold')
+  const input = document.createElement('input')
+  input.type = attrs.type
+  input.inputMode = attrs.inputMode
+  if (attrs.pattern) input.pattern = attrs.pattern
+  input.enterKeyHint = attrs.enterKeyHint
+  input.autocomplete = attrs.autoComplete
+  input.value = String(hud.goldDialog.amount)
+  input.style.position = 'fixed'
+  input.style.left = '50%'
+  input.style.top = '12px'
+  input.style.transform = 'translateX(-50%)'
+  input.style.width = '140px'
+  input.style.height = '28px'
+  input.style.opacity = '0.01'
+  input.style.zIndex = '9999'
+  input.addEventListener('input', () => {
+    if (!hud.goldDialog) return
+    const digits = input.value.replace(/[^0-9]/g, '')
+    hud.setGoldDialogAmount(digits.length > 0 ? Number(digits) : 0)
+  })
+  input.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') {
+      ev.preventDefault()
+      if (hud.goldDialog) hud.confirmGoldDialog()
+    } else if (ev.key === 'Escape') {
+      ev.preventDefault()
+      if (hud.goldDialog) hud.cancelGoldDialog()
+    }
+  })
+  document.body.appendChild(input)
+  activeMobileGoldInput = input
+  try {
+    input.focus()
+    input.select()
+  } catch {
+    // ignore focus restrictions in non-interactive headless harnesses
+  }
 }
 
 function requireHudSink(hud: HudManager, action: string): HudCommandSink {
@@ -103,6 +170,9 @@ export function openGoldDialog(hud: HudManager, mode: GoldDialogMode): void {
     return
   }
   hud.goldDialog = { mode, amount: maxTransfer, fresh: true }
+  if (hud.touchControls?.enabled) {
+    focusMobileGoldSoftInput(hud)
+  }
   hud.syncPublishedState()
 }
 
@@ -113,6 +183,9 @@ export function setGoldDialogAmount(hud: HudManager, amount: number): void {
   if (!Number.isFinite(amount)) throw new Error(`HudManager.setGoldDialogAmount: invalid amount ${amount}`)
   dlg.amount = Math.max(0, Math.min(hud.goldDialogBalance(dlg.mode), Math.floor(amount)))
   dlg.fresh = false
+  if (activeMobileGoldInput && activeMobileGoldInput.value !== String(dlg.amount)) {
+    activeMobileGoldInput.value = String(dlg.amount)
+  }
 }
 
 /** Digit / Backspace editing; the first digit after opening replaces the pre-filled amount. */
@@ -130,6 +203,7 @@ export function typeGoldDialogKey(hud: HudManager, key: string): void {
 export function confirmGoldDialog(hud: HudManager): void {
   const dlg = hud.goldDialog
   if (!dlg) throw new Error('HudManager.confirmGoldDialog: gold dialog is not open')
+  dismissMobileGoldSoftInput()
   const amount = Math.max(0, Math.min(hud.goldDialogBalance(dlg.mode), dlg.amount))
   hud.goldDialog = null
   if (dlg.mode === 2) {
@@ -165,31 +239,83 @@ export function confirmGoldDialog(hud: HudManager): void {
 }
 
 export function cancelGoldDialog(hud: HudManager): void {
+  dismissMobileGoldSoftInput()
   hud.goldDialog = null
   hud.syncPublishedState()
 }
 
-/** Gold dialog box (centered stone box: title, amount, ok / cancel). */
+/** Gold dialog box (centered stone box: title, amount, optional mobile 25%/50%/75%/MAX presets, ok / cancel). */
 export function getGoldDialogLayout(hud: HudManager): GoldDialogLayout {
-  const w = 260
-  const h = 110
+  const isTouch = Boolean(hud.touchControls?.enabled)
+  const w = isTouch ? 276 : 260
+  const h = isTouch ? 152 : 110
   const x = Math.round(hud.screenWidth / 2 - w / 2)
   const y = Math.round((hud.screenHeight - 47) / 2 - h / 2)
+  if (!isTouch) {
+    return {
+      x,
+      y,
+      w,
+      h,
+      ok: { x: x + 30, y: y + h - 34, w: 80, h: 22 },
+      cancel: { x: x + w - 110, y: y + h - 34, w: 80, h: 22 },
+    }
+  }
+  const presetDefs: readonly { preset: GoldQuickPreset; label: string }[] = [
+    { preset: '25%', label: '25%' },
+    { preset: '50%', label: '50%' },
+    { preset: '75%', label: '75%' },
+    { preset: 'max', label: 'MAX' },
+  ]
+  const presetW = 54
+  const presetH = 26
+  const presetGap = 8
+  const presetStartX = x + Math.round((w - (4 * presetW + 3 * presetGap)) / 2)
+  const presetY = y + 66
   return {
     x,
     y,
     w,
     h,
-    ok: { x: x + 30, y: y + h - 34, w: 80, h: 22 },
-    cancel: { x: x + w - 110, y: y + h - 34, w: 80, h: 22 },
+    amountBox: { x: x + 28, y: y + 30, w: w - 56, h: 28 },
+    presets: presetDefs.map((d, idx) => ({
+      preset: d.preset,
+      label: d.label,
+      rect: {
+        x: presetStartX + idx * (presetW + presetGap),
+        y: presetY,
+        w: presetW,
+        h: presetH,
+      },
+    })),
+    ok: { x: x + 28, y: y + h - 42, w: 96, h: 30 },
+    cancel: { x: x + w - 124, y: y + h - 42, w: 96, h: 30 },
   }
 }
 
 export function handleGoldDialogClick(hud: HudManager, x: number, y: number): void {
   const l = hud.getGoldDialogLayout()
   const inRect = (r: GoldDialogRect) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h
-  if (inRect(l.ok)) hud.confirmGoldDialog()
-  else if (inRect(l.cancel)) hud.cancelGoldDialog()
+  if (inRect(l.ok)) {
+    hud.confirmGoldDialog()
+    return
+  }
+  if (inRect(l.cancel)) {
+    hud.cancelGoldDialog()
+    return
+  }
+  if (l.presets && hud.goldDialog) {
+    for (const p of l.presets) {
+      if (inRect(p.rect)) {
+        const maxBal = hud.goldDialogBalance(hud.goldDialog.mode)
+        hud.setGoldDialogAmount(resolveGoldQuickPresetAmount(p.preset, maxBal))
+        return
+      }
+    }
+  }
+  if (l.amountBox && inRect(l.amountBox)) {
+    focusMobileGoldSoftInput(hud)
+  }
 }
 
 export function drawGoldDialog(hud: HudManager, ctx: CanvasRenderingContext2D): void {
@@ -219,17 +345,42 @@ export function drawGoldDialog(hud: HudManager, ctx: CanvasRenderingContext2D): 
     color: 'white',
     align: 'center',
   })
+  if (l.amountBox) {
+    ctx.fillStyle = 'rgba(8, 6, 5, 0.9)'
+    ctx.fillRect(l.amountBox.x, l.amountBox.y, l.amountBox.w, l.amountBox.h)
+    ctx.strokeStyle = '#9c7e47'
+    ctx.strokeRect(l.amountBox.x + 0.5, l.amountBox.y + 0.5, l.amountBox.w - 1, l.amountBox.h - 1)
+  }
   hud.font.drawText(ctx, String(dlg.amount), l.x + l.w / 2, l.y + 50, {
     font: 'font16',
     color: 'gold',
     align: 'center',
   })
+  if (l.presets) {
+    for (const p of l.presets) {
+      ctx.fillStyle = 'rgba(34, 26, 16, 0.95)'
+      ctx.fillRect(p.rect.x, p.rect.y, p.rect.w, p.rect.h)
+      ctx.strokeStyle = '#c7a158'
+      ctx.strokeRect(p.rect.x + 0.5, p.rect.y + 0.5, p.rect.w - 1, p.rect.h - 1)
+      hud.font.drawText(ctx, p.label, p.rect.x + p.rect.w / 2, p.rect.y + 17, {
+        font: 'font8',
+        color: 'gold',
+        align: 'center',
+      })
+    }
+  }
   for (const [rect, key] of [[l.ok, 'ok'], [l.cancel, 'lowercasecancel']] as const) {
     ctx.strokeRect(rect.x + 0.5, rect.y + 0.5, rect.w - 1, rect.h - 1)
-    hud.font.drawText(ctx, requireTbl(key, hud.lang), rect.x + rect.w / 2, rect.y + 16, {
-      font: 'font16',
-      color: 'white',
-      align: 'center',
-    })
+    hud.font.drawText(
+      ctx,
+      requireTbl(key, hud.lang),
+      rect.x + rect.w / 2,
+      rect.y + Math.round(rect.h / 2) + 5,
+      {
+        font: 'font16',
+        color: 'white',
+        align: 'center',
+      },
+    )
   }
 }

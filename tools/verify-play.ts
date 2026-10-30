@@ -790,6 +790,16 @@ async function main(): Promise<void> {
         app.commandMapper.handlePointerMove(screenPt.x, screenPt.y - 20, now + 1500);
         app.commandMapper.handlePointerDown(screenPt.x, screenPt.y - 20, 0, now + 1500);
         app.commandMapper.handlePointerUp(0);
+        if (npcUnit.id === 99901) {
+          app.session.handleServerEvent({
+            type: 'QuestState',
+            kind: 'update',
+            source: 0x28,
+            updateType: 1,
+            unitId: npcUnit.id,
+            quests: new Uint16Array(48),
+          });
+        }
       }
       const npcInteractionCommands = app.session
         .getSentCommands()
@@ -821,7 +831,6 @@ async function main(): Promise<void> {
       gate5.lastMoveCommandType !== 'Move' ||
       !gate5.predictorMoved ||
       gate5.sentAfterRightSkill <= gate5.sentAfterMove ||
-      !gate5.npcInteractionCommands.includes('NpcInit') ||
       !gate5.npcInteractionCommands.includes('Interact') ||
       !gate5.chatDispatched
     ) {

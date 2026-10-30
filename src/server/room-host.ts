@@ -46,6 +46,7 @@ export interface MultiClientRoomHostConfig {
   readonly playersX?: number | undefined
   readonly aoiRadius?: number | undefined
   readonly worldEventSojThreshold?: number | undefined
+  readonly animActionWindup?: boolean | undefined
   readonly policy?: Partial<GameModePolicy> | undefined
   readonly registry?: unknown
   readonly onPlayerSave?:
@@ -111,6 +112,7 @@ export class MultiClientRoomHost {
         maxPlayers,
         playersX: config.playersX,
         worldEventSojThreshold: config.worldEventSojThreshold,
+        animActionWindup: config.animActionWindup ?? true,
         registry: config.registry,
         policy: {
           ...OPEN_BNET_POLICY,
@@ -425,6 +427,19 @@ export class MultiClientRoomHost {
         session.sendEvent(ev)
       }
       return
+    }
+
+    if (ev.type === 'ItemEvent' && ev.container === 'socket') {
+      const rawSocketEv = ev as { readonly ownerType?: number; readonly ownerId?: number }
+      if (rawSocketEv.ownerType === 4 || ev.item?.ownerType === 4) {
+        const hostId = Number(rawSocketEv.ownerId ?? ev.item?.ownerId ?? 0)
+        if (hostId > 0 && this.gameInstance.hasLiveWorldEntity('item', hostId)) {
+          if (this.aoiFilter.isVisible(viewer.unitId, 'item', hostId)) {
+            session.sendEvent(ev)
+          }
+          return
+        }
+      }
     }
 
     const spatial = this.extractSpatialTarget(ev, viewer.areaId)

@@ -131,6 +131,23 @@ export function encodeC2sItemUse(itemId: number, at: Pt): Uint8Array {
   return validateC2sPacket(w.toUint8Array())
 }
 
+/** 0x21 StackItems (9B, D2Game.dll 0x6fcef270): u8 0x21 | u32 cursorItemId | u32 targetItemId */
+export function encodeC2sStackItems(cursorItemId: number, targetItemId: number): Uint8Array {
+  const w = new ByteWriter(9)
+  w.u8(0x21)
+  w.u32LE(cursorItemId >>> 0)
+  w.u32LE(targetItemId >>> 0)
+  return validateC2sPacket(w.toUint8Array())
+}
+
+/** 0x22 UnstackItems (5B, D2Game.dll 0x6fced4f0): u8 0x22 | u32 itemId */
+export function encodeC2sUnstackItems(itemId: number): Uint8Array {
+  const w = new ByteWriter(5)
+  w.u8(0x22)
+  w.u32LE(itemId >>> 0)
+  return validateC2sPacket(w.toUint8Array())
+}
+
 /** 0x23 PutItemInBelt (9B): u8 0x23 | u32 itemId | u32 slot */
 export function encodeC2sBeltPut(itemId: number, slot: number): Uint8Array {
   const w = new ByteWriter(9)

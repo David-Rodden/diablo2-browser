@@ -921,6 +921,8 @@ describe('applyEliteModifiers stat scaling', () => {
     name: 'Zombie',
     hp: 100,
     damage: 10,
+    armor: 50,
+    toHit: 100,
     speed: 10,
     reach: 40,
     aggroRadius: 200,
@@ -928,36 +930,37 @@ describe('applyEliteModifiers stat scaling', () => {
     xp: 50,
   }
 
-  it('applies stoneskin hp scaling (2x)', () => {
+  it('applies stoneskin 2x defense and +50% physical resist without doubling HP (D2Game.dll 0x6FC41C09)', () => {
     const res = applyEliteModifiers(baseStats, 'unique', ['stoneskin'])
-    expect(res.hp).toBe(200)
+    expect(res.hp).toBe(100)
+    expect(res.armor).toBe(100)
+    expect(res.resistances?.physical).toBe(50)
   })
 
-  it('applies cursed damage scaling (1.2x)', () => {
-    const res = applyEliteModifiers(baseStats, 'unique', ['cursed'])
-    expect(res.damage).toBe(12)
+  it('does not inflate physical damage on cursed, elemental-enchanted, spectralhit, or aura unique bosses (D2Game.dll 0x6FC41BE0)', () => {
+    expect(applyEliteModifiers(baseStats, 'unique', ['cursed']).damage).toBe(10)
+    expect(applyEliteModifiers(baseStats, 'unique', ['coldenchant']).damage).toBe(10)
+    expect(applyEliteModifiers(baseStats, 'unique', ['fireenchant']).damage).toBe(10)
+    expect(applyEliteModifiers(baseStats, 'unique', ['lightenchant']).damage).toBe(10)
+    expect(applyEliteModifiers(baseStats, 'unique', ['spectralhit']).damage).toBe(10)
   })
 
-  it('applies elemental and spectralhit damage scaling (1.2x)', () => {
-    expect(applyEliteModifiers(baseStats, 'unique', ['coldenchant']).damage).toBe(12)
-    expect(applyEliteModifiers(baseStats, 'unique', ['fireenchant']).damage).toBe(12)
-    expect(applyEliteModifiers(baseStats, 'unique', ['lightenchant']).damage).toBe(12)
-    expect(applyEliteModifiers(baseStats, 'unique', ['spectralhit']).damage).toBe(12)
-  })
-
-  it('applies teleport speed scaling (1.2x)', () => {
+  it('does not add fake walk/run velocity to teleport unique bosses (D2Game.dll 0x6FC441B0)', () => {
     const res = applyEliteModifiers(baseStats, 'unique', ['teleport'])
-    expect(res.speed).toBe(12)
+    expect(res.speed).toBe(10)
   })
 
-  it('applies magicresistant hp scaling (1.2x)', () => {
+  it('applies magicresistant +40% fire/lightning/cold resist without extra HP scaling (D2Game.dll 0x6FCCF610)', () => {
     const res = applyEliteModifiers(baseStats, 'unique', ['magicresistant'])
-    expect(res.hp).toBe(120)
+    expect(res.hp).toBe(100)
+    expect(res.resistances?.fire).toBe(40)
+    expect(res.resistances?.lightning).toBe(40)
+    expect(res.resistances?.cold).toBe(40)
   })
 
-  it('applies aura damage (1.2x) and speed (1.1x) scaling', () => {
+  it('does not add fake base physical damage or velocity to aura-enchanted bosses before aura tick (D2Game.dll 0x6FC423B0)', () => {
     const res = applyEliteModifiers(baseStats, 'unique', ['aura'])
-    expect(res.damage).toBe(12)
-    expect(res.speed).toBe(11)
+    expect(res.damage).toBe(10)
+    expect(res.speed).toBe(10)
   })
 })

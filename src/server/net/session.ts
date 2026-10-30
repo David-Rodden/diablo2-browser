@@ -194,6 +194,15 @@ export function decodeD2gsC2sPacketToCommand(pkt: Uint8Array): ClientCommand | n
       const y = r.u32LE()
       return { type: 'ItemUse', itemId, at: { x, y } }
     }
+    case 0x21: {
+      const cursorItemId = r.u32LE()
+      const targetItemId = r.u32LE()
+      return { type: 'StackItems', cursorItemId, targetItemId }
+    }
+    case 0x22: {
+      const itemId = r.u32LE()
+      return { type: 'UnstackItems', itemId }
+    }
     case 0x23: {
       const itemId = r.u32LE()
       const slot = r.u32LE()

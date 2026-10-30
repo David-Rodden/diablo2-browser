@@ -142,8 +142,8 @@ describe('issue #1344 melee attack completeness', () => {
     const normal = monsters.get(normalId)!
     const strong = monsters.get(strongId)!
     const champ = monsters.get(champId)!
-    expect(strong.maxDmg).toBe(Math.round(normal.maxDmg * 1.5))
-    expect(strong.attack2MaxDmg).toBe(Math.round(normal.attack2MaxDmg * 1.5))
+    expect(strong.maxDmg).toBe(Math.round(normal.maxDmg * 2.5))
+    expect(strong.attack2MaxDmg).toBe(Math.round(normal.attack2MaxDmg * 2.5))
     expect(champ.maxDmg).toBe(Math.round(normal.maxDmg * 2))
     expect(champ.attack2MaxDmg).toBe(Math.round(normal.attack2MaxDmg * 2))
   })

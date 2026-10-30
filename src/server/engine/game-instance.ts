@@ -39,6 +39,7 @@ import { MONMODE_BLOCK, MONMODE_KNOCKBACK, MONMODE_RUN, MONMODE_WALK } from '../
 import { getMonsterModeBaseFrameCount113c } from '../../common/path/monster-anim-metrics-113c.ts'
 import { getMonsterModeBaseAnimSpeed256, getMonsterPathRecord } from '../../common/path/units.ts'
 import {
+  computeBlockEffRate113c,
   computeGetHitEffRate113c,
   computeOneShotTicks,
   computeStepSpeed256,
@@ -46,7 +47,11 @@ import {
   resolveArmorSpeed113c,
   resolveCharacterAnimSpeedParams,
   resolveEquippedWeaponClass,
+  resolveEquippedWeaponWsm,
+  resolvePrimaryWeaponIas113c,
+  resolvePrimaryWeaponWsm113c,
 } from '../../common/units/char-anim-speed.ts'
+import { getSkillAnimModes } from '../../common/skills/skill-anim-modes.ts'
 import {
   findPathWorld,
   type SubTilePoint,
@@ -67,12 +72,25 @@ import {
   computeWellRegenFrame113c,
   getContainerOperateDropChance113c,
   getObjectOperatingTicks113c,
+  PRE_OPERATE_ROLLED_OBJECTS_113C,
   rollChestLocked113c,
+  rollChestTrapType113c,
   rollObjectTrapDamage256_113c,
+  rollPreOperateOpen113c,
   rollShrineType113c,
 } from '../../common/world/object-operate-113c.ts'
 import { getLevelMonsterLevel113c } from '../../common/world/levels-monlvl-113c.ts'
 import {
+  PANDEMONIUM_AREA_IDS_113C,
+  PANDEMONIUM_FINALE_AREA_ID_113C,
+  UBER_PRIME_EVIL_SET_113C,
+  UBER_PRIME_MINION_SPECS_113C,
+  computeUberPrimeMinionCap113c,
+  createPandemoniumFinaleDrops113c,
+  findFreePortalCoordNear113c,
+} from '../world/pandemonium-113c.ts'
+import {
+  ANYA_CLASS_REWARD_POOLS_113C,
   QUEST_AREA_GATES_113C,
   QUEST_FLAG_COMPLETED_113C,
   QUEST_FLAG_COMPLETED_NOW_113C,
@@ -81,6 +99,8 @@ import {
   QUEST_FLAG_CUSTOM_6_113C,
   QUEST_FLAG_CUSTOM_7_113C,
   QUEST_FLAG_CUSTOM_8_113C,
+  QUEST_FLAG_CUSTOM_9_113C,
+  QUEST_FLAG_CUSTOM_10_113C,
   QUEST_FLAG_PRIMARY_GOAL_DONE_113C,
   QUEST_FLAG_REWARD_PENDING_113C,
   QUEST_FLAG_STARTED_113C,
@@ -96,10 +116,31 @@ import {
   getMaxSockets113c,
   imbueItem113c,
   isEligibleForCharsiImbue113c,
+  resolveAutoPrefixGroup,
+  resolveStaffModsClass,
+  rollAutoMagic,
   rollHellforgeDrop,
+  scaleLowQualityWeaponBand113c,
+  rollStaffMods,
 } from '../../common/items/drop-tables.ts'
+import { CANONICAL_AUTOMAGIC_TABLE } from '../../common/items/automagic.ts'
+import { rollRareAffixes } from '../../common/items/affix-generator.ts'
+import { inferItemClassFromType } from '../../common/items/affixes.ts'
 import { D2Rng } from '../../common/rng/d2-rng.ts'
 import { PartyManager } from '../net/party.ts'
+import {
+  buildHostileRelationEvent0x5A113c,
+  buildPvpPlayerEarItemData113c,
+  buildPvpSlainEvent0x5A113c,
+  canEnterPortalInPvp113c,
+  canLootPlayerCorpse113c,
+  canUseWaypointInPvp113c,
+  isHostilePvpCombatAllowed113c,
+  isPlayerHardcore113c,
+  isTownArea113c,
+  scalePvpDamageValue113c,
+  validatePlayerRelation0x5D113c,
+} from '../combat/pvp-engine-113c.ts'
 import { D2_EXPERIENCE_TABLE_99, PARSED_EXPERIENCE_TABLE } from '../../common/skills/formulas.ts'
 import {
   applyDeathGoldPenalty113c,
@@ -184,6 +225,30 @@ import {
   isSuicideMinionMonster,
   resolveMonsterUModIds,
 } from '../../common/units/monster-death-fx.ts'
+import {
+  ALL_CURSE_STATE_IDS_113C,
+  CURSED_PROC_CHANCE_PCT_113C,
+  TELEPORT_UMOD_COOLDOWN_FRAMES_113C,
+  TELEPORT_UMOD_HEAL_CHANCE_PCT_113C,
+  computeCursedAmplifyDamage113c,
+  computeManaBurnDrainFixed113c,
+  computeMultishotFanTargets113c,
+  evaluateTeleportUMod113c,
+  hasImplicitSelfResurrectUMod113c,
+  isAlwaysRunAiMonster113c,
+  isMissileEligibleForMultishot113c,
+  isMonsterUncursable113c,
+  isWillOWispChampion113c,
+  resolveSelfResurrectChancePct113c,
+  rollEnchantedAttackBonus113c,
+  shouldKillMinionsOnDeath113c,
+} from '../ai/monumod-113c.ts'
+import {
+  EXPLODING_POISON_SHRINE_OFFSETS_113C,
+  buildArmorShrineStats113c,
+  buildCombatShrineSnapshot113c,
+  computeShrineMissileSlvl113c,
+} from '../world/shrines-113c.ts'
 import { getTownNpcDescriptorByHcIdx } from '../../common/units/npc-table.ts'
 import { GEM_INFO } from '../../common/items/gems-data.ts'
 import {
@@ -206,18 +271,19 @@ import { PET_TYPE_IDX_BY_NAME_113C, PET_TYPE_PORTRAIT_TABLE } from '../../common
 import { parseTable } from '../../common/world/acts.ts'
 import { getLevelMonsterPlan113c } from '../../common/world/level-monster-plans.ts'
 import { OBJECTS_LOCKABLE_113C, OBJECTS_TXT_113C, getObjectsTxtRecord113c } from '../../common/world/objects-txt-113c.ts'
-import type {
-  CharClassId,
-  ClientCommand,
-  ItemContainer,
-  ItemData,
-  ItemQuality,
-  LocalAreaBootstrap,
-  LocalAreaBootstrapResolver,
-  LocalAreaRoomReveal,
-  ServerEvent,
-  UnitId,
-  UnitType,
+import {
+  MONSTATS2_COMP_BIT_WIDTHS_BY_HCIDX,
+  type CharClassId,
+  type ClientCommand,
+  type ItemContainer,
+  type ItemData,
+  type ItemQuality,
+  type LocalAreaBootstrap,
+  type LocalAreaBootstrapResolver,
+  type LocalAreaRoomReveal,
+  type ServerEvent,
+  type UnitId,
+  type UnitType,
 } from '../../netproto/index.ts'
 import {
   findStandableNear,
@@ -251,9 +317,14 @@ import {
 } from '../items/drop-pipeline.ts'
 import {
   CONTAINER_OPERATE_DROP_CHANCE_113C,
+  computeEquippedArmorPieceDefense113c,
+  computeWornSetSiblingMasks113c,
   domainItemToItemData113c,
   finalizeDroppedItem113c,
+  isSetBonusSlotActive113c,
+  makeDeterministicSetBonusRng113c,
   resolveChestDropContext113c,
+  rollSetBonusPropIfNeeded,
 } from '../items/server-item-data.ts'
 import {
   canUnitEquipItem113c,
@@ -300,7 +371,21 @@ import {
   type SUnitDmgOutcome,
 } from './combat-pipeline.ts'
 import { FIXED_ONE, UnitStatList } from './stat-list.ts'
+import { advanceUnitPierceSeed, resolveMissilePierceIdx } from './missile-pierce.ts'
+import {
+  aggregateCtcProcs113c,
+  ELEMENTAL_MASTERY_PIERCE_STATS_113C,
+  isCtcRadialNovaSkill113c,
+  resolveWeaponMasteryBonus113c,
+  rollCtcProcs113c,
+  type CtcStatId113c,
+} from '../skills/passives-procs-113c.ts'
 import { StateBus } from './state-bus.ts'
+import {
+  AnimDispatcher,
+  isSkillInterruptible113c,
+  type ActiveAnimationState,
+} from './anim-dispatcher.ts'
 import type { MissileRecord, SkillRecord } from '../../common/data/data-registry.ts'
 import { calculatePhysicalWeaponDamage } from '../../common/skills/formulas.ts'
 import {
@@ -314,7 +399,7 @@ import {
 } from '../../common/items/transaction-cost.ts'
 import { resolveOnlineItemReqLevel } from '../../common/items/item-bridge.ts'
 import { getInventoryGoldLimit, getStashGoldLimit } from '../../common/items/inventory-model.ts'
-import { resolveActiveSetBonuses } from '../../common/items/set-items.ts'
+import { resolveActiveSetBonuses, type SetBonusProp } from '../../common/items/set-items.ts'
 import {
   getAttackWeaponInfo,
   isInMeleeRange113c,
@@ -356,7 +441,12 @@ import {
   type MartialChargeState113c,
   type SkillTargetUnitType113c,
 } from '../skills/martial-dualwield-113c.ts'
-import { AuraScanner, type ActiveAuraSource, type CorpseContext } from './aura-scanner.ts'
+import {
+  AuraScanner,
+  type ActiveAuraSource,
+  type AuraPulseOutcome,
+  type CorpseContext,
+} from './aura-scanner.ts'
 import { isWithinAuraRange, passesAuraFilter } from '../../common/skills/aura-filter.ts'
 import {
   compute3BandDuration,
@@ -380,9 +470,37 @@ import {
 import {
   calculateFindItemStats,
   calculateFindPotionStats,
-  calculateGrimWardStats,
   rollFindPotionDrop113c,
 } from '../skills/barbarian-warcries.ts'
+import {
+  calcBladeFury113c,
+  calcBladeSentinel113c,
+  calcBladeShield113c,
+} from '../skills/assassin-traps.ts'
+import {
+  calculateConversionStats,
+  calculateVengeanceStats,
+} from '../skills/paladin-combat.ts'
+import {
+  RABIES_CONTAGION_INTERVAL_FRAMES_113C,
+  RABIES_CONTAGION_RADIUS_SUBTILES_113C,
+  STATE_BLADESHIELD_113C,
+  STATE_CONVERSION_113C,
+  STATE_CONVERSION_SAVE_113C,
+  STATE_RABIES_113C,
+  STATE_SLOWMISSILES_113C,
+  STATE_TERROR_113C,
+  computeBonePrisonRingPositions113c,
+  computeBoneWallSegmentPositions113c,
+  computeConversionLevelScaling113c,
+  computeGrimWardStats113c,
+  computeSlowMissilesStats113c,
+  restoreConversionLevelScaling113c,
+  snapshotBlessedHammerDamage256_113c,
+  stepBladeSentinelPatrol113c,
+  type BladeSentinelPatrolState113c,
+  type ConversionSavedStats113c,
+} from '../skills/p1-wave4-skills-113c.ts'
 import { generateMonsterHorkDrop113c } from '../items/drop-generator.ts'
 import {
   advanceWhirlwindSpinFrame113c,
@@ -403,6 +521,8 @@ import {
   strafeShotCount113c,
 } from './player-srvdo-113c.ts'
 import {
+  calculateBonePrisonStats,
+  calculateBoneWallStats,
   checkMissileSegmentFootprintOverlap113c,
   getMissileCollideEntry113c,
   MissileEngine as OnlineMissileEngine,
@@ -547,6 +667,13 @@ export interface GameInstanceConfig {
   readonly resolveAreaBootstrap?: LocalAreaBootstrapResolver | undefined
   /** Whether ladder-only runewords and cube recipes (`server=1` / `ladder=1`) are enabled (defaults to `true`). */
   readonly ladder?: boolean | undefined
+  /**
+   * `#1789`: When enabled, player casts and attacks step through 25Hz `AnimDispatcher` windup,
+   * `ActionFlag` release, multi-hit rollback/sequence keyframes (`#1862`), follow-through frame-lock,
+   * and pre-`ActionFlag` `GH`/`BL` interruption.
+   */
+  readonly animActionWindup?: boolean | undefined
+  readonly enableAnimWindup?: boolean | undefined
 }
 
 export interface ConnectPlayerSpec {
@@ -624,6 +751,8 @@ export interface SpawnMonsterSpec {
   readonly statSeed?: number | undefined
   /** S2C `0xAC` 16-bit monster name/palette seed (`MonsterData+0x18`, `D2Client 0x6fb5e5cf`). */
   readonly nameSeed?: number | undefined
+  /** S2C `0xAC` 16-component animation appearance indices (`HD..S8`, `D2Game 0x6fcacb35`). */
+  readonly compVariants?: readonly number[] | undefined
   readonly ai?: string | undefined
   readonly aiDelay?: number | undefined
   readonly aiParams?: readonly number[] | undefined
@@ -671,6 +800,18 @@ export interface SpawnMonsterSpec {
   readonly spawnTentacleLimbs?: boolean | undefined
   /** Parent `TentacleHead` unitId linked to a `Tentacle` limb (`AiTentacle` `0x6FC9CB10` boss check). */
   readonly bossUnitId?: number | undefined
+  /** Summoned Uber Tristram minion (`D2Game.dll` `0x6FD0A730..0x6FD0AB09`): 0 XP, 0 drops, despawns on 3rd Uber Prime death (#1841). */
+  readonly isUberSummonedMinion?: boolean | undefined
+  /** `MonUMod #41` (`always_run_ai`) override (#1906). */
+  readonly alwaysRunAi?: boolean | undefined
+  /** `MonStats.txt` `killminions` override (#1906). */
+  readonly killMinions?: boolean | undefined
+  /** Explicit `/players 1` normal base max HP override for Corpse Explosion (`#1882`). */
+  readonly unscaledMaxHp?: number | undefined
+  /** Bone Wall (`#78`) / Bone Prison (`#88`) construct owner player `unitId` (`#1883`). */
+  readonly boneConstructOwnerPlayerId?: number | undefined
+  /** Explicit auto-despawn frame (`0` = permanent, `#1883`). */
+  readonly despawnAtFrame?: number | undefined
 }
 
 export interface HireMercenarySpec {
@@ -741,6 +882,14 @@ export interface SpawnObjectSpec {
   readonly isLocked?: boolean | undefined
   /** Sparkling chest: the container roll uses the higher-quality (unique-tier) drop path (#1337). */
   readonly isSparkling?: boolean | undefined
+  /** Optional explicit container trap type (`1..9`, `gpTrapFnTable` `0x6FD27B8C`, #1918). */
+  readonly trapType?: number | undefined
+  /** If true, rolls `rollChestTrapType113c` (`(areaLvl >> 3) + 5`%) when `trapType` is omitted (#1918). */
+  readonly rollTrap?: boolean | undefined
+  /** If true, rolls `rollPreOperateOpen113c` (`1/14` -> `mode = 2`) when `mode` is omitted (#1918). */
+  readonly rollPreOperate?: boolean | undefined
+  /** Paired permanent red portal (`classId = 60`) `unitId` in the destination area (`D2Game.dll` `0x6FCC24C0`, #1841). */
+  readonly linkedPortalId?: number | undefined
 }
 
 export interface ServerItemEntry {
@@ -785,6 +934,8 @@ export interface ServerItemEntry {
   buyback?: boolean | undefined
   /** Optional item PRNG seed (`D2Common #10695` `ITEMS_GetSeed`). */
   seed?: number | undefined
+  /** 25 Hz server frame at which a ground item decays (`15000 / 30000 / 45000` frames, #1915). */
+  expireFrame?: number | undefined
   rawItemData?: ItemData | undefined
 }
 
@@ -1022,6 +1173,51 @@ const WARP_INTERACT_DISTANCE_SUBTILES = 4
 const WARP_INTERACT_COOLDOWN_FRAMES = 10
 /** D2Common #10407 NPC interaction threshold (deferred 0x13 arrival / click with MonStats `interact`). */
 const NPC_INTERACT_DISTANCE_SUBTILES = 2
+/** 1.13c C2S `0x16` authoritative ground item pickup reach (sub-tiles, #1860). */
+const ITEM_PICKUP_MAX_DISTANCE_SUBTILES = 6
+/** 1.13c `D2Game.dll` `0x6FCAE260` 15-frame (0.6s @ 25Hz) party roster pulse interval (#1859). */
+const PARTY_PULSE_INTERVAL_FRAMES = 15
+/**
+ * 1.13c `D2Game.dll` `0x6FD27E50` (`NPC_SetIntroFlag` @ `0x6FC55B60`):
+ * Maps town NPC `MonStats.txt` `hcIdx` to `.d2s` `0x7701` (`0x2C9`) intro bit index `1..34` (#1861).
+ */
+const NPC_INTRO_BIT_BY_HCIDX_113C = new Map<number, number>([
+  [146, 6],
+  [147, 1],
+  [148, 2],
+  [150, 3],
+  [155, 4],
+  [154, 5],
+  [265, 6],
+  [175, 7],
+  [176, 8],
+  [177, 9],
+  [178, 10],
+  [202, 11],
+  [200, 12],
+  [210, 13],
+  [201, 14],
+  [198, 15],
+  [199, 16],
+  [244, 17],
+  [245, 18],
+  [246, 19],
+  [251, 20],
+  [252, 21],
+  [253, 22],
+  [254, 23],
+  [255, 24],
+  [256, 25],
+  [257, 26],
+  [264, 27],
+  [297, 28],
+  [511, 29],
+  [512, 30],
+  [513, 31],
+  [514, 32],
+  [515, 33],
+  [520, 34],
+])
 /** Player unit size used by `D2Common #10594` / `#10407` (constant 2 in both binaries). */
 const PLAYER_SIZE_X_113C = 2
 
@@ -1161,6 +1357,10 @@ interface ItemBaseSizeInfo {
   readonly isWeapon: boolean
   /** True when `Weapons.txt` `2handed` is `1`. */
   readonly twoHanded: boolean
+  /** `Weapons/Misc.txt` `stackable == 1`. */
+  readonly stackable: boolean
+  /** `Weapons/Misc.txt` `maxstack` (0 when non-stackable). */
+  readonly maxStack: number
 }
 
 let cachedBaseSizes: Map<string, ItemBaseSizeInfo> | null = null
@@ -1182,6 +1382,8 @@ function getBaseSizeTable(): Map<string, ItemBaseSizeInfo> {
     const questIdx = tbl.header.findIndex((h) => h.trim().toLowerCase() === 'quest')
     const typeIdx = tbl.header.findIndex((h) => h.trim().toLowerCase() === 'type')
     const twoHandIdx = tbl.header.findIndex((h) => h.trim().toLowerCase() === '2handed')
+    const stackableIdx = tbl.header.findIndex((h) => h.trim().toLowerCase() === 'stackable')
+    const maxStackIdx = tbl.header.findIndex((h) => h.trim().toLowerCase() === 'maxstack')
     if (codeIdx === -1) continue
     if (compactIdx === -1) throw new Error('getBaseSizeTable: item table has no compactsave column')
     for (const row of tbl.rows) {
@@ -1196,6 +1398,11 @@ function getBaseSizeTable(): Map<string, ItemBaseSizeInfo> {
       const quest = questIdx !== -1 && (Number((row[questIdx] ?? '0').trim()) || 0) !== 0
       const itemType = (typeIdx !== -1 ? (row[typeIdx] ?? '') : '').trim().toLowerCase()
       const twoHanded = twoHandIdx !== -1 && (row[twoHandIdx] ?? '').trim() === '1'
+      const stackable = stackableIdx !== -1 && (row[stackableIdx] ?? '').trim() === '1'
+      const maxStack =
+        maxStackIdx !== -1
+          ? Math.max(0, Number((row[maxStackIdx] ?? '0').trim()) || 0)
+          : 0
       map.set(code, {
         code,
         name,
@@ -1208,6 +1415,8 @@ function getBaseSizeTable(): Map<string, ItemBaseSizeInfo> {
         itemType,
         isWeapon,
         twoHanded,
+        stackable,
+        maxStack,
       })
     }
   }
@@ -1230,6 +1439,8 @@ function lookupBaseInfo(code: string): ItemBaseSizeInfo {
       itemType: '',
       isWeapon: false,
       twoHanded: false,
+      stackable: false,
+      maxStack: 0,
     }
   )
 }
@@ -1309,9 +1520,19 @@ interface InternalPlayerRecord {
   newSkills: number
   leftSkill: number
   rightSkill: number
+  altLeftSkill: number
+  altRightSkill: number
   leftSkillItemId?: number | undefined
   rightSkillItemId?: number | undefined
+  altLeftSkillItemId?: number | undefined
+  altRightSkillItemId?: number | undefined
   weaponSet?: number | undefined
+  hotkeys: number[]
+  hotkeyItemIds: number[]
+  npcIntro: Uint8Array
+  createdTimestampSec: number
+  lastPlayedTimestampSec: number
+  connectedFrame: number
   skills: Map<number, number>
   states: Set<number>
   stateTimers: Map<number, number>
@@ -1345,6 +1566,7 @@ interface InternalPlayerRecord {
   corpseAreaId?: number | undefined
   corpseX: number
   corpseY: number
+  corpseLostExp?: number | undefined
   corpseRequiresClick?: boolean | undefined
   extraCorpses?:
     | Array<{
@@ -1353,6 +1575,7 @@ interface InternalPlayerRecord {
         x: number
         y: number
         items: ServerItemEntry[]
+        lostExp?: number | undefined
       }>
     | undefined
   /** `D2Game.dll` `0x6FC57730` (`[pClient + 0x508]`): experience lost on most recent death. */
@@ -1360,10 +1583,16 @@ interface InternalPlayerRecord {
   /** `D2Game.dll` `0x6FC58180` (`stat 0xAF` / `175`): gold lost on most recent death. */
   lastDeathGoldLoss?: number | undefined
   activeNpcId: number | undefined
+  /** Tracks the NPC unitId whose C2S 0x13 -> S2C 0x28 handshake just ran, preventing duplicate S2C 0x27 info on immediate 0x2F follow-up. */
+  lastNpcInteractHandshakeId?: number | undefined
   /** Cached 1.13c mercenary vendor candidate list (`D2Game.dll` `0x6FCDCED0` / `D2Common.dll` `0x6FD7CCC0`). */
   mercHireCandidates?: readonly HirelingCandidateDesc[] | undefined
   /** End frame of the player's `PLRMODE_GETHIT` (`mode = 4`) animation (`D2Game.dll` `0x6FCFD0FC`). */
   hitRecoveryUntilFrame?: number | undefined
+  /** 1.13c `D2Game.dll` `0x6FD100D6` / `0x6FC8D176` / `0x6FCF0D61`: 60s (`1500f`) TP + Waypoint lockout after declaring hostility (#1858). */
+  hostilePortalLockUntilFrame?: number | undefined
+  /** End frame of the player's `PLRMODE_BLOCK` (`mode = 9`) animation (`D2Common.dll` `0x6FD831FE`). */
+  blockRecoveryUntilFrame?: number | undefined
   /** 1.13c interact queue: walk into range, then run the interaction. */
   pendingInteraction?:
     | {
@@ -1454,6 +1683,8 @@ interface InternalMonsterRecord {
   superUniqueId: string | undefined
   /** S2C `0xAC` 16-bit monster name/palette seed (`MonsterData+0x18`). */
   nameSeed: number
+  /** S2C `0xAC` 16-component animation appearance indices (`HD..S8`). */
+  compVariants?: readonly number[] | undefined
   name: string
   areaId: number
   x: number
@@ -1631,6 +1862,18 @@ interface InternalMonsterRecord {
   /** Single-use corpse lock (`STATE_CORPSE_NOSELECT = 118`, #1809, #1810). */
   corpseConsumed?: boolean
   revivedByShaman: boolean
+  /** `MonUMod #38` (`Possessed`, `0x6FC437E5` `0x20` flag): immune to all curses (#1903). */
+  uncursable: boolean
+  /** `MonUMod #41` (`always_run_ai`, `0x6FC469F0`): bypasses room/radius AOI culling (#1906). */
+  alwaysRunAi: boolean
+  /** `MonStats.txt` `killminions` / `SplEndDeath === 1`: triggers surrounding minion death on kill (#1906). */
+  killMinions: boolean
+  /** Prevents duplicate XP / item drops after `#293 Self-resurrect` or shaman resurrection (#1901). */
+  alreadyGrantedKillRewards: boolean
+  /** Scheduled frame for `#293 Self-resurrect` (`MonUMod #34` `ai_after_death`) check (`0` = none, #1901). */
+  selfResurrectCheckFrame: number
+  /** Count of completed `#293 Self-resurrect` revives (#1901). */
+  selfResurrectCount: number
   aiDisabled: boolean
   /** Items rolled on death, spawned when the death animation reaches its drop frame. */
   pendingDropItems: readonly Item[] | undefined
@@ -1666,6 +1909,10 @@ interface InternalMonsterRecord {
   emergeUntilFrame: number
   /** Linked `TentacleHead` / `BaalCrab` boss `unitId` for `Tentacle` limbs, `BaalClone`, `BaalTentacle`, and boss summons. */
   bossUnitId: number | undefined
+  /** Summoned Uber Tristram minion (`0` XP, `0` drops, despawns when all 3 Uber Prime Evils die, #1841). */
+  isUberSummonedMinion: boolean
+  /** Next frame at which an Uber Prime Evil (`704, 705, 709`) may summon a reinforcement minion (#1841). */
+  uberSummonNextFrame: number
   /** Frame at which a temporary summon (`baalclone`, `baaltentacle`, `boneprison`, `hydra`) auto-despawns (`0` = permanent). */
   despawnAtFrame: number
   /** Real `baalcrab` (#544): count of Vile Effigy (`#570 baalclone`) spawns & active clone `unitId` (`0` = none, #1826). */
@@ -1706,6 +1953,22 @@ interface InternalMonsterRecord {
   diablogeddonUntilFrame: number
   /** Original unbuffed `ac` before Madawc `#138 Shout` (`state 26`) so Shout refreshes idempotently (#1827). */
   baseAcBeforeShout: number
+  /** Saved `mlvl/maxHp/hp` while `state 53` (`conversion`) + `state 109` (`conversion_save`) scale `clvl < mlvl` (#1879). */
+  conversionSavedStats?: ConversionSavedStats113c | undefined
+  /** Fear repulsion origin `(x, y)` when terrified by a `#150 Grim Ward` totem (#1881). */
+  fleeOriginX: number
+  fleeOriginY: number
+  /** Active `#238 Rabies` carrier state for 4-frame proximity contagion (`#1886`). */
+  rabiesInfection?:
+    | {
+        readonly expireFrame: number
+        readonly rawBitrate256: number
+        readonly attackerId: number
+        readonly slvl: number
+      }
+    | undefined
+  /** Bone Wall (`#78`) / Bone Prison (`#88`) construct owner player `unitId` (#1883). */
+  boneConstructOwnerPlayerId?: number | undefined
 }
 
 interface InternalMercenaryRecord {
@@ -1760,6 +2023,8 @@ interface InternalObjectRecord {
   portalOwnerId: number | undefined
   isLocked: boolean
   isSparkling: boolean
+  /** Container trap type (`0` = none, `1..9` = `gpTrapFnTable` `0x6FD27B8C`, #1918). */
+  trapType: number
   /** Frame at which a used shrine returns to mode 0 (Shrines.txt ResetTime). */
   shrineResetFrame: number
   /** Remaining water well charges (`pObjectData->bInteractType`, `InitFn 16` @ `0x6fc4e760`: `Parm2 << 1 = 2`). */
@@ -1770,6 +2035,8 @@ interface InternalObjectRecord {
   useCount: number
   /** Invisible MonStats 366 compellingorb monster paired with Objects.txt 404 (InitFn 60 @ 0x6fd084a0). */
   linkedMonsterId?: number | undefined
+  /** Paired permanent red portal (`classId = 60`) `unitId` in the destination area (`D2Game.dll` `0x6FCC24C0`, #1841). */
+  linkedPortalId?: number | undefined
 }
 
 /** A level warp (`UNIT_TILE = 5`, S2C 0x09 AssignWarp) of a bootstrapped area. */
@@ -1831,6 +2098,11 @@ interface InternalMissileRecord {
   size: number
   /** `Missiles.txt` `Pierce` — keep flying after a hit. */
   pierce: boolean
+  /**
+   * 1.13c creation-time `pierce_idx` (`0x6FC8F660`): remaining extra unit hits for `CollideKill = 1`
+   * player missiles (`item_pierce + skill_pierce`, at most 4), consumed per hit (`0x6FC58F40`, #1802).
+   */
+  pierceRemaining?: number | undefined
   /** `Missiles.txt` `NextHit` / `NextDelay` — re-hit the same unit after this many frames. */
   nextHit: boolean
   nextDelay: number
@@ -1858,6 +2130,17 @@ interface InternalMissileRecord {
   groundFire256?: { readonly min: number; readonly max: number } | undefined
   /** Fractional 1/256 burning damage carried per struck unit. */
   groundFireCarry?: Map<number, number> | undefined
+  /** Exact 1/256 fixed-point elemental/magic damage payload (e.g. `#112 Blessed Hammer` Concentration snapshot, #1878). */
+  elemDamage256?: number | undefined
+  /** True when `#112 Blessed Hammer` already snapshotted caster's Concentration `floor(concEd / 2)` at cast time (#1878). */
+  concentrationSnapshotted?: boolean | undefined
+  /** True for `#266 Blade Fury` / `#257 Blade Sentinel` weapon-carrying blade missiles (#1884). */
+  bladeWeaponHit?: boolean | undefined
+  /** Back-and-forth shuttle state for `#257 Blade Sentinel` (`#392 blade creeper`, #1884). */
+  patrolState?: BladeSentinelPatrolState113c | undefined
+  /** Linked `SummonManager` `'assassintrap'` pet `uid` for `#257 Blade Sentinel` 5-trap cap (#1884). */
+  trapOwnerPlayerId?: number | undefined
+  trapPetUid?: string | undefined
 }
 
 function toItemContainer(loc: ServerItemEntry['location']): ItemContainer {
@@ -1881,8 +2164,11 @@ interface PlayerSkillMissileLaunchOptions113c {
   readonly fromY?: number | undefined
   /** Unit-locked homing target (`SKILLS_SrvDo010` `TargetX = 1`). */
   readonly lockedMonsterId?: number | undefined
+  readonly lockedTargetKey?: string | undefined
   /** Per-frame 1/256 ground fire damage (Fire Wall pillars and makers). */
   readonly groundFire256?: { readonly min: number; readonly max: number } | undefined
+  /** Assassin Blade skill (`#266` / `#257`) weapon-carrier physical missile (#1884). */
+  readonly bladeWeaponHit?: boolean | undefined
 }
 
 /** A player skill cast resolved through `skills/registry.ts` (#1328). */
@@ -2049,6 +2335,10 @@ const STAT_QUANTITY = 70
 const STAT_ITEM_ADDCLASSSKILLS = 83
 const STAT_ITEM_NONCLASSSKILL = 97
 const STAT_ITEM_SINGLESKILL = 107
+/** `States.txt` row 47 `sanctuary` (`aura = 1`), the Sanctuary (#119) caster state. */
+const STATE_SANCTUARY_113C = 47
+/** `Skills.txt` row 151 `Whirlwind`: suppresses `item_skillonattack` / `item_skillonhit` procs. */
+const SKILL_WHIRLWIND_113C = 151
 const STAT_ITEM_ALLSKILLS = 127
 const STAT_ITEM_MAGICARROW = 157
 const STAT_ITEM_EXPLOSIVEARROW = 158
@@ -2086,7 +2376,7 @@ const MONSTER_KNOCKBACK_SKILLS: ReadonlySet<number> = new Set([
   143, // Leap Attack
   229, // Molten Boulder
   253, // Psychic Hammer
-  255, // Dragon Talon (final kick)
+  // Note (#1862): #255 Dragon Talon knocks back ONLY on its final kick (`strikeIndex === totalStrikes - 1` in `executeMartialFinisherSingleStrike113c`)
   270, // Dragon Tail
   273, // Mind Blast
   326, // BearSmite
@@ -2124,6 +2414,8 @@ const MONSTER_AURA_SKILL_IDS_113C: readonly number[] = [98, 102, 114, 118, 122, 
 function monUmodConstant113c(id: number): number {
   return MON_UMOD_ROW_BY_ID_113C.get(id)?.constants ?? 0
 }
+const SRVDOFUNC_JAB = 7
+const SRVDOFUNC_ZEAL_FURY_FEND = 13
 const SRVDOFUNC_TELEKINESIS = 21
 const SRVDOFUNC_NOVA = 22
 const SRVDOFUNC_PSYCHIC_HAMMER = 33
@@ -2159,6 +2451,15 @@ function collectItemStats(item: ServerItemEntry): ItemStat[] {
         out.push(
           ...resolveGemSocketItemStats113c(
             { code: child.code, stats: childStats },
+            item.code,
+          ),
+        )
+      }
+    } else if (item.rawItemData.socketedItems !== undefined && item.rawItemData.socketedItems.length > 0) {
+      for (const child of item.rawItemData.socketedItems) {
+        out.push(
+          ...resolveGemSocketItemStats113c(
+            { code: child.code, stats: child.stats ?? [] },
             item.code,
           ),
         )
@@ -2394,13 +2695,40 @@ const ANCIENT_BARBARIANS_113C: readonly {
   },
 ])
 
-/** Chaos Sanctuary seal -> SuperUnique boss spawned by that seal. */
+/** Chaos Sanctuary seal -> SuperUnique boss spawned by that seal (`D2Game.dll` `a4q3.cpp` `0x6FCDBC00..0x6FCDC5E2`). */
 const SEAL_BOSS_113C: Readonly<
-  Record<number, { readonly defId: string; readonly superUniqueId: string }>
+  Record<
+    number,
+    {
+      readonly defId: string
+      readonly superUniqueId: string
+      readonly superUniqueIndex: number
+      readonly dx: number
+      readonly dy: number
+    }
+  >
 > = Object.freeze({
-  392: { defId: 'fingermage3', superUniqueId: 'Grand Vizier of Chaos' },
-  394: { defId: 'doomknight3', superUniqueId: 'Lord De Seis' },
-  396: { defId: 'megademon3', superUniqueId: 'Infector of Souls' },
+  392: {
+    defId: 'fingermage3',
+    superUniqueId: 'Grand Vizier of Chaos',
+    superUniqueIndex: 38,
+    dx: -12,
+    dy: -52,
+  },
+  394: {
+    defId: 'doomknight3',
+    superUniqueId: 'Lord De Seis',
+    superUniqueIndex: 37,
+    dx: -39,
+    dy: 33,
+  },
+  396: {
+    defId: 'megademon3',
+    superUniqueId: 'Infector of Souls',
+    superUniqueIndex: 36,
+    dx: 32,
+    dy: 16,
+  },
 })
 
 export class GameInstance {
@@ -2438,6 +2766,17 @@ export class GameInstance {
   private readonly ancientDeaths = new Map<number, Set<string>>()
   /** Areas where the five Cairn Stones already opened the Tristram portal. */
   private readonly cairnPortalAreas = new Set<number>()
+  /** Deterministic per-game 5-stone sequence (`17..21`, `D2Game.dll` `a1q3.cpp` `0x6FC84290`, #1926). */
+  private readonly cairnStoneOrder: readonly number[]
+  /** Current number of Cairn Stones activated in exact sequence per area (`0..5`, #1926). */
+  private readonly cairnStoneStepByArea = new Map<number, number>()
+  /** Scheduled 125-frame Chaos Sanctuary Diablo (`#243`) spawns (`D2Game.dll` `0x6FCDC271..0x6FCDC337`, #1928). */
+  private readonly pendingDiabloSpawns: {
+    frame: number
+    areaId: number
+    x: number
+    y: number
+  }[] = []
   /** Council member defIds killed per area (a3q5 needs all three). */
   private readonly councilDeaths = new Map<number, Set<string>>()
   /** 1.13c A3Q1 per-game Jade Figurine (j34) drop gate (`D2Game.dll` @ `0x6fd08010..0x6fd080c6`). */
@@ -2480,6 +2819,12 @@ export class GameInstance {
   private readonly gambleSourceItems = new Map<number, Item>()
   /** `${MonStats Id}:${difficulty}` of Act bosses already killed in this game (quest TC only on the first kill). */
   private readonly killedActBosses = new Set<string>()
+  /** Pandemonium Event (`133..136`) portal destination areas already opened in this game (`D2Game.dll` `0x6FC9D160`, #1841). */
+  private readonly openedPandemoniumAreas = new Set<number>()
+  /** Distinct Uber Prime Evil `hcIdx`s (`704, 705, 709`) killed in Area `136` during this game (#1841). */
+  private readonly uberTristramKilledBosses = new Set<number>()
+  /** Ensures `Hellfire Torch` + `Standard of Heroes` finale reward drops at most once per game (#1841). */
+  private uberTristramRewardDropped = false
   /**
    * 1.13c per-game unique spawn bitmap (`pGame + 0x1b24`, 4096 bits, `D2Game.dll` `0x6FC2E250` /
    * `0x6FC2EDC0` / `0x6FC2F370`): tracks `UniqueItems.txt` row IDs (`id`) already spawned in this
@@ -2491,10 +2836,63 @@ export class GameInstance {
   private onlineMissileEngineInstance: OnlineMissileEngine | undefined
   /** #1790: children queued by srvdo / srvhit functions during `stepMissiles`, created after the sweep. */
   private readonly pendingOnlineMissileChildren: { parent: InternalMissileRecord; spawn: OnlineMissileSpawn113c }[] = []
-  /** Per-player `Skills.txt` `delay` cooldowns: playerUnitId -> (skillId -> first frame the skill is ready). */
-  private readonly playerSkillReadyFrame = new Map<number, Map<number, number>>()
+  /**
+   * `#1877` Global `STATE_SKILLDELAY` (`state 121`, `D2Game.dll` `SKILLS_ApplySkillDelay` @ `0x6FCBFF70`):
+   * per-player expiration frame of the shared casting-delay state blocking all `delay > 0` skills.
+   */
+  private readonly playerSkillDelayUntilFrame = new Map<number, number>()
+  /** `#1789`: Whether 25Hz `AnimDispatcher` windup / keyframe release / follow-through lock is active. */
+  private animActionWindupEnabled = false
+  /** `#1789`/`#1862`: Per-player `AnimDispatcher` bound to `playerCombat` `UnitStatList` + `StateBus`. */
+  private readonly playerAnimDispatchers = new Map<number, AnimDispatcher>()
+  /** `#1789`/`#1862`: Pending windup / multi-hit strike callbacks keyed by `player.unitId`. */
+  private readonly pendingPlayerAnimActions = new Map<
+    number,
+    {
+      readonly cast: PlayerSkillCast
+      readonly manaCommittedOnStart: boolean
+      readonly onStrike: (strikeIndex: number, totalStrikes: number) => void
+      readonly onCleanup?: (() => void) | undefined
+    }
+  >()
   /** Per-player active channeling skill id (`STATE_INFERNO = 12` for `Inferno` #41, `Arctic Blast` #230, `Blade Fury` #266). */
   private readonly playerChannelSkillId = new Map<number, number>()
+  /** Active `#150 Grim Ward` corpse totems pulsing `state 56` (`terror`) every 25f for 1000f (#1881). */
+  private readonly activeGrimWards = new Map<
+    number,
+    {
+      readonly objectUnitId: number
+      readonly ownerPlayerId: number
+      readonly areaId: number
+      readonly x: number
+      readonly y: number
+      readonly slvl: number
+      readonly radiusSubtiles: number
+      readonly fleeDurationFrames: number
+      readonly expireFrame: number
+      nextPulseFrame: number
+    }
+  >()
+  /** Active `#277 Blade Shield` periodic melee-pulse state per player (`perdelay = 25`f, `radius = 6`, #1884). */
+  private readonly activeBladeShields = new Map<
+    number,
+    {
+      slvl: number
+      expireFrame: number
+      nextPulseFrame: number
+    }
+  >()
+  /** Active `#266 Blade Fury` 5-frame channeling cadence tracker per player (#1884). */
+  private readonly activeBladeFuryChannels = new Map<
+    number,
+    {
+      tx: number
+      ty: number
+      nextAutoShotFrame: number
+      lastShotFrame: number
+      hold?: boolean | undefined
+    }
+  >()
   /** Active continuous 1.13c Whirlwind (`#151`) spin states per player (`SrvSt38` / `SrvDo076`). */
   private readonly playerWhirlwindStates = new Map<number, WhirlwindSpinState113c>()
   /** Active 1.13c Open Wounds (`STATE_OPENWOUNDS = 62`, 200f) monster bleed states. */
@@ -2545,6 +2943,8 @@ export class GameInstance {
   private readonly playerBoneArmorPool = new Map<number, { current: number; max: number }>()
   /** Persistent 1.13c `Cyclone Armor` (#235, state 151) remaining / max absorb pool in HP points (#1793). */
   private readonly playerCycloneArmorPool = new Map<number, { current: number; max: number }>()
+  /** Re-entrancy depth of item chance-to-cast procs (a proc never re-triggers `195`/`198`/`200`, #1797). */
+  private playerCtcProcDepth = 0
   /** Unit-global `STATE_JUSTHIT` (state 86) expiration frame keyed by `${unitType}:${unitId}` (#1792). */
   private readonly unitJustHitUntilFrame = new Map<string, number>()
   /** Per-player `AuraScanner` running the selected aura's periodic pulse (`perdelay`). */
@@ -2623,6 +3023,17 @@ export class GameInstance {
     this.hasExplicitMapSeed = rawSeed !== undefined && rawSeed !== 0
     this.currentMapSeed = ((rawSeed ?? 0x12345678) >>> 0) || 1
     this.rng = new D2Rng(this.currentMapSeed)
+    {
+      const stoneRng = new D2Rng(((this.currentMapSeed ^ 0x6a09e667) >>> 0) || 1)
+      const stones = [17, 18, 19, 20, 21]
+      for (let i = stones.length - 1; i > 0; i -= 1) {
+        const j = stoneRng.rand(i + 1)
+        const tmp = stones[i]!
+        stones[i] = stones[j]!
+        stones[j] = tmp
+      }
+      this.cairnStoneOrder = Object.freeze(stones)
+    }
     this.manualPlayersX = Math.max(
       1,
       Math.min(8, Math.floor(config.playersX ?? this.policy.defaultPlayersX ?? 1)),
@@ -2632,9 +3043,35 @@ export class GameInstance {
       const p = this.players.get(unitId)
       if (p) p.partyId = partyId
     })
+    this.animActionWindupEnabled = Boolean(
+      config.animActionWindup ?? config.enableAnimWindup ?? false,
+    )
     if (config.resolveAreaBootstrap) {
       this.setAreaBootstrapResolver(config.resolveAreaBootstrap)
     }
+  }
+
+  /** Enable or disable 25Hz `AnimDispatcher` windup, keyframe release, and frame-lock (`#1789`). */
+  setAnimActionWindup(enabled: boolean): void {
+    this.animActionWindupEnabled = Boolean(enabled)
+    for (const disp of this.playerAnimDispatchers.values()) {
+      disp.setEnforceFrameLock(this.animActionWindupEnabled)
+    }
+  }
+
+  isAnimActionWindupEnabled(): boolean {
+    return this.animActionWindupEnabled
+  }
+
+  getPlayerAnimDispatcher(playerUnitId: number): AnimDispatcher | undefined {
+    const player = this.players.get(playerUnitId)
+    if (player === undefined) return undefined
+    return this.syncPlayerAnimDispatcher113c(player)
+  }
+
+  /** Returns the deterministic per-game 5-stone sequence (`17..21`) deciphered onto `'bkd'` (`#1926`). */
+  getCairnStoneOrder(): readonly number[] {
+    return this.cairnStoneOrder
   }
 
   /**
@@ -2723,6 +3160,8 @@ export class GameInstance {
               rollChestLocked113c(resolved.classId, areaLvl, this.rng)),
         isSparkling,
         destAreaId: obj.destAreaId,
+        rollTrap: !TOWN_AREAS.has(areaId),
+        rollPreOperate: !TOWN_AREAS.has(areaId) && !PRE_OPERATE_ROLLED_OBJECTS_113C.has(obj),
       })
     }
     for (const mon of bootstrap.monsters) {
@@ -2756,6 +3195,43 @@ export class GameInstance {
       this.warpTiles.set(unitId, tile)
       this.broadcastToArea(areaId, this.warpTileAssignEvent(tile))
     }
+    if (PANDEMONIUM_AREA_IDS_113C.has(areaId) || areaId === 39 || areaId === 121) {
+      const returnTownAreaId = areaId === 39 ? 1 : 109
+      let returnObj = [...this.objects.values()].find(
+        (o) => o.areaId === areaId && o.classId === 60 && o.destAreaId === returnTownAreaId,
+      )
+      if (returnObj === undefined) {
+        const portalPos = findFreePortalCoordNear113c({
+          originX: record.spawnX,
+          originY: record.spawnY,
+          existingPortals: [...this.objects.values()].filter(
+            (o) => o.areaId === areaId && (o.classId === 59 || o.classId === 60),
+          ),
+          isWalkable: (x, y) => record.isWalkable(areaId, x, y),
+        })
+        const returnPortalId = this.spawnObject({
+          classId: 60,
+          x: portalPos.x,
+          y: portalPos.y,
+          areaId,
+          mode: 2,
+          destAreaId: returnTownAreaId,
+        })
+        returnObj = this.objects.get(returnPortalId)
+      }
+      if (returnObj !== undefined) {
+        const townObj = [...this.objects.values()].find(
+          (o) => o.areaId === returnTownAreaId && o.classId === 60 && o.destAreaId === areaId,
+        )
+        if (townObj !== undefined) {
+          returnObj.linkedPortalId = townObj.unitId
+          townObj.linkedPortalId = returnObj.unitId
+        }
+      }
+    }
+    if (areaId === 109) {
+      this.syncHarrogathA5Q3State113c()
+    }
     return record
   }
 
@@ -2788,9 +3264,54 @@ export class GameInstance {
     }
   }
 
+  private getRoomSubtileBounds113c(
+    area: LoadedAreaRecord | undefined,
+    tileX: number,
+    tileY: number,
+  ): {
+    readonly subX: number
+    readonly subY: number
+    readonly subW: number
+    readonly subH: number
+    readonly tileW: number
+    readonly tileH: number
+    readonly rect:
+      | {
+          readonly x: number
+          readonly y: number
+          readonly w: number
+          readonly h: number
+          readonly seed?: number
+        }
+      | undefined
+  } {
+    const rect = area?.roomRects?.find(
+      (r) =>
+        Math.floor(r.x / SUBTILES_PER_TILE) === tileX &&
+        Math.floor(r.y / SUBTILES_PER_TILE) === tileY,
+    )
+    const tileW = rect
+      ? Math.max(1, Math.round(rect.w / SUBTILES_PER_TILE))
+      : ROOM_TILE_SPAN_113C
+    const tileH = rect
+      ? Math.max(1, Math.round(rect.h / SUBTILES_PER_TILE))
+      : ROOM_TILE_SPAN_113C
+    return {
+      subX: tileX * SUBTILES_PER_TILE,
+      subY: tileY * SUBTILES_PER_TILE,
+      subW: tileW * SUBTILES_PER_TILE,
+      subH: tileH * SUBTILES_PER_TILE,
+      tileW,
+      tileH,
+      rect,
+    }
+  }
+
   /**
-   * 1.13c room AOI: each step reveals rooms near the player (MapAdd 0x07) and hides
-   * rooms that fell out of range (MapRemove 0x08). Never reveals the whole level at once.
+   * 1.13c room AOI (`D2Game.dll` `PLAYER_UpdateRooms` `0x6FC6AC84`, #1857):
+   * Reveals rooms near the player (`MapAdd 0x07`) across the active area and already-loaded
+   * stitched outdoor seam neighbors, and emits `UnitRemove (0x0A)` BEFORE `MapRemove (0x08)`
+   * whenever a room drops out of `revealedRoomKeys`.
    */
   private revealAreaRoomsNearPlayer(
     player: InternalPlayerRecord,
@@ -2798,91 +3319,130 @@ export class GameInstance {
   ): void {
     const area = this.loadedAreas.get(player.areaId)
     if (!area) return
+    const candidateAreas: LoadedAreaRecord[] = [area]
+    const seenAreaIds = new Set<number>([player.areaId])
+    for (const [adjId, adjArea] of this.loadedAreas) {
+      if (seenAreaIds.has(adjId)) continue
+      if (
+        area.adjacentAreaIds.includes(adjId) ||
+        this.isAreaSeamAdjacent(player.areaId, adjId)
+      ) {
+        seenAreaIds.add(adjId)
+        candidateAreas.push(adjArea)
+      }
+    }
+    for (const key of [...player.revealedRoomKeys]) {
+      const [rawAreaId, rawTileX, rawTileY] = key.split(':')
+      const roomAreaId = Number(rawAreaId)
+      if (seenAreaIds.has(roomAreaId)) continue
+      player.revealedRoomKeys.delete(key)
+      const roomArea = this.loadedAreas.get(roomAreaId)
+      const tileX = Number(rawTileX)
+      const tileY = Number(rawTileY)
+      const bounds = this.getRoomSubtileBounds113c(roomArea, tileX, tileY)
+      this.emitRoomUnitsRemovedToPlayer(
+        player,
+        roomAreaId,
+        bounds.subX,
+        bounds.subY,
+        bounds.subW,
+        bounds.subH,
+      )
+      this.emitToPlayer(player.unitId, {
+        type: 'RoomHide',
+        areaId: roomAreaId,
+        tileX,
+        tileY,
+      })
+    }
+
     const px = Math.floor(player.x / SUBTILES_PER_TILE)
     const py = Math.floor(player.y / SUBTILES_PER_TILE)
-    for (const room of area.rooms) {
-      const key = `${room.areaId}:${room.tileX}:${room.tileY}`
-      const rect = area.roomRects?.find(
-        (r) =>
-          Math.floor(r.x / SUBTILES_PER_TILE) === room.tileX &&
-          Math.floor(r.y / SUBTILES_PER_TILE) === room.tileY,
-      )
-      const tileW = rect
-        ? Math.max(1, Math.round(rect.w / SUBTILES_PER_TILE))
-        : ROOM_TILE_SPAN_113C
-      const tileH = rect
-        ? Math.max(1, Math.round(rect.h / SUBTILES_PER_TILE))
-        : ROOM_TILE_SPAN_113C
-      const dx = Math.max(
-        room.tileX - px,
-        0,
-        px - (room.tileX + tileW - 1),
-      )
-      const dy = Math.max(
-        room.tileY - py,
-        0,
-        py - (room.tileY + tileH - 1),
-      )
-      const dist = Math.max(dx, dy)
-      if (player.revealedRoomKeys.has(key)) {
-        if (dist > ROOM_HIDE_RADIUS_TILES) {
-          player.revealedRoomKeys.delete(key)
+    for (const candArea of candidateAreas) {
+      for (const room of candArea.rooms) {
+        const key = `${room.areaId}:${room.tileX}:${room.tileY}`
+        const bounds = this.getRoomSubtileBounds113c(candArea, room.tileX, room.tileY)
+        const { tileW, tileH, rect } = bounds
+        const dx = Math.max(
+          room.tileX - px,
+          0,
+          px - (room.tileX + tileW - 1),
+        )
+        const dy = Math.max(
+          room.tileY - py,
+          0,
+          py - (room.tileY + tileH - 1),
+        )
+        const dist = Math.max(dx, dy)
+        if (player.revealedRoomKeys.has(key)) {
+          if (dist > ROOM_HIDE_RADIUS_TILES) {
+            player.revealedRoomKeys.delete(key)
+            this.emitRoomUnitsRemovedToPlayer(
+              player,
+              room.areaId,
+              bounds.subX,
+              bounds.subY,
+              bounds.subW,
+              bounds.subH,
+            )
+            this.emitToPlayer(player.unitId, {
+              type: 'RoomHide',
+              areaId: room.areaId,
+              tileX: room.tileX,
+              tileY: room.tileY,
+            })
+          }
+        } else if (dist <= ROOM_REVEAL_RADIUS_TILES) {
+          const firstEverReveal = !this.everRevealedRoomKeys.has(key)
+          this.everRevealedRoomKeys.add(key)
+          player.revealedRoomKeys.add(key)
+          if (
+            firstEverReveal &&
+            this.worldEventTriggered &&
+            !this.diabloCloneSpawned &&
+            this.difficulty === 2 &&
+            !TOWN_AREAS.has(room.areaId)
+          ) {
+            this.maybeReplacePreloadedRoomSuperUniqueWithDiabloClone113c(
+              room.areaId,
+              bounds.subX,
+              bounds.subY,
+              bounds.subW,
+              bounds.subH,
+            )
+          }
           this.emitToPlayer(player.unitId, {
-            type: 'RoomHide',
+            type: 'RoomReveal',
             areaId: room.areaId,
             tileX: room.tileX,
             tileY: room.tileY,
+            ...(rect !== undefined
+              ? {
+                  roomSeed: rect.seed,
+                  tileW,
+                  tileH,
+                }
+              : {}),
           })
-        }
-      } else if (dist <= ROOM_REVEAL_RADIUS_TILES) {
-        const firstEverReveal = !this.everRevealedRoomKeys.has(key)
-        this.everRevealedRoomKeys.add(key)
-        player.revealedRoomKeys.add(key)
-        if (
-          firstEverReveal &&
-          this.worldEventTriggered &&
-          !this.diabloCloneSpawned &&
-          this.difficulty === 2 &&
-          !TOWN_AREAS.has(room.areaId)
-        ) {
-          this.maybeReplacePreloadedRoomSuperUniqueWithDiabloClone113c(
-            room.areaId,
-            room.tileX * SUBTILES_PER_TILE,
-            room.tileY * SUBTILES_PER_TILE,
-            tileW * SUBTILES_PER_TILE,
-            tileH * SUBTILES_PER_TILE,
-          )
-        }
-        this.emitToPlayer(player.unitId, {
-          type: 'RoomReveal',
-          areaId: room.areaId,
-          tileX: room.tileX,
-          tileY: room.tileY,
-          ...(rect !== undefined
-            ? {
-                roomSeed: rect.seed,
-                tileW,
-                tileH,
-              }
-            : {}),
-        })
-        if (emitRoomUnits) {
-          this.emitRoomUnitsToPlayer(
-            player,
-            room.areaId,
-            room.tileX * SUBTILES_PER_TILE,
-            room.tileY * SUBTILES_PER_TILE,
-            tileW * SUBTILES_PER_TILE,
-            tileH * SUBTILES_PER_TILE,
-          )
+          if (emitRoomUnits) {
+            this.emitRoomUnitsToPlayer(
+              player,
+              room.areaId,
+              bounds.subX,
+              bounds.subY,
+              bounds.subW,
+              bounds.subH,
+            )
+          }
         }
       }
     }
   }
 
   /**
-   * Stream `UnitAssign` / `ItemEvent` for units inside a newly-revealed room rectangle
-   * `[subX, subX + subW) × [subY, subY + subH)` (`S2C 0x07 MapAdd` room AOI streaming).
+   * Stream `UnitAssign` / `ItemEvent` for all world units (remote players, corpses, monsters,
+   * mercenaries, summons, objects, ground items, warp tiles) inside a newly-revealed room
+   * rectangle `[subX, subX + subW) × [subY, subY + subH)` (`S2C 0x07 MapAdd` AOI, #1857).
    */
   private emitRoomUnitsToPlayer(
     player: InternalPlayerRecord,
@@ -2894,94 +3454,170 @@ export class GameInstance {
   ): void {
     const inRoom = (x: number, y: number): boolean =>
       x >= subX && x < subX + subW && y >= subY && y < subY + subH
-    for (const m of this.monsters.values()) {
-      if (m.areaId !== areaId || !inRoom(m.x, m.y)) continue
-      this.emitToPlayer(player.unitId, {
-        type: 'UnitAssign',
-        unitType: 'monster',
-        unitId: m.unitId,
-        classId: m.classId,
-        name: m.name,
-        x: m.x,
-        y: m.y,
-        areaId: m.areaId,
-        unit: {
-          unitType: 1,
-          id: m.unitId,
-          classId: m.classId,
-          name: m.name,
-          x: m.x,
-          y: m.y,
-          mode: m.mode,
-          lifePct: m.maxHp > 0 ? Math.round((m.hp / m.maxHp) * 128) : 0,
-          ...(m.umodIds.length > 0 ? { bossMods: [...m.umodIds] } : {}),
-        },
-      })
-    }
-    for (const obj of this.objects.values()) {
-      if (obj.areaId !== areaId || !inRoom(obj.x, obj.y)) continue
-      this.emitToPlayer(player.unitId, {
-        type: 'UnitAssign',
-        unitType: 'object',
-        unitId: obj.unitId,
-        classId: obj.classId,
-        x: obj.x,
-        y: obj.y,
-        areaId: obj.areaId,
-        unit: {
-          unitType: 2,
-          id: obj.unitId,
-          classId: obj.classId,
-          x: obj.x,
-          y: obj.y,
-          mode: obj.mode,
-        },
-      })
-      if (obj.destAreaId !== undefined) {
-        this.emitToPlayer(player.unitId, {
-          type: 'Portal',
-          portalId: obj.unitId,
-          ownerId: obj.portalOwnerId,
-          areaId: obj.areaId,
-          destAreaId: obj.destAreaId,
-          localId: obj.unitId,
-          remoteId: obj.unitId,
-          flags: 1,
-        })
+    for (const ent of this.getAoiWorldEntities()) {
+      if (ent.unitType === 'missile') continue
+      if (ent.unitType === 'player' && ent.unitId === player.unitId) continue
+      if (ent.areaId !== areaId || !inRoom(ent.x, ent.y)) continue
+      for (const ev of this.buildEntityEnterAoiEvents(ent.unitType, ent.unitId)) {
+        this.emitToPlayer(player.unitId, ev)
       }
     }
-    for (const gItem of this.groundItems.values()) {
-      if (gItem.areaId !== areaId || !inRoom(gItem.x, gItem.y)) continue
+  }
+
+  /**
+   * Emit `S2C 0x0A UnitRemove` for known world units inside a room rectangle right before
+   * `S2C 0x08 RoomHide` (`D2Game.dll` `PLAYER_UpdateRooms` `0x6FC6AC84`, #1857).
+   */
+  private emitRoomUnitsRemovedToPlayer(
+    player: InternalPlayerRecord,
+    areaId: number,
+    subX: number,
+    subY: number,
+    subW: number,
+    subH: number,
+  ): void {
+    const inRoom = (x: number, y: number): boolean =>
+      x >= subX && x < subX + subW && y >= subY && y < subY + subH
+    for (const ent of this.getAoiWorldEntities()) {
+      if (ent.unitType === 'missile' || ent.unitType === 'tile') continue
+      if (ent.unitType === 'player' && ent.unitId === player.unitId) continue
+      if (ent.areaId !== areaId || !inRoom(ent.x, ent.y)) continue
+      const wireUnitType =
+        ent.unitType === 'player'
+          ? 0
+          : ent.unitType === 'monster'
+            ? 1
+            : ent.unitType === 'object'
+              ? 2
+              : 4
       this.emitToPlayer(player.unitId, {
-        type: 'ItemEvent',
-        action: 'groundSpawn',
-        itemId: gItem.unitId,
-        code: gItem.code,
-        x: gItem.x,
-        y: gItem.y,
-        container: 'ground',
-        item: this.serverEntryToItemData(gItem),
+        type: 'UnitRemove',
+        unitType: wireUnitType,
+        id: ent.unitId,
+        unitId: ent.unitId,
+        areaId,
       })
-    }
-    for (const tile of this.warpTiles.values()) {
-      if (tile.areaId !== areaId || !inRoom(tile.x, tile.y)) continue
-      this.emitToPlayer(player.unitId, this.warpTileAssignEvent(tile))
     }
   }
 
   /** Hide every room of `areaId` this player currently sees (leaving the area). */
   private hidePlayerAreaRooms(player: InternalPlayerRecord, areaId: number): void {
     const prefix = `${areaId}:`
+    const roomArea = this.loadedAreas.get(areaId)
     for (const key of [...player.revealedRoomKeys]) {
       if (!key.startsWith(prefix)) continue
       player.revealedRoomKeys.delete(key)
-      const [, tileX, tileY] = key.split(':')
+      const [, rawTileX, rawTileY] = key.split(':')
+      const tileX = Number(rawTileX)
+      const tileY = Number(rawTileY)
+      const bounds = this.getRoomSubtileBounds113c(roomArea, tileX, tileY)
+      this.emitRoomUnitsRemovedToPlayer(
+        player,
+        areaId,
+        bounds.subX,
+        bounds.subY,
+        bounds.subW,
+        bounds.subH,
+      )
       this.emitToPlayer(player.unitId, {
         type: 'RoomHide',
         areaId,
-        tileX: Number(tileX),
-        tileY: Number(tileY),
+        tileX,
+        tileY,
       })
+    }
+  }
+
+  /**
+   * 1.13c `UNITROOM_Broadcast` (`0x6FC4C830`, #1857): test whether world coordinate `(x, y)` in
+   * `targetAreaId` lies within `viewer`'s active room AOI (including stitched outdoor seam areas).
+   */
+  private isPointInViewerAoi113c(
+    viewer: InternalPlayerRecord,
+    targetAreaId: number,
+    x: number,
+    y: number,
+  ): boolean {
+    if (
+      viewer.areaId !== targetAreaId &&
+      !this.isAreaSeamAdjacent(viewer.areaId, targetAreaId)
+    ) {
+      return false
+    }
+    const targetArea = this.loadedAreas.get(targetAreaId)
+    if (targetArea && targetArea.rooms.length > 0) {
+      let coveredByAnyRoom = false
+      for (const room of targetArea.rooms) {
+        const bounds = this.getRoomSubtileBounds113c(targetArea, room.tileX, room.tileY)
+        if (
+          x >= bounds.subX &&
+          x < bounds.subX + bounds.subW &&
+          y >= bounds.subY &&
+          y < bounds.subY + bounds.subH
+        ) {
+          coveredByAnyRoom = true
+          const key = `${room.areaId}:${room.tileX}:${room.tileY}`
+          if (viewer.revealedRoomKeys.has(key)) {
+            return true
+          }
+          if (
+            viewer.revealedRoomKeys.size === 0 &&
+            Math.max(Math.abs(viewer.x - x), Math.abs(viewer.y - y)) <=
+              ROOM_REVEAL_RADIUS_TILES * SUBTILES_PER_TILE
+          ) {
+            return true
+          }
+        }
+      }
+      if (coveredByAnyRoom) {
+        return false
+      }
+      return (
+        Math.max(Math.abs(viewer.x - x), Math.abs(viewer.y - y)) <=
+        ROOM_HIDE_RADIUS_TILES * SUBTILES_PER_TILE
+      )
+    }
+    if (viewer.areaId === targetAreaId) {
+      return true
+    }
+    return (
+      Math.max(Math.abs(viewer.x - x), Math.abs(viewer.y - y)) <=
+      ROOM_HIDE_RADIUS_TILES * SUBTILES_PER_TILE
+    )
+  }
+
+  /**
+   * Synchronize `UnitAssign` / `UnitRemove` (`0x0A`) for every connected viewer when a dynamic
+   * unit (`player`, `monster`, `merc`, `pet`) moves across room/seam AOI boundaries (#1857).
+   */
+  private syncUnitMoveAcrossViewerAoi113c(
+    unitType: 'player' | 'monster',
+    unitId: number,
+    prevAreaId: number,
+    prevX: number,
+    prevY: number,
+    nextAreaId: number,
+    nextX: number,
+    nextY: number,
+    excludeViewerUnitId?: number,
+  ): void {
+    for (const viewer of this.players.values()) {
+      if (viewer.unitId === unitId || viewer.unitId === excludeViewerUnitId) continue
+      const wasIn = this.isPointInViewerAoi113c(viewer, prevAreaId, prevX, prevY)
+      const nowIn = this.isPointInViewerAoi113c(viewer, nextAreaId, nextX, nextY)
+      if (wasIn && !nowIn) {
+        this.emitToPlayer(viewer.unitId, {
+          type: 'UnitRemove',
+          unitType: unitType === 'player' ? 0 : 1,
+          id: unitId,
+          unitId,
+          areaId: prevAreaId,
+        })
+      } else if (!wasIn && nowIn) {
+        for (const ev of this.buildEntityEnterAoiEvents(unitType, unitId)) {
+          this.emitToPlayer(viewer.unitId, ev)
+        }
+      }
     }
   }
 
@@ -3391,7 +4027,7 @@ export class GameInstance {
     const items: ServerItemEntry[] = []
     if (parsedD2s) {
       for (const itemData of parsedD2s.items) {
-        items.push(this.itemDataToServerEntry(itemData, unitId, areaId))
+        items.push(this.itemDataToServerEntry(itemData, unitId, areaId, true))
       }
     } else {
       const potInfo = lookupBaseInfo('hpot')
@@ -3429,11 +4065,11 @@ export class GameInstance {
     const corpseItems: ServerItemEntry[] = []
     if (parsedD2s?.corpseItems) {
       for (const ci of parsedD2s.corpseItems) {
-        corpseItems.push(this.itemDataToServerEntry(ci, unitId, areaId))
+        corpseItems.push(this.itemDataToServerEntry(ci, unitId, areaId, true))
       }
     }
     const ironGolemItem = parsedD2s?.ironGolem
-      ? this.itemDataToServerEntry(parsedD2s.ironGolem, unitId, areaId)
+      ? this.itemDataToServerEntry(parsedD2s.ironGolem, unitId, areaId, true)
       : null
 
     const waypoints = new Set<number>([1])
@@ -3498,6 +4134,23 @@ export class GameInstance {
       newSkills,
       leftSkill: parsedD2s?.leftSkill ?? 0,
       rightSkill: parsedD2s?.rightSkill ?? 0,
+      hotkeys: Array.from({ length: 16 }, (_, idx) => (parsedD2s?.hotkeys?.[idx] ?? 0xffff) & 0xffff),
+      hotkeyItemIds: new Array<number>(16).fill(0xffffffff),
+      altLeftSkill: parsedD2s?.altLeftSkill ?? 0,
+      altRightSkill: parsedD2s?.altRightSkill ?? 0,
+      weaponSet: parsedD2s?.activeWeapon === 1 ? 1 : 0,
+      npcIntro:
+        parsedD2s?.npcIntro && parsedD2s.npcIntro.byteLength === 52
+          ? new Uint8Array(parsedD2s.npcIntro)
+          : createDefaultNpcIntroData(),
+      createdTimestampSec:
+        parsedD2s?.createdTimestamp || parsedD2s?.timestampSec || 1_700_000_000,
+      lastPlayedTimestampSec:
+        parsedD2s?.lastPlayedTimestamp ||
+        parsedD2s?.timestampSec ||
+        parsedD2s?.createdTimestamp ||
+        1_700_000_000,
+      connectedFrame: this.currentFrame,
       skills,
       states: new Set(),
       stateTimers: new Map(),
@@ -3529,10 +4182,14 @@ export class GameInstance {
       lastDeathGoldLoss: 0,
       activeNpcId: undefined,
       hitRecoveryUntilFrame: 0,
+      hostilePortalLockUntilFrame: 0,
       partyId: 0xffff,
       d2sTemplate: parsedD2s,
     }
 
+    if (areaId === 109) {
+      this.syncHarrogathA5Q3State113c(record)
+    }
     this.players.set(unitId, record)
     this.refreshPlayerAccruedMaxPools(record, {
       fillHpIfAtBaseMax:
@@ -3608,6 +4265,7 @@ export class GameInstance {
       },
     })
     this.emitInitialPlayerStats(record)
+    this.emitSavedPlayerHotkeys(record)
 
     for (const other of this.players.values()) {
       if (other.unitId === unitId) continue
@@ -3633,7 +4291,7 @@ export class GameInstance {
         partyId: other.partyId,
         areaId: other.areaId,
       })
-      if (other.areaId === areaId) {
+      if (this.isPointInViewerAoi113c(other, areaId, spawnX, spawnY)) {
         this.emitToPlayer(other.unitId, {
           type: 'UnitAssign',
           unitType: 'player',
@@ -3653,33 +4311,19 @@ export class GameInstance {
             mode: record.mode,
           },
         })
-        this.emitToPlayer(unitId, {
-          type: 'UnitAssign',
-          unitType: 'player',
-          unitId: other.unitId,
-          classId: other.classId,
-          name: other.name,
-          x: other.x,
-          y: other.y,
-          areaId: other.areaId,
-          unit: {
-            unitType: 0,
-            id: other.unitId,
-            classId: other.classId,
-            name: other.name,
-            x: other.x,
-            y: other.y,
-            mode: other.mode,
-          },
-        })
       }
     }
 
     this.emitAreaSnapshotToPlayer(record)
-    if (record.corpseId !== undefined && record.corpseItems.length > 0) {
+    if (this.hasLivePrimaryCorpse113c(record)) {
       const corpseEvents = this.buildPlayerCorpseEvents113c(record)
       for (const other of this.players.values()) {
-        if (other.unitId === unitId || other.areaId !== areaId) continue
+        if (
+          other.unitId === unitId ||
+          !this.isPointInViewerAoi113c(other, areaId, record.corpseX, record.corpseY)
+        ) {
+          continue
+        }
         for (const ev of corpseEvents) {
           this.emitToPlayer(other.unitId, ev)
         }
@@ -3719,7 +4363,7 @@ export class GameInstance {
         const savedMercItems = parsedD2s.mercItems ?? parsedD2s.merc.items
         if (mercRecord && Array.isArray(savedMercItems) && savedMercItems.length > 0) {
           for (const mi of savedMercItems) {
-            const entry = this.itemDataToServerEntry(mi, mercRecord.unitId, areaId)
+            const entry = this.itemDataToServerEntry(mi, mercRecord.unitId, areaId, true)
             entry.location = 'equipped'
             if (entry.bodyLoc <= 0) {
               entry.bodyLoc = this.resolveMercDefaultBodyLoc113c(entry.code, mercRecord.act) ?? 4
@@ -3752,6 +4396,7 @@ export class GameInstance {
                   ownerId: mercRecord.unitId as UnitId,
                 },
               })
+              this.emitSocketChildrenToPlayer(record.unitId, entry, 0x13)
             }
           }
           if (mercRecord.alive) {
@@ -3798,7 +4443,9 @@ export class GameInstance {
     const partyEvents = this.partyManager.removePlayer(playerUnitId)
     this.players.delete(playerUnitId)
     this.clearVendorPools(existing, prevArea)
-    this.playerSkillReadyFrame.delete(playerUnitId)
+    this.playerSkillDelayUntilFrame.delete(playerUnitId)
+    this.playerAnimDispatchers.delete(playerUnitId)
+    this.pendingPlayerAnimActions.delete(playerUnitId)
     this.playerActiveAuraState.delete(playerUnitId)
     this.playerCombat.delete(playerUnitId)
     this.playerBoneArmorPool.delete(playerUnitId)
@@ -3842,15 +4489,52 @@ export class GameInstance {
     return this.disconnectPlayer(playerUnitId)
   }
 
+  private isUnitIdAlreadyInUse(id: number): boolean {
+    if (
+      this.players.has(id) ||
+      this.monsters.has(id) ||
+      this.objects.has(id) ||
+      this.groundItems.has(id) ||
+      this.warpTiles.has(id) ||
+      this.missiles.has(id) ||
+      this.mercenaries.has(id)
+    ) {
+      return true
+    }
+    for (const p of this.players.values()) {
+      for (const it of p.items) {
+        if (it.unitId === id || it.socketedItems.some((c) => c.unitId === id)) return true
+      }
+      for (const it of p.corpseItems) {
+        if (it.unitId === id || it.socketedItems.some((c) => c.unitId === id)) return true
+      }
+      if (
+        p.ironGolemItem &&
+        (p.ironGolemItem.unitId === id ||
+          p.ironGolemItem.socketedItems.some((c) => c.unitId === id))
+      ) {
+        return true
+      }
+    }
+    for (const m of this.mercenaries.values()) {
+      for (const it of m.equipment) {
+        if (it.unitId === id || it.socketedItems.some((c) => c.unitId === id)) return true
+      }
+    }
+    return false
+  }
+
   private itemDataToServerEntry(
     itemData: ItemData,
     ownerId: number,
     areaId: number,
+    allocateFreshId = false,
   ): ServerItemEntry {
     const info = lookupBaseInfo(itemData.code)
     const locNum = itemData.location
     let location: ServerItemEntry['location'] = 'inventory'
-    if (locNum === 1 || itemData.container === 'equipment') location = 'equipped'
+    if (locNum === 3 || locNum === 5 || itemData.container === 'ground') location = 'ground'
+    else if (locNum === 1 || itemData.container === 'equipment') location = 'equipped'
     else if (locNum === 2 || itemData.container === 'belt') location = 'belt'
     else if (locNum === 4 || itemData.container === 'cursor') location = 'cursor'
     else if (locNum === 6 || itemData.container === 'socket') location = 'socket'
@@ -3880,7 +4564,10 @@ export class GameInstance {
     }
 
     const rawId = Number(itemData.id ?? 0)
-    const unitId = rawId > 0 ? rawId : this.allocateUnitId()
+    const unitId =
+      !allocateFreshId && rawId > 0 && !this.isUnitIdAlreadyInUse(rawId)
+        ? rawId
+        : this.allocateUnitId()
     if (unitId >= this.nextUnitId) {
       this.nextUnitId = unitId + 1
     }
@@ -3897,6 +4584,22 @@ export class GameInstance {
             : location === 'inventory'
               ? 1
               : 0
+
+    const socketedEntries = (itemData.socketedItems ?? []).map((child) =>
+      this.itemDataToServerEntry(child, ownerId, areaId, allocateFreshId),
+    )
+
+    const syncedRawItemData: ItemData = {
+      ...itemData,
+      id: unitId as UnitId,
+      itemId: unitId as UnitId,
+      ownerId: ownerId as UnitId,
+      ...(socketedEntries.length > 0
+        ? {
+            socketedItems: socketedEntries.map((c) => this.serverEntryToItemData(c)),
+          }
+        : {}),
+    }
 
     return {
       unitId,
@@ -3917,23 +4620,25 @@ export class GameInstance {
       gamble: false,
       identified: itemData.identified ?? true,
       ethereal: itemData.ethereal ?? false,
-      socketed: itemData.socketed ?? false,
-      totalSockets: itemData.totalSockets ?? 0,
+      socketed: (itemData.socketed ?? false) || socketedEntries.length > 0,
+      totalSockets: Math.max(itemData.totalSockets ?? 0, socketedEntries.length),
       durability: itemData.durability ?? info.maxDurability,
       maxDurability: itemData.maxDurability ?? info.maxDurability,
       quantity: itemData.quantity ?? 1,
       stats,
-      socketedItems: (itemData.socketedItems ?? []).map((child) =>
-        this.itemDataToServerEntry(child, ownerId, areaId),
-      ),
-      rawItemData: itemData,
+      socketedItems: socketedEntries,
+      rawItemData: syncedRawItemData,
     }
   }
 
   private serverEntryToItemData(entry: ServerItemEntry): ItemData {
+    const isGround = entry.location === 'ground'
     let location = 0
     let storePage = entry.storePage
-    if (entry.location === 'equipped') {
+    if (isGround) {
+      location = 3
+      storePage = 0
+    } else if (entry.location === 'equipped') {
       location = 1
       storePage = 0
     } else if (entry.location === 'belt') {
@@ -3982,47 +4687,114 @@ export class GameInstance {
             value,
           }))
 
+    const trimmedCode = entry.code.trim()
     const codePadded = entry.code.padEnd(4, ' ').slice(0, 4)
+    const baseSize = lookupBaseInfo(trimmedCode)
+    const normalizedQuality = this.normalizeItemQualityCode113c(
+      baseRaw?.quality ?? entry.quality,
+    ) as ItemQuality
+    const isSocketed = entry.socketed || entry.socketedItems.length > 0
+    const totalSockets = Math.max(entry.totalSockets, entry.socketedItems.length)
+    const isRuneword = Boolean(baseRaw?.runeword)
+    const isPersonalized = Boolean(baseRaw?.personalized)
+    const baseRawFlags =
+      typeof baseRaw?.rawFlags === 'number'
+        ? baseRaw.rawFlags
+        : typeof baseRaw?.flags === 'number'
+          ? baseRaw.flags
+          : 0x00000010
+    const isGoldItem = trimmedCode === 'gld'
+    const isEar =
+      trimmedCode === 'ear' ||
+      Boolean(baseRaw?.isEar) ||
+      (baseRawFlags & 0x00010000) !== 0
+    const hasExtendedStats = statsList.some(
+      (s) => s.statId !== 356 && (!isGoldItem || s.statId !== 14),
+    )
+    const canBeCompact =
+      isGoldItem ||
+      isEar ||
+      (baseSize.compactSave &&
+        !baseSize.stackable &&
+        trimmedCode !== 'tbk' &&
+        trimmedCode !== 'ibk' &&
+        !hasExtendedStats &&
+        !isSocketed &&
+        totalSockets === 0 &&
+        !entry.ethereal &&
+        !isRuneword &&
+        (baseRaw?.runewordStats?.length ?? 0) === 0 &&
+        (baseRaw?.setBonusStats?.length ?? 0) === 0 &&
+        !isPersonalized &&
+        !baseRaw?.isGambleMystery &&
+        entry.identified &&
+        normalizedQuality === 2)
     const isSimple =
-      baseRaw?.simple ??
-      (statsList.length === 0 &&
-        entry.socketedItems.length === 0 &&
-        entry.quality === 2)
+      isGoldItem || isEar
+        ? true
+        : !canBeCompact
+          ? false
+          : Boolean(baseRaw?.simple ?? true)
+    const isCompact =
+      isGoldItem || isEar
+        ? true
+        : !canBeCompact
+          ? false
+          : Boolean(baseRaw?.compact ?? isSimple)
+    const beltLinearSlot =
+      entry.location === 'belt'
+        ? (entry.y > 0 ? entry.y * 4 + (entry.x & 3) : entry.x) & 0x0f
+        : entry.x
+
+    let rawFlagsNum = baseRawFlags
+    rawFlagsNum &= ~0x00000020
+    if (entry.identified) rawFlagsNum |= 0x00000010
+    else rawFlagsNum &= ~0x00000010
+    if (isSocketed || totalSockets > 0) rawFlagsNum |= 0x00000800
+    if (entry.ethereal) rawFlagsNum |= 0x00400000
+    if (isRuneword) rawFlagsNum |= 0x04000000
+    if (isPersonalized) rawFlagsNum |= 0x01000000
+    if (isEar) rawFlagsNum |= 0x00210000
+    else if (isCompact) rawFlagsNum |= 0x00200000
+    else rawFlagsNum &= ~0x00200000
+    rawFlagsNum = rawFlagsNum >>> 0
 
     return {
       ...(baseRaw ?? {}),
       id: entry.unitId as UnitId,
       itemId: entry.unitId as UnitId,
-      opcode: baseRaw?.opcode ?? 0x9c,
-      action: baseRaw?.action ?? 0,
+      opcode: isGround ? 0x9c : (baseRaw?.opcode ?? 0x9c),
+      action: isGround
+        ? (baseRaw?.action === 0x02 ? 0x02 : 0x00)
+        : (baseRaw?.action ?? (entry.location === 'vendor' ? 0x0b : 0)),
       category: baseRaw?.category ?? 0,
-      ownerType: baseRaw?.ownerType ?? 0,
-      ownerId: entry.ownerId as UnitId,
-      flags: baseRaw?.flags ?? 0x00000010,
-      rawFlags: baseRaw?.rawFlags ?? 0x00000010,
+      ownerType: isGround ? 0 : (baseRaw?.ownerType ?? (entry.location === 'vendor' ? 1 : 0)),
+      ownerId: (isGround ? 0 : entry.ownerId) as UnitId,
+      flags: rawFlagsNum,
+      rawFlags: rawFlagsNum,
       version: baseRaw?.version ?? 101,
       location,
       container: toItemContainer(entry.location),
-      bodyLoc: entry.bodyLoc,
-      equippedSlot: entry.bodyLoc,
-      gridX: entry.x,
-      gridY: entry.y,
+      bodyLoc: isGround ? 0 : entry.bodyLoc,
+      equippedSlot: isGround ? 0 : entry.bodyLoc,
+      gridX: isGround ? 0 : beltLinearSlot,
+      gridY: isGround || entry.location === 'belt' ? 0 : entry.y,
       storePage,
       storagePage: storePage,
-      worldX: entry.x,
-      worldY: entry.y,
-      x: entry.x,
-      y: entry.y,
-      code: entry.code.trim(),
+      worldX: isGround ? entry.x : 0,
+      worldY: isGround ? entry.y : 0,
+      x: entry.location === 'belt' ? beltLinearSlot : entry.x,
+      y: entry.location === 'belt' ? 0 : entry.y,
+      code: trimmedCode,
       rawCode: codePadded,
-      compact: baseRaw?.compact ?? isSimple,
+      compact: isCompact,
       simple: isSimple,
       identified: entry.identified,
-      socketed: entry.socketed || entry.socketedItems.length > 0,
+      socketed: isSocketed,
       ethereal: entry.ethereal,
-      runeword: baseRaw?.runeword ?? false,
-      personalized: baseRaw?.personalized ?? false,
-      isEar: baseRaw?.isEar ?? false,
+      runeword: isRuneword,
+      personalized: isPersonalized,
+      isEar,
       newItem: baseRaw?.newItem ?? false,
       starterItem: baseRaw?.starterItem ?? false,
       broken: baseRaw?.broken ?? false,
@@ -4030,9 +4802,9 @@ export class GameInstance {
       equipped: entry.location === 'equipped',
       socketedChildCount: entry.socketedItems.length,
       usedSockets: entry.socketedItems.length,
-      totalSockets: Math.max(entry.totalSockets, entry.socketedItems.length),
+      totalSockets,
       ilvl: entry.level,
-      quality: this.normalizeItemQualityCode113c(baseRaw?.quality ?? entry.quality) as ItemQuality,
+      quality: normalizedQuality,
       graphicIndex: baseRaw?.graphicIndex ?? 0,
       durability: entry.durability,
       curDurability: entry.durability,
@@ -4121,9 +4893,32 @@ export class GameInstance {
     }
   }
 
+  private emitSavedPlayerHotkeys(player: InternalPlayerRecord): void {
+    for (let slot = 0; slot < 16; slot++) {
+      const raw = (player.hotkeys[slot] ?? 0xffff) & 0xffff
+      if (raw === 0xffff) continue
+      const skillId = raw & 0x7fff
+      if (skillId === 0x7fff || skillId > 357) continue
+      const hand: 'left' | 'right' = (raw & 0x8000) !== 0 ? 'left' : 'right'
+      this.emitToPlayer(player.unitId, {
+        type: 'ActiveSkill',
+        isHotkey: true,
+        unitId: slot,
+        slot,
+        hand,
+        skill: skillId,
+        itemId: player.hotkeyItemIds[slot] ?? 0xffffffff,
+      })
+    }
+  }
+
   private buildMonsterUnitAssignEvent(m: InternalMonsterRecord): ServerEvent {
     const superUniqueIndex =
-      m.superUniqueId !== undefined ? getSuperUniqueIndexById(m.superUniqueId) : undefined
+      typeof m.superUniqueId === 'number'
+        ? m.superUniqueId
+        : m.superUniqueId !== undefined
+          ? getSuperUniqueIndexById(m.superUniqueId)
+          : undefined
     const isSuperUnique = superUniqueIndex !== undefined
     const isChampion = m.rank === 'champion'
     const isUnique = !isSuperUnique && m.rank === 'unique'
@@ -4133,7 +4928,10 @@ export class GameInstance {
       (isUnique || isSuperUnique ? 0x08 : 0) |
       (isSuperUnique ? 0x02 : 0) |
       (isMinion ? 0x10 : 0)
-    const hasMonsterFlags = flags !== 0 || m.umodIds.length > 0
+    const visibleMods = m.umodIds.filter(
+      (id) => id > 0 && id <= 255,
+    )
+    const hasMonsterFlags = flags !== 0 || visibleMods.length > 0
     const lifePct =
       m.dead || m.hp <= 0
         ? 0
@@ -4164,8 +4962,9 @@ export class GameInstance {
         ...(isUnique ? { isUnique: true } : {}),
         ...(isSuperUnique ? { isSuperUnique: true, superUniqueId: superUniqueIndex } : {}),
         ...(isMinion ? { isMinion: true } : {}),
-        ...(m.umodIds.length > 0 ? { bossMods: [...m.umodIds] } : {}),
+        ...(visibleMods.length > 0 ? { bossMods: [...visibleMods] } : {}),
         ...(hasMonsterFlags ? { nameSeed: m.nameSeed } : {}),
+        ...(m.compVariants !== undefined ? { compVariants: m.compVariants } : {}),
       },
     }
   }
@@ -4185,6 +4984,10 @@ export class GameInstance {
             const owner = this.players.get(ownerId)
             const areaId = petMeta.areaId ?? owner?.areaId ?? this.defaultAreaId ?? 1
             const classId = pet.classId ?? 363
+            const petCompWidths = MONSTATS2_COMP_BIT_WIDTHS_BY_HCIDX[classId]
+            const petCompVariants = petCompWidths?.map((w, idx) =>
+              w > 1 ? ((Math.imul(unitId ^ (idx * 37), 0x9e3779b1) >>> 16) & ((1 << w) - 1)) : 0,
+            )
             const lifePct =
               pet.maxHp > 0
                 ? Math.max(1, Math.min(128, Math.round((pet.hp / pet.maxHp) * 128)))
@@ -4209,6 +5012,7 @@ export class GameInstance {
                 lifePct,
                 ownerType: 0,
                 ownerId,
+                ...(petCompVariants !== undefined ? { compVariants: petCompVariants } : {}),
               },
             }
           }
@@ -4238,87 +5042,18 @@ export class GameInstance {
   }
 
   private emitAreaSnapshotToPlayer(player: InternalPlayerRecord): void {
-    for (const m of this.monsters.values()) {
-      if (m.areaId !== player.areaId) continue
-      this.emitToPlayer(player.unitId, this.buildMonsterUnitAssignEvent(m))
-    }
-    for (const obj of this.objects.values()) {
-      if (obj.areaId !== player.areaId) continue
-      this.emitToPlayer(player.unitId, {
-        type: 'UnitAssign',
-        unitType: 'object',
-        unitId: obj.unitId,
-        classId: obj.classId,
-        x: obj.x,
-        y: obj.y,
-        areaId: obj.areaId,
-        unit: {
-          unitType: 2,
-          id: obj.unitId,
-          classId: obj.classId,
-          x: obj.x,
-          y: obj.y,
-          mode: obj.mode,
-        },
-      })
-      if (obj.destAreaId !== undefined) {
-        this.emitToPlayer(player.unitId, {
-          type: 'Portal',
-          portalId: obj.unitId,
-          ownerId: obj.portalOwnerId,
-          areaId: obj.areaId,
-          destAreaId: obj.destAreaId,
-          localId: obj.unitId,
-          remoteId: obj.unitId,
-          flags: 1,
-        })
-      }
-    }
-    for (const gItem of this.groundItems.values()) {
-      if (gItem.areaId !== player.areaId) continue
-      this.emitToPlayer(player.unitId, {
-        type: 'ItemEvent',
-        action: 'groundSpawn',
-        itemId: gItem.unitId,
-        code: gItem.code,
-        x: gItem.x,
-        y: gItem.y,
-        container: 'ground',
-        item: this.serverEntryToItemData(gItem),
-      })
-    }
-    for (const tile of this.warpTiles.values()) {
-      if (tile.areaId !== player.areaId) continue
-      this.emitToPlayer(player.unitId, this.warpTileAssignEvent(tile))
-    }
-    for (const owner of this.players.values()) {
-      if (owner.corpseId !== undefined && owner.corpseItems.length > 0) {
-        const cArea = owner.corpseAreaId ?? owner.areaId
-        if (cArea === player.areaId) {
-          for (const ev of this.buildPlayerCorpseEvents113c(owner)) {
-            this.emitToPlayer(player.unitId, ev)
-          }
-        }
-      }
-      for (const extra of owner.extraCorpses ?? []) {
-        if (extra.areaId === player.areaId && extra.items.length > 0) {
-          for (const ev of this.buildPlayerCorpseEventsForSet113c(
-            owner,
-            extra.corpseId,
-            extra.areaId,
-            extra.x,
-            extra.y,
-            extra.items,
-          )) {
-            this.emitToPlayer(player.unitId, ev)
-          }
-        }
+    for (const ent of this.getAoiWorldEntities()) {
+      if (ent.unitType === 'missile') continue
+      if (ent.unitType === 'player' && ent.unitId === player.unitId) continue
+      if (!this.isPointInViewerAoi113c(player, ent.areaId, ent.x, ent.y)) continue
+      for (const ev of this.buildEntityEnterAoiEvents(ent.unitType, ent.unitId)) {
+        this.emitToPlayer(player.unitId, ev)
       }
     }
   }
 
   private buildPlayerCorpseEvents113c(owner: InternalPlayerRecord): readonly ServerEvent[] {
-    if (owner.corpseId === undefined || owner.corpseItems.length === 0) return []
+    if (owner.corpseId === undefined || !this.hasLivePrimaryCorpse113c(owner)) return []
     return this.buildPlayerCorpseEventsForSet113c(
       owner,
       owner.corpseId,
@@ -4768,7 +5503,7 @@ export class GameInstance {
         storePage: 0,
         gamble: false,
       })
-      this.groundItems.set(entry.unitId, entry)
+      this.registerGroundItem113c(entry)
       used.add(`${entry.x}:${entry.y}`)
       const itemData = this.serverEntryToItemData(entry)
       const dropFlags = ((itemData.rawFlags ?? itemData.flags ?? 0x00000010) | 0x00002000) >>> 0
@@ -4788,6 +5523,7 @@ export class GameInstance {
           newItem: true,
         },
       })
+      this.emitSocketChildrenToArea(areaId, entry, 0x13)
       ids.push(entry.unitId)
     })
     return ids
@@ -4982,9 +5718,15 @@ export class GameInstance {
     if (!tables.properties || !tables.itemStatCost) return 0
     // Worn piece count uses distinct SetItems.txt ids; duplicate set rings count once toward set count.
     const counts = this.wornSetPieceCounts(worn)
+    const siblingMasks = computeWornSetSiblingMasks113c(worn, tables.sets.items)
     let total = 0
-    const addProps = (props: readonly { code: string; par?: unknown; min: number; max: number }[]): void => {
-      for (const prop of props) {
+    const addProps = (
+      props: readonly SetBonusProp[],
+      rngKey: string,
+    ): void => {
+      const propRng = makeDeterministicSetBonusRng113c(this.mapSeed, rngKey)
+      for (const rawProp of props) {
+        const prop = rollSetBonusPropIfNeeded(rawProp, propRng)
         const param = typeof prop.par === 'number' ? prop.par : Number(prop.par ?? 0) || 0
         for (const resolved of tables.properties!.resolveProperty(
           prop.code,
@@ -4993,11 +5735,10 @@ export class GameInstance {
           prop.max,
           tables.itemStatCost!,
         )) {
-          const midVal = Math.floor((resolved.min + resolved.max) / 2)
           if (resolved.statId === statId) {
-            total += midVal
+            total += resolved.value
           } else if (perLevelStatId !== undefined && resolved.statId === perLevelStatId) {
-            total += (midVal * level) >> perLevelShift
+            total += (resolved.value * level) >> perLevelShift
           }
         }
       }
@@ -5014,31 +5755,38 @@ export class GameInstance {
       const setDef = tables.sets.sets.get(setItem.set)
       if (setDef === undefined) continue
       const wornCount = counts.get(setItem.set) ?? 1
-      const bonuses = resolveActiveSetBonuses(setItem, setDef, wornCount)
+      const siblingMask = siblingMasks.get(setItem.set) ?? 0
+      const bonuses = resolveActiveSetBonuses(setItem, setDef, wornCount, {
+        siblingMask,
+        setItemsTable: tables.sets.items,
+        rng: makeDeterministicSetBonusRng113c(this.mapSeed, `set:${setItem.set}`),
+      })
       // Real generated items already folded `props` into item.stats / rawItemData.stats;
       // synthetic set items without that stat still receive the single-piece property.
       const hasOwnStat =
         hasItemOwnPrimaryStat(item, statId) ||
         (perLevelStatId !== undefined && hasItemOwnPrimaryStat(item, perLevelStatId))
-      if (!hasOwnStat) addProps(bonuses.props)
+      if (!hasOwnStat) addProps(bonuses.props, `item:${item.unitId}:props`)
       // Green item-specific set bonuses (`aprop1a..aprop5b`) apply on EACH worn set item
       // (so wearing 2x Angelic Halo rings with 3 Angelic pieces grants +50% MF from each ring).
-      // Use the item's rolled `setBonusStats` lists when present (#1651 / #1652 / #1831).
+      // Use the item's rolled `setBonusStats` lists when present (#1651 / #1652 / #1831 / #1910).
       const storedLists = item.rawItemData?.setBonusStats as
         | readonly ({ readonly index: number; readonly stats: readonly ItemStat[] } | ItemStat)[]
         | undefined
       if (Array.isArray(storedLists) && storedLists.length > 0) {
         for (const listOrStat of storedLists) {
           if ('stats' in listOrStat && Array.isArray(listOrStat.stats)) {
-            const enabled =
-              setItem.addFunc === 0
-                ? true
-                : setItem.addFunc === 2
-                  ? listOrStat.index <= wornCount - 2
-                  : setItem.addFunc === 1
-                    ? wornCount >= 2 && listOrStat.index < wornCount - 1
-                    : false
-            if (!enabled) continue
+            if (
+              !isSetBonusSlotActive113c(
+                setItem,
+                listOrStat.index,
+                wornCount,
+                siblingMask,
+                tables.sets.items,
+              )
+            ) {
+              continue
+            }
             for (const st of listOrStat.stats) {
               if (setItem.addFunc === 0 && hasItemOwnPrimaryStat(item, st.statId)) continue
               if (st.statId === statId) {
@@ -5059,7 +5807,9 @@ export class GameInstance {
       } else if (setItem.addFunc === 0) {
         // 1.13c SetItems.txt `add func == 0` (`Civerb's Cudgel` #2, `Trang-Oul's Claws` #88):
         // `aprop*` rolls unconditionally onto the item at 1+ worn pieces (#1831).
-        for (const prop of setItem.aprops) {
+        const propRng = makeDeterministicSetBonusRng113c(this.mapSeed, `item:${item.unitId}:aprops0`)
+        for (const rawProp of setItem.aprops) {
+          const prop = rollSetBonusPropIfNeeded(rawProp, propRng)
           const param = typeof prop.par === 'number' ? prop.par : Number(prop.par ?? 0) || 0
           for (const resolved of tables.properties!.resolveProperty(
             prop.code,
@@ -5069,22 +5819,21 @@ export class GameInstance {
             tables.itemStatCost!,
           )) {
             if (hasItemOwnPrimaryStat(item, resolved.statId)) continue
-            const midVal = Math.floor((resolved.min + resolved.max) / 2)
             if (resolved.statId === statId) {
-              total += midVal
+              total += resolved.value
             } else if (perLevelStatId !== undefined && resolved.statId === perLevelStatId) {
-              total += (midVal * level) >> perLevelShift
+              total += (resolved.value * level) >> perLevelShift
             }
           }
         }
       } else {
-        addProps(bonuses.aprops)
+        addProps(bonuses.aprops, `item:${item.unitId}:aprops`)
       }
       if (!seenSets.has(setItem.set)) {
         seenSets.add(setItem.set)
         // Gold partial/full-set bonuses (`PCode2a..FCode8`) apply once per set, never per piece.
-        addProps(bonuses.pCodes)
-        addProps(bonuses.fCodes)
+        addProps(bonuses.pCodes, `set:${setItem.set}:pcodes`)
+        addProps(bonuses.fCodes, `set:${setItem.set}:fcodes`)
       }
     }
     return total
@@ -5224,10 +5973,14 @@ export class GameInstance {
       const tables = getEmbeddedDropTables()
       if (tables.properties && tables.itemStatCost) {
         const counts = this.wornSetPieceCounts(worn)
+        const siblingMasks = computeWornSetSiblingMasks113c(worn, tables.sets.items)
         const addProps = (
-          props: readonly { code: string; par?: unknown; min: number; max: number }[],
+          props: readonly SetBonusProp[],
+          rngKey: string,
         ): void => {
-          for (const prop of props) {
+          const propRng = makeDeterministicSetBonusRng113c(this.mapSeed, rngKey)
+          for (const rawProp of props) {
+            const prop = rollSetBonusPropIfNeeded(rawProp, propRng)
             const param = typeof prop.par === 'number' ? prop.par : Number(prop.par ?? 0) || 0
             for (const resolved of tables.properties!.resolveProperty(
               prop.code,
@@ -5237,8 +5990,7 @@ export class GameInstance {
               tables.itemStatCost!,
             )) {
               if (resolved.statId === statId) {
-                const midVal = Math.floor((resolved.min + resolved.max) / 2)
-                total += this.normalizePoolStat256(midVal)
+                total += this.normalizePoolStat256(resolved.value)
               }
             }
           }
@@ -5252,26 +6004,33 @@ export class GameInstance {
           const setDef = tables.sets.sets.get(setItem.set)
           if (setDef === undefined) continue
           const wornCount = counts.get(setItem.set) ?? 1
-          const bonuses = resolveActiveSetBonuses(setItem, setDef, wornCount)
+          const siblingMask = siblingMasks.get(setItem.set) ?? 0
+          const bonuses = resolveActiveSetBonuses(setItem, setDef, wornCount, {
+            siblingMask,
+            setItemsTable: tables.sets.items,
+            rng: makeDeterministicSetBonusRng113c(this.mapSeed, `set:${setItem.set}`),
+          })
           const hasOwnPoolStat =
             item.stats?.has(statId) === true ||
             item.rawItemData?.stats?.some((s) => s.statId === statId) === true
-          if (!hasOwnPoolStat) addProps(bonuses.props)
+          if (!hasOwnPoolStat) addProps(bonuses.props, `item:${item.unitId}:props`)
           const storedLists = item.rawItemData?.setBonusStats as
             | readonly ({ readonly index: number; readonly stats: readonly ItemStat[] } | ItemStat)[]
             | undefined
           if (Array.isArray(storedLists) && storedLists.length > 0) {
             for (const listOrStat of storedLists) {
               if ('stats' in listOrStat && Array.isArray(listOrStat.stats)) {
-                const enabled =
-                  setItem.addFunc === 0
-                    ? true
-                    : setItem.addFunc === 2
-                      ? listOrStat.index <= wornCount - 2
-                      : setItem.addFunc === 1
-                        ? wornCount >= 2 && listOrStat.index < wornCount - 1
-                        : false
-                if (!enabled) continue
+                if (
+                  !isSetBonusSlotActive113c(
+                    setItem,
+                    listOrStat.index,
+                    wornCount,
+                    siblingMask,
+                    tables.sets.items,
+                  )
+                ) {
+                  continue
+                }
                 for (const st of listOrStat.stats) {
                   if (
                     setItem.addFunc === 0 &&
@@ -5296,14 +6055,14 @@ export class GameInstance {
               }
             }
           } else if (setItem.addFunc === 0) {
-            if (!hasOwnPoolStat) addProps(setItem.aprops)
+            if (!hasOwnPoolStat) addProps(setItem.aprops, `item:${item.unitId}:aprops0`)
           } else {
-            addProps(bonuses.aprops)
+            addProps(bonuses.aprops, `item:${item.unitId}:aprops`)
           }
           if (!seenSets.has(setItem.set)) {
             seenSets.add(setItem.set)
-            addProps(bonuses.pCodes)
-            addProps(bonuses.fCodes)
+            addProps(bonuses.pCodes, `set:${setItem.set}:pcodes`)
+            addProps(bonuses.fCodes, `set:${setItem.set}:fcodes`)
           }
         }
       }
@@ -5439,6 +6198,8 @@ export class GameInstance {
   }
 
   private rollMonsterDeathDrop(killer: InternalPlayerRecord, monster: InternalMonsterRecord): number[] {
+    // 1.13c `D2Game.dll` (`0x6FCD0C40`): summoned Uber Tristram minions yield 0 XP and 0 item drops (#1841).
+    if (monster.isUberSummonedMinion) return []
     const tables = getEmbeddedDropTables()
     // 1.13c World Event (`#333 diabloclone`): guaranteed Unique Small Charm `#381 Annihilus` (`cm1`, ilvl 110) (#1842).
     if (
@@ -5748,10 +6509,32 @@ export class GameInstance {
     const umodIds: number[] = [
       ...resolveMonsterUModIds(rawUMods as readonly (number | string)[]),
     ]
-    // 1.13c D2Game.dll 0x6FC67F0E: Blood Raven (hcIdx 267) carries MonUMod 12 (bloodraven) & 22 (questcomplete) (#1823).
-    if (hcIdx === 267 && !isNpc) {
-      if (!umodIds.includes(MON_UMOD.BLOODRAVEN)) umodIds.push(MON_UMOD.BLOODRAVEN)
-      if (!umodIds.includes(MON_UMOD.QUESTCOMPLETE)) umodIds.push(MON_UMOD.QUESTCOMPLETE)
+    // 1.13c D2Game.dll 0x6FC67F0E: Blood Raven (hcIdx 267), Shenk (hcIdx 479), & Countess (hcIdx 45)
+    // carry MonUMod 22 (`questcomplete`) (#1823, #1906).
+    const normSuId = (spec.superUniqueId ?? '').trim().toLowerCase()
+    if (!isNpc) {
+      if (hcIdx === 267) {
+        if (!umodIds.includes(MON_UMOD.BLOODRAVEN)) umodIds.push(MON_UMOD.BLOODRAVEN)
+        if (!umodIds.includes(MON_UMOD.QUESTCOMPLETE)) umodIds.push(MON_UMOD.QUESTCOMPLETE)
+      } else if (
+        (hcIdx === 479 && (normSuId.includes('shenk') || normSuId.includes('siege boss'))) ||
+        (hcIdx === 45 && normSuId.includes('countess'))
+      ) {
+        if (!umodIds.includes(MON_UMOD.QUESTCOMPLETE)) umodIds.push(MON_UMOD.QUESTCOMPLETE)
+      }
+      if (
+        hasImplicitSelfResurrectUMod113c({
+          hcIdx,
+          defId,
+          rank,
+          superUniqueId: spec.superUniqueId,
+          isNpc,
+          skills: kind?.skills ?? rawClassKind?.skills,
+        }) &&
+        !umodIds.includes(MON_UMOD.AI_AFTER_DEATH)
+      ) {
+        umodIds.push(MON_UMOD.AI_AFTER_DEATH)
+      }
     }
     const mappedFromUmodIds = umodIds
       .map((id: number): string => {
@@ -5805,13 +6588,37 @@ export class GameInstance {
       1,
       spec.maxHp ?? spec.hp ?? resolvedStats?.maxHp ?? resolvedStats?.hp ?? 50,
     )
+    const isEliteRank = rank !== 'normal' || spec.superUniqueId !== undefined
+    const eliteHpFactor =
+      rank === 'unique' || spec.superUniqueId !== undefined
+        ? this.difficulty === 2
+          ? 2
+          : this.difficulty === 1
+            ? 3
+            : 4
+        : rank === 'champion'
+          ? this.difficulty === 2
+            ? 2
+            : this.difficulty === 1
+              ? 2.5
+              : 3
+          : rank === 'minion'
+            ? this.difficulty === 2
+              ? 1.5
+              : this.difficulty === 1
+                ? 1.75
+                : 2
+            : 1
+    // Explicit `spec.maxHp` / `spec.hp` are treated as the unmultiplied base HP (`#1821` FE explosion,
+    // `#1882` Corpse Explosion); only the derived fallback strips the Champion/Unique/Minion HP factor.
     const unscaledMaxHp = Math.max(
       1,
-      spec.maxHp ??
+      spec.unscaledMaxHp ??
+        spec.maxHp ??
         spec.hp ??
         unscaledResolvedStats?.maxHp ??
         unscaledResolvedStats?.hp ??
-        baseMaxHp,
+        Math.floor(baseMaxHp / eliteHpFactor),
     )
     const px = this.playersX
     const monsterPlayerCount =
@@ -5851,16 +6658,33 @@ export class GameInstance {
     const experience = unscaledXp
       ? baseXp
       : Math.max(0, Math.floor((baseXp * (px + 1)) / 2))
+    const isWillowispChamp = isWillOWispChampion113c({
+      hcIdx,
+      id: defId,
+      baseId: kind?.baseId ?? rawClassKind?.baseId,
+    })
     const specDmgMult =
-      (umodIds.includes(MON_UMOD.STRONG) ? 1.5 : 1) *
+      (umodIds.includes(MON_UMOD.STRONG) ? (rank === 'minion' ? 1.75 : 2.5) : 1) *
       (umodIds.includes(MON_UMOD.BERSERK)
-        ? 3
-        : rank === 'champion'
-          ? this.difficulty === 2
-            ? 1.5
+        ? isWillowispChamp
+          ? 2.5
+          : this.difficulty === 2
+            ? 2.98
             : this.difficulty === 1
-              ? 1.75
-              : 2
+              ? 3.25
+              : 4
+        : rank === 'champion'
+          ? isWillowispChamp
+            ? this.difficulty === 2
+              ? 1.16
+              : this.difficulty === 1
+                ? 1.37
+                : 1.5
+            : this.difficulty === 2
+              ? 1.5
+              : this.difficulty === 1
+                ? 1.75
+                : 2
           : 1)
     const minDmg = Math.max(
       1,
@@ -5880,12 +6704,31 @@ export class GameInstance {
             resolvedStats?.damage ??
             Math.max(minDmg, level * 4)),
     )
+    const syntheticArMult =
+      resolvedStats === undefined && spec.ar === undefined
+        ? (umodIds.includes(MON_UMOD.MANahit) && rank !== 'minion' ? 1.75 : 1) *
+          (umodIds.includes(MON_UMOD.FANATIC)
+            ? 0.3
+            : umodIds.includes(MON_UMOD.BERSERK)
+              ? this.difficulty === 2
+                ? 2.9
+                : this.difficulty === 1
+                  ? 3.5
+                  : 4
+              : rank === 'champion'
+                ? this.difficulty === 2
+                  ? 1.6
+                  : this.difficulty === 1
+                    ? 1.9
+                    : 2.2
+                : 1)
+        : 1
     const ar = Math.max(
       1,
       spec.ar ??
         resolvedStats?.toHit ??
         resolvedStats?.attack1?.toHit ??
-        50 + level * 15,
+        Math.round((50 + level * 15) * syntheticArMult),
     )
     const attack2Ar = Math.max(
       1,
@@ -5958,9 +6801,17 @@ export class GameInstance {
 
     const resistances = {
       phys:
-        spec.resistances?.phys ?? resolvedStats?.resistances?.physical ?? 0,
+        spec.resistances?.phys ??
+        resolvedStats?.resistances?.physical ??
+        (umodIds.includes(MON_UMOD.GHOSTLY)
+          ? 80
+          : umodIds.includes(MON_UMOD.STONESKIN) && rank !== 'minion'
+            ? 50
+            : 0),
       magic:
-        spec.resistances?.magic ?? resolvedStats?.resistances?.magic ?? 0,
+        spec.resistances?.magic ??
+        resolvedStats?.resistances?.magic ??
+        (umodIds.includes(MON_UMOD.MANahit) && rank !== 'minion' ? 20 : 0),
       fire: spec.resistances?.fire ?? resolvedStats?.resistances?.fire ?? 0,
       light:
         spec.resistances?.light ??
@@ -6041,6 +6892,18 @@ export class GameInstance {
           ? 0
           : (Math.imul(unitId, 0x9e37) ^ hcIdx ^ (spec.statSeed ?? 0)) & 0xffff
 
+    const compBitWidths = MONSTATS2_COMP_BIT_WIDTHS_BY_HCIDX[hcIdx]
+    const compVariants =
+      spec.compVariants !== undefined
+        ? spec.compVariants
+        : !isNpc && compBitWidths !== undefined
+          ? compBitWidths.map((w, idx) =>
+              w > 1
+                ? ((Math.imul(nameSeed ^ unitId ^ (idx * 37), 0x9e3779b1) >>> 16) & ((1 << w) - 1))
+                : 0,
+            )
+          : undefined
+
     const record: InternalMonsterRecord = {
       unitId,
       classId,
@@ -6048,6 +6911,7 @@ export class GameInstance {
       defId,
       superUniqueId: spec.superUniqueId,
       nameSeed,
+      compVariants,
       name:
         spec.name ??
         resolvedStats?.name ??
@@ -6115,7 +6979,16 @@ export class GameInstance {
       auraSkillId,
       auraLevel,
       ai: spec.ai ?? kind?.ai ?? 'Idle',
-      aiDelay: Math.max(1, spec.aiDelay ?? kind?.aiDelay ?? 15),
+      aiDelay: Math.max(
+        1,
+        Math.floor(
+          spec.aiDelay ??
+            resolvedStats?.aiDelay ??
+            (umodIds.includes(MON_UMOD.FANATIC)
+              ? Math.max(1, Math.floor(((kind?.aiDelay ?? 15) * 30) / 100))
+              : (kind?.aiDelay ?? 15)),
+        ),
+      ),
       aiParams: spec.aiParams ?? kind?.aiParams ?? [0, 0, 0, 0, 0, 0, 0, 0],
       nextAiFrame: 0,
       pathRunning: false,
@@ -6134,8 +7007,20 @@ export class GameInstance {
       poisonAttackerId: 0,
       poisonSkillId: 0,
       toBlock: spec.toBlock ?? kind?.toBlock ?? 0,
-      velocity: spec.velocity ?? kind?.velocity ?? 6,
-      runSpeed: spec.runSpeed ?? kind?.runVelocity ?? 9,
+      velocity:
+        spec.velocity ??
+        (umodIds.includes(MON_UMOD.GHOSTLY)
+          ? Math.max(1, Math.floor((kind?.velocity ?? 6) / 2))
+          : umodIds.includes(MON_UMOD.FANATIC) || umodIds.includes(MON_UMOD.FAST)
+            ? (kind?.velocity ?? 6) * 2
+            : (kind?.velocity ?? 6)),
+      runSpeed:
+        spec.runSpeed ??
+        (umodIds.includes(MON_UMOD.GHOSTLY)
+          ? Math.max(1, Math.floor((kind?.runVelocity ?? 9) / 2))
+          : umodIds.includes(MON_UMOD.FANATIC) || umodIds.includes(MON_UMOD.FAST)
+            ? (kind?.runVelocity ?? 9) * 2
+            : (kind?.runVelocity ?? 9)),
       stepSpeed: spec.stepSpeed,
       // MonStats `aidist` is the AI sight distance; 0 means the 1.13c default ~20 sub-tiles.
       aggroRadius:
@@ -6144,8 +7029,17 @@ export class GameInstance {
           ? (kind?.aiDistance ?? rawClassKind?.aiDistance ?? 20)
           : 20),
       cooldown: hcIdx >= 540 && hcIdx <= 542 ? 8 : 0,
-      // MonStats `aidel` is the AI think interval (difficulty tier already hydrated in `kind`).
-      cooldownTicks: Math.max(1, Math.floor(spec.aiDelay ?? kind?.aiDelay ?? rawClassKind?.aiDelay ?? 6)),
+      // MonStats `aidel` is the AI think interval (difficulty tier & Fanatic -70% delay hydrated in `resolvedStats`).
+      cooldownTicks: Math.max(
+        1,
+        Math.floor(
+          spec.aiDelay ??
+            resolvedStats?.aiDelay ??
+            (umodIds.includes(MON_UMOD.FANATIC)
+              ? Math.max(1, Math.floor(((kind?.aiDelay ?? rawClassKind?.aiDelay ?? 6) * 30) / 100))
+              : (kind?.aiDelay ?? rawClassKind?.aiDelay ?? 6)),
+        ),
+      ),
       frozenTicks: 0,
       chillTicks: 0,
       convertedUntilFrame: 0,
@@ -6161,6 +7055,19 @@ export class GameInstance {
       fleeTargetY: Number.NaN,
       shattered: false,
       revivedByShaman: false,
+      uncursable: isMonsterUncursable113c(umodIds, resolvedStats?.uncursable),
+      alwaysRunAi: isAlwaysRunAiMonster113c(umodIds, spec.alwaysRunAi),
+      killMinions: shouldKillMinionsOnDeath113c({
+        hcIdx,
+        defId,
+        superUniqueId: spec.superUniqueId,
+        killMinions: spec.killMinions ?? kind?.killMinions ?? rawClassKind?.killMinions,
+        splEndDeath: kind?.splEndDeath ?? rawClassKind?.splEndDeath,
+        umodIds,
+      }).purge,
+      alreadyGrantedKillRewards: false,
+      selfResurrectCheckFrame: 0,
+      selfResurrectCount: 0,
       aiDisabled: Boolean(spec.aiDisabled || isNpc),
       pendingDropItems: undefined,
       pendingDropFrame: 0,
@@ -6182,13 +7089,18 @@ export class GameInstance {
       submergeTimerFrame: this.currentFrame,
       emergeUntilFrame: 0,
       bossUnitId: spec.bossUnitId,
-      despawnAtFrame: 0,
+      isUberSummonedMinion: Boolean(spec.isUberSummonedMinion),
+      uberSummonNextFrame: 0,
+      despawnAtFrame: spec.despawnAtFrame ?? 0,
       baalCloneSpawnCount: 0,
       activeBaalCloneUnitId: 0,
       activeBossChannel: undefined,
       activeHoarfrostWaves: undefined,
       diablogeddonUntilFrame: 0,
       baseAcBeforeShout: ac,
+      fleeOriginX: Number.NaN,
+      fleeOriginY: Number.NaN,
+      boneConstructOwnerPlayerId: spec.boneConstructOwnerPlayerId,
     }
     this.monsters.set(unitId, record)
 
@@ -6284,23 +7196,8 @@ export class GameInstance {
     // D2Game InitFn 47 (0x6fc8f140) for Durance of Hate Stairs (Objects.txt 386),
     // InitFn 60 (0x6fd084a0) for Compelling Orb (Objects.txt 404), and InitFn 44 (0x6fd086c0)
     // for Mephisto Hellgate (Objects.txt 342): start in OBJMODE_OPENED (2) when their quest is complete.
-    const initialMode =
-      spec.mode ??
-      (((classId === 386 || classId === 404) && a3q3Completed) || (classId === 342 && a3q6Completed)
-        ? 2
-        : 0)
-    const destAreaId =
-      spec.destAreaId ?? resolvePresetPortalDestArea113c(classId, areaId)
     const objTxt =
       classId >= 0 && classId < OBJECTS_TXT_113C.length ? OBJECTS_TXT_113C[classId] : undefined
-    const isShrine = Boolean(
-      spec.isShrine ||
-        (spec.shrineType !== undefined && spec.shrineType > 0) ||
-        CANONICAL_113C_OBJECTS[classId]?.isShrine ||
-        objTxt?.operateFn === 2,
-    )
-    const shrineType =
-      spec.shrineType ?? (isShrine ? rollShrineType113c(classId, areaId, this.rng) : 0)
     // D2Game InitFn 57 (0x6FC4EF50): ONLY Objects.txt 397 (SparklyChest) and 455 (SpecialChest)
     // set `[pObj+0x78] = 1`; OperateFn 58 is KhalimChest3 (407), NOT a sparkly chest (#1833).
     const isSparkling =
@@ -6312,6 +7209,37 @@ export class GameInstance {
       isSparkling ||
       classId === 342 ||
       QUEST_CHEST_OPERATE_FNS_113C.has(objTxt?.operateFn ?? -1)
+    const effectiveLocked = isNeverLocked ? false : Boolean(spec.isLocked)
+    const baseMode =
+      spec.mode ??
+      (((classId === 386 || classId === 404) && a3q3Completed) || (classId === 342 && a3q6Completed)
+        ? 2
+        : 0)
+    const initialMode =
+      baseMode === 0 &&
+      spec.rollPreOperate === true &&
+      !TOWN_AREAS.has(areaId) &&
+      rollPreOperateOpen113c(classId, effectiveLocked, this.rng)
+        ? 2
+        : baseMode
+    const destAreaId =
+      spec.destAreaId ?? resolvePresetPortalDestArea113c(classId, areaId)
+    const isShrine = Boolean(
+      spec.isShrine ||
+        (spec.shrineType !== undefined && spec.shrineType > 0) ||
+        CANONICAL_113C_OBJECTS[classId]?.isShrine ||
+        objTxt?.operateFn === 2,
+    )
+    const shrineType =
+      spec.shrineType ?? (isShrine ? rollShrineType113c(classId, areaId, this.rng) : 0)
+    const areaLvlForTrap = getLevelMonsterLevel113c(areaId, this.difficulty, true)
+    const trapType =
+      initialMode !== 0
+        ? 0
+        : (spec.trapType ??
+          (spec.rollTrap === true && !TOWN_AREAS.has(areaId)
+            ? rollChestTrapType113c(classId, areaLvlForTrap, isSparkling, this.rng)
+            : 0))
     const record: InternalObjectRecord = {
       unitId,
       classId,
@@ -6324,8 +7252,10 @@ export class GameInstance {
       shrineType,
       destAreaId,
       portalOwnerId: undefined,
-      isLocked: isNeverLocked ? false : Boolean(spec.isLocked),
+      linkedPortalId: spec.linkedPortalId,
+      isLocked: effectiveLocked,
       isSparkling,
+      trapType,
       shrineResetFrame: 0,
       wellCharges:
         classifyObjectOperate113c(classId) === 'well'
@@ -6431,7 +7361,7 @@ export class GameInstance {
       stats,
       socketedItems: [],
     }
-    this.groundItems.set(unitId, entry)
+    this.registerGroundItem113c(entry)
 
     this.broadcastToArea(areaId, {
       type: 'ItemEvent',
@@ -6444,6 +7374,90 @@ export class GameInstance {
       item: this.serverEntryToItemData(entry),
     })
     return unitId
+  }
+
+  /**
+   * 1.13c quality-tiered ground item decay duration (`D2Game.dll` `ITEMS_SetGroundExpire`, #1915):
+   * - `15,000` frames (`10 min` @ 25 Hz): regular/low/superior (`quality 1..3`), consumables/potions/scrolls/keys/ear, and gold `< 10,000`.
+   * - `30,000` frames (`20 min` @ 25 Hz): magic (`quality 4`) and gold piles `>= 10,000`.
+   * - `45,000` frames (`30 min` @ 25 Hz): set (`5`), rare (`6`), unique (`7`), crafted (`8`), runeword (`IFLAG_RUNEWORD 0x04000000`), and quest items (`quest !== 0`).
+   */
+  private computeGroundItemTtlFrames113c(entry: ServerItemEntry): number {
+    const cleanCode = entry.code.trim().toLowerCase()
+    if (cleanCode === 'gld') {
+      const goldQty = Math.max(entry.quantity || 0, entry.stats.get(14) ?? 0)
+      return goldQty >= 10_000 ? 30_000 : 15_000
+    }
+    if (cleanCode === 'ear' || entry.rawItemData?.isEar === true) {
+      return 15_000
+    }
+    const rawFlags = Number(entry.rawItemData?.rawFlags ?? entry.rawItemData?.flags ?? 0)
+    if (entry.rawItemData?.runeword === true || (rawFlags & 0x04000000) !== 0) {
+      return 45_000
+    }
+    const baseInfo = lookupBaseInfo(cleanCode)
+    if (baseInfo.quest || this.isOnePerPlayerQuestItem(cleanCode)) {
+      return 45_000
+    }
+    const qual = this.normalizeItemQualityCode113c(entry.rawItemData?.quality ?? entry.quality)
+    if (qual >= 5) return 45_000
+    if (qual === 4) return 30_000
+    return 15_000
+  }
+
+  private registerGroundItem113c(entry: ServerItemEntry): void {
+    entry.expireFrame = this.currentFrame + this.computeGroundItemTtlFrames113c(entry)
+    this.groundItems.set(entry.unitId, entry)
+  }
+
+  /**
+   * 1.13c `D2Game.dll` party quest recipient resolution (`#1931`):
+   * - Non-Act-boss quest objectives (`includeSameActTown: false`): credits `actor` plus same-party
+   *   allies currently in `questAreaId` (or stitched outdoor seam within AOI).
+   * - Act-end bosses (`Andariel`, `Duriel`, `Mephisto`, `Diablo`, `Baal`; `includeSameActTown: true`):
+   *   credits `actor` plus same-party allies in `questAreaId` OR in the same Act's town (`ACT_TOWN_AREA[act]`).
+   * - Ancients (`requireExactArea: true, excludeDead: true, minCharLevel: 20/40/60`): requires alive
+   *   same-party members standing on Arreat Summit (`120`).
+   * - NEVER credits unpartied bystanders!
+   */
+  private getQuestEligiblePartyRecipients113c(
+    actor: InternalPlayerRecord | undefined,
+    questAreaId: number,
+    options?: {
+      readonly includeSameActTown?: boolean
+      readonly requireExactArea?: boolean
+      readonly excludeDead?: boolean
+      readonly minCharLevel?: number
+    },
+  ): InternalPlayerRecord[] {
+    if (actor === undefined) return []
+    const actIdx = areaToAct(questAreaId)
+    const sameActTown = ACT_TOWN_AREA[actIdx] ?? 1
+    const includeTown = options?.includeSameActTown === true && options?.requireExactArea !== true
+    const out: InternalPlayerRecord[] = []
+    for (const candidate of this.players.values()) {
+      if (options?.excludeDead === true && candidate.dead) continue
+      if (options?.minCharLevel !== undefined && candidate.level < options.minCharLevel) continue
+      const isActor = candidate.unitId === actor.unitId
+      if (
+        !isActor &&
+        (actor.partyId === 0xffff || candidate.partyId !== actor.partyId)
+      ) {
+        continue
+      }
+      if (options?.requireExactArea === true) {
+        if (candidate.areaId !== questAreaId) continue
+      } else if (!isActor) {
+        const inQuestArea =
+          candidate.areaId === questAreaId ||
+          (this.isAreaSeamAdjacent(candidate.areaId, questAreaId) &&
+            this.isPointInViewerAoi113c(candidate, questAreaId, actor.x, actor.y))
+        const inTown = includeTown && candidate.areaId === sameActTown && candidate.unlockedAct >= actIdx
+        if (!inQuestArea && !inTown) continue
+      }
+      out.push(candidate)
+    }
+    return out
   }
 
   getGroundItems(): readonly ServerItemEntry[] {
@@ -6503,11 +7517,11 @@ export class GameInstance {
         const directPlayer = this.players.get(unitId)
         if (directPlayer) return directPlayer.areaId
         for (const p of this.players.values()) {
-          if (p.corpseId === unitId && p.corpseItems.length > 0) {
+          if (p.corpseId === unitId && this.hasLivePrimaryCorpse113c(p)) {
             return p.corpseAreaId ?? p.areaId
           }
           for (const extra of p.extraCorpses ?? []) {
-            if (extra.corpseId === unitId && extra.items.length > 0) {
+            if (extra.corpseId === unitId && (extra.items.length > 0 || (extra.lostExp ?? 0) > 0)) {
               return extra.areaId
             }
           }
@@ -6564,7 +7578,7 @@ export class GameInstance {
         x: Math.round(p.x),
         y: Math.round(p.y),
       })
-      if (p.corpseId !== undefined && p.corpseItems.length > 0) {
+      if (this.hasLivePrimaryCorpse113c(p) && p.corpseId !== undefined) {
         out.push({
           unitType: 'player',
           unitId: p.corpseId,
@@ -6574,7 +7588,7 @@ export class GameInstance {
         })
       }
       for (const extra of p.extraCorpses ?? []) {
-        if (extra.items.length > 0) {
+        if (extra.items.length > 0 || (extra.lostExp ?? 0) > 0) {
           out.push({
             unitType: 'player',
             unitId: extra.corpseId,
@@ -6670,11 +7684,11 @@ export class GameInstance {
         const p = this.players.get(unitId)
         if (!p) {
           for (const owner of this.players.values()) {
-            if (owner.corpseId === unitId && owner.corpseItems.length > 0) {
+            if (owner.corpseId === unitId && this.hasLivePrimaryCorpse113c(owner)) {
               return this.buildPlayerCorpseEvents113c(owner)
             }
             for (const extra of owner.extraCorpses ?? []) {
-              if (extra.corpseId === unitId && extra.items.length > 0) {
+              if (extra.corpseId === unitId && (extra.items.length > 0 || (extra.lostExp ?? 0) > 0)) {
                 return this.buildPlayerCorpseEventsForSet113c(
                   owner,
                   extra.corpseId,
@@ -6757,6 +7771,38 @@ export class GameInstance {
             },
           ]
         }
+        if (mp?.kind === 'pet') {
+          const px = Math.round(mp.x)
+          const py = Math.round(mp.y)
+          const lifePct =
+            mp.maxHp > 0
+              ? Math.max(1, Math.min(128, Math.round((mp.hp / mp.maxHp) * 128)))
+              : 128
+          return [
+            {
+              type: 'UnitAssign',
+              unitType: 'monster',
+              unitId,
+              classId: mp.classId,
+              name: mp.name,
+              x: px,
+              y: py,
+              areaId: mp.areaId,
+              unit: {
+                unitType: 1,
+                id: unitId,
+                classId: mp.classId,
+                name: mp.name,
+                x: px,
+                y: py,
+                mode: 1,
+                lifePct,
+                ownerType: 0,
+                ownerId: mp.ownerId,
+              },
+            },
+          ]
+        }
         return []
       }
       case 'object': {
@@ -6797,6 +7843,7 @@ export class GameInstance {
             container: 'ground',
             item: this.serverEntryToItemData(gItem),
           },
+          ...this.buildSocketChildEvents(gItem, 0x13),
         ]
       }
       case 'missile': {
@@ -6924,7 +7971,8 @@ export class GameInstance {
     areaId: number,
   ): boolean {
     if (this.difficulty !== 2 || TOWN_AREAS.has(areaId)) return false
-    // Exclude scripted non-replaceable quest encounter waves (Ancients 43..45, Baal Throne 61..65).
+    // Exclude scripted non-replaceable quest encounter waves (Chaos Seals 36..38 in 108, Ancients 43..45, Baal Throne 61..65).
+    if (areaId === 108 && superUniqueIndex >= 36 && superUniqueIndex <= 38) return false
     if (superUniqueIndex >= 43 && superUniqueIndex <= 45) return false
     if (superUniqueIndex >= 61 && superUniqueIndex <= 65) return false
     return true
@@ -7185,8 +8233,12 @@ export class GameInstance {
 
     // 2. Stream wilderness rooms & step player movement
     for (const player of this.players.values()) {
+      this.ensureAdjacentAreasLoaded(player.areaId)
       this.streamWildernessRoomsForPlayer(player)
-      if (player.dead) continue
+      if (player.dead) {
+        this.revealAreaRoomsNearPlayer(player, true)
+        continue
+      }
       this.stepPlayerMovement(player)
       this.revealAreaRoomsNearPlayer(player, true)
       this.stepPlayerVitals(player)
@@ -7199,14 +8251,61 @@ export class GameInstance {
       )
     }
 
+    // 2a. Step per-player 25Hz `AnimDispatcher` windup / keyframe actions / follow-through (#1789, #1862)
+    this.stepPlayerAnimations113c()
+
     // 2b. Persistent combat states (skill buffs / curses / auras), aura pulses, and trade lockout timers
     this.emitTradeEvents(this.tradeManager.tick(this.currentFrame))
     this.stepPersistentCombatStates()
     this.stepPlayerAuras()
     this.stepMercenaryAuras()
+    this.stepGrimWards113c()
+    this.stepBladeShields113c()
+    this.stepBladeFuryChannels113c()
+    this.stepPartyMemberPulses()
 
     // 3. Step missiles & collision
     this.stepMissiles()
+
+    // 3b. Ground item & gold decay timers (`D2Game.dll` `ITEMS_ExpireGroundItem`, #1915):
+    // 10 min (15,000 frames) for regular/white/consumables/gold < 10k,
+    // 20 min (30,000 frames) for magic & gold >= 10k,
+    // 30 min (45,000 frames) for set/rare/unique/crafted/runeword/quest.
+    for (const [itemId, gItem] of [...this.groundItems.entries()]) {
+      if (gItem.expireFrame !== undefined && this.currentFrame >= gItem.expireFrame) {
+        const gArea = gItem.areaId
+        this.broadcastToArea(gArea, {
+          type: 'UnitRemove',
+          unitType: 4,
+          id: itemId,
+          unitId: itemId,
+          areaId: gArea,
+        })
+        this.groundItems.delete(itemId)
+      }
+    }
+
+    // 3c. Scheduled Chaos Sanctuary Diablo spawns (`ACT4Q3` 125-frame / 5-second timer, #1928)
+    for (let i = this.pendingDiabloSpawns.length - 1; i >= 0; i--) {
+      const pending = this.pendingDiabloSpawns[i]!
+      if (this.currentFrame >= pending.frame) {
+        this.pendingDiabloSpawns.splice(i, 1)
+        const stand = this.loadedAreas.has(pending.areaId)
+          ? findStandableNear(
+              (x, y) => this.isWorldWalkableForPlayer(pending.areaId, x, y),
+              pending.x,
+              pending.y,
+              10,
+            )
+          : null
+        this.spawnMonster({
+          defId: 'diablo',
+          x: stand?.x ?? pending.x,
+          y: stand?.y ?? pending.y,
+          areaId: pending.areaId,
+        })
+      }
+    }
 
     // Shrines return to their idle mode after Shrines.txt ResetTime; water wells regenerate charges via Event 2 (0x6fc89ca0).
     for (const obj of this.objects.values()) {
@@ -7233,7 +8332,7 @@ export class GameInstance {
     }
 
     // 4. Step monster AI & state timers
-    for (const monster of this.monsters.values()) {
+    for (const monster of [...this.monsters.values()]) {
       if (monster.dead) {
         if (monster.hcIdx === 544 || monster.hcIdx === 709) {
           this.despawnBaalMinionsOnBossDeath113c(monster)
@@ -7247,6 +8346,58 @@ export class GameInstance {
           monster.pendingDropItems = undefined
           this.spawnDroppedItems(items, monster.areaId, monster.x, monster.y)
         }
+        // 1.13c `MonUMod #34` (`ai_after_death`, `0x6FC43E20`) & `#293 Self-resurrect` (`0x6FC38A90`, #1901):
+        // Act 5 `reanimatedhorde` corpses roll `aip1%` (`30..70%`) to stand back up when unshattered & unconsumed.
+        if (
+          monster.selfResurrectCheckFrame > 0 &&
+          this.currentFrame >= monster.selfResurrectCheckFrame
+        ) {
+          if (monster.shattered || monster.corpseConsumed) {
+            monster.selfResurrectCheckFrame = 0
+          } else {
+            const chancePct = resolveSelfResurrectChancePct113c(
+              monster.hcIdx,
+              monster.aiParams[0],
+            )
+            if (this.rng.rand(100) < chancePct) {
+              monster.dead = false
+              monster.hp = monster.maxHp
+              monster.mode = 1
+              monster.alreadyGrantedKillRewards = true
+              monster.selfResurrectCheckFrame = 0
+              monster.selfResurrectCount += 1
+              this.broadcastToArea(monster.areaId, {
+                type: 'UnitMode',
+                unitType: 1,
+                id: monster.unitId,
+                mode: 8,
+                at: { x: Math.round(monster.x), y: Math.round(monster.y) },
+                lifePct: 128,
+              })
+              this.broadcastToArea(monster.areaId, {
+                type: 'UnitMode',
+                unitType: 1,
+                id: monster.unitId,
+                mode: 1,
+                at: { x: Math.round(monster.x), y: Math.round(monster.y) },
+                lifePct: 128,
+              })
+              this.broadcastToArea(monster.areaId, {
+                type: 'UnitStatUpdate',
+                unitType: 'monster',
+                unitId: monster.unitId,
+                statId: 6,
+                value: monster.hp,
+              })
+            } else {
+              monster.selfResurrectCheckFrame = this.currentFrame + 75
+            }
+          }
+        }
+        continue
+      }
+      if (monster.despawnAtFrame > 0 && this.currentFrame >= monster.despawnAtFrame) {
+        this.despawnTemporaryMonsterUnit113c(monster)
         continue
       }
       this.stepUnitStates(
@@ -7284,7 +8435,26 @@ export class GameInstance {
         !monster.isNpc &&
         this.isMonsterInActiveAoi(monster)
       ) {
+        const monPrevArea = monster.areaId
+        const monPrevX = monster.x
+        const monPrevY = monster.y
         this.stepMonsterAi(monster)
+        if (
+          monster.areaId !== monPrevArea ||
+          monster.x !== monPrevX ||
+          monster.y !== monPrevY
+        ) {
+          this.syncUnitMoveAcrossViewerAoi113c(
+            'monster',
+            monster.unitId,
+            monPrevArea,
+            monPrevX,
+            monPrevY,
+            monster.areaId,
+            monster.x,
+            monster.y,
+          )
+        }
       }
       this.stepPendingMonsterAttack(monster)
       this.stepPendingAllyAttack(monster)
@@ -7310,17 +8480,25 @@ export class GameInstance {
     }
   }
 
+  private isPlayerInBlockRecovery(player: InternalPlayerRecord): boolean {
+    return (
+      player.blockRecoveryUntilFrame !== undefined &&
+      this.currentFrame < player.blockRecoveryUntilFrame
+    )
+  }
+
   private isPlayerInHitRecovery(player: InternalPlayerRecord): boolean {
     return (
-      player.hitRecoveryUntilFrame !== undefined &&
-      this.currentFrame < player.hitRecoveryUntilFrame
+      (player.hitRecoveryUntilFrame !== undefined &&
+        this.currentFrame < player.hitRecoveryUntilFrame) ||
+      this.isPlayerInBlockRecovery(player)
     )
   }
 
   private processPlayerCommand(player: InternalPlayerRecord, cmd: ClientCommand): void {
     switch (cmd.type) {
       case 'Move': {
-        if (player.dead || this.isPlayerInHitRecovery(player)) return
+        if (player.dead || this.consumeOrBlockMoveDuringPlayerAnim113c(player)) return
         const tx = cmd.to?.x ?? cmd.x ?? player.x
         const ty = cmd.to?.y ?? cmd.y ?? player.y
         if (!Number.isFinite(tx) || !Number.isFinite(ty)) return
@@ -7335,7 +8513,7 @@ export class GameInstance {
         break
       }
       case 'WalkToLocation': {
-        if (player.dead || this.isPlayerInHitRecovery(player)) return
+        if (player.dead || this.consumeOrBlockMoveDuringPlayerAnim113c(player)) return
         if (!Number.isFinite(cmd.x) || !Number.isFinite(cmd.y)) return
         this.clearPlayerChannelState(player)
         player.pendingInteraction = undefined
@@ -7348,7 +8526,7 @@ export class GameInstance {
         break
       }
       case 'RunToLocation': {
-        if (player.dead || this.isPlayerInHitRecovery(player)) return
+        if (player.dead || this.consumeOrBlockMoveDuringPlayerAnim113c(player)) return
         if (!Number.isFinite(cmd.x) || !Number.isFinite(cmd.y)) return
         this.clearPlayerChannelState(player)
         player.pendingInteraction = undefined
@@ -7363,7 +8541,7 @@ export class GameInstance {
       case 'MoveToUnit':
       case 'WalkToTarget':
       case 'RunToTarget': {
-        if (player.dead || this.isPlayerInHitRecovery(player)) return
+        if (player.dead || this.consumeOrBlockMoveDuringPlayerAnim113c(player)) return
         this.clearPlayerChannelState(player)
         player.pendingInteraction = undefined
         player.pendingInteractionSteps = 0
@@ -7449,23 +8627,32 @@ export class GameInstance {
         const slot = Number(cmd.slot ?? -1)
         if (!Number.isInteger(slot) || slot < 0 || slot >= 16) break
         const skillId = Number(cmd.skill ?? 0xffff)
-        const isUnbind = skillId === 0xffff || skillId === 0x7fff || skillId < 0
-        if (!isUnbind && !this.isPlayerSkillSelectable(player, skillId, cmd.hand)) {
+        const isUnbind =
+          skillId === 0xffff ||
+          (skillId & 0x7fff) === 0x7fff ||
+          skillId < 0
+        if (!isUnbind && !this.isPlayerSkillSelectable(player, skillId & 0x7fff, cmd.hand)) {
           break
         }
-        if (player.d2sTemplate?.hotkeys) {
-          const mutableHotkeys = player.d2sTemplate.hotkeys as number[]
-          const encoded = isUnbind
-            ? 0xffff
-            : ((cmd.hand === 'left' ? 0x8000 : 0) | (skillId & 0x7fff)) >>> 0
-          if (!isUnbind) {
-            for (let i = 0; i < 16; i++) {
-              if (i !== slot && mutableHotkeys[i] === encoded) {
-                mutableHotkeys[i] = 0xffff
-              }
+        const encoded = isUnbind
+          ? 0xffff
+          : (((cmd.hand === 'left' ? 0x8000 : 0) | (skillId & 0x7fff)) & 0xffff)
+        const itemId = isUnbind ? 0xffffffff : ((cmd.itemId ?? 0xffffffff) >>> 0)
+        if (!isUnbind) {
+          for (let i = 0; i < 16; i++) {
+            if (i !== slot && player.hotkeys[i] === encoded) {
+              player.hotkeys[i] = 0xffff
+              player.hotkeyItemIds[i] = 0xffffffff
             }
           }
-          mutableHotkeys[slot] = encoded
+        }
+        player.hotkeys[slot] = encoded
+        player.hotkeyItemIds[slot] = itemId
+        if (player.d2sTemplate?.hotkeys) {
+          const mutableHotkeys = player.d2sTemplate.hotkeys as number[]
+          for (let i = 0; i < Math.min(16, mutableHotkeys.length); i++) {
+            mutableHotkeys[i] = player.hotkeys[i] ?? 0xffff
+          }
         }
         break
       }
@@ -7494,7 +8681,8 @@ export class GameInstance {
           this.executeIronGolemSkillCast113c(player, { tx, ty })
           break
         }
-        this.executeSkillAtLocation(player, skillId, tx, ty)
+        const hold = 'hold' in cmd ? Boolean(cmd.hold) : false
+        this.executeSkillAtLocation(player, skillId, tx, ty, undefined, { hold })
         break
       }
       case 'CastSkillOnTarget':
@@ -7526,6 +8714,8 @@ export class GameInstance {
           this.executeIronGolemSkillCast113c(player, { targetItemId: targetId })
           break
         }
+        const shift = 'shift' in cmd ? Boolean(cmd.shift) : false
+        const hold = 'hold' in cmd ? Boolean(cmd.hold) : false
         // #1806: keep the clicked unit type (C2S 0x06/0x07/0x0D/0x0E) so Telekinesis can reach
         // ground items (4) and objects (2), not only monsters.
         const targetType = normalizeSkillTargetUnitType113c(
@@ -7535,13 +8725,21 @@ export class GameInstance {
               ? cmd.targetType
               : cmd.unitKind,
         )
-        this.executeSkillOnTarget(player, skillId, targetId, targetType)
+        this.executeSkillOnTarget(player, skillId, targetId, targetType, { shift, hold })
         break
       }
       case 'Interact':
       case 'InteractEntity':
       case 'OperateObject': {
-        if (player.dead || this.isPlayerInHitRecovery(player)) return
+        if (
+          player.dead ||
+          this.isPlayerInHitRecovery(player) ||
+          this.isPlayerInBlockRecovery(player) ||
+          this.isPlayerWhirlwinding113c(player) ||
+          this.isPlayerActionAnimLocked113c(player)
+        ) {
+          return
+        }
         const targetId =
           cmd.type === 'OperateObject'
             ? cmd.objectId
@@ -7551,10 +8749,14 @@ export class GameInstance {
         // C2S 0x13 InteractUnit(5, warpId): `UNIT_TILE` warps (D2Client 0x6facafbd).
         const rawTargetType: unknown =
           cmd.type === 'Interact' ? cmd.target.unitType : cmd.type === 'InteractEntity' ? cmd.targetType : 2
+        const targetPlayerForInteract =
+          rawTargetType === 0 || rawTargetType === 'player'
+            ? this.players.get(targetId)
+            : undefined
         if (
-          (rawTargetType === 0 || rawTargetType === 'player') &&
+          targetPlayerForInteract !== undefined &&
           targetId !== player.unitId &&
-          this.players.has(targetId)
+          !targetPlayerForInteract.dead
         ) {
           this.handlePlayerTradeInteract(player, targetId)
           break
@@ -7569,13 +8771,36 @@ export class GameInstance {
       }
       case 'TakeWarp':
       case 'WarpTo': {
-        if (player.dead || this.isPlayerInHitRecovery(player)) return
+        if (
+          player.dead ||
+          this.isPlayerInHitRecovery(player) ||
+          this.isPlayerInBlockRecovery(player) ||
+          this.isPlayerWhirlwinding113c(player) ||
+          this.isPlayerActionAnimLocked113c(player)
+        ) {
+          return
+        }
         this.handleWarpTileInteract(player, cmd.warpId)
         break
       }
       case 'WaypointGo': {
-        if (player.dead || this.isPlayerInHitRecovery(player)) return
+        if (
+          player.dead ||
+          this.isPlayerInHitRecovery(player) ||
+          this.isPlayerInBlockRecovery(player) ||
+          this.isPlayerWhirlwinding113c(player) ||
+          this.isPlayerActionAnimLocked113c(player)
+        ) {
+          return
+        }
         if (cmd.destAreaId === 0 || cmd.destAreaId === player.areaId) {
+          player.activeWaypointUnitId = 0
+          if (player.pendingInteraction?.kind === 'waypoint') {
+            player.pendingInteraction = undefined
+          }
+          return
+        }
+        if (!canUseWaypointInPvp113c(this.currentFrame, player.hostilePortalLockUntilFrame)) {
           player.activeWaypointUnitId = 0
           if (player.pendingInteraction?.kind === 'waypoint') {
             player.pendingInteraction = undefined
@@ -7623,7 +8848,15 @@ export class GameInstance {
         break
       }
       case 'TownPortal': {
-        if (player.dead || this.isPlayerInHitRecovery(player)) return
+        if (
+          player.dead ||
+          this.isPlayerInHitRecovery(player) ||
+          this.isPlayerInBlockRecovery(player) ||
+          this.isPlayerWhirlwinding113c(player) ||
+          this.isPlayerActionAnimLocked113c(player)
+        ) {
+          return
+        }
         this.openTownPortal(player)
         break
       }
@@ -7745,11 +8978,48 @@ export class GameInstance {
         this.handleBeltPut(player, cmd.itemId, cmd.slot)
         break
       }
-      case 'BeltRemove':
-      case 'BeltUse':
+      case 'BeltRemove': {
+        if (player.dead) return
+        this.handleBeltRemoveToCursor(player, cmd.itemId)
+        break
+      }
+      case 'BeltUse': {
+        if (player.dead) return
+        this.handleBeltUse(player, cmd.itemId, Boolean(cmd.shift || cmd.useOnMerc))
+        break
+      }
       case 'ItemUse': {
         if (player.dead) return
-        this.handleBeltUse(player, cmd.itemId)
+        this.handleBeltUse(player, cmd.itemId, false)
+        break
+      }
+      case 'StackItems': {
+        if (player.dead) return
+        this.handleStackItems(player, cmd.cursorItemId, cmd.targetItemId)
+        break
+      }
+      case 'UnstackItems': {
+        if (player.dead) return
+        this.handleUnstackItems(player, cmd.itemId)
+        break
+      }
+      case 'SelectMainItem':
+      case 'ActivateQuestScroll': {
+        if (player.dead) return
+        this.handleSelectMainItem(player, cmd.itemId)
+        break
+      }
+      case 'RequestQuestData': {
+        this.emitToPlayer(player.unitId, {
+          type: 'QuestState',
+          source: 0x28,
+          kind: 'update',
+          updateType: 0,
+          unitId: player.unitId,
+          timer: 0,
+          quests: new Uint16Array(player.questFlags),
+          flags: Array.from(player.questFlags),
+        })
         break
       }
       case 'NpcInit':
@@ -7760,6 +9030,7 @@ export class GameInstance {
       }
       case 'NpcCancel': {
         player.activeNpcId = undefined
+        player.lastNpcInteractHandshakeId = undefined
         player.activeVendorMode = null
         break
       }
@@ -7821,7 +9092,8 @@ export class GameInstance {
         const isGamble =
           cmd.type === 'NpcGamble' || Boolean(cmd.gamble ?? cmd.buyType === 2)
         const explicitCost = cmd.type === 'NpcBuy' ? cmd.cost : undefined
-        this.handleNpcBuy(player, cmd.npcId, cmd.itemId, isGamble, explicitCost)
+        const shiftFill = cmd.type === 'NpcBuy' && Boolean(cmd.shiftFill)
+        this.handleNpcBuy(player, cmd.npcId, cmd.itemId, isGamble, explicitCost, shiftFill)
         break
       }
       case 'NpcSell': {
@@ -7896,6 +9168,10 @@ export class GameInstance {
         this.handleChatCommand(player, cmd.text, cmd.whisperTo)
         break
       }
+      case 'OverheadChat': {
+        this.handleOverheadChatCommand(player, cmd.text)
+        break
+      }
       case 'UpdatePlayerPos': {
         this.handleUpdatePlayerPos(player, cmd.x, cmd.y)
         break
@@ -7928,8 +9204,21 @@ export class GameInstance {
       player.mode = 18
       return
     }
+    if (this.isPlayerInBlockRecovery(player)) {
+      player.mode = 9
+      return
+    }
     if (this.isPlayerInHitRecovery(player)) {
       player.mode = 4
+      return
+    }
+    if (this.isPlayerActionAnimLocked113c(player)) {
+      const activeAnim = this.playerAnimDispatchers.get(player.unitId)?.getCurrentAnimation()
+      if (activeAnim && !activeAnim.completed) {
+        player.mode = getSkillAnimModes(activeAnim.skill.id).playerMode
+      }
+      player.targetX = player.x
+      player.targetY = player.y
       return
     }
     const motion = this.getPlayerMotion(player)
@@ -7994,12 +9283,28 @@ export class GameInstance {
       const areaId = player.areaId
       mover.setCollisionChecker((sx, sy) => this.isPlayerSubTileBlocked(areaId, sx, sy))
     }
+    const prevMoveAreaId = player.areaId
+    const prevMoveX = player.x
+    const prevMoveY = player.y
     const snap = mover.stepTicks(1)
     player.x = snap.logicalX
     player.y = snap.logicalY
     motion.x = player.x
     motion.y = player.y
     this.maybeSwitchPlayerAreaSeamless(player)
+    if (player.areaId === prevMoveAreaId && (player.x !== prevMoveX || player.y !== prevMoveY)) {
+      this.syncUnitMoveAcrossViewerAoi113c(
+        'player',
+        player.unitId,
+        prevMoveAreaId,
+        prevMoveX,
+        prevMoveY,
+        player.areaId,
+        player.x,
+        player.y,
+        player.unitId,
+      )
+    }
 
     const segmentEnd = snap.currentWaypoint
     if (segmentEnd === null) {
@@ -8029,8 +9334,7 @@ export class GameInstance {
     }
 
     if (
-      player.corpseId !== undefined &&
-      player.corpseItems.length > 0 &&
+      this.hasLivePrimaryCorpse113c(player) &&
       !player.corpseRequiresClick &&
       (player.corpseAreaId ?? player.areaId) === player.areaId
     ) {
@@ -8055,7 +9359,15 @@ export class GameInstance {
           cDist <= 3 &&
           this.hasInteractionLineOfSight(player.areaId, player.x, player.y, otherPlayer.corpseX, otherPlayer.corpseY)
         ) {
-          if (this.partyManager.hasLootPermission(otherPlayer.unitId, player.unitId)) {
+          if (
+            canLootPlayerCorpse113c({
+              looterUnitId: player.unitId,
+              victimUnitId: otherPlayer.unitId,
+              looterIsHardcore: isPlayerHardcore113c(player),
+              victimIsHardcore: isPlayerHardcore113c(otherPlayer),
+              hasLootPermission: this.partyManager.hasLootPermission(otherPlayer.unitId, player.unitId),
+            })
+          ) {
             this.lootOtherPlayerCorpse(player, otherPlayer)
           }
         }
@@ -8084,8 +9396,7 @@ export class GameInstance {
     // Unknown Skills.txt row (malformed client command) or passive skill: D2Game drops the cast.
     if (skill === undefined || skill.passive) return null
     if (!skill.inTown && TOWN_AREAS.has(player.areaId)) return null
-    const readyFrame = this.playerSkillReadyFrame.get(player.unitId)?.get(skillId)
-    if (readyFrame !== undefined && this.currentFrame < readyFrame) return null
+    if (this.animActionWindupEnabled && this.isPlayerActionAnimLocked113c(player, skill)) return null
     if (!this.playerMeetsSkillRestrict(player, skill)) return null
 
     // D2Game only casts skills present in the player's skill list: hard points / +skill items on
@@ -8139,11 +9450,13 @@ export class GameInstance {
       },
       { ownerType: 'player', charClass: player.classCode },
     )
-    for (const [id, lvl] of player.skills) {
-      statList.setBaseSkillLevel(id, lvl)
-    }
+    this.syncPlayerSkillLevelsToStatList113c(player, statList, this.playerCombat.get(player.unitId)?.stateBus)
     const blvl = player.skills.get(skillId) ?? 0
-    if (slvl > blvl) statList.setBonusSkillLevel(skillId, slvl - blvl)
+    const syncedLvl = statList.getEffectiveSkillLevel(skillId)
+    if (syncedLvl !== slvl && (slvl > blvl || syncedLvl > 0)) {
+      // Charged casts (`item_charged_skill` 204) run at the charge slvl; hard points still drive synergies.
+      statList.setBonusSkillLevel(skillId, statList.getBonusSkillLevel(skillId) + (slvl - syncedLvl))
+    }
     const evalResult = evaluateSkill113c({
       registry: this.registry,
       skill,
@@ -8153,6 +9466,14 @@ export class GameInstance {
       difficulty: this.difficulty === 2 ? 2 : this.difficulty === 1 ? 1 : 0,
       randFn: (lo: number, hi: number) => (lo >= hi ? lo : lo + this.rng.rand(hi - lo + 1)),
     })
+    // 1.13c `D2Game.dll` `SKILLS_ApplySkillDelay` (`0x6FCBFF70`, #1877):
+    // `STATE_SKILLDELAY` (`state 121`) is a global per-player cooldown shared across ALL `delay > 0`
+    // skills (`Blizzard`, `Frozen Orb`, `Meteor`, `Fire Wall`, `Hydra`, `Fist of the Heavens`,
+    // `Volcano`, `Molten Boulder`, `Fissure`, `Armageddon`, `Hurricane`, `Valkyrie`, `Shadow Master`, etc.),
+    // while `delay == 0` skills (`Teleport`, `Glacial Spike`, `Fire Ball`, `Static Field`, etc.) remain castable.
+    if (evalResult.cooldownFrames > 0 && this.isPlayerSkillDelayActive113c(player)) {
+      return null
+    }
     // 1.13c `D2Common.dll` `SKILLS_CheckSkillMana` (`0x6FDA0AF0` @ `0x6FDA0BEB`) & `D2Game.dll`
     // `SKILLS_CheckSkillMana` (`0x6FCBEC80` @ `0x6FCBECEF`) / `SKILLS_SrvDo116_Wearwolf_Wearbear` (`0x6FC66210`):
     // `nocostinstate = 1` (`Wearwolf` #223 `aurastate = wolf` #139, `Wearbear` #228 `aurastate = bear` #140)
@@ -8350,11 +9671,27 @@ export class GameInstance {
    */
   private resolvePlayerSkillLevel(player: InternalPlayerRecord, skill: SkillRecord): number {
     if (UNIVERSAL_PLAYER_SKILL_IDS.has(skill.id)) return 1
-    const tabParam = this.resolveSkillTabParam(skill)
     const combat = this.playerCombatContext(player)
-    let allSkills =
+    const modAllSkills =
       Math.trunc(combat.statList.getModifierBonus('item_allskills')) +
       (player.states.has(134) && !combat.stateBus.hasState(134) ? 2 : 0)
+    return this.computePlayerSkillLevel113c(player, skill, modAllSkills, collectEquippedItemStats(player.items))
+  }
+
+  /**
+   * Non-recursive core of `resolvePlayerSkillLevel` (`SKILLS_GetSkillLevel` `0x6FDA05D0`): `modAllSkills`
+   * carries the state-granted `item_allskills` (Battle Command, Skill Shrine) and `itemStats` the active
+   * equipped stats, so `playerCombatContext` can sync every skill without re-entering itself (#1798).
+   */
+  private computePlayerSkillLevel113c(
+    player: InternalPlayerRecord,
+    skill: SkillRecord,
+    modAllSkills: number,
+    itemStats: readonly ItemStat[],
+  ): number {
+    if (UNIVERSAL_PLAYER_SKILL_IDS.has(skill.id)) return 1
+    const tabParam = this.resolveSkillTabParam(skill)
+    let allSkills = modAllSkills
     let classSkills = 0
     let tabSkills = 0
     let elemSkills = 0
@@ -8369,7 +9706,7 @@ export class GameInstance {
       4: 'cold',
       5: 'pois',
     }
-    for (const stat of collectEquippedItemStats(player.items)) {
+    for (const stat of itemStats) {
       if (stat.statId === STAT_ITEM_ALLSKILLS) allSkills += stat.value
       else if (stat.statId === STAT_ITEM_ADDCLASSSKILLS && stat.param === player.classId) classSkills += stat.value
       else if (
@@ -8397,6 +9734,273 @@ export class GameInstance {
       )
     }
     return oskill > 0 ? Math.min(99, Math.max(0, oskill + allSkills + elemSkills)) : 0
+  }
+
+  /**
+   * 1.13c `SKILLS_RefreshPassiveSkills` (`0x6FCBA1A0`) input sync (#1798, #1801..#1804): writes hard points
+   * (`blvl`) plus a per-skill bonus so `statList.getEffectiveSkillLevel(id)` equals the exact
+   * `SKILLS_GetSkillLevel` result (`+all/+class/+tab/+elem/+single` skills, native `oskill` capped at 3,
+   * foreign `oskill` uncapped, Battle Command / Skill Shrine) for every learned or item-granted skill.
+   * Passive statlists (Critical Strike, Dodge/Avoid/Evade, Penetrate, Pierce, Masteries, Iron Skin,
+   * Increased Speed/Stamina, Natural Resistance, Claw Mastery, Weapon Block) therefore follow `+skills`.
+   */
+  private syncPlayerSkillLevelsToStatList113c(
+    player: InternalPlayerRecord,
+    st: UnitStatList,
+    stateBus: StateBus | undefined,
+  ): void {
+    const itemStats = collectEquippedItemStats(player.items)
+    const ids = new Set<number>(player.skills.keys())
+    for (const stat of itemStats) {
+      if (
+        (stat.statId === STAT_ITEM_NONCLASSSKILL || stat.statId === STAT_ITEM_SINGLESKILL) &&
+        stat.value > 0 &&
+        (stat.param ?? 0) > 0
+      ) {
+        ids.add(stat.param!)
+      }
+    }
+    const baseLevels = new Map<number, number>()
+    for (const [id, lvl] of player.skills) baseLevels.set(id, lvl)
+    st.replaceSkillLevels(baseLevels, new Map())
+    const modAllSkills =
+      Math.trunc(st.getModifierBonus('item_allskills')) +
+      (player.states.has(134) && stateBus !== undefined && !stateBus.hasState(134) ? 2 : 0)
+    const bonusLevels = new Map<number, number>()
+    for (const id of ids) {
+      const skill = this.registry.getSkillById(id)
+      if (skill === undefined || UNIVERSAL_PLAYER_SKILL_IDS.has(id)) continue
+      const eff = this.computePlayerSkillLevel113c(player, skill, modAllSkills, itemStats)
+      if (eff <= 0) continue
+      const withoutBonus = st.getEffectiveSkillLevel(id)
+      if (eff !== withoutBonus) bonusLevels.set(id, eff - withoutBonus)
+    }
+    st.replaceSkillLevels(baseLevels, bonusLevels)
+  }
+
+  /** Copies gear elemental mastery / pierce stats `329..336` onto a combat stat list (#1801). */
+  private applyItemMasteryPierceStats113c(
+    st: UnitStatList,
+    sumStat: (statId: number) => number,
+  ): void {
+    for (const [statId, name] of ELEMENTAL_MASTERY_PIERCE_STATS_113C) {
+      st.setBaseStat(name, sumStat(statId))
+    }
+  }
+
+  /** `ItemTypes.txt` codes of the active right/left hand weapons (`undefined` for shields / empty). */
+  private resolvePlayerHandWeaponTypes113c(player: InternalPlayerRecord): {
+    readonly right: string | undefined
+    readonly left: string | undefined
+  } {
+    let right: string | undefined
+    let left: string | undefined
+    for (const item of player.items) {
+      if (item.location !== 'equipped') continue
+      if (item.bodyLoc === BODYLOC_RIGHT_ARM) right = resolveWeaponBase113c(item.code)?.type
+      else if (item.bodyLoc === BODYLOC_LEFT_ARM) left = resolveWeaponBase113c(item.code)?.type
+    }
+    return { right, left }
+  }
+
+  /**
+   * 1.13c item event dispatch (`0x6FD27E48`, handlers `0x6FC89060..0x6FC894F0`, #1797): aggregates the
+   * player's active equipped CtC stat `statId` by `(skillId, slvl)`, rolls each entry and casts the
+   * successful ones through `executePlayerItemProcSkill113c` (`SKILLS_DoSkill` with `bItemProc = 1`).
+   * Swap slots (11/12), unidentified and broken items never proc.
+   */
+  private triggerPlayerCtcProcs113c(
+    player: InternalPlayerRecord,
+    statId: CtcStatId113c,
+    opts: {
+      readonly target?: InternalMonsterRecord | undefined
+      readonly tx?: number | undefined
+      readonly ty?: number | undefined
+    },
+  ): void {
+    if (this.playerCtcProcDepth > 0) return
+    const stats: ItemStat[] = []
+    for (const item of player.items) {
+      if (item.location !== 'equipped' || item.bodyLoc === 11 || item.bodyLoc === 12) continue
+      if (item.identified === false || item.rawItemData?.identified === false) continue
+      const broken =
+        item.rawItemData?.broken === true ||
+        (item.maxDurability > 0 && item.durability <= 0 && (item.stats.get(152) ?? 0) <= 0)
+      if (broken) continue
+      for (const st of collectItemStats(item)) {
+        if (st.statId === statId) stats.push(st)
+      }
+    }
+    if (stats.length === 0) return
+    const fired = rollCtcProcs113c(aggregateCtcProcs113c(stats, statId), () => this.rng.rand(100))
+    if (fired.length === 0) return
+    this.playerCtcProcDepth += 1
+    try {
+      for (const proc of fired) {
+        this.executePlayerItemProcSkill113c(player, proc.skillId, proc.slvl, statId, opts)
+      }
+    } finally {
+      this.playerCtcProcDepth -= 1
+    }
+  }
+
+  /**
+   * `SKILLS_DoSkill` with `bItemProc = 1` (`0x6FCC1A50` / `0x6FCC1B0D`): casts `skillId` at the item `slvl`
+   * with 0 mana and no `delay`, evaluated with the caster's hard points (`blvl`) so synergies, Sorceress
+   * masteries and gear `329..336` apply. Curses land around the target, novas expand around the event point
+   * (target for attack/hit/kill, player for get-hit/on-skill/level-up/death), buffs go on the player,
+   * missiles fly from the player toward the target.
+   */
+  private executePlayerItemProcSkill113c(
+    player: InternalPlayerRecord,
+    skillId: number,
+    slvl: number,
+    statId: CtcStatId113c,
+    opts: {
+      readonly target?: InternalMonsterRecord | undefined
+      readonly tx?: number | undefined
+      readonly ty?: number | undefined
+    },
+  ): void {
+    const skill = this.registry.getSkillById(skillId)
+    if (skill === undefined || skill.passive) return
+    const combat = this.playerCombatContext(player)
+    const statList = new UnitStatList(
+      this.registry,
+      {
+        level: player.level,
+        strength: player.strength,
+        dexterity: player.dexterity,
+        vitality: player.vitality,
+        energy: player.energy,
+      },
+      { ownerType: 'player', charClass: player.classCode },
+    )
+    this.syncPlayerSkillLevelsToStatList113c(player, statList, combat.stateBus)
+    this.applyItemMasteryPierceStats113c(statList, (sid) => this.sumPlayerItemStat(player, sid))
+    const blvl = player.skills.get(skillId) ?? 0
+    statList.setBonusSkillLevel(
+      skillId,
+      statList.getBonusSkillLevel(skillId) + (slvl - statList.getEffectiveSkillLevel(skillId)),
+    )
+    const evalResult = evaluateSkill113c({
+      registry: this.registry,
+      skill,
+      slvl,
+      blvl,
+      statList,
+      difficulty: this.difficulty === 2 ? 2 : this.difficulty === 1 ? 1 : 0,
+      randFn: (lo: number, hi: number) => (lo >= hi ? lo : lo + this.rng.rand(hi - lo + 1)),
+    })
+    const missileName = resolvePlayerServerMissileName(skill, evalResult)
+    const missile = missileName !== '' ? this.registry.getMissileByName(missileName) : undefined
+    const cast: PlayerSkillCast = { skill, slvl, evalResult, missile, statList, blvl }
+    const target = opts.target !== undefined && !opts.target.dead ? opts.target : undefined
+    let fallbackTarget: InternalMonsterRecord | undefined
+    if (target === undefined && opts.tx === undefined) {
+      let bestDist = 25
+      for (const m of this.monsters.values()) {
+        if (m.dead || m.isNpc || !m.isKillable || m.submerged || m.areaId !== player.areaId) continue
+        if (this.isMonsterConverted(m)) continue
+        const d = Math.hypot(m.x - player.x, m.y - player.y)
+        if (d <= bestDist) {
+          bestDist = d
+          fallbackTarget = m
+        }
+      }
+    }
+    const aimTarget = target ?? fallbackTarget
+    const aroundPlayer = statId === 201 || statId === 200 || statId === 199 || statId === 197
+    const originX = aroundPlayer ? player.x : (opts.target?.x ?? opts.tx ?? aimTarget?.x ?? player.x)
+    const originY = aroundPlayer ? player.y : (opts.target?.y ?? opts.ty ?? aimTarget?.y ?? player.y)
+    const tx = aimTarget?.x ?? opts.tx ?? player.x
+    const ty = aimTarget?.y ?? opts.ty ?? player.y
+    if (skill.summon !== '' || skill.petType !== '') {
+      this.applyPlayerSkillEffect(player, cast, originX, originY, target)
+      return
+    }
+    if (skill.auraTgtState !== '') {
+      this.applyPlayerSkillEffect(player, cast, tx, ty, aimTarget)
+      return
+    }
+    if (
+      skill.auraState !== '' &&
+      (skill.srcDam <= 0 || skill.id === 277) &&
+      skill.srvDoFunc !== SRVDOFUNC_WHIRLWIND
+    ) {
+      // Self-buff CtC procs (Fortitude #60 Chilling Armor, Treachery #267 Fade / #278 Venom,
+      // Lava Gout / Obedience #52 Enchant `ItemTarget = 1` self, Bone/Cyclone Armor, Delirium #350).
+      this.applyPlayerSkillEffect(player, cast, player.x, player.y, undefined)
+      return
+    }
+    if (skillId === SKILL_TELEPORT) {
+      // 1.13c `Skills.txt` #54 Teleport `ItemTarget = 2` (The Oculus random destination around caster).
+      let destX = Math.round(player.x)
+      let destY = Math.round(player.y)
+      for (let attempt = 0; attempt < 8; attempt++) {
+        const dx = this.rng.rand(21) - 10
+        const dy = this.rng.rand(21) - 10
+        if (dx === 0 && dy === 0) continue
+        const cx = Math.max(1, Math.round(player.x) + dx)
+        const cy = Math.max(1, Math.round(player.y) + dy)
+        if (!this.terrainWalkableCheck || this.isWorldWalkableForPlayer(player.areaId, cx, cy)) {
+          destX = cx
+          destY = cy
+          break
+        }
+      }
+      this.relocatePlayerForSkill(player, destX, destY, true)
+      return
+    }
+    if (skill.srvDoFunc === SRVDOFUNC_MIND_BLAST) {
+      this.executeMindBlast(player, cast, tx, ty)
+      return
+    }
+    if (skillId === 42) {
+      this.applyStaticField(player, cast)
+      return
+    }
+    if (isCtcRadialNovaSkill113c(skillId)) {
+      const radius = Math.max(6, evalResult.radiusSubtiles > 0 ? evalResult.radiusSubtiles : 9)
+      const channel = normalizeMissileElement(skill.eType) ?? 'mag'
+      for (const m of [...this.monsters.values()]) {
+        if (m.dead || m.isNpc || !m.isKillable || m.submerged || m.areaId !== player.areaId) continue
+        if (this.isMonsterConverted(m)) continue
+        if (Math.hypot(m.x - originX, m.y - originY) > radius) continue
+        if (evalResult.elemType === 'pois' && evalResult.durationFrames > 0) {
+          const bitrate256 = this.rollInclusive(evalResult.minElemDmg256, evalResult.maxElemDmg256)
+          if (bitrate256 > 0) {
+            this.applyMonsterPoisonDot(player, m, bitrate256, evalResult.durationFrames, skillId)
+          }
+          continue
+        }
+        const dmg = this.rollInclusive(evalResult.minElemDmg, evalResult.maxElemDmg)
+        if (dmg <= 0) continue
+        this.applyDamageToMonster(player, m, dmg, skillId, channel, 'player', {
+          attackKind: 'spell',
+          autoHit: true,
+          unblockable: true,
+          elemDurationFrames: evalResult.durationFrames || undefined,
+        })
+      }
+      return
+    }
+    if (missile !== undefined) {
+      const missileTx = tx === player.x && ty === player.y ? player.x + 1 : tx
+      this.launchPlayerSkillMissiles(player, cast, missile, missileTx, ty, aimTarget)
+      return
+    }
+    if (aimTarget !== undefined) {
+      const dmg = this.rollPlayerSkillDamage(player, cast)
+      if (dmg > 0) {
+        this.applyDamageToMonster(player, aimTarget, dmg, skillId, normalizeMissileElement(skill.eType) ?? undefined, 'player', {
+          attackKind: 'spell',
+          autoHit: true,
+          unblockable: true,
+          elemDurationFrames: evalResult.durationFrames || undefined,
+        })
+      }
+    }
   }
 
   /**
@@ -8509,11 +10113,13 @@ export class GameInstance {
       },
       { ownerType: 'player', charClass: player.classCode },
     )
-    for (const [id, lvl] of player.skills) {
-      statList.setBaseSkillLevel(id, lvl)
-    }
+    this.syncPlayerSkillLevelsToStatList113c(player, statList, this.playerCombat.get(player.unitId)?.stateBus)
     const blvl = player.skills.get(skillId) ?? 0
-    if (slvl > blvl) statList.setBonusSkillLevel(skillId, slvl - blvl)
+    const syncedLvl = statList.getEffectiveSkillLevel(skillId)
+    if (syncedLvl !== slvl && (slvl > blvl || syncedLvl > 0)) {
+      // Charged casts (`item_charged_skill` 204) run at the charge slvl; hard points still drive synergies.
+      statList.setBonusSkillLevel(skillId, statList.getBonusSkillLevel(skillId) + (slvl - syncedLvl))
+    }
     const evalResult = evaluateSkill113c({
       registry: this.registry,
       skill,
@@ -8558,8 +10164,8 @@ export class GameInstance {
   }
 
   /**
-   * `Skills.txt` `restrict` against the shapeshift states (`States.txt` `wolf` / `bear`):
-   * 0 = refused while shapeshifted, 1 = allowed in any form, 2 = requires `State1..3`.
+   * `Skills.txt` `restrict` against the morph states (`States.txt` `restrict = 1`: `wolf` 139, `bear` 140, `delerium` 177):
+   * 0 = refused while morphed, 1 = allowed in human & morph forms (unless `State1..3` narrows morph states), 2 = requires `State1..3`.
    */
   private playerMeetsSkillRestrict(player: InternalPlayerRecord, skill: SkillRecord): boolean {
     const hasStateNamed = (name: string): boolean => {
@@ -8570,11 +10176,17 @@ export class GameInstance {
       }
       return player.states.has(rec.id)
     }
+    const isMorphed = hasStateNamed('wolf') || hasStateNamed('bear') || hasStateNamed('delerium')
+    const hasExplicitStates = skill.state1 !== '' || skill.state2 !== '' || skill.state3 !== ''
     if (skill.restrict === 2) {
+      if (!hasExplicitStates) return isMorphed
       return hasStateNamed(skill.state1) || hasStateNamed(skill.state2) || hasStateNamed(skill.state3)
     }
     if (skill.restrict === 0) {
-      return !hasStateNamed('wolf') && !hasStateNamed('bear')
+      return !isMorphed
+    }
+    if (isMorphed && hasExplicitStates) {
+      return hasStateNamed(skill.state1) || hasStateNamed(skill.state2) || hasStateNamed(skill.state3)
     }
     return true
   }
@@ -8688,6 +10300,14 @@ export class GameInstance {
       base.minMisDam !== undefined &&
       base.maxMisDam !== undefined &&
       base.maxMisDam > 0
+    // 1.13c `SUNITDMG_ApplyDamageBonuses` (`SUnitDmg.cpp:200`): weapon mastery `%ED` of the swinging weapon
+    // (`#127..#129/#134/#136` melee, `#135` throws, `#252` claws) joins the single off-weapon `%ED` pool.
+    const masteryEdPct =
+      resolveWeaponMasteryBonus113c(base.type, isThrowAttack, (id) =>
+        player.skills.has(id) || combat?.statList.getEffectiveSkillLevel(id) !== undefined
+          ? this.resolvePlayerSkillLevelById(player, id)
+          : 0,
+      )?.damagePct ?? 0
     const useTwoHand =
       !isThrowAttack &&
       base.twoHanded &&
@@ -8710,26 +10330,32 @@ export class GameInstance {
     const isEthWeapon = Boolean(
       weapon.ethereal || ((weapon.rawItemData?.flags ?? 0) & 0x00400000) !== 0,
     )
-    const weaponMin = isEthWeapon ? Math.floor((rawWeaponMin * 3) / 2) : rawWeaponMin
-    const weaponMax = isEthWeapon ? Math.floor((rawWeaponMax * 3) / 2) : rawWeaponMax
+    const isLowQualityWeapon =
+      weapon.quality === 1 || weapon.rawItemData?.quality === 1
+    const scaledRawWeapon = isLowQualityWeapon
+      ? scaleLowQualityWeaponBand113c(rawWeaponMin, rawWeaponMax)
+      : { min: rawWeaponMin, max: rawWeaponMax }
+    const weaponMin = isEthWeapon ? Math.floor((scaledRawWeapon.min * 3) / 2) : scaledRawWeapon.min
+    const weaponMax = isEthWeapon ? Math.floor((scaledRawWeapon.max * 3) / 2) : scaledRawWeapon.max
     let onWeaponEd = 0
     let flatMin = offWeapFlatMin
     let flatMax = offWeapFlatMax
     for (const stat of collectItemStats(weapon)) {
       if (stat.statId === STAT_ITEM_MAXDAMAGE_PERCENT) onWeaponEd += stat.value
       else if (stat.statId === 219) onWeaponEd += (stat.value * player.level) >> 3
-      else if (
+      else if (stat.statId === 111) {
+        flatMin += stat.value
+        flatMax += stat.value
+      } else if (
         stat.statId ===
           (isThrowAttack ? 159 : useTwoHand ? STAT_SECONDARY_MINDAMAGE : STAT_MINDAMAGE) ||
-        (isThrowAttack && stat.statId === STAT_MINDAMAGE) ||
-        stat.statId === 111
+        (isThrowAttack && stat.statId === STAT_MINDAMAGE)
       ) {
         flatMin += stat.value
       } else if (
         stat.statId ===
           (isThrowAttack ? 160 : useTwoHand ? STAT_SECONDARY_MAXDAMAGE : STAT_MAXDAMAGE) ||
-        (isThrowAttack && stat.statId === STAT_MAXDAMAGE) ||
-        stat.statId === 111
+        (isThrowAttack && stat.statId === STAT_MAXDAMAGE)
       ) {
         flatMax += stat.value
       } else if (stat.statId === 218) {
@@ -8744,7 +10370,7 @@ export class GameInstance {
       afterOnWeapMin,
       Math.trunc((weaponMax * (100 + onWeaponEd)) / 100) + flatMax,
     )
-    const combinedEdPct = Math.max(-90, offWeaponEdPercent + statBonusPercent)
+    const combinedEdPct = Math.max(-90, offWeaponEdPercent + masteryEdPct + statBonusPercent)
     const min = Math.max(1, afterOnWeapMin + Math.trunc((afterOnWeapMin * combinedEdPct) / 100))
     const max = Math.max(min, afterOnWeapMax + Math.trunc((afterOnWeapMax * combinedEdPct) / 100))
     return { min, max }
@@ -8752,6 +10378,9 @@ export class GameInstance {
 
   /** Spend the `Skills.txt` mana cost (256-fixed) and arm the `delay` cooldown of an accepted cast. */
   private commitPlayerSkillCast(player: InternalPlayerRecord, cast: PlayerSkillCast): void {
+    if (cast.skill.id > 5 && this.playerCtcProcDepth === 0) {
+      this.triggerPlayerCtcProcs113c(player, 200, {})
+    }
     if (cast.chargeItem !== undefined) {
       // Charged casts cost a charge instead of mana (1.13c D2Game.dll 0x6FCBF4F8).
       const consumed = consumeSkillCharge(cast.chargeItem, cast.skill.id)
@@ -8803,12 +10432,7 @@ export class GameInstance {
       }
     }
     if (cast.evalResult.cooldownFrames > 0) {
-      let ready = this.playerSkillReadyFrame.get(player.unitId)
-      if (ready === undefined) {
-        ready = new Map()
-        this.playerSkillReadyFrame.set(player.unitId, ready)
-      }
-      ready.set(cast.skill.id, this.currentFrame + cast.evalResult.cooldownFrames)
+      this.applyPlayerGlobalSkillDelay113c(player, cast.skill.id, cast.slvl, cast.evalResult.cooldownFrames)
     }
   }
 
@@ -8925,6 +10549,25 @@ export class GameInstance {
   }
 
   /**
+   * Resolve the caster's active Concentration (`#113`, `state 29`) `%ED` at the moment of casting
+   * Blessed Hammer (`#112`, `D2Game.dll` `0x6FCB95B2`, #1878).
+   */
+  private resolveActiveConcentrationEdPct113c(player: InternalPlayerRecord): number {
+    const combat = this.playerCombat.get(player.unitId)
+    const entry = combat?.stateBus.getState(42) ?? combat?.stateBus.getState('concentration')
+    if (entry !== undefined) {
+      const statEd = entry.stats['damagepercent'] ?? 0
+      if (statEd > 0) return statEd
+      if (entry.slvl > 0) return 60 + 15 * (entry.slvl - 1)
+    }
+    if (player.states.has(42) || this.playerActiveAuraState.get(player.unitId) === 42) {
+      const concSlvl = Math.max(1, this.resolvePlayerSkillLevelById(player, 113))
+      return 60 + 15 * (concSlvl - 1)
+    }
+    return 0
+  }
+
+  /**
    * Launch the skill's server missile (`Missiles.txt` row id, `Range` + `LevRange` lifetime). Missiles
    * with `Vel = 0` (Meteor / Blizzard / Fist of the Heavens centres, Blaze, ...) are created at the
    * target location, all others fly from the caster toward it.
@@ -8943,14 +10586,28 @@ export class GameInstance {
     const fromY = opts?.fromY ?? player.y
     const startX = stationary ? tx : fromX
     const startY = stationary ? ty : fromY
-    const dx = tx - fromX
-    const dy = ty - fromY
+    const rawDx = tx - fromX
+    const rawDy = ty - fromY
+    const isInPlaceHammer = cast.skill.id === 112 && Math.hypot(rawDx, rawDy) < 1e-6
+    const effTx = isInPlaceHammer ? fromX - 1 : tx
+    const effTy = isInPlaceHammer ? fromY - 1 : ty
+    const dx = effTx - fromX
+    const dy = effTy - fromY
     const dist = Math.max(1, Math.hypot(dx, dy))
     const rawVel = missileRec.vel + Math.trunc((missileRec.velLev * cast.slvl) / 8)
-    const speed = stationary ? 0 : rawVel > 0 ? rawVel / 16 : PLAYER_MISSILE_SPEED_SUBTILES
+    const baseSpeed = stationary ? 0 : rawVel > 0 ? rawVel / 16 : PLAYER_MISSILE_SPEED_SUBTILES
+    const speed = player.states.has(STATE_SLOWMISSILES_113C) ? baseSpeed * 0.33 : baseSpeed
     const lifetime = Math.max(1, missileRec.range + missileRec.levRange * cast.slvl)
     const missileUnitId = this.allocateUnitId()
     const missileElem = normalizeMissileElement(missileRec.eType || cast.skill.eType)
+    const isBlessedHammer = cast.skill.id === 112 && missileElem === 'mag'
+    let hammerSnap256: number | undefined
+    if (isBlessedHammer) {
+      const rolledHammer256 = this.rollInclusive(cast.evalResult.minElemDmg256, cast.evalResult.maxElemDmg256)
+      const concEdPct = this.resolveActiveConcentrationEdPct113c(player)
+      hammerSnap256 = snapshotBlessedHammerDamage256_113c(rolledHammer256, concEdPct)
+      damage = Math.max(1, Math.floor(hammerSnap256 / FIXED_ONE))
+    }
     const isPoisonSkillMissile =
       damage > 0 &&
       (missileElem === 'pois' || cast.evalResult.elemType === 'pois') &&
@@ -8973,6 +10630,13 @@ export class GameInstance {
     const elemDamage = isPoisonSkillMissile
       ? Math.floor((poisonBitrate256 * elemDurationFrames) / FIXED_ONE)
       : 0
+    // 1.13c `0x6FC8F660`: `CollideKill = 1` rows with `Pierce = 1` (arrows, bolts, javelins, Lightning Fury,
+    // Exploding/Freezing Arrow) roll `pierce_idx` from `item_pierce (156) + skill_pierce (#33)` at creation,
+    // at most 4 extra hits (5 targets); without pierce stats they stop on the first unit (#1802).
+    const pierceRemaining =
+      missileRec.pierce && missileRec.collideKill
+        ? resolveMissilePierceIdx(missileRec, this.playerCombatContext(player), this.registry)
+        : undefined
     const missile: InternalMissileRecord = {
       unitId: missileUnitId,
       missileId: missileRec.id,
@@ -8988,13 +10652,18 @@ export class GameInstance {
       remainingFrames: lifetime,
       collideType: missileRec.collideType,
       size: Math.max(1, missileRec.size),
-      pierce: missileRec.pierce,
+      pierce: pierceRemaining !== undefined ? pierceRemaining > 0 : missileRec.pierce,
+      ...(pierceRemaining !== undefined ? { pierceRemaining } : {}),
       nextHit: missileRec.nextHit,
       nextDelay: Math.max(0, missileRec.nextDelay),
       element:
         normalizeMissileElement(missileRec.eType || cast.skill.eType) ?? 'phys',
       physDamage,
       elemDamage,
+      ...(hammerSnap256 !== undefined
+        ? { elemDamage256: hammerSnap256, concentrationSnapshotted: true }
+        : {}),
+      ...(opts?.bladeWeaponHit === true ? { bladeWeaponHit: true } : {}),
       elemDurationFrames,
       ...(isPoisonSkillMissile ? { poisonBitrate256 } : {}),
       hitCooldowns: new Map(),
@@ -9002,18 +10671,18 @@ export class GameInstance {
     }
     // #1790: every damage or functional missile is registered with its `MissileEngine` srvdo/srvhit
     // state; zero-damage carriers without a 1.13c server function (warcry / curse) stay visual only.
-    this.registerPlayerSkillMissile113c(cast, missileRec, missile, damage, tx, ty, speed, opts)
+    this.registerPlayerSkillMissile113c(cast, missileRec, missile, damage, effTx, effTy, speed, opts)
 
     this.broadcastToArea(player.areaId, {
       type: 'CreateMissile',
       missileId: missileUnitId,
       missileClassId: missileRec.id,
       at: { x: Math.round(startX), y: Math.round(startY) },
-      target: { x: Math.round(tx), y: Math.round(ty) },
+      target: { x: Math.round(effTx), y: Math.round(effTy) },
       x: Math.round(startX),
       y: Math.round(startY),
-      targetX: Math.round(tx),
-      targetY: Math.round(ty),
+      targetX: Math.round(effTx),
+      targetY: Math.round(effTy),
       skillId: cast.skill.id,
       level: cast.slvl,
       ownerType: 0,
@@ -9031,6 +10700,43 @@ export class GameInstance {
       if (Math.hypot(m.x - player.x, m.y - player.y) <= radius) {
         this.applyDamageToMonster(player, m, 0, cast.skill.id)
       }
+    }
+    const pvp = this.collectHostilePvpTargetsInArea113c(player.unitId, player.areaId)
+    for (const p of pvp.players) {
+      if (p.hp <= 1 || Math.hypot(p.x - player.x, p.y - player.y) > radius) continue
+      this.applyPvpHitToTarget113c(player, { kind: 'player', player: p }, {
+        skillId: cast.skill.id,
+        elemDamage: Math.max(1, Math.floor(p.hp * 0.25)),
+        elemType: 'ltng',
+        attackKind: 'spell',
+        autoHit: true,
+        unblockable: true,
+        nonLethal: true,
+      })
+    }
+    for (const c of pvp.mercs) {
+      if (c.hp <= 1 || Math.hypot(c.x - player.x, c.y - player.y) > radius) continue
+      this.applyPvpHitToTarget113c(player, { kind: 'merc', merc: c }, {
+        skillId: cast.skill.id,
+        elemDamage: Math.max(1, Math.floor(c.hp * 0.25)),
+        elemType: 'ltng',
+        attackKind: 'spell',
+        autoHit: true,
+        unblockable: true,
+        nonLethal: true,
+      })
+    }
+    for (const entry of pvp.pets) {
+      if (entry.pet.hp <= 1 || Math.hypot(entry.pet.x - player.x, entry.pet.y - player.y) > radius) continue
+      this.applyPvpHitToTarget113c(player, { kind: 'pet', ...entry }, {
+        skillId: cast.skill.id,
+        elemDamage: Math.max(1, Math.floor(entry.pet.hp * 0.25)),
+        elemType: 'ltng',
+        attackKind: 'spell',
+        autoHit: true,
+        unblockable: true,
+        nonLethal: true,
+      })
     }
   }
 
@@ -9068,6 +10774,22 @@ export class GameInstance {
             this.applyDamageToMonster(player, m, damage, cast.skill.id)
           }
         }
+      }
+    }
+    const pvp = this.collectHostilePvpTargetsInArea113c(player.unitId, player.areaId)
+    for (const p of pvp.players) {
+      if (Math.hypot(p.x - player.x, p.y - player.y) <= ringRadius) {
+        this.applyPvpSkillHitToTarget113c(player, cast, { kind: 'player', player: p }, 'spell')
+      }
+    }
+    for (const c of pvp.mercs) {
+      if (Math.hypot(c.x - player.x, c.y - player.y) <= ringRadius) {
+        this.applyPvpSkillHitToTarget113c(player, cast, { kind: 'merc', merc: c }, 'spell')
+      }
+    }
+    for (const entry of pvp.pets) {
+      if (Math.hypot(entry.pet.x - player.x, entry.pet.y - player.y) <= ringRadius) {
+        this.applyPvpSkillHitToTarget113c(player, cast, { kind: 'pet', ...entry }, 'spell')
       }
     }
   }
@@ -9669,7 +11391,9 @@ export class GameInstance {
       }
     }
     for (const [param, bonus] of elemBonuses) st.setElemSkillsBonus(param, bonus)
-    for (const [id, lvl] of player.skills) st.setBaseSkillLevel(id, lvl)
+    st.setBaseStat('item_pierce', this.sumPlayerItemStat(player, 156))
+    this.applyItemMasteryPierceStats113c(st, (statId) => this.sumPlayerItemStat(player, statId))
+    this.syncPlayerSkillLevelsToStatList113c(player, st, unit.stateBus)
     return {
       id: `player_${player.unitId}`,
       name: player.name,
@@ -9883,6 +11607,8 @@ export class GameInstance {
       blvl: statList.getBaseSkillLevel(skill.id),
       getBaseSkillLevel: (id: number) => statList.getBaseSkillLevel(id),
       getEffectiveSkillLevel: (id: number) => statList.getEffectiveSkillLevel(id),
+      getUnitStat: (statNameOrId: string | number, baseOnly?: boolean) =>
+        statList.getAccruedStat(statNameOrId, baseOnly),
     }
     const stats: Record<string, number> = {}
     const pairs: [string, string][] = [
@@ -9903,6 +11629,38 @@ export class GameInstance {
       stats['modifierlist_level'] = slvl
     }
     return stats
+  }
+
+  /**
+   * Server side effects of `AuraScanner` pulses: Sanctuary (#119, `SrvDo066` `0x6FCBAF50`) puts
+   * `Overlay.txt` row 79 (`cast_undead`) on every pulsed Undead and knocks it back radially from the aura
+   * source (`ResultFlags 0x08` -> `MONMODE_KNOCKBACK` 13, `0x6FCFD00E`), regardless of magic immunity;
+   * monsters without `mKB` / `mGH` and bosses stay in place (#1807).
+   */
+  private applyAuraPulseSideEffects113c(
+    outcome: AuraPulseOutcome | readonly AuraPulseOutcome[],
+    originX: number,
+    originY: number,
+    areaId: number,
+  ): void {
+    const list: readonly AuraPulseOutcome[] = Array.isArray(outcome)
+      ? (outcome as readonly AuraPulseOutcome[])
+      : [outcome as AuraPulseOutcome]
+    for (const o of list) {
+      for (const id of o.knockbackTargetIds ?? []) {
+        const match = /^monster_(\d+)$/.exec(id)
+        if (match === null) continue
+        const m = this.monsters.get(Number(match[1]))
+        if (m === undefined || m.dead || m.areaId !== areaId) continue
+        this.broadcastToArea(m.areaId, {
+          type: 'UnitOverlay',
+          rawUnitType: 1,
+          id: m.unitId,
+          overlayIndex: 79,
+        } as ServerEvent)
+        if (!m.isBoss && !m.isPrimeEvil) this.knockbackMonster(m, originX, originY)
+      }
+    }
   }
 
   /** Collect active caster `aurastate` IDs owned by a player (selected skill aura + equipped `item_aura` gear). */
@@ -10053,9 +11811,36 @@ export class GameInstance {
       if (m.convertedUntilFrame > 0 && (m.dead || this.currentFrame >= m.convertedUntilFrame)) {
         m.convertedUntilFrame = 0
         m.convertedByPlayerId = 0
-        this.monsterCombat.get(m.unitId)?.stateBus.removeState(53)
-        if (m.states.has(53)) {
-          this.clearUnitState(m.states, m.stateTimers, 'monster', m.unitId, m.areaId, 53)
+        this.monsterCombat.get(m.unitId)?.stateBus.removeState(STATE_CONVERSION_113C)
+        this.monsterCombat.get(m.unitId)?.stateBus.removeState(STATE_CONVERSION_SAVE_113C)
+        if (m.states.has(STATE_CONVERSION_113C)) {
+          this.clearUnitState(m.states, m.stateTimers, 'monster', m.unitId, m.areaId, STATE_CONVERSION_113C)
+        }
+        if (m.states.has(STATE_CONVERSION_SAVE_113C)) {
+          this.clearUnitState(m.states, m.stateTimers, 'monster', m.unitId, m.areaId, STATE_CONVERSION_SAVE_113C)
+        }
+        if (!m.dead && m.conversionSavedStats !== undefined) {
+          const restored = restoreConversionLevelScaling113c(m.conversionSavedStats, m.hp, m.maxHp)
+          m.conversionSavedStats = undefined
+          m.level = restored.restoredLevel
+          m.maxHp = restored.restoredMaxHp
+          m.hp = restored.restoredHp
+          this.broadcastToArea(m.areaId, {
+            type: 'UnitStatUpdate',
+            unitType: 'monster',
+            unitId: m.unitId,
+            statId: 7,
+            value: m.maxHp,
+          })
+          this.broadcastToArea(m.areaId, {
+            type: 'UnitStatUpdate',
+            unitType: 'monster',
+            unitId: m.unitId,
+            statId: 6,
+            value: m.hp,
+          })
+        } else {
+          m.conversionSavedStats = undefined
         }
       }
     }
@@ -10483,6 +12268,8 @@ export class GameInstance {
       (m) => this.canSelectMonsterCorpse113c(m, false) && m.areaId === owner.areaId && inRange(m.x, m.y),
     )
     const enemies = enemyRecords.map((m) => this.monsterCombatContext(m))
+    const pvpAuraEnemies = this.buildHostileAuraPvpEnemies113c(owner.unitId, owner.areaId, inRange)
+    const allAuraEnemies = [...enemies, ...pvpAuraEnemies.map((e) => e.ctx)]
     const corpses: CorpseContext[] = corpseRecords.map((m) => ({
       id: String(m.unitId),
       consumed: false,
@@ -10501,7 +12288,7 @@ export class GameInstance {
     if (runtime.needsInitialPulse) {
       runtime.needsInitialPulse = false
       for (const entry of runtime.sources) {
-        runtime.scanner.pulseAura(entry.source, pulseTick, targets.allAllies, enemies, corpses, auraEnv)
+        this.applyAuraPulseSideEffects113c(runtime.scanner.pulseAura(entry.source, pulseTick, targets.allAllies, allAuraEnemies, corpses, auraEnv), owner.x, owner.y, owner.areaId)
       }
       for (const entry of runtime.sources) {
         if (entry.casterStateId !== undefined) {
@@ -10516,7 +12303,7 @@ export class GameInstance {
         }
       }
     } else {
-      runtime.scanner.tick(this.currentFrame, targets.allAllies, enemies, corpses, auraEnv)
+      this.applyAuraPulseSideEffects113c(runtime.scanner.tick(this.currentFrame, targets.allAllies, allAuraEnemies, corpses, auraEnv), owner.x, owner.y, owner.areaId)
       for (const entry of runtime.sources) {
         if (entry.casterStateId !== undefined && !owner.states.has(entry.casterStateId)) {
           this.applyPersistentUnitState(
@@ -10531,15 +12318,23 @@ export class GameInstance {
         if (entry.targetStateId === undefined) continue
         const tgtState = entry.targetStateId
         if (entry.skillId === 114 || entry.skillId === 123) {
-          const unpulsedEnemies = enemies.filter((e, idx) => {
+          const unpulsedMonsters = enemies.filter((e, idx) => {
             const m = enemyRecords[idx]!
             if (!isWithinAuraRange(m.x - owner.x, m.y - owner.y, entry.radiusSubtiles)) return false
             if (m.isPrimeEvil || (entry.skillId === 114 && m.coldEffect === 0)) return false
             if (auraEnv.isTown) return false
             return !e.stateBus.hasState(tgtState)
           })
+          const unpulsedPvp = pvpAuraEnemies
+            .filter((item) => {
+              if (auraEnv.isTown || item.ctx.x === undefined || item.ctx.y === undefined) return false
+              if (!isWithinAuraRange(item.ctx.x - owner.x, item.ctx.y - owner.y, entry.radiusSubtiles)) return false
+              return !item.ctx.stateBus.hasState(tgtState)
+            })
+            .map((item) => item.ctx)
+          const unpulsedEnemies = [...unpulsedMonsters, ...unpulsedPvp]
           if (unpulsedEnemies.length > 0) {
-            runtime.scanner.pulseAura(entry.source, pulseTick, [], unpulsedEnemies, [], auraEnv)
+            this.applyAuraPulseSideEffects113c(runtime.scanner.pulseAura(entry.source, pulseTick, [], unpulsedEnemies, [], auraEnv), owner.x, owner.y, owner.areaId)
           }
         } else {
           const unpulsedAllies = targets.allAllies.filter((a) => {
@@ -10580,6 +12375,7 @@ export class GameInstance {
         this.finishMonsterDamage(owner, m, dealt, dmgSkillId, this.resolveSkillDamageChannel(dmgSkillId))
       }
     })
+    this.syncHostileAuraPvpEnemies113c(pvpAuraEnemies, 'player', owner.unitId)
     corpseRecords.forEach((m, i) => {
       if (corpses[i]!.consumed) this.consumeMonsterCorpse113c(m, 104)
     })
@@ -10613,6 +12409,8 @@ export class GameInstance {
         (m) => this.canSelectMonsterCorpse113c(m, false) && m.areaId === owner.areaId && inRange(m.x, m.y),
       )
       const enemies = enemyRecords.map((m) => this.monsterCombatContext(m))
+      const pvpAuraEnemies = this.buildHostileAuraPvpEnemies113c(owner.unitId, owner.areaId, inRange)
+      const allAuraEnemies = [...enemies, ...pvpAuraEnemies.map((e) => e.ctx)]
       const corpses: CorpseContext[] = corpseRecords.map((m) => ({ id: String(m.unitId), consumed: false, x: m.x, y: m.y }))
       const auraEnv = {
         isTown: TOWN_AREAS.has(owner.areaId),
@@ -10623,21 +12421,28 @@ export class GameInstance {
             : this.isMonsterStepWalkable(owner.areaId, src.x, src.y, tgt.x, tgt.y, true),
         rng: this.rng,
       }
-      aura.scanner.tick(this.currentFrame, targets.allAllies, enemies, corpses, auraEnv)
+      this.applyAuraPulseSideEffects113c(aura.scanner.tick(this.currentFrame, targets.allAllies, allAuraEnemies, corpses, auraEnv), owner.x, owner.y, owner.areaId)
       const pulseTick = Math.max(1, this.currentFrame)
       // If a hostile monster or allied unit newly entered range between `perdelay` ticks,
       // pulse that unpulsed target immediately so it does not wait up to 49 frames.
       if (aura.source !== undefined && aura.targetStateId !== undefined) {
         const tgtState = aura.targetStateId
         if (aura.skillId === 114 || aura.skillId === 123) {
-          const unpulsedEnemies = enemies.filter((e, idx) => {
+          const unpulsedMonsters = enemies.filter((e, idx) => {
             const m = enemyRecords[idx]!
             if (m.isPrimeEvil || (aura.skillId === 114 && m.coldEffect === 0)) return false
             if (auraEnv.isTown) return false
             return !e.stateBus.hasState(tgtState)
           })
+          const unpulsedPvp = pvpAuraEnemies
+            .filter((item) => {
+              if (auraEnv.isTown) return false
+              return !item.ctx.stateBus.hasState(tgtState)
+            })
+            .map((item) => item.ctx)
+          const unpulsedEnemies = [...unpulsedMonsters, ...unpulsedPvp]
           if (unpulsedEnemies.length > 0) {
-            aura.scanner.pulseAura(aura.source, pulseTick, [], unpulsedEnemies, [], auraEnv)
+            this.applyAuraPulseSideEffects113c(aura.scanner.pulseAura(aura.source, pulseTick, [], unpulsedEnemies, [], auraEnv), owner.x, owner.y, owner.areaId)
           }
         } else if (FRIENDLY_AURA_TARGET_STATE_IDS_113C.has(tgtState)) {
           const unpulsedAllies = targets.allAllies.filter((a) => {
@@ -10671,6 +12476,7 @@ export class GameInstance {
           this.finishMonsterDamage(owner, m, dealt, aura.skillId, this.resolveSkillDamageChannel(aura.skillId))
         }
       })
+      this.syncHostileAuraPvpEnemies113c(pvpAuraEnemies, 'player', owner.unitId)
       corpseRecords.forEach((m, i) => {
         if (corpses[i]!.consumed) this.consumeMonsterCorpse113c(m, 104)
       })
@@ -10770,6 +12576,10 @@ export class GameInstance {
       }
       return rec.id
     }
+    if (skill.id === 277) {
+      this.activateBladeShieldState113c(player, cast.slvl)
+      return
+    }
     if (skill.aura) {
       if (skill.auraState === '') return
       const stateId = stateByName(skill.auraState)
@@ -10816,8 +12626,10 @@ export class GameInstance {
           (m) => this.canSelectMonsterCorpse113c(m, false) && m.areaId === player.areaId && inRange(m.x, m.y),
         )
         const enemies = enemyRecords.map((m) => this.monsterCombatContext(m))
+        const pvpAuraEnemies = this.buildHostileAuraPvpEnemies113c(player.unitId, player.areaId, inRange)
+        const allAuraEnemies = [...enemies, ...pvpAuraEnemies.map((e) => e.ctx)]
         const corpses: CorpseContext[] = corpseRecords.map((m) => ({ id: String(m.unitId), consumed: false, x: m.x, y: m.y }))
-        scanner.pulseAura(activeSource, this.currentFrame + 1, targets.allAllies, enemies, corpses, {
+        const initialPulse = scanner.pulseAura(activeSource, this.currentFrame + 1, targets.allAllies, allAuraEnemies, corpses, {
           isTown: TOWN_AREAS.has(player.areaId),
           hasLineOfSight: (src, tgt) =>
             src.x === undefined || src.y === undefined || tgt.x === undefined || tgt.y === undefined
@@ -10825,6 +12637,7 @@ export class GameInstance {
               : this.isMonsterStepWalkable(player.areaId, src.x, src.y, tgt.x, tgt.y, true),
           rng: this.rng,
         })
+        this.applyAuraPulseSideEffects113c(initialPulse, player.x, player.y, player.areaId)
         // Apply persistent caster state AFTER `pulseAura` populates `ownerCtx.stateBus` so `StateSet` carries `packetStats`!
         this.applyPersistentUnitState(player.states, player.stateTimers, 'player', player.unitId, player.areaId, stateId)
         const ownCasterStates = this.getPlayerOwnCasterAuraStates113c(player.unitId)
@@ -10840,6 +12653,7 @@ export class GameInstance {
             this.finishMonsterDamage(player, m, dealt, skill.id, this.resolveSkillDamageChannel(skill.id))
           }
         })
+        this.syncHostileAuraPvpEnemies113c(pvpAuraEnemies, 'player', player.unitId)
         corpseRecords.forEach((m, i) => {
           if (corpses[i]!.consumed) this.consumeMonsterCorpse113c(m, 104)
         })
@@ -10857,16 +12671,59 @@ export class GameInstance {
         if (m.dead || m.isNpc || m.submerged || m.areaId !== player.areaId) continue
         const inArea = radius > 0 ? Math.hypot(m.x - tx, m.y - ty) <= radius : m === targetMonster
         if (inArea) {
-          this.applyUnitState(m.states, m.stateTimers, 'monster', m.unitId, m.areaId, stateId, evalResult.durationFrames)
-          this.monsterCombatContext(m).stateBus.applyState({
-            stateNameOrId: stateId,
-            sourceUnitId: `player_${player.unitId}`,
-            sourceSkillId: skill.id,
-            slvl: cast.slvl,
-            durationFrames: evalResult.durationFrames,
-            currentFrame: this.currentFrame,
-            stats,
-          })
+          if (this.applyMonsterState(m.unitId, stateId, evalResult.durationFrames)) {
+            this.monsterCombatContext(m).stateBus.applyState({
+              stateNameOrId: stateId,
+              sourceUnitId: `player_${player.unitId}`,
+              sourceSkillId: skill.id,
+              slvl: cast.slvl,
+              durationFrames: evalResult.durationFrames,
+              currentFrame: this.currentFrame,
+              stats,
+            })
+          }
+        }
+      }
+      if (!FRIENDLY_AURA_TARGET_STATE_IDS_113C.has(stateId) && radius > 0) {
+        const pvp = this.collectHostilePvpTargetsInArea113c(player.unitId, player.areaId)
+        for (const p of pvp.players) {
+          if (Math.hypot(p.x - tx, p.y - ty) <= radius) {
+            this.applyPvpDebuffStateToTarget113c(
+              { kind: 'player', player: p },
+              stateId,
+              evalResult.durationFrames,
+              `player_${player.unitId}`,
+              skill.id,
+              cast.slvl,
+              stats,
+            )
+          }
+        }
+        for (const c of pvp.mercs) {
+          if (Math.hypot(c.x - tx, c.y - ty) <= radius) {
+            this.applyPvpDebuffStateToTarget113c(
+              { kind: 'merc', merc: c },
+              stateId,
+              evalResult.durationFrames,
+              `player_${player.unitId}`,
+              skill.id,
+              cast.slvl,
+              stats,
+            )
+          }
+        }
+        for (const entry of pvp.pets) {
+          if (Math.hypot(entry.pet.x - tx, entry.pet.y - ty) <= radius) {
+            this.applyPvpDebuffStateToTarget113c(
+              { kind: 'pet', ...entry },
+              stateId,
+              evalResult.durationFrames,
+              `player_${player.unitId}`,
+              skill.id,
+              cast.slvl,
+              stats,
+            )
+          }
         }
       }
     }
@@ -10878,7 +12735,7 @@ export class GameInstance {
         // or `delerium` (177). If the unit was already in `skill.auraState`, toggles off to human form
         // with 0 mana spent (`nocostinstate = 1`) and clamps HP >= 256 (1 HP survival floor).
         const wasInTargetState = player.states.has(stateId)
-        const groupStates = stateId === 177 ? [177] : [139, 140, 120, 117]
+        const groupStates = stateId === 177 ? [177] : [139, 140, 177, 120, 117]
         const ctx = this.playerCombatContext(player)
         for (const sid of groupStates) {
           if (player.states.has(sid)) {
@@ -10897,6 +12754,7 @@ export class GameInstance {
         ctx.stateBus.removeState('wearwolf')
         ctx.stateBus.removeState('bear')
         ctx.stateBus.removeState('wearbear')
+        ctx.stateBus.removeState('delerium')
         ctx.stateBus.removeState('feralrage')
         ctx.stateBus.removeState('maul')
         if (wasInTargetState) {
@@ -10913,6 +12771,49 @@ export class GameInstance {
       }
       const ctx = this.playerCombatContext(player)
       const rawStateStats = this.evaluateSkillStateStats(skill, cast.slvl, ctx.statList)
+      if (skill.id === 52 && Math.hypot(player.x - tx, player.y - ty) > 0.5) {
+        const targetMerc = [...this.mercenaries.values()].find(
+          (m) =>
+            m.alive &&
+            m.areaId === player.areaId &&
+            (m.ownerPlayerId === player.unitId ||
+              (player.partyId !== 0xffff && this.players.get(m.ownerPlayerId)?.partyId === player.partyId)) &&
+            Math.hypot(m.x - tx, m.y - ty) <= 2.5,
+        )
+        if (targetMerc !== undefined) {
+          const mercCtx = this.mercCombatContext(targetMerc)
+          mercCtx.stateBus.applyState({
+            stateNameOrId: stateId,
+            sourceUnitId: ctx.id,
+            sourceSkillId: skill.id,
+            slvl: cast.slvl,
+            durationFrames: Math.max(0, evalResult.durationFrames),
+            currentFrame: this.currentFrame,
+            stats: rawStateStats,
+          })
+          if (evalResult.durationFrames > 0) {
+            this.applyUnitState(
+              targetMerc.states,
+              targetMerc.stateTimers,
+              'monster',
+              targetMerc.unitId,
+              targetMerc.areaId,
+              stateId,
+              evalResult.durationFrames,
+            )
+          } else {
+            this.applyPersistentUnitState(
+              targetMerc.states,
+              targetMerc.stateTimers,
+              'monster',
+              targetMerc.unitId,
+              targetMerc.areaId,
+              stateId,
+            )
+          }
+          return
+        }
+      }
       // 1.13c `Bone Armor` (#68, state 14) & `Cyclone Armor` (#235, state 151) (#1793):
       // `Skills.txt` `aurastatcalc1` / `aurastatcalc2` returns `poolPts * 256` (`bonearmor` / `bonearmormax`).
       // Persist the live integer pool on `GameInstance` so consecutive hits deduct from remaining capacity
@@ -11260,31 +13161,727 @@ export class GameInstance {
   }
 
   /**
-   * Barbarian `Grim Ward (#150)` (`SrvSt33` + `SrvDo075` @ `0x6FC47770`): consumes a soft non-boss
-   * corpse and applies `terror` (`state 54`) to normal monsters within `calculateGrimWardStats(slvl).radiusSubtiles`.
+   * `#1881` — Barbarian `Grim Ward (#150)` (`SrvSt33` + `SrvDo075` @ `0x6FC47C90`):
+   * Consumes a soft non-boss corpse (`state 104` + `state 118`), spawns a persistent Grim Ward
+   * totem object + stationary visual totem missile (`250/253/256` `grimwardsmall/medium/large`)
+   * for `Param3 = 1000` frames (`40s`), and pulses `STATE_TERROR` (`state 56`) every `25` frames
+   * within `3 + (slvl - 1)` sub-tiles on eligible normal monsters so they flee away from the ward.
    */
   private executeGrimWard(
-    _player: InternalPlayerRecord,
+    player: InternalPlayerRecord,
     cast: PlayerSkillCast,
     corpse: InternalMonsterRecord,
   ): void {
-    this.consumeMonsterCorpse113c(corpse, 118)
-    const { fleeRadiusSubtiles, fleeDurationFrames } = calculateGrimWardStats(cast.slvl)
+    this.consumeMonsterCorpse113c(corpse, 104)
+    corpse.states.add(118)
+    const stats = computeGrimWardStats113c(cast.slvl)
+    const wx = Math.round(corpse.x)
+    const wy = Math.round(corpse.y)
+    const objectUnitId = this.spawnObject({
+      classId: 0,
+      x: wx,
+      y: wy,
+      areaId: corpse.areaId,
+      mode: 1,
+    })
+    const totemMissileId = corpse.sizeX <= 1 ? 250 : corpse.sizeX === 2 ? 253 : 256
+    const totemMissileUnitId = this.allocateUnitId()
+    this.broadcastToArea(corpse.areaId, {
+      type: 'CreateMissile',
+      missileId: totemMissileUnitId,
+      missileClassId: totemMissileId,
+      at: { x: wx, y: wy },
+      target: { x: wx, y: wy },
+      x: wx,
+      y: wy,
+      targetX: wx,
+      targetY: wy,
+      skillId: 150,
+      level: cast.slvl,
+      ownerType: 0,
+      ownerUnitType: 'player',
+      ownerId: player.unitId,
+      areaId: corpse.areaId,
+    } as ServerEvent)
+    const ward = {
+      objectUnitId,
+      ownerPlayerId: player.unitId,
+      areaId: corpse.areaId,
+      x: corpse.x,
+      y: corpse.y,
+      slvl: cast.slvl,
+      radiusSubtiles: stats.radiusSubtiles,
+      fleeDurationFrames: stats.fleeDurationFrames,
+      expireFrame: this.currentFrame + stats.durationFrames,
+      nextPulseFrame: this.currentFrame + stats.pulseIntervalFrames,
+    }
+    this.activeGrimWards.set(objectUnitId, ward)
+    this.pulseGrimWard113c(ward)
+  }
+
+  private pulseGrimWard113c(ward: {
+    readonly objectUnitId: number
+    readonly ownerPlayerId: number
+    readonly areaId: number
+    readonly x: number
+    readonly y: number
+    readonly slvl: number
+    readonly radiusSubtiles: number
+    readonly fleeDurationFrames: number
+  }): void {
     for (const m of this.monsters.values()) {
-      if (m.dead || m.isNpc || m.submerged || m.areaId !== corpse.areaId) continue
+      if (m.dead || m.isNpc || m.submerged || m.areaId !== ward.areaId) continue
+      if (this.isMonsterConverted(m)) continue
       if (!this.isMonsterEligibleForConversion113c(m)) continue
-      if (Math.hypot(m.x - corpse.x, m.y - corpse.y) <= fleeRadiusSubtiles) {
+      if (Math.hypot(m.x - ward.x, m.y - ward.y) <= ward.radiusSubtiles) {
         this.applyUnitState(
           m.states,
           m.stateTimers,
           'monster',
           m.unitId,
           m.areaId,
-          54,
-          Math.min(500, fleeDurationFrames),
+          STATE_TERROR_113C,
+          ward.fleeDurationFrames,
         )
+        m.fleeTicks = Math.max(m.fleeTicks, ward.fleeDurationFrames)
+        m.fleeOriginX = ward.x
+        m.fleeOriginY = ward.y
+        m.fleeTargetX = Number.NaN
+        m.fleeTargetY = Number.NaN
       }
     }
+  }
+
+  private stepGrimWards113c(): void {
+    for (const ward of [...this.activeGrimWards.values()]) {
+      if (this.currentFrame >= ward.expireFrame) {
+        this.activeGrimWards.delete(ward.objectUnitId)
+        this.objects.delete(ward.objectUnitId)
+        this.broadcastToArea(ward.areaId, {
+          type: 'UnitRemove',
+          unitType: 2,
+          id: ward.objectUnitId,
+          unitId: ward.objectUnitId,
+          areaId: ward.areaId,
+        })
+        continue
+      }
+      if (this.currentFrame >= ward.nextPulseFrame) {
+        ward.nextPulseFrame = this.currentFrame + 25
+        this.pulseGrimWard113c(ward)
+      }
+    }
+  }
+
+  getActiveGrimWards113c(): ReadonlyArray<{
+    readonly objectUnitId: number
+    readonly ownerPlayerId: number
+    readonly areaId: number
+    readonly x: number
+    readonly y: number
+    readonly slvl: number
+    readonly radiusSubtiles: number
+    readonly fleeDurationFrames: number
+    readonly expireFrame: number
+  }> {
+    return [...this.activeGrimWards.values()]
+  }
+
+  private resolvePlayerBladeWeaponDamage113c(player: InternalPlayerRecord): {
+    readonly min: number
+    readonly max: number
+    readonly isTwoHanded: boolean
+  } {
+    const { right, left } = this.activeHandItems113c(player)
+    const rightBase = right ? resolveWeaponBase113c(right.code) : undefined
+    const leftBase = left ? resolveWeaponBase113c(left.code) : undefined
+    const weapon = rightBase ? right : leftBase ? left : undefined
+    const base = rightBase ?? leftBase
+    const otherHand = weapon === right ? left : right
+    const isTwoHanded = Boolean(
+      base?.twoHanded &&
+        base.twoHandedMindam !== undefined &&
+        base.twoHandedMaxdam !== undefined &&
+        (!base.oneOrTwoHanded || otherHand === undefined),
+    )
+    const dmg = this.resolvePlayerWeaponDamage(player, 0)
+    return {
+      min: dmg.min,
+      max: dmg.max,
+      isTwoHanded,
+    }
+  }
+
+  /**
+   * `#1884` — 1.13c `#277 Blade Shield` (`SrvDo054`) consumes weapon durability on landed pulses,
+   * whereas `#266 Blade Fury` and `#257 Blade Sentinel` never degrade weapon durability!
+   */
+  private degradeEquippedWeaponDurabilityOnHit113c(player: InternalPlayerRecord): void {
+    const { right, left } = this.activeHandItems113c(player)
+    const rightBase = right ? resolveWeaponBase113c(right.code) : undefined
+    const leftBase = left ? resolveWeaponBase113c(left.code) : undefined
+    const weapon = rightBase ? right : leftBase ? left : undefined
+    if (weapon === undefined || weapon.maxDurability <= 0 || weapon.durability <= 0) return
+    const itemStats = collectItemStats(weapon)
+    if (itemStats.some((s) => s.statId === 152 && s.value > 0)) return
+    const nextDur = Math.max(0, weapon.durability - 1)
+    weapon.durability = nextDur
+    weapon.stats.set(72, nextDur)
+    if (weapon.rawItemData !== undefined) {
+      ;(weapon.rawItemData as { durability?: number }).durability = nextDur
+    }
+  }
+
+  private activateBladeShieldState113c(player: InternalPlayerRecord, slvl: number): void {
+    const bsh = calcBladeShield113c(slvl)
+    this.applyUnitState(
+      player.states,
+      player.stateTimers,
+      'player',
+      player.unitId,
+      player.areaId,
+      STATE_BLADESHIELD_113C,
+      bsh.durationFrames,
+    )
+    this.playerCombatContext(player).stateBus.applyState({
+      stateNameOrId: STATE_BLADESHIELD_113C,
+      sourceUnitId: `player_${player.unitId}`,
+      sourceSkillId: 277,
+      slvl,
+      durationFrames: bsh.durationFrames,
+      currentFrame: this.currentFrame,
+    })
+    this.activeBladeShields.set(player.unitId, {
+      slvl,
+      expireFrame: this.currentFrame + bsh.durationFrames,
+      nextPulseFrame: this.currentFrame + bsh.perDelayFrames,
+    })
+  }
+
+  private stepBladeShields113c(): void {
+    for (const [playerId, bs] of [...this.activeBladeShields.entries()]) {
+      const player = this.players.get(playerId)
+      if (!player || player.dead) {
+        this.activeBladeShields.delete(playerId)
+        continue
+      }
+      if (this.currentFrame >= bs.expireFrame || !player.states.has(STATE_BLADESHIELD_113C)) {
+        if (player.states.has(STATE_BLADESHIELD_113C)) {
+          this.clearUnitState(
+            player.states,
+            player.stateTimers,
+            'player',
+            player.unitId,
+            player.areaId,
+            STATE_BLADESHIELD_113C,
+          )
+        }
+        this.playerCombat.get(playerId)?.stateBus.removeState(STATE_BLADESHIELD_113C)
+        this.activeBladeShields.delete(playerId)
+        continue
+      }
+      if (this.currentFrame < bs.nextPulseFrame) continue
+      bs.nextPulseFrame = this.currentFrame + 25
+      const w = this.resolvePlayerBladeWeaponDamage113c(player)
+      const calc = calcBladeShield113c(bs.slvl, w.min, w.max)
+      for (const m of [...this.monsters.values()]) {
+        if (
+          m.dead ||
+          m.isNpc ||
+          m.submerged ||
+          m.areaId !== player.areaId ||
+          this.isMonsterConverted(m)
+        ) {
+          continue
+        }
+        if (Math.hypot(m.x - player.x, m.y - player.y) > calc.radiusSubtiles) continue
+        const dmg = Math.max(1, this.rollInclusive(calc.totalMin, calc.totalMax))
+        this.applyDamageToMonster(player, m, dmg, 277, 'phys', 'player', {
+          attackKind: 'melee',
+          bladeShieldPulse: true,
+        })
+      }
+      const pvp = this.collectHostilePvpTargetsInArea113c(player.unitId, player.areaId)
+      for (const p of pvp.players) {
+        if (Math.hypot(p.x - player.x, p.y - player.y) > calc.radiusSubtiles) continue
+        const dmg = Math.max(1, this.rollInclusive(calc.totalMin, calc.totalMax))
+        if (
+          this.applyPvpHitToTarget113c(
+            player,
+            { kind: 'player', player: p },
+            { skillId: 277, physDamage: dmg, attackKind: 'melee' },
+          )
+        ) {
+          this.degradeEquippedWeaponDurabilityOnHit113c(player)
+        }
+      }
+      for (const c of pvp.mercs) {
+        if (Math.hypot(c.x - player.x, c.y - player.y) > calc.radiusSubtiles) continue
+        const dmg = Math.max(1, this.rollInclusive(calc.totalMin, calc.totalMax))
+        if (
+          this.applyPvpHitToTarget113c(
+            player,
+            { kind: 'merc', merc: c },
+            { skillId: 277, physDamage: dmg, attackKind: 'melee' },
+          )
+        ) {
+          this.degradeEquippedWeaponDurabilityOnHit113c(player)
+        }
+      }
+      for (const entry of pvp.pets) {
+        if (Math.hypot(entry.pet.x - player.x, entry.pet.y - player.y) > calc.radiusSubtiles) continue
+        const dmg = Math.max(1, this.rollInclusive(calc.totalMin, calc.totalMax))
+        if (
+          this.applyPvpHitToTarget113c(
+            player,
+            { kind: 'pet', ...entry },
+            { skillId: 277, physDamage: dmg, attackKind: 'melee' },
+          )
+        ) {
+          this.degradeEquippedWeaponDurabilityOnHit113c(player)
+        }
+      }
+    }
+  }
+
+  private launchBladeFuryShot113c(
+    player: InternalPlayerRecord,
+    cast: PlayerSkillCast,
+    tx: number,
+    ty: number,
+  ): void {
+    const missileRec = cast.missile ?? this.registry.getMissileByName('bladefury1')
+    if (missileRec === undefined) return
+    const w = this.resolvePlayerBladeWeaponDamage113c(player)
+    const calc = calcBladeFury113c(cast.slvl, w.min, w.max, w.isTwoHanded)
+    const dmg = Math.max(1, this.rollInclusive(calc.totalMin, calc.totalMax))
+    this.launchPlayerSkillMissile(player, cast, missileRec, tx, ty, dmg, {
+      bladeWeaponHit: true,
+    })
+  }
+
+  private stepBladeFuryChannels113c(): void {
+    for (const [playerId, ch] of [...this.activeBladeFuryChannels.entries()]) {
+      const player = this.players.get(playerId)
+      if (
+        !player ||
+        player.dead ||
+        !player.states.has(12) ||
+        this.playerChannelSkillId.get(playerId) !== 266
+      ) {
+        this.activeBladeFuryChannels.delete(playerId)
+        continue
+      }
+      if (this.currentFrame < ch.nextAutoShotFrame) continue
+      const cast = this.resolvePlayerSkillCast(player, 266)
+      if (
+        cast === null ||
+        (cast.chargeItem === undefined &&
+          !cast.isNoCostInState &&
+          player.manaFixed < cast.evalResult.manaCost256)
+      ) {
+        this.clearPlayerChannelState(player)
+        continue
+      }
+      if (ch.hold) {
+        this.updatePlayerChannelState(player, cast)
+      }
+      this.commitPlayerSkillCast(player, cast)
+      this.broadcastPlayerSkillCast(player, cast, {
+        x: Math.round(ch.tx),
+        y: Math.round(ch.ty),
+      })
+      this.launchBladeFuryShot113c(player, cast, ch.tx, ch.ty)
+      ch.lastShotFrame = this.currentFrame
+      ch.nextAutoShotFrame = this.currentFrame + 5
+    }
+  }
+
+  private executeBladeSentinel113c(
+    player: InternalPlayerRecord,
+    cast: PlayerSkillCast,
+    tx: number,
+    ty: number,
+  ): void {
+    const outcome = this.summonPet(player.unitId, {
+      skillId: 257,
+      slvl: cast.slvl,
+      x: tx,
+      y: ty,
+    })
+    const w = this.resolvePlayerBladeWeaponDamage113c(player)
+    const calc = calcBladeSentinel113c(cast.slvl, w.min, w.max, w.isTwoHanded)
+    const dmg = Math.max(1, this.rollInclusive(calc.totalMin, calc.totalMax))
+    const mRec = this.registry.getMissileById(392) ?? cast.missile
+    const rawVel = mRec !== undefined ? mRec.vel + Math.trunc((mRec.velLev * cast.slvl) / 8) : 12
+    const baseSpeed = rawVel > 0 ? rawVel / 16 : 0.75
+    const speed = player.states.has(STATE_SLOWMISSILES_113C) ? baseSpeed * 0.33 : baseSpeed
+    const sameSpot = Math.hypot(tx - player.x, ty - player.y) < 0.5
+    const effTx = sameSpot ? player.x + 4 : tx
+    const effTy = sameSpot ? player.y : ty
+    const missileUnitId = this.allocateUnitId()
+    const missile: InternalMissileRecord = {
+      unitId: missileUnitId,
+      missileId: mRec?.id ?? 392,
+      skillId: 257,
+      ownerType: 'player',
+      ownerId: player.unitId,
+      areaId: player.areaId,
+      x: player.x,
+      y: player.y,
+      vx: 0,
+      vy: 0,
+      damage: dmg,
+      physDamage: dmg,
+      elemDamage: 0,
+      elemDurationFrames: 0,
+      element: 'phys',
+      remainingFrames: calc.rangeFrames,
+      collideType: mRec?.collideType ?? 3,
+      size: Math.max(1, mRec?.size ?? 2),
+      pierce: true,
+      nextHit: true,
+      nextDelay: calc.nextDelayFrames,
+      hitCooldowns: new Map(),
+      guaranteedHit: false,
+      bladeWeaponHit: true,
+      patrolState: {
+        x: player.x,
+        y: player.y,
+        originX: player.x,
+        originY: player.y,
+        targetX: effTx,
+        targetY: effTy,
+        headingToTarget: true,
+        speed,
+      },
+      trapOwnerPlayerId: player.unitId,
+      ...(outcome.pet !== undefined ? { trapPetUid: outcome.pet.uid } : {}),
+    }
+    this.missiles.set(missileUnitId, missile)
+    this.broadcastToArea(player.areaId, {
+      type: 'CreateMissile',
+      missileId: missileUnitId,
+      missileClassId: missile.missileId,
+      at: { x: Math.round(player.x), y: Math.round(player.y) },
+      target: { x: Math.round(effTx), y: Math.round(effTy) },
+      x: Math.round(player.x),
+      y: Math.round(player.y),
+      targetX: Math.round(effTx),
+      targetY: Math.round(effTy),
+      skillId: 257,
+      level: cast.slvl,
+      ownerType: 0,
+      ownerUnitType: 'player',
+      ownerId: player.unitId,
+      areaId: player.areaId,
+    } as ServerEvent)
+  }
+
+  private executeBoneWall113c(
+    player: InternalPlayerRecord,
+    cast: PlayerSkillCast,
+    tx: number,
+    ty: number,
+  ): void {
+    const stats = calculateBoneWallStats(
+      cast.slvl,
+      {
+        boneArmor: player.skills.get(68) ?? 0,
+        bonePrison: player.skills.get(88) ?? 0,
+      },
+      this.difficulty,
+    )
+    const segHp = Math.max(1, stats.hp113c)
+    const positions = computeBoneWallSegmentPositions113c(player.x, player.y, tx, ty)
+    for (const seg of positions) {
+      if (
+        this.isClosedDoorAt(player.areaId, seg.x, seg.y) ||
+        (this.terrainWalkableCheck !== undefined &&
+          !this.terrainWalkableCheck(player.areaId, seg.x, seg.y, false))
+      ) {
+        continue
+      }
+      let duplicateCell = false
+      for (const m of this.monsters.values()) {
+        if (
+          !m.dead &&
+          m.areaId === player.areaId &&
+          isBonePrisonMonsterHcIdx113c(m.hcIdx) &&
+          Math.hypot(m.x - seg.x, m.y - seg.y) < 0.5
+        ) {
+          duplicateCell = true
+          break
+        }
+      }
+      if (duplicateCell) continue
+      this.spawnMonster({
+        classId: 344,
+        hcIdx: 344,
+        defId: 'bonewall',
+        name: 'Bone Wall',
+        ai: 'BoneWall',
+        x: seg.x,
+        y: seg.y,
+        areaId: player.areaId,
+        level: player.level,
+        hp: segHp,
+        maxHp: segHp,
+        unscaledMaxHp: segHp,
+        experience: 0,
+        noRatio: true,
+        velocity: 0,
+        runSpeed: 0,
+        isKillable: true,
+        despawnAtFrame: this.currentFrame + stats.durationFrames,
+        boneConstructOwnerPlayerId: player.unitId,
+      })
+    }
+  }
+
+  private executeBonePrison113c(
+    player: InternalPlayerRecord,
+    cast: PlayerSkillCast,
+    targetX: number,
+    targetY: number,
+  ): void {
+    const stats = calculateBonePrisonStats(
+      cast.slvl,
+      {
+        boneArmor: player.skills.get(68) ?? 0,
+        boneWall: player.skills.get(78) ?? 0,
+      },
+      this.difficulty,
+    )
+    const segHp = Math.max(1, stats.hp113c)
+    const positions = computeBonePrisonRingPositions113c(targetX, targetY)
+    for (const seg of positions) {
+      if (
+        this.isClosedDoorAt(player.areaId, seg.x, seg.y) ||
+        (this.terrainWalkableCheck !== undefined &&
+          !this.terrainWalkableCheck(player.areaId, seg.x, seg.y, false))
+      ) {
+        continue
+      }
+      let duplicateCell = false
+      for (const m of this.monsters.values()) {
+        if (
+          !m.dead &&
+          m.areaId === player.areaId &&
+          isBonePrisonMonsterHcIdx113c(m.hcIdx) &&
+          Math.hypot(m.x - seg.x, m.y - seg.y) < 0.5
+        ) {
+          duplicateCell = true
+          break
+        }
+      }
+      if (duplicateCell) continue
+      this.spawnMonster({
+        classId: 344,
+        hcIdx: 344,
+        defId: 'bonewall',
+        name: 'Bone Prison',
+        ai: 'BoneWall',
+        x: seg.x,
+        y: seg.y,
+        areaId: player.areaId,
+        level: player.level,
+        hp: segHp,
+        maxHp: segHp,
+        unscaledMaxHp: segHp,
+        experience: 0,
+        noRatio: true,
+        velocity: 0,
+        runSpeed: 0,
+        isKillable: true,
+        despawnAtFrame: this.currentFrame + stats.durationFrames,
+        boneConstructOwnerPlayerId: player.unitId,
+      })
+    }
+  }
+
+  private executeSlowMissiles113c(player: InternalPlayerRecord, cast: PlayerSkillCast): void {
+    const sm = computeSlowMissilesStats113c(cast.slvl)
+    const stateStats = { lightradius: 5, skill_handofathena: -67 }
+    for (const m of this.monsters.values()) {
+      if (
+        m.dead ||
+        m.isNpc ||
+        m.submerged ||
+        m.areaId !== player.areaId ||
+        this.isMonsterConverted(m)
+      ) {
+        continue
+      }
+      if (Math.hypot(m.x - player.x, m.y - player.y) > sm.radiusSubtiles) continue
+      this.applyUnitState(
+        m.states,
+        m.stateTimers,
+        'monster',
+        m.unitId,
+        m.areaId,
+        sm.stateId,
+        sm.durationFrames,
+      )
+      this.monsterCombatContext(m).stateBus.applyState({
+        stateNameOrId: sm.stateId,
+        sourceUnitId: `player_${player.unitId}`,
+        sourceSkillId: 17,
+        slvl: cast.slvl,
+        durationFrames: sm.durationFrames,
+        currentFrame: this.currentFrame,
+        stats: stateStats,
+      })
+    }
+    const pvp = this.collectHostilePvpTargetsInArea113c(player.unitId, player.areaId)
+    for (const p of pvp.players) {
+      if (Math.hypot(p.x - player.x, p.y - player.y) > sm.radiusSubtiles) continue
+      this.applyPvpDebuffStateToTarget113c(
+        { kind: 'player', player: p },
+        sm.stateId,
+        sm.durationFrames,
+        `player_${player.unitId}`,
+        17,
+        cast.slvl,
+        stateStats,
+      )
+    }
+    for (const c of pvp.mercs) {
+      if (Math.hypot(c.x - player.x, c.y - player.y) > sm.radiusSubtiles) continue
+      this.applyPvpDebuffStateToTarget113c(
+        { kind: 'merc', merc: c },
+        sm.stateId,
+        sm.durationFrames,
+        `player_${player.unitId}`,
+        17,
+        cast.slvl,
+        stateStats,
+      )
+    }
+    for (const entry of pvp.pets) {
+      if (Math.hypot(entry.pet.x - player.x, entry.pet.y - player.y) > sm.radiusSubtiles) continue
+      this.applyPvpDebuffStateToTarget113c(
+        { kind: 'pet', ...entry },
+        sm.stateId,
+        sm.durationFrames,
+        `player_${player.unitId}`,
+        17,
+        cast.slvl,
+        stateStats,
+      )
+    }
+  }
+
+  private computePlayerVengeanceWeaponBase113c(player: InternalPlayerRecord): {
+    readonly vMin: number
+    readonly vMax: number
+    readonly griefFlat: number
+    readonly physDamagePct: number
+  } {
+    const { right, left } = this.activeHandItems113c(player)
+    const rightBase = right ? resolveWeaponBase113c(right.code) : undefined
+    const leftBase = left ? resolveWeaponBase113c(left.code) : undefined
+    const weapon = rightBase ? right : leftBase ? left : undefined
+    const base = rightBase ?? leftBase
+    const combat = this.playerCombat.get(player.unitId)
+    const offWeaponItemEd =
+      this.sumPlayerItemStat(player, 17, { excludeWeaponHands: true }) +
+      this.sumPlayerItemStat(player, 25, { excludeWeaponHands: true })
+    const offWeapFlatMinNoGrief = this.sumPlayerItemStat(player, STAT_MINDAMAGE, {
+      excludeWeaponHands: true,
+    })
+    const offWeapFlatMaxNoGrief = this.sumPlayerItemStat(player, STAT_MAXDAMAGE, {
+      excludeWeaponHands: true,
+    })
+    const griefFlat = this.sumPlayerItemStat(player, 111)
+    const totalStr =
+      player.strength +
+      this.sumPlayerItemStat(player, 0) +
+      (combat === undefined ? 0 : combat.statList.getModifierBonus('strength'))
+    const totalDex =
+      player.dexterity +
+      this.sumPlayerItemStat(player, 2) +
+      (combat === undefined ? 0 : combat.statList.getModifierBonus('dexterity'))
+    if (weapon === undefined || base === undefined) {
+      const unarmed = getAttackWeaponInfo(null)
+      const vMin = Math.max(1, unarmed.damageMin + offWeapFlatMinNoGrief)
+      const vMax = Math.max(vMin, unarmed.damageMax + offWeapFlatMaxNoGrief)
+      return {
+        vMin,
+        vMax,
+        griefFlat,
+        physDamagePct: offWeaponItemEd + totalStr,
+      }
+    }
+    const otherHand = weapon === right ? left : right
+    const useTwoHand =
+      base.twoHanded &&
+      base.twoHandedMindam !== undefined &&
+      base.twoHandedMaxdam !== undefined &&
+      (!base.oneOrTwoHanded || otherHand === undefined)
+    const rawMin = useTwoHand ? base.twoHandedMindam! : base.mindam
+    const rawMax = useTwoHand ? base.twoHandedMaxdam! : base.maxdam
+    const isEth = Boolean(
+      weapon.ethereal || ((weapon.rawItemData?.flags ?? 0) & 0x00400000) !== 0,
+    )
+    const ethMin = isEth ? Math.floor((rawMin * 3) / 2) : rawMin
+    const ethMax = isEth ? Math.floor((rawMax * 3) / 2) : rawMax
+    let onWeaponEd = 0
+    let flatMin = offWeapFlatMinNoGrief
+    let flatMax = offWeapFlatMaxNoGrief
+    for (const stat of collectItemStats(weapon)) {
+      if (stat.statId === STAT_ITEM_MAXDAMAGE_PERCENT) onWeaponEd += stat.value
+      else if (stat.statId === 219) onWeaponEd += (stat.value * player.level) >> 3
+      else if (stat.statId === (useTwoHand ? STAT_SECONDARY_MINDAMAGE : STAT_MINDAMAGE)) {
+        flatMin += stat.value
+      } else if (stat.statId === (useTwoHand ? STAT_SECONDARY_MAXDAMAGE : STAT_MAXDAMAGE)) {
+        flatMax += stat.value
+      } else if (stat.statId === 218) {
+        flatMax += (stat.value * player.level) >> 3
+      }
+    }
+    const statBonusPercent =
+      Math.trunc((totalStr * base.strBonus) / 100) +
+      Math.trunc((totalDex * base.dexBonus) / 100)
+    const vMin = Math.max(1, Math.trunc((ethMin * (100 + onWeaponEd)) / 100) + flatMin)
+    const vMax = Math.max(vMin, Math.trunc((ethMax * (100 + onWeaponEd)) / 100) + flatMax)
+    return {
+      vMin,
+      vMax,
+      griefFlat,
+      physDamagePct: offWeaponItemEd + statBonusPercent,
+    }
+  }
+
+  private executePaladinVengeance113c(
+    player: InternalPlayerRecord,
+    cast: PlayerSkillCast,
+    monster: InternalMonsterRecord,
+  ): void {
+    const wBase = this.computePlayerVengeanceWeaponBase113c(player)
+    const weaponBaseRolled = this.rollInclusive(wBase.vMin, wBase.vMax)
+    const vStats = calculateVengeanceStats(cast.slvl, {
+      resistFire: player.skills.get(100) ?? 0,
+      resistCold: player.skills.get(105) ?? 0,
+      resistLightning: player.skills.get(110) ?? 0,
+      salvation: player.skills.get(125) ?? 0,
+    })
+    this.applyDamageToMonster(player, monster, weaponBaseRolled, 111, 'phys', 'player', {
+      attackKind: 'melee',
+      toHitBonusPct: vStats.toHitBonusPct,
+      elemDurationFrames: vStats.chillDurationFrames,
+      vengeanceSpec: {
+        weaponBaseRolled,
+        physDamagePct: wBase.physDamagePct,
+        griefFlat: wBase.griefFlat,
+        multiElemPacket: {
+          firePct: vStats.firePct,
+          coldPct: vStats.coldPct,
+          ltngPct: vStats.ltngPct,
+          chillDurationFrames: vStats.chillDurationFrames,
+        },
+      },
+    })
   }
 
   private isPlayerWhirlwinding113c(player: InternalPlayerRecord): boolean {
@@ -11300,6 +13897,14 @@ export class GameInstance {
       out.push(...item.rawItemData.stats)
       if (item.rawItemData.runewordStats !== undefined) {
         out.push(...item.rawItemData.runewordStats)
+      }
+      if (item.stats && item.stats.size > 0) {
+        const covered = new Set<number>(out.map((s) => s.statId))
+        for (const [statId, value] of item.stats) {
+          if (!covered.has(statId)) {
+            out.push({ statId, param: 0, value })
+          }
+        }
       }
     } else if (item.stats && item.stats.size > 0) {
       for (const [statId, value] of item.stats) {
@@ -11575,8 +14180,21 @@ export class GameInstance {
     }
 
     const useTwoHand = hand.useTwoHandDamage
-    const weaponMin = useTwoHand ? (base.twoHandedMindam ?? base.mindam) : base.mindam
-    const weaponMax = useTwoHand ? (base.twoHandedMaxdam ?? base.maxdam) : base.maxdam
+    const rawHandMin = useTwoHand ? (base.twoHandedMindam ?? base.mindam) : base.mindam
+    const rawHandMax = useTwoHand ? (base.twoHandedMaxdam ?? base.maxdam) : base.maxdam
+    const handItem =
+      hand.itemUnitId !== undefined
+        ? player.items.find((i) => i.unitId === hand.itemUnitId)
+        : undefined
+    const isLowQualHand = handItem?.quality === 1 || handItem?.rawItemData?.quality === 1
+    const scaledHand = isLowQualHand
+      ? scaleLowQualityWeaponBand113c(rawHandMin, rawHandMax)
+      : { min: rawHandMin, max: rawHandMax }
+    const isEthHand = Boolean(
+      handItem?.ethereal || ((handItem?.rawItemData?.flags ?? 0) & 0x00400000) !== 0,
+    )
+    const weaponMin = isEthHand ? Math.floor((scaledHand.min * 3) / 2) : scaledHand.min
+    const weaponMax = isEthHand ? Math.floor((scaledHand.max * 3) / 2) : scaledHand.max
     let onWeaponEd = 0
     let flatMin = offWeapFlatMin
     let flatMax = offWeapFlatMax
@@ -11659,7 +14277,7 @@ export class GameInstance {
       if (adv.dueHands.length > 0) {
         for (const hand of adv.dueHands) {
           const reach = PLAYER_MELEE_REACH_SUBTILES + Math.min(4, Math.max(0, hand.rangeAdder))
-          const inReach = [...this.monsters.values()].filter((m) => {
+          const inReachMonsters = [...this.monsters.values()].filter((m) => {
             if (
               m.dead ||
               m.isNpc ||
@@ -11686,9 +14304,62 @@ export class GameInstance {
             }
             return Math.hypot(m.x - player.x, m.y - player.y) <= reach
           })
-          if (inReach.length === 0) continue
-          const chosen = inReach[this.rng.rand(inReach.length)]!
-          this.executeWhirlwindHandStrike113c(player, spin, hand, chosen)
+          const pvpInArea = this.collectHostilePvpTargetsInArea113c(player.unitId, player.areaId)
+          type WwCandidate =
+            | { readonly kind: 'monster'; readonly monster: InternalMonsterRecord }
+            | {
+                readonly kind: 'pvp'
+                readonly target:
+                  | { readonly kind: 'player'; readonly player: InternalPlayerRecord }
+                  | { readonly kind: 'merc'; readonly merc: InternalMercenaryRecord }
+                  | {
+                      readonly kind: 'pet'
+                      readonly ownerId: number
+                      readonly pet: SummonedPetUnit
+                      readonly petUnitId: number
+                      readonly areaId: number
+                    }
+              }
+          const candidates: WwCandidate[] = inReachMonsters.map((monster) => ({
+            kind: 'monster',
+            monster,
+          }))
+          for (const p of pvpInArea.players) {
+            if (Math.hypot(p.x - player.x, p.y - player.y) <= reach) {
+              candidates.push({ kind: 'pvp', target: { kind: 'player', player: p } })
+            }
+          }
+          for (const c of pvpInArea.mercs) {
+            if (Math.hypot(c.x - player.x, c.y - player.y) <= reach) {
+              candidates.push({ kind: 'pvp', target: { kind: 'merc', merc: c } })
+            }
+          }
+          for (const entry of pvpInArea.pets) {
+            if (Math.hypot(entry.pet.x - player.x, entry.pet.y - player.y) <= reach) {
+              candidates.push({ kind: 'pvp', target: { kind: 'pet', ...entry } })
+            }
+          }
+          if (candidates.length === 0) continue
+          const chosen = candidates[this.rng.rand(candidates.length)]!
+          if (chosen.kind === 'monster') {
+            this.executeWhirlwindHandStrike113c(player, spin, hand, chosen.monster)
+          } else {
+            const wwMods = computeWhirlwindDamageAndAr113c(spin.slvl)
+            const mastery = this.resolveWeaponMasteryBonuses113c(player, hand.base?.type)
+            const physBand = this.resolveWhirlwindHandPhysDamage113c(
+              player,
+              hand,
+              wwMods.damagePercent,
+              mastery.edPct,
+            )
+            const rolledPhys = this.rollInclusive(physBand.min, physBand.max)
+            this.applyPvpHitToTarget113c(player, chosen.target, {
+              skillId: spin.skillId,
+              physDamage: rolledPhys,
+              attackKind: 'melee',
+              toHitBonusPct: wwMods.attackRatingPercent + mastery.arPct,
+            })
+          }
         }
       }
 
@@ -12088,6 +14759,43 @@ export class GameInstance {
       durationFrames: convFrames,
       currentFrame: this.currentFrame,
     })
+    if (skillId === 116 && player.level < monster.level && monster.conversionSavedStats === undefined) {
+      const scaled = computeConversionLevelScaling113c(
+        player.level,
+        monster.level,
+        monster.hp,
+        monster.maxHp,
+      )
+      if (scaled.scaled && scaled.saved !== undefined) {
+        monster.conversionSavedStats = scaled.saved
+        monster.level = scaled.newLevel
+        monster.maxHp = scaled.newMaxHp
+        monster.hp = scaled.newHp
+        this.applyUnitState(
+          monster.states,
+          monster.stateTimers,
+          'monster',
+          monster.unitId,
+          monster.areaId,
+          STATE_CONVERSION_SAVE_113C,
+          convFrames,
+        )
+        this.broadcastToArea(monster.areaId, {
+          type: 'UnitStatUpdate',
+          unitType: 'monster',
+          unitId: monster.unitId,
+          statId: 7,
+          value: monster.maxHp,
+        })
+        this.broadcastToArea(monster.areaId, {
+          type: 'UnitStatUpdate',
+          unitType: 'monster',
+          unitId: monster.unitId,
+          statId: 6,
+          value: monster.hp,
+        })
+      }
+    }
     return convFrames
   }
 
@@ -12140,36 +14848,80 @@ export class GameInstance {
         this.applyMonsterConversion113c(player, m, cast.skill.id, cast.slvl)
       }
     }
+    const pvp = this.collectHostilePvpTargetsInArea113c(player.unitId, player.areaId)
+    for (const p of pvp.players) {
+      if (Math.hypot(p.x - tx, p.y - ty) > radius) continue
+      this.applyPvpSkillHitToTarget113c(player, cast, { kind: 'player', player: p }, 'spell')
+      if (!p.dead) {
+        this.applyPvpDebuffStateToTarget113c(
+          { kind: 'player', player: p },
+          stunned.id,
+          stunFrames,
+          `player_${player.unitId}`,
+          cast.skill.id,
+          cast.slvl,
+        )
+      }
+    }
+    for (const c of pvp.mercs) {
+      if (Math.hypot(c.x - tx, c.y - ty) > radius) continue
+      this.applyPvpSkillHitToTarget113c(player, cast, { kind: 'merc', merc: c }, 'spell')
+      if (c.alive) {
+        this.applyPvpDebuffStateToTarget113c(
+          { kind: 'merc', merc: c },
+          stunned.id,
+          stunFrames,
+          `player_${player.unitId}`,
+          cast.skill.id,
+          cast.slvl,
+        )
+      }
+    }
+    for (const entry of pvp.pets) {
+      if (Math.hypot(entry.pet.x - tx, entry.pet.y - ty) > radius) continue
+      this.applyPvpSkillHitToTarget113c(player, cast, { kind: 'pet', ...entry }, 'spell')
+      if (entry.pet.alive !== false && entry.pet.hp > 0) {
+        this.applyPvpDebuffStateToTarget113c(
+          { kind: 'pet', ...entry },
+          stunned.id,
+          stunFrames,
+          `player_${player.unitId}`,
+          cast.skill.id,
+          cast.slvl,
+        )
+      }
+    }
   }
 
   /**
-   * `#116` Paladin `Conversion` (`SrvDo079` @ `0x6FCB29F0`, class-of-bug sweep alongside `#1814`):
-   * melee strike that rolls `dm12(0, 50)` conversion for `Param3 = 400` frames (`16s`) strictly on
-   * normal monsters (`0%` on Bosses, SuperUniques, Uniques, and Champions).
+   * `#1879` — Paladin `Conversion (#116)` (`SrvDo079` @ `0x6FCB9830`):
+   * melee strike that rolls `dm34(0, 50)` conversion (`calculateConversionStats(slvl).chancePct`)
+   * for `Param3 = 400` frames (`16s`) strictly on normal monsters (`0%` on Bosses, SuperUniques,
+   * Uniques, and Champions), including when the normal monster is physical-immune (`landedHitRoll`).
    */
   private executePaladinConversion(
     player: InternalPlayerRecord,
     cast: PlayerSkillCast,
     monster: InternalMonsterRecord,
   ): void {
-    const physDamage = this.rollPlayerSkillPhysDamage(player, cast)
-    const landed =
-      physDamage > 0 ? this.applyDamageToMonster(player, monster, physDamage, cast.skill.id, 'phys') : false
-    if (!landed || monster.dead) return
+    const physDamage = Math.max(1, this.rollPlayerSkillPhysDamage(player, cast))
+    const outHitResult = { landedHitRoll: false }
+    this.applyDamageToMonster(player, monster, physDamage, cast.skill.id, 'phys', 'player', {
+      attackKind: 'melee',
+      outHitResult,
+    })
+    if (!outHitResult.landedHitRoll || monster.dead) return
     if (!this.isMonsterEligibleForConversion113c(monster)) return
-    const minChance = cast.skill.param1 || 0
-    const maxChance = cast.skill.param2 || 50
-    const durationFrames = cast.skill.param3 || 400
-    const chancePct = computeDiminishingReturns(minChance, maxChance, cast.slvl)
+    const { chancePct, durationFrames } = calculateConversionStats(cast.slvl)
     if (this.rng.rand(100) < chancePct) {
       this.applyMonsterConversion113c(player, monster, cast.skill.id, cast.slvl, durationFrames)
     }
   }
 
   /**
-   * Corpse Explosion (`srvdofunc` 55): consumes the corpse nearest to the target and deals
-   * `computeCorpseExplosion113c` damage (70-120% of the corpse's max life, scaled by caster/corpse
-   * level, 50% physical in the inner ring + 50% fire in the outer ring) to every hostile in range.
+   * `#1882` — Corpse Explosion (`srvdofunc` 55): consumes the corpse nearest to the target and deals
+   * `computeCorpseExplosion113c` damage (`70..120%` of single-player `/players 1` normal base monster HP
+   * `corpse.unscaledMaxHp`, never Champion/Unique/`/players N` scaled HP!), split `50%` physical + `50%` fire.
    */
   private executeCorpseExplosion(
     player: InternalPlayerRecord,
@@ -12188,11 +14940,17 @@ export class GameInstance {
     if (corpse === undefined) return
     this.consumeMonsterCorpse113c(corpse, 118)
     const rollPct = 70 + this.rng.rand(51)
+    const corpseBaseHp = corpse.unscaledMaxHp || corpse.baseMaxHp || corpse.maxHp
+    const ceSpellHitCtx = {
+      attackKind: 'spell' as const,
+      autoHit: true,
+      unblockable: true,
+    }
     for (const m of [...this.monsters.values()]) {
       if (m.dead || m.isNpc || m.submerged || m.areaId !== player.areaId) continue
       const d = Math.hypot(m.x - corpse.x, m.y - corpse.y)
       const out = computeCorpseExplosion113c({
-        corpseBaseHp: corpse.baseMaxHp || corpse.maxHp,
+        corpseBaseHp,
         rollPct,
         casterLevel: player.level,
         corpseLevel: corpse.level,
@@ -12201,12 +14959,69 @@ export class GameInstance {
       })
       if (d > out.outerFireRadiusSubtiles) continue
       if (d <= out.innerPhysRadiusSubtiles && out.rawPhysDamage > 0) {
-        this.applyDamageToMonster(player, m, out.rawPhysDamage, cast.skill.id, 'phys')
+        this.applyDamageToMonster(
+          player,
+          m,
+          out.rawPhysDamage,
+          cast.skill.id,
+          'phys',
+          'player',
+          ceSpellHitCtx,
+        )
       }
       if (!m.dead && out.rawFireDamage > 0) {
-        this.applyDamageToMonster(player, m, out.rawFireDamage, cast.skill.id, 'fire')
+        this.applyDamageToMonster(
+          player,
+          m,
+          out.rawFireDamage,
+          cast.skill.id,
+          'fire',
+          'player',
+          ceSpellHitCtx,
+        )
       }
     }
+    const pvp = this.collectHostilePvpTargetsInArea113c(player.unitId, player.areaId)
+    const applyCePvp = (
+      target:
+        | { readonly kind: 'player'; readonly player: InternalPlayerRecord }
+        | { readonly kind: 'merc'; readonly merc: InternalMercenaryRecord }
+        | {
+            readonly kind: 'pet'
+            readonly ownerId: number
+            readonly pet: SummonedPetUnit
+            readonly petUnitId: number
+            readonly areaId: number
+          },
+      ux: number,
+      uy: number,
+    ): void => {
+      const d = Math.hypot(ux - corpse.x, uy - corpse.y)
+      const out = computeCorpseExplosion113c({
+        corpseBaseHp,
+        rollPct,
+        casterLevel: player.level,
+        corpseLevel: corpse.level,
+        slvl: cast.slvl,
+        distanceSubtiles: d,
+      })
+      if (d > out.outerFireRadiusSubtiles) return
+      const phys = d <= out.innerPhysRadiusSubtiles ? out.rawPhysDamage : 0
+      if (phys > 0 || out.rawFireDamage > 0) {
+        this.applyPvpHitToTarget113c(player, target, {
+          skillId: cast.skill.id,
+          physDamage: phys,
+          elemDamage: out.rawFireDamage,
+          elemType: out.rawFireDamage > 0 ? 'fire' : undefined,
+          attackKind: 'spell',
+          autoHit: true,
+          unblockable: true,
+        })
+      }
+    }
+    for (const p of pvp.players) applyCePvp({ kind: 'player', player: p }, p.x, p.y)
+    for (const c of pvp.mercs) applyCePvp({ kind: 'merc', merc: c }, c.x, c.y)
+    for (const entry of pvp.pets) applyCePvp({ kind: 'pet', ...entry }, entry.pet.x, entry.pet.y)
   }
 
   /** `Skills.txt` `DmgSymPerCalc` of the cast: the physical synergy %ED (0 when the cell is empty). */
@@ -12232,7 +15047,24 @@ export class GameInstance {
     tx: number,
     ty: number,
     primaryTarget?: InternalMonsterRecord,
+    lockedTargetKey?: string,
   ): void {
+    // 1.13c attack-sequence start (`0x6FCEE520`): `pierce_idx += 1` so one attack shares one pierce seed.
+    advanceUnitPierceSeed(this.playerCombatContext(player))
+    // `item_skillonattack` (195) fires once per weapon attack launch (bow/crossbow/throw), hit or miss (#1797).
+    // `#1884` (`#266 Blade Fury` `SrvDo048` & `#257 Blade Sentinel`): never fire `onAttack` (195); `#266` fires `onHit` (198) only!
+    if (
+      cast.skill.srcDam > 0 &&
+      cast.skill.id !== 266 &&
+      cast.skill.id !== 257 &&
+      this.playerCtcProcDepth === 0
+    ) {
+      this.triggerPlayerCtcProcs113c(player, 195, { target: primaryTarget, tx, ty })
+    }
+    if (cast.skill.id === 266) {
+      this.launchBladeFuryShot113c(player, cast, tx, ty)
+      return
+    }
     const mode = classifyPlayerSrvDoMissile113c(cast.skill.srvDoFunc)
     if (mode === 'fan') {
       const count = this.evaluatePlayerSkillCalc(cast, cast.skill.calc1)
@@ -12244,7 +15076,7 @@ export class GameInstance {
       return
     }
     if (mode === 'strafe') {
-      this.executeStrafe(player, cast, missileRec, tx, ty, primaryTarget)
+      this.executeStrafe(player, cast, missileRec, tx, ty, primaryTarget, lockedTargetKey)
       return
     }
     if (mode === 'volley') {
@@ -12261,7 +15093,12 @@ export class GameInstance {
     if (mode === 'unmodeled') this.reportUnmodeledPlayerSrvDoFunc(cast.skill)
     // `SKILLS_SrvDo010` (Guided Arrow / Bone Spirit) cast on a unit locks the missile onto it (`TargetX = 1`).
     const lockOpts =
-      cast.skill.srvDoFunc === 10 && primaryTarget !== undefined ? { lockedMonsterId: primaryTarget.unitId } : undefined
+      cast.skill.srvDoFunc === 10 && (lockedTargetKey !== undefined || primaryTarget !== undefined)
+        ? {
+            ...(primaryTarget !== undefined ? { lockedMonsterId: primaryTarget.unitId } : {}),
+            ...(lockedTargetKey !== undefined ? { lockedTargetKey } : {}),
+          }
+        : undefined
     this.launchPlayerSkillMissile(player, cast, missileRec, tx, ty, this.rollPlayerSkillDamage(player, cast), lockOpts)
     if (cast.offHandMissile !== undefined) {
       this.launchPlayerSkillMissile(player, cast, cast.offHandMissile, tx, ty, this.rollPlayerSkillDamage(player, cast))
@@ -12283,9 +15120,12 @@ export class GameInstance {
     tx: number,
     ty: number,
     primaryTarget?: InternalMonsterRecord,
+    primaryTargetKey?: string,
   ): void {
     const radius = cast.evalResult.radiusSubtiles
-    const inRange = [...this.monsters.values()]
+    const inRange: Array<{ readonly key: string; readonly x: number; readonly y: number; readonly sortId: number }> = [
+      ...this.monsters.values(),
+    ]
       .filter(
         (m) =>
           !m.dead &&
@@ -12294,12 +15134,38 @@ export class GameInstance {
           m.areaId === player.areaId &&
           Math.hypot(m.x - player.x, m.y - player.y) <= radius,
       )
-      .sort((a, b) => {
-        if (a === primaryTarget) return -1
-        if (b === primaryTarget) return 1
-        const d = Math.hypot(a.x - player.x, a.y - player.y) - Math.hypot(b.x - player.x, b.y - player.y)
-        return d !== 0 ? d : a.unitId - b.unitId
-      })
+      .map((m) => ({ key: this.onlineUnitKey113c('monster', m.unitId), x: m.x, y: m.y, sortId: m.unitId }))
+    const pvp = this.collectHostilePvpTargetsInArea113c(player.unitId, player.areaId)
+    for (const p of pvp.players) {
+      if (Math.hypot(p.x - player.x, p.y - player.y) <= radius) {
+        inRange.push({ key: this.onlineUnitKey113c('player', p.unitId), x: p.x, y: p.y, sortId: 1_000_000 + p.unitId })
+      }
+    }
+    for (const c of pvp.mercs) {
+      if (Math.hypot(c.x - player.x, c.y - player.y) <= radius) {
+        inRange.push({ key: this.onlineUnitKey113c('merc', c.unitId), x: c.x, y: c.y, sortId: 2_000_000 + c.unitId })
+      }
+    }
+    for (const entry of pvp.pets) {
+      if (Math.hypot(entry.pet.x - player.x, entry.pet.y - player.y) <= radius) {
+        inRange.push({
+          key: this.onlineUnitKey113c('pet', entry.petUnitId),
+          x: entry.pet.x,
+          y: entry.pet.y,
+          sortId: 3_000_000 + entry.petUnitId,
+        })
+      }
+    }
+    const primaryKey =
+      primaryTargetKey ?? (primaryTarget !== undefined ? this.onlineUnitKey113c('monster', primaryTarget.unitId) : undefined)
+    inRange.sort((a, b) => {
+      if (primaryKey !== undefined) {
+        if (a.key === primaryKey && b.key !== primaryKey) return -1
+        if (b.key === primaryKey && a.key !== primaryKey) return 1
+      }
+      const d = Math.hypot(a.x - player.x, a.y - player.y) - Math.hypot(b.x - player.x, b.y - player.y)
+      return d !== 0 ? d : a.sortId - b.sortId
+    })
     const edPct = this.evaluatePlayerSkillCalc(cast, cast.skill.calc2) + this.playerSkillPhysSynergyPct(cast)
     if (inRange.length === 0) {
       this.launchPlayerSkillMissile(player, cast, missileRec, tx, ty, this.rollPlayerSkillDamage(player, cast, edPct))
@@ -12346,6 +15212,7 @@ export class GameInstance {
    */
   private clearPlayerChannelState(player: InternalPlayerRecord): void {
     this.playerChannelSkillId.delete(player.unitId)
+    this.activeBladeFuryChannels.delete(player.unitId)
     if (player.states.has(12)) {
       this.clearUnitState(player.states, player.stateTimers, 'player', player.unitId, player.areaId, 12)
     }
@@ -12366,7 +15233,7 @@ export class GameInstance {
       const channelFrames =
         cast.skill.id === 266
           ? inChannel
-            ? Math.max(21, prevTimer + 7)
+            ? Math.max(21, prevTimer + 5)
             : 21
           : inChannel
             ? Math.max(20, prevTimer + 6)
@@ -12394,15 +15261,555 @@ export class GameInstance {
     }
   }
 
+  private static readonly CHAR_ANIM_TOKEN_BY_CLASS_113C: Readonly<Record<string, string>> = {
+    ama: 'AM',
+    sor: 'SO',
+    nec: 'NE',
+    pal: 'PA',
+    bar: 'BA',
+    dru: 'DZ',
+    ass: 'AI',
+  }
+  private inStepPlayerAnimations113c = false
+
+  /**
+   * `#1877` (`D2Game.dll` `SKILLS_ApplySkillDelay` @ `0x6FCBFF70`):
+   * Returns `true` while global `STATE_SKILLDELAY` (`state 121`) is active on `player`.
+   */
+  private isPlayerSkillDelayActive113c(player: InternalPlayerRecord): boolean {
+    if (player.states.has(121)) {
+      return true
+    }
+    if (this.playerSkillDelayUntilFrame.has(player.unitId)) {
+      this.playerSkillDelayUntilFrame.delete(player.unitId)
+    }
+    const combat = this.playerCombat.get(player.unitId)
+    if (combat !== undefined && (combat.stateBus.hasState(121) || combat.stateBus.hasState('skilldelay'))) {
+      combat.stateBus.removeState(121)
+      combat.stateBus.removeState('skilldelay')
+    }
+    return false
+  }
+
+  /**
+   * `#1877`: Arm global `STATE_SKILLDELAY` (`state 121`) for `cooldownFrames` ticks across all
+   * `Skills.txt` `delay > 0` skills, broadcasting S2C `0xA8 StateSet` (and `0xA9 StateEnd` on expiry).
+   */
+  private applyPlayerGlobalSkillDelay113c(
+    player: InternalPlayerRecord,
+    skillId: number,
+    slvl: number,
+    cooldownFrames: number,
+  ): void {
+    const frames = Math.trunc(cooldownFrames)
+    if (frames <= 0) return
+    const expireFrame = this.currentFrame + frames
+    // `processCommands` runs before `stepUnitStates` in the same `stepFrame()`, whereas
+    // `stepPlayerAnimations113c` runs after `stepUnitStates`: compensate +1 when armed in
+    // `processCommands` so `stateTimers.get(121) === frames` at end of cast frame in both modes.
+    const unitStateFrames = this.inStepPlayerAnimations113c ? frames : frames + 1
+    this.playerSkillDelayUntilFrame.set(player.unitId, expireFrame)
+    this.playerCombatContext(player).stateBus.applyState({
+      stateNameOrId: 121,
+      sourceUnitId: `player_${player.unitId}`,
+      sourceSkillId: skillId,
+      slvl,
+      durationFrames: frames,
+      currentFrame: this.currentFrame,
+    })
+    this.applyUnitState(
+      player.states,
+      player.stateTimers,
+      'player',
+      player.unitId,
+      player.areaId,
+      121,
+      unitStateFrames,
+    )
+    this.playerAnimDispatchers.get(player.unitId)?.syncSkillDelayExpireFrame(expireFrame)
+  }
+
+  /**
+   * `#1789`/`#1862`: Ensure `player` has a live `AnimDispatcher` synced with equipped weapon WClass,
+   * WSM, on-weapon IAS, FCR (`105`), IAS (`93`), FHR (`99`), FBR (`102`), mana, and morph states.
+   */
+  private syncPlayerAnimDispatcher113c(player: InternalPlayerRecord): AnimDispatcher {
+    const ctx = this.playerCombatContext(player)
+    const unit = this.playerCombat.get(player.unitId)!
+    const itemSt = unit.itemStatList ?? ctx.statList
+    itemSt.setBaseStat('item_fasterattackrate', this.sumPlayerItemStat(player, 93))
+    itemSt.setBaseStat('item_fastergethitrate', this.sumPlayerItemStat(player, 99))
+    itemSt.setBaseStat('item_fasterblockrate', this.sumPlayerItemStat(player, 102))
+    itemSt.setBaseStat('item_fastercastrate', this.sumPlayerItemStat(player, 105))
+
+    for (const mirroredStateId of [65, 101, 139, 140] as const) {
+      if (player.states.has(mirroredStateId) && !ctx.stateBus.hasState(mirroredStateId)) {
+        ctx.stateBus.applyState({
+          stateNameOrId: mirroredStateId,
+          sourceUnitId: `player_${player.unitId}`,
+          slvl: 1,
+          durationFrames: player.stateTimers.get(mirroredStateId) ?? 50000,
+          currentFrame: this.currentFrame,
+        })
+      } else if (!player.states.has(mirroredStateId) && ctx.stateBus.hasState(mirroredStateId)) {
+        ctx.stateBus.removeState(mirroredStateId)
+      }
+    }
+
+    const equipped = player.items.filter(
+      (i) => i.location === 'equipped' && i.bodyLoc !== 11 && i.bodyLoc !== 12,
+    )
+    const equipInputs = equipped.map((item) => ({
+      code: item.code,
+      bodyLoc: item.bodyLoc,
+      broken: item.maxDurability > 0 && item.durability <= 0 && (item.stats.get(152) ?? 0) <= 0,
+    }))
+    const weaponClass = resolveEquippedWeaponClass(equipInputs)
+    const weaponWsm = resolveEquippedWeaponWsm(equipInputs)
+    const primaryWeaponWsm = resolvePrimaryWeaponWsm113c(equipInputs)
+    const primaryWeaponEntry =
+      equipped.find(
+        (i) =>
+          i.bodyLoc === BODYLOC_RIGHT_ARM &&
+          resolveWeaponBase113c(i.code) !== undefined &&
+          !(i.maxDurability > 0 && i.durability <= 0 && (i.stats.get(152) ?? 0) <= 0),
+      ) ??
+      equipped.find(
+        (i) =>
+          i.bodyLoc === BODYLOC_LEFT_ARM &&
+          resolveWeaponBase113c(i.code) !== undefined &&
+          !(i.maxDurability > 0 && i.durability <= 0 && (i.stats.get(152) ?? 0) <= 0),
+      )
+    const primaryWeaponIas =
+      primaryWeaponEntry !== undefined
+        ? this.collectWhirlwindWeaponHandStats113c(primaryWeaponEntry)
+            .filter((s) => s.statId === 93)
+            .reduce((sum, s) => sum + s.value, 0)
+        : 0
+
+    let disp = this.playerAnimDispatchers.get(player.unitId)
+    const charToken =
+      GameInstance.CHAR_ANIM_TOKEN_BY_CLASS_113C[player.classCode] ?? 'SO'
+    if (disp === undefined || disp.statList !== ctx.statList) {
+      disp = new AnimDispatcher({
+        registry: this.registry,
+        statList: ctx.statList,
+        stateBus: ctx.stateBus,
+        charToken,
+        weaponClass,
+        weaponWsm,
+        primaryWeaponWsm,
+        primaryWeaponIas,
+        enforceFrameLock: this.animActionWindupEnabled,
+      })
+      this.playerAnimDispatchers.set(player.unitId, disp)
+    } else {
+      disp.setWeaponClass(weaponClass)
+      disp.setWeaponWsm(weaponWsm)
+      disp.setPrimaryWeaponWsm(primaryWeaponWsm)
+      disp.setPrimaryWeaponIas(primaryWeaponIas)
+      disp.setEnforceFrameLock(this.animActionWindupEnabled)
+    }
+    const delayUntil = player.states.has(121)
+      ? this.currentFrame + Math.max(1, player.stateTimers.get(121) ?? 1)
+      : 0
+    disp.syncSkillDelayExpireFrame(delayUntil)
+    return disp
+  }
+
+  /** `#1789`: Whether `player` is currently frame-locked in an active skill animation or recovery. */
+  private isPlayerActionAnimLocked113c(
+    player: InternalPlayerRecord,
+    nextSkill?: SkillRecord,
+  ): boolean {
+    if (!this.animActionWindupEnabled) return false
+    if (this.isPlayerInHitRecovery(player) || this.isPlayerInBlockRecovery(player)) return true
+    const disp = this.playerAnimDispatchers.get(player.unitId)
+    if (!disp) return false
+    const cur = disp.getCurrentAnimation()
+    if (cur && !cur.completed) {
+      if (
+        nextSkill !== undefined &&
+        nextSkill.startMana > 0 &&
+        cur.skill.id === nextSkill.id &&
+        (cur.actionTriggered ||
+          (player.states.has(12) && this.playerChannelSkillId.get(player.unitId) === nextSkill.id))
+      ) {
+        return false
+      }
+      return true
+    }
+    return disp.isInRecovery()
+  }
+
+  /**
+   * `#1789`: Guard player movement commands during hit/block recovery, Whirlwind, or active
+   * skill animation windup/follow-through. Active post-`ActionFlag` channeling (`startMana > 0`,
+   * `STATE_INFERNO` state 12) is cancelled by a movement command so the player can walk/run away.
+   */
+  private consumeOrBlockMoveDuringPlayerAnim113c(player: InternalPlayerRecord): boolean {
+    if (
+      this.isPlayerInHitRecovery(player) ||
+      this.isPlayerInBlockRecovery(player) ||
+      this.isPlayerWhirlwinding113c(player)
+    ) {
+      return true
+    }
+    if (!this.animActionWindupEnabled) return false
+    const disp = this.playerAnimDispatchers.get(player.unitId)
+    if (!disp) return false
+    const cur = disp.getCurrentAnimation()
+    if (cur && !cur.completed) {
+      if (cur.skill.startMana > 0 && cur.actionTriggered) {
+        const pending = this.pendingPlayerAnimActions.get(player.unitId)
+        if (pending !== undefined) {
+          pending.onCleanup?.()
+          this.pendingPlayerAnimActions.delete(player.unitId)
+        }
+        disp.clearAnimation()
+        this.clearPlayerChannelState(player)
+        return false
+      }
+      return true
+    }
+    return disp.isInRecovery()
+  }
+
+  /**
+   * `#1789`: Returns `true` when `player` is executing an uninterruptible skill (`Whirlwind`,
+   * `Concentrate`, `Zeal`, `Fury`, `Jab`, `Strafe`, `Fend`, `Smite`, `Charge`, `Frenzy`, `Leap`,
+   * `Leap Attack`, `Dragon Flight`).
+   */
+  private isPlayerSkillUninterruptible113c(player: InternalPlayerRecord): boolean {
+    if (this.isPlayerWhirlwinding113c(player)) return true
+    const cur = this.playerAnimDispatchers.get(player.unitId)?.getCurrentAnimation()
+    if (cur && !cur.completed && !isSkillInterruptible113c(cur.skill)) {
+      return true
+    }
+    // Also honor active Concentrate state (`state 15`) if set during a Concentrate swing
+    if (player.states.has(15)) return true
+    return false
+  }
+
+  /**
+   * `#1789`: Enter `GH` (`mode 4`) or `BL` (`mode 9`) on the player's `AnimDispatcher`, cancelling
+   * any pending pre-`ActionFlag` skill action so no mana, missile, or melee damage is emitted.
+   */
+  private interruptPendingPlayerAnimAction113c(
+    player: InternalPlayerRecord,
+    mode: 'GH' | 'BL',
+  ): void {
+    const disp = this.syncPlayerAnimDispatcher113c(player)
+    const curBefore = disp.getCurrentAnimation()
+    const wasPreAction = Boolean(curBefore && !curBefore.completed && !curBefore.actionTriggered)
+    if (mode === 'GH') {
+      disp.enterGetHit()
+    } else {
+      disp.enterBlock()
+    }
+    const pending = this.pendingPlayerAnimActions.get(player.unitId)
+    if (pending !== undefined) {
+      if (wasPreAction) {
+        if (player.states.has(12)) {
+          this.clearPlayerChannelState(player)
+        }
+      }
+      pending.onCleanup?.()
+      this.pendingPlayerAnimActions.delete(player.unitId)
+    }
+  }
+
+  /**
+   * `#1789`/`#1862`/`#1877`: Step every player's `25 Hz` `AnimDispatcher`, clearing expired `GH`/`BL`
+   * recovery modes, syncing `STATE_SKILLDELAY` (`121`), and firing `ActionFlag=1`, rollback, and
+   * `SequenceTbls` strike callbacks on their exact `AnimData.d2` ticks.
+   */
+  private stepPlayerAnimations113c(): void {
+    this.inStepPlayerAnimations113c = true
+    try {
+      for (const player of this.players.values()) {
+      const disp = this.playerAnimDispatchers.get(player.unitId)
+      if (player.dead) {
+        const pending = this.pendingPlayerAnimActions.get(player.unitId)
+        if (pending !== undefined) {
+          pending.onCleanup?.()
+          this.pendingPlayerAnimActions.delete(player.unitId)
+        }
+        this.playerSkillDelayUntilFrame.delete(player.unitId)
+        player.blockRecoveryUntilFrame = undefined
+        disp?.clearAnimation()
+        disp?.clearRecovery()
+        continue
+      }
+
+      if (!player.states.has(121)) {
+        this.isPlayerSkillDelayActive113c(player)
+      }
+
+      if (
+        player.blockRecoveryUntilFrame !== undefined &&
+        this.currentFrame >= player.blockRecoveryUntilFrame
+      ) {
+        player.blockRecoveryUntilFrame = undefined
+        disp?.clearRecovery()
+        if (player.mode === 9 && !this.isPlayerWhirlwinding113c(player)) {
+          player.mode = TOWN_AREAS.has(player.areaId) ? 5 : 1
+        }
+      }
+
+      if (
+        player.hitRecoveryUntilFrame !== undefined &&
+        this.currentFrame >= player.hitRecoveryUntilFrame
+      ) {
+        player.hitRecoveryUntilFrame = undefined
+        disp?.clearRecovery()
+        if (player.mode === 4 && !this.isPlayerWhirlwinding113c(player)) {
+          player.mode = TOWN_AREAS.has(player.areaId) ? 5 : 1
+        }
+      }
+
+      if (!disp) continue
+
+      const { anim } = disp.tick(this.currentFrame, (activeAnim, _tick, strikeIdx) => {
+        const pending = this.pendingPlayerAnimActions.get(player.unitId)
+        if (!pending) return
+        if (strikeIdx === 0 && !pending.manaCommittedOnStart) {
+          if (
+            pending.cast.chargeItem === undefined &&
+            !pending.cast.isNoCostInState &&
+            player.manaFixed < pending.cast.evalResult.manaCost256
+          ) {
+            if (player.states.has(12)) this.clearPlayerChannelState(player)
+            pending.onCleanup?.()
+            this.pendingPlayerAnimActions.delete(player.unitId)
+            disp.clearAnimation()
+            return
+          }
+          this.commitPlayerSkillCast(player, pending.cast)
+        }
+        pending.onStrike(strikeIdx, activeAnim.totalStrikes)
+      })
+
+      if (anim && anim.completed) {
+        const pending = this.pendingPlayerAnimActions.get(player.unitId)
+        if (pending !== undefined) {
+          pending.onCleanup?.()
+          this.pendingPlayerAnimActions.delete(player.unitId)
+        }
+        if (
+          !this.isPlayerInHitRecovery(player) &&
+          !this.isPlayerWhirlwinding113c(player)
+        ) {
+          player.mode = TOWN_AREAS.has(player.areaId) ? 5 : 1
+        }
+      }
+    }
+    } finally {
+      this.inStepPlayerAnimations113c = false
+    }
+  }
+
+  /**
+   * `#1789`: Schedule a player attack/throw/cast through `AnimDispatcher` with exact `AnimData.d2`
+   * windup -> `ActionFlag=1` release -> follow-through lock.
+   */
+  private schedulePlayerSkillWindup113c(
+    player: InternalPlayerRecord,
+    cast: PlayerSkillCast,
+    targetX: number,
+    targetY: number,
+    broadcastTarget:
+      | { readonly x: number; readonly y: number }
+      | { readonly unitType: UnitType; readonly id: number },
+    opts: {
+      readonly strikeCountOverride?: number | undefined
+      readonly onStrike: (strikeIndex: number, totalStrikes: number) => void
+      readonly onCleanup?: (() => void) | undefined
+    },
+  ): boolean {
+    const disp = this.syncPlayerAnimDispatcher113c(player)
+    const res = disp.startSkillAnimation({
+      skill: cast.skill,
+      slvl: cast.slvl,
+      currentTick: this.currentFrame,
+      targetX,
+      targetY,
+      ...(opts.strikeCountOverride !== undefined
+        ? { strikeCountOverride: opts.strikeCountOverride }
+        : {}),
+      skipResourceCommit: true,
+    })
+    if (!res.allowed || !res.animState) {
+      if (
+        cast.skill.startMana > 0 &&
+        player.states.has(12) &&
+        this.playerChannelSkillId.get(player.unitId) === cast.skill.id
+      ) {
+        this.updatePlayerChannelState(player, cast)
+      }
+      opts.onCleanup?.()
+      return false
+    }
+
+    this.updatePlayerChannelState(player, cast)
+    const prevPending = this.pendingPlayerAnimActions.get(player.unitId)
+    if (prevPending !== undefined) {
+      prevPending.onCleanup?.()
+    }
+    this.pendingPlayerAnimActions.set(player.unitId, {
+      cast,
+      manaCommittedOnStart: false,
+      onStrike: opts.onStrike,
+      onCleanup: opts.onCleanup,
+    })
+
+    const animMode = getSkillAnimModes(cast.skill.id).playerMode
+    player.mode = animMode
+    player.targetX = player.x
+    player.targetY = player.y
+    const motion = this.playerMotion.get(player.unitId)
+    if (motion !== undefined) {
+      motion.mover.setPosition(player.x, player.y)
+      motion.x = player.x
+      motion.y = player.y
+      motion.moving = false
+      motion.plannedX = Number.NaN
+      motion.plannedY = Number.NaN
+    }
+
+    this.broadcastPlayerSkillCast(player, cast, broadcastTarget)
+    this.broadcastToArea(player.areaId, {
+      type: 'UnitMode',
+      unitType: 0,
+      id: player.unitId,
+      mode: animMode,
+      at: playerWirePosition(player),
+      lifePct:
+        player.maxHp > 0
+          ? Math.max(0, Math.round((player.hp / player.maxHp) * 128))
+          : 0,
+    })
+    return true
+  }
+
+  /** Collect living hostile monsters in `player`'s melee reach, ordered with `primary` first, then nearest. */
+  private livingHostilesInMeleeReach113c(
+    player: InternalPlayerRecord,
+    primary?: InternalMonsterRecord,
+  ): InternalMonsterRecord[] {
+    const list = [...this.monsters.values()].filter(
+      (m) =>
+        !m.dead &&
+        !m.isNpc &&
+        !m.submerged &&
+        !this.isMonsterConverted(m) &&
+        m.areaId === player.areaId &&
+        this.isPlayerMeleeInRangeOfMonster(player, m),
+    )
+    list.sort((a, b) => {
+      if (a === primary) return -1
+      if (b === primary) return 1
+      const d = Math.hypot(a.x - player.x, a.y - player.y) - Math.hypot(b.x - player.x, b.y - player.y)
+      return d !== 0 ? d : a.unitId - b.unitId
+    })
+    return list
+  }
+
+  /** Sorted Strafe targets within `cast.evalResult.radiusSubtiles` (`primary` first, then nearest). */
+  private collectStrafeTargets113c(
+    player: InternalPlayerRecord,
+    cast: PlayerSkillCast,
+    primaryTarget?: InternalMonsterRecord,
+  ): InternalMonsterRecord[] {
+    const radius = cast.evalResult.radiusSubtiles
+    return [...this.monsters.values()]
+      .filter(
+        (m) =>
+          !m.dead &&
+          !m.isNpc &&
+          !m.submerged &&
+          !this.isMonsterConverted(m) &&
+          m.areaId === player.areaId &&
+          Math.hypot(m.x - player.x, m.y - player.y) <= radius,
+      )
+      .sort((a, b) => {
+        if (a === primaryTarget) return -1
+        if (b === primaryTarget) return 1
+        const d = Math.hypot(a.x - player.x, a.y - player.y) - Math.hypot(b.x - player.x, b.y - player.y)
+        return d !== 0 ? d : a.unitId - b.unitId
+      })
+  }
+
+  private executeSingleStrafeShot113c(
+    player: InternalPlayerRecord,
+    cast: PlayerSkillCast,
+    missileRec: MissileRecord,
+    tx: number,
+    ty: number,
+    strikeIndex: number,
+    primaryTarget?: InternalMonsterRecord,
+  ): void {
+    const edPct = this.evaluatePlayerSkillCalc(cast, cast.skill.calc2) + this.playerSkillPhysSynergyPct(cast)
+    const inRange = this.collectStrafeTargets113c(player, cast, primaryTarget)
+    if (inRange.length === 0) {
+      if (strikeIndex === 0) {
+        this.launchPlayerSkillMissile(player, cast, missileRec, tx, ty, this.rollPlayerSkillDamage(player, cast, edPct))
+      }
+      return
+    }
+    const target = inRange[strikeIndex % inRange.length]!
+    this.launchPlayerSkillMissile(
+      player,
+      cast,
+      missileRec,
+      target.x,
+      target.y,
+      this.rollPlayerSkillDamage(player, cast, edPct),
+    )
+  }
+
+  /** Deduct 1 throwing stack quantity from a single hand (`'right'` or `'left'`, `#1862` Double Throw). */
+  private consumeSingleHandThrowQuantity113c(
+    player: InternalPlayerRecord,
+    hand: 'right' | 'left',
+  ): void {
+    const hands = this.activeHandItems113c(player)
+    const item = hand === 'right' ? hands.right : hands.left
+    if (item === undefined) return
+    const next = Math.max(0, this.itemQuantity113c(item) - 1)
+    item.quantity = next
+    if (item.stats.has(STAT_QUANTITY)) item.stats.set(STAT_QUANTITY, next)
+    if (item.rawItemData !== undefined) {
+      item.rawItemData = {
+        ...item.rawItemData,
+        quantity: next,
+        stats: item.rawItemData.stats.map((s) =>
+          s.statId === STAT_QUANTITY ? { ...s, value: next } : s,
+        ),
+      }
+    }
+    this.emitToPlayer(player.unitId, {
+      type: 'StatSet',
+      unit: { unitType: 4, id: item.unitId },
+      stat: STAT_QUANTITY,
+      param: 0,
+      value: next,
+    })
+  }
+
   private executeSkillAtLocation(
     player: InternalPlayerRecord,
     skillId: number,
     tx: number,
     ty: number,
     targetCorpse?: InternalMonsterRecord,
+    options?: { readonly hold?: boolean },
   ): void {
     if (player.dead || this.isPlayerInHitRecovery(player)) return
     if (!Number.isFinite(tx) || !Number.isFinite(ty)) return
+    // `#1883` Bone Prison (#88) requires an explicit unit target; Bone Wall (#78) & Bone Prison (#88) are blocked in Town!
+    if (skillId === 88) return
+    if (skillId === 78 && TOWN_AREAS.has(player.areaId)) return
     const cast = this.resolvePlayerSkillCast(player, skillId)
     if (cast === null) return
     // #1812: Double Throw needs a throwing weapon with quantity in both hands (checked before mana).
@@ -12431,6 +15838,124 @@ export class GameInstance {
         return
       }
     }
+
+    const executeLocationDoPhase = (strikeIndex: number, _totalStrikes: number): void => {
+      if (skillId === SKILL_TELEPORT) {
+        this.relocatePlayerForSkill(player, tx, ty, true)
+        return
+      }
+      if (skillId === 219 || skillId === 220) {
+        this.openTownPortal(player)
+        return
+      }
+      if (doFunc === SRVDOFUNC_FIND_POTION) {
+        if (validatedCorpse && validatedCorpse.dead) this.executeFindPotion(player, cast, validatedCorpse)
+        return
+      }
+      if (doFunc === SRVDOFUNC_FIND_ITEM) {
+        if (validatedCorpse && validatedCorpse.dead) this.executeFindItem(player, cast, validatedCorpse)
+        return
+      }
+      if (doFunc === SRVDOFUNC_GRIM_WARD) {
+        if (validatedCorpse && validatedCorpse.dead) this.executeGrimWard(player, cast, validatedCorpse)
+        return
+      }
+      if (skillId === 78) {
+        this.executeBoneWall113c(player, cast, tx, ty)
+        return
+      }
+      if (skillId === 277) {
+        this.activateBladeShieldState113c(player, cast.slvl)
+        return
+      }
+      if (skillId === 257) {
+        this.executeBladeSentinel113c(player, cast, tx, ty)
+        return
+      }
+      if (skillId === 17) {
+        this.executeSlowMissiles113c(player, cast)
+        return
+      }
+      if (skillId === 266) {
+        this.activeBladeFuryChannels.set(player.unitId, {
+          tx,
+          ty,
+          nextAutoShotFrame: this.currentFrame + 5,
+          lastShotFrame: this.currentFrame,
+          hold: options?.hold === true,
+        })
+      }
+      if (doFunc === SRVDOFUNC_LEAP || doFunc === SRVDOFUNC_LEAP_ATTACK) {
+        this.relocatePlayerForSkill(player, tx, ty, false)
+      }
+      if (doFunc === SRVDOFUNC_NOVA) {
+        this.executeNovaSkill(player, cast)
+        if (cast.missile !== undefined) {
+          this.launchPlayerSkillMissile(player, cast, cast.missile, tx, ty, 0)
+        }
+        return
+      }
+      if (cast.missile !== undefined) {
+        if (skillId === 26) {
+          this.executeSingleStrafeShot113c(player, cast, cast.missile, tx, ty, strikeIndex)
+          return
+        }
+        if (skillId === 140) {
+          const hand = strikeIndex === 0 ? 'right' : 'left'
+          const mRec = strikeIndex === 1 && cast.offHandMissile !== undefined ? cast.offHandMissile : cast.missile
+          this.launchPlayerSkillMissile(player, cast, mRec, tx, ty, this.rollPlayerSkillDamage(player, cast))
+          this.consumeSingleHandThrowQuantity113c(player, hand)
+          return
+        }
+        this.launchPlayerSkillMissiles(player, cast, cast.missile, tx, ty)
+        return
+      }
+      if (skillId === 42) {
+        this.applyStaticField(player, cast)
+        return
+      }
+      if (doFunc === SRVDOFUNC_CORPSE_EXPLOSION) {
+        this.executeCorpseExplosion(player, cast, tx, ty, targetCorpse)
+        return
+      }
+      if (doFunc === SRVDOFUNC_MIND_BLAST) {
+        this.executeMindBlast(player, cast, tx, ty)
+        return
+      }
+      if (cast.skill.range !== 'h2h' && cast.skill.range !== 'both') {
+        this.applyPlayerSkillEffect(player, cast, tx, ty, targetCorpse)
+      }
+    }
+
+    if (this.animActionWindupEnabled && doFunc !== SRVDOFUNC_WHIRLWIND) {
+      let strikeCountOverride: number | undefined
+      if (skillId === 26) {
+        const targets = this.collectStrafeTargets113c(player, cast)
+        strikeCountOverride =
+          targets.length === 0
+            ? 1
+            : strafeShotCount113c(
+                this.evaluatePlayerSkillCalc(cast, cast.skill.calc1),
+                this.evaluatePlayerSkillCalc(cast, cast.skill.calc3),
+                targets.length,
+              )
+      }
+      this.schedulePlayerSkillWindup113c(
+        player,
+        cast,
+        tx,
+        ty,
+        { x: Math.round(tx), y: Math.round(ty) },
+        {
+          strikeCountOverride,
+          onStrike: executeLocationDoPhase,
+        },
+      )
+      return
+    }
+
+    // Sync AnimDispatcher metadata even in immediate mode
+    this.syncPlayerAnimDispatcher113c(player)
     this.updatePlayerChannelState(player, cast)
     // 1.13c `D2Game.dll` `SKILLS_DoSkillStart` (`0x6FCBFD00` @ `0x6FCBFE6C`) vs `SKILLS_DoSkillDo` (`0x6FCC19A0`):
     // When `usemanaondo = 1` (`Plague Javelin` #25, `Blade Fury` #266), mana is checked and deducted in the `do` phase.
@@ -12450,64 +15975,20 @@ export class GameInstance {
       this.commitPlayerSkillCast(player, cast)
     }
 
-    if (skillId === SKILL_TELEPORT) {
-      this.relocatePlayerForSkill(player, tx, ty, true)
-      return
-    }
-
-    if (skillId === 219 || skillId === 220) {
-      this.openTownPortal(player)
-      return
-    }
-
-    if (doFunc === SRVDOFUNC_FIND_POTION) {
-      this.executeFindPotion(player, cast, validatedCorpse!)
-      return
-    }
-    if (doFunc === SRVDOFUNC_FIND_ITEM) {
-      this.executeFindItem(player, cast, validatedCorpse!)
-      return
-    }
-    if (doFunc === SRVDOFUNC_GRIM_WARD) {
-      this.executeGrimWard(player, cast, validatedCorpse!)
-      return
-    }
     if (doFunc === SRVDOFUNC_WHIRLWIND) {
       this.executeWhirlwind(player, cast, tx, ty)
       return
     }
-    if (doFunc === SRVDOFUNC_LEAP || doFunc === SRVDOFUNC_LEAP_ATTACK) {
-      this.relocatePlayerForSkill(player, tx, ty, false)
-    }
-    if (doFunc === SRVDOFUNC_NOVA) {
-      this.executeNovaSkill(player, cast)
-      if (cast.missile !== undefined) {
-        this.launchPlayerSkillMissile(player, cast, cast.missile, tx, ty, 0)
-      }
+    if (skillId === 26 && cast.missile !== undefined) {
+      this.executeStrafe(player, cast, cast.missile, tx, ty)
       return
     }
-
-    if (cast.missile !== undefined) {
+    if (skillId === 140 && cast.missile !== undefined) {
       this.launchPlayerSkillMissiles(player, cast, cast.missile, tx, ty)
-      if (skillId === 140) this.consumeDoubleThrowQuantity113c(player)
+      this.consumeDoubleThrowQuantity113c(player)
       return
     }
-    if (skillId === 42) {
-      this.applyStaticField(player, cast)
-      return
-    }
-    if (doFunc === SRVDOFUNC_CORPSE_EXPLOSION) {
-      this.executeCorpseExplosion(player, cast, tx, ty, targetCorpse)
-      return
-    }
-    if (doFunc === SRVDOFUNC_MIND_BLAST) {
-      this.executeMindBlast(player, cast, tx, ty)
-      return
-    }
-    // Melee strikes on an empty location hit nothing; everything else applies its registry effect.
-    if (cast.skill.range !== 'h2h' && cast.skill.range !== 'both') {
-      this.applyPlayerSkillEffect(player, cast, tx, ty, targetCorpse)
-    }
+    executeLocationDoPhase(0, 1)
   }
 
   private executeSkillOnTarget(
@@ -12515,10 +15996,28 @@ export class GameInstance {
     skillId: number,
     targetId: number,
     targetType?: SkillTargetUnitType113c,
+    options?: { readonly shift?: boolean; readonly hold?: boolean },
   ): void {
     if (player.dead || this.isPlayerInHitRecovery(player)) return
     if (skillId === TELEKINESIS_SKILL_ID_113C) {
       this.executeTelekinesis113c(player, targetId, targetType)
+      return
+    }
+    const pvpTarget = this.resolveHostilePvpTargetById113c(
+      player.unitId,
+      player.areaId,
+      targetId,
+      targetType,
+    )
+    if (pvpTarget !== undefined) {
+      this.executeSkillOnPvpTarget113c(player, skillId, pvpTarget)
+      return
+    }
+    if (
+      targetType === 0 ||
+      (targetType === undefined && !this.monsters.has(targetId) && this.players.has(targetId))
+    ) {
+      // Clicking a non-hostile player (or player in Town) must never fall back to hitting a nearby monster.
       return
     }
     const clicked = this.monsters.get(targetId)
@@ -12549,6 +16048,7 @@ export class GameInstance {
     }
     if (!monster) return
 
+    if ((skillId === 78 || skillId === 88) && TOWN_AREAS.has(player.areaId)) return
     const cast = this.resolvePlayerSkillCast(player, skillId)
     if (cast === null) return
     const doFunc = cast.skill.srvDoFunc
@@ -12559,14 +16059,31 @@ export class GameInstance {
       doFunc === SRVDOFUNC_CHARGE || doFunc === SRVDOFUNC_LEAP_ATTACK || doFunc === SRVDOFUNC_DRAGON_FLIGHT
     const isMeleeStrike =
       !isMovementStrike &&
-      cast.missile === undefined &&
+      (cast.missile === undefined || skillId === 238) &&
       (cast.skill.range === 'h2h' || cast.skill.range === 'both')
-    if (isMeleeStrike && !this.isPlayerMeleeInRangeOfMonster(player, monster)) return
+    if (options?.shift) {
+      player.targetX = player.x
+      player.targetY = player.y
+    }
+    if (isMeleeStrike && !this.isPlayerMeleeInRangeOfMonster(player, monster)) {
+      if (options?.shift) {
+        this.executeSkillAtLocation(player, skillId, monster.x, monster.y)
+      }
+      return
+    }
     // #1808/#1812/#1813/#1815/#1816: hand-equipment requirements are checked before mana is spent.
     if (!this.passesWave2HandRequirement113c(player, skillId)) return
     // Dragon Tail (#270) / Phoenix Strike (#280) carry a `srvmissile` for their release effects but
     // strike in melee: enforce melee reach before mana like every other h2h strike.
-    if ((skillId === 270 || skillId === 280) && !this.isPlayerMeleeInRangeOfMonster(player, monster)) return
+    if ((skillId === 270 || skillId === 280) && !this.isPlayerMeleeInRangeOfMonster(player, monster)) {
+      if (options?.shift) {
+        this.broadcastPlayerSkillCast(player, cast, {
+          x: Math.round(monster.x),
+          y: Math.round(monster.y),
+        })
+      }
+      return
+    }
     // #1816 Dragon Flight (`aurarangecalc = 27`): reject out-of-range / blocked targets before mana.
     if (skillId === 275) {
       const range = evaluateDragonFlightStats(cast.slvl).rangeSubtiles
@@ -12578,6 +16095,240 @@ export class GameInstance {
       }
     }
 
+    const primaryMonster = monster
+    if (this.animActionWindupEnabled && doFunc !== SRVDOFUNC_WHIRLWIND) {
+      const fendTargets =
+        skillId === 30 ? this.livingHostilesInMeleeReach113c(player, primaryMonster).slice(0, 12) : undefined
+      let strikeCountOverride: number | undefined
+      if (skillId === 26) {
+        const targets = this.collectStrafeTargets113c(player, cast, primaryMonster)
+        strikeCountOverride =
+          targets.length === 0
+            ? 1
+            : strafeShotCount113c(
+                this.evaluatePlayerSkillCalc(cast, cast.skill.calc1),
+                this.evaluatePlayerSkillCalc(cast, cast.skill.calc3),
+                targets.length,
+              )
+      } else if (skillId === 30) {
+        strikeCountOverride = Math.max(1, fendTargets!.length)
+      } else if (skillId === 106 || skillId === 248) {
+        strikeCountOverride = Math.min(5, 1 + cast.slvl)
+      } else if (skillId === 255) {
+        strikeCountOverride = evaluateDragonTalonStats(cast.slvl).kickCount
+      } else if (skillId === 260) {
+        strikeCountOverride = 2
+      }
+
+      // `#144 Concentrate` (`SrvSt32`): applies temporary `concentrate` (`state 15`) defense bonus during swing.
+      let concentrateApplied = false
+      if (skillId === 144 && !player.states.has(15)) {
+        concentrateApplied = true
+        this.applyPlayerTimedState113c(
+          player,
+          15,
+          100,
+          { item_armor_percent: 100 + 10 * (cast.slvl - 1) },
+          144,
+          cast.slvl,
+        )
+      }
+
+      let finisherSession:
+        | { payloads: readonly DischargedPayload[]; tigerEdPct: number; released: boolean }
+        | undefined
+
+      this.schedulePlayerSkillWindup113c(
+        player,
+        cast,
+        primaryMonster.x,
+        primaryMonster.y,
+        { unitType: 1, id: primaryMonster.unitId },
+        {
+          strikeCountOverride,
+          onCleanup: concentrateApplied
+            ? () => {
+                if (player.states.has(15)) {
+                  this.clearUnitState(player.states, player.stateTimers, 'player', player.unitId, player.areaId, 15)
+                }
+                this.playerCombat.get(player.unitId)?.stateBus.removeState(15)
+              }
+            : undefined,
+          onStrike: (strikeIndex, totalStrikes) => {
+            if (doFunc === SRVDOFUNC_JAB) {
+              this.executeJabSingleStrike113c(player, cast, primaryMonster)
+              return
+            }
+            if (doFunc === SRVDOFUNC_ZEAL_FURY_FEND) {
+              if (skillId === 30) {
+                const t = fendTargets?.[strikeIndex]
+                if (t && !t.dead && this.isPlayerMeleeInRangeOfMonster(player, t)) {
+                  this.executeStandardSkillMeleeHit113c(player, cast, t)
+                }
+              } else {
+                this.executeZealOrFurySingleStrike113c(player, cast, primaryMonster, strikeIndex)
+              }
+              return
+            }
+            if (skillId === 19) {
+              this.executeImpaleStrike113c(player, cast, primaryMonster)
+              return
+            }
+            if (skillId === 144) {
+              this.executeConcentrateStrike113c(player, cast, primaryMonster)
+              return
+            }
+            if (skillId === 133 || skillId === 147) {
+              this.executeDualStrikeSingleHand113c(
+                player,
+                cast,
+                primaryMonster,
+                strikeIndex === 0 ? 'right' : 'left',
+              )
+              return
+            }
+            if (
+              MARTIAL_FINISHER_SKILL_IDS_113C.has(skillId) &&
+              (skillId !== 0 || cast.missile === undefined)
+            ) {
+              if (finisherSession === undefined) {
+                const charges = liveMartialCharges113c(
+                  this.playerMartialCharges113c.get(player.unitId),
+                  this.currentFrame,
+                )
+                if (skillId !== 0 || charges.length > 0) {
+                  const payloads = resolveFinisherDischarge(
+                    charges.map((c) => ({
+                      skillId: c.skillId,
+                      count: c.count,
+                      slvl: c.slvl,
+                      expiresAtFrame: this.currentFrame + 1,
+                    })),
+                    {
+                      royalStrikeBlvl: player.skills.get(280) ?? 0,
+                      fistsOfFireBlvl: player.skills.get(259) ?? 0,
+                      clawsOfThunderBlvl: player.skills.get(269) ?? 0,
+                      bladesOfIceBlvl: player.skills.get(274) ?? 0,
+                    },
+                  )
+                  finisherSession = {
+                    payloads,
+                    tigerEdPct: payloads.reduce((sum, p) => sum + (p.enhancedDamagePct ?? 0), 0),
+                    released: false,
+                  }
+                }
+              }
+              if (finisherSession !== undefined) {
+                this.executeMartialFinisherSingleStrike113c(
+                  player,
+                  cast,
+                  primaryMonster,
+                  strikeIndex,
+                  totalStrikes,
+                  finisherSession,
+                )
+                return
+              }
+            }
+            if (this.executeWave2MeleeOnTarget113c(player, cast, primaryMonster)) return
+            if (this.executeWave4TargetSkillDo113c(player, cast, primaryMonster, options)) return
+            if (skillId === SKILL_TELEPORT) {
+              this.relocatePlayerForSkill(player, primaryMonster.x, primaryMonster.y, true)
+              return
+            }
+            if (isMovementStrike) {
+              const arrival = this.pointBefore(player, primaryMonster.x, primaryMonster.y, 1)
+              this.relocatePlayerForSkill(player, arrival.x, arrival.y, false)
+              if (!primaryMonster.dead && this.isPlayerMeleeInRangeOfMonster(player, primaryMonster)) {
+                const damage = this.rollPlayerSkillDamage(player, cast)
+                if (damage > 0) this.applyDamageToMonster(player, primaryMonster, damage, skillId)
+              }
+              return
+            }
+            if (doFunc === SRVDOFUNC_LEAP) {
+              this.relocatePlayerForSkill(player, primaryMonster.x, primaryMonster.y, false)
+            }
+            if (doFunc === SRVDOFUNC_NOVA) {
+              this.executeNovaSkill(player, cast)
+              if (cast.missile !== undefined) {
+                this.launchPlayerSkillMissile(player, cast, cast.missile, primaryMonster.x, primaryMonster.y, 0)
+              }
+              return
+            }
+            if (cast.missile !== undefined) {
+              if (skillId === 26) {
+                this.executeSingleStrafeShot113c(
+                  player,
+                  cast,
+                  cast.missile,
+                  primaryMonster.x,
+                  primaryMonster.y,
+                  strikeIndex,
+                  primaryMonster,
+                )
+                return
+              }
+              if (skillId === 140) {
+                const hand = strikeIndex === 0 ? 'right' : 'left'
+                const mRec =
+                  strikeIndex === 1 && cast.offHandMissile !== undefined
+                    ? cast.offHandMissile
+                    : cast.missile
+                this.launchPlayerSkillMissile(
+                  player,
+                  cast,
+                  mRec,
+                  primaryMonster.x,
+                  primaryMonster.y,
+                  this.rollPlayerSkillDamage(player, cast),
+                )
+                this.consumeSingleHandThrowQuantity113c(player, hand)
+                return
+              }
+              this.launchPlayerSkillMissiles(
+                player,
+                cast,
+                cast.missile,
+                primaryMonster.x,
+                primaryMonster.y,
+                primaryMonster,
+              )
+              return
+            }
+            if (skillId === 42) {
+              this.applyStaticField(player, cast)
+              return
+            }
+            if (doFunc === SRVDOFUNC_TELEKINESIS || doFunc === SRVDOFUNC_PSYCHIC_HAMMER) {
+              if (!primaryMonster.dead) this.applyDirectSkillDamage(player, cast, primaryMonster)
+              return
+            }
+            if (doFunc === SRVDOFUNC_MIND_BLAST) {
+              this.executeMindBlast(player, cast, primaryMonster.x, primaryMonster.y)
+              return
+            }
+            if (doFunc === SRVDOFUNC_CORPSE_EXPLOSION) {
+              this.executeCorpseExplosion(player, cast, primaryMonster.x, primaryMonster.y)
+              return
+            }
+            if (doFunc === SRVDOFUNC_CONVERSION) {
+              if (!primaryMonster.dead) this.executePaladinConversion(player, cast, primaryMonster)
+              return
+            }
+            if (isMeleeStrike) {
+              if (!primaryMonster.dead && this.isPlayerMeleeInRangeOfMonster(player, primaryMonster)) {
+                this.executeStandardSkillMeleeHit113c(player, cast, primaryMonster)
+              }
+              return
+            }
+            this.applyPlayerSkillEffect(player, cast, primaryMonster.x, primaryMonster.y, primaryMonster)
+          },
+        },
+      )
+      return
+    }
+
+    this.syncPlayerAnimDispatcher113c(player)
     this.updatePlayerChannelState(player, cast)
     if (!cast.skill.useManaOnDo) {
       this.commitPlayerSkillCast(player, cast)
@@ -12595,7 +16346,39 @@ export class GameInstance {
       this.commitPlayerSkillCast(player, cast)
     }
 
+    if (doFunc === SRVDOFUNC_JAB) {
+      for (let i = 0; i < 3; i++) {
+        this.executeJabSingleStrike113c(player, cast, monster)
+      }
+      return
+    }
+    if (doFunc === SRVDOFUNC_ZEAL_FURY_FEND) {
+      if (skillId === 30) {
+        const fendTargets = this.livingHostilesInMeleeReach113c(player, monster).slice(0, 12)
+        for (const t of fendTargets) {
+          if (!t.dead && this.isPlayerMeleeInRangeOfMonster(player, t)) {
+            this.executeStandardSkillMeleeHit113c(player, cast, t)
+          }
+        }
+      } else {
+        const strikes = Math.min(5, 1 + cast.slvl)
+        for (let i = 0; i < strikes; i++) {
+          this.executeZealOrFurySingleStrike113c(player, cast, monster, i)
+        }
+      }
+      return
+    }
+    if (skillId === 19) {
+      this.executeImpaleStrike113c(player, cast, monster)
+      return
+    }
+    if (skillId === 144) {
+      this.executeConcentrateStrike113c(player, cast, monster)
+      return
+    }
+
     if (this.executeWave2MeleeOnTarget113c(player, cast, monster)) return
+    if (this.executeWave4TargetSkillDo113c(player, cast, monster, options)) return
 
     if (skillId === SKILL_TELEPORT) {
       this.relocatePlayerForSkill(player, monster.x, monster.y, true)
@@ -12652,34 +16435,681 @@ export class GameInstance {
       return
     }
     if (isMeleeStrike) {
-      if (cast.evalResult.elemType === 'pois' && cast.evalResult.durationFrames > 0) {
-        const physDamage = this.rollPlayerSkillPhysDamage(player, cast)
-        let landed = true
-        if (physDamage > 0) {
-          landed = this.applyDamageToMonster(player, monster, physDamage, skillId, 'phys')
-        }
-        const bitrate256 = this.rollInclusive(
-          cast.evalResult.minElemDmg256,
-          cast.evalResult.maxElemDmg256,
-        )
-        if (landed && bitrate256 > 0 && !monster.dead) {
-          this.applyMonsterPoisonDot(
-            player,
-            monster,
-            bitrate256,
-            cast.evalResult.durationFrames,
-            skillId,
-          )
-        }
-        return
-      }
-      const damage = this.rollPlayerSkillDamage(player, cast)
-      if (damage > 0) {
-        this.applyDamageToMonster(player, monster, damage, skillId)
-      }
+      this.executeStandardSkillMeleeHit113c(player, cast, monster)
       return
     }
     this.applyPlayerSkillEffect(player, cast, monster.x, monster.y, monster)
+  }
+
+  private executeWave4TargetSkillDo113c(
+    player: InternalPlayerRecord,
+    cast: PlayerSkillCast,
+    monster: InternalMonsterRecord,
+    options?: { readonly shift?: boolean; readonly hold?: boolean },
+  ): boolean {
+    const skillId = cast.skill.id
+    if (skillId === 111) {
+      if (!monster.dead && this.isPlayerMeleeInRangeOfMonster(player, monster)) {
+        this.executePaladinVengeance113c(player, cast, monster)
+      }
+      return true
+    }
+    if (skillId === 78) {
+      this.executeBoneWall113c(player, cast, monster.x, monster.y)
+      return true
+    }
+    if (skillId === 88) {
+      this.executeBonePrison113c(player, cast, monster.x, monster.y)
+      return true
+    }
+    if (skillId === 277) {
+      this.activateBladeShieldState113c(player, cast.slvl)
+      return true
+    }
+    if (skillId === 257) {
+      this.executeBladeSentinel113c(player, cast, monster.x, monster.y)
+      return true
+    }
+    if (skillId === 17) {
+      this.executeSlowMissiles113c(player, cast)
+      return true
+    }
+    if (skillId === 266) {
+      this.activeBladeFuryChannels.set(player.unitId, {
+        tx: monster.x,
+        ty: monster.y,
+        nextAutoShotFrame: this.currentFrame + 5,
+        lastShotFrame: this.currentFrame,
+        hold: options?.hold === true,
+      })
+      return false
+    }
+    // `#1886` Druid `Rabies (#238)` (`SrvSt57` / `SrvDo121` @ `0x6FC66A20`):
+    // `Skills.txt` `#238` sets `srvmissile = rabiesplague`, so handle `#238` BEFORE `cast.missile !== undefined`!
+    if (skillId === 238) {
+      if (monster.dead || !this.isPlayerMeleeInRangeOfMonster(player, monster)) {
+        return true
+      }
+      const physDamage = Math.max(1, this.rollPlayerSkillPhysDamage(player, cast))
+      const outHitResult = { landedHitRoll: false }
+      this.applyDamageToMonster(player, monster, physDamage, 238, 'phys', 'player', {
+        attackKind: 'melee',
+        outHitResult,
+      })
+      const bitrate256 = this.rollInclusive(
+        cast.evalResult.minElemDmg256,
+        cast.evalResult.maxElemDmg256,
+      )
+      if (
+        outHitResult.landedHitRoll &&
+        bitrate256 > 0 &&
+        cast.evalResult.durationFrames > 0 &&
+        !monster.dead &&
+        this.applyMonsterPoisonDot(
+          player,
+          monster,
+          bitrate256,
+          cast.evalResult.durationFrames,
+          238,
+        )
+      ) {
+        this.applyUnitState(
+          monster.states,
+          monster.stateTimers,
+          'monster',
+          monster.unitId,
+          monster.areaId,
+          STATE_RABIES_113C,
+          cast.evalResult.durationFrames,
+        )
+        monster.rabiesInfection = {
+          expireFrame: this.currentFrame + cast.evalResult.durationFrames,
+          rawBitrate256: bitrate256,
+          attackerId: player.unitId,
+          slvl: cast.slvl,
+        }
+      }
+      return true
+    }
+    return false
+  }
+
+  /**
+   * #1784: Execute a targeted skill against a hostile PvP unit (player, mercenary, or summoned pet).
+   */
+  private executeSkillOnPvpTarget113c(
+    player: InternalPlayerRecord,
+    skillId: number,
+    pvpTarget:
+      | { readonly kind: 'player'; readonly player: InternalPlayerRecord }
+      | { readonly kind: 'merc'; readonly merc: InternalMercenaryRecord }
+      | {
+          readonly kind: 'pet'
+          readonly ownerId: number
+          readonly pet: SummonedPetUnit
+          readonly petUnitId: number
+          readonly areaId: number
+        },
+  ): void {
+    const resolveTargetPos = (): { x: number; y: number } => ({
+      x:
+        pvpTarget.kind === 'player'
+          ? pvpTarget.player.x
+          : pvpTarget.kind === 'merc'
+            ? pvpTarget.merc.x
+            : pvpTarget.pet.x,
+      y:
+        pvpTarget.kind === 'player'
+          ? pvpTarget.player.y
+          : pvpTarget.kind === 'merc'
+            ? pvpTarget.merc.y
+            : pvpTarget.pet.y,
+    })
+    const { x: tx, y: ty } = resolveTargetPos()
+    const targetUnitId =
+      pvpTarget.kind === 'player'
+        ? pvpTarget.player.unitId
+        : pvpTarget.kind === 'merc'
+          ? pvpTarget.merc.unitId
+          : pvpTarget.petUnitId
+    const wireUnitType: 0 | 1 = pvpTarget.kind === 'player' ? 0 : 1
+    const isTargetAlive = (): boolean =>
+      this.resolveHostilePvpTargetById113c(player.unitId, player.areaId, targetUnitId, wireUnitType) !==
+      undefined
+    const lockedTargetKey = this.onlineUnitKey113c(pvpTarget.kind, targetUnitId)
+    if ((skillId === 78 || skillId === 88) && TOWN_AREAS.has(player.areaId)) return
+    const cast = this.resolvePlayerSkillCast(player, skillId)
+    if (cast === null) return
+    const doFunc = cast.skill.srvDoFunc
+    if (doFunc === SRVDOFUNC_WHIRLWIND && this.resolveWhirlwindEquippedHandsForPlayer113c(player) === null) {
+      return
+    }
+    const meleeReach = PLAYER_MELEE_REACH_SUBTILES + Math.max(0, this.resolvePlayerWeaponRangeAdder(player))
+    const inMelee = Math.hypot(tx - player.x, ty - player.y) <= meleeReach
+    const isMovementStrike =
+      doFunc === SRVDOFUNC_CHARGE || doFunc === SRVDOFUNC_LEAP_ATTACK || doFunc === SRVDOFUNC_DRAGON_FLIGHT
+    const isMeleeStrike =
+      !isMovementStrike &&
+      (cast.missile === undefined || skillId === 238) &&
+      (cast.skill.range === 'h2h' || cast.skill.range === 'both')
+    if (isMeleeStrike && !inMelee) return
+    if (!this.passesWave2HandRequirement113c(player, skillId)) return
+    if ((skillId === 270 || skillId === 280) && !inMelee) return
+    if (skillId === 275) {
+      const range = evaluateDragonFlightStats(cast.slvl).rangeSubtiles
+      if (
+        Math.hypot(tx - player.x, ty - player.y) > range ||
+        !this.hasInteractionLineOfSight(player.areaId, player.x, player.y, tx, ty)
+      ) {
+        return
+      }
+    }
+
+    if (this.animActionWindupEnabled && doFunc !== SRVDOFUNC_WHIRLWIND) {
+      const strikeCountOverride =
+        skillId === 255
+          ? evaluateDragonTalonStats(cast.slvl).kickCount
+          : skillId === 106 || skillId === 248
+            ? Math.min(5, 1 + cast.slvl)
+            : skillId === 260
+              ? 2
+              : undefined
+      this.schedulePlayerSkillWindup113c(
+        player,
+        cast,
+        tx,
+        ty,
+        { unitType: wireUnitType, id: targetUnitId },
+        {
+          strikeCountOverride,
+          onStrike: (strikeIndex) => {
+            if (!isTargetAlive()) return
+            const livePos = resolveTargetPos()
+            const liveInMelee = Math.hypot(livePos.x - player.x, livePos.y - player.y) <= meleeReach
+            if (skillId === 133 || skillId === 147) {
+              if (!liveInMelee) return
+              const isFrenzy = skillId === 147
+              const magicPct = isFrenzy ? Math.min(100, Math.max(0, player.skills.get(152) ?? 0)) : 0
+              const hand = strikeIndex === 0 ? 'right' : 'left'
+              const total = this.rollWave2HandStrike113c(player, cast, hand)
+              const magic = Math.trunc((total * magicPct) / 100)
+              const phys = total - magic
+              const landed = this.applyPvpHitToTarget113c(player, pvpTarget, {
+                skillId,
+                physDamage: phys,
+                elemDamage: magic,
+                elemType: magic > 0 ? 'mag' : undefined,
+                attackKind: 'melee',
+              })
+              if (isFrenzy) {
+                const prev = this.playerFrenzyStack113c.get(player.unitId)
+                const step = stepFrenzyStack113c(prev, this.currentFrame, cast.slvl, landed)
+                this.playerFrenzyStack113c.set(player.unitId, {
+                  stacks: step.stacks,
+                  expireFrame: step.expireFrame,
+                })
+                if (landed && step.stacks > 0) {
+                  this.applyPlayerTimedState113c(
+                    player,
+                    FRENZY_STATE_ID_113C,
+                    FRENZY_DURATION_FRAMES_113C,
+                    {
+                      skill_frenzy: step.stacks,
+                      velocitypercent: step.velocityPct,
+                      attackrate: step.attackRatePct,
+                    },
+                    skillId,
+                    cast.slvl,
+                  )
+                }
+              }
+              return
+            }
+            if (skillId === 255) {
+              if (!liveInMelee) return
+              const kickDmg = this.rollKickDamage113c(player, cast, 0)
+              this.applyPvpHitToTarget113c(player, pvpTarget, {
+                skillId,
+                physDamage: kickDmg,
+                attackKind: 'melee',
+              })
+              return
+            }
+            if (strikeIndex > 0) {
+              if (liveInMelee && (isMeleeStrike || KICK_SKILL_IDS_113C.has(skillId))) {
+                this.applyPvpSkillHitToTarget113c(player, cast, pvpTarget, 'melee')
+              }
+              return
+            }
+            this.executePvpSkillImmediateRelease113c(
+              player,
+              cast,
+              pvpTarget,
+              livePos.x,
+              livePos.y,
+              lockedTargetKey,
+              meleeReach,
+              isMovementStrike,
+              isMeleeStrike,
+            )
+          },
+        },
+      )
+      return
+    }
+
+    this.syncPlayerAnimDispatcher113c(player)
+    this.updatePlayerChannelState(player, cast)
+    if (!cast.skill.useManaOnDo) {
+      this.commitPlayerSkillCast(player, cast)
+    }
+    this.broadcastPlayerSkillCast(player, cast, { unitType: wireUnitType, id: targetUnitId })
+    if (cast.skill.useManaOnDo) {
+      if (
+        cast.chargeItem === undefined &&
+        !cast.isNoCostInState &&
+        player.manaFixed < cast.evalResult.manaCost256
+      ) {
+        if (player.states.has(12)) this.clearPlayerChannelState(player)
+        return
+      }
+      this.commitPlayerSkillCast(player, cast)
+    }
+
+    this.executePvpSkillImmediateRelease113c(
+      player,
+      cast,
+      pvpTarget,
+      tx,
+      ty,
+      lockedTargetKey,
+      meleeReach,
+      isMovementStrike,
+      isMeleeStrike,
+    )
+  }
+
+  private executePvpSkillImmediateRelease113c(
+    player: InternalPlayerRecord,
+    cast: PlayerSkillCast,
+    pvpTarget:
+      | { readonly kind: 'player'; readonly player: InternalPlayerRecord }
+      | { readonly kind: 'merc'; readonly merc: InternalMercenaryRecord }
+      | {
+          readonly kind: 'pet'
+          readonly ownerId: number
+          readonly pet: SummonedPetUnit
+          readonly petUnitId: number
+          readonly areaId: number
+        },
+    tx: number,
+    ty: number,
+    lockedTargetKey: string,
+    meleeReach: number,
+    isMovementStrike: boolean,
+    isMeleeStrike: boolean,
+  ): void {
+    const skillId = cast.skill.id
+    const doFunc = cast.skill.srvDoFunc
+    const inMelee = Math.hypot(tx - player.x, ty - player.y) <= meleeReach
+
+    if (skillId === 111) {
+      if (!inMelee) return
+      const wBase = this.computePlayerVengeanceWeaponBase113c(player)
+      const weaponBaseRolled = this.rollInclusive(wBase.vMin, wBase.vMax)
+      const vStats = calculateVengeanceStats(cast.slvl, {
+        resistFire: player.skills.get(100) ?? 0,
+        resistCold: player.skills.get(105) ?? 0,
+        resistLightning: player.skills.get(110) ?? 0,
+        salvation: player.skills.get(125) ?? 0,
+      })
+      const physDamage = this.rollPlayerSkillPhysDamage(player, cast)
+      this.applyPvpHitToTarget113c(player, pvpTarget, {
+        skillId: 111,
+        physDamage,
+        attackKind: 'melee',
+        toHitBonusPct: vStats.toHitBonusPct,
+        elemDurationFrames: vStats.chillDurationFrames,
+        vengeanceBasePhys: weaponBaseRolled,
+        multiElemPacket: {
+          firePct: vStats.firePct,
+          coldPct: vStats.coldPct,
+          ltngPct: vStats.ltngPct,
+          chillDurationFrames: vStats.chillDurationFrames,
+        },
+      })
+      return
+    }
+    if (skillId === 78) {
+      this.executeBoneWall113c(player, cast, tx, ty)
+      return
+    }
+    if (skillId === 88) {
+      this.executeBonePrison113c(player, cast, tx, ty)
+      return
+    }
+    if (skillId === 277) {
+      this.activateBladeShieldState113c(player, cast.slvl)
+      return
+    }
+    if (skillId === 257) {
+      this.executeBladeSentinel113c(player, cast, tx, ty)
+      return
+    }
+    if (skillId === 17) {
+      this.executeSlowMissiles113c(player, cast)
+      return
+    }
+    if (skillId === 238) {
+      if (!inMelee) return
+      this.applyPvpSkillHitToTarget113c(player, cast, pvpTarget, 'melee')
+      return
+    }
+
+    if (skillId === 97) {
+      const damage = this.removeAuraEdFromPreScaled113c(player, this.rollPlayerSkillPhysDamage(player, cast))
+      const landed = this.applyPvpHitToTarget113c(player, pvpTarget, {
+        skillId: 97,
+        physDamage: damage,
+        attackKind: 'melee',
+        autoHit: true,
+        unblockable: true,
+      })
+      if (landed) {
+        this.applyPvpDebuffStateToTarget113c(
+          pvpTarget,
+          21,
+          computeSmiteStunFrames113c(cast.slvl),
+          `player_${player.unitId}`,
+          97,
+          cast.slvl,
+        )
+      }
+      return
+    }
+
+    if (skillId === 133 || skillId === 147) {
+      const isFrenzy = skillId === 147
+      const magicPct = isFrenzy ? Math.min(100, Math.max(0, player.skills.get(152) ?? 0)) : 0
+      let frenzy = this.playerFrenzyStack113c.get(player.unitId)
+      let refreshed = false
+      for (const hand of ['right', 'left'] as const) {
+        const total = this.rollWave2HandStrike113c(player, cast, hand)
+        const magic = Math.trunc((total * magicPct) / 100)
+        const phys = total - magic
+        const landed = this.applyPvpHitToTarget113c(player, pvpTarget, {
+          skillId,
+          physDamage: phys,
+          elemDamage: magic,
+          elemType: magic > 0 ? 'mag' : undefined,
+          attackKind: 'melee',
+        })
+        if (isFrenzy) {
+          const step = stepFrenzyStack113c(frenzy, this.currentFrame, cast.slvl, landed)
+          frenzy = { stacks: step.stacks, expireFrame: step.expireFrame }
+          if (landed) refreshed = true
+        }
+      }
+      if (isFrenzy && frenzy !== undefined) {
+        this.playerFrenzyStack113c.set(player.unitId, frenzy)
+        if (refreshed && frenzy.stacks > 0) {
+          const step = stepFrenzyStack113c(frenzy, this.currentFrame, cast.slvl, false)
+          this.applyPlayerTimedState113c(
+            player,
+            FRENZY_STATE_ID_113C,
+            FRENZY_DURATION_FRAMES_113C,
+            { skill_frenzy: step.stacks, velocitypercent: step.velocityPct, attackrate: step.attackRatePct },
+            skillId,
+            cast.slvl,
+          )
+        }
+      }
+      return
+    }
+
+    if (skillId === SKILL_TELEPORT) {
+      this.relocatePlayerForSkill(player, tx, ty, true)
+      return
+    }
+    if (doFunc === SRVDOFUNC_WHIRLWIND) {
+      this.executeWhirlwind(player, cast, tx, ty)
+      return
+    }
+    if (isMovementStrike) {
+      const arrival = this.pointBefore(player, tx, ty, 1)
+      this.relocatePlayerForSkill(player, arrival.x, arrival.y, false)
+      if (Math.hypot(tx - player.x, ty - player.y) <= meleeReach) {
+        if (KICK_SKILL_IDS_113C.has(skillId)) {
+          const kickDmg = this.rollKickDamage113c(player, cast, 0)
+          this.applyPvpHitToTarget113c(player, pvpTarget, {
+            skillId,
+            physDamage: kickDmg,
+            attackKind: 'melee',
+          })
+        } else {
+          this.applyPvpSkillHitToTarget113c(player, cast, pvpTarget, 'melee')
+        }
+      }
+      return
+    }
+    if (doFunc === SRVDOFUNC_LEAP) {
+      this.relocatePlayerForSkill(player, tx, ty, false)
+    }
+    if (doFunc === SRVDOFUNC_NOVA) {
+      this.executeNovaSkill(player, cast)
+      if (cast.missile !== undefined) {
+        this.launchPlayerSkillMissile(player, cast, cast.missile, tx, ty, 0)
+      }
+      return
+    }
+    if (cast.missile !== undefined) {
+      this.launchPlayerSkillMissiles(player, cast, cast.missile, tx, ty, undefined, lockedTargetKey)
+      if (skillId === 140) this.consumeDoubleThrowQuantity113c(player)
+      return
+    }
+    if (skillId === 42) {
+      this.applyStaticField(player, cast)
+      return
+    }
+    if (doFunc === SRVDOFUNC_TELEKINESIS || doFunc === SRVDOFUNC_PSYCHIC_HAMMER) {
+      this.applyPvpSkillHitToTarget113c(player, cast, pvpTarget, 'spell')
+      return
+    }
+    if (doFunc === SRVDOFUNC_MIND_BLAST) {
+      this.executeMindBlast(player, cast, tx, ty)
+      return
+    }
+    if (doFunc === SRVDOFUNC_CORPSE_EXPLOSION) {
+      this.executeCorpseExplosion(player, cast, tx, ty)
+      return
+    }
+    if (isMeleeStrike || KICK_SKILL_IDS_113C.has(skillId)) {
+      if (KICK_SKILL_IDS_113C.has(skillId)) {
+        const strikes = skillId === 255 ? evaluateDragonTalonStats(cast.slvl).kickCount : 1
+        for (let i = 0; i < strikes; i++) {
+          const kickDmg = this.rollKickDamage113c(player, cast, 0)
+          this.applyPvpHitToTarget113c(player, pvpTarget, {
+            skillId,
+            physDamage: kickDmg,
+            attackKind: 'melee',
+          })
+        }
+      } else {
+        this.applyPvpSkillHitToTarget113c(player, cast, pvpTarget, 'melee')
+      }
+      return
+    }
+    if (
+      cast.skill.auraTgtState !== '' &&
+      cast.evalResult.durationFrames > 0 &&
+      cast.evalResult.radiusSubtiles <= 0
+    ) {
+      const st = this.registry.getStateByName(cast.skill.auraTgtState)
+      if (st !== undefined && !FRIENDLY_AURA_TARGET_STATE_IDS_113C.has(st.id)) {
+        const stats = this.evaluateSkillStateStats(
+          cast.skill,
+          cast.slvl,
+          this.playerCombatContext(player).statList,
+        )
+        this.applyPvpDebuffStateToTarget113c(
+          pvpTarget,
+          st.id,
+          cast.evalResult.durationFrames,
+          `player_${player.unitId}`,
+          cast.skill.id,
+          cast.slvl,
+          stats,
+        )
+        return
+      }
+    }
+    this.applyPlayerSkillEffect(player, cast, tx, ty, undefined)
+  }
+
+  /** Standard 1-strike melee skill damage + poison DoT + Open Wounds rider. */
+  private executeStandardSkillMeleeHit113c(
+    player: InternalPlayerRecord,
+    cast: PlayerSkillCast,
+    monster: InternalMonsterRecord,
+  ): void {
+    const skillId = cast.skill.id
+    if (cast.evalResult.elemType === 'pois' && cast.evalResult.durationFrames > 0) {
+      const physDamage = this.rollPlayerSkillPhysDamage(player, cast)
+      let landed = true
+      if (physDamage > 0) {
+        landed = this.applyDamageToMonster(player, monster, physDamage, skillId, 'phys')
+      }
+      const bitrate256 = this.rollInclusive(
+        cast.evalResult.minElemDmg256,
+        cast.evalResult.maxElemDmg256,
+      )
+      if (landed && bitrate256 > 0 && !monster.dead) {
+        this.applyMonsterPoisonDot(
+          player,
+          monster,
+          bitrate256,
+          cast.evalResult.durationFrames,
+          skillId,
+        )
+      }
+      if (landed) this.applyPlayerMeleeRiders113c(player, monster)
+      return
+    }
+    const damage = this.rollPlayerSkillDamage(player, cast)
+    if (damage > 0) {
+      const landed = this.applyDamageToMonster(player, monster, damage, skillId)
+      if (landed) this.applyPlayerMeleeRiders113c(player, monster)
+    }
+  }
+
+  /** `#10 Jab` (`SrvDo007` @ `0x6FC6CE80`): 1 spear strike of the 3-strike `SequenceTbls` sequence. */
+  private executeJabSingleStrike113c(
+    player: InternalPlayerRecord,
+    cast: PlayerSkillCast,
+    primaryMonster: InternalMonsterRecord,
+  ): void {
+    const target =
+      !primaryMonster.dead && this.isPlayerMeleeInRangeOfMonster(player, primaryMonster)
+        ? primaryMonster
+        : this.livingHostilesInMeleeReach113c(player)[0]
+    if (!target) return
+    const damage = this.rollWave2HandStrike113c(player, cast, 'right')
+    const landed = this.applyDamageToMonster(player, target, damage, 10, 'phys')
+    if (landed) this.applyPlayerMeleeRiders113c(player, target)
+  }
+
+  /**
+   * `#106 Zeal` / `#248 Fury` (`SrvDo013` @ `0x6FC6E290`): 1 rollback strike distributed round-robin
+   * across living hostiles in melee reach (`primary` first, cycling back on single target).
+   */
+  private executeZealOrFurySingleStrike113c(
+    player: InternalPlayerRecord,
+    cast: PlayerSkillCast,
+    primaryMonster: InternalMonsterRecord,
+    strikeIndex: number,
+  ): void {
+    const candidates = this.livingHostilesInMeleeReach113c(player, primaryMonster)
+    if (candidates.length === 0) return
+    const target = candidates[strikeIndex % candidates.length]!
+    const damage = this.rollWave2HandStrike113c(player, cast, 'right')
+    const landed = this.applyDamageToMonster(player, target, damage, cast.skill.id, 'phys')
+    if (landed) this.applyPlayerMeleeRiders113c(player, target)
+  }
+
+  /** `#19 Impale` (`SrvSt007` + `SrvDo002`): heavy spear thrust + weapon durability loss roll on hit. */
+  private executeImpaleStrike113c(
+    player: InternalPlayerRecord,
+    cast: PlayerSkillCast,
+    monster: InternalMonsterRecord,
+  ): void {
+    if (monster.dead || !this.isPlayerMeleeInRangeOfMonster(player, monster)) return
+    const damage = this.rollWave2HandStrike113c(player, cast, 'right')
+    const landed = this.applyDamageToMonster(player, monster, damage, 19, 'phys')
+    if (!landed) return
+    this.applyPlayerMeleeRiders113c(player, monster)
+
+    const { right, left } = this.activeHandItems113c(player)
+    const weapon =
+      right !== undefined && resolveWeaponBase113c(right.code) !== undefined
+        ? right
+        : left !== undefined && resolveWeaponBase113c(left.code) !== undefined
+          ? left
+          : undefined
+    if (weapon === undefined) return
+    const isIndestructible = collectItemStats(weapon).some((s) => s.statId === 152 && s.value > 0)
+    if (isIndestructible || weapon.maxDurability <= 0 || weapon.durability <= 0) return
+    const lossChance = Math.max(0, this.evaluatePlayerSkillCalc(cast, cast.skill.calc2))
+    const lossAmount = Math.max(1, this.evaluatePlayerSkillCalc(cast, cast.skill.calc3) || 1)
+    if (lossChance > 0 && (lossChance >= 100 || this.rng.rand(100) < lossChance)) {
+      const nextDur = Math.max(0, weapon.durability - lossAmount)
+      weapon.durability = nextDur
+      if (weapon.stats.has(72)) weapon.stats.set(72, nextDur)
+      if (weapon.rawItemData !== undefined) {
+        weapon.rawItemData = {
+          ...weapon.rawItemData,
+          durability: nextDur,
+          curDurability: nextDur,
+          stats: weapon.rawItemData.stats.map((s) =>
+            s.statId === 72 ? { ...s, value: nextDur } : s,
+          ),
+        }
+      }
+      this.emitToPlayer(player.unitId, {
+        type: 'StatSet',
+        unit: { unitType: 4, id: weapon.unitId },
+        stat: 72,
+        param: 0,
+        value: nextDur,
+      })
+    }
+  }
+
+  /**
+   * `#144 Concentrate` (`SrvSt32` + `SrvDo002`): uninterruptible strike converting
+   * `min(100, Berserk.blvl)%` physical damage to magic damage.
+   */
+  private executeConcentrateStrike113c(
+    player: InternalPlayerRecord,
+    cast: PlayerSkillCast,
+    monster: InternalMonsterRecord,
+  ): void {
+    if (monster.dead || !this.isPlayerMeleeInRangeOfMonster(player, monster)) return
+    const total = this.rollWave2HandStrike113c(player, cast, 'right')
+    const magicPct = Math.min(100, Math.max(0, player.skills.get(152) ?? 0))
+    const magic = Math.trunc((total * magicPct) / 100)
+    const phys = total - magic
+    const landed =
+      phys > 0
+        ? this.applyDamageToMonster(player, monster, phys, 144, 'phys')
+        : this.applyDamageToMonster(player, monster, magic, 144, 'mag', 'player', { attackKind: 'melee' })
+    if (landed && phys > 0 && magic > 0 && !monster.dead) {
+      this.applyDamageToMonster(player, monster, magic, 144, 'mag', 'player', {
+        attackKind: 'melee',
+        autoHit: true,
+        unblockable: true,
+      })
+    }
+    if (landed) this.applyPlayerMeleeRiders113c(player, monster)
   }
 
   // ===========================================================================================
@@ -12898,47 +17328,61 @@ export class GameInstance {
    * (main hand, then off hand). Frenzy converts `min(100, Berserk blvl)%` to magic and raises the
    * `frenzy` (state 94) counter on every landed strike (`stepFrenzyStack113c`).
    */
-  private executeDualStrike113c(player: InternalPlayerRecord, cast: PlayerSkillCast, monster: InternalMonsterRecord): void {
+  private executeDualStrikeSingleHand113c(
+    player: InternalPlayerRecord,
+    cast: PlayerSkillCast,
+    primaryMonster: InternalMonsterRecord,
+    hand: 'right' | 'left',
+  ): void {
+    const monster =
+      !primaryMonster.dead && this.isPlayerMeleeInRangeOfMonster(player, primaryMonster)
+        ? primaryMonster
+        : this.livingHostilesInMeleeReach113c(player)[0]
+    if (!monster) return
     const skillId = cast.skill.id
     const isFrenzy = skillId === 147
     const magicPct = isFrenzy ? Math.min(100, Math.max(0, player.skills.get(152) ?? 0)) : 0
-    let frenzy = this.playerFrenzyStack113c.get(player.unitId)
-    let refreshed = false
-    for (const hand of ['right', 'left'] as const) {
-      if (monster.dead) break
-      const total = this.rollWave2HandStrike113c(player, cast, hand)
-      const magic = Math.trunc((total * magicPct) / 100)
-      const phys = total - magic
-      const landed =
-        phys > 0
-          ? this.applyDamageToMonster(player, monster, phys, skillId, 'phys')
-          : this.applyDamageToMonster(player, monster, magic, skillId, 'mag', 'player', { attackKind: 'melee' })
-      if (landed && phys > 0 && magic > 0 && !monster.dead) {
-        this.applyDamageToMonster(player, monster, magic, skillId, 'mag', 'player', {
-          attackKind: 'melee',
-          autoHit: true,
-          unblockable: true,
-        })
-      }
-      if (landed) this.applyPlayerMeleeRiders113c(player, monster)
-      if (isFrenzy) {
-        const step = stepFrenzyStack113c(frenzy, this.currentFrame, cast.slvl, landed)
-        frenzy = { stacks: step.stacks, expireFrame: step.expireFrame }
-        if (landed) refreshed = true
-      }
+    const total = this.rollWave2HandStrike113c(player, cast, hand)
+    const magic = Math.trunc((total * magicPct) / 100)
+    const phys = total - magic
+    const landed =
+      phys > 0
+        ? this.applyDamageToMonster(player, monster, phys, skillId, 'phys', 'player', {
+            attackKind: 'melee',
+            weaponHand: hand,
+          })
+        : this.applyDamageToMonster(player, monster, magic, skillId, 'mag', 'player', {
+            attackKind: 'melee',
+            weaponHand: hand,
+          })
+    if (landed && phys > 0 && magic > 0 && !monster.dead) {
+      this.applyDamageToMonster(player, monster, magic, skillId, 'mag', 'player', {
+        attackKind: 'melee',
+        autoHit: true,
+        unblockable: true,
+      })
     }
-    if (!isFrenzy || frenzy === undefined) return
-    this.playerFrenzyStack113c.set(player.unitId, frenzy)
-    if (!refreshed || frenzy.stacks <= 0) return
-    const step = stepFrenzyStack113c(frenzy, this.currentFrame, cast.slvl, false)
-    this.applyPlayerTimedState113c(
-      player,
-      FRENZY_STATE_ID_113C,
-      FRENZY_DURATION_FRAMES_113C,
-      { skill_frenzy: step.stacks, velocitypercent: step.velocityPct, attackrate: step.attackRatePct },
-      skillId,
-      cast.slvl,
-    )
+    if (landed) this.applyPlayerMeleeRiders113c(player, monster)
+    if (!isFrenzy) return
+    const prev = this.playerFrenzyStack113c.get(player.unitId)
+    const step = stepFrenzyStack113c(prev, this.currentFrame, cast.slvl, landed)
+    const next = { stacks: step.stacks, expireFrame: step.expireFrame }
+    this.playerFrenzyStack113c.set(player.unitId, next)
+    if (landed && next.stacks > 0) {
+      this.applyPlayerTimedState113c(
+        player,
+        FRENZY_STATE_ID_113C,
+        FRENZY_DURATION_FRAMES_113C,
+        { skill_frenzy: step.stacks, velocitypercent: step.velocityPct, attackrate: step.attackRatePct },
+        skillId,
+        cast.slvl,
+      )
+    }
+  }
+
+  private executeDualStrike113c(player: InternalPlayerRecord, cast: PlayerSkillCast, monster: InternalMonsterRecord): void {
+    this.executeDualStrikeSingleHand113c(player, cast, monster, 'right')
+    this.executeDualStrikeSingleHand113c(player, cast, monster, 'left')
   }
 
   /** #1815 charge-up strike: weapon hit (+FoF phys->fire conversion); a landed hit adds one charge. */
@@ -12998,6 +17442,62 @@ export class GameInstance {
    * the physical damage dealt), Dragon Flight (#275, teleport kick). The first landed strike
    * releases every charge (Tiger Strike `%ED` rides on that strike).
    */
+  private executeMartialFinisherSingleStrike113c(
+    player: InternalPlayerRecord,
+    cast: PlayerSkillCast,
+    primaryMonster: InternalMonsterRecord,
+    strikeIndex: number,
+    totalStrikes: number,
+    session: { payloads: readonly DischargedPayload[]; tigerEdPct: number; released: boolean },
+  ): void {
+    const skillId = cast.skill.id
+    if (skillId === 275 && strikeIndex === 0) {
+      const arrival = this.pointBefore(player, primaryMonster.x, primaryMonster.y, 1)
+      this.relocatePlayerForSkill(player, arrival.x, arrival.y, false)
+    }
+    const monster = primaryMonster
+    if (monster.dead || !this.isPlayerMeleeInRangeOfMonster(player, monster)) return
+    const isKick = KICK_SKILL_IDS_113C.has(skillId)
+    const extraEd = session.released ? 0 : session.tigerEdPct
+    const strikeHand: 'left' | 'right' = skillId === 260 && strikeIndex === 1 ? 'left' : 'right'
+    const damage = isKick
+      ? this.rollKickDamage113c(player, cast, extraEd)
+      : this.rollWave2HandStrike113c(player, cast, strikeHand, extraEd)
+    const hpBefore = monster.hp
+    const landed = this.applyDamageToMonster(player, monster, damage, skillId, 'phys', 'player', {
+      attackKind: 'melee',
+      ...(!isKick ? { weaponHand: strikeHand } : {}),
+    })
+    if (!landed) return
+    const dealtPhys = Math.max(0, hpBefore - monster.hp)
+    this.applyPlayerMeleeRiders113c(player, monster)
+    if (skillId === 270) {
+      const explosion = computeDragonTailExplosionDamage113c(dealtPhys, cast.slvl)
+      if (explosion > 0) {
+        for (const m of this.hostilesNear113c(player.areaId, monster.x, monster.y, DRAGON_TAIL_EXPLOSION_RADIUS_SUBTILES)) {
+          this.applyDamageToMonster(player, m, explosion, 270, 'fire', 'player', {
+            attackKind: 'spell',
+            autoHit: true,
+            unblockable: true,
+          })
+        }
+      }
+      if (!monster.dead && !monster.isBoss && !monster.isPrimeEvil) this.knockbackMonster(monster, player.x, player.y)
+    } else if (
+      skillId === 255 &&
+      strikeIndex === totalStrikes - 1 &&
+      !monster.dead &&
+      !monster.isBoss &&
+      !monster.isPrimeEvil
+    ) {
+      this.knockbackMonster(monster, player.x, player.y)
+    }
+    if (!session.released && session.payloads.length > 0) {
+      session.released = true
+      this.releaseMartialCharges113c(player, monster, session.payloads, dealtPhys)
+    }
+  }
+
   private executeMartialFinisher113c(
     player: InternalPlayerRecord,
     cast: PlayerSkillCast,
@@ -13015,42 +17515,14 @@ export class GameInstance {
         bladesOfIceBlvl: player.skills.get(274) ?? 0,
       },
     )
-    const tigerEdPct = payloads.reduce((sum, p) => sum + (p.enhancedDamagePct ?? 0), 0)
-    if (skillId === 275) {
-      const arrival = this.pointBefore(player, monster.x, monster.y, 1)
-      this.relocatePlayerForSkill(player, arrival.x, arrival.y, false)
-      if (!this.isPlayerMeleeInRangeOfMonster(player, monster)) return true
+    const session = {
+      payloads,
+      tigerEdPct: payloads.reduce((sum, p) => sum + (p.enhancedDamagePct ?? 0), 0),
+      released: false,
     }
-    const isKick = KICK_SKILL_IDS_113C.has(skillId)
     const strikes = skillId === 255 ? evaluateDragonTalonStats(cast.slvl).kickCount : skillId === 260 ? 2 : 1
-    let released = false
     for (let i = 0; i < strikes && !monster.dead; i++) {
-      const extraEd = released ? 0 : tigerEdPct
-      const damage = isKick
-        ? this.rollKickDamage113c(player, cast, extraEd)
-        : this.rollWave2HandStrike113c(player, cast, skillId === 260 && i === 1 ? 'left' : 'right', extraEd)
-      const hpBefore = monster.hp
-      const landed = this.applyDamageToMonster(player, monster, damage, skillId, 'phys')
-      if (!landed) continue
-      const dealtPhys = Math.max(0, hpBefore - monster.hp)
-      this.applyPlayerMeleeRiders113c(player, monster)
-      if (skillId === 270) {
-        const explosion = computeDragonTailExplosionDamage113c(dealtPhys, cast.slvl)
-        if (explosion > 0) {
-          for (const m of this.hostilesNear113c(player.areaId, monster.x, monster.y, DRAGON_TAIL_EXPLOSION_RADIUS_SUBTILES)) {
-            this.applyDamageToMonster(player, m, explosion, 270, 'fire', 'player', {
-              attackKind: 'spell',
-              autoHit: true,
-              unblockable: true,
-            })
-          }
-        }
-        if (!monster.dead && !monster.isBoss && !monster.isPrimeEvil) this.knockbackMonster(monster, player.x, player.y)
-      }
-      if (!released && payloads.length > 0) {
-        released = true
-        this.releaseMartialCharges113c(player, monster, payloads, dealtPhys)
-      }
+      this.executeMartialFinisherSingleStrike113c(player, cast, monster, i, strikes, session)
     }
     return true
   }
@@ -13186,6 +17658,36 @@ export class GameInstance {
       item === undefined && obj === undefined && (targetType === undefined || targetType === 1)
         ? this.monsters.get(targetId)
         : undefined
+    const pvpTarget =
+      item === undefined && obj === undefined && monster === undefined
+        ? this.resolveHostilePvpTargetById113c(player.unitId, player.areaId, targetId, targetType)
+        : undefined
+    if (pvpTarget !== undefined) {
+      const tx =
+        pvpTarget.kind === 'player'
+          ? pvpTarget.player.x
+          : pvpTarget.kind === 'merc'
+            ? pvpTarget.merc.x
+            : pvpTarget.pet.x
+      const ty =
+        pvpTarget.kind === 'player'
+          ? pvpTarget.player.y
+          : pvpTarget.kind === 'merc'
+            ? pvpTarget.merc.y
+            : pvpTarget.pet.y
+      if (!isWithinTelekinesisRange113c(player.x, player.y, tx, ty)) return
+      if (!this.hasInteractionLineOfSight(player.areaId, player.x, player.y, tx, ty)) return
+      const cast = this.resolvePlayerSkillCast(player, TELEKINESIS_SKILL_ID_113C)
+      if (cast === null) return
+      this.updatePlayerChannelState(player, cast)
+      this.commitPlayerSkillCast(player, cast)
+      this.broadcastPlayerSkillCast(player, cast, {
+        unitType: pvpTarget.kind === 'player' ? 0 : 1,
+        id: targetId,
+      })
+      this.applyPvpSkillHitToTarget113c(player, cast, pvpTarget, 'spell')
+      return
+    }
     const target = item ?? obj ?? monster
     if (target === undefined || target.areaId !== player.areaId) return
     if (monster !== undefined && (monster.dead || monster.isNpc || monster.submerged || TOWN_AREAS.has(player.areaId))) {
@@ -13195,43 +17697,76 @@ export class GameInstance {
     if (!this.hasInteractionLineOfSight(player.areaId, player.x, player.y, target.x, target.y, obj?.unitId)) return
     const cast = this.resolvePlayerSkillCast(player, TELEKINESIS_SKILL_ID_113C)
     if (cast === null) return
-    this.updatePlayerChannelState(player, cast)
-    this.commitPlayerSkillCast(player, cast)
-    this.broadcastPlayerSkillCast(player, cast, { unitType: item !== undefined ? 4 : obj !== undefined ? 2 : 1, id: targetId })
+    const targetKind: 4 | 2 | 1 = item !== undefined ? 4 : obj !== undefined ? 2 : 1
     const refuse = (): void => {
       this.emitToPlayer(player.unitId, { type: 'PlaySound', unit: { unitType: 0, id: player.unitId }, sound: 19 })
     }
-    if (item !== undefined) {
-      if (isTelekinesisPickupEligible113c(item.code)) this.handleItemPickup(player, targetId, false)
-      else refuse()
-      return
-    }
-    if (obj !== undefined) {
-      let operateFn = 0
-      try {
-        operateFn = getObjectsTxtRecord113c(obj.classId).operateFn
-      } catch {
-        operateFn = 0
-      }
-      const eligible = isTelekinesisObjectEligible113c({
-        classId: obj.classId,
-        operateFn,
-        isWaypoint: obj.isWaypoint,
-        isShrine: obj.isShrine,
-        destAreaId: obj.destAreaId,
-      })
-      if (!eligible) {
-        refuse()
+    const executeTelekinesisRelease = (): void => {
+      if (targetKind === 4) {
+        const liveItem = this.groundItems.get(targetId)
+        if (liveItem === undefined || liveItem.areaId !== player.areaId) return
+        if (isTelekinesisPickupEligible113c(liveItem.code)) this.handleItemPickup(player, targetId, false, true)
+        else refuse()
         return
       }
-      this.operateObjectByTelekinesis113c(player, obj)
+      if (targetKind === 2) {
+        const liveObj = this.objects.get(targetId)
+        if (liveObj === undefined || liveObj.areaId !== player.areaId) return
+        let operateFn = 0
+        try {
+          operateFn = getObjectsTxtRecord113c(liveObj.classId).operateFn
+        } catch {
+          operateFn = 0
+        }
+        const eligible = isTelekinesisObjectEligible113c({
+          classId: liveObj.classId,
+          operateFn,
+          isWaypoint: liveObj.isWaypoint,
+          isShrine: liveObj.isShrine,
+          destAreaId: liveObj.destAreaId,
+        })
+        if (!eligible) {
+          refuse()
+          return
+        }
+        this.operateObjectByTelekinesis113c(player, liveObj)
+        return
+      }
+      const liveMonster = this.monsters.get(targetId)
+      if (
+        liveMonster === undefined ||
+        liveMonster.dead ||
+        liveMonster.isNpc ||
+        liveMonster.submerged ||
+        liveMonster.areaId !== player.areaId ||
+        TOWN_AREAS.has(player.areaId)
+      ) {
+        return
+      }
+      this.applyDirectSkillDamage(player, cast, liveMonster)
+      if (!liveMonster.dead && this.rng.rand(100) < TELEKINESIS_KNOCKBACK_CHANCE_PCT) {
+        this.knockbackMonster(liveMonster, player.x, player.y)
+      }
+    }
+    if (this.animActionWindupEnabled) {
+      this.schedulePlayerSkillWindup113c(
+        player,
+        cast,
+        target.x,
+        target.y,
+        { unitType: targetKind, id: targetId },
+        {
+          onStrike: () => {
+            executeTelekinesisRelease()
+          },
+        },
+      )
       return
     }
-    if (monster === undefined) return
-    this.applyDirectSkillDamage(player, cast, monster)
-    if (!monster.dead && this.rng.rand(100) < TELEKINESIS_KNOCKBACK_CHANCE_PCT) {
-      this.knockbackMonster(monster, player.x, player.y)
-    }
+    this.updatePlayerChannelState(player, cast)
+    this.commitPlayerSkillCast(player, cast)
+    this.broadcastPlayerSkillCast(player, cast, { unitType: targetKind, id: targetId })
+    executeTelekinesisRelease()
   }
 
   /** Remote object operate: same dispatch as `handleInteract` once in range (portals, waypoints, operate). */
@@ -13245,16 +17780,24 @@ export class GameInstance {
       obj.classId !== 566
     ) {
       if (obj.classId === 386 && obj.mode !== 2) return
-      if (!this.consumeWarpCooldown(player)) return
-      let arrival: AreaArrival = { kind: 'warp', fromAreaId: obj.areaId }
-      if (obj.portalOwnerId !== undefined) {
-        const paired = [...this.objects.values()].find(
-          (other) =>
-            other.unitId !== obj.unitId && other.areaId === obj.destAreaId && other.portalOwnerId === obj.portalOwnerId,
-        )
-        arrival = paired ? { kind: 'townPortal', x: paired.x, y: paired.y } : { kind: 'townPortal' }
+      if (
+        !canEnterPortalInPvp113c({
+          currentFrame: this.currentFrame,
+          playerUnitId: player.unitId,
+          hostilePortalLockUntilFrame: player.hostilePortalLockUntilFrame,
+          portalClassId: obj.classId,
+          portalOwnerId: obj.portalOwnerId,
+          isAlliedWithOwner:
+            obj.portalOwnerId !== undefined && obj.portalOwnerId > 0
+              ? this.partyManager.areAllied(obj.portalOwnerId, player.unitId)
+              : false,
+        })
+      ) {
+        return
       }
-      const wasTownMouth = TOWN_AREAS.has(obj.areaId)
+      if (!this.consumeWarpCooldown(player)) return
+      const arrival = this.resolvePortalArrival113c(obj)
+      const wasTownMouth = TOWN_AREAS.has(obj.areaId) && obj.portalOwnerId !== undefined
       const moved = this.transitionPlayerArea(player, obj.destAreaId, arrival)
       if (moved && wasTownMouth) this.closeTownPortal(player)
       return
@@ -13285,6 +17828,8 @@ export class GameInstance {
       readonly guaranteed?: boolean | undefined
       /** Monster-vs-monster projectile (Confuse/Conversion/Attract). */
       readonly hitMonsters?: boolean | undefined
+      /** Internal guard preventing recursive fan duplication on `MonUMod #29` (`Multishot`, #1900). */
+      readonly skipMultishot?: boolean | undefined
     } = {},
   ): number {
     const dx = targetX - monster.x
@@ -13296,7 +17841,9 @@ export class GameInstance {
     const resolvedClassId = meta?.id ?? missileClassId
     const skillLevel = Math.max(1, options.skillLevel ?? monster.level)
     const rawVel = meta === undefined ? 0 : meta.vel + Math.trunc((meta.velLev * skillLevel) / 8)
-    const speed = meta === undefined ? 1.8 : rawVel > 0 ? rawVel / 16 : 0
+    const baseSpeed = meta === undefined ? 1.8 : rawVel > 0 ? rawVel / 16 : 0
+    const speed =
+      baseSpeed > 0 && monster.states.has(STATE_SLOWMISSILES_113C) ? baseSpeed * 0.33 : baseSpeed
     const rangeTicks =
       meta === undefined ? 45 : Math.max(2, meta.range + meta.levRange * skillLevel)
     const element =
@@ -13362,6 +17909,26 @@ export class GameInstance {
       sourceUnitId: monster.unitId,
       areaId: monster.areaId,
     } as ServerEvent)
+
+    // 1.13c `MonUMod #29` (`Multishot`, `ev5 = 0x6FC45AD0`, #1900):
+    // Spawns `+2` angled fan projectiles (`1 + 2 = 3` total) for both unique bosses and their minions.
+    if (
+      options.skipMultishot !== true &&
+      monster.umodIds.includes(MON_UMOD.MULTISHOT) &&
+      isMissileEligibleForMultishot113c(resolvedClassId, {
+        guaranteed: options.guaranteed,
+        hitMonsters: options.hitMonsters,
+        stationary,
+      })
+    ) {
+      const fanTargets = computeMultishotFanTargets113c(startX, startY, targetX, targetY)
+      for (const [fanX, fanY] of fanTargets) {
+        this.spawnMonsterMissile(monster, fanX, fanY, damage, missileClassId, skillId, {
+          ...options,
+          skipMultishot: true,
+        })
+      }
+    }
     return missileUnitId
   }
 
@@ -13600,6 +18167,20 @@ export class GameInstance {
       readonly unblockable?: boolean | undefined
       readonly elemDurationFrames?: number | undefined
       readonly toHitBonusPct?: number | undefined
+      readonly weaponHand?: 'left' | 'right' | undefined
+      readonly elemDamage256?: number | undefined
+      readonly concentrationAlreadyApplied?: boolean | undefined
+      readonly bladeWeaponHit?: boolean | undefined
+      readonly bladeShieldPulse?: boolean | undefined
+      readonly outHitResult?: { landedHitRoll: boolean } | undefined
+      readonly vengeanceSpec?:
+        | {
+            readonly weaponBaseRolled: number
+            readonly physDamagePct: number
+            readonly griefFlat: number
+            readonly multiElemPacket: NonNullable<SUnitDmgPacket['multiElemPacket']>
+          }
+        | undefined
     },
   ): boolean {
     let attacker: InternalPlayerRecord | undefined
@@ -13689,6 +18270,12 @@ export class GameInstance {
         newSkills: 0,
         leftSkill: 0,
         rightSkill: 0,
+        altLeftSkill: 0,
+        altRightSkill: 0,
+        npcIntro: createDefaultNpcIntroData(),
+        createdTimestampSec: 1_700_000_000,
+        lastPlayedTimestampSec: 1_700_000_000,
+        connectedFrame: 0,
         skills: new Map(),
         states: new Set(),
         stateTimers: new Map(),
@@ -13712,6 +18299,8 @@ export class GameInstance {
         corpseY: 0,
         activeNpcId: undefined,
         partyId: 0xffff,
+        hotkeys: new Array<number>(16).fill(0xffff),
+        hotkeyItemIds: new Array<number>(16).fill(0xffffffff),
         d2sTemplate: undefined,
       }
     }
@@ -13762,9 +18351,17 @@ export class GameInstance {
       attackerStats.setBaseStat('dexterity', mercDex)
       attackerStats.setBaseStat('tohit', mercAr)
       attackerStats.setBaseStat('item_tohit_percent', this.sumMercItemStat(mercAttacker, 119))
+      let mercArmorPieceDef = 0
+      for (const eq of mercAttacker.equipment) {
+        if (eq.identified === false || eq.rawItemData?.identified === false) continue
+        if ((eq as { readonly broken?: boolean }).broken === true || eq.rawItemData?.broken === true) continue
+        if (eq.rawItemData?.defense !== undefined) {
+          mercArmorPieceDef += computeEquippedArmorPieceDefense113c(eq, undefined)
+        }
+      }
       attackerStats.setBaseStat(
         'armorclass',
-        (mercAttacker.defense ?? 0) + this.sumMercItemStat(mercAttacker, 31),
+        (mercAttacker.defense ?? 0) + mercArmorPieceDef + this.sumMercItemStat(mercAttacker, 31),
       )
       attackerStats.setBaseStat('item_ignoretargetac', this.sumMercItemStat(mercAttacker, 115))
       attackerStats.setBaseStat('item_fractionaltargetac', this.sumMercItemStat(mercAttacker, 116))
@@ -13776,6 +18373,7 @@ export class GameInstance {
       attackerStats.setBaseStat('lifedrainmindam', Math.max(0, this.sumMercItemStat(mercAttacker, 60)))
       attackerStats.setBaseStat('maxhp', mercAttacker.maxHp * FIXED_ONE)
       attackerStats.setHp256(mercAttacker.hp * FIXED_ONE)
+      this.applyItemMasteryPierceStats113c(attackerStats, (statId) => this.sumMercItemStat(mercAttacker!, statId))
     } else {
       attackerStats.setBaseStat('level', attacker.level)
       attackerStats.setBaseStat('strength', attacker.strength + this.sumPlayerItemStat(attacker, 0))
@@ -13798,6 +18396,16 @@ export class GameInstance {
       attackerStats.setMana256(attacker.manaFixed)
       attackerStats.setBaseStat('maxstamina', this.getPlayerAccruedMaxStaminaFixed(attacker))
       attackerStats.setBaseStat('stamina', attacker.staminaFixed)
+      // 1.13c passive statlists of the attacker (`#9` CS, `#23` Penetrate, `#61/#63/#65` Sorceress masteries,
+      // weapon masteries) + gear elemental mastery / pierce `329..336` (#1801, #1802, #1803, #1804).
+      if (petAttacker === undefined && this.players.get(attacker.unitId) === attacker) {
+        this.applyItemMasteryPierceStats113c(attackerStats, (statId) => this.sumPlayerItemStat(attacker!, statId))
+        this.syncPlayerSkillLevelsToStatList113c(
+          attacker,
+          attackerStats,
+          this.playerCombat.get(attacker.unitId)?.stateBus,
+        )
+      }
     }
     // Life / mana steal (D2Game 0x6FCFBA40) belongs to the real player that landed the hit; a
     // hireling hit routed through its owner (`source === 'merc'`) never steals for the owner.
@@ -13817,6 +18425,52 @@ export class GameInstance {
     } else if (petAttacker === undefined && effectiveSource === 'merc' && mercAttacker !== undefined) {
       this.mirrorPersistentStates(this.mercCombat.get(mercAttacker.unitId), attackerStateBus)
     }
+    // 1.13c `STATE_SANCTUARY` (47) lives only on the aura bearer (selected #119 aura or `stat 151`
+    // Lawbringer / Azurewrath item aura); `SUnitDmg` reads it to ignore positive Undead `damageresist` (#1807).
+    if (petAttacker === undefined && !attackerStateBus.hasState('sanctuary')) {
+      const bearerHasSanctuary =
+        effectiveSource === 'merc' && mercAttacker !== undefined
+          ? mercAttacker.states.has(STATE_SANCTUARY_113C) ||
+            this.getMercOwnCasterAuraStates113c(mercAttacker.unitId).has(STATE_SANCTUARY_113C)
+          : effectiveSource === 'player' &&
+            (attacker.states.has(STATE_SANCTUARY_113C) ||
+              this.getPlayerOwnCasterAuraStates113c(attacker.unitId).has(STATE_SANCTUARY_113C))
+      if (bearerHasSanctuary) {
+        attackerStateBus.applyState({
+          stateNameOrId: 'sanctuary',
+          sourceUnitId: effectiveSource === 'merc' ? `merc_${mercAttacker!.unitId}` : `player_${attacker.unitId}`,
+          sourceSkillId: 119,
+          slvl: 1,
+          currentFrame: this.currentFrame,
+          stats: { skill_bypass_undead: 1 },
+          isAuraOverride: true,
+        })
+      }
+    }
+    // 1.13c: Sanctuary's `aurastat1 = item_undeaddamage_percent` sits on a statlist that `SUnitDmg` never reads
+    // for the bearer's weapon damage (only the Undead `damageresist` bypass applies, #1807).
+    const sanctuaryEntry = petAttacker === undefined ? attackerStateBus.getState('sanctuary') : undefined
+    if (sanctuaryEntry !== undefined && (sanctuaryEntry.stats['item_undeaddamage_percent'] ?? 0) !== 0) {
+      const { item_undeaddamage_percent: _ignoredUndeadEd, ...keptStats } = sanctuaryEntry.stats
+      attackerStateBus.removeState('sanctuary')
+      attackerStateBus.applyState({
+        stateNameOrId: 'sanctuary',
+        sourceUnitId: sanctuaryEntry.sourceUnitId,
+        sourceSkillId: 119,
+        slvl: sanctuaryEntry.slvl,
+        currentFrame: this.currentFrame,
+        stats: keptStats,
+        isAuraOverride: true,
+      })
+    }
+    const playerHandWeaponTypes =
+      petAttacker === undefined && effectiveSource === 'player'
+        ? this.resolvePlayerHandWeaponTypes113c(attacker)
+        : undefined
+    const swingingWeaponType =
+      hitContext?.weaponHand === 'left' && playerHandWeaponTypes?.left !== undefined
+        ? playerHandWeaponTypes.left
+        : (playerHandWeaponTypes?.right ?? playerHandWeaponTypes?.left)
     const attackerCtx: CombatUnitContext = {
       id:
         petAttacker !== undefined
@@ -13845,8 +18499,16 @@ export class GameInstance {
           : effectiveSource === 'merc' && mercAttacker !== undefined
             ? mercAttacker.y
             : attacker.y,
-      weaponMinPhys: 0,
-      weaponMaxPhys: 0,
+      weaponMinPhys: hitContext?.vengeanceSpec?.weaponBaseRolled ?? 0,
+      weaponMaxPhys: hitContext?.vengeanceSpec?.weaponBaseRolled ?? 0,
+      ...(swingingWeaponType !== undefined
+        ? {
+            weaponItemType: swingingWeaponType,
+            ...(playerHandWeaponTypes?.left !== undefined
+              ? { offHandWeaponItemType: playerHandWeaponTypes.left }
+              : {}),
+          }
+        : {}),
       lifeStealDivisor: difficultyLifeStealDivisor(this.difficulty),
       manaStealDivisor: difficultyManaStealDivisor(this.difficulty),
     }
@@ -13919,6 +18581,7 @@ export class GameInstance {
     const channel = channelOverride ?? this.resolveSkillDamageChannel(skillId)
     const rawDmg = Math.max(1, Math.floor(damage))
     let dealtDamage = 0
+    let ctcOnHitPending = false
 
     if (skillId === 42) {
       // 1.13c Static Field (skillId 42): 25% current HP reduction with difficulty floor caps
@@ -13951,12 +18614,50 @@ export class GameInstance {
         return false
       }
     } else if (channel === 'phys') {
+      // 1.13c item event `item_skillonattack` (195): every player melee swing attempt (hit or miss),
+      // never during Whirlwind (#151), Blade Shield (#277), or from a proc cast (#1797, #1884).
+      const isSpellPhys = hitAttackKind === 'spell'
+      const isBladeShieldPulse = hitContext?.bladeShieldPulse === true
+      const isBladeWeaponHit = hitContext?.bladeWeaponHit === true
+      const vSpec = hitContext?.vengeanceSpec
+      const isPlayerWeaponSwing =
+        stealer !== undefined &&
+        hitAttackKind === 'melee' &&
+        !isBladeShieldPulse &&
+        skillId !== SKILL_WHIRLWIND_113C &&
+        this.playerCtcProcDepth === 0
+      if (isPlayerWeaponSwing) {
+        this.triggerPlayerCtcProcs113c(attacker, 195, { target: monster })
+        if (monster.dead) return false
+      }
       const dmgOut = executeSUnitDmg(attackerCtx, defenderCtx, {
         skillId,
         attackKind: hitAttackKind,
-        srcDam: 0,
-        flatPhysMin256: rawDmg * FIXED_ONE,
-        flatPhysMax256: rawDmg * FIXED_ONE,
+        srcDam: vSpec !== undefined ? 128 : 0,
+        flatPhysMin256: vSpec !== undefined ? 0 : rawDmg * FIXED_ONE,
+        flatPhysMax256: vSpec !== undefined ? 0 : rawDmg * FIXED_ONE,
+        ...(vSpec !== undefined
+          ? {
+              physDamagePct: vSpec.physDamagePct,
+              multiElemPacket: vSpec.multiElemPacket,
+            }
+          : {}),
+        ...(isSpellPhys || isBladeWeaponHit || isBladeShieldPulse
+          ? { preScaledPhysEd: true, skipMasteryEd: true }
+          : playerHandWeaponTypes !== undefined && vSpec === undefined
+            ? { skipMasteryEd: true }
+            : {}),
+        ...(isSpellPhys
+          ? {
+              suppressGearLeech: true,
+              canTriggerProcs: false,
+              csRoll100: 100,
+              masteryCritRoll100: 100,
+              dsRoll100: 100,
+            }
+          : isBladeShieldPulse
+            ? { canTriggerProcs: false }
+            : {}),
         toHitBonusPct: skillToHitBonusPct,
         autoHit: hitAutoHit,
         unblockable: hitUnblockable,
@@ -13977,11 +18678,41 @@ export class GameInstance {
         }
         return false
       }
-      if (stealer !== undefined) this.applyPlayerStealOutcome(stealer, dmgOut)
-      if (dmgOut.immuneToPhys || dmgOut.totalDamage256 <= 0) {
+      if (hitContext?.outHitResult !== undefined) {
+        hitContext.outHitResult.landedHitRoll = true
+      }
+      if (isBladeShieldPulse && stealer !== undefined) {
+        this.degradeEquippedWeaponDurabilityOnHit113c(stealer)
+      }
+      if (stealer !== undefined && !isSpellPhys) this.applyPlayerStealOutcome(stealer, dmgOut)
+      // 1.13c `item_skillonhit` (198): landed melee / missile weapon hits only (no Whirlwind, no spells, no #277/#257).
+      ctcOnHitPending =
+        stealer !== undefined &&
+        (hitAttackKind === 'melee' || hitAttackKind === 'missile') &&
+        !isBladeShieldPulse &&
+        skillId !== 257 &&
+        skillId !== SKILL_WHIRLWIND_113C &&
+        this.playerCtcProcDepth === 0
+      let totalDmg256 = dmgOut.totalDamage256
+      if (vSpec !== undefined && vSpec.griefFlat > 0 && !dmgOut.immuneToPhys) {
+        const physResPct =
+          attackerStateBus.hasState('sanctuary') && monster.isUndead
+            ? Math.min(0, defenderStats.getAccruedStat('damageresist'))
+            : Math.min(100, Math.max(-100, defenderStats.getAccruedStat('damageresist')))
+        const edPct = Math.max(
+          -90,
+          vSpec.physDamagePct + attackerStats.getModifierBonus('damagepercent'),
+        )
+        const griefRaw256 =
+          Math.max(0, Math.trunc((vSpec.griefFlat * FIXED_ONE * (100 + edPct)) / 100)) *
+          (dmgOut.isCritical ? 2 : 1)
+        totalDmg256 += Math.max(0, Math.trunc((griefRaw256 * (100 - physResPct)) / 100))
+      }
+      if ((dmgOut.immuneToPhys && dmgOut.elemDamage256 <= 0) || totalDmg256 <= 0) {
+        if (ctcOnHitPending) this.triggerPlayerCtcProcs113c(attacker, 198, { target: monster })
         return false
       }
-      dealtDamage = Math.max(1, Math.floor(dmgOut.totalDamage256 / FIXED_ONE))
+      dealtDamage = Math.max(1, Math.floor(totalDmg256 / FIXED_ONE))
       const isActBossTarget =
         monster.isPrimeEvil ||
         this.actBossQuestId(monster.defId, monster.hcIdx) !== undefined
@@ -14008,8 +18739,10 @@ export class GameInstance {
       }
 
       // 1.13c Crushing Blow (statId 136 + per-level 247, D2Game.dll 0x6FCCCC30..0x6FCCCD93):
-      const cbChance =
-        petAttacker !== undefined
+      const allowCrushingBlow = !isSpellPhys && !isBladeShieldPulse && skillId !== 257
+      const cbChance = !allowCrushingBlow
+        ? 0
+        : petAttacker !== undefined
           ? petAttacker.statList.getAccruedStat('item_crushingblow')
           : effectiveSource === 'merc' && mercAttacker !== undefined
             ? this.sumMercItemStat(mercAttacker, 136)
@@ -14023,9 +18756,25 @@ export class GameInstance {
           rank: monster.rank,
           playerCount: this.playersX,
           isRanged: hitAttackKind === 'missile',
-          physResPct: defenderStats.getAccruedStat('damageresist'),
+          // Sanctuary bearer vs Undead: positive `damageresist` counts as 0% (negative curses kept, #1807).
+          physResPct:
+            attackerStateBus.hasState('sanctuary') && monster.isUndead
+              ? Math.min(0, defenderStats.getAccruedStat('damageresist'))
+              : defenderStats.getAccruedStat('damageresist'),
         })
         dealtDamage += cbOut.damage
+      }
+      if (
+        stealer !== undefined &&
+        !isSpellPhys &&
+        !isBladeShieldPulse &&
+        skillId !== 257 &&
+        (hitAttackKind === 'melee' || hitAttackKind === 'missile')
+      ) {
+        const owChance = this.sumPlayerItemStat(stealer, 135)
+        if (owChance > 0 && (owChance >= 100 || this.rng.rand(100) < owChance)) {
+          this.applyMonsterOpenWounds113c(stealer, monster)
+        }
       }
       if (
         effectiveSource === 'merc' &&
@@ -14087,13 +18836,20 @@ export class GameInstance {
       )
       return true
     } else {
+      const elem256 =
+        hitContext?.elemDamage256 !== undefined && hitContext.elemDamage256 > 0
+          ? hitContext.elemDamage256
+          : rawDmg * FIXED_ONE
       const dmgOut = executeSUnitDmg(attackerCtx, defenderCtx, {
         skillId,
         attackKind: hitAttackKind,
         srcDam: 0,
         elemType: channel,
-        elemMin256: rawDmg * FIXED_ONE,
-        elemMax256: rawDmg * FIXED_ONE,
+        elemMin256: elem256,
+        elemMax256: elem256,
+        ...(hitContext?.concentrationAlreadyApplied === true
+          ? { concentrationAlreadyApplied: true }
+          : {}),
         toHitBonusPct: skillToHitBonusPct,
         autoHit: hitAutoHit,
         unblockable: hitUnblockable,
@@ -14148,6 +18904,7 @@ export class GameInstance {
       hitContext?.elemDurationFrames,
       effectiveSource === 'merc',
     )
+    if (ctcOnHitPending) this.triggerPlayerCtcProcs113c(attacker, 198, { target: monster })
     return true
   }
 
@@ -14163,9 +18920,9 @@ export class GameInstance {
     durationFrames: number,
     skillId: number,
     effectiveSource: 'player' | 'merc' = 'player',
-  ): void {
-    if (monster.dead || monster.isNpc || !monster.isKillable || monster.submerged) return
-    if (rawBitrate256 <= 0 || durationFrames <= 0) return
+  ): boolean {
+    if (monster.dead || monster.isNpc || !monster.isKillable || monster.submerged) return false
+    if (rawBitrate256 <= 0 || durationFrames <= 0) return false
 
     const attackerStats = new UnitStatList(this.registry, undefined, {
       ownerType: 'player',
@@ -14174,6 +18931,17 @@ export class GameInstance {
     attackerStats.setBaseStat('level', attacker.level)
     attackerStats.setBaseStat('maxhp', attacker.maxHpFixed)
     attackerStats.setHp256(attacker.hpFixed)
+    // `passive_pois_mastery` (332) / `passive_pois_pierce` (336) of the poison source (#1801).
+    const poisonMerc =
+      effectiveSource === 'merc'
+        ? [...this.mercenaries.values()].find((m) => m.ownerPlayerId === attacker.unitId)
+        : undefined
+    if (poisonMerc !== undefined) {
+      this.applyItemMasteryPierceStats113c(attackerStats, (statId) => this.sumMercItemStat(poisonMerc, statId))
+    } else if (effectiveSource === 'player' && this.players.get(attacker.unitId) === attacker) {
+      this.applyItemMasteryPierceStats113c(attackerStats, (statId) => this.sumPlayerItemStat(attacker, statId))
+      this.syncPlayerSkillLevelsToStatList113c(attacker, attackerStats, this.playerCombat.get(attacker.unitId)?.stateBus)
+    }
     const attackerStateBus = new StateBus(attackerStats, this.registry)
     const attackerCtx: CombatUnitContext = {
       id: `player_${attacker.unitId}`,
@@ -14223,7 +18991,7 @@ export class GameInstance {
       unblockable: true,
     }, this.rng)
     if (dmgOut.immuneToElem || dmgOut.elemDamage256 <= 0) {
-      return
+      return false
     }
     const bitrate256 = dmgOut.elemDamage256
     monster.lastHitByMerc = effectiveSource === 'merc'
@@ -14247,6 +19015,7 @@ export class GameInstance {
       2,
       monster.poisonRemainingFrames,
     )
+    return true
   }
 
   /**
@@ -14309,7 +19078,7 @@ export class GameInstance {
         registry: this.registry,
         activeSkill: skill,
         slvl,
-        blvl: Math.max(1, attacker.skills.get(skillId) ?? slvl),
+        blvl: attacker.skills.get(skillId) ?? 0,
         ulvl: attacker.level,
         getBaseSkillLevel: (id: number) => attacker.skills.get(id) ?? 0,
         getEffectiveSkillLevel: (id: number) => {
@@ -14402,10 +19171,22 @@ export class GameInstance {
     if (fromMerc) {
       monster.lastHitByMerc = true
     }
+    // 1.13c `STAT_ITEM_PREVENTHEAL (117)` -> `STATE_PREVENTHEAL (52)` (`D2Game.dll` `0x6FCBCF20`, #1899):
+    // Applies to normal, champion, and unique/superunique bosses (only Prime Evils & Uber bosses ignore PMH),
+    // and MUST be applied BEFORE evaluating `MonUMod #26` (`Teleport`) heal eligibility on this hit.
     if (
-      monster.umodIds.includes(26) &&
       monster.hp > 0 &&
-      monster.hp * 2 < monster.maxHp &&
+      !monster.isPrimeEvil &&
+      !(monster.hcIdx >= 704 && monster.hcIdx <= 709) &&
+      !fromMerc &&
+      this.sumPlayerItemStat(attacker, 117) > 0
+    ) {
+      this.applyMonsterState(monster.unitId, 52, 120_000)
+    }
+    if (
+      monster.umodIds.includes(MON_UMOD.TELEPORT) &&
+      monster.hp > 0 &&
+      monster.hp * 100 < monster.maxHp * 30 &&
       this.currentFrame >= monster.teleportCooldownUntilFrame
     ) {
       this.teleportEliteAwayFrom(monster, attacker)
@@ -14478,6 +19259,22 @@ export class GameInstance {
 
     if (monster.hp <= 0) {
       this.applyMonsterDeath(monster, attacker, channel)
+      // 1.13c `item_skillonkill` (196): the killing player's gear (hireling kills use hireling gear, #1797).
+      if (!fromMerc && this.players.get(attacker.unitId) === attacker && !attacker.dead) {
+        this.triggerPlayerCtcProcs113c(attacker, 196, { target: monster })
+      } else if (fromMerc && this.playerCtcProcDepth === 0) {
+        const killingMerc = [...this.mercenaries.values()].find(
+          (m) => m.ownerPlayerId === attacker.unitId && m.alive && m.areaId === monster.areaId,
+        )
+        if (killingMerc !== undefined) {
+          this.playerCtcProcDepth += 1
+          try {
+            this.triggerMercCtcProcs113c(attacker, killingMerc, monster, 196)
+          } finally {
+            this.playerCtcProcDepth -= 1
+          }
+        }
+      }
     } else {
       const canBeInterrupted = !monster.isBoss && !monster.isPrimeEvil
       if (canBeInterrupted && this.sumPlayerItemStat(attacker, 117) > 0) {
@@ -14520,6 +19317,12 @@ export class GameInstance {
     channel: 'phys' | 'fire' | 'ltng' | 'cold' | 'mag' | 'pois',
   ): void {
     if (monster.dead) return
+    // `#1883` Bone Wall / Bone Prison (`hcIdx 344` & Diablo `179/340..343`) shatter & despawn immediately
+    // on destruction with zero corpse, zero XP, and zero drops, clearing all blocked collision cells!
+    if (isBonePrisonMonsterHcIdx113c(monster.hcIdx)) {
+      this.despawnTemporaryMonsterUnit113c(monster)
+      return
+    }
     monster.submerged = false
     monster.pendingAttack = undefined
     monster.pendingAllyAttack = undefined
@@ -14580,7 +19383,23 @@ export class GameInstance {
       mode: 12,
       lifePct: 0,
     })
+    // 1.13c `STAT_ITEM_RESTINPEACE (108)`: slain monster's corpse cannot be resurrected or consumed.
+    if (creditedPlayer && this.sumPlayerItemStat(creditedPlayer, 108) > 0) {
+      monster.corpseConsumed = true
+    }
     this.onMonsterKilled(creditedPlayer, monster)
+    // 1.13c `MonUMod #34` (`ai_after_death`, `0x6FC43570` / `0x6FC43E20`, #1901):
+    // Arm post-death self-resurrection timer (`100..224` frames) when corpse is intact.
+    if (
+      monster.umodIds.includes(MON_UMOD.AI_AFTER_DEATH) &&
+      !monster.shattered &&
+      !monster.corpseConsumed &&
+      monster.selfResurrectCount < 5
+    ) {
+      monster.selfResurrectCheckFrame = this.currentFrame + 100 + this.rng.rand(125)
+    } else {
+      monster.selfResurrectCheckFrame = 0
+    }
   }
 
   /**
@@ -14655,18 +19474,43 @@ export class GameInstance {
     }
   }
 
-  /** MonUMod 26 Teleportation: blink away when badly hurt. */
+  /**
+   * 1.13c `MonUMod #26` (`Teleport`, `D2Game.dll` `0x6FC441B0` / `0x6FCBCDE0`, #1899):
+   * - Evaluates low-HP (`hp < 30% maxHp`), long-distance (`dist >= 12`), or blocked-melee triggers.
+   * - Enforces `60`-frame cooldown (`TELEPORT_UMOD_COOLDOWN_FRAMES_113C`).
+   * - When low HP (`< 30%`) and NOT suppressed by `STATE_PREVENTHEAL (52)`, poison (`state 2`),
+   *   or Open Wounds (`state 62`), rolls `25%` chance (`rand(100) < 25`) to heal `floor(maxHp / 4)`.
+   */
   private teleportEliteAwayFrom(
     monster: InternalMonsterRecord,
-    attacker: InternalPlayerRecord,
-  ): void {
+    targetPos: { readonly x: number; readonly y: number },
+    options?: { readonly meleeBlocked?: boolean | undefined },
+  ): boolean {
+    const dist = Math.hypot(targetPos.x - monster.x, targetPos.y - monster.y)
+    const evalResult = evaluateTeleportUMod113c({
+      hp: monster.hp,
+      maxHp: monster.maxHp,
+      distanceToTarget: dist,
+      meleeBlocked: options?.meleeBlocked,
+      hasPreventHeal: monster.states.has(52),
+      hasActiveDamageOverTime:
+        monster.states.has(2) ||
+        monster.poisonRemainingFrames > 0 ||
+        monster.states.has(62) ||
+        (this.monsterOpenWounds.get(monster.unitId)?.remainingFrames ?? 0) > 0,
+    })
+    if (!evalResult.shouldTeleport) return false
+
     const fromX = monster.x
     const fromY = monster.y
-    const baseAngle = Math.atan2(monster.y - attacker.y, monster.x - attacker.x)
+    const awayAngle = Math.atan2(monster.y - targetPos.y, monster.x - targetPos.x)
+    const anchorX = evalResult.isLowHp ? monster.x : targetPos.x
+    const anchorY = evalResult.isLowHp ? monster.y : targetPos.y
+    const stepRadius = evalResult.isLowHp ? 8 : 2.5
     for (const offset of [0, 0.4, -0.4, 0.8, -0.8, 1.2, -1.2, Math.PI]) {
-      const angle = baseAngle + offset
-      const tx = monster.x + Math.cos(angle) * 8
-      const ty = monster.y + Math.sin(angle) * 8
+      const angle = awayAngle + offset
+      const tx = anchorX + Math.cos(angle) * stepRadius
+      const ty = anchorY + Math.sin(angle) * stepRadius
       if (
         this.isClosedDoorAt(monster.areaId, Math.round(tx), Math.round(ty)) ||
         (this.terrainWalkableCheck &&
@@ -14682,7 +19526,16 @@ export class GameInstance {
       monster.pathTargetX = Number.NaN
       monster.pathTargetY = Number.NaN
       monster.mode = 1
-      monster.teleportCooldownUntilFrame = this.currentFrame + 250
+      monster.teleportCooldownUntilFrame =
+        this.currentFrame + TELEPORT_UMOD_COOLDOWN_FRAMES_113C
+      this.broadcastToArea(monster.areaId, {
+        type: 'UnitMode',
+        unitType: 1,
+        id: monster.unitId,
+        mode: 8,
+        at: { x: Math.round(tx), y: Math.round(ty) },
+        lifePct: monster.maxHp > 0 ? Math.round((monster.hp / monster.maxHp) * 128) : 0,
+      })
       this.broadcastToArea(monster.areaId, {
         type: 'UnitMove',
         unitType: 'monster',
@@ -14699,21 +19552,26 @@ export class GameInstance {
         targetY: Math.round(ty),
         areaId: monster.areaId,
       })
-      // 1.13c UMOD_TELEPORT restores one third of max life on landing.
-      const heal = Math.max(1, Math.floor(monster.maxHp / 3))
-      const nextHp = Math.min(monster.maxHp, monster.hp + heal)
-      if (nextHp > monster.hp) {
-        monster.hp = nextHp
-        this.broadcastToArea(monster.areaId, {
-          type: 'UnitStatUpdate',
-          unitType: 'monster',
-          unitId: monster.unitId,
-          statId: 6,
-          value: monster.hp,
-        })
+      if (
+        evalResult.canRollHeal &&
+        evalResult.healAmount > 0 &&
+        this.rng.rand(100) < TELEPORT_UMOD_HEAL_CHANCE_PCT_113C
+      ) {
+        const nextHp = Math.min(monster.maxHp, monster.hp + evalResult.healAmount)
+        if (nextHp > monster.hp) {
+          monster.hp = nextHp
+          this.broadcastToArea(monster.areaId, {
+            type: 'UnitStatUpdate',
+            unitType: 'monster',
+            unitId: monster.unitId,
+            statId: 6,
+            value: monster.hp,
+          })
+        }
       }
-      return
+      return true
     }
+    return false
   }
 
   /**
@@ -14792,13 +19650,46 @@ export class GameInstance {
    * at rate `50 + EFHR`, `EFHR = trunc(120 * FHR / (120 + FHR))` (`D2Common.dll`
    * `UNITS_UpdateAnimRateAndVelocity` `0x6FD83298..0x6FD832C7`, diminishing `0x6FD823E0`).
    */
+  /**
+   * 1.13c player Block (`PLRMODE_BLOCK = 9`) animation duration in 25 Hz frames:
+   * `{Class}BL{WeaponClass}` frames + `item_fasterblockrate` (`stat 102`) + `Holy Shield` (`state 101`,
+   * base rate `100` vs `50`, `D2Common.dll` `UNITS_UpdateAnimRateAndVelocity` @ `0x6FD832D0`).
+   */
+  private playerBlockRecoveryFrames(player: InternalPlayerRecord): number {
+    const equipped = player.items.filter(
+      (item) => item.location === 'equipped' && item.bodyLoc !== 11 && item.bodyLoc !== 12,
+    )
+    const combat = this.playerCombat.get(player.unitId)
+    const statListFbr = combat?.statList ? Math.trunc(combat.statList.getAccruedStat('item_fasterblockrate')) : 0
+    // Avoid double-counting itemStatList if already synced onto combat.statList:
+    const itemFbr = this.sumPlayerItemStat(player, 102)
+    const modFbr = combat?.statList ? Math.trunc(combat.statList.getModifierBonus('item_fasterblockrate')) : 0
+    const totalFbr = combat?.itemStatList ? itemFbr + modFbr : itemFbr + statListFbr
+    const hasHolyShield =
+      player.states.has(101) ||
+      Boolean(combat?.stateBus.hasState(101) || combat?.stateBus.hasState('holyshield'))
+    const weaponClass = resolveEquippedWeaponClass(
+      equipped.map((item) => ({ code: item.code, bodyLoc: item.bodyLoc })),
+    )
+    const params = resolveCharacterAnimSpeedParams(player.classCode, 'bl', {
+      unitStats: {
+        get: (statId: number) => (statId === 102 ? totalFbr : 0),
+      },
+      holyShield: hasHolyShield,
+      weaponClass,
+    })
+    return computeOneShotTicks(params.frames, params.stepSpeed256)
+  }
+
   private playerHitRecoveryFrames(player: InternalPlayerRecord): number {
     const equipped = player.items.filter(
       (item) => item.location === 'equipped' && item.bodyLoc !== 11 && item.bodyLoc !== 12,
     )
-    const combatStats = this.playerCombat.get(player.unitId)?.statList
-    const statListFhr = combatStats ? Math.trunc(combatStats.getAccruedStat('item_fastergethitrate')) : 0
-    const totalFhr = this.sumPlayerItemStat(player, 99) + statListFhr
+    const combat = this.playerCombat.get(player.unitId)
+    const itemFhr = this.sumPlayerItemStat(player, 99)
+    const modFhr = combat?.statList ? Math.trunc(combat.statList.getModifierBonus('item_fastergethitrate')) : 0
+    const statListFhr = combat?.statList ? Math.trunc(combat.statList.getAccruedStat('item_fastergethitrate')) : 0
+    const totalFhr = combat?.itemStatList ? itemFhr + modFhr : itemFhr + statListFhr
     const weaponClass = resolveEquippedWeaponClass(
       equipped.map((item) => ({ code: item.code, bodyLoc: item.bodyLoc })),
     )
@@ -14826,6 +19717,7 @@ export class GameInstance {
     },
   ): void {
     if (player.dead) return
+    if (this.isPlayerSkillUninterruptible113c(player)) return
     const dmg256 = options?.dmg256 ?? dealtDamage * FIXED_ONE
     const shouldEnter = shouldEnterGetHit113c(
       {
@@ -14842,6 +19734,7 @@ export class GameInstance {
     )
     if (!shouldEnter) return
 
+    this.interruptPendingPlayerAnimAction113c(player, 'GH')
     const recoveryFrames = this.playerHitRecoveryFrames(player)
     player.mode = 4
     player.hitRecoveryUntilFrame = this.currentFrame + recoveryFrames
@@ -15504,6 +20397,11 @@ export class GameInstance {
       merc.state = 'dead'
       this.stopMercenaryAura(merc)
       this.broadcastAllyRemoved(areaId, merc.unitId)
+    } else if (dmg > 0) {
+      const owner = this.players.get(merc.ownerPlayerId)
+      if (owner !== undefined && !owner.dead) {
+        this.triggerMercCtcProcs113c(owner, merc, undefined, 201)
+      }
     }
   }
 
@@ -15856,7 +20754,7 @@ export class GameInstance {
   ): void {
     const isSuicide = isSuicideMinionMonster(monster.hcIdx, monster.defId)
     const baseXp = Math.trunc(monster.experience)
-    if (!isSuicide && killer && baseXp > 0) {
+    if (!isSuicide && !monster.alreadyGrantedKillRewards && killer && baseXp > 0) {
 
       // 1.13c hireling XP (`D2Game.dll` `0x6FCFEA00` -> `0x6FCFC030` -> `0x6FCFB6B0` -> `0x6FCFDCB0`):
       // runs BEFORE the party player experience loop (`0x6FCFEA61..0x6FCFEB39` before `0x6FCFEB3E..0x6FCFEB92`),
@@ -15954,6 +20852,20 @@ export class GameInstance {
       }
 
       this.rollMonsterDeathDrop(killer, monster)
+      monster.alreadyGrantedKillRewards = true
+    } else if (!isSuicide) {
+      monster.alreadyGrantedKillRewards = true
+    }
+
+    // 1.13c Pandemonium Finale (`D2Game.dll` `0x6FD0AA30..0x6FD0AB09`, #1841):
+    // Track killed Uber Prime Evils (`#704`, `#705`, `#709`) in Area `136`; only the 3rd (last)
+    // killed drops `1` Unique `cm2` `Hellfire Torch` + `max(1, players.size)` `Standard of Heroes` (`std`)
+    // and despawns all remaining summoned Uber Tristram minions.
+    if (
+      monster.areaId === PANDEMONIUM_FINALE_AREA_ID_113C &&
+      UBER_PRIME_EVIL_SET_113C.has(monster.hcIdx)
+    ) {
+      this.handleUberTristramBossKilled113c(monster)
     }
 
     // 1.13c side/quest bosses complete their quest on death and drop their quest items:
@@ -16021,10 +20933,7 @@ export class GameInstance {
       const quest = QUEST_BOSS_KILL_113C.find(
         ([prefix]) => defId.startsWith(prefix) || (suId !== '' && suId.startsWith(prefix)),
       )
-      if (
-        quest !== undefined &&
-        !hasQuestFlag113c(killer.questFlags, quest[1], QUEST_FLAG_COMPLETED_113C)
-      ) {
+      if (quest !== undefined) {
         if (
           quest[1] === 'a2q1' &&
           !this.playerOrGroundHasQuestItem(killer, 'ass')
@@ -16038,20 +20947,38 @@ export class GameInstance {
             : quest[1] === 'a2q1'
               ? QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_COMPLETED_NOW_113C | QUEST_FLAG_CUSTOM_5_113C
               : QUEST_FLAG_COMPLETED_113C
-        this.setPlayerQuestFlag(killer, quest[1], mask)
+        for (const recipient of this.getQuestEligiblePartyRecipients113c(
+          killer,
+          monster.areaId,
+          { includeSameActTown: false },
+        )) {
+          if (hasQuestFlag113c(recipient.questFlags, quest[1], QUEST_FLAG_COMPLETED_113C)) continue
+          this.setPlayerQuestFlag(recipient, quest[1], mask)
+          if (quest[1] === 'a5q4') {
+            this.syncHarrogathA5Q3State113c(recipient)
+          }
+        }
       }
     }
 
-    // 1.13c Act Boss death completion (`D2Game.dll` A1Q6..A5Q6):
-    // - Marks `QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_COMPLETED_NOW_113C` (`0x2001`) for players in the boss area.
+    // 1.13c Act Boss death completion (`D2Game.dll` A1Q6..A5Q6, #1931):
+    // - Credits ONLY `killer` and allied same-party members in the boss area or the same-Act town
+    //   (NEVER unpartied bystanders!).
     // - A5Q6 (`baalcrab` #544, `0x6fc7daf0`): spawns `tyrael3` (MonStats #521) at `(x - 5, y - 5)` (`0x6fc7c1f0`)
     //   and `"Destruction's End"` `LastPortal` (Objects.txt #565, OperateFn 72) in `OBJMODE_OPENED (2)` at `(x, y - 5)` (`0x6fc7d760`).
-    // - A4Q3 (`diablo` #243, `0x6fcdb550`): spawns/opens `Harrogath` portal (Objects.txt #566, OperateFn 73) in `OBJMODE_OPENED (2)`.
+    // - A4Q3 (`diablo` #243, #1928): does NOT spawn `Harrogath` portal (#566) inside Chaos Sanctuary (`108`);
+    //   Tyrael (`#367`) in Pandemonium Fortress (`103`) opens `#566` (`ACT4Q2_NpcActivate`).
     const actBossQuest = this.actBossQuestId(monster.defId, monster.hcIdx)
     if (actBossQuest !== undefined) {
-      for (const p of this.players.values()) {
-        if (p.dead) continue
-        if (p.unitId !== killer?.unitId && p.areaId !== monster.areaId) continue
+      const actBossRecipients =
+        killer !== undefined
+          ? this.getQuestEligiblePartyRecipients113c(killer, monster.areaId, {
+              includeSameActTown: true,
+            })
+          : [...this.players.values()].filter(
+              (p) => !p.dead && p.areaId === monster.areaId,
+            )
+      for (const p of actBossRecipients) {
         this.setPlayerQuestFlag(
           p,
           actBossQuest,
@@ -16090,21 +21017,6 @@ export class GameInstance {
             mode: 2,
           })
         }
-      } else if (actBossQuest === 'a4q3') {
-        const existingHarrogathPortal = [...this.objects.values()].find(
-          (o) => o.areaId === monster.areaId && o.classId === 566,
-        )
-        if (existingHarrogathPortal !== undefined) {
-          this.setObjectMode(existingHarrogathPortal, 2)
-        } else {
-          this.spawnObject({
-            classId: 566,
-            x: monster.x + 5,
-            y: monster.y,
-            areaId: monster.areaId,
-            mode: 2,
-          })
-        }
       } else if (actBossQuest === 'a3q6') {
         // D2Game.dll 0x6FD0A950: Mephisto's death opens Hellgate (Objects.txt 342 -> Area 103).
         for (const o of this.objects.values()) {
@@ -16116,8 +21028,7 @@ export class GameInstance {
       }
     }
 
-    // Chaos Sanctuary: once the three seal bosses die and all five seals are
-    // open, spawn Diablo in the middle of the seal ring.
+    // Chaos Sanctuary (#1928): record seal boss death and check if all 5 seals & all 3 bosses are complete.
     if (
       monster.superUniqueId !== undefined &&
       Object.values(SEAL_BOSS_113C).some((boss) => boss.superUniqueId === monster.superUniqueId)
@@ -16128,18 +21039,7 @@ export class GameInstance {
         this.sealBossDeaths.set(monster.areaId, deaths)
       }
       deaths.add(monster.superUniqueId)
-      if (deaths.size >= 3 && !this.diabloSpawnedAreas.has(monster.areaId)) {
-        const sealIds = [392, 393, 394, 395, 396]
-        const seals = [...this.objects.values()].filter(
-          (obj) => obj.areaId === monster.areaId && sealIds.includes(obj.classId) && obj.mode === 2,
-        )
-        if (seals.length === sealIds.length) {
-          this.diabloSpawnedAreas.add(monster.areaId)
-          const x = seals.reduce((sum, obj) => sum + obj.x, 0) / seals.length
-          const y = seals.reduce((sum, obj) => sum + obj.y, 0) / seals.length
-          this.spawnMonster({ defId: 'diablo', x, y, areaId: monster.areaId })
-        }
-      }
+      this.tryTriggerChaosDiabloSpawn113c(monster.areaId)
     }
 
     // Travincal Council: all three council members must die for a3q5 and drop Khalim's Flail ('qf1', 0x6FD07E36).
@@ -16155,11 +21055,18 @@ export class GameInstance {
           const flail = this.createQuestDropItem('qf1', monster.level)
           if (flail) this.spawnDroppedItems([flail], monster.areaId, monster.x, monster.y)
         }
-        this.setPlayerQuestFlag(killer, 'a3q5', QUEST_FLAG_COMPLETED_113C)
+        for (const recipient of this.getQuestEligiblePartyRecipients113c(
+          killer,
+          monster.areaId,
+          { includeSameActTown: false },
+        )) {
+          if (hasQuestFlag113c(recipient.questFlags, 'a3q5', QUEST_FLAG_COMPLETED_113C)) continue
+          this.setPlayerQuestFlag(recipient, 'a3q5', QUEST_FLAG_COMPLETED_113C)
+        }
       }
     }
 
-    // Ancients: killing all three barbarians completes a5q5.
+    // Ancients: killing all three barbarians completes a5q5 for alive same-party members on the Summit (#1931).
     if (
       monster.superUniqueId !== undefined &&
       ANCIENT_BARBARIANS_113C.some((boss) => boss.superUniqueId === monster.superUniqueId)
@@ -16172,8 +21079,8 @@ export class GameInstance {
       deaths.add(monster.superUniqueId)
       if (deaths.size >= ANCIENT_BARBARIANS_113C.length) {
         // D2Game.dll 0x6FC7E660 & ACT5Q5_GrantReward (0x6FC7BF70): upon killing all three Ancients,
-        // restore statues 474..476 to mode 2 and award a5q5 completion + XP to eligible players in area
-        // meeting the difficulty level requirement (20 / 40 / 60).
+        // restore statues 474..476 to mode 2 and award a5q5 completion + XP to eligible party members
+        // in the Summit arena meeting the difficulty level requirement (20 / 40 / 60).
         for (const obj of this.objects.values()) {
           if (
             obj.areaId === monster.areaId &&
@@ -16183,10 +21090,17 @@ export class GameInstance {
           }
         }
         const requiredAncientsLevel = (this.difficulty + 1) * 20
-        for (const p of this.players.values()) {
-          if (p.dead) continue
-          if (p.areaId !== monster.areaId && p.unitId !== killer?.unitId) continue
-          if (p.level < requiredAncientsLevel) continue
+        const ancientsRecipients =
+          killer !== undefined
+            ? this.getQuestEligiblePartyRecipients113c(killer, monster.areaId, {
+                requireExactArea: true,
+                excludeDead: true,
+                minCharLevel: requiredAncientsLevel,
+              })
+            : [...this.players.values()].filter(
+                (p) => !p.dead && p.areaId === monster.areaId && p.level >= requiredAncientsLevel,
+              )
+        for (const p of ancientsRecipients) {
           this.setPlayerQuestFlag(
             p,
             'a5q5',
@@ -16196,12 +21110,8 @@ export class GameInstance {
       }
     }
 
-    // Act I Den of Evil: clearing every monster in level 8 completes a1q1.
-    if (
-      killer &&
-      monster.areaId === 8 &&
-      !hasQuestFlag113c(killer.questFlags, 'a1q1', QUEST_FLAG_COMPLETED_113C)
-    ) {
+    // Act I Den of Evil: clearing every monster in level 8 completes a1q1 for eligible party members (#1931).
+    if (killer && monster.areaId === 8) {
       const remaining = [...this.monsters.values()].some(
         (m) =>
           !m.dead &&
@@ -16216,7 +21126,12 @@ export class GameInstance {
       const allRoomsVisited =
         population === undefined || population.populated.size >= population.rooms.length
       if (!remaining && allRoomsVisited) {
-        this.setPlayerQuestFlag(killer, 'a1q1', QUEST_FLAG_COMPLETED_113C)
+        for (const recipient of this.getQuestEligiblePartyRecipients113c(killer, 8, {
+          includeSameActTown: false,
+        })) {
+          if (hasQuestFlag113c(recipient.questFlags, 'a1q1', QUEST_FLAG_COMPLETED_113C)) continue
+          this.setPlayerQuestFlag(recipient, 'a1q1', QUEST_FLAG_COMPLETED_113C)
+        }
       }
     }
 
@@ -16256,45 +21171,59 @@ export class GameInstance {
           ? 'nightmare'
           : 'normal'
 
-    // 1.13c Boss Death Controller & Minion Purge (`D2Game.dll` `QUESTSFX_MainHandler` / `0x6FAD0FB0`, #1823):
-    // Emits controller missile (`brdeathcontrol` #284 for Blood Raven #267, etc.) and purges nearby cemetery/lair monsters.
+    // 1.13c Boss Death Controller & Minion Purge (`D2Game.dll` `QUESTSFX_MainHandler` / `0x6FAD0FB0`, #1823, #1906):
+    // Emits controller missile (`brdeathcontrol` #284 for Blood Raven #267, etc.) and purges nearby minions
+    // strictly from `MonStats.txt` `killminions` / `SplEndDeath === 1` / `umod 15` / Blood Raven / Shenk
+    // (NEVER from `MonUMod #41` `always_run_ai`).
     const bossDeathSpec = getBossDeathFxSpec(monster.hcIdx, monster.defId)
-    if (
+    const bossDeathSpecEligible =
       bossDeathSpec !== null &&
       (!bossDeathSpec.requiresQuestCompleteUMod ||
         monster.umodIds.includes(MON_UMOD.QUESTCOMPLETE))
-    ) {
-      if (bossDeathSpec.controllerClassId !== null) {
-        this.broadcastExplosionMissile(monster, bossDeathSpec.controllerClassId)
-      }
-      if (bossDeathSpec.minionPurge !== undefined) {
-        const purgeRadius = bossDeathSpec.minionPurge.radiusSubTiles
-        for (const surrounding of this.monsters.values()) {
-          if (
-            surrounding.dead ||
-            surrounding.isNpc ||
-            !surrounding.isKillable ||
-            surrounding.unitId === monster.unitId ||
-            surrounding.areaId !== monster.areaId ||
-            surrounding.isBoss ||
-            surrounding.isPrimeEvil ||
-            surrounding.superUniqueId !== undefined
-          ) {
-            continue
-          }
-          if (Math.hypot(surrounding.x - monster.x, surrounding.y - monster.y) <= purgeRadius) {
-            surrounding.hp = 0
-            surrounding.dead = true
-            surrounding.mode = 12
-            this.broadcastToArea(surrounding.areaId, {
-              type: 'UnitMode',
-              unitType: 1,
-              id: surrounding.unitId,
-              mode: 12,
-              at: { x: Math.round(surrounding.x), y: Math.round(surrounding.y) },
-              lifePct: 0,
-            })
-          }
+    if (bossDeathSpecEligible && bossDeathSpec.controllerClassId !== null) {
+      this.broadcastExplosionMissile(monster, bossDeathSpec.controllerClassId)
+    }
+    const killMinionsDecision = shouldKillMinionsOnDeath113c({
+      hcIdx: monster.hcIdx,
+      defId: monster.defId,
+      superUniqueId: monster.superUniqueId,
+      killMinions: monster.killMinions,
+      umodIds: monster.umodIds,
+    })
+    const purgeRadius =
+      bossDeathSpecEligible && bossDeathSpec.minionPurge !== undefined
+        ? bossDeathSpec.minionPurge.radiusSubTiles
+        : monster.killMinions || killMinionsDecision.purge
+          ? Math.max(25, killMinionsDecision.radiusSubTiles)
+          : 0
+    if (purgeRadius > 0) {
+      for (const surrounding of this.monsters.values()) {
+        if (
+          surrounding.dead ||
+          surrounding.isNpc ||
+          !surrounding.isKillable ||
+          surrounding.unitId === monster.unitId ||
+          surrounding.areaId !== monster.areaId ||
+          surrounding.isBoss ||
+          surrounding.isPrimeEvil ||
+          surrounding.superUniqueId !== undefined
+        ) {
+          continue
+        }
+        if (Math.hypot(surrounding.x - monster.x, surrounding.y - monster.y) <= purgeRadius) {
+          surrounding.hp = 0
+          surrounding.dead = true
+          surrounding.mode = 12
+          surrounding.alreadyGrantedKillRewards = true
+          surrounding.selfResurrectCheckFrame = 0
+          this.broadcastToArea(surrounding.areaId, {
+            type: 'UnitMode',
+            unitType: 1,
+            id: surrounding.unitId,
+            mode: 12,
+            at: { x: Math.round(surrounding.x), y: Math.round(surrounding.y) },
+            lifePct: 0,
+          })
         }
       }
     }
@@ -16522,6 +21451,8 @@ export class GameInstance {
       player.level++
       player.statPts += 5
       player.newSkills += 1
+      // 1.13c `item_skillonlevelup` (199) fires once per gained level around the player (#1797).
+      this.triggerPlayerCtcProcs113c(player, 199, {})
       const base = CANONICAL_CHARSTATS[player.classCode]
       const lifeAddFixed = Math.round(base.perLevel.life * FIXED_ONE)
       const manaAddFixed = Math.round(base.perLevel.mana * FIXED_ONE)
@@ -16651,6 +21582,14 @@ export class GameInstance {
           const isOffHandWeapon = item.bodyLoc === 5 && resolveWeaponBase113c(item.code) !== undefined
           if ((item.bodyLoc === 5 && !isOffHandWeapon) || (item.bodyLoc === 4 && armorBlock > 0)) {
             hasShield = true
+          }
+          if (
+            item.identified !== false &&
+            item.rawItemData?.identified !== false &&
+            item.rawItemData?.broken !== true &&
+            item.rawItemData?.defense !== undefined
+          ) {
+            defense += computeEquippedArmorPieceDefense113c(item, undefined)
           }
           defense += item.stats.get(31) ?? 0
           blockChance += armorBlock + (item.stats.get(20) ?? 0)
@@ -16834,8 +21773,22 @@ export class GameInstance {
   }
 
   /** Room key of a hostile unit in the online missile bridge. */
-  private onlineUnitKey113c(kind: 'monster' | 'player' | 'merc', unitId: number): string {
-    return `${kind === 'monster' ? 'm' : kind === 'player' ? 'p' : 'c'}:${unitId}`
+  private onlineUnitKey113c(kind: 'monster' | 'player' | 'merc' | 'pet', unitId: number): string {
+    return `${kind === 'monster' ? 'm' : kind === 'player' ? 'p' : kind === 'merc' ? 'c' : 's'}:${unitId}`
+  }
+
+  /** Map an `onlineUnitKey113c` string (`m:id | p:id | c:id | s:id`) to its `missile.hitCooldowns` key. */
+  private onlineCooldownKeyFromUnitKey113c(key: string): number | undefined {
+    const sep = key.indexOf(':')
+    if (sep <= 0) return undefined
+    const prefix = key.slice(0, sep)
+    const id = Number(key.slice(sep + 1))
+    if (!Number.isFinite(id)) return undefined
+    if (prefix === 'm') return id
+    if (prefix === 'p') return -id
+    if (prefix === 'c') return -(1_000_000 + id)
+    if (prefix === 's') return -(2_000_000 + id)
+    return undefined
   }
 
   /** Sub-tile missile blocker of `area` for child placement (`COLLISION_CheckMask` missile barrier). */
@@ -16853,6 +21806,16 @@ export class GameInstance {
         if (m.dead || m.isNpc || m.submerged || !m.isKillable || m.areaId !== missile.areaId) continue
         if (this.isMonsterConverted(m)) continue
         out.push({ key: this.onlineUnitKey113c('monster', m.unitId), x: m.x, y: m.y })
+      }
+      const pvp = this.collectHostilePvpTargetsInArea113c(missile.ownerId, missile.areaId, true)
+      for (const p of pvp.players) {
+        out.push({ key: this.onlineUnitKey113c('player', p.unitId), x: p.x, y: p.y })
+      }
+      for (const c of pvp.mercs) {
+        out.push({ key: this.onlineUnitKey113c('merc', c.unitId), x: c.x, y: c.y })
+      }
+      for (const entry of pvp.pets) {
+        out.push({ key: this.onlineUnitKey113c('pet', entry.petUnitId), x: entry.pet.x, y: entry.pet.y })
       }
       return out
     }
@@ -16950,7 +21913,8 @@ export class GameInstance {
       speed > 0 ? Math.ceil(legDist / speed) : 0,
       {
         lockedTargetKey:
-          opts?.lockedMonsterId !== undefined ? this.onlineUnitKey113c('monster', opts.lockedMonsterId) : undefined,
+          opts?.lockedTargetKey ??
+          (opts?.lockedMonsterId !== undefined ? this.onlineUnitKey113c('monster', opts.lockedMonsterId) : undefined),
       },
     )
     this.missiles.set(missile.unitId, missile)
@@ -17046,14 +22010,16 @@ export class GameInstance {
    */
   private dispatchOnlineMissileUnitHit113c(
     missile: InternalMissileRecord,
-    monsterUnitId: number,
+    targetUnitId: number,
     x: number,
     y: number,
+    hitKind: 'monster' | 'player' | 'merc' | 'pet' = 'monster',
   ): 'passthrough' | 'hit' {
     const online = missile.online
     if (online === undefined) return 'hit'
     const engine = this.onlineMissileEngine()
-    const hitKey = this.onlineUnitKey113c('monster', monsterUnitId)
+    const hitKey = this.onlineUnitKey113c(hitKind, targetUnitId)
+    if (missile.pierceRemaining !== undefined) online.hitFired = false
     const res = engine.resolveOnlineMissileSrvHit113c(
       online,
       'unit',
@@ -17066,8 +22032,13 @@ export class GameInstance {
     if (res.outcome === 'passthrough') return 'passthrough'
     for (const spawn of res.spawns) this.pendingOnlineMissileChildren.push({ parent: missile, spawn })
     if (res.splash !== undefined) this.applyOnlineMissileSplash113c(missile, x, y, res.splash)
-    if (res.outcome === 'expire') missile.pierce = false
-    else if (res.outcome === 'pierce') missile.pierce = true
+    if (missile.pierceRemaining !== undefined) {
+      missile.pierce = missile.pierceRemaining > 0
+    } else if (res.outcome === 'expire') {
+      missile.pierce = false
+    } else if (res.outcome === 'pierce') {
+      missile.pierce = true
+    }
     return 'hit'
   }
 
@@ -17091,8 +22062,8 @@ export class GameInstance {
 
   /**
    * Radial splash (`sub_6FC5D450`): the missile's packet on every hostile within `radiusSubtiles` of
-   * the impact except the directly struck unit. Player missiles hit monsters, monster missiles hit
-   * players.
+   * the impact except the directly struck unit. Player missiles hit monsters and hostile PvP units,
+   * monster missiles hit players.
    */
   private applyOnlineMissileSplash113c(
     missile: InternalMissileRecord,
@@ -17114,6 +22085,33 @@ export class GameInstance {
           unblockable: true,
           elemDurationFrames: missile.elemDurationFrames,
         })
+      }
+      const pvp = this.collectHostilePvpTargetsInArea113c(owner.unitId, missile.areaId, true)
+      const ch = missile.element !== 'phys' ? missile.element : this.resolveSkillDamageChannel(missile.skillId)
+      const splashSpec = {
+        skillId: missile.skillId,
+        physDamage: ch === 'phys' ? missile.damage : 0,
+        elemDamage: ch === 'phys' ? 0 : missile.damage,
+        elemType: ch,
+        elemDurationFrames: missile.elemDurationFrames,
+        attackKind: 'spell' as const,
+        autoHit: true,
+        unblockable: true,
+      }
+      for (const p of pvp.players) {
+        if (splash.excludeKey === this.onlineUnitKey113c('player', p.unitId)) continue
+        if (Math.hypot(p.x - x, p.y - y) > splash.radiusSubtiles) continue
+        this.applyPvpHitToTarget113c(owner, { kind: 'player', player: p }, splashSpec)
+      }
+      for (const c of pvp.mercs) {
+        if (splash.excludeKey === this.onlineUnitKey113c('merc', c.unitId)) continue
+        if (Math.hypot(c.x - x, c.y - y) > splash.radiusSubtiles) continue
+        this.applyPvpHitToTarget113c(owner, { kind: 'merc', merc: c }, splashSpec)
+      }
+      for (const entry of pvp.pets) {
+        if (splash.excludeKey === this.onlineUnitKey113c('pet', entry.petUnitId)) continue
+        if (Math.hypot(entry.pet.x - x, entry.pet.y - y) > splash.radiusSubtiles) continue
+        this.applyPvpHitToTarget113c(owner, { kind: 'pet', ...entry }, splashSpec)
       }
       return
     }
@@ -17169,6 +22167,41 @@ export class GameInstance {
     })
   }
 
+  /** One frame of a player ground fire patch on a hostile PvP target (`SrvDmg03` `0x6FC59670`). */
+  private applyOnlineGroundFirePvpTick113c(
+    owner: InternalPlayerRecord,
+    target:
+      | { readonly kind: 'player'; readonly player: InternalPlayerRecord }
+      | { readonly kind: 'merc'; readonly merc: InternalMercenaryRecord }
+      | {
+          readonly kind: 'pet'
+          readonly ownerId: number
+          readonly pet: SummonedPetUnit
+          readonly petUnitId: number
+          readonly areaId: number
+        },
+    cooldownKey: number,
+    missile: InternalMissileRecord,
+  ): void {
+    const range = missile.groundFire256
+    missile.hitCooldowns.set(cooldownKey, this.currentFrame + 1)
+    if (range === undefined || range.max <= 0) return
+    const carryMap = (missile.groundFireCarry ??= new Map())
+    const roll = this.rollInclusive(range.min, range.max)
+    const carry = (carryMap.get(cooldownKey) ?? 0) + roll
+    const whole = Math.floor(carry / FIXED_ONE)
+    carryMap.set(cooldownKey, carry - whole * FIXED_ONE)
+    if (whole <= 0) return
+    this.applyPvpHitToTarget113c(owner, target, {
+      skillId: missile.skillId,
+      elemDamage: whole,
+      elemType: 'fire',
+      attackKind: 'spell',
+      autoHit: true,
+      unblockable: true,
+    })
+  }
+
   /** Create the child missiles queued by srvdo / srvhit functions this frame (after the sweep). */
   private flushOnlineMissileChildren113c(): void {
     if (this.pendingOnlineMissileChildren.length === 0) return
@@ -17185,7 +22218,12 @@ export class GameInstance {
     const slvl = Math.max(1, parent.online?.slvl ?? 1)
     const sourceSkillId = parent.online?.sourceSkillId ?? parent.skillId
     const rawVel = row.vel + Math.trunc((row.velLev * slvl) / 8)
-    const speed = row.vel <= 0 ? 0 : rawVel > 0 ? rawVel / 16 : PLAYER_MISSILE_SPEED_SUBTILES
+    const baseSpeed = row.vel <= 0 ? 0 : rawVel > 0 ? rawVel / 16 : PLAYER_MISSILE_SPEED_SUBTILES
+    const ownerSlowed =
+      parent.ownerType === 'monster'
+        ? Boolean(this.monsters.get(parent.ownerId)?.states.has(STATE_SLOWMISSILES_113C))
+        : Boolean(this.players.get(parent.ownerId)?.states.has(STATE_SLOWMISSILES_113C))
+    const speed = baseSpeed > 0 && ownerSlowed ? baseSpeed * 0.33 : baseSpeed
     const dx = spawn.targetX - spawn.x
     const dy = spawn.targetY - spawn.y
     const dist = Math.hypot(dx, dy)
@@ -17240,9 +22278,8 @@ export class GameInstance {
       child.groundFireCarry = new Map()
     }
     if (spawn.excludeKey !== undefined) {
-      const sep = spawn.excludeKey.indexOf(':')
-      const excludedId = Number(spawn.excludeKey.slice(sep + 1))
-      if (Number.isFinite(excludedId)) child.hitCooldowns.set(excludedId, Number.MAX_SAFE_INTEGER)
+      const excludedKey = this.onlineCooldownKeyFromUnitKey113c(spawn.excludeKey)
+      if (excludedKey !== undefined) child.hitCooldowns.set(excludedKey, Number.MAX_SAFE_INTEGER)
     }
     this.attachOnlineMissileState113c(child, row, sourceSkillId, slvl, speed > 0 ? Math.ceil(dist / speed) : 0, {
       chainRemaining: spawn.chainRemaining,
@@ -17274,8 +22311,15 @@ export class GameInstance {
     for (const [mId, missile] of this.missiles.entries()) {
       const prevX = missile.x
       const prevY = missile.y
-      // #1790: path-mode trajectories (Blessed Hammer spiral) are advanced by `MissileEngine`.
-      if (!this.advanceOnlineMissile113c(missile)) {
+      // `#1884` `#257 Blade Sentinel` (`Missiles.txt` `#392` `blade creeper`) back-and-forth shuttle patrol.
+      if (missile.patrolState !== undefined) {
+        const vel = stepBladeSentinelPatrol113c(missile.patrolState)
+        missile.x = missile.patrolState.x
+        missile.y = missile.patrolState.y
+        missile.vx = vel.vx
+        missile.vy = vel.vy
+      } else if (!this.advanceOnlineMissile113c(missile)) {
+        // #1790: path-mode trajectories (Blessed Hammer spiral) are advanced by `MissileEngine`.
         missile.x += missile.vx
         missile.y += missile.vy
       }
@@ -17378,42 +22422,64 @@ export class GameInstance {
         )
       if (missile.ownerType === 'monster') {
         const ownerMon = this.monsters.get(missile.ownerId)
-        if (ownerMon === undefined) {
+        const ownerObj = ownerMon === undefined ? this.objects.get(missile.ownerId) : undefined
+        if (ownerMon === undefined && ownerObj === undefined) {
           this.missiles.delete(mId)
           continue
         }
-        const ownerConverted = this.isMonsterConverted(ownerMon)
+        const ownerConverted = ownerMon !== undefined ? this.isMonsterConverted(ownerMon) : false
         if (!ownerConverted && (collideEntry.unitTypeMask & 0x0080) !== 0) {
           for (const player of this.players.values()) {
             if (player.dead || !this.isAreaSeamAdjacent(missile.areaId, player.areaId)) continue
             if (!hitsTargetFootprint(player.x, player.y, 2)) continue
             if (isUnitInJustHit('player', player.unitId, player.states)) continue
             if (!canHit(player.unitId)) continue
-            this.resolveMonsterAttackOnPlayer(ownerMon, player, {
-              minDmg: missile.physDamage,
-              maxDmg: missile.physDamage,
-              skillMode: 'A1',
-              attackKind: 'missile',
-              skillId: missile.skillId,
-              missileId: missile.missileId,
-              ...(missile.element !== 'phys'
-                ? {
-                    elementType: missile.element,
-                    elemMin: missile.elemDamage,
-                    elemMax: missile.elemDamage,
-                    elemDurationFrames: missile.elemDurationFrames,
-                  }
-                : {}),
-              fromMissile: true,
-              autoHit: missile.guaranteedHit,
-            })
+            if (ownerMon !== undefined) {
+              this.resolveMonsterAttackOnPlayer(ownerMon, player, {
+                minDmg: missile.physDamage,
+                maxDmg: missile.physDamage,
+                skillMode: 'A1',
+                attackKind: 'missile',
+                skillId: missile.skillId,
+                missileId: missile.missileId,
+                ...(missile.element !== 'phys'
+                  ? {
+                      elementType: missile.element,
+                      elemMin: missile.elemDamage,
+                      elemMax: missile.elemDamage,
+                      elemDurationFrames: missile.elemDurationFrames,
+                    }
+                  : {}),
+                fromMissile: true,
+                autoHit: missile.guaranteedHit,
+              })
+            } else if (ownerObj !== undefined) {
+              this.applyPlayerElementalDamage(
+                player,
+                {
+                  ...(missile.physDamage > 0 ? { phys: missile.physDamage } : {}),
+                  ...(missile.element === 'fire' && missile.elemDamage > 0
+                    ? { fire: missile.elemDamage }
+                    : missile.element === 'ltng' && missile.elemDamage > 0
+                      ? { ltng: missile.elemDamage }
+                      : missile.element === 'cold' && missile.elemDamage > 0
+                        ? { cold: missile.elemDamage }
+                        : missile.element === 'pois' && missile.elemDamage > 0
+                          ? { pois: missile.elemDamage }
+                          : missile.element === 'mag' && missile.elemDamage > 0
+                            ? { mag: missile.elemDamage }
+                            : {}),
+                },
+                { killerType: 'trap', killerUnitId: ownerObj.unitId },
+              )
+            }
             if (missile.element === 'cold') {
               const diffKey: 'normal' | 'nightmare' | 'hell' =
                 this.difficulty === 2 ? 'hell' : this.difficulty === 1 ? 'nightmare' : 'normal'
               const chillFrames =
                 missile.elemDurationFrames > 0
                   ? missile.elemDurationFrames
-                  : calcColdEnchantedDeathNova(ownerMon.level, diffKey).chillFrames
+                  : calcColdEnchantedDeathNova(ownerMon?.level ?? 10, diffKey).chillFrames
               this.applyUnitState(
                 player.states,
                 player.stateTimers,
@@ -17429,7 +22495,7 @@ export class GameInstance {
             hit = true
             if (!missile.pierce) break
           }
-          if (!hit || missile.pierce) {
+          if ((!hit || missile.pierce) && ownerMon !== undefined) {
             for (const merc of this.mercenaries.values()) {
               if (!merc.alive || !this.isAreaSeamAdjacent(missile.areaId, merc.areaId)) continue
               const mercOwner = this.players.get(merc.ownerPlayerId)
@@ -17458,7 +22524,7 @@ export class GameInstance {
               if (!missile.pierce) break
             }
           }
-          if (!hit || missile.pierce) {
+          if ((!hit || missile.pierce) && ownerMon !== undefined) {
             for (const [ownerId, mgr] of this.summonManagers) {
               const owner = this.players.get(ownerId)
               if (owner === undefined || owner.dead || !this.isAreaSeamAdjacent(missile.areaId, owner.areaId)) continue
@@ -17506,6 +22572,7 @@ export class GameInstance {
         }
         if (
           (!hit || missile.pierce) &&
+          ownerMon !== undefined &&
           (collideEntry.unitTypeMask & 0x0100) !== 0 &&
           (missile.hitMonsters || ownerConverted || ownerMon.states.has(59))
         ) {
@@ -17627,80 +22694,243 @@ export class GameInstance {
             if (!missile.pierce) break
           }
         }
-      } else if ((collideEntry.unitTypeMask & 0x0100) !== 0) {
+      } else if ((collideEntry.unitTypeMask & 0x0180) !== 0) {
         const owner = this.players.get(missile.ownerId)
         if (owner) {
-          for (const monster of this.monsters.values()) {
-            if (
-              monster.dead ||
-              monster.isNpc ||
-              monster.submerged ||
-              monster.areaId !== missile.areaId ||
-              this.isMonsterConverted(monster)
-            ) {
-              continue
-            }
-            if (isUnitInJustHit('monster', monster.unitId, monster.states)) continue
-            if (!canHit(monster.unitId)) continue
-            const monsterSize = Math.max(1, Math.min(3, getMonsterPathRecord(monster.hcIdx)?.sizeX ?? 2))
-            if (hitsTargetFootprint(monster.x, monster.y, monsterSize)) {
-              // #1790: `pSrvHitFunc` runs on contact even for zero-damage carriers; a guided arrow
-              // passes cleanly through units that are not its locked target.
-              if (this.dispatchOnlineMissileUnitHit113c(missile, monster.unitId, monster.x, monster.y) === 'passthrough') {
+          if ((collideEntry.unitTypeMask & 0x0100) !== 0) {
+            for (const monster of this.monsters.values()) {
+              if (
+                monster.dead ||
+                monster.isNpc ||
+                monster.submerged ||
+                monster.areaId !== missile.areaId ||
+                this.isMonsterConverted(monster)
+              ) {
                 continue
               }
-              const missileHitCtx = {
-                attackKind: (missile.guaranteedHit ? 'spell' : 'missile') as 'spell' | 'missile',
-                autoHit: missile.guaranteedHit,
-                unblockable: missile.guaranteedHit,
-                elemDurationFrames: missile.elemDurationFrames,
-              }
-              if (missile.carrier === 'groundfire') {
-                this.applyOnlineGroundFireTick113c(owner, monster, missile)
-              } else if (missile.carrier === 'none') {
-                // Functional carrier: the hit function above is its whole effect (no minimum-1 damage).
-              } else if (
-                missile.element === 'pois' &&
-                missile.elemDurationFrames > 0 &&
-                (missile.poisonBitrate256 ?? 0) > 0
-              ) {
-                if (missile.physDamage > 0) {
+              if (isUnitInJustHit('monster', monster.unitId, monster.states)) continue
+              if (!canHit(monster.unitId)) continue
+              const monsterSize = Math.max(1, Math.min(3, getMonsterPathRecord(monster.hcIdx)?.sizeX ?? 2))
+              if (hitsTargetFootprint(monster.x, monster.y, monsterSize)) {
+                // #1790: `pSrvHitFunc` runs on contact even for zero-damage carriers; a guided arrow
+                // passes cleanly through units that are not its locked target.
+                if (this.dispatchOnlineMissileUnitHit113c(missile, monster.unitId, monster.x, monster.y) === 'passthrough') {
+                  continue
+                }
+                const missileHitCtx = {
+                  attackKind: (missile.guaranteedHit ? 'spell' : 'missile') as 'spell' | 'missile',
+                  autoHit: missile.guaranteedHit,
+                  unblockable: missile.guaranteedHit,
+                  elemDurationFrames: missile.elemDurationFrames,
+                  ...(missile.elemDamage256 !== undefined ? { elemDamage256: missile.elemDamage256 } : {}),
+                  ...(missile.concentrationSnapshotted === true ? { concentrationAlreadyApplied: true } : {}),
+                  ...(missile.bladeWeaponHit === true ? { bladeWeaponHit: true } : {}),
+                }
+                if (missile.carrier === 'groundfire') {
+                  this.applyOnlineGroundFireTick113c(owner, monster, missile)
+                } else if (missile.carrier === 'none') {
+                  // Functional carrier: the hit function above is its whole effect (no minimum-1 damage).
+                } else if (
+                  missile.element === 'pois' &&
+                  missile.elemDurationFrames > 0 &&
+                  (missile.poisonBitrate256 ?? 0) > 0
+                ) {
+                  if (missile.physDamage > 0) {
+                    this.applyDamageToMonster(
+                      owner,
+                      monster,
+                      missile.physDamage,
+                      missile.skillId,
+                      'phys',
+                      'player',
+                      missileHitCtx,
+                    )
+                  }
+                  if (!monster.dead) {
+                    this.applyMonsterPoisonDot(
+                      owner,
+                      monster,
+                      missile.poisonBitrate256!,
+                      missile.elemDurationFrames,
+                      missile.skillId,
+                    )
+                  }
+                } else {
                   this.applyDamageToMonster(
                     owner,
                     monster,
-                    missile.physDamage,
+                    missile.damage,
                     missile.skillId,
-                    'phys',
+                    undefined,
                     'player',
                     missileHitCtx,
                   )
                 }
                 if (!monster.dead) {
-                  this.applyMonsterPoisonDot(
-                    owner,
-                    monster,
-                    missile.poisonBitrate256!,
-                    missile.elemDurationFrames,
-                    missile.skillId,
-                  )
+                  armUnitJustHit('monster', monster.unitId, monster.areaId, monster.states, monster.stateTimers)
                 }
-              } else {
-                this.applyDamageToMonster(
-                  owner,
-                  monster,
-                  missile.damage,
-                  missile.skillId,
-                  undefined,
-                  'player',
-                  missileHitCtx,
+                markHit(monster.unitId)
+                hit = true
+                // 1.13c `0x6FC58F40`: `pierce_idx > 0` -> `pierce_idx -= 1`, keep flying; else CollideKill (#1802).
+                if (missile.pierceRemaining !== undefined) {
+                  if (missile.pierceRemaining > 0) {
+                    missile.pierceRemaining -= 1
+                    missile.pierce = true
+                  } else {
+                    missile.pierce = false
+                  }
+                }
+                if (!missile.pierce) break
+              }
+            }
+          }
+
+          if (!hit || missile.pierce) {
+            const pvp = this.collectHostilePvpTargetsInArea113c(owner.unitId, missile.areaId, true)
+            const applyPvpMissileContact = (
+              target:
+                | { readonly kind: 'player'; readonly player: InternalPlayerRecord }
+                | { readonly kind: 'merc'; readonly merc: InternalMercenaryRecord }
+                | {
+                    readonly kind: 'pet'
+                    readonly ownerId: number
+                    readonly pet: SummonedPetUnit
+                    readonly petUnitId: number
+                    readonly areaId: number
+                  },
+              unitId: number,
+              cooldownKey: number,
+              tx: number,
+              ty: number,
+              targetSize: number,
+              justHitType: 'player' | 'merc' | 'pet',
+              areaId: number,
+              states?: Set<number>,
+              timers?: Map<number, number>,
+            ): boolean => {
+              if (isUnitInJustHit(justHitType, unitId, states)) return false
+              if (!canHit(cooldownKey)) return false
+              if (!hitsTargetFootprint(tx, ty, targetSize)) return false
+              if (this.dispatchOnlineMissileUnitHit113c(missile, unitId, tx, ty, target.kind) === 'passthrough') {
+                return false
+              }
+              if (missile.carrier === 'groundfire') {
+                this.applyOnlineGroundFirePvpTick113c(owner, target, cooldownKey, missile)
+              } else if (missile.carrier === 'none') {
+                // Functional carrier only.
+              } else if (
+                missile.element === 'pois' &&
+                missile.elemDurationFrames > 0 &&
+                (missile.poisonBitrate256 ?? 0) > 0
+              ) {
+                const poisDmg = Math.max(
+                  1,
+                  Math.floor((missile.poisonBitrate256! * missile.elemDurationFrames) / FIXED_ONE),
                 )
+                this.applyPvpHitToTarget113c(owner, target, {
+                  skillId: missile.skillId,
+                  physDamage: missile.physDamage,
+                  elemDamage: poisDmg,
+                  elemType: 'pois',
+                  elemDurationFrames: missile.elemDurationFrames,
+                  attackKind: missile.guaranteedHit ? 'spell' : 'missile',
+                  autoHit: missile.guaranteedHit,
+                  unblockable: missile.guaranteedHit,
+                })
+              } else {
+                const ch =
+                  missile.element !== 'phys' ? missile.element : this.resolveSkillDamageChannel(missile.skillId)
+                this.applyPvpHitToTarget113c(owner, target, {
+                  skillId: missile.skillId,
+                  physDamage: ch === 'phys' ? missile.damage : 0,
+                  elemDamage: ch === 'phys' ? 0 : missile.damage,
+                  elemType: ch,
+                  elemDurationFrames: missile.elemDurationFrames,
+                  attackKind: missile.guaranteedHit ? 'spell' : 'missile',
+                  autoHit: missile.guaranteedHit,
+                  unblockable: missile.guaranteedHit,
+                  ...(missile.elemDamage256 !== undefined ? { elemDamage256: missile.elemDamage256 } : {}),
+                  ...(missile.concentrationSnapshotted === true ? { concentrationAlreadyApplied: true } : {}),
+                })
               }
-              if (!monster.dead) {
-                armUnitJustHit('monster', monster.unitId, monster.areaId, monster.states, monster.stateTimers)
+              armUnitJustHit(justHitType, unitId, areaId, states, timers)
+              markHit(cooldownKey)
+              if (missile.pierceRemaining !== undefined) {
+                if (missile.pierceRemaining > 0) {
+                  missile.pierceRemaining -= 1
+                  missile.pierce = true
+                } else {
+                  missile.pierce = false
+                }
               }
-              markHit(monster.unitId)
-              hit = true
-              if (!missile.pierce) break
+              return true
+            }
+
+            if ((collideEntry.unitTypeMask & 0x0080) !== 0) {
+              for (const p of pvp.players) {
+                if (
+                  applyPvpMissileContact(
+                    { kind: 'player', player: p },
+                    p.unitId,
+                    -p.unitId,
+                    p.x,
+                    p.y,
+                    2,
+                    'player',
+                    p.areaId,
+                    p.states,
+                    p.stateTimers,
+                  )
+                ) {
+                  hit = true
+                  if (!missile.pierce) break
+                }
+              }
+            }
+            if ((!hit || missile.pierce) && (collideEntry.unitTypeMask & 0x0100) !== 0) {
+              for (const c of pvp.mercs) {
+                if (
+                  applyPvpMissileContact(
+                    { kind: 'merc', merc: c },
+                    c.unitId,
+                    -(1_000_000 + c.unitId),
+                    c.x,
+                    c.y,
+                    2,
+                    'merc',
+                    c.areaId,
+                    c.states,
+                    c.stateTimers,
+                  )
+                ) {
+                  hit = true
+                  if (!missile.pierce) break
+                }
+              }
+            }
+            if ((!hit || missile.pierce) && (collideEntry.unitTypeMask & 0x0100) !== 0) {
+              for (const entry of pvp.pets) {
+                const petHcIdx = (entry.pet as unknown as { hcIdx?: number }).hcIdx ?? -1
+                const petSize = Math.max(
+                  1,
+                  Math.min(3, (petHcIdx >= 0 ? getMonsterPathRecord(petHcIdx)?.sizeX : undefined) ?? 2),
+                )
+                if (
+                  applyPvpMissileContact(
+                    { kind: 'pet', ...entry },
+                    entry.petUnitId,
+                    -(2_000_000 + entry.petUnitId),
+                    entry.pet.x,
+                    entry.pet.y,
+                    petSize,
+                    'pet',
+                    entry.areaId,
+                  )
+                ) {
+                  hit = true
+                  if (!missile.pierce) break
+                }
+              }
             }
           }
         }
@@ -17708,6 +22938,20 @@ export class GameInstance {
 
       if ((hit && !missile.pierce) || missile.remainingFrames <= 0) {
         if (!(hit && !missile.pierce)) this.finishOnlineMissile113c(missile, 'expire')
+        if (missile.trapPetUid !== undefined && missile.trapOwnerPlayerId !== undefined) {
+          this.summonManagers.get(missile.trapOwnerPlayerId)?.removePetByUid(missile.trapPetUid)
+          const petUnitId = this.petUnitIds.get(missile.trapPetUid)
+          if (petUnitId !== undefined) {
+            this.petUnitIds.delete(missile.trapPetUid)
+            this.petVisualStates.delete(petUnitId)
+            this.broadcastToArea(missile.areaId, {
+              type: 'UnitRemove',
+              unitType: 1,
+              id: petUnitId,
+              unitId: petUnitId,
+            })
+          }
+        }
         this.missiles.delete(mId)
       }
     }
@@ -18116,16 +23360,49 @@ export class GameInstance {
   private computePlayerBaseDefense(player: InternalPlayerRecord): number {
     const totalDex = player.dexterity + this.sumPlayerItemStat(player, 2)
     let defense = Math.floor(totalDex / 4)
-    for (const item of player.items) {
-      if (item.location !== 'equipped' || item.bodyLoc === 11 || item.bodyLoc === 12) continue
-      if (item.rawItemData?.defense !== undefined) {
-        defense += item.rawItemData.defense
-      } else {
-        const meta = resolveArmorCombatMeta113c(item.code)
-        if (meta !== undefined && meta.minAc > 0) {
-          defense += item.ethereal ? Math.floor((meta.minAc * 3) / 2) : meta.minAc
+    const worn = player.items.filter(
+      (it) => it.location === 'equipped' && it.bodyLoc !== 11 && it.bodyLoc !== 12,
+    )
+    const hasSetGear = worn.some(
+      (it) =>
+        it.quality === 5 ||
+        (it.rawItemData?.setItemId !== undefined &&
+          it.rawItemData.setItemId >= 0 &&
+          it.rawItemData.setItemId !== 0xfff),
+    )
+    const tables = hasSetGear ? getEmbeddedDropTables() : undefined
+    const counts = hasSetGear ? this.wornSetPieceCounts(worn) : undefined
+    const siblingMasks =
+      hasSetGear && tables ? computeWornSetSiblingMasks113c(worn, tables.sets.items) : undefined
+    for (const item of worn) {
+      if (item.identified === false || item.rawItemData?.identified === false) {
+        if (item.rawItemData?.defense !== undefined) {
+          defense += item.rawItemData.defense
+        } else {
+          const meta = resolveArmorCombatMeta113c(item.code)
+          if (meta !== undefined && meta.minAc > 0) {
+            defense += item.ethereal ? Math.floor((meta.minAc * 3) / 2) : meta.minAc
+          }
         }
+        continue
       }
+      if (item.rawItemData?.broken === true) continue
+      const setId = item.rawItemData?.setItemId
+      const setItem =
+        tables && setId !== undefined && setId >= 0 && setId !== 0xfff
+          ? tables.sets.items.getById(setId)
+          : undefined
+      defense += computeEquippedArmorPieceDefense113c(
+        item,
+        resolveArmorCombatMeta113c(item.code),
+        setItem && tables
+          ? {
+              wornCount: counts?.get(setItem.set) ?? 1,
+              siblingMask: siblingMasks?.get(setItem.set) ?? 0,
+              setItemsTable: tables.sets.items,
+            }
+          : undefined,
+      )
     }
     defense += this.sumPlayerItemStat(player, 31)
     return defense
@@ -18264,6 +23541,19 @@ export class GameInstance {
     let absorbCold = this.sumPlayerItemStat(player, 149)
     const playerBaseDefense = this.computePlayerBaseDefense(player)
     const playerStats = this.playerCombatContext(player).statList
+    // Passive statlists (`passive_skill_*`, e.g. `#153 Natural Resistance`) are re-attached on `defenderStats`
+    // by `syncPlayerSkillLevelsToStatList113c`; strip them from the copied totals so they count once (#1803).
+    const passiveOnly = (stat: string): number => {
+      let total = 0
+      for (const m of playerStats.getActiveModifiers()) {
+        if (m.id.startsWith('passive_skill_')) total += m.stats[stat] ?? 0
+      }
+      return total
+    }
+    fireResist -= passiveOnly('fireresist')
+    lightResist -= passiveOnly('lightresist')
+    coldResist -= passiveOnly('coldresist')
+    poisonResist -= passiveOnly('poisonresist')
     defenderStats.setBaseStat('dexterity', player.dexterity + equippedDex)
     blockChance += Math.trunc(playerStats.getAccruedStat('toblock', true))
     normalDr += Math.trunc(playerStats.getAccruedStat('normal_damage_reduction'))
@@ -18323,19 +23613,9 @@ export class GameInstance {
     defenderStats.setHp256(player.hpFixed)
     defenderStats.setBaseStat('maxmana', player.maxManaFixed)
     defenderStats.setMana256(player.manaFixed)
-    for (const [skId, lvl] of player.skills.entries()) {
-      defenderStats.setBaseSkillLevel(skId, lvl)
-    }
-    // Wire `+skills` bonuses onto defensive passives (`#13 Dodge`, `#18 Avoid`, `#29 Evade`, `#263 Weapon Block`, #1796)
-    for (const passiveId of [13, 18, 29, 263]) {
-      const basePts = player.skills.get(passiveId) ?? 0
-      if (basePts > 0) {
-        const effLvl = this.resolvePlayerSkillLevelById(player, passiveId)
-        if (effLvl > basePts) {
-          defenderStats.setBonusSkillLevel(passiveId, effLvl - basePts)
-        }
-      }
-    }
+    // 1.13c defensive passive statlists at their exact `SKILLS_GetSkillLevel` level (`#13 Dodge`, `#18 Avoid`,
+    // `#29 Evade`, `#263 Weapon Block`, `#145 Iron Skin`, `#153 Natural Resistance`; #1796, #1802..#1804).
+    this.syncPlayerSkillLevelsToStatList113c(player, defenderStats, this.playerCombat.get(player.unitId)?.stateBus)
 
     const defenderStateBus = new StateBus(defenderStats, this.registry)
     // Mirror persistent buffs / received auras first, then overlay live Bone Armor / Cyclone Armor
@@ -18680,33 +23960,62 @@ export class GameInstance {
         }
       }
       if (finalDmg > 0) {
-        // Cursed (MonUMod 7): each hit applies Amplify Damage.
-        if (monster.umodIds.includes(MON_UMOD.CURSE)) {
-          this.applyUnitState(
-            player.states,
-            player.stateTimers,
-            'player',
-            player.unitId,
-            player.areaId,
-            9,
-            100,
-          )
-          this.playerCombatContext(player).stateBus.applyState({
-            stateNameOrId: 'amplifydamage',
-            sourceUnitId: `monster_${monster.unitId}`,
-            sourceSkillId: 66,
-            slvl: Math.max(1, monster.level),
-            durationFrames: 100,
-            currentFrame: this.currentFrame,
-          })
+        // 1.13c `MonUMod #7` (`Cursed`, `D2Game.dll` `0x6FC44250`, #1904):
+        // Rolls `75%` chance (`rand(100) < 75`) to apply `#66 Amplify Damage` (`state 9`) at
+        // `slvl = floor(mlvl / 5) + 1` for `200 + 75 * (slvl - 1)` frames (scaled by `curse_resistance`).
+        if (
+          monster.umodIds.includes(MON_UMOD.CURSE) &&
+          this.rng.rand(100) < CURSED_PROC_CHANCE_PCT_113C &&
+          !player.states.has(57)
+        ) {
+          const curseRes = Math.trunc(defenderStats.getAccruedStat('curse_resistance'))
+          const cursed = computeCursedAmplifyDamage113c(monster.level, curseRes)
+          if (cursed.durationFrames > 0) {
+            const playerCtx = this.playerCombatContext(player)
+            for (const prevCurseId of [19, 55, 58, 60, 61, 113, 114]) {
+              if (player.states.has(prevCurseId)) {
+                playerCtx.stateBus.removeState(prevCurseId)
+                this.clearUnitState(
+                  player.states,
+                  player.stateTimers,
+                  'player',
+                  player.unitId,
+                  player.areaId,
+                  prevCurseId,
+                )
+              }
+            }
+            this.applyUnitState(
+              player.states,
+              player.stateTimers,
+              'player',
+              player.unitId,
+              player.areaId,
+              9,
+              cursed.durationFrames,
+            )
+            playerCtx.stateBus.applyState({
+              stateNameOrId: 'amplifydamage',
+              sourceUnitId: `monster_${monster.unitId}`,
+              sourceSkillId: 66,
+              slvl: cursed.slvl,
+              durationFrames: cursed.durationFrames,
+              currentFrame: this.currentFrame,
+              stats: { damageresist: -100 },
+            })
+          }
         }
-        // Mana Burn (MonUMod 25): drain the MonUMod constant percentage of damage.
+        // 1.13c `MonUMod #25` (`Mana Burn`, `D2Game.dll` `0x6FC421D0` / `0x6FC422DD: shl esi, 0x8`, #1905):
+        // Drains `66%..100%` (`33%..50%` minion) of monster physical base damage, with melee `<< 8` (`256x`) shift.
         if (monster.umodIds.includes(MON_UMOD.MANahit)) {
-          const drain = Math.max(
-            1,
-            Math.floor((finalDmg * monUmodConstant113c(MON_UMOD.MANahit)) / 100),
-          )
-          const nextManaFixed = Math.max(0, player.manaFixed - drain * FIXED_ONE)
+          const drainFixed = computeManaBurnDrainFixed113c({
+            isMinion: monster.rank === 'minion',
+            isMelee: swing?.fromMissile !== true,
+            baseMinDmg: swing?.minDmg ?? monster.minDmg,
+            baseMaxDmg: swing?.maxDmg ?? monster.maxDmg,
+            rollInt: (lo, hi) => lo + this.rng.rand(Math.max(1, hi - lo + 1)),
+          })
+          const nextManaFixed = Math.max(0, player.manaFixed - drainFixed)
           if (nextManaFixed !== player.manaFixed) {
             player.manaFixed = nextManaFixed
             player.mana = Math.floor(player.manaFixed / FIXED_ONE)
@@ -18717,12 +24026,54 @@ export class GameInstance {
               statId: 8,
               value: player.manaFixed,
             })
+            this.emitPlayerVitals(player)
           }
         }
         const monKillerType: DeathKillerKind113c =
           monster.convertedUntilFrame > this.currentFrame && monster.convertedByPlayerId > 0
             ? 'player_pet'
             : 'monster'
+        // 1.13c `MonUMod #9` (`Fire Enchanted`, `0x6FC42740`), `#17` (`Lightning Enchanted`, `0x6FC42600`),
+        // & `#36` (`Ghostly`, `0x6FC43850`) melee/physical attack elemental bonus damage (#1890, #1903).
+        if (
+          swing?.autoHit !== true &&
+          (swing?.fromMissile !== true ||
+            swing?.elementType === undefined ||
+            swing?.elementType === 'phys') &&
+          (monster.umodIds.includes(MON_UMOD.FIRE) ||
+            monster.umodIds.includes(MON_UMOD.LIGHTNING) ||
+            monster.umodIds.includes(MON_UMOD.GHOSTLY))
+        ) {
+          const ench = rollEnchantedAttackBonus113c({
+            umodIds: monster.umodIds,
+            isMinion: monster.rank === 'minion',
+            baseMinDmg: swing?.minDmg ?? monster.minDmg,
+            baseMaxDmg: swing?.maxDmg ?? monster.maxDmg,
+            rollInt: (lo, hi) => lo + this.rng.rand(Math.max(1, hi - lo + 1)),
+          })
+          if (ench.fireDmg > 0 || ench.lightDmg > 0 || ench.coldDmg > 0) {
+            this.applyPlayerElementalDamage(
+              player,
+              {
+                ...(ench.fireDmg > 0 ? { fire: ench.fireDmg } : {}),
+                ...(ench.lightDmg > 0 ? { light: ench.lightDmg } : {}),
+                ...(ench.coldDmg > 0 ? { cold: ench.coldDmg } : {}),
+              },
+              { skipGetHit: true, killerType: monKillerType, killerUnitId: monster.unitId },
+            )
+          }
+          if (ench.chillFrames > 0) {
+            this.applyUnitState(
+              player.states,
+              player.stateTimers,
+              'player',
+              player.unitId,
+              player.areaId,
+              11,
+              ench.chillFrames,
+            )
+          }
+        }
         // Spectral Hit (MonUMod 27): 50% split fire/cold/lightning extra damage.
         if (monster.umodIds.includes(MON_UMOD.SPECTRALHIT)) {
           const elem = Math.max(
@@ -18763,6 +24114,10 @@ export class GameInstance {
           killerType: monKillerType,
           killerUnitId: monster.unitId,
         })
+        // 1.13c `item_skillongethit` (201): a damaging hit that the player survives (#1797).
+        if (!player.dead && player.hp > 0) {
+          this.triggerPlayerCtcProcs113c(player, 201, { target: monster })
+        }
         // MonAi innate drain rows (Vampire/BatDemon/BloodLord life, WillOWisp
         // mana, Swarm stamina, Mosquito life). 1.13c returns half the hit.
         const drainKind = monsterProfile113c(monster.ai).drain
@@ -18808,18 +24163,1085 @@ export class GameInstance {
       dmgOut.avoidedReason === 'block' ||
       dmgOut.avoidedReason === 'weapon_block'
     ) {
-      player.mode = 9
-      this.broadcastToArea(player.areaId, {
-        type: 'UnitMode',
-        unitType: 0,
-        id: player.unitId,
-        mode: 9,
-        at: playerWirePosition(player),
-        lifePct:
-          player.maxHp > 0
-            ? Math.max(0, Math.round((player.hp / player.maxHp) * 128))
-            : 0,
+      if (!this.isPlayerSkillUninterruptible113c(player)) {
+        this.interruptPendingPlayerAnimAction113c(player, 'BL')
+        const blockFrames = this.playerBlockRecoveryFrames(player)
+        player.mode = 9
+        player.blockRecoveryUntilFrame = this.currentFrame + blockFrames
+        player.targetX = player.x
+        player.targetY = player.y
+        const motion = this.playerMotion.get(player.unitId)
+        if (motion !== undefined) {
+          motion.mover.setPosition(player.x, player.y)
+          motion.x = player.x
+          motion.y = player.y
+          motion.moving = false
+          motion.plannedX = Number.NaN
+          motion.plannedY = Number.NaN
+        }
+        this.broadcastToArea(player.areaId, {
+          type: 'UnitMode',
+          unitType: 0,
+          id: player.unitId,
+          mode: 9,
+          at: playerWirePosition(player),
+          lifePct:
+            player.maxHp > 0
+              ? Math.max(0, Math.round((player.hp / player.maxHp) * 128))
+              : 0,
+        })
+      }
+    }
+  }
+
+  // ===========================================================================================
+  // 1.13c Hostile PvP Targeting, Scaling & Damage Resolution (#1784)
+  // ===========================================================================================
+
+  private isHostilePvpPair113c(
+    ownerPlayerIdA: number,
+    areaIdA: number,
+    ownerPlayerIdB: number,
+    areaIdB: number,
+    allowSeamAdjacent = false,
+  ): boolean {
+    if (!this.policy.allowPvpHostile) return false
+    const areaOk = allowSeamAdjacent
+      ? this.isAreaSeamAdjacent(areaIdA, areaIdB)
+      : areaIdA === areaIdB
+    return isHostilePvpCombatAllowed113c({
+      allowPvpHostile: Boolean(this.policy.allowPvpHostile),
+      attackerOwnerPlayerId: ownerPlayerIdA,
+      attackerAreaId: areaIdA,
+      defenderOwnerPlayerId: ownerPlayerIdB,
+      defenderAreaId: areaIdB,
+      areHostile: this.partyManager.areHostile(ownerPlayerIdA, ownerPlayerIdB),
+      sameAreaOrSeamAdjacent: areaOk,
+    })
+  }
+
+  private collectHostilePvpTargetsInArea113c(
+    attackerOwnerId: number,
+    attackerAreaId: number,
+    allowSeamAdjacent = false,
+  ): {
+    readonly players: InternalPlayerRecord[]
+    readonly mercs: InternalMercenaryRecord[]
+    readonly pets: Array<{
+      readonly ownerId: number
+      readonly pet: SummonedPetUnit
+      readonly petUnitId: number
+      readonly areaId: number
+    }>
+  } {
+    if (!this.policy.allowPvpHostile || isTownArea113c(attackerAreaId)) {
+      return { players: [], mercs: [], pets: [] }
+    }
+    const players: InternalPlayerRecord[] = []
+    const mercs: InternalMercenaryRecord[] = []
+    const pets: Array<{
+      readonly ownerId: number
+      readonly pet: SummonedPetUnit
+      readonly petUnitId: number
+      readonly areaId: number
+    }> = []
+
+    for (const p of this.players.values()) {
+      if (p.dead || p.unitId === attackerOwnerId) continue
+      if (this.isHostilePvpPair113c(attackerOwnerId, attackerAreaId, p.unitId, p.areaId, allowSeamAdjacent)) {
+        players.push(p)
+      }
+    }
+    for (const c of this.mercenaries.values()) {
+      if (!c.alive || c.ownerPlayerId === attackerOwnerId) continue
+      const cOwner = this.players.get(c.ownerPlayerId)
+      if (!cOwner || cOwner.dead) continue
+      if (this.isHostilePvpPair113c(attackerOwnerId, attackerAreaId, c.ownerPlayerId, c.areaId, allowSeamAdjacent)) {
+        mercs.push(c)
+      }
+    }
+    for (const [ownerId, mgr] of this.summonManagers.entries()) {
+      if (ownerId === attackerOwnerId) continue
+      const pOwner = this.players.get(ownerId)
+      if (!pOwner || pOwner.dead) continue
+      for (const pet of mgr.getActivePets()) {
+        if (pet.alive === false || pet.hp <= 0) continue
+        const petAreaId = (pet as unknown as { areaId?: number }).areaId ?? pOwner.areaId
+        if (!this.isHostilePvpPair113c(attackerOwnerId, attackerAreaId, ownerId, petAreaId, allowSeamAdjacent)) {
+          continue
+        }
+        const petUnitId = this.resolvePetUnitId(pet)
+        pets.push({ ownerId, pet, petUnitId, areaId: petAreaId })
+      }
+    }
+    return { players, mercs, pets }
+  }
+
+  private resolveHostilePvpTargetById113c(
+    attackerOwnerId: number,
+    attackerAreaId: number,
+    targetId: number,
+    targetType?: SkillTargetUnitType113c,
+  ):
+    | { readonly kind: 'player'; readonly player: InternalPlayerRecord }
+    | { readonly kind: 'merc'; readonly merc: InternalMercenaryRecord }
+    | {
+        readonly kind: 'pet'
+        readonly ownerId: number
+        readonly pet: SummonedPetUnit
+        readonly petUnitId: number
+        readonly areaId: number
+      }
+    | undefined {
+    if (!this.policy.allowPvpHostile || isTownArea113c(attackerAreaId)) return undefined
+    if (targetType === undefined || targetType === 0) {
+      const targetPlayer = this.players.get(targetId)
+      if (
+        targetPlayer !== undefined &&
+        !targetPlayer.dead &&
+        this.isHostilePvpPair113c(attackerOwnerId, attackerAreaId, targetPlayer.unitId, targetPlayer.areaId)
+      ) {
+        return { kind: 'player', player: targetPlayer }
+      }
+    }
+    if (targetType === undefined || targetType === 1) {
+      const targetMerc = this.mercenaries.get(targetId)
+      if (
+        targetMerc !== undefined &&
+        targetMerc.alive &&
+        this.isHostilePvpPair113c(attackerOwnerId, attackerAreaId, targetMerc.ownerPlayerId, targetMerc.areaId)
+      ) {
+        return { kind: 'merc', merc: targetMerc }
+      }
+      for (const [ownerId, mgr] of this.summonManagers.entries()) {
+        if (ownerId === attackerOwnerId) continue
+        const pOwner = this.players.get(ownerId)
+        if (!pOwner || pOwner.dead) continue
+        for (const pet of mgr.getActivePets()) {
+          if (pet.alive === false || pet.hp <= 0) continue
+          const petUnitId = this.resolvePetUnitId(pet)
+          if (petUnitId !== targetId) continue
+          const petAreaId = (pet as unknown as { areaId?: number }).areaId ?? pOwner.areaId
+          if (this.isHostilePvpPair113c(attackerOwnerId, attackerAreaId, ownerId, petAreaId)) {
+            return { kind: 'pet', ownerId, pet, petUnitId, areaId: petAreaId }
+          }
+        }
+      }
+    }
+    return undefined
+  }
+
+  private buildPlayerDefenderSnapshot113c(player: InternalPlayerRecord): {
+    readonly defenderCtx: CombatUnitContext
+    readonly defenderStats: UnitStatList
+    readonly defenderStateBus: StateBus
+    readonly hadBoneArmor: boolean
+    readonly activeBaPool: { current: number; max: number } | undefined
+    readonly hadCycloneArmor: boolean
+    readonly activeCaPool: { current: number; max: number } | undefined
+  } {
+    const defenderStats = new UnitStatList(this.registry, undefined, {
+      ownerType: 'player',
+      charClass: player.classCode,
+    })
+    defenderStats.setBaseStat('level', player.level)
+    defenderStats.setBaseStat('strength', player.strength + this.sumPlayerItemStat(player, 0))
+    defenderStats.setBaseStat('vitality', player.vitality + this.sumPlayerItemStat(player, 3))
+    defenderStats.setBaseStat('energy', player.energy + this.sumPlayerItemStat(player, 1))
+    defenderStats.setBaseStat('tohit', this.computePlayerBaseToHit113c(player))
+    let blockChance = this.sumPlayerItemStat(player, 20)
+    let hasEquippedShield = false
+    let hasAnyEquippedGear = false
+    let rightHandWeaponType: string | undefined
+    let leftHandWeaponType: string | undefined
+    for (const item of player.items) {
+      if (item.location !== 'equipped' || item.bodyLoc === 11 || item.bodyLoc === 12) continue
+      hasAnyEquippedGear = true
+      const armorBlock = resolveArmorBlock113c(item.code)
+      const isOffHandWeapon = item.bodyLoc === 5 && resolveWeaponBase113c(item.code) !== undefined
+      if ((item.bodyLoc === 5 && !isOffHandWeapon) || (item.bodyLoc === 4 && armorBlock > 0)) {
+        hasEquippedShield = true
+      }
+      if (item.bodyLoc === 4) {
+        rightHandWeaponType = resolveWeaponBase113c(item.code)?.type
+      } else if (item.bodyLoc === 5) {
+        leftHandWeaponType = resolveWeaponBase113c(item.code)?.type
+      }
+      blockChance += armorBlock
+    }
+    const isClawType = (t: string | undefined) => t === 'h2h' || t === 'h2h2'
+    const isDualClaw =
+      !hasEquippedShield && isClawType(rightHandWeaponType) && isClawType(leftHandWeaponType)
+    const equippedDex = this.sumPlayerItemStat(player, 2)
+    let normalDr = this.sumPlayerItemStat(player, 34)
+    let magicDr = this.sumPlayerItemStat(player, 35)
+    let damageResist = this.sumPlayerItemStat(player, 36)
+    let magicResist = this.sumPlayerItemStat(player, 37)
+    let maxMagicResist = this.sumPlayerItemStat(player, 38)
+    let fireResist = this.sumPlayerItemStat(player, 39)
+    let maxFireResist = this.sumPlayerItemStat(player, 40)
+    let lightResist = this.sumPlayerItemStat(player, 41)
+    let maxLightResist = this.sumPlayerItemStat(player, 42)
+    let coldResist = this.sumPlayerItemStat(player, 43)
+    let maxColdResist = this.sumPlayerItemStat(player, 44)
+    let poisonResist = this.sumPlayerItemStat(player, 45)
+    let maxPoisonResist = this.sumPlayerItemStat(player, 46)
+    let absorbFirePct = this.sumPlayerItemStat(player, 142)
+    let absorbFire = this.sumPlayerItemStat(player, 143)
+    let absorbLightPct = this.sumPlayerItemStat(player, 144)
+    let absorbLight = this.sumPlayerItemStat(player, 145)
+    let absorbMagicPct = this.sumPlayerItemStat(player, 146)
+    let absorbMagic = this.sumPlayerItemStat(player, 147)
+    let absorbColdPct = this.sumPlayerItemStat(player, 148)
+    let absorbCold = this.sumPlayerItemStat(player, 149)
+    const playerBaseDefense = this.computePlayerBaseDefense(player)
+    const playerStats = this.playerCombatContext(player).statList
+    defenderStats.setBaseStat('dexterity', player.dexterity + equippedDex)
+    blockChance += Math.trunc(playerStats.getAccruedStat('toblock', true))
+    normalDr += Math.trunc(playerStats.getAccruedStat('normal_damage_reduction'))
+    magicDr += Math.trunc(playerStats.getAccruedStat('magic_damage_reduction'))
+    damageResist += Math.trunc(getPrePierceResistance113c(playerStats, 'damageresist'))
+    magicResist += Math.trunc(playerStats.getAccruedStat('magicresist'))
+    fireResist += Math.trunc(getPrePierceResistance113c(playerStats, 'fireresist'))
+    lightResist += Math.trunc(getPrePierceResistance113c(playerStats, 'lightresist'))
+    coldResist += Math.trunc(getPrePierceResistance113c(playerStats, 'coldresist'))
+    poisonResist += Math.trunc(getPrePierceResistance113c(playerStats, 'poisonresist'))
+    maxMagicResist += Math.trunc(playerStats.getAccruedStat('maxmagicresist'))
+    maxFireResist += Math.trunc(playerStats.getAccruedStat('maxfireresist'))
+    maxLightResist += Math.trunc(playerStats.getAccruedStat('maxlightresist'))
+    maxColdResist += Math.trunc(playerStats.getAccruedStat('maxcoldresist'))
+    maxPoisonResist += Math.trunc(playerStats.getAccruedStat('maxpoisonresist'))
+    absorbFirePct += Math.trunc(playerStats.getAccruedStat('item_absorbfire_percent', true))
+    absorbFire += Math.trunc(playerStats.getAccruedStat('item_absorbfire', true))
+    absorbLightPct += Math.trunc(playerStats.getAccruedStat('item_absorblight_percent', true))
+    absorbLight += Math.trunc(playerStats.getAccruedStat('item_absorblight', true))
+    absorbMagicPct += Math.trunc(playerStats.getAccruedStat('item_absorbmagic_percent', true))
+    absorbMagic += Math.trunc(playerStats.getAccruedStat('item_absorbmagic', true))
+    absorbColdPct += Math.trunc(playerStats.getAccruedStat('item_absorbcold_percent', true))
+    absorbCold += Math.trunc(playerStats.getAccruedStat('item_absorbcold', true))
+    const armorShrineBonusPct =
+      player.states.has(128) && !this.playerCombatContext(player).stateBus.hasState(128) ? 100 : 0
+    const baseDefWithPerLvlPct =
+      playerBaseDefense +
+      Math.trunc((playerBaseDefense * (this.sumPlayerItemStat(player, 215) + armorShrineBonusPct)) / 100)
+    defenderStats.setBaseStat('armorclass', Math.max(0, baseDefWithPerLvlPct))
+    defenderStats.setBaseStat('armorclass_vs_missile', this.sumPlayerItemStat(player, 32))
+    defenderStats.setBaseStat('armorclass_vs_hth', this.sumPlayerItemStat(player, 33))
+    defenderStats.setBaseStat('toblock', Math.max(0, blockChance))
+    defenderStats.setBaseStat('normal_damage_reduction', normalDr)
+    defenderStats.setBaseStat('magic_damage_reduction', magicDr)
+    defenderStats.setBaseStat('damageresist', damageResist)
+    defenderStats.setBaseStat('magicresist', magicResist)
+    defenderStats.setBaseStat('fireresist', fireResist)
+    defenderStats.setBaseStat('lightresist', lightResist)
+    defenderStats.setBaseStat('coldresist', coldResist)
+    defenderStats.setBaseStat('poisonresist', poisonResist)
+    defenderStats.setBaseStat('maxmagicresist', maxMagicResist)
+    defenderStats.setBaseStat('maxfireresist', maxFireResist)
+    defenderStats.setBaseStat('maxlightresist', maxLightResist)
+    defenderStats.setBaseStat('maxcoldresist', maxColdResist)
+    defenderStats.setBaseStat('maxpoisonresist', maxPoisonResist)
+    defenderStats.setBaseStat('item_absorbfire_percent', absorbFirePct)
+    defenderStats.setBaseStat('item_absorbfire', absorbFire)
+    defenderStats.setBaseStat('item_absorblight_percent', absorbLightPct)
+    defenderStats.setBaseStat('item_absorblight', absorbLight)
+    defenderStats.setBaseStat('item_absorbmagic_percent', absorbMagicPct)
+    defenderStats.setBaseStat('item_absorbmagic', absorbMagic)
+    defenderStats.setBaseStat('item_absorbcold_percent', absorbColdPct)
+    defenderStats.setBaseStat('item_absorbcold', absorbCold)
+    defenderStats.setBaseStat('maxhp', player.maxHpFixed)
+    defenderStats.setHp256(player.hpFixed)
+    defenderStats.setBaseStat('maxmana', player.maxManaFixed)
+    defenderStats.setMana256(player.manaFixed)
+    for (const [skId, lvl] of player.skills.entries()) {
+      defenderStats.setBaseSkillLevel(skId, lvl)
+    }
+    for (const passiveId of [13, 18, 29, 263]) {
+      const basePts = player.skills.get(passiveId) ?? 0
+      if (basePts > 0) {
+        const effLvl = this.resolvePlayerSkillLevelById(player, passiveId)
+        if (effLvl > basePts) {
+          defenderStats.setBonusSkillLevel(passiveId, effLvl - basePts)
+        }
+      }
+    }
+
+    const defenderStateBus = new StateBus(defenderStats, this.registry)
+    this.mirrorPersistentStates(this.playerCombat.get(player.unitId), defenderStateBus)
+    if (player.states.has(10) && !defenderStateBus.hasState(10)) {
+      defenderStateBus.applyState({
+        stateNameOrId: 'frozenarmor',
+        sourceSkillId: 40,
+        slvl: Math.max(1, this.resolvePlayerSkillLevelById(player, 40)),
+        durationFrames: player.stateTimers.get(10) ?? 300,
       })
+    }
+    if (player.states.has(20) && !defenderStateBus.hasState(20)) {
+      defenderStateBus.applyState({
+        stateNameOrId: 'chillingarmor',
+        sourceSkillId: 60,
+        slvl: Math.max(1, this.resolvePlayerSkillLevelById(player, 60)),
+        durationFrames: player.stateTimers.get(20) ?? 300,
+      })
+    }
+    if (player.states.has(30) && !defenderStateBus.hasState(30)) {
+      defenderStateBus.applyState({
+        stateNameOrId: 'energyshield',
+        sourceSkillId: 58,
+        slvl: Math.max(1, this.resolvePlayerSkillLevelById(player, 58)),
+        durationFrames: player.stateTimers.get(30) ?? 300,
+      })
+    }
+    if (player.states.has(88) && !defenderStateBus.hasState(88)) {
+      defenderStateBus.applyState({
+        stateNameOrId: 'shiverarmor',
+        sourceSkillId: 50,
+        slvl: Math.max(1, this.resolvePlayerSkillLevelById(player, 50)),
+        durationFrames: player.stateTimers.get(88) ?? 300,
+      })
+    }
+    let activeBaPool: { current: number; max: number } | undefined
+    const hadBoneArmor = player.states.has(14)
+    if (hadBoneArmor) {
+      const baLvl = Math.max(1, this.resolvePlayerSkillLevelById(player, 68))
+      const defaultBaMax =
+        20 + 10 * (baLvl - 1) + 15 * ((player.skills.get(78) ?? 0) + (player.skills.get(88) ?? 0))
+      activeBaPool = this.playerBoneArmorPool.get(player.unitId)
+      if (activeBaPool === undefined) {
+        activeBaPool = { current: defaultBaMax, max: defaultBaMax }
+        this.playerBoneArmorPool.set(player.unitId, activeBaPool)
+      }
+      defenderStateBus.applyState({
+        stateNameOrId: 'bonearmor',
+        sourceSkillId: 68,
+        slvl: baLvl,
+        durationFrames: player.stateTimers.get(14) ?? 300,
+        stats: { bonearmor: activeBaPool.current, bonearmormax: activeBaPool.max },
+      })
+    }
+    let activeCaPool: { current: number; max: number } | undefined
+    const hadCycloneArmor = player.states.has(151)
+    if (hadCycloneArmor) {
+      const caLvl = Math.max(1, this.resolvePlayerSkillLevelById(player, 235))
+      const defaultCaMax = Math.trunc(
+        ((40 + 12 * (caLvl - 1)) *
+          (100 +
+            7 *
+              ((player.skills.get(240) ?? 0) +
+                (player.skills.get(245) ?? 0) +
+                (player.skills.get(250) ?? 0)))) /
+          100,
+      )
+      activeCaPool = this.playerCycloneArmorPool.get(player.unitId)
+      if (activeCaPool === undefined) {
+        activeCaPool = { current: defaultCaMax, max: defaultCaMax }
+        this.playerCycloneArmorPool.set(player.unitId, activeCaPool)
+      }
+      defenderStateBus.applyState({
+        stateNameOrId: 'cyclonearmor',
+        sourceSkillId: 235,
+        slvl: caLvl,
+        durationFrames: player.stateTimers.get(151) ?? 300,
+        stats: { bonearmor: activeCaPool.current, bonearmormax: activeCaPool.max },
+      })
+    }
+    if (hasAnyEquippedGear && !hasEquippedShield) {
+      defenderStateBus.removeState(101)
+      defenderStateBus.removeState('holyshield')
+    } else if (player.states.has(101) && !defenderStateBus.hasState(101)) {
+      const hsLvl = Math.max(1, this.resolvePlayerSkillLevelById(player, 117))
+      const hsBlock = computeDiminishingReturns(10, 40, hsLvl)
+      defenderStateBus.applyState({
+        stateNameOrId: 'holyshield',
+        sourceSkillId: 117,
+        slvl: hsLvl,
+        durationFrames: player.stateTimers.get(101) ?? 300,
+        stats: {
+          toblock: hsBlock,
+          modifierlist_skill: 117,
+          modifierlist_level: hsLvl,
+        },
+      })
+    }
+
+    const motionMoving = this.playerMotion.get(player.unitId)?.moving === true
+    const isWalking =
+      player.mode === 2 ||
+      player.mode === 6 ||
+      (motionMoving && !player.run && player.mode !== 3)
+    const isRunning =
+      player.mode === 3 ||
+      (motionMoving && player.run && player.mode !== 2 && player.mode !== 6)
+
+    const defenderCtx: CombatUnitContext = {
+      id: `player_${player.unitId}`,
+      name: player.name,
+      charClass: player.classCode,
+      unitType: 'player',
+      statList: defenderStats,
+      stateBus: defenderStateBus,
+      x: player.x,
+      y: player.y,
+      hasShield: hasEquippedShield,
+      ...(rightHandWeaponType !== undefined ? { weaponItemType: rightHandWeaponType } : {}),
+      ...(leftHandWeaponType !== undefined ? { offHandWeaponItemType: leftHandWeaponType } : {}),
+      isDualClaw,
+      isMoving: motionMoving || isWalking || isRunning,
+      isWalking,
+      isRunning,
+      resistPenalty: difficultyResistPenalty(this.difficulty),
+    }
+
+    return {
+      defenderCtx,
+      defenderStats,
+      defenderStateBus,
+      hadBoneArmor,
+      activeBaPool,
+      hadCycloneArmor,
+      activeCaPool,
+    }
+  }
+
+  private buildPvpAttackerContext113c(
+    owner: InternalPlayerRecord,
+    source: 'player' | InternalMercenaryRecord | SummonedPetUnit | { readonly petUnitId: number } = 'player',
+  ): {
+    readonly ctx: CombatUnitContext
+    readonly killerType: DeathKillerKind113c
+    readonly killerUnitId: number
+  } {
+    const mercAttacker =
+      typeof source === 'object' && source !== null && 'subType' in source ? source : undefined
+    const petAttacker =
+      typeof source === 'object' && source !== null && 'petType' in source ? source : undefined
+    const detachedPet =
+      typeof source === 'object' &&
+      source !== null &&
+      !('subType' in source) &&
+      !('petType' in source) &&
+      'petUnitId' in source
+        ? source
+        : undefined
+    const attackerStats = new UnitStatList(this.registry, undefined, {
+      ownerType:
+        petAttacker !== undefined || mercAttacker !== undefined || detachedPet !== undefined
+          ? 'monster'
+          : 'player',
+      charClass: owner.classCode,
+    })
+
+    if (detachedPet !== undefined) {
+      attackerStats.setBaseStat('level', owner.level)
+      const attackerStateBus = new StateBus(attackerStats, this.registry)
+      return {
+        ctx: {
+          id: `pet_${detachedPet.petUnitId}`,
+          name: 'pet',
+          unitType: 'minion',
+          ownerUnitId: String(owner.unitId),
+          statList: attackerStats,
+          stateBus: attackerStateBus,
+          x: owner.x,
+          y: owner.y,
+        },
+        killerType: 'player_pet',
+        killerUnitId: detachedPet.petUnitId,
+      }
+    }
+
+    if (petAttacker !== undefined) {
+      attackerStats.setBaseStat('level', petAttacker.statList.getAccruedStat('level') || owner.level)
+      attackerStats.setBaseStat('strength', petAttacker.statList.getAccruedStat('strength'))
+      attackerStats.setBaseStat('dexterity', petAttacker.statList.getAccruedStat('dexterity'))
+      attackerStats.setBaseStat('tohit', petAttacker.statList.getAccruedStat('tohit'))
+      attackerStats.setBaseStat('item_tohit_percent', petAttacker.statList.getAccruedStat('item_tohit_percent'))
+      attackerStats.setBaseStat('armorclass', petAttacker.statList.getAccruedStat('armorclass'))
+      attackerStats.setBaseStat('damagepercent', petAttacker.statList.getAccruedStat('damagepercent'))
+      attackerStats.setBaseStat('mindamage', petAttacker.statList.getAccruedStat('mindamage'))
+      attackerStats.setBaseStat('maxdamage', petAttacker.statList.getAccruedStat('maxdamage'))
+      attackerStats.setBaseStat('maxhp', petAttacker.statList.getAccruedStat('maxhp'))
+      attackerStats.setHp256(petAttacker.statList.getHp256())
+      const attackerStateBus = new StateBus(attackerStats, this.registry)
+      const petUnitId = this.resolvePetUnitId(petAttacker)
+      return {
+        ctx: {
+          id: petAttacker.uid,
+          name: petAttacker.name || petAttacker.petType,
+          unitType: 'minion',
+          ownerUnitId: String(owner.unitId),
+          statList: attackerStats,
+          stateBus: attackerStateBus,
+          x: petAttacker.x,
+          y: petAttacker.y,
+        },
+        killerType: 'player_pet',
+        killerUnitId: petUnitId,
+      }
+    }
+
+    if (mercAttacker !== undefined) {
+      const mercHireStats = resolveHirelingStatsAtLevel(
+        mercAttacker.subType,
+        mercAttacker.act,
+        mercAttacker.difficulty,
+        mercAttacker.level,
+        true,
+      )
+      const mercStr =
+        (mercHireStats?.str ?? 50 + mercAttacker.level * 2) + this.sumMercItemStat(mercAttacker, 0)
+      const mercDex =
+        (mercHireStats?.dex ?? 40 + mercAttacker.level * 2) + this.sumMercItemStat(mercAttacker, 2)
+      const mercAr =
+        (mercAttacker.ar ?? mercHireStats?.ar ?? 100 + mercAttacker.level * 20) +
+        this.sumMercItemStat(mercAttacker, 19)
+      attackerStats.setBaseStat('level', mercAttacker.level)
+      attackerStats.setBaseStat('strength', mercStr)
+      attackerStats.setBaseStat('dexterity', mercDex)
+      attackerStats.setBaseStat('tohit', mercAr)
+      attackerStats.setBaseStat('item_tohit_percent', this.sumMercItemStat(mercAttacker, 119))
+      attackerStats.setBaseStat('armorclass', (mercAttacker.defense ?? 0) + this.sumMercItemStat(mercAttacker, 31))
+      attackerStats.setBaseStat('item_deadlystrike', this.sumMercItemStat(mercAttacker, 141))
+      attackerStats.setBaseStat('maxhp', mercAttacker.maxHp * FIXED_ONE)
+      attackerStats.setHp256(mercAttacker.hp * FIXED_ONE)
+      const attackerStateBus = new StateBus(attackerStats, this.registry)
+      this.mirrorPersistentStates(this.mercCombat.get(mercAttacker.unitId), attackerStateBus)
+      return {
+        ctx: {
+          id: `merc_${mercAttacker.unitId}`,
+          name: mercAttacker.name,
+          unitType: 'mercenary',
+          ownerUnitId: String(owner.unitId),
+          statList: attackerStats,
+          stateBus: attackerStateBus,
+          x: mercAttacker.x,
+          y: mercAttacker.y,
+        },
+        killerType: 'player_pet',
+        killerUnitId: mercAttacker.unitId,
+      }
+    }
+
+    attackerStats.setBaseStat('level', owner.level)
+    attackerStats.setBaseStat('strength', owner.strength + this.sumPlayerItemStat(owner, 0))
+    attackerStats.setBaseStat('dexterity', owner.dexterity + this.sumPlayerItemStat(owner, 2))
+    attackerStats.setBaseStat('vitality', owner.vitality + this.sumPlayerItemStat(owner, 3))
+    attackerStats.setBaseStat('energy', owner.energy + this.sumPlayerItemStat(owner, 1))
+    attackerStats.setBaseStat('tohit', this.computePlayerBaseToHit113c(owner))
+    attackerStats.setBaseStat('item_tohit_percent', this.computePlayerToHitPctBonus113c(owner))
+    attackerStats.setBaseStat('armorclass', this.computePlayerBaseDefense(owner))
+    attackerStats.setBaseStat('item_deadlystrike', this.sumPlayerItemStat(owner, 141))
+    attackerStats.setBaseStat('maxhp', this.getPlayerAccruedMaxHpFixed(owner))
+    attackerStats.setHp256(owner.hpFixed)
+    attackerStats.setBaseStat('maxmana', this.getPlayerAccruedMaxManaFixed(owner))
+    attackerStats.setMana256(owner.manaFixed)
+    const attackerStateBus = new StateBus(attackerStats, this.registry)
+    this.mirrorPersistentStates(this.playerCombat.get(owner.unitId), attackerStateBus)
+    return {
+      ctx: {
+        id: `player_${owner.unitId}`,
+        name: owner.name,
+        charClass: owner.classCode,
+        unitType: 'player',
+        statList: attackerStats,
+        stateBus: attackerStateBus,
+        x: owner.x,
+        y: owner.y,
+      },
+      killerType: 'player',
+      killerUnitId: owner.unitId,
+    }
+  }
+
+  private applyPvpHitToTarget113c(
+    attackerOwner: InternalPlayerRecord,
+    target:
+      | { readonly kind: 'player'; readonly player: InternalPlayerRecord }
+      | { readonly kind: 'merc'; readonly merc: InternalMercenaryRecord }
+      | {
+          readonly kind: 'pet'
+          readonly ownerId: number
+          readonly pet: SummonedPetUnit
+          readonly petUnitId: number
+          readonly areaId: number
+        },
+    spec: {
+      readonly skillId: number
+      readonly physDamage?: number | undefined
+      readonly elemDamage?: number | undefined
+      readonly elemDamage256?: number | undefined
+      readonly elemType?: 'phys' | 'fire' | 'ltng' | 'cold' | 'mag' | 'pois' | undefined
+      readonly elemDurationFrames?: number | undefined
+      readonly attackKind?: 'melee' | 'missile' | 'spell' | undefined
+      readonly autoHit?: boolean | undefined
+      readonly unblockable?: boolean | undefined
+      readonly nonLethal?: boolean | undefined
+      readonly toHitBonusPct?: number | undefined
+      readonly concentrationAlreadyApplied?: boolean | undefined
+      readonly vengeanceBasePhys?: number | undefined
+      readonly multiElemPacket?: NonNullable<SUnitDmgPacket['multiElemPacket']> | undefined
+      readonly source?:
+        | 'player'
+        | InternalMercenaryRecord
+        | SummonedPetUnit
+        | { readonly petUnitId: number }
+        | undefined
+    },
+  ): boolean {
+    const targetOwnerId =
+      target.kind === 'player'
+        ? target.player.unitId
+        : target.kind === 'merc'
+          ? target.merc.ownerPlayerId
+          : target.ownerId
+    const targetAreaId =
+      target.kind === 'player'
+        ? target.player.areaId
+        : target.kind === 'merc'
+          ? target.merc.areaId
+          : target.areaId
+    if (!this.isHostilePvpPair113c(attackerOwner.unitId, attackerOwner.areaId, targetOwnerId, targetAreaId, true)) {
+      return false
+    }
+    // Holy Bolt (#101): undead-only gate (deals 0 damage to living players/hirelings).
+    if (spec.skillId === 101) {
+      return false
+    }
+
+    const atk = this.buildPvpAttackerContext113c(attackerOwner, spec.source ?? 'player')
+    const atkCtx: CombatUnitContext =
+      spec.vengeanceBasePhys !== undefined
+        ? {
+            ...atk.ctx,
+            weaponMinPhys: spec.vengeanceBasePhys,
+            weaponMaxPhys: spec.vengeanceBasePhys,
+          }
+        : atk.ctx
+    const physDmg = Math.max(0, spec.physDamage ?? 0)
+    const elemDmg256 =
+      spec.elemDamage256 !== undefined
+        ? Math.max(0, spec.elemDamage256)
+        : Math.max(0, spec.elemDamage ?? 0) * FIXED_ONE
+    const elemChannel =
+      spec.elemType !== undefined && spec.elemType !== 'phys' ? spec.elemType : undefined
+    const isSpell =
+      spec.attackKind === 'spell' ||
+      (spec.autoHit === true && physDmg <= 0 && elemDmg256 > 0)
+    const packet: SUnitDmgPacket = {
+      skillId: spec.skillId,
+      attackKind: isSpell ? 'spell' : (spec.attackKind ?? 'melee'),
+      srcDam: spec.multiElemPacket !== undefined ? 128 : 0,
+      flatPhysMin256: spec.multiElemPacket !== undefined ? 0 : physDmg * FIXED_ONE,
+      flatPhysMax256: spec.multiElemPacket !== undefined ? 0 : physDmg * FIXED_ONE,
+      ...(elemChannel !== undefined && elemDmg256 > 0
+        ? {
+            elemType: elemChannel,
+            elemMin256: elemDmg256,
+            elemMax256: elemDmg256,
+            elemDurationFrames: spec.elemDurationFrames ?? 0,
+          }
+        : {}),
+      ...(spec.concentrationAlreadyApplied === true ? { concentrationAlreadyApplied: true } : {}),
+      ...(spec.multiElemPacket !== undefined ? { multiElemPacket: spec.multiElemPacket } : {}),
+      ...(spec.toHitBonusPct !== undefined ? { toHitBonusPct: spec.toHitBonusPct } : {}),
+      ...(spec.autoHit === true || isSpell || spec.skillId === 97 ? { autoHit: true } : {}),
+      ...(spec.unblockable === true || isSpell ? { unblockable: true } : {}),
+    }
+
+    if (target.kind === 'player') {
+      const defender = target.player
+      if (defender.dead) return false
+      const snap = this.buildPlayerDefenderSnapshot113c(defender)
+      const dmgOut = executeSUnitDmg(atkCtx, snap.defenderCtx, packet, this.rng)
+      if (!dmgOut.hit) {
+        if (dmgOut.avoidedReason === 'block' || dmgOut.avoidedReason === 'weapon_block') {
+          defender.mode = 9
+          this.broadcastToArea(defender.areaId, {
+            type: 'UnitMode',
+            unitType: 0,
+            id: defender.unitId,
+            mode: 9,
+            at: playerWirePosition(defender),
+            lifePct:
+              defender.maxHp > 0
+                ? Math.max(0, Math.round((defender.hp / defender.maxHp) * 128))
+                : 0,
+          })
+        }
+        return false
+      }
+
+      // Sync Energy Shield mana deduction & collapse
+      const newMana256 = snap.defenderStats.getMana256()
+      if (newMana256 !== defender.manaFixed) {
+        defender.manaFixed = Math.max(0, newMana256)
+        defender.mana = Math.floor(defender.manaFixed / FIXED_ONE)
+        this.emitToPlayer(defender.unitId, {
+          type: 'UnitStatUpdate',
+          unitType: 'player',
+          unitId: defender.unitId,
+          statId: 8,
+          value: defender.manaFixed,
+        })
+      }
+      if (defender.states.has(30) && !snap.defenderStateBus.hasState('energyshield')) {
+        this.clearUnitState(defender.states, defender.stateTimers, 'player', defender.unitId, defender.areaId, 30)
+      }
+      if (snap.hadBoneArmor && snap.activeBaPool !== undefined) {
+        const postBa = snap.defenderStateBus.getState('bonearmor')
+        const newBaPts = postBa ? (postBa.stats['bonearmor'] ?? 0) : 0
+        if (newBaPts <= 0 || !snap.defenderStateBus.hasState('bonearmor')) {
+          this.playerBoneArmorPool.delete(defender.unitId)
+          this.clearUnitState(defender.states, defender.stateTimers, 'player', defender.unitId, defender.areaId, 14)
+        } else if (newBaPts !== snap.activeBaPool.current) {
+          this.playerBoneArmorPool.set(defender.unitId, {
+            current: newBaPts,
+            max: snap.activeBaPool.max,
+          })
+        }
+      }
+      if (snap.hadCycloneArmor && snap.activeCaPool !== undefined) {
+        const postCa = snap.defenderStateBus.getState('cyclonearmor')
+        const newCaPts = postCa ? (postCa.stats['bonearmor'] ?? 0) : 0
+        if (newCaPts <= 0 || !snap.defenderStateBus.hasState('cyclonearmor')) {
+          this.playerCycloneArmorPool.delete(defender.unitId)
+          this.clearUnitState(defender.states, defender.stateTimers, 'player', defender.unitId, defender.areaId, 151)
+        } else if (newCaPts !== snap.activeCaPool.current) {
+          this.playerCycloneArmorPool.set(defender.unitId, {
+            current: newCaPts,
+            max: snap.activeCaPool.max,
+          })
+        }
+      }
+
+      // Thorns / Iron Maiden reflection back onto melee PvP attacker (`/ 4` PvP penalty in executeSUnitDmg)
+      const reflectedDmg = Math.floor(
+        ((dmgOut.attackerColdDamage256 ?? 0) + (dmgOut.reflectedPhys256 ?? 0)) / FIXED_ONE,
+      )
+      if (reflectedDmg > 0) {
+        if (typeof spec.source === 'object' && spec.source !== null && 'subType' in spec.source) {
+          this.applyDamageToMerc(spec.source, reflectedDmg, spec.source.areaId)
+        } else if (typeof spec.source === 'object' && spec.source !== null && 'petType' in spec.source) {
+          this.applyDamageToSummon(attackerOwner.unitId, spec.source, reflectedDmg, attackerOwner.areaId)
+        } else if (!attackerOwner.dead) {
+          this.applyDamageToPlayer(attackerOwner, reflectedDmg, {
+            killerType: 'player',
+            killerUnitId: defender.unitId,
+          })
+        }
+      }
+
+      const absorbHeal256 = dmgOut.absorbHeal256 ?? 0
+      const rawFinalDmg = Math.floor(dmgOut.totalDamage256 / FIXED_ONE)
+      const finalDmg = spec.nonLethal ? Math.min(rawFinalDmg, Math.max(0, defender.hp - 1)) : rawFinalDmg
+      if (absorbHeal256 > 0 && !defender.dead && defender.hpFixed > 0 && !defender.states.has(92)) {
+        defender.hpFixed = Math.min(defender.maxHpFixed, defender.hpFixed + absorbHeal256)
+        defender.hp = Math.max(0, Math.ceil(defender.hpFixed / FIXED_ONE))
+      }
+      if (elemChannel === 'cold' && (spec.elemDurationFrames ?? 0) > 0 && !defender.dead) {
+        this.applyUnitState(
+          defender.states,
+          defender.stateTimers,
+          'player',
+          defender.unitId,
+          defender.areaId,
+          11,
+          Math.max(1, spec.elemDurationFrames ?? 25),
+        )
+      }
+      if (finalDmg > 0 && !defender.dead) {
+        this.applyDamageToPlayer(defender, finalDmg, {
+          isPurePoison: elemChannel === 'pois' && physDmg <= 0,
+          killerType: atk.killerType,
+          killerUnitId: atk.killerUnitId,
+        })
+      }
+      return true
+    }
+
+    if (target.kind === 'merc') {
+      const merc = target.merc
+      if (!merc.alive) return false
+      const defCtx = this.mercCombatContext(merc)
+      const mercDef: CombatUnitContext = {
+        ...defCtx,
+        unitType: 'mercenary',
+        ownerUnitId: String(merc.ownerPlayerId),
+      }
+      const dmgOut = executeSUnitDmg(atkCtx, mercDef, packet, this.rng)
+      if (!dmgOut.hit) return false
+      const rawDealt = Math.floor(dmgOut.totalDamage256 / FIXED_ONE)
+      const dealt = spec.nonLethal ? Math.min(rawDealt, Math.max(0, merc.hp - 1)) : rawDealt
+      if (dealt > 0) {
+        this.applyDamageToMerc(merc, dealt, merc.areaId)
+      }
+      return true
+    }
+
+    const pet = target.pet
+    if (pet.alive === false || pet.hp <= 0) return false
+    pet.statList.setHp256(pet.hp * FIXED_ONE)
+    const petDef: CombatUnitContext = {
+      id: pet.uid,
+      name: pet.name,
+      unitType: 'minion',
+      ownerUnitId: String(target.ownerId),
+      statList: pet.statList,
+      stateBus: pet.stateBus,
+      x: pet.x,
+      y: pet.y,
+    }
+    const dmgOut = executeSUnitDmg(atkCtx, petDef, packet, this.rng)
+    if (!dmgOut.hit) return false
+    const rawDealt = Math.floor(dmgOut.totalDamage256 / FIXED_ONE)
+    const dealt = spec.nonLethal ? Math.min(rawDealt, Math.max(0, pet.hp - 1)) : rawDealt
+    if (dealt > 0) {
+      pet.hp = Math.max(0, pet.hp)
+      pet.statList.setHp256(pet.hp * FIXED_ONE)
+      this.applyDamageToSummon(target.ownerId, pet, dealt, target.areaId)
+    }
+    return true
+  }
+
+  private applyPvpSkillHitToTarget113c(
+    player: InternalPlayerRecord,
+    cast: PlayerSkillCast,
+    target:
+      | { readonly kind: 'player'; readonly player: InternalPlayerRecord }
+      | { readonly kind: 'merc'; readonly merc: InternalMercenaryRecord }
+      | {
+          readonly kind: 'pet'
+          readonly ownerId: number
+          readonly pet: SummonedPetUnit
+          readonly petUnitId: number
+          readonly areaId: number
+        },
+    attackKind: 'melee' | 'missile' | 'spell' = 'melee',
+  ): boolean {
+    const ev = cast.evalResult
+    const phys = this.rollPlayerSkillPhysDamage(player, cast)
+    const elemType =
+      ev.elemType === 'fire' ||
+      ev.elemType === 'ltng' ||
+      ev.elemType === 'cold' ||
+      ev.elemType === 'mag' ||
+      ev.elemType === 'pois'
+        ? ev.elemType
+        : undefined
+    const elem =
+      elemType === 'pois' && ev.durationFrames > 0
+        ? Math.max(
+            1,
+            Math.floor(
+              (this.rollInclusive(ev.minElemDmg256, ev.maxElemDmg256) * ev.durationFrames) / FIXED_ONE,
+            ),
+          )
+        : elemType !== undefined
+          ? this.rollInclusive(ev.minElemDmg, ev.maxElemDmg)
+          : 0
+    return this.applyPvpHitToTarget113c(player, target, {
+      skillId: cast.skill.id,
+      physDamage: phys,
+      elemDamage: elem,
+      elemType,
+      elemDurationFrames: ev.durationFrames,
+      attackKind,
+      autoHit: attackKind === 'spell' || cast.skill.id === 97,
+      unblockable: attackKind === 'spell',
+    })
+  }
+
+  private applyPvpDebuffStateToTarget113c(
+    target:
+      | { readonly kind: 'player'; readonly player: InternalPlayerRecord }
+      | { readonly kind: 'merc'; readonly merc: InternalMercenaryRecord }
+      | {
+          readonly kind: 'pet'
+          readonly ownerId: number
+          readonly pet: SummonedPetUnit
+          readonly petUnitId: number
+          readonly areaId: number
+        },
+    stateId: number,
+    durationFrames: number,
+    sourceUnitId: string,
+    sourceSkillId: number,
+    slvl: number,
+    stats?: Record<string, number>,
+  ): void {
+    if (durationFrames <= 0) return
+    if (target.kind === 'player') {
+      const p = target.player
+      if (p.dead) return
+      this.applyUnitState(p.states, p.stateTimers, 'player', p.unitId, p.areaId, stateId, durationFrames)
+      this.playerCombatContext(p).stateBus.applyState({
+        stateNameOrId: stateId,
+        sourceUnitId,
+        sourceSkillId,
+        slvl,
+        durationFrames,
+        currentFrame: this.currentFrame,
+        ...(stats !== undefined ? { stats } : {}),
+      })
+      return
+    }
+    if (target.kind === 'merc') {
+      const c = target.merc
+      if (!c.alive) return
+      this.applyUnitState(c.states, c.stateTimers, 'monster', c.unitId, c.areaId, stateId, durationFrames)
+      this.mercCombatContext(c).stateBus.applyState({
+        stateNameOrId: stateId,
+        sourceUnitId,
+        sourceSkillId,
+        slvl,
+        durationFrames,
+        currentFrame: this.currentFrame,
+        ...(stats !== undefined ? { stats } : {}),
+      })
+      return
+    }
+    target.pet.stateBus.applyState({
+      stateNameOrId: stateId,
+      sourceUnitId,
+      sourceSkillId,
+      slvl,
+      durationFrames,
+      currentFrame: this.currentFrame,
+      ...(stats !== undefined ? { stats } : {}),
+    })
+  }
+
+  private buildHostileAuraPvpEnemies113c(
+    attackerOwnerId: number,
+    areaId: number,
+    inRange: (x: number, y: number) => boolean,
+  ): Array<{
+    readonly target:
+      | { readonly kind: 'player'; readonly player: InternalPlayerRecord }
+      | { readonly kind: 'merc'; readonly merc: InternalMercenaryRecord }
+      | {
+          readonly kind: 'pet'
+          readonly ownerId: number
+          readonly pet: SummonedPetUnit
+          readonly petUnitId: number
+          readonly areaId: number
+        }
+    readonly ctx: CombatUnitContext
+    readonly preHp256: number
+  }> {
+    const hostiles = this.collectHostilePvpTargetsInArea113c(attackerOwnerId, areaId)
+    const out: Array<{
+      readonly target:
+        | { readonly kind: 'player'; readonly player: InternalPlayerRecord }
+        | { readonly kind: 'merc'; readonly merc: InternalMercenaryRecord }
+        | {
+            readonly kind: 'pet'
+            readonly ownerId: number
+            readonly pet: SummonedPetUnit
+            readonly petUnitId: number
+            readonly areaId: number
+          }
+      readonly ctx: CombatUnitContext
+      readonly preHp256: number
+    }> = []
+    for (const p of hostiles.players) {
+      if (!inRange(p.x, p.y)) continue
+      const snap = this.buildPlayerDefenderSnapshot113c(p)
+      out.push({
+        target: { kind: 'player', player: p },
+        ctx: snap.defenderCtx,
+        preHp256: p.hpFixed,
+      })
+    }
+    for (const c of hostiles.mercs) {
+      if (!inRange(c.x, c.y)) continue
+      const base = this.mercCombatContext(c)
+      const ctx: CombatUnitContext = {
+        ...base,
+        unitType: 'mercenary',
+        ownerUnitId: String(c.ownerPlayerId),
+      }
+      out.push({
+        target: { kind: 'merc', merc: c },
+        ctx,
+        preHp256: c.hp * FIXED_ONE,
+      })
+    }
+    for (const entry of hostiles.pets) {
+      if (!inRange(entry.pet.x, entry.pet.y)) continue
+      entry.pet.statList.setHp256(entry.pet.hp * FIXED_ONE)
+      const ctx: CombatUnitContext = {
+        id: entry.pet.uid,
+        name: entry.pet.name,
+        unitType: 'minion',
+        ownerUnitId: String(entry.ownerId),
+        statList: entry.pet.statList,
+        stateBus: entry.pet.stateBus,
+        x: entry.pet.x,
+        y: entry.pet.y,
+      }
+      out.push({
+        target: { kind: 'pet', ...entry },
+        ctx,
+        preHp256: entry.pet.hp * FIXED_ONE,
+      })
+    }
+    return out
+  }
+
+  private syncHostileAuraPvpEnemies113c(
+    pvpEnemies: ReadonlyArray<{
+      readonly target:
+        | { readonly kind: 'player'; readonly player: InternalPlayerRecord }
+        | { readonly kind: 'merc'; readonly merc: InternalMercenaryRecord }
+        | {
+            readonly kind: 'pet'
+            readonly ownerId: number
+            readonly pet: SummonedPetUnit
+            readonly petUnitId: number
+            readonly areaId: number
+          }
+      readonly ctx: CombatUnitContext
+      readonly preHp256: number
+    }>,
+    killerType: DeathKillerKind113c,
+    killerUnitId: number,
+  ): void {
+    for (const item of pvpEnemies) {
+      const { target, ctx, preHp256 } = item
+      // Sync offensive aura target states (`44` holywindcold, `28` conviction)
+      for (const auraStateId of [44, 28] as const) {
+        const entry = ctx.stateBus.getActiveEntries().find((e) => e.stateId === auraStateId)
+        if (entry !== undefined) {
+          const rem = entry.expireFrame > 0 ? Math.max(1, entry.expireFrame - this.currentFrame) : 25
+          this.applyPvpDebuffStateToTarget113c(
+            target,
+            auraStateId,
+            rem,
+            entry.sourceUnitId ?? `player_${killerUnitId}`,
+            entry.sourceSkillId,
+            entry.slvl,
+            entry.stats,
+          )
+        }
+      }
+      const postHp256 = ctx.statList.getHp256()
+      if (postHp256 < preHp256) {
+        const dealt = Math.max(1, Math.floor((preHp256 - postHp256) / FIXED_ONE))
+        if (target.kind === 'player' && !target.player.dead) {
+          this.applyDamageToPlayer(target.player, dealt, {
+            skipGetHit: true,
+            killerType,
+            killerUnitId,
+          })
+        } else if (target.kind === 'merc' && target.merc.alive) {
+          this.applyDamageToMerc(target.merc, dealt, target.merc.areaId)
+        } else if (target.kind === 'pet' && target.pet.alive !== false && target.pet.hp > 0) {
+          target.pet.hp = Math.ceil(preHp256 / FIXED_ONE)
+          target.pet.statList.setHp256(preHp256)
+          this.applyDamageToSummon(target.ownerId, target.pet, dealt, target.areaId)
+        }
+      }
     }
   }
 
@@ -18885,6 +25307,65 @@ export class GameInstance {
    */
   private stepMonsterPoison(monster: InternalMonsterRecord): void {
     if (monster.dead || monster.isNpc || !monster.isKillable || monster.submerged) return
+    // #1886: Druid `#238 Rabies` (`rabiesplague` `#515`: `Param1 = 4`f interval, `Param2 = 7` sub-tiles)
+    if (monster.rabiesInfection !== undefined) {
+      const inf = monster.rabiesInfection
+      const remFrames = inf.expireFrame - this.currentFrame
+      if (remFrames <= 0) {
+        monster.rabiesInfection = undefined
+        this.clearUnitState(
+          monster.states,
+          monster.stateTimers,
+          'monster',
+          monster.unitId,
+          monster.areaId,
+          STATE_RABIES_113C,
+        )
+      } else if (remFrames % RABIES_CONTAGION_INTERVAL_FRAMES_113C === 0) {
+        const attacker = this.players.get(inf.attackerId)
+        if (attacker !== undefined) {
+          for (const other of this.monsters.values()) {
+            if (
+              other.unitId === monster.unitId ||
+              other.dead ||
+              other.isNpc ||
+              !other.isKillable ||
+              other.submerged ||
+              other.areaId !== monster.areaId ||
+              other.boneConstructOwnerPlayerId !== undefined ||
+              this.isMonsterConverted(other)
+            ) {
+              continue
+            }
+            if (
+              other.rabiesInfection !== undefined &&
+              other.rabiesInfection.expireFrame >= inf.expireFrame
+            ) {
+              continue
+            }
+            const dist = Math.hypot(other.x - monster.x, other.y - monster.y)
+            if (dist > RABIES_CONTAGION_RADIUS_SUBTILES_113C) continue
+            if (this.applyMonsterPoisonDot(attacker, other, inf.rawBitrate256, remFrames, 238)) {
+              this.applyUnitState(
+                other.states,
+                other.stateTimers,
+                'monster',
+                other.unitId,
+                other.areaId,
+                STATE_RABIES_113C,
+                remFrames,
+              )
+              other.rabiesInfection = {
+                expireFrame: inf.expireFrame,
+                rawBitrate256: inf.rawBitrate256,
+                attackerId: inf.attackerId,
+                slvl: inf.slvl,
+              }
+            }
+          }
+        }
+      }
+    }
     if (monster.poisonRemainingFrames <= 0 || monster.poisonBitrate256 <= 0) return
     monster.poisonRemainingFrames -= 1
     monster.poisonCarry256 += monster.poisonBitrate256
@@ -18984,7 +25465,10 @@ export class GameInstance {
         }
       }
     }
-    if (!check && !hasClosedDoor) return [{ x: Math.round(targetX), y: Math.round(targetY) }]
+    const hasBoneWall = !monster.isFlying && this.hasLivingBonePrisonInArea(monster.areaId)
+    if (!check && !hasClosedDoor && !hasBoneWall) {
+      return [{ x: Math.round(targetX), y: Math.round(targetY) }]
+    }
     const margin = 20
     const minX = Math.max(0, Math.floor(Math.min(monster.x, targetX)) - margin)
     const minY = Math.max(0, Math.floor(Math.min(monster.y, targetY)) - margin)
@@ -18998,8 +25482,13 @@ export class GameInstance {
         const wx = minX + x
         const wy = minY + y
         const pointArea = this.areaIdAtWorldPoint(wx, wy) ?? monster.areaId
+        const blockedByBone =
+          hasBoneWall &&
+          this.isBlockedByBonePrison(pointArea, wx, wy) &&
+          Math.hypot(wx - monster.x, wy - monster.y) >= 1.3
         walkable[y * w + x] =
           !this.isClosedDoorAt(pointArea, wx, wy) &&
+          !blockedByBone &&
           (!check || check(pointArea, wx, wy, monster.isFlying))
             ? 1
             : 0
@@ -19195,6 +25684,9 @@ export class GameInstance {
   }
 
   private isMonsterInActiveAoi(monster: InternalMonsterRecord): boolean {
+    if (isAlwaysRunAiMonster113c(monster.umodIds, monster.alwaysRunAi)) {
+      return true
+    }
     const rooms = this.loadedAreas.get(monster.areaId)?.roomRects ?? []
     const roomAt = (x: number, y: number) =>
       rooms.find((room) => x >= room.x && x < room.x + room.w && y >= room.y && y < room.y + room.h)
@@ -20082,10 +26574,11 @@ export class GameInstance {
     const dx = spec.targetX - spec.originX
     const dy = spec.targetY - spec.originY
     const dist = Math.max(0.25, Math.hypot(dx, dy))
-    const speed =
+    const rawSpeed =
       rec !== undefined && rec.vel > 0
         ? (rec.vel + Math.trunc((rec.velLev * spec.slvl) / 8)) / 16
         : spec.speedSubTilesPerFrame
+    const speed = monster.states.has(STATE_SLOWMISSILES_113C) ? rawSpeed * 0.33 : rawSpeed
     const rangeFrames =
       rec !== undefined && rec.range > 0
         ? Math.max(2, rec.range + rec.levRange * spec.slvl)
@@ -20719,6 +27212,10 @@ export class GameInstance {
     if (nearest === null) return
     const dist = Math.hypot(nearest.x - monster.x, nearest.y - monster.y)
 
+    if (monster.hcIdx === 705 && this.trySpawnUberPrimeMinion113c(monster, nearest)) {
+      return
+    }
+
     // 1.13c Town Portal trap (`0x6FCCAF30`): Diablo cages any un-trapped player Town Portal (`classId === 59`) within 85 sub-tiles!
     if (monster.skillCooldown <= 0) {
       for (const obj of this.objects.values()) {
@@ -21011,6 +27508,10 @@ export class GameInstance {
     const nearest = this.nearestHostileForMonster(monster, Math.max(35, monster.aggroRadius))
     if (nearest === null) return
     const dist = Math.hypot(nearest.x - monster.x, nearest.y - monster.y)
+
+    if (isUber && this.trySpawnUberPrimeMinion113c(monster, nearest)) {
+      return
+    }
 
     if (monster.cooldown <= 0 && monster.skillCooldown <= 0) {
       const slot = monster.skillCursor % 6
@@ -21331,6 +27832,355 @@ export class GameInstance {
     }
   }
 
+  /**
+   * 1.13c Pandemonium Finale (`D2Game.dll` `0x6FD0AA30..0x6FD0AB09`, #1841):
+   * Records killed Uber Prime Evils (`#704`, `#705`, `#709`) in Area `136`. Only when all three
+   * have been killed and none remain alive does the last boss drop `Hellfire Torch` (`cm2` unique `id=400`,
+   * `ilvl=110`) + `max(1, players.size)` × `Standard of Heroes` (`std`, `ilvl=90`) and despawn all
+   * remaining summoned Uber Tristram minions.
+   */
+  private handleUberTristramBossKilled113c(monster: InternalMonsterRecord): void {
+    this.uberTristramKilledBosses.add(monster.hcIdx)
+    const hasLivingUberPrime = [...this.monsters.values()].some(
+      (m) =>
+        m.unitId !== monster.unitId &&
+        !m.dead &&
+        m.areaId === PANDEMONIUM_FINALE_AREA_ID_113C &&
+        UBER_PRIME_EVIL_SET_113C.has(m.hcIdx),
+    )
+    if (
+      !this.uberTristramRewardDropped &&
+      this.uberTristramKilledBosses.size >= 3 &&
+      !hasLivingUberPrime
+    ) {
+      this.uberTristramRewardDropped = true
+      const finaleDrops = createPandemoniumFinaleDrops113c({
+        dropTables: getEmbeddedDropTables(),
+        nextSeed: () => this.rng.rand(0x7fffffff) || 1,
+        activePlayerCount: Math.max(1, this.players.size),
+        spawnedUniqueIds: this.spawnedUniqueIds,
+      })
+      if (finaleDrops.length > 0) {
+        monster.pendingDropItems = finaleDrops
+        monster.pendingDropFrame = this.currentFrame + this.monsterDeathDropDelayFrames(monster)
+      }
+      for (const other of [...this.monsters.values()]) {
+        if (
+          !other.dead &&
+          other.areaId === PANDEMONIUM_FINALE_AREA_ID_113C &&
+          other.isUberSummonedMinion
+        ) {
+          this.despawnTemporaryMonsterUnit113c(other)
+        }
+      }
+    }
+  }
+
+  /**
+   * 1.13c Uber Prime Evil Minion Spawner (`D2Game.dll` `0x6FD0A730..0x6FD0AA30` & `0x6FCD0C40`, #1841):
+   * - `#704 ubermephisto`: `#725..730` undead warriors/archers/mages (`cap = 15` together / `30` isolated).
+   * - `#705 uberdiablo`: `#712 megademon6` Pit Lords (`cap = 4` together / `10` isolated).
+   * - `#709 uberbaal`: `#732 wraith9` Specters & `#731 vampire9` Dark Lords (`cap = 7` together / `15` isolated).
+   * All summoned Uber minions have `experience: 0` and `isUberSummonedMinion: true` (zero drops).
+   */
+  private trySpawnUberPrimeMinion113c(
+    monster: InternalMonsterRecord,
+    target: { readonly x: number; readonly y: number },
+  ): boolean {
+    if (monster.cooldown > 0 || this.currentFrame < monster.uberSummonNextFrame) return false
+    const spec = UBER_PRIME_MINION_SPECS_113C[monster.hcIdx]
+    if (!spec || spec.pool.length === 0) return false
+
+    const livingPrimes = [...this.monsters.values()].filter(
+      (m) => !m.dead && m.areaId === monster.areaId && UBER_PRIME_EVIL_SET_113C.has(m.hcIdx),
+    )
+    const cap = computeUberPrimeMinionCap113c(
+      monster.hcIdx,
+      monster.unitId,
+      monster.x,
+      monster.y,
+      livingPrimes,
+    )
+    const activeOwned = [...this.monsters.values()].filter(
+      (m) =>
+        !m.dead &&
+        m.areaId === monster.areaId &&
+        m.isUberSummonedMinion &&
+        m.bossUnitId === monster.unitId,
+    ).length
+    if (activeOwned >= cap) return false
+
+    const minionHcIdx = spec.pool[this.rng.rand(spec.pool.length)]!
+    let spawnDest: { x: number; y: number } | undefined
+    const baseAng = (this.rng.rand(360) * Math.PI) / 180
+    for (const anchor of [target, monster]) {
+      for (let k = 0; k < 8; k++) {
+        const ang = baseAng + (k * Math.PI) / 4
+        const sx = anchor.x + Math.cos(ang) * 3
+        const sy = anchor.y + Math.sin(ang) * 3
+        if (
+          !this.isClosedDoorAt(monster.areaId, Math.round(sx), Math.round(sy)) &&
+          (!this.terrainWalkableCheck ||
+            this.terrainWalkableCheck(monster.areaId, Math.round(sx), Math.round(sy), false)) &&
+          !this.isMonsterCellOccupied(monster, sx, sy)
+        ) {
+          spawnDest = { x: sx, y: sy }
+          break
+        }
+      }
+      if (spawnDest !== undefined) break
+    }
+    if (spawnDest === undefined) return false
+
+    this.emitBossSkillCast113c(monster, spec.summonSkillId, 10, 8, spawnDest.x, spawnDest.y)
+    const minionRow = MONSTATS_113C_ROWS[minionHcIdx]
+    this.spawnMonster({
+      classId: minionHcIdx,
+      hcIdx: minionHcIdx,
+      ...(minionRow ? { defId: minionRow.id } : {}),
+      x: spawnDest.x,
+      y: spawnDest.y,
+      areaId: monster.areaId,
+      experience: 0,
+      bossUnitId: monster.unitId,
+      isUberSummonedMinion: true,
+    })
+    monster.uberSummonNextFrame = this.currentFrame + spec.cooldownFrames
+    monster.cooldown = Math.max(8, monster.cooldownTicks)
+    return true
+  }
+
+  /**
+   * 1.13c `AITHINK_Fn049_Mephisto` & `AITHINK_Fn140_UberMephisto` (`D2Game.dll`, `#242 mephisto` & `#704 ubermephisto`, #1841):
+   * Casts `#334 MephistoMissile` (skull ball `#276`), `#185 PrimeLightning` (`#680`),
+   * `#186 PrimeBolt` (`#56` 7-bolt fan), `#192 PrimePoisonNova` (`#118` 16-bolt ring),
+   * `#346 MephFrostNova` (`#679` cold ring + chill), and `#59 Blizzard` (`#159` cold shards),
+   * while `#704 ubermephisto` radiates innate level 20 `Conviction` (`#123`) and summons `#725..730` undead.
+   */
+  private stepUberMephistoBossAi113c(monster: InternalMonsterRecord): void {
+    const isUber = monster.hcIdx === 704
+    const nearest = this.nearestHostileForMonster(monster, Math.max(35, monster.aggroRadius))
+    if (nearest === null) return
+    const dist = Math.hypot(nearest.x - monster.x, nearest.y - monster.y)
+
+    if (isUber && this.trySpawnUberPrimeMinion113c(monster, nearest)) {
+      return
+    }
+
+    if (monster.cooldown <= 0 && monster.skillCooldown <= 0) {
+      const slot = monster.skillCursor % 6
+      monster.skillCursor = (monster.skillCursor + 1) % 6
+      const baseSlvl = isUber ? 20 : 7 + this.difficulty * 3
+
+      // `#346 MephFrostNova` when target is within 12 sub-tiles (`mephfrostnova` `#679`).
+      if (slot === 4 && dist <= 12) {
+        this.emitBossSkillCast113c(monster, 346, baseSlvl, 8, monster.x, monster.y)
+        const coldDmg = this.rollInclusive(45, 75) + 12 * baseSlvl + 25 * this.difficulty
+        for (let i = 0; i < 16; i++) {
+          const theta = (i / 16) * Math.PI * 2
+          this.emitBossProjectile113c(monster, {
+            missileId: 679,
+            skillId: 346,
+            slvl: baseSlvl,
+            originX: monster.x,
+            originY: monster.y,
+            targetX: monster.x + Math.cos(theta) * 12,
+            targetY: monster.y + Math.sin(theta) * 12,
+            speedSubTilesPerFrame: 20 / 16,
+            rangeFrames: 18,
+            size: 2,
+            pierce: true,
+            nextHit: true,
+            nextDelay: 4,
+            element: 'cold',
+            physDamage: 0,
+            elemDamage: coldDmg,
+          })
+        }
+        for (const h of this.listHostilesInMonsterArea113c(monster)) {
+          if (Math.hypot(h.x - monster.x, h.y - monster.y) <= 10) {
+            this.dealMonsterDirectHitToHostile113c(
+              monster,
+              h,
+              { cold: coldDmg },
+              { chillFrames: 150 + 15 * baseSlvl },
+            )
+          }
+        }
+        monster.cooldown = Math.max(12, monster.cooldownTicks)
+        monster.skillCooldown = 24
+        return
+      }
+
+      // `#334 MephistoMissile` (icy/magic skull orb `#276 mephisto`: cold + physical impact).
+      if (slot === 0) {
+        const slvl = isUber ? 20 : 10 + this.difficulty * 2
+        this.emitBossSkillCast113c(monster, 334, slvl, 8, nearest.x, nearest.y)
+        this.emitBossProjectile113c(monster, {
+          missileId: 276,
+          skillId: 334,
+          slvl,
+          originX: monster.x,
+          originY: monster.y,
+          targetX: nearest.x,
+          targetY: nearest.y,
+          speedSubTilesPerFrame: 22 / 16,
+          rangeFrames: 38,
+          size: 2,
+          element: 'cold',
+          physDamage: this.rollInclusive(30, 55) + 6 * slvl,
+          elemDamage: this.rollInclusive(55, 95) + 14 * slvl + 25 * this.difficulty,
+        })
+        monster.cooldown = Math.max(10, monster.cooldownTicks)
+        monster.skillCooldown = 20
+        return
+      }
+
+      // `#185 PrimeLightning` (`#680 mephlight` piercing lightning bolt).
+      if (slot === 1) {
+        const slvl = isUber ? 20 : 7 + this.difficulty * 3
+        this.emitBossSkillCast113c(monster, 185, slvl, 8, nearest.x, nearest.y)
+        this.emitBossProjectile113c(monster, {
+          missileId: 680,
+          skillId: 185,
+          slvl,
+          originX: monster.x,
+          originY: monster.y,
+          targetX: nearest.x,
+          targetY: nearest.y,
+          speedSubTilesPerFrame: 26 / 16,
+          rangeFrames: 36,
+          size: 2,
+          pierce: true,
+          nextHit: true,
+          nextDelay: 4,
+          element: 'ltng',
+          physDamage: 0,
+          elemDamage: this.rollInclusive(15, 140) + 18 * slvl + 30 * this.difficulty,
+        })
+        monster.cooldown = Math.max(10, monster.cooldownTicks)
+        monster.skillCooldown = 22
+        return
+      }
+
+      // `#186 PrimeBolt` (`#56 chargedbolt` 7-bolt fan).
+      if (slot === 2) {
+        const slvl = isUber ? 20 : 7 + this.difficulty * 2
+        this.emitBossSkillCast113c(monster, 186, slvl, 8, nearest.x, nearest.y)
+        const baseAngle = Math.atan2(nearest.y - monster.y, nearest.x - monster.x)
+        const boltLtng = this.rollInclusive(18, 45) + 8 * slvl + 15 * this.difficulty
+        for (let b = -3; b <= 3; b++) {
+          const ang = baseAngle + b * 0.16
+          this.emitBossProjectile113c(monster, {
+            missileId: 56,
+            skillId: 186,
+            slvl,
+            originX: monster.x,
+            originY: monster.y,
+            targetX: monster.x + Math.cos(ang) * 22,
+            targetY: monster.y + Math.sin(ang) * 22,
+            speedSubTilesPerFrame: 14 / 16,
+            rangeFrames: 36,
+            size: 1,
+            element: 'ltng',
+            physDamage: 0,
+            elemDamage: boltLtng,
+          })
+        }
+        monster.cooldown = Math.max(10, monster.cooldownTicks)
+        monster.skillCooldown = 22
+        return
+      }
+
+      // `#192 PrimePoisonNova` (`#118 poisonnova` 16-bolt poison ring).
+      if (slot === 3) {
+        const slvl = isUber ? 20 : 5 + this.difficulty * 2
+        this.emitBossSkillCast113c(monster, 192, slvl, 8, monster.x, monster.y)
+        const poisDmg = this.rollInclusive(35, 65) + 10 * slvl + 20 * this.difficulty
+        for (let i = 0; i < 16; i++) {
+          const theta = (i / 16) * Math.PI * 2
+          this.emitBossProjectile113c(monster, {
+            missileId: 118,
+            skillId: 192,
+            slvl,
+            originX: monster.x,
+            originY: monster.y,
+            targetX: monster.x + Math.cos(theta) * 18,
+            targetY: monster.y + Math.sin(theta) * 18,
+            speedSubTilesPerFrame: 18 / 16,
+            rangeFrames: 26,
+            size: 2,
+            pierce: true,
+            nextHit: true,
+            nextDelay: 4,
+            element: 'pois',
+            physDamage: 0,
+            elemDamage: poisDmg,
+          })
+        }
+        monster.cooldown = Math.max(12, monster.cooldownTicks)
+        monster.skillCooldown = 26
+        return
+      }
+
+      // `#59 Blizzard` (`#159 blizzard1` cold shards around target).
+      {
+        const slvl = isUber ? 20 : 7 + this.difficulty * 2
+        this.emitBossSkillCast113c(monster, 59, slvl, 8, nearest.x, nearest.y)
+        const coldDmg = this.rollInclusive(36, 62) + 11 * slvl + 20 * this.difficulty
+        for (const [ox, oy] of [
+          [0, 0],
+          [2, -1],
+          [-2, 1],
+          [1, 2],
+          [-1, -2],
+        ] as const) {
+          this.emitBossProjectile113c(monster, {
+            missileId: 159,
+            skillId: 59,
+            slvl,
+            originX: nearest.x + ox,
+            originY: nearest.y + oy,
+            targetX: nearest.x + ox,
+            targetY: nearest.y + oy,
+            speedSubTilesPerFrame: 0,
+            rangeFrames: 45,
+            size: 2,
+            collideType: 0,
+            pierce: true,
+            nextHit: true,
+            nextDelay: 5,
+            element: 'cold',
+            physDamage: 0,
+            elemDamage: coldDmg,
+          })
+        }
+        monster.cooldown = Math.max(12, monster.cooldownTicks)
+        monster.skillCooldown = 28
+        return
+      }
+    }
+
+    if (dist <= 3.5) {
+      if (
+        monster.cooldown <= 0 &&
+        monster.pendingAttack === undefined &&
+        monster.pendingAllyAttack === undefined
+      ) {
+        monster.cooldown = monster.cooldownTicks
+        if (nearest.kind === 'player') {
+          this.beginMonsterMeleeAttack(monster, nearest.player)
+        } else if (nearest.kind === 'merc') {
+          this.beginMonsterMeleeAttackOnAlly(monster, { kind: 'merc', id: nearest.merc.unitId })
+        } else {
+          this.beginMonsterMeleeAttackOnAlly(monster, { kind: 'pet', id: nearest.pet.uid })
+        }
+      }
+    } else {
+      this.moveMonsterToward(monster, nearest.x, nearest.y, dist > 5)
+    }
+  }
+
   /** Stationary `#562..566 baaltentacle1..5` (`Festering Appendages`, #1826): rooted melee whip within `meleeRange + 1`. */
   private stepBaalTentacleAi113c(monster: InternalMonsterRecord): void {
     const reach = Math.max(5, monster.meleeRange) + 1
@@ -21585,19 +28435,23 @@ export class GameInstance {
   ): boolean {
     if (monster.skillCooldown > 0 || monster.skills.length === 0) return false
     const ordered = [...monster.skills].sort((a, b) => (a.slot ?? 0) - (b.slot ?? 0))
-    // 1.13c AITHINK_Fn121_Nihlathak: when a target closes within 6 sub-tiles, prioritize `#330 Imp Teleport` escape blink before summoning/attacking.
-    const nihEscapeEntry =
+    // 1.13c AITHINK_Fn121_Nihlathak & AITHINK_Fn139_UberIzual:
+    // - Nihlathak (#526) within 6 sub-tiles prioritizes `#330 Imp Teleport` escape blink.
+    // - Uber Izual (#706) once buffed with `#60 Chilling Armor` (`state 20`) at `distance >= 5` prioritizes `#184 MonTeleport` gap-closer blink.
+    const priorityBlinkEntry =
       monster.hcIdx === 526 && distance <= 6
         ? ordered.find((s) => s.skillId === 330)
-        : undefined
+        : monster.hcIdx === 706 && monster.states.has(20) && distance >= 5
+          ? ordered.find((s) => s.skillId === 184)
+          : undefined
     const scanOrder =
-      nihEscapeEntry !== undefined
+      priorityBlinkEntry !== undefined
         ? [
-            nihEscapeEntry,
+            priorityBlinkEntry,
             ...Array.from(
               { length: ordered.length },
               (_, i) => ordered[(monster.skillCursor + i) % ordered.length]!,
-            ).filter((s) => s !== nihEscapeEntry),
+            ).filter((s) => s !== priorityBlinkEntry),
           ]
         : Array.from(
             { length: ordered.length },
@@ -21627,16 +28481,19 @@ export class GameInstance {
       const mode = this.monsterSkillMode(entry.mode)
 
       // Self-armor buffs (`#60 Chilling Armor` -> state 20, `#210 MonBoneArmor` -> state 14).
+      // Skills.txt `delay = 0`: gated by the monster's `aidel` think interval (`cooldownTicks`) rather than a multi-second global skill delay.
       if (sid === 60 && !monster.states.has(20)) {
         this.applyMonsterState(monster.unitId, 20, 3600)
         this.emitBossSkillCast113c(monster, 60, slvl, mode, monster.x, monster.y)
-        monster.skillCooldown = 50
+        monster.skillCooldown = monster.cooldownTicks
+        monster.cooldown = Math.max(monster.cooldown, monster.cooldownTicks)
         return true
       }
       if (sid === 210 && !monster.states.has(14)) {
         this.applyMonsterState(monster.unitId, 14, 3000)
         this.emitBossSkillCast113c(monster, 210, slvl, mode, monster.x, monster.y)
-        monster.skillCooldown = 50
+        monster.skillCooldown = monster.cooldownTicks
+        monster.cooldown = Math.max(monster.cooldown, monster.cooldownTicks)
         return true
       }
 
@@ -21895,6 +28752,155 @@ export class GameInstance {
           monster.cooldown = Math.max(monster.cooldown, monster.cooldownTicks)
           return true
         }
+      }
+
+      // `#184 MonTeleport` (`#706 uberizual`, `#256 izual` gap-closer blink onto target when `distance >= 5`).
+      // Scoped to the Izual rows: other `MonTeleport` users (e.g. `#238..242` Zakarum Priests) keep their own
+      // MonAi-driven reposition and must not have their ranged `Skill1..8` casts pre-empted by this blink.
+      if (sid === 184 && (monster.hcIdx === 706 || monster.hcIdx === 256) && distance >= 5 && distance <= 28) {
+        let blinkDest: { x: number; y: number } | undefined
+        const towardAng = Math.atan2(monster.y - target.y, monster.x - target.x)
+        for (const spread of [0, 0.7, -0.7, 1.4, -1.4, Math.PI]) {
+          const bx = target.x + Math.cos(towardAng + spread) * 2
+          const by = target.y + Math.sin(towardAng + spread) * 2
+          if (
+            !this.isClosedDoorAt(monster.areaId, Math.round(bx), Math.round(by)) &&
+            (!this.terrainWalkableCheck ||
+              this.terrainWalkableCheck(monster.areaId, Math.round(bx), Math.round(by), monster.isFlying)) &&
+            !this.isMonsterCellOccupied(monster, bx, by)
+          ) {
+            blinkDest = { x: bx, y: by }
+            break
+          }
+        }
+        if (blinkDest !== undefined) {
+          const from = { x: Math.round(monster.x), y: Math.round(monster.y) }
+          monster.x = blinkDest.x
+          monster.y = blinkDest.y
+          monster.path = []
+          monster.pathIndex = 0
+          monster.pathTargetX = Number.NaN
+          monster.pathTargetY = Number.NaN
+          this.emitBossSkillCast113c(monster, 184, slvl, mode, blinkDest.x, blinkDest.y)
+          this.broadcastToArea(monster.areaId, {
+            type: 'UnitMove',
+            unitType: 'monster',
+            id: monster.unitId,
+            unitId: monster.unitId,
+            mode: 'run',
+            from,
+            to: { x: Math.round(blinkDest.x), y: Math.round(blinkDest.y) },
+            x: Math.round(blinkDest.x),
+            y: Math.round(blinkDest.y),
+            currentX: Math.round(blinkDest.x),
+            currentY: Math.round(blinkDest.y),
+            targetX: Math.round(blinkDest.x),
+            targetY: Math.round(blinkDest.y),
+            areaId: monster.areaId,
+          })
+          monster.skillCursor = (monster.skillCursor + 1) % Math.max(1, ordered.length)
+          monster.skillCooldown = 40
+          monster.cooldown = Math.max(monster.cooldown, monster.cooldownTicks)
+          return true
+        }
+      }
+
+      // `#44 Frost Nova` (`#256 izual`, `#706 uberizual`: 16-bolt radial `#119 frostnova` ring + cold/chill AoE).
+      if (sid === 44 && !hitMonsters && distance <= 10) {
+        this.emitBossSkillCast113c(monster, 44, slvl, mode, monster.x, monster.y)
+        const coldDmg = this.rollInclusive(18, 32) + 8 * slvl + 16 * this.difficulty
+        for (let i = 0; i < 16; i++) {
+          const theta = (i / 16) * Math.PI * 2
+          this.emitBossProjectile113c(monster, {
+            missileId: 119,
+            skillId: 44,
+            slvl,
+            originX: monster.x,
+            originY: monster.y,
+            targetX: monster.x + Math.cos(theta) * 10,
+            targetY: monster.y + Math.sin(theta) * 10,
+            speedSubTilesPerFrame: 18 / 16,
+            rangeFrames: 14,
+            size: 2,
+            pierce: true,
+            nextHit: true,
+            nextDelay: 4,
+            element: 'cold',
+            physDamage: 0,
+            elemDamage: coldDmg,
+          })
+        }
+        for (const h of this.listHostilesInMonsterArea113c(monster)) {
+          if (Math.hypot(h.x - monster.x, h.y - monster.y) <= 9) {
+            this.dealMonsterDirectHitToHostile113c(
+              monster,
+              h,
+              { cold: coldDmg },
+              { chillFrames: 175 + 25 * Math.max(0, slvl - 1) },
+            )
+          }
+        }
+        monster.skillCursor = (monster.skillCursor + 1) % Math.max(1, ordered.length)
+        monster.skillCooldown = 30
+        monster.cooldown = Math.max(monster.cooldown, monster.cooldownTicks)
+        return true
+      }
+
+      // `#164 AndrialSpray` (`#156 andariel`, `#707 uberandariel` Lilith: 9-bolt fan of `#32 andarielspray` piercing poison bolts).
+      if (sid === 164 && !hitMonsters && distance <= 20) {
+        this.emitBossSkillCast113c(monster, 164, slvl, mode, target.x, target.y)
+        const baseAngle = Math.atan2(target.y - monster.y, target.x - monster.x)
+        const poisDmg = this.rollInclusive(22, 42) + 12 * slvl + 24 * this.difficulty
+        for (let b = -4; b <= 4; b++) {
+          const ang = baseAngle + b * 0.14
+          this.emitBossProjectile113c(monster, {
+            missileId: 32,
+            skillId: 164,
+            slvl,
+            originX: monster.x,
+            originY: monster.y,
+            targetX: monster.x + Math.cos(ang) * 20,
+            targetY: monster.y + Math.sin(ang) * 20,
+            speedSubTilesPerFrame: 18 / 16,
+            rangeFrames: 26,
+            size: 2,
+            pierce: true,
+            nextHit: true,
+            nextDelay: 4,
+            element: 'pois',
+            physDamage: 0,
+            elemDamage: poisDmg,
+          })
+        }
+        monster.skillCursor = (monster.skillCursor + 1) % Math.max(1, ordered.length)
+        monster.skillCooldown = 28
+        monster.cooldown = Math.max(monster.cooldown, monster.cooldownTicks)
+        return true
+      }
+
+      // `#201 AndyPoisonBolt` (`#156 andariel`, `#707 uberandariel` Lilith: `#203 andypoisonbolt` long-range poison projectile).
+      if (sid === 201 && !hitMonsters && distance <= 24) {
+        this.emitBossSkillCast113c(monster, 201, slvl, mode, target.x, target.y)
+        const poisDmg = this.rollInclusive(28, 52) + 14 * slvl + 28 * this.difficulty
+        this.emitBossProjectile113c(monster, {
+          missileId: 203,
+          skillId: 201,
+          slvl,
+          originX: monster.x,
+          originY: monster.y,
+          targetX: target.x,
+          targetY: target.y,
+          speedSubTilesPerFrame: 20 / 16,
+          rangeFrames: 34,
+          size: 2,
+          element: 'pois',
+          physDamage: 0,
+          elemDamage: poisDmg,
+        })
+        monster.skillCursor = (monster.skillCursor + 1) % Math.max(1, ordered.length)
+        monster.skillCooldown = 22
+        monster.cooldown = Math.max(monster.cooldown, monster.cooldownTicks)
+        return true
       }
 
       // `#107 Charge` & `#352 SerpentCharge` (Duriel `#211`, Uber Duriel `#708`, ReanimatedHorde, SiegeBeast, ClawViper).
@@ -22825,6 +29831,10 @@ export class GameInstance {
       this.stepBaalTentacleAi113c(monster)
       return
     }
+    if (monster.hcIdx === 242 || monster.hcIdx === 704) {
+      this.stepUberMephistoBossAi113c(monster)
+      return
+    }
     if (monster.hcIdx === 243 || monster.hcIdx === 333 || monster.hcIdx === 705) {
       this.stepDiabloBossAi113c(monster)
       return
@@ -22858,7 +29868,14 @@ export class GameInstance {
       !hasTaunt &&
       (monster.states.has(56) || monster.fleeTicks > 0)
 
+    if (!isTerrified) {
+      monster.fleeOriginX = Number.NaN
+      monster.fleeOriginY = Number.NaN
+    }
+
     if (isTerrified) {
+      const hasWardOrigin =
+        Number.isFinite(monster.fleeOriginX) && Number.isFinite(monster.fleeOriginY)
       let nearestPlayer: InternalPlayerRecord | undefined
       let minPlayerDist = Infinity
       for (const p of this.players.values()) {
@@ -22869,17 +29886,19 @@ export class GameInstance {
           nearestPlayer = p
         }
       }
-      if (nearestPlayer) {
+      const fearOriginX = hasWardOrigin ? monster.fleeOriginX : nearestPlayer?.x
+      const fearOriginY = hasWardOrigin ? monster.fleeOriginY : nearestPlayer?.y
+      if (fearOriginX !== undefined && fearOriginY !== undefined) {
         const targetValid =
           Number.isFinite(monster.fleeTargetX) &&
           Number.isFinite(monster.fleeTargetY) &&
           Math.hypot(monster.fleeTargetX - monster.x, monster.fleeTargetY - monster.y) > 1
         if (!targetValid) {
-          const dx = monster.x - nearestPlayer.x
-          const dy = monster.y - nearestPlayer.y
+          const dx = monster.x - fearOriginX
+          const dy = monster.y - fearOriginY
           const dist = Math.hypot(dx, dy) || 1
           // 1.13c fear uses the path finder, not a straight-line shove: pick the
-          // first walkable point roughly away from the player so walls are routed around.
+          // first walkable point roughly away from the fear source so walls are routed around.
           const baseAngle = Math.atan2(dy, dx)
           let fleeX = monster.x + (dx / dist) * 8
           let fleeY = monster.y + (dy / dist) * 8
@@ -22888,6 +29907,7 @@ export class GameInstance {
             const cy = monster.y + Math.sin(baseAngle + offset) * 8
             if (
               !this.isClosedDoorAt(monster.areaId, Math.round(cx), Math.round(cy)) &&
+              !this.isBlockedByBonePrison(monster.areaId, Math.round(cx), Math.round(cy)) &&
               (!this.terrainWalkableCheck ||
                 this.terrainWalkableCheck(
                   monster.areaId,
@@ -22969,9 +29989,11 @@ export class GameInstance {
         }
         const converted = this.isMonsterConverted(other)
         const attracted = other.states.has(57)
-        if (!converted && !attracted) continue
+        const boneWall = other.boneConstructOwnerPlayerId !== undefined
+        if (!converted && !attracted && !boneWall) continue
         const d = Math.hypot(other.x - monster.x, other.y - monster.y)
-        if (d < bestAttractDist) {
+        const maxEngageDist = boneWall && !converted && !attracted ? 4.5 : bestAttractDist
+        if (d < maxEngageDist && d < bestAttractDist) {
           bestAttractDist = d
           monsterTarget = other
         }
@@ -23243,6 +30265,28 @@ export class GameInstance {
       }
     }
     const bestDist = Math.hypot(nearest.x - monster.x, nearest.y - monster.y)
+
+    // 1.13c `MonUMod #26` (`Teleport`, `0x6FC441B0` / `0x6FCBCDE0`, #1899):
+    // Teleports away when low HP (`< 30%`) or blinks toward target when far (`>= 12`) / melee-blocked.
+    if (
+      monster.umodIds.includes(MON_UMOD.TELEPORT) &&
+      this.currentFrame >= monster.teleportCooldownUntilFrame
+    ) {
+      let meleeBlocked = false
+      if (!monster.isRanged && bestDist > monster.meleeRange + 1.5 && bestDist > 0.5) {
+        const probeX = Math.round(monster.x + ((nearest.x - monster.x) / bestDist) * 2)
+        const probeY = Math.round(monster.y + ((nearest.y - monster.y) / bestDist) * 2)
+        meleeBlocked =
+          this.isClosedDoorAt(monster.areaId, probeX, probeY) ||
+          Boolean(
+            this.terrainWalkableCheck &&
+              !this.terrainWalkableCheck(monster.areaId, probeX, probeY, monster.isFlying),
+          )
+      }
+      if (this.teleportEliteAwayFrom(monster, { x: nearest.x, y: nearest.y }, { meleeBlocked })) {
+        return
+      }
+    }
 
     // MonAi charge rows (SandRaider row 8, ClawViper 16/142, BloodHawk 5,
     // ReanimatedHorde 114, SiegeBeast 115, Duriel 44): a burst from mid range.
@@ -23521,33 +30565,14 @@ export class GameInstance {
               this.rng.rand(Math.max(0, monster.maxDmg - monster.minDmg) + 1),
           )
           const element = normalizeMissileElement(missileRec.eType) ?? 'phys'
-          // MonUMod 29 `multishot`: three bolts in a shallow fan.
-          const offsets = monster.umodIds.includes(MON_UMOD.MULTISHOT)
-            ? [-0.22, 0, 0.22]
-            : [0]
-          const baseAngle = Math.atan2(nearest.y - monster.y, nearest.x - monster.x)
-          const monLvl = Math.max(0, monster.level)
-          const rangeFrames = Math.max(
-            2,
-            missileRec.range + missileRec.levRange * monLvl,
-          )
-          const rawVel = missileRec.vel + Math.trunc((missileRec.velLev * monLvl) / 8)
-          const missileSpan =
-            rawVel > 0 ? (rawVel / 16) * rangeFrames : bestDist
-          const aimDist = Math.max(bestDist, missileSpan)
-          for (const offset of offsets) {
-            const tx =
-              offset === 0 ? nearest.x : monster.x + Math.cos(baseAngle + offset) * aimDist
-            const ty =
-              offset === 0 ? nearest.y : monster.y + Math.sin(baseAngle + offset) * aimDist
-            this.spawnMonsterMissile(monster, tx, ty, mslDmg, missileRec.id, 0, {
-              missile: missileRec,
-              skillLevel: monster.level,
-              ...(element === 'phys'
-                ? { physDamage: mslDmg }
-                : { elemDamage: mslDmg, element }),
-            })
-          }
+          // MonUMod 29 `multishot` (`+2` fan projectiles) is applied inside `spawnMonsterMissile` (#1900).
+          this.spawnMonsterMissile(monster, nearest.x, nearest.y, mslDmg, missileRec.id, 0, {
+            missile: missileRec,
+            skillLevel: monster.level,
+            ...(element === 'phys'
+              ? { physDamage: mslDmg }
+              : { elemDamage: mslDmg, element }),
+          })
           return
         }
       } else {
@@ -23648,6 +30673,10 @@ export class GameInstance {
     })
 
     if (player.hp <= 0) {
+      // 1.13c `item_skillondeath` (197): rolled while the dying player's gear is still equipped (#1797).
+      const killerMon =
+        options?.killerUnitId !== undefined ? this.monsters.get(options.killerUnitId) : undefined
+      this.triggerPlayerCtcProcs113c(player, 197, { target: killerMon })
       this.killPlayer(player, options)
     } else if (!options?.skipGetHit) {
       this.maybeEnterPlayerHitRecovery(player, dmgInt, options)
@@ -23672,6 +30701,100 @@ export class GameInstance {
     }
     if (this.objects.has(killerUnitId)) return 'object'
     return 'monster'
+  }
+
+  /**
+   * 1.13c `D2Game.dll` `0x6FCEC390..0x6FCEC3A7` (`SUNITDMG_ResolveRootOwnerPlayer`):
+   * resolves a killer unit ID (direct player, mercenary, summoned pet/trap/hydra, or converted monster)
+   * back to its owning player record for PvP ear drops and `S2C 0x5A` kill announcements (#1784).
+   */
+  private resolveRootKillerPlayer113c(killerUnitId?: number): InternalPlayerRecord | undefined {
+    if (killerUnitId === undefined) return undefined
+    const direct = this.players.get(killerUnitId)
+    if (direct !== undefined) return direct
+    const merc = this.mercenaries.get(killerUnitId)
+    if (merc !== undefined) return this.players.get(merc.ownerPlayerId)
+    for (const [ownerId, mgr] of this.summonManagers.entries()) {
+      for (const pet of mgr.getActivePets()) {
+        const mappedId =
+          this.petUnitIds.get(pet.uid) ?? (pet as unknown as { unitId?: number }).unitId
+        if (mappedId === killerUnitId) {
+          return this.players.get(ownerId)
+        }
+      }
+    }
+    for (const [petUid, mappedId] of this.petUnitIds.entries()) {
+      if (mappedId === killerUnitId) {
+        for (const [ownerId, mgr] of this.summonManagers.entries()) {
+          if (mgr.getActivePets().some((p) => p.uid === petUid)) {
+            return this.players.get(ownerId)
+          }
+        }
+      }
+    }
+    const mon = this.monsters.get(killerUnitId)
+    if (mon && mon.convertedUntilFrame > this.currentFrame && mon.convertedByPlayerId > 0) {
+      return this.players.get(mon.convertedByPlayerId)
+    }
+    return undefined
+  }
+
+  /**
+   * 1.13c `D2Game.dll` `0x6FC99E40` -> `0x6FC32AF0` (`ITEMS_CreatePlayerEar`):
+   * spawns the slain victim's personalized compact `'ear '` on the ground (`S2C 0x9C`).
+   */
+  private spawnPvpPlayerEar113c(victim: InternalPlayerRecord): number {
+    const pos = this.findDropPosition(victim.areaId, victim.x, victim.y, new Set())
+    const unitId = this.allocateUnitId()
+    const earLevel = Math.max(1, Math.min(99, Math.trunc(victim.level || 1)))
+    const rawItemData = buildPvpPlayerEarItemData113c({
+      itemId: unitId,
+      victimClassId: victim.classId,
+      victimLevel: earLevel,
+      victimName: victim.name,
+      x: pos.x,
+      y: pos.y,
+    })
+    const entry: ServerItemEntry = {
+      unitId,
+      code: 'ear',
+      name: `${victim.name}'s Ear`,
+      quality: 2,
+      level: earLevel,
+      location: 'ground',
+      x: Math.round(pos.x),
+      y: Math.round(pos.y),
+      width: 1,
+      height: 1,
+      areaId: victim.areaId,
+      ownerId: 0,
+      bodyLoc: 0,
+      storePage: 0,
+      cost: 1,
+      gamble: false,
+      identified: true,
+      ethereal: false,
+      socketed: false,
+      totalSockets: 0,
+      durability: 0,
+      maxDurability: 0,
+      quantity: 1,
+      stats: new Map<number, number>(),
+      socketedItems: [],
+      rawItemData,
+    }
+    this.registerGroundItem113c(entry)
+    this.broadcastToArea(victim.areaId, {
+      type: 'ItemEvent',
+      action: 'groundSpawn',
+      itemId: unitId,
+      code: 'ear',
+      x: entry.x,
+      y: entry.y,
+      container: 'ground',
+      item: this.serverEntryToItemData(entry),
+    })
+    return unitId
   }
 
   /**
@@ -23766,32 +30889,11 @@ export class GameInstance {
       }
     }
 
-    // Preserve any existing unrecovered corpse before creating the new corpse (`D2Game` up to 16 corpses, #1786).
-    if (player.corpseId !== undefined && player.corpseItems.length > 0) {
-      const extras = player.extraCorpses ?? []
-      if (extras.length < 15) {
-        extras.push({
-          corpseId: player.corpseId,
-          areaId: player.corpseAreaId ?? player.areaId,
-          x: player.corpseX,
-          y: player.corpseY,
-          items: [...player.corpseItems],
-        })
-      }
-      player.extraCorpses = extras
-      player.corpseItems = []
-    }
-    const corpseId = this.allocateUnitId()
-    player.corpseId = corpseId
-    player.corpseAreaId = player.areaId
-    player.corpseX = player.x
-    player.corpseY = player.y
-    player.corpseRequiresClick = false
-
+    const equippedOnDeath: ServerItemEntry[] = []
     const remainingItems: ServerItemEntry[] = []
     for (const item of player.items) {
       if (item.location === 'equipped') {
-        player.corpseItems.push(item)
+        equippedOnDeath.push(item)
       } else {
         remainingItems.push(item)
       }
@@ -23804,9 +30906,6 @@ export class GameInstance {
 
     // 1.13c D2Game.dll `0x6FC583A0` -> `0x6FC58180` (`PLAYER_ApplyDeathGoldPenalty`):
     // `pct = min(clvl, 20)%` of `gold (stat 14) + goldBank (stat 15)`.
-    // On non-PK death, if `loss <= gold` a ground `gld` pile of `gold - loss` is dropped at the
-    // corpse and `goldBank` is untouched; if `loss > gold` the shortfall `loss - gold` is deducted
-    // from `goldBank` and nothing drops on the ground; `gold` (stat 14) is always zeroed.
     const prevGold = player.gold
     const prevBank = player.goldBank
     const goldPenalty = applyDeathGoldPenalty113c(player.level, prevGold, prevBank, {
@@ -23872,42 +30971,139 @@ export class GameInstance {
       at: playerWirePosition(player),
       lifePct: 0,
     })
-    const cx = Math.round(player.corpseX)
-    const cy = Math.round(player.corpseY)
-    this.broadcastToArea(player.areaId, {
-      type: 'UnitAssign',
-      unitType: 'player',
-      unitId: corpseId,
-      classId: player.classId,
-      name: player.name,
-      x: cx,
-      y: cy,
-      areaId: player.areaId,
-      unit: {
-        unitType: 0,
-        id: corpseId,
+
+    // 1.13c `D2Game.dll` `PLAYER_CreateCorpse` (`0x6FC58460`, #1924):
+    // supports up to 16 concurrent unrecovered player corpses (`1` primary + `15` `extraCorpses`).
+    // If 16 unrecovered corpses already exist (`17th+` death), equipped items drop directly onto
+    // the ground instead of overwriting any of the 16 existing corpses!
+    const hasExistingPrimary =
+      player.corpseId !== undefined && this.hasLivePrimaryCorpse113c(player)
+    const extras = player.extraCorpses ?? []
+    const existingCorpseCount = (hasExistingPrimary ? 1 : 0) + extras.length
+
+    if (existingCorpseCount >= 16) {
+      const usedPositions = new Set<string>()
+      for (const item of equippedOnDeath) {
+        const dropPos = this.findDropPosition(player.areaId, player.x, player.y, usedPositions)
+        usedPositions.add(`${dropPos.x}:${dropPos.y}`)
+        item.location = 'ground'
+        item.ownerId = 0
+        item.areaId = player.areaId
+        item.x = dropPos.x
+        item.y = dropPos.y
+        item.bodyLoc = 0
+        item.storePage = 0
+        for (const child of item.socketedItems ?? []) {
+          child.ownerId = item.unitId
+        }
+        if (item.rawItemData !== undefined) {
+          const cleanFlags =
+            Number(item.rawItemData.rawFlags ?? item.rawItemData.flags ?? 0x10) & ~0x20
+          item.rawItemData = {
+            ...item.rawItemData,
+            opcode: 0x9c,
+            action: 0x02,
+            ownerType: 0,
+            ownerId: 0 as UnitId,
+            location: 3,
+            container: 'ground',
+            bodyLoc: 0,
+            equippedSlot: 0,
+            gridX: 0,
+            gridY: 0,
+            storePage: 0,
+            storagePage: 0,
+            worldX: dropPos.x,
+            worldY: dropPos.y,
+            x: dropPos.x,
+            y: dropPos.y,
+            flags: cleanFlags,
+            rawFlags: cleanFlags,
+          }
+        }
+        this.registerGroundItem113c(item)
+        this.broadcastToArea(player.areaId, {
+          type: 'ItemEvent',
+          action: 'drop',
+          itemId: item.unitId,
+          code: item.code,
+          x: item.x,
+          y: item.y,
+          container: 'ground',
+          item: { ...this.serverEntryToItemData(item), action: 0x02 },
+        })
+      }
+    } else {
+      if (hasExistingPrimary && player.corpseId !== undefined) {
+        extras.push({
+          corpseId: player.corpseId,
+          areaId: player.corpseAreaId ?? player.areaId,
+          x: player.corpseX,
+          y: player.corpseY,
+          items: [...player.corpseItems],
+          lostExp: player.corpseLostExp ?? 0,
+        })
+        player.extraCorpses = extras
+      }
+      const corpseId = this.allocateUnitId()
+      player.corpseId = corpseId
+      player.corpseAreaId = player.areaId
+      player.corpseX = player.x
+      player.corpseY = player.y
+      player.corpseRequiresClick = false
+      player.corpseItems = equippedOnDeath
+      player.corpseLostExp = expPenalty.expLost
+
+      const cx = Math.round(player.corpseX)
+      const cy = Math.round(player.corpseY)
+      this.broadcastToArea(player.areaId, {
+        type: 'UnitAssign',
+        unitType: 'player',
+        unitId: corpseId,
         classId: player.classId,
         name: player.name,
         x: cx,
         y: cy,
+        areaId: player.areaId,
+        unit: {
+          unitType: 0,
+          id: corpseId,
+          classId: player.classId,
+          name: player.name,
+          x: cx,
+          y: cy,
+          mode: 17,
+        },
+      })
+      this.broadcastToArea(player.areaId, {
+        type: 'UnitMode',
+        unitType: 0,
+        id: corpseId,
         mode: 17,
-      },
-    })
-    this.broadcastToArea(player.areaId, {
-      type: 'UnitMode',
-      unitType: 0,
-      id: corpseId,
-      mode: 17,
-      at: { x: cx, y: cy },
-      lifePct: 0,
-    })
-    this.broadcastToArea(player.areaId, {
-      type: 'CorpseAssign',
-      assign: 1,
-      ownerId: player.unitId,
-      corpseId,
-    })
-    if (isHardcorePlayer) {
+        at: { x: cx, y: cy },
+        lifePct: 0,
+      })
+      this.broadcastToArea(player.areaId, {
+        type: 'CorpseAssign',
+        assign: 1,
+        ownerId: player.unitId,
+        corpseId,
+      })
+    }
+    const killerPlayer = this.resolveRootKillerPlayer113c(options?.killerUnitId)
+    if (killerPlayer !== undefined && killerPlayer.unitId !== player.unitId) {
+      this.spawnPvpPlayerEar113c(player)
+      const pvpSlainChat = buildPvpSlainEvent0x5A113c({
+        victimName: player.name,
+        victimLevel: player.level,
+        victimIsHardcore: isHardcorePlayer,
+        killerPlayerUnitId: killerPlayer.unitId,
+        killerPlayerName: killerPlayer.name,
+      })
+      for (const peer of this.players.values()) {
+        this.emitToPlayer(peer.unitId, pvpSlainChat)
+      }
+    } else if (isHardcorePlayer) {
       const killerName =
         options?.killerUnitId !== undefined
           ? (this.monsters.get(options.killerUnitId)?.name ??
@@ -23982,90 +31178,188 @@ export class GameInstance {
     })
   }
 
+  private hasLivePrimaryCorpse113c(player: InternalPlayerRecord): boolean {
+    return (
+      player.corpseId !== undefined &&
+      (player.corpseItems.length > 0 || (player.corpseLostExp ?? 0) > 0)
+    )
+  }
+
   private recoverPlayerCorpse(player: InternalPlayerRecord): void {
     if (player.corpseId === undefined) return
     const oldCorpseId = player.corpseId
     const oldCorpseArea = player.corpseAreaId ?? player.areaId
-    const leftover: ServerItemEntry[] = []
-    for (const item of player.corpseItems) {
-      item.ownerId = player.unitId
-      const slotOccupied =
-        item.bodyLoc > 0 &&
-        player.items.some((e) => e.location === 'equipped' && e.bodyLoc === item.bodyLoc)
-      if (!slotOccupied && item.bodyLoc > 0) {
-        item.location = 'equipped'
-        player.items.push(item)
+    const oldCorpseX = player.corpseX
+    const oldCorpseY = player.corpseY
+
+    // 1.13c `D2Game.dll` `PLAYER_LootCorpse` (`0x6FC57A80`, #1924):
+    // recovering a corpse in the same game refunds `75%` (`Math.floor(lostExp * 75 / 100)`)
+    // of the XP lost on that death (`5% -> 1.25%` net in Nightmare, `10% -> 2.5%` net in Hell).
+    const lostExp = Math.max(0, Math.trunc(player.corpseLostExp ?? 0))
+    if (lostExp > 0) {
+      const refundExp = Math.floor((lostExp * 75) / 100)
+      player.corpseLostExp = 0
+      player.lastDeathExpLoss = 0
+      if (refundExp > 0) {
+        const maxExp = experienceForLevel113c(MAX_PLAYER_LEVEL_113C)
+        player.experience = Math.min(maxExp, player.experience + refundExp)
         this.emitToPlayer(player.unitId, {
-          type: 'ItemEvent',
-          action: 'equip',
-          itemId: item.unitId,
-          code: item.code,
-          x: item.x,
-          y: item.y,
-          container: 'equipment',
-          item: {
-            ...this.serverEntryToItemData(item),
-            opcode: 0x9d,
-            action: 0x06,
-            ownerType: 0,
-            ownerId: player.unitId as UnitId,
-            location: 1,
-            bodyLoc: item.bodyLoc,
-            equippedSlot: item.bodyLoc,
-            container: 'equipment',
-          },
+          type: 'UnitStatUpdate',
+          unitType: 'player',
+          unitId: player.unitId,
+          statId: 13,
+          value: player.experience,
         })
-      } else {
-        const freeSlot = this.findFreeGridSlot(
-          player,
-          'inventory',
-          item.width,
-          item.height,
-          10,
-          4,
+        this.emitToPlayer(player.unitId, {
+          type: 'Experience',
+          value: player.experience,
+          isDelta: false,
+        })
+      }
+    }
+
+    // Equip corpse items in a fixed-point pass so `+Strength`/`+Dexterity` gear unlocked
+    // by one item allows dependent items on the same corpse to re-equip cleanly (#1924).
+    const tables = getEmbeddedDropTables()
+    const combat = this.playerCombat.get(player.unitId)
+    const pendingItems = [...player.corpseItems]
+    for (const item of pendingItems) {
+      item.ownerId = player.unitId
+    }
+    const unequipped: ServerItemEntry[] = []
+    let remainingToTry = pendingItems
+    let madeProgress = true
+    while (madeProgress && remainingToTry.length > 0) {
+      madeProgress = false
+      const deferred: ServerItemEntry[] = []
+      for (const item of remainingToTry) {
+        const slot = item.bodyLoc
+        const slotOccupied =
+          slot > 0 &&
+          player.items.some((e) => e.location === 'equipped' && e.bodyLoc === slot)
+        if (slot <= 0 || slotOccupied) {
+          deferred.push(item)
+          continue
+        }
+        const currentlyEquipped = player.items.filter((e) => e.location === 'equipped')
+        const check = canUnitEquipItem113c(
+          {
+            kind: 'player',
+            level: player.level,
+            baseStrength: player.strength,
+            baseDexterity: player.dexterity,
+            classCode: player.classCode,
+          },
+          item,
+          slot as Parameters<typeof canUnitEquipItem113c>[2],
+          currentlyEquipped,
+          {
+            dropTables: tables,
+            computeAttributesWithoutDisplaced: () => ({
+              strength:
+                player.strength +
+                this.sumPlayerItemStat(player, 0) +
+                (combat === undefined ? 0 : combat.statList.getModifierBonus('strength')),
+              dexterity:
+                player.dexterity +
+                this.sumPlayerItemStat(player, 2) +
+                (combat === undefined ? 0 : combat.statList.getModifierBonus('dexterity')),
+            }),
+          },
         )
-        if (freeSlot) {
-          item.location = 'inventory'
-          item.storePage = 1
-          item.x = freeSlot.x
-          item.y = freeSlot.y
+        if (check.allowed && check.displacedItems.length === 0) {
+          item.location = 'equipped'
           player.items.push(item)
           this.emitToPlayer(player.unitId, {
             type: 'ItemEvent',
-            action: 'pickup',
+            action: 'equip',
             itemId: item.unitId,
             code: item.code,
             x: item.x,
             y: item.y,
-            container: 'inventory',
-            item: this.serverEntryToItemData(item),
+            container: 'equipment',
+            item: {
+              ...this.serverEntryToItemData(item),
+              opcode: 0x9d,
+              action: 0x06,
+              ownerType: 0,
+              ownerId: player.unitId as UnitId,
+              location: 1,
+              bodyLoc: item.bodyLoc,
+              equippedSlot: item.bodyLoc,
+              container: 'equipment',
+            },
           })
+          madeProgress = true
         } else {
-          leftover.push(item)
+          deferred.push(item)
         }
+      }
+      remainingToTry = deferred
+    }
+    unequipped.push(...remainingToTry)
+
+    const leftover: ServerItemEntry[] = []
+    for (const item of unequipped) {
+      const freeSlot = this.findFreeGridSlot(
+        player,
+        'inventory',
+        item.width,
+        item.height,
+        10,
+        4,
+      )
+      if (freeSlot) {
+        item.location = 'inventory'
+        item.storePage = 1
+        item.x = freeSlot.x
+        item.y = freeSlot.y
+        player.items.push(item)
+        this.emitToPlayer(player.unitId, {
+          type: 'ItemEvent',
+          action: 'pickup',
+          itemId: item.unitId,
+          code: item.code,
+          x: item.x,
+          y: item.y,
+          container: 'inventory',
+          item: this.serverEntryToItemData(item),
+        })
+      } else {
+        leftover.push(item)
       }
     }
     this.refreshPlayerAccruedMaxPools(player)
     this.syncPlayerItemAuras113c(player, true)
     if (leftover.length > 0) {
       player.corpseItems = leftover
+      player.corpseRequiresClick = true
+      this.emitToPlayer(player.unitId, {
+        type: 'PlaySound',
+        unit: { unitType: 0, id: player.unitId },
+        sound: 23,
+      })
       return
     }
     player.corpseId = undefined
     player.corpseAreaId = undefined
     player.corpseRequiresClick = false
     player.corpseItems = []
+    player.corpseLostExp = 0
     this.broadcastToArea(oldCorpseArea, {
       type: 'CorpseAssign',
       assign: 0,
       ownerId: player.unitId,
       corpseId: oldCorpseId,
-    })
+      x: Math.round(oldCorpseX),
+      y: Math.round(oldCorpseY),
+    } as ServerEvent)
     this.broadcastToArea(oldCorpseArea, {
       type: 'UnitRemove',
       unitType: 0,
       id: oldCorpseId,
       unitId: oldCorpseId,
+      areaId: oldCorpseArea,
     })
     if (player.extraCorpses && player.extraCorpses.length > 0) {
       const nextCorpse = player.extraCorpses.pop()!
@@ -24074,6 +31368,7 @@ export class GameInstance {
       player.corpseX = nextCorpse.x
       player.corpseY = nextCorpse.y
       player.corpseItems = nextCorpse.items
+      player.corpseLostExp = nextCorpse.lostExp ?? 0
     }
   }
 
@@ -24530,36 +31825,51 @@ export class GameInstance {
         player.staminaExhausted = false
         this.emitPlayerVitals(player)
       }
-      const stats =
-        effectiveCode === 6
-          ? { skill_armor_percent: shrineMeta.arg0, item_armor_percent: shrineMeta.arg0 }
-          : effectiveCode === 7
-            ? {
-                tohit: shrineMeta.arg0,
-                item_tohit_percent: shrineMeta.arg0,
-                damagepercent: shrineMeta.arg1,
-              }
-            : effectiveCode === 8
-              ? { fireresist: shrineMeta.arg0 }
-              : effectiveCode === 9
-                ? { coldresist: shrineMeta.arg0 }
-                : effectiveCode === 10
-                  ? { lightresist: shrineMeta.arg0 }
-                  : effectiveCode === 11
-                    ? { poisonresist: shrineMeta.arg0 }
-                    : effectiveCode === 12
-                      ? { item_allskills: shrineMeta.arg0 }
-                      : effectiveCode === 13
-                        ? { manarecoverybonus: shrineMeta.arg0 }
-                        : effectiveCode === 14
-                          ? {
-                              skill_staminapercent: shrineMeta.arg0,
-                              staminarecoverybonus: 1000,
-                              item_staminadrainpct: -100,
-                            }
-                          : effectiveCode === 15
-                            ? { item_addexperience: shrineMeta.arg0 }
-                            : undefined
+      let stats: Record<string, number> | undefined
+      if (effectiveCode === 6) {
+        // 0x6FC8ABB0 Armor Shrine (#1919): attaches ONLY `skill_armor_percent` (`171`), NEVER `item_armor_percent` (`16`).
+        stats = buildArmorShrineStats113c(shrineMeta.arg0)
+      } else if (effectiveCode === 7) {
+        // 0x6FC8ACE0 Combat Shrine (#1919): snapshots touch-time Attack Rating (`STAT_TOHIT = 19`) + `damagepercent` (`25`).
+        combatCtx.stateBus.removeState(stateId)
+        this.syncPlayerSkillLevelsToStatList113c(player, combatCtx.statList, combatCtx.stateBus)
+        const rawTouchAr =
+          this.computePlayerBaseToHit113c(player) +
+          Math.trunc(combatCtx.statList.getModifierBonus('tohit'))
+        const touchArPct =
+          this.computePlayerToHitPctBonus113c(player) +
+          Math.trunc(combatCtx.statList.getModifierBonus('item_tohit_percent')) +
+          Math.trunc(combatCtx.statList.getModifierBonus('passive_mastery_melee_th'))
+        const currentAttackRating = Math.max(
+          0,
+          rawTouchAr + Math.trunc((rawTouchAr * touchArPct) / 100),
+        )
+        stats = buildCombatShrineSnapshot113c({
+          currentAttackRating,
+          arg0: shrineMeta.arg0,
+          arg1: shrineMeta.arg1,
+        })
+      } else if (effectiveCode === 8) {
+        stats = { fireresist: shrineMeta.arg0 }
+      } else if (effectiveCode === 9) {
+        stats = { coldresist: shrineMeta.arg0 }
+      } else if (effectiveCode === 10) {
+        stats = { lightresist: shrineMeta.arg0 }
+      } else if (effectiveCode === 11) {
+        stats = { poisonresist: shrineMeta.arg0 }
+      } else if (effectiveCode === 12) {
+        stats = { item_allskills: shrineMeta.arg0 }
+      } else if (effectiveCode === 13) {
+        stats = { manarecoverybonus: shrineMeta.arg0 }
+      } else if (effectiveCode === 14) {
+        stats = {
+          skill_staminapercent: shrineMeta.arg0,
+          staminarecoverybonus: 1000,
+          item_staminadrainpct: -100,
+        }
+      } else if (effectiveCode === 15) {
+        stats = { item_addexperience: shrineMeta.arg0 }
+      }
       if (stats !== undefined) {
         combatCtx.stateBus.applyState({
           stateNameOrId: stateId,
@@ -24762,6 +32072,8 @@ export class GameInstance {
           nearest.isBoss = newRank === 'unique'
           nearest.modifiers = [...rolledMods]
           nearest.umodIds = umodIds
+          nearest.uncursable = isMonsterUncursable113c(umodIds, resolved?.uncursable ?? nearest.uncursable)
+          nearest.alwaysRunAi = isAlwaysRunAiMonster113c(umodIds, nearest.alwaysRunAi)
           nearest.level = resolved?.level ?? (nearest.level + (newRank === 'unique' ? 3 : 2))
           nearest.maxHp = Math.max(nearest.maxHp + 1, resolved?.maxHp ?? Math.round(nearest.maxHp * hpMult))
           nearest.hp = nearest.maxHp
@@ -24822,13 +32134,20 @@ export class GameInstance {
         for (let i = 0; i < count; i++) {
           this.dropShrineItem(potionCode, areaId, shrineX, shrineY)
         }
-        const slvl = Math.max(1, Math.min(8, Math.trunc(player.level / 5)))
-        this.spawnShrineMissile(player, shrineX, shrineY, areaId, missileClassId, shrineX - 6, shrineY - 6, slvl)
-        this.spawnShrineMissile(player, shrineX, shrineY, areaId, missileClassId, shrineX, shrineY, 1)
-        this.spawnShrineMissile(player, shrineX, shrineY, areaId, missileClassId, shrineX + 6, shrineY + 6, slvl)
-        this.spawnShrineMissile(player, shrineX, shrineY, areaId, missileClassId, shrineX + 6, shrineY - 6, slvl)
-        this.spawnShrineMissile(player, shrineX, shrineY, areaId, missileClassId, shrineX + 6, shrineY - 6, slvl)
-        this.spawnShrineMissile(player, shrineX, shrineY, areaId, missileClassId, shrineX + 6, shrineY - 6, slvl)
+        // 0x6FC8C798..0x6FC8C7C4 (#1920): 6 distinct radial coordinate offsets at `slvl = clamp(clvl / 5, 1, 8)`.
+        const slvl = computeShrineMissileSlvl113c(player.level)
+        for (const [dx, dy] of EXPLODING_POISON_SHRINE_OFFSETS_113C) {
+          this.spawnShrineMissile(
+            player,
+            shrineX,
+            shrineY,
+            areaId,
+            missileClassId,
+            shrineX + dx,
+            shrineY + dy,
+            slvl,
+          )
+        }
         break
       }
       default:
@@ -25218,7 +32537,344 @@ export class GameInstance {
     }
   }
 
-  /** Objects.txt OperateFn dispatch (D2Game 0x6fd27bb8), including one-shot semantics. */
+  /**
+   * Spawn a missile projectile emitted by an operated chest trap (`gpTrapFnTable 1..9`,
+   * `D2Game.dll` `0x6FD27B8C`, #1918), owned by `obj.unitId` (`ownerType: 'monster'`) so
+   * `stepMissiles` collides it against players and applies `killerType: 'trap'`.
+   */
+  private spawnTrapProjectile113c(spec: {
+    readonly obj: InternalObjectRecord
+    readonly missileId: number
+    readonly vx: number
+    readonly vy: number
+    readonly frames: number
+    readonly element: MissileDamageChannel
+    readonly physDamage: number
+    readonly elemDamage: number
+    readonly elemDurationFrames?: number
+    readonly pierce?: boolean
+    readonly size?: number
+  }): number {
+    const unitId = this.allocateUnitId()
+    const row = this.registry.getMissileById(spec.missileId)
+    const remainingFrames = Math.max(1, Math.trunc(spec.frames))
+    const rec: InternalMissileRecord = {
+      unitId,
+      missileId: spec.missileId,
+      skillId: 0,
+      ownerType: 'monster',
+      ownerId: spec.obj.unitId,
+      areaId: spec.obj.areaId,
+      x: spec.obj.x,
+      y: spec.obj.y,
+      vx: spec.vx,
+      vy: spec.vy,
+      damage: spec.physDamage + spec.elemDamage,
+      remainingFrames,
+      collideType: row?.collideType ?? 3,
+      size: spec.size ?? row?.size ?? 1,
+      pierce: spec.pierce ?? Boolean(row?.pierce),
+      nextHit: Boolean(row?.nextHit),
+      nextDelay: row?.nextDelay ?? 4,
+      element: spec.element,
+      physDamage: spec.physDamage,
+      elemDamage: spec.elemDamage,
+      elemDurationFrames: spec.elemDurationFrames ?? 0,
+      hitCooldowns: new Map(),
+      guaranteedHit: true,
+    }
+    this.missiles.set(unitId, rec)
+    const sx = Math.round(rec.x)
+    const sy = Math.round(rec.y)
+    const tx = Math.round(rec.x + rec.vx * rec.remainingFrames)
+    const ty = Math.round(rec.y + rec.vy * rec.remainingFrames)
+    this.broadcastToArea(spec.obj.areaId, {
+      type: 'CreateMissile',
+      missileId: rec.unitId,
+      missileClassId: rec.missileId,
+      at: { x: sx, y: sy },
+      target: { x: tx, y: ty },
+      x: sx,
+      y: sy,
+      targetX: tx,
+      targetY: ty,
+      remainingFrames: rec.remainingFrames,
+      skillId: 0,
+      level: 1,
+      ownerType: 'monster',
+      ownerId: spec.obj.unitId,
+      areaId: spec.obj.areaId,
+    })
+    return unitId
+  }
+
+  /**
+   * Execute 1.13c `gpTrapFnTable[trapType]` (`1..9`, `D2Game.dll` `0x6FD27B8C`, #1918):
+   * - Assassin (`classId === 6` / `'ass'`) automatically disarms container traps (`0x6FC8B5C0`).
+   * - `1`: Exploding trap (`phys + fire` burst via `SUNITDMG_ApplyObjectTrapDamage`).
+   * - `2`: Poison Gas Nova (`16` radial poison clouds, `missileId 120`).
+   * - `3`: Needle / Dart (`missileId 55` aimed at operator).
+   * - `4`: Fireball (`missileId 42` aimed at operator).
+   * - `5`: Explosion Nova (`12` radial fire bolts, `missileId 41`).
+   * - `6`: Frost Nova (`16` radial frost bolts, `missileId 76`, chills players).
+   * - `7`: Charged Bolt (`5` lightning bolts, `missileId 38`).
+   * - `8`: Poison Cloud (`missileId 120` aimed at operator).
+   * - `9`: Fire Bolt (`missileId 41` aimed at operator).
+   */
+  private triggerContainerTrap113c(
+    player: InternalPlayerRecord,
+    obj: InternalObjectRecord,
+  ): void {
+    const trapType = obj.trapType
+    if (trapType < 1 || trapType > 9) return
+    obj.trapType = 0
+    if (player.classId === 6 || player.classCode === 'ass') return
+
+    const monLvl = Math.max(1, getLevelMonsterLevel113c(obj.areaId, this.difficulty, true))
+    const baseElem = Math.max(4, Math.floor(monLvl * 1.5) + 4)
+    const dx = player.x - obj.x
+    const dy = player.y - obj.y
+    const dist = Math.hypot(dx, dy)
+    const dirX = dist > 0.01 ? dx / dist : 1
+    const dirY = dist > 0.01 ? dy / dist : 0
+
+    switch (trapType) {
+      case 1: {
+        // Exploding chest trap: immediate physical + fire blast.
+        this.operateTrapObject113c(player, obj)
+        break
+      }
+      case 2: {
+        // Poison Gas Nova: 16 radial poison clouds.
+        for (let i = 0; i < 16; i++) {
+          const angle = (i * Math.PI * 2) / 16
+          this.spawnTrapProjectile113c({
+            obj,
+            missileId: 120,
+            vx: Math.cos(angle) * 0.75,
+            vy: Math.sin(angle) * 0.75,
+            frames: 24,
+            element: 'pois',
+            physDamage: 0,
+            elemDamage: baseElem,
+            elemDurationFrames: 75,
+            pierce: true,
+          })
+        }
+        break
+      }
+      case 3: {
+        // Needle / Trap Dart aimed at player.
+        this.spawnTrapProjectile113c({
+          obj,
+          missileId: 55,
+          vx: dirX * 1.5,
+          vy: dirY * 1.5,
+          frames: 25,
+          element: 'phys',
+          physDamage: baseElem,
+          elemDamage: 0,
+        })
+        break
+      }
+      case 4: {
+        // Fireball aimed at player.
+        this.spawnTrapProjectile113c({
+          obj,
+          missileId: 42,
+          vx: dirX * 1.25,
+          vy: dirY * 1.25,
+          frames: 25,
+          element: 'fire',
+          physDamage: 0,
+          elemDamage: baseElem + 4,
+        })
+        break
+      }
+      case 5: {
+        // Explosion / Fire Nova: 12 radial fire projectiles.
+        for (let i = 0; i < 12; i++) {
+          const angle = (i * Math.PI * 2) / 12
+          this.spawnTrapProjectile113c({
+            obj,
+            missileId: 41,
+            vx: Math.cos(angle) * 1.1,
+            vy: Math.sin(angle) * 1.1,
+            frames: 22,
+            element: 'fire',
+            physDamage: 0,
+            elemDamage: baseElem,
+          })
+        }
+        break
+      }
+      case 6: {
+        // Frost Nova: 16 radial cold projectiles that chill on hit.
+        for (let i = 0; i < 16; i++) {
+          const angle = (i * Math.PI * 2) / 16
+          this.spawnTrapProjectile113c({
+            obj,
+            missileId: 76,
+            vx: Math.cos(angle) * 1.0,
+            vy: Math.sin(angle) * 1.0,
+            frames: 18,
+            element: 'cold',
+            physDamage: 0,
+            elemDamage: baseElem,
+            elemDurationFrames: Math.max(25, monLvl * 2),
+            pierce: true,
+          })
+        }
+        break
+      }
+      case 7: {
+        // Charged Bolt fan: 5 bolts centered toward player.
+        const baseAngle = Math.atan2(dirY, dirX)
+        for (let i = -2; i <= 2; i++) {
+          const angle = baseAngle + i * 0.22
+          this.spawnTrapProjectile113c({
+            obj,
+            missileId: 38,
+            vx: Math.cos(angle) * 0.9,
+            vy: Math.sin(angle) * 0.9,
+            frames: 28,
+            element: 'ltng',
+            physDamage: 0,
+            elemDamage: Math.max(3, Math.floor(baseElem * 0.85)),
+          })
+        }
+        break
+      }
+      case 8: {
+        // Poison Cloud aimed at player.
+        this.spawnTrapProjectile113c({
+          obj,
+          missileId: 120,
+          vx: dirX * 0.8,
+          vy: dirY * 0.8,
+          frames: 24,
+          element: 'pois',
+          physDamage: 0,
+          elemDamage: baseElem,
+          elemDurationFrames: 75,
+          pierce: true,
+        })
+        break
+      }
+      case 9: {
+        // Fire Bolt aimed at player.
+        this.spawnTrapProjectile113c({
+          obj,
+          missileId: 41,
+          vx: dirX * 1.35,
+          vy: dirY * 1.35,
+          frames: 25,
+          element: 'fire',
+          physDamage: 0,
+          elemDamage: baseElem,
+        })
+        break
+      }
+      default:
+        break
+    }
+  }
+
+  /**
+   * 1.13c Sarcophagus (`OperateFn 1`, `0x6FC8AEF0`) & Barrel (`OperateFn 5`, `0x6FC8B150`)
+   * `18.08%` (`1808 / 10000`) monster ambush spawn (#1918): spawns one normal monster from
+   * the level's `Levels.txt` monster pool instead of rolling container item loot.
+   */
+  private spawnContainerAmbushMonster113c(obj: InternalObjectRecord): number | undefined {
+    if (TOWN_AREAS.has(obj.areaId)) return undefined
+    const diffName =
+      this.difficulty === 2 ? 'hell' : this.difficulty === 1 ? 'nightmare' : 'normal'
+    const plan = getLevelMonsterPlan113c(obj.areaId, diffName)
+    const pool =
+      plan !== null
+        ? this.difficulty > 0 && plan.nightmarePool.length > 0
+          ? plan.nightmarePool
+          : plan.pool
+        : []
+    const defId =
+      pool.length > 0 ? pool[this.rng.rand(pool.length)]! : 'skeleton1'
+    const stand = this.loadedAreas.has(obj.areaId)
+      ? findStandableNear(
+          (x, y) => this.isWorldWalkableForPlayer(obj.areaId, x, y),
+          obj.x + 1,
+          obj.y + 1,
+          6,
+        )
+      : null
+    const sx = stand?.x ?? obj.x + 1
+    const sy = stand?.y ?? obj.y + 1
+    return this.spawnMonster({
+      defId,
+      x: sx,
+      y: sy,
+      areaId: obj.areaId,
+      ...(plan !== null ? { areaLevel: plan.monsterLevel } : {}),
+      statSeed: this.rng.rand(0x7fffffff) || 1,
+    })
+  }
+
+  /**
+   * 1.13c Chaos Sanctuary Diablo trigger (`D2Game.dll` `ACT4Q3_CheckSealCompletion`, `0x6FCDBD90`, #1928):
+   * called BOTH when a seal object transitions to `OBJMODE_OPENED (2)` (including non-boss seals `393`/`395`)
+   * AND when any of the 3 seal bosses dies. Once all 5 seals `392..396` are open (`mode === 2`) and all 3
+   * seal bosses are dead, kills all remaining Chaos Sanctuary monsters and schedules Diablo (`#243`) spawn
+   * after 125 frames (5 seconds at 25 Hz) at the Chaos Pentagram (`Objects.txt 255`) or seal centroid.
+   */
+  private tryTriggerChaosDiabloSpawn113c(areaId: number): void {
+    if (this.diabloSpawnedAreas.has(areaId)) return
+    const deaths = this.sealBossDeaths.get(areaId)
+    if (deaths === undefined || deaths.size < 3) return
+    const sealIds = [392, 393, 394, 395, 396] as const
+    const openSealClasses = new Set<number>()
+    const seals: InternalObjectRecord[] = []
+    for (const obj of this.objects.values()) {
+      if (obj.areaId === areaId && sealIds.includes(obj.classId as (typeof sealIds)[number]) && obj.mode === 2) {
+        openSealClasses.add(obj.classId)
+        seals.push(obj)
+      }
+    }
+    if (openSealClasses.size < sealIds.length) return
+
+    this.diabloSpawnedAreas.add(areaId)
+    // D2Game.dll 0x6FCDBE10: purge remaining alive non-NPC monsters in Chaos Sanctuary.
+    for (const mon of this.monsters.values()) {
+      if (mon.areaId !== areaId || mon.dead || mon.isNpc || mon.defId === 'diablo') continue
+      mon.hp = 0
+      mon.dead = true
+      mon.mode = 12
+      this.broadcastToArea(areaId, {
+        type: 'UnitMode',
+        unitType: 1,
+        id: mon.unitId,
+        mode: 12,
+        at: { x: Math.round(mon.x), y: Math.round(mon.y) },
+        lifePct: 0,
+      })
+    }
+
+    const pentagram = [...this.objects.values()].find(
+      (obj) => obj.areaId === areaId && obj.classId === 255,
+    )
+    const spawnX =
+      pentagram !== undefined
+        ? pentagram.x
+        : Math.round(seals.reduce((sum, s) => sum + s.x, 0) / Math.max(1, seals.length))
+    const spawnY =
+      pentagram !== undefined
+        ? pentagram.y
+        : Math.round(seals.reduce((sum, s) => sum + s.y, 0) / Math.max(1, seals.length))
+    this.pendingDiabloSpawns.push({
+      frame: this.currentFrame + 125,
+      areaId,
+      x: spawnX,
+      y: spawnY,
+    })
+  }
   private operateObject(player: InternalPlayerRecord, obj: InternalObjectRecord): void {
     // Objects.txt 474/475/476 Ancient Statues (OperateFn 62/63/64, D2Game 0x6FC79A60..0x6FC79AC0):
     // clicking statues directly plays reject sound 19 and NEVER transitions mode 0 -> 2 (#1843).
@@ -25356,26 +33012,40 @@ export class GameInstance {
       return
     }
 
-    // Chaos Sanctuary seals spawn their SuperUnique boss on first use.
+    // Chaos Sanctuary seals (`392, 394, 396`) spawn their SuperUnique boss + minion pack on first use (#1928).
     const sealBoss = SEAL_BOSS_113C[obj.classId]
     if (sealBoss !== undefined && obj.useCount === 0) {
       obj.useCount = 1
-      const bossId = this.spawnMonster({
-        defId: sealBoss.defId,
-        superUniqueId: sealBoss.superUniqueId,
-        x: obj.x + 2,
-        y: obj.y,
+      const hasLoadedArea = this.loadedAreas.has(obj.areaId)
+      const rawX = hasLoadedArea ? obj.x + sealBoss.dx : Math.max(2, obj.x + 2)
+      const rawY = hasLoadedArea ? obj.y + sealBoss.dy : Math.max(2, obj.y)
+      const stand = hasLoadedArea
+        ? findStandableNear(
+            (x, y) => this.isWorldWalkableForPlayer(obj.areaId, x, y),
+            rawX,
+            rawY,
+            10,
+          )
+        : null
+      const sx = stand?.x ?? rawX
+      const sy = stand?.y ?? rawY
+      const spawnedIds = this.spawnSuperUnique({
+        superUniqueIndex: sealBoss.superUniqueIndex,
+        x: sx,
+        y: sy,
         areaId: obj.areaId,
-        rank: 'unique',
       })
-      this.broadcastToArea(obj.areaId, {
-        type: 'UnitMode',
-        unitType: 1,
-        id: bossId,
-        mode: 1,
-        at: { x: Math.round(obj.x + 2), y: Math.round(obj.y) },
-        lifePct: 128,
-      })
+      const bossId = spawnedIds[0]
+      if (bossId !== undefined) {
+        this.broadcastToArea(obj.areaId, {
+          type: 'UnitMode',
+          unitType: 1,
+          id: bossId,
+          mode: 1,
+          at: { x: Math.round(sx), y: Math.round(sy) },
+          lifePct: 128,
+        })
+      }
     }
 
     // Objects.txt 376 Hellforge (OperateFn 49, D2Game 0x6fcdb8d0):
@@ -25479,7 +33149,9 @@ export class GameInstance {
         code: flail.code,
         container: 'equipment',
       })
-      this.setPlayerQuestFlag(player, 'a3q3', QUEST_FLAG_COMPLETED_113C)
+      for (const recipient of this.getQuestEligiblePartyRecipients113c(player, obj.areaId)) {
+        this.setPlayerQuestFlag(recipient, 'a3q3', QUEST_FLAG_COMPLETED_113C)
+      }
       // Kill the invisible MonStats 366 compellingorb monster in MONMODE_DEATH (0) so
       // D2Client MonUMod 22 event 1 (0x6fad0fb0 -> 0x6fb030d0) spawns the client orbmist.
       const orbMonster =
@@ -25785,6 +33457,80 @@ export class GameInstance {
         return
       }
     }
+    // Objects.txt 17..21 Cairn Stones (OperateFn 9, D2Game 0x6FC9CB50, #1926):
+    // Requires deciphered Scroll of Inifuss (`'bkd'`) in `player.items` and activating all 5
+    // distinct Cairn Stones before opening Tristram red portal (`Objects.txt 60`, `destAreaId 38`).
+    // If `'bkd'` is missing, plays reject sound 19 and leaves the stone unlit (`mode 0`).
+    // If a stone is touched out of `this.cairnStoneOrder` sequence, resets the partial sequence
+    // ONLY when all 5 distinct stones `17..21` exist in the area; otherwise requires activating
+    // all 5 distinct stones `17..21` with `'bkd'`!
+    if (obj.classId >= 17 && obj.classId <= 21) {
+      if (this.cairnPortalAreas.has(obj.areaId)) return
+      const keyScroll = player.items.find(
+        (item) => item.code.toLowerCase().trim() === 'bkd',
+      )
+      if (keyScroll === undefined) {
+        this.emitToPlayer(player.unitId, {
+          type: 'PlaySound',
+          unit: { unitType: 0, id: player.unitId },
+          sound: 19,
+        })
+        return
+      }
+      const areaStones = [...this.objects.values()].filter(
+        (candidate) =>
+          candidate.areaId === obj.areaId && candidate.classId >= 17 && candidate.classId <= 21,
+      )
+      const distinctPresent = new Set(areaStones.map((s) => s.classId))
+      const step = this.cairnStoneStepByArea.get(obj.areaId) ?? 0
+      const expectedClassId = this.cairnStoneOrder[step]
+      if (distinctPresent.size >= 5 && expectedClassId !== undefined && obj.classId !== expectedClassId) {
+        // Out-of-order Cairn Stone touch: reset active stones back to mode 0 so the player can retry.
+        this.cairnStoneStepByArea.set(obj.areaId, 0)
+        for (const s of areaStones) {
+          s.useCount = 0
+          if (s.mode !== 0) this.setObjectMode(s, 0)
+        }
+        this.emitToPlayer(player.unitId, {
+          type: 'PlaySound',
+          unit: { unitType: 0, id: player.unitId },
+          sound: 19,
+        })
+        return
+      }
+      this.setObjectMode(obj, 1)
+      this.setObjectMode(obj, 2)
+      obj.useCount = 1
+      this.setPlayerQuestFlag(player, 'a1q3', QUEST_FLAG_STARTED_113C)
+      const nextStep = step + 1
+      this.cairnStoneStepByArea.set(obj.areaId, nextStep)
+      const activatedClasses = new Set(
+        [...this.objects.values()]
+          .filter(
+            (candidate) =>
+              candidate.areaId === obj.areaId &&
+              candidate.classId >= 17 &&
+              candidate.classId <= 21 &&
+              candidate.useCount > 0 &&
+              candidate.mode === 2,
+          )
+          .map((s) => s.classId),
+      )
+      if (activatedClasses.size >= 5 && !this.cairnPortalAreas.has(obj.areaId)) {
+        this.cairnPortalAreas.add(obj.areaId)
+        this.removePlayerQuestItem(player, keyScroll)
+        const anchor = areaStones[0] ?? obj
+        this.spawnObject({
+          classId: 60,
+          x: anchor.x + 2,
+          y: anchor.y,
+          areaId: obj.areaId,
+          mode: 2,
+          destAreaId: 38,
+        })
+      }
+      return
+    }
     this.setObjectMode(obj, 1)
     switch (kind) {
       case 'trap':
@@ -25793,6 +33539,12 @@ export class GameInstance {
       case 'destructible': {
         if (record.operateFn === 7) {
           this.detonateExplodingBarrel113c(obj, player)
+        } else if (
+          record.operateFn === 5 &&
+          this.rng.rand(10_000) < 1808 &&
+          this.spawnContainerAmbushMonster113c(obj) !== undefined
+        ) {
+          // #1918: Barrel (OperateFn 5, 0x6FC8B150) 18.08% monster ambush replaces item drop.
         } else {
           const dropChance =
             CONTAINER_OPERATE_DROP_CHANCE_113C[record.operateFn] ??
@@ -25802,6 +33554,9 @@ export class GameInstance {
         break
       }
       case 'container': {
+        if (obj.trapType > 0) {
+          this.triggerContainerTrap113c(player, obj)
+        }
         if (record.operateFn === 19) {
           // #1837: Armor Stand (0x6FC8B2E0 -> 0x6FC31FB0)
           const dropped = rollArmorStandDrop113c({
@@ -25854,6 +33609,12 @@ export class GameInstance {
           // #1838: Act 5 Evil Urn 466 (0x6FC8EDB0 -> 100% Chest TC + Unique/Champion pack)
           this.rollContainerDrop(player, obj, 100)
           this.spawnEvilUrnAmbush113c(obj)
+        } else if (
+          record.operateFn === 1 &&
+          this.rng.rand(10_000) < 1808 &&
+          this.spawnContainerAmbushMonster113c(obj) !== undefined
+        ) {
+          // #1918: Sarcophagus / Casket (OperateFn 1, 0x6FC8AEF0) 18.08% monster ambush replaces item drop.
         } else {
           // #1834: includes OperateFn 51 (Act 3 Jungle Stash 185..188 -> 75% Chest TC)
           const dropChance = getContainerOperateDropChance113c(record.operateFn)
@@ -25922,6 +33683,21 @@ export class GameInstance {
       lookupBaseInfo(clean).quest ||
       GameInstance.QUEST_ITEM_EQUIVALENT_CODES_113C[clean] !== undefined
     )
+  }
+
+  private resolveCarry1UniqueId113c(item: ServerItemEntry): number | undefined {
+    if (item.quality !== 7) return undefined
+    const tables = getEmbeddedDropTables()
+    const explicitId = item.rawItemData?.uniqueItemId
+    if (explicitId !== undefined) {
+      const def = tables.uniques.getById(explicitId)
+      return def?.carry1 ? def.id : undefined
+    }
+    const candidates = tables.uniques.getEnabledByCode(item.code.trim().toLowerCase())
+    if (candidates.length === 1 && candidates[0]!.carry1) {
+      return candidates[0]!.id
+    }
+    return undefined
   }
 
   private playerHasQuestItem(player: InternalPlayerRecord, code: string): boolean {
@@ -26003,7 +33779,7 @@ export class GameInstance {
     )
     entry.x = pos.x
     entry.y = pos.y
-    this.groundItems.set(entry.unitId, entry)
+    this.registerGroundItem113c(entry)
     this.broadcastToArea(player.areaId, {
       type: 'ItemEvent',
       action: 'drop',
@@ -26055,32 +33831,62 @@ export class GameInstance {
         (candidate) => candidate.areaId === obj.areaId && candidate.classId === 473 && candidate.useCount > 0,
       )
       if (cages.length >= 3) {
-        this.setPlayerQuestFlag(player, 'a5q2', QUEST_FLAG_REWARD_PENDING_113C)
-      }
-    }
-    if (obj.classId >= 17 && obj.classId <= 21) {
-      obj.useCount = 1
-      const opened = [...this.objects.values()].filter(
-        (candidate) =>
-          candidate.areaId === obj.areaId &&
-          candidate.classId >= 17 &&
-          candidate.classId <= 21 &&
-          candidate.useCount > 0,
-      )
-      if (opened.length >= 5 && !this.cairnPortalAreas.has(obj.areaId)) {
-        this.cairnPortalAreas.add(obj.areaId)
-        this.spawnObject({
-          classId: 60,
-          x: opened[0]!.x,
-          y: opened[0]!.y,
-          areaId: obj.areaId,
-          mode: 1,
-          destAreaId: 38,
-        })
+        for (const recipient of this.getQuestEligiblePartyRecipients113c(player, obj.areaId)) {
+          if (hasQuestFlag113c(recipient.questFlags, 'a5q2', QUEST_FLAG_COMPLETED_113C)) continue
+          this.setPlayerQuestFlag(recipient, 'a5q2', QUEST_FLAG_REWARD_PENDING_113C)
+        }
       }
     }
     if (obj.classId === 26) {
-      this.setPlayerQuestFlag(player, 'a1q3', QUEST_FLAG_COMPLETED_113C)
+      // #1926: Objects.txt 26 Cain's Gibbet (`OperateFn 10`, `D2Game.dll` `0x6FC9CCF0`)
+      // releases Deckard Cain (`#265 cain1`) without dropping container loot and completes `a1q3`
+      // for eligible party members.
+      for (const recipient of this.getQuestEligiblePartyRecipients113c(player, obj.areaId)) {
+        this.setPlayerQuestFlag(
+          recipient,
+          'a1q3',
+          QUEST_FLAG_STARTED_113C | QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_PRIMARY_GOAL_DONE_113C,
+        )
+      }
+      const hasRescuedCain = [...this.monsters.values()].some(
+        (m) => m.areaId === obj.areaId && m.hcIdx === 265 && !m.dead,
+      )
+      if (!hasRescuedCain) {
+        const stand = this.loadedAreas.has(obj.areaId)
+          ? findStandableNear(
+              (x, y) => this.isWorldWalkableForPlayer(obj.areaId, x, y),
+              obj.x + 2,
+              obj.y,
+              6,
+            )
+          : null
+        this.spawnMonster({
+          classId: 265,
+          name: 'Deckard Cain',
+          x: stand?.x ?? obj.x + 2,
+          y: stand?.y ?? obj.y,
+          areaId: obj.areaId,
+          isNpc: true,
+          isKillable: false,
+          aiDisabled: true,
+        })
+      }
+    }
+    if (obj.classId === 8) {
+      // #1925: Stony Field Moldy Tome (`Objects.txt 8 TowerTome`, `OperateFn 6`, `D2Game.dll` `0x6FC9D870`)
+      // reveals Forgotten Tower quest (`a1q4`, NOT `a1q3`) and emits quest scroll message `127`.
+      this.setPlayerQuestFlag(player, 'a1q4', QUEST_FLAG_STARTED_113C)
+      this.emitToPlayer(player.unitId, {
+        type: 'Npc',
+        kind: 'info',
+        unitType: 2,
+        npcId: obj.unitId,
+        unitId: obj.unitId,
+        count: 1,
+        messages: [{ menu: 0, stringId: 127 }],
+        allMessages: [{ menu: 0, stringId: 127 }],
+      })
+      return
     }
 
     // A2Q6: the Horadric Staff in the orifice (D2Game 0x6fce9dae..0x6fce9dcd) deletes hst/vip/msf
@@ -26094,7 +33900,9 @@ export class GameInstance {
       for (const part of parts) {
         this.removePlayerQuestItem(player, part)
       }
-      this.setPlayerQuestFlag(player, 'a2q2', QUEST_FLAG_COMPLETED_113C)
+      for (const recipient of this.getQuestEligiblePartyRecipients113c(player, obj.areaId)) {
+        this.setPlayerQuestFlag(recipient, 'a2q2', QUEST_FLAG_COMPLETED_113C)
+      }
       const horadricStaffMeta = this.registry.getMissileById(338)
       const orificeDelayTicks = Math.max(
         1,
@@ -26134,11 +33942,15 @@ export class GameInstance {
       )
       if (potion === undefined) return
       this.removePlayerQuestItem(player, potion)
-      this.setPlayerQuestFlag(
-        player,
-        'a5q3',
-        QUEST_FLAG_STARTED_113C | QUEST_FLAG_REWARD_PENDING_113C,
-      )
+      for (const recipient of this.getQuestEligiblePartyRecipients113c(player, obj.areaId)) {
+        if (hasQuestFlag113c(recipient.questFlags, 'a5q3', QUEST_FLAG_COMPLETED_113C)) continue
+        this.setPlayerQuestFlag(
+          recipient,
+          'a5q3',
+          QUEST_FLAG_STARTED_113C | QUEST_FLAG_REWARD_PENDING_113C,
+        )
+      }
+      this.syncHarrogathA5Q3State113c(player)
       return
     }
     this.setPlayerQuestFlag(player, questId, QUEST_FLAG_STARTED_113C)
@@ -26150,34 +33962,35 @@ export class GameInstance {
           sealIds.includes(candidate.classId) &&
           candidate.mode === 2,
       )
-      if (opened.length === sealIds.length) {
+      if (opened.length >= sealIds.length) {
         this.setPlayerQuestFlag(player, 'a4q3', QUEST_FLAG_PRIMARY_GOAL_DONE_113C)
       }
+      this.tryTriggerChaosDiabloSpawn113c(obj.areaId)
       return
     }
     if (obj.classId === 252) {
       return
     }
 
-    // Reward-pending quest objects consumed by their NPC.
-    const pendingQuest =
-      obj.classId === 108
-        ? 'a1q5'
-        : obj.classId === 193
-          ? 'a3q4'
-          : undefined
+    // Reward-pending quest objects consumed by their NPC (`193` Lam Esen's Tome only sets
+    // `REWARD_PENDING` upon picking up `'bbb'`, and Alkor verifies & consumes `'bbb'` on turn-in, #1927).
+    const pendingQuest = obj.classId === 108 ? 'a1q5' : undefined
     if (pendingQuest !== undefined) {
       this.setPlayerQuestFlag(player, pendingQuest, QUEST_FLAG_REWARD_PENDING_113C)
       return
     }
-    // 1.13c objects whose operation itself completes the objective.
-    if ([149, 357, 546].includes(obj.classId)) {
-      this.setPlayerQuestFlag(player, questId, QUEST_FLAG_COMPLETED_113C)
+    // 1.13c objects whose operation itself completes the objective (`149` Tainted Sun Altar, `357` Horazon's Journal).
+    if ([149, 357].includes(obj.classId)) {
+      for (const recipient of this.getQuestEligiblePartyRecipients113c(player, obj.areaId)) {
+        this.setPlayerQuestFlag(recipient, questId, QUEST_FLAG_COMPLETED_113C)
+      }
     }
     // #1835: Objects.txt 357 Horazon's Journal (OperateFn 42, D2Game 0x6FCE9A80)
     // starts A2Q6 (The Seven Tombs) and opens permanent Red Portal (Objects.txt 60 -> Canyon of the Magi 46).
     if (obj.classId === 357) {
-      this.setPlayerQuestFlag(player, 'a2q6', QUEST_FLAG_STARTED_113C)
+      for (const recipient of this.getQuestEligiblePartyRecipients113c(player, obj.areaId)) {
+        this.setPlayerQuestFlag(recipient, 'a2q6', QUEST_FLAG_STARTED_113C)
+      }
       const existingPortal = [...this.objects.values()].find(
         (candidate) =>
           candidate.areaId === obj.areaId &&
@@ -26551,20 +34364,26 @@ export class GameInstance {
           Math.hypot(wp.x - player.x, wp.y - player.y) <= WAYPOINT_INTERACT_DISTANCE_SUBTILES &&
           this.hasInteractionLineOfSight(player.areaId, player.x, player.y, wp.x, wp.y, wp.unitId)
       } else if (pending.kind === 'corpse') {
+        const ownExtra = (player.extraCorpses ?? []).find(
+          (c) => c.corpseId === pending.id && c.areaId === player.areaId,
+        )
         const corpseOwner =
-          player.corpseId === pending.id
+          player.corpseId === pending.id || ownExtra !== undefined
             ? player
             : Array.from(this.players.values()).find((p) => p.corpseId === pending.id)
-        if (corpseOwner === undefined || corpseOwner.corpseId === undefined) {
+        if (
+          corpseOwner === undefined ||
+          (ownExtra === undefined && corpseOwner.corpseId === undefined)
+        ) {
           player.pendingInteraction = undefined
           player.pendingInteractionSteps = 0
           continue
         }
-        tx = corpseOwner.corpseX
-        ty = corpseOwner.corpseY
+        tx = ownExtra !== undefined ? ownExtra.x : corpseOwner.corpseX
+        ty = ownExtra !== undefined ? ownExtra.y : corpseOwner.corpseY
         inRangeAndSight =
-          Math.hypot(player.x - corpseOwner.corpseX, player.y - corpseOwner.corpseY) <= 3 &&
-          this.hasInteractionLineOfSight(player.areaId, player.x, player.y, corpseOwner.corpseX, corpseOwner.corpseY)
+          Math.hypot(player.x - tx, player.y - ty) <= 3 &&
+          this.hasInteractionLineOfSight(player.areaId, player.x, player.y, tx, ty)
       } else if (pending.kind === 'player') {
         const targetPlayer = this.players.get(pending.id)
         if (
@@ -26613,23 +34432,42 @@ export class GameInstance {
         else if (pending.kind === 'player') this.handlePlayerTradeInteract(player, pending.id)
         else if (pending.kind === 'waypoint') {
           const wp = this.objects.get(pending.id)
-          if (wp !== undefined && pending.destAreaId !== undefined) {
+          if (
+            wp !== undefined &&
+            pending.destAreaId !== undefined &&
+            canUseWaypointInPvp113c(this.currentFrame, player.hostilePortalLockUntilFrame)
+          ) {
             this.openWaypointMenu(player, wp)
             this.transitionPlayerArea(player, pending.destAreaId, { kind: 'waypoint' })
           }
         } else if (pending.kind === 'corpse') {
           if (player.corpseId === pending.id) {
             this.recoverPlayerCorpse(player)
+          } else if (
+            player.extraCorpses?.some(
+              (c) => c.corpseId === pending.id && c.areaId === player.areaId,
+            )
+          ) {
+            this.handleInteract(player, pending.id)
           } else {
             const victim = Array.from(this.players.values()).find((p) => p.corpseId === pending.id)
-            if (victim && this.partyManager.hasLootPermission(victim.unitId, player.unitId)) {
+            if (
+              victim &&
+              canLootPlayerCorpse113c({
+                looterUnitId: player.unitId,
+                victimUnitId: victim.unitId,
+                looterIsHardcore: isPlayerHardcore113c(player),
+                victimIsHardcore: isPlayerHardcore113c(victim),
+                hasLootPermission: this.partyManager.hasLootPermission(victim.unitId, player.unitId),
+              })
+            ) {
               this.lootOtherPlayerCorpse(player, victim)
             }
           }
         } else if (gamble !== undefined) {
           this.handleNpcAction(player, pending.id, gamble)
         } else {
-          this.handleNpcInteract(player, pending.id)
+          this.handleNpcInteract(player, pending.id, false, true)
         }
         continue
       }
@@ -26705,13 +34543,14 @@ export class GameInstance {
           this.hasInteractionLineOfSight(player.areaId, player.x, player.y, chosen.x, chosen.y)
         ) {
           player.extraCorpses.splice(extraIdx, 1)
-          if (player.corpseId !== undefined && player.corpseItems.length > 0) {
+          if (player.corpseId !== undefined && this.hasLivePrimaryCorpse113c(player)) {
             player.extraCorpses.push({
               corpseId: player.corpseId,
               areaId: player.corpseAreaId ?? player.areaId,
               x: player.corpseX,
               y: player.corpseY,
               items: player.corpseItems,
+              lostExp: player.corpseLostExp ?? 0,
             })
           }
           player.corpseId = chosen.corpseId
@@ -26719,11 +34558,17 @@ export class GameInstance {
           player.corpseX = chosen.x
           player.corpseY = chosen.y
           player.corpseItems = chosen.items
+          player.corpseLostExp = chosen.lostExp ?? 0
           player.pendingInteraction = undefined
           player.pendingInteractionSteps = 0
           this.recoverPlayerCorpse(player)
           return
         }
+        if (player.pendingInteraction === undefined) {
+          player.pendingInteraction = { kind: 'corpse', id: targetId }
+          player.pendingInteractionSteps = 0
+        }
+        return
       }
     }
 
@@ -26739,7 +34584,15 @@ export class GameInstance {
         ) {
           player.pendingInteraction = undefined
           player.pendingInteractionSteps = 0
-          if (this.partyManager.hasLootPermission(otherPlayer.unitId, player.unitId)) {
+          if (
+            canLootPlayerCorpse113c({
+              looterUnitId: player.unitId,
+              victimUnitId: otherPlayer.unitId,
+              looterIsHardcore: isPlayerHardcore113c(player),
+              victimIsHardcore: isPlayerHardcore113c(otherPlayer),
+              hasLootPermission: this.partyManager.hasLootPermission(otherPlayer.unitId, player.unitId),
+            })
+          ) {
             this.lootOtherPlayerCorpse(player, otherPlayer)
           }
           return
@@ -26772,23 +34625,25 @@ export class GameInstance {
         // D2Game OperateFn 50 (0x6fc8f4f0): Durance of Hate Stairs (Objects.txt 386)
         // cannot be entered until the Compelling Orb mist has opened them (mode === 2).
         if (obj.classId === 386 && obj.mode !== 2) return
+        if (
+          !canEnterPortalInPvp113c({
+            currentFrame: this.currentFrame,
+            playerUnitId: player.unitId,
+            hostilePortalLockUntilFrame: player.hostilePortalLockUntilFrame,
+            portalClassId: obj.classId,
+            portalOwnerId: obj.portalOwnerId,
+            isAlliedWithOwner:
+              obj.portalOwnerId !== undefined && obj.portalOwnerId > 0
+                ? this.partyManager.areAllied(obj.portalOwnerId, player.unitId)
+                : false,
+          })
+        ) {
+          return
+        }
         // Warp / portal interactions share the 1.13c 500 ms click cooldown.
         if (!this.consumeWarpCooldown(player)) return
-        // Town Portal (Objects.txt 59, owned): land next to the paired mouth, not the town
-        // entry. Other linked objects are level links that use the destination's warp back.
-        let arrival: AreaArrival = { kind: 'warp', fromAreaId: obj.areaId }
-        if (obj.portalOwnerId !== undefined) {
-          const paired = [...this.objects.values()].find(
-            other =>
-              other.unitId !== obj.unitId &&
-              other.areaId === obj.destAreaId &&
-              other.portalOwnerId === obj.portalOwnerId,
-          )
-          arrival = paired
-            ? { kind: 'townPortal', x: paired.x, y: paired.y }
-            : { kind: 'townPortal' }
-        }
-        const wasTownMouth = TOWN_AREAS.has(obj.areaId)
+        const arrival = this.resolvePortalArrival113c(obj)
+        const wasTownMouth = TOWN_AREAS.has(obj.areaId) && obj.portalOwnerId !== undefined
         const moved = this.transitionPlayerArea(player, obj.destAreaId, arrival)
         if (moved && wasTownMouth) this.closeTownPortal(player)
         return
@@ -26807,7 +34662,7 @@ export class GameInstance {
 
     const npc = this.monsters.get(targetId)
     if (npc && npc.isNpc && npc.areaId === player.areaId) {
-      this.handleNpcInteract(player, targetId)
+      this.handleNpcInteract(player, targetId, false, true)
       return
     }
     if (targetId !== player.unitId && this.players.has(targetId)) {
@@ -26857,6 +34712,7 @@ export class GameInstance {
    * must have been reached (quest progression proxy).
    */
   private canUseWaypoint(player: InternalPlayerRecord, destAreaId: number): boolean {
+    if (!canUseWaypointInPvp113c(this.currentFrame, player.hostilePortalLockUntilFrame)) return false
     if (!WAYPOINT_AREA_IDS.includes(destAreaId)) return false
     if (!player.waypoints.has(destAreaId)) return false
     if (areaToAct(destAreaId) > player.unlockedAct) return false
@@ -26998,6 +34854,35 @@ export class GameInstance {
     return area.findActSpawnLocation(ACT_SPAWN_TILE_TOWN_PORTAL, 3)
   }
 
+  /**
+   * Resolves destination `AreaArrival` for owned Town Portals (`classId = 59`), permanent linked
+   * red portals (`classId = 60`, e.g. Moo Moo Farm `39` & Pandemonium `133..136`), or staircase warps.
+   */
+  private resolvePortalArrival113c(obj: InternalObjectRecord): AreaArrival {
+    if (obj.portalOwnerId !== undefined) {
+      const paired = [...this.objects.values()].find(
+        (other) =>
+          other.unitId !== obj.unitId &&
+          other.areaId === obj.destAreaId &&
+          other.portalOwnerId === obj.portalOwnerId,
+      )
+      return paired ? { kind: 'townPortal', x: paired.x, y: paired.y } : { kind: 'townPortal' }
+    }
+    if (obj.classId === 60 && obj.destAreaId !== undefined) {
+      const linked =
+        (obj.linkedPortalId !== undefined ? this.objects.get(obj.linkedPortalId) : undefined) ??
+        [...this.objects.values()].find(
+          (other) =>
+            other.unitId !== obj.unitId &&
+            other.classId === 60 &&
+            other.areaId === obj.destAreaId &&
+            other.destAreaId === obj.areaId,
+        )
+      return linked ? { kind: 'townPortal', x: linked.x, y: linked.y } : { kind: 'townPortal' }
+    }
+    return { kind: 'warp', fromAreaId: obj.areaId }
+  }
+
   private openTownPortal(
     player: InternalPlayerRecord,
     consumeScroll = true,
@@ -27006,6 +34891,15 @@ export class GameInstance {
   ): number {
     // Reject Town Portal cast while in Town (F5.B3)
     if (TOWN_AREAS.has(player.areaId)) {
+      return 0
+    }
+    // 1.13c `D2Game.dll` (`0x6FCCF4B5`, `cmp eax, 0x88`): Town Portal is forbidden inside Uber Tristram (`136`, #1841).
+    if (player.areaId === PANDEMONIUM_FINALE_AREA_ID_113C) {
+      this.emitToPlayer(player.unitId, {
+        type: 'PlaySound',
+        unit: { unitType: 0, id: player.unitId },
+        sound: 19,
+      })
       return 0
     }
     if (consumeScroll && !this.consumeTownPortalScrollOrTome(player)) return 0
@@ -27153,13 +35047,21 @@ export class GameInstance {
     if (prevArea === destAreaId) return
     const dest = this.loadedAreas.get(destAreaId)
     if (!dest) return
+    const prevX = player.x
+    const prevY = player.y
     this.abortPlayerTrade(player.unitId)
-    this.hidePlayerAreaRooms(player, prevArea)
     player.areaId = destAreaId
+    this.partyManager.updatePlayer(player.unitId, {
+      areaId: destAreaId,
+      level: player.level,
+    })
     this.clearVendorPools(player, prevArea)
     player.act = areaToAct(destAreaId)
     player.unlockedAct = Math.max(player.unlockedAct, player.act)
     player.activeWaypointUnitId = 0
+    if (destAreaId === 109) {
+      this.syncHarrogathA5Q3State113c(player)
+    }
 
     const motion = this.getPlayerMotion(player)
     // 1.13c PLAYER_UpdateRoom keeps `pPath` and the current walk/run action
@@ -27168,20 +35070,31 @@ export class GameInstance {
       this.terrainWalkableCheck ? (sx, sy) => this.isPlayerSubTileBlocked(destAreaId, sx, sy) : null,
     )
 
-    for (const other of this.players.values()) {
-      if (other.unitId === player.unitId) continue
-      if (other.areaId === prevArea) {
-        this.emitToPlayer(other.unitId, {
-          type: 'UnitRemove',
-          unitType: 0,
-          id: player.unitId,
-          unitId: player.unitId,
-        })
+    // #1857: preserve seam-adjacent rooms still inside AOI; stream newly revealed rooms + units,
+    // and sync viewer AOI enter/leave across the stitched outdoor boundary instead of dropping Units.
+    this.syncUnitMoveAcrossViewerAoi113c(
+      'player',
+      player.unitId,
+      prevArea,
+      prevX,
+      prevY,
+      destAreaId,
+      player.x,
+      player.y,
+      player.unitId,
+    )
+    if (dest.rooms.length > 0) {
+      this.revealAreaRoomsNearPlayer(player, true)
+    } else {
+      this.emitAreaSnapshotToPlayer(player)
+    }
+    if (this.partyManager.getPartyId(player.unitId) !== 0xffff) {
+      for (const member of this.players.values()) {
+        if (this.partyManager.areAllied(player.unitId, member.unitId)) {
+          this.emitPartyMemberPulsesForPlayer(member)
+        }
       }
     }
-
-    this.revealAreaRoomsNearPlayer(player)
-    this.emitAreaSnapshotToPlayer(player)
   }
 
   /**
@@ -27196,6 +35109,8 @@ export class GameInstance {
     arrival: AreaArrival,
   ): boolean {
     const prevArea = player.areaId
+    const prevX = player.x
+    const prevY = player.y
     const prevAct = areaToAct(prevArea)
     const destAct = areaToAct(destAreaId)
     if (!this.playerCanEnterArea(player, destAreaId)) {
@@ -27223,6 +35138,13 @@ export class GameInstance {
       const loadedArea = this.loadedAreas.get(destAreaId)
       if (loadedArea) {
         landing = this.resolveArrivalPosition(loadedArea, arrival)
+      } else if (arrival.kind === 'townPortal' && arrival.x !== undefined && arrival.y !== undefined) {
+        landing =
+          findStandableNear(
+            (x, y) => this.isWorldWalkableForPlayer(destAreaId, x, y),
+            arrival.x,
+            arrival.y,
+          ) ?? { x: arrival.x, y: arrival.y }
       } else if (arrival.kind === 'respawn' && ACT_TOWN_AREAS.includes(destAreaId)) {
         // Resolver-less synthetic test grid: no DRLG town exists, respawn on the legacy grid spawn.
         landing =
@@ -27242,6 +35164,10 @@ export class GameInstance {
       this.emitToPlayer(player.unitId, { type: 'UnloadAct' })
     }
     player.areaId = destAreaId
+    this.partyManager.updatePlayer(player.unitId, {
+      areaId: destAreaId,
+      level: player.level,
+    })
     this.clearVendorPools(player, prevArea)
     player.act = destAct
     player.unlockedAct = Math.max(player.unlockedAct, destAct)
@@ -27252,20 +35178,23 @@ export class GameInstance {
       player.targetX = landing.x
       player.targetY = landing.y
     }
+    if (destAreaId === 109) {
+      this.syncHarrogathA5Q3State113c(player)
+    }
     this.relocatePlayerFollowersToPlayer(player, false)
 
     if (prevArea !== destAreaId) {
-      for (const other of this.players.values()) {
-        if (other.unitId === player.unitId) continue
-        if (other.areaId === prevArea) {
-          this.emitToPlayer(other.unitId, {
-            type: 'UnitRemove',
-            unitType: 0,
-            id: player.unitId,
-            unitId: player.unitId,
-          })
-        }
-      }
+      this.syncUnitMoveAcrossViewerAoi113c(
+        'player',
+        player.unitId,
+        prevArea,
+        prevX,
+        prevY,
+        destAreaId,
+        player.x,
+        player.y,
+        player.unitId,
+      )
     }
 
     if (destAct !== prevAct) {
@@ -27289,6 +35218,13 @@ export class GameInstance {
       areaId: player.areaId,
     })
     this.emitAreaSnapshotToPlayer(player)
+    if (prevArea !== destAreaId && this.partyManager.getPartyId(player.unitId) !== 0xffff) {
+      for (const member of this.players.values()) {
+        if (this.partyManager.areAllied(player.unitId, member.unitId)) {
+          this.emitPartyMemberPulsesForPlayer(member)
+        }
+      }
+    }
     return true
   }
 
@@ -27319,20 +35255,51 @@ export class GameInstance {
     player: InternalPlayerRecord,
     itemId: number,
     toCursor: boolean,
+    allowRanged = false,
   ): void {
     const gItem = this.groundItems.get(itemId)
     if (!gItem || gItem.areaId !== player.areaId) return
+    if (
+      !allowRanged &&
+      Math.hypot(player.x - gItem.x, player.y - gItem.y) > ITEM_PICKUP_MAX_DISTANCE_SUBTILES
+    ) {
+      return
+    }
 
     if (gItem.code === 'gld') {
       // 1.13c D2Game.dll @ 0x6FCF6C80 (`ITEMS_PickUpGold`):
-      // caps player STAT_GOLD (14) at `D2Common_GetInventoryGoldLimit(pPlayer)` (`clvl * 10000`,
-      // 0x6FD81940 / ordinal #10049), removes the ground pile, and drops any leftover gold back
-      // onto the ground via `0x6FC32B90` (`ITEMS_DropGoldPile`).
-      const maxInventoryGold = getInventoryGoldLimit(player.level)
+      // splits picked-up gold equally across alive allied party members in the same `areaId`
+      // (`PartyManager.splitGold`, remainder to picker), caps each recipient's STAT_GOLD (14) at
+      // `D2Common_GetInventoryGoldLimit(pPlayer)` (`clvl * 10000`, 0x6FD81940 / ordinal #10049),
+      // removes the ground pile, and drops any unabsorbable overflow back onto the ground (#1860).
       const itemGold = Math.max(0, Math.trunc(gItem.quantity))
-      const room = Math.max(0, maxInventoryGold - player.gold)
-      const pickedGold = Math.min(itemGold, room)
-      const leftoverGold = itemGold - pickedGold
+      const goldCandidates: {
+        readonly unitId: number
+        readonly areaId: number
+        readonly level: number
+        readonly currentGold: number
+        readonly maxGold: number
+        readonly dead: boolean
+      }[] = []
+      for (const p of this.players.values()) {
+        this.partyManager.updatePlayer(p.unitId, {
+          level: p.level,
+          areaId: p.areaId,
+        })
+        goldCandidates.push({
+          unitId: p.unitId,
+          areaId: p.areaId,
+          level: p.level,
+          currentGold: p.gold,
+          maxGold: getInventoryGoldLimit(p.level),
+          dead: p.dead,
+        })
+      }
+      const { shares, overflowGold } = this.partyManager.splitGold(
+        player.unitId,
+        itemGold,
+        goldCandidates,
+      )
       this.groundItems.delete(itemId)
       this.broadcastToArea(player.areaId, {
         type: 'UnitRemove',
@@ -27340,18 +35307,15 @@ export class GameInstance {
         id: itemId,
         unitId: itemId,
       })
-      if (pickedGold > 0) {
-        player.gold += pickedGold
-        this.emitToPlayer(player.unitId, {
-          type: 'UnitStatUpdate',
-          unitType: 'player',
-          unitId: player.unitId,
-          statId: 14,
-          value: player.gold,
-        })
+      for (const [recipientId, gained] of shares.entries()) {
+        if (gained <= 0) continue
+        const recipient = this.players.get(recipientId)
+        if (!recipient) continue
+        recipient.gold += gained
+        this.emitPlayerGoldStat(recipient)
       }
-      if (leftoverGold > 0) {
-        this.dropPlayerGoldPile(player, leftoverGold)
+      if (overflowGold > 0) {
+        this.dropPlayerGoldPile(player, overflowGold)
       }
       return
     }
@@ -27360,6 +35324,21 @@ export class GameInstance {
     // reject duplicate quest item pickup BEFORE removing the item from the ground,
     // and emit S2C 0x2C sound 19 (`impossible1`).
     if (this.isOnePerPlayerQuestItem(gItem.code) && this.playerHasQuestItem(player, gItem.code)) {
+      this.emitToPlayer(player.unitId, {
+        type: 'PlaySound',
+        unit: { unitType: 0, id: player.unitId },
+        sound: 19,
+      })
+      return
+    }
+
+    // 1.13c `UniqueItems.txt` `carry1 = 1` (`D2Game.dll` `0x6FCF2F00`, `#357` Gheed's Fortune,
+    // `#381` Annihilus, `#400` Hellfire Torch): reject duplicate pickup before removing from ground.
+    const carry1UniqueId = this.resolveCarry1UniqueId113c(gItem)
+    if (
+      carry1UniqueId !== undefined &&
+      player.items.some((owned) => this.resolveCarry1UniqueId113c(owned) === carry1UniqueId)
+    ) {
       this.emitToPlayer(player.unitId, {
         type: 'PlaySound',
         unit: { unitType: 0, id: player.unitId },
@@ -27410,13 +35389,15 @@ export class GameInstance {
       return
     }
 
-    this.groundItems.delete(itemId)
     this.broadcastToArea(player.areaId, {
       type: 'UnitRemove',
       unitType: 4,
       id: itemId,
       unitId: itemId,
+      areaId: player.areaId,
     })
+    this.groundItems.delete(itemId)
+    gItem.expireFrame = undefined
 
     gItem.ownerId = player.unitId
     if (isKey) {
@@ -27454,7 +35435,7 @@ export class GameInstance {
         // Partial key stack filled existing key stacks; drop remaining keys back onto ground.
         gItem.ownerId = 0
         gItem.location = 'ground'
-        this.groundItems.set(gItem.unitId, gItem)
+        this.registerGroundItem113c(gItem)
         this.broadcastToArea(player.areaId, {
           type: 'ItemEvent',
           action: 'drop',
@@ -27475,20 +35456,16 @@ export class GameInstance {
     }
 
     if (toCursor) {
-      gItem.location = 'cursor'
-      gItem.x = 0
-      gItem.y = 0
+      this.placeServerItem113c(gItem, 'cursor', 0, 0, player.unitId)
     } else {
-      gItem.location = 'inventory'
-      gItem.x = slot!.x
-      gItem.y = slot!.y
-      gItem.storePage = 1
+      this.placeServerItem113c(gItem, 'inventory', slot!.x, slot!.y, player.unitId)
     }
     player.items.push(gItem)
     if (!toCursor) {
       this.refreshPlayerAccruedMaxPools(player)
     }
 
+    const pickedContainer = toCursor ? 'cursor' : 'inventory'
     this.emitToPlayer(player.unitId, {
       type: 'ItemEvent',
       action: 'pickup',
@@ -27496,14 +35473,23 @@ export class GameInstance {
       code: gItem.code,
       x: gItem.x,
       y: gItem.y,
-      container: gItem.location,
+      container: pickedContainer,
       item: this.serverEntryToItemData(gItem),
     })
+    this.emitSocketChildrenToPlayer(player.unitId, gItem, 0x13)
 
-    // D2Game.dll @ 0x6fd07640 (ACT3Q1_Callback03_ItemPickedUp):
-    // - Picking up 'j34' (0x6fd076ee..0x6fd07741): sets bit 6 (0x0040) on first pickup, plays sound 72 (0x48), and syncs a3q1.
-    // - Picking up 'g34' (0x6fd076b9..0x6fd076d1): syncs a3q1 status byte (3 = qstsa3q43, or 4 if bit 4 set).
+    // D2Game.dll @ 0x6fd07640 (ACT3Q1_Callback03_ItemPickedUp) & 0x6fd09060 (ACT3Q4 Lam Esen's Tome):
     const pickedCode = gItem.code.toLowerCase().trim()
+    if (
+      pickedCode === 'bbb' &&
+      !hasQuestFlag113c(player.questFlags, 'a3q4', QUEST_FLAG_COMPLETED_113C)
+    ) {
+      this.setPlayerQuestFlag(
+        player,
+        'a3q4',
+        QUEST_FLAG_STARTED_113C | QUEST_FLAG_REWARD_PENDING_113C,
+      )
+    }
     if (
       (pickedCode === 'j34' || pickedCode === 'g34') &&
       !hasQuestFlag113c(
@@ -27548,7 +35534,37 @@ export class GameInstance {
     item.areaId = player.areaId
     item.x = pos.x
     item.y = pos.y
-    this.groundItems.set(item.unitId, item)
+    item.bodyLoc = 0
+    item.storePage = 0
+    for (const child of item.socketedItems ?? []) {
+      child.ownerId = item.unitId
+    }
+    if (item.rawItemData !== undefined) {
+      const cleanFlags =
+        Number(item.rawItemData.rawFlags ?? item.rawItemData.flags ?? 0x10) & ~0x20
+      item.rawItemData = {
+        ...item.rawItemData,
+        opcode: 0x9c,
+        action: 0x02,
+        ownerType: 0,
+        ownerId: 0 as UnitId,
+        location: 3,
+        container: 'ground',
+        bodyLoc: 0,
+        equippedSlot: 0,
+        gridX: 0,
+        gridY: 0,
+        storePage: 0,
+        storagePage: 0,
+        worldX: pos.x,
+        worldY: pos.y,
+        x: pos.x,
+        y: pos.y,
+        flags: cleanFlags,
+        rawFlags: cleanFlags,
+      }
+    }
+    this.registerGroundItem113c(item)
     if (prevLocation === 'inventory' || prevLocation === 'equipped') {
       if (prevLocation === 'equipped') {
         this.syncPlayerItemAuras113c(player, true)
@@ -27570,6 +35586,7 @@ export class GameInstance {
         action: 0x02,
       },
     })
+    this.emitSocketChildrenToArea(player.areaId, item, 0x13)
   }
 
   private handleItemMove(
@@ -27985,6 +36002,19 @@ export class GameInstance {
       }
     }
     player.weaponSet = player.weaponSet === 1 ? 0 : 1
+    const prevLeft = player.leftSkill
+    const prevRight = player.rightSkill
+    const prevLeftItemId = player.leftSkillItemId
+    const prevRightItemId = player.rightSkillItemId
+    player.leftSkill = player.altLeftSkill
+    player.rightSkill = player.altRightSkill
+    player.leftSkillItemId = player.altLeftSkillItemId
+    player.rightSkillItemId = player.altRightSkillItemId
+    player.altLeftSkill = prevLeft
+    player.altRightSkill = prevRight
+    player.altLeftSkillItemId = prevLeftItemId
+    player.altRightSkillItemId = prevRightItemId
+
     for (const item of movedItems) {
       if (item.rawItemData !== undefined) {
         item.rawItemData = {
@@ -28003,11 +36033,31 @@ export class GameInstance {
         container: 'equipment',
         item: this.serverEntryToItemData(item),
       })
+      this.emitSocketChildrenToPlayer(player.unitId, item, 0x13)
     }
     this.emitToPlayer(player.unitId, {
       type: 'WeaponSwitch',
     })
+    if (player.leftSkill !== prevLeft || player.leftSkillItemId !== prevLeftItemId) {
+      this.emitToPlayer(player.unitId, {
+        type: 'ActiveSkill',
+        unitId: player.unitId,
+        hand: 'left',
+        skill: player.leftSkill,
+        itemId: player.leftSkillItemId ?? 0xffffffff,
+      })
+    }
+    if (player.rightSkill !== prevRight || player.rightSkillItemId !== prevRightItemId) {
+      this.emitToPlayer(player.unitId, {
+        type: 'ActiveSkill',
+        unitId: player.unitId,
+        hand: 'right',
+        skill: player.rightSkill,
+        itemId: player.rightSkillItemId ?? 0xffffffff,
+      })
+    }
     this.validatePlayerActiveSkills(player)
+    this.syncPlayerSelectedRightAura113c(player)
     this.syncPlayerItemAuras113c(player, true)
     this.refreshPlayerAccruedMaxPools(player)
   }
@@ -28317,6 +36367,77 @@ export class GameInstance {
     this.syncMercenaryOwnerAura(player, merc.activeAura, merc, true)
   }
 
+  private getPlayerBeltMaxRows(player: InternalPlayerRecord): number {
+    const belt = player.items.find(
+      (item) => item.location === 'equipped' && item.bodyLoc === 8,
+    )
+    if (!belt) return NO_BELT_ROWS
+    return BELT_CODE_TO_ROWS[belt.code.trim().toLowerCase()] ?? 4
+  }
+
+  private getBeltColRow(it: ServerItemEntry): { col: number; row: number } {
+    if (it.y > 0) {
+      return { col: it.x & 3, row: it.y }
+    }
+    return { col: it.x & 3, row: (it.x >> 2) & 3 }
+  }
+
+  private setBeltEntryColRow(it: ServerItemEntry, col: number, row: number): number {
+    const c = col & 3
+    const r = Math.max(0, Math.min(3, row))
+    const linearSlot = (r * 4 + c) & 0x0f
+    it.location = 'belt'
+    it.x = c
+    it.y = r
+    it.storePage = 0
+    if (it.rawItemData !== undefined) {
+      const cleanFlags = Number(it.rawItemData.rawFlags ?? it.rawItemData.flags ?? 0x10) & ~0x20
+      it.rawItemData = {
+        ...it.rawItemData,
+        location: 2,
+        container: 'belt',
+        gridX: linearSlot,
+        gridY: 0,
+        x: linearSlot,
+        y: 0,
+        storePage: 0,
+        storagePage: 0,
+        flags: cleanFlags,
+        rawFlags: cleanFlags,
+      }
+    }
+    return linearSlot
+  }
+
+  private shiftBeltColumnDown(
+    player: InternalPlayerRecord,
+    col: number,
+    removedRow: number,
+  ): void {
+    const above = player.items
+      .filter((it) => {
+        if (it.location !== 'belt') return false
+        const pos = this.getBeltColRow(it)
+        return pos.col === (col & 3) && pos.row > removedRow
+      })
+      .sort((a, b) => this.getBeltColRow(a).row - this.getBeltColRow(b).row)
+
+    for (const upper of above) {
+      const pos = this.getBeltColRow(upper)
+      const nextLinear = this.setBeltEntryColRow(upper, pos.col, pos.row - 1)
+      this.emitToPlayer(player.unitId, {
+        type: 'ItemEvent',
+        action: 'beltPut',
+        itemId: upper.unitId,
+        code: upper.code,
+        x: nextLinear,
+        y: 0,
+        container: 'belt',
+        item: this.serverEntryToItemData(upper),
+      })
+    }
+  }
+
   private handleBeltPut(
     player: InternalPlayerRecord,
     itemId: number,
@@ -28324,24 +36445,92 @@ export class GameInstance {
   ): void {
     const idx = this.findPlayerItemIndex(player, itemId)
     const item = idx !== -1 ? player.items[idx] : undefined
-    if (!item) return
-    item.location = 'belt'
-    item.x = Math.max(0, Math.min(15, slot))
-    item.y = 0
-    item.storePage = 0
+    if (!item || item.width !== 1 || item.height !== 1) return
+    if (BELT_POTION_CATALOG[item.code.trim().toLowerCase()] === undefined) return
+    const clamped = Math.max(0, Math.min(15, Math.trunc(slot)))
+    const col = clamped & 3
+    const row = clamped >> 2
+    if (row >= this.getPlayerBeltMaxRows(player)) return
+    const occupied = player.items.some((other) => {
+      if (other.unitId === item.unitId || other.location !== 'belt') return false
+      const pos = this.getBeltColRow(other)
+      return pos.col === col && pos.row === row
+    })
+    if (occupied) return
+    const prevLocation = item.location
+    const linearSlot = this.setBeltEntryColRow(item, col, row)
+    if (prevLocation === 'inventory') {
+      this.refreshPlayerAccruedMaxPools(player)
+    }
     this.emitToPlayer(player.unitId, {
       type: 'ItemEvent',
       action: 'beltPut',
       itemId: item.unitId,
       code: item.code,
-      x: item.x,
+      x: linearSlot,
       y: 0,
       container: 'belt',
       item: this.serverEntryToItemData(item),
     })
   }
 
-  private handleBeltUse(player: InternalPlayerRecord, itemId: number): void {
+  /**
+   * 1.13c `C2S 0x24` (`RemoveBeltItem`, `D2Game.dll` `0x6FCF0F80`):
+   * Moves the targeted belt potion/scroll onto the player's cursor (`location = 'cursor'`)
+   * without consuming it, and shifts upper potions in the same belt column down by 1 row.
+   */
+  private handleBeltRemoveToCursor(
+    player: InternalPlayerRecord,
+    itemId: number,
+  ): void {
+    if (player.items.some((candidate) => candidate.location === 'cursor')) return
+    const item = player.items.find(
+      (candidate) => candidate.unitId === itemId && candidate.location === 'belt',
+    )
+    if (!item) return
+    const { col, row } = this.getBeltColRow(item)
+    item.location = 'cursor'
+    item.x = 0
+    item.y = 0
+    item.storePage = 0
+    if (item.rawItemData !== undefined) {
+      const cleanFlags = Number(item.rawItemData.rawFlags ?? item.rawItemData.flags ?? 0x10) & ~0x20
+      item.rawItemData = {
+        ...item.rawItemData,
+        location: 4,
+        container: 'cursor',
+        gridX: 0,
+        gridY: 0,
+        x: 0,
+        y: 0,
+        storePage: 0,
+        storagePage: 0,
+        flags: cleanFlags,
+        rawFlags: cleanFlags,
+      }
+    }
+    this.emitToPlayer(player.unitId, {
+      type: 'ItemEvent',
+      action: 0x0f,
+      itemId: item.unitId,
+      code: item.code,
+      x: 0,
+      y: 0,
+      container: 'cursor',
+      item: {
+        ...this.serverEntryToItemData(item),
+        location: 4,
+        container: 'cursor',
+      },
+    })
+    this.shiftBeltColumnDown(player, col, row)
+  }
+
+  private handleBeltUse(
+    player: InternalPlayerRecord,
+    itemId: number,
+    useOnMerc = false,
+  ): void {
     if (player.dead || this.isPlayerWhirlwinding113c(player)) return
     const idx = this.findPlayerItemIndex(player, itemId)
     if (idx === -1) return
@@ -28349,6 +36538,78 @@ export class GameInstance {
     if (!candidate) return
 
     const itemCode = candidate.code.toLowerCase().trim()
+
+    if (useOnMerc) {
+      let aliveMerc: InternalMercenaryRecord | undefined
+      for (const m of this.mercenaries.values()) {
+        if (m.ownerPlayerId === player.unitId && m.alive && m.hp > 0) {
+          aliveMerc = m
+          break
+        }
+      }
+      const catalog = BELT_POTION_CATALOG[itemCode]
+      const usableOnMerc =
+        aliveMerc !== undefined &&
+        (itemCode === 'rvs' ||
+          itemCode === 'rvl' ||
+          catalog?.kind === 'hp' ||
+          catalog?.kind === 'antidote' ||
+          catalog?.kind === 'thawing')
+      if (!usableOnMerc || !aliveMerc) {
+        this.emitToPlayer(player.unitId, {
+          type: 'PlaySound',
+          unit: { unitType: 0, id: player.unitId },
+          sound: 19,
+        })
+        return
+      }
+      const wasBelt = candidate.location === 'belt'
+      const beltPos = wasBelt ? this.getBeltColRow(candidate) : undefined
+      const deletedBase = this.serverEntryToItemData(candidate)
+      const deletedFlags = ((deletedBase.rawFlags ?? 0x10) | 0x20) >>> 0
+      const [item] = player.items.splice(idx, 1)
+      if (!item) return
+
+      if (wasBelt && beltPos !== undefined) {
+        this.emitToPlayer(player.unitId, {
+          type: 'ItemEvent',
+          action: 0x0f,
+          itemId: item.unitId,
+          code: item.code,
+          x: deletedBase.gridX,
+          y: 0,
+          container: 'belt',
+          item: {
+            ...deletedBase,
+            flags: deletedFlags,
+            rawFlags: deletedFlags,
+          },
+        })
+        this.shiftBeltColumnDown(player, beltPos.col, beltPos.row)
+      } else {
+        this.emitToPlayer(player.unitId, {
+          type: 'ItemEvent',
+          action: 'remove',
+          itemId: item.unitId,
+          code: item.code,
+          x: item.x,
+          y: item.y,
+          container: toItemContainer(item.location),
+        })
+      }
+
+      if (itemCode === 'rvl') {
+        aliveMerc.hp = aliveMerc.maxHp
+      } else if (itemCode === 'rvs') {
+        const heal = Math.max(1, Math.floor((aliveMerc.maxHp * 35) / 100))
+        aliveMerc.hp = Math.min(aliveMerc.maxHp, aliveMerc.hp + heal)
+      } else if (catalog?.kind === 'hp') {
+        aliveMerc.hp = Math.min(aliveMerc.maxHp, aliveMerc.hp + catalog.healHp)
+      }
+      this.broadcastAllyHp(aliveMerc.areaId, aliveMerc.unitId, aliveMerc.hp)
+      return
+    }
+
     // 1.13c consumable quest items (`D2Game.dll` @ `0x6fcf9e73..0x6fcf9f52`):
     // Book of Skill ('ass'), Potion of Life ('xyz'), and Scroll of Resistance ('tr2').
     // Preconditions are checked BEFORE splicing the item so rejected uses play sound 19
@@ -28476,6 +36737,15 @@ export class GameInstance {
       return
     }
 
+    if (itemCode === 'tsc' || itemCode === 'tbk') {
+      this.openTownPortal(player)
+      return
+    }
+
+    const wasBelt = candidate.location === 'belt'
+    const beltPos = wasBelt ? this.getBeltColRow(candidate) : undefined
+    const deletedBase = this.serverEntryToItemData(candidate)
+    const deletedFlags = ((deletedBase.rawFlags ?? 0x10) | 0x20) >>> 0
     const [item] = player.items.splice(idx, 1)
     if (!item) return
 
@@ -28494,12 +36764,40 @@ export class GameInstance {
       return
     }
 
-    if (item.code.startsWith('hp') || item.code.startsWith('rv')) {
-      player.hpFixed = Math.min(
-        player.maxHpFixed,
-        player.hpFixed + 30 * FIXED_ONE,
-      )
+    if (wasBelt && beltPos !== undefined) {
+      this.emitToPlayer(player.unitId, {
+        type: 'ItemEvent',
+        action: 0x0f,
+        itemId: item.unitId,
+        code: item.code,
+        x: deletedBase.gridX,
+        y: 0,
+        container: 'belt',
+        item: {
+          ...deletedBase,
+          flags: deletedFlags,
+          rawFlags: deletedFlags,
+        },
+      })
+      this.shiftBeltColumnDown(player, beltPos.col, beltPos.row)
+    } else {
+      this.emitToPlayer(player.unitId, {
+        type: 'ItemEvent',
+        action: 'remove',
+        itemId: item.unitId,
+        code: item.code,
+        x: item.x,
+        y: item.y,
+        container: toItemContainer(item.location),
+      })
+    }
+
+    const catalog = BELT_POTION_CATALOG[itemCode]
+    if (itemCode === 'rvl') {
+      player.hpFixed = player.maxHpFixed
       player.hp = Math.floor(player.hpFixed / FIXED_ONE)
+      player.manaFixed = player.maxManaFixed
+      player.mana = Math.floor(player.manaFixed / FIXED_ONE)
       this.emitToPlayer(player.unitId, {
         type: 'UnitStatUpdate',
         unitType: 'player',
@@ -28507,13 +36805,6 @@ export class GameInstance {
         statId: 6,
         value: player.hpFixed,
       })
-    }
-    if (item.code.startsWith('mp') || item.code.startsWith('rv')) {
-      player.manaFixed = Math.min(
-        player.maxManaFixed,
-        player.manaFixed + 30 * FIXED_ONE,
-      )
-      player.mana = Math.floor(player.manaFixed / FIXED_ONE)
       this.emitToPlayer(player.unitId, {
         type: 'UnitStatUpdate',
         unitType: 'player',
@@ -28521,6 +36812,62 @@ export class GameInstance {
         statId: 8,
         value: player.manaFixed,
       })
+    } else if (itemCode === 'rvs') {
+      const hpDelta = Math.max(FIXED_ONE, Math.floor((player.maxHpFixed * 35) / 100))
+      const manaDelta = Math.max(FIXED_ONE, Math.floor((player.maxManaFixed * 35) / 100))
+      player.hpFixed = Math.min(player.maxHpFixed, player.hpFixed + hpDelta)
+      player.hp = Math.floor(player.hpFixed / FIXED_ONE)
+      player.manaFixed = Math.min(player.maxManaFixed, player.manaFixed + manaDelta)
+      player.mana = Math.floor(player.manaFixed / FIXED_ONE)
+      this.emitToPlayer(player.unitId, {
+        type: 'UnitStatUpdate',
+        unitType: 'player',
+        unitId: player.unitId,
+        statId: 6,
+        value: player.hpFixed,
+      })
+      this.emitToPlayer(player.unitId, {
+        type: 'UnitStatUpdate',
+        unitType: 'player',
+        unitId: player.unitId,
+        statId: 8,
+        value: player.manaFixed,
+      })
+    } else {
+      if (catalog?.kind === 'hp' || itemCode.startsWith('hp')) {
+        const healHp = catalog?.healHp ?? 30
+        player.hpFixed = Math.min(
+          player.maxHpFixed,
+          player.hpFixed + healHp * FIXED_ONE,
+        )
+        player.hp = Math.floor(player.hpFixed / FIXED_ONE)
+        this.emitToPlayer(player.unitId, {
+          type: 'UnitStatUpdate',
+          unitType: 'player',
+          unitId: player.unitId,
+          statId: 6,
+          value: player.hpFixed,
+        })
+      }
+      if (catalog?.kind === 'mana' || itemCode.startsWith('mp')) {
+        const healMana = catalog?.healMana ?? 30
+        player.manaFixed = Math.min(
+          player.maxManaFixed,
+          player.manaFixed + healMana * FIXED_ONE,
+        )
+        player.mana = Math.floor(player.manaFixed / FIXED_ONE)
+        this.emitToPlayer(player.unitId, {
+          type: 'UnitStatUpdate',
+          unitType: 'player',
+          unitId: player.unitId,
+          statId: 8,
+          value: player.manaFixed,
+        })
+      }
+      if (itemCode === 'vps') {
+        player.staminaFixed = player.maxStaminaFixed
+        player.stamina = Math.floor(player.staminaFixed / FIXED_ONE)
+      }
     }
     this.emitToPlayer(player.unitId, {
       type: 'LifeMana',
@@ -28997,27 +37344,43 @@ export class GameInstance {
         candidate.unitId === cursorItemId &&
         candidate.location === 'cursor' &&
         candidate.width === 1 &&
-        candidate.height === 1,
+        candidate.height === 1 &&
+        BELT_POTION_CATALOG[candidate.code.trim().toLowerCase()] !== undefined,
     )
     const beltItem = player.items.find(
       (candidate) => candidate.unitId === beltItemId && candidate.location === 'belt',
     )
     if (!cursorItem || !beltItem) return
-    const slot = beltItem.x
-    cursorItem.location = 'belt'
-    cursorItem.x = slot
-    cursorItem.y = 0
-    cursorItem.storePage = 0
+    const { col, row } = this.getBeltColRow(beltItem)
+    const linearSlot = this.setBeltEntryColRow(cursorItem, col, row)
+
     beltItem.location = 'cursor'
     beltItem.x = 0
     beltItem.y = 0
     beltItem.storePage = 0
+    if (beltItem.rawItemData !== undefined) {
+      const cleanFlags = Number(beltItem.rawItemData.rawFlags ?? beltItem.rawItemData.flags ?? 0x10) & ~0x20
+      beltItem.rawItemData = {
+        ...beltItem.rawItemData,
+        location: 4,
+        container: 'cursor',
+        gridX: 0,
+        gridY: 0,
+        x: 0,
+        y: 0,
+        storePage: 0,
+        storagePage: 0,
+        flags: cleanFlags,
+        rawFlags: cleanFlags,
+      }
+    }
+
     this.emitToPlayer(player.unitId, {
       type: 'ItemEvent',
       action: 0x10,
       itemId: cursorItem.unitId,
       code: cursorItem.code,
-      x: slot,
+      x: linearSlot,
       y: 0,
       container: 'belt',
       item: this.serverEntryToItemData(cursorItem),
@@ -29047,19 +37410,329 @@ export class GameInstance {
         candidate.height === 1,
     )
     if (!item) return
-    const occupied = new Set<number>()
-    for (const other of player.items) {
-      if (other.location === 'belt') occupied.add(other.x)
+    const lowerCode = item.code.trim().toLowerCase()
+    if (BELT_POTION_CATALOG[lowerCode] === undefined) return
+    const slot = this.findAvailableBeltSlot(player, lowerCode)
+    if (!slot) return
+    this.handleBeltPut(player, itemId, (slot.y * 4 + slot.x) & 0x0f)
+  }
+
+  /**
+   * 1.13c `C2S 0x21` (`StackItems`, `D2Game.dll` `0x6FCEE4B0`):
+   * Merges stackable same-code normal items (`key`, `aqv`, `cqv`, throwing weapons) from cursor
+   * into an unfilled container stack up to `Misc.txt` / `Weapons.txt` `maxstack`.
+   */
+  private handleStackItems(
+    player: InternalPlayerRecord,
+    cursorItemId: number,
+    targetItemId: number,
+  ): void {
+    if (cursorItemId === targetItemId) return
+    const cursorIdx = this.findPlayerItemIndex(player, cursorItemId)
+    const cursorItem = cursorIdx !== -1 ? player.items[cursorIdx] : undefined
+    if (!cursorItem || cursorItem.location !== 'cursor') return
+
+    const targetItem = player.items.find(
+      (candidate) =>
+        candidate.unitId === targetItemId &&
+        (candidate.location === 'inventory' ||
+          candidate.location === 'stash' ||
+          candidate.location === 'cube'),
+    )
+    if (!targetItem) return
+
+    const code = cursorItem.code.trim().toLowerCase()
+    if (code !== targetItem.code.trim().toLowerCase()) return
+    if (code === 'tbk' || code === 'ibk') return
+
+    const info = lookupBaseInfo(cursorItem.code.trim())
+    const fallbackMax =
+      code === 'key' ? 12 : code === 'aqv' ? 350 : code === 'cqv' ? 250 : 0
+    const maxStack = info.maxStack > 0 ? info.maxStack : fallbackMax
+    if ((!info.stackable && maxStack <= 0) || maxStack <= 1) return
+
+    // D2Game 0x6FCEE4B0 only merges normal/non-magic stackables without sockets or runewords.
+    if (
+      cursorItem.quality > 3 ||
+      targetItem.quality > 3 ||
+      cursorItem.socketed ||
+      targetItem.socketed ||
+      Boolean(cursorItem.rawItemData?.runeword) ||
+      Boolean(targetItem.rawItemData?.runeword)
+    ) {
+      return
     }
-    let freeSlot = -1
-    for (let s = 0; s < 16; s++) {
-      if (!occupied.has(s)) {
-        freeSlot = s
-        break
+
+    const cursorQty = Math.max(1, Math.trunc(cursorItem.quantity || 1))
+    const targetQty = Math.max(1, Math.trunc(targetItem.quantity || 1))
+    if (targetQty >= maxStack) return
+
+    const transfer = Math.min(cursorQty, maxStack - targetQty)
+    if (transfer <= 0) return
+
+    const nextTargetQty = targetQty + transfer
+    const nextCursorQty = cursorQty - transfer
+
+    this.syncServerItemQuantity(targetItem, nextTargetQty)
+    this.emitToPlayer(player.unitId, {
+      type: 'StatSet',
+      unit: { unitType: 4, id: targetItem.unitId },
+      stat: 70,
+      value: targetItem.quantity,
+    })
+    this.emitToPlayer(player.unitId, {
+      type: 'ItemEvent',
+      action: 0x15,
+      itemId: targetItem.unitId,
+      code: targetItem.code,
+      x: targetItem.x,
+      y: targetItem.y,
+      container: toItemContainer(targetItem.location),
+      item: this.serverEntryToItemData(targetItem),
+    })
+
+    if (nextCursorQty <= 0) {
+      const deletedBase = this.serverEntryToItemData(cursorItem)
+      const deletedFlags = ((deletedBase.rawFlags ?? 0x10) | 0x20) >>> 0
+      player.items.splice(cursorIdx, 1)
+      this.emitToPlayer(player.unitId, {
+        type: 'ItemEvent',
+        action: 0x05,
+        itemId: cursorItem.unitId,
+        code: cursorItem.code,
+        x: 0,
+        y: 0,
+        container: 'cursor',
+        item: {
+          ...deletedBase,
+          flags: deletedFlags,
+          rawFlags: deletedFlags,
+        },
+      })
+      this.emitToPlayer(player.unitId, {
+        type: 'CursorClear',
+        unitType: 'player',
+        id: player.unitId,
+      })
+    } else {
+      this.syncServerItemQuantity(cursorItem, nextCursorQty)
+      this.emitToPlayer(player.unitId, {
+        type: 'StatSet',
+        unit: { unitType: 4, id: cursorItem.unitId },
+        stat: 70,
+        value: cursorItem.quantity,
+      })
+      this.emitToPlayer(player.unitId, {
+        type: 'ItemEvent',
+        action: 0x15,
+        itemId: cursorItem.unitId,
+        code: cursorItem.code,
+        x: 0,
+        y: 0,
+        container: 'cursor',
+        item: {
+          ...this.serverEntryToItemData(cursorItem),
+          location: 4,
+          container: 'cursor',
+        },
+      })
+    }
+  }
+
+  /**
+   * 1.13c `C2S 0x22` (`UnstackItems`, `D2Game.dll` `0x6FCED4F0`):
+   * Extracts 1 scroll onto an empty cursor from a Tome (`'tbk' -> 'tsc'`, `'ibk' -> 'isc'`),
+   * or splits a normal stackable item (`quantity > 1`) onto an empty cursor.
+   */
+  private handleUnstackItems(player: InternalPlayerRecord, itemId: number): void {
+    if (player.items.some((candidate) => candidate.location === 'cursor')) return
+    const source = player.items.find(
+      (candidate) =>
+        candidate.unitId === itemId &&
+        (candidate.location === 'inventory' ||
+          candidate.location === 'stash' ||
+          candidate.location === 'cube'),
+    )
+    if (!source) return
+
+    const code = source.code.trim().toLowerCase()
+    if (code === 'tbk' || code === 'ibk') {
+      const curQty = Math.max(0, Math.trunc(source.quantity ?? 0))
+      if (curQty <= 0) return
+      const scrollCode = code === 'tbk' ? 'tsc' : 'isc'
+      const scrollInfo = lookupBaseInfo(scrollCode)
+      this.syncServerItemQuantity(source, curQty - 1)
+      this.emitToPlayer(player.unitId, {
+        type: 'StatSet',
+        unit: { unitType: 4, id: source.unitId },
+        stat: 70,
+        value: source.quantity,
+      })
+      this.emitToPlayer(player.unitId, {
+        type: 'ItemEvent',
+        action: 0x15,
+        itemId: source.unitId,
+        code: source.code,
+        x: source.x,
+        y: source.y,
+        container: toItemContainer(source.location),
+        item: this.serverEntryToItemData(source),
+      })
+
+      const spawnedScroll: ServerItemEntry = {
+        unitId: this.allocateUnitId(),
+        code: scrollCode,
+        name: scrollInfo.name,
+        quality: 2,
+        level: source.level || player.level,
+        location: 'cursor',
+        x: 0,
+        y: 0,
+        width: scrollInfo.width,
+        height: scrollInfo.height,
+        areaId: player.areaId,
+        ownerId: player.unitId,
+        bodyLoc: 0,
+        storePage: 0,
+        cost: scrollInfo.cost,
+        gamble: false,
+        identified: true,
+        ethereal: false,
+        socketed: false,
+        totalSockets: 0,
+        durability: 0,
+        maxDurability: 0,
+        quantity: 1,
+        stats: new Map(),
+        socketedItems: [],
       }
+      player.items.push(spawnedScroll)
+      this.emitToPlayer(player.unitId, {
+        type: 'ItemEvent',
+        action: 0x05,
+        itemId: spawnedScroll.unitId,
+        code: spawnedScroll.code,
+        x: 0,
+        y: 0,
+        container: 'cursor',
+        item: {
+          ...this.serverEntryToItemData(spawnedScroll),
+          location: 4,
+          container: 'cursor',
+        },
+      })
+      return
     }
-    if (freeSlot === -1) return
-    this.handleBeltPut(player, itemId, freeSlot)
+
+    const info = lookupBaseInfo(source.code.trim())
+    const fallbackMax =
+      code === 'key' ? 12 : code === 'aqv' ? 350 : code === 'cqv' ? 250 : 0
+    if (!info.stackable && fallbackMax <= 1) return
+    if (
+      source.quality > 3 ||
+      source.socketed ||
+      Boolean(source.rawItemData?.runeword)
+    ) {
+      return
+    }
+
+    const curQty = Math.max(1, Math.trunc(source.quantity || 1))
+    if (curQty <= 1) return
+    const splitQty = Math.max(1, Math.floor(curQty / 2))
+    const remainQty = curQty - splitQty
+
+    this.syncServerItemQuantity(source, remainQty)
+    this.emitToPlayer(player.unitId, {
+      type: 'StatSet',
+      unit: { unitType: 4, id: source.unitId },
+      stat: 70,
+      value: source.quantity,
+    })
+    this.emitToPlayer(player.unitId, {
+      type: 'ItemEvent',
+      action: 0x15,
+      itemId: source.unitId,
+      code: source.code,
+      x: source.x,
+      y: source.y,
+      container: toItemContainer(source.location),
+      item: this.serverEntryToItemData(source),
+    })
+
+    const splitStats = new Map<number, number>(source.stats)
+    splitStats.set(70, splitQty)
+    const splitItem: ServerItemEntry = {
+      unitId: this.allocateUnitId(),
+      code: source.code.trim(),
+      name: source.name,
+      quality: source.quality,
+      level: source.level,
+      location: 'cursor',
+      x: 0,
+      y: 0,
+      width: source.width,
+      height: source.height,
+      areaId: player.areaId,
+      ownerId: player.unitId,
+      bodyLoc: 0,
+      storePage: 0,
+      cost: source.cost,
+      gamble: false,
+      identified: source.identified,
+      ethereal: source.ethereal,
+      socketed: false,
+      totalSockets: 0,
+      durability: source.durability,
+      maxDurability: source.maxDurability,
+      quantity: splitQty,
+      stats: splitStats,
+      socketedItems: [],
+    }
+    this.syncServerItemQuantity(splitItem, splitQty)
+    player.items.push(splitItem)
+    this.emitToPlayer(player.unitId, {
+      type: 'ItemEvent',
+      action: 0x05,
+      itemId: splitItem.unitId,
+      code: splitItem.code,
+      x: 0,
+      y: 0,
+      container: 'cursor',
+      item: {
+        ...this.serverEntryToItemData(splitItem),
+        location: 4,
+        container: 'cursor',
+      },
+    })
+  }
+
+  /**
+   * 1.13c `C2S 0x3E` (`SelectMainItem` / `ActivateQuestScroll`, `D2Game.dll` `0x6FCED8D0`):
+   * Opens the deciphered Scroll of Inifuss (`'bkd'`) Cairn Stones order overlay via `S2C 0x7C`
+   * (`UseSpecialItem`), or consumes quest scrolls/books (`'tr2'`, `'ass'`, `'xyz'`).
+   */
+  private handleSelectMainItem(player: InternalPlayerRecord, itemId: number): void {
+    const item = player.items.find(
+      (candidate) =>
+        candidate.unitId === itemId &&
+        (candidate.location === 'inventory' ||
+          candidate.location === 'stash' ||
+          candidate.location === 'cube' ||
+          candidate.location === 'belt'),
+    )
+    if (!item) return
+    const code = item.code.trim().toLowerCase()
+    if (code === 'bkd') {
+      this.emitToPlayer(player.unitId, {
+        type: 'UseSpecialItem',
+        unitType: 4,
+        id: item.unitId,
+      })
+      return
+    }
+    if (code === 'tr2' || code === 'ass' || code === 'xyz') {
+      this.handleBeltUse(player, item.unitId, false)
+    }
   }
 
   private handleItemToCube(
@@ -29103,15 +37776,7 @@ export class GameInstance {
     ] as const) {
       this.emitToPlayer(player.unitId, ev)
     }
-    this.spawnGroundItem({
-      areaId: player.areaId,
-      x: Math.round(player.x),
-      y: Math.round(player.y),
-      code: 'gld',
-      quantity: amount,
-      quality: 2,
-      identified: true,
-    })
+    this.dropPlayerGoldPile(player, amount)
   }
 
   private handleCursorArtisanService(
@@ -29256,26 +37921,55 @@ export class GameInstance {
         item: this.serverEntryToItemData(replacement),
       })
     } else if (action === 'add_sockets') {
-      if (item.socketed || item.totalSockets > 0 || item.rawItemData?.socketed === true) return false
+      const trimmedCode = item.code.trim().toLowerCase()
+      const rawFlags = Number(item.rawItemData?.rawFlags ?? item.rawItemData?.flags ?? 0)
+      if (
+        item.socketed ||
+        item.totalSockets > 0 ||
+        item.socketedItems.length > 0 ||
+        item.rawItemData?.socketed === true ||
+        (rawFlags & 0x0800) !== 0
+      ) {
+        return false
+      }
       // 1.13c D2Game.dll 0x6FCE0630..0x6FCE06D4 -> D2Common #11151 (0x6FD74610):
-      // min(base.gemsockets, ItemTypes tier cap for ilvl <= 25 / <= 40 / >= 41).
-      // Non-socketable bases (rings, boots, potions, stackables) reject without
-      // consuming the Larzuk reward.
+      // Reject player ears (IFLAG_ISEAR 0x1000 / 'ear'), broken items (IFLAG_BROKEN 0x0100),
+      // Low Quality (quality === 1 Cracked/Crude/Damaged), stackables, non-socketable bases,
+      // and quest items (`ItemsTxt.nQuest != 0` except Wirt's Leg `'leg'`) without consuming A5Q1 (#1917).
+      if (trimmedCode === 'ear' || item.rawItemData?.isEar === true || (rawFlags & 0x1000) !== 0) {
+        return false
+      }
+      if (
+        item.rawItemData?.broken === true ||
+        (rawFlags & 0x0100) !== 0 ||
+        (item.maxDurability > 0 && item.durability <= 0)
+      ) {
+        return false
+      }
+      const qualityCode = this.normalizeItemQualityCode113c(
+        item.rawItemData?.quality ?? item.quality,
+      )
+      if (qualityCode === 1) return false
       const tables = getEmbeddedDropTables()
       const base = tables.getBase(item.code) as
         | (Record<string, unknown> & {
             type?: string
             gemsockets?: number
             stackable?: boolean
+            quest?: number | boolean
           })
         | undefined
-      if (base?.stackable === true) return false
+      const baseInfo = lookupBaseInfo(trimmedCode)
+      if (base?.stackable === true || baseInfo.stackable) return false
+      if (
+        trimmedCode !== 'leg' &&
+        (Number(base?.quest ?? 0) !== 0 || base?.quest === true || baseInfo.quest || this.isOnePerPlayerQuestItem(trimmedCode))
+      ) {
+        return false
+      }
       const typeDef = base?.type !== undefined ? tables.itemTypes.byCode.get(String(base.type)) : undefined
       const maxSockets = getMaxSockets113c(base, typeDef, item.level)
       if (maxSockets <= 0) return false
-      const qualityCode = this.normalizeItemQualityCode113c(
-        item.rawItemData?.quality ?? item.quality,
-      )
       let sockets: number
       if (qualityCode <= 3) {
         sockets = maxSockets
@@ -29738,14 +38432,29 @@ export class GameInstance {
     })
   }
 
-  /** NpcIdentifyAll (Deckard Cain): identify every unidentified carried item. */
+  /**
+   * 1.13c Deckard Cain identify service (`D2Game.dll` `ACT1Q4_CanIdentifyFree` / `0x6FCE10E0`):
+   * Cain identifies carried items for free once `a1q3` (The Search for Cain) is completed;
+   * if Cain has NOT been rescued in A1Q3 (e.g. player rushed to Act 2+ where Cain stands in town),
+   * Cain charges `100` gold per unidentified item (#1926).
+   */
   private handleNpcIdentifyAll(player: InternalPlayerRecord, npcId: number): void {
     const npc = this.serviceNpcWithCapability(player, npcId, 'canIdentify')
     if (npc === undefined) return
-    for (const item of player.items) {
-      if (item.location === 'inventory' || item.location === 'equipped') {
-        this.identifyItem(player, item)
-      }
+    const unidItems = player.items.filter(
+      (item) =>
+        (item.location === 'inventory' || item.location === 'equipped') && !item.identified,
+    )
+    if (unidItems.length === 0) return
+    const freeIdentify =
+      npc.hcIdx === 146 ||
+      hasQuestFlag113c(player.questFlags, 'a1q3', QUEST_FLAG_COMPLETED_113C)
+    if (!freeIdentify) {
+      const totalCost = unidItems.length * 100
+      if (!this.spendGold(player, totalCost)) return
+    }
+    for (const item of unidItems) {
+      this.identifyItem(player, item)
     }
   }
 
@@ -29759,7 +38468,286 @@ export class GameInstance {
     const descriptor = getTownNpcDescriptorByHcIdx(npc.hcIdx)
     if (descriptor?.canIdentify !== true && descriptor?.canGamble !== true) return
     const item = player.items.find((candidate) => candidate.unitId === itemId)
-    if (item) this.identifyItem(player, item)
+    if (!item || item.identified) return
+    if (descriptor?.canIdentify === true && descriptor?.canGamble !== true) {
+      const freeIdentify =
+        npc.hcIdx === 146 ||
+        hasQuestFlag113c(player.questFlags, 'a1q3', QUEST_FLAG_COMPLETED_113C)
+      if (!freeIdentify && !this.spendGold(player, 100)) return
+    }
+    this.identifyItem(player, item)
+  }
+
+  /**
+   * Mint an identified Rare (`quality = 6`) quest reward item (`QUESTS_CreateRareItem`,
+   * `D2Game.dll` `0x6FC95DF0` / `0x6FC9D269` / `0x6FD060E0` / `0x6FC7F987`, #1929 / #1930).
+   */
+  private grantQuestRareItem113c(
+    player: InternalPlayerRecord,
+    code: string,
+    ilvl: number,
+    dropOrigin?: { readonly x: number; readonly y: number },
+  ): ServerItemEntry | undefined {
+    const tables = getEmbeddedDropTables()
+    const cleanCode = code.trim().toLowerCase()
+    const base = tables.getBase(cleanCode)
+    if (base === undefined) return undefined
+    const clampedIlvl = Math.max(1, Math.trunc(ilvl))
+    const seed = this.rng.rand(0x7fffffff) || 1
+    const itemRng = new D2Rng(seed)
+    const rareAffixes = rollRareAffixes(
+      base,
+      clampedIlvl,
+      tables.magicAffixes,
+      tables.rareNames,
+      tables.isA,
+      itemRng,
+      { itemClass: inferItemClassFromType(base.type ?? 'misc') },
+    )
+    const autoPrefixGroup = resolveAutoPrefixGroup(base, tables.itemTypes, tables.isA)
+    const autoMagicAffix =
+      autoPrefixGroup !== undefined
+        ? rollAutoMagic(
+            base,
+            clampedIlvl,
+            tables.autoMagic ?? CANONICAL_AUTOMAGIC_TABLE,
+            tables.isA,
+            itemRng,
+            { group: autoPrefixGroup, isRare: true },
+          )
+        : null
+    const staffMods =
+      resolveStaffModsClass(base, tables.itemTypes) !== undefined
+        ? rollStaffMods(base, clampedIlvl, tables.itemTypes, itemRng)
+        : undefined
+    const dropped = finalizeDroppedItem113c(
+      createDroppedItem(base, 'rare', {
+        rareAffixes,
+        autoMagicAffix,
+        staffMods,
+        itemTypes: tables.itemTypes,
+        ilvl: clampedIlvl,
+        dwInitSeed: seed,
+        itemRng,
+        identified: true,
+      }),
+    )
+    const free = this.findFreeGridSlot(
+      player,
+      'inventory',
+      dropped.invWidth || base.invWidth || 1,
+      dropped.invHeight || base.invHeight || 1,
+      10,
+      4,
+    )
+    const entry = this.createServerEntryFromItem(dropped, {
+      location: free !== undefined ? 'inventory' : 'ground',
+      x: free !== undefined ? free.x : 0,
+      y: free !== undefined ? free.y : 0,
+      areaId: player.areaId,
+      ownerId: free !== undefined ? player.unitId : 0,
+      storePage: free !== undefined ? 1 : 0,
+      gamble: false,
+    })
+    entry.identified = true
+    if (entry.rawItemData !== undefined) {
+      const idFlags = ((entry.rawItemData.rawFlags ?? entry.rawItemData.flags ?? 0) | 0x10) >>> 0
+      entry.rawItemData = {
+        ...entry.rawItemData,
+        identified: true,
+        flags: idFlags,
+        rawFlags: idFlags,
+      }
+    }
+    if (free !== undefined) {
+      player.items.push(entry)
+      this.refreshPlayerAccruedMaxPools(player)
+      this.emitToPlayer(player.unitId, {
+        type: 'ItemEvent',
+        action: 'add',
+        itemId: entry.unitId,
+        code: entry.code,
+        x: entry.x,
+        y: entry.y,
+        container: 'inventory',
+        item: this.serverEntryToItemData(entry),
+      })
+      return entry
+    }
+    const pos = this.findDropPosition(
+      player.areaId,
+      dropOrigin?.x ?? player.x,
+      dropOrigin?.y ?? player.y,
+      new Set(),
+    )
+    entry.x = pos.x
+    entry.y = pos.y
+    this.registerGroundItem113c(entry)
+    this.broadcastToArea(player.areaId, {
+      type: 'ItemEvent',
+      action: 'drop',
+      itemId: entry.unitId,
+      code: entry.code,
+      x: entry.x,
+      y: entry.y,
+      container: 'ground',
+      item: { ...this.serverEntryToItemData(entry), action: 0x02 },
+    })
+    this.emitToPlayer(player.unitId, {
+      type: 'PlaySound',
+      unit: { unitType: 0, id: player.unitId },
+      sound: 23,
+    })
+    return entry
+  }
+
+  /**
+   * Grant a free quest mercenary (`D2Game.dll` A1Q2 Kashya `0x6FC9A9E0` Act 1 Rogue Scout /
+   * A3Q2 Asheara `0x6FD06320` Act 3 Iron Wolf) ONLY if the player currently has no alive mercenary (#1930).
+   */
+  private grantFreeQuestMercenary113c(player: InternalPlayerRecord, act: 1 | 3): boolean {
+    const hasAliveMerc = [...this.mercenaries.values()].some(
+      (m) => m.ownerPlayerId === player.unitId && m.alive,
+    )
+    if (hasAliveMerc) return false
+    const difficulty = (this.difficulty + 1) as 1 | 2 | 3
+    const listSeed =
+      ((this.currentMapSeed ^
+        Math.imul(player.unitId, 0x9e3779b9) ^
+        Math.imul(act, 0x85ebca6b) ^
+        (this.rng.rand(0x7fffffff) >>> 0)) >>>
+        0) || 1
+    const candidates = generateHireCandidates113c(listSeed, player.level, act, difficulty, true)
+    const chosen = candidates.length > 0 ? candidates[this.rng.rand(candidates.length)] : undefined
+    if (chosen === undefined) return false
+    this.hireMercenary(player.unitId, {
+      act,
+      subType: chosen.subTypeId,
+      level: chosen.level,
+      difficulty,
+      name: chosen.name,
+    })
+    return true
+  }
+
+  /**
+   * Synchronize Harrogath (`areaId === 109`) post-Anya-rescue town state (`D2Game.dll` `ACT5Q3`, #1929):
+   * 1. Removes town Nihlathak NPC (`hcIdx === 514`) from `109` once any player has rescued Anya.
+   * 2. Ensures Town Anya (`hcIdx === 512`) is present in `109`.
+   * 3. Spawns Nihlathak's Temple permanent red portal (`classId === 60`, `destAreaId === 121`)
+   *    next to Town Anya unless every rescued player has BOTH completed `a5q4` AND activated
+   *    Halls of Pain waypoint (`123`).
+   */
+  private syncHarrogathA5Q3State113c(triggerPlayer?: InternalPlayerRecord): void {
+    const candidates =
+      triggerPlayer !== undefined
+        ? [triggerPlayer, ...[...this.players.values()].filter((p) => p.unitId !== triggerPlayer.unitId)]
+        : [...this.players.values()]
+    const rescuedPlayers = candidates.filter((p) =>
+      hasQuestFlag113c(
+        p.questFlags,
+        'a5q3',
+        QUEST_FLAG_REWARD_PENDING_113C | QUEST_FLAG_COMPLETED_113C,
+      ),
+    )
+    if (rescuedPlayers.length === 0) return
+
+    const hasHarrogathPresence =
+      this.loadedAreas.has(109) ||
+      candidates.some((p) => p.areaId === 109) ||
+      [...this.monsters.values()].some((m) => m.areaId === 109) ||
+      [...this.objects.values()].some((o) => o.areaId === 109)
+    if (!hasHarrogathPresence) return
+
+    // 1. Remove town Nihlathak (`hcIdx === 514`) from Harrogath (109).
+    for (const [mId, mon] of [...this.monsters.entries()]) {
+      if (mon.areaId === 109 && mon.hcIdx === 514) {
+        this.broadcastToArea(109, {
+          type: 'UnitRemove',
+          unitType: 1,
+          id: mId,
+          unitId: mId,
+          areaId: 109,
+        })
+        this.monsters.delete(mId)
+        this.monsterCombat.delete(mId)
+      }
+    }
+
+    // 2. Ensure Town Anya (`hcIdx === 512`) exists in Harrogath (109).
+    let townAnya = [...this.monsters.values()].find(
+      (m) => m.areaId === 109 && m.hcIdx === 512 && !m.dead,
+    )
+    if (townAnya === undefined) {
+      const refPlayer = candidates.find((p) => p.areaId === 109)
+      const area109 = this.loadedAreas.get(109)
+      const baseX = area109 ? area109.spawnX + 6 : (refPlayer ? refPlayer.x + 4 : LEGACY_TEST_GRID_SPAWN + 4)
+      const baseY = area109 ? area109.spawnY + 6 : (refPlayer ? refPlayer.y : LEGACY_TEST_GRID_SPAWN)
+      const stand = area109
+        ? findStandableNear((x, y) => this.isWorldWalkableForPlayer(109, x, y), baseX, baseY, 10)
+        : null
+      const anyaId = this.spawnMonster({
+        classId: 512,
+        name: 'Anya',
+        x: stand?.x ?? baseX,
+        y: stand?.y ?? baseY,
+        areaId: 109,
+        isNpc: true,
+        isVendor: true,
+        isKillable: false,
+        aiDisabled: true,
+      })
+      townAnya = this.monsters.get(anyaId)
+    }
+
+    // 3. Open (or close) Nihlathak's Temple red portal (`109 -> 121` Pindleskin).
+    const shouldKeepPortalOpen = rescuedPlayers.some(
+      (p) => !(hasQuestFlag113c(p.questFlags, 'a5q4', QUEST_FLAG_COMPLETED_113C) && p.waypoints.has(123)),
+    )
+    const existingPortal = [...this.objects.values()].find(
+      (o) => o.areaId === 109 && o.classId === 60 && o.destAreaId === 121,
+    )
+    if (shouldKeepPortalOpen) {
+      if (existingPortal === undefined && townAnya !== undefined) {
+        const targetX = townAnya.x + 3
+        const targetY = townAnya.y + 2
+        const stand = this.loadedAreas.has(109)
+          ? findStandableNear(
+              (x, y) => this.isWorldWalkableForPlayer(109, x, y),
+              targetX,
+              targetY,
+              8,
+            )
+          : null
+        const portalId = this.spawnObject({
+          classId: 60,
+          x: stand?.x ?? targetX,
+          y: stand?.y ?? targetY,
+          areaId: 109,
+          mode: 2,
+          destAreaId: 121,
+        })
+        const returnObj = [...this.objects.values()].find(
+          (o) => o.areaId === 121 && o.classId === 60 && o.destAreaId === 109,
+        )
+        const townPortalObj = this.objects.get(portalId)
+        if (returnObj !== undefined && townPortalObj !== undefined) {
+          returnObj.linkedPortalId = townPortalObj.unitId
+          townPortalObj.linkedPortalId = returnObj.unitId
+        }
+      } else if (existingPortal !== undefined && existingPortal.mode !== 2) {
+        this.setObjectMode(existingPortal, 2)
+      }
+    } else if (existingPortal !== undefined) {
+      this.broadcastToArea(109, {
+        type: 'UnitRemove',
+        unitType: 2,
+        id: existingPortal.unitId,
+        unitId: existingPortal.unitId,
+        areaId: 109,
+      })
+      this.objects.delete(existingPortal.unitId)
+    }
   }
 
   /** 0x4F + 0x4E: send the 1.13c hire candidate list for a mercenary vendor's act (`D2Game.dll` `0x6FCDCED0` / `0x6FCDD330`). */
@@ -29936,6 +38924,7 @@ export class GameInstance {
     player: InternalPlayerRecord,
     npcId: number,
     healRequested = false,
+    fromInteractPacket = false,
   ): void {
     const npc = this.monsters.get(npcId)
     // Static quest NPCs may not have a runtime record in synthetic tests; when one
@@ -29958,7 +38947,36 @@ export class GameInstance {
     player.pendingInteractionSteps = 0
     player.pendingNpcGamble = undefined
     player.activeNpcId = npcId
-    // A1Q3: Akara translates the Scroll of Inifuss ('bks') into the Key to the Cairn Stones ('bkd').
+    if (npc !== undefined) {
+      const introBit = NPC_INTRO_BIT_BY_HCIDX_113C.get(npc.hcIdx)
+      if (introBit !== undefined && player.npcIntro.byteLength === 52) {
+        const byteIdx = 4 + this.difficulty * 8 + (introBit >> 3)
+        if (byteIdx >= 4 && byteIdx < 28) {
+          player.npcIntro[byteIdx] = (player.npcIntro[byteIdx] ?? 0) | (1 << (introBit & 7))
+        }
+      }
+    }
+    // A1Q2: Kashya (`hcIdx === 150`, `D2Game.dll` `0x6FC9A9E0`) grants a free Act 1 Rogue Scout
+    // mercenary once Blood Raven (`a1q2`) is defeated if the player currently has no alive mercenary (#1930).
+    if (npc?.hcIdx === 150) {
+      if (
+        hasQuestFlag113c(
+          player.questFlags,
+          'a1q2',
+          QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_REWARD_PENDING_113C,
+        ) &&
+        !hasQuestFlag113c(player.questFlags, 'a1q2', QUEST_FLAG_CUSTOM_9_113C)
+      ) {
+        this.setPlayerQuestFlag(
+          player,
+          'a1q2',
+          QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_CUSTOM_9_113C,
+        )
+        this.grantFreeQuestMercenary113c(player, 1)
+      }
+    }
+    // A1Q3: Akara (`hcIdx === 148`) translates the Scroll of Inifuss ('bks') into the Key to the Cairn Stones ('bkd'),
+    // and rewards an identified Rare Ring (`ilvl 9/39/65`, `D2Game.dll` `0x6FC9D269`) after Cain is rescued (#1930).
     if (npc?.hcIdx === 148) {
       const scroll = player.items.find(
         (item) => item.code.toLowerCase().trim() === 'bks',
@@ -29967,6 +38985,22 @@ export class GameInstance {
         this.removePlayerQuestItem(player, scroll)
         this.givePlayerInventoryQuestItem(player, 'bkd', npc)
         this.setPlayerQuestFlag(player, 'a1q3', QUEST_FLAG_STARTED_113C)
+      }
+      if (
+        hasQuestFlag113c(
+          player.questFlags,
+          'a1q3',
+          QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_REWARD_PENDING_113C,
+        ) &&
+        !hasQuestFlag113c(player.questFlags, 'a1q3', QUEST_FLAG_CUSTOM_9_113C)
+      ) {
+        const a1q3RingIlvl = this.difficulty === 2 ? 65 : this.difficulty === 1 ? 39 : 9
+        this.setPlayerQuestFlag(
+          player,
+          'a1q3',
+          QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_CUSTOM_9_113C,
+        )
+        this.grantQuestRareItem113c(player, 'rin', a1q3RingIlvl, npc)
       }
     }
     // A3Q1 (`D2Game.dll` @ `0x6fd08b60..0x6fd08ea0`):
@@ -30025,12 +39059,10 @@ export class GameInstance {
         }
       }
     }
-    // 3. Alkor (`hcIdx === 254` / `0xfe`, `0x6fd08c5a..0x6fd08dc0`):
-    //    - Stage 0x216 (`0x6fd08c69..0x6fd08d12`): ONLY accepts Golden Bird ('g34', never 'j34'),
-    //      removes 'g34', and sets bit 1 (`0x0002`, `QUEST_FLAG_REWARD_PENDING_113C`, `qstsa3q45`).
-    //    - Stage 0x21a (`0x6fd08d13..0x6fd08dc0`): when bit 1 (`0x0002`) is set and bit 0 (`0x0001`) is 0,
-    //      clears bit 1, mints Potion of Life ('xyz'), and sets bit 0 (`0x0001`), bit 13 (`0x2000`),
-    //      and bit 5 (`0x0020`) on word 20 ('a3q1').
+    // 3. Alkor (`hcIdx === 254` / `0xfe`, `0x6fd08c5a..0x6fd08dc0` & `0x6fd090ef`):
+    //    - A3Q1: ONLY accepts Golden Bird ('g34', never 'j34'), mints Potion of Life ('xyz').
+    //    - A3Q4 (#1927): MUST verify & consume Lam Esen's Tome ('bbb') in `player.items` before
+    //      granting `+5` stat points (`a3q4` completion); never awards empty-handed claims.
     if (npc?.hcIdx === 254) {
       const a3q1Idx = questWordIndex113c('a3q1')
       let a3q1Bits = a3q1Idx === undefined ? 0 : (player.questFlags[a3q1Idx] ?? 0)
@@ -30061,17 +39093,102 @@ export class GameInstance {
           QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_COMPLETED_NOW_113C | QUEST_FLAG_CUSTOM_5_113C,
         )
       }
+      const tome = player.items.find((item) => item.code.toLowerCase().trim() === 'bbb')
+      if (tome !== undefined && !hasQuestFlag113c(player.questFlags, 'a3q4', QUEST_FLAG_COMPLETED_113C)) {
+        this.removePlayerQuestItem(player, tome)
+        const a3q4Idx = questWordIndex113c('a3q4')
+        for (const recipient of this.getQuestEligiblePartyRecipients113c(player, player.areaId)) {
+          if (hasQuestFlag113c(recipient.questFlags, 'a3q4', QUEST_FLAG_COMPLETED_113C)) continue
+          if (a3q4Idx !== undefined) {
+            recipient.questFlags[a3q4Idx] =
+              (recipient.questFlags[a3q4Idx] ?? 0) & ~QUEST_FLAG_REWARD_PENDING_113C
+          }
+          this.setPlayerQuestFlag(
+            recipient,
+            'a3q4',
+            QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_COMPLETED_NOW_113C,
+          )
+        }
+      }
     }
     // Quest turn-ins handled by the canonical NPC.
     if (npc?.hcIdx === 255) {
-      // Ormus accepts the Gidbinn dagger.
+      // Ormus (`hcIdx === 255`, `D2Game.dll` `0x6FD060E0`): accepts the Gidbinn dagger ('g33')
+      // and grants an identified Rare Ring (`ilvl 21/49/75`, #1930).
       const dagger = player.items.find(
         (item) => item.code.toLowerCase().trim() === 'g33',
       )
       if (dagger !== undefined) {
         this.removePlayerQuestItem(player, dagger)
-        this.setPlayerQuestFlag(player, 'a3q2', QUEST_FLAG_COMPLETED_113C)
+        for (const recipient of this.getQuestEligiblePartyRecipients113c(player, player.areaId)) {
+          this.setPlayerQuestFlag(recipient, 'a3q2', QUEST_FLAG_COMPLETED_113C)
+        }
       }
+      if (
+        hasQuestFlag113c(
+          player.questFlags,
+          'a3q2',
+          QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_REWARD_PENDING_113C,
+        ) &&
+        !hasQuestFlag113c(player.questFlags, 'a3q2', QUEST_FLAG_CUSTOM_10_113C)
+      ) {
+        const a3q2RingIlvl = this.difficulty === 2 ? 75 : this.difficulty === 1 ? 49 : 21
+        this.setPlayerQuestFlag(
+          player,
+          'a3q2',
+          QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_CUSTOM_10_113C,
+        )
+        this.grantQuestRareItem113c(player, 'rin', a3q2RingIlvl, npc)
+      }
+    } else if (npc?.hcIdx === 252) {
+      // Asheara (`hcIdx === 252`, `D2Game.dll` `0x6FD06320`): grants a free Act 3 Iron Wolf
+      // mercenary after Blade of the Old Religion (`a3q2`) if the player has no alive mercenary (#1930).
+      if (
+        hasQuestFlag113c(
+          player.questFlags,
+          'a3q2',
+          QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_REWARD_PENDING_113C,
+        ) &&
+        !hasQuestFlag113c(player.questFlags, 'a3q2', QUEST_FLAG_CUSTOM_9_113C)
+      ) {
+        this.setPlayerQuestFlag(
+          player,
+          'a3q2',
+          QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_CUSTOM_9_113C,
+        )
+        this.grantFreeQuestMercenary113c(player, 3)
+      }
+    } else if (npc?.hcIdx === 512) {
+      // Town Anya (`hcIdx === 512`, `D2Game.dll` `0x6FC7F987..0x6FC7FA18`, #1929):
+      // rewards a class-specific identified Rare item (`ilvl = player.level`) from the 3-tier
+      // `ANYA_CLASS_REWARD_POOLS_113C` table and syncs Nihlathak's Temple red portal (`109 -> 121`).
+      if (
+        hasQuestFlag113c(
+          player.questFlags,
+          'a5q3',
+          QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_REWARD_PENDING_113C,
+        ) &&
+        !hasQuestFlag113c(player.questFlags, 'a5q3', QUEST_FLAG_CUSTOM_10_113C)
+      ) {
+        const tier: 0 | 1 | 2 =
+          this.difficulty === 2 && player.level > 65
+            ? 2
+            : this.difficulty === 1 && player.level > 45
+              ? 1
+              : 0
+        const classPool =
+          ANYA_CLASS_REWARD_POOLS_113C[tier]?.[player.classId] ??
+          ANYA_CLASS_REWARD_POOLS_113C[0]?.[0] ??
+          ['jav']
+        const rewardCode = classPool[this.rng.rand(classPool.length)] ?? classPool[0]!
+        this.grantQuestRareItem113c(player, rewardCode, Math.max(1, player.level), npc)
+        this.setPlayerQuestFlag(
+          player,
+          'a5q3',
+          QUEST_FLAG_CUSTOM_9_113C | QUEST_FLAG_CUSTOM_10_113C,
+        )
+      }
+      this.syncHarrogathA5Q3State113c(player)
     } else if (npc?.hcIdx === 513) {
       const idx = questWordIndex113c('a5q3')
       const bits = idx === undefined ? 0 : (player.questFlags[idx] ?? 0)
@@ -30091,6 +39208,7 @@ export class GameInstance {
           'a5q3',
           QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_COMPLETED_NOW_113C | QUEST_FLAG_CUSTOM_8_113C,
         )
+        this.syncHarrogathA5Q3State113c(player)
       } else if (
         (bits &
           (QUEST_FLAG_COMPLETED_113C |
@@ -30109,7 +39227,7 @@ export class GameInstance {
       }
     } else if (npc?.hcIdx === 527) {
       // Frozen Anya (drehyaiced, hcIdx 527): before thawing, emits A5Q3FoundAnyaAnya (20131);
-      // holding Malah's potion ('ice') thaws Anya and sets a5q3 reward pending.
+      // holding Malah's potion ('ice') thaws Anya, sets a5q3 reward pending, and updates Harrogath (#1929).
       if (
         !hasQuestFlag113c(
           player.questFlags,
@@ -30120,27 +39238,34 @@ export class GameInstance {
         const potion = player.items.find((item) => item.code.toLowerCase().trim() === 'ice')
         if (potion !== undefined) {
           this.removePlayerQuestItem(player, potion)
-          this.setPlayerQuestFlag(
-            player,
-            'a5q3',
-            QUEST_FLAG_STARTED_113C | QUEST_FLAG_REWARD_PENDING_113C,
-          )
+          for (const recipient of this.getQuestEligiblePartyRecipients113c(player, player.areaId)) {
+            if (hasQuestFlag113c(recipient.questFlags, 'a5q3', QUEST_FLAG_COMPLETED_113C)) continue
+            this.setPlayerQuestFlag(
+              recipient,
+              'a5q3',
+              QUEST_FLAG_STARTED_113C | QUEST_FLAG_REWARD_PENDING_113C,
+            )
+          }
+          this.syncHarrogathA5Q3State113c(player)
         } else {
           this.setPlayerQuestFlag(player, 'a5q3', QUEST_FLAG_STARTED_113C)
-          this.emitToPlayer(player.unitId, {
-            type: 'Npc',
-            kind: 'info',
-            unitType: 1,
-            npcId: npc.unitId,
-            unitId: npc.unitId,
-            count: 1,
-            messages: [{ menu: 0, stringId: 20131 }],
-            allMessages: [{ menu: 0, stringId: 20131 }],
-          })
+          const skipDuplicateFrozenAnyaInfo =
+            !fromInteractPacket && player.lastNpcInteractHandshakeId === npcId
+          if (!skipDuplicateFrozenAnyaInfo) {
+            this.emitToPlayer(player.unitId, {
+              type: 'Npc',
+              kind: 'info',
+              unitType: 1,
+              npcId: npc.unitId,
+              unitId: npc.unitId,
+              count: 1,
+              messages: [{ menu: 0, stringId: 20131 }],
+              allMessages: [{ menu: 0, stringId: 20131 }],
+            })
+          }
         }
       }
     } else if (
-      npc?.hcIdx === 254 ||
       npc?.hcIdx === 515 ||
       npc?.hcIdx === 146 ||
       npc?.hcIdx === 244 ||
@@ -30149,12 +39274,7 @@ export class GameInstance {
       npc?.hcIdx === 265 ||
       npc?.hcIdx === 520
     ) {
-      const turnInQuests =
-        npc.hcIdx === 515
-          ? ['a5q2']
-          : npc.hcIdx === 254
-            ? ['a3q4']
-            : ['a3q4', 'a4q2']
+      const turnInQuests = npc.hcIdx === 515 ? (['a5q2'] as const) : (['a4q2'] as const)
       for (const turnInQuest of turnInQuests) {
         const idx = questWordIndex113c(turnInQuest)
         const bits = idx === undefined ? 0 : (player.questFlags[idx] ?? 0)
@@ -30162,13 +39282,6 @@ export class GameInstance {
           (bits & QUEST_FLAG_REWARD_PENDING_113C) !== 0 &&
           (bits & QUEST_FLAG_COMPLETED_113C) === 0
         ) {
-          if (turnInQuest === 'a3q4') {
-            // D2Game.dll 0x6fd090ef: remove Lam Esen's Tome ('bbb') on turn-in if held.
-            const tome = player.items.find((item) => item.code.toLowerCase().trim() === 'bbb')
-            if (tome !== undefined) {
-              this.removePlayerQuestItem(player, tome)
-            }
-          }
           if (idx !== undefined) {
             player.questFlags[idx] = bits & ~QUEST_FLAG_REWARD_PENDING_113C
           }
@@ -30301,6 +39414,20 @@ export class GameInstance {
       }
     }
     this.emitNpcTravelOptions(player, npc)
+    if (fromInteractPacket) {
+      player.lastNpcInteractHandshakeId = npcId
+      this.emitToPlayer(player.unitId, {
+        type: 'QuestState',
+        kind: 'update',
+        source: 0x28,
+        updateType: 1,
+        unitId: npcId,
+        quests: new Uint16Array(player.questFlags),
+        flags: Array.from(player.questFlags),
+      })
+    } else if (player.lastNpcInteractHandshakeId === npcId) {
+      player.lastNpcInteractHandshakeId = undefined
+    }
   }
 
   /** Quest flag required by a forward NPC travel action from the player's current act. */
@@ -30444,6 +39571,15 @@ export class GameInstance {
     player.pendingInteractionSteps = 0
     player.pendingNpcGamble = undefined
     player.activeNpcId = npcId
+    if (npc !== undefined) {
+      const introBit = NPC_INTRO_BIT_BY_HCIDX_113C.get(npc.hcIdx)
+      if (introBit !== undefined && player.npcIntro.byteLength === 52) {
+        const byteIdx = 4 + this.difficulty * 8 + (introBit >> 3)
+        if (byteIdx >= 4 && byteIdx < 28) {
+          player.npcIntro[byteIdx] = (player.npcIntro[byteIdx] ?? 0) | (1 << (introBit & 7))
+        }
+      }
+    }
     if (!npc) return
     const mode: 'trade' | 'gamble' = gamble ? 'gamble' : 'trade'
     let byMode = player.vendorPoolsByMode.get(npcId)
@@ -30543,6 +39679,7 @@ export class GameInstance {
     itemId: number,
     isGamble: boolean,
     explicitCost?: number,
+    shiftFill = false,
   ): void {
     const npc = this.monsters.get(npcId)
     if (!npc || !npc.isNpc || npc.areaId !== player.areaId) return
@@ -30636,14 +39773,14 @@ export class GameInstance {
         (item) =>
           item.location === 'inventory' &&
           item.code.trim().toLowerCase() === tomeCode &&
-          (item.quantity || 1) < 20,
+          Math.max(0, Math.trunc(item.quantity ?? 0)) < 20,
       )
     } else if (mergeMax > 0) {
       stackTarget = player.items.find(
         (item) =>
           item.location === 'inventory' &&
           item.code.trim().toLowerCase() === lowerCode &&
-          (item.quantity || 1) < mergeMax,
+          Math.max(1, Math.trunc(item.quantity || 1)) < mergeMax,
       )
     }
     let beltSlot: { x: number; y: number } | undefined
@@ -30686,13 +39823,15 @@ export class GameInstance {
     }
 
     let spentFromBank = false
-    if (player.gold >= cost) {
-      player.gold -= cost
-    } else {
-      const rem = cost - player.gold
-      player.gold = 0
-      player.goldBank = Math.max(0, player.goldBank - rem)
-      spentFromBank = rem > 0
+    const deductGold = (amountToDeduct: number): void => {
+      if (player.gold >= amountToDeduct) {
+        player.gold -= amountToDeduct
+      } else {
+        const rem = amountToDeduct - player.gold
+        player.gold = 0
+        player.goldBank = Math.max(0, player.goldBank - rem)
+        if (rem > 0) spentFromBank = true
+      }
     }
 
     const emitGoldUpdates = (): void => {
@@ -30703,6 +39842,11 @@ export class GameInstance {
         statId: 14,
         value: player.gold,
       })
+      this.emitToPlayer(player.unitId, {
+        type: 'StatSet',
+        stat: 14,
+        value: player.gold,
+      })
       if (spentFromBank) {
         this.emitToPlayer(player.unitId, {
           type: 'UnitStatUpdate',
@@ -30711,21 +39855,177 @@ export class GameInstance {
           statId: 15,
           value: player.goldBank,
         })
+        this.emitToPlayer(player.unitId, {
+          type: 'StatSet',
+          stat: 15,
+          value: player.goldBank,
+        })
       }
     }
 
-    if (stackTarget !== undefined) {
-      stackTarget.quantity = (stackTarget.quantity || 1) + 1
-      if (stackTarget.rawItemData !== undefined) {
-        stackTarget.rawItemData = {
-          ...stackTarget.rawItemData,
-          quantity: stackTarget.quantity,
+    // 1.13c Shift+NpcBuy (`D2Game.dll` `0x6fcde980..0x6fcdec80`, flag `0x80000000`):
+    // Bulk-fills unfilled tome/key/quiver stacks, buys a full key stack (`<= 12`) into empty inventory,
+    // or fills available belt columns with the purchased potion/scroll capped by affordable gold.
+    if (shiftFill && !isGamble) {
+      const unitCost = Math.max(1, cost)
+      if (stackTarget !== undefined) {
+        const curQty = isScroll
+          ? Math.max(0, Math.trunc(stackTarget.quantity ?? 0))
+          : Math.max(1, Math.trunc(stackTarget.quantity || 1))
+        const needed = Math.max(0, mergeMax - curQty)
+        const affordable = Math.floor((player.gold + player.goldBank) / unitCost)
+        const buyCount = vItem && !vItem.permStore ? Math.min(1, needed, affordable) : Math.min(needed, affordable)
+        if (buyCount <= 0) return
+        deductGold(buyCount * cost)
+        this.syncServerItemQuantity(stackTarget, curQty + buyCount)
+        if (vItem && !vItem.permStore) {
+          this.removeVendorPoolEntry(player, npc, npcId, itemId)
         }
+        emitGoldUpdates()
+        this.emitToPlayer(player.unitId, {
+          type: 'StatSet',
+          unit: { unitType: 4, id: stackTarget.unitId },
+          stat: 70,
+          value: stackTarget.quantity,
+        })
+        this.emitToPlayer(player.unitId, {
+          type: 'ItemEvent',
+          action: 'update',
+          itemId: stackTarget.unitId,
+          code: stackTarget.code,
+          x: stackTarget.x,
+          y: stackTarget.y,
+          container: 'inventory',
+          item: this.serverEntryToItemData(stackTarget),
+        })
+        return
       }
+
+      if (lowerCode === 'key' && free !== undefined) {
+        const affordable = Math.floor((player.gold + player.goldBank) / unitCost)
+        const buyCount = vItem && !vItem.permStore ? 1 : Math.max(1, Math.min(12, affordable))
+        deductGold(buyCount * cost)
+        const keyEntry: ServerItemEntry = vItem?.rawItemData
+          ? this.cloneVendorEntryForPlayer(vItem, player, cell, 'inventory')
+          : {
+              unitId: this.allocateUnitId(),
+              code,
+              name: info.name,
+              quality: vItem?.quality ?? 2,
+              level: player.level,
+              location: 'inventory',
+              x: cell.x,
+              y: cell.y,
+              width: info.width,
+              height: info.height,
+              areaId: player.areaId,
+              ownerId: player.unitId,
+              bodyLoc: 0,
+              storePage: 1,
+              cost: info.cost,
+              gamble: false,
+              identified: true,
+              ethereal: false,
+              socketed: false,
+              totalSockets: 0,
+              durability: info.maxDurability,
+              maxDurability: info.maxDurability,
+              quantity: buyCount,
+              stats: new Map([[70, buyCount]]),
+              socketedItems: [],
+            }
+        this.syncServerItemQuantity(keyEntry, buyCount)
+        player.items.push(keyEntry)
+        if (vItem && !vItem.permStore) {
+          this.removeVendorPoolEntry(player, npc, npcId, itemId)
+        }
+        emitGoldUpdates()
+        this.emitToPlayer(player.unitId, {
+          type: 'ItemEvent',
+          action: 'buy',
+          itemId: keyEntry.unitId,
+          code: keyEntry.code,
+          x: keyEntry.x,
+          y: keyEntry.y,
+          container: 'inventory',
+          item: this.serverEntryToItemData(keyEntry),
+        })
+        return
+      }
+
+      if (isBeltable && beltSlot !== undefined) {
+        let nextSlot: { x: number; y: number } | undefined = beltSlot
+        while (nextSlot !== undefined && player.gold + player.goldBank >= cost) {
+          deductGold(cost)
+          const potEntry: ServerItemEntry = vItem?.rawItemData
+            ? this.cloneVendorEntryForPlayer(vItem, player, nextSlot, 'belt')
+            : {
+                unitId: this.allocateUnitId(),
+                code,
+                name: info.name,
+                quality: vItem?.quality ?? 2,
+                level: player.level,
+                location: 'belt',
+                x: nextSlot.x,
+                y: nextSlot.y,
+                width: info.width,
+                height: info.height,
+                areaId: player.areaId,
+                ownerId: player.unitId,
+                bodyLoc: 0,
+                storePage: 0,
+                cost: info.cost,
+                gamble: false,
+                identified: true,
+                ethereal: false,
+                socketed: false,
+                totalSockets: 0,
+                durability: info.maxDurability,
+                maxDurability: info.maxDurability,
+                quantity: 1,
+                stats: new Map(),
+                socketedItems: [],
+              }
+          const linearSlot = this.setBeltEntryColRow(potEntry, nextSlot.x, nextSlot.y)
+          player.items.push(potEntry)
+          this.emitToPlayer(player.unitId, {
+            type: 'ItemEvent',
+            action: 'beltPut',
+            itemId: potEntry.unitId,
+            code: potEntry.code,
+            x: linearSlot,
+            y: 0,
+            container: 'belt',
+            item: this.serverEntryToItemData(potEntry),
+          })
+          if (vItem && !vItem.permStore) {
+            this.removeVendorPoolEntry(player, npc, npcId, itemId)
+            break
+          }
+          nextSlot = this.findAvailableBeltSlot(player, lowerCode)
+        }
+        emitGoldUpdates()
+        return
+      }
+    }
+
+    deductGold(cost)
+
+    if (stackTarget !== undefined) {
+      const prevQty = isScroll
+        ? Math.max(0, Math.trunc(stackTarget.quantity ?? 0))
+        : Math.max(1, Math.trunc(stackTarget.quantity || 1))
+      this.syncServerItemQuantity(stackTarget, prevQty + 1)
       if (vItem && !vItem.permStore && !isGamble) {
         this.removeVendorPoolEntry(player, npc, npcId, itemId)
       }
       emitGoldUpdates()
+      this.emitToPlayer(player.unitId, {
+        type: 'StatSet',
+        unit: { unitType: 4, id: stackTarget.unitId },
+        stat: 70,
+        value: stackTarget.quantity,
+      })
       this.emitToPlayer(player.unitId, {
         type: 'ItemEvent',
         action: 'update',
@@ -30800,6 +40100,9 @@ export class GameInstance {
               stats,
               socketedItems: [],
             }
+    if (beltSlot) {
+      this.setBeltEntryColRow(purchased, beltSlot.x, beltSlot.y)
+    }
     player.items.push(purchased)
 
     if (isGamble) {
@@ -30810,13 +40113,15 @@ export class GameInstance {
     }
 
     emitGoldUpdates()
+    const purchasedLinearX = beltSlot ? (beltSlot.y * 4 + beltSlot.x) & 0x0f : purchased.x
+    const purchasedY = beltSlot ? 0 : purchased.y
     this.emitToPlayer(player.unitId, {
       type: 'ItemEvent',
       action: isGamble ? 'gamble' : 'buy',
       itemId: purchased.unitId,
       code: purchased.code,
-      x: purchased.x,
-      y: purchased.y,
+      x: purchasedLinearX,
+      y: purchasedY,
       container: beltSlot ? 'belt' : 'inventory',
       item: this.serverEntryToItemData(purchased),
     })
@@ -30833,26 +40138,28 @@ export class GameInstance {
   ): { x: number; y: number } | undefined {
     const newCatalog = BELT_POTION_CATALOG[lowerCode]
     if (!newCatalog) return undefined
-    const belt = player.items.find(
-      (item) => item.location === 'equipped' && item.bodyLoc === 8,
-    )
-    const beltCode = belt?.code.trim().toLowerCase() ?? ''
-    const beltRows =
-      belt === undefined ? NO_BELT_ROWS : (BELT_CODE_TO_ROWS[beltCode] ?? 4)
+    const beltRows = this.getPlayerBeltMaxRows(player)
     const newPot = { ...newCatalog, id: lowerCode }
 
     // Pass 1: stack above an existing compatible potion/scroll in row 0.
     for (let bx = 0; bx < 4; bx++) {
-      const baseItem = player.items.find(
-        (it) => it.location === 'belt' && it.x === bx && it.y === 0,
-      )
+      const baseItem = player.items.find((it) => {
+        if (it.location !== 'belt') return false
+        const pos = this.getBeltColRow(it)
+        return pos.col === bx && pos.row === 0
+      })
       if (!baseItem) continue
       const baseCode = baseItem.code.trim().toLowerCase()
       const baseCatalog = BELT_POTION_CATALOG[baseCode]
       if (!baseCatalog) continue
       if (!areBeltPotionsCompatible({ ...baseCatalog, id: baseCode }, newPot)) continue
       for (let by = 1; by < beltRows; by++) {
-        if (!player.items.some((it) => it.location === 'belt' && it.x === bx && it.y === by)) {
+        const occupied = player.items.some((it) => {
+          if (it.location !== 'belt') return false
+          const pos = this.getBeltColRow(it)
+          return pos.col === bx && pos.row === by
+        })
+        if (!occupied) {
           return { x: bx, y: by }
         }
       }
@@ -30860,7 +40167,12 @@ export class GameInstance {
 
     // Pass 2: place into the first empty base column (row 0).
     for (let bx = 0; bx < 4; bx++) {
-      if (!player.items.some((it) => it.location === 'belt' && it.x === bx && it.y === 0)) {
+      const occupied = player.items.some((it) => {
+        if (it.location !== 'belt') return false
+        const pos = this.getBeltColRow(it)
+        return pos.col === bx && pos.row === 0
+      })
+      if (!occupied) {
         return { x: bx, y: 0 }
       }
     }
@@ -31206,15 +40518,11 @@ export class GameInstance {
     return code === 'box' || lookupBaseInfo(item.code).quest
   }
 
-  /** Sends `0x9D` socket children (`ownerType = 4`, `ownerId = host`) of `item` to `playerId`. */
-  private emitSocketChildrenToPlayer(
-    playerId: number,
-    item: ServerItemEntry,
-    action: number,
-  ): void {
+  private buildSocketChildEvents(item: ServerItemEntry, action: number): ServerEvent[] {
+    const events: ServerEvent[] = []
     for (const child of item.socketedItems ?? []) {
       const childData = this.serverEntryToItemData(child)
-      this.emitToPlayer(playerId, {
+      events.push({
         type: 'ItemEvent',
         action,
         itemId: child.unitId,
@@ -31234,6 +40542,78 @@ export class GameInstance {
           inSocket: true,
         },
       })
+    }
+    return events
+  }
+
+  /** Sends `0x9D` socket children (`ownerType = 4`, `ownerId = host`) of `item` to `playerId`. */
+  private emitSocketChildrenToPlayer(
+    playerId: number,
+    item: ServerItemEntry,
+    action: number,
+  ): void {
+    for (const ev of this.buildSocketChildEvents(item, action)) {
+      this.emitToPlayer(playerId, ev)
+    }
+  }
+
+  /** Broadcasts `0x9D` socket children (`ownerType = 4`, `ownerId = host`) of ground `item` to `areaId`. */
+  private emitSocketChildrenToArea(
+    areaId: number,
+    item: ServerItemEntry,
+    action: number,
+  ): void {
+    for (const ev of this.buildSocketChildEvents(item, action)) {
+      this.broadcastToArea(areaId, ev)
+    }
+  }
+
+  private computePlayerPartyLifePct100(player: InternalPlayerRecord): number {
+    if (player.dead || player.hp <= 0 || player.maxHp <= 0) return 0
+    return Math.min(100, Math.max(1, Math.round((player.hp * 100) / player.maxHp)))
+  }
+
+  private emitPartyMemberPulsesForPlayer(player: InternalPlayerRecord): void {
+    this.partyManager.updatePlayer(player.unitId, {
+      level: player.level,
+      areaId: player.areaId,
+    })
+    if (this.partyManager.getPartyId(player.unitId) === 0xffff) return
+    const lifePct = this.computePlayerPartyLifePct100(player)
+    const px = Math.round(player.x)
+    const py = Math.round(player.y)
+    for (const other of this.players.values()) {
+      if (other.unitId === player.unitId) continue
+      if (!this.partyManager.areAllied(player.unitId, other.unitId)) continue
+      this.emitToPlayer(other.unitId, {
+        type: 'Party',
+        kind: 'memberState',
+        source: 0x7f,
+        isPlayer: true,
+        relation: 1,
+        unitId: player.unitId,
+        playerId: player.unitId,
+        lifePct,
+        areaId: player.areaId,
+      })
+      if (other.areaId === player.areaId) {
+        this.emitToPlayer(other.unitId, {
+          type: 'Party',
+          kind: 'memberPos',
+          source: 0x90,
+          unitId: player.unitId,
+          playerId: player.unitId,
+          areaId: player.areaId,
+          at: { x: px, y: py },
+        })
+      }
+    }
+  }
+
+  private stepPartyMemberPulses(): void {
+    if (this.currentFrame % PARTY_PULSE_INTERVAL_FRAMES !== 0) return
+    for (const player of this.players.values()) {
+      this.emitPartyMemberPulsesForPlayer(player)
     }
   }
 
@@ -31511,7 +40891,7 @@ export class GameInstance {
     const cubeEntries = player.items.filter((item) => item.location === 'cube')
     if (cubeEntries.length === 0) return
 
-    const openedPortalDestAreas = new Set<number>()
+    const openedPortalDestAreas = new Set<number>(this.openedPandemoniumAreas)
     let hasActiveCowPortal = false
     for (const obj of this.objects.values()) {
       if (obj.classId !== 60 || obj.destAreaId === undefined) continue
@@ -31526,6 +40906,7 @@ export class GameInstance {
       playerClassCode: player.classCode,
       difficulty: this.difficulty,
       areaId: player.areaId,
+      isExpansion: ((player.statusFlags ?? 0x20) & 0x20) !== 0,
       isLadder: this.isLadderRulesEnabled(),
       hasCompletedBaal: hasQuestFlag113c(player.questFlags, 'a5q6', QUEST_FLAG_COMPLETED_113C),
       hasActiveCowPortal,
@@ -31572,14 +40953,59 @@ export class GameInstance {
     }
 
     if (res.portalToSpawn !== undefined) {
-      this.spawnObject({
+      const destAreaId = res.portalToSpawn.destAreaId
+      if (PANDEMONIUM_AREA_IDS_113C.has(destAreaId)) {
+        this.openedPandemoniumAreas.add(destAreaId)
+      }
+      const portalPos = findFreePortalCoordNear113c({
+        originX: player.x,
+        originY: player.y,
+        existingPortals: [...this.objects.values()].filter(
+          (o) => o.areaId === player.areaId && (o.classId === 59 || o.classId === 60),
+        ),
+        isWalkable: (x, y) => this.isWorldWalkableForPlayer(player.areaId, x, y),
+      })
+      const townPortalObjId = this.spawnObject({
         classId: res.portalToSpawn.classId,
-        x: Math.round(player.x) + 1,
-        y: Math.round(player.y) + 1,
+        x: portalPos.x,
+        y: portalPos.y,
         areaId: player.areaId,
         mode: 2,
-        destAreaId: res.portalToSpawn.destAreaId,
+        destAreaId,
       })
+      const destArea = this.loadArea(destAreaId)
+      let returnObj = [...this.objects.values()].find(
+        (o) =>
+          o.areaId === destAreaId &&
+          o.classId === res.portalToSpawn!.classId &&
+          o.destAreaId === player.areaId,
+      )
+      if (returnObj === undefined) {
+        const returnOriginX = destArea ? destArea.spawnX : LEGACY_TEST_GRID_SPAWN
+        const returnOriginY = destArea ? destArea.spawnY : LEGACY_TEST_GRID_SPAWN
+        const returnPos = findFreePortalCoordNear113c({
+          originX: returnOriginX,
+          originY: returnOriginY,
+          existingPortals: [...this.objects.values()].filter(
+            (o) => o.areaId === destAreaId && (o.classId === 59 || o.classId === 60),
+          ),
+          isWalkable: (x, y) => this.isWorldWalkableForPlayer(destAreaId, x, y),
+        })
+        const returnPortalObjId = this.spawnObject({
+          classId: res.portalToSpawn.classId,
+          x: returnPos.x,
+          y: returnPos.y,
+          areaId: destAreaId,
+          mode: 2,
+          destAreaId: player.areaId,
+        })
+        returnObj = this.objects.get(returnPortalObjId)
+      }
+      const townObj = this.objects.get(townPortalObjId)
+      if (townObj !== undefined && returnObj !== undefined) {
+        townObj.linkedPortalId = returnObj.unitId
+        returnObj.linkedPortalId = townObj.unitId
+      }
     }
   }
 
@@ -31940,14 +41366,41 @@ export class GameInstance {
     }
   }
 
+  /**
+   * 1.13c `C2S 0x3B` (`AddSkillPoint`, `D2Game.dll` `0x6FCEDA20` -> `D2Common_CheckSkillPrerequisites`):
+   * Enforces class ownership (`Skills.txt.charclass`), hard-point cap (`maxlvl`, 20),
+   * character level requirement (`player.level >= reqlevel + curBaseLvl`), and hard-point
+   * prerequisites (`reqskill1..3 >= 1` base points).
+   */
   private handleAllocateSkill(
     player: InternalPlayerRecord,
     skillId: number,
   ): void {
     if (player.newSkills <= 0) return
     if (!Number.isInteger(skillId) || skillId < 0 || skillId > 350) return
+
+    const skill = this.registry.getSkillById(skillId)
+    if (!skill || skill.charClass !== player.classCode) return
+
+    const maxLvlRaw = Number(skill.raw.maxlvl)
+    const maxLvl = Number.isFinite(maxLvlRaw) && maxLvlRaw > 0 ? Math.trunc(maxLvlRaw) : 20
+    const curBase = player.skills.get(skillId) ?? 0
+    if (curBase >= maxLvl) return
+
+    const reqLvl = Math.max(1, Math.trunc(skill.reqLevel || 1))
+    if (player.level < reqLvl + curBase) return
+
+    for (const reqName of [skill.reqSkill1, skill.reqSkill2, skill.reqSkill3]) {
+      const trimmed = reqName.trim()
+      if (trimmed.length === 0) continue
+      const reqSkill = this.registry.getSkillByName(trimmed)
+      if (!reqSkill || (player.skills.get(reqSkill.id) ?? 0) < 1) {
+        return
+      }
+    }
+
     player.newSkills -= 1
-    const nextLvl = (player.skills.get(skillId) ?? 0) + 1
+    const nextLvl = curBase + 1
     player.skills.set(skillId, nextLvl)
 
     this.emitToPlayer(player.unitId, {
@@ -32027,15 +41480,33 @@ export class GameInstance {
     if (player.d2sTemplate?.skills) {
       player.d2sTemplate.skills.fill(0)
     }
+    for (let slot = 0; slot < 16; slot++) {
+      const raw = player.hotkeys[slot] ?? 0xffff
+      const skillId = raw & 0x7fff
+      const hand: 'left' | 'right' = (raw & 0x8000) !== 0 ? 'left' : 'right'
+      const itemId = player.hotkeyItemIds[slot] ?? 0xffffffff
+      if (
+        raw !== 0xffff &&
+        skillId !== 0x7fff &&
+        !this.isPlayerSkillSelectable(player, skillId, hand, itemId)
+      ) {
+        player.hotkeys[slot] = 0xffff
+        player.hotkeyItemIds[slot] = 0xffffffff
+        this.emitToPlayer(player.unitId, {
+          type: 'ActiveSkill',
+          unitId: player.unitId,
+          hand,
+          skill: 0xffff,
+          slot,
+          isHotkey: true,
+          itemId: 0xffffffff,
+        })
+      }
+    }
     if (player.d2sTemplate?.hotkeys) {
       const mutableHotkeys = player.d2sTemplate.hotkeys as number[]
       for (let slot = 0; slot < Math.min(16, mutableHotkeys.length); slot++) {
-        const raw = mutableHotkeys[slot] ?? 0xffff
-        const skillId = raw & 0x7fff
-        const hand: 'left' | 'right' = (raw & 0x8000) !== 0 ? 'left' : 'right'
-        if (skillId !== 0xffff && skillId !== 0x7fff && !this.isPlayerSkillSelectable(player, skillId, hand)) {
-          mutableHotkeys[slot] = 0xffff
-        }
+        mutableHotkeys[slot] = player.hotkeys[slot] ?? 0xffff
       }
     }
     if (player.leftSkill !== 0 && !this.isPlayerSkillSelectable(player, player.leftSkill, 'left')) {
@@ -32257,6 +41728,11 @@ export class GameInstance {
           })
         }
       }
+      for (const member of this.players.values()) {
+        if (member.partyId === player.partyId) {
+          this.emitPartyMemberPulsesForPlayer(member)
+        }
+      }
     }
   }
 
@@ -32278,21 +41754,49 @@ export class GameInstance {
     const target = this.players.get(targetPlayerId)
     if (!target || target.unitId === player.unitId) return
 
-    let events: ServerEvent[] = []
-    if (button === 1) {
-      // Squelch / Mute toggle (bit 1)
-      events = this.partyManager.setMuted(player.unitId, target.unitId, hostile)
-    } else if (button === 2) {
-      // Allow Loot permit toggle (bit 2)
-      events = this.partyManager.setLootPermission(player.unitId, target.unitId, hostile)
-    } else {
-      // Button 3 or 4: Hostile declaration (bit 4 or 8)
-      // 1. Policy check: allowPvpHostile
-      if (!this.policy.allowPvpHostile) return
-      // 2. 1.13c Level check: D2Game.dll 0x6fd11153..0x6fd11177 requires both players to be at least level 9
-      if (player.level < 9 || target.level < 9) return
+    const decision = validatePlayerRelation0x5D113c({
+      allowPvpHostile: Boolean(this.policy.allowPvpHostile),
+      actorPlayerId: player.unitId,
+      actorAreaId: player.areaId,
+      actorLevel: player.level,
+      actorIsHardcore: isPlayerHardcore113c(player),
+      targetPlayerId: target.unitId,
+      targetLevel: target.level,
+      targetIsHardcore: isPlayerHardcore113c(target),
+      state: hostile,
+      button,
+    })
+    if (decision.kind === 'reject') return
 
-      events = this.partyManager.setHostile(player.unitId, target.unitId, hostile, button ?? 4)
+    let events: ServerEvent[] = []
+    if (decision.kind === 'mute') {
+      events = this.partyManager.setMuted(player.unitId, target.unitId, decision.muted)
+    } else if (decision.kind === 'loot_permit') {
+      events = this.partyManager.setLootPermission(player.unitId, target.unitId, decision.permitted)
+    } else {
+      const wasHostile = this.partyManager.areHostile(player.unitId, target.unitId)
+      events = [
+        ...this.partyManager.setHostile(
+          player.unitId,
+          target.unitId,
+          decision.hostile,
+          decision.button,
+        ),
+      ]
+      if (decision.closeInitiatorTownPortal) {
+        this.closeTownPortal(player)
+        player.hostilePortalLockUntilFrame = this.currentFrame + decision.portalLockoutFrames
+      }
+      if (decision.hostile !== wasHostile || decision.hostile) {
+        events.push(
+          buildHostileRelationEvent0x5A113c({
+            actorPlayerUnitId: player.unitId,
+            actorName: player.name,
+            targetName: target.name,
+            hostile: decision.hostile,
+          }),
+        )
+      }
     }
 
     for (const ev of events) {
@@ -32334,33 +41838,85 @@ export class GameInstance {
       return
     }
 
-    const ev: ServerEvent = {
-      type: 'Chat',
-      kind: whisperTo ? 'whisper' : 'say',
-      from: player.name,
-      unit: { unitType: 0, id: player.unitId },
-      text,
-    }
-
     if (whisperTo) {
+      let targetPlayer: InternalPlayerRecord | undefined
       for (const p of this.players.values()) {
-        if (
-          p.name.toLowerCase() === whisperTo.toLowerCase() ||
-          p.unitId === player.unitId
-        ) {
-          if (p.unitId !== player.unitId && this.partyManager.isMuted(p.unitId, player.unitId)) {
-            continue
-          }
-          this.emitToPlayer(p.unitId, ev)
+        if (p.name.toLowerCase() === whisperTo.toLowerCase()) {
+          targetPlayer = p
+          break
         }
       }
+      if (targetPlayer && targetPlayer.unitId !== player.unitId) {
+        if (!this.partyManager.isMuted(targetPlayer.unitId, player.unitId)) {
+          this.emitToPlayer(targetPlayer.unitId, {
+            type: 'Chat',
+            kind: 'whisper',
+            eventType: 0x02,
+            from: player.name,
+            unit: { unitType: 0, id: player.unitId },
+            text,
+          })
+        }
+      }
+      // 1.13c D2Game.dll 0x6FCEDBB0: sender receives whisper confirmation (`chatType = 0x06`, `from = targetName`).
+      this.emitToPlayer(player.unitId, {
+        type: 'Chat',
+        kind: 'whisper',
+        eventType: 0x06,
+        from: targetPlayer ? targetPlayer.name : whisperTo,
+        unit: { unitType: 0, id: player.unitId },
+        text,
+      })
     } else {
+      const sayEv: ServerEvent = {
+        type: 'Chat',
+        kind: 'say',
+        eventType: 0x01,
+        from: player.name,
+        unit: { unitType: 0, id: player.unitId },
+        text,
+      }
       for (const p of this.players.values()) {
         if (p.unitId !== player.unitId && this.partyManager.isMuted(p.unitId, player.unitId)) {
           continue
         }
-        this.emitToPlayer(p.unitId, ev)
+        this.emitToPlayer(p.unitId, sayEv)
       }
+    }
+  }
+
+  /**
+   * 1.13c `C2S 0x14` (`OverheadMessage`, `D2Game.dll` `0x6FCF00A0`):
+   * Broadcasts `S2C 0x26` (`chatType = 0x05`, `unitType = 0`, `unitId = player.unitId`) to players
+   * in the speaker's area, or `S2C 0x76` (`UnitHoverTextClear`) when cleared with an empty string.
+   */
+  private handleOverheadChatCommand(
+    player: InternalPlayerRecord,
+    rawText: string,
+  ): void {
+    const sanitized = rawText.replace(/[\x00-\x1f]/g, '').slice(0, 255)
+    if (sanitized.trim().length === 0) {
+      this.broadcastToArea(player.areaId, {
+        type: 'UnitHoverTextClear',
+        rawUnitType: 0,
+        id: player.unitId,
+      })
+      return
+    }
+    const ev: ServerEvent = {
+      type: 'Chat',
+      kind: 'overhead',
+      eventType: 0x05,
+      from: player.name,
+      unit: { unitType: 0, id: player.unitId },
+      text: sanitized,
+    }
+    for (const p of this.players.values()) {
+      if (p.areaId !== player.areaId) continue
+      if (p.unitId !== player.unitId && this.partyManager.isMuted(p.unitId, player.unitId)) {
+        continue
+      }
+      this.emitToPlayer(p.unitId, ev)
     }
   }
 
@@ -32372,13 +41928,113 @@ export class GameInstance {
     if (p && (areaId === undefined || p.areaId === areaId)) return { x: p.x, y: p.y }
     const m = this.monsters.get(unitId)
     if (m && (areaId === undefined || m.areaId === areaId)) return { x: m.x, y: m.y }
+    const merc = this.mercenaries.get(unitId)
+    if (merc && merc.alive && (areaId === undefined || merc.areaId === areaId)) {
+      return { x: merc.x, y: merc.y }
+    }
+    const mp = this.findMercOrPetRecord(unitId)
+    if (mp !== undefined) {
+      if (mp.kind === 'merc') {
+        if (areaId === undefined || mp.merc.areaId === areaId) return { x: mp.merc.x, y: mp.merc.y }
+      } else if (areaId === undefined || mp.areaId === areaId) {
+        return { x: mp.x, y: mp.y }
+      }
+    }
     const o = this.objects.get(unitId)
     if (o && (areaId === undefined || o.areaId === areaId)) return { x: o.x, y: o.y }
     const g = this.groundItems.get(unitId)
     if (g && (areaId === undefined || g.areaId === areaId)) return { x: g.x, y: g.y }
     const w = this.warpTiles.get(unitId)
     if (w && (areaId === undefined || w.areaId === areaId)) return { x: w.x, y: w.y }
+    const mis = this.missiles.get(unitId)
+    if (mis && (areaId === undefined || mis.areaId === areaId)) return { x: mis.x, y: mis.y }
+    for (const owner of this.players.values()) {
+      if (owner.corpseId === unitId && this.hasLivePrimaryCorpse113c(owner)) {
+        const cArea = owner.corpseAreaId ?? owner.areaId
+        if (areaId === undefined || cArea === areaId) {
+          return { x: owner.corpseX, y: owner.corpseY }
+        }
+      }
+      for (const extra of owner.extraCorpses ?? []) {
+        if (extra.corpseId === unitId && (extra.items.length > 0 || (extra.lostExp ?? 0) > 0)) {
+          if (areaId === undefined || extra.areaId === areaId) {
+            return { x: extra.x, y: extra.y }
+          }
+        }
+      }
+    }
     return undefined
+  }
+
+  private extractEventPosition113c(
+    areaId: number,
+    ev: ServerEvent,
+  ): { readonly x: number; readonly y: number } | undefined {
+    const rec = ev as unknown as Record<string, unknown>
+    if (rec['type'] === 'ItemEvent' && rec['container'] && rec['container'] !== 'ground') {
+      const ownerId =
+        typeof (rec['item'] as Record<string, unknown> | undefined)?.['ownerId'] === 'number'
+          ? Number((rec['item'] as Record<string, unknown>)['ownerId'])
+          : undefined
+      if (ownerId !== undefined && ownerId > 0) {
+        return this.findUnitPosition(ownerId, areaId)
+      }
+    }
+    if (typeof rec['x'] === 'number' && typeof rec['y'] === 'number') {
+      return { x: rec['x'], y: rec['y'] }
+    }
+    const at = rec['at'] as { readonly x?: unknown; readonly y?: unknown } | undefined
+    if (at && typeof at.x === 'number' && typeof at.y === 'number') {
+      return { x: at.x, y: at.y }
+    }
+    const from = rec['from'] as { readonly x?: unknown; readonly y?: unknown } | undefined
+    if (from && typeof from.x === 'number' && typeof from.y === 'number') {
+      return { x: from.x, y: from.y }
+    }
+    const unit = rec['unit'] as
+      | { readonly x?: unknown; readonly y?: unknown; readonly id?: unknown }
+      | undefined
+    if (unit && typeof unit.x === 'number' && typeof unit.y === 'number') {
+      return { x: unit.x, y: unit.y }
+    }
+    const candidateId =
+      typeof rec['unitId'] === 'number'
+        ? rec['unitId']
+        : typeof rec['id'] === 'number'
+          ? rec['id']
+          : typeof rec['itemId'] === 'number'
+            ? rec['itemId']
+            : typeof rec['portalId'] === 'number'
+              ? rec['portalId']
+              : typeof rec['missileId'] === 'number'
+                ? rec['missileId']
+                : typeof rec['mercId'] === 'number'
+                  ? rec['mercId']
+                  : typeof rec['corpseId'] === 'number'
+                    ? rec['corpseId']
+                    : unit && typeof unit.id === 'number'
+                      ? unit.id
+                      : undefined
+    if (candidateId !== undefined) {
+      return this.findUnitPosition(candidateId, areaId) ?? this.findUnitPosition(candidateId)
+    }
+    return undefined
+  }
+
+  private shouldDeliverAreaEventToViewer113c(
+    viewer: InternalPlayerRecord,
+    areaId: number,
+    ev: ServerEvent,
+    pos: { readonly x: number; readonly y: number } | undefined,
+  ): boolean {
+    if (viewer.areaId !== areaId && !this.isAreaSeamAdjacent(viewer.areaId, areaId)) {
+      return false
+    }
+    if (pos !== undefined) {
+      return this.isPointInViewerAoi113c(viewer, areaId, pos.x, pos.y)
+    }
+    if (viewer.areaId === areaId) return true
+    return ev.type === 'UnitRemove' || ev.type === 'CorpseAssign'
   }
 
   private emitToPlayer(playerUnitId: number, ev: ServerEvent): void {
@@ -32389,8 +42045,9 @@ export class GameInstance {
   }
 
   private broadcastToArea(areaId: number, ev: ServerEvent): void {
+    const pos = this.extractEventPosition113c(areaId, ev)
     for (const p of this.players.values()) {
-      if (p.areaId === areaId) {
+      if (this.shouldDeliverAreaEventToViewer113c(p, areaId, ev, pos)) {
         this.emitToPlayer(p.unitId, ev)
       }
     }
@@ -32398,8 +42055,12 @@ export class GameInstance {
 
   /** {@link broadcastToArea} without `exceptPlayerUnitId` (e.g. the moving player's own client). */
   private broadcastToAreaExcept(areaId: number, exceptPlayerUnitId: number, ev: ServerEvent): void {
+    const pos = this.extractEventPosition113c(areaId, ev)
     for (const p of this.players.values()) {
-      if (p.areaId === areaId && p.unitId !== exceptPlayerUnitId) {
+      if (
+        p.unitId !== exceptPlayerUnitId &&
+        this.shouldDeliverAreaEventToViewer113c(p, areaId, ev, pos)
+      ) {
         this.emitToPlayer(p.unitId, ev)
       }
     }
@@ -32610,6 +42271,15 @@ export class GameInstance {
       else stateId = this.registry.getStateByName(key)?.id ?? (Number(key) || 11)
     }
 
+    const isCurse =
+      ALL_CURSE_STATE_IDS_113C.has(stateId) ||
+      this.registry.getStateById(stateId)?.curse === true
+    // 1.13c D2Game.dll 0x6FC437C0 (`MONUMOD_ChampionPossessed`): `STAT_UNCURSABLE` (`+0x22` bit 5)
+    // blocks all curse states (Amplify Damage, Decrepify, Lower Resist, Life Tap, Taunt, etc.).
+    if (isCurse && isMonsterUncursable113c(m.umodIds, m.uncursable)) {
+      return false
+    }
+
     // Freeze/Stun interrupts a monster's pending melee/revive action frame.
     if (stateId === 1 || stateId === 29 || stateId === 21 || stateId === 25) {
       m.pendingAttack = undefined
@@ -32672,14 +42342,16 @@ export class GameInstance {
       }
     }
 
-    const isCurse = this.registry.getStateById(stateId)?.curse === true
     // 1.13c sub_6FCC00B0 (0x6FCC01C1): Attract (57) cannot be overwritten by any curse=1 state
     if (m.states.has(57) && isCurse) {
       return false
     }
     if (isCurse) {
       for (const prevCurseId of [...m.states]) {
-        if (prevCurseId !== stateId && this.registry.getStateById(prevCurseId)?.curse === true) {
+        const isPrevCurse =
+          ALL_CURSE_STATE_IDS_113C.has(prevCurseId) ||
+          this.registry.getStateById(prevCurseId)?.curse === true
+        if (prevCurseId !== stateId && isPrevCurse) {
           m.states.delete(prevCurseId)
           m.stateTimers.delete(prevCurseId)
           this.monsterCombat.get(m.unitId)?.stateBus.removeState(prevCurseId)
@@ -33037,6 +42709,8 @@ export class GameInstance {
       (m) => m.dead && !m.shattered && !m.isNpc && m.areaId === merc.areaId && inRange(m.x, m.y),
     )
     const enemies = enemyRecords.map((m) => this.monsterCombatContext(m))
+    const pvpAuraEnemies = this.buildHostileAuraPvpEnemies113c(owner.unitId, merc.areaId, inRange)
+    const allAuraEnemies = [...enemies, ...pvpAuraEnemies.map((e) => e.ctx)]
     const corpses: CorpseContext[] = corpseRecords.map((m) => ({
       id: String(m.unitId),
       consumed: false,
@@ -33055,23 +42729,31 @@ export class GameInstance {
     if (runtime.needsInitialPulse) {
       runtime.needsInitialPulse = false
       for (const entry of runtime.sources) {
-        runtime.scanner.pulseAura(entry.source, pulseTick, targets.allAllies, enemies, corpses, auraEnv)
+        this.applyAuraPulseSideEffects113c(runtime.scanner.pulseAura(entry.source, pulseTick, targets.allAllies, allAuraEnemies, corpses, auraEnv), merc.x, merc.y, merc.areaId)
       }
     } else {
-      runtime.scanner.tick(this.currentFrame, targets.allAllies, enemies, corpses, auraEnv)
+      this.applyAuraPulseSideEffects113c(runtime.scanner.tick(this.currentFrame, targets.allAllies, allAuraEnemies, corpses, auraEnv), merc.x, merc.y, merc.areaId)
       for (const entry of runtime.sources) {
         if (entry.targetStateId === undefined) continue
         const tgtState = entry.targetStateId
         if (entry.skillId === 114 || entry.skillId === 123) {
-          const unpulsedEnemies = enemies.filter((e, idx) => {
+          const unpulsedMonsters = enemies.filter((e, idx) => {
             const m = enemyRecords[idx]!
             if (!isWithinAuraRange(m.x - merc.x, m.y - merc.y, entry.radiusSubtiles)) return false
             if (m.isPrimeEvil || (entry.skillId === 114 && m.coldEffect === 0)) return false
             if (auraEnv.isTown) return false
             return !e.stateBus.hasState(tgtState)
           })
+          const unpulsedPvp = pvpAuraEnemies
+            .filter((pe) => {
+              if (auraEnv.isTown || pe.ctx.x === undefined || pe.ctx.y === undefined) return false
+              if (!isWithinAuraRange(pe.ctx.x - merc.x, pe.ctx.y - merc.y, entry.radiusSubtiles)) return false
+              return !pe.ctx.stateBus.hasState(tgtState)
+            })
+            .map((pe) => pe.ctx)
+          const unpulsedEnemies = [...unpulsedMonsters, ...unpulsedPvp]
           if (unpulsedEnemies.length > 0) {
-            runtime.scanner.pulseAura(entry.source, pulseTick, [], unpulsedEnemies, [], auraEnv)
+            this.applyAuraPulseSideEffects113c(runtime.scanner.pulseAura(entry.source, pulseTick, [], unpulsedEnemies, [], auraEnv), merc.x, merc.y, merc.areaId)
           }
         } else if (FRIENDLY_AURA_TARGET_STATE_IDS_113C.has(tgtState)) {
           const unpulsedAllies = targets.allAllies.filter((a) => {
@@ -33122,6 +42804,7 @@ export class GameInstance {
         )
       }
     })
+    this.syncHostileAuraPvpEnemies113c(pvpAuraEnemies, 'player_pet', merc.unitId)
     corpseRecords.forEach((m, i) => {
       if (corpses[i]!.consumed) m.shattered = true
     })
@@ -33534,8 +43217,8 @@ export class GameInstance {
   private triggerMercCtcProcs113c(
     owner: InternalPlayerRecord,
     merc: InternalMercenaryRecord,
-    target: InternalMonsterRecord,
-    triggerStatId: 195 | 198,
+    target: InternalMonsterRecord | undefined,
+    triggerStatId: 195 | 196 | 198 | 201,
   ): void {
     const allStats: ItemStat[] = []
     for (const eq of merc.equipment) {
@@ -33548,7 +43231,10 @@ export class GameInstance {
       }
       allStats.push(...this.collectServerItemEntryStats113c(eq))
     }
-    const procs = extractMercenaryStrikeProcs113c(allStats)
+    const procs =
+      triggerStatId === 201 || triggerStatId === 196
+        ? aggregateCtcProcs113c(allStats, triggerStatId)
+        : extractMercenaryStrikeProcs113c(allStats)
     for (const proc of procs) {
       if (proc.statId !== triggerStatId) continue
       if (proc.chancePct < 100 && this.rng.rand(100) >= proc.chancePct) continue
@@ -33564,7 +43250,29 @@ export class GameInstance {
         stateBus: mercCtx.stateBus,
         difficulty: this.difficulty,
       })
-      if (procSkill.auraTgtState) {
+      if (procSkill.auraState && procSkill.srcDam <= 0) {
+        const stateId = this.registry.getStateByName(procSkill.auraState)?.id
+        if (stateId !== undefined) {
+          const dur = Math.max(0, ev.durationFrames)
+          const stateStats = this.evaluateSkillStateStats(procSkill, proc.slvl, mercCtx.statList)
+          mercCtx.stateBus.applyState({
+            stateNameOrId: stateId,
+            sourceUnitId: `merc_${merc.unitId}`,
+            sourceSkillId: proc.skillId,
+            slvl: proc.slvl,
+            durationFrames: dur,
+            currentFrame: this.currentFrame,
+            stats: stateStats,
+          })
+          if (dur > 0) {
+            this.applyUnitState(merc.states, merc.stateTimers, 'monster', merc.unitId, merc.areaId, stateId, dur)
+          } else {
+            this.applyPersistentUnitState(merc.states, merc.stateTimers, 'monster', merc.unitId, merc.areaId, stateId)
+          }
+        }
+        continue
+      }
+      if (procSkill.auraTgtState && target !== undefined) {
         const stateId = this.registry.getStateByName(procSkill.auraTgtState)?.id
         if (stateId !== undefined) {
           const dur = Math.max(50, ev.durationFrames > 0 ? ev.durationFrames : 100 + proc.slvl * 25)
@@ -33594,15 +43302,24 @@ export class GameInstance {
         }
         continue
       }
-      if (proc.skillId === 44 || proc.skillId === 48) {
+      if (isCtcRadialNovaSkill113c(proc.skillId)) {
         const radius = Math.max(6, ev.radiusSubtiles > 0 ? ev.radiusSubtiles : 9)
-        const elem: 'cold' | 'ltng' = proc.skillId === 44 ? 'cold' : 'ltng'
-        const eMin = Math.max(1, ev.minElemDmg256 >> 8)
-        const eMax = Math.max(eMin, ev.maxElemDmg256 >> 8)
-        const chillFrames = proc.skillId === 44 ? Math.max(75, ev.durationFrames || 200) : 0
-        for (const m of this.monsters.values()) {
+        const originX = triggerStatId === 201 ? merc.x : (target?.x ?? merc.x)
+        const originY = triggerStatId === 201 ? merc.y : (target?.y ?? merc.y)
+        for (const m of [...this.monsters.values()]) {
           if (m.dead || m.isNpc || !m.isKillable || m.submerged || m.areaId !== merc.areaId) continue
-          if (Math.hypot(m.x - merc.x, m.y - merc.y) <= radius) {
+          if (Math.hypot(m.x - originX, m.y - originY) <= radius) {
+            if (ev.elemType === 'pois' && ev.durationFrames > 0) {
+              const bitrate256 = this.rollInclusive(ev.minElemDmg256, ev.maxElemDmg256)
+              if (bitrate256 > 0) {
+                this.applyMonsterPoisonDot(owner, m, bitrate256, ev.durationFrames, proc.skillId, 'merc')
+              }
+              continue
+            }
+            const elem: 'cold' | 'ltng' = proc.skillId === 44 ? 'cold' : 'ltng'
+            const eMin = Math.max(1, ev.minElemDmg256 >> 8)
+            const eMax = Math.max(eMin, ev.maxElemDmg256 >> 8)
+            const chillFrames = proc.skillId === 44 ? Math.max(75, ev.durationFrames || 200) : 0
             this.applyDamageToMonster(owner, m, this.rng.range(eMin, eMax), proc.skillId, elem, merc, {
               attackKind: 'spell',
               autoHit: true,
@@ -33615,7 +43332,7 @@ export class GameInstance {
       }
       const eMin = Math.max(1, (ev.minElemDmg256 >> 8) || ev.minElemDmg || 0)
       const eMax = Math.max(eMin, (ev.maxElemDmg256 >> 8) || ev.maxElemDmg || eMin)
-      if (eMax > 0 && !target.dead) {
+      if (eMax > 0 && target !== undefined && !target.dead) {
         const channel = normalizeMissileElement(procSkill.eType) ?? 'mag'
         this.applyDamageToMonster(owner, target, this.rng.range(eMin, eMax), proc.skillId, channel, merc, {
           attackKind: 'spell',
@@ -33624,6 +43341,77 @@ export class GameInstance {
           elemDurationFrames: ev.durationFrames || undefined,
         })
       }
+    }
+  }
+
+  private applyMercSplashPvp113c(
+    owner: InternalPlayerRecord,
+    merc: InternalMercenaryRecord,
+    areaId: number,
+    cx: number,
+    cy: number,
+    radiusSubtiles: number,
+    msl: {
+      readonly skillId: number
+      readonly element: 'phys' | 'fire' | 'ltng' | 'cold' | 'mag'
+      readonly elemDamage: number
+      readonly elemDurationFrames: number
+    },
+    excludeIdKey?: number,
+  ): void {
+    const pvpTargets = this.collectHostilePvpTargetsInArea113c(owner.unitId, areaId)
+    for (const p of pvpTargets.players) {
+      if (excludeIdKey === -p.unitId || Math.hypot(p.x - cx, p.y - cy) > radiusSubtiles) continue
+      this.applyPvpHitToTarget113c(
+        owner,
+        { kind: 'player', player: p },
+        {
+          skillId: msl.skillId,
+          elemDamage: msl.elemDamage,
+          elemType: msl.element,
+          elemDurationFrames: msl.elemDurationFrames || undefined,
+          attackKind: 'spell',
+          autoHit: true,
+          unblockable: true,
+          source: merc,
+        },
+      )
+    }
+    for (const c of pvpTargets.mercs) {
+      const idKey = -(1_000_000 + c.unitId)
+      if (excludeIdKey === idKey || Math.hypot(c.x - cx, c.y - cy) > radiusSubtiles) continue
+      this.applyPvpHitToTarget113c(
+        owner,
+        { kind: 'merc', merc: c },
+        {
+          skillId: msl.skillId,
+          elemDamage: msl.elemDamage,
+          elemType: msl.element,
+          elemDurationFrames: msl.elemDurationFrames || undefined,
+          attackKind: 'spell',
+          autoHit: true,
+          unblockable: true,
+          source: merc,
+        },
+      )
+    }
+    for (const entry of pvpTargets.pets) {
+      const idKey = -(2_000_000 + entry.petUnitId)
+      if (excludeIdKey === idKey || Math.hypot(entry.pet.x - cx, entry.pet.y - cy) > radiusSubtiles) continue
+      this.applyPvpHitToTarget113c(
+        owner,
+        { kind: 'pet', ...entry },
+        {
+          skillId: msl.skillId,
+          elemDamage: msl.elemDamage,
+          elemType: msl.element,
+          elemDurationFrames: msl.elemDurationFrames || undefined,
+          attackKind: 'spell',
+          autoHit: true,
+          unblockable: true,
+          source: merc,
+        },
+      )
     }
   }
 
@@ -33660,6 +43448,15 @@ export class GameInstance {
                 })
               }
             }
+            this.applyMercSplashPvp113c(
+              owner,
+              merc,
+              msl.areaId,
+              prevX,
+              prevY,
+              msl.splashRadiusSubtiles,
+              msl,
+            )
           }
         }
         this.mercMissiles.delete(mslId)
@@ -33673,6 +43470,23 @@ export class GameInstance {
       const segDy = nextY - prevY
       const segLenSq = segDx * segDx + segDy * segDy
       let hitMonster: InternalMonsterRecord | undefined
+      let hitPvpCand:
+        | {
+            readonly idKey: number
+            readonly x: number
+            readonly y: number
+            readonly target:
+              | { readonly kind: 'player'; readonly player: InternalPlayerRecord }
+              | { readonly kind: 'merc'; readonly merc: InternalMercenaryRecord }
+              | {
+                  readonly kind: 'pet'
+                  readonly ownerId: number
+                  readonly pet: SummonedPetUnit
+                  readonly petUnitId: number
+                  readonly areaId: number
+                }
+          }
+        | undefined
       let bestHitT = Infinity
 
       for (const m of this.monsters.values()) {
@@ -33697,7 +43511,47 @@ export class GameInstance {
         if (Math.hypot(m.x - cx, m.y - cy) <= hitRadius && t < bestHitT) {
           bestHitT = t
           hitMonster = m
+          hitPvpCand = undefined
         }
+      }
+
+      const pvpTargets = this.collectHostilePvpTargetsInArea113c(msl.ownerPlayerId, msl.areaId)
+      const checkPvpCand = (
+        idKey: number,
+        tx: number,
+        ty: number,
+        target:
+          | { readonly kind: 'player'; readonly player: InternalPlayerRecord }
+          | { readonly kind: 'merc'; readonly merc: InternalMercenaryRecord }
+          | {
+              readonly kind: 'pet'
+              readonly ownerId: number
+              readonly pet: SummonedPetUnit
+              readonly petUnitId: number
+              readonly areaId: number
+            },
+      ): void => {
+        if (msl.hitUnitIds.has(idKey)) return
+        let t = 1
+        if (segLenSq > 1e-6) {
+          t = Math.max(0, Math.min(1, ((tx - prevX) * segDx + (ty - prevY) * segDy) / segLenSq))
+        }
+        const cx = prevX + segDx * t
+        const cy = prevY + segDy * t
+        if (Math.hypot(tx - cx, ty - cy) <= 1.8 && t < bestHitT) {
+          bestHitT = t
+          hitMonster = undefined
+          hitPvpCand = { idKey, x: tx, y: ty, target }
+        }
+      }
+      for (const p of pvpTargets.players) {
+        checkPvpCand(-p.unitId, p.x, p.y, { kind: 'player', player: p })
+      }
+      for (const c of pvpTargets.mercs) {
+        checkPvpCand(-(1_000_000 + c.unitId), c.x, c.y, { kind: 'merc', merc: c })
+      }
+      for (const entry of pvpTargets.pets) {
+        checkPvpCand(-(2_000_000 + entry.petUnitId), entry.pet.x, entry.pet.y, { kind: 'pet', ...entry })
       }
 
       if (hitMonster !== undefined) {
@@ -33770,6 +43624,76 @@ export class GameInstance {
                 )
               }
             }
+            this.applyMercSplashPvp113c(
+              owner,
+              merc,
+              msl.areaId,
+              hitMonster.x,
+              hitMonster.y,
+              msl.splashRadiusSubtiles,
+              msl,
+            )
+          }
+        }
+        if (!msl.pierce) {
+          this.mercMissiles.delete(mslId)
+          continue
+        }
+      } else if (hitPvpCand !== undefined) {
+        msl.hitUnitIds.add(hitPvpCand.idKey)
+        const owner = this.players.get(msl.ownerPlayerId)
+        const merc = this.mercenaries.get(msl.mercUnitId)
+        if (owner && merc) {
+          this.applyPvpHitToTarget113c(owner, hitPvpCand.target, {
+            skillId: msl.skillId,
+            physDamage: msl.physDamage,
+            elemDamage: msl.elemDamage,
+            elemType: msl.element,
+            elemDurationFrames: msl.elemDurationFrames || undefined,
+            attackKind: msl.guaranteedHit ? 'spell' : 'missile',
+            autoHit: msl.guaranteedHit,
+            unblockable: msl.guaranteedHit,
+            source: merc,
+          })
+          if (msl.splashRadiusSubtiles > 0 && msl.elemDamage > 0) {
+            for (const other of this.monsters.values()) {
+              if (
+                other.dead ||
+                other.isNpc ||
+                !other.isKillable ||
+                other.submerged ||
+                this.isMonsterConverted(other) ||
+                other.areaId !== msl.areaId
+              ) {
+                continue
+              }
+              if (Math.hypot(other.x - hitPvpCand.x, other.y - hitPvpCand.y) <= msl.splashRadiusSubtiles) {
+                this.applyDamageToMonster(
+                  owner,
+                  other,
+                  msl.elemDamage,
+                  msl.skillId,
+                  msl.element,
+                  merc,
+                  {
+                    attackKind: 'spell',
+                    autoHit: true,
+                    unblockable: true,
+                    elemDurationFrames: msl.elemDurationFrames || undefined,
+                  },
+                )
+              }
+            }
+            this.applyMercSplashPvp113c(
+              owner,
+              merc,
+              msl.areaId,
+              hitPvpCand.x,
+              hitPvpCand.y,
+              msl.splashRadiusSubtiles,
+              msl,
+              hitPvpCand.idKey,
+            )
           }
         }
         if (!msl.pierce) {
@@ -33794,13 +43718,15 @@ export class GameInstance {
         }
         continue
       }
-      this.stepUnitStates(
-        merc.states,
-        merc.stateTimers,
-        'monster',
-        merc.unitId,
-        merc.areaId,
-      )
+      if (merc.states && merc.stateTimers) {
+        this.stepUnitStates(
+          merc.states,
+          merc.stateTimers,
+          'monster',
+          merc.unitId,
+          merc.areaId,
+        )
+      }
       const owner = this.players.get(merc.ownerPlayerId)
       if (!owner || owner.dead) continue
 
@@ -33827,6 +43753,9 @@ export class GameInstance {
         merc.regenCarry256 = 0
       }
 
+      const mercPrevAreaId = merc.areaId
+      const mercPrevX = merc.x
+      const mercPrevY = merc.y
       if (merc.areaId !== owner.areaId) {
         merc.areaId = owner.areaId
         merc.x = owner.x + 1
@@ -33843,6 +43772,17 @@ export class GameInstance {
           areaId: merc.areaId,
           snap: true,
         })
+        this.syncUnitMoveAcrossViewerAoi113c(
+          'monster',
+          merc.unitId,
+          mercPrevAreaId,
+          mercPrevX,
+          mercPrevY,
+          merc.areaId,
+          merc.x,
+          merc.y,
+          merc.ownerPlayerId,
+        )
         continue
       }
 
@@ -33866,6 +43806,17 @@ export class GameInstance {
           y: Math.round(merc.y),
           snap: true,
         })
+        this.syncUnitMoveAcrossViewerAoi113c(
+          'monster',
+          merc.unitId,
+          mercPrevAreaId,
+          mercPrevX,
+          mercPrevY,
+          merc.areaId,
+          merc.x,
+          merc.y,
+          merc.ownerPlayerId,
+        )
         continue
       }
 
@@ -33874,6 +43825,39 @@ export class GameInstance {
         readonly record: InternalMonsterRecord
         readonly dist: number
       }[] = []
+      type MercHostileEntry113c =
+        | {
+            readonly kind: 'monster'
+            readonly record: InternalMonsterRecord
+            readonly unitId: number
+            readonly x: number
+            readonly y: number
+            readonly hp: number
+            readonly maxHp: number
+            readonly hasInnerSightState: boolean
+            readonly dist: number
+          }
+        | {
+            readonly kind: 'pvp'
+            readonly target:
+              | { readonly kind: 'player'; readonly player: InternalPlayerRecord }
+              | { readonly kind: 'merc'; readonly merc: InternalMercenaryRecord }
+              | {
+                  readonly kind: 'pet'
+                  readonly ownerId: number
+                  readonly pet: SummonedPetUnit
+                  readonly petUnitId: number
+                  readonly areaId: number
+                }
+            readonly unitId: number
+            readonly x: number
+            readonly y: number
+            readonly hp: number
+            readonly maxHp: number
+            readonly hasInnerSightState: boolean
+            readonly dist: number
+          }
+      const nearbyHostileEntries: MercHostileEntry113c[] = []
       for (const m of this.monsters.values()) {
         if (
           m.dead ||
@@ -33889,12 +43873,73 @@ export class GameInstance {
         const d = Math.hypot(m.x - merc.x, m.y - merc.y)
         if (d <= visionRadius) {
           nearbyMonsterEntries.push({ record: m, dist: d })
+          nearbyHostileEntries.push({
+            kind: 'monster',
+            record: m,
+            unitId: m.unitId,
+            x: m.x,
+            y: m.y,
+            hp: m.hp,
+            maxHp: m.maxHp,
+            hasInnerSightState: m.states.has(17),
+            dist: d,
+          })
+        }
+      }
+      const pvpTargets = this.collectHostilePvpTargetsInArea113c(owner.unitId, merc.areaId)
+      for (const p of pvpTargets.players) {
+        const d = Math.hypot(p.x - merc.x, p.y - merc.y)
+        if (d <= visionRadius) {
+          nearbyHostileEntries.push({
+            kind: 'pvp',
+            target: { kind: 'player', player: p },
+            unitId: p.unitId,
+            x: p.x,
+            y: p.y,
+            hp: p.hp,
+            maxHp: p.maxHp,
+            hasInnerSightState: p.states.has(17),
+            dist: d,
+          })
+        }
+      }
+      for (const c of pvpTargets.mercs) {
+        const d = Math.hypot(c.x - merc.x, c.y - merc.y)
+        if (d <= visionRadius) {
+          nearbyHostileEntries.push({
+            kind: 'pvp',
+            target: { kind: 'merc', merc: c },
+            unitId: c.unitId,
+            x: c.x,
+            y: c.y,
+            hp: c.hp,
+            maxHp: c.maxHp,
+            hasInnerSightState: c.states.has(17),
+            dist: d,
+          })
+        }
+      }
+      for (const entry of pvpTargets.pets) {
+        const d = Math.hypot(entry.pet.x - merc.x, entry.pet.y - merc.y)
+        if (d <= visionRadius) {
+          nearbyHostileEntries.push({
+            kind: 'pvp',
+            target: { kind: 'pet', ...entry },
+            unitId: entry.petUnitId,
+            x: entry.pet.x,
+            y: entry.pet.y,
+            hp: entry.pet.hp,
+            maxHp: entry.pet.maxHp,
+            hasInnerSightState: entry.pet.stateBus.hasState(17),
+            dist: d,
+          })
         }
       }
       nearbyMonsterEntries.sort((a, b) => a.dist - b.dist || a.record.unitId - b.record.unitId)
+      nearbyHostileEntries.sort((a, b) => a.dist - b.dist || a.unitId - b.unitId)
 
       const nearbyPlayers = [...this.players.values()]
-        .filter((p) => !p.dead && p.areaId === merc.areaId)
+        .filter((p) => !p.dead && p.areaId === merc.areaId && !this.isHostilePvpPair113c(owner.unitId, merc.areaId, p.unitId, p.areaId))
         .map((p) => ({ unitId: p.unitId, x: p.x, y: p.y }))
 
       const hirelingStats = resolveHirelingStatsAtLevel(
@@ -33921,15 +43966,15 @@ export class GameInstance {
         return Math.max(1, Math.trunc((rawBase * (100 + edPct)) / 100))
       }
 
-      const bestTarget = nearbyMonsterEntries[0]?.record
-      const bestDist = nearbyMonsterEntries[0]?.dist ?? Infinity
+      const bestHostile = nearbyHostileEntries[0]
+      const bestDist = bestHostile?.dist ?? Infinity
       const engageRange =
         merc.act === 1
           ? HIREABLE_AI_113C.ACT1_RANGED_REACH_SUBTILES
           : merc.act === 3
             ? HIREABLE_AI_113C.ACT3_RANGED_REACH_SUBTILES
             : Math.max(merc.reach, weaponProfile.meleeReachSubtiles)
-      const readyToEngage = bestTarget !== undefined && bestDist <= engageRange && merc.cooldown <= 0
+      const readyToEngage = bestHostile !== undefined && bestDist <= engageRange && merc.cooldown <= 0
 
       const aiStep = stepMercenaryAiAndChooseAction113c({
         merc: {
@@ -33948,13 +43993,13 @@ export class GameInstance {
         },
         owner: { unitId: owner.unitId, x: owner.x, y: owner.y },
         nearbyPlayers,
-        nearbyMonsters: nearbyMonsterEntries.map(({ record }) => ({
-          unitId: record.unitId,
-          x: record.x,
-          y: record.y,
-          hp: record.hp,
-          maxHp: record.maxHp,
-          hasInnerSightState: record.states.has(17),
+        nearbyMonsters: nearbyHostileEntries.map((entry) => ({
+          unitId: entry.unitId,
+          x: entry.x,
+          y: entry.y,
+          hp: entry.hp,
+          maxHp: entry.maxHp,
+          hasInnerSightState: entry.hasInnerSightState,
         })),
         currentFrame: this.currentFrame,
         readyToAct: readyToEngage,
@@ -33969,7 +44014,7 @@ export class GameInstance {
       }
       this.syncMercenaryOwnerAura(owner, merc.activeAura, merc)
 
-      if (bestTarget !== undefined) {
+      if (bestHostile !== undefined) {
         if (bestDist <= engageRange) {
           merc.state = 'attack'
           if (merc.cooldown <= 0 && aiStep.chosenAction !== undefined) {
@@ -33995,34 +44040,48 @@ export class GameInstance {
                 stats: { item_armor_percent: action.defenseBonusPct },
               })
             } else if (action.kind === 'inner_sight') {
-              for (const { record: m, dist } of nearbyMonsterEntries) {
-                if (dist > action.radiusSubtiles || m.dead) continue
-                this.applyUnitState(
-                  m.states,
-                  m.stateTimers,
-                  'monster',
-                  m.unitId,
-                  m.areaId,
-                  17,
-                  action.durationFrames,
-                )
-                this.monsterCombatContext(m).stateBus.applyState({
-                  stateNameOrId: 17,
-                  sourceUnitId: `merc_${merc.unitId}`,
-                  sourceSkillId: 8,
-                  slvl: action.slvl,
-                  durationFrames: action.durationFrames,
-                  currentFrame: this.currentFrame,
-                  stats: { armorclass: -action.enemyDefensePenalty },
-                })
+              for (const entry of nearbyHostileEntries) {
+                if (entry.dist > action.radiusSubtiles) continue
+                if (entry.kind === 'monster') {
+                  const m = entry.record
+                  if (m.dead) continue
+                  this.applyUnitState(
+                    m.states,
+                    m.stateTimers,
+                    'monster',
+                    m.unitId,
+                    m.areaId,
+                    17,
+                    action.durationFrames,
+                  )
+                  this.monsterCombatContext(m).stateBus.applyState({
+                    stateNameOrId: 17,
+                    sourceUnitId: `merc_${merc.unitId}`,
+                    sourceSkillId: 8,
+                    slvl: action.slvl,
+                    durationFrames: action.durationFrames,
+                    currentFrame: this.currentFrame,
+                    stats: { armorclass: -action.enemyDefensePenalty },
+                  })
+                } else {
+                  this.applyPvpDebuffStateToTarget113c(
+                    entry.target,
+                    17,
+                    action.durationFrames,
+                    `merc_${merc.unitId}`,
+                    8,
+                    action.slvl,
+                    { armorclass: -action.enemyDefensePenalty },
+                  )
+                }
               }
             } else if (action.kind === 'missile') {
               const isWeaponShot = merc.act === 1
-              if (isWeaponShot) {
-                this.triggerMercCtcProcs113c(owner, merc, bestTarget, 195)
+              if (isWeaponShot && bestHostile.kind === 'monster') {
+                this.triggerMercCtcProcs113c(owner, merc, bestHostile.record, 195)
               }
               const mSpec = action.missile
-              const baseAngle = Math.atan2(bestTarget.y - merc.y, bestTarget.x - merc.x)
+              const baseAngle = Math.atan2(bestHostile.y - merc.y, bestHostile.x - merc.x)
               const count = Math.max(1, mSpec.boltCount)
               const hasItemPierce = isWeaponShot && this.sumMercItemStat(merc, 156) >= 100
               for (let b = 0; b < count; b++) {
@@ -34077,7 +44136,8 @@ export class GameInstance {
                   areaId: merc.areaId,
                 } as ServerEvent)
               }
-            } else {
+            } else if (bestHostile.kind === 'monster') {
+              const bestTarget = bestHostile.record
               // Melee attack (`Attack` #0, Act 2 `Jab` #10 2-hit sequence, Act 5 `Bash` #126, Act 5 `Stun` #139)
               this.triggerMercCtcProcs113c(owner, merc, bestTarget, 195)
               for (let hitIdx = 0; hitIdx < action.hitCount; hitIdx++) {
@@ -34119,12 +44179,33 @@ export class GameInstance {
                   this.triggerMercCtcProcs113c(owner, merc, bestTarget, 198)
                 }
               }
+            } else {
+              for (let hitIdx = 0; hitIdx < action.hitCount; hitIdx++) {
+                const physDmg = rollMercScaledPhysDamage(action.skillEdPct, action.skillFlatDmg)
+                const landed = this.applyPvpHitToTarget113c(owner, bestHostile.target, {
+                  skillId: action.skillId,
+                  physDamage: physDmg,
+                  attackKind: 'melee',
+                  toHitBonusPct: action.skillArPct,
+                  source: merc,
+                })
+                if (landed && action.stunFrames > 0) {
+                  this.applyPvpDebuffStateToTarget113c(
+                    bestHostile.target,
+                    21,
+                    action.stunFrames,
+                    `merc_${merc.unitId}`,
+                    action.skillId,
+                    1,
+                  )
+                }
+              }
             }
           }
         } else if (this.currentFrame % 2 === 0 && bestDist > 0.01) {
           merc.state = 'chase'
-          const dx = bestTarget.x - merc.x
-          const dy = bestTarget.y - merc.y
+          const dx = bestHostile.x - merc.x
+          const dy = bestHostile.y - merc.y
           const runVel =
             merc.act === 5 ? HIREABLE_AI_113C.ACT5_RUN : HIREABLE_AI_113C.ACT123_RUN
           const stepSubtiles = (runVel * 2) / 25
@@ -34202,6 +44283,19 @@ export class GameInstance {
       } else {
         merc.state = 'idle'
       }
+      if (merc.x !== mercPrevX || merc.y !== mercPrevY || merc.areaId !== mercPrevAreaId) {
+        this.syncUnitMoveAcrossViewerAoi113c(
+          'monster',
+          merc.unitId,
+          mercPrevAreaId,
+          mercPrevX,
+          mercPrevY,
+          merc.areaId,
+          merc.x,
+          merc.y,
+          merc.ownerPlayerId,
+        )
+      }
     }
   }
 
@@ -34233,33 +44327,21 @@ export class GameInstance {
     statList.setHp256(owner?.hpFixed ?? maxHpFixed)
     statList.setBaseStat('maxmana', maxManaFixed)
     statList.setMana256(owner?.manaFixed ?? 0)
-    if (owner) {
-      for (const [skId, lvl] of owner.skills.entries()) {
-        statList.setBaseSkillLevel(skId, lvl)
-      }
-      const allSkills = this.sumPlayerItemStat(owner, 127)
-      if (allSkills > 0) {
-        statList.setAllSkillsBonus(allSkills)
-      }
-      for (const masteryStat of [
-        [329, 'passive_fire_mastery'],
-        [330, 'passive_ltng_mastery'],
-        [331, 'passive_cold_mastery'],
-        [332, 'passive_pois_mastery'],
-        [333, 'passive_fire_pierce'],
-        [334, 'passive_ltng_pierce'],
-        [335, 'passive_cold_pierce'],
-        [336, 'passive_pois_pierce'],
-      ] as const) {
-        const val = this.sumPlayerItemStat(owner, masteryStat[0])
-        if (val !== 0) {
-          statList.setBaseStat(masteryStat[1], val)
-        }
-      }
-    }
     const stateBus = new StateBus(statList, this.registry)
     if (owner) {
       this.mirrorPersistentStates(this.playerCombat.get(owner.unitId), stateBus)
+      if (owner.states.has(51) && !stateBus.hasState(51)) {
+        stateBus.applyState({
+          stateNameOrId: 'battlecommand',
+          sourceUnitId: `player_${owner.unitId}`,
+          sourceSkillId: 155,
+          slvl: 1,
+          currentFrame: this.currentFrame,
+          stats: { item_allskills: 1 },
+        })
+      }
+      this.applyItemMasteryPierceStats113c(statList, (sid) => this.sumPlayerItemStat(owner, sid))
+      this.syncPlayerSkillLevelsToStatList113c(owner, statList, stateBus)
     }
     return {
       id: String(ownerPlayerId),
@@ -34457,6 +44539,39 @@ export class GameInstance {
       return
     }
 
+    if (this.animActionWindupEnabled) {
+      const targetUnitId = groundItem.unitId
+      const targetX = Math.round(groundItem.x)
+      const targetY = Math.round(groundItem.y)
+      this.schedulePlayerSkillWindup113c(
+        player,
+        cast,
+        targetX,
+        targetY,
+        { x: targetX, y: targetY },
+        {
+          onStrike: () => {
+            const liveItem = this.groundItems.get(targetUnitId)
+            if (
+              liveItem === undefined ||
+              (liveItem.areaId !== undefined && liveItem.areaId !== player.areaId) ||
+              !isMetalItemCode113c(liveItem.code)
+            ) {
+              return
+            }
+            this.summonPet(player.unitId, {
+              skillId: 90,
+              slvl: cast.slvl,
+              x: liveItem.x,
+              y: liveItem.y,
+              ironGolemItemId: liveItem.unitId,
+            })
+          },
+        },
+      )
+      return
+    }
+
     this.commitPlayerSkillCast(player, cast)
     this.broadcastPlayerSkillCast(player, cast, {
       x: Math.round(groundItem.x),
@@ -34477,9 +44592,16 @@ export class GameInstance {
     const ownerCtx = this.buildOwnerSummonCombatContext113c(ownerPlayerId)
     const slvl = Math.max(
       1,
-      spec.slvl ?? spec.skillLevel ?? owner?.skills.get(spec.skillId) ?? 1,
+      spec.slvl ??
+        spec.skillLevel ??
+        (owner ? Math.max(1, this.resolvePlayerSkillLevelById(owner, spec.skillId)) : 1),
     )
-    ownerCtx.statList.setBaseSkillLevel(spec.skillId, slvl)
+    const curEff = ownerCtx.statList.getEffectiveSkillLevel(spec.skillId)
+    if (slvl !== curEff) {
+      const baseLvl = ownerCtx.statList.getBaseSkillLevel(spec.skillId)
+      const modAllSkills = Math.trunc(ownerCtx.statList.getModifierBonus('item_allskills'))
+      ownerCtx.statList.setBonusSkillLevel(spec.skillId, slvl - baseLvl - modAllSkills)
+    }
 
     const areaId = owner?.areaId ?? this.defaultAreaId ?? 1
     let targetIronGolemGroundItem: ServerItemEntry | undefined
@@ -34683,6 +44805,11 @@ export class GameInstance {
     }
     for (const evictedUid of outcome.evictedPetUids) {
       this.petAuraScanners.delete(evictedUid)
+      for (const [mId, msl] of this.missiles.entries()) {
+        if (msl.trapPetUid === evictedUid) {
+          this.missiles.delete(mId)
+        }
+      }
       const evictedMeta = prePetMetaByUid.get(evictedUid)
       if (evictedMeta?.sourceSkillId === 90 && spec.skillId !== 90 && owner) {
         owner.ironGolemItem = null
@@ -35118,6 +45245,93 @@ export class GameInstance {
         }
       }
 
+      if (!hitAny || msl.pierce) {
+        const owner = this.players.get(msl.ownerPlayerId)
+        if (owner && !owner.dead) {
+          const pvpTargets = this.collectHostilePvpTargetsInArea113c(msl.ownerPlayerId, msl.areaId)
+          const pvpCandidates: Array<{
+            readonly idKey: number
+            readonly x: number
+            readonly y: number
+            readonly sizeX: number
+            readonly target:
+              | { readonly kind: 'player'; readonly player: InternalPlayerRecord }
+              | { readonly kind: 'merc'; readonly merc: InternalMercenaryRecord }
+              | {
+                  readonly kind: 'pet'
+                  readonly ownerId: number
+                  readonly pet: SummonedPetUnit
+                  readonly petUnitId: number
+                  readonly areaId: number
+                }
+          }> = []
+          for (const p of pvpTargets.players) {
+            pvpCandidates.push({ idKey: -p.unitId, x: p.x, y: p.y, sizeX: 2, target: { kind: 'player', player: p } })
+          }
+          for (const c of pvpTargets.mercs) {
+            pvpCandidates.push({
+              idKey: -(1_000_000 + c.unitId),
+              x: c.x,
+              y: c.y,
+              sizeX: 2,
+              target: { kind: 'merc', merc: c },
+            })
+          }
+          for (const entry of pvpTargets.pets) {
+            pvpCandidates.push({
+              idKey: -(2_000_000 + entry.petUnitId),
+              x: entry.pet.x,
+              y: entry.pet.y,
+              sizeX: 2,
+              target: { kind: 'pet', ...entry },
+            })
+          }
+          const srcPet = this.summonManagers
+            .get(msl.ownerPlayerId)
+            ?.getActivePets()
+            .find((pt) => pt.uid === msl.mslOwnerCtx.id)
+          for (const cand of pvpCandidates) {
+            if (msl.hitUnitIds.has(cand.idKey)) continue
+            const ndKey = `${msl.ownerPlayerId}:${msl.sourceSkillId}:pvp:${cand.idKey}`
+            const ndUntil = this.petMissileNextDelayUntil.get(ndKey) ?? 0
+            if (msl.nextDelayFrames > 0 && this.currentFrame < ndUntil) continue
+
+            let t = 1
+            if (segLenSq > 1e-6) {
+              t = Math.max(0, Math.min(1, ((cand.x - prevX) * segDx + (cand.y - prevY) * segDy) / segLenSq))
+            }
+            const cx = prevX + segDx * t
+            const cy = prevY + segDy * t
+            const hitRadius = Math.max(1.8, cand.sizeX * 0.65)
+            if (Math.hypot(cand.x - cx, cand.y - cy) > hitRadius) continue
+
+            msl.hitUnitIds.add(cand.idKey)
+            if (msl.nextDelayFrames > 0) {
+              this.petMissileNextDelayUntil.set(ndKey, this.currentFrame + msl.nextDelayFrames)
+            }
+            hitAny = true
+
+            const physDmg = Math.max(0, Math.floor((msl.dmgPacket.flatPhysMin256 ?? 0) / FIXED_ONE))
+            const elemMin256 = Math.max(0, msl.dmgPacket.elemMin256 ?? 0)
+            const elemMax256 = Math.max(elemMin256, msl.dmgPacket.elemMax256 ?? elemMin256)
+            const elemDmg =
+              elemMax256 > 0 ? Math.max(1, Math.floor(this.rollInclusive(elemMin256, elemMax256) / FIXED_ONE)) : 0
+            this.applyPvpHitToTarget113c(owner, cand.target, {
+              skillId: msl.sourceSkillId,
+              physDamage: physDmg,
+              elemDamage: elemDmg,
+              elemType: normalizeMissileElement(msl.dmgPacket.elemType) ?? 'fire',
+              elemDurationFrames: msl.dmgPacket.elemDurationFrames,
+              attackKind: msl.dmgPacket.attackKind ?? 'spell',
+              autoHit: msl.dmgPacket.autoHit ?? true,
+              unblockable: msl.dmgPacket.unblockable ?? true,
+              source: srcPet ?? { petUnitId: msl.petUnitId },
+            })
+            if (!msl.pierce) break
+          }
+        }
+      }
+
       if ((hitAny && !msl.pierce) || msl.remainingFrames <= 0) {
         this.petMissiles.delete(mslId)
       }
@@ -35249,6 +45463,69 @@ export class GameInstance {
         })
       }
 
+      const pvpHostiles = this.collectHostilePvpTargetsInArea113c(ownerPlayerId, owner.areaId)
+      const pvpEnemyEntries: Array<{
+        readonly target:
+          | { readonly kind: 'player'; readonly player: InternalPlayerRecord }
+          | { readonly kind: 'merc'; readonly merc: InternalMercenaryRecord }
+          | {
+              readonly kind: 'pet'
+              readonly ownerId: number
+              readonly pet: SummonedPetUnit
+              readonly petUnitId: number
+              readonly areaId: number
+            }
+        readonly ctx: CombatUnitContext
+        readonly preHp256: number
+        readonly hadStun: boolean
+      }> = []
+      for (const p of pvpHostiles.players) {
+        const snap = this.buildPlayerDefenderSnapshot113c(p)
+        enemyPositions.set(snap.defenderCtx.id, { x: p.x, y: p.y })
+        pvpEnemyEntries.push({
+          target: { kind: 'player', player: p },
+          ctx: snap.defenderCtx,
+          preHp256: p.hpFixed,
+          hadStun: p.states.has(21),
+        })
+      }
+      for (const c of pvpHostiles.mercs) {
+        const base = this.mercCombatContext(c)
+        const ctx: CombatUnitContext = {
+          ...base,
+          unitType: 'mercenary',
+          ownerUnitId: String(c.ownerPlayerId),
+        }
+        ctx.statList.setHp256(c.hp * FIXED_ONE)
+        enemyPositions.set(ctx.id, { x: c.x, y: c.y })
+        pvpEnemyEntries.push({
+          target: { kind: 'merc', merc: c },
+          ctx,
+          preHp256: c.hp * FIXED_ONE,
+          hadStun: c.states.has(21),
+        })
+      }
+      for (const pEntry of pvpHostiles.pets) {
+        pEntry.pet.statList.setHp256(pEntry.pet.hp * FIXED_ONE)
+        const ctx: CombatUnitContext = {
+          id: pEntry.pet.uid,
+          name: pEntry.pet.name,
+          unitType: 'minion',
+          ownerUnitId: String(pEntry.ownerId),
+          statList: pEntry.pet.statList,
+          stateBus: pEntry.pet.stateBus,
+          x: pEntry.pet.x,
+          y: pEntry.pet.y,
+        }
+        enemyPositions.set(ctx.id, { x: pEntry.pet.x, y: pEntry.pet.y })
+        pvpEnemyEntries.push({
+          target: { kind: 'pet', ...pEntry },
+          ctx,
+          preHp256: pEntry.pet.hp * FIXED_ONE,
+          hadStun: pEntry.pet.stateBus.hasState(21),
+        })
+      }
+
       const corpses: {
         id: string
         consumed: boolean
@@ -35265,7 +45542,7 @@ export class GameInstance {
         corpses.push({
           id: String(m.unitId),
           consumed: false,
-          baseMaxHp: m.baseMaxHp,
+          baseMaxHp: m.unscaledMaxHp || m.baseMaxHp,
           isBoss: m.isBoss,
           shattered: m.shattered,
           isCorpse: true,
@@ -35368,7 +45645,7 @@ export class GameInstance {
       mgr.tickPets({
         currentTick: this.currentFrame,
         owner: ownerCtx,
-        enemies: enemyEntries.map((e) => e.ctx),
+        enemies: [...enemyEntries.map((e) => e.ctx), ...pvpEnemyEntries.map((e) => e.ctx)],
         enemyPositions,
         corpses,
         missileEngine: petMissileProxy,
@@ -35457,6 +45734,38 @@ export class GameInstance {
           const dealt = Math.max(1, Math.floor((entry.preHp256 - postHp256) / FIXED_ONE))
           this.finishMonsterDamage(owner, m, dealt, 0, 'phys')
           entry.ctx.statList.setHp256(m.hp * FIXED_ONE)
+        }
+      }
+
+      const firstPetUnitId =
+        preTickPets.find((p) => p.petUnitId !== undefined)?.petUnitId ?? owner.unitId
+      for (const pvpEntry of pvpEnemyEntries) {
+        const { target, ctx, preHp256, hadStun } = pvpEntry
+        if (!hadStun && (ctx.stateBus.hasState('stun') || ctx.stateBus.hasState(21))) {
+          this.applyPvpDebuffStateToTarget113c(
+            target,
+            21,
+            75,
+            `pet_${firstPetUnitId}`,
+            326,
+            1,
+          )
+        }
+        const postHp256 = ctx.statList.getHp256()
+        if (postHp256 < preHp256) {
+          const dealt = Math.max(1, Math.floor((preHp256 - postHp256) / FIXED_ONE))
+          if (target.kind === 'player' && !target.player.dead) {
+            this.applyDamageToPlayer(target.player, dealt, {
+              killerType: 'player_pet',
+              killerUnitId: firstPetUnitId,
+            })
+          } else if (target.kind === 'merc' && target.merc.alive) {
+            this.applyDamageToMerc(target.merc, dealt, target.merc.areaId)
+          } else if (target.kind === 'pet' && target.pet.alive !== false && target.pet.hp > 0) {
+            target.pet.hp = Math.ceil(preHp256 / FIXED_ONE)
+            target.pet.statList.setHp256(preHp256)
+            this.applyDamageToSummon(target.ownerId, target.pet, dealt, target.areaId)
+          }
         }
       }
 
@@ -35608,7 +45917,10 @@ export class GameInstance {
     return out
   }
 
-  exportPlayerD2s(playerUnitId: number): Uint8Array {
+  exportPlayerD2s(
+    playerUnitId: number,
+    options?: { readonly timestampSec?: number | undefined },
+  ): Uint8Array {
     const p = this.players.get(playerUnitId)
     if (!p) {
       throw new Error(
@@ -35709,6 +46021,17 @@ export class GameInstance {
         }
       : template?.merc
 
+    const elapsedSessionSec = Math.max(
+      1,
+      Math.floor(Math.max(0, this.currentFrame - p.connectedFrame) / 25),
+    )
+    const nextLastPlayedSec =
+      options?.timestampSec !== undefined
+        ? Math.max(0, Math.trunc(options.timestampSec))
+        : Math.max(p.lastPlayedTimestampSec + 1, p.lastPlayedTimestampSec + elapsedSessionSec)
+    p.lastPlayedTimestampSec = nextLastPlayedSec
+    const savedCorpse = this.selectSavedCorpse113c(p)
+
     return writeD2sSave113c(
       {
         name: p.name,
@@ -35716,13 +46039,15 @@ export class GameInstance {
         level: p.level,
         statusFlags,
         progression: computedProgression,
-        activeWeapon: template?.activeWeapon ?? 0,
-        timestampSec: template?.timestampSec ?? 0,
-        hotkeys: template?.hotkeys,
+        activeWeapon: p.weaponSet === 1 ? 1 : 0,
+        timestampSec: nextLastPlayedSec,
+        createdTimestamp: p.createdTimestampSec,
+        lastPlayedTimestamp: nextLastPlayedSec,
+        hotkeys: [...p.hotkeys],
         leftSkill: p.leftSkill,
         rightSkill: p.rightSkill,
-        altLeftSkill: template?.altLeftSkill ?? 0,
-        altRightSkill: template?.altRightSkill ?? 0,
+        altLeftSkill: p.altLeftSkill,
+        altRightSkill: p.altRightSkill,
         appearance: template?.appearance,
         activeDifficulty: this.difficulty,
         activeAct: p.act,
@@ -35733,7 +46058,7 @@ export class GameInstance {
         mercItems: exportedMercItems,
         quests: questsDiffs,
         waypoints,
-        npcIntro: template?.npcIntro ?? createDefaultNpcIntroData(),
+        npcIntro: new Uint8Array(p.npcIntro),
         attributes: {
           strength: p.strength,
           energy: p.energy,
@@ -35754,9 +46079,15 @@ export class GameInstance {
         },
         skills: skillsArray,
         items: p.items.map((item) => this.serverEntryToItemData(item)),
-        corpseItems: this.selectSavedCorpseItems113c(p).map((item) =>
+        corpseItems: savedCorpse.items.map((item) =>
           this.serverEntryToItemData(item),
         ),
+        ...(savedCorpse.items.length > 0
+          ? {
+              corpseX: Math.round(savedCorpse.x),
+              corpseY: Math.round(savedCorpse.y),
+            }
+          : {}),
         ironGolem: p.ironGolemItem
           ? this.serverEntryToItemData(p.ironGolemItem)
           : null,
@@ -35766,16 +46097,27 @@ export class GameInstance {
   }
 
   /**
-   * 1.13c `D2Game.dll` `0x6FD0D750` (`PLAYER_SaveCorpses`): `.d2s` persists at most 1 corpse;
-   * when multiple unrecovered corpses exist in the room, save the one with the highest total gold value.
+   * 1.13c `D2Game.dll` `0x6FD0D750` (`PLAYER_SaveCorpses`) + `0x6FD0C260` (`corpseX` / `corpseY`):
+   * `.d2s` persists at most 1 corpse; when multiple unrecovered corpses exist in the room,
+   * save the one with the highest total gold value along with its world coordinates.
    */
-  private selectSavedCorpseItems113c(p: InternalPlayerRecord): readonly ServerItemEntry[] {
+  private selectSavedCorpse113c(p: InternalPlayerRecord): {
+    readonly items: readonly ServerItemEntry[]
+    readonly x: number
+    readonly y: number
+  } {
     const extras = (p.extraCorpses ?? []).filter((c) => c.items.length > 0)
-    if (extras.length === 0) return p.corpseItems
-    const candidates: ReadonlyArray<readonly ServerItemEntry[]> =
+    if (extras.length === 0) {
+      return { items: p.corpseItems, x: p.corpseX, y: p.corpseY }
+    }
+    const candidates: ReadonlyArray<{
+      readonly items: readonly ServerItemEntry[]
+      readonly x: number
+      readonly y: number
+    }> =
       p.corpseItems.length > 0
-        ? [p.corpseItems, ...extras.map((c) => c.items)]
-        : extras.map((c) => c.items)
+        ? [{ items: p.corpseItems, x: p.corpseX, y: p.corpseY }, ...extras]
+        : extras
     const tables = getEmbeddedDropTables()
     const scoreSet = (set: readonly ServerItemEntry[]): number => {
       let total = 0
@@ -35788,9 +46130,9 @@ export class GameInstance {
       return total
     }
     let best = candidates[0]!
-    let bestScore = scoreSet(best)
+    let bestScore = scoreSet(best.items)
     for (let i = 1; i < candidates.length; i++) {
-      const s = scoreSet(candidates[i]!)
+      const s = scoreSet(candidates[i]!.items)
       if (s > bestScore) {
         bestScore = s
         best = candidates[i]!

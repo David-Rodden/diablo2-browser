@@ -160,6 +160,8 @@ export interface SummonedPetUnit {
   valkyrieEquipment?: readonly MonsterEquippedItem113c[] | undefined
   shadowEquipment?: ShadowEquipmentLoadout | undefined
   shadowSkills?: ReadonlyMap<number, number> | undefined
+  snapshottedSkelMasteryLvl?: number | undefined
+  snapshottedGolemMasteryLvl?: number | undefined
   targetId?: string | number | undefined
 }
 
@@ -430,9 +432,16 @@ export class SummonManager {
         : monRec?.hcIdx
 
     // Compute 1.13c Skeleton Mastery (`69`) / Golem Mastery (`79`) / Summon Resist (`89`) / Synergies
-    const skelMasteryLvl = params.owner.statList.getEffectiveSkillLevel(69)
-    const golemMasteryLvl = params.owner.statList.getEffectiveSkillLevel(79)
-    const summonResLvl = params.owner.statList.getEffectiveSkillLevel(89)
+    const globalAllSkillsForMastery = params.owner.statList.getEffectiveSkillLevel(0)
+    const getOwnedEffectiveSkillLvl = (sId: number): number => {
+      const base = params.owner.statList.getBaseSkillLevel(sId)
+      const eff = params.owner.statList.getEffectiveSkillLevel(sId)
+      if (base === 0 && eff <= globalAllSkillsForMastery) return 0
+      return eff
+    }
+    const skelMasteryLvl = getOwnedEffectiveSkillLvl(69)
+    const golemMasteryLvl = getOwnedEffectiveSkillLvl(79)
+    const summonResLvl = getOwnedEffectiveSkillLvl(89)
     const gmStats = calculateGolemMasteryStats(golemMasteryLvl)
     const sumResPct = calculateSummonResistPct(summonResLvl)
 
@@ -700,6 +709,9 @@ export class SummonManager {
       valkRes = valkStats.allResistancesPct
       equipmentTier = valkStats.equipmentTier
       valkyrieEquipment = valkStats.equipment
+    } else if (params.skillId === 257) {
+      kind = 'assassin_trap'
+      lifespanTicks = 100 + 12 * Math.max(0, params.slvl - 1)
     }
 
     const ownerLevel = params.owner.statList.getAccruedStat('level')
@@ -1066,6 +1078,8 @@ export class SummonManager {
       ...(valkyrieEquipment ? { valkyrieEquipment } : {}),
       ...(shadowEquipment ? { shadowEquipment } : {}),
       ...(shadowSkills.size > 0 ? { shadowSkills } : {}),
+      snapshottedSkelMasteryLvl: skelMasteryLvl,
+      snapshottedGolemMasteryLvl: golemMasteryLvl,
     }
 
     this.pets.push(pet)
@@ -1312,8 +1326,15 @@ export class SummonManager {
       }
       pet.targetId = primaryTarget?.id
 
-      const skelMasteryLvl = params.owner.statList.getEffectiveSkillLevel(69)
-      const golemMasteryLvl = params.owner.statList.getEffectiveSkillLevel(79)
+      const tickGlobalAllSkills = params.owner.statList.getEffectiveSkillLevel(0)
+      const getTickOwnedEffectiveSkillLvl = (sId: number): number => {
+        const base = params.owner.statList.getBaseSkillLevel(sId)
+        const eff = params.owner.statList.getEffectiveSkillLevel(sId)
+        if (base === 0 && eff <= tickGlobalAllSkills) return 0
+        return eff
+      }
+      const skelMasteryLvl = pet.snapshottedSkelMasteryLvl ?? getTickOwnedEffectiveSkillLvl(69)
+      const golemMasteryLvl = pet.snapshottedGolemMasteryLvl ?? getTickOwnedEffectiveSkillLvl(79)
       const golemSynergies = {
         clayGolemBlvl: params.owner.statList.getBaseSkillLevel(75),
         bloodGolemBlvl: params.owner.statList.getBaseSkillLevel(85),
@@ -1517,10 +1538,14 @@ export class SummonManager {
             pet.shotsRemaining -= 1
             markSubSkillCooldown()
 
-            // 1.13c Corpse Explosion: 70% to 120% base monster HP (50% phys / 50% fire)
+            // 1.13c Death Sentry (`#312` `mon death sentry`, `Skills.txt` `Param1 = 40`, `Param2 = 80`):
+            // 40% to 80% of `/players 1` unscaled normal base monster HP (50% phys / 50% fire).
+            const sub312 = this.registry.getSkillById(312)
+            const minPct = sub312?.param1 || 40
+            const maxPct = sub312?.param2 || 80
             const baseHp = corpse.baseMaxHp ?? 1000
-            const minDmg = Math.trunc((baseHp * 70) / 100) * FIXED_ONE
-            const maxDmg = Math.trunc((baseHp * 120) / 100) * FIXED_ONE
+            const minDmg = Math.trunc((baseHp * minPct) / 100) * FIXED_ONE
+            const maxDmg = Math.trunc((baseHp * maxPct) / 100) * FIXED_ONE
 
             const corpseX = (corpse as any).x ?? primaryPos.x
             const corpseY = (corpse as any).y ?? primaryPos.y

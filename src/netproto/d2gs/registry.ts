@@ -40,9 +40,11 @@ import {
   encodeC2sScrollToBook,
   encodeC2sSelectMainItem,
   encodeC2sSocketItem,
+  encodeC2sStackItems,
   encodeC2sSwap2HandedItem,
   encodeC2sSwapTwo1HandedWithOne2HandedItem,
   encodeC2sSwapContainerItem,
+  encodeC2sUnstackItems,
 } from './c2s/items.ts'
 import {
   encode0x59MakeEntityMove,
@@ -535,9 +537,14 @@ export function encodeD2gsClientCommand(
       return [encodeC2sBeltSwap(cmd.cursorItemId, cmd.beltItemId)]
     case 'BeltUse':
       return [encodeC2sBeltUse(cmd.itemId, Boolean(cmd.shift ?? cmd.useOnMerc))]
+    case 'StackItems':
+      return [encodeC2sStackItems(cmd.cursorItemId, cmd.targetItemId)]
+    case 'UnstackItems':
+      return [encodeC2sUnstackItems(cmd.itemId)]
     case 'ItemUse':
       return [encodeC2sItemUse(cmd.itemId, cmd.at)]
     case 'SelectMainItem':
+    case 'ActivateQuestScroll':
       return [encodeC2sSelectMainItem(cmd.itemId)]
     case 'SocketItem':
       return [encodeC2sSocketItem(cmd.itemId, cmd.targetItemId)]

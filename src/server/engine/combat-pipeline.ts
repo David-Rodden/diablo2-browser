@@ -814,6 +814,7 @@ export interface SUnitDmgPacket {
   readonly attackKind?: 'melee' | 'missile' | 'spell'
   readonly srcDam?: number // 128 = 100% weapon damage
   readonly physDamagePct?: number // skill off-weapon %ED
+  readonly skipMasteryEd?: boolean | undefined // mastery %ED already folded into flatPhysMin256/Max256 (#1803, #1804)
   readonly flatPhysMin256?: number
   readonly flatPhysMax256?: number
   readonly elemType?: string // 'fire' | 'ltng' | 'cold' | 'pois' | 'mag' | 'stun'
@@ -1446,7 +1447,7 @@ export function executeSUnitDmg(
     Boolean(attacker.isThrowing && attackKind !== 'melee' && attackKind !== 'spell')
   const isMeleeWeaponAttack =
     !isThrowAttack &&
-    attackKind === 'melee' &&
+    (attackKind === 'melee' || packet.skillId === 266) &&
     packet.skillId !== 97 &&
     packet.skillId !== 1
   let barMasteryArBonusPct = 0
@@ -1457,7 +1458,9 @@ export function executeSUnitDmg(
     const passiveLvl = attacker.passiveSkills?.get(mId) ?? 0
     if (passiveLvl > 0) return passiveLvl
     const baseLvl = attacker.statList.getBaseSkillLevel(mId)
-    if (baseLvl > 0) return attacker.statList.getEffectiveSkillLevel(mId)
+    if (baseLvl > 0 || attacker.statList.getBonusSkillLevel(mId) > 0) {
+      return attacker.statList.getEffectiveSkillLevel(mId)
+    }
     const stateName = BAR_MASTERY_STATES[mId]
     if (stateName && attacker.stateBus.hasState(stateName)) {
       return attacker.stateBus.getState(stateName)?.slvl ?? 0
@@ -1704,7 +1707,7 @@ export function executeSUnitDmg(
       const edPct = Math.max(
         -90,
         (packet.physDamagePct ?? 0) +
-          barMasteryEdBonusPct +
+          (packet.skipMasteryEd ? 0 : barMasteryEdBonusPct) +
           dmgPctBonus +
           attrEdBonus +
           targetTypeEdPct,
@@ -1814,6 +1817,7 @@ export function executeSUnitDmg(
   ).toLowerCase()
 
   // Added elemental damage from Paladin offensive auras (Holy Fire, Holy Freeze, Holy Shock) on physical attacks
+  let addedEnchantRider = false
   if (attackKind !== 'spell' && packet.skillId !== 97) {
     if (attacker.stateBus.hasState('holyfire')) {
       const hfSlvl = attacker.stateBus.getState('holyfire')?.slvl ?? 1
@@ -1858,9 +1862,21 @@ export function executeSUnitDmg(
         elemType = 'ltng'
       }
     }
+    if (attacker.stateBus.hasState('enchant') && !packet.elemMin256 && !packet.elemMax256) {
+      const ench = attacker.stateBus.getState('enchant')
+      const eMin = Math.max(0, ench?.stats['firemindam'] ?? 0)
+      const eMax = Math.max(eMin, ench?.stats['firemaxdam'] ?? eMin)
+      if (eMax > 0) {
+        rawElem256 += rollDamageRange256(eMin * FIXED_ONE, eMax * FIXED_ONE, resolvedRng)
+        addedEnchantRider = true
+        if (!packet.elemType) {
+          elemType = 'fire'
+        }
+      }
+    }
   }
 
-  const isEnchantFire = Boolean(packet.isEnchant || packet.skillId === 52 || attacker.stateBus.hasState('enchant'))
+  const isEnchantFire = Boolean(packet.isEnchant || packet.skillId === 52 || addedEnchantRider)
   if (isEnchantFire && attackKind === 'missile' && elemType === 'fire') {
     // 1.13c Param3 = 33: Ranged attacks (bow/crossbow/throwing) receive only 33% of Enchant fire damage bonus
     rawElem256 = Math.trunc((rawElem256 * 33) / 100)

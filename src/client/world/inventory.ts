@@ -169,6 +169,45 @@ export class ClientInventoryManager implements ClientItemContainers {
     }
   }
 
+  private isHeldInNonGroundContainer(itemId: number): boolean {
+    return (
+      this.cursor?.id === itemId ||
+      this.inventory.has(itemId) ||
+      this.equipment.has(itemId) ||
+      this.belt.has(itemId) ||
+      this.stash.has(itemId) ||
+      this.cube.has(itemId) ||
+      this.merc.has(itemId) ||
+      this.tradeSelf.has(itemId) ||
+      this.tradePartner.has(itemId) ||
+      this.shop.has(itemId)
+    )
+  }
+
+  private syncEmbeddedSocketChildren(host: ItemData): void {
+    const embedded = (host as { socketedItems?: readonly ItemData[] }).socketedItems
+    if (!Array.isArray(embedded) || embedded.length === 0) {
+      return
+    }
+    const existing = this.sockets.get(host.id)
+    if (existing && existing.length >= embedded.length) {
+      return
+    }
+    const normalized: ItemData[] = embedded.map((child) => {
+      const storedChild: ItemData = {
+        ...child,
+        ownerType: 4,
+        ownerId: host.id,
+        location: 6,
+        container: 'socket',
+        inSocket: true,
+      }
+      this.allById.set(storedChild.id, storedChild)
+      return storedChild
+    })
+    this.sockets.set(host.id, normalized)
+  }
+
   /**
    * Removes an item from whichever container currently holds it.
    */
@@ -271,13 +310,15 @@ export class ClientInventoryManager implements ClientItemContainers {
       return undefined
     }
     this.ground.delete(itemId)
-    this.allById.delete(itemId)
-    const socketChildren = this.sockets.get(itemId)
-    if (socketChildren) {
-      for (const child of socketChildren) {
-        this.allById.delete(child.id)
+    if (!this.isHeldInNonGroundContainer(itemId)) {
+      this.allById.delete(itemId)
+      const socketChildren = this.sockets.get(itemId)
+      if (socketChildren) {
+        for (const child of socketChildren) {
+          this.allById.delete(child.id)
+        }
+        this.sockets.delete(itemId)
       }
-      this.sockets.delete(itemId)
     }
     return existing
   }
@@ -462,6 +503,7 @@ export class ClientInventoryManager implements ClientItemContainers {
         }
         this.cursor = cursorItem
         this.allById.set(item.id, cursorItem)
+        this.syncEmbeddedSocketChildren(cursorItem)
       }
       return
     }
@@ -495,7 +537,8 @@ export class ClientInventoryManager implements ClientItemContainers {
       isRemotePlayerOwner &&
       effectiveContainer !== 'tradePartner' &&
       effectiveContainer !== 'socket' &&
-      effectiveContainer !== 'ground'
+      effectiveContainer !== 'ground' &&
+      effectiveContainer !== 'shop'
 
     let prevItem: ItemData | undefined
     if (isRemotePlayerPrivate) {
@@ -810,6 +853,9 @@ export class ClientInventoryManager implements ClientItemContainers {
         this.inventory.set(stored.id, stored)
         break
     }
+    if (effectiveContainer !== 'socket') {
+      this.syncEmbeddedSocketChildren(stored)
+    }
   }
 
   /**
@@ -831,8 +877,17 @@ export class ClientInventoryManager implements ClientItemContainers {
   clearGround(): void {
     this.revision++
     for (const id of this.ground.keys()) {
-      this.allById.delete(id)
-      this.sockets.delete(id)
+      this.ground.delete(id)
+      if (!this.isHeldInNonGroundContainer(id)) {
+        this.allById.delete(id)
+        const socketChildren = this.sockets.get(id)
+        if (socketChildren) {
+          for (const child of socketChildren) {
+            this.allById.delete(child.id)
+          }
+          this.sockets.delete(id)
+        }
+      }
     }
     this.ground.clear()
   }

@@ -73,9 +73,11 @@ describe('Issue #1312 — 1.13c C2S opcodes & wire layouts (0x3A, 0x3B, 0x51, 0x
     expect(pkt62.byteLength).toBe(C2S_PACKET_SIZES[0x62])
 
     const pkt5dOn = encodeC2sHostile(42, true)
-    expect(Array.from(pkt5dOn)).toEqual([0x5d, 0x01, 0x01, 42, 0, 0, 0])
+    expect(Array.from(pkt5dOn)).toEqual([0x5d, 0x04, 0x01, 42, 0, 0, 0])
     const pkt5dOff = encodeC2sHostile(42, false)
-    expect(Array.from(pkt5dOff)).toEqual([0x5d, 0x01, 0x00, 42, 0, 0, 0])
+    expect(Array.from(pkt5dOff)).toEqual([0x5d, 0x04, 0x00, 42, 0, 0, 0])
+    const pkt5dMute = encodeC2sHostile(42, true, 0x01)
+    expect(Array.from(pkt5dMute)).toEqual([0x5d, 0x01, 0x01, 42, 0, 0, 0])
     const pkt5dLoot = encodeC2sHostile(42, true, 0x02)
     expect(Array.from(pkt5dLoot)).toEqual([0x5d, 0x02, 0x01, 42, 0, 0, 0])
 

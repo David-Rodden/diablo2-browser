@@ -93,6 +93,12 @@ export interface AuraPulseOutcome {
     readonly overlayId: number
     readonly overlayToken: string
   }>
+  /**
+   * Sanctuary (#119, `SrvDo066` `0x6FCBAF50`): ids of every pulsed Undead target. `ResultFlags |= 0x08`
+   * requests `MONMODE_KNOCKBACK` (13) radially away from the aura source even when the magic pulse is
+   * fully resisted (#1807).
+   */
+  readonly knockbackTargetIds?: readonly string[]
 }
 
 export interface CorpseContext {
@@ -290,6 +296,7 @@ export class AuraScanner {
       readonly overlayId: number
       readonly overlayToken: string
     }> = []
+    const knockbackTargetIds: string[] = []
 
     // 0x6FCC0C70: radius = evaluated `aurarangecalc` (Blade Shield 277 `par4` = 6 included; SrvDo054
     // 0x6FCB3508 reads `[skill+0x64]` the same way). Hit when sub-tile `dx² + dy² <= r²` (D2Common
@@ -568,6 +575,7 @@ export class AuraScanner {
             overlayId: 79,
             overlayToken: 'cast_undead',
           })
+          knockbackTargetIds.push(String(enemy.id))
         }
 
         const out = executeSUnitDmg(sourceUnit, enemy, {
@@ -671,6 +679,7 @@ export class AuraScanner {
       unitsHealed,
       manaSpent256,
       ...(unitOverlays.length > 0 ? { unitOverlays } : {}),
+      ...(knockbackTargetIds.length > 0 ? { knockbackTargetIds } : {}),
     }
   }
 

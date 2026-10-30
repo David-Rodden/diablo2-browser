@@ -273,6 +273,10 @@ function encodeUnitAssignEvent(
       (ownerTypeRaw === 0 || ownerTypeRaw === 'player') &&
       typeof uObj.ownerId === 'number' &&
       uObj.ownerId > 0
+    const hasMonsterOwner =
+      !hasPlayerOwner &&
+      typeof uObj.ownerId === 'number' &&
+      uObj.ownerId > 0
     return [
       encode0xACAssignNpc({
         id: uId,
@@ -289,6 +293,8 @@ function encodeUnitAssignEvent(
         superUniqueId: typeof uObj.superUniqueId === 'number' ? uObj.superUniqueId : undefined,
         bossMods: Array.isArray(uObj.bossMods) ? uObj.bossMods : undefined,
         nameSeed: typeof uObj.nameSeed === 'number' ? uObj.nameSeed : undefined,
+        compVariants: Array.isArray(uObj.compVariants) ? uObj.compVariants : undefined,
+        ownerId: hasMonsterOwner ? Number(uObj.ownerId) : undefined,
         playerOwnerId: hasPlayerOwner ? Number(uObj.ownerId) : undefined,
       }),
     ]
@@ -536,27 +542,45 @@ function encodeItemEvent(
   const isEar = Boolean(rawItem.isEar)
   const stats = rawItem.stats ?? []
 
-  // Armor, weapons, stackables/tomes, non-normal quality, socketed, ethereal, unidentified, or stat-bearing
-  // items require the full 1.13c item bitstream so defense, durability, stack quantity, and affixes survive.
+  const isGoldItem = trimmedCode === 'gld' || Boolean(baseMeta?.isGold)
+  const isEarItem = trimmedCode === 'ear' || isEar
+  const canCompactSave = Boolean(baseMeta?.compactSave)
+  const hasExtendedStats = stats.some(
+    (s) => s.statId !== 356 && (!isGoldItem || s.statId !== 14),
+  )
+
+  // D2Common.dll @ 0x6fd7c0c0 + Armor/Weapons/Misc.txt `compactsave`:
+  // Only items with `compactsave === 1` (and no stackable/tome/magic/socketed/ethereal/runeword/personalized/unid
+  // extended fields) may set `IFLAG_COMPACTSAVE` (bit 21). Gold (`gld`) and Ears (`ear`) are always compact.
   const requiresExtendedBitstream =
-    Boolean(
-      baseMeta &&
-        (baseMeta.kind === 'armor' ||
-          baseMeta.kind === 'weapon' ||
-          baseMeta.stackable ||
-          baseMeta.isTome),
-    ) ||
-    quality !== 2 ||
-    stats.length > 0 ||
-    socketed ||
-    ethereal ||
-    runeword ||
-    personalized ||
-    !identified
+    !isGoldItem &&
+    !isEarItem &&
+    (!canCompactSave ||
+      Boolean(
+        baseMeta &&
+          (baseMeta.kind === 'armor' ||
+            baseMeta.kind === 'weapon' ||
+            baseMeta.stackable ||
+            baseMeta.isTome),
+      ) ||
+      quality !== 2 ||
+      hasExtendedStats ||
+      socketed ||
+      ethereal ||
+      runeword ||
+      personalized ||
+      Boolean(rawItem.isGambleMystery) ||
+      !identified)
 
   const isCompact = requiresExtendedBitstream
     ? false
-    : Boolean(rawItem.compact ?? rawItem.simple ?? false)
+    : isGoldItem || isEarItem
+      ? true
+      : rawItem.compact !== undefined
+        ? Boolean(rawItem.compact)
+        : rawItem.simple !== undefined
+          ? Boolean(rawItem.simple)
+          : canCompactSave
 
   let rawFlags = (rawItem.rawFlags ?? rawItem.flags ?? 0) >>> 0
   if (identified) rawFlags |= ITEM_FLAG_IDENTIFIED
@@ -651,8 +675,11 @@ function encodeItemEvent(
     maxDurability: rawItem.maxDurability ?? (baseMeta?.hasDurability ? 20 : 0),
     curDurability: rawItem.curDurability ?? rawItem.durability ?? rawItem.maxDurability ?? 0,
     durability: rawItem.durability ?? rawItem.curDurability ?? rawItem.maxDurability ?? 0,
-    quantity: rawItem.quantity ?? (trimmedCode === 'gld' ? (rawItem.goldAmount ?? 1) : 1),
-    goldAmount: rawItem.goldAmount ?? (trimmedCode === 'gld' ? (rawItem.quantity ?? 1) : undefined),
+    quantity: ev.quantity ?? rawItem.quantity ?? (isGoldItem ? (rawItem.goldAmount ?? 1) : 1),
+    goldAmount:
+      rawItem.goldAmount ??
+      stats.find((s) => s.statId === 14)?.value ??
+      (isGoldItem ? (ev.quantity ?? rawItem.quantity ?? 1) : undefined),
     invWidth: rawItem.invWidth ?? baseMeta?.invWidth ?? 1,
     invHeight: rawItem.invHeight ?? baseMeta?.invHeight ?? 1,
     stats,
@@ -1577,8 +1604,11 @@ export function encodeTypedServerEventToS2cPackets(
       }
       if (extra.isHotkey) {
         const slot = (extra.slot ?? ev.unitId) & 0xff
-        const skillMask = ev.skill < 0 ? 0x0fff : (ev.skill & 0x0fff)
-        const word = skillMask | (ev.hand === 'left' ? 0x8000 : 0)
+        const isUnbound =
+          ev.skill < 0 || ev.skill === 0xffff || (ev.skill & 0x7fff) === 0x7fff
+        const word = isUnbound
+          ? 0xffff
+          : (ev.skill & 0x0fff) | (ev.hand === 'left' ? 0x8000 : 0)
         const w = new ByteWriter(8)
         w.u8(0x7b)
         w.u8(slot)
@@ -1892,7 +1922,7 @@ export function encodeTypedServerEventToS2cPackets(
       const dv = new DataView(out.buffer)
       out[0] = 0x26
       out[1] = chatType & 0xff
-      out[2] = 0
+      out[2] = (ev.locale ?? 0) & 0xff
       out[3] = uType & 0xff
       dv.setUint32(4, uId, true)
       out[8] = (ev.color ?? 0) & 0xff
@@ -2113,6 +2143,10 @@ export function serverEventToS2cPackets(
           from: String(raw.speaker ?? raw.from ?? 'Server'),
           text: String(raw.text ?? ''),
           color: raw.color,
+          locale: raw.locale,
+          eventType: raw.eventType,
+          subType: raw.subType,
+          unit: raw.unit,
         },
         tables,
       )

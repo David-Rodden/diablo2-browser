@@ -143,6 +143,7 @@ export interface LocalLoopbackAdapterOptions {
   readonly y?: number | undefined
   readonly playersX?: number | undefined
   readonly onPlayersXChange?: ((playersX: number) => void) | undefined
+  readonly animActionWindup?: boolean | undefined
   readonly policy?: Partial<GameModePolicy> | undefined
   readonly registry?: unknown
   readonly d2s?: Uint8Array | undefined
@@ -191,6 +192,7 @@ export class LocalLoopbackAdapter implements GameServerAdapter {
           areaId: opts.areaId,
           playersX: opts.playersX,
           onPlayersXChange: opts.onPlayersXChange,
+          animActionWindup: opts.animActionWindup ?? true,
           registry: opts.registry,
         }))
 
@@ -431,6 +433,8 @@ export interface LocalLobbyProviderOptions {
  * @param rng - Optional D2Rng instance (e.g. for deterministic unit testing).
  * @returns Non-zero 32-bit unsigned integer map seed.
  */
+const defaultMapSeedRng = new D2Rng(0x6fd5f2a9)
+
 export function generateD2sMapSeed(previousSeed?: number, rng?: D2Rng): number {
   const prev = previousSeed !== undefined ? (previousSeed >>> 0) : 0
   if (rng) {
@@ -449,16 +453,14 @@ export function generateD2sMapSeed(previousSeed?: number, rng?: D2Rng): number {
       globalThis.crypto.getRandomValues(buf)
       s = buf[0] >>> 0
     } else {
-      const hi = Math.floor(Math.random() * 0x10000)
-      const lo = Math.floor(Math.random() * 0x10000)
-      s = ((hi << 16) | lo) >>> 0
+      s = defaultMapSeedRng.nextUint32() >>> 0
     }
     if (s !== 0 && s !== prev) {
       return s
     }
   }
 
-  const fallback = ((Date.now() ^ Math.floor(Math.random() * 0x100000000)) >>> 0)
+  const fallback = defaultMapSeedRng.nextUint32() >>> 0
   return fallback !== prev && fallback !== 0 ? fallback : ((prev + 1) >>> 0) || 1
 }
 

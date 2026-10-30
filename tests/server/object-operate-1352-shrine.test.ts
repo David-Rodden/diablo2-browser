@@ -27,7 +27,7 @@ describe('issue #1352 object operate follow-up', () => {
       }
     }
     const player = internal.players.get(playerId)!
-    expect(internal.playerCombatContext(player).statList.getModifierBonus('item_armor_percent')).toBeGreaterThan(0)
+    expect(internal.playerCombatContext(player).statList.getModifierBonus('skill_armor_percent')).toBe(100)
     expect(internal.objects.get(shrineId)!.shrineResetFrame).toBeGreaterThan(game.frame)
     game.stepFrames(6002)
     expect(internal.objects.get(shrineId)!.mode).toBe(0)

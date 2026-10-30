@@ -252,8 +252,38 @@ export function resolveVendorBaseUpgrade(
 }
 
 /**
- * Rolls the armor defense of a freshly created armor item: `[minac, maxac]`, `maxac + 1` scaled by the
- * enhanced-defense percent (`ac%`) when the item carries one, and 75% of the roll for low quality.
+ * Rolls the unscaled wire base defense (`STAT_ARMORCLASS = 31` on the item's base stat list)
+ * of a freshly created armor item (#1911):
+ * - `maxac + 1` when `acPct > 0`, otherwise `[minac, maxac]` (with `75%` scaling for low quality);
+ * - Ethereal `+50%` (`Math.trunc((rawBase * 3) / 2)`) is applied BEFORE any `%ED` (`ac%`) scaling.
+ */
+export function rollArmorWireBaseDefense113c(
+  base: ItemBase,
+  qualityTier: ItemQualityTier,
+  acPct: number,
+  itemRng: D2Rng,
+  isEthereal = false,
+): number {
+  if (base.kind !== 'armor') {
+    throw new Error(`rollArmorDefense113c: '${base.id}' is not an armor base`)
+  }
+  const minac = Number((base as any).minac) || base.defense
+  const maxac = Number((base as any).maxac) || base.defense
+  let rawBase: number
+  if (acPct > 0) {
+    rawBase = maxac + 1
+  } else if (qualityTier === 'low') {
+    const rawAc = minac < maxac ? itemRng.randRange(minac, maxac) : maxac
+    rawBase = Math.max(1, Math.trunc((rawAc * 75) / 100))
+  } else {
+    rawBase = minac < maxac ? itemRng.randRange(minac, maxac) : maxac
+  }
+  return isEthereal ? Math.max(1, Math.trunc((rawBase * 3) / 2)) : rawBase
+}
+
+/**
+ * Rolls the total on-item armor defense of a freshly created armor item:
+ * applies `ethereal` `floor((maxac + 1) * 3 / 2)` FIRST, then `(100 + acPct) / 100` (#1911).
  * Shared by the store generator and the server drop path (#1326) so both consume the item RNG identically.
  */
 export function rollArmorDefense113c(
@@ -261,20 +291,23 @@ export function rollArmorDefense113c(
   qualityTier: ItemQualityTier,
   acPct: number,
   itemRng: D2Rng,
+  options?: { readonly ethereal?: boolean | undefined },
 ): number {
-  if (base.kind !== 'armor') {
-    throw new Error(`rollArmorDefense113c: '${base.id}' is not an armor base`)
-  }
-  const minac = Number((base as any).minac) || base.defense
-  const maxac = Number((base as any).maxac) || base.defense
+  const wireBase = rollArmorWireBaseDefense113c(
+    base,
+    qualityTier,
+    acPct,
+    itemRng,
+    Boolean(options?.ethereal),
+  )
   if (acPct > 0) {
-    return Math.trunc(((maxac + 1) * (100 + acPct)) / 100)
+    let computed = Math.trunc((wireBase * (100 + acPct)) / 100)
+    if (computed === wireBase) {
+      computed = wireBase + 1
+    }
+    return computed
   }
-  if (qualityTier === 'low') {
-    const rawAc = minac < maxac ? itemRng.randRange(minac, maxac) : maxac
-    return Math.max(1, Math.trunc((rawAc * 75) / 100))
-  }
-  return minac < maxac ? itemRng.randRange(minac, maxac) : maxac
+  return wireBase
 }
 
 /**
@@ -351,7 +384,11 @@ export function generateVendorStoreItem(options: {
 
   const staffMods =
     selectedBase.kind === 'weapon' || selectedBase.kind === 'armor'
-      ? rollStaffMods(selectedBase, nItemLevel, tables.itemTypes, itemRng)
+      ? rollStaffMods(selectedBase, nItemLevel, tables.itemTypes, itemRng, {
+          isA: tables.isA,
+          quality: qualityTier,
+          isExpansion,
+        })
       : undefined
 
   // Roll sockets for normal/superior weapons and armor (never ethereal in vendor stores)
@@ -382,8 +419,14 @@ export function generateVendorStoreItem(options: {
 
   // Roll authentic armor defense in [minac, maxac] (or maxac + 1 if enhanced defense)
   let defense = created.defense
+  let wireBaseDefense: number | undefined
   if (selectedBase.kind === 'armor') {
-    defense = rollArmorDefense113c(selectedBase, qualityTier, created.stats['ac%'] ?? 0, itemRng)
+    const acPct = created.stats['ac%'] ?? 0
+    const flatAc = created.stats['ac'] ?? 0
+    wireBaseDefense = rollArmorWireBaseDefense113c(selectedBase, qualityTier, acPct, itemRng, false)
+    let computed = acPct > 0 ? Math.trunc((wireBaseDefense * (100 + acPct)) / 100) : wireBaseDefense
+    if (acPct > 0 && computed === wireBaseDefense) computed = wireBaseDefense + 1
+    defense = computed + flatAc
   }
 
   // Stack / quantity handling for permanent store items, quivers, throwing weapons, and tomes
@@ -403,11 +446,19 @@ export function generateVendorStoreItem(options: {
 
   return {
     ...created,
-    ...(defense !== undefined ? { defense, stats: { ...created.stats, defense } } : {}),
+    ...(defense !== undefined
+      ? {
+          defense,
+          ...(wireBaseDefense !== undefined
+            ? { wireBaseDefense, rolledBaseDefense: wireBaseDefense }
+            : {}),
+          stats: { ...created.stats, defense },
+        }
+      : {}),
     stack,
     quantity: stack,
     permStore,
-  }
+  } as Item
 }
 
 export interface VendorStoreState {
@@ -663,8 +714,8 @@ export function generateGambleInventory(options: {
  * Resolves a purchased mystery Gamble item into its revealed Magic / Rare / Set / Unique item
  * per 1.13c `D2GAME_NPC_CreateGambleItem`:
  * - `ilvl = clamp(cLvl + rand(10) - 5, 5, 99)` (`[cLvl - 5, cLvl + 4]`)
- * - Exceptional (`ubercode`) chance: `(ilvl - qlvl_uber) * 90 + 100` out of `10000`
- * - Elite (`ultracode`) chance: `(ilvl - qlvl_ultra) * 33 + 100` out of `10000`
+ * - Exceptional (`ubercode`) chance: `(ilvl - qlvl_uber) * 90 + 1` out of `10000`
+ * - Elite (`ultracode`) chance (only if uber eligible & missed): `(ilvl - qlvl_ultra) * 33 + 1` out of `10000`
  * - Quality roll (out of `100000`):
  *   - Unique: `50` (`0.05%`, 1 in 2000)
  *   - Set: `100` (`0.10%`, 1 in 1000)
@@ -702,16 +753,22 @@ export function resolveGambledItem(options: {
       ? tables.getBase(normBase.ultracode)
       : undefined
 
-  const chanceUltra =
-    ultraBase && ilvl >= ultraBase.level ? (ilvl - ultraBase.level) * 33 + 100 : 0
+  // D2Game.dll NPC_RollGambleUpgrade (0x6FCDD0B5..0x6FCDD143):
+  // 1) Exceptional check first: chanceUber = (ilvl - uberQlvl) * 90 + 1 (per 10000);
+  // 2) Only if uber is eligible and its rand(10000) roll misses, roll a second rand(10000)
+  //    against chanceUltra = (ilvl - ultraQlvl) * 33 + 1 (#1916).
   const chanceUber =
-    uberBase && ilvl >= uberBase.level ? (ilvl - uberBase.level) * 90 + 100 : 0
-
-  const upgRoll = rng.rand(10000)
-  if (chanceUltra > 0 && upgRoll < chanceUltra && ultraBase) {
-    selectedBase = ultraBase
-  } else if (chanceUber > 0 && upgRoll < chanceUber && uberBase) {
-    selectedBase = uberBase
+    uberBase && ilvl >= uberBase.level ? (ilvl - uberBase.level) * 90 + 1 : 0
+  if (chanceUber > 0 && uberBase) {
+    if (rng.rand(10000) < chanceUber) {
+      selectedBase = uberBase
+    } else {
+      const chanceUltra =
+        ultraBase && ilvl >= ultraBase.level ? (ilvl - ultraBase.level) * 33 + 1 : 0
+      if (chanceUltra > 0 && ultraBase && rng.rand(10000) < chanceUltra) {
+        selectedBase = ultraBase
+      }
+    }
   }
 
   const qRoll = rng.rand(100000)
@@ -816,7 +873,11 @@ export function resolveGambledItem(options: {
 
   const staffMods: RolledItemProp[] | undefined =
     selectedBase.kind === 'weapon' || selectedBase.kind === 'armor'
-      ? rollStaffMods(selectedBase, ilvl, tables.itemTypes, itemRng)
+      ? rollStaffMods(selectedBase, ilvl, tables.itemTypes, itemRng, {
+          isA: tables.isA,
+          quality: qualityTier,
+          isExpansion,
+        })
       : undefined
 
   const created = createDroppedItem(selectedBase, qualityTier, {

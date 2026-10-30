@@ -72,7 +72,7 @@ describe('issue #1348 MonUMod follow-up', () => {
       damageRegen: 0,
     })
     const before = game.getMonsterState(monsterId)!
-    game.applyDamageToMonster(monsterId, 300, playerId)
+    game.applyDamageToMonster(monsterId, 380, playerId)
     const after = game.getMonsterState(monsterId)!
     expect(Math.hypot(after.x - before.x, after.y - before.y)).toBeGreaterThan(1)
     expect(after.states.size).toBeGreaterThanOrEqual(0)

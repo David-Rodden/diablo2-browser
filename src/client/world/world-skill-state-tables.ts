@@ -116,6 +116,8 @@ export interface RosterPetState {
 export interface ChatLogEntry {
   readonly id?: number | undefined
   readonly kind: 'say' | 'whisper' | 'overhead' | 'system' | 'event'
+  /** Protocol origin: Battle.net BNCS (`SID_CHATEVENT 0x0F` / lobby send) vs in-game D2GS (`0x26` / `0x5A`). */
+  readonly source?: 'bncs' | 'd2gs' | undefined
   readonly from?: string | undefined
   readonly unit?: UnitRef | undefined
   readonly text: string

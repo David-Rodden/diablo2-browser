@@ -401,6 +401,10 @@ export interface MonsterKind {
   readonly m1m?: boolean | undefined
   /** `mWL` (`MonStats2.txt` bit `0x08`) — has Walk animation mode (`fPick == 3` for `6` `fast`). */
   readonly m2c?: boolean | undefined
+  /** True when monster death triggers a surrounding minion death wave (`killminions=1` / `SplEndDeath=1`). */
+  readonly killMinions?: boolean | undefined
+  /** `MonStats.txt` `SplEndDeath` special death code (`1` = Fetish Shaman minion purge, `2` = Barricade Tower). */
+  readonly splEndDeath?: number | undefined
 }
 
 /**
@@ -506,6 +510,9 @@ export function readMonsterKinds(table: D2Table, difficulty: Difficulty = 'norma
     const isDemon = flag(table, row, 'demon')
     const rawDescStr = cell(table, row, 'DescStr').trim()
     const descKey = rawDescStr.toLowerCase() === 'dummy' ? '' : rawDescStr
+    const splEndDeath = num(table, row, 'SplEndDeath', 0)
+    const killMinions =
+      flag(table, row, 'killminions') || splEndDeath === 1 || lowerId === 'bloodraven'
 
     const kind: MonsterKind = {
       id,
@@ -528,6 +535,8 @@ export function readMonsterKinds(table: D2Table, difficulty: Difficulty = 'norma
       boss: isBoss,
       isBoss,
       ...(flag(table, row, 'noRatio') ? { noRatio: true } : {}),
+      ...(killMinions ? { killMinions: true } : {}),
+      ...(splEndDeath !== 0 ? { splEndDeath } : {}),
       killable: flag(table, row, 'killable'),
       rarity: num(table, row, 'Rarity', 1),
       minGroup: num(table, row, 'MinGrp', 1),
@@ -1479,6 +1488,14 @@ export const MONSTATS_113C_NO_MULTISHOT_IDS: ReadonlySet<string> = new Set([
   'vampire9',
 ])
 
+/**
+ * Canonical 1.13c `MonStats.txt` rows with `SplEndDeath === 1` (`fetishshaman1..8`),
+ * whose death purges surrounding Fetish minions (`D2Game.dll` `SplEndDeath` handler).
+ */
+export const MONSTATS_113C_SPL_END_DEATH_1_HCIDX: ReadonlySet<number> = new Set([
+  278, 279, 280, 281, 282, 662, 663, 664,
+])
+
 let cachedMonStats113cByKey: Map<string, MonStats113cRow> | undefined
 
 function lookupMonStatsRow113cByKey(key: string): MonStats113cRow | undefined {
@@ -2000,9 +2017,27 @@ export function getEliteHealthMultiplier113c(
   return ELITE_HEALTH_MULTIPLIER_BY_DIFFICULTY[diff][rank] ?? 1
 }
 
+function isWillOWispMonsterStats113c(base: {
+  readonly hcIdx?: number | undefined
+  readonly id?: string | undefined
+  readonly baseId?: string | undefined
+}): boolean {
+  const hc = base.hcIdx
+  if (
+    hc !== undefined &&
+    ((hc >= 118 && hc <= 122) || (hc >= 639 && hc <= 641) || hc === 733)
+  ) {
+    return true
+  }
+  const baseId = base.baseId?.trim().toLowerCase() ?? ''
+  if (baseId === 'willowisp1' || baseId.startsWith('willowisp')) return true
+  const id = base.id?.trim().toLowerCase() ?? ''
+  return id.startsWith('willowisp')
+}
+
 /**
  * Apply 1.13c Champion subtype stats (`16` Regular, `36` Ghostly, `37` Fanatic, `38` Possessed, `39` Berserk)
- * per `D2Game.dll` `0x6fc43ae0` and `0x6fccfa30..0x6fcd0310`.
+ * per `D2Game.dll` `0x6fc43ae0`, `0x6fc42d00..0x6fc42f20`, and `0x6fc437c0..0x6fc43880`.
  */
 export function applyChampionSubtypeStats(
   base: MonsterStats,
@@ -2018,8 +2053,13 @@ export function applyChampionSubtypeStats(
           : 'normal'
       : difficulty
   const diffIdx = diff === 'hell' ? 2 : diff === 'nightmare' ? 1 : 0
+  const isWisp = isWillOWispMonsterStats113c(base)
+  const rawChampDmgBonusPct = MONUMOD_113C_CONSTANTS.championDmgBonusPct[diffIdx] ?? 100
+  const effChampDmgBonusPct = isWisp
+    ? Math.trunc(rawChampDmgBonusPct / 2)
+    : rawChampDmgBonusPct
   const champHpMult = getEliteHealthMultiplier113c('champion', diff)
-  const champDmgMult = 1 + (MONUMOD_113C_CONSTANTS.championDmgBonusPct[diffIdx] ?? 100) / 100
+  const champDmgMult = 1 + effChampDmgBonusPct / 100
   const baseMaxHp = base.maxHp ?? base.hp
   const regularChampHp = Math.max(1, Math.round(baseMaxHp * champHpMult))
   const regularChampDmg = Math.max(1, Math.round(base.damage * champDmgMult))
@@ -2041,6 +2081,15 @@ export function applyChampionSubtypeStats(
   let speed = Math.round(base.speed * 1.2 * 100) / 100
   let cooldownTicks = base.cooldownTicks
   let physicalRes = base.resistances?.physical ?? 0
+  let arScale = 1
+  let uncursable = false
+
+  const rawBerserkBonusPct = rawChampDmgBonusPct * 3
+  const effBerserkBonusPct = isWisp
+    ? Math.trunc(rawBerserkBonusPct / 2)
+    : rawBerserkBonusPct
+  const berserkDmgMult = 1 + effBerserkBonusPct / 100
+  const berserkArMult = 1 + rawBerserkBonusPct / 100
 
   if (normalizedSubtype === 'ghostly') {
     speed = Math.max(4, Math.round(base.speed * 0.5))
@@ -2048,11 +2097,14 @@ export function applyChampionSubtypeStats(
   } else if (normalizedSubtype === 'fanatic') {
     speed = Math.round(base.speed * 2.0)
     cooldownTicks = Math.max(5, Math.round(base.cooldownTicks * 0.3))
+    arScale = 0.3
   } else if (normalizedSubtype === 'possessed') {
-    hp = regularChampHp * 3
+    hp = regularChampHp * 2
+    uncursable = true
   } else if (normalizedSubtype === 'berserk') {
-    hp = Math.max(1, Math.round(baseMaxHp * 1.5))
-    damage = Math.max(base.damage * 3, regularChampDmg * 2)
+    hp = Math.max(1, Math.round(regularChampHp * 0.75))
+    damage = Math.max(1, Math.round(base.damage * berserkDmgMult))
+    arScale = berserkArMult
   }
 
   const updatedResistances = {
@@ -2064,9 +2116,13 @@ export function applyChampionSubtypeStats(
     poison: base.resistances?.poison ?? 0,
   }
   const dmgMult =
-    normalizedSubtype === 'berserk'
-      ? Math.max(3, champDmgMult * 2)
-      : champDmgMult
+    normalizedSubtype === 'berserk' ? berserkDmgMult : champDmgMult
+  const scaledToHit =
+    base.toHit !== undefined
+      ? base.toHit > 0
+        ? Math.max(1, Math.round(base.toHit * arScale))
+        : 0
+      : undefined
   const scaleSlot = (
     slot: NonNullable<MonsterStats['attack1']>,
   ): NonNullable<MonsterStats['attack1']> => {
@@ -2075,12 +2131,16 @@ export function applyChampionSubtypeStats(
     const minDamage = rawMin > 0 ? Math.max(1, Math.round(rawMin * dmgMult)) : 0
     const maxDamage =
       rawMax > 0 ? Math.max(minDamage, Math.round(rawMax * dmgMult)) : 0
+    const rawTh = slot.toHit ?? 0
+    const slotTh =
+      rawTh > 0 ? Math.max(1, Math.round(rawTh * arScale)) : rawTh
     return {
       ...slot,
       minDamage,
       maxDamage,
       min: minDamage,
       max: maxDamage,
+      ...(slot.toHit !== undefined ? { toHit: slotTh } : {}),
     }
   }
 
@@ -2089,11 +2149,13 @@ export function applyChampionSubtypeStats(
     hp,
     maxHp: hp,
     damage,
+    ...(scaledToHit !== undefined ? { toHit: scaledToHit } : {}),
     speed,
     cooldownTicks,
     rank: 'champion',
     level,
     modifiers: [normalizedSubtype],
+    ...(uncursable ? { uncursable: true } : {}),
     resistances: updatedResistances,
     resists: updatedResistances,
     lightningResist: updatedResistances.lightning,
@@ -2135,9 +2197,13 @@ export function applyEliteModifiers(
   let hp = base.hp
   let damage = base.damage
   let armor = base.armor ?? 0
+  let toHit = base.toHit
+  let arScale = 1
   let speed = base.speed
   let cooldownTicks = base.cooldownTicks
   let level = base.level ?? 1
+  let uncursable = Boolean(base.uncursable)
+  const isWisp = isWillOWispMonsterStats113c(base)
   const maxLevel = explicitDifficulty !== undefined || level > 99 ? 110 : 99
   if (rank === 'champion') {
     level += CHAMPION_MODIFIER.levelBonus
@@ -2154,7 +2220,11 @@ export function applyEliteModifiers(
   const normMods = new Set(modifiers.map(m => m.trim().toLowerCase().replace(/[_\s-]+/g, '')))
 
   if (normMods.has('strong') || normMods.has('extrastrong') || normMods.has('5')) {
-    damage = Math.max(1, Math.round(damage * (MONUMOD_CONSTANTS.uniqueDmgPctStrong / 100)))
+    const strongPct =
+      rank === 'minion'
+        ? MONUMOD_CONSTANTS.minionDmgPctStrong
+        : MONUMOD_CONSTANTS.uniqueDmgPctStrong
+    damage = Math.max(1, Math.round(damage * (1 + strongPct / 100)))
   }
   if (normMods.has('fast') || normMods.has('extrafast') || normMods.has('6')) {
     speed = Math.round(speed * 1.4 * 100) / 100
@@ -2162,108 +2232,76 @@ export function applyEliteModifiers(
   if (normMods.has('fanatic') || normMods.has('fanatical') || normMods.has('37')) {
     speed = Math.round(speed * 2.0 * 100) / 100
     cooldownTicks = Math.max(5, Math.round(cooldownTicks * 0.3))
+    arScale *= 0.3
   }
   if (normMods.has('possessed') || normMods.has('38')) {
-    hp = Math.round(hp * 3)
+    hp = Math.round(hp * 2)
+    uncursable = true
   }
   if (normMods.has('berserk') || normMods.has('berserker') || normMods.has('39')) {
-    hp = Math.max(1, Math.round(hp * 0.5))
-    damage = Math.max(1, Math.round(damage * 3))
+    hp = Math.max(1, Math.round(hp * 0.75))
+    damage = Math.max(1, Math.round(damage * (isWisp ? 2.5 : 4)))
+    arScale *= 4
   }
   if (normMods.has('stoneskin') || normMods.has('28')) {
-    hp = Math.round(hp * 2)
-    armor = Math.max(1, Math.round(armor * 2))
-  }
-  if (normMods.has('curse') || normMods.has('cursed') || normMods.has('7')) {
-    damage = Math.round(damage * 1.2)
-  }
-  if (normMods.has('cold') || normMods.has('coldenchant') || normMods.has('coldenchanted') || normMods.has('18')) {
-    damage = Math.round(damage * 1.2)
-  }
-  if (normMods.has('fire') || normMods.has('fireenchant') || normMods.has('fireenchanted') || normMods.has('9')) {
-    damage = Math.round(damage * 1.2)
-  }
-  if (normMods.has('lightning') || normMods.has('lightenchant') || normMods.has('lightningenchanted') || normMods.has('17')) {
-    damage = Math.round(damage * 1.2)
-  }
-  if (normMods.has('spectralhit') || normMods.has('27')) {
-    damage = Math.round(damage * 1.2)
-  }
-  if (normMods.has('teleport') || normMods.has('teleportation') || normMods.has('26')) {
-    speed = Math.round(speed * 1.2 * 100) / 100
-  }
-  if (normMods.has('resist') || normMods.has('magicresistant') || normMods.has('magicresistance') || normMods.has('8')) {
-    hp = Math.round(hp * 1.2)
-  }
-  if (normMods.has('aura') || normMods.has('auraenchanted') || normMods.has('30')) {
-    damage = Math.round(damage * 1.2)
-    speed = Math.round(speed * 1.1 * 100) / 100
-  }
-  let physicalRes = base.resistances?.physical ?? 0
-  let magicRes = base.resistances?.magic ?? 0
-  let fireRes = base.resistances?.fire ?? 0
-  let lightningRes = base.lightningResist ?? base.resistances?.lightning ?? 0
-  let coldRes = base.resistances?.cold ?? 0
-  let poisonRes = base.resistances?.poison ?? 0
-
-  if (normMods.has('stoneskin') || normMods.has('28')) {
-    physicalRes += 50
-  }
-  if (normMods.has('ghostly') || normMods.has('36')) {
-    physicalRes = Math.max(80, physicalRes)
-    speed = Math.max(4, Math.round(speed * 0.5 * 100) / 100)
+    if (rank !== 'minion') {
+      armor = armor > 0 ? Math.round(armor * 2) : 0
+    }
   }
   if (normMods.has('manahit') || normMods.has('manaburn') || normMods.has('25')) {
-    magicRes += 20
+    if (rank !== 'minion') {
+      arScale *= 1.75
+    }
   }
-  if (normMods.has('fire') || normMods.has('fireenchant') || normMods.has('fireenchanted') || normMods.has('9')) {
-    fireRes += 75
+  if (normMods.has('ghostly') || normMods.has('36')) {
+    speed = Math.max(4, Math.round(speed * 0.5 * 100) / 100)
   }
-  if (normMods.has('cold') || normMods.has('coldenchant') || normMods.has('coldenchanted') || normMods.has('18')) {
-    coldRes += 75
+
+  if (toHit !== undefined && arScale !== 1) {
+    toHit = toHit > 0 ? Math.max(1, Math.round(toHit * arScale)) : 0
   }
-  if (normMods.has('lightning') || normMods.has('lightenchant') || normMods.has('lightningenchanted') || normMods.has('17')) {
-    lightningRes += 75
+
+  const baseRes: MonsterResistances = {
+    physical: base.resistances?.physical ?? 0,
+    magic: base.resistances?.magic ?? 0,
+    fire: base.resistances?.fire ?? 0,
+    lightning: base.lightningResist ?? base.resistances?.lightning ?? 0,
+    cold: base.resistances?.cold ?? 0,
+    poison: base.resistances?.poison ?? 0,
   }
-  if (normMods.has('poisonenchant') || normMods.has('poisonenchanted')) {
+  const cappedRes =
+    modifiers.length > 0 && rank !== 'minion'
+      ? applyMonsterUModResistances(baseRes, modifiers)
+      : baseRes
+  let poisonRes = cappedRes.poison
+  if (rank !== 'minion' && (normMods.has('poisonenchant') || normMods.has('poisonenchanted'))) {
     poisonRes += 75
   }
-  if (normMods.has('resist') || normMods.has('magicresistant') || normMods.has('magicresistance') || normMods.has('8')) {
-    fireRes += 40
-    coldRes += 40
-    lightningRes += 20
-  }
-  if (normMods.has('spectralhit') || normMods.has('27')) {
-    fireRes += 20
-    coldRes += 20
-    lightningRes += 20
+  const finalRes: MonsterResistances = {
+    ...cappedRes,
+    poison: poisonRes,
   }
 
   const hasAnyResMod =
-    physicalRes !== 0 ||
-    magicRes !== 0 ||
-    fireRes !== 0 ||
-    lightningRes !== 0 ||
-    coldRes !== 0 ||
-    poisonRes !== 0
+    finalRes.physical !== 0 ||
+    finalRes.magic !== 0 ||
+    finalRes.fire !== 0 ||
+    finalRes.lightning !== 0 ||
+    finalRes.cold !== 0 ||
+    finalRes.poison !== 0
   const updatedResistances = base.resistances
     ? {
         ...base.resistances,
-        physical: physicalRes,
-        magic: magicRes,
-        fire: fireRes,
-        lightning: lightningRes,
-        cold: coldRes,
-        poison: poisonRes,
+        ...finalRes,
       }
     : hasAnyResMod
       ? {
-          ...(physicalRes !== 0 ? { physical: physicalRes } : {}),
-          ...(magicRes !== 0 ? { magic: magicRes } : {}),
-          ...(fireRes !== 0 ? { fire: fireRes } : {}),
-          ...(lightningRes !== 0 ? { lightning: lightningRes } : {}),
-          ...(coldRes !== 0 ? { cold: coldRes } : {}),
-          ...(poisonRes !== 0 ? { poison: poisonRes } : {}),
+          ...(finalRes.physical !== 0 ? { physical: finalRes.physical } : {}),
+          ...(finalRes.magic !== 0 ? { magic: finalRes.magic } : {}),
+          ...(finalRes.fire !== 0 ? { fire: finalRes.fire } : {}),
+          ...(finalRes.lightning !== 0 ? { lightning: finalRes.lightning } : {}),
+          ...(finalRes.cold !== 0 ? { cold: finalRes.cold } : {}),
+          ...(finalRes.poison !== 0 ? { poison: finalRes.poison } : {}),
         }
       : undefined
 
@@ -2271,21 +2309,31 @@ export function applyEliteModifiers(
   const scaleEliteSlot = (
     slot: NonNullable<MonsterStats['attack1']>,
   ): NonNullable<MonsterStats['attack1']> => {
-    if (modDmgScale === 1) return slot
+    if (modDmgScale === 1 && arScale === 1) return slot
     const rawMin = slot.minDamage ?? slot.min ?? 0
     const rawMax = slot.maxDamage ?? slot.max ?? 0
     const minDamage =
-      rawMin > 0 ? Math.max(1, Math.round(rawMin * modDmgScale)) : 0
+      modDmgScale === 1
+        ? rawMin
+        : rawMin > 0
+          ? Math.max(1, Math.round(rawMin * modDmgScale))
+          : 0
     const maxDamage =
-      rawMax > 0
-        ? Math.max(minDamage, Math.round(rawMax * modDmgScale))
-        : 0
+      modDmgScale === 1
+        ? rawMax
+        : rawMax > 0
+          ? Math.max(minDamage, Math.round(rawMax * modDmgScale))
+          : 0
+    const rawTh = slot.toHit ?? 0
+    const slotTh =
+      arScale === 1 ? rawTh : rawTh > 0 ? Math.max(1, Math.round(rawTh * arScale)) : rawTh
     return {
       ...slot,
       minDamage,
       maxDamage,
       min: minDamage,
       max: maxDamage,
+      ...(slot.toHit !== undefined ? { toHit: slotTh } : {}),
     }
   }
 
@@ -2295,16 +2343,18 @@ export function applyEliteModifiers(
     maxHp: hp,
     damage,
     armor,
+    ...(toHit !== undefined ? { toHit } : {}),
     speed,
     cooldownTicks,
     rank,
     level,
+    ...(uncursable ? { uncursable: true } : {}),
     ...(modifiers.length > 0 ? { modifiers } : {}),
     ...(superUniqueId !== undefined ? { superUniqueId } : {}),
-    ...(updatedResistances !== undefined ? { resistances: updatedResistances, resists: updatedResistances, lightningResist: lightningRes } : {}),
-    ...(base.attack1 && modDmgScale !== 1 ? { attack1: scaleEliteSlot(base.attack1) } : {}),
-    ...(base.attack2 && modDmgScale !== 1 ? { attack2: scaleEliteSlot(base.attack2) } : {}),
-    ...(base.special1 && modDmgScale !== 1 ? { special1: scaleEliteSlot(base.special1) } : {}),
+    ...(updatedResistances !== undefined ? { resistances: updatedResistances, resists: updatedResistances, lightningResist: finalRes.lightning } : {}),
+    ...(base.attack1 && (modDmgScale !== 1 || arScale !== 1) ? { attack1: scaleEliteSlot(base.attack1) } : {}),
+    ...(base.attack2 && (modDmgScale !== 1 || arScale !== 1) ? { attack2: scaleEliteSlot(base.attack2) } : {}),
+    ...(base.special1 && (modDmgScale !== 1 || arScale !== 1) ? { special1: scaleEliteSlot(base.special1) } : {}),
   }
 }
 
@@ -3027,6 +3077,7 @@ export function monsterStatsOf(
 
     return {
       id: diffKind.id,
+      ...(diffKind.baseId ? { baseId: diffKind.baseId } : {}),
       name: diffKind.nameKey === '' ? diffKind.id : diffKind.nameKey,
       nameKey: diffKind.nameKey === '' ? diffKind.id : diffKind.nameKey,
       ...(diffKind.descKey !== undefined &&
@@ -3081,6 +3132,8 @@ export function monsterStatsOf(
       ...(diffKind.petIgnore !== undefined ? { petIgnore: diffKind.petIgnore } : {}),
       ...(diffKind.deathDmg !== undefined ? { deathDmg: diffKind.deathDmg } : {}),
       ...(diffKind.isPrimeEvil !== undefined ? { isPrimeEvil: diffKind.isPrimeEvil } : {}),
+      ...(diffKind.killMinions !== undefined ? { killMinions: diffKind.killMinions } : {}),
+      ...(diffKind.splEndDeath !== undefined ? { splEndDeath: diffKind.splEndDeath } : {}),
     }
   }
 
@@ -3109,6 +3162,7 @@ export function monsterStatsOf(
   const toHit = Math.max(0, Math.round((kind.attack1.toHit * scale.toHit) / 100))
   return {
     id: kind.id,
+    ...(kind.baseId ? { baseId: kind.baseId } : {}),
     name: kind.nameKey === '' ? kind.id : kind.nameKey,
     nameKey: kind.nameKey === '' ? kind.id : kind.nameKey,
     ...(kind.descKey !== undefined && kind.descKey !== '' && kind.descKey.toLowerCase() !== 'dummy' ? { descKey: kind.descKey } : {}),
@@ -3152,6 +3206,8 @@ export function monsterStatsOf(
     ...(kind.petIgnore !== undefined ? { petIgnore: kind.petIgnore } : {}),
     ...(kind.deathDmg !== undefined ? { deathDmg: kind.deathDmg } : {}),
     ...(kind.isPrimeEvil !== undefined ? { isPrimeEvil: kind.isPrimeEvil } : {}),
+    ...(kind.killMinions !== undefined ? { killMinions: kind.killMinions } : {}),
+    ...(kind.splEndDeath !== undefined ? { splEndDeath: kind.splEndDeath } : {}),
   }
 }
 
@@ -3924,6 +3980,14 @@ function hydrateMonsterKindFrom113cRow(rec: MonStats113cRow, difficulty: Difficu
     noMultishot: MONSTATS_113C_NO_MULTISHOT_IDS.has(rec.id.toLowerCase()),
     m1m: rec.m1m,
     m2c: rec.m2c,
+    ...(MONSTATS_113C_SPL_END_DEATH_1_HCIDX.has(rec.hcIdx) || rec.hcIdx === 267
+      ? { killMinions: true }
+      : {}),
+    ...(MONSTATS_113C_SPL_END_DEATH_1_HCIDX.has(rec.hcIdx)
+      ? { splEndDeath: 1 }
+      : rec.hcIdx === 435
+        ? { splEndDeath: 2 }
+        : {}),
   }
 
   const getTc = (diff: Difficulty = difficulty, mType = 1): string => {

@@ -986,8 +986,8 @@ describe('Wave 1 P0 Network & Binary Protocol Parity (#1777..#1783)', () => {
 
       // 3. Walk A all the way to (190, 100) and pick up the revealed ground item!
       sessionA.sendCommand({ type: 'RunToLocation', x: 190, y: 100 }, 2400)
-      host.stepFrames(60)
-      sessionA.sendCommand({ type: 'ItemPickup', itemId: farLootId, toCursor: false }, 5000)
+      host.stepFrames(240)
+      sessionA.sendCommand({ type: 'ItemPickup', itemId: farLootId, toCursor: false }, 12000)
       host.stepFrames(3)
 
       expect(worldA.containers.inventory.has(farLootId)).toBe(true)

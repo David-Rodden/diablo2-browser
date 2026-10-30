@@ -253,6 +253,14 @@ export interface MonsterStats {
   readonly meleeRng?: number | undefined
   /** Monster spawn player count (`stat 100 = monster_playercount`, `D2Game!0x6FCCF840` / `0x6FCCFF3B`). */
   readonly monsterPlayerCount?: number | undefined
+  /** Canonical base monster ID (`MonStats.txt` `BaseId`, e.g. `'willowisp1'`). */
+  readonly baseId?: string | undefined
+  /** True when `MonUMod #38` (`Possessed`, `0x6FC437E5`: `nTypeFlags |= 0x20`) blocks all curses. */
+  readonly uncursable?: boolean | undefined
+  /** True when monster death triggers a surrounding minion death wave (`MonStats.txt` `killminions` / `SplEndDeath === 1`). */
+  readonly killMinions?: boolean | undefined
+  /** `MonStats.txt` `SplEndDeath` special death handler code (`1` = Fetish Shaman minion purge, `2` = Barricade Tower). */
+  readonly splEndDeath?: number | undefined
 }
 
 export interface MonsterCurseState {

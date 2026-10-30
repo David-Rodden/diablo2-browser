@@ -145,9 +145,14 @@ export type ClientCommand =
       readonly shift?: boolean | undefined
       readonly useOnMerc?: number | boolean | undefined
     }
+  /** 0x21 StackItems (9B, D2Game.dll 0x6fcef270 -> 0x6fcf7cc0): merge cursor stackable item onto container stack. */
+  | { readonly type: 'StackItems'; readonly cursorItemId: number; readonly targetItemId: number }
+  /** 0x22 UnstackItems (5B, D2Game.dll 0x6fced4f0): split stackable item or extract 1 scroll from tome onto cursor. */
+  | { readonly type: 'UnstackItems'; readonly itemId: number }
   | { readonly type: 'ItemUse'; readonly itemId: number; readonly at: Pt }
-  /** 0x3E SelectMainItem (5B, D2Client.dll 0x6fb2f20b -> D2Game.dll 0x6fc56070): use special quest scroll (`bkd`, `trs`). */
+  /** 0x3E SelectMainItem (5B, D2Client.dll 0x6fb2f20b -> D2Game.dll 0x6fc56070): use special quest scroll (`bkd`, `tr2`, `ass`, `xyz`). */
   | { readonly type: 'SelectMainItem'; readonly itemId: number }
+  | { readonly type: 'ActivateQuestScroll'; readonly itemId: number }
   | { readonly type: 'SocketItem'; readonly itemId: number; readonly targetItemId: number }
   | { readonly type: 'IdentifyItem'; readonly itemId: number; readonly scrollId: number }
   | { readonly type: 'ScrollToBook'; readonly scrollId: number; readonly bookId: number }

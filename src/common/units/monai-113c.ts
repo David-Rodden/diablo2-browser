@@ -550,10 +550,10 @@ export function isBaalTentacleHcIdx113c(hcIdx: number): boolean {
   return id >= 562 && id <= 566
 }
 
-/** 1.13c `BoneWall` (#179) & Diablo `BonePrison` segments (`hcIdx 340..343`, `boneprison1..4`, #1825). */
+/** 1.13c `BoneWall` (#179, #344 `bonewall`) & Diablo `BonePrison` segments (`hcIdx 340..343`, `boneprison1..4`, #1825, #1883). */
 export function isBonePrisonMonsterHcIdx113c(hcIdx: number): boolean {
   const id = hcIdx | 0
-  return id === 179 || (id >= 340 && id <= 343)
+  return id === 179 || (id >= 340 && id <= 344)
 }
 
 /** 1.13c `TentacleHead` boss (`hcIdx 261..263`, token `TE`). */

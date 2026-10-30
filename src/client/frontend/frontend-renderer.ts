@@ -247,10 +247,26 @@ export type FrontendFontName =
   | 'fontridiculous'
 
 /**
- * PL2 text color indices (`D2Gfx_DrawChar` 0x6f876580..0x6f87658f):
- * 0 = White, 1 = Red, 2 = Green, 3 = Blue, 4 = Gold, 5 = DarkGray, 7 = Tan, 8 = Orange, 9 = Yellow
+ * PL2 text color indices (`D2Win.dll` `0x6f8ef0df..0x6f8ef0ef` & `D2Gfx_DrawChar` `0x6f876580..0x6f87658f`):
+ * 0 = White, 1 = Red, 2 = Green, 3 = Blue, 4 = Gold, 5 = DarkGray, 6 = Black,
+ * 7 = Tan, 8 = Orange, 9 = Yellow, 10 = DarkGreen, 11 = Purple, 12 = MediumGreen
  */
-export type FrontendColorIndex = 0 | 1 | 2 | 3 | 4 | 5 | 7 | 8 | 9
+export type FrontendColorIndex = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12
+
+export const FRONTEND_COLOR_INDICES: readonly FrontendColorIndex[] = [
+  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+]
+
+/**
+ * Clamp out-of-range color indices (`< 0` or `>= 13`) to `0` (White) per
+ * `D2Win.dll` `0x6f8f283a..0x6f8f2845` (`cmp ebp, 0xd; jl ...; xor ebp, ebp`).
+ */
+export function normalizeFrontendColorIndex(color: number | undefined): FrontendColorIndex {
+  if (typeof color === 'number' && Number.isInteger(color) && color >= 0 && color < 13) {
+    return color as FrontendColorIndex
+  }
+  return 0
+}
 
 export interface UiButtonDef {
   readonly id: string
@@ -301,7 +317,7 @@ export const END_GAME_LAYOUT_113C = {
   okLabelBottom: 600 - 0x58,
 } as const
 
-const STATIC_UI_IMAGES = [
+export const STATIC_UI_IMAGES = [
   'bg-main-menu.png',
   'bg-char-create.png',
   'bg-char-select.png',
@@ -701,7 +717,7 @@ export class FrontendRenderer {
       'fontformal12',
       'fontridiculous',
     ]
-    const activeColors: FrontendColorIndex[] = [0, 1, 2, 3, 4, 5, 7, 8, 9]
+    const activeColors: readonly FrontendColorIndex[] = FRONTEND_COLOR_INDICES
     for (const fn of activeFonts) {
       for (const c of activeColors) {
         const rel = `fonts/${fn}-c${c}.png`
@@ -774,12 +790,20 @@ export class FrontendRenderer {
         return '#c0a080' // sky/pal.pl2 c4 gold (indices 31=#ac9c64, 32=#c0a080)
       case 5:
         return '#646464' // sky/pal.pl2 c5 gray (index 32=#646464)
+      case 6:
+        return '#000000' // sky/pal.pl2 c6 black (index 31=#000000)
       case 7:
         return '#d8b864' // sky/pal.pl2 c7 tan (index 32=#d8b864)
       case 8:
         return '#d08420' // sky/pal.pl2 c8 orange (index 32=#d08420)
       case 9:
         return '#fce874' // sky/pal.pl2 c9 yellow (index 32=#fce874)
+      case 10:
+        return '#186408' // sky/pal.pl2 c10 dark green (index 31=#186408)
+      case 11:
+        return '#a420fc' // sky/pal.pl2 c11 purple (index 31=#a420fc)
+      case 12:
+        return '#287c14' // sky/pal.pl2 c12 medium green (index 31=#287c14)
     }
   }
 
@@ -819,6 +843,10 @@ export class FrontendRenderer {
     let width = 0
     for (let i = 0; i < text.length; i++) {
       const rawCode = text.charCodeAt(i)
+      if (rawCode === 0xff && text[i + 1] === 'c') {
+        i += i + 2 < text.length ? 2 : 1
+        continue
+      }
       if (rawCode > 0xff) {
         width += cjkAdvance
         continue
@@ -843,7 +871,7 @@ export class FrontendRenderer {
     y: number,
     options: {
       font?: FrontendFontName
-      color?: FrontendColorIndex
+      color?: FrontendColorIndex | number
       align?: 'left' | 'center' | 'right'
       vAlign?: 'top' | 'middle'
       lineGap?: number
@@ -853,14 +881,14 @@ export class FrontendRenderer {
     } = {},
   ): void {
     const font = options.font ?? 'font16'
-    const color = options.color ?? 0
+    let activeColor: FrontendColorIndex = normalizeFrontendColorIndex(options.color)
     const align = options.align ?? 'left'
     const vAlign = options.vAlign ?? 'top'
     const meta = this.fontMetas[font]
-    const atlas = this.images.get(options.atlasKey ?? `fonts/${font}-c${color}.png`)
+    let atlas = this.images.get(options.atlasKey ?? `fonts/${font}-c${activeColor}.png`)
     if (!meta || !atlas) {
       throw new Error(
-        `Missing bitmap font atlas or metrics for "${font}" color ${color}${options.atlasKey ? ` (${options.atlasKey})` : ''}`,
+        `Missing bitmap font atlas or metrics for "${font}" color ${activeColor}${options.atlasKey ? ` (${options.atlasKey})` : ''}`,
       )
     }
 
@@ -885,7 +913,7 @@ export class FrontendRenderer {
       }
     }
     const cjkCanFill = hasCjk && typeof this.ctx.fillText === 'function'
-    const cjkPrimaryFill = cjkCanFill ? this.getCjkColorHex(color, isMultiplyBtn) : ''
+    let cjkPrimaryFill = cjkCanFill ? this.getCjkColorHex(activeColor, isMultiplyBtn) : ''
     const cjkMidOffset = font === 'fontformal12' ? 20 : Math.round(frameH * 0.54)
     if (cjkCanFill) {
       this.ctx.save()
@@ -902,6 +930,28 @@ export class FrontendRenderer {
 
       for (let i = 0; i < line.length; i++) {
         const rawCode = line.charCodeAt(i)
+        if (rawCode === 0xff && line[i + 1] === 'c') {
+          if (i + 2 < line.length) {
+            activeColor = normalizeFrontendColorIndex(line.charCodeAt(i + 2) - 48)
+            i += 2
+          } else {
+            activeColor = 0
+            i += 1
+          }
+          if (!options.atlasKey) {
+            const nextAtlas = this.images.get(`fonts/${font}-c${activeColor}.png`)
+            if (!nextAtlas) {
+              throw new Error(
+                `Missing bitmap font atlas or metrics for "${font}" color ${activeColor}`,
+              )
+            }
+            atlas = nextAtlas
+          }
+          if (cjkCanFill) {
+            cjkPrimaryFill = this.getCjkColorHex(activeColor, isMultiplyBtn)
+          }
+          continue
+        }
         if (rawCode > 0xff) {
           if (cjkCanFill) {
             const ch = line[i]!
@@ -2818,7 +2868,7 @@ export class FrontendRenderer {
       const entry = i >= entryOffset ? visibleEntries[i - entryOffset] : undefined
       const msgColor: FrontendColorIndex =
         entry && entry.text === msg && entry.color !== undefined
-          ? (entry.color as FrontendColorIndex)
+          ? normalizeFrontendColorIndex(entry.color)
           : 0
       this.drawBitmapText(msg, 32, 114 + i * 20, {
         font: 'fontformal11',
@@ -3091,7 +3141,7 @@ export class FrontendRenderer {
     const wrapped: { readonly text: string; readonly color: FrontendColorIndex }[] = []
     const maxWidth = 140
     for (const entry of rawLines) {
-      const color = entry.color as FrontendColorIndex
+      const color = normalizeFrontendColorIndex(entry.color)
       if (entry.text.length === 0) {
         wrapped.push({ text: '', color })
         continue

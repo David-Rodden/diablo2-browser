@@ -128,7 +128,7 @@ describe('CommandMapper — Issue #792: Melee Contact Range for NPC, Chest, and 
     expect(mapper.getPendingObjectInteractId()).toBeNull()
   })
 
-  it('3. clicking an NPC outside the 1.13c interaction range (#10407 > 2) sends MoveToUnit + MakeEntityMove and defers Interact (0x13) + NpcInit (0x2f) until tick() arrives within #10407 <= 2 (0x6fac9ef0)', () => {
+  it('3. clicking an NPC outside the 1.13c interaction range (#10407 > 2) sends MoveToUnit + MakeEntityMove and defers Interact (0x13) until tick() arrives within #10407 <= 2 (0x6fac9ef0), awaiting S2C 0x28 before NpcInit (0x2f)', () => {
     const { world, predictor, mapper, sentCommands } = createTestSetup(5000, 5000, 1)
 
     // Spawn Akara (hcIdx 148, MonStats interact, sizeX=2) at (5005, 5000) -> dx = 5: #10407 = 4 > 2
@@ -159,20 +159,20 @@ describe('CommandMapper — Issue #792: Melee Contact Range for NPC, Chest, and 
     expect(mapper.tick(1100)).toBeNull()
     expect(sentCommands.some((c) => c.type === 'Interact')).toBe(false)
 
-    // Arrives at (5001, 5000) -> dx = 4 (#10407 = 0x6FDDABC0[4] = 2 <= 2): dispatches Interact then NpcInit
+    // Arrives at (5001, 5000) -> dx = 4 (#10407 = 0x6FDDABC0[4] = 2 <= 2): dispatches Interact (0x13) only;
+    // NpcInit (0x2f) waits for authoritative S2C 0x28 UpdateQuestInfo (0x6fafb8a0).
     predictor.setPosition(5001, 5000)
     world.self.x = 5001
     world.self.y = 5000
     const tickCmd = mapper.tick(1200)
     expect(tickCmd).toEqual({
-      type: 'NpcInit',
+      type: 'Interact',
       target: { unitType: 1, id: akaraId },
     })
     expect(sentCommands.map((c) => c.type)).toEqual([
       'MoveToUnit',
       'MakeEntityMove',
       'Interact',
-      'NpcInit',
     ])
     expect(mapper.getPendingNpcInteractId()).toBeNull()
   })

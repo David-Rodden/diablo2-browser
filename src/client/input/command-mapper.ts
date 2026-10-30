@@ -66,10 +66,19 @@ import { calculateManaCost } from '../../common/skills/skill-calc-engine.ts'
 import { PLAYER_SOUND_TABLE_0x6FBA7694 } from '../audio/d2gs-play-sound-113c.ts'
 import { SkillHotkeysHud } from '../ui/hotkeys.ts'
 import {
+  collectAutoPickupCandidates,
   computeJoystickWorldSubTileTarget,
+  hitTestCompactD2rHud,
+  hitTestTouchGroundLabels,
+  triggerMobileHaptic,
+  type ConeInteractableCandidate,
+  type ConeMonsterCandidate,
+  type GroundLootCandidateInput,
+  type InteractableCandidateKind,
   type SkillWheelSlotDescriptor,
   type TouchControlsHud,
 } from '../ui/touch-controls.ts'
+import { buildCompactHudLayoutOptions, resolveTouchHudContext } from '../ui/hud-input-router.ts'
 import { handleEscapeSubmenuKeyDown } from '../ui/world-panels.ts'
 import { matchesKeyBinding } from '../settings/client-settings.ts'
 import { SAY_MESSAGE_PHRASE_113C, type ControlActionId } from '../settings/key-bindings.ts'
@@ -293,6 +302,50 @@ export interface DispatchedCommandRecord {
   readonly path: readonly SubTilePoint[]
 }
 
+/** Pointer id reserved for the desktop mouse-emulated joystick; touch ids are offset above it. */
+export const MOUSE_JOYSTICK_POINTER_ID = 1
+/** Touch `identifier`s are shifted by this offset so they never collide with the mouse pointer id. */
+export const TOUCH_POINTER_ID_OFFSET = 1000
+/** Joystick hold loop: re-issue a forward `Move` at least this often while the stick is held (#1966). */
+export const TOUCH_JOYSTICK_REPEAT_MS = 45
+/** Skill wheel press-and-hold repeat cadence (#1967). */
+export const TOUCH_SKILL_REPEAT_MS = 200
+/** Drag distance that converts a held skill wheel press into directional vector aiming (#1967). */
+export const TOUCH_VECTOR_AIM_DRAG_PX = 18
+/** Per-item cooldown for walk-over auto-pickup (#1967). */
+export const TOUCH_AUTO_PICKUP_COOLDOWN_MS = 500
+
+export type ActiveTouchKind = 'joystick' | 'l2Hold' | 'skillWheel' | 'hud' | 'world'
+
+export interface ActiveTouchEntry {
+  readonly kind: ActiveTouchKind
+  readonly startX: number
+  readonly startY: number
+  lastX: number
+  lastY: number
+  lastRepeatMs: number
+  aiming: boolean
+  readonly slot?: SkillWheelSlotDescriptor | undefined
+}
+
+const D2_ITEM_QUALITY_NAMES: Readonly<Record<number, string>> = {
+  1: 'low',
+  2: 'normal',
+  3: 'superior',
+  4: 'magic',
+  5: 'set',
+  6: 'rare',
+  7: 'unique',
+  8: 'crafted',
+}
+
+const TOUCH_KIND_TO_UNIT_TYPE: Readonly<Record<InteractableCandidateKind, ClientUnit['unitType']>> = {
+  item: 'item',
+  npc: 'monster',
+  object: 'object',
+  warp: 'tile',
+}
+
 function unitToRef(unit: ClientUnit): UnitRef {
   return {
     unitType: UNIT_TYPE_TO_ID[unit.unitType],
@@ -383,6 +436,11 @@ export class CommandMapper {
   /** Default F1..F8 skill hotkey bindings (`key.toUpperCase()` -> binding). */
   private readonly skillHotkeys = new Map<string, SkillHotkeyBinding>()
 
+  /** Multi-touch pointer table (#1966): every finger is routed independently by its `identifier`. */
+  readonly activeTouches = new Map<number, ActiveTouchEntry>()
+  private lastJoystickMoveMs = -Infinity
+  private readonly autoPickupAttemptAtMs = new Map<number, number>()
+
   constructor(deps?: Partial<CommandMapperDeps>) {
     this.world = deps?.world ?? ({} as ClientWorld)
     this.hudManager =
@@ -422,6 +480,14 @@ export class CommandMapper {
     if (hudWithTouch && typeof hudWithTouch === 'object' && !hudWithTouch.onTouchSkillCast) {
       hudWithTouch.onTouchSkillCast = (slot: SkillWheelSlotDescriptor) => {
         this.castTouchWheelSkill(slot)
+      }
+    }
+    const hudWithLoot = this.hudManager as {
+      onTouchLootInteract?: (target: { readonly id: number; readonly kind: InteractableCandidateKind }) => void
+    }
+    if (hudWithLoot && typeof hudWithLoot === 'object' && !hudWithLoot.onTouchLootInteract) {
+      hudWithLoot.onTouchLootInteract = (target) => {
+        this.touchContextInteract(target.id, target.kind)
       }
     }
   }
@@ -889,16 +955,31 @@ export class CommandMapper {
   }
 
   /**
+   * Clears any deferred walk-to-NPC interaction target (e.g. once authoritative `S2C 0x28`
+   * confirms the server already initiated NPC interaction).
+   */
+  clearPendingNpcInteract(npcId?: number): void {
+    if (npcId === undefined || this.pendingNpcInteractId === npcId) {
+      if (this.pendingNpcInteractId !== null) {
+        this.pendingNpcInteractId = null
+        this.rateLimiter.clearPendingMove()
+      }
+    }
+  }
+
+  /**
    * 1.13c `D2Client.dll` `0x6fadadbc..0x6fadadda` (Issue #1711):
    * Per-monster `unit[+0xD4]` 200ms (`0xC8`) throttle on sending `C2S 0x13` (`Interact`).
    */
-  private canSendMonsterInteract113c(monsterId: number, nowMs: number): boolean {
+  private canSendMonsterInteract113c(monsterId: number, nowMs: number, record = true): boolean {
     const resolvedNow = Number.isFinite(nowMs) ? nowMs : 0
     const lastAt = this.lastMonsterInteractAtMsByUnitId.get(monsterId)
     if (lastAt !== undefined && resolvedNow - lastAt < 200) {
       return false
     }
-    this.lastMonsterInteractAtMsByUnitId.set(monsterId, resolvedNow)
+    if (record) {
+      this.lastMonsterInteractAtMsByUnitId.set(monsterId, resolvedNow)
+    }
     return true
   }
 
@@ -2247,7 +2328,7 @@ export class CommandMapper {
     this.hudManager.handleMouseMove(screenX, resolvedY)
 
     const tc = (this.hudManager as { touchControls?: TouchControlsHud } | undefined)?.touchControls
-    if (tc?.enabled && tc.joystick.active) {
+    if (tc?.enabled && tc.joystick.active && tc.joystick.pointerId === MOUSE_JOYSTICK_POINTER_ID) {
       if (tc.joystick.magnitude > 0 && resolvedNowMs - this.lastHoldDispatchMs >= 40) {
         const predSnap = this.predictor?.getSnapshot()
         const selfX =
@@ -2567,8 +2648,9 @@ export class CommandMapper {
   handlePointerUp(button: number): void {
     if (button === 0) {
       const tc = (this.hudManager as { touchControls?: TouchControlsHud } | undefined)?.touchControls
-      if (tc?.joystick?.active) {
-        tc.handlePointerUp(tc.joystick.pointerId ?? 1)
+      if (tc?.joystick?.active && (tc.joystick.pointerId ?? MOUSE_JOYSTICK_POINTER_ID) === MOUSE_JOYSTICK_POINTER_ID) {
+        tc.handlePointerUp(MOUSE_JOYSTICK_POINTER_ID)
+        this.stopTouchLocomotion(performance.now())
         this.hudManager.syncPublishedState?.()
       }
       this.leftMouseDown = false
@@ -3149,6 +3231,10 @@ export class CommandMapper {
           this.pendingNpcInteractId = null
           this.rateLimiter.clearPendingMove()
           this.predictor?.stop()
+          if (!this.canSendMonsterInteract113c(hoveredUnit.id, nowMs, false)) {
+            this.predictor?.facePoint(hoveredUnit.x, hoveredUnit.y, false)
+            return null
+          }
           if (dist <= 25) {
             this.sendCommand(
               {
@@ -3159,22 +3245,17 @@ export class CommandMapper {
               nowMs,
             )
           }
-          if (this.canSendMonsterInteract113c(hoveredUnit.id, nowMs)) {
-            this.sendCommand(
-              {
-                type: 'Interact',
-                target: ref,
-              },
-              nowMs,
-            )
-          }
-          return this.dispatchRateLimited(
+          const interactRecord = this.dispatchRateLimited(
             {
-              type: 'NpcInit',
+              type: 'Interact',
               target: ref,
             },
             nowMs,
           )
+          if (interactRecord.rateLimit.allowed) {
+            this.canSendMonsterInteract113c(hoveredUnit.id, nowMs, true)
+          }
+          return interactRecord
         }
 
         if (canCastLeftSkillHere && this.isValidSkillTargetUnit(hoveredUnit, leftSkillId)) {
@@ -4267,6 +4348,383 @@ export class CommandMapper {
 
   // ─── Frame Tick & Rate-Limiter Coalescing ────────────────────
 
+  // ─── Mobile Multi-Touch Twin-Stick (#1966 / #1967) ───────────
+
+  private get touchControls(): TouchControlsHud | null {
+    const tc = (this.hudManager as { touchControls?: TouchControlsHud } | undefined)?.touchControls
+    return tc ?? null
+  }
+
+  private selfSubtile(): { readonly x: number; readonly y: number } {
+    const predSnap = this.predictor?.getSnapshot()
+    if (predSnap && (predSnap.x !== 0 || predSnap.y !== 0)) return { x: predSnap.x, y: predSnap.y }
+    return { x: this.world.self?.x ?? 0, y: this.world.self?.y ?? 0 }
+  }
+
+  private selfScreen(): { readonly x: number; readonly y: number } {
+    const self = this.selfSubtile()
+    if (self.x === 0 && self.y === 0) {
+      const profile = this.camera.viewportProfile
+      return { x: Math.round(profile.width / 2), y: Math.round(profile.height / 2 - 20) }
+    }
+    return this.cameraSubtileToScreen(self.x, self.y)
+  }
+
+  /**
+   * Route a touch start for finger `touchId` (#1966). Each finger is classified once
+   * (`joystick` / `l2Hold` / `skillWheel` / `hud` / `world`) and keeps that role until it lifts,
+   * so a left-thumb joystick and right-thumb skill wheel never clobber each other.
+   */
+  handleTouchStart(touchId: number, screenX: number, screenY: number, nowMs = performance.now()): ActiveTouchKind | null {
+    const pid = touchId + TOUCH_POINTER_ID_OFFSET
+    if (this.activeTouches.has(pid)) this.handleTouchEnd(touchId, screenX, screenY, nowMs)
+    const tc = this.touchControls
+    const hud = this.hudManager
+    const track = (kind: ActiveTouchKind, extra?: Partial<ActiveTouchEntry>): ActiveTouchKind => {
+      this.activeTouches.set(pid, {
+        kind,
+        startX: screenX,
+        startY: screenY,
+        lastX: screenX,
+        lastY: screenY,
+        lastRepeatMs: nowMs,
+        aiming: false,
+        ...extra,
+      })
+      return kind
+    }
+    if (!tc?.enabled) {
+      if (this.hasActiveTouchKind('world') || this.hasActiveTouchKind('hud')) return null
+      this.handlePointerMove(screenX, screenY, nowMs)
+      const intercepted = hud.isPointInterceptedByHud(screenX, screenY)
+      this.handlePointerDown(screenX, screenY, 0, nowMs)
+      return track(intercepted ? 'hud' : 'world')
+    }
+    hud.handleMouseMove(screenX, screenY)
+    this.assists.noteManual(nowMs)
+    const profile = this.camera.viewportProfile
+    const context = resolveTouchHudContext(hud)
+
+    // 1. Compact HUD: L2 hold and skill wheel get dedicated per-finger handling.
+    if (tc.compactHudActive && context === 'world' && !this.isExternalUiIntercepted?.(screenX, screenY)) {
+      const hit = hitTestCompactD2rHud(
+        screenX,
+        screenY,
+        profile.width,
+        profile.height,
+        hud.belt.isExpanded,
+        tc.activeSkillBank,
+        buildCompactHudLayoutOptions(hud),
+      )
+      if (hit?.kind === 'l2BankSwitch') {
+        tc.beginL2BankPress(pid)
+        triggerMobileHaptic('tap', tc.hapticsEnabled)
+        hud.syncPublishedState()
+        return track('l2Hold')
+      }
+      if (hit?.kind === 'primarySkill' || hit?.kind === 'wheelSkill') {
+        const slot = tc.resolveWheelSlot(hit.hotkeyIndex, hud.hotkeys, hud.lang)
+        triggerMobileHaptic('tap', tc.hapticsEnabled)
+        if (slot.skillId < 0) return track('hud')
+        this.selectTouchWheelSkill(slot)
+        if (slot.directionalAim) {
+          const ps = this.selfScreen()
+          tc.beginVectorAim(pid, slot.hotkeyIndex, slot.skillId, screenX, screenY, ps.x, ps.y)
+          hud.syncPublishedState()
+          return track('skillWheel', { slot, aiming: true })
+        }
+        this.castTouchWheelSkill(slot, nowMs)
+        hud.syncPublishedState()
+        return track('skillWheel', { slot })
+      }
+    }
+
+    // 2. Left-thumb floating joystick (world context only).
+    if (
+      context === 'world' &&
+      !tc.joystick.active &&
+      tc.handlePointerDown(pid, screenX, screenY, profile.width, profile.height, hud.leftPanel !== 'none')
+    ) {
+      this.lastJoystickMoveMs = -Infinity
+      this.emitJoystickMove(nowMs)
+      hud.syncPublishedState()
+      return track('joystick')
+    }
+
+    // 3. Any other HUD / panel / dialog element: classic single-pointer click routing.
+    const modalCursor =
+      hud.inventory?.cursorItem != null ||
+      hud.inventory?.isIdentifyMode?.() === true ||
+      hud.pendingIdentifyScrollId != null ||
+      (hud.worldPanels?.vendorTradeState ?? 'idle') !== 'idle'
+    if (
+      context !== 'world' ||
+      modalCursor ||
+      hud.isPointInterceptedByHud(screenX, screenY) ||
+      this.isExternalUiIntercepted?.(screenX, screenY)
+    ) {
+      if (this.hasActiveTouchKind('hud') || this.hasActiveTouchKind('world')) return null
+      this.handlePointerDown(screenX, screenY, 0, nowMs)
+      return track('hud')
+    }
+
+    // 4. Touch-sized ground item labels (Alt labels on touch, #1385 / #1967).
+    const label = hitTestTouchGroundLabels(screenX, screenY, tc.activeGroundLabelBoxes)
+    if (label) {
+      triggerMobileHaptic('tap', tc.hapticsEnabled)
+      this.touchContextInteract(label.id, 'item', nowMs)
+      return track('hud')
+    }
+
+    // 5. Free world tap: classic click-to-move / attack / interact (one world finger at a time).
+    if (this.hasActiveTouchKind('world')) return null
+    this.handlePointerMove(screenX, screenY, nowMs)
+    this.handlePointerDown(screenX, screenY, 0, nowMs)
+    return track('world')
+  }
+
+  handleTouchMove(touchId: number, screenX: number, screenY: number, nowMs = performance.now()): void {
+    const pid = touchId + TOUCH_POINTER_ID_OFFSET
+    const entry = this.activeTouches.get(pid)
+    if (!entry) return
+    entry.lastX = screenX
+    entry.lastY = screenY
+    const tc = this.touchControls
+    switch (entry.kind) {
+      case 'joystick':
+        if (tc?.handlePointerMove(pid, screenX, screenY)) {
+          this.emitJoystickMove(nowMs)
+          this.hudManager.syncPublishedState()
+        }
+        return
+      case 'skillWheel': {
+        if (!tc || !entry.slot) return
+        const ps = this.selfScreen()
+        if (!entry.aiming) {
+          const dragged = Math.hypot(screenX - entry.startX, screenY - entry.startY)
+          if (dragged < TOUCH_VECTOR_AIM_DRAG_PX) return
+          tc.beginVectorAim(pid, entry.slot.hotkeyIndex, entry.slot.skillId, entry.startX, entry.startY, ps.x, ps.y)
+          entry.aiming = true
+        }
+        tc.updateVectorAim(pid, screenX, screenY, ps.x, ps.y)
+        this.hudManager.syncPublishedState()
+        return
+      }
+      case 'hud':
+        this.hudManager.handleMouseMove(screenX, screenY)
+        return
+      case 'world':
+        this.handlePointerMove(screenX, screenY, nowMs)
+        return
+      default:
+        return
+    }
+  }
+
+  handleTouchEnd(touchId: number, screenX: number, screenY: number, nowMs = performance.now()): void {
+    const pid = touchId + TOUCH_POINTER_ID_OFFSET
+    const entry = this.activeTouches.get(pid)
+    if (!entry) return
+    this.activeTouches.delete(pid)
+    const tc = this.touchControls
+    switch (entry.kind) {
+      case 'joystick':
+        if (tc?.handlePointerUp(pid)) {
+          this.stopTouchLocomotion(nowMs)
+          this.hudManager.syncPublishedState()
+        }
+        return
+      case 'l2Hold':
+        tc?.endL2BankPress(pid)
+        this.hudManager.syncPublishedState()
+        return
+      case 'skillWheel': {
+        if (!tc || !entry.slot) return
+        const finished = entry.aiming ? tc.endVectorAim(pid) : null
+        if (finished) {
+          this.castTouchSkillAtScreen(entry.slot, finished.targetScreenX, finished.targetScreenY, nowMs)
+        }
+        this.hudManager.syncPublishedState()
+        return
+      }
+      case 'hud':
+      case 'world':
+        this.hudManager.handleHudMouseUp?.(screenX, screenY, 0)
+        this.handlePointerUp(0)
+        return
+    }
+  }
+
+  /** Lift every tracked finger (e.g. `touchcancel` storms, orientation change, focus loss). */
+  cancelAllTouches(nowMs = performance.now()): void {
+    for (const pid of Array.from(this.activeTouches.keys())) {
+      const entry = this.activeTouches.get(pid)!
+      this.handleTouchEnd(pid - TOUCH_POINTER_ID_OFFSET, entry.lastX, entry.lastY, nowMs)
+    }
+  }
+
+  private hasActiveTouchKind(kind: ActiveTouchKind): boolean {
+    for (const entry of this.activeTouches.values()) {
+      if (entry.kind === kind) return true
+    }
+    return false
+  }
+
+  private selectTouchWheelSkill(slot: SkillWheelSlotDescriptor): void {
+    const hotkeys = this.hudManager.hotkeys
+    if (slot.hand === 'left') {
+      if (hotkeys.leftSkillId !== slot.skillId) {
+        hotkeys.leftSkillId = slot.skillId
+        this.hudManager.commandSink?.selectSkill?.('left', slot.skillId)
+      }
+    } else if (slot.skillId > 0 && hotkeys.rightSkillId !== slot.skillId) {
+      hotkeys.rightSkillId = slot.skillId
+      this.hudManager.commandSink?.selectSkill?.('right', slot.skillId)
+    }
+  }
+
+  /** Release-to-cast for a vector-aimed skill wheel press (#1967). */
+  castTouchSkillAtScreen(slot: SkillWheelSlotDescriptor, targetScreenX: number, targetScreenY: number, nowMs = performance.now()): void {
+    if (slot.skillId < 0) return
+    const target = this.resolveLiveCursorSubtile(targetScreenX, targetScreenY)
+    if (slot.hand === 'left') {
+      this.triggerPrimaryWorldAction(target.x, target.y, null, nowMs, false)
+    } else if (slot.skillId > 0) {
+      this.triggerSecondaryWorldAction(target.x, target.y, null, nowMs, false, slot.skillId)
+    }
+  }
+
+  /**
+   * Emit a forward `Move` six subtiles along the joystick vector (#1966), honouring the 1.13c
+   * hold-walk frame gate and syncing walk/run from the stick deflection.
+   */
+  private emitJoystickMove(nowMs: number): boolean {
+    const tc = this.touchControls
+    if (!tc?.joystick.active || tc.joystick.magnitude <= 0) return false
+    if (nowMs - this.lastJoystickMoveMs < TOUCH_JOYSTICK_REPEAT_MS) return false
+    if (this.isPlayerBusyCasting(nowMs, 0)) return false
+    const self = this.selfSubtile()
+    if (self.x === 0 && self.y === 0) return false
+    const joyTarget = computeJoystickWorldSubTileTarget(self.x, self.y, tc.joystick.dx, tc.joystick.dy, 6)
+    const isRunning = tc.joystick.locomotionMode === 'run' && !this.isStaminaExhausted()
+    const walkAdj = this.applyWalkAdjust113c(self.x, self.y, joyTarget.x, joyTarget.y, isRunning, 'hold', nowMs)
+    if (!walkAdj.accepted) return false
+    this.lastJoystickMoveMs = nowMs
+    const path = this.startLocalPathPrediction(walkAdj.x, walkAdj.y, isRunning)
+    this.dispatchRateLimited({ type: 'Move', run: isRunning, to: { x: walkAdj.x, y: walkAdj.y } }, nowMs, path)
+    return true
+  }
+
+  /** Joystick released: stop local prediction and plant the character where it stands (#1966). */
+  private stopTouchLocomotion(nowMs: number): void {
+    this.lastJoystickMoveMs = -Infinity
+    const wasMoving = Boolean(this.predictor?.getSnapshot().moving)
+    this.rateLimiter.clearPendingMove()
+    this.predictor?.stop()
+    if (!wasMoving) return
+    const self = this.selfSubtile()
+    if (self.x === 0 && self.y === 0) return
+    const x = Math.round(self.x)
+    const y = Math.round(self.y)
+    this.dispatchRateLimited({ type: 'Move', run: false, to: { x, y } }, nowMs, [{ x, y }])
+  }
+
+  /**
+   * Context `[A]` / label tap (#1967): pick up an item, talk to an NPC, operate an object or
+   * take a warp, reusing the exact 1.13c left-click interaction pipeline (walk-to + deferred interact).
+   */
+  touchContextInteract(id: number, kind: InteractableCandidateKind, nowMs = performance.now()): DispatchedCommandRecord | null {
+    const unit = this.world.getUnit?.(TOUCH_KIND_TO_UNIT_TYPE[kind] as never, id)
+    if (!unit) return null
+    return this.triggerPrimaryWorldAction(unit.x, unit.y, unit, nowMs, false)
+  }
+
+  /** Per-tick touch upkeep: joystick hold loop, skill hold repeat, cone targets, loot queue, auto-pickup. */
+  private tickTouchControls(nowMs: number): void {
+    const tc = this.touchControls
+    if (!tc?.enabled) return
+    if (tc.joystick.active && tc.joystick.pointerId !== MOUSE_JOYSTICK_POINTER_ID) {
+      this.emitJoystickMove(nowMs)
+    }
+    for (const entry of this.activeTouches.values()) {
+      if (entry.kind !== 'skillWheel' || entry.aiming || !entry.slot) continue
+      if (nowMs - entry.lastRepeatMs < TOUCH_SKILL_REPEAT_MS) continue
+      if (this.isPlayerBusyCasting(nowMs, entry.slot.skillId)) continue
+      entry.lastRepeatMs = nowMs
+      this.castTouchWheelSkill(entry.slot, nowMs)
+    }
+    if (typeof this.world.listUnits !== 'function') return
+    const ps = this.selfScreen()
+    const monsters: ConeMonsterCandidate[] = []
+    const interactables: ConeInteractableCandidate[] = []
+    const groundItems: GroundLootCandidateInput[] = []
+    for (const unit of this.world.listUnits()) {
+      if (unit.unitType === 'player') continue
+      const scr = this.cameraSubtileToScreen(unit.x, unit.y)
+      if (unit.unitType === 'monster') {
+        if (this.isTownOrInteractiveNpc(unit)) {
+          interactables.push({ id: unit.id, kind: 'npc', label: unit.name ?? '', screenX: scr.x, screenY: scr.y })
+          continue
+        }
+        if (this.isFriendlySummonOrPet(unit) || this.isMonsterDead(unit)) continue
+        if (isMonsterSubmergedMode113c(unit.classId, unit.mode, unit.castState?.skillId ?? unit.lastSkillId)) continue
+        monsters.push({
+          unitId: unit.id,
+          name: unit.name ?? '',
+          screenX: scr.x,
+          screenY: scr.y,
+          hp: Math.max(0, unit.lifePct ?? 100),
+          maxHp: 100,
+        })
+      } else if (unit.unitType === 'item') {
+        const quality = D2_ITEM_QUALITY_NAMES[unit.quality ?? 2] ?? 'normal'
+        const candidate: GroundLootCandidateInput = {
+          id: unit.id,
+          code: unit.itemCode,
+          label: unit.name ?? unit.itemCode ?? '',
+          quality,
+          screenX: scr.x,
+          screenY: scr.y,
+        }
+        groundItems.push(candidate)
+        interactables.push({ id: unit.id, kind: 'item', label: candidate.label, screenX: scr.x, screenY: scr.y })
+      } else if (unit.unitType === 'object') {
+        if (!isObjectSelectableInMode(unit.classId, unit.mode)) continue
+        interactables.push({ id: unit.id, kind: 'object', label: unit.name ?? '', screenX: scr.x, screenY: scr.y })
+      } else if (unit.unitType === 'tile') {
+        interactables.push({ id: unit.id, kind: 'warp', label: unit.name ?? '', screenX: scr.x, screenY: scr.y })
+      }
+    }
+    tc.updateTargets(ps.x, ps.y, monsters, interactables)
+    tc.updateFootLootQueue(ps.x, ps.y, groundItems)
+    if (!tc.autoPickupGoldAndPotions || this.pendingItemPickupId !== null) return
+    const belt = this.hudManager.belt
+    let beltHasSpace = false
+    for (let row = 0; row < Math.max(1, belt.maxRows) && !beltHasSpace; row++) {
+      for (let col = 0; col < 4; col++) {
+        if (!belt.getSlot(col, row)) {
+          beltHasSpace = true
+          break
+        }
+      }
+    }
+    const picks = collectAutoPickupCandidates(ps.x, ps.y, groundItems, { enabled: true, beltHasSpace })
+    for (const pick of picks) {
+      const last = this.autoPickupAttemptAtMs.get(pick.id) ?? -Infinity
+      if (nowMs - last < TOUCH_AUTO_PICKUP_COOLDOWN_MS) continue
+      this.autoPickupAttemptAtMs.set(pick.id, nowMs)
+      const unit = this.world.getUnit('item', pick.id)
+      if (!unit) continue
+      this.dispatchRateLimited({ type: 'ItemPickup', itemId: unit.id, toCursor: false }, nowMs)
+      break
+    }
+    if (this.autoPickupAttemptAtMs.size > 256) {
+      for (const [id, at] of this.autoPickupAttemptAtMs) {
+        if (nowMs - at > 10_000) this.autoPickupAttemptAtMs.delete(id)
+      }
+    }
+  }
+
   /**
    * Advance periodic input state:
    * - Flushes any coalesced movement command when its 120ms cooldown expires.
@@ -4275,6 +4733,7 @@ export class CommandMapper {
    */
   tick(nowMs = performance.now()): ClientCommand | null {
     this.syncHoverAfterPanelChange()
+    this.tickTouchControls(nowMs)
     const flushed = this.rateLimiter.flushPendingMove(nowMs)
     if (flushed) {
       const predSnap = this.predictor?.getSnapshot()
@@ -4347,13 +4806,15 @@ export class CommandMapper {
           const ref = unitToRef(pendingNpc)
           this.rateLimiter.clearPendingMove()
           this.predictor?.stop()
-          if (this.canSendMonsterInteract113c(pendingNpc.id, nowMs)) {
-            this.sendCommand({ type: 'Interact', target: ref }, nowMs)
-          }
-          const initRecord = this.dispatchRateLimited({ type: 'NpcInit', target: ref }, nowMs)
-          if (initRecord.rateLimit.allowed) {
-            this.pendingNpcInteractId = null
-            return initRecord.command
+          if (!this.canSendMonsterInteract113c(pendingNpc.id, nowMs, false)) {
+            this.predictor?.facePoint(pendingNpc.x, pendingNpc.y, false)
+          } else {
+            const interactRecord = this.dispatchRateLimited({ type: 'Interact', target: ref }, nowMs)
+            if (interactRecord.rateLimit.allowed) {
+              this.canSendMonsterInteract113c(pendingNpc.id, nowMs, true)
+              this.pendingNpcInteractId = null
+              return interactRecord.command
+            }
           }
         }
       }

@@ -1405,32 +1405,22 @@ export function handleServerEvent(host: SessionEventProcessorHost, rawEv: Server
         const target = { unitType: uType, id: ev.unitId }
         const foundUnit = host.world.getUnit(uType, ev.unitId)
         if (foundUnit) {
-          host.world.noteOutgoingCommand({ type: 'NpcInit', target })
-          if (host.gameAdapter && host.gameAdapter.state !== 'closed') {
-            try {
-              host.gameAdapter.send({
-                type: 'NpcInit',
-                target,
-              })
-            } catch (err) {
-              const msg = err instanceof Error ? err.message : String(err)
-              host.handleUnexpectedDisconnect(`Failed to send NpcInit on 0x28: ${msg}`, 'error', true)
-            }
+          if (uType === 1) {
+            host.commandMapper.clearPendingNpcInteract(ev.unitId)
           }
+          host.forwardCommandToAdapter({
+            type: 'NpcInit',
+            target,
+          })
         } else {
-          host.world.noteOutgoingCommand({ type: 'NpcCancel', target, npcId: ev.unitId })
-          if (host.gameAdapter && host.gameAdapter.state !== 'closed') {
-            try {
-              host.gameAdapter.send({
-                type: 'NpcCancel',
-                target,
-                npcId: ev.unitId,
-              })
-            } catch (err) {
-              const msg = err instanceof Error ? err.message : String(err)
-              host.handleUnexpectedDisconnect(`Failed to send NpcCancel on 0x28: ${msg}`, 'error', true)
-            }
+          if (uType === 1) {
+            host.commandMapper.clearPendingNpcInteract(ev.unitId)
           }
+          host.forwardCommandToAdapter({
+            type: 'NpcCancel',
+            target,
+            npcId: ev.unitId,
+          })
         }
       }
       break
@@ -1461,13 +1451,16 @@ export function handleServerEvent(host: SessionEventProcessorHost, rawEv: Server
       break
   }
 
-  // Emit any newly added chat entries
+  // Emit any newly added chat entries (tagged with D2GS game-server origin so Battle.net lobby UI never ingests them)
   if (host.world.chatLog.length > prevChatCount) {
     for (let i = prevChatCount; i < host.world.chatLog.length; i++) {
       const chatEntry = host.world.chatLog[i]
       if (chatEntry) {
+        const emittedEntry: ChatLogEntry = chatEntry.source
+          ? chatEntry
+          : { ...chatEntry, source: 'd2gs' }
         for (const listener of host.chatListeners) {
-          listener(chatEntry)
+          listener(emittedEntry)
         }
       }
     }

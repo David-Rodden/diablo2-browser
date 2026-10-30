@@ -770,27 +770,166 @@ export function resolveStaffModsClass(
 }
 
 /**
- * Rolls 1.13c StaffMods (`D2Common!ITEMMOD_ApplyStaffMods`) for eligible equipment bases.
+ * Canonical 1.13c `Skills.txt` `itypea1..3` constraints for player skills (`6..280`).
+ * In `D2Game.dll` `ITEMS_RollStaffMods` (`0x6FC33489..0x6FC334EB`), when a skill defines
+ * `itypea1..3`, the item base must match at least one allowed item type (`etypea1..2` are
+ * empty across all player skills in 1.13c `Skills.txt`) (#1912).
+ */
+export const STAFF_MOD_SKILL_ALLOWED_ITYPES: Readonly<Record<number, readonly string[]>> = {
+  // Amazon (6..35)
+  6: ['miss'],
+  7: ['miss'],
+  9: ['spea', 'miss'],
+  10: ['spea'],
+  11: ['miss'],
+  12: ['miss'],
+  14: ['spea'],
+  15: ['jave'],
+  16: ['miss'],
+  19: ['spea'],
+  20: ['jave'],
+  21: ['miss'],
+  22: ['miss'],
+  23: ['spea', 'miss'],
+  24: ['spea'],
+  25: ['jave'],
+  26: ['miss'],
+  27: ['miss'],
+  30: ['spea'],
+  31: ['miss'],
+  33: ['miss'],
+  34: ['spea'],
+  35: ['jave'],
+  // Necromancer (66..95)
+  73: ['knif'], // Poison Dagger
+  // Paladin (96..125)
+  96: ['mele'],
+  97: ['shld'], // Smite
+  106: ['mele'],
+  107: ['mele'],
+  111: ['mele'],
+  116: ['mele'],
+  117: ['shld'], // Holy Shield
+  123: ['mele'],
+  // Barbarian (126..155)
+  126: ['mele'],
+  133: ['mele'],
+  139: ['mele'],
+  140: ['thro'],
+  143: ['mele'],
+  144: ['mele'],
+  147: ['mele'],
+  151: ['mele'],
+  152: ['mele'],
+  // Assassin (251..280)
+  252: ['h2h'],
+  254: ['mele'],
+  259: ['h2h'],
+  260: ['h2h'],
+  263: ['h2h'],
+  265: ['mele'],
+  269: ['h2h'],
+  274: ['h2h'],
+  280: ['mele'],
+}
+
+const FALLBACK_ITEM_TYPE_ANCESTORS: Readonly<Record<string, readonly string[]>> = {
+  scep: ['scep', 'rod', 'blun', 'mele', 'weap'],
+  wand: ['wand', 'rod', 'blun', 'mele', 'weap'],
+  staf: ['staf', 'rod', 'blun', 'mele', 'weap'],
+  orb: ['orb', 'weap'],
+  head: ['head', 'shld', 'armo'],
+  phlm: ['phlm', 'helm', 'armo'],
+  pelt: ['pelt', 'helm', 'armo'],
+  cloa: ['cloa', 'h2h2', 'h2h', 'mele', 'weap'],
+  h2h2: ['h2h2', 'h2h', 'mele', 'weap'],
+  h2h: ['h2h', 'mele', 'weap'],
+  knif: ['knif', 'mele', 'weap'],
+  shld: ['shld', 'armo'],
+  ashd: ['ashd', 'shld', 'armo'],
+}
+
+function doesBaseMatchStaffModItype(
+  base: ItemBase,
+  targetItype: string,
+  itemTypes?: ItemTypeTable,
+  isA?: (code: string, target: string) => boolean,
+): boolean {
+  const typeCode = getItemTypeCode(base).trim().toLowerCase()
+  const target = targetItype.trim().toLowerCase()
+  if (!typeCode || !target) return false
+  if (typeCode === target) return true
+  if (isA) {
+    return isA(typeCode, target)
+  }
+  if (itemTypes) {
+    const visited = new Set<string>()
+    const queue: string[] = [typeCode]
+    while (queue.length > 0) {
+      const curr = queue.shift()!.trim().toLowerCase()
+      if (!curr || visited.has(curr)) continue
+      if (curr === target) return true
+      visited.add(curr)
+      const def = itemTypes.byCode.get(curr)
+      if (def) {
+        if (def.equiv1) queue.push(def.equiv1)
+        if (def.equiv2) queue.push(def.equiv2)
+      }
+    }
+    return false
+  }
+  const fallback = FALLBACK_ITEM_TYPE_ANCESTORS[typeCode]
+  if (fallback) {
+    return fallback.includes(target)
+  }
+  return Boolean(base.tags?.some((t) => t.trim().toLowerCase() === target))
+}
+
+export function isStaffModSkillAllowedOnBase(
+  skillId: number,
+  base: ItemBase,
+  itemTypes?: ItemTypeTable,
+  isA?: (code: string, target: string) => boolean,
+): boolean {
+  const allowedItypes = STAFF_MOD_SKILL_ALLOWED_ITYPES[skillId]
+  if (!allowedItypes || allowedItypes.length === 0) {
+    return true
+  }
+  return allowedItypes.some((it) => doesBaseMatchStaffModItype(base, it, itemTypes, isA))
+}
+
+export interface RollStaffModsOptions {
+  readonly isA?: ((code: string, target: string) => boolean) | undefined
+  readonly quality?: string | number | undefined
+  readonly isExpansion?: boolean | undefined
+  readonly bonusArg?: number | undefined
+}
+
+/**
+ * Rolls 1.13c StaffMods (`D2Game.dll` `ITEMS_RollStaffMods` `0x6FC33320..0x6FC33580`)
+ * for eligible equipment bases (#1912).
  *
  * Rules:
  * - Each class has 30 skills across 6 tiers (reqLvl 1, 6, 12, 18, 24, 30; 5 skills per tier).
  * - Base tier by `ilvl`:
- *   - `ilvl >= 37` -> 5
+ *   - `ilvl >= 37` (Expansion only) -> 5
  *   - `ilvl >= 25` -> 4
  *   - `ilvl >= 19` -> 3
  *   - `ilvl >= 12` -> 2
  *   - `ilvl < 12`  -> 1
- * - Skill count (`r = rng.rand(100)`):
- *   - `r >= 90` (10%): 3 skills
- *   - `r >= 70` (20%): 2 skills
- *   - `r >= 30` (40%): 1 skill
- *   - `r < 30`  (30%): 0 skills
+ * - Skill count (`r = rng.rand(100) + bonusArg`, strict `>`):
+ *   - `r > 90` (9%): 3 skills
+ *   - `r > 70` (20%): 2 skills
+ *   - `r > 30` (40%): 1 skill
+ *   - `r <= 30` (31%): 0 skills
  * - For each slot:
- *   - Tier offset (`tRoll = rng.rand(100)`):
- *     `>= 80` (+1, max 6), `>= 30` (+0), `>= 10` (-1, min 1), `< 10` (-2, min 1).
- *   - Pick 1 unselected skill ID from the 5 skills in that tier.
- *   - Bonus roll (`bonusRoll = rng.rand(100)`):
- *     `>= 90` -> `+3`, `>= 60` -> `+2`, else `+1`.
+ *   - Tier offset (`tRoll = rng.rand(100)`, strict `>`):
+ *     `> 80` (+1, max 6; max 5 in Classic), `> 30` (+0), `> 10` (-1, min 1), `<= 10` (-2, min 1).
+ *   - Low Quality (`quality === 'low' || quality === 1`): clamp `tier <= 4`.
+ *   - Up to 6 attempts (`rng.rand(5)`) to pick an unselected skill from that tier whose
+ *     `Skills.txt` `itypea1..3` permits this item base.
+ *   - Bonus roll: Low Quality in Expansion forces `+1` without consuming `rand(100)`;
+ *     otherwise `>= 90` -> `+3`, `>= 60` -> `+2`, else `+1`.
  *   - Emit `{ code: 'skill', param: skillId, min: bonus, max: bonus, value: bonus }`.
  */
 export function rollStaffMods(
@@ -798,6 +937,7 @@ export function rollStaffMods(
   ilvl: number,
   itemTypes?: ItemTypeTable,
   rng?: D2Rng,
+  options?: RollStaffModsOptions,
 ): RolledItemProp[] {
   const classCode = resolveStaffModsClass(base, itemTypes)
   if (!classCode) {
@@ -809,58 +949,69 @@ export function rollStaffMods(
   }
 
   const effectiveRng = rng ?? new D2Rng(1)
+  const isExpansion = options?.isExpansion !== false
+  const isLowQuality = options?.quality === 'low' || options?.quality === 1
+  const bonusArg = options?.bonusArg ?? 0
 
   let baseTier = 1
-  if (ilvl >= 37) baseTier = 5
+  if (ilvl >= 37 && isExpansion) baseTier = 5
   else if (ilvl >= 25) baseTier = 4
   else if (ilvl >= 19) baseTier = 3
   else if (ilvl >= 12) baseTier = 2
   else baseTier = 1
 
-  const r = effectiveRng.rand(100)
+  const r = effectiveRng.rand(100) + bonusArg
   let count = 0
-  if (r >= 90) count = 3
-  else if (r >= 70) count = 2
-  else if (r >= 30) count = 1
+  if (r > 90) count = 3
+  else if (r > 70) count = 2
+  else if (r > 30 || bonusArg !== 0) count = 1
   else count = 0
 
   if (count === 0) {
     return []
   }
 
+  const maxTier = isExpansion ? 6 : 5
   const selectedSkills = new Set<number>()
   const props: RolledItemProp[] = []
 
   for (let i = 0; i < count; i++) {
     const tRoll = effectiveRng.rand(100)
     let tierOffset = 0
-    if (tRoll >= 80) tierOffset = 1
-    else if (tRoll >= 30) tierOffset = 0
-    else if (tRoll >= 10) tierOffset = -1
+    if (tRoll > 80) tierOffset = 1
+    else if (tRoll > 30) tierOffset = 0
+    else if (tRoll > 10) tierOffset = -1
     else tierOffset = -2
 
-    const tier = Math.max(1, Math.min(6, baseTier + tierOffset))
-    const tierStart = startSkillId + (tier - 1) * 5
-    const available: number[] = []
-    for (let k = 0; k < 5; k++) {
-      const candidateId = tierStart + k
-      if (!selectedSkills.has(candidateId)) {
-        available.push(candidateId)
-      }
+    let tier = Math.max(1, Math.min(maxTier, baseTier + tierOffset))
+    if (isLowQuality && tier > 4) {
+      tier = 4
     }
-    if (available.length === 0) {
+    const tierStart = startSkillId + (tier - 1) * 5
+
+    let pickedSkillId: number | undefined
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const candidateId = tierStart + effectiveRng.rand(5)
+      if (selectedSkills.has(candidateId)) continue
+      if (!isStaffModSkillAllowedOnBase(candidateId, base, itemTypes, options?.isA)) continue
+      pickedSkillId = candidateId
+      break
+    }
+    if (pickedSkillId === undefined) {
       continue
     }
 
-    const skillId = available[effectiveRng.rand(available.length)]!
-    selectedSkills.add(skillId)
+    selectedSkills.add(pickedSkillId)
 
-    const bonusRoll = effectiveRng.rand(100)
-    const bonus = bonusRoll >= 90 ? 3 : bonusRoll >= 60 ? 2 : 1
+    let bonus = 1
+    if (!(isLowQuality && isExpansion)) {
+      const bonusRoll = effectiveRng.rand(100) + Math.trunc(bonusArg / 2)
+      bonus = bonusRoll >= 90 ? 3 : bonusRoll >= 60 ? 2 : 1
+    }
 
     props.push({
       code: 'skill',
-      param: skillId,
+      param: pickedSkillId,
       min: bonus,
       max: bonus,
       value: bonus,

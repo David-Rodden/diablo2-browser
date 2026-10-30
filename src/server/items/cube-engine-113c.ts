@@ -25,7 +25,7 @@ import { isAffixEligible, type MagicAffix } from '../../common/items/affixes.ts'
 import type { DropTables } from '../../common/items/drop-tables.ts'
 import { getEmbeddedDropTables } from '../../common/items/embedded-drop-tables.ts'
 import { GEM_INFO, RUNE_INFO, isRuneCode } from '../../common/items/gems-data.ts'
-import { CANONICAL_GEMS_TABLE, getMaxSockets, type GemModifier } from '../../common/items/gems.ts'
+import { CANONICAL_GEMS_TABLE, getMaxSockets } from '../../common/items/gems.ts'
 import { rolledPropsToItemStats } from '../../common/items/item-bridge.ts'
 import { ItemQuality, type Item, type ItemBase, type RolledItemProp } from '../../common/items/items.ts'
 import { isRareNameEligible, type RareNameEntry } from '../../common/items/rare-names.ts'
@@ -38,7 +38,6 @@ import {
   checkRunewordMatch,
   type RunewordMatchResult,
 } from '../../common/items/runeword.ts'
-import { rollArmorDefense113c } from '../../common/items/vendor-generator.ts'
 import type { D2Rng } from '../../common/rng/d2-rng.ts'
 import {
   ITEM_FLAG_COMPACT,
@@ -57,7 +56,8 @@ import {
   type CubemainMod113c,
   type CubemainRecipeRow113c,
 } from './cubemain-data-113c.ts'
-import { domainItemToItemData113c } from './server-item-data.ts'
+import { domainItemToItemData113c, resolveGemSocketItemStats113c } from './server-item-data.ts'
+export { resolveGemSocketItemStats113c }
 
 const STAT_ARMOR_PERCENT = 16
 const STAT_ARMORCLASS = 31
@@ -74,7 +74,12 @@ function baseStackable113c(base: ItemBase): boolean {
   return (base as { readonly stackable?: boolean }).stackable === true
 }
 
-/** `rollArmorDefense113c` with the enhanced-defense percent (`ac%`) folded from the rolled props. */
+/**
+ * Wire `ItemData.defense` (`STAT_ARMORCLASS = 31` on the base stat list) for a Cube-generated
+ * armor: `maxac + 1` (unscaled) when the item rolled `ac%`, otherwise `[minac, maxac]`.
+ * On-piece `ac%` (`stat 16`) and `+ac` (`stat 31`) are emitted in `ItemData.stats` so neither
+ * client nor server double-multiplies `%ED` (#1911).
+ */
 function rollCubeArmorDefense113c(
   base: ItemBase,
   props: readonly RolledItemProp[],
@@ -84,7 +89,12 @@ function rollCubeArmorDefense113c(
   for (const p of props) {
     if (p.code.trim().toLowerCase() === 'ac%') acPct += Number(p.value ?? p.min ?? 0)
   }
-  return rollArmorDefense113c(base, 'normal', acPct, rng)
+  const minac = Number((base as { readonly minac?: number }).minac) || base.defense
+  const maxac = Number((base as { readonly maxac?: number }).maxac) || base.defense
+  if (acPct > 0) {
+    return maxac + 1
+  }
+  return minac < maxac ? rng.randRange(minac, maxac) : maxac
 }
 
 const EXTRA_NON_RANDOM_PROP_CODES: ReadonlySet<string> = new Set([
@@ -144,50 +154,6 @@ function propsToWireItemStats(
   const filtered = props.filter((p) => p.code.trim().toLowerCase() !== 'ethereal')
   return rolledPropsToItemStats(filtered, { baseCode }).map((s) => ({
     statId: s.statId as number,
-    param: s.param ?? 0,
-    value: s.value,
-  }))
-}
-
-/**
- * Resolves the slot-specific `ItemStat[]` contributed by a socketed Gem, Rune, or Jewel
- * when placed inside `hostCode` (`0 = weaponMods`, `1 = helmMods`, `2 = shieldMods`).
- */
-export function resolveGemSocketItemStats113c(
-  filler: Pick<ItemData, 'code' | 'stats'>,
-  hostCode: string,
-  tables: DropTables = getEmbeddedDropTables(),
-): ItemStat[] {
-  const cleanHost = hostCode.trim()
-  const base = tables.getBase(cleanHost)
-  const applyType = base
-    ? resolveGemApplyType(base)
-    : resolveGemApplyType({ code: cleanHost } as unknown as ItemBase)
-  if (applyType === -1) return []
-
-  const subCode = filler.code.trim().toLowerCase()
-  const gemDef = CANONICAL_GEMS_TABLE.get(subCode)
-  if (gemDef) {
-    const mods: readonly GemModifier[] =
-      applyType === 0
-        ? gemDef.weaponMods
-        : applyType === 1
-          ? gemDef.helmMods
-          : gemDef.shieldMods
-    const props: RolledItemProp[] = mods
-      .filter((m) => m.code.trim().toLowerCase() !== 'ethereal')
-      .map((m) => ({
-        code: m.code.trim(),
-        ...(m.param !== undefined ? { param: m.param } : {}),
-        min: m.min,
-        max: m.max,
-        value: m.min,
-      }))
-    return propsToWireItemStats(props, cleanHost)
-  }
-
-  return (filler.stats ?? []).map((s) => ({
-    statId: s.statId,
     param: s.param ?? 0,
     value: s.value,
   }))
@@ -301,38 +267,6 @@ function buildDomainStubForRunewordCheck(
     identified: true,
     totalSockets,
   }
-}
-
-function recomputeSocketedArmorDefense(
-  host: ItemData,
-  base: ItemBase,
-  allStats: readonly ItemStat[],
-): number | undefined {
-  if (base.kind !== 'armor') return host.defense
-  let acPct = 0
-  let flatAc = 0
-  for (const st of allStats) {
-    if (st.statId === STAT_ARMOR_PERCENT) acPct += st.value
-    else if (st.statId === STAT_ARMORCLASS) flatAc += st.value
-  }
-  let ownAcPct = 0
-  let ownFlatAc = 0
-  for (const st of host.stats ?? []) {
-    if (st.statId === STAT_ARMOR_PERCENT) ownAcPct += st.value
-    else if (st.statId === STAT_ARMORCLASS) ownFlatAc += st.value
-  }
-  const currentDef = host.defense ?? base.defense ?? 0
-  // Recover underlying rolled base defense before own ac%/flatAc
-  let underlyingBaseDef = Math.max(0, currentDef - ownFlatAc)
-  if (ownAcPct > 0) {
-    underlyingBaseDef = Math.max(1, Math.floor((underlyingBaseDef * 100) / (100 + ownAcPct)))
-  }
-  if (underlyingBaseDef <= 0) return currentDef
-  let computed = Math.floor((underlyingBaseDef * (100 + acPct)) / 100) + flatAc
-  if (acPct > 0 && computed === underlyingBaseDef) {
-    computed = underlyingBaseDef + 1
-  }
-  return computed
 }
 
 /**
@@ -468,7 +402,9 @@ export function executeSocketItem113c(
     combinedStatsMap.set(st.statId, (combinedStatsMap.get(st.statId) ?? 0) + st.value)
   }
 
-  const nextDefense = recomputeSocketedArmorDefense(host, hostBase, combinedStatList)
+  // Wire `ItemData.defense` is `STAT_ARMORCLASS (31)` on the base stat list (before ac% / +ac);
+  // runeword & socket filler `ac%`/`+ac` live in `runewordStats` and `socketedItems` (#1911).
+  const nextDefense = host.defense
   const prevHostFlags = Number(host.rawFlags ?? host.flags ?? ITEM_FLAG_IDENTIFIED)
   const nextHostFlags =
     (((prevHostFlags | ITEM_FLAG_IDENTIFIED | ITEM_FLAG_SOCKETED) & ~ITEM_FLAG_COMPACT) |
@@ -1006,7 +942,7 @@ function buildUseitemOutput113c(
   // 1. Hel + Scroll of TP + Socketed Item -> Unsocket (`useitem,uns`, Row 141)
   if (hasUns) {
     if ((primary.socketedItems?.length ?? 0) <= 0) return null
-    const restoredDef = recomputeSocketedArmorDefense(primary, curBase, primary.stats ?? [])
+    const restoredDef = primary.defense
     const cleanFlags =
       (((Number(primary.rawFlags ?? primary.flags ?? ITEM_FLAG_IDENTIFIED) |
         ITEM_FLAG_SOCKETED |
@@ -1033,7 +969,7 @@ function buildUseitemOutput113c(
   if (hasRep) {
     if (primary.ethereal) return null
     const maxDur = primary.maxDurability ?? baseDurability113c(curBase)
-    const nextStats = (primary.stats ?? []).map((st) => {
+    const rechargeChargedStat = <T extends { readonly statId: number; readonly value: number }>(st: T): T => {
       if (hasRch && st.statId === STAT_ITEM_CHARGED_SKILL) {
         const maxCharges = (st.value >>> 8) & 0xff
         const fullCharges = maxCharges > 0 ? maxCharges : st.value & 0xff
@@ -1046,7 +982,12 @@ function buildUseitemOutput113c(
         return { ...st, value: curBase.maxStack || 1 }
       }
       return st
-    })
+    }
+    const nextStats = (primary.stats ?? []).map(rechargeChargedStat)
+    const nextRunewordStats =
+      hasRch && primary.runewordStats !== undefined
+        ? primary.runewordStats.map(rechargeChargedStat)
+        : primary.runewordStats
     const nextQty =
       qtyTok && baseStackable113c(curBase)
         ? Math.max(primary.quantity ?? 1, curBase.maxStack || 1)
@@ -1061,6 +1002,7 @@ function buildUseitemOutput113c(
       flags: cleanFlags,
       rawFlags: cleanFlags,
       stats: nextStats,
+      ...(nextRunewordStats !== undefined ? { runewordStats: nextRunewordStats } : {}),
     }
   }
 
@@ -1092,21 +1034,10 @@ function buildUseitemOutput113c(
       const maxAc = Number((nextBase as { readonly maxac?: number }).maxac ?? nextBase.defense ?? minAc)
       let baseAc = minAc === maxAc ? minAc : rng.randRange(Math.min(minAc, maxAc), Math.max(minAc, maxAc))
       if (primary.ethereal) {
-        baseAc = Math.floor(baseAc * 1.5)
+        baseAc = Math.floor((baseAc * 3) / 2)
       }
-      let acPct = 0
-      let flatAc = 0
-      for (const st of mergedStats) {
-        if (st.statId === STAT_ARMOR_PERCENT) acPct += st.value
-        else if (st.statId === STAT_ARMORCLASS) flatAc += st.value
-      }
-      for (const child of primary.socketedItems ?? []) {
-        for (const cst of resolveGemSocketItemStats113c(child, nextCode, tables)) {
-          if (cst.statId === STAT_ARMOR_PERCENT) acPct += cst.value
-          else if (cst.statId === STAT_ARMORCLASS) flatAc += cst.value
-        }
-      }
-      nextDefense = Math.floor((baseAc * (100 + acPct)) / 100) + flatAc
+      // Wire `ItemData.defense` stores baseAc (including 1.5x ethereal) BEFORE `ac%`/`+ac` (#1911).
+      nextDefense = baseAc
     }
 
     const nextMaxDur = baseDurability113c(nextBase) || Number(primary.maxDurability ?? 0)
@@ -1151,12 +1082,24 @@ function buildUseitemOutput113c(
       const hi = Math.max(lo, Math.max(sockMod!.min, sockMod!.max))
       rolledSockets = rng.randRange(lo, hi)
     }
-    const finalSockets = Math.max(1, Math.min(rolledSockets, maxAllowed))
+    const invCap = Math.max(1, (curBase.invWidth || 1) * (curBase.invHeight || 1))
+    const finalSockets = Math.max(1, Math.min(rolledSockets, invCap, maxAllowed))
 
-    // 1.13c D2Game.dll 0x6FC91B20: cube socketing an ethereal normal armor re-applies the +50% ethereal defense bonus ("ebug").
+    // 1.13c D2Game.dll 0x6FC91B20: cube socketing (`mod = sock`, Rows 123..126) preserves rolled
+    // base defense and re-applies the +50% ethereal defense bonus ("ebug") on ethereal normal armor (#1909).
     let nextDefense = primary.defense
-    if (curBase.kind === 'armor' && primary.ethereal && typeof primary.defense === 'number') {
-      nextDefense = Math.floor((primary.defense * 3) / 2)
+    if (curBase.kind === 'armor') {
+      const startDef =
+        typeof primary.defense === 'number'
+          ? primary.defense
+          : curBase.defense > 0
+            ? primary.ethereal
+              ? Math.floor((curBase.defense * 3) / 2)
+              : curBase.defense
+            : undefined
+      if (startDef !== undefined) {
+        nextDefense = Boolean(sockMod) && primary.ethereal ? Math.floor((startDef * 3) / 2) : startDef
+      }
     }
 
     const nextFlags =

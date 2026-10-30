@@ -3244,11 +3244,19 @@ export function executeActBossAi113c(
       const pick = councilSkills[stepIdx % councilSkills.length]!
       skillId = pick.id
       skillName = pick.name
-    } else if (hcIdx === 256 || idLower.includes('izual')) {
-      const izualSkills = [
-        { id: 'frostnova', name: 'FrostNova' },
-        { id: 'melee', name: 'Melee' },
-      ] as const
+    } else if (hcIdx === 256 || hcIdx === 706 || idLower.includes('izual')) {
+      const izualSkills =
+        hcIdx === 706 || idLower === 'uberizual'
+          ? ([
+              { id: 'chillingarmor', name: 'ChillingArmor' },
+              { id: 'teleport', name: 'Teleport' },
+              { id: 'frostnova', name: 'FrostNova' },
+              { id: 'melee', name: 'Melee' },
+            ] as const)
+          : ([
+              { id: 'frostnova', name: 'FrostNova' },
+              { id: 'melee', name: 'Melee' },
+            ] as const)
       const pick = izualSkills[stepIdx % izualSkills.length]!
       skillId = pick.id
       skillName = pick.name
@@ -3260,7 +3268,7 @@ export function executeActBossAi113c(
       const pick = hephSkills[stepIdx % hephSkills.length]!
       skillId = pick.id
       skillName = pick.name
-    } else if (hcIdx === 479 || hcIdx === 706 || idLower.includes('shenk') || idLower.includes('overseer')) {
+    } else if (hcIdx === 479 || idLower.includes('shenk') || idLower.includes('overseer')) {
       const shenkSkills = [
         { id: 'whip', name: 'Whip' },
         { id: 'frenzy', name: 'Frenzy' },

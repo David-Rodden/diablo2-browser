@@ -31,7 +31,7 @@
 
 import { compute5BandScaling, computeDiminishingReturns } from '../../common/data/calc-ast.ts'
 
-export type DruidForm = 'human' | 'werewolf' | 'werebear'
+export type DruidForm = 'human' | 'werewolf' | 'werebear' | 'delerium'
 
 // --- Skill IDs ---
 
@@ -589,15 +589,20 @@ export function calculateFuryStats(slvl: number): FuryStats {
  * Validates whether a given skill can be executed in the current Druid form.
  */
 export function canCastShapeShiftSkill(
-  currentForm: 'human' | 'wolf' | 'bear',
+  currentForm: 'human' | 'wolf' | 'bear' | 'delerium',
   skillId: number,
 ): boolean {
   switch (skillId) {
     case DRUID_SHAPESHIFT_SKILL_IDS.WEREWOLF:
     case DRUID_SHAPESHIFT_SKILL_IDS.WEREBEAR:
-      // 1.13c Skills.txt restrict = 1, State1 = wolf, State2 = bear:
-      // Castable in human (transform), same form (revert), or opposite beast form (cross-morph).
-      return currentForm === 'human' || currentForm === 'wolf' || currentForm === 'bear'
+      // 1.13c Skills.txt restrict = 1:
+      // Castable in human (transform), same form (revert), opposite beast form (cross-morph), or STATE_DELERIUM (#177 override).
+      return (
+        currentForm === 'human' ||
+        currentForm === 'wolf' ||
+        currentForm === 'bear' ||
+        currentForm === 'delerium'
+      )
 
     case DRUID_SHAPESHIFT_SKILL_IDS.FERAL_RAGE:
     case DRUID_SHAPESHIFT_SKILL_IDS.RABIES:
@@ -641,7 +646,7 @@ export function canCastShapeShiftSkill(
  *     Cyclone Armor (235), Twister (240), Volcano (244), Tornado (245), Hurricane (250).
  */
 export function canCastDruidSkill(
-  currentForm: 'human' | 'wolf' | 'bear',
+  currentForm: 'human' | 'wolf' | 'bear' | 'delerium',
   skillId: number,
 ): boolean {
   // Passives
@@ -649,8 +654,11 @@ export function canCastDruidSkill(
     return true
   }
 
-  // restrict = 1: Shapeshift-allowed spells, transformations, and all 10 Druid summons
+  // restrict = 1: Universal Attack/Unsummon/Scrolls + Shapeshift-allowed spells, transformations, and all 10 Druid summons
   if (
+    skillId === 0 ||
+    skillId === 3 ||
+    (skillId >= 217 && skillId <= 220) ||
     skillId === 221 ||
     skillId === 222 ||
     skillId === DRUID_SHAPESHIFT_SKILL_IDS.WEREWOLF ||
@@ -693,12 +701,8 @@ export function canCastDruidSkill(
     return currentForm === 'wolf' || currentForm === 'bear'
   }
 
-  // restrict = 0 / empty: All 9 other Elemental spells (225, 229, 230, 234, 235, 240, 244, 245, 250) require human form
-  if (skillId >= 221 && skillId <= 250) {
-    return currentForm === 'human'
-  }
-
-  return true
+  // restrict = 0 / empty: All other active skills require unmorphed human form
+  return currentForm === 'human'
 }
 
 /**

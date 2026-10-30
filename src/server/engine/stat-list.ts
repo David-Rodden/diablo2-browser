@@ -413,6 +413,9 @@ const PASSIVE_SKILL_TABLE_113C: readonly PassiveSkillTableRow[] = [
     passiveCalc2: 'dm12',
     passiveStat3: 'coldresist',
     passiveCalc3: 'dm12',
+    // 1.13c `Skills.txt` row 153 `passivestat4 = poisonresist` (`dm12`, `0..80`, #1803).
+    passiveStat4: 'poisonresist',
+    passiveCalc4: 'dm12',
     param1: 0,
     param2: 80,
   },
@@ -637,8 +640,31 @@ export class UnitStatList {
     return Math.min(99, Math.max(0, this.baseSkillLevels.get(skillId) ?? 0))
   }
 
+  /** Per-skill bonus levels (`+single skill` / `oskill` / sync offsets) excluding hard points. */
+  getBonusSkillLevel(skillId: number): number {
+    return this.bonusSkillLevels.get(skillId) ?? 0
+  }
+
   setBonusSkillLevel(skillId: number, bonus: number): void {
     this.bonusSkillLevels.set(skillId, Math.trunc(bonus))
+    this.syncPassiveSkillModifiers()
+  }
+
+  /**
+   * Replaces the whole hard-point (`blvl`) and per-skill bonus tables in one pass and refreshes the
+   * passive statlists once (`SKILLS_RefreshPassiveSkills` `0x6FCBA1A0`), so unlearned / unequipped
+   * skills drop their passive modifiers (#1798).
+   */
+  replaceSkillLevels(
+    baseLevels: ReadonlyMap<number, number>,
+    bonusLevels: ReadonlyMap<number, number>,
+  ): void {
+    this.baseSkillLevels.clear()
+    for (const [id, lvl] of baseLevels) this.baseSkillLevels.set(id, Math.max(0, Math.trunc(lvl)))
+    this.bonusSkillLevels.clear()
+    for (const [id, lvl] of bonusLevels) {
+      if (Math.trunc(lvl) !== 0) this.bonusSkillLevels.set(id, Math.trunc(lvl))
+    }
     this.syncPassiveSkillModifiers()
   }
 
@@ -791,8 +817,6 @@ export class UnitStatList {
       for (const [st, clc] of pairs) {
         if (!st || !clc) continue
         const normSt = this.normalizeStatKey(st)
-        // Issue #1445: Natural Resistance (#153) grants fireresist / lightresist / coldresist only (no poisonresist).
-        if (def.id === 153 && normSt === 'poisonresist') continue
         // Issues #1445/#1678: every dmXY (e.g. Weapon Block #263 dm12 20..65: slvl 1 = 26, slvl 20 = 57) goes through
         // the shared D2Common 0x6FD9DC30 port inside evaluateCalc (two-step integer division, capped at Param[Y]).
         const val = evaluateCalc(clc, calcCtx)

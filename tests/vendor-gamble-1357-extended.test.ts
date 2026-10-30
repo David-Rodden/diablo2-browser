@@ -39,8 +39,21 @@ describe('issue #1357 gamble fill and failed-quality rules', () => {
           Number((candidate as { durability?: number }).durability ?? 0) > 0,
       )!
     expect(base).toBeDefined()
+    const uberBase =
+      base.ubercode && base.ubercode !== base.id && base.ubercode !== 'xxx'
+        ? tables.getBase(base.ubercode)
+        : undefined
+    const ultraBase =
+      base.ultracode && base.ultracode !== base.id && base.ultracode !== 'xxx'
+        ? tables.getBase(base.ultracode)
+        : undefined
+    const upgSeq: number[] = []
+    if (uberBase && 30 >= uberBase.level) {
+      upgSeq.push(9999)
+      if (ultraBase && 30 >= ultraBase.level) upgSeq.push(9999)
+    }
     let i = 0
-    const seq = [9999, 100, 12345]
+    const seq = [...upgSeq, 100, 12345]
     const rng = { rand: () => seq[i++] ?? 0 } as unknown as D2Rng
     const item = resolveGambledItem({
       mysteryItem: {
@@ -81,8 +94,21 @@ describe('issue #1357 gamble fill and failed-quality rules', () => {
           Number((candidate as { durability?: number }).durability ?? 0) > 0,
       )!
     expect(base).toBeDefined()
+    const uberBase2 =
+      base.ubercode && base.ubercode !== base.id && base.ubercode !== 'xxx'
+        ? tables.getBase(base.ubercode)
+        : undefined
+    const ultraBase2 =
+      base.ultracode && base.ultracode !== base.id && base.ultracode !== 'xxx'
+        ? tables.getBase(base.ultracode)
+        : undefined
+    const upgSeq2: number[] = []
+    if (uberBase2 && 30 >= uberBase2.level) {
+      upgSeq2.push(9999)
+      if (ultraBase2 && 30 >= ultraBase2.level) upgSeq2.push(9999)
+    }
     let i = 0
-    const seq = [9999, 0, 12345]
+    const seq = [...upgSeq2, 0, 12345]
     const rng = { rand: () => seq[i++] ?? 0 } as unknown as D2Rng
     const item = resolveGambledItem({
       mysteryItem: {

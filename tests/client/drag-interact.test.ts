@@ -93,7 +93,7 @@ describe('drag-interact mode', () => {
     s.dragTo(100, 94, 1080)
     s.mapper.tick(1120)
     s.mapper.tick(1160)
-    expect(s.sent.map((c) => c.type)).toContain('NpcInit')
+    expect(s.sent.map((c) => c.type)).toContain('Interact')
     expect(s.sent.filter((c) => c.type === 'Move')).toEqual([])
   })
 

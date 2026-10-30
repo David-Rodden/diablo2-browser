@@ -866,7 +866,8 @@ async function main(): Promise<void> {
     'fontformal12',
     'fontridiculous',
   ] as const
-  const FONT_COLORS = [0, 1, 2, 3, 4, 5, 7, 8, 9] as const
+  // Bake all 13 sky/pal.pl2 textShifts (0..12) copied by D2Win.dll 0x6f8ef0df..0x6f8ef0ef (0x340 dwords)
+  const FONT_COLORS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] as const
   const fontMetas: Record<string, FontAtlasMeta> = {}
   const fontAtlasPixels: Record<string, Uint8Array> = {}
 

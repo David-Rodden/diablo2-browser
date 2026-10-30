@@ -266,13 +266,27 @@ describe('Issue #1432 — 1.13c Once-Per-Game Unique Spawn Bitmap (pGame+0x1b24 
       isGambleMystery: true,
     } as any
 
-    // Find a seed where resolveGambledItem rolls Unique (qRoll < 50) without upgrading base
+    // Find a seed where resolveGambledItem rolls Unique (qRoll < 50) without upgrading base.
+    // For 'hax' at ilvl 20, ubercode '9ha' has qlvl > 20, so 1.13c NPC_RollGambleUpgrade
+    // skips rand(10000) and advances straight to rand(100000).
     let uniqueGambleSeed = -1
     for (let s = 1; s < 500000; s++) {
       const rng = new D2Rng(s)
-      const upgRoll = rng.rand(10000)
+      const uber = haxBase.ubercode ? dropTables.getBase(haxBase.ubercode) : undefined
+      let upgraded = false
+      if (uber && 20 >= uber.level) {
+        const chanceUber = (20 - uber.level) * 90 + 1
+        if (rng.rand(10000) < chanceUber) {
+          upgraded = true
+        } else {
+          const ultra = haxBase.ultracode ? dropTables.getBase(haxBase.ultracode) : undefined
+          if (ultra && 20 >= ultra.level && rng.rand(10000) < (20 - ultra.level) * 33 + 1) {
+            upgraded = true
+          }
+        }
+      }
       const qRoll = rng.rand(100000)
-      if (upgRoll >= 5000 && qRoll < 50) {
+      if (!upgraded && qRoll < 50) {
         uniqueGambleSeed = s
         break
       }

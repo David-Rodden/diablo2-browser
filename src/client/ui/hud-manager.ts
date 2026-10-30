@@ -559,6 +559,12 @@ export class HudManager {
   helpOverlayOpen = false
   /** D2Client.dll `0x6fb20140` (`CHAT_DrawChatInputBox`): true while in-game chat input box is open. */
   chatInputOpen = false
+  /** Host hook toggling the real DOM chat input (soft keyboard on touch); set by `main.ts`. */
+  onToggleChatInput: (() => void) | null = null
+  /** Touch context `[A]` / ground-label interaction hook; set by `CommandMapper` (#1967). */
+  onTouchLootInteract:
+    | ((target: { readonly id: number; readonly kind: 'item' | 'npc' | 'object' | 'warp' }) => void)
+    | null = null
   /** D2Client.dll `0x6fb8a468` (`g_wszChatInputBuffer`): active typed string in in-game chat input box. */
   chatInputText = ''
   showXpBar = false
