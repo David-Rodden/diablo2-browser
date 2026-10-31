@@ -13,6 +13,7 @@ import {
   COLLIDE_WALL,
 } from '../../src/common/world/d2map.js'
 import { CANONICAL_113C_OBJECTS } from '../../src/common/world/objects-meta.js'
+import { subTileFlagsOf, type Dt1, type Dt1Tile } from '../../src/common/formats/dt1.js'
 
 describe('Issue #929: 1.13c client spell / missile collision parity', () => {
   it('defines COLLIDE_MASK_MISSILE as COLLIDE_MISSILE_BARRIER | COLLIDE_DOOR (0x0804), excluding COLLIDE_OBJECT and COLLIDE_WALL', () => {
@@ -90,7 +91,29 @@ describe('Issue #929: 1.13c client spell / missile collision parity', () => {
     expect(world.isSubTileMissileBlocked(110, 100)).toBe(true)
   })
 
-  it('stamps COLLIDE_WALL | COLLIDE_BLANK (0x0021) without COLLIDE_MISSILE_BARRIER on Arcane Sanctuary Blank.dt1 (style=30, seq=1)', () => {
+  // Issue #1976: bedc9b64 (#1702, D2Common 0x6FD9CA90 room collision fill) dropped the invented 0x0021 fill for
+  // Arcane Sanctuary blank cells: a hidden Blank.dt1 floor stamps exactly its raw DT1 5x5 bytes. Blank.dt1
+  // (d2data.mpq data\global\tiles\Act1\Outdoors\Blank.dt1) style=30 seq=1 carries 0x01 in all 25 sub-tiles, so the
+  // cell is walk-blocked (COLLIDE_WALL) but never missile-blocked. The universal Blank.dt1 is always loaded
+  // (DRLGROOM_LoadDt1Files), so the fixture supplies that tile instead of an empty library list.
+  it('stamps Blank.dt1 style=30 seq=1 raw 0x01 (COLLIDE_WALL) without COLLIDE_MISSILE_BARRIER on Arcane Sanctuary blank cells', () => {
+    const arcaneBlankTile: Dt1Tile = {
+      direction: 0,
+      roofHeight: 0,
+      materialFlags: 0,
+      height: 0,
+      width: 160,
+      type: 0,
+      style: 30,
+      sequence: 1,
+      rarityFrameIndex: 1,
+      animated: 0,
+      subTileFlags: Array.from({ length: 25 }, () => subTileFlagsOf(0x01)),
+      minBlockY: 0,
+      bitmapHeight: 80,
+      blocks: [],
+    } as unknown as Dt1Tile
+    const blankDt1: Dt1 = { versionMajor: 7, versionMinor: 6, warnings: [], tiles: [arcaneBlankTile] }
     const scene = buildIsoMapScene(
       {
         version: 18,
@@ -139,16 +162,15 @@ describe('Issue #929: 1.13c client spell / missile collision parity', () => {
           ],
         ] as any,
       },
-      [],
+      [blankDt1],
     )
 
-    // Cell (0, 0) sub-tile (2, 2): walk-blocked and blank-guarded, but NOT missile-barrier blocked!
+    // Cell (0, 0) sub-tile (2, 2): walk-blocked by the raw Blank.dt1 byte, but NOT missile-barrier blocked!
     const gridWidth = 2 * 5
     const arcaneIdx = 2 * gridWidth + 2
     const arcaneMask = scene.collisionMasks![arcaneIdx]!
     expect(scene.blocked[arcaneIdx]).toBe(1)
-    expect(arcaneMask & COLLIDE_WALL).toBe(COLLIDE_WALL)
-    expect(arcaneMask & COLLIDE_BLANK).toBe(COLLIDE_BLANK)
+    expect(arcaneMask).toBe(COLLIDE_WALL)
     expect(arcaneMask & COLLIDE_MASK_PLAYER_PATH).not.toBe(0)
     expect(arcaneMask & COLLIDE_MASK_MISSILE).toBe(0)
 

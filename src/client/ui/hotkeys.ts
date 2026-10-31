@@ -582,9 +582,12 @@ export class SkillHotkeysHud {
 
   bindHotkey(fKey: string, side: 'left' | 'right', skillId: number, itemId?: number): void {
     const normKey = fKey.trim().toUpperCase()
+    // 0xffffffff is the 1.13c "no item" sentinel (explicitly a non-item binding): never store it as
+    // a concrete itemId and never re-resolve it to a charged item (#1975 regression from fa7180ed).
     const resolvedItemId =
-      itemId ??
-      this.availableSkills.find(s => s.skillId === skillId && s.itemId !== undefined)?.itemId
+      itemId !== undefined && itemId >>> 0 === 0xffffffff
+        ? undefined
+        : (itemId ?? this.availableSkills.find(s => s.skillId === skillId && s.itemId !== undefined)?.itemId)
     // 1.13c D2Client.dll 0x6faed280..0x6faed2e5: deduplicate any other slot bound to the same (side, skillId, itemId).
     for (const [existingKey, existing] of Array.from(this.bindings.entries())) {
       if (

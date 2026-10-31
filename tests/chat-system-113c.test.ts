@@ -958,9 +958,12 @@ describe('Diablo II 1.13c In-Game Chat System (Issue #910)', () => {
       expect(session.getSentCommands().slice(cmdsBeforeGame2)).toEqual([
         { type: 'Chat', text: 'players set to 8' },
       ])
+      // leaveGame() resets the world (clearActiveGameWorldState, ba1a7a51), so the Game 1 chat overlay is gone and
+      // Game 2 shows the persisted line exactly once (same as Game 3 below).
+      expect(shownBeforeGame2).toBe(0)
       expect(
         session.world.activeChatOverlayEntries.filter((m) => m.kind === 'system' && m.text === 'players set to 8'),
-      ).toHaveLength(shownBeforeGame2) // already shown -> applyPersistedPlayersToCurrentGame does not repeat it
+      ).toHaveLength(1)
 
       // Subsequent init events in the same Game 2 do not re-send /players 8
       session.handleServerEvent({
@@ -971,6 +974,9 @@ describe('Diablo II 1.13c In-Game Chat System (Issue #910)', () => {
       expect(session.getSentCommands().slice(cmdsBeforeGame2)).toEqual([
         { type: 'Chat', text: 'players set to 8' },
       ])
+      expect(
+        session.world.activeChatOverlayEntries.filter((m) => m.kind === 'system' && m.text === 'players set to 8'),
+      ).toHaveLength(1)
 
       // Change to "/players 3" in Game 2, then leave and enter Game 3
       expect(session.submitChatInput('/players 3', 2_000)).toBe(true)

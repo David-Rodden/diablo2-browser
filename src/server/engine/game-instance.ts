@@ -370,7 +370,7 @@ import {
   type CombatUnitContext,
   type SUnitDmgOutcome,
 } from './combat-pipeline.ts'
-import { FIXED_ONE, UnitStatList } from './stat-list.ts'
+import { FIXED_ONE, UnitStatList, getEffectiveWeaponPoison113c } from './stat-list.ts'
 import { advanceUnitPierceSeed, resolveMissilePierceIdx } from './missile-pierce.ts'
 import {
   aggregateCtcProcs113c,
@@ -1491,6 +1491,7 @@ interface InternalPlayerRecord {
   y: number
   targetX: number
   targetY: number
+  moveTargetUnitId?: number | undefined
   run: boolean
   mode: number
   hp: number
@@ -2103,6 +2104,8 @@ interface InternalMissileRecord {
    * player missiles (`item_pierce + skill_pierce`, at most 4), consumed per hit (`0x6FC58F40`, #1802).
    */
   pierceRemaining?: number | undefined
+  /** 1.13c `Missiles.txt` `SrcDamage` / `Skills.txt` `SrcDam` (`128 = 100%` weapon damage, #1873). */
+  srcDamage?: number | undefined
   /** `Missiles.txt` `NextHit` / `NextDelay` — re-hit the same unit after this many frames. */
   nextHit: boolean
   nextDelay: number
@@ -5594,7 +5597,8 @@ export class GameInstance {
     const life256 = out.attackerHealed256 ?? 0
     const mana256 = out.attackerManaLeeched256 ?? 0
     if (life256 > 0 && player.hpFixed > 0) {
-      const hp256 = Math.min(player.maxHpFixed, player.hpFixed + life256)
+      const maxHp256 = this.getPlayerAccruedMaxHpFixed(player)
+      const hp256 = Math.min(maxHp256, player.hpFixed + life256)
       if (hp256 !== player.hpFixed) {
         player.hpFixed = hp256
         player.hp = Math.max(0, Math.ceil(hp256 / FIXED_ONE))
@@ -5602,7 +5606,8 @@ export class GameInstance {
       }
     }
     if (mana256 > 0) {
-      const next256 = Math.min(player.maxManaFixed, player.manaFixed + mana256)
+      const maxMana256 = this.getPlayerAccruedMaxManaFixed(player)
+      const next256 = Math.min(maxMana256, player.manaFixed + mana256)
       if (next256 !== player.manaFixed) {
         player.manaFixed = next256
         player.mana = Math.floor(next256 / FIXED_ONE)
@@ -5671,11 +5676,16 @@ export class GameInstance {
     17: { perLevelStatId: 219, shift: 3 },
     19: { perLevelStatId: 224, shift: 1 },
     22: { perLevelStatId: 218, shift: 3 },
+    24: { perLevelStatId: 218, shift: 3 },
     31: { perLevelStatId: 214, shift: 3 },
-    39: { perLevelStatId: 229, shift: 3 },
-    41: { perLevelStatId: 230, shift: 3 },
+    39: { perLevelStatId: 230, shift: 3 },
+    41: { perLevelStatId: 232, shift: 3 },
     43: { perLevelStatId: 231, shift: 3 },
-    45: { perLevelStatId: 232, shift: 3 },
+    45: { perLevelStatId: 233, shift: 3 },
+    49: { perLevelStatId: 227, shift: 3 },
+    51: { perLevelStatId: 228, shift: 3 },
+    55: { perLevelStatId: 226, shift: 3 },
+    58: { perLevelStatId: 229, shift: 3 },
     78: { perLevelStatId: 238, shift: 3 },
     79: { perLevelStatId: 239, shift: 3 },
     80: { perLevelStatId: 240, shift: 3 },
@@ -5843,7 +5853,10 @@ export class GameInstance {
   private sumPlayerItemStat(
     player: InternalPlayerRecord,
     statId: number,
-    options?: { readonly excludeWeaponHands?: boolean },
+    options?: {
+      readonly excludeWeaponHands?: boolean
+      readonly weaponHand?: 'left' | 'right' | undefined
+    },
   ): number {
     const perLvlRule = GameInstance.PER_LEVEL_STAT_MAP_113C[statId]
     const perLevelStatId = perLvlRule?.perLevelStatId
@@ -5887,14 +5900,21 @@ export class GameInstance {
         ) {
           continue
         }
-      } else if (item.location === 'inventory') {
-        const code = (item.code ?? '').toLowerCase()
-        if (code !== 'cm1' && code !== 'cm2' && code !== 'cm3') continue
-        const uniqueId = item.rawItemData?.uniqueItemId
-        if (uniqueId !== undefined && uniqueId >= 0 && uniqueId !== 0xfff) {
-          if (seenUniqueCharms.has(uniqueId)) continue
-          seenUniqueCharms.add(uniqueId)
+        const skipWeaponSlot =
+          options?.weaponHand === 'left'
+            ? BODYLOC_RIGHT_ARM
+            : options?.weaponHand === 'right'
+              ? BODYLOC_LEFT_ARM
+              : undefined
+        if (
+          skipWeaponSlot !== undefined &&
+          item.bodyLoc === skipWeaponSlot &&
+          resolveWeaponBase113c(item.code) !== undefined
+        ) {
+          continue
         }
+      } else if (item.location === 'inventory') {
+        if (!this.isActiveInventoryCharm113c(player, item, seenUniqueCharms)) continue
       } else {
         continue
       }
@@ -5905,6 +5925,137 @@ export class GameInstance {
     }
     total += this.sumEquippedSetBonusStat(worn, statId, player.level)
     return total
+  }
+
+  /**
+   * 1.13c active charm check (`D2Common.dll` `0x6FD98340`, #1864):
+   * Only identified `cm1`/`cm2`/`cm3` charms inside the main `10x4` inventory grid (never stash/cube/belt)
+   * whose level requirement is met (`clvl >= reqLvl`) contribute passive stats, deduplicating unique charms.
+   */
+  private isActiveInventoryCharm113c(
+    player: InternalPlayerRecord,
+    item: ServerItemEntry,
+    seenUniqueCharms: Set<number>,
+  ): boolean {
+    if (item.location !== 'inventory') return false
+    if (item.storePage === 3 || item.storePage === 4) return false
+    const code = (item.code ?? '').toLowerCase()
+    if (code !== 'cm1' && code !== 'cm2' && code !== 'cm3') return false
+    if (item.identified === false || item.rawItemData?.identified === false) return false
+    const charmH = code === 'cm1' ? 1 : code === 'cm2' ? 2 : 3
+    if (Number.isFinite(item.x) && Number.isFinite(item.y)) {
+      if (item.x < 0 || item.x + 1 > 10 || item.y < 0 || item.y + charmH > 4) return false
+    }
+    const explicitReqLvl =
+      (item as { readonly levelReq?: number }).levelReq ??
+      (item.rawItemData as { readonly levelReq?: number } | undefined)?.levelReq
+    if (explicitReqLvl !== undefined && explicitReqLvl > 0 && player.level < explicitReqLvl) {
+      return false
+    }
+    const uniqueId =
+      item.rawItemData?.uniqueItemId ??
+      (item.rawItemData as { readonly uniqueId?: number } | undefined)?.uniqueId ??
+      (item as { readonly uniqueItemId?: number }).uniqueItemId ??
+      (item as { readonly uniqueId?: number }).uniqueId
+    if (uniqueId !== undefined && uniqueId >= 0 && uniqueId !== 0xfff) {
+      if (seenUniqueCharms.has(uniqueId)) return false
+      seenUniqueCharms.add(uniqueId)
+    }
+    return true
+  }
+
+  private effectivePlayerCount113c(): number {
+    return Math.max(1, Math.max(this.playersX ?? 1, this.players.size))
+  }
+
+  /**
+   * Collect individual poison sources (`bitrate256`, `frames`) across active worn equipment,
+   * socketed gems/runes/jewels, and `10x4` inventory charms so multi-source poison averages
+   * duration (`totalLen / poisonCount`) and sums bitrates (`stat 326 poison_count`, #1871, #1873).
+   */
+  private collectPlayerWeaponPoisonSources113c(
+    player: InternalPlayerRecord,
+    options?: { readonly weaponHand?: 'left' | 'right' | undefined },
+  ): readonly { readonly bitrate256: number; readonly frames: number }[] {
+    const readEntryPoison = (
+      entry: ServerItemEntry,
+      level: number,
+    ): { readonly bitrate256: number; readonly frames: number } | undefined => {
+      let pMin = 0
+      let pMax = 0
+      let pLen = 0
+      if (entry.stats && entry.stats.size > 0) {
+        pMin = entry.stats.get(57) ?? 0
+        pMax = (entry.stats.get(58) ?? 0) + (((entry.stats.get(229) ?? 0) * level) >> 3)
+        pLen = entry.stats.get(59) ?? 0
+      } else if (entry.rawItemData) {
+        const lists = [entry.rawItemData.stats ?? [], entry.rawItemData.runewordStats ?? []]
+        for (const list of lists) {
+          for (const st of list) {
+            if (st.statId === 57) pMin += st.value
+            else if (st.statId === 58) pMax += st.value
+            else if (st.statId === 229) pMax += (st.value * level) >> 3
+            else if (st.statId === 59) pLen += st.value
+          }
+        }
+      }
+      const hi = Math.max(pMin, pMax)
+      if (hi <= 0 || pLen <= 0) return undefined
+      return { bitrate256: this.rollInclusive(pMin, hi), frames: pLen }
+    }
+
+    const sources: { readonly bitrate256: number; readonly frames: number }[] = []
+    const seenUniqueCharms = new Set<number>()
+    const otherWeaponLoc =
+      options?.weaponHand === 'left'
+        ? BODYLOC_RIGHT_ARM
+        : options?.weaponHand === 'right'
+          ? BODYLOC_LEFT_ARM
+          : undefined
+    for (const item of player.items) {
+      if (item.location === 'equipped') {
+        if (item.bodyLoc === 11 || item.bodyLoc === 12) continue
+        if (
+          otherWeaponLoc !== undefined &&
+          item.bodyLoc === otherWeaponLoc &&
+          resolveWeaponBase113c(item.code) !== undefined
+        ) {
+          continue
+        }
+      } else if (item.location === 'inventory') {
+        if (!this.isActiveInventoryCharm113c(player, item, seenUniqueCharms)) continue
+      } else {
+        continue
+      }
+      // In 1.13c, socketed Emeralds/Tal runes inside a single item merge into that item's stat list
+      // (`poison_count = 1` per poison-bearing item unless separate items/charms contribute).
+      let itemRate = 0
+      let itemLen = 0
+      let itemCount = 0
+      const baseSrc = readEntryPoison(item, player.level)
+      if (baseSrc !== undefined) {
+        itemRate += baseSrc.bitrate256
+        itemLen += baseSrc.frames
+        itemCount += 1
+      }
+      if (Array.isArray(item.socketedItems)) {
+        for (const sock of item.socketedItems) {
+          const sockSrc = readEntryPoison(sock, player.level)
+          if (sockSrc !== undefined) {
+            itemRate += sockSrc.bitrate256
+            itemLen += sockSrc.frames
+            itemCount += 1
+          }
+        }
+      }
+      if (itemRate > 0 && itemLen > 0) {
+        sources.push({
+          bitrate256: itemRate,
+          frames: itemCount > 1 ? Math.floor(itemLen / itemCount) : itemLen,
+        })
+      }
+    }
+    return sources
   }
 
   private normalizePoolStat256(val: number): number {
@@ -5945,13 +6096,7 @@ export class GameInstance {
         if (item.bodyLoc === 11 || item.bodyLoc === 12) continue
         worn.push(item)
       } else if (item.location === 'inventory') {
-        const code = (item.code ?? '').toLowerCase()
-        if (code !== 'cm1' && code !== 'cm2' && code !== 'cm3') continue
-        const uniqueId = item.rawItemData?.uniqueItemId
-        if (uniqueId !== undefined && uniqueId >= 0 && uniqueId !== 0xfff) {
-          if (seenUniqueCharms.has(uniqueId)) continue
-          seenUniqueCharms.add(uniqueId)
-        }
+        if (!this.isActiveInventoryCharm113c(player, item, seenUniqueCharms)) continue
       } else {
         continue
       }
@@ -8331,7 +8476,8 @@ export class GameInstance {
       }
     }
 
-    // 4. Step monster AI & state timers
+    // 4. Step monster AI & state timers (incl. 1.13c Open Wounds 200-frame bleed #1870)
+    this.stepMonsterOpenWounds113c()
     for (const monster of [...this.monsters.values()]) {
       if (monster.dead) {
         if (monster.hcIdx === 544 || monster.hcIdx === 709) {
@@ -8498,7 +8644,17 @@ export class GameInstance {
   private processPlayerCommand(player: InternalPlayerRecord, cmd: ClientCommand): void {
     switch (cmd.type) {
       case 'Move': {
-        if (player.dead || this.consumeOrBlockMoveDuringPlayerAnim113c(player)) return
+        if (player.dead) return
+        const dx = (cmd.x ?? player.x) - player.x
+        const dy = (cmd.y ?? player.y) - player.y
+        if (dx * dx + dy * dy > 65536) {
+          this.emitToPlayer(player.unitId, { type: 'WalkVerify', stamina: player.stamina || 0, x: player.x, y: player.y, vx: 0, vy: 0 })
+          return
+        }
+        if (this.consumeOrBlockMoveDuringPlayerAnim113c(player)) {
+          this.rubberbandPlayer113c(player)
+          return
+        }
         const tx = cmd.to?.x ?? cmd.x ?? player.x
         const ty = cmd.to?.y ?? cmd.y ?? player.y
         if (!Number.isFinite(tx) || !Number.isFinite(ty)) return
@@ -8506,6 +8662,7 @@ export class GameInstance {
         player.pendingInteraction = undefined
         player.pendingInteractionSteps = 0
         player.pendingNpcGamble = undefined
+        player.moveTargetUnitId = undefined
         player.targetX = tx
         player.targetY = ty
         player.run = cmd.run ?? true
@@ -8513,12 +8670,17 @@ export class GameInstance {
         break
       }
       case 'WalkToLocation': {
-        if (player.dead || this.consumeOrBlockMoveDuringPlayerAnim113c(player)) return
+        if (player.dead) return
+        if (this.consumeOrBlockMoveDuringPlayerAnim113c(player)) {
+          this.rubberbandPlayer113c(player)
+          return
+        }
         if (!Number.isFinite(cmd.x) || !Number.isFinite(cmd.y)) return
         this.clearPlayerChannelState(player)
         player.pendingInteraction = undefined
         player.pendingInteractionSteps = 0
         player.pendingNpcGamble = undefined
+        player.moveTargetUnitId = undefined
         player.targetX = cmd.x
         player.targetY = cmd.y
         player.run = false
@@ -8526,12 +8688,17 @@ export class GameInstance {
         break
       }
       case 'RunToLocation': {
-        if (player.dead || this.consumeOrBlockMoveDuringPlayerAnim113c(player)) return
+        if (player.dead) return
+        if (this.consumeOrBlockMoveDuringPlayerAnim113c(player)) {
+          this.rubberbandPlayer113c(player)
+          return
+        }
         if (!Number.isFinite(cmd.x) || !Number.isFinite(cmd.y)) return
         this.clearPlayerChannelState(player)
         player.pendingInteraction = undefined
         player.pendingInteractionSteps = 0
         player.pendingNpcGamble = undefined
+        player.moveTargetUnitId = undefined
         player.targetX = cmd.x
         player.targetY = cmd.y
         player.run = true
@@ -8541,13 +8708,19 @@ export class GameInstance {
       case 'MoveToUnit':
       case 'WalkToTarget':
       case 'RunToTarget': {
-        if (player.dead || this.consumeOrBlockMoveDuringPlayerAnim113c(player)) return
+        if (player.dead) return
+        if (this.consumeOrBlockMoveDuringPlayerAnim113c(player)) {
+          this.rubberbandPlayer113c(player)
+          return
+        }
         this.clearPlayerChannelState(player)
         player.pendingInteraction = undefined
         player.pendingInteractionSteps = 0
         player.pendingNpcGamble = undefined
+        player.moveTargetUnitId = undefined
         const targetId =
           cmd.type === 'MoveToUnit' ? cmd.target.id : cmd.unitId
+        player.moveTargetUnitId = targetId
         const pos = this.findUnitPosition(targetId, player.areaId)
         if (pos) {
           let targetX = pos.x
@@ -8781,6 +8954,24 @@ export class GameInstance {
           return
         }
         this.handleWarpTileInteract(player, cmd.warpId)
+        break
+      }
+      case 'Say': {
+        if (player.dead) return
+        this.broadcastToArea(player.areaId, {
+          type: 'PlaySound',
+          unit: { unitType: 0, id: player.unitId },
+          sound: cmd.phraseId,
+        })
+        break
+      }
+      case 'QuestMessageSound': {
+        if (player.dead) return
+        this.emitToPlayer(player.unitId, {
+          type: 'PlaySound',
+          unit: { unitType: 0, id: player.unitId },
+          sound: cmd.questId,
+        })
         break
       }
       case 'WaypointGo': {
@@ -9180,6 +9371,9 @@ export class GameInstance {
         this.handleRequestEntityUpdate(player, cmd.unitType, cmd.unitId)
         break
       }
+      case 'MakeEntityMove':
+        // Silently accepted to prevent drop
+        break
       default:
         break
     }
@@ -9235,6 +9429,15 @@ export class GameInstance {
       motion.plannedY = Number.NaN
     }
 
+    if (player.moveTargetUnitId !== undefined) {
+      const pos = this.findUnitPosition(player.moveTargetUnitId, player.areaId)
+      if (pos) {
+        player.targetX = pos.x
+        player.targetY = pos.y
+      } else {
+        player.moveTargetUnitId = undefined // Target disappeared or changed area
+      }
+    }
     const hasTarget = Math.hypot(player.targetX - player.x, player.targetY - player.y) > 0.01
     if (hasTarget && (player.targetX !== motion.plannedX || player.targetY !== motion.plannedY)) {
       motion.plannedX = player.targetX
@@ -9386,6 +9589,12 @@ export class GameInstance {
     player: InternalPlayerRecord,
     skillId: number,
   ): PlayerSkillCast | null {
+    const isTown = [1, 40, 75, 103, 109].includes(player.areaId);
+    const skillConfig = this.registry.getSkillById(skillId);
+    if (isTown && skillConfig && !skillConfig.inTown) {
+        this.emitToPlayer(player.unitId, { type: 'WalkVerify', stamina: player.stamina || 0, x: player.x, y: player.y, vx: 0, vy: 0 });
+        return null;
+    }
     if (this.registry.getSkillById(0) === undefined) {
       throw new Error(
         'GameInstance: Skills.txt is not loaded in the data registry; player skill casts cannot be resolved',
@@ -9513,23 +9722,42 @@ export class GameInstance {
     const right = equipped.find((i) => i.bodyLoc === BODYLOC_RIGHT_ARM)
     const left = equipped.find((i) => i.bodyLoc === BODYLOC_LEFT_ARM)
 
-    // 1.13c `D2Game.dll` `SkillSrvStFunc[4]` (`0x6FC6C4C0` for `Poison Javelin` #15, `Plague Javelin` #25,
-    // `Lightning Fury` #35): requires an equipped javelin with `STAT_QUANTITY > 0` when weapons are equipped.
+    // 1.13c `D2Game.dll` `SkillSrvStFunc[4]` (`0x6FC6C4C0`):
+    // - `itypea1 = jave` (`#15 Poison Javelin`, `#20 Lightning Bolt`, `#25 Plague Javelin`, `#35 Lightning Fury`):
+    //   requires an equipped javelin/spear with `STAT_QUANTITY > 0` when weapons are equipped.
+    // - `itypea1 = miss` (`#7 Fire Arrow`, `#11 Cold Arrow`, `#12 Multiple Shot`, `#16 Exploding Arrow`,
+    //   `#21 Ice Arrow`, `#22 Guided Arrow`, `#27 Immolation Arrow`, `#31 Freezing Arrow`):
+    //   requires an equipped bow/crossbow (`bow | abow | xbow`) when weapons are equipped (#1873).
     if (skill.srvStFunc === 4 && (right !== undefined || left !== undefined)) {
-      const activeJav = right ?? left
-      if (activeJav === undefined) return null
-      const javBase = resolveWeaponBase113c(activeJav.code)
-      if (
-        javBase !== undefined &&
-        javBase.type !== 'jave' &&
-        javBase.type !== 'ajav' &&
-        javBase.type !== 'spea' &&
-        javBase.type !== 'aspe'
-      ) {
-        return null
+      const reqWeapType = (skill.raw['itypea1'] ?? '').toLowerCase()
+      if (reqWeapType === 'jave') {
+        const activeJav = right ?? left
+        if (activeJav === undefined) return null
+        const javBase = resolveWeaponBase113c(activeJav.code)
+        if (
+          javBase !== undefined &&
+          javBase.type !== 'jave' &&
+          javBase.type !== 'ajav' &&
+          javBase.type !== 'spea' &&
+          javBase.type !== 'aspe'
+        ) {
+          return null
+        }
+        const qtyStat = collectItemStats(activeJav).find((s) => s.statId === STAT_QUANTITY)
+        if (qtyStat !== undefined && qtyStat.value <= 0) return null
+      } else if (reqWeapType === 'miss') {
+        const activeBow = right ?? left
+        if (activeBow === undefined) return null
+        const bowBase = resolveWeaponBase113c(activeBow.code)
+        if (
+          bowBase !== undefined &&
+          bowBase.type !== 'bow' &&
+          bowBase.type !== 'abow' &&
+          bowBase.type !== 'xbow'
+        ) {
+          return null
+        }
       }
-      const qtyStat = collectItemStats(activeJav).find((s) => s.statId === STAT_QUANTITY)
-      if (qtyStat !== undefined && qtyStat.value <= 0) return null
     }
 
     // 1.13c `D2Game.dll` `SKILLS_SrvSt36_HolyShield` (`0x6FCB6EC0`) & `SKILLS_SrvDo150_Smite` (`0x6FD13220`)
@@ -10241,6 +10469,8 @@ export class GameInstance {
     options?: {
       readonly isThrow?: boolean | undefined
       readonly weaponHand?: 'left' | 'right' | undefined
+      readonly excludeNormalDamage?: boolean | undefined
+      readonly baseOnlyWithoutOffWeaponEd?: boolean | undefined
     },
   ): { min: number; max: number } {
     const equipped = player.items.filter(
@@ -10271,12 +10501,13 @@ export class GameInstance {
       (combat === undefined ? 0 : combat.statList.getModifierBonus('damagepercent')) +
       offWeaponItemEd +
       skillEdPct
+    const offWeapNormal = options?.excludeNormalDamage
+      ? 0
+      : this.sumPlayerItemStat(player, 111, { excludeWeaponHands: true })
     const offWeapFlatMin =
-      this.sumPlayerItemStat(player, STAT_MINDAMAGE, { excludeWeaponHands: true }) +
-      this.sumPlayerItemStat(player, 111, { excludeWeaponHands: true })
+      this.sumPlayerItemStat(player, STAT_MINDAMAGE, { excludeWeaponHands: true }) + offWeapNormal
     const offWeapFlatMax =
-      this.sumPlayerItemStat(player, STAT_MAXDAMAGE, { excludeWeaponHands: true }) +
-      this.sumPlayerItemStat(player, 111, { excludeWeaponHands: true })
+      this.sumPlayerItemStat(player, STAT_MAXDAMAGE, { excludeWeaponHands: true }) + offWeapNormal
     const totalStr =
       player.strength +
       this.sumPlayerItemStat(player, 0) +
@@ -10289,6 +10520,9 @@ export class GameInstance {
       const unarmed = getAttackWeaponInfo(null)
       const baseMin = unarmed.damageMin + offWeapFlatMin
       const baseMax = Math.max(baseMin, unarmed.damageMax + offWeapFlatMax)
+      if (options?.baseOnlyWithoutOffWeaponEd) {
+        return { min: Math.max(1, baseMin), max: Math.max(1, baseMax) }
+      }
       const clampedEd = Math.max(-90, offWeaponEdPercent + totalStr)
       const min = Math.max(1, baseMin + Math.trunc((baseMin * clampedEd) / 100))
       const max = Math.max(min, baseMax + Math.trunc((baseMax * clampedEd) / 100))
@@ -10341,9 +10575,11 @@ export class GameInstance {
     let flatMin = offWeapFlatMin
     let flatMax = offWeapFlatMax
     for (const stat of collectItemStats(weapon)) {
-      if (stat.statId === STAT_ITEM_MAXDAMAGE_PERCENT) onWeaponEd += stat.value
-      else if (stat.statId === 219) onWeaponEd += (stat.value * player.level) >> 3
-      else if (stat.statId === 111) {
+      if (stat.statId === STAT_ITEM_MAXDAMAGE_PERCENT) {
+        onWeaponEd += stat.value
+      } else if (stat.statId === 219) {
+        onWeaponEd += (stat.value * player.level) >> 3
+      } else if (!options?.excludeNormalDamage && stat.statId === 111) {
         flatMin += stat.value
         flatMax += stat.value
       } else if (
@@ -10370,6 +10606,9 @@ export class GameInstance {
       afterOnWeapMin,
       Math.trunc((weaponMax * (100 + onWeaponEd)) / 100) + flatMax,
     )
+    if (options?.baseOnlyWithoutOffWeaponEd) {
+      return { min: Math.max(1, afterOnWeapMin), max: Math.max(1, afterOnWeapMax) }
+    }
     const combinedEdPct = Math.max(-90, offWeaponEdPercent + masteryEdPct + statBonusPercent)
     const min = Math.max(1, afterOnWeapMin + Math.trunc((afterOnWeapMin * combinedEdPct) / 100))
     const max = Math.max(min, afterOnWeapMax + Math.trunc((afterOnWeapMax * combinedEdPct) / 100))
@@ -10630,13 +10869,21 @@ export class GameInstance {
     const elemDamage = isPoisonSkillMissile
       ? Math.floor((poisonBitrate256 * elemDurationFrames) / FIXED_ONE)
       : 0
-    // 1.13c `0x6FC8F660`: `CollideKill = 1` rows with `Pierce = 1` (arrows, bolts, javelins, Lightning Fury,
-    // Exploding/Freezing Arrow) roll `pierce_idx` from `item_pierce (156) + skill_pierce (#33)` at creation,
-    // at most 4 extra hits (5 targets); without pierce stats they stop on the first unit (#1802).
+    // 1.13c `0x6FC8F660`:
+    // - `CollideKill = 0` missiles unconditionally pass through units (`pierce: true`, no 4-pierce cap).
+    // - `CollideKill = 1` rows with `Pierce = 1` (arrows, bolts, javelins, Lightning Fury, Exploding/Freezing Arrow)
+    //   roll `pierce_idx` from `item_pierce (156) + skill_pierce (#33)` at creation, up to max 4 pierces (5 hits);
+    //   without pierce stats they stop on the first unit (#1802, #1876).
     const pierceRemaining =
       missileRec.pierce && missileRec.collideKill
         ? resolveMissilePierceIdx(missileRec, this.playerCombatContext(player), this.registry)
         : undefined
+    const resolvedSrcDamage =
+      missileRec.srcDamage > 0
+        ? missileRec.srcDamage
+        : missileRec.srcDamage === 0 && cast.evalResult.srcDam > 0
+          ? cast.evalResult.srcDam
+          : 0
     const missile: InternalMissileRecord = {
       unitId: missileUnitId,
       missileId: missileRec.id,
@@ -10649,10 +10896,15 @@ export class GameInstance {
       vx: (dx / dist) * speed,
       vy: (dy / dist) * speed,
       damage,
+      ...(resolvedSrcDamage > 0 ? { srcDamage: resolvedSrcDamage } : {}),
       remainingFrames: lifetime,
       collideType: missileRec.collideType,
       size: Math.max(1, missileRec.size),
-      pierce: pierceRemaining !== undefined ? pierceRemaining > 0 : missileRec.pierce,
+      pierce: !missileRec.collideKill
+        ? true
+        : pierceRemaining !== undefined
+          ? pierceRemaining > 0
+          : false,
       ...(pierceRemaining !== undefined ? { pierceRemaining } : {}),
       nextHit: missileRec.nextHit,
       nextDelay: Math.max(0, missileRec.nextDelay),
@@ -11249,16 +11501,7 @@ export class GameInstance {
     const reachesClient =
       last !== undefined && Math.round(last.x) === clientX && Math.round(last.y) === clientY
     if (!reachesClient) {
-      this.emitToPlayer(player.unitId, {
-        type: 'UnitReassign',
-        unitType: 0,
-        id: player.unitId,
-        unitId: player.unitId,
-        at: { x: serverX, y: serverY },
-        x: serverX,
-        y: serverY,
-        snap: false,
-      })
+      this.rubberbandPlayer113c(player)
       return
     }
 
@@ -11390,6 +11633,16 @@ export class GameInstance {
         elemBonuses.set(p, (elemBonuses.get(p) ?? 0) + stat.value)
       }
     }
+    const seenElemSkillUniqueCharms = new Set<number>()
+    for (const item of player.items) {
+      if (!this.isActiveInventoryCharm113c(player, item, seenElemSkillUniqueCharms)) continue
+      for (const stat of collectItemStats(item)) {
+        if (stat.statId === 126) {
+          const p = stat.param === undefined || stat.param === 0 ? 1 : stat.param
+          elemBonuses.set(p, (elemBonuses.get(p) ?? 0) + stat.value)
+        }
+      }
+    }
     for (const [param, bonus] of elemBonuses) st.setElemSkillsBonus(param, bonus)
     st.setBaseStat('item_pierce', this.sumPlayerItemStat(player, 156))
     this.applyItemMasteryPierceStats113c(st, (statId) => this.sumPlayerItemStat(player, statId))
@@ -11403,6 +11656,7 @@ export class GameInstance {
       stateBus: unit.stateBus,
       x: player.x,
       y: player.y,
+      armorClassIncludesDex: true,
       resistPenalty: difficultyResistPenalty(this.difficulty),
       lifeStealDivisor: difficultyLifeStealDivisor(this.difficulty),
       manaStealDivisor: difficultyManaStealDivisor(this.difficulty),
@@ -11504,6 +11758,9 @@ export class GameInstance {
       isDemon: monster.isDemon,
       isBoss: monster.isBoss,
       isPrimeEvil: monster.isPrimeEvil,
+      rank: monster.rank,
+      isChampion: monster.rank === 'champion',
+      isSuperUnique: monster.superUniqueId !== undefined,
       coldEffect: monster.coldEffect,
       drain: monster.drain,
     }
@@ -14153,12 +14410,11 @@ export class GameInstance {
       offWeaponItemEd +
       skillEdPct +
       masteryEdPct
+    const offWeapNormal = this.sumPlayerItemStat(player, 111, { excludeWeaponHands: true })
     const offWeapFlatMin =
-      this.sumPlayerItemStat(player, STAT_MINDAMAGE, { excludeWeaponHands: true }) +
-      this.sumPlayerItemStat(player, 111, { excludeWeaponHands: true })
+      this.sumPlayerItemStat(player, STAT_MINDAMAGE, { excludeWeaponHands: true }) + offWeapNormal
     const offWeapFlatMax =
-      this.sumPlayerItemStat(player, STAT_MAXDAMAGE, { excludeWeaponHands: true }) +
-      this.sumPlayerItemStat(player, 111, { excludeWeaponHands: true })
+      this.sumPlayerItemStat(player, STAT_MAXDAMAGE, { excludeWeaponHands: true }) + offWeapNormal
     const totalStr =
       player.strength +
       this.sumPlayerItemStat(player, 0) +
@@ -14433,6 +14689,7 @@ export class GameInstance {
       stateBus: attackerStateBus,
       x: player.x,
       y: player.y,
+      armorClassIncludesDex: true,
       weaponMinPhys: 0,
       weaponMaxPhys: 0,
       lifeStealDivisor: difficultyLifeStealDivisor(this.difficulty),
@@ -14465,6 +14722,9 @@ export class GameInstance {
       isDemon: monster.isDemon,
       isBoss: monster.isBoss,
       isPrimeEvil: monster.isPrimeEvil,
+      rank: monster.rank,
+      isChampion: monster.rank === 'champion',
+      isSuperUnique: monster.superUniqueId !== undefined,
       drain: monster.drain,
       monsterColdDivisor: difficultyMonsterColdDivisor(this.difficulty),
       monsterFreezeDivisor: difficultyMonsterFreezeDivisor(this.difficulty),
@@ -14518,7 +14778,7 @@ export class GameInstance {
           isBoss: monster.isBoss,
           isPrimeEvil: monster.isPrimeEvil,
           rank: monster.rank,
-          playerCount: this.playersX,
+          playerCount: this.effectivePlayerCount113c(),
           isRanged: false,
           physResPct: defenderStats.getAccruedStat('damageresist'),
         })
@@ -14587,22 +14847,49 @@ export class GameInstance {
       )
     }
 
-    // Open Wounds (`stat 135` -> `STATE_OPENWOUNDS = 62` for 200 frames = 8.0s)
+    // Open Wounds (`stat 135` -> `STATE_OPENWOUNDS = 62` for 200 frames = 8.0s) & Prevent Monster Heal (`stat 107`)
     if (!monster.dead) {
       const owChance = this.sumWhirlwindHandStat113c(player, hand, 135)
       if (owChance > 0 && (owChance >= 100 || this.rng.rand(100) < owChance)) {
         this.applyMonsterOpenWounds113c(player, monster)
       }
+      if (this.sumWhirlwindHandStat113c(player, hand, 107) > 0) {
+        this.applyMonsterPreventHeal113c(monster)
+      }
     }
+  }
+
+  private applyMonsterPreventHeal113c(monster: InternalMonsterRecord): void {
+    if (monster.dead || monster.isNpc || !monster.isKillable || monster.submerged) return
+    // 1.13c `D2Game` `0x6FCCCF10`: Prevent Monster Heal (`stat 107`, player attacks ONLY) sets
+    // `STATE_PREVENTHEAL` (`52`) for 120,000 frames (~80 min), EXCEPT Uber Pandemonium bosses (`hcIdx 704..709`).
+    if (monster.hcIdx >= 704 && monster.hcIdx <= 709) return
+    this.applyUnitState(
+      monster.states,
+      monster.stateTimers,
+      'monster',
+      monster.unitId,
+      monster.areaId,
+      52,
+      120_000,
+    )
   }
 
   private applyMonsterOpenWounds113c(
     attacker: InternalPlayerRecord,
     monster: InternalMonsterRecord,
+    opts?: {
+      readonly attackerLevel?: number | undefined
+      readonly isRanged?: boolean | undefined
+    },
   ): void {
     if (monster.dead || monster.isNpc || !monster.isKillable || monster.submerged) return
-    const isBoss = this.isTrueBossForCorpse113c(monster)
-    const bitrate256 = computeOpenWoundsBitrate256113c(attacker.level, isBoss)
+    const isBoss =
+      monster.isBoss ||
+      monster.isPrimeEvil ||
+      this.isTrueBossForCorpse113c(monster)
+    const clvl = Math.max(1, Math.min(99, Math.trunc(opts?.attackerLevel ?? attacker.level)))
+    const bitrate256 = computeOpenWoundsBitrate256113c(clvl, isBoss)
     this.monsterOpenWounds.set(monster.unitId, {
       bitrate256,
       remainingFrames: 200,
@@ -15442,8 +15729,20 @@ export class GameInstance {
     return disp.isInRecovery()
   }
 
+
+  private rubberbandPlayer113c(player: InternalPlayerRecord): void {
+    this.emitToPlayer(player.unitId, {
+      type: 'WalkVerify',
+      stamina: player.stamina || 0,
+      x: Math.round(player.x),
+      y: Math.round(player.y),
+      vx: 0,
+      vy: 0,
+    })
+  }
+
   /**
-   * `#1789`: Guard player movement commands during hit/block recovery, Whirlwind, or active
+ during hit/block recovery, Whirlwind, or active
    * skill animation windup/follow-through. Active post-`ActionFlag` channeling (`startMana > 0`,
    * `STATE_INFERNO` state 12) is cancelled by a movement command so the player can walk/run away.
    */
@@ -16975,24 +17274,95 @@ export class GameInstance {
     const skillId = cast.skill.id
     if (cast.evalResult.elemType === 'pois' && cast.evalResult.durationFrames > 0) {
       const physDamage = this.rollPlayerSkillPhysDamage(player, cast)
-      let landed = true
+      const hitResult = { landedHitRoll: true }
       if (physDamage > 0) {
-        landed = this.applyDamageToMonster(player, monster, physDamage, skillId, 'phys')
+        this.applyDamageToMonster(player, monster, physDamage, skillId, 'phys', 'player', {
+          outHitResult: hitResult,
+        })
       }
+      const landed = hitResult.landedHitRoll
       const bitrate256 = this.rollInclusive(
         cast.evalResult.minElemDmg256,
         cast.evalResult.maxElemDmg256,
       )
       if (landed && bitrate256 > 0 && !monster.dead) {
+        // 1.13c `#73 Poison Dagger` (`SrvDo006`): sums skill poison bitrate with weapon/charm/Venom
+        // poison bitrate and adds effective weapon poison length (`10` frames under `#278 Venom`, #1871).
+        const combat = this.playerCombat.get(player.unitId)
+        const venomMod =
+          combat?.stateBus.getState(31) ?? combat?.stateBus.getState('venom')
+        const hasVenom = venomMod !== undefined || player.states.has(31)
+        const venomMin256 = venomMod ? (venomMod.stats['poisonmindam'] ?? 0) : 0
+        const venomMax256 = Math.max(
+          venomMin256,
+          venomMod ? (venomMod.stats['poisonmaxdam'] ?? 0) : 0,
+        )
+        const effWeapPois =
+          skillId === 73
+            ? getEffectiveWeaponPoison113c(
+                this.collectPlayerWeaponPoisonSources113c(player),
+                hasVenom,
+                venomMin256,
+                venomMax256,
+                this.rng,
+              )
+            : { bitrate256: 0, lengthFrames: 0 }
         this.applyMonsterPoisonDot(
           player,
           monster,
-          bitrate256,
-          cast.evalResult.durationFrames,
+          bitrate256 + effWeapPois.bitrate256,
+          cast.evalResult.durationFrames + effWeapPois.lengthFrames,
           skillId,
         )
       }
       if (landed) this.applyPlayerMeleeRiders113c(player, monster)
+      return
+    }
+    // 1.13c `#111 Vengeance` (`SKILLS_SrvDo002_Vengeance` @ `0x6FCF5B80`, #1868):
+    if (skillId === 111) {
+      const physDamage = this.rollPlayerSkillPhysDamage(player, cast)
+      const hitResult = { landedHitRoll: false }
+      this.applyDamageToMonster(player, monster, physDamage, 111, 'phys', 'player', {
+        skipHitRiders: true,
+        outHitResult: hitResult,
+      })
+      if (hitResult.landedHitRoll && !monster.dead) {
+        const convBase = this.resolvePlayerWeaponDamage(player, 0, {
+          excludeNormalDamage: true,
+          baseOnlyWithoutOffWeaponEd: true,
+        })
+        const baseVengPct = 70 + 6 * (cast.slvl - 1)
+        const salvationSyn = 2 * Math.max(0, player.skills.get(125) ?? 0)
+        const firePct = baseVengPct + 10 * Math.max(0, player.skills.get(100) ?? 0) + salvationSyn
+        const coldPct = baseVengPct + 10 * Math.max(0, player.skills.get(105) ?? 0) + salvationSyn
+        const ltngPct = baseVengPct + 10 * Math.max(0, player.skills.get(110) ?? 0) + salvationSyn
+        const coldFrames = this.resolveSkillColdOrFreezeDuration113c(player, 111, 'cold').rawFrames
+        for (const [ch, pct] of [
+          ['fire', firePct],
+          ['cold', coldPct],
+          ['ltng', ltngPct],
+        ] as const) {
+          if (monster.dead || pct <= 0) continue
+          const eMin = Math.max(1, Math.trunc((convBase.min * pct) / 100))
+          const eMax = Math.max(eMin, Math.trunc((convBase.max * pct) / 100))
+          this.applyDamageToMonster(
+            player,
+            monster,
+            this.rollInclusive(eMin, eMax),
+            111,
+            ch,
+            'player',
+            {
+              attackKind: 'melee',
+              autoHit: true,
+              unblockable: true,
+              skipHitRiders: true,
+              ...(ch === 'cold' ? { elemDurationFrames: coldFrames } : {}),
+            },
+          )
+        }
+      }
+      if (hitResult.landedHitRoll) this.applyPlayerMeleeRiders113c(player, monster)
       return
     }
     const damage = this.rollPlayerSkillDamage(player, cast)
@@ -17254,12 +17624,20 @@ export class GameInstance {
     return this.rollInclusive(range.min, range.max)
   }
 
-  /** Player `item_openwounds` (stat 135) rider on a landed melee strike. */
-  private applyPlayerMeleeRiders113c(player: InternalPlayerRecord, monster: InternalMonsterRecord): void {
+  /** Player `item_openwounds` (stat 135) & `item_preventheal` (stat 107) riders on a landed melee strike. */
+  private applyPlayerMeleeRiders113c(
+    player: InternalPlayerRecord,
+    monster: InternalMonsterRecord,
+    weaponHand?: 'left' | 'right',
+  ): void {
     if (monster.dead) return
-    const owChance = this.sumPlayerItemStat(player, 135)
+    const handOpts = weaponHand !== undefined ? { weaponHand } : undefined
+    const owChance = this.sumPlayerItemStat(player, 135, handOpts)
     if (owChance > 0 && (owChance >= 100 || this.rng.rand(100) < owChance)) {
-      this.applyMonsterState(monster.unitId, 62, 200)
+      this.applyMonsterOpenWounds113c(player, monster)
+    }
+    if (this.sumPlayerItemStat(player, 107, handOpts) > 0) {
+      this.applyMonsterPreventHeal113c(monster)
     }
   }
 
@@ -17307,7 +17685,9 @@ export class GameInstance {
    */
   private executeSmite113c(player: InternalPlayerRecord, cast: PlayerSkillCast, monster: InternalMonsterRecord): void {
     const damage = this.removeAuraEdFromPreScaled113c(player, this.rollPlayerSkillPhysDamage(player, cast))
-    const landed = this.applyDamageToMonster(player, monster, damage, 97, 'phys')
+    const landed = this.applyDamageToMonster(player, monster, damage, 97, 'phys', 'player', {
+      skipHitRiders: true,
+    })
     if (!landed) return
     this.applyPlayerMeleeRiders113c(player, monster)
     if (monster.dead || monster.isBoss || monster.isPrimeEvil) return
@@ -17350,10 +17730,12 @@ export class GameInstance {
         ? this.applyDamageToMonster(player, monster, phys, skillId, 'phys', 'player', {
             attackKind: 'melee',
             weaponHand: hand,
+            skipHitRiders: true,
           })
         : this.applyDamageToMonster(player, monster, magic, skillId, 'mag', 'player', {
             attackKind: 'melee',
             weaponHand: hand,
+            skipHitRiders: true,
           })
     if (landed && phys > 0 && magic > 0 && !monster.dead) {
       this.applyDamageToMonster(player, monster, magic, skillId, 'mag', 'player', {
@@ -17362,7 +17744,7 @@ export class GameInstance {
         unblockable: true,
       })
     }
-    if (landed) this.applyPlayerMeleeRiders113c(player, monster)
+    if (landed) this.applyPlayerMeleeRiders113c(player, monster, hand)
     if (!isFrenzy) return
     const prev = this.playerFrenzyStack113c.get(player.unitId)
     const step = stepFrenzyStack113c(prev, this.currentFrame, cast.slvl, landed)
@@ -17400,8 +17782,13 @@ export class GameInstance {
     }
     const landed =
       phys > 0
-        ? this.applyDamageToMonster(player, monster, phys, skillId, 'phys')
-        : this.applyDamageToMonster(player, monster, fire, skillId, 'fire', 'player', { attackKind: 'melee' })
+        ? this.applyDamageToMonster(player, monster, phys, skillId, 'phys', 'player', {
+            skipHitRiders: true,
+          })
+        : this.applyDamageToMonster(player, monster, fire, skillId, 'fire', 'player', {
+            attackKind: 'melee',
+            skipHitRiders: true,
+          })
     if (landed && phys > 0 && fire > 0 && !monster.dead) {
       this.applyDamageToMonster(player, monster, fire, skillId, 'fire', 'player', {
         attackKind: 'melee',
@@ -17466,11 +17853,12 @@ export class GameInstance {
     const hpBefore = monster.hp
     const landed = this.applyDamageToMonster(player, monster, damage, skillId, 'phys', 'player', {
       attackKind: 'melee',
+      skipHitRiders: true,
       ...(!isKick ? { weaponHand: strikeHand } : {}),
     })
     if (!landed) return
     const dealtPhys = Math.max(0, hpBefore - monster.hp)
-    this.applyPlayerMeleeRiders113c(player, monster)
+    this.applyPlayerMeleeRiders113c(player, monster, !isKick ? strikeHand : undefined)
     if (skillId === 270) {
       const explosion = computeDragonTailExplosionDamage113c(dealtPhys, cast.slvl)
       if (explosion > 0) {
@@ -17875,7 +18263,7 @@ export class GameInstance {
       remainingFrames: rangeTicks,
       collideType: meta?.collideType ?? 3,
       size: Math.max(1, meta?.size ?? 1),
-      pierce: meta?.pierce === true,
+      pierce: meta !== undefined ? !meta.collideKill : false,
       nextHit: meta?.nextHit === true,
       nextDelay: Math.max(0, meta?.nextDelay ?? 0),
       element,
@@ -18173,12 +18561,15 @@ export class GameInstance {
       readonly bladeWeaponHit?: boolean | undefined
       readonly bladeShieldPulse?: boolean | undefined
       readonly outHitResult?: { landedHitRoll: boolean } | undefined
+      readonly srcDam?: number | undefined
+      readonly skipHitRiders?: boolean | undefined
+      readonly skipElemMastery?: boolean | undefined
       readonly vengeanceSpec?:
         | {
             readonly weaponBaseRolled: number
             readonly physDamagePct: number
             readonly griefFlat: number
-            readonly multiElemPacket: NonNullable<SUnitDmgPacket['multiElemPacket']>
+            readonly multiElemPacket: NonNullable<SUnitDmgPacket["multiElemPacket"]>
           }
         | undefined
     },
@@ -18501,6 +18892,9 @@ export class GameInstance {
             : attacker.y,
       weaponMinPhys: hitContext?.vengeanceSpec?.weaponBaseRolled ?? 0,
       weaponMaxPhys: hitContext?.vengeanceSpec?.weaponBaseRolled ?? 0,
+      ...(petAttacker === undefined && effectiveSource === 'player'
+        ? { armorClassIncludesDex: true }
+        : {}),
       ...(swingingWeaponType !== undefined
         ? {
             weaponItemType: swingingWeaponType,
@@ -18543,6 +18937,9 @@ export class GameInstance {
       isDemon: monster.isDemon,
       isBoss: monster.isBoss,
       isPrimeEvil: monster.isPrimeEvil,
+      isChampion: monster.rank === 'champion',
+      isSuperUnique: monster.superUniqueId !== undefined,
+      rank: monster.rank,
       drain: monster.drain,
       monsterColdDivisor: difficultyMonsterColdDivisor(this.difficulty),
       monsterFreezeDivisor: difficultyMonsterFreezeDivisor(this.difficulty),
@@ -18579,6 +18976,49 @@ export class GameInstance {
         : 0)
 
     const channel = channelOverride ?? this.resolveSkillDamageChannel(skillId)
+    const handItemOpts =
+      hitContext?.weaponHand !== undefined ? { weaponHand: hitContext.weaponHand } : undefined
+    const weaponSrcDam =
+      stealer !== undefined
+        ? channel === 'phys'
+          ? (hitContext?.srcDam ??
+            (!isDirectTestDamage &&
+            (hitAttackKind === 'melee' || hitAttackKind === 'missile') &&
+            skillId !== 97
+              ? skillId === 0
+                ? 128
+                : (this.registry?.getSkillById(skillId)?.srcDam ?? 0)
+              : 0))
+          : (hitContext?.srcDam ?? 0)
+        : 0
+    let weaponColdLenFrames = 0
+    if (stealer !== undefined && weaponSrcDam > 0) {
+      attackerStats.setBaseStat('firemindam', this.sumPlayerItemStat(attacker, 48, handItemOpts))
+      attackerStats.setBaseStat('firemaxdam', this.sumPlayerItemStat(attacker, 49, handItemOpts))
+      attackerStats.setBaseStat('lightmindam', this.sumPlayerItemStat(attacker, 50, handItemOpts))
+      attackerStats.setBaseStat('lightmaxdam', this.sumPlayerItemStat(attacker, 51, handItemOpts))
+      attackerStats.setBaseStat('magicmindam', this.sumPlayerItemStat(attacker, 52, handItemOpts))
+      attackerStats.setBaseStat('magicmaxdam', this.sumPlayerItemStat(attacker, 53, handItemOpts))
+      const wColdMin = this.sumPlayerItemStat(attacker, 54, handItemOpts)
+      const wColdMax = this.sumPlayerItemStat(attacker, 55, handItemOpts)
+      attackerStats.setBaseStat('coldmindam', wColdMin)
+      attackerStats.setBaseStat('coldmaxdam', wColdMax)
+      const wColdLen = this.sumPlayerItemStat(attacker, 56, handItemOpts)
+      attackerStats.setBaseStat('coldlength', wColdLen)
+      if (wColdMax > 0 && wColdLen > 0) {
+        weaponColdLenFrames = Math.max(
+          1,
+          Math.trunc(wColdLen / Math.max(1, difficultyMonsterColdDivisor(this.difficulty))),
+        )
+      }
+      if (skillId !== 73) {
+        ;(attackerCtx as { weaponPoisonSources?: CombatUnitContext['weaponPoisonSources'] }).weaponPoisonSources =
+          this.collectPlayerWeaponPoisonSources113c(
+            attacker,
+            hitContext?.weaponHand ? { weaponHand: hitContext.weaponHand } : undefined,
+          )
+      }
+    }
     const rawDmg = Math.max(1, Math.floor(damage))
     let dealtDamage = 0
     let ctcOnHitPending = false
@@ -18633,7 +19073,7 @@ export class GameInstance {
       const dmgOut = executeSUnitDmg(attackerCtx, defenderCtx, {
         skillId,
         attackKind: hitAttackKind,
-        srcDam: vSpec !== undefined ? 128 : 0,
+        ...(vSpec !== undefined ? { srcDam: 128 } : hitContext?.srcDam !== undefined ? { srcDam: hitContext.srcDam } : {}),
         flatPhysMin256: vSpec !== undefined ? 0 : rawDmg * FIXED_ONE,
         flatPhysMax256: vSpec !== undefined ? 0 : rawDmg * FIXED_ONE,
         ...(vSpec !== undefined
@@ -18648,20 +19088,15 @@ export class GameInstance {
             ? { skipMasteryEd: true }
             : {}),
         ...(isSpellPhys
-          ? {
-              suppressGearLeech: true,
-              canTriggerProcs: false,
-              csRoll100: 100,
-              masteryCritRoll100: 100,
-              dsRoll100: 100,
-            }
-          : isBladeShieldPulse
-            ? { canTriggerProcs: false }
-            : {}),
+          ? {}
+          : { weaponHand: hitContext?.weaponHand }),
         toHitBonusPct: skillToHitBonusPct,
         autoHit: hitAutoHit,
         unblockable: hitUnblockable,
       }, this.rng)
+      if (hitContext?.outHitResult !== undefined) {
+        hitContext.outHitResult.landedHitRoll = dmgOut.hit
+      }
       if (!dmgOut.hit) {
         if (dmgOut.avoidedReason === 'block') {
           monster.mode = MONMODE_BLOCK
@@ -18703,21 +19138,15 @@ export class GameInstance {
           -90,
           vSpec.physDamagePct + attackerStats.getModifierBonus('damagepercent'),
         )
-        const griefRaw256 =
-          Math.max(0, Math.trunc((vSpec.griefFlat * FIXED_ONE * (100 + edPct)) / 100)) *
-          (dmgOut.isCritical ? 2 : 1)
-        totalDmg256 += Math.max(0, Math.trunc((griefRaw256 * (100 - physResPct)) / 100))
+        const bonusDmg = Math.floor((vSpec.griefFlat * Math.max(0, edPct + 100)) / 100)
+        totalDmg256 += Math.floor((bonusDmg * Math.max(0, 100 - physResPct)) / 100) * 256
       }
-      if ((dmgOut.immuneToPhys && dmgOut.elemDamage256 <= 0) || totalDmg256 <= 0) {
-        if (ctcOnHitPending) this.triggerPlayerCtcProcs113c(attacker, 198, { target: monster })
-        return false
-      }
-      dealtDamage = Math.max(1, Math.floor(totalDmg256 / FIXED_ONE))
+      dealtDamage = totalDmg256 > 0 ? Math.max(1, Math.floor(totalDmg256 / FIXED_ONE)) : 0
       const isActBossTarget =
         monster.isPrimeEvil ||
         this.actBossQuestId(monster.defId, monster.hcIdx) !== undefined
       if (effectiveSource === 'merc' && mercAttacker !== undefined) {
-        if (isActBossTarget) {
+        if (isActBossTarget && dealtDamage > 0) {
           dealtDamage = scaleMercenaryBossDamage113c(dealtDamage, this.difficulty)
         }
         const rawMercHeal256 = dmgOut.attackerHealed256 ?? 0
@@ -18738,7 +19167,7 @@ export class GameInstance {
         }
       }
 
-      // 1.13c Crushing Blow (statId 136 + per-level 247, D2Game.dll 0x6FCCCC30..0x6FCCCD93):
+      // 1.13c Crushing Blow (statId 136 + per-level 247, D2Game.dll 0x6FCF6C10, #1869, #1873):
       const allowCrushingBlow = !isSpellPhys && !isBladeShieldPulse && skillId !== 257
       const cbChance = !allowCrushingBlow
         ? 0
@@ -18746,15 +19175,15 @@ export class GameInstance {
           ? petAttacker.statList.getAccruedStat('item_crushingblow')
           : effectiveSource === 'merc' && mercAttacker !== undefined
             ? this.sumMercItemStat(mercAttacker, 136)
-            : this.sumPlayerItemStat(attacker, 136)
-      if (cbChance > 0 && (cbChance >= 100 || this.rng.rand(100) < cbChance)) {
+            : this.sumPlayerItemStat(attacker, 136, handItemOpts)
+      if (!dmgOut.immuneToPhys && cbChance > 0 && (cbChance >= 100 || this.rng.rand(100) < cbChance)) {
         const cbOut = calculateCrushingBlow113c({
           defenderHp: monster.hp,
           unitType: 'monster',
           isBoss: monster.isBoss,
           isPrimeEvil: monster.isPrimeEvil,
           rank: monster.rank,
-          playerCount: this.playersX,
+          playerCount: this.effectivePlayerCount113c(),
           isRanged: hitAttackKind === 'missile',
           // Sanctuary bearer vs Undead: positive `damageresist` counts as 0% (negative curses kept, #1807).
           physResPct:
@@ -18765,26 +19194,50 @@ export class GameInstance {
         dealtDamage += cbOut.damage
       }
       if (
-        stealer !== undefined &&
-        !isSpellPhys &&
-        !isBladeShieldPulse &&
-        skillId !== 257 &&
-        (hitAttackKind === 'melee' || hitAttackKind === 'missile')
-      ) {
-        const owChance = this.sumPlayerItemStat(stealer, 135)
-        if (owChance > 0 && (owChance >= 100 || this.rng.rand(100) < owChance)) {
-          this.applyMonsterOpenWounds113c(stealer, monster)
-        }
-      }
-      if (
         effectiveSource === 'merc' &&
         mercAttacker !== undefined &&
         (hitAttackKind === 'melee' || hitAttackKind === 'missile')
       ) {
         const owChance = this.sumMercItemStat(mercAttacker, 135)
         if (owChance > 0 && (owChance >= 100 || this.rng.rand(100) < owChance)) {
-          this.applyMonsterState(monster.unitId, 62, 200)
+          this.applyMonsterOpenWounds113c(attacker, monster, {
+            attackerLevel: mercAttacker.level,
+            isRanged: hitAttackKind === 'missile',
+          })
         }
+      } else if (
+        stealer !== undefined &&
+        !isSpellPhys &&
+        !isBladeShieldPulse &&
+        skillId !== 257 &&
+        !hitContext?.skipHitRiders &&
+        (hitAttackKind === 'melee' || hitAttackKind === 'missile')
+      ) {
+        const owChance = this.sumPlayerItemStat(attacker, 135, handItemOpts)
+        if (owChance > 0 && (owChance >= 100 || this.rng.rand(100) < owChance)) {
+          this.applyMonsterOpenWounds113c(attacker, monster, {
+            isRanged: hitAttackKind === 'missile',
+          })
+        }
+        if (this.sumPlayerItemStat(attacker, 107, handItemOpts) > 0) {
+          this.applyMonsterPreventHeal113c(monster)
+        }
+      }
+      const elemPoisRate256 = dmgOut.poisonBitrate256 ?? 0
+      const elemPoisLen = dmgOut.poisonDurationFrames ?? 0
+      if (elemPoisRate256 > 0 && elemPoisLen > 0 && !monster.dead) {
+        this.applyMonsterPoisonDot(
+          attacker,
+          monster,
+          elemPoisRate256,
+          elemPoisLen,
+          skillId,
+          petAttacker !== undefined ? 'pet' : effectiveSource,
+        )
+      }
+      if ((dmgOut.immuneToPhys && dmgOut.elemDamage256 <= 0) || dealtDamage <= 0) {
+        if (ctcOnHitPending) this.triggerPlayerCtcProcs113c(attacker, 198, { target: monster })
+        return elemPoisRate256 > 0 && elemPoisLen > 0
       }
     } else if (channel === 'pois') {
       if (!hitAutoHit) {
@@ -18832,7 +19285,7 @@ export class GameInstance {
         rawBitrate256,
         dur,
         skillId,
-        effectiveSource,
+        petAttacker !== undefined ? 'pet' : effectiveSource,
       )
       return true
     } else {
@@ -18844,6 +19297,8 @@ export class GameInstance {
         skillId,
         attackKind: hitAttackKind,
         srcDam: 0,
+        ...(weaponSrcDam > 0 ? { riderSrcDam: weaponSrcDam } : {}),
+        ...(hitContext?.skipElemMastery ? { skipElemMastery: true } : {}),
         elemType: channel,
         elemMin256: elem256,
         elemMax256: elem256,
@@ -18854,6 +19309,9 @@ export class GameInstance {
         autoHit: hitAutoHit,
         unblockable: hitUnblockable,
       }, this.rng)
+      if (hitContext?.outHitResult !== undefined) {
+        hitContext.outHitResult.landedHitRoll = dmgOut.hit
+      }
       if (!dmgOut.hit) {
         if (dmgOut.avoidedReason === 'block') {
           monster.mode = MONMODE_BLOCK
@@ -18870,8 +19328,31 @@ export class GameInstance {
         }
         return false
       }
+      const elemPoisRate256 = dmgOut.poisonBitrate256 ?? 0
+      const elemPoisLen = dmgOut.poisonDurationFrames ?? 0
+      if (elemPoisRate256 > 0 && elemPoisLen > 0 && !monster.dead) {
+        monster.lastHitByMerc = effectiveSource === 'merc'
+        monster.threatPlayerId = attacker.unitId
+        monster.threatUntilFrame = this.currentFrame + MONSTER_THREAT_FRAMES
+        if (monster.poisonRemainingFrames <= 0 || elemPoisRate256 >= monster.poisonBitrate256) {
+          monster.poisonBitrate256 = elemPoisRate256
+          monster.poisonRemainingFrames = elemPoisLen
+          monster.poisonCarry256 = 0
+          monster.poisonAttackerId = attacker.unitId
+          monster.poisonSkillId = skillId
+        }
+        this.applyUnitState(
+          monster.states,
+          monster.stateTimers,
+          'monster',
+          monster.unitId,
+          monster.areaId,
+          2,
+          monster.poisonRemainingFrames,
+        )
+      }
       if (dmgOut.immuneToElem || dmgOut.totalDamage256 <= 0) {
-        return false
+        return elemPoisRate256 > 0 && elemPoisLen > 0
       }
       dealtDamage = Math.max(1, Math.floor(dmgOut.totalDamage256 / FIXED_ONE))
       if (
@@ -18879,6 +19360,39 @@ export class GameInstance {
         (monster.isPrimeEvil || this.actBossQuestId(monster.defId, monster.hcIdx) !== undefined)
       ) {
         dealtDamage = scaleMercenaryBossDamage113c(dealtDamage, this.difficulty)
+      }
+      if (
+        stealer !== undefined &&
+        weaponSrcDam > 0 &&
+        !hitContext?.skipHitRiders &&
+        (hitAttackKind === 'melee' || hitAttackKind === 'missile')
+      ) {
+        const cbChance = this.sumPlayerItemStat(attacker, 136, handItemOpts)
+        if (!dmgOut.immuneToPhys && cbChance > 0 && (cbChance >= 100 || this.rng.rand(100) < cbChance)) {
+          const cbOut = calculateCrushingBlow113c({
+            defenderHp: monster.hp,
+            unitType: 'monster',
+            isBoss: monster.isBoss,
+            isPrimeEvil: monster.isPrimeEvil,
+            rank: monster.rank,
+            playerCount: this.effectivePlayerCount113c(),
+            isRanged: hitAttackKind === 'missile',
+            physResPct:
+              attackerStateBus.hasState('sanctuary') && monster.isUndead
+                ? Math.min(0, defenderStats.getAccruedStat('damageresist'))
+                : defenderStats.getAccruedStat('damageresist'),
+          })
+          dealtDamage += cbOut.damage
+        }
+        const owChance = this.sumPlayerItemStat(attacker, 135, handItemOpts)
+        if (owChance > 0 && (owChance >= 100 || this.rng.rand(100) < owChance)) {
+          this.applyMonsterOpenWounds113c(attacker, monster, {
+            isRanged: hitAttackKind === 'missile',
+          })
+        }
+        if (this.sumPlayerItemStat(attacker, 107, handItemOpts) > 0) {
+          this.applyMonsterPreventHeal113c(monster)
+        }
       }
     }
 
@@ -18894,14 +19408,16 @@ export class GameInstance {
               skillId,
             )
           : this.resolvePlayerWeaponHitClass113c(attacker, skillId)
+    const effectiveElemFrames =
+      hitContext?.elemDurationFrames ?? (weaponColdLenFrames > 0 ? weaponColdLenFrames : undefined)
     this.finishMonsterDamage(
       attacker,
       monster,
       dealtDamage,
       skillId,
-      channel,
+      effectiveElemFrames !== undefined && channel === 'phys' ? 'cold' : channel,
       hitClass,
-      hitContext?.elemDurationFrames,
+      effectiveElemFrames,
       effectiveSource === 'merc',
     )
     if (ctcOnHitPending) this.triggerPlayerCtcProcs113c(attacker, 198, { target: monster })
@@ -18919,19 +19435,20 @@ export class GameInstance {
     rawBitrate256: number,
     durationFrames: number,
     skillId: number,
-    effectiveSource: 'player' | 'merc' = 'player',
+    effectiveSource: 'player' | 'merc' | 'pet' = 'player',
   ): boolean {
     if (monster.dead || monster.isNpc || !monster.isKillable || monster.submerged) return false
     if (rawBitrate256 <= 0 || durationFrames <= 0) return false
 
     const attackerStats = new UnitStatList(this.registry, undefined, {
-      ownerType: 'player',
+      ownerType: effectiveSource === 'pet' ? 'monster' : 'player',
       charClass: attacker.classCode,
     })
     attackerStats.setBaseStat('level', attacker.level)
     attackerStats.setBaseStat('maxhp', attacker.maxHpFixed)
     attackerStats.setHp256(attacker.hpFixed)
-    // `passive_pois_mastery` (332) / `passive_pois_pierce` (336) of the poison source (#1801).
+    // `passive_pois_mastery` (332) / `passive_pois_pierce` (336) of the poison source (#1801, #1874):
+    // Pet-origin poison (`effectiveSource === 'pet'`) NEVER inherits player `332` / `336`.
     const poisonMerc =
       effectiveSource === 'merc'
         ? [...this.mercenaries.values()].find((m) => m.ownerPlayerId === attacker.unitId)
@@ -18946,7 +19463,7 @@ export class GameInstance {
     const attackerCtx: CombatUnitContext = {
       id: `player_${attacker.unitId}`,
       name: attacker.name,
-      unitType: 'player',
+      unitType: effectiveSource === 'pet' ? 'monster' : 'player',
       statList: attackerStats,
       stateBus: attackerStateBus,
       x: attacker.x,
@@ -18974,26 +19491,30 @@ export class GameInstance {
       isDemon: monster.isDemon,
       isBoss: monster.isBoss,
       isPrimeEvil: monster.isPrimeEvil,
+      isChampion: monster.rank === 'champion',
+      isSuperUnique: monster.superUniqueId !== undefined,
+      rank: monster.rank,
       drain: monster.drain,
       monsterColdDivisor: difficultyMonsterColdDivisor(this.difficulty),
       monsterFreezeDivisor: difficultyMonsterFreezeDivisor(this.difficulty),
     }
 
+    const totalDmg256 = Math.max(1, Math.floor(rawBitrate256 * durationFrames))
     const dmgOut = executeSUnitDmg(attackerCtx, defenderCtx, {
       skillId,
       attackKind: 'spell',
       srcDam: 0,
       elemType: 'pois',
-      elemMin256: rawBitrate256,
-      elemMax256: rawBitrate256,
+      elemMin256: totalDmg256,
+      elemMax256: totalDmg256,
       elemDurationFrames: durationFrames,
       autoHit: true,
       unblockable: true,
-    }, this.rng)
-    if (dmgOut.immuneToElem || dmgOut.elemDamage256 <= 0) {
+    }, new D2Rng(0))
+    if (dmgOut.immuneToElem || (dmgOut.poisonBitrate256 ?? 0) <= 0) {
       return false
     }
-    const bitrate256 = dmgOut.elemDamage256
+    const bitrate256 = dmgOut.poisonBitrate256!
     monster.lastHitByMerc = effectiveSource === 'merc'
     monster.threatPlayerId = attacker.unitId
     monster.threatUntilFrame = this.currentFrame + MONSTER_THREAT_FRAMES
@@ -19743,6 +20264,7 @@ export class GameInstance {
     player.pendingInteraction = undefined
     player.pendingInteractionSteps = 0
     player.pendingNpcGamble = undefined
+        player.moveTargetUnitId = undefined
     const motion = this.playerMotion.get(player.unitId)
     if (motion !== undefined) {
       motion.mover.setPosition(player.x, player.y)
@@ -20140,41 +20662,61 @@ export class GameInstance {
    */
   private playerResistPct(
     player: InternalPlayerRecord,
-    kind: 'phys' | 'fire' | 'cold' | 'light',
+    kind: 'phys' | 'fire' | 'cold' | 'light' | 'poison',
   ): number {
-    const resStatId = { phys: 36, fire: 39, cold: 43, light: 41 }[kind]
-    const maxStatId = { phys: undefined, fire: 40, cold: 44, light: 42 }[kind]
-    let value = 0
-    let maxBonus = 0
-    for (const item of player.items) {
-      if (item.location !== 'equipped') continue
-      value += item.stats.get(resStatId) ?? 0
-      if (maxStatId !== undefined) maxBonus += item.stats.get(maxStatId) ?? 0
-    }
+    const resStatId = { phys: 36, fire: 39, cold: 43, light: 41, poison: 45 }[kind]
+    const maxStatId = { phys: undefined, fire: 40, cold: 44, light: 42, poison: 46 }[kind]
+    // 1.13c (#1864): sum equipped gear + socketed runes/gems + set bonuses + per-level stats +
+    // active `10×4` inventory charms (`cm1`/`cm2`/`cm3`), strictly excluding stash/cube charms.
+    let value = this.sumPlayerItemStat(player, resStatId)
+    let maxBonus = maxStatId !== undefined ? this.sumPlayerItemStat(player, maxStatId) : 0
     const combat = this.playerCombatContext(player)
+    const passiveOnly = (stat: string): number => {
+      let total = 0
+      for (const m of combat.statList.getActiveModifiers()) {
+        if (m.id.startsWith('passive_skill_')) total += m.stats[stat] ?? 0
+      }
+      return total
+    }
     if (kind === 'phys') {
       value += Math.trunc(getPrePierceResistance113c(combat.statList, 'damageresist'))
       value -= resolvePhysCursePierce113c(combat)
       return value <= 0 ? Math.max(-100, value) : Math.min(value, 50)
     }
-    const elemStatName = kind === 'fire' ? 'fireresist' : kind === 'cold' ? 'coldresist' : 'lightresist'
-    value += Math.trunc(getPrePierceResistance113c(combat.statList, elemStatName))
-    value -= resolveConvictionPierce113c(combat, elemStatName) + resolveLowerResistPierce113c(combat, elemStatName)
+    const elemStatName =
+      kind === 'fire'
+        ? 'fireresist'
+        : kind === 'cold'
+          ? 'coldresist'
+          : kind === 'light'
+            ? 'lightresist'
+            : 'poisonresist'
+    value += Math.trunc(getPrePierceResistance113c(combat.statList, elemStatName)) + passiveOnly(elemStatName)
+    if (elemStatName !== 'poisonresist') {
+      value -= resolveConvictionPierce113c(combat, elemStatName)
+    }
+    value -= resolveLowerResistPierce113c(combat, elemStatName)
     value += difficultyResistPenalty(this.difficulty)
-    const maxStatName = kind === 'fire' ? 'maxfireresist' : kind === 'cold' ? 'maxcoldresist' : 'maxlightresist'
+    const maxStatName =
+      kind === 'fire'
+        ? 'maxfireresist'
+        : kind === 'cold'
+          ? 'maxcoldresist'
+          : kind === 'light'
+            ? 'maxlightresist'
+            : 'maxpoisonresist'
     maxBonus += Math.trunc(combat.statList.getAccruedStat(maxStatName))
     const cap = Math.min(95, 75 + maxBonus)
     return value <= 0 ? Math.max(-100, value) : Math.min(value, cap)
   }
 
-  /** Player elemental absorb (% and flat, incl. /lvl) from equipped items + persistent combat stats. */
+  /** Player elemental absorb (% and flat, incl. /lvl & active 10x4 charms) from items + persistent combat stats (#1864). */
   private playerElementalAbsorb(
     player: InternalPlayerRecord,
     kind: 'fire' | 'cold' | 'light',
   ): { readonly pct: number; readonly flat: number } {
     const pctStatId = kind === 'fire' ? 142 : kind === 'light' ? 144 : 148
     const flatStatId = kind === 'fire' ? 143 : kind === 'light' ? 145 : 149
-    const perLvlStatId = kind === 'fire' ? 235 : kind === 'light' ? 236 : 234
     const pctStatName =
       kind === 'fire'
         ? 'item_absorbfire_percent'
@@ -20187,21 +20729,11 @@ export class GameInstance {
         : kind === 'light'
           ? 'item_absorblight'
           : 'item_absorbcold'
-    let pct = 0
-    let flat = 0
-    let perLvl = 0
-    for (const item of player.items) {
-      if (item.location !== 'equipped') continue
-      pct += item.stats.get(pctStatId) ?? 0
-      flat += item.stats.get(flatStatId) ?? 0
-      perLvl += item.stats.get(perLvlStatId) ?? 0
-    }
+    let pct = this.sumPlayerItemStat(player, pctStatId)
+    let flat = this.sumPlayerItemStat(player, flatStatId)
     const combat = this.playerCombatContext(player)
-    pct += Math.trunc(combat.statList.getAccruedStat(pctStatName))
-    flat += Math.trunc(combat.statList.getAccruedStat(flatStatName))
-    if (perLvl > 0) {
-      flat += Math.trunc((perLvl * player.level) / 8)
-    }
+    pct += Math.trunc(combat.statList.getAccruedStat(pctStatName, true))
+    flat += Math.trunc(combat.statList.getAccruedStat(flatStatName, true))
     return { pct: Math.max(0, pct), flat: Math.max(0, flat) }
   }
 
@@ -22160,10 +22692,14 @@ export class GameInstance {
     const whole = Math.floor(carry / FIXED_ONE)
     carryMap.set(monster.unitId, carry - whole * FIXED_ONE)
     if (whole <= 0) return
+    const row = this.registry.getMissileById(missile.missileId)
+    const skipElemMastery =
+      row !== undefined && row.skill === '' && !row.applyMastery
     this.applyDamageToMonster(owner, monster, whole, missile.skillId, 'fire', 'player', {
       attackKind: 'spell',
       autoHit: true,
       unblockable: true,
+      ...(skipElemMastery ? { skipElemMastery: true } : {}),
     })
   }
 
@@ -22229,6 +22765,17 @@ export class GameInstance {
     const dist = Math.hypot(dx, dy)
     const lifetime = Math.max(1, spawn.lifetimeFrames ?? row.range + row.levRange * slvl)
     const unitId = this.allocateUnitId()
+    const ownerPlayer = parent.ownerType === 'player' ? this.players.get(parent.ownerId) : undefined
+    const childPierceRemaining =
+      row.pierce && row.collideKill && ownerPlayer !== undefined
+        ? resolveMissilePierceIdx(row, this.playerCombatContext(ownerPlayer), this.registry)
+        : undefined
+    const childSrcDamage =
+      row.srcDamage > 0
+        ? row.srcDamage
+        : row.srcDamage === 0 && row.skill !== ''
+          ? (this.registry.getSkillByName(row.skill)?.srcDam ?? 0)
+          : 0
     const child: InternalMissileRecord = {
       unitId,
       missileId: row.id,
@@ -22241,10 +22788,15 @@ export class GameInstance {
       vx: dist > 1e-9 ? (dx / dist) * speed : 0,
       vy: dist > 1e-9 ? (dy / dist) * speed : 0,
       damage: parent.damage,
+      ...(childSrcDamage > 0 ? { srcDamage: childSrcDamage } : {}),
       remainingFrames: lifetime,
       collideType: row.collideType,
       size: Math.max(1, row.size),
-      pierce: row.pierce,
+      pierce:
+        childPierceRemaining !== undefined
+          ? childPierceRemaining > 0
+          : row.pierce && !row.collideKill,
+      ...(childPierceRemaining !== undefined ? { pierceRemaining: childPierceRemaining } : {}),
       nextHit: row.nextHit,
       nextDelay: Math.max(0, row.nextDelay),
       element: normalizeMissileElement(row.eType) ?? parent.element,
@@ -22717,14 +23269,23 @@ export class GameInstance {
                 if (this.dispatchOnlineMissileUnitHit113c(missile, monster.unitId, monster.x, monster.y) === 'passthrough') {
                   continue
                 }
+                const isWeaponProjectile = (missile.srcDamage ?? 0) > 0
+                const mRow = this.registry.getMissileById(missile.missileId)
+                const skipElemMastery =
+                  !isWeaponProjectile &&
+                  mRow !== undefined &&
+                  mRow.skill === '' &&
+                  !mRow.applyMastery
                 const missileHitCtx = {
-                  attackKind: (missile.guaranteedHit ? 'spell' : 'missile') as 'spell' | 'missile',
+                  attackKind: (isWeaponProjectile || !missile.guaranteedHit ? 'missile' : 'spell') as 'spell' | 'missile',
                   autoHit: missile.guaranteedHit,
-                  unblockable: missile.guaranteedHit,
+                  unblockable: missile.guaranteedHit && !isWeaponProjectile,
                   elemDurationFrames: missile.elemDurationFrames,
                   ...(missile.elemDamage256 !== undefined ? { elemDamage256: missile.elemDamage256 } : {}),
                   ...(missile.concentrationSnapshotted === true ? { concentrationAlreadyApplied: true } : {}),
                   ...(missile.bladeWeaponHit === true ? { bladeWeaponHit: true } : {}),
+                  ...(isWeaponProjectile ? { srcDam: missile.srcDamage } : {}),
+                  ...(skipElemMastery ? { skipElemMastery: true } : {}),
                 }
                 if (missile.carrier === 'groundfire') {
                   this.applyOnlineGroundFireTick113c(owner, monster, missile)
@@ -23358,7 +23919,10 @@ export class GameInstance {
   }
 
   private computePlayerBaseDefense(player: InternalPlayerRecord): number {
-    const totalDex = player.dexterity + this.sumPlayerItemStat(player, 2)
+    // 1.13c `UNITS_GetDefense` (`0x6FD82890`, #1863): `floor(totalDex / 4)` includes base + gear +
+    // active 10x4 charms + buff/modifier dexterity.
+    const buffDex = this.playerCombat.get(player.unitId)?.statList.getModifierBonus('dexterity') ?? 0
+    const totalDex = Math.max(0, player.dexterity + this.sumPlayerItemStat(player, 2) + buffDex)
     let defense = Math.floor(totalDex / 4)
     const worn = player.items.filter(
       (it) => it.location === 'equipped' && it.bodyLoc !== 11 && it.bodyLoc !== 12,
@@ -23609,6 +24173,11 @@ export class GameInstance {
     defenderStats.setBaseStat('item_absorbmagic', absorbMagic)
     defenderStats.setBaseStat('item_absorbcold_percent', absorbColdPct)
     defenderStats.setBaseStat('item_absorbcold', absorbCold)
+    defenderStats.setBaseStat(
+      'item_poisonlengthresist',
+      this.sumPlayerItemStat(player, 110) +
+        Math.trunc(playerStats.getAccruedStat('item_poisonlengthresist', true)),
+    )
     defenderStats.setBaseStat('maxhp', player.maxHpFixed)
     defenderStats.setHp256(player.hpFixed)
     defenderStats.setBaseStat('maxmana', player.maxManaFixed)
@@ -23736,6 +24305,7 @@ export class GameInstance {
       stateBus: defenderStateBus,
       x: player.x,
       y: player.y,
+      armorClassIncludesDex: true,
       hasShield: hasEquippedShield,
       ...(rightHandWeaponType !== undefined ? { weaponItemType: rightHandWeaponType } : {}),
       ...(leftHandWeaponType !== undefined ? { offHandWeaponItemType: leftHandWeaponType } : {}),
@@ -25412,6 +25982,7 @@ export class GameInstance {
     // natural regeneration in 1.13c.
     const stateBus = this.monsterCombat.get(monster.unitId)?.stateBus
     if (
+      this.monsterOpenWounds.has(monster.unitId) ||
       monster.states.has(2) ||
       monster.states.has(62) ||
       monster.states.has(52) ||
@@ -26602,7 +27173,7 @@ export class GameInstance {
       remainingFrames: rangeFrames,
       collideType: rec?.collideType ?? spec.collideType ?? 3,
       size: Math.max(1, rec?.size ?? spec.size ?? 2),
-      pierce: rec?.pierce === true || spec.pierce === true,
+      pierce: (rec !== undefined && !rec.collideKill) || spec.pierce === true,
       nextHit: rec?.nextHit === true || spec.nextHit === true,
       nextDelay: Math.max(0, rec?.nextDelay ?? spec.nextDelay ?? 0),
       element: spec.element,
@@ -31737,7 +32308,7 @@ export class GameInstance {
       remainingFrames: rangeTicks,
       collideType: meta?.collideType ?? 3,
       size: Math.max(1, meta?.size ?? 1),
-      pierce: meta?.pierce === true,
+      pierce: meta !== undefined ? !meta.collideKill : false,
       nextHit: meta?.nextHit === true,
       nextDelay: Math.max(0, meta?.nextDelay ?? 0),
       element,
@@ -34414,6 +34985,7 @@ export class GameInstance {
           player.pendingInteraction = undefined
           player.pendingInteractionSteps = 0
           player.pendingNpcGamble = undefined
+        player.moveTargetUnitId = undefined
           continue
         }
         tx = npc.x
@@ -34427,6 +34999,7 @@ export class GameInstance {
         player.pendingInteraction = undefined
         player.pendingInteractionSteps = 0
         player.pendingNpcGamble = undefined
+        player.moveTargetUnitId = undefined
         if (pending.kind === 'object') this.handleInteract(player, pending.id)
         else if (pending.kind === 'warp') this.handleWarpTileInteract(player, pending.id)
         else if (pending.kind === 'player') this.handlePlayerTradeInteract(player, pending.id)
@@ -35159,6 +35732,7 @@ export class GameInstance {
     if (prevArea !== destAreaId) {
       this.abortPlayerTrade(player.unitId)
       this.hidePlayerAreaRooms(player, prevArea)
+      this.emitToPlayer(player.unitId, { type: 'EnvironmentSync', cycleIndex: 0, ticks: 0, eclipse: false })
     }
     if (destAct !== prevAct) {
       this.emitToPlayer(player.unitId, { type: 'UnloadAct' })
@@ -38940,12 +39514,14 @@ export class GameInstance {
         player.pendingInteraction = { kind: 'npc', id: npcId }
         player.pendingInteractionSteps = 0
         player.pendingNpcGamble = undefined
+        player.moveTargetUnitId = undefined
       }
       return
     }
     player.pendingInteraction = undefined
     player.pendingInteractionSteps = 0
     player.pendingNpcGamble = undefined
+        player.moveTargetUnitId = undefined
     player.activeNpcId = npcId
     if (npc !== undefined) {
       const introBit = NPC_INTRO_BIT_BY_HCIDX_113C.get(npc.hcIdx)
@@ -39570,6 +40146,7 @@ export class GameInstance {
     player.pendingInteraction = undefined
     player.pendingInteractionSteps = 0
     player.pendingNpcGamble = undefined
+        player.moveTargetUnitId = undefined
     player.activeNpcId = npcId
     if (npc !== undefined) {
       const introBit = NPC_INTRO_BIT_BY_HCIDX_113C.get(npc.hcIdx)
@@ -43101,6 +43678,7 @@ export class GameInstance {
       vy: number
       remainingFrames: number
       pierce: boolean
+      pierceRemaining?: number | undefined
       guaranteedHit: boolean
       skillId: number
       slvl: number
@@ -43696,6 +44274,14 @@ export class GameInstance {
             )
           }
         }
+        if (msl.pierceRemaining !== undefined) {
+          if (msl.pierceRemaining > 0) {
+            msl.pierceRemaining -= 1
+            msl.pierce = true
+          } else {
+            msl.pierce = false
+          }
+        }
         if (!msl.pierce) {
           this.mercMissiles.delete(mslId)
           continue
@@ -44081,10 +44667,27 @@ export class GameInstance {
                 this.triggerMercCtcProcs113c(owner, merc, bestHostile.record, 195)
               }
               const mSpec = action.missile
+              const mRec = this.registry.getMissileById(mSpec.missileId)
               const baseAngle = Math.atan2(bestHostile.y - merc.y, bestHostile.x - merc.x)
               const count = Math.max(1, mSpec.boltCount)
-              const hasItemPierce = isWeaponShot && this.sumMercItemStat(merc, 156) >= 100
+              const mercPiercePct = isWeaponShot
+                ? Math.max(0, Math.min(100, this.sumMercItemStat(merc, 156)))
+                : 0
               for (let b = 0; b < count; b++) {
+                let mercPierceRemaining: number | undefined
+                if (mRec !== undefined && mRec.collideKill && mRec.pierce) {
+                  let pCount = 0
+                  if (mercPiercePct > 0) {
+                    while (pCount < 4) {
+                      if (mercPiercePct >= 100 || this.rng.rand(100) < mercPiercePct) {
+                        pCount += 1
+                      } else {
+                        break
+                      }
+                    }
+                  }
+                  mercPierceRemaining = pCount
+                }
                 const spread = count > 1 ? (b - (count - 1) / 2) * 0.14 : 0
                 const ang = baseAngle + spread
                 const vx = Math.cos(ang) * mSpec.velSubtilesPerFrame
@@ -44103,7 +44706,15 @@ export class GameInstance {
                   vx,
                   vy,
                   remainingFrames: mSpec.rangeFrames,
-                  pierce: mSpec.pierce || hasItemPierce,
+                  pierce:
+                    mRec !== undefined && !mRec.collideKill
+                      ? true
+                      : mercPierceRemaining !== undefined
+                        ? mercPierceRemaining > 0
+                        : false,
+                  ...(mercPierceRemaining !== undefined
+                    ? { pierceRemaining: mercPierceRemaining }
+                    : {}),
                   guaranteedHit: mSpec.guaranteedHit,
                   skillId: mSpec.skillId,
                   slvl: mSpec.slvl,
@@ -44923,6 +45534,7 @@ export class GameInstance {
         isSummonAction: true,
         summonAction: 1,
         petType: petTypeIdx,
+        count: mgr.getActivePets().filter((p: any) => (PET_TYPE_IDX_BY_NAME_113C[p.petType] ?? 1) === petTypeIdx).length,
         mercId: petUnitId,
         ownerId: ownerPlayerId,
         classId,
@@ -44985,6 +45597,7 @@ export class GameInstance {
           isSummonAction: true,
           summonAction: 0,
           petType: PET_TYPE_IDX_BY_NAME_113C[removed.petType] ?? 1,
+          count: mgr.getActivePets().filter((p: any) => (PET_TYPE_IDX_BY_NAME_113C[p.petType] ?? 1) === (PET_TYPE_IDX_BY_NAME_113C[removed.petType] ?? 1)).length,
           mercId: petUnitId,
           ownerId: ownerPlayerId,
           classId: removed.classId ?? 363,
@@ -45218,7 +45831,7 @@ export class GameInstance {
             const dur = Math.max(25, msl.dmgPacket.elemDurationFrames ?? 100)
             const totalMin256 = Math.max(FIXED_ONE, msl.dmgPacket.elemMin256 ?? FIXED_ONE)
             const rawBitrate256 = Math.max(1, Math.floor(totalMin256 / dur))
-            this.applyMonsterPoisonDot(owner, m, rawBitrate256, dur, msl.sourceSkillId)
+            this.applyMonsterPoisonDot(owner, m, rawBitrate256, dur, msl.sourceSkillId, 'pet')
           } else {
             const mCtx = this.monsterCombatContext(m)
             mCtx.statList.setHp256(m.hp * FIXED_ONE)

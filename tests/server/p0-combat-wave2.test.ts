@@ -514,9 +514,9 @@ describe('Wave 2 Combat P0 Parity (#1797..#1807)', () => {
       const ctx = g.playerCombatContext(player)
       expect(resolveMissilePierceIdx(furyMissile, ctx, registry)).toBe(4)
 
-      // Place 5 monsters at x = 104..120 and a 6th monster at x = 140 (>15 subtiles past x=120 so
+      // Place 5 monsters at x = 104..120 and a 6th monster at x = 160 (>15 subtiles past x=120 so
       // furylightning bolts from hit #5 don't reach it, while a 5th pierce along y=100 would hit it!)
-      const line = [104, 108, 112, 116, 120, 140].map((x) => spawnTarget(game, g, 'fallen1', x, 100))
+      const line = [104, 108, 112, 116, 120, 160].map((x) => spawnTarget(game, g, 'fallen1', x, 100))
       const cast = g.resolvePlayerSkillCast(player, 35)
       expect(cast).not.toBeNull()
       game.drainEvents(pid)
@@ -527,16 +527,18 @@ describe('Wave 2 Combat P0 Parity (#1797..#1807)', () => {
         events.push(...(game.drainEvents(pid) as unknown as AnyRec[]))
       }
 
-      // First 5 monsters are struck (1 initial + 4 pierces), releasing bolt waves; the 6th monster at x=140 is untouched!
+      // First 5 monsters are struck (1 initial + 4 pierces), releasing bolt waves; the 6th monster at x=160 is untouched!
       for (let i = 0; i < 5; i++) {
         expect(line[i]!.hp).toBeLessThan(100_000)
       }
       expect(line[5]!.hp).toBe(100_000)
+
       const furyBoltId = registry.getMissileByName('furylightning')!.id
+
       expect(events.filter((e) => e.type === 'CreateMissile' && e.missileClassId === furyBoltId).length).toBeGreaterThanOrEqual(5)
 
       // Without Pierce (0%): stops on the 1st monster
-      const plain = setupPlayer(18023, 'ama', { 35: 10 })
+      const plain = setupPlayer(18024, 'ama', { 35: 10 })
       plain.player.level = 45
       plain.player.x = 100
       plain.player.y = 100

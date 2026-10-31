@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { AutomapView } from '../../src/client/automap/automap-view.ts'
+import { AutomapView, formatAutomapExitLabel } from '../../src/client/automap/automap-view.ts'
 import type { LevelView } from '../../src/client/map/level-view.ts'
+import {
+  getAct2StaffTombLevelId,
+  getAct2TombLevelsFromSeed,
+} from '../../src/common/drlg/drlg-drlg.ts'
+import { levelDisplayName } from '../../src/common/world/level-names-zh.ts'
 
 /**
  * Regression tests for issue #845: in `'act'` reveal mode the sibling levels'
@@ -158,5 +163,84 @@ describe('AutomapView act-mode merge offsets (issue #845)', () => {
       expect.objectContaining({ name: 'Valkyrie', kind: 'ally' }),
       expect.objectContaining({ name: 'Akara', kind: 'npc' }),
     ])
+  })
+
+  it('marks the True Tomb of Tal Rasha in Canyon of the Magi when Automap Reveal is enabled and preserves vanilla labels when disabled', () => {
+    const seed = 0x113c2026
+    const { staffTombLevel, bossTombLevel } = getAct2TombLevelsFromSeed(seed)
+    expect(staffTombLevel).toBeGreaterThanOrEqual(66)
+    expect(staffTombLevel).toBeLessThanOrEqual(72)
+    expect(bossTombLevel).toBeGreaterThanOrEqual(66)
+    expect(bossTombLevel).toBeLessThanOrEqual(72)
+    expect(staffTombLevel).not.toBe(bossTombLevel)
+    expect(getAct2StaffTombLevelId(seed)).toBe(staffTombLevel)
+
+    const canyonView = makeFakeView({
+      areaId: 46,
+      tileOriginX: 200,
+      tileOriginY: 200,
+      isoOriginX: 0,
+      isoOriginY: 0,
+      floors: [{ cellNo: 1, cellX: 4, cellY: 4, xPixel: 0, yPixel: 32 }],
+      entrances: [
+        { x: 10, y: 10, toLevelId: 66 },
+        { x: 20, y: 10, toLevelId: 67 },
+        { x: 30, y: 10, toLevelId: 68 },
+        { x: 40, y: 10, toLevelId: 69 },
+        { x: 50, y: 10, toLevelId: 70 },
+        { x: 60, y: 10, toLevelId: 71 },
+        { x: 70, y: 10, toLevelId: 72 },
+      ],
+    })
+
+    // 1. Vanilla mode ('off' with all radar flags disabled): no True Tomb marker
+    const automapOff = new AutomapView({ initialMode: 'off' })
+    automapOff.setContext(seed, 0, 46, canyonView)
+    const levelOff = automapOff.buildMinimapLevel('CHI', 46)
+    expect(levelOff.markers.filter(m => m.kind === 'exit')).toHaveLength(7)
+    expect(levelOff.markers.some(m => m.isTrueTalRashaTomb)).toBe(false)
+    for (const m of levelOff.markers) {
+      expect(m.labelColor).toBeUndefined()
+      expect(m.targetName).toBe(levelDisplayName(m.toLevelId!, 'CHI'))
+    }
+
+    // 2. Automap Reveal active ('level' mode): exactly 1 tomb entrance is marked [真] / [True] in green
+    const automapReveal = new AutomapView({ initialMode: 'level' })
+    automapReveal.setContext(seed, 0, 46, canyonView)
+    const levelChi = automapReveal.buildMinimapLevel('CHI', 46)
+    const trueMarkersChi = levelChi.markers.filter(m => m.isTrueTalRashaTomb)
+    expect(trueMarkersChi).toHaveLength(1)
+    expect(trueMarkersChi[0]!.toLevelId).toBe(staffTombLevel)
+    expect(trueMarkersChi[0]!.labelColor).toBe('green')
+    expect(trueMarkersChi[0]!.targetName).toBe(
+      `* ${levelDisplayName(staffTombLevel, 'CHI')} [真] *`,
+    )
+
+    const falseMarkersChi = levelChi.markers.filter(m => !m.isTrueTalRashaTomb)
+    expect(falseMarkersChi).toHaveLength(6)
+    for (const m of falseMarkersChi) {
+      expect(m.labelColor).toBeUndefined()
+      expect(m.targetName).toBe(levelDisplayName(m.toLevelId!, 'CHI'))
+    }
+
+    const levelEng = automapReveal.buildMinimapLevel('ENG', 46)
+    const trueMarkersEng = levelEng.markers.filter(m => m.isTrueTalRashaTomb)
+    expect(trueMarkersEng).toHaveLength(1)
+    expect(trueMarkersEng[0]!.toLevelId).toBe(staffTombLevel)
+    expect(trueMarkersEng[0]!.labelColor).toBe('green')
+    expect(trueMarkersEng[0]!.targetName).toBe(
+      `* ${levelDisplayName(staffTombLevel, 'ENG')} [True] *`,
+    )
+
+    // 3. Server S2C 0x50 override (0..6 offset or 66..72 levelId) updates the marked tomb
+    const overrideTombId = staffTombLevel === 72 ? 66 : staffTombLevel + 1
+    automapReveal.setStaffTombLevelOverride(overrideTombId - 66)
+    const levelOverridden = automapReveal.buildMinimapLevel('CHI', 46)
+    const overriddenTrue = levelOverridden.markers.filter(m => m.isTrueTalRashaTomb)
+    expect(overriddenTrue).toHaveLength(1)
+    expect(overriddenTrue[0]!.toLevelId).toBe(overrideTombId)
+    expect(formatAutomapExitLabel(overrideTombId, 'CHI', overrideTombId, true)).toBe(
+      `* ${levelDisplayName(overrideTombId, 'CHI')} [真] *`,
+    )
   })
 })

@@ -239,15 +239,16 @@ describe('Issue #1200 (B16-39): Vine skills #294 Vine Attack / #307 CorpseCycler
       expect(corpse.states.has(104)).toBe(true)
       expect(spawned).toEqual(['vine beast attack', 'recycler delay'])
 
-      // Step 10 ticks: tick 0 spawns recycler explosion (#501) + recycler vine (#499, Range=60);
-      // tick 7 (47 - 7 = 40 = CltParam1) attaches ProgOverlay='steallife' to owner.
+      // Step 10 ticks: tick 0 spawns recycler explosion (#501) + recycler vine (#499, Range=60).
       for (let i = 0; i < 10; i++) world.tick(40)
       expect(spawned).toContain('recycler explosion')
       expect(spawned).toContain('recycler vine')
-      expect(attachSpy).toHaveBeenCalledWith(vine, 'steallife', false)
 
-      // Step 52 more ticks (total 62): tick 61 recycler vine expires -> spawns recycler fade (#500) via pCltHitFunc=56.
+      // Step 52 more ticks (total 62): tick 37 (47 - 37 = 10 = Missiles.txt #498 CltParam1, synced in 2d670a63;
+      // the former 40 was not a table value, Issue #1976) attaches ProgOverlay='steallife' to the owner, and
+      // tick 61 recycler vine expires -> spawns recycler fade (#500) via pCltHitFunc=56.
       for (let i = 0; i < 52; i++) world.tick(40)
+      expect(attachSpy).toHaveBeenCalledWith(vine, 'steallife', false)
       expect(spawned).toContain('recycler fade')
     }
   })

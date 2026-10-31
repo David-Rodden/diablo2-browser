@@ -170,32 +170,36 @@ describe('1.13c Object Interaction Range (D2Common #10594) & HitTest (0x6fb568e0
     })
     expect(inifuss.getHitBox()).toEqual({ left: -40, top: -40, width: 80, height: 80 })
     expect(getObjectHitBox113c(59, 2)).toEqual({ left: -40, top: -100, width: 80, height: 110 }) // Town Portal (CollisionSubst = 1)
-    expect(getObjectHitBox113c(26, 0)).toEqual({ left: -78, top: -141, width: 118, height: 207 }) // Cain's Gibbet (GetUnitFrameBounds)
+    // 1b4ad8ea (#1715): for non-door objects with CollisionSubst == 0, HitTest 0x6FB56B15 requires the
+    // 0x6FB1A550 COF header box (+-16 px) to pass before frame bounds 0x6FB56730, so the effective box is
+    // their intersection (kb/render/d2client-hittest-overlay-height-shake-113c.md, object row).
+    expect(getObjectHitBox113c(26, 0)).toEqual({ left: -78, top: -141, width: 118, height: 179 }) // Cain's Gibbet (frame 207 high, COF GI bottom = 38)
     expect(getObjectHitBox113c(13, 0)).toEqual({ left: -48, top: -91, width: 64, height: 135 }) // Closed Door (GetUnitFrameBounds)
     expect(getObjectHitBox113c(13, 2)).toEqual({ left: -20, top: -80, width: 40, height: 40 }) // Open Door (HitTestFixedBox)
-    expect(getObjectHitBox113c(149, 0)).toEqual({ left: -87, top: -37, width: 109, height: 88 }) // Act 2 Tainted Sun Altar
-    expect(getObjectHitBox113c(404, 0)).toEqual({ left: -62, top: -54, width: 94, height: 95 }) // Act 3 Compelling Orb
+    expect(getObjectHitBox113c(149, 0)).toEqual({ left: -87, top: -37, width: 109, height: 75 }) // Act 2 Tainted Sun Altar (frame 88 high, COF ZA bottom = 38)
+    expect(getObjectHitBox113c(404, 0)).toEqual({ left: -50, top: -54, width: 82, height: 82 }) // Act 3 Compelling Orb (frame -62..32 x -54..41 ∩ COF 55 -50..52 x -75..28)
   })
 
   it('4. Mode-specific hitBoxes, placeholder token fallbacks (Id=194 Kurast stairs), and sequential Objects.txt row indexing (408..412)', () => {
     // Act 3 Kurast Temple Stairs (Id=194, placeholder Token="SL" -> lookup "9C")
     expect(getObjectHitBox113c(194, 0)).toEqual({ left: -120, top: -93, width: 208, height: 164 })
 
-    // Act 5 Worldstone Chamber portal (Id=563, Selectable=[0,1,1,0...]) uses modes 1/2 212x247 bounds, not 8x8 nu dummy
-    expect(getObjectHitBox113c(563, 1)).toEqual({ left: -129, top: -156, width: 212, height: 247 })
-    expect(getObjectHitBox113c(563, 2)).toEqual({ left: -129, top: -156, width: 212, height: 247 })
-    expect(getObjectHitBox113c(569, 2)).toEqual({ left: -129, top: -156, width: 212, height: 247 })
+    // Act 5 Worldstone Chamber portal (Id=563, Selectable=[0,1,1,0...]) uses modes 1/2 212x247 frame bounds, not 8x8 nu dummy,
+    // intersected with the 0x6FB1A550 COF 4X box (-117..103 x -177..78) per 0x6FB56B15 (1b4ad8ea, #1715)
+    expect(getObjectHitBox113c(563, 1)).toEqual({ left: -117, top: -156, width: 200, height: 234 })
+    expect(getObjectHitBox113c(563, 2)).toEqual({ left: -117, top: -156, width: 200, height: 234 })
+    expect(getObjectHitBox113c(569, 2)).toEqual({ left: -117, top: -156, width: 200, height: 234 })
 
     // Act 5 strlastcinematic (Id=565) has different frame bounds in mode 1 (OP) vs mode 2 (ON)
     expect(getObjectHitBox113c(565, 1)).toEqual({ left: -129, top: -135, width: 228, height: 228 })
-    expect(getObjectHitBox113c(565, 2)).toEqual({ left: -85, top: -111, width: 139, height: 178 })
+    expect(getObjectHitBox113c(565, 2)).toEqual({ left: -85, top: -111, width: 139, height: 166 }) // frame 178 high ∩ COF PP mode 2 bottom = 55
 
     // Sequential D2Common DATATBLS_LoadObjectsTxt (0x6fd90b2a) rows 408..412
     expect(isObjectSelectableInMode(408, 0)).toBe(false) // Dummy (Token=98)
     expect(isObjectSelectableInMode(409, 0)).toBe(false) // Dummy (Token=99)
     expect(isObjectSelectableInMode(410, 0)).toBe(true) // Siege Control (Token=ZQ)
     expect(CANONICAL_113C_OBJECTS[410]?.nameEn).toBe('Siege Control')
-    expect(getObjectHitBox113c(410, 0)).toEqual({ left: -57, top: -62, width: 73, height: 88 })
+    expect(getObjectHitBox113c(410, 0)).toEqual({ left: -57, top: -62, width: 73, height: 75 }) // frame 88 high ∩ COF ZQ bottom = 13
     expect(CANONICAL_113C_OBJECTS[411]?.token).toBe('PX')
     expect(CANONICAL_113C_OBJECTS[412]?.token).toBe('PY')
   })
@@ -279,6 +283,11 @@ describe('1.13c Object Interaction Range (D2Common #10594) & HitTest (0x6fb568e0
         mode: 0,
       },
     })
+
+    // 990c0fbb (#1707): D2Client 0x6FADACC9..0x6FADADBB only sends C2S 0x13 for the Compelling Orb
+    // (mode 0) while Khalim's Will ('qf2') is wielded; otherwise it plays impossible speech and sends
+    // nothing (kb/network/d2client-s2c-unit-queue-and-c2s-interact-113c.md). Equip it in slot 4.
+    ;(world.containers.equipmentBySlot as Map<number, any>).set(4, { id: 7001, code: 'qf2', slot: 4 })
 
     const orbScreen = mockCamera.subtileToScreen(5000, 5000)
     for (const t of [1000, 1400, 1800]) {

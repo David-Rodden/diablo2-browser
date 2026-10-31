@@ -1,4 +1,7 @@
-import { DRLG_GetActNoFromLevelId } from '../../common/drlg/drlg-drlg.ts'
+import {
+  DRLG_GetActNoFromLevelId,
+  getAct2StaffTombLevelId,
+} from '../../common/drlg/drlg-drlg.ts'
 import { getMonsterKindByClassId } from '../../common/units/monsters-data.ts'
 import { NPC_HCIDX_TO_DESCRIPTOR_ID } from '../../common/units/npc-table.ts'
 import { levelDisplayName } from '../../common/world/level-names-zh.ts'
@@ -17,6 +20,29 @@ import type {
   AutomapRevealMode,
 } from '../settings/client-settings.ts'
 import type { RenderableUnitInput } from '../view/unit-drawables.ts'
+
+/**
+ * Formats an automap area/exit label, decorating the True Tomb of Tal Rasha (`pAct->pMisc->dwStaffTombLevel` in `66..72`)
+ * when Automap Reveal is active (`BH.dll` `Maphack::OnAutomapDraw` @ `0x101a7f06` -> `0x10251520` `ÿc2*`).
+ */
+export function formatAutomapExitLabel(
+  targetLevelId: number,
+  lang: TblLang = getTblLang(),
+  staffTombLevelId?: number,
+  markTrueTomb = false,
+): string {
+  const baseName = levelDisplayName(targetLevelId, lang)
+  if (
+    markTrueTomb &&
+    staffTombLevelId !== undefined &&
+    targetLevelId >= 66 &&
+    targetLevelId <= 72 &&
+    targetLevelId === staffTombLevelId
+  ) {
+    return lang === 'ENG' ? `* ${baseName} [True] *` : `* ${baseName} [真] *`
+  }
+  return baseName
+}
 
 export interface MinimapEntityDot {
   readonly worldX: number
@@ -109,6 +135,7 @@ export interface AutomapWarpMarker {
   readonly cellX: number
   readonly cellY: number
   readonly label: string
+  readonly isTrueTalRashaTomb?: boolean | undefined
 }
 
 export interface AutomapSnapshot {
@@ -154,6 +181,7 @@ export class AutomapView {
   private difficulty: DifficultyId = 0
   private currentAreaId = 1
   private currentActId: ActId = 1
+  private staffTombLevelOverride: number | null = null
   private pendingVisibilityToggle = false
   private dirtyVersion = 1
   private cachedMinimapLevel: { readonly key: string; readonly level: MinimapLevel } | null = null
@@ -305,6 +333,50 @@ export class AutomapView {
   }
 
   /**
+   * Returns the Act II True Tomb of Tal Rasha level ID (`66..72`), preferring an explicit
+   * server override (`S2C 0x50` type 1 `tombOffset`) and falling back to deterministic
+   * DRLG seed generation (`getAct2StaffTombLevelId(this.mapSeed)`).
+   */
+  getStaffTombLevelId(): number {
+    return this.staffTombLevelOverride ?? getAct2StaffTombLevelId(this.mapSeed)
+  }
+
+  /**
+   * Set or clear an explicit server override for the Act II True Tomb of Tal Rasha.
+   * Accepts either a 0-based tomb offset (`0..6`, mapped to `66 + offset`), a level ID (`66..72`),
+   * or `null`/`undefined` to clear the override.
+   */
+  setStaffTombLevelOverride(levelIdOrOffset: number | null | undefined): void {
+    let next: number | null = null
+    if (typeof levelIdOrOffset === 'number' && Number.isFinite(levelIdOrOffset)) {
+      const n = levelIdOrOffset | 0
+      if (n >= 0 && n <= 6) {
+        next = 66 + n
+      } else if (n >= 66 && n <= 72) {
+        next = n
+      }
+    }
+    if (this.staffTombLevelOverride !== next) {
+      this.staffTombLevelOverride = next
+      this.dirtyVersion += 1
+    }
+  }
+
+  /**
+   * True when the Automap Reveal plugin or reveal mode is active (`mode !== 'off'` or any
+   * `automap-reveal` radar option is enabled). Strictly `false` in vanilla mode (`mode === 'off'`
+   * with all radar options off).
+   */
+  isTrueTombMarkingEnabled(): boolean {
+    return (
+      this.mode !== 'off' ||
+      this.showWaypoints ||
+      this.radarConfig.automapShowMonsters ||
+      this.radarConfig.automapShowShrines
+    )
+  }
+
+  /**
    * Bind or update the active map seed, difficulty, and current `areaId`.
    */
   setContext(
@@ -322,6 +394,9 @@ export class AutomapView {
     this.currentActId = nextActId
     this.dirtyVersion += 1
 
+    if (seedChanged) {
+      this.staffTombLevelOverride = null
+    }
     if (seedChanged || actChanged) {
       this.levelViews.clear()
       this.serverRevealedRooms.clear()
@@ -560,7 +635,15 @@ export class AutomapView {
       }
     }
     if (this.mode === 'act' && this.mapService) {
-      const actLevels = this.actRevealLevelIds[this.currentActId] ?? [this.currentAreaId]
+      const baseActLevels = this.actRevealLevelIds[this.currentActId] ?? [this.currentAreaId]
+      const staffTombLevel =
+        this.currentActId === 2 && this.actRevealLevelIds === ACT_PRIMARY_LEVEL_IDS
+          ? this.getStaffTombLevelId()
+          : 0
+      const actLevels =
+        staffTombLevel >= 66 && staffTombLevel <= 72 && !baseActLevels.includes(staffTombLevel)
+          ? [...baseActLevels, staffTombLevel]
+          : baseActLevels
       const idsToReveal = actLevels.includes(this.currentAreaId)
         ? actLevels
         : [this.currentAreaId, ...actLevels]
@@ -572,10 +655,16 @@ export class AutomapView {
 
   private resolveStitchedAreaIds(primaryView?: LevelView): number[] {
     if (this.mode === 'act') {
+      const baseActLevels = this.actRevealLevelIds[this.currentActId] ?? []
+      const staffTombLevel =
+        this.currentActId === 2 && this.actRevealLevelIds === ACT_PRIMARY_LEVEL_IDS
+          ? this.getStaffTombLevelId()
+          : 0
       return Array.from(
         new Set([
           this.currentAreaId,
-          ...(this.actRevealLevelIds[this.currentActId] ?? []),
+          ...baseActLevels,
+          ...(staffTombLevel >= 66 && staffTombLevel <= 72 ? [staffTombLevel] : []),
           ...Array.from(this.levelViews.keys()).filter(
             (id) => getActForArea(id) === this.currentActId,
           ),
@@ -745,7 +834,9 @@ export class AutomapView {
     lang: TblLang = getTblLang(),
   ): AutomapSnapshot {
     this.syncConnectedLevelViewsFromMapService()
-    const roomCacheKey = `${this.dirtyVersion}:${this.currentAreaId}:${this.mode}:${lang}:${this.mapSeed}:${this.difficulty}`
+    const markTrueTomb = this.isTrueTombMarkingEnabled()
+    const staffTombLevel = this.getStaffTombLevelId()
+    const roomCacheKey = `${this.dirtyVersion}:${this.currentAreaId}:${this.mode}:${lang}:${this.mapSeed}:${this.difficulty}:${markTrueTomb ? staffTombLevel : 0}`
     let roomSnap = this.cachedRoomSnapshot
     if (!roomSnap || roomSnap.key !== roomCacheKey) {
       this.applyRevealModeToViews()
@@ -758,6 +849,8 @@ export class AutomapView {
       for (const areaId of visibleAreaIds) {
         const view = this.levelViews.get(areaId)
         if (!view) continue
+        const isTrueTomb = markTrueTomb && areaId >= 66 && areaId <= 72 && areaId === staffTombLevel
+        const areaLabel = formatAutomapExitLabel(areaId, lang, staffTombLevel, markTrueTomb)
         if (this.mode === 'off') {
           let firstRevealed: LevelRoomView | undefined
           for (const room of view.rooms) {
@@ -778,7 +871,8 @@ export class AutomapView {
               toAreaId: areaId,
               cellX: firstRevealed.tileX + Math.floor(firstRevealed.tileW / 2),
               cellY: firstRevealed.tileY + Math.floor(firstRevealed.tileH / 2),
-              label: levelDisplayName(areaId, lang),
+              label: areaLabel,
+              ...(isTrueTomb ? { isTrueTalRashaTomb: true } : {}),
             })
           }
         } else {
@@ -799,7 +893,8 @@ export class AutomapView {
               toAreaId: areaId,
               cellX: first.tileX + Math.floor(first.tileW / 2),
               cellY: first.tileY + Math.floor(first.tileH / 2),
-              label: levelDisplayName(areaId, lang),
+              label: areaLabel,
+              ...(isTrueTomb ? { isTrueTalRashaTomb: true } : {}),
             })
           }
         }
@@ -930,12 +1025,15 @@ export class AutomapView {
     if (areaId !== undefined && areaId > 0 && areaId !== this.currentAreaId) {
       this.syncActiveLevel(areaId)
     }
-    const fastCacheKey = `${this.dirtyVersion}:${this.currentAreaId}:${this.mode}:${lang}:${this.mapSeed}:${this.difficulty}`
+    const markTrueTomb = this.isTrueTombMarkingEnabled()
+    const staffTombLevel = this.getStaffTombLevelId()
+    const trueTombKeyPart = markTrueTomb ? staffTombLevel : 0
+    const fastCacheKey = `${this.dirtyVersion}:${this.currentAreaId}:${this.mode}:${lang}:${this.mapSeed}:${this.difficulty}:${trueTombKeyPart}`
     if (this.cachedMinimapLevel && this.cachedMinimapLevel.key === fastCacheKey) {
       return this.cachedMinimapLevel.level
     }
     this.syncConnectedLevelViewsFromMapService()
-    const cacheKey = `${this.dirtyVersion}:${this.currentAreaId}:${this.mode}:${lang}:${this.mapSeed}:${this.difficulty}`
+    const cacheKey = `${this.dirtyVersion}:${this.currentAreaId}:${this.mode}:${lang}:${this.mapSeed}:${this.difficulty}:${trueTombKeyPart}`
     if (this.cachedMinimapLevel && this.cachedMinimapLevel.key === cacheKey) {
       return this.cachedMinimapLevel.level
     }
@@ -971,7 +1069,7 @@ export class AutomapView {
       this.hasServerRevealedRoomsForArea(this.currentAreaId)
     const needsStitchedOrRevealedClone =
       visibleAreaIds.length > 1 || primaryHasServerRevealedRooms
-    const topologyKey = `${this.currentAreaId}:${visibleAreaIds.join(',')}:${needsStitchedOrRevealedClone ? 1 : 0}:${this.mode}:${lang}:${this.mapSeed}:${this.difficulty}`
+    const topologyKey = `${this.currentAreaId}:${visibleAreaIds.join(',')}:${needsStitchedOrRevealedClone ? 1 : 0}:${this.mode}:${lang}:${this.mapSeed}:${this.difficulty}:${trueTombKeyPart}`
 
     // Fast path (#1319): when the stitched outdoor topology is unchanged and only
     // `dirtyVersion` incremented due to `0x07 AddRoomData` / `0x08 RemoveRoomData`,
@@ -1131,13 +1229,26 @@ export class AutomapView {
         if (ent.toLevelId > 0 && ent.toLevelId !== this.currentAreaId) {
           const entPreRevealed =
             isPrimaryCellRevealed !== null && isPrimaryCellRevealed(ent.x, ent.y)
+          const isTrueTomb =
+            markTrueTomb &&
+            ent.toLevelId >= 66 &&
+            ent.toLevelId <= 72 &&
+            ent.toLevelId === staffTombLevel
           pushDeduplicatedExitMarker({
             cellX: ent.x,
             cellY: ent.y,
             kind: 'exit',
             fromLevelId: this.currentAreaId,
             toLevelId: ent.toLevelId,
-            targetName: levelDisplayName(ent.toLevelId, lang),
+            targetName: formatAutomapExitLabel(
+              ent.toLevelId,
+              lang,
+              staffTombLevel,
+              markTrueTomb,
+            ),
+            ...(isTrueTomb
+              ? { isTrueTalRashaTomb: true, labelColor: 'green' as const }
+              : {}),
             ...(entPreRevealed ? { preRevealed: true } : {}),
           })
         }
@@ -1290,13 +1401,26 @@ export class AutomapView {
                 : isOtherCellRevealed !== null && isOtherCellRevealed(ent.x, ent.y)
                   ? true
                   : false
+              const isTrueTomb =
+                markTrueTomb &&
+                ent.toLevelId >= 66 &&
+                ent.toLevelId <= 72 &&
+                ent.toLevelId === staffTombLevel
               pushDeduplicatedExitMarker({
                 cellX: ent.x + dCellX,
                 cellY: ent.y + dCellY,
                 kind: 'exit',
                 fromLevelId: otherAreaId,
                 toLevelId: ent.toLevelId,
-                targetName: levelDisplayName(ent.toLevelId, lang),
+                targetName: formatAutomapExitLabel(
+                  ent.toLevelId,
+                  lang,
+                  staffTombLevel,
+                  markTrueTomb,
+                ),
+                ...(isTrueTomb
+                  ? { isTrueTalRashaTomb: true, labelColor: 'green' as const }
+                  : {}),
                 preRevealed: entPreRevealed,
               })
             }
@@ -1369,7 +1493,12 @@ export class AutomapView {
       originX,
       originY,
       levelId: this.currentAreaId,
-      levelName: levelDisplayName(this.currentAreaId, lang),
+      levelName: formatAutomapExitLabel(
+        this.currentAreaId,
+        lang,
+        staffTombLevel,
+        markTrueTomb,
+      ),
       difficulty: getLocalizedDifficulty(this.difficulty, lang),
       preRevealTown,
       automap,

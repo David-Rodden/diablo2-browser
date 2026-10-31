@@ -1680,10 +1680,10 @@ export class SummonManager {
                 ? hydraDmg.max256
                 : (45 + pet.slvl * 18) * FIXED_ONE
 
-          // 1.13c Sentry owner isolation: ground sentries are independent minion units and do NOT inherit
-          // player +% Elemental Skill Damage or -% Enemy Resistance.
+          // 1.13c Sentry / Minion owner isolation (#1874): ground sentries and skeleton mages are independent
+          // minion units and do NOT inherit player +% Elemental Skill Damage or -% Enemy Resistance (`stats 329..336`).
           const mslOwner: CombatUnitContext =
-            pet.petType === 'assassintrap'
+            pet.petType === 'assassintrap' || Boolean(mageMsl)
               ? {
                   id: pet.uid,
                   name: pet.kind ?? 'sentry',

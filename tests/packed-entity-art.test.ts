@@ -126,7 +126,9 @@ describe('offline pre-baked entity atlases & full Act 1..5 pack index (Issues #3
       expect(meta.schema).toBe(2)
       expect(meta.file).toBe(`${slug}.r8`)
       expect(meta.format).toBe('r8')
-      expect(meta.groups[0]![0]!.length).toBe(6)
+      // Paged atlases (745cc79c, #921: writeEntityR8Pages in pack-entity-assets.ts) append the page
+      // index as a 7th tuple element and list every page in `meta.pages`; single-page atlases keep 6.
+      expect(meta.groups[0]![0]!.length).toBe(Array.isArray(meta.pages) && meta.pages.length > 1 ? 7 : 6)
       const r8 = readFileSync(r8Path)
       expect(r8.byteLength).toBe(meta.width * meta.height)
 

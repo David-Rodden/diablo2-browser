@@ -349,7 +349,7 @@ describe('Issue #1416: 1.13c D2Common#10212 block rate, running 1/3 penalty, mon
     // Roll 0 (hits), Roll 12 (>= 12% -> NOT blocked when running!)
     playerRec.mode = 3
     const hpBefore = playerRec.hp as number
-    rolls.push(0, 12, 0)
+    rolls.push(12, 0)
     ;(
       game as unknown as {
         resolveMonsterAttackOnPlayer: (monster: unknown, player: unknown) => void

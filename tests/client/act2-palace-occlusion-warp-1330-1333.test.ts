@@ -33,6 +33,7 @@ import { OutboundRateLimiter } from '../../src/client/session/rate-limiter.ts'
 import { HudModel } from '../../src/client/ui-model/hud-model.ts'
 import { HudManager } from '../../src/client/ui/hud-manager.ts'
 import {
+  CAMERA_Y_OFFSET,
   VIEWPORT_800x600,
   subTileToScreen,
   subTileToWorldOrtho,
@@ -165,7 +166,9 @@ describe('Issue #1330: 1.13c DrawGrid upper-wall vs unit depth order & initial P
       playerWorld: fgPos,
       playerSubTile: { x: 57, y: 147 },
       playerLocalSubTile: { x: 57, y: 147 },
-      cameraTopLeft: { x: 0, y: 0 },
+      // renderSceneSourceFrame derives the camera from snapshot.cameraTopLeft (effb5c0a, #1370), which
+      // ClientWorldSceneSource fills with playerWorld + CAMERA_Y_OFFSET - viewport/2; keep the fixture consistent.
+      cameraTopLeft: { x: fgPos.x - 400, y: fgPos.y + CAMERA_Y_OFFSET - 300 },
       floorQuads: [],
       shadowQuads: [],
       lowerWallQuads: [],

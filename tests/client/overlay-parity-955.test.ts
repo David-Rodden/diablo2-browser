@@ -134,7 +134,22 @@ describe('Issue #955 — client cast prediction hygiene', () => {
 
   it('Raise Skeleton (70) spawns only the corpseexplosion missile — no predicted summon unit, no bonecast', () => {
     const world = createWorldWithRightSkill(70)
-    const cmd: ClientCommand = { type: 'SkillAt', hand: 'right', at: { x: 5010, y: 5000 }, hold: false }
+    // Issue #1976: Skills.txt #70 has cltstfunc=20 and stsuccessonly=1; SKILLS_CltSt20 (0x6FB78410) fails without a
+    // dead target unit, and since 200c179c (#1607) a failed start spawns nothing. Cast on a real corpse.
+    world.apply({
+      type: 'UnitAssign',
+      unit: { unitType: 1, id: 61, classId: 140, name: 'Fallen', x: 5010, y: 5000 },
+    })
+    const corpse = world.getUnit('monster', 61)!
+    corpse.dead = true
+    corpse.mode = 12
+    const cmd: ClientCommand = {
+      type: 'SkillOn',
+      hand: 'right',
+      target: { unitType: 'monster', id: 61 },
+      shift: false,
+      hold: false,
+    }
     world.noteOutgoingCommand(cmd)
 
     // Issue #905: cltmissilea spawns at the cast animation's action frame.

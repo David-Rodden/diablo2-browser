@@ -21,6 +21,7 @@ import {
   resolveGroundItemSpriteRect,
 } from '../../src/client/ui/inventory.ts'
 import { BAKED_UI_MANIFEST } from '../../src/common/items/baked-ui-meta.ts'
+import { CAMERA_Y_OFFSET } from '../../src/client/view/viewport-profile.ts'
 import {
   drawSceneUnitDrawable,
   renderSceneSourceFrame,
@@ -493,7 +494,9 @@ describe('Issue #865: S2C 0x9C WorldItemAction Drop/Flippy Modes (5 -> 3) & flpg
         playerWorld: { x: 0, y: 0 },
         playerSubTile: { x: 0, y: 0 },
         playerLocalSubTile: { x: 0, y: 0 },
-        cameraTopLeft: { x: 0, y: 0 },
+        // renderSceneSourceFrame derives the camera from snapshot.cameraTopLeft (effb5c0a, #1370), which
+        // ClientWorldSceneSource fills with playerWorld + CAMERA_Y_OFFSET - viewport/2; keep the fixture consistent.
+        cameraTopLeft: { x: -400, y: CAMERA_Y_OFFSET - 300 },
         floorQuads: [],
         shadowQuads: [],
         lowerWallQuads: [],

@@ -4,6 +4,7 @@
  */
 
 import { ProtocolError } from '../core/errors.ts'
+import { ByteWriter } from '../core/byte-writer.ts'
 import type { TextEncoding } from '../core/text-codec.ts'
 import type { ClientCommand } from '../domain/client-command.ts'
 import type { ItemDataTables } from '../domain/ids.ts'
@@ -82,6 +83,7 @@ import {
 import { encodeC2sTrade } from './c2s/trade.ts'
 import { encodeC2sRequestEntityUpdate, encodeC2sUpdatePlayerPos } from './c2s/position.ts'
 import { D2GS_S2C_PACKET_SIZES, resolveFramedS2cPacketSize } from './framing-s2c.ts'
+import { validateC2sPacket } from './framing-c2s.ts'
 import { getDefault113cItemDataTables } from './tables/item-tables-113c.ts'
 import { decode0x26ChatMessage, decode0x5AEventMessage } from './s2c/chat.ts'
 import {
@@ -667,6 +669,12 @@ export function encodeD2gsClientCommand(
       return [encodeC2sOverheadChat(cmd.text, encoding)]
     case 'Say':
       return [encodeC2sSay(cmd.phraseId)]
+    case 'QuestMessageSound': {
+      const w = new ByteWriter(3)
+      w.u8(0x58)
+      w.u16LE(cmd.questId)
+      return [validateC2sPacket(w.toUint8Array())]
+    }
     case 'RequestQuestData':
       return [encodeC2sRequestQuestData()]
     case 'StaffInOrifice':

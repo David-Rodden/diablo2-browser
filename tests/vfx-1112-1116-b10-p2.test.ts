@@ -218,10 +218,13 @@ describe('B10-p2 Spell VFX Parity (#1112, #1113, #1114, #1115, #1116)', () => {
         expect(teethExp.length).toBe(1)
         expect(teethExp[0]!.classId).toBe(204)
 
-        // 2) Friendly player/ally hit attaches 'healing' overlay and removes the bolt without teethexplode
+        // 2) Friendly player/ally hit attaches 'healing' overlay and removes the bolt without teethexplode.
+        // Issue #1976: since 2d670a63 (#1511) unit collision waits for Missiles.txt `Activate` frames
+        // (fistoftheheavensbolt #234 Activate=2, holybolt #55 Activate=0), so the ally stands a few sub-tiles
+        // down-range and the bolt is stepped until it collides.
         const wFriend = new ClientWorld()
         wFriend.apply({ type: 'PlayerAssign', unitId: 1, charClass: 3, name: 'Pal', x: 100, y: 100 })
-        wFriend.apply({ type: 'PlayerAssign', unitId: 2, charClass: 0, name: 'Ally', x: 100.5, y: 100 })
+        wFriend.apply({ type: 'PlayerAssign', unitId: 2, charClass: 0, name: 'Ally', x: 103, y: 100 })
         const ally = wFriend.getUnit('player', 2)!
         const hbFriend = (wFriend as any).spawnMissileByKey(boltKey, 100, 100, 110, 100, {
           ownerType: 'player',
@@ -229,7 +232,9 @@ describe('B10-p2 Spell VFX Parity (#1112, #1113, #1114, #1115, #1116)', () => {
           sourceSkillId: boltKey === 'holybolt' ? 101 : 121,
           skillLevel: 5,
         })
-        ;(wFriend as any).stepMissileUnit(hbFriend)
+        for (let t = 0; t < 10 && wFriend.units.has(hbFriend.key); t++) {
+          ;(wFriend as any).stepMissileUnit(hbFriend)
+        }
         expect(wFriend.units.has(hbFriend.key)).toBe(false)
         expect(ally.overlays.some((o) => o.token === 'healing')).toBe(true)
         expect(
@@ -297,6 +302,15 @@ describe('B10-p2 Spell VFX Parity (#1112, #1113, #1114, #1115, #1116)', () => {
           .map((u) => u.missileKey)
         expect(spawnedKeys).toContain('recycler explosion')
         expect(spawnedKeys).toContain('recycler vine')
+        // Issue #1976: the owner overlay fires when remaining frames == CltParam1. 1.13c Missiles.txt has
+        // CltParam1=10 (#498) / 20 (#540) with Range=47 (synced in 2d670a63); the old 40 was not a table value.
+        const row = CANONICAL_113C_MISSILES[key]!
+        expect(row.cltParam1).toBe(key === 'recycler delay' ? 10 : 20)
+        const range = delayMissile.maxTicks as number
+        expect(range).toBe(47)
+        while (delayMissile.ageTicks < range - row.cltParam1! + 1 && w.units.has(delayMissile.key)) {
+          ;(w as any).stepMissileUnit(delayMissile)
+        }
         expect(owner.overlays.some((o) => o.token === expectedOverlay)).toBe(true)
       }
     })

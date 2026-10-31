@@ -269,6 +269,7 @@ export type ClientCommand =
   | { readonly type: 'Chat'; readonly text: string; readonly whisperTo?: string | undefined }
   | { readonly type: 'OverheadChat'; readonly text: string }
   /** 0x3F Say (3B, D2Client.dll 0x6fae9c80..0x6fae9d60 -> 0x6fad9bf0): Numpad 0..7 voice emote phrase (25..32). */
+  | { readonly type: 'QuestMessageSound'; readonly questId: number }
   | { readonly type: 'Say'; readonly phraseId: number }
   | { readonly type: 'RequestQuestData' }
   | {

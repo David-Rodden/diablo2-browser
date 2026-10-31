@@ -49,6 +49,38 @@ export function DUNGEON_GameTileToSubtileCoords(nX: number, nY: number): { nX: n
   return { nX: nX * 5, nY: nY * 5 }
 }
 
+/**
+ * Deterministic Act II True Tomb (`nStaffTombLevel`, in `66..72`) and Duriel's Lair (`nBossTombLevel`, in `66..72`)
+ * resolved from the game map seed (`nInitSeed`), matching `D2Common.dll` `DRLG_AllocDrlg` (`0x6FD74120` #10014)
+ * and `BH.dll` `Maphack::OnAutomapDraw` (`0x101a7f06`, `pAct->pMisc->dwStaffTombLevel`).
+ */
+export function getAct2TombLevelsFromSeed(nInitSeed: number): {
+  readonly staffTombLevel: number
+  readonly bossTombLevel: number
+} {
+  const pSeed = newD2Seed()
+  SEED_InitLowSeed(pSeed, nInitSeed >>> 0)
+  // First roll is pDrlg->dwStartSeed
+  SEED_RollRandomNumber(pSeed)
+  let nStaffLevelOffset = 0
+  let nBossLevelOffset = 0
+  do {
+    nStaffLevelOffset = (SEED_RollRandomNumber(pSeed) >>> 0) % 7
+    nBossLevelOffset = (SEED_RollRandomNumber(pSeed) >>> 0) % 7
+  } while (nStaffLevelOffset === nBossLevelOffset)
+  return {
+    staffTombLevel: LEVEL_TALRASHASTOMB1 + nStaffLevelOffset,
+    bossTombLevel: LEVEL_TALRASHASTOMB1 + nBossLevelOffset,
+  }
+}
+
+/**
+ * Returns the Act II True Tomb of Tal Rasha level ID (`66..72`) for the given `nInitSeed` (`mapSeed`).
+ */
+export function getAct2StaffTombLevelId(nInitSeed: number): number {
+  return getAct2TombLevelsFromSeed(nInitSeed).staffTombLevel
+}
+
 //1.10f: D2Common.0x6FD74120 (#10014)
 // pAct, hArchive (always null), pGame and the automap callbacks do not influence generation.
 export function DRLG_AllocDrlg(

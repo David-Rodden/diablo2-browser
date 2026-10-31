@@ -18,7 +18,8 @@
  *      while summing their per-frame poison bitrates (`<< 8`) with Venom's bitrate.
  */
 import { FIXED_ONE, UnitStatList } from './stat-list.ts'
-import { computeDiminishingReturns } from '../../common/data/calc-ast.ts'
+import { compute5BandScaling, computeDiminishingReturns } from '../../common/data/calc-ast.ts'
+import { resolveWeaponBase113c } from '../../common/units/char-anim-speed.ts'
 import { StateBus, type ReactiveUnitOverlayEvent } from './state-bus.ts'
 import { calculateIronMaidenReturnPct } from './missile-engine.ts'
 import {
@@ -101,6 +102,7 @@ export interface CombatUnitContext {
   readonly weaponDexBonus?: number | undefined
   readonly weaponPoisonBitrate256?: number
   readonly weaponPoisonFrames?: number
+  readonly weaponPoisonSources?: readonly { readonly bitrate256: number; readonly frames: number }[] | undefined
   readonly unitType?: 'player' | 'mercenary' | 'party' | 'party_mercenary' | 'minion' | 'monster'
   /**
    * `DifficultyLevels.txt` `ResistPenalty` (0 / -40 / -100) of the game this unit lives in.
@@ -132,9 +134,14 @@ export interface CombatUnitContext {
   readonly drain?: number | undefined
   readonly isBoss?: boolean
   readonly isPrimeEvil?: boolean
+  readonly isSuperUnique?: boolean
   readonly coldEffect?: number
   readonly isChampion?: boolean
-  readonly rank?: 'normal' | 'champion' | 'unique' | 'minion' | 'boss'
+  readonly rank?: 'normal' | 'champion' | 'unique' | 'superunique' | 'minion' | 'boss'
+  readonly armorClassIncludesDex?: boolean
+  readonly smiteMinDam?: number
+  readonly smiteMaxDam?: number
+  readonly partyScaleCount?: number
   readonly hasDualWield?: boolean
   readonly isDualWielding?: boolean
   readonly hasDualThrow?: boolean
@@ -406,6 +413,8 @@ export function computeToHitChance(params: {
   ignoreTargetAc?: boolean
   fractionalTargetAc?: number
   isTargetPlayerOrBossOrMerc?: boolean
+  blocksIgnoreTargetDefense?: boolean
+  halvesFractionalTargetAc?: boolean
   defenderAcVsMissile?: number
   defenderAcVsHth?: number
   attackKind?: 'melee' | 'missile' | 'spell'
@@ -420,14 +429,19 @@ export function computeToHitChance(params: {
   const arBonusPct = Math.trunc(params.skillArBonusPct ?? 0) + Math.trunc(params.itemArBonusPct ?? 0)
   let effAr = baseAr + Math.trunc((baseAr * arBonusPct) / 100)
 
+  const blocksItd =
+    params.blocksIgnoreTargetDefense ?? Boolean(params.isTargetPlayerOrBossOrMerc)
+  const halvesFracAc =
+    params.halvesFractionalTargetAc ?? Boolean(params.isTargetPlayerOrBossOrMerc)
+
   let effDef = 0
-  if (!(params.ignoreTargetAc && !params.isTargetPlayerOrBossOrMerc)) {
+  if (!(params.ignoreTargetAc && !blocksItd)) {
     effDef = Math.trunc(params.defenderDef)
     const rawFrac = Math.trunc(params.fractionalTargetAc ?? 0)
     if (rawFrac > 0) {
       const frac = Math.min(
         100,
-        Math.max(0, params.isTargetPlayerOrBossOrMerc ? Math.trunc(rawFrac / 2) : rawFrac),
+        Math.max(0, halvesFracAc ? Math.trunc(rawFrac / 2) : rawFrac),
       )
       if (frac > 0) {
         effDef -= Math.trunc((effDef * frac) / 100)
@@ -865,6 +879,18 @@ export interface SUnitDmgPacket {
   readonly bypassUndeadMagicRes?: boolean | undefined
   readonly concentrationAlreadyApplied?: boolean | undefined
   readonly preScaledPhysEd?: boolean | undefined
+  readonly skipAttrEd?: boolean | undefined
+  readonly includesNormalDamage?: boolean | undefined
+  readonly skipCrushingBlow?: boolean | undefined
+  readonly skipOpenWounds?: boolean | undefined
+  readonly skipWeaponElemRiders?: boolean | undefined
+  readonly skipWeaponPoison?: boolean | undefined
+  readonly skipElemMastery?: boolean | undefined
+  readonly riderSrcDam?: number | undefined
+  readonly playerCount?: number | undefined
+  readonly vengeanceBasePhys256?: number | undefined
+  readonly cbRoll100?: number | undefined
+  readonly owRoll100?: number | undefined
   readonly hitClass?: number | string | undefined
   readonly rng?: CombatRng | undefined
 }
@@ -886,6 +912,13 @@ export interface SUnitDmgOutcome {
   readonly knockedBack?: boolean
   readonly noHitRecovery?: boolean
   readonly hitClass?: number | undefined
+  readonly crushingBlowTriggered?: boolean
+  readonly crushingBlowDamage256?: number
+  readonly openWoundsTriggered?: boolean
+  readonly openWoundsBitrate256?: number
+  readonly openWoundsFrames?: number
+  readonly poisonBitrate256?: number
+  readonly poisonDurationFrames?: number
   readonly attackerStatesApplied?: readonly string[]
   readonly attackerColdDamage256?: number
   readonly reflectedPhys256?: number
@@ -900,6 +933,162 @@ export interface SUnitDmgOutcome {
   readonly defenderOverlaysApplied?: readonly string[]
   readonly unitOverlays?: readonly ReactiveUnitOverlayEvent[]
   readonly warnings?: readonly string[]
+}
+
+/**
+ * 1.13c `Weapons.txt` `StrBonus` / `DexBonus` physical damage scaling factors (`D2Game.dll` `0x6FCFC640..0x6FCFC6CE`, #1867):
+ * - Explicit `attacker.weaponStrBonus` / `weaponDexBonus` takes precedence when provided.
+ * - `#97 Smite` (`0x6FCB87D0`): `100 Str / 0 Dex`.
+ * - Equipped `weaponCode`: exact `Weapons.txt` `StrBonus` / `DexBonus` columns via `resolveWeaponBase113c`.
+ * - `weaponItemType` fallback:
+ *   - `abow` / `bow` / `xbow`: `0 Str / 100 Dex`
+ *   - `ajav` / `aspe` (Amazon spears & javelins): `80 Str / 50 Dex`
+ *   - `hamm` (War Hammer / Maul / Great Maul): `110 Str / 0 Dex`
+ *   - `h2h` / `h2h2` / `knif` / `tkni` / `taxe` / `jave` / `jav`: `75 Str / 75 Dex`
+ *   - `tpot`: `0 Str / 0 Dex`
+ *   - standard melee weapon types (`swor`, `axe`, `mace`, `club`, `scep`, `pole`, `spea`, `staf`, `wand`, `orb`): `100 Str / 0 Dex`
+ */
+export function resolveWeaponAttrFactors113c(
+  attacker: Pick<
+    CombatUnitContext,
+    | 'unitType'
+    | 'weaponStrBonus'
+    | 'weaponDexBonus'
+    | 'weaponCode'
+    | 'weaponItemType'
+    | 'weaponMinPhys'
+    | 'weaponMaxPhys'
+  >,
+  attackKind: 'melee' | 'missile' | 'spell',
+  skillId?: number,
+): { readonly strBonus: number; readonly dexBonus: number } {
+  if (skillId === 97) {
+    return { strBonus: 100, dexBonus: 0 }
+  }
+  if (attacker.weaponStrBonus !== undefined || attacker.weaponDexBonus !== undefined) {
+    return {
+      strBonus: attacker.weaponStrBonus ?? 0,
+      dexBonus: attacker.weaponDexBonus ?? 0,
+    }
+  }
+  const code = (attacker.weaponCode ?? '').trim().toLowerCase()
+  if (code !== '') {
+    const wb = resolveWeaponBase113c(code)
+    if (wb) {
+      return { strBonus: wb.strBonus, dexBonus: wb.dexBonus }
+    }
+  }
+  const wType = (attacker.weaponItemType ?? '').trim().toLowerCase()
+  if (wType !== '') {
+    switch (wType) {
+      case 'abow':
+      case 'bow':
+      case 'xbow':
+        return { strBonus: 0, dexBonus: 100 }
+      case 'ajav':
+      case 'aspe':
+        return { strBonus: 80, dexBonus: 50 }
+      case 'hamm':
+        return { strBonus: 110, dexBonus: 0 }
+      case 'h2h':
+      case 'h2h2':
+      case 'knif':
+      case 'tkni':
+      case 'taxe':
+      case 'jave':
+      case 'jav':
+        return { strBonus: 75, dexBonus: 75 }
+      case 'tpot':
+        return { strBonus: 0, dexBonus: 0 }
+      default:
+        return { strBonus: 100, dexBonus: 0 }
+    }
+  }
+  if (
+    attacker.unitType === 'player' &&
+    attackKind === 'melee' &&
+    attacker.weaponMinPhys === undefined &&
+    attacker.weaponMaxPhys === undefined
+  ) {
+    return { strBonus: 100, dexBonus: 0 }
+  }
+  return { strBonus: 0, dexBonus: 0 }
+}
+
+/**
+ * 1.13c Open Wounds (`D2Game.dll` `0x6FCCD410` `ITEMEVENTS_ApplyOpenWounds`, `stat 135`, #1870):
+ * - Duration: fixed `200` frames (`8` seconds @ 25Hz).
+ * - Base per-frame `256ths` bleed rate by attacker `clvl`:
+ *   - `1..15`: `9 * clvl + 31`
+ *   - `16..30`: `18 * clvl - 104`
+ *   - `31..45`: `27 * clvl - 374`
+ *   - `46..60`: `36 * clvl - 779`
+ *   - `61..99`: `45 * clvl - 1319`
+ * - Target scaling:
+ *   - Player target (`PvP`): `/ 4` melee, `/ 8` ranged (`isRanged === true`).
+ *   - Boss (`MonStats.boss == 1` / `isBoss` / `isPrimeEvil` / `rank === 'boss'`): `/ 2` (both melee and ranged).
+ */
+export function calculateOpenWounds113c(params: {
+  readonly attackerLvl: number
+  readonly isRanged?: boolean | undefined
+  readonly defender: Pick<CombatUnitContext, 'unitType' | 'isBoss' | 'isPrimeEvil' | 'rank'>
+}): {
+  readonly bitrate256: number
+  readonly durationFrames: number
+  readonly totalDamage256: number
+  readonly totalDamage: number
+} {
+  const clvl = Math.max(1, Math.min(99, Math.trunc(params.attackerLvl)))
+  let bitrate256: number
+  if (clvl <= 15) {
+    bitrate256 = 9 * clvl + 31
+  } else if (clvl <= 30) {
+    bitrate256 = 18 * clvl - 104
+  } else if (clvl <= 45) {
+    bitrate256 = 27 * clvl - 374
+  } else if (clvl <= 60) {
+    bitrate256 = 36 * clvl - 779
+  } else {
+    bitrate256 = 45 * clvl - 1319
+  }
+  const isPvpTarget = params.defender.unitType === 'player' || params.defender.unitType === 'party'
+  if (isPvpTarget) {
+    bitrate256 = Math.trunc(bitrate256 / (params.isRanged ? 8 : 4))
+  } else if (
+    params.defender.isBoss ||
+    params.defender.isPrimeEvil ||
+    params.defender.rank === 'boss'
+  ) {
+    bitrate256 = Math.trunc(bitrate256 / 2)
+  }
+  bitrate256 = Math.max(0, bitrate256)
+  const durationFrames = 200
+  const totalDamage256 = bitrate256 * durationFrames
+  return {
+    bitrate256,
+    durationFrames,
+    totalDamage256,
+    totalDamage: Math.trunc(totalDamage256 / FIXED_ONE),
+  }
+}
+
+/**
+ * 1.13c Poison Length Resist (`D2Game.dll` `0x6FCFCAB0`, `item_poisonlengthresist` `stat 110`, #1871):
+ * - Players and hirelings take the `DifficultyLevels.txt` `ResistPenalty` (`0 / -40 / -100`) on `stat 110`.
+ * - Effective PLR is clamped to `[-100, 75]`, scaling poison frames by `trunc(rawFrames * (100 - effPlr) / 100)`.
+ */
+export function computeEffectivePoisonLengthFrames113c(
+  rawFrames: number,
+  defender: Pick<CombatUnitContext, 'unitType' | 'statList' | 'resistPenalty'>,
+): number {
+  const baseFrames = Math.trunc(rawFrames)
+  if (baseFrames <= 0) return 0
+  let plr = Math.trunc(defender.statList.getAccruedStat('item_poisonlengthresist'))
+  if (usesPlayerResistBranch113c(defender)) {
+    plr += Math.trunc(defender.resistPenalty ?? 0)
+  }
+  const effPlr = Math.max(-100, Math.min(75, plr))
+  return Math.max(1, Math.trunc((baseFrames * (100 - effPlr)) / 100))
 }
 
 /**
@@ -1523,11 +1712,16 @@ export function executeSUnitDmg(
   }
 
   // 1. RollToHit check for weapon attacks (unless autoHit, e.g. Smite 97 / Guided Arrow 22 / Spells,
-  // or when defender is a running player: `D2Game.dll` `0x6FCFE006` skips `RollToHit` on `PLRMODE_RUN` #1634).
+  // or when defender is a running player hit by a MELEE attack: `D2Game.dll` `0x6FCFE006` / `0x6FCFE2B0`
+  // skips `RollToHit` ONLY for melee vs `PLRMODE_RUN`, whereas ranged missiles still roll `RollToHit` #1865).
   // D2Game.dll 0x6FCFE011: draws an independent rng.rand(100) against clamped toHitChance [5..95].
   const defAnyForRun = defender as unknown as Record<string, unknown>
+  const isPlayerLikeDefender =
+    defender.unitType === 'player' ||
+    defender.unitType === 'party' ||
+    (defender.unitType === undefined && defender.statList.getOwnerType() === 'player')
   const isDefenderRunningPlayer =
-    (defender.unitType === 'player' || defender.unitType === 'party') &&
+    (defender.unitType === 'player' || defender.unitType === 'party' || isPlayerLikeDefender) &&
     (defender.isRunning === true ||
       defAnyForRun['isRunning'] === true ||
       (defender.isMoving === true &&
@@ -1535,7 +1729,10 @@ export function executeSUnitDmg(
         defAnyForRun['isWalking'] !== true))
   const isAutoHit =
     packet.autoHit ??
-    (packet.skillId === 97 || packet.skillId === 22 || attackKind === 'spell' || isDefenderRunningPlayer)
+    (packet.skillId === 97 ||
+      packet.skillId === 22 ||
+      attackKind === 'spell' ||
+      (attackKind === 'melee' && isDefenderRunningPlayer))
   if (!isAutoHit) {
     // 1.13c D2Game.dll (0x6FCFDE90, 0x6FCB29D4 Dragon Tail, 0x6FCB2ABF Dragon Claw, 0x6FCB2BCB Dragon Talon,
     // 0x6FCB37B7 Dragon Flight, 0x6FCC2D26 Attack/Left Hand Swing):
@@ -1547,20 +1744,32 @@ export function executeSUnitDmg(
     const monTypeArPct = attacker.statList.getAccruedStat('attack_vs_montype')
     const effectiveToHitBonusPct =
       (packet.toHitBonusPct ?? 0) + barMasteryArBonusPct + progressiveToHitBonusPct + monTypeArPct
-    const isTargetPlayerOrBossOrMerc =
-      defender.unitType === 'player' ||
-      defender.unitType === 'party' ||
+    const isTargetPlayerOrMerc =
+      isPlayerLikeDefender ||
       defender.unitType === 'mercenary' ||
-      defender.unitType === 'party_mercenary' ||
+      defender.unitType === 'party_mercenary'
+    const isTargetBossOrSuperUnique = Boolean(
+      defender.isBoss ||
+        defender.isPrimeEvil ||
+        defender.isSuperUnique ||
+        defender.rank === 'boss' ||
+        defender.rank === 'superunique',
+    )
+    const blocksIgnoreTargetDefense =
+      isTargetPlayerOrMerc ||
+      isTargetBossOrSuperUnique ||
       Boolean(
-        defender.isBoss ||
-          defender.isPrimeEvil ||
-          defender.rank === 'boss' ||
+        defender.isChampion ||
+          defender.rank === 'champion' ||
           defender.rank === 'unique',
       )
+    const halvesFractionalTargetAc = isTargetPlayerOrMerc || isTargetBossOrSuperUnique
+    const rawDefenderDef = isPlayerLikeDefender
+      ? defender.statList.getDefense({ includeDexterityBonus: !defender.armorClassIncludesDex })
+      : defender.statList.getAccruedStat('armorclass')
     const toHitChance = computeToHitChance({
       attackerAr: attacker.statList.getRawToHit113c(),
-      defenderDef: defender.statList.getAccruedStat('armorclass'),
+      defenderDef: isDefenderRunningPlayer ? 0 : rawDefenderDef,
       attackerLvl: attacker.statList.getAccruedStat('level'),
       defenderLvl: defender.statList.getAccruedStat('level'),
       skillArBonusPct: effectiveToHitBonusPct,
@@ -1571,9 +1780,14 @@ export function executeSUnitDmg(
       isTargetUndead: Boolean(defender.isUndead),
       ignoreTargetAc: attacker.statList.getAccruedStat('item_ignoretargetac') > 0,
       fractionalTargetAc: attacker.statList.getAccruedStat('item_fractionaltargetac'),
-      isTargetPlayerOrBossOrMerc,
-      defenderAcVsMissile: defender.statList.getAccruedStat('armorclass_vs_missile'),
-      defenderAcVsHth: defender.statList.getAccruedStat('armorclass_vs_hth'),
+      blocksIgnoreTargetDefense,
+      halvesFractionalTargetAc,
+      defenderAcVsMissile: isDefenderRunningPlayer
+        ? 0
+        : defender.statList.getAccruedStat('armorclass_vs_missile'),
+      defenderAcVsHth: isDefenderRunningPlayer
+        ? 0
+        : defender.statList.getAccruedStat('armorclass_vs_hth'),
       attackKind,
     })
     const hitRoll = packet.roll100 ?? resolvedRng.rand(100)
@@ -1644,35 +1858,11 @@ export function executeSUnitDmg(
             : 0))
   let rawPhys256 = 0
   let baseWeapPhys256 = 0
+  let baseWeapPhysWithoutNormal256 = 0
   let isCritical = false
-  if (!isSpellWithoutFlatPhys && (srcDam > 0 || hasFlatPhys)) {
-    // 1.13c Unarmed / missing weapon base damage (`D2Game.dll` `0x6FCFC5A2..0x6FCFC5C8`):
-    // Reads `D2Common_GetStatSigned(pAttacker, STAT_MINDAMAGE=21)` (if <= 0, 1) and
-    // `D2Common_GetStatSigned(pAttacker, STAT_MAXDAMAGE=22)` (if <= 1, 2) when no weapon is equipped
-    // and no explicit flat physical packet override is supplied. Never fabricates 25-45!
-    const hasExplicitWeaponDmg =
-      attacker.weaponMinPhys !== undefined || attacker.weaponMaxPhys !== undefined
-    let weapMin = 0
-    let weapMax = 0
-    if (hasExplicitWeaponDmg) {
-      weapMin = Math.max(0, attacker.weaponMinPhys ?? 0)
-      weapMax = Math.max(weapMin, attacker.weaponMaxPhys ?? weapMin)
-    } else if (!hasFlatPhys && srcDam > 0) {
-      const statMin = Math.trunc(attacker.statList.getAccruedStat('mindamage'))
-      const statMax = Math.trunc(attacker.statList.getAccruedStat('maxdamage'))
-      weapMin = statMin <= 0 ? 1 : statMin
-      weapMax = statMax <= 1 ? 2 : Math.max(weapMin, statMax)
-    }
-    const weapMin256 = weapMin * FIXED_ONE
-    const weapMax256 = weapMax * FIXED_ONE
-    const effectiveSrcDam = srcDam
-    const scaledWeapMin256 = effectiveSrcDam > 0 ? Math.trunc((weapMin256 * effectiveSrcDam) / 128) : 0
-    const scaledWeapMax256 = effectiveSrcDam > 0 ? Math.trunc((weapMax256 * effectiveSrcDam) / 128) : 0
+  if (!isSpellWithoutFlatPhys && (srcDam > 0 || hasFlatPhys || packet.skillId === 97)) {
     const flatMin256 = Math.max(0, Math.trunc(packet.flatPhysMin256 ?? 0))
     const flatMax256 = Math.max(flatMin256, Math.trunc(packet.flatPhysMax256 ?? flatMin256))
-    const totalBaseMin256 = Math.max(0, scaledWeapMin256 + flatMin256)
-    const totalBaseMax256 = Math.max(totalBaseMin256, scaledWeapMax256 + flatMax256)
-    baseWeapPhys256 = rollDamageRange256(totalBaseMin256, totalBaseMax256, resolvedRng)
     let dmgPctBonus = attacker.statList.getModifierBonus('damagepercent')
     const fanatState = attacker.stateBus.getState('fanaticism')
     if (
@@ -1688,96 +1878,204 @@ export function executeSUnitDmg(
       const fanatModEd = fanatState.stats['damagepercent'] ?? 0
       dmgPctBonus -= fanatModEd - Math.trunc(fanatModEd / 2)
     }
-    const targetTypeEdPct =
-      (defender.isUndead ? attacker.statList.getAccruedStat('item_undeaddamage_percent') : 0) +
-      (defender.isDemon ? attacker.statList.getAccruedStat('item_demondamage_percent') : 0) +
-      attacker.statList.getAccruedStat('damage_vs_montype')
-    if (packet.preScaledPhysEd) {
-      rawPhys256 =
-        targetTypeEdPct !== 0
-          ? Math.max(0, Math.trunc((baseWeapPhys256 * Math.max(10, 100 + targetTypeEdPct)) / 100))
-          : baseWeapPhys256
-    } else {
-      const strFactor = attacker.weaponStrBonus ?? 0
-      const dexFactor = attacker.weaponDexBonus ?? 0
-      const attrEdBonus =
-        (strFactor > 0 ? Math.trunc((attacker.statList.getAccruedStat('strength') * strFactor) / 100) : 0) +
-        (dexFactor > 0 ? Math.trunc((attacker.statList.getAccruedStat('dexterity') * dexFactor) / 100) : 0)
-      // 1.13c `D2Game.dll` `0x6FCFC530..0x6FCFC71F`: single additive `%ED` pool clamped at `>= -90` (#1628).
-      const edPct = Math.max(
-        -90,
-        (packet.physDamagePct ?? 0) +
-          (packet.skipMasteryEd ? 0 : barMasteryEdBonusPct) +
-          dmgPctBonus +
-          attrEdBonus +
-          targetTypeEdPct,
-      )
-      rawPhys256 = Math.max(0, Math.trunc((baseWeapPhys256 * (100 + edPct)) / 100))
-    }
 
-    // 1.13c SKILLS_CalculateKickDamage (0x6FC9AE10): Kick skills (#1, #255, #270, #275)
-    // use Strength + Dexterity + Boot Min/Max damage (never weapon base damage or on-weapon ED)
-    const isKickPacket =
-      packet.skillId === 1 ||
-      packet.skillId === 255 ||
-      packet.skillId === 270 ||
-      packet.skillId === 275
-    if (isKickPacket) {
-      if (hasFlatPhys && srcDam === 0) {
-        // Pre-calculated by SKILLS_CalculateKickDamage in registry.ts
-        rawPhys256 = baseWeapPhys256
+    if (attackKind === 'spell') {
+      baseWeapPhysWithoutNormal256 = rollDamageRange256(flatMin256, flatMax256, resolvedRng)
+      baseWeapPhys256 = baseWeapPhysWithoutNormal256
+      rawPhys256 = packet.physDamagePct
+        ? Math.max(0, Math.trunc((baseWeapPhys256 * Math.max(10, 100 + packet.physDamagePct)) / 100))
+        : baseWeapPhys256
+    } else if (packet.skillId === 97) {
+      // 1.13c `#97 Smite` (`SKILLS_SrvDo150_Smite` @ `0x6FCB87D0`, #1868):
+      // - Base = shield `SmiteDmg` + `#117 Holy Shield` bonus + `stat 111 item_normaldamage` (Grief `+Damage`).
+      // - Excludes weapon/charm `+Min/+Max` (`stats 21/22`), Demon/Undead `%ED` (`stats 121/122/180`), and CS/DS.
+      let smiteMin256 = 0
+      let smiteMax256 = 0
+      if (hasFlatPhys) {
+        smiteMin256 = flatMin256
+        smiteMax256 = flatMax256
+      } else if (attacker.smiteMinDam !== undefined || attacker.smiteMaxDam !== undefined) {
+        const sMin = Math.max(0, Math.trunc(attacker.smiteMinDam ?? 0))
+        const sMax = Math.max(sMin, Math.trunc(attacker.smiteMaxDam ?? sMin))
+        smiteMin256 = sMin * FIXED_ONE
+        smiteMax256 = sMax * FIXED_ONE
+      } else if (attacker.weaponMinPhys !== undefined || attacker.weaponMaxPhys !== undefined) {
+        const sMin = Math.max(0, Math.trunc(attacker.weaponMinPhys ?? 0))
+        const sMax = Math.max(sMin, Math.trunc(attacker.weaponMaxPhys ?? sMin))
+        smiteMin256 = sMin * FIXED_ONE
+        smiteMax256 = sMax * FIXED_ONE
       } else {
-        const str = attacker.statList.getAccruedStat('strength')
-        const dex = attacker.statList.getAccruedStat('dexterity')
-        const bootMin = attacker.bootMinDam ?? attacker.kickMinDam ?? 0
-        const bootMax = attacker.bootMaxDam ?? attacker.kickMaxDam ?? 0
-        const skillED = packet.skillId === 255 || packet.skillId === 275 ? (packet.physDamagePct ?? 0) : 0
-        const offWeaponED = dmgPctBonus
-        const attrMin = Math.max(1, Math.floor(Math.max(0, dex + str - 20) / 4))
-        const attrMax = Math.max(2, Math.floor(Math.max(0, dex + str - 20) / 3))
-        const strBootBonus = Math.floor((str * 120) / 100)
-        const kMin =
-          Math.floor((attrMin * (100 + skillED)) / 100) +
-          Math.floor((bootMin * (100 + strBootBonus + offWeaponED + skillED)) / 100)
-        const kMax =
-          Math.floor((attrMax * (100 + skillED)) / 100) +
-          Math.floor((bootMax * (100 + strBootBonus + offWeaponED + skillED)) / 100)
-        rawPhys256 = rollDamageRange256(kMin * FIXED_ONE, kMax * FIXED_ONE, resolvedRng)
+        smiteMin256 = FIXED_ONE
+        smiteMax256 = 2 * FIXED_ONE
       }
-    }
+      if (!hasFlatPhys && !packet.includesNormalDamage && !packet.preScaledPhysEd) {
+        if (attacker.stateBus.hasState('holyshield') || attacker.stateBus.hasState(101)) {
+          const hsState = attacker.stateBus.getState('holyshield') ?? attacker.stateBus.getState(101)
+          const hsLvl = Math.max(1, hsState?.slvl ?? attacker.statList.getEffectiveSkillLevel(117) ?? 1)
+          smiteMin256 += compute5BandScaling(hsLvl, 3, 2, 3, 4, 4, 4) * FIXED_ONE
+          smiteMax256 += compute5BandScaling(hsLvl, 6, 2, 3, 4, 4, 4) * FIXED_ONE
+        }
+        const smiteNormalDmg = attacker.statList.getAccruedStat('item_normaldamage')
+        const smiteNormalDmg256 = smiteNormalDmg * FIXED_ONE
+        if (smiteNormalDmg256 !== 0) {
+          smiteMin256 = Math.max(0, smiteMin256 + smiteNormalDmg256)
+          smiteMax256 = Math.max(smiteMin256, smiteMax256 + smiteNormalDmg256)
+        }
+      }
+      baseWeapPhys256 = rollDamageRange256(smiteMin256, smiteMax256, resolvedRng)
+      baseWeapPhysWithoutNormal256 = baseWeapPhys256
+      if (packet.preScaledPhysEd) {
+        rawPhys256 = baseWeapPhys256
+      } else if (hasFlatPhys && packet.physDamagePct === undefined) {
+        rawPhys256 =
+          dmgPctBonus !== 0
+            ? Math.max(0, Math.trunc((baseWeapPhys256 * Math.max(10, 100 + dmgPctBonus)) / 100))
+            : baseWeapPhys256
+      } else {
+        const smiteStrEd = packet.skipAttrEd
+          ? 0
+          : Math.trunc((attacker.statList.getAccruedStat('strength') * 100) / 100)
+        const smiteEdPct = Math.max(-90, (packet.physDamagePct ?? 0) + dmgPctBonus + smiteStrEd)
+        rawPhys256 = Math.max(0, Math.trunc((baseWeapPhys256 * (100 + smiteEdPct)) / 100))
+      }
+    } else {
+      // 1.13c Unarmed / missing weapon base damage (`D2Game.dll` `0x6FCFC5A2..0x6FCFC5C8`):
+      // Reads `D2Common_GetStatSigned(pAttacker, STAT_MINDAMAGE=21)` (if <= 0, 1) and
+      // `D2Common_GetStatSigned(pAttacker, STAT_MAXDAMAGE=22)` (if <= 1, 2) when no weapon is equipped
+      // and no explicit flat physical packet override is supplied. Never fabricates 25-45!
+      const hasExplicitWeaponDmg =
+        attacker.weaponMinPhys !== undefined || attacker.weaponMaxPhys !== undefined
+      let weapMin = 0
+      let weapMax = 0
+      if (hasExplicitWeaponDmg) {
+        weapMin = Math.max(0, attacker.weaponMinPhys ?? 0)
+        weapMax = Math.max(weapMin, attacker.weaponMaxPhys ?? weapMin)
+      } else if (!hasFlatPhys && srcDam > 0) {
+        const statMin = Math.trunc(attacker.statList.getAccruedStat('mindamage'))
+        const statMax = Math.trunc(attacker.statList.getAccruedStat('maxdamage'))
+        weapMin = statMin <= 0 ? 1 : statMin
+        weapMax = statMax <= 1 ? 2 : Math.max(weapMin, statMax)
+      }
+      const weapMin256 = weapMin * FIXED_ONE
+      const weapMax256 = weapMax * FIXED_ONE
+      const effectiveSrcDam = srcDam
+      const scaledWeapMin256 = effectiveSrcDam > 0 ? Math.trunc((weapMin256 * effectiveSrcDam) / 128) : 0
+      const scaledWeapMax256 = effectiveSrcDam > 0 ? Math.trunc((weapMax256 * effectiveSrcDam) / 128) : 0
+      const totalBaseMin256 = Math.max(0, scaledWeapMin256 + flatMin256)
+      const totalBaseMax256 = Math.max(totalBaseMin256, scaledWeapMax256 + flatMax256)
+      baseWeapPhysWithoutNormal256 = rollDamageRange256(totalBaseMin256, totalBaseMax256, resolvedRng)
+      const normalDmgStat =
+        !packet.includesNormalDamage && !packet.preScaledPhysEd && effectiveSrcDam > 0
+          ? attacker.statList.getAccruedStat('item_normaldamage')
+          : 0
+      const scaledNormal256 =
+        normalDmgStat !== 0 ? Math.trunc((normalDmgStat * FIXED_ONE * effectiveSrcDam) / 128) : 0
+      baseWeapPhys256 = Math.max(0, baseWeapPhysWithoutNormal256 + scaledNormal256)
 
-    // 3b. 1.13c Weapon Mastery Crit (`0x6FCFD549`), Critical Strike (`0x6FCFD573`),
-    //     and Deadly Strike (`0x6FCFD59D`) sequential evaluation (`D2Game.dll` `0x6FCFD51A..0x6FCFD5A6`).
-    //     Triggered BEFORE physical-to-elemental conversion; mutually exclusive (never 4x/8x).
-    //     Each stage draws its own independent `rng.rand(100)` roll only if the previous stage did not proc!
-    //     NOTE: Smite (`skillId === 97`, `SKILLS_SrvDo150_Smite` @ `0x6FCB9000`) and Kick skills
-    //     (`#1, #255, #270, #275`, `SKILLS_CalculateKickDamage` @ `0x6FC9AE10`) do NOT call
-    //     `SUNITDMG_FillDamageValues` and strictly CANNOT Critical Strike or Deadly Strike!
-    if (packet.skillId !== 97 && !isKickPacket) {
-      const csChance = Math.min(100, Math.max(0, attacker.statList.getAccruedStat('passive_critical_strike')))
-      const rawMasteryCrit = barMasteryCritPct ?? 0
-      const masteryCritChance = Math.min(100, Math.max(0, rawMasteryCrit))
-      const dsChance = Math.min(100, Math.max(0, attacker.statList.getAccruedStat('item_deadlystrike')))
-      if (masteryCritChance > 0) {
-        const masteryRoll = packet.masteryCritRoll100 ?? packet.critRoll100 ?? resolvedRng.rand(100)
-        if (masteryRoll < masteryCritChance) {
-          isCritical = true
+      const targetTypeEdPct =
+        (defender.isUndead ? attacker.statList.getAccruedStat('item_undeaddamage_percent') : 0) +
+        (defender.isDemon ? attacker.statList.getAccruedStat('item_demondamage_percent') : 0) +
+        attacker.statList.getAccruedStat('damage_vs_montype')
+      if (packet.preScaledPhysEd) {
+        rawPhys256 =
+          targetTypeEdPct !== 0
+            ? Math.max(0, Math.trunc((baseWeapPhys256 * Math.max(10, 100 + targetTypeEdPct)) / 100))
+            : baseWeapPhys256
+      } else {
+        const shouldApplyAttrEd =
+          !packet.skipAttrEd &&
+          (effectiveSrcDam > 0 ||
+            (!hasFlatPhys &&
+              (attacker.weaponStrBonus !== undefined ||
+                attacker.weaponDexBonus !== undefined ||
+                Boolean(attacker.weaponCode) ||
+                Boolean(attacker.weaponItemType))) ||
+            (hasFlatPhys &&
+              (attacker.weaponStrBonus !== undefined || attacker.weaponDexBonus !== undefined)))
+        const { strBonus: strFactor, dexBonus: dexFactor } = shouldApplyAttrEd
+          ? resolveWeaponAttrFactors113c(attacker, attackKind, packet.skillId)
+          : { strBonus: 0, dexBonus: 0 }
+        const attrEdBonus =
+          (strFactor > 0 ? Math.trunc((attacker.statList.getAccruedStat('strength') * strFactor) / 100) : 0) +
+          (dexFactor > 0 ? Math.trunc((attacker.statList.getAccruedStat('dexterity') * dexFactor) / 100) : 0)
+        // 1.13c `D2Game.dll` `0x6FCFC530..0x6FCFC71F`: single additive `%ED` pool clamped at `>= -90` (#1628, #1867).
+        const edPct = Math.max(
+          -90,
+          (packet.physDamagePct ?? 0) +
+            (packet.skipMasteryEd ? 0 : barMasteryEdBonusPct) +
+            dmgPctBonus +
+            attrEdBonus +
+            targetTypeEdPct,
+        )
+        rawPhys256 = Math.max(0, Math.trunc((baseWeapPhys256 * (100 + edPct)) / 100))
+      }
+
+      // 1.13c SKILLS_CalculateKickDamage (0x6FC9AE10): Kick skills (#1, #255, #270, #275)
+      // use Strength + Dexterity + Boot Min/Max damage (never weapon base damage or on-weapon ED)
+      const isKickPacket =
+        packet.skillId === 1 ||
+        packet.skillId === 255 ||
+        packet.skillId === 270 ||
+        packet.skillId === 275
+      if (isKickPacket) {
+        if (hasFlatPhys && srcDam === 0) {
+          // Pre-calculated by SKILLS_CalculateKickDamage in registry.ts
+          rawPhys256 = baseWeapPhysWithoutNormal256
+        } else {
+          const str = attacker.statList.getAccruedStat('strength')
+          const dex = attacker.statList.getAccruedStat('dexterity')
+          const bootMin = attacker.bootMinDam ?? attacker.kickMinDam ?? 0
+          const bootMax = attacker.bootMaxDam ?? attacker.kickMaxDam ?? 0
+          const skillED = packet.skillId === 255 || packet.skillId === 275 ? (packet.physDamagePct ?? 0) : 0
+          const offWeaponED = dmgPctBonus
+          const attrMin = Math.max(1, Math.floor(Math.max(0, dex + str - 20) / 4))
+          const attrMax = Math.max(2, Math.floor(Math.max(0, dex + str - 20) / 3))
+          const strBootBonus = Math.floor((str * 120) / 100)
+          const attrEdMult = Math.max(10, 100 + skillED)
+          const bootEdMult = Math.max(10, 100 + strBootBonus + offWeaponED + skillED)
+          const kMin =
+            Math.floor((attrMin * attrEdMult) / 100) +
+            Math.floor((bootMin * bootEdMult) / 100)
+          const kMax =
+            Math.floor((attrMax * attrEdMult) / 100) +
+            Math.floor((bootMax * bootEdMult) / 100)
+          rawPhys256 = rollDamageRange256(kMin * FIXED_ONE, kMax * FIXED_ONE, resolvedRng)
         }
       }
-      if (!isCritical && csChance > 0) {
-        const csRoll = packet.csRoll100 ?? packet.critRoll100 ?? resolvedRng.rand(100)
-        if (csRoll < csChance) {
-          isCritical = true
+
+      // 3b. 1.13c Weapon Mastery Crit (`0x6FCFD549`), Critical Strike (`0x6FCFD573`),
+      //     and Deadly Strike (`0x6FCFD59D`) sequential evaluation (`D2Game.dll` `0x6FCFD51A..0x6FCFD5A6`, #1873).
+      //     Triggered BEFORE physical-to-elemental conversion; mutually exclusive (never 4x/8x).
+      //     Each stage draws its own independent `rng.rand(100)` roll only if the previous stage did not proc!
+      //     NOTE: Smite (`skillId === 97`, `SKILLS_SrvDo150_Smite` @ `0x6FCB9000`) and Kick skills
+      //     (`#1, #255, #270, #275`, `SKILLS_CalculateKickDamage` @ `0x6FC9AE10`) do NOT call
+      //     `SUNITDMG_FillDamageValues` and strictly CANNOT Critical Strike or Deadly Strike!
+      if (!isKickPacket) {
+        const csChance = Math.min(100, Math.max(0, attacker.statList.getAccruedStat('passive_critical_strike')))
+        const rawMasteryCrit = barMasteryCritPct ?? 0
+        const masteryCritChance = Math.min(100, Math.max(0, rawMasteryCrit))
+        const dsChance = Math.min(100, Math.max(0, attacker.statList.getAccruedStat('item_deadlystrike')))
+        if (masteryCritChance > 0) {
+          const masteryRoll = packet.masteryCritRoll100 ?? packet.critRoll100 ?? resolvedRng.rand(100)
+          if (masteryRoll < masteryCritChance) {
+            isCritical = true
+          }
         }
-      }
-      if (!isCritical && dsChance > 0) {
-        const dsRoll = packet.dsRoll100 ?? packet.critRoll100 ?? resolvedRng.rand(100)
-        if (dsRoll < dsChance) {
-          isCritical = true
+        if (!isCritical && csChance > 0) {
+          const csRoll = packet.csRoll100 ?? packet.critRoll100 ?? resolvedRng.rand(100)
+          if (csRoll < csChance) {
+            isCritical = true
+          }
         }
-      }
-      if (isCritical) {
-        rawPhys256 *= 2
+        if (!isCritical && dsChance > 0) {
+          const dsRoll = packet.dsRoll100 ?? packet.critRoll100 ?? resolvedRng.rand(100)
+          if (dsRoll < dsChance) {
+            isCritical = true
+          }
+        }
+        if (isCritical) {
+          rawPhys256 *= 2
+        }
       }
     }
   }
@@ -1882,7 +2180,7 @@ export function executeSUnitDmg(
     rawElem256 = Math.trunc((rawElem256 * 33) / 100)
   }
 
-  if (rawElem256 > 0) {
+  if (rawElem256 > 0 && !packet.skipElemMastery) {
     let masteryPct = 0
     // Ranged Enchant attacks do NOT get the second Fire Mastery multiplier
     const skipFireMasterySecondMultiplier = isEnchantFire && attackKind === 'missile'
@@ -1917,47 +2215,6 @@ export function executeSUnitDmg(
     }
     if (defender.isUndead) {
       rawElem256 = Math.trunc((rawElem256 * 150) / 100)
-    }
-  }
-
-  // Venom (`skillId = 278` or `STATE_VENOM` / `venomclaws` / State 31 active on weapon attack)
-  if (
-    attackKind !== 'spell' &&
-    (packet.skillId === 278 ||
-      attacker.stateBus.hasState('venom') ||
-      attacker.stateBus.hasState('venomclaws') ||
-      attacker.stateBus.hasState(31))
-  ) {
-    const vState =
-      attacker.stateBus.getState('venom') ??
-      attacker.stateBus.getState('venomclaws') ??
-      attacker.stateBus.getState(31)
-    const fallbackBitrate256 = vState
-      ? computeVenomPoisonDamage(vState.slvl).minBitrate
-      : 35 * FIXED_ONE
-    const venomModPoisMin = vState?.stats['poisonmindam'] ?? 0
-    const itemPoisMin = Math.max(0, attacker.statList.getAccruedStat('poisonmindam') - venomModPoisMin)
-    const itemPoisLen = attacker.statList.getAccruedStat('poisonlength')
-    const otherSources =
-      (attacker.weaponPoisonBitrate256 ?? 0) > 0
-        ? [{ bitrate256: attacker.weaponPoisonBitrate256!, frames: attacker.weaponPoisonFrames ?? 100 }]
-        : itemPoisMin > 0 && itemPoisLen > 0
-          ? [{ bitrate256: itemPoisMin, frames: itemPoisLen }]
-          : []
-    const venomRes = resolveVenomPoisonApplication({
-      venomActive: true,
-      venomBitrate256: venomModPoisMin || fallbackBitrate256,
-      otherPoisonSources: otherSources,
-    })
-    rawElem256 += venomRes.totalDamage256
-    if (venomRes.totalDamage256 > 0) {
-      defender.stateBus.applyState({
-        stateNameOrId: 'poison',
-        sourceUnitId: attacker.id,
-        sourceSkillId: 278,
-        slvl: vState?.slvl ?? 1,
-        durationFrames: venomRes.durationFrames,
-      })
     }
   }
 
@@ -2053,8 +2310,6 @@ export function executeSUnitDmg(
       effectiveRes: 0,
     }
   }
-
-
 
   // 6.1 Unit-vs-Unit / PvP Damage Modifier FIRST (`D2Game.dll` `0x6FCFC17F` -> `SUNITDMG_GetDamagePercentModifier` `0x6FCFAC10`, #1631 / #1795):
   // Scales damage by `17%` for Player/Merc/Minion vs Player and `25%` for Merc vs Merc BEFORE `absorbdamage`
@@ -2181,46 +2436,23 @@ export function executeSUnitDmg(
     ? 0
     : Math.max(0, Math.trunc((remRawElem256 * (100 - elemResRec.effectiveRes)) / 100))
 
-  // Life Tap & Leech (1.13c: outer Multiple Shot arrows have procs & leech suppressed when canTriggerProcs === false)
-  let attackerHealed256 = 0
-  let attackerManaLeeched256 = 0
-  const canTriggerProcs = packet.canTriggerProcs !== false
-  // 1.13c Skills.txt #82 Life Tap: calc1 = ln56 with Param5 = 50, Param6 = 0 -> 50% life heal
-  const hasLifeTap = defender.stateBus.hasState('lifetap')
-  if (hasLifeTap && finalPhys256 > 0 && canTriggerProcs) {
-    attackerHealed256 = Math.trunc(finalPhys256 * 50 / 100)
-    const curHp = attacker.statList.getHp256()
-    attacker.statList.setHp256(curHp + attackerHealed256)
-  }
+  // Track resolved poison bitrate/duration for #1871 / #1873
+  let resolvedPoisonBitrate256 = 0
+  let resolvedPoisonDurationFrames = 0
 
-  // 1.13c Life / Mana steal (`D2Game.dll` 0x6FCFBA40) from ItemStatCost `lifedrainmindam` (60) /
-  // `manadrainmindam` (62) — the stats the damage filler at 0x6FCFD6FB copies into the damage
-  // record (+0x38 / +0x3C). Suppressed when canTriggerProcs === false or for Smite (97).
-  const canLeechGear = canTriggerProcs && packet.skillId !== 97 && !packet.suppressGearLeech
-  const stealClass = stealAttackerClass113c(attacker)
-  if (canLeechGear && finalPhys256 > 0 && stealClass !== undefined) {
-    const steal = computeLifeManaSteal113c({
-      phys256: finalPhys256,
-      lifeStealPct: attacker.statList.getAccruedStat('lifedrainmindam'),
-      manaStealPct: attacker.statList.getAccruedStat('manadrainmindam'),
-      attackerIsPlayer: stealClass === 'player',
-      lifeStealDivisor: attacker.lifeStealDivisor ?? 1,
-      manaStealDivisor: attacker.manaStealDivisor ?? 1,
-      defenderIsMonster: isMonsterClassUnit113c(defender),
-      defenderDrain: defender.drain,
-    })
-    // Mana first (0x6FCFAE70: `min(mana + v, maxmana)`), then life (0x6FCFB570: skipped for a dead
-    // attacker or one in `death_delay` (state 92), `min(hp + v, maxhp)`).
-    if (steal.mana256 > 0) {
-      const curMana = attacker.statList.getMana256()
-      attacker.statList.setMana256(curMana + steal.mana256)
-      attackerManaLeeched256 = attacker.statList.getMana256() - curMana
-    }
-    if (steal.life256 > 0 && attacker.statList.getHp256() > 0 && !attacker.stateBus.hasState('death_delay')) {
-      const curHp = attacker.statList.getHp256()
-      attacker.statList.setHp256(curHp + steal.life256)
-      attackerHealed256 += attacker.statList.getHp256() - curHp
-    }
+  // Skill-packet poison length resist scaling (`stat 110 item_poisonlengthresist` + player difficulty penalty, #1871)
+  if (
+    elemType === 'pois' &&
+    packet.elemDurationFrames !== undefined &&
+    packet.elemDurationFrames > 0 &&
+    finalElem256 > 0
+  ) {
+    const rawSkillPoisFrames = Math.max(1, Math.trunc(packet.elemDurationFrames))
+    const effSkillPoisFrames = computeEffectivePoisonLengthFrames113c(rawSkillPoisFrames, defender)
+    const skillBitrate256 = Math.trunc(finalElem256 / rawSkillPoisFrames)
+    finalElem256 = skillBitrate256 * effSkillPoisFrames
+    resolvedPoisonBitrate256 = skillBitrate256
+    resolvedPoisonDurationFrames = effSkillPoisFrames
   }
 
   // Static Field (`skillId = 42`, `D2Game.dll` `0x6FC62EC0..0x6FC62FB0` + `DifficultyLevels.txt` `StaticFieldMin`, #1805):
@@ -2293,18 +2525,339 @@ export function executeSUnitDmg(
     }
   }
 
+  // 8.1 Weapon / Charm Elemental Riders (`SrcDamage > 0` melee & weapon-carrying projectiles, #1873):
+  // `D2Game.dll` `0x6FC5A4E0..0x6FC5A78C` (`MISSILE_InitWeaponDamage`) & `0x6FCFD610` (`SUNITDMG_FillDamageValues`):
+  // Inherits `firemindam..firemaxdam`, `lightmindam..lightmaxdam`, `coldmindam..coldmaxdam`, `magicmindam..magicmaxdam`
+  // scaled by `srcDam / 128` (excluding Smite #97 and any channel already merged via `mergedBowHitFlagElem`).
+  const riderSrcDam = Math.max(0, Math.trunc(packet.riderSrcDam ?? srcDam))
+  let anyRiderChannelNonImmune = false
+  let anyRiderChannelRaw = false
+  if (
+    !packet.skipWeaponElemRiders &&
+    attackKind !== 'spell' &&
+    packet.skillId !== 97 &&
+    riderSrcDam > 0
+  ) {
+    const mergedBowElem = (packet as { mergedBowHitFlagElem?: string }).mergedBowHitFlagElem
+    const enchState = attacker.stateBus.getState('enchant')
+    const enchFireMin = enchState?.stats['firemindam'] ?? 0
+    const enchFireMax = enchState?.stats['firemaxdam'] ?? enchFireMin
+    const riderFlatMdr256 = scaleFlatDrByFrameRate(
+      Math.max(0, defender.statList.getAccruedStat('magic_damage_reduction')) * FIXED_ONE,
+    )
+
+    const resolveRiderChannel = (
+      ch: 'fire' | 'ltng' | 'cold' | 'mag',
+      minRaw: number,
+      maxRaw: number,
+    ): void => {
+      const lo = Math.max(0, Math.trunc(minRaw))
+      const hi = Math.max(lo, Math.trunc(maxRaw))
+      if (hi <= 0) return
+      const minScaled256 = Math.trunc((lo * FIXED_ONE * riderSrcDam) / 128)
+      const maxScaled256 = Math.max(minScaled256, Math.trunc((hi * FIXED_ONE * riderSrcDam) / 128))
+      if (maxScaled256 <= 0) return
+      let chDmg256 = rollDamageRange256(minScaled256, maxScaled256, resolvedRng)
+      if (attackKind === 'melee' && !packet.skipElemMastery) {
+        const mPct =
+          ch === 'fire'
+            ? attacker.statList.getAccruedStat('passive_fire_mastery')
+            : ch === 'ltng'
+              ? attacker.statList.getAccruedStat('passive_ltng_mastery')
+              : ch === 'cold'
+                ? attacker.statList.getAccruedStat('passive_cold_mastery')
+                : 0
+        if (mPct > 0) {
+          chDmg256 = Math.trunc((chDmg256 * (100 + mPct)) / 100)
+        }
+      }
+      if (pvpDmgModPct !== 100) {
+        chDmg256 = Math.trunc((chDmg256 * pvpDmgModPct) / 100)
+      }
+      anyRiderChannelRaw = true
+      const signedCh256 = chDmg256 - riderFlatMdr256
+      if (signedCh256 <= 0) {
+        if (chDmg256 > 0) mdrOverflow256 += -signedCh256
+        return
+      }
+      chDmg256 = signedCh256
+      const chResKey =
+        ch === 'fire'
+          ? 'fireresist'
+          : ch === 'ltng'
+            ? 'lightresist'
+            : ch === 'cold'
+              ? 'coldresist'
+              : 'magicresist'
+      const chConv =
+        ch === 'mag'
+          ? 0
+          : resolveConvictionPierce113c(defender, chResKey as 'fireresist' | 'lightresist' | 'coldresist')
+      const chLr =
+        ch === 'mag'
+          ? 0
+          : resolveLowerResistPierce113c(defender, chResKey as 'fireresist' | 'lightresist' | 'coldresist')
+      const chPierce =
+        ch === 'fire'
+          ? attacker.statList.getAccruedStat('passive_fire_pierce')
+          : ch === 'ltng'
+            ? attacker.statList.getAccruedStat('passive_ltng_pierce')
+            : ch === 'cold'
+              ? attacker.statList.getAccruedStat('passive_cold_pierce')
+              : 0
+      const chRes = computeEffectiveResistance({
+        baseRes: getPrePierceResistance113c(defender.statList, chResKey),
+        convictionPierce: packet.convictionPierce ?? chConv,
+        lowerResistPierce: packet.lowerResistPierce ?? chLr,
+        passiveEnemyPierce: packet.passiveEnemyPierce ?? chPierce,
+        canBreakImmunity: ch !== 'mag',
+        ...defenderResistParams113c(defender, ch),
+      })
+      if (chRes.isImmune) return
+      anyRiderChannelNonImmune = true
+      if (ch === 'fire' && isFireGolemUnit) {
+        const fgAbs = defender.statList.getAccruedStat('item_absorbfire_percent')
+        if (fgAbs > 0) {
+          absorbHeal256 += Math.trunc((chDmg256 * fgAbs) / 100)
+          return
+        }
+      }
+      let postResCh256 = Math.max(0, Math.trunc((chDmg256 * (100 - chRes.effectiveRes)) / 100))
+      const absPair = ELEM_ABSORB_STAT_MAP[ch]
+      if (postResCh256 > 0 && absPair && !isSanctuaryBypassUndead) {
+        const absOut = applyElementalAbsorb113c(
+          postResCh256,
+          defender.statList.getAccruedStat(absPair.pct),
+          Math.max(0, defender.statList.getAccruedStat(absPair.flat)) * FIXED_ONE,
+        )
+        postResCh256 = absOut.remainingDamage256
+        absorbHeal256 += absOut.absorbHeal256
+      }
+      finalElem256 += postResCh256
+    }
+
+    if (mergedBowElem !== 'fire') {
+      const gearFireMin = Math.max(0, attacker.statList.getAccruedStat('firemindam') - enchFireMin)
+      const gearFireMax = Math.max(gearFireMin, attacker.statList.getAccruedStat('firemaxdam') - enchFireMax)
+      resolveRiderChannel('fire', gearFireMin, gearFireMax)
+    }
+    resolveRiderChannel(
+      'ltng',
+      attacker.statList.getAccruedStat('lightmindam'),
+      attacker.statList.getAccruedStat('lightmaxdam'),
+    )
+    if (mergedBowElem !== 'cold') {
+      resolveRiderChannel(
+        'cold',
+        attacker.statList.getAccruedStat('coldmindam'),
+        attacker.statList.getAccruedStat('coldmaxdam'),
+      )
+    }
+    resolveRiderChannel(
+      'mag',
+      attacker.statList.getAccruedStat('magicmindam'),
+      attacker.statList.getAccruedStat('magicmaxdam'),
+    )
+  }
+
+  // 8.2 Multi-Source Weapon/Charm Poison (`poison_count` `stat 326`), `#278 Venom` (`state 31`) 10-frame clamp,
+  //     `stat 110 item_poisonlengthresist`, and single-highest-bitrate overwrite (#1871, #1873):
+  const hasVenom =
+    attackKind !== 'spell' &&
+    packet.skillId !== 97 &&
+    (packet.skillId === 278 ||
+      attacker.stateBus.hasState('venom') ||
+      attacker.stateBus.hasState('venomclaws') ||
+      attacker.stateBus.hasState(31))
+  if (
+    !packet.skipWeaponPoison &&
+    attackKind !== 'spell' &&
+    packet.skillId !== 97 &&
+    (riderSrcDam > 0 || hasVenom)
+  ) {
+    const vState = hasVenom
+      ? (attacker.stateBus.getState('venom') ??
+          attacker.stateBus.getState('venomclaws') ??
+          attacker.stateBus.getState(31))
+      : undefined
+    const venomModPoisMin = vState?.stats['poisonmindam'] ?? 0
+    const venomModPoisMax = vState?.stats['poisonmaxdam'] ?? venomModPoisMin
+    const venomModPoisLen = vState?.stats['poisonlength'] ?? 0
+    const venomModPoisCount = vState?.stats['poison_count'] ?? 0
+
+    let itemPoisBitrate256 = 0
+    let itemPoisFrames = 0
+    if (attacker.weaponPoisonSources && attacker.weaponPoisonSources.length > 0) {
+      let sumRate256 = 0
+      let sumFrames = 0
+      let validCount = 0
+      for (const src of attacker.weaponPoisonSources) {
+        if (src.bitrate256 > 0 && src.frames > 0) {
+          sumRate256 += Math.trunc(src.bitrate256)
+          sumFrames += Math.trunc(src.frames)
+          validCount += 1
+        }
+      }
+      if (validCount > 0) {
+        itemPoisBitrate256 = sumRate256
+        itemPoisFrames = validCount > 1 ? Math.floor(sumFrames / validCount) : sumFrames
+      }
+    } else if ((attacker.weaponPoisonBitrate256 ?? 0) > 0) {
+      itemPoisBitrate256 = Math.trunc(attacker.weaponPoisonBitrate256!)
+      itemPoisFrames = Math.max(1, Math.trunc(attacker.weaponPoisonFrames ?? 100))
+    } else {
+      const rawItemMin256 = Math.max(0, attacker.statList.getAccruedStat('poisonmindam') - venomModPoisMin)
+      const rawItemMax256 = Math.max(rawItemMin256, attacker.statList.getAccruedStat('poisonmaxdam') - venomModPoisMax)
+      const rawItemLenSum = Math.max(0, attacker.statList.getAccruedStat('poisonlength') - venomModPoisLen)
+      const rawItemCount = Math.max(
+        1,
+        Math.trunc(attacker.statList.getAccruedStat('poison_count') - venomModPoisCount),
+      )
+      if (rawItemMax256 > 0 && rawItemLenSum > 0) {
+        itemPoisBitrate256 = rollDamageRange256(rawItemMin256, rawItemMax256, resolvedRng)
+        itemPoisFrames = rawItemCount > 1 ? Math.floor(rawItemLenSum / rawItemCount) : rawItemLenSum
+      }
+    }
+
+    const poisSrcDam = riderSrcDam > 0 ? riderSrcDam : 128
+    if (itemPoisBitrate256 > 0 && poisSrcDam !== 128) {
+      itemPoisBitrate256 = Math.trunc((itemPoisBitrate256 * poisSrcDam) / 128)
+    }
+
+    let rawWeapPoisBitrate256 = 0
+    let rawWeapPoisFrames = 0
+    if (hasVenom) {
+      let venomBitrate256 = 0
+      if (venomModPoisMax > 0) {
+        venomBitrate256 = rollDamageRange256(
+          Math.max(0, venomModPoisMin),
+          Math.max(venomModPoisMin, venomModPoisMax),
+          resolvedRng,
+        )
+      } else {
+        const vCalc = vState ? computeVenomPoisonDamage(vState.slvl) : undefined
+        venomBitrate256 = vCalc
+          ? rollDamageRange256(vCalc.minBitrate, vCalc.maxBitrate, resolvedRng)
+          : 35 * FIXED_ONE
+      }
+      if (poisSrcDam !== 128) {
+        venomBitrate256 = Math.trunc((venomBitrate256 * poisSrcDam) / 128)
+      }
+      rawWeapPoisBitrate256 = venomBitrate256 + itemPoisBitrate256
+      rawWeapPoisFrames = 10
+    } else if (itemPoisBitrate256 > 0 && itemPoisFrames > 0) {
+      rawWeapPoisBitrate256 = itemPoisBitrate256
+      if (attackKind === 'melee' && !packet.skipElemMastery) {
+        const poisMastPct = attacker.statList.getAccruedStat('passive_pois_mastery')
+        if (poisMastPct > 0) {
+          rawWeapPoisBitrate256 = Math.trunc((rawWeapPoisBitrate256 * (100 + poisMastPct)) / 100)
+        }
+      }
+      rawWeapPoisFrames = itemPoisFrames
+    }
+
+    if (rawWeapPoisBitrate256 > 0 && rawWeapPoisFrames > 0) {
+      // 1.13c `#73 Poison Dagger` + weapon/Venom poison (`SKILLS_SrvDmg_PoisonDagger`):
+      // Sums skill bitrate + weapon/Venom bitrate and adds skill frames + weapon/Venom frames (10 with Venom!).
+      if (packet.skillId === 73 && elemType === 'pois' && (packet.elemDurationFrames ?? 0) > 0) {
+        finalElem256 = 0
+        const pdRawFrames = Math.max(1, Math.trunc(packet.elemDurationFrames!))
+        const pdRawBitrate256 = Math.trunc(afterShieldElem256 / pdRawFrames)
+        const combinedRawFrames = pdRawFrames + rawWeapPoisFrames
+        let combinedBitrate256 = rawWeapPoisBitrate256
+        if (pvpDmgModPct !== 100) {
+          combinedBitrate256 = Math.trunc((combinedBitrate256 * pvpDmgModPct) / 100)
+        }
+        combinedBitrate256 += pdRawBitrate256
+        const poisLr = resolveLowerResistPierce113c(defender, 'poisonresist')
+        const poisRes = computeEffectiveResistance({
+          baseRes: getPrePierceResistance113c(defender.statList, 'poisonresist'),
+          convictionPierce: 0,
+          lowerResistPierce: packet.lowerResistPierce ?? poisLr,
+          passiveEnemyPierce:
+            packet.passiveEnemyPierce ?? attacker.statList.getAccruedStat('passive_pois_pierce'),
+          canBreakImmunity: true,
+          ...defenderResistParams113c(defender, 'pois'),
+        })
+        if (!poisRes.isImmune) {
+          const effRate256 = Math.max(0, Math.trunc((combinedBitrate256 * (100 - poisRes.effectiveRes)) / 100))
+          const effFrames = computeEffectivePoisonLengthFrames113c(combinedRawFrames, defender)
+          finalElem256 += effRate256 * effFrames
+          resolvedPoisonBitrate256 = effRate256
+          resolvedPoisonDurationFrames = effFrames
+        }
+      } else {
+        let pvpPoisRate256 = rawWeapPoisBitrate256
+        if (pvpDmgModPct !== 100) {
+          pvpPoisRate256 = Math.trunc((pvpPoisRate256 * pvpDmgModPct) / 100)
+        }
+        anyRiderChannelRaw = true
+        const poisLr = resolveLowerResistPierce113c(defender, 'poisonresist')
+        const poisRes = computeEffectiveResistance({
+          baseRes: getPrePierceResistance113c(defender.statList, 'poisonresist'),
+          convictionPierce: 0,
+          lowerResistPierce: packet.lowerResistPierce ?? poisLr,
+          passiveEnemyPierce:
+            packet.passiveEnemyPierce ?? attacker.statList.getAccruedStat('passive_pois_pierce'),
+          canBreakImmunity: true,
+          ...defenderResistParams113c(defender, 'pois'),
+        })
+        if (!poisRes.isImmune) {
+          anyRiderChannelNonImmune = true
+          const effRate256 = Math.max(0, Math.trunc((pvpPoisRate256 * (100 - poisRes.effectiveRes)) / 100))
+          const effFrames = computeEffectivePoisonLengthFrames113c(rawWeapPoisFrames, defender)
+          if (effRate256 > 0 && effFrames > 0) {
+            finalElem256 += effRate256 * effFrames
+            if (effRate256 >= resolvedPoisonBitrate256) {
+              resolvedPoisonBitrate256 = effRate256
+              resolvedPoisonDurationFrames = effFrames
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Apply single-highest-bitrate poison state overwrite (`D2Game.dll` `0x6FCFCAB0`, #1871)
+  if (resolvedPoisonBitrate256 > 0 && resolvedPoisonDurationFrames > 0) {
+    const existingPois = defender.stateBus.getState('poison') ?? defender.stateBus.getState(2)
+    const existingRate256 = existingPois?.stats['poisonmindam'] ?? 0
+    if (!existingPois || resolvedPoisonBitrate256 >= existingRate256) {
+      if (existingPois) {
+        defender.stateBus.removeState('poison')
+      }
+      defender.stateBus.applyState({
+        stateNameOrId: 'poison',
+        sourceUnitId: attacker.id,
+        sourceSkillId: hasVenom ? 278 : packet.skillId,
+        slvl: effectiveSlvl,
+        durationFrames: resolvedPoisonDurationFrames,
+        stats: {
+          poisonmindam: resolvedPoisonBitrate256,
+          poisonlength: resolvedPoisonDurationFrames,
+        },
+      })
+    }
+  }
+
   // Vengeance (111) multi-elemental packet evaluation (Fire, Cold, Lightning)
-  // 1.13c Ground Truth (`SKILLS_SrvSt35_Vengeance` @ `0x6FCB8BA0`):
-  // - Elemental percentages scale off BASE weapon damage + flat +min/+max (`baseWeapPhys256`),
-  //   NOT multiplied by off-weapon %ED (Might/Fanaticism/Strength) or Deadly Strike!
+  // 1.13c Ground Truth (`SKILLS_SrvSt35_Vengeance` @ `0x6FCB8BA0`, #1868):
+  // - Elemental percentages scale off BASE weapon damage + flat +min/+max (`baseWeapPhysWithoutNormal256`),
+  //   strictly EXCLUDING `item_normaldamage` (`stat 111`, Grief `+Damage`), off-weapon %ED, and Deadly Strike!
   // - Multiplied by `passive_fire_mastery` (#329), `passive_cold_mastery` (#331), `passive_ltng_mastery` (#330).
   // - Inflicts `chill` (`STATE_COLD` #28) for `chillDurationFrames` (`30 + 15*(slvl-1)` frames), NOT solid `freeze`.
-  if (packet.multiElemPacket && (baseWeapPhys256 > 0 || rawPhys256 > 0)) {
+  if (packet.multiElemPacket && (baseWeapPhysWithoutNormal256 > 0 || baseWeapPhys256 > 0 || rawPhys256 > 0)) {
     if (!packet.elemMin256 && !packet.elemMax256) {
       finalElem256 = 0
     }
     const mep = packet.multiElemPacket
-    const rawBaseWpPhys256 = baseWeapPhys256 > 0 ? baseWeapPhys256 : prePvpRawPhys256
+    const rawBaseWpPhys256 =
+      packet.vengeanceBasePhys256 ??
+      (baseWeapPhysWithoutNormal256 > 0
+        ? baseWeapPhysWithoutNormal256
+        : baseWeapPhys256 > 0
+          ? baseWeapPhys256
+          : prePvpRawPhys256)
     const baseWpPhys256 =
       pvpDmgModPct !== 100
         ? Math.trunc((rawBaseWpPhys256 * pvpDmgModPct) / 100)
@@ -2314,7 +2867,7 @@ export function executeSUnitDmg(
     )
 
     if (mep.firePct && mep.firePct > 0) {
-      let rawFire256 = Math.trunc((baseWpPhys256 * mep.firePct) / 100)
+      let rawFire256 = Math.trunc((Math.trunc(baseWpPhys256 / 256) * mep.firePct) / 100) * 256
       const fireMasteryPct = attacker.statList.getAccruedStat('passive_fire_mastery')
       if (fireMasteryPct > 0) {
         rawFire256 = Math.trunc((rawFire256 * (100 + fireMasteryPct)) / 100)
@@ -2348,7 +2901,7 @@ export function executeSUnitDmg(
     }
 
     if (mep.coldPct && mep.coldPct > 0) {
-      let rawCold256 = Math.trunc((baseWpPhys256 * mep.coldPct) / 100)
+      let rawCold256 = Math.trunc((Math.trunc(baseWpPhys256 / 256) * mep.coldPct) / 100) * 256
       const coldMasteryPct = attacker.statList.getAccruedStat('passive_cold_mastery')
       if (coldMasteryPct > 0) {
         rawCold256 = Math.trunc((rawCold256 * (100 + coldMasteryPct)) / 100)
@@ -2394,7 +2947,7 @@ export function executeSUnitDmg(
     }
 
     if (mep.ltngPct && mep.ltngPct > 0) {
-      let rawLtng256 = Math.trunc((baseWpPhys256 * mep.ltngPct) / 100)
+      let rawLtng256 = Math.trunc((Math.trunc(baseWpPhys256 / 256) * mep.ltngPct) / 100) * 256
       const ltngMasteryPct = attacker.statList.getAccruedStat('passive_ltng_mastery')
       if (ltngMasteryPct > 0) {
         rawLtng256 = Math.trunc((rawLtng256 * (100 + ltngMasteryPct)) / 100)
@@ -2424,7 +2977,6 @@ export function executeSUnitDmg(
         absorbHeal256 += ltngAbsorbOut.absorbHeal256
       }
     }
-
   }
 
   // Apply 1.13c MDR negative overflow spill onto Physical damage (`D2Game.dll` `0x6FCFC50A`, #1795):
@@ -2441,6 +2993,10 @@ export function executeSUnitDmg(
       durationFrames: packet.stunDurationFrames,
     })
   }
+
+  const canTriggerProcs = packet.canTriggerProcs !== false
+  const canTriggerWeaponHitEvents =
+    canTriggerProcs && (attackKind === 'melee' || (attackKind === 'missile' && srcDam > 0))
 
   // 1.13c Knockback flag (`D2Game.dll` `SUNITDMG_ExecuteEvents` @ `0x6FCFD00E..0x6FCFD120`):
   // `pDamage->wResultFlags |= 0x08` transitions the defender into `MONMODE_KNOCKBACK` (13) or
@@ -2462,7 +3018,6 @@ export function executeSUnitDmg(
     attacker.statList.setHp256(newAttackerHp256)
   }
 
-  const totalDamage256 = finalPhys256 + finalElem256
   // 1.13c `SUNITDMG_ExecuteEvents` (`0x6FCFE237` -> `SUNITDMG_AddLife` `0x6FCFB570`):
   // Apply `dwAbsorbLife` (`absorbHeal256`) to defender HP (clamped at `maxhp`) BEFORE subtracting
   // `dwTotalDamage` (`0x6FCFE242`), provided defender is alive (`hp > 0`) and not in `death_delay` (state 92).
@@ -2474,6 +3029,123 @@ export function executeSUnitDmg(
     defender.statList.setHp256(defender.statList.getHp256() + absorbHeal256)
   }
   const currentDefenderHp256 = defender.statList.getHp256()
+
+  // 8.3 Crushing Blow (`stat 136`, `ITEMEVENTS_ApplyCrushingBlow` @ `0x6FCCCC30`, #1869, #1873)
+  // & Open Wounds (`stat 135`, `ITEMEVENTS_ApplyOpenWounds` @ `0x6FCCD410`, #1870, #1873):
+  let cbTriggered = false
+  let cbDamage256 = 0
+  let owTriggered = false
+  let owBitrate256 = 0
+  if (canTriggerWeaponHitEvents) {
+    if (!packet.skipCrushingBlow && currentDefenderHp256 > 0) {
+      const cbChance = Math.min(100, Math.max(0, Math.trunc(attacker.statList.getAccruedStat('item_crushingblow'))))
+      if (cbChance > 0) {
+        const cbRoll = packet.cbRoll100 ?? boundedRand(resolvedRng, 100)
+        if (cbRoll < cbChance) {
+          cbTriggered = true
+          const cbOut = calculateCrushingBlow113c({
+            defenderHp: currentDefenderHp256,
+            unitType: isPlayerLikeDefender ? 'player' : 'monster',
+            isHireling:
+              defender.unitType === 'mercenary' || defender.unitType === 'party_mercenary',
+            isBoss: defender.isBoss,
+            isPrimeEvil: defender.isPrimeEvil,
+            isSuperUnique: defender.isSuperUnique,
+            rank: defender.rank,
+            playerCount:
+              packet.playerCount ?? defender.partyScaleCount ?? attacker.partyScaleCount ?? 1,
+            isRanged: attackKind === 'missile',
+            physResPct: physResRec.isImmune ? 100 : physResRec.effectiveRes,
+          })
+          cbDamage256 = Math.max(0, cbOut.damage)
+        }
+      }
+    }
+    if (!packet.skipOpenWounds) {
+      const owChance = Math.min(100, Math.max(0, Math.trunc(attacker.statList.getAccruedStat('item_openwounds'))))
+      if (owChance > 0) {
+        const owRoll = packet.owRoll100 ?? boundedRand(resolvedRng, 100)
+        if (owRoll < owChance) {
+          const owOut = calculateOpenWounds113c({
+            attackerLvl: Math.max(1, attacker.statList.getAccruedStat('level')),
+            isRanged: attackKind === 'missile',
+            defender,
+          })
+          if (owOut.bitrate256 > 0) {
+            owTriggered = true
+            owBitrate256 = owOut.bitrate256
+            if (defender.stateBus.hasState('openwounds') || defender.stateBus.hasState(62)) {
+              defender.stateBus.removeState('openwounds')
+            }
+            defender.stateBus.applyState({
+              stateNameOrId: 'openwounds',
+              sourceUnitId: attacker.id,
+              sourceSkillId: packet.skillId,
+              slvl: 1,
+              durationFrames: owOut.durationFrames,
+              stats: { damage_framerate: owOut.bitrate256 },
+            })
+          }
+        }
+      }
+    }
+  }
+
+  // 8.4 CurHp-Clamped Life/Mana Leech, `#82 Life Tap`, and Thorns / Iron Maiden (`D2Game.dll` `0x6FCFE205..0x6FCFE237`, #1872):
+  // Clamp effective physical damage dealt against defender's remaining HP (`currentDefenderHp256 - cbDamage256`)
+  // BEFORE computing Life Tap, gear Life/Mana Steal, Thorns, Spirit of Barbs, or Iron Maiden!
+  const remHpForPhys256 = Math.max(0, currentDefenderHp256 - cbDamage256)
+  const actualPhysDealt256 = Math.min(finalPhys256, remHpForPhys256)
+  const actualPrePvpPhysDealt256 = Math.min(prePvpFinalPhys256, remHpForPhys256)
+
+  let attackerHealed256 = 0
+  let attackerManaLeeched256 = 0
+  // 1.13c Skills.txt #82 Life Tap (`state 25`): calc1 = ln56 with Param5 = 50 -> 50% life heal,
+  // ignoring DifficultyLevels steal divisor and MonStats `Drain = 0`!
+  const hasLifeTap = defender.stateBus.hasState('lifetap') || defender.stateBus.hasState(25)
+  if (
+    hasLifeTap &&
+    actualPhysDealt256 > 0 &&
+    canTriggerProcs &&
+    attacker.statList.getHp256() > 0 &&
+    !attacker.stateBus.hasState('death_delay')
+  ) {
+    const ltHeal256 = Math.trunc((actualPhysDealt256 * 50) / 100)
+    if (ltHeal256 > 0) {
+      const curHp = attacker.statList.getHp256()
+      attacker.statList.setHp256(curHp + ltHeal256)
+      attackerHealed256 += attacker.statList.getHp256() - curHp
+    }
+  }
+
+  // 1.13c Life / Mana steal (`D2Game.dll` 0x6FCFBA40) from ItemStatCost `lifedrainmindam` (60) /
+  // `manadrainmindam` (62). Suppressed when canTriggerProcs === false or for Smite (97).
+  const canLeechGear = canTriggerProcs && packet.skillId !== 97 && !packet.suppressGearLeech
+  const stealClass = stealAttackerClass113c(attacker)
+  if (canLeechGear && actualPhysDealt256 > 0 && stealClass !== undefined) {
+    const steal = computeLifeManaSteal113c({
+      phys256: actualPhysDealt256,
+      lifeStealPct: attacker.statList.getAccruedStat('lifedrainmindam'),
+      manaStealPct: attacker.statList.getAccruedStat('manadrainmindam'),
+      attackerIsPlayer: stealClass === 'player',
+      lifeStealDivisor: attacker.lifeStealDivisor ?? 1,
+      manaStealDivisor: attacker.manaStealDivisor ?? 1,
+      defenderIsMonster: isMonsterClassUnit113c(defender),
+      defenderDrain: defender.drain,
+    })
+    if (steal.mana256 > 0) {
+      const curMana = attacker.statList.getMana256()
+      attacker.statList.setMana256(curMana + steal.mana256)
+      attackerManaLeeched256 = attacker.statList.getMana256() - curMana
+    }
+    if (steal.life256 > 0 && attacker.statList.getHp256() > 0 && !attacker.stateBus.hasState('death_delay')) {
+      const curHp = attacker.statList.getHp256()
+      attacker.statList.setHp256(curHp + steal.life256)
+      attackerHealed256 += attacker.statList.getHp256() - curHp
+    }
+  }
+
+  const totalDamage256 = cbDamage256 + finalPhys256 + finalElem256
   const hpAfter256 = Math.max(0, currentDefenderHp256 - totalDamage256)
   defender.statList.setHp256(hpAfter256)
 
@@ -2525,8 +3197,8 @@ export function executeSUnitDmg(
       !defender.stateBus.hasState('ironmaiden')
         ? defender.statList.getAccruedStat('thorns_percent')
         : 0
-    if (thornsReturnPct > 0 && finalPhys256 > 0) {
-      let rawThorns256 = Math.trunc((finalPhys256 * thornsReturnPct) / 100)
+    if (thornsReturnPct > 0 && actualPhysDealt256 > 0) {
+      let rawThorns256 = Math.trunc((actualPhysDealt256 * thornsReturnPct) / 100)
       if (isPvP) {
         rawThorns256 = Math.trunc(rawThorns256 / 4)
       }
@@ -2546,7 +3218,7 @@ export function executeSUnitDmg(
 
     const reactiveDamage = defender.stateBus.triggerReactiveEvents({
       event: 'damagedinmelee',
-      incomingPhys256: prePvpFinalPhys256,
+      incomingPhys256: actualPrePvpPhysDealt256,
       incomingElem256: finalElem256,
       elemType,
       attackerStateBus: attacker.stateBus,
@@ -2589,7 +3261,7 @@ export function executeSUnitDmg(
     // calc1 = ln56 = 200 + 25*(slvl-1)% vs monsters; calc2 = calc3 = floor(ln56 / 4) when attacker is Player or Hireling
     const imState = attacker.stateBus.getState('ironmaiden')
     const hasIronMaiden = Boolean(imState)
-    if (hasIronMaiden && finalPhys256 > 0) {
+    if (hasIronMaiden && actualPhysDealt256 > 0) {
       const imSlvl = imState?.slvl ?? 1
       const isPlayerOrHireling =
         attacker.unitType === 'player' ||
@@ -2599,7 +3271,7 @@ export function executeSUnitDmg(
         imState?.stats['thorns_percent'] ??
         calculateIronMaidenReturnPct(imSlvl, false)
       const returnPct = isPlayerOrHireling ? Math.floor(rawReturnPct / 4) : rawReturnPct
-      const rawReflected256 = Math.trunc((finalPhys256 * returnPct) / 100)
+      const rawReflected256 = Math.trunc((actualPhysDealt256 * returnPct) / 100)
       const attackerPhysRes = computeEffectiveResistance({
         baseRes: attacker.statList.getAccruedStat('damageresist'),
         ...defenderResistParams113c(attacker, 'phys'),
@@ -2659,11 +3331,14 @@ export function executeSUnitDmg(
     : false
 
   const resolvedHitClass = resolveHitClassCode113c(packet.hitClass ?? attacker.weaponHitClass)
+  const effectiveImmuneToElem =
+    (elemResRec.isImmune && (rawElem256 > 0 || packet.skillId === 42) && !anyRiderChannelNonImmune) ||
+    (!rawElem256 && anyRiderChannelRaw && !anyRiderChannelNonImmune && finalElem256 === 0)
 
   return {
     hit: true,
     avoidedReason: 'none',
-    immuneToElem: elemResRec.isImmune && (rawElem256 > 0 || packet.skillId === 42),
+    immuneToElem: effectiveImmuneToElem,
     immuneToPhys: physResRec.isImmune && rawPhys256 > 0,
     physDamage256: finalPhys256,
     elemDamage256: finalElem256,
@@ -2677,6 +3352,16 @@ export function executeSUnitDmg(
     ...(knockedBack ? { knockedBack: true } : {}),
     ...(packet.noHitRecovery || packet.isPersistentGroundFire ? { noHitRecovery: true } : {}),
     ...(resolvedHitClass > 0 ? { hitClass: resolvedHitClass } : {}),
+    ...(cbTriggered ? { crushingBlowTriggered: true, crushingBlowDamage256: cbDamage256 } : {}),
+    ...(owTriggered
+      ? { openWoundsTriggered: true, openWoundsBitrate256: owBitrate256, openWoundsFrames: 200 }
+      : {}),
+    ...(resolvedPoisonBitrate256 > 0 && resolvedPoisonDurationFrames > 0
+      ? {
+          poisonBitrate256: resolvedPoisonBitrate256,
+          poisonDurationFrames: resolvedPoisonDurationFrames,
+        }
+      : {}),
     ...(attackerStatesApplied.length > 0 ? { attackerStatesApplied } : {}),
     ...(attackerColdDamage256 > 0 ? { attackerColdDamage256 } : {}),
     ...(reflectedPhys256 > 0 ? { reflectedPhys256 } : {}),
@@ -2736,7 +3421,6 @@ import {
   calculateSanctuaryStats,
   calculateFanaticismStats,
 } from '../../common/skills/paladin-auras.ts'
-import { resolveWeaponBase113c } from '../../common/units/char-anim-speed.ts'
 
 export interface WeaponCombatContext {
   readonly engine: GameEngine

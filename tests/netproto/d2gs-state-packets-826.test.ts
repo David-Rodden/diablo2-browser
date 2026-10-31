@@ -111,6 +111,13 @@ describe('S2C 0xAA AddUnitState (D2Client 0x6fb5db90)', () => {
 
   it('ClientWorld sets every listed state on the unit', () => {
     const world = new ClientWorld()
+    // Since #1774 the 0xAA handler only finds an already-assigned monster (D2Client 0x6FB54E20 returns NULL for an
+    // unknown server unit and the packet is dropped), so assign monster 7 before the state packet.
+    world.apply({ type: 'LoadAct', act: 0, mapSeed: 1, areaId: 1 })
+    world.apply({
+      type: 'UnitAssign',
+      unit: { unitType: 1, id: 7, classId: 1, x: 5000, y: 5000, mode: 1, lifePct: 128 },
+    })
     world.apply(
       decode(packet0xAA(1, 7, [{ state: CLOAK_OF_SHADOWS, stats: [[MODIFIERLIST_SKILL, 264]] }, { state: 105 }])),
     )

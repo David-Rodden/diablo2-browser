@@ -36,10 +36,13 @@ Found while fixing Issue #1622 (deciphered Scroll of Inifuss glow and rune numbe
 ## 3. Deciphered Rune Numbers & Glow (`0x6fb2cc60`)
 
 ```
-6fb2cc60: push ebp ; mov ebp, ecx ; call 0x6fb2c380
+6fb2cc60: push ebp ; mov ebp, esp ; and esp, -8 ; sub esp, 0x1a4   ; stdcall, 1 arg (ret 4 at 0x6fb2cecc)
 ...
-6fb2cd3a: test ebp, ebp
-6fb2cd3c: je   0x6fb2ceaf   ; Undeciphered ('bks') returns immediately!
+6fb2cc89: call 0x6fb2c380                                         ; background + close button
+...
+6fb2cd3a: mov  eax, [ebp+8]  ; bDeciphered
+6fb2cd3d: test eax, eax
+6fb2cd3f: je   0x6fb2cec6    ; Undeciphered ('bks') jumps to the epilogue (pop edi/esi/ebx; ret 4)
 ```
 
 When `bDeciphered == 0` (`bks`), neither `scroin2.dc6` nor `scroin3.dc6` is drawn; only the `scroin.dc6` parchment with its 5 painted Cairn Stone symbols is shown.

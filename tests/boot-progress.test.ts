@@ -22,6 +22,7 @@ interface MockElement {
   removeAttribute(name: string): void
   getAttribute(name: string): string | null
   appendChild(child: MockElement): MockElement
+  querySelector(selector: string): MockElement | null
 }
 
 function createMockDomEnvironment(): {
@@ -53,6 +54,18 @@ function createMockDomEnvironment(): {
           elementsById.set(child.id, child)
         }
         return child
+      },
+      // BootProgressTracker scopes its lookups to the stage / overlay element since the multibox stage
+      // container (#1362): resolve the `#id` alternatives of a selector list against the registered ids.
+      querySelector(selector: string) {
+        for (const part of selector.split(',')) {
+          const sel = part.trim()
+          if (sel.startsWith('#')) {
+            const found = elementsById.get(sel.slice(1))
+            if (found) return found
+          }
+        }
+        return null
       },
     }
     if (id) {

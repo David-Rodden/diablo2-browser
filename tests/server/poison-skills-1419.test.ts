@@ -150,7 +150,7 @@ describe('Issue #1419: 1.13c poison skills HitShift=0 default, evaluateSkill113c
 
   it('ticks Poison Javelin (#15 slvl 1, ELen=200 -> 25..37 poison) and Plague Javelin (#25 slvl 1, ELen=75 -> 23..37 poison) frame-by-frame', () => {
     // 1. Poison Javelin (#15 slvl 1)
-    const game15 = new GameInstance({ seed: 0x1419_15, difficulty: 0, areaId: 2 })
+    const game15 = new GameInstance({ seed: 1419015, difficulty: 0, areaId: 2 })
     const ama15 = game15.connectPlayer({
       d2sBytes: writeD2sSave113c(
         createSampleD2sCharacterData({

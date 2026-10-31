@@ -630,6 +630,9 @@ describe('Automap Reveal Plugin — Monster & Shrine Radar (Issue #881)', () => 
     for (const bMinimap of [true, false]) {
       const minimap = new Minimap()
       minimap.bMinimap = bMinimap
+      // Issue #1976: since 0d68d86d (#1558, D2Client 0x6fb1032e) fade state 0 draws every cell opaque and only fade
+      // state 1 applies the player-centred TRANS25/50/75 ring (full automap only), so select fade 1 explicitly.
+      minimap.fadeState = 1
       const sheetName = bMinimap ? 'MaxiMapS' : 'MaxiMap'
       const mockAtlasHandle = { id: `mock-${sheetName}` } as unknown as AtlasHandle
       minimap.setAtlasHandle(sheetName, mockAtlasHandle)

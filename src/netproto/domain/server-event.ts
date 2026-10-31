@@ -210,6 +210,14 @@ export type ServerEvent =
       readonly areaId?: number | undefined
     }
   | {
+      readonly type: 'WalkVerify'
+      readonly stamina: number
+      readonly x: number
+      readonly y: number
+      readonly vx: number
+      readonly vy: number
+    }
+  | {
       readonly type: 'UnitMove'
       readonly unitType: UnitType
       readonly id: number
@@ -653,6 +661,7 @@ export type ServerEvent =
       readonly isSummonAction?: boolean | undefined
       readonly summonAction?: number | undefined
       readonly petType?: number | undefined
+      readonly count?: number | undefined
     }
   | {
       readonly type: 'Portal'

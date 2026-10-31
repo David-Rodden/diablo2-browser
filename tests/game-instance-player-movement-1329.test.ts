@@ -183,16 +183,16 @@ describe('issue #1329: server player movement parity with the client predictor',
       expect(pos(game, id).x).toBeCloseTo(120.36, 6)
     })
 
-    it('answers S2C 0x15 with the server position when the client position is unreachable', () => {
+    it('answers S2C 0x96 with the server position when the client position is unreachable', () => {
       const game = makeGame()
       const id = connect(game, 'Cheat', 100, 100)
       game.setTerrainWalkableCheck((_area, x) => Math.round(x) !== 110)
       game.enqueueCommand(id, { type: 'UpdatePlayerPos', x: 120, y: 100 })
       game.stepFrame()
       expect(pos(game, id)).toEqual({ x: 100, y: 100 })
-      const reassign = game.drainEvents(id).filter(e => e.type === 'UnitReassign')
-      expect(reassign).toHaveLength(1)
-      expect(reassign[0]).toMatchObject({ unitType: 0, id, at: { x: 100, y: 100 }, snap: false })
+      const verify = game.drainEvents(id).filter(e => e.type === 'WalkVerify')
+      expect(verify).toHaveLength(1)
+      expect(verify[0]).toMatchObject({ x: 100, y: 100 })
     })
 
     it('ignores reports from a dead player', () => {

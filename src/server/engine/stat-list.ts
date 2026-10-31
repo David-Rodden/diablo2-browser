@@ -859,12 +859,17 @@ export class UnitStatList {
       key === 'passive_mastery_melee_th' ||
       key === 'passive_mastery_melee_dmg' ||
       key === 'passive_mastery_melee_crit'
+    const isOffensivePoisonKey =
+      key === 'poisonmindam' || key === 'poisonmaxdam' || key === 'poisonlength'
 
     const bestAuraByState = new Map<number, SkillStatModifier>()
     let sum = 0
     let bestAutoMeleeMastery = 0
 
     for (const mod of this.modifiers) {
+      if (isOffensivePoisonKey && (mod.stateId === 2 || mod.stateName === 'poison')) {
+        continue
+      }
       if (mod.isAura && mod.stateId > 0) {
         const prev = bestAuraByState.get(mod.stateId)
         if (!prev || mod.slvl >= prev.slvl) {
@@ -1183,7 +1188,7 @@ export class UnitStatList {
   }
 
   /**
-   * 1.13c `D2Common.dll #10621` (`0x6FD81EA0`):
+   * Flat part of 1.13c `D2Common.dll` `UNITS_GetAttackRate` #10621 @ `0x6FD81EA0`:
    * Returns accrued flat `tohit` (`STAT_TOHIT`, ID 19, including `op = 6` `item_tohit_perlevel` 224)
    * WITHOUT multiplying by `item_tohit_percent` (`119`), so `executeSUnitDmg` (`0x6FCFDE90`) can combine
    * `item_tohit_percent` into a single additive `%AR` pool with skill/mastery/charge-up `%AR` (#1625).
@@ -1236,10 +1241,8 @@ export class UnitStatList {
         })
       }
     }
-    const dexBonus =
-      options?.includeDexterityBonus
-        ? this.getAccruedStat('dexterity') >> 2
-        : 0
+    const includeDex = options?.includeDexterityBonus ?? (this.ownerType === 'player')
+    const dexBonus = includeDex ? this.getAccruedStat('dexterity') >> 2 : 0
     let rawDef = armorWithItemOps + dexBonus
     if (overridePct !== 0) {
       rawDef += Math.trunc((rawDef * overridePct) / 100)
@@ -1415,6 +1418,31 @@ export class UnitStatList {
   }
 
   /**
+   * 1.13c multi-source weapon/charm poison accumulator (`poison_count` `stat 326`,
+   * `D2Game.dll` `0x6FCF5EE0..0x6FCF5FD0` / Issue `#1871`):
+   * - Bitrates (`poisonmindam` `57`, `poisonmaxdam` `58`, in `1/256` HP/frame) sum across sources.
+   * - Total durations (`poisonlength` `59`, in frames) sum across sources and are averaged by
+   *   `Math.floor(totalFrames / poisonCount)` when `poisonCount > 1` on melee/non-ranged resolution;
+   *   callers that need raw summed length or ranged behavior can also inspect `rawFrames` and `count`.
+   */
+  getEffectiveWeaponPoison113c(): {
+    readonly minBitrate256: number
+    readonly maxBitrate256: number
+    readonly frames: number
+    readonly rawFrames: number
+    readonly count: number
+  } {
+    const minBitrate256 = Math.max(0, Math.trunc(this.getAccruedStat('poisonmindam')))
+    const maxBitrate256 = Math.max(minBitrate256, Math.trunc(this.getAccruedStat('poisonmaxdam')))
+    const rawFrames = Math.max(0, Math.trunc(this.getAccruedStat('poisonlength')))
+    const rawCount = Math.max(0, Math.trunc(this.getAccruedStat('poison_count')))
+    const count =
+      rawCount > 0 ? rawCount : (minBitrate256 > 0 || maxBitrate256 > 0) && rawFrames > 0 ? 1 : 0
+    const frames = count > 1 ? Math.floor(rawFrames / count) : rawFrames
+    return { minBitrate256, maxBitrate256, frames, rawFrames, count }
+  }
+
+  /**
    * 1.13c SUNITDMG_DrainItemDurability: Drains durability from equipped weapon upon contact hits (e.g. Blade Shield).
    */
   drainEquippedWeaponDurability(amount: number = 1): number {
@@ -1425,5 +1453,61 @@ export class UnitStatList {
       return updated
     }
     return 0
+  }
+}
+
+export type WeaponPoisonSourceInput113c =
+  | { readonly bitrate256: number; readonly frames: number }
+  | { readonly minBitrate256: number; readonly maxBitrate256: number; readonly lengthFrames: number }
+
+/**
+ * 1.13c multi-source weapon/charm poison + `#278 Venom` (`STATE_VENOM` = 31, `10`-frame clamp)
+ * aggregator (`D2Game.dll` `0x6FCF5EE0` / `0x6FCF6140`, `#1871`).
+ *
+ * - Sums per-frame `bitrate256` across all positive poison sources.
+ * - Without Venom: averages `lengthFrames = floor(totalFrames / count)` when `count > 1`.
+ * - With Venom (`venomActive = true`): clamps all item/charm poison duration to `10` frames (`0.4s`)
+ *   and adds Venom's rolled `[venomMinBitrate256..venomMaxBitrate256]` per-frame bitrate.
+ */
+export function getEffectiveWeaponPoison113c(
+  sources: readonly WeaponPoisonSourceInput113c[],
+  venomActive: boolean,
+  venomMinBitrate256: number,
+  venomMaxBitrate256: number,
+  rng?: { rand(max: number): number },
+): { bitrate256: number; lengthFrames: number } {
+  const roll = (lo: number, hi: number): number => {
+    const minV = Math.max(0, Math.trunc(lo))
+    const maxV = Math.max(minV, Math.trunc(hi))
+    if (maxV <= minV) return minV
+    return rng ? minV + rng.rand(maxV - minV + 1) : Math.floor((minV + maxV) / 2)
+  }
+
+  let sumRate256 = 0
+  let sumFrames = 0
+  let count = 0
+  for (const src of sources) {
+    const rate = 'bitrate256' in src ? Math.trunc(src.bitrate256) : roll(src.minBitrate256, src.maxBitrate256)
+    const frames = 'frames' in src ? Math.trunc(src.frames) : Math.trunc(src.lengthFrames)
+    if (rate > 0 && frames > 0) {
+      sumRate256 += rate
+      sumFrames += frames
+      count += 1
+    }
+  }
+
+  if (venomActive) {
+    const venomRate = roll(venomMinBitrate256, venomMaxBitrate256)
+    const totalRate = sumRate256 + venomRate
+    return {
+      bitrate256: totalRate,
+      lengthFrames: totalRate > 0 ? 10 : 0,
+    }
+  }
+
+  if (count === 0) return { bitrate256: 0, lengthFrames: 0 }
+  return {
+    bitrate256: sumRate256,
+    lengthFrames: count > 1 ? Math.floor(sumFrames / count) : sumFrames,
   }
 }

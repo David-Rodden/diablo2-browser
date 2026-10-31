@@ -43,6 +43,11 @@ import {
   encode0x90MapPartyPulse,
 } from './s2c/party.ts'
 import { encode0x11UnitOverlay, encode0xACAssignNpc } from './s2c/units.ts'
+import {
+  encode0x18LifeManaRegen,
+  encode0x1D_0x1E_0x1FStat,
+  encode0x95LifeMana,
+} from './s2c/stats.ts'
 import { encode0x63WaypointMenu } from './s2c/waypoint.ts'
 import { getDefault113cItemDataTables } from './tables/item-tables-113c.ts'
 import { S2C_PACKET_SIZES } from './tables/s2c-sizes.ts'
@@ -180,48 +185,32 @@ function encode0x3EUpdateItemStats(
 }
 
 function encodePlayerStatPacket(stat: number, value: number, param?: number): Uint8Array {
-  if (stat === 14 && param === 1 && value >= 0 && value <= 0xff) {
-    return new Uint8Array([0x19, value & 0xff])
-  }
-  if (value >= 0 && value <= 0xff) {
-    return new Uint8Array([0x1d, stat & 0xff, value & 0xff])
-  }
-  if (value >= 0 && value <= 0xffff) {
-    const w = new ByteWriter(4)
-    w.u8(0x1e)
-    w.u8(stat & 0xff)
-    w.u16LE(value & 0xffff)
-    return w.toUint8Array()
-  }
-  const w = new ByteWriter(6)
-  w.u8(0x1f)
-  w.u8(stat & 0xff)
-  w.u32LE(value >>> 0)
-  return w.toUint8Array()
+  return encode0x1D_0x1E_0x1FStat(stat, value, param)
 }
 
 function encodeMonsterAttrPacket(mercId: number, stat: number, value: number): Uint8Array {
-  if (value >= 0 && value <= 0xff) {
+  const intVal = Math.trunc(value)
+  if (intVal >= 0 && intVal <= 0xff) {
     const w = new ByteWriter(7)
     w.u8(0x9e)
     w.u8(stat & 0xff)
     w.u32LE(mercId >>> 0)
-    w.u8(value & 0xff)
+    w.u8(intVal & 0xff)
     return w.toUint8Array()
   }
-  if (value >= 0 && value <= 0xffff) {
+  if (intVal >= 0 && intVal <= 0xffff) {
     const w = new ByteWriter(8)
     w.u8(0x9f)
     w.u8(stat & 0xff)
     w.u32LE(mercId >>> 0)
-    w.u16LE(value & 0xffff)
+    w.u16LE(intVal & 0xffff)
     return w.toUint8Array()
   }
   const w = new ByteWriter(10)
   w.u8(0xa0)
   w.u8(stat & 0xff)
   w.u32LE(mercId >>> 0)
-  w.u32LE(value >>> 0)
+  w.u32LE(intVal >>> 0)
   return w.toUint8Array()
 }
 
@@ -1351,15 +1340,28 @@ export function encodeTypedServerEventToS2cPackets(
       return [encodePlayerStatPacket(ev.stat, ev.value, ev.param)]
     }
 
+    case 'WalkVerify': {
+      const bw = new BitWriter()
+      bw.writeBits(0x96, 8)
+      bw.writeBits(Math.max(0, ev.stamina) & 0x7fff, 15)
+      bw.writeBits(ev.x, 16)
+      bw.writeBits(ev.y, 16)
+      bw.writeBits(toUnsignedVelocityByte(ev.vx), 8)
+      bw.writeBits(toUnsignedVelocityByte(ev.vy), 8)
+      const raw = bw.toUint8Array()
+      const out = new Uint8Array(9)
+      out.set(raw.subarray(0, 9))
+      return [out]
+    }
     case 'LifeMana': {
       const x = (ev.at?.x ?? 0) & 0xffff
       const y = (ev.at?.y ?? 0) & 0xffff
-      const vx = toUnsignedVelocityByte(ev.vx)
-      const vy = toUnsignedVelocityByte(ev.vy)
       if (ev.life < 0 && ev.mana < 0) {
+        const vx = toUnsignedVelocityByte(ev.vx)
+        const vy = toUnsignedVelocityByte(ev.vy)
         const bw = new BitWriter()
         bw.writeBits(0x96, 8)
-        bw.writeBits(Math.max(0, ev.stamina) & 0x7fff, 15)
+        bw.writeBits(Math.min(0x7fff, Math.max(0, Math.trunc(ev.stamina))), 15)
         bw.writeBits(x, 16)
         bw.writeBits(y, 16)
         bw.writeBits(vx, 8)
@@ -1367,38 +1369,45 @@ export function encodeTypedServerEventToS2cPackets(
         const raw = bw.toUint8Array()
         const out = new Uint8Array(9)
         out.set(raw.subarray(0, 9))
-        return [out]
+        const pkts: Uint8Array[] = [out]
+        if (ev.stamina > 0x7fff) {
+          pkts.push(encodePlayerStatPacket(10, Math.trunc(ev.stamina) * 256))
+        }
+        return pkts
       }
-      if (ev.lifeRegen !== undefined || ev.manaRegen !== undefined) {
-        const bw = new BitWriter()
-        bw.writeBits(0x18, 8)
-        bw.writeBits(Math.max(0, ev.life) & 0x7fff, 15)
-        bw.writeBits(Math.max(0, ev.mana) & 0x7fff, 15)
-        bw.writeBits(Math.max(0, ev.stamina) & 0x7fff, 15)
-        bw.writeBits((ev.lifeRegen ?? 0) & 0x7f, 7)
-        bw.writeBits((ev.manaRegen ?? 0) & 0x7f, 7)
-        bw.writeBits(x, 16)
-        bw.writeBits(y, 16)
-        bw.writeBits(vx, 8)
-        bw.writeBits(vy, 8)
-        const raw = bw.toUint8Array()
-        const out = new Uint8Array(15)
-        out.set(raw.subarray(0, 15))
-        return [out]
+      const basePkt =
+        ev.lifeRegen !== undefined || ev.manaRegen !== undefined
+          ? encode0x18LifeManaRegen({
+              life: ev.life,
+              mana: ev.mana,
+              stamina: ev.stamina,
+              lifeRegen: ev.lifeRegen,
+              manaRegen: ev.manaRegen,
+              x,
+              y,
+              vx: ev.vx,
+              vy: ev.vy,
+            })
+          : encode0x95LifeMana({
+              life: ev.life,
+              mana: ev.mana,
+              stamina: ev.stamina,
+              x,
+              y,
+              vx: ev.vx,
+              vy: ev.vy,
+            })
+      const pkts: Uint8Array[] = [basePkt]
+      if (ev.life > 0x7fff) {
+        pkts.push(encodePlayerStatPacket(6, Math.trunc(ev.life) * 256))
       }
-      const bw = new BitWriter()
-      bw.writeBits(0x95, 8)
-      bw.writeBits(Math.max(0, ev.life) & 0x7fff, 15)
-      bw.writeBits(Math.max(0, ev.mana) & 0x7fff, 15)
-      bw.writeBits(Math.max(0, ev.stamina) & 0x7fff, 15)
-      bw.writeBits(x, 16)
-      bw.writeBits(y, 16)
-      bw.writeBits(vx, 8)
-      bw.writeBits(vy, 8)
-      const raw = bw.toUint8Array()
-      const out = new Uint8Array(13)
-      out.set(raw.subarray(0, 13))
-      return [out]
+      if (ev.mana > 0x7fff) {
+        pkts.push(encodePlayerStatPacket(8, Math.trunc(ev.mana) * 256))
+      }
+      if (ev.stamina > 0x7fff) {
+        pkts.push(encodePlayerStatPacket(10, Math.trunc(ev.stamina) * 256))
+      }
+      return pkts
     }
 
     case 'Experience': {
@@ -1958,13 +1967,15 @@ export function encodeTypedServerEventToS2cPackets(
       }
       if (ev.kind === 'assign') {
         if (ev.isSummonAction || ev.summonAction !== undefined) {
-          const w = new ByteWriter(13)
+          const hasCount = ev.count !== undefined
+          const w = new ByteWriter(17)
           w.u8(0x7a)
           w.u8((ev.summonAction ?? ev.stat ?? 1) & 0xff)
           w.u8((ev.petType ?? ev.value ?? 0) & 0xff)
           w.u16LE((ev.classId ?? 0) & 0xffff)
           w.u32LE((ev.ownerId ?? 0) >>> 0)
           w.u32LE((ev.mercId ?? 0) >>> 0)
+          w.u32LE(hasCount ? (ev.count! >>> 0) : 0)
           return [w.toUint8Array()]
         }
         const w = new ByteWriter(20)
@@ -2160,6 +2171,45 @@ export function serverEventToS2cPackets(
               ? { unitType: raw.unitType ?? 0, id: Number(raw.unitId ?? 1) }
               : undefined),
           sound: Number(raw.sound ?? raw.soundId ?? 1),
+        },
+        tables,
+      )
+    case 'StatUpdate': {
+      const unitRef =
+        raw.unit ??
+        (raw.unitType !== undefined && raw.unitId !== undefined
+          ? { unitType: raw.unitType, id: Number(raw.unitId) }
+          : undefined)
+      return encodeTypedServerEventToS2cPackets(
+        {
+          type: 'StatSet',
+          unit: unitRef,
+          stat: Number(raw.stat ?? raw.statId ?? 0),
+          value: Number(raw.value ?? 0),
+          param: raw.param !== undefined ? Number(raw.param) : undefined,
+          flag: raw.flag !== undefined ? Number(raw.flag) : undefined,
+        },
+        tables,
+      )
+    }
+    case 'LifeManaUpdate':
+    case 'LifeManaPot':
+    case 'LifeManaPotUpdate':
+      return encodeTypedServerEventToS2cPackets(
+        {
+          type: 'LifeMana',
+          life: Number(raw.life ?? raw.hp ?? 0),
+          mana: Number(raw.mana ?? raw.mp ?? 0),
+          stamina: Number(raw.stamina ?? 0),
+          lifeRegen: raw.lifeRegen !== undefined ? Number(raw.lifeRegen) : undefined,
+          manaRegen: raw.manaRegen !== undefined ? Number(raw.manaRegen) : undefined,
+          at:
+            raw.at ??
+            (raw.x !== undefined || raw.y !== undefined
+              ? { x: Number(raw.x ?? 0), y: Number(raw.y ?? 0) }
+              : undefined),
+          vx: raw.vx !== undefined ? Number(raw.vx) : undefined,
+          vy: raw.vy !== undefined ? Number(raw.vy) : undefined,
         },
         tables,
       )

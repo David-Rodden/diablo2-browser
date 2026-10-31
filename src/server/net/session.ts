@@ -420,6 +420,10 @@ export function decodeD2gsC2sPacketToCommand(pkt: Uint8Array): ClientCommand | n
         npcId: id,
       }
     }
+    case 0x58: {
+      const questId = r.u16LE()
+      return { type: 'QuestMessageSound', questId }
+    }
     case 0x5d: {
       const button = r.u8()
       const state = r.u8()

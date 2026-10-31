@@ -92,16 +92,19 @@ describe('Issue #1301 — Stamina exhaustion forces walk mode and walk packets (
     // Always-Run toggle itself remains ON so running resumes once stamina recovers
     expect(hudModel.isRunMode).toBe(true)
 
-    // Hold Ctrl while stamina === 0 -> still cannot run
+    // Hold Ctrl while stamina === 0 -> still cannot run.
+    // 84e22af3 (#1706): D2Client 0x6FAC86A0 rejects a hold re-dispatch while the player is in
+    // mode 2/3/6 until (frame - [0x6FBD34C4]) >= 7 frames (7 x 40 ms after the 1000 ms press), see
+    // kb/network/d2client-s2c-unit-queue-and-c2s-interact-113c.md section 3, so hold at >= 1280 ms.
     mapper.handleKeyDown({ key: 'Control', code: 'ControlLeft' }, 1100)
-    const rec2 = mapper.triggerPrimaryWorldAction(5015, 5000, null, 1200, true)
+    const rec2 = mapper.triggerPrimaryWorldAction(5015, 5000, null, 1300, true)
     expect(rec2?.command).toEqual({
       type: 'Move',
       to: { x: 5015, y: 5000 },
       run: false,
     })
     expect(predictor.getSnapshot().running).toBe(false)
-    mapper.handleKeyUp({ key: 'Control', code: 'ControlLeft' }, 1250)
+    mapper.handleKeyUp({ key: 'Control', code: 'ControlLeft' }, 1350)
 
     // Stamina recovers > 0 -> running resumes automatically with Always-Run still ON
     world.apply({
@@ -151,6 +154,12 @@ describe('Issue #1301 — Stamina exhaustion forces walk mode and walk packets (
       vx: 0,
       vy: 0,
     })
+
+    // No DRLG room/LevelView is streamed in this headless session, so isWorldSubTileBlocked
+    // (session-level-navigation.ts) fails closed and the predictor cannot leave (5000,5000). Since
+    // ed75e6a7 tickSessionFrame drops a non-moving self unit back to neutral mode 1, so give the
+    // predictor an open floor here to exercise an actual mid-run stamina drain.
+    session.predictor.setCollisionChecker(() => false)
 
     // Start running toward (5030, 5000)
     session.commandMapper.triggerPrimaryWorldAction(5030, 5000, null, 1000, false)

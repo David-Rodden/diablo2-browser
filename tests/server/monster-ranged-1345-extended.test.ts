@@ -172,6 +172,7 @@ describe('issue #1345 monster skills and missile physics', () => {
     expect(missile.size).toBe(1)
   })
 
+
   it('stops a non-zero CollideType projectile on a blocked sub-tile', () => {
     const game = new GameInstance({ seed: 1348, areaId: 2 })
     connectPlayer(game, 10, 20)
@@ -256,7 +257,7 @@ describe('issue #1345 monster skills and missile physics', () => {
   })
 
 
-  it('piercing arrows continue past the first player and can hit a second target', () => {
+  it('arrows do not pierce past the first player for monsters', () => {
     const game = new GameInstance({ seed: 1351, areaId: 2, maxPlayers: 8 })
     const nearId = game.connectPlayer({ charClass: 'bar', name: 'Near', x: 10, y: 10, areaId: 2 })
     const farId = game.connectPlayer({ charClass: 'bar', name: 'Far', x: 14, y: 10, areaId: 2 })
@@ -275,7 +276,7 @@ describe('issue #1345 monster skills and missile physics', () => {
     })
     game.stepFrames(120)
     expect(game.getPlayerState(nearId)!.hp).toBeLessThan(nearStart)
-    expect(game.getPlayerState(farId)!.hp).toBeLessThan(farStart)
+    expect(game.getPlayerState(farId)!.hp).toBe(farStart)
   })
 
   it('rotates through multiple Skill1..8 projectile slots', () => {

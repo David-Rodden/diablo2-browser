@@ -131,7 +131,7 @@ function make0x7ASummonAction(
   action = 1,
   petType = 1,
 ): Uint8Array {
-  const buf = new Uint8Array(13)
+  const buf = new Uint8Array(17)
   const dv = new DataView(buf.buffer)
   buf[0] = 0x7a
   buf[1] = action & 0xff
