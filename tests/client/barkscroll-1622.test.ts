@@ -77,9 +77,10 @@ describe('Issue #1622: Barkscroll (Scroll of Inifuss) 1.13c layout and animation
       expect(threshSlice.readInt32LE(i * 4)).toBe(BARKSCROLL_STEP_THRESHOLDS[i])
     }
 
-    // 0x6fb2cd3a: test ebp, ebp ; je 0x6fb2ceaf (undeciphered scroll skips runes and glows)
-    expect(Array.from(readPeSlice(dll, 0x6fb2cd3a, 8))).toEqual([
-      0x85, 0xed, 0x0f, 0x84, 0x6d, 0x01, 0x00, 0x00,
+    // 0x6fb2cd3a: mov eax, [ebp+8] ; test eax, eax ; je 0x6fb2cec6 (stdcall bDeciphered arg, `ret 4` at 0x6fb2cecc;
+    // an undeciphered scroll jumps to the epilogue and skips runes and glows)
+    expect(Array.from(readPeSlice(dll, 0x6fb2cd3a, 11))).toEqual([
+      0x8b, 0x45, 0x08, 0x85, 0xc0, 0x0f, 0x84, 0x81, 0x01, 0x00, 0x00,
     ])
     // 0x6fb2cd8b: add ecx, 0x32 (50ms tick interval)
     expect(Array.from(readPeSlice(dll, 0x6fb2cd8b, 3))).toEqual([0x83, 0xc1, 0x32])

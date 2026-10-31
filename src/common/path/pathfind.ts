@@ -740,8 +740,14 @@ export function findPathLocal(
     preparedGoal.y === resolvedStart.y &&
     rawGoalDistSq > 2
   let effectiveUnitSize: 1 | 2 | 3 = unitSize
+  // A valid D2Common #10142 prepared target (PATH_PreparePathTargetForPathUpdate) is the 1.13c
+  // server endPos; only re-snap a far-shifted prepared goal when the clicked cell itself is walkable
+  // (df0cd4b0 / #868). Clicking inside a solid footprint (e.g. Rogue Encampment tents) must keep
+  // the prepared goal or the client diverges from the server and gets 0x15-resynced (#1975).
   let resolvedGoal =
-    (!preparedGoal || preparedShiftSq > 16 || preparedCollapsedToStart) &&
+    (!preparedGoal ||
+      preparedCollapsedToStart ||
+      (preparedShiftSq > 16 && isCellWalkableLocal(grid, floorGoalX, floorGoalY))) &&
     unitSize === 2 &&
     rawGoalDistSq <= maxAstarDistSq
       ? (findNearestWalkableLocal(

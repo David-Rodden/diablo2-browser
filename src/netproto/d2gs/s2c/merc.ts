@@ -44,11 +44,13 @@ export function decode0x7ASummonAction(pkt: Uint8Array): ServerEvent {
   const classId = r.u16LE()
   const ownerId = r.u32LE()
   const mercId = r.u32LE()
+  const count = pkt.length >= 17 ? r.u32LE() : undefined
   return {
     type: 'Merc',
     kind: 'assign',
     ownerId,
     mercId,
+    ...(count !== undefined ? { count } : {}),
     classId,
     stat: action,
     value: petType,
@@ -144,13 +146,13 @@ export function decode0x9FMercAttrWord(pkt: Uint8Array): ServerEvent {
   }
 }
 
-/** 0xA0 MercAttributeDword (10B, D2Client.dll 0x6fb5ea40) */
+/** 0xA0 MercAttributeDword (10B, D2Client.dll 0x6fb5ea40 — signed 32-bit except stat 13 experience) */
 export function decode0xA0MercAttrDword(pkt: Uint8Array): ServerEvent {
   const r = new ByteReader(pkt)
   r.u8() // 0xA0
   const stat = r.u8()
   const mercId = r.u32LE()
-  const value = r.u32LE()
+  const value = stat === 13 ? r.u32LE() : r.i32LE()
   return {
     type: 'Merc',
     kind: 'stat',

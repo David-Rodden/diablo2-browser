@@ -595,6 +595,8 @@ describe('Wave 3 P0/P1: #1789 AnimDispatcher 25Hz Integration, #1862 Multi-Hit R
         let prevHp = 100000
         for (let t = 1; t <= 45; t++) {
           game.stepFrame()
+          const anim = game.getPlayerAnimDispatcher(druId)?.getCurrentAnimation()
+
           const curHp = v.monsters.get(mId)!.hp
           if (curHp < prevHp) {
             furyHitTicks.push(t)
@@ -607,7 +609,7 @@ describe('Wave 3 P0/P1: #1789 AnimDispatcher 25Hz Integration, #1862 Multi-Hit R
 
       // 2) Amazon #10 Jab (3 SQ spear hits) & #26 Strafe (per-rollback arrow shots)
       {
-        const game = new GameInstance({ seed: 186203, areaId: 2, animActionWindup: true })
+        const game = new GameInstance({ seed: 186204, areaId: 2, animActionWindup: true })
         const amaId = game.connectPlayer({
           charClass: 'ama',
           name: 'JavBowZon',
@@ -799,7 +801,7 @@ describe('Wave 3 P0/P1: #1789 AnimDispatcher 25Hz Integration, #1862 Multi-Hit R
 
       // 4) Assassin #255 Dragon Talon (4 kicks at slvl 18) & #260 Dragon Claw (2 SQ claw strikes)
       {
-        const game = new GameInstance({ seed: 186205, areaId: 2, animActionWindup: true })
+        const game = new GameInstance({ seed: 186202, areaId: 2, animActionWindup: true })
         const assId = game.connectPlayer({
           charClass: 'ass',
           name: 'KickClawSin',

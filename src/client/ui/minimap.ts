@@ -515,6 +515,10 @@ export interface MinimapMarker {
   readonly fromLevelId?: number
   /** Optional explicit reveal override for stitched multi-level markers. */
   readonly preRevealed?: boolean | undefined
+  /** True when this exit marker points to the True Tomb of Tal Rasha (`BH.dll` `0x101a7f06`). */
+  readonly isTrueTalRashaTomb?: boolean | undefined
+  /** Optional `Font6` label color override (e.g. `'green'` for the True Tomb of Tal Rasha). */
+  readonly labelColor?: D2ColorCode | undefined
 }
 
 /** Dynamic entity marker drawn on the automap (`0x6fb11490` & `0x6fabd390`). */
@@ -2008,6 +2012,35 @@ export class Minimap {
       this.lastRenderStats.crosshairsDrawn.total += 1
     }
 
+    // 7b. True Tomb of Tal Rasha entrance marker crosshair (`BH.dll` `Maphack::OnAutomapDraw` @ `0x101a7f06`, green `ÿc2`)
+    for (const marker of level.markers) {
+      if (marker.kind !== 'exit' || marker.isTrueTalRashaTomb !== true) continue
+      const markerRevealed =
+        marker.preRevealed === true ||
+        (marker.preRevealed === undefined && level.preRevealTown === true) ||
+        this.isCellExplored(level, marker.cellX, marker.cellY)
+      if (!markerRevealed) continue
+      const subTileX = marker.cellX * 5 + 2
+      const subTileY = marker.cellY * 5 + 2
+      const coords = computeAutomapObjectPixelCoords(subTileX, subTileY)
+      const mx = Math.trunc((coords.xPixel * 10) / vp.divisor) - offsetX
+      const my = Math.trunc((coords.yPixel * 10) / vp.divisor) - offsetY
+      if (mx >= vp.vpX && mx <= vp.vpX + vp.vpW && my >= vp.vpY && my <= vp.vpY + vp.vpH) {
+        this.drawCrosshairPolygon(
+          renderer,
+          mx,
+          my,
+          this.bMinimap,
+          [0.0, 1.0, 0.25, 1.0],
+          toWorldX,
+          toWorldY,
+          zoom,
+          true,
+        )
+        this.lastRenderStats.crosshairsDrawn.total += 1
+      }
+    }
+
     // Disable WebGL scissor test after flushing the automap batch
     if (gl && typeof gl.disable === 'function') {
       renderer.flush()
@@ -2032,7 +2065,7 @@ export class Minimap {
           text: marker.targetName,
           x: lx,
           y: ly,
-          color: 'white',
+          color: marker.labelColor ?? (marker.isTrueTalRashaTomb ? 'green' : 'white'),
           kind: 'warp',
         })
       }

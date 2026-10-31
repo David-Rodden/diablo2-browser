@@ -333,6 +333,7 @@ export interface MissileRecord {
   readonly canDestroy: boolean
   readonly toHit: boolean
   readonly pierce: boolean
+  readonly applyMastery: boolean
   readonly skill: string
   readonly hitShift: number
   readonly srcDamage: number
@@ -1033,6 +1034,7 @@ export class D2DataRegistry {
         canDestroy: numberCell(row, 'CanDestroy', 0) !== 0,
         toHit: numberCell(row, 'ToHit', 0) !== 0,
         pierce: numberCell(row, 'Pierce', 0) !== 0,
+        applyMastery: numberCell(row, 'ApplyMastery', 0) !== 0,
         skill: textCell(row, 'Skill'),
         hitShift: numberCell(row, 'HitShift', 0),
         srcDamage: numberCell(row, 'SrcDamage', 0),

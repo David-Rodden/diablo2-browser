@@ -1345,6 +1345,12 @@ export function handleServerEvent(host: SessionEventProcessorHost, rawEv: Server
     }
 
     case 'QuestState': {
+      if (ev.kind === 'item' || ev.source === 0x50) {
+        const arr = ev.quests ?? ev.flags ?? []
+        if (((arr[0] ?? 0) & 0xffff) === 1 && typeof host.automapView.setStaffTombLevelOverride === 'function') {
+          host.automapView.setStaffTombLevelOverride(66 + (host.world.questTombOffset & 0xffff))
+        }
+      }
       if (ev.kind === 'availability' || ev.source === 0x5e) {
         // S2C 0x5E handler 0x6fb5c090: the Den of Evil light reads byte 1 (A1Q1).
         if (ev.availabilityBytes === undefined) {

@@ -333,7 +333,13 @@ export {
   MONSTATS_HCIDX_COUNT,
   getMonsterAnimCompBitWidths,
 } from './d2gs/s2c/monstats2-comp-bits.ts'
-export { decode0x3EUpdateItemStats } from './d2gs/s2c/stats.ts'
+export {
+  decode0x3EUpdateItemStats,
+  encode0x18LifeManaRegen,
+  encode0x1D_0x1E_0x1FStat,
+  encode0x95LifeMana,
+  encode0x95LifeManaPot,
+} from './d2gs/s2c/stats.ts'
 export {
   decode0x21UpdateSkill,
   decode0x22UpdateSkillStatus,

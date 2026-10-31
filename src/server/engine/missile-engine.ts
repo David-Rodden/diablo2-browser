@@ -1342,17 +1342,60 @@ export class MissileEngine {
       pierceIdx: resolveMissilePierceIdx(effectiveRec, params.owner, this.registry),
       pierceCount: 0,
       hitTargetIds: new Set<string>(),
-      dmgPacket:
-        params.canTriggerProcs !== undefined && params.dmgPacket && params.dmgPacket.canTriggerProcs === undefined
-          ? { ...params.dmgPacket, canTriggerProcs: params.canTriggerProcs }
-          : (params.dmgPacket ?? {
-              skillId: params.sourceSkillId,
-              attackKind: 'spell',
-              elemType: 'none',
-              autoHit: false,
-              elemMin256: 0,
-              elemMax256: 0,
-            }),
+      dmgPacket: (() => {
+        const linkedSkill =
+          effectiveRec.skill !== ''
+            ? this.registry.getSkillByName(effectiveRec.skill)
+            : undefined
+        const resolvedMissileSrcDam =
+          effectiveRec.srcDamage > 0
+            ? effectiveRec.srcDamage
+            : effectiveRec.srcDamage === 0 &&
+                linkedSkill !== undefined &&
+                linkedSkill.srcDam > 0 &&
+                (effectiveRec.toHit ||
+                  effectiveRec.id === 86 ||
+                  effectiveRec.id === 205 ||
+                  effectiveRec.id === 206)
+              ? linkedSkill.srcDam
+              : 0
+        const baseDmgPkt: SUnitDmgPacket =
+          params.dmgPacket ??
+          (resolvedMissileSrcDam > 0
+            ? {
+                skillId: params.sourceSkillId,
+                attackKind: 'missile',
+                srcDam: resolvedMissileSrcDam,
+                elemType: 'none',
+                autoHit: Number(params.sourceSkillId) === 22 || !effectiveRec.toHit,
+                elemMin256: 0,
+                elemMax256: 0,
+              }
+            : {
+                skillId: params.sourceSkillId,
+                attackKind: 'spell',
+                elemType: 'none',
+                autoHit: false,
+                elemMin256: 0,
+                elemMax256: 0,
+              })
+        const withSrcDam: SUnitDmgPacket =
+          resolvedMissileSrcDam > 0 &&
+          baseDmgPkt.srcDam === undefined &&
+          baseDmgPkt.attackKind !== 'spell'
+            ? { ...baseDmgPkt, srcDam: resolvedMissileSrcDam }
+            : baseDmgPkt
+        const withSkipMastery: SUnitDmgPacket =
+          withSrcDam.skipElemMastery === undefined &&
+          effectiveRec.skill === '' &&
+          !effectiveRec.applyMastery &&
+          (effectiveRec.eMin > 0 || effectiveRec.eMax > 0)
+            ? { ...withSrcDam, skipElemMastery: true }
+            : withSrcDam
+        return params.canTriggerProcs !== undefined && withSkipMastery.canTriggerProcs === undefined
+          ? { ...withSkipMastery, canTriggerProcs: params.canTriggerProcs }
+          : withSkipMastery
+      })(),
       chainRemaining:
         params.chainRemaining ??
         params.chainCount ??
@@ -1925,6 +1968,7 @@ export class MissileEngine {
               isPersistentGroundFire: true,
               noHitRecovery: true,
               canTriggerProcs: false,
+              ...(rec.skill === '' && !rec.applyMastery ? { skipElemMastery: true } : {}),
               ...(rec.damageRate > 0 ? { frameRate1024: rec.damageRate } : {}),
             }
           }
@@ -2540,6 +2584,7 @@ export class MissileEngine {
           isPersistentGroundFire: true,
           noHitRecovery: true,
           canTriggerProcs: false,
+          ...(rec.skill === '' && !rec.applyMastery ? { skipElemMastery: true } : {}),
           frameRate1024: rec.damageRate > 0 ? rec.damageRate : (packet.frameRate1024 ?? 41),
         }
         break
@@ -4062,7 +4107,7 @@ export class MissileEngine {
 
           // D2Common.dll path mode 6 (0x6FDA3E80): orthogonal lateral jitter for Charged Bolt / Twister / Vine rows
           const isChargedBoltJitter =
-            m.record.pSrvDoFunc === 11 ||
+            m.record.id === 56 || m.record.id === 495 || m.record.pSrvDoFunc === 11 ||
             m.record.pCltDoFunc === 11 ||
             (m.record.pSrvDoFunc === 1 &&
               m.record.vel > 0 &&
@@ -4071,6 +4116,7 @@ export class MissileEngine {
               m.record.nextDelay === 0 &&
               m.record.eType === 'ltng')
           const isTwisterOrVineJitter =
+
             m.record.pSrvDmgFunc === 9 ||
             m.record.pSrvDoFunc === 23 ||
             m.record.pSrvDoFunc === 24 ||
@@ -4558,6 +4604,7 @@ export class MissileEngine {
               elemMax256: selfRowElem.max256,
               autoHit: true,
               unblockable: true,
+              ...(m.record.skill === '' && !m.record.applyMastery ? { skipElemMastery: true } : {}),
               ...(m.record.eType === 'fire' && !m.record.collideKill
                 ? {
                     isPersistentGroundFire: true,
@@ -4573,6 +4620,7 @@ export class MissileEngine {
         }
         const dmgPrep = this.dispatchSrvDmg(m, target, basePacket)
         const dmgOut = executeSUnitDmg(m.owner, target, dmgPrep.packet, m.doFuncRng ?? this.rng)
+
 
         hits.push({
           missileName: m.name,
@@ -4877,6 +4925,7 @@ export class MissileEngine {
         oPos.x - impactX,
         (oPos.y - impactY) / ISO_GROUND_ASPECT_RATIO,
       )
+
       if (dist <= searchRadiusPx) {
         this.spawnMissile({
           missileNameOrId: subBolt,
@@ -4922,7 +4971,8 @@ export class MissileEngine {
       elemType: isCold ? 'cold' : 'fire',
       elemMin256: (basePacket.elemMin256 ?? 0) + itemMin * 256,
       elemMax256: (basePacket.elemMax256 ?? 0) + itemMax * 256,
-    }
+      mergedBowHitFlagElem: isCold ? 'cold' : 'fire',
+    } as SUnitDmgPacket
   }
 
   /**

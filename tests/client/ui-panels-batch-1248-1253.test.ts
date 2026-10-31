@@ -168,7 +168,7 @@ describe('UI Panels Batch (#1248, #1249, #1250, #1252, #1253)', () => {
   })
 
   describe('Issue #1253: Trade Panel Button Tooltips & Online Shift+Click Quick Transfer', () => {
-    it('renders cancel ("CANCEL") and strParty20 ("accept trade") tooltips on trade panel buttons', () => {
+    it('renders #4130 ("Cancel") and #4131 ("Accept Trade") tooltips on trade panel buttons', () => {
       const wp = new WorldPanelsHud()
       wp.setLanguage('en')
       wp.trade = {
@@ -197,7 +197,9 @@ describe('UI Panels Batch (#1248, #1249, #1250, #1252, #1253)', () => {
       expect(wp.hoveredTradeButton).toBe('cancel')
       const m1 = createMockCtx()
       wp.drawTradePanel(m1.ctx, 80, 60, m1.font, tradeAssets)
-      expect(m1.drawnTexts.some((t) => t.text === 'CANCEL')).toBe(true)
+      // D2Client.dll trade tooltips (0x6fb09bc0..0x6fb09d12) load `mov ecx,0x1022` (#4130) for Cancel and
+      // `mov ecx,0x1023` (#4131) for Accept (kb/ui/d2client-player-trade-flow-113c.md, #1405), not `cancel`/strParty20.
+      expect(m1.drawnTexts.some((t) => t.text === 'Cancel')).toBe(true)
       expect(m1.drawnTexts.some((t) => t.text.includes('cannot trade'))).toBe(false)
 
       // Hover Self Accept button (ox + 239, oy + 400 -> 319, 460)

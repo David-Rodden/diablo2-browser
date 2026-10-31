@@ -1570,7 +1570,7 @@ export function drawLeftDockPanelImpl(
     if (scroinBgImg) {
       ctx.drawImage(scroinBgImg, ox, oy)
     }
-    // 2. D2Client.dll `0x6fb2cd3a` (`test ebp, ebp; je 0x6fb2ceaf`):
+    // 2. D2Client.dll `0x6fb2cd3a` (`mov eax, [ebp+8]; test eax, eax; je 0x6fb2cec6`, stdcall arg):
     //    When undeciphered (`bks`), neither `scroin2.dc6` nor `scroin3.dc6` is drawn.
     //    When deciphered (`bkd`), advance 20fps (50ms) animation (`0x6fbc3b07`) and reveal
     //    the 5 Cairn Stone rune numbers (`scroin2.dc6` frames 0..4) and starburst glows

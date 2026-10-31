@@ -111,6 +111,8 @@ describe('D2GS 1.13c extracted tables, Huffman codec, S2C/C2S framing & registry
       hardcore: false,
       expansion: true,
       ladder: true,
+      // @2 u32 arena flags (D2Game pGame+0x1D28 -> +8, decoded since #1660/#1665; 0x800 = hardcore, unset here)
+      arenaFlags: 0x00300004,
     })
 
     // Invalid opcode 0x30 (size 0 in 1.13c table) throws ProtocolError

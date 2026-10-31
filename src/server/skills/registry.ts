@@ -1635,11 +1635,12 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
     }
 
     // Holy Shield (`117`, `SKILLS_SrvDo029_HolyShield` `0x6FC76C30`): `aurastat1 = toblock (dm56)` is
-    // populated by `evaluateSkillAuraStats113c`, plus `calc1` -> `skill_armor_percent` and Smite damage bonus.
+    // populated by `evaluateSkillAuraStats113c`, plus `calc1` -> `skill_armor_percent` and `modifierlist_skill/level`
+    // (never polluting `item_normaldamage` `stat 111`, which is Grief `+Damage` #1868!).
     if (skill.id === 117) {
       stats['skill_armor_percent'] = evaluateCalc(skill.calc1, skillCalcCtx)
-      stats['item_normaldamage'] = evalResult.minPhysDmg
-      stats['item_throw_maxdamage'] = evalResult.maxPhysDmg
+      stats['modifierlist_skill'] = 117
+      stats['modifierlist_level'] = evalResult.slvl
     }
 
     const buffDuration = skill.auraLenCalc
@@ -3367,17 +3368,27 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
       notes.push('uninterruptible')
     }
 
-    // Smite (97): Shield base damage + Holy Shield flat damage
+    // Smite (97): Shield base damage + Holy Shield flat damage + Grief `item_normaldamage` (`stat 111`, #1868)
     const isSmite = skill.id === 97
     let smiteMin256 = 0
     let smiteMax256 = 0
     if (isSmite) {
-      const shieldMin = caster.statList.getAccruedStat('secondary_mindamage') || 2
-      const shieldMax = caster.statList.getAccruedStat('secondary_maxdamage') || 5
-      const hsMin = caster.statList.getAccruedStat('item_normaldamage') || 0
-      const hsMax = caster.statList.getAccruedStat('item_throw_maxdamage') || 0
-      smiteMin256 = (shieldMin + hsMin) * FIXED_ONE
-      smiteMax256 = (shieldMax + hsMax) * FIXED_ONE
+      const shieldMin = caster.smiteMinDam ?? (caster.statList.getAccruedStat('secondary_mindamage') || 2)
+      const shieldMax = Math.max(
+        shieldMin,
+        caster.smiteMaxDam ?? (caster.statList.getAccruedStat('secondary_maxdamage') || 5),
+      )
+      let hsMin = 0
+      let hsMax = 0
+      if (caster.stateBus.hasState('holyshield') || caster.stateBus.hasState(101)) {
+        const hsState = caster.stateBus.getState('holyshield') ?? caster.stateBus.getState(101)
+        const hsLvl = Math.max(1, hsState?.slvl ?? (caster.statList.getEffectiveSkillLevel(117) || 1))
+        hsMin = compute5BandScaling(hsLvl, 3, 2, 3, 4, 4, 4)
+        hsMax = compute5BandScaling(hsLvl, 6, 2, 3, 4, 4, 4)
+      }
+      const griefNormal = caster.statList.getAccruedStat('item_normaldamage')
+      smiteMin256 = Math.max(0, shieldMin + hsMin + griefNormal) * FIXED_ONE
+      smiteMax256 = Math.max(smiteMin256, (shieldMax + hsMax + griefNormal) * FIXED_ONE)
     }
 
     // Kick (#1, #255 Dragon Talon, #270 Dragon Tail, #275 Dragon Flight):
@@ -3567,6 +3578,7 @@ export function executeSkillCore113c(ctx: SkillExecContext): SkillExecOutcome {
         physToElemPct, // Berserk converts 100% physical to Magic; Concentrate/Frenzy convert 1%/blvl in Berserk (#152)
         autoHit: isSmite, // Smite (`97`) always hits
         unblockable: isSmite,
+        ...(isSmite ? { includesNormalDamage: true } : {}),
         stunDurationFrames: stunFramesForHit,
         knockback:
           isSmite ||

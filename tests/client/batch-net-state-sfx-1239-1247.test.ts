@@ -30,7 +30,7 @@ describe('Batch NET-1 / NET-2 / STATE-1 / STATE-2 / SFX-8 / SFX-9 / SFX-10 (#123
       expect(miscSrc).not.toContain('0x9000 | op')
     })
 
-    it('decodes 0x12 as UnloadAct, 0x17 as UnitRemove, and rare opcodes as ProtocolSync without polluting player stats', () => {
+    it('decodes 0x12 as UnloadAct, rejects never-framed 0x17/0x80, and decodes rare opcodes as ProtocolSync without polluting player stats', () => {
       const world = new ClientWorld()
       world.apply({ type: 'LoadAct', act: 0, mapSeed: 1, areaId: 1 })
       world.apply({
@@ -44,20 +44,23 @@ describe('Batch NET-1 / NET-2 / STATE-1 / STATE-2 / SFX-8 / SFX-9 / SFX-10 (#123
       expect(ev12).toEqual({ type: 'UnloadAct' })
       world.apply(ev12)
 
-      // 0x17 RemoveUnit17 (6B: u8 0x17, u8 unitType=1, u32 id=777)
-      const pkt17 = new Uint8Array(6)
-      pkt17[0] = 0x17
-      pkt17[1] = 1
-      new DataView(pkt17.buffer).setUint32(2, 777, true)
-      const ev17 = decodeRare113cS2cPacket(pkt17)
-      expect(ev17).toEqual({ type: 'UnitRemove', unitType: 1, id: 777 })
-      world.apply(ev17)
+      // 0x17 / 0x80: D2Net.dll S->C size table @ 0x6FBFA900 (file 0x00A900) stores 0 for both opcodes, so
+      // D2NET_10033 never frames them and no guessed layout may be decoded (#1663,
+      // tests/netproto/s2c-0x17-never-framed-1663.test.ts). The framed 1.13c remove-unit packet is 0x0A (D2Net size 6:
+      // u8 op, u8 unitType, u32 id; D2Client handler 0x6fb5ca40).
+      expect(() => decodeRare113cS2cPacket(new Uint8Array([0x17, 1, 0x09, 0x03, 0, 0]))).toThrow(RangeError)
+      expect(() => decodeRare113cS2cPacket(new Uint8Array([0x80, 42]))).toThrow(RangeError)
+      const pkt0a = new Uint8Array(6)
+      pkt0a[0] = 0x0a
+      pkt0a[1] = 1
+      new DataView(pkt0a.buffer).setUint32(2, 777, true)
+      world.apply(decodeD2gsS2cPacket(pkt0a))
       expect(world.getUnit('monster', 777)).toBeUndefined()
 
-      // Rare opcodes (0x13, 0x14, 0x16, 0x40, 0x45, 0x54, 0x57, 0x5f, 0x62, 0x6e..0x72, 0x7e, 0x80, 0x93, 0xa6)
+      // Rare opcodes (0x13, 0x14, 0x16, 0x40, 0x45, 0x54, 0x57, 0x5f, 0x62, 0x6e..0x72, 0x7e, 0x93, 0xa6)
       const rareOpcodes = [
         0x13, 0x14, 0x16, 0x40, 0x45, 0x54, 0x57, 0x5f, 0x62, 0x6e, 0x6f, 0x70, 0x71, 0x72, 0x7e,
-        0x80, 0x93, 0xa6,
+        0x93, 0xa6,
       ]
       for (const op of rareOpcodes) {
         const pkt = new Uint8Array(14)

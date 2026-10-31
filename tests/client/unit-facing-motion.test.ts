@@ -138,7 +138,16 @@ describe('local player facing & 25Hz turn transition (LocalMovementPredictor)', 
       let frames = 0
       let convergedFrame = -1
       for (; frames < 600; frames++) {
-        mapper.triggerPrimaryWorldAction(goalX, goalY, null, frames * FRAME_MS)
+        // 84e22af3 (#1706): D2Client 0x6FAC86A0 pushes any click/hold closer than minStep (5 when
+        // running, 3/4 walking) out to that distance (kb/network/d2client-s2c-unit-queue-and-c2s-interact-113c.md
+        // section 3), so re-issuing the cursor goal inside that radius legitimately retargets past it.
+        // Re-path while the goal is beyond minStep (approxDistance 0x6FB587B0 under-reports by ~4%
+        // and the player cell is rounded, so keep a 6 sub-tile margin); the predictor then finishes
+        // the last segment.
+        const pre = predictor.getSnapshot()
+        if (frames === 0 || Math.hypot(goalX - pre.logicalX, goalY - pre.logicalY) > 6) {
+          mapper.triggerPrimaryWorldAction(goalX, goalY, null, frames * FRAME_MS)
+        }
         const snap = predictor.update(FRAME_MS)
         expect(snap.targetDir64, `heading ${k} frame ${frames} targetDir64`).toBe(expectedDir64)
         expect(allowedDirs.has(snap.dir64), `heading ${k} frame ${frames} dir64=${snap.dir64}`).toBe(true)

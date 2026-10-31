@@ -282,11 +282,10 @@ export function decode0x96WalkVerify(pkt: Uint8Array): ServerEvent {
   const vx = br.readSignedBits(8)
   const vy = br.readSignedBits(8)
   return {
-    type: 'LifeMana',
-    life: -1,
-    mana: -1,
+    type: 'WalkVerify',
     stamina,
-    at: { x, y },
+    x,
+    y,
     vx,
     vy,
   }

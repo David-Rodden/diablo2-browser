@@ -2913,6 +2913,31 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
       break
     }
 
+    case 'WalkVerify': {
+      const atX = ev.x ?? 0
+      const atY = ev.y ?? 0
+      const selfUnit = this.selfId !== 0 ? this._units.get(makeUnitKey('player', this.selfId)) : undefined
+      const isMovementSkillActive =
+        Boolean(
+          selfUnit?.castState &&
+            (selfUnit.castState.skillId === 107 ||
+              selfUnit.castState.skillId === 132 ||
+              selfUnit.castState.skillId === 143 ||
+              selfUnit.castState.skillId === 151),
+        ) ||
+        selfUnit?.states.has(18) === true ||
+        this._self.states.has(18)
+
+      this._self.applyLifeMana(
+        -1,
+        -1,
+        ev.stamina,
+        isMovementSkillActive ? 0 : atX,
+        isMovementSkillActive ? 0 : atY,
+      )
+      break
+    }
+
     case 'LifeMana': {
       const atX = ev.at?.x ?? 0
       const atY = ev.at?.y ?? 0

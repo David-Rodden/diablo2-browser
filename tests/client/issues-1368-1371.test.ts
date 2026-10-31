@@ -151,18 +151,16 @@ describe('Issue #1368: Automap Reciprocal Exit Labels Deduplication', () => {
 })
 
 describe('Issue #1369: Poison Cloud trans75 & Double Tinting Elimination', () => {
-  it('configures poison clouds and puffs to trans75 alpha blend mode to prevent additive blowout', () => {
-    expect(MISSILE_METAS['corpsepoisoncloud']?.blendMode).toBe('trans75')
-    expect(MISSILE_METAS['corpsepoisoncloud']?.trans).toBe(2)
-
-    expect(MISSILE_METAS['poisonpuff']?.blendMode).toBe('trans75')
-    expect(MISSILE_METAS['poisonpuff']?.trans).toBe(2)
-
-    expect(MISSILE_METAS['poisonjavcloud']?.blendMode).toBe('trans75')
-    expect(MISSILE_METAS['poisonjavcloud']?.trans).toBe(2)
-
-    expect(MISSILE_METAS['plaguejavcloud']?.blendMode).toBe('trans75')
-    expect(MISSILE_METAS['plaguejavcloud']?.trans).toBe(2)
+  // Issue #1976: the original #1369 change hand-set these metas to trans 2 / 'trans75', contradicting
+  // 1.13c Missiles.txt (corpsepoisoncloud / poisonpuff / poisonjavcloud / plaguejavcloud / poisonexplosioncloud
+  // all have Trans=1) and kb/render/d2gfx-draw-mode-113c.md §3 (D2Client 0x6FB1CF40: Missiles Trans 1 -> eDrawMode 3,
+  // additive). Bake metas named after a real row must carry the row Trans (#1054 guard in
+  // tests/vfx-1050-1055-drawmode.test.ts), so the poison clouds stay additive like the original client.
+  it('keeps poison clouds and puffs on their Missiles.txt Trans 1 (eDrawMode 3, additive)', () => {
+    for (const key of ['corpsepoisoncloud', 'poisonpuff', 'poisonjavcloud', 'plaguejavcloud']) {
+      expect(MISSILE_METAS[key]?.trans, key).toBe(1)
+      expect(MISSILE_METAS[key]?.blendMode, key).toBe('lighter')
+    }
   })
 
   it('eliminates double tinting by suppressing RGB tintColor when an active paletteRow shift is present', () => {
