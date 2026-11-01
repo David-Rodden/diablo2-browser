@@ -700,6 +700,10 @@ export function encodeD2gsClientCommand(
     case 'PauseGame':
     case undefined:
       return []
+    default:
+      throw new ProtocolError(
+        `Unknown ClientCommand type: ${String((cmd as { readonly type?: unknown }).type)}`,
+      )
   }
 }
 

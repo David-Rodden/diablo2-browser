@@ -18,6 +18,7 @@ import {
   MONUMOD_CONSTANTS,
   applyEliteModifiers,
   enrichMonsterPacks,
+  filterTransferableEliteModifiers113c,
   rollEliteModifiers,
 } from '../units/monsters-data.ts'
 import { Rng } from '../rng/d2-rng.ts'
@@ -97,13 +98,14 @@ export function promoteToUnique(pack: MonsterPack, rng: Rng): MonsterPack {
   }
   const leader = applyEliteModifiers(scaledLeader, 'unique', mods)
   const members: MonsterStats[] = [leader]
+  const transferableMods = filterTransferableEliteModifiers113c(mods)
   for (let i = 0; i < minionCount; i += 1) {
     const minionBase = pack.members[(i + 1) % pack.members.length] ?? leaderBase
     const scaledMinion: MonsterStats = {
       ...minionBase,
       hp: Math.max(1, Math.round(minionBase.hp * (1 + MONUMOD_CONSTANTS.minionHpPct / 100))),
     }
-    members.push(applyEliteModifiers(scaledMinion, 'minion', []))
+    members.push(applyEliteModifiers(scaledMinion, 'minion', transferableMods))
   }
   return {
     ...pack,

@@ -951,5 +951,59 @@ describe('KillTracker: Boss / SuperUnique Classification, Solo vs Party, Guards 
     await tracker.flushNow()
     expect((await repo.loadAll()).characters).toHaveLength(0)
     tracker.destroy()
+
+    // 6. Single Player localCharacter session resolves deterministically under ('local', 'Single Player', 'SinglePlayer', charName)
+    const spSession = new OnlineSession()
+    const spAdapter = new FakeGameServerAdapter()
+    spSession.attachGameServer(spAdapter, {
+      localCharacter: {
+        characters: [
+          {
+            name: 'LocalSorc',
+            charClass: 1,
+            level: 12,
+            act: 0,
+            difficulty: 0,
+            hardcore: false,
+            expansion: true,
+            ladder: false,
+            dead: false,
+            expiresAt: 0,
+            equipmentGraphics: new Uint8Array(0),
+            rawStatString: new Uint8Array(0),
+          },
+        ],
+        selectedName: 'LocalSorc',
+        writeProgression: () => {},
+      },
+    })
+    spAdapter.emit({
+      type: 'GameFlags',
+      difficulty: 0,
+      hardcore: false,
+      expansion: true,
+      ladder: false,
+    })
+    spSession.world.self.level = 12
+    expect(resolveSessionIdentity(spSession, true)).toEqual({
+      ok: true,
+      profile: {
+        charKey: computeCharKey('local', 'Single Player', 'SinglePlayer', 'LocalSorc'),
+        host: 'local',
+        realm: 'Single Player',
+        account: 'SinglePlayer',
+        charName: 'LocalSorc',
+        charClass: 1,
+        level: 12,
+        hardcore: false,
+        expansion: true,
+        ladder: false,
+      },
+    })
+    await spSession.leaveGame()
+    expect(resolveSessionIdentity(spSession, true)).toEqual({
+      ok: false,
+      reason: 'incomplete character identity (host, realm, account, charName)',
+    })
   })
 })

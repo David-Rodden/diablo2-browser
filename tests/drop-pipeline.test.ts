@@ -345,8 +345,8 @@ describe('TreasureClass Drop Pipeline (Issue #107)', () => {
       })
 
       expect(dropped.rarity).toBe('rare')
-      expect(dropped.durability).toBe(86 * 3) // 258
-      expect(dropped.maxDurability).toBe(258)
+      expect(dropped.durability).toBe(255) // min(255, 86 * 3 = 258) per 1.13c uint8 bDurability cap (#1950)
+      expect(dropped.maxDurability).toBe(255)
     })
 
     it('7.3 Set fallback: Monarch with no set item degrades to Magic with 2x durability', () => {

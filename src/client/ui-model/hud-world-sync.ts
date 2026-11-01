@@ -1636,7 +1636,11 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
 
   if (containersDirty) {
     const scrollCounts = new Map<number, number>()
-    for (const item of model.world.containers.inventory.values()) {
+    const carriedContainers = [
+      ...model.world.containers.inventory.values(),
+      ...model.world.containers.belt.values(),
+    ]
+    for (const item of carriedContainers) {
       const code = (item.code ?? '').trim().toLowerCase()
       const scrollSkillId =
         code === 'isc' ? 217 : code === 'ibk' ? 218 : code === 'tsc' ? 219 : code === 'tbk' ? 220 : null
@@ -2050,7 +2054,23 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
           String(p.item.id) === String(pendingStackable.itemId) ||
           (p.item as { serverId?: number }).serverId === pendingStackable.itemId,
       )
-      if (matchPlaced && hud.inventory.startIdentifyMode(matchPlaced.item, 'inventory')) {
+      const beltSource = matchPlaced
+        ? undefined
+        : model.world.containers.belt.get(pendingStackable.itemId)
+      const started = matchPlaced
+        ? hud.inventory.startIdentifyMode(matchPlaced.item, 'inventory')
+        : beltSource !== undefined &&
+          hud.inventory.startIdentifyMode(
+            {
+              id: String(beltSource.id),
+              code: beltSource.code,
+              name: beltSource.code.toUpperCase(),
+              invWidth: 1,
+              invHeight: 1,
+            } as any,
+            'belt',
+          )
+      if (started) {
         hud.pendingIdentifyScrollId = pendingStackable.itemId
         if (hud.rightPanel !== 'inv') {
           hud.toggleRightPanel('inv')

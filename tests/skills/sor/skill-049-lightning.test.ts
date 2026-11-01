@@ -411,18 +411,18 @@ describe('[Skill #049] Lightning (SOR) — 1.13c 7-Dimensional Verification Suit
       const mult = calculateLightningSynergyMultiplier({ chargedBolt: 10, nova: 5, chainLightning: 5 })
       expect(mult).toBeCloseTo(2.6, 4)
 
-      // slvl 20 base = 1-272. With +160% synergy: min = floor(1 * 2.6) = 2, max = floor(272 * 2.6) = 707
+      // slvl 20 base = 1-272. 1.13c D2Common #10121 (0x6FDA04C7): EMin=1 with EMinLev1=0 is un-synergised (min = 1), max = floor(272 * 2.6) = 707
       const d20Syn = calculateLightningDamage(20, { chargedBolt: 10, nova: 5, chainLightning: 5 })
-      expect(d20Syn.min).toBe(2)
+      expect(d20Syn.min).toBe(1)
       expect(d20Syn.max).toBe(707)
 
       // calculateSkillDamage routes 49 and 'lightning' identically
       const viaCalc1 = calculateSkillDamage(49, 20, { chargedBolt: 10, nova: 5, chainLightning: 5 } as any)
-      expect(viaCalc1.min).toBe(2)
+      expect(viaCalc1.min).toBe(1)
       expect(viaCalc1.max).toBe(707)
 
       const viaCalc2 = calculateSkillDamage('lightning', 20, { chargedBolt: 10, nova: 5, chainLightning: 5 } as any)
-      expect(viaCalc2.min).toBe(2)
+      expect(viaCalc2.min).toBe(1)
       expect(viaCalc2.max).toBe(707)
     })
 

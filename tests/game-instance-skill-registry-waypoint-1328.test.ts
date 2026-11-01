@@ -26,8 +26,8 @@ type AnyEvent = ServerEvent & Record<string, unknown>
 
 const CLASS_CODES = ['ama', 'sor', 'nec', 'pal', 'bar', 'dru', 'ass'] as const
 
-/** #1417 slvl-1 server missile counts of the multi-missile srvdofuncs (see srvdo-missile-volleys-1417.test.ts). */
-const SLVL1_VOLLEY_COUNTS_1417: Readonly<Record<number, number>> = { 12: 2, 26: 2, 38: 3, 67: 2, 225: 3, 240: 3 }
+/** #1417/#1790 slvl-1 server missile counts of multi-missile srvdofuncs (including Fire Wall #51 2x firewallmaker). */
+const SLVL1_VOLLEY_COUNTS_1417: Readonly<Record<number, number>> = { 12: 2, 26: 2, 38: 3, 51: 2, 67: 2, 225: 3, 240: 3 }
 
 function richCasterD2s(charClass: number): Uint8Array {
   return writeD2sSave113c(
@@ -206,9 +206,12 @@ describe('#1328 GameInstance skill casts via the 1.13c skill registry', () => {
       const created = events.filter((e) => e.type === 'CreateMissile')
       const cast = events.find((e) => e.type === 'SkillCast' && e.skill === skill.id)
       const ev = evalAtLevel1(skill)
-      // #1815/#1816: Dragon Tail (270) and Phoenix Strike (280) strike in melee; their srvmissile rows
-      // (`dragontail`, `royalstrikemeteorcenter`) belong to the kick explosion / charge release.
-      const missileName = skill.id === 270 || skill.id === 280 ? '' : expectedServerMissile(skill, ev.missileA)
+      // #1815/#1816/#1883/#1884: Dragon Tail (270) and Phoenix Strike (280) strike in melee;
+      // Bone Wall (78) spawns bonewall segments directly; Blade Shield (277) activates bladeshield state.
+      const missileName =
+        skill.id === 78 || skill.id === 270 || skill.id === 277 || skill.id === 280
+          ? ''
+          : expectedServerMissile(skill, ev.missileA)
 
       if (skill.passive) {
         expect(cast, `passive skill ${skill.id} ${skill.name} must not be cast`).toBeUndefined()
@@ -218,30 +221,43 @@ describe('#1328 GameInstance skill casts via the 1.13c skill registry', () => {
         expect(cast, `form-only skill ${skill.id} ${skill.name} must not be cast in human form`).toBeUndefined()
         continue
       }
-      if (skill.srvStFunc === 33 || skill.srvStFunc === 34) {
+      if (skill.srvStFunc === 33 || skill.srvStFunc === 34 || skill.id === 90) {
         expect(
           cast,
-          `corpse-only skill ${skill.id} ${skill.name} must not cast without an eligible corpse`,
+          `corpse/metal-item-only skill ${skill.id} ${skill.name} must not cast without an eligible target`,
         ).toBeUndefined()
         continue
       }
       expect(cast, `skill ${skill.id} ${skill.name} must be cast`).toBeDefined()
       if (missileName !== '') {
-        const expectedId = registry.getMissileByName(missileName)!.id
+        const mRec = registry.getMissileByName(missileName)!
+        const expectedId = mRec.id
+        const allowedSubIds = new Set<number>([expectedId])
+        for (const subName of [skill.srvMissileB, mRec.subMissile1, mRec.subMissile2, mRec.subMissile3, mRec.hitSubMissile1, mRec.hitSubMissile2, mRec.hitSubMissile3, mRec.hitSubMissile4]) {
+          if (subName) {
+            const subRec = registry.getMissileByName(subName)
+            if (subRec) allowedSubIds.add(subRec.id)
+          }
+        }
         // #1417: Skills.txt srvdofunc volleys at slvl 1 with one target in range (D2Game.dll SrvDo008
         // Multiple Shot / Teeth calc1 = 2, SrvDo012 Strafe calc3 = 2, SrvDo017 Charged Bolt calc1 = 3,
-        // SrvDo117 Firestorm / SrvDo118 Twister calc1 = 3); every other missile skill launches one.
+        // SrvDo117 Firestorm / SrvDo118 Twister calc1 = 3); every other missile skill launches one
+        // primary missile (plus any frame-1 collision HitSubMissile1 such as Immolation Arrow #27 -> immolationfire #230).
         const expectedCount = SLVL1_VOLLEY_COUNTS_1417[skill.id] ?? 1
-        expect(created, `skill ${skill.id} ${skill.name}`).toHaveLength(expectedCount)
-        expect(created.every((e) => e.missileClassId === expectedId), `skill ${skill.id} ${skill.name}`).toBe(true)
+        const primaryCreated = created.filter((e) => e.missileClassId === expectedId)
+        expect(primaryCreated, `skill ${skill.id} ${skill.name}`).toHaveLength(expectedCount)
+        expect(created.every((e) => allowedSubIds.has(e.missileClassId)), `skill ${skill.id} ${skill.name}`).toBe(true)
         castsWithMissile += 1
       } else {
-        expect(created, `skill ${skill.id} ${skill.name} has no server missile`).toHaveLength(0)
+        const isSummon = skill.summon !== '' || skill.petType !== ''
+        if (!isSummon) {
+          expect(created, `skill ${skill.id} ${skill.name} has no server missile`).toHaveLength(0)
+        }
         const melee = skill.range === 'h2h' || skill.range === 'both'
         // movement strikes (52, 67, 76, 78) and direct-hit spells (21 Telekinesis, 33 Psychic Hammer, 51 Mind Blast)
         const movementStrike = [21, 33, 51, 52, 67, 76, 78].includes(skill.srvDoFunc)
-        // auras deal their AuraScanner pulse damage (Holy Fire / Freeze / Shock, Sanctuary)
-        if (!melee && !movementStrike && !skill.aura && skill.id !== 42) {
+        // auras, Blade Shield (277), and summoned pets/turrets deal their real frame-1 pulse / pet damage
+        if (!melee && !movementStrike && !skill.aura && !isSummon && skill.id !== 42 && skill.id !== 277) {
           expect(game.getMonster(monId)!.hp, `skill ${skill.id} ${skill.name} must not deal placeholder damage`).toBe(100000)
         }
       }
@@ -347,7 +363,9 @@ describe('#1328 skill-list gating, shapeshift restrict and equipped-weapon damag
     expect(cast(101), 'Paladin Holy Bolt on a Sorceress').toBeUndefined()
     const teleport = cast(54)
     expect(teleport, 'oskill Teleport').toBeDefined()
-    expect(teleport!.level).toBe(3)
+    // D2Common 1.13c (0x6FDA05D0 / 0x6FD9FCB0): own-class oskill (stat 97) is capped at +3,
+    // and general +all skills (stat 127 = +2) stacks on top once granted -> 3 + 2 = 5.
+    expect(teleport!.level).toBe(3 + 2)
     const iceBolt = cast(39)
     expect(iceBolt, 'learned Ice Bolt').toBeDefined()
     expect(iceBolt!.level).toBe(1 + 2) // hard point + item_allskills
@@ -392,23 +410,32 @@ describe('#1328 skill-list gating, shapeshift restrict and equipped-weapon damag
           areaId: 2,
           hp: 1000,
           maxHp: 1000,
+          ac: 0,
+          toBlock: 0,
+          damageRegen: 0,
           resistances: { phys: 0, magic: 0, fire: 0, light: 0, cold: 0, poison: 0 },
           aiDisabled: true,
         })
         g.enqueueCommand(pid, { type: 'CastSkillOnTarget', skillId: 0, targetType: 'monster', targetId: monId })
-        g.stepFrames(1)
+        g.stepFrames(20)
         out.push(1000 - g.getMonster(monId)!.hp)
         g.applyDamageToMonster(monId, 100000, pid)
       }
       return out
     }
-    for (const l of losses(game, playerId)) {
+    // 1.13c ToHit is capped at 95% (SUnitDmg 0x6FCBE2F0), so filter landed hits (l > 0).
+    const armedLanded = losses(game, playerId).filter((l) => l > 0)
+    expect(armedLanded.length).toBeGreaterThan(0)
+    for (const l of armedLanded) {
       expect(l).toBeGreaterThanOrEqual(6)
       expect(l).toBeLessThanOrEqual(12)
     }
-    for (const l of losses(unarmedGame, unarmedId)) {
-      expect(l).toBeGreaterThanOrEqual(1)
-      expect(l).toBeLessThanOrEqual(2)
+    // Unarmed 1..2 base with StrBonus 100 at 100 Strength -> +100% -> 2..4 (Weapons.txt row 0 Hand to Hand).
+    const unarmedLanded = losses(unarmedGame, unarmedId).filter((l) => l > 0)
+    expect(unarmedLanded.length).toBeGreaterThan(0)
+    for (const l of unarmedLanded) {
+      expect(l).toBeGreaterThanOrEqual(2)
+      expect(l).toBeLessThanOrEqual(4)
     }
   })
 })
@@ -594,14 +621,19 @@ describe('#1328 aura pulses, buff stats in combat, tab/charged skills and direct
       for (let i = 0; i < 10; i++) {
         const m = dummy(g, 101, 100, 1000)
         g.enqueueCommand(pid, { type: 'CastSkillOnTarget', skillId: 0, targetType: 'monster', targetId: m })
-        g.stepFrames(1)
+        g.stepFrames(20)
         out.push(1000 - g.getMonster(m)!.hp)
         g.applyDamageToMonster(m, 100000, pid)
       }
       return out
     }
-    expect(Math.max(...hits(base.game, base.playerId))).toBeLessThanOrEqual(2)
-    expect(Math.min(...hits(might.game, might.playerId))).toBeGreaterThan(2)
+    // 1.13c ToHit is capped at 95%, so compare landed hits (h > 0).
+    const baseLanded = hits(base.game, base.playerId).filter((h) => h > 0)
+    const mightLanded = hits(might.game, might.playerId).filter((h) => h > 0)
+    expect(baseLanded.length).toBeGreaterThan(0)
+    expect(mightLanded.length).toBeGreaterThan(0)
+    expect(Math.max(...baseLanded)).toBeLessThanOrEqual(2)
+    expect(Math.min(...mightLanded)).toBeGreaterThan(2)
   })
 
   it('item_addskill_tab (188) raises skills of that SkillDesc page; item_charged_skill (204) casts at the charge level for a charge', () => {

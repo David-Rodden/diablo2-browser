@@ -37,6 +37,7 @@ import {
   type LocalServerSessionHandle,
   type LocalServerSessionRequest,
   type ServerEvent,
+  type UnitId,
 } from '../netproto/index.ts'
 import {
   GameInstance,
@@ -49,6 +50,7 @@ import {
   extractCharSummaryFromD2s,
   getServerItemDataTables,
   readD2sSave113c,
+  type D2sItemInput,
 } from './save/d2s-reader.ts'
 import {
   createDefaultNpcIntroData,
@@ -86,6 +88,174 @@ const CLASS_ID_TO_CODE: Record<number, CharacterClassCode> = {
   4: 'bar',
   5: 'dru',
   6: 'ass',
+}
+
+/**
+ * 1.13c `CharStats.txt` `StartSkill` (`D2Game.dll` `0x6fc58090..0x6fc58170`):
+ * Sorceress (`1`) starts with `Fire Bolt` (`36`) on right-click and `+1 to Fire Bolt` on `sst`;
+ * Necromancer (`2`) starts with `Raise Skeleton` (`70`) on right-click and `+1 to Raise Skeleton` on `wnd`.
+ */
+const STARTER_RIGHT_SKILL_BY_CLASS_113C: Readonly<Record<CharClassId, number>> = {
+  0: 0,
+  1: 36,
+  2: 70,
+  3: 0,
+  4: 0,
+  5: 0,
+  6: 0,
+}
+
+interface StarterEquippedGearSpec113c {
+  readonly code: string
+  readonly bodyLoc: number
+  readonly maxDurability: number
+  readonly quantity?: number | undefined
+  readonly minDefense?: number | undefined
+  readonly maxDefense?: number | undefined
+  readonly singleSkillId?: number | undefined
+}
+
+const STARTER_EQUIPPED_BY_CLASS_113C: Readonly<
+  Record<CharClassId, readonly StarterEquippedGearSpec113c[]>
+> = {
+  0: [
+    { code: 'jav', bodyLoc: 4, maxDurability: 2, quantity: 60 },
+    { code: 'buc', bodyLoc: 5, maxDurability: 12, minDefense: 4, maxDefense: 6 },
+  ],
+  1: [{ code: 'sst', bodyLoc: 4, maxDurability: 20, singleSkillId: 36 }],
+  2: [{ code: 'wnd', bodyLoc: 4, maxDurability: 15, singleSkillId: 70 }],
+  3: [
+    { code: 'ssd', bodyLoc: 4, maxDurability: 24 },
+    { code: 'buc', bodyLoc: 5, maxDurability: 12, minDefense: 4, maxDefense: 6 },
+  ],
+  4: [
+    { code: 'hax', bodyLoc: 4, maxDurability: 28 },
+    { code: 'buc', bodyLoc: 5, maxDurability: 12, minDefense: 4, maxDefense: 6 },
+  ],
+  5: [
+    { code: 'clb', bodyLoc: 4, maxDurability: 24 },
+    { code: 'buc', bodyLoc: 5, maxDurability: 12, minDefense: 4, maxDefense: 6 },
+  ],
+  6: [
+    { code: 'ktr', bodyLoc: 4, maxDurability: 48 },
+    { code: 'buc', bodyLoc: 5, maxDurability: 12, minDefense: 4, maxDefense: 6 },
+  ],
+}
+
+/**
+ * Builds canonical 1.13c `CharStats.txt` (`item1..item5`) starter equipment, belt potions (`4 × hp1`),
+ * and scrolls (`tsc`, `isc`) encoded for `.d2s` v96 (`version: 101`).
+ */
+function buildStarterCharacterItems113c(
+  classId: CharClassId,
+  rngSeed: number,
+): readonly D2sItemInput[] {
+  const rng = new D2Rng(rngSeed >>> 0 || 1)
+  const items: D2sItemInput[] = []
+  let nextId = 1
+
+  for (const eq of STARTER_EQUIPPED_BY_CLASS_113C[classId] ?? STARTER_EQUIPPED_BY_CLASS_113C[0]) {
+    const id = nextId++ as UnitId
+    const guid = (rng.rand(0x7fffffff) || id) >>> 0
+    const defense =
+      eq.minDefense !== undefined && eq.maxDefense !== undefined
+        ? eq.minDefense + rng.rand(eq.maxDefense - eq.minDefense + 1)
+        : undefined
+    items.push({
+      id,
+      itemId: id,
+      guid,
+      code: eq.code,
+      rawCode: eq.code.padEnd(4, ' ').slice(0, 4),
+      version: 101,
+      location: 1,
+      container: 'equipment',
+      bodyLoc: eq.bodyLoc,
+      equippedSlot: eq.bodyLoc,
+      storePage: 0,
+      storagePage: 0,
+      x: 0,
+      y: 0,
+      gridX: 0,
+      gridY: 0,
+      ilvl: 1,
+      quality: 2,
+      compact: false,
+      simple: false,
+      identified: true,
+      equipped: true,
+      starterItem: true,
+      maxDurability: eq.maxDurability,
+      curDurability: eq.maxDurability,
+      durability: eq.maxDurability,
+      ...(defense !== undefined ? { defense } : {}),
+      ...(eq.quantity !== undefined ? { quantity: eq.quantity } : {}),
+      stats:
+        eq.singleSkillId !== undefined
+          ? [{ statId: 107, param: eq.singleSkillId, value: 1 }]
+          : [],
+    })
+  }
+
+  for (let beltSlot = 0; beltSlot < 4; beltSlot++) {
+    const id = nextId++ as UnitId
+    items.push({
+      id,
+      itemId: id,
+      code: 'hp1',
+      rawCode: 'hp1 ',
+      version: 101,
+      location: 2,
+      container: 'belt',
+      bodyLoc: 0,
+      equippedSlot: 0,
+      storePage: 0,
+      storagePage: 0,
+      x: beltSlot,
+      y: 0,
+      gridX: beltSlot,
+      gridY: 0,
+      quality: 2,
+      compact: true,
+      simple: true,
+      identified: true,
+      starterItem: true,
+      stats: [],
+    })
+  }
+
+  const starterScrolls: readonly { readonly code: string; readonly x: number }[] = [
+    { code: 'tsc', x: 0 },
+    { code: 'isc', x: 1 },
+  ]
+  for (const sc of starterScrolls) {
+    const id = nextId++ as UnitId
+    items.push({
+      id,
+      itemId: id,
+      code: sc.code,
+      rawCode: sc.code.padEnd(4, ' ').slice(0, 4),
+      version: 101,
+      location: 0,
+      container: 'inventory',
+      bodyLoc: 0,
+      equippedSlot: 0,
+      storePage: 1,
+      storagePage: 1,
+      x: sc.x,
+      y: 0,
+      gridX: sc.x,
+      gridY: 0,
+      quality: 2,
+      compact: true,
+      simple: true,
+      identified: true,
+      starterItem: true,
+      stats: [],
+    })
+  }
+
+  return items
 }
 
 function resolveClassId(raw: CharClassId | CharacterClassCode | number | string | undefined): CharClassId {
@@ -575,6 +745,8 @@ export class LocalLobbyProvider implements LobbyProvider {
       (spec.ladder ? 0x40 : 0x00)
 
     const initialMapSeed = this.defaultMapSeed ?? this.generateNextMapSeed(0)
+    const starterRightSkill = STARTER_RIGHT_SKILL_BY_CLASS_113C[classId] ?? 0
+    const starterItems = buildStarterCharacterItems113c(classId, initialMapSeed)
 
     const d2sBytes = writeD2sSave113c(
       {
@@ -586,7 +758,7 @@ export class LocalLobbyProvider implements LobbyProvider {
         activeWeapon: 0,
         timestampSec: 0,
         leftSkill: 0,
-        rightSkill: 0,
+        rightSkill: starterRightSkill,
         altLeftSkill: 0,
         altRightSkill: 0,
         activeDifficulty: 0,
@@ -614,7 +786,7 @@ export class LocalLobbyProvider implements LobbyProvider {
           goldBank: 0,
         },
         skills: new Uint8Array(30),
-        items: [],
+        items: starterItems,
         corpseItems: [],
         ironGolem: null,
       },

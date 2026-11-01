@@ -56,7 +56,7 @@ function createTestGame() {
   return { game, player, playerId }
 }
 
-describe('Issue #1475: 1.13c Town Healer NPCs (0x6FCDCBE0 / 0x6FCDC920)', () => {
+describe('Issue #1475: 1.13c Town Healer NPCs (0x6FCDD490 / 0x6FCDCBE0 / 0x6FCDC920)', () => {
   it('CURABLE_STATE_IDS_113C matches 1.13c States.txt curable==1 plus state 1 and 2', () => {
     // 13 rows from States.txt where curable === 1: 9, 19, 23, 27, 55, 56, 57, 58, 59, 60, 61, 113, 114
     // Plus state 1 (freeze) and state 2 (poison)
@@ -65,7 +65,7 @@ describe('Issue #1475: 1.13c Town Healer NPCs (0x6FCDCBE0 / 0x6FCDC920)', () => 
     ])
   })
 
-  it('healer (Akara) restores HP to max, preserves Mana and Stamina, and clears all 15 curable states while leaving non-curables untouched', () => {
+  it('healer (Akara) restores HP, Mana, and Stamina to max and clears all 15 curable states while leaving non-curables untouched', () => {
     const { game, player, playerId } = createTestGame()
 
     const akara = game.spawnMonster({
@@ -94,17 +94,13 @@ describe('Issue #1475: 1.13c Town Healer NPCs (0x6FCDCBE0 / 0x6FCDC920)', () => 
     game.enqueueCommand(playerId, { type: 'NpcHeal', npcId: akara } as never)
     game.stepFrames(1)
 
-    // HP restored to max
+    // 1.13c D2Game.dll 0x6fcdd490: HP (stat 6), Mana (stat 8), and Stamina (stat 10) restored to max
     expect(player.hp).toBe(player.maxHp)
     expect(player.hpFixed).toBe(player.maxHpFixed)
-
-    // Mana and Stamina are NOT restored by 1.13c town healers (0x6fcdcbe0).
-    // Player remains at near initial vitals (30 mana, 40 stamina) plus normal 1-frame passive regen,
-    // rather than being set to maxMana (150) or maxStamina (120).
-    expect(player.mana).toBeLessThan(50)
-    expect(player.manaFixed).toBeLessThan(50 * 256)
-    expect(player.stamina).toBeLessThan(50)
-    expect(player.staminaFixed).toBeLessThan(50 * 256)
+    expect(player.mana).toBe(player.maxMana)
+    expect(player.manaFixed).toBe(player.maxManaFixed)
+    expect(player.stamina).toBe(player.maxStamina)
+    expect(player.staminaFixed).toBe(player.maxStaminaFixed)
 
     // All curable states must be cleared
     for (const sid of CURABLE_STATE_IDS_113C) {

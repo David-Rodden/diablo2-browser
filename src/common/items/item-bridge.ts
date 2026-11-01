@@ -722,8 +722,12 @@ export function resolveItemInvFile(
     }
   }
 
-  // 2. Pre-baked Manifest Lookup by Item Display Name (handles dyed unique/set sprites e.g. "invcap_cgrn")
-  if (!invFile && item.name && BAKED_UI_MANIFEST.codeToInvFile[item.name]) {
+  // 2. Pre-baked Manifest Lookup by Item Display Name (handles dyed unique/set sprites e.g. "invcap_cgrn").
+  // Strictly gated to unique/set quality so rare/crafted/personalized items whose generated name collides
+  // with a UniqueItems.txt / SetItems.txt entry (e.g. RarePrefix 158 "Raven" + RareSuffix 92 "Claw" = "Raven Claw")
+  // never hijack the unique/set weapon/armor sprite.
+  const canUseUniqueSetName = quality === 'unique' || quality === 'set'
+  if (!invFile && canUseUniqueSetName && item.name && BAKED_UI_MANIFEST.codeToInvFile[item.name]) {
     const manifestInv = BAKED_UI_MANIFEST.codeToInvFile[item.name]
     if (manifestInv.includes('_')) {
       const [baseKey, dyeKey] = manifestInv.split('_')
@@ -775,7 +779,12 @@ export function resolveItemInvFile(
     invFile = invFile.toLowerCase()
   } else {
     // Find closest valid atlas rect
-    if (item.name && BAKED_UI_MANIFEST.codeToInvFile[item.name] && BAKED_UI_MANIFEST.itemRects[BAKED_UI_MANIFEST.codeToInvFile[item.name]]) {
+    if (
+      canUseUniqueSetName &&
+      item.name &&
+      BAKED_UI_MANIFEST.codeToInvFile[item.name] &&
+      BAKED_UI_MANIFEST.itemRects[BAKED_UI_MANIFEST.codeToInvFile[item.name]]
+    ) {
       invFile = BAKED_UI_MANIFEST.codeToInvFile[item.name]
     } else if (BAKED_UI_MANIFEST.codeToInvFile[code] && BAKED_UI_MANIFEST.itemRects[BAKED_UI_MANIFEST.codeToInvFile[code]]) {
       invFile = BAKED_UI_MANIFEST.codeToInvFile[code]

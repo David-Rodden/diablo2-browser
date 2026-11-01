@@ -727,12 +727,72 @@ function matchesType(itemTypeCode: string, targetTypeCode: string, isA?: Functio
 }
 
 /**
+ * Canonical 1.13c item codes with `quest != 0` in `Weapons.txt` / `Misc.txt` (`#1949`).
+ * Per `D2Common.dll` `#10918` (`0x6FD76BD2..0x6FD76BDA` `ITEMS_CheckRuneword`), any item
+ * whose `ItemsTxt->nQuest != 0` returns `0` immediately and can never form a runeword.
+ */
+export const QUEST_ITEM_CODES_113C: ReadonlySet<string> = new Set([
+  // Weapons.txt quest != 0
+  'leg', // Wirt's Leg (quest=1)
+  'hdm', // Horadric Malus (quest=4)
+  'msf', // Staff of Kings (quest=10)
+  'hst', // Horadric Staff (quest=11)
+  'd33', // Decoy Gidbinn (quest=20)
+  'g33', // The Gidbinn (quest=20)
+  'qf1', // Khalim's Flail (quest=21)
+  'qf2', // Khalim's Will (quest=22)
+  'hfh', // Hellforge Hammer (quest=26)
+  // Misc.txt quest != 0
+  'bks', // Scroll of Inifuss
+  'bkd', // Key to the Cairn Stones
+  'box', // Horadric Cube
+  'tr1', // Horadric Scroll
+  'vip', // Amulet of the Viper
+  'luv', // Jerhyn's Palace Cellar Letter
+  'j34', // A Jade Figurine
+  'g34', // The Golden Bird
+  'xyz', // Potion of Life
+  'bbb', // Lam Esen's Tome
+  'qey', // Khalim's Eye
+  'qhr', // Khalim's Heart
+  'qbr', // Khalim's Brain
+  'mss', // Mephisto's Soulstone
+  'ass', // Book of Skill
+  'ice', // Malah's Potion
+  'tr2', // Scroll of Resistance
+])
+
+/**
+ * Returns `true` when `itemOrBase` represents a 1.13c quest item (`ItemsTxt->nQuest != 0`).
+ */
+export function isQuestItemBase113c(itemOrBase: unknown): boolean {
+  if (!itemOrBase || typeof itemOrBase !== 'object') return false
+  const rec = itemOrBase as Record<string, unknown>
+  if (typeof rec.quest === 'number' && rec.quest !== 0) return true
+  if (rec.quest === true) return true
+  const base = rec.base && typeof rec.base === 'object' ? (rec.base as Record<string, unknown>) : undefined
+  if (base) {
+    if (typeof base.quest === 'number' && base.quest !== 0) return true
+    if (base.quest === true) return true
+  }
+  const codes = [rec.code, rec.id, base?.code, base?.id]
+  for (const raw of codes) {
+    if (typeof raw === 'string') {
+      const norm = raw.trim().toLowerCase()
+      if (norm && QUEST_ITEM_CODES_113C.has(norm)) return true
+    }
+  }
+  return false
+}
+
+/**
  * Checks whether socketed runes assembled in a base item match a valid runeword.
  */
 export function checkRunewordMatch(
   runes: readonly string[],
   category: string,
   numSockets: number,
+  options?: RunewordMatchOptions,
 ): RunewordMatchResult | null
 export function checkRunewordMatch(
   baseItem: Item,
@@ -745,7 +805,7 @@ export function checkRunewordMatch(
   baseItemOrRunes: Item | readonly string[],
   socketedRunesOrCategory: readonly string[] | string,
   isAOrNumSockets: Function | number,
-  runewordTable?: RunewordTable | readonly RunewordDefinition[],
+  runewordTableOrOptions?: RunewordTable | readonly RunewordDefinition[] | RunewordMatchOptions,
   options?: RunewordMatchOptions,
 ): RunewordMatchResult | null | undefined {
   if (Array.isArray(baseItemOrRunes) && typeof socketedRunesOrCategory === 'string' && typeof isAOrNumSockets === 'number') {
@@ -755,6 +815,17 @@ export function checkRunewordMatch(
       return null
     }
     const cat = socketedRunesOrCategory.trim().toLowerCase()
+    if (QUEST_ITEM_CODES_113C.has(cat)) {
+      return null
+    }
+    const overloadOpts =
+      options ??
+      (runewordTableOrOptions &&
+      !Array.isArray(runewordTableOrOptions) &&
+      !('complete' in runewordTableOrOptions)
+        ? (runewordTableOrOptions as RunewordMatchOptions)
+        : undefined)
+    const isLadder = overloadOpts?.isLadder ?? false
     const catTypes = new Set<string>([cat])
     if (cat === 'armor' || cat === 'armo' || cat === 'tors') {
       catTypes.add('tors')
@@ -773,6 +844,7 @@ export function checkRunewordMatch(
       }
     }
     for (const candidate of CANONICAL_RUNES_TABLE.complete) {
+      if (candidate.server && !isLadder) continue
       if (candidate.runes.length !== runesList.length) continue
       let runesMatch = true
       for (let i = 0; i < candidate.runes.length; i++) {
@@ -811,8 +883,13 @@ export function checkRunewordMatch(
   const baseItem = baseItemOrRunes as Item
   const socketedRunes = socketedRunesOrCategory
   const isA = isAOrNumSockets as Function
+  const runewordTable = runewordTableOrOptions as
+    | RunewordTable
+    | readonly RunewordDefinition[]
+    | undefined
 
-  if (!baseItem || !isNormalQuality(baseItem)) {
+  // D2Common.dll #10918 (0x6FD76BD2..0x6FD76BDA): quest items (nQuest != 0, e.g. 'leg') cannot form runewords (#1949).
+  if (!baseItem || !isNormalQuality(baseItem) || isQuestItemBase113c(baseItem)) {
     return undefined
   }
 

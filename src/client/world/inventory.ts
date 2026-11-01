@@ -44,7 +44,7 @@ export interface ClientItemContainers {
   clearCursor(): ItemData | null
   clearGround(): void
   clearMerc(): void
-  applyItemEvent(action: number, item: ItemData, container: ItemContainer, selfId?: number): void
+  applyItemEvent(action: number | string, item: ItemData, container: ItemContainer, selfId?: number): void
   removeItemById(itemId: number): ItemData | undefined
   removeGroundItemById(itemId: number): ItemData | undefined
 }
@@ -339,10 +339,16 @@ export class ClientInventoryManager implements ClientItemContainers {
   }
 
   /**
-   * Applies an `ItemEvent` from `0x9C` (`WorldItemAction`) or `0x9D` (`OwnedItemAction`).
+   * Applies an `ItemEvent` from `0x9C` (`WorldItemAction`) or `0x9D` (`OwnedItemAction`),
+   * as well as loopback semantic actions (`'remove'`, `'sell'`, etc.).
    */
-  applyItemEvent(action: number, item: ItemData, container: ItemContainer, selfId?: number): void {
+  applyItemEvent(action: number | string, item: ItemData, container: ItemContainer, selfId?: number): void {
     this.revision++
+    if (action === 'remove' || action === 'sell') {
+      this.removeItemById(item.id)
+      this.deleteSocketChildren(item.id)
+      return
+    }
     const isRemotePlayerOwner =
       item.ownerType === 0 &&
       item.ownerId !== undefined &&

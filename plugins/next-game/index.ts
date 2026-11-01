@@ -140,7 +140,8 @@ interface RuntimeOnlineSessionLike {
 export interface NextGamePluginOptions {
   /**
    * Delay in ms after leaving the current D2GS room before joining the new room,
-   * giving PvPGN `d2gs -> d2dbs` time to unlock the character (default: 120ms).
+   * giving PvPGN `d2gs -> d2dbs` time to unlock the character (default: 120ms). Runs after
+   * `leaveToLobby` has already waited for the D2GS logout acknowledgement (S2C `0x06`).
    */
   readonly settleDelayMs?: number | undefined
   /**
@@ -505,6 +506,8 @@ export function createNextGamePlugin(options: NextGamePluginOptions = {}): D2Web
           try {
             // 1. Detach current D2GS listeners and close the old D2GS stream WITHOUT setting phase='lobby'
             //    or resetting ClientWorld yet, keeping the current scene rendered on screen.
+            //    `leaveToLobby` sends C2S 0x69 and waits for S2C 0x06 GameLogoutSuccess / D2GS close
+            //    (1.5 s fallback) so the old game commits the character save before we rejoin.
             runtimeSession.detachGameServerListeners?.()
             runtimeSession.gameAdapter = null
             await flow.leaveToLobby()

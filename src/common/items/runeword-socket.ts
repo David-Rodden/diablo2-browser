@@ -50,6 +50,7 @@ import {
   getBaseItemSocketCount,
   getItemTypeCodes,
   isNormalQuality,
+  isQuestItemBase113c,
   type RunewordMatchResult,
   type RunewordTable,
 } from './runeword.ts'
@@ -630,7 +631,7 @@ export function socketItemWithSubItem(
       runeCodes,
       tables.isA,
       options?.runewordTable ?? CANONICAL_RUNES_TABLE,
-      { isLadder: options?.isLadder ?? true },
+      { isLadder: options?.isLadder ?? false },
     )
   }
 
@@ -1127,7 +1128,7 @@ export function transmuteCubeItems(
     return { matched: false, resultItems: cubePlacements }
   }
 
-  const isLadder = options?.isLadder !== false
+  const isLadder = options?.isLadder ?? false
 
   const items = cubePlacements.map(p => p.item)
   const codes = items.map(it => extractItemCode(it))
@@ -1236,7 +1237,7 @@ export function transmuteCubeItems(
           ? getMaxSockets(maxBaseSockets, itemTypeDef, ilvl)
           : maxBaseSockets
 
-        if (maxAllowedSockets > 0) {
+        if (maxAllowedSockets > 0 && !isQuestItemBase113c(baseDef) && !isQuestItemBase113c({ code: eqCode })) {
           const isHelm =
             applyType === 1 &&
             (typeCode === 'helm' ||

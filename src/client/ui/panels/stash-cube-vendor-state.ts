@@ -455,7 +455,7 @@ export function clickCubeCellImpl(
  * Executes Horadric Cube transmutation recipes (`CubeMain.txt`) on `this.cubeItems`.
  */
 export function transmuteCubeImpl(this: WorldPanelsHud): CubeTransmuteResult {
-  const res = transmuteCubeItems(this.cubeItems)
+  const res = transmuteCubeItems(this.cubeItems, undefined, { isLadder: true })
   if (res.matched) {
     this.cubeItems = [...res.resultItems]
   }

@@ -36,7 +36,8 @@ export const QUEST_INFO_BY_ID_113C: ReadonlyMap<string, QuestFlagInfo113c> = (()
 export const QUEST_FLAG_COMPLETED_113C = 0x0001 // reward granted
 export const QUEST_FLAG_REWARD_PENDING_113C = 0x0002 // objective done, NPC reward pending
 export const QUEST_FLAG_STARTED_113C = 0x0004 // quest accepted
-export const QUEST_FLAG_CUSTOM_4_113C = 0x0010 // QFLAG_CUSTOM1 (bit 4): A3Q1 Cain showed Golden Bird ('g34', 0x6fd08c09)
+export const QUEST_FLAG_CUSTOM_3_113C = 0x0008 // QFLAG_CUSTOM0 (bit 3): A2Q6 Tyrael spoken -> "Talk to Jerhyn" (slot 5, qstsa2q64)
+export const QUEST_FLAG_CUSTOM_4_113C = 0x0010 // QFLAG_CUSTOM1 (bit 4): A2Q6 Jerhyn spoken -> "Talk to Meshif" (slot 6, qstsa2q65); A3Q1 Cain showed Golden Bird ('g34', 0x6fd08c09)
 export const QUEST_FLAG_CUSTOM_5_113C = 0x0020 // QFLAG_CUSTOM2 (bit 5): A2Q1 ('ass') & A3Q1 ('xyz') consumable reward armed
 export const QUEST_FLAG_CUSTOM_6_113C = 0x0040 // QFLAG_CUSTOM3 (bit 6): A3Q1 Jade Figurine ('j34') picked up (0x6fd07734)
 export const QUEST_FLAG_CUSTOM_7_113C = 0x0080 // QFLAG_CUSTOM4 (bit 7): A5Q3 ('tr2') Scroll of Resistance consumed (+10 all resist active)
@@ -45,6 +46,7 @@ export const QUEST_FLAG_CUSTOM_9_113C = 0x0200 // QFLAG_CUSTOM6 (bit 9): NPC sec
 export const QUEST_FLAG_CUSTOM_10_113C = 0x0400 // QFLAG_CUSTOM7 (bit 10): A5Q3 Anya class-specific Rare item granted (0x6fc7f9c7)
 export const QUEST_FLAG_PRIMARY_GOAL_DONE_113C = 0x1000
 export const QUEST_FLAG_COMPLETED_NOW_113C = 0x2000 // QFLAG_COMPLETEDNOW (bit 13: reward consumed in session)
+export const QUEST_FLAG_LEAVE_BEFORE_113C = 0x8000 // QFLAG_LEAVINGGAME / QFLAG_COMPLETEDBEFORE (bit 15)
 
 export function questWordIndex113c(questId: string): number | undefined {
   return QUEST_INFO_BY_ID_113C.get(questId)?.wordIndex
@@ -92,6 +94,7 @@ export const QUEST_AREA_GATES_113C: Readonly<
 > = Object.freeze({
   38: { quest: 'a1q3', mask: QUEST_FLAG_STARTED_113C }, // Tristram red portal
   46: { quest: 'a2q5', mask: QUEST_FLAG_COMPLETED_113C }, // Canyon of the Magi: Summoner dead
+  50: { quest: 'a2q4', mask: QUEST_FLAG_STARTED_113C }, // Harem Level 1: after Tainted Sun + Drognan/Jerhyn (#1961)
   73: { quest: 'a2q2', mask: QUEST_FLAG_COMPLETED_113C }, // Tal Rasha's Chamber: staff used
   74: { quest: 'a2q3', mask: QUEST_FLAG_STARTED_113C }, // Arcane Sanctuary: after Tainted Sun
   100: { quest: 'a3q3', mask: QUEST_FLAG_COMPLETED_113C }, // Durance of Hate 1: Khalim's Will
@@ -99,7 +102,9 @@ export const QUEST_AREA_GATES_113C: Readonly<
   102: { quest: 'a3q3', mask: QUEST_FLAG_COMPLETED_113C }, // Durance of Hate 3
   128: { quest: 'a5q5', mask: QUEST_FLAG_COMPLETED_113C }, // Worldstone Keep 1
   129: { quest: 'a5q5', mask: QUEST_FLAG_COMPLETED_113C }, // Worldstone Keep 2
+  130: { quest: 'a5q5', mask: QUEST_FLAG_COMPLETED_113C }, // Worldstone Keep 3
   131: { quest: 'a5q5', mask: QUEST_FLAG_COMPLETED_113C }, // Throne of Destruction
+  132: { quest: 'a5q5', mask: QUEST_FLAG_COMPLETED_113C }, // The Worldstone Chamber
 })
 
 /** Quest objects that advance a quest when operated (Objects.txt class id). */
@@ -158,6 +163,28 @@ export function computeA3Q1StatusByte113c(
 }
 
 /**
+ * `D2Game.dll` (`ACT2Q6_StatusFilter`, questId `0x0d`, word 14) + `D2Client.dll` `0x6faccf1d`:
+ * resolves the `S2C 0x52` / `0x5D` quest status byte (`0..6, 11, 13`) for `a2q6` (The Seven Tombs).
+ */
+export function computeA2Q6StatusByte113c(
+  quests: ArrayLike<number>,
+  inDurielsLair = false,
+): number {
+  const idx = questWordIndex113c('a2q6') ?? 14
+  const w = (quests[idx] ?? 0) & 0xffff
+  if ((w & QUEST_FLAG_COMPLETED_113C) !== 0) {
+    return (w & QUEST_FLAG_COMPLETED_NOW_113C) !== 0 ? 13 : 11
+  }
+  if ((w & QUEST_FLAG_CUSTOM_4_113C) !== 0) return 6
+  if ((w & QUEST_FLAG_CUSTOM_3_113C) !== 0) return 5
+  if ((w & QUEST_FLAG_PRIMARY_GOAL_DONE_113C) !== 0) return 3
+  if ((w & QUEST_FLAG_STARTED_113C) !== 0) {
+    return inDurielsLair ? 2 : 1
+  }
+  return 0
+}
+
+/**
  * `D2Game.dll` `.rdata` `0x6FD2F15C..0x6FD2F3BF` & `0x6FC7F987..0x6FC7FA18` (`ACT5Q3` Anya Rare reward):
  * Tier 0 = Normal (`0x6FD2F1CC`), Tier 1 = Exceptional (`0x6FD2F194`, Nightmare `clvl > 45`),
  * Tier 2 = Elite (`0x6FD2F15C`, Hell `clvl > 65`), indexed by `[tier][classId]` (`0..6`: ama, sor, nec, pal, bar, dru, ass).
@@ -194,4 +221,56 @@ export const ANYA_CLASS_REWARD_POOLS_113C: readonly (readonly (readonly string[]
     Object.freeze(['7ar', '7wb', '7xf', '7cs', '7lw', '7tw', '7qr']),
   ]),
 ])
+
+/**
+ * Town vendor `10%` quest discount (`nDiscount = 10`, #1958) unlocked upon completing the
+ * corresponding Act town quest:
+ * - Act 1 (`147` Gheed, `148` Akara, `154` Charsi): `a1q3` (Search for Cain)
+ * - Act 2 (`176` Atma, `177` Drognan, `178` Fara, `199` Elzix, `202` Lysander): `a2q1` (Radament's Lair)
+ * - Act 3 (`252` Asheara, `253` Hratli, `254` Alkor, `255` Ormus): `a3q1` / `a3q2` / `a3q4`
+ * - Act 4 (`257` Halbu, `405` Jamella): `a4q1` (The Fallen Angel)
+ * - Act 5 (`511` Larzuk, `512` Drehya/Anya, `513` Malah, `514` Nihlathak): `a5q3` (Prison of Ice)
+ */
+export function getVendorQuestDiscountPct113c(
+  quests: ArrayLike<number>,
+  npcHcIdx: number,
+): number {
+  const word = (questId: string): number => {
+    const idx = questWordIndex113c(questId)
+    return idx === undefined ? 0 : (quests[idx] ?? 0) & 0xffff
+  }
+  switch (npcHcIdx) {
+    case 147:
+    case 148:
+    case 154:
+      return (word('a1q3') & QUEST_FLAG_COMPLETED_113C) !== 0 ? 10 : 0
+    case 176:
+    case 177:
+    case 178:
+    case 199:
+    case 202:
+      return (word('a2q1') & (QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_REWARD_PENDING_113C)) !== 0
+        ? 10
+        : 0
+    case 252:
+    case 253:
+    case 254:
+    case 255:
+      return ((word('a3q1') | word('a3q2') | word('a3q4')) & QUEST_FLAG_COMPLETED_113C) !== 0
+        ? 10
+        : 0
+    case 257:
+    case 405:
+      return (word('a4q1') & QUEST_FLAG_COMPLETED_113C) !== 0 ? 10 : 0
+    case 511:
+    case 512:
+    case 513:
+    case 514:
+      return (word('a5q3') & (QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_REWARD_PENDING_113C)) !== 0
+        ? 10
+        : 0
+    default:
+      return 0
+  }
+}
 

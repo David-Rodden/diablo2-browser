@@ -214,17 +214,27 @@ export class PlayAssists {
   castTownPortal(): void {
     const { world, hudManager, hudModel } = this.host
     if (world.isDead || hudModel === null) return
-    const source = townPortalSource(world.containers.inventory.values())
+    const invSource = townPortalSource(world.containers.inventory.values())
+    const beltSource = invSource === null ? townPortalSource(world.containers.belt.values()) : null
+    const source = invSource ?? beltSource
     const refusal: TownPortalRefusal | null = this.host.isTownArea() ? 'in-town' : source === null ? 'no-scrolls' : null
-    if (source !== null && refusal === null) {
+    if (invSource !== null && refusal === null) {
       this.lastPortalCast = performance.now()
-      this.useInventoryItem(source.id, source.code, hudModel)
+      this.useInventoryItem(invSource.id, invSource.code, hudModel)
+    } else if (beltSource !== null && refusal === null) {
+      this.lastPortalCast = performance.now()
+      const slot = (beltSource as { readonly gridX?: number; readonly x?: number }).gridX ?? (beltSource as { readonly x?: number }).x ?? 0
+      if (hudManager.commandSink === hudModel) hudManager.drinkBeltSlot(slot, false)
+      else if (typeof hudModel.useBeltSlot === 'function') hudModel.useBeltSlot(slot, false)
+      else (hudModel as unknown as { emitCommand?: (cmd: unknown) => void }).emitCommand?.({ type: 'BeltUse', itemId: beltSource.id >>> 0, shift: false })
+    } else {
+      world.addLocalSystemMessage(townPortalRefusalText(refusal ?? 'no-scrolls', hudManager.lang === 'ENG' ? 'ENG' : 'CHI'), RED_TEXT)
     }
-    else world.addLocalSystemMessage(townPortalRefusalText(refusal ?? 'no-scrolls', hudManager.lang === 'ENG' ? 'ENG' : 'CHI'), RED_TEXT)
   }
 
   hasTownPortal(): boolean {
-    return townPortalSource(this.host.world.containers.inventory.values()) !== null
+    const { inventory, belt } = this.host.world.containers
+    return townPortalSource(inventory.values()) !== null || townPortalSource(belt.values()) !== null
   }
 
   refillBelt(nowMs: number): void {

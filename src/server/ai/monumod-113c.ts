@@ -388,3 +388,93 @@ export function shouldKillMinionsOnDeath113c(params: {
   }
   return { purge: false, radiusSubTiles: 0 }
 }
+
+/**
+ * 1.13c `MonUMod #20` (`Scarab`, `D2Game.dll` `0x6FC460D0`, #1947):
+ * Emits `4 * 2 = 8` `monchargedbolt` (`#195` `lightunique`) projectiles per hit.
+ */
+export const SCARAB_CHARGED_BOLT_COUNT_113C = 8
+
+/**
+ * 1.13c `MonUMod #20` (`Scarab`, `D2Game.dll` `0x6FC460D0`, #1947):
+ * `slvl = min(15, floor((mlvl + 4) / 5))`.
+ */
+export function computeScarabChargedBoltSlvl113c(mlvl: number): number {
+  const clampedMlvl = Math.max(1, Math.trunc(mlvl))
+  return Math.min(15, Math.max(1, Math.floor((clampedMlvl + 4) / 5)))
+}
+
+/**
+ * Computes `4 * 2 = 8` Charged Bolt fan target coordinates aimed from `(originX, originY)`
+ * toward `(attackerX, attackerY)` (`D2Game.dll` `0x6FC460D0`, #1947).
+ */
+export function computeScarabChargedBoltFanTargets113c(
+  originX: number,
+  originY: number,
+  attackerX: number,
+  attackerY: number,
+  dist = 1.5,
+): readonly { readonly targetX: number; readonly targetY: number }[] {
+  const dx = attackerX - originX
+  const dy = attackerY - originY
+  const baseAngle = dx === 0 && dy === 0 ? 0 : Math.atan2(dy, dx)
+  const effectiveDist = Math.max(0.5, dist)
+  // 8-bolt fan (~90 deg cone centered on attacker: 8 steps spaced by ~0.18 rad)
+  const stepRad = 0.18
+  const halfSpan = ((SCARAB_CHARGED_BOLT_COUNT_113C - 1) * stepRad) / 2
+  const out: { readonly targetX: number; readonly targetY: number }[] = []
+  for (let i = 0; i < SCARAB_CHARGED_BOLT_COUNT_113C; i++) {
+    const angle = baseAngle - halfSpan + i * stepRad
+    out.push({
+      targetX: originX + Math.cos(angle) * effectiveDist,
+      targetY: originY + Math.sin(angle) * effectiveDist,
+    })
+  }
+  return out
+}
+
+/**
+ * 1.13c innate `MonUMod #20` (`Scarab`, #1947):
+ * `MonStats.txt` `scarab1..8` (`hcIdx 91..95, 654, 655, 718`, `MonType = scarab`).
+ */
+export function hasImplicitScarabUMod113c(params: {
+  readonly hcIdx: number
+  readonly defId?: string | undefined
+  readonly monType?: string | undefined
+  readonly baseId?: string | undefined
+  readonly isNpc?: boolean | undefined
+}): boolean {
+  if (params.isNpc === true) return false
+  const hc = params.hcIdx
+  if ((hc >= 91 && hc <= 95) || hc === 654 || hc === 655 || hc === 718) {
+    return true
+  }
+  const monType = (params.monType ?? '').trim().toLowerCase()
+  if (monType === 'scarab') return true
+  const baseId = (params.baseId ?? '').trim().toLowerCase()
+  if (baseId === 'scarab1' || baseId.startsWith('scarab')) return true
+  const defId = (params.defId ?? '').trim().toLowerCase()
+  return defId.startsWith('scarab')
+}
+
+/**
+ * 1.13c innate `MonUMod #35` (`shatter_on_death`, `D2Game.dll` `0x6FC41A70`, #1948):
+ * Act 5 `frozenhorror1..5` (`hcIdx 501..505`: Frozen Creeper, Frozen Terror, Frozen Scourge,
+ * Frozen Horror, Frozen Abyss — including SuperUnique `Snapchip Shatter`).
+ */
+export function hasImplicitShatterOnDeathUMod113c(params: {
+  readonly hcIdx: number
+  readonly defId?: string | undefined
+  readonly monType?: string | undefined
+  readonly baseId?: string | undefined
+  readonly isNpc?: boolean | undefined
+}): boolean {
+  if (params.isNpc === true) return false
+  if (params.hcIdx >= 501 && params.hcIdx <= 505) return true
+  const monType = (params.monType ?? '').trim().toLowerCase()
+  if (monType === 'frozenhorror') return true
+  const baseId = (params.baseId ?? '').trim().toLowerCase()
+  if (baseId === 'frozenhorror1' || baseId.startsWith('frozenhorror')) return true
+  const defId = (params.defId ?? '').trim().toLowerCase()
+  return defId.startsWith('frozenhorror')
+}

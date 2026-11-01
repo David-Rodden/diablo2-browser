@@ -41,6 +41,13 @@ function formatD2gsCantEnterError(reason: number, charName: string): ProtocolErr
   )
 }
 
+/**
+ * Fallback wait for the D2GS logout acknowledgement after C2S `0x69` LeaveGame (`leaveGracefully`).
+ * Normally the server answers with S2C `0x06` GameLogoutSuccess (D2Client handler `0x6fb5caa0`) or
+ * closes the connection itself well before this.
+ */
+export const D2GS_LEAVE_ACK_TIMEOUT_MS = 1500
+
 export type D2gsSessionState =
   | 'connecting'
   | 'logonSent'
@@ -80,6 +87,10 @@ export class D2gsSession {
   private packetsInValue = 0
   private packetsOutValue = 0
   private enterGameSent = false
+  /** Set once C2S `0x69` LeaveGame was sent by `leaveGracefully`; blocks any further C2S traffic. */
+  private leaving = false
+  private leavePromise: Promise<void> | undefined
+  private finishLeave: (() => void) | undefined
   private hasPacketListener = false
   private readonly earlyPackets: Uint8Array[] = []
 
@@ -187,7 +198,7 @@ export class D2gsSession {
   }
 
   sendRawPacket(pkt: Uint8Array): void {
-    if (this.stateValue === 'closed') return
+    if (this.stateValue === 'closed' || this.leaving) return
     this.bytesOutValue += pkt.byteLength
     this.packetsOutValue++
     this.tap?.record({
@@ -228,8 +239,63 @@ export class D2gsSession {
     this.packetEmitter.emit(pkt)
   }
 
+  /**
+   * Leave the game the way D2GS expects: send C2S `0x69` LeaveGame (D2Client `0x6faf2850` ->
+   * `0x6fac4660`) and keep the stream open until D2GS acknowledges with S2C `0x06` GameLogoutSuccess
+   * or closes the connection itself; only then is the stream closed. Closing the socket in the same
+   * tick as the `0x69` write can abort the TCP connection before D2GS reads the packet, which turns a
+   * clean exit into a drop and lets an immediate rejoin load a stale character save (rollback).
+   *
+   * `timeoutMs` (default `D2GS_LEAVE_ACK_TIMEOUT_MS` = 1.5 s) is the fallback when neither happens.
+   * Outside the `ingame` state there is no game to save, so this degrades to `leaveAndClose`.
+   */
+  leaveGracefully(timeoutMs: number = D2GS_LEAVE_ACK_TIMEOUT_MS): Promise<void> {
+    if (this.leavePromise) return this.leavePromise
+    if (this.stateValue !== 'ingame') {
+      this.leaveAndClose()
+      return Promise.resolve()
+    }
+    this.stopPing()
+    try {
+      this.sendRawPacket(encodeC2sLeaveGame())
+    } catch {
+      // A failed write means the stream is gone; the close watcher below resolves the wait.
+    }
+    this.leaving = true
+    this.leavePromise = new Promise<void>((resolve) => {
+      let done = false
+      let cancelTimer: (() => void) | undefined
+      let unsubClose: (() => void) | undefined
+      const finish = (): void => {
+        if (done) return
+        done = true
+        cancelTimer?.()
+        unsubClose?.()
+        this.finishLeave = undefined
+        if (this.stateValue !== 'closed') {
+          this.setState('closed')
+          this.stream.close()
+        }
+        resolve()
+      }
+      this.finishLeave = finish
+      unsubClose = this.closeEmitter.on(finish)
+      cancelTimer = this.clock.setTimeout(finish, Math.max(0, timeoutMs))
+      if (this.stateValue === 'closed') finish()
+    })
+    return this.leavePromise
+  }
+
   private handleIncomingPacket(pkt: Uint8Array): void {
     const op = pkt[0]!
+    if (this.leaving) {
+      // S2C 0x06 GameLogoutSuccess (1B, D2Client 0x6fb5caa0): D2GS processed our 0x69 LeaveGame.
+      if (op === 0x06) {
+        this.emitPacket(pkt)
+        this.finishLeave?.()
+      }
+      return
+    }
     if (op === 0xaf && this.stateValue === 'connecting') {
       // Server sent [0xAF, 0x01]; record incoming packet first, then reply with 37-byte 0x68 GameLogon
       this.setState('logonSent')

@@ -22,6 +22,7 @@ import { imbueUiInventoryItem113c } from '../../common/items/item-bridge.ts'
 import { resolveItemDropSoundId113c } from '../audio/item-drop-sound-113c.ts'
 import type { ClientCommand, Hand, ItemData } from '../../netproto/index.ts'
 import { lookupTbl, requireTbl } from '../i18n/lang.ts'
+import { townPortalSource } from '../input/town-portal.ts'
 import { BELT_COLS } from '../ui/belt.ts'
 import type { BaseStatKey } from '../ui/character-sheet.ts'
 import type { HudCommandSink } from '../ui/hud-manager.ts'
@@ -854,16 +855,23 @@ export function confirmQuestRewardImpl(model: any, itemId: number, explicitNpcId
     npcId: npcId >>> 0,
     complement: itemId >>> 0,
   })
-  if (
-    wasImbue &&
-    model.world.containers.cursor?.quality !== 6 &&
-    (model.world.containers.cursor?.quality as any) !== 'rare'
-  ) {
+  const syncedWorldItem = model.world.containers.allById.get(itemId)
+  const alreadyImbuedByServer =
+    syncedWorldItem?.quality === 6 ||
+    (syncedWorldItem?.quality as unknown) === 'rare' ||
+    model.world.containers.cursor?.quality === 6 ||
+    (model.world.containers.cursor?.quality as any) === 'rare'
+  if (wasImbue && !alreadyImbuedByServer) {
     model.world.executeCharsiImbue(itemId, npcId, { force: true } as any)
   }
   if (model.hudManager) {
     model.syncFromWorld()
-    if (wasImbue && slotUiItem && model.hudManager.inventory.cursorItem?.quality !== 'rare') {
+    if (
+      wasImbue &&
+      slotUiItem &&
+      !alreadyImbuedByServer &&
+      model.hudManager.inventory.cursorItem?.quality !== 'rare'
+    ) {
       try {
         const playerLevel = Math.max(
           1,
@@ -1466,6 +1474,29 @@ export function useItemImpl(model: any, itemId: number): void {
 }
 
 export function castTownPortalImpl(model: any): void {
+  const invSource = model.world?.containers?.inventory
+    ? townPortalSource(model.world.containers.inventory.values())
+    : null
+  if (invSource !== null) {
+    const self = model.world.self
+    model.emitCommand({
+      type: 'ItemUse',
+      itemId: invSource.id >>> 0,
+      at: { x: self.x, y: self.y },
+    })
+    return
+  }
+  const beltSource = model.world?.containers?.belt
+    ? townPortalSource(model.world.containers.belt.values())
+    : null
+  if (beltSource !== null) {
+    model.emitCommand({
+      type: 'BeltUse',
+      itemId: beltSource.id >>> 0,
+      shift: false,
+    })
+    return
+  }
   model.emitCommand({ type: 'TownPortal' })
 }
 
@@ -1562,23 +1593,86 @@ export function closeNpcImpl(model: any, npcId: number): void {
 }
 
 export function cancelNpcSessionImpl(model: any, npcId?: number): void {
+  const hud = model.hudManager
+  const wp = hud?.worldPanels as any
+  const npcInt = model.world.npcInteraction
   const targetNpcId =
     npcId ??
-    model.world.npcInteraction.npcId ??
-    (model.hudManager?.worldPanels as any)?.npcMenu?.npcUnitId ??
-    (model.hudManager?.worldPanels as any)?.npcMenu?.npcId ??
-    (model.hudManager?.worldPanels as any)?.activeNpcId ??
+    (npcInt?.unitType !== 2 ? npcInt?.npcId : null) ??
+    wp?.npcMenu?.npcUnitId ??
+    wp?.npcMenu?.npcId ??
+    (typeof wp?.npcSpeech?.npcId === 'number' && wp.npcSpeech.npcId > 0
+      ? wp.npcSpeech.npcId
+      : null) ??
+    (hud?.leftPanel === 'vendor' ? wp?.vendorNpcId : null) ??
+    wp?.activeNpcId ??
     0
+  const closingPanel = hud?.leftPanel ?? 'none'
+  const wasArtisanPanel =
+    closingPanel === 'imbue' ||
+    closingPanel === 'add_sockets' ||
+    closingPanel === 'personalize'
+  const hadSpeechToClose = Boolean(
+    wp?.npcSpeech && (targetNpcId === 0 || wp.npcSpeech.npcId === targetNpcId),
+  )
+  let returnedSlotItem: any = null
+  if (hud && wasArtisanPanel && wp?.questRewardItem) {
+    if (!hud.inventory.cursorItem) {
+      returnedSlotItem = wp.questRewardItem
+      hud.inventory.cursorItem = wp.questRewardItem
+    } else {
+      hud.inventory.autoPlaceInGrid(wp.questRewardItem)
+    }
+    wp.questRewardItem = null
+    wp.hoveredQuestRewardItem = null
+  }
   if (targetNpcId > 0) {
     model.closeNpc(targetNpcId)
   }
-  if (model.hudManager) {
-    const wp = model.hudManager.worldPanels as any
+  if (
+    returnedSlotItem &&
+    hud &&
+    !hud.inventory.cursorItem &&
+    !model.world.containers?.cursor
+  ) {
+    hud.inventory.cursorItem = returnedSlotItem
+    model.lastSyncedCursorItemRef = returnedSlotItem
+  }
+  if (hud) {
     if (wp?.npcMenu) {
       wp.npcMenu = null
     }
-    if (wp?.npcSpeech && (targetNpcId === 0 || wp.npcSpeech.npcId === targetNpcId)) {
-      wp.npcSpeech = null
+    if (
+      hadSpeechToClose ||
+      (wp?.npcSpeech && (targetNpcId === 0 || wp.npcSpeech.npcId === targetNpcId))
+    ) {
+      if (wp) wp.npcSpeech = null
+      wp?.onCloseNpcSpeech?.()
+    }
+    if (wp && (targetNpcId === 0 || wp.activeNpcId === targetNpcId)) {
+      wp.activeNpcId = null
+    }
+    const keepInvOpenForCursor = wasArtisanPanel && Boolean(hud.inventory?.cursorItem)
+    if (hud.leftPanel === 'vendor') {
+      wp?.clearVendorShop?.()
+      hud.hideLeftPanelFromWorld?.('vendor')
+    } else if (
+      hud.leftPanel === 'hire' ||
+      hud.leftPanel === 'imbue' ||
+      hud.leftPanel === 'add_sockets' ||
+      hud.leftPanel === 'personalize'
+    ) {
+      hud.leftPanel = 'none'
+      if (wp) wp.activePanel = 'none'
+      if (hud.rightPanel === 'inv' && !keepInvOpenForCursor) {
+        hud.rightPanel = 'none'
+        if (hud.inventory) hud.inventory.visible = false
+      }
+      hud.syncPublishedState?.()
+    } else if (keepInvOpenForCursor) {
+      hud.rightPanel = 'inv'
+      if (hud.inventory) hud.inventory.visible = true
+      hud.syncPublishedState?.()
     }
   }
 }

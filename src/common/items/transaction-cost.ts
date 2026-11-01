@@ -108,6 +108,11 @@ export interface TransactionCostContext {
   readonly npcClass: number
   /** Quest-flag test `0x6fd7d0f0`: bit `quest * 16 + state` of the player's quest record. */
   readonly isQuestFlagSet: (questId: number, state: 0 | 1) => boolean
+  /**
+   * Optional 10% town quest discount (`nDiscount = 10`, #1958) applied to vendor buy (`type = 0`)
+   * and repair/recharge (`type = 3`) prices alongside `playerReducedPricesPct`.
+   */
+  readonly questDiscountPct?: number | undefined
   readonly tables: TransactionCostTables
 }
 
@@ -834,13 +839,22 @@ export function computeTransactionCost113c(
   edi = npcScale(edi, edi, npc.repMult, npc.repMult)
 
   // 0x6fd79aa0: quest discounts
+  const hasExplicitQuestDiscount = ctx.questDiscountPct !== undefined
   for (let i = 0; i < 3; i++) {
     const flag = npc.questFlags[i]!
     if (flag === 0) continue
+    if (hasExplicitQuestDiscount && flag === 41) continue
     if (!ctx.isQuestFlagSet(flag, 0) && !ctx.isQuestFlagSet(flag, 1)) continue
-    a = npcScale(a, a, npc.questSellMults[i]!, npc.questSellMults[i]!)
-    ebp = npcScale(ebp, ebp, npc.questBuyMults[i]!, npc.questBuyMults[i]!)
-    edi = npcScale(edi, edi, npc.questRepMults[i]!, npc.questRepMults[i]!)
+    const qSell = npc.questSellMults[i]!
+    const qBuy = npc.questBuyMults[i]!
+    const qRep = npc.questRepMults[i]!
+    if (!hasExplicitQuestDiscount || qSell !== 922) {
+      a = npcScale(a, a, qSell, qSell)
+    }
+    ebp = npcScale(ebp, ebp, qBuy, qBuy)
+    if (!hasExplicitQuestDiscount || qRep !== 922) {
+      edi = npcScale(edi, edi, qRep, qRep)
+    }
   }
 
   // 0x6fd79b8d: quantity
@@ -867,12 +881,23 @@ export function computeTransactionCost113c(
   const cap = npc.maxBuy[ctx.difficulty]
   if (ebp > cap) ebp = cap
 
+  const qd = Math.max(0, Math.min(99, Math.trunc(ctx.questDiscountPct ?? 0)))
   if (type === 1) return ebp < 1 ? 1 : ebp
   if (type === 3) {
-    if (rp !== 0) edi = (edi - fogMulDiv113c(rp, edi, 100)) | 0
+    if (qd > 0) {
+      const totalPct = Math.max(0, Math.min(99, rp + qd))
+      edi = idiv(imul(edi, 100 - totalPct), 100, 'questDiscountRepair')
+    } else if (rp !== 0) {
+      edi = (edi - fogMulDiv113c(rp, edi, 100)) | 0
+    }
     return edi < 1 ? 1 : edi
   }
-  if (rp !== 0) a = (a - fogMulDiv113c(rp, a, 100)) | 0
+  if (qd > 0) {
+    const totalPct = Math.max(0, Math.min(99, rp + qd))
+    a = idiv(imul(a, 100 - totalPct), 100, 'questDiscountBuy')
+  } else if (rp !== 0) {
+    a = (a - fogMulDiv113c(rp, a, 100)) | 0
+  }
   return a < 1 ? 1 : a
 }
 

@@ -478,9 +478,9 @@ describe('Tier 5 â€” Adversarial Edge Cases & Cross-Milestone Hardening (T5.A1â€
       resistances: { phys: 0, magic: 0, fire: 0, lightning: 130, cold: 0, poison: 0 },
     })
 
-    // Apply Conviction (state 62 or 'conviction') to both monsters
-    applyStateToMonsterInGame(game, immuneId, 'conviction', 200)
-    applyStateToMonsterInGame(game, unbreakableId, 'conviction', 200)
+    // Apply slvl 10 Conviction (Skills.txt #123: 30 + 9*5 = -75% resist, state 28) to both monsters
+    applyStateToMonsterInGame(game, immuneId, 'conviction', 200, { slvl: 10 })
+    applyStateToMonsterInGame(game, unbreakableId, 'conviction', 200, { slvl: 10 })
 
     // Cast Lightning (skill 49) or deal lightning skill damage via GameInstance
     game.applyDamageToMonster(immuneId, 200, pid, 49)

@@ -3,6 +3,8 @@ const QUANTITY_STAT = 70
 export interface TownPortalItem {
   readonly id: number
   readonly code: string
+  readonly gridX?: number | undefined
+  readonly x?: number | undefined
   readonly quantity?: number | undefined
   readonly stats?: readonly { readonly statId: number; readonly value: number }[] | undefined
 }

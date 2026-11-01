@@ -268,38 +268,70 @@ describe('Issue #1361 — 1.13c TreasureClassEx Drop Pipeline & Quest Drop Audit
           players: Map<number, { items: any[] }>
           groundItems: Map<number, { level: number; code: string }>
         }
-        internal.players.get(playerId)!.items.push({
-          unitId: 9900,
-          code: 'hfh',
-          name: 'Hellforge Hammer',
-          quality: 7,
-          level: 1,
-          location: 'equipped',
-          x: 0,
-          y: 0,
-          width: 1,
-          height: 2,
-          areaId: 107,
-          ownerId: playerId,
-          bodyLoc: 4,
-          storePage: 0,
-          cost: 0,
-          gamble: false,
-          identified: true,
-          ethereal: false,
-          socketed: false,
-          totalSockets: 0,
-          durability: 10,
-          maxDurability: 10,
-          quantity: 1,
-          stats: new Map(),
-          socketedItems: [],
-        })
+        internal.players.get(playerId)!.items.push(
+          {
+            unitId: 9899,
+            code: 'mss',
+            name: "Mephisto's Soulstone",
+            quality: 7,
+            level: 1,
+            location: 'stored',
+            x: 0,
+            y: 0,
+            width: 1,
+            height: 1,
+            areaId: 107,
+            ownerId: playerId,
+            bodyLoc: 0,
+            storePage: 1,
+            cost: 0,
+            gamble: false,
+            identified: true,
+            ethereal: false,
+            socketed: false,
+            totalSockets: 0,
+            durability: 0,
+            maxDurability: 0,
+            quantity: 1,
+            stats: new Map(),
+            socketedItems: [],
+          },
+          {
+            unitId: 9900,
+            code: 'hfh',
+            name: 'Hellforge Hammer',
+            quality: 7,
+            level: 1,
+            location: 'equipped',
+            x: 0,
+            y: 0,
+            width: 1,
+            height: 2,
+            areaId: 107,
+            ownerId: playerId,
+            bodyLoc: 4,
+            storePage: 0,
+            cost: 0,
+            gamble: false,
+            identified: true,
+            ethereal: false,
+            socketed: false,
+            totalSockets: 0,
+            durability: 10,
+            maxDurability: 10,
+            quantity: 1,
+            stats: new Map(),
+            socketedItems: [],
+          },
+        )
         const forgeId = game.spawnObject({ classId: 376, x: 11, y: 10, areaId: 107 })
-        for (let hit = 0; hit < 3; hit++) {
+        // 1.13c D2Game.dll 0x6FCDB8D0: 1st operate places 'mss' (mode 0 -> 1); next 3 operates with equipped 'hfh'
+        // smash the soulstone and stagger 4 x 20-frame Event 7 gem/rune drops (+20..+80 frames).
+        for (let op = 0; op < 4; op++) {
           game.enqueueCommand(playerId, { type: 'OperateObject', objectId: forgeId })
           game.stepFrames(1)
         }
+        game.stepFrames(80)
         const dropped = [...internal.groundItems.values()]
         expect(dropped.length).toBe(5)
         for (const item of dropped) {
@@ -308,14 +340,14 @@ describe('Issue #1361 — 1.13c TreasureClassEx Drop Pipeline & Quest Drop Audit
       }
     })
 
-    it('drops canonical 1.13c quest items from all 13 quest object classIds', () => {
+    it('drops canonical 1.13c quest items from all 11 quest object classIds and A3Q1 Jade Figurine from first Act 3 Unique kill', () => {
+      // Note: Objects.txt classIds 244 (OperateFn 14) & 246 (OperateFn 4) are normal ratnest containers;
+      // in 1.13c D2Game.dll 0x6fd08010, Jade Figurine ('j34') drops from the first Act 3 Unique/SuperUnique kill.
       const expectedObjectDrops: ReadonlyArray<readonly [number, string]> = [
         [30, 'bks'],
         [108, 'hdm'],
         [149, 'vip'],
         [193, 'bbb'],
-        [244, 'j34'],
-        [246, 'j34'],
         [252, 'g33'],
         [354, 'box'],
         [355, 'tr1'],
@@ -334,6 +366,27 @@ describe('Issue #1361 — 1.13c TreasureClassEx Drop Pipeline & Quest Drop Audit
         const codes = [...ground.values()].map((item) => item.code.trim().toLowerCase())
         expect(codes, `Object classId ${classId} must drop '${expectedCode}'`).toContain(expectedCode)
       }
+
+      // Verify 1.13c A3Q1 Jade Figurine ('j34') drops from first Act 3 Unique kill (0x6fd08010), not ratnest 244/246
+      const a3Game = new GameInstance({ seed: 3244, areaId: 76 })
+      const a3Player = a3Game.connectPlayer({ charClass: 'pal', name: 'Hero', x: 10, y: 10, areaId: 76 })
+      const ratNestId = a3Game.spawnObject({ classId: 244, x: 11, y: 10, areaId: 76 })
+      a3Game.enqueueCommand(a3Player, { type: 'OperateObject', objectId: ratNestId })
+      a3Game.stepFrames(1)
+      const a3Ground = (a3Game as unknown as { groundItems: Map<number, { code: string }> }).groundItems
+      expect([...a3Ground.values()].map((i) => i.code.trim().toLowerCase())).not.toContain('j34')
+
+      const uniqId = a3Game.spawnMonster({
+        defId: 'fetish1',
+        x: 12,
+        y: 10,
+        areaId: 76,
+        hp: 10,
+        maxHp: 10,
+        rank: 'unique',
+      })
+      a3Game.applyDamageToMonster(uniqId, 1000, a3Player)
+      expect([...a3Ground.values()].map((i) => i.code.trim().toLowerCase())).toContain('j34')
     })
 
     it('drops canonical 1.13c quest items on Radament, Hephasto, Mephisto, and Travincal Council kills', () => {

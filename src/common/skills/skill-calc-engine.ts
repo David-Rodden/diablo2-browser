@@ -53,14 +53,14 @@ export function createInitialState(classCode: CharacterClassCode = 'ama'): Skill
  * In Diablo II, an uninvested skill has effective level 0 (unless granted as an oskill).
  */
 export function getEffectiveLevel(state: SkillCalcState, skillId: number): number {
-  const hard = state.hardPoints[skillId] ?? 0
-  const specSoft = state.specificSoftPoints[skillId] ?? 0
+  const hard = state?.hardPoints?.[skillId] ?? 0
+  const specSoft = state?.specificSoftPoints?.[skillId] ?? 0
   if (hard === 0 && specSoft === 0) return 0
 
   const skill = SKILLS_BY_ID[skillId]
   if (!skill) return hard
-  const tabSoft = state.tabSoftPoints[skill.tabIndex] ?? 0
-  const allSoft = state.allSkillsSoftPoints ?? 0
+  const tabSoft = state?.tabSoftPoints?.[skill.tabIndex] ?? 0
+  const allSoft = state?.allSkillsSoftPoints ?? 0
   return hard + tabSoft + allSoft + specSoft
 }
 
@@ -250,9 +250,10 @@ export function evaluateSynergies(state: SkillCalcState, skill: SkillCatalogEntr
   let totalPercent = 0
   let physicalPercent = 0
   let elementalPercent = 0
+  const hardPoints = state?.hardPoints ?? {}
   const list = skill.synergiesReceived.map(syn => {
     const providerSkill = SKILLS_BY_ID[syn.providerId]
-    const hardPts = state.hardPoints[syn.providerId] ?? 0
+    const hardPts = hardPoints[syn.providerId] ?? 0
     const bonus = hardPts * syn.percentPerLevel
     if (!syn.type || syn.type === 'damage') {
       totalPercent += bonus
@@ -1346,15 +1347,35 @@ function createLazyEffLevels(
   })
 }
 
+function normalizeCalcState(state: SkillCalcState): SkillCalcState {
+  if (
+    state &&
+    state.hardPoints &&
+    state.tabSoftPoints &&
+    state.specificSoftPoints &&
+    typeof state.allSkillsSoftPoints === 'number'
+  ) {
+    return state
+  }
+  return {
+    classCode: state?.classCode ?? 'ama',
+    hardPoints: state?.hardPoints ?? {},
+    tabSoftPoints: state?.tabSoftPoints ?? { 0: 0, 1: 0, 2: 0 },
+    allSkillsSoftPoints: state?.allSkillsSoftPoints ?? 0,
+    specificSoftPoints: state?.specificSoftPoints ?? {},
+  }
+}
+
 /**
  * Builds the SkillCalc formula context (`ln12`, `dm34`, `edmn`, `toht`, …) for a skill at `lvl`, plus the raw
  * 3-band elemental length (Skills.txt ELen/ELevLen1..3) before any legacy per-skill overrides.
  */
 export function buildSkillFormulaContext(
-  state: SkillCalcState,
+  rawState: SkillCalcState,
   skill: SkillCatalogEntry,
   lvl: number
 ): { readonly ctx: SkillFormulaContext; readonly elemLengthFrames: number; readonly durationFrames: number } {
+  const state = normalizeCalcState(rawState)
   const effLevels = createLazyEffLevels(state, skill.id, lvl)
 
   const p = skill.params || {}
@@ -1539,10 +1560,11 @@ export function buildSkillFormulaContext(
 }
 
 export function evaluateSkillEffects(
-  state: SkillCalcState,
+  rawState: SkillCalcState,
   skill: SkillCatalogEntry,
   lvl: number
 ): readonly FormattedDescLine[] {
+  const state = normalizeCalcState(rawState)
   const built = buildSkillFormulaContext(state, skill, lvl)
   const ctx = built.ctx
   const durationFrames = built.durationFrames

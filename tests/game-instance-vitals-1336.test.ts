@@ -32,9 +32,10 @@ function playerRecord(game: GameInstance, id: number): MutablePlayer {
   return (game as unknown as { players: Map<number, MutablePlayer> }).players.get(id)!
 }
 
-function makeRunner(): { game: GameInstance; id: number; record: MutablePlayer } {
-  const game = new GameInstance({ seed: 1336, difficulty: 0, areaId: 1 })
-  const id = game.connectPlayer({ charClass: 'bar', name: 'Runner', x: 100, y: 100, areaId: 1 })
+// Outdoors (Blood Moor): 1.13c never drains stamina while running in town (D2Game 0x6FC97BB0).
+function makeRunner(areaId = 2): { game: GameInstance; id: number; record: MutablePlayer } {
+  const game = new GameInstance({ seed: 1336, difficulty: 0, areaId })
+  const id = game.connectPlayer({ charClass: 'bar', name: 'Runner', x: 100, y: 100, areaId })
   game.drainEvents(id)
   const record = playerRecord(game, id)
   record.maxStaminaFixed = 200 * 256
@@ -89,6 +90,13 @@ describe('issue #1336: server player vitals', () => {
     expect(after.stamina).toBeLessThan(200)
     expect(after.mana).toBeGreaterThan(0)
     expect(after.hp).toBeGreaterThan(500)
+  })
+
+  it('does not drain stamina while running in town (D2Game 0x6FC97BB0 DUNGEON_IsRoomInTown)', () => {
+    const { game, id, record } = makeRunner(1)
+    game.enqueueCommand(id, { type: 'Move', to: { x: 140, y: 100 }, run: true })
+    game.stepFrames(20)
+    expect(record.staminaFixed).toBe(200 * 256)
   })
 
   it('recovers stamina when walking/idle after the run stops', () => {

@@ -984,7 +984,13 @@ export class Autopilot {
       this.storedQuestItem() !== null && ready('fetch') && { key: 'fetch', reason: 'Taking the quest item out of storage', work: () => this.fetch(this.storedQuestItem()!) },
       recipe !== null && ready('cube') && { key: 'cube', reason: `Making ${recipe.name} in the Horadric Cube`, work: () => this.cube(recipe) },
       care.upgrades.length > 0 && ready('gear') && { key: 'gear', reason: 'Putting on better gear', work: () => care.wearUpgrades() },
-      this.unidentified().length > 0 && scrollSource(world.containers.inventory.values(), 'ibk', 'isc') !== null && ready('identify') && { key: 'identify', reason: 'Identifying items', work: () => this.identifyAll() },
+      this.unidentified().length > 0 &&
+        scrollSource(
+          [...world.containers.inventory.values(), ...world.containers.belt.values()],
+          'ibk',
+          'isc',
+        ) !== null &&
+        ready('identify') && { key: 'identify', reason: 'Identifying items', work: () => this.identifyAll() },
       care.config?.stashValuables === true && care.stashable.length > 0 && ready('stash') && { key: 'stash', reason: 'Stashing valuables', stash: true },
     ]
     const errand = errands.find((e): e is Errand => e !== false) ?? null
@@ -1156,7 +1162,8 @@ export class Autopilot {
 
   private scrollsWanted(kind: keyof typeof SCROLL_KINDS): number {
     const { tome: tomeCode, scroll, keep, spare } = SCROLL_KINDS[kind]
-    const { tome, scrolls } = scrollsCarried(this.host.world.containers.inventory.values(), tomeCode, scroll)
+    const { inventory, belt } = this.host.world.containers
+    const { tome, scrolls } = scrollsCarried([...inventory.values(), ...belt.values()], tomeCode, scroll)
     return Math.max(0, (tome ? keep : spare) - scrolls)
   }
 
@@ -1204,7 +1211,7 @@ export class Autopilot {
   private async buyScroll(kind: keyof typeof SCROLL_KINDS): Promise<boolean> {
     const { world, hudManager, hudModel } = this.host
     const { tome: tomeCode, scroll, tomeGold } = SCROLL_KINDS[kind]
-    const { tome } = scrollsCarried(world.containers.inventory.values(), tomeCode, scroll)
+    const { tome } = scrollsCarried([...world.containers.inventory.values(), ...world.containers.belt.values()], tomeCode, scroll)
     const code = tome ? scroll : world.self.gold >= tomeGold ? tomeCode : kind === 'portal' ? scroll : null
     const ware = [...world.containers.shop.values()].find((item) => item.code.trim() === code)
     const before = world.self.gold
@@ -1220,9 +1227,12 @@ export class Autopilot {
   private async identifyAll(): Promise<void> {
     const { world, hudManager, hudModel } = this.host
     for (const item of this.unidentified()) {
-      const source = scrollSource(world.containers.inventory.values(), 'ibk', 'isc')
+      const invSource = scrollSource(world.containers.inventory.values(), 'ibk', 'isc')
+      const beltSource = invSource === null ? scrollSource(world.containers.belt.values(), 'ibk', 'isc') : null
+      const source = invSource ?? beltSource
       if (!source || hudModel === null || !this.active) break
-      hudModel.useItem(source.id)
+      if (beltSource !== null) hudModel.useBeltSlot(beltSource.gridX ?? beltSource.x ?? 0, false)
+      else hudModel.useItem(source.id)
       if (!(await waitFor(() => hudManager.pendingIdentifyScrollId !== null, IDENTIFY_MS))) break
       hudModel.identifyItem(item.id, source.id)
       await waitFor(() => world.containers.inventory.get(item.id)?.identified !== false, IDENTIFY_MS)

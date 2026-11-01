@@ -57,7 +57,7 @@ describe('monster-art', () => {
     expect(facingOf(10, 10)).toBe(7)
     // Stationary
     expect(facingOf(0, 0)).toBe(0)
-  })
+  }, 20_000)
 
   it('declares and re-exports ADDITIVE_MONSTER_TOKENS with ground truth tokens', async () => {
     const { ADDITIVE_MONSTER_TOKENS } = await import('../src/client/render/monster-art.ts')

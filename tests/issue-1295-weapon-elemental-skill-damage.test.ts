@@ -75,11 +75,12 @@ describe('Issue #1295: weapon elemental/poison skill damage & SrcDam in characte
     // Power Strike lvl 1 adds +20% AR over normal attack
     expect(attrs.rightAttackRating).toBeGreaterThan(attrs.attackRating ?? 0)
 
-    // Add 10 hard points in Charged Strike (#24) -> +100% lightning synergy (2-32 lightning damage)
+    // Add 10 hard points in Charged Strike (#24) -> +100% lightning synergy.
+    // 1.13c D2Common #10121 (0x6FDA04C7): EMin=1 with EMinLev1=0 is not multiplied by synergy (1-32 lightning damage).
     setSkill(world, 24, 10)
     hudModel.syncFromWorld()
     const [psSynMin, psSynMax] = parseDamageRange(hud.charSheet.attrs.rightSkillDmg)
-    expect(psSynMin).toBe(normMin + 2)
+    expect(psSynMin).toBe(normMin + 1)
     expect(psSynMax).toBe(normMax + 32)
   })
 

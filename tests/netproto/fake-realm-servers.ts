@@ -54,6 +54,11 @@ export interface FakeRealmOptions {
   /** How D2GS responds to C2S 0x68 GameLogon (default 'ok'). */
   readonly d2gsLogonMode?: 'ok' | 'charlocked_0xb4' | 'silent_logon' | undefined
   /**
+   * How D2GS responds to C2S 0x69 LeaveGame (default 'ack': S2C 0x06 GameLogoutSuccess, then close;
+   * 'silent': no answer, the client must fall back to its leave timeout).
+   */
+  readonly d2gsLeaveMode?: 'ack' | 'silent' | undefined
+  /**
    * When true, enforce PvPGN `d2cs` (`handle_d2cs.c`) state machine on MCP connections:
    * - `d2cs_conn_state_authed`: only `MCP_CHARLIST2`, `MCP_CHARCREATE`, `MCP_CHARDELETE`, `MCP_CHARUPGRADE`, `MCP_CHARLOGON` are allowed; sending `MCP_GAMELIST`/`MCP_CREATEGAME`/`MCP_JOINGAME` closes the socket (`reason "Target closed"`).
    * - `d2cs_conn_state_charloggedin`: only lobby packets (`MCP_GAMELIST`, `MCP_GAMEINFO`, `MCP_CREATEGAME`, `MCP_JOINGAME`) are allowed; sending a second `MCP_CHARLOGON` on the same socket closes the socket.
@@ -276,8 +281,16 @@ function wireMcp(
 function wireGame(
   server: MemoryStream,
   logonMode: NonNullable<FakeRealmOptions['d2gsLogonMode']> = 'ok',
+  leaveMode: NonNullable<FakeRealmOptions['d2gsLeaveMode']> = 'ack',
 ): void {
   server.onData((chunk) => {
+    if (chunk[0] === 0x69 && chunk.byteLength === 1 && !server.isClosed) {
+      if (leaveMode === 'ack') {
+        server.write(wrapD2gsCompressedBlock(defaultD2gsHuffmanCodec.compress(new Uint8Array([0x06]))))
+        server.close()
+      }
+      return
+    }
     if (chunk[0] === 0x68 && !server.isClosed) {
       if (logonMode === 'silent_logon') {
         return
@@ -334,7 +347,7 @@ export function createFakeRealm(options: FakeRealmOptions = {}): FakeRealm {
           options.joinGameD2gsIp ?? [127, 0, 0, 1],
         )
       } else {
-        wireGame(server, d2gsLogonMode)
+        wireGame(server, d2gsLogonMode, options.d2gsLeaveMode ?? 'ack')
         setTimeout(() => {
           if (!server.isClosed) server.write(new Uint8Array([0xaf, 0x01]))
         }, 5)

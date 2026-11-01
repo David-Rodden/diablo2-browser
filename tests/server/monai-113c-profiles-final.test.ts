@@ -99,10 +99,10 @@ describe('issue #1341 per-row state machines', () => {
     game.connectPlayer({ charClass: 'bar', name: 'Target', x: 10, y: 10, areaId: 1 })
     const mother = game.spawnMonster({ defId: 'vilemother1', x: 15, y: 10, areaId: 1, hp: 500, maxHp: 500 })
     game.stepFrames(500)
-    const dogs = [...(game as unknown as { monsters: Map<number, { defId: string }> }).monsters.values()]
-      .filter((monster) => monster.defId === 'viledog1')
-    expect(dogs.length).toBeGreaterThan(0)
-    expect(dogs.length).toBeLessThanOrEqual(16)
+    const children = [...(game as unknown as { monsters: Map<number, { defId: string }> }).monsters.values()]
+      .filter((monster) => monster.defId === 'vilechild1')
+    expect(children.length).toBeGreaterThan(0)
+    expect(children.length).toBeLessThanOrEqual(16)
     expect(internalMonster(game, mother).spawnedChildren).toBeLessThanOrEqual(16)
   })
 

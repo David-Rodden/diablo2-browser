@@ -349,7 +349,7 @@ describe('Issue #866 — Per-tick unit-removal guard (D2Client 0x6faf83b0) and S
     session.tick(1000)
     expect(session.world.npcInteraction.npcId).toBe(CHARSI_ID)
 
-    // A player position far from the NPC must NOT close it: 0x6faf83b0 never checks the distance (#890).
+    // Drift within the 10-subtile D2Game 0x0A tether (|dx|=7, |dy|=10 -> Chebyshev = 10) must NOT close it (#890).
     const sentBeforeNpcWalk = session.getSentCommands().length
     session.predictor.setPosition(5010, 5010)
     session.tick(1040)
@@ -362,8 +362,9 @@ describe('Issue #866 — Per-tick unit-removal guard (D2Client 0x6faf83b0) and S
         .filter((c) => c.type === 'NpcCancel'),
     ).toEqual([])
 
-    // Leaving the NPC is an explicit cancel (world click / menu), which sends C2S 0x30 NpcCancel once
-    session.hudModel.cancelNpcSession(CHARSI_ID)
+    // Moving outside the 10-subtile tether (|dx|=17, |dy|=20 > 10) auto-closes and sends C2S 0x30 NpcCancel once (#1979)
+    session.predictor.setPosition(5020, 5020)
+    session.tick(1060)
     expect(session.world.npcInteraction.npcId).toBeNull()
     expect(session.hudManager.worldPanels.npcMenu).toBeNull()
     expect(

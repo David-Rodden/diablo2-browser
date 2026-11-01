@@ -39,7 +39,7 @@ import {
   type LobbyJoinGameInfo,
 } from './frontend/flow-state.ts'
 import { FrontendImeSink } from './frontend/frontend-ime-sink.ts'
-import { FrontendRenderer } from './frontend/frontend-renderer.ts'
+import { FrontendRenderer, type FrontendAsyncHandlers } from './frontend/frontend-renderer.ts'
 import {
   allowAllAvatarComposites,
   buildAvatarSpecFromStatstring,
@@ -57,8 +57,12 @@ import { getTblLang, lookupTbl, setLang, type GameLang } from './i18n/lang.ts'
 import {
   BncsCreateAccountError,
   getLocalLobbyProvider,
+  getLocalServerFactory,
+  registerLocalLobbyProvider,
+  registerLocalServerFactory,
   type CharClassId,
 } from '../netproto/index.ts'
+import { loadSiteConfig, type SiteConfig } from './config/site-config.ts'
 import { SpriteRenderer, type AtlasHandle } from './render/renderer.ts'
 import { FpsCounter113c } from './render/fps-counter-113c.ts'
 import {
@@ -192,6 +196,10 @@ const STARTER_EQUIP_BY_HERO_TOKEN: Readonly<Record<string, EquippedAppearanceInp
 
 const SINGLE_PLAYER_SAVES_STORAGE_KEY = 'd2_sp_saves_v1'
 
+let capturedLocalLobbyProvider: ReturnType<typeof getLocalLobbyProvider> | undefined
+let capturedLocalServerFactory: ReturnType<typeof getLocalServerFactory> | undefined
+let sharedSiteConfigPromise: Promise<SiteConfig> | null = null
+
 function uint8ToBase64(bytes: Uint8Array): string {
   let binary = ''
   for (let i = 0; i < bytes.byteLength; i++) {
@@ -267,9 +275,37 @@ export async function startPlayApp(options?: {
   readonly stageRefs?: StageContainerRefs
   readonly isChildSlot?: boolean
   readonly menuLayout?: MenuLayout
+  readonly siteConfig?: SiteConfig
 }): Promise<PlayAppController> {
   const slotId = options?.slotId ?? 1
   const isChildSlot = options?.isChildSlot === true
+
+  const existingLocalLobby = getLocalLobbyProvider()
+  const existingLocalFactory = getLocalServerFactory()
+  if (capturedLocalLobbyProvider === undefined || existingLocalLobby !== null) {
+    capturedLocalLobbyProvider = existingLocalLobby
+  }
+  if (capturedLocalServerFactory === undefined || existingLocalFactory !== null) {
+    capturedLocalServerFactory = existingLocalFactory
+  }
+  if (!isChildSlot) {
+    // Fail-closed until deployment site configuration explicitly enables Single Player.
+    registerLocalLobbyProvider(null)
+    registerLocalServerFactory(null)
+  }
+  const siteConfigPromise: Promise<SiteConfig> = !isChildSlot
+    ? (sharedSiteConfigPromise = options?.siteConfig
+        ? Promise.resolve(options.siteConfig)
+        : loadSiteConfig())
+    : options?.siteConfig
+      ? Promise.resolve(options.siteConfig)
+      : (sharedSiteConfigPromise ??= loadSiteConfig())
+  let singlePlayerAllowed = false
+  const assertSinglePlayerAllowed = (): void => {
+    if (!singlePlayerAllowed) {
+      throw new Error('Single Player mode is disabled')
+    }
+  }
 
   // #954 re-boot guard: dev HMR re-execution of the play.html module (and any
   // future in-page re-login flow) can call `startPlayApp` again in the SAME JS
@@ -1214,6 +1250,7 @@ export async function startPlayApp(options?: {
   }
 
   const startSinglePlayerGame = async (st: BnetFlowState, charName: string): Promise<void> => {
+    assertSinglePlayerAllowed()
     closeAllModals()
     st.stage = 'door_loading'
     st.stageTicks = 0
@@ -1372,7 +1409,12 @@ export async function startPlayApp(options?: {
     flowState.stageTicks = 0
     flowState.tickAccumulatorMs = 0
     flowState.lastFrameTimeMs = null
-    toolbar.setConnectionState({ phase: 'mcp', rttMs: session.pingMs })
+    if (flowState.playMode === 'single') {
+      void persistSinglePlayerSavesToStorage()
+      toolbar.setConnectionState({ phase: 'disconnected', rttMs: null })
+    } else {
+      toolbar.setConnectionState({ phase: 'mcp', rttMs: session.pingMs })
+    }
     syncVisibility()
     frontendRenderer.render(performance.now())
   }
@@ -1543,25 +1585,27 @@ export async function startPlayApp(options?: {
     frontendRenderer.render(performance.now())
   }
 
-  frontendRenderer.setAsyncHandlers({
-    onSinglePlayer: async (st) => {
-      st.playMode = 'single'
+  const handleSinglePlayerEntry = async (st: BnetFlowState): Promise<void> => {
+    assertSinglePlayerAllowed()
+    st.playMode = 'single'
+    st.onlineConnected = false
+    st.lastError = null
+    st.loginError = null
+    st.charCreateError = null
+    st.statusText = ''
+    toolbar.setConnectionState({ phase: 'disconnected', rttMs: null })
+    const lobby = getLocalLobbyProvider()
+    if (lobby) {
+      await syncSinglePlayerSavesFromStorage()
+      const chars = await lobby.listCharacters()
+      applyOnlineCharactersToFlowState(st, chars)
       st.onlineConnected = false
-      st.lastError = null
-      st.loginError = null
-      st.charCreateError = null
-      st.statusText = ''
-      toolbar.setConnectionState({ phase: 'disconnected', rttMs: null })
-      const lobby = getLocalLobbyProvider()
-      if (lobby) {
-        await syncSinglePlayerSavesFromStorage()
-        const chars = await lobby.listCharacters()
-        applyOnlineCharactersToFlowState(st, chars)
-        st.onlineConnected = false
-        preloadSelectedCharacterAssets(st)
-      }
-      frontendRenderer.render(performance.now())
-    },
+      preloadSelectedCharacterAssets(st)
+    }
+    frontendRenderer.render(performance.now())
+  }
+
+  const baseAsyncHandlers: FrontendAsyncHandlers = {
     onConnect: async (st) => {
       st.playMode = 'bnet'
       bnetConnectPending = true
@@ -1664,6 +1708,7 @@ export async function startPlayApp(options?: {
         const classId = st.selectedClass === null ? undefined : classMap[st.selectedClass]
         if (classId === undefined) throw new Error(`Unknown selected class ${String(st.selectedClass)}`)
         if (st.playMode === 'single') {
+          assertSinglePlayerAllowed()
           const lobby = getLocalLobbyProvider()
           if (!lobby) throw new Error('Single Player local server provider is not registered')
           await lobby.createCharacter({
@@ -1712,6 +1757,7 @@ export async function startPlayApp(options?: {
       frontendRenderer.render(performance.now())
       try {
         if (st.playMode === 'single') {
+          assertSinglePlayerAllowed()
           const lobby = getLocalLobbyProvider()
           if (!lobby) throw new Error('Single Player local server provider is not registered')
           await lobby.deleteCharacter(charName)
@@ -1737,6 +1783,7 @@ export async function startPlayApp(options?: {
       frontendRenderer.render(performance.now())
       try {
         if (st.playMode === 'single') {
+          assertSinglePlayerAllowed()
           const lobby = getLocalLobbyProvider()
           if (!lobby) throw new Error('Single Player local server provider is not registered')
           const chars =
@@ -1766,6 +1813,7 @@ export async function startPlayApp(options?: {
       frontendRenderer.render(performance.now())
       try {
         if (st.playMode === 'single') {
+          assertSinglePlayerAllowed()
           const lobby = getLocalLobbyProvider()
           if (!lobby) throw new Error('Single Player local server provider is not registered')
           await lobby.selectCharacter(selected.name)
@@ -2034,7 +2082,7 @@ export async function startPlayApp(options?: {
         frontendRenderer.render(performance.now())
       }
     },
-    onSendChat: async (_st, text) => {
+      onSendChat: async (_st, text) => {
       try {
         await session.sendLobbyChat(text)
       } catch (err) {
@@ -2042,9 +2090,27 @@ export async function startPlayApp(options?: {
       }
       frontendRenderer.render(performance.now())
     },
-  })
+  }
+  frontendRenderer.setAsyncHandlers(baseAsyncHandlers)
 
-  await frontendRenderer.load('/ui/frontend')
+  const [, siteConfig] = await Promise.all([frontendRenderer.load('/ui/frontend'), siteConfigPromise])
+  singlePlayerAllowed = siteConfig.singlePlayerEnabled === true
+  flowState.singlePlayerEnabled = singlePlayerAllowed
+  if (singlePlayerAllowed) {
+    if (capturedLocalLobbyProvider) {
+      registerLocalLobbyProvider(capturedLocalLobbyProvider)
+    }
+    if (capturedLocalServerFactory) {
+      registerLocalServerFactory(capturedLocalServerFactory)
+    }
+    frontendRenderer.setAsyncHandlers({
+      ...baseAsyncHandlers,
+      onSinglePlayer: handleSinglePlayerEntry,
+    })
+  } else if (!isChildSlot) {
+    registerLocalLobbyProvider(null)
+    registerLocalServerFactory(null)
+  }
   session.audioRuntime.playTitleMusic()
   bootProgress.setStageFloor(100, '主菜单与大厅界面')
   await bootProgress.waitForIdle(200)

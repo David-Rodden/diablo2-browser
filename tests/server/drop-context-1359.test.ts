@@ -60,8 +60,9 @@ describe('issue #1359 drop context', () => {
       experience: 1,
     })
     game.applyDamageToMonster(bossId, 1000, playerId)
-    // a1q6 title qstsa1q6 -> word 6, bit 0 completed.
-    expect(record(game, playerId).questFlags[6]! & 1).toBe(1)
+    // a1q6 (word 6): Andariel's death sets PRIMARY_GOAL_DONE | COMPLETED_NOW (0x3000) before talking to Warriv (0x0001).
+    expect(record(game, playerId).questFlags[6]! & 0x3000).toBe(0x3000)
+    expect(record(game, playerId).questFlags[6]! & 1).toBe(0)
   })
 
   it('counts equipped, charm and socketed MF in the drop context', () => {

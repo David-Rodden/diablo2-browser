@@ -205,7 +205,8 @@ describe('Issue #1395 — GameInstance mercenary hire subType, resurrect classId
     const mercId = game.hireMercenary(p1, { act: 1, subType: 1, level: 9, difficulty: 1 })
 
     const units = game.getAllUnits()
-    const mercUnit = units.find((u) => u.unitId === mercId)
+    // Mercenaries are monster units; ids are only unique per unit type (1.13c 0x6FCFF9C0).
+    const mercUnit = units.find((u) => u.unitId === mercId && (u.unitType === 'monster' || u.unitType === 1))
     expect(mercUnit).toBeDefined()
     expect(mercUnit!.classId).toBe(271)
 

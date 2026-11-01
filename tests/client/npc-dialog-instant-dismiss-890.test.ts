@@ -318,20 +318,31 @@ describe('Issue #890 — an open NPC dialog is not closed by the per-tick guard 
     }
   })
 
-  it('C. predicted-position drift after the dialog opened never cancels it', () => {
+  it('C. predicted-position drift within the 10-subtile tether never cancels the dialog, while leaving > 10 subtiles auto-closes (#1979)', () => {
     const { session, akaraId, akara } = createSessionWithAkara(5003, 5000)
     session.commandMapper.triggerPrimaryWorldAction(akara.x, akara.y, akara, 1000)
     expectDialogOpen(session, akaraId)
     const afterOpen = session.getSentCommands().length
 
-    session.predictor.setPosition(4998, 5000) // dx = 5: #10407 = 4
+    session.predictor.setPosition(4998, 5000) // dx = 5: #10407 = 4 (> 2), within 10-subtile tether
     let now = runTicks(session, 1000, 3)
     expectDialogOpen(session, akaraId)
 
-    session.predictor.setPosition(4990, 4990) // far branch
+    session.predictor.setPosition(4993, 4990) // |dx| = 10, |dy| = 10 (#10407 far branch), exact 10-subtile boundary
     now = runTicks(session, now, 3)
     expectDialogOpen(session, akaraId)
     expect(sentTypesSince(session, afterOpen)).not.toContain('NpcCancel')
+
+    session.predictor.setPosition(4990, 4990) // |dx| = 13 > 10: outside D2Game 0x0A tether -> auto-close (#1979)
+    now = runTicks(session, now, 2)
+    expect(session.world.npcInteraction.npcId).toBeNull()
+    expect(session.hudManager.worldPanels.npcMenu).toBeNull()
+    expect(
+      session
+        .getSentCommands()
+        .slice(afterOpen)
+        .filter((c) => c.type === 'NpcCancel'),
+    ).toEqual([{ type: 'NpcCancel', target: { unitType: 1, id: akaraId } }])
   })
 
   it('D. a deferred interaction that arrives through the server position (arrivedViaServer) keeps the dialog open', () => {

@@ -4138,7 +4138,9 @@ export function expireCastStatesImpl(this: ClientWorldInternal, nowMs?: number, 
         const firedByElapsed =
           (unit.castState.elapsedMs ?? 0) >= unit.castState.missileFireDelayMs
         const firedByClock =
-          effNow !== null && effNow - unit.castState.startedAtMs >= unit.castState.missileFireDelayMs
+          effNow !== null &&
+          effNow >= unit.castState.startedAtMs &&
+          effNow >= unit.castState.startedAtMs + unit.castState.missileFireDelayMs - 1e-6
         if (firedByElapsed || firedByClock) {
           unit.castState.missileSpawned = true
           const isSelfUnit =
@@ -4171,7 +4173,8 @@ export function expireCastStatesImpl(this: ClientWorldInternal, nowMs?: number, 
           (unit.castState.elapsedMs ?? 0) >= unit.castState.secondMissileFireDelayMs
         const firedByClock =
           effNow !== null &&
-          effNow - unit.castState.startedAtMs >= unit.castState.secondMissileFireDelayMs
+          effNow >= unit.castState.startedAtMs &&
+          effNow >= unit.castState.startedAtMs + unit.castState.secondMissileFireDelayMs - 1e-6
         if (firedByElapsed || firedByClock) {
           unit.castState.secondMissileSpawned = true
           const isSelfUnit =

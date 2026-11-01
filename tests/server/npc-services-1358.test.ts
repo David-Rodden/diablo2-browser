@@ -167,7 +167,7 @@ describe('issue #1358 NPC services', () => {
     const imbued = (record.items as (Entry & { quality?: number })[]).find(
       (entry) => entry.unitId === 9401,
     )!
-    expect(imbued.quality).toBe('rare')
+    expect(imbued.quality).toBe(6)
     expect(imbued.identified).toBe(true)
   })
 
@@ -195,7 +195,7 @@ describe('issue #1358 NPC services', () => {
     const imbued = (record.items as (Entry & { quality?: number; location?: string })[]).find(
       (entry) => entry.unitId === 1,
     )!
-    expect(imbued.quality).toBe('rare')
+    expect(imbued.quality).toBe(6)
     expect(imbued.identified).toBe(true)
     expect(imbued.location).toBe('inventory')
   })

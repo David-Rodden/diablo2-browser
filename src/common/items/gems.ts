@@ -757,6 +757,7 @@ export function socketItemIntoHost(
   host: Item,
   socketable: Item,
   gemTable: GemTable = CANONICAL_GEMS_TABLE,
+  options?: { readonly isLadder?: boolean | undefined },
 ): Item {
   if (
     host &&
@@ -846,7 +847,7 @@ export function socketItemIntoHost(
   if (allAreRunes && newSocketedCount === totalSockets && isNormalQuality(host)) {
     const runeCodes = newSocketedItems.map((s) => (s.code ?? s.base?.id ?? '').trim().toLowerCase())
     const rwMatch = checkRunewordMatch(updatedHost, runeCodes, defaultRunewordIsA, undefined, {
-      isLadder: true,
+      isLadder: options?.isLadder ?? false,
     })
     if (rwMatch) {
       const rwProps: RolledItemProp[] = rwMatch.t1Codes.map((m) => ({

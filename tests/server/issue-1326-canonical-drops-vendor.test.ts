@@ -29,9 +29,14 @@ function itemEvents(events: readonly ServerEvent[], action: string): ItemEvent[]
 }
 
 function killMonster(game: GameInstance, playerId: number, monsterId: number): void {
-  game.enqueueCommand(playerId, { type: 'CastSkillOnTarget', skillId: 0, targetType: 'monster', targetId: monsterId })
-  game.stepFrames(120)
+  // 1.13c melee Basic Attack (skillId 0) rolls ToHit (clamped 5..95%) and monster block;
+  // swing until lethal hit lands, then advance past AnimData death-drop delay.
+  for (let swing = 0; swing < 120 && !game.getMonster(monsterId)!.dead; swing++) {
+    game.enqueueCommand(playerId, { type: 'CastSkillOnTarget', skillId: 0, targetType: 'monster', targetId: monsterId })
+    game.stepFrames(25)
+  }
   expect(game.getMonster(monsterId)!.dead).toBe(true)
+  game.stepFrames(100)
 }
 
 /** The client-side name of a sent item must be the name the generator gave it. */

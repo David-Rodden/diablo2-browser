@@ -2454,7 +2454,15 @@ export function handleHudMouseDown(
             ;(hud as any).playItemUseUiSound(item)
             const c = (item.code ?? '').trim().toLowerCase()
             if (c === 'bks' || c === 'bkd') {
-              hud.worldPanels.openBarkscroll(c === 'bkd')
+              const stoneOrder =
+                c === 'bkd'
+                  ? ((
+                      hud.commandSink as {
+                        world?: { questLog?: { cairnStoneOrder?: readonly number[] | null } }
+                      } | null
+                    )?.world?.questLog?.cairnStoneOrder ?? hud.worldPanels.cairnStoneOrder)
+                  : undefined
+              hud.worldPanels.openBarkscroll(c === 'bkd', stoneOrder)
               hud.setLeftPanel('barkscroll')
             } else if (c === 'tr1') {
               hud.worldPanels.openRecipeScroll()
@@ -2920,7 +2928,15 @@ export function forwardGridClick(
           hud.setLeftPanel('cube')
         }
       } else if (hitCode === 'bks' || hitCode === 'bkd') {
-        hud.worldPanels.openBarkscroll(hitCode === 'bkd')
+        const stoneOrder =
+          hitCode === 'bkd'
+            ? ((
+                hud.commandSink as {
+                  world?: { questLog?: { cairnStoneOrder?: readonly number[] | null } }
+                } | null
+              )?.world?.questLog?.cairnStoneOrder ?? hud.worldPanels.cairnStoneOrder)
+            : undefined
+        hud.worldPanels.openBarkscroll(hitCode === 'bkd', stoneOrder)
         hud.setLeftPanel('barkscroll')
       } else if (hitCode === 'tr1') {
         hud.worldPanels.openRecipeScroll()

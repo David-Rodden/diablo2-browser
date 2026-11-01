@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { GameInstance } from '../../src/server/engine/game-instance.ts'
 import {
   QUEST_FLAG_COMPLETED_113C,
+  QUEST_FLAG_COMPLETED_NOW_113C,
   QUEST_FLAG_PRIMARY_GOAL_DONE_113C,
   QUEST_FLAG_REWARD_PENDING_113C,
   QUEST_FLAG_STARTED_113C,
@@ -342,8 +343,9 @@ describe('issue #1353 full quest coverage', () => {
       maxHp: 10,
     })
     game.applyDamageToMonster(shenk, 1000, playerId)
-    expect(player.questFlags[questIndex('a5q1')]! & QUEST_FLAG_COMPLETED_113C).toBe(1)
+    expect(player.questFlags[questIndex('a5q1')]! & QUEST_FLAG_COMPLETED_113C).toBe(0)
     expect(player.questFlags[questIndex('a5q1')]! & QUEST_FLAG_REWARD_PENDING_113C).toBe(QUEST_FLAG_REWARD_PENDING_113C)
+    expect(player.questFlags[questIndex('a5q1')]! & QUEST_FLAG_COMPLETED_NOW_113C).toBe(QUEST_FLAG_COMPLETED_NOW_113C)
     const nihlathak = game.spawnMonster({
       defId: 'nihlathakboss',
       superUniqueId: 'Nihlathak Boss',
@@ -354,7 +356,8 @@ describe('issue #1353 full quest coverage', () => {
       maxHp: 10,
     })
     game.applyDamageToMonster(nihlathak, 1000, playerId)
-    expect(player.questFlags[questIndex('a5q4')]! & QUEST_FLAG_COMPLETED_113C).toBe(1)
+    expect(player.questFlags[questIndex('a5q4')]! & QUEST_FLAG_COMPLETED_113C).toBe(0)
     expect(player.questFlags[questIndex('a5q4')]! & QUEST_FLAG_REWARD_PENDING_113C).toBe(QUEST_FLAG_REWARD_PENDING_113C)
+    expect(player.questFlags[questIndex('a5q4')]! & QUEST_FLAG_COMPLETED_NOW_113C).toBe(QUEST_FLAG_COMPLETED_NOW_113C)
   })
 })

@@ -770,7 +770,7 @@ describe('#1870 Open Wounds (stat 135) 200-frame bleed, 5-band clvl formula, reg
     player.items.push(
       makeItem('7cr', 4, [
         { statId: 135, value: 100 }, // 100% Open Wounds
-        { statId: 107, value: 1 }, // PMH
+        { statId: 117, value: 1 }, // PMH (item_preventheal = 117)
         { statId: 19, value: 25_000 },
         { statId: 115, value: 1 },
       ]),
@@ -786,7 +786,7 @@ describe('#1870 Open Wounds (stat 135) 200-frame bleed, 5-band clvl formula, reg
     game.stepFrames(200)
     expect(hpAfterHit - mon.hp).toBe(Math.floor((2506 * 200) / 256))
 
-    // Uber Prime Evil (`hcIdx = 705` Uber Baal) ignores PMH (`stat 107`)
+    // Uber Prime Evil (`hcIdx = 705` Uber Baal) ignores PMH (`stat 117`)
     const uber = spawnDummy(game, g, 'fallen1', 53, 50, 20_000)
     uber.hcIdx = 705
     g.applyMonsterPreventHeal113c(uber)

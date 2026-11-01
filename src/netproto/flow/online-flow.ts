@@ -893,11 +893,15 @@ export function createD2OnlineFlow(config: D2OnlineConfig): D2OnlineFlow {
       d2gsAdapter = undefined
       if (game) {
         try {
-          game.leaveAndClose()
+          // Wait for S2C 0x06 GameLogoutSuccess / server close (1.5 s fallback) so D2GS commits the
+          // character save before the socket goes away and before any immediate rejoin.
+          await game.leaveGracefully()
         } catch {
           // Already closed.
         }
       }
+      // A BNCS/MCP loss while waiting for the logout ack was already declared (no game was attached).
+      if (lost) return
       if (pendingLost) {
         const { flowState: _flowState, ...info } = pendingLost
         declareLost(info)

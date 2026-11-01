@@ -109,11 +109,12 @@ export function resolveSessionIdentity(
   session: PluginSessionView,
   hasGameFlags = true,
 ): SessionIdentityResolution {
-  const host = (session.loginHost ?? '').trim()
   const snap = session.getSnapshot()
-  const realm = (snap.selectedRealm?.title ?? '').trim()
-  const account = (snap.username ?? '').trim()
   const charName = (snap.selectedChar ?? '').trim()
+  const isSinglePlayer = snap.isSinglePlayer === true
+  const host = isSinglePlayer ? 'local' : (session.loginHost ?? '').trim()
+  const realm = isSinglePlayer ? 'Single Player' : (snap.selectedRealm?.title ?? '').trim()
+  const account = isSinglePlayer ? 'SinglePlayer' : (snap.username ?? '').trim()
 
   if (!host || !realm || !account || !charName) {
     return {

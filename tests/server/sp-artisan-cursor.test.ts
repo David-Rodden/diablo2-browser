@@ -33,7 +33,7 @@ describe('Single Player artisans take the item from the cursor', () => {
     const { imbue, items, charsi } = await atCharsi('TestFireSorc')
     const { onCursor, after, answer } = imbue('xrn')
     expect(onCursor).toBe('cursor')
-    expect(String(after?.quality)).toBe('rare')
+    expect(after?.quality).toBe(6)
     expect(after?.location).toBe('inventory')
     expect(items().some((item) => item.location === 'cursor')).toBe(false)
     expect(answer).toMatchObject({ uiId: 6, unitId: charsi })

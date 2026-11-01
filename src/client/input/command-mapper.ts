@@ -2354,6 +2354,12 @@ export class CommandMapper {
         )
         if (walkAdj.accepted) {
           this.lastHoldDispatchMs = resolvedNowMs
+          this.cancelActiveNpcOrStashForWorldAction(null, selfX, selfY, resolvedNowMs)
+          this.pendingItemPickupId = null
+          this.pendingNpcInteractId = null
+          this.pendingObjectInteractId = null
+          this.pendingWarpInteractId = null
+          this.world.cancelPendingMeleeAttack?.()
           const path = this.startLocalPathPrediction(walkAdj.x, walkAdj.y, isRunning)
           this.dispatchRateLimited(
             {
@@ -2686,12 +2692,15 @@ export class CommandMapper {
     selfY: number,
     nowMs: number,
   ): void {
-    const npcInt = this.world.npcInteraction
+    const npcInt = (this.world.npcInteraction ?? {}) as typeof this.world.npcInteraction
     const wp = this.hudManager.worldPanels as any
     const activeNpcId =
-      (npcInt.unitType !== 2 ? npcInt.npcId : null) ??
+      (npcInt.unitType !== 2 ? (npcInt.npcId ?? null) : null) ??
       wp?.npcMenu?.npcUnitId ??
       wp?.npcMenu?.npcId ??
+      (typeof wp?.npcSpeech?.npcId === 'number' && wp.npcSpeech.npcId > 0
+        ? wp.npcSpeech.npcId
+        : null) ??
       (this.hudManager.leftPanel === 'vendor' ? wp?.vendorNpcId : null) ??
       (this.hudManager.leftPanel === 'hire' ||
       this.hudManager.leftPanel === 'imbue' ||
@@ -2701,8 +2710,9 @@ export class CommandMapper {
         : null) ??
       null
     const hasActiveNpcUi =
-      (npcInt.unitType !== 2 && npcInt.npcId !== null) ||
+      (npcInt.unitType !== 2 && (npcInt.npcId ?? null) !== null) ||
       Boolean(wp?.npcMenu) ||
+      (typeof wp?.npcSpeech?.npcId === 'number' && wp.npcSpeech.npcId > 0) ||
       this.hudManager.leftPanel === 'vendor' ||
       this.hudManager.leftPanel === 'hire' ||
       this.hudManager.leftPanel === 'imbue' ||
@@ -2854,6 +2864,21 @@ export class CommandMapper {
           }
           this.hudManager.hideLeftPanelFromWorld('orifice')
         }
+      }
+    } else if (npcInt.unitType === 2 && (npcInt.npcId ?? null) !== null) {
+      const objId = npcInt.npcId!
+      const clickingSameObject =
+        hoveredUnit !== null &&
+        hoveredUnit.unitType === 'object' &&
+        hoveredUnit.id === objId
+      if (!clickingSameObject) {
+        if (typeof wp?.closeNpcSpeech === 'function') {
+          wp.closeNpcSpeech()
+        } else if (wp) {
+          wp.npcSpeech = null
+          wp.onCloseNpcSpeech?.()
+        }
+        this.world.clearObjectNpcInteraction?.(objId)
       }
     }
   }
@@ -4439,9 +4464,18 @@ export class CommandMapper {
       }
     }
 
-    // 2. Left-thumb floating joystick (world context only).
+    // 2. Left-thumb floating joystick (world context, or free world space while an NPC dialog is open).
+    const canUseFloatingJoystick =
+      context === 'world' ||
+      (context === 'dialog' &&
+        hud.goldDialog === null &&
+        hud.leftPanel === 'none' &&
+        hud.rightPanel === 'none' &&
+        (hud.worldPanels.npcMenu !== null || hud.worldPanels.npcSpeech !== null) &&
+        !hud.isPointInterceptedByHud(screenX, screenY) &&
+        !this.isExternalUiIntercepted?.(screenX, screenY))
     if (
-      context === 'world' &&
+      canUseFloatingJoystick &&
       !tc.joystick.active &&
       tc.handlePointerDown(pid, screenX, screenY, profile.width, profile.height, hud.leftPanel !== 'none')
     ) {
@@ -4610,6 +4644,12 @@ export class CommandMapper {
     const walkAdj = this.applyWalkAdjust113c(self.x, self.y, joyTarget.x, joyTarget.y, isRunning, 'hold', nowMs)
     if (!walkAdj.accepted) return false
     this.lastJoystickMoveMs = nowMs
+    this.cancelActiveNpcOrStashForWorldAction(null, self.x, self.y, nowMs)
+    this.pendingItemPickupId = null
+    this.pendingNpcInteractId = null
+    this.pendingObjectInteractId = null
+    this.pendingWarpInteractId = null
+    this.world.cancelPendingMeleeAttack?.()
     const path = this.startLocalPathPrediction(walkAdj.x, walkAdj.y, isRunning)
     this.dispatchRateLimited({ type: 'Move', run: isRunning, to: { x: walkAdj.x, y: walkAdj.y } }, nowMs, path)
     return true

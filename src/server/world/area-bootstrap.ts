@@ -56,11 +56,14 @@ import { populateAreaObjGroups113c } from './objgroup-113c.ts'
 import { applyPandemoniumAreaBootstrap113c } from './pandemonium-113c.ts'
 
 /**
- * Canonical 1.13c progression portal destination areas (`D2Game.dll` `OperateFn 34, 46, 50, 66`):
+ * Canonical 1.13c progression portal destination areas (`D2Game.dll` `OperateFn 34, 44, 46, 50, 66, 70`):
  * - `298` (`ArcaneSanctuaryPortal`, `OperateFn 34` @ `0x6FC8D620`): Palace Cellar L3 (`54`) <-> Arcane Sanctuary (`74`)
  * - `342` (`Hellgate`, `OperateFn 46` @ `0x6FC8CD40`): Durance of Hate L3 (`102`) -> Pandemonium Fortress (`103`)
+ * - `366` (`SewerStairs`, `OperateFn 44` @ `0x6FD095E0`): Kurast Sewers L1 (`92`) -> Kurast Sewers L2 (`93`)
  * - `386` (`DuranceOfHateStairs`, `OperateFn 50` @ `0x6FC8F4F0`): Travincal (`83`) -> Durance of Hate L1 (`100`)
  * - `547` (`AncientsDoor`, `OperateFn 66` @ `0x6FC7E2E0`): Arreat Summit (`120`) -> Worldstone Keep L1 (`128`)
+ * - `563` (`BaalsPortal`, `OperateFn 70` @ `0x6FC7DF70`): Throne of Destruction (`131`) -> The Worldstone Chamber (`132`)
+ * - `569` (`BaalsPortalReturn`, `OperateFn 70` @ `0x6FC7DFDE`): The Worldstone Chamber (`132`) -> Throne of Destruction (`131`)
  */
 export function resolvePresetPortalDestArea113c(
   classId: number,
@@ -72,8 +75,11 @@ export function resolvePresetPortalDestArea113c(
     return 74
   }
   if (classId === 342) return 103
+  if (classId === 366) return areaId === 92 ? 93 : undefined
   if (classId === 386) return 100
   if (classId === 547) return 128
+  if (classId === 563) return 132
+  if (classId === 569) return 131
   return undefined
 }
 

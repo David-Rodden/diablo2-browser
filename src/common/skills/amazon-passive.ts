@@ -387,6 +387,8 @@ export function calculateValkyrieStats(
     avoidLvl?: number
     evadeLvl?: number
     penetrateLvl?: number
+    /** Game RNG (`[0, 1)`) for the `MonEquip.txt` loadout rolls (no entropy fallback). */
+    rng?: () => number
   },
 ): ValkyrieStats {
   const lvl = Number.isFinite(slvl) ? Math.max(1, Math.floor(slvl)) : 1
@@ -418,7 +420,7 @@ export function calculateValkyrieStats(
     equipmentTier = 'tier2_boots'
   }
 
-  const equipment = generateValkyrieEquipment(lvl)
+  const equipment = generateValkyrieEquipment(lvl, synergies?.rng)
 
   return {
     baseHp,
