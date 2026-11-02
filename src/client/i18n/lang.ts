@@ -320,6 +320,11 @@ export type ToolbarI18nKey =
   | 'toolbar.config.close'
   | 'toolbar.config.displayMode'
   | 'toolbar.config.fps'
+  | 'toolbar.config.graphics'
+  | 'toolbar.config.graphics.high'
+  | 'toolbar.config.graphics.medium'
+  | 'toolbar.config.graphics.low'
+  | 'toolbar.config.graphics.lowHint'
   | 'toolbar.config.volume'
   | 'toolbar.config.mute'
   | 'toolbar.config.muted'
@@ -405,6 +410,14 @@ export const TOOLBAR_I18N: Readonly<Record<ToolbarI18nKey, { readonly zh: string
   'toolbar.config.close': { zh: '关闭 (ESC)', en: 'Close (ESC)' },
   'toolbar.config.displayMode': { zh: '全屏 / 窗口', en: 'Display Mode' },
   'toolbar.config.fps': { zh: '渲染帧率 (FPS)', en: 'Frame Rate (FPS)' },
+  'toolbar.config.graphics': { zh: '画质', en: 'Graphics Quality' },
+  'toolbar.config.graphics.high': { zh: '高', en: 'High' },
+  'toolbar.config.graphics.medium': { zh: '中', en: 'Medium' },
+  'toolbar.config.graphics.low': { zh: '低（性能模式）', en: 'Low (Performance Mode)' },
+  'toolbar.config.graphics.lowHint': {
+    zh: '性能模式下固定 30 FPS',
+    en: 'Performance mode locks 30 FPS',
+  },
   'toolbar.config.volume': { zh: '音量', en: 'Volume' },
   'toolbar.config.mute': { zh: '静音', en: 'Mute' },
   'toolbar.config.muted': { zh: '已静音', en: 'Muted' },

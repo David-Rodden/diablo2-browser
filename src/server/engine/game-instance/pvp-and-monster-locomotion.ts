@@ -809,11 +809,48 @@ function applyPvpHitToTarget113c(this: GameInstanceHost,
     }
 
     const absorbHeal256 = dmgOut.absorbHeal256 ?? 0
-    const rawFinalDmg = Math.floor(dmgOut.totalDamage256 / FIXED_ONE)
+    const poisonBitrate256 = dmgOut.poisonBitrate256 ?? 0
+    const poisonDurationFrames = dmgOut.poisonDurationFrames ?? 0
+    const poisonTotal256 =
+      poisonBitrate256 > 0 && poisonDurationFrames > 0 ? poisonBitrate256 * poisonDurationFrames : 0
+    const rawFinalDmg = Math.floor(Math.max(0, dmgOut.totalDamage256 - poisonTotal256) / FIXED_ONE)
     const finalDmg = spec.nonLethal ? Math.min(rawFinalDmg, Math.max(0, defender.hp - 1)) : rawFinalDmg
     if (absorbHeal256 > 0 && !defender.dead && defender.hpFixed > 0 && !defender.states.has(92)) {
-      defender.hpFixed = Math.min(defender.maxHpFixed, defender.hpFixed + absorbHeal256)
+      const accruedMaxHpFixed = this.getPlayerAccruedMaxHpFixed(defender)
+      defender.hpFixed = Math.min(accruedMaxHpFixed, defender.hpFixed + absorbHeal256)
       defender.hp = Math.max(0, Math.ceil(defender.hpFixed / FIXED_ONE))
+    }
+    if (poisonBitrate256 > 0 && poisonDurationFrames > 0 && !defender.dead) {
+      const defCtx = this.playerCombatContext(defender)
+      const prevPois = defCtx.stateBus.getState(2) ?? defCtx.stateBus.getState('poison')
+      const prevBitrate256 = prevPois
+        ? Math.max(0, prevPois.stats['poisonmindam'] ?? -(prevPois.stats['hpregen'] ?? 0))
+        : 0
+      if (!defender.states.has(2) || prevPois === undefined || poisonBitrate256 >= prevBitrate256) {
+        defCtx.stateBus.removeState('poison')
+        defCtx.stateBus.applyState({
+          stateNameOrId: 2,
+          sourceUnitId: `player_${attackerOwner.unitId}`,
+          sourceSkillId: spec.skillId ?? 0,
+          slvl: Math.max(1, attackerOwner.level),
+          durationFrames: poisonDurationFrames,
+          currentFrame: this.currentFrame,
+          stats: {
+            hpregen: -poisonBitrate256,
+            poisonmindam: poisonBitrate256,
+            poisonlength: poisonDurationFrames,
+          },
+        })
+        this.applyUnitState(
+          defender.states,
+          defender.stateTimers,
+          'player',
+          defender.unitId,
+          defender.areaId,
+          2,
+          poisonDurationFrames,
+        )
+      }
     }
     if (elemChannel === 'cold' && (spec.elemDurationFrames ?? 0) > 0 && !defender.dead) {
       this.applyUnitState(
@@ -861,7 +898,36 @@ function applyPvpHitToTarget113c(this: GameInstanceHost,
       merc.defense = Math.max(0, (merc.defense ?? 0) - dmgOut.targetDefenseReduction)
       defCtx.statList.setBaseStat('armorclass', merc.defense)
     }
-    const rawDealt = Math.floor(dmgOut.totalDamage256 / FIXED_ONE)
+    const poisonBitrate256 = dmgOut.poisonBitrate256 ?? 0
+    const poisonDurationFrames = dmgOut.poisonDurationFrames ?? 0
+    const poisonTotal256 =
+      poisonBitrate256 > 0 && poisonDurationFrames > 0 ? poisonBitrate256 * poisonDurationFrames : 0
+    if (poisonBitrate256 > 0 && poisonDurationFrames > 0) {
+      defCtx.stateBus.removeState('poison')
+      defCtx.stateBus.applyState({
+        stateNameOrId: 2,
+        sourceUnitId: `player_${attackerOwner.unitId}`,
+        sourceSkillId: spec.skillId ?? 0,
+        slvl: Math.max(1, attackerOwner.level),
+        durationFrames: poisonDurationFrames,
+        currentFrame: this.currentFrame,
+        stats: {
+          hpregen: -poisonBitrate256,
+          poisonmindam: poisonBitrate256,
+          poisonlength: poisonDurationFrames,
+        },
+      })
+      this.applyUnitState(
+        merc.states,
+        merc.stateTimers,
+        'monster',
+        merc.unitId,
+        merc.areaId,
+        2,
+        poisonDurationFrames,
+      )
+    }
+    const rawDealt = Math.floor(Math.max(0, dmgOut.totalDamage256 - poisonTotal256) / FIXED_ONE)
     const dealt = spec.nonLethal ? Math.min(rawDealt, Math.max(0, merc.hp - 1)) : rawDealt
     if (dealt > 0) {
       this.applyDamageToMerc(merc, dealt, merc.areaId)
@@ -884,11 +950,29 @@ function applyPvpHitToTarget113c(this: GameInstanceHost,
   }
   const dmgOut = executeSUnitDmg(atkCtx, petDef, packet, this.rng)
   if (!dmgOut.hit) return false
-  const rawDealt = Math.floor(dmgOut.totalDamage256 / FIXED_ONE)
+  const poisonBitrate256 = dmgOut.poisonBitrate256 ?? 0
+  const poisonDurationFrames = dmgOut.poisonDurationFrames ?? 0
+  const poisonTotal256 =
+    poisonBitrate256 > 0 && poisonDurationFrames > 0 ? poisonBitrate256 * poisonDurationFrames : 0
+  if (poisonBitrate256 > 0 && poisonDurationFrames > 0) {
+    const vis = this.petVisualStates.get(target.petUnitId)
+    if (vis !== undefined) {
+      this.applyUnitState(
+        vis.states,
+        vis.timers,
+        'monster',
+        target.petUnitId,
+        target.areaId,
+        2,
+        poisonDurationFrames,
+      )
+    }
+  }
+  const rawDealt = Math.floor(Math.max(0, dmgOut.totalDamage256 - poisonTotal256) / FIXED_ONE)
   const dealt = spec.nonLethal ? Math.min(rawDealt, Math.max(0, pet.hp - 1)) : rawDealt
+  pet.hp = Math.max(0, pet.hp)
+  pet.statList.setHp256(pet.hp * FIXED_ONE)
   if (dealt > 0) {
-    pet.hp = Math.max(0, pet.hp)
-    pet.statList.setHp256(pet.hp * FIXED_ONE)
     this.applyDamageToSummon(target.ownerId, pet, dealt, target.areaId)
   }
   return true
@@ -1241,6 +1325,7 @@ function stepMonsterPoison(this: GameInstanceHost, monster: InternalMonsterRecor
             other.submerged ||
             other.areaId !== monster.areaId ||
             other.boneConstructOwnerPlayerId !== undefined ||
+            other.align !== 0 ||
             this.isMonsterConverted(other)
           ) {
             continue
@@ -1796,6 +1881,7 @@ function nearestHostileForMonster(this: GameInstanceHost,
   monster: InternalMonsterRecord,
   radius: number,
 ): { readonly kind: 'player'; readonly x: number; readonly y: number; readonly player: InternalPlayerRecord } | { readonly kind: 'merc'; readonly x: number; readonly y: number; readonly merc: InternalMercenaryRecord } | { readonly kind: 'pet'; readonly x: number; readonly y: number; readonly pet: SummonedPetUnit } | null {
+  if (monster.align !== 0) return null
   let best: { kind: 'player'; x: number; y: number; player: InternalPlayerRecord } | { kind: 'merc'; x: number; y: number; merc: InternalMercenaryRecord } | { kind: 'pet'; x: number; y: number; pet: SummonedPetUnit } | null = null
   let bestDist = radius
   // 1.13c line-of-sight: strict walkable/door ray across the monster's area and any seam-adjacent area.

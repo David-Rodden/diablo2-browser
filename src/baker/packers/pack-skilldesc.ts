@@ -10,7 +10,7 @@
  *    `dwCalcA[17]` +0x98, `dwCalcB[17]` +0xDC),
  *  - `str name/short/long/alt/mana`, `descdam`, `ddam calc1/2`, `p1..p3dmelem/min/max`, `descatt`,
  *  - `descmissile1..3` resolved to the `Missiles.txt` fields the description functions read
- *    (`Range`/`LevRange` for descline 23/29, `sHitPar1` for 28, `SubMissile1` Range/LevRange for 30),
+ *    (`Range`/`LevRange` for descline 23/29, `Param1` for 28 (Missiles+0x38: field table D2Common 0x6FDCCBEF), `SubMissile1` Range/LevRange for 30),
  *  - `DifficultyLevels.txt` `AiCurseDivisor` (descline 31 → 0x6FADE330 divides by DifficultyLevels+0x1C).
  *
  * Usage: npx tsx src/baker/packers/pack-skilldesc.ts
@@ -82,7 +82,7 @@ async function main(): Promise<void> {
       name,
       range: num(m.Range),
       levRange: num(m.LevRange),
-      sHitPar1: num(m.sHitPar1),
+      param1: num(m.Param1),
       subMissile: sub ? { name: m.SubMissile1!, range: num(sub.Range), levRange: num(sub.LevRange) } : undefined,
     }
   }
@@ -179,7 +179,7 @@ export interface SkillDescMissile {
   readonly name: string
   readonly range: number
   readonly levRange: number
-  readonly sHitPar1: number
+  readonly param1: number
   readonly subMissile?: { readonly name: string; readonly range: number; readonly levRange: number } | undefined
 }
 

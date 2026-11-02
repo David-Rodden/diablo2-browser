@@ -7,11 +7,11 @@ import { QUEST_CHEST_OPERATE_FNS_113C, SPARKLY_CHEST_INIT57_CLASS_IDS_113C, WELL
 import { getLevelMonsterLevel113c } from '../../../common/world/levels-monlvl-113c.ts'
 import { QUEST_FLAG_COMPLETED_113C, QUEST_FLAG_COMPLETED_NOW_113C, hasQuestFlag113c } from '../quests-113c.ts'
 import { PALADIN_AURA_STATE_BY_SKILL_ID } from '../../../common/skills/paladin-auras.ts'
-import { MONUMOD_113C_ROWS } from '../../../common/units/monstats-113c-data.ts'
+import { MONSTATS_113C_ROWS, MONUMOD_113C_ROWS } from '../../../common/units/monstats-113c-data.ts'
 import { isBaalTentacleHcIdx113c, isBonePrisonMonsterHcIdx113c, isSubmergeCapableMonsterHcIdx113c, isTentacleHcIdx113c, isTentacleHeadHcIdx113c, resolveInnateMonsterAura113c, rollAuraEnchanted113c } from '../../../common/units/monai-113c.ts'
 import { MON_UMOD, resolveMonsterUModIds } from '../../../common/units/monster-death-fx.ts'
 import { hasImplicitScarabUMod113c, hasImplicitSelfResurrectUMod113c, hasImplicitShatterOnDeathUMod113c, isAlwaysRunAiMonster113c, isMonsterUncursable113c, isWillOWispChampion113c, shouldKillMinionsOnDeath113c } from '../../ai/monumod-113c.ts'
-import { CANONICAL_BOSS_MINIONS, getCanonicalMonsterKinds, getMonsterKindByHcIdx, getMonsterModeMissile113c, getSuperUniqueByIndex, resolveMonsterStats, rollSuperUniqueUModIds113c, type MonsterKind, type MonsterRank } from '../../../common/units/monsters-data.ts'
+import { CANONICAL_BOSS_MINIONS, getCanonicalMonsterKinds, getMonsterKindByHcIdx, getSuperUniqueByIndex, resolveMonsterStats, rollSuperUniqueUModIds113c, type MonsterKind, type MonsterRank } from '../../../common/units/monsters-data.ts'
 import { getLevelMonsterPlan113c } from '../../../common/world/level-monster-plans.ts'
 import { OBJECTS_TXT_113C } from '../../../common/world/objects-txt-113c.ts'
 import { MONSTATS2_COMP_BIT_WIDTHS_BY_HCIDX, type ClientCommand, type ServerEvent } from '../../../netproto/index.ts'
@@ -22,6 +22,8 @@ import { rollMonsterOrPetLoadout113c } from '../../ai/monequip-helper-113c.ts'
 import type { GameInstanceHost } from './host.ts'
 import type { InternalMercenaryRecord, InternalMonsterRecord, InternalObjectRecord, InternalPlayerRecord, ServerItemEntry, SpawnMonsterSpec, SpawnObjectSpec } from './types.ts'
 import { ACT_TOWN_AREA, MON_UMOD_LABELS_113C, MON_UMOD_ROW_BY_ID_113C, TOWN_AREAS, areaToAct, lookupBaseInfo, monsterProfile113c, UNIT_TYPE_113C } from './constants-and-helpers.ts'
+import { rollMonsterInitStats113c, rollMonsterOutfit113c } from './unit-seeds-113c.ts'
+import { isTownNpcMonster113c } from '../../ai/town-npc-ai-113c.ts'
 
 
 function spawnMonster(this: GameInstanceHost, spec: SpawnMonsterSpec): number {
@@ -185,10 +187,25 @@ function spawnMonster(this: GameInstanceHost, spec: SpawnMonsterSpec): number {
       : resolvedStats
 
   const noRatio = Boolean(spec.noRatio ?? kind?.noRatio ?? false)
-  const baseMaxHp = Math.max(
-    1,
-    spec.maxHp ?? spec.hp ?? resolvedStats?.maxHp ?? resolvedStats?.hp ?? 50,
-  )
+  const unitSeed = this.unitSeeds.get(`${UNIT_TYPE_113C.monster}:${unitId}`)
+  const actPalette =
+    this.actMonsterOutfitPalettes[areaToAct(areaId)] ?? this.actMonsterOutfitPalettes[0]!
+  const rolledOutfit =
+    unitSeed !== undefined ? rollMonsterOutfit113c(actPalette, hcIdx, unitSeed) : undefined
+  const initStatsRoll =
+    unitSeed !== undefined && kind !== undefined
+      ? rollMonsterInitStats113c({
+          kind,
+          difficulty: this.difficulty,
+          effectiveAreaLevel,
+          isBoss: Boolean(kind.isBoss || kind.boss),
+          noRatio,
+          isExpansion: true,
+          unitSeed,
+        })
+      : undefined
+  const hasExplicitHpOrSeed =
+    spec.maxHp !== undefined || spec.hp !== undefined || spec.statSeed !== undefined
   const isEliteRank = rank !== 'normal' || spec.superUniqueId !== undefined
   const eliteHpFactor =
     rank === 'unique' || spec.superUniqueId !== undefined
@@ -210,39 +227,74 @@ function spawnMonster(this: GameInstanceHost, spec: SpawnMonsterSpec): number {
               ? 1.75
               : 2
           : 1
+  const useInitStatsHp = !hasExplicitHpOrSeed && initStatsRoll !== undefined
+  const baseMaxHp = useInitStatsHp
+    ? initStatsRoll.rolledHp <= 0
+      ? 0
+      : isEliteRank
+        ? Math.max(1, Math.floor(initStatsRoll.rolledHp * eliteHpFactor))
+        : initStatsRoll.rolledHp
+    : Math.max(1, spec.maxHp ?? spec.hp ?? resolvedStats?.maxHp ?? resolvedStats?.hp ?? 50)
   // Explicit `spec.maxHp` / `spec.hp` are treated as the unmultiplied base HP (`#1821` FE explosion,
   // `#1882` Corpse Explosion); only the derived fallback strips the Champion/Unique/Minion HP factor.
-  const unscaledMaxHp = Math.max(
-    1,
-    spec.unscaledMaxHp ??
-      spec.maxHp ??
-      spec.hp ??
-      unscaledResolvedStats?.maxHp ??
-      unscaledResolvedStats?.hp ??
-      Math.floor(baseMaxHp / eliteHpFactor),
-  )
+  const unscaledMaxHp =
+    useInitStatsHp && initStatsRoll.rolledHp <= 0 && spec.unscaledMaxHp === undefined
+      ? 0
+      : Math.max(
+          1,
+          spec.unscaledMaxHp ??
+            (useInitStatsHp
+              ? initStatsRoll.rolledHp
+              : (spec.maxHp ??
+                spec.hp ??
+                unscaledResolvedStats?.maxHp ??
+                unscaledResolvedStats?.hp ??
+                Math.floor(baseMaxHp / eliteHpFactor))),
+        )
+  const bossParent =
+    spec.bossUnitId !== undefined ? this.monsters.get(spec.bossUnitId) : undefined
+  const rawTableAlign =
+    kind?.align ?? rawClassKind?.align ?? MONSTATS_113C_ROWS[hcIdx]?.align ?? 0
+  // Player-owned Hydras live in `this.summonManagers`; `hydra1..3` (`351..353`) spawned into
+  // `this.monsters` without an explicit `spec.align` are evil monster Hydra turrets (`#62 Hydra`, `#2005`).
+  const resolvedAlign: 0 | 1 | 2 =
+    spec.align !== undefined
+      ? spec.align
+      : bossParent !== undefined
+        ? bossParent.align
+        : hcIdx >= 351 && hcIdx <= 353 && spec.boneConstructOwnerPlayerId === undefined
+          ? 0
+          : rawTableAlign === 1 || rawTableAlign === 2
+            ? rawTableAlign
+            : 0
   const px = this.playersX
   const monsterPlayerCount =
-    isNpc || (kind?.align !== undefined && kind.align !== 0)
+    isNpc || resolvedAlign !== 0
       ? 1
       : Math.max(1, Math.trunc(spec.monsterPlayerCount ?? px))
   const scaledMaxHp =
-    isNpc || noRatio
-      ? baseMaxHp
-      : Math.max(1, Math.floor((baseMaxHp * (px + 1)) / 2))
+    baseMaxHp <= 0
+      ? 0
+      : isNpc || noRatio || resolvedAlign !== 0
+        ? baseMaxHp
+        : Math.max(1, Math.floor((baseMaxHp * (px + 1)) / 2))
   const hp = spec.hp !== undefined ? Math.max(1, spec.hp) : scaledMaxHp
   const maxHp = Math.max(hp, scaledMaxHp)
 
-  const level = Math.max(
-    1,
-    spec.level ?? resolvedStats?.level ?? kind?.level?.[this.difficulty] ?? 1,
-  )
+  const level =
+    spec.level !== undefined
+      ? Math.max(1, Math.trunc(spec.level))
+      : initStatsRoll !== undefined
+        ? isEliteRank
+          ? Math.max(initStatsRoll.level, resolvedStats?.level ?? initStatsRoll.level)
+          : initStatsRoll.level
+        : Math.max(1, resolvedStats?.level ?? kind?.level?.[this.difficulty] ?? 1)
   const monsterSkills = resolvedStats?.skills ?? kind?.skills ?? []
   const innateAura = !isNpc
     ? resolveInnateMonsterAura113c(hcIdx, diffName, monsterSkills)
     : undefined
   const enchantedAura =
-    !isNpc && innateAura === undefined && umodIds.includes(MON_UMOD.AURA)
+    !isNpc && rank !== 'minion' && innateAura === undefined && umodIds.includes(MON_UMOD.AURA)
       ? rollAuraEnchanted113c(level, hcIdx + areaId + (spec.statSeed ?? 0), spec.superUniqueId)
       : undefined
   const auraSkillId = innateAura?.auraSkillId ?? enchantedAura?.auraSkillId
@@ -255,7 +307,7 @@ function spawnMonster(this: GameInstanceHost, spec: SpawnMonsterSpec): number {
   }
   const baseXp = Math.max(0, Math.trunc(rawBaseXp))
   const unscaledXp =
-    isNpc || noRatio || (kind?.align !== undefined && kind.align !== 0)
+    isNpc || noRatio || resolvedAlign !== 0
   const experience = unscaledXp
     ? baseXp
     : Math.max(0, Math.floor((baseXp * (px + 1)) / 2))
@@ -427,18 +479,11 @@ function spawnMonster(this: GameInstanceHost, spec: SpawnMonsterSpec): number {
     (kind?.skills ?? rawClassKind?.skills ?? []).find(
       (s) => s.skillId === 181 || s.skillId === 327 || s.skillId === 183 || s.skillId === 190,
     )?.skillId
-  const hasModeMissile = Boolean(
-    modeMissiles?.MissA1 ||
-      modeMissiles?.MissA2 ||
-      modeMissiles?.MissS1 ||
-      modeMissiles?.MissC ||
-      getMonsterModeMissile113c(defId, 'A1') ||
-      getMonsterModeMissile113c(defId, 'A2') ||
-      getMonsterModeMissile113c(defId, 'S1') ||
-      getMonsterModeMissile113c(defId, 'C'),
-  )
-  // Ranged attacks come from MonStats `RangedType` / mode missiles, or the MonAi.txt
-  // behavior family — never from the monster's display name.
+  // Ranged basic attacks (`F12.3`) come strictly from `MonStats.txt` `RangedType` (`1`) or the
+  // `MonAI.txt` behavior profile (`ranged: true`), never from display names or blanket `MissA1..MissS1`
+  // columns (`#2004`: 55 `RangedType = 0` rows like `councilmember1..3` `#345..347` `mS1 = 1` + `HPS1HTH`
+  // `event = 2`, `venomlord` `#558`, `regurgitator1..4` `#307..309, #694`, and `maggotqueen1..5` `#284..288`
+  // store skill/special missiles in `MissA2`/`MissS1` without being ranged shooters).
   const aiName = spec.ai ?? kind?.ai ?? rawClassKind?.ai ?? ''
   const isRanged = Boolean(
     spec.isRanged ??
@@ -446,7 +491,6 @@ function spawnMonster(this: GameInstanceHost, spec: SpawnMonsterSpec): number {
         kind?.isRanged ||
         rawClassKind?.ranged ||
         rawClassKind?.isRanged ||
-        hasModeMissile ||
         monsterProfile113c(aiName).ranged),
   )
 
@@ -574,11 +618,12 @@ function spawnMonster(this: GameInstanceHost, spec: SpawnMonsterSpec): number {
     spec.compVariants !== undefined
       ? spec.compVariants
       : !isNpc && compBitWidths !== undefined
-        ? compBitWidths.map((w, idx) =>
+        ? (rolledOutfit ??
+          compBitWidths.map((w, idx) =>
             w > 1
               ? ((Math.imul(nameSeed ^ unitId ^ (idx * 37), 0x9e3779b1) >>> 16) & ((1 << w) - 1))
               : 0,
-          )
+          ))
         : undefined
 
   const record: InternalMonsterRecord = {
@@ -651,6 +696,7 @@ function spawnMonster(this: GameInstanceHost, spec: SpawnMonsterSpec): number {
     sizeX: kind?.sizeX ?? rawClassKind?.sizeX ?? 2,
     skills: monsterSkills,
     skillCooldown: 0,
+    vampireUpgradeCooldownTicks: 0,
     skillCursor: 0,
     threatPlayerId: 0,
     threatUntilFrame: 0,
@@ -661,6 +707,7 @@ function spawnMonster(this: GameInstanceHost, spec: SpawnMonsterSpec): number {
     hitRecoveryUntilFrame: 0,
     pendingResurrection: undefined,
     teleportCooldownUntilFrame: 0,
+    lastLightningBoltFrame: undefined,
     pendingDeathExplosion: undefined,
     resurrectSkillId,
     auraSkillId,
@@ -806,8 +853,14 @@ function spawnMonster(this: GameInstanceHost, spec: SpawnMonsterSpec): number {
       aiName === 'MaggotEgg'
         ? this.currentFrame + Math.max(25, (spec.aiParams ?? kind?.aiParams)?.[0] ?? 180)
         : 0,
+    align: resolvedAlign,
+    spiritAttackedOnce: false,
+    trappedSoulState: 0,
+    mapAi: spec.mapAi,
+    townNpcAiEnabled: isTownNpcMonster113c(hcIdx),
   }
   this.monsters.set(unitId, record)
+  this.areaPathWorld.spawnMonster(areaId, record, this.currentFrame)
   if (isBonePrisonMonsterHcIdx113c(hcIdx)) {
     this.bonePrisonsWatermark = -1
   }
@@ -888,7 +941,7 @@ function spawnTentacleCompanionLimbs(this: GameInstanceHost,
 
 
 function spawnObject(this: GameInstanceHost, spec: SpawnObjectSpec): number {
-  const unitId = this.allocateUnitId(UNIT_TYPE_113C.object)
+  const unitId = this.allocateUnitId(UNIT_TYPE_113C.object, spec.deferUnitSeed !== true)
   const areaId = spec.areaId ?? this.defaultAreaId ?? 1
   const resolvedPreset =
     spec.classId >= 574 && spec.classId <= 582
@@ -989,6 +1042,7 @@ function spawnObject(this: GameInstanceHost, spec: SpawnObjectSpec): number {
     useCount: 0,
   }
   this.objects.set(unitId, record)
+  this.areaPathWorld.spawnObject(areaId, unitId, record.classId, record.x, record.y, record.mode)
   this.doorFootprintsWatermark = -1
 
   this.broadcastToArea(areaId, {
@@ -1662,24 +1716,40 @@ function activatePresetRoomsNearPlayer113c(this: GameInstanceHost, player: Inter
     (r) => px >= r.x && py >= r.y && px < r.x + r.w && py < r.y + r.h,
   )
   if (current === undefined) return
-  const near = area.roomRects.filter(
-    (room) =>
-      room.index !== current.index &&
-      room.x <= current.x + current.w &&
-      room.x + room.w >= current.x &&
-      room.y <= current.y + current.h &&
-      room.y + room.h >= current.y,
-  )
-  near.sort((a, b) => a.y - b.y || a.x - b.x)
+  // Activation order: the player's room, then its D2Common `ppRoomsNear` list in order (DRLG
+  // `sub_6FD77BB0` + `DRLGROOM_SortRoomListByPosition` `0x6FD77EB0`, exposed as `roomRects[].near`).
+  // Geometry without the DRLG capture (synthetic test levels) falls back to the touching rooms in
+  // ascending `(y, x)` order.
+  let near: (typeof area.roomRects)[number][]
+  if (current.near !== undefined) {
+    const byIndex = new Map(area.roomRects.map((r) => [r.index, r] as const))
+    near = current.near
+      .filter((idx) => idx !== current.index)
+      .map((idx) => byIndex.get(idx))
+      .filter((r): r is NonNullable<typeof r> => r !== undefined)
+  } else {
+    near = area.roomRects.filter(
+      (room) =>
+        room.index !== current.index &&
+        room.x <= current.x + current.w &&
+        room.x + room.w >= current.x &&
+        room.y <= current.y + current.h &&
+        room.y + room.h >= current.y,
+    )
+    near.sort((a, b) => a.y - b.y || a.x - b.x)
+  }
   const activation = [current, ...near].filter((r) => !pending.activated.has(r.index))
   if (activation.length === 0) return
   for (const room of activation) pending.activated.add(room.index)
-  // Head insertion into the new-room list: processed in reverse activation order.
+  // Head insertion into the new-room list: processed in reverse activation order. Per room
+  // (`0x6FC4CBE0` -> `0x6FD01430`): preset objects, then preset monsters; the room's warp tiles follow.
   for (let i = activation.length - 1; i >= 0; i -= 1) {
-    const list = pending.byRoom.get(activation[i]!.index)
-    if (list === undefined) continue
+    const entry = pending.byRoom.get(activation[i]!.index)
+    if (entry === undefined) continue
     pending.byRoom.delete(activation[i]!.index)
-    for (const mon of list) this.spawnAreaPresetMonster113c(player.areaId, mon)
+    for (const objectId of entry.objectIds) this.drawDeferredUnitSeed113c(UNIT_TYPE_113C.object, objectId)
+    for (const mon of entry.monsters) this.spawnAreaPresetMonster113c(player.areaId, mon)
+    for (const tileId of entry.tileIds) this.drawDeferredUnitSeed113c(UNIT_TYPE_113C.tile, tileId)
   }
   if (pending.byRoom.size === 0) this.pendingPresetMonsters.delete(player.areaId)
 }

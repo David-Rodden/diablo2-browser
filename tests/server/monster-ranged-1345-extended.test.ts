@@ -54,12 +54,12 @@ describe('issue #1345 monster skills and missile physics', () => {
     const casterId = game.spawnMonster({ defId: 'cantor1', x: 18, y: 10, areaId: 2 })
     const internal = game as unknown as {
       monsters: Map<number, { skills: unknown[]; skillCooldown: number }>
-      tryCastMonsterUtilitySkill: (m: unknown, t: { x: number; y: number }, d: number) => boolean
+      tryCastMonsterSkill: (m: unknown, t: { x: number; y: number }, d: number) => boolean
     }
     const caster = internal.monsters.get(casterId)!
     caster.skills = [{ slot: 1, skill: 'Hydra', skillId: 62, mode: 'S1', level: 2 }]
     const before = internal.monsters.size
-    expect(internal.tryCastMonsterUtilitySkill(caster, { x: 12, y: 10 }, 8)).toBe(true)
+    expect(internal.tryCastMonsterSkill(caster, { x: 12, y: 10 }, 8)).toBe(true)
     expect(internal.monsters.size).toBeGreaterThan(before)
   })
 
@@ -101,18 +101,26 @@ describe('issue #1345 monster skills and missile physics', () => {
     ).toBe(true)
   })
 
-  it('casts non-projectile heal and teleport utility skills', () => {
+  it('casts non-projectile heal on wounded allies (never self) and teleport utility skills', () => {
     const game = new GameInstance({ seed: 2100, areaId: 2 })
     connectPlayer(game, 10, 10)
     const monsterId = game.spawnMonster({ defId: 'cantor1', x: 18, y: 10, areaId: 2, hp: 50, maxHp: 500 })
+    const allyId = game.spawnMonster({ defId: 'cantor1', x: 20, y: 10, areaId: 2, hp: 50, maxHp: 500 })
     const internal = game as unknown as {
       monsters: Map<number, { hp: number; x: number; skills: unknown[]; skillCooldown: number }>
-      tryCastMonsterUtilitySkill: (m: unknown, t: { x: number; y: number }, d: number) => boolean
+      tryCastMonsterUtilitySkill: (
+        m: unknown,
+        t: { x: number; y: number },
+        d: number,
+        healOrWhipOnly?: boolean,
+      ) => boolean
     }
     const monster = internal.monsters.get(monsterId)!
+    const ally = internal.monsters.get(allyId)!
     monster.skills = [{ slot: 1, skill: 'ZakarumHeal', skillId: 179, mode: 'S1', level: 1 }]
-    expect(internal.tryCastMonsterUtilitySkill(monster, { x: 10, y: 10 }, 8)).toBe(true)
-    expect(monster.hp).toBeGreaterThan(50)
+    expect(internal.tryCastMonsterUtilitySkill(monster, { x: 10, y: 10 }, 8, true)).toBe(true)
+    expect(monster.hp).toBe(50)
+    expect(ally.hp).toBeGreaterThan(50)
 
     monster.skills = [{ slot: 1, skill: 'MonTeleport', skillId: 184, mode: 'S1', level: 1 }]
     const beforeX = monster.x

@@ -1099,6 +1099,9 @@ export class HudManager {
     if (typeof patch.showRuneNumbers === 'boolean') {
       this.worldPanels.showRuneNumbers = patch.showRuneNumbers
     }
+    if (typeof patch.showItemStatRanges === 'boolean') {
+      this.worldPanels.showItemStatRanges = patch.showItemStatRanges
+    }
   }
 
   getHudEnhancements(): HudEnhancementsConfig {
@@ -1109,6 +1112,7 @@ export class HudManager {
       showWeaponDamageFormula: this.worldPanels.showWeaponDamageFormula,
       showAdvancedStatsButton: this.charSheet.showAdvancedStatsButton,
       showRuneNumbers: this.worldPanels.showRuneNumbers,
+      showItemStatRanges: this.worldPanels.showItemStatRanges,
     }
   }
 

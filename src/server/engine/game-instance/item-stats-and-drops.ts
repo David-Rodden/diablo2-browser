@@ -495,12 +495,14 @@ function buildMonsterUnitAssignEvent(this: GameInstanceHost, m: InternalMonsterR
     (id) => id > 0 && id <= 255,
   )
   const hasMonsterFlags = flags !== 0 || visibleMods.length > 0
-  const lifePct =
-    m.dead || m.hp <= 0
-      ? 0
-      : m.maxHp > 0
-        ? Math.max(1, Math.min(128, Math.round((m.hp / m.maxHp) * 128)))
-        : 128
+  // 1.13c `D2Game.dll` `0x6FC97060` (`S2C 0xAC` `lifePct`): dead -> 0; `maxHp <= 0 || hp >= maxHp` -> 128 (`0x80`).
+  const lifePct = m.dead
+    ? 0
+    : m.maxHp <= 0 || m.hp >= m.maxHp
+      ? 128
+      : m.hp <= 0
+        ? 0
+        : Math.max(1, Math.min(128, Math.round((m.hp / m.maxHp) * 128)))
   const mode = m.dead ? 12 : m.mode
   return {
     type: 'UnitAssign',
@@ -516,6 +518,7 @@ function buildMonsterUnitAssignEvent(this: GameInstanceHost, m: InternalMonsterR
       id: m.unitId,
       classId: m.classId,
       name: m.name,
+      ...(m.level > 0 ? { level: m.level } : {}),
       x: m.x,
       y: m.y,
       mode,

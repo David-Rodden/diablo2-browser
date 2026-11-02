@@ -196,6 +196,13 @@ export interface DrlgPopBox {
   readonly box: DrlgRect
 }
 
+/** One DS1 NPC patrol waypoint (`D2MapAIStrc`, shifted to world sub-tiles by `DRLGPRESET_CopyPresetUnit` `0x6FD5A420`). */
+export interface DrlgMapAiNode {
+  readonly x: number
+  readonly y: number
+  readonly action: number
+}
+
 /** One D2PresetUnitStrc of a room, after DRLGROOMTILE_AddRoomMapTiles. */
 export interface DrlgUnitInput {
   /** Room index in the level's room chain. */
@@ -209,6 +216,8 @@ export interface DrlgUnitInput {
   readonly subX: number
   readonly subY: number
   readonly spawned: number
+  /** Optional DS1 `pMapAI` patrol path in world sub-tiles (`AI_FollowDs1NpcPath` `0x6FC3BBC0`). */
+  readonly mapAi?: readonly DrlgMapAiNode[] | undefined
 }
 
 /** One D2RoomTileStrc (a warp of a room, sub_6FD77F00). */
@@ -1370,5 +1379,32 @@ export function drlgLevelInputFromSession(
   const act = DRLG_GetActNoFromLevelId(levelId)
   const dump = session.getDump(act)
   const input = drlgLevelInputFromDump(dump, levelId, tables)
-  return { ...input, actSpawn: DRLG_CaptureActSpawnLevel(pLevel, tables, input.coord.x, input.coord.y) }
+  const mapAiByKey = new Map<string, readonly DrlgMapAiNode[]>()
+  let roomIdx = 0
+  for (let r = pLevel.pFirstRoomEx; r !== null; r = r.pDrlgRoomNext, roomIdx += 1) {
+    const offSubX = (r.pDrlgCoord.nPosX - input.coord.x) * SUBTILES_PER_TILE
+    const offSubY = (r.pDrlgCoord.nPosY - input.coord.y) * SUBTILES_PER_TILE
+    for (let pu = r.pPresetUnits; pu !== null; pu = pu.pNext) {
+      if (pu.pMapAI && pu.pMapAI.length > 0) {
+        const subX = offSubX + pu.nXpos
+        const subY = offSubY + pu.nYpos
+        mapAiByKey.set(
+          `${roomIdx}:${pu.nUnitType}:${pu.nIndex}:${subX}:${subY}`,
+          pu.pMapAI.map((pt) => ({ x: pt.nX, y: pt.nY, action: pt.nMapAIAction })),
+        )
+      }
+    }
+  }
+  const units =
+    mapAiByKey.size === 0
+      ? input.units
+      : input.units.map((u) => {
+          const mapAi = mapAiByKey.get(`${u.room}:${u.type}:${u.index}:${u.subX}:${u.subY}`)
+          return mapAi !== undefined ? { ...u, mapAi } : u
+        })
+  return {
+    ...input,
+    units,
+    actSpawn: DRLG_CaptureActSpawnLevel(pLevel, tables, input.coord.x, input.coord.y),
+  }
 }

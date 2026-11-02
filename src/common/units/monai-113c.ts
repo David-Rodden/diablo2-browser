@@ -103,6 +103,10 @@ export interface MonAiProfile113c {
     | undefined
   /** 0-based `aip` slot with the heal radius. */
   readonly healRangeParam?: number | undefined
+  /** 0-based `aip` slot with the corpse resurrection percentage chance (`rand(100) < aip[slot]`). */
+  readonly resurrectChanceParam?: number | undefined
+  /** 0-based `aip` slot with the maximum cast distance before walking closer to the corpse (`FetishShaman` `aip3`). */
+  readonly resurrectCastRangeParam?: number | undefined
   /** 0-based `aip` slot with the corpse resurrection search radius. */
   readonly resurrectRangeParam?: number | undefined
   /** Whip/rally aura used by Overseer. */
@@ -166,9 +170,11 @@ add(
     'BladeCreeper',
     '7TIllusion',
     'JarJar',
+    'DarkWanderer',
     'Spirit',
     'TrappedSoul',
     'Buffy',
+    'BaalTaunt',
     'BaalTentacle',
   ],
   { family: 'stationary' },
@@ -181,14 +187,27 @@ add(['FallenShaman', 'GreaterMummy', 'FetishShaman'], {
   family: 'resurrector',
   resurrect: true,
 })
-add(['FallenShaman'], { ranged: true, shootDistanceParam: 4, resurrectRangeParam: 3 })
+add(['FallenShaman'], {
+  ranged: true,
+  shootDistanceParam: 4,
+  resurrectChanceParam: 0,
+  resurrectRangeParam: 3,
+})
 add(['GreaterMummy'], {
   ranged: true,
   shootDistanceParam: 3,
+  resurrectChanceParam: 1,
   resurrectRangeParam: 4,
   healRangeParam: 4,
 })
-add(['FetishShaman'], { healRangeParam: 4, resurrectRangeParam: 4 })
+// 1.13c D2Game.dll 0x6FCA7BB0 (AITHINK_Fn053_FetishShaman): FetishShaman has no heal branch;
+// aip1 (40..45) is resurrect %, aip3 (15..22) is max resurrect cast distance before approaching,
+// and aip5 (50) is corpse resurrection scan radius (#1990, #1992).
+add(['FetishShaman'], {
+  resurrectChanceParam: 0,
+  resurrectCastRangeParam: 2,
+  resurrectRangeParam: 4,
+})
 
 // 1.13c D2Game.dll 0x6FCD5950: only OblivionKnight uses MonCurseCast AI (#1822),
 // and casts #182 Bestow to heal wounded allies (#1896).
@@ -241,10 +260,13 @@ add(['ZakarumPriest'], {
   shootDistanceParam: 3,
   healRangeParam: 3,
 })
+// 1.13c `AITHINK_Fn085_HighPriest` (`0x6FC39080..0x6FC39638`) + `MONMODE_IsMoveableMode` (`0x6FC94F20`) +
+// `MONMODE_ExecuteEvent` (`0x6FC95DFE`, `#2004`): `councilmember1..3` (`#345..347`) and `baalhighpriest` (`#557`)
+// have `RangedType = 0`, `mS1 = 1` (`mSm = true`), and `AnimData.d2` `HPS1HTH` `event = 2` (`!= 1`), so `MONMODE_SKILL1`
+// never spawns `#343 highpriestlightning`; Council Members fight in melee and cast `#179 ZakarumHeal` / `#62 Hydra`.
 add(['HighPriest'], {
-  family: 'ranged',
-  ranged: true,
-  shootDistanceParam: 7,
+  family: 'melee',
+  ranged: false,
   healRangeParam: 5,
 })
 add(['Mephisto'], { family: 'ranged', ranged: true, boss: true })
@@ -253,8 +275,10 @@ add(['FrogDemon'], { family: 'ranged', ranged: true, shootDistanceParam: 5 })
 add(['Izual'], { family: 'ranged', ranged: true, boss: true, shootDistanceParam: 7 })
 add(['TentacleHead'], { family: 'ranged', ranged: true, shootDistanceParam: 5 })
 add(['SkeletonMage'], { family: 'ranged', ranged: true, shootDistanceParam: 5 })
-add(['Regurgitator'], { family: 'ranged', ranged: true, shootDistanceParam: 5 })
-add(['HellMeteor'], { family: 'ranged', ranged: true, shootDistanceParam: 2 })
+// 1.13c `AITHINK_Fn071_Regurgitator` (`#1895`, `#2004`): `regurgitator1..4` (`#307..309, #694`) have `RangedType = 0`
+// and fight in melee unless `corpseAmmo > 0` after `#214 RegurgitatorEat` (spitting via `#213 CorpseSpit`).
+add(['Regurgitator'], { family: 'melee', ranged: false })
+add(['HellMeteor'], { family: 'stationary', ranged: true, shootDistanceParam: 2 })
 add(['FetishBlowgun'], {
   family: 'kiter',
   ranged: true,
@@ -265,7 +289,7 @@ add(['Catapult'], { family: 'stationary', ranged: true })
 add(['Hydra'], { family: 'stationary', ranged: true })
 add(['ArcaneTower'], { family: 'stationary', ranged: true })
 add(['DesertTurret'], { family: 'stationary', ranged: true })
-add(['CatapultSpotter'], { family: 'ranged', ranged: true, shootDistanceParam: 2 })
+add(['CatapultSpotter'], { family: 'stationary', ranged: true, shootDistanceParam: 2 })
 add(['BloodRaven'], { family: 'ranged', ranged: true, resurrect: true, boss: true })
 add(['AbyssKnight'], { family: 'ranged', ranged: true, shootDistanceParam: 5 })
 add(['Summoner'], { family: 'ranged', ranged: true, boss: true })
@@ -317,10 +341,14 @@ add(['SkeletonBow'], {
   shootDistanceParam: 4,
   kiteDistanceParam: 4,
 })
+// 1.13c `AITHINK_Fn028_Vampire` (`D2Game.dll` `0x6FCA6900..0x6FCA7000`, `#2007`):
+// `vampire1..9` (`#131..135, 695..697, 731`) use `aip1` melee fight-vs-retreat, `aip2` ranged cast gate,
+// `aip3` max cast range, `aip4` upgrade chance + `11`-think-tick lockout, and `aip5` spell bitmask (`1|2|4`),
+// with melee life drain (`0x6FC95E10`) and `#333 VampireMissile` `SrvHit31` life steal (`0x6FC5A920`).
 add(['Vampire'], {
-  family: 'kiter',
-  ranged: true,
-  shootDistanceParam: 2,
+  family: 'ranged',
+  ranged: false,
+  shootDistanceParam: 3,
   drain: 'life',
 })
 add(['FingerMage'], {
@@ -391,7 +419,6 @@ add(
     'VileDog',
     'Megademon',
     'Griswold',
-    'DarkWanderer',
     'Smith',
     'ShadowWarrior',
     'ShadowMaster',
@@ -405,7 +432,6 @@ add(
     'Ancient',
     'BaalThrone',
     'BaalCrab',
-    'BaalTaunt',
     'PutridDefiler',
     'BaalToStairs',
     'BaalCrabClone',
@@ -814,4 +840,74 @@ export function resolveInnateMonsterAura113c(
     return { auraSkillId: 114, auraLevel: 4 + diffIdx * 3 }
   }
   return undefined
+}
+
+const PASSIVE_MONAI_KEYS_113C: ReadonlySet<string> = new Set([
+  'none',
+  'idle',
+  'npcoutoftown',
+  'npc',
+  'towner',
+  'vendor',
+  'npcstationary',
+  'townrogue',
+  'goodnpcranged',
+  'navi',
+  'invisospawner',
+  'bonewall',
+  '7tillusion',
+  'jarjar',
+  'darkwanderer',
+  'buffy',
+  'invisopet',
+  'ancientstatue',
+])
+
+const NON_MELEE_STATIONARY_MONAI_KEYS_113C: ReadonlySet<string> = new Set([
+  ...PASSIVE_MONAI_KEYS_113C,
+  'hellmeteor',
+  'foulcrownest',
+  'sarcophagus',
+  'maggotegg',
+  'gargoyletrap',
+  'evilhole',
+  'trapmissile',
+  'traprightarrow',
+  'trapleftarrow',
+  'trappoison',
+  'mosquitonest',
+  'hydra',
+  'trapnova',
+  'arcanetower',
+  'desertturret',
+  'trappedsoul',
+  'minionspawner',
+  'catapult',
+  'catapultspotter',
+  'genericspawner',
+  'baaltaunt',
+])
+
+function resolveCanonicalMonAiKey113c(ai: string): string {
+  const key = normalizeMonAiName113c(ai)
+  return MONAI_ALIASES_113C[key] ?? key
+}
+
+/**
+ * 1.13c `gpMonsterAiFunctionTable` (`0x6FD2E788`, #2005) passive / controller AIs (`None` `0x6FCBC990`,
+ * `Idle` `0x6FCBCB00`, `BoneWall` `0x6FC36410`, `7TIllusion` `0x6FCC4B90`, `DarkWanderer` `0x6FCC6E60`,
+ * `AncientStatue` `0x6FCC4F40`, `InvisoSpawner` `0x6FC3BCA0`, `InvisoPet` `0x6FCC5350`, non-combat NPC AIs):
+ * never cast hostile skills, never chase targets, and never initiate melee attacks.
+ */
+export function isPassiveMonsterAi113c(ai: string): boolean {
+  return PASSIVE_MONAI_KEYS_113C.has(resolveCanonicalMonAiKey113c(ai))
+}
+
+/**
+ * 1.13c `gpMonsterAiFunctionTable` (`0x6FD2E788`, #2005) stationary traps, turrets, spawners, spotters,
+ * and proximity fidgets that never initiate melee attacks (`Trap-Melee` `0x6FC9BF50` `#354` is intentionally
+ * excluded because it is the sole stationary trap AI that strikes adjacent targets in melee).
+ */
+export function isNonMeleeMonsterAi113c(ai: string): boolean {
+  return NON_MELEE_STATIONARY_MONAI_KEYS_113C.has(resolveCanonicalMonAiKey113c(ai))
 }

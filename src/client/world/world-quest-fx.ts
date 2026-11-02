@@ -72,7 +72,7 @@ import {
 import type { ClientWorldInternal } from './world-skill-state-tables.ts'
 
 export function triggerMonsterGetHitFxImpl(this: ClientWorldInternal, unit: ClientUnit): void {
-  if (unit.unitType !== 'monster' || unit.dead || unit.isMinion) return
+  if (unit.unitType !== 'monster' || unit.dead) return
   if (
     unit.isNpc ||
     unit.ownerType === 'player' ||
@@ -83,7 +83,7 @@ export function triggerMonsterGetHitFxImpl(this: ClientWorldInternal, unit: Clie
   }
   const vectors = computeChargedBolt8WayVectors(16)
   const mlvl = Math.max(1, unit.stats.get(12) || 1)
-  if (hasMonsterUMod(unit, MON_UMOD.LIGHTNING)) {
+  if (!unit.isMinion && hasMonsterUMod(unit, MON_UMOD.LIGHTNING)) {
     for (const vec of vectors) {
       this.spawnMissileByKey(
         'lightunique',
@@ -113,7 +113,7 @@ export function triggerMonsterGetHitFxImpl(this: ClientWorldInternal, unit: Clie
           ownerType: 'monster',
           ownerId: unit.id,
           sourceSkillId: 38,
-          skillLevel: Math.max(1, Math.floor(mlvl / 2)),
+          skillLevel: mlvl,
           jitterIndex: vec.index + 1,
         },
       )
@@ -256,7 +256,7 @@ export function triggerMonsterDeathFxImpl(this: ClientWorldInternal, unit: Clien
       pushCorpseExplodeSound.call(this, unit)
     }
 
-    if (hasMonsterUMod(unit, MON_UMOD.COLD)) {
+    if (unit.mode === 0 && hasMonsterUMod(unit, MON_UMOD.COLD)) {
       // D2Client 0x6fad0c40 edi==0x12: coldunique (#194) ring with frostnova (#119) Vel (#1211).
       const novaSpec = calcColdEnchantedDeathNova(mlvl)
       spawnD2ClientNovaRing.call(
@@ -268,7 +268,7 @@ export function triggerMonsterDeathFxImpl(this: ClientWorldInternal, unit: Clien
       )
     }
 
-    if (hasMonsterUMod(unit, MON_UMOD.NOVADEATH)) {
+    if (unit.mode === 0 && hasMonsterUMod(unit, MON_UMOD.NOVADEATH)) {
       // D2Client 0x6fad0c40 edi==0x2a (umod 42 novadeath, mode 0): 0x5a nova (#90) ring,
       // velocity from 0x6fabcb5c(0x5a) (#1212).
       spawnD2ClientNovaRing.call(this, unit, 'nova', 'nova', mlvl)
@@ -329,23 +329,6 @@ export function triggerMonsterDeathFxImpl(this: ClientWorldInternal, unit: Clien
         }
       }
     }
-
-    if (
-      hasMonsterUMod(unit, MON_UMOD.SCARAB) ||
-      isScarabMonster(unit.classId, unit.name)
-    ) {
-      const boltKey = 'buglightning'
-      const vectors = computeChargedBolt8WayVectors(16)
-      for (const vec of vectors) {
-        this.spawnMissileByKey(boltKey, unit.x, unit.y, unit.x + vec.dx, unit.y + vec.dy, {
-          ownerType: 'monster',
-          ownerId: unit.id,
-          sourceSkillId: 38,
-          skillLevel: Math.max(1, Math.floor(mlvl / 2)),
-          jitterIndex: vec.index + 1,
-        })
-      }
-    }
   } else if (isBoneFetishMonster(unit.classId, unit.name)) {
     // Innate Bone Fetish death explosion applies even to minion Bone Fetishes
     applyBoneFetishDeath.call(this, unit)
@@ -365,6 +348,25 @@ export function triggerMonsterDeathFxImpl(this: ClientWorldInternal, unit: Clien
     )
     centerCloud.vx = 0
     centerCloud.vy = 0
+  }
+
+  // MonUMod #20 Scarab (`D2Client.dll` mode 0 / `D2Game.dll` `0x6FC41B00` -> `0x6FC460D0`, #1995):
+  // Fires 8 radial `buglightning` (#225) bolts at `slvl = mlvl` across all monster ranks (including minions).
+  if (
+    unit.mode === 0 &&
+    (hasMonsterUMod(unit, MON_UMOD.SCARAB) || isScarabMonster(unit.classId, unit.name))
+  ) {
+    const boltKey = 'buglightning'
+    const vectors = computeChargedBolt8WayVectors(16)
+    for (const vec of vectors) {
+      this.spawnMissileByKey(boltKey, unit.x, unit.y, unit.x + vec.dx, unit.y + vec.dy, {
+        ownerType: 'monster',
+        ownerId: unit.id,
+        sourceSkillId: 38,
+        skillLevel: mlvl,
+        jitterIndex: vec.index + 1,
+      })
+    }
   }
 
   // 3. Innate Monster Death Overlays & Special Monster Death Missiles

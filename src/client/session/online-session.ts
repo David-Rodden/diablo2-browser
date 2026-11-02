@@ -420,6 +420,7 @@ export class OnlineSession {
       showWeaponDamageFormula: currentSettings.showWeaponDamageFormula,
       showAdvancedStatsButton: currentSettings.showAdvancedStatsButton,
       showRuneNumbers: currentSettings.showRuneNumbers,
+      showItemStatRanges: currentSettings.showItemStatRanges,
     })
     this.hudManager.setGroundItemEnhancements({
       showUniqueSetBeams: currentSettings.showUniqueSetBeams,
@@ -652,7 +653,8 @@ export class OnlineSession {
         next.showStatGainTooltips !== prev.showStatGainTooltips ||
         next.showWeaponDamageFormula !== prev.showWeaponDamageFormula ||
         next.showAdvancedStatsButton !== prev.showAdvancedStatsButton ||
-        next.showRuneNumbers !== prev.showRuneNumbers
+        next.showRuneNumbers !== prev.showRuneNumbers ||
+        next.showItemStatRanges !== prev.showItemStatRanges
       ) {
         this.hudManager.setHudEnhancements({
           showBasePlusBonusStats: next.showBasePlusBonusStats,
@@ -661,6 +663,7 @@ export class OnlineSession {
           showWeaponDamageFormula: next.showWeaponDamageFormula,
           showAdvancedStatsButton: next.showAdvancedStatsButton,
           showRuneNumbers: next.showRuneNumbers,
+          showItemStatRanges: next.showItemStatRanges,
         })
       }
       if (

@@ -39,7 +39,7 @@ import {
   isMonsterArtNull113c,
 } from '../../common/drlg/level-scripted-monsters-113c.ts'
 import { resolveMonPlacePreset113c } from '../../common/units/monai-113c.ts'
-import { buildLevelViewFromSession, type LevelRoomView, type LevelView } from './level-view.ts'
+import { buildLevelViewFromSession, nearRoomIndices, type LevelRoomView, type LevelView } from './level-view.ts'
 import { TileAtlas } from './tile-atlas.ts'
 
 export interface LevelPreloadPlan {
@@ -161,6 +161,7 @@ function toRoomView(r: DrlgSessionRoom | null): LevelRoomView | null {
     worldSubY: r.worldSubY,
     room1InitSeed: r.room1InitSeed,
     revealed: r.revealed,
+    nearIndices: nearRoomIndices(r.pRoom),
   }
 }
 

@@ -205,6 +205,12 @@ export class WorldPanelsHud {
    * Defaults to `false` (vanilla 1.13c rune tooltip title without `(#1..#33)` suffix).
    */
   showRuneNumbers = false
+  /**
+   * NOT 1.13c: controlled by `plugins/hud-enhancements` (`showItemStatRanges`).
+   * Defaults to `false` (vanilla 1.13c item tooltip without `[min-max]` variable stat range suffixes
+   * on Set, Unique, and Runeword items).
+   */
+  showItemStatRanges = false
   onDefaultClose: (() => void) | null = null
   onDefaultWaypointTeleport: ((act: number, slug: string, levelId: number) => void) | null = null
   onReplayQuestSpeech: ((speechKey: string) => void) | null = null

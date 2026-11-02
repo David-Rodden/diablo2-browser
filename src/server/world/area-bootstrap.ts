@@ -357,6 +357,7 @@ export function buildAreaBootstrap(
         isVendor,
         isKillable,
         aiDisabled: isNpc,
+        ...(u.mapAi !== undefined ? { mapAi: u.mapAi } : {}),
       })
     }
   }
@@ -439,6 +440,11 @@ export function buildAreaBootstrap(
     objects,
     monsters,
     warps,
+    originX: level.originX,
+    originY: level.originY,
+    subWidth: level.subWidth,
+    subHeight: level.subHeight,
+    ...(level.collision !== undefined ? { collision: level.collision.slice() } : {}),
     isWalkable: (checkAreaId, x, y, isFlying) =>
       checkAreaId === areaId && isLevelSubTileWalkable(level, x, y, Boolean(isFlying)),
     ...(locate !== undefined ? { findActSpawnLocation: locate } : {}),

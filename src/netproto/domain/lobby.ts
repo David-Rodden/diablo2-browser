@@ -149,6 +149,12 @@ export interface LocalAreaPresetObject {
   readonly destAreaId?: number | undefined
 }
 
+export interface LocalAreaMapAiNode {
+  readonly x: number
+  readonly y: number
+  readonly action: number
+}
+
 export interface LocalAreaPresetMonster {
   readonly classId: number
   readonly x: number
@@ -165,6 +171,8 @@ export interface LocalAreaPresetMonster {
    * SuperUnique's `Class` MonStats row and the server spawns boss + minions.
    */
   readonly superUniqueIndex?: number | undefined
+  /** Optional DS1 `pMapAI` patrol waypoints in world sub-tiles (`AI_FollowDs1NpcPath` `0x6FC3BBC0`). */
+  readonly mapAi?: readonly LocalAreaMapAiNode[] | undefined
 }
 
 /** #1327: one DRLG room of a level, in world sub-tiles, with its `room1InitSeed`. */
@@ -175,6 +183,8 @@ export interface LocalAreaRoomRect {
   readonly w: number
   readonly h: number
   readonly seed: number
+  /** Same-level DRLG `ppRoomsNear` room indices (room itself included) in D2Common order, when known. */
+  readonly near?: readonly number[] | undefined
 }
 
 export interface LocalAreaRoomReveal {
@@ -210,6 +220,13 @@ export interface LocalAreaBootstrap {
   /** Seamless outdoor neighbours (`dwVis` / gate entrances) loaded on demand at borders (#1335). */
   readonly adjacentAreaIds?: readonly number[] | undefined
   readonly isWalkable: (areaId: number, x: number, y: number, isFlying?: boolean) => boolean
+  /** World sub-tile origin and dimensions of `collision`, when backed by a DRLG level grid. */
+  readonly originX?: number | undefined
+  readonly originY?: number | undefined
+  readonly subWidth?: number | undefined
+  readonly subHeight?: number | undefined
+  /** Mutable 16-bit D2Common sub-tile collision grid (`subWidth * subHeight`, row-major). */
+  readonly collision?: Uint16Array | undefined
   /**
    * 1.13c `DUNGEON_FindActSpawnLocationEx` (D2Common `#10816`) for this area: world sub-tiles of the
    * special tile `nTileIndex` (0 = entry markers, 11 = town-portal mouth) after the `0x1C09`
@@ -234,6 +251,8 @@ export interface LocalAreaLevelPresetUnit {
   readonly mode: number
   readonly subX: number
   readonly subY: number
+  /** Optional DS1 `pMapAI` patrol waypoints in world sub-tiles. */
+  readonly mapAi?: readonly LocalAreaMapAiNode[] | undefined
 }
 
 /** One level warp (`D2RoomTileStrc`) in level-local sub-tiles. */

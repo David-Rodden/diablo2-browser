@@ -927,6 +927,7 @@ function stepPetMissiles113c(this: GameInstanceHost): void {
         m.isNpc ||
         !m.isKillable ||
         m.submerged ||
+        m.align !== 0 ||
         this.isMonsterConverted(m) ||
         m.areaId !== msl.areaId ||
         msl.hitUnitIds.has(m.unitId)
@@ -1102,6 +1103,7 @@ function stepSummonedPets(this: GameInstanceHost): void {
         unitId?: number
         states?: Set<number>
         inheritedAuraLevels?: Map<number, number>
+        poisonCarry256?: number
       }
       const petUnitId = this.petUnitIds.get(pet.uid) ?? petMeta.unitId
       const aiProfile = resolvePetAiProfile113c(pet, 1)
@@ -1138,22 +1140,48 @@ function stepSummonedPets(this: GameInstanceHost): void {
         const vis = this.getOrCreatePetCombatContext113c(pet, petUnitId, petMeta.areaId)
         petMeta.states = vis.states
         this.stepUnitStates(vis.states, vis.timers, 'monster', petUnitId, petMeta.areaId)
-        const spiritSkillId = pet.subSkillIds.find(
-          (id) => id === 296 || id === 297 || id === 298,
-        )
-        if (spiritSkillId !== undefined) {
-          this.pulseDruidSpiritPetAura113c(owner, pet, petUnitId, spiritSkillId, false)
-        } else if (pet.inheritedAuras !== undefined && pet.inheritedAuras.length > 0) {
-          const inheritedSkillId = pet.inheritedAuras[0]!
-          const inheritedSlvl = petMeta.inheritedAuraLevels?.get(inheritedSkillId) ?? 1
-          this.pulseDruidSpiritPetAura113c(
-            owner,
-            pet,
-            petUnitId,
-            inheritedSkillId,
-            false,
-            inheritedSlvl,
+        if (!vis.states.has(2) && (pet.stateBus.hasState(2) || pet.stateBus.hasState('poison'))) {
+          pet.stateBus.removeState(2)
+          pet.stateBus.removeState('poison')
+        }
+        const petPois = pet.stateBus.getState(2) ?? pet.stateBus.getState('poison')
+        const petPoisBitrate256 = petPois
+          ? Math.max(0, petPois.stats['poisonmindam'] ?? -(petPois.stats['hpregen'] ?? 0))
+          : 0
+        if (petPoisBitrate256 > 0 && pet.hp > 0) {
+          petMeta.poisonCarry256 = (petMeta.poisonCarry256 ?? 0) + petPoisBitrate256
+          if (petMeta.poisonCarry256 >= FIXED_ONE) {
+            const rawDrain = Math.floor(petMeta.poisonCarry256 / FIXED_ONE)
+            petMeta.poisonCarry256 -= rawDrain * FIXED_ONE
+            const petArea = petMeta.areaId ?? owner.areaId
+            const drain = TOWN_AREAS.has(petArea)
+              ? Math.max(0, Math.min(rawDrain, pet.hp - 1))
+              : rawDrain
+            if (drain > 0) {
+              this.applyDamageToSummon(ownerPlayerId, pet, drain, petArea)
+            }
+          }
+        } else {
+          petMeta.poisonCarry256 = 0
+        }
+        if (pet.hp > 0 && (pet.alive as boolean | undefined) !== false) {
+          const spiritSkillId = pet.subSkillIds.find(
+            (id) => id === 296 || id === 297 || id === 298,
           )
+          if (spiritSkillId !== undefined) {
+            this.pulseDruidSpiritPetAura113c(owner, pet, petUnitId, spiritSkillId, false)
+          } else if (pet.inheritedAuras !== undefined && pet.inheritedAuras.length > 0) {
+            const inheritedSkillId = pet.inheritedAuras[0]!
+            const inheritedSlvl = petMeta.inheritedAuraLevels?.get(inheritedSkillId) ?? 1
+            this.pulseDruidSpiritPetAura113c(
+              owner,
+              pet,
+              petUnitId,
+              inheritedSkillId,
+              false,
+              inheritedSlvl,
+            )
+          }
         }
       }
       return {
@@ -1194,6 +1222,7 @@ function stepSummonedPets(this: GameInstanceHost): void {
         m.isNpc ||
         !m.isKillable ||
         m.submerged ||
+        m.align !== 0 ||
         this.isMonsterConverted(m) ||
         m.areaId !== owner.areaId
       ) {

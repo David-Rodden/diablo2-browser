@@ -192,36 +192,34 @@ describe('#1946 — MonUMod #5 (Extra Strong) & #6 (Extra Fast) AR, attack rate 
   })
 })
 
-describe('#1947 — MonUMod #20 (Scarab) Charged Bolt count (8), slvl formula & LE stacking', () => {
-  it('computes exact 1.13c Scarab Charged Bolt slvl = min(15, floor((mlvl + 4) / 5)) and 8-bolt directional fan', () => {
+describe('#1947 / #1995 — MonUMod #20 (Scarab) radial buglightning (#225), slvl = mlvl, GetHit/Death trigger & LE stacking', () => {
+  it('computes exact 1.13c Scarab slvl = max(1, mlvl) and 8-bolt radial directions', () => {
     expect(SCARAB_CHARGED_BOLT_COUNT_113C).toBe(8)
     expect(computeScarabChargedBoltSlvl113c(1)).toBe(1)
-    expect(computeScarabChargedBoltSlvl113c(5)).toBe(1)
-    expect(computeScarabChargedBoltSlvl113c(6)).toBe(2)
-    expect(computeScarabChargedBoltSlvl113c(14)).toBe(3)
-    expect(computeScarabChargedBoltSlvl113c(15)).toBe(3)
-    expect(computeScarabChargedBoltSlvl113c(21)).toBe(5)
-    expect(computeScarabChargedBoltSlvl113c(70)).toBe(14)
-    expect(computeScarabChargedBoltSlvl113c(71)).toBe(15)
-    expect(computeScarabChargedBoltSlvl113c(99)).toBe(15)
+    expect(computeScarabChargedBoltSlvl113c(5)).toBe(5)
+    expect(computeScarabChargedBoltSlvl113c(14)).toBe(14)
+    expect(computeScarabChargedBoltSlvl113c(21)).toBe(21)
+    expect(computeScarabChargedBoltSlvl113c(71)).toBe(71)
+    expect(computeScarabChargedBoltSlvl113c(99)).toBe(99)
 
-    const fan = computeScarabChargedBoltFanTargets113c(10, 10, 20, 10, 2)
-    expect(fan).toHaveLength(8)
-    for (const pt of fan) {
-      // Every bolt in the directional fan travels forward (+X toward attacker at (20, 10))
-      expect(pt.targetX).toBeGreaterThan(10)
-    }
+    const radial = computeScarabChargedBoltFanTargets113c(10, 10, 20, 10, 2)
+    expect(radial).toHaveLength(8)
+    // Radial 8-way burst radiates in both +X and -X / +Y and -Y rather than aiming a shotgun cone at (20, 10)
+    expect(radial.some((pt) => pt.targetX > 10)).toBe(true)
+    expect(radial.some((pt) => pt.targetX < 10)).toBe(true)
+    expect(radial.some((pt) => pt.targetY > 10)).toBe(true)
+    expect(radial.some((pt) => pt.targetY < 10)).toBe(true)
     expect(hasImplicitScarabUMod113c({ hcIdx: 91, defId: 'scarab1' })).toBe(true)
     expect(hasImplicitScarabUMod113c({ hcIdx: 654, defId: 'scarab6' })).toBe(true)
   })
 
-  it('spawns 8 Charged Bolts (#195) on Scarab hit and 16 Charged Bolts on Lightning Enchanted Scarab hit in both GameInstance and MonsterAI', () => {
+  it('spawns 8 radial buglightning (#225) on Scarab GetHit/Death and 8 #195 + 8 #225 = 16 bolts on LE Scarab GetHit', () => {
     const game = new GameInstance({ seed: 1947, difficulty: 1, areaId: 41 })
     const pid = game.connectPlayer({ charClass: 'bar', name: 'Hitter', level: 60, x: 50, y: 50, areaId: 41 })
     const internal = game as unknown as {
       players: Map<number, Record<string, unknown>>
       monsters: Map<number, Record<string, unknown>>
-      missiles: Map<number, { missileId: number; vx: number; vy: number }>
+      missiles: Map<number, { missileId: number; vx: number; vy: number; elemDamage: number }>
       finishMonsterDamage: (
         player: unknown,
         monster: unknown,
@@ -246,16 +244,30 @@ describe('#1947 — MonUMod #20 (Scarab) Charged Bolt count (8), slvl formula & 
     const scarab = internal.monsters.get(scarabId)!
     expect((scarab.umodIds as number[]).includes(MON_UMOD.SCARAB)).toBe(true)
 
+    // Chip damage (< maxHp / 16) does not enter MONMODE_GETHIT (mode = 3), so col4 = 0 emits 0 Scarab bolts
     internal.missiles.clear()
     internal.finishMonsterDamage(player, scarab, 10, 0, 'phys', 0, false)
-    const scarabBolts = [...internal.missiles.values()].filter((m) => m.missileId === 195)
-    expect(scarabBolts).toHaveLength(8)
-    for (const b of scarabBolts) {
-      // Attacker is at +X from Scarab (50 > 44), so all 8 fan bolts have vx > 0
-      expect(b.vx).toBeGreaterThan(0)
-    }
+    expect([...internal.missiles.values()].filter((m) => m.missileId === 225)).toHaveLength(0)
 
-    // Lightning Enchanted Scarab: #17 (8 radial bolts) + #20 (8 directional fan bolts) = 16 bolts
+    // Heavy non-lethal hit (>= maxHp / 2 = 250, surviving at hp = 100) guarantees MONMODE_GETHIT (mode = 3)
+    // -> col4 (`0x6FC46B80`) emits 8 radial #225 buglightning bolts
+    internal.missiles.clear()
+    scarab.hp = 400
+    internal.finishMonsterDamage(player, scarab, 300, 0, 'phys', 0, false)
+    const scarabBolts = [...internal.missiles.values()].filter((m) => m.missileId === 225)
+    expect(scarabBolts).toHaveLength(8)
+    expect(scarabBolts.some((b) => b.vx > 0)).toBe(true)
+    expect(scarabBolts.some((b) => b.vx < 0)).toBe(true)
+    // mlvl = 46 -> 1 + floor(45 / 2) = 23 lightning damage
+    expect(scarabBolts.every((b) => b.elemDamage === 23)).toBe(true)
+
+    // Follow-up lethal hit (hp = 100 -> 0) enters MONMODE_DEATH (mode = 0) -> col1 (`0x6FC46B80`) emits 8 radial #225 bolts
+    internal.missiles.clear()
+    internal.finishMonsterDamage(player, scarab, 200, 0, 'phys', 0, false)
+    expect([...internal.missiles.values()].filter((m) => m.missileId === 225)).toHaveLength(8)
+
+    // Lightning Enchanted Scarab non-lethal heavy hit (600 >= maxHp / 2 = 500, surviving at hp = 300):
+    // #17 col4 (8 radial #195) + #20 col4 (8 radial #225) = 16 bolts
     const leScarabId = game.spawnMonster({
       hcIdx: 91,
       defId: 'scarab1',
@@ -264,15 +276,17 @@ describe('#1947 — MonUMod #20 (Scarab) Charged Bolt count (8), slvl formula & 
       x: 44,
       y: 55,
       areaId: 41,
-      hp: 1000,
+      hp: 900,
       maxHp: 1000,
       level: 49,
     })
     const leScarab = internal.monsters.get(leScarabId)!
     internal.missiles.clear()
-    internal.finishMonsterDamage(player, leScarab, 10, 0, 'phys', 0, false)
-    const leScarabBolts = [...internal.missiles.values()].filter((m) => m.missileId === 195)
-    expect(leScarabBolts).toHaveLength(16)
+    internal.finishMonsterDamage(player, leScarab, 600, 0, 'phys', 0, false)
+    const leBolts = [...internal.missiles.values()].filter((m) => m.missileId === 195)
+    const bugBolts = [...internal.missiles.values()].filter((m) => m.missileId === 225)
+    expect(leBolts).toHaveLength(8)
+    expect(bugBolts).toHaveLength(8)
 
     // MonsterAI (`damageMonster`) parity check: LE Scarab emits 2 ChargedBolt skill events (LE + Scarab)
     const aiPlayer = { x: 16, y: 10, hp: 400, maxHp: 400 } as unknown as CombatPlayer

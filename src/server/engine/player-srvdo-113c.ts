@@ -29,6 +29,14 @@ export const SRVDOFUNC_TWISTER_TORNADO_113C = 118
  * (`kb/skills/player/skills-sor-fire.md` 4.6, #1790).
  */
 export const SRVDOFUNC_FIRE_WALL_113C = 24
+/**
+ * SrvDo022 `0x6FC63AA0` (Nova / Frost Nova / Howl #130) & SrvDo068 `0x6FC49720`
+ * (Shout #138, Battle Cry #146, Battle Orders #149, War Cry #154, Battle Command #155):
+ * `sub_6FCC2800` (`0x6FCC2800`) spawns 64 radial missiles over `WARCRY_RING_DX_64` (`0x6FD1B770`)
+ * and `WARCRY_RING_DY_64` (`0x6FD1B870`).
+ */
+export const SRVDOFUNC_NOVA_RING_113C = 22
+export const SRVDOFUNC_WARCRY_RING_113C = 68
 
 /**
  * srvdofuncs whose 1.13c function creates exactly one server missile per call
@@ -40,13 +48,14 @@ export const SRVDOFUNC_FIRE_WALL_113C = 24
  */
 export const SRVDOFUNC_SINGLE_MISSILE_113C: ReadonlySet<number> = new Set([0, 1, 3, 5, 10, 14, 26, 28, 73, 74, 80])
 
-export type PlayerSrvDoMissileMode = 'fan' | 'strafe' | 'volley' | 'single' | 'firewall' | 'unmodeled'
+export type PlayerSrvDoMissileMode = 'fan' | 'strafe' | 'volley' | 'single' | 'firewall' | 'ring64' | 'unmodeled'
 
 /** How `GameInstance` must create the server missiles of a cast with this `srvdofunc`. */
 export function classifyPlayerSrvDoMissile113c(srvDoFunc: number): PlayerSrvDoMissileMode {
   if (srvDoFunc === SRVDOFUNC_FAN_VOLLEY_113C) return 'fan'
   if (srvDoFunc === SRVDOFUNC_STRAFE_113C) return 'strafe'
   if (srvDoFunc === SRVDOFUNC_FIRE_WALL_113C) return 'firewall'
+  if (srvDoFunc === SRVDOFUNC_WARCRY_RING_113C) return 'ring64'
   if (
     srvDoFunc === SRVDOFUNC_CHARGED_BOLT_113C ||
     srvDoFunc === SRVDOFUNC_FIRESTORM_113C ||
@@ -56,6 +65,36 @@ export function classifyPlayerSrvDoMissile113c(srvDoFunc: number): PlayerSrvDoMi
   }
   if (SRVDOFUNC_SINGLE_MISSILE_113C.has(srvDoFunc)) return 'single'
   return 'unmodeled'
+}
+
+/** 1.13c `D2Game.dll` `0x6FD1B770` 64-entry X offset table (`sub_6FCC2800`). */
+export const WARCRY_RING_DX_64: readonly number[] = [
+  0, 2, 5, 8, 11, 14, 16, 19, 21, 23, 24, 26, 27, 28, 29, 29,
+  30, 29, 29, 28, 27, 26, 24, 23, 21, 19, 16, 14, 11, 8, 5, 2,
+  0, -2, -5, -8, -11, -14, -16, -19, -21, -23, -24, -26, -27, -28, -29, -29,
+  -30, -29, -29, -28, -27, -26, -24, -23, -21, -19, -16, -14, -11, -8, -5, -2,
+]
+
+/** 1.13c `D2Game.dll` `0x6FD1B870` 64-entry Y offset table (`sub_6FCC2800`). */
+export const WARCRY_RING_DY_64: readonly number[] = [
+  30, 29, 29, 28, 27, 26, 24, 23, 21, 19, 16, 14, 11, 8, 5, 2,
+  0, -2, -5, -8, -11, -14, -16, -19, -21, -23, -24, -26, -27, -28, -29, -29,
+  -30, -29, -29, -28, -27, -26, -24, -23, -21, -19, -16, -14, -11, -8, -5, -2,
+  0, 2, 5, 8, 11, 14, 16, 19, 21, 23, 24, 26, 27, 28, 29, 29,
+]
+
+/** Compute the 64 radial `(x, y)` aim points of `sub_6FCC2800` (`0x6FCC2800`) around `(casterX, casterY)`. */
+export function srvdoRing64Targets113c(
+  casterX: number,
+  casterY: number,
+): { readonly x: number; readonly y: number }[] {
+  const cx = Math.trunc(casterX)
+  const cy = Math.trunc(casterY)
+  const out: { readonly x: number; readonly y: number }[] = []
+  for (let i = 0; i < 64; i++) {
+    out.push({ x: cx + WARCRY_RING_DX_64[i]!, y: cy + WARCRY_RING_DY_64[i]! })
+  }
+  return out
 }
 
 /** C integer division by 2 (`cdq; sub eax, edx; sar eax, 1`): truncates toward zero. */

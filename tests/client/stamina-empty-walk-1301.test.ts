@@ -86,7 +86,7 @@ describe('Issue #1301 — Stamina exhaustion forces walk mode and walk packets (
       run: false,
     })
     expect(predictor.getSnapshot().running).toBe(false)
-    expect(predictor.getEffectiveSpeedSubTilesPerSec()).toBeCloseTo(9.0, 5)
+    expect(predictor.getEffectiveSpeedSubTilesPerSec()).toBeCloseTo(9.375, 5)
     expect(world.getUnit('player', 1)?.mode).toBe(2) // PLRMODE_WALK
     expect(world.getUnit('player', 1)?.moveMode).toBe('walk')
     // Always-Run toggle itself remains ON so running resumes once stamina recovers
@@ -124,7 +124,7 @@ describe('Issue #1301 — Stamina exhaustion forces walk mode and walk packets (
       run: true,
     })
     expect(predictor.getSnapshot().running).toBe(true)
-    expect(predictor.getEffectiveSpeedSubTilesPerSec()).toBeCloseTo(13.5, 5)
+    expect(predictor.getEffectiveSpeedSubTilesPerSec()).toBeCloseTo(14.0625, 5)
     expect(world.getUnit('player', 1)?.mode).toBe(3) // PLRMODE_RUN
     expect(world.getUnit('player', 1)?.moveMode).toBe('run')
   })
@@ -169,7 +169,7 @@ describe('Issue #1301 — Stamina exhaustion forces walk mode and walk packets (
     expect(selfUnit.mode).toBe(3) // PLRMODE_RUN
     expect(selfUnit.moveMode).toBe('run')
     expect(session.predictor.getSnapshot().running).toBe(true)
-    expect(session.predictor.getEffectiveSpeedSubTilesPerSec()).toBeCloseTo(13.5, 5)
+    expect(session.predictor.getEffectiveSpeedSubTilesPerSec()).toBeCloseTo(14.0625, 5)
 
     // Server drains stamina to 0 mid-run via LifeMana
     session.handleServerEvent({
@@ -184,7 +184,7 @@ describe('Issue #1301 — Stamina exhaustion forces walk mode and walk packets (
 
     expect(session.predictor.isStaminaExhausted()).toBe(true)
     expect(session.predictor.getSnapshot().running).toBe(false)
-    expect(session.predictor.getEffectiveSpeedSubTilesPerSec()).toBeCloseTo(9.0, 5)
+    expect(session.predictor.getEffectiveSpeedSubTilesPerSec()).toBeCloseTo(9.375, 5)
     expect(selfUnit.mode).toBe(2) // PLRMODE_WALK
     expect(selfUnit.moveMode).toBe('walk')
     expect(session.world.self.mode).toBe(2)

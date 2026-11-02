@@ -312,6 +312,32 @@ function killPlayer(this: GameInstanceHost,
   player.items = remainingItems
   this.stopPlayerAura(player)
   this.syncPlayerItemAuras113c(player, true)
+  // 1.13c `PLAYER_Kill` (`D2Game.dll` `0x6FC583A0` -> `STATES_ClearDeathStates`, #1989):
+  // Purge all `States.txt` rows with `plrstaydeath == 0` (only `105` `alignment`, `108` `sync_warped`,
+  // and `118` `corpse_noselect` have `plrstaydeath == 1`), so the player never respawns in town still
+  // poisoned, chilled, frozen, or cursed.
+  const deathPlayerCombat = this.playerCombat.get(player.unitId)
+  for (const activeStateId of [...player.states]) {
+    if (activeStateId === 105 || activeStateId === 108 || activeStateId === 118) continue
+    deathPlayerCombat?.stateBus.removeState(activeStateId)
+    this.clearUnitState(
+      player.states,
+      player.stateTimers,
+      'player',
+      player.unitId,
+      player.areaId,
+      activeStateId,
+    )
+  }
+  if (deathPlayerCombat !== undefined) {
+    for (const entry of deathPlayerCombat.stateBus.getActiveEntries()) {
+      if (entry.stateId === 105 || entry.stateId === 108 || entry.stateId === 118) continue
+      deathPlayerCombat.stateBus.removeState(entry.stateId)
+      deathPlayerCombat.stateBus.removeState(entry.stateName)
+    }
+  }
+  this.playerBoneArmorPool.delete(player.unitId)
+  this.playerCycloneArmorPool.delete(player.unitId)
 
   const killerType = this.resolveKillerTypeForDeathPenalty(options)
 
@@ -548,13 +574,13 @@ function handleRespawn(this: GameInstanceHost, player: InternalPlayerRecord): vo
   }
   player.dead = false
   player.hitRecoveryUntilFrame = 0
-  player.hpFixed = player.maxHpFixed
-  player.hp = player.maxHp
-  player.manaFixed = player.maxManaFixed
-  player.mana = player.maxMana
-  player.staminaFixed = player.maxStaminaFixed
   player.staminaExhausted = false
-  player.stamina = player.maxStamina
+  // 1.13c town resurrect restores full accrued vitals (including inventory charms & passives, #1996).
+  this.refreshPlayerAccruedMaxPools(player, {
+    fillHpIfAtBaseMax: true,
+    fillManaIfAtBaseMax: true,
+    fillStaminaIfAtBaseMax: true,
+  })
 
   const townArea = ACT_TOWN_AREA[player.act] ?? 1
   player.mode = 5
@@ -1063,6 +1089,16 @@ function stepUnitStates(this: GameInstanceHost,
             this.refreshPlayerAccruedMaxPools(p, { fillStaminaIfAtBaseMax: true })
             this.emitPlayerVitals(p)
           }
+        } else if (stateId === 26 || stateId === 32 || stateId === 51 || stateId === 139 || stateId === 140) {
+          const p = this.players.get(unitId)
+          if (p !== undefined && !p.dead) {
+            if (stateId === 51) {
+              const pCtx = this.playerCombatContext(p)
+              this.syncPlayerSkillLevelsToStatList113c(p, pCtx.statList, pCtx.stateBus)
+            }
+            this.refreshPlayerAccruedMaxPools(p)
+            this.emitPlayerVitals(p)
+          }
         }
       } else {
         this.monsterCombat.get(unitId)?.stateBus.removeState(stateId)
@@ -1157,6 +1193,7 @@ function emitPlayerVitals(this: GameInstanceHost, player: InternalPlayerRecord):
 function setObjectMode(this: GameInstanceHost, obj: InternalObjectRecord, mode: number): void {
   if (obj.mode === mode) return
   obj.mode = mode
+  this.areaPathWorld.setObjectMode(obj.unitId, mode)
   this.broadcastToArea(obj.areaId, {
     type: 'UnitMode',
     unitType: 2,
@@ -1393,40 +1430,43 @@ function applyShrineEffect(this: GameInstanceHost,
   }
 
   switch (effectiveCode) {
-    case 1: // 0x6fc89c00 Refilling Shrine (and Code 0 fallback): restores full HP (stat 6) and Mana (stat 8) only
-      player.hpFixed = player.maxHpFixed
-      player.hp = player.maxHp
-      player.manaFixed = player.maxManaFixed
-      player.mana = player.maxMana
+    case 1: // 0x6fc89c00 Refilling Shrine (and Code 0 fallback): restores full accrued HP (#10913) and Mana (#10186) (#1996)
+      player.hpFixed = this.getPlayerAccruedMaxHpFixed(player)
+      player.manaFixed = this.getPlayerAccruedMaxManaFixed(player)
+      this.refreshPlayerAccruedMaxPools(player)
       this.emitPlayerVitals(player)
       break
-    case 2: // 0x6fc898a0 Health Shrine: adds (maxhp - hp) -> restores 100% full life
-      player.hpFixed = player.maxHpFixed
-      player.hp = player.maxHp
+    case 2: // 0x6fc898a0 Health Shrine: adds (accruedMaxHp - hp) -> restores 100% full life (#10913, #1996)
+      player.hpFixed = this.getPlayerAccruedMaxHpFixed(player)
+      this.refreshPlayerAccruedMaxPools(player)
       this.emitPlayerVitals(player)
       break
-    case 3: // 0x6fc89860 Mana Shrine: adds (maxmana - mana) -> restores 100% full mana
-      player.manaFixed = player.maxManaFixed
-      player.mana = player.maxMana
+    case 3: // 0x6fc89860 Mana Shrine: adds (accruedMaxMana - mana) -> restores 100% full mana (#10186, #1996)
+      player.manaFixed = this.getPlayerAccruedMaxManaFixed(player)
+      this.refreshPlayerAccruedMaxPools(player)
       this.emitPlayerVitals(player)
       break
-    case 4: { // 0x6fc89800 Health Exchange Shrine: takes Arg0% (50%) of current whole HP and adds Arg1% (500% = 5x) to Mana
+    case 4: { // 0x6fc89800 Health Exchange Shrine: takes Arg0% (50%) of current whole HP and adds Arg1% (500% = 5x) to Mana (clamped at #10186, #1996)
+      const accruedMaxManaFixed = this.getPlayerAccruedMaxManaFixed(player)
       const hpWhole = player.hpFixed >> 8
       const takeWhole = Math.trunc((hpWhole * shrineMeta.arg0) / 100)
       const takeFixed = takeWhole << 8
       player.hpFixed = Math.max(FIXED_ONE, player.hpFixed - takeFixed)
       const addManaFixed = Math.trunc((takeFixed * shrineMeta.arg1) / 100)
-      player.manaFixed = Math.min(player.maxManaFixed, player.manaFixed + addManaFixed)
+      player.manaFixed = Math.min(accruedMaxManaFixed, player.manaFixed + addManaFixed)
+      player.maxMana = Math.max(0, Math.floor(accruedMaxManaFixed / FIXED_ONE))
       player.hp = Math.ceil(player.hpFixed / FIXED_ONE)
       player.mana = Math.floor(player.manaFixed / FIXED_ONE)
       this.emitPlayerVitals(player)
       break
     }
-    case 5: { // 0x6fc897a0 Mana Exchange Shrine: takes Arg0% (50%) of current fixed Mana and adds Arg1% (500% = 5x) to HP
+    case 5: { // 0x6fc897a0 Mana Exchange Shrine: takes Arg0% (50%) of current fixed Mana and adds Arg1% (500% = 5x) to HP (clamped at #10913, #1996)
+      const accruedMaxHpFixed = this.getPlayerAccruedMaxHpFixed(player)
       const takeFixed = Math.trunc((player.manaFixed * shrineMeta.arg0) / 100)
       player.manaFixed = Math.max(0, player.manaFixed - takeFixed)
       const addHpFixed = Math.trunc((takeFixed * shrineMeta.arg1) / 100)
-      player.hpFixed = Math.min(player.maxHpFixed, player.hpFixed + addHpFixed)
+      player.hpFixed = Math.min(accruedMaxHpFixed, player.hpFixed + addHpFixed)
+      player.maxHp = Math.max(1, Math.floor(accruedMaxHpFixed / FIXED_ONE))
       player.hp = Math.ceil(player.hpFixed / FIXED_ONE)
       player.mana = Math.floor(player.manaFixed / FIXED_ONE)
       this.emitPlayerVitals(player)
@@ -1760,11 +1800,18 @@ function operateWell113c(this: GameInstanceHost, player: InternalPlayerRecord, o
     player.staminaFixed = Math.max(0, player.stamina * FIXED_ONE)
   }
 
+  const accruedMaxHpFixed = this.getPlayerAccruedMaxHpFixed(player)
+  const accruedMaxManaFixed = this.getPlayerAccruedMaxManaFixed(player)
+  const accruedMaxStaminaFixed = this.getPlayerAccruedMaxStaminaFixed(player)
+  player.maxHp = Math.max(1, Math.floor(accruedMaxHpFixed / FIXED_ONE))
+  player.maxMana = Math.max(0, Math.floor(accruedMaxManaFixed / FIXED_ONE))
+  player.maxStamina = Math.max(1, Math.floor(accruedMaxStaminaFixed / FIXED_ONE))
+
   let bUsed = false
 
-  if ((parm3 & 2) !== 0 && player.hpFixed < player.maxHpFixed) {
-    const deltaHp = computeWellHealDeltaFixed113c(player.maxHpFixed, parm1)
-    player.hpFixed = Math.min(player.maxHpFixed, player.hpFixed + deltaHp)
+  if ((parm3 & 2) !== 0 && player.hpFixed < accruedMaxHpFixed) {
+    const deltaHp = computeWellHealDeltaFixed113c(accruedMaxHpFixed, parm1)
+    player.hpFixed = Math.min(accruedMaxHpFixed, player.hpFixed + deltaHp)
     player.hp = Math.min(player.maxHp, Math.ceil(player.hpFixed / FIXED_ONE))
     this.emitToPlayer(player.unitId, {
       type: 'UnitStatUpdate',
@@ -1776,9 +1823,9 @@ function operateWell113c(this: GameInstanceHost, player: InternalPlayerRecord, o
     bUsed = true
   }
 
-  if ((parm3 & 1) !== 0 && player.manaFixed < player.maxManaFixed) {
-    const deltaMana = computeWellHealDeltaFixed113c(player.maxManaFixed, parm1)
-    player.manaFixed = Math.min(player.maxManaFixed, player.manaFixed + deltaMana)
+  if ((parm3 & 1) !== 0 && player.manaFixed < accruedMaxManaFixed) {
+    const deltaMana = computeWellHealDeltaFixed113c(accruedMaxManaFixed, parm1)
+    player.manaFixed = Math.min(accruedMaxManaFixed, player.manaFixed + deltaMana)
     player.mana = Math.min(player.maxMana, Math.floor(player.manaFixed / FIXED_ONE))
     this.emitToPlayer(player.unitId, {
       type: 'UnitStatUpdate',
@@ -1790,11 +1837,11 @@ function operateWell113c(this: GameInstanceHost, player: InternalPlayerRecord, o
     bUsed = true
   }
 
-  if (player.staminaFixed < player.maxStaminaFixed) {
-    const deltaStamina = computeWellHealDeltaFixed113c(player.maxStaminaFixed, parm1)
-    player.staminaFixed = Math.min(player.maxStaminaFixed, player.staminaFixed + deltaStamina)
+  if (player.staminaFixed < accruedMaxStaminaFixed) {
+    const deltaStamina = computeWellHealDeltaFixed113c(accruedMaxStaminaFixed, parm1)
+    player.staminaFixed = Math.min(accruedMaxStaminaFixed, player.staminaFixed + deltaStamina)
     player.stamina = Math.min(player.maxStamina, Math.floor(player.staminaFixed / FIXED_ONE))
-    if (player.staminaFixed * 4 >= player.maxStaminaFixed) {
+    if (player.staminaFixed * 4 >= accruedMaxStaminaFixed) {
       player.staminaExhausted = false
     }
     this.emitToPlayer(player.unitId, {
@@ -2619,8 +2666,8 @@ function syncDenOfEvilProgress113c(this: GameInstanceHost,
         quests: new Uint16Array([questIndex]),
         questStatus: {
           questId: questIndex,
-          alertFlags: 0,
-          filterStatus: 3,
+          alertFlags: 0x20,
+          filterStatus: 4,
           extra: remainingCount,
         },
       })

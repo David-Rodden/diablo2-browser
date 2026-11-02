@@ -10,21 +10,33 @@ import { CANONICAL_QUESTS_BY_ACT } from '../../common/data/canonical-quest-data.
 export interface QuestFlagInfo113c {
   readonly act: number
   readonly wordIndex: number
+  /** Canonical 1.13c `D2QuestDataStrc.nQuest` protocol ID (`0x01..0x24`, `D2Client.dll` `0x6fba8188`). */
+  readonly protocolId: number
   readonly titleEn: string
 }
 
 const ACT_BASE: Readonly<Record<number, number>> = { 1: 1, 2: 9, 3: 17, 4: 25, 5: 35 }
+const ACT_PROTOCOL_BASE: Readonly<Record<number, number>> = {
+  1: 0x01,
+  2: 0x08,
+  3: 0x0f,
+  4: 0x16,
+  5: 0x1f,
+}
 
 export const QUEST_INFO_BY_ID_113C: ReadonlyMap<string, QuestFlagInfo113c> = (() => {
   const out = new Map<string, QuestFlagInfo113c>()
   for (const act of [1, 2, 3, 4, 5]) {
     const base = ACT_BASE[act]!
+    const protoBase = ACT_PROTOCOL_BASE[act]!
     for (const quest of CANONICAL_QUESTS_BY_ACT[act] ?? []) {
       const m = /^qstsa(\d)q(\d)$/.exec(quest.titleKey)
       if (!m || Number(m[1]) !== act) continue
+      const slotOffset = Number(m[2]) - 1
       out.set(quest.id, {
         act,
-        wordIndex: base + Number(m[2]) - 1,
+        wordIndex: base + slotOffset,
+        protocolId: protoBase + slotOffset,
         titleEn: quest.titleEn,
       })
     }
@@ -50,6 +62,15 @@ export const QUEST_FLAG_LEAVE_BEFORE_113C = 0x8000 // QFLAG_LEAVINGGAME / QFLAG_
 
 export function questWordIndex113c(questId: string): number | undefined {
   return QUEST_INFO_BY_ID_113C.get(questId)?.wordIndex
+}
+
+/**
+ * Returns the 1.13c `D2QuestDataStrc.nQuest` protocol ID (`0x01..0x06`, `0x08..0x0d`,
+ * `0x0f..0x14`, `0x16..0x18`, `0x1f..0x24`) encoded in `S2C 0x5D` (`QUESTS_StatusCallback`
+ * @ `D2Game.dll` `0x6fc55579`) and matched by `D2Client.dll` `0x6facc890` (`questLogRowIndex`).
+ */
+export function questProtocolId113c(questId: string): number | undefined {
+  return QUEST_INFO_BY_ID_113C.get(questId)?.protocolId
 }
 
 export function hasQuestFlag113c(
@@ -182,6 +203,164 @@ export function computeA2Q6StatusByte113c(
     return inDurielsLair ? 2 : 1
   }
   return 0
+}
+
+export interface QuestStatusFilterContext113c {
+  readonly playerAreaId?: number | undefined
+  readonly itemCodes?: ReadonlySet<string> | undefined
+  readonly denRemaining?: number | undefined
+  readonly barbsRemaining?: number | undefined
+}
+
+/**
+ * Resolves the 1.13c `S2C 0x52` / `S2C 0x5D` quest status byte (`0..14`) for any of the 27
+ * playable quests (`D2Game.dll` `0x6fc53a30` `QUESTS_DefaultStatusFilter` + per-quest
+ * `pfnStatusFilter` callbacks invoked by `QUESTS_StatusCallback` `0x6fc554f0` and
+ * `QUESTS_SendLogUpdate` `0x6fc55640`).
+ */
+export function computeQuestStatusByte113c(
+  questId: string,
+  quests: ArrayLike<number>,
+  ctx: QuestStatusFilterContext113c = {},
+): number {
+  const idx = questWordIndex113c(questId)
+  if (idx === undefined) return 0
+  const hasCode = (code: string): boolean => ctx.itemCodes?.has(code) === true
+  if (questId === 'a3q1') {
+    return computeA3Q1StatusByte113c(quests, hasCode('j34'), hasCode('g34'))
+  }
+  if (questId === 'a2q6') {
+    return computeA2Q6StatusByte113c(quests, ctx.playerAreaId === 73)
+  }
+  const w = (quests[idx] ?? 0) & 0xffff
+  const completed = (w & QUEST_FLAG_COMPLETED_113C) !== 0
+  const completedNow = (w & QUEST_FLAG_COMPLETED_NOW_113C) !== 0
+  const rewardPending = (w & QUEST_FLAG_REWARD_PENDING_113C) !== 0
+  const primaryDone = (w & QUEST_FLAG_PRIMARY_GOAL_DONE_113C) !== 0
+  const started = (w & QUEST_FLAG_STARTED_113C) !== 0
+
+  if (completed) {
+    if (questId === 'a3q2') {
+      return completedNow ? 14 : 12
+    }
+    return completedNow ? 13 : 11
+  }
+
+  switch (questId) {
+    case 'a1q1': {
+      if (rewardPending) return 5
+      const den = ctx.denRemaining
+      if (started && den !== undefined && den >= 1 && den <= 5) return 4
+      if (started) return ctx.playerAreaId === 8 ? 2 : 1
+      return 0
+    }
+    case 'a1q2':
+      if (rewardPending) return 3
+      return started ? (ctx.playerAreaId === 17 ? 2 : 1) : 0
+    case 'a1q5':
+      if (rewardPending) return 10
+      if (hasCode('hdm')) return 2
+      return started ? 1 : 0
+    case 'a1q3':
+      if (rewardPending) return 10
+      if (hasCode('bkd')) return 3
+      if (hasCode('bks')) return 2
+      return started ? (ctx.playerAreaId === 38 ? 4 : 1) : 0
+    case 'a1q4':
+      if (started) {
+        return ctx.playerAreaId !== undefined && ctx.playerAreaId >= 21 && ctx.playerAreaId <= 25
+          ? 2
+          : 1
+      }
+      return 0
+    case 'a1q6':
+      if (rewardPending || primaryDone) return 3
+      return started ? (ctx.playerAreaId === 37 ? 2 : 1) : 0
+    case 'a2q1':
+      if (rewardPending) return 3
+      return started ? (ctx.playerAreaId === 49 ? 2 : 1) : 0
+    case 'a2q2':
+      if (hasCode('hst')) return 5
+      if (hasCode('box') && (hasCode('msf') || hasCode('vip'))) return 3
+      return started || hasCode('box') || hasCode('msf') || hasCode('vip') ? 2 : 0
+    case 'a2q3':
+      if (rewardPending) return 3
+      return started ? 2 : 0
+    case 'a2q4':
+      if (rewardPending) return 5
+      return started ? (ctx.playerAreaId === 74 ? 4 : 2) : 0
+    case 'a2q5':
+      if (rewardPending) return 4
+      return started ? 2 : 0
+    case 'a3q4':
+      if (rewardPending || hasCode('bbb')) return 2
+      return started ? 1 : 0
+    case 'a3q3':
+      if (hasCode('qf2')) return 6
+      if (hasCode('qey') && hasCode('qhr') && hasCode('qbr') && hasCode('qf1')) return 5
+      return started || hasCode('qey') || hasCode('qhr') || hasCode('qbr') || hasCode('qf1') ? 1 : 0
+    case 'a3q2':
+      if (rewardPending || hasCode('g33')) return 4
+      return started ? 2 : 0
+    case 'a3q5':
+      if (rewardPending) return 4
+      return started ? 3 : 0
+    case 'a3q6':
+      if (rewardPending || primaryDone) return 4
+      return started ? (ctx.playerAreaId === 102 ? 4 : 2) : 0
+    case 'a4q1':
+      if (rewardPending) return 4
+      return started ? 1 : 0
+    case 'a4q3':
+      if (primaryDone) return 2
+      return started ? 1 : 0
+    case 'a4q2':
+      if (rewardPending) return 2
+      return started || hasCode('mss') || hasCode('hfh') ? 1 : 0
+    case 'a5q1':
+      if (rewardPending) return 4
+      return started ? 1 : 0
+    case 'a5q2': {
+      if (rewardPending) return 3
+      const barbs = ctx.barbsRemaining
+      if (barbs !== undefined && barbs > 0 && barbs < 15) return 2
+      return started ? 1 : 0
+    }
+    case 'a5q3':
+      if (rewardPending) {
+        return (w & QUEST_FLAG_CUSTOM_8_113C) !== 0 ? 6 : 5
+      }
+      if (hasCode('ice')) return 4
+      return started ? 1 : 0
+    case 'a5q4':
+      if (rewardPending) return 5
+      return started ? 1 : 0
+    case 'a5q5':
+      if (rewardPending) return 3
+      return started ? 2 : 0
+    case 'a5q6':
+      if (rewardPending || primaryDone) return 4
+      return started ? (ctx.playerAreaId === 132 ? 3 : 1) : 0
+    default:
+      return started || rewardPending || primaryDone ? 1 : 0
+  }
+}
+
+/**
+ * Builds the canonical 41-byte `S2C 0x52` (`QUESTS_SendLogUpdate` @ `D2Game.dll` `0x6fc5567c..0x6fc55730`)
+ * quest status filter array (`statusBytes[0..40]`) indexed by `wordIndex` / `QUEST_LOG_DESCRIPTORS` row.
+ */
+export function computeQuestStatusBytes113c(
+  quests: ArrayLike<number>,
+  ctx: QuestStatusFilterContext113c = {},
+): Uint8Array {
+  const bytes = new Uint8Array(41)
+  for (const [questId, info] of QUEST_INFO_BY_ID_113C.entries()) {
+    if (info.wordIndex >= 0 && info.wordIndex < bytes.length) {
+      bytes[info.wordIndex] = computeQuestStatusByte113c(questId, quests, ctx) & 0xff
+    }
+  }
+  return bytes
 }
 
 /**

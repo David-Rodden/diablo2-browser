@@ -299,7 +299,7 @@ function mercCombatContext(this: GameInstanceHost, merc: InternalMercenaryRecord
   // so item-granted `Meditation` (#120, `Insight`) / `Cleansing` (#109, `Cure`) on an Act 2 `Prayer` (#99)
   // mercenary evaluates `skill('Prayer'.edns)` (`blvl > 0`) for 1.13c "Double Prayer" heal synergy.
   let allSkillsBonus = 0
-  for (const item of merc.equipment) {
+  for (const item of merc.equipment ?? []) {
     for (const stat of collectItemStats(item)) {
       if (stat.statId === STAT_ITEM_ALLSKILLS && stat.value > 0) {
         allSkillsBonus += stat.value
@@ -1104,6 +1104,7 @@ function pulsePlayerItemAuraRuntime113c(this: GameInstanceHost,
       !m.dead &&
       !m.isNpc &&
       m.isKillable &&
+      m.align === 0 &&
       !this.isMonsterConverted(m) &&
       m.areaId === owner.areaId &&
       inRange(m.x, m.y),
@@ -1249,7 +1250,7 @@ function stepPlayerAuras(this: GameInstanceHost): void {
       selfPlayerCtx: ownerCtx,
     })
     const enemyRecords = [...this.monsters.values()].filter(
-      (m) => !m.dead && !m.isNpc && m.isKillable && !this.isMonsterConverted(m) && m.areaId === owner.areaId && inRange(m.x, m.y),
+      (m) => !m.dead && !m.isNpc && m.isKillable && m.align === 0 && !this.isMonsterConverted(m) && m.areaId === owner.areaId && inRange(m.x, m.y),
     )
     const corpseRecords = [...this.monsters.values()].filter(
       (m) => this.canSelectMonsterCorpse113c(m, false) && m.areaId === owner.areaId && inRange(m.x, m.y),

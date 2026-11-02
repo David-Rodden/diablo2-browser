@@ -39,9 +39,11 @@ healer/caster; neither is a corpse resurrector.
 | 4 `Bighead` | A2 lightning gated by hurt % and healthy/hurt fire chances | `aip1`, `aip3`, `aip4` |
 | 5 `BloodHawk` | charge burst | fixed 60-frame delay |
 | 8 `SandRaider` | charge delay | `aip5` |
+| 13 `FallenShaman` | `#181 Resurrect` (`aip1` %, `aip4` scan radius, wall LOS `0xC`, melee first) | `aip1`, `aip3`, `aip4`, `aip5` |
 | 15 `SandMaggot` | egg laying (max 2, batch 2) | `aip3`, `aip5` |
 | 16/142 `ClawViper` | charge + shoot distance | `aip2`, `aip5` |
 | 17 `SandLeaper` | leap burst | fixed 45-frame delay |
+| 22 `GreaterMummy` | `#182 Bestow` heal (`aip3` %) + `#327 Resurrect2` (`aip2` %, `aip5` radius `+10` & LOS bypass on `#229` Radament) | `aip1`, `aip2`, `aip3`, `aip4`, `aip5` |
 | 23 `Vulture` | prefers targets below the wounded threshold | `aip4` |
 | 24 `Mosquito` | life drain on a successful hit | profile drain |
 | 26 `Arach` | retreat below hurt % to run distance | `aip5`, `aip4` |
@@ -49,6 +51,7 @@ healer/caster; neither is a corpse resurrector.
 | 28 `Vampire` | life drain + kiting | profile drain/kite |
 | 29 `BatDemon` | life drain | profile drain |
 | 44 `Duriel` | charge | fixed 150-frame delay |
+| 53 `FetishShaman` | `#188 FetishInferno` close priority + `#327 Resurrect2` (`aip1` %, `aip3` approach distance, `aip5` scan radius, `aip2 >= 3` LOS bypass) | `aip1`, `aip2`, `aip3`, `aip5` |
 | 68 `VileMother` | VileDog spawn cap and batch | `aip1`, `aip2`, `aip3` |
 | 85 `HighPriest` | heals the most wounded ally in range before casting Hydra | `aip6` |
 | 114 `ReanimatedHorde` | charge | fixed 90-frame delay |

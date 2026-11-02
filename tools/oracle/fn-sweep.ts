@@ -19,7 +19,7 @@ import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { getSharedDataRegistry } from '../../src/baker/mpq-archive-source.ts'
 import type { D2DataRegistry } from '../../src/common/data/data-registry.ts'
-import { HYPOTHESES } from './fn-sweep-hypotheses.ts'
+import { FIX_LOG, HYPOTHESES } from './fn-sweep-hypotheses.ts'
 import {
   type FnLine,
   type FnFileHeader,
@@ -93,8 +93,9 @@ const SKILL_OPS: readonly { fn: FnLine['f']; op: number; x: number }[] = [
   { fn: 'elmax', op: OP.ELMAX, x: 0 },
   { fn: 'elmax', op: OP.ELMAX, x: 1 },
   { fn: 'elen', op: OP.ELEN, x: 0 },
-  { fn: 'phmin', op: OP.PHMIN, x: 0 },
-  { fn: 'phmax', op: OP.PHMAX, x: 0 },
+  // D2Common #10297 (0x6FDA1FF0, OP 6) computes MaxDam/MaxLevDam (kick /3); #10567 (0x6FDA2100, OP 7) computes MinDam/MinLevDam (kick /4).
+  { fn: 'phmax', op: OP.PHMIN, x: 0 },
+  { fn: 'phmin', op: OP.PHMAX, x: 0 },
   { fn: 'tohit', op: OP.TOHIT, x: 0 },
   { fn: 'rawmana', op: OP.RAWMANA, x: 0 },
 ]
@@ -170,17 +171,28 @@ function planSkills(p: PlanCtx, cats: ReadonlySet<CategoryId>): void {
       statRefs.forEach((id, k) => p.out.push({ req: [OP.GETSTAT, id, 0], snap: 'stat', snapId: -1 - id, cfgStart: k === 0 }))
       const ranges: [number, number][] = c === 0 ? [[1, 60], [61, 100]] : [[1, 60]]
       const base = { s, h: hard, st }
+      const hasRand = (expr: string): boolean => /\brand\s*\(/i.test(expr)
       for (const [lo, hi] of ranges) {
         if (cats.has('skills')) {
           for (const f of cols) {
-            p.out.push({ req: [OP.RANGE, OP.SKFORM, lo, hi, s, f.off], line: { cat: 'skills', f: 'skform', x: f.off, lo, ...base } })
+            const skipRand = hasRand(skillCalcText(reg, skill, f.off))
+            p.out.push({
+              req: [OP.RANGE, OP.SKFORM, lo, hi, s, f.off],
+              line: { cat: 'skills', f: 'skform', x: f.off, lo, ...base },
+              ...(skipRand ? { skipIf: () => true } : {}),
+            })
           }
           for (const o of SKILL_OPS) {
             p.out.push({ req: [OP.RANGE, o.op, lo, hi, s, o.x], line: { cat: 'skills', f: o.fn, x: o.x, lo, ...base } })
           }
           if (c === 0 || c === 2) {
             for (let code = 0; code < SKILLCALC_CODES.length; code++) {
-              p.out.push({ req: [OP.RANGE, OP.SKCALC, lo, hi, s, code], line: { cat: 'skills', f: 'skcalc', x: code, lo, ...base } })
+              const skipRand = code === 55 && hasRand(skill.calc1)
+              p.out.push({
+                req: [OP.RANGE, OP.SKCALC, lo, hi, s, code],
+                line: { cat: 'skills', f: 'skcalc', x: code, lo, ...base },
+                ...(skipRand ? { skipIf: () => true } : {}),
+              })
             }
           }
         }
@@ -192,7 +204,14 @@ function planSkills(p: PlanCtx, cats: ReadonlySet<CategoryId>): void {
       }
       if (c === 0 && cats.has('skills')) {
         for (const l of EXTREME_LVLS) {
-          for (const f of cols) p.out.push({ req: [OP.RANGE, OP.SKFORM, l, l, s, f.off], line: { cat: 'skills', f: 'skform', x: f.off, lo: l, ...base } })
+          for (const f of cols) {
+            const skipRand = hasRand(skillCalcText(reg, skill, f.off))
+            p.out.push({
+              req: [OP.RANGE, OP.SKFORM, l, l, s, f.off],
+              line: { cat: 'skills', f: 'skform', x: f.off, lo: l, ...base },
+              ...(skipRand ? { skipIf: () => true } : {}),
+            })
+          }
           for (const o of SKILL_OPS) p.out.push({ req: [OP.RANGE, o.op, l, l, s, o.x], line: { cat: 'skills', f: o.fn, x: o.x, lo: l, ...base } })
         }
       }
@@ -813,6 +832,12 @@ function writeReport(o: {
     L.push(`| ${id} | ${o.reg.getSkillById(id)?.name ?? '?'} | ${v.n} | ${v.ok} | ${pct(v.ok, v.n)} |`)
   }
   L.push('')
+  if (FIX_LOG.length) {
+    L.push('## TS fixes applied from this sweep')
+    L.push('')
+    for (const f of FIX_LOG) L.push(`- ${f}`)
+    L.push('')
+  }
   L.push('## Mismatch classes')
   L.push('')
   L.push('Class key = `category|function|argument|level band`. Each class lists the minimized counterexample')

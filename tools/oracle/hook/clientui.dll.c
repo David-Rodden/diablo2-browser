@@ -450,9 +450,118 @@ static void dump_all(uint8_t *game) {
 }
 
 /* ------------------------------------------------------------ frame */
+/* ------------------------------------------------------------ inputs */
+/* Scenario inputs, copied from d2oracle.c (same C:\oracle\scenario.txt "in F
+ * hex" lines): C2S dispatcher D2Game 0x6FCEC550, ebx = packet, esi = player
+ * unit, stack pGame, nSize (callee pops 8); an input tagged F is delivered
+ * before GAME_UpdateGameFrame while dwGameFrame == F-1. */
+void *g_c2s_dispatch;
+void *g_cd_game, *g_cd_player, *g_cd_pkt; /* referenced from asm */
+uint32_t g_cd_len, g_cd_ret;
+
+typedef struct {
+  uint32_t frame;
+  uint32_t len;
+  uint8_t data[64];
+} Input;
+static Input g_inputs[1024];
+static int g_ninputs, g_next_input, g_ninjected;
+
+/* "capture F LABEL": dump the display values at the end of game frame F.
+ * Without capture lines: one dump 75 frames (settle) after the client player
+ * appears, labelled "town". */
+typedef struct {
+  uint32_t frame;
+  char label[32];
+} Capture;
+static Capture g_caps[16];
+static int g_ncaps, g_next_cap;
+
+static uint32_t c2s_dispatch(void *game, void *player, uint8_t *pkt, uint32_t len) {
+  g_cd_game = game;
+  g_cd_player = player;
+  g_cd_pkt = pkt;
+  g_cd_len = len;
+  __asm__ volatile(
+      "pushal\n\t"
+      "mov _g_cd_pkt, %%ebx\n\t"
+      "mov _g_cd_player, %%esi\n\t"
+      "push _g_cd_len\n\t"
+      "push _g_cd_game\n\t"
+      "call *_g_c2s_dispatch\n\t"
+      "mov %%eax, _g_cd_ret\n\t"
+      "popal\n\t" ::: "memory");
+  return g_cd_ret;
+}
+
+static void load_scenario(void) {
+  FILE *f = fopen(ORACLE_DIR "scenario.txt", "r");
+  if (!f) return;
+  char line[512];
+  while (fgets(line, sizeof line, f)) {
+    char hex[256];
+    unsigned fr;
+    if (sscanf(line, "in %u %255s", &fr, hex) == 2 && g_ninputs < 1024) {
+      Input *in = &g_inputs[g_ninputs];
+      in->frame = fr;
+      in->len = 0;
+      for (char *h = hex; h[0] && h[1] && in->len < 64; h += 2) {
+        unsigned b;
+        sscanf(h, "%2x", &b);
+        in->data[in->len++] = (uint8_t)b;
+      }
+      g_ninputs++;
+    } else if (g_ncaps < 16 && sscanf(line, "capture %u %31s", &fr, g_caps[g_ncaps].label) == 2) {
+      g_caps[g_ncaps++].frame = fr;
+    }
+  }
+  fclose(f);
+  logf_("scenario: %d inputs, %d captures", g_ninputs, g_ncaps);
+}
+
+static uint8_t *server_player(uint8_t *game) {
+  for (int b = 0; b < 128; b++) {
+    uint8_t *u = (uint8_t *)(uintptr_t)RD32(game, 0x1120 + b * 4);
+    if (u) return u;
+  }
+  return NULL;
+}
+
+void __cdecl on_pre_frame(uint8_t *game) {
+  uint32_t next = RD32(game, 0xA8) + 1;
+  while (g_next_input < g_ninputs && g_inputs[g_next_input].frame <= next) {
+    Input *in = &g_inputs[g_next_input++];
+    uint8_t *pl = server_player(game);
+    if (pl) {
+      c2s_dispatch(game, pl, in->data, in->len);
+      g_ninjected++;
+    }
+  }
+}
+
+/* ------------------------------------------------------------ frame */
 static uint32_t g_ready_frame;
 static int g_done;
 static int g_settle = 75;
+
+static void finish(void) {
+  g_done = 1;
+  if (g_out) fclose(g_out);
+  g_out = NULL;
+  FILE *d = fopen(ORACLE_DIR "out\\done", "w");
+  if (d) fclose(d);
+}
+
+static void capture(uint8_t *game, uint8_t *pl, const char *label) {
+  g_pl = pl;
+  if (!g_out) g_out = fopen(ORACLE_DIR "out\\ui.ndjson", "wb");
+  if (!g_out) return;
+  fprintf(g_out, "{\"kind\":\"capture\",\"label\":\"%s\",\"frame\":%u,\"inputs\":%d}\n", label, RD32(game, 0xA8),
+          g_ninjected);
+  dump_all(game);
+  fflush(g_out);
+  logf_("capture %s at frame %u", label, RD32(game, 0xA8));
+}
 
 void __cdecl on_frame(uint8_t *game) {
   InterlockedIncrement(&g_frames);
@@ -460,26 +569,32 @@ void __cdecl on_frame(uint8_t *game) {
   uint8_t *pl = (uint8_t *)(uintptr_t)RD32(K(K_PLAYER), 0);
   if (!pl) return;
   uint32_t fr = RD32(game, 0xA8);
+  if (g_ncaps) {
+    while (g_next_cap < g_ncaps && fr >= g_caps[g_next_cap].frame) {
+      capture(game, pl, g_caps[g_next_cap].label);
+      g_next_cap++;
+    }
+    if (g_next_cap >= g_ncaps) finish();
+    return;
+  }
   if (!g_ready_frame) {
     g_ready_frame = fr + (uint32_t)g_settle;
     logf_("client player %p class %u at frame %u", (void *)pl, RD32(pl, 4), fr);
     return;
   }
   if (fr < g_ready_frame) return;
-  g_done = 1;
-  g_pl = pl;
-  g_out = fopen(ORACLE_DIR "out\\ui.ndjson", "wb");
-  if (g_out) {
-    dump_all(game);
-    fclose(g_out);
-  }
-  logf_("dump finished at frame %u", fr);
-  FILE *d = fopen(ORACLE_DIR "out\\done", "w");
-  if (d) fclose(d);
+  capture(game, pl, "town");
+  finish();
 }
 
+/* Original: eax = pGame, no stack args, caller-saved regs clobbered. */
 __attribute__((naked)) static void frame_stub(void) {
   __asm__ volatile(
+      "pushal\n\t"
+      "push %%eax\n\t"
+      "call _on_pre_frame\n\t"
+      "add $4, %%esp\n\t"
+      "popal\n\t"
       "push %%eax\n\t"
       "call *%0\n\t"
       "pop %%eax\n\t"
@@ -521,6 +636,7 @@ static DWORD WINAPI oracle_thread(LPVOID unused) {
   g_log = fopen(ORACLE_DIR "out\\log.txt", "w");
   logf_("clientui loaded");
   load_settings();
+  load_scenario();
   AddVectoredExceptionHandler(1, veh);
   for (;;) {
     HMODULE m = GetModuleHandleA("D2Game.dll");
@@ -540,6 +656,7 @@ static DWORD WINAPI oracle_thread(LPVOID unused) {
   /* #10306 through the D2Client import slot used by 0x6FABC718. */
   g_skilllevel_fn = *(uintptr_t *)K(0x6FB7E804);
   g_frame_fn = (void *)G(0x6FC4E050);
+  g_c2s_dispatch = (void *)G(0x6FCEC550);
   int ok = patch_call(G(0x6FC4E2DB), frame_stub, (uintptr_t)g_frame_fn) +
            patch_call(G(0x6FC72712), frame_stub, (uintptr_t)g_frame_fn);
   logf_("D2Game %p D2Common %p D2Client %p: %d/2 frame hooks, settle %d", (void *)g_d2game, (void *)g_d2common,

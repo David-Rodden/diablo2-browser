@@ -6,9 +6,10 @@ import { getEmbeddedDropTables } from '../../../common/items/embedded-drop-table
 import { resolveArmorBlock113c, resolveWeaponBase113c } from '../../../common/units/char-anim-speed.ts'
 import type { DeathKillerKind113c } from '../../../common/progression/experience-113c.ts'
 import { MONSTATS_113C_ROWS } from '../../../common/units/monstats-113c-data.ts'
-import { monaiParam113c } from '../../../common/units/monai-113c.ts'
+import { monaiParam113c, normalizeMonAiName113c } from '../../../common/units/monai-113c.ts'
 import { MON_UMOD } from '../../../common/units/monster-death-fx.ts'
-import { CURSED_PROC_CHANCE_PCT_113C, computeCursedAmplifyDamage113c, computeManaBurnDrainFixed113c, rollEnchantedAttackBonus113c } from '../../ai/monumod-113c.ts'
+import { CURSED_PROC_CHANCE_PCT_113C, computeCursedAmplifyDamage113c, computeManaBurnDrainFixed113c, isPhysicalOrWeaponMonsterHit113c, rollEnchantedAttackBonus113c } from '../../ai/monumod-113c.ts'
+import { scaleMonStatsPoisonRider113c } from '../../ai/monster-missile-damage-113c.ts'
 import { computeEquippedArmorPieceDefense113c, computeWornSetSiblingMasks113c } from '../../items/server-item-data.ts'
 import type { SummonedPetUnit } from '../../ai/summon-manager.ts'
 import { executeSUnitDmg, getPrePierceResistance113c, rollItemKnockback113c, type CombatUnitContext } from '../combat-pipeline.ts'
@@ -18,7 +19,7 @@ import { computeDiminishingReturns } from '../../../common/data/calc-ast.ts'
 import { difficultyMonsterColdDivisor, difficultyMonsterFreezeDivisor, difficultyResistPenalty } from '../difficulty-resist-penalty.ts'
 import type { GameInstanceHost } from './host.ts'
 import type { InternalMonsterRecord, InternalPlayerRecord, MissileDamageChannel } from './types.ts'
-import { monUmodConstant113c, monsterProfile113c, normalizeMissileElement, playerWirePosition, resolveArmorCombatMeta113c } from './constants-and-helpers.ts'
+import { monsterProfile113c, normalizeMissileElement, playerWirePosition, resolveArmorCombatMeta113c } from './constants-and-helpers.ts'
 
 
 /** Pick the 1.13c melee mode (A1/A2/S1) and schedule damage on its action frame. */
@@ -166,6 +167,8 @@ function stepPendingResurrection(this: GameInstanceHost, monster: InternalMonste
     corpse === undefined ||
     !corpse.dead ||
     corpse.shattered ||
+    corpse.corpseConsumed ||
+    corpse.states.has(104) ||
     corpse.areaId !== monster.areaId
   ) {
     return
@@ -272,6 +275,14 @@ function rollMonsterElementalRider(this: GameInstanceHost,
     if (element === undefined || element === 'phys') continue
     const min = Math.max(0, el.minDamage ?? el.min ?? 0)
     const max = Math.max(min, el.maxDamage ?? el.max ?? min)
+    if (element === 'pois') {
+      const pois = scaleMonStatsPoisonRider113c(min, max, el.durationFrames ?? 25)
+      return {
+        element,
+        damage: this.rollInclusive(pois.minCumulHp, pois.maxCumulHp),
+        durationFrames: pois.durationFrames,
+      }
+    }
     return {
       element,
       damage: this.rollInclusive(min, max),
@@ -577,6 +588,8 @@ function resolveMonsterAttackOnPlayer(this: GameInstanceHost,
     readonly attackKind?: 'melee' | 'missile' | undefined
     readonly skillId?: number | undefined
     readonly missileId?: number | undefined
+    /** Skill `%AR` bonus (`Skills.txt` `ToHit` / `ToHitCalc`, e.g. Charge `+50%+15%/lvl`, Jab `+10%+9%/lvl`). */
+    readonly arBonusPct?: number | undefined
     /** Explicit projectile element (Missiles.txt EType) instead of a MonStats El1..3 rider. */
     readonly elementType?: MissileDamageChannel | undefined
     readonly elemMin?: number | undefined
@@ -584,10 +597,12 @@ function resolveMonsterAttackOnPlayer(this: GameInstanceHost,
     readonly elemDurationFrames?: number | undefined
     /** Projectile hits must not re-roll the monster's melee El1..3 rider. */
     readonly fromMissile?: boolean | undefined
-    /** Death-effect novae bypass to-hit/block but still apply resistances. */
+    /** Death-effect novae or `ResultFlags & 1` skills bypass `RollToHit` vs Defense. */
     readonly autoHit?: boolean | undefined
+    /** Explicit block override (e.g. `false` on `#198 DiabRun` / `#301 Stomp` so Shield Block still rolls). */
+    readonly unblockable?: boolean | undefined
   },
-): void {
+): boolean {
   const attackerCtx = this.buildMonsterAttackerContext(monster, swing?.skillMode ?? 'A1')
 
   const defenderStats = new UnitStatList(this.registry, undefined, {
@@ -892,7 +907,7 @@ function resolveMonsterAttackOnPlayer(this: GameInstanceHost,
 
   const swingMode = swing?.skillMode ?? 'A1'
   const rider =
-    swing?.fromMissile === true && swing.elementType === undefined
+    swing?.fromMissile === true
       ? undefined
       : monster.elementalAttacks.find(
           (entry) =>
@@ -915,7 +930,7 @@ function resolveMonsterAttackOnPlayer(this: GameInstanceHost,
                 ? 'fire'
                 : undefined
   const equipElem =
-    swing?.fromMissile !== true || swing.skillId === 0
+    swing?.fromMissile !== true || (swing.skillId === 0 && (swing.minDmg ?? 0) + (swing.maxDmg ?? 0) > 0)
       ? monster.monEquipLoadout
       : undefined
   const equipElemType =
@@ -960,28 +975,45 @@ function resolveMonsterAttackOnPlayer(this: GameInstanceHost,
               ? equipElem.poisMaxDamage
               : equipElem.magicMaxDamage
       : 0
+  const riderPoisScaled =
+    swing?.fromMissile !== true && elementalType === 'pois' && rider !== undefined
+      ? scaleMonStatsPoisonRider113c(
+          rider.minDamage ?? rider.min ?? 0,
+          rider.maxDamage ?? rider.max ?? 0,
+          rider.durationFrames ?? rider.duration ?? 25,
+        )
+      : undefined
   const rawElemMin =
-    (swing?.fromMissile === true ? (swing.elemMin ?? 0) : (rider?.minDamage ?? rider?.min ?? 0)) +
-    equipElemMin
+    (swing?.fromMissile === true
+      ? (swing.elemMin ?? 0)
+      : riderPoisScaled !== undefined
+        ? riderPoisScaled.minCumulHp
+        : (rider?.minDamage ?? rider?.min ?? 0)) + equipElemMin
   const rawElemMax =
-    (swing?.fromMissile === true ? (swing.elemMax ?? 0) : (rider?.maxDamage ?? rider?.max ?? 0)) +
-    equipElemMax
+    (swing?.fromMissile === true
+      ? (swing.elemMax ?? 0)
+      : riderPoisScaled !== undefined
+        ? riderPoisScaled.maxCumulHp
+        : (rider?.maxDamage ?? rider?.max ?? 0)) + equipElemMax
   const fireMasteryScale =
     elementalType === 'fire' && monster.monProps.extraFirePct > 0
       ? (100 + monster.monProps.extraFirePct) / 100
       : 1
   const elemMin = Math.floor(rawElemMin * fireMasteryScale)
   const elemMax = Math.floor(rawElemMax * fireMasteryScale)
-  const elemDuration =
+  const rawElemDuration =
     swing?.fromMissile === true
       ? (swing.elemDurationFrames ?? (elementalType === 'cold' ? (equipElem?.coldLengthFrames ?? 0) : 0))
-      : (rider?.durationFrames ??
+      : (riderPoisScaled?.durationFrames ??
+          rider?.durationFrames ??
           rider?.duration ??
           (elementalType === 'cold'
             ? (equipElem?.coldLengthFrames ?? 0)
             : elementalType === 'pois'
               ? (equipElem?.poisLengthFrames ?? 0)
               : 0))
+  const elemDuration =
+    elementalType === 'pois' && elemMax > 0 && rawElemDuration <= 0 ? 50 : rawElemDuration
   // Pure elemental monster projectiles (`physMax <= 0 && elemMax > 0`) are spell missiles (#1796):
   // Shield Block cannot block them (`unblockable: true`), whereas Assassin dual-claw `Weapon Block` (#263)
   // and Amazon `Avoid` (#18) / `Evade` (#28) CAN!
@@ -1008,8 +1040,13 @@ function resolveMonsterAttackOnPlayer(this: GameInstanceHost,
           elemDurationFrames: elemDuration,
         }
       : {}),
+    ...(swing?.arBonusPct !== undefined ? { toHitBonusPct: swing.arBonusPct } : {}),
     ...(swing?.autoHit === true || isPureElemMonsterMissile ? { autoHit: true } : {}),
-    ...(isPureElemMonsterMissile ? { unblockable: true } : {}),
+    ...(swing?.unblockable !== undefined
+      ? { unblockable: swing.unblockable }
+      : isPureElemMonsterMissile
+        ? { unblockable: true }
+        : {}),
   }, this.rng)
 
   if (dmgOut.hit) {
@@ -1141,13 +1178,55 @@ function resolveMonsterAttackOnPlayer(this: GameInstanceHost,
       }
     }
 
-    const finalDmg = Math.floor(dmgOut.totalDamage256 / FIXED_ONE)
+    // 1.13c `SUNITDMG_ApplyPoison` (`0x6FCFCAB0`) & `SUNITDMG_ExecuteEvents` (`0x6FCFE237`, #1989):
+    // Poison damage (`poisonBitrate256 * poisonDurationFrames`) is NEVER deducted instantaneously on impact;
+    // it arms `STATE_POISON` (`2`) with `STAT_HPREGEN = -poisonBitrate256`, ticked per frame in `stepPlayerVitals`
+    // (`0x6FC97CB0`, clamped at `256` = `1 HP`).
+    const poisonBitrate256 = dmgOut.poisonBitrate256 ?? 0
+    const poisonDurationFrames = dmgOut.poisonDurationFrames ?? 0
+    const poisonTotal256 =
+      poisonBitrate256 > 0 && poisonDurationFrames > 0 ? poisonBitrate256 * poisonDurationFrames : 0
+    const instantDamage256 = Math.max(0, dmgOut.totalDamage256 - poisonTotal256)
+    const finalDmg = Math.floor(instantDamage256 / FIXED_ONE)
+    if (poisonBitrate256 > 0 && poisonDurationFrames > 0 && !player.dead) {
+      const playerCtx = this.playerCombatContext(player)
+      const prevPois = playerCtx.stateBus.getState(2) ?? playerCtx.stateBus.getState('poison')
+      const prevBitrate256 = prevPois
+        ? Math.max(0, prevPois.stats['poisonmindam'] ?? -(prevPois.stats['hpregen'] ?? 0))
+        : 0
+      if (!player.states.has(2) || prevPois === undefined || poisonBitrate256 >= prevBitrate256) {
+        playerCtx.stateBus.removeState('poison')
+        playerCtx.stateBus.applyState({
+          stateNameOrId: 2,
+          sourceUnitId: `monster_${monster.unitId}`,
+          sourceSkillId: swing?.skillId ?? 0,
+          slvl: Math.max(1, monster.level),
+          durationFrames: poisonDurationFrames,
+          currentFrame: this.currentFrame,
+          stats: {
+            hpregen: -poisonBitrate256,
+            poisonmindam: poisonBitrate256,
+            poisonlength: poisonDurationFrames,
+          },
+        })
+        this.applyUnitState(
+          player.states,
+          player.stateTimers,
+          'player',
+          player.unitId,
+          player.areaId,
+          2,
+          poisonDurationFrames,
+        )
+      }
+    }
     // 1.13c `SUNITDMG_ExecuteEvents` (`0x6FCFE237` -> `SUNITDMG_AddLife` `0x6FCFB570`):
     // Add `dwAbsorbLife` (`dmgOut.absorbHeal256`) to defender life (clamped at `maxhp`) BEFORE
     // subtracting `dwTotalDamage` (`finalDmg`).
     const absorbHeal256 = dmgOut.absorbHeal256 ?? 0
     if (absorbHeal256 > 0 && !player.dead && player.hpFixed > 0 && !player.states.has(92)) {
-      const nextHpFixed = Math.min(player.maxHpFixed, player.hpFixed + absorbHeal256)
+      const accruedMaxHpFixed = this.getPlayerAccruedMaxHpFixed(player)
+      const nextHpFixed = Math.min(accruedMaxHpFixed, player.hpFixed + absorbHeal256)
       if (nextHpFixed !== player.hpFixed) {
         player.hpFixed = nextHpFixed
         player.hp = Math.max(0, Math.ceil(player.hpFixed / FIXED_ONE))
@@ -1189,10 +1268,19 @@ function resolveMonsterAttackOnPlayer(this: GameInstanceHost,
       )
     }
     if (finalDmg > 0) {
-      // 1.13c `MonUMod #7` (`Cursed`, `D2Game.dll` `0x6FC44250`, #1904):
-      // Rolls `75%` chance (`rand(100) < 75`) to apply `#66 Amplify Damage` (`state 9`) at
-      // `slvl = floor(mlvl / 5) + 1` for `200 + 75 * (slvl - 1)` frames (scaled by `curse_resistance`).
+      const isPhysicalOrWeaponHit = isPhysicalOrWeaponMonsterHit113c({
+        autoHit: swing?.autoHit,
+        fromMissile: swing?.fromMissile,
+        physMax,
+        elemMax,
+        elementType: swing?.elementType,
+      })
+      // 1.13c `MonUMod #7` (`Cursed`, `D2Game.dll` `0x6FC44250`, boss-only `bBoss != 0`, #1904 / #1993 / #2003):
+      // Rolls `75%` chance (`rand(100) < 75`) on physical/weapon hits to apply `#66 Amplify Damage` (`state 9`)
+      // at `slvl = floor(mlvl / 5) + 1` for `200 + 75 * (slvl - 1)` frames (scaled by `curse_resistance`).
       if (
+        isPhysicalOrWeaponHit &&
+        monster.rank !== 'minion' &&
         monster.umodIds.includes(MON_UMOD.CURSE) &&
         this.rng.rand(100) < CURSED_PROC_CHANCE_PCT_113C &&
         !player.states.has(57)
@@ -1235,9 +1323,10 @@ function resolveMonsterAttackOnPlayer(this: GameInstanceHost,
           })
         }
       }
-      // 1.13c `MonUMod #25` (`Mana Burn`, `D2Game.dll` `0x6FC421D0` / `0x6FC422DD: shl esi, 0x8`, #1905):
-      // Drains `66%..100%` (`33%..50%` minion) of monster physical base damage, with melee `<< 8` (`256x`) shift.
-      if (monster.umodIds.includes(MON_UMOD.MANahit)) {
+      // 1.13c `MonUMod #25` (`Mana Burn`, `D2Game.dll` `0x6FC421D0` / `0x6FC422DD: shl esi, 0x8`, #1905 / #2003):
+      // Drains `66%..100%` (`33%..50%` minion) of monster physical base damage on physical/weapon hits,
+      // with melee `<< 8` (`256x`) shift. Pure elemental spell missiles never proc Mana Burn.
+      if (isPhysicalOrWeaponHit && monster.umodIds.includes(MON_UMOD.MANahit)) {
         const drainFixed = computeManaBurnDrainFixed113c({
           isMinion: monster.rank === 'minion',
           isMelee: swing?.fromMissile !== true,
@@ -1263,76 +1352,73 @@ function resolveMonsterAttackOnPlayer(this: GameInstanceHost,
         monster.convertedUntilFrame > this.currentFrame && monster.convertedByPlayerId > 0
           ? 'player_pet'
           : 'monster'
-      // 1.13c `MonUMod #9` (`Fire Enchanted`, `0x6FC42740`), `#17` (`Lightning Enchanted`, `0x6FC42600`),
-      // & `#36` (`Ghostly`, `0x6FC43850`) melee/physical attack elemental bonus damage (#1890, #1903).
+      // 1.13c melee/weapon elemental riders (`#9 Fire`, `#17 Lightning`, `#18 Cold`, `#23 Poison`,
+      // boss-only `#27 Spectral Hit` 1-of-5 roll, and `#36 Ghostly`; #1890, #1903, #2003).
       if (
-        swing?.autoHit !== true &&
-        (swing?.fromMissile !== true ||
-          swing?.elementType === undefined ||
-          swing?.elementType === 'phys') &&
+        isPhysicalOrWeaponHit &&
         (monster.umodIds.includes(MON_UMOD.FIRE) ||
           monster.umodIds.includes(MON_UMOD.LIGHTNING) ||
+          monster.umodIds.includes(MON_UMOD.COLD) ||
+          monster.umodIds.includes(MON_UMOD.POISON) ||
+          (monster.rank !== 'minion' && monster.umodIds.includes(MON_UMOD.SPECTRALHIT)) ||
           monster.umodIds.includes(MON_UMOD.GHOSTLY))
       ) {
         const ench = rollEnchantedAttackBonus113c({
           umodIds: monster.umodIds,
           isMinion: monster.rank === 'minion',
+          mlvl: monster.level,
           baseMinDmg: swing?.minDmg ?? monster.minDmg,
           baseMaxDmg: swing?.maxDmg ?? monster.maxDmg,
           rollInt: (lo, hi) => lo + this.rng.rand(Math.max(1, hi - lo + 1)),
         })
-        if (ench.fireDmg > 0 || ench.lightDmg > 0 || ench.coldDmg > 0) {
+        if (
+          ench.fireDmg > 0 ||
+          ench.lightDmg > 0 ||
+          ench.coldDmg > 0 ||
+          ench.magicDmg > 0 ||
+          ench.poisonDmg > 0
+        ) {
           this.applyPlayerElementalDamage(
             player,
             {
               ...(ench.fireDmg > 0 ? { fire: ench.fireDmg } : {}),
               ...(ench.lightDmg > 0 ? { light: ench.lightDmg } : {}),
               ...(ench.coldDmg > 0 ? { cold: ench.coldDmg } : {}),
+              ...(ench.magicDmg > 0 ? { mag: ench.magicDmg } : {}),
+              ...(ench.poisonDmg > 0
+                ? {
+                    pois: ench.poisonDmg,
+                    poisDurationFrames: ench.poisonFrames > 0 ? ench.poisonFrames : 50,
+                  }
+                : {}),
             },
             { skipGetHit: true, killerType: monKillerType, killerUnitId: monster.unitId },
           )
         }
-        if (ench.chillFrames > 0) {
-          this.applyUnitState(
-            player.states,
-            player.stateTimers,
-            'player',
-            player.unitId,
-            player.areaId,
-            11,
-            ench.chillFrames,
-          )
+        if (
+          ench.chillFrames > 0 &&
+          !player.dead &&
+          defenderStats.getAccruedStat('item_cannotbefrozen') <= 0
+        ) {
+          const effColdRes = this.playerResistPct(player, 'cold')
+          if (effColdRes < 100) {
+            let mitigatedChill = Math.floor((ench.chillFrames * (100 - effColdRes)) / 100)
+            if (defenderStats.getAccruedStat('item_halffreezeduration') > 0) {
+              mitigatedChill = Math.floor(mitigatedChill / 2)
+            }
+            if (mitigatedChill > 0) {
+              this.applyUnitState(
+                player.states,
+                player.stateTimers,
+                'player',
+                player.unitId,
+                player.areaId,
+                11,
+                Math.max(player.stateTimers.get(11) ?? 0, mitigatedChill),
+              )
+            }
+          }
         }
-      }
-      // Spectral Hit (MonUMod 27): 50% split fire/cold/lightning extra damage.
-      if (monster.umodIds.includes(MON_UMOD.SPECTRALHIT)) {
-        const elem = Math.max(
-          1,
-          Math.floor((finalDmg * monUmodConstant113c(MON_UMOD.SPECTRALHIT)) / 300),
-        )
-        this.applyPlayerElementalDamage(
-          player,
-          { fire: elem, cold: elem, light: elem },
-          { skipGetHit: true, killerType: monKillerType, killerUnitId: monster.unitId },
-        )
-      }
-      // Cold Enchanted (MonUMod 18): half attack damage as cold + chill.
-      if (monster.umodIds.includes(MON_UMOD.COLD)) {
-        const cold = Math.max(1, Math.floor(finalDmg / 2))
-        this.applyPlayerElementalDamage(
-          player,
-          { cold },
-          { skipGetHit: true, killerType: monKillerType, killerUnitId: monster.unitId },
-        )
-        this.applyUnitState(
-          player.states,
-          player.stateTimers,
-          'player',
-          player.unitId,
-          player.areaId,
-          11,
-          75,
-        )
       }
       this.applyDamageToPlayer(player, finalDmg, {
         hitClass: this.resolveMonsterHitClass113c(
@@ -1438,10 +1524,37 @@ function resolveMonsterAttackOnPlayer(this: GameInstanceHost,
           stunDur,
         )
       }
-      // MonAi innate drain rows (Vampire/BatDemon/BloodLord life, WillOWisp
+      // 1.13c `MISSMODE_SrvHit31_Firehead` (`D2Game.dll` `0x6FC5A920`, `#277 firehead` / `#333 VampireMissile`, #2007):
+      // Heals `pOwner` by `100%` of actual damage dealt (`add eax, esi`), clamped to `maxHp`.
+      // Other Vampire spells (`#169 VampireFireball`, `#170 VampireFirewall`, `#171 VampireMeteor`) do NOT steal life;
+      // Vampire innate life drain applies strictly to melee swings (`!swing?.fromMissile`, `0x6FC95E10`).
+      const missileSrvHitFunc =
+        swing?.fromMissile === true && swing.missileId !== undefined
+          ? this.registry.getMissileById(swing.missileId)?.pSrvHitFunc
+          : undefined
+      if (missileSrvHitFunc === 31 && finalDmg > 0 && !monster.dead) {
+        const nextHp = Math.min(monster.maxHp, monster.hp + finalDmg)
+        if (nextHp !== monster.hp) {
+          monster.hp = nextHp
+          this.broadcastToArea(monster.areaId, {
+            type: 'UnitStatUpdate',
+            unitType: 'monster',
+            unitId: monster.unitId,
+            statId: 6,
+            value: monster.hp,
+          })
+        }
+      }
+      // MonAi innate drain rows (Vampire/BatDemon/BloodLord melee life, WillOWisp
       // mana, Swarm stamina, Mosquito life). 1.13c returns half the hit.
+      const isVampireMissile =
+        swing?.fromMissile === true && normalizeMonAiName113c(monster.ai) === 'vampire'
       const drainKind =
-        riderDrainOrStun === 'mana' || riderDrainOrStun === 'stam' || riderDrainOrStun === 'life'
+        riderDrainOrStun === 'mana' ||
+        riderDrainOrStun === 'stam' ||
+        riderDrainOrStun === 'life' ||
+        missileSrvHitFunc === 31 ||
+        isVampireMissile
           ? undefined
           : monsterProfile113c(monster.ai).drain
       const drainAmount = Math.max(1, Math.floor(finalDmg / 2))
@@ -1515,6 +1628,7 @@ function resolveMonsterAttackOnPlayer(this: GameInstanceHost,
       })
     }
   }
+  return dmgOut.hit
 }
 
 export interface MonsterMeleeAttacksMethods {
@@ -1537,6 +1651,7 @@ export interface MonsterMeleeAttacksMethods {
     readonly attackKind?: 'melee' | 'missile' | undefined
     readonly skillId?: number | undefined
     readonly missileId?: number | undefined
+    readonly arBonusPct?: number | undefined
     /** Explicit projectile element (Missiles.txt EType) instead of a MonStats El1..3 rider. */
     readonly elementType?: MissileDamageChannel | undefined
     readonly elemMin?: number | undefined
@@ -1544,9 +1659,10 @@ export interface MonsterMeleeAttacksMethods {
     readonly elemDurationFrames?: number | undefined
     /** Projectile hits must not re-roll the monster's melee El1..3 rider. */
     readonly fromMissile?: boolean | undefined
-    /** Death-effect novae bypass to-hit/block but still apply resistances. */
+    /** Death-effect novae or `ResultFlags & 1` skills bypass `RollToHit` vs Defense. */
     readonly autoHit?: boolean | undefined
-  }): void
+    readonly unblockable?: boolean | undefined
+  }): boolean
 }
 
 export const monsterMeleeAttacksMethods: Record<keyof MonsterMeleeAttacksMethods, unknown> = {

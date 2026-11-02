@@ -85,10 +85,10 @@ function handleItemPickup(this: GameInstanceHost,
     return
   }
 
-  // 1.13c D2Game.dll @ 0x6fcf7020 -> 0x6fcf2f00 (`ITEMS_CheckQuestItemPickup`):
-  // reject duplicate quest item pickup BEFORE removing the item from the ground,
-  // and emit S2C 0x2C sound 19 (`impossible1`).
-  if (this.isOnePerPlayerQuestItem(gItem.code) && this.playerHasQuestItem(player, gItem.code)) {
+  // 1.13c D2Game.dll @ 0x6fcf7020 -> 0x6fcf2f00 (`ITEMS_CheckQuestItemPickup`, #2002):
+  // reject completed-quest items and symmetric conflicting quest items BEFORE removing the item
+  // from the ground, and emit S2C 0x2C sound 19 (`impossible1`).
+  if (!this.canPickupQuestItem113c(player, gItem)) {
     this.emitToPlayer(player.unitId, {
       type: 'PlaySound',
       unit: { unitType: 0, id: player.unitId },
@@ -1412,6 +1412,75 @@ function handleBeltUse(this: GameInstanceHost,
       aliveMerc.hp = Math.min(aliveMerc.maxHp, aliveMerc.hp + heal)
     } else if (catalog?.kind === 'hp') {
       aliveMerc.hp = Math.min(aliveMerc.maxHp, aliveMerc.hp + catalog.healHp)
+    } else if (itemCode === 'yps') {
+      // 1.13c Antidote Potion (`Misc.txt` `yps`, `D2Game.dll` `ITEMS_UsePotion`, #1989):
+      // Cures `STATE_POISON` (`2`) and stacks `+750` frames (`30s`) onto `STATE_ANTIDOTE` (`178`: `+50%` Poison Res, `+10%` Max Poison Res).
+      const mercCtx = this.mercCombatContext(aliveMerc)
+      mercCtx.stateBus.removeState(2)
+      mercCtx.stateBus.removeState('poison')
+      if (aliveMerc.states.has(2)) {
+        this.clearUnitState(
+          aliveMerc.states,
+          aliveMerc.stateTimers,
+          'monster',
+          aliveMerc.unitId,
+          aliveMerc.areaId,
+          2,
+        )
+      }
+      const prevDur = aliveMerc.states.has(178) ? (aliveMerc.stateTimers.get(178) ?? 0) : 0
+      const nextDur = prevDur + 750
+      mercCtx.stateBus.applyState({
+        stateNameOrId: 178,
+        sourceUnitId: `player_${player.unitId}`,
+        durationFrames: nextDur,
+        currentFrame: this.currentFrame,
+        stats: { poisonresist: 50, maxpoisonresist: 10 },
+      })
+      this.applyUnitState(
+        aliveMerc.states,
+        aliveMerc.stateTimers,
+        'monster',
+        aliveMerc.unitId,
+        aliveMerc.areaId,
+        178,
+        nextDur,
+      )
+    } else if (itemCode === 'wms') {
+      // 1.13c Thawing Potion (`Misc.txt` `wms`, `D2Game.dll` `ITEMS_UsePotion`, #1989):
+      // Cures `STATE_FREEZE` (`1`) & `STATE_COLD` (`11`) and stacks `+750` frames (`30s`) onto `STATE_THAWING` (`179`: `+50%` Cold Res, `+10%` Max Cold Res).
+      const mercCtx = this.mercCombatContext(aliveMerc)
+      for (const coldStateId of [1, 11] as const) {
+        mercCtx.stateBus.removeState(coldStateId)
+        if (aliveMerc.states.has(coldStateId)) {
+          this.clearUnitState(
+            aliveMerc.states,
+            aliveMerc.stateTimers,
+            'monster',
+            aliveMerc.unitId,
+            aliveMerc.areaId,
+            coldStateId,
+          )
+        }
+      }
+      const prevDur = aliveMerc.states.has(179) ? (aliveMerc.stateTimers.get(179) ?? 0) : 0
+      const nextDur = prevDur + 750
+      mercCtx.stateBus.applyState({
+        stateNameOrId: 179,
+        sourceUnitId: `player_${player.unitId}`,
+        durationFrames: nextDur,
+        currentFrame: this.currentFrame,
+        stats: { coldresist: 50, maxcoldresist: 10 },
+      })
+      this.applyUnitState(
+        aliveMerc.states,
+        aliveMerc.stateTimers,
+        'monster',
+        aliveMerc.unitId,
+        aliveMerc.areaId,
+        179,
+        nextDur,
+      )
     }
     this.broadcastAllyHp(aliveMerc.areaId, aliveMerc.unitId, aliveMerc.hp)
     return
@@ -1490,10 +1559,11 @@ function handleBeltUse(this: GameInstanceHost,
     })
     clearQuestFlag113c(player.questFlags, 'a3q1', QUEST_FLAG_CUSTOM_5_113C)
     setQuestFlag113c(player.questFlags, 'a3q1', QUEST_FLAG_COMPLETED_113C)
+    // 1.13c `D2Game.dll` `0x6FD0B120..0x6FD0B142`: adds `+20 * 256` to base `STAT_MAXHP` (`7`)
+    // and `STAT_HITPOINTS` (`6`), then queries accrued `D2Common.#10913` (`GetMaxLifeFromUnit`, #1996).
     player.maxHpFixed += 20 * FIXED_ONE
     player.hpFixed += 20 * FIXED_ONE
-    player.maxHp = Math.floor(player.maxHpFixed / FIXED_ONE)
-    player.hp = Math.floor(player.hpFixed / FIXED_ONE)
+    this.refreshPlayerAccruedMaxPools(player)
     this.emitToPlayer(player.unitId, {
       type: 'UnitStatUpdate',
       unitType: 'player',
@@ -1647,12 +1717,13 @@ function handleBeltUse(this: GameInstanceHost,
     })
   }
 
+  // 1.13c `D2Game.dll` `0x6FC967D3` / `0x6FC97240` (`ITEMS_UsePotion`): clamps `hp*`, `mp*`, `rvs`, and `rvl`
+  // against accrued `D2Common.#10913` (`GetMaxLifeFromUnit`) and `D2Common.#10186` (`GetMaxManaFromUnit`, #1996).
   const catalog = BELT_POTION_CATALOG[itemCode]
   if (itemCode === 'rvl') {
-    player.hpFixed = player.maxHpFixed
-    player.hp = Math.floor(player.hpFixed / FIXED_ONE)
-    player.manaFixed = player.maxManaFixed
-    player.mana = Math.floor(player.manaFixed / FIXED_ONE)
+    player.hpFixed = this.getPlayerAccruedMaxHpFixed(player)
+    player.manaFixed = this.getPlayerAccruedMaxManaFixed(player)
+    this.refreshPlayerAccruedMaxPools(player)
     this.emitToPlayer(player.unitId, {
       type: 'UnitStatUpdate',
       unitType: 'player',
@@ -1668,12 +1739,13 @@ function handleBeltUse(this: GameInstanceHost,
       value: player.manaFixed,
     })
   } else if (itemCode === 'rvs') {
-    const hpDelta = Math.max(FIXED_ONE, Math.floor((player.maxHpFixed * 35) / 100))
-    const manaDelta = Math.max(FIXED_ONE, Math.floor((player.maxManaFixed * 35) / 100))
-    player.hpFixed = Math.min(player.maxHpFixed, player.hpFixed + hpDelta)
-    player.hp = Math.floor(player.hpFixed / FIXED_ONE)
-    player.manaFixed = Math.min(player.maxManaFixed, player.manaFixed + manaDelta)
-    player.mana = Math.floor(player.manaFixed / FIXED_ONE)
+    const accruedMaxHpFixed = this.getPlayerAccruedMaxHpFixed(player)
+    const accruedMaxManaFixed = this.getPlayerAccruedMaxManaFixed(player)
+    const hpDelta = Math.max(FIXED_ONE, Math.floor((accruedMaxHpFixed * 35) / 100))
+    const manaDelta = Math.max(FIXED_ONE, Math.floor((accruedMaxManaFixed * 35) / 100))
+    player.hpFixed = Math.min(accruedMaxHpFixed, player.hpFixed + hpDelta)
+    player.manaFixed = Math.min(accruedMaxManaFixed, player.manaFixed + manaDelta)
+    this.refreshPlayerAccruedMaxPools(player)
     this.emitToPlayer(player.unitId, {
       type: 'UnitStatUpdate',
       unitType: 'player',
@@ -1691,11 +1763,12 @@ function handleBeltUse(this: GameInstanceHost,
   } else {
     if (catalog?.kind === 'hp' || itemCode.startsWith('hp')) {
       const healHp = catalog?.healHp ?? 30
+      const accruedMaxHpFixed = this.getPlayerAccruedMaxHpFixed(player)
       player.hpFixed = Math.min(
-        player.maxHpFixed,
+        accruedMaxHpFixed,
         player.hpFixed + healHp * FIXED_ONE,
       )
-      player.hp = Math.floor(player.hpFixed / FIXED_ONE)
+      this.refreshPlayerAccruedMaxPools(player)
       this.emitToPlayer(player.unitId, {
         type: 'UnitStatUpdate',
         unitType: 'player',
@@ -1706,11 +1779,12 @@ function handleBeltUse(this: GameInstanceHost,
     }
     if (catalog?.kind === 'mana' || itemCode.startsWith('mp')) {
       const healMana = catalog?.healMana ?? 30
+      const accruedMaxManaFixed = this.getPlayerAccruedMaxManaFixed(player)
       player.manaFixed = Math.min(
-        player.maxManaFixed,
+        accruedMaxManaFixed,
         player.manaFixed + healMana * FIXED_ONE,
       )
-      player.mana = Math.floor(player.manaFixed / FIXED_ONE)
+      this.refreshPlayerAccruedMaxPools(player)
       this.emitToPlayer(player.unitId, {
         type: 'UnitStatUpdate',
         unitType: 'player',
@@ -1720,8 +1794,107 @@ function handleBeltUse(this: GameInstanceHost,
       })
     }
     if (itemCode === 'vps') {
-      player.staminaFixed = player.maxStaminaFixed
+      // 1.13c Stamina Potion (`Misc.txt` `vps`, `D2Game.dll` `ITEMS_UsePotion`, #1989):
+      // Refills stamina to accrued max, clears exhaustion, and stacks `+750` frames (`30s`) onto `STATE_STAMINAPOT` (`180`: `+5000%` stamina recovery).
+      const maxStamFixed = this.getPlayerAccruedMaxStaminaFixed(player)
+      player.staminaFixed = maxStamFixed
+      player.staminaExhausted = false
       player.stamina = Math.floor(player.staminaFixed / FIXED_ONE)
+      this.emitToPlayer(player.unitId, {
+        type: 'UnitStatUpdate',
+        unitType: 'player',
+        unitId: player.unitId,
+        statId: 10,
+        value: player.staminaFixed,
+      })
+      const playerCtx = this.playerCombatContext(player)
+      const prevDur = player.states.has(180) ? (player.stateTimers.get(180) ?? 0) : 0
+      const nextDur = prevDur + 750
+      playerCtx.stateBus.applyState({
+        stateNameOrId: 180,
+        sourceUnitId: `player_${player.unitId}`,
+        durationFrames: nextDur,
+        currentFrame: this.currentFrame,
+        stats: { staminarecoverybonus: 5000 },
+      })
+      this.applyUnitState(
+        player.states,
+        player.stateTimers,
+        'player',
+        player.unitId,
+        player.areaId,
+        180,
+        nextDur,
+      )
+    } else if (itemCode === 'yps') {
+      // 1.13c Antidote Potion (`Misc.txt` `yps`, #1989):
+      // Cures `STATE_POISON` (`2`) and stacks `+750` frames (`30s`) onto `STATE_ANTIDOTE` (`178`: `+50%` Poison Res, `+10%` Max Poison Res).
+      const playerCtx = this.playerCombatContext(player)
+      playerCtx.stateBus.removeState(2)
+      playerCtx.stateBus.removeState('poison')
+      if (player.states.has(2)) {
+        this.clearUnitState(
+          player.states,
+          player.stateTimers,
+          'player',
+          player.unitId,
+          player.areaId,
+          2,
+        )
+      }
+      const prevDur = player.states.has(178) ? (player.stateTimers.get(178) ?? 0) : 0
+      const nextDur = prevDur + 750
+      playerCtx.stateBus.applyState({
+        stateNameOrId: 178,
+        sourceUnitId: `player_${player.unitId}`,
+        durationFrames: nextDur,
+        currentFrame: this.currentFrame,
+        stats: { poisonresist: 50, maxpoisonresist: 10 },
+      })
+      this.applyUnitState(
+        player.states,
+        player.stateTimers,
+        'player',
+        player.unitId,
+        player.areaId,
+        178,
+        nextDur,
+      )
+    } else if (itemCode === 'wms') {
+      // 1.13c Thawing Potion (`Misc.txt` `wms`, #1989):
+      // Cures `STATE_FREEZE` (`1`) & `STATE_COLD` (`11`) and stacks `+750` frames (`30s`) onto `STATE_THAWING` (`179`: `+50%` Cold Res, `+10%` Max Cold Res).
+      const playerCtx = this.playerCombatContext(player)
+      for (const coldStateId of [1, 11] as const) {
+        playerCtx.stateBus.removeState(coldStateId)
+        if (player.states.has(coldStateId)) {
+          this.clearUnitState(
+            player.states,
+            player.stateTimers,
+            'player',
+            player.unitId,
+            player.areaId,
+            coldStateId,
+          )
+        }
+      }
+      const prevDur = player.states.has(179) ? (player.stateTimers.get(179) ?? 0) : 0
+      const nextDur = prevDur + 750
+      playerCtx.stateBus.applyState({
+        stateNameOrId: 179,
+        sourceUnitId: `player_${player.unitId}`,
+        durationFrames: nextDur,
+        currentFrame: this.currentFrame,
+        stats: { coldresist: 50, maxcoldresist: 10 },
+      })
+      this.applyUnitState(
+        player.states,
+        player.stateTimers,
+        'player',
+        player.unitId,
+        player.areaId,
+        179,
+        nextDur,
+      )
     }
   }
   this.emitToPlayer(player.unitId, {

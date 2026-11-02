@@ -88,6 +88,7 @@ describe('HUD Display Enhancements Plugin (`hud-enhancements`)', () => {
     expect(settingsStore.get().showWeaponDamageFormula).toBe(false)
     expect(settingsStore.get().showAdvancedStatsButton).toBe(false)
     expect(settingsStore.get().showRuneNumbers).toBe(false)
+    expect(settingsStore.get().showItemStatRanges).toBe(false)
     expect(session.hudManager.getHudEnhancements()).toEqual({
       showBasePlusBonusStats: false,
       showBasePlusBonusSkills: false,
@@ -95,6 +96,7 @@ describe('HUD Display Enhancements Plugin (`hud-enhancements`)', () => {
       showWeaponDamageFormula: false,
       showAdvancedStatsButton: false,
       showRuneNumbers: false,
+      showItemStatRanges: false,
     })
 
     const host = new PluginHost({
@@ -106,13 +108,14 @@ describe('HUD Display Enhancements Plugin (`hud-enhancements`)', () => {
     })
     await host.whenStarted()
 
-    // Plugin is defaultEnabled: true -> all 6 enhancements active
+    // Plugin is defaultEnabled: true -> all 7 enhancements active
     expect(settingsStore.get().showBasePlusBonusStats).toBe(true)
     expect(settingsStore.get().showBasePlusBonusSkills).toBe(true)
     expect(settingsStore.get().showStatGainTooltips).toBe(true)
     expect(settingsStore.get().showWeaponDamageFormula).toBe(true)
     expect(settingsStore.get().showAdvancedStatsButton).toBe(true)
     expect(settingsStore.get().showRuneNumbers).toBe(true)
+    expect(settingsStore.get().showItemStatRanges).toBe(true)
     expect(session.hudManager.getHudEnhancements()).toEqual({
       showBasePlusBonusStats: true,
       showBasePlusBonusSkills: true,
@@ -120,6 +123,7 @@ describe('HUD Display Enhancements Plugin (`hud-enhancements`)', () => {
       showWeaponDamageFormula: true,
       showAdvancedStatsButton: true,
       showRuneNumbers: true,
+      showItemStatRanges: true,
     })
 
     const snap1 = host.list().find((p) => p.id === hudEnhancementsPlugin.id)!
@@ -130,11 +134,13 @@ describe('HUD Display Enhancements Plugin (`hud-enhancements`)', () => {
     expect(snap1.status.text.zh).toContain('武器伤害公式')
     expect(snap1.status.text.zh).toContain('更多属性面板')
     expect(snap1.status.text.zh).toContain('符文编号')
+    expect(snap1.status.text.zh).toContain('变量范围')
     expect(snap1.status.text.en).toContain('Stats x+y')
     expect(snap1.status.text.en).toContain('Stat Gain Tips')
     expect(snap1.status.text.en).toContain('Weapon Dmg Formula')
     expect(snap1.status.text.en).toContain('Advanced Stats')
     expect(snap1.status.text.en).toContain('Rune #')
+    expect(snap1.status.text.en).toContain('Stat Ranges')
 
     // Toggle individual setting: disable showBasePlusBonusSkills only
     host.setSetting('hud-enhancements', 'showBasePlusBonusSkills', false)
@@ -189,7 +195,17 @@ describe('HUD Display Enhancements Plugin (`hud-enhancements`)', () => {
     expect(settingsStore.get().showRuneNumbers).toBe(true)
     expect(session.hudManager.worldPanels.showRuneNumbers).toBe(true)
 
-    // Disable the entire plugin -> strictly reverts all 6 flags to 1.13c vanilla false
+    // Toggle showItemStatRanges off individually
+    host.setSetting('hud-enhancements', 'showItemStatRanges', false)
+    expect(settingsStore.get().showItemStatRanges).toBe(false)
+    expect(session.hudManager.worldPanels.showItemStatRanges).toBe(false)
+
+    // Re-enable showItemStatRanges
+    host.setSetting('hud-enhancements', 'showItemStatRanges', true)
+    expect(settingsStore.get().showItemStatRanges).toBe(true)
+    expect(session.hudManager.worldPanels.showItemStatRanges).toBe(true)
+
+    // Disable the entire plugin -> strictly reverts all 7 flags to 1.13c vanilla false
     await host.setEnabled('hud-enhancements', false)
     expect(settingsStore.get().showBasePlusBonusStats).toBe(false)
     expect(settingsStore.get().showBasePlusBonusSkills).toBe(false)
@@ -197,6 +213,7 @@ describe('HUD Display Enhancements Plugin (`hud-enhancements`)', () => {
     expect(settingsStore.get().showWeaponDamageFormula).toBe(false)
     expect(settingsStore.get().showAdvancedStatsButton).toBe(false)
     expect(settingsStore.get().showRuneNumbers).toBe(false)
+    expect(settingsStore.get().showItemStatRanges).toBe(false)
     expect(session.hudManager.getHudEnhancements()).toEqual({
       showBasePlusBonusStats: false,
       showBasePlusBonusSkills: false,
@@ -204,6 +221,7 @@ describe('HUD Display Enhancements Plugin (`hud-enhancements`)', () => {
       showWeaponDamageFormula: false,
       showAdvancedStatsButton: false,
       showRuneNumbers: false,
+      showItemStatRanges: false,
     })
   })
 
@@ -719,22 +737,23 @@ describe('HUD Display Enhancements Plugin (`hud-enhancements`)', () => {
     const model = new HudModel({ world, hudManager: hud })
     model.syncFromWorld()
 
-    // Fire Ball: base 200~227, synergy +280% -> 760~862, Mastery +163% + Equip +20% = +183% -> floor(760~862 * 2.83) = 2150~2439
+    // Fire Ball (1.13c HitShift=7, >>8 integer floor): base 199~226 (51072~57984 / 256),
+    // synergy +280% -> 758~860 (194073~220339 / 256), Mastery +163% + Equip +20% = +183% -> 2145~2435
     const fbLinesZh = formatCharacterDamageTooltipLines('left', hud.charSheet.attrs, 'CHI').map((l) => l.text)
     expect(fbLinesZh).toEqual([
       '火球 伤害',
-      '技能基础伤害: 200~227',
-      '技能协同增伤: +280% (→ 760~862)',
+      '技能基础伤害: 199~226',
+      '技能协同增伤: +280% (→ 758~860)',
       '法术增伤 (+183%): 法术精通 +163% + 装备法伤 +20%',
-      '公式: ⌊200~227 × (1+280%)⌋ × (1+183%) = 2150~2439',
+      '公式: ⌊199~226 × (1+280%)⌋ × (1+183%) = 2145~2435',
     ])
     const fbLinesEn = formatCharacterDamageTooltipLines('left', hud.charSheet.attrs, 'ENG').map((l) => l.text)
     expect(fbLinesEn).toEqual([
       'Fire Ball Damage',
-      'Skill Base Damage: 200~227',
-      'Synergy Bonus: +280% (→ 760~862)',
+      'Skill Base Damage: 199~226',
+      'Synergy Bonus: +280% (→ 758~860)',
       'Spell Bonus (+183%): Mastery +163% + Equip +20%',
-      'Formula: ⌊200~227 × (1+280%)⌋ × (1+183%) = 2150~2439',
+      'Formula: ⌊199~226 × (1+280%)⌋ × (1+183%) = 2145~2435',
     ])
 
     // 3. Hovering DAMAGE_ROW_BOUNDS.left / DAMAGE_ROW_BOUNDS.right triggers drawDamageTooltip when enabled
@@ -752,7 +771,7 @@ describe('HUD Display Enhancements Plugin (`hud-enhancements`)', () => {
     expect(ctx.fillRect).toHaveBeenCalled()
     expect(font.drawText).toHaveBeenCalledWith(
       ctx,
-      '公式: ⌊200~227 × (1+280%)⌋ × (1+183%) = 2150~2439',
+      '公式: ⌊199~226 × (1+280%)⌋ × (1+183%) = 2145~2435',
       expect.any(Number),
       expect.any(Number),
       expect.objectContaining({ color: 'gold', font: 'font8' }),
@@ -1073,5 +1092,302 @@ describe('HUD Display Enhancements Plugin (`hud-enhancements`)', () => {
       expect.any(Number),
       expect.objectContaining({ font: 'font16', color: 'gold' }),
     )
+  })
+
+  it('displays [min-max] variable stat ranges strictly on Unique, Set, and Runeword items when showItemStatRanges is enabled', () => {
+    const tables = getEmbeddedDropTables()
+    const ctx = createMockCanvasCtx()
+    const font = createMockFont()
+    const hud = new HudManager()
+    const getDrawnLines = (item: ReturnType<typeof onlineItemDataToUiInventoryItem>, lang: 'ENG' | 'CHI'): string[] => {
+      vi.clearAllMocks()
+      hud.worldPanels.lang = lang
+      hud.worldPanels.drawItemTooltip(ctx, { item, x: 240, y: 240 }, font)
+      return (font.drawText as unknown as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => String(c[1]))
+    }
+
+    // 1. Online Unique Annihilus (cm1): all-stats [10-20], res-all [10-20], addxp [5-10], fixed +1 All Skills (no [1-1])
+    const anniDef = tables.uniques!.all.find((u) => u.index === 'Annihilus')!
+    const onlineAnni = onlineItemDataToUiInventoryItem(
+      {
+        id: 1001,
+        code: 'cm1',
+        quality: 7,
+        uniqueItemId: anniDef.id,
+        identified: true,
+        stats: [
+          { statId: 127, value: 1 },
+          { statId: 0, value: 18 },
+          { statId: 1, value: 18 },
+          { statId: 2, value: 18 },
+          { statId: 3, value: 18 },
+          { statId: 39, value: 16 },
+          { statId: 41, value: 16 },
+          { statId: 43, value: 16 },
+          { statId: 45, value: 16 },
+          { statId: 85, value: 9 },
+        ],
+      },
+      undefined,
+      tables,
+      90,
+    )
+
+    hud.setHudEnhancements({ showItemStatRanges: false })
+    const anniVanilla = getDrawnLines(onlineAnni, 'ENG')
+    expect(anniVanilla).toContain('+1 to All Skills')
+    expect(anniVanilla).toContain('+18 to all Attributes')
+    expect(anniVanilla).toContain('All Resistances +16')
+    expect(anniVanilla).toContain('+9% to Experience Gained')
+    expect(anniVanilla.some((l) => l.includes('['))).toBe(false)
+
+    hud.setHudEnhancements({ showItemStatRanges: true })
+    const anniWithRanges = getDrawnLines(onlineAnni, 'ENG')
+    expect(anniWithRanges).toContain('+1 to All Skills')
+    expect(anniWithRanges.some((l) => l.includes('[1-1]'))).toBe(false)
+    expect(anniWithRanges).toContain('+18 to all Attributes [10-20]')
+    expect(anniWithRanges).toContain('All Resistances +16 [10-20]')
+    expect(anniWithRanges).toContain('+9% to Experience Gained [5-10]')
+
+    const anniZh = getDrawnLines(onlineAnni, 'CHI')
+    expect(anniZh.some((l) => l.includes('18') && l.includes('[10-20]'))).toBe(true)
+    expect(anniZh.some((l) => l.includes('16') && l.includes('[10-20]'))).toBe(true)
+    expect(anniZh.some((l) => l.includes('9%') && l.includes('[5-10]'))).toBe(true)
+
+    // 2. Online Unique Crown of Ages (urn): variable sockets [1-2], res-all [20-30], red-dmg% [10-15]
+    const coaDef = tables.uniques!.all.find((u) => u.index === 'Crown of Ages')!
+    const onlineCoa = onlineItemDataToUiInventoryItem(
+      {
+        id: 1002,
+        code: 'urn',
+        quality: 7,
+        uniqueItemId: coaDef.id,
+        identified: true,
+        totalSockets: 2,
+        stats: [
+          { statId: 127, value: 1 },
+          { statId: 99, value: 30 },
+          { statId: 36, value: 14 },
+          { statId: 39, value: 27 },
+          { statId: 41, value: 27 },
+          { statId: 43, value: 27 },
+          { statId: 45, value: 27 },
+        ],
+      },
+      undefined,
+      tables,
+      90,
+    )
+    const coaLines = getDrawnLines(onlineCoa, 'ENG')
+    expect(coaLines).toContain('Damage Reduced by 14% [10-15]')
+    expect(coaLines).toContain('All Resistances +27 [20-30]')
+    expect(coaLines).toContain('Socketed (2) [1-2]')
+    expect(coaLines).toContain('+30% Faster Hit Recovery')
+
+    // 3. Online Set Immortal King's Stone Crusher (7m7): crush [35-40]%
+    const ikMaulDef = tables.sets!.items.entries.find((s) => s.index === "Immortal King's Stone Crusher")!
+    const onlineIkMaul = onlineItemDataToUiInventoryItem(
+      {
+        id: 1003,
+        code: '7m7',
+        quality: 5,
+        setItemId: ikMaulDef.id,
+        identified: true,
+        totalSockets: 2,
+        stats: [
+          { statId: 93, value: 40 },
+          { statId: 17, value: 200 },
+          { statId: 18, value: 200 },
+          { statId: 136, value: 38 },
+        ],
+      },
+      undefined,
+      tables,
+      90,
+    )
+    const ikLines = getDrawnLines(onlineIkMaul, 'ENG')
+    expect(ikLines).toContain('38% Chance of Crushing Blow [35-40]')
+    expect(ikLines).toContain('+200% Enhanced Damage')
+    expect(ikLines.some((l) => l.includes('[200-200]'))).toBe(false)
+
+    // 4. Online Runeword Fortitude (Runeword41: ElSolDolLo) in Superior +15% ED Archon Plate:
+    //    hp/lvl 8..12 eighths -> [1-1.5], res-all [25-30], fixed +300% ED
+    const runeChildren = ['r01', 'r12', 'r14', 'r28'].map((rc, i) => ({
+      id: 1100 + i,
+      code: rc,
+      quality: 2,
+      compact: true,
+      identified: true,
+    }))
+    const onlineFortitude = onlineItemDataToUiInventoryItem(
+      {
+        id: 1004,
+        code: 'utp',
+        quality: 3,
+        runeword: true,
+        identified: true,
+        totalSockets: 4,
+        usedSockets: 4,
+        stats: [{ statId: 16, value: 15 }],
+        runewordStats: [
+          { statId: 199, param: (202 << 6) | 15, value: 20 },
+          { statId: 105, value: 25 },
+          { statId: 17, value: 300 },
+          { statId: 18, value: 300 },
+          { statId: 16, value: 200 },
+          { statId: 216, value: 10 << 8 },
+          { statId: 39, value: 28 },
+          { statId: 41, value: 28 },
+          { statId: 43, value: 28 },
+          { statId: 45, value: 28 },
+        ],
+      },
+      runeChildren,
+      tables,
+      80,
+    )
+    const fortLines = getDrawnLines(onlineFortitude, 'ENG')
+    expect(fortLines).toContain('All Resistances +28 [25-30]')
+    expect(fortLines).toContain('+100 to Life (Based on Character Level) [1-1.5]')
+    expect(fortLines.some((l) => l.includes('[20-15]'))).toBe(false) // proc skill never gets [chance-slvl]
+
+    // 4b. Parameterized Runewords: Call to Arms (3 distinct oskills: BC 155 [2-6], BO 149 [1-6], Battle Cry 146 [1-4])
+    //     and Insight (Meditation Aura 120 [12-17])
+    const ctaRunes = ['r11', 'r08', 'r23', 'r24', 'r27'].map((rc, i) => ({
+      id: 1150 + i,
+      code: rc,
+      quality: 2,
+      compact: true,
+      identified: true,
+    }))
+    const onlineCta = onlineItemDataToUiInventoryItem(
+      {
+        id: 1014,
+        code: 'crs',
+        quality: 2,
+        runeword: true,
+        identified: true,
+        totalSockets: 5,
+        usedSockets: 5,
+        runewordStats: [
+          { statId: 127, value: 1 },
+          { statId: 93, value: 40 },
+          { statId: 17, value: 225 },
+          { statId: 18, value: 225 },
+          { statId: 97, param: 155, value: 5 },
+          { statId: 97, param: 149, value: 6 },
+          { statId: 97, param: 146, value: 3 },
+        ],
+      },
+      ctaRunes,
+      tables,
+      80,
+    )
+    const ctaLines = getDrawnLines(onlineCta, 'ENG')
+    expect(ctaLines).toContain('+275% Enhanced Damage [250-290]')
+    expect(ctaLines).toContain('+5 to Battle Command [2-6]')
+    expect(ctaLines).toContain('+6 to Battle Orders [1-6]')
+    expect(ctaLines).toContain('+3 to Battle Cry [1-4]')
+
+    const insightRunes = ['r08', 'r03', 'r07', 'r12'].map((rc, i) => ({
+      id: 1160 + i,
+      code: rc,
+      quality: 2,
+      compact: true,
+      identified: true,
+    }))
+    const onlineInsight = onlineItemDataToUiInventoryItem(
+      {
+        id: 1015,
+        code: '7vo',
+        quality: 2,
+        runeword: true,
+        identified: true,
+        totalSockets: 4,
+        usedSockets: 4,
+        runewordStats: [
+          { statId: 151, param: 120, value: 16 },
+          { statId: 17, value: 245 },
+          { statId: 18, value: 245 },
+          { statId: 97, param: 9, value: 5 },
+        ],
+      },
+      insightRunes,
+      tables,
+      80,
+    )
+    const insightLines = getDrawnLines(onlineInsight, 'ENG')
+    expect(insightLines).toContain('Level 16 Meditation Aura When Equipped [12-17]')
+    expect(insightLines).toContain('+245% Enhanced Damage [200-260]')
+    expect(insightLines).toContain('+5 to Critical Strike [1-6]')
+
+    // 5. Exclusion Gate: Magic, Rare, Crafted, Normal, Rune, and Unidentified Unique NEVER show [min-max]
+    const magicCharm = onlineItemDataToUiInventoryItem(
+      {
+        id: 1005,
+        code: 'cm1',
+        quality: 4,
+        identified: true,
+        magicSuffixId: 10,
+        stats: [{ statId: 6, value: 18 << 8 }],
+      },
+      undefined,
+      tables,
+      80,
+    )
+    expect(getDrawnLines(magicCharm, 'ENG').some((l) => l.includes('['))).toBe(false)
+
+    const rareRing = onlineItemDataToUiInventoryItem(
+      {
+        id: 1006,
+        code: 'rin',
+        quality: 6,
+        identified: true,
+        rareName1: 1,
+        rareName2: 2,
+        stats: [
+          { statId: 105, value: 10 },
+          { statId: 0, value: 17 },
+          { statId: 39, value: 24 },
+        ],
+      },
+      undefined,
+      tables,
+      80,
+    )
+    expect(getDrawnLines(rareRing, 'ENG').some((l) => l.includes('['))).toBe(false)
+
+    const craftedAmulet = onlineItemDataToUiInventoryItem(
+      {
+        id: 1007,
+        code: 'amu',
+        quality: 8,
+        identified: true,
+        rareName1: 3,
+        rareName2: 4,
+        stats: [
+          { statId: 105, value: 18 },
+          { statId: 0, value: 22 },
+        ],
+      },
+      undefined,
+      tables,
+      80,
+    )
+    expect(getDrawnLines(craftedAmulet, 'ENG').some((l) => l.includes('['))).toBe(false)
+
+    const unidAnni = onlineItemDataToUiInventoryItem(
+      {
+        id: 1008,
+        code: 'cm1',
+        quality: 7,
+        uniqueItemId: anniDef.id,
+        identified: false,
+      },
+      undefined,
+      tables,
+      80,
+    )
+    expect(getDrawnLines(unidAnni, 'ENG').some((l) => l.includes('['))).toBe(false)
   })
 })

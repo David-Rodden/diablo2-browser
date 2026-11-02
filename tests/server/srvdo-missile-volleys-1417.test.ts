@@ -209,8 +209,10 @@ describe('#1417 class-of-bug sweep: every player missile srvdofunc is classified
     // Known srvdofuncs still lacking a GameInstance volley runtime; reported at cast time, never
     // silently treated as a verified single missile (22 Nova and 77 Leap have dedicated GameInstance paths).
     // 24 Fire Wall: two perpendicular makers + centre pillar (#1790).
+    // 68 Warcry Ring: 64-spoke expanding missile ring (`WARCRY_RING_DX_64` / `WARCRY_RING_DY_64`).
     expect(sorted('firewall')).toEqual([24])
-    expect(sorted('unmodeled')).toEqual([11, 18, 19, 22, 23, 29, 34, 43, 44, 48, 50, 54, 60, 63, 68, 75, 77, 121, 123, 124])
+    expect(sorted('ring64')).toEqual([68])
+    expect(sorted('unmodeled')).toEqual([11, 18, 19, 22, 23, 29, 34, 43, 44, 48, 50, 54, 60, 63, 75, 77, 121, 123, 124])
   })
 
   it('reports an unmodeled srvdofunc instead of silently treating it as a single missile', () => {

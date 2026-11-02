@@ -20,9 +20,21 @@ export interface TraceHeader {
 /** One unit row: unitFields values followed by stat values (t0/t1). */
 export type UnitRow = (number | null)[]
 
+/** One `SUNITDMG_ApplyDamage` (`0x6FCFC0B0`) event emitted in `dmg`. */
+export interface TraceDmgEvent {
+  att: [number, number]
+  def: [number, number]
+  hp: [number, number]
+  ret: number
+  raw: number[]
+}
+
 export interface TraceFrame {
   frame: number
   [unitKey: `t${number}`]: UnitRow[] | undefined
+  gs?: [number, number]
+  st?: number[][]
+  dmg?: TraceDmgEvent[]
   in?: unknown[]
 }
 
@@ -34,8 +46,16 @@ export interface Trace {
 export interface DiffOptions {
   /** Unit types to compare (default 0 players, 1 monsters, 3 missiles). */
   types?: number[]
-  /** Unit fields to compare (default all except seeds). */
+  /** Unit fields to compare (default all except seeds, unless `compareSeeds` is true). */
   fields?: string[]
+  /** Include `seedLo` and `seedHi` in the default field comparison (default false). */
+  compareSeeds?: boolean
+  /** Compare per-frame game seed `gs` when present on both sides (default true). */
+  compareGameSeed?: boolean
+  /** Compare per-frame active unit states `st` when present on both sides (default true). */
+  compareStates?: boolean
+  /** Compare per-frame `SUNITDMG_ApplyDamage` `dmg` events when present (default true). */
+  compareDamage?: boolean
   /** Stat ids to compare (default all stat ids present in both headers). */
   statIds?: number[]
   /** Absolute tolerance per field/stat name (default 0 = exact). */
@@ -47,7 +67,14 @@ export interface DiffOptions {
   toFrame?: number
 }
 
-export type DivergenceKind = 'missing-frame' | 'missing-unit' | 'extra-unit' | 'field'
+export type DivergenceKind =
+  | 'missing-frame'
+  | 'missing-unit'
+  | 'extra-unit'
+  | 'field'
+  | 'game-seed'
+  | 'states'
+  | 'damage'
 
 export interface Divergence {
   frame: number
@@ -55,8 +82,8 @@ export interface Divergence {
   type?: number
   unitId?: number
   field?: string
-  oracle?: number | null | UnitRow
-  replica?: number | null | UnitRow
+  oracle?: number | null | UnitRow | TraceDmgEvent
+  replica?: number | null | UnitRow | TraceDmgEvent
   /** Rows of the involved unit in the preceding frames: [frame, oracleRow, replicaRow]. */
   context: [number, UnitRow | null, UnitRow | null][]
 }
@@ -103,9 +130,10 @@ interface ColumnPlan {
 }
 
 function planColumns(a: TraceHeader, b: TraceHeader, opts: DiffOptions, withStats: boolean): ColumnPlan[] {
-  // Default: every non-seed column both sides model (an unmodelled column on
-  // the replica is reported by `uncomparedFields`, not silently dropped).
-  const fields = opts.fields ?? a.unitFields.filter((f) => !SEED_FIELDS.has(f) && b.unitFields.includes(f))
+  // Default: every non-seed column both sides model (or including seeds when `compareSeeds` is true).
+  const fields =
+    opts.fields ??
+    a.unitFields.filter((f) => (opts.compareSeeds || !SEED_FIELDS.has(f)) && b.unitFields.includes(f))
   const cols: ColumnPlan[] = []
   for (const f of fields) {
     if (f === 'id') continue
@@ -139,8 +167,42 @@ function unitRowAt(t: Trace, frame: number, type: number, id: number): UnitRow |
   return (f[`t${type}`] ?? []).find((r) => r[idIdx] === id) ?? null
 }
 
+function sameIntArray(a: readonly number[], b: readonly number[]): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false
+  }
+  return true
+}
+
+function sameDmgEvent(a: TraceDmgEvent, b: TraceDmgEvent): boolean {
+  return (
+    a.att[0] === b.att[0] &&
+    a.att[1] === b.att[1] &&
+    a.def[0] === b.def[0] &&
+    a.def[1] === b.def[1] &&
+    a.hp[0] === b.hp[0] &&
+    a.hp[1] === b.hp[1] &&
+    a.ret === b.ret &&
+    sameIntArray(a.raw, b.raw)
+  )
+}
+
+function statesMap(rows: readonly number[][] | undefined, allowedTypes: ReadonlySet<number>): Map<string, number[]> {
+  const out = new Map<string, number[]>()
+  for (const row of rows ?? []) {
+    if (row.length < 2) continue
+    const type = row[0]!
+    const id = row[1]!
+    if (!allowedTypes.has(type)) continue
+    out.set(`${type}:${id}`, row.slice(2))
+  }
+  return out
+}
+
 export function diffTraces(oracle: Trace, replica: Trace, opts: DiffOptions = {}): DiffResult {
   const types = opts.types ?? [0, 1, 3]
+  const allowedTypeSet = new Set(types)
   const ctxN = opts.context ?? 5
   const tol = opts.tolerance ?? {}
   const idA = oracle.header.unitFields.indexOf('id')
@@ -224,6 +286,88 @@ export function diffTraces(oracle: Trace, replica: Trace, opts: DiffOptions = {}
               oracle: va,
               replica: vb,
               context: context(frame, type, id),
+            },
+          }
+        }
+      }
+    }
+
+    if (opts.compareGameSeed !== false && fa.gs !== undefined && fb.gs !== undefined) {
+      if (fa.gs[0] !== fb.gs[0] || fa.gs[1] !== fb.gs[1]) {
+        return {
+          uncomparedFields,
+          comparedFrames: compared,
+          oracleFrames: oracle.frames.size,
+          replicaFrames: replica.frames.size,
+          firstDivergence: {
+            frame,
+            kind: 'game-seed',
+            field: 'gs',
+            oracle: fa.gs,
+            replica: fb.gs,
+            context: [],
+          },
+        }
+      }
+    }
+
+    if (opts.compareStates !== false && fa.st !== undefined && fb.st !== undefined) {
+      const sa = statesMap(fa.st, allowedTypeSet)
+      const sb = statesMap(fb.st, allowedTypeSet)
+      const stateKeys = [...new Set([...sa.keys(), ...sb.keys()])].sort((ka, kb) => {
+        const [ta, ia] = ka.split(':').map(Number)
+        const [tb, ib] = kb.split(':').map(Number)
+        return ta! - tb! || ia! - ib!
+      })
+      for (const key of stateKeys) {
+        const oa = sa.get(key) ?? []
+        const rb = sb.get(key) ?? []
+        if (!sameIntArray(oa, rb)) {
+          const [tNum, uId] = key.split(':').map(Number)
+          return {
+            uncomparedFields,
+            comparedFrames: compared,
+            oracleFrames: oracle.frames.size,
+            replicaFrames: replica.frames.size,
+            firstDivergence: {
+              frame,
+              kind: 'states',
+              type: tNum!,
+              unitId: uId!,
+              field: 'st',
+              oracle: oa,
+              replica: rb,
+              context: context(frame, tNum!, uId!),
+            },
+          }
+        }
+      }
+    }
+
+    const shouldCompareDmg =
+      opts.compareDamage === true ||
+      (opts.compareDamage !== false &&
+        (fa.dmg !== undefined || ((fa.gs !== undefined || fa.st !== undefined) && fb.dmg !== undefined)))
+    if (shouldCompareDmg) {
+      const da = fa.dmg ?? []
+      const db = fb.dmg ?? []
+      const maxLen = Math.max(da.length, db.length)
+      for (let k = 0; k < maxLen; k++) {
+        const ea = da[k]
+        const eb = db[k]
+        if (!ea || !eb || !sameDmgEvent(ea, eb)) {
+          return {
+            uncomparedFields,
+            comparedFrames: compared,
+            oracleFrames: oracle.frames.size,
+            replicaFrames: replica.frames.size,
+            firstDivergence: {
+              frame,
+              kind: 'damage',
+              field: `dmg[${k}]`,
+              oracle: ea ?? null,
+              replica: eb ?? null,
+              context: [],
             },
           }
         }

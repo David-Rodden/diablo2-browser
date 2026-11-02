@@ -606,9 +606,12 @@ describe('next-game plugin (+1 seamless room switcher)', () => {
       ...(game2 as unknown as { monsters: Map<number, any> }).monsters.values(),
     ].find((m) => !m.isNpc)!
     expect(bootstrapMon2).toBeDefined()
-    expect(bootstrapMon2.maxHp).toBe(expectedP8Hp)
-    expect(bootstrapMon2.hp).toBe(expectedP8Hp)
-    expect(bootstrapMon2.experience).toBe(expectedP8Xp)
+    expect(bootstrapMon2.baseMaxHp).toBeGreaterThan(0)
+    const expectedBootstrapP8Hp = Math.max(1, Math.floor((bootstrapMon2.baseMaxHp * 9) / 2))
+    const expectedBootstrapP8Xp = Math.max(0, Math.floor((bootstrapMon2.baseXp * 9) / 2))
+    expect(bootstrapMon2.maxHp).toBe(expectedBootstrapP8Hp)
+    expect(bootstrapMon2.hp).toBe(expectedBootstrapP8Hp)
+    expect(bootstrapMon2.experience).toBe(expectedBootstrapP8Xp)
     expect(bootstrapMon2.monsterPlayerCount).toBe(8)
 
     const spawnedInRun2Id = game2.spawnMonster({
@@ -620,9 +623,12 @@ describe('next-game plugin (+1 seamless room switcher)', () => {
     const spawnedInRun2 = (game2 as unknown as { monsters: Map<number, any> }).monsters.get(
       spawnedInRun2Id,
     )!
-    expect(spawnedInRun2.maxHp).toBe(expectedP8Hp)
-    expect(spawnedInRun2.hp).toBe(expectedP8Hp)
-    expect(spawnedInRun2.experience).toBe(expectedP8Xp)
+    expect(spawnedInRun2.baseMaxHp).toBeGreaterThan(0)
+    const expectedSpawnedP8Hp = Math.max(1, Math.floor((spawnedInRun2.baseMaxHp * 9) / 2))
+    const expectedSpawnedP8Xp = Math.max(0, Math.floor((spawnedInRun2.baseXp * 9) / 2))
+    expect(spawnedInRun2.maxHp).toBe(expectedSpawnedP8Hp)
+    expect(spawnedInRun2.hp).toBe(expectedSpawnedP8Hp)
+    expect(spawnedInRun2.experience).toBe(expectedSpawnedP8Xp)
     expect(spawnedInRun2.monsterPlayerCount).toBe(8)
 
     await host.destroy()

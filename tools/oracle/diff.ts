@@ -31,6 +31,10 @@ function main(argv: string[]): number {
     }
     if (a === '--types') opts.types = nums(next())
     else if (a === '--fields') opts.fields = next().split(',').filter(Boolean)
+    else if (a === '--seeds') opts.compareSeeds = true
+    else if (a === '--no-gs') opts.compareGameSeed = false
+    else if (a === '--no-states') opts.compareStates = false
+    else if (a === '--no-dmg') opts.compareDamage = false
     else if (a === '--stats') opts.statIds = nums(next())
     else if (a === '--from') opts.fromFrame = Number(next())
     else if (a === '--to') opts.toFrame = Number(next())

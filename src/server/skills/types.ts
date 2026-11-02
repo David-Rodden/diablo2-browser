@@ -61,6 +61,11 @@ export interface SkillEvalContext {
   readonly stateBus?: StateBus
   readonly difficulty?: 'normal' | 'nightmare' | 'hell' | 0 | 1 | 2 | undefined
   readonly randFn?: ((min: number, max: number) => number) | undefined
+  /**
+   * When `false`, disables the `Missiles.txt` `eMin`/`eMax` fallback so `minElemDmg256` / `maxElemDmg256`
+   * match `D2Common #10121` (`0x6FDA0460`) / `#11091` (`0x6FDA0360`) on `Skills.txt` alone. Defaults to `true`.
+   */
+  readonly includeMissileFallback?: boolean | undefined
 }
 
 export type SkillTargetUnit = CombatUnitContext

@@ -357,7 +357,8 @@ function stepPlayerAnimations113c(this: GameInstanceHost): void {
     const { anim } = disp.tick(this.currentFrame, (activeAnim, _tick, strikeIdx) => {
       const pending = this.pendingPlayerAnimActions.get(player.unitId)
       if (!pending) return
-      if (strikeIdx === 0 && !pending.manaCommittedOnStart) {
+      const needCommitOnStrike = strikeIdx === 0 && !pending.manaCommittedOnStart
+      if (needCommitOnStrike) {
         if (
           pending.cast.chargeItem === undefined &&
           !pending.cast.isNoCostInState &&
@@ -369,9 +370,13 @@ function stepPlayerAnimations113c(this: GameInstanceHost): void {
           disp.clearAnimation()
           return
         }
+      }
+      // 1.13c `D2Game.dll` `SKILLS_DoSkillDo` (`0x6FCC19A0`): `pfnSrvDo` runs BEFORE `SKILLS_UseMana` (`0x6FCBF9D0`),
+      // so self-buffs like `#149 Battle Orders` scale `manaFixed` up before deducting the cast's mana cost.
+      pending.onStrike(strikeIdx, activeAnim.totalStrikes)
+      if (needCommitOnStrike && !player.dead) {
         this.commitPlayerSkillCast(player, pending.cast)
       }
-      pending.onStrike(strikeIdx, activeAnim.totalStrikes)
     })
 
     if (anim && anim.completed) {
@@ -491,6 +496,7 @@ function livingHostilesInMeleeReach113c(this: GameInstanceHost,
       !m.isNpc &&
       !m.submerged &&
       !this.isMonsterConverted(m) &&
+      m.align === 0 &&
       (m.areaId === player.areaId ||
         (!TOWN_AREAS.has(player.areaId) &&
           !TOWN_AREAS.has(m.areaId) &&
@@ -523,6 +529,7 @@ function collectStrafeTargets113c(this: GameInstanceHost,
         !m.isNpc &&
         !m.submerged &&
         !this.isMonsterConverted(m) &&
+        m.align === 0 &&
         m.areaId === player.areaId &&
         Math.hypot(m.x - player.x, m.y - player.y) <= radius,
     )
@@ -688,7 +695,7 @@ function executeSkillAtLocation(this: GameInstanceHost,
     if (doFunc === SRVDOFUNC_LEAP || doFunc === SRVDOFUNC_LEAP_ATTACK) {
       this.relocatePlayerForSkill(player, tx, ty, false)
     }
-    if (doFunc === SRVDOFUNC_NOVA) {
+    if (doFunc === SRVDOFUNC_NOVA && skillId !== 130) {
       this.executeNovaSkill(player, cast)
       if (cast.missile !== undefined) {
         this.launchPlayerSkillMissile(player, cast, cast.missile, tx, ty, 0)
@@ -759,7 +766,8 @@ function executeSkillAtLocation(this: GameInstanceHost,
   this.updatePlayerChannelState(player, cast)
   // 1.13c `D2Game.dll` `SKILLS_DoSkillStart` (`0x6FCBFD00` @ `0x6FCBFE6C`) vs `SKILLS_DoSkillDo` (`0x6FCC19A0`):
   // When `usemanaondo = 1` (`Plague Javelin` #25, `Blade Fury` #266), mana is checked and deducted in the `do` phase.
-  if (!cast.skill.useManaOnDo) {
+  const commitAfterImmediateDo = doFunc === 68 && !cast.skill.useManaOnDo
+  if (!cast.skill.useManaOnDo && !commitAfterImmediateDo) {
     this.commitPlayerSkillCast(player, cast)
   }
   this.broadcastPlayerSkillCast(player, cast, { x: Math.round(tx), y: Math.round(ty) })
@@ -789,6 +797,9 @@ function executeSkillAtLocation(this: GameInstanceHost,
     return
   }
   executeLocationDoPhase(0, 1)
+  if (commitAfterImmediateDo && !player.dead) {
+    this.commitPlayerSkillCast(player, cast)
+  }
 }
 
 
@@ -1058,7 +1069,7 @@ function executeSkillOnTarget(this: GameInstanceHost,
           if (doFunc === SRVDOFUNC_LEAP) {
             this.relocatePlayerForSkill(player, primaryMonster.x, primaryMonster.y, false)
           }
-          if (doFunc === SRVDOFUNC_NOVA) {
+          if (doFunc === SRVDOFUNC_NOVA && skillId !== 130) {
             this.executeNovaSkill(player, cast)
             if (cast.missile !== undefined) {
               this.launchPlayerSkillMissile(player, cast, cast.missile, primaryMonster.x, primaryMonster.y, 0)
@@ -1211,7 +1222,7 @@ function executeSkillOnTarget(this: GameInstanceHost,
   if (doFunc === SRVDOFUNC_LEAP) {
     this.relocatePlayerForSkill(player, monster.x, monster.y, false)
   }
-  if (doFunc === SRVDOFUNC_NOVA) {
+  if (doFunc === SRVDOFUNC_NOVA && skillId !== 130) {
     this.executeNovaSkill(player, cast)
     if (cast.missile !== undefined) {
       this.launchPlayerSkillMissile(player, cast, cast.missile, monster.x, monster.y, 0)
@@ -2202,6 +2213,7 @@ function hostilesNear113c(this: GameInstanceHost, areaId: number, cx: number, cy
           m.isKillable &&
           this.isAreaSeamAdjacent(areaId, m.areaId))) &&
       !this.isMonsterConverted(m) &&
+      m.align === 0 &&
       Math.hypot(m.x - cx, m.y - cy) <= radius,
   )
 }
@@ -2797,6 +2809,11 @@ function spawnMonsterMissile(this: GameInstanceHost,
     readonly elemDamage?: number | undefined
     readonly element?: MissileDamageChannel | undefined
     readonly elemDurationFrames?: number | undefined
+    /** Explicit spawn origin override (`SKILLS_SrvDo024_FireWall` `0x6FC637D0`, #1999). */
+    readonly fromX?: number | undefined
+    readonly fromY?: number | undefined
+    /** Per-frame `1/256` burning range for `SrvDo05` / `SrvDmg03` ground-fire patches or makers (#1999). */
+    readonly groundFire256?: { readonly min: number; readonly max: number } | undefined
     /** Death-effect nova: never miss, never block, never stop on terrain. */
     readonly guaranteed?: boolean | undefined
     /** Monster-vs-monster projectile (Confuse/Conversion/Attract). */
@@ -2805,9 +2822,6 @@ function spawnMonsterMissile(this: GameInstanceHost,
     readonly skipMultishot?: boolean | undefined
   } = {},
 ): number {
-  const dx = targetX - monster.x
-  const dy = targetY - monster.y
-  const dist = Math.max(0.5, Math.hypot(dx, dy))
   // The data registry carries the full Missiles.txt row (Vel/Range/LevRange/Size/
   // CollideType/Pierce/NextDelay/EType); `getMissileTxtData` only has the art subset.
   const meta = options.missile ?? this.registry.getMissileById(missileClassId)
@@ -2817,21 +2831,40 @@ function spawnMonsterMissile(this: GameInstanceHost,
   const baseSpeed = meta === undefined ? 1.8 : rawVel > 0 ? rawVel / 16 : 0
   const speed =
     baseSpeed > 0 && monster.states.has(STATE_SLOWMISSILES_113C) ? baseSpeed * 0.33 : baseSpeed
-  const rangeTicks =
+  const rawRangeTicks =
     meta === undefined ? 45 : Math.max(2, meta.range + meta.levRange * skillLevel)
+  // 1.13c `D2Game.dll` `0x6FC460D0` -> `0x6FC61F50` (`0x6FC61F64..0x6FC61F77`, #1997):
+  // Caps `#225 buglightning` (`Range = 98`) lifetime to `0x4D` (`77` frames) when `>= 78`.
+  const rangeTicks =
+    resolvedClassId === 225 && rawRangeTicks >= 78 ? 77 : rawRangeTicks
   const element =
     options.element ??
     normalizeMissileElement(meta?.eType) ??
     missileClassElementFallback(resolvedClassId) ??
     'phys'
   const stationary = meta !== undefined && meta.vel <= 0
-  const startX = stationary ? targetX : monster.x
-  const startY = stationary ? targetY : monster.y
+  const startX = options.fromX ?? (stationary ? targetX : monster.x)
+  const startY = options.fromY ?? (stationary ? targetY : monster.y)
+  const dx = targetX - startX
+  const dy = targetY - startY
+  const dist = Math.max(0.5, Math.hypot(dx, dy))
   const physDamage =
     Math.max(0, Math.floor(options.physDamage ?? (element === 'phys' ? damage : 0)))
   const elemDamage =
     Math.max(0, Math.floor(options.elemDamage ?? (element === 'phys' ? 0 : damage)))
-  const totalDamage = Math.max(1, physDamage + elemDamage)
+  const engine = meta !== undefined ? this.onlineMissileEngine() : undefined
+  const doKind = meta !== undefined && engine !== undefined ? engine.classifyOnlineSrvDo113c(meta) : 'standard'
+  const hitKind = meta !== undefined && engine !== undefined ? engine.classifyOnlineSrvHit113c(meta) : 'none'
+  const isGroundFire = meta !== undefined && (doKind === 'groundfire' || meta.pSrvDmgFunc === 3)
+  const isFunctionalCarrier =
+    meta !== undefined &&
+    (doKind === 'pathspawner' ||
+      doKind === 'areaspawner' ||
+      doKind === 'orb' ||
+      (hitKind !== 'none' && hitKind !== 'engine-only' && hitKind !== 'homing'))
+  const rawTotal = physDamage + elemDamage
+  const totalDamage =
+    isGroundFire || (rawTotal <= 0 && isFunctionalCarrier) ? 0 : Math.max(1, rawTotal)
   const missileUnitId = this.allocateUnitId(UNIT_TYPE_113C.missile)
   const missile: InternalMissileRecord = {
     unitId: missileUnitId,
@@ -2848,16 +2881,26 @@ function spawnMonsterMissile(this: GameInstanceHost,
     remainingFrames: rangeTicks,
     collideType: meta?.collideType ?? 3,
     size: Math.max(1, meta?.size ?? 1),
-    pierce: meta !== undefined ? !meta.collideKill : false,
+    pierce: isGroundFire || (meta !== undefined ? !meta.collideKill : false),
     nextHit: meta?.nextHit === true,
     nextDelay: Math.max(0, meta?.nextDelay ?? 0),
-    element,
-    physDamage,
-    elemDamage,
+    element: isGroundFire ? 'fire' : element,
+    physDamage: isGroundFire ? 0 : physDamage,
+    elemDamage: isGroundFire ? 0 : elemDamage,
     elemDurationFrames: Math.max(0, options.elemDurationFrames ?? 0),
     hitCooldowns: new Map(),
-    guaranteedHit: options.guaranteed === true,
+    guaranteedHit: options.guaranteed ?? (meta !== undefined ? !meta.toHit : false),
     ...(options.hitMonsters === true ? { hitMonsters: true } : {}),
+  }
+  if (options.groundFire256 !== undefined) {
+    missile.groundFire256 = options.groundFire256
+  }
+  if (isGroundFire && meta !== undefined) {
+    missile.carrier = 'groundfire'
+    missile.groundFire256 ??= this.resolveOnlineGroundFire256113c(meta, skillLevel, undefined)
+    missile.groundFireCarry = new Map()
+  } else if (rawTotal <= 0 && isFunctionalCarrier) {
+    missile.carrier = 'none'
   }
   if (meta !== undefined) {
     this.attachOnlineMissileState113c(missile, meta, skillId, skillLevel, speed > 0 ? Math.ceil(dist / speed) : 0)
@@ -2883,10 +2926,13 @@ function spawnMonsterMissile(this: GameInstanceHost,
     areaId: monster.areaId,
   } as ServerEvent)
 
-  // 1.13c `MonUMod #29` (`Multishot`, `ev5 = 0x6FC45AD0`, #1900):
-  // Spawns `+2` angled fan projectiles (`1 + 2 = 3` total) for both unique bosses and their minions.
+  // 1.13c `MonUMod #29` (`Multishot`, `ev5 = 0x6FC45AD0`, boss-only `bBoss != 0`, #1900 / #1993):
+  // Spawns `+2` angled fan projectiles (`1 + 2 = 3` total) on boss units (`rank !== 'minion'`).
   if (
     options.skipMultishot !== true &&
+    missile.carrier !== 'none' &&
+    missile.carrier !== 'groundfire' &&
+    monster.rank !== 'minion' &&
     monster.umodIds.includes(MON_UMOD.MULTISHOT) &&
     isMissileEligibleForMultishot113c(resolvedClassId, {
       guaranteed: options.guaranteed,
@@ -3215,6 +3261,9 @@ export interface PlayerSkillsTargetAndMeleeMethods {
     readonly elemDamage?: number | undefined
     readonly element?: MissileDamageChannel | undefined
     readonly elemDurationFrames?: number | undefined
+    readonly fromX?: number | undefined
+    readonly fromY?: number | undefined
+    readonly groundFire256?: { readonly min: number; readonly max: number } | undefined
     /** Death-effect nova: never miss, never block, never stop on terrain. */
     readonly guaranteed?: boolean | undefined
     /** Monster-vs-monster projectile (Confuse/Conversion/Attract). */

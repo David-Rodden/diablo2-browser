@@ -306,6 +306,15 @@ export interface CombatSkillInput {
   readonly skillElemType?: string | undefined
 }
 
+export interface CombatShield {
+  /** Armor.txt `mindam` / `maxdam` (shield Smite base damage). */
+  readonly minDam: number
+  readonly maxDam: number
+  /** Armor.txt `StrBonus` / `DexBonus` (100 / 0 on all 1.13c shields). */
+  readonly strBonus: number
+  readonly dexBonus: number
+}
+
 export interface CombatInput {
   readonly charClass: CharacterClassCode
   /** Unit level (ItemStatCost `level`), the op base of every per-level stat. */
@@ -330,6 +339,10 @@ export interface CombatInput {
   readonly primaryArm: 'right' | 'left' | null
   /** Boots (body loc 9), for kick skills. */
   readonly boots: CombatBoots | null
+  /** Equipped shield (body loc 4 or 5), for #97 Smite (`descdam = 10`, D2Client.dll 0x6FAE05D0). */
+  readonly shield?: CombatShield | null | undefined
+  /** Active Holy Shield (state 101) flat Smite damage bonus (`Skills.txt` #117 MinDam..MaxDam bands). */
+  readonly holyShieldFlatBonus?: { readonly min: number; readonly max: number } | null | undefined
   /** Weapon-mastery passive stats of the unit. */
   readonly masteries: readonly CombatMastery[]
   /** ItemStatCost.txt `damagerelated`. */
@@ -1078,6 +1091,40 @@ function damageFor(input: CombatInput, skill: CombatSkillInput, selected: Side |
   }
   let phys: { min: number; max: number }
   const skillPhys256 = effectiveSkillPhys256(skill)
+  if (skill.id === 1) {
+    // Default #1 Kick (SkillDesc.txt descdam = 2, D2Client.dll 0x6FAE0AE0):
+    // reads STATLIST_UnitGetStatValue(pUnit, 137 item_kickdamage, 0) directly and displays val..(val + 1),
+    // with no boots, STR/DEX, or elemental damage added (unlike Assassin kicks descdam = 19 @ 0x6FAE4200).
+    const val = Math.max(0, unit(S.ITEM_KICKDAMAGE))
+    return {
+      ...NO_DAMAGE,
+      kind: 'weapon',
+      physMin: val,
+      physMax: val + 1,
+    }
+  }
+  if (skill.id === 97) {
+    // #97 Smite (SkillDesc.txt descdam = 10, D2Client.dll 0x6FAE05D0):
+    // shield Armor.txt mindam..maxdam + active Holy Shield (state 101) flat bonus, scaled by
+    // max(-90, ddamCalc1 + strEd + dexEd + stat(25)) + stat(18)/stat(17), with no weapon/elemental adds.
+    const sh = input.shield
+    if (!sh) return NO_DAMAGE
+    const minBase = sh.minDam + (input.holyShieldFlatBonus?.min ?? 0)
+    const maxBase = sh.maxDam + (input.holyShieldFlatBonus?.max ?? 0)
+    if (minBase <= 0 && maxBase <= 0) return NO_DAMAGE
+    const strEd = sh.strBonus !== 0 ? idiv(sh.strBonus * input.strength, 100) : 0
+    const dexEd = sh.dexBonus !== 0 ? idiv(sh.dexBonus * input.dexterity, 100) : 0
+    const baseEd = Math.max(-90, skill.damagePercent + strEd + dexEd + unit(S.DAMAGEPERCENT))
+    const unitMinPct = unit(S.ITEM_MINDAMAGE_PERCENT) || unit(S.ITEM_MAXDAMAGE_PERCENT)
+    const min256 = (minBase << 8) + calculatePercentage(minBase << 8, baseEd + unitMinPct, 100)
+    const max256 = (maxBase << 8) + calculatePercentage(maxBase << 8, baseEd + unit(S.ITEM_MAXDAMAGE_PERCENT), 100)
+    return {
+      ...NO_DAMAGE,
+      kind: 'weapon',
+      physMin: Math.max(0, min256) >> 8,
+      physMax: Math.max(0, max256) >> 8,
+    }
+  }
   if (skill.kick) {
     // Kicks: the physical part is precomputed (SkillAss.cpp:1192-1240, srcdam 128).
     phys = kickRange256(input, skill, unit)
@@ -1284,6 +1331,101 @@ function buildFormulaBreakdown(
 
   const gearMaxEd = unitWithoutStates(S.DAMAGEPERCENT) + unitWithoutStates(S.ITEM_MAXDAMAGE_PERCENT)
   const auraMaxEd = unit(S.DAMAGEPERCENT) + unit(S.ITEM_MAXDAMAGE_PERCENT) - gearMaxEd
+
+  if (skill.id === 1) {
+    const val = Math.max(0, unit(S.ITEM_KICKDAMAGE))
+    return {
+      kind: 'kick',
+      skillId: skill.id,
+      weaponMin: val,
+      weaponMax: val + 1,
+      offWeaponFlatMin: 0,
+      offWeaponFlatMax: 0,
+      physBaseMin: val,
+      physBaseMax: val + 1,
+      strEdPct: 0,
+      dexEdPct: 0,
+      masteryEdPct: 0,
+      skillEdPct: 0,
+      gearEdPct: 0,
+      auraEdPct: 0,
+      totalMinEdPct: 0,
+      totalMaxEdPct: 0,
+      skillPhysMin: 0,
+      skillPhysMax: 0,
+      srcDam: 128,
+      magicConversionPct: 0,
+      physMin: damage.physMin,
+      physMax: damage.physMax,
+      fireMin: 0,
+      fireMax: 0,
+      coldMin: 0,
+      coldMax: 0,
+      lightMin: 0,
+      lightMax: 0,
+      magicMin: 0,
+      magicMax: 0,
+      poisonMin: 0,
+      poisonMax: 0,
+      skillElemMin: 0,
+      skillElemMax: 0,
+      skillElemType: undefined,
+      finalMin,
+      finalMax,
+    }
+  }
+
+  if (skill.id === 97 && input.shield) {
+    const sh = input.shield
+    const hsMin = input.holyShieldFlatBonus?.min ?? 0
+    const hsMax = input.holyShieldFlatBonus?.max ?? 0
+    const physBaseMin = sh.minDam + hsMin
+    const physBaseMax = sh.maxDam + hsMax
+    const strEdPct = sh.strBonus !== 0 ? idiv(sh.strBonus * input.strength, 100) : 0
+    const dexEdPct = sh.dexBonus !== 0 ? idiv(sh.dexBonus * input.dexterity, 100) : 0
+    const totalMaxEdPct = Math.max(-90, skill.damagePercent + strEdPct + dexEdPct + unit(S.DAMAGEPERCENT)) + unit(S.ITEM_MAXDAMAGE_PERCENT)
+    const unitMinPct = unit(S.ITEM_MINDAMAGE_PERCENT) || unit(S.ITEM_MAXDAMAGE_PERCENT)
+    const totalMinEdPct = Math.max(-90, skill.damagePercent + strEdPct + dexEdPct + unit(S.DAMAGEPERCENT)) + unitMinPct
+    return {
+      kind: 'weapon',
+      skillId: skill.id,
+      weaponMin: sh.minDam,
+      weaponMax: sh.maxDam,
+      offWeaponFlatMin: hsMin,
+      offWeaponFlatMax: hsMax,
+      physBaseMin,
+      physBaseMax,
+      strEdPct,
+      dexEdPct,
+      masteryEdPct: 0,
+      skillEdPct: skill.damagePercent,
+      gearEdPct: gearMaxEd,
+      auraEdPct: auraMaxEd,
+      totalMinEdPct,
+      totalMaxEdPct,
+      skillPhysMin: hsMin,
+      skillPhysMax: hsMax,
+      srcDam: 128,
+      magicConversionPct: 0,
+      physMin: damage.physMin,
+      physMax: damage.physMax,
+      fireMin: 0,
+      fireMax: 0,
+      coldMin: 0,
+      coldMax: 0,
+      lightMin: 0,
+      lightMax: 0,
+      magicMin: 0,
+      magicMax: 0,
+      poisonMin: 0,
+      poisonMax: 0,
+      skillElemMin: 0,
+      skillElemMax: 0,
+      skillElemType: undefined,
+      finalMin,
+      finalMax,
+    }
+  }
 
   if (skill.kick) {
     const n = Math.max(input.dexterity + input.strength - 20, 1)

@@ -217,7 +217,9 @@ const H: Record<string, string> = {
     'MDR spill (#1795) but differs in the per-channel value it reports.',
   'dmg|*|dr>=phys':
     'DR >= physical damage: the physical channel goes negative and is kept (0x6FCFBD41..0x6FCFBD47, stored at ' +
-    '0x6FCFBD80) and summed into the total; TS clamps the physical remainder at 0 (`remRawPhys256 = max(0, …)`).',
+    '0x6FCFBD80) and summed into the total. TS now subtracts the overflow from `totalDamage256` (the ' +
+    'gameplay value), but still reports `physDamage256 = 0` instead of the negative channel, and a negative ' +
+    'original total is reported as 0 by TS (no damage either way). Representation-only remainder.',
   'dmg|*|rate':
     'Frame-rate scaled DR/MDR (`pDamage+0x54`): `mulDiv(reducer, rate, 0x400)` at 0x6FCFC142..0x6FCFC147 / ' +
     '0x6FCFC16B..0x6FCFC170 (only when reducer > 0 and rate > 0); TS `scaleFlatDrByFrameRate` uses ' +
@@ -263,3 +265,21 @@ for (let i = 1; i <= 5; i++) {
 }
 
 export const HYPOTHESES: Readonly<Record<string, string>> = H
+
+/** TS fixes driven by this sweep (rendered into the report). */
+export const FIX_LOG: readonly string[] = [
+  'Shared bit-exact `mulDiv113c` (`src/common/data/mul-div-113c.ts`, D2Common 0x6FD511E0 = D2Game 0x6FC214D0: ' +
+    'divide-first shortcuts, low-dword 64-bit path); `combat-pipeline.ts` re-exports it.',
+  'Absorb: `applyElementalAbsorb113c` passes `(pct, damage)` in the original register order (0x6FCFAD2A..0x6FCFAD40).',
+  'Resist step: `applyResist113c` = `mulDiv(100 - min(res, 100), dmg, 100)` (0x6FCFBD45..0x6FCFBD6A) at every TS call site.',
+  'Frame-rate scaled DR/MDR: `mulDiv(rate, dr256, 0x400)` (0x6FCFC13B..0x6FCFC177).',
+  'DR overflow: a physical channel driven below 0 by DR lowers the signed total (0x6FCFC4F7..0x6FCFC519).',
+  'Skill synergy / mastery / ELenSym: `v + mulDiv(pct, v, 100)` in calc-ast and `evaluateSkillCore113c` ' +
+    '(0x6FDA0524, 0x6FDA041D, 0x6FDBB40F, 0x6FDA20D6, 0x6FD9E9EC, 0x6FD9F8DA).',
+  'SkillCalc `mana` / `usmc`: no minmana floor, raw level (0x6FDA1264 / 0x6FDA1507).',
+  'Experience: level-difference scaling through mulDiv (0x6FCFAA40, `edx = exp`), ExpRatio overflow guard ' +
+    '(0x6FCFAA04..0x6FCFAA2C), `item_addexperience` through mulDiv (0x6FCFC090), Experience.txt row 99 ExpRatio parsed.',
+  'Player AnimData clips generated from AnimData.D2 (`src/baker/extract/gen-char-anim-clips-113c.ts` -> ' +
+    '`char-anim-clips-113c.generated.ts`); `CHAR_ANIM_CLIPS_113C` = HTH records, `CHAR_WCLASS_ANIM_CLIPS_113C` = every ' +
+    'existing weapon class, so the weapon-class fallback of `getCharAnimClip113c` only applies to COFs that do not exist.',
+]

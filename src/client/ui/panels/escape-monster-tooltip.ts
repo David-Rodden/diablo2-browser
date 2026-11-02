@@ -1358,16 +1358,49 @@ export function drawItemTooltipImpl(
   const itemCharLevel = rawItemForLive
     ? Math.max(1, Math.trunc(Number(rawItemForLive.charLevel ?? rawItemForLive.playerLevel ?? 1) || 1))
     : 1
+  const isEligibleSetUniqueRuneword =
+    !unid &&
+    !socketableInfo &&
+    (item.quality === 'unique' ||
+      item.quality === 'set' ||
+      item.quality === 'rune' ||
+      Boolean(item.runewordRunes) ||
+      Boolean(
+        rawItemForLive &&
+          (rawItemForLive.runeword ||
+            rawItemForLive.flags?.runeword ||
+            (rawItemForLive as { isRuneword?: boolean }).isRuneword),
+      ))
+  const hasExplicitPlayerLevel =
+    isMercOwnedItem ||
+    this.playerContextSeq > 0 ||
+    Boolean(this.activePlayerInventory && this.activePlayerInventory.playerContextSeq > 0)
+  const effectiveCharLevel =
+    hasExplicitPlayerLevel && playerCtx.level > 0 ? playerCtx.level : itemCharLevel
+  const shouldRecomputePerLevel =
+    hasPerLevelProps && Boolean(rawItemForLive) && hasExplicitPlayerLevel && playerCtx.level > 0 && itemCharLevel !== playerCtx.level
+  const shouldFormatWithRanges = Boolean(this.showItemStatRanges) && isEligibleSetUniqueRuneword && Boolean(rawItemForLive)
   const livePerLevelTooltip =
-    hasPerLevelProps && rawItemForLive && playerCtx.level > 0 && itemCharLevel !== playerCtx.level
+    rawItemForLive && !unid && (shouldRecomputePerLevel || shouldFormatWithRanges)
       ? formatItemTooltip(
-          { ...rawItemForLive, charLevel: playerCtx.level } as Item,
+          {
+            ...rawItemForLive,
+            charLevel: effectiveCharLevel,
+          } as Item,
           isEn ? 'en' : 'zh',
+          {
+            equippedSetIds: rawItemForLive.equippedSetIds,
+            wornSetPieceCount: rawItemForLive.wornSetPieceCount,
+            showItemStatRanges: Boolean(this.showItemStatRanges),
+          },
         )
       : undefined
 
   // Base Stats Block
-  const effectiveDefense = livePerLevelTooltip?.defense ?? item.defense
+  const effectiveDefense =
+    shouldRecomputePerLevel && livePerLevelTooltip?.defense !== undefined
+      ? livePerLevelTooltip.defense
+      : item.defense
   if (effectiveDefense !== undefined) {
     lines.push({
       text: (isEn ? 'Defense: ' : '防御: ') + effectiveDefense,

@@ -8,6 +8,7 @@
  *    (`executeSkill113c`) across all 221 player skills (`210` class skills + `11` universal skills)
  *    and `17` summoned pet/trap AI sub-skills (`IDs 281..338`), directly from `Patch_D2.mpq`.
  */
+import { mulDiv113c } from '../../common/data/mul-div-113c.ts'
 import type {
   SkillEvalContext,
   SkillEvalResult,
@@ -372,8 +373,9 @@ export function evaluateSkillCore113c(ctx: SkillEvalContext): SkillEvalResult {
       : rawPhysMax
   const bashFlatPhys =
     skill.id === 126 ? (skill.calc2 ? evaluateCalc(skill.calc2, calcCtx) : effLvl) : 0
-  const physMinScaled = Math.trunc((basePhysMin * (100 + physSynPct)) / 100) + bashFlatPhys
-  const physMaxScaled = Math.trunc((basePhysMax * (100 + physSynPct)) / 100) + bashFlatPhys
+  // #10297 0x6FDA20D6 / #10567: v += mulDiv(eax = DmgSymPerCalc, edx = v, 100) (0x6FD511E0, divide-first above 0x100000).
+  const physMinScaled = basePhysMin + mulDiv113c(physSynPct, basePhysMin, 100) + bashFlatPhys
+  const physMaxScaled = basePhysMax + mulDiv113c(physSynPct, basePhysMax, 100) + bashFlatPhys
   // Weapon-damage % column is chosen per srvstfunc/srvdofunc (see `resolveSkillDamagePctCalc`).
   const dmgPctCalc = skill.srcDam > 0 ? resolveSkillDamagePctCalc(skill) : 'none'
   const dmgPctCalcVal =
@@ -413,7 +415,7 @@ export function evaluateSkillCore113c(ctx: SkillEvalContext): SkillEvalResult {
   let elemFromMissile = false
 
   const primaryMissileName = skill.srvMissile || skill.srvMissileA || ''
-  if (baseEMin === 0 && baseEMax === 0 && primaryMissileName) {
+  if ((ctx.includeMissileFallback ?? true) && baseEMin === 0 && baseEMax === 0 && primaryMissileName) {
     const msl = registry.getMissileByName(primaryMissileName)
     if (msl && (msl.eMin > 0 || msl.eMax > 0)) {
       baseEMin = compute5BandScaling(
@@ -447,15 +449,17 @@ export function evaluateSkillCore113c(ctx: SkillEvalContext): SkillEvalResult {
   // skills stays un-synergised (#1681). The max side (#11091 0x6FDA0360) and the missile path
   // (0x6FDBB3F4) apply it unconditionally.
   const minSynergyApplies = elemFromMissile || skillMinSynergyApplies113c(rawMin256, skill.eMinLev1)
-  const minElemDmg256 = minSynergyApplies ? Math.trunc((rawMin256 * (100 + eSynPct)) / 100) : rawMin256
-  const maxElemDmg256 = Math.trunc((rawMax256 * (100 + eSynPct)) / 100)
+  // #10121 0x6FDA0524 / #11091 0x6FDA041D / missile 0x6FDBB40F: v += mulDiv(eax = syn, edx = v, 100).
+  const minElemDmg256 = minSynergyApplies ? rawMin256 + mulDiv113c(eSynPct, rawMin256, 100) : rawMin256
+  const maxElemDmg256 = rawMax256 + mulDiv113c(eSynPct, rawMax256, 100)
 
   // 6. Duration (`auralencalc` or `ELen`..`ELevLen3` or 1.13c Assassin combo charge 375 frames)
   let elemDurationFrames = 0
   if (skill.eLen > 0 || skill.eLevLen1 > 0) {
     const baseLen = compute3BandDuration(effLvl, skill.eLen, skill.eLevLen1, skill.eLevLen2, skill.eLevLen3)
     const lenSyn = skill.eLenSymPerCalc ? evaluateCalc(skill.eLenSymPerCalc, calcCtx) : 0
-    const rawDur = Math.trunc((baseLen * (100 + lenSyn)) / 100)
+    // #10510 0x6FD9E9E5..0x6FD9E9F1: len += mulDiv(eax = ELenSymPerCalc, edx = len, 100).
+    const rawDur = baseLen + mulDiv113c(lenSyn, baseLen, 100)
     elemDurationFrames = skill.id === 139 ? Math.min(250, rawDur) : rawDur
   } else if (primaryMissileName) {
     const msl = registry.getMissileByName(primaryMissileName)

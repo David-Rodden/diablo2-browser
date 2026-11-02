@@ -955,6 +955,131 @@ function grantFreeQuestMercenary113c(this: GameInstanceHost, player: InternalPla
  *    next to Town Anya unless every rescued player has BOTH completed `a5q4` AND activated
  *    Halls of Pain waypoint (`123`).
  */
+function findAreaInitFnAnchor113c(
+  host: GameInstanceHost,
+  areaId: number,
+  classId: number,
+): { readonly x: number; readonly y: number } | undefined {
+  const fromLoaded = host.loadedAreas
+    .get(areaId)
+    ?.initFnAnchors?.find((a) => a.classId === classId)
+  if (fromLoaded !== undefined) return fromLoaded
+  return [...host.objects.values()].find((o) => o.areaId === areaId && o.classId === classId)
+}
+
+function upsertTownNpcAtAnchor113c(
+  host: GameInstanceHost,
+  spec: {
+    readonly areaId: number
+    readonly hcIdx: number
+    readonly name: string
+    readonly isVendor: boolean
+    readonly anchorX: number
+    readonly anchorY: number
+  },
+): InternalMonsterRecord | undefined {
+  const loadedArea = host.loadedAreas.get(spec.areaId)
+  const stand = loadedArea
+    ? findStandableNear(
+        (x, y) => host.isWorldWalkableForPlayer(spec.areaId, x, y),
+        spec.anchorX,
+        spec.anchorY,
+        8,
+      )
+    : null
+  const destX = stand?.x ?? spec.anchorX
+  const destY = stand?.y ?? spec.anchorY
+  const existing = [...host.monsters.values()].find(
+    (m) => m.areaId === spec.areaId && m.hcIdx === spec.hcIdx && !m.dead,
+  )
+  if (existing !== undefined) {
+    if (Math.hypot(existing.x - destX, existing.y - destY) > 6) {
+      const prevX = existing.x
+      const prevY = existing.y
+      existing.x = destX
+      existing.y = destY
+      existing.homeX = destX
+      existing.homeY = destY
+      existing.wanderTargetX = destX
+      existing.wanderTargetY = destY
+      existing.pathTargetX = destX
+      existing.pathTargetY = destY
+      existing.path = []
+      existing.pathIndex = 0
+      host.syncUnitMoveAcrossViewerAoi113c(
+        'monster',
+        existing.unitId,
+        spec.areaId,
+        prevX,
+        prevY,
+        spec.areaId,
+        destX,
+        destY,
+      )
+      const assignEv = host.buildUnitAssignEvent('monster', existing.unitId)
+      if (assignEv !== undefined) {
+        for (const viewer of host.players.values()) {
+          if (
+            host.isPointInViewerAoi113c(viewer, spec.areaId, prevX, prevY) &&
+            host.isPointInViewerAoi113c(viewer, spec.areaId, destX, destY)
+          ) {
+            host.emitToPlayer(viewer.unitId, assignEv)
+          }
+        }
+      }
+    }
+    return existing
+  }
+  const spawnedId = host.spawnMonster({
+    classId: spec.hcIdx,
+    name: spec.name,
+    x: destX,
+    y: destY,
+    areaId: spec.areaId,
+    isNpc: true,
+    isVendor: spec.isVendor,
+    isKillable: false,
+    aiDisabled: true,
+  })
+  return host.monsters.get(spawnedId)
+}
+
+function removeTownNpcFromArea113c(host: GameInstanceHost, areaId: number, hcIdx: number): void {
+  const pending = host.pendingPresetMonsters.get(areaId)
+  if (pending !== undefined) {
+    for (const [roomIdx, roomPresets] of pending.byRoom.entries()) {
+      const filtered = roomPresets.monsters.filter(
+        (preset) => !(preset.superUniqueIndex === undefined && preset.classId === hcIdx),
+      )
+      if (
+        filtered.length === 0 &&
+        roomPresets.objectIds.length === 0 &&
+        roomPresets.tileIds.length === 0
+      ) {
+        pending.byRoom.delete(roomIdx)
+      } else if (filtered.length !== roomPresets.monsters.length) {
+        pending.byRoom.set(roomIdx, {
+          ...roomPresets,
+          monsters: filtered,
+        })
+      }
+    }
+  }
+  for (const [mId, mon] of [...host.monsters.entries()]) {
+    if (mon.areaId === areaId && mon.hcIdx === hcIdx) {
+      host.broadcastToArea(areaId, {
+        type: 'UnitRemove',
+        unitType: 1,
+        id: mId,
+        unitId: mId,
+        areaId,
+      })
+      host.monsters.delete(mId)
+      host.monsterCombat.delete(mId)
+    }
+  }
+}
+
 /**
  * 1.13c A1Q3 Rogue Encampment (`areaId === 1`) state sync (`D2Game.dll` `0x6FC9CD80` + `Objects.txt 385` `InitFn 54`):
  * When any player in the room has rescued Deckard Cain (`a1q3` `COMPLETED` / `REWARD_PENDING` / `PRIMARY_GOAL_DONE`),
@@ -981,8 +1106,10 @@ function syncRogueEncampmentA1Q3State113c(
   )
   if (rescuedPlayers.length === 0) return
 
+  const cainStartAnchor = findAreaInitFnAnchor113c(this, 1, 385)
   const hasRogueEncampmentPresence =
     this.loadedAreas.has(1) ||
+    cainStartAnchor !== undefined ||
     candidates.some((p) => p.areaId === 1) ||
     [...this.monsters.values()].some((m) => m.areaId === 1) ||
     [...this.objects.values()].some((o) => o.areaId === 1)
@@ -993,9 +1120,6 @@ function syncRogueEncampmentA1Q3State113c(
   )
   if (existingTownCain !== undefined) return
 
-  const cainStartAnchor = [...this.objects.values()].find(
-    (o) => o.areaId === 1 && o.classId === 385,
-  )
   const stashAnchor = [...this.objects.values()].find(
     (o) => o.areaId === 1 && o.classId === 267,
   )
@@ -1035,6 +1159,149 @@ function syncRogueEncampmentA1Q3State113c(
 }
 
 /**
+ * 1.13c Act 2 Lut Gholein (`areaId === 40`) dynamic NPC init & relocation (`D2Game.dll` `InitFn 18` @ `0x6FCE7C20`
+ * for `Objects.txt 121` & `InitFn 19` @ `0x6FCE9B70` for `Objects.txt 122`, #2000):
+ * - Spawns/relocates **Jerhyn (`hcIdx === 201`)**: at `Object 121` (`(5147, 5191)`) before Act 2 quest progress,
+ *   or at `Object 122` (`(5071, 5148)` Palace entrance) once any Act 2 quest (`a2q1..a2q6`) has started/progressed.
+ * - Spawns **Kaelan (`hcIdx === 331`, `act2guard2`)** at `(obj122.x + 1, obj122.y)` while Duriel (`a2q6`) has not
+ *   been defeated (`0x6FCE9B96..0x6FCE9BFB`), and removes Kaelan once Duriel is slain.
+ */
+function syncLutGholeinAct2NpcState113c(
+  this: GameInstanceHost,
+  triggerPlayer?: InternalPlayerRecord,
+): void {
+  const anchor121 = findAreaInitFnAnchor113c(this, 40, 121)
+  const anchor122 = findAreaInitFnAnchor113c(this, 40, 122)
+  if (!this.loadedAreas.has(40) && anchor121 === undefined && anchor122 === undefined) return
+
+  const candidates =
+    triggerPlayer !== undefined
+      ? [
+          triggerPlayer,
+          ...[...this.players.values()].filter((p) => p.unitId !== triggerPlayer.unitId),
+        ]
+      : [...this.players.values()]
+  const act2QuestStarted = candidates.some((p) => {
+    for (const qId of ['a2q1', 'a2q2', 'a2q3', 'a2q4', 'a2q5', 'a2q6'] as const) {
+      const idx = questWordIndex113c(qId)
+      if (idx !== undefined && (p.questFlags[idx] ?? 0) !== 0) return true
+    }
+    return false
+  })
+  const jerhynAnchor = act2QuestStarted ? (anchor122 ?? anchor121) : (anchor121 ?? anchor122)
+  if (jerhynAnchor !== undefined) {
+    upsertTownNpcAtAnchor113c(this, {
+      areaId: 40,
+      hcIdx: 201,
+      name: 'Jerhyn',
+      isVendor: false,
+      anchorX: jerhynAnchor.x,
+      anchorY: jerhynAnchor.y,
+    })
+  }
+
+  const durielSlain = candidates.some((p) =>
+    hasQuestFlag113c(
+      p.questFlags,
+      'a2q6',
+      QUEST_FLAG_PRIMARY_GOAL_DONE_113C |
+        QUEST_FLAG_CUSTOM_3_113C |
+        QUEST_FLAG_CUSTOM_4_113C |
+        QUEST_FLAG_COMPLETED_113C |
+        QUEST_FLAG_COMPLETED_NOW_113C,
+    ),
+  )
+  if (durielSlain) {
+    removeTownNpcFromArea113c(this, 40, 331)
+  } else if (anchor122 !== undefined) {
+    upsertTownNpcAtAnchor113c(this, {
+      areaId: 40,
+      hcIdx: 331,
+      name: 'Kaelan',
+      isVendor: false,
+      anchorX: anchor122.x + 1,
+      anchorY: anchor122.y,
+    })
+  }
+}
+
+/**
+ * 1.13c Act 3 Kurast Docks (`areaId === 75`) dynamic NPC init & relocation (`D2Game.dll` `InitFn 49` @ `0x6FD086A0`
+ * for `Objects.txt 378`, `InitFn 50` @ `0x6FD08560` for `Objects.txt 379`, & `InitFn 52` @ `0x6FD08310` for
+ * `Objects.txt 382`, #2000):
+ * - Spawns/relocates **Hratli (`hcIdx === 253`, `VendorNpcId.HRATLI`)** at `Object 378` (docks) before Act 3
+ *   intro/quest progress or at `Object 379` (forge) once Act 3 has progressed.
+ * - Spawns **Natalya (`hcIdx === 297`)** at `Object 382` while Mephisto (`a3q6`) is uncompleted, and removes
+ *   Natalya once `a3q6` is completed (`0x6FD08344..0x6FD08499`).
+ */
+function syncKurastDocksAct3NpcState113c(
+  this: GameInstanceHost,
+  triggerPlayer?: InternalPlayerRecord,
+): void {
+  const anchor378 = findAreaInitFnAnchor113c(this, 75, 378)
+  const anchor379 = findAreaInitFnAnchor113c(this, 75, 379)
+  const anchor382 = findAreaInitFnAnchor113c(this, 75, 382)
+  if (
+    !this.loadedAreas.has(75) &&
+    anchor378 === undefined &&
+    anchor379 === undefined &&
+    anchor382 === undefined
+  ) {
+    return
+  }
+
+  const candidates =
+    triggerPlayer !== undefined
+      ? [
+          triggerPlayer,
+          ...[...this.players.values()].filter((p) => p.unitId !== triggerPlayer.unitId),
+        ]
+      : [...this.players.values()]
+  const act3Progressed = candidates.some((p) => {
+    if ((p.questFlags[16] ?? 0) !== 0) return true
+    for (const qId of ['a3q1', 'a3q2', 'a3q3', 'a3q4', 'a3q5', 'a3q6'] as const) {
+      const idx = questWordIndex113c(qId)
+      if (idx !== undefined && (p.questFlags[idx] ?? 0) !== 0) return true
+    }
+    return false
+  })
+  const hratliAnchor = act3Progressed ? (anchor379 ?? anchor378) : (anchor378 ?? anchor379)
+  if (hratliAnchor !== undefined) {
+    upsertTownNpcAtAnchor113c(this, {
+      areaId: 75,
+      hcIdx: 253,
+      name: 'Hratli',
+      isVendor: true,
+      anchorX: hratliAnchor.x,
+      anchorY: hratliAnchor.y,
+    })
+  }
+
+  const mephistoCompleted = candidates.some((p) =>
+    hasQuestFlag113c(
+      p.questFlags,
+      'a3q6',
+      QUEST_FLAG_PRIMARY_GOAL_DONE_113C |
+        QUEST_FLAG_REWARD_PENDING_113C |
+        QUEST_FLAG_COMPLETED_113C |
+        QUEST_FLAG_COMPLETED_NOW_113C,
+    ),
+  )
+  if (mephistoCompleted) {
+    removeTownNpcFromArea113c(this, 75, 297)
+  } else if (anchor382 !== undefined) {
+    upsertTownNpcAtAnchor113c(this, {
+      areaId: 75,
+      hcIdx: 297,
+      name: 'Natalya',
+      isVendor: false,
+      anchorX: anchor382.x,
+      anchorY: anchor382.y,
+    })
+  }
+}
+
+/**
  * 1.13c A1Q4 Tower Cellar Level 5 (`areaId === 25`) quest chest init (`D2Game.dll` `OBJECTS_Init39_CountessChest`
  * @ `0x6FC88AB0` + `0x6FC88D20`, #1988):
  * When `a1q4` (`The Forgotten Tower`) already has `QFLAG_REWARDGRANTED` (`0x0001`), `Objects.txt 371`
@@ -1065,6 +1332,22 @@ function syncHarrogathA5Q3State113c(this: GameInstanceHost, triggerPlayer?: Inte
     triggerPlayer !== undefined
       ? [triggerPlayer, ...[...this.players.values()].filter((p) => p.unitId !== triggerPlayer.unitId)]
       : [...this.players.values()]
+  const anchor459 = findAreaInitFnAnchor113c(this, 109, 459)
+  const anchor461 = findAreaInitFnAnchor113c(this, 109, 461)
+  const anchor543 = findAreaInitFnAnchor113c(this, 109, 543) ?? findAreaInitFnAnchor113c(this, 109, 542)
+
+  // D2Game.dll InitFn 70/71 (0x6FC7C470 / 0x6FC7C3A0): always ensure Larzuk (`hcIdx === 511`) at Object 543/542 (#2000).
+  if (anchor543 !== undefined) {
+    upsertTownNpcAtAnchor113c(this, {
+      areaId: 109,
+      hcIdx: 511,
+      name: 'Larzuk',
+      isVendor: true,
+      anchorX: anchor543.x,
+      anchorY: anchor543.y,
+    })
+  }
+
   const rescuedPlayers = candidates.filter((p) =>
     hasQuestFlag113c(
       p.questFlags,
@@ -1072,39 +1355,60 @@ function syncHarrogathA5Q3State113c(this: GameInstanceHost, triggerPlayer?: Inte
       QUEST_FLAG_REWARD_PENDING_113C | QUEST_FLAG_COMPLETED_113C,
     ),
   )
-  if (rescuedPlayers.length === 0) return
+  const enteredNihlathakTemple = candidates.some(
+    (p) => (p.areaId >= 121 && p.areaId <= 124) || p.waypoints.has(123),
+  )
+
+  if (rescuedPlayers.length === 0) {
+    // D2Game.dll InitFn 68 (0x6FC7C5C0 -> 0x6FC7F560): Town Nihlathak (`hcIdx === 514`) stands at Object 461
+    // only while Anya (`a5q3`) is unrescued AND no player has entered Nihlathak's Temple (`121..124`, #2000).
+    if (enteredNihlathakTemple) {
+      removeTownNpcFromArea113c(this, 109, 514)
+    } else if (anchor461 !== undefined) {
+      upsertTownNpcAtAnchor113c(this, {
+        areaId: 109,
+        hcIdx: 514,
+        name: 'Nihlathak',
+        isVendor: true,
+        anchorX: anchor461.x,
+        anchorY: anchor461.y,
+      })
+    }
+    return
+  }
 
   const hasHarrogathPresence =
     this.loadedAreas.has(109) ||
+    anchor459 !== undefined ||
     candidates.some((p) => p.areaId === 109) ||
     [...this.monsters.values()].some((m) => m.areaId === 109) ||
     [...this.objects.values()].some((o) => o.areaId === 109)
   if (!hasHarrogathPresence) return
 
-  // 1. Remove town Nihlathak (`hcIdx === 514`) from Harrogath (109).
-  for (const [mId, mon] of [...this.monsters.entries()]) {
-    if (mon.areaId === 109 && mon.hcIdx === 514) {
-      this.broadcastToArea(109, {
-        type: 'UnitRemove',
-        unitType: 1,
-        id: mId,
-        unitId: mId,
-        areaId: 109,
-      })
-      this.monsters.delete(mId)
-      this.monsterCombat.delete(mId)
-    }
-  }
+  // 1. Remove town Nihlathak (`hcIdx === 514`) from Harrogath (109), including unactivated room presets (#1990).
+  removeTownNpcFromArea113c(this, 109, 514)
 
-  // 2. Ensure Town Anya (`hcIdx === 512`) exists in Harrogath (109).
+  // 2. Ensure Town Anya (`hcIdx === 512`) exists in Harrogath (109), anchored first on Object 459 (InitFn 66 @ 0x6FC7EB30).
   let townAnya = [...this.monsters.values()].find(
     (m) => m.areaId === 109 && m.hcIdx === 512 && !m.dead,
   )
   if (townAnya === undefined) {
     const refPlayer = candidates.find((p) => p.areaId === 109)
     const area109 = this.loadedAreas.get(109)
-    const baseX = area109 ? area109.spawnX + 6 : (refPlayer ? refPlayer.x + 4 : LEGACY_TEST_GRID_SPAWN + 4)
-    const baseY = area109 ? area109.spawnY + 6 : (refPlayer ? refPlayer.y : LEGACY_TEST_GRID_SPAWN)
+    const baseX = anchor459
+      ? anchor459.x
+      : area109
+        ? area109.spawnX + 6
+        : refPlayer
+          ? refPlayer.x + 4
+          : LEGACY_TEST_GRID_SPAWN + 4
+    const baseY = anchor459
+      ? anchor459.y
+      : area109
+        ? area109.spawnY + 6
+        : refPlayer
+          ? refPlayer.y
+          : LEGACY_TEST_GRID_SPAWN
     const stand = area109
       ? findStandableNear((x, y) => this.isWorldWalkableForPlayer(109, x, y), baseX, baseY, 10)
       : null
@@ -3356,7 +3660,9 @@ export interface NpcVendorsAndArtisansMethods {
   grantFreeQuestMercenary113c(player: InternalPlayerRecord, act: 1 | 3): boolean
   syncRogueEncampmentA1Q3State113c(triggerPlayer?: InternalPlayerRecord): void
   syncTowerCellarA1Q4State113c(areaId?: number, triggerPlayer?: InternalPlayerRecord): void
+  syncLutGholeinAct2NpcState113c(triggerPlayer?: InternalPlayerRecord): void
   syncDurielsLairA2Q6State113c(areaId?: number, fallbackX?: number, fallbackY?: number, triggerPlayer?: InternalPlayerRecord): void
+  syncKurastDocksAct3NpcState113c(triggerPlayer?: InternalPlayerRecord): void
   syncHarrogathA5Q3State113c(triggerPlayer?: InternalPlayerRecord): void
   handleNpcHireList(player: InternalPlayerRecord, npcId: number): void
   handleNpcHire(player: InternalPlayerRecord, npcId: number, mercId: number): void
@@ -3394,7 +3700,9 @@ export const npcVendorsAndArtisansMethods: Record<keyof NpcVendorsAndArtisansMet
   grantFreeQuestMercenary113c,
   syncRogueEncampmentA1Q3State113c,
   syncTowerCellarA1Q4State113c,
+  syncLutGholeinAct2NpcState113c,
   syncDurielsLairA2Q6State113c,
+  syncKurastDocksAct3NpcState113c,
   syncHarrogathA5Q3State113c,
   handleNpcHireList,
   handleNpcHire,

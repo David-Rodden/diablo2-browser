@@ -14,6 +14,7 @@ import { isBonePrisonMonsterHcIdx113c } from '../../../common/units/monai-113c.t
 import { CANONICAL_CHARSTATS } from '../../../common/units/classes.ts'
 import type { ServerEvent, UnitType } from '../../../netproto/index.ts'
 import { FIXED_ONE } from '../stat-list.ts'
+import { evaluateMonsterMissileDamage113c } from '../../ai/monster-missile-damage-113c.ts'
 import { resolveMissilePierceIdx } from '../missile-pierce.ts'
 import { resolveWeaponMasteryBonus113c } from '../../skills/passives-procs-113c.ts'
 import { getAttackWeaponInfo } from '../../../common/skills/weapon-combat-meta.ts'
@@ -508,10 +509,48 @@ function launchPlayerSkillMissile(this: GameInstanceHost,
   const dx = effTx - fromX
   const dy = effTy - fromY
   const dist = Math.max(1, Math.hypot(dx, dy))
-  const rawVel = missileRec.vel + Math.trunc((missileRec.velLev * cast.slvl) / 8)
+  const rawVel =
+    missileRec.vel +
+    Math.trunc((missileRec.velLev * cast.slvl) / 8) +
+    Math.trunc(opts?.velDelta ?? 0)
   const baseSpeed = stationary ? 0 : rawVel > 0 ? rawVel / 16 : PLAYER_MISSILE_SPEED_SUBTILES
   const speed = player.states.has(STATE_SLOWMISSILES_113C) ? baseSpeed * 0.33 : baseSpeed
-  const lifetime = Math.max(1, missileRec.range + missileRec.levRange * cast.slvl)
+  // 1.13c `SKILLS_SrvDo003_Throw` (`0x6FCC2BDC`) -> `SKILLS_SpawnLobbedMissile` (`0x6FCC1880`):
+  // Throwing potions (`type = tpot`, `Missiles.txt` `#44..#49`, `CollideType = 6`, `AlwaysExplode = 1`)
+  // spawn with `flags = 0x420` (lobbed arc to `(tx, ty)`) and evaluate their own `Missiles.txt`
+  // `MinDamage..MaxDamage` + `EMin..Emax` (`D2Common#10413`, `SrcDamage = 0`, `Skill = ''`).
+  const isLobbedThrowPotion =
+    (cast.skill.id === 2 || cast.skill.id === 4 || cast.skill.id === 140) &&
+    missileRec.collideType === 6 &&
+    missileRec.alwaysExplode
+  const baseLifetime = Math.max(1, missileRec.range + missileRec.levRange * cast.slvl)
+  const lifetime =
+    isLobbedThrowPotion && speed > 0
+      ? Math.min(baseLifetime, Math.max(1, Math.ceil(Math.hypot(dx, dy) / speed)))
+      : baseLifetime
+  let lobbedPhysDamage: number | undefined
+  let lobbedElemDamage: number | undefined
+  if (isLobbedThrowPotion && missileRec.srcDamage <= 0 && missileRec.skill === '') {
+    if (missileRec.pSrvHitFunc === 2) {
+      damage = 0
+      lobbedPhysDamage = 0
+      lobbedElemDamage = 0
+    } else if (missileRec.minDamage > 0 || missileRec.eMin > 0) {
+      const diffIdx: 0 | 1 | 2 = this.difficulty === 2 ? 2 : this.difficulty === 1 ? 1 : 0
+      const ownEval = evaluateMonsterMissileDamage113c({
+        registry: this.registry,
+        missile: missileRec,
+        slvl: 1,
+        difficulty: diffIdx,
+        monsterMinPhys: 0,
+        monsterMaxPhys: 0,
+        rng: this.rng,
+      })
+      lobbedPhysDamage = ownEval.physDamage
+      lobbedElemDamage = ownEval.elemDamage
+      damage = Math.max(1, ownEval.totalDamage)
+    }
+  }
   const missileUnitId = this.allocateUnitId(UNIT_TYPE_113C.missile)
   const missileElem = normalizeMissileElement(missileRec.eType || cast.skill.eType)
   const isBlessedHammer = cast.skill.id === 112 && missileElem === 'mag'
@@ -529,7 +568,12 @@ function launchPlayerSkillMissile(this: GameInstanceHost,
   const poisonBitrate256 = isPoisonSkillMissile
     ? this.rollInclusive(cast.evalResult.minElemDmg256, cast.evalResult.maxElemDmg256)
     : 0
-  const physDamage = isPoisonSkillMissile ? this.rollPlayerSkillPhysDamage(player, cast) : damage
+  const physDamage =
+    lobbedPhysDamage !== undefined
+      ? lobbedPhysDamage
+      : isPoisonSkillMissile
+        ? this.rollPlayerSkillPhysDamage(player, cast)
+        : damage
   const elemDurationFrames = isPoisonSkillMissile
     ? cast.evalResult.durationFrames
     : missileElem === 'cold'
@@ -541,18 +585,23 @@ function launchPlayerSkillMissile(this: GameInstanceHost,
           missileRec,
         ).rawFrames
       : 0
-  const elemDamage = isPoisonSkillMissile
-    ? Math.floor((poisonBitrate256 * elemDurationFrames) / FIXED_ONE)
-    : 0
+  const elemDamage =
+    lobbedElemDamage !== undefined
+      ? lobbedElemDamage
+      : isPoisonSkillMissile
+        ? Math.floor((poisonBitrate256 * elemDurationFrames) / FIXED_ONE)
+        : 0
   // 1.13c `0x6FC8F660`:
   // - `CollideKill = 0` missiles unconditionally pass through units (`pierce: true`, no 4-pierce cap).
   // - `CollideKill = 1` rows with `Pierce = 1` (arrows, bolts, javelins, Lightning Fury, Exploding/Freezing Arrow)
   //   roll `pierce_idx` from `item_pierce (156) + skill_pierce (#33)` at creation, up to max 4 pierces (5 hits);
   //   without pierce stats they stop on the first unit (#1802, #1876).
   const pierceRemaining =
-    missileRec.pierce && missileRec.collideKill
-      ? resolveMissilePierceIdx(missileRec, this.playerCombatContext(player), this.registry)
-      : undefined
+    opts?.forcePierce === true
+      ? undefined
+      : missileRec.pierce && missileRec.collideKill
+        ? resolveMissilePierceIdx(missileRec, this.playerCombatContext(player), this.registry)
+        : undefined
   const resolvedSrcDamage =
     missileRec.srcDamage > 0
       ? missileRec.srcDamage
@@ -575,11 +624,12 @@ function launchPlayerSkillMissile(this: GameInstanceHost,
     remainingFrames: lifetime,
     collideType: missileRec.collideType,
     size: Math.max(1, missileRec.size),
-    pierce: !missileRec.collideKill
-      ? true
-      : pierceRemaining !== undefined
-        ? pierceRemaining > 0
-        : false,
+    pierce:
+      opts?.forcePierce === true || !missileRec.collideKill
+        ? true
+        : pierceRemaining !== undefined
+          ? pierceRemaining > 0
+          : false,
     ...(pierceRemaining !== undefined ? { pierceRemaining } : {}),
     nextHit: missileRec.nextHit,
     nextDelay: Math.max(0, missileRec.nextDelay),
@@ -1039,7 +1089,7 @@ function stepPlayerVitals(this: GameInstanceHost, player: InternalPlayerRecord):
     if (player.staminaFixed <= 0) {
       player.staminaExhausted = true
       player.run = false
-      if (motion.moving) player.mode = 2
+      if (motion.moving) player.mode = TOWN_AREAS.has(player.areaId) ? 6 : 2
     }
   } else {
     // 1.13c `D2Game.dll` `0x6FC97A50` (`PLAYER_UpdateStamina`, #1632):
@@ -1099,12 +1149,18 @@ function stepPlayerVitals(this: GameInstanceHost, player: InternalPlayerRecord):
     player.manaFixed = Math.min(accruedMaxManaFixed, player.manaFixed + manaPerFrame)
   }
 
-  // 1.13c `D2Game.dll` `0x6FC97CB0` (`PLAYER_UpdateHpRegen`, #1633):
+  // 1.13c `D2Game.dll` `0x6FC97CB0` (`PLAYER_UpdateHpRegen`, #1633, #1989):
   // Players have NO natural `maxhp / 65536` life regen (`MONSTER_Regen` is monsters only);
-  // only `stat 74 hpregen` (`item_replenish_life` / Prayer) modifies HP per frame, and negative `hpregen` clamps at `256` (`1 HP`).
+  // only `stat 74 hpregen` (`item_replenish_life` / Prayer / negative Poison DoT) modifies HP per frame,
+  // and negative `hpregen` clamps at `256` (`1 HP`).
+  const hpCombat = this.playerCombatContext(player)
+  if (!player.states.has(2) && (hpCombat.stateBus.hasState(2) || hpCombat.stateBus.hasState('poison'))) {
+    hpCombat.stateBus.removeState(2)
+    hpCombat.stateBus.removeState('poison')
+  }
   const hpRegen =
     this.sumPlayerItemStat(player, 74) +
-    Math.trunc(this.playerCombatContext(player).statList.getAccruedStat('hpregen'))
+    Math.trunc(hpCombat.statList.getAccruedStat('hpregen'))
   if (hpRegen > 0) {
     player.hpFixed = Math.min(accruedMaxHpFixed, player.hpFixed + hpRegen)
   } else if (hpRegen < 0 && player.hpFixed > 256) {
@@ -1116,6 +1172,15 @@ function stepPlayerVitals(this: GameInstanceHost, player: InternalPlayerRecord):
   player.stamina = player.staminaExhausted
     ? 0
     : Math.floor(player.staminaFixed / FIXED_ONE)
+  if (player.hp !== beforeHp) {
+    this.emitToPlayer(player.unitId, {
+      type: 'UnitStatUpdate',
+      unitType: 'player',
+      unitId: player.unitId,
+      statId: 6,
+      value: player.hpFixed,
+    })
+  }
   if (
     player.hp !== beforeHp ||
     player.mana !== beforeMana ||
@@ -1148,6 +1213,7 @@ function finishPlayerMove(this: GameInstanceHost, player: InternalPlayerRecord, 
   motion.plannedX = player.x
   motion.plannedY = player.y
   player.mode = TOWN_AREAS.has(player.areaId) ? 5 : 1
+  this.areaPathWorld.stopPlayer(player.unitId, player.mode)
   const at = { x: Math.round(player.x), y: Math.round(player.y) }
   this.broadcastToAreaExcept(player.areaId, player.unitId, {
     type: 'UnitMove',
@@ -1262,7 +1328,7 @@ function handleUpdatePlayerPos(this: GameInstanceHost, player: InternalPlayerRec
     distance > UPDATE_POS_WARP_MAX_DISTANCE
   ) {
     player.run = player.mode === 3
-    player.mode = player.run ? 3 : 2
+    player.mode = player.run ? 3 : (TOWN_AREAS.has(player.areaId) ? 6 : 2)
     player.targetX = clientX
     player.targetY = clientY
     return
@@ -1279,6 +1345,14 @@ function handleUpdatePlayerPos(this: GameInstanceHost, player: InternalPlayerRec
 
   player.x = clientX
   player.y = clientY
+  this.areaPathWorld.spawnOrSyncPlayer(
+    player.areaId,
+    player.unitId,
+    player.classId,
+    clientX,
+    clientY,
+    player.mode,
+  )
   if (!motion.moving) {
     // An idle player stays put; a moving one keeps heading for its target from the new spot.
     player.targetX = clientX

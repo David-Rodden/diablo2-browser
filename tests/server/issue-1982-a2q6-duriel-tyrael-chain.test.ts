@@ -33,6 +33,7 @@ import {
   QUEST_FLAG_PRIMARY_GOAL_DONE_113C,
   QUEST_FLAG_STARTED_113C,
   computeA2Q6StatusByte113c,
+  questProtocolId113c,
   questWordIndex113c,
   setQuestFlag113c,
 } from '../../src/server/engine/quests-113c.ts'
@@ -81,6 +82,8 @@ describe('Issue #1982: 1.13c A2Q6 Duriel -> Tyrael -> Jerhyn -> Meshif full ques
     const a2q2Idx = questWordIndex113c('a2q2')!
     const a2q5Idx = questWordIndex113c('a2q5')!
     const a2q6Idx = questWordIndex113c('a2q6')!
+    const a2q6Proto = questProtocolId113c('a2q6')!
+    expect(a2q6Proto).toBe(0x0d)
 
     const game = new GameInstance({ seed: 198202, areaId: 74, maxPlayers: 2 })
     const p1 = game.connectPlayer({ charClass: 'sor', name: 'TombSorc', x: 10, y: 10, areaId: 74 })
@@ -156,7 +159,7 @@ describe('Issue #1982: 1.13c A2Q6 Duriel -> Tyrael -> Jerhyn -> Meshif full ques
     game.stepFrames(2)
     const journalEvents = game.drainEvents(p1)
     const journalStatus = journalEvents.find(
-      (e) => e.type === 'QuestState' && e.kind === 'status' && e.questStatus?.questId === a2q6Idx,
+      (e) => e.type === 'QuestState' && e.kind === 'status' && e.questStatus?.questId === a2q6Proto,
     )
     expect(journalStatus && journalStatus.type === 'QuestState' ? journalStatus.questStatus?.filterStatus : -1).toBe(1)
     expect(
@@ -190,7 +193,7 @@ describe('Issue #1982: 1.13c A2Q6 Duriel -> Tyrael -> Jerhyn -> Meshif full ques
     expect(internal.transitionPlayerArea(player, 73, { kind: 'townPortal', x: 12, y: 12 })).toBe(true)
     const enter73Events = game.drainEvents(p1)
     const enter73Status = enter73Events.find(
-      (e) => e.type === 'QuestState' && e.kind === 'status' && e.questStatus?.questId === a2q6Idx,
+      (e) => e.type === 'QuestState' && e.kind === 'status' && e.questStatus?.questId === a2q6Proto,
     )
     expect(enter73Status && enter73Status.type === 'QuestState' ? enter73Status.questStatus?.filterStatus : -1).toBe(2)
     expect(

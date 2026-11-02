@@ -16,6 +16,15 @@
 /** Cooldown frames between `MonUMod #26` (`Teleport`) casts (`~2.4s` at 25 fps, within `50..75` frames). */
 export const TELEPORT_UMOD_COOLDOWN_FRAMES_113C = 60
 
+/** First AI-think gate (`40%`) in `D2Game.dll` `0x6FCBCE54` (`cmp eax, 0x28`). */
+export const TELEPORT_UMOD_GATE1_PCT_113C = 40
+
+/** Second AI-think gate (`15%`) in `D2Game.dll` `0x6FCBCEE0` (`cmp eax, 0x0f`; net `6%` per AI think). */
+export const TELEPORT_UMOD_GATE2_PCT_113C = 15
+
+/** Max melee target distance (`< 10` sub-tiles) when `lifePct >= 30%` (`D2Game.dll` `0x6FCBCECA`: `cmp [edx+0x14], 0xa`). */
+export const TELEPORT_UMOD_MELEE_MAX_DIST_113C = 10
+
 /** Low-HP threshold (`30%`) in `D2Game.dll` `0x6FCBCEB5` (`cmp eax, 0x1e`). */
 export const TELEPORT_UMOD_LOW_HP_PCT_113C = 30
 
@@ -49,21 +58,65 @@ export const ALL_CURSE_STATE_IDS_113C: ReadonlySet<number> = new Set([
 ])
 
 /**
- * Missiles excluded from `MonUMod #29` (`Multishot`) fan duplication (stationary death/controller FX
- * and radial death novas). Note: `#195` (`lightunique` Charged Bolt on struck) IS eligible (classic MSLE).
+ * Missiles excluded from `MonUMod #29` (`Multishot`) fan duplication (stationary death/controller FX,
+ * radial death novas, and `#225 buglightning` spawned directly via `MISSILES_CreateMissileFromParams`
+ * at `0x6FC460D0`). Note: `#195` (`lightunique` Charged Bolt on struck) IS eligible (classic MSLE).
  */
 const MULTISHOT_EXCLUDED_MISSILE_IDS_113C: ReadonlySet<number> = new Set([
   82, // Fire Enchanted corpse explosion visual
+  90, // NovaDeath (`MonUMod #42`) 64-way Nova ring (`0x6FC46520`)
+  155, // PoisonDead (`MonUMod #10`) stationary corpsepoisoncloud (`0x6FC46230`)
   194, // Cold Enchanted death Frost Nova ring (already 64-way)
+  225, // Scarab (`MonUMod #20`) radial `buglightning` (`0x6FC460D0`)
   284, // Blood Raven death controller (`brdeathcontrol`)
   426, // SuicideMinion explosion
   427, // SuicideMinion fire explosion
   428, // SuicideMinion ice explosion
 ])
 
+export const SPECTRAL_HIT_ELEMENTS_113C = [
+  'fire',
+  'ltng',
+  'mag',
+  'cold',
+  'pois',
+] as const
+
+export type SpectralHitElement113c = (typeof SPECTRAL_HIT_ELEMENTS_113C)[number]
+
+/**
+ * 1.13c physical/weapon hit eligibility for melee/weapon `MonUMod` riders (`#7 Cursed`, `#9 Fire`,
+ * `#17 Lightning`, `#18 Cold`, `#23 Poison`, `#25 Mana Burn`, `#27 Spectral Hit`, `#36 Ghostly`):
+ * - Melee swings (`fromMissile !== true` and `autoHit !== true`) are always eligible.
+ * - Physical/weapon missiles (`fromMissile === true`, `autoHit !== true`, and `physMax > 0` or
+ *   `elementType === undefined | 'phys'`) are eligible (`D2Game.dll` `0x6FC41FEB..0x6FC42032`).
+ * - Pure elemental spell missiles (`fromMissile === true && physMax <= 0 && elemMax > 0`, e.g.
+ *   Council Hydra bolts, Vampire Fire Balls, Fallen Shaman Firebolts) and `autoHit === true`
+ *   death/nova effects are NEVER eligible (`#2003`).
+ */
+export function isPhysicalOrWeaponMonsterHit113c(params: {
+  readonly autoHit?: boolean | undefined
+  readonly fromMissile?: boolean | undefined
+  readonly physMax?: number | undefined
+  readonly elemMax?: number | undefined
+  readonly elementType?: string | undefined
+}): boolean {
+  if (params.autoHit === true) return false
+  if (params.fromMissile !== true) return true
+  const physMax = params.physMax ?? 0
+  const elemMax = params.elemMax ?? 0
+  if (physMax <= 0 && elemMax > 0) return false
+  return (
+    physMax > 0 ||
+    params.elementType === undefined ||
+    params.elementType === 'phys'
+  )
+}
+
 export interface EnchantedAttackBonusInput113c {
   readonly umodIds: readonly number[]
   readonly isMinion: boolean
+  readonly mlvl?: number | undefined
   readonly baseMinDmg: number
   readonly baseMaxDmg: number
   /** Inclusive integer roll in `[min, max]`. */
@@ -74,13 +127,23 @@ export interface EnchantedAttackBonusResult113c {
   readonly fireDmg: number
   readonly lightDmg: number
   readonly coldDmg: number
+  readonly magicDmg: number
+  readonly poisonDmg: number
+  readonly poisonFrames: number
   readonly chillFrames: number
+  readonly spectralElement?: SpectralHitElement113c | undefined
 }
 
 /**
- * 1.13c melee/physical attack elemental rider damage from `MonUMod`:
+ * 1.13c melee/physical-weapon attack elemental rider damage from `MonUMod` (`#1890`, `#1903`, `#2003`):
  * - `#9 Fire Enchanted` (`0x6FC42740`): `+66%..+100%` fire damage (`+33%..+50%` for minions).
  * - `#17 Lightning Enchanted` (`0x6FC42600`): `+66%..+100%` lightning damage (`+33%..+50%` for minions).
+ * - `#18 Cold Enchanted` (`0x6FC42490`): `+66%..+100%` cold damage (`+33%..+50%` for minions)
+ *   + `100 + 5 * clamp(mlvl, 1, 110)` raw chill frames (`0x6FC425CC: lea eax, [eax+eax*4+0x64]`).
+ * - `#23 Poison Enchanted` (`poisonhit`, `0x6FC42320`): `+66%..+100%` (`+33%..+50%` minion) cumulative
+ *   poison damage over `(150 + 5 * clamp(mlvl, 1, 110)) * 2 = 300 + 10 * mlvl` frames (`0x6FC4245C..0x6FC42463`).
+ * - `#27 Spectral Hit` (`0x6FC42B60` + `.data` `0x6FD1CE00` + `0x6FC41FE0`, boss-only `!isMinion`):
+ *   rolls `1` random element out of `5` (`fire`, `ltng`, `mag`, `cold +40f`, `pois +40f`) at `+66%..+100%`.
  * - `#36 Ghostly` (`0x6FC43850` / `0x6FC43917..0x6FC43975`): `+20%..+30%` cold damage + `150` frames chill.
  */
 export function rollEnchantedAttackBonus113c(
@@ -88,6 +151,7 @@ export function rollEnchantedAttackBonus113c(
 ): EnchantedAttackBonusResult113c {
   const loBase = Math.max(1, Math.trunc(input.baseMinDmg))
   const hiBase = Math.max(loBase, Math.trunc(input.baseMaxDmg))
+  const clampedMlvl = Math.max(1, Math.min(110, Math.trunc(input.mlvl ?? 1)))
   const minPctEnchant = input.isMinion ? 33 : 66
   const maxPctEnchant = input.isMinion ? 50 : 100
 
@@ -107,6 +171,45 @@ export function rollEnchantedAttackBonus113c(
 
   let coldDmg = 0
   let chillFrames = 0
+  if (input.umodIds.includes(18)) {
+    const minCold = Math.max(1, Math.trunc((loBase * minPctEnchant) / 100))
+    const maxCold = Math.max(minCold, Math.trunc((hiBase * maxPctEnchant) / 100))
+    coldDmg += input.rollInt(minCold, maxCold)
+    chillFrames += 100 + 5 * clampedMlvl
+  }
+
+  let poisonDmg = 0
+  let poisonFrames = 0
+  if (input.umodIds.includes(23)) {
+    const minPois = Math.max(1, Math.trunc((loBase * minPctEnchant) / 100))
+    const maxPois = Math.max(minPois, Math.trunc((hiBase * maxPctEnchant) / 100))
+    poisonDmg += input.rollInt(minPois, maxPois)
+    poisonFrames += (150 + 5 * clampedMlvl) * 2
+  }
+
+  let magicDmg = 0
+  let spectralElement: SpectralHitElement113c | undefined
+  if (!input.isMinion && input.umodIds.includes(27)) {
+    const elemIdx = Math.max(0, Math.min(4, input.rollInt(0, 4)))
+    spectralElement = SPECTRAL_HIT_ELEMENTS_113C[elemIdx]!
+    const minSpec = Math.max(1, Math.trunc((loBase * 66) / 100))
+    const maxSpec = Math.max(minSpec, Math.trunc((hiBase * 100) / 100))
+    const rolledSpec = input.rollInt(minSpec, maxSpec)
+    if (spectralElement === 'fire') {
+      fireDmg += rolledSpec
+    } else if (spectralElement === 'ltng') {
+      lightDmg += rolledSpec
+    } else if (spectralElement === 'mag') {
+      magicDmg += rolledSpec
+    } else if (spectralElement === 'cold') {
+      coldDmg += rolledSpec
+      chillFrames += 40
+    } else {
+      poisonDmg += rolledSpec
+      poisonFrames += 40
+    }
+  }
+
   if (input.umodIds.includes(36)) {
     const minCold = Math.max(1, Math.trunc((loBase * 20) / 100))
     const maxCold = Math.max(minCold, Math.trunc((hiBase * 30) / 100))
@@ -114,21 +217,69 @@ export function rollEnchantedAttackBonus113c(
     chillFrames = Math.max(chillFrames, 150)
   }
 
-  return { fireDmg, lightDmg, coldDmg, chillFrames }
+  return {
+    fireDmg,
+    lightDmg,
+    coldDmg,
+    magicDmg,
+    poisonDmg,
+    poisonFrames,
+    chillFrames,
+    ...(spectralElement !== undefined ? { spectralElement } : {}),
+  }
 }
 
 export interface TeleportUModEvalInput113c {
+  readonly rank?: string | undefined
+  readonly level?: number | undefined
   readonly hp: number
   readonly maxHp: number
   readonly distanceToTarget: number
+  readonly isRanged?: boolean | undefined
   readonly meleeBlocked?: boolean | undefined
   readonly hasPreventHeal: boolean
   readonly hasActiveDamageOverTime: boolean
 }
 
 /**
- * 1.13c `MonUMod #26` (`Teleport`, `0x6FC441B0` / `0x6FCBCDE0`):
- * Evaluates whether the monster should cast `#184 MonTeleport` and whether it is eligible for the `25%` heal roll.
+ * 1.13c `AI_TryTeleportUMod` ranged-archetype check (`D2Game.dll` `0x6FCBCE63..0x6FCBCEAA`):
+ * Returns `true` when `MonStats.RangedType != 0` (`isRanged === true`), or when the monster belongs
+ * to Skeleton Archer (`hcIdx 10..14`), Council Member (`hcIdx 345..347`), or Baal Subject Mummy (`hcIdx 557..558`).
+ */
+export function isTeleportUModRangedMonster113c(params: {
+  readonly isRanged?: boolean | undefined
+  readonly hcIdx?: number | undefined
+  readonly defId?: string | undefined
+  readonly baseId?: string | undefined
+}): boolean {
+  if (params.isRanged === true) return true
+  const hc = params.hcIdx
+  if (
+    hc !== undefined &&
+    ((hc >= 10 && hc <= 14) || (hc >= 345 && hc <= 347) || hc === 557 || hc === 558)
+  ) {
+    return true
+  }
+  const base = params.baseId?.trim().toLowerCase() ?? ''
+  if (base === 'skeleton2' || base === 'councilmember1' || base === 'baalsubjectmummy') {
+    return true
+  }
+  const id = params.defId?.trim().toLowerCase() ?? ''
+  return (
+    id === 'skeleton2' ||
+    id.startsWith('councilmember') ||
+    id.startsWith('baalsubjectmummy')
+  )
+}
+
+/**
+ * 1.13c `MonUMod #26` (`Teleport`, `D2Game.dll` `0x6FC441B0` / `0x6FCBCDE0`, `#1993`):
+ * - Boss-only (`rank !== 'minion'`, `0x6FC441C2: test edi, edi; je`).
+ * - When `lifePct < 30%` (`0x6FCBCEB5`), both ranged and melee bosses are eligible to teleport,
+ *   and if neither `STATE_PREVENTHEAL (52)` nor active DoT is present, may roll `25%` (`0x6FCBCF61`)
+ *   to heal `STAT_LEVEL (12)` (`mlvl` HP, `0x6FCBCF74: shl eax, 8`).
+ * - When `lifePct >= 30%`, ranged bosses never teleport (`0x6FCBCEBC`), and melee bosses only
+ *   reposition when `distanceToTarget < 10` sub-tiles (`0x6FCBCECA: cmp [edx+0x14], 0xa; jae`).
  */
 export function evaluateTeleportUMod113c(input: TeleportUModEvalInput113c): {
   readonly shouldTeleport: boolean
@@ -136,15 +287,17 @@ export function evaluateTeleportUMod113c(input: TeleportUModEvalInput113c): {
   readonly canRollHeal: boolean
   readonly healAmount: number
 } {
-  if (input.hp <= 0 || input.maxHp <= 0) {
+  if (input.rank === 'minion' || input.hp <= 0 || input.maxHp <= 0) {
     return { shouldTeleport: false, isLowHp: false, canRollHeal: false, healAmount: 0 }
   }
-  const isLowHp = input.hp * 100 < input.maxHp * TELEPORT_UMOD_LOW_HP_PCT_113C
-  const shouldTeleport =
-    isLowHp || input.distanceToTarget >= 12 || input.meleeBlocked === true
+  const lifePct = Math.floor((input.hp * 100) / input.maxHp)
+  const isLowHp = lifePct < TELEPORT_UMOD_LOW_HP_PCT_113C
+  const shouldTeleport = isLowHp
+    ? true
+    : input.isRanged !== true && input.distanceToTarget < TELEPORT_UMOD_MELEE_MAX_DIST_113C
   const canRollHeal =
     isLowHp && !input.hasPreventHeal && !input.hasActiveDamageOverTime
-  const healAmount = canRollHeal ? Math.max(1, Math.floor(input.maxHp / 4)) : 0
+  const healAmount = canRollHeal ? Math.max(1, Math.trunc(input.level ?? 1)) : 0
   return { shouldTeleport, isLowHp, canRollHeal, healAmount }
 }
 
@@ -390,47 +543,128 @@ export function shouldKillMinionsOnDeath113c(params: {
 }
 
 /**
- * 1.13c `MonUMod #20` (`Scarab`, `D2Game.dll` `0x6FC460D0`, #1947):
- * Emits `4 * 2 = 8` `monchargedbolt` (`#195` `lightunique`) projectiles per hit.
+ * 1.13c `MonUMod #17` (`lightning` / Lightning Enchanted, `D2Game.dll` `0x6FC4634D..0x6FC4639E`, #1995):
+ * Per-monster `pMonsterData->dwLastLeFrame` cooldown (`abs(dwGameFrame - dwLastLeFrame) >= 10`).
  */
-export const SCARAB_CHARGED_BOLT_COUNT_113C = 8
+export const LIGHTNING_UMOD_COOLDOWN_FRAMES_113C = 10
 
 /**
- * 1.13c `MonUMod #20` (`Scarab`, `D2Game.dll` `0x6FC460D0`, #1947):
- * `slvl = min(15, floor((mlvl + 4) / 5))`.
+ * 1.13c `MonUMod #17` (`lightning`, `D2Game.dll` `0x6FC463B1..0x6FC463C5`, #1995):
+ * `slvl = max(1, floor(mlvl / 2))`.
  */
-export function computeScarabChargedBoltSlvl113c(mlvl: number): number {
-  const clampedMlvl = Math.max(1, Math.trunc(mlvl))
-  return Math.min(15, Math.max(1, Math.floor((clampedMlvl + 4) / 5)))
+export function computeLightningEnchantedBoltSlvl113c(mlvl: number): number {
+  return Math.max(1, Math.floor(Math.max(1, Math.trunc(mlvl)) / 2))
 }
 
 /**
- * Computes `4 * 2 = 8` Charged Bolt fan target coordinates aimed from `(originX, originY)`
- * toward `(attackerX, attackerY)` (`D2Game.dll` `0x6FC460D0`, #1947).
+ * 1.13c `Missiles.txt` ID `195` (`lightunique`, `D2Common.dll#10413`, #1995):
+ * `HitShift = 8`, `EType = 'ltng'`, `EMin = Emax = 1`, `MinELev1..5 = MaxELev1..5 = 2`, `SrcDamage = 0`:
+ * `elemDamage = 1 + 2 * (slvl - 1) = 2 * slvl - 1` (`physDamage = 0`).
+ */
+export function computeLightningUniqueBoltDamage113c(mlvl: number): number {
+  const slvl = computeLightningEnchantedBoltSlvl113c(mlvl)
+  return 2 * slvl - 1
+}
+
+/**
+ * 1.13c `MonUMod #20` (`Scarab`, `D2Game.dll` `0x6FC460D0`, #1995):
+ * Spawns `4 * 2 = 8` radial `buglightning` (`Missiles.txt` ID `0xE1 = 225`) bolts on `MONMODE_GETHIT` (`mode = 3`)
+ * and `MONMODE_DEATH` (`mode = 0`) across all monster ranks (`col1 = 0x6FC41B00`, `col4 = 0`).
+ */
+export const SCARAB_CHARGED_BOLT_COUNT_113C = 8
+export const SCARAB_BUGLIGHTNING_MISSILE_ID_113C = 225
+/**
+ * 1.13c `D2Game.dll` `0x6FC460D0` -> `0x6FC61F50` (`0x6FC61F64..0x6FC61F77`, #1997):
+ * Caps `#225 buglightning` (`Missiles.txt` `Range = 98`) lifetime to `0x4D` (`77` frames) when `>= 78`.
+ */
+export const SCARAB_BUGLIGHTNING_MAX_FRAMES_113C = 77
+
+/**
+ * 1.13c `MonUMod #20` (`Scarab`, `D2Game.dll` `0x6FC46152..0x6FC46160`, #1995):
+ * `slvl = max(1, STAT_LEVEL (12))` (`mlvl` directly, NOT `floor(mlvl / 2)` or `floor((mlvl + 4) / 5)`).
+ */
+export function computeScarabChargedBoltSlvl113c(mlvl: number): number {
+  return Math.max(1, Math.trunc(mlvl))
+}
+
+/**
+ * 1.13c `Missiles.txt` ID `225` (`buglightning`, `D2Common.dll#10413`, #1995):
+ * `HitShift = 0`, `EType = 'ltng'`, `EMin = Emax = 256`, `MinELev1..5 = MaxELev1..5 = 128`, `SrcDamage = 0`:
+ * Q8.8 fixed-point damage is `256 + 128 * (slvl - 1) = 128 * (slvl + 1)`, i.e. `1 + floor((slvl - 1) / 2)` HP.
+ */
+export function computeScarabBugLightningDamage113c(mlvl: number): number {
+  const slvl = computeScarabChargedBoltSlvl113c(mlvl)
+  return Math.max(1, Math.floor((256 + 128 * (slvl - 1)) / 256))
+}
+
+/**
+ * Computes the 8 radial `buglightning` target coordinates around `(originX, originY)` matching
+ * `D2Game.dll` `0x6FC461D8..0x6FC4620D` (`0x6FD1CE4C` / `0x6FD1CE3C` 4 cardinal axes x 2 jittered bolts, #1995).
+ * Extra `_attackerX` / `_attackerY` parameters are accepted for call-site compatibility and ignored, because
+ * 1.13c Scarab bolts radiate in all 4 cardinal directions rather than aiming a shotgun cone at the attacker.
  */
 export function computeScarabChargedBoltFanTargets113c(
   originX: number,
   originY: number,
-  attackerX: number,
-  attackerY: number,
+  _attackerX = originX,
+  _attackerY = originY,
   dist = 1.5,
 ): readonly { readonly targetX: number; readonly targetY: number }[] {
-  const dx = attackerX - originX
-  const dy = attackerY - originY
-  const baseAngle = dx === 0 && dy === 0 ? 0 : Math.atan2(dy, dx)
   const effectiveDist = Math.max(0.5, dist)
-  // 8-bolt fan (~90 deg cone centered on attacker: 8 steps spaced by ~0.18 rad)
-  const stepRad = 0.18
-  const halfSpan = ((SCARAB_CHARGED_BOLT_COUNT_113C - 1) * stepRad) / 2
   const out: { readonly targetX: number; readonly targetY: number }[] = []
   for (let i = 0; i < SCARAB_CHARGED_BOLT_COUNT_113C; i++) {
-    const angle = baseAngle - halfSpan + i * stepRad
+    const angle = (2 * Math.PI * i) / SCARAB_CHARGED_BOLT_COUNT_113C
     out.push({
       targetX: originX + Math.cos(angle) * effectiveDist,
       targetY: originY + Math.sin(angle) * effectiveDist,
     })
   }
   return out
+}
+
+/**
+ * 1.13c `MonUMod #10` (`poisondead`, `D2Game.dll` `0x6FC46230`, `Missiles.txt` ID `155` `corpsepoisoncloud`, #1995):
+ * `Range = 80`, `HitShift = 1`, `EType = 'pois'`, `EMin = Emax = 2`, `MinELev1..5 = MaxELev1..5 = 1`, `ELen = 175`.
+ */
+export const POISONDEAD_CLOUD_MISSILE_ID_113C = 155
+export const POISONDEAD_CLOUD_DURATION_FRAMES_113C = 175
+
+export function computePoisonDeadCloudDamage113c(mlvl: number): {
+  readonly slvl: number
+  readonly bitrate256: number
+  readonly durationFrames: number
+  readonly totalPoisonHp: number
+} {
+  const slvl = Math.max(1, Math.trunc(mlvl))
+  const bitrate256 = (2 + (slvl - 1)) << 1
+  const durationFrames = POISONDEAD_CLOUD_DURATION_FRAMES_113C
+  const totalPoisonHp = Math.max(1, Math.floor((bitrate256 * durationFrames) / 256))
+  return { slvl, bitrate256, durationFrames, totalPoisonHp }
+}
+
+/**
+ * 1.13c `MonUMod #42` (`novadeath`, `D2Game.dll` `0x6FC46520` -> `0x6FCC2800`, #1995):
+ * Boss-only (`bBoss != 0`) 64-bolt ring of `Missiles.txt` ID `90` (`nova`, `Range = 13`, `Vel = 24`, `Skill = 'Nova'` `#48`).
+ * `Skills.txt` `#48 Nova`: `HitShift = 8`, `EType = 'ltng'`, `EMin = 1`, `EMinLev1..3 = 6, 7, 8`, `EMax = 20`, `EMaxLev1..3 = 8, 9, 10`.
+ */
+export const NOVADEATH_MISSILE_ID_113C = 90
+export const NOVADEATH_RANGE_TICKS_113C = 13
+
+export function computeNovaDeathDamageRange113c(slvl = 1): {
+  readonly slvl: number
+  readonly minLtng: number
+  readonly maxLtng: number
+} {
+  const s = Math.max(1, Math.min(15, Math.trunc(slvl)))
+  const tiered = (base: number, l1: number, l2: number, l3: number): number => {
+    const t1 = Math.min(Math.max(0, s - 1), 7)
+    const t2 = Math.min(Math.max(0, s - 8), 8)
+    const t3 = Math.max(0, s - 16)
+    return base + t1 * l1 + t2 * l2 + t3 * l3
+  }
+  const minLtng = tiered(1, 6, 7, 8)
+  const maxLtng = Math.max(minLtng, tiered(20, 8, 9, 10))
+  return { slvl: s, minLtng, maxLtng }
 }
 
 /**

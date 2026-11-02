@@ -103,9 +103,9 @@ describe('Wave 5 P2 Network Packet Parity (#1932, #1933, #1934)', () => {
     adapter.send({ type: 'WalkToTarget', unitKind: 1, unitId: monsterId } as any)
     host.stepFrames(10); await new Promise(r => setImmediate(r));
     
-    // Check if player actually started moving
+    // Check if player actually started moving (PLRMODE_TW = 6 in Town areaId=1 per D2Game 0x6FC9866C)
     const playerRecord = (game as any).players.get(session.playerUnitId)!
-    expect(playerRecord.mode).toBe(2) // walking
+    expect(playerRecord.mode).toBe(6) // town walking
 
     rawEvents.length = 0
 

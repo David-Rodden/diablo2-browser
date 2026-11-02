@@ -50,6 +50,7 @@ import { CANONICAL_AUTOMAGIC_TABLE } from './automagic.ts'
 import type { D2ColorCode } from '../skills/skills-meta.ts'
 import { isA } from './item-types.ts'
 import { inferItemClassFromType } from './affixes.ts'
+import { NON_RANDOM_RANGE_CODES } from './affix-generator.ts'
 import { CHARACTER_CLASS_CODES, type CharacterClassCode } from '../units/classes.ts'
 
 interface ItemStat {
@@ -1688,6 +1689,214 @@ export function convertOnlineItemStatsToRolledProps(stats: readonly ItemStat[]):
   return { props, reqLevelBonus, socketsStat, curDurStat, maxDurStat, quantityStat }
 }
 
+const TEMPLATE_ALIAS_CODE_MAP: Readonly<Record<string, string>> = {
+  swing1: 'ias',
+  swing2: 'ias',
+  swing3: 'ias',
+  cast1: 'fcr',
+  cast2: 'fcr',
+  cast3: 'fcr',
+  balance1: 'fhr',
+  balance2: 'fhr',
+  balance3: 'fhr',
+  move1: 'frw',
+  move2: 'frw',
+  move3: 'frw',
+  block1: 'fbr',
+  block2: 'fbr',
+  block3: 'fbr',
+  damagepercent: 'dmg%',
+  'dmg-max%': 'dmg%',
+  item_maxdamage_percent: 'dmg%',
+  'dmg-min%': 'dmg%',
+  item_mindamage_percent: 'dmg%',
+  fireresist: 'res-fire',
+  coldresist: 'res-cold',
+  lightresist: 'res-ltng',
+  poisonresist: 'res-pois',
+  'all-res': 'res-all',
+  dmag: 'red-dmg%',
+  'dmag-ac': 'red-dmg',
+  'mag-ac': 'red-mag',
+  leech: 'lifesteal',
+  'rep-life': 'regen',
+  manaregen: 'regen-mana',
+  'hp-kill': 'heal-kill',
+  'no-freeze': 'nofreeze',
+  'no-heal': 'noheal',
+  blind: 'stupidity',
+}
+
+interface TemplatePropLike {
+  readonly code?: string | undefined
+  readonly par?: string | number | undefined
+  readonly param?: string | number | undefined
+  readonly min?: number | undefined
+  readonly max?: number | undefined
+}
+
+function normalizeTemplateParamKey(code: string, par: string | number | undefined): string {
+  if (code === 'skill' || code === 'oskill' || code === 'aura') {
+    const sk = resolveSkillMeta(par)
+    if (sk) return String(sk.id)
+    const num = Number(par)
+    return Number.isFinite(num) ? String(num) : String(par ?? '').trim().toLowerCase()
+  }
+  if (code === 'skilltab' || code === 'reanimate' || code === 'att-mon%' || code === 'dmg-mon%') {
+    const num = Number(par)
+    return Number.isFinite(num) ? String(Math.trunc(num)) : String(par ?? '').trim().toLowerCase()
+  }
+  return ''
+}
+
+function enrichOnlineTemplateStatRanges(
+  props: readonly RolledItemProp[],
+  templateProps: readonly TemplatePropLike[] | undefined,
+): RolledItemProp[] {
+  if (!templateProps || templateProps.length === 0 || props.length === 0) {
+    return [...props]
+  }
+  const rangeMap = new Map<string, { lo: number; hi: number }>()
+  const addBound = (targetCode: string, paramKey: string, lo: number, hi: number): void => {
+    const key = `${targetCode}::${paramKey}`
+    const prev = rangeMap.get(key)
+    if (prev) {
+      prev.lo += lo
+      prev.hi += hi
+    } else {
+      rangeMap.set(key, { lo, hi })
+    }
+  }
+
+  for (const tp of templateProps) {
+    const rawCode = (tp.code ?? '').trim().toLowerCase().replace(/^\*/, '')
+    if (!rawCode) continue
+    const code = TEMPLATE_ALIAS_CODE_MAP[rawCode] ?? rawCode
+    if (
+      code === 'sock' ||
+      code === 'ethereal' ||
+      code === 'indestruct' ||
+      code === 'state' ||
+      code === 'levelreq' ||
+      code === 'corrupt' ||
+      code === 'desecrate' ||
+      code === 'mirrored'
+    ) {
+      continue
+    }
+    const rawPar = tp.par ?? tp.param
+    const rawMin = Number(tp.min ?? 0)
+    const rawMax = Number(tp.max ?? 0)
+    if (code === 'dmg-norm') {
+      addBound('dmg-min', '', rawMin, rawMin)
+      addBound('dmg-max', '', rawMax, rawMax)
+      continue
+    }
+    if (code === 'dmg-fire') {
+      addBound('fire-min', '', rawMin, rawMin)
+      addBound('fire-max', '', rawMax, rawMax)
+      continue
+    }
+    if (code === 'dmg-ltng') {
+      addBound('ltng-min', '', rawMin, rawMin)
+      addBound('ltng-max', '', rawMax, rawMax)
+      continue
+    }
+    if (code === 'dmg-cold') {
+      addBound('cold-min', '', rawMin, rawMin)
+      addBound('cold-max', '', rawMax, rawMax)
+      const cLen = Number(rawPar ?? 0)
+      if (Number.isFinite(cLen) && cLen !== 0) addBound('cold-len', '', cLen, cLen)
+      continue
+    }
+    if (code === 'dmg-elem') {
+      addBound('fire-min', '', rawMin, rawMin)
+      addBound('fire-max', '', rawMax, rawMax)
+      addBound('ltng-min', '', rawMin, rawMin)
+      addBound('ltng-max', '', rawMax, rawMax)
+      addBound('cold-min', '', rawMin, rawMin)
+      addBound('cold-max', '', rawMax, rawMax)
+      const cLen = Number(rawPar ?? 0)
+      if (Number.isFinite(cLen) && cLen !== 0) addBound('cold-len', '', cLen, cLen)
+      continue
+    }
+    if (NON_RANDOM_RANGE_CODES.has(code)) continue
+
+    let lo = Math.min(rawMin, rawMax)
+    let hi = Math.max(rawMin, rawMax)
+    if ((code.endsWith('/lvl') || code.endsWith('_perlevel')) && lo === 0 && hi === 0) {
+      const rate = Number(rawPar ?? 0)
+      if (Number.isFinite(rate) && rate !== 0) {
+        lo = rate
+        hi = rate
+      }
+    }
+
+    if (code === 'all-stats') {
+      for (const attr of ['str', 'dex', 'vit', 'enr']) {
+        addBound(attr, '', lo, hi)
+      }
+      continue
+    }
+    if (code === 'res-all') {
+      for (const res of ['res-fire', 'res-ltng', 'res-cold', 'res-pois']) {
+        addBound(res, '', lo, hi)
+      }
+      continue
+    }
+    if (code === 'res-all-max') {
+      for (const resMax of ['res-fire-max', 'res-ltng-max', 'res-cold-max', 'res-pois-max']) {
+        addBound(resMax, '', lo, hi)
+      }
+      continue
+    }
+    if (code === 'str-and-vit') {
+      addBound('str', '', lo, hi)
+      addBound('vit', '', lo, hi)
+      continue
+    }
+
+    const paramKey = normalizeTemplateParamKey(code, rawPar)
+    addBound(code, paramKey, lo, hi)
+  }
+
+  return props.map(p => {
+    const rawCode = (p.code || '').trim().toLowerCase().replace(/^\*/, '')
+    const code = TEMPLATE_ALIAS_CODE_MAP[rawCode] ?? rawCode
+    if (!code || NON_RANDOM_RANGE_CODES.has(code)) return p
+    const paramKey = normalizeTemplateParamKey(code, p.param)
+    const entry = rangeMap.get(`${code}::${paramKey}`)
+    if (!entry || entry.lo === entry.hi) return p
+    if (p.value < entry.lo || p.value > entry.hi) return p
+    return {
+      ...p,
+      min: entry.lo,
+      max: entry.hi,
+    }
+  })
+}
+
+function extractTemplateSocketRange(
+  templateProps: readonly TemplatePropLike[] | undefined,
+  totalSockets: number,
+): { readonly min: number; readonly max: number } | undefined {
+  if (!templateProps || templateProps.length === 0 || totalSockets <= 0) return undefined
+  let lo = 0
+  let hi = 0
+  let found = false
+  for (const tp of templateProps) {
+    const rawCode = (tp.code ?? '').trim().toLowerCase().replace(/^\*/, '')
+    if (rawCode !== 'sock') continue
+    const a = Number(tp.min ?? 0)
+    const b = Number(tp.max ?? 0)
+    lo += Math.min(a, b)
+    hi += Math.max(a, b)
+    found = true
+  }
+  if (!found || lo === hi || totalSockets < lo || totalSockets > hi) return undefined
+  return { min: lo, max: hi }
+}
+
 function resolveOnlineRunewordDef(
   item: ItemData | Record<string, any>,
   socketChildren?: readonly (ItemData | Record<string, any>)[],
@@ -1863,32 +2072,55 @@ export function onlineItemDataToUiInventoryItem(
   // ja 0x6fd764e2): tempered (9) is not crafted and carries no affix requirement (#1649).
   else if (rawQ === 9 || rawQ === 'tempered') qualityStr = 'tempered'
 
-  const rawCombinedStats: (ItemStat | Record<string, any>)[] = [
-    ...(Array.isArray(item.stats) ? item.stats : []),
-    ...(Array.isArray(item.runewordStats) ? item.runewordStats : []),
-  ]
+  const rawBaseStats: (ItemStat | Record<string, any>)[] = Array.isArray(item.stats) ? [...item.stats] : []
+  const rawRunewordStats: (ItemStat | Record<string, any>)[] = Array.isArray(item.runewordStats)
+    ? [...item.runewordStats]
+    : []
   let armorStatDefense: number | undefined
   let consumedArmorStat = false
-  const combinedStats = rawCombinedStats.filter(s => {
-    const sid = Number(s.statId ?? (s as any).id ?? -1)
-    if (
-      !consumedArmorStat &&
-      kind === 'armor' &&
-      sid === 31 &&
-      (typeof item.defense !== 'number' || item.defense <= 0 || Number(s.value) === item.defense)
-    ) {
-      armorStatDefense = Number(s.value)
-      consumedArmorStat = true
-      return false
-    }
-    return true
-  }) as ItemStat[]
-  const converted = convertOnlineItemStatsToRolledProps(combinedStats)
-  const rolledProps: RolledItemProp[] = [...converted.props]
+  const filterArmorBaseStat = (arr: readonly (ItemStat | Record<string, any>)[]): ItemStat[] =>
+    arr.filter(s => {
+      const sid = Number(s.statId ?? (s as any).id ?? -1)
+      if (
+        !consumedArmorStat &&
+        kind === 'armor' &&
+        sid === 31 &&
+        (typeof item.defense !== 'number' || item.defense <= 0 || Number(s.value) === item.defense)
+      ) {
+        armorStatDefense = Number(s.value)
+        consumedArmorStat = true
+        return false
+      }
+      return true
+    }) as ItemStat[]
+
+  const filteredBaseStats = filterArmorBaseStat(rawBaseStats)
+  const filteredRwStats = filterArmorBaseStat(rawRunewordStats)
+  const combinedStats: ItemStat[] = [...filteredBaseStats, ...filteredRwStats]
+  const hasSeparateRunewordStats = isRuneword && filteredRwStats.length > 0
+  const convBase = hasSeparateRunewordStats
+    ? convertOnlineItemStatsToRolledProps(filteredBaseStats)
+    : undefined
+  const convRw = hasSeparateRunewordStats
+    ? convertOnlineItemStatsToRolledProps(filteredRwStats)
+    : undefined
+  const converted =
+    convBase && convRw
+      ? {
+          props: [...convBase.props, ...convRw.props],
+          reqLevelBonus: Math.max(convBase.reqLevelBonus, convRw.reqLevelBonus),
+          socketsStat: Math.max(convBase.socketsStat, convRw.socketsStat),
+          curDurStat: convRw.curDurStat ?? convBase.curDurStat,
+          maxDurStat: convRw.maxDurStat ?? convBase.maxDurStat,
+          quantityStat: convRw.quantityStat ?? convBase.quantityStat,
+        }
+      : convertOnlineItemStatsToRolledProps(combinedStats)
+  let rolledProps: RolledItemProp[] = [...converted.props]
 
   // Resolve quality-specific definitions when identified
   let uniqueItemDef: any
   let setItemDef: any
+  let rwDefResolved: RunewordDefinition | undefined
   let rolledMagicAffixes: any
   let rolledRareAffixes: any
   let runewordObj: { readonly key: string; readonly name: string; readonly levelreq?: number; readonly props?: readonly any[] } | undefined
@@ -1898,6 +2130,7 @@ export function onlineItemDataToUiInventoryItem(
   if (!isUnidentified) {
     if (isRuneword) {
       const rwDef = resolveOnlineRunewordDef(item, socketChildren)
+      rwDefResolved = rwDef
       if (rwDef) {
         const rwKey = rwDef.name
         const rwEn =
@@ -1915,12 +2148,21 @@ export function onlineItemDataToUiInventoryItem(
             if (p.code) {
               rolledProps.push({
                 code: p.code,
-                param: p.par,
+                param: (p as any).par ?? p.param,
                 min: p.min,
                 max: p.max,
                 value: p.min,
               })
             }
+          }
+        } else if (Array.isArray(rwDef.properties) && rwDef.properties.length > 0) {
+          if (convBase && convRw) {
+            rolledProps = [
+              ...convBase.props,
+              ...enrichOnlineTemplateStatRanges(convRw.props, rwDef.properties),
+            ]
+          } else {
+            rolledProps = enrichOnlineTemplateStatRanges(rolledProps, rwDef.properties)
           }
         }
       } else if ((item as any).runewordName) {
@@ -1954,6 +2196,9 @@ export function onlineItemDataToUiInventoryItem(
         itemDisplayNameEn = resolveBaseItemNameEn(rawUniqueKey, code) || rawUniqueKey
         if (uniqueItemDef.levelreq > 0) {
           extraReqLevel = Math.max(extraReqLevel, uniqueItemDef.levelreq)
+        }
+        if (Array.isArray(uniqueItemDef.props) && uniqueItemDef.props.length > 0) {
+          rolledProps = enrichOnlineTemplateStatRanges(rolledProps, uniqueItemDef.props)
         }
       }
     } else if (qualityStr === 'set') {
@@ -2413,16 +2658,20 @@ export function onlineItemDataToUiInventoryItem(
           continue
         }
         const convList = convertOnlineItemStatsToRolledProps(list.stats)
+        const listAprops = Array.isArray(setItemDef.aprops)
+          ? setItemDef.aprops.filter((ap: any) => ap && ap.threshold === k + 1)
+          : undefined
+        const enrichedListProps = enrichOnlineTemplateStatRanges(convList.props, listAprops)
         if (setItemDef.addFunc === 0) {
-          rolledProps.push(...convList.props)
+          rolledProps.push(...enrichedListProps)
         } else if (setItemDef.addFunc === 1) {
           const partnerPos = k < myPos ? k : k + 1
           if ((setMask & (1 << partnerPos)) !== 0) {
-            activeItemSetProps.push(...convList.props)
+            activeItemSetProps.push(...enrichedListProps)
           }
         } else if (setItemDef.addFunc === 2) {
           if (maskCount >= k + 2) {
-            activeItemSetProps.push(...convList.props)
+            activeItemSetProps.push(...enrichedListProps)
           }
         }
       }
@@ -2466,7 +2715,23 @@ export function onlineItemDataToUiInventoryItem(
         }
       }
     }
+    if (Array.isArray(setItemDef.props) && setItemDef.props.length > 0) {
+      const baseSetTemplateProps =
+        setItemDef.addFunc === 0 && Array.isArray(setItemDef.aprops)
+          ? [...setItemDef.props, ...setItemDef.aprops]
+          : setItemDef.props
+      rolledProps = enrichOnlineTemplateStatRanges(rolledProps, baseSetTemplateProps)
+    }
   }
+
+  const socketRange =
+    !isUnidentified && !isRuneword
+      ? qualityStr === 'unique' && uniqueItemDef?.props
+        ? extractTemplateSocketRange(uniqueItemDef.props, totalSockets)
+        : qualityStr === 'set' && setItemDef?.props
+          ? extractTemplateSocketRange(setItemDef.props, totalSockets)
+          : undefined
+      : undefined
 
   const syntheticItem = {
     id: String(item.id ?? item.itemId ?? `item-${code}-${++itemBridgeSeqCounter}`),
@@ -2516,6 +2781,7 @@ export function onlineItemDataToUiInventoryItem(
     ...(itemVariant !== undefined ? { variant: itemVariant, graphicIndex: itemVariant } : {}),
     ...(hasDur ? { durability: curDur, maxDurability: maxDur } : {}),
     ...(totalSockets > 0 ? { sockets: totalSockets, totalSockets, socketedCount: usedSockets } : {}),
+    ...(socketRange ? { socketRange } : {}),
     ...(childDomainItems ? { socketedItems: childDomainItems } : {}),
     ...(uniqueItemDef ? { uniqueItemDef } : {}),
     ...(setItemDef ? { setItemDef } : {}),

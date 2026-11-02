@@ -46,8 +46,8 @@ describe('#1341 MonAi single source', () => {
   it('keeps the reverse-engineered family mapping for the reviewed rows', () => {
     expect(findMonaiProfile113c('Overseer')).toMatchObject({ family: 'melee', whip: true })
     expect(findMonaiProfile113c('HighPriest')).toMatchObject({
-      family: 'ranged',
-      ranged: true,
+      family: 'melee',
+      ranged: false,
       healRangeParam: 5,
     })
     expect(findMonaiProfile113c('Succubus')).toMatchObject({ family: 'kiter' })

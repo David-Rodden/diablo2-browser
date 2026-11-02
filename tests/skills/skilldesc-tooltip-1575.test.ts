@@ -115,9 +115,9 @@ describe('skill tree tooltip (D2Client.dll 0x6FAE3550 / 0x6FAE3B50)', () => {
     expect(norm).not.toBe(hell)
   })
 
-  it('#1586 descmissile-driven lines: Blizzard 4 seconds, Fire Ball radius 2.6 yards, Fire Wall 3.6 seconds', () => {
+  it('#1586 descmissile-driven lines: Blizzard 4 seconds, Fire Ball radius 1 yard (Missiles+0x38 Param1, D2Common 0x6FDCCBEF), Fire Wall 3.6 seconds', () => {
     expect(texts(59, 1)).toContain('Duration: 4 seconds')
-    expect(texts(47, 1)).toContain('Radius: 2.6 yards')
+    expect(texts(47, 1)).toContain('Radius: 1 yard')
     expect(texts(51, 1).some(x => x.endsWith('3.6 seconds'))).toBe(true)
   })
 

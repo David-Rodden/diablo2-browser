@@ -26,8 +26,22 @@ type AnyEvent = ServerEvent & Record<string, unknown>
 
 const CLASS_CODES = ['ama', 'sor', 'nec', 'pal', 'bar', 'dru', 'ass'] as const
 
-/** #1417/#1790 slvl-1 server missile counts of multi-missile srvdofuncs (including Fire Wall #51 2x firewallmaker). */
-const SLVL1_VOLLEY_COUNTS_1417: Readonly<Record<number, number>> = { 12: 2, 26: 2, 38: 3, 51: 2, 67: 2, 225: 3, 240: 3 }
+/** #1417/#1790 slvl-1 server missile counts of multi-missile srvdofuncs (including Fire Wall #51 2x firewallmaker and 64-spoke Warcry rings #130/#138/#146/#149/#154/#155). */
+const SLVL1_VOLLEY_COUNTS_1417: Readonly<Record<number, number>> = {
+  12: 2,
+  26: 2,
+  38: 3,
+  51: 2,
+  67: 2,
+  130: 64,
+  138: 64,
+  146: 64,
+  149: 64,
+  154: 64,
+  155: 64,
+  225: 3,
+  240: 3,
+}
 
 function richCasterD2s(charClass: number): Uint8Array {
   return writeD2sSave113c(

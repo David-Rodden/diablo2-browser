@@ -20,13 +20,18 @@ individual RNG draws cannot be aligned yet. Tests: `tests/oracle/stat-tests.test
 
 ## Why it is needed today
 
-The replica has a single game-wide `D2Rng` stream (`GameInstance.rng`, see `P0-audit.md` §3),
-while 1.13c draws from per-unit `D2SeedStrc` streams (`unit+0x20`; oracle trace columns
-`seedLo`/`seedHi`) and the game stream (`pGame+0xD0`, trace key `gs`). Until per-unit streams
-are ported, damage/to-hit/crit/block rolls cannot match draw-for-draw.
+Per-unit `D2SeedStrc` streams (`src/server/engine/game-instance/unit-seeds-113c.ts`,
+`D2Common.#10920` `SEED_InitLowSeed` + `D2Game` `SUNIT_AllocUnitData`) and Town `AI_Npc`
+(`0x6FC3DB40`) are now aligned frame-by-frame through frame 65 in town scenarios, while hostile
+wild-area combat scenarios (`a1-blood-moor-combat` etc.) still diverge at monster AI state-machine
+decisions before individual `SUnitDmg` melee/missile rolls can be compared draw-for-draw in
+`tools/oracle/diff.ts`. Until hostile AI decision timing and per-unit `SUnitDmg` draw order match
+frame-exactly, `tests/oracle/stat-tests.test.ts` guards the `executeSUnitDmg` continuous damage
+roll and categorical hit/block/crit distributions at `N = 100,000` (`>= 10^5`) samples per side.
 
 ## Registry (fallback uses → retirement work item)
 
 | Mechanic | Test | Retired by |
 |---|---|---|
-| _(none yet)_ | | Port per-unit `D2SeedStrc` streams (`SUNIT_AllocUnitData` → `ITEMS_AllocItemData`/unit seed init, `D2Common 0x6FD7A7A6`) and draw order per `kb/combat/d2game-sunitdmg-rng-rolls-113c.md`; then compare `seedLo/seedHi` columns frame-exactly. |
+| `SUnitDmg` melee physical damage roll + `%ED` + CS/DS + physical resist (`0x6FCFE011` / `0x6FCFD5C2` / `0x6FCFD51A` / `0x6FCFB3C0`) | `tests/oracle/stat-tests.test.ts` (`ksTwoSample`, `n = m = 100,000`, `p >= 0.001`) | Align hostile monster AI decision state machine (`AI_General` / `MonAI` tables) and `SUnitDmg` per-unit `D2SeedStrc` draw order (`kb/combat/d2game-sunitdmg-rng-rolls-113c.md`) so `tools/oracle/diff.ts` compares `dmg[]` and `seedLo`/`seedHi` columns frame-exactly. |
+| `SUnitDmg` melee categorical outcome table (`miss` / `block` / `normal` / `crit`, `0x6FCFE011` / `0x6FCFB7A0` / `0x6FCFD51A`) | `tests/oracle/stat-tests.test.ts` (`chiSquareHomogeneity`, `n = m = 100,000`, `dof = 3`, `p >= 0.001`) | Same: retire once wild-area combat scenarios reach frame-exact `dmg[]` + `seedLo`/`seedHi` agreement in `tools/oracle/diff.ts`. |

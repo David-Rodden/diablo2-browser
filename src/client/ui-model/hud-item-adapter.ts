@@ -623,7 +623,9 @@ export function clientUnitToMonsterTargetInfo(
 
   const resistances =
     !isUberBoss && kind?.resistances
-      ? applyMonsterUModResistances(kind.resistances, rawModIds)
+      ? rank !== 'minion'
+        ? applyMonsterUModResistances(kind.resistances, rawModIds)
+        : kind.resistances
       : undefined
 
   return {

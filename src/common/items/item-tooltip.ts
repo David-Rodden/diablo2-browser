@@ -1857,35 +1857,106 @@ const ALIAS_CODE_MAP: Record<string, string> = {
  * 5. Accumulates identical scalar stats across prefixes, suffixes, and base modifiers
  * 6. Sorts all resulting properties descending by `ItemStatCost.txt` `descpriority`, with secondary ascending `statId` tie-breaker
  */
+type AggregatedItemProp = RolledItemProp & {
+  readonly pairRange?: {
+    readonly minLo: number
+    readonly minHi: number
+    readonly maxLo: number
+    readonly maxHi: number
+  }
+}
+
+const PARAMETERIZED_SCALAR_MERGE_CODES: ReadonlySet<string> = new Set([
+  'skill',
+  'oskill',
+  'aura',
+  'skilltab',
+  'reanimate',
+  'att-mon%',
+  'dmg-mon%',
+])
+
+function resolvePropRollBounds(p: RolledItemProp, fallback: number): readonly [number, number] {
+  if (
+    typeof p.min === 'number' &&
+    typeof p.max === 'number' &&
+    Number.isFinite(p.min) &&
+    Number.isFinite(p.max)
+  ) {
+    return [Math.min(p.min, p.max), Math.max(p.min, p.max)]
+  }
+  return [fallback, fallback]
+}
+
 export function aggregateAndSortProperties(
   rawProps: readonly RolledItemProp[],
   tables?: RuntimePropertyTables,
 ): RolledItemProp[] {
   let fireMin = 0
   let fireMax = 0
+  let fireMinLo = 0
+  let fireMinHi = 0
+  let fireMaxLo = 0
+  let fireMaxHi = 0
   let ltngMin = 0
   let ltngMax = 0
+  let ltngMinLo = 0
+  let ltngMinHi = 0
+  let ltngMaxLo = 0
+  let ltngMaxHi = 0
   let coldMin = 0
   let coldMax = 0
+  let coldMinLo = 0
+  let coldMinHi = 0
+  let coldMaxLo = 0
+  let coldMaxHi = 0
   let coldLen = 0
   let poisMin = 0
   let poisMax = 0
+  let poisMinLo = 0
+  let poisMinHi = 0
+  let poisMaxLo = 0
+  let poisMaxHi = 0
   let poisLen = 0
   let poisCount = 0
   let physMin = 0
   let physMax = 0
+  let physMinLo = 0
+  let physMinHi = 0
+  let physMaxLo = 0
+  let physMaxHi = 0
   let edMinPct = 0
   let edMaxPct = 0
+  let edMinLo = 0
+  let edMinHi = 0
+  let edMaxLo = 0
+  let edMaxHi = 0
 
   let fireRes = 0
   let coldRes = 0
   let ltngRes = 0
   let poisRes = 0
+  let fireResMin = 0
+  let fireResMax = 0
+  let coldResMin = 0
+  let coldResMax = 0
+  let ltngResMin = 0
+  let ltngResMax = 0
+  let poisResMin = 0
+  let poisResMax = 0
 
   let strVal = 0
   let dexVal = 0
   let vitVal = 0
   let enrVal = 0
+  let strMin = 0
+  let strMax = 0
+  let dexMin = 0
+  let dexMax = 0
+  let vitMin = 0
+  let vitMax = 0
+  let enrMin = 0
+  let enrMax = 0
 
   const otherMerged = new Map<string, RolledItemProp>()
   const unmergedProcs: RolledItemProp[] = []
@@ -1910,47 +1981,83 @@ export function aggregateAndSortProperties(
 
     // 1. Fire damage bucket
     if (code === 'dmg-fire') {
-      fireMin += p.min > 0 ? p.min : val
-      fireMax += p.max > 0 ? p.max : val
+      const fMin = p.min > 0 ? p.min : val
+      const fMax = p.max > 0 ? p.max : val
+      fireMin += fMin
+      fireMax += fMax
+      fireMinLo += fMin
+      fireMinHi += fMin
+      fireMaxLo += fMax
+      fireMaxHi += fMax
       continue
     }
     if (code === 'fire-min') {
+      const [lo, hi] = resolvePropRollBounds(p, val)
       fireMin += val
+      fireMinLo += lo
+      fireMinHi += hi
       continue
     }
     if (code === 'fire-max') {
+      const [lo, hi] = resolvePropRollBounds(p, val)
       fireMax += val
+      fireMaxLo += lo
+      fireMaxHi += hi
       continue
     }
 
     // 2. Lightning damage bucket
     if (code === 'dmg-ltng') {
-      ltngMin += p.min > 0 ? p.min : val
-      ltngMax += p.max > 0 ? p.max : val
+      const lMin = p.min > 0 ? p.min : val
+      const lMax = p.max > 0 ? p.max : val
+      ltngMin += lMin
+      ltngMax += lMax
+      ltngMinLo += lMin
+      ltngMinHi += lMin
+      ltngMaxLo += lMax
+      ltngMaxHi += lMax
       continue
     }
     if (code === 'ltng-min') {
+      const [lo, hi] = resolvePropRollBounds(p, val)
       ltngMin += val
+      ltngMinLo += lo
+      ltngMinHi += hi
       continue
     }
     if (code === 'ltng-max') {
+      const [lo, hi] = resolvePropRollBounds(p, val)
       ltngMax += val
+      ltngMaxLo += lo
+      ltngMaxHi += hi
       continue
     }
 
     // 3. Cold damage bucket
     if (code === 'dmg-cold') {
-      coldMin += p.min > 0 ? p.min : val
-      coldMax += p.max > 0 ? p.max : val
+      const cMin = p.min > 0 ? p.min : val
+      const cMax = p.max > 0 ? p.max : val
+      coldMin += cMin
+      coldMax += cMax
+      coldMinLo += cMin
+      coldMinHi += cMin
+      coldMaxLo += cMax
+      coldMaxHi += cMax
       coldLen += Number(p.param) || 0
       continue
     }
     if (code === 'cold-min') {
+      const [lo, hi] = resolvePropRollBounds(p, val)
       coldMin += val
+      coldMinLo += lo
+      coldMinHi += hi
       continue
     }
     if (code === 'cold-max') {
+      const [lo, hi] = resolvePropRollBounds(p, val)
       coldMax += val
+      coldMaxLo += lo
+      coldMaxHi += hi
       continue
     }
     if (code === 'cold-len') {
@@ -1964,28 +2071,52 @@ export function aggregateAndSortProperties(
       const eMax = p.max > 0 ? p.max : val
       fireMin += eMin
       fireMax += eMax
+      fireMinLo += eMin
+      fireMinHi += eMin
+      fireMaxLo += eMax
+      fireMaxHi += eMax
       ltngMin += eMin
       ltngMax += eMax
+      ltngMinLo += eMin
+      ltngMinHi += eMin
+      ltngMaxLo += eMax
+      ltngMaxHi += eMax
       coldMin += eMin
       coldMax += eMax
+      coldMinLo += eMin
+      coldMinHi += eMin
+      coldMaxLo += eMax
+      coldMaxHi += eMax
       coldLen += Number(p.param) || 0
       continue
     }
 
     // 5. Poison damage bucket
     if (code === 'dmg-pois') {
-      poisMin += p.min > 0 ? p.min : val
-      poisMax += p.max > 0 ? p.max : val
+      const psMin = p.min > 0 ? p.min : val
+      const psMax = p.max > 0 ? p.max : val
+      poisMin += psMin
+      poisMax += psMax
+      poisMinLo += psMin
+      poisMinHi += psMin
+      poisMaxLo += psMax
+      poisMaxHi += psMax
       poisLen += Number(p.param) || 0
       poisCount += 1
       continue
     }
     if (code === 'pois-min') {
+      const [lo, hi] = resolvePropRollBounds(p, val)
       poisMin += val
+      poisMinLo += lo
+      poisMinHi += hi
       continue
     }
     if (code === 'pois-max') {
+      const [lo, hi] = resolvePropRollBounds(p, val)
       poisMax += val
+      poisMaxLo += lo
+      poisMaxHi += hi
       continue
     }
     if (code === 'pois-len') {
@@ -2000,81 +2131,146 @@ export function aggregateAndSortProperties(
 
     // 6. Physical min/max damage bucket
     if (code === 'dmg-norm') {
-      physMin += p.min > 0 ? p.min : val
-      physMax += p.max > 0 ? p.max : val
+      const pMin = p.min > 0 ? p.min : val
+      const pMax = p.max > 0 ? p.max : val
+      physMin += pMin
+      physMax += pMax
+      physMinLo += pMin
+      physMinHi += pMin
+      physMaxLo += pMax
+      physMaxHi += pMax
       continue
     }
     if (code === 'dmg-min') {
+      const [lo, hi] = resolvePropRollBounds(p, val)
       physMin += val
+      physMinLo += lo
+      physMinHi += hi
       continue
     }
     if (code === 'dmg-max') {
+      const [lo, hi] = resolvePropRollBounds(p, val)
       physMax += val
+      physMaxLo += lo
+      physMaxHi += hi
       continue
     }
 
     // 6b. Enhanced Damage min% (stat 18) & max% (stat 17) bucket (D2Client.dll 0x6FB04000 + 0x6FB04594)
     if (code === 'dmg%' || code === 'damagepercent') {
+      const [lo, hi] = resolvePropRollBounds(p, val)
       edMinPct += val
       edMaxPct += val
+      edMinLo += lo
+      edMinHi += hi
+      edMaxLo += lo
+      edMaxHi += hi
       continue
     }
     if (code === 'item_mindamage_percent' || code === 'dmg-min%') {
+      const [lo, hi] = resolvePropRollBounds(p, val)
       edMinPct += val
+      edMinLo += lo
+      edMinHi += hi
       continue
     }
     if (code === 'item_maxdamage_percent' || code === 'dmg-max%') {
+      const [lo, hi] = resolvePropRollBounds(p, val)
       edMaxPct += val
+      edMaxLo += lo
+      edMaxHi += hi
       continue
     }
 
     // 7. Resistances bucket (dgrp=2)
     if (code === 'res-all' || code === 'all-res') {
+      const [lo, hi] = resolvePropRollBounds(p, val)
       fireRes += val
       coldRes += val
       ltngRes += val
       poisRes += val
+      fireResMin += lo
+      fireResMax += hi
+      coldResMin += lo
+      coldResMax += hi
+      ltngResMin += lo
+      ltngResMax += hi
+      poisResMin += lo
+      poisResMax += hi
       continue
     }
     if (code === 'res-fire') {
+      const [lo, hi] = resolvePropRollBounds(p, val)
       fireRes += val
+      fireResMin += lo
+      fireResMax += hi
       continue
     }
     if (code === 'res-cold') {
+      const [lo, hi] = resolvePropRollBounds(p, val)
       coldRes += val
+      coldResMin += lo
+      coldResMax += hi
       continue
     }
     if (code === 'res-ltng') {
+      const [lo, hi] = resolvePropRollBounds(p, val)
       ltngRes += val
+      ltngResMin += lo
+      ltngResMax += hi
       continue
     }
     if (code === 'res-pois') {
+      const [lo, hi] = resolvePropRollBounds(p, val)
       poisRes += val
+      poisResMin += lo
+      poisResMax += hi
       continue
     }
 
     // 8. Attributes bucket (dgrp=1)
     if (code === 'all-stats') {
+      const [lo, hi] = resolvePropRollBounds(p, val)
       strVal += val
       dexVal += val
       vitVal += val
       enrVal += val
+      strMin += lo
+      strMax += hi
+      dexMin += lo
+      dexMax += hi
+      vitMin += lo
+      vitMax += hi
+      enrMin += lo
+      enrMax += hi
       continue
     }
     if (code === 'str') {
+      const [lo, hi] = resolvePropRollBounds(p, val)
       strVal += val
+      strMin += lo
+      strMax += hi
       continue
     }
     if (code === 'dex') {
+      const [lo, hi] = resolvePropRollBounds(p, val)
       dexVal += val
+      dexMin += lo
+      dexMax += hi
       continue
     }
     if (code === 'vit') {
+      const [lo, hi] = resolvePropRollBounds(p, val)
       vitVal += val
+      vitMin += lo
+      vitMax += hi
       continue
     }
     if (code === 'enr') {
+      const [lo, hi] = resolvePropRollBounds(p, val)
       enrVal += val
+      enrMin += lo
+      enrMax += hi
       continue
     }
 
@@ -2085,65 +2281,102 @@ export function aggregateAndSortProperties(
     }
 
     // 10. General accumulatable scalar stats
-    const mergeKey = `${code}::${String(p.param ?? '')}`
+    const [lo, hi] = resolvePropRollBounds(p, val)
+    const mergeParamKey = PARAMETERIZED_SCALAR_MERGE_CODES.has(code) ? String(p.param ?? '') : ''
+    const mergeKey = `${code}::${mergeParamKey}`
     const existing = otherMerged.get(mergeKey)
     if (existing) {
       otherMerged.set(mergeKey, {
         code,
-        param: existing.param,
-        min: existing.min + p.min,
-        max: existing.max + p.max,
+        param: existing.param ?? p.param,
+        min: existing.min + lo,
+        max: existing.max + hi,
         value: existing.value + val,
       })
     } else {
       otherMerged.set(mergeKey, {
         code,
         param: p.param,
-        min: p.min,
-        max: p.max,
+        min: lo,
+        max: hi,
         value: val,
       })
     }
   }
 
-  const out: RolledItemProp[] = [...unmergedProcs, ...otherMerged.values()]
+  const out: AggregatedItemProp[] = [...unmergedProcs, ...otherMerged.values()]
 
   // Emit merged Enhanced Damage (D2Client.dll 0x6FB04000 + 0x6FB04594): whenever both item_mindamage_percent (stat 18)
   // and item_maxdamage_percent (stat 17) are > 0, stat 17 is suppressed and stat 18 outputs "+{min%}% Enhanced Damage".
   // Otherwise a lone stat 17 or stat 18 outputs its own descfunc=3, descval=0 line (ModStr2j / ModStr2k).
   if ((edMinPct > 0 && edMaxPct > 0) || (edMinPct !== 0 && edMinPct === edMaxPct)) {
-    out.push({ code: 'dmg%', min: edMinPct, max: edMinPct, value: edMinPct })
+    out.push({ code: 'dmg%', min: edMinLo, max: edMinHi, value: edMinPct })
   } else {
     if (edMaxPct !== 0) {
-      out.push({ code: 'item_maxdamage_percent', min: edMaxPct, max: edMaxPct, value: edMaxPct })
+      out.push({ code: 'item_maxdamage_percent', min: edMaxLo, max: edMaxHi, value: edMaxPct })
     }
     if (edMinPct !== 0) {
-      out.push({ code: 'item_mindamage_percent', min: edMinPct, max: edMinPct, value: edMinPct })
+      out.push({ code: 'item_mindamage_percent', min: edMinLo, max: edMinHi, value: edMinPct })
     }
   }
 
   // Emit merged Physical Damage (D2Client.dll 0x6FB04000 + 0x6FB0453F): one "Adds %d-%d damage" line only when
   // both halves are > 0 and min < max; otherwise each half keeps its own descfunc line.
   if (physicalPairCombines(physMin, physMax)) {
-    out.push({ code: 'dmg-norm', min: physMin, max: physMax, value: physMin })
+    const hasPairRange = physMinLo !== physMinHi || physMaxLo !== physMaxHi
+    out.push({
+      code: 'dmg-norm',
+      min: physMin,
+      max: physMax,
+      value: physMin,
+      ...(hasPairRange
+        ? {
+            pairRange: {
+              minLo: physMinLo,
+              minHi: physMinHi,
+              maxLo: physMaxLo,
+              maxHi: physMaxHi,
+            },
+          }
+        : {}),
+    })
   } else {
-    if (physMin !== 0) out.push({ code: 'dmg-min', min: physMin, max: physMin, value: physMin })
-    if (physMax !== 0) out.push({ code: 'dmg-max', min: physMax, max: physMax, value: physMax })
+    if (physMin !== 0) out.push({ code: 'dmg-min', min: physMinLo, max: physMinHi, value: physMin })
+    if (physMax !== 0) out.push({ code: 'dmg-max', min: physMaxLo, max: physMaxHi, value: physMax })
   }
 
   // Emit merged Fire / Lightning / Cold Damage (0x6FB04328 / 0x6FB043AC / 0x6FB0436A): combined whenever both
   // halves are > 0 ("Adds %d-%d" when min < max, otherwise "+%d" with the max value); a lone half keeps its own line.
-  const emitElemental = (pair: string, minCode: string, maxCode: string, min: number, max: number, param?: number) => {
+  const emitElemental = (
+    pair: string,
+    minCode: string,
+    maxCode: string,
+    min: number,
+    max: number,
+    minLo: number,
+    minHi: number,
+    maxLo: number,
+    maxHi: number,
+    param?: number,
+  ) => {
     if (elementalPairCombines(min, max)) {
-      out.push({ code: pair, ...(param !== undefined ? { param } : {}), min, max, value: min })
+      const hasPairRange = minLo !== minHi || maxLo !== maxHi
+      out.push({
+        code: pair,
+        ...(param !== undefined ? { param } : {}),
+        min,
+        max,
+        value: min,
+        ...(hasPairRange ? { pairRange: { minLo, minHi, maxLo, maxHi } } : {}),
+      })
     } else {
-      if (min !== 0) out.push({ code: minCode, min, max: min, value: min })
-      if (max !== 0) out.push({ code: maxCode, min: max, max, value: max })
+      if (min !== 0) out.push({ code: minCode, min: minLo, max: minHi, value: min })
+      if (max !== 0) out.push({ code: maxCode, min: maxLo, max: maxHi, value: max })
     }
   }
-  emitElemental('dmg-fire', 'fire-min', 'fire-max', fireMin, fireMax)
-  emitElemental('dmg-ltng', 'ltng-min', 'ltng-max', ltngMin, ltngMax)
-  emitElemental('dmg-cold', 'cold-min', 'cold-max', coldMin, coldMax, coldLen)
+  emitElemental('dmg-fire', 'fire-min', 'fire-max', fireMin, fireMax, fireMinLo, fireMinHi, fireMaxLo, fireMaxHi)
+  emitElemental('dmg-ltng', 'ltng-min', 'ltng-max', ltngMin, ltngMax, ltngMinLo, ltngMinHi, ltngMaxLo, ltngMaxHi)
+  emitElemental('dmg-cold', 'cold-min', 'cold-max', coldMin, coldMax, coldMinLo, coldMinHi, coldMaxLo, coldMaxHi, coldLen)
 
   // Emit merged Poison Damage (0x6FB0446B): requires both poisonmindam and poisonmaxdam > 0; poisonlength is
   // divided by poison_count (stat 326, +1 per `dmg-pois` property) before the `(v*len+128)>>8` conversion.
@@ -2156,29 +2389,53 @@ export function aggregateAndSortProperties(
       value: poisMin,
     })
   } else {
-    if (poisMin !== 0) out.push({ code: 'pois-min', min: poisMin, max: poisMin, value: poisMin })
-    if (poisMax !== 0) out.push({ code: 'pois-max', min: poisMax, max: poisMax, value: poisMax })
+    if (poisMin !== 0) out.push({ code: 'pois-min', min: poisMinLo, max: poisMinHi, value: poisMin })
+    if (poisMax !== 0) out.push({ code: 'pois-max', min: poisMaxLo, max: poisMaxHi, value: poisMax })
   }
 
   // Emit merged Attributes (dgrp=1). D2Client.dll 0x6FB04AC0 folds a dgrp group whenever every member's
   // displayed value is equal — there is no sign check, so equal negative values fold too (dgrpstrneg).
   if (strVal !== 0 && strVal === dexVal && dexVal === vitVal && vitVal === enrVal) {
-    out.push({ code: 'all-stats', min: strVal, max: strVal, value: strVal })
+    const eqAttrBounds =
+      strMin === dexMin &&
+      dexMin === vitMin &&
+      vitMin === enrMin &&
+      strMax === dexMax &&
+      dexMax === vitMax &&
+      vitMax === enrMax
+    out.push({
+      code: 'all-stats',
+      min: eqAttrBounds ? strMin : strVal,
+      max: eqAttrBounds ? strMax : strVal,
+      value: strVal,
+    })
   } else {
-    if (strVal !== 0) out.push({ code: 'str', min: strVal, max: strVal, value: strVal })
-    if (dexVal !== 0) out.push({ code: 'dex', min: dexVal, max: dexVal, value: dexVal })
-    if (vitVal !== 0) out.push({ code: 'vit', min: vitVal, max: vitVal, value: vitVal })
-    if (enrVal !== 0) out.push({ code: 'enr', min: enrVal, max: enrVal, value: enrVal })
+    if (strVal !== 0) out.push({ code: 'str', min: strMin, max: strMax, value: strVal })
+    if (dexVal !== 0) out.push({ code: 'dex', min: dexMin, max: dexMax, value: dexVal })
+    if (vitVal !== 0) out.push({ code: 'vit', min: vitMin, max: vitMax, value: vitVal })
+    if (enrVal !== 0) out.push({ code: 'enr', min: enrMin, max: enrMax, value: enrVal })
   }
 
   // Emit merged Resistances (dgrp=2): same 0x6FB04AC0 rule (equal displayed values, any sign).
   if (fireRes !== 0 && fireRes === coldRes && coldRes === ltngRes && ltngRes === poisRes) {
-    out.push({ code: 'res-all', min: fireRes, max: fireRes, value: fireRes })
+    const eqResBounds =
+      fireResMin === coldResMin &&
+      coldResMin === ltngResMin &&
+      ltngResMin === poisResMin &&
+      fireResMax === coldResMax &&
+      coldResMax === ltngResMax &&
+      ltngResMax === poisResMax
+    out.push({
+      code: 'res-all',
+      min: eqResBounds ? fireResMin : fireRes,
+      max: eqResBounds ? fireResMax : fireRes,
+      value: fireRes,
+    })
   } else {
-    if (coldRes !== 0) out.push({ code: 'res-cold', min: coldRes, max: coldRes, value: coldRes })
-    if (ltngRes !== 0) out.push({ code: 'res-ltng', min: ltngRes, max: ltngRes, value: ltngRes })
-    if (fireRes !== 0) out.push({ code: 'res-fire', min: fireRes, max: fireRes, value: fireRes })
-    if (poisRes !== 0) out.push({ code: 'res-pois', min: poisRes, max: poisRes, value: poisRes })
+    if (coldRes !== 0) out.push({ code: 'res-cold', min: coldResMin, max: coldResMax, value: coldRes })
+    if (ltngRes !== 0) out.push({ code: 'res-ltng', min: ltngResMin, max: ltngResMax, value: ltngRes })
+    if (fireRes !== 0) out.push({ code: 'res-fire', min: fireResMin, max: fireResMax, value: fireRes })
+    if (poisRes !== 0) out.push({ code: 'res-pois', min: poisResMin, max: poisResMax, value: poisRes })
   }
 
   // Sort descending by ItemStatCost.txt descpriority, then ascending by 1.13c statId for distinct properties
@@ -2238,10 +2495,51 @@ function getAffixEffectiveLevelReq(aff: RolledAffix, itemClass: string): number 
   return aff.levelreq
 }
 
+export interface FormatItemTooltipOptions {
+  readonly showStatRanges?: boolean | undefined
+  readonly showItemStatRanges?: boolean | undefined
+  readonly equippedSetIds?: Iterable<string | number> | undefined
+  readonly wornSetPieceCount?: number | undefined
+}
+
+function formatStatRangeSuffix(
+  code: string,
+  min: number,
+  max: number,
+  locale: TooltipLocale,
+  pairRange?: AggregatedItemProp['pairRange'],
+): string {
+  if (pairRange && (pairRange.minLo !== pairRange.minHi || pairRange.maxLo !== pairRange.maxHi)) {
+    const aPart =
+      pairRange.minLo !== pairRange.minHi ? `${pairRange.minLo}-${pairRange.minHi}` : `${pairRange.minLo}`
+    const bPart =
+      pairRange.maxLo !== pairRange.maxHi ? `${pairRange.maxLo}-${pairRange.maxHi}` : `${pairRange.maxLo}`
+    const joiner = locale === 'zh' ? '至' : 'to'
+    return ` [${aPart} ${joiner} ${bPart}]`
+  }
+  const lo = Math.min(min, max)
+  const hi = Math.max(min, max)
+  if (lo === hi) return ''
+  const norm = code.trim().toLowerCase()
+  if (norm.endsWith('/lvl') || norm.endsWith('_perlevel')) {
+    const fmt = (v: number): string => String(Number((v / 8).toFixed(3)))
+    return ` [${fmt(lo)}-${fmt(hi)}]`
+  }
+  return ` [${lo}-${hi}]`
+}
+
 /**
  * Generates formatted tooltip structure for any dropped Diablo II Item.
  */
-export function formatItemTooltip(item: Item, locale: TooltipLocale = getTooltipLocale()): FormattedItemTooltip {
+export function formatItemTooltip(
+  item: Item,
+  localeOrOptions?: TooltipLocale | FormatItemTooltipOptions,
+  maybeOptions?: FormatItemTooltipOptions,
+): FormattedItemTooltip {
+  const locale: TooltipLocale =
+    typeof localeOrOptions === 'string' ? localeOrOptions : getTooltipLocale()
+  const options: FormatItemTooltipOptions | undefined =
+    typeof localeOrOptions === 'object' && localeOrOptions !== null ? localeOrOptions : maybeOptions
   const base = item.base
   const rawQuality = String(item.rarity || item.quality || 'normal').toLowerCase()
   const isRunewordItem = Boolean(
@@ -2713,7 +3011,7 @@ export function formatItemTooltip(item: Item, locale: TooltipLocale = getTooltip
         if (prop.code) {
           rawProps.push({
             code: prop.code,
-            param: prop.par,
+            param: prop.par ?? prop.param,
             min: prop.min,
             max: prop.max,
             value: prop.min,
@@ -2898,7 +3196,19 @@ export function formatItemTooltip(item: Item, locale: TooltipLocale = getTooltip
       }
       if (!(item as any)._socketPropsMerged && hostCategory) {
         const sockProps = getSocketedItemModifiersForHost(sockItem, hostCategory, CANONICAL_GEMS_TABLE)
-        rawProps.push(...sockProps)
+        const sockQualRaw = String(sockItem.rarity || sockItem.quality || '').toLowerCase()
+        const isSockUnique = sockQualRaw === 'unique' || sockQualRaw === '7' || sockItem.quality === 7
+        for (const sp of sockProps) {
+          if (isSockUnique || NON_RANDOM_RANGE_CODES.has(sp.code.toLowerCase())) {
+            rawProps.push(sp)
+          } else {
+            rawProps.push({
+              ...sp,
+              min: sp.value,
+              max: sp.value,
+            })
+          }
+        }
       }
     }
     if (!derivedRunewordRunes && runeLetters.length > 0) {
@@ -2915,13 +3225,58 @@ export function formatItemTooltip(item: Item, locale: TooltipLocale = getTooltip
   const propCharLevel = charLevel > 0 ? charLevel : 1
   const rawPlayerClass = String((item as any).charClass ?? (item as any).playerClass ?? '').trim().toLowerCase()
 
+  const isUnidentifiedItem =
+    (item as { identified?: boolean }).identified === false || item.flags?.identified === false
+  const isEligibleSetUniqueRunewordQuality =
+    !socketable &&
+    !isUnidentifiedItem &&
+    (quality === 'unique' ||
+      quality === 'set' ||
+      quality === 'runeword' ||
+      (quality === 'rune' && !socketable))
+  const allowItemStatRange =
+    !isUnidentifiedItem &&
+    (Boolean(options?.showStatRanges) ||
+      (Boolean(options?.showItemStatRanges) && isEligibleSetUniqueRunewordQuality))
+
+  const appendRangeIfVariable = (text: string, prop: RolledItemProp): string => {
+    if (!text || !allowItemStatRange) return text
+    const normCode = (prop.code || '').trim().toLowerCase().replace(/^\*/, '')
+    const pairRange = (prop as AggregatedItemProp).pairRange
+    if (pairRange && (pairRange.minLo !== pairRange.minHi || pairRange.maxLo !== pairRange.maxHi)) {
+      return `${text}${formatStatRangeSuffix(normCode, prop.min, prop.max, locale, pairRange)}`
+    }
+    if (
+      NON_RANDOM_RANGE_CODES.has(normCode) ||
+      normCode === 'ethereal' ||
+      normCode === 'indestruct' ||
+      normCode === 'state' ||
+      normCode === 'corrupt' ||
+      normCode === 'desecrate' ||
+      normCode === 'mirrored'
+    ) {
+      return text
+    }
+    if (
+      typeof prop.min === 'number' &&
+      typeof prop.max === 'number' &&
+      Number.isFinite(prop.min) &&
+      Number.isFinite(prop.max) &&
+      prop.min !== prop.max
+    ) {
+      return `${text}${formatStatRangeSuffix(normCode, prop.min, prop.max, locale)}`
+    }
+    return text
+  }
+
   // Merge and sort properties per Issue #125 (min/max damage pairs, dgrp resists/attributes, descpriority)
   const mergedProps = aggregateAndSortProperties(
     rawProps.filter(p => (p.code || '').trim().toLowerCase() !== 'levelreq'),
   )
   for (const prop of mergedProps) {
+    const baseText = formatPropertyCode(prop.code, prop.value, prop.min, prop.max, prop.param, locale, propCharLevel)
     lines.push({
-      text: formatPropertyCode(prop.code, prop.value, prop.min, prop.max, prop.param, locale, propCharLevel),
+      text: appendRangeIfVariable(baseText, prop),
       color: 'blue',
       isMagic: true,
     })
@@ -2962,9 +3317,14 @@ export function formatItemTooltip(item: Item, locale: TooltipLocale = getTooltip
           return curDur === 0 && Number(maxDur) > 0
         }
         const equippedIndicesRaw: readonly (string | number)[] | undefined =
-          Array.isArray((item as any).equippedSetIds)
-            ? (item as any).equippedSetIds
-            : undefined
+          options?.equippedSetIds !== undefined
+            ? [...options.equippedSetIds]
+            : Array.isArray((item as any).equippedSetIds)
+              ? (item as any).equippedSetIds
+              : (item as any).equippedSetIds &&
+                  typeof (item as any).equippedSetIds[Symbol.iterator] === 'function'
+                ? [...(item as any).equippedSetIds]
+                : undefined
         const equippedSetIdSet = new Set<number>()
         const equippedSetIndexSet = new Set<string>()
         if (equippedIndicesRaw) {
@@ -3018,9 +3378,11 @@ export function formatItemTooltip(item: Item, locale: TooltipLocale = getTooltip
           }
         }
         const explicitWornCount =
-          typeof (item as any).wornSetPieceCount === 'number'
-            ? Math.max(0, Math.trunc((item as any).wornSetPieceCount))
-            : undefined
+          typeof options?.wornSetPieceCount === 'number'
+            ? Math.max(0, Math.trunc(options.wornSetPieceCount))
+            : typeof (item as any).wornSetPieceCount === 'number'
+              ? Math.max(0, Math.trunc((item as any).wornSetPieceCount))
+              : undefined
         let maskCount = 0
         for (let m = setMask; m !== 0; m &= m - 1) maskCount++
         const wornCount = explicitWornCount !== undefined ? explicitWornCount : maskCount
@@ -3064,7 +3426,10 @@ export function formatItemTooltip(item: Item, locale: TooltipLocale = getTooltip
             }),
           )
           for (const prop of mergedItemGreen) {
-            const text = formatPropertyCode(prop.code, prop.value, prop.min, prop.max, prop.param, locale, propCharLevel)
+            const text = appendRangeIfVariable(
+              formatPropertyCode(prop.code, prop.value, prop.min, prop.max, prop.param, locale, propCharLevel),
+              prop,
+            )
             if (text) {
               activeBonusLines.push({ text, color: 'green' })
             }
@@ -3107,7 +3472,10 @@ export function formatItemTooltip(item: Item, locale: TooltipLocale = getTooltip
               }),
             )
             for (const prop of mergedGold) {
-              const text = formatPropertyCode(prop.code, prop.value, prop.min, prop.max, prop.param, locale, propCharLevel)
+              const text = appendRangeIfVariable(
+                formatPropertyCode(prop.code, prop.value, prop.min, prop.max, prop.param, locale, propCharLevel),
+                prop,
+              )
               if (text) {
                 activeBonusLines.push({ text, color: 'gold' })
               }
@@ -3239,8 +3607,13 @@ export function formatItemTooltip(item: Item, locale: TooltipLocale = getTooltip
     lines.push({ text: ethText, color: 'blue', isMagic: true })
   }
   if (explicitSockets > 0 && !lines.some(l => l.text.includes('Socketed') || l.text.includes('凹槽'))) {
-    const sockText = locale === 'zh' || locale === 'bilingual' ? `凹槽 (${explicitSockets})` : `Socketed (${explicitSockets})`
-    lines.push({ text: sockText, color: 'blue', isMagic: true })
+    const baseSockText = locale === 'zh' || locale === 'bilingual' ? `凹槽 (${explicitSockets})` : `Socketed (${explicitSockets})`
+    const sockRange = (item as { socketRange?: { readonly min: number; readonly max: number } }).socketRange
+    const sockSuffix =
+      allowItemStatRange && sockRange && sockRange.min !== sockRange.max
+        ? formatStatRangeSuffix('sock', sockRange.min, sockRange.max, locale)
+        : ''
+    lines.push({ text: `${baseSockText}${sockSuffix}`, color: 'blue', isMagic: true })
   }
 
   // 1. Defense (Enhanced / Low Quality / Ethereal vs Base)

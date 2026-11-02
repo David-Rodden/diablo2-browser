@@ -17,6 +17,7 @@
  */
 
 import { RAW_DIFFICULTY_LEVELS } from '../data/canonical-drop-data.ts'
+import { mulDiv113c } from '../data/mul-div-113c.ts'
 import {
   EXPERIENCE_TXT_RAW,
   PARSED_EXPERIENCE_TABLE,
@@ -69,19 +70,21 @@ export function computeMonsterExpGrant113c(
   if (exp <= 0) return 0
   const characterLevel = Math.max(1, Math.floor(clvl))
   const monsterLevel = Math.max(1, Math.floor(mlvl))
+  // Scaling goes through the D2Game mulDiv 0x6FC214D0 with `edx = exp` (0x6FCFAA7C..0x6FCFAA81), which
+  // divides first for exp > 0x100000: `(exp / 256) * mod` / `(exp / mlvl) * clvl`.
   if (monsterLevel <= characterLevel) {
     const diff = Math.min(10, characterLevel - monsterLevel)
     const mod = LEVEL_DIFF_EXP_MOD_ABOVE_OR_EQUAL[diff]!
     if (mod === 256) return exp
-    return Math.floor((exp * mod) / 256)
+    return mulDiv113c(mod, exp, 256)
   }
   if (characterLevel < 25) {
     const diff = Math.min(10, monsterLevel - characterLevel)
     const mod = LEVEL_DIFF_EXP_MOD_UNDER25_HIGHER_MLVL[diff]!
     if (mod === 256) return exp
-    return Math.floor((exp * mod) / 256)
+    return mulDiv113c(mod, exp, 256)
   }
-  return Math.floor((exp * characterLevel) / monsterLevel)
+  return mulDiv113c(characterLevel, exp, monsterLevel)
 }
 
 /**
@@ -94,7 +97,62 @@ export function applyExpRatio113c(exp: number, clvl: number): number {
   if (current <= 0) return 0
   const clampedLevel = Math.max(1, Math.min(MAX_CHARACTER_LEVEL_113C, Math.floor(clvl)))
   const expRatio = PARSED_EXPERIENCE_TABLE.expRatios[clampedLevel] ?? 1024
-  return Math.floor((current * expRatio) / 1024)
+  // 0x6FCFAA04..0x6FCFAA2C: shift = Experience.txt MaxLvl-row ExpRatio (10); if
+  // `exp > 0x7FFFFFFF >> (shift + (ratio >> shift))` the original computes `(exp >> shift) * ratio`
+  // (drops the low bits), otherwise `(ratio * exp) >> shift`.
+  const shift = EXP_RATIO_SHIFT_113C
+  const limit = 0x7fffffff >> ((shift + (expRatio >> shift)) & 31)
+  if (current > limit) return Math.imul(current >> shift, expRatio)
+  return Math.imul(expRatio, current) >> shift
+}
+
+/** `Experience.txt` `MaxLvl` row `ExpRatio` (= 10), read through `#10989(0)` at `0x6FCFA9F6`. */
+export const EXP_RATIO_SHIFT_113C = 10
+
+/**
+ * Unclamped 1.13c `D2Game.dll` `0x6FCFAA40` (`SUNITDMG_ComputeLevelDiffExp`):
+ * `eax = clvl`, `ecx = mlvl`, `edx = exp`, tail-jumping to `0x6FC214D0` (`mulDiv113c`) when `mod != 256`
+ * and returning `edx` unchanged (`mov eax, edx; ret`) when `mod == 256`.
+ */
+export function computeRawMonsterExpGrant113c(clvl: number, mlvl: number, exp: number): number {
+  const eax = clvl | 0
+  const ecx = mlvl | 0
+  const edx = exp | 0
+  if (ecx <= eax) {
+    const diff = (eax - ecx) | 0
+    const idx = diff < 11 ? (diff < 0 ? 0 : diff) : 10
+    const mod = LEVEL_DIFF_EXP_MOD_ABOVE_OR_EQUAL[idx]!
+    return mod === 256 ? edx : mulDiv113c(mod, edx, 256)
+  }
+  if (eax >= 25 && ecx > 0) {
+    return mulDiv113c(eax, edx, ecx)
+  }
+  const diff = (ecx - eax) | 0
+  const idx = diff < 11 ? (diff < 0 ? 0 : diff) : 10
+  const mod = LEVEL_DIFF_EXP_MOD_UNDER25_HIGHER_MLVL[idx]!
+  return mod === 256 ? edx : mulDiv113c(mod, edx, 256)
+}
+
+/**
+ * Unclamped 1.13c `D2Common #10989` (`0x6FDAE840`) + `D2Game 0x6FCFA9E0` (`SUNITDMG_ApplyExpRatio`):
+ * - `exp <= 0` returns `exp` unchanged (`0x6FCFA9E3: test edi, edi; jle`).
+ * - `#10989(clvl)`: `clvl <= 0` returns row-0 `ExpRatio` (`10`); `clvl > 99` returns `0`;
+ *   `1 <= clvl <= 99` returns `Experience.txt` `ExpRatio[clvl]`.
+ */
+export function applyRawExpRatio113c(exp: number, clvl: number): number {
+  const edi = exp | 0
+  if (edi <= 0) return edi
+  const lv = clvl | 0
+  const esi =
+    lv <= 0
+      ? EXP_RATIO_SHIFT_113C
+      : lv > MAX_CHARACTER_LEVEL_113C
+        ? 0
+        : (PARSED_EXPERIENCE_TABLE.expRatios[lv] ?? 0)
+  const shift = EXP_RATIO_SHIFT_113C
+  const limit = 0x7fffffff >> ((shift + (esi >> shift)) & 31)
+  if (edi > limit) return Math.imul(edi >> shift, esi)
+  return Math.imul(esi, edi) >> shift
 }
 
 export const MAX_MERCENARY_LEVEL_113C = 98
@@ -161,7 +219,8 @@ export function calculateKillExperienceGain113c(
 
   const stat85 = Math.trunc(addExpPct)
   if (stat85 !== 0) {
-    exp += Math.trunc((exp * stat85) / 100)
+    // 0x6FCFC090..0x6FCFC09C: exp += mulDiv(eax = stat85, edx = exp, 100) (0x6FC214D0).
+    exp += mulDiv113c(stat85, exp, 100)
   }
   exp = Math.max(0, exp)
   if (expPerLvl !== undefined && expPerLvl > 0) {

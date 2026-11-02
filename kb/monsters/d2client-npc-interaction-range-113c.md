@@ -107,6 +107,32 @@ Why the web client must enforce this `<= 10` sub-tile tether per tick (`enforceA
    Issue #890 anti-instant-dismiss invariants while automatically dismissing NPC menus, speech boxes, vendor/service panels,
    and object scroll/orifice dialogs once `max(|dx|, |dy|) > 10`.
 
+### 5.2 Unloaded / Missing Monster Unit Lifecycle (`D2Client.dll` `0x6FAF6150`, `0x6FAFBA20`, `0x6FAF8C80`, `0x6FB5C3D0` & `D2Game.dll` `0x6FC68410`, Issue #2009)
+
+Multi-room towns (such as Act 3 Kurast Docks `Area 75`, which spans > `160` sub-tiles north-to-south) exceed the 3×3 `D2Room1`
+AOI window (`PLAYER_UpdateRooms` `0x6FC6AC84` in `D2Game.dll`), so walking to the southern dockside or northern jungle gate
+emits `S2C 0x0A UnitRemove` and `S2C 0x08 RoomHide` for town NPCs (`Ormus` `255`, `Alkor` `254`, `Asheara` `252`, `Cain` `246`,
+`Hratli` `253`, `Meshif` `264`) and town objects (`Stash` `267`).
+
+Disassembly of `D2Client.dll` (ImageBase `0x6FAB0000`) and `D2Game.dll` (ImageBase `0x6FC20000`) establishes five invariants:
+
+1. **`D2CLIENT_GetCurrentInteractingNPC` (`0x6FAF6150`)**:
+   Checks `byte [0x6FBC9721]` (`g_bIsInteractingWithNPC`), then looks up `dword [0x6FBC971D]` (`g_dwInteractedNpcId`) in
+   `g_pClientUnitTable[UNIT_MONSTER]` (`0x6FBBA808[(npcId & 0x7F) * 4]`). Whenever the monster unit is absent from the client
+   unit table, `0x6FAF6150` returns `NULL` (`0`).
+2. **`D2CLIENT_InitNPCInteract` (`0x6FAFBA20` / `0x6FAFBAAE`)**:
+   If `pNpcUnit == NULL` when initializing an NPC interaction (`C2S 0x2F NpcInit` / `S2C 0x28`), calls `0x6FAF92F0`
+   (`D2CLIENT_CloseNPCInteract`) instead of arming `g_bIsInteractingWithNPC = 1`.
+3. **`D2CLIENT_OpenNPCStore` (`0x6FAF8B67` / `0x6FAF8C80`)**:
+   Calls `0x6FAF6150`; if `NULL`, jumps to `0x6FAF8FF1` and aborts opening trade/gamble/hire windows without dereferencing a
+   null unit or crashing the UI loop.
+4. **`S2C 0x08 RoomHide` (`0x6FB5C3D0`) & `D2CLIENT_RemoveClientUnit` (`0x6FB56EF0` / `0x6FB56D60`)**:
+   Pruning monster/object units inside a hidden room rectangle must perform the exact same active-NPC cancel, shop clear,
+   `npcMotion` lock release, Stash close, queued-packet drain, and town-NPC placeholder reconciliation as `S2C 0x0A UnitRemove`.
+5. **`D2GAME_CancelMonsterInteractAll` (`0x6FC68410`) & `PLAYER_UpdateRooms` (`0x6FC6AC84`)**:
+   Unloading an NPC's room from a player's AOI on the server clears `player.activeNpcId`, `lastNpcInteractHandshakeId`, and
+   `activeVendorMode` so stale shop sessions never outlive AOI visibility.
+
 ---
 
 ## 6. Port Mapping
@@ -118,6 +144,7 @@ Why the web client must enforce this `<= 10` sub-tile tether per tick (`enforceA
 | `D2Game` `0x6fceb690` / `0x6fcecfe0` (`0x0A`) | `NPC_INTERACT_TETHER_SUBTILES_113C = 10`, `isWithinNpcInteractTether113c` (`src/client/input/click-rules-113c.ts`) |
 | Click / pending interaction | `CommandMapper.isWithinInteractionMeleeRange(..., 'click' / 'arrival')` |
 | `0x6faf83b0` + `0x0A` tether | `enforceActiveInteractionRange113c` (`src/client/session/session-level-navigation.ts`) |
+| `0x6FAF6150` / `0x6FAFBA20` / `0x6FAF8C80` / `0x6FB5C3D0` / `0x6FC68410` | `removeNonSelfUnit` (`client-world.ts`), `noteOutgoingCommandImpl` (`world-event-applier.ts`), `syncNpcInteractionImpl` (`hud-world-sync.ts`), `openNpcTradeImpl` / `openNpcGambleImpl` (`hud-command-actions.ts`), `RoomHide` (`session-event-processor.ts`), `emitRoomUnitsRemovedToPlayer` (`area-and-session.ts`) |
 
 Not modelled: the pending path's collision test `#10324(target, player, 0x804)`. The web client's collision map
 also contains object footprints, which could block an NPC that stands next to a stall; the D2GS server stays

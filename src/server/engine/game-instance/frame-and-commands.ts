@@ -21,9 +21,11 @@ import { normalizeSkillTargetUnitType113c } from '../../skills/martial-dualwield
 import { evaluateCalc } from '../../../common/data/calc-ast.ts'
 import { decodeSkillTabParam } from '../../../common/skills/skills-data.ts'
 import { evaluateSkill113c } from '../../skills/registry.ts'
+import type { TownNpcPlayerContext } from '../../ai/town-npc-ai-113c.ts'
+import { questWordIndex113c } from '../quests-113c.ts'
 import type { GameInstanceHost } from './host.ts'
 import type { InternalMonsterRecord, InternalPlayerRecord, PlayerSkillCast, QueuedPlayerCommand, ServerItemEntry } from './types.ts'
-import { ACT_TOWN_AREAS, BODYLOC_LEFT_ARM, BODYLOC_RIGHT_ARM, PLAYER_SIZE_X_113C, SKILL_TELEPORT, SRVDOFUNC_MIND_BLAST, SRVDOFUNC_WHIRLWIND, STAT_ITEM_ADDCLASSSKILLS, STAT_ITEM_ADDSKILL_TAB, STAT_ITEM_ALLSKILLS, STAT_ITEM_EXPLOSIVEARROW, STAT_ITEM_MAGICARROW, STAT_ITEM_NONCLASSSKILL, STAT_ITEM_SINGLESKILL, STAT_QUANTITY, TOWN_AREAS, UNIVERSAL_PLAYER_SKILL_IDS, WARP_INTERACT_DISTANCE_SUBTILES, WAYPOINT_AREA_IDS, WAYPOINT_INTERACT_DISTANCE_SUBTILES, areaToAct, collectEquippedItemStats, collectItemStats, computeObjectApproachSearchRadius113c, findBestInteractApproachSubTile113c, findChargedSkill, normalizeMissileElement, resolvePlayerServerMissileName, UNIT_TYPE_113C, type UnitType113c } from './constants-and-helpers.ts'
+import { ACT_TOWN_AREAS, BODYLOC_LEFT_ARM, BODYLOC_RIGHT_ARM, NPC_INTRO_BIT_BY_HCIDX_113C, PLAYER_SIZE_X_113C, SKILL_TELEPORT, SRVDOFUNC_MIND_BLAST, SRVDOFUNC_WHIRLWIND, STAT_ITEM_ADDCLASSSKILLS, STAT_ITEM_ADDSKILL_TAB, STAT_ITEM_ALLSKILLS, STAT_ITEM_EXPLOSIVEARROW, STAT_ITEM_MAGICARROW, STAT_ITEM_NONCLASSSKILL, STAT_ITEM_SINGLESKILL, STAT_QUANTITY, TOWN_AREAS, UNIVERSAL_PLAYER_SKILL_IDS, WARP_INTERACT_DISTANCE_SUBTILES, WAYPOINT_AREA_IDS, WAYPOINT_INTERACT_DISTANCE_SUBTILES, areaToAct, collectEquippedItemStats, collectItemStats, computeObjectApproachSearchRadius113c, findBestInteractApproachSubTile113c, findChargedSkill, normalizeMissileElement, resolvePlayerServerMissileName, UNIT_TYPE_113C, type UnitType113c } from './constants-and-helpers.ts'
 
 
 
@@ -119,6 +121,12 @@ function stepFrame(this: GameInstanceHost): Map<number, readonly ServerEvent[]> 
 
   this.currentFrame++
   this.rng.nextUint32()
+  this.areaPathWorld.syncWorldUnits(
+    (id) => this.monsters.has(id),
+    (id) => Boolean(this.monsters.get(id)?.dead),
+    (id) => this.objects.has(id),
+    (id) => this.players.has(id),
+  )
 
   // 2. Stream wilderness rooms & step player movement
   for (const player of this.players.values()) {
@@ -130,6 +138,8 @@ function stepFrame(this: GameInstanceHost): Map<number, readonly ServerEvent[]> 
       continue
     }
     this.stepPlayerMovement(player)
+    this.activatePresetRoomsNearPlayer113c(player)
+    this.streamWildernessRoomsForPlayer(player)
     this.revealAreaRoomsNearPlayer(player, true)
     this.stepPlayerVitals(player)
     this.stepUnitStates(
@@ -223,6 +233,43 @@ function stepFrame(this: GameInstanceHost): Map<number, readonly ServerEvent[]> 
 
   // 4. Step monster AI & state timers (incl. 1.13c Open Wounds 200-frame bleed #1870)
   this.stepMonsterOpenWounds113c()
+  const townDiffIdx = Math.max(0, Math.min(2, this.difficulty))
+  const warrivIntroBit = NPC_INTRO_BIT_BY_HCIDX_113C.get(155) ?? 4
+  const a1q1WordIdx = questWordIndex113c('a1q1') ?? 1
+  const townNpcPlayers: TownNpcPlayerContext[] = []
+  for (const p of this.players.values()) {
+    if (p.dead) continue
+    const introByte = p.npcIntro[4 + townDiffIdx * 8 + (warrivIntroBit >> 3)] ?? 0
+    const warrivIntroSet = (introByte & (1 << (warrivIntroBit & 7))) !== 0
+    const a1q1Started = (p.questFlags[a1q1WordIdx] ?? 0) !== 0
+    townNpcPlayers.push({
+      unitId: p.unitId,
+      areaId: p.areaId,
+      x: Math.round(p.x),
+      y: Math.round(p.y),
+      activeNpcId: p.activeNpcId,
+      warrivGreeted: warrivIntroSet || a1q1Started,
+    })
+  }
+  this.areaPathWorld.stepTownNpcs(
+    this.monsters.values(),
+    (uid) => this.unitSeeds.get(`${UNIT_TYPE_113C.monster}:${uid}`),
+    townNpcPlayers,
+    this.currentFrame,
+    this.difficulty,
+    (mon, prevX, prevY) => {
+      this.syncUnitMoveAcrossViewerAoi113c(
+        'monster',
+        mon.unitId,
+        mon.areaId,
+        prevX,
+        prevY,
+        mon.areaId,
+        mon.x,
+        mon.y,
+      )
+    },
+  )
   for (const monster of [...this.monsters.values()]) {
     if (monster.dead) {
       if (monster.hcIdx === 544 || monster.hcIdx === 709) {
@@ -330,6 +377,13 @@ function stepFrame(this: GameInstanceHost): Map<number, readonly ServerEvent[]> 
       const monPrevX = monster.x
       const monPrevY = monster.y
       this.stepMonsterAi(monster)
+      this.areaPathWorld.syncMonsterPosition(
+        monster.areaId,
+        monster.unitId,
+        monster.x,
+        monster.y,
+        monster.mode,
+      )
       if (
         monster.areaId !== monPrevArea ||
         monster.x !== monPrevX ||
@@ -419,7 +473,7 @@ function processPlayerCommand(this: GameInstanceHost, player: InternalPlayerReco
       player.targetX = tx
       player.targetY = ty
       player.run = cmd.run ?? true
-      player.mode = player.run ? 3 : 2
+      player.mode = player.run ? 3 : (TOWN_AREAS.has(player.areaId) ? 6 : 2)
       break
     }
     case 'WalkToLocation': {
@@ -437,7 +491,7 @@ function processPlayerCommand(this: GameInstanceHost, player: InternalPlayerReco
       player.targetX = cmd.x
       player.targetY = cmd.y
       player.run = false
-      player.mode = 2
+      player.mode = TOWN_AREAS.has(player.areaId) ? 6 : 2
       break
     }
     case 'RunToLocation': {
@@ -557,7 +611,7 @@ function processPlayerCommand(this: GameInstanceHost, player: InternalPlayerReco
         player.run =
           cmd.type === 'RunToTarget' ||
           (cmd.type === 'MoveToUnit' && cmd.run)
-        player.mode = player.run ? 3 : 2
+        player.mode = player.run ? 3 : (TOWN_AREAS.has(player.areaId) ? 6 : 2)
       }
       break
     }
@@ -897,8 +951,8 @@ function processPlayerCommand(this: GameInstanceHost, player: InternalPlayerReco
     }
     case 'RunToggle': {
       player.run = Boolean(cmd.run)
-      if (player.mode === 2 || player.mode === 3) {
-        player.mode = player.run ? 3 : 2
+      if (player.mode === 2 || player.mode === 3 || player.mode === 6) {
+        player.mode = player.run ? 3 : (TOWN_AREAS.has(player.areaId) ? 6 : 2)
       }
       break
     }
@@ -1006,16 +1060,7 @@ function processPlayerCommand(this: GameInstanceHost, player: InternalPlayerReco
       break
     }
     case 'RequestQuestData': {
-      this.emitToPlayer(player.unitId, {
-        type: 'QuestState',
-        source: 0x28,
-        kind: 'update',
-        updateType: 0,
-        unitId: player.unitId,
-        timer: 0,
-        quests: new Uint16Array(player.questFlags),
-        flags: Array.from(player.questFlags),
-      })
+      this.sendQuestLogUpdate113c(player)
       break
     }
     case 'NpcInit':
@@ -1234,6 +1279,14 @@ function stepPlayerMovement(this: GameInstanceHost, player: InternalPlayerRecord
     motion.moving = false
     motion.plannedX = Number.NaN
     motion.plannedY = Number.NaN
+    this.areaPathWorld.spawnOrSyncPlayer(
+      player.areaId,
+      player.unitId,
+      player.classId,
+      player.x,
+      player.y,
+      player.mode,
+    )
   }
 
   if (player.moveTargetUnitId !== undefined) {
@@ -1252,28 +1305,6 @@ function stepPlayerMovement(this: GameInstanceHost, player: InternalPlayerRecord
       player.moveTargetUnitId = undefined // Target disappeared or changed area
     }
   }
-  const hasTarget = Math.hypot(player.targetX - player.x, player.targetY - player.y) > 0.01
-  if (hasTarget && (player.targetX !== motion.plannedX || player.targetY !== motion.plannedY)) {
-    motion.plannedX = player.targetX
-    motion.plannedY = player.targetY
-    const areaId = player.areaId
-    mover.setCollisionChecker(
-      this.terrainWalkableCheck || this.hasLivingBonePrisonInArea(areaId)
-        ? (sx, sy) => this.isPlayerSubTileBlocked(areaId, sx, sy)
-        : null,
-    )
-    mover.setPath(
-      this.findPlayerPath(
-        areaId,
-        Math.round(player.x),
-        Math.round(player.y),
-        player.targetX,
-        player.targetY,
-      ),
-      player.run,
-    )
-    motion.moving = true
-  }
 
   // STAT_STAMINA == 0: running degrades to walking (D2Client checks the same stat before
   // sending run, `CommandMapper.isStaminaExhausted`; the predictor drops the run bonus).
@@ -1283,71 +1314,232 @@ function stepPlayerMovement(this: GameInstanceHost, player: InternalPlayerRecord
   mover.setStaminaExhausted(staminaExhausted)
   if (staminaExhausted && player.run) {
     player.run = false
-    if (motion.moving) player.mode = 2
+    if (motion.moving || player.mode === 3) {
+      player.mode = TOWN_AREAS.has(player.areaId) ? 6 : 2
+    }
   }
   mover.setRunning(player.run)
+  const frw = mover.getFasterRunWalkPercent()
+  const effItemFrw = frw > 0 ? Math.floor((150 * frw) / (150 + frw)) : frw
+  const velocityPercentBonus =
+    effItemFrw +
+    mover.getSkillVelocityPercent() -
+    Math.abs(mover.getArmorSpeedPenaltyPercent()) -
+    mover.getSlowPercent()
 
-  if (mover.getRemainingWaypoints().length === 0) {
-    if (motion.moving) {
-      this.finishPlayerMove(player, motion)
-    } else if (!hasTarget) {
-      player.mode = TOWN_AREAS.has(player.areaId) ? 5 : 1
+  const hasTarget = Math.hypot(player.targetX - player.x, player.targetY - player.y) > 0.01
+  const useAreaPath113c =
+    this.terrainWalkableCheck &&
+    !this.hasLivingBonePrisonInArea(player.areaId) &&
+    this.areaPathWorld.hasArea(player.areaId) &&
+    this.areaPathWorld.isInBounds(player.areaId, player.x, player.y) &&
+    this.areaPathWorld.isInBounds(player.areaId, player.targetX, player.targetY)
+
+  if (useAreaPath113c) {
+    if (hasTarget && (player.targetX !== motion.plannedX || player.targetY !== motion.plannedY)) {
+      motion.plannedX = player.targetX
+      motion.plannedY = player.targetY
+      const moveMode = player.run ? 3 : (TOWN_AREAS.has(player.areaId) ? 6 : 2)
+      let planned = false
+      if (
+        player.moveTargetUnitId !== undefined &&
+        (player.moveTargetUnitType === UNIT_TYPE_113C.monster ||
+          player.moveTargetUnitType === UNIT_TYPE_113C.player ||
+          (player.moveTargetUnitType === UNIT_TYPE_113C.object &&
+            !this.isWorldWalkableForPlayer(player.areaId, player.targetX, player.targetY)))
+      ) {
+        planned = this.areaPathWorld.planPlayerMoveToUnit(
+          player.areaId,
+          player.unitId,
+          player.classId,
+          player.x,
+          player.y,
+          player.moveTargetUnitType,
+          player.moveTargetUnitId,
+          player.targetX,
+          player.targetY,
+          player.run,
+          velocityPercentBonus,
+          moveMode,
+          0,
+        )
+      } else {
+        planned = this.areaPathWorld.planPlayerMoveToLocation(
+          player.areaId,
+          player.unitId,
+          player.classId,
+          player.x,
+          player.y,
+          player.targetX,
+          player.targetY,
+          player.run,
+          velocityPercentBonus,
+          moveMode,
+        )
+      }
+      motion.moving = planned
+      if (planned) {
+        player.mode = moveMode
+      }
     }
-    return
-  }
 
-  if (this.hasLivingBonePrisonInArea(player.areaId)) {
-    const areaId = player.areaId
-    mover.setCollisionChecker((sx, sy) => this.isPlayerSubTileBlocked(areaId, sx, sy))
-  }
-  const prevMoveAreaId = player.areaId
-  const prevMoveX = player.x
-  const prevMoveY = player.y
-  const snap = mover.stepTicks(1)
-  player.x = snap.logicalX
-  player.y = snap.logicalY
-  motion.x = player.x
-  motion.y = player.y
-  this.maybeSwitchPlayerAreaSeamless(player)
-  if (player.areaId === prevMoveAreaId && (player.x !== prevMoveX || player.y !== prevMoveY)) {
-    this.syncUnitMoveAcrossViewerAoi113c(
-      'player',
-      player.unitId,
-      prevMoveAreaId,
-      prevMoveX,
-      prevMoveY,
+    if (!this.areaPathWorld.isPlayerMoving(player.areaId, player.unitId)) {
+      if (motion.moving) {
+        this.finishPlayerMove(player, motion)
+      } else if (!hasTarget) {
+        player.mode = TOWN_AREAS.has(player.areaId) ? 5 : 1
+        this.areaPathWorld.stopPlayer(player.unitId, player.mode)
+      }
+      return
+    }
+
+    const prevMoveAreaId = player.areaId
+    const prevMoveX = player.x
+    const prevMoveY = player.y
+    const tick = this.areaPathWorld.stepPlayerTick(
       player.areaId,
-      player.x,
-      player.y,
       player.unitId,
+      player.run,
+      velocityPercentBonus,
     )
-  }
+    if (!tick) {
+      this.finishPlayerMove(player, motion)
+      return
+    }
+    player.x = tick.x
+    player.y = tick.y
+    motion.x = player.x
+    motion.y = player.y
+    mover.setPosition(player.x, player.y)
+    player.mode = player.run ? 3 : (TOWN_AREAS.has(player.areaId) ? 6 : 2)
+    this.maybeSwitchPlayerAreaSeamless(player)
+    if (player.areaId === prevMoveAreaId && (player.x !== prevMoveX || player.y !== prevMoveY)) {
+      this.syncUnitMoveAcrossViewerAoi113c(
+        'player',
+        player.unitId,
+        prevMoveAreaId,
+        prevMoveX,
+        prevMoveY,
+        player.areaId,
+        player.x,
+        player.y,
+        player.unitId,
+      )
+    }
 
-  const segmentEnd = snap.currentWaypoint
-  if (segmentEnd === null) {
-    this.finishPlayerMove(player, motion)
+    const nextWp = tick.stillMoving
+      ? this.areaPathWorld.getPlayerNextWaypoint(player.areaId, player.unitId)
+      : null
+    if (!tick.stillMoving || nextWp === null) {
+      this.finishPlayerMove(player, motion)
+    } else {
+      const toX = Math.round(nextWp.x)
+      const toY = Math.round(nextWp.y)
+      const velocityPercent = Math.round(
+        (mover.getEffectiveSpeedSubTilesPerSec() / D2_BASE_WALK_SUBTILES_PER_SEC) * 100,
+      )
+      this.broadcastToAreaExcept(player.areaId, player.unitId, {
+        type: 'UnitMove',
+        unitType: 0,
+        id: player.unitId,
+        unitId: player.unitId,
+        mode: player.run ? 'run' : 'walk',
+        from: { x: Math.round(player.x), y: Math.round(player.y) },
+        to: { x: toX, y: toY },
+        x: Math.round(player.x),
+        y: Math.round(player.y),
+        currentX: Math.round(player.x),
+        currentY: Math.round(player.y),
+        targetX: toX,
+        targetY: toY,
+        velocityPercent,
+      })
+    }
   } else {
-    const toX = Math.round(segmentEnd.x)
-    const toY = Math.round(segmentEnd.y)
-    const velocityPercent = Math.round(
-      (mover.getEffectiveSpeedSubTilesPerSec() / D2_BASE_WALK_SUBTILES_PER_SEC) * 100,
-    )
-    this.broadcastToAreaExcept(player.areaId, player.unitId, {
-      type: 'UnitMove',
-      unitType: 0,
-      id: player.unitId,
-      unitId: player.unitId,
-      mode: player.run ? 'run' : 'walk',
-      from: { x: Math.round(player.x), y: Math.round(player.y) },
-      to: { x: toX, y: toY },
-      x: Math.round(player.x),
-      y: Math.round(player.y),
-      currentX: Math.round(player.x),
-      currentY: Math.round(player.y),
-      targetX: toX,
-      targetY: toY,
-      velocityPercent,
-    })
+    if (hasTarget && (player.targetX !== motion.plannedX || player.targetY !== motion.plannedY)) {
+      motion.plannedX = player.targetX
+      motion.plannedY = player.targetY
+      const areaId = player.areaId
+      mover.setCollisionChecker(
+        this.terrainWalkableCheck || this.hasLivingBonePrisonInArea(areaId)
+          ? (sx, sy) => this.isPlayerSubTileBlocked(areaId, sx, sy)
+          : null,
+      )
+      mover.setPath(
+        this.findPlayerPath(
+          areaId,
+          Math.round(player.x),
+          Math.round(player.y),
+          player.targetX,
+          player.targetY,
+        ),
+        player.run,
+      )
+      motion.moving = true
+    }
+
+    if (mover.getRemainingWaypoints().length === 0) {
+      if (motion.moving) {
+        this.finishPlayerMove(player, motion)
+      } else if (!hasTarget) {
+        player.mode = TOWN_AREAS.has(player.areaId) ? 5 : 1
+      }
+      return
+    }
+
+    if (this.hasLivingBonePrisonInArea(player.areaId)) {
+      const areaId = player.areaId
+      mover.setCollisionChecker((sx, sy) => this.isPlayerSubTileBlocked(areaId, sx, sy))
+    }
+    const prevMoveAreaId = player.areaId
+    const prevMoveX = player.x
+    const prevMoveY = player.y
+    const snap = mover.stepTicks(1)
+    player.x = snap.logicalX
+    player.y = snap.logicalY
+    motion.x = player.x
+    motion.y = player.y
+    this.maybeSwitchPlayerAreaSeamless(player)
+    if (player.areaId === prevMoveAreaId && (player.x !== prevMoveX || player.y !== prevMoveY)) {
+      this.syncUnitMoveAcrossViewerAoi113c(
+        'player',
+        player.unitId,
+        prevMoveAreaId,
+        prevMoveX,
+        prevMoveY,
+        player.areaId,
+        player.x,
+        player.y,
+        player.unitId,
+      )
+    }
+
+    const segmentEnd = snap.currentWaypoint
+    if (segmentEnd === null) {
+      this.finishPlayerMove(player, motion)
+    } else {
+      const toX = Math.round(segmentEnd.x)
+      const toY = Math.round(segmentEnd.y)
+      const velocityPercent = Math.round(
+        (mover.getEffectiveSpeedSubTilesPerSec() / D2_BASE_WALK_SUBTILES_PER_SEC) * 100,
+      )
+      this.broadcastToAreaExcept(player.areaId, player.unitId, {
+        type: 'UnitMove',
+        unitType: 0,
+        id: player.unitId,
+        unitId: player.unitId,
+        mode: player.run ? 'run' : 'walk',
+        from: { x: Math.round(player.x), y: Math.round(player.y) },
+        to: { x: toX, y: toY },
+        x: Math.round(player.x),
+        y: Math.round(player.y),
+        currentX: Math.round(player.x),
+        currentY: Math.round(player.y),
+        targetX: toX,
+        targetY: toY,
+        velocityPercent,
+      })
+    }
   }
 
   if (
@@ -1969,7 +2161,7 @@ function executePlayerItemProcSkill113c(this: GameInstanceHost,
     let bestDist = 25
     for (const m of this.monsters.values()) {
       if (m.dead || m.isNpc || !m.isKillable || m.submerged || m.areaId !== player.areaId) continue
-      if (this.isMonsterConverted(m)) continue
+      if (m.align !== 0 || this.isMonsterConverted(m)) continue
       const d = Math.hypot(m.x - player.x, m.y - player.y)
       if (d <= bestDist) {
         bestDist = d
@@ -1987,12 +2179,13 @@ function executePlayerItemProcSkill113c(this: GameInstanceHost,
     this.applyPlayerSkillEffect(player, cast, originX, originY, target)
     return
   }
-  if (skill.auraTgtState !== '') {
+  if (skill.auraTgtState !== '' && skill.srvDoFunc !== 68 && skillId !== 130) {
     this.applyPlayerSkillEffect(player, cast, tx, ty, aimTarget)
     return
   }
   if (
     skill.auraState !== '' &&
+    skill.srvDoFunc !== 68 &&
     (skill.srcDam <= 0 || skill.id === 277) &&
     skill.srvDoFunc !== SRVDOFUNC_WHIRLWIND
   ) {
@@ -2033,7 +2226,7 @@ function executePlayerItemProcSkill113c(this: GameInstanceHost,
     const channel = normalizeMissileElement(skill.eType) ?? 'mag'
     for (const m of [...this.monsters.values()]) {
       if (m.dead || m.isNpc || !m.isKillable || m.submerged || m.areaId !== player.areaId) continue
-      if (this.isMonsterConverted(m)) continue
+      if (m.align !== 0 || this.isMonsterConverted(m)) continue
       if (Math.hypot(m.x - originX, m.y - originY) > radius) continue
       if (evalResult.elemType === 'pois' && evalResult.durationFrames > 0) {
         const bitrate256 = this.rollInclusive(evalResult.minElemDmg256, evalResult.maxElemDmg256)

@@ -213,9 +213,11 @@ describe('P1 Wave 4 — MonUMod & Shrine 1.13c Parity (#1890, #1899-#1906, #1919
     expect(enchantedDamage).toBeLessThanOrEqual(150)
   })
 
-  it('#1899: Teleport (#26) blinks when HP < 30% with 60f cooldown, rolls 25% heal of floor(maxHp/4), and suppresses heal under Prevent Monster Heal or Poison', () => {
+  it('#1899 / #1993: Teleport (#26) blinks on AI think (not synchronously on hit) when HP < 30% with 60f cooldown, rolls 25% heal of STAT_LEVEL (mlvl), and suppresses heal under Prevent Monster Heal or Poison', () => {
     expect(
       evaluateTeleportUMod113c({
+        rank: 'unique',
+        level: 18,
         hp: 29,
         maxHp: 100,
         distanceToTarget: 2,
@@ -226,10 +228,12 @@ describe('P1 Wave 4 — MonUMod & Shrine 1.13c Parity (#1890, #1899-#1906, #1919
       shouldTeleport: true,
       isLowHp: true,
       canRollHeal: true,
-      healAmount: 25,
+      healAmount: 18,
     })
     expect(
       evaluateTeleportUMod113c({
+        rank: 'unique',
+        level: 18,
         hp: 29,
         maxHp: 100,
         distanceToTarget: 2,
@@ -238,7 +242,7 @@ describe('P1 Wave 4 — MonUMod & Shrine 1.13c Parity (#1890, #1899-#1906, #1919
       }).canRollHeal,
     ).toBe(false)
 
-    // Verify 25% heal triggers across deterministic seeds when dropping < 30% HP, and cooldown is 60f
+    // Verify AI-think blink + 25% heal of STAT_LEVEL (mlvl) triggers across deterministic seeds when < 30% HP, and cooldown is 60f
     let healedCount = 0
     let teleportedCount = 0
     for (let s = 1; s <= 40; s++) {
@@ -246,66 +250,90 @@ describe('P1 Wave 4 — MonUMod & Shrine 1.13c Parity (#1890, #1899-#1906, #1919
       const pid = game.connectPlayer({ charClass: 'bar', name: 'Chaser', x: 50, y: 50, areaId: 2 })
       const internal = getInternal(game)
       const mid = game.spawnMonster({
-        defId: 'zombie1',
+        defId: 'skeleton2',
         x: 51,
         y: 50,
         areaId: 2,
         rank: 'unique',
+        level: 20,
         hp: 1000,
         maxHp: 1000,
+        aiDelay: 1,
+        damageRegen: 0,
         umodIds: [26],
       })
       const mon = internal.monsters.get(mid)!
-      game.stepFrames(70)
+      game.stepFrames(5)
       const posBeforeHit = { x: mon.x, y: mon.y }
-      // Drop from 1000 -> 200 (< 30%)
+      // Drop from 1000 -> 200 (< 30%): must NOT blink synchronously inside applyDamageToMonster (#1993)
       game.applyDamageToMonster(mid, 800, pid)
-      if (mon.x !== posBeforeHit.x || mon.y !== posBeforeHit.y) {
+      expect({ x: mon.x, y: mon.y }).toEqual(posBeforeHit)
+      expect(mon.hp).toBe(200)
+
+      // Step AI frames until the first AI_TryTeleportUMod (6% per AI think) blink fires
+      let blinked = false
+      for (let tick = 0; tick < 80; tick++) {
+        game.stepFrames(1)
+        if (mon.teleportCooldownUntilFrame > internal.currentFrame) {
+          blinked = true
+          break
+        }
+      }
+      if (blinked) {
         teleportedCount++
         expect(mon.teleportCooldownUntilFrame).toBe(
           internal.currentFrame + TELEPORT_UMOD_COOLDOWN_FRAMES_113C,
         )
+        if (mon.hp > 200) {
+          expect(mon.hp).toBe(220) // 200 + STAT_LEVEL (20)
+          healedCount++
+        }
+        // Within 10 frames (< 60f cooldown), must NOT re-arm teleportCooldownUntilFrame
+        const expectedCooldownEnd = mon.teleportCooldownUntilFrame
+        game.stepFrames(10)
+        expect(10).toBeLessThan(TELEPORT_UMOD_COOLDOWN_FRAMES_113C)
+        expect(mon.teleportCooldownUntilFrame).toBe(expectedCooldownEnd)
       }
-      if (mon.hp > 200) {
-        expect(mon.hp).toBe(450) // 200 + floor(1000 / 4)
-        healedCount++
-      }
-      // Second hit 1 frame later (aiDisabled so monster cannot walk) must NOT re-teleport because of 60-frame cooldown
-      ;(mon as unknown as { aiDisabled: boolean }).aiDisabled = true
-      const posAfterFirst = { x: mon.x, y: mon.y }
-      game.stepFrames(10)
-      expect(10).toBeLessThan(TELEPORT_UMOD_COOLDOWN_FRAMES_113C)
-      game.applyDamageToMonster(mid, 10, pid)
-      expect({ x: mon.x, y: mon.y }).toEqual(posAfterFirst)
     }
-    expect(teleportedCount).toBe(40)
+    expect(teleportedCount).toBeGreaterThan(25)
     expect(healedCount).toBeGreaterThan(0)
-    expect(healedCount).toBeLessThan(40)
+    expect(healedCount).toBeLessThan(teleportedCount)
 
-    // Verify Prevent Monster Heal (state 52) blocks heal 100% of the time while still allowing blink
+    // Verify Prevent Monster Heal (state 52) blocks heal 100% of the time while still allowing AI-think blink
+    let pmhBlinks = 0
     for (let s = 1; s <= 20; s++) {
       const game = new GameInstance({ seed: 189950 + s, areaId: 2 })
       const pid = game.connectPlayer({ charClass: 'bar', name: 'PmhHero', x: 50, y: 50, areaId: 2 })
       const internal = getInternal(game)
       const mid = game.spawnMonster({
-        defId: 'zombie1',
+        defId: 'skeleton2',
         x: 51,
         y: 50,
         areaId: 2,
         rank: 'unique',
+        level: 20,
         hp: 1000,
         maxHp: 1000,
+        aiDelay: 1,
+        damageRegen: 0,
         umodIds: [26],
       })
       const mon = internal.monsters.get(mid)!
       mon.states.add(52) // STATE_PREVENTHEAL
-      game.stepFrames(70)
       game.applyDamageToMonster(mid, 800, pid)
+      for (let tick = 0; tick < 80; tick++) {
+        game.stepFrames(1)
+        if (mon.teleportCooldownUntilFrame > internal.currentFrame) {
+          pmhBlinks++
+          break
+        }
+      }
       expect(mon.hp).toBe(200)
     }
+    expect(pmhBlinks).toBeGreaterThan(10)
   })
 
-  it('#1900: Multishot (#29) spawns +2 angled fan projectiles (3 total) for both unique bosses and minions, including MSLE (#17 + #29)', () => {
+  it('#1900 / #1993: Multishot (#29) spawns +2 angled fan projectiles (3 total) on boss units only (minions fire 1), including MSLE (#17 + #29)', () => {
     const [left, right] = computeMultishotFanTargets113c(10, 10, 20, 10)
     expect(left[1]).toBeLessThan(10)
     expect(right[1]).toBeGreaterThan(10)
@@ -314,7 +342,10 @@ describe('P1 Wave 4 — MonUMod & Shrine 1.13c Parity (#1890, #1899-#1906, #1919
     const pid = game.connectPlayer({ charClass: 'ama', name: 'Target', x: 60, y: 50, areaId: 2 })
     const internal = getInternal(game)
 
-    for (const rank of ['unique', 'minion'] as const) {
+    for (const [rank, expectedCount] of [
+      ['unique', 3],
+      ['minion', 1],
+    ] as const) {
       const mid = game.spawnMonster({
         defId: 'skeleton2',
         x: 50,
@@ -328,7 +359,7 @@ describe('P1 Wave 4 — MonUMod & Shrine 1.13c Parity (#1890, #1899-#1906, #1919
       internal.spawnMonsterMissile(mon, 1, 60, 50, 10, 20, 'phys')
       const events = game.drainEvents(pid)
       const created = events.filter((e) => e.type === 'CreateMissile')
-      expect(created).toHaveLength(3)
+      expect(created).toHaveLength(expectedCount)
     }
 
     // MSLE (#17 Lightning Enchanted + #29 Multishot): 8 base bolts * 3 = 24 bolts on hit

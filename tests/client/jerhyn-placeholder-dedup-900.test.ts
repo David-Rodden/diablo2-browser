@@ -14,13 +14,15 @@ describe('NPC static placeholder deduplication and reconciliation (Fixes #900)',
     expect(getNpcPlaceholderHcIdx(378)).toBe(253)
     expect(getNpcPlaceholderHcIdx(379)).toBe(253)
 
-    // Qual-Kehk in Act 5 Harrogath
-    expect(getNpcPlaceholderHcIdx(461)).toBe(515)
-    expect(getNpcPlaceholderHcIdx(462)).toBe(515)
+    // Deckard Cain in Act 1 Rogue Encampment
+    expect(getNpcPlaceholderHcIdx(385)).toBe(265)
 
-    // Anya in Act 5 Harrogath
-    expect(getNpcPlaceholderHcIdx(542)).toBe(512)
-    expect(getNpcPlaceholderHcIdx(543)).toBe(512)
+    // Anya, Nihlathak (town & Halls of Vaught boss), and Larzuk in Act 5
+    expect(getNpcPlaceholderHcIdx(459)).toBe(512)
+    expect(getNpcPlaceholderHcIdx(461)).toBe(514)
+    expect(getNpcPlaceholderHcIdx(462)).toBe(526)
+    expect(getNpcPlaceholderHcIdx(542)).toBe(511)
+    expect(getNpcPlaceholderHcIdx(543)).toBe(511)
 
     // Regular objects do not have placeholder mappings
     expect(getNpcPlaceholderHcIdx(5)).toBeUndefined()

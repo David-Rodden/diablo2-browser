@@ -126,8 +126,8 @@ export const PLUGIN_MENU_LAYOUT: MenuLayout = {
     'hud-enhancements': {
       name: { zh: '角色面板增强', en: 'Character Sheet Extras' },
       description: {
-        zh: '属性和技能点按“基础+加成”显示，悬停属性时显示再加一点的效果，悬停伤害时显示怎么算出来的，支持高级属性与符文序号。',
-        en: 'Shows stats and skill points as base + bonus, what one more point in a stat gets you, how your damage numbers are worked out, plus advanced stats and rune numbers.',
+        zh: '属性和技能点按“基础+加成”显示，悬停属性时显示再加一点的效果，悬停伤害时显示怎么算出来的，支持高级属性、符文序号以及套装/暗金/符文之语变量范围显示。',
+        en: 'Shows stats and skill points as base + bonus, what one more point in a stat gets you, how your damage numbers are worked out, plus advanced stats, rune numbers, and variable stat ranges on Set/Unique/Runeword gear.',
       },
       settings: {
         showBasePlusBonusStats: { zh: '属性显示 基础+加成', en: 'Stats as base + bonus' },
@@ -136,6 +136,7 @@ export const PLUGIN_MENU_LAYOUT: MenuLayout = {
         showWeaponDamageFormula: { zh: '悬停伤害显示算法', en: 'Damage formula on hover' },
         showAdvancedStatsButton: { zh: '角色面板显示高级属性页按钮', en: 'Advanced stats button on character sheet' },
         showRuneNumbers: { zh: '符文名称显示序号 (#1~#33)', en: 'Show rune numbers (#1~#33)' },
+        showItemStatRanges: { zh: '套装/暗金/符文之语显示变量范围 [最小-最大]', en: 'Show variable stat ranges [min-max] on Set/Unique/Runeword gear' },
       },
     },
     'quick-cast': {

@@ -59,6 +59,7 @@ import {
   type CharacterAnimSpeedParams,
 } from '../../common/units/char-anim-speed.ts'
 import { getMonsterSizeXByHcIdx } from '../../common/units/monster-mapping.ts'
+import { isTownNpcHcIdx } from '../../common/units/npc-table.ts'
 import {
   MONMODE_DEAD,
   MONMODE_DEATH,
@@ -2248,12 +2249,32 @@ export class ClientWorld {
 
   private removeNonSelfUnit(u: ClientUnit): void {
     if (this.isSelfUnit(u)) return
+    const removedMonsterClassId = u.unitType === 'monster' ? u.classId : undefined
     if (u.unitType === 'item') {
       this._containers.removeGroundItemById(u.id)
     } else if (u.unitType === 'player') {
       this._containers.removePlayerEquipment(u.id)
       this._playerPathUnits.delete(u.id)
+      this._setBonusStatesByPlayerId.delete(u.id)
     } else if (u.unitType === 'monster') {
+      if (u.id !== 0 && this._npcInteraction.unitType !== 2 && this._npcInteraction.npcId === u.id) {
+        this.npcMotion.setNpcInteractionLock(u.id, false)
+        this._containers.clearShop()
+        this._pendingWantsInteractUnitIds.delete(u.id)
+        this._npcInteraction = {
+          ...this._npcInteraction,
+          npcId: null,
+          infoNpcId: null,
+          unitType: undefined,
+          window: 'none',
+          activeWindow: 'none',
+          npcInfoRaw: undefined,
+          npcTalkRaw: undefined,
+          messages: undefined,
+          allMessages: undefined,
+          hadWantsInteract: undefined,
+        }
+      }
       if (this._merc && this._merc.mercId === u.id) {
         for (const st of u.stats.entries()) {
           this._merc.stats.set(st.statId, st.value)
@@ -2269,12 +2290,22 @@ export class ClientWorld {
       }
       this._monsters.delete(u.id)
       this.npcMotion.removeMonster(u.id)
+      if (u.id >= 900000) {
+        this._pets.delete(u.id)
+      }
     } else if (u.unitType === 'object') {
       this.clearObjectCollisionFootprint(u.key)
       this.clearObjectNpcInteraction(u.id)
+      if (u.classId === 267 && this._npcInteraction.stashOpen) {
+        this._npcInteraction = { ...this._npcInteraction, stashOpen: false }
+      }
     }
+    u.queuedPackets.length = 0
     this._units.delete(u.key)
     this._portals.delete(u.id)
+    if (removedMonsterClassId !== undefined && isTownNpcHcIdx(removedMonsterClassId)) {
+      this.reconcileNpcPlaceholderObjects(removedMonsterClassId)
+    }
   }
 
   /**

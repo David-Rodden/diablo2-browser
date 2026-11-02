@@ -17,24 +17,20 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
+  captureId,
   classifyMismatch,
+  clientUiCases,
   compareClientUi,
   MISMATCH_CLASSES,
-  computeTsClientUi,
+  oracleCaptureLabels,
   parseOracleClientUi,
+  runTsClientUiCase,
   tooltipLineRate,
   type ClientUiValues,
   type FieldDiff,
 } from './lib/client-ui.ts'
 import { loadReplicaEnvironment } from './lib/replica.ts'
 
-export const CLIENT_UI_SAVES: Readonly<Record<string, string>> = {
-  barbarian: 'tests/fixtures/oracle/saves/barbarian-l40-warcries.d2s',
-  paladin: 'tests/fixtures/oracle/saves/paladin-l40-auras.d2s',
-  amazon: 'tests/fixtures/oracle/saves/amazon-l40-passives.d2s',
-  sorceress: 'tests/fixtures/oracle/saves/sorceress-l40-elemental.d2s',
-  necromancer: 'tests/fixtures/oracle/saves/necromancer-l40-curses-summons.d2s',
-}
 const GOLDEN_DIR = 'tests/fixtures/oracle/golden'
 const KNOWN_PATH = join(GOLDEN_DIR, 'client-ui-known-mismatches.json')
 
@@ -58,37 +54,48 @@ function rate(diffs: readonly FieldDiff[], group?: FieldDiff['group']): string {
 }
 
 async function main(argv: readonly string[]): Promise<number> {
-  const dir = argv.find((a) => !a.startsWith('--') && argv[argv.indexOf(a) - 1] !== '--report')
-  const golden = argv.includes('--golden')
   const ri = argv.indexOf('--report')
   const reportPath = ri >= 0 ? argv[ri + 1] : undefined
+  const dir = argv.find((a, i) => !a.startsWith('--') && argv[i - 1] !== '--report')
+  const golden = argv.includes('--golden')
   const env = await loadReplicaEnvironment()
   const known = loadKnown()
   const results: { cls: string; orig: ClientUiValues; ts: ClientUiValues; diffs: FieldDiff[] }[] = []
-  for (const [cls, save] of Object.entries(CLIENT_UI_SAVES)) {
-    let orig: ClientUiValues
-    if (dir) {
-      const p = join(dir, cls, 'ui.ndjson')
-      if (!existsSync(p)) {
-        process.stderr.write(`${cls}: no ${p}, skipped\n`)
-        continue
+  for (const c of clientUiCases()) {
+    const origs: Record<string, ClientUiValues> = {}
+    for (const [, label] of c.captures) {
+      const id = captureId(c.name, label)
+      const p = dir ? join(dir, c.name, 'ui.ndjson') : undefined
+      if (p && existsSync(p)) {
+        const raw = readFileSync(p, 'utf8')
+        origs[label] = parseOracleClientUi(raw, oracleCaptureLabels(raw).includes(label) ? label : undefined)
+      } else {
+        const g = join(GOLDEN_DIR, `client-ui-${id}.json`)
+        if (existsSync(g)) origs[label] = (JSON.parse(readFileSync(g, 'utf8')) as { original: ClientUiValues }).original
       }
-      orig = parseOracleClientUi(readFileSync(p, 'utf8'))
-    } else {
-      const g = join(GOLDEN_DIR, `client-ui-${cls}.json`)
-      if (!existsSync(g)) continue
-      orig = (JSON.parse(readFileSync(g, 'utf8')) as { original: ClientUiValues }).original
     }
-    const ts = computeTsClientUi(save, env)
-    const diffs = compareClientUi(orig, ts)
-    results.push({ cls, orig, ts, diffs })
-    if (golden && dir) {
-      const fields = diffs.map((d) => d.id)
-      writeFileSync(join(GOLDEN_DIR, `client-ui-${cls}.json`), JSON.stringify({ save, fields, original: orig }, null, 1) + '\n')
+    if (Object.keys(origs).length === 0) {
+      process.stderr.write(`${c.name}: no oracle capture, skipped\n`)
+      continue
     }
-    process.stderr.write(
-      `${cls}: sheet ${rate(diffs, 'sheet')}  skill ${rate(diffs, 'skill')}  tooltip ${rate(diffs, 'tooltip')}  all ${rate(diffs)}\n`,
-    )
+    const tsAll = runTsClientUiCase(c, env)
+    for (const [, label] of c.captures) {
+      const orig = origs[label]
+      if (!orig) continue
+      const id = captureId(c.name, label)
+      const ts = tsAll[label]!
+      const diffs = compareClientUi(orig, ts)
+      results.push({ cls: id, orig, ts, diffs })
+      if (golden) {
+        writeFileSync(
+          join(GOLDEN_DIR, `client-ui-${id}.json`),
+          JSON.stringify({ case: c.name, label, save: c.save, fields: diffs.map((d) => d.id), original: orig }, null, 1) + '\n',
+        )
+      }
+      process.stderr.write(
+        `${id}: sheet ${rate(diffs, 'sheet')}  skill ${rate(diffs, 'skill')}  tooltip ${rate(diffs, 'tooltip')}  all ${rate(diffs)}\n`,
+      )
+    }
   }
   if (argv.includes('--known')) {
     const out: Record<string, Record<string, string>> = {}

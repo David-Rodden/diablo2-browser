@@ -36,26 +36,20 @@ Each mismatch carries a layer:
 
 | Class | Character sheet | Skill blocks + skill list | Tooltips (identical) | Tooltip lines | All fields |
 |---|---|---|---|---|---|
-| barbarian | 23/23 (100.0%) | 37/55 (67.3%) | 9/19 (47.4%) | 156/185 (84.3%) | 69/97 (71.1%) |
-| paladin | 23/23 (100.0%) | 40/53 (75.5%) | 10/18 (55.6%) | 149/174 (85.6%) | 73/94 (77.7%) |
-| amazon | 23/23 (100.0%) | 33/41 (80.5%) | 10/18 (55.6%) | 144/169 (85.2%) | 66/82 (80.5%) |
-| sorceress | 23/23 (100.0%) | 51/59 (86.4%) | 6/21 (28.6%) | 206/241 (85.5%) | 80/103 (77.7%) |
-| necromancer | 23/23 (100.0%) | 34/50 (68.0%) | 9/18 (50.0%) | 167/193 (86.5%) | 66/91 (72.5%) |
+| barbarian | 23/23 (100.0%) | 65/65 (100.0%) | 19/19 (100.0%) | 185/185 (100.0%) | 107/107 (100.0%) |
+| paladin | 23/23 (100.0%) | 61/61 (100.0%) | 18/18 (100.0%) | 174/174 (100.0%) | 102/102 (100.0%) |
+| amazon | 23/23 (100.0%) | 49/49 (100.0%) | 18/18 (100.0%) | 169/169 (100.0%) | 90/90 (100.0%) |
+| sorceress | 23/23 (100.0%) | 67/67 (100.0%) | 21/21 (100.0%) | 241/241 (100.0%) | 111/111 (100.0%) |
+| necromancer | 23/23 (100.0%) | 58/58 (100.0%) | 18/18 (100.0%) | 193/193 (100.0%) | 99/99 (100.0%) |
+| p54-barbarian-buffs-field | 23/23 (100.0%) | 65/65 (100.0%) | 19/19 (100.0%) | 185/185 (100.0%) | 107/107 (100.0%) |
+| p54-barbarian-buffs-buffs | 23/23 (100.0%) | 65/65 (100.0%) | 19/19 (100.0%) | 185/185 (100.0%) | 107/107 (100.0%) |
+| p54-paladin-auras-concentration | 23/23 (100.0%) | 61/61 (100.0%) | 18/18 (100.0%) | 174/174 (100.0%) | 102/102 (100.0%) |
+| p54-paladin-auras-fanaticism | 23/23 (100.0%) | 61/61 (100.0%) | 18/18 (100.0%) | 174/174 (100.0%) | 102/102 (100.0%) |
 
 ## Mismatch classes
 
 | Class | Layer | Fields | Classes affected | Suspected cause |
 |---|---|---|---|---|
-| `no-tooltip-nontree` | client | 42 | barbarian, paladin, amazon, sorceress, necromancer | The original builds a tooltip for every skill (0x6FAE3B50, also used by the skill-select popup); TS SkillTreePanel.formatSkillTooltipLines only knows class-tree skills and returns nothing for 0..5 / 217..220. |
-| `no-damage-row` | client | 30 | barbarian, paladin, amazon, sorceress, necromancer | D2Client 0x6FADFD30 draws the "Damage" row only when SkillDesc descdam selects a non-null 0x6FBA5210 handler and it outputs a value (0x6FADFEA4..0x6FADFF89); TS CharacterSheetPanel.draw always draws the row with leftSkillDmg (`--` for non-damage skills, `1-2` fallback). |
-| `no-item-block` | client | 11 | barbarian, paladin, sorceress, necromancer | The 0x6FBA5210[descdam] / 0x6FBA52A0[descatt] handlers output nothing when the item the skill uses is absent (Throw without a throwable, Left Hand Throw/Swing without a left-hand weapon); TS computes the main-weapon damage/AR. |
-| `short-name` | client | 9 | barbarian, paladin, amazon, sorceress, necromancer | D2Client 0x6FADFD30 draws SkillDesc `str short` (word at SkillDesc+0x0E -> D2Lang #10003) upper-cased by 0x6FB6E800; TS CharacterSheetPanel draws Skills `str name` (getSkillName). |
-| `elemental-rounding` | client | 8 | sorceress | Synergy-boosted elemental min/max differ by 1: the original evaluates them with D2Common #10121 (0x6FDA0460) / #11091 (0x6FDA0360) in 256ths (synergy percent applied before the >>8), TS skill-calc-engine rounds differently. |
-| `base-skill-list` | server | 5 | barbarian, paladin, amazon, sorceress, necromancer | The original client skill list (unit+0xA8 chain, D2Common #10306 levels) holds the class-less Skills.txt rows 0..5 (Attack, Kick, Throw, Unsummon, Left Hand Throw/Swing) and 217..220 (scroll/tome skills) at level 1; the TS server never assigns them, so the TS ClientWorld skill list has only class skills. |
-| `kick-damage` | client | 5 | barbarian, paladin, amazon, sorceress, necromancer | Kick: the original descdam handler (0x6FBA5210[descdam]) shows 0-1 for every class here (suspected: boots kick damage only, none equipped); TS combat-stats computes a strength/dexterity based kick range. |
-| `smite-damage` | client | 1 | paladin | Smite: the original descdam handler (0x6FBA5210[descdam]) shows the shield smite damage (Armor.txt mindam/maxdam, 1-5 here); TS uses the weapon damage path. |
-| `radius-format` | client | 1 | sorceress | Radius descline (0x6FAE16C0 dispatcher): the original prints the integer radius from the calc ("1 yard"), TS formats a fractional yard value ("2.6 yards"). |
-| `summon-damage` | client | 1 | necromancer | Summon damage descline (0x6FAE16C0): original "Damage: 61-63", TS "55 - 57" (value 6 lower, suspected missing Skeleton Mastery bonus, and a " - " separator the original does not print). |
 
 ## barbarian
 
@@ -93,78 +87,75 @@ Selected skills: original left 0 / right 0; TS left 0 / right 0.
 
 | Field | Original | TS | Match | Class |
 |---|---|---|---|---|
-| skills.list | 0,1,2,3,4,5,126,130,137,138,139,146,149,154,155,217,218,219,220 | 126,130,137,138,139,146,149,154,155 | ❌ | `base-skill-list` |
-| skill.0.name | ATTACK | Attack | ✅ |  |
+| skills.list | 0,1,2,3,4,5,126,130,137,138,139,146,149,154,155,217,218,219,220 | 0,1,2,3,4,5,126,130,137,138,139,146,149,154,155,217,218,219,220 | ✅ |  |
+| skill.0.level | 1/1 | 1/1 | ✅ |  |
+| skill.0.name | ATTACK | ATTACK | ✅ |  |
 | skill.0.damage | 5-10 | 5-10 | ✅ |  |
 | skill.0.attackRating | 310 | 310 | ✅ |  |
-| skill.1.name | KICK TARGET | Kick | ❌ | `short-name` |
-| skill.1.damage | 0-1 | 31-41 | ❌ | `kick-damage` |
+| skill.1.level | 1/1 | 1/1 | ✅ |  |
+| skill.1.name | KICK TARGET | KICK TARGET | ✅ |  |
+| skill.1.damage | 0-1 | 0-1 | ✅ |  |
 | skill.1.attackRating | — | — | ✅ |  |
-| skill.2.name | THROW | Throw | ✅ |  |
-| skill.2.damage | — | 5-10 | ❌ | `no-item-block` |
-| skill.2.attackRating | — | 310 | ❌ | `no-item-block` |
-| skill.3.name | UNSUMMON | Unsummon | ✅ |  |
-| skill.3.damage | — | -- | ❌ | `no-damage-row` |
+| skill.2.level | 1/1 | 1/1 | ✅ |  |
+| skill.2.name | THROW | THROW | ✅ |  |
+| skill.2.damage | — | — | ✅ |  |
+| skill.2.attackRating | — | — | ✅ |  |
+| skill.3.level | 1/1 | 1/1 | ✅ |  |
+| skill.3.name | UNSUMMON | UNSUMMON | ✅ |  |
+| skill.3.damage | — | — | ✅ |  |
 | skill.3.attackRating | — | — | ✅ |  |
-| skill.4.name | LEFT THROW | Left Hand Throw | ❌ | `short-name` |
-| skill.4.damage | — | 5-10 | ❌ | `no-item-block` |
-| skill.4.attackRating | — | 310 | ❌ | `no-item-block` |
-| skill.5.name | LEFT SWING | Left Hand Swing | ❌ | `short-name` |
-| skill.5.damage | — | 5-10 | ❌ | `no-item-block` |
+| skill.4.level | 1/1 | 1/1 | ✅ |  |
+| skill.4.name | LEFT THROW | LEFT THROW | ✅ |  |
+| skill.4.damage | — | — | ✅ |  |
+| skill.4.attackRating | — | — | ✅ |  |
+| skill.5.level | 1/1 | 1/1 | ✅ |  |
+| skill.5.name | LEFT SWING | LEFT SWING | ✅ |  |
+| skill.5.damage | — | — | ✅ |  |
 | skill.5.attackRating | — | — | ✅ |  |
 | skill.126.level | 1/1 | 1/1 | ✅ |  |
-| skill.126.name | BASH | Bash | ✅ |  |
+| skill.126.name | BASH | BASH | ✅ |  |
 | skill.126.damage | 8-15 | 8-15 | ✅ |  |
 | skill.126.attackRating | 372 | 372 | ✅ |  |
 | skill.130.level | 1/1 | 1/1 | ✅ |  |
-| skill.130.name | HOWL | Howl | ✅ |  |
-| skill.130.damage | — | -- | ❌ | `no-damage-row` |
+| skill.130.name | HOWL | HOWL | ✅ |  |
+| skill.130.damage | — | — | ✅ |  |
 | skill.130.attackRating | — | — | ✅ |  |
 | skill.137.level | 1/1 | 1/1 | ✅ |  |
-| skill.137.name | TAUNT | Taunt | ✅ |  |
-| skill.137.damage | — | -- | ❌ | `no-damage-row` |
+| skill.137.name | TAUNT | TAUNT | ✅ |  |
+| skill.137.damage | — | — | ✅ |  |
 | skill.137.attackRating | — | — | ✅ |  |
 | skill.138.level | 10/10 | 10/10 | ✅ |  |
-| skill.138.name | SHOUT | Shout | ✅ |  |
-| skill.138.damage | — | -- | ❌ | `no-damage-row` |
+| skill.138.name | SHOUT | SHOUT | ✅ |  |
+| skill.138.damage | — | — | ✅ |  |
 | skill.138.attackRating | — | — | ✅ |  |
 | skill.139.level | 1/1 | 1/1 | ✅ |  |
-| skill.139.name | STUN | Stun | ✅ |  |
+| skill.139.name | STUN | STUN | ✅ |  |
 | skill.139.damage | 5-11 | 5-11 | ✅ |  |
 | skill.139.attackRating | 356 | 356 | ✅ |  |
 | skill.146.level | 1/1 | 1/1 | ✅ |  |
-| skill.146.name | BATTLE CRY | Battle Cry | ✅ |  |
-| skill.146.damage | — | -- | ❌ | `no-damage-row` |
+| skill.146.name | BATTLE CRY | BATTLE CRY | ✅ |  |
+| skill.146.damage | — | — | ✅ |  |
 | skill.146.attackRating | — | — | ✅ |  |
 | skill.149.level | 10/10 | 10/10 | ✅ |  |
-| skill.149.name | BATTLE ORDERS | Battle Orders | ✅ |  |
-| skill.149.damage | — | -- | ❌ | `no-damage-row` |
+| skill.149.name | BATTLE ORDERS | BATTLE ORDERS | ✅ |  |
+| skill.149.damage | — | — | ✅ |  |
 | skill.149.attackRating | — | — | ✅ |  |
 | skill.154.level | 5/5 | 5/5 | ✅ |  |
-| skill.154.name | WAR CRY | War Cry | ✅ |  |
+| skill.154.name | WAR CRY | WAR CRY | ✅ |  |
 | skill.154.damage | 51-63 | 51-63 | ✅ |  |
 | skill.154.attackRating | — | — | ✅ |  |
 | skill.155.level | 1/1 | 1/1 | ✅ |  |
-| skill.155.name | BATTLE CMD | Battle Command | ❌ | `short-name` |
-| skill.155.damage | — | -- | ❌ | `no-damage-row` |
+| skill.155.name | BATTLE CMD | BATTLE CMD | ✅ |  |
+| skill.155.damage | — | — | ✅ |  |
 | skill.155.attackRating | — | — | ✅ |  |
+| skill.217.level | 1/1 | 1/1 | ✅ |  |
+| skill.218.level | 1/1 | 1/1 | ✅ |  |
+| skill.219.level | 1/1 | 1/1 | ✅ |  |
+| skill.220.level | 1/1 | 1/1 | ✅ |  |
 
 ### Skill tree tooltips (first differing line per skill)
 
-9/19 tooltips identical; 156/185 lines match.
-
-| Tooltip | Original | TS | Class |
-|---|---|---|---|
-| tooltip.0 | L0: Attack | L0: — | `no-tooltip-nontree` |
-| tooltip.1 | L0: Kick | L0: — | `no-tooltip-nontree` |
-| tooltip.2 | L0: Throw | L0: — | `no-tooltip-nontree` |
-| tooltip.3 | L0: Unsummon | L0: — | `no-tooltip-nontree` |
-| tooltip.4 | L0: Left Hand Throw | L0: — | `no-tooltip-nontree` |
-| tooltip.5 | L0: Left Hand Swing | L0: — | `no-tooltip-nontree` |
-| tooltip.217 | L0: Scroll of Identify | L0: — | `no-tooltip-nontree` |
-| tooltip.218 | L0: Tome of Identify | L0: — | `no-tooltip-nontree` |
-| tooltip.219 | L0: Scroll of Townportal | L0: — | `no-tooltip-nontree` |
-| tooltip.220 | L0: Tome of Townportal | L0: — | `no-tooltip-nontree` |
+19/19 tooltips identical; 185/185 lines match.
 
 ## paladin
 
@@ -202,74 +193,71 @@ Selected skills: original left 0 / right 0; TS left 0 / right 0.
 
 | Field | Original | TS | Match | Class |
 |---|---|---|---|---|
-| skills.list | 0,1,2,3,96,97,98,99,100,102,106,108,113,122,217,218,219,220 | 96,97,98,99,100,102,106,108,113,122 | ❌ | `base-skill-list` |
-| skill.0.name | ATTACK | Attack | ✅ |  |
+| skills.list | 0,1,2,3,96,97,98,99,100,102,106,108,113,122,217,218,219,220 | 0,1,2,3,96,97,98,99,100,102,106,108,113,122,217,218,219,220 | ✅ |  |
+| skill.0.level | 1/1 | 1/1 | ✅ |  |
+| skill.0.name | ATTACK | ATTACK | ✅ |  |
 | skill.0.damage | 3-12 | 3-12 | ✅ |  |
 | skill.0.attackRating | 325 | 325 | ✅ |  |
-| skill.1.name | KICK TARGET | Kick | ❌ | `short-name` |
-| skill.1.damage | 0-1 | 30-40 | ❌ | `kick-damage` |
+| skill.1.level | 1/1 | 1/1 | ✅ |  |
+| skill.1.name | KICK TARGET | KICK TARGET | ✅ |  |
+| skill.1.damage | 0-1 | 0-1 | ✅ |  |
 | skill.1.attackRating | — | — | ✅ |  |
-| skill.2.name | THROW | Throw | ✅ |  |
-| skill.2.damage | — | 3-12 | ❌ | `no-item-block` |
-| skill.2.attackRating | — | 325 | ❌ | `no-item-block` |
-| skill.3.name | UNSUMMON | Unsummon | ✅ |  |
-| skill.3.damage | — | -- | ❌ | `no-damage-row` |
+| skill.2.level | 1/1 | 1/1 | ✅ |  |
+| skill.2.name | THROW | THROW | ✅ |  |
+| skill.2.damage | — | — | ✅ |  |
+| skill.2.attackRating | — | — | ✅ |  |
+| skill.3.level | 1/1 | 1/1 | ✅ |  |
+| skill.3.name | UNSUMMON | UNSUMMON | ✅ |  |
+| skill.3.damage | — | — | ✅ |  |
 | skill.3.attackRating | — | — | ✅ |  |
 | skill.96.level | 1/1 | 1/1 | ✅ |  |
-| skill.96.name | SACRIFICE | Sacrifice | ✅ |  |
+| skill.96.name | SACRIFICE | SACRIFICE | ✅ |  |
 | skill.96.damage | 7-26 | 7-26 | ✅ |  |
 | skill.96.attackRating | 387 | 387 | ✅ |  |
 | skill.97.level | 1/1 | 1/1 | ✅ |  |
-| skill.97.name | SMITE | Smite | ✅ |  |
-| skill.97.damage | 1-5 | 4-16 | ❌ | `smite-damage` |
+| skill.97.name | SMITE | SMITE | ✅ |  |
+| skill.97.damage | 1-5 | 1-5 | ✅ |  |
 | skill.97.attackRating | — | — | ✅ |  |
 | skill.98.level | 1/1 | 1/1 | ✅ |  |
-| skill.98.name | MIGHT | Might | ✅ |  |
-| skill.98.damage | — | -- | ❌ | `no-damage-row` |
+| skill.98.name | MIGHT | MIGHT | ✅ |  |
+| skill.98.damage | — | — | ✅ |  |
 | skill.98.attackRating | — | — | ✅ |  |
 | skill.99.level | 1/1 | 1/1 | ✅ |  |
-| skill.99.name | PRAYER | Prayer | ✅ |  |
-| skill.99.damage | — | -- | ❌ | `no-damage-row` |
+| skill.99.name | PRAYER | PRAYER | ✅ |  |
+| skill.99.damage | — | — | ✅ |  |
 | skill.99.attackRating | — | — | ✅ |  |
 | skill.100.level | 1/1 | 1/1 | ✅ |  |
-| skill.100.name | RESIST FIRE | Resist Fire | ✅ |  |
-| skill.100.damage | — | -- | ❌ | `no-damage-row` |
+| skill.100.name | RESIST FIRE | RESIST FIRE | ✅ |  |
+| skill.100.damage | — | — | ✅ |  |
 | skill.100.attackRating | — | — | ✅ |  |
 | skill.102.level | 1/1 | 1/1 | ✅ |  |
-| skill.102.name | HOLY FIRE | Holy Fire | ✅ |  |
+| skill.102.name | HOLY FIRE | HOLY FIRE | ✅ |  |
 | skill.102.damage | 1-3 | 1-3 | ✅ |  |
 | skill.102.attackRating | — | — | ✅ |  |
 | skill.106.level | 5/5 | 5/5 | ✅ |  |
-| skill.106.name | ZEAL | Zeal | ✅ |  |
+| skill.106.name | ZEAL | ZEAL | ✅ |  |
 | skill.106.damage | 3-13 | 3-13 | ✅ |  |
 | skill.106.attackRating | 480 | 480 | ✅ |  |
 | skill.108.level | 1/1 | 1/1 | ✅ |  |
-| skill.108.name | BLESSED AIM | Blessed Aim | ✅ |  |
-| skill.108.damage | — | -- | ❌ | `no-damage-row` |
+| skill.108.name | BLESSED AIM | BLESSED AIM | ✅ |  |
+| skill.108.damage | — | — | ✅ |  |
 | skill.108.attackRating | — | — | ✅ |  |
 | skill.113.level | 10/10 | 10/10 | ✅ |  |
-| skill.113.name | CONCENTRATION | Concentration | ✅ |  |
-| skill.113.damage | — | -- | ❌ | `no-damage-row` |
+| skill.113.name | CONCENTRATION | CONCENTRATION | ✅ |  |
+| skill.113.damage | — | — | ✅ |  |
 | skill.113.attackRating | — | — | ✅ |  |
 | skill.122.level | 5/5 | 5/5 | ✅ |  |
-| skill.122.name | FANATICISM | Fanaticism | ✅ |  |
-| skill.122.damage | — | -- | ❌ | `no-damage-row` |
+| skill.122.name | FANATICISM | FANATICISM | ✅ |  |
+| skill.122.damage | — | — | ✅ |  |
 | skill.122.attackRating | — | — | ✅ |  |
+| skill.217.level | 1/1 | 1/1 | ✅ |  |
+| skill.218.level | 1/1 | 1/1 | ✅ |  |
+| skill.219.level | 1/1 | 1/1 | ✅ |  |
+| skill.220.level | 1/1 | 1/1 | ✅ |  |
 
 ### Skill tree tooltips (first differing line per skill)
 
-10/18 tooltips identical; 149/174 lines match.
-
-| Tooltip | Original | TS | Class |
-|---|---|---|---|
-| tooltip.0 | L0: Attack | L0: — | `no-tooltip-nontree` |
-| tooltip.1 | L0: Kick | L0: — | `no-tooltip-nontree` |
-| tooltip.2 | L0: Throw | L0: — | `no-tooltip-nontree` |
-| tooltip.3 | L0: Unsummon | L0: — | `no-tooltip-nontree` |
-| tooltip.217 | L0: Scroll of Identify | L0: — | `no-tooltip-nontree` |
-| tooltip.218 | L0: Tome of Identify | L0: — | `no-tooltip-nontree` |
-| tooltip.219 | L0: Scroll of Townportal | L0: — | `no-tooltip-nontree` |
-| tooltip.220 | L0: Tome of Townportal | L0: — | `no-tooltip-nontree` |
+18/18 tooltips identical; 174/174 lines match.
 
 ## amazon
 
@@ -307,62 +295,59 @@ Selected skills: original left 0 / right 0; TS left 0 / right 0.
 
 | Field | Original | TS | Match | Class |
 |---|---|---|---|---|
-| skills.list | 0,1,2,3,8,9,10,13,14,17,18,28,29,32,217,218,219,220 | 8,9,10,13,14,17,18,28,29,32 | ❌ | `base-skill-list` |
-| skill.0.name | ATTACK | Attack | ✅ |  |
+| skills.list | 0,1,2,3,8,9,10,13,14,17,18,28,29,32,217,218,219,220 | 0,1,2,3,8,9,10,13,14,17,18,28,29,32,217,218,219,220 | ✅ |  |
+| skill.0.level | 1/1 | 1/1 | ✅ |  |
+| skill.0.name | ATTACK | ATTACK | ✅ |  |
 | skill.0.damage | 2-10 | 2-10 | ✅ |  |
 | skill.0.attackRating | 320 | 320 | ✅ |  |
-| skill.1.name | KICK TARGET | Kick | ❌ | `short-name` |
-| skill.1.damage | 0-1 | 30-40 | ❌ | `kick-damage` |
+| skill.1.level | 1/1 | 1/1 | ✅ |  |
+| skill.1.name | KICK TARGET | KICK TARGET | ✅ |  |
+| skill.1.damage | 0-1 | 0-1 | ✅ |  |
 | skill.1.attackRating | — | — | ✅ |  |
-| skill.2.name | THROW | Throw | ✅ |  |
+| skill.2.level | 1/1 | 1/1 | ✅ |  |
+| skill.2.name | THROW | THROW | ✅ |  |
 | skill.2.damage | 12-28 | 12-28 | ✅ |  |
 | skill.2.attackRating | 320 | 320 | ✅ |  |
-| skill.3.name | UNSUMMON | Unsummon | ✅ |  |
-| skill.3.damage | — | -- | ❌ | `no-damage-row` |
+| skill.3.level | 1/1 | 1/1 | ✅ |  |
+| skill.3.name | UNSUMMON | UNSUMMON | ✅ |  |
+| skill.3.damage | — | — | ✅ |  |
 | skill.3.attackRating | — | — | ✅ |  |
 | skill.8.level | 1/1 | 1/1 | ✅ |  |
-| skill.8.name | INNER SIGHT | Inner Sight | ✅ |  |
-| skill.8.damage | — | -- | ❌ | `no-damage-row` |
+| skill.8.name | INNER SIGHT | INNER SIGHT | ✅ |  |
+| skill.8.damage | — | — | ✅ |  |
 | skill.8.attackRating | — | — | ✅ |  |
 | skill.9.level | 10/10 | 10/10 | ✅ |  |
 | skill.10.level | 1/1 | 1/1 | ✅ |  |
-| skill.10.name | JAB | Jab | ✅ |  |
+| skill.10.name | JAB | JAB | ✅ |  |
 | skill.10.damage | 1-9 | 1-9 | ✅ |  |
 | skill.10.attackRating | 352 | 352 | ✅ |  |
 | skill.13.level | 5/5 | 5/5 | ✅ |  |
 | skill.14.level | 1/1 | 1/1 | ✅ |  |
-| skill.14.name | POWER STRIKE | Power Strike | ✅ |  |
+| skill.14.name | POWER STRIKE | POWER STRIKE | ✅ |  |
 | skill.14.damage | 3-26 | 3-26 | ✅ |  |
 | skill.14.attackRating | 384 | 384 | ✅ |  |
 | skill.17.level | 1/1 | 1/1 | ✅ |  |
-| skill.17.name | SLOW MISSILES | Slow Missiles | ✅ |  |
-| skill.17.damage | — | -- | ❌ | `no-damage-row` |
+| skill.17.name | SLOW MISSILES | SLOW MISSILES | ✅ |  |
+| skill.17.damage | — | — | ✅ |  |
 | skill.17.attackRating | — | — | ✅ |  |
 | skill.18.level | 5/5 | 5/5 | ✅ |  |
 | skill.28.level | 1/1 | 1/1 | ✅ |  |
-| skill.28.name | DECOY | Decoy | ✅ |  |
-| skill.28.damage | — | -- | ❌ | `no-damage-row` |
+| skill.28.name | DECOY | DECOY | ✅ |  |
+| skill.28.damage | — | — | ✅ |  |
 | skill.28.attackRating | — | — | ✅ |  |
 | skill.29.level | 5/5 | 5/5 | ✅ |  |
 | skill.32.level | 1/1 | 1/1 | ✅ |  |
-| skill.32.name | VALKYRIE | Valkyrie | ✅ |  |
-| skill.32.damage | — | -- | ❌ | `no-damage-row` |
+| skill.32.name | VALKYRIE | VALKYRIE | ✅ |  |
+| skill.32.damage | — | — | ✅ |  |
 | skill.32.attackRating | — | — | ✅ |  |
+| skill.217.level | 1/1 | 1/1 | ✅ |  |
+| skill.218.level | 1/1 | 1/1 | ✅ |  |
+| skill.219.level | 1/1 | 1/1 | ✅ |  |
+| skill.220.level | 1/1 | 1/1 | ✅ |  |
 
 ### Skill tree tooltips (first differing line per skill)
 
-10/18 tooltips identical; 144/169 lines match.
-
-| Tooltip | Original | TS | Class |
-|---|---|---|---|
-| tooltip.0 | L0: Attack | L0: — | `no-tooltip-nontree` |
-| tooltip.1 | L0: Kick | L0: — | `no-tooltip-nontree` |
-| tooltip.2 | L0: Throw | L0: — | `no-tooltip-nontree` |
-| tooltip.3 | L0: Unsummon | L0: — | `no-tooltip-nontree` |
-| tooltip.217 | L0: Scroll of Identify | L0: — | `no-tooltip-nontree` |
-| tooltip.218 | L0: Tome of Identify | L0: — | `no-tooltip-nontree` |
-| tooltip.219 | L0: Scroll of Townportal | L0: — | `no-tooltip-nontree` |
-| tooltip.220 | L0: Tome of Townportal | L0: — | `no-tooltip-nontree` |
+18/18 tooltips identical; 169/169 lines match.
 
 ## sorceress
 
@@ -400,87 +385,77 @@ Selected skills: original left 0 / right 36; TS left 0 / right 36.
 
 | Field | Original | TS | Match | Class |
 |---|---|---|---|---|
-| skills.list | 0,1,2,3,36,38,39,44,45,47,49,53,55,59,61,64,65,217,218,219,220 | 36,38,39,44,45,47,49,53,55,59,61,64,65 | ❌ | `base-skill-list` |
-| skill.0.name | ATTACK | Attack | ✅ |  |
+| skills.list | 0,1,2,3,36,38,39,44,45,47,49,53,55,59,61,64,65,217,218,219,220 | 0,1,2,3,36,38,39,44,45,47,49,53,55,59,61,64,65,217,218,219,220 | ✅ |  |
+| skill.0.level | 1/1 | 1/1 | ✅ |  |
+| skill.0.name | ATTACK | ATTACK | ✅ |  |
 | skill.0.damage | 1-5 | 1-5 | ✅ |  |
 | skill.0.attackRating | 75 | 75 | ✅ |  |
-| skill.1.name | KICK TARGET | Kick | ❌ | `short-name` |
-| skill.1.damage | 0-1 | 3-5 | ❌ | `kick-damage` |
+| skill.1.level | 1/1 | 1/1 | ✅ |  |
+| skill.1.name | KICK TARGET | KICK TARGET | ✅ |  |
+| skill.1.damage | 0-1 | 0-1 | ✅ |  |
 | skill.1.attackRating | — | — | ✅ |  |
-| skill.2.name | THROW | Throw | ✅ |  |
-| skill.2.damage | — | 1-5 | ❌ | `no-item-block` |
-| skill.2.attackRating | — | 75 | ❌ | `no-item-block` |
-| skill.3.name | UNSUMMON | Unsummon | ✅ |  |
-| skill.3.damage | — | -- | ❌ | `no-damage-row` |
+| skill.2.level | 1/1 | 1/1 | ✅ |  |
+| skill.2.name | THROW | THROW | ✅ |  |
+| skill.2.damage | — | — | ✅ |  |
+| skill.2.attackRating | — | — | ✅ |  |
+| skill.3.level | 1/1 | 1/1 | ✅ |  |
+| skill.3.name | UNSUMMON | UNSUMMON | ✅ |  |
+| skill.3.damage | — | — | ✅ |  |
 | skill.3.attackRating | — | — | ✅ |  |
 | skill.36.level | 1/2 | 1/2 | ✅ |  |
-| skill.36.name | FIRE BOLT | Fire Bolt | ✅ |  |
-| skill.36.damage | 15-25 | 16-26 | ❌ | `elemental-rounding` |
+| skill.36.name | FIRE BOLT | FIRE BOLT | ✅ |  |
+| skill.36.damage | 15-25 | 15-25 | ✅ |  |
 | skill.36.attackRating | — | — | ✅ |  |
 | skill.38.level | 1/1 | 1/1 | ✅ |  |
-| skill.38.name | CHARGED BOLT | Charged Bolt | ✅ |  |
+| skill.38.name | CHARGED BOLT | CHARGED BOLT | ✅ |  |
 | skill.38.damage | 2-4 | 2-4 | ✅ |  |
 | skill.38.attackRating | — | — | ✅ |  |
 | skill.39.level | 1/1 | 1/1 | ✅ |  |
-| skill.39.name | ICE BOLT | Ice Bolt | ✅ |  |
+| skill.39.name | ICE BOLT | ICE BOLT | ✅ |  |
 | skill.39.damage | 7-11 | 7-11 | ✅ |  |
 | skill.39.attackRating | — | — | ✅ |  |
 | skill.44.level | 1/1 | 1/1 | ✅ |  |
-| skill.44.name | FROST NOVA | Frost Nova | ✅ |  |
+| skill.44.name | FROST NOVA | FROST NOVA | ✅ |  |
 | skill.44.damage | 3-6 | 3-6 | ✅ |  |
 | skill.44.attackRating | — | — | ✅ |  |
 | skill.45.level | 1/1 | 1/1 | ✅ |  |
-| skill.45.name | ICE BLAST | Ice Blast | ✅ |  |
-| skill.45.damage | 12-18 | 13-19 | ❌ | `elemental-rounding` |
+| skill.45.name | ICE BLAST | ICE BLAST | ✅ |  |
+| skill.45.damage | 12-18 | 12-18 | ✅ |  |
 | skill.45.attackRating | — | — | ✅ |  |
 | skill.47.level | 10/10 | 10/10 | ✅ |  |
-| skill.47.name | FIRE BALL | Fire Ball | ✅ |  |
+| skill.47.name | FIRE BALL | FIRE BALL | ✅ |  |
 | skill.47.damage | 110-135 | 110-135 | ✅ |  |
 | skill.47.attackRating | — | — | ✅ |  |
 | skill.49.level | 1/1 | 1/1 | ✅ |  |
-| skill.49.name | LIGHTNING | Lightning | ✅ |  |
+| skill.49.name | LIGHTNING | LIGHTNING | ✅ |  |
 | skill.49.damage | 1-75 | 1-75 | ✅ |  |
 | skill.49.attackRating | — | — | ✅ |  |
 | skill.53.level | 10/10 | 10/10 | ✅ |  |
-| skill.53.name | CHAIN LIGHTNING | Chain Lightning | ✅ |  |
+| skill.53.name | CHAIN LIGHTNING | CHAIN LIGHTNING | ✅ |  |
 | skill.53.damage | 1-154 | 1-154 | ✅ |  |
 | skill.53.attackRating | — | — | ✅ |  |
 | skill.55.level | 1/1 | 1/1 | ✅ |  |
-| skill.55.name | GLACIAL SPIKE | Glacial Spike | ✅ |  |
+| skill.55.name | GLACIAL SPIKE | GLACIAL SPIKE | ✅ |  |
 | skill.55.damage | 21-32 | 21-32 | ✅ |  |
 | skill.55.attackRating | — | — | ✅ |  |
 | skill.59.level | 1/1 | 1/1 | ✅ |  |
-| skill.59.name | BLIZZARD | Blizzard | ✅ |  |
+| skill.59.name | BLIZZARD | BLIZZARD | ✅ |  |
 | skill.59.damage | 51-86 | 51-86 | ✅ |  |
 | skill.59.attackRating | — | — | ✅ |  |
 | skill.61.level | 1/1 | 1/1 | ✅ |  |
 | skill.64.level | 5/5 | 5/5 | ✅ |  |
-| skill.64.name | FROZEN ORB | Frozen Orb | ✅ |  |
+| skill.64.name | FROZEN ORB | FROZEN ORB | ✅ |  |
 | skill.64.damage | 81-88 | 81-88 | ✅ |  |
 | skill.64.attackRating | — | — | ✅ |  |
 | skill.65.level | 1/1 | 1/1 | ✅ |  |
+| skill.217.level | 1/1 | 1/1 | ✅ |  |
+| skill.218.level | 1/1 | 1/1 | ✅ |  |
+| skill.219.level | 1/1 | 1/1 | ✅ |  |
+| skill.220.level | 1/1 | 1/1 | ✅ |  |
 
 ### Skill tree tooltips (first differing line per skill)
 
-6/21 tooltips identical; 206/241 lines match.
-
-| Tooltip | Original | TS | Class |
-|---|---|---|---|
-| tooltip.0 | L0: Attack | L0: — | `no-tooltip-nontree` |
-| tooltip.1 | L0: Kick | L0: — | `no-tooltip-nontree` |
-| tooltip.2 | L0: Throw | L0: — | `no-tooltip-nontree` |
-| tooltip.3 | L0: Unsummon | L0: — | `no-tooltip-nontree` |
-| tooltip.36 | L6: Fire Damage: 15-25 | L6: Fire Damage: 16-26 | `elemental-rounding` |
-| tooltip.38 | L10: Lightning Damage: 2-4 | L10: Lightning Damage: 3-5 | `elemental-rounding` |
-| tooltip.39 | L10: Cold Damage: 9-15 | L10: Cold Damage: 9-16 | `elemental-rounding` |
-| tooltip.44 | L10: Cold Damage: 6-10 | L10: Cold Damage: 6-11 | `elemental-rounding` |
-| tooltip.45 | L5: Cold Damage: 12-18 | L5: Cold Damage: 13-19 | `elemental-rounding` |
-| tooltip.47 | L4: Radius: 1 yard | L4: Radius: 2.6 yards | `radius-format` |
-| tooltip.55 | L12: Cold Damage: 31-42 | L12: Cold Damage: 31-43 | `elemental-rounding` |
-| tooltip.217 | L0: Scroll of Identify | L0: — | `no-tooltip-nontree` |
-| tooltip.218 | L0: Tome of Identify | L0: — | `no-tooltip-nontree` |
-| tooltip.219 | L0: Scroll of Townportal | L0: — | `no-tooltip-nontree` |
-| tooltip.220 | L0: Tome of Townportal | L0: — | `no-tooltip-nontree` |
+21/21 tooltips identical; 241/241 lines match.
 
 ## necromancer
 
@@ -518,70 +493,482 @@ Selected skills: original left 0 / right 70; TS left 0 / right 70.
 
 | Field | Original | TS | Match | Class |
 |---|---|---|---|---|
-| skills.list | 0,1,2,3,66,69,70,71,72,76,77,82,87,91,217,218,219,220 | 66,69,70,71,72,76,77,82,87,91 | ❌ | `base-skill-list` |
-| skill.0.name | ATTACK | Attack | ✅ |  |
+| skills.list | 0,1,2,3,66,69,70,71,72,76,77,82,87,91,217,218,219,220 | 0,1,2,3,66,69,70,71,72,76,77,82,87,91,217,218,219,220 | ✅ |  |
+| skill.0.level | 1/1 | 1/1 | ✅ |  |
+| skill.0.name | ATTACK | ATTACK | ✅ |  |
 | skill.0.damage | 2-4 | 2-4 | ✅ |  |
 | skill.0.attackRating | 80 | 80 | ✅ |  |
-| skill.1.name | KICK TARGET | Kick | ❌ | `short-name` |
-| skill.1.damage | 0-1 | 5-6 | ❌ | `kick-damage` |
+| skill.1.level | 1/1 | 1/1 | ✅ |  |
+| skill.1.name | KICK TARGET | KICK TARGET | ✅ |  |
+| skill.1.damage | 0-1 | 0-1 | ✅ |  |
 | skill.1.attackRating | — | — | ✅ |  |
-| skill.2.name | THROW | Throw | ✅ |  |
-| skill.2.damage | — | 2-4 | ❌ | `no-item-block` |
-| skill.2.attackRating | — | 80 | ❌ | `no-item-block` |
-| skill.3.name | UNSUMMON | Unsummon | ✅ |  |
-| skill.3.damage | — | -- | ❌ | `no-damage-row` |
+| skill.2.level | 1/1 | 1/1 | ✅ |  |
+| skill.2.name | THROW | THROW | ✅ |  |
+| skill.2.damage | — | — | ✅ |  |
+| skill.2.attackRating | — | — | ✅ |  |
+| skill.3.level | 1/1 | 1/1 | ✅ |  |
+| skill.3.name | UNSUMMON | UNSUMMON | ✅ |  |
+| skill.3.damage | — | — | ✅ |  |
 | skill.3.attackRating | — | — | ✅ |  |
 | skill.66.level | 1/1 | 1/1 | ✅ |  |
-| skill.66.name | AMPLIFY | Amplify Damage | ❌ | `short-name` |
-| skill.66.damage | — | -- | ❌ | `no-damage-row` |
+| skill.66.name | AMPLIFY | AMPLIFY | ✅ |  |
+| skill.66.damage | — | — | ✅ |  |
 | skill.66.attackRating | — | — | ✅ |  |
 | skill.69.level | 10/10 | 10/10 | ✅ |  |
 | skill.70.level | 15/16 | 15/16 | ✅ |  |
-| skill.70.name | RAISE SKELETON | Raise Skeleton | ✅ |  |
-| skill.70.damage | — | -- | ❌ | `no-damage-row` |
+| skill.70.name | RAISE SKELETON | RAISE SKELETON | ✅ |  |
+| skill.70.damage | — | — | ✅ |  |
 | skill.70.attackRating | — | — | ✅ |  |
 | skill.71.level | 1/1 | 1/1 | ✅ |  |
-| skill.71.name | DIM VISION | Dim Vision | ✅ |  |
-| skill.71.damage | — | -- | ❌ | `no-damage-row` |
+| skill.71.name | DIM VISION | DIM VISION | ✅ |  |
+| skill.71.damage | — | — | ✅ |  |
 | skill.71.attackRating | — | — | ✅ |  |
 | skill.72.level | 1/1 | 1/1 | ✅ |  |
-| skill.72.name | WEAKEN | Weaken | ✅ |  |
-| skill.72.damage | — | -- | ❌ | `no-damage-row` |
+| skill.72.name | WEAKEN | WEAKEN | ✅ |  |
+| skill.72.damage | — | — | ✅ |  |
 | skill.72.attackRating | — | — | ✅ |  |
 | skill.76.level | 1/1 | 1/1 | ✅ |  |
-| skill.76.name | IRON MAIDEN | Iron Maiden | ✅ |  |
-| skill.76.damage | — | -- | ❌ | `no-damage-row` |
+| skill.76.name | IRON MAIDEN | IRON MAIDEN | ✅ |  |
+| skill.76.damage | — | — | ✅ |  |
 | skill.76.attackRating | — | — | ✅ |  |
 | skill.77.level | 1/1 | 1/1 | ✅ |  |
-| skill.77.name | TERROR | Terror | ✅ |  |
-| skill.77.damage | — | -- | ❌ | `no-damage-row` |
+| skill.77.name | TERROR | TERROR | ✅ |  |
+| skill.77.damage | — | — | ✅ |  |
 | skill.77.attackRating | — | — | ✅ |  |
 | skill.82.level | 1/1 | 1/1 | ✅ |  |
-| skill.82.name | LIFE TAP | Life Tap | ✅ |  |
-| skill.82.damage | — | -- | ❌ | `no-damage-row` |
+| skill.82.name | LIFE TAP | LIFE TAP | ✅ |  |
+| skill.82.damage | — | — | ✅ |  |
 | skill.82.attackRating | — | — | ✅ |  |
 | skill.87.level | 1/1 | 1/1 | ✅ |  |
-| skill.87.name | DECREPIFY | Decrepify | ✅ |  |
-| skill.87.damage | — | -- | ❌ | `no-damage-row` |
+| skill.87.name | DECREPIFY | DECREPIFY | ✅ |  |
+| skill.87.damage | — | — | ✅ |  |
 | skill.87.attackRating | — | — | ✅ |  |
 | skill.91.level | 1/1 | 1/1 | ✅ |  |
-| skill.91.name | LOWER RESIST | Lower Resist | ✅ |  |
-| skill.91.damage | — | -- | ❌ | `no-damage-row` |
+| skill.91.name | LOWER RESIST | LOWER RESIST | ✅ |  |
+| skill.91.damage | — | — | ✅ |  |
 | skill.91.attackRating | — | — | ✅ |  |
+| skill.217.level | 1/1 | 1/1 | ✅ |  |
+| skill.218.level | 1/1 | 1/1 | ✅ |  |
+| skill.219.level | 1/1 | 1/1 | ✅ |  |
+| skill.220.level | 1/1 | 1/1 | ✅ |  |
 
 ### Skill tree tooltips (first differing line per skill)
 
-9/18 tooltips identical; 167/193 lines match.
+18/18 tooltips identical; 193/193 lines match.
 
-| Tooltip | Original | TS | Class |
-|---|---|---|---|
-| tooltip.0 | L0: Attack | L0: — | `no-tooltip-nontree` |
-| tooltip.1 | L0: Kick | L0: — | `no-tooltip-nontree` |
-| tooltip.2 | L0: Throw | L0: — | `no-tooltip-nontree` |
-| tooltip.3 | L0: Unsummon | L0: — | `no-tooltip-nontree` |
-| tooltip.70 | L5: Damage: 61-63 | L5: Damage: 55 - 57 | `summon-damage` |
-| tooltip.217 | L0: Scroll of Identify | L0: — | `no-tooltip-nontree` |
-| tooltip.218 | L0: Tome of Identify | L0: — | `no-tooltip-nontree` |
-| tooltip.219 | L0: Scroll of Townportal | L0: — | `no-tooltip-nontree` |
-| tooltip.220 | L0: Tome of Townportal | L0: — | `no-tooltip-nontree` |
+## p54-barbarian-buffs-field
+
+Selected skills: original left 0 / right 0; TS left 0 / right 0.
+
+### Character sheet
+
+| Field | Original | TS | Match | Layer | Suspected cause |
+|---|---|---|---|---|---|
+| level | 40 | 40 | ✅ |  |  |
+| experience | 18,000,000 | 18,000,000 | ✅ |  |  |
+| nextLevel | 19,235,252 | 19,235,252 | ✅ |  |  |
+| strength | 80 | 80 | ✅ |  |  |
+| dexterity | 65 | 65 | ✅ |  |  |
+| defense | 20 | 20 | ✅ |  |  |
+| vitality | 125 | 125 | ✅ |  |  |
+| maxStamina | 231 | 231 | ✅ |  |  |
+| stamina | 231 | 231 | ✅ |  |  |
+| maxLife | 533 | 533 | ✅ |  |  |
+| life | 533 | 533 | ✅ |  |  |
+| energy | 10 | 10 | ✅ |  |  |
+| maxMana | 49 | 49 | ✅ |  |  |
+| mana | 49 | 49 | ✅ |  |  |
+| fireRes | 0 | 0 | ✅ |  |  |
+| coldRes | 0 | 0 | ✅ |  |  |
+| lightRes | 0 | 0 | ✅ |  |  |
+| poisonRes | 0 | 0 | ✅ |  |  |
+| leftSkill | 0 | 0 | ✅ |  |  |
+| rightSkill | 0 | 0 | ✅ |  |  |
+| blockChance | 15 | 15 | ✅ |  |  |
+| leftAttackRating | 310 | 310 | ✅ |  |  |
+| rightAttackRating | 310 | 310 | ✅ |  |  |
+
+### Skill list and attack blocks
+
+| Field | Original | TS | Match | Class |
+|---|---|---|---|---|
+| skills.list | 0,1,2,3,4,5,126,130,137,138,139,146,149,154,155,217,218,219,220 | 0,1,2,3,4,5,126,130,137,138,139,146,149,154,155,217,218,219,220 | ✅ |  |
+| skill.0.level | 1/1 | 1/1 | ✅ |  |
+| skill.0.name | ATTACK | ATTACK | ✅ |  |
+| skill.0.damage | 5-10 | 5-10 | ✅ |  |
+| skill.0.attackRating | 310 | 310 | ✅ |  |
+| skill.1.level | 1/1 | 1/1 | ✅ |  |
+| skill.1.name | KICK TARGET | KICK TARGET | ✅ |  |
+| skill.1.damage | 0-1 | 0-1 | ✅ |  |
+| skill.1.attackRating | — | — | ✅ |  |
+| skill.2.level | 1/1 | 1/1 | ✅ |  |
+| skill.2.name | THROW | THROW | ✅ |  |
+| skill.2.damage | — | — | ✅ |  |
+| skill.2.attackRating | — | — | ✅ |  |
+| skill.3.level | 1/1 | 1/1 | ✅ |  |
+| skill.3.name | UNSUMMON | UNSUMMON | ✅ |  |
+| skill.3.damage | — | — | ✅ |  |
+| skill.3.attackRating | — | — | ✅ |  |
+| skill.4.level | 1/1 | 1/1 | ✅ |  |
+| skill.4.name | LEFT THROW | LEFT THROW | ✅ |  |
+| skill.4.damage | — | — | ✅ |  |
+| skill.4.attackRating | — | — | ✅ |  |
+| skill.5.level | 1/1 | 1/1 | ✅ |  |
+| skill.5.name | LEFT SWING | LEFT SWING | ✅ |  |
+| skill.5.damage | — | — | ✅ |  |
+| skill.5.attackRating | — | — | ✅ |  |
+| skill.126.level | 1/1 | 1/1 | ✅ |  |
+| skill.126.name | BASH | BASH | ✅ |  |
+| skill.126.damage | 8-15 | 8-15 | ✅ |  |
+| skill.126.attackRating | 372 | 372 | ✅ |  |
+| skill.130.level | 1/1 | 1/1 | ✅ |  |
+| skill.130.name | HOWL | HOWL | ✅ |  |
+| skill.130.damage | — | — | ✅ |  |
+| skill.130.attackRating | — | — | ✅ |  |
+| skill.137.level | 1/1 | 1/1 | ✅ |  |
+| skill.137.name | TAUNT | TAUNT | ✅ |  |
+| skill.137.damage | — | — | ✅ |  |
+| skill.137.attackRating | — | — | ✅ |  |
+| skill.138.level | 10/10 | 10/10 | ✅ |  |
+| skill.138.name | SHOUT | SHOUT | ✅ |  |
+| skill.138.damage | — | — | ✅ |  |
+| skill.138.attackRating | — | — | ✅ |  |
+| skill.139.level | 1/1 | 1/1 | ✅ |  |
+| skill.139.name | STUN | STUN | ✅ |  |
+| skill.139.damage | 5-11 | 5-11 | ✅ |  |
+| skill.139.attackRating | 356 | 356 | ✅ |  |
+| skill.146.level | 1/1 | 1/1 | ✅ |  |
+| skill.146.name | BATTLE CRY | BATTLE CRY | ✅ |  |
+| skill.146.damage | — | — | ✅ |  |
+| skill.146.attackRating | — | — | ✅ |  |
+| skill.149.level | 10/10 | 10/10 | ✅ |  |
+| skill.149.name | BATTLE ORDERS | BATTLE ORDERS | ✅ |  |
+| skill.149.damage | — | — | ✅ |  |
+| skill.149.attackRating | — | — | ✅ |  |
+| skill.154.level | 5/5 | 5/5 | ✅ |  |
+| skill.154.name | WAR CRY | WAR CRY | ✅ |  |
+| skill.154.damage | 51-63 | 51-63 | ✅ |  |
+| skill.154.attackRating | — | — | ✅ |  |
+| skill.155.level | 1/1 | 1/1 | ✅ |  |
+| skill.155.name | BATTLE CMD | BATTLE CMD | ✅ |  |
+| skill.155.damage | — | — | ✅ |  |
+| skill.155.attackRating | — | — | ✅ |  |
+| skill.217.level | 1/1 | 1/1 | ✅ |  |
+| skill.218.level | 1/1 | 1/1 | ✅ |  |
+| skill.219.level | 1/1 | 1/1 | ✅ |  |
+| skill.220.level | 1/1 | 1/1 | ✅ |  |
+
+### Skill tree tooltips (first differing line per skill)
+
+19/19 tooltips identical; 185/185 lines match.
+
+## p54-barbarian-buffs-buffs
+
+Selected skills: original left 0 / right 138; TS left 0 / right 138.
+
+### Character sheet
+
+| Field | Original | TS | Match | Layer | Suspected cause |
+|---|---|---|---|---|---|
+| level | 40 | 40 | ✅ |  |  |
+| experience | 18,000,000 | 18,000,000 | ✅ |  |  |
+| nextLevel | 19,235,252 | 19,235,252 | ✅ |  |  |
+| strength | 80 | 80 | ✅ |  |  |
+| dexterity | 65 | 65 | ✅ |  |  |
+| defense | 60 | 60 | ✅ |  |  |
+| vitality | 125 | 125 | ✅ |  |  |
+| maxStamina | 374 | 374 | ✅ |  |  |
+| stamina | 374 | 374 | ✅ |  |  |
+| maxLife | 863 | 863 | ✅ |  |  |
+| life | 863 | 863 | ✅ |  |  |
+| energy | 10 | 10 | ✅ |  |  |
+| maxMana | 79 | 79 | ✅ |  |  |
+| mana | 61 | 61 | ✅ |  |  |
+| fireRes | 0 | 0 | ✅ |  |  |
+| coldRes | 0 | 0 | ✅ |  |  |
+| lightRes | 0 | 0 | ✅ |  |  |
+| poisonRes | 0 | 0 | ✅ |  |  |
+| leftSkill | 0 | 0 | ✅ |  |  |
+| rightSkill | 138 | 138 | ✅ |  |  |
+| blockChance | 15 | 15 | ✅ |  |  |
+| leftAttackRating | 310 | 310 | ✅ |  |  |
+| rightAttackRating | 0 | 0 | ✅ |  |  |
+
+### Skill list and attack blocks
+
+| Field | Original | TS | Match | Class |
+|---|---|---|---|---|
+| skills.list | 0,1,2,3,4,5,126,130,137,138,139,146,149,154,155,217,218,219,220 | 0,1,2,3,4,5,126,130,137,138,139,146,149,154,155,217,218,219,220 | ✅ |  |
+| skill.0.level | 1/2 | 1/2 | ✅ |  |
+| skill.0.name | ATTACK | ATTACK | ✅ |  |
+| skill.0.damage | 5-10 | 5-10 | ✅ |  |
+| skill.0.attackRating | 310 | 310 | ✅ |  |
+| skill.1.level | 1/2 | 1/2 | ✅ |  |
+| skill.1.name | KICK TARGET | KICK TARGET | ✅ |  |
+| skill.1.damage | 0-1 | 0-1 | ✅ |  |
+| skill.1.attackRating | — | — | ✅ |  |
+| skill.2.level | 1/2 | 1/2 | ✅ |  |
+| skill.2.name | THROW | THROW | ✅ |  |
+| skill.2.damage | — | — | ✅ |  |
+| skill.2.attackRating | — | — | ✅ |  |
+| skill.3.level | 1/2 | 1/2 | ✅ |  |
+| skill.3.name | UNSUMMON | UNSUMMON | ✅ |  |
+| skill.3.damage | — | — | ✅ |  |
+| skill.3.attackRating | — | — | ✅ |  |
+| skill.4.level | 1/2 | 1/2 | ✅ |  |
+| skill.4.name | LEFT THROW | LEFT THROW | ✅ |  |
+| skill.4.damage | — | — | ✅ |  |
+| skill.4.attackRating | — | — | ✅ |  |
+| skill.5.level | 1/2 | 1/2 | ✅ |  |
+| skill.5.name | LEFT SWING | LEFT SWING | ✅ |  |
+| skill.5.damage | — | — | ✅ |  |
+| skill.5.attackRating | — | — | ✅ |  |
+| skill.126.level | 1/2 | 1/2 | ✅ |  |
+| skill.126.name | BASH | BASH | ✅ |  |
+| skill.126.damage | 9-16 | 9-16 | ✅ |  |
+| skill.126.attackRating | 387 | 387 | ✅ |  |
+| skill.130.level | 1/2 | 1/2 | ✅ |  |
+| skill.130.name | HOWL | HOWL | ✅ |  |
+| skill.130.damage | — | — | ✅ |  |
+| skill.130.attackRating | — | — | ✅ |  |
+| skill.137.level | 1/2 | 1/2 | ✅ |  |
+| skill.137.name | TAUNT | TAUNT | ✅ |  |
+| skill.137.damage | — | — | ✅ |  |
+| skill.137.attackRating | — | — | ✅ |  |
+| skill.138.level | 10/11 | 10/11 | ✅ |  |
+| skill.138.name | SHOUT | SHOUT | ✅ |  |
+| skill.138.damage | — | — | ✅ |  |
+| skill.138.attackRating | — | — | ✅ |  |
+| skill.139.level | 1/2 | 1/2 | ✅ |  |
+| skill.139.name | STUN | STUN | ✅ |  |
+| skill.139.damage | 5-11 | 5-11 | ✅ |  |
+| skill.139.attackRating | 372 | 372 | ✅ |  |
+| skill.146.level | 1/2 | 1/2 | ✅ |  |
+| skill.146.name | BATTLE CRY | BATTLE CRY | ✅ |  |
+| skill.146.damage | — | — | ✅ |  |
+| skill.146.attackRating | — | — | ✅ |  |
+| skill.149.level | 10/11 | 10/11 | ✅ |  |
+| skill.149.name | BATTLE ORDERS | BATTLE ORDERS | ✅ |  |
+| skill.149.damage | — | — | ✅ |  |
+| skill.149.attackRating | — | — | ✅ |  |
+| skill.154.level | 5/6 | 5/6 | ✅ |  |
+| skill.154.name | WAR CRY | WAR CRY | ✅ |  |
+| skill.154.damage | 59-70 | 59-70 | ✅ |  |
+| skill.154.attackRating | — | — | ✅ |  |
+| skill.155.level | 1/2 | 1/2 | ✅ |  |
+| skill.155.name | BATTLE CMD | BATTLE CMD | ✅ |  |
+| skill.155.damage | — | — | ✅ |  |
+| skill.155.attackRating | — | — | ✅ |  |
+| skill.217.level | 1/2 | 1/2 | ✅ |  |
+| skill.218.level | 1/2 | 1/2 | ✅ |  |
+| skill.219.level | 1/2 | 1/2 | ✅ |  |
+| skill.220.level | 1/2 | 1/2 | ✅ |  |
+
+### Skill tree tooltips (first differing line per skill)
+
+19/19 tooltips identical; 185/185 lines match.
+
+## p54-paladin-auras-concentration
+
+Selected skills: original left 0 / right 113; TS left 0 / right 113.
+
+### Character sheet
+
+| Field | Original | TS | Match | Layer | Suspected cause |
+|---|---|---|---|---|---|
+| level | 40 | 40 | ✅ |  |  |
+| experience | 18,000,000 | 18,000,000 | ✅ |  |  |
+| nextLevel | 19,235,252 | 19,235,252 | ✅ |  |  |
+| strength | 75 | 75 | ✅ |  |  |
+| dexterity | 65 | 65 | ✅ |  |  |
+| defense | 20 | 20 | ✅ |  |  |
+| vitality | 125 | 125 | ✅ |  |  |
+| maxStamina | 228 | 228 | ✅ |  |  |
+| stamina | 228 | 228 | ✅ |  |  |
+| maxLife | 433 | 433 | ✅ |  |  |
+| life | 433 | 433 | ✅ |  |  |
+| energy | 15 | 15 | ✅ |  |  |
+| maxMana | 73 | 73 | ✅ |  |  |
+| mana | 73 | 73 | ✅ |  |  |
+| fireRes | 0 | 0 | ✅ |  |  |
+| coldRes | 0 | 0 | ✅ |  |  |
+| lightRes | 0 | 0 | ✅ |  |  |
+| poisonRes | 0 | 0 | ✅ |  |  |
+| leftSkill | 0 | 0 | ✅ |  |  |
+| rightSkill | 113 | 113 | ✅ |  |  |
+| blockChance | 18 | 18 | ✅ |  |  |
+| leftAttackRating | 325 | 325 | ✅ |  |  |
+| rightAttackRating | 0 | 0 | ✅ |  |  |
+
+### Skill list and attack blocks
+
+| Field | Original | TS | Match | Class |
+|---|---|---|---|---|
+| skills.list | 0,1,2,3,96,97,98,99,100,102,106,108,113,122,217,218,219,220 | 0,1,2,3,96,97,98,99,100,102,106,108,113,122,217,218,219,220 | ✅ |  |
+| skill.0.level | 1/1 | 1/1 | ✅ |  |
+| skill.0.name | ATTACK | ATTACK | ✅ |  |
+| skill.0.damage | 7-25 | 7-25 | ✅ |  |
+| skill.0.attackRating | 325 | 325 | ✅ |  |
+| skill.1.level | 1/1 | 1/1 | ✅ |  |
+| skill.1.name | KICK TARGET | KICK TARGET | ✅ |  |
+| skill.1.damage | 0-1 | 0-1 | ✅ |  |
+| skill.1.attackRating | — | — | ✅ |  |
+| skill.2.level | 1/1 | 1/1 | ✅ |  |
+| skill.2.name | THROW | THROW | ✅ |  |
+| skill.2.damage | — | — | ✅ |  |
+| skill.2.attackRating | — | — | ✅ |  |
+| skill.3.level | 1/1 | 1/1 | ✅ |  |
+| skill.3.name | UNSUMMON | UNSUMMON | ✅ |  |
+| skill.3.damage | — | — | ✅ |  |
+| skill.3.attackRating | — | — | ✅ |  |
+| skill.96.level | 1/1 | 1/1 | ✅ |  |
+| skill.96.name | SACRIFICE | SACRIFICE | ✅ |  |
+| skill.96.damage | 11-40 | 11-40 | ✅ |  |
+| skill.96.attackRating | 387 | 387 | ✅ |  |
+| skill.97.level | 1/1 | 1/1 | ✅ |  |
+| skill.97.name | SMITE | SMITE | ✅ |  |
+| skill.97.damage | 3-11 | 3-11 | ✅ |  |
+| skill.97.attackRating | — | — | ✅ |  |
+| skill.98.level | 1/1 | 1/1 | ✅ |  |
+| skill.98.name | MIGHT | MIGHT | ✅ |  |
+| skill.98.damage | — | — | ✅ |  |
+| skill.98.attackRating | — | — | ✅ |  |
+| skill.99.level | 1/1 | 1/1 | ✅ |  |
+| skill.99.name | PRAYER | PRAYER | ✅ |  |
+| skill.99.damage | — | — | ✅ |  |
+| skill.99.attackRating | — | — | ✅ |  |
+| skill.100.level | 1/1 | 1/1 | ✅ |  |
+| skill.100.name | RESIST FIRE | RESIST FIRE | ✅ |  |
+| skill.100.damage | — | — | ✅ |  |
+| skill.100.attackRating | — | — | ✅ |  |
+| skill.102.level | 1/1 | 1/1 | ✅ |  |
+| skill.102.name | HOLY FIRE | HOLY FIRE | ✅ |  |
+| skill.102.damage | 1-3 | 1-3 | ✅ |  |
+| skill.102.attackRating | — | — | ✅ |  |
+| skill.106.level | 5/5 | 5/5 | ✅ |  |
+| skill.106.name | ZEAL | ZEAL | ✅ |  |
+| skill.106.damage | 7-27 | 7-27 | ✅ |  |
+| skill.106.attackRating | 480 | 480 | ✅ |  |
+| skill.108.level | 1/1 | 1/1 | ✅ |  |
+| skill.108.name | BLESSED AIM | BLESSED AIM | ✅ |  |
+| skill.108.damage | — | — | ✅ |  |
+| skill.108.attackRating | — | — | ✅ |  |
+| skill.113.level | 10/10 | 10/10 | ✅ |  |
+| skill.113.name | CONCENTRATION | CONCENTRATION | ✅ |  |
+| skill.113.damage | — | — | ✅ |  |
+| skill.113.attackRating | — | — | ✅ |  |
+| skill.122.level | 5/5 | 5/5 | ✅ |  |
+| skill.122.name | FANATICISM | FANATICISM | ✅ |  |
+| skill.122.damage | — | — | ✅ |  |
+| skill.122.attackRating | — | — | ✅ |  |
+| skill.217.level | 1/1 | 1/1 | ✅ |  |
+| skill.218.level | 1/1 | 1/1 | ✅ |  |
+| skill.219.level | 1/1 | 1/1 | ✅ |  |
+| skill.220.level | 1/1 | 1/1 | ✅ |  |
+
+### Skill tree tooltips (first differing line per skill)
+
+18/18 tooltips identical; 174/174 lines match.
+
+## p54-paladin-auras-fanaticism
+
+Selected skills: original left 0 / right 122; TS left 0 / right 122.
+
+### Character sheet
+
+| Field | Original | TS | Match | Layer | Suspected cause |
+|---|---|---|---|---|---|
+| level | 40 | 40 | ✅ |  |  |
+| experience | 18,000,000 | 18,000,000 | ✅ |  |  |
+| nextLevel | 19,235,252 | 19,235,252 | ✅ |  |  |
+| strength | 75 | 75 | ✅ |  |  |
+| dexterity | 65 | 65 | ✅ |  |  |
+| defense | 20 | 20 | ✅ |  |  |
+| vitality | 125 | 125 | ✅ |  |  |
+| maxStamina | 228 | 228 | ✅ |  |  |
+| stamina | 228 | 228 | ✅ |  |  |
+| maxLife | 433 | 433 | ✅ |  |  |
+| life | 433 | 433 | ✅ |  |  |
+| energy | 15 | 15 | ✅ |  |  |
+| maxMana | 73 | 73 | ✅ |  |  |
+| mana | 73 | 73 | ✅ |  |  |
+| fireRes | 0 | 0 | ✅ |  |  |
+| coldRes | 0 | 0 | ✅ |  |  |
+| lightRes | 0 | 0 | ✅ |  |  |
+| poisonRes | 0 | 0 | ✅ |  |  |
+| leftSkill | 0 | 0 | ✅ |  |  |
+| rightSkill | 122 | 122 | ✅ |  |  |
+| blockChance | 18 | 18 | ✅ |  |  |
+| leftAttackRating | 511 | 511 | ✅ |  |  |
+| rightAttackRating | 0 | 0 | ✅ |  |  |
+
+### Skill list and attack blocks
+
+| Field | Original | TS | Match | Class |
+|---|---|---|---|---|
+| skills.list | 0,1,2,3,96,97,98,99,100,102,106,108,113,122,217,218,219,220 | 0,1,2,3,96,97,98,99,100,102,106,108,113,122,217,218,219,220 | ✅ |  |
+| skill.0.level | 1/1 | 1/1 | ✅ |  |
+| skill.0.name | ATTACK | ATTACK | ✅ |  |
+| skill.0.damage | 5-20 | 5-20 | ✅ |  |
+| skill.0.attackRating | 511 | 511 | ✅ |  |
+| skill.1.level | 1/1 | 1/1 | ✅ |  |
+| skill.1.name | KICK TARGET | KICK TARGET | ✅ |  |
+| skill.1.damage | 0-1 | 0-1 | ✅ |  |
+| skill.1.attackRating | — | — | ✅ |  |
+| skill.2.level | 1/1 | 1/1 | ✅ |  |
+| skill.2.name | THROW | THROW | ✅ |  |
+| skill.2.damage | — | — | ✅ |  |
+| skill.2.attackRating | — | — | ✅ |  |
+| skill.3.level | 1/1 | 1/1 | ✅ |  |
+| skill.3.name | UNSUMMON | UNSUMMON | ✅ |  |
+| skill.3.damage | — | — | ✅ |  |
+| skill.3.attackRating | — | — | ✅ |  |
+| skill.96.level | 1/1 | 1/1 | ✅ |  |
+| skill.96.name | SACRIFICE | SACRIFICE | ✅ |  |
+| skill.96.damage | 9-34 | 9-34 | ✅ |  |
+| skill.96.attackRating | 573 | 573 | ✅ |  |
+| skill.97.level | 1/1 | 1/1 | ✅ |  |
+| skill.97.name | SMITE | SMITE | ✅ |  |
+| skill.97.damage | 3-9 | 3-9 | ✅ |  |
+| skill.97.attackRating | — | — | ✅ |  |
+| skill.98.level | 1/1 | 1/1 | ✅ |  |
+| skill.98.name | MIGHT | MIGHT | ✅ |  |
+| skill.98.damage | — | — | ✅ |  |
+| skill.98.attackRating | — | — | ✅ |  |
+| skill.99.level | 1/1 | 1/1 | ✅ |  |
+| skill.99.name | PRAYER | PRAYER | ✅ |  |
+| skill.99.damage | — | — | ✅ |  |
+| skill.99.attackRating | — | — | ✅ |  |
+| skill.100.level | 1/1 | 1/1 | ✅ |  |
+| skill.100.name | RESIST FIRE | RESIST FIRE | ✅ |  |
+| skill.100.damage | — | — | ✅ |  |
+| skill.100.attackRating | — | — | ✅ |  |
+| skill.102.level | 1/1 | 1/1 | ✅ |  |
+| skill.102.name | HOLY FIRE | HOLY FIRE | ✅ |  |
+| skill.102.damage | 1-3 | 1-3 | ✅ |  |
+| skill.102.attackRating | — | — | ✅ |  |
+| skill.106.level | 5/5 | 5/5 | ✅ |  |
+| skill.106.name | ZEAL | ZEAL | ✅ |  |
+| skill.106.damage | 6-21 | 6-21 | ✅ |  |
+| skill.106.attackRating | 666 | 666 | ✅ |  |
+| skill.108.level | 1/1 | 1/1 | ✅ |  |
+| skill.108.name | BLESSED AIM | BLESSED AIM | ✅ |  |
+| skill.108.damage | — | — | ✅ |  |
+| skill.108.attackRating | — | — | ✅ |  |
+| skill.113.level | 10/10 | 10/10 | ✅ |  |
+| skill.113.name | CONCENTRATION | CONCENTRATION | ✅ |  |
+| skill.113.damage | — | — | ✅ |  |
+| skill.113.attackRating | — | — | ✅ |  |
+| skill.122.level | 5/5 | 5/5 | ✅ |  |
+| skill.122.name | FANATICISM | FANATICISM | ✅ |  |
+| skill.122.damage | — | — | ✅ |  |
+| skill.122.attackRating | — | — | ✅ |  |
+| skill.217.level | 1/1 | 1/1 | ✅ |  |
+| skill.218.level | 1/1 | 1/1 | ✅ |  |
+| skill.219.level | 1/1 | 1/1 | ✅ |  |
+| skill.220.level | 1/1 | 1/1 | ✅ |  |
+
+### Skill tree tooltips (first differing line per skill)
+
+18/18 tooltips identical; 174/174 lines match.
 

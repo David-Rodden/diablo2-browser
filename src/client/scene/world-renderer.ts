@@ -112,6 +112,7 @@ import {
   type MutableWallColumnTints,
 } from './lighting-presets.ts'
 import type { LightGrid } from '../../common/drlg/light-grid.ts'
+import { capGroundItemLabels, selectVfxSkipSet } from './vfx-budget.ts'
 
 export {
   computeAnimFrameIndex,
@@ -648,6 +649,10 @@ export interface SceneSourceRenderContext {
    * unlit right after the camera is set, before any wall or floor (#1537 / #1538).
    */
   readonly backdrop?: SceneBackdropPass | null | undefined
+  /** Graphics quality preset: max decorative VFX drawn per frame (`selectVfxSkipSet`); absent / `Infinity` = no cap. */
+  readonly vfxBudget?: number | undefined
+  /** Graphics quality preset: max ground item labels per frame (`capGroundItemLabels`); absent / `Infinity` = no cap. */
+  readonly groundLabelMax?: number | undefined
   readonly nowMs?: number | undefined
   readonly onFrameSnapshot?: ((snapshot: SceneFrameSnapshot) => void) | undefined
 }
@@ -2959,7 +2964,12 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
       const minEntityY = camY - vpH / 2 - 360
       const maxEntityY = camY + vpH / 2 + 360
 
+      // Graphics quality preset: decorative VFX over the budget are not drawn (presentation only).
+      const vfxSkip =
+        ctx.vfxBudget !== undefined ? selectVfxSkipSet(sortedEntities, ctx.vfxBudget, camX, camY) : null
+
       for (const entity of sortedEntities) {
+        if (vfxSkip !== null && vfxSkip.has(entity)) continue
         const isLocalPlayerUnit = entity.drawableKind === 'unit' && entity.isLocalPlayer === true
         const screenEntityY =
           entity.drawableKind === 'missile' || entity.drawableKind === 'unit'
@@ -3394,15 +3404,22 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
           isHovered: isUnitHovered,
         })
       }
+      // Graphics quality preset: cap the ground labels (hovered label always kept).
+      const cappedLabelInputs = capGroundItemLabels(
+        labelInputs,
+        ctx.groundLabelMax ?? Number.POSITIVE_INFINITY,
+        vpW / 2,
+        vpH / 2,
+      )
       hudManager.overheadSpeechBubbles = overheadBubbles
       hudManager.hoveredNpcLabel = hoveredNpcLabel
       hudManager.groundItemBeams = groundItemBeams
-      if (labelInputs.length === 0) {
+      if (cappedLabelInputs.length === 0) {
         hudManager.groundItemLabelBoxes = []
       } else {
-        const sigParts: string[] = new Array(labelInputs.length)
-        for (let i = 0; i < labelInputs.length; i += 1) {
-          const li = labelInputs[i]!
+        const sigParts: string[] = new Array(cappedLabelInputs.length)
+        for (let i = 0; i < cappedLabelInputs.length; i += 1) {
+          const li = cappedLabelInputs[i]!
           sigParts[i] = `${li.id}:${li.screenX},${li.screenY},${li.width}:${li.color}:${li.text}:${li.isHovered ? 1 : 0}`
         }
         const layoutSig = sigParts.join(';')
@@ -3415,7 +3432,7 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
         ) {
           hudManager.groundItemLabelBoxes = cachedLayout.boxes
         } else {
-          const boxes = layoutGroundItemLabels(labelInputs, vpW, vpH)
+          const boxes = layoutGroundItemLabels(cappedLabelInputs, vpW, vpH)
           HUD_LABEL_LAYOUT_CACHE.set(hudManager, { vpW, vpH, sig: layoutSig, boxes })
           hudManager.groundItemLabelBoxes = boxes
         }

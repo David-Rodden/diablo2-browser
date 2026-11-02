@@ -411,7 +411,7 @@ describe('M3: GameInstance 1.13c Monster, Mercenary & Summon AI Integration (F11
       game.drainEvents(playerId);
 
       let missileEvents: ReturnType<GameInstance['drainEvents']> = [];
-      for (let attempt = 0; attempt < 5 && game.getMonster(leBossId)!.hp === 500; attempt++) {
+      for (let attempt = 0; attempt < 5 && missileEvents.length === 0; attempt++) {
         game.enqueueCommand(playerId, {
           type: 'CastSkillOnTarget',
           skillId: 0,
@@ -421,7 +421,7 @@ describe('M3: GameInstance 1.13c Monster, Mercenary & Summon AI Integration (F11
         game.stepFrames(20);
         missileEvents = game
           .drainEvents(playerId)
-          .filter((e) => e.type === 'CreateMissile' && e.skillId === 195);
+          .filter((e) => e.type === 'CreateMissile' && e.missileClassId === 195 && e.skillId === 0);
       }
       expect(missileEvents.length).toBe(8);
     });

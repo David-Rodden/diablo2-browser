@@ -11,6 +11,8 @@
  * - `showWeaponDamageFormula`: displays weapon attack and spell calculation breakdown tooltips.
  * - `showAdvancedStatsButton`: displays the Advanced Character Stats button (`!`) on the Character Sheet.
  * - `showRuneNumbers`: appends the rune number (`(#1)`..`(#33)`) to rune hover tooltip titles.
+ * - `showItemStatRanges`: appends variable stat roll ranges (`[min-max]`) to Set, Unique, and Runeword
+ *   equipment hover tooltips.
  *
  * When disabled in the Plugin Menu, `PluginHost` automatically releases the capability claim
  * and reverts all settings to 100% authentic Diablo II v1.13c vanilla display (`false`).
@@ -37,8 +39,8 @@ export function createHudEnhancementsPlugin(): D2WebPlugin {
       en: 'HUD Display Enhancements',
     },
     description: {
-      zh: '非 1.13c 增强：在角色面板与技能树中以“基础+加成(x+y)”方式显示属性和技能点、鼠标悬停属性时显示单点属性增益提示、悬停伤害时显示计算公式、在人物属性界面提供更多属性面板按钮，并在符文悬停提示中显示符文编号 (#1~#33)。关闭插件后严格恢复 1.13c 原版显示。',
-      en: 'Non-1.13c enhancement: displays character attributes and skill points in base+bonus (x+y) format, shows per-point attribute gain tooltips on hover, shows damage calculation formulas, adds an Advanced Character Stats button on the Character Sheet, and appends rune numbers (#1~#33) to rune hover tooltips. Reverts to 1.13c vanilla display when disabled.',
+      zh: '非 1.13c 增强：在角色面板与技能树中以“基础+加成(x+y)”方式显示属性和技能点、鼠标悬停属性时显示单点属性增益提示、悬停伤害时显示计算公式、在人物属性界面提供更多属性面板按钮、在符文悬停提示中显示符文编号 (#1~#33)，并为套装/暗金/符文之语装备显示变量范围 [最小-最大]。关闭插件后严格恢复 1.13c 原版显示。',
+      en: 'Non-1.13c enhancement: displays character attributes and skill points in base+bonus (x+y) format, shows per-point attribute gain tooltips on hover, shows damage calculation formulas, adds an Advanced Character Stats button on the Character Sheet, appends rune numbers (#1~#33) to rune hover tooltips, and shows variable stat roll ranges [min-max] on Set, Unique, and Runeword gear. Reverts to 1.13c vanilla display when disabled.',
     },
     defaultEnabled: true,
     settings: [
@@ -96,6 +98,15 @@ export function createHudEnhancementsPlugin(): D2WebPlugin {
         },
         default: true,
       },
+      {
+        kind: 'boolean',
+        key: 'showItemStatRanges',
+        label: {
+          zh: '装备悬浮窗显示变量范围 [最小-最大]（套装/暗金/符文之语）',
+          en: 'Item Tooltip: Show Variable Stat Ranges [min-max] (Set/Unique/Runeword)',
+        },
+        default: true,
+      },
     ],
     activate(ctx: PluginContext): HudEnhancementsPluginInstance {
       const readSettingsConfig = (): HudEnhancementsConfig => ({
@@ -105,6 +116,7 @@ export function createHudEnhancementsPlugin(): D2WebPlugin {
         showWeaponDamageFormula: ctx.settings.get('showWeaponDamageFormula') === true,
         showAdvancedStatsButton: ctx.settings.get('showAdvancedStatsButton') === true,
         showRuneNumbers: ctx.settings.get('showRuneNumbers') === true,
+        showItemStatRanges: ctx.settings.get('showItemStatRanges') === true,
       })
 
       ctx.client.setHudEnhancements(readSettingsConfig())
@@ -128,6 +140,9 @@ export function createHudEnhancementsPlugin(): D2WebPlugin {
         if (ctx.settings.get('showRuneNumbers') !== clientCfg.showRuneNumbers) {
           ctx.settings.set('showRuneNumbers', clientCfg.showRuneNumbers)
         }
+        if (ctx.settings.get('showItemStatRanges') !== clientCfg.showItemStatRanges) {
+          ctx.settings.set('showItemStatRanges', clientCfg.showItemStatRanges)
+        }
         ctx.notifyStatusChanged()
       })
 
@@ -138,7 +153,8 @@ export function createHudEnhancementsPlugin(): D2WebPlugin {
           key === 'showStatGainTooltips' ||
           key === 'showWeaponDamageFormula' ||
           key === 'showAdvancedStatsButton' ||
-          key === 'showRuneNumbers'
+          key === 'showRuneNumbers' ||
+          key === 'showItemStatRanges'
         ) {
           ctx.client.setHudEnhancements(readSettingsConfig())
           ctx.notifyStatusChanged()
@@ -172,6 +188,10 @@ export function createHudEnhancementsPlugin(): D2WebPlugin {
         if (cfg.showRuneNumbers) {
           activeZh.push('符文编号')
           activeEn.push('Rune #')
+        }
+        if (cfg.showItemStatRanges) {
+          activeZh.push('变量范围')
+          activeEn.push('Stat Ranges')
         }
         if (activeZh.length === 0) {
           return {
@@ -211,6 +231,9 @@ export function createHudEnhancementsPlugin(): D2WebPlugin {
           }
           if (typeof patch.showRuneNumbers === 'boolean') {
             ctx.settings.set('showRuneNumbers', patch.showRuneNumbers)
+          }
+          if (typeof patch.showItemStatRanges === 'boolean') {
+            ctx.settings.set('showItemStatRanges', patch.showItemStatRanges)
           }
         },
         getStatus,

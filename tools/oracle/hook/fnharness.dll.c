@@ -127,8 +127,8 @@ static int sc(uintptr_t fn, int n, const uint32_t *args, uint32_t *out) {
 #define VA_ELMIN 0x6FDA0460    /* #10121 (unit, skill, lvl, bMastery) -> 256ths */
 #define VA_ELMAX 0x6FDA0360    /* #11091 (unit, skill, lvl, bMastery) -> 256ths */
 #define VA_ELEN 0x6FD9E900     /* #10510 (unit, skill, lvl, 0) -> frames */
-#define VA_PHMIN 0x6FDA1FF0    /* #10297 (unit, skill, lvl, bStrBonus) -> 256ths */
-#define VA_PHMAX 0x6FDA2100    /* #10567 (unit, skill, lvl, bStrBonus) -> 256ths */
+#define VA_PHMIN 0x6FDA1FF0    /* #10297 SKILLS_GetMaxPhysDamage (unit, skill, lvl, bStrBonus) -> 256ths */
+#define VA_PHMAX 0x6FDA2100    /* #10567 SKILLS_GetMinPhysDamage (unit, skill, lvl, bStrBonus) -> 256ths */
 #define VA_TOHIT 0x6FD9EA50    /* #10653 (unit, skill, lvl) */
 #define VA_RAWMANA 0x6FD9EA00  /* #10090 (skill, lvl) -> 256ths, no lvl guard */
 #define VA_ADDSKILL 0x6FDA2660 /* #10008 SKILLS_AddSkill (unit, skill) -> pSkill */

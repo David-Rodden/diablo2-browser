@@ -61,6 +61,7 @@ import {
   resolveMonsterUModIds,
 } from '../../common/units/monster-death-fx.ts'
 import { MONSTER_HCIDX_SIZEX } from '../../common/units/monster-mapping.ts'
+import { MONSTATS_113C_ROWS } from '../../common/units/monstats-113c-data.ts'
 import { isTownNpcHcIdx } from '../../common/units/npc-table.ts'
 import { CANONICAL_113C_OBJECTS, getNpcPlaceholderHcIdx } from '../../common/world/objects-meta.ts'
 import { getObjectsTxtRecord113c } from '../../common/world/objects-txt-113c.ts'
@@ -105,6 +106,8 @@ import { stateOffSoundRequest113c, stateOnSoundRequest113c } from './state-on-so
 import { statePrgSoundStartRequest113c, statePrgSoundStopRequest113c } from './state-prgsound-113c.ts'
 import { isMonsterUndead113c, SANCTUARY_AURA_113C } from './world-missile-stepper.ts'
 import { addLocalSystemMessageImpl } from './world-chat-social.ts'
+import { DEFAULT_SKILLS_113C } from '../../common/units/default-skills-113c.ts'
+import type { CharacterClassCode } from '../../common/units/classes.ts'
 import { ensureBladeShieldAttachment113c } from './world-skill-missiles.ts'
 import {
   ALL_PALADIN_AURA_STATES,
@@ -229,17 +232,46 @@ export function noteOutgoingCommandImpl(
     this._notedCommands.add(cmd)
   }
   const cur = this._npcInteraction
+  const worldHasUnits = this.selfId !== 0 || this.areaId !== 0 || this._units.size > 0
   switch (cmd.type) {
     case 'NpcInit': {
       this._pendingMeleeAttack = null
       this._awaitingArtisanConfirmNpcId = null
+      const targetUnitType = cmd.target.unitType ?? (cmd.target as any).kind ?? 'monster'
+      const resolvedUnitType: 1 | 2 =
+        targetUnitType === 'object' || targetUnitType === 2 ? 2 : 1
+      const targetUnit =
+        resolvedUnitType === 2
+          ? this.getUnit('object', cmd.target.id)
+          : (this.getUnit(targetUnitType, cmd.target.id) ?? this.getUnit('monster', cmd.target.id))
+      // D2Client.dll 0x6FAFBA20..0x6FAFBAC1 (D2CLIENT_InitNPCInteract): if pNpcUnit is NULL in the
+      // active client unit table (unloaded via S2C 0x0A / 0x08 RoomHide), call D2CLIENT_CloseNPCInteract
+      // (0x6FAF92F0) instead of arming g_bIsInteractingWithNPC (0x6FBC9721) on a missing unit (#2009).
+      if (worldHasUnits && !targetUnit) {
+        if (cur.npcId !== null) {
+          this.npcMotion.setNpcInteractionLock(cur.npcId, false)
+        }
+        this._containers.clearShop()
+        this._pendingWantsInteractUnitIds.delete(cmd.target.id)
+        this._npcInteraction = {
+          ...cur,
+          npcId: null,
+          infoNpcId: null,
+          unitType: undefined,
+          window: 'none',
+          activeWindow: 'none',
+          npcInfoRaw: undefined,
+          npcTalkRaw: undefined,
+          messages: undefined,
+          allMessages: undefined,
+          hadWantsInteract: undefined,
+        }
+        break
+      }
       if (cur.npcId !== null && cur.npcId !== cmd.target.id) {
         this.npcMotion.setNpcInteractionLock(cur.npcId, false)
       }
       this.npcMotion.setNpcInteractionLock(cmd.target.id, true)
-      const targetUnitType = cmd.target.unitType ?? (cmd.target as any).kind ?? 'monster'
-      const resolvedUnitType: 1 | 2 =
-        targetUnitType === 'object' || targetUnitType === 2 ? 2 : 1
       const perNpcInfo = this._npcInfoByUnitId.get(cmd.target.id)
       const sameNpcInfo = cur.infoNpcId === cmd.target.id || cur.npcId === cmd.target.id
       const preserveArtisanWindow =
@@ -259,14 +291,13 @@ export function noteOutgoingCommandImpl(
         messages: perNpcInfo?.messages ?? (sameNpcInfo ? cur.messages : undefined),
         allMessages: perNpcInfo?.allMessages ?? (sameNpcInfo ? cur.allMessages : undefined),
         hadWantsInteract:
-          this.getUnit(cmd.target.unitType ?? 'monster', cmd.target.id)?.wantsInteract === true ||
+          targetUnit?.wantsInteract === true ||
           this.getUnit('monster', cmd.target.id)?.wantsInteract === true ||
           this._pendingWantsInteractUnitIds.has(cmd.target.id)
             ? true
             : undefined,
       }
       this._pendingWantsInteractUnitIds.delete(cmd.target.id)
-      const targetUnit = this.getUnit(targetUnitType, cmd.target.id) ?? this.getUnit('monster', cmd.target.id)
       if (targetUnit) {
         targetUnit.wantsInteract = false
       }
@@ -325,6 +356,27 @@ export function noteOutgoingCommandImpl(
       const win = cmd.type === 'NpcOpenTrade' ? 'trade' : 'gamble'
       this._containers.clearShop()
       this._pendingGambleBuyCount = 0
+      // D2Client.dll 0x6FAF8C80 (D2CLIENT_OpenNPCStore -> 0x6FAF6150 D2CLIENT_GetCurrentInteractingNPC):
+      // when the NPC monster unit is absent from the active client unit table, abort opening the store (#2009).
+      if (worldHasUnits && !this.getUnit('monster', cmd.npcId)) {
+        if (cur.npcId !== null) {
+          this.npcMotion.setNpcInteractionLock(cur.npcId, false)
+        }
+        this._npcInteraction = {
+          ...cur,
+          npcId: null,
+          infoNpcId: null,
+          unitType: undefined,
+          window: 'none',
+          activeWindow: 'none',
+          npcInfoRaw: undefined,
+          npcTalkRaw: undefined,
+          messages: undefined,
+          allMessages: undefined,
+          hadWantsInteract: undefined,
+        }
+        break
+      }
       this._npcInteraction = {
         ...cur,
         npcId: cmd.npcId,
@@ -371,15 +423,38 @@ export function noteOutgoingCommandImpl(
         if (isCharsi || curWin === 'add_sockets' || curWin === 'personalize' || curWin === 'orifice') {
           this._npcInteraction = { ...cur, window: 'none', activeWindow: 'none' }
         }
-      } else if (cmd.action === 1) {
-        this._containers.clearShop()
-        this._npcInteraction = { ...cur, npcId: cmd.npcId, window: 'trade', activeWindow: 'trade' }
-      } else if (cmd.action === 2) {
-        this._containers.clearShop()
-        this._pendingGambleBuyCount = 0
-        this._npcInteraction = { ...cur, npcId: cmd.npcId, window: 'gamble', activeWindow: 'gamble' }
-      } else if (cmd.action === 3) {
-        this._npcInteraction = { ...cur, npcId: cmd.npcId, window: 'none', activeWindow: 'hire' }
+      } else if (cmd.action === 1 || cmd.action === 2 || cmd.action === 3) {
+        if (worldHasUnits && !this.getUnit('monster', cmd.npcId)) {
+          if (cur.npcId !== null) {
+            this.npcMotion.setNpcInteractionLock(cur.npcId, false)
+          }
+          this._containers.clearShop()
+          this._pendingGambleBuyCount = 0
+          this._npcInteraction = {
+            ...cur,
+            npcId: null,
+            infoNpcId: null,
+            unitType: undefined,
+            window: 'none',
+            activeWindow: 'none',
+            npcInfoRaw: undefined,
+            npcTalkRaw: undefined,
+            messages: undefined,
+            allMessages: undefined,
+            hadWantsInteract: undefined,
+          }
+          break
+        }
+        if (cmd.action === 1) {
+          this._containers.clearShop()
+          this._npcInteraction = { ...cur, npcId: cmd.npcId, window: 'trade', activeWindow: 'trade' }
+        } else if (cmd.action === 2) {
+          this._containers.clearShop()
+          this._pendingGambleBuyCount = 0
+          this._npcInteraction = { ...cur, npcId: cmd.npcId, window: 'gamble', activeWindow: 'gamble' }
+        } else {
+          this._npcInteraction = { ...cur, npcId: cmd.npcId, window: 'none', activeWindow: 'hire' }
+        }
       }
       break
     case 'PlayNpcMessage': {
@@ -1372,6 +1447,21 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         }
       }
       this.seedUnitFromActiveRoom(unit, existed)
+      // D2Client.dll 0x6FAFD160 (MONSTER_InitClientStats, called from 0x6FB57780 S2C 0xAC monster creation):
+      // STATLIST_SetUnitStat(pMonster, STAT_LEVEL = 12, pMonStatsTxt->nLevel[nDifficulty], 0).
+      if (!existed && unit.unitType === 'monster') {
+        const monRow = MONSTATS_113C_ROWS[unit.classId]
+        if (monRow) {
+          const diffIdx = Math.max(0, Math.min(2, this.difficulty | 0)) as 0 | 1 | 2
+          const baseMlvl = monRow.level[diffIdx] ?? 0
+          if (baseMlvl > 0) {
+            unit.stats.set(12, baseMlvl)
+          }
+        }
+      }
+      if (typeof unitPayload.level === 'number' && Number.isFinite(unitPayload.level) && unitPayload.level > 0) {
+        unit.stats.set(12, Math.trunc(unitPayload.level))
+      }
       // S2C 0xAC trailing stat list (D2Client.dll 0x6fb5e73c..0x6fb5e85a): each Send-Other stat is added to the
       // new monster's stat list (#10930 / #10442 / #10188), e.g. velocitypercent / attackrate / alignment / fade.
       // Anim-rate stats (67/68/69/93/96/99/102/105) are summed onto the base list by the motion layer
@@ -1667,6 +1757,12 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         }
         if (unit.classId >= 0 && unit.classId <= 6) {
           this._self.charClass = unit.classId as CharClassId
+          // D2Client 0x6FAC91E0 -> D2Common #10506: the new player unit gets Attack + CharStats Skill 1..10.
+          if (this._self.defaultSkills.size === 0) {
+            const codes: readonly CharacterClassCode[] = ['ama', 'sor', 'nec', 'pal', 'bar', 'dru', 'ass']
+            const code = codes[unit.classId]!
+            for (const id of DEFAULT_SKILLS_113C[code]) this._self.defaultSkills.set(id, 1)
+          }
         }
         if (unit.x !== 0 || unit.y !== 0) {
           this._self.x = unit.x

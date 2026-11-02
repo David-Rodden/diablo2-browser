@@ -11,7 +11,7 @@ import type { CharacterClassCode } from '../../../common/units/classes.ts'
 import type { HirelingCandidateDesc } from '../../../common/units/hireling-table.ts'
 import type { MonsterModeMissiles113c, MonsterRank } from '../../../common/units/monsters-data.ts'
 import type { MonsterElementalAttack, MonsterSkillEntry } from '../../../common/units/unit-types.ts'
-import type { CharClassId, ClientCommand, ItemData, LocalAreaBootstrap, LocalAreaBootstrapResolver, LocalAreaRoomReveal, UnitType } from '../../../netproto/index.ts'
+import type { CharClassId, ClientCommand, ItemData, LocalAreaBootstrap, LocalAreaBootstrapResolver, LocalAreaPresetMonster, LocalAreaRoomReveal, UnitType } from '../../../netproto/index.ts'
 import type { LevelPopulationPlan113c, PopulationRoomRect } from '../../ai/room-streamer.ts'
 import type { SummonedPetUnit } from '../../ai/summon-manager.ts'
 import type { ResolvedMonsterMonProps113c } from '../../ai/monprop-113c.ts'
@@ -118,6 +118,12 @@ export interface ConnectPlayerSpec {
   readonly isHardcore?: boolean | undefined
   readonly statusFlags?: number | undefined
   readonly questFlags?: Uint16Array | undefined
+  /**
+   * Starting items of a character created without a full `.d2s`: `'charstats'` gives the 1.13c
+   * `CharStats.txt` `item1..item10` kit (a new character entering its first game); the default is the
+   * legacy 4-potion kit.
+   */
+  readonly startingItems?: 'charstats' | undefined
 }
 
 
@@ -219,6 +225,10 @@ export interface SpawnMonsterSpec {
   readonly despawnAtFrame?: number | undefined
   /** Summoned/hatched/revived monster flag preventing duplicate XP or item drops (`#1891`, `#1892`, `#1894`). */
   readonly alreadyGrantedKillRewards?: boolean | undefined
+  /** `MonStats.txt` `Align` (`0` = Evil, `1` = Good/Friendly, `2` = Neutral, `#2005`). */
+  readonly align?: 0 | 1 | 2 | undefined
+  /** DS1 `pMapAI` town NPC waypoint path (`AI_FollowDs1NpcPath` `0x6FC3BBC0`). */
+  readonly mapAi?: LocalAreaPresetMonster['mapAi']
 }
 
 
@@ -299,6 +309,11 @@ export interface SpawnObjectSpec {
   readonly rollTrap?: boolean | undefined
   /** If true, rolls `rollPreOperateOpen113c` (`1/14` -> `mode = 2`) when `mode` is omitted (#1918). */
   readonly rollPreOperate?: boolean | undefined
+  /**
+   * DRLG room presets: the unit seed is drawn when the room is activated (`activatePresetRoomsNearPlayer113c`),
+   * not at allocation, so the game-seed draw order follows 1.13c room activation.
+   */
+  readonly deferUnitSeed?: boolean | undefined
   /** Paired permanent red portal (`classId = 60`) `unitId` in the destination area (`D2Game.dll` `0x6FCC24C0`, #1841). */
   readonly linkedPortalId?: number | undefined
 }
@@ -765,6 +780,8 @@ export interface InternalMonsterRecord {
   readonly skills: readonly MonsterSkillEntry[]
   /** Frames until the next `Skill1..8` cast; set from `Skills.txt` delay / AI delay. */
   skillCooldown: number
+  /** 1.13c `AITHINK_Fn028_Vampire` (`0x6FCA6954` / `0x6FCA6EC3`, #2007): AI-think-tick lockout (`11` ticks) on `#170` / `#171` upgrade spells. */
+  vampireUpgradeCooldownTicks: number
   /** Round-robin cursor over the monster's projectile skill slots. */
   skillCursor: number
   /** Player who last damaged this monster (1.13c threat / retaliate target). */
@@ -784,6 +801,8 @@ export interface InternalMonsterRecord {
     | undefined
   /** MonUMod 26 Teleportation cooldown. */
   teleportCooldownUntilFrame: number
+  /** 1.13c `MonUMod #17` (`lightning`) last bolt proc frame (`pMonsterData->dwLastLeFrame`, `0x6FC4634D`, #1995). */
+  lastLightningBoltFrame?: number | undefined
   /** Fire Enchanted corpse explosion resolved a few frames after death. */
   pendingDeathExplosion:
     | {
@@ -991,6 +1010,16 @@ export interface InternalMonsterRecord {
   mountedOnUnitId: number | undefined
   /** `MaggotEgg` (`#159`) scheduled hatch frame (`0` = not an egg, `#1892`). */
   hatchAtFrame: number
+  /** `MonStats.txt` `Align` (`0` = Evil, `1` = Good/Friendly, `2` = Neutral, `#2005`). */
+  align: 0 | 1 | 2
+  /** `#97 Spirit` (`0x6FC360B0`, `hcIdx 401 mephistospirit`) `dwAiFlags3` one-shot melee latch (`#2005`). */
+  spiritAttackedOnce: boolean
+  /** `#99 TrappedSoul` (`0x6FCC5580`, `hcIdx 403..404`) `dwAiState` (`0` = resting, `1` = awake fidget, `#2005`). */
+  trappedSoulState: number
+  /** DS1 `pMapAI` town NPC waypoint path (`AI_FollowDs1NpcPath` `0x6FC3BBC0`). */
+  mapAi?: LocalAreaPresetMonster['mapAi']
+  /** Whether 1.13c Town NPC AI (`AI_Npc` `0x6FC3DB40`) is active on this monster. */
+  townNpcAiEnabled?: boolean | undefined
 }
 
 
@@ -1085,6 +1114,17 @@ export interface LoadedAreaRecord {
   readonly adjacentAreaIds: readonly number[]
   readonly isWalkable: LocalAreaBootstrap['isWalkable']
   readonly findActSpawnLocation?: LocalAreaBootstrap['findActSpawnLocation']
+  readonly originX?: number | undefined
+  readonly originY?: number | undefined
+  readonly subWidth?: number | undefined
+  readonly subHeight?: number | undefined
+  readonly collision?: Uint16Array | undefined
+  /** DS1 `Objects.txt` `InitFn` NPC/boss spawner anchor coordinates recorded during `loadArea` (#2000). */
+  readonly initFnAnchors?: ReadonlyArray<{
+    readonly classId: number
+    readonly x: number
+    readonly y: number
+  }>
 }
 
 
@@ -1122,6 +1162,8 @@ export interface InternalMissileRecord {
   vy: number
   damage: number
   remainingFrames: number
+  /** Elapsed movement ticks since creation (`MISSMODE_MoveMissile` `0x6FC5F413` `Activate` gate, #1997). */
+  ticksElapsed?: number | undefined
   /** `Missiles.txt` `CollideType` (0 = ignore terrain, 8 = floor-hugging, 1/3/6 = flying). */
   collideType: number
   /** `Missiles.txt` `Size` — collision radius contribution. */
@@ -1194,6 +1236,10 @@ export interface PlayerSkillMissileLaunchOptions113c {
   readonly groundFire256?: { readonly min: number; readonly max: number } | undefined
   /** Assassin Blade skill (`#266` / `#257`) weapon-carrier physical missile (#1884). */
   readonly bladeWeaponHit?: boolean | undefined
+  /** Additive missile velocity delta (`sub_6FCC2800` flag `0x04` -> `#130 Howl` `calc1`). */
+  readonly velDelta?: number | undefined
+  /** Unconditional pass-through pierce (`sub_6FCC2800` sets `Pierce = 1` without 4-pierce cap). */
+  readonly forcePierce?: boolean | undefined
 }
 
 
@@ -1273,4 +1319,15 @@ export interface FriendlyAuraAlliesResult113c {
   }[]
   readonly allAllies: CombatUnitContext[]
 }
+
+/** DRLG presets of one room not yet activated (`activatePresetRoomsNearPlayer113c`). */
+export interface PendingRoomPresets113c {
+  /** Preset object unit ids (or hidden server-only marker unit ids) whose unit seed is drawn on activation, in preset order. */
+  readonly objectIds: number[]
+  /** Preset monsters spawned on activation, in preset order. */
+  readonly monsters: LocalAreaPresetMonster[]
+  /** Warp tile unit ids (already spawned) whose unit seed is drawn on activation. */
+  readonly tileIds: number[]
+}
+
 

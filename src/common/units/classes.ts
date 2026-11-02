@@ -471,3 +471,67 @@ export function resolvePlayerCharToken(classOrToken: string): string {
   return CLASS_CODE_TO_CHAR_TOKEN[key] ?? 'so'
 }
 
+/** One `CharStats.txt` starting item column (`itemN`, `itemNloc`, `itemNcount`). */
+export interface CharStatsStartingItem113c {
+  readonly code: string
+  /** `itemNloc` body location token (`rarm`, `larm`), or `''` when the item goes to the belt / inventory. */
+  readonly loc: '' | 'rarm' | 'larm'
+  readonly count: number
+}
+
+/**
+ * 1.13c `CharStats.txt` `item1..item10` / `itemNloc` / `itemNcount` (`d2data.mpq` + `Patch_D2.mpq`), in column
+ * order. A new character receives these items in this order (oracle: unit ids 1..8 of the level-1
+ * Barbarian are `hax`, `buc`, `hp1` x4, `tsc`, `isc`).
+ */
+export const CHARSTATS_STARTING_ITEMS_113C: Readonly<Record<CharacterClassCode, readonly CharStatsStartingItem113c[]>> = {
+  ama: [{ code: 'jav', loc: 'rarm', count: 1 }, { code: 'buc', loc: 'larm', count: 1 }, { code: 'hp1', loc: '', count: 4 }, { code: 'tsc', loc: '', count: 1 }, { code: 'isc', loc: '', count: 1 }],
+  sor: [{ code: 'sst', loc: 'rarm', count: 1 }, { code: 'hp1', loc: '', count: 4 }, { code: 'tsc', loc: '', count: 1 }, { code: 'isc', loc: '', count: 1 }],
+  nec: [{ code: 'wnd', loc: 'rarm', count: 1 }, { code: 'hp1', loc: '', count: 4 }, { code: 'tsc', loc: '', count: 1 }, { code: 'isc', loc: '', count: 1 }],
+  pal: [{ code: 'ssd', loc: 'rarm', count: 1 }, { code: 'buc', loc: 'larm', count: 1 }, { code: 'hp1', loc: '', count: 4 }, { code: 'tsc', loc: '', count: 1 }, { code: 'isc', loc: '', count: 1 }],
+  bar: [{ code: 'hax', loc: 'rarm', count: 1 }, { code: 'buc', loc: 'larm', count: 1 }, { code: 'hp1', loc: '', count: 4 }, { code: 'tsc', loc: '', count: 1 }, { code: 'isc', loc: '', count: 1 }],
+  dru: [{ code: 'clb', loc: 'rarm', count: 1 }, { code: 'buc', loc: 'larm', count: 1 }, { code: 'hp1', loc: '', count: 4 }, { code: 'tsc', loc: '', count: 1 }, { code: 'isc', loc: '', count: 1 }],
+  ass: [{ code: 'ktr', loc: 'rarm', count: 1 }, { code: 'buc', loc: 'larm', count: 1 }, { code: 'hp1', loc: '', count: 4 }, { code: 'tsc', loc: '', count: 1 }, { code: 'isc', loc: '', count: 1 }],
+}
+
+/**
+ * Raw 1.13c `D2Common #10621` (`UNITS_GetAttackRate` @ `0x6FD81EA0`):
+ * `5 * dex + tohit - 35 + (0 <= classId < 7 ? CharStats[classId].ToHitFactor : 0)` with 32-bit wrap.
+ */
+export function computeRawAttackRating113c(classId: number, dex: number, tohit: number): number {
+  const eax = dex | 0
+  const esi = tohit | 0
+  const edx = (Math.imul(eax, 5) + esi - 35) | 0
+  const cls = classId | 0
+  if (cls < 0 || cls >= CHARACTER_CLASS_CODES.length) return edx
+  const cs = CANONICAL_CHARSTATS[CHARACTER_CLASS_CODES[cls]!]
+  return (edx + cs.toHitFactor) | 0
+}
+
+/**
+ * Raw 1.13c `D2Game.dll` `0x6FD0AD10` (Vitality) / `0x6FD0AE20` (Energy) stat allocation delta in 256ths:
+ * `imul(CharStats_QuarterFactor, points) << 6` for any signed `points` (including negative respec deltas).
+ * When `before256` is supplied, applies `#10973` `ItemStatCost.txt` `MinAccr` (`256` for `maxhp`, `0` for `maxmana`/`maxstamina`).
+ */
+export function computeRawStatAllocDelta256_113c(
+  classId: number,
+  points: number,
+  which: 'life' | 'stamina' | 'mana',
+  before256?: number,
+): number {
+  const cls = classId | 0
+  const code = CHARACTER_CLASS_CODES[cls] ?? 'ama'
+  const cs = CANONICAL_CHARSTATS[code]
+  const quarterFactor =
+    which === 'life'
+      ? Math.round(cs.perStatPoint.lifePerVitality * 4)
+      : which === 'stamina'
+        ? Math.round(cs.perStatPoint.staminaPerVitality * 4)
+        : Math.round(cs.perStatPoint.manaPerEnergy * 4)
+  const delta = (Math.imul(quarterFactor, points | 0) << 6) | 0
+  if (before256 === undefined) return delta
+  const minAccr256 = which === 'life' ? 256 : 0
+  const after256 = Math.max(minAccr256, (before256 + delta) | 0)
+  return (after256 - before256) | 0
+}
+

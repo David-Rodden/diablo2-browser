@@ -31,7 +31,18 @@ to `(pOwner->dwUnitType, pOwner->dwUnitId)` so the missile cannot collide with i
 1. `D2Common.#10229` (`PATH_StepMissile`, `0x6FD80F80` -> `0x6FD5D420` -> `0x6FD5D580` / `0x6FD8E110`):
    - Halves the per-tick displacement `(dx, dy)` (`sar 1`) until both `|stepX| < 0x10000` (`1` subtile in 16.16 fixed point) and `|stepY| < 0x10000`.
    - Advances step-by-step across subtiles, testing `D2Common.#10134` (`COLLISION_CheckMaskWithSize`, `0x6FD9CE00`) with the missile's `dwCollisionMask` (`D2Common.#10211`) and `MissilesTxt.nSize`.
-2. At `0x6FC5F3FB..0x6FC5F426`:
+2. At `0x6FC5F39C..0x6FC5F426`:
+   - Decrements `nRemainingFrames` via `D2Common.#10970` (`0x6FC5F3CA`), so after `k` movement ticks (`k >= 1`) `nRemainingFrames = nTotalFrames - k`.
+   - At `0x6FC5F403..0x6FC5F413` (**`Activate` Unit-Collision Arming Gate**, Issue #1997):
+     - In `MISSILE_CreateMissileFromParams` (`0x6FC8FCE8..0x6FC8FCF3`), the server reads `MissilesTxt.nActivate` (`+0x136`, byte; `"Activate"` in `D2Common.dll` `0x6FDCDCE4`) and stores `nActivateFrame = nTotalFrames - nActivate` at `pMissileData + 0x08` (`D2Common.#10837`).
+     - In `MISSMODE_MoveMissile`, compares `nRemainingFrames` (`D2Common.#10737`) against `nActivateFrame` (`D2Common.#10130`): `cmp eax, ebp; jg 0x6FC5F3D1`. Whenever `nRemainingFrames > nActivateFrame` (equivalently `ticksElapsed < nActivate` for `nActivate >= 2`), unit collision is skipped while movement and terrain collision remain active.
+     - All 6 `Missiles.txt` rows with `Activate >= 2` in 1.13c:
+       - `195` `lightunique` (`Activate = 3`, `Range = 98`) — Lightning Enchanted boss hit-burst bolts
+       - `215` `chargedstrikebolt` (`Activate = 3`, `Range = 98`) — Charged Strike radial bolts
+       - `225` `buglightning` (`Activate = 3`, `Range = 98`, capped to `0x4D = 77` frames by `MonUMod #20` helper `0x6FC61F50` at `0x6FC61F64..0x6FC61F77`) — Scarab Demon hit/death bolts
+       - `234` `fistoftheheavensbolt` (`Activate = 2`, `Range = 50`) — Fist of the Heavens radial Holy Bolts
+       - `502` `death mauler` (`Activate = 30`, `Range = 60`) — Act 5 Death Mauler burrowing tentacle
+       - `516` `rabiescontagion` (`Activate = 2`, `Range = 20`) — Rabies contagion
    - Reads `nCollideType` (`MissilesTxt + 0x185`). If `nCollideType <= 8` and `g_aMissileCollideTypes[nCollideType].pfnUnitCallback != NULL` (`0x6FD2D928 + nCollideType * 8`), invokes `pfnUnitCallback(pGame, pMissile, pRoom)`.
    - When `pfnUnitCallback == NULL` (`CollideType` `0`, `4`, `6`), unit collision is completely skipped; for `CollideType = 6`, any `PATH_StepMissile` collision return (`0x0004` terrain barrier) goes directly to `MISSMODE_SrvHitDispatch(pGame, pMissile, NULL)` (`0x6FC5EDE0` with `pTarget = NULL`).
 

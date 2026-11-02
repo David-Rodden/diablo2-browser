@@ -335,13 +335,13 @@ describe('Remote Player Locomotion & Anti-Rubberbanding Parity (Issue #1387)', (
     })
     expect(stateBeyond15.x).toBe(5016)
 
-    // Advance 400ms (5.4 sub-tiles -> 5021.4)
+    // Advance 400ms (5.625 sub-tiles -> 5021.625)
     interp.update(400)
     const beforeStop = interp.getEntityState(0, 2)!
-    expect(beforeStop.x).toBeCloseTo(5021.4, 4)
+    expect(beforeStop.x).toBeCloseTo(5021.625, 4)
 
-    // Server sends 0x0D PlayerStop at integer (5021, 5000) (0.4 sub-tiles behind visual position):
-    // Per D2Client.dll 0x6FADA460 (|dx| <= 1 && |dy| <= 1), player halts in place at 5021.4 without snapping backward or turning 180°!
+    // Server sends 0x0D PlayerStop at integer (5021, 5000) (0.625 sub-tiles behind visual position):
+    // Per D2Client.dll 0x6FADA460 (|dx| <= 1 && |dy| <= 1), player halts in place at 5021.625 without snapping backward or turning 180°!
     const stopped = interp.stopEntity({
       unitType: 0,
       unitId: 2,
@@ -349,7 +349,7 @@ describe('Remote Player Locomotion & Anti-Rubberbanding Parity (Issue #1387)', (
       y: 5000,
     })
     expect(stopped.moving).toBe(false)
-    expect(stopped.x).toBeCloseTo(5021.4, 4)
+    expect(stopped.x).toBeCloseTo(5021.625, 4)
     expect(stopped.dir64).toBe(56)
     expect(stopped.targetDir64).toBe(56)
   })

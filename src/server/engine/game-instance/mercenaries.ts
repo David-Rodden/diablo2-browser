@@ -285,6 +285,7 @@ function pulseMercenaryAuraRuntime113c(this: GameInstanceHost,
       !m.dead &&
       !m.isNpc &&
       m.isKillable &&
+      m.align === 0 &&
       !this.isMonsterConverted(m) &&
       m.areaId === merc.areaId &&
       inRange(m.x, m.y),
@@ -1011,6 +1012,7 @@ function stepMercenaryMissiles113c(this: GameInstanceHost): void {
               m.isNpc ||
               !m.isKillable ||
               m.submerged ||
+              m.align !== 0 ||
               this.isMonsterConverted(m) ||
               m.areaId !== msl.areaId
             ) {
@@ -1077,6 +1079,7 @@ function stepMercenaryMissiles113c(this: GameInstanceHost): void {
         m.isNpc ||
         !m.isKillable ||
         m.submerged ||
+        m.align !== 0 ||
         this.isMonsterConverted(m) ||
         !sameOrWildernessSeam ||
         msl.hitUnitIds.has(m.unitId)
@@ -1184,6 +1187,7 @@ function stepMercenaryMissiles113c(this: GameInstanceHost): void {
               other.isNpc ||
               !other.isKillable ||
               other.submerged ||
+              other.align !== 0 ||
               this.isMonsterConverted(other) ||
               other.areaId !== msl.areaId
             ) {
@@ -1244,6 +1248,7 @@ function stepMercenaryMissiles113c(this: GameInstanceHost): void {
               other.isNpc ||
               !other.isKillable ||
               other.submerged ||
+              other.align !== 0 ||
               this.isMonsterConverted(other) ||
               other.areaId !== msl.areaId
             ) {
@@ -1322,23 +1327,54 @@ function stepMercenaries(this: GameInstanceHost): void {
     const owner = this.players.get(merc.ownerPlayerId)
     if (!owner || owner.dead) continue
 
-    // 1.13c `MERCS_SetStats` (`D2Game.dll` `0x6FC68EE6..0x6FC68F0D`, #1671):
+    // 1.13c `MERCS_SetStats` (`D2Game.dll` `0x6FC68EE6..0x6FC68F0D`, #1671) & `MONSTER_Regen` (`0x6FC96740`, #1989):
     // Mercenaries have natural `stat 74 hpregen = maxhp_256 / 2000` (`>= 0`, `~1000` frames = 40s full heal),
-    // plus any equipped `item_replenish_life` (`stat 74`), ticked each 25 Hz frame via 1/256 fixed-point carry.
-    if (merc.hp < merc.maxHp) {
-      const baseRegen256 = Math.max(0, Math.floor((merc.maxHp * FIXED_ONE) / 2000))
-      const itemRegen256 = Math.trunc(this.sumMercItemStat(merc, 74))
-      const totalRegen256 = baseRegen256 + itemRegen256
-      if (totalRegen256 > 0) {
-        merc.regenCarry256 = (merc.regenCarry256 ?? 0) + totalRegen256
-        if (merc.regenCarry256 >= FIXED_ONE) {
-          const healWhole = Math.floor(merc.regenCarry256 / FIXED_ONE)
-          merc.regenCarry256 -= healWhole * FIXED_ONE
-          const nextHp = Math.min(merc.maxHp, merc.hp + healWhole)
-          if (nextHp !== merc.hp) {
-            merc.hp = nextHp
-            this.broadcastAllyHp(merc.areaId, merc.unitId, merc.hp)
+    // suppressed while `STATE_POISON` (`2`) is active (`0x6FC9675B..0x6FC9676E`), plus equipped `item_replenish_life`
+    // (`stat 74`) and active `StateBus` `hpregen` (Prayer `+`, Poison `-poisonBitrate256`).
+    const mercCtx = this.mercCombat.get(merc.unitId)
+    const hasPoisonUnitState = merc.states?.has(2) ?? false
+    if (
+      mercCtx !== undefined &&
+      !hasPoisonUnitState &&
+      (mercCtx.stateBus.hasState(2) || mercCtx.stateBus.hasState('poison'))
+    ) {
+      mercCtx.stateBus.removeState(2)
+      mercCtx.stateBus.removeState('poison')
+    }
+    const isMercPoisoned =
+      hasPoisonUnitState ||
+      (mercCtx !== undefined && (mercCtx.stateBus.hasState(2) || mercCtx.stateBus.hasState('poison')))
+    const baseRegen256 = isMercPoisoned ? 0 : Math.max(0, Math.floor((merc.maxHp * FIXED_ONE) / 2000))
+    const itemRegen256 = Math.trunc(this.sumMercItemStat(merc, 74))
+    const stateRegen256 = mercCtx ? Math.trunc(mercCtx.statList.getAccruedStat('hpregen')) : 0
+    const totalRegen256 = baseRegen256 + itemRegen256 + stateRegen256
+    if (totalRegen256 > 0 && merc.hp < merc.maxHp) {
+      merc.regenCarry256 = Math.max(0, merc.regenCarry256 ?? 0) + totalRegen256
+      if (merc.regenCarry256 >= FIXED_ONE) {
+        const healWhole = Math.floor(merc.regenCarry256 / FIXED_ONE)
+        merc.regenCarry256 -= healWhole * FIXED_ONE
+        const nextHp = Math.min(merc.maxHp, merc.hp + healWhole)
+        if (nextHp !== merc.hp) {
+          merc.hp = nextHp
+          this.broadcastAllyHp(merc.areaId, merc.unitId, merc.hp)
+        }
+      }
+    } else if (totalRegen256 < 0 && merc.hp > 0) {
+      merc.regenCarry256 = Math.min(0, merc.regenCarry256 ?? 0) + totalRegen256
+      if (merc.regenCarry256 <= -FIXED_ONE) {
+        const drainWhole = Math.floor(-merc.regenCarry256 / FIXED_ONE)
+        merc.regenCarry256 += drainWhole * FIXED_ONE
+        if (TOWN_AREAS.has(merc.areaId)) {
+          // 1.13c `MONSTER_Regen` (`0x6FC967EC..0x6FC9680F`): in town, negative `hpregen` clamps at `1 HP`.
+          if (merc.hp > 1) {
+            const clampedDrain = Math.min(drainWhole, merc.hp - 1)
+            if (clampedDrain > 0) {
+              this.applyDamageToMerc(merc, clampedDrain, merc.areaId)
+            }
           }
+        } else {
+          this.applyDamageToMerc(merc, drainWhole, merc.areaId)
+          if (!merc.alive) continue
         }
       }
     } else {
@@ -1463,6 +1499,7 @@ function stepMercenaries(this: GameInstanceHost): void {
         !m.isKillable ||
         m.submerged ||
         m.petIgnore ||
+        m.align !== 0 ||
         this.isMonsterConverted(m) ||
         !sameOrWildernessSeam
       ) {

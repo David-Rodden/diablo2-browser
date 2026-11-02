@@ -57,7 +57,7 @@ cp "$R/usr/x86_64-w64-mingw32/lib/zlib1.dll" "$WINEPREFIX/drive_c/windows/system
 mkdir -p "$WINEPREFIX/drive_c/D2"
 for f in "$D2"/*; do
   case "$(basename "$f")" in
-    *.mpq|*.MPQ) ln -sf "$f" "$WINEPREFIX/drive_c/D2/" ;;
+    *.mpq|*.MPQ) ln -sf "$(realpath "$f")" "$WINEPREFIX/drive_c/D2/" ;;
     *) cp -r "$f" "$WINEPREFIX/drive_c/D2/" ;;
   esac
 done

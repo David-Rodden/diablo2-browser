@@ -232,11 +232,13 @@ describe('#1339 / #1433 level-difference experience & 0x6FCFC030 pipeline', () =
 
     // 2. Single-call input > 0x7FFFFF (9,000,000 -> clamped to 8,388,607)
     expect(MAX_SINGLE_EXP_GAIN_113C).toBe(0x7fffff)
-    expect(calculateKillExperienceGain113c(9_000_000, 20, 20, 0)).toBe(8_388_607)
+    // 0x7FFFFF clamp, then ExpRatio (D2Game 0x6FCFA9E0): exp > 0x7FFFFFFF >> 11 takes `(exp >> 10) * 1024`,
+    // dropping the low 10 bits (verified by the function oracle, docs/oracle/P5-formula-sweep.md).
+    expect(calculateKillExperienceGain113c(9_000_000, 20, 20, 0)).toBe(8_387_584)
     player.items.length = 0
     player.experience = 0
     internal(game).grantExperience(player, 9_000_000, 20)
-    expect(player.experience).toBe(8_388_607)
+    expect(player.experience).toBe(8_387_584)
 
     // 3. Non-positive input returns 1 (when clvl < 99)
     expect(calculateKillExperienceGain113c(0, 20, 20, 0)).toBe(1)

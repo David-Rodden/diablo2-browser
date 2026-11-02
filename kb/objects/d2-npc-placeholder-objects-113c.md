@@ -1,65 +1,40 @@
-# Diablo II 1.13c NPC Static Map Placeholder Objects & Dynamic Entity Reconciliation
+# Diablo II 1.13c `Objects.txt` `InitFn` Dynamic NPC & Boss Spawners (`gpObjectInitFnTable`)
 
 ## 1. Overview & Architectural Problem
 
-In Diablo II v1.13c, certain key town NPCs exist in two distinct formats within the game data:
-1. **Dynamic Town Monster/NPC Entities**:
-   Configured in `MonPreset.txt` and `MonStats.txt` (with `inTown = 1`, `interact = 1`). These are full game units spawned dynamically by the game server (`D2Game.dll`) and sent to the client via `0xAC AssignNPC` (or `0x0C`). They support interactive dialogue trees, quests, merchant menus, and walking/idle animations.
-2. **Static DS1 Map Object Presets**:
-   Configured in `Objects.txt` with dummy token `Token = ss` (Static Sprite) and specialized initialization functions (`InitFn = 18` or `InitFn = 19`). In map DS1 files, these are stamped as preset objects (`UNIT_OBJECT = 2`) with `:m` flags (`baseIsMonsters = true`).
+In Diablo II v1.13c, several town NPCs and the Act 5 Halls of Vaught SuperUnique boss **Nihlathak (`SU 60`, `hcIdx 526`)** are NOT placed in `MonPreset.txt`. Instead, map DS1 files stamp `Objects.txt` marker objects (`Token = ss` or `:m` lookup entries in `object-lookup-data.ts`) whose server-side `InitFn` (`D2Game.dll` `gpObjectInitFnTable` @ `0x6fd2e050`) spawns or relocates the dynamic `UNIT_MONSTER` (`0xAC AssignNPC`) based on party quest state:
 
-When a client receives both the static object assignment (`0x51 AssignObject`) and the server's dynamic NPC assignment (`0xAC AssignNPC`), without explicit lifecycle mutual exclusion, both entities coexist in the client world at identical or adjacent locations. This results in **duplicate visual entities** (e.g. Issue #900: two Jerhyns in Lut Gholein, one clickable and one unclickable).
-
----
-
-## 2. D2 1.13c Ground Truth: Static Placeholders & Dynamic Pairs
-
-The following table records the canonical 1.13c pairing between `Objects.txt` static placeholders and `MonStats.txt` dynamic NPCs:
-
-| Act | NPC Name | Dynamic `hcIdx` | MonStats Token | Object ID | `InitFn` | DS1 ID | DS1 Lookup Entry | Role / Location |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Act 2** | Jerhyn (杰海因) | **201** | `JE` | **121** | 18 | 16 | `121:JE:NU:d1:m` | Palace entrance (early quests) |
-| **Act 2** | Jerhyn (杰海因) | **201** | `JE` | **122** | 19 | 17 | `122:JE:NU:d7:m` | Palace interior (Arcane Sanctuary quest) |
-| **Act 3** | Hratli (赫拉铁力) | **253** | `HR` | **378** | 18 | 109 | `378:HR:NU:d1:m` | Kurast Docks (dockside forge) |
-| **Act 3** | Hratli (赫拉铁力) | **253** | `HR` | **379** | 19 | 110 | `379:HR:NU:d7:m` | Kurast Docks (near town exit) |
-| **Act 5** | Qual-Kehk (夸尔凯克)| **515** | `0J` | **461** | 18 | 55 | `461:0J:NU:d1:m` | Harrogath center |
-| **Act 5** | Qual-Kehk (夸尔凯克)| **515** | `0J` | **462** | 19 | 56 | `462:0J:NU:d7:m` | Harrogath alternate |
-| **Act 5** | Anya (安雅) | **512** | `XR` | **542** | 18 | 125 | `542:XR:NU:d1:m` | Harrogath town square |
-| **Act 5** | Anya (安雅) | **512** | `XR` | **543** | 19 | 126 | `543:XR:NU:m` | Harrogath alternate |
-
-### `Objects.txt` Attributes for Placeholder Rows
-- `Token`: `ss`
-- `Draw`: `1`
-- `Selectable0..7`: `0` (non-interactive in all modes)
-- `HasCollision`: `0` (no physical obstruction footprint)
-
-Because `Selectable0..7` is `0`, the static object placeholder cannot be selected, hovered, or clicked. However, because `Draw` is `1` and the offline asset pack script maps DS1 token `JE` to the DCC/DC6 monster animation `mon-je`, the renderer displays the full animated sprite, appearing as a frozen or unclickable "ghost clone" next to the real NPC.
+1. **`Sync = 1` Static Placeholder Pairs (`Objects.txt` `121, 122, 378, 379`)**:
+   Broadcast to clients via `S2C 0x51 AssignObject` with `Draw = 1` (`mon-je`, `mon-hr`) and `Selectable0..7 = 0`. When the dynamic `UNIT_MONSTER` (`201` Jerhyn or `253` Hratli) is active in `ClientWorld`, the static placeholder object must be hidden (`ClientUnit.hidden = true`) so no unclickable duplicate sprite renders.
+2. **`Sync = 0` Server-Only Spawner Anchors (`Objects.txt` `382, 385, 459, 461, 462, 542, 543`)**:
+   Server-only coordinate markers (`Sync = 0`) that `D2Game.dll` never sends via `0x51 AssignObject`. Recording their anchor coordinates on `LoadedAreaRecord.initFnAnchors` without broadcasting `UnitAssign` prevents unclickable ghost sprites for `459` (`XS` Anya) before `A5Q3` rescue, `461` (`0J` Town Nihlathak) after `A5Q3` rescue, and `462` (`0J` Halls of Vaught Nihlathak) after Boss Nihlathak dies.
 
 ---
 
-## 3. Native D2 `InitFn 18` / `InitFn 19` Behavior
+## 2. Canonical 1.13c `gpObjectInitFnTable` (`0x6fd2e050`) Disassembly Ground Truth
 
-In native Diablo II binary disassembly (`D2Game.dll` `0x6fc89140` and `D2Client.dll` `0x6fad5120`):
-- `InitFn 18` & `InitFn 19` check player/party quest progress (e.g. Act 2 Quest 5 *The Summoner* and Quest 6 *The Seven Tombs*).
-- When the condition is met for the dynamic NPC to be spawned at that post, the server initializes the dynamic entity and suppresses or hides the static object placeholder.
-- In client-server web ports, packet ordering between `0x51 AssignObject` (map object population) and `0xAC AssignNPC` (active entity sync) can arrive in any sequence.
-- Consequently, client-side reconciliation must guarantee invariant deduplication regardless of arrival order.
+| Act / Area | `Objects.txt` ID | `InitFn` (`D2Game.dll` VA) | `Sync` | DS1 Lookup Entry | Dynamic `UNIT_MONSTER` Spawned | Quest / Lifecycle Rule |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Act 1 (`Area 1`)** | **385** (`Cain Start Position`) | `54` (`0x6fc860d0`) | `0` | `110:385:DC:NU:d1:m` | **Deckard Cain** (`hcIdx 265`, `cain5`) | Spawns once `a1q3` (`The Search for Cain`) has `PRIMARY_GOAL_DONE \| REWARD_PENDING \| COMPLETED` |
+| **Act 2 (`Area 40`)** | **121** (`Jerhyn Place Holder 1`) | `18` (`0x6fce7c20`) | `1` | `16:121:JE:NU:d1:m` | **Jerhyn** (`hcIdx 201`, `jerhyn`) | Spawns Jerhyn at docks/approach `(5147, 5191)` before any `a2q1..a2q6` progress |
+| **Act 2 (`Area 40`)** | **122** (`Jerhyn Place Holder 2`) | `19` (`0x6fce9b70`) | `1` | `17:122:JE:NU:d7:m` | **Jerhyn** (`201`) + **Kaelan** (`331`, `act2guard2`) | Relocates/spawns Jerhyn at Palace entrance `(5071, 5148)` once any `a2q1..a2q6` flag is set; spawns Kaelan at `(obj122.x + 1, obj122.y)` until Duriel (`a2q6`) is slain (`0x6fce9b96..0x6fce9bfb`) |
+| **Act 3 (`Area 75`)** | **378** (`Hratli Start`) | `49` (`0x6fd086a0`) | `1` | `109:378:HR:NU:d1:m` | **Hratli** (`hcIdx 253`, `hratli`) | Spawns Hratli at docks `(5122, 5165)` when `word 16 == 0` and `a3q1..a3q6` are all `0` |
+| **Act 3 (`Area 75`)** | **379** (`Hratli End`) | `50` (`0x6fd08560`) | `1` | `110:379:HR:NU:d7:m` | **Hratli** (`hcIdx 253`, `hratli`) | Relocates/spawns Hratli at forge `(5219, 5038)` once `word 16 != 0` or any `a3q1..a3q6` flag is set |
+| **Act 3 (`Area 75`)** | **382** (`Natalya Start`) | `52` (`0x6fd08310`) | `0` | `(preset 382)` | **Natalya** (`hcIdx 297`, `natalya`) | Spawns Natalya at `(5221, 5111)` while `a3q6` (`word 22` Mephisto) is uncompleted; removed once `a3q6` completes |
+| **Act 5 (`Area 109`)** | **459** (`Drehya Start In Town`) | `66` (`0x6fc7eb30`) | `0` | `53:459:XS:NU:d7:m` | **Anya** (`hcIdx 512`, `drehya`) | Anchors Town Anya at `(5107, 5114)` once `a5q3` (`Prison of Ice`) has `REWARD_PENDING \| COMPLETED` |
+| **Act 5 (`Area 109`)** | **461** (`Nihlathak_inside_town`) | `68` (`0x6fc7c5c0`) | `0` | `55:461:0J:NU:d1:m` | **Nihlathak** (`hcIdx 514`, `nihlathak`) | Spawns Town Nihlathak at `(5076, 5126)` only while `a5q3` is unrescued AND no player has entered `Areas 121..124` (`0x6fc7f560`) |
+| **Act 5 (`Area 124`)** | **462** (`Nihlathak_outside_town`) | `69` (`0x6fc7cf70`) | `0` | `56:462:0J:NU:d7:m` | **SuperUnique Nihlathak** (`SU 60`, `hcIdx 526`, `nihlathakboss`) | Spawns `SU 60` (`Nihlathak Boss` + minions) in Halls of Vaught (`Area 124`) DS1 room `(12705, 5020)` for `A5Q4` |
+| **Act 5 (`Area 109`)** | **542 / 543** (`Larzuk Greeting / Standard`) | `70 / 71` (`0x6fc7c470` / `0x6fc7c3a0`) | `0` | `125:542:XR:NU:d1:m` / `126:543:XR:NU:m` | **Larzuk** (`hcIdx 511`, `larzuk`) | Unconditionally spawns Larzuk at `(5143, 5028)` in Harrogath (`Area 109`) |
 
 ---
 
-## 4. Client Reconciliation Invariants
+## 3. Server & Client Reconciliation Invariants
 
-To achieve 100% parity with Diablo II 1.13c and eliminate phantom duplicate NPCs:
-
-1. **Mapping Registry**:
-   `NPC_PLACEHOLDER_OBJECTS` in `src/common/world/objects-meta.ts` maps each placeholder object classId (`121`, `122`, `378`, etc.) to its corresponding dynamic monster `hcIdx` (`201`, `253`, etc.).
-2. **Dynamic Reconciliation in `ClientWorld`**:
-   - `ClientUnit.hidden: boolean`: Tracks visibility suppression.
-   - When a monster unit of town NPC `hcIdx` is assigned (`UnitAssign`), `ClientWorld.reconcileNpcPlaceholderObjects(hcIdx)` marks corresponding placeholder objects as `hidden = true`.
-   - When a static placeholder object is assigned (`UnitAssign`), it checks `ClientWorld.hasActiveMonsterNpc(placeholderHcIdx)`. If active, `unit.hidden = true`.
-   - When a monster unit is removed (`UnitRemove`), `reconcileNpcPlaceholderObjects(removedMonsterClassId)` un-hides placeholder objects if no active dynamic NPC remains.
-3. **Collision & Interaction Suppression**:
-   - `updateObjectCollisionFootprint`: Hidden objects never stamp collision onto the pathing grid.
-   - `CommandMapper.isSelectableCandidate` and `pickUnitAtSubtile`: Hidden units are immediately bypassed during cursor hit-testing and radial targeting.
-4. **Rendering Gate**:
-   - `OnlineSession.buildRenderableUnits()`: Bypasses any unit with `u.hidden === true` as well as any object whose `hasActiveMonsterNpc(placeholderHcIdx)` is true.
+1. **Server `loadArea` (`src/server/engine/game-instance/area-and-session.ts`)**:
+   - Records `initFnAnchors` for `121, 122, 378, 379, 382, 385, 459, 461, 462, 542, 543` on `LoadedAreaRecord`.
+   - Suppresses `spawnObject` (`UnitAssign`) for `Sync == 0` spawner markers (`382, 385, 459, 461, 462, 542, 543`).
+   - Synthesizes `{ classId: 526, x, y, superUniqueIndex: 60 }` from `Object 462` in `Area 124` so SuperUnique Nihlathak spawns when his Halls of Vaught room activates.
+   - Runs `syncRogueEncampmentA1Q3State113c` (`Area 1`), `syncLutGholeinAct2NpcState113c` (`Area 40`), `syncKurastDocksAct3NpcState113c` (`Area 75`), and `syncHarrogathA5Q3State113c` (`Area 109`) on area load, player connect, area transitions, and quest flag updates.
+2. **Client `NPC_PLACEHOLDER_OBJECTS` (`src/common/world/objects-meta.ts` & `ClientWorld`)**:
+   - Maps `121/122 -> 201`, `378/379 -> 253`, `385 -> 265`, `459 -> 512`, `461 -> 514`, `462 -> 526`, and `542/543 -> 511`.
+   - Hides any `Sync == 1` static placeholder object whenever its paired dynamic `UNIT_MONSTER` is active in `ClientWorld`.

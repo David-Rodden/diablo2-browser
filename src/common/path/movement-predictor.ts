@@ -39,8 +39,10 @@ import {
 } from './pathfind.ts'
 
 export const D2_TICK_MS = 40 // 25Hz D2 game tick
-export const D2_BASE_WALK_SUBTILES_PER_SEC = 9.0 // 6 yards/s * 1.5 sub-tiles/yard
-export const D2_BASE_RUN_SUBTILES_PER_SEC = 13.5 // 9 yards/s * 1.5 sub-tiles/yard
+// 1.13c D2Common 0x6FD80D50 / 0x6FD82EA0 / 0x6FD5CEB0: WalkVelocity=6 -> 1536 Q8, RunVelocity=9 -> 2304 Q8,
+// dirVec=16 -> velVector=(velQ8 * 16) >> 2 -> 6144 FP16 (0.375/tick = 9.375/s) walk, 9216 FP16 (0.5625/tick = 14.0625/s) run.
+export const D2_BASE_WALK_SUBTILES_PER_SEC = 9.375 // 6 * 25 / 16 sub-tiles/s (0.375/tick)
+export const D2_BASE_RUN_SUBTILES_PER_SEC = 14.0625 // 9 * 25 / 16 sub-tiles/s (0.5625/tick)
 
 /**
  * D2Client 0x6FADA1B0 tolerance when the caller passes flag 1 (the `0x0D` mode handler

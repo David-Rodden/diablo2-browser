@@ -82,6 +82,7 @@ export type {
   LocalAreaLevelRequest,
   LocalAreaLevelSource,
   LocalAreaLevelWarp,
+  LocalAreaMapAiNode,
   LocalAreaPresetMonster,
   LocalAreaPresetObject,
   LocalAreaRoomRect,

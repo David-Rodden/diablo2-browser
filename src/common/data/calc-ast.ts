@@ -5,13 +5,14 @@
  * grammar across `Skills.txt`, `SkillDesc.txt`, `Missiles.txt`, `SkillCalc.txt`,
  * and `MissCalc.txt`, including all 5 1.13c table edge cases:
  *  1. Unclosed `(` at end of expression (`Fire Wall` row 51 `EDmgSymPerCalc`).
- *  2. Unknown bare identifier `par34` (`Bone Wall` row 78 `calc2`) -> evaluates to `0`.
+ *  2. Bare identifier `par34` (`Bone Wall` row 78 `calc2`) -> Fog `#10253` FourCC 4-byte truncation to `'par3'` (`param3 = 8`).
  *  3. Leading `*` on numeric missile function IDs (`royalstrikechainlightning` row 568).
  *  4. Two-dot `sklvl('Holy Fire'.ln56.edmn)` (`FireGolem` in `SkillDesc.txt`).
  *  5. Strictly base allocated `STAT_SKILLPTS` for `blvl` (`skill('...'.blvl)`),
  *     enforcing the 1.13c Marrowwalk / item charge synergy fix.
  */
 import type { D2DataRegistry, SkillRecord, MissileRecord } from './data-registry.ts'
+import { mulDiv113c } from './mul-div-113c.ts'
 
 export interface CalcEvalContext {
   readonly registry?: D2DataRegistry | undefined
@@ -59,27 +60,28 @@ export function compute5BandScaling(
   lev4: number,
   lev5: number,
 ): number {
-  if (slvl <= 0) return 0
-  let total = base
-  if (slvl > 1) {
-    const b1 = Math.min(slvl, 8) - 1
-    total += b1 * lev1
+  const c = slvl | 0
+  if (c <= 0) return 0
+  let total = base | 0
+  if (c > 1) {
+    const b1 = Math.min(c, 8) - 1
+    total = (total + Math.imul(b1, lev1 | 0)) | 0
   }
-  if (slvl > 8) {
-    const b2 = Math.min(slvl, 16) - 8
-    total += b2 * lev2
+  if (c > 8) {
+    const b2 = Math.min(c, 16) - 8
+    total = (total + Math.imul(b2, lev2 | 0)) | 0
   }
-  if (slvl > 16) {
-    const b3 = Math.min(slvl, 22) - 16
-    total += b3 * lev3
+  if (c > 16) {
+    const b3 = Math.min(c, 22) - 16
+    total = (total + Math.imul(b3, lev3 | 0)) | 0
   }
-  if (slvl > 22) {
-    const b4 = Math.min(slvl, 28) - 22
-    total += b4 * lev4
+  if (c > 22) {
+    const b4 = Math.min(c, 28) - 22
+    total = (total + Math.imul(b4, lev4 | 0)) | 0
   }
-  if (slvl > 28) {
-    const b5 = slvl - 28
-    total += b5 * lev5
+  if (c > 28) {
+    const b5 = (c - 28) | 0
+    total = (total + Math.imul(b5, lev5 | 0)) | 0
   }
   return total
 }
@@ -98,16 +100,20 @@ export function compute3BandDuration(
   eLevLen2: number,
   eLevLen3: number,
 ): number {
-  if (slvl <= 0 || (eLen === 0 && eLevLen1 === 0 && eLevLen2 === 0 && eLevLen3 === 0)) return 0
-  let total = eLen
-  if (slvl > 1) {
-    total += (Math.min(slvl, 8) - 1) * eLevLen1
+  const c = slvl | 0
+  if (c <= 0) return 0
+  let total = eLen | 0
+  if (c > 1) {
+    const b1 = Math.min(c, 8) - 1
+    total = (total + Math.imul(b1, eLevLen1 | 0)) | 0
   }
-  if (slvl > 8) {
-    total += (Math.min(slvl, 16) - 8) * eLevLen2
+  if (c > 8) {
+    const b2 = Math.min(c, 16) - 8
+    total = (total + Math.imul(b2, eLevLen2 | 0)) | 0
   }
-  if (slvl > 16) {
-    total += (slvl - 16) * eLevLen3
+  if (c > 16) {
+    const b3 = (c - 16) | 0
+    total = (total + Math.imul(b3, eLevLen3 | 0)) | 0
   }
   return total
 }
@@ -160,9 +166,16 @@ export function calcPow(base: number, exp: number): number {
  * `sd12/sd34/cd12/cd34/shd1/chd1/dd12` (`0x6FDBA964..0x6FDBAA54`).
  */
 export function computeDiminishingReturnsRaw(a: number, b: number, lvl: number): number {
-  const x = Math.trunc((lvl * 110) / (lvl + 6))
-  const r = Math.trunc((x * (b - a)) / 100) + a
-  return r > b ? b : r
+  const c = lvl | 0
+  const lo = a | 0
+  const hi = b | 0
+  const den = (c + 6) | 0
+  if (den === 0) return 0
+  const x = Math.trunc(Math.imul(c, 110) / den) | 0
+  const diff = (hi - lo) | 0
+  const prod = Math.imul(x, diff)
+  const r = (Math.trunc(prod / 100) + lo) | 0
+  return r > hi ? hi : r
 }
 
 /**
@@ -171,17 +184,18 @@ export function computeDiminishingReturnsRaw(a: number, b: number, lvl: number):
  * ({@link computeDiminishingReturnsRaw}): `min(b, trunc(trunc(110 * lvl / (lvl + 6)) * (b - a) / 100) + a)`.
  */
 export function computeDiminishingReturns(a: number, b: number, lvl: number): number {
-  if (lvl <= 0) return 0
+  if ((lvl | 0) <= 0) return 0
   return computeDiminishingReturnsRaw(a, b, lvl)
 }
 
 /**
  * Compute `D2Common` linear scaling `ln(a, b, lvl)` (`0x6FD51670..0x6FD51730`):
- * Returns `0` when `lvl <= 0`, otherwise `a + (lvl - 1) * b`.
+ * Returns `0` when `lvl <= 0`, otherwise `a + (lvl - 1) * b` (32-bit signed).
  */
 export function computeLinearScaling(a: number, b: number, lvl: number): number {
-  if (lvl <= 0) return 0
-  return a + (lvl - 1) * b
+  const c = lvl | 0
+  if (c <= 0) return 0
+  return ((a | 0) + Math.imul((c - 1) | 0, b | 0)) | 0
 }
 
 /**
@@ -189,10 +203,57 @@ export function computeLinearScaling(a: number, b: number, lvl: number): number 
  * `lvl <= 0 ? 0 : ((((lvl - 1) * lvlmana + mana) * 25) / 2 << manashift) >> 8` (32-bit signed integer division).
  */
 export function computeSkillMps113c(mana: number, lvlMana: number, manaShift: number, lvl: number): number {
-  if (lvl <= 0) return 0
-  const halfPerSec = Math.trunc((((lvl - 1) * lvlMana + mana) * 25) / 2)
-  const shifted = manaShift >= 0 ? halfPerSec << manaShift : halfPerSec >> -manaShift
+  const c = lvl | 0
+  if (c <= 0) return 0
+  const term = (Math.imul((c - 1) | 0, lvlMana | 0) + (mana | 0)) | 0
+  const halfPerSec = Math.trunc(Math.imul(term, 25) / 2) | 0
+  const shifted = (halfPerSec << (manaShift & 31)) | 0
   return shifted >> 8
+}
+
+/**
+ * Raw `D2Common #10090` (`0x6FD9EA00`) skill mana in 256ths:
+ * `(((lvl - 1) * lvlmana + mana) << manashift)` with NO `lvl <= 0` guard and NO `minmana` floor.
+ */
+export function computeRawSkillMana256_113c(skill: SkillRecord, lvl: number): number {
+  const c = lvl | 0
+  const term = (Math.imul((c - 1) | 0, skill.lvlMana | 0) + (skill.mana | 0)) | 0
+  return (term << (skill.manaShift & 31)) | 0
+}
+
+/**
+ * Raw `D2Common #10297` (`0x6FDA1FF0`, `isMax = true`) / `#10567` (`0x6FDA2100`, `isMax = false`)
+ * skill physical damage in 256ths (`bAddWeaponStatBonus = 0`):
+ * - Kick skills (`skill.kick`, `0x6FD9F930`): `(trunc(max(1, str + dex - 20) / (isMax ? 3 : 4)) << 8) | 0`.
+ * - Other skills: `((band5(lvl, LevDam1..5) + Min/MaxDam) * (100 + DmgSymPerCalc) / 100) << HitShift`
+ *   with NO `lvl <= 0` guard (`band5` returns `0` for `lvl <= 0`, leaving `MinDam`/`MaxDam`).
+ */
+export function computeRawSkillPhysDmg256_113c(
+  skill: SkillRecord,
+  lvl: number,
+  ctx: CalcEvalContext,
+  isMax: boolean,
+): number {
+  if (skill.kick) {
+    const str = ctx.getUnitStat ? (ctx.getUnitStat(0) | 0) : 0
+    const dex = ctx.getUnitStat ? (ctx.getUnitStat(2) | 0) : 0
+    let sum = (((str + dex) | 0) - 20) | 0
+    if (sum < 1) sum = 1
+    const div = isMax ? 3 : 4
+    return (Math.trunc(sum / div) << 8) | 0
+  }
+  const c = lvl | 0
+  const band = isMax
+    ? compute5BandScaling(c, 0, skill.maxLevDam1, skill.maxLevDam2, skill.maxLevDam3, skill.maxLevDam4, skill.maxLevDam5)
+    : compute5BandScaling(c, 0, skill.minLevDam1, skill.minLevDam2, skill.minLevDam3, skill.minLevDam4, skill.minLevDam5)
+  let edi = (band + ((isMax ? skill.maxDam : skill.minDam) | 0)) | 0
+  if (skill.dmgSymPerCalc && (ctx.depth ?? 0) < 8) {
+    const syn = evaluateCalc(skill.dmgSymPerCalc, { ...ctx, slvl: c, depth: (ctx.depth ?? 0) + 1 })
+    if (syn !== 0) {
+      edi = (edi + mulDiv113c(syn, edi, 100)) | 0
+    }
+  }
+  return (edi << (skill.hitShift & 31)) | 0
 }
 
 /**
@@ -449,16 +510,65 @@ function resolveCasterElementalMasteryPct113c(eType: string, ctx: CalcEvalContex
   return statId === 0 ? 0 : ctx.getUnitStat(statId)
 }
 
+function resolveDescMissile113c(
+  skill: SkillRecord,
+  ctx: CalcEvalContext,
+  slotIdx: 0 | 1 | 2,
+): MissileRecord | undefined {
+  if (!skill.skillDesc || !ctx.registry) return undefined
+  const desc = ctx.registry.getSkillDesc(skill.skillDesc)
+  if (!desc) return undefined
+  const col = slotIdx === 0 ? 'descmissile1' : slotIdx === 1 ? 'descmissile2' : 'descmissile3'
+  const mName = (desc[col] ?? '').trim()
+  if (!mName) return undefined
+  return ctx.registry.getMissileByName(mName)
+}
+
+function evalDescMissileElemDmg113c(
+  m: MissileRecord,
+  lvl: number,
+  skill: SkillRecord,
+  ctx: CalcEvalContext,
+  isMax: boolean,
+  shiftRight8: boolean,
+): number {
+  const band = isMax
+    ? compute5BandScaling(lvl, 0, m.eMaxLev1, m.eMaxLev2, m.eMaxLev3, m.eMaxLev4, m.eMaxLev5)
+    : compute5BandScaling(lvl, 0, m.eMinLev1, m.eMinLev2, m.eMinLev3, m.eMinLev4, m.eMinLev5)
+  let edi = (band + ((isMax ? m.eMax : m.eMin) | 0)) | 0
+  if (m.eDmgSymPerCalc && (ctx.depth ?? 0) < 8) {
+    const mCtx: CalcEvalContext = {
+      registry: ctx.registry,
+      activeMissile: m,
+      slvl: lvl,
+      blvl: ctx.blvl,
+      ...(ctx.ulvl !== undefined ? { ulvl: ctx.ulvl } : {}),
+      getBaseSkillLevel: ctx.getBaseSkillLevel ?? ((id: number) => (id === skill.id ? ctx.blvl : 0)),
+      getEffectiveSkillLevel: ctx.getEffectiveSkillLevel ?? ((id: number) => (id === skill.id ? ctx.slvl : 0)),
+      ...(ctx.getUnitStat !== undefined ? { getUnitStat: ctx.getUnitStat } : {}),
+      ...(ctx.randFn !== undefined ? { randFn: ctx.randFn } : {}),
+      depth: (ctx.depth ?? 0) + 1,
+    }
+    const syn = evaluateCalc(m.eDmgSymPerCalc, mCtx)
+    if (syn !== 0) {
+      edi = (edi + mulDiv113c(syn, edi, 100)) | 0
+    }
+  }
+  const v256 = (edi << (m.hitShift & 31)) | 0
+  return shiftRight8 ? v256 >> 8 : v256
+}
+
 /**
  * Resolve any built-in variable or macro on the current `CalcEvalContext`.
+ * Fog `#10253` tokenizes bare symbols as 4-byte FourCC codes (`ident.slice(0, 4)`).
  */
 function resolveBuiltInIdentifier(ident: string, ctx: CalcEvalContext): number {
-  const key = ident.toLowerCase()
+  const key = ident.slice(0, 4).toLowerCase()
   const skill = ctx.activeSkill
   const missile = ctx.activeMissile
-  const lvl = Math.max(0, ctx.slvl)
-  const blvl = Math.max(0, ctx.blvl)
-  const ulvl = ctx.ulvl ?? 80
+  const lvl = ctx.slvl | 0
+  const blvl = Math.max(0, ctx.blvl) | 0
+  const ulvl = (ctx.ulvl ?? 80) | 0
 
   if (key === 'lvl') return lvl
   if (key === 'blvl') return blvl
@@ -552,35 +662,81 @@ function resolveBuiltInIdentifier(ident: string, ctx: CalcEvalContext): number {
     return computeSkillMps113c(skill.mana, skill.lvlMana, skill.manaShift, lvl)
   }
   if (key === 'usmc' || key === 'mana') {
-    const { manaCost256, manaCost } = computeSkillManaCost256(skill, lvl)
-    if (key === 'usmc') return manaCost256
-    return manaCost
+    // SkillCalc `usmc` (0x6FDA1507) / `mana` (0x6FDA1264): `lvl <= 0 ? 0 : ((lvl-1)*lvlmana + mana) << manashift`
+    // (`mana` additionally `>> 8`), signed, no `minmana` floor and no level clamp. The cost actually paid
+    // (`SKILLS_ConsumeMana` 0x6FCBF850, with minmana) is `computeSkillManaCost256`.
+    if (lvl <= 0) return 0
+    const raw256 = (((Math.imul((lvl - 1) | 0, skill.lvlMana | 0) + (skill.mana | 0)) | 0) << (skill.manaShift & 31)) | 0
+    return key === 'usmc' ? raw256 : raw256 >> 8
   }
 
   if (key === 'toht') {
+    // D2Common #10653 (0x6FD9EA50): returns 0 when `lvl <= 0` BEFORE checking `ToHitCalc`.
+    if (lvl <= 0) return 0
     if (skill.toHitCalc && (ctx.depth ?? 0) < 8) {
       return evaluateCalc(skill.toHitCalc, { ...ctx, depth: (ctx.depth ?? 0) + 1 })
     }
-    return skill.toHit + Math.max(0, lvl - 1) * skill.toHitLev
+    return (Math.imul((lvl - 1) | 0, skill.toHitLev | 0) + (skill.toHit | 0)) | 0
   }
 
-  if (key === 'clc1' && (ctx.depth ?? 0) < 8) {
-    return evaluateCalc(skill.calc1, { ...ctx, depth: (ctx.depth ?? 0) + 1 })
+  if ((ctx.depth ?? 0) < 8) {
+    const nextCtx = { ...ctx, depth: (ctx.depth ?? 0) + 1 }
+    switch (key) {
+      case 'clc1': return evaluateCalc(skill.calc1, nextCtx)
+      case 'clc2': return evaluateCalc(skill.calc2, nextCtx)
+      case 'clc3': return evaluateCalc(skill.calc3, nextCtx)
+      case 'clc4': return evaluateCalc(skill.calc4, nextCtx)
+      case 'len': return evaluateCalc(skill.auraLenCalc, nextCtx)
+      case 'rng': return evaluateCalc(skill.auraRangeCalc, nextCtx)
+      case 'ast1': return evaluateCalc(skill.auraStatCalc1, nextCtx)
+      case 'ast2': return evaluateCalc(skill.auraStatCalc2, nextCtx)
+      case 'ast3': return evaluateCalc(skill.auraStatCalc3, nextCtx)
+      case 'ast4': return evaluateCalc(skill.auraStatCalc4, nextCtx)
+      case 'ast5': return evaluateCalc(skill.auraStatCalc5, nextCtx)
+      case 'ast6': return evaluateCalc(skill.auraStatCalc6, nextCtx)
+      case 'pst1': return evaluateCalc(skill.passiveCalc1, nextCtx)
+      case 'pst2': return evaluateCalc(skill.passiveCalc2, nextCtx)
+      case 'pst3': return evaluateCalc(skill.passiveCalc3, nextCtx)
+      case 'pst4': return evaluateCalc(skill.passiveCalc4, nextCtx)
+      case 'pst5': return evaluateCalc(skill.passiveCalc5, nextCtx)
+      case 'pets': return evaluateCalc(skill.petMax, nextCtx)
+      case 'skpt': return evaluateCalc(skill.raw['skpoints'] ?? '', nextCtx)
+    }
   }
-  if (key === 'clc2' && (ctx.depth ?? 0) < 8) {
-    return evaluateCalc(skill.calc2, { ...ctx, depth: (ctx.depth ?? 0) + 1 })
+
+  // SkillCalc SkillDesc missile callbacks (`0x6FDA1325..0x6FDA15E5`):
+  // - `m1rn..m3rn` (`0x6FDA1430`): NO `lvl <= 0` guard, `levRange * lvl + range`.
+  // - `m1el..m3el` (`0x6FDA13D9`): `lvl <= 0 -> 0`, 3-band missile `ELen`.
+  // - `m1en..m3en` / `m1ex..m3ex` (`0x6FDA1325` / `0x6FDA137F`): `lvl <= 0 -> 0`, 5-band + `EDmgSymPerCalc` `>> 8`.
+  // - `m1eo/m2eo/me3o` (`0x6FDA1544`) & `m1ey/m2ey/me3y` (`0x6FDA159B`): 1.13c divides `(code - base)` by 3
+  //   even though stride is 2, mapping `m1eo/m1ey -> descmissile1 (0)`, `m2eo/m2ey -> descmissile1 (0)`,
+  //   and `me3o/me3y -> descmissile2 (1)`.
+  if (key === 'm1rn' || key === 'm2rn' || key === 'm3rn') {
+    const slot: 0 | 1 | 2 = key === 'm1rn' ? 0 : key === 'm2rn' ? 1 : 2
+    const m = resolveDescMissile113c(skill, ctx, slot)
+    if (!m) return 0
+    return (Math.imul(m.levRange | 0, lvl) + (m.range | 0)) | 0
   }
-  if (key === 'clc3' && (ctx.depth ?? 0) < 8) {
-    return evaluateCalc(skill.calc3, { ...ctx, depth: (ctx.depth ?? 0) + 1 })
+  if (key === 'm1el' || key === 'm2el' || key === 'm3el') {
+    if (lvl <= 0) return 0
+    const slot: 0 | 1 | 2 = key === 'm1el' ? 0 : key === 'm2el' ? 1 : 2
+    const m = resolveDescMissile113c(skill, ctx, slot)
+    if (!m) return 0
+    return compute3BandDuration(lvl, m.eLen, m.eLevLen1, m.eLevLen2, m.eLevLen3)
   }
-  if (key === 'clc4' && (ctx.depth ?? 0) < 8) {
-    return evaluateCalc(skill.calc4, { ...ctx, depth: (ctx.depth ?? 0) + 1 })
+  if (key === 'm1en' || key === 'm2en' || key === 'm3en' || key === 'm1ex' || key === 'm2ex' || key === 'm3ex') {
+    if (lvl <= 0) return 0
+    const slot: 0 | 1 | 2 = key[1] === '1' ? 0 : key[1] === '2' ? 1 : 2
+    const m = resolveDescMissile113c(skill, ctx, slot)
+    if (!m) return 0
+    return evalDescMissileElemDmg113c(m, lvl, skill, ctx, key[3] === 'x', true)
   }
-  if (key === 'len' && (ctx.depth ?? 0) < 8) {
-    return evaluateCalc(skill.auraLenCalc, { ...ctx, depth: (ctx.depth ?? 0) + 1 })
-  }
-  if (key === 'rng' && (ctx.depth ?? 0) < 8) {
-    return evaluateCalc(skill.auraRangeCalc, { ...ctx, depth: (ctx.depth ?? 0) + 1 })
+  if (key === 'm1eo' || key === 'm2eo' || key === 'me3o' || key === 'm1ey' || key === 'm2ey' || key === 'me3y') {
+    if (lvl <= 0) return 0
+    const slot: 0 | 1 = key === 'me3o' || key === 'me3y' ? 1 : 0
+    const m = resolveDescMissile113c(skill, ctx, slot)
+    if (!m) return 0
+    return evalDescMissileElemDmg113c(m, lvl, skill, ctx, key[3] === 'y', false)
   }
 
   // SkillCalc math / madm / macr -> D2Common 0x6FD9E7A0(unit, skill, lvl, mode 0/1/2): scan passivestat1..5 for
@@ -617,6 +773,7 @@ function resolveBuiltInIdentifier(ident: string, ctx: CalcEvalContext): number {
     key === 'enms' ||
     key === 'exms'
   ) {
+    if (lvl <= 0) return 0
     const baseMin = compute5BandScaling(
       lvl,
       skill.eMin,
@@ -636,8 +793,8 @@ function resolveBuiltInIdentifier(ident: string, ctx: CalcEvalContext): number {
       skill.eMaxLev5,
     )
     const baseLen = compute3BandDuration(lvl, skill.eLen, skill.eLevLen1, skill.eLevLen2, skill.eLevLen3)
-    const min256 = baseMin << skill.hitShift
-    const max256 = baseMax << skill.hitShift
+    const min256 = (baseMin << (skill.hitShift & 31)) | 0
+    const max256 = (baseMax << (skill.hitShift & 31)) | 0
     const eSynPct =
       skill.eDmgSymPerCalc && (ctx.depth ?? 0) < 8
         ? evaluateCalc(skill.eDmgSymPerCalc, { ...ctx, depth: (ctx.depth ?? 0) + 1 })
@@ -647,15 +804,18 @@ function resolveBuiltInIdentifier(ident: string, ctx: CalcEvalContext): number {
         ? evaluateCalc(skill.eLenSymPerCalc, { ...ctx, depth: (ctx.depth ?? 0) + 1 })
         : 0
 
+    // #10121 0x6FDA0524 / #11091 0x6FDA041D: v += mulDiv(eax = syn, edx = v, 100) (0x6FD511E0, divide-first
+    // shortcut for v > 0x100000).
     const synMin256 = skillMinSynergyApplies113c(min256, skill.eMinLev1)
-      ? Math.trunc((min256 * (100 + eSynPct)) / 100)
+      ? (min256 + mulDiv113c(eSynPct, min256, 100)) | 0
       : min256
-    const synMax256 = Math.trunc((max256 * (100 + eSynPct)) / 100)
-    // #10510 (0x6FD9E900): v += v * ELenSymPerCalc / 100 (0x6FD511E0), no mastery flag.
-    const synLen = baseLen + Math.trunc((baseLen * lenSynPct) / 100)
-    // bMastery=1 codes add the caster's elemental mastery: v += v * stat / 100 (0x6FD9F870).
+    const synMax256 = (max256 + mulDiv113c(eSynPct, max256, 100)) | 0
+    // #10510 (0x6FD9E9E5..0x6FD9E9F1): v += mulDiv(eax = ELenSymPerCalc, edx = v, 100), no mastery flag.
+    const synLen = (baseLen + mulDiv113c(lenSynPct, baseLen, 100)) | 0
+    // bMastery=1 codes add the caster's elemental mastery: v += mulDiv(eax = stat, edx = v, 100)
+    // (0x6FD9F870 tail-calls 0x6FD511E0 at 0x6FD9F8DA..0x6FD9F8E1).
     const masteryPct = resolveCasterElementalMasteryPct113c(skill.eType, ctx)
-    const mastered = (v: number): number => v + Math.trunc((v * masteryPct) / 100)
+    const mastered = (v: number): number => (v + mulDiv113c(masteryPct, v, 100)) | 0
 
     // Issue #1682: edmn/edmx/edns/edxs (0x6FDA11F4/0x6FDA1212/0x6FDA1471/0x6FDA148C, bMastery=0) are the
     // synergised #10121/#11091 values; enma/exma/enms/exms (0x6FDA15E6..0x6FDA1658, bMastery=1) also add the
@@ -698,7 +858,7 @@ export function evaluateCalc(expr: string | undefined | null, ctx: CalcEvalConte
     trimmed = trimmed.slice(1, -1).replace(/""/g, '"').trim()
   }
   if (trimmed === '' || trimmed === '0') return 0
-  if (/^-?\d+$/.test(trimmed)) return Number(trimmed)
+  if (/^-?\d+$/.test(trimmed)) return Number(trimmed) | 0
 
   const tokens = tokenizeCalc(trimmed)
   if (tokens.length === 0) return 0
@@ -764,9 +924,9 @@ export function evaluateCalc(expr: string | undefined | null, ctx: CalcEvalConte
         consume()
         const right = parsePower()
         if (op === '*') {
-          left = Math.trunc(left * right)
+          left = Math.imul(left, right)
         } else {
-          left = calcDiv(left, right)
+          left = calcDiv(left, right) | 0
         }
       } else {
         break
@@ -790,7 +950,7 @@ export function evaluateCalc(expr: string | undefined | null, ctx: CalcEvalConte
     if (t?.kind === 'op' && (t.op === '-' || t.op === '+')) {
       consume()
       const val = parseUnary()
-      return t.op === '-' ? -val : val
+      return t.op === '-' ? (-val) | 0 : val | 0
     }
     return parsePrimary()
   }
@@ -907,5 +1067,5 @@ export function evaluateCalc(expr: string | undefined | null, ctx: CalcEvalConte
     return 0
   }
 
-  return Math.trunc(parseExpression())
+  return parseExpression() | 0
 }

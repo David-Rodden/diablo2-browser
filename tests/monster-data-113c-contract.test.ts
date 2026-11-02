@@ -462,12 +462,13 @@ describe('1.13c Monster & Hireling Data Contract (Milestone M1)', () => {
       expect(skelUniqueMods.resistances?.cold).toBe((skelNorm.resistances?.cold ?? 0) + 40)
     })
 
-    it('enforces the 1.13c 2-immunity cap sequentially and ghostly physical resist floor in applyMonsterUModResistances (D2Game.dll 0x6fccf610)', () => {
+    it('enforces the 1.13c 2-immunity cap sequentially and ghostly physical resist floor in applyMonsterUModResistances (D2Game.dll 0x6fc41be0)', () => {
       // Monster starts with 1 immunity (cold = 100) and fire = 80, lightning = 50.
-      // Applying magicresistant (8) checks countImmunities() < 2 before EACH element:
-      // 1) fire: 1 immunity < 2 -> fire becomes 80 + 40 = 120 (now 2 immunities!)
-      // 2) lightning: 2 immunities < 2 is FALSE -> lightning stays 50!
-      // 3) cold: 2 immunities < 2 is FALSE -> cold stays 100!
+      // Applying magicresistant (8) checks res < 100 and countImmunities() < 2 before EACH element
+      // in Cold -> Fire -> Lightning order (0x6fc41cc9..0x6fc41d50):
+      // 1) cold: already >= 100 -> skipped (still 1 immunity)
+      // 2) fire: 1 immunity < 2 && 80 < 100 -> fire becomes 80 + 40 = 120 (now 2 immunities!)
+      // 3) lightning: 2 immunities < 2 is FALSE -> lightning stays 50!
       const res = applyMonsterUModResistances(
         { physical: 0, magic: 0, fire: 80, lightning: 50, cold: 100, poison: 0 },
         [8],
@@ -485,13 +486,21 @@ describe('1.13c Monster & Hireling Data Contract (Milestone M1)', () => {
       expect(spectralRes.lightning).toBe(80)
       expect(spectralRes.cold).toBe(60)
 
-      // Mana Burn (25) and Stone Skin (28) bypass elemental 2-immunity cap
+      // Mana Burn (25), Stone Skin (28), and Poison Enchanted (23) share the 6-stat 2-immunity gate
+      // at 0x6fc41cba..0x6fc41cbf (cmp immunities, 2; jge 0x6fc41e71):
       const stoneMana = applyMonsterUModResistances(
-        { physical: 50, magic: 0, fire: 100, lightning: 100, cold: 0, poison: 0 },
+        { physical: 50, magic: 0, fire: 100, lightning: 50, cold: 0, poison: 0 },
         [25, 28],
       )
       expect(stoneMana.magic).toBe(20)
       expect(stoneMana.physical).toBe(100)
+      const suppressedAtTwoImmunities = applyMonsterUModResistances(
+        { physical: 50, magic: 0, fire: 100, lightning: 100, cold: 0, poison: 0 },
+        [23, 25, 28],
+      )
+      expect(suppressedAtTwoImmunities.poison).toBe(0)
+      expect(suppressedAtTwoImmunities.magic).toBe(0)
+      expect(suppressedAtTwoImmunities.physical).toBe(50)
 
       // Ghostly (36) sets physical resistance floor to max(80, physical)
       const ghostlyRes = applyMonsterUModResistances(
