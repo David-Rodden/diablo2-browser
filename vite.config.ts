@@ -5,6 +5,7 @@ import { defineConfig } from 'vite'
 import { refreshAssetManifestPublicSubdirs } from './src/baker/io/asset-manifest.ts'
 import { createBugReportHttpMiddleware } from './src/baker/io/bug-report-store.ts'
 import { createPlayLogHttpMiddleware } from './src/baker/io/play-log-store.ts'
+import { createSiteConfigHttpMiddleware } from './src/baker/io/site-config.ts'
 import {
   createHomeFallbackHttpMiddleware,
   createServerStatusHttpMiddleware,
@@ -74,6 +75,19 @@ export default defineConfig({
       },
       configurePreviewServer(server) {
         server.middlewares.use(createServerStatusHttpMiddleware())
+      },
+    },
+    {
+      name: 'd2-site-config-api',
+      configureServer(server) {
+        server.middlewares.use(
+          createSiteConfigHttpMiddleware({ publicDir: resolve(__dirname, 'public') }),
+        )
+      },
+      configurePreviewServer(server) {
+        server.middlewares.use(
+          createSiteConfigHttpMiddleware({ publicDir: resolve(__dirname, 'public') }),
+        )
       },
     },
     {

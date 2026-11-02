@@ -77,6 +77,28 @@ function findPackedTilesDir(): string | null {
   return null
 }
 
+/**
+ * DRLG preset monsters spawn when their room is activated by a nearby player (D2Game 0x6FC4CBE0 ->
+ * 0x6FD01430): walk the player through every room of the area so all pools are populated.
+ */
+function activateAllRooms(game: GameInstance, playerId: number, areaId: number): void {
+  const g = game as unknown as {
+    players: Map<number, { x: number; y: number }>
+    loadedAreas: Map<number, { roomRects: readonly { x: number; y: number; w: number; h: number }[] }>
+    activatePresetRoomsNearPlayer113c: (p: unknown) => void
+  }
+  const p = g.players.get(playerId)!
+  const x0 = p.x
+  const y0 = p.y
+  for (const r of g.loadedAreas.get(areaId)?.roomRects ?? []) {
+    p.x = r.x + Math.floor(r.w / 2)
+    p.y = r.y + Math.floor(r.h / 2)
+    g.activatePresetRoomsNearPlayer113c(p)
+  }
+  p.x = x0
+  p.y = y0
+}
+
 describe('Issue #1770 — 1.13c Tentacle / TentacleHead Submerge-Emerge State Machine & Class Sweep', () => {
   it('resolves MonPlace water pool presets (D2Game 0x6FC67E6D) across Travincal (83), Jungle (76..78), and Sewers (92..93)', () => {
     expect(STATIONARY_AI_SET.has('Tentacle')).toBe(false)
@@ -140,7 +162,8 @@ describe('Issue #1770 — 1.13c Tentacle / TentacleHead Submerge-Emerge State Ma
       areaId: 83,
       resolveAreaBootstrap: resolver,
     })
-    game83.connectPlayer({ charClass: 'pal', name: 'ShorePal', areaId: 83 })
+    const pal83 = game83.connectPlayer({ charClass: 'pal', name: 'ShorePal', areaId: 83 })
+    activateAllRooms(game83, pal83, 83)
     const mons83 = game83.listMonsters(83)
     const heads83 = mons83.filter((m) => m.hcIdx === 261)
     const limbs83 = mons83.filter((m) => m.hcIdx === 258)
@@ -160,7 +183,8 @@ describe('Issue #1770 — 1.13c Tentacle / TentacleHead Submerge-Emerge State Ma
       areaId: 93,
       resolveAreaBootstrap: resolver,
     })
-    game93.connectPlayer({ charClass: 'sor', name: 'SewerSor', areaId: 93 })
+    const sor93 = game93.connectPlayer({ charClass: 'sor', name: 'SewerSor', areaId: 93 })
+    activateAllRooms(game93, sor93, 93)
     const mons93 = game93.listMonsters(93)
     const heads93 = mons93.filter((m) => m.hcIdx === 263)
     const limbs93 = mons93.filter((m) => m.hcIdx === 260)

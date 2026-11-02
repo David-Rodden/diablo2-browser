@@ -167,7 +167,16 @@ export function resolveMonsterEquipment113c(
 
   const lvl = Math.max(0, Math.floor(options.level))
   const clampedIlvl = Math.max(1, Math.min(99, Math.floor(options.ilvl)))
-  const rng = options.rng ?? Math.random
+  // Determinism: candidate / empty-slot picks must draw from a caller-owned game RNG (1.13c rolls
+  // them from the owner's unit seed in `D2GAME_CreateMonsterEquipment` `0x6FCB2ED0`). There is no
+  // entropy fallback; a missing rng only fails when a roll is actually required.
+  const rng =
+    options.rng ??
+    ((): number => {
+      throw new Error(
+        `resolveMonsterEquipment113c(${options.monster}): options.rng is required for MonEquip.txt rolls`,
+      )
+    })
 
   const occupiedSlots = new Set<MonEquipBodyLoc>()
   const result: MonsterEquippedItem113c[] = []

@@ -3,6 +3,10 @@
  * MonStats elemental riders and player block stats.
  */
 import { describe, expect, it } from 'vitest'
+import {
+  getCanonicalMonsterKinds,
+  scaleMonsterKindForLevel113c,
+} from '../../src/common/units/monsters-data.ts'
 import { GameInstance } from '../../src/server/engine/game-instance.ts'
 
 interface MonsterRecord {
@@ -131,6 +135,7 @@ describe('issue #1344 melee attack completeness', () => {
         monsters: Map<
           number,
           {
+            level: number
             minDmg: number
             maxDmg: number
             attack2MinDmg: number
@@ -140,12 +145,14 @@ describe('issue #1344 melee attack completeness', () => {
       }
     ).monsters
     const normal = monsters.get(normalId)!
+    const skeletonKind = getCanonicalMonsterKinds('normal').get('skeleton1')!
+    const champMlvlBase = scaleMonsterKindForLevel113c(skeletonKind, 'normal', normal.level + 2)
     const strong = monsters.get(strongId)!
     const champ = monsters.get(champId)!
     expect(strong.maxDmg).toBe(Math.round(normal.maxDmg * 2.5))
     expect(strong.attack2MaxDmg).toBe(Math.round(normal.attack2MaxDmg * 2.5))
-    expect(champ.maxDmg).toBe(Math.round(normal.maxDmg * 2))
-    expect(champ.attack2MaxDmg).toBe(Math.round(normal.attack2MaxDmg * 2))
+    expect(champ.maxDmg).toBe(Math.round(champMlvlBase.a1MaxD * 2))
+    expect(champ.attack2MaxDmg).toBe(Math.round(champMlvlBase.a2MaxD * 2))
   })
 
   it('slows melee actionFrame and totalFrames when chilled or decrepified and speeds up under frenzy', () => {

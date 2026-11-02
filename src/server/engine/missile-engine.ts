@@ -1999,11 +1999,20 @@ export class MissileEngine {
         }
         return false
       }
-      // 7: MISSMODE_SrvDo07_GuidedArrow_BoneSpirit (0x6FC61710): homing target acquisition & re-pathing.
+      // 7: MISSMODE_SrvDo07_GuidedArrow_BoneSpirit (0x6FC61710 & sub_6FC61580):
+      // Re-paths an already-locked target while within 25 sub-tiles, or acquires the nearest enemy
+      // within `Param2` sub-tiles (15 for Guided Arrow #86 / Bone Spirit #193; 0 for monbonespirit #329).
       case 7: {
         let closestTarget: { x: number; y: number } | null = null
         let closestDist = Infinity
-        const maxAcquireDistPx = rec.sHitPar1 > 0 ? rec.sHitPar1 * 16 : Infinity
+        const lockedTrackDistPx =
+          rec.sHitPar1 > 0 ? rec.sHitPar1 * MISSILE_SUBTILE_FLAT_PX : 25 * MISSILE_SUBTILE_FLAT_PX
+        const scanAcquireDistPx =
+          rec.sHitPar1 > 0
+            ? rec.sHitPar1 * MISSILE_SUBTILE_FLAT_PX
+            : rec.param2 > 0
+              ? rec.param2 * MISSILE_SUBTILE_FLAT_PX
+              : 0
         if (m.canPierce && m.ageTicks > 0 && m.ageTicks % 5 === 0 && m.hitTargetIds.size > 0) {
           for (const hitId of Array.from(m.hitTargetIds)) {
             const hitUnit = ctx.targets.find((t) => t.id === hitId)
@@ -2031,7 +2040,7 @@ export class MissileEngine {
             const dx = pos.x - m.x
             const dy = (pos.y - m.y) / ISO_GROUND_ASPECT_RATIO
             const dist = Math.hypot(dx, dy)
-            if (dist <= maxAcquireDistPx) {
+            if (dist <= lockedTrackDistPx) {
               closestTarget = pos
               closestDist = dist
             } else {
@@ -2041,7 +2050,7 @@ export class MissileEngine {
             m.lockedTargetId = undefined
           }
         }
-        if (!closestTarget) {
+        if (!closestTarget && scanAcquireDistPx > 0) {
           let closestId: string | undefined
           for (const target of ctx.targets) {
             if (target.statList.getHp256() <= 0) continue
@@ -2052,7 +2061,7 @@ export class MissileEngine {
             const dx = pos.x - m.x
             const dy = (pos.y - m.y) / ISO_GROUND_ASPECT_RATIO
             const dist = Math.hypot(dx, dy)
-            if (dist <= maxAcquireDistPx && dist < closestDist) {
+            if (dist <= scanAcquireDistPx && dist < closestDist) {
               closestDist = dist
               closestTarget = pos
               closestId = target.id

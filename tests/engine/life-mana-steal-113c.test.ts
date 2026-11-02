@@ -195,10 +195,10 @@ describe('executeSUnitDmg steal integration', () => {
     expect(attacker.statList.getHp256()).toBe(510 * FIXED_ONE)
     expect(attacker.statList.getMana256()).toBe(510 * FIXED_ONE)
 
-    const legacy = unit('player', { lifesteal: 10, manasteal: 10, life_leech: 10, item_parasite: 10 })
-    const legacyOut = physHit(legacy, unit('monster', {}, { drain: 100 }), 100)
-    expect(legacyOut.attackerHealed256 ?? 0).toBe(0)
-    expect(legacyOut.attackerManaLeeched256 ?? 0).toBe(0)
+    // UnitStatList strictly rejects non-ItemStatCost stat names at construction time (#1447)
+    expect(() =>
+      unit('player', { lifesteal: 10, manasteal: 10, life_leech: 10, item_parasite: 10 }),
+    ).toThrow(/unknown ItemStatCost stat/)
   })
 
   it('applies the Hell divisor and Drain, and never steals from Drain 0 monsters', () => {
@@ -267,19 +267,31 @@ describe('GameInstance player hit feeds equipped stat 60 / 62 and writes the ste
   it('Normal zombie1: 10% life steal on 100 physical heals exactly 10 life', () => {
     const { game, player, playerId, monsterId } = setup(0, 'zombie1', [[60, 10]])
     const before = player.hpFixed
-    game.applyDamageToMonster(monsterId, 100, playerId, 0, 'phys')
+    game.applyDamageToMonster(monsterId, 100, playerId, 0, 'phys', 'player', {
+      attackKind: 'melee',
+      autoHit: true,
+      unblockable: true,
+    })
     expect(player.hpFixed - before).toBe(10 * FIXED_ONE)
   })
 
   it('Hell zombie1 (ResDm(H) 50 -> 50 physical lands): 213 / 256 life; Nightmare mana 960 / 256', () => {
     const hell = setup(2, 'zombie1', [[60, 10]])
     const before = hell.player.hpFixed
-    hell.game.applyDamageToMonster(hell.monsterId, 100, hell.playerId, 0, 'phys')
+    hell.game.applyDamageToMonster(hell.monsterId, 100, hell.playerId, 0, 'phys', 'player', {
+      attackKind: 'melee',
+      autoHit: true,
+      unblockable: true,
+    })
     // 50 phys: MulDiv(213, 12800, 100) = 27264, x50/100 = 13632, >> 6 = 213
     expect(hell.player.hpFixed - before).toBe(213)
 
     const nm = setup(1, 'zombie1', [[62, 10]])
-    nm.game.applyDamageToMonster(nm.monsterId, 100, nm.playerId, 0, 'phys')
+    nm.game.applyDamageToMonster(nm.monsterId, 100, nm.playerId, 0, 'phys', 'player', {
+      attackKind: 'melee',
+      autoHit: true,
+      unblockable: true,
+    })
     expect(nm.player.manaFixed).toBe(960)
   })
 

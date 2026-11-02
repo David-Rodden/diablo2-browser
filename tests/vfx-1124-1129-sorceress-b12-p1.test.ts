@@ -476,4 +476,54 @@ describe('Sorceress Spell VFX Parity B12-p1 (#1124..#1129)', () => {
       expect(playerDrawable.appearanceKey).not.toBe(appearanceKey(baseAppearance))
     })
   })
+
+  describe('#1980 High-clock action-frame missile trigger precision (IEEE-754 ULP boundary)', () => {
+    it('fires missileFireDelayMs and secondMissileFireDelayMs when startedAtMs = 524_000.2 and nowMs = startedAtMs + delay', () => {
+      // IEEE-754 precondition across the 2^19 (524,288) float64 exponent boundary:
+      // (524_000.2 + 320) - 524_000.2 === 319.9999999999418 < 320
+      const highStartMs = 524_000.2
+      expect((highStartMs + 320) - highStartMs).toBeLessThan(320)
+
+      const world = new ClientWorld()
+      world.apply({
+        type: 'UnitAssign',
+        unit: { unitType: 0, id: 1, classId: 1, name: 'Sorc', x: 5000, y: 5000 },
+        isSelf: true,
+      })
+      world.apply({
+        type: 'SkillCast',
+        caster: { unitType: 0, id: 1 },
+        skill: 64, // Frozen Orb
+        skillId: 64,
+        level: 10,
+        target: { x: 5010, y: 5000 },
+      })
+
+      const cs = world.units.get('player:1')!.castState!
+      expect(cs).toBeDefined()
+      const delayMs = 320
+      const secondDelayMs = 640
+      cs.startedAtMs = highStartMs
+      cs.missileFireDelayMs = delayMs
+      cs.secondMissileFireDelayMs = secondDelayMs
+      cs.secondMissileSpawned = false
+      cs.durationMs = secondDelayMs
+      cs.untilMs = highStartMs + secondDelayMs
+      cs.elapsedMs = 0
+
+      // Exact primary action-frame timestamp with dtMs = 0 must spawn the missile
+      world.expireCastStates(highStartMs + delayMs, 0)
+      expect(cs.missileSpawned).toBe(true)
+      const orbs = Array.from(world.units.values()).filter(
+        u => u.unitType === 'missile' && u.missileKey === 'frozenorb',
+      )
+      expect(orbs).toHaveLength(1)
+
+      // Exact secondary action-frame + expiry boundary timestamp must also fire before clearing castState
+      expect((highStartMs + secondDelayMs) - highStartMs).toBeLessThan(secondDelayMs)
+      world.expireCastStates(highStartMs + secondDelayMs, 0)
+      expect(cs.secondMissileSpawned).toBe(true)
+      expect(world.units.get('player:1')!.castState).toBeUndefined()
+    })
+  })
 })

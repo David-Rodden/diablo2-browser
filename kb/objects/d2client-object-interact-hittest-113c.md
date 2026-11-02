@@ -91,3 +91,24 @@ In `D2Client.dll` `HitTest` (`0x6fb568e0` at `0x6fb56b15..0x6fb56d43`):
    - When `CollisionSubst == 0` (and not an open door), calls `0x6fb56730` (`GetUnitFrameBounds`), which takes the active DCC/DC6 frame `(anchorX, anchorY, frameWidth, frameHeight)` and `pObjectTxt->dwXoffset, dwYoffset`:
      - `left = anchorX + xOffset - 12`, `width = frameWidth + 24` (if `width < 32`, expands symmetrically around center to `32`)
      - `top = anchorY + yOffset - 12`, `height = frameHeight + 24` (if `height < 32`, expands symmetrically around center to `32`)
+
+---
+
+## 5. Server Interaction Line-of-Sight (`D2Game.dll` `0x6fcf01d0` & `D2Common.dll` `#10324` @ `0x6fd819c0`)
+
+When `D2Game.dll` processes `SUNIT_Interact` (`0x6fcf01d0`), range checks are paired with `D2Common_10324_CheckUnitCollisionRay` (`0x6fd819c0`, imported via `0x6fc2ab1a`) using collision mask **`0x0804`** (`COLLIDE_DOOR | COLLIDE_MISSILE_BARRIER`), **not** walk collision (`0x0001` `COLLIDE_WALL`):
+
+- **`UNIT_OBJECT = 2` (`0x6fcf024f..0x6fcf0268`)**:
+  1. Calls `D2Common_10594_IsObjectInInteractRange(pPlayer, pObject)` (`0x6fcf0251`). If `0`, queues pending approach via `0x6fcee120` (`0x6fcf0298`).
+  2. Pushes `0x0804` (`0x6fcf025a: push 0x804`) and calls `D2Common_10324_CheckUnitCollisionRay(pPlayer, pObject, 0x0804)` (`0x6fcf0261`). If nonzero, queues pending approach (`0x6fcf0268`).
+  3. Otherwise stops the player path (`0x6fcf026e`) and invokes `OBJECTS_OperateObject` (`0x6fc8a720` at `0x6fcf0280`).
+- **`UNIT_ITEM = 4` (`0x6fcf035b..0x6fcf036e`)**:
+  - Checks `D2Common_10407_GetUnitDistance <= 4`, then calls `D2Common_10324_CheckUnitCollisionRay(pPlayer, pItem, 0x0804)` (`0x6fcf0360: push 0x804`).
+- **Inside `D2Common #10324` (`0x6fd819c0..0x6fd81b34`)**:
+  1. Resolves subtile coordinates for both endpoints (`0x6fd819f2..0x6fd81a97`).
+  2. Queries `UNITS_GetCollisionMask` (`0x6fd7ff30`) for `pUnit1` (`0x6fd81aa0`) and `pUnit2` (`0x6fd81abb`); whenever `(nCollisionMask & unitMask) != 0`, temporarily unstamps that unit's footprint from the room collision grid via `0x6fd85800` (`0x6fd81ab0`, `0x6fd81acb`).
+  3. Traces `COLLISION_CheckRay(pRoom1, x1, y1, x2, y2, 0x0804)` (`0x6fd80730` at `0x6fd81afd`).
+  4. Re-stamps `pUnit1` and `pUnit2` via `0x6fd859d0` (`0x6fd81b0a`, `0x6fd81b1c`) before returning the ray result.
+- **Practical Implications**:
+  - Walk-only solid footprints (`0x0001` `COLLIDE_WALL` without `0x0004`, such as `Tree of Inifuss` `Id = 30`'s `5x5` trunk in `Inifuss.ds1`, water pools, and low obstacles) do **not** block `0x0804` interaction line-of-sight from standable perimeter subtiles (`|dx| = 4` or `|dy| = 4` around a `5x5` blocked square).
+  - Intervening dungeon walls (`0x0004` `COLLIDE_MISSILE_BARRIER`) and closed doors (`0x0800` `COLLIDE_DOOR`, other than the target door itself unstamped by `#10324`) continue to block interaction.

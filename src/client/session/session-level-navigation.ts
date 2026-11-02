@@ -17,6 +17,7 @@ import {
 import type { Environment } from '../../common/world/environment.ts'
 import { isObjectInInteractRange113c } from '../../common/world/objects-meta.ts'
 import { isTownLevel } from '../../common/world/scene-population.ts'
+import { isWithinNpcInteractTether113c } from '../input/click-rules-113c.ts'
 import type { AudioRuntime113c } from '../audio/audio-runtime-113c.ts'
 import { periodOfDayToSoundEnvironTod113c } from '../audio/sound-environ-113c.ts'
 import type { AutomapView } from '../automap/automap-view.ts'
@@ -845,21 +846,63 @@ export function isSubTileInTown(
 }
 
 /**
- * Per-tick validation of the open NPC session and Stash.
+ * Per-tick validation of open NPC sessions, quest-object interactions, and Stash.
  *
- * NPC: 1.13c `D2Client.dll` `0x6faf83b0`, called each frame from 0x6fb73d71 only while the NPC menu
- * (`UI_NPCMENU` 0x6fbaada0) is open. It cancels the session (0x6faf67c0 + 0x6faf8150) only when:
- * - `gpPlayerUnit` (0x6fbcbbfc) is NULL or in mode 17 (`PLRMODE_DEAD`), or
- * - the NPC hash lookup 0x6faf6150 (id 0x6fbc971d) fails, or the NPC is in mode 12 (`MONMODE_DEAD`).
+ * NPC (`npcMenu`, `npcSpeech`, `vendor`, `hire`, `imbue`, `add_sockets`, `personalize`):
+ * - 1.13c `D2Client.dll` `0x6faf83b0` cancels when `gpPlayerUnit` (`0x6fbcbbfc`) is NULL or in mode 17
+ *   (`PLRMODE_DEAD`), or when the NPC hash lookup (`0x6faf6150`, id `0x6fbc971d`) fails or is in mode 12 (`MONMODE_DEAD`).
+ * - 1.13c `D2Game.dll` `0x6fceccf0 -> 0x6fceb690` (`ebx = 0x0A`) bounds NPC interaction to Chebyshev
+ *   sub-tile distance `<= 10` (`isWithinNpcInteractTether113c`). Because D2GS / local `GameInstance`
+ *   keeps town NPCs loaded across town and `computeNpcDialogLayout` clamps dialog coordinates to the
+ *   viewport edge, moving outside `<= 10` subtiles auto-closes the NPC dialog/panel and sends
+ *   `C2S 0x30 NpcCancel` (#1979).
+ *
+ * Quest object (`unitType === 2` standalone scroll speech & Horadric Orifice `orifice`):
+ * - Bounded by `D2Game.dll` `0x6fced45b -> 0x6fcecfe0(..., 0x0A)` (`isWithinNpcInteractTether113c`).
  *
  * Stash: closed with `C2S 0x4F 0x12 CloseStash` when the player is dead or outside
  * `D2Common.#10594` `isObjectInInteractRange113c` of every Stash object (`classId == 0x10B`) (#866).
  */
 export function enforceActiveInteractionRange113c(host: SessionLevelNavigationHost): void {
   const npcInt = host.world.npcInteraction
-  const activeNpcId = npcInt.unitType !== 2 ? npcInt.npcId : null
-  const isStashOpen = Boolean(npcInt.stashOpen || host.hudManager.leftPanel === 'stash')
-  if (activeNpcId === null && !isStashOpen) return
+  const wp = host.hudManager.worldPanels as any
+  const leftPanel = host.hudManager.leftPanel
+  const isNpcServiceLeftPanel =
+    leftPanel === 'hire' ||
+    leftPanel === 'imbue' ||
+    leftPanel === 'add_sockets' ||
+    leftPanel === 'personalize'
+  const rawActiveNpcId =
+    (npcInt.unitType !== 2 ? npcInt.npcId : null) ??
+    wp?.npcMenu?.npcUnitId ??
+    wp?.npcMenu?.npcId ??
+    (typeof wp?.npcSpeech?.npcId === 'number' && wp.npcSpeech.npcId > 0
+      ? wp.npcSpeech.npcId
+      : null) ??
+    (leftPanel === 'vendor' ? wp?.vendorNpcId : null) ??
+    (isNpcServiceLeftPanel ? wp?.activeNpcId : null) ??
+    null
+  const activeNpcId =
+    typeof rawActiveNpcId === 'number' && rawActiveNpcId > 0 ? rawActiveNpcId : null
+
+  const isOrificeOpen = Boolean(
+    npcInt.window === 'orifice' ||
+      npcInt.activeWindow === 'orifice' ||
+      leftPanel === 'orifice' ||
+      wp?.activePanel === 'orifice',
+  )
+  const rawActiveObjId =
+    (npcInt.unitType === 2 ? npcInt.npcId : null) ??
+    (isOrificeOpen ? wp?.activeNpcId : null) ??
+    null
+  const activeObjId =
+    typeof rawActiveObjId === 'number' && rawActiveObjId > 0 ? rawActiveObjId : null
+
+  const hasOrphanDialogUi = Boolean(wp?.npcMenu || wp?.npcSpeech)
+  const isStashOpen = Boolean(npcInt.stashOpen || leftPanel === 'stash')
+  if (activeNpcId === null && activeObjId === null && !isOrificeOpen && !isStashOpen && !hasOrphanDialogUi) {
+    return
+  }
 
   const selfUnit =
     host.world.selfId !== 0 ? host.world.getUnit('player', host.world.selfId) : undefined
@@ -873,15 +916,54 @@ export function enforceActiveInteractionRange113c(host: SessionLevelNavigationHo
   const selfY = predSnap.x !== 0 || predSnap.y !== 0 ? predSnap.y : host.world.self.y
   const hasSelfPos = selfX !== 0 || selfY !== 0
 
-  if (activeNpcId !== null && activeNpcId > 0) {
+  if (activeNpcId !== null) {
     const npcUnit = host.world.getUnit('monster', activeNpcId)
     const isNpcAlive =
       npcUnit !== undefined && !npcUnit.dead && npcUnit.mode !== 0 && npcUnit.mode !== 12
-    if (isPlayerDead || !isNpcAlive) {
+    const inNpcTether =
+      npcUnit !== undefined &&
+      (!hasSelfPos || isWithinNpcInteractTether113c(selfX, selfY, npcUnit.x, npcUnit.y))
+    if (isPlayerDead || !isNpcAlive || !inNpcTether) {
       host.hudModel.cancelNpcSession(activeNpcId)
       if (host.hudManager.leftPanel === 'vendor') {
-        host.hudManager.worldPanels.clearVendorShop()
+        wp?.clearVendorShop?.()
         host.hudManager.hideLeftPanelFromWorld('vendor')
+      }
+    }
+  } else if (isPlayerDead && hasOrphanDialogUi) {
+    if (typeof wp?.closeNpcSpeech === 'function') {
+      wp.closeNpcSpeech()
+    } else if (wp) {
+      wp.npcSpeech = null
+      wp.onCloseNpcSpeech?.()
+    }
+    if (wp) {
+      wp.npcMenu = null
+    }
+  }
+
+  if (activeObjId !== null || isOrificeOpen) {
+    const objUnit =
+      activeObjId !== null ? host.world.getUnit('object', activeObjId) : undefined
+    const inObjTether =
+      objUnit !== undefined &&
+      (!hasSelfPos || isWithinNpcInteractTether113c(selfX, selfY, objUnit.x, objUnit.y))
+    if (isPlayerDead || (activeObjId !== null && !inObjTether)) {
+      if (isOrificeOpen) {
+        host.hudModel.closeHoradricOrifice?.(activeObjId ?? undefined)
+        if (host.hudManager.leftPanel === 'orifice') {
+          host.hudManager.hideLeftPanelFromWorld('orifice')
+        }
+      } else {
+        if (typeof wp?.closeNpcSpeech === 'function') {
+          wp.closeNpcSpeech()
+        } else if (wp) {
+          wp.npcSpeech = null
+          wp.onCloseNpcSpeech?.()
+        }
+        if (activeObjId !== null) {
+          host.world.clearObjectNpcInteraction?.(activeObjId)
+        }
       }
     }
   }

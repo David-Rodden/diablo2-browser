@@ -15,6 +15,7 @@ import { parseTable } from '../world/acts.ts'
 import type { MountedArchives } from '../mpq/mount.ts'
 import type { ItemBase } from './items.ts'
 import type { D2Rng } from '../rng/d2-rng.ts'
+import { isQuestItemBase113c } from './runeword.ts'
 
 /** Canonical MPQ path of `Difficultylevels.txt`. */
 export const DIFFICULTY_LEVELS_TABLE_PATH = 'data\\global\\excel\\Difficultylevels.txt'
@@ -286,6 +287,13 @@ export function isItemUber113c(
  * @param ilvl - Optional item level (`nLevel`); when provided, upgraded bases whose `qlvl > ilvl` are rejected (`D2Game!0x6FCF2BD1`).
  * @returns {@link BaseUpgradeResult} containing the new or original base and `isUber`.
  */
+export interface RollBaseUpgradeOptions {
+  /** Whether ladder-only rules are active (defaults to `false`, `#1949`). */
+  readonly isLadder?: boolean | undefined
+  /** When `true`, gates Exceptional -> Elite (`ITEM_UPGRADE_FLAG_ELITE`) on `isLadder === true` (`Cubemain.txt` Rows 131..132). */
+  readonly gateEliteOnLadder?: boolean | undefined
+}
+
 export function rollBaseUpgrade(
   base: ItemBase,
   qf4: number,
@@ -293,14 +301,22 @@ export function rollBaseUpgrade(
   rng: D2Rng,
   lookupBase: (code: string) => ItemBase | undefined,
   ilvl?: number | undefined,
+  options?: RollBaseUpgradeOptions | undefined,
 ): BaseUpgradeResult {
+  // Quest items (`nQuest != 0`, e.g. 'leg', 'hfh', 'msf', 'hst', 'qf1', 'qf2') never upgrade (#1949).
+  if (isQuestItemBase113c(base)) {
+    return { base, isUber: false }
+  }
+
+  const isLadder = options?.isLadder ?? false
+  const allowElite = options?.gateEliteOnLadder ? isLadder : true
   let genFlags = 0
 
   if (qf4 > 0 && rng.rand(1024) < qf4) {
     genFlags |= ITEM_UPGRADE_FLAG_EXCEPTIONAL
   }
 
-  if (qf5 > 0 && rng.rand(1024) < qf5) {
+  if (allowElite && qf5 > 0 && rng.rand(1024) < qf5) {
     genFlags |= ITEM_UPGRADE_FLAG_ELITE
   }
 

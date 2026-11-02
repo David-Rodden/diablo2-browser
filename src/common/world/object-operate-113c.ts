@@ -91,6 +91,37 @@ export const INIT_FN_3_LOCKABLE_CLASS_IDS_113C: ReadonlySet<number> = new Set<nu
 export const SPARKLY_CHEST_INIT57_CLASS_IDS_113C: ReadonlySet<number> = new Set<number>([397, 455])
 
 /**
+ * 1.13c one-way doors (`D2Game.dll` `0x6FC8AE00` TrapDoor `Op 16`, `0x6FC8AD60` Secret Door `Op 18`,
+ * `0x6FC8AC60` Iron Grate / Slime Door `Op 29`, covering `Objects.txt` `74, 129, 229, 230`, etc.):
+ * only operate when `mode === 0` (`OBJMODE_NEUTRAL`), permanently transitioning to `OBJMODE_OPENED (2)`
+ * and never toggling back to `0` (#1956).
+ */
+export const ONE_WAY_DOOR_OPERATE_FNS_113C: ReadonlySet<number> = new Set<number>([16, 18, 29])
+
+/**
+ * 1.13c `Objects.txt` wall/gate barriers with `IsDoor === 0`, non-zero footprint (`SizeX >= 1`),
+ * `HasCollision0 === 1`, and `HasCollision2 === 0` (`129` Secret Door, `153` Tyrael's Door,
+ * `449` Act 5 Main Gate, `508` Act 5 Barricade Gate, #1982). Like `IsDoor === 1` doors, these
+ * block sub-tile walk/ray collision while `HasCollision[mode] === 1` and clear when opened (`mode === 2`).
+ */
+export const NON_ISDOOR_GATE_CLASS_IDS_113C: ReadonlySet<number> = new Set<number>([
+  129, 153, 449, 508,
+])
+
+export function isDoorOrGateObject113c(classId: number): boolean {
+  return getObjectsTxtRecord113c(classId).isDoor === 1 || NON_ISDOOR_GATE_CLASS_IDS_113C.has(classId)
+}
+
+export function doesDoorOrGateBlockMode113c(classId: number, mode: number): boolean {
+  if (mode === 2) return false
+  const meta = CANONICAL_113C_OBJECTS[classId]
+  const mask = meta?.hasCollisionMask
+  if (mask === undefined) return true
+  const bit = Math.max(0, Math.min(7, Math.trunc(mode)))
+  return ((mask >>> bit) & 1) !== 0
+}
+
+/**
  * 1.13c Act 2 & Act 3 quest chests (`D2Game.dll` `0x6FCE76B0`, `0x6FCEA050..0x6FCEA290`, `0x6FD0A390..0x6FD0A5F0`)
  * that erupt `5..9` gold piles (`0x6FC8AFA0`) plus one forced-Magic (`nQuality = 4`) Chest TC drop (`0x6FC8B570`)
  * alongside their quest item on first open.

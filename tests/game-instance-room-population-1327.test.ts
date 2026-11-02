@@ -18,6 +18,7 @@ import { fileSource } from '../src/baker/io/file-source.ts'
 import { Rng } from '../src/common/rng/d2-rng.ts'
 import { D2_EXPERIENCE_TABLE_99, PARSED_EXPERIENCE_TABLE } from '../src/common/skills/formulas.ts'
 import {
+  filterTransferableEliteModifiers113c,
   getCanonicalMonsterKinds,
   getCanonicalSuperUniques,
   monsterBudget,
@@ -215,14 +216,22 @@ describe('#1327 per-room population planner', () => {
     expect(level.totalRooms).toBe(rooms.length)
     expect(level.activatedRooms).toBe(0)
     expect(level.spawnedElites).toBe(0)
-    const spawns = rooms.flatMap((r) => planRoomPopulation113c(level, r, () => true))
+    const spawnsByRoom = rooms.map((r) => planRoomPopulation113c(level, r, () => true))
+    const spawns = spawnsByRoom.flat()
     expect(level.activatedRooms).toBe(rooms.length)
     expect(level.spawnedElites).toBeGreaterThanOrEqual(7)
     expect(level.spawnedElites).toBeLessThanOrEqual(9)
     const leaders = spawns.filter((s) => s.rank === 'champion' || s.rank === 'unique')
     expect(leaders.length).toBeGreaterThan(0)
     for (const l of leaders) expect(l.modifiers.length).toBeGreaterThan(0)
-    for (const s of spawns.filter((x) => x.rank === 'minion')) expect(s.modifiers).toEqual([])
+    for (const roomSpawns of spawnsByRoom) {
+      for (const s of roomSpawns.filter((x) => x.rank === 'minion')) {
+        const packLeader = roomSpawns.find(
+          (cand) => cand.groupIndex === s.groupIndex && cand.rank === 'unique',
+        )!
+        expect(s.modifiers).toEqual(filterTransferableEliteModifiers113c(packLeader.modifiers))
+      }
+    }
   })
 
   it('never places a monster on a blocked sub-tile', () => {

@@ -199,10 +199,10 @@ export class D2gsAdapter implements GameServerAdapter {
   }
 
   leave(): void {
-    this.session.leaveAndClose()
+    void this.session.leaveGracefully()
   }
 
   async close(): Promise<void> {
-    this.session.leaveAndClose()
+    await this.session.leaveGracefully()
   }
 }

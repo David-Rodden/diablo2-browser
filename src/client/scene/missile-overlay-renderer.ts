@@ -16,7 +16,7 @@ import type {
   AtlasHandle,
   SpriteRenderer,
 } from '../render/renderer.ts'
-import { reportMissingArt } from './world-renderer.ts'
+import { reportMissingArt, reportPreloadMiss, resolvePreloadMiss } from './missing-art.ts'
 import { celFileArtKey } from '../render/cel-file-key.ts'
 
 export {
@@ -70,7 +70,9 @@ const DEFAULT_LAZY_PRELOAD_MISSILES: readonly string[] = [
   'javelin',
   'firebolt',
   'fireball',
+  'fireexplode',
   'icebolt',
+  'iceexplode',
   'chargedbolt',
   'townportal',
 ]
@@ -80,6 +82,9 @@ const DEFAULT_LAZY_PRELOAD_OVERLAYS: readonly string[] = [
   'town_portal_op_hd',
   'town_portal_on_tr',
   'town_portal_on_hd',
+  'fire_cast_1',
+  'ice_cast_1',
+  'lightning_cast_1',
   'shrine_shimmer00',
   'objsb',
   'levelup',
@@ -92,6 +97,8 @@ const DEFAULT_LAZY_PRELOAD_OVERLAYS: readonly string[] = [
 export class LazySpriteArtMap<V> extends Map<string, V> {
   private readonly lazyLoaders = new Map<string, () => Promise<V | undefined>>()
   private readonly inflight = new Map<string, Promise<V | undefined>>()
+  private readonly inflightLoaders = new Set<() => Promise<V | undefined>>()
+  private readonly failedLoaders = new Set<() => Promise<V | undefined>>()
 
   registerLazyKey(key: string, loader: () => Promise<V | undefined>, overwrite = true): void {
     if (!key) return
@@ -108,6 +115,15 @@ export class LazySpriteArtMap<V> extends Map<string, V> {
     return this.lazyLoaders.has(key) || this.lazyLoaders.has(key.toLowerCase())
   }
 
+  isKeyLoading(key: string): boolean {
+    if (!key) return false
+    if (super.has(key) || super.has(key.toLowerCase())) return false
+    const normKey = key.toLowerCase()
+    if (this.inflight.has(normKey)) return true
+    const loader = this.lazyLoaders.get(key) ?? this.lazyLoaders.get(normKey)
+    return loader !== undefined && this.inflightLoaders.has(loader)
+  }
+
   ensureKeyLoaded(key: string): Promise<V | undefined> {
     const existing = super.get(key) ?? super.get(key.toLowerCase())
     if (existing !== undefined) return Promise.resolve(existing)
@@ -115,9 +131,19 @@ export class LazySpriteArtMap<V> extends Map<string, V> {
     const active = this.inflight.get(normKey)
     if (active !== undefined) return active
     const loader = this.lazyLoaders.get(key) ?? this.lazyLoaders.get(normKey)
-    if (loader === undefined) return Promise.resolve(undefined)
+    if (loader === undefined || this.failedLoaders.has(loader)) {
+      return Promise.resolve(undefined)
+    }
+    this.inflightLoaders.add(loader)
     const promise = loader()
+      .then((res) => {
+        if (res === undefined) {
+          this.failedLoaders.add(loader)
+        }
+        return res
+      })
       .finally(() => {
+        this.inflightLoaders.delete(loader)
         this.inflight.delete(normKey)
       })
     this.inflight.set(normKey, promise)
@@ -148,6 +174,17 @@ export class LazySpriteArtMap<V> extends Map<string, V> {
     }
     return false
   }
+}
+
+export function isLazySpriteArtLoading<V>(
+  map: ReadonlyMap<string, V> | undefined,
+  keys: readonly (string | undefined)[],
+): boolean {
+  if (!(map instanceof LazySpriteArtMap)) return false
+  for (const key of keys) {
+    if (key && map.isKeyLoading(key)) return true
+  }
+  return false
 }
 
 function hasBundledSpriteMeta<M extends PackedSpriteMetaBase>(
@@ -299,6 +336,12 @@ async function loadPackedSpriteArtMap<M extends PackedSpriteMetaBase>(options: {
       }
       if (recordFailure) {
         failures.push(`${name} [${lastReason || `tried: ${baseCandidates.join(', ')}`}]`)
+      } else {
+        reportMissingArt(
+          options.subdir === 'missiles' ? 'missile' : 'overlay',
+          name,
+          lastReason || `tried: ${baseCandidates.join(', ')}`,
+        )
       }
       return undefined
     })()
@@ -472,10 +515,22 @@ export function drawTownPortal(
       drewSprite = true
     }
   }
-  if (!drewSprite) {
+  const tpId = isOpening ? 'town_portal_op' : 'town_portal_on'
+  if (drewSprite) {
+    resolvePreloadMiss('overlay', tpId)
+  } else if (
+    isLazySpriteArtLoading(
+      overlayArtMap,
+      isOpening
+        ? ['town_portal_op_tr', 'town_portal_op_hd']
+        : ['town_portal_on_tr', 'town_portal_on_hd'],
+    )
+  ) {
+    reportPreloadMiss('overlay', tpId, 'Town portal sprite atlas loading in overlayArtMap')
+  } else {
     reportMissingArt(
       'overlay',
-      isOpening ? 'town_portal_op' : 'town_portal_on',
+      tpId,
       'Missing town portal sprite atlas in overlayArtMap',
     )
   }

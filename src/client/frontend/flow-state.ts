@@ -238,6 +238,8 @@ export type BnetConnectStageIndex = 0 | 1 | 2 | 3 | 4 | 5 | 6
 export interface BnetFlowState {
   stage: BnetFlowStage
   playMode?: 'single' | 'bnet' | undefined
+  /** Server/deployment-controlled gate for Single Player mode (default `false` — disabled & unavailable). */
+  singlePlayerEnabled?: boolean | undefined
   gateway: string
   /** Ticks elapsed in current stage (25 ticks = 1 second). */
   stageTicks: number
@@ -1205,6 +1207,7 @@ export function createInitialFlowState(initialRoster: RosterCharacter[] = []): B
   return {
     stage: 'main_menu',
     playMode: 'bnet',
+    singlePlayerEnabled: false,
     gateway: '',
     stageTicks: 0,
     globalTick: 0,

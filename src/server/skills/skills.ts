@@ -7247,7 +7247,9 @@ function castSceneSkill113c(
       const mlvl = computeShadowMlvl(ownerLevel, slvl)
       const resistAll =
         skillId === 268 ? computeShadowWarriorResistances(slvl) : computeShadowMasterResistances(slvl)
-      const shadowEquipment = generateShadowEquipment(skillId as 268 | 279, slvl)
+      const shadowEquipment = generateShadowEquipment(skillId as 268 | 279, slvl, {
+        rng: () => engine.loot.int(0, 0xffff) / 0x10000,
+      })
       registerCastSummon({
         engine,
         player,
@@ -7450,7 +7452,7 @@ function castSceneSkill113c(
     let bestCorpseDist = 80
     for (const monster of engine.world.monsters) {
       if (monster.state !== 'dead' && monster.hp > 0) continue
-      if ((monster as any).corpseConsumed) continue
+      if ((monster as any).corpseConsumed || (monster as any).shattered || (monster as any).corpseSuppressed) continue
       if ((monster.stats as any).isBoss || (monster.stats as any).type === 'boss') continue
       const d = Math.hypot(monster.x - targetX, monster.y - targetY)
       if (d <= bestCorpseDist) {
@@ -7549,7 +7551,7 @@ function castSceneSkill113c(
     let bestCorpseDist = 80
     for (const monster of engine.world.monsters) {
       if (monster.state !== 'dead' && monster.hp > 0) continue
-      if ((monster as any).corpseConsumed) continue
+      if ((monster as any).corpseConsumed || (monster as any).shattered || (monster as any).corpseSuppressed) continue
       const d = Math.hypot(monster.x - targetX, monster.y - targetY)
       if (d <= bestCorpseDist) {
         bestCorpseDist = d
@@ -7797,7 +7799,7 @@ function castSceneSkill113c(
       let bestCorpseDist = 160
       for (const monster of engine.world.monsters) {
         if (monster.state !== 'dead' && monster.hp > 0) continue
-        if ((monster as any).corpseConsumed) continue
+        if ((monster as any).corpseConsumed || (monster as any).shattered || (monster as any).corpseSuppressed) continue
         if ((monster.stats as any)?.isBoss || (monster.stats as any)?.type === 'boss') continue
         if (skillId === 95) {
           if (

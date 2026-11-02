@@ -1705,7 +1705,7 @@ export class Autopilot {
     const errands: readonly (Errand | false)[] = [
       wounded && ready('heal') && { key: 'heal', reason: 'Healing up', npc: 'healer' },
       resist !== null && me.gold >= POTION_GOLD && ready('resist') && { key: 'resist', reason: `Buying ${resist.potion} for ${resist.boss}`, npc: 'resists', action: 'trade', work: () => this.buyResists(resist.code) },
-      this.unidentified().length > 0 && scrollSource(world.containers.inventory.values(), 'ibk', 'isc') !== null && ready('identify') && { key: 'identify', reason: 'Identifying items', work: () => this.identifyAll() },
+      this.unidentified().length > 0 && scrollSource([...world.containers.inventory.values(), ...world.containers.belt.values()], 'ibk', 'isc') !== null && ready('identify') && { key: 'identify', reason: 'Identifying items', work: () => this.identifyAll() },
       this.boons().length > 0 && ready('boon') && { key: 'boon', reason: `Using the ${BOONS.get(this.boons()[0]!.code.trim())}`, work: () => this.useBoons() },
       Boolean(world.hasDeadMercenary) && world.deadMercReviveCost <= me.gold && ready('mercs') && { key: 'mercs', reason: 'Reviving your mercenary', npc: 'mercs', action: 'resurrect' },
       merc === null && !world.hasDeadMercenary && world.expansion === true && me.gold >= MERCENARIES.minGold && this.settledIn(nowMs) && ready('hire') && { key: 'hire', reason: 'Hiring a mercenary', npc: 'mercs', action: 'hire', work: () => this.hire() },
@@ -2068,7 +2068,8 @@ export class Autopilot {
 
   private scrollsWanted(kind: keyof typeof SCROLL_KINDS): number {
     const { tome: tomeCode, scroll, keep, spare } = SCROLL_KINDS[kind]
-    const { tome, scrolls } = scrollsCarried(this.host.world.containers.inventory.values(), tomeCode, scroll)
+    const { inventory, belt } = this.host.world.containers
+    const { tome, scrolls } = scrollsCarried([...inventory.values(), ...belt.values()], tomeCode, scroll)
     return Math.max(0, (tome ? keep : spare) - scrolls)
   }
 
@@ -2139,7 +2140,7 @@ export class Autopilot {
   private async buyScroll(kind: keyof typeof SCROLL_KINDS): Promise<boolean> {
     const { world, hudManager, hudModel } = this.host
     const { tome: tomeCode, scroll, tomeGold } = SCROLL_KINDS[kind]
-    const { tome } = scrollsCarried(world.containers.inventory.values(), tomeCode, scroll)
+    const { tome } = scrollsCarried([...world.containers.inventory.values(), ...world.containers.belt.values()], tomeCode, scroll)
     const code = tome ? scroll : world.self.gold >= tomeGold ? tomeCode : kind === 'portal' ? scroll : null
     const ware = this.store().find((item) => item.code.trim() === code)
     const before = world.self.gold
@@ -2242,20 +2243,21 @@ export class Autopilot {
     const { world, hudManager, hudModel } = this.host
     if (hudManager.rightPanel !== 'inv') hudManager.toggleRightPanel('inv')
     for (const item of this.unidentified()) {
-      const source = scrollSource(world.containers.inventory.values(), 'ibk', 'isc')
+      const invSource = scrollSource(world.containers.inventory.values(), 'ibk', 'isc')
+      const beltSource = invSource === null ? scrollSource(world.containers.belt.values(), 'ibk', 'isc') : null
+      const source = invSource ?? beltSource
       if (!source || hudModel === null || !this.active) break
-      if (!(await this.armIdentify(source.id, IDENTIFY_TRIES))) break
+      if (!(await this.armIdentify(() => (beltSource !== null ? hudModel.useBeltSlot(beltSource.gridX ?? beltSource.x ?? 0, false) : hudModel.useItem(source.id)), IDENTIFY_TRIES))) break
       hudModel.identifyItem(item.id, source.id)
       await waitFor(() => world.containers.inventory.get(item.id)?.identified !== false, IDENTIFY_MS)
     }
     if (hudManager.rightPanel === 'inv') hudManager.toggleRightPanel('inv')
   }
 
-  private async armIdentify(sourceId: number, tries: number): Promise<boolean> {
-    const { hudManager, hudModel } = this.host
-    if (tries <= 0 || hudModel === null) return false
-    hudModel.useItem(sourceId)
-    return (await waitFor(() => hudManager.pendingIdentifyScrollId !== null, IDENTIFY_MS)) || this.armIdentify(sourceId, tries - 1)
+  private async armIdentify(use: () => unknown, tries: number): Promise<boolean> {
+    if (tries <= 0) return false
+    use()
+    return (await waitFor(() => this.host.hudManager.pendingIdentifyScrollId !== null, IDENTIFY_MS)) || this.armIdentify(use, tries - 1)
   }
 
   private isCaster(): boolean {

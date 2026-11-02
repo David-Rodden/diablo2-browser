@@ -36,6 +36,7 @@ import {
 import {
   CANONICAL_RUNES_TABLE,
   checkRunewordMatch,
+  isQuestItemBase113c,
   type RunewordMatchResult,
 } from '../../common/items/runeword.ts'
 import type { D2Rng } from '../../common/rng/d2-rng.ts'
@@ -626,6 +627,9 @@ function itemMatchesDescriptor113c(
     const exactBase = tables.getBase(desc.primary)
     if (exactBase) {
       if (desc.upg) {
+        if (isQuestItemBase113c(base) || isQuestItemBase113c({ code })) {
+          return false
+        }
         const targetNorm = (
           (exactBase as { readonly normcode?: string }).normcode ?? exactBase.id
         )
@@ -643,6 +647,8 @@ function itemMatchesDescriptor113c(
         return false
       }
     } else if (!itemMatchesType113c(base, desc.primary, tables)) {
+      return false
+    } else if (isQuestItemBase113c(base) || isQuestItemBase113c({ code })) {
       return false
     }
   }
@@ -1008,6 +1014,7 @@ function buildUseitemOutput113c(
 
   // 3. Unique & Rare Base Tier Upgrade (`useitem,mod,exc` & `useitem,mod,eli`, Rows 129..136)
   if (hasExc || hasEli) {
+    if (isQuestItemBase113c(curBase) || isQuestItemBase113c({ code: curCode })) return null
     const nextCodeRaw = hasEli
       ? (curBase as { readonly ultracode?: string }).ultracode
       : (curBase as { readonly ubercode?: string }).ubercode

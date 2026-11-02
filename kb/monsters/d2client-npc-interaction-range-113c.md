@@ -10,7 +10,8 @@
 |---|---|---|
 | Click on a monster / NPC | ProcessClick monster case `0x6facafea..0x6facb0fa` | `#10407(target, player) <= 2` (MonStats `interact`) or `<= 5` (other monsters): send `0x13` at once, else walk and queue a pending `0x13` |
 | Pending interaction after the walk | `0x6fac9ef0` | `#10407(target, player) <= 2` **and** `#10324(target, player, 0x804) == 0`, else walk again |
-| Every frame while `UI_NPCMENU` is open | `0x6faf83b0` (called from `0x6fb73d71`) | Player and NPC alive / present only. **No distance check.** |
+| Server `C2S 0x2F NpcInit` & quest-object interact | `D2Game.dll` `0x6fceccf0 -> 0x6fceb690` / `0x6fced45b -> 0x6fcecfe0` | Same Act (`0x6fceb370`) **and** Chebyshev sub-tile distance `max(\|dx\|, \|dy\|) <= 10` (`ebx = 0x0A`) |
+| Every frame while `UI_NPCMENU` is open | `0x6faf83b0` (called from `0x6fb73d71`) | Player and NPC alive / present in `D2Client.dll`; web port additionally enforces the `<= 10` sub-tile tether (#1979) |
 
 `#10407` is `D2Common.dll` `0x6FDCFCD0` (`UNITS_GetDistanceToOtherUnit`), the unit-size-adjusted table distance.
 
@@ -82,8 +83,29 @@ For the player (size 2) and a size-2 NPC, `#10407 <= 2` holds for `dy = 0, 1: dx
 The rest of the function (`0x6faf83ea..0x6faf858d`) only drives the menu / speech state: `GetTickCount`
 (`[0x6fb7ef5c]`) timers, `D2Common #11017` (thunk `0x6fabc202`) on `[player+0x60]`, and the UI helpers
 `0x6faf2ad0`, `0x6fab1380`, `0x6fb38a70`, `0x6fac4660`, `0x6fb42850`, `0x6fb53840`, `0x6fb53d20`. None of its
-direct calls is `#10407` (`0x6fabcc70`) or a collision test. Walking away from an open NPC is ended by the world
-click that starts the walk, not by this guard.
+direct calls is `#10407` (`0x6fabcc70`) or a collision test.
+
+### 5.1 Server `0x0A` (10-Subtile) Interaction Tether (`D2Game.dll` `0x6fceccf0 -> 0x6fceb690`) & Web Viewport Clamping
+
+In `D2Game.dll` (ImageBase `0x6FC20000`), `SCMD_NpcInit` (`0x6fced350`, `C2S 0x2F`) calls `0x6fceccf0` (`unitType == 1` NPC)
+and `0x6fced45b -> 0x6fcecfe0` (`unitType == 2` quest/scroll object):
+
+- `0x6fcecd29..0x6fcecd2e`: `mov ebx, 0x0A ; call 0x6fceb690` (`NPC_ValidateInteract`).
+- `0x6fceb690..0x6fceb70b`: verifies same Act (`0x6fceb370`), then computes `|playerX - npcX| <= ebx` (`10`) and
+  `|playerY - npcY| <= ebx` (`10`) in sub-tiles (`Chebyshev <= 10` = 2 floor tiles; opening range `#10407 <= 2` is at most 4 sub-tiles).
+- `0x6fced45b`: passes `0x0A` (`10`) to `0x6fcecfe0` for object scroll / quest-object interactions.
+
+Why the web client must enforce this `<= 10` sub-tile tether per tick (`enforceActiveInteractionRange113c`, Issue #1979):
+
+1. Town areas keep a 3×3 `D2Room1` window (~`120×120` sub-tiles) active on D2GS (and local `GameInstance` keeps town NPCs
+   loaded across town), so walking across town does not emit `S2C 0x0A UnitRemove` or `S2C 0x08 RoomHide` for the NPC.
+2. `computeNpcDialogLayout` and `drawNpcMenuImpl` (`src/client/ui/panels/npc-dialog-menu.ts`) clamp NPC menu and speech
+   boxes inside `[8..10, viewportWidth - width]`, which otherwise pins an unclosed dialog to the screen edge indefinitely
+   when the player moves away via touch joystick, teleport/displacement, or delayed `S2C 0x28` handshake arrival.
+3. Because `10` Chebyshev sub-tiles strictly contains every `#10407 <= 2` opening offset (`<= 4` sub-tiles) plus normal
+   client/server prediction drift (`arrivedViaServer`), enforcing `isWithinNpcInteractTether113c` (`<= 10`) preserves all
+   Issue #890 anti-instant-dismiss invariants while automatically dismissing NPC menus, speech boxes, vendor/service panels,
+   and object scroll/orifice dialogs once `max(|dx|, |dy|) > 10`.
 
 ---
 
@@ -93,8 +115,9 @@ click that starts the walk, not by this guard.
 |---|---|
 | `#10407` `0x6FDCFCD0` | `D2Common_10399` / `D2Common_10399_AtSubtiles` (`src/common/path/step.ts`) |
 | Thresholds `2` / `5` / `2` | `NPC_CLICK_INTERACT_DISTANCE_113C`, `MONSTER_CLICK_INTERACT_DISTANCE_113C`, `NPC_ARRIVAL_INTERACT_DISTANCE_113C`, `isNpcInInteractRange113c` (`src/client/input/click-rules-113c.ts`) |
+| `D2Game` `0x6fceb690` / `0x6fcecfe0` (`0x0A`) | `NPC_INTERACT_TETHER_SUBTILES_113C = 10`, `isWithinNpcInteractTether113c` (`src/client/input/click-rules-113c.ts`) |
 | Click / pending interaction | `CommandMapper.isWithinInteractionMeleeRange(..., 'click' / 'arrival')` |
-| `0x6faf83b0` | `OnlineSession.enforceActiveInteractionRange113c` (liveness only) |
+| `0x6faf83b0` + `0x0A` tether | `enforceActiveInteractionRange113c` (`src/client/session/session-level-navigation.ts`) |
 
 Not modelled: the pending path's collision test `#10324(target, player, 0x804)`. The web client's collision map
 also contains object footprints, which could block an NPC that stands next to a stall; the D2GS server stays

@@ -19,7 +19,7 @@
  *    - Hellforge (Normal, Nightmare, Hell): 1/11 uniform rune distribution + 4 gems (1P + 2Fl + 1N)
  * 4. Anti-regression source sentinels across engine.ts, items.ts, act-scene.ts, embedded-drop-tables.ts.
  */
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { MountedArchives } from '../src/common/mpq/mount.ts'
@@ -776,10 +776,16 @@ describe('Issue #428: Full-Spectrum Statistical Drop Verification', () => {
   // PILLAR 4: Anti-Regression Source Sentinels
   // ============================================================================
   describe('4. Anti-Regression Source Code Sentinels', () => {
-    it('src/server/items/drop-pipeline.ts, src/server/engine/game-instance.ts, and src/server/engine/game-engine.ts contain zero forbidden fallbacks (Act 1 H2H A, player.level + 2, rollDrop)', () => {
+    it('src/server/items/drop-pipeline.ts, src/server/engine/game-instance.ts (+ game-instance/*.ts), and src/server/engine/game-engine.ts contain zero forbidden fallbacks (Act 1 H2H A, player.level + 2, rollDrop)', () => {
+      const gameInstanceSubmodules = readdirSync(
+        resolve(process.cwd(), 'src/server/engine/game-instance'),
+      )
+        .filter((f) => f.endsWith('.ts'))
+        .map((f) => `src/server/engine/game-instance/${f}`)
       for (const relPath of [
         'src/server/items/drop-pipeline.ts',
         'src/server/engine/game-instance.ts',
+        ...gameInstanceSubmodules,
         'src/server/engine/game-engine.ts',
       ]) {
         const src = readFileSync(resolve(process.cwd(), relPath), 'utf8')

@@ -13,6 +13,16 @@ import {
   MISSILE_METAS,
   OVERLAY_METAS,
 } from '../src/client/scene/missile-overlay-renderer.ts'
+import {
+  clearMissingArtEntries,
+  clearPreloadMissEntries,
+  getMissingArtEntries,
+  getPreloadMissEntries,
+} from '../src/client/scene/missing-art.ts'
+import {
+  drawSceneMissileDrawable,
+  drawSceneOverlayDrawable,
+} from '../src/client/scene/world-renderer.ts'
 import type { MissileMeta } from '../src/client/render/missiles-meta.ts'
 
 const realFetch = globalThis.fetch
@@ -73,5 +83,135 @@ describe('missile/overlay art map partial load', () => {
   it('3. MISSILE_METAS still registers the A2Q6 horadric targets (bake must follow)', () => {
     expect(MISSILE_METAS.horadricstaff).toBeDefined()
     expect(OVERLAY_METAS.light_jet).toBeDefined()
+  })
+
+  it('4. lazy missile/overlay draw records PreloadMiss while loading and only emits reportMissingArt on genuine 404', async () => {
+    clearMissingArtEntries()
+    clearPreloadMissEntries()
+    const renderer = {
+      addAtlas: () => ({ texture: null, width: 8, height: 8, indexed: false }),
+      draw: () => {},
+      setBlendMode: () => {},
+    } as never
+    const missileArtMap = await loadMissileArtMap(renderer, undefined, {
+      lazy: true,
+      preloadStems: [],
+    })
+    const overlayArtMap = await loadOverlayArtMap(renderer, undefined, {
+      lazy: true,
+      preloadStems: [],
+    })
+
+    // Frame 0: `spike1` (`SpikeFiendMissle`) and `fire_cast_1` are valid on disk, but lazy-loaded on demand.
+    drawSceneMissileDrawable(
+      renderer,
+      {
+        kind: 'missile',
+        missileId: 1,
+        missileClassId: 7,
+        missileKey: 'spike1',
+        celFile: 'SpikeFiendMissle',
+        worldX: 0,
+        worldY: 0,
+        subX: 0,
+        subY: 0,
+        direction: 0,
+        frame: 0,
+        loopAnim: true,
+      } as never,
+      { missileArtMap } as never,
+      0,
+    )
+    drawSceneOverlayDrawable(
+      renderer,
+      {
+        kind: 'overlay',
+        overlayKey: 'ov1',
+        overlayId: 1,
+        token: 'fire_cast_1',
+        worldX: 0,
+        worldY: 0,
+        subX: 0,
+        subY: 0,
+        frame: 0,
+        loop: false,
+        blendMode: 'additive',
+      } as never,
+      { overlayArtMap } as never,
+      0,
+    )
+
+    expect(getMissingArtEntries()).toHaveLength(0)
+    expect(getPreloadMissEntries().map((e) => `${e.category}:${e.id}`)).toEqual([
+      'missile:spike1',
+      'overlay:fire_cast_1',
+    ])
+
+    await missileArtMap.waitForInflight()
+    await overlayArtMap.waitForInflight()
+
+    // Frame 1: after lazy load settles, sprites draw and preload misses resolve cleanly.
+    drawSceneMissileDrawable(
+      renderer,
+      {
+        kind: 'missile',
+        missileId: 1,
+        missileClassId: 7,
+        missileKey: 'spike1',
+        celFile: 'SpikeFiendMissle',
+        worldX: 0,
+        worldY: 0,
+        subX: 0,
+        subY: 0,
+        direction: 0,
+        frame: 0,
+        loopAnim: true,
+      } as never,
+      { missileArtMap } as never,
+      16,
+    )
+    drawSceneOverlayDrawable(
+      renderer,
+      {
+        kind: 'overlay',
+        overlayKey: 'ov1',
+        overlayId: 1,
+        token: 'fire_cast_1',
+        worldX: 0,
+        worldY: 0,
+        subX: 0,
+        subY: 0,
+        frame: 0,
+        loop: false,
+        blendMode: 'additive',
+      } as never,
+      { overlayArtMap } as never,
+      16,
+    )
+    expect(getMissingArtEntries()).toHaveLength(0)
+    expect(getPreloadMissEntries().every((e) => e.resolvedAt !== undefined)).toBe(true)
+
+    // Genuine 404 (`horadricstaff` is stubbed missing in `beforeEach`): must report [D2MissingArt] once settled!
+    drawSceneMissileDrawable(
+      renderer,
+      {
+        kind: 'missile',
+        missileId: 2,
+        missileClassId: 200,
+        missileKey: 'horadricstaff',
+        celFile: 'horadriclight',
+        worldX: 0,
+        worldY: 0,
+        subX: 0,
+        subY: 0,
+        direction: 0,
+        frame: 0,
+        loopAnim: true,
+      } as never,
+      { missileArtMap } as never,
+      32,
+    )
+    await missileArtMap.waitForInflight()
+    expect(getMissingArtEntries().some((e) => e.category === 'missile')).toBe(true)
   })
 })

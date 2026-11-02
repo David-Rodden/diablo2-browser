@@ -26,6 +26,7 @@ import {
 import type { CombatTerrain, CombatWorld, MonsterPack } from '../../common/units/unit-types.ts'
 import { Rng } from '../../common/rng/d2-rng.ts'
 import {
+  filterTransferableEliteModifiers113c,
   getCanonicalMonsterKinds,
   planMonsterGroups,
   resolveEliteCandidates,
@@ -403,9 +404,38 @@ export function planRoomPopulation113c(
           : group.rank === 'champion' || i === 0
             ? group.rank
             : 'minion'
-      const modifiers = rank === 'champion' || (rank === 'unique' && i === 0) ? (group.modifiers ?? []) : []
-      spawns.push({ kind: group.kind, rank, modifiers, x: cell.x, y: cell.y, groupIndex })
+      const memberKind =
+        group.rank === 'unique' && i > 0
+          ? (group.minionKinds?.[i - 1] ?? group.kind)
+          : group.kind
+      const modifiers =
+        group.rank === 'normal'
+          ? []
+          : rank === 'champion' || (rank === 'unique' && i === 0)
+            ? (group.modifiers ?? [])
+            : filterTransferableEliteModifiers113c(group.modifiers ?? [])
+      spawns.push({ kind: memberKind, rank, modifiers, x: cell.x, y: cell.y, groupIndex })
     })
+    if (group.rank === 'normal' && group.companions !== undefined && group.companions.length > 0) {
+      let compPlaced = 0
+      for (const [dx, dy] of PACK_MEMBER_OFFSETS) {
+        if (compPlaced >= group.companions.length) break
+        const x = anchor.x + dx
+        const y = anchor.y + dy
+        if (!free(x, y)) continue
+        occupied.add(`${x},${y}`)
+        const compKind = group.companions[compPlaced]!
+        compPlaced += 1
+        spawns.push({
+          kind: compKind,
+          rank: 'normal',
+          modifiers: [],
+          x,
+          y,
+          groupIndex,
+        })
+      }
+    }
   })
   return spawns
 }

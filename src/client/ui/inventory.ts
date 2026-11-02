@@ -489,6 +489,7 @@ export const INV_GOLD_BOX_RECESS = {
  */
 export interface ResolvableItem {
   readonly code?: string | undefined
+  readonly quality?: UiItemQuality | string | number | undefined
   readonly name?: string | undefined
   readonly nameZh?: string | undefined
   readonly baseNameZh?: string | undefined
@@ -510,6 +511,12 @@ export interface ResolvableItem {
   readonly identified?: boolean | undefined
   readonly isGambleMystery?: boolean | undefined
   readonly rawItem?: Item | undefined
+}
+
+function allowsUniqueSetNameSpriteLookup(item: ResolvableItem): boolean {
+  const q = item.quality ?? item.rawItem?.quality
+  if (q === undefined) return true
+  return q === 'unique' || q === 'set' || q === 7 || q === 5
 }
 
 /**
@@ -553,10 +560,11 @@ export function resolveItemSpriteRect(
         name: normalizedItem.rawItem?.base?.name ?? undefined,
       }
     : normalizedItem
+  const canUseUniqueSetName = allowsUniqueSetNameSpriteLookup(item)
   // Tier 0: Transformed dyed item lookup: `${invFile}_${invtransform}`
   const targetInv =
     item.invFile ||
-    (item.name ? BAKED_UI_MANIFEST.codeToInvFile[item.name] : undefined) ||
+    (canUseUniqueSetName && item.name ? BAKED_UI_MANIFEST.codeToInvFile[item.name] : undefined) ||
     (item.code ? BAKED_UI_MANIFEST.codeToInvFile[item.code] : undefined)
 
   if (targetInv && item.invtransform) {
@@ -600,7 +608,7 @@ export function resolveItemSpriteRect(
       const rect = itemRects[item.invFile!] ?? itemRects[lowerInv]
       if (rect) return rect
     }
-    if (item.name) {
+    if (canUseUniqueSetName && item.name) {
       const fromName = BAKED_UI_MANIFEST.codeToInvFile[item.name]
       if (
         fromName &&
@@ -625,7 +633,7 @@ export function resolveItemSpriteRect(
   }
 
   // Tier 2: Unique / set / display name in codeToInvFile
-  if (item.name) {
+  if (canUseUniqueSetName && item.name) {
     const fromName = BAKED_UI_MANIFEST.codeToInvFile[item.name]
     if (fromName && itemRects[fromName]) return itemRects[fromName]
   }
@@ -785,22 +793,30 @@ export function resolveGroundItemFlippyKey(
     return null
   }
 
+  const canUseUniqueSetName = allowsUniqueSetNameSpriteLookup(item)
   // 1.5 Authentic Charm Ground Flippy Resolution (cm1 -> flpchm1, cm2 -> flpchm2, cm3 -> flpchm3)
   const normCode = normalizeItemCode(item)?.toLowerCase()
   const isAnni =
     normCode === 'anni' ||
     normCode === 'mss' ||
-    ((!normCode || normCode === 'cm1') && typeof item.name === 'string' && item.name.includes('Annihilus'))
+    (canUseUniqueSetName &&
+      (!normCode || normCode === 'cm1') &&
+      typeof item.name === 'string' &&
+      item.name.includes('Annihilus'))
   const isTorch =
     normCode === 'torch' ||
     normCode === 'trch' ||
-    ((!normCode || normCode === 'cm2') &&
+    (canUseUniqueSetName &&
+      (!normCode || normCode === 'cm2') &&
       typeof item.name === 'string' &&
       (item.name === 'Hellfire Torch' || item.name.includes('Hellfire Torch') || (normCode === 'cm2' && item.name.includes('Torch'))))
   if (
     normCode === 'cm3' ||
     normCode === 'gheeds' ||
-    ((!normCode || normCode === 'cm3') && typeof item.name === 'string' && item.name.includes('Gheed'))
+    (canUseUniqueSetName &&
+      (!normCode || normCode === 'cm3') &&
+      typeof item.name === 'string' &&
+      item.name.includes('Gheed'))
   ) {
     return availableKeys['flpchm3'] ? 'flpchm3' : null
   }
@@ -824,7 +840,7 @@ export function resolveGroundItemFlippyKey(
   }
 
   // 3. Unique / Set item name lookup in codeToFlippyFile
-  if (item.name) {
+  if (canUseUniqueSetName && item.name) {
     const fromName = codeToFlippyFile[item.name]
     if (fromName) {
       if (item.invtransform) {
@@ -1468,7 +1484,7 @@ export function identifyUiItem(item: UiInventoryItem, playerLevel?: number): UiI
 }
 
 export interface IdentifyCursorSource {
-  readonly container: 'inventory' | 'stash' | 'cube'
+  readonly container: 'inventory' | 'stash' | 'cube' | 'belt'
   readonly itemId: string
   readonly code: 'ibk' | 'isc'
 }
@@ -2133,7 +2149,9 @@ export function applySocketToUiItem(
         rolledProps: [],
         stats: {},
       } as unknown as Item)
-    mutable.rawItem = socketItemIntoHost(target.rawItem, domainSocketable)
+    mutable.rawItem = socketItemIntoHost(target.rawItem, domainSocketable, undefined, {
+      isLadder: true,
+    })
   }
 
   return target
@@ -2614,7 +2632,10 @@ export class InventoryPanel {
   /**
    * Enter Identify Cursor Mode from a Tome of Identify (`ibk`) or Scroll of Identify (`isc`).
    */
-  startIdentifyMode(item: UiInventoryItem, container: 'inventory' | 'stash' | 'cube' = 'inventory'): boolean {
+  startIdentifyMode(
+    item: UiInventoryItem,
+    container: 'inventory' | 'stash' | 'cube' | 'belt' = 'inventory',
+  ): boolean {
     const code = (item.code ?? '').trim().toLowerCase()
     if (code === 'ibk') {
       if (getTomeQuantity(item) <= 0) return false

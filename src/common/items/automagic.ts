@@ -903,6 +903,9 @@ export interface RollStaffModsOptions {
   readonly quality?: string | number | undefined
   readonly isExpansion?: boolean | undefined
   readonly bonusArg?: number | undefined
+  /** Charsi Imbue (`wInitFlags & 0x20`, `D2Game.dll` `0x6FCE03A8` -> `0x6FC33320`, `#1951`). */
+  readonly isImbue?: boolean | undefined
+  readonly wInitFlags?: number | undefined
 }
 
 /**
@@ -951,7 +954,11 @@ export function rollStaffMods(
   const effectiveRng = rng ?? new D2Rng(1)
   const isExpansion = options?.isExpansion !== false
   const isLowQuality = options?.quality === 'low' || options?.quality === 1
-  const bonusArg = options?.bonusArg ?? 0
+  const isImbueFlagged =
+    options?.isImbue === true || ((options?.wInitFlags ?? 0) & 0x20) !== 0
+  const bonusArg =
+    options?.bonusArg ??
+    (isImbueFlagged && isExpansion ? Math.max(0, Math.trunc(ilvl)) : 0)
 
   let baseTier = 1
   if (ilvl >= 37 && isExpansion) baseTier = 5
@@ -1020,4 +1027,7 @@ export function rollStaffMods(
 
   return props
 }
+
+/** Canonical 1.13c alias for `rollStaffMods` (`D2Game.dll` `0x6FC33320`). */
+export const rollStaffmods113c = rollStaffMods
 

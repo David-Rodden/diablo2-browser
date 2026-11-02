@@ -1305,7 +1305,8 @@ export function createDroppedItem(
       maxDurability = mult > 1 ? Math.min(255, Math.round(ethBaseDur * mult)) : ethBaseDur
       durability = maxDurability
     } else {
-      maxDurability = Math.round(rawDurability * mult)
+      // 1.13c D2Common bDurability uint8 cap (0x6FC30DAD / 0x6FC30F57): clamp 3x Failed Unique & 2x Failed Set <= 255 (#1950).
+      maxDurability = mult > 1 ? Math.min(255, Math.round(rawDurability * mult)) : Math.round(rawDurability * mult)
       durability = maxDurability
     }
   }
@@ -2383,11 +2384,14 @@ export function imbueItem113c(
           { group: autoPrefixGroup, isRare: true },
         )
       : null
+  // D2Game.dll QUESTS_A1Q5_ImbueItem (0x6FCE03A8 -> 0x6FC33320): sets wInitFlags |= 0x20 (IMBUE) (#1951).
   const staffMods =
     resolveStaffModsClass(base, dropTables.itemTypes) !== undefined
       ? rollStaffMods(base, ilvl, dropTables.itemTypes, itemRng, {
           isA: dropTables.isA,
           quality: 'rare',
+          isImbue: true,
+          wInitFlags: 0x20,
         })
       : undefined
 

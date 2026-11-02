@@ -30,6 +30,7 @@ import { periodOfDayToSoundEnvironTod113c } from '../audio/sound-environ-113c.ts
 import { unitSoundPosition113c } from '../audio/sound-records-113c.ts'
 import type { AutomapView } from '../automap/automap-view.ts'
 import { getTblLang } from '../i18n/lang.ts'
+import { isWithinNpcInteractTether113c } from '../input/click-rules-113c.ts'
 import type { CameraLike, CommandMapper } from '../input/command-mapper.ts'
 import {
   LOAD_ACT_NO_CATCH_UP_MS,
@@ -1347,8 +1348,12 @@ export function handleServerEvent(host: SessionEventProcessorHost, rawEv: Server
     case 'QuestState': {
       if (ev.kind === 'item' || ev.source === 0x50) {
         const arr = ev.quests ?? ev.flags ?? []
-        if (((arr[0] ?? 0) & 0xffff) === 1 && typeof host.automapView.setStaffTombLevelOverride === 'function') {
+        const itemQuestKind = (arr[0] ?? 0) & 0xffff
+        if (itemQuestKind === 1 && typeof host.automapView.setStaffTombLevelOverride === 'function') {
           host.automapView.setStaffTombLevelOverride(66 + (host.world.questTombOffset & 0xffff))
+        } else if (itemQuestKind === 4 && host.world.questLog.cairnStoneOrder) {
+          host.hudManager.worldPanels.openBarkscroll(true, host.world.questLog.cairnStoneOrder)
+          host.hudManager.setLeftPanel('barkscroll')
         }
       }
       if (ev.kind === 'availability' || ev.source === 0x5e) {
@@ -1399,8 +1404,10 @@ export function handleServerEvent(host: SessionEventProcessorHost, rawEv: Server
       ) {
         // D2Client.dll 0x6fafb8a0 (0x6fafb91f..0x6fafb9b7): S2C 0x28 UpdateQuestInfo with
         // 0 <= updateType <= 5 looks up the unit (updateType, unitId) in the client unit table:
-        // - If found (0x6fafb955..0x6fafb9b7): starts NPC dialog and sends C2S 0x2F NpcInit(updateType, unitId).
-        // - If not found (0x6fafb923..0x6fafb93f): clears NPC interaction and sends C2S 0x30 NpcCancel(updateType, unitId).
+        // - If found (0x6fafb955..0x6fafb9b7) and still within D2Game's 10-subtile interaction tether
+        //   (0x6fceccf0 -> 0x6fceb690, ebx = 0x0A): starts NPC dialog and sends C2S 0x2F NpcInit(updateType, unitId).
+        // - If not found or the player already moved outside the 10-subtile tether during RTT (#1979):
+        //   clears NPC interaction and sends C2S 0x30 NpcCancel(updateType, unitId).
         const uType = (
           ev.updateType === 0 &&
           !host.world.getUnit(0, ev.unitId) &&
@@ -1410,7 +1417,13 @@ export function handleServerEvent(host: SessionEventProcessorHost, rawEv: Server
         ) as 0 | 1 | 2 | 3 | 4 | 5
         const target = { unitType: uType, id: ev.unitId }
         const foundUnit = host.world.getUnit(uType, ev.unitId)
-        if (foundUnit) {
+        const predSnap = host.predictor.getSnapshot()
+        const selfX = predSnap.x !== 0 || predSnap.y !== 0 ? predSnap.x : host.world.self.x
+        const selfY = predSnap.x !== 0 || predSnap.y !== 0 ? predSnap.y : host.world.self.y
+        const inRange =
+          foundUnit !== undefined &&
+          (uType !== 1 || isWithinNpcInteractTether113c(selfX, selfY, foundUnit.x, foundUnit.y))
+        if (foundUnit && inRange) {
           if (uType === 1) {
             host.commandMapper.clearPendingNpcInteract(ev.unitId)
           }

@@ -186,11 +186,14 @@ describe('P1 Wave 4 — Quests, Objects, Corpse, Ground Expiry & Room AOI (#1857
       internal.revealAreaRoomsNearPlayer(pRec, true)
 
       const leaveEvents = game.drainEvents(pid)
+      // Unit ids are per unit type in 1.13c (monster #1 and object #1 coexist): match (type, id).
+      const ofType = (e: { unitType?: unknown }, id: 0 | 1 | 2 | 3 | 4 | 5, name: string): boolean =>
+        e.unitType === id || e.unitType === name
       const monRemoveIdx = leaveEvents.findIndex(
-        (e) => e.type === 'UnitRemove' && e.unitId === monId,
+        (e) => e.type === 'UnitRemove' && e.unitId === monId && ofType(e, 1, 'monster'),
       )
       const chestRemoveIdx = leaveEvents.findIndex(
-        (e) => e.type === 'UnitRemove' && e.unitId === chestId,
+        (e) => e.type === 'UnitRemove' && e.unitId === chestId && ofType(e, 2, 'object'),
       )
       const room0HideIdx = leaveEvents.findIndex(
         (e) => e.type === 'RoomHide' && e.areaId === 1 && e.tileX === 0,
@@ -205,7 +208,7 @@ describe('P1 Wave 4 — Quests, Objects, Corpse, Ground Expiry & Room AOI (#1857
       internal.revealAreaRoomsNearPlayer(pRec, true)
       const returnEvents = game.drainEvents(pid)
       const monAssigns = returnEvents.filter(
-        (e) => e.type === 'UnitAssign' && e.unitId === monId,
+        (e) => e.type === 'UnitAssign' && e.unitId === monId && ofType(e, 1, 'monster'),
       )
       expect(monAssigns).toHaveLength(1)
     })
@@ -865,13 +868,14 @@ describe('P1 Wave 4 — Quests, Objects, Corpse, Ground Expiry & Room AOI (#1857
       expect(players.get(partyTownId)!.questFlags[qIdx('a4q1')]).toBe(0)
       expect(players.get(unpartiedId)!.questFlags[qIdx('a4q1')]).toBe(0)
 
-      // 2. Act-end boss kill (Andariel -> a1q6): credits killer + same-area party ally + Act 1 town party ally, NEVER unpartied bystander!
+      // 2. Act-end boss kill (Andariel -> a1q6): credits killer + same-area party ally + Act 1 town party ally with 0x3000 (before Warriv talk), NEVER unpartied bystander!
       const andariel = game.spawnMonster({ defId: 'andariel', x: 16, y: 10, areaId: 37, hp: 10, maxHp: 10 })
       game.applyDamageToMonster(andariel, 1000, killerId)
 
-      expect(players.get(killerId)!.questFlags[qIdx('a1q6')]! & QUEST_FLAG_COMPLETED_113C).toBe(1)
-      expect(players.get(partySameAreaId)!.questFlags[qIdx('a1q6')]! & QUEST_FLAG_COMPLETED_113C).toBe(1)
-      expect(players.get(partyTownId)!.questFlags[qIdx('a1q6')]! & QUEST_FLAG_COMPLETED_113C).toBe(1)
+      const a1q6KillBits = 0x1000 | 0x2000
+      expect(players.get(killerId)!.questFlags[qIdx('a1q6')]! & a1q6KillBits).toBe(a1q6KillBits)
+      expect(players.get(partySameAreaId)!.questFlags[qIdx('a1q6')]! & a1q6KillBits).toBe(a1q6KillBits)
+      expect(players.get(partyTownId)!.questFlags[qIdx('a1q6')]! & a1q6KillBits).toBe(a1q6KillBits)
       expect(players.get(unpartiedId)!.questFlags[qIdx('a1q6')]).toBe(0)
     })
   })

@@ -533,10 +533,12 @@ describe('[Skill #044] Frost Nova (SOR) — 1.13c 7-Dimensional Verification Sui
       expect(outcome.hits[0]!.targetId).toBe('monster-1')
       expect(outcome.hits[0]!.missileName).toBe('frostnova')
 
-      // Target must have received chill state with durationFrames = 425
+      // Target must have received States.txt #11 ('cold', chill alias) with durationFrames = 425
       expect(monsterStateBus.hasState('chill')).toBe(true)
-      const entry = monsterStateBus.getActiveEntries().find(s => s.stateName === 'chill')
+      expect(monsterStateBus.hasState('cold')).toBe(true)
+      const entry = monsterStateBus.getActiveEntries().find(s => s.stateName === 'cold')
       expect(entry).toBeDefined()
+      expect(entry!.stateId).toBe(11)
       expect(entry!.durationFrames).toBe(425)
     })
   })

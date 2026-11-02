@@ -720,6 +720,7 @@ export function shouldRedirectUnknownPageToHome(
     pathname === '/drops.html' ||
     pathname === '/sw.js' ||
     pathname === '/asset-manifest.json' ||
+    pathname === '/site-config.json' ||
     pathname.startsWith('/api/') ||
     pathname.startsWith('/d2net/') ||
     pathname.startsWith('/@') ||

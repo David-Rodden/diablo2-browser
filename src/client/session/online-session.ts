@@ -141,6 +141,7 @@ export interface OnlineSessionLobbySnapshot {
   readonly activeGameName: string | null
   readonly disconnectReason: string | null
   readonly pingMs: number
+  readonly isSinglePlayer?: boolean | undefined
 }
 
 export interface OnlineSessionOptions {
@@ -760,6 +761,8 @@ export class OnlineSession {
       activeGameName: this.activeGameNameValue,
       disconnectReason: this.disconnectReasonValue,
       pingMs: this.pingMs,
+      isSinglePlayer:
+        this.localCharacterContext !== null && this.flow === null && this.gameAdapter !== null,
     }
   }
 
@@ -853,6 +856,8 @@ export class OnlineSession {
     this.releaseActiveCharLease()
     this.detachGameServerListeners()
     this.gameAdapter = null
+    this.localProgressionWriter = null
+    this.localCharacterContext = null
     await this.closeFlowQuietly()
     this.sessionLostValue = null
     this.lostFlow = null
@@ -1267,6 +1272,7 @@ export class OnlineSession {
       this.world.self.charClass = selected.charClass
     } else if (!this.flow && !reattach) {
       this.localProgressionWriter = null
+      this.localCharacterContext = null
     }
     if (!this.flow) {
       // A standalone adapter (single player, replay harness or tests) starts its own session lifecycle.
@@ -1542,6 +1548,7 @@ export class OnlineSession {
     const adapter = this.gameAdapter
     this.gameAdapter = null
     this.localProgressionWriter = null
+    this.localCharacterContext = null
     this.activeGameNameValue = null
     this.lastSyncedAreaId = 0
     if (adapter && !this.flow) {

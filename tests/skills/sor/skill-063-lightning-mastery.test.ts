@@ -172,18 +172,18 @@ describe('[Skill #063] Lightning Mastery (SOR) — 1.13c 7-Dimensional Verificat
       expect(base).toEqual({ min: 1, max: 272 })
 
       // Synergy only (+160% from 20 hard points in Chain Lightning):
-      // min: floor(1 * 2.6) = 2, max: floor(272 * 2.6) = 707
+      // 1.13c D2Common #10121 (0x6FDA04C7): EMin=1 with EMinLev1=0 skips synergy (min: 1), max: floor(272 * 2.6) = 707
       const synOnly = calculateLightningDamage(20, { chainLightningPoints: 20 })
-      expect(synOnly).toEqual({ min: 2, max: 707 })
+      expect(synOnly).toEqual({ min: 1, max: 707 })
 
       // Mastery only (+278% from Level 20 Lightning Mastery):
       // min: floor(1 * 3.78) = 3, max: floor(272 * 3.78) = 1028
       const masteryOnly = calculateLightningDamage(20, undefined, 20)
       expect(masteryOnly).toEqual({ min: 3, max: 1028 })
 
-      // BOTH: floor(272 * 2.60 * 3.78) = 2673
+      // BOTH: min = floor(1 * 3.78) = 3 (EMin=1 un-synergised), max = floor(272 * 2.60 * 3.78) = 2673
       const both = calculateLightningDamage(20, { chainLightningPoints: 20, lightningMastery: 20 })
-      expect(both).toEqual({ min: 9, max: 2673 })
+      expect(both).toEqual({ min: 3, max: 2673 })
       expect(both.max).toBeGreaterThan(272 * (1 + 1.60 + 2.78)) // 272 * 5.38 = 1463
     })
 
@@ -193,7 +193,7 @@ describe('[Skill #063] Lightning Mastery (SOR) — 1.13c 7-Dimensional Verificat
       expect(base).toEqual({ min: 1, max: 281 })
 
       // Synergy only (+80% from 20 hard points in Lightning):
-      // min: floor(1 * 1.8) = 1, max: floor(281 * 1.8) = 505
+      // min: 1 (EMin=1 un-synergised), max: floor(281 * 1.8) = 505
       const synOnly = calculateChainLightningDamage(20, { lightningPoints: 20 })
       expect(synOnly).toEqual({ min: 1, max: 505 })
 
@@ -202,9 +202,9 @@ describe('[Skill #063] Lightning Mastery (SOR) — 1.13c 7-Dimensional Verificat
       const masteryOnly = calculateChainLightningDamage(20, undefined, 20)
       expect(masteryOnly).toEqual({ min: 3, max: 1062 })
 
-      // BOTH: floor(281 * 1.80 * 3.78) = 1911
+      // BOTH: min = floor(1 * 3.78) = 3 (EMin=1 un-synergised), max = floor(281 * 1.80 * 3.78) = 1911
       const both = calculateChainLightningDamage(20, { lightningPoints: 20, lightningMastery: 20 })
-      expect(both).toEqual({ min: 6, max: 1911 })
+      expect(both).toEqual({ min: 3, max: 1911 })
     })
 
     it('proves scaling on Nova (Skill 48)', () => {

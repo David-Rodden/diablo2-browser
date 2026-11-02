@@ -46,3 +46,16 @@ never consulted, and S2C 0x61 (handler `0x6fb5f940` → `0x6fb399a0`, act-transi
 any menu gate.
 
 D2Common quest record exports: #10003 set bit, #10593 clear bit, #10174 get bit, #10495 clear quest.
+
+## Server Artisan Reward Lifecycle (`a1q5`, `a5q1`, `a5q4`)
+
+- **A1Q5 Charsi Imbue (`quest 3`, `D2Game.dll` `0x6FCA15E0`, `0x6FCE0320`)**:
+  - Turning in Horadric Malus (`'hdm'`) sets bit `1` (`0x0002`, `QFLAG_REWARDPENDING`) while keeping bit `0` (`0x0001`, `QFLAG_REWARDGRANTED`) clear.
+  - Redeeming Imbue clears bit `1`, sets bits `0` and `13` (`0x2001`), and emits `QUESTS_SendLogUpdateEx` (`S2C 0x28` + `0x29` + `0x5D`).
+- **A5Q1 Larzuk Add Sockets (`quest 35`, `D2Game.dll` `0x6FC785CF..0x6FC78788`)**:
+  - Killing Shenk (`0x6FC7869F` / `0x6FC78774`) sets **only** bits `1` and `13` (`0x2002`, `QFLAG_REWARDPENDING | QFLAG_COMPLETEDNOW`), leaving bit `0` (`0x0001`) clear so `0x6FBA2330` row 5 (`511 Larzuk`) unlocks `Add Sockets`.
+  - Redeeming Add Sockets (`0x6FC785CF..0x6FC785DE`) clears bit `1` and sets bits `0` and `13` (`0x2001`).
+- **A5Q4 Anya Personalize (`quest 38`, `D2Game.dll` `0x6FC77803..0x6FC78032`)**:
+  - Killing Nihlathak (`0x6FC778DE` / `0x6FC77A00`) sets **only** bits `1` and `13` (`0x2002`, `QFLAG_REWARDPENDING | QFLAG_COMPLETEDNOW`), leaving bit `0` (`0x0001`) clear so `0x6FBA2330` row 6 (`512 Anya`) unlocks `Personalize` (`quest 37` / `a5q3` is never consulted).
+  - Redeeming Personalize (`0x6FC77803..0x6FC77812`) clears bit `1` and sets bits `0` and `13` (`0x2001`).
+  - Nihlathak's Temple red portal (`109 -> 121`, `0x6FC77F85..0x6FC77FAD`) checks `(bit 0 || bit 1)` on quest `38` (`0x26`) combined with Halls of Pain waypoint (`123`).

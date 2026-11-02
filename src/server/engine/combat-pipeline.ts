@@ -927,6 +927,7 @@ export interface SUnitDmgOutcome {
   readonly absorbHeal256?: number
   readonly defenderHealed256?: number
   readonly selfDamageTaken256?: number
+  readonly targetDefenseReduction?: number
   readonly spawnedMissiles?: readonly string[]
   readonly procsSuppressed?: boolean
   readonly attackerOverlaysApplied?: readonly string[]
@@ -2296,6 +2297,22 @@ export function executeSUnitDmg(
   // Sets `DAMAGEHITFLAG_BYPASSUNDEAD` (0x200) in `SUnitDmg.cpp:0x6FCBFB40`, clamping positive
   // Undead `magicresist` (including >= 100% Magic Immunity) to 0%!
   // (Blessed Hammer #112 has Holy=0 and does NOT set this flag.)
+  // Against non-undead enemies (`!defender.isUndead`), Holy Bolt (#101) passes through and deals 0 damage (#1943).
+  if (packet.skillId === 101 && !defender.isUndead) {
+    return {
+      hit: false,
+      avoidedReason: 'miss',
+      immuneToElem: false,
+      immuneToPhys: false,
+      physDamage256: 0,
+      elemDamage256: 0,
+      totalDamage256: 0,
+      totalDamage: 0,
+      targetHpBefore256: hpBefore256,
+      targetHpAfter256: hpBefore256,
+      targetKilled: false,
+    }
+  }
   if (
     (packet.skillId === 101 || packet.bypassUndeadMagicRes === true) &&
     defender.isUndead &&
@@ -2933,7 +2950,10 @@ export function executeSUnitDmg(
           const rawChillFrames = mep.chillDurationFrames ?? 30
           const chillDivisor =
             defender.unitType === 'monster' ? Math.max(1, defender.monsterColdDivisor ?? 1) : 1
-          const chillFrames = Math.trunc(rawChillFrames / chillDivisor)
+          let chillFrames = Math.trunc(rawChillFrames / chillDivisor)
+          if (defender.statList.getAccruedStat('item_halffreezeduration') > 0) {
+            chillFrames = Math.floor(chillFrames / 2)
+          }
           if (chillFrames > 0) {
             defender.stateBus.applyState({
               stateNameOrId: 'chill',
@@ -2984,6 +3004,35 @@ export function executeSUnitDmg(
     finalPhys256 = Math.max(0, finalPhys256 - mdrOverflow256)
   }
 
+  // 1.13c Cold Chill / Freeze application (`SUNITDMG_ApplyCold` `0x6FCFC780` & `SUNITDMG_ApplyFreeze` `0x6FCFDAC0`, #1939):
+  // - `item_cannotbefrozen` (stat 153) completely blocks `cold` (state 11) and `freeze` (state 1)
+  //   (Holy Freeze `state 44` `holywindcold` is applied by `AuraScanner`, never here).
+  // - `item_halffreezeduration` (stat 118) halves duration ONCE (`floor(frames / 2)`), regardless of item count.
+  if (
+    elemType === 'cold' &&
+    finalElem256 > 0 &&
+    !elemResRec.isImmune &&
+    (packet.elemDurationFrames ?? 0) > 0 &&
+    defender.statList.getAccruedStat('item_cannotbefrozen') <= 0
+  ) {
+    const rawColdFrames = Math.max(0, Math.trunc(packet.elemDurationFrames!))
+    const coldDivisor =
+      defender.unitType === 'monster' ? Math.max(1, defender.monsterColdDivisor ?? 1) : 1
+    let effColdFrames = Math.trunc(rawColdFrames / coldDivisor)
+    if (defender.statList.getAccruedStat('item_halffreezeduration') > 0) {
+      effColdFrames = Math.floor(effColdFrames / 2)
+    }
+    if (effColdFrames > 0) {
+      defender.stateBus.applyState({
+        stateNameOrId: 'cold',
+        sourceUnitId: attacker.id,
+        sourceSkillId: packet.skillId,
+        slvl: effectiveSlvl,
+        durationFrames: effColdFrames,
+      })
+    }
+  }
+
   // Smite (97) / generic stun application
   if (packet.stunDurationFrames && packet.stunDurationFrames > 0) {
     defender.stateBus.applyState({
@@ -2996,21 +3045,22 @@ export function executeSUnitDmg(
 
   const canTriggerProcs = packet.canTriggerProcs !== false
   const canTriggerWeaponHitEvents =
-    canTriggerProcs && (attackKind === 'melee' || (attackKind === 'missile' && srcDam > 0))
+    canTriggerProcs && (attackKind === 'melee' || (attackKind === 'missile' && riderSrcDam > 0))
 
   // 1.13c Knockback flag (`D2Game.dll` `SUNITDMG_ExecuteEvents` @ `0x6FCFD00E..0x6FCFD120`):
   // `pDamage->wResultFlags |= 0x08` transitions the defender into `MONMODE_KNOCKBACK` (13) or
   // `PLRMODE_KNOCKBACK` (19); `States.txt` has no `'knockback'` state.
   const knockedBack = Boolean(packet.knockback && canTriggerProcs)
 
-  // Self-damage calculation (`SKILLS_SrvDo064_Sacrifice` @ `0x6FCB9290`):
-  // - Base recoil is `min(prePvpRawPhys256, targetCurrentHpBefore256)` * `selfDamagePct` / 100.
+  // Self-damage calculation (`SKILLS_SrvDo064_Sacrifice` @ `0x6FCB9290`, #1942):
+  // - Base recoil is `min(prePvpRawPhys256, targetCurrentHpBefore256)` * `selfDamagePct` / 100 (`Param3 = 8` for Sacrifice #96).
   // - Routed through attacker's own `damageresist` (physical damage reduction %, capped at 50%).
   // - CAN kill the Paladin (`HP` can drop to `0`).
   let selfDamageTaken256 = 0
-  if (packet.selfDamagePct && packet.selfDamagePct > 0 && prePvpRawPhys256 > 0 && !physResRec.isImmune) {
+  const effectiveSelfDamagePct = packet.selfDamagePct ?? (packet.skillId === 96 ? 8 : 0)
+  if (effectiveSelfDamagePct > 0 && prePvpRawPhys256 > 0 && !physResRec.isImmune) {
     const recoilBase256 = hpBefore256 > 0 ? Math.min(prePvpRawPhys256, hpBefore256) : prePvpRawPhys256
-    const rawSelfDmg256 = Math.trunc((recoilBase256 * packet.selfDamagePct) / 100)
+    const rawSelfDmg256 = Math.trunc((recoilBase256 * effectiveSelfDamagePct) / 100)
     const attackerPhysRes = Math.min(50, Math.max(-100, attacker.statList.getAccruedStat('damageresist')))
     selfDamageTaken256 = Math.max(0, Math.trunc((rawSelfDmg256 * (100 - attackerPhysRes)) / 100))
     const curAttackerHp256 = attacker.statList.getHp256()
@@ -3031,12 +3081,79 @@ export function executeSUnitDmg(
   const currentDefenderHp256 = defender.statList.getHp256()
 
   // 8.3 Crushing Blow (`stat 136`, `ITEMEVENTS_ApplyCrushingBlow` @ `0x6FCCCC30`, #1869, #1873)
-  // & Open Wounds (`stat 135`, `ITEMEVENTS_ApplyOpenWounds` @ `0x6FCCD410`, #1870, #1873):
+  // & Open Wounds (`stat 135`, `ITEMEVENTS_ApplyOpenWounds` @ `0x6FCCD410`, #1870, #1873)
+  // & -Monster Defense Per Hit (`stat 120`, `ITEMEVENTS_ApplyDamageTargetAC`, #1936)
+  // & Hit Blinds Target (`stat 113`, `ITEMEVENTS_ApplyStupidity` `0x6FCCD0F0`, #1937)
+  // & Hit Causes Monster to Flee (`stat 112`, `ITEMEVENTS_ApplyHowl` `0x6FCCCF40`, #1937):
   let cbTriggered = false
   let cbDamage256 = 0
   let owTriggered = false
   let owBitrate256 = 0
+  let targetDefenseReduction = 0
   if (canTriggerWeaponHitEvents) {
+    const rawDamageTargetAc = Math.abs(Math.trunc(attacker.statList.getAccruedStat('item_damagetargetac')))
+    if (rawDamageTargetAc > 0) {
+      const isPvpOrMercTarget =
+        isPlayerLikeDefender ||
+        defender.unitType === 'mercenary' ||
+        defender.unitType === 'party_mercenary'
+      const acReduction = isPvpOrMercTarget ? Math.floor(rawDamageTargetAc / 2) : rawDamageTargetAc
+      if (acReduction > 0) {
+        targetDefenseReduction = acReduction
+        const curBaseAc = defender.statList.getAccruedStat('armorclass', true)
+        defender.statList.setBaseStat('armorclass', Math.max(0, curBaseAc - acReduction))
+      }
+    }
+
+    const isEligibleForBlindOrFlee =
+      defender.unitType === 'monster' &&
+      !defender.isBoss &&
+      !defender.isPrimeEvil &&
+      !defender.isSuperUnique &&
+      !defender.isChampion &&
+      defender.rank !== 'champion' &&
+      defender.rank !== 'unique' &&
+      defender.rank !== 'boss' &&
+      defender.rank !== 'superunique' &&
+      !defender.stateBus.hasState(57) &&
+      !defender.stateBus.hasState('attract') &&
+      !defender.stateBus.hasState(59) &&
+      !defender.stateBus.hasState('confuse')
+    if (isEligibleForBlindOrFlee) {
+      const stat113 = Math.trunc(attacker.statList.getAccruedStat('item_stupidity'))
+      if (stat113 > 0) {
+        const atkLvl = Math.max(1, Math.trunc(attacker.statList.getAccruedStat('level')))
+        const defLvl = Math.max(1, Math.trunc(defender.statList.getAccruedStat('level')))
+        const blindChance = Math.max(0, Math.min(100, 50 + (atkLvl + (stat113 - 1) * 4 - defLvl) * 5))
+        if (boundedRand(resolvedRng, 100) < blindChance) {
+          const blindSlvl = Math.max(1, Math.min(20, Math.floor((atkLvl - 6) / 4) + 1))
+          const curseDiv = Math.max(1, defender.monsterColdDivisor ?? 1)
+          const blindFrames = Math.max(1, Math.floor((125 + (blindSlvl - 1) * 50) / curseDiv))
+          defender.stateBus.applyState({
+            stateNameOrId: 'dimvision',
+            sourceUnitId: attacker.id,
+            sourceSkillId: 81,
+            slvl: blindSlvl,
+            durationFrames: blindFrames,
+          })
+        }
+      }
+      const stat112 = Math.trunc(attacker.statList.getAccruedStat('item_howl'))
+      if (stat112 > 0) {
+        const fleeChance = stat112 > 100 ? Math.min(100, Math.floor((stat112 * 100) / 128)) : stat112
+        if (fleeChance >= 100 || boundedRand(resolvedRng, 100) < fleeChance) {
+          const curseDiv = Math.max(1, defender.monsterColdDivisor ?? 1)
+          const fleeFrames = Math.max(25, Math.floor(150 / curseDiv))
+          defender.stateBus.applyState({
+            stateNameOrId: 'terror',
+            sourceUnitId: attacker.id,
+            sourceSkillId: 77,
+            slvl: 1,
+            durationFrames: fleeFrames,
+          })
+        }
+      }
+    }
     if (!packet.skipCrushingBlow && currentDefenderHp256 > 0) {
       const cbChance = Math.min(100, Math.max(0, Math.trunc(attacker.statList.getAccruedStat('item_crushingblow'))))
       if (cbChance > 0) {
@@ -3166,24 +3283,12 @@ export function executeSUnitDmg(
 
   // 9. Reactive events post-damage (damagedinmelee for melee, hitbymissile for missile)
   if (attackKind === 'melee') {
-    // 1.13c Clay Golem EventFunc27_SlowTarget (0x6FD13E10 -> ITEMEVENTS_ApplySlow 0x6FCCD2C0,
-    // Skills.txt #75 aurastat1 = item_slow = dm34): slows melee attacker for 750 frames (30s),
-    // capped at 50% vs Player/Hireling/Boss/Unique/Champion, 75% vs SuperUnique, 90% vs Normal.
     const isClayGolemUnit =
       defender.stateBus.hasState('claygolem') ||
       (defender as { kind?: string }).kind === 'clay_golem' ||
       defender.name === 'clay_golem'
     const rawClaySlowPct = isClayGolemUnit ? defender.statList.getAccruedStat('item_slow') : 0
     const claySlowPct = capTargetSlowPct113c(rawClaySlowPct, attacker)
-    if (claySlowPct > 0) {
-      attacker.stateBus.applyState({
-        stateNameOrId: 'slowed',
-        slvl: 1,
-        durationFrames: 750,
-        stats: { item_slow: claySlowPct },
-      })
-      attackerStatesApplied.push('slowed')
-    }
 
     const isPvP = Boolean(
       (defender.unitType === 'player' || defender.ownerUnitId !== undefined) &&
@@ -3235,6 +3340,23 @@ export function executeSUnitDmg(
     })
     if (reactiveDamage.attackerStatesApplied.length > 0) {
       attackerStatesApplied.push(...reactiveDamage.attackerStatesApplied)
+    }
+    // 1.13c Clay Golem EventFunc27_SlowTarget (0x6FC6EF70 -> ITEMEVENTS_ApplySlow 0x6FCCD2C0,
+    // Skills.txt #75 aurastat1 = item_slow = dm34): slows melee attacker for 750 frames (30s),
+    // capped at 50% vs Player/Hireling/Boss/Unique/Champion, 75% vs SuperUnique, 90% vs Normal.
+    if (claySlowPct > 0) {
+      const existingSlow = attacker.stateBus.getState('slowed')
+      if (!existingSlow || existingSlow.stats['item_slow'] !== claySlowPct) {
+        attacker.stateBus.applyState({
+          stateNameOrId: 'slowed',
+          slvl: existingSlow?.slvl ?? 1,
+          durationFrames: existingSlow?.durationFrames ?? 750,
+          stats: { item_slow: claySlowPct },
+        })
+      }
+      if (!attackerStatesApplied.includes('slowed') && !attackerStatesApplied.includes('slow')) {
+        attackerStatesApplied.push('slowed')
+      }
     }
     if (reactiveDamage.attackerOverlaysApplied) {
       attackerOverlaysApplied.push(...reactiveDamage.attackerOverlaysApplied)
@@ -3370,6 +3492,7 @@ export function executeSUnitDmg(
     ...(absorbHeal256 > 0 ? { absorbHeal256, defenderHealed256: absorbHeal256 } : {}),
     ...(packet.canTriggerProcs === false ? { procsSuppressed: true } : {}),
     ...(selfDamageTaken256 > 0 ? { selfDamageTaken256 } : {}),
+    ...(targetDefenseReduction > 0 ? { targetDefenseReduction } : {}),
     ...(spawnedMissiles.length > 0 ? { spawnedMissiles } : {}),
     ...(attackerOverlaysApplied.length > 0 ? { attackerOverlaysApplied } : {}),
     ...(defenderOverlaysApplied.length > 0 ? { defenderOverlaysApplied } : {}),

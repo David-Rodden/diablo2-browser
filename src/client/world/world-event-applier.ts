@@ -3305,6 +3305,23 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         break
       }
       this.invalidatePlayerLightCache()
+      if (ev.action === 'remove' || ev.action === 'sell') {
+        const removedId = Number((ev as { itemId?: number }).itemId ?? ev.item?.id ?? 0) >>> 0
+        if (removedId > 0) {
+          const removePayload =
+            ev.item ??
+            ({
+              id: removedId,
+              code: String((ev as { code?: string }).code ?? ''),
+              x: 0,
+              y: 0,
+            } as ItemData)
+          this._containers.applyItemEvent(ev.action, removePayload, 'inventory', this.selfId)
+          this._units.delete(makeUnitKey('item', removedId))
+          this.syncPlayerSetBonusStates(this.selfId)
+        }
+        break
+      }
       if (
         !ev.item &&
         (ev as any).itemId !== undefined &&

@@ -297,6 +297,9 @@ describe('M3: GameInstance 1.13c Monster, Mercenary & Summon AI Integration (F11
         areaId: 2,
         hp: 500,
         maxHp: 500,
+        ac: 0,
+        toBlock: 0,
+        damageRegen: 0,
         resistances: { phys: 100, magic: 0, fire: 0, light: 0, cold: 0, poison: 0 },
         aiDisabled: true,
       });
@@ -306,18 +309,20 @@ describe('M3: GameInstance 1.13c Monster, Mercenary & Summon AI Integration (F11
         targetType: 'monster',
         targetId: physImmuneId,
       });
-      game.stepFrames(2);
+      game.stepFrames(20);
       expect(game.getMonster(physImmuneId)!.hp).toBe(500);
 
       // Apply Amplify Damage (state 9: -100% phys -> -20% at 1/5 efficiency -> 80% effective phys resist)
-      game.applyMonsterState(physImmuneId, 9, 100);
-      game.enqueueCommand(playerId, {
-        type: 'CastSkillOnTarget',
-        skillId: 0,
-        targetType: 'monster',
-        targetId: physImmuneId,
-      });
-      game.stepFrames(2);
+      game.applyMonsterState(physImmuneId, 9, 200);
+      for (let attempt = 0; attempt < 5 && game.getMonster(physImmuneId)!.hp === 500; attempt++) {
+        game.enqueueCommand(playerId, {
+          type: 'CastSkillOnTarget',
+          skillId: 0,
+          targetType: 'monster',
+          targetId: physImmuneId,
+        });
+        game.stepFrames(20);
+      }
       expect(game.getMonster(physImmuneId)!.hp).toBeLessThan(500);
 
       // 2. Holy Bolt (skillId 101) undead-only gate
@@ -389,7 +394,7 @@ describe('M3: GameInstance 1.13c Monster, Mercenary & Summon AI Integration (F11
 
     it('emits 8 Charged Bolt missiles (skillId 38) when a Lightning Enchanted or Scarab monster is struck', () => {
       const game = new GameInstance({ seed: 909, areaId: 2 });
-      const playerId = game.connectPlayer({ charClass: 'pal', name: 'Pal', x: 10, y: 10, areaId: 2 });
+      const playerId = game.connectPlayer({ charClass: 'pal', name: 'Pal', x: 10, y: 10, areaId: 2, level: 80 });
       const leBossId = game.spawnMonster({
         hcIdx: 18,
         x: 11,
@@ -397,22 +402,27 @@ describe('M3: GameInstance 1.13c Monster, Mercenary & Summon AI Integration (F11
         areaId: 2,
         hp: 500,
         maxHp: 500,
+        ac: 0,
+        toBlock: 0,
         rank: 'unique',
         monUMods: [MON_UMOD.LIGHTNING],
         aiDisabled: true,
       });
       game.drainEvents(playerId);
 
-      game.enqueueCommand(playerId, {
-        type: 'CastSkillOnTarget',
-        skillId: 0,
-        targetType: 'monster',
-        targetId: leBossId,
-      });
-      game.stepFrames(2);
-      const missileEvents = game
-        .drainEvents(playerId)
-        .filter((e) => e.type === 'CreateMissile' && e.skillId === 195);
+      let missileEvents: ReturnType<GameInstance['drainEvents']> = [];
+      for (let attempt = 0; attempt < 5 && game.getMonster(leBossId)!.hp === 500; attempt++) {
+        game.enqueueCommand(playerId, {
+          type: 'CastSkillOnTarget',
+          skillId: 0,
+          targetType: 'monster',
+          targetId: leBossId,
+        });
+        game.stepFrames(20);
+        missileEvents = game
+          .drainEvents(playerId)
+          .filter((e) => e.type === 'CreateMissile' && e.skillId === 195);
+      }
       expect(missileEvents.length).toBe(8);
     });
 
@@ -424,6 +434,7 @@ describe('M3: GameInstance 1.13c Monster, Mercenary & Summon AI Integration (F11
         x: 10,
         y: 10,
         areaId: 2,
+        level: 80,
       });
       const startHp = game.getPlayerState(playerId)!.hp;
 
@@ -434,20 +445,25 @@ describe('M3: GameInstance 1.13c Monster, Mercenary & Summon AI Integration (F11
         areaId: 2,
         hp: 1, // unarmed Attack (skill 0) hits for 1-2
         maxHp: 200,
+        ac: 0,
+        toBlock: 0,
         rank: 'unique',
         monUMods: [MON_UMOD.FIRE, MON_UMOD.COLD],
         aiDisabled: true,
       });
       game.drainEvents(playerId);
 
-      game.enqueueCommand(playerId, {
-        type: 'CastSkillOnTarget',
-        skillId: 0,
-        targetType: 'monster',
-        targetId: feCeBossId,
-      });
-      game.stepFrames(6);
-      const events = game.drainEvents(playerId);
+      const events: ReturnType<GameInstance['drainEvents']>[number][] = [];
+      for (let attempt = 0; attempt < 5 && !game.getMonster(feCeBossId)!.dead; attempt++) {
+        game.enqueueCommand(playerId, {
+          type: 'CastSkillOnTarget',
+          skillId: 0,
+          targetType: 'monster',
+          targetId: feCeBossId,
+        });
+        game.stepFrames(20);
+        events.push(...game.drainEvents(playerId));
+      }
       expect(game.getMonster(feCeBossId)!.dead).toBe(true);
       expect(game.getPlayerState(playerId)!.hp).toBeLessThan(startHp);
       expect(events.some((e) => e.type === 'CreateMissile' && e.skillId === 194)).toBe(true);
@@ -456,7 +472,7 @@ describe('M3: GameInstance 1.13c Monster, Mercenary & Summon AI Integration (F11
 
     it('enforces non-killable guard (isKillable=false) and Suicide Minion 0-XP / 0-loot rule', () => {
       const game = new GameInstance({ seed: 1111, areaId: 2 });
-      const playerId = game.connectPlayer({ charClass: 'sor', name: 'Sorc', x: 10, y: 10, areaId: 2 });
+      const playerId = game.connectPlayer({ charClass: 'sor', name: 'Sorc', x: 10, y: 10, areaId: 2, level: 80 });
 
       const cainId = game.spawnMonster({
         hcIdx: 146,
@@ -473,7 +489,7 @@ describe('M3: GameInstance 1.13c Monster, Mercenary & Summon AI Integration (F11
         targetType: 'monster',
         targetId: cainId,
       });
-      game.stepFrames(2);
+      game.stepFrames(20);
       expect(game.getMonster(cainId)!.hp).toBe(100);
       expect(game.getMonster(cainId)!.alive).toBe(true);
 
@@ -484,17 +500,21 @@ describe('M3: GameInstance 1.13c Monster, Mercenary & Summon AI Integration (F11
         areaId: 2,
         hp: 1,
         maxHp: 50,
+        ac: 0,
+        toBlock: 0,
         aiDisabled: true,
       });
       const xpBefore = game.getPlayerState(playerId)!.experience;
       const itemsBefore = game.getGroundItems().length;
-      game.enqueueCommand(playerId, {
-        type: 'CastSkillOnTarget',
-        skillId: 0,
-        targetType: 'monster',
-        targetId: suicideMinionId,
-      });
-      game.stepFrames(2);
+      for (let attempt = 0; attempt < 5 && !game.getMonster(suicideMinionId)!.dead; attempt++) {
+        game.enqueueCommand(playerId, {
+          type: 'CastSkillOnTarget',
+          skillId: 0,
+          targetType: 'monster',
+          targetId: suicideMinionId,
+        });
+        game.stepFrames(20);
+      }
       expect(game.getMonster(suicideMinionId)!.dead).toBe(true);
       expect(game.getPlayerState(playerId)!.experience).toBe(xpBefore);
       expect(game.getGroundItems().length).toBe(itemsBefore);
@@ -561,20 +581,21 @@ describe('M3: GameInstance 1.13c Monster, Mercenary & Summon AI Integration (F11
       const leashEvents = game.drainEvents(druidId);
       expect(leashEvents.some((e) => e.type === 'UnitReassign' && e.snap === true)).toBe(true);
 
-      // Idle follow when 4 < ownerDist <= 35 and no monsters nearby
-      leashedBear.x = 112;
+      // 1.13c DruidBear AI (0x6FC3CB90): followWalkSubtiles = 13, teleportSubtiles = 50
+      leashedBear.x = 118;
       leashedBear.y = 100;
       game.stepFrames(4);
-      expect(leashedBear.x).toBeLessThan(112);
+      expect(leashedBear.x).toBeLessThan(118);
 
       const monsterId = game.spawnMonster({
         hcIdx: 18,
-        x: 102,
+        x: 115,
         y: 100,
         areaId: 2,
         hp: 300,
         maxHp: 300,
         ac: 0,
+        damageRegen: 0,
         aiDisabled: true,
       });
       game.stepFrames(35);

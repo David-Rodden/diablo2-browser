@@ -134,6 +134,10 @@ describe('issue #1441: 1.13c A4Q2 Hellforge (Objects.txt 376 OperateFn 49) & que
     const a4q2Idx = questWordIndex113c('a4q2')!
     const allyId = game.connectPlayer({ charClass: 'sor', name: 'Ally', x: 12, y: 10, areaId: 107 })
     const ally = internal.players.get(allyId)!
+    game.enqueueCommand(playerId, { type: 'PartyAction', action: 'invite', targetPlayerId: allyId } as never)
+    game.stepFrames(1)
+    game.enqueueCommand(allyId, { type: 'PartyAction', action: 'accept', targetPlayerId: playerId } as never)
+    game.stepFrames(1)
 
     const forgeId = game.spawnObject({ classId: 376, x: 11, y: 10, areaId: 107 })
     const forgeObj = internal.objects.get(forgeId)!
@@ -199,7 +203,9 @@ describe('issue #1441: 1.13c A4Q2 Hellforge (Objects.txt 376 OperateFn 49) & que
     expect(ally.questFlags[a4q2Idx]).toBe(
       QUEST_FLAG_REWARD_PENDING_113C | QUEST_FLAG_COMPLETED_NOW_113C,
     )
-    expect(internal.groundItems.size).toBe(5)
+    expect(internal.groundItems.size).toBe(0)
+    game.stepFrames(80)
+    expect(internal.groundItems.size).toBe(9)
 
     // Operating again after smashing (or when bit 1 / bit 0 is set) is a no-op.
     const dropCountAfterSmash = internal.groundItems.size

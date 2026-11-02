@@ -711,6 +711,7 @@ export const INTENTIONALLY_UNCACHED_PUBLIC_FILES: readonly string[] = [
   'asset-manifest.json',
   'manifest.webmanifest',
   'musicbox.html',
+  'site-config.json',
   'sw.js',
   'updates.json',
 ] as const
@@ -760,6 +761,8 @@ export function isCacheableAssetPath(urlOrPath: string): boolean {
   if (
     lower === 'asset-manifest.json' ||
     lower.endsWith('/asset-manifest.json') ||
+    lower === 'site-config.json' ||
+    lower.endsWith('/site-config.json') ||
     lower === 'sw.js' ||
     lower.endsWith('/sw.js') ||
     lower.endsWith('.mpq') ||

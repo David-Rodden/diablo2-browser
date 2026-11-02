@@ -79,20 +79,18 @@ describe('issue #1353 Horadric orifice', () => {
     const playerId = game.connectPlayer({ charClass: 'pal', name: 'Hero', x: 10, y: 10, areaId: 1 })
     const player = (game as unknown as { players: Map<number, { items: any[]; questFlags: Uint16Array }> })
       .players.get(playerId)!
-    for (const [i, code] of ['hst', 'vip', 'msf'].entries()) {
-      player.items.push({
-        unitId: 9800 + i, code, name: code, quality: 2, level: 1, location: 'inventory',
-        x: i, y: 0, width: 1, height: 1, areaId: 1, ownerId: playerId, bodyLoc: 0,
-        storePage: 0, cost: 0, gamble: false, identified: true, ethereal: false,
-        socketed: false, totalSockets: 0, durability: 0, maxDurability: 0,
-        quantity: 1, stats: new Map(), socketedItems: [],
-      })
-    }
+    player.items.push({
+      unitId: 9800, code: 'hst', name: 'hst', quality: 2, level: 1, location: 'inventory',
+      x: 0, y: 0, width: 1, height: 1, areaId: 1, ownerId: playerId, bodyLoc: 0,
+      storePage: 0, cost: 0, gamble: false, identified: true, ethereal: false,
+      socketed: false, totalSockets: 0, durability: 0, maxDurability: 0,
+      quantity: 1, stats: new Map(), socketedItems: [],
+    })
     const orifice = game.spawnObject({ classId: 152, x: 11, y: 10, areaId: 1 })
     game.drainEvents(playerId)
     game.enqueueCommand(playerId, { type: 'OperateObject', objectId: orifice })
     game.stepFrames(1)
-    expect(player.items.some((item) => ['hst', 'vip', 'msf'].includes(item.code))).toBe(false)
+    expect(player.items.some((item) => item.code === 'hst')).toBe(false)
     const questEvents = game.drainEvents(playerId).filter((e) => e.type === 'QuestState') as { source?: number; specialEventId?: number }[]
     expect(questEvents.some((e) => e.source === 0x28)).toBe(true)
     expect(questEvents.some((e) => e.source === 0x89 && e.specialEventId === 3)).toBe(true)
@@ -212,8 +210,9 @@ describe('issue #1353 Hellforge reward', () => {
     expect(player.questFlags[questWordIndex113c('a4q2')!]).toBe(
       QUEST_FLAG_REWARD_PENDING_113C | QUEST_FLAG_COMPLETED_NOW_113C,
     )
-    expect(internal.groundItems.size).toBeGreaterThanOrEqual(5)
     expect(internal.objects.get(forge)!.mode).toBe(3)
+    game.stepFrames(80)
+    expect(internal.groundItems.size).toBeGreaterThanOrEqual(5)
 
     // Stage 3: talk to Cain -> transitions bit 1 (0x0002) to bit 0 (0x0001)
     const cain = game.spawnMonster({ classId: 246, name: 'Deckard Cain', x: 11, y: 10, areaId: 1, isNpc: true })

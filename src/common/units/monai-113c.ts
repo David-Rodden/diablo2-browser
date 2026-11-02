@@ -68,6 +68,8 @@ export interface MonAiSpawn113c {
   readonly batchParam: number
   /** 0-based `aip` slot with the spawn interval in frames. */
   readonly intervalParam: number
+  /** Optional fixed batch size when `MonStats.txt` does not store batch count in an `aip` slot. */
+  readonly fixedBatch?: number | undefined
 }
 
 export interface MonAiProfile113c {
@@ -180,13 +182,20 @@ add(['FallenShaman', 'GreaterMummy', 'FetishShaman'], {
   resurrect: true,
 })
 add(['FallenShaman'], { ranged: true, shootDistanceParam: 4, resurrectRangeParam: 3 })
-add(['GreaterMummy'], { ranged: true, shootDistanceParam: 3, resurrectRangeParam: 4 })
+add(['GreaterMummy'], {
+  ranged: true,
+  shootDistanceParam: 3,
+  resurrectRangeParam: 4,
+  healRangeParam: 4,
+})
 add(['FetishShaman'], { healRangeParam: 4, resurrectRangeParam: 4 })
 
-// 1.13c D2Game.dll 0x6FCD5950: only OblivionKnight uses MonCurseCast AI (#1822).
+// 1.13c D2Game.dll 0x6FCD5950: only OblivionKnight uses MonCurseCast AI (#1822),
+// and casts #182 Bestow to heal wounded allies (#1896).
 add(['OblivionKnight'], {
   family: 'curse',
   curse: true,
+  healRangeParam: 7,
 })
 
 add(['Fallen', 'Fetish', 'Wussie'], { family: 'flee' })
@@ -226,7 +235,12 @@ add(['Arach'], {
   hurtRetreat: { hurtParam: 4, distanceParam: 3 },
 })
 add(['PinHead'], { family: 'ranged', ranged: true, shootDistanceParam: 3 })
-add(['ZakarumPriest'], { family: 'ranged', ranged: true, shootDistanceParam: 3 })
+add(['ZakarumPriest'], {
+  family: 'ranged',
+  ranged: true,
+  shootDistanceParam: 3,
+  healRangeParam: 3,
+})
 add(['HighPriest'], {
   family: 'ranged',
   ranged: true,
@@ -249,8 +263,10 @@ add(['SiegeTower'], { family: 'ranged', ranged: true, shootDistanceParam: 0 })
 add(['Imp'], { family: 'ranged', ranged: true })
 add(['Catapult'], { family: 'stationary', ranged: true })
 add(['Hydra'], { family: 'stationary', ranged: true })
+add(['ArcaneTower'], { family: 'stationary', ranged: true })
+add(['DesertTurret'], { family: 'stationary', ranged: true })
 add(['CatapultSpotter'], { family: 'ranged', ranged: true, shootDistanceParam: 2 })
-add(['BloodRaven'], { family: 'ranged', ranged: true, boss: true })
+add(['BloodRaven'], { family: 'ranged', ranged: true, resurrect: true, boss: true })
 add(['AbyssKnight'], { family: 'ranged', ranged: true, shootDistanceParam: 5 })
 add(['Summoner'], { family: 'ranged', ranged: true, boss: true })
 add(['Nihlathak'], { family: 'ranged', ranged: true, boss: true })
@@ -329,29 +345,25 @@ add(['PantherJavelin'], {
 })
 add(['ZakarumZealot'], { family: 'kiter' })
 
-// Spawners.
+// Spawners (`#1892`: exact 1.13c `MonStats.txt` `aip1..aip3` slot bindings).
 add(['VileMother'], {
   family: 'spawner',
-  spawn: { child: 'vilechild1', maxParam: 0, batchParam: 1, intervalParam: 2 },
+  spawn: { child: 'vilechild1', maxParam: 0, batchParam: 1, intervalParam: 2, fixedBatch: 1 },
 })
 add(['SandMaggotQueen'], {
   family: 'spawner',
-  spawn: { child: 'maggotegg1', maxParam: 0, batchParam: 1, intervalParam: 1 },
+  spawn: { child: 'maggotegg1', maxParam: 0, batchParam: 1, intervalParam: 1, fixedBatch: 1 },
 })
 add(['FoulCrowNest'], {
   family: 'stationary',
-  spawn: { child: 'foulcrow1', maxParam: 2, batchParam: 1, intervalParam: 0 },
+  spawn: { child: 'foulcrow1', maxParam: 2, batchParam: 1, intervalParam: 0, fixedBatch: 1 },
 })
 add(['MosquitoNest'], {
   family: 'stationary',
-  spawn: { child: 'mosquito1', maxParam: 1, batchParam: 0, intervalParam: 2 },
-})
-add(['SandMaggot'], {
-  family: 'spawner',
-  spawn: { child: 'maggotegg1', maxParam: 2, batchParam: 2, intervalParam: 4 },
+  spawn: { child: 'mosquito1', maxParam: 0, batchParam: 1, intervalParam: 2, fixedBatch: 1 },
 })
 add(['Sarcophagus'], {
-  spawn: { child: 'mummy1', maxParam: 1, batchParam: 0, intervalParam: 0 },
+  spawn: { child: 'mummy1', maxParam: 2, batchParam: 1, intervalParam: 0, fixedBatch: 1 },
 })
 
 // Remaining rows are melee. Listing them explicitly (instead of a fallback)

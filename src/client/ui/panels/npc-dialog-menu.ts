@@ -470,9 +470,8 @@ export function buildNpcMenuOptions(
         } else if (rewardAct === 'add_sockets') {
           allowReward = ((q[35] ?? 0) & 2) !== 0 && ((q[35] ?? 0) & 1) === 0
         } else if (rewardAct === 'personalize') {
-          allowReward =
-            (((q[37] ?? 0) & 2) !== 0 || ((q[38] ?? 0) & 2) !== 0) &&
-            ((q[38] ?? 0) & 1) === 0
+          // D2Client.dll 0x6fba2330 row 6 (512 Anya -> 0x6fafbde0): checks ONLY A5Q4 (`q[38]` bit 1 set, bit 0 clear).
+          allowReward = ((q[38] ?? 0) & 2) !== 0 && ((q[38] ?? 0) & 1) === 0
         }
       }
       if (allowReward) {

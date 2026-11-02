@@ -51,7 +51,10 @@ function getInternal(game: GameInstance): {
   objects: Map<number, { mode: number; shrineType: number; shrineResetFrame: number }>
   missiles: Map<number, { missileId: number; x: number; y: number; vx: number; vy: number; remainingFrames: number }>
   playerCombatContext: (player: TestPlayer) => {
-    statList: { getModifierBonus: (stat: string | number) => number }
+    statList: {
+      getModifierBonus: (stat: string | number) => number
+      getAccruedStat: (stat: string | number) => number
+    }
   }
 } {
   return game as unknown as ReturnType<typeof getInternal>
@@ -322,8 +325,10 @@ describe('issue #1438 D2Game 0x6fd1a5f8 shrine effect table parity', () => {
       const statList = internal.playerCombatContext(player).statList
       expect(statList.getModifierBonus(statKey)).toBe(expectedBonus)
       if (code === 14) {
-        // 0x6fc8ac30: refills stamina to maxStamina and sets staminarecoverybonus = 1000
-        expect(player.staminaFixed).toBe(player.maxStaminaFixed)
+        // 0x6fc8ac30 + 0x6FD895D0 (op = 1: skill_staminapercent = +200% -> accrued maxstamina = 3x base):
+        // refills staminaFixed to accrued maxstamina and sets staminarecoverybonus = 1000.
+        expect(player.staminaFixed).toBe(statList.getAccruedStat('maxstamina'))
+        expect(player.stamina).toBe(player.maxStamina)
         expect(statList.getModifierBonus('staminarecoverybonus')).toBe(1000)
       }
     },
@@ -478,7 +483,7 @@ describe('issue #1438 D2Game 0x6fd1a5f8 shrine effect table parity', () => {
     player.hpFixed = 60 * FIXED_ONE
 
     const nearMonId = game.spawnMonster({ defId: 'fallen1', x: 54, y: 50, areaId: 2, hp: 40, maxHp: 40 })
-    const farMonId = game.spawnMonster({ defId: 'fallen1', x: 80, y: 80, areaId: 2, hp: 40, maxHp: 40 })
+    const farMonId = game.spawnMonster({ defId: 'fallen1', x: 130, y: 130, areaId: 2, hp: 40, maxHp: 40 })
     const nearMon = internal.monsters.get(nearMonId)!
     const farMon = internal.monsters.get(farMonId)!
 

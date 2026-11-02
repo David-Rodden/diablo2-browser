@@ -36,6 +36,11 @@ import {
   generateMonsterInitEquipment113c,
 } from '../src/common/data/mon-equip-113c.ts'
 import { generateValkyrieEquipment } from '../src/common/skills/amazon-passive.ts'
+import { D2Rng } from '../src/common/rng/d2-rng.ts'
+
+/** Seeded game-RNG stand-in for MonEquip.txt rolls (resolveMonsterEquipment113c has no entropy fallback). */
+const testEquipRngState = new D2Rng(0x1461)
+const testEquipRng = (): number => testEquipRngState.int(0, 0xffff) / 0x10000
 
 describe('Issue #1004: Assassin Shadow Disciplines (#252-#279) 4-Layer 1.13c Fidelity', () => {
   describe('Layer 1: skills-catalog.ts, hud-world-sync.ts, combat-stats.ts & stat-engine.ts', () => {
@@ -695,11 +700,11 @@ describe('Issue #1004: Assassin Shadow Disciplines (#252-#279) 4-Layer 1.13c Fid
       expect(computeShadowMlvl(20, 10)).toBe(20) // clamped to clvl=20
 
       // 3. MonEquip.txt equipment generation scaling with slvl (0x6FCB2ED0)
-      const swGear = generateShadowEquipment(268, 5)
+      const swGear = generateShadowEquipment(268, 5, testEquipRng)
       expect(swGear.find(g => g.slot === 'tors')?.quality).toBe('magic')
       expect(swGear.find(g => g.slot === 'rarm')?.itemCode).toBe('ces')
       expect(swGear.find(g => g.slot === 'larm')?.itemCode).toBe('btl')
-      const smGearHigh = generateShadowEquipment(279, 15)
+      const smGearHigh = generateShadowEquipment(279, 15, testEquipRng)
       expect(smGearHigh.find(g => g.slot === 'tors')?.quality).toBe('rare')
       expect(smGearHigh.find(g => g.slot === 'head')?.quality).toBe('rare')
       expect(smGearHigh.find(g => g.slot === 'rarm')?.quality).toBe('rare')
@@ -783,7 +788,7 @@ describe('Issue #1004: Assassin Shadow Disciplines (#252-#279) 4-Layer 1.13c Fid
 
       // 2. Shadow Warrior (#268, hcIdx=417): at any slvl, equips ces (rarm) + btl (larm) + tors + head, all mod=4 (magic), ilvl = clamp(18 + 2*(slvl-1), 1, 99)
       for (const slvl of [1, 5, 9, 13, 20, 35, 50]) {
-        const gear = generateShadowEquipment(268, slvl)
+        const gear = generateShadowEquipment(268, slvl, testEquipRng)
         expect(gear).toHaveLength(4)
         const bySlot = new Map(gear.map(g => [g.slot, g]))
         expect(bySlot.get('rarm')?.itemCode).toBe('ces')
@@ -800,7 +805,7 @@ describe('Issue #1004: Assassin Shadow Disciplines (#252-#279) 4-Layer 1.13c Fid
 
       // 3. Shadow Master (#279, hcIdx=418): level thresholds 0 / 5 / 6 / 9 / 11 / 13 / 17 and ilvl = clamp(24 + 3*(slvl-1), 1, 99)
       // slvl = 4: only level=0 rows (rarm, larm, tors, head), mod=3 (superior), NO gloves!
-      const sm4 = generateShadowEquipment(279, 4)
+      const sm4 = generateShadowEquipment(279, 4, testEquipRng)
       expect(sm4.map(g => g.slot)).toEqual(['rarm', 'larm', 'tors', 'head'])
       expect(sm4.find(g => g.slot === 'glov')).toBeUndefined()
       expect(['7ar', '7xf', '7qr']).toContain(sm4.find(g => g.slot === 'rarm')?.itemCode)
@@ -812,7 +817,7 @@ describe('Issue #1004: Assassin Shadow Disciplines (#252-#279) 4-Layer 1.13c Fid
       }
 
       // slvl = 5: adds glov (ulg/umg/uhg) with mod=3 (superior)
-      const sm5 = generateShadowEquipment(279, 5)
+      const sm5 = generateShadowEquipment(279, 5, testEquipRng)
       const glov5 = sm5.find(g => g.slot === 'glov')
       expect(glov5).toBeDefined()
       expect(['ulg', 'umg', 'uhg']).toContain(glov5?.itemCode)
@@ -820,7 +825,7 @@ describe('Issue #1004: Assassin Shadow Disciplines (#252-#279) 4-Layer 1.13c Fid
       expect(glov5?.mod).toBe(3)
 
       // slvl = 6: upgrades rarm, larm, glov, tors, head to mod=4 (magic)
-      const sm6 = generateShadowEquipment(279, 6)
+      const sm6 = generateShadowEquipment(279, 6, testEquipRng)
       expect(sm6).toHaveLength(5)
       for (const piece of sm6) {
         expect(piece.quality).toBe('magic')
@@ -828,14 +833,14 @@ describe('Issue #1004: Assassin Shadow Disciplines (#252-#279) 4-Layer 1.13c Fid
       }
 
       // slvl = 9: adds rrin (rin) with mod=4 (magic), still no lrin or neck
-      const sm9 = generateShadowEquipment(279, 9)
+      const sm9 = generateShadowEquipment(279, 9, testEquipRng)
       expect(sm9.find(g => g.slot === 'rrin')?.itemCode).toBe('rin')
       expect(sm9.find(g => g.slot === 'rrin')?.quality).toBe('magic')
       expect(sm9.find(g => g.slot === 'lrin')).toBeUndefined()
       expect(sm9.find(g => g.slot === 'neck')).toBeUndefined()
 
       // slvl = 11: upgrades rarm, larm, glov, rrin, tors, head to mod=6 (rare)
-      const sm11 = generateShadowEquipment(279, 11)
+      const sm11 = generateShadowEquipment(279, 11, testEquipRng)
       expect(sm11).toHaveLength(6)
       for (const piece of sm11) {
         expect(piece.quality).toBe('rare')
@@ -843,13 +848,13 @@ describe('Issue #1004: Assassin Shadow Disciplines (#252-#279) 4-Layer 1.13c Fid
       }
 
       // slvl = 13: adds lrin (rin, mod=6 rare), still no neck
-      const sm13 = generateShadowEquipment(279, 13)
+      const sm13 = generateShadowEquipment(279, 13, testEquipRng)
       expect(sm13.find(g => g.slot === 'lrin')?.itemCode).toBe('rin')
       expect(sm13.find(g => g.slot === 'lrin')?.quality).toBe('rare')
       expect(sm13.find(g => g.slot === 'neck')).toBeUndefined()
 
       // slvl = 17: adds neck (amu, mod=6 rare); never equips belt or feet; ilvl = 24 + 3*16 = 72 (not capped at 60)
-      const sm17 = generateShadowEquipment(279, 17)
+      const sm17 = generateShadowEquipment(279, 17, testEquipRng)
       expect(sm17).toHaveLength(8)
       expect(sm17.find(g => g.slot === 'neck')?.itemCode).toBe('amu')
       expect(sm17.find(g => g.slot === 'neck')?.quality).toBe('rare')
@@ -858,12 +863,12 @@ describe('Issue #1004: Assassin Shadow Disciplines (#252-#279) 4-Layer 1.13c Fid
       expect(sm17[0]?.ilvl).toBe(72)
 
       // 4. Class-of-bug sweep: Valkyrie (#32) and oninit=1 monsters (bloodraven, flyingscimitar)
-      const valk1 = generateValkyrieEquipment(1)
+      const valk1 = generateValkyrieEquipment(1, testEquipRng)
       expect(valk1.map(g => ({ slot: g.slot, code: g.itemCode, quality: g.quality }))).toEqual([
         { slot: 'rarm', code: 'spr', quality: 'rare' },
         { slot: 'tors', code: 'ful', quality: 'rare' },
       ])
-      const valk27 = generateValkyrieEquipment(27)
+      const valk27 = generateValkyrieEquipment(27, testEquipRng)
       expect(valk27.find(g => g.slot === 'head')?.itemCode).toBe('ci2')
       expect(valk27.find(g => g.slot === 'rarm')?.itemCode).toBe('7p7')
       expect(valk27.find(g => g.slot === 'tors')?.itemCode).toBe('uar')

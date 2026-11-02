@@ -65,7 +65,7 @@ describe('Diablo II v1.13c Authentic Runeword & Socketing System', () => {
         const check = canSocketItem(currentItem, runeItem)
         expect(check, `${rw.runeName} socket step ${i + 1} (${runeCode}) into ${baseCode}`).toBe(true)
 
-        const res = socketItemWithSubItem(currentItem, runeItem, rng)
+        const res = socketItemWithSubItem(currentItem, runeItem, rng, { isLadder: true })
         expect(res.success).toBe(true)
         currentItem = res.item
 
@@ -126,8 +126,8 @@ describe('Diablo II v1.13c Authentic Runeword & Socketing System', () => {
     expect(resolveGemApplyType(shield)).toBe(2)
 
     for (const r of spiritRunes) {
-      sword = socketItemWithSubItem(sword, createSocketableItem(r), new Rng(42)).item
-      shield = socketItemWithSubItem(shield, createSocketableItem(r), new Rng(42)).item
+      sword = socketItemWithSubItem(sword, createSocketableItem(r), new Rng(42), { isLadder: true }).item
+      shield = socketItemWithSubItem(shield, createSocketableItem(r), new Rng(42), { isLadder: true }).item
     }
 
     expect(sword.flags?.runeword).toBe(true)
@@ -155,8 +155,8 @@ describe('Diablo II v1.13c Authentic Runeword & Socketing System', () => {
     expect(resolveGemApplyType(armor)).toBe(1)
 
     for (const r of fortRunes) {
-      axe = socketItemWithSubItem(axe, createSocketableItem(r), new Rng(99)).item
-      armor = socketItemWithSubItem(armor, createSocketableItem(r), new Rng(99)).item
+      axe = socketItemWithSubItem(axe, createSocketableItem(r), new Rng(99), { isLadder: true }).item
+      armor = socketItemWithSubItem(armor, createSocketableItem(r), new Rng(99), { isLadder: true }).item
     }
 
     expect(axe.flags?.runeword).toBe(true)
@@ -235,7 +235,7 @@ describe('Diablo II v1.13c Authentic Runeword & Socketing System', () => {
       baseRolledProps: [{ code: 'ac%', min: 15, max: 15, value: 15 }],
     })
     for (const r of ['r07', 'r10', 'r09', 'r11']) {
-      supMonarch = socketItemWithSubItem(supMonarch, createSocketableItem(r)).item
+      supMonarch = socketItemWithSubItem(supMonarch, createSocketableItem(r), undefined, { isLadder: true }).item
     }
     expect(supMonarch.flags?.runeword).toBe(true)
     expect(supMonarch.name).toBe('Spirit')
@@ -252,7 +252,7 @@ describe('Diablo II v1.13c Authentic Runeword & Socketing System', () => {
       baseRolledProps: [{ code: 'ac%', min: 15, max: 15, value: 15 }],
     })
     for (const r of ['r07', 'r10', 'r09', 'r11']) {
-      supMonarch = socketItemWithSubItem(supMonarch, createSocketableItem(r)).item
+      supMonarch = socketItemWithSubItem(supMonarch, createSocketableItem(r), undefined, { isLadder: true }).item
     }
     const spiritUi = { ...itemToUiInventoryItem(supMonarch, tables), id: 'spirit_monarch_1' }
     const helUi = { ...itemToUiInventoryItem(createSocketableItem('r15'), tables), id: 'hel_1' }
@@ -327,11 +327,15 @@ describe('Diablo II v1.13c Authentic Runeword & Socketing System', () => {
     const ber1 = { ...itemToUiInventoryItem(createSocketableItem('r30'), tables), id: 'ber_1' }
     const ber2 = { ...itemToUiInventoryItem(createSocketableItem('r30'), tables), id: 'ber_2' }
     const glb = { ...itemToUiInventoryItem(createSocketableItem('glb'), tables), id: 'glb_1' }
-    const highRuneUpRes = transmuteCubeItems([
-      { item: ber1, col: 0, row: 0 },
-      { item: ber2, col: 1, row: 0 },
-      { item: glb, col: 2, row: 0 },
-    ])
+    const highRuneUpRes = transmuteCubeItems(
+      [
+        { item: ber1, col: 0, row: 0 },
+        { item: ber2, col: 1, row: 0 },
+        { item: glb, col: 2, row: 0 },
+      ],
+      undefined,
+      { isLadder: true },
+    )
     expect(highRuneUpRes.matched).toBe(true)
     expect(highRuneUpRes.resultItems[0]?.item.code).toBe('r31')
 

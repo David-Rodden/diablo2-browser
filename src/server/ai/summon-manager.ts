@@ -80,6 +80,15 @@ import {
   getShadowMasterCastingLevel,
   type ShadowEquipmentLoadout,
 } from '../skills/assassin-shadow.ts'
+import {
+  resolveMonsterMonProps113c,
+  type ResolvedMonsterMonProps113c,
+} from './monprop-113c.ts'
+import {
+  computeSummonMonEquipIlvl113c,
+  rollMonsterOrPetLoadout113c,
+  type RolledMonsterLoadout113c,
+} from './monequip-helper-113c.ts'
 
 export interface SummonedPetUnit {
   readonly uid: string
@@ -160,6 +169,10 @@ export interface SummonedPetUnit {
   valkyrieEquipment?: readonly MonsterEquippedItem113c[] | undefined
   shadowEquipment?: ShadowEquipmentLoadout | undefined
   shadowSkills?: ReadonlyMap<number, number> | undefined
+  monProps?: ResolvedMonsterMonProps113c | undefined
+  monEquipLoadout?: RolledMonsterLoadout113c | undefined
+  monEquipSeed?: number | undefined
+  hasShield?: boolean | undefined
   snapshottedSkelMasteryLvl?: number | undefined
   snapshottedGolemMasteryLvl?: number | undefined
   targetId?: string | number | undefined
@@ -265,6 +278,7 @@ export class SummonManager {
       | undefined
     ironGolemItem?: IronGolemItemProps | undefined
     groundItems?: (IronGolemItemProps & { id: string; consumed?: boolean | undefined })[] | undefined
+    monEquipSeed?: number | undefined
   }): CreatePetOutcome {
     if (!this.registry || this.registry.skillsById.size === 0 || this.registry.petTypesByName.size === 0) {
       throw new Error(
@@ -704,6 +718,7 @@ export class SummonManager {
         avoidLvl,
         evadeLvl,
         penetrateLvl,
+        rng: () => this.rng.int(0, 0xffff) / 0x10000,
       })
       baseHp = valkStats.finalHp
       valkRes = valkStats.allResistancesPct
@@ -873,7 +888,71 @@ export class SummonManager {
       golemLtngRes = shadowRes
       golemColdRes = shadowRes
       golemPoisRes = shadowRes
-      shadowEquipment = generateShadowEquipment(params.skillId as 268 | 279, params.slvl)
+      shadowEquipment = generateShadowEquipment(params.skillId as 268 | 279, params.slvl, {
+        rng: () => this.rng.int(0, 0xffff) / 0x10000,
+      })
+    }
+
+    // 1.13c MonProp.txt innate monster/pet properties (#1897) & MonEquip.txt rolled loadout (#1898)
+    let petMonProps: ResolvedMonsterMonProps113c | undefined
+    if (params.skillId === 95) {
+      petMonProps = resolveMonsterMonProps113c(
+        consumedCorpse?.classId ?? consumedCorpse?.monId ?? monId,
+        params.difficulty ?? 'normal',
+        (lo, hi) => lo + this.rng.rand(hi - lo + 1),
+        () => this.rng.rand(100),
+      )
+    } else if (params.skillId === 90) {
+      petMonProps = resolveMonsterMonProps113c('irongolem', params.difficulty ?? 'normal')
+    } else if (params.skillId === 221) {
+      petMonProps = resolveMonsterMonProps113c('druidhawk', params.difficulty ?? 'normal')
+    }
+
+    let monEquipLoadout: RolledMonsterLoadout113c | undefined
+    let resolvedMonEquipSeed: number | undefined
+    let hasShield: boolean | undefined
+    if (params.skillId === 32) {
+      resolvedMonEquipSeed = params.monEquipSeed ?? (this.rng.rand(0x7fffffff) || 1)
+      monEquipLoadout = rollMonsterOrPetLoadout113c({
+        monster: 'valkyrie',
+        level: params.slvl,
+        ilvl: computeSummonMonEquipIlvl113c('valkyrie', params.slvl),
+        seed: resolvedMonEquipSeed,
+      })
+      baseHp += monEquipLoadout.maxHpBonus
+      petDef += monEquipLoadout.defenseBonus
+      valkyrieEquipment = monEquipLoadout.equippedSpecs
+    } else if (params.skillId === 268 || params.skillId === 279) {
+      resolvedMonEquipSeed = params.monEquipSeed ?? (this.rng.rand(0x7fffffff) || 1)
+      const shadowIlvl = Math.min(99, 24 + 3 * Math.max(0, params.slvl - 1))
+      monEquipLoadout = rollMonsterOrPetLoadout113c({
+        monster: params.skillId === 268 ? 'shadowwarrior' : 'shadowmaster',
+        level: params.slvl,
+        ilvl: shadowIlvl,
+        seed: resolvedMonEquipSeed,
+      })
+      petDef += monEquipLoadout.defenseBonus
+      if (params.skillId === 279) {
+        const capAt90 = params.slvl <= 12 && params.monEquipSeed === undefined
+        const addRes = (base: number, bonus: number): number =>
+          capAt90 ? Math.min(90, base + bonus) : base + bonus
+        golemFireRes = addRes(golemFireRes ?? 0, monEquipLoadout.resistFire)
+        golemLtngRes = addRes(golemLtngRes ?? 0, monEquipLoadout.resistLightning)
+        golemColdRes = addRes(golemColdRes ?? 0, monEquipLoadout.resistCold)
+        golemPoisRes = addRes(golemPoisRes ?? 0, monEquipLoadout.resistPoison)
+        golemMagRes += monEquipLoadout.resistMagic
+        baseHp += monEquipLoadout.maxHpBonus
+      } else if (params.slvl >= 11 || params.monEquipSeed !== undefined) {
+        golemFireRes = (golemFireRes ?? 0) + monEquipLoadout.resistFire
+        golemLtngRes = (golemLtngRes ?? 0) + monEquipLoadout.resistLightning
+        golemColdRes = (golemColdRes ?? 0) + monEquipLoadout.resistCold
+        golemPoisRes = (golemPoisRes ?? 0) + monEquipLoadout.resistPoison
+        golemMagRes += monEquipLoadout.resistMagic
+        baseHp += monEquipLoadout.maxHpBonus
+      }
+    } else if (params.skillId === 70) {
+      const shieldRoll = params.monEquipSeed !== undefined ? Math.abs(params.monEquipSeed) % 100 : this.rng.rand(100)
+      hasShield = shieldRoll < 5
     }
 
     const effectiveRes = decoyRes || valkRes || sumResPct
@@ -884,20 +963,40 @@ export class SummonManager {
           ? Math.min(ownerLevel, reviveMonsterLevel)
           : ownerLevel
 
+    const equipCbPct = (petMonProps?.crushingBlowPct ?? 0) + (monEquipLoadout?.crushingBlowPct ?? 0)
+    const equipDsPct = monEquipLoadout?.deadlyStrikePct ?? 0
+    const equipOwPct = monEquipLoadout?.openWoundsPct ?? 0
+    const equipIasPct = (petMonProps?.iasPct ?? 0) + (monEquipLoadout?.iasPct ?? 0)
+    const equipFcrPct = petMonProps?.fcrPct ?? 0
+    const equipFhrPct = monEquipLoadout?.fhrPct ?? 0
+    const equipExtraFirePct = petMonProps?.extraFirePct ?? 0
+    const equipFade = Math.max(golemFade, petMonProps?.fadeLevel ?? 0)
+    const valkFireRes = params.skillId === 32 && monEquipLoadout ? effectiveRes + monEquipLoadout.resistFire : undefined
+    const valkLtngRes = params.skillId === 32 && monEquipLoadout ? effectiveRes + monEquipLoadout.resistLightning : undefined
+    const valkColdRes = params.skillId === 32 && monEquipLoadout ? effectiveRes + monEquipLoadout.resistCold : undefined
+    const valkPoisRes = params.skillId === 32 && monEquipLoadout ? effectiveRes + monEquipLoadout.resistPoison : undefined
+    const valkMagRes = params.skillId === 32 && monEquipLoadout ? golemMagRes + monEquipLoadout.resistMagic : golemMagRes
+
     const petStatList = new UnitStatList(this.registry, {
       level: petLevel,
       maxhp: baseHp * FIXED_ONE,
       hitpoints: baseHp * FIXED_ONE,
       armorclass: petDef,
       ...(golemPhysRes ? { damageresist: golemPhysRes } : {}),
-      ...(golemMagRes ? { magicresist: golemMagRes } : {}),
-      fireresist: golemFireRes ?? effectiveRes,
-      lightresist: golemLtngRes ?? effectiveRes,
-      coldresist: golemColdRes ?? effectiveRes,
-      poisonresist: golemPoisRes ?? effectiveRes,
+      ...(valkMagRes ? { magicresist: valkMagRes } : {}),
+      fireresist: golemFireRes ?? valkFireRes ?? effectiveRes,
+      lightresist: golemLtngRes ?? valkLtngRes ?? effectiveRes,
+      coldresist: golemColdRes ?? valkColdRes ?? effectiveRes,
+      poisonresist: golemPoisRes ?? valkPoisRes ?? effectiveRes,
       ...(skelAr ? { tohit: skelAr } : {}),
       ...(golemAr ? { tohit: golemAr } : {}),
       ...(reviveAr ? { tohit: reviveAr } : {}),
+      ...((params.skillId === 268 || params.skillId === 279) && monEquipLoadout?.flatAttackRating
+        ? { tohit: monEquipLoadout.flatAttackRating }
+        : {}),
+      ...((params.skillId === 268 || params.skillId === 279) && monEquipLoadout?.attackRatingPct
+        ? { item_tohit_percent: monEquipLoadout.attackRatingPct }
+        : {}),
       ...(skelDmgBonusPct ? { damagepercent: skelDmgBonusPct } : {}),
       ...(golemDmgBonusPct ? { damagepercent: golemDmgBonusPct } : {}),
       ...(skelFlatDmgBonus ? { item_normaldamage: skelFlatDmgBonus } : {}),
@@ -908,25 +1007,62 @@ export class SummonManager {
       ...(reviveMaxDmg !== undefined ? { maxdamage: reviveMaxDmg } : {}),
       ...(druidPetMinDmg !== undefined ? { mindamage: druidPetMinDmg } : {}),
       ...(druidPetMaxDmg !== undefined ? { maxdamage: druidPetMaxDmg } : {}),
+      ...(monEquipLoadout && monEquipLoadout.weaponMaxDamage > 0
+        ? { mindamage: monEquipLoadout.weaponMinDamage, maxdamage: monEquipLoadout.weaponMaxDamage }
+        : {}),
       ...(golemFireMinDam ? { firemindam: golemFireMinDam, firemaxdam: golemFireMaxDam } : {}),
-      ...(golemFade ? { fade: golemFade } : {}),
+      ...(monEquipLoadout && monEquipLoadout.fireMaxDamage > 0 && !golemFireMinDam
+        ? { firemindam: monEquipLoadout.fireMinDamage, firemaxdam: monEquipLoadout.fireMaxDamage }
+        : {}),
+      ...(monEquipLoadout && monEquipLoadout.ltngMaxDamage > 0
+        ? { lightmindam: monEquipLoadout.ltngMinDamage, lightmaxdam: monEquipLoadout.ltngMaxDamage }
+        : {}),
+      ...(monEquipLoadout && monEquipLoadout.coldMaxDamage > 0
+        ? {
+            coldmindam: monEquipLoadout.coldMinDamage,
+            coldmaxdam: monEquipLoadout.coldMaxDamage,
+            ...(monEquipLoadout.coldLengthFrames > 0 ? { coldlength: monEquipLoadout.coldLengthFrames } : {}),
+          }
+        : {}),
+      ...(monEquipLoadout && monEquipLoadout.magicMaxDamage > 0
+        ? { magicmindam: monEquipLoadout.magicMinDamage, magicmaxdam: monEquipLoadout.magicMaxDamage }
+        : {}),
+      ...(monEquipLoadout && monEquipLoadout.poisMaxDamage > 0
+        ? {
+            poisonmindam: monEquipLoadout.poisMinDamage,
+            poisonmaxdam: monEquipLoadout.poisMaxDamage,
+            ...(monEquipLoadout.poisLengthFrames > 0
+              ? { poisonlength: monEquipLoadout.poisLengthFrames, poison_count: 1 }
+              : {}),
+          }
+        : {}),
+      ...(equipFade ? { fade: equipFade } : {}),
       ...(druidPetArPct ? { item_tohit_percent: druidPetArPct } : {}),
       ...(druidPetDefPct ? { item_armor_percent: druidPetDefPct, skill_armor_percent: druidPetDefPct } : {}),
       ...(druidPetDmgPct ? { damagepercent: druidPetDmgPct } : {}),
       ...(params.skillId === 32 && valkStats ? {
-        strength: valkStats.strength,
-        dexterity: valkStats.dexterity,
+        strength: valkStats.strength + (monEquipLoadout?.strBonus ?? 0),
+        dexterity: valkStats.dexterity + (monEquipLoadout?.dexBonus ?? 0),
         item_armor_percent: valkStats.defenseBonusPct,
         skill_armor_percent: valkStats.defenseBonusPct,
-        tohit: valkStats.attackRatingBonus,
+        tohit: valkStats.attackRatingBonus + (monEquipLoadout?.flatAttackRating ?? 0),
+        ...(monEquipLoadout?.attackRatingPct ? { item_tohit_percent: monEquipLoadout.attackRatingPct } : {}),
         passive_critical_strike: valkStats.inheritedCriticalStrikeLvl > 0 ? calculateCriticalStrikeStats(valkStats.inheritedCriticalStrikeLvl).chancePct : 0,
         passive_dodge: valkStats.inheritedDodgeLvl > 0 ? calculateDodgeStats(valkStats.inheritedDodgeLvl).chancePct : 0,
         passive_avoid: valkStats.inheritedAvoidLvl > 0 ? calculateAvoidStats(valkStats.inheritedAvoidLvl).chancePct : 0,
         passive_evade: valkStats.inheritedEvadeLvl > 0 ? calculateEvadeStats(valkStats.inheritedEvadeLvl).chancePct : 0,
       } : {}),
-      ...(slowPct ? { item_slow: slowPct } : {}),
+      ...(equipCbPct > 0 ? { item_crushingblow: equipCbPct } : {}),
+      ...(equipDsPct > 0 ? { item_deadlystrike: equipDsPct } : {}),
+      ...(equipOwPct > 0 ? { item_openwounds: equipOwPct } : {}),
+      ...(equipIasPct > 0 ? { item_fasterattackrate: equipIasPct } : {}),
+      ...(equipFcrPct > 0 ? { item_fastercastrate: equipFcrPct } : {}),
+      ...(equipFhrPct > 0 ? { item_fastergethitrate: equipFhrPct } : {}),
+      ...(equipExtraFirePct > 0 ? { passive_fire_mastery: equipExtraFirePct } : {}),
+      ...(hasShield ? { toblock: 20 } : {}),
+      ...(slowPct && params.skillId !== 75 ? { item_slow: slowPct } : {}),
       ...(thornsReturnPct ? { thorns_percent: thornsReturnPct } : {}),
-      ...(fireAbsorbPct ? { item_absorbfire_percent: fireAbsorbPct } : {}),
+      ...(fireAbsorbPct && params.skillId !== 94 ? { item_absorbfire_percent: fireAbsorbPct } : {}),
     })
     const petStateBus = new StateBus(petStatList, this.registry)
 
@@ -1078,6 +1214,10 @@ export class SummonManager {
       ...(valkyrieEquipment ? { valkyrieEquipment } : {}),
       ...(shadowEquipment ? { shadowEquipment } : {}),
       ...(shadowSkills.size > 0 ? { shadowSkills } : {}),
+      ...(petMonProps ? { monProps: petMonProps } : {}),
+      ...(monEquipLoadout ? { monEquipLoadout } : {}),
+      ...(resolvedMonEquipSeed !== undefined ? { monEquipSeed: resolvedMonEquipSeed } : {}),
+      ...(hasShield !== undefined ? { hasShield } : {}),
       snapshottedSkelMasteryLvl: skelMasteryLvl,
       snapshottedGolemMasteryLvl: golemMasteryLvl,
     }
@@ -1844,11 +1984,13 @@ export class SummonManager {
           const valkStr = pet.statList.getAccruedStat('strength') || 25 * pet.slvl
           const csChance = pet.statList.getAccruedStat('passive_critical_strike')
           const critMult = csChance > 0 && ((params.currentTick * 17 + pet.slvl * 31) % 100) < csChance ? 2 : 1
-          const baseValkPhys = Math.floor(
-            (20 + pet.slvl * 10) * (1 + valkStr / 100) * critMult * (pet.rageBuffActive ? 2 : 1) * FIXED_ONE,
-          )
-          physMin256 = baseValkPhys
-          physMax256 = baseValkPhys
+          const weapMin = pet.monEquipLoadout?.weaponMinDamage ?? 0
+          const weapMax = pet.monEquipLoadout?.weaponMaxDamage ?? weapMin
+          const offEd = pet.monEquipLoadout?.offWeapDamagePct ?? 0
+          const mult = (1 + (valkStr + offEd) / 100) * critMult * (pet.rageBuffActive ? 2 : 1) * FIXED_ONE
+          physMin256 = Math.floor((20 + pet.slvl * 10 + weapMin) * mult)
+          physMax256 = Math.floor((20 + pet.slvl * 10 + weapMax) * mult)
+          if (pet.monEquipLoadout?.knockback) knockback = true
         } else if (pet.kind === 'clay_golem') {
           const cgStats = calculateClayGolemStats(pet.slvl, golemMasteryLvl, golemSynergies.bloodGolemBlvl, golemSynergies)
           physMin256 = cgStats.minDamage * FIXED_ONE
@@ -1877,6 +2019,7 @@ export class SummonManager {
           const maxDmg = Math.floor((baseMax * (100 + skelMastery.damagePct)) / 100)
           physMin256 = Math.floor(minDmg * rageMult * FIXED_ONE)
           physMax256 = Math.floor(maxDmg * rageMult * FIXED_ONE)
+          if (pet.monProps?.knockback) knockback = true
         } else if (pet.kind === 'raven' || pet.sourceSkillId === 221) {
           const ravenStats = calculateRavenStats(pet.slvl, params.owner.statList.getAccruedStat('level'))
           const totalEdPct = pet.statList.getAccruedStat('damagepercent')
@@ -1912,11 +2055,15 @@ export class SummonManager {
             subSkillsExecuted.push(326)
           }
         } else if (pet.kind === 'shadow_warrior' || pet.kind === 'shadow_master' || pet.sourceSkillId === 268 || pet.sourceSkillId === 279) {
-          const basePetPhys = Math.floor(
-            (20 + pet.slvl * 10) * (pet.rageBuffActive ? 2 : 1) * FIXED_ONE,
-          )
-          physMin256 = basePetPhys
-          physMax256 = basePetPhys
+          const weapMin = pet.monEquipLoadout?.weaponMinDamage ?? 0
+          const weapMax = pet.monEquipLoadout?.weaponMaxDamage ?? weapMin
+          const attrEd =
+            Math.floor(((pet.monEquipLoadout?.strBonus ?? 0) + (pet.monEquipLoadout?.dexBonus ?? 0)) * 0.75) +
+            (pet.monEquipLoadout?.offWeapDamagePct ?? 0)
+          const mult = (1 + attrEd / 100) * (pet.rageBuffActive ? 2 : 1) * FIXED_ONE
+          physMin256 = Math.floor((20 + pet.slvl * 10 + weapMin) * mult)
+          physMax256 = Math.floor((20 + pet.slvl * 10 + weapMax) * mult)
+          if (pet.monEquipLoadout?.knockback) knockback = true
           if (pet.shadowSkills && pet.shadowSkills.size > 0) {
             const preferredIds = [273, 253, 278, 267, 258, 264, 254, 255]
             let chosenId: number | undefined
@@ -1945,6 +2092,7 @@ export class SummonManager {
           skillId: pet.sourceSkillId,
           attackKind: 'melee',
           srcDam: 0,
+          ...(pet.monEquipLoadout ? { riderSrcDam: 128 } : {}),
           flatPhysMin256: physMin256,
           flatPhysMax256: physMax256,
           ...(elemType !== undefined && elemMin256 !== undefined && elemMax256 !== undefined
@@ -1955,6 +2103,70 @@ export class SummonManager {
         }, this.rng)
         damageDealt += out.totalDamage
         petAttacks += 1
+        if (pet.monEquipLoadout && pet.monEquipLoadout.ctcProcs.length > 0) {
+          for (const proc of pet.monEquipLoadout.ctcProcs) {
+            const shouldCheck = proc.statId === 195 || (proc.statId === 198 && out.hit)
+            if (!shouldCheck || proc.chancePct <= 0) continue
+            if (this.rng.rand(100) >= proc.chancePct) continue
+            subSkillsExecuted.push(proc.skillId)
+            if (proc.skillId === 66) {
+              primaryTarget.stateBus.applyState({
+                stateNameOrId: 'amplifydamage',
+                sourceUnitId: pet.id,
+                sourceSkillId: 66,
+                slvl: proc.slvl,
+                durationFrames: Math.max(75, 200 + 75 * (proc.slvl - 1)),
+                currentFrame: params.currentTick,
+                stats: { damageresist: -100 },
+              })
+            } else if (proc.skillId === 87) {
+              primaryTarget.stateBus.applyState({
+                stateNameOrId: 'decrepify',
+                sourceUnitId: pet.id,
+                sourceSkillId: 87,
+                slvl: proc.slvl,
+                durationFrames: Math.max(75, 100 + 15 * (proc.slvl - 1)),
+                currentFrame: params.currentTick,
+                stats: { damageresist: -50, velocitypercent: -50, damagepercent: -50 },
+              })
+            } else if (proc.skillId === 72) {
+              primaryTarget.stateBus.applyState({
+                stateNameOrId: 'weaken',
+                sourceUnitId: pet.id,
+                sourceSkillId: 72,
+                slvl: proc.slvl,
+                durationFrames: Math.max(75, 350 + 60 * (proc.slvl - 1)),
+                currentFrame: params.currentTick,
+                stats: { damagepercent: -(33 + Math.floor((proc.slvl - 1) * 1.2)) },
+              })
+            } else if (proc.skillId === 91) {
+              const lrPen = Math.min(70, 31 + proc.slvl * 2)
+              primaryTarget.stateBus.applyState({
+                stateNameOrId: 'lowerresist',
+                sourceUnitId: pet.id,
+                sourceSkillId: 91,
+                slvl: proc.slvl,
+                durationFrames: Math.max(75, 500 + 50 * (proc.slvl - 1)),
+                currentFrame: params.currentTick,
+                stats: {
+                  fireresist: -lrPen,
+                  lightresist: -lrPen,
+                  coldresist: -lrPen,
+                  poisonresist: -lrPen,
+                },
+              })
+            } else if (proc.skillId === 71 && !primaryTarget.isBoss) {
+              primaryTarget.stateBus.applyState({
+                stateNameOrId: 'dimvision',
+                sourceUnitId: pet.id,
+                sourceSkillId: 71,
+                slvl: proc.slvl,
+                durationFrames: Math.max(50, 175 + 50 * (proc.slvl - 1)),
+                currentFrame: params.currentTick,
+              })
+            }
+          }
+        }
         if (out.hit && stunDurationFrames !== undefined && stunDurationFrames > 0 && !primaryTarget.isBoss) {
           primaryTarget.stateBus.applyState({
             stateNameOrId: 'stun',

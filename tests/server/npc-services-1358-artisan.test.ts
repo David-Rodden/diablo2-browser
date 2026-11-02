@@ -40,7 +40,7 @@ describe('issue #1358 artisan quest rewards', () => {
     player.questFlags[3] |= 1
     game.enqueueCommand(playerId, { type: 'NpcEntityAction', npcId, action: 0, complement: 9701 } as never)
     game.stepFrames(1)
-    expect(String(player.items.find((i) => i.code === 'cap').quality)).toBe('rare')
+    expect(player.items.find((i) => i.code === 'cap').quality).toBe(6)
     expect(player.questFlags[3]! & 1).toBe(1)
   })
 
@@ -85,7 +85,7 @@ describe('issue #1358 artisan quest rewards', () => {
       game.enqueueCommand(playerId, { type: 'NpcEntityAction', npcId, action: 0, complement: 9801 } as never)
       game.stepFrames(1)
       const imbued1 = player.items.find((i) => i.unitId === 9801)!
-      expect(String(imbued1.quality)).toBe('rare')
+      expect(imbued1.quality).toBe(6)
       expect(imbued1.rawItemData?.quality).toBe(6)
       expect(imbued1.rawItemData?.rareName1).toBeGreaterThan(0)
       expect(imbued1.rawItemData?.rareName2).toBeGreaterThan(0)
@@ -118,14 +118,14 @@ describe('issue #1358 artisan quest rewards', () => {
     // 3. Anya personalize: sets 0x01000000 in rawFlags, blocks second use and non-personalizable items
     {
       const { game, playerId, player, npcId } = setup(1363, 512)
-      const javelin = item(9820, 'jav', 2, 20) // stackable throwing weapon -> rejected without consuming reward
+      const arrows = item(9820, 'aqv', 2, 20) // stackable Nameable=0 quiver -> rejected without consuming reward
       const cap1 = item(9821, 'cap', 2, 20)
       const cap2 = item(9822, 'cap', 2, 20)
-      player.items.push(javelin, cap1, cap2)
+      player.items.push(arrows, cap1, cap2)
       player.questFlags[38] |= 2 // a5q4 word 38
       game.enqueueCommand(playerId, { type: 'NpcEntityAction', npcId, action: 0, complement: 9820 } as never)
       game.stepFrames(1)
-      expect(javelin.name).toBe('jav')
+      expect(arrows.name).toBe('aqv')
 
       game.enqueueCommand(playerId, { type: 'NpcEntityAction', npcId, action: 0, complement: 9821 } as never)
       game.stepFrames(1)

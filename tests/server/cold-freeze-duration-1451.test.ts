@@ -155,9 +155,9 @@ describe('Issue #1451: 1.13c monster cold/freeze duration from Skills.txt ELen/E
         y: 100,
         hand: 'right',
       })
-      // Frame 1: Ice Bolt missile collides with monster at (102, 100) in stepMissiles(), and
-      // stepUnitStates() in the same frame ticks the state timer once (expectedFrames -> expectedFrames - 1).
-      game.stepFrames(1)
+      // Missiles.txt icebolt (Vel=12 -> 0.75 subtile/frame, Size=1) reaches fallen1 footprint [101, 103]
+      // on frame 2 (100 + 2 * 0.75 = 101.5), and stepUnitStates() ticks state 11 once on that frame.
+      game.stepFrames(2)
       const monAfterHit = game.getMonster(monId)!
       expect(monAfterHit.states.has(11)).toBe(true)
 

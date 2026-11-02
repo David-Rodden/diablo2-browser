@@ -40,19 +40,19 @@ import { castSkill as castSceneSkill } from '../../../src/server/skills/skills.t
 describe('[Issue #1001] Barbarian Warcries (#130-#155) 4-Layer 1.13c Parity', () => {
   it('Layer 1: verifies Missiles.txt entries, Overlays.txt entries, mana costs, and zero casting delays', () => {
     // Missiles.txt #148 howl, #149 shout, #219 battlecry, #235 warcry, #236 battlecommand, #237 battleorders
-    // (1.13c Missiles.txt columns, Issue #1060: [Vel, MaxVel, Accel, Range, LevRange])
-    const rows: Record<string, [number, number, number, number, number]> = {
-      howl: [12, 12, -1000, 12, 0],
-      shout: [30, 30, -500, 15, 0],
-      battlecommand: [30, 30, -500, 15, 0],
-      battleorders: [30, 30, -500, 15, 0],
-      battlecry: [12, 12, -1000, 12, 0],
-      warcry: [12, 12, -600, 16, 0],
+    // (1.13c Missiles.txt columns: [Vel, MaxVel, Accel, Range, LevRange, NextDelay])
+    const rows: Record<string, [number, number, number, number, number, number]> = {
+      howl: [12, 12, -1000, 12, 0, 0],
+      shout: [30, 30, -500, 15, 0, 0],
+      battlecommand: [30, 30, -500, 15, 0, 4],
+      battleorders: [30, 30, -500, 15, 0, 4],
+      battlecry: [12, 12, -1000, 12, 0, 4],
+      warcry: [12, 12, -600, 16, 0, 6],
     }
-    for (const [key, [vel, maxVel, accel, range, levRange]] of Object.entries(rows)) {
+    for (const [key, [vel, maxVel, accel, range, levRange, nextDelay]] of Object.entries(rows)) {
       const m = CANONICAL_113C_MISSILES[key]!
       expect([m.vel, m.maxVel, m.accel, m.range, m.levRange], key).toEqual([vel, maxVel, accel, range, levRange])
-      expect(m.nextDelay).toBe(4)
+      expect(m.nextDelay, key).toBe(nextDelay)
     }
 
     // Overlays (1.13c Overlay.txt & States.txt castoverlay: shoutstart, battleorderscast, battlecommandcast)

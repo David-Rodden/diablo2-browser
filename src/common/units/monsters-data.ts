@@ -514,6 +514,9 @@ export function readMonsterKinds(table: D2Table, difficulty: Difficulty = 'norma
     const killMinions =
       flag(table, row, 'killminions') || splEndDeath === 1 || lowerId === 'bloodraven'
 
+    const pMin = num(table, row, 'partymin', 0)
+    const pMax = num(table, row, 'partymax', 0)
+
     const kind: MonsterKind = {
       id,
       baseId: cell(table, row, 'BaseId').trim() || id,
@@ -541,6 +544,8 @@ export function readMonsterKinds(table: D2Table, difficulty: Difficulty = 'norma
       rarity: num(table, row, 'Rarity', 1),
       minGroup: num(table, row, 'MinGrp', 1),
       maxGroup: num(table, row, 'MaxGrp', 1),
+      ...(pMin > 0 ? { partyMin: pMin } : {}),
+      ...(pMax > 0 ? { partyMax: pMax } : {}),
       level: [num(table, row, 'Level'), num(table, row, 'Level(N)'), num(table, row, 'Level(H)')],
       velocity: num(table, row, 'Velocity'),
       runVelocity: num(table, row, 'Run'),
@@ -1705,6 +1710,28 @@ export function resolveMonUModId113c(mod: string | number): number | undefined {
   return undefined
 }
 
+/**
+ * 1.13c `D2Game.dll` `MONSTERUNIQUE_ApplyMinionMods` (`0x6FC43060` & `0x6FC42230`, #1921):
+ * Filters a Unique/SuperUnique boss's modifiers down to rows with `xfer == 1` in `MonUMod.txt`
+ * (`strong`, `fast`, `curse`, `resist`, `fire`, `lightning`, `cold`, `manahit`, `teleport`,
+ * `spectralhit`, `stoneskin`, `multishot`) that transfer to its pack minions.
+ */
+export function filterTransferableEliteModifiers113c(
+  modifiers: readonly (string | number)[],
+): string[] {
+  const out: string[] = []
+  const seen = new Set<number>()
+  for (const mod of modifiers) {
+    const id = resolveMonUModId113c(mod)
+    if (id === undefined || seen.has(id)) continue
+    const row = MONUMOD_113C_ROWS[id]
+    if (!row || !row.enabled || row.champion || !row.xfer) continue
+    seen.add(id)
+    out.push(typeof mod === 'string' && mod.trim() !== '' && !/^\d+$/.test(mod.trim()) ? mod : row.id)
+  }
+  return out
+}
+
 function difficultyToIndex113c(difficulty: Difficulty | number = 'normal'): 0 | 1 | 2 {
   if (typeof difficulty === 'number') {
     return difficulty >= 2 ? 2 : difficulty === 1 ? 1 : 0
@@ -2063,7 +2090,16 @@ export function applyChampionSubtypeStats(
   const baseMaxHp = base.maxHp ?? base.hp
   const regularChampHp = Math.max(1, Math.round(baseMaxHp * champHpMult))
   const regularChampDmg = Math.max(1, Math.round(base.damage * champDmgMult))
-  const level = Math.min(110, Math.max(1, (base.level ?? 1) + CHAMPION_MODIFIER.levelBonus))
+  const alreadyRankScaled =
+    base.rank === 'champion' || base.rank === 'unique' || base.rank === 'minion'
+  const level =
+    alreadyRankScaled || base.isBoss || base.noRatio
+      ? (base.level ?? 1)
+      : Math.min(110, Math.max(1, (base.level ?? 1) + CHAMPION_MODIFIER.levelBonus))
+  const xp =
+    alreadyRankScaled || base.isBoss || base.noRatio
+      ? base.xp
+      : Math.max(0, Math.round(base.xp * 3))
 
   const normalizedSubtype: ChampionSubtype =
     subtype === 36 || subtype === 'ghostly'
@@ -2148,6 +2184,7 @@ export function applyChampionSubtypeStats(
     ...base,
     hp,
     maxHp: hp,
+    xp,
     damage,
     ...(scaledToHit !== undefined ? { toHit: scaledToHit } : {}),
     speed,
@@ -2195,6 +2232,7 @@ export function applyEliteModifiers(
   }
 
   let hp = base.hp
+  let xp = base.xp
   let damage = base.damage
   let armor = base.armor ?? 0
   let toHit = base.toHit
@@ -2204,11 +2242,17 @@ export function applyEliteModifiers(
   let level = base.level ?? 1
   let uncursable = Boolean(base.uncursable)
   const isWisp = isWillOWispMonsterStats113c(base)
+  const alreadyRankScaled =
+    base.rank === 'champion' || base.rank === 'unique' || base.rank === 'minion'
   const maxLevel = explicitDifficulty !== undefined || level > 99 ? 110 : 99
-  if (rank === 'champion') {
-    level += CHAMPION_MODIFIER.levelBonus
-  } else if (rank === 'unique' || rank === 'minion') {
-    level += UNIQUE_MODIFIER.levelBonus
+  if (!alreadyRankScaled && !base.isBoss && !base.noRatio) {
+    if (rank === 'champion') {
+      level += CHAMPION_MODIFIER.levelBonus
+      xp = Math.max(0, Math.round(xp * 3))
+    } else if (rank === 'unique' || rank === 'minion') {
+      level += UNIQUE_MODIFIER.levelBonus
+      xp = Math.max(0, Math.round(xp * 5))
+    }
   }
   level = Math.min(maxLevel, Math.max(1, level))
 
@@ -2218,16 +2262,31 @@ export function applyEliteModifiers(
   }
 
   const normMods = new Set(modifiers.map(m => m.trim().toLowerCase().replace(/[_\s-]+/g, '')))
+  let dmgScale = 1
 
   if (normMods.has('strong') || normMods.has('extrastrong') || normMods.has('5')) {
+    // 1.13c D2Game.dll 0x6FC42BC0 (`MonUMod #5 Extra Strong`, #1946):
+    // - Boss: +150% physical base damage (halved to +75% on WillOWisp, 0x6FC42CCF) + +25% AR
+    // - Minions: +75% physical base damage + +25% AR
     const strongPct =
       rank === 'minion'
         ? MONUMOD_CONSTANTS.minionDmgPctStrong
-        : MONUMOD_CONSTANTS.uniqueDmgPctStrong
-    damage = Math.max(1, Math.round(damage * (1 + strongPct / 100)))
+        : isWisp
+          ? Math.floor(MONUMOD_CONSTANTS.uniqueDmgPctStrong / 2)
+          : MONUMOD_CONSTANTS.uniqueDmgPctStrong
+    dmgScale *= 1 + strongPct / 100
+    damage = Math.max(1, Math.round(base.damage * dmgScale))
+    arScale *= 1.25
   }
   if (normMods.has('fast') || normMods.has('extrafast') || normMods.has('6')) {
-    speed = Math.round(speed * 1.4 * 100) / 100
+    // 1.13c D2Game.dll 0x6FC42880 (`MonUMod #6 Extra Fast`, #1946):
+    // - Boss: +100% velocity, faster attack rate, + +100% AR (2.0x)
+    // - Minions: +100% velocity
+    speed = Math.round(speed * 2.0 * 100) / 100
+    if (rank !== 'minion') {
+      arScale *= 2.0
+      cooldownTicks = Math.max(5, Math.round(cooldownTicks * 0.5))
+    }
   }
   if (normMods.has('fanatic') || normMods.has('fanatical') || normMods.has('37')) {
     speed = Math.round(speed * 2.0 * 100) / 100
@@ -2240,7 +2299,8 @@ export function applyEliteModifiers(
   }
   if (normMods.has('berserk') || normMods.has('berserker') || normMods.has('39')) {
     hp = Math.max(1, Math.round(hp * 0.75))
-    damage = Math.max(1, Math.round(damage * (isWisp ? 2.5 : 4)))
+    dmgScale *= isWisp ? 2.5 : 4
+    damage = Math.max(1, Math.round(base.damage * dmgScale))
     arScale *= 4
   }
   if (normMods.has('stoneskin') || normMods.has('28')) {
@@ -2305,7 +2365,7 @@ export function applyEliteModifiers(
         }
       : undefined
 
-  const modDmgScale = base.damage > 0 ? damage / base.damage : 1
+  const modDmgScale = dmgScale
   const scaleEliteSlot = (
     slot: NonNullable<MonsterStats['attack1']>,
   ): NonNullable<MonsterStats['attack1']> => {
@@ -2341,6 +2401,7 @@ export function applyEliteModifiers(
     ...base,
     hp,
     maxHp: hp,
+    xp,
     damage,
     armor,
     ...(toHit !== undefined ? { toHit } : {}),
@@ -2368,6 +2429,10 @@ export interface MonsterGroup {
   readonly rank: Exclude<MonsterRank, 'minion'>
   /** Rolled elite modifiers (`MonUMod.txt`). */
   readonly modifiers?: readonly string[]
+  /** Per-minion species resolved from `MonStats.txt` `minion1`/`minion2` (`0x6FC41F60`, #1922). */
+  readonly minionKinds?: readonly MonsterKind[] | undefined
+  /** Subordinate party companions (`PartyMin..PartyMax`, `0x6FC67700`, #1922) for normal leader packs. */
+  readonly companions?: readonly MonsterKind[] | undefined
 }
 
 /**
@@ -2658,6 +2723,7 @@ export function rollEliteGroup(
   rng: Rng,
   packIndex: number,
   difficulty?: Difficulty | 0 | 1 | 2,
+  kinds?: ReadonlyMap<string, MonsterKind>,
 ): MonsterGroup {
   if (eliteCandidates.length === 0) {
     throw new Error('rollEliteGroup: no elite candidates')
@@ -2671,18 +2737,44 @@ export function rollEliteGroup(
           ? 'nightmare'
           : 'normal'
       : rawDiff
+  const diffIdx = diff === 'hell' ? 2 : diff === 'nightmare' ? 1 : 0
   const kind =
     diff === 'normal'
       ? eliteCandidates[rng.int(0, eliteCandidates.length - 1)]!
       : pickWeightedKind113c(eliteCandidates, rng)
   const isChampion = rng.int(0, 99) < MONUMOD_CONSTANTS.championChance
   const rank: Exclude<MonsterRank, 'minion'> = isChampion ? 'champion' : 'unique'
+  const partyMinRaw = kind.partyMin ?? 0
+  const partyMaxRaw = kind.partyMax ?? 0
+  const baseMinMinions = partyMinRaw > 0 ? Math.max(3, Math.min(6, partyMinRaw)) : 3
+  const baseMaxMinions =
+    partyMaxRaw > 0 ? Math.max(baseMinMinions, Math.min(6, partyMaxRaw)) : 6
   const count = rank === 'champion'
     ? rng.int(2, 4)
-    : 1 + rng.int(3, 6)
+    : 1 + rng.int(baseMinMinions + diffIdx, baseMaxMinions + diffIdx)
   const modSeed = ((packIndex + 1) * 0x9e3779b9) ^ (count * 0x85ebca6b) ^ (rank === 'champion' ? 1 : 2)
   const modifiers = rollEliteModifiers(rank, new Rng(modSeed), diff, kind)
-  return { kind, count, rank, modifiers }
+  let minionKinds: MonsterKind[] | undefined
+  if (rank === 'unique' && count > 1) {
+    // D2Game.dll 0x6FC41F60 (`mov 0x26(%ecx), %cx`): Unique boss minions always use wMinion[0]
+    // (minion1) when valid, otherwise falling back to the boss's own hcIdx (group.kind).
+    const lookup = kinds ?? getCanonicalMonsterKinds(diff)
+    const primaryMinionId = kind.minions[0]
+    const primaryMinion =
+      primaryMinionId !== undefined
+        ? (lookup.get(primaryMinionId) ?? lookup.get(primaryMinionId.toLowerCase()))
+        : undefined
+    if (primaryMinion !== undefined) {
+      minionKinds = Array.from({ length: count - 1 }, () => primaryMinion)
+    }
+  }
+  return {
+    kind,
+    count,
+    rank,
+    modifiers,
+    ...(minionKinds !== undefined ? { minionKinds } : {}),
+  }
 }
 
 export interface PlanMonsterGroupsOptions {
@@ -2745,6 +2837,39 @@ export function planMonsterGroups(
   }
 
   const groups: MonsterGroup[] = []
+  const rollNormalCompanions113c = (
+    leaderKind: MonsterKind,
+    packOrdinal: number,
+    leaderCount: number,
+  ): readonly MonsterKind[] | undefined => {
+    const leaderPartyMax = leaderKind.partyMax ?? 0
+    if (leaderKind.boss || leaderPartyMax <= 0 || leaderKind.minions.length === 0) {
+      return undefined
+    }
+    const leaderBase = (leaderKind.baseId ?? leaderKind.id).toLowerCase()
+    const subPool = leaderKind.minions
+      .map((id) => kinds.get(id) ?? kinds.get(id.toLowerCase()))
+      .filter(
+        (m): m is MonsterKind =>
+          m !== undefined && (m.baseId ?? m.id).toLowerCase() !== leaderBase,
+      )
+    if (subPool.length === 0) return undefined
+    const compSeed =
+      (Math.imul(packOrdinal + 1, 0x9e3779b9) ^
+        Math.imul(leaderCount + 1, 0x85ebca6b) ^
+        ((leaderKind.hcIdx ?? 1) * 0x50415254)) >>>
+        0 || 1
+    const compRng = new Rng(compSeed)
+    const pMin = Math.max(1, leaderKind.partyMin ?? 0)
+    const pMax = Math.max(pMin, leaderPartyMax)
+    const compCount = compRng.int(pMin, pMax)
+    // D2Game.dll 0x6FD0E650..0x6FD0E6D1: spawns wMinion[idx] cycling round-robin 0..maxIdx.
+    const out: MonsterKind[] = []
+    for (let c = 0; c < compCount; c += 1) {
+      out.push(subPool[c % subPool.length]!)
+    }
+    return out
+  }
 
   if (options?.attempts !== undefined) {
     const attempts = Math.max(0, Math.floor(options.attempts))
@@ -2762,7 +2887,7 @@ export function planMonsterGroups(
       if (!rollMonsterAttempt113c(density, rng)) continue
       const kind = types.length > 0 ? pickWeightedKind113c(types, rng) : undefined
       if (options.eliteMultiplier === 'all' && eliteCandidates.length > 0) {
-        groups.push(rollEliteGroup(eliteCandidates, rng, allEliteIndex, diff))
+        groups.push(rollEliteGroup(eliteCandidates, rng, allEliteIndex, diff, kinds))
         allEliteIndex += 1
         continue
       }
@@ -2794,7 +2919,7 @@ export function planMonsterGroups(
         // any monster and without calling 0x6FC43260 (inc spawnedElites).
         if (eliteCandidates.length > 0) {
           const packIndex = externalState !== undefined ? externalState.spawnedElites : localSpawnedElites
-          groups.push(rollEliteGroup(eliteCandidates, rng, packIndex, diff))
+          groups.push(rollEliteGroup(eliteCandidates, rng, packIndex, diff, kinds))
           if (externalState !== undefined) {
             externalState.spawnedElites += 1
           } else {
@@ -2807,7 +2932,13 @@ export function planMonsterGroups(
       if (!kind) continue
       if (!passesSparsePopulate113c(kind, rng)) continue
       const count = rollNormalGroupSize113c(kind, rng)
-      groups.push({ kind, count, rank: 'normal' })
+      const companions = rollNormalCompanions113c(kind, groups.length, count)
+      groups.push({
+        kind,
+        count,
+        rank: 'normal',
+        ...(companions !== undefined ? { companions } : {}),
+      })
     }
 
     return groups
@@ -2817,7 +2948,7 @@ export function planMonsterGroups(
 
   if (options?.eliteMultiplier === 'all' && eliteCandidates.length > 0) {
     for (let i = 0; i < budget; i += 1) {
-      groups.push(rollEliteGroup(eliteCandidates, rng, i, diff))
+      groups.push(rollEliteGroup(eliteCandidates, rng, i, diff, kinds))
     }
     return groups
   }
@@ -2842,7 +2973,7 @@ export function planMonsterGroups(
     )
     if (packKind === 'elite') {
       if (eliteCandidates.length > 0) {
-        groups.push(rollEliteGroup(eliteCandidates, rng, spawnedElites, diff))
+        groups.push(rollEliteGroup(eliteCandidates, rng, spawnedElites, diff, kinds))
         spawnedElites += 1
       }
       continue
@@ -2850,7 +2981,13 @@ export function planMonsterGroups(
     const kind = pickWeightedKind113c(types, rng)
     if (!passesSparsePopulate113c(kind, rng)) continue
     const count = rollNormalGroupSize113c(kind, rng)
-    groups.push({ kind, count, rank: 'normal' })
+    const companions = rollNormalCompanions113c(kind, groups.length, count)
+    groups.push({
+      kind,
+      count,
+      rank: 'normal',
+      ...(companions !== undefined ? { companions } : {}),
+    })
   }
   return groups
 }
@@ -2996,11 +3133,25 @@ export function monsterStatsOf(
       rolledHp = (rollSource as Rng).int(minHpRaw, maxHpRaw)
     }
 
-    const mlvl =
+    const resolvedRank: MonsterRank = diffKind.boss
+      ? 'boss'
+      : opts.rank === 'superunique'
+        ? 'unique'
+        : (opts.rank ?? 'normal')
+    const baseMlvl =
       opts.level ??
       (opts.areaLevel !== undefined
         ? monsterLevelFor(diffKind, difficulty, opts.areaLevel)
         : (diffKind.level[diffIdx] ?? diffKind.level[0]))
+    const rankLevelBonus =
+      opts.level !== undefined || diffKind.boss || diffKind.noRatio
+        ? 0
+        : resolvedRank === 'champion'
+          ? CHAMPION_MODIFIER.levelBonus
+          : resolvedRank === 'unique' || resolvedRank === 'minion'
+            ? UNIQUE_MODIFIER.levelBonus
+            : 0
+    const mlvl = Math.min(110, Math.max(1, baseMlvl + rankLevelBonus))
     const monLvlRow = getMonLvl113c(mlvl)
     const bypassRatio = Boolean(diffKind.noRatio) || !monLvlRow
 
@@ -3026,14 +3177,38 @@ export function monsterStatsOf(
     const armor = Math.max(0, scaleFloor(diffKind.armour, lAc))
     let xp = Math.max(0, scaleFloor(diffKind.experience, lXp))
 
+    // #1921: D2Game.dll MONSTERUNIQUE_InitChampion (0x6FC42DA0) & MONSTERUNIQUE_InitBoss (0x6FC41E80)
+    // apply 3x (Champion) or 5x (Unique & Minion) XP and MonUMod ToHit bonus after MonLvl.txt lookup.
+    if (!diffKind.boss && !diffKind.noRatio) {
+      if (resolvedRank === 'champion') {
+        xp = Math.max(0, xp * 3)
+        const arPct = MONUMOD_113C_CONSTANTS.championToHitBonusPct
+        a1Th = Math.floor((a1Th * (100 + arPct)) / 100)
+        a2Th = Math.floor((a2Th * (100 + arPct)) / 100)
+        s1Th = Math.floor((s1Th * (100 + arPct)) / 100)
+      } else if (resolvedRank === 'unique') {
+        xp = Math.max(0, xp * 5)
+        const arPct = MONUMOD_113C_CONSTANTS.uniqueToHitBonusPct
+        a1Th = Math.floor((a1Th * (100 + arPct)) / 100)
+        a2Th = Math.floor((a2Th * (100 + arPct)) / 100)
+        s1Th = Math.floor((s1Th * (100 + arPct)) / 100)
+      } else if (resolvedRank === 'minion') {
+        xp = Math.max(0, xp * 5)
+        const arPct = MONUMOD_113C_CONSTANTS.minionToHitBonusPct
+        a1Th = Math.floor((a1Th * (100 + arPct)) / 100)
+        a2Th = Math.floor((a2Th * (100 + arPct)) / 100)
+        s1Th = Math.floor((s1Th * (100 + arPct)) / 100)
+      }
+    }
+
     const playerCount = Math.max(1, Math.min(8, Math.floor(opts.playerCount ?? opts.playersCount ?? 1)))
     const monsterPlayerCount =
       diffKind.align !== undefined && diffKind.align !== 0 ? 1 : playerCount
     const bonusDmgAr = (val: number): number =>
-      playerCount > 1 ? val + Math.floor((val * (playerCount - 1)) / 16) : val
-    if (playerCount > 1) {
-      hp = Math.max(1, Math.floor((hp * (playerCount + 1)) / 2))
-      xp = Math.max(0, Math.floor((xp * (playerCount + 1)) / 2))
+      monsterPlayerCount > 1 ? val + Math.floor((val * (monsterPlayerCount - 1)) / 16) : val
+    if (monsterPlayerCount > 1) {
+      hp = Math.max(1, Math.floor((hp * (monsterPlayerCount + 1)) / 2))
+      xp = Math.max(0, Math.floor((xp * (monsterPlayerCount + 1)) / 2))
       a1Min = bonusDmgAr(a1Min)
       a1Max = bonusDmgAr(a1Max)
       a1Th = bonusDmgAr(a1Th)
@@ -3069,11 +3244,6 @@ export function monsterStatsOf(
       meleeRng !== undefined && meleeRng > 0
         ? Math.max(DEFAULT_REACH_PX, meleeRng * PIXELS_PER_SUBTILE)
         : DEFAULT_REACH_PX
-    const resolvedRank: MonsterRank = diffKind.boss
-      ? 'boss'
-      : opts.rank === 'superunique'
-        ? 'unique'
-        : (opts.rank ?? 'normal')
 
     return {
       id: diffKind.id,
@@ -3567,22 +3737,58 @@ export function planLevelMonsters(
   const packs: MonsterPack[] = groups.map(group => {
     const multiplier = ELITE_HEALTH_MULTIPLIER[group.rank]
     const members: MonsterStats[] = []
-    const groupArt = artMap?.get(group.kind.id)
     for (let i = 0; i < group.count; i += 1) {
-      const level = monsterLevelFor(group.kind, difficulty, plan.monsterLevel)
-      const base = monsterStatsOf(group.kind, rollRng, walkSpeedPx, scaleAt(level), groupArt, level)
-      // Elite health scaling:
-      // Champions: all members receive champion bonus (3x HP in normal).
-      // Uniques: leader receives unique bonus (4x HP in normal); minions receive minion bonus (2x HP in normal).
+      const memberKind =
+        group.rank === 'unique' && i > 0
+          ? (group.minionKinds?.[i - 1] ?? group.kind)
+          : group.kind
+      const memberArt = artMap?.get(memberKind.id)
+      const memberRank: MonsterRank = group.rank === 'normal' ? 'normal' : (i === 0 || group.rank === 'champion' ? group.rank : 'minion')
+      const baseLevel = monsterLevelFor(memberKind, difficulty, plan.monsterLevel)
+      const rankBonus =
+        memberKind.boss || memberKind.noRatio
+          ? 0
+          : memberRank === 'champion'
+            ? CHAMPION_MODIFIER.levelBonus
+            : memberRank === 'unique' || memberRank === 'minion'
+              ? UNIQUE_MODIFIER.levelBonus
+              : 0
+      const effectiveLevel = Math.min(110, Math.max(1, baseLevel + rankBonus))
+      const base = monsterStatsOf(memberKind, rollRng, walkSpeedPx, scaleAt(effectiveLevel), memberArt, effectiveLevel, memberRank)
       const scale = group.rank === 'normal'
         ? 1
         : group.rank === 'champion'
           ? multiplier
           : (i === 0 ? multiplier : 1 + (MONUMOD_CONSTANTS.minionHpPct / 100))
-      const scaled = scale === 1 ? base : { ...base, hp: Math.max(1, Math.round(base.hp * scale)) }
-      const memberRank: MonsterRank = group.rank === 'normal' ? 'normal' : (i === 0 || group.rank === 'champion' ? group.rank : 'minion')
-      const memberMods = (i === 0 || group.rank === 'champion') ? (group.modifiers ?? []) : []
+      const xpMult =
+        memberKind.boss || memberKind.noRatio
+          ? 1
+          : memberRank === 'champion'
+            ? 3
+            : memberRank === 'unique' || memberRank === 'minion'
+              ? 5
+              : 1
+      const scaled = scale === 1 && xpMult === 1
+        ? base
+        : {
+            ...base,
+            hp: Math.max(1, Math.round(base.hp * scale)),
+            xp: Math.max(0, Math.round(base.xp * xpMult)),
+          }
+      const memberMods =
+        group.rank === 'normal'
+          ? []
+          : i === 0 || group.rank === 'champion'
+            ? (group.modifiers ?? [])
+            : filterTransferableEliteModifiers113c(group.modifiers ?? [])
       members.push(applyEliteModifiers(scaled, memberRank, memberMods))
+    }
+    if (group.rank === 'normal' && group.companions !== undefined) {
+      for (const compKind of group.companions) {
+        const compArt = artMap?.get(compKind.id)
+        const compLevel = monsterLevelFor(compKind, difficulty, plan.monsterLevel)
+        members.push(monsterStatsOf(compKind, rollRng, walkSpeedPx, scaleAt(compLevel), compArt, compLevel, 'normal'))
+      }
     }
     return { members }
   })
@@ -3627,6 +3833,7 @@ export function planLevelMonsters(
       const minionCount = suRng.int(suSpec.minMinions, suSpec.maxMinions)
       const suMembers: MonsterStats[] = [bossStats]
       const minionArt = artMap?.get(minionKind.id)
+      const suMinionMods = filterTransferableEliteModifiers113c(suMods)
       for (let m = 0; m < minionCount; m += 1) {
         const mLevel = monsterLevelFor(minionKind, difficulty, plan.monsterLevel)
         const mBase = monsterStatsOf(minionKind, suRng, walkSpeedPx, scaleAt(mLevel), minionArt, mLevel)
@@ -3635,7 +3842,7 @@ export function planLevelMonsters(
           id: suSpec.minionMonsterId,
           hp: Math.max(1, Math.round(mBase.hp * (1 + MONUMOD_CONSTANTS.minionHpPct / 100))),
         }
-        suMembers.push(applyEliteModifiers(mScaled, 'minion', [], suSpec.id))
+        suMembers.push(applyEliteModifiers(mScaled, 'minion', suMinionMods, suSpec.id))
       }
       const matchedLandmark = options?.landmarks?.find(l => l.id === suSpec.id)
       const suPack: MonsterPack = {
@@ -4603,10 +4810,39 @@ export function resolveMonsterStats(
         monsterPlayerCount,
       }
     }
-    const scaledHp = Math.max(1, Math.floor((st.hp * (playerCount + 1)) / 2))
-    const scaledXp = Math.max(0, Math.floor((st.xp * (playerCount + 1)) / 2))
+    const scaledHp = Math.max(1, Math.floor((st.hp * (monsterPlayerCount + 1)) / 2))
+    const scaledXp = Math.max(0, Math.floor((st.xp * (monsterPlayerCount + 1)) / 2))
     const bonusDmgAr = (val: number): number =>
-      val <= 0 ? 0 : val + Math.floor((val * (playerCount - 1)) / 16)
+      val <= 0 ? 0 : val + Math.floor((val * (monsterPlayerCount - 1)) / 16)
+    const scaleAttackSlot = (
+      slot: NonNullable<MonsterStats['attack1']>,
+    ): NonNullable<MonsterStats['attack1']> => {
+      const minDamage = bonusDmgAr(slot.minDamage ?? slot.min ?? 0)
+      const maxDamage = Math.max(minDamage, bonusDmgAr(slot.maxDamage ?? slot.max ?? 0))
+      const slotTh = slot.toHit !== undefined ? bonusDmgAr(slot.toHit) : undefined
+      return {
+        ...slot,
+        minDamage,
+        maxDamage,
+        min: minDamage,
+        max: maxDamage,
+        ...(slotTh !== undefined ? { toHit: slotTh } : {}),
+      }
+    }
+    const scaledAttack1 = st.attack1 ? scaleAttackSlot(st.attack1) : undefined
+    const scaledAttack2 = st.attack2 ? scaleAttackSlot(st.attack2) : undefined
+    const scaledSpecial1 = st.special1 ? scaleAttackSlot(st.special1) : undefined
+    const scaledElem = st.elementalAttacks?.map((el) => {
+      const elMin = bonusDmgAr(el.minDamage ?? el.min ?? 0)
+      const elMax = Math.max(elMin, bonusDmgAr(el.maxDamage ?? el.max ?? 0))
+      return {
+        ...el,
+        min: elMin,
+        max: elMax,
+        minDamage: elMin,
+        maxDamage: elMax,
+      }
+    })
     const scaledDamage = st.damage <= 0 ? 0 : bonusDmgAr(st.damage)
     const scaledToHit = bonusDmgAr(st.toHit ?? 0)
     return {
@@ -4616,6 +4852,10 @@ export function resolveMonsterStats(
       xp: scaledXp,
       damage: scaledDamage,
       toHit: scaledToHit,
+      ...(scaledAttack1 ? { attack1: scaledAttack1 } : {}),
+      ...(scaledAttack2 ? { attack2: scaledAttack2 } : {}),
+      ...(scaledSpecial1 ? { special1: scaledSpecial1 } : {}),
+      ...(scaledElem ? { elementalAttacks: scaledElem } : {}),
       monsterPlayerCount,
     }
   }
@@ -4680,29 +4920,33 @@ export function resolveMonsterStats(
  * Canonical 1.13c Boss & SuperUnique Minion mapping (`SuperUniques.txt` + `MonStats.txt` `minion1`/`minion2`).
  */
 export const CANONICAL_BOSS_MINIONS: Readonly<Record<string, readonly string[]>> = (() => {
-  const map: Record<string, readonly string[]> = {
-    fallenshaman1: ['fallen1', 'fallen2'],
-    fallenshaman2: ['fallen2', 'fallen3'],
-    fallenshaman3: ['fallen3', 'fallen4'],
-    fallenshaman4: ['fallen4', 'fallen5'],
-    fallenshaman5: ['fallen5', 'fallen5'],
-    fetishshaman1: ['fetish1', 'fetish2'],
-    fetishshaman2: ['fetish2', 'fetish3'],
-    fetishshaman3: ['fetish3', 'fetish4'],
-    fetishshaman4: ['fetish4', 'fetish5'],
-    fetishshaman5: ['fetish5', 'fetish5'],
-    greatermummy1: ['skeleton1', 'skeleton2'],
-    greatermummy2: ['skeleton2', 'skeleton3'],
-    greatermummy3: ['skeleton3', 'skeleton4'],
-    greatermummy4: ['skeleton4', 'skeleton5'],
-    greatermummy5: ['skeleton5', 'skeleton5'],
-    overseer1: ['minion1', 'minion2'],
-    overseer2: ['minion2', 'minion3'],
-    overseer3: ['minion3', 'minion4'],
-    overseer4: ['minion4', 'minion5'],
-    overseer5: ['minion5', 'minion6'],
-  }
   const normalKinds = getCanonicalMonsterKinds('normal')
+  const map: Record<string, readonly string[]> = {}
+  for (const leaderId of [
+    'fallenshaman1',
+    'fallenshaman2',
+    'fallenshaman3',
+    'fallenshaman4',
+    'fallenshaman5',
+    'fetishshaman1',
+    'fetishshaman2',
+    'fetishshaman3',
+    'fetishshaman4',
+    'fetishshaman5',
+    'greatermummy1',
+    'greatermummy2',
+    'greatermummy3',
+    'greatermummy4',
+    'greatermummy5',
+    'overseer1',
+    'overseer2',
+    'overseer3',
+    'overseer4',
+    'overseer5',
+  ]) {
+    const k = normalKinds.get(leaderId)
+    map[leaderId] = k?.minions && k.minions.length > 0 ? k.minions : [leaderId]
+  }
   for (const row of SUPERUNIQUES_113C_ROWS) {
     const k = normalKinds.get(row.classId)
     const minions = k?.minions && k.minions.length > 0 ? k.minions : [row.classId]

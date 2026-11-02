@@ -27,7 +27,7 @@ import {
   type MonsterKind,
 } from '../../common/units/monsters-data.ts'
 import { getLevelMonsterPlan113c } from '../../common/world/level-monster-plans.ts'
-import { getLevelMonsterLevel113c } from '../../common/world/levels-monlvl-113c.ts'
+import { getLevelMonsterLevel113c, getLevelsMonLvlRecord113c } from '../../common/world/levels-monlvl-113c.ts'
 import { finalizeDroppedItem113c, resolveChestDropContext113c } from '../items/server-item-data.ts'
 
 export interface RackCandidateBase113c {
@@ -296,6 +296,96 @@ export function rollQuestChestBonusDrops113c(options: QuestChestBonusDropOptions
   return out
 }
 
+const TOWER_CHEST_HEAL_POTION_CODES_113C = ['hp1', 'hp2', 'hp3', 'hp4'] as const
+const TOWER_CHEST_MANA_POTION_CODES_113C = ['mp1', 'mp2', 'mp3', 'mp4'] as const
+
+/**
+ * 1.13c Act 1 Quest 4 (`a1q4`) Countess Tower Chest (`Objects.txt 371`, `D2Game.dll` `OBJECTS_OpenTowerChest`
+ * @ `0x6FC8DBF0..0x6FC8DD02`, #1988):
+ * - Calls `OBJECTS_DropFromChestTC(pArg, 4)` (`0x6FC8B570`) **3 times** (`0x6FC8DC25`, `0x6FC8DC2D`, `0x6FC8DC35`)
+ *   to drop 3 forced-Magic (`nQuality = 4`) Chest TC items.
+ * - Drops **2** Healing Potions (`0x6FC2E390` @ `0x6FD2F884`: `['hp1','hp2','hp3','hp4'][min(3, act + (diff > 0 ? 2 : 0))]`)
+ *   and **2** Mana Potions (`0x6FC2E310` @ `0x6FD2F870`: `['mp1','mp2','mp3','mp4'][min(3, act + (diff > 0 ? 2 : 0))]`).
+ */
+export function rollCountessTowerChestDrops113c(options: QuestChestBonusDropOptions113c): Item[] {
+  const tables = getEmbeddedDropTables()
+  const ctx = resolveChestDropContext113c(options.areaId, options.difficulty)
+  const ilvl = Math.max(1, ctx.monsterLevel)
+  const diffName =
+    options.difficulty === 2 ? 'hell' : options.difficulty === 1 ? 'nightmare' : 'normal'
+  const out: Item[] = []
+
+  for (let i = 0; i < 3; i++) {
+    let magicEquip: Item | undefined
+    for (let attempt = 0; attempt < 12; attempt++) {
+      const rolled = executeDropPipeline(tables, {
+        tcName: ctx.tcName,
+        nLevel: ilvl,
+        monsterType: 3,
+        difficulty: diffName,
+        gamePlayers: Math.max(8, options.gamePlayers),
+        partyPlayers: Math.max(8, options.partyPlayers),
+        playerMf: options.playerMf,
+        playerGf: options.playerGf,
+        monsterRng: new D2Rng(options.rng.rand(0x7fffffff) || 1),
+        forcedQuality: 4,
+        ...(options.spawnedUniqueIds !== undefined
+          ? { spawnedUniqueIds: options.spawnedUniqueIds }
+          : {}),
+      })
+      const found = rolled.find(
+        (it) =>
+          (it.base.kind === 'armor' || it.base.kind === 'weapon' || Number(it.quality ?? 0) >= 4) &&
+          Number(it.quality ?? 0) >= 4,
+      )
+      if (found) {
+        magicEquip = finalizeDroppedItem113c(found)
+        break
+      }
+    }
+    if (!magicEquip) {
+      const fallbackBase = pickRackBase113c(getArmorStandPool(tables), ilvl, options.rng)
+      if (fallbackBase) {
+        const fb = rollSelectedRackBaseDrop113c(
+          fallbackBase,
+          ilvl,
+          {
+            areaId: options.areaId,
+            difficulty: options.difficulty,
+            playerMf: options.playerMf,
+            rng: options.rng,
+            spawnedUniqueIds: options.spawnedUniqueIds,
+          },
+          tables,
+          4,
+        )
+        magicEquip = fb[0]
+      }
+    }
+    if (magicEquip) out.push(magicEquip)
+  }
+
+  const act = getLevelsMonLvlRecord113c(options.areaId).act
+  const tierIdx = Math.min(3, Math.max(0, act + (options.difficulty > 0 ? 2 : 0)))
+  const hpCode = TOWER_CHEST_HEAL_POTION_CODES_113C[tierIdx]!
+  const mpCode = TOWER_CHEST_MANA_POTION_CODES_113C[tierIdx]!
+  for (const code of [hpCode, hpCode, mpCode, mpCode]) {
+    const base = tables.getBase(code)
+    if (!base) continue
+    const seed = options.rng.rand(0x7fffffff) >>> 0
+    const itemRng = new D2Rng(seed || 1)
+    out.push(
+      createDroppedItem(base, 'normal', {
+        itemTypes: tables.itemTypes,
+        ilvl,
+        dwInitSeed: seed,
+        itemRng,
+      }),
+    )
+  }
+  return out
+}
+
 /**
  * 1.13c `OperateFn 33` Wirt's Body (`D2Game.dll` `0x6FC8D960`, `Objects.txt` `268` in Tristram `Area 38`):
  * Spawns `Wirt's Leg` (`'leg'`, white blunt weapon at `ilvl = max(1, areaLvl)`) + `15` gold piles!
@@ -434,6 +524,49 @@ export function planEvilUrnPack113c(
       dx: off[0],
       dy: off[1],
     })
+  }
+  return out
+}
+
+const TRAPPED_SOUL_POTIONS_BY_DIFFICULTY: Readonly<Record<0 | 1 | 2, readonly string[]>> = {
+  0: ['hp2', 'hp3', 'mp2', 'mp3'],
+  1: ['hp3', 'hp4', 'mp3', 'mp4'],
+  2: ['hp4', 'hp5', 'mp4', 'mp5'],
+}
+
+/**
+ * 1.13c Act 4 Trapped Soul (`Objects.txt 380, 381`, `OperateFn 48`, `D2Game.dll` `0x6FC8CE10`, #1957):
+ * drops `1..2` healing/mana potions or gold piles (`'gld'`) and NEVER rolls `Act 4 Chest A/B/C` equipment TCs.
+ */
+export function rollTrappedSoulDrops113c(
+  areaId: number,
+  difficulty: 0 | 1 | 2,
+  playerGf: number,
+  rng: { rand(max: number): number },
+): Item[] {
+  const tables = getEmbeddedDropTables()
+  const ilvl = Math.max(1, getLevelMonsterLevel113c(areaId, difficulty, true))
+  const potionPool = TRAPPED_SOUL_POTIONS_BY_DIFFICULTY[difficulty]
+  const count = 1 + rng.rand(2)
+  const out: Item[] = []
+  for (let i = 0; i < count; i++) {
+    if (rng.rand(2) === 0) {
+      out.push(...createGoldPiles113c(1, ilvl, playerGf, rng))
+    } else {
+      const code = potionPool[rng.rand(potionPool.length)]!
+      const base = tables.getBase(code)
+      if (!base) continue
+      const seed = rng.rand(0x7fffffff) >>> 0
+      const itemRng = new D2Rng(seed || 1)
+      out.push(
+        createDroppedItem(base, 'normal', {
+          itemTypes: tables.itemTypes,
+          ilvl,
+          dwInitSeed: seed,
+          itemRng,
+        }),
+      )
+    }
   }
   return out
 }

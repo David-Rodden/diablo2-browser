@@ -721,7 +721,7 @@ describe('Tier 1 — Feature Coverage (F1–F12, 60 tests)', () => {
       expect(portalEv?.ownerId).toBe(p1)
     })
 
-    it('F5.4: town healer NpcAction restores player HP, Mana, and Stamina to maximum and clears poison/freeze', () => {
+    it('F5.4: town healer NpcAction restores player HP, Mana, and Stamina to max and cures curable states (1.13c 0x6FCDD490)', () => {
       const d2sBytes = Server.writeD2s(
         createSampleD2sCharacterData({
           name: 'WoundedHero',
@@ -749,6 +749,7 @@ describe('Tier 1 — Feature Coverage (F1–F12, 60 tests)', () => {
         level: 20,
         d2sBytes,
       })
+      game.applyPlayerState(p1, 2, 500) // STATE_POISON (curable)
       game.drainPlayerEvents(p1)
 
       game.enqueueCommand(p1, {
@@ -758,9 +759,12 @@ describe('Tier 1 — Feature Coverage (F1–F12, 60 tests)', () => {
       })
       game.stepFrame()
 
+      // Per D2Game.dll 0x6FCDD490 (kb/npc/d2game-town-healers-113c.md): town healers restore
+      // STAT_HITPOINTS (6), STAT_MANA (8), and STAT_STAMINA (10) to max and clear curable states.
       const exported = Server.readD2s(game.exportPlayerD2s(p1))
       expect(exported.attributes.hitpointsFixed).toBe(exported.attributes.maxHpFixed)
       expect(exported.attributes.manaFixed).toBe(exported.attributes.maxManaFixed)
+      expect(game.getPlayerState(p1)!.states.has(2)).toBe(false)
     })
 
     it('F5.5: InteractEntity on warp or portal transitions player area and emits LoadAct and UnitReassign', () => {

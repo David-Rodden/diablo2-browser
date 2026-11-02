@@ -1334,7 +1334,11 @@ export class FrontendRenderer {
     switch (this.state.stage) {
       case 'main_menu': {
         // Exact Expansion Main Menu coordinates from D2Launch.dll (0x6fa61190..0x6fa612d0)
-        // Single Player and Other Multiplayer are disabled (grayed out via DRAWMODE_TRANS50); other main menu stone buttons are rendered at full stone brightness with engraved black labels.
+        // Single Player is disabled by default (`singlePlayerEnabled === false`, grayed out via DRAWMODE_TRANS50)
+        // unless enabled by server/deployment configuration and wired to `onSinglePlayer`.
+        const singlePlayerActive =
+          Boolean(this.state.singlePlayerEnabled) &&
+          Boolean(this.asyncHandlers?.onSinglePlayer)
         const buttons: UiButtonDef[] = [
           {
             id: 'single_player',
@@ -1344,8 +1348,14 @@ export class FrontendRenderer {
             h: 35,
             sprite: 'btn-wide.png',
             label: this.requireStr(5106, 'singlePlayer'),
-            disabled: true,
-            onClick: () => {},
+            disabled: !singlePlayerActive,
+            onClick: () => {
+              if (!singlePlayerActive) return
+              clickSinglePlayerButton(this.state)
+              if (this.asyncHandlers?.onSinglePlayer) {
+                void this.asyncHandlers.onSinglePlayer(this.state)
+              }
+            },
           },
           {
             id: 'battle_net',

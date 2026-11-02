@@ -101,6 +101,12 @@ import {
   calculateShiverArmorChillLength,
   calculateShiverArmorDamage,
 } from '../engine/missile-engine.ts'
+import {
+  computeScarabChargedBoltFanTargets113c,
+  computeScarabChargedBoltSlvl113c,
+  hasImplicitScarabUMod113c,
+  hasImplicitShatterOnDeathUMod113c,
+} from './monumod-113c.ts'
 
 export {
   CANONICAL_CHARSTATS,
@@ -644,52 +650,71 @@ export function damageMonster(
 
   const hcIdx = monster.stats?.hcIdx ?? 0
   const rawMods = collectRawMonsterMods(monster)
-  if (
-    amount > 0 &&
-    (hasMonsterUMod(rawMods, MON_UMOD.LIGHTNING) ||
-      hasMonsterUMod(rawMods, MON_UMOD.SCARAB) ||
-      isScarabMonster(hcIdx, monster.stats?.id ?? ''))
-  ) {
-    const bolts = computeChargedBolt8WayVectors(monster.x, monster.y, 12)
+  const hasLe = hasMonsterUMod(rawMods, MON_UMOD.LIGHTNING)
+  const hasScarab =
+    hasMonsterUMod(rawMods, MON_UMOD.SCARAB) ||
+    isScarabMonster(hcIdx, monster.stats?.id ?? '') ||
+    hasImplicitScarabUMod113c({ hcIdx, defId: monster.stats?.id })
+  if (amount > 0 && (hasLe || hasScarab)) {
     const mlvl = Math.max(1, monster.stats?.level ?? 1)
-    const boltDmg = Math.max(1, Math.floor(mlvl * 1.5))
-    world.events.push({
-      kind: 'unitSkillEvent',
-      x: monster.x,
-      y: monster.y,
-      skillId: 'ChargedBolt',
-      monsterIndex: monster.index,
-      amount: boltDmg,
-      text: '8-way ChargedBolt',
-      unitSkillEvent: {
-        type: 'UnitSkillEvent',
-        flag: 1,
-        skill: 38,
-        level: Math.max(1, Math.floor(mlvl / 3)),
-        caster: { rawUnitType: 1, id: monster.index >>> 0 },
-        target: { rawUnitType: 0, id: 1 },
-        x: Math.round(bolts[0]?.targetX ?? monster.x),
-        y: Math.round(bolts[0]?.targetY ?? monster.y),
-      },
-    })
-    world.events.push({
-      kind: 'unitOverlay',
-      x: monster.x,
-      y: monster.y,
-      skillId: '38',
-      monsterIndex: monster.index,
-      overlayToken: 'chargedbolt_onhit',
-      overlayIndex: 38,
-      targetUnitType: 1,
-      targetUnitId: monster.index >>> 0,
-    })
-    if (realAttacker && Math.hypot(realAttacker.x - monster.x, realAttacker.y - monster.y) <= 144) {
-      const ltngRes = (realAttacker as unknown as { lightningResist?: number }).lightningResist ?? 0
-      const effBoltDmg =
-        ltngRes >= 100 ? 0 : Math.max(1, Math.round((boltDmg * (100 - ltngRes)) / 100))
-      if (effBoltDmg > 0) {
-        realAttacker.hp = Math.max(1, realAttacker.hp - effBoltDmg)
+    const emitChargedBoltBurst = (slvl: number, vectors: readonly { readonly targetX: number; readonly targetY: number }[]): void => {
+      const boltDmg = Math.max(1, Math.floor(mlvl * 1.5))
+      world.events.push({
+        kind: 'unitSkillEvent',
+        x: monster.x,
+        y: monster.y,
+        skillId: 'ChargedBolt',
+        monsterIndex: monster.index,
+        amount: boltDmg,
+        text: '8-way ChargedBolt',
+        unitSkillEvent: {
+          type: 'UnitSkillEvent',
+          flag: 1,
+          skill: 38,
+          level: slvl,
+          caster: { rawUnitType: 1, id: monster.index >>> 0 },
+          target: { rawUnitType: 0, id: 1 },
+          x: Math.round(vectors[0]?.targetX ?? monster.x),
+          y: Math.round(vectors[0]?.targetY ?? monster.y),
+        },
+      })
+      world.events.push({
+        kind: 'unitOverlay',
+        x: monster.x,
+        y: monster.y,
+        skillId: '38',
+        monsterIndex: monster.index,
+        overlayToken: 'chargedbolt_onhit',
+        overlayIndex: 38,
+        targetUnitType: 1,
+        targetUnitId: monster.index >>> 0,
+      })
+      if (realAttacker && Math.hypot(realAttacker.x - monster.x, realAttacker.y - monster.y) <= 144) {
+        const ltngRes = (realAttacker as unknown as { lightningResist?: number }).lightningResist ?? 0
+        const effBoltDmg =
+          ltngRes >= 100 ? 0 : Math.max(1, Math.round((boltDmg * (100 - ltngRes)) / 100))
+        if (effBoltDmg > 0) {
+          realAttacker.hp = Math.max(1, realAttacker.hp - effBoltDmg)
+        }
       }
+    }
+    if (hasLe) {
+      emitChargedBoltBurst(
+        Math.max(1, Math.floor(mlvl / 2)),
+        computeChargedBolt8WayVectors(monster.x, monster.y, 12),
+      )
+    }
+    if (hasScarab) {
+      emitChargedBoltBurst(
+        computeScarabChargedBoltSlvl113c(mlvl),
+        computeScarabChargedBoltFanTargets113c(
+          monster.x,
+          monster.y,
+          realAttacker?.x ?? monster.x + 12,
+          realAttacker?.y ?? monster.y,
+          12,
+        ),
+      )
     }
   }
 
@@ -697,7 +722,11 @@ export function damageMonster(
   monster.state = 'dead'
   monster.animMode = 'dt'
   monster.corpseTicks = 100
-  if ((monster.frozenTicks ?? 0) > 0) {
+  if (
+    (monster.frozenTicks ?? 0) > 0 ||
+    hasMonsterUMod(rawMods, MON_UMOD.SHATTER_ON_DEATH) ||
+    hasImplicitShatterOnDeathUMod113c({ hcIdx, defId: monster.stats?.id })
+  ) {
     monster.shattered = true
     monster.corpseConsumed = true
     monster.corpseSuppressed = true
@@ -939,7 +968,11 @@ function tickPlayer(
           target.state = 'dead'
           target.animMode = 'dt'
           target.corpseTicks = 100
-          if ((target.frozenTicks ?? 0) > 0) {
+          if (
+            (target.frozenTicks ?? 0) > 0 ||
+            hasMonsterUMod(target.stats.modifiers, MON_UMOD.SHATTER_ON_DEATH) ||
+            hasImplicitShatterOnDeathUMod113c({ hcIdx: targetHcIdx, defId: target.stats.id })
+          ) {
             target.shattered = true
             target.corpseConsumed = true
             target.corpseSuppressed = true

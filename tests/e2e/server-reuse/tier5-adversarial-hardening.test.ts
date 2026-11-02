@@ -240,7 +240,11 @@ describe('Tier 5 Part A — White-Box Adversarial Tests (F1–F6, F10, F12)', ()
     expect(respawnedSnap.dead).toBe(false)
     expect(Server.readD2s(game.exportPlayerD2s(p1)).corpseItems.length).toBe(1)
 
-    // Interacting with corpseId after returning to the corpse recovers equipped items and emits CorpseAssign(assign=0)
+    // Interacting with corpseId after returning from Act 1 town (areaId 1, #1435) back to Blood Moor (areaId 2)
+    // recovers equipped items and emits CorpseAssign(assign=0)
+    expect(respawnedSnap.areaId).toBe(1)
+    ;(game as unknown as { players: Map<number, { areaId: number }> }).players.get(p1)!.areaId =
+      deadSnap.areaId
     game.movePlayer(p1, deadSnap.x, deadSnap.y)
     game.enqueueCommand(p1, { type: 'InteractEntity', targetType: 'player', targetId: corpseId })
     game.stepFrame()
@@ -801,9 +805,12 @@ describe('Tier 5 Part A — White-Box Adversarial Tests (F1–F6, F10, F12)', ()
     expect(movedCapB.x).toBe(origBx)
     expect(movedCapB.y).toBe(origBy)
 
-    // 3. NpcSell on capA removes capA and credits floor(cost / 4) gold
-    const expectedSellGold = Math.max(1, Math.floor(capA.cost / 4))
-    game.enqueueCommand(p1, { type: 'NpcSell', npcId: 1, itemId: capA.unitId })
+    // 3. NpcSell on capA via open Charsi trade window (#1355/#1356) removes capA and credits 1.13c D2Common.#10107 sell price (floor(38 / 2) = 19)
+    game.movePlayer(p1, 120, 120)
+    game.enqueueCommand(p1, { type: 'NpcAction', npcId: vendorId, action: 'trade' })
+    game.stepFrame()
+    const expectedSellGold = 19
+    game.enqueueCommand(p1, { type: 'NpcSell', npcId: vendorId, itemId: capA.unitId })
     game.stepFrame()
     const afterSell = game.getPlayerState(p1)!
     expect(afterSell.gold).toBe(expectedSellGold)

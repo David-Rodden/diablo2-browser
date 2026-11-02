@@ -241,9 +241,9 @@ export interface NpcInteractRangeInput113c {
  * Range test of the D2Client NPC interaction: `#10407(npc, player) <= npcInteractDistance113c(...)`,
  * using the 0x6FDDABC0 table distance ({@link D2Common_10399_AtSubtiles}).
  *
- * D2Client tests this range only when the click is handled and when the pending interaction runs.
- * Once the NPC menu is open, the per-tick guard 0x6faf83b0 checks only that the player and the NPC are
- * still alive. It does not re-check the distance (#890).
+ * D2Client tests this tight `#10407 <= 2` range only when the click is handled and when the pending
+ * interaction runs (#890). Once an NPC or quest-object interaction is open, `enforceActiveInteractionRange113c`
+ * enforces the server-side 10-subtile Chebyshev tether ({@link NPC_INTERACT_TETHER_SUBTILES_113C}, #1979).
  *
  * Not modelled: the deferred path's extra collision test `#10324(target, player, 0x804) == 0`
  * (thunk 0x6fabcf0a @0x6fac9f1d). The web client's collision map also contains object footprints
@@ -260,6 +260,36 @@ export function isNpcInInteractRange113c(input: NpcInteractRangeInput113c): bool
     PLAYER_SIZE_X_113C,
   )
   return dist <= npcInteractDistance113c(input.phase, input.interact)
+}
+
+/**
+ * Server-side NPC & quest-object interaction sub-tile tether (`D2Game.dll` `0x6fceccf0 -> 0x6fceb690`
+ * `ebx = 0x0A` for `C2S 0x2F NpcInit` and `0x6fced45b -> 0x6fcecfe0(..., 0x0A)` for object interact):
+ * Chebyshev sub-tile distance `max(|dx|, |dy|) <= 10` (2 floor tiles; opening distance `#10407 <= 2`
+ * is at most 4 subtiles). Because D2GS keeps a 3×3 `D2Room1` window (~120×120 subtiles) loaded across
+ * town (and local `GameInstance` keeps town NPCs loaded) while `computeNpcDialogLayout` clamps dialog
+ * coordinates to the viewport edge, `enforceActiveInteractionRange113c` cancels open NPC/object dialogs
+ * once the player or target moves outside this 10-subtile tether (#1979).
+ */
+export const NPC_INTERACT_TETHER_SUBTILES_113C = 10
+
+/**
+ * Whether `(playerX, playerY)` and `(targetX, targetY)` are within {@link NPC_INTERACT_TETHER_SUBTILES_113C}
+ * Chebyshev sub-tiles (`max(|round(playerX) - round(targetX)|, |round(playerY) - round(targetY)|) <= 10`).
+ * Returns `true` when either position is uninitialized `(0, 0)`.
+ */
+export function isWithinNpcInteractTether113c(
+  playerX: number,
+  playerY: number,
+  targetX: number,
+  targetY: number,
+): boolean {
+  if ((playerX === 0 && playerY === 0) || (targetX === 0 && targetY === 0)) {
+    return true
+  }
+  const dx = Math.abs(Math.round(playerX) - Math.round(targetX))
+  const dy = Math.abs(Math.round(playerY) - Math.round(targetY))
+  return Math.max(dx, dy) <= NPC_INTERACT_TETHER_SUBTILES_113C
 }
 
 // ─── Warp (UNIT_TILE = 5) interaction range & cooldown 0x6facaed0 / 0x6fadb090 ───

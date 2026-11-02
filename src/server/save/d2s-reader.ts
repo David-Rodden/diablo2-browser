@@ -704,6 +704,63 @@ export function readD2sSave113c(
 export const readD2s = readD2sSave113c
 export const readD2sSave = readD2sSave113c
 
+/** Size of the 1.13c v96 character header (`0x000..0x14E`); the `Woo!` quest block starts at `0x14F`. */
+export const D2S_HEADER_SIZE_113C = 0x14f
+
+/** Header fields of a header-only (never entered a game) 1.13c `.d2s`. */
+export interface D2sNewCharacterHeader113c {
+  readonly name: string
+  readonly statusFlags: number
+  readonly progression: number
+  readonly classId: CharClassId
+  readonly level: number
+  readonly mapSeed: number
+}
+
+/**
+ * True when `buf` is a valid 1.13c v96 save that consists of the 335-byte character header only.
+ * The original front end writes this form when a character is created (no quest/waypoint/NPC/`gf`/
+ * `if`/item sections; e.g. `tests/fixtures/oracle/saves/a1-barbarian-l1.d2s`, header `dwSize = 0x14F`),
+ * and the first game entered builds the character from `CharStats.txt` defaults.
+ */
+export function isD2sNewCharacterHeader113c(buf: Uint8Array): boolean {
+  if (buf.byteLength !== D2S_HEADER_SIZE_113C) return false
+  const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength)
+  return (
+    view.getUint32(0x00, true) >>> 0 === D2S_MAGIC &&
+    view.getUint32(0x04, true) >>> 0 === D2S_VERSION &&
+    view.getUint32(0x08, true) >>> 0 === D2S_HEADER_SIZE_113C
+  )
+}
+
+/** Parses a header-only 1.13c `.d2s` (see `isD2sNewCharacterHeader113c`); throws on any other input. */
+export function readD2sNewCharacterHeader113c(buf: Uint8Array): D2sNewCharacterHeader113c {
+  if (!isD2sNewCharacterHeader113c(buf)) {
+    throw new Error(
+      `.d2s is not a header-only v${D2S_VERSION} save (${buf.byteLength} bytes, expected ${D2S_HEADER_SIZE_113C})`,
+    )
+  }
+  if (!verifyD2sChecksum(buf)) {
+    const stored = new DataView(buf.buffer, buf.byteOffset, buf.byteLength).getUint32(0x0c, true) >>> 0
+    throw new Error(`.d2s checksum mismatch (stored=0x${stored.toString(16)})`)
+  }
+  const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength)
+  let name = ''
+  for (let i = 0; i < 16; i++) {
+    const ch = buf[0x14 + i]!
+    if (ch === 0) break
+    name += String.fromCharCode(ch)
+  }
+  return {
+    name,
+    statusFlags: buf[0x24]!,
+    progression: buf[0x25]!,
+    classId: (buf[0x28]! & 0xff) as CharClassId,
+    level: buf[0x2b]!,
+    mapSeed: view.getUint32(0xab, true) >>> 0,
+  }
+}
+
 export function extractCharSummaryFromD2s(
   source: Uint8Array | D2sCharacterData | D2sCharacterSave,
   tables: ItemDataTables = getServerItemDataTables(),

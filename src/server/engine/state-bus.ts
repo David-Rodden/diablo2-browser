@@ -198,7 +198,9 @@ export class StateBus {
       typeof params.stateNameOrId === 'number'
         ? this.registry?.getStateById(params.stateNameOrId)
         : (this.registry?.getStateByName(rawCleanName!) ??
-          (rawCleanName === 'venom' ? this.registry?.getStateById(31) : undefined))
+          (rawCleanName === 'venom' ? this.registry?.getStateById(31) : undefined) ??
+          (rawCleanName === 'slow' ? this.registry?.getStateByName('slowed') : undefined) ??
+          (rawCleanName === 'chill' ? this.registry?.getStateByName('cold') : undefined))
 
     const stateName =
       rawCleanName === 'venom'
@@ -754,20 +756,32 @@ export class StateBus {
   }
 
   /**
-   * Cleansing (Skill 109): Shorten active curse and poison durations proportionally by reductionPct.
-   * `remainingFrames * (100 - reductionPct) / 100`.
-   * Also updates corresponding modifier in statList.
+   * Cleansing (Skill 109): Shorten active `curable = 1` curse and poison durations proportionally
+   * by `reductionPct` (`floor(remainingFrames * (100 - reductionPct) / 100)`, `#1935`).
+   * Positive shrines (`128..137`, `curable = 0`) and Cloak of Shadows `cloaked` (`156`, `curable = 0`)
+   * are NOT shortened by Cleansing.
    */
   reduceCurseAndPoisonDurations(currentFrame: number, reductionPct: number): void {
     if (reductionPct <= 0) return
-    const factor = Math.max(0, (100 - Math.min(100, reductionPct)) / 100)
-    for (const entry of this.entries) {
-      const isCurse = entry.curseType > 0
-      const isPoison = entry.stateName === 'poison' || entry.stateName.includes('poison')
-      if ((isCurse || isPoison) && entry.expireFrame > currentFrame) {
+    const clampedPct = Math.min(100, reductionPct)
+    for (const entry of [...this.entries]) {
+      const stateRec = this.registry?.getStateById(entry.stateId)
+      const isCurableCurse =
+        entry.curseType > 0 &&
+        (stateRec !== undefined
+          ? stateRec.curable
+          : (entry.stateId < 128 || entry.stateId > 137) && entry.stateId !== 156)
+      const isPoison =
+        entry.stateId === 2 || entry.stateName === 'poison' || entry.stateName.includes('poison')
+      if ((isCurableCurse || isPoison) && entry.expireFrame > currentFrame) {
         const remaining = entry.expireFrame - currentFrame
-        const newRemaining = Math.max(1, Math.round(remaining * factor))
+        const newRemaining = Math.floor((remaining * (100 - clampedPct)) / 100)
+        if (newRemaining <= 0) {
+          this.removeState(entry.stateId)
+          continue
+        }
         entry.expireFrame = currentFrame + newRemaining
+        ;(entry as { durationFrames?: number }).durationFrames = newRemaining
         for (const mod of this.statList.getActiveModifiers()) {
           if (mod.stateName === entry.stateName) {
             mod.expireFrame = currentFrame + newRemaining

@@ -64,6 +64,7 @@ import type { LightingPreset } from './lighting-presets.ts'
 import { WallFadeTracker113c, wallFadeKey, wallOccludesPlayer113c } from './wall-fade-113c.ts'
 import {
   drawTownPortal,
+  isLazySpriteArtLoading,
   type LoadedMissileArt,
   type LoadedOverlayArt,
 } from './missile-overlay-renderer.ts'
@@ -2243,14 +2244,16 @@ export function drawSceneMissileDrawable(
   ) {
     return
   }
+  const reportId = missile.missileKey || missile.celFile || String(missile.missileClassId)
   // 1.13c draws the DCC named by the row's CelFile; resolve strictly by the normalised CelFile key (Issue #1043).
   const art = resolveArtByCelFile(ctx.missileArtMap, missile.missileKey, missile.celFile)
   if (art !== undefined) {
+    resolvePreloadMiss('missile', reportId)
     const animSpeed = art.meta.animSpeed
     if (!(animSpeed > 0)) {
       reportMissingArt(
         'missile-speed',
-        missile.missileKey || missile.celFile || String(missile.missileClassId),
+        reportId,
         `Missing animSpeed for missile key=${missile.missileKey}`,
       )
       return
@@ -2301,9 +2304,23 @@ export function drawSceneMissileDrawable(
       return
     }
   }
+  if (
+    isLazySpriteArtLoading(ctx.missileArtMap, [
+      celFileArtKey(missile.celFile),
+      missile.missileKey,
+      missile.missileKey.toLowerCase(),
+    ])
+  ) {
+    reportPreloadMiss(
+      'missile',
+      reportId,
+      `Missile art loading for key=${missile.missileKey} celFile=${missile.celFile} classId=${missile.missileClassId}`,
+    )
+    return
+  }
   reportMissingArt(
     'missile',
-    missile.missileKey || missile.celFile || String(missile.missileClassId),
+    reportId,
     `Missing missile art for key=${missile.missileKey} celFile=${missile.celFile} classId=${missile.missileClassId}`,
   )
 }
@@ -2323,17 +2340,19 @@ export function drawSceneOverlayDrawable(
   if (celFile === '' || celFile === 'null') {
     return
   }
+  const reportId = overlay.token || String(overlay.overlayId)
   const celKey = celFile ? celFileArtKey(celFile) : undefined
   const art =
     (celKey ? ctx.overlayArtMap?.get(celKey) : undefined) ??
     ctx.overlayArtMap?.get(overlay.token) ??
     ctx.overlayArtMap?.get(lowerToken)
   if (art !== undefined) {
+    resolvePreloadMiss('overlay', reportId)
     const animRate = authEntry?.animRate ?? art.meta.animRate
     if (!(animRate > 0)) {
       reportMissingArt(
         'overlay-speed',
-        overlay.token || String(overlay.overlayId),
+        reportId,
         `Missing animRate for overlay token=${overlay.token}`,
       )
       return
@@ -2361,9 +2380,17 @@ export function drawSceneOverlayDrawable(
       return
     }
   }
+  if (isLazySpriteArtLoading(ctx.overlayArtMap, [celKey, overlay.token, lowerToken])) {
+    reportPreloadMiss(
+      'overlay',
+      reportId,
+      `Overlay art loading for token=${overlay.token} overlayId=${overlay.overlayId}`,
+    )
+    return
+  }
   reportMissingArt(
     'overlay',
-    overlay.token || String(overlay.overlayId),
+    reportId,
     `Missing overlay art for token=${overlay.token} overlayId=${overlay.overlayId}`,
   )
 }

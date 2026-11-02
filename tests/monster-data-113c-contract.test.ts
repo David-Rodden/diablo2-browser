@@ -81,7 +81,7 @@ describe('1.13c Monster & Hireling Data Contract (Milestone M1)', () => {
       expect(MONSTATS_113C_ROWS[723]?.baseW).toBe('2ht')
     })
 
-    it('preserves strict monstats.bin 0-defaults for empty difficulty cells (drain, coldEffect, level, minHP) and NextInClass minion2 auto-chaining', () => {
+    it('preserves strict monstats.bin 0-defaults for empty difficulty cells (drain, coldEffect, level, minHP) and verbatim wMinion[0..1] columns', () => {
       // skeleton1 (hcIdx 0), swarm1 (hcIdx 87), claygolem (hcIdx 289) have blank Drain -> [0, 0, 0]
       expect(MONSTATS_113C_ROWS[0]?.drain).toEqual([0, 0, 0])
       expect(MONSTATS_113C_ROWS[87]?.drain).toEqual([0, 0, 0])
@@ -108,12 +108,16 @@ describe('1.13c Monster & Hireling Data Contract (Milestone M1)', () => {
       expect(MONSTATS_113C_ROWS[358]?.ac).toEqual([84, 0, 125])
       expect(MONSTATS_113C_ROWS[401]?.exp).toEqual([503, 0, 0])
 
-      // NextInClass auto-chaining when minion1 is set and minion2 is blank
+      // Patch_D2.mpq monstats.bin (+0x26/+0x28): blank minion2 compiles to -1, never NextInClass(minion1)
       expect(MONSTATS_113C_ROWS[479]?.id).toBe('overseer1')
-      expect(MONSTATS_113C_ROWS[479]?.minions).toEqual(['minion1', 'minion2'])
-      expect(getMonsterKindByHcIdx(479, 'normal')?.minions).toEqual(['minion1', 'minion2'])
+      expect(MONSTATS_113C_ROWS[479]?.minions).toEqual(['minion1'])
+      expect(getMonsterKindByHcIdx(479, 'normal')?.minions).toEqual(['minion1'])
       expect(MONSTATS_113C_ROWS[58]?.id).toBe('fallenshaman1')
-      expect(MONSTATS_113C_ROWS[58]?.minions).toEqual(['fallen1', 'fallen2'])
+      expect(MONSTATS_113C_ROWS[58]?.minions).toEqual(['fallen1'])
+      expect(MONSTATS_113C_ROWS[61]?.id).toBe('fallenshaman4')
+      expect(MONSTATS_113C_ROWS[61]?.minions).toEqual(['fallen4'])
+      expect(MONSTATS_113C_ROWS[278]?.id).toBe('fetishshaman1')
+      expect(MONSTATS_113C_ROWS[278]?.minions).toEqual(['fetish1', 'fetishblow1'])
     })
 
     it('hydrates difficulty-dependent combat, AI, resistance, skill, elemental, and MonStats2 geometry fields', () => {
@@ -366,42 +370,52 @@ describe('1.13c Monster & Hireling Data Contract (Milestone M1)', () => {
       const skelUniqueNorm = resolveMonsterStats(0, 'normal', { rank: 'unique' })
       const skelMinionNorm = resolveMonsterStats(0, 'normal', { rank: 'minion' })
       const skelSuperNorm = resolveMonsterStats(0, 'normal', { rank: 'superunique' })
-      expect(skelChampNorm.level).toBe(4) // +2 Champion
-      expect(skelChampNorm.hp).toBe(21) // 3.0x Normal Champion HP
-      expect(skelUniqueNorm.level).toBe(5) // +3 Unique
-      expect(skelUniqueNorm.hp).toBe(28) // 4.0x Normal Unique HP
-      expect(skelMinionNorm.level).toBe(5) // +3 Minion
-      expect(skelMinionNorm.hp).toBe(14) // 2.0x Normal Minion HP
-      expect(skelSuperNorm.level).toBe(5) // +3 SuperUnique
-      expect(skelSuperNorm.hp).toBe(28) // 4.0x Normal SuperUnique HP
+      expect(skelChampNorm.level).toBe(4) // +2 Champion BEFORE MonLvl.txt lookup (#1921)
+      expect(skelChampNorm.hp).toBe(36) // MonLvl[4] (12) * 3.0x Normal Champion HP
+      expect(skelUniqueNorm.level).toBe(5) // +3 Unique BEFORE MonLvl.txt lookup (#1921)
+      expect(skelUniqueNorm.hp).toBe(56) // MonLvl[5] (14) * 4.0x Normal Unique HP
+      expect(skelMinionNorm.level).toBe(5) // +3 Minion BEFORE MonLvl.txt lookup (#1921)
+      expect(skelMinionNorm.hp).toBe(28) // MonLvl[5] (14) * 2.0x Normal Minion HP
+      expect(skelSuperNorm.level).toBe(5) // +3 SuperUnique BEFORE MonLvl.txt lookup (#1921)
+      expect(skelSuperNorm.hp).toBe(56) // MonLvl[5] (14) * 4.0x Normal SuperUnique HP
 
-      // Nightmare (2.5x Champion, 3.0x Unique, 1.75x Minion) & Hell (2.0x Champion, 2.0x Unique, 1.5x Minion)
+      // Nightmare (2.5x Champion @ mlvl+2, 3.0x Unique @ mlvl+3, 1.75x Minion @ mlvl+3)
       const skelNm = resolveMonsterStats(0, 'nightmare', { rank: 'normal' })
+      const skelNmPlus2 = resolveMonsterStats(0, 'nightmare', { rank: 'normal', level: skelNm.level! + 2 })
+      const skelNmPlus3 = resolveMonsterStats(0, 'nightmare', { rank: 'normal', level: skelNm.level! + 3 })
       expect(resolveMonsterStats(0, 'nightmare', { rank: 'champion' }).level).toBe(skelNm.level! + 2)
-      expect(resolveMonsterStats(0, 'nightmare', { rank: 'champion' }).maxHp).toBe(Math.round(skelNm.hp * 2.5))
+      expect(resolveMonsterStats(0, 'nightmare', { rank: 'champion' }).maxHp).toBe(Math.round(skelNmPlus2.hp * 2.5))
       expect(resolveMonsterStats(0, 'nightmare', { rank: 'unique' }).level).toBe(skelNm.level! + 3)
-      expect(resolveMonsterStats(0, 'nightmare', { rank: 'unique' }).maxHp).toBe(Math.round(skelNm.hp * 3.0))
+      expect(resolveMonsterStats(0, 'nightmare', { rank: 'unique' }).maxHp).toBe(Math.round(skelNmPlus3.hp * 3.0))
       expect(resolveMonsterStats(0, 'nightmare', { rank: 'minion' }).level).toBe(skelNm.level! + 3)
-      expect(resolveMonsterStats(0, 'nightmare', { rank: 'minion' }).maxHp).toBe(Math.round(skelNm.hp * 1.75))
+      expect(resolveMonsterStats(0, 'nightmare', { rank: 'minion' }).maxHp).toBe(Math.round(skelNmPlus3.hp * 1.75))
 
+      // Hell (2.0x Champion @ mlvl+2, 2.0x Unique @ mlvl+3, 1.5x Minion @ mlvl+3)
       const skelHell = resolveMonsterStats(0, 'hell', { rank: 'normal' })
+      const skelHellPlus2 = resolveMonsterStats(0, 'hell', { rank: 'normal', level: skelHell.level! + 2 })
+      const skelHellPlus3 = resolveMonsterStats(0, 'hell', { rank: 'normal', level: skelHell.level! + 3 })
       expect(resolveMonsterStats(0, 'hell', { rank: 'champion' }).level).toBe(skelHell.level! + 2)
-      expect(resolveMonsterStats(0, 'hell', { rank: 'champion' }).maxHp).toBe(Math.round(skelHell.hp * 2.0))
+      expect(resolveMonsterStats(0, 'hell', { rank: 'champion' }).maxHp).toBe(Math.round(skelHellPlus2.hp * 2.0))
       expect(resolveMonsterStats(0, 'hell', { rank: 'unique' }).level).toBe(skelHell.level! + 3)
-      expect(resolveMonsterStats(0, 'hell', { rank: 'unique' }).maxHp).toBe(Math.round(skelHell.hp * 2.0))
+      expect(resolveMonsterStats(0, 'hell', { rank: 'unique' }).maxHp).toBe(Math.round(skelHellPlus3.hp * 2.0))
       expect(resolveMonsterStats(0, 'hell', { rank: 'minion' }).level).toBe(skelHell.level! + 3)
-      expect(resolveMonsterStats(0, 'hell', { rank: 'minion' }).maxHp).toBe(Math.round(skelHell.hp * 1.5))
+      expect(resolveMonsterStats(0, 'hell', { rank: 'minion' }).maxHp).toBe(Math.round(skelHellPlus3.hp * 1.5))
 
       // 2-arg resolveMonsterStats(kind, options) with Champion subtypes & MonUMod resistance modifiers
       const fallen = getMonsterKindByHcIdx(19, 'normal')!
       const fallenNmBase = resolveMonsterStats(fallen, { difficulty: 'nightmare', rank: 'normal' })
+      const fallenNmPlus2 = resolveMonsterStats(fallen, {
+        difficulty: 'nightmare',
+        rank: 'normal',
+        level: fallenNmBase.level! + 2,
+      })
       const fallenNmGhostly = resolveMonsterStats(fallen, {
         difficulty: 'nightmare',
         rank: 'champion',
         championSubtype: 'ghostly',
       })
       expect(fallenNmGhostly.level).toBe(fallenNmBase.level! + 2)
-      expect(fallenNmGhostly.maxHp).toBe(Math.round(fallenNmBase.hp * 2.5))
+      expect(fallenNmGhostly.maxHp).toBe(Math.round(fallenNmPlus2.hp * 2.5))
       expect(fallenNmGhostly.speed).toBe(Math.max(4, Math.round(fallenNmBase.speed * 0.5)))
       expect(fallenNmGhostly.resistances?.physical).toBe(80)
 
