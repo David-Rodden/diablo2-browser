@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest'
 import { GameInstance } from '../../src/server/engine/game-instance.ts'
 
-function connectTestPlayer(game: GameInstance, x = 80, y = 80): number {
+function connectTestPlayer(game: GameInstance, x = 42, y = 30): number {
   return game.connectPlayer({
     charClass: 'bar',
     name: 'Target',
@@ -37,7 +37,7 @@ describe('issue #1347 special monster AI', () => {
       x: 30,
       y: 30,
       areaId: 1,
-      aiParams: [45, 60, 100, 24, 15],
+      aiParams: [100, 60, 100, 24, 15],
     })
     const fallenCorpse = game.spawnMonster({
       defId: 'fallen1',

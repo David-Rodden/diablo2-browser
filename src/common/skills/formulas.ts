@@ -1866,11 +1866,12 @@ export function parseExperienceTable(rawTxt: string): ExperienceTableParseResult
       for (const [cls, colIdx] of Object.entries(classCols)) {
         tableByClass[cls]![targetLevel] = parseInt(parts[colIdx] ?? "0", 10) || 0
       }
-      if (expRatioCol !== -1) {
-        // ExpRatio applies to the row's *current* level (row 70 = 976 at level 70),
-        // unlike the class XP columns whose row L is the threshold for L + 1.
-        expRatios[lvlNum] = parseInt(parts[expRatioCol] ?? "1024", 10) || 1024
-      }
+    }
+    if (expRatioCol !== -1 && lvlNum >= 0 && lvlNum <= 99) {
+      // ExpRatio applies to the row's *current* level (row 70 = 976 at level 70), unlike the class XP
+      // columns whose row L is the threshold for L + 1. Row 99 (ratio 5) is read too: D2Common #10989
+      // (0x6FDAE840) returns row `level` for 1..MaxLvl.
+      expRatios[lvlNum] = parseInt(parts[expRatioCol] ?? "1024", 10) || 1024
     }
   }
 

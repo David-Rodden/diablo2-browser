@@ -139,3 +139,26 @@ Invoked inside `MISSILES_SrvHitDispatch` (`0x6FC5EFF8`) on unit collision, wall 
    - Outward Archimedes spiral (`angle += 4` binary angle units/tick, `radius += 0.6` px/tick). Identified via `MissilesTxt.pCltDoFunc == 2` (`blessedhammer` #116, `blessedhammerex` #676).
 2. **`PATH_STEP_CHARGED_BOLT` (`0x6FDA3E80`)**:
    - 32-entry lateral step offset table `GAT_CHARGED_BOLT_OFFSETS` (`{-1, 0, 1}` at `0x6FDD2528`), stepping `jitterIndex = (jitterIndex + 1) & 31` each tick for erratic path projectiles (`chargedbolt`, `sentrychargedbolt`, `twister`, `tornado`, `firestormmaker`).
+
+---
+
+## 6. Ground-Fire `SrvDo05` / `SrvDmg03`, `GetHit` vs `SoftHit`, & `SKILLS_SrvDo024_FireWall` (`1.13c` `D2Game.dll`)
+
+1. **`SKILLS_SrvDo024_FireWall` (`0x6FC637D0..0x6FC63983`)**:
+   - Invoked by all 4 `Skills.txt` rows with `srvdofunc = 24`:
+     - `#51 Fire Wall` (`srvmissilea = firewallmaker` `#68`, `srvmissileb = firewall` `#69`)
+     - `#170 VampireFirewall` (`srvmissilea = vampirefirewallmaker` `#130`, `srvmissileb = vampirefirewall` `#131`)
+     - `#188 PrimeFirewall` (`srvmissilea = vampirefirewallmaker` `#130`, `srvmissileb = vampirefirewall` `#131`)
+     - `#321 CountessFirewall` (`srvmissilea = countessfirewallmaker` `#653`, `srvmissileb = countessfirewall` `#331`)
+   - Computes `dX = Xc - Xt`, `dY = Yc - Yt` (`0x6FC638EF..0x6FC63902`), launches two `srvmissilea` makers from `(Xt, Yt)` toward `(Xt - dY, Yt + dX)` (`0x6FC63903..0x6FC6391A`) and `(Xt + dY, Yt - dX)` (`0x6FC6391F..0x6FC63935`) with flags `0x21`, and spawns one stationary `srvmissileb` center patch at `(Xt, Yt)` (`0x6FC6393A..0x6FC63972`).
+   - All makers (`#68`, `#130`, `#653`) have `pSrvDoFunc = 6`, `pSrvHitFunc = 0`, `CollideType = 8`, and `0` physical/elemental damage; they never deal unit contact damage or receive monster melee fallback damage.
+
+2. **`MISSILES_ApplyDamageInner` (`0x6FC5AE10..0x6FC5AF3B`) & `MISSILES_SrvDmg03` (`0x6FC59670..0x6FC596D2`)**:
+   - `0x6FC5AEAB`: checks `MissilesTxt.dwBitFlags` bit `2` (`GetHit`, mask `0x04`). `pDamage->wResultFlags |= 0x0004` (`RESULTFLAG_GETHIT`) is set **only** when `GetHit != 0`.
+   - `0x6FC5AEC0`: checks `SoftHit` (mask `0x08`) -> `pDamage->wResultFlags |= 0x4000` (`RESULTFLAG_SOFTHIT`).
+   - `MISSILES_SrvDmg03` (`0x6FC59670`): rolls `(SEED_RollRandom(&pMissile->pSeed) & 0x7F) < dParam1` (`19/128` on `#67 blaze`, `#69 firewall`, `#131 vampirefirewall`, `#230 immolationfire`, `#240 meteorfire`, `#681 vampiremeteorfire`) and sets `orb $0x40, 0x5(%eax)` (`wResultFlags |= 0x4000` `RESULTFLAG_SOFTHIT`).
+   - Because all ground-fire patches (`#67`, `#69`, `#131`, `#230`, `#240`, `#331`, `#423`, `#681`) have `GetHit = 0`, they **never** set `RESULTFLAG_GETHIT` (`0x0004`), never force `PLRMODE_GETHIT` / `MONMODE_GETHIT` hit-recovery stunlock, and never trigger `item_skillongethit` (`stat 201`).
+
+3. **Per-Frame `1/256` Fixed-Point Burning & `DamageRate = 41` MDR Scaling**:
+   - Ground-fire rows store per-frame fire damage in `1/256` HP units via `EMin..EMax << HitShift` (`#131` `HitShift = 2`, `#681` `HitShift = 3`, `#331` `HitShift = 1`, `#423` `HitShift = 4`) and set `DamageRate = 41` (`41 / 1024 ≈ 1/25` frame-scaled flat MDR at `0x6FCFC13B..0x6FCFC177`, except `#67 blaze` where `DamageRate = 0` applies full flat MDR per frame).
+   - Defender Fire Resistance (`0x6FCFB3C0`) and Fire Absorb (`0x6FCFAD00`) operate on the `1/256` fixed-point roll **before** whole-HP extraction so `<50%` resistance is preserved accurately on sub-`1 HP/frame` burning ticks.

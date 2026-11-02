@@ -9,8 +9,8 @@ import { PALADIN_AURA_STATE_BY_SKILL_ID, PALADIN_AURA_TARGET_STATE_BY_SKILL_ID, 
 import { resolveInnateMonsterAura113c, resolveMonsterAuraDivisor113c } from '../../../common/units/monai-113c.ts'
 import { CANONICAL_CHARSTATS } from '../../../common/units/classes.ts'
 import { computeMercResurrectCost113c, resolveHirelingStatsAtLevel } from '../../../common/units/hireling-table.ts'
-import { BONE_FETISH_EXPLOSION_RADIUS, DURIEL_MAGGOT_HCIDX, DURIEL_MAGGOT_OFFSETS, MON_UMOD, calcBoneFetishDeathDamage, calcColdEnchantedDeathNova, calcFireEnchantedDeathDamage, calcSuicideMinionExplosionDamage, D2CLIENT_NOVA_RING_X, D2CLIENT_NOVA_RING_Y, getBossDeathFxSpec, isBoneFetishMonster, isDurielMonster, isPoisonDeadMonster, isSuicideMinionMonster } from '../../../common/units/monster-death-fx.ts'
-import { shouldKillMinionsOnDeath113c } from '../../ai/monumod-113c.ts'
+import { BONE_FETISH_EXPLOSION_RADIUS, DURIEL_MAGGOT_HCIDX, DURIEL_MAGGOT_OFFSETS, MON_UMOD, calcBoneFetishDeathDamage, calcColdEnchantedDeathNova, calcFireEnchantedDeathDamage, calcSuicideMinionExplosionDamage, D2CLIENT_NOVA_RING_X, D2CLIENT_NOVA_RING_Y, getBossDeathFxSpec, isBoneFetishMonster, isDurielMonster, isPoisonDeadMonster, isScarabMonster, isSuicideMinionMonster } from '../../../common/units/monster-death-fx.ts'
+import { NOVADEATH_MISSILE_ID_113C, NOVADEATH_RANGE_TICKS_113C, POISONDEAD_CLOUD_MISSILE_ID_113C, computeNovaDeathDamageRange113c, computePoisonDeadCloudDamage113c, shouldKillMinionsOnDeath113c } from '../../ai/monumod-113c.ts'
 import { PET_TYPE_IDX_BY_NAME_113C } from '../../../common/units/pet-type-table.ts'
 import type { SummonedPetUnit } from '../../ai/summon-manager.ts'
 import { applyElementalAbsorb113c, getPrePierceResistance113c, resolveConvictionPierce113c, resolveLowerResistPierce113c, resolvePhysCursePierce113c } from '../combat-pipeline.ts'
@@ -110,7 +110,7 @@ function playerElementalAbsorb(this: GameInstanceHost,
 
 
 
-/** Apply the 1.13c physical + elemental split with player resistances, elemental absorb, and damage reduce. */
+/** Apply the 1.13c physical + elemental split with player resistances, elemental absorb, damage reduce, and Poison DoT. */
 function applyPlayerElementalDamage(this: GameInstanceHost, 
   player: InternalPlayerRecord,
   parts: {
@@ -118,6 +118,10 @@ function applyPlayerElementalDamage(this: GameInstanceHost,
     readonly fire?: number | undefined
     readonly cold?: number | undefined
     readonly light?: number | undefined
+    readonly ltng?: number | undefined
+    readonly mag?: number | undefined
+    readonly pois?: number | undefined
+    readonly poisDurationFrames?: number | undefined
   },
   options?: {
     readonly hitClass?: number | string | undefined
@@ -128,8 +132,14 @@ function applyPlayerElementalDamage(this: GameInstanceHost,
 ): void {
   let total = 0
   let absorbHeal256 = 0
+  const normalizedParts = {
+    phys: parts.phys ?? 0,
+    fire: parts.fire ?? 0,
+    cold: parts.cold ?? 0,
+    light: (parts.light ?? 0) + (parts.ltng ?? 0),
+  }
   for (const kind of ['phys', 'fire', 'cold', 'light'] as const) {
-    const dmg = parts[kind] ?? 0
+    const dmg = normalizedParts[kind]
     if (dmg <= 0) continue
     const postRes = Math.max(0, Math.round(dmg * (1 - this.playerResistPct(player, kind) / 100)))
     if (kind !== 'phys' && postRes > 0) {
@@ -143,8 +153,65 @@ function applyPlayerElementalDamage(this: GameInstanceHost,
     }
     total += postRes
   }
+  const rawMag = parts.mag ?? 0
+  if (rawMag > 0) {
+    const magMdr = Math.max(0, this.sumPlayerItemStat(player, 35))
+    const magRes = Math.max(-100, Math.min(95, this.sumPlayerItemStat(player, 37)))
+    const afterMdr = Math.max(0, rawMag - magMdr)
+    total += Math.max(0, Math.round(afterMdr * (1 - magRes / 100)))
+  }
+  const rawPois = parts.pois ?? 0
+  if (rawPois > 0 && !player.dead) {
+    const poisRes = this.playerResistPct(player, 'poison')
+    if (poisRes < 100) {
+      const plrRaw =
+        this.sumPlayerItemStat(player, 110) +
+        Math.trunc(
+          this.playerCombatContext(player).statList.getAccruedStat('item_poisonlengthresist', true),
+        )
+      const plrClamped = Math.max(-100, Math.min(75, plrRaw))
+      const baseDur = Math.max(25, parts.poisDurationFrames ?? 75)
+      const durFrames = Math.max(1, Math.trunc((baseDur * (100 - plrClamped)) / 100))
+      const rawBitrate256 = Math.floor((rawPois * FIXED_ONE) / baseDur)
+      const poisonBitrate256 = Math.max(
+        1,
+        Math.trunc((rawBitrate256 * (100 - poisRes)) / 100),
+      )
+      const playerCtx = this.playerCombatContext(player)
+      const prevPois = playerCtx.stateBus.getState(2) ?? playerCtx.stateBus.getState('poison')
+      const prevBitrate256 = prevPois
+        ? Math.max(0, prevPois.stats['poisonmindam'] ?? -(prevPois.stats['hpregen'] ?? 0))
+        : 0
+      if (!player.states.has(2) || prevPois === undefined || poisonBitrate256 >= prevBitrate256) {
+        playerCtx.stateBus.removeState('poison')
+        playerCtx.stateBus.applyState({
+          stateNameOrId: 2,
+          sourceUnitId: `trap_${options?.killerUnitId ?? 0}`,
+          sourceSkillId: 0,
+          slvl: 1,
+          durationFrames: durFrames,
+          currentFrame: this.currentFrame,
+          stats: {
+            hpregen: -poisonBitrate256,
+            poisonmindam: poisonBitrate256,
+            poisonlength: durFrames,
+          },
+        })
+        this.applyUnitState(
+          player.states,
+          player.stateTimers,
+          'player',
+          player.unitId,
+          player.areaId,
+          2,
+          durFrames,
+        )
+      }
+    }
+  }
   if (absorbHeal256 > 0 && !player.dead && player.hpFixed > 0 && !player.states.has(92)) {
-    const nextHpFixed = Math.min(player.maxHpFixed, player.hpFixed + absorbHeal256)
+    const accruedMaxHpFixed = this.getPlayerAccruedMaxHpFixed(player)
+    const nextHpFixed = Math.min(accruedMaxHpFixed, player.hpFixed + absorbHeal256)
     if (nextHpFixed !== player.hpFixed) {
       player.hpFixed = nextHpFixed
       player.hp = Math.max(0, Math.ceil(player.hpFixed / FIXED_ONE))
@@ -296,6 +363,7 @@ function applyDamageToMerc(this: GameInstanceHost,
   mercUnitIdOrRecord: number | InternalMercenaryRecord,
   damage: number,
   areaIdOverride?: number,
+  options?: { readonly skipGetHit?: boolean | undefined },
 ): void {
   const merc =
     typeof mercUnitIdOrRecord === 'number'
@@ -319,7 +387,7 @@ function applyDamageToMerc(this: GameInstanceHost,
       value: computeMercResurrectCost113c(merc.level),
     })
     this.broadcastAllyRemoved(areaId, merc.unitId)
-  } else if (dmg > 0) {
+  } else if (dmg > 0 && !options?.skipGetHit) {
     const owner = this.players.get(merc.ownerPlayerId)
     if (owner !== undefined && !owner.dead) {
       this.triggerMercCtcProcs113c(owner, merc, undefined, 201)
@@ -517,7 +585,7 @@ function applyMonsterAura(this: GameInstanceHost, monster: InternalMonsterRecord
     const tgtState = PALADIN_AURA_TARGET_STATE_BY_SKILL_ID[auraId]
     if (auraSkill === undefined || tgtState === undefined) return
     for (const m of this.monsters.values()) {
-      if (m === monster || m.dead || m.isNpc || !m.isKillable || this.isMonsterConverted(m)) continue
+      if (m === monster || m.dead || m.isNpc || !m.isKillable || m.align !== monster.align || this.isMonsterConverted(m)) continue
       if (m.areaId !== monster.areaId || outOfRange(m.x, m.y)) continue
       const mCtx = this.monsterCombatContext(m)
       mCtx.stateBus.applyState({
@@ -915,6 +983,11 @@ function onMonsterKilled(this: GameInstanceHost,
     }
     if (
       defId.startsWith('mephisto') &&
+      !hasQuestFlag113c(
+        killer.questFlags,
+        'a4q2',
+        QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_REWARD_PENDING_113C,
+      ) &&
       !this.playerOrGroundHasQuestItem(killer, 'mss')
     ) {
       const soulstone = this.createQuestDropItem('mss', monster.level)
@@ -1117,16 +1190,27 @@ function onMonsterKilled(this: GameInstanceHost,
       const recipients = eligibleRecipients.length > 0 ? eligibleRecipients : [killer]
 
       if (!dropGates.flailDropped) {
-        const needsFlail = recipients.some(
+        const missingFlailRecipients = recipients.filter(
           (r) =>
             !hasQuestFlag113c(r.questFlags, 'a3q3', QUEST_FLAG_COMPLETED_113C) &&
-            !this.playerOrGroundHasQuestItem(r, 'qf1') &&
-            !this.playerOrGroundHasQuestItem(r, 'qf2'),
+            !this.playerHasQuestItem(r, 'qf1') &&
+            !this.playerHasQuestItem(r, 'qf2'),
         )
-        if (needsFlail) {
-          const flail = this.createQuestDropItem('qf1', monster.level)
-          if (flail) {
-            this.spawnDroppedItems([flail], monster.areaId, monster.x, monster.y)
+        let groundFlailCount = 0
+        for (const gItem of this.groundItems.values()) {
+          if (gItem.areaId !== monster.areaId) continue
+          const gc = gItem.code.trim().toLowerCase()
+          if (gc === 'qf1' || gc === 'qf2') groundFlailCount++
+        }
+        const neededFlails = Math.max(0, missingFlailRecipients.length - groundFlailCount)
+        if (neededFlails > 0) {
+          const flails: NonNullable<ReturnType<typeof this.createQuestDropItem>>[] = []
+          for (let i = 0; i < neededFlails; i++) {
+            const flail = this.createQuestDropItem('qf1', monster.level)
+            if (flail) flails.push(flail)
+          }
+          if (flails.length > 0) {
+            this.spawnDroppedItems(flails, monster.areaId, monster.x, monster.y)
             dropGates.flailDropped = true
           }
         }
@@ -1145,15 +1229,23 @@ function onMonsterKilled(this: GameInstanceHost,
         }
       }
 
-      const anyLivingCouncil = [...this.monsters.values()].some(
-        (m) =>
-          m.areaId === monster.areaId &&
-          m.unitId !== monster.unitId &&
-          !m.dead &&
-          m.hp > 0 &&
-          (m.defId.toLowerCase().startsWith('councilmember') ||
-            (m.classId >= 345 && m.classId <= 347)),
-      )
+      const anyPendingCouncil = isTravincalDrlgArea
+        ? [...(this.pendingPresetMonsters.get(monster.areaId)?.byRoom.values() ?? [])].some(
+            (roomPresets) =>
+              roomPresets.monsters.some((preset) => preset.classId >= 345 && preset.classId <= 347),
+          )
+        : false
+      const anyLivingCouncil =
+        anyPendingCouncil ||
+        [...this.monsters.values()].some(
+          (m) =>
+            m.areaId === monster.areaId &&
+            m.unitId !== monster.unitId &&
+            !m.dead &&
+            m.hp > 0 &&
+            (m.defId.toLowerCase().startsWith('councilmember') ||
+              (m.classId >= 345 && m.classId <= 347)),
+        )
       const enoughKills = isTravincalDrlgArea ? deaths.size >= 1 : deaths.size >= 3
       if (!anyLivingCouncil && enoughKills) {
         for (const recipient of eligibleRecipients) {
@@ -1414,6 +1506,49 @@ function onMonsterKilled(this: GameInstanceHost,
     }
   }
 
+  // MonUMod #42 NovaDeath (`D2Game.dll` `0x6FC41A90` -> `0x6FC46520` -> `0x6FCC2800`, #1995):
+  // Boss-only (`rank !== 'minion'`) 64-bolt ring of `Missiles.txt` ID `90` (`nova`, `Skill = 48 Nova`, `Range = 13`).
+  if (
+    monster.umodIds.includes(MON_UMOD.NOVADEATH) &&
+    monster.rank !== 'minion'
+  ) {
+    const novaRange = computeNovaDeathDamageRange113c(1)
+    const novaDmg =
+      novaRange.maxLtng > novaRange.minLtng
+        ? novaRange.minLtng + this.rng.rand(novaRange.maxLtng - novaRange.minLtng + 1)
+        : novaRange.minLtng
+    for (let i = 0; i < D2CLIENT_NOVA_RING_X.length; i++) {
+      const rx = D2CLIENT_NOVA_RING_X[i]!
+      const ry = D2CLIENT_NOVA_RING_Y[i]!
+      const len = Math.max(1, Math.hypot(rx, ry))
+      this.spawnMonsterMissile(
+        monster,
+        monster.x + (rx / len) * NOVADEATH_RANGE_TICKS_113C,
+        monster.y + (ry / len) * NOVADEATH_RANGE_TICKS_113C,
+        novaDmg,
+        NOVADEATH_MISSILE_ID_113C,
+        48,
+        {
+          skillLevel: novaRange.slvl,
+          physDamage: 0,
+          elemDamage: novaDmg,
+          element: 'ltng',
+          guaranteed: true,
+          skipMultishot: true,
+        },
+      )
+    }
+  }
+
+  // MonUMod #20 Scarab (`D2Game.dll` `0x6FC41B00` -> `0x6FC460D0`, #1995):
+  // Emits 8 radial `buglightning` (#225) bolts on `MONMODE_DEATH` (`mode = 0`) across all monster ranks.
+  if (
+    monster.umodIds.includes(MON_UMOD.SCARAB) ||
+    isScarabMonster(monster.hcIdx, monster.defId)
+  ) {
+    this.emitScarabBugLightningBurst113c(monster)
+  }
+
   // Bone Fetish / Undead Stygian Doll physical death explosion
   if (
     isBoneFetishMonster(monster.hcIdx, monster.defId) ||
@@ -1437,23 +1572,53 @@ function onMonsterKilled(this: GameInstanceHost,
     }
   }
 
-  // Poison dead cloud on Zombie / Mummy death
+  // MonUMod #10 PoisonDead (`D2Game.dll` `0x6FC41A90` -> `0x6FC46230`, #1995):
+  // Spawns stationary `Missiles.txt` ID `155` (`corpsepoisoncloud`, `Range = 80`, `ELen = 175`, `HitShift = 1`)
+  // across all monster ranks so nearby units take real resisted 175-frame poison DoT.
   if (
     isPoisonDeadMonster(monster.hcIdx, monster.defId) ||
     monster.umodIds.includes(MON_UMOD.POISONDEAD)
   ) {
+    const poisonSpec = computePoisonDeadCloudDamage113c(monster.level)
+    const cloudMissileId = this.spawnMonsterMissile(
+      monster,
+      monster.x,
+      monster.y,
+      poisonSpec.totalPoisonHp,
+      POISONDEAD_CLOUD_MISSILE_ID_113C,
+      0,
+      {
+        skillLevel: poisonSpec.slvl,
+        physDamage: 0,
+        elemDamage: poisonSpec.totalPoisonHp,
+        element: 'pois',
+        elemDurationFrames: poisonSpec.durationFrames,
+        guaranteed: true,
+        skipMultishot: true,
+      },
+    )
+    const cloudRec = this.missiles.get(cloudMissileId)
+    if (cloudRec !== undefined) {
+      cloudRec.size = 3
+    }
     for (const p of this.players.values()) {
       if (p.dead || p.areaId !== monster.areaId) continue
       if (Math.hypot(p.x - monster.x, p.y - monster.y) <= 3.5) {
-        this.applyUnitState(
-          p.states,
-          p.stateTimers,
-          'player',
-          p.unitId,
-          p.areaId,
-          2,
-          50,
-        )
+        this.resolveMonsterAttackOnPlayer(monster, p, {
+          minDmg: 0,
+          maxDmg: 0,
+          skillMode: 'A1',
+          attackKind: 'missile',
+          skillId: 0,
+          missileId: POISONDEAD_CLOUD_MISSILE_ID_113C,
+          elementType: 'pois',
+          elemMin: poisonSpec.totalPoisonHp,
+          elemMax: poisonSpec.totalPoisonHp,
+          elemDurationFrames: poisonSpec.durationFrames,
+          fromMissile: true,
+          autoHit: true,
+        })
+        cloudRec?.hitCooldowns.set(p.unitId, this.currentFrame + 4)
       }
     }
   }
@@ -1607,6 +1772,10 @@ export interface MonsterDeathAndXpMethods {
     readonly fire?: number | undefined
     readonly cold?: number | undefined
     readonly light?: number | undefined
+    readonly ltng?: number | undefined
+    readonly mag?: number | undefined
+    readonly pois?: number | undefined
+    readonly poisDurationFrames?: number | undefined
   }, options?: {
     readonly hitClass?: number | string | undefined
     readonly skipGetHit?: boolean | undefined
@@ -1617,7 +1786,12 @@ export interface MonsterDeathAndXpMethods {
   resolvePetUnitId(pet: SummonedPetUnit): number
   handlePetDeath(pet: SummonedPetUnit, areaId: number, petUnitId: number, ownerIdOverride?: number): void
   broadcastAllyRemoved(areaId: number, unitId: number): void
-  applyDamageToMerc(mercUnitIdOrRecord: number | InternalMercenaryRecord, damage: number, areaIdOverride?: number): void
+  applyDamageToMerc(
+    mercUnitIdOrRecord: number | InternalMercenaryRecord,
+    damage: number,
+    areaIdOverride?: number,
+    options?: { readonly skipGetHit?: boolean | undefined },
+  ): void
   applyDamageToSummon(ownerIdOrPet: number | SummonedPetUnit, petOrDamage: SummonedPetUnit | string | number, damageOverride?: number, areaIdOverride?: number): void
   damageMercsAndPetsInRadius(areaId: number, x: number, y: number, radius: number, damage: number, element?: 'phys' | 'fire' | 'cold' | 'light' | undefined): void
   auraRangeSubtiles(skillId: number, slvl: number): number

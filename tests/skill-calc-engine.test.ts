@@ -247,11 +247,11 @@ describe('Diablo II Skill Calculator Engine (Issue #26)', () => {
       // Add 20 points to Fire Mastery (+163%)
       allocatePoint(state, 61, 20)
       dmg = calculateDetailedDamage(state, fb, 1)
-      // Mastery multiplier = 2.63
-      // finalMin = floor(22 * 2.63) = 57
-      // finalMax = floor(53 * 2.63) = 139
+      // Mastery multiplier = +163% applied in 1.13c 256-fixed precision before >> 8:
+      // min256 = 1536 -> synergy 5836 (>>8 = 22) -> mastery (5836 + trunc(5836 * 163 / 100)) >> 8 = 15348 >> 8 = 59
+      // max256 = 3584 -> synergy 13619 (>>8 = 53) -> mastery (13619 + trunc(13619 * 163 / 100)) >> 8 = 35817 >> 8 = 139
       expect(dmg.masteryBonusPct).toBe(163)
-      expect(dmg.finalMin).toBe(57)
+      expect(dmg.finalMin).toBe(59)
       expect(dmg.finalMax).toBe(139)
     })
   })

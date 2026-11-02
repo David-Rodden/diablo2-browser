@@ -19,7 +19,7 @@ import { StateBus } from '../state-bus.ts'
 import { getAttackWeaponInfo, isInMeleeRange113c } from '../../../common/skills/weapon-combat-meta.ts'
 import { AuraScanner, type CorpseContext } from '../aura-scanner.ts'
 import { isWithinAuraRange } from '../../../common/skills/aura-filter.ts'
-import { computeDiminishingReturns } from '../../../common/data/calc-ast.ts'
+import { computeDiminishingReturns, evaluateCalc } from '../../../common/data/calc-ast.ts'
 import { difficultyLifeStealDivisor, difficultyManaStealDivisor, difficultyMonsterColdDivisor, difficultyMonsterFreezeDivisor } from '../difficulty-resist-penalty.ts'
 import { computeMindBlastConversionChance, computeMindBlastStunDuration } from '../../skills/assassin-shadow.ts'
 import { calculateFindItemStats, rollFindPotionDrop113c } from '../../skills/barbarian-warcries.ts'
@@ -28,7 +28,7 @@ import { calculateConversionStats, calculateVengeanceStats } from '../../skills/
 import { STATE_BLADESHIELD_113C, STATE_CONVERSION_SAVE_113C, STATE_SLOWMISSILES_113C, STATE_TERROR_113C, computeBonePrisonRingPositions113c, computeBoneWallSegmentPositions113c, computeConversionLevelScaling113c, computeGrimWardStats113c, computeSlowMissilesStats113c } from '../../skills/p1-wave4-skills-113c.ts'
 import { generateMonsterHorkDrop113c } from '../../items/drop-generator.ts'
 import { advanceWhirlwindSpinFrame113c, computeOpenWoundsBitrate256113c, computeWhirlwindDamageAndAr113c, computeWhirlwindStepDistancePerFrame113c, createWhirlwindSpinState113c, resolveWhirlwindWeaponHands113c, type WhirlwindEquippedHandInput113c, type WhirlwindHandWeaponSpec113c, type WhirlwindSpinState113c } from '../../skills/whirlwind-113c.ts'
-import { classifyPlayerSrvDoMissile113c, srvdo008FanTargets113c, strafeShotCount113c } from '../player-srvdo-113c.ts'
+import { classifyPlayerSrvDoMissile113c, srvdo008FanTargets113c, srvdoRing64Targets113c, strafeShotCount113c } from '../player-srvdo-113c.ts'
 import { findStandableNear } from '../../world/area-bootstrap.ts'
 import type { GameInstanceHost } from './host.ts'
 import type { InternalMercenaryRecord, InternalMissileRecord, InternalMonsterRecord, InternalPlayerRecord, PlayerSkillCast, ServerItemEntry } from './types.ts'
@@ -120,7 +120,7 @@ function applyPlayerSkillEffect(this: GameInstanceHost,
         selfPlayerCtx: ownerCtx,
       })
       const enemyRecords = [...this.monsters.values()].filter(
-        (m) => !m.dead && !m.isNpc && !m.submerged && m.isKillable && !this.isMonsterConverted(m) && m.areaId === player.areaId && inRange(m.x, m.y),
+        (m) => !m.dead && !m.isNpc && !m.submerged && m.isKillable && m.align === 0 && !this.isMonsterConverted(m) && m.areaId === player.areaId && inRange(m.x, m.y),
       )
       const corpseRecords = [...this.monsters.values()].filter(
         (m) => this.canSelectMonsterCorpse113c(m, false) && m.areaId === player.areaId && inRange(m.x, m.y),
@@ -178,6 +178,7 @@ function applyPlayerSkillEffect(this: GameInstanceHost,
         : this.evaluateSkillStateStats(skill, cast.slvl, casterStats)
     for (const m of this.monsters.values()) {
       if (m.dead || m.isNpc || m.submerged || m.areaId !== player.areaId) continue
+      if (!FRIENDLY_AURA_TARGET_STATE_IDS_113C.has(stateId) && (m.align !== 0 || this.isMonsterConverted(m))) continue
       const inArea = radius > 0 ? Math.hypot(m.x - originX, m.y - originY) <= radius : m === targetMonster
       if (inArea) {
         if (this.applyMonsterState(m.unitId, stateId, evalResult.durationFrames)) {
@@ -457,6 +458,8 @@ function relocatePlayerForSkill(
   this.movePlayer(player.unitId, destX, destY)
   this.maybeSwitchPlayerAreaSeamless(player)
   if (this.loadedAreas.has(player.areaId)) {
+    this.activatePresetRoomsNearPlayer113c(player)
+    this.streamWildernessRoomsForPlayer(player)
     this.revealAreaRoomsNearPlayer(player, true)
   }
   this.broadcastToArea(player.areaId, {
@@ -839,7 +842,7 @@ function pulseGrimWard113c(this: GameInstanceHost, ward: {
 }): void {
   for (const m of this.monsters.values()) {
     if (m.dead || m.isNpc || m.submerged || m.areaId !== ward.areaId) continue
-    if (this.isMonsterConverted(m)) continue
+    if (m.align !== 0 || this.isMonsterConverted(m)) continue
     if (!this.isMonsterEligibleForConversion113c(m)) continue
     if (Math.hypot(m.x - ward.x, m.y - ward.y) <= ward.radiusSubtiles) {
       this.applyUnitState(
@@ -1009,6 +1012,7 @@ function stepBladeShields113c(this: GameInstanceHost): void {
         m.dead ||
         m.isNpc ||
         m.submerged ||
+        m.align !== 0 ||
         m.areaId !== player.areaId ||
         this.isMonsterConverted(m)
       ) {
@@ -1339,6 +1343,7 @@ function executeSlowMissiles113c(this: GameInstanceHost, player: InternalPlayerR
     if (
       m.dead ||
       m.isNpc ||
+      m.align !== 0 ||
       m.submerged ||
       m.areaId !== player.areaId ||
       this.isMonsterConverted(m)
@@ -1686,6 +1691,8 @@ function finishWhirlwindSpin113c(this: GameInstanceHost, player: InternalPlayerR
   }
   this.maybeSwitchPlayerAreaSeamless(player)
   if (this.loadedAreas.has(player.areaId)) {
+    this.activatePresetRoomsNearPlayer113c(player)
+    this.streamWildernessRoomsForPlayer(player)
     this.revealAreaRoomsNearPlayer(player, true)
   }
 }
@@ -1944,6 +1951,7 @@ function stepActiveWhirlwinds113c(this: GameInstanceHost): void {
             m.isNpc ||
             !m.isKillable ||
             m.submerged ||
+            m.align !== 0 ||
             this.isMonsterConverted(m) ||
             m.areaId !== player.areaId
           ) {
@@ -2044,7 +2052,7 @@ function executeWhirlwindHandStrike113c(this: GameInstanceHost,
   hand: WhirlwindHandWeaponSpec113c,
   monster: InternalMonsterRecord,
 ): void {
-  if (monster.dead || monster.isNpc || !monster.isKillable || monster.submerged) return
+  if (monster.dead || monster.isNpc || !monster.isKillable || monster.submerged || monster.align !== 0) return
   const wwMods = computeWhirlwindDamageAndAr113c(spin.slvl)
   const mastery = this.resolveWeaponMasteryBonuses113c(player, hand.base?.type)
   const physBand = this.resolveWhirlwindHandPhysDamage113c(
@@ -2269,7 +2277,7 @@ function executeWhirlwindHandStrike113c(this: GameInstanceHost,
 
 
 function applyMonsterPreventHeal113c(this: GameInstanceHost, monster: InternalMonsterRecord): void {
-  if (monster.dead || monster.isNpc || !monster.isKillable || monster.submerged) return
+  if (monster.dead || monster.isNpc || !monster.isKillable || monster.submerged || monster.align !== 0) return
   // 1.13c `D2Game` `0x6FCCCF10`: Prevent Monster Heal (`stat 117`, player attacks ONLY) sets
   // `STATE_PREVENTHEAL` (`52`) for 120,000 frames (~80 min), EXCEPT Uber Pandemonium bosses (`hcIdx 704..709`).
   if (monster.hcIdx >= 704 && monster.hcIdx <= 709) return
@@ -2294,7 +2302,7 @@ function applyMonsterOpenWounds113c(this: GameInstanceHost,
     readonly isRanged?: boolean | undefined
   },
 ): void {
-  if (monster.dead || monster.isNpc || !monster.isKillable || monster.submerged) return
+  if (monster.dead || monster.isNpc || !monster.isKillable || monster.submerged || monster.align !== 0) return
   const isBoss =
     monster.isBoss ||
     monster.isPrimeEvil ||
@@ -2402,6 +2410,7 @@ function isMonsterEligibleForConversion113c(this: GameInstanceHost, monster: Int
   if (
     monster.dead ||
     monster.isNpc ||
+    monster.align !== 0 ||
     !monster.isKillable ||
     monster.submerged ||
     monster.isBoss ||
@@ -2528,6 +2537,7 @@ function executeMindBlast(this: GameInstanceHost, player: InternalPlayerRecord, 
       !m.dead &&
       !m.isNpc &&
       !m.submerged &&
+      m.align === 0 &&
       !this.isMonsterConverted(m) &&
       m.areaId === player.areaId &&
       Math.hypot(m.x - tx, m.y - ty) <= radius,
@@ -2806,6 +2816,22 @@ function launchPlayerSkillMissiles(this: GameInstanceHost,
     this.launchFireWall113c(player, cast, missileRec, tx, ty)
     return
   }
+  if (mode === 'ring64' || cast.skill.id === 130) {
+    // 1.13c `sub_6FCC2800` (`0x6FCC2800`): 64 radial missiles for `SrvDo022` (`#130 Howl`, `velDelta = calc1`)
+    // and `SrvDo068` (`0x6FC49720`: `#138 Shout`, `#146 Battle Cry`, `#149 Battle Orders`, `#154 War Cry`, `#155 Battle Command`).
+    const velDelta = cast.skill.id === 130 ? this.evaluatePlayerSkillCalc(cast, cast.skill.calc1) : 0
+    for (const pt of srvdoRing64Targets113c(player.x, player.y)) {
+      const dmg = cast.skill.id === 154 ? this.rollPlayerSkillPhysDamage(player, cast) : 0
+      this.launchPlayerSkillMissile(player, cast, missileRec, pt.x, pt.y, dmg, {
+        velDelta,
+        forcePierce: true,
+      })
+    }
+    if (cast.skill.srvDoFunc === 68 && cast.skill.auraState.trim() !== '') {
+      this.applyWarcryBuffToPlayer113c(player, player, cast.skill, cast.slvl, cast.statList)
+    }
+    return
+  }
   if (mode === 'unmodeled') this.reportUnmodeledPlayerSrvDoFunc(cast.skill)
   // `SKILLS_SrvDo010` (Guided Arrow / Bone Spirit) cast on a unit locks the missile onto it (`TargetX = 1`).
   const lockOpts =
@@ -2848,6 +2874,7 @@ function executeStrafe(this: GameInstanceHost,
       (m) =>
         !m.dead &&
         !m.isNpc &&
+        m.align === 0 &&
         !this.isMonsterConverted(m) &&
         m.areaId === player.areaId &&
         Math.hypot(m.x - player.x, m.y - player.y) <= radius,
@@ -2987,6 +3014,231 @@ function updatePlayerChannelState(this: GameInstanceHost, player: InternalPlayer
   }
 }
 
+/**
+ * 1.13c `D2Game.dll` `SKILLS_ApplyWarcryStats` (`0x6FC49240`) + `SKILLS_UpdateUnitStatsFromWarcry` (`0x6FC49330`):
+ * Applies a friendly warcry buff (`#138 Shout` state 26, `#149 Battle Orders` state 32, `#155 Battle Command` state 51)
+ * onto a player (`caster` via `SrvDo068`, or a partied player via `MISSMODE_SrvHit18` `0x6FC5EA60`).
+ */
+function applyWarcryBuffToPlayer113c(
+  this: GameInstanceHost,
+  caster: InternalPlayerRecord,
+  target: InternalPlayerRecord,
+  skill: SkillRecord,
+  slvl: number,
+  casterStatList: UnitStatList,
+): void {
+  if (target.dead) return
+  const stateName = skill.auraState.trim()
+  if (stateName === '') return
+  const stateRec = this.registry.getStateByName(stateName)
+  if (!stateRec) return
+
+  const targetCtx = this.playerCombatContext(target)
+  // Anti-downgrade (`0x6FC49240`): lower-level cast of the same warcry skill cannot overwrite a higher-level one.
+  const existing = targetCtx.stateBus.getState(stateRec.id)
+  if (existing !== undefined && existing.sourceSkillId === skill.id && existing.slvl > slvl) {
+    return
+  }
+
+  const oldMaxHpFixed = this.getPlayerAccruedMaxHpFixed(target)
+  const oldMaxManaFixed = this.getPlayerAccruedMaxManaFixed(target)
+  const oldMaxStaminaFixed = this.getPlayerAccruedMaxStaminaFixed(target)
+
+  const calcCtx = {
+    registry: this.registry,
+    activeSkill: skill,
+    slvl,
+    blvl: casterStatList.getBaseSkillLevel(skill.id),
+    getBaseSkillLevel: (id: number) => casterStatList.getBaseSkillLevel(id),
+    getEffectiveSkillLevel: (id: number) => casterStatList.getEffectiveSkillLevel(id),
+    getUnitStat: (statNameOrId: string | number, baseOnly?: boolean) =>
+      casterStatList.getAccruedStat(statNameOrId, baseOnly),
+  }
+  const durationFrames = Math.max(
+    1,
+    skill.auraLenCalc.trim() !== '' ? Math.trunc(evaluateCalc(skill.auraLenCalc, calcCtx)) : 125,
+  )
+  const rawStateStats = this.evaluateSkillStateStats(skill, slvl, casterStatList)
+
+  targetCtx.stateBus.applyState({
+    stateNameOrId: stateRec.id,
+    sourceUnitId: `player_${caster.unitId}`,
+    sourceSkillId: skill.id,
+    slvl,
+    durationFrames,
+    currentFrame: this.currentFrame,
+    stats: rawStateStats,
+  })
+  if (stateRec.id === 51) {
+    // `SKILLS_RefreshPassiveSkills(pTarget)` (`0x6FC492F1`): update passive masteries & Natural Resistance immediately.
+    this.syncPlayerSkillLevelsToStatList113c(target, targetCtx.statList, targetCtx.stateBus)
+  }
+  this.applyUnitState(
+    target.states,
+    target.stateTimers,
+    'player',
+    target.unitId,
+    target.areaId,
+    stateRec.id,
+    durationFrames,
+  )
+
+  const newMaxHpFixed = this.getPlayerAccruedMaxHpFixed(target)
+  const newMaxManaFixed = this.getPlayerAccruedMaxManaFixed(target)
+  const newMaxStaminaFixed = this.getPlayerAccruedMaxStaminaFixed(target)
+
+  let poolsChanged = false
+  if (newMaxHpFixed !== oldMaxHpFixed && oldMaxHpFixed > 0) {
+    target.hpFixed = Math.max(
+      FIXED_ONE,
+      Math.min(newMaxHpFixed, Math.trunc((target.hpFixed * newMaxHpFixed) / oldMaxHpFixed)),
+    )
+    poolsChanged = true
+  }
+  if (newMaxManaFixed !== oldMaxManaFixed) {
+    target.manaFixed =
+      oldMaxManaFixed > 0
+        ? Math.max(0, Math.min(newMaxManaFixed, Math.trunc((target.manaFixed * newMaxManaFixed) / oldMaxManaFixed)))
+        : 0
+    poolsChanged = true
+  }
+  if (newMaxStaminaFixed !== oldMaxStaminaFixed && oldMaxStaminaFixed > 0) {
+    target.staminaFixed = Math.max(
+      0,
+      Math.min(newMaxStaminaFixed, Math.trunc((target.staminaFixed * newMaxStaminaFixed) / oldMaxStaminaFixed)),
+    )
+    poolsChanged = true
+  }
+
+  target.maxHp = Math.max(1, Math.floor(newMaxHpFixed / FIXED_ONE))
+  target.hp = target.dead ? 0 : Math.max(1, Math.min(target.maxHp, Math.floor(target.hpFixed / FIXED_ONE)))
+  target.maxMana = Math.max(0, Math.floor(newMaxManaFixed / FIXED_ONE))
+  target.mana = Math.max(0, Math.min(target.maxMana, Math.floor(target.manaFixed / FIXED_ONE)))
+  target.maxStamina = Math.max(1, Math.floor(newMaxStaminaFixed / FIXED_ONE))
+  target.stamina = target.staminaExhausted
+    ? 0
+    : Math.max(0, Math.min(target.maxStamina, Math.floor(target.staminaFixed / FIXED_ONE)))
+
+  if (poolsChanged) {
+    this.emitPlayerVitals(target)
+  }
+}
+
+/**
+ * 1.13c `SKILLS_ApplyWarcryStats` (`0x6FC49240`) on an allied mercenary or summoned pet via `MISSMODE_SrvHit18`.
+ */
+function applyWarcryBuffToAlly113c(
+  this: GameInstanceHost,
+  caster: InternalPlayerRecord,
+  allyKind: 'merc' | 'pet',
+  allyUnitId: number,
+  skill: SkillRecord,
+  slvl: number,
+  casterStatList: UnitStatList,
+  petRef?: SummonedPetUnit,
+): void {
+  const stateName = skill.auraState.trim()
+  if (stateName === '') return
+  const stateRec = this.registry.getStateByName(stateName)
+  if (!stateRec) return
+
+  const calcCtx = {
+    registry: this.registry,
+    activeSkill: skill,
+    slvl,
+    blvl: casterStatList.getBaseSkillLevel(skill.id),
+    getBaseSkillLevel: (id: number) => casterStatList.getBaseSkillLevel(id),
+    getEffectiveSkillLevel: (id: number) => casterStatList.getEffectiveSkillLevel(id),
+    getUnitStat: (statNameOrId: string | number, baseOnly?: boolean) =>
+      casterStatList.getAccruedStat(statNameOrId, baseOnly),
+  }
+  const durationFrames = Math.max(
+    1,
+    skill.auraLenCalc.trim() !== '' ? Math.trunc(evaluateCalc(skill.auraLenCalc, calcCtx)) : 125,
+  )
+  const rawStateStats = this.evaluateSkillStateStats(skill, slvl, casterStatList)
+
+  if (allyKind === 'merc') {
+    const merc = this.mercenaries.get(allyUnitId)
+    if (!merc || !merc.alive || merc.hp <= 0) return
+    const mercCtx = this.mercCombatContext(merc)
+    const existing = mercCtx.stateBus.getState(stateRec.id)
+    if (existing !== undefined && existing.sourceSkillId === skill.id && existing.slvl > slvl) return
+    const oldMaxHp256 = Math.max(FIXED_ONE, Math.trunc(mercCtx.statList.getAccruedStat('maxhp')))
+    mercCtx.stateBus.applyState({
+      stateNameOrId: stateRec.id,
+      sourceUnitId: `player_${caster.unitId}`,
+      sourceSkillId: skill.id,
+      slvl,
+      durationFrames,
+      currentFrame: this.currentFrame,
+      stats: rawStateStats,
+    })
+    this.applyUnitState(
+      merc.states,
+      merc.stateTimers,
+      'monster',
+      merc.unitId,
+      merc.areaId,
+      stateRec.id,
+      durationFrames,
+    )
+    const newMaxHp256 = Math.max(FIXED_ONE, Math.trunc(mercCtx.statList.getAccruedStat('maxhp')))
+    if (newMaxHp256 !== oldMaxHp256) {
+      const nextHp = Math.max(
+        1,
+        Math.min(
+          Math.floor(newMaxHp256 / FIXED_ONE),
+          Math.trunc((merc.hp * newMaxHp256) / oldMaxHp256),
+        ),
+      )
+      if (nextHp !== merc.hp) {
+        merc.hp = nextHp
+        this.broadcastAllyHp(merc.areaId, merc.unitId, merc.hp)
+      }
+    }
+    return
+  }
+
+  const pet = petRef ?? this.petVisualStates.get(allyUnitId)?.pet
+  if (!pet || pet.alive === false || pet.hp <= 0) return
+  if (pet.petType === 'assassintrap' || pet.petType === 'hydra' || pet.petType === 'raven') return
+  const built = this.getOrCreatePetCombatContext113c(pet, allyUnitId, caster.areaId)
+  const existing = built.ctx.stateBus.getState(stateRec.id)
+  if (existing !== undefined && existing.sourceSkillId === skill.id && existing.slvl > slvl) return
+  const oldMaxHp256 = Math.max(FIXED_ONE, Math.trunc(built.ctx.statList.getAccruedStat('maxhp')))
+  built.ctx.stateBus.applyState({
+    stateNameOrId: stateRec.id,
+    sourceUnitId: `player_${caster.unitId}`,
+    sourceSkillId: skill.id,
+    slvl,
+    durationFrames,
+    currentFrame: this.currentFrame,
+    stats: rawStateStats,
+  })
+  this.applyUnitState(
+    built.states,
+    built.timers,
+    'monster',
+    allyUnitId,
+    caster.areaId,
+    stateRec.id,
+    durationFrames,
+  )
+  const newMaxHp256 = Math.max(FIXED_ONE, Math.trunc(built.ctx.statList.getAccruedStat('maxhp')))
+  if (newMaxHp256 !== oldMaxHp256) {
+    const nextHp = Math.max(
+      1,
+      Math.min(Math.floor(newMaxHp256 / FIXED_ONE), Math.trunc((pet.hp * newMaxHp256) / oldMaxHp256)),
+    )
+    if (nextHp !== pet.hp) {
+      pet.hp = nextHp
+      pet.statList.setHp256(pet.hp * FIXED_ONE)
+      this.broadcastAllyHp(caster.areaId, allyUnitId, pet.hp)
+    }
+  }
+}
+
 export interface PlayerSkillsAoeAndCorpseMethods {
   applyPlayerSkillEffect(player: InternalPlayerRecord, cast: PlayerSkillCast, tx: number, ty: number, targetMonster: InternalMonsterRecord | undefined): void
   relocatePlayerForSkill(player: InternalPlayerRecord, x: number, y: number, throughWalls: boolean, relocateFollowers?: boolean): boolean
@@ -3089,6 +3341,8 @@ export interface PlayerSkillsAoeAndCorpseMethods {
   getUnmodeledPlayerSrvDoFuncs(): number[]
   clearPlayerChannelState(player: InternalPlayerRecord): void
   updatePlayerChannelState(player: InternalPlayerRecord, cast: PlayerSkillCast): void
+  applyWarcryBuffToPlayer113c(caster: InternalPlayerRecord, target: InternalPlayerRecord, skill: SkillRecord, slvl: number, casterStatList: UnitStatList): void
+  applyWarcryBuffToAlly113c(caster: InternalPlayerRecord, allyKind: 'merc' | 'pet', allyUnitId: number, skill: SkillRecord, slvl: number, casterStatList: UnitStatList, petRef?: SummonedPetUnit): void
 }
 
 export const playerSkillsAoeAndCorpseMethods: Record<keyof PlayerSkillsAoeAndCorpseMethods, unknown> = {
@@ -3148,4 +3402,6 @@ export const playerSkillsAoeAndCorpseMethods: Record<keyof PlayerSkillsAoeAndCor
   getUnmodeledPlayerSrvDoFuncs,
   clearPlayerChannelState,
   updatePlayerChannelState,
+  applyWarcryBuffToPlayer113c,
+  applyWarcryBuffToAlly113c,
 }

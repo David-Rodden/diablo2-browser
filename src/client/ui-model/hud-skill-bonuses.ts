@@ -304,7 +304,18 @@ export function resolvePreaggregatedSkillBonus(
 ): number {
   if (!charClassCode) return 0
   const skill = skillsCatalog[skillId]
-  if (!skill) return 0
+  if (!skill) {
+    // D2Common.#10306 -> 0x6FD9FCB0: non-class default skills (charclass == -1, e.g. 0..5, 217..220)
+    // still receive item_allskills (127), oskill (97), and item_singleskill (107) when nCharges == -1.
+    let nonClassBonus = agg.allSkills + (agg.oskills.get(skillId) ?? 0) + (agg.singleSkills.get(skillId) ?? 0)
+    if (selfStats) {
+      const singleSkillStat = selfStats.get(107, skillId)
+      if (singleSkillStat > 0) nonClassBonus += singleSkillStat
+      const oskillStat = selfStats.get(97, skillId)
+      if (oskillStat > 0) nonClassBonus += oskillStat
+    }
+    return Math.max(0, nonClassBonus)
+  }
 
   const skillClassId = CLASS_CODE_TO_ID[skill.classCode]
   // D2Common SKILLS_GetSkillLevel: stat 188 layer = SkillPage - 1 + 8 * classId (never the linear par 0..20).
@@ -373,8 +384,6 @@ export function computeEquipmentSkillBonus(
       : (maybeCatalog ?? SKILLS_BY_ID)
 
   if (!charClassCode) return 0
-  const skill = skillsCatalog[skillId]
-  if (!skill) return 0
 
   const agg = preaggregateEquipmentSkillBonuses(
     containers,

@@ -2,7 +2,7 @@
  * Local Player Motion Kinematics & Velocity Predictor Tests (Issues #587, #600).
  *
  * Verifies Diablo II v1.13c ground truth:
- * - Base walk velocity = 6 yards/s (9.0 sub-tiles/s), run = 9 yards/s (13.5 sub-tiles/s)
+ * - Base walk velocity = 6/16 sub-tiles/frame (9.375 sub-tiles/s), run = 9/16 sub-tiles/frame (14.0625 sub-tiles/s)
  * - Running adds 50% (100 * RunVelocity / WalkVelocity - 100) when stamina is not exhausted
  * - Item FRW follows diminishing returns: floor(150 * frw / (150 + frw))
  * - Skill FRW (e.g. Burst of Speed, Vigor) adds linearly without diminishing returns
@@ -25,11 +25,11 @@ describe('LocalMovementPredictor kinematics & FRW (Issue #587)', () => {
     const predictor = new LocalMovementPredictor()
 
     // Default running = true
-    expect(predictor.getEffectiveSpeedSubTilesPerSec()).toBe(D2_BASE_RUN_SUBTILES_PER_SEC) // 13.5
+    expect(predictor.getEffectiveSpeedSubTilesPerSec()).toBe(D2_BASE_RUN_SUBTILES_PER_SEC) // 14.0625
 
     // Walking
     predictor.setRunning(false)
-    expect(predictor.getEffectiveSpeedSubTilesPerSec()).toBe(D2_BASE_WALK_SUBTILES_PER_SEC) // 9.0
+    expect(predictor.getEffectiveSpeedSubTilesPerSec()).toBe(D2_BASE_WALK_SUBTILES_PER_SEC) // 9.375
   })
 
   it('applies D2 diminishing returns formula to item FRW', () => {
@@ -38,20 +38,20 @@ describe('LocalMovementPredictor kinematics & FRW (Issue #587)', () => {
 
     // With 30% item FRW: floor(150 * 30 / 180) = floor(4500 / 180) = 25%
     predictor.setFasterRunWalkPercent(30)
-    // 9.0 * (100 + 25) / 100 = 11.25
-    expect(predictor.getEffectiveSpeedSubTilesPerSec()).toBe(11.25)
+    // 9.375 * (100 + 25) / 100 = 11.71875
+    expect(predictor.getEffectiveSpeedSubTilesPerSec()).toBe(11.71875)
 
     // With 70% item FRW: floor(150 * 70 / 220) = floor(10500 / 220) = 47%
     predictor.setFasterRunWalkPercent(70)
-    // 9.0 * (100 + 47) / 100 = 13.23
-    expect(predictor.getEffectiveSpeedSubTilesPerSec()).toBeCloseTo(13.23, 5)
+    // 9.375 * (100 + 47) / 100 = 13.78125
+    expect(predictor.getEffectiveSpeedSubTilesPerSec()).toBeCloseTo(13.78125, 5)
 
     // When running with 30% item FRW:
     // Effective percent = 100 + 25 (item) + 50 (run) = 175%
-    // 9.0 * 1.75 = 15.75
+    // 9.375 * 1.75 = 16.40625
     predictor.setRunning(true)
     predictor.setFasterRunWalkPercent(30)
-    expect(predictor.getEffectiveSpeedSubTilesPerSec()).toBe(15.75)
+    expect(predictor.getEffectiveSpeedSubTilesPerSec()).toBe(16.40625)
   })
 
   it('adds skill FRW directly without diminishing returns', () => {
@@ -60,15 +60,15 @@ describe('LocalMovementPredictor kinematics & FRW (Issue #587)', () => {
 
     // Burst of Speed level 5 (+35% skill FRW)
     predictor.setSkillVelocityPercent(35)
-    // 9.0 * (100 + 35) / 100 = 12.15
-    expect(predictor.getEffectiveSpeedSubTilesPerSec()).toBe(12.15)
+    // 9.375 * (100 + 35) / 100 = 12.65625
+    expect(predictor.getEffectiveSpeedSubTilesPerSec()).toBe(12.65625)
 
     // Combined 30% item FRW (eff 25%) + 35% skill FRW while running:
     // Total percent = 100 + 25 (item) + 50 (run) + 35 (skill) = 210%
-    // 9.0 * 2.10 = 18.9
+    // 9.375 * 2.10 = 19.6875
     predictor.setRunning(true)
     predictor.setFasterRunWalkPercent(30)
-    expect(predictor.getEffectiveSpeedSubTilesPerSec()).toBe(18.9)
+    expect(predictor.getEffectiveSpeedSubTilesPerSec()).toBe(19.6875)
   })
 
   it('subtracts armor speed penalties and chill / slow debuffs', () => {
@@ -77,13 +77,13 @@ describe('LocalMovementPredictor kinematics & FRW (Issue #587)', () => {
 
     // Heavy armor (-10% penalty)
     predictor.setArmorSpeedPenaltyPercent(10)
-    // 9.0 * (100 - 10) / 100 = 8.1
-    expect(predictor.getEffectiveSpeedSubTilesPerSec()).toBe(8.1)
+    // 9.375 * (100 - 10) / 100 = 8.4375
+    expect(predictor.getEffectiveSpeedSubTilesPerSec()).toBe(8.4375)
 
     // Heavy armor + chilled (e.g. 50% slow)
     predictor.setSlowPercent(50)
-    // 9.0 * (100 - 10 - 50) / 100 = 3.6
-    expect(predictor.getEffectiveSpeedSubTilesPerSec()).toBe(3.6)
+    // 9.375 * (100 - 10 - 50) / 100 = 3.75
+    expect(predictor.getEffectiveSpeedSubTilesPerSec()).toBe(3.75)
   })
 
   it('enforces 25% minimum speed floor per 1.13c Units.cpp:1678', () => {
@@ -95,8 +95,8 @@ describe('LocalMovementPredictor kinematics & FRW (Issue #587)', () => {
     predictor.setSlowPercent(90)
 
     // Total would be 100 - 10 - 90 = 0%, capped at 25% floor
-    // 9.0 * 25 / 100 = 2.25
-    expect(predictor.getEffectiveSpeedSubTilesPerSec()).toBe(2.25)
+    // 9.375 * 25 / 100 = 2.34375
+    expect(predictor.getEffectiveSpeedSubTilesPerSec()).toBe(2.34375)
   })
 
   it('disables running speed bonus when stamina is exhausted', () => {
@@ -105,16 +105,16 @@ describe('LocalMovementPredictor kinematics & FRW (Issue #587)', () => {
 
     // Running with 30% item FRW (eff 25%)
     predictor.setFasterRunWalkPercent(30)
-    expect(predictor.getEffectiveSpeedSubTilesPerSec()).toBe(15.75) // 9.0 * (100 + 25 + 50) / 100
+    expect(predictor.getEffectiveSpeedSubTilesPerSec()).toBe(16.40625) // 9.375 * (100 + 25 + 50) / 100
 
     // Stamina exhausted: player is forced to walk speed + item FRW
     predictor.setStaminaExhausted(true)
     expect(predictor.isStaminaExhausted()).toBe(true)
-    expect(predictor.getEffectiveSpeedSubTilesPerSec()).toBe(11.25) // 9.0 * (100 + 25 + 0) / 100
+    expect(predictor.getEffectiveSpeedSubTilesPerSec()).toBe(11.71875) // 9.375 * (100 + 25 + 0) / 100
 
     // Recover stamina
     predictor.setStaminaExhausted(false)
-    expect(predictor.getEffectiveSpeedSubTilesPerSec()).toBe(15.75)
+    expect(predictor.getEffectiveSpeedSubTilesPerSec()).toBe(16.40625)
   })
 
   it('supports setVelocityModifiers batch update', () => {
@@ -130,8 +130,8 @@ describe('LocalMovementPredictor kinematics & FRW (Issue #587)', () => {
     })
 
     // Total = 100 + 25 + 50 + 20 - 5 - 10 = 180%
-    // 9.0 * 1.80 = 16.2
-    expect(predictor.getEffectiveSpeedSubTilesPerSec()).toBe(16.2)
+    // 9.375 * 1.80 = 16.875
+    expect(predictor.getEffectiveSpeedSubTilesPerSec()).toBe(16.875)
   })
 })
 

@@ -1571,11 +1571,26 @@ export function identifyAllAtNpcImpl(model: any, npcId: number): void {
 export function openNpcTradeImpl(model: any, npcId: number): void {
   model.requireVendorPrice()
   model.requireVendorRepairAll()
+  // D2Client.dll 0x6FAF6150 & 0x6FAF8C80 (D2CLIENT_OpenNPCStore):
+  // when the world is populated and the monster NPC unit is absent (unloaded via 0x0A / 0x08 RoomHide),
+  // abort store opening and cancel stale session state cleanly (#2009).
+  const worldHasUnits =
+    model.world.selfId !== 0 || model.world.areaId !== 0 || model.world.units.size > 0
+  if (worldHasUnits && !model.world.getUnit('monster', npcId)) {
+    model.cancelNpcSession(npcId)
+    return
+  }
   model.emitCommand({ type: 'NpcOpenTrade', npcId })
   model.syncFromWorld()
 }
 
 export function openNpcGambleImpl(model: any, npcId: number): void {
+  const worldHasUnits =
+    model.world.selfId !== 0 || model.world.areaId !== 0 || model.world.units.size > 0
+  if (worldHasUnits && !model.world.getUnit('monster', npcId)) {
+    model.cancelNpcSession(npcId)
+    return
+  }
   const npcClass = model.npcClassOf(npcId)
   if (!GAMBLE_NPC_CLASS_IDS.has(npcClass)) throw new Error(`HudModel.openNpcGamble: NPC class ${npcClass} does not gamble`)
   model.requireVendorPrice()

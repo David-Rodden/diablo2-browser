@@ -20,7 +20,13 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { OnlineSession } from '../../../src/client/session/online-session.ts'
-import { computeCharacterBlockChancePct, doesSkillUseAttackRating } from '../../../src/client/ui/character-sheet.ts'
+import { hexToBytes } from '../../../src/netproto/index.ts'
+import { decodeD2gsC2sPacketToCommand } from '../../../src/server/net/session.ts'
+import {
+  computeCharacterBlockChancePct,
+  doesSkillShowDamageRow,
+  doesSkillUseAttackRating,
+} from '../../../src/client/ui/character-sheet.ts'
 import { GameInstance } from '../../../src/server/engine/game-instance.ts'
 import { SINGLE_PLAYER_POLICY } from '../../../src/server/engine/game-instance/constants-and-helpers.ts'
 import { createMapServiceAreaLevelSource } from '../../../src/client/map/map-service-area-source.ts'
@@ -150,11 +156,27 @@ export function parseSkillBlock(texts: readonly TextRec[]): SkillBlockValues {
   return { name, damage, attackRating }
 }
 
-export function parseOracleClientUi(ndjson: string): ClientUiValues {
-  const lines = ndjson
+/** Capture labels in an oracle ui.ndjson (`capture` lines; a file without them is one "town" capture). */
+export function oracleCaptureLabels(ndjson: string): string[] {
+  const labels = ndjson
+    .split('\n')
+    .filter((l) => l.includes('"kind":"capture"'))
+    .map((l) => (JSON.parse(l) as { label: string }).label)
+  return labels.length ? labels : ['town']
+}
+
+export function parseOracleClientUi(ndjson: string, label?: string): ClientUiValues {
+  const all = ndjson
     .split('\n')
     .filter((l) => l.trim() !== '')
     .map((l) => JSON.parse(l) as OracleLine)
+  let lines = all
+  if (all.some((l) => l.kind === 'capture')) {
+    const start = label === undefined ? all.findIndex((l) => l.kind === 'capture') : all.findIndex((l) => l.kind === 'capture' && l.label === label)
+    if (start < 0) throw new Error(`oracle ui.ndjson: no capture "${label}"`)
+    const end = all.findIndex((l, i) => i > start && l.kind === 'capture')
+    lines = all.slice(start + 1, end < 0 ? undefined : end)
+  }
   const meta = lines.find((l) => l.kind === 'meta')
   const statsLine = lines.find((l) => l.kind === 'stats')
   const calc = lines.find((l) => l.kind === 'calc')
@@ -224,18 +246,30 @@ export const EXCLUDED_BLOCK: SkillBlockValues = { name: EXCLUDED_NAME, damage: n
  */
 export const EXCLUDED_BLOCK_SKILLS: ReadonlySet<number> = new Set([217, 218, 219, 220])
 
-export interface TsClientUiOptions {
-  /** Frames to run after connecting (the oracle samples 75 frames after the client player appears). */
-  readonly frames?: number
-  readonly repoRoot?: string
+/** One TS run: a save, frame-stamped C2S inputs and the frames at which the display is read. */
+export interface ClientUiCase {
+  readonly save: string
+  readonly inputs: readonly { readonly frame: number; readonly c2s: string }[]
+  /** [frame, label]; the town captures read frame 75 (the oracle samples 75 frames after entering). */
+  readonly captures: readonly (readonly [number, string])[]
+}
+
+/** Delivers one C2S packet like a D2GS connection in game state (same path as tools/oracle/lib/replica.ts). */
+function deliverC2s(game: GameInstance, pid: number, hex: string): void {
+  const pkt = hexToBytes(hex)
+  const cmd = decodeD2gsC2sPacketToCommand(pkt)
+  if (cmd === null) throw new Error(`client-ui: C2S ${hex} is not decodable by the D2GS server path`)
+  if (cmd.type === 'Ping') return
+  game.enqueueCommand(pid, cmd)
 }
 
 /**
- * Runs the TS server + headless TS client on one save and reads the displayed values.
- * Pure function of (save bytes, environment data): fixed-step `GameInstance.stepFrame()`.
+ * Runs the TS server + headless TS client for one case and reads the displayed values at every capture.
+ * Pure function of (save bytes, inputs, environment data): fixed-step `GameInstance.stepFrame()`; inputs tagged
+ * frame F are enqueued before the step that produces frame F (oracle `on_pre_frame` convention).
  */
-export function computeTsClientUi(savePath: string, env: ReplicaEnvironment, opts: TsClientUiOptions = {}): ClientUiValues {
-  const d2s = new Uint8Array(readFileSync(resolve(opts.repoRoot ?? process.cwd(), savePath)))
+export function runTsClientUiCase(c: ClientUiCase, env: ReplicaEnvironment, repoRoot?: string): Record<string, ClientUiValues> {
+  const d2s = new Uint8Array(readFileSync(resolve(repoRoot ?? process.cwd(), c.save)))
   const seed = headerMapSeed(d2s) || 12345
   const game = new GameInstance({
     mode: 'singlePlayer',
@@ -253,11 +287,24 @@ export function computeTsClientUi(savePath: string, env: ReplicaEnvironment, opt
     for (const ev of game.drainEvents(pid)) session.handleServerEvent(ev)
   }
   pump()
-  const frames = opts.frames ?? 75
-  for (let f = 0; f < frames; f++) {
+  const out: Record<string, ClientUiValues> = {}
+  const caps = [...c.captures].sort((x, y) => x[0] - y[0])
+  let next = 0
+  for (let f = 1; f <= caps[caps.length - 1]![0]; f++) {
+    while (next < c.inputs.length && c.inputs[next]!.frame <= f) deliverC2s(game, pid, c.inputs[next++]!.c2s)
     game.stepFrame()
     pump()
+    for (const [cf, label] of caps) if (cf === f) out[label] = readTsClientUi(session, env)
   }
+  return out
+}
+
+/** Town case of one save (75 frames, no inputs). */
+export function computeTsClientUi(savePath: string, env: ReplicaEnvironment): ClientUiValues {
+  return runTsClientUiCase({ save: savePath, inputs: [], captures: [[75, 'town']] }, env).town!
+}
+
+function readTsClientUi(session: OnlineSession, env: ReplicaEnvironment): ClientUiValues {
   const model = session.hudModel
   const hud = session.hudManager
   hud.charSheet.lang = 'ENG'
@@ -307,17 +354,22 @@ export function computeTsClientUi(savePath: string, env: ReplicaEnvironment, opt
   const selfSkills = session.world.self as unknown as {
     skills: ReadonlyMap<number, number>
     skillEntries: ReadonlyMap<number, { level?: number; baseLevel?: number }>
+    defaultSkills: ReadonlyMap<number, number>
   }
-  const known = new Set<number>([...selfSkills.skills.keys(), ...selfSkills.skillEntries.keys()])
+  // Client skill list: server-assigned skills plus the unit's default skills (D2Client 0x6FAC91E0 -> #10506).
+  const known = new Set<number>([
+    ...selfSkills.skills.keys(),
+    ...selfSkills.skillEntries.keys(),
+    ...selfSkills.defaultSkills.keys(),
+  ])
   const skillList = [...known].sort((x, y) => x - y)
-  // Attack / Kick / Throw / Unsummon / Left Hand Throw / Left Hand Swing (Skills.txt rows 0..5, charclass
-  // empty) are always usable in the TS client even when its skill list does not carry them; evaluate
-  // them too so their display is compared (the list difference itself is reported as `skills.list`).
-  const owned = new Set<number>([...known, 0, 1, 2, 3, 4, 5])
+  const owned = known
   const skillsTxt = env.registry.skills.rows
   for (const id of [...owned].sort((x, y) => x - y)) {
     const entry = selfSkills.skillEntries.get(id)
-    const hard = tree.getHardPoints(id) || Math.max(0, Number(entry?.baseLevel ?? selfSkills.skills.get(id) ?? 0))
+    const hard =
+      tree.getHardPoints(id) ||
+      Math.max(0, Number(entry?.baseLevel ?? selfSkills.skills.get(id) ?? selfSkills.defaultSkills.get(id) ?? 0))
     const total = tree.getEffectiveLevel(id) || Math.max(0, Number(entry?.level ?? hard))
     skillLevels[String(id)] = [hard, total]
     const row = skillsTxt.find((r) => Number(r.Id) === id)
@@ -335,15 +387,16 @@ export function computeTsClientUi(savePath: string, env: ReplicaEnvironment, opt
       if (held !== id) {
         skills[String(id)] = { name: `(TS refuses to select ${id})`, damage: null, attackRating: null }
       } else {
-        // Expressions of CharacterSheetPanel.draw: name, damage (always drawn, '1-2' fallback) and the
-        // AR box gated by doesSkillUseAttackRating.
+        // Expressions of CharacterSheetPanel.draw: block name, damage row (descdam handler present and the
+        // item-based handler not empty) and the AR box (descatt handler present).
         const nameV = left ? a.leftSkillName : a.rightSkillName
         const dmgV = left ? a.leftSkillDmg : a.rightSkillDmg
         const arV = left ? (a.leftAttackRating ?? a.leftAR ?? a.attackRating) : (a.rightAttackRating ?? a.rightAR ?? a.attackRating)
+        const empty = (left ? a.leftSkillBlockEmpty : a.rightSkillBlockEmpty) === true
         skills[String(id)] = {
           name: typeof nameV === 'string' && nameV ? nameV : null,
-          damage: typeof dmgV === 'string' && dmgV ? dmgV : '1-2',
-          attackRating: doesSkillUseAttackRating(id) ? Number(arV) : null,
+          damage: doesSkillShowDamageRow(id) && !empty ? (typeof dmgV === 'string' && dmgV ? dmgV : '1-2') : null,
+          attackRating: doesSkillUseAttackRating(id) && !empty ? Number(arV) : null,
         }
       }
       self.leftSkill = leftSkill
@@ -423,7 +476,7 @@ export function compareClientUi(orig: ClientUiValues, ts: ClientUiValues): Field
     for (const part of ['name', 'damage', 'attackRating'] as const) {
       const ov = o[part]
       const tv = t ? t[part] : undefined
-      const norm = (v: unknown): string => (part === 'name' ? show(v).toUpperCase() : show(v))
+      const norm = (v: unknown): string => show(v)
       out.push({ id: `skill.${id}.${part}`, group: 'skill', original: show(ov), ts: show(tv), match: norm(ov) === norm(tv) })
     }
   }
@@ -481,7 +534,7 @@ export const MISMATCH_CLASSES: Readonly<Record<string, MismatchClass>> = {
   'short-name': {
     layer: 'client',
     cause:
-      'D2Client 0x6FADFD30 draws SkillDesc `str short` (word at SkillDesc+0x0E -> D2Lang #10003) upper-cased by ' +
+      'D2Client 0x6FADFD30 draws SkillDesc `str alt` (word at SkillDesc+0x0E -> D2Lang #10003) upper-cased by ' +
       '0x6FB6E800; TS CharacterSheetPanel draws Skills `str name` (getSkillName).',
   },
   'no-damage-row': {
@@ -563,4 +616,47 @@ export function classifyMismatch(d: FieldDiff, orig: ClientUiValues): string {
     return 'unclassified'
   }
   return 'unclassified'
+}
+
+// ---------------------------------------------------------------------------------------------
+// Cases
+// ---------------------------------------------------------------------------------------------
+
+/** Town cases: one per class, its level-40 save. */
+export const CLIENT_UI_TOWN_SAVES: Readonly<Record<string, string>> = {
+  barbarian: 'tests/fixtures/oracle/saves/barbarian-l40-warcries.d2s',
+  paladin: 'tests/fixtures/oracle/saves/paladin-l40-auras.d2s',
+  amazon: 'tests/fixtures/oracle/saves/amazon-l40-passives.d2s',
+  sorceress: 'tests/fixtures/oracle/saves/sorceress-l40-elemental.d2s',
+  necromancer: 'tests/fixtures/oracle/saves/necromancer-l40-curses-summons.d2s',
+}
+/** Capture scenarios (tests/fixtures/oracle/scenarios/<name>.json, tools/oracle/make-p54-scenarios.py). */
+export const CLIENT_UI_SCENARIOS: readonly string[] = ['p54-barbarian-buffs', 'p54-paladin-auras']
+
+export interface NamedClientUiCase extends ClientUiCase {
+  /** Oracle output directory name (`run-client-ui.sh <dir> <name>`). */
+  readonly name: string
+}
+
+export function clientUiCases(repoRoot = process.cwd()): NamedClientUiCase[] {
+  const out: NamedClientUiCase[] = Object.entries(CLIENT_UI_TOWN_SAVES).map(([name, save]) => ({
+    name,
+    save,
+    inputs: [],
+    captures: [[75, 'town']],
+  }))
+  for (const name of CLIENT_UI_SCENARIOS) {
+    const s = JSON.parse(readFileSync(resolve(repoRoot, 'tests/fixtures/oracle/scenarios', `${name}.json`), 'utf8')) as {
+      save: string
+      inputs: { frame: number; c2s: string }[]
+      captures: [number, string][]
+    }
+    out.push({ name, save: s.save, inputs: s.inputs, captures: s.captures })
+  }
+  return out
+}
+
+/** Result / golden id of one capture: the class for town captures, else `<scenario>-<label>`. */
+export function captureId(caseName: string, label: string): string {
+  return label === 'town' ? caseName : `${caseName}-${label}`
 }

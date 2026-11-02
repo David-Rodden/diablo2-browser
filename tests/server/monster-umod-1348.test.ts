@@ -177,7 +177,15 @@ describe('issue #1348 MonUMod affixes', () => {
       maxHp: 5000,
       hp: 5000,
     })
-    const meleePlayer = connectPlayer(game, 31, 40, 'MeleeTarget')
+    const meleePlayer = game.connectPlayer({
+      charClass: 'bar',
+      name: 'MeleeTarget',
+      x: 31,
+      y: 40,
+      areaId: 1,
+      hp: 500,
+      maxHp: 500,
+    })
     game.drainEvents(meleePlayer)
     const manaBefore = game.getPlayerState(meleePlayer)!.mana
     game.stepFrames(120)

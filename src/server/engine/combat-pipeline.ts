@@ -17,6 +17,7 @@
  *   3. **Venom (`278`)**: Clamps total poison duration of all weapon/item poison sources to **`10` frames (`0.4s`)**
  *      while summing their per-frame poison bitrates (`<< 8`) with Venom's bitrate.
  */
+import { mulDiv113c } from '../../common/data/mul-div-113c.ts'
 import { FIXED_ONE, UnitStatList } from './stat-list.ts'
 import { compute5BandScaling, computeDiminishingReturns } from '../../common/data/calc-ast.ts'
 import { resolveWeaponBase113c } from '../../common/units/char-anim-speed.ts'
@@ -34,7 +35,7 @@ import {
   type WeaponMasteryStats,
 } from '../skills/barbarian-masteries.ts'
 import { computeVenomPoisonDamage } from '../skills/assassin-shadow.ts'
-import { resolveCharacterClass } from '../../common/units/classes.ts'
+import { CHARACTER_CLASS_CODES, resolveCharacterClass } from '../../common/units/classes.ts'
 
 /**
  * RNG contract required by 1.13c combat pipeline functions (`D2Game.dll` `pUnit + 0x20` LCG).
@@ -478,6 +479,45 @@ export function computeToHitChance(params: {
 }
 
 /**
+ * Unclamped-input 1.13c `D2Game.dll` `0x6FCFDE90..0x6FCFE08C` (`RollToHit` chance `[5, 95]`):
+ * - Scales `ar` via `mulDiv113c(extraPct + itemPct, ar, 100)` (`0x6FCFDFB3..0x6FCFDFC1`).
+ * - Applies 32-bit signed wrap on `def < 0` / `ar < 0` (`0x6FCFDFC3..0x6FCFDFEB`).
+ * - Uses signed `alvl` / `dlvl` directly (`(imul(f, alvl) << 1) / (alvl + dlvl)`, faulting in x86 when `alvl + dlvl == 0`).
+ */
+export function computeRawToHitChance113c(params: {
+  readonly ar: number
+  readonly def: number
+  readonly alvl: number
+  readonly dlvl: number
+  readonly extraPct: number
+  readonly itemPct: number
+  readonly acVs: number
+}): number {
+  let ebp = params.ar | 0
+  let edi = ((params.def | 0) + (params.acVs | 0)) | 0
+  const esi = ((params.extraPct | 0) + (params.itemPct | 0)) | 0
+  ebp = (ebp + mulDiv113c(esi, ebp, 100)) | 0
+  if (edi < 0) {
+    ebp = (ebp - edi) | 0
+    edi = 0
+  }
+  if (ebp < 0) {
+    edi = (edi - ebp) | 0
+    ebp = 0
+  }
+  if (edi < 0) edi = 0
+  edi = (edi + ebp) | 0
+  const f = edi === 0 ? 100 : (Math.trunc(Math.imul(ebp, 100) / edi) | 0)
+  const ecx = params.alvl | 0
+  const edx = params.dlvl | 0
+  const den = (ecx + edx) | 0
+  if (den === 0) return 5
+  const num = (Math.imul(f, ecx) << 1) | 0
+  const raw = Math.trunc(num / den) | 0
+  return raw <= 5 ? 5 : raw >= 95 ? 95 : raw
+}
+
+/**
  * 1.13c `D2Game.dll` `0x6FCFAC10` (`SUNITDMG_GetDamagePercentModifier`, table @ `0x6FD28140`):
  * - Player (`unitType === 'player' | 'party'`) or player-owned Mercenary/Minion vs Player defender: `17%` (`1/6`).
  * - Mercenary (`unitType === 'mercenary' | 'party_mercenary'`) vs Mercenary: `25%` (`1/4`).
@@ -540,6 +580,185 @@ export function computeBlockRate113c(unit: CombatUnitContext, isExpansion = true
     return 0
   }
   return Math.min(75, Math.max(0, stat20))
+}
+
+/**
+ * Unclamped-lower 1.13c `D2Common #10212` (`0x6FD81D20..0x6FD81E94`) player shield block rate:
+ * `(toblock + CharStats.BlockFactor)` (and in Expansion `imul(dex - 15, block) / (2 * max(1, clvl))`),
+ * capped at `<= 75` only (`0x6FD81E7F: cmp edi, 0x4b; jge`) with no `>= 0` clamp.
+ */
+export function computeRawPlayerBlockRate113c(
+  classId: number,
+  isExpansion: boolean,
+  dex: number,
+  clvl: number,
+  toblock: number,
+): number {
+  const code = CHARACTER_CLASS_CODES[classId | 0] ?? 'ama'
+  const cs = resolveCharacterClass(code)
+  let edi = ((toblock | 0) + cs.blockFactor) | 0
+  if (isExpansion) {
+    const lv = Math.max(1, clvl | 0)
+    const num = Math.imul(((dex | 0) - 15) | 0, edi)
+    edi = Math.trunc(num / ((lv << 1) | 0)) | 0
+  }
+  return edi >= 75 ? 75 : edi
+}
+
+/**
+ * Raw 1.13c `D2Game.dll` `SUNITDMG_GetResistance` (`0x6FCFB3C0..0x6FCFB4B4`):
+ * - Pierce (`0x6FCFB3D8..0x6FCFB3FE`): when `pierceStatId >= 0` and `(res < 100 || defenderIsPlayer)`,
+ *   subtracts signed `pierce` (`esi = (esi - pierce) | 0`, even when `pierce < 0`).
+ * - Difficulty penalty (`0x6FCFB3FE..0x6FCFB434`): for players when `resStatId !== 36 && resStatId !== 37`,
+ *   adds signed `penalty` (`esi = (esi + penalty) | 0`).
+ * - Clamps (`0x6FCFB434..0x6FCFB4B4`):
+ *   - If `esi <= 0`: returns `esi <= -100 ? -100 : esi`.
+ *   - Monster (`!defenderIsPlayer`): returns `esi` with no `100` upper cap.
+ *   - Player (`esi > 0`): `cap = maxStatId < 0 ? (resStatId === 36 ? 50 : 75) : (maxStat + 75) | 0`;
+ *     when `maxStatId >= 0 && cap >= 95`, `cap = 95`; returns `esi >= cap ? cap : esi`.
+ */
+export function computeRawEffectiveResistance113c(params: {
+  readonly resStatId: number
+  readonly maxStatId: number
+  readonly pierceStatId: number
+  readonly defenderIsPlayer: boolean
+  readonly res: number
+  readonly maxStat: number
+  readonly pierce: number
+  readonly penalty: number
+}): number {
+  let esi = params.res | 0
+  const defIsMonster = !params.defenderIsPlayer
+  if (params.pierceStatId >= 0 && (esi < 100 || !defIsMonster)) {
+    const p = params.pierce | 0
+    if (p !== 0) {
+      esi = (esi - p) | 0
+    }
+  }
+  if (!defIsMonster && params.resStatId !== 36 && params.resStatId !== 37) {
+    esi = (esi + (params.penalty | 0)) | 0
+  }
+  if (esi <= 0) {
+    return esi <= -100 ? -100 : esi
+  }
+  if (defIsMonster) {
+    return esi
+  }
+  let cap =
+    params.maxStatId < 0
+      ? params.resStatId === 36
+        ? 50
+        : 75
+      : ((params.maxStat | 0) + 75) | 0
+  if (params.maxStatId >= 0 && cap >= 95) {
+    cap = 95
+  }
+  return esi >= cap ? cap : esi
+}
+
+/**
+ * Raw 1.13c `D2Game.dll` `SUNITDMG_CalcResistAndAbsorb` (`0x6FCFC0B0..0x6FCFC52D`),
+ * channel helper `0x6FCFBD00..0x6FCFBD88`, and absorb helper `0x6FCFAD00..0x6FCFAD66`
+ * (for PvP modifier = 100%, physical row 0 + one elemental channel):
+ * - Scales positive `dr << 8` / `mdr << 8` by `mulDiv113c(rate54, r256, 0x400)` when `rate54 > 0`;
+ *   negative `dr` / `mdr` is NOT clamped (`0x6FCFC137..0x6FCFC175`).
+ * - Subtracts `dr256` / `mdr256` without clamping to `0` (`0x6FCFBD41`), applies resistance via
+ *   `mulDiv113c(100 - min(effRes, 100), esi, 100)` only when `esi > 0 && effRes !== 0` (`0x6FCFBD45..0x6FCFBD6A`),
+ *   runs `%` absorb (capped at `40%`, `> 0`) then flat absorb (`<< 8`, `> 0`, `min(flat256, esi)`) on
+ *   elemental channels even when `esi <= 0` (`0x6FCFAD00..0x6FCFAD62`), and sums channels signed (`0x6FCFC4F7..0x6FCFC519`).
+ */
+export function computeRawDamagePipe113c(params: {
+  readonly defenderIsPlayer: boolean
+  readonly phys256: number
+  readonly elem256: number
+  readonly rate54: number
+  readonly dr: number
+  readonly mdr: number
+  readonly physRes: number
+  readonly elemResStatId: number
+  readonly elemMaxStatId: number
+  readonly elemPierceStatId: number
+  readonly res: number
+  readonly maxRes: number
+  readonly absPct: number
+  readonly absFlat: number
+  readonly pierce: number
+  readonly penalty: number
+}): {
+  readonly physDamage256: number
+  readonly elemDamage256: number
+  readonly totalDamage256: number
+  readonly absorb256: number
+} {
+  let dr256 = (params.dr | 0) << 8
+  if (dr256 > 0 && (params.rate54 | 0) > 0) {
+    dr256 = mulDiv113c(params.rate54 | 0, dr256, 0x400)
+  }
+  let mdr256 = (params.mdr | 0) << 8
+  if (mdr256 > 0 && (params.rate54 | 0) > 0) {
+    mdr256 = mulDiv113c(params.rate54 | 0, mdr256, 0x400)
+  }
+
+  let physOut = 0
+  if ((params.phys256 | 0) > 0) {
+    const effPhysRes = computeRawEffectiveResistance113c({
+      resStatId: 36,
+      maxStatId: -1,
+      pierceStatId: -1,
+      defenderIsPlayer: params.defenderIsPlayer,
+      res: params.physRes,
+      maxStat: 0,
+      pierce: 0,
+      penalty: 0,
+    })
+    let esi = ((params.phys256 | 0) - dr256) | 0
+    if (esi > 0 && effPhysRes !== 0) {
+      const r = effPhysRes >= 100 ? 100 : effPhysRes
+      esi = mulDiv113c((100 - r) | 0, esi, 100)
+    }
+    physOut = esi
+  }
+
+  let elemOut = 0
+  let absorb256 = 0
+  if ((params.elem256 | 0) > 0) {
+    const effElemRes = computeRawEffectiveResistance113c({
+      resStatId: params.elemResStatId,
+      maxStatId: params.elemMaxStatId,
+      pierceStatId: params.elemPierceStatId,
+      defenderIsPlayer: params.defenderIsPlayer,
+      res: params.res,
+      maxStat: params.maxRes,
+      pierce: params.elemPierceStatId >= 0 ? params.pierce : 0,
+      penalty: params.defenderIsPlayer ? params.penalty : 0,
+    })
+    let esi = ((params.elem256 | 0) - mdr256) | 0
+    if (esi > 0 && effElemRes !== 0) {
+      const r = effElemRes >= 100 ? 100 : effElemRes
+      esi = mulDiv113c((100 - r) | 0, esi, 100)
+    }
+    let pct = params.absPct | 0
+    if (pct >= 40) pct = 40
+    if (pct > 0) {
+      const a = mulDiv113c(pct, esi, 100)
+      absorb256 = (absorb256 + a) | 0
+      esi = (esi - a) | 0
+    }
+    const flat = (params.absFlat | 0) << 8
+    if (flat > 0) {
+      const f = flat >= esi ? esi : flat
+      absorb256 = (absorb256 + f) | 0
+      esi = (esi - f) | 0
+    }
+    elemOut = esi
+  }
+
+  return {
+    physDamage256: physOut,
+    elemDamage256: elemOut,
+    totalDamage256: (physOut + elemOut) | 0,
+    absorb256,
+  }
 }
 
 export function evaluateAvoidanceAndBlock(params: {
@@ -801,11 +1020,11 @@ export function computeCorpseExplosion113c(params: {
   const finalPhysDamage =
     !inInnerPhysRing || physRes.isImmune
       ? 0
-      : Math.max(0, Math.trunc((rawPhysDamage * (100 - physRes.effectiveRes)) / 100))
+      : Math.max(0, applyResist113c(rawPhysDamage, physRes.effectiveRes))
   const finalFireDamage =
     !inOuterFireRing || fireRes.isImmune
       ? 0
-      : Math.max(0, Math.trunc((rawFireDamage * (100 - fireRes.effectiveRes)) / 100))
+      : Math.max(0, applyResist113c(rawFireDamage, fireRes.effectiveRes))
 
   return {
     minRollPct,
@@ -893,6 +1112,23 @@ export interface SUnitDmgPacket {
   readonly owRoll100?: number | undefined
   readonly hitClass?: number | string | undefined
   readonly rng?: CombatRng | undefined
+}
+
+export interface SUnitDmgTraceEvent113c {
+  readonly att: readonly [number, number]
+  readonly def: readonly [number, number]
+  readonly hp: readonly [number, number]
+  readonly ret: number
+  readonly raw: readonly number[]
+}
+
+let sUnitDmgTraceObserver113c: ((ev: SUnitDmgTraceEvent113c) => void) | null = null
+
+/** Install or clear an observer notified for every landed `SUNITDMG_ApplyDamage` (`0x6FCFC0B0`) hit. */
+export function setSUnitDmgTraceObserver113c(
+  observer: ((ev: SUnitDmgTraceEvent113c) => void) | null,
+): void {
+  sUnitDmgTraceObserver113c = observer
 }
 
 export interface SUnitDmgOutcome {
@@ -1100,6 +1336,21 @@ export function computeEffectivePoisonLengthFrames113c(
  * - otherwise the 32-bit `a * b / c`.
  */
 /**
+ * Resistance step of `0x6FCFBD00` (`0x6FCFBD45..0x6FCFBD6A`): for a positive channel with a non-zero
+ * effective resistance, `dmg = mulDiv(eax = 100 - min(res, 100), edx = dmg, 100)` through `0x6FC214D0`
+ * (divide-first shortcut above 0x100000, i.e. 4096 damage).
+ */
+export function applyResist113c(dmg256: number, effectiveRes: number): number {
+  const dmg = Math.trunc(dmg256)
+  const res = Math.trunc(effectiveRes)
+  if (dmg <= 0 || res === 0) return dmg
+  // Values outside int32 (scripted "kill" damage far beyond anything the game can produce) keep exact
+  // arithmetic instead of wrapping like the 32-bit original would.
+  if (dmg > 0x7fffffff) return Math.trunc((dmg * (100 - Math.min(res, 100))) / 100)
+  return mulDiv113c(100 - Math.min(res, 100), dmg, 100)
+}
+
+/**
  * 1.13c Elemental Absorb stat mapping (`D2Game.dll` resistance/absorb descriptor table @ `0x6FD22AB0`,
  * stride `0x2C`, offsets `+0x10` = `absPctStat`, `+0x14` = `absFlatStat`; `ItemStatCost.txt` IDs `142..149`):
  * - Row 1 (`0x6FD22ADC`, Fire `+0x10`): `142` (`item_absorbfire_percent`), `143` (`item_absorbfire`)
@@ -1120,7 +1371,8 @@ export const ELEM_ABSORB_STAT_MAP: Readonly<
 /**
  * 1.13c Elemental Absorb (`D2Game.dll` `SUNITDMG_ApplyAbsorb` @ `0x6FCFAD00..0x6FCFAD88`):
  * 1. Reads `%` absorb stat (`desc->absPctStat` at `+0x10`) and clamps it to `<= 40` (`0x28` at `0x6FCFAD37`).
- *    If `pct > 0`, computes `pctAbsorbed256 = floor(dmg256 * pct / 100)` (`0x6FC214D0`), adds it to
+ *    If `pct > 0`, computes `pctAbsorbed256 = mulDiv(eax = pct, edx = dmg256, 100)` (`0x6FC214D0`, which
+ *    divides first for dmg256 > 0x100000), adds it to
  *    `pDamage->dwAbsorbLife` (`+0x48`), and subtracts `pctAbsorbed256` from `dmg256` (`0x6FCFAD48..0x6FCFAD4C`).
  * 2. Reads flat absorb stat (`desc->absFlatStat` at `+0x14`), shifts `flat256 = flat << 8` (`0x6FCFAD66`),
  *    clamps `flatAbsorbed256 = min(dmg256, flat256)` against the post-% remaining `dmg256` (`0x6FCFAD6D..0x6FCFAD75`),
@@ -1146,7 +1398,13 @@ export function applyElementalAbsorb113c(
     }
   }
   const absorbPct = Math.min(40, Math.max(0, Math.trunc(absorbPctRaw)))
-  const pctAbsorbed256 = absorbPct > 0 ? mulDiv113c(remaining256, absorbPct, 100) : 0
+  // 0x6FCFAD2A..0x6FCFAD40: `ecx = 100`, `edx = dmg256`, `eax = pct` -> mulDiv(eax = pct, edx = dmg256).
+  const pctAbsorbed256 =
+    absorbPct <= 0
+      ? 0
+      : remaining256 > 0x7fffffff
+        ? Math.trunc((remaining256 * absorbPct) / 100)
+        : mulDiv113c(absorbPct, remaining256, 100)
   remaining256 = Math.max(0, remaining256 - pctAbsorbed256)
 
   const flatPool256 = Math.max(0, Math.trunc(absorbFlatRaw256))
@@ -1162,17 +1420,12 @@ export function applyElementalAbsorb113c(
   }
 }
 
-export function mulDiv113c(a: number, b: number, c: number): number {
-  if (c === 0) return 0
-  const wide = (): number => Number((BigInt(a) * BigInt(b)) / BigInt(c))
-  if (b > 0x100000) {
-    return c > b >> 4 ? wide() : Math.imul(Math.trunc(b / c), a)
-  }
-  if (a > 0x10000) {
-    return c > a >> 4 ? wide() : Math.imul(Math.trunc(a / c), b)
-  }
-  return Math.trunc(Math.imul(a, b) / c)
-}
+/**
+ * D2Game `0x6FC214D0` / D2Common `0x6FD511E0` mul-div (`eax = factor`, `edx = value`, `ecx = divisor`),
+ * bit-exact including the divide-first shortcuts and the low-dword 64-bit path; see
+ * `src/common/data/mul-div-113c.ts`.
+ */
+export { mulDiv113c }
 
 /**
  * Attacker branch of `D2Game.dll` 0x6FCFBA40 (life / mana steal):
@@ -1244,21 +1497,39 @@ export function computeLifeManaSteal113c(params: {
     drain = Math.trunc(params.defenderDrain)
     if (drain <= 0) return none
   }
-  life *= 64
-  mana *= 64
+  life = (life << 6) | 0
+  mana = (mana << 6) | 0
   if (params.attackerIsPlayer) {
-    if (params.lifeStealDivisor !== 0) life = Math.trunc(life / params.lifeStealDivisor)
-    if (params.manaStealDivisor !== 0) mana = Math.trunc(mana / params.manaStealDivisor)
+    if (params.lifeStealDivisor !== 0) life = Math.trunc(life / params.lifeStealDivisor) | 0
+    if (params.manaStealDivisor !== 0) mana = Math.trunc(mana / params.manaStealDivisor) | 0
   }
-  const phys = Math.trunc(params.phys256)
+  const phys = params.phys256 | 0
   if (phys <= 0) return none
   const scale = (pct64: number): number => {
     if (pct64 === 0) return 0
     let v = mulDiv113c(pct64, phys, 100)
     if (drain !== 100) v = mulDiv113c(drain, v, 100)
-    return Math.trunc(v / 64)
+    return Math.trunc(v / 64) | 0
   }
   return { life256: scale(life), mana256: scale(mana) }
+}
+
+/**
+ * 1.13c `D2Game.dll` `0x6FCFB570` (`SUNITDMG_AddLife`) / `0x6FCFAE70` (`SUNITDMG_AddMana`) delta applied
+ * to a unit with current resource `cur256` and cap `max256` (`<= 0` is ignored; `cur + amt >= max` clamps to `max`).
+ */
+export function applyRawStealDelta256_113c(
+  steal256: number,
+  cur256 = 256,
+  max256 = 0x3fffff00,
+): number {
+  const amt = steal256 | 0
+  if (amt <= 0) return 0
+  const cur = cur256 | 0
+  const cap = max256 | 0
+  let next = (cur + amt) | 0
+  if (next >= cap) next = cap
+  return (next - cur) | 0
 }
 
 /**
@@ -2382,7 +2653,8 @@ export function executeSUnitDmg(
     const rate = packet.frameRate1024 ?? packet.damageRate ?? packet.frameScalar
     if (rate === undefined || rate <= 0) return dr256
     if (rate < 1) return Math.max(0, Math.trunc(dr256 * rate))
-    return Math.max(0, Math.trunc((dr256 * Math.trunc(rate)) / 1024))
+    // 0x6FCFC13B..0x6FCFC147: mulDiv(eax = pDamage+0x54 rate, edx = stat << 8, ecx = 0x400).
+    return Math.max(0, mulDiv113c(Math.trunc(rate), dr256, 1024))
   }
   const flatPhysDr256 = isSanctuaryBypassUndead
     ? 0
@@ -2399,12 +2671,16 @@ export function executeSUnitDmg(
   const afterShieldPhys256 = Math.max(0, rawPhys256 - reactive.absorbedPhys256)
   const afterShieldElem256 = Math.max(0, rawElem256 - reactive.absorbedElem256)
   const remRawPhys256 = Math.max(0, afterShieldPhys256 - flatPhysDr256)
+  // 1.13c DR overflow (`0x6FCFBD41..0x6FCFBD47` row 0, total at `0x6FCFC4F7..0x6FCFC519`): a positive physical
+  // channel driven below 0 by flat DR skips resistance and stays negative, and `dwDmgTotal` (+0x4C) is the
+  // signed sum of all channels, so the overflow eats into the elemental damage of the same hit.
+  const physDrOverflow256 = afterShieldPhys256 > 0 ? Math.max(0, flatPhysDr256 - afterShieldPhys256) : 0
 
   // Compute un-PvP-scaled post-PDR/Res physical damage solely for `damagedinmelee` Thorns reflection (#1631)
   const prePvpAfterShieldPhys256 = Math.max(0, prePvpRawPhys256 - reactive.absorbedPhys256 - flatPhysDr256)
   const prePvpFinalPhys256 = physResRec.isImmune
     ? 0
-    : Math.max(0, Math.trunc((prePvpAfterShieldPhys256 * (100 - physResRec.effectiveRes)) / 100))
+    : Math.max(0, applyResist113c(prePvpAfterShieldPhys256, physResRec.effectiveRes))
 
   // 1.13c MDR Overflow Spill (`D2Game.dll` `0x6FCFBD41..0x6FCFBD47` + `0x6FCFC50A`, #1795):
   // When an active non-poison elemental channel (`afterShieldElem256 > 0`) has `flatMagicDr256` subtracted below 0,
@@ -2447,15 +2723,20 @@ export function executeSUnitDmg(
   // 7. Resistances & 1/5 Immunity Breaking applied to unabsorbed post-PDR/MDR damage
   let finalPhys256 = physResRec.isImmune
     ? 0
-    : Math.max(0, Math.trunc((remRawPhys256 * (100 - physResRec.effectiveRes)) / 100))
+    : Math.max(0, applyResist113c(remRawPhys256, physResRec.effectiveRes))
 
   let finalElem256 = isFireGolemAbsorb || elemResRec.isImmune
     ? 0
-    : Math.max(0, Math.trunc((remRawElem256 * (100 - elemResRec.effectiveRes)) / 100))
+    : Math.max(0, applyResist113c(remRawElem256, elemResRec.effectiveRes))
 
-  // Track resolved poison bitrate/duration for #1871 / #1873
+  // Track resolved poison bitrate/duration and per-channel post-absorb damage for #1871 / #1873 & oracle `dmg` trace
   let resolvedPoisonBitrate256 = 0
   let resolvedPoisonDurationFrames = 0
+  let traceFire256 = 0
+  let traceLtng256 = 0
+  let traceMag256 = 0
+  let traceCold256 = 0
+  let traceColdLen = 0
 
   // Skill-packet poison length resist scaling (`stat 110 item_poisonlengthresist` + player difficulty penalty, #1871)
   if (
@@ -2518,7 +2799,7 @@ export function executeSUnitDmg(
       }
       const resistedStatic256 = Math.max(
         0,
-        Math.trunc((rawStatic256 * (100 - elemResRec.effectiveRes)) / 100),
+        applyResist113c(rawStatic256, elemResRec.effectiveRes),
       )
       finalElem256 = Math.max(0, Math.min(resistedStatic256, hpBefore256 - floorHp256))
     }
@@ -2541,6 +2822,10 @@ export function executeSUnitDmg(
       absorbHeal256 += absorbOut.absorbHeal256
     }
   }
+  if (elemType === 'fire') traceFire256 += finalElem256
+  else if (elemType === 'ltng') traceLtng256 += finalElem256
+  else if (elemType === 'mag') traceMag256 += finalElem256
+  else if (elemType === 'cold') traceCold256 += finalElem256
 
   // 8.1 Weapon / Charm Elemental Riders (`SrcDamage > 0` melee & weapon-carrying projectiles, #1873):
   // `D2Game.dll` `0x6FC5A4E0..0x6FC5A78C` (`MISSILE_InitWeaponDamage`) & `0x6FCFD610` (`SUNITDMG_FillDamageValues`):
@@ -2639,7 +2924,7 @@ export function executeSUnitDmg(
           return
         }
       }
-      let postResCh256 = Math.max(0, Math.trunc((chDmg256 * (100 - chRes.effectiveRes)) / 100))
+      let postResCh256 = Math.max(0, applyResist113c(chDmg256, chRes.effectiveRes))
       const absPair = ELEM_ABSORB_STAT_MAP[ch]
       if (postResCh256 > 0 && absPair && !isSanctuaryBypassUndead) {
         const absOut = applyElementalAbsorb113c(
@@ -2651,6 +2936,10 @@ export function executeSUnitDmg(
         absorbHeal256 += absOut.absorbHeal256
       }
       finalElem256 += postResCh256
+      if (ch === 'fire') traceFire256 += postResCh256
+      else if (ch === 'ltng') traceLtng256 += postResCh256
+      else if (ch === 'cold') traceCold256 += postResCh256
+      else if (ch === 'mag') traceMag256 += postResCh256
     }
 
     if (mergedBowElem !== 'fire') {
@@ -2797,7 +3086,7 @@ export function executeSUnitDmg(
           ...defenderResistParams113c(defender, 'pois'),
         })
         if (!poisRes.isImmune) {
-          const effRate256 = Math.max(0, Math.trunc((combinedBitrate256 * (100 - poisRes.effectiveRes)) / 100))
+          const effRate256 = Math.max(0, applyResist113c(combinedBitrate256, poisRes.effectiveRes))
           const effFrames = computeEffectivePoisonLengthFrames113c(combinedRawFrames, defender)
           finalElem256 += effRate256 * effFrames
           resolvedPoisonBitrate256 = effRate256
@@ -2821,7 +3110,7 @@ export function executeSUnitDmg(
         })
         if (!poisRes.isImmune) {
           anyRiderChannelNonImmune = true
-          const effRate256 = Math.max(0, Math.trunc((pvpPoisRate256 * (100 - poisRes.effectiveRes)) / 100))
+          const effRate256 = Math.max(0, applyResist113c(pvpPoisRate256, poisRes.effectiveRes))
           const effFrames = computeEffectivePoisonLengthFrames113c(rawWeapPoisFrames, defender)
           if (effRate256 > 0 && effFrames > 0) {
             finalElem256 += effRate256 * effFrames
@@ -2866,6 +3155,10 @@ export function executeSUnitDmg(
   if (packet.multiElemPacket && (baseWeapPhysWithoutNormal256 > 0 || baseWeapPhys256 > 0 || rawPhys256 > 0)) {
     if (!packet.elemMin256 && !packet.elemMax256) {
       finalElem256 = 0
+      traceFire256 = 0
+      traceLtng256 = 0
+      traceMag256 = 0
+      traceCold256 = 0
     }
     const mep = packet.multiElemPacket
     const rawBaseWpPhys256 =
@@ -2906,13 +3199,14 @@ export function executeSUnitDmg(
         ...defenderResistParams113c(defender, 'fire'),
       })
       if (rawFire256 > 0 && !fireRes.isImmune) {
-        const postResFire256 = Math.max(0, Math.trunc((rawFire256 * (100 - fireRes.effectiveRes)) / 100))
+        const postResFire256 = Math.max(0, applyResist113c(rawFire256, fireRes.effectiveRes))
         const fireAbsorbOut = applyElementalAbsorb113c(
           postResFire256,
           defender.statList.getAccruedStat('item_absorbfire_percent'),
           Math.max(0, defender.statList.getAccruedStat('item_absorbfire')) * FIXED_ONE,
         )
         finalElem256 += fireAbsorbOut.remainingDamage256
+        traceFire256 += fireAbsorbOut.remainingDamage256
         absorbHeal256 += fireAbsorbOut.absorbHeal256
       }
     }
@@ -2938,13 +3232,14 @@ export function executeSUnitDmg(
         ...defenderResistParams113c(defender, 'cold'),
       })
       if (rawCold256 > 0 && !coldRes.isImmune) {
-        const postResCold256 = Math.max(0, Math.trunc((rawCold256 * (100 - coldRes.effectiveRes)) / 100))
+        const postResCold256 = Math.max(0, applyResist113c(rawCold256, coldRes.effectiveRes))
         const coldAbsorbOut = applyElementalAbsorb113c(
           postResCold256,
           defender.statList.getAccruedStat('item_absorbcold_percent'),
           Math.max(0, defender.statList.getAccruedStat('item_absorbcold')) * FIXED_ONE,
         )
         finalElem256 += coldAbsorbOut.remainingDamage256
+        traceCold256 += coldAbsorbOut.remainingDamage256
         absorbHeal256 += coldAbsorbOut.absorbHeal256
         if (!defender.statList.getAccruedStat('item_cannotbefrozen')) {
           const rawChillFrames = mep.chillDurationFrames ?? 30
@@ -2987,13 +3282,14 @@ export function executeSUnitDmg(
         ...defenderResistParams113c(defender, 'ltng'),
       })
       if (rawLtng256 > 0 && !ltngRes.isImmune) {
-        const postResLtng256 = Math.max(0, Math.trunc((rawLtng256 * (100 - ltngRes.effectiveRes)) / 100))
+        const postResLtng256 = Math.max(0, applyResist113c(rawLtng256, ltngRes.effectiveRes))
         const ltngAbsorbOut = applyElementalAbsorb113c(
           postResLtng256,
           defender.statList.getAccruedStat('item_absorblight_percent'),
           Math.max(0, defender.statList.getAccruedStat('item_absorblight')) * FIXED_ONE,
         )
         finalElem256 += ltngAbsorbOut.remainingDamage256
+        traceLtng256 += ltngAbsorbOut.remainingDamage256
         absorbHeal256 += ltngAbsorbOut.absorbHeal256
       }
     }
@@ -3023,6 +3319,7 @@ export function executeSUnitDmg(
       effColdFrames = Math.floor(effColdFrames / 2)
     }
     if (effColdFrames > 0) {
+      traceColdLen = effColdFrames
       defender.stateBus.applyState({
         stateNameOrId: 'cold',
         sourceUnitId: attacker.id,
@@ -3262,7 +3559,9 @@ export function executeSUnitDmg(
     }
   }
 
-  const totalDamage256 = cbDamage256 + finalPhys256 + finalElem256
+  // The DR overflow (physDrOverflow256) only lowers the signed `dwDmgTotal`; the per-channel values are
+  // kept (0x6FCFC4F7..0x6FCFC519). A non-positive total deals no damage.
+  const totalDamage256 = Math.max(0, cbDamage256 + finalPhys256 + finalElem256 - physDrOverflow256)
   const hpAfter256 = Math.max(0, currentDefenderHp256 - totalDamage256)
   defender.statList.setHp256(hpAfter256)
 
@@ -3313,7 +3612,7 @@ export function executeSUnitDmg(
       })
       const reflected256 = attackerPhysRes.isImmune
         ? 0
-        : Math.max(0, Math.trunc((rawThorns256 * (100 - attackerPhysRes.effectiveRes)) / 100))
+        : Math.max(0, applyResist113c(rawThorns256, attackerPhysRes.effectiveRes))
       if (reflected256 > 0) {
         reflectedPhys256 += reflected256
         const curHp = attacker.statList.getHp256()
@@ -3400,7 +3699,7 @@ export function executeSUnitDmg(
       })
       const imReflected256 = attackerPhysRes.isImmune
         ? 0
-        : Math.max(0, Math.trunc((rawReflected256 * (100 - attackerPhysRes.effectiveRes)) / 100))
+        : Math.max(0, applyResist113c(rawReflected256, attackerPhysRes.effectiveRes))
       if (imReflected256 > 0) {
         reflectedPhys256 += imReflected256
         const curHp = attacker.statList.getHp256()
@@ -3456,6 +3755,56 @@ export function executeSUnitDmg(
   const effectiveImmuneToElem =
     (elemResRec.isImmune && (rawElem256 > 0 || packet.skillId === 42) && !anyRiderChannelNonImmune) ||
     (!rawElem256 && anyRiderChannelRaw && !anyRiderChannelNonImmune && finalElem256 === 0)
+
+  if (sUnitDmgTraceObserver113c !== null) {
+    const hitFlags =
+      ((attackKind !== 'spell' ? 0x20 : 0) |
+        (finalPhys256 > 0 || rawPhys256 > 0 ? 0x02 : 0)) >>>
+      0
+    const resultFlags =
+      (0x01 |
+        (!(packet.noHitRecovery || packet.isPersistentGroundFire) &&
+        (finalPhys256 + traceFire256 + traceLtng256 + traceMag256 + traceCold256 > 0)
+          ? 0x04
+          : 0) |
+        (knockedBack ? 0x08 : 0) |
+        (isCritical ? 0x2000 : 0)) >>>
+      0
+    const retDmg =
+      (finalPhys256 +
+        traceFire256 +
+        traceLtng256 +
+        traceMag256 +
+        traceCold256 +
+        resolvedPoisonBitrate256) >>>
+      0
+    sUnitDmgTraceObserver113c({
+      att: [atkRawType, atkNumericId],
+      def: [defRawType, defNumericId],
+      hp: [hpBefore256 >>> 0, hpBefore256 >>> 0],
+      ret: retDmg,
+      raw: [
+        hitFlags,
+        resultFlags,
+        finalPhys256 >>> 0,
+        0,
+        traceFire256 >>> 0,
+        attackKind !== 'spell' ? 2 : 0,
+        0,
+        traceLtng256 >>> 0,
+        traceMag256 >>> 0,
+        traceCold256 >>> 0,
+        resolvedPoisonBitrate256 >>> 0,
+        resolvedPoisonDurationFrames >>> 0,
+        traceColdLen >>> 0,
+        0,
+        attackerHealed256 >>> 0,
+        attackerManaLeeched256 >>> 0,
+        0,
+        absorbHeal256 >>> 0,
+      ],
+    })
+  }
 
   return {
     hit: true,

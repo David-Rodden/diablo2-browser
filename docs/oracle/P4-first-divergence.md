@@ -193,24 +193,90 @@ FIRST DIVERGENCE at frame 57: field player #1
 
 ---
 
-## Current first divergences (not fixed)
+## Iteration 5 — game seed, per-unit `D2SeedStrc`, Act outfit palette, `MONSTER_InitStats` & state bitmaps
 
-**Player track (`--types 0`), frame 57: run velocity.** The oracle's run positions after the `0x03` at
-frame 50 (start 5653.5) cross sub-tiles at frames 50, 52, 54, 56, 57, 59, 61, 63, 65, 66, which bounds
-the per-frame speed to `[0.5625, 0.5667)` sub-tiles — exactly `RunVelocity 9 / 16 = 0.5625`
-(`CharStats.txt`), i.e. 14.0625 sub-tiles/s. The TS predictor uses `D2_BASE_RUN_SUBTILES_PER_SEC = 13.5`
-(0.54 / frame; walk 9.0 vs `6 / 16 * 25 = 9.375`). The D2Common step is
-`tVelocityVector = (tDirectionVector * dwVelocity) >> 8` (`0x6FD5D240`, ported in
-`src/common/path/step.ts`); where D2Game sets `dwVelocity` for the player's walk/run mode
-(`PATH_SetVelocity` #10488 call sites `0x6FC46B0A`, `0x6FC483F5`, `0x6FC8FD16`, `0x6FC8FD90`,
-`0x6FCB97F5`, `0x6FCCFAD5`, `0x6FCD4027`, `0x6FCD634B`) still has to be confirmed before changing the
-shared client/server predictor.
+**First divergence (before, `--types 0,1` + `gs` + `st` + `seedLo`/`seedHi`):**
 
-**Monster track (`--types 0,1`), frame 2: monster stats.** Oracle town monsters have level (stat 12)
-0; rogue1 (minHP 142, maxHP 284) has HP 256/512 (1 or 2 points) and the NPCs 0/0. This matches
-`MonLvl.txt` row 0 (`HP = 1`): `rand(142..284) * 1 / 100 ∈ {1, 2}` with the town's `Levels.txt`
-monster level 0; the TS server gives NPCs their `MonStats` level (1) and full HP (9 points for the
-rogues). The NPCs' 0 HP and the per-unit HP roll (1 vs 2) depend on the monster stat-init path and on
-per-unit `D2SeedStrc` seeds, which the TS server does not have yet (P0 audit §3.2). Excluding HP/level
-(`--fields class,mode,x,y --stats 0,1,2,3,8,9,10,11,13,14,15`), the next monster divergence is NPC
-wandering (Kashya `mode 1 → 2` at frame 24), also driven by per-unit seeds.
+```
+FIRST DIVERGENCE at frame 2: game-seed (gs) & field monster #1 (seedLo/seedHi, stat6/stat7/stat12)
+```
+
+**Root cause.** Five interconnected 1.13c initialization paths advance `pGame->tSeed` and each unit's
+`pUnit->tSeed` (`D2SeedStrc` `{ lo, hi }`, inline step `uint64(lo) * 0x6AC690C5 + uint64(hi)`):
+
+1. *`GAME_InitSeed` (`D2Game 0x6FC4A900`) & `SUNIT_AllocUnitData` (`0x6FD01D90` -> `0x6FD00110` / `0x6FD000C0`).*
+   With `-seed N`, `pGame->tSeed` starts at `{ N, 0x29A }` and advances `4` times during game creation,
+   `1` time on player unit creation (`pPlayer->tSeed = { draw, 0x29A }`), and `2` times per starting item
+   in `CharStats.txt` `item1..item10` (both fresh level-1 characters without `plr.inventory` and saved
+   characters reconstructed from `D2S` equipment/inventory).
+2. *Room preset activation order (`0x6FC4CBE0` -> `0x6FD01430`).* When a room activates, `0x6FD01430`
+   iterates non-monster presets before monsters: every preset object — including `Objects.txt` `Sync == 0`
+   server-only markers (`#2000`, e.g. `385` `CainStart`) — draws `1` seed from `pGame->tSeed` before the
+   room's preset monsters draw theirs, followed by warp tiles (`1` draw each).
+3. *Per-Act 13-slot monster component palette (`0x6FCEA5F0` -> `0x6FCFF1A0`) & `MONSTER_ChooseOutfit` (`0x6FCCF730`).*
+   `MONSTER_AllocMonsterData` (`0x6FCD0320`) registers each Act's first 13 multi-piece monster classes
+   (`MonStats2.nTotalPieces > 2`, excluding `{195, 196, 294, 296}`) using the first spawned unit's
+   `tSeed` (`rogue1` `152` consumes `27` draws on `m#1`, then `1` selection draw in `0x6FCCF730`;
+   `m#2/#7/#8` hit the cached Act palette and draw `1` step each; single-piece town NPCs `kashya` `150`,
+   `warriv1` `155`, `akara` `148`, `charsi` `154` bypass palette registration and draw `1` step in
+   `0x6FCCF730`).
+4. *`MONSTER_InitStats` (`0x6FCCFDB0`), `D2Common #11089` (`0x6FDA4A00`) & sparse `STATLIST_SetStat` (`0x6FD8A280`).*
+   In Normal (`nDifficulty == 0`), monsters use `MonStats.Level[0]` directly without clamping `0` to `1`
+   (`rogue1` and town NPCs stay `level = 0`). `0x6FDA4A00` scales `minHP`/`maxHP` by `MonLvl[0].L-HP = 1`
+   (`142..284 -> 1..2` for `rogue1`, `0..0` for town NPCs), and `0x6FCD0043` rolls
+   `minHP + randLim(&pUnit->tSeed, maxHP - minHP + 1)` (always `1` seed step, yielding `256` on `m#1` and
+   `512` on `m#2/#7/#8`!). `D2Common.dll` `STATLIST_SetStat` (`0x6FD8A280`) never inserts `0` into
+   `BaseStats` and deletes zeroed entries, so `0`-HP town NPCs do not trigger `ItemStatCost` `minAccr = 1`
+   on `STAT_MAXHP` (`7`), while `S2C 0xAC` `lifePct` (`0x6FC97060`) still emits `0x80` (`128`) whenever
+   `maxHp <= 0`.
+5. *Unit state bitmaps (`st`): `SUNIT_SetAlignment` (`0x6FD004B0`) & `SKILLS_RefreshPassiveSkills` (`0x6FCBA1A0`).*
+   Every player and monster has `STATE_ALIGNMENT = 105` (`remondeath = 0`) set at spawn, and all 29
+   `Skills.txt` `passivestate` rows (`64..83`, `97` `skel_mastery`, `111` `golem_mastery`, `152`, `155`,
+   `160`, `181..183`) activate when `slvl > 0`.
+
+**Fix.**
+
+- Added `src/common/rng/unit-seeds-113c.ts` and `src/server/data/monstats2-outfit-113c.ts`, wired per-Act
+  outfit palettes and per-unit `D2SeedStrc` across `GameInstanceState`, `loadArea` / deferred
+  `PendingRoomPresets113c` (objects + `#2000` hidden markers -> monsters -> warp tiles), `connectPlayer`
+  starting kit seed draws, `MONSTER_InitStats` level/HP rolls, `UnitStatList.setBaseStat`/`addStat` sparse
+  zero deletion (`0x6FD8A280`), `STATE_ALIGNMENT = 105`, and all 29 passive skill `stateId`s.
+- Extended `tools/oracle/lib/replica.ts` and `tools/oracle/lib/trace-diff.ts` (`diff.ts`) to emit and
+  compare `gs`, `seedLo`/`seedHi`, `st`, and `dmg` (`SUnitDmgTraceEvent113c`), and ran
+  `parity-report.ts --write`: all 10 golden scenarios advanced from `0` matched frames to `23` matched
+  frames (frame 24) with 100% bit-for-bit seed, stat, and state parity.
+
+**Next divergence (all 10 scenarios at frame 24):**
+
+```
+FIRST DIVERGENCE at frame 24: field monster #3
+  field mode: oracle=2 replica=1
+```
+
+---
+
+## Iteration 6 — Player `9/16` run velocity (`D2Path` Q16.16) & Town NPC `AI_Npc` wandering
+
+**Next divergence (all 10 scenarios at frame 24, player track at frame 57 in `a1-town-walk`):**
+
+```
+FIRST DIVERGENCE at frame 24: field monster #3
+  field mode: oracle=2 replica=1
+```
+
+**Root cause.**
+
+1. *Player walk/run velocity (`UNITS_UpdateAnimRateAndVelocity` `D2Common 0x6FD83140` / `0x6FD833CF`, `UNITS_SetRunBonus` `0x6FD82EA0`, and all `PATH_SetVelocity` `D2Common.#10149` `0x6FD84D40` / `D2Game 0x6FC2ACAC` call sites).*
+   `CharStats.txt` gives `WalkVelocity = 6` (`1536` in Q8.8 -> `24576 / 65536 = 6/16 = 0.375` sub-tiles/frame = `9.375`/s at 25 Hz) and `RunVelocity = 9` (`+50` `STAT_VELOCITYPERCENT` -> `2304` in Q8.8 -> `36864 / 65536 = 9/16 = 0.5625` sub-tiles/frame = `14.0625`/s at 25 Hz). Stepping player movement via `D2Common_10142` + `D2Common_10226` (`nBaseVelocity = 0x400`) eliminates the rounding lag (`9.0` / `13.5`/s) at frame 57: in `a1-town-walk` (`--types 0`), Player `#1` now matches Oracle sub-frame-for-sub-frame through frame `155` (`f=156`).
+2. *Monster base `STAT_VELOCITYPERCENT = 75` (`MONSTER_InitStats` `D2Game 0x6FCCFFD1`) & Town NPC `AI_Npc` (`0x6FC3DB40`).*
+   `0x6FCCFFD1` initializes `STAT_VELOCITYPERCENT (67) = 75 (0x4B)` on every monster, scaling town NPC walk velocity to `trunc(75 * (Velocity << 8) / 100)`. Town NPCs (`MonStats.AI == "Npc"`: Kashya `150`, Warriv `155`, Akara `148`, Charsi `154`, etc.) run `AI_Npc` (`0x6FC3DB40`), `QUESTS_NpcGreetingAi` (`0x6FC39C20`), `AI_HandleNpcNodes` (`0x6FC36A30`), and `AI_FollowDs1NpcPath` (`0x6FC3BBC0` -> `0x6FD2F850` -> `0x6FC36970` / `0x6FC39A00`..`0x6FC39BB0`) using per-unit `D2SeedStrc`, `PATHTYPE_STRAIGHT (7)` (`dwPathTypeOverride = 7`), `PATH_SetDistance(pPath, 20)` (`#10022` `0x6FD84630`, called at `0x6FC95EE7`), and `PATHTYPE_WALL_FOLLOW (15)` fallback (`0x6FC94DF0`). Even when a preset spec carries `aiDisabled` in town, `isTownNpcMonster113c(hcIdx)` preserves `townNpcAiEnabled`.
+
+**Fix.**
+
+- Wired `AreaPathWorld113c` (`src/server/ai/town-npc-ai-113c.ts`) with full cross-room adjacency (`buildAdjacentRoomLists`) for player `D2Path` stepping (`6/16` walk, `9/16` run, `PLRMODE_TW = 6` in town per `0x6FC9866C`) and Town NPC `AI_Npc` wandering (`75%` base monster `STAT_VELOCITYPERCENT`, `PATH_SetDistance(20)`, `PATHTYPE_STRAIGHT` + `PATHTYPE_WALL_FOLLOW` fallback, `D2Common_10226(..., 0x400)`), and fixed `spawnMonsterInternal` (`world-spawning-and-aoi.ts`) so `isTownNpcMonster113c(hcIdx)` enables `townNpcAiEnabled` on town presets.
+- Documented full disassembly evidence in `kb/engine/d2common-unit-velocity-113c.md` and `kb/monsters/d2game-npc-wander-ai-113c.md`, and ratcheted `tests/fixtures/oracle/golden/parity-baseline.json`: 9 of 10 scenarios advanced from `23` to **`65` matched frames**, and `a1-town-walk` advanced to **`59` matched frames** (with Kashya `#3`, Akara `#5`, and all 4 `rogue1` units having `0` divergences across all `750` frames, and Player `#1` matching through frame `155`).
+
+**Current first divergences (post-Step 2):**
+
+- **9 scenarios (`a1-bloodmoor-melee`, `p52-*`), frame 66:** Warriv (`m#4`, `hcIdx = 155`) obstacle/greeting retry timing around the Rogue Encampment campfire (`mode: oracle=2 replica=1`).
+- **`a1-town-walk`, frame 60:** Warriv (`m#4`) `PATHTYPE_WALL_FOLLOW` 1-sub-tile detour around the campfire (`x: oracle=5650 replica=5649`); player track (`--types 0`) matches through frame `155`.

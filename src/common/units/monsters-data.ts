@@ -2329,18 +2329,10 @@ export function applyEliteModifiers(
     cold: base.resistances?.cold ?? 0,
     poison: base.resistances?.poison ?? 0,
   }
-  const cappedRes =
+  const finalRes =
     modifiers.length > 0 && rank !== 'minion'
       ? applyMonsterUModResistances(baseRes, modifiers)
       : baseRes
-  let poisonRes = cappedRes.poison
-  if (rank !== 'minion' && (normMods.has('poisonenchant') || normMods.has('poisonenchanted'))) {
-    poisonRes += 75
-  }
-  const finalRes: MonsterResistances = {
-    ...cappedRes,
-    poison: poisonRes,
-  }
 
   const hasAnyResMod =
     finalRes.physical !== 0 ||
@@ -4894,7 +4886,7 @@ export function resolveMonsterStats(
       ? base
       : applyEliteModifiers(base, effectiveRank, diff, strModifiers, options?.superUniqueId)
 
-  if (strModifiers.length > 0 && base.resistances) {
+  if (effectiveRank !== 'minion' && strModifiers.length > 0 && base.resistances) {
     const cappedRes = applyMonsterUModResistances(
       {
         physical: base.resistances.physical ?? 0,
@@ -5020,16 +5012,23 @@ export function getSuperUniqueIndexById(superUniqueId: string): number | undefin
 }
 
 /**
- * Apply 1.13c `MonUMod` resistance bonuses (`D2Game.dll` `0x6fccf610`) to a monster's base difficulty resistances.
+ * Apply 1.13c `MonUMod` resistance bonuses (`D2Game.dll` `0x6fc41be0..0x6fc41e78`) to a boss monster's
+ * base difficulty resistances (`#2003`).
  *
- * Canonical 1.13c rules:
- * - At most 2 immunities (`res >= 100`) may be held when applying `magicresistant` (8), `fireenchant` (9),
- *   `lightenchant` (17), `coldenchant` (18), or `spectralhit` (27).
- * - `magicresistant` (8): checks `countImmunities() < 2` before EACH of `fire (+40)`, `lightning (+40)`, `cold (+40)`
- *   sequentially, so if fire crosses 100 and reaches 2 total immunities, lightning and cold are NOT incremented.
- * - `spectralhit` (27): checks `countImmunities() < 2` and `res < 75` before adding `+20` to fire, lightning, cold.
- * - `manahit` (25): adds `+20` magic resistance unconditionally.
- * - `stoneskin` (28): adds `+50` physical resistance unconditionally.
+ * Canonical 1.13c rules (`MONUMOD_ApplyResistances` @ `0x6FC41BE0`):
+ * - Boss-only (`bBoss != 0` at `0x6FC41BFD..0x6FC41C03`; callers must NOT pass `rank === 'minion'`).
+ * - Counts all 6 resistances (`physical`, `magic`, `fire`, `lightning`, `cold`, `poison` `>= 100`);
+ *   once `countImmunities() >= 2` (`0x6FC41CBA..0x6FC41CBF`), all `MonUMod` resistance additions
+ *   (`8`, `9`, `17`, `18`, `23`, `25`, `27`, `28`) are skipped.
+ * - `magicresistant` (`8`, `0x6FC41CC9..0x6FC41D50`): checks `< 100` and `countImmunities() < 2`
+ *   sequentially in `cold (+40) -> fire (+40) -> lightning (+40)` order, never inflating an already-immune stat.
+ * - `fireenchant` (`9`), `lightenchant` (`17`), `coldenchant` (`18`), `poisonhit` (`23`):
+ *   each adds `+75` to its respective element when `countImmunities() < 2`.
+ * - `manahit` (`25`, `0x6FC41DCB..0x6FC41DE5`): adds `+20` magic resistance when `countImmunities() < 2`.
+ * - `spectralhit` (`27`, `0x6FC41DE8..0x6FC41E5B`): checks `countImmunities() < 2` and `res < 75`
+ *   sequentially in `cold (+20) -> fire (+20) -> lightning (+20)` order.
+ * - `stoneskin` (`28`, `0x6FC41E5E..0x6FC41E6C`): adds `+50` physical resistance when `countImmunities() < 2`.
+ * - `ghostly` (`36`, Champion init `0x6FC43850`, separate from `0x6FC41BE0`): sets `physical = Math.max(80, physical)`.
  */
 export function applyMonsterUModResistances(
   base: MonsterResistances | MonsterKind,
@@ -5051,7 +5050,7 @@ export function applyMonsterUModResistances(
   let fire = resolvedBase.fire
   let lightning = resolvedBase.lightning
   let cold = resolvedBase.cold
-  const poison = resolvedBase.poison
+  let poison = resolvedBase.poison
 
   const countImmunities = () =>
     (physical >= 100 ? 1 : 0) +
@@ -5063,26 +5062,38 @@ export function applyMonsterUModResistances(
 
   for (const rawMod of bossMods) {
     const key = String(rawMod).trim().toLowerCase().replace(/[\s_-]+/g, '')
+    if (key === '36' || key === 'ghostly' || key === 'championghostly') {
+      physical = Math.max(80, physical)
+      continue
+    }
+    if (countImmunities() >= 2) continue
+
     if (key === '8' || key === 'resist' || key === 'magicresistant') {
-      if (countImmunities() < 2) fire += 40
-      if (countImmunities() < 2) lightning += 40
-      if (countImmunities() < 2) cold += 40
+      if (cold < 100 && countImmunities() < 2) cold += 40
+      if (fire < 100 && countImmunities() < 2) fire += 40
+      if (lightning < 100 && countImmunities() < 2) lightning += 40
     } else if (key === '9' || key === 'fire' || key === 'fireenchant' || key === 'fireenchanted') {
-      if (countImmunities() < 2 || fire >= 100) fire += 75
+      fire += 75
     } else if (key === '17' || key === 'lightning' || key === 'lightenchant' || key === 'lightningenchanted') {
-      if (countImmunities() < 2 || lightning >= 100) lightning += 75
+      lightning += 75
     } else if (key === '18' || key === 'cold' || key === 'coldenchant' || key === 'coldenchanted') {
-      if (countImmunities() < 2 || cold >= 100) cold += 75
+      cold += 75
+    } else if (
+      key === '23' ||
+      key === 'poison' ||
+      key === 'poisonhit' ||
+      key === 'poisonenchant' ||
+      key === 'poisonenchanted'
+    ) {
+      poison += 75
     } else if (key === '25' || key === 'manahit' || key === 'manaburn') {
       magic += 20
     } else if (key === '27' || key === 'spectralhit') {
-      if (countImmunities() < 2 && fire < 75) fire += 20
-      if (countImmunities() < 2 && lightning < 75) lightning += 20
-      if (countImmunities() < 2 && cold < 75) cold += 20
+      if (cold < 75 && countImmunities() < 2) cold += 20
+      if (fire < 75 && countImmunities() < 2) fire += 20
+      if (lightning < 75 && countImmunities() < 2) lightning += 20
     } else if (key === '28' || key === 'stoneskin') {
       physical += 50
-    } else if (key === '36' || key === 'ghostly' || key === 'championghostly') {
-      physical = Math.max(80, physical)
     }
   }
 

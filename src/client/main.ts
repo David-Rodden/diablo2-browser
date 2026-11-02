@@ -133,6 +133,7 @@ import {
 } from './session/online-session.ts'
 import type { GameCompletion113c } from './session/game-completion-113c.ts'
 import { getGlobalSettingsStore, type SettingsStore } from './settings/settings-store.ts'
+import { resolveEffectiveGraphics, type EffectiveGraphics } from './settings/graphics-quality.ts'
 import {
   getAssetCacheStatus,
   registerAssetCache,
@@ -543,6 +544,14 @@ export async function startPlayApp(options?: {
 
   const minimap = new Minimap()
   const renderer = new SpriteRenderer(viewCanvas)
+  // Graphics quality preset: push the D2GL upscaler overrides (PD2 data mode) only when they change.
+  let appliedPostProcessKey = ''
+  const applyPostProcessQuality = (graphics: EffectiveGraphics): void => {
+    const key = `${graphics.postProcess.shaderPreset}|${graphics.postProcess.sharpen ? 1 : 0}`
+    if (key === appliedPostProcessKey) return
+    appliedPostProcessKey = key
+    renderer.setPostProcessConfig(graphics.postProcess)
+  }
   const lightGrid = new LightGrid()
   const tileGpuCache = new TileAtlasGpuCache(renderer)
   const entityArtCache = new EntityArtCache(renderer, '')
@@ -2754,7 +2763,10 @@ export async function startPlayApp(options?: {
     // World render-rate cap (settings `worldRenderFps`: 60 = uncapped, 30 = ~half
     // the GPU raster). While capped, the 25Hz logic above keeps running untouched;
     // only the world+HUD draw is postponed.
-    const worldRenderFpsCap = settingsStore.get().worldRenderFps === 30 ? 30 : 0
+    // Graphics quality preset: clamps the user's options without rewriting them.
+    const graphics = resolveEffectiveGraphics(settingsStore.get())
+    applyPostProcessQuality(graphics)
+    const worldRenderFpsCap = graphics.worldRenderFps === 30 ? 30 : 0
     if (worldRenderFpsCap > 0) {
       const frameMs = 1000 / worldRenderFpsCap
       if (nextWorldRenderMs !== null && nowMs < nextWorldRenderMs - 2) return
@@ -2766,7 +2778,13 @@ export async function startPlayApp(options?: {
 
     const dpr =
       typeof window !== 'undefined' && Number.isFinite(window.devicePixelRatio) && window.devicePixelRatio > 0
-        ? clampMobileDevicePixelRatio(window.devicePixelRatio, session.hudManager.touchControls.enabled)
+        ? Math.max(
+            1,
+            Math.min(
+              graphics.maxRenderDpr,
+              clampMobileDevicePixelRatio(window.devicePixelRatio, session.hudManager.touchControls.enabled),
+            ),
+          )
         : 1
     const cssW = viewCanvas.clientWidth > 0 ? viewCanvas.clientWidth : profile.width
     const cssH = viewCanvas.clientHeight > 0 ? viewCanvas.clientHeight : profile.height
@@ -2783,12 +2801,14 @@ export async function startPlayApp(options?: {
         viewCanvas.height = targetCanvasH
       }
     }
-    renderer.pixelScale = useUpscaledBackbuffer ? 1 : syncCrispBackingStore(viewCanvas, profile.width, profile.height)
+    renderer.pixelScale = useUpscaledBackbuffer
+      ? 1
+      : syncCrispBackingStore(viewCanvas, profile.width, profile.height, graphics.maxCrispScale)
 
     lastRenderSnapshot = renderSceneSourceFrame({
       source: session.sceneSource,
       lightingPreset: currentSettings.lightingPreset,
-      lightingTargets: { lightGrid, renderer, lightQuality: currentSettings.lightQuality, nowMs },
+      lightingTargets: { lightGrid, renderer, lightQuality: graphics.lightQuality, nowMs },
       renderer,
       tileGpuCache,
       entityArtCache,
@@ -2804,6 +2824,8 @@ export async function startPlayApp(options?: {
       hudManager: session.hudManager,
       weather: weatherPass,
       backdrop: backdropPass,
+      vfxBudget: graphics.vfxBudget,
+      groundLabelMax: graphics.groundLabelMax,
       nowMs,
     })
     // 1.13c FPS counter 0x6fb0a9a0 (called at 0x6faf4392): after the draw and the UI.

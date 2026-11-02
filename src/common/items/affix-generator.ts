@@ -264,6 +264,12 @@ export const NON_RANDOM_RANGE_CODES: ReadonlySet<string> = new Set([
   'levelup-skill',
   'charged',
   'skill-rand',
+  'randclassskill',
+  'randclassskill1',
+  'randclassskill2',
+  'splash',
+  'item_splashonhit',
+  'sorc-skill-rand-ctc',
 ])
 
 /**

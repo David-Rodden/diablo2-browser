@@ -16,6 +16,10 @@ import type { MapService } from '../../../src/client/map/map-service.ts'
 import { createMapServiceAreaLevelSource } from '../../../src/client/map/map-service-area-source.ts'
 import { hexToBytes } from '../../../src/netproto/index.ts'
 import { GameInstance } from '../../../src/server/engine/game-instance.ts'
+import {
+  setSUnitDmgTraceObserver113c,
+  type SUnitDmgTraceEvent113c,
+} from '../../../src/server/engine/combat-pipeline.ts'
 import { SINGLE_PLAYER_POLICY } from '../../../src/server/engine/game-instance/constants-and-helpers.ts'
 import type { GameInstanceHost } from '../../../src/server/engine/game-instance/host.ts'
 import type {
@@ -203,39 +207,80 @@ function sampleMonsterStats(st: UnitStatList, statIds: readonly number[]): numbe
   return statIds.map((id) => Math.trunc(st.getAccruedStat(id)))
 }
 
+/** `States.txt` row 105 `alignment` (`SUNIT_SetAlignment` `0x6FD004B0`), active on every player & monster. */
+const STATE_ALIGNMENT_113C = 105
+
 type Row = (number | null)[]
+
+/** `[seedLo, seedHi]` of a unit's `D2SeedStrc` (`D2UnitStrc+0x20/+0x24`), or nulls when it has none. */
+function unitSeed(host: GameInstanceHost, unitType: number, unitId: number): [number | null, number | null] {
+  const seed = host.unitSeeds.get(`${unitType}:${unitId}`)
+  return seed === undefined ? [null, null] : [seed.lo >>> 0, seed.hi >>> 0]
+}
+
+function collectActiveStateIds(rawStates: ReadonlySet<number>, st: UnitStatList): number[] {
+  const set = new Set<number>([STATE_ALIGNMENT_113C])
+  for (const id of rawStates) {
+    if (Number.isInteger(id) && id > 0) set.add(id)
+  }
+  for (const mod of st.getActiveModifiers()) {
+    if (Number.isInteger(mod.stateId) && mod.stateId > 0) set.add(mod.stateId)
+  }
+  return [...set].sort((a, b) => a - b)
+}
 
 function byId(a: Row, b: Row): number {
   return (a[0] as number) - (b[0] as number)
 }
 
-/** Samples one trace frame line (`t0` players, `t1` monsters/NPCs, `t3` missiles), rows sorted by id. */
+/** Samples one trace frame line (`t0` players, `t1` monsters/NPCs, `t3` missiles, `gs`, `st`, `dmg`), rows sorted by id. */
 export function sampleFrame(
   game: GameInstance,
   statIds: readonly number[],
   injected: readonly (readonly [number, string])[],
+  dmgEvents: readonly SUnitDmgTraceEvent113c[] = [],
 ): string {
   const host = game as unknown as GameInstanceHost
   const t0: Row[] = []
+  const st0: number[][] = []
   for (const p of host.players.values()) {
-    const stats = withPlayerStatList(host, p, (st) => samplePlayerStats(st, p, statIds))
-    // TS units carry no per-unit D2SeedStrc (P0 audit §3.2) -> seedLo/seedHi null.
-    t0.push([p.unitId, p.classId, p.mode, subtile(p.x), subtile(p.y), null, null, p.areaId, ...stats])
+    const { stats, states } = withPlayerStatList(host, p, (st) => ({
+      stats: samplePlayerStats(st, p, statIds),
+      states: collectActiveStateIds(p.states, st),
+    }))
+    t0.push([p.unitId, p.classId, p.mode, subtile(p.x), subtile(p.y), ...unitSeed(host, 0, p.unitId), p.areaId, ...stats])
+    if (states.length > 0) st0.push([0, p.unitId, ...states])
   }
   const t1: Row[] = []
+  const st1: number[][] = []
   for (const m of host.monsters.values()) {
-    const stats = withMonsterStatList(host, m, (st) => sampleMonsterStats(st, statIds))
-    t1.push([m.unitId, m.classId, m.mode, subtile(m.x), subtile(m.y), null, null, m.areaId, ...stats])
+    const { stats, states } = withMonsterStatList(host, m, (st) => ({
+      stats: sampleMonsterStats(st, statIds),
+      states: collectActiveStateIds(m.states, st),
+    }))
+    t1.push([m.unitId, m.classId, m.mode, subtile(m.x), subtile(m.y), ...unitSeed(host, 1, m.unitId), m.areaId, ...stats])
+    if (states.length > 0) st1.push([1, m.unitId, ...states])
   }
   const t3: Row[] = []
   for (const ms of host.missiles.values()) {
     // InternalMissileRecord has no dwMode equivalent -> null (consumers skip null columns).
-    t3.push([ms.unitId, ms.missileId, null, subtile(ms.x), subtile(ms.y), null, null, ms.areaId])
+    t3.push([ms.unitId, ms.missileId, null, subtile(ms.x), subtile(ms.y), ...unitSeed(host, 3, ms.unitId), ms.areaId])
   }
   t0.sort(byId)
   t1.sort(byId)
   t3.sort(byId)
-  const line: Record<string, unknown> = { frame: game.tickCount, t0, t1, t3 }
+  st0.sort((a, b) => a[1]! - b[1]!)
+  st1.sort((a, b) => a[1]! - b[1]!)
+  const stAll = [...st0, ...st1]
+  const line: Record<string, unknown> = {
+    frame: game.tickCount,
+    t0,
+    t1,
+    t3,
+    gs: [host.gameSeed.lo >>> 0, host.gameSeed.hi >>> 0],
+    st: stAll,
+  }
+  if (dmgEvents.length > 0) line.dmg = dmgEvents
   if (injected.length > 0) line.in = injected.map(([pid, hex]) => [pid, hex])
   return JSON.stringify(line)
 }
@@ -286,6 +331,7 @@ function connectScenarioPlayer(game: GameInstance, d2s: Uint8Array, seed: number
       classId: h.classId,
       level: h.level,
       statusFlags: h.statusFlags,
+      startingItems: 'charstats',
     })
   }
   return game.connectPlayer({ d2s, restoreMercenary: true })
@@ -362,13 +408,25 @@ export function runReplica(
       deliverC2s(game, playerUnitId, inp.c2s)
       injected.push([playerUnitId, inp.c2s])
     }
-    game.stepFrame()
+    const frameDmg: SUnitDmgTraceEvent113c[] = []
+    if (opts.observe !== false) {
+      setSUnitDmgTraceObserver113c((ev) => {
+        frameDmg.push(ev)
+      })
+    }
+    try {
+      game.stepFrame()
+    } finally {
+      if (opts.observe !== false) {
+        setSUnitDmgTraceObserver113c(null)
+      }
+    }
     // Outbox is only copied by stepFrame; drain so per-player event queues do not grow unbounded.
     game.drainEvents(playerUnitId)
     if (game.tickCount !== f) {
       throw new Error(`replica: frame counter ${game.tickCount} != expected ${f} (paused game?)`)
     }
-    if (opts.observe !== false) emit(sampleFrame(game, statIds, injected))
+    if (opts.observe !== false) emit(sampleFrame(game, statIds, injected, frameDmg))
   }
   return { lines, playerUnitId, mapSeed: game.mapSeed, lockstepHash: game.computeFrameLockstepHash() }
 }

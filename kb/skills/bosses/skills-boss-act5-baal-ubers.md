@@ -60,21 +60,22 @@
   - `[55]` = `0x6FC596E0` (`MISSMODE_SrvHit55_Baalnferno`)
   - `[58]` = `0x6FC5BED0` (`MISSMODE_SrvHit58_BaalTauntLightningControl`)
   - `[59]` = `0x6FC5D800` (`MISSMODE_SrvHit59_BaalTauntPoisonControl`)
-- **AI Dispatch (`AITHINK_FnTable`)**:
-  - `AITHINK_Fn034_Andariel` = `0x6FCD8090` (`uberandariel` / Lilith)
-  - `AITHINK_Fn044_Duriel` = `0x6FCD8FE0` (`uberduriel`)
-  - `AITHINK_Fn120_Overseer` = `0x6FCE1550` (`overseer1` / Shenk)
-  - `AITHINK_Fn126_CatapultSpotter` = `0x6FCEE6F0`
-  - `AITHINK_Fn128_Nihlathak` = `0x6FCEEE60` (`nihlathakboss`)
-  - `AITHINK_Fn133_Ancient` = `0x6FCEFBC0` (`ancientbarb1..3`)
-  - `AITHINK_Fn134_BaalThrone` = `0x6FCEFBF0` (`baalthrone`)
-  - `AITHINK_Fn135_BaalCrab` = `0x6FCCD520` (`baalcrab`)
-  - `AITHINK_Fn136_BaalTaunt` = `0x6FCF0180` (`baaltaunt`)
-  - `AITHINK_Fn137_BaalCrabClone` = `0x6FCCEB70` (`baalclone`)
-  - `AITHINK_Fn143_UberMephisto` (`ubermephisto`)
-  - `AITHINK_Fn144_UberDiablo` (`uberdiablo`)
-  - `AITHINK_Fn145_UberIzual` (`uberizual`)
-  - `AITHINK_Fn146_UberBaal` (`uberbaal`)
+- **AI Dispatch (`gpAiTable` @ `0x6FD2E788`, `pfnThink` @ `+0x08` / `0x6FD2E790`, 16-byte stride)**:
+  - `[34]` `AITHINK_Fn034_Andariel` = `0x6FC9FE60` (`andariel` / `uberandariel` Lilith)
+  - `[44]` `AITHINK_Fn044_Duriel` = `0x6FCA9430` (`duriel` / `uberduriel`)
+  - `[50]` `AITHINK_Fn050_Mephisto` = `0x6FCA5B60` (`mephisto`, `0x6FCA5ED1` & `0x6FCA5F1C` `nDifficulty > 0` gates)
+  - `[120]` `AITHINK_Fn120_Overseer` = `0x6FC37CB0` (`overseer1` / Shenk)
+  - `[126]` `AITHINK_Fn126_CatapultSpotter` = `0x6FCC4FD0`
+  - `[128]` `AITHINK_Fn128_Nihlathak` = `0x6FCC7580` (`nihlathakboss`, `pfnInit = 0x6FCC3920`)
+  - `[133]` `AITHINK_Fn133_Ancient` = `0x6FCC7530` (`ancientbarb1..3`)
+  - `[134]` `AITHINK_Fn134_BaalThrone` = `0x6FCC8430` (`baalthrone`, `pfnInit = 0x6FCC3880`)
+  - `[135]` `AITHINK_Fn135_BaalCrab` = `0x6FCD8610` (`baalcrab`, `pfnSpecial = 0x6FCD78A0`)
+  - `[136]` `AITHINK_Fn136_BaalTaunt` = `0x6FCC9D40` (`baaltaunt`)
+  - `[140]` `AITHINK_Fn140_BaalCrabClone` = `0x6FCD8460` (`baalclone`, `pfnSpecial = 0x6FCD78A0`)
+  - `[144]` `AITHINK_Fn144_UberIzual` = `0x6FC9E640` (`uberizual`)
+  - `[145]` `AITHINK_Fn145_UberBaal` = `0x6FCD6C80` (`uberbaal`, `pfnSpecial = 0x6FCD78A0`)
+  - `[146]` `AITHINK_Fn146_UberMephisto` = `0x6FC9B4E0` (`ubermephisto`)
+  - `[147]` `AITHINK_Fn147_UberDiablo` = `0x6FCC39D0` (`uberdiablo`, `pfnSpecial = 0x6FCC59B0`)
 
 ### `D2Client.dll` (`ImageBase = 0x6FAB0000`)
 - **`g_apfnSkillCltStFunc`** (`0x6FB8E928`):

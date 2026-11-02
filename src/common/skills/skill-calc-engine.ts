@@ -58,9 +58,9 @@ export function getEffectiveLevel(state: SkillCalcState, skillId: number): numbe
   if (hard === 0 && specSoft === 0) return 0
 
   const skill = SKILLS_BY_ID[skillId]
-  if (!skill) return hard
-  const tabSoft = state?.tabSoftPoints?.[skill.tabIndex] ?? 0
   const allSoft = state?.allSkillsSoftPoints ?? 0
+  if (!skill) return hard + allSoft + specSoft
+  const tabSoft = state?.tabSoftPoints?.[skill.tabIndex] ?? 0
   return hard + tabSoft + allSoft + specSoft
 }
 
@@ -68,7 +68,13 @@ export function getEffectiveLevel(state: SkillCalcState, skillId: number): numbe
  * Returns total hard points invested in the build.
  */
 export function getTotalPointsSpent(state: SkillCalcState): number {
-  return Object.values(state.hardPoints).reduce((sum, pts) => sum + (pts || 0), 0)
+  let sum = 0
+  for (const [idStr, pts] of Object.entries(state.hardPoints)) {
+    if (SKILLS_BY_ID[Number(idStr)]) {
+      sum += pts || 0
+    }
+  }
+  return sum
 }
 
 /**
@@ -478,6 +484,8 @@ export interface DetailedDamageResult {
   readonly synergyBonusPct: number
   readonly withSynergyMin: number
   readonly withSynergyMax: number
+  readonly withSynergyMin256?: number | undefined
+  readonly withSynergyMax256?: number | undefined
   readonly masteryMultiplier: number
   readonly masteryBonusPct: number
   readonly finalMin: number
@@ -584,16 +592,45 @@ export function calculateDetailedDamage(
   const masteryMult = isDirectElemMastery ? mastery.multiplier : 1.0
   const masteryPct = isDirectElemMastery ? mastery.bonusPercent : 0
 
-  // For dual-channel skills (e.g., #229 Molten Boulder, #244 Volcano, #249 Armageddon),
-  // elemental damage is scaled strictly by elemental synergies (EDmgSymPerCalc) while
-  // physical damage is scaled strictly by physical synergies (DmgSymPerCalc).
-  const primarySynPct = isDualPhysElem ? syn.elementalPercent : syn.totalPercent
-  const primarySynMult = isDualPhysElem ? syn.elementalMultiplier : syn.multiplier
+  // D2Common.#10121 / #11091 (0x6FDA0460 / 0x6FDA04F0): elemental damage evaluates EDmgSymPerCalc
+  // directly (excluding duration-only synergies such as Glacial Spike on #45 Ice Blast), and keeps
+  // 256ths fixed-point precision across synergy and mastery before shifting >> 8.
+  const synEvalCtx: SkillFormulaContext = {
+    lvl,
+    params: skill.params,
+    ln12: 0,
+    ln34: 0,
+    ln56: 0,
+    ln78: 0,
+    dm12: 0,
+    dm34: 0,
+    dm56: 0,
+    dm78: 0,
+    toht: 0,
+    len: 0,
+    edmn: 0,
+    edmx: 0,
+    mana: 0,
+    mps: 0,
+    hardPoints: state.hardPoints,
+    effLevels: {},
+  }
+  const primarySynPct =
+    hasElemChannel && skill.synergyFormulas?.elemental
+      ? evalSkillDescFormula(skill.synergyFormulas.elemental, synEvalCtx)
+      : !hasElemChannel && hasPhysChannel && skill.synergyFormulas?.physical
+        ? evalSkillDescFormula(skill.synergyFormulas.physical, synEvalCtx)
+        : isDualPhysElem
+          ? syn.elementalPercent
+          : syn.totalPercent
+  const primarySynMult = Number((1.0 + primarySynPct / 100).toFixed(4))
 
   let baseMin = 0
   let baseMax = 0
   let withSynergyMin = 0
   let withSynergyMax = 0
+  let withSynergyMin256: number | undefined
+  let withSynergyMax256: number | undefined
   // D2Common #10121 (0x6FDA04C7..0x6FDA04D3): the skill's elemental min is synergised only when
   // `min256 > 256 || EMinLev1 != 0` — the flat 1-point lightning minimum stays 1 (#1681).
   const minSynPct =
@@ -635,15 +672,25 @@ export function calculateDetailedDamage(
     withSynergyMin = Math.floor((minRateSyn256 * framesFactor) / denom)
     withSynergyMax = Math.floor((maxRateSyn256 * framesFactor) / denom)
   } else {
-    const shiftMultiplier = 2 ** ((skill.hitshift ?? 8) - 8)
-    baseMin = Math.round(rawBaseMin * shiftMultiplier)
-    baseMax = Math.round(rawBaseMax * shiftMultiplier)
-    withSynergyMin = minSynPct === primarySynPct ? Math.floor(baseMin * primarySynMult) : baseMin
-    withSynergyMax = Math.floor(baseMax * primarySynMult)
+    const hitShift = skill.hitshift ?? 8
+    const min256 = Math.trunc(rawBaseMin * (2 ** hitShift))
+    const max256 = Math.trunc(rawBaseMax * (2 ** hitShift))
+    baseMin = Math.floor(min256 / 256)
+    baseMax = Math.floor(max256 / 256)
+    withSynergyMin256 = min256 + Math.trunc((min256 * minSynPct) / 100)
+    withSynergyMax256 = max256 + Math.trunc((max256 * primarySynPct) / 100)
+    withSynergyMin = Math.floor(withSynergyMin256 / 256)
+    withSynergyMax = Math.floor(withSynergyMax256 / 256)
   }
 
-  const finalMin = Math.floor(withSynergyMin * masteryMult)
-  const finalMax = Math.floor(withSynergyMax * masteryMult)
+  const finalMin =
+    withSynergyMin256 !== undefined
+      ? Math.floor((withSynergyMin256 + Math.trunc((withSynergyMin256 * masteryPct) / 100)) / 256)
+      : Math.floor(withSynergyMin * masteryMult)
+  const finalMax =
+    withSynergyMax256 !== undefined
+      ? Math.floor((withSynergyMax256 + Math.trunc((withSynergyMax256 * masteryPct) / 100)) / 256)
+      : Math.floor(withSynergyMax * masteryMult)
 
   let physBaseMin: number | undefined
   let physBaseMax: number | undefined
@@ -679,6 +726,8 @@ export function calculateDetailedDamage(
     synergyBonusPct: primarySynPct,
     withSynergyMin,
     withSynergyMax,
+    withSynergyMin256,
+    withSynergyMax256,
     masteryMultiplier: masteryMult,
     masteryBonusPct: masteryPct,
     finalMin,
@@ -1225,8 +1274,10 @@ function compileSafeMathAst(
       pos++
       const inner = parseTernary()
       skipWs()
-      if (input[pos] !== ')') return () => NaN
-      pos++
+      if (pos < len) {
+        if (input[pos] !== ')') return () => NaN
+        pos++
+      }
       return inner
     }
     if (input.startsWith('Math.floor', pos) || input.startsWith('Math.min', pos) || input.startsWith('Math.max', pos)) {
@@ -1422,7 +1473,18 @@ export function buildSkillFormulaContext(
   const shiftMultiplier = 2 ** ((skill.hitshift ?? 8) - 8)
   const hitShift256 = 2 ** (skill.hitshift ?? 8)
   const synEval = evaluateSynergies(state, skill)
-  const elemSynPct = synEval.elementalPercent || synEval.totalPercent
+  // D2Common #10121/#11091 synergise elemental damage with the skill's own Skills.txt `EDmgSymPerCalc` (evaluated
+  // against the caster's hard points). The catalog synergy list is only a fallback for skills without that
+  // formula: it is not row-exact (it lists Glacial Spike for Ice Blast, whose EDmgSymPerCalc is Ice Bolt +
+  // Blizzard + Frozen Orb; oracle P5.4 shows 12-18, not 13-19, at level 1 with 1/1/1/5 points).
+  const elemSynFormula = skill.synergyFormulas?.elemental
+  const elemSynPct = elemSynFormula
+    ? evalSkillDescFormula(elemSynFormula, {
+        lvl, params: skill.params, ln12: 0, ln34: 0, ln56: 0, ln78: 0, dm12, dm34, dm56, dm78, toht: 0, len: 0,
+        edmn: 0, edmx: 0, edln: 0, math: 0, madm: 0, macr: 0, enms: 0, exms: 0, mana: 0, mps: 0,
+        hardPoints: state.hardPoints, effLevels,
+      })
+    : synEval.elementalPercent || synEval.totalPercent
   const rawElemMin = evaluateLevelBand(skill.eMin, skill.eMinLev, lvl)
   const rawElemMax = evaluateLevelBand(skill.eMax, skill.eMaxLev, lvl)
   // D2Common #10121 0x6FDA04C7: the min side is synergised only when min256 > 256 || EMinLev1 != 0 (#1681).
@@ -1977,8 +2039,59 @@ export function buildTooltipViewModel(
   skillId: number,
   playerLevel: number = 99
 ): TooltipViewModel | null {
-  const skill = SKILLS_BY_ID[skillId]
-  if (!skill) return null
+  let skill = SKILLS_BY_ID[skillId]
+  if (!skill) {
+    const descRec = SKILL_DESC_BY_SKILL_ID[skillId]
+    if (!descRec) return null
+    skill = {
+      id: skillId,
+      name: descRec.strName?.en ?? '',
+      nameZh: descRec.strName?.zh ?? descRec.strName?.en ?? '',
+      classCode: state.classCode,
+      classNameZh: '',
+      tabIndex: 0,
+      tabName: '',
+      tabNameZh: '',
+      row: descRec.row,
+      col: descRec.column,
+      reqlevel: 1,
+      reqskills: [],
+      dependents: [],
+      mana: 0,
+      lvlmana: 0,
+      minmana: 0,
+      manashift: 8,
+      delay: 0,
+      descdam: descRec.descdam ? String(descRec.descdam) : undefined,
+      hitshift: 8,
+      srcDamage: 0,
+      minDam: 0,
+      maxDam: 0,
+      minLevDam: [0, 0, 0, 0, 0],
+      maxLevDam: [0, 0, 0, 0, 0],
+      eType: '',
+      eMin: 0,
+      eMax: 0,
+      eMinLev: [0, 0, 0, 0, 0],
+      eMaxLev: [0, 0, 0, 0, 0],
+      eLen: 0,
+      eLevLen: [0, 0, 0],
+      toHit: 0,
+      toHitLev: 0,
+      startmana: 0,
+      params: {},
+      synergyFormulas: {},
+      synergiesReceived: [],
+      synergiesGiven: [],
+      masteries: [],
+      shortDesc: descRec.strShort?.en ?? '',
+      shortDescZh: descRec.strShort?.zh ?? descRec.strShort?.en ?? '',
+      longDesc: descRec.strLong?.en ?? '',
+      longDescZh: descRec.strLong?.zh ?? descRec.strLong?.en ?? '',
+      icon: '',
+      iconActive: '',
+    } as SkillCatalogEntry
+  }
 
   const hard = state.hardPoints[skillId] ?? 0
   const eff = getEffectiveLevel(state, skillId)
@@ -2057,7 +2170,7 @@ export function buildTooltipViewModel(
 export function serializeBuildToHash(state: SkillCalcState): string {
   const parts: string[] = []
   const skillsStr = Object.entries(state.hardPoints)
-    .filter(([_, pts]) => pts > 0)
+    .filter(([id, pts]) => pts > 0 && Boolean(SKILLS_BY_ID[Number(id)]))
     .map(([id, pts]) => `${id}:${pts}`)
     .join(',')
   parts.push(`c=${state.classCode}`)
@@ -2136,6 +2249,8 @@ export interface SkillDescFormattedLine extends FormattedDescLine {
   readonly slot: number
   /** D2 colour index (`ÿc<n>`) set by the line itself (descline 18 / 25 / 40 calcA), if any. */
   readonly color?: number | undefined
+  /** Drawn in a separate side-box (`descline 53..56` scroll/tome quantity), never inside the main tooltip buffer. */
+  readonly sideBoxOnly?: boolean | undefined
 }
 
 function skillDescFixedTbl(lang: 'en' | 'zh'): (key: string) => string {
@@ -2172,6 +2287,31 @@ export function evaluateSkillDescLines(
   )
   const divisor = AI_CURSE_DIVISOR[difficulty]
   if (divisor === undefined) throw new Error(`evaluateSkillDescLines: invalid difficulty ${difficulty}`)
+  let summonDamage: { readonly min: number; readonly max: number } | undefined
+  if (skill.id === 70) {
+    // D2Client.dll 0x6FADE410 (#70 Raise Skeleton): A1=[1,1,1]..[2,2,2], +2*SkeletonMastery.lvl + band5(0,[0,1,2,3,4],lvl), *((100 + pct)/100)
+    const smLvl = getEffectiveLevel(state, 69)
+    const flat = smLvl * 2 + evaluateLevelBand(0, [0, 1, 2, 3, 4], lvl)
+    const pct = lvl < 4 ? 0 : (lvl - 3) * (skill.params.par3 ?? 7)
+    summonDamage = {
+      min: Math.floor(((1 + flat) * (100 + pct)) / 100),
+      max: Math.floor(((2 + flat) * (100 + pct)) / 100),
+    }
+  } else if (skill.id === 75 || skill.id === 85 || skill.id === 90) {
+    // D2Client.dll 0x6FADE900 (#75 Clay / #85 Blood / #90 Iron Golem): MonStats A1[diff] * (100 + golemPct + FireGolem.blvl * 6) / 100
+    const fgBlvl = state.hardPoints[94] ?? 0
+    const a1Min = skill.id === 75 ? ([2, 2, 3][difficulty] ?? 2) : skill.id === 85 ? ([6, 9, 10][difficulty] ?? 6) : ([7, 11, 12][difficulty] ?? 7)
+    const a1Max = skill.id === 75 ? ([5, 6, 7][difficulty] ?? 5) : skill.id === 85 ? ([16, 23, 27][difficulty] ?? 16) : ([19, 30, 33][difficulty] ?? 19)
+    const pct = (skill.id === 90 ? 0 : 35 * (lvl - 1)) + fgBlvl * 6
+    summonDamage = {
+      min: Math.floor((a1Min * (100 + pct)) / 100),
+      max: Math.floor((a1Max * (100 + pct)) / 100),
+    }
+  }
+  const summonBaseAttack =
+    skill.id === 94
+      ? { min: [10, 15, 18][difficulty] ?? 10, max: [27, 39, 47][difficulty] ?? 27 }
+      : undefined
   const out: SkillDescFormattedLine[] = []
   for (const line of rec.lines) {
     if (line.slot < lo || line.slot > hi) continue
@@ -2194,6 +2334,8 @@ export function evaluateSkillDescLines(
       minMana: skill.minmana ?? 0,
       manaShift: shift,
       summonBaseHp: rec.summonBaseHp?.[difficulty],
+      summonDamage,
+      summonBaseAttack,
       elemMin: ctx.enma ?? ctx.edmn,
       elemMax: ctx.exma ?? ctx.edmx,
     }
@@ -2215,7 +2357,7 @@ export function evaluateSkillDescLines(
     }
     const zh = formatSkillDescLine(fmtLine, { ...base, tbl: skillDescFixedTbl('zh') }, 'zh')
     if (en === null || !zh) continue
-    out.push({ lineType: line.func, slot: line.slot, textEn: en.text, textZh: zh.text, value: calcA, color: en.color })
+    out.push({ lineType: line.func, slot: line.slot, textEn: en.text, textZh: zh.text, value: calcA, color: en.color, sideBoxOnly: en.sideBoxOnly })
   }
   return section === 'dsc3' ? out : out.reverse()
 }

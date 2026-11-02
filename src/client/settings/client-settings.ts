@@ -1,6 +1,11 @@
 import { detectInitialLang, type GameLang } from '../i18n/lang.ts'
 import { Sgd2FreeResPresentation } from '../../common/ui/pd2-sgd2freeres.ts'
 import {
+  DEFAULT_GRAPHICS_QUALITY,
+  normalizeGraphicsQuality,
+  type GraphicsQuality,
+} from './graphics-quality.ts'
+import {
   CONTRAST_DEFAULT_113C,
   GAMMA_DEFAULT_113C,
   normalizeContrast113c,
@@ -79,6 +84,7 @@ export interface HudEnhancementsConfig {
   readonly showWeaponDamageFormula: boolean
   readonly showAdvancedStatsButton: boolean
   readonly showRuneNumbers: boolean
+  readonly showItemStatRanges: boolean
 }
 
 export interface AutomapRadarConfig {
@@ -110,6 +116,8 @@ export interface ClientSettings
   readonly viewport: ViewportResolution
   /** In-game world render-rate cap: 60 (uncapped, follows display refresh) or 30 (≈half the GPU raster, slightly steppier scrolling). */
   readonly worldRenderFps: 30 | 60
+  /** Graphics quality preset (port-only performance mode): 'high' (default) | 'medium' | 'low'. */
+  readonly graphicsQuality: GraphicsQuality
   readonly weatherOverride: WeatherOverrideSetting // default: 'off'
   readonly audioMuted: boolean // default: false
   readonly masterVolume: number // default: 0.8 (0..1)
@@ -215,6 +223,7 @@ export function createDefaultClientSettings(defaultLang?: GameLang): ClientSetti
     automapShowWaypoints: false,
     viewport: DEFAULT_VIEWPORT_RESOLUTION,
     worldRenderFps: 60,
+    graphicsQuality: DEFAULT_GRAPHICS_QUALITY,
     showBasePlusBonusStats: false,
     showBasePlusBonusSkills: false,
     showStatGainTooltips: false,
@@ -230,6 +239,7 @@ export function createDefaultClientSettings(defaultLang?: GameLang): ClientSetti
     showSocketCount: true,
     showEtherealTag: true,
     showRuneNumbers: false,
+    showItemStatRanges: false,
     extraItemContext: true,
     keyBindings: createDefaultKeyBindings(),
     hudLayoutMode: DEFAULT_HUD_LAYOUT_MODE,
@@ -252,11 +262,13 @@ export const DEFAULT_CLIENT_SETTINGS: ClientSettings = {
   automapShowWaypoints: false,
   viewport: DEFAULT_VIEWPORT_RESOLUTION,
   worldRenderFps: 60,
+  graphicsQuality: DEFAULT_GRAPHICS_QUALITY,
   showBasePlusBonusStats: false,
   showBasePlusBonusSkills: false,
   showStatGainTooltips: false,
   showWeaponDamageFormula: false,
   showAdvancedStatsButton: false,
+  showItemStatRanges: false,
   showUniqueSetBeams: false,
   alwaysShowUniqueSetLabels: false,
   weatherOverride: 'off',
@@ -604,6 +616,9 @@ export function sanitizeClientSettings(
   const worldRenderFps: 30 | 60 =
     rec.worldRenderFps === 30 ? 30 : rec.worldRenderFps === 60 ? 60 : defaults.worldRenderFps
 
+  const graphicsQuality: GraphicsQuality =
+    rec.graphicsQuality !== undefined ? normalizeGraphicsQuality(rec.graphicsQuality) : defaults.graphicsQuality
+
   const showBasePlusBonusStats =
     typeof rec.showBasePlusBonusStats === 'boolean'
       ? rec.showBasePlusBonusStats
@@ -662,6 +677,8 @@ export function sanitizeClientSettings(
     typeof rec.showEtherealTag === 'boolean' ? rec.showEtherealTag : defaults.showEtherealTag
   const showRuneNumbers =
     typeof rec.showRuneNumbers === 'boolean' ? rec.showRuneNumbers : defaults.showRuneNumbers
+  const showItemStatRanges =
+    typeof rec.showItemStatRanges === 'boolean' ? rec.showItemStatRanges : defaults.showItemStatRanges
   const extraItemContext =
     typeof rec.extraItemContext === 'boolean' ? rec.extraItemContext : defaults.extraItemContext
   const keyBindings = sanitizeKeyBindings(rec.keyBindings)
@@ -706,6 +723,7 @@ export function sanitizeClientSettings(
     automapShowWaypoints,
     viewport,
     worldRenderFps,
+    graphicsQuality,
     showBasePlusBonusStats,
     showBasePlusBonusSkills,
     showStatGainTooltips,
@@ -721,6 +739,7 @@ export function sanitizeClientSettings(
     showSocketCount,
     showEtherealTag,
     showRuneNumbers,
+    showItemStatRanges,
     extraItemContext,
     keyBindings,
     hudLayoutMode,

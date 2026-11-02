@@ -110,7 +110,8 @@ Skill list walk: `unit+0xA8` → `+0x04` first skill; skill `+0x00` pSkillsTxt (
 
 `0x6FADFD30` stdcall(unit, pSkill, slot), `ret 0xC`:
 
-* name: SkillDesc `+0x0E` string id (`str short`) → `D2Lang #10003` → upper-cased in place by `0x6FB6E800`
+* name: SkillDesc `+0x0E` string id (`str alt`; the record holds str name / short / long / alt / mana at
+  `+0x08/+0x0A/+0x0C/+0x0E/+0x10`, then descdam `+0x12`, descatt `+0x14`) → `D2Lang #10003` → upper-cased in place by `0x6FB6E800`
   (D2Lang case table, IAT `0x6FB7EB04`), drawn centred in layout row `0x6FBA52E8 + slot*12`;
 * attack rating box: handler `0x6FBA52A0[SkillDesc+0x14]` (only if non-null);
 * damage row: handler `0x6FBA5210[SkillDesc+0x12]` (`descdam`, < 0x90; skipped when null, `0x6FADFEA4..0x6FADFEC6`);
@@ -167,3 +168,12 @@ One JSON object per line:
   barbarian) and 217..220 at level 1.
 * Buff/aura/curse skills (descdam = 0) draw no damage row; Kick draws `0-1`; Throw / Left Hand Throw / Left Hand
   Swing draw only the name when the needed item is not equipped; Smite draws `1-5` (paladin with shield).
+
+## 9. Specific `descdam` & `descline` VAs verified in Phase 1
+
+* `descdam = 2` (`Kick #1`, `0x6FAE0AE0..0x6FAE0B2E`): computes `val = ((MinDam << HitShift) >> 8) + STATLIST_UnitGetStatValue(unit, STAT_ITEM_KICKDAMAGE /* 137 */, 0)` and formats via `0x6FADF0A0(min, max)` (`if (min >= max) max = min + 1`), ignoring weapon, boot, Str/Dex, and elemental stats (`0-1` when stat 137 is 0). Assassin kicks (`#255, #270, #275`) use `descdam = 15/16` (`0x6FAE0340` / `0x6FAE2BF0`).
+* `descdam = 10` (`Smite #97`, `0x6FAE05D0..0x6FAE07AB`): inspects the equipped shield (`Armor.txt` item in arm slot matching `shld`). Returns nothing if no shield is equipped; otherwise sums shield `mindam..maxdam` + active `STATE_HOLYSHIELD (101)` `#117` 5-band `MinDam..MaxDam` (`3..6`, `[+2,+3,+4,+4,+4]`), scales by `max(-90, ddamCalc1 + Str*StrBonus/100 + Dex*DexBonus/100 + stat(25)) + stat(18|17)`, and emits physical-only `min-max` (`1-5` on starter Buckler with Str 75 and Smite L1).
+* `descdam = 5` (`0x6FAE5270` → `D2Common #10121` `0x6FDA0460` / `#11091` `0x6FDA0510` with `bMastery = 1`): evaluates `EDmgSymPerCalc` and caster elemental mastery (`0x6FD9F870`) in 256ths before `>> 8` (`Fire Bolt #36` L2 = `15-25`, `Ice Blast #45` L1 = `12-18`).
+* `0x6FAE3B50` (`lvl > 0` tooltip builder): stores `[esp+0x18] = lvl + 1` at `0x6FAE3C67..0x6FAE3C78` and evaluates `dsc2` (`slot 6..9`) at `lvl + 1` (`0x6FAE3EA0`), whereas `0x6FAE3550` (`lvl <= 0`) evaluates `dsc2` at `1` (`0x6FAE37D4`). For `Raise Skeleton #70` at `lvl = 16` (`Skeleton Mastery` L10), `descline 34` (`0x6FADE410`) in `dsc2` evaluates at `lvl = 17` → `Damage: 61-63`.
+* `descline 39` (`0x6FAE2155` → `0x6FADE900`, Golems `#75, #85, #90`) & `descline 41` (`0x6FAE2251` → `0x6FADE770`, `Fire Golem #94`): read difficulty-indexed `MonStats.txt` `A1MinD`/`A1MaxD` via `0x6FABC244`; `0x6FADE900` scales by `aurastat`/`passivestat` `STAT_DAMAGEPERCENT (25)` formulas (`max(-90, pct)`), while `0x6FADE770` adds `calcA..calcB` to `A1MinD..A1MaxD` with `EType` prefix (`StrSkill5`).
+* `descline 53..56` (`217..220` Scrolls/Tomes, `0x6FAE24FB..0x6FAE25A8` → `0x6FADC950`): `0x6FADC950` draws the quantity side-box separately at `(x - 128, y - 52)` via `D2Win #10085` without appending to the main tooltip `outBuf`, while returning `1` so `0x6FAE3B50` still emits the `"Current Skill Level: N"` and `"Next Level"` headers.

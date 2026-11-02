@@ -60,3 +60,20 @@ In `D2Client.dll`:
    - `S2C 0x1D/0x1E/0x1F` (`0x6FB5EDF0`) writes only the character's unequipped base pool stats (`pStats->BaseStats` for `STAT_MAXHP = 7`, `STAT_MAXMANA = 9`, `STAT_MAXSTAMINA = 11`).
    - Meanwhile, `S2C 0x95` / `S2C 0x18` transmits the server's authoritative current `STAT_HITPOINTS (6)` / `STAT_MANA (8)` / `STAT_STAMINA (10)`, which at full health equals the **aggregated** maximum (including equipped items, inventory charms, set bonuses, passive skills, active states, and `ItemStatCost.txt` `op` rules such as `+Vitality -> +MaxHp/+MaxStamina`, `+Energy -> +MaxMana`, `item_maxhp_percent`, `item_hp_perlevel`).
    - Both the Character Sheet (`0x6FB6D6A0`) and the HUD Globes (`0x6FAD7BD0`, `0x6FAD7A90`) evaluate `D2Common_GetUnitStat` (`sub_6FDB5830` `StatOpEngine`) across all attached stat lists so `hud.maxHp`, `hud.maxMana`, `hud.maxStamina` and `charSheet.attrs.maxHp/maxMana/maxStamina` stay strictly identical.
+
+---
+
+## 4. Server-Side `D2Game.dll` Accrued Max-Vitals Callers (`D2Common.#10913` / `#10186` / `#10578`)
+
+In `D2Game.dll` (`0x6FC20000`), import thunks `0x6FC2A3A0` (`D2Common.#10913`), `0x6FC2A4EA` (`D2Common.#10186`), and `0x6FC2A460` (`D2Common.#10578`) evaluate full-unit accrued max pools rather than unequipped `BaseStats`:
+
+| Subsystem | `D2Game.dll` Routine | Accrued Helper(s) Called | 1.13c Behavior |
+|---|---|---|---|
+| Potions & Regen | `0x6FC967D3` / `0x6FC97240` (`ITEMS_UsePotion` / `EVENTTYPE_STATREGEN`) | `#10913`, `#10186` | `hp*`, `mp*`, `rvs` (`35%` of accrued max), and `rvl` (`100%` of accrued max) clamp `STAT_HITPOINTS (6)` / `STAT_MANA (8)` at accrued max pools (`0x6FC967E1`). |
+| Quest Vitals (`xyz`) | `0x6FD0B120..0x6FD0B1C7` (`Potion of Life`) | `#10913`, `#10186`, `#10578` | Adds `+20 << 8` to `BaseStats` `STAT_MAXHP (7)` and `STAT_HITPOINTS (6)`, then queries accrued `#10913` (`0x6FD0B142`). |
+| Shrines (`1..5`) | `0x6FC89C00`, `0x6FC898A0`, `0x6FC89860`, `0x6FC89800`, `0x6FC897A0` | `#10913`, `#10186` | Refilling, Health, Mana, Health Exchange, and Mana Exchange shrines restore/clamp against accrued `#10913` / `#10186`. |
+| Wells (`OperateFn 22`) | `0x6FC8A560` (`OBJECTS_UseWell`) | `#10913`, `#10186`, `#10578` | Checks `cur < accruedMax` (`0x6FC8A571`), heals `(accruedMax * Parm1) >> 8`, and clamps at `accruedMax`. |
+| Elemental Absorb Heal | `0x6FCFB570` (`SUNITDMG_AddLife`) | `#10913` | Pre-damage absorb life heal clamps `curHp256 + dwAbsorbLife` at accrued `#10913` (`0x6FCFB593`). |
+| Hit Recovery Stun | `0x6FCFB945` (`SUNITDMG_CheckHitRecovery`) | `#10913` | `1/16`, `1/8`, `1/4` stun thresholds divide accrued `#10913` (`0x6FCFB948`), not `BaseStats` `STAT_MAXHP`. |
+| Succubus / Baal Curse AI | `#309 Defense Curse` vs `#310 Blood Mana` | `#10913`, `#10186` | Selects `#310 Blood Mana` (`state 114`) iff accrued `maxMana >= maxHp`. |
+| Base Stat Storage Guard | `UnitStatList` `BaseStats` & `S2C 0x1D..0x1F` | Base `7` / `9` / `11` only | `UnitStatList.setBaseStat('maxhp'|'maxmana'|'maxstamina')` on player/defender stat lists and `S2C 0x1F` must keep unequipped base values so `item_maxhp_percent` (`Battle Orders`, `Oak Sage`, `Jah`) is never double-applied. |

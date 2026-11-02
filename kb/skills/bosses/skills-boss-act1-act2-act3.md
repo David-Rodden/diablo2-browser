@@ -464,12 +464,12 @@ Mephisto runs a 5-state machine (`pAiControl->nAiState` = `0..4`) driven by his 
    - **Far Range (`nTargetDistance > 20`)**: Enters **`nAiState = 2`** with `dwAiParam[0] = 2` (2 ranged spells).
 
 2. **Ranged Spell Volley (`nAiState == 2`, `nValidSkills = 6`, `nSkillChance = 16`, `nRand = rand(100)`)**:
-   - **Condition A — `Blizzard` (#59, `Sk6lvl=5`)**:
+   - **Condition A — `Blizzard` (#59, `Sk6lvl=5`, `0x6FCA5ED1`)**:
      - Requires **Nightmare or Hell (`nDifficulty > 0`)** AND (`COLLISION_CheckAnyCollisionWithPattern(..., COLLIDE_MISSILE_BARRIER)` between Mephisto and target — **the famous "Moat Trick" counter!** — OR `nTargetDistance > 30`).
-     - Casts `Skill6 = Blizzard` (#59, `Sk6lvl=5`, `Sk6mode=A2`).
-   - **Condition B — `MephFrostNova` (#346, `Sk5lvl=1`)**:
+     - Casts `Skill6 = Blizzard` (#59, `Sk6lvl=5`, `Sk6mode=A2`). **Never cast in Normal (`nDifficulty == 0`).**
+   - **Condition B — `MephFrostNova` (#346, `Sk5lvl=1`, `0x6FCA5F1C`)**:
      - Requires **Nightmare or Hell (`nDifficulty > 0`)**, `nTargetDistance < 15`, and `nRand < 16` (**16% chance**).
-     - Casts `Skill5 = MephFrostNova` (#346, `Sk5lvl=1`, `Sk5mode=A2`).
+     - Casts `Skill5 = MephFrostNova` (#346, `Sk5lvl=1`, `Sk5mode=A2`). **Never cast in Normal (`nDifficulty == 0`).**
    - **Condition C — `MephistoMissile` / "Skull Ball" (#334, `Sk4lvl=5`)**:
      - If `nRand < 32` (**16% chance** when `< 15` in NM/H; **32% chance** in Normal or when `>= 15`): casts `Skill4 = MephistoMissile` (#334, `Sk4lvl=5`, `Sk4mode=A2`).
    - **Condition D — `PrimeBolt` (#186, `Sk2lvl=6`)**:
@@ -479,11 +479,11 @@ Mephisto runs a 5-state machine (`pAiControl->nAiState` = `0..4`) driven by his 
 
 #### Mephisto's 6 Skills (`Skills.txt` & `Missiles.txt`)
 1. **`PrimeLightning` (#185, `Sk1lvl=6`)**:
-   - Fires `srvmissile = monsterlight` (#170, `pSrvDoFunc=1` @ `0x6FC5F540`, `pCltDoFunc=8` @ `0x6FB633F0`, `pCltHitFunc=10` @ `0x6FB62570`, `Vel=30`, `Range=25`, `Size=2`).
+   - Fires `srvmissile = monsterlight` (#170, `pSrvDoFunc=1` @ `0x6FC5F540`, `pCltDoFunc=8` @ `0x6FB633F0`, `pCltHitFunc=10` @ `0x6FB62570`, `Vel=30`, `Range=25`, `Size=2`, `CollideKill=1`, `Pierce=0` — non-piercing bolt that terminates on the first hit unit, e.g. a tanking Mercenary).
    - Damage (`HitShift=8`): Lightning `15–30` base (`MinELev=0`, `MaxELev=30` -> `15–180` at `Sk1lvl=6` before difficulty scaling).
 2. **`PrimeBolt` (#186, `Sk2lvl=6`)**:
    - `SrvDoFunc=17` (`0x6FC63B60` `SKILLS_SrvDo017_ChargedBolt_BoltSentry`), `CltDoFunc=23` (`0x6FB24AC0`).
-   - Spawns `calc1 = lvl + 2 = 8` bolts (`srvmissilea = chargedstrikebolt` #215, `cltmissilea = chargedbolt` #56, `Vel=12`, `Range=98`) using `PATHTYPE_CHARGEDBOLT`.
+   - Spawns `calc1 = lvl + 2` (`min(24, slvl + 2)` = `8` bolts in Normal, `11` in NM, `15` in Hell, `24` capped on Uber Mephisto) non-piercing (`CollideKill=1`) bolts (`srvmissilea = chargedstrikebolt` #215, `cltmissilea = chargedbolt` #56, `Vel=12`, `Range=98`) using `PATHTYPE_CHARGEDBOLT`.
 3. **`PrimePoisonNova` (#192, `Sk3lvl=7`)**:
    - `SrvDoFunc=99` (`0x6FCD52A0` `SKILLS_SrvDo099_PrimePoisonNova`), `CltDoFunc=55` (`0x6FB081F0`).
    - Spawns **two concentric 8-missile rings (16 missiles total)** of `primepoisoncloud` (#220, `pSrvDoFunc=3` @ `0x6FC61AE0`, `pCltDoFunc=4` @ `0x6FB6BE00` which emits `poisonpuff` #141):

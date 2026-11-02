@@ -3,10 +3,16 @@
  */
 
 import { getSharedDataRegistry, type D2DataRegistry } from '../../../common/data/data-registry.ts'
+import { getAct2StaffTombLevelId } from '../../../common/drlg/drlg-drlg.ts'
 import type { Item } from '../../../common/items/items.ts'
-import { D2Rng } from '../../../common/rng/d2-rng.ts'
+import { D2Rng, newD2Seed, type D2SeedStrc } from '../../../common/rng/d2-rng.ts'
+import {
+  createActMonsterOutfitPalettes113c,
+  initGameSeed113c,
+  type ActMonsterOutfitPalette113c,
+} from './unit-seeds-113c.ts'
 import { PartyManager } from '../../net/party.ts'
-import type { LocalAreaBootstrapResolver, LocalAreaPresetMonster, ServerEvent } from '../../../netproto/index.ts'
+import type { LocalAreaBootstrapResolver, ServerEvent } from '../../../netproto/index.ts'
 import type { PopulationRoomRect } from '../../ai/room-streamer.ts'
 import type { SummonManager, SummonedPetUnit } from '../../ai/summon-manager.ts'
 import type { SUnitDmgPacket, CombatUnitContext } from '../combat-pipeline.ts'
@@ -15,7 +21,8 @@ import type { AnimDispatcher } from '../anim-dispatcher.ts'
 import type { FrenzyStack113c, MartialChargeState113c } from '../../skills/martial-dualwield-113c.ts'
 import type { WhirlwindSpinState113c } from '../../skills/whirlwind-113c.ts'
 import { TradeManager113c } from '../../net/trade-manager-113c.ts'
-import type { AreaPopulationState, GameInstanceConfig, GameMode, GameModePolicy, InternalMercenaryRecord, InternalMissileRecord, InternalMonsterRecord, InternalObjectRecord, InternalPlayerRecord, InternalWarpTileRecord, LoadedAreaRecord, MercAuraRuntime, PersistentCombatUnit, PlayerAuraRuntime, PlayerMotionState, PlayerSkillCast, QueuedPlayerCommand, ServerItemEntry } from './types.ts'
+import { AreaPathWorld113c } from '../../ai/town-npc-ai-113c.ts'
+import type { AreaPopulationState, GameInstanceConfig, GameMode, GameModePolicy, InternalMercenaryRecord, InternalMissileRecord, InternalMonsterRecord, InternalObjectRecord, InternalPlayerRecord, InternalWarpTileRecord, LoadedAreaRecord, MercAuraRuntime, PendingRoomPresets113c, PersistentCombatUnit, PlayerAuraRuntime, PlayerMotionState, PlayerSkillCast, QueuedPlayerCommand, ServerItemEntry } from './types.ts'
 import { CLOSED_REALM_POLICY, OPEN_BNET_POLICY, SINGLE_PLAYER_POLICY, getOrCreateEmbeddedFallbackRegistry, resolveGameModePolicy } from './constants-and-helpers.ts'
 
 export class GameInstanceState {
@@ -33,6 +40,9 @@ export class GameInstanceState {
   readonly partyManager: PartyManager
 
   readonly tradeManager = new TradeManager113c()
+
+  /** @internal 1.13c D2Common DynamicPath collision world + Town NPC AI (`0x6FC3DB40`). */
+  readonly areaPathWorld = new AreaPathWorld113c()
 
   /** @internal */
   readonly configLadder: boolean | undefined
@@ -70,12 +80,24 @@ export class GameInstanceState {
   readonly nextUnitIdByType: number[] = [1, 1, 1, 1, 1, 1]
 
   /**
+   * @internal 1.13c game seed `pGame->tSeed` (`D2GameStrc+0xD0`): every unit's own seed is drawn from it
+   * when the unit is allocated (`SUNIT_AllocUnitData` `0x6FD01D90` -> `0x6FD00110`). See `unit-seeds-113c.ts`.
+   */
+  readonly gameSeed: D2SeedStrc = newD2Seed()
+
+  /** @internal Per-unit `D2SeedStrc` (`D2UnitStrc+0x20/+0x24`), keyed `${unitType}:${unitId}`. */
+  readonly unitSeeds = new Map<string, D2SeedStrc>()
+
+  /** @internal Per-Act 13-slot monster outfit palette (`pGame->pMonReg[nAct]`, `0x6FCEA5F0`). */
+  actMonsterOutfitPalettes: ActMonsterOutfitPalette113c[] = createActMonsterOutfitPalettes113c()
+
+  /**
    * @internal DRLG preset monsters of loaded areas not yet spawned, by room index; a room's presets are
    * spawned once when it is activated near a player (D2Game `0x6FC4CBE0` -> `0x6FD01430`).
    */
   readonly pendingPresetMonsters = new Map<
     number,
-    { readonly byRoom: Map<number, LocalAreaPresetMonster[]>; readonly activated: Set<number> }
+    { readonly byRoom: Map<number, PendingRoomPresets113c>; readonly activated: Set<number> }
   >()
 
   /** @internal */
@@ -619,6 +641,8 @@ export class GameInstanceState {
     this.hasExplicitMapSeed = rawSeed !== undefined && rawSeed !== 0
     this.currentMapSeed = ((rawSeed ?? 0x12345678) >>> 0) || 1
     this.rng = new D2Rng(this.currentMapSeed)
+    initGameSeed113c(this.gameSeed, this.currentMapSeed)
+    this.actMonsterOutfitPalettes = createActMonsterOutfitPalettes113c()
     {
       const stoneRng = new D2Rng(((this.currentMapSeed ^ 0x6a09e667) >>> 0) || 1)
       const stones = [17, 18, 19, 20, 21]
@@ -681,6 +705,18 @@ export class GameInstanceState {
   /** Ladder-only runewords / cube recipes (`Runes.txt` `server=1`, `Cubemain.txt` `ladder=1`, `#1949`). */
   get isLadder(): boolean {
     return this.isLadderRulesEnabled()
+  }
+
+  /**
+   * 1.13c `DUNGEON_GetHoradricStaffTombLevelId(pAct[1])` (`D2Game.dll` `0x6fc2ab9e`):
+   * deterministic Act II True Tomb of Tal Rasha area ID (`66..72`) derived from `currentMapSeed`.
+   */
+  get trueTalRashaTombAreaId(): number {
+    return getAct2StaffTombLevelId(this.currentMapSeed)
+  }
+
+  getTrueTalRashaTombAreaId(): number {
+    return getAct2StaffTombLevelId(this.currentMapSeed)
   }
 
 

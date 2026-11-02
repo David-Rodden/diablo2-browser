@@ -3569,9 +3569,26 @@ export class MissileEngine {
       case 46:
         return 'default'
 
-      // 31: MISSMODE_SrvHit31_TowerMist_BaalColdMaker (0x6FC5A920)
-      // 32: MISSMODE_SrvHit32_TowerMistFade (0x6FC5BE70)
-      case 31:
+      // 31: MISSMODE_SrvHit31_Firehead (0x6FC5A920: firehead #277 / #333 VampireMissile 100% life steal, #2007)
+      case 31: {
+        if (ctx.trigger === 'unit' && hitTarget !== undefined && ctx.dmgSuccess !== false) {
+          const lastHit = ctx.hits[ctx.hits.length - 1]
+          const dealt256 =
+            lastHit !== undefined && lastHit.targetId === hitTarget.id && lastHit.damage > 0
+              ? Math.round(lastHit.damage * 256)
+              : 0
+          if (dealt256 > 0 && m.owner.statList.getHp256() > 0) {
+            const maxHp256 = m.owner.statList.getAccruedStat('maxhp')
+            const curHp256 = m.owner.statList.getHp256()
+            m.owner.statList.setHp256(
+              maxHp256 > 0 ? Math.min(maxHp256, curHp256 + dealt256) : curHp256 + dealt256,
+            )
+          }
+        }
+        return 'default'
+      }
+
+      // 32: MISSMODE_SrvHit32_CairnStones (0x6FC5BE70)
       case 32: {
         const subName = rec.hitSubMissile1
         if (subName) {
@@ -4287,8 +4304,14 @@ export class MissileEngine {
           (m.dmgPacket.elemMin256 ?? 0) === 0 &&
           (m.dmgPacket.elemMax256 ?? 0) === 0)
 
+      // 1.13c `D2Game.dll` `0x6FC8FCE8` (`nActivateFrame = nTotalFrames - nActivate`) &
+      // `MISSMODE_MoveMissile` (`0x6FC5F403..0x6FC5F413`, #1997):
+      // Skip unit collision while `ageTicks < record.activate` (`Activate >= 2`: `#195`, `#215`, `#225`, `#234`, `#502`, `#516`),
+      // while movement and terrain barrier collision remain active.
+      const isBeforeActivate113c = m.record.activate > 1 && m.ageTicks < m.record.activate
+
       for (const target of targets) {
-        if (isControllerOrVisualOnly) break
+        if (isControllerOrVisualOnly || isBeforeActivate113c) break
         if (target.statList.getHp256() <= 0) continue
 
         const pos = this.resolveUnitPosition(target, targetPositions)
@@ -5364,7 +5387,9 @@ export class MissileEngine {
     const subDamage = (name: string): OnlineMissileChildDamage113c => {
       const subRow = this.registry.getMissileByName(name)
       if (subRow === undefined) throw new Error(`Missiles.txt row '${name}' (SubMissile1 of '${row.name}') not found`)
-      return subRow.pSrvDoFunc === 5 || subRow.pSrvDmgFunc === 3 ? 'groundfire' : 'inherit'
+      if (subRow.pSrvDoFunc === 5 || subRow.pSrvDmgFunc === 3) return 'groundfire'
+      if (subRow.skill === '' && (subRow.eMin > 0 || subRow.minDamage > 0)) return 'own'
+      return 'inherit'
     }
     switch (kind) {
       // 6 FireWallMaker / MoltenBoulder, 9 BatLightning, 12 DiabloWallMaker, 13 BoneWallMaker:
@@ -5512,10 +5537,93 @@ export class MissileEngine {
       return none('expire')
     }
     switch (kind) {
-      // 1 FireBall radial splash (`0x6FC5B990`): `sHitPar1` else `max(1, calc1)`.
+      // 1 FireBall (`0x6FC5B990`) / 24 PantherPotOrange (`0x6FC5B7C0`): `sHitPar1` else `max(1, calc1)`.
       case 'splash': {
-        const r = this.resolveOnlineHitRadius113c(row, state.sourceSkillId, state.slvl, row.sHitPar1, 'calc1', 4)
+        const fallback = row.pSrvHitFunc === 24 ? 1 : 4
+        const r = this.resolveOnlineHitRadius113c(row, state.sourceSkillId, state.slvl, row.sHitPar1, 'calc1', fallback)
         return { spawns, splash: { radiusSubtiles: r, excludeKey: hitKey }, outcome: 'default' }
+      }
+      // 3 FirePotion (`0x6FC5BB60`, ground/wall only: `pTarget == NULL`) / 13 GlacialSpike (`0x6FC5B3E0`) /
+      // 44 ExplodingJavalin (`0x6FC5B5F0`): `sHitPar1` else `max(1, auraRangeCalc)`.
+      case 'aurasplash': {
+        if (row.pSrvHitFunc === 3 && trigger === 'unit') return none('default')
+        const fallback = row.pSrvHitFunc === 13 ? 4 : 1
+        const r = this.resolveOnlineHitRadius113c(row, state.sourceSkillId, state.slvl, row.sHitPar1, 'auraRangeCalc', fallback)
+        return { spawns, splash: { radiusSubtiles: r, excludeKey: hitKey }, outcome: 'default' }
+      }
+      // 2 PlagueJavelin / GasPotions (`0x6FC5E330` -> `0x6FC5D680`): 16-dir outer (`sHitPar2`, `Param1 << 7`)
+      // + 15-entry inner (`sHitPar1`, `Param2 << 7`) `HitSubMissile1` gas clouds.
+      case 'gasring16': {
+        if (state.hitFired) return none('expire')
+        state.hitFired = true
+        const subName = row.hitSubMissile1.trim()
+        if (subName !== '') {
+          const subRow = this.registry.getMissileByName(subName)
+          if (subRow === undefined) throw new Error(`Missiles.txt row '${subName}' not found`)
+          const childDamage: OnlineMissileChildDamage113c =
+            subRow.eMin > 0 || subRow.minDamage > 0 ? 'own' : 'inherit'
+          const slowSpeed = subRow.param1 > 0 ? subRow.param1 / 2 / 16 : 0
+          const outerStep = Math.max(1, row.sHitPar2)
+          for (let i = 0; i < 16; i += outerStep) {
+            const offX = GAS_CLOUD_RING16_X_113C[i]!
+            const offY = GAS_CLOUD_RING16_Y_113C[i]!
+            spawns.push({
+              missileName: subName,
+              x: impactX,
+              y: impactY,
+              targetX: impactX + offX,
+              targetY: impactY + offY,
+              damage: childDamage,
+              speedSubTilesPerFrame: slowSpeed,
+            })
+          }
+          if (row.sHitPar1 > 0) {
+            const fastSpeed = subRow.param2 > 0 ? subRow.param2 / 2 / 16 : slowSpeed
+            const innerStep = Math.max(1, row.sHitPar1)
+            for (let i = 1; i < 16; i += innerStep) {
+              const offX = GAS_CLOUD_RING16_X_113C[i]!
+              const offY = GAS_CLOUD_RING16_Y_113C[i]!
+              spawns.push({
+                missileName: subName,
+                x: impactX,
+                y: impactY,
+                targetX: impactX + offX,
+                targetY: impactY + offY,
+                damage: childDamage,
+                speedSubTilesPerFrame: fastSpeed,
+              })
+            }
+          }
+        }
+        return { spawns, splash: undefined, outcome: 'expire' }
+      }
+      // 25 PantherPotGreen (`0x6FC5DA60` -> `0x6FC5CB00`): 8-dir `HitSubMissile1` (`rancidgascloud`) ring at `Param1 << 7`.
+      case 'gasring8': {
+        if (state.hitFired) return none('expire')
+        state.hitFired = true
+        const subName = row.hitSubMissile1.trim()
+        if (subName !== '') {
+          const subRow = this.registry.getMissileByName(subName)
+          if (subRow === undefined) throw new Error(`Missiles.txt row '${subName}' not found`)
+          const childDamage: OnlineMissileChildDamage113c =
+            subRow.eMin > 0 || subRow.minDamage > 0 ? 'own' : 'inherit'
+          const slowSpeed = subRow.param1 > 0 ? subRow.param1 / 2 / 16 : 0
+          const step = Math.max(1, row.sHitPar1)
+          for (let i = 0; i < 8; i += step) {
+            const offX = GAS_CLOUD_RING8_X_113C[i]!
+            const offY = GAS_CLOUD_RING8_Y_113C[i]!
+            spawns.push({
+              missileName: subName,
+              x: impactX,
+              y: impactY,
+              targetX: impactX + offX,
+              targetY: impactY + offY,
+              damage: childDamage,
+              speedSubTilesPerFrame: slowSpeed,
+            })
+          }
+        }
+        return { spawns, splash: undefined, outcome: 'expire' }
       }
       // 4 Exploding / Freezing Arrow (`0x6FC5F220`): `HitSubMissile1` explodes at once with its own
       // `pSrvHitFunc` (`SrvHit01` radius `sHitPar1 = 5`, or `SrvHit14` for Royal Strike).
@@ -5619,10 +5727,11 @@ export class MissileEngine {
         }
         return none('default')
       }
-      // 14 MeteorCenter (`0x6FC5DEF0`): radial blast `sHitPar1` else `max(1, auraRangeCalc)`, then
-      // `HitSubMissile1` ground fire over the 18-offset circle table, life `Param3 + (slvl - 1) * Param4`
-      // (`SKILLS_GetParam34Linear` `0x6FC21A40` @ `0x6FC5E072`).
+      // 14 MeteorCenter (`0x6FC5DEF0`): expiry-only (`(dwFlags >> 10) & 1` @ `0x6FC5DF84`, #2007) radial blast
+      // `sHitPar1` else `max(1, auraRangeCalc)`, then `HitSubMissile1` ground fire over the 18-offset circle table,
+      // life `Param3 + (slvl - 1) * Param4` (`SKILLS_GetParam34Linear` `0x6FC21A40` @ `0x6FC5E072`).
       case 'meteor': {
+        if (trigger !== 'expire') return none(trigger === 'unit' ? 'passthrough' : 'expire')
         if (state.hitFired) return none('expire')
         state.hitFired = true
         const r1 = this.resolveOnlineHitRadius113c(row, state.sourceSkillId, state.slvl, row.sHitPar1, 'auraRangeCalc', 6)
@@ -9000,9 +9109,10 @@ export interface OnlineMissileTarget113c {
 
 /**
  * Damage carried by a child missile: `'inherit'` = the parent's rolled packet, `'groundfire'` =
- * per-frame burning damage (`SrvDo05` / `SrvDmg03`), `'none'` = no damage (functional carrier).
+ * per-frame burning damage (`SrvDo05` / `SrvDmg03`), `'own'` = the child's own `Missiles.txt`
+ * `D2Common#10413` damage (`rancidgascloud` / `chokinggascloud` / `stranglinggascloud`), `'none'` = no damage.
  */
-export type OnlineMissileChildDamage113c = 'inherit' | 'none' | 'groundfire'
+export type OnlineMissileChildDamage113c = 'inherit' | 'none' | 'groundfire' | 'own'
 
 export interface OnlineMissileSpawn113c {
   readonly missileName: string
@@ -9011,6 +9121,7 @@ export interface OnlineMissileSpawn113c {
   readonly targetX: number
   readonly targetY: number
   readonly damage: OnlineMissileChildDamage113c
+  readonly speedSubTilesPerFrame?: number
   readonly lifetimeFrames?: number
   readonly chainRemaining?: number
   /** Unit the child must not hit first (the bounce source). */
@@ -9018,6 +9129,14 @@ export interface OnlineMissileSpawn113c {
   readonly targetOffsetX?: number
   readonly targetOffsetY?: number
 }
+
+/** 8-direction sub-tile offsets used by `MISSILES_SpawnGasCloudGrid` (`0x6FD1C890` / `0x6FD1C8B0`). */
+export const GAS_CLOUD_RING8_X_113C = [2, 2, 0, -2, -2, -2, 0, 2] as const
+export const GAS_CLOUD_RING8_Y_113C = [0, 2, 2, 2, 0, -2, -2, -2] as const
+
+/** 16-direction sub-tile offsets used by `SrvHit02` (`sub_6FC5D680`, `0x6FD1CBA0` / `0x6FD1CB60`). */
+export const GAS_CLOUD_RING16_X_113C = [0, 1, 2, 2, 2, 2, 2, 1, 0, -1, -2, -2, -2, -2, -2, -1] as const
+export const GAS_CLOUD_RING16_Y_113C = [2, 2, 2, 1, 0, -1, -2, -2, -2, -2, -2, -1, 0, 1, 2, 2] as const
 
 export interface OnlineMissileSplash113c {
   readonly radiusSubtiles: number
@@ -9050,6 +9169,9 @@ export type OnlineMissileSrvDoKind113c =
 export type OnlineMissileSrvHitKind113c =
   | 'none'
   | 'splash'
+  | 'aurasplash'
+  | 'gasring16'
+  | 'gasring8'
   | 'subexplode'
   | 'immolation'
   | 'persist'
@@ -9093,7 +9215,14 @@ export function classifyOnlineSrvHitFunc113c(fn: number): OnlineMissileSrvHitKin
     case 0:
       return 'none'
     case 1:
+    case 24:
       return 'splash'
+    case 2:
+      return 'gasring16'
+    case 3:
+    case 13:
+    case 44:
+      return 'aurasplash'
     case 4:
       return 'subexplode'
     case 9:
@@ -9108,6 +9237,8 @@ export function classifyOnlineSrvHitFunc113c(fn: number): OnlineMissileSrvHitKin
       return 'meteor'
     case 20:
       return 'fury'
+    case 25:
+      return 'gasring8'
     case 29:
       return 'orbnova'
     default:

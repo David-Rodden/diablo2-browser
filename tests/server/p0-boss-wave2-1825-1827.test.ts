@@ -230,16 +230,21 @@ describe('Wave 2 Act Bosses, Ancients & Monster Combat/Summon Skill Sweep (#1825
         ).length,
       ).toBeGreaterThanOrEqual(3)
 
-      // Slot 3 -> #188 PrimeFirewall (7 perpendicular #131 vampirefirewall patches)
+      // Slot 3 -> #188 PrimeFirewall (1.13c `SrvDo024` `0x6FC637D0`: 2 perpendicular #130 makers + 1 center #131 patch, #1999)
       readyAi(diablo, 3)
       game.drainEvents(pid)
       game.stepFrames(1)
       const fwEvents = game.drainEvents(pid)
       expect(
         fwEvents.filter(
+          (e) => e.type === 'CreateMissile' && (e as { missileClassId?: number }).missileClassId === 130,
+        ),
+      ).toHaveLength(2)
+      expect(
+        fwEvents.filter(
           (e) => e.type === 'CreateMissile' && (e as { missileClassId?: number }).missileClassId === 131,
         ),
-      ).toHaveLength(7)
+      ).toHaveLength(1)
 
       // Slot 5 at dist >= 6 -> #198 DiabRun charge + knockback
       player.x = 60

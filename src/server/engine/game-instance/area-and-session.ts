@@ -6,12 +6,17 @@ import { ACT_SPAWN_TILE_ENTRY } from '../../../common/world/act-spawn-location.t
 import { SPARKLY_CHEST_INIT57_CLASS_IDS_113C, PRE_OPERATE_ROLLED_OBJECTS_113C, rollChestLocked113c } from '../../../common/world/object-operate-113c.ts'
 import { getLevelMonsterLevel113c } from '../../../common/world/levels-monlvl-113c.ts'
 import { PANDEMONIUM_AREA_IDS_113C, findFreePortalCoordNear113c } from '../../world/pandemonium-113c.ts'
-import { QUEST_FLAG_COMPLETED_113C, QUEST_FLAG_COMPLETED_NOW_113C, QUEST_FLAG_LEAVE_BEFORE_113C, questWordIndex113c } from '../quests-113c.ts'
+import { QUEST_FLAG_COMPLETED_113C, QUEST_FLAG_COMPLETED_NOW_113C, QUEST_FLAG_LEAVE_BEFORE_113C, QUEST_FLAG_REWARD_PENDING_113C, hasQuestFlag113c, questWordIndex113c } from '../quests-113c.ts'
 import { D2Rng } from '../../../common/rng/d2-rng.ts'
+import {
+  allocUnitSeed113c,
+  createActMonsterOutfitPalettes113c,
+  initGameSeed113c,
+} from './unit-seeds-113c.ts'
 import { hirelingLevelFromExp, MAX_MERCENARY_LEVEL_113C } from '../../../common/progression/experience-113c.ts'
 import { isTentacleHeadHcIdx113c } from '../../../common/units/monai-113c.ts'
 import { hasMonStats2Flag, MONSTATS2_FLAGINDEX } from '../../../common/units/monstats2-flags.ts'
-import { CANONICAL_CHARSTATS } from '../../../common/units/classes.ts'
+import { CANONICAL_CHARSTATS, CHARSTATS_STARTING_ITEMS_113C } from '../../../common/units/classes.ts'
 import { HIRELING_RECORDS } from '../../../common/units/hireling-table.ts'
 import type { LocalAreaPresetMonster, ServerEvent, UnitId } from '../../../netproto/index.ts'
 import { findStandableNear, resolvePresetObject113c } from '../../world/area-bootstrap.ts'
@@ -20,8 +25,8 @@ import { createDefaultNpcIntroData } from '../../save/d2s-writer.ts'
 import { FIXED_ONE } from '../stat-list.ts'
 import type { AnimDispatcher } from '../anim-dispatcher.ts'
 import type { GameInstanceHost } from './host.ts'
-import type { AreaArrival, ConnectPlayerSpec, InternalPlayerRecord, InternalWarpTileRecord, LoadedAreaRecord, ServerItemEntry } from './types.ts'
-import { ACT_TOWN_AREA, CLASS_ID_TO_CODE, CLASS_SKILL_OFFSET, LEGACY_TEST_GRID_SPAWN, PLAYER_UNIT_SIZE, ROOM_HIDE_RADIUS_TILES, ROOM_REVEAL_RADIUS_TILES, ROOM_TILE_SPAN_113C, SUBTILES_PER_TILE, TOWN_AREAS, WAYPOINT_AREA_IDS, areaToAct, experienceForLevel113c, lookupBaseInfo, normalizeClassId, type UnitType113c, UNIT_TYPE_113C } from './constants-and-helpers.ts'
+import type { AreaArrival, ConnectPlayerSpec, InternalPlayerRecord, InternalWarpTileRecord, LoadedAreaRecord, PendingRoomPresets113c, ServerItemEntry } from './types.ts'
+import { ACT_TOWN_AREA, CLASS_ID_TO_CODE, CLASS_SKILL_OFFSET, LEGACY_TEST_GRID_SPAWN, PLAYER_UNIT_SIZE, ROOM_HIDE_RADIUS_TILES, ROOM_REVEAL_RADIUS_TILES, ROOM_TILE_SPAN_113C, SUBTILES_PER_TILE, TOWN_AREAS, WAYPOINT_AREA_IDS, areaToAct, experienceForLevel113c, lookupBaseInfo, normalizeClassId, requireBaseInfo, type UnitType113c, UNIT_TYPE_113C } from './constants-and-helpers.ts'
 
 
 /** Enable or disable 25Hz `AnimDispatcher` windup, keyframe release, and frame-lock (`#1789`). */
@@ -84,6 +89,31 @@ function spawnAreaPresetMonster113c(this: GameInstanceHost, areaId: number, mon:
     return
   }
   if (hasMonStats2Flag(mon.classId, MONSTATS2_FLAGINDEX.CRITTER)) return
+  // #1990: Guard deferred room-preset spawns against quest-state transitions that already occurred before
+  // the room was entered (e.g. Town Nihlathak `514` in Harrogath `109` after `a5q3`, or duplicate quest NPCs).
+  if (
+    areaId === 109 &&
+    mon.classId === 514 &&
+    [...this.players.values()].some((p) =>
+      hasQuestFlag113c(
+        p.questFlags,
+        'a5q3',
+        QUEST_FLAG_REWARD_PENDING_113C | QUEST_FLAG_COMPLETED_113C,
+      ),
+    )
+  ) {
+    return
+  }
+  if (
+    ((areaId === 109 && mon.classId === 512) ||
+      (areaId === 1 && mon.classId === 265) ||
+      (areaId === 73 && mon.classId === 251)) &&
+    [...this.monsters.values()].some(
+      (m) => !m.dead && m.areaId === areaId && m.hcIdx === mon.classId,
+    )
+  ) {
+    return
+  }
   this.spawnMonster({
     classId: mon.classId,
     x: mon.x,
@@ -94,11 +124,41 @@ function spawnAreaPresetMonster113c(this: GameInstanceHost, areaId: number, mon:
     isVendor: mon.isVendor,
     isKillable: mon.isKillable,
     aiDisabled: mon.aiDisabled,
+    mapAi: mon.mapAi,
     spawnTentacleLimbs: isTentacleHeadHcIdx113c(mon.classId),
   })
 }
 
 
+
+const OBJECT_INITFN_ANCHOR_CLASS_IDS_113C = new Set<number>([
+  121, // InitFn 18 (0x6fce7c20): Jerhyn outside palace / docks (Area 40)
+  122, // InitFn 19 (0x6fce9b70): Jerhyn & Kaelan at palace entrance (Area 40)
+  378, // InitFn 49 (0x6fd086a0): Hratli at docks (Area 75)
+  379, // InitFn 50 (0x6fd08560): Hratli at forge (Area 75)
+  382, // InitFn 52 (0x6fd08310): Natalya start (Area 75)
+  385, // InitFn 54 (0x6fc860d0): Deckard Cain start (Area 1)
+  459, // InitFn 66 (0x6fc7eb30): Town Anya start (Area 109)
+  461, // InitFn 68 (0x6fc7c5c0): Town Nihlathak inside town (Area 109)
+  462, // InitFn 69 (0x6fc7cf70): Boss Nihlathak SU 60 outside town (Area 124)
+  542, // InitFn 70 (0x6fc7c470): Larzuk greeting (Area 109)
+  543, // InitFn 71 (0x6fc7c3a0): Larzuk standard (Area 109)
+])
+
+/**
+ * `Objects.txt` `Sync == 0` server-only NPC/boss spawner markers (`D2Game.dll` `0x6fd2e050`, #2000):
+ * never broadcast `UnitAssign` (`0x51`) to clients so `459` (`XS`) and `461`/`462` (`0J`) never render
+ * unclickable ghost sprites when their dynamic `UNIT_MONSTER` is absent or slain.
+ */
+const SERVER_ONLY_NPC_SPAWNER_OBJECT_IDS_113C = new Set<number>([
+  382,
+  385,
+  459,
+  461,
+  462,
+  542,
+  543,
+])
 
 function loadArea(this: GameInstanceHost, areaId: number): LoadedAreaRecord | null {
   const existing = this.loadedAreas.get(areaId)
@@ -117,6 +177,8 @@ function loadArea(this: GameInstanceHost, areaId: number): LoadedAreaRecord | nu
       `GameInstance.ensureAreaLoaded: resolver returned area ${bootstrap.areaId} for area ${areaId}`,
     )
   }
+  const initFnAnchors: { readonly classId: number; readonly x: number; readonly y: number }[] = []
+  const synthesizedMonsters: LocalAreaPresetMonster[] = []
   const record: LoadedAreaRecord = {
     areaId,
     spawnX: bootstrap.spawnX,
@@ -128,18 +190,70 @@ function loadArea(this: GameInstanceHost, areaId: number): LoadedAreaRecord | nu
     ...(bootstrap.findActSpawnLocation !== undefined
       ? { findActSpawnLocation: bootstrap.findActSpawnLocation }
       : {}),
+    ...(bootstrap.originX !== undefined ? { originX: bootstrap.originX } : {}),
+    ...(bootstrap.originY !== undefined ? { originY: bootstrap.originY } : {}),
+    ...(bootstrap.subWidth !== undefined ? { subWidth: bootstrap.subWidth } : {}),
+    ...(bootstrap.subHeight !== undefined ? { subHeight: bootstrap.subHeight } : {}),
+    ...(bootstrap.collision !== undefined ? { collision: bootstrap.collision } : {}),
+    initFnAnchors,
   }
   this.loadedAreas.set(areaId, record)
+  this.areaPathWorld.initArea(
+    areaId,
+    bootstrap.originX,
+    bootstrap.originY,
+    bootstrap.subWidth,
+    bootstrap.subHeight,
+    bootstrap.collision,
+  )
   const areaLvl = getLevelMonsterLevel113c(areaId, this.difficulty, true)
+  // DRLG room of a preset (rooms are activated near players; see `activatePresetRoomsNearPlayer113c`).
+  const roomOf = (x: number, y: number): number | undefined =>
+    bootstrap.roomRects.find((r) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h)?.index
+  const pendingByRoom = new Map<number, PendingRoomPresets113c>()
+  const pendingFor = (room: number): PendingRoomPresets113c => {
+    let entry = pendingByRoom.get(room)
+    if (entry === undefined) {
+      entry = { objectIds: [], monsters: [], tileIds: [] }
+      pendingByRoom.set(room, entry)
+    }
+    return entry
+  }
   for (const obj of bootstrap.objects) {
+    const objRoom = roomOf(obj.x, obj.y)
     const resolved = resolvePresetObject113c(obj.classId, areaId, (n: number) => this.rng.rand(n))
     if (!resolved) continue
+    if (OBJECT_INITFN_ANCHOR_CLASS_IDS_113C.has(resolved.classId)) {
+      initFnAnchors.push({ classId: resolved.classId, x: obj.x, y: obj.y })
+    }
+    // D2Game.dll InitFn 69 (0x6fc7cf70): Object 462 in Halls of Vaught (Area 124) spawns SuperUnique
+    // Nihlathak (`SU 60`, `hcIdx 526`, `nihlathakboss`) + minions in its DS1 room (#2000).
+    if (
+      areaId === 124 &&
+      resolved.classId === 462 &&
+      !bootstrap.monsters.some((m) => m.superUniqueIndex === 60 || m.classId === 526) &&
+      !synthesizedMonsters.some((m) => m.superUniqueIndex === 60 || m.classId === 526)
+    ) {
+      synthesizedMonsters.push({
+        classId: 526,
+        x: obj.x,
+        y: obj.y,
+        superUniqueIndex: 60,
+      })
+    }
+    if (SERVER_ONLY_NPC_SPAWNER_OBJECT_IDS_113C.has(resolved.classId)) {
+      // `D2Game.dll` (`0x6FD01430`) still allocates the server-only object unit and draws its seed on room
+      // activation, while `Sync == 0` suppresses `0x51` client assignment (#2000).
+      const markerId = this.allocateUnitId(UNIT_TYPE_113C.object, objRoom === undefined)
+      if (objRoom !== undefined) pendingFor(objRoom).objectIds.push(markerId)
+      continue
+    }
     const isSparkling = Boolean(
       obj.isSparkling ??
         resolved.isSparkling ??
         SPARKLY_CHEST_INIT57_CLASS_IDS_113C.has(resolved.classId),
     )
-    this.spawnObject({
+    const createdObjId = this.spawnObject({
       classId: resolved.classId,
       x: obj.x,
       y: obj.y,
@@ -156,32 +270,29 @@ function loadArea(this: GameInstanceHost, areaId: number): LoadedAreaRecord | nu
       destAreaId: obj.destAreaId,
       rollTrap: !TOWN_AREAS.has(areaId),
       rollPreOperate: !TOWN_AREAS.has(areaId) && !PRE_OPERATE_ROLLED_OBJECTS_113C.has(obj),
+      // Object units stay available for gameplay right away; their unit seed is drawn when the room
+      // is activated, in 1.13c spawn order (`0x6FD01430`, objects before monsters).
+      deferUnitSeed: objRoom !== undefined,
     })
+    if (objRoom !== undefined) {
+      pendingFor(objRoom).objectIds.push(createdObjId)
+    }
   }
   // Preset monsters belong to their DRLG room and are spawned when that room is activated by a nearby
   // player (`activatePresetRoomsNearPlayer113c`, D2Game new-room processing `0x6FC4CBE0` ->
   // `0x6FD01430`). Presets outside every room rectangle (synthetic geometry) are spawned right away.
-  const pendingByRoom = new Map<number, LocalAreaPresetMonster[]>()
-  for (const mon of bootstrap.monsters) {
-    const room = bootstrap.roomRects.find(
-      (r) => mon.x >= r.x && mon.x < r.x + r.w && mon.y >= r.y && mon.y < r.y + r.h,
-    )
-    if (room === undefined) {
+  for (const mon of [...bootstrap.monsters, ...synthesizedMonsters]) {
+    const monRoom = roomOf(mon.x, mon.y)
+    if (monRoom === undefined) {
       this.spawnAreaPresetMonster113c(areaId, mon)
       continue
     }
-    let list = pendingByRoom.get(room.index)
-    if (list === undefined) {
-      list = []
-      pendingByRoom.set(room.index, list)
-    }
-    list.push(mon)
-  }
-  if (pendingByRoom.size > 0) {
-    this.pendingPresetMonsters.set(areaId, { byRoom: pendingByRoom, activated: new Set() })
+    pendingFor(monRoom).monsters.push(mon)
   }
   for (const warp of bootstrap.warps) {
-    const unitId = this.allocateUnitId(UNIT_TYPE_113C.tile)
+    const warpRoom = roomOf(warp.x, warp.y)
+    const unitId = this.allocateUnitId(UNIT_TYPE_113C.tile, warpRoom === undefined)
+    if (warpRoom !== undefined) pendingFor(warpRoom).tileIds.push(unitId)
     const tile: InternalWarpTileRecord = {
       unitId,
       lvlWarpId: warp.lvlWarpId,
@@ -192,6 +303,9 @@ function loadArea(this: GameInstanceHost, areaId: number): LoadedAreaRecord | nu
     }
     this.warpTiles.set(unitId, tile)
     this.broadcastToArea(areaId, this.warpTileAssignEvent(tile))
+  }
+  if (pendingByRoom.size > 0) {
+    this.pendingPresetMonsters.set(areaId, { byRoom: pendingByRoom, activated: new Set() })
   }
   if (PANDEMONIUM_AREA_IDS_113C.has(areaId) || areaId === 39 || areaId === 121) {
     const returnTownAreaId = areaId === 39 ? 1 : 109
@@ -233,8 +347,14 @@ function loadArea(this: GameInstanceHost, areaId: number): LoadedAreaRecord | nu
   if (areaId === 25) {
     this.syncTowerCellarA1Q4State113c(25)
   }
+  if (areaId === 40) {
+    this.syncLutGholeinAct2NpcState113c()
+  }
   if (areaId === 73) {
     this.syncDurielsLairA2Q6State113c(73)
+  }
+  if (areaId === 75) {
+    this.syncKurastDocksAct3NpcState113c()
   }
   if (areaId === 109) {
     this.syncHarrogathA5Q3State113c()
@@ -603,6 +723,13 @@ function emitRoomUnitsRemovedToPlayer(this: GameInstanceHost,
           : ent.unitType === 'object'
             ? 2
             : 4
+    if (ent.unitType === 'monster' && player.activeNpcId === ent.unitId) {
+      // D2Game.dll 0x6FC68410 (D2GAME_CancelMonsterInteractAll) & PLAYER_UpdateRooms (0x6FC6AC84):
+      // unloading an NPC's room from a player's AOI clears stale server NPC/vendor state (#2009).
+      player.activeNpcId = undefined
+      player.lastNpcInteractHandshakeId = undefined
+      player.activeVendorMode = null
+    }
     this.emitToPlayer(player.unitId, {
       type: 'UnitRemove',
       unitType: wireUnitType,
@@ -872,6 +999,7 @@ function movePlayer(this: GameInstanceHost, playerUnitId: number, x: number, y: 
     motion.plannedX = Number.NaN
     motion.plannedY = Number.NaN
   }
+  this.areaPathWorld.spawnOrSyncPlayer(p.areaId, p.unitId, p.classId, x, y, p.mode)
 }
 
 
@@ -952,13 +1080,21 @@ function setPlayersX(this: GameInstanceHost,
  * Allocates the next unit id of `unitType` (`SUNIT_GetNewUnitId`, `D2Game.dll` `0x6FCFF9C0`):
  * `id = ++pGame->dwLastUnitId[type]`, with `-1` (`0xFFFFFFFF`, the "no unit" id) skipped to 1.
  */
-function allocateUnitId(this: GameInstanceHost, unitType: UnitType113c): number {
+function allocateUnitId(this: GameInstanceHost, unitType: UnitType113c, drawSeed = true): number {
   if (!Number.isInteger(unitType) || unitType < 0 || unitType > 5) {
     throw new RangeError(`allocateUnitId: unit type ${String(unitType)} is outside 0..5`)
   }
   const id = this.nextUnitIdByType[unitType]!
   this.nextUnitIdByType[unitType] = id >= 0xfffffffe ? 1 : id + 1
+  if (drawSeed) this.unitSeeds.set(`${unitType}:${id}`, allocUnitSeed113c(this.gameSeed, unitType))
   return id
+}
+
+/** Draws the unit seed of a unit allocated with `drawSeed = false` (DRLG room presets, at room activation). */
+function drawDeferredUnitSeed113c(this: GameInstanceHost, unitType: UnitType113c, unitId: number): void {
+  const key = `${unitType}:${unitId}`
+  if (this.unitSeeds.has(key)) return
+  this.unitSeeds.set(key, allocUnitSeed113c(this.gameSeed, unitType))
 }
 
 
@@ -980,7 +1116,7 @@ function rescaleActiveMonsters(this: GameInstanceHost, syncMonsterPlayerCount = 
     if (syncMonsterPlayerCount && m.monsterPlayerCount < px) {
       m.monsterPlayerCount = px
     }
-    if (m.noRatio) continue
+    if (m.noRatio || m.baseMaxHp <= 0) continue
     const ratio = m.maxHp > 0 ? m.hp / m.maxHp : 1
     m.maxHp = Math.max(1, Math.floor((m.baseMaxHp * multNum) / 2))
     m.hp = Math.max(1, Math.round(m.maxHp * ratio))
@@ -1040,6 +1176,8 @@ function connectPlayer(this: GameInstanceHost, spec: ConnectPlayerSpec = {}): nu
     ) {
       this.currentMapSeed = parsedD2s.mapSeed >>> 0
       this.rng = new D2Rng(this.currentMapSeed)
+      initGameSeed113c(this.gameSeed, this.currentMapSeed)
+      this.actMonsterOutfitPalettes = createActMonsterOutfitPalettes113c()
     }
   }
 
@@ -1213,7 +1351,7 @@ function connectPlayer(this: GameInstanceHost, spec: ConnectPlayerSpec = {}): nu
     for (const itemData of parsedD2s.items) {
       items.push(this.itemDataToServerEntry(itemData, unitId, areaId, true))
     }
-  } else {
+  } else if (spec.startingItems !== 'charstats') {
     const potInfo = lookupBaseInfo('hpot')
     for (let i = 0; i < 4; i++) {
       items.push({
@@ -1243,6 +1381,80 @@ function connectPlayer(this: GameInstanceHost, spec: ConnectPlayerSpec = {}): nu
         stats: new Map(),
         socketedItems: [],
       })
+    }
+  } else {
+    // New character: `CharStats.txt` `item1..item10` in column order (1 item unit = 2 game-seed draws each).
+    let beltSlot = 0
+    const takenCells = new Set<string>()
+    const freeInventoryCell = (w: number, h: number): { x: number; y: number } => {
+      for (let x = 10 - w; x >= 0; x--) {
+        for (let y = 4 - h; y >= 0; y--) {
+          let ok = true
+          for (let dx = 0; dx < w && ok; dx++) {
+            for (let dy = 0; dy < h && ok; dy++) {
+              ok = !takenCells.has(`${x + dx},${y + dy}`)
+            }
+          }
+          if (ok) {
+            for (let dx = 0; dx < w; dx++) {
+              for (let dy = 0; dy < h; dy++) {
+                takenCells.add(`${x + dx},${y + dy}`)
+              }
+            }
+            return { x, y }
+          }
+        }
+      }
+      throw new Error('GameInstance.connectPlayer: no inventory cell for a CharStats starting item')
+    }
+    for (const kitItem of CHARSTATS_STARTING_ITEMS_113C[classCode]) {
+      const info = requireBaseInfo(kitItem.code)
+      for (let n = 0; n < kitItem.count; n++) {
+        const isPotion = info.itemType === 'hpot' || info.itemType === 'mpot' || info.itemType === 'rpot'
+        let location: ServerItemEntry['location']
+        let x = 0
+        let y = 0
+        let bodyLoc = 0
+        if (kitItem.loc !== '') {
+          location = 'equipped'
+          bodyLoc = kitItem.loc === 'rarm' ? 4 : 5
+        } else if (isPotion) {
+          location = 'belt'
+          x = beltSlot++
+        } else {
+          location = 'inventory'
+          const cell = freeInventoryCell(info.width, info.height)
+          x = cell.x
+          y = cell.y
+        }
+        items.push({
+          unitId: this.allocateUnitId(UNIT_TYPE_113C.item),
+          code: info.code,
+          name: info.name,
+          quality: 2,
+          level: 1,
+          location,
+          x,
+          y,
+          width: info.width,
+          height: info.height,
+          areaId,
+          ownerId: unitId,
+          bodyLoc,
+          storePage: 0,
+          cost: info.cost,
+          gamble: false,
+          identified: true,
+          ethereal: false,
+          socketed: false,
+          totalSockets: 0,
+          durability: info.maxDurability,
+          maxDurability: info.maxDurability,
+          quantity: 1,
+          stats: new Map(),
+          socketedItems: [],
+        })
+      }
     }
   }
 
@@ -1393,13 +1605,20 @@ function connectPlayer(this: GameInstanceHost, spec: ConnectPlayerSpec = {}): nu
     this.syncRogueEncampmentA1Q3State113c(record)
   }
   this.syncTowerCellarA1Q4State113c(25, record)
+  if (areaId === 40) {
+    this.syncLutGholeinAct2NpcState113c(record)
+  }
   if (areaId === 73) {
     this.syncDurielsLairA2Q6State113c(73, undefined, undefined, record)
   }
-  if (areaId === 109) {
+  if (areaId === 75) {
+    this.syncKurastDocksAct3NpcState113c(record)
+  }
+  if (areaId === 109 || (areaId >= 121 && areaId <= 124)) {
     this.syncHarrogathA5Q3State113c(record)
   }
   this.players.set(unitId, record)
+  this.areaPathWorld.spawnOrSyncPlayer(areaId, unitId, classId, spawnX, spawnY, record.mode)
   this.activatePresetRoomsNearPlayer113c(record)
   this.refreshPlayerAccruedMaxPools(record, {
     fillHpIfAtBaseMax:
@@ -1674,6 +1893,7 @@ function disconnectPlayer(this: GameInstanceHost, playerUnitId: number): Uint8Ar
     }
   }
   this.playerMotion.delete(playerUnitId)
+  this.areaPathWorld.removePlayer(playerUnitId)
   this.outbox.delete(playerUnitId)
   this.rescaleActiveMonsters()
 
@@ -1777,7 +1997,8 @@ export interface AreaAndSessionMethods {
   setPaused(paused: boolean): void
   getPlayersX(): number
   setPlayersX(value: number, options?: { readonly syncMonsterPlayerCount?: boolean | undefined }): number
-  allocateUnitId(unitType: UnitType113c): number
+  allocateUnitId(unitType: UnitType113c, drawSeed?: boolean): number
+  drawDeferredUnitSeed113c(unitType: UnitType113c, unitId: number): void
   spawnAreaPresetMonster113c(areaId: number, mon: LocalAreaPresetMonster): void
   canPersistMapSeed(): boolean
   rescaleActiveMonsters(syncMonsterPlayerCount?: boolean | undefined): void
@@ -1815,6 +2036,7 @@ export const areaAndSessionMethods: Record<keyof AreaAndSessionMethods, unknown>
   getPlayersX,
   setPlayersX,
   allocateUnitId,
+  drawDeferredUnitSeed113c,
   spawnAreaPresetMonster113c,
   canPersistMapSeed,
   rescaleActiveMonsters,

@@ -38,6 +38,10 @@ export interface SkillDescLineEnv {
   readonly manaShift: number
   /** Summoned monster average base HP for the active difficulty (descline 13 → 0x6FADEFD0 + D2Common.#11089). */
   readonly summonBaseHp?: number | undefined
+  /** Pre-evaluated summon physical damage range (descline 34 → 0x6FADE410, descline 39 → 0x6FADE900). */
+  readonly summonDamage?: { readonly min: number; readonly max: number } | undefined
+  /** Summoned monster base A1MinD..A1MaxD for the active difficulty (descline 41 → 0x6FADE770). */
+  readonly summonBaseAttack?: { readonly min: number; readonly max: number } | undefined
   /** Un-aura-boosted elemental/magic min/max damage (descline 48 → 0x6FAE0270). */
   readonly elemMin?: number | undefined
   readonly elemMax?: number | undefined
@@ -51,6 +55,8 @@ export interface SkillDescLineText {
   readonly text: string
   /** D2 colour index applied by `0x6FB6F5F0` (`ÿc<n>`), when the line sets one. */
   readonly color?: number | undefined
+  /** True when `0x6FADC950` draws a separate side box and appends nothing to the main tooltip buffer (`descline 53..56`). */
+  readonly sideBoxOnly?: boolean | undefined
 }
 
 const txt = (t: SkillDescText | undefined, lang: SkillDescLang): string => (t ? t[lang] : '')
@@ -184,10 +190,12 @@ export function formatSkillDescLine(line: SkillDescLine, env: SkillDescLineEnv, 
     }
     case 25: // 0x6FAE1D2F: textA + textB, coloured by calcA when > 0
       return out(`${A}${B}`, a > 0 ? a : undefined)
-    case 28: { // 0x6FAE1EA3: StrSkill18 "Radius: " + yards(descmissile1 sHitPar1)
+    case 28: { // 0x6FAE1EA3: StrSkill18 "Radius: " + yards([descmissile1 + 0x38] = Missiles.txt Param1; the
+      // D2Common Missiles field table maps Param1 -> 0x38, sHitPar1 -> 0x4C at 0x6FDCCBEF / 0x6FDCCE15).
+      // Fire Ball's "fireball" missile has no Param1, so the original prints "Radius: 1 yard" (oracle P5.4).
       const m = env.missile1
       if (!m) return null
-      return out(`${tbl('StrSkill18')}${formatSkillYards(m.sHitPar1, tbl)}`)
+      return out(`${tbl('StrSkill18')}${formatSkillYards(m.param1, tbl)}`)
     }
     case 29: { // 0x6FAE1ED8: ((Range + LevRange*(lvl-1))*2)/3 + " yards" via 0x6FADDBF0 (value first)
       const m = env.missile1
@@ -210,6 +218,12 @@ export function formatSkillDescLine(line: SkillDescLine, env: SkillDescLineEnv, 
       return a === 0 ? null : out(`${A}${B}${signed(a, true)}${tbl('StrSkill23')}`)
     case 33: // 0x6FAE1FE7: only when lvl > 1: textA + textB
       return env.lvl > 1 ? out(`${A}${B}`) : null
+    case 34: // 0x6FAE2016 -> 0x6FADE410: Raise Skeleton summon physical damage (StrSkill4 + min-max)
+    case 39: { // 0x6FAE2155 -> 0x6FADE900: Golem summon physical damage (StrSkill4 + min-max)
+      const sd = env.summonDamage
+      if (!sd || (sd.min === 0 && sd.max === 0)) return null
+      return out(`${tbl('StrSkill4')}${sd.min === sd.max ? `${sd.min}` : `${sd.min}-${sd.max}`}`)
+    }
     case 35: // 0x6FAE204E: textA + ": " + "%d-%d"(calcA, calcB)
       return out(`${A}${tbl('colon')}${tbl('space')}${a}-${b}`)
     case 36: // 0x6FADDA70(textA, textB, calcA, 0): value + (value==1 ? textA : textB)
@@ -229,6 +243,19 @@ export function formatSkillDescLine(line: SkillDescLine, env: SkillDescLineEnv, 
     }
     case 40: // 0x6FAE218D: sprintf(textA, textB), coloured by calcA when > 0
       return out(sprintfTbl(A, B), a > 0 ? a : undefined)
+    case 41: { // 0x6FAE2251 -> 0x6FADE770: summon A1MinD..A1MaxD + calcA..calcB, prefixed by EType
+      const fMin = (env.summonBaseAttack?.min ?? 0) + a
+      const fMax = (env.summonBaseAttack?.max ?? 0) + b
+      if (fMin === 0 && fMax === 0) return null
+      const prefixKey =
+        env.eType === 'fire' ? 'StrSkill5'
+        : env.eType === 'ltng' ? 'StrSkill7'
+        : env.eType === 'cold' ? 'StrSkill6'
+        : env.eType === 'mag' ? 'StrSkill39'
+        : env.eType === 'pois' ? 'StrSkill8'
+        : 'StrSkill4'
+      return out(`${tbl(prefixKey)}${fMin === fMax ? `${fMin}` : `${fMin}-${fMax}`}`)
+    }
     case 42: { // 0x6FAE2277 -> 0x6FADCD20(textA, textB, calcA, calcB, 1, 0): textA ": " "+calcA.calcB" " " textB
       if (!line.textA || (a === 0 && b === 0)) return null
       return out(`${A}${tbl('colon')}${tbl('space')}${signed(a, true)}.${Math.abs(b)}${tbl('space')}${B}`)
@@ -250,6 +277,7 @@ export function formatSkillDescLine(line: SkillDescLine, env: SkillDescLineEnv, 
     case 47: // 0x6FAE23D4 -> 0x6FADF520(textA, calcA, calcB, 0, 0)
       if (a === b) return a === 0 ? null : out(`${A}${a}`)
       return out(`${A}${a}-${b}`)
+    case 10: // 0x6FAE1929 -> 0x6FADEF80(unit, skill, lvl): #10121/#11091 (bMastery=1) >> 8 -> 0x6FADD220 (oracle P5.4)
     case 48: { // 0x6FAE23F8 -> 0x6FAE0270 -> 0x6FADEF80 -> 0x6FADD220 -> 0x6FADC870: elemental/magic damage without Concentration aura
       const eMin = env.elemMin ?? 0
       const eMax = env.elemMax ?? 0
@@ -265,11 +293,11 @@ export function formatSkillDescLine(line: SkillDescLine, env: SkillDescLineEnv, 
     }
     case 51: // 0x6FAE24BD -> 0x6FADDD50(textA, calcA): sprintf(textA, calcA)
       return line.textA ? out(sprintfTbl(A, a)) : null
-    case 53: // 0x6FAE24FB -> 0x6FADC950(scrollbooktext, textA, invCode)
+    case 53: // 0x6FAE24FB -> 0x6FADC950(scrollbooktext, textA, invCode): side quantity box at (x-128, y-52); main buffer unchanged, returns 1
     case 54: // 0x6FAE2525
     case 55: // 0x6FAE2552
     case 56: // 0x6FAE257F
-      return out(`${sprintfTbl(tbl('scrollbooktext'), env.bookQty ?? 1)}\n${A}`)
+      return { text: `${sprintfTbl(tbl('scrollbooktext'), env.bookQty ?? 1)}\n${A}`, sideBoxOnly: true }
     case 57: { // 0x6FAE25AB -> 0x6FADE060(textA, calcA, plus=1)
       const secs = formatSkillSeconds(a, tbl, true)
       return secs === null ? null : out(`${A}${secs}`)

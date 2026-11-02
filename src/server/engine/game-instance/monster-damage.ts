@@ -12,7 +12,7 @@ import { MONSTATS_113C_ROWS } from '../../../common/units/monstats-113c-data.ts'
 import { isBonePrisonMonsterHcIdx113c } from '../../../common/units/monai-113c.ts'
 import { resolveHirelingStatsAtLevel } from '../../../common/units/hireling-table.ts'
 import { MON_UMOD, computeChargedBolt8WayVectors, isScarabMonster } from '../../../common/units/monster-death-fx.ts'
-import { TELEPORT_UMOD_COOLDOWN_FRAMES_113C, TELEPORT_UMOD_HEAL_CHANCE_PCT_113C, computeScarabChargedBoltFanTargets113c, computeScarabChargedBoltSlvl113c, evaluateTeleportUMod113c, hasImplicitShatterOnDeathUMod113c } from '../../ai/monumod-113c.ts'
+import { LIGHTNING_UMOD_COOLDOWN_FRAMES_113C, SCARAB_BUGLIGHTNING_MISSILE_ID_113C, TELEPORT_UMOD_COOLDOWN_FRAMES_113C, TELEPORT_UMOD_GATE1_PCT_113C, TELEPORT_UMOD_GATE2_PCT_113C, TELEPORT_UMOD_HEAL_CHANCE_PCT_113C, computeLightningEnchantedBoltSlvl113c, computeLightningUniqueBoltDamage113c, computeScarabBugLightningDamage113c, computeScarabChargedBoltFanTargets113c, computeScarabChargedBoltSlvl113c, evaluateTeleportUMod113c, hasImplicitShatterOnDeathUMod113c, isTeleportUModRangedMonster113c } from '../../ai/monumod-113c.ts'
 import type { ServerEvent } from '../../../netproto/index.ts'
 import { computeEquippedArmorPieceDefense113c } from '../../items/server-item-data.ts'
 import { scaleMercenaryBossDamage113c } from '../../ai/mercenary-ai.ts'
@@ -23,9 +23,10 @@ import { FIXED_ONE, UnitStatList } from '../stat-list.ts'
 import { StateBus } from '../state-bus.ts'
 import { compute3BandDuration, computeDiminishingReturns, evaluateCalc } from '../../../common/data/calc-ast.ts'
 import { difficultyLifeStealDivisor, difficultyManaStealDivisor, difficultyMonsterColdDivisor, difficultyMonsterFreezeDivisor } from '../difficulty-resist-penalty.ts'
+import { scaleMonStatsPoisonRider113c } from '../../ai/monster-missile-damage-113c.ts'
 import type { GameInstanceHost } from './host.ts'
 import type { InternalMercenaryRecord, InternalMonsterRecord, InternalPlayerRecord } from './types.ts'
-import { MONSTER_HIT_RECOVERY_FRAMES, MONSTER_KNOCKBACK_DISTANCE, MONSTER_KNOCKBACK_SKILLS, MONSTER_THREAT_FRAMES, SKILL_WHIRLWIND_113C, STATE_SANCTUARY_113C, monUmodConstant113c, playerWirePosition, UNIT_TYPE_113C } from './constants-and-helpers.ts'
+import { MONSTER_HIT_RECOVERY_FRAMES, MONSTER_KNOCKBACK_DISTANCE, MONSTER_KNOCKBACK_SKILLS, MONSTER_THREAT_FRAMES, SKILL_WHIRLWIND_113C, STATE_SANCTUARY_113C, playerWirePosition, UNIT_TYPE_113C } from './constants-and-helpers.ts'
 
 
 function applyDamageToMonster(this: GameInstanceHost, 
@@ -108,6 +109,21 @@ function applyDamageToMonster(this: GameInstanceHost,
     skillId = resolvedSkillId
   }
   if (!monster || monster.dead || monster.isNpc || !monster.isKillable || monster.submerged) return false
+  if (monster.align !== 0) {
+    const canBreakHostileBoneWall =
+      monster.boneConstructOwnerPlayerId !== undefined &&
+      attacker !== undefined &&
+      attacker.unitId > 0 &&
+      attacker.unitId !== monster.boneConstructOwnerPlayerId &&
+      this.isHostilePvpPair113c(
+        attacker.unitId,
+        attacker.areaId,
+        monster.boneConstructOwnerPlayerId,
+        monster.areaId,
+        true,
+      )
+    if (!canBreakHostileBoneWall) return false
+  }
   if (effectiveSource === 'merc' && mercAttacker === undefined && attacker !== undefined) {
     for (const m of this.mercenaries.values()) {
       if (m.ownerPlayerId === attacker.unitId && m.alive) {
@@ -978,7 +994,7 @@ function applyMonsterPoisonDot(this: GameInstanceHost,
   skillId: number,
   effectiveSource: 'player' | 'merc' | 'pet' = 'player',
 ): boolean {
-  if (monster.dead || monster.isNpc || !monster.isKillable || monster.submerged) return false
+  if (monster.dead || monster.isNpc || !monster.isKillable || monster.submerged || monster.align !== 0) return false
   if (rawBitrate256 <= 0 || durationFrames <= 0) return false
 
   const attackerStats = new UnitStatList(this.registry, undefined, {
@@ -986,7 +1002,12 @@ function applyMonsterPoisonDot(this: GameInstanceHost,
     charClass: attacker.classCode,
   })
   attackerStats.setBaseStat('level', attacker.level)
-  attackerStats.setBaseStat('maxhp', attacker.maxHpFixed)
+  attackerStats.setBaseStat(
+    'maxhp',
+    this.players.get(attacker.unitId) === attacker
+      ? this.getPlayerAccruedMaxHpFixed(attacker)
+      : attacker.maxHpFixed,
+  )
   attackerStats.setHp256(attacker.hpFixed)
   // `passive_pois_mastery` (332) / `passive_pois_pierce` (336) of the poison source (#1801, #1874):
   // Pet-origin poison (`effectiveSource === 'pet'`) NEVER inherits player `332` / `336`.
@@ -1264,14 +1285,6 @@ function finishMonsterDamage(this: GameInstanceHost,
   ) {
     this.applyMonsterState(monster.unitId, 52, 120_000)
   }
-  if (
-    monster.umodIds.includes(MON_UMOD.TELEPORT) &&
-    monster.hp > 0 &&
-    monster.hp * 100 < monster.maxHp * 30 &&
-    this.currentFrame >= monster.teleportCooldownUntilFrame
-  ) {
-    this.teleportEliteAwayFrom(monster, attacker)
-  }
   if (!finishOpts?.suppressReturnFireThreat) {
     monster.threatPlayerId = attacker.unitId
     monster.threatUntilFrame = this.currentFrame + MONSTER_THREAT_FRAMES
@@ -1312,67 +1325,12 @@ function finishMonsterDamage(this: GameInstanceHost,
     value: monster.hp,
   })
 
-  // F12.4: MonUMod #17 `lightning` (0x6FC42360) and #20 `scarab` (0x6FC460D0, #1947)
-  // evaluate independently on struck so a Lightning Enchanted Scarab emits 8 + 8 = 16 bolts.
-  if (monster.hp > 0 && monster.umodIds.includes(MON_UMOD.LIGHTNING)) {
-    const vectors = computeChargedBolt8WayVectors(monster.x, monster.y, 1.5)
-    const rolledMonDmg =
-      monster.maxDmg > monster.minDmg
-        ? monster.minDmg + this.rng.rand(monster.maxDmg - monster.minDmg + 1)
-        : monster.minDmg
-    const boltDmg = Math.max(
-      1,
-      Math.floor(
-        (rolledMonDmg * monUmodConstant113c(MON_UMOD.LIGHTNING)) / 100,
-      ),
-    )
-    for (const vec of vectors) {
-      this.spawnMonsterMissile(
-        monster,
-        vec.targetX,
-        vec.targetY,
-        boltDmg,
-        195,
-        195,
-      )
-    }
-  }
-  if (
-    monster.hp > 0 &&
-    (monster.umodIds.includes(MON_UMOD.SCARAB) ||
-      isScarabMonster(monster.hcIdx, monster.defId))
-  ) {
-    // 1.13c D2Game.dll 0x6FC460D0 (#1947): 4 * 2 = 8 Charged Bolts aimed toward attacker
-    // at slvl = min(15, floor((mlvl + 4) / 5)).
-    const scarabSlvl = computeScarabChargedBoltSlvl113c(monster.level)
-    const fanTargets = computeScarabChargedBoltFanTargets113c(
-      monster.x,
-      monster.y,
-      attacker.x,
-      attacker.y,
-      1.5,
-    )
-    const rolledMonDmg =
-      monster.maxDmg > monster.minDmg
-        ? monster.minDmg + this.rng.rand(monster.maxDmg - monster.minDmg + 1)
-        : monster.minDmg
-    const boltDmg = Math.max(
-      1,
-      Math.floor(
-        (rolledMonDmg * monUmodConstant113c(MON_UMOD.SCARAB)) / 100,
-      ),
-    )
-    for (const vec of fanTargets) {
-      this.spawnMonsterMissile(
-        monster,
-        vec.targetX,
-        vec.targetY,
-        boltDmg,
-        195,
-        195,
-        { skillLevel: scarabSlvl, skipMultishot: true },
-      )
-    }
+  // 1.13c `SUNITDMG_ExecuteEvents` (`0x6FCFD139` / `0x6FCFD178` -> `MONUMOD_DispatchEvent` `col4` = `0x6FC468C0` -> `0x6FC46320`, #1995):
+  // `MonUMod #17` (`lightning`) fires on any non-ground-fire hit (subject to its 10-frame `dwLastLeFrame` cooldown),
+  // whereas `MonUMod #20` (`scarab`, `col4 = 0`, `col1 = 0x6FC41B00`) fires strictly on `MONMODE_GETHIT` (`maybeEnterMonsterHitRecovery`)
+  // and `MONMODE_DEATH` (`onMonsterKilled`).
+  if (!finishOpts?.isGroundFire) {
+    this.emitLightningEnchantedBoltsOnStruck113c(monster)
   }
 
   if (monster.hp <= 0) {
@@ -1701,22 +1659,43 @@ function resolvePendingDeathExplosion(this: GameInstanceHost, monster: InternalM
 
 
 /**
- * 1.13c `MonUMod #26` (`Teleport`, `D2Game.dll` `0x6FC441B0` / `0x6FCBCDE0`, #1899):
- * - Evaluates low-HP (`hp < 30% maxHp`), long-distance (`dist >= 12`), or blocked-melee triggers.
- * - Enforces `60`-frame cooldown (`TELEPORT_UMOD_COOLDOWN_FRAMES_113C`).
- * - When low HP (`< 30%`) and NOT suppressed by `STATE_PREVENTHEAL (52)`, poison (`state 2`),
- *   or Open Wounds (`state 62`), rolls `25%` chance (`rand(100) < 25`) to heal `floor(maxHp / 4)`.
+ * 1.13c `MonUMod #26` (`Teleport`, `D2Game.dll` `0x6FC441B0` / `AI_TryTeleportUMod` `0x6FCBCDE0`, #1899 / #1993):
+ * - Boss-only (`monster.rank !== 'minion'`), evaluated on `AIGENERAL_Think` (`0x6FCBD4A2`).
+ * - Gate 1 (`0x6FCBCE54`): `rand(100) < 40`.
+ * - Condition (`0x6FCBCEB5..0x6FCBCED0`): `lifePct < 30%`, or (`!isRanged && dist < 10`).
+ * - Gate 2 (`0x6FCBCEE0`): `rand(100) < 15` (net `6%` per AI think).
+ * - Picks a random walkable coordinate in `[-10..10]` around `(monster.x, monster.y)` (`sub_6FC67450`),
+ *   enforces `60`-frame cooldown, and when `lifePct < 30%` without `STATE_PREVENTHEAL (52)` or active DoT,
+ *   rolls `25%` (`0x6FCBCF61`) to heal `STAT_LEVEL (12)` (`monster.level` HP, `0x6FCBCF74`).
  */
 function teleportEliteAwayFrom(this: GameInstanceHost, 
   monster: InternalMonsterRecord,
   targetPos: { readonly x: number; readonly y: number },
   options?: { readonly meleeBlocked?: boolean | undefined },
 ): boolean {
+  if (
+    monster.rank === 'minion' ||
+    monster.hp <= 0 ||
+    monster.maxHp <= 0 ||
+    this.currentFrame < monster.teleportCooldownUntilFrame
+  ) {
+    return false
+  }
+  if (this.rng.rand(100) >= TELEPORT_UMOD_GATE1_PCT_113C) return false
+
   const dist = Math.hypot(targetPos.x - monster.x, targetPos.y - monster.y)
+  const isRanged = isTeleportUModRangedMonster113c({
+    isRanged: monster.isRanged,
+    hcIdx: monster.hcIdx,
+    defId: monster.defId,
+  })
   const evalResult = evaluateTeleportUMod113c({
+    rank: monster.rank,
+    level: monster.level,
     hp: monster.hp,
     maxHp: monster.maxHp,
     distanceToTarget: dist,
+    isRanged,
     meleeBlocked: options?.meleeBlocked,
     hasPreventHeal: monster.states.has(52),
     hasActiveDamageOverTime:
@@ -1726,17 +1705,16 @@ function teleportEliteAwayFrom(this: GameInstanceHost,
       (this.monsterOpenWounds.get(monster.unitId)?.remainingFrames ?? 0) > 0,
   })
   if (!evalResult.shouldTeleport) return false
+  if (this.rng.rand(100) >= TELEPORT_UMOD_GATE2_PCT_113C) return false
 
   const fromX = monster.x
   const fromY = monster.y
-  const awayAngle = Math.atan2(monster.y - targetPos.y, monster.x - targetPos.x)
-  const anchorX = evalResult.isLowHp ? monster.x : targetPos.x
-  const anchorY = evalResult.isLowHp ? monster.y : targetPos.y
-  const stepRadius = evalResult.isLowHp ? 8 : 2.5
-  for (const offset of [0, 0.4, -0.4, 0.8, -0.8, 1.2, -1.2, Math.PI]) {
-    const angle = awayAngle + offset
-    const tx = anchorX + Math.cos(angle) * stepRadius
-    const ty = anchorY + Math.sin(angle) * stepRadius
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const dx = this.rng.rand(21) - 10
+    const dy = this.rng.rand(21) - 10
+    if (Math.hypot(dx, dy) < 4) continue
+    const tx = fromX + dx
+    const ty = fromY + dy
     if (
       this.isClosedDoorAt(monster.areaId, Math.round(tx), Math.round(ty)) ||
       (this.terrainWalkableCheck &&
@@ -1957,9 +1935,11 @@ function maybeEnterPlayerHitRecovery(this: GameInstanceHost,
   if (player.dead) return
   if (this.isPlayerSkillUninterruptible113c(player)) return
   const dmg256 = options?.dmg256 ?? dealtDamage * FIXED_ONE
+  // 1.13c `D2Game.dll` `0x6FCFB945..0x6FCFB948` (`SUNITDMG_CheckHitRecovery`):
+  // Divides accrued `D2Common.#10913` (`GetMaxLifeFromUnit`) by `16` / `8` / `4`, not base `maxHpFixed` (#1996).
   const shouldEnter = shouldEnterGetHit113c(
     {
-      maxHp256: player.maxHpFixed,
+      maxHp256: this.getPlayerAccruedMaxHpFixed(player),
       states: player.states,
       stateBus: this.playerCombat.get(player.unitId)?.stateBus,
       isPurePoison: options?.isPurePoison,
@@ -2067,6 +2047,9 @@ function maybeEnterMonsterHitRecovery(this: GameInstanceHost,
         : 0,
     ...(resolvedHitClass > 0 ? { hitClass: resolvedHitClass } : {}),
   })
+  // 1.13c `MONMODE_ChangeAnimMode(3)` -> `MONUMOD_DispatchEvent(col1 = 0x6FC41B00 -> 0x6FC460D0, #1995):
+  // `MonUMod #20` (`scarab`) emits 8 radial `#225 buglightning` bolts strictly on entering `MONMODE_GETHIT` (`mode = 3`).
+  this.emitScarabBugLightningBurst113c(monster)
 }
 
 
@@ -2164,6 +2147,14 @@ function attackMonsterTarget(this: GameInstanceHost,
             : rider?.type === 'fire'
               ? 'fire'
               : undefined
+  const riderPois =
+    riderType === 'pois' && rider !== undefined
+      ? scaleMonStatsPoisonRider113c(
+          rider.minDamage ?? rider.min ?? 0,
+          rider.maxDamage ?? rider.max ?? 0,
+          rider.durationFrames ?? rider.duration ?? 25,
+        )
+      : undefined
   const dmgOut = executeSUnitDmg(attackerCtx, defenderCtx, {
     skillId: 0,
     attackKind: 'melee',
@@ -2174,10 +2165,23 @@ function attackMonsterTarget(this: GameInstanceHost,
       ? {
           elemType: riderType,
           elemMin256:
-            Math.max(0, rider?.minDamage ?? rider?.min ?? 0) * FIXED_ONE,
+            Math.max(
+              0,
+              riderPois !== undefined
+                ? riderPois.minCumulHp
+                : (rider?.minDamage ?? rider?.min ?? 0),
+            ) * FIXED_ONE,
           elemMax256:
-            Math.max(0, rider?.maxDamage ?? rider?.max ?? 0) * FIXED_ONE,
-          elemDurationFrames: rider?.durationFrames ?? rider?.duration ?? 0,
+            Math.max(
+              0,
+              riderPois !== undefined
+                ? riderPois.maxCumulHp
+                : (rider?.maxDamage ?? rider?.max ?? 0),
+            ) * FIXED_ONE,
+          elemDurationFrames:
+            riderPois !== undefined
+              ? riderPois.durationFrames
+              : (rider?.durationFrames ?? rider?.duration ?? 0),
         }
       : {}),
   }, this.rng)
@@ -2197,24 +2201,49 @@ function attackMonsterTarget(this: GameInstanceHost,
     }
     return
   }
-  const dealtDamage = Math.floor(dmgOut.totalDamage256 / FIXED_ONE)
-  if (dealtDamage <= 0) return
-
-  target.hp = Math.max(0, target.hp - dealtDamage)
-  this.broadcastToArea(target.areaId, {
-    type: 'UnitStatUpdate',
-    unitType: 'monster',
-    unitId: target.unitId,
-    statId: 6,
-    value: target.hp,
-  })
-  if (target.hp <= 0) {
-    const credited = this.creditedPlayerForMonsterKill(attacker, target)
-    this.applyMonsterDeath(target, credited, 'phys')
-  } else {
+  const poisonBitrate256 = dmgOut.poisonBitrate256 ?? 0
+  const poisonDurationFrames = dmgOut.poisonDurationFrames ?? 0
+  const poisonTotal256 =
+    poisonBitrate256 > 0 && poisonDurationFrames > 0 ? poisonBitrate256 * poisonDurationFrames : 0
+  const dealtDamage = Math.floor(Math.max(0, dmgOut.totalDamage256 - poisonTotal256) / FIXED_ONE)
+  if (dealtDamage > 0) {
+    target.hp = Math.max(0, target.hp - dealtDamage)
+    this.broadcastToArea(target.areaId, {
+      type: 'UnitStatUpdate',
+      unitType: 'monster',
+      unitId: target.unitId,
+      statId: 6,
+      value: target.hp,
+    })
+    if (target.hp <= 0) {
+      const credited = this.creditedPlayerForMonsterKill(attacker, target)
+      this.applyMonsterDeath(target, credited, 'phys')
+      return
+    }
+    this.emitLightningEnchantedBoltsOnStruck113c(target)
     this.maybeEnterMonsterHitRecovery(target, dealtDamage, {
       hitClass: this.resolveMonsterHitClass113c(attacker),
     })
+  }
+  if (!target.dead && poisonBitrate256 > 0 && poisonDurationFrames > 0) {
+    if (target.poisonRemainingFrames <= 0 || poisonBitrate256 >= target.poisonBitrate256) {
+      const credited = this.creditedPlayerForMonsterKill(attacker, target)
+      target.poisonBitrate256 = poisonBitrate256
+      target.poisonRemainingFrames = poisonDurationFrames
+      target.poisonCarry256 = 0
+      target.poisonAttackerId = credited?.unitId ?? 0
+      target.poisonSkillId = 0
+      target.poisonKillSource = credited !== undefined ? 'pet' : undefined
+    }
+    this.applyUnitState(
+      target.states,
+      target.stateTimers,
+      'monster',
+      target.unitId,
+      target.areaId,
+      2,
+      target.poisonRemainingFrames,
+    )
   }
 }
 
@@ -2383,6 +2412,88 @@ function broadcastExplosionMissile(this: GameInstanceHost,
   } as ServerEvent)
 }
 
+/**
+ * 1.13c `MonUMod #17` (`lightning` / Lightning Enchanted, `D2Game.dll` `0x6FC41AD0` / `0x6FC468C0` -> `0x6FC46320`, #1995):
+ * Boss-only (`rank !== 'minion'`) 8-bolt radial `Missiles.txt` ID `195` (`lightunique`) burst on struck,
+ * gated by per-monster `dwLastLeFrame` 10-frame cooldown (`abs(dwGameFrame - dwLastLeFrame) >= 10`) and
+ * using exact `Missiles.txt` `lightunique` damage (`2 * slvl - 1` at `slvl = max(1, floor(mlvl / 2))`, `physDamage = 0`).
+ * Note: `skipMultishot` is intentionally omitted so `MonUMod #29` (`Multishot`) duplicates `#195` (classic MSLE).
+ */
+function emitLightningEnchantedBoltsOnStruck113c(
+  this: GameInstanceHost,
+  monster: InternalMonsterRecord,
+): void {
+  if (
+    monster.hp <= 0 ||
+    monster.rank === 'minion' ||
+    !monster.umodIds.includes(MON_UMOD.LIGHTNING)
+  ) {
+    return
+  }
+  if (
+    monster.lastLightningBoltFrame !== undefined &&
+    Math.abs(this.currentFrame - monster.lastLightningBoltFrame) < LIGHTNING_UMOD_COOLDOWN_FRAMES_113C
+  ) {
+    return
+  }
+  monster.lastLightningBoltFrame = this.currentFrame
+  const leSlvl = computeLightningEnchantedBoltSlvl113c(monster.level)
+  const boltDmg = computeLightningUniqueBoltDamage113c(monster.level)
+  const vectors = computeChargedBolt8WayVectors(monster.x, monster.y, 1.5)
+  for (const vec of vectors) {
+    this.spawnMonsterMissile(monster, vec.targetX, vec.targetY, boltDmg, 195, 0, {
+      skillLevel: leSlvl,
+      physDamage: 0,
+      elemDamage: boltDmg,
+      element: 'ltng',
+    })
+  }
+}
+
+/**
+ * 1.13c `MonUMod #20` (`scarab`, `D2Game.dll` `0x6FC41B00` -> `0x6FC460D0`, #1995):
+ * Fires `4 * 2 = 8` radial `Missiles.txt` ID `225` (`buglightning`, `0xE1`) bolts across all monster ranks
+ * (including minions) on `MONMODE_GETHIT` (`mode = 3`) and `MONMODE_DEATH` (`mode = 0`), at `slvl = max(1, mlvl)`
+ * with exact `Missiles.txt` `#225` damage (`HitShift = 0`, `EMin = 256`, `MinELev = 128` -> `1 + floor((slvl - 1) / 2)` HP).
+ */
+function emitScarabBugLightningBurst113c(
+  this: GameInstanceHost,
+  monster: InternalMonsterRecord,
+): void {
+  if (
+    !monster.umodIds.includes(MON_UMOD.SCARAB) &&
+    !isScarabMonster(monster.hcIdx, monster.defId)
+  ) {
+    return
+  }
+  const scarabSlvl = computeScarabChargedBoltSlvl113c(monster.level)
+  const boltDmg = computeScarabBugLightningDamage113c(monster.level)
+  const radialTargets = computeScarabChargedBoltFanTargets113c(
+    monster.x,
+    monster.y,
+    monster.x,
+    monster.y,
+    1.5,
+  )
+  for (const vec of radialTargets) {
+    this.spawnMonsterMissile(
+      monster,
+      vec.targetX,
+      vec.targetY,
+      boltDmg,
+      SCARAB_BUGLIGHTNING_MISSILE_ID_113C,
+      0,
+      {
+        skillLevel: scarabSlvl,
+        physDamage: 0,
+        elemDamage: boltDmg,
+        element: 'ltng',
+        skipMultishot: true,
+      },
+    )
+  }
+}
+
 export interface MonsterDamageMethods {
   applyDamageToMonster(attackerOrMonsterId: InternalPlayerRecord | number, monsterOrDamage: InternalMonsterRecord | number, damageOrAttackerId?: number, skillIdArg?: number, channelOverride?: 'phys' | 'fire' | 'ltng' | 'cold' | 'mag' | 'pois', source?: 'player' | 'merc' | InternalMercenaryRecord | SummonedPetUnit | undefined, hitContext?: {
     readonly attackKind?: 'melee' | 'missile' | 'spell' | undefined
@@ -2447,6 +2558,8 @@ export interface MonsterDamageMethods {
   creditedPlayerForMonsterKill(attacker: InternalMonsterRecord, target?: InternalMonsterRecord): InternalPlayerRecord | undefined
   knockbackMonster(monster: InternalMonsterRecord, fromX: number, fromY: number): boolean
   broadcastExplosionMissile(monster: InternalMonsterRecord, missileClassId: number): void
+  emitLightningEnchantedBoltsOnStruck113c(monster: InternalMonsterRecord): void
+  emitScarabBugLightningBurst113c(monster: InternalMonsterRecord): void
 }
 
 export const monsterDamageMethods: Record<keyof MonsterDamageMethods, unknown> = {
@@ -2470,4 +2583,6 @@ export const monsterDamageMethods: Record<keyof MonsterDamageMethods, unknown> =
   creditedPlayerForMonsterKill,
   knockbackMonster,
   broadcastExplosionMissile,
+  emitLightningEnchantedBoltsOnStruck113c,
+  emitScarabBugLightningBurst113c,
 }

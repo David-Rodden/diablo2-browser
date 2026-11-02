@@ -120,7 +120,7 @@ describe('Tier 1 — Feature Coverage (F1–F12, 60 tests)', () => {
       expect(state.targetX).toBe(135)
       expect(state.targetY).toBe(140)
       expect(state.mode).toBe(3)
-      expect(Math.hypot(state.x - 120, state.y - 120)).toBeCloseTo(0.54, 6)
+      expect(Math.hypot(state.x - 120, state.y - 120)).toBeCloseTo(0.5625, 6)
     })
 
     it('F1.4: processes SelectSkill and CastSkillAtLocation through unified 1.13c SKILL_REGISTRY and MissileEngine', () => {

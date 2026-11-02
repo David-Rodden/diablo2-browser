@@ -16,6 +16,7 @@
  */
 import type { D2DataRegistry, SkillRecord } from '../../common/data/data-registry.ts'
 import { evaluateCalc } from '../../common/data/calc-ast.ts'
+import { mulDiv113c } from '../../common/data/mul-div-113c.ts'
 import { RAW_ITEM_STAT_COST } from '../../common/data/canonical-vendor-data.ts'
 import { SKILLS_BY_ID } from '../../common/data/skills-catalog.ts'
 
@@ -270,26 +271,28 @@ interface PassiveSkillTableRow {
  * Used directly when `UnitStatList` is instantiated without `D2DataRegistry`, or cross-referenced with `registry.getSkillById(id)`.
  */
 const PASSIVE_SKILL_TABLE_113C: readonly PassiveSkillTableRow[] = [
-  { id: 9, name: 'Critical Strike', passiveState: 'criticalstrike', stateId: 73, passiveStat1: 'passive_critical_strike', passiveCalc1: 'dm12', param1: 5, param2: 80 },
-  { id: 13, name: 'Dodge', passiveState: 'dodge', stateId: 74, passiveStat1: 'passive_dodge', passiveCalc1: 'dm12', param1: 10, param2: 65 },
-  { id: 18, name: 'Avoid', passiveState: 'avoid', stateId: 75, passiveStat1: 'passive_avoid', passiveCalc1: 'dm12', param1: 15, param2: 75 },
-  { id: 23, name: 'Penetrate', passiveState: 'penetrate', stateId: 76, passiveStat1: 'item_tohit_percent', passiveCalc1: 'ln12', param1: 35, param2: 10 },
-  { id: 29, name: 'Evade', passiveState: 'evade', stateId: 77, passiveStat1: 'passive_evade', passiveCalc1: 'dm12', param1: 10, param2: 65 },
-  { id: 33, name: 'Pierce', passiveState: 'pierce', stateId: 82, passiveStat1: 'skill_pierce', passiveCalc1: 'dm12', param1: 10, param2: 100 },
-  { id: 37, name: 'Warmth', passiveState: 'warmth', stateId: 78, passiveStat1: 'manarecoverybonus', passiveCalc1: 'ln12', param1: 30, param2: 12 },
-  { id: 61, name: 'Fire Mastery', passiveState: 'firemastery', stateId: 79, passiveStat1: 'passive_fire_mastery', passiveCalc1: 'ln12', param1: 30, param2: 7 },
-  { id: 63, name: 'Lightning Mastery', passiveState: 'lightningmastery', stateId: 80, passiveStat1: 'passive_ltng_mastery', passiveCalc1: 'ln12', param1: 50, param2: 12 },
-  { id: 65, name: 'Cold Mastery', passiveState: 'coldmastery', stateId: 81, passiveStat1: 'passive_cold_pierce', passiveCalc1: 'ln12', param1: 20, param2: 5 },
-  { id: 89, name: 'Summon Resist', passiveState: 'summonresist', stateId: 83, passiveStat1: 'passive_summon_resist', passiveCalc1: 'dm12', param1: 20, param2: 75 },
-  { id: 100, name: 'Resist Fire', passiveState: 'passive_resistfire', stateId: 160, blvlOnly: true, passiveStat1: 'maxfireresist', passiveCalc1: "skill('Resist Fire'.blvl)/2" },
-  { id: 105, name: 'Resist Cold', passiveState: 'passive_resistcold', stateId: 161, blvlOnly: true, passiveStat1: 'maxcoldresist', passiveCalc1: "skill('Resist Cold'.blvl)/2" },
-  { id: 108, name: 'Blessed Aim', passiveState: 'penetrate', stateId: 76, blvlOnly: true, passiveStat1: 'item_tohit_percent', passiveCalc1: "skill('Blessed Aim'.blvl) * par8", param8: 5 },
-  { id: 110, name: 'Resist Lightning', passiveState: 'passive_resistltng', stateId: 162, blvlOnly: true, passiveStat1: 'maxlightresist', passiveCalc1: "skill('Resist Lightning'.blvl)/2" },
+  { id: 9, name: 'Critical Strike', passiveState: 'criticalstrike', stateId: 64, passiveStat1: 'passive_critical_strike', passiveCalc1: 'dm12', param1: 5, param2: 80 },
+  { id: 13, name: 'Dodge', passiveState: 'dodge', stateId: 65, passiveStat1: 'passive_dodge', passiveCalc1: 'dm12', param1: 10, param2: 65 },
+  { id: 18, name: 'Avoid', passiveState: 'avoid', stateId: 66, passiveStat1: 'passive_avoid', passiveCalc1: 'dm12', param1: 15, param2: 75 },
+  { id: 23, name: 'Penetrate', passiveState: 'penetrate', stateId: 67, passiveStat1: 'item_tohit_percent', passiveCalc1: 'ln12', param1: 35, param2: 10 },
+  { id: 29, name: 'Evade', passiveState: 'evade', stateId: 68, passiveStat1: 'passive_evade', passiveCalc1: 'dm12', param1: 10, param2: 65 },
+  { id: 33, name: 'Pierce', passiveState: 'pierce', stateId: 69, passiveStat1: 'skill_pierce', passiveCalc1: 'dm12', param1: 10, param2: 100 },
+  { id: 37, name: 'Warmth', passiveState: 'warmth', stateId: 70, passiveStat1: 'manarecoverybonus', passiveCalc1: 'ln12', param1: 30, param2: 12 },
+  { id: 61, name: 'Fire Mastery', passiveState: 'firemastery', stateId: 71, passiveStat1: 'passive_fire_mastery', passiveCalc1: 'ln12', param1: 30, param2: 7 },
+  { id: 63, name: 'Lightning Mastery', passiveState: 'lightningmastery', stateId: 72, passiveStat1: 'passive_ltng_mastery', passiveCalc1: 'ln12', param1: 50, param2: 12 },
+  { id: 65, name: 'Cold Mastery', passiveState: 'coldmastery', stateId: 73, passiveStat1: 'passive_cold_pierce', passiveCalc1: 'ln12', param1: 20, param2: 5 },
+  { id: 69, name: 'Skeleton Mastery', passiveState: 'skel_mastery', stateId: 97, passiveStat1: '', passiveCalc1: '' },
+  { id: 79, name: 'Golem Mastery', passiveState: 'golem_mastery', stateId: 111, passiveStat1: '', passiveCalc1: '' },
+  { id: 89, name: 'Summon Resist', passiveState: 'summonresist', stateId: 160, passiveStat1: 'passive_summon_resist', passiveCalc1: 'dm12', param1: 20, param2: 75 },
+  { id: 100, name: 'Resist Fire', passiveState: 'passive_resistfire', stateId: 181, blvlOnly: true, passiveStat1: 'maxfireresist', passiveCalc1: "skill('Resist Fire'.blvl)/2" },
+  { id: 105, name: 'Resist Cold', passiveState: 'passive_resistcold', stateId: 182, blvlOnly: true, passiveStat1: 'maxcoldresist', passiveCalc1: "skill('Resist Cold'.blvl)/2" },
+  { id: 108, name: 'Blessed Aim', passiveState: 'penetrate', stateId: 67, blvlOnly: true, passiveStat1: 'item_tohit_percent', passiveCalc1: "skill('Blessed Aim'.blvl) * par8", param8: 5 },
+  { id: 110, name: 'Resist Lightning', passiveState: 'passive_resistltng', stateId: 183, blvlOnly: true, passiveStat1: 'maxlightresist', passiveCalc1: "skill('Resist Lightning'.blvl)/2" },
   {
     id: 127,
     name: 'Sword Mastery',
     passiveState: 'swordmastery',
-    stateId: 64,
+    stateId: 74,
     passiveItype: 'swor',
     passiveStat1: 'passive_mastery_melee_th',
     passiveCalc1: 'ln12',
@@ -308,7 +311,7 @@ const PASSIVE_SKILL_TABLE_113C: readonly PassiveSkillTableRow[] = [
     id: 128,
     name: 'Axe Mastery',
     passiveState: 'axemastery',
-    stateId: 65,
+    stateId: 75,
     passiveItype: 'axe',
     passiveStat1: 'passive_mastery_melee_th',
     passiveCalc1: 'ln12',
@@ -327,7 +330,7 @@ const PASSIVE_SKILL_TABLE_113C: readonly PassiveSkillTableRow[] = [
     id: 129,
     name: 'Mace Mastery',
     passiveState: 'macemastery',
-    stateId: 66,
+    stateId: 76,
     passiveItype: 'blun',
     passiveStat1: 'passive_mastery_melee_th',
     passiveCalc1: 'ln12',
@@ -346,7 +349,7 @@ const PASSIVE_SKILL_TABLE_113C: readonly PassiveSkillTableRow[] = [
     id: 134,
     name: 'Pole Arm Mastery',
     passiveState: 'polearmmastery',
-    stateId: 67,
+    stateId: 77,
     passiveItype: 'pole',
     passiveStat1: 'passive_mastery_melee_th',
     passiveCalc1: 'ln12',
@@ -365,7 +368,7 @@ const PASSIVE_SKILL_TABLE_113C: readonly PassiveSkillTableRow[] = [
     id: 135,
     name: 'Throwing Mastery',
     passiveState: 'throwingmastery',
-    stateId: 68,
+    stateId: 78,
     passiveItype: 'thro',
     passiveStat1: 'passive_mastery_throw_th',
     passiveCalc1: 'ln12',
@@ -384,7 +387,7 @@ const PASSIVE_SKILL_TABLE_113C: readonly PassiveSkillTableRow[] = [
     id: 136,
     name: 'Spear Mastery',
     passiveState: 'spearmastery',
-    stateId: 69,
+    stateId: 79,
     passiveItype: 'spea',
     passiveStat1: 'passive_mastery_melee_th',
     passiveCalc1: 'ln12',
@@ -399,14 +402,14 @@ const PASSIVE_SKILL_TABLE_113C: readonly PassiveSkillTableRow[] = [
     param5: 0,
     param6: 35,
   },
-  { id: 141, name: 'Increased Stamina', passiveState: 'increasedstamina', stateId: 70, passiveStat1: 'skill_passive_staminapercent', passiveCalc1: 'ln12', param1: 30, param2: 15 },
-  { id: 145, name: 'Iron Skin', passiveState: 'ironskin', stateId: 71, passiveStat1: 'skill_armor_percent', passiveCalc1: 'ln12', param1: 30, param2: 10 },
-  { id: 148, name: 'Increased Speed', passiveState: 'increasedspeed', stateId: 72, passiveStat1: 'velocitypercent', passiveCalc1: 'dm12', param1: 7, param2: 50 },
+  { id: 141, name: 'Increased Stamina', passiveState: 'increasedstamina', stateId: 80, passiveStat1: 'skill_passive_staminapercent', passiveCalc1: 'ln12', param1: 30, param2: 15 },
+  { id: 145, name: 'Iron Skin', passiveState: 'ironskin', stateId: 81, passiveStat1: 'skill_armor_percent', passiveCalc1: 'ln12', param1: 30, param2: 10 },
+  { id: 148, name: 'Increased Speed', passiveState: 'increasedspeed', stateId: 82, passiveStat1: 'velocitypercent', passiveCalc1: 'dm12', param1: 7, param2: 50 },
   {
     id: 153,
     name: 'Natural Resistance',
     passiveState: 'naturalresistance',
-    stateId: 73,
+    stateId: 83,
     passiveStat1: 'fireresist',
     passiveCalc1: 'dm12',
     passiveStat2: 'lightresist',
@@ -423,7 +426,7 @@ const PASSIVE_SKILL_TABLE_113C: readonly PassiveSkillTableRow[] = [
     id: 252,
     name: 'Claw Mastery',
     passiveState: 'clawmastery',
-    stateId: 49,
+    stateId: 152,
     passiveItype: 'h2h',
     passiveStat1: 'passive_mastery_melee_th',
     passiveCalc1: 'ln12',
@@ -438,7 +441,7 @@ const PASSIVE_SKILL_TABLE_113C: readonly PassiveSkillTableRow[] = [
     param5: 0,
     param6: 25,
   },
-  { id: 263, name: 'Weapon Block', passiveState: 'weaponblock', stateId: 63, passiveItype: 'h2h', passiveStat1: 'passive_weaponblock', passiveCalc1: 'dm12', param1: 20, param2: 65 },
+  { id: 263, name: 'Weapon Block', passiveState: 'weaponblock', stateId: 155, passiveItype: 'h2h', passiveStat1: 'passive_weaponblock', passiveCalc1: 'dm12', param1: 20, param2: 65 },
 ]
 
 const MELEE_MASTERY_SKILL_IDS = new Set([127, 128, 129, 134, 136, 252])
@@ -601,7 +604,14 @@ export class UnitStatList {
       const prev = this.baseStats.get(key) ?? 0
       this.allSkillsBonus += truncVal - prev
     }
-    this.baseStats.set(key, truncVal)
+    // D2Common.dll STATLIST_SetStat (0x6FD8A280..0x6FD8A324):
+    // BaseStats stores only non-zero entries; setting 0 never inserts an entry and removes
+    // any existing entry so 0-HP town NPCs do not trigger ItemStatCost minAccr = 1 on maxhp.
+    if (truncVal === 0) {
+      this.baseStats.delete(key)
+    } else {
+      this.baseStats.set(key, truncVal)
+    }
     if (key === 'item_allskills') {
       this.syncPassiveSkillModifiers()
     }
@@ -613,7 +623,12 @@ export class UnitStatList {
     if (key === 'item_allskills') {
       this.allSkillsBonus += truncDelta
     }
-    this.baseStats.set(key, (this.baseStats.get(key) ?? 0) + truncDelta)
+    const next = (this.baseStats.get(key) ?? 0) + truncDelta
+    if (next === 0) {
+      this.baseStats.delete(key)
+    } else {
+      this.baseStats.set(key, next)
+    }
     if (key === 'item_allskills') {
       this.syncPassiveSkillModifiers()
     }
@@ -1510,4 +1525,33 @@ export function getEffectiveWeaponPoison113c(
     bitrate256: sumRate256,
     lengthFrames: count > 1 ? Math.floor(sumFrames / count) : sumFrames,
   }
+}
+
+/**
+ * Unclamped 1.13c `D2Common #10672` (`UNITS_GetDefense` @ `0x6FD82890..0x6FD82C01`):
+ * 1. `esi = armorclass + trunc(dex / 4)` (`cdq; and edx, 3; add eax, edx; sar eax, 2`).
+ * 2. `ecx = imul(esi, skillArmorPct + itemArmorPct)`; if `esi > 0`, `esi += trunc(ecx / 100)`,
+ *    else `esi += trunc((-ecx) / 100)` (`0x6FD82AE0..0x6FD82B0C` magic `0x51EB851F` / `-0x51EB851F`).
+ * 3. If `overridePct != 0`, `esi += mulDiv113c(overridePct, esi, 100)` (`0x6FD82B50..0x6FD82BF8`), with no `>= 0` clamp.
+ */
+export function computeRawDefense113c(params: {
+  readonly dex: number
+  readonly armorclass: number
+  readonly skillArmorPct: number
+  readonly itemArmorPct: number
+  readonly overridePct: number
+}): number {
+  const dex = params.dex | 0
+  let esi = ((params.armorclass | 0) + (Math.trunc(dex / 4) | 0)) | 0
+  const pct = ((params.skillArmorPct | 0) + (params.itemArmorPct | 0)) | 0
+  const ecx = Math.imul(esi, pct)
+  const magic = esi > 0 ? 0x51eb851fn : -0x51eb851fn
+  const edx = Number((BigInt(ecx) * magic) >> 32n) | 0
+  const q = ((edx >> 5) + (edx >>> 31)) | 0
+  esi = (esi + q) | 0
+  const ovr = params.overridePct | 0
+  if (ovr !== 0) {
+    esi = (esi + mulDiv113c(ovr, esi, 100)) | 0
+  }
+  return esi
 }

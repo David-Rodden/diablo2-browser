@@ -43,19 +43,19 @@ function unitMovesFor(events: readonly ServerEvent[], unitId: number): ServerEve
 }
 
 describe('issue #1329: server player movement parity with the client predictor', () => {
-  it('steps 0.54 sub-tiles per tick running and 0.36 walking (13.5 / 9.0 per second)', () => {
+  it('steps 0.5625 sub-tiles per tick running and 0.375 walking (14.0625 / 9.375 per second)', () => {
     const game = makeGame()
     const runner = connect(game, 'Runner', 100, 100)
     game.enqueueCommand(runner, { type: 'Move', to: { x: 140, y: 100 }, run: true })
     game.stepFrame()
-    expect(pos(game, runner).x - 100).toBeCloseTo(0.54, 6)
+    expect(pos(game, runner).x - 100).toBeCloseTo(0.5625, 6)
     game.stepFrames(9)
-    expect(pos(game, runner).x - 100).toBeCloseTo(5.4, 6)
+    expect(pos(game, runner).x - 100).toBeCloseTo(5.625, 6)
 
     const walker = connect(game, 'Walker', 100, 200)
     game.enqueueCommand(walker, { type: 'Move', to: { x: 140, y: 200 }, run: false })
     game.stepFrames(25)
-    expect(pos(game, walker).x - 100).toBeCloseTo(9.0, 6)
+    expect(pos(game, walker).x - 100).toBeCloseTo(9.375, 6)
     expect(pos(game, walker).y).toBe(200)
   })
 
@@ -137,10 +137,10 @@ describe('issue #1329: server player movement parity with the client predictor',
     game.drainEvents(watcher)
     game.enqueueCommand(id, { type: 'Move', to: { x: 140, y: 100 }, run: true })
     game.stepFrames(25)
-    expect(pos(game, id).x - 100).toBeCloseTo(9.0, 6)
+    expect(pos(game, id).x - 100).toBeCloseTo(9.375, 6)
     const state = game.getPlayerState(id)!
     expect(state.run).toBe(false)
-    expect(state.mode).toBe(2)
+    expect(state.mode).toBe(6)
     const modes = unitMovesFor(game.drainEvents(watcher), id).map(e => (e as { mode: string }).mode)
     expect(modes.length).toBeGreaterThan(0)
     expect(modes.every(m => m === 'walk')).toBe(true)
@@ -161,7 +161,7 @@ describe('issue #1329: server player movement parity with the client predictor',
       const id = connect(game, 'Drift', 100, 100)
       game.enqueueCommand(id, { type: 'UpdatePlayerPos', x: 110, y: 100 })
       game.stepFrame()
-      expect(pos(game, id).x).toBeCloseTo(100.36, 6)
+      expect(pos(game, id).x).toBeCloseTo(100.375, 6)
       expect(game.drainEvents(id).some(e => e.type === 'UnitReassign')).toBe(false)
     })
 
@@ -180,7 +180,7 @@ describe('issue #1329: server player movement parity with the client predictor',
       // STATE_SYNC_WARPED: a second in-band report within 125 frames walks instead of warping.
       game.enqueueCommand(id, { type: 'UpdatePlayerPos', x: 140, y: 100 })
       game.stepFrame()
-      expect(pos(game, id).x).toBeCloseTo(120.36, 6)
+      expect(pos(game, id).x).toBeCloseTo(120.375, 6)
     })
 
     it('answers S2C 0x96 with the server position when the client position is unreachable', () => {

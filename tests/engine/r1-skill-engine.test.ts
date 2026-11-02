@@ -105,14 +105,25 @@ describe('R1 Universal 1.13c Skill Engine & 7-Class Sandbox Foundation', () => {
     })
     expect(fwSyn).toBe(20 * 4 + 10 * 1) // 90%
 
-    // Edge Case #2: Unknown bare identifier `par34` in Bone Wall `calc2` evaluates to 0
+    // Edge Case #2: Bare identifier `par34` in Bone Wall `calc2` truncates to 4-char FourCC `'par3'` (`param3 = 8`) in Fog #10253
     const bwCalc2 = evaluateCalc(boneWall.calc2, {
       registry,
       activeSkill: boneWall,
       slvl: 10,
       blvl: 10,
     })
-    expect(bwCalc2).toBe(0)
+    expect(bwCalc2).toBe(boneWall.param3)
+
+    // Deterministic `rand(a, b)` evaluation on Imp Inferno (#282 `calc1 = "rand(par3,par4)"`)
+    const impInferno = registry.getSkillById(282)!
+    const impRoll = evaluateCalc(impInferno.calc1, {
+      registry,
+      activeSkill: impInferno,
+      slvl: 5,
+      blvl: 5,
+      randFn: (lo, hi) => lo + Math.min(2, hi - lo),
+    })
+    expect(impRoll).toBe(impInferno.param3 + 2)
 
     // Edge Case #4: Two-dot `sklvl('Holy Fire'.ln56.edmn)` in FireGolem SkillDesc
     const fgHolyFire = evaluateCalc("sklvl('Holy Fire'.ln56.edmn)", {

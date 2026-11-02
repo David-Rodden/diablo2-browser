@@ -127,3 +127,14 @@ and comparing $\text{distFlatPx} \le \text{radiusSubtiles} \times 20$.
   - `SrvHit51`: `armageddon` (#475, `sHitPar1=0`, `Skills.txt` #244 `aurarangecalc = 5`).
 - **Disassembly**:
   - Both read `r = sHitPar1 > 0 ? sHitPar1 : max(1, evalSkillCalc(skill.auraRangeCalc))` (`[edi+0x64]`) and call `sub_6FC5D450` to deal radial impact damage within `r` sub-tiles.
+
+### 12. `SrvHit24` (`0x6FC5B7C0`, Panther Orange Pot) & `SrvHit25` (`0x6FC5DA60`, Panther Green Pot) + Lobbed Throwing Potions (`0x6FCC1880`)
+- **`SrvHit24` (`0x6FC5B7C0`)**:
+  - **Missiles**: `pantherpotorange` (#238, `sHitPar1 = 0`, `Skill = ''`, `AlwaysExplode = 1`).
+  - **Disassembly**: Reads `r = sHitPar1 > 0 ? sHitPar1 : max(1, evalSkillCalc(skill.calc1))` (falls back to `1` sub-tile when `sHitPar1 == 0` and `Skill == ''`) and calls `sub_6FC5D450` radial splash damage.
+- **`SrvHit25` (`0x6FC5DA60` -> `sub_6FC5CB00` at `0x6FC5CB00`)**:
+  - **Missiles**: `pantherpotgreen` (#239, `sHitPar1 = 1`, `HitSubMissile1 = rancidgascloud` #222, `AlwaysExplode = 1`).
+  - **Disassembly**: Iterates `i = 0..7` (`step = max(1, sHitPar1)`) along the 8-direction ring offset tables at `0x6FD27320` (`X: -2, 0, 2, 2, 2, 0, -2, -2`) and `0x6FD27340` (`Y: 2, 2, 2, 0, -2, -2, -2, 0`), spawning `HitSubMissile1` (`rancidgascloud` #222, `CollideKill = 0`, `HitShift = 0`, `EMin = 123`, `ELen = 50` = `24` poison HP over 2s) with `velOverride = subRow.Param1 << 7` (`speed = Param1 / 32` sub-tiles/frame).
+- **Player Lobbed Throwing Potions (`SKILLS_SrvDo003_Throw` `0x6FCC2BDC` -> `SKILLS_SpawnLobbedMissile` `0x6FCC1880`)**:
+  - When throwing `Weapons.txt` `type = tpot` potions (`opl`/`opm`/`ops` -> `#44..#46` `SrvHit03`, `gpl`/`gpm`/`gps` -> `#47..#49` `SrvHit02`, all `CollideType = 6`, `AlwaysExplode = 1`, `SrcDamage = 0`), `SKILLS_SpawnLobbedMissile` sets `params.flags = 0x420` so the lobbed bottle arcs directly to `(tx, ty)`, expires at the target ground point (`pTarget == NULL`), and executes `SrvHit03` (fire + physical radial splash) or `SrvHit02` (`gasring16` spawning `HitSubMissile1` poison clouds).
+

@@ -57,11 +57,11 @@ describe('issue #1348 MonUMod follow-up', () => {
     expect(ctx.statList.getModifierBonus('fireresist')).toBeLessThan(0)
   })
 
-  it('teleports a Teleportation unique away when badly hurt', () => {
+  it('teleports a Teleportation unique away on AI think when badly hurt', () => {
     const game = new GameInstance({ seed: 1350, areaId: 1 })
-    const playerId = connect(game, 10, 10)
+    const playerId = connect(game, 25, 30)
     const monsterId = game.spawnMonster({
-      defId: 'fallen1',
+      defId: 'skeleton2',
       x: 30,
       y: 30,
       areaId: 1,
@@ -69,12 +69,30 @@ describe('issue #1348 MonUMod follow-up', () => {
       umodIds: [26],
       hp: 500,
       maxHp: 500,
+      aiDelay: 1,
       damageRegen: 0,
     })
     const before = game.getMonsterState(monsterId)!
     game.applyDamageToMonster(monsterId, 380, playerId)
+    // AI_TryTeleportUMod (0x6FCBCDE0) runs on AI think (6% per tick), never synchronously inside applyDamageToMonster
+    expect(game.getMonsterState(monsterId)!.x).toBe(before.x)
+    expect(game.getMonsterState(monsterId)!.y).toBe(before.y)
+
+    const internal = game as unknown as {
+      currentFrame: number
+      monsters: Map<number, { teleportCooldownUntilFrame: number; x: number; y: number }>
+    }
+    const mon = internal.monsters.get(monsterId)!
+    let blinked = false
+    for (let i = 0; i < 120; i++) {
+      game.stepFrames(1)
+      if (mon.teleportCooldownUntilFrame > internal.currentFrame) {
+        blinked = true
+        break
+      }
+    }
+    expect(blinked).toBe(true)
     const after = game.getMonsterState(monsterId)!
-    expect(Math.hypot(after.x - before.x, after.y - before.y)).toBeGreaterThan(1)
-    expect(after.states.size).toBeGreaterThanOrEqual(0)
+    expect(Math.hypot(after.x - before.x, after.y - before.y)).toBeGreaterThanOrEqual(4)
   })
 })

@@ -57,8 +57,16 @@ export function buildSkillTooltipLines(input: SkillTooltipInput): FormattedToolt
   const difficulty = input.difficulty ?? 0
   const buf: Segment[] = []
   const nl = () => buf.push({ text: '\n' })
-  const pushLines = (lines: readonly { textEn: string; textZh: string; color?: number | undefined }[]): boolean => {
+  const pushLines = (
+    lines: readonly {
+      textEn: string
+      textZh: string
+      color?: number | undefined
+      sideBoxOnly?: boolean | undefined
+    }[],
+  ): boolean => {
     for (const l of lines.slice().reverse()) {
+      if (l.sideBoxOnly) continue
       // evaluateSkillDescLines returns top-to-bottom; the original strcat order is bottom-up.
       buf.push({ text: lang === 'en' ? l.textEn : l.textZh, color: l.color })
       nl()
@@ -94,7 +102,8 @@ export function buildSkillTooltipLines(input: SkillTooltipInput): FormattedToolt
       nl()
     }
   }
-  if (pushLines(evaluateSkillDescLines(state, skill, Math.max(1, lvl), 'dsc2', difficulty))) nl()
+  // 0x6FAE3550 (lvl <= 0) passes 1 at 0x6FAE37D4; 0x6FAE3B50 (lvl > 0) passes [esp+0x18] = lvl + 1 at 0x6FAE3EA0.
+  if (pushLines(evaluateSkillDescLines(state, skill, lvl > 0 ? lvl + 1 : 1, 'dsc2', difficulty))) nl()
 
   if (lvl <= 0) {
     // 0x6FAE38BE: required level = reqlevel + current level, omitted when 0.

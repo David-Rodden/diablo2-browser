@@ -55,6 +55,7 @@ import { resolveOverheadBubbleText113c } from '../../common/chat/chat-113c.ts'
 import type { ItemData } from '../../netproto/index.ts'
 import { lookupTbl, requireTbl } from '../i18n/lang.ts'
 import { BELT_COLS, BELT_ROWS, itemToBeltPotion } from '../ui/belt.ts'
+import { getCharSheetSkillBlockName } from '../ui/character-sheet.ts'
 import type { D2ColorCode } from '../ui/font.ts'
 import {
   createCanonicalGenericSkillEntry,
@@ -958,34 +959,9 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
           toHitPercent = 20 + 7 * (lvl - 1)
           damagePercent = 180 + 15 * (lvl - 1) + 15 * getHardLvl(124) + 5 * getHardLvl(122)
         } else if (skillId === 97) {
-          // #97 Smite: +15*lvl % ED; shield smite damage + Holy Shield flat damage when state 101 active
+          // #97 Smite (descdam = 10, D2Client.dll 0x6FAE05D0): +15*lvl % ED; shield base + Holy Shield flat
+          // damage are supplied via cInput.shield / cInput.holyShieldFlatBonus so weapon/elemental stats do not mix.
           damagePercent = 15 * lvl
-          const shieldEq = playerAgg.equipment.find((x) => x.bodyLoc === 5 && x.baseTable === 'armor')
-          const shMin = shieldEq ? Number(shieldEq.row.text('mindam')) || 0 : 0
-          const shMax = shieldEq ? Number(shieldEq.row.text('maxdam')) || 0 : 0
-          let hsMin = 0
-          let hsMax = 0
-          if (self.states.has(101)) {
-            const list101 = self.stats.getStateStats(101) || []
-            const hsLvl = Math.max(
-              1,
-              list101.find((s: any) => s.statId === 351)?.value ||
-                resolveEffectiveSkillLvl(117) ||
-                1,
-            )
-            // Holy Shield 5-band Smite bonus: base (2, 5), bands (+1, +2, +3, +4, +4)
-            const bandAdd =
-              Math.min(Math.max(0, hsLvl - 1), 7) * 1 +
-              Math.min(Math.max(0, hsLvl - 8), 8) * 2 +
-              Math.min(Math.max(0, hsLvl - 16), 6) * 3 +
-              Math.min(Math.max(0, hsLvl - 22), 6) * 4 +
-              Math.max(0, hsLvl - 28) * 4
-            hsMin = 2 + bandAdd
-            hsMax = 5 + bandAdd
-          }
-          if (shMin > 0 || shMax > 0 || hsMin > 0 || hsMax > 0) {
-            skillPhysical256 = { min: (shMin + hsMin) << 8, max: (shMax + hsMax) << 8 }
-          }
         } else if (skillId === 106) {
           // #106 Zeal: +10*lvl % AR, +6*max(0, lvl-4) + 12*Sacrifice % ED
           toHitPercent = 10 * lvl
@@ -1185,12 +1161,15 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
               elemStatId !== undefined
                 ? playerAgg.flatSum(elemStatId, 0, ['item', 'charm', 'state'])
                 : 0
-            skillElemMin = Math.floor(
-              (dmg.withSynergyMin * (100 + masteryBonusPct + equipSpellDamagePct)) / 100,
-            )
-            skillElemMax = Math.floor(
-              (dmg.withSynergyMax * (100 + masteryBonusPct + equipSpellDamagePct)) / 100,
-            )
+            const totalElemPct = masteryBonusPct + equipSpellDamagePct
+            skillElemMin =
+              dmg.withSynergyMin256 !== undefined
+                ? Math.floor((dmg.withSynergyMin256 + Math.trunc((dmg.withSynergyMin256 * totalElemPct) / 100)) / 256)
+                : Math.floor((dmg.withSynergyMin * (100 + totalElemPct)) / 100)
+            skillElemMax =
+              dmg.withSynergyMax256 !== undefined
+                ? Math.floor((dmg.withSynergyMax256 + Math.trunc((dmg.withSynergyMax256 * totalElemPct) / 100)) / 256)
+                : Math.floor((dmg.withSynergyMax * (100 + totalElemPct)) / 100)
             skillElemType = def.eType
           }
         }
@@ -1267,12 +1246,15 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
                 }
               }
             }
-            const afterMasteryMin = Math.floor(
-              (dmg.withSynergyMin * (100 + masteryBonusPct + equipSpellDamagePct)) / 100,
-            )
-            const afterMasteryMax = Math.floor(
-              (dmg.withSynergyMax * (100 + masteryBonusPct + equipSpellDamagePct)) / 100,
-            )
+            const totalSpellPct = masteryBonusPct + equipSpellDamagePct
+            const afterMasteryMin =
+              dmg.withSynergyMin256 !== undefined
+                ? Math.floor((dmg.withSynergyMin256 + Math.trunc((dmg.withSynergyMin256 * totalSpellPct) / 100)) / 256)
+                : Math.floor((dmg.withSynergyMin * (100 + totalSpellPct)) / 100)
+            const afterMasteryMax =
+              dmg.withSynergyMax256 !== undefined
+                ? Math.floor((dmg.withSynergyMax256 + Math.trunc((dmg.withSynergyMax256 * totalSpellPct) / 100)) / 256)
+                : Math.floor((dmg.withSynergyMax * (100 + totalSpellPct)) / 100)
             const finalMin = Math.floor((afterMasteryMin * (100 + auraBonusPct)) / 100)
             const finalMax = Math.floor((afterMasteryMax * (100 + auraBonusPct)) / 100)
             spellDamage = { min: finalMin, max: finalMax }
@@ -1403,6 +1385,31 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
       })
     }
 
+    const smiteShieldEq = playerAgg.equipment.find(
+      (x) => (x.bodyLoc === 4 || x.bodyLoc === 5) && x.baseTable === 'armor',
+    )
+    const shield = smiteShieldEq
+      ? {
+          minDam: Number(smiteShieldEq.row.text('mindam')) || 0,
+          maxDam: Number(smiteShieldEq.row.text('maxdam')) || 0,
+          strBonus: Number(smiteShieldEq.row.text('StrBonus')) || 100,
+          dexBonus: Number(smiteShieldEq.row.text('DexBonus')) || 0,
+        }
+      : null
+    let holyShieldFlatBonus: { readonly min: number; readonly max: number } | null = null
+    if (self.states.has(101)) {
+      const list101 = self.stats.getStateStats(101) || []
+      const hsLvl = Math.max(
+        1,
+        list101.find((s: any) => s.statId === 351)?.value || resolveEffectiveSkillLvl(117) || 1,
+      )
+      // Skills.txt #117 Holy Shield: MinDam=3, MaxDam=6, MinLevDam=[2,3,4,4,4], MaxLevDam=[2,3,4,4,4]
+      holyShieldFlatBonus = {
+        min: evaluateLevelBand(3, [2, 3, 4, 4, 4], hsLvl),
+        max: evaluateLevelBand(6, [2, 3, 4, 4, 4], hsLvl),
+      }
+    }
+
     const cInput: any = {
       charClass: resolveClassCode(self.charClass),
       clvl: playerAgg.level,
@@ -1415,6 +1422,8 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
       leftArm: buildArm(5),
       primaryArm: buildArm(4)?.weapon ? 'right' : buildArm(5)?.weapon ? 'left' : null,
       boots,
+      shield,
+      holyShieldFlatBonus,
       masteries,
       isDamageRelated: (statId: number) => {
         try {
@@ -1673,6 +1682,7 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
   const preaggSkillBonuses =
     classCode &&
     (self.skillEntries.size > 0 ||
+      (self.defaultSkills?.size ?? 0) > 0 ||
       model.world.containers.equipment.size > 0 ||
       model.world.containers.inventory.size > 0)
       ? preaggregateEquipmentSkillBonuses(
@@ -1838,6 +1848,29 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
     }
   }
 
+  // D2Common.#10506 (0x6FDA2660) + #10306 (0x6FDA05C0): client default skills (0..5, 217..220)
+  // are initialized with nSkillLevel = 1 and nCharges = -1, so SKILLS_GetSkillLevel(bTotal = 1)
+  // adds item_allskills (127, incl. Battle Command state 51) + Skill Shrine state 134 (+2) + oskill/singleSkill.
+  if (self.defaultSkills) {
+    const shrineBonus = self.states.has(134) ? 2 : 0
+    const bcFallbackBonus =
+      self.states.has(51) && !(self.stats.getStateStats(51)?.some((s: any) => s.statId === 127))
+        ? 1
+        : 0
+    for (const [defId, defLvl] of self.defaultSkills.entries()) {
+      if (defLvl <= 0 || hud.skillTree.hardPoints.has(defId)) continue
+      hud.skillTree.hardPoints.set(defId, defLvl)
+      const defEquipBonus =
+        classCode && preaggSkillBonuses
+          ? resolvePreaggregatedSkillBonus(defId, classCode, preaggSkillBonuses, stats)
+          : 0
+      const defBonus = Math.max(0, defEquipBonus + shrineBonus + bcFallbackBonus)
+      if (defBonus > 0) {
+        hud.skillTree.bonusLevels.set(defId, defBonus)
+      }
+    }
+  }
+
   for (const cs of activeChargedBySkill.values()) {
     if (cs.charges <= 0 || isPassiveSkill(cs.skillId)) continue
     const tableMeta = getSkillTableMeta(cs.skillId)
@@ -1993,8 +2026,15 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
   }
 
   const tblLang = (hud.charSheet.lang as string) === 'en' || hud.charSheet.lang === 'ENG' ? 'ENG' : 'CHI'
-  attrs.leftSkillName = getSkillName(self.leftSkill, tblLang)
-  attrs.rightSkillName = getSkillName(self.rightSkill, tblLang)
+  // D2Client.dll 0x6FADFD30: SkillDesc `str alt`, upper-cased (0x6FB6E800).
+  attrs.leftSkillName = getCharSheetSkillBlockName(self.leftSkill, tblLang)
+  attrs.rightSkillName = getCharSheetSkillBlockName(self.rightSkill, tblLang)
+  // Throw (2) / Left Hand Throw (4) / Left Hand Swing (5) / Smite (97): their descdam/descatt handlers draw nothing
+  // when the required item (throwing weapon / left-hand weapon / shield) is not equipped.
+  const blockEmpty = (skillId: number): boolean =>
+    (skillId === 2 || skillId === 4 || skillId === 5 || skillId === 97) && !canUseSkillWithWeapon(skillId, weaponState)
+  attrs.leftSkillBlockEmpty = blockEmpty(self.leftSkill)
+  attrs.rightSkillBlockEmpty = blockEmpty(self.rightSkill)
   if (!attrs.leftSkillDmg || attrs.leftSkillDmg === '--') {
     attrs.leftSkillDmg = model.computeSkillDamageString(self.leftSkill, hud)
   }
@@ -3349,11 +3389,18 @@ export function syncNpcInteractionImpl(model: any, hud: HudManager): void {
   }
 
   // b. Trade / gamble window: store items come from 0x9C AddToShop (`containers.shop`).
+  // D2Client.dll 0x6FAF6150 (D2CLIENT_GetCurrentInteractingNPC) & 0x6FAF8C80 (D2CLIENT_OpenNPCStore):
+  // if the interacted monster NPC unit is absent from the client unit table (unloaded via 0x0A / 0x08 RoomHide),
+  // GetCurrentInteractingNPC returns NULL and closes/skips the store cleanly without crashing (#2009).
   const npcWin = (npc.window !== 'none' ? npc.window : (npc.activeWindow ?? 'none')) as string
   const prevWin = (prev.window !== 'none' ? prev.window : (prev.activeWindow ?? 'none')) as string
-  if ((npcWin === 'trade' || npcWin === 'gamble') && npc.npcId !== null) {
+  const hasMonsterNpcUnit =
+    npc.npcId !== null && (npc.unitType ?? 1) !== 2
+      ? model.world.getUnit('monster', npc.npcId) !== undefined
+      : true
+  if ((npcWin === 'trade' || npcWin === 'gamble') && npc.npcId !== null && hasMonsterNpcUnit) {
     const npcId = npc.npcId
-    const desc = model.npcDescriptor(npcId)
+    const desc = model.tryNpcDescriptor(npcId)
     if (!desc) throw new Error(`HudModel: store opened for NPC #${npcId} without a service descriptor`)
     let questHash = 0
     const qArr = model.world.quests
@@ -3384,6 +3431,7 @@ export function syncNpcInteractionImpl(model: any, hud: HudManager): void {
     if (prevWin !== npcWin || prev.npcId !== npcId) hud.showVendorPanel()
   } else if (
     npc.npcId !== null &&
+    (npcWin === 'orifice' || hasMonsterNpcUnit) &&
     (npcWin === 'hire' ||
       activeWin === 'hire' ||
       npcWin === 'imbue' ||
@@ -3406,8 +3454,36 @@ export function syncNpcInteractionImpl(model: any, hud: HudManager): void {
       hud.rightPanel = 'inv'
       hud.inventory.visible = true
     }
-  } else if (prevWin !== 'none' || (npc.npcId === null && prev.npcId !== null)) {
-    if (
+  } else if (
+    (npc.npcId !== null && !hasMonsterNpcUnit) ||
+    prevWin !== 'none' ||
+    (npc.npcId === null && prev.npcId !== null)
+  ) {
+    if (npc.npcId !== null && !hasMonsterNpcUnit) {
+      wp.npcMenu = null
+      if (wp.npcSpeech && wp.npcSpeech.npcId === npc.npcId) {
+        wp.npcSpeech = null
+      }
+      ;(wp as any).activeNpcId = null
+      model.lastSyncedVendorKey = null
+      if (hud.leftPanel === 'vendor') {
+        wp.clearVendorShop()
+        hud.hideLeftPanelFromWorld('vendor')
+      } else if (
+        hud.leftPanel === 'hire' ||
+        hud.leftPanel === 'imbue' ||
+        hud.leftPanel === 'add_sockets' ||
+        hud.leftPanel === 'personalize'
+      ) {
+        hud.leftPanel = 'none'
+        ;(wp as any).activePanel = 'none'
+        if (hud.rightPanel === 'inv' && hud.inventory.cursorItem === null) {
+          hud.rightPanel = 'none'
+          hud.inventory.visible = false
+        }
+        hud.syncPublishedState()
+      }
+    } else if (
       prevWin === 'trade' ||
       prevWin === 'gamble' ||
       (npc.npcId === null && prev.npcId !== null && hud.leftPanel === 'vendor')

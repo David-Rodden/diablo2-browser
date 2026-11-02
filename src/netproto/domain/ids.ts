@@ -257,6 +257,7 @@ export interface UnitSnapshot {
   readonly id: number
   readonly classId: number
   readonly name?: string | undefined
+  readonly level?: number | undefined
   readonly x: number
   readonly y: number
   readonly mode?: number | undefined

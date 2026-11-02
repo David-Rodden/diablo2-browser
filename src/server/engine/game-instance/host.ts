@@ -64,6 +64,7 @@ export interface GameInstancePublicMethods {
   isAnimActionWindupEnabled(): boolean
   getPlayerAnimDispatcher(playerUnitId: number): AnimDispatcher | undefined
   getCairnStoneOrder(): readonly number[]
+  getTrueTalRashaTombAreaId(): number
   isAreaLoaded(areaId: number): boolean
   ensureAreaLoaded(areaId: number): boolean
   setTerrainWalkableCheck(fn: ((areaId: number, x: number, y: number, isFlying?: boolean) => boolean) | undefined): void
@@ -162,7 +163,12 @@ export interface GameInstancePublicMethods {
         }
       | undefined
   }): boolean
-  applyDamageToMerc(mercUnitIdOrRecord: number | InternalMercenaryRecord, damage: number, areaIdOverride?: number): void
+  applyDamageToMerc(
+    mercUnitIdOrRecord: number | InternalMercenaryRecord,
+    damage: number,
+    areaIdOverride?: number,
+    options?: { readonly skipGetHit?: boolean | undefined },
+  ): void
   applyDamageToSummon(ownerIdOrPet: number | SummonedPetUnit, petOrDamage: SummonedPetUnit | string | number, damageOverride?: number, areaIdOverride?: number): void
   isAreaSeamAdjacent(a: number, b: number): boolean
   applyDamageToPlayer(playerUnitIdOrRecord: number | InternalPlayerRecord, damage: number, options?: {

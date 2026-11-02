@@ -2,6 +2,7 @@
  * GameInstance Subsystem: Monster Skill/Utility Casting & Diablo, Baal, Uber Tristram and Ancients Boss AI (`src/server/engine/game-instance/boss-encounters-ai.ts`).
  */
 
+import { compute5BandScaling } from '../../../common/data/calc-ast.ts'
 import type { MissileRecord, SkillRecord } from '../../../common/data/data-registry.ts'
 import { getEmbeddedDropTables } from '../../../common/items/embedded-drop-tables.ts'
 import { PANDEMONIUM_FINALE_AREA_ID_113C, UBER_PRIME_EVIL_SET_113C, UBER_PRIME_MINION_SPECS_113C, computeUberPrimeMinionCap113c, createPandemoniumFinaleDrops113c } from '../../world/pandemonium-113c.ts'
@@ -11,6 +12,11 @@ import { MON_UMOD } from '../../../common/units/monster-death-fx.ts'
 import type { MonsterSkillEntry } from '../../../common/units/unit-types.ts'
 import type { ServerEvent } from '../../../netproto/index.ts'
 import type { SummonedPetUnit } from '../../ai/summon-manager.ts'
+import {
+  evaluateMonsterMissileDamage113c,
+  resolveMonsterMonStatsSkillSlvl113c,
+  resolveMonsterRegisteredSkillSlvl113c,
+} from '../../ai/monster-missile-damage-113c.ts'
 import { FIXED_ONE, UnitStatList } from '../stat-list.ts'
 import { STATE_SLOWMISSILES_113C } from '../../skills/p1-wave4-skills-113c.ts'
 import { evaluateSkill113c } from '../../skills/registry.ts'
@@ -30,25 +36,29 @@ function tryCastMonsterSkill(this: GameInstanceHost,
   monster: InternalMonsterRecord,
   target: { readonly x: number; readonly y: number },
   distance: number,
-  options?: { readonly hitMonsters?: boolean | undefined },
+  options?: {
+    readonly hitMonsters?: boolean | undefined
+    readonly forcedSkillId?: number | undefined
+  },
 ): boolean {
   if (monster.skillCooldown > 0 || monster.skills.length === 0) return false
   const profile = monsterProfile113c(monster.ai)
-  // Healers such as HighPriest (row 85) must evaluate ZakarumHeal before their
-  // projectile slots; otherwise the projectile candidate list always wins.
-  if (
-    options?.hitMonsters !== true &&
-    (profile.healRangeParam !== undefined || profile.whip === true) &&
-    this.tryCastMonsterUtilitySkill(monster, target, distance, true)
-  ) {
-    return true
+  const forcedSkillId = options?.forcedSkillId
+  // Healers with `profile.healRangeParam !== undefined` (`HighPriest`, `ZakarumPriest`, `GreaterMummy`,
+  // `OblivionKnight`) already evaluate `#179 ZakarumHeal` / `#182 Bestow` once per `aidel` think tick in
+  // `stepMonsterAi` (`monster-combat-ai.ts`) when `bInMeleeRange == 0` (`D2Game.dll` `0x6FC390BB`, #2001).
+  // Only `Overseer` (`profile.whip === true`, `0x6FC37CB0`) evaluates `#295` / `#291` inside `tryCastMonsterSkill`.
+  if (forcedSkillId === undefined && options?.hitMonsters !== true && profile.whip === true) {
+    if (this.tryCastMonsterUtilitySkill(monster, target, distance, true)) {
+      return true
+    }
   }
   const difficulty = this.difficulty === 2 ? 2 : this.difficulty === 1 ? 1 : 0
   const ordered = [...monster.skills].sort((a, b) => (a.slot ?? 0) - (b.slot ?? 0))
 
   // 1.13c Succubus / SuccubusWitch (`#309 Defense Curse` when `maxMana < maxHp`, `#310 Blood Mana` when
   // `maxMana >= maxHp`) & explicit `Skill1..8` monster curses (`#66`, `#72`, `#87`, #1822):
-  if (options?.hitMonsters !== true && distance <= 25) {
+  if (forcedSkillId === undefined && options?.hitMonsters !== true && distance <= 25) {
     const hasSuccubusCurse = ordered.some((e) => e.skillId === 309 || e.skillId === 310)
     const explicitCurseEntry = ordered.find(
       (e) => e.skillId === 66 || e.skillId === 72 || e.skillId === 87,
@@ -65,7 +75,9 @@ function tryCastMonsterSkill(this: GameInstanceHost,
         }
       }
       if (hasSuccubusCurse && targetPlayer !== undefined) {
-        const wantBloodMana = targetPlayer.maxManaFixed >= targetPlayer.maxHpFixed
+        const wantBloodMana =
+          this.getPlayerAccruedMaxManaFixed(targetPlayer) >=
+          this.getPlayerAccruedMaxHpFixed(targetPlayer)
         const desiredSkillId = wantBloodMana ? 310 : 309
         const desiredStateId = wantBloodMana ? 114 : 113
         const curseEntry =
@@ -125,6 +137,7 @@ function tryCastMonsterSkill(this: GameInstanceHost,
     }
   }
   if (
+    forcedSkillId === undefined &&
     this.tryCastMonsterCombatOrSummonSkill113c(
       monster,
       target,
@@ -141,6 +154,7 @@ function tryCastMonsterSkill(this: GameInstanceHost,
   }[] = []
   for (const entry of ordered) {
     if (entry.skillId === undefined) continue
+    if (forcedSkillId !== undefined && entry.skillId !== forcedSkillId) continue
     // Resurrection (181/327/158) is executed by the shaman/undead handler with
     // its own corpse/race rules, not as a projectile.
     if (entry.skillId === 181 || entry.skillId === 327 || entry.skillId === 158) continue
@@ -159,17 +173,35 @@ function tryCastMonsterSkill(this: GameInstanceHost,
     if (missileRec === undefined) continue
     candidates.push({ entry, skill, missileRec })
   }
-  if (candidates.length === 0) return this.tryCastMonsterUtilitySkill(monster, target, distance)
+  if (candidates.length === 0) {
+    return forcedSkillId === undefined
+      ? this.tryCastMonsterUtilitySkill(monster, target, distance)
+      : false
+  }
   // Melee-range monsters alternate between their skill and A1 instead of never
-  // swinging; at range the cooldown alone paces the casts.
-  if (distance <= 2.5 && this.rng.rand(2) !== 0) return false
+  // swinging; at range the cooldown alone paces the casts (`forcedSkillId` callers
+  // such as `AITHINK_Fn028_Vampire` already ran their own point-blank RNG gate, #2007).
+  if (forcedSkillId === undefined && distance <= 2.5 && this.rng.rand(2) !== 0) return false
   const chosen = candidates[monster.skillCursor % candidates.length]!
   const { entry, skill, missileRec } = chosen
-  monster.skillCursor = (monster.skillCursor + 1) % Math.max(1, candidates.length)
-  const skillLevel = Math.max(1, entry.level)
+  if (forcedSkillId === undefined) {
+    monster.skillCursor = (monster.skillCursor + 1) % Math.max(1, candidates.length)
+  }
+  const diffIdx: 0 | 1 | 2 = this.difficulty === 2 ? 2 : this.difficulty === 1 ? 1 : 0
+  const skillLevel = Math.max(1, resolveMonsterRegisteredSkillSlvl113c(entry.level, diffIdx) || entry.level)
   const rangeFrames = Math.max(2, missileRec.range + missileRec.levRange * skillLevel)
+  // `SKILLS_SrvDo024_FireWall` (`0x6FC637D0`, #1999) & `SKILLS_SrvDo028` (`0x6FC62D90`, #2007):
+  // Target-placed wall / sky-fall controller rows (`#171 VampireMeteor`, `#205 MonBlizzard`,
+  // `#213 HellMeteor`, `#234 Eruption`, `#284 Baal Taunt`, `#287/#288/#303/#304/#305` Catapult)
+  // store lateral half-width or sky-fall countdown frames in `Range` (`Vel = 0`), NOT caster-to-target reach.
   const missileReach =
-    missileRec.vel > 0 ? Math.max(rangeFrames, (missileRec.vel / 16) * rangeFrames) : rangeFrames
+    skill.srvDoFunc === 24
+      ? 25
+      : skill.srvDoFunc === 28
+        ? 35
+        : missileRec.vel > 0
+          ? Math.max(rangeFrames, (missileRec.vel / 16) * rangeFrames)
+          : rangeFrames
   if (distance > Math.min(35, Math.max(4, missileReach))) return false
   const statList = new UnitStatList(this.registry)
   statList.setBaseStat('level', monster.level)
@@ -192,32 +224,54 @@ function tryCastMonsterSkill(this: GameInstanceHost,
   })
   let phys = this.rollInclusive(evalResult.minPhysDmg, evalResult.maxPhysDmg)
   let elem = this.rollInclusive(evalResult.minElemDmg, evalResult.maxElemDmg)
-  if (phys + elem <= 0 && missileRec.minDamage + missileRec.maxDamage > 0) {
-    // Most rows store 8-bit fixed point (1792 = 7), but some flat rows store
-    // the literal damage (Mephisto 12..16).
-    const divisor =
-      missileRec.minDamage >= 256 || missileRec.maxDamage >= 256 ? 256 : 1
-    const lo = Math.trunc(missileRec.minDamage / divisor)
-    const hi = Math.trunc(missileRec.maxDamage / divisor)
-    if (normalizeMissileElement(missileRec.eType) !== undefined) {
-      elem = this.rollInclusive(lo, hi)
-    } else {
-      phys = this.rollInclusive(lo, hi)
-    }
-  }
-  if (phys + elem <= 0) {
-    phys = this.rollInclusive(monster.minDmg, monster.maxDmg)
-  }
-  const element =
+  let elemDurationFrames = evalResult.durationFrames
+  let element: MissileDamageChannel =
     normalizeMissileElement(missileRec.eType) ??
     normalizeMissileElement(skill.eType) ??
     'phys'
-  if (element !== 'phys') {
+  if (phys + elem <= 0) {
+    const mslEval = evaluateMonsterMissileDamage113c({
+      registry: this.registry,
+      missile: missileRec,
+      slvl: skillLevel,
+      difficulty,
+      monsterMinPhys: monster.minDmg,
+      monsterMaxPhys: monster.maxDmg,
+      attackMode: 'S1',
+      elementalAttacks: monster.elementalAttacks,
+      extraFirePct: monster.monProps.extraFirePct,
+      rng: this.rng,
+    })
+    if (mslEval.totalDamage > 0) {
+      phys = mslEval.physDamage
+      elem = mslEval.elemDamage
+      element = mslEval.element
+      if (elemDurationFrames <= 0 && mslEval.elemDurationFrames > 0) {
+        elemDurationFrames = mslEval.elemDurationFrames
+      }
+    }
+  }
+  const engine = this.onlineMissileEngine()
+  const doKind = engine.classifyOnlineSrvDo113c(missileRec)
+  const hitKind = engine.classifyOnlineSrvHit113c(missileRec)
+  const isGroundFire = doKind === 'groundfire' || missileRec.pSrvDmgFunc === 3
+  const isFunctionalCarrier =
+    doKind === 'pathspawner' ||
+    doKind === 'areaspawner' ||
+    doKind === 'orb' ||
+    (hitKind !== 'none' && hitKind !== 'engine-only' && hitKind !== 'homing')
+  if (phys + elem <= 0 && !isGroundFire && !isFunctionalCarrier) {
+    phys = this.rollInclusive(monster.minDmg, monster.maxDmg)
+  }
+  if (element !== 'phys' && missileRec.srcDamage <= 0) {
     elem += phys
     phys = 0
   }
-  if (element === 'fire' && monster.monProps.extraFirePct > 0) {
+  if (element === 'fire' && monster.monProps.extraFirePct > 0 && evalResult.maxElemDmg > 0) {
     elem = Math.max(1, Math.floor((elem * (100 + monster.monProps.extraFirePct)) / 100))
+  }
+  if (element === 'pois' && elem > 0 && elemDurationFrames <= 0) {
+    elemDurationFrames = 50
   }
   const mode = this.monsterSkillMode(entry.mode)
   monster.mode = mode
@@ -229,14 +283,96 @@ function tryCastMonsterSkill(this: GameInstanceHost,
     at: { x: Math.round(target.x), y: Math.round(target.y) },
     lifePct: monster.maxHp > 0 ? Math.round((monster.hp / monster.maxHp) * 128) : 0,
   })
-  this.spawnMonsterMissile(monster, target.x, target.y, phys + elem, missileRec.id, skill.id, {
-    missile: missileRec,
-    skillLevel: Math.max(1, entry.level),
-    physDamage: phys,
-    elemDamage: elem,
-    element,
-    ...(options?.hitMonsters === true ? { hitMonsters: true } : {}),
-  })
+  // 1.13c `D2Game.dll` `SKILLS_SrvDo024_FireWall` (`0x6FC637D0..0x6FC63983`, #1999):
+  // Spawns two `srvmissilea` makers from `(Xt, Yt)` perpendicular to `(Xc - Xt, Yc - Yt)` plus
+  // one stationary `srvmissileb` ground-fire patch at `(Xt, Yt)` (`#51`, `#170`, `#188`, `#321`).
+  if (skill.srvDoFunc === 24) {
+    let dX = monster.x - target.x
+    let dY = monster.y - target.y
+    if (dX === 0 && dY === 0) dX = 1
+    const groundFire256 =
+      evalResult.maxElemDmg256 > 0
+        ? { min: evalResult.minElemDmg256, max: evalResult.maxElemDmg256 }
+        : undefined
+    const commonOpts = {
+      skillLevel,
+      physDamage: 0,
+      elemDamage: 0,
+      element: 'fire' as const,
+      fromX: target.x,
+      fromY: target.y,
+      ...(groundFire256 !== undefined ? { groundFire256 } : {}),
+      ...(options?.hitMonsters === true ? { hitMonsters: true } : {}),
+      skipMultishot: true,
+    }
+    this.spawnMonsterMissile(monster, target.x - dY, target.y + dX, 0, missileRec.id, skill.id, {
+      ...commonOpts,
+      missile: missileRec,
+    })
+    this.spawnMonsterMissile(monster, target.x + dY, target.y - dX, 0, missileRec.id, skill.id, {
+      ...commonOpts,
+      missile: missileRec,
+    })
+    const pillarName = skill.srvMissileB.trim()
+    const pillarRow = pillarName !== '' ? this.registry.getMissileByName(pillarName) : undefined
+    if (pillarRow !== undefined) {
+      this.spawnMonsterMissile(monster, target.x, target.y, 0, pillarRow.id, skill.id, {
+        ...commonOpts,
+        missile: pillarRow,
+      })
+    }
+  } else if (skill.srvDoFunc === 22) {
+    // 1.13c `D2Game.dll` `SKILLS_SrvDo022_NovaAttack` (`0x6FC63AA0` -> `SKILLS_SpawnNovaRing` `0x6FCC2800`, #2006):
+    // Spawns radial `srvMissile`/`srvMissileA` bolts (`nextHit=1, nextDelay=4`) around `(monster.x, monster.y)`
+    // (`#250 summoner` `#44 Frost Nova`, `#369 trap-nova` `#353 Trap Nova`, etc.) with single-hit `STATE_JUSTHIT` gating.
+    const reach = Math.max(8, missileReach)
+    for (let i = 0; i < 16; i++) {
+      const theta = (i / 16) * Math.PI * 2
+      this.spawnMonsterMissile(
+        monster,
+        monster.x + Math.cos(theta) * reach,
+        monster.y + Math.sin(theta) * reach,
+        phys + elem,
+        missileRec.id,
+        skill.id,
+        {
+          missile: missileRec,
+          skillLevel,
+          physDamage: phys,
+          elemDamage: elem,
+          element,
+          skipMultishot: true,
+          ...(elemDurationFrames > 0 ? { elemDurationFrames } : {}),
+          ...(options?.hitMonsters === true ? { hitMonsters: true } : {}),
+        },
+      )
+    }
+  } else if (skill.srvDoFunc === 28) {
+    // 1.13c `D2Game.dll` `SKILLS_SrvDo028` (`0x6FC62D90..0x6FC62EA8`, #2007):
+    // Spawns `wSrvMissileA` directly at `(target.x, target.y)` without `MonUMod #29` (`Multishot`) fan duplication.
+    this.spawnMonsterMissile(monster, target.x, target.y, phys + elem, missileRec.id, skill.id, {
+      missile: missileRec,
+      skillLevel,
+      physDamage: phys,
+      elemDamage: elem,
+      element,
+      fromX: target.x,
+      fromY: target.y,
+      skipMultishot: true,
+      ...(elemDurationFrames > 0 ? { elemDurationFrames } : {}),
+      ...(options?.hitMonsters === true ? { hitMonsters: true } : {}),
+    })
+  } else {
+    this.spawnMonsterMissile(monster, target.x, target.y, phys + elem, missileRec.id, skill.id, {
+      missile: missileRec,
+      skillLevel,
+      physDamage: phys,
+      elemDamage: elem,
+      element,
+      ...(elemDurationFrames > 0 ? { elemDurationFrames } : {}),
+      ...(options?.hitMonsters === true ? { hitMonsters: true } : {}),
+    })
+  }
   const delay = Number.parseInt(skill.delay, 10)
   const rawCooldown =
     Number.isFinite(delay) && delay > 0
@@ -261,47 +397,81 @@ function tryCastMonsterUtilitySkill(this: GameInstanceHost,
   distance: number,
   healOrWhipOnly = false,
 ): boolean {
-  // Heal slots (`#179 ZakarumHeal`, `#182 Bestow`, `#1896`) must win over summon/projectile slots
-  // (HighPriest has Hydra in slot 1 and ZakarumHeal in slot 2).
-  const healEntry = monster.skills.find((entry) => {
-    if (entry.skillId === undefined) return false
-    if (entry.skillId === 179 || entry.skillId === 182 || entry.skillId === 192) return true
-    const skill = this.registry.getSkillById(entry.skillId)
-    return skill !== undefined && /(?:^|\b)(?:zakarumheal|monheal|bestow)\b/i.test(skill.name)
-  })
+  // Heal slots (`#179 ZakarumHeal`, `#182 Bestow`, `#1896`, `#1990`, `#2001`):
+  // - `D2Game.dll` `SKILLS_SrvDo096_ZakarumHeal_Bestow` (`0x6FCD3770..0x6FCD3887`):
+  //   - `0x6FCD37B9` (`cmp ebp, edi; je 0x6fcd37c1`) strictly forbids `pTarget == pCaster` (never self-heal).
+  //   - `#179 ZakarumHeal` heals `15 + 5 * slvl .. 50`% of target `maxHp`; `HighPriest` (`0x6FC3920B`) uses `aip3` cooldown and `50` scan range (`0x9c4`).
+  // - `0x6FC35660..0x6FC356B9`: requires combatant ally (`isKillable`, non-turret/construct) and per-AI `D2Common.#11027` HP% threshold
+  //   (`HighPriest` `< 75%` per `0x6FC391D5`/`0x6FC356AB`, `ZakarumPriest` `<= 60%`, `OblivionKnight` `< 40%`, `GreaterMummy` `< 100%` Undead).
+  // - Dedicated healer AIs (`profile.healRangeParam !== undefined`) must ONLY evaluate `#179/#182` when `healOrWhipOnly === true`
+  //   (from `stepMonsterAi`'s `bInMeleeRange == 0` + `aip` gate), never as a 100%-probability fallback when `candidates.length === 0` (#2001).
+  const casterProfile = monsterProfile113c(monster.ai)
+  const healEntry =
+    healOrWhipOnly || casterProfile.healRangeParam === undefined
+      ? monster.skills.find((entry) => {
+          if (entry.skillId === undefined) return false
+          if (entry.skillId === 179 || entry.skillId === 182) return true
+          const skill = this.registry.getSkillById(entry.skillId)
+          return skill !== undefined && /(?:^|\b)(?:zakarumheal|monheal|bestow)\b/i.test(skill.name)
+        })
+      : undefined
   if (healEntry?.skillId !== undefined) {
     const healSkill = this.registry.getSkillById(healEntry.skillId)
-    const healDelay = healSkill?.delay && healSkill.delay !== '0' ? healSkill.delay : '25'
-    const profile = monsterProfile113c(monster.ai)
-    const healRange = Math.max(
-      12,
-      monaiParam113c(profile, monster.aiParams, profile.healRangeParam, 12),
-    )
-    let healTarget: InternalMonsterRecord | undefined =
-      !monster.states.has(52) && monster.hp < monster.maxHp ? monster : undefined
-    let lowestPct =
-      healTarget !== undefined && monster.maxHp > 0 ? monster.hp / monster.maxHp : 1
+    const baseRange = monaiParam113c(casterProfile, monster.aiParams, casterProfile.healRangeParam, 12)
+    const healRange =
+      monster.ai === 'HighPriest'
+        ? Math.max(50, baseRange)
+        : monster.ai === 'GreaterMummy'
+          ? Math.max(12, baseRange) + (monster.hcIdx === 229 ? 10 : 0)
+          : Math.max(12, baseRange)
+    let healTarget: InternalMonsterRecord | undefined
+    let lowestPct = 101
     for (const ally of this.monsters.values()) {
       if (
         ally.dead ||
         ally.isNpc ||
+        ally.align !== monster.align ||
+        !ally.isKillable ||
+        this.isMonsterConverted(ally) ||
+        (ally.hcIdx >= 351 && ally.hcIdx <= 353) ||
+        isBonePrisonMonsterHcIdx113c(ally.hcIdx) ||
+        isBaalTentacleHcIdx113c(ally.hcIdx) ||
         ally.states.has(52) ||
+        ally.unitId === monster.unitId ||
         ally.areaId !== monster.areaId ||
+        ally.maxHp <= 0 ||
         ally.hp >= ally.maxHp ||
         Math.hypot(ally.x - monster.x, ally.y - monster.y) > healRange
       ) {
         continue
       }
-      const pct = ally.maxHp > 0 ? ally.hp / ally.maxHp : 1
-      if (pct < lowestPct) {
-        lowestPct = pct
+      if (monster.ai === 'GreaterMummy') {
+        if (!ally.isUndead) continue
+        if (monster.hcIdx !== 229 && ally.rank === 'unique') continue
+      }
+      const allyHpPct = Math.trunc((ally.hp * 100) / ally.maxHp)
+      const passesHpGate =
+        monster.ai === 'HighPriest'
+          ? allyHpPct < 75
+          : monster.ai === 'ZakarumPriest'
+            ? allyHpPct <= 60
+            : monster.ai === 'OblivionKnight'
+              ? allyHpPct < 40
+              : true
+      if (!passesHpGate) continue
+      if (allyHpPct < lowestPct) {
+        lowestPct = allyHpPct
         healTarget = ally
       }
     }
     if (healTarget !== undefined) {
-      const healFrac =
-        0.25 + 0.03 * Math.max(1, healEntry.level) + 0.05 * this.difficulty
-      const heal = Math.max(4, Math.floor(healTarget.maxHp * healFrac))
+      const diffIdx: 0 | 1 | 2 = this.difficulty === 2 ? 2 : this.difficulty === 1 ? 1 : 0
+      const slvl = Math.max(1, resolveMonsterRegisteredSkillSlvl113c(healEntry.level, diffIdx) || healEntry.level)
+      const healPct =
+        healEntry.skillId === 179
+          ? this.rollInclusive(Math.min(50, 15 + 5 * slvl), 50)
+          : this.rollInclusive(15, 25)
+      const heal = Math.max(1, Math.trunc((healTarget.maxHp * healPct) / 100))
       const nextHp = Math.min(healTarget.maxHp, healTarget.hp + heal)
       if (nextHp > healTarget.hp) {
         healTarget.hp = nextHp
@@ -322,7 +492,7 @@ function tryCastMonsterUtilitySkill(this: GameInstanceHost,
           caster: { unitType: 1, id: monster.unitId },
           skill: healEntry.skillId,
           skillId: healEntry.skillId,
-          level: Math.max(1, healEntry.level),
+          level: slvl,
           target: { unitType: 1, id: healTarget.unitId },
           at: atPt,
         })
@@ -333,26 +503,143 @@ function tryCastMonsterUtilitySkill(this: GameInstanceHost,
           statId: 6,
           value: healTarget.hp,
         })
-        this.setMonsterSkillCooldown(monster, healDelay)
+        if (monster.ai === 'HighPriest') {
+          // `D2Game.dll` `0x6FC391F2..0x6FC3920B` (#2004): `pAiControl->dwSpellTimer = dwGameFrame + aip3` (`125 / 100 / 75`).
+          monster.skillCooldown = monster.aiParams[2] || 125
+        } else {
+          const healDelay =
+            healSkill?.delay && healSkill.delay !== '0'
+              ? healSkill.delay
+              : String(Math.max(45, monster.cooldownTicks * 2))
+          this.setMonsterSkillCooldown(monster, healDelay)
+        }
         return true
       }
     }
   }
-  for (const entry of monster.skills) {
+  const orderedUtilitySkills = [...monster.skills].sort((a, b) => {
+    const rank = (id: number | undefined): number => (id === 295 ? 0 : id === 291 ? 1 : 2)
+    return rank(a.skillId) - rank(b.skillId)
+  })
+  for (const entry of orderedUtilitySkills) {
     if (entry.skillId === undefined) continue
     if (
       entry.skillId === 181 ||
       entry.skillId === 327 ||
       entry.skillId === 183 ||
       entry.skillId === 190 ||
-      entry.skillId === 158
+      entry.skillId === 158 ||
+      entry.skillId === 60 ||
+      entry.skillId === 62 ||
+      entry.skillId === 167 ||
+      entry.skillId === 210 ||
+      entry.skillId === 302 ||
+      entry.skillId === 330 ||
+      (entry.skillId === 184 && (monster.hcIdx === 706 || monster.hcIdx === 256))
     ) {
       continue
     }
     const skill = this.registry.getSkillById(entry.skillId)
     const name = skill?.name.toLowerCase() ?? ''
-    if (entry.skillId === 179 || entry.skillId === 182 || /(?:^|\b)(?:heal|bestow)/.test(name)) {
+    if (
+      entry.skillId === 179 ||
+      entry.skillId === 182 ||
+      /(?:^|\b)(?:zakarumheal|monheal|bestow)\b/.test(name)
+    ) {
       continue
+    }
+    if (entry.skillId === 291) {
+      // Overseer `Healing Vortex` (`D2Game.dll` `AITHINK_Fn120_Overseer` `0x6FC37F60..0x6FC3802A` + `Missiles.txt #425`, #1990):
+      // Scans injured allies (`!= self`, `!state 52`, HP <= 50%) within 20 subtiles (`aip2 = 50%` roll in AI think),
+      // emits `SkillCast 291` (`S2`) + visual `CreateMissile 425`, and heals `10 + 5*(slvl-1) .. 20 + 5*(slvl-1)` HP.
+      let vortexTarget: InternalMonsterRecord | undefined
+      let bestPct = 0.500001
+      for (const ally of this.monsters.values()) {
+        if (
+          ally.dead ||
+          ally.isNpc ||
+          ally.align !== monster.align ||
+          !ally.isKillable ||
+          this.isMonsterConverted(ally) ||
+          (ally.hcIdx >= 351 && ally.hcIdx <= 353) ||
+          isBonePrisonMonsterHcIdx113c(ally.hcIdx) ||
+          isBaalTentacleHcIdx113c(ally.hcIdx) ||
+          ally.states.has(52) ||
+          ally.unitId === monster.unitId ||
+          ally.areaId !== monster.areaId ||
+          ally.maxHp <= 0 ||
+          Math.hypot(ally.x - monster.x, ally.y - monster.y) > 20
+        ) {
+          continue
+        }
+        const pct = ally.hp / ally.maxHp
+        if (pct <= 0.5 && pct < bestPct) {
+          bestPct = pct
+          vortexTarget = ally
+        }
+      }
+      if (vortexTarget === undefined) continue
+      if (healOrWhipOnly && this.rng.rand(100) >= (monster.aiParams[1] || 50)) {
+        continue
+      }
+      const diffIdx: 0 | 1 | 2 = this.difficulty === 2 ? 2 : this.difficulty === 1 ? 1 : 0
+      const slvl = Math.max(1, resolveMonsterRegisteredSkillSlvl113c(entry.level, diffIdx) || entry.level)
+      const vortexHeal = this.rollInclusive(10 + 5 * (slvl - 1), 20 + 5 * (slvl - 1))
+      const nextHp = Math.min(vortexTarget.maxHp, vortexTarget.hp + vortexHeal)
+      if (nextHp <= vortexTarget.hp) continue
+      vortexTarget.hp = nextHp
+      this.monsterCombat.get(vortexTarget.unitId)?.statList.setHp256(vortexTarget.hp * FIXED_ONE)
+      const vortexMode = this.monsterSkillMode(entry.mode ?? 'S2')
+      monster.mode = vortexMode
+      const vortexPt = { x: Math.round(vortexTarget.x), y: Math.round(vortexTarget.y) }
+      this.broadcastToArea(monster.areaId, {
+        type: 'UnitMode',
+        unitType: 1,
+        id: monster.unitId,
+        mode: vortexMode,
+        at: vortexPt,
+        lifePct: monster.maxHp > 0 ? Math.round((monster.hp / monster.maxHp) * 128) : 0,
+      })
+      this.broadcastToArea(monster.areaId, {
+        type: 'SkillCast',
+        caster: { unitType: 1, id: monster.unitId },
+        skill: 291,
+        skillId: 291,
+        level: slvl,
+        target: { unitType: 1, id: vortexTarget.unitId },
+        at: vortexPt,
+      })
+      const visualMissileId = this.allocateUnitId(UNIT_TYPE_113C.missile)
+      this.broadcastToArea(monster.areaId, {
+        type: 'CreateMissile',
+        missileId: visualMissileId,
+        missileClassId: 425,
+        at: vortexPt,
+        target: vortexPt,
+        x: vortexPt.x,
+        y: vortexPt.y,
+        targetX: vortexPt.x,
+        targetY: vortexPt.y,
+        skillId: 291,
+        level: slvl,
+        ownerType: 1,
+        ownerUnitType: 'monster',
+        ownerId: monster.unitId,
+        sourceUnitId: monster.unitId,
+        areaId: monster.areaId,
+      } as ServerEvent)
+      this.broadcastToArea(vortexTarget.areaId, {
+        type: 'UnitStatUpdate',
+        unitType: 'monster',
+        unitId: vortexTarget.unitId,
+        statId: 6,
+        value: vortexTarget.hp,
+      })
+      this.setMonsterSkillCooldown(
+        monster,
+        skill?.delay && skill.delay !== '0' ? skill.delay : '50',
+      )
+      return true
     }
     if (entry.skillId === 290 && !healOrWhipOnly) {
       // Overseer `Cry Help`: rally nearby un-rallied allies onto the current target.
@@ -373,6 +660,12 @@ function tryCastMonsterUtilitySkill(this: GameInstanceHost,
         if (
           ally.dead ||
           ally.isNpc ||
+          ally.align !== monster.align ||
+          !ally.isKillable ||
+          this.isMonsterConverted(ally) ||
+          (ally.hcIdx >= 351 && ally.hcIdx <= 353) ||
+          isBonePrisonMonsterHcIdx113c(ally.hcIdx) ||
+          isBaalTentacleHcIdx113c(ally.hcIdx) ||
           ally.unitId === monster.unitId ||
           ally.areaId !== monster.areaId ||
           ally.threatUntilFrame > this.currentFrame ||
@@ -409,6 +702,12 @@ function tryCastMonsterUtilitySkill(this: GameInstanceHost,
         if (
           ally.dead ||
           ally.isNpc ||
+          ally.align !== monster.align ||
+          !ally.isKillable ||
+          this.isMonsterConverted(ally) ||
+          (ally.hcIdx >= 351 && ally.hcIdx <= 353) ||
+          isBonePrisonMonsterHcIdx113c(ally.hcIdx) ||
+          isBaalTentacleHcIdx113c(ally.hcIdx) ||
           ally.unitId === monster.unitId ||
           ally.areaId !== monster.areaId
         ) {
@@ -715,6 +1014,7 @@ function emitBossProjectile113c(this: GameInstanceHost,
     readonly physDamage: number
     readonly elemDamage: number
     readonly elemDurationFrames?: number | undefined
+    readonly groundFire256?: { readonly min: number; readonly max: number } | undefined
     readonly guaranteedHit?: boolean | undefined
     readonly hitMonsters?: boolean | undefined
   },
@@ -728,13 +1028,29 @@ function emitBossProjectile113c(this: GameInstanceHost,
       ? (rec.vel + Math.trunc((rec.velLev * spec.slvl) / 8)) / 16
       : spec.speedSubTilesPerFrame
   const speed = monster.states.has(STATE_SLOWMISSILES_113C) ? rawSpeed * 0.33 : rawSpeed
-  const rangeFrames =
+  const rawRangeFrames =
     rec !== undefined && rec.range > 0
       ? Math.max(2, rec.range + rec.levRange * spec.slvl)
       : Math.max(2, spec.rangeFrames)
+  const rangeFrames =
+    spec.missileId === 225 && rawRangeFrames >= 78 ? 77 : rawRangeFrames
   const physDamage = Math.max(0, Math.floor(spec.physDamage))
   const elemDamage = Math.max(0, Math.floor(spec.elemDamage))
-  const totalDamage = Math.max(1, physDamage + elemDamage)
+  const engine = rec !== undefined ? this.onlineMissileEngine() : undefined
+  const doKind = rec !== undefined && engine !== undefined ? engine.classifyOnlineSrvDo113c(rec) : 'standard'
+  const hitKind = rec !== undefined && engine !== undefined ? engine.classifyOnlineSrvHit113c(rec) : 'none'
+  const isGroundFire =
+    spec.groundFire256 !== undefined ||
+    (rec !== undefined && (doKind === 'groundfire' || rec.pSrvDmgFunc === 3))
+  const isFunctionalCarrier =
+    rec !== undefined &&
+    (doKind === 'pathspawner' ||
+      doKind === 'areaspawner' ||
+      doKind === 'orb' ||
+      (hitKind !== 'none' && hitKind !== 'engine-only' && hitKind !== 'homing'))
+  const rawTotal = physDamage + elemDamage
+  const totalDamage =
+    isGroundFire || (rawTotal <= 0 && isFunctionalCarrier) ? 0 : Math.max(1, rawTotal)
   const missileUnitId = this.allocateUnitId(UNIT_TYPE_113C.missile)
   const missile: InternalMissileRecord = {
     unitId: missileUnitId,
@@ -751,16 +1067,34 @@ function emitBossProjectile113c(this: GameInstanceHost,
     remainingFrames: rangeFrames,
     collideType: rec?.collideType ?? spec.collideType ?? 3,
     size: Math.max(1, rec?.size ?? spec.size ?? 2),
-    pierce: (rec !== undefined && !rec.collideKill) || spec.pierce === true,
+    pierce: isGroundFire || (rec !== undefined && !rec.collideKill) || spec.pierce === true,
     nextHit: rec?.nextHit === true || spec.nextHit === true,
     nextDelay: Math.max(0, rec?.nextDelay ?? spec.nextDelay ?? 0),
-    element: spec.element,
-    physDamage,
-    elemDamage,
+    element: isGroundFire ? 'fire' : spec.element,
+    physDamage: isGroundFire ? 0 : physDamage,
+    elemDamage: isGroundFire ? 0 : elemDamage,
     elemDurationFrames: Math.max(0, spec.elemDurationFrames ?? 0),
     hitCooldowns: new Map(),
-    guaranteedHit: spec.guaranteedHit === true,
+    guaranteedHit: spec.guaranteedHit ?? (rec !== undefined ? !rec.toHit : false),
     ...(spec.hitMonsters === true ? { hitMonsters: true } : {}),
+  }
+  if (isGroundFire) {
+    missile.carrier = 'groundfire'
+    missile.groundFire256 =
+      spec.groundFire256 ??
+      (rec !== undefined ? this.resolveOnlineGroundFire256113c(rec, Math.max(1, spec.slvl), undefined) : undefined)
+    missile.groundFireCarry = new Map()
+  } else if (rawTotal <= 0 && isFunctionalCarrier) {
+    missile.carrier = 'none'
+  }
+  if (rec !== undefined && (isGroundFire || isFunctionalCarrier)) {
+    this.attachOnlineMissileState113c(
+      missile,
+      rec,
+      spec.skillId,
+      Math.max(1, spec.slvl),
+      speed > 0 ? Math.ceil(dist / speed) : 0,
+    )
   }
   this.missiles.set(missileUnitId, missile)
   this.broadcastToArea(monster.areaId, {
@@ -928,6 +1262,147 @@ function dealMonsterDirectHitToHostile113c(this: GameInstanceHost,
 
 
 
+/**
+ * 1.13c Monster Melee Combat Skill Resolver (`D2Game.dll` `0x6FCC11B0` -> `SUNITDMG_AllocCombat` `0x6FCFE5A0`, #1994):
+ * - Routes monster melee skills (`#10 Jab`, `#97 Smite`, `#107/#352 Charge`, `#126 Bash`, `#143 Leap Attack`,
+ *   `#151 Whirlwind`, `#156 Fire Hit`, `#198 DiabRun`, `#215/#328 Frenzy`, `#301 Siege Beast Stomp`) through
+ *   `resolveMonsterAttackOnPlayer` / `applyMonsterMissileToDefender(..., 'melee')` (`executeSUnitDmg`).
+ * - Enforces 1.13c `RollToHit` vs Defense (when `(ResultFlags & 1) == 0` and not `#97 Smite`), Shield Block /
+ *   Weapon Block / Dodge (when not `#97 Smite`), `MonStats.txt` `S1` riders (e.g. `sandraider1..10` Fire/Cold),
+ *   and applies `stunFrames` / `knockbackSteps` strictly on unblocked hits (`dmgOut.hit === true`).
+ */
+function executeMonsterMeleeSkillStrike113c(this: GameInstanceHost,
+  monster: InternalMonsterRecord,
+  target:
+    | { readonly kind: 'player'; readonly player: InternalPlayerRecord }
+    | { readonly kind: 'merc'; readonly merc: InternalMercenaryRecord }
+    | { readonly kind: 'pet'; readonly pet: SummonedPetUnit },
+  spec: {
+    readonly skillId: number
+    readonly minDmg: number
+    readonly maxDmg: number
+    readonly skillMode?: 'A1' | 'A2' | 'S1' | undefined
+    readonly arBonusPct?: number | undefined
+    readonly autoHit?: boolean | undefined
+    readonly unblockable?: boolean | undefined
+    readonly stunFrames?: number | undefined
+    readonly knockbackSteps?: number | undefined
+    readonly knockbackOriginX?: number | undefined
+    readonly knockbackOriginY?: number | undefined
+  },
+): boolean {
+  const minDmg = Math.max(1, Math.round(spec.minDmg))
+  const maxDmg = Math.max(minDmg, Math.round(spec.maxDmg))
+  const skillMode = spec.skillMode ?? 'A1'
+
+  if (target.kind === 'player') {
+    const p = target.player
+    if (p.dead) return false
+    const hit = this.resolveMonsterAttackOnPlayer(monster, p, {
+      minDmg,
+      maxDmg,
+      skillMode,
+      attackKind: 'melee',
+      skillId: spec.skillId,
+      arBonusPct: spec.arBonusPct,
+      autoHit: spec.autoHit,
+      unblockable: spec.unblockable,
+    })
+    if (hit && !p.dead) {
+      if ((spec.stunFrames ?? 0) > 0) {
+        this.applyUnitState(
+          p.states,
+          p.stateTimers,
+          'player',
+          p.unitId,
+          p.areaId,
+          21,
+          spec.stunFrames!,
+        )
+      }
+      if ((spec.knockbackSteps ?? 0) > 0) {
+        this.knockbackPlayerFromBoss113c(
+          p,
+          spec.knockbackOriginX ?? monster.x,
+          spec.knockbackOriginY ?? monster.y,
+          spec.knockbackSteps!,
+        )
+      }
+    }
+    return hit
+  }
+
+  const rider = this.rollMonsterElementalRider(monster, skillMode)
+  let hit = false
+  const swing = {
+    skillId: spec.skillId,
+    physDamage: this.rollInclusive(minDmg, maxDmg),
+    elemDamage: rider?.damage ?? 0,
+    element: rider?.element ?? ('phys' as MissileDamageChannel),
+    elemDurationFrames: rider?.durationFrames ?? 0,
+    guaranteedHit: spec.autoHit,
+    toHitBonusPct: spec.arBonusPct,
+    skillMode,
+    unblockable: spec.unblockable,
+    onOutcome: (didHit: boolean) => {
+      hit = didHit
+    },
+  }
+  if (target.kind === 'merc') {
+    const merc = target.merc
+    if (!merc.alive) return false
+    const prevHp = merc.hp
+    const nextHp = this.applyMonsterMissileToDefender(
+      monster,
+      swing,
+      {
+        id: `merc_${merc.unitId}`,
+        name: merc.name,
+        unitType: 'mercenary',
+        level: merc.level,
+        hp: merc.hp,
+        maxHp: merc.maxHp,
+        defense: merc.defense,
+        resist: merc.resist,
+        equipment: merc.equipment,
+      },
+      'melee',
+    )
+    if (nextHp < prevHp) {
+      this.applyDamageToMerc(merc, prevHp - nextHp, merc.areaId)
+    }
+    return hit
+  }
+
+  const pet = target.pet
+  if (pet.alive === false || pet.hp <= 0) return false
+  const prevHp = pet.hp
+  const nextHp = this.applyMonsterMissileToDefender(
+    monster,
+    swing,
+    {
+      id: pet.uid,
+      name: pet.name,
+      unitType: 'minion',
+      level: pet.statList.getAccruedStat('level'),
+      hp: pet.hp,
+      maxHp: pet.maxHp,
+      stats: pet.statList,
+      stateBus: pet.stateBus,
+      x: pet.x,
+      y: pet.y,
+    },
+    'melee',
+  )
+  if (nextHp < prevHp) {
+    pet.hp = prevHp
+    this.applyDamageToSummon(pet, prevHp - nextHp, monster.areaId)
+  }
+  return hit
+}
+
+
+
 /** Enumerate all living hostile units (players, mercs, pets) in `monster.areaId`. */
 function listHostilesInMonsterArea113c(this: GameInstanceHost, 
   monster: InternalMonsterRecord,
@@ -993,17 +1468,47 @@ function stepBossChannelsAndSummonLifespans113c(this: GameInstanceHost, monster:
     }
   }
 
-  // `#349 Diablogeddon` (`Armageddon`) periodic meteor impacts on `#333 diabloclone` / `#705 uberdiablo` (#1825).
+  const diffIdx: 0 | 1 | 2 = this.difficulty === 2 ? 2 : this.difficulty === 1 ? 1 : 0
+
+  // `#349 Diablogeddon` (`Armageddon`) periodic meteor impacts on `#333 diabloclone` / `#705 uberdiablo` (#1825, #2006).
   if (monster.diablogeddonUntilFrame > this.currentFrame && this.currentFrame % 12 === 0) {
     const near = this.nearestHostileForMonster(monster, 18)
     const jitterX = (this.rng.rand(7) - 3) * 0.8
     const jitterY = (this.rng.rand(7) - 3) * 0.8
     const mx = (near?.x ?? monster.x) + jitterX
     const my = (near?.y ?? monster.y) + jitterY
+    const geddonSlvl = resolveMonsterMonStatsSkillSlvl113c(monster.hcIdx, 349, diffIdx, 5)
+    const geddonRec = this.registry.getMissileById(670)
+    const geddonEval =
+      geddonRec !== undefined
+        ? evaluateMonsterMissileDamage113c({
+            registry: this.registry,
+            missile: geddonRec,
+            slvl: geddonSlvl,
+            difficulty: diffIdx,
+            monsterMinPhys: 0,
+            monsterMaxPhys: 0,
+            rng: this.rng,
+          })
+        : undefined
+    const geddonPhys =
+      geddonEval !== undefined && geddonEval.physDamage > 0
+        ? geddonEval.physDamage
+        : this.rollInclusive(
+            compute5BandScaling(geddonSlvl, 4, 4, 6, 8, 10, 12),
+            compute5BandScaling(geddonSlvl, 16, 4, 7, 9, 12, 14),
+          )
+    const geddonFire =
+      geddonEval !== undefined && geddonEval.elemDamage > 0
+        ? geddonEval.elemDamage
+        : this.rollInclusive(
+            compute5BandScaling(geddonSlvl, 25, 15, 20, 25, 30, 35),
+            compute5BandScaling(geddonSlvl, 75, 16, 22, 27, 33, 38),
+          )
     this.emitBossProjectile113c(monster, {
       missileId: 674,
       skillId: 349,
-      slvl: 10 + this.difficulty * 2,
+      slvl: geddonSlvl,
       originX: mx,
       originY: my,
       targetX: mx,
@@ -1015,14 +1520,15 @@ function stepBossChannelsAndSummonLifespans113c(this: GameInstanceHost, monster:
       nextHit: true,
       nextDelay: 6,
       element: 'fire',
-      physDamage: this.rollInclusive(25, 45),
-      elemDamage: this.rollInclusive(60, 100) + 25 * this.difficulty,
+      physDamage: geddonPhys,
+      elemDamage: geddonFire,
     })
   }
 
-  // Baal `#318 Baal Cold Missiles` (`Hoarfrost`) expanding V-wedge wave (#1826).
+  // Baal `#318 Baal Cold Missiles` (`Hoarfrost`) expanding V-wedge wave (#1826, #2006).
   if (monster.activeHoarfrostWaves !== undefined && monster.activeHoarfrostWaves.length > 0) {
     const hostiles = this.listHostilesInMonsterArea113c(monster)
+    const frostRec = this.registry.getMissileById(589)
     for (const wave of monster.activeHoarfrostWaves) {
       wave.x += wave.vx
       wave.y += wave.vy
@@ -1064,17 +1570,36 @@ function stepBossChannelsAndSummonLifespans113c(this: GameInstanceHost, monster:
         const lat = Math.abs(rx * wave.perpX + ry * wave.perpY)
         if (Math.abs(along) <= 1.8 && lat <= halfWidth) {
           wave.hitUnits.add(h.key)
+          const frostEval =
+            frostRec !== undefined
+              ? evaluateMonsterMissileDamage113c({
+                  registry: this.registry,
+                  missile: frostRec,
+                  slvl: wave.slvl,
+                  difficulty: diffIdx,
+                  monsterMinPhys: 0,
+                  monsterMaxPhys: 0,
+                  rng: this.rng,
+                })
+              : undefined
           const coldDmg =
-            this.rollInclusive(20, 40) +
-            9 * Math.max(0, wave.slvl - 1) +
-            25 * this.difficulty
+            frostEval !== undefined && frostEval.elemDamage > 0
+              ? frostEval.elemDamage
+              : this.rollInclusive(
+                  compute5BandScaling(wave.slvl, 20, 9, 13, 13, 13, 13),
+                  compute5BandScaling(wave.slvl, 40, 9, 13, 13, 13, 13),
+                )
+          const chillFrames =
+            frostEval !== undefined && frostEval.elemDurationFrames > 0
+              ? frostEval.elemDurationFrames
+              : 200 + 50 * Math.max(0, wave.slvl - 1)
           const kbSteps = this.rng.rand(100) < 75 ? 3 : 0
           this.dealMonsterDirectHitToHostile113c(
             monster,
             h,
             { cold: coldDmg },
             {
-              chillFrames: 200 + 25 * wave.slvl,
+              chillFrames,
               knockbackSteps: kbSteps,
               knockbackOriginX: monster.x,
               knockbackOriginY: monster.y,
@@ -1108,8 +1633,8 @@ function stepBossChannelsAndSummonLifespans113c(this: GameInstanceHost, monster:
   }
 
   if (ch.kind === 'diablight') {
-    // 1.13c `#193 DiabLight` (`0x6FCD6840`, #1825): 40-frame channel, stream pulse every 2 frames.
-    // Normal (`startOffset = 0`) hits point-blank; NM/Hell (`startOffset = 5.5` sub-tiles) leaves `< 4.5` inside the blind spot!
+    // 1.13c `#193 DiabLight` (`0x6FCD6840`, `Missiles.txt #172 diablight` `HitShift = 6`, #1825, #2006):
+    // 40-frame channel, stream pulse every 2 frames; Normal (`startOffset = 0`) hits point-blank while NM/Hell (`startOffset = 5.5` sub-tiles) leaves `< 4.5` inside the blind spot!
     if (ch.remainingFrames % 2 === 0) {
       const cos = Math.cos(ch.angle)
       const sin = Math.sin(ch.angle)
@@ -1136,6 +1661,7 @@ function stepBossChannelsAndSummonLifespans113c(this: GameInstanceHost, monster:
         sourceUnitId: monster.unitId,
         areaId: monster.areaId,
       } as ServerEvent)
+      const diabLightRec = this.registry.getMissileById(172)
       for (const h of this.listHostilesInMonsterArea113c(monster)) {
         const nextReady = ch.nextHitFrames.get(h.key) ?? 0
         if (this.currentFrame < nextReady) continue
@@ -1145,8 +1671,26 @@ function stepBossChannelsAndSummonLifespans113c(this: GameInstanceHost, monster:
         const perp = Math.abs(-rx * sin + ry * cos)
         if (proj >= ch.startOffset && proj <= beamEnd && perp <= 1.75) {
           ch.nextHitFrames.set(h.key, this.currentFrame + 3)
-          const physDmg = this.rollInclusive(12, 22) + 5 * ch.slvl
-          const ltngDmg = this.rollInclusive(22, 48) + 9 * ch.slvl
+          const lightEval =
+            diabLightRec !== undefined
+              ? evaluateMonsterMissileDamage113c({
+                  registry: this.registry,
+                  missile: diabLightRec,
+                  slvl: ch.slvl,
+                  difficulty: diffIdx,
+                  monsterMinPhys: 0,
+                  monsterMaxPhys: 0,
+                  rng: this.rng,
+                })
+              : undefined
+          const physDmg =
+            lightEval !== undefined && lightEval.physDamage > 0
+              ? lightEval.physDamage
+              : Math.max(1, ((this.rollInclusive(7, 15) + 10 * Math.max(0, ch.slvl - 1)) << 6) >> 8)
+          const ltngDmg =
+            lightEval !== undefined && lightEval.elemDamage > 0
+              ? lightEval.elemDamage
+              : Math.max(1, ((this.rollInclusive(25, 66) + 16 * Math.max(0, ch.slvl - 1)) << 6) >> 8)
           this.dealMonsterDirectHitToHostile113c(monster, h, {
             phys: physDmg,
             light: ltngDmg,
@@ -1162,7 +1706,8 @@ function stepBossChannelsAndSummonLifespans113c(this: GameInstanceHost, monster:
   }
 
   if (ch.kind === 'baalinferno') {
-    // 1.13c `#317 Baal Inferno` (`Mana Rift`, `SrvHit55` `0x6FC5FD60`, #1826): Magic beam + 50% current Mana drain.
+    // 1.13c `#317 Baal Inferno` (`Mana Rift`, `SrvHit55` `0x6FC5FD60`, `Skills.txt #317` `HitShift = 5`, #1826, #2006):
+    // Magic beam (`<< 5 >> 8` = `1/8` HP scaling per tick) + 50% current Mana drain.
     if (ch.remainingFrames % 2 === 0) {
       const cos = Math.cos(ch.angle)
       const sin = Math.sin(ch.angle)
@@ -1187,6 +1732,7 @@ function stepBossChannelsAndSummonLifespans113c(this: GameInstanceHost, monster:
         sourceUnitId: monster.unitId,
         areaId: monster.areaId,
       } as ServerEvent)
+      const infernoRec = this.registry.getMissileById(554)
       for (const h of this.listHostilesInMonsterArea113c(monster)) {
         const nextReady = ch.nextHitFrames.get(h.key) ?? 0
         if (this.currentFrame < nextReady) continue
@@ -1196,8 +1742,22 @@ function stepBossChannelsAndSummonLifespans113c(this: GameInstanceHost, monster:
         const perp = Math.abs(-rx * sin + ry * cos)
         if (proj >= 0.5 && proj <= beamEnd && perp <= 2.0) {
           ch.nextHitFrames.set(h.key, this.currentFrame + 4)
+          const infEval =
+            infernoRec !== undefined
+              ? evaluateMonsterMissileDamage113c({
+                  registry: this.registry,
+                  missile: infernoRec,
+                  slvl: ch.slvl,
+                  difficulty: diffIdx,
+                  monsterMinPhys: 0,
+                  monsterMaxPhys: 0,
+                  rng: this.rng,
+                })
+              : undefined
           const magicDmg =
-            this.rollInclusive(32, 52) + 10 * ch.slvl + 15 * this.difficulty
+            infEval !== undefined && infEval.elemDamage > 0
+              ? infEval.elemDamage
+              : Math.max(1, ((this.rollInclusive(64, 96) + 48 * Math.max(0, ch.slvl - 1)) << 5) >> 8)
           this.dealMonsterDirectHitToHostile113c(monster, h, { magic: magicDmg })
           if (h.kind === 'player' && !h.player.dead && h.player.manaFixed > 0) {
             const drained = Math.floor(h.player.manaFixed / 2)
@@ -1266,14 +1826,15 @@ function stepBossChannelsAndSummonLifespans113c(this: GameInstanceHost, monster:
     if (this.currentFrame < nextReady) continue
     if (Math.hypot(h.x - monster.x, h.y - monster.y) <= 3.1) {
       ch.nextHitFrames.set(h.key, this.currentFrame + 4)
-      const wwDmg = Math.max(
-        4,
-        Math.round(
-          this.rollInclusive(monster.minDmg, monster.maxDmg) *
-            (1 + (50 + Math.max(0, ch.slvl - 1) * 8) / 100),
-        ),
-      )
-      this.dealMonsterDirectHitToHostile113c(monster, h, { phys: wwDmg })
+      const wwMult = 1 + (50 + Math.max(0, ch.slvl - 1) * 8) / 100
+      const wwMin = Math.max(4, Math.round(monster.minDmg * wwMult))
+      const wwMax = Math.max(wwMin, Math.round(monster.maxDmg * wwMult))
+      this.executeMonsterMeleeSkillStrike113c(monster, h, {
+        skillId: 151,
+        minDmg: wwMin,
+        maxDmg: wwMax,
+        arBonusPct: 5 * Math.max(0, ch.slvl - 1),
+      })
     }
   }
   if (ch.remainingFrames <= 0) {
@@ -1345,12 +1906,12 @@ function spawnDiabloBonePrisonRing113c(this: GameInstanceHost,
  * Bone Prison (`#199` on player AND active Chaos Sanctuary Town Portals `classId = 59`), and Diablogeddon (`#349`).
  */
 function stepDiabloBossAi113c(this: GameInstanceHost, monster: InternalMonsterRecord): void {
-  const diffBonus = this.difficulty === 2 ? 4 : this.difficulty === 1 ? 2 : 0
+  const diffIdx: 0 | 1 | 2 = this.difficulty === 2 ? 2 : this.difficulty === 1 ? 1 : 0
   if (
     (monster.hcIdx === 333 || monster.hcIdx === 705) &&
     monster.diablogeddonUntilFrame <= this.currentFrame
   ) {
-    const geddonSlvl = 5 + diffBonus
+    const geddonSlvl = resolveMonsterMonStatsSkillSlvl113c(monster.hcIdx, 349, diffIdx, 5)
     monster.diablogeddonUntilFrame = this.currentFrame + 1000
     this.applyMonsterState(monster.unitId, 144, 1000)
     this.emitBossSkillCast113c(monster, 349, geddonSlvl, 8, monster.x, monster.y)
@@ -1379,7 +1940,8 @@ function stepDiabloBossAi113c(this: GameInstanceHost, monster: InternalMonsterRe
           Math.hypot(m.x - obj.x, m.y - obj.y) <= 5,
       )
       if (!alreadyCaged) {
-        this.spawnDiabloBonePrisonRing113c(monster, obj.x, obj.y, 4 + diffBonus)
+        const prisonSlvl = resolveMonsterMonStatsSkillSlvl113c(monster.hcIdx, 199, diffIdx, 4)
+        this.spawnDiabloBonePrisonRing113c(monster, obj.x, obj.y, prisonSlvl)
         monster.skillCooldown = 50
         monster.cooldown = Math.max(10, monster.cooldownTicks)
         return
@@ -1391,7 +1953,7 @@ function stepDiabloBossAi113c(this: GameInstanceHost, monster: InternalMonsterRe
     const slot = monster.skillCursor % 7
     monster.skillCursor = (monster.skillCursor + 1) % 7
 
-    // Close-range melee Cold Touch (`#194 DiabCold`) when target is un-chilled in melee range.
+    // Close-range melee Cold Touch (`#194 DiabCold`, `Skills.txt #194` `EType = mag`, `HitShift = 8`) when target is un-chilled in melee range.
     const targetChilled =
       nearest.kind === 'player'
         ? nearest.player.states.has(11)
@@ -1399,14 +1961,36 @@ function stepDiabloBossAi113c(this: GameInstanceHost, monster: InternalMonsterRe
           ? nearest.merc.states.has(11)
           : false
     if (dist <= 3.8 && (!targetChilled || slot === 4)) {
-      const slvl = 3 + diffBonus
+      const slvl = resolveMonsterMonStatsSkillSlvl113c(monster.hcIdx, 194, diffIdx, 4)
       this.emitBossSkillCast113c(monster, 194, slvl, 9, nearest.x, nearest.y)
-      const magicDmg = this.rollInclusive(35, 55) + 12 * slvl + 20 * this.difficulty
+      const coldTouchSkill = this.registry.getSkillById(194)
+      let magicDmg: number
+      let chillFrames: number
+      if (coldTouchSkill !== undefined) {
+        const statList = new UnitStatList(this.registry, undefined, { ownerType: 'monster' })
+        statList.setBaseStat('level', slvl)
+        const evalOut = evaluateSkill113c({
+          registry: this.registry,
+          skill: coldTouchSkill,
+          slvl,
+          blvl: slvl,
+          statList,
+          difficulty: diffIdx,
+        })
+        magicDmg = this.rollInclusive(
+          Math.max(1, evalOut.minElemDmg),
+          Math.max(1, evalOut.maxElemDmg),
+        )
+        chillFrames = evalOut.durationFrames > 0 ? evalOut.durationFrames : 100 + 50 * Math.max(0, slvl - 1)
+      } else {
+        magicDmg = this.rollInclusive(15 + 9 * Math.max(0, slvl - 1), 25 + 12 * Math.max(0, slvl - 1))
+        chillFrames = 100 + 50 * Math.max(0, slvl - 1)
+      }
       this.dealMonsterDirectHitToHostile113c(
         monster,
         nearest,
         { magic: magicDmg },
-        { chillFrames: 100 + 50 * Math.max(0, slvl - 1) },
+        { chillFrames },
       )
       monster.cooldown = Math.max(10, monster.cooldownTicks)
       monster.skillCooldown = 18
@@ -1415,7 +1999,7 @@ function stepDiabloBossAi113c(this: GameInstanceHost, monster: InternalMonsterRe
 
     // Four-Legged Charge (`#198 DiabRun`) at mid/long range (`dist >= 6`).
     if (slot === 5 && dist >= 6 && dist <= 24) {
-      const slvl = 5 + diffBonus
+      const slvl = resolveMonsterMonStatsSkillSlvl113c(monster.hcIdx, 198, diffIdx, 5)
       this.emitBossSkillCast113c(monster, 198, slvl, 14, nearest.x, nearest.y)
       const dx = nearest.x - monster.x
       const dy = nearest.y - monster.y
@@ -1459,13 +2043,37 @@ function stepDiabloBossAi113c(this: GameInstanceHost, monster: InternalMonsterRe
         areaId: monster.areaId,
       })
       if (Math.hypot(nearest.x - monster.x, nearest.y - monster.y) <= 3.8) {
-        const chargeDmg = this.rollInclusive(monster.minDmg, monster.maxDmg) + 55 + 10 * slvl
-        this.dealMonsterDirectHitToHostile113c(
-          monster,
-          nearest,
-          { phys: chargeDmg },
-          { knockbackSteps: 3 },
-        )
+        // 1.13c `#198 DiabRun` (`SrvDo103` `0x6FCD3F10`, `ResultFlags = 5`, `Skills.txt #198` `MinDam=17+9*(slvl-1)`, `MaxDam=33+9*(slvl-1)`, #1994, #2006):
+        // Auto-hits vs Defense (`ResultFlags & 1`) while still rolling Shield Block (`unblockable: false`).
+        const diabRunSkill = this.registry.getSkillById(198)
+        let flatMin = 17 + 9 * Math.max(0, slvl - 1)
+        let flatMax = 33 + 9 * Math.max(0, slvl - 1)
+        if (diabRunSkill !== undefined) {
+          const statList = new UnitStatList(this.registry, undefined, { ownerType: 'monster' })
+          statList.setBaseStat('level', slvl)
+          const runEval = evaluateSkill113c({
+            registry: this.registry,
+            skill: diabRunSkill,
+            slvl,
+            blvl: slvl,
+            statList,
+            difficulty: diffIdx,
+          })
+          if (runEval.maxPhysDmg > 0) {
+            flatMin = runEval.minPhysDmg
+            flatMax = runEval.maxPhysDmg
+          }
+        }
+        const chargeMin = monster.minDmg + flatMin
+        const chargeMax = Math.max(chargeMin, monster.maxDmg + flatMax)
+        this.executeMonsterMeleeSkillStrike113c(monster, nearest, {
+          skillId: 198,
+          minDmg: chargeMin,
+          maxDmg: chargeMax,
+          autoHit: true,
+          unblockable: false,
+          knockbackSteps: 3,
+        })
       }
       monster.cooldown = Math.max(12, monster.cooldownTicks)
       monster.skillCooldown = 25
@@ -1482,7 +2090,8 @@ function stepDiabloBossAi113c(this: GameInstanceHost, monster: InternalMonsterRe
           Math.hypot(m.x - nearest.x, m.y - nearest.y) <= 4.5,
       )
       if (!playerAlreadyCaged) {
-        this.spawnDiabloBonePrisonRing113c(monster, nearest.x, nearest.y, 4 + diffBonus)
+        const prisonSlvl = resolveMonsterMonStatsSkillSlvl113c(monster.hcIdx, 199, diffIdx, 4)
+        this.spawnDiabloBonePrisonRing113c(monster, nearest.x, nearest.y, prisonSlvl)
         monster.cooldown = Math.max(12, monster.cooldownTicks)
         monster.skillCooldown = 50
         return
@@ -1491,7 +2100,7 @@ function stepDiabloBossAi113c(this: GameInstanceHost, monster: InternalMonsterRe
 
     // `#193 DiabLight` (Red Lightning Hose, 40 frames; NM/Hell blind spot `startOffset = 5.5` sub-tiles).
     if (slot === 0) {
-      const slvl = 3 + diffBonus
+      const slvl = resolveMonsterMonStatsSkillSlvl113c(monster.hcIdx, 193, diffIdx, 3)
       const angle = Math.atan2(nearest.y - monster.y, nearest.x - monster.x)
       this.emitBossSkillCast113c(monster, 193, slvl, 8, nearest.x, nearest.y)
       monster.activeBossChannel = {
@@ -1510,13 +2119,29 @@ function stepDiabloBossAi113c(this: GameInstanceHost, monster: InternalMonsterRe
       return
     }
 
-    // `#195 DiabFire` (32-bolt 360° radial Fire Nova, `diabfire` #176, `nextHit=true, nextDelay=4`).
+    // `#195 DiabFire` (32-bolt 360° radial Fire Nova, `diabfire` #176, `HitShift=8`, `nextHit=true, nextDelay=4`).
     if (slot === 1) {
-      const slvl = 4 + diffBonus
+      const slvl = resolveMonsterMonStatsSkillSlvl113c(monster.hcIdx, 195, diffIdx, 5)
       this.emitBossSkillCast113c(monster, 195, slvl, 8, nearest.x, nearest.y)
-      const fireDmg = this.rollInclusive(24, 48) + 8 * slvl + 15 * this.difficulty
+      const fireNovaRec = this.registry.getMissileById(176)
       for (let i = 0; i < 32; i++) {
         const theta = (i / 32) * Math.PI * 2
+        const fireEval =
+          fireNovaRec !== undefined
+            ? evaluateMonsterMissileDamage113c({
+                registry: this.registry,
+                missile: fireNovaRec,
+                slvl,
+                difficulty: diffIdx,
+                monsterMinPhys: 0,
+                monsterMaxPhys: 0,
+                rng: this.rng,
+              })
+            : undefined
+        const fireDmg =
+          fireEval !== undefined && fireEval.elemDamage > 0
+            ? fireEval.elemDamage
+            : this.rollInclusive(20, 50) + 8 * Math.max(0, slvl - 1)
         this.emitBossProjectile113c(monster, {
           missileId: 176,
           skillId: 195,
@@ -1541,15 +2166,36 @@ function stepDiabloBossAi113c(this: GameInstanceHost, monster: InternalMonsterRe
       return
     }
 
-    // `#197 DiabWall` (Firestorm: diverging `diabwallmaker` #179 / `diabwall` #180 fire + phys ground streams).
+    // `#197 DiabWall` (Firestorm: diverging `diabwallmaker` #179 / `diabwall` #180 `HitShift = 3` fire + phys ground streams).
     if (slot === 2) {
-      const slvl = 3 + diffBonus
+      const slvl = resolveMonsterMonStatsSkillSlvl113c(monster.hcIdx, 197, diffIdx, 3)
       this.emitBossSkillCast113c(monster, 197, slvl, 10, nearest.x, nearest.y)
       const baseAngle = Math.atan2(nearest.y - monster.y, nearest.x - monster.x)
       const tongues = Math.min(5, Math.max(3, slvl))
+      const wallRec = this.registry.getMissileById(180)
       for (let t = 0; t < tongues; t++) {
         const spread = (t - (tongues - 1) / 2) * 0.22
         const ang = baseAngle + spread
+        const wallEval =
+          wallRec !== undefined
+            ? evaluateMonsterMissileDamage113c({
+                registry: this.registry,
+                missile: wallRec,
+                slvl,
+                difficulty: diffIdx,
+                monsterMinPhys: 0,
+                monsterMaxPhys: 0,
+                rng: this.rng,
+              })
+            : undefined
+        const wallPhys =
+          wallEval !== undefined && wallEval.physDamage > 0
+            ? wallEval.physDamage
+            : Math.max(1, ((this.rollInclusive(4, 12) + 2 * Math.max(0, slvl - 1)) << 3) >> 8)
+        const wallFire =
+          wallEval !== undefined && wallEval.elemDamage > 0
+            ? wallEval.elemDamage
+            : Math.max(1, ((this.rollInclusive(12, 25) + 5 * Math.max(0, slvl - 1)) << 3) >> 8)
         this.emitBossProjectile113c(monster, {
           missileId: 180,
           skillId: 197,
@@ -1564,10 +2210,10 @@ function stepDiabloBossAi113c(this: GameInstanceHost, monster: InternalMonsterRe
           collideType: 8,
           pierce: true,
           nextHit: true,
-          nextDelay: 4,
+          nextDelay: 1,
           element: 'fire',
-          physDamage: this.rollInclusive(10, 20) + 3 * slvl,
-          elemDamage: this.rollInclusive(20, 42) + 6 * slvl,
+          physDamage: wallPhys,
+          elemDamage: wallFire,
         })
       }
       monster.cooldown = Math.max(12, monster.cooldownTicks)
@@ -1575,36 +2221,68 @@ function stepDiabloBossAi113c(this: GameInstanceHost, monster: InternalMonsterRe
       return
     }
 
-    // `#188 PrimeFirewall` (perpendicular wall of `vampirefirewall` #131 ground fire patches across target).
+    // `#188 PrimeFirewall` (`SKILLS_SrvDo024_FireWall` `0x6FC637D0`, #1999):
+    // 2 perpendicular `#130 vampirefirewallmaker` makers from `(Xt, Yt)` + 1 center `#131 vampirefirewall`.
     {
-      const slvl = 5 + diffBonus
+      const slvl = resolveMonsterMonStatsSkillSlvl113c(monster.hcIdx, 188, diffIdx, 8)
       this.emitBossSkillCast113c(monster, 188, slvl, 10, nearest.x, nearest.y)
-      const baseAngle = Math.atan2(nearest.y - monster.y, nearest.x - monster.x)
-      const perpX = -Math.sin(baseAngle)
-      const perpY = Math.cos(baseAngle)
-      const patchFire = this.rollInclusive(18, 34) + 5 * slvl + 10 * this.difficulty
-      for (let k = -3; k <= 3; k++) {
-        const px = nearest.x + perpX * k * 1.5
-        const py = nearest.y + perpY * k * 1.5
-        this.emitBossProjectile113c(monster, {
-          missileId: 131,
-          skillId: 188,
-          slvl,
-          originX: px,
-          originY: py,
-          targetX: px,
-          targetY: py,
-          speedSubTilesPerFrame: 0,
-          rangeFrames: 75,
-          size: 2,
-          collideType: 0,
-          pierce: true,
-          nextHit: true,
-          nextDelay: 5,
-          element: 'fire',
+      const makerRow = this.registry.getMissileById(130)
+      const patchRow = this.registry.getMissileById(131)
+      if (makerRow !== undefined && patchRow !== undefined) {
+        let dX = monster.x - nearest.x
+        let dY = monster.y - nearest.y
+        if (dX === 0 && dY === 0) dX = 1
+        const commonOpts = {
+          skillLevel: slvl,
           physDamage: 0,
-          elemDamage: patchFire,
+          elemDamage: 0,
+          element: 'fire' as const,
+          fromX: nearest.x,
+          fromY: nearest.y,
+          skipMultishot: true,
+        }
+        this.spawnMonsterMissile(monster, nearest.x - dY, nearest.y + dX, 0, makerRow.id, 188, {
+          ...commonOpts,
+          missile: makerRow,
         })
+        this.spawnMonsterMissile(monster, nearest.x + dY, nearest.y - dX, 0, makerRow.id, 188, {
+          ...commonOpts,
+          missile: makerRow,
+        })
+        this.spawnMonsterMissile(monster, nearest.x, nearest.y, 0, patchRow.id, 188, {
+          ...commonOpts,
+          missile: patchRow,
+        })
+      } else {
+        const baseAngle = Math.atan2(nearest.y - monster.y, nearest.x - monster.x)
+        const perpX = -Math.sin(baseAngle)
+        const perpY = Math.cos(baseAngle)
+        const groundFire256 = {
+          min: (2 + 2 * Math.max(0, slvl - 1)) << 2,
+          max: (3 + 2 * Math.max(0, slvl - 1)) << 2,
+        }
+        for (let k = -3; k <= 3; k++) {
+          const px = nearest.x + perpX * k * 1.5
+          const py = nearest.y + perpY * k * 1.5
+          this.emitBossProjectile113c(monster, {
+            missileId: 131,
+            skillId: 188,
+            slvl,
+            originX: px,
+            originY: py,
+            targetX: px,
+            targetY: py,
+            speedSubTilesPerFrame: 0,
+            rangeFrames: 90,
+            size: 2,
+            collideType: 3,
+            pierce: true,
+            element: 'fire',
+            physDamage: 0,
+            elemDamage: 0,
+            groundFire256,
+          })
+        }
       }
       monster.cooldown = Math.max(12, monster.cooldownTicks)
       monster.skillCooldown = 28
@@ -1641,11 +2319,12 @@ function stepDiabloBossAi113c(this: GameInstanceHost, monster: InternalMonsterRe
 function stepBaalCrabBossAi113c(this: GameInstanceHost, monster: InternalMonsterRecord): void {
   const isClone = monster.hcIdx === 570
   const isUber = monster.hcIdx === 709
-  const diffBonus = this.difficulty === 2 ? 4 : this.difficulty === 1 ? 2 : 0
+  const diffIdx: 0 | 1 | 2 = this.difficulty === 2 ? 2 : this.difficulty === 1 ? 1 : 0
 
   if (isUber && !monster.states.has(20)) {
+    const armorSlvl = resolveMonsterMonStatsSkillSlvl113c(monster.hcIdx, 60, diffIdx, 15)
     this.applyMonsterState(monster.unitId, 20, 3600)
-    this.emitBossSkillCast113c(monster, 60, 15 + diffBonus, 8, monster.x, monster.y)
+    this.emitBossSkillCast113c(monster, 60, armorSlvl, 8, monster.x, monster.y)
     monster.cooldown = Math.max(8, monster.cooldownTicks)
     return
   }
@@ -1693,7 +2372,8 @@ function stepBaalCrabBossAi113c(this: GameInstanceHost, monster: InternalMonster
           break
         }
       }
-      this.emitBossSkillCast113c(monster, 331, 1 + diffBonus, 8, cx, cy)
+      const cloneSlvl = resolveMonsterMonStatsSkillSlvl113c(monster.hcIdx, 331, diffIdx, 1)
+      this.emitBossSkillCast113c(monster, 331, cloneSlvl, 8, cx, cy)
       this.broadcastExplosionMissile(monster, 614)
       // `rClone = max(-100, 2 * r - 100)` guarantees `(100 - rClone)/100 = 2 * (100 - r)/100` (exact 2x incoming damage vs real Baal!).
       const doubleVuln = (r: number): number => Math.max(-100, 2 * Math.min(95, r) - 100)
@@ -1706,8 +2386,8 @@ function stepBaalCrabBossAi113c(this: GameInstanceHost, monster: InternalMonster
         y: cy,
         areaId: monster.areaId,
         level: monster.level,
-        hp: monster.hp,
-        maxHp: monster.maxHp,
+        hp: Math.max(1, Math.floor(monster.hp / 3)),
+        maxHp: Math.max(1, Math.floor(monster.maxHp / 3)),
         experience: 0,
         noRatio: true,
         minDmg: monster.minDmg,
@@ -1743,7 +2423,7 @@ function stepBaalCrabBossAi113c(this: GameInstanceHost, monster: InternalMonster
       ).length
       if (activeTentacles < 8) {
         const count = this.difficulty + 2 + this.rng.rand(3)
-        const slvl = 4 + diffBonus
+        const slvl = resolveMonsterMonStatsSkillSlvl113c(monster.hcIdx, 315, diffIdx, 1)
         this.emitBossSkillCast113c(monster, 315, slvl, 9, nearest.x, nearest.y)
         for (let i = 0; i < count; i++) {
           const ang = (i / count) * Math.PI * 2 + (this.rng.rand(10) - 5) * 0.05
@@ -1783,11 +2463,13 @@ function stepBaalCrabBossAi113c(this: GameInstanceHost, monster: InternalMonster
       }
     }
 
-    // 3) `#309 Defense Curse` (`state 113` when `maxHp > maxMana`) vs `#310 Blood Mana` (`state 114` when `maxMana >= maxHp`).
+    // 3) `#309 Defense Curse` (`state 113` when `maxHp > maxMana`) vs `#310 Blood Mana` (`state 114` when `maxMana >= maxHp`, #1996).
     if (nearest.kind === 'player' && !nearest.player.states.has(113) && !nearest.player.states.has(114) && slot === 2) {
-      const wantBloodMana = nearest.player.maxManaFixed >= nearest.player.maxHpFixed
+      const wantBloodMana =
+        this.getPlayerAccruedMaxManaFixed(nearest.player) >=
+        this.getPlayerAccruedMaxHpFixed(nearest.player)
       const curseSkillId = wantBloodMana ? 310 : 309
-      const curseSlvl = 2 + diffBonus
+      const curseSlvl = resolveMonsterMonStatsSkillSlvl113c(monster.hcIdx, curseSkillId, diffIdx, 1)
       this.applyMonsterCurseToTarget113c(
         monster,
         { kind: 'player', player: nearest.player },
@@ -1810,7 +2492,7 @@ function stepBaalCrabBossAi113c(this: GameInstanceHost, monster: InternalMonster
 
     // 4) `#318 Baal Cold Missiles` (`Hoarfrost` expanding V-wedge + Cold + Chill + 75% Knockback).
     if (slot === 3) {
-      const slvl = 7 + diffBonus
+      const slvl = resolveMonsterMonStatsSkillSlvl113c(monster.hcIdx, 318, diffIdx, 1)
       this.emitBossSkillCast113c(monster, 318, slvl, 4, nearest.x, nearest.y)
       const ang = Math.atan2(nearest.y - monster.y, nearest.x - monster.x)
       const cos = Math.cos(ang)
@@ -1855,7 +2537,7 @@ function stepBaalCrabBossAi113c(this: GameInstanceHost, monster: InternalMonster
 
     // 5) `#317 Baal Inferno` (`Mana Rift` 20-frame Magic beam + 50% current Mana drain).
     if (slot === 4 && dist <= 18) {
-      const slvl = 8 + diffBonus
+      const slvl = resolveMonsterMonStatsSkillSlvl113c(monster.hcIdx, 317, diffIdx, 1)
       const ang = Math.atan2(nearest.y - monster.y, nearest.x - monster.x)
       this.emitBossSkillCast113c(monster, 317, slvl, 14, nearest.x, nearest.y)
       monster.activeBossChannel = {
@@ -1877,7 +2559,7 @@ function stepBaalCrabBossAi113c(this: GameInstanceHost, monster: InternalMonster
     // 6) `#329 Baal Teleport` (`#331` on clone): closes distance TOWARD target when `dist >= 8` (`0x6FCCCBE0`).
     if (dist >= 8) {
       const tpSkillId = isClone ? 331 : 329
-      const slvl = 1 + diffBonus
+      const slvl = resolveMonsterMonStatsSkillSlvl113c(monster.hcIdx, tpSkillId, diffIdx, 1)
       const ang = Math.atan2(nearest.y - monster.x + monster.x - monster.y, nearest.x - monster.x)
       const targetAng = Math.atan2(nearest.y - monster.y, nearest.x - monster.x)
       void ang
@@ -1934,11 +2616,30 @@ function stepBaalCrabBossAi113c(this: GameInstanceHost, monster: InternalMonster
 
     // 7) `#316 Baal Nova` (`Incineration Nova` — 32 radial `baal nova` #555 fire bolts, `nextHit=true, nextDelay=4`).
     {
-      const slvl = 7 + diffBonus
+      const slvl = resolveMonsterMonStatsSkillSlvl113c(monster.hcIdx, 316, diffIdx, 1)
       this.emitBossSkillCast113c(monster, 316, slvl, 10, nearest.x, nearest.y)
-      const novaFire = this.rollInclusive(50, 75) + 18 * Math.max(0, slvl - 1) + 20 * this.difficulty
+      const novaRec = this.registry.getMissileById(555)
       for (let i = 0; i < 32; i++) {
         const theta = (i / 32) * Math.PI * 2
+        const novaEval =
+          novaRec !== undefined
+            ? evaluateMonsterMissileDamage113c({
+                registry: this.registry,
+                missile: novaRec,
+                slvl,
+                difficulty: diffIdx,
+                monsterMinPhys: 0,
+                monsterMaxPhys: 0,
+                rng: this.rng,
+              })
+            : undefined
+        const novaFire =
+          novaEval !== undefined && novaEval.elemDamage > 0
+            ? novaEval.elemDamage
+            : this.rollInclusive(
+                compute5BandScaling(slvl, 50, 24, 32, 32, 32, 32),
+                compute5BandScaling(slvl, 75, 24, 32, 32, 32, 32),
+              )
         this.emitBossProjectile113c(monster, {
           missileId: 555,
           skillId: 316,
@@ -2109,14 +2810,19 @@ function trySpawnUberPrimeMinion113c(this: GameInstanceHost,
 
 
 /**
- * 1.13c `AITHINK_Fn049_Mephisto` & `AITHINK_Fn140_UberMephisto` (`D2Game.dll`, `#242 mephisto` & `#704 ubermephisto`, #1841):
- * Casts `#334 MephistoMissile` (skull ball `#276`), `#185 PrimeLightning` (`#680`),
- * `#186 PrimeBolt` (`#56` 7-bolt fan), `#192 PrimePoisonNova` (`#118` 16-bolt ring),
- * `#346 MephFrostNova` (`#679` cold ring + chill), and `#59 Blizzard` (`#159` cold shards),
- * while `#704 ubermephisto` radiates innate level 20 `Conviction` (`#123`) and summons `#725..730` undead.
+ * 1.13c `AITHINK_Fn050_Mephisto` (`0x6FCA5B60`, `#242 mephisto`) & `AITHINK_Fn146_UberMephisto`
+ * (`0x6FC9B4E0`, `#704 ubermephisto`, #1841, #2006, #2008):
+ * - Normal (`difficulty === 0`, `#242`): casts ONLY `#334 MephistoMissile` (`#276`), `#185 PrimeLightning` (`#170`),
+ *   `#186 PrimeBolt` (`slvl + 2` fanned `#56` bolts), and `#192 PrimePoisonNova` (`#118` 16-bolt ring).
+ * - Nightmare/Hell (`difficulty > 0`) & Uber (`#704`): unlocks `#346 MephFrostNova` (`0x6FCA5F1C`, `dist < 15`,
+ *   radial `#679` cold ring + chill) and `#59 Blizzard` (`0x6FCA5ED1`, forced on `!hasMissileLos` "Moat Trick" or
+ *   `dist > 30`, spawning `#158 blizzardcenter` -> `#159 blizzard1` shards over `100` frames).
+ * - `#704 ubermephisto` radiates innate level 20 `Conviction` (`#123`) and summons `#725..730` undead.
  */
 function stepUberMephistoBossAi113c(this: GameInstanceHost, monster: InternalMonsterRecord): void {
   const isUber = monster.hcIdx === 704
+  const diffIdx: 0 | 1 | 2 = this.difficulty === 2 ? 2 : this.difficulty === 1 ? 1 : 0
+  const canCastNmHellSpells = diffIdx > 0 || isUber
   const nearest = this.nearestHostileForMonster(monster, Math.max(35, monster.aggroRadius))
   if (nearest === null) return
   const dist = Math.hypot(nearest.x - monster.x, nearest.y - monster.y)
@@ -2128,18 +2834,71 @@ function stepUberMephistoBossAi113c(this: GameInstanceHost, monster: InternalMon
   if (monster.cooldown <= 0 && monster.skillCooldown <= 0) {
     const slot = monster.skillCursor % 6
     monster.skillCursor = (monster.skillCursor + 1) % 6
-    const baseSlvl = isUber ? 20 : 7 + this.difficulty * 3
 
-    // `#346 MephFrostNova` when target is within 12 sub-tiles (`mephfrostnova` `#679`).
-    if (slot === 4 && dist <= 12) {
-      this.emitBossSkillCast113c(monster, 346, baseSlvl, 8, monster.x, monster.y)
-      const coldDmg = this.rollInclusive(45, 75) + 12 * baseSlvl + 25 * this.difficulty
+    let hasMissileLos = true
+    if (this.terrainWalkableCheck !== undefined && dist > 1) {
+      const steps = Math.max(1, Math.ceil(dist))
+      for (let s = 1; s < steps; s++) {
+        const t = s / steps
+        const sx = Math.round(monster.x + (nearest.x - monster.x) * t)
+        const sy = Math.round(monster.y + (nearest.y - monster.y) * t)
+        if (!this.terrainWalkableCheck(monster.areaId, sx, sy, true)) {
+          hasMissileLos = false
+          break
+        }
+      }
+    }
+
+    let effectiveSlot = slot
+    if (canCastNmHellSpells && (!hasMissileLos || dist > 30)) {
+      // 1.13c `0x6FCA5ED1`: NM/Hell/Uber Mephisto casts `#59 Blizzard` whenever missile LoS is blocked
+      // (`COLLIDE_MISSILE_BARRIER`, "Moat Trick") or target distance exceeds `30` sub-tiles.
+      effectiveSlot = 5
+    } else if (slot === 4) {
+      // 1.13c `0x6FCA5F1C`: `#346 MephFrostNova` requires `nDifficulty > 0` (or Uber) AND `dist < 15`;
+      // otherwise falls back to `#334 MephistoMissile` (never `#59 Blizzard`).
+      effectiveSlot = canCastNmHellSpells && dist < 15 ? 4 : 0
+    } else if (slot === 5) {
+      // 1.13c `0x6FCA5ED1`: Normal Mephisto never casts `#59 Blizzard` (routes to `#185 PrimeLightning`).
+      effectiveSlot = canCastNmHellSpells ? 5 : 1
+    }
+
+    // `#346 MephFrostNova` when target is within 15 sub-tiles in NM/Hell/Uber (`SKILLS_SrvDo022_NovaAttack` `0x6FC63AA0` ->
+    // `SKILLS_SpawnNovaRing` `0x6FCC2800`: radial `mephfrostnova` `#679` bolts ONLY, `nextHit=true, nextDelay=4`
+    // single-hit `STATE_JUSTHIT` gating — zero synchronous direct-hit AoE double damage, #2006, #2008).
+    if (effectiveSlot === 4) {
+      const slvl = resolveMonsterMonStatsSkillSlvl113c(monster.hcIdx, 346, diffIdx, 1)
+      this.emitBossSkillCast113c(monster, 346, slvl, 8, monster.x, monster.y)
+      const frostRec = this.registry.getMissileById(679)
       for (let i = 0; i < 16; i++) {
         const theta = (i / 16) * Math.PI * 2
+        const frostEval =
+          frostRec !== undefined
+            ? evaluateMonsterMissileDamage113c({
+                registry: this.registry,
+                missile: frostRec,
+                slvl,
+                difficulty: diffIdx,
+                monsterMinPhys: 0,
+                monsterMaxPhys: 0,
+                rng: this.rng,
+              })
+            : undefined
+        const coldDmg =
+          frostEval !== undefined && frostEval.elemDamage > 0
+            ? frostEval.elemDamage
+            : this.rollInclusive(
+                40 + 20 * Math.max(0, slvl - 1),
+                60 + 20 * Math.max(0, slvl - 1),
+              )
+        const chillFrames =
+          frostEval !== undefined && frostEval.elemDurationFrames > 0
+            ? frostEval.elemDurationFrames
+            : 200 + 50 * Math.max(0, slvl - 1)
         this.emitBossProjectile113c(monster, {
           missileId: 679,
           skillId: 346,
-          slvl: baseSlvl,
+          slvl,
           originX: monster.x,
           originY: monster.y,
           targetX: monster.x + Math.cos(theta) * 12,
@@ -2153,17 +2912,8 @@ function stepUberMephistoBossAi113c(this: GameInstanceHost, monster: InternalMon
           element: 'cold',
           physDamage: 0,
           elemDamage: coldDmg,
+          elemDurationFrames: chillFrames,
         })
-      }
-      for (const h of this.listHostilesInMonsterArea113c(monster)) {
-        if (Math.hypot(h.x - monster.x, h.y - monster.y) <= 10) {
-          this.dealMonsterDirectHitToHostile113c(
-            monster,
-            h,
-            { cold: coldDmg },
-            { chillFrames: 150 + 15 * baseSlvl },
-          )
-        }
       }
       const fcrDiv = 100 + monster.monProps.fcrPct
       monster.cooldown = Math.max(6, Math.floor((Math.max(12, monster.cooldownTicks) * 100) / fcrDiv))
@@ -2171,10 +2921,41 @@ function stepUberMephistoBossAi113c(this: GameInstanceHost, monster: InternalMon
       return
     }
 
-    // `#334 MephistoMissile` (icy/magic skull orb `#276 mephisto`: cold + physical impact).
-    if (slot === 0) {
-      const slvl = isUber ? 20 : 10 + this.difficulty * 2
+    // `#334 MephistoMissile` (icy skull orb `#276 mephisto`: `Sk4lvl = 5`, `HitShift = 8` cold + physical impact + chill, #2006).
+    if (effectiveSlot === 0) {
+      const slvl = resolveMonsterMonStatsSkillSlvl113c(monster.hcIdx, 334, diffIdx, 5)
       this.emitBossSkillCast113c(monster, 334, slvl, 8, nearest.x, nearest.y)
+      const skullRec = this.registry.getMissileById(276)
+      const skullEval =
+        skullRec !== undefined
+          ? evaluateMonsterMissileDamage113c({
+              registry: this.registry,
+              missile: skullRec,
+              slvl,
+              difficulty: diffIdx,
+              monsterMinPhys: 0,
+              monsterMaxPhys: 0,
+              rng: this.rng,
+            })
+          : undefined
+      const skullPhys =
+        skullEval !== undefined && skullEval.physDamage > 0
+          ? skullEval.physDamage
+          : this.rollInclusive(
+              compute5BandScaling(slvl, 12, 8, 10, 12, 12, 12),
+              compute5BandScaling(slvl, 16, 8, 10, 12, 12, 12),
+            )
+      const skullCold =
+        skullEval !== undefined && skullEval.elemDamage > 0
+          ? skullEval.elemDamage
+          : this.rollInclusive(
+              compute5BandScaling(slvl, 12, 18, 24, 24, 24, 24),
+              compute5BandScaling(slvl, 18, 20, 28, 28, 28, 28),
+            )
+      const skullChill =
+        skullEval !== undefined && skullEval.elemDurationFrames > 0
+          ? skullEval.elemDurationFrames
+          : 75 + 25 * Math.max(0, slvl - 1)
       this.emitBossProjectile113c(monster, {
         missileId: 276,
         skillId: 334,
@@ -2187,8 +2968,9 @@ function stepUberMephistoBossAi113c(this: GameInstanceHost, monster: InternalMon
         rangeFrames: 38,
         size: 2,
         element: 'cold',
-        physDamage: this.rollInclusive(30, 55) + 6 * slvl,
-        elemDamage: this.rollInclusive(55, 95) + 14 * slvl + 25 * this.difficulty,
+        physDamage: skullPhys,
+        elemDamage: skullCold,
+        elemDurationFrames: skullChill,
       })
       const fcrDiv = 100 + monster.monProps.fcrPct
       monster.cooldown = Math.max(6, Math.floor((Math.max(10, monster.cooldownTicks) * 100) / fcrDiv))
@@ -2196,27 +2978,43 @@ function stepUberMephistoBossAi113c(this: GameInstanceHost, monster: InternalMon
       return
     }
 
-    // `#185 PrimeLightning` (`#680 mephlight` piercing lightning bolt).
-    if (slot === 1) {
-      const slvl = isUber ? 20 : 7 + this.difficulty * 3
+    // `#185 PrimeLightning` (`Sk1lvl = 6`, `#170 monsterlight` on `#242` / `#680 mephlight` on `#704`,
+    // `Vel = 30`, `Range = 25`, `CollideKill = 1` non-piercing bolt — terminates on first unit hit, #2006, #2008).
+    if (effectiveSlot === 1) {
+      const slvl = resolveMonsterMonStatsSkillSlvl113c(monster.hcIdx, 185, diffIdx, 6)
       this.emitBossSkillCast113c(monster, 185, slvl, 8, nearest.x, nearest.y)
+      const ltngMissileId = isUber ? 680 : 170
+      const ltngRec = this.registry.getMissileById(ltngMissileId) ?? this.registry.getMissileById(680)
+      const ltngEval =
+        ltngRec !== undefined
+          ? evaluateMonsterMissileDamage113c({
+              registry: this.registry,
+              missile: ltngRec,
+              slvl,
+              difficulty: diffIdx,
+              monsterMinPhys: 0,
+              monsterMaxPhys: 0,
+              rng: this.rng,
+            })
+          : undefined
+      const ltngDmg =
+        ltngEval !== undefined && ltngEval.elemDamage > 0
+          ? ltngEval.elemDamage
+          : this.rollInclusive(15, 30 + 30 * Math.max(0, slvl - 1))
       this.emitBossProjectile113c(monster, {
-        missileId: 680,
+        missileId: ltngMissileId,
         skillId: 185,
         slvl,
         originX: monster.x,
         originY: monster.y,
         targetX: nearest.x,
         targetY: nearest.y,
-        speedSubTilesPerFrame: 26 / 16,
-        rangeFrames: 36,
+        speedSubTilesPerFrame: 30 / 16,
+        rangeFrames: 25,
         size: 2,
-        pierce: true,
-        nextHit: true,
-        nextDelay: 4,
         element: 'ltng',
         physDamage: 0,
-        elemDamage: this.rollInclusive(15, 140) + 18 * slvl + 30 * this.difficulty,
+        elemDamage: ltngDmg,
       })
       const fcrDiv = 100 + monster.monProps.fcrPct
       monster.cooldown = Math.max(6, Math.floor((Math.max(10, monster.cooldownTicks) * 100) / fcrDiv))
@@ -2224,14 +3022,33 @@ function stepUberMephistoBossAi113c(this: GameInstanceHost, monster: InternalMon
       return
     }
 
-    // `#186 PrimeBolt` (`#56 chargedbolt` 7-bolt fan).
-    if (slot === 2) {
-      const slvl = isUber ? 20 : 7 + this.difficulty * 2
+    // `#186 PrimeBolt` (`Sk2lvl = 6` on `#242`, `Sk2lvl = 20` on `#704`; `Skills.txt #186` `calc1 = "lvl+2"` ->
+    // `min(24, slvl + 2)` fanned bolts, `srvMissileA = "chargedstrikebolt"` `#215` / `cltMissileA = "chargedbolt"` `#56`, #2006, #2008).
+    if (effectiveSlot === 2) {
+      const slvl = resolveMonsterMonStatsSkillSlvl113c(monster.hcIdx, 186, diffIdx, isUber ? 20 : 6)
       this.emitBossSkillCast113c(monster, 186, slvl, 8, nearest.x, nearest.y)
       const baseAngle = Math.atan2(nearest.y - monster.y, nearest.x - monster.x)
-      const boltLtng = this.rollInclusive(18, 45) + 8 * slvl + 15 * this.difficulty
-      for (let b = -3; b <= 3; b++) {
-        const ang = baseAngle + b * 0.16
+      const boltRec = this.registry.getMissileById(215)
+      const boltCount = Math.max(1, Math.min(24, slvl + 2))
+      const halfSpan = (boltCount - 1) / 2
+      for (let i = 0; i < boltCount; i++) {
+        const ang = baseAngle + (i - halfSpan) * 0.22
+        const boltEval =
+          boltRec !== undefined
+            ? evaluateMonsterMissileDamage113c({
+                registry: this.registry,
+                missile: boltRec,
+                slvl,
+                difficulty: diffIdx,
+                monsterMinPhys: 0,
+                monsterMaxPhys: 0,
+                rng: this.rng,
+              })
+            : undefined
+        const boltLtng =
+          boltEval !== undefined && boltEval.elemDamage > 0
+            ? boltEval.elemDamage
+            : this.rollInclusive(1, compute5BandScaling(slvl, 30, 12, 16, 20, 24, 28))
         this.emitBossProjectile113c(monster, {
           missileId: 56,
           skillId: 186,
@@ -2240,8 +3057,8 @@ function stepUberMephistoBossAi113c(this: GameInstanceHost, monster: InternalMon
           originY: monster.y,
           targetX: monster.x + Math.cos(ang) * 22,
           targetY: monster.y + Math.sin(ang) * 22,
-          speedSubTilesPerFrame: 14 / 16,
-          rangeFrames: 36,
+          speedSubTilesPerFrame: 12 / 16,
+          rangeFrames: 40,
           size: 1,
           element: 'ltng',
           physDamage: 0,
@@ -2254,11 +3071,31 @@ function stepUberMephistoBossAi113c(this: GameInstanceHost, monster: InternalMon
       return
     }
 
-    // `#192 PrimePoisonNova` (`#118 poisonnova` 16-bolt poison ring).
-    if (slot === 3) {
-      const slvl = isUber ? 20 : 5 + this.difficulty * 2
+    // `#192 PrimePoisonNova` (`Sk3lvl = 7`, `#220 primepoisoncloud` 16-bolt poison ring, #2006).
+    if (effectiveSlot === 3) {
+      const slvl = resolveMonsterMonStatsSkillSlvl113c(monster.hcIdx, 192, diffIdx, 7)
       this.emitBossSkillCast113c(monster, 192, slvl, 8, monster.x, monster.y)
-      const poisDmg = this.rollInclusive(35, 65) + 10 * slvl + 20 * this.difficulty
+      const novaRec = this.registry.getMissileById(220) ?? this.registry.getMissileById(118)
+      const novaEval =
+        novaRec !== undefined
+          ? evaluateMonsterMissileDamage113c({
+              registry: this.registry,
+              missile: novaRec,
+              slvl,
+              difficulty: diffIdx,
+              monsterMinPhys: 0,
+              monsterMaxPhys: 0,
+              rng: this.rng,
+            })
+          : undefined
+      const novaDur =
+        novaEval !== undefined && novaEval.elemDurationFrames > 0
+          ? novaEval.elemDurationFrames
+          : 300 + 20 * Math.max(0, slvl - 1)
+      const poisDmg =
+        novaEval !== undefined && novaEval.elemDamage > 0
+          ? novaEval.elemDamage
+          : Math.max(1, Math.round(((10 + 5 * Math.max(0, slvl - 1)) * novaDur) / 256))
       for (let i = 0; i < 16; i++) {
         const theta = (i / 16) * Math.PI * 2
         this.emitBossProjectile113c(monster, {
@@ -2278,6 +3115,7 @@ function stepUberMephistoBossAi113c(this: GameInstanceHost, monster: InternalMon
           element: 'pois',
           physDamage: 0,
           elemDamage: poisDmg,
+          elemDurationFrames: novaDur,
         })
       }
       const fcrDiv = 100 + monster.monProps.fcrPct
@@ -2286,36 +3124,73 @@ function stepUberMephistoBossAi113c(this: GameInstanceHost, monster: InternalMon
       return
     }
 
-    // `#59 Blizzard` (`#159 blizzard1` cold shards around target).
+    // `#59 Blizzard` (`Sk6lvl = 5`, NM/Hell/Uber only `0x6FCA5ED1`):
+    // Spawns `#158 blizzardcenter` (`MISSMODE_SrvDo10_BlizzardCenter` `0x6FC613D0`, `Range = 100`, `CollideType = 0`),
+    // which rains 1 `#159 blizzard1` shard (`Range = 9`, `Size = 2`) every 4 frames inside `[-6, +5]` around target (#2008).
     {
-      const slvl = isUber ? 20 : 7 + this.difficulty * 2
+      const slvl = resolveMonsterMonStatsSkillSlvl113c(monster.hcIdx, 59, diffIdx, 5)
       this.emitBossSkillCast113c(monster, 59, slvl, 8, nearest.x, nearest.y)
-      const coldDmg = this.rollInclusive(36, 62) + 11 * slvl + 20 * this.difficulty
-      for (const [ox, oy] of [
-        [0, 0],
-        [2, -1],
-        [-2, 1],
-        [1, 2],
-        [-1, -2],
-      ] as const) {
+      const centerRec = this.registry.getMissileById(158)
+      const blizRec = this.registry.getMissileById(159)
+      const blizEval =
+        blizRec !== undefined
+          ? evaluateMonsterMissileDamage113c({
+              registry: this.registry,
+              missile: blizRec,
+              slvl,
+              difficulty: diffIdx,
+              monsterMinPhys: 0,
+              monsterMaxPhys: 0,
+              rng: this.rng,
+            })
+          : undefined
+      const coldDmg =
+        blizEval !== undefined && blizEval.elemDamage > 0
+          ? blizEval.elemDamage
+          : this.rollInclusive(
+              compute5BandScaling(slvl, 45, 15, 30, 45, 55, 65),
+              compute5BandScaling(slvl, 75, 16, 31, 46, 56, 66),
+            )
+      const chillFrames =
+        blizEval !== undefined && blizEval.elemDurationFrames > 0
+          ? blizEval.elemDurationFrames
+          : 100
+      if (centerRec !== undefined) {
+        this.emitBossProjectile113c(monster, {
+          missileId: 158,
+          skillId: 59,
+          slvl,
+          originX: nearest.x,
+          originY: nearest.y,
+          targetX: nearest.x,
+          targetY: nearest.y,
+          speedSubTilesPerFrame: 0,
+          rangeFrames: centerRec.range > 0 ? centerRec.range : 100,
+          size: 1,
+          collideType: 0,
+          element: 'cold',
+          physDamage: 0,
+          elemDamage: coldDmg,
+          elemDurationFrames: chillFrames,
+        })
+      } else {
         this.emitBossProjectile113c(monster, {
           missileId: 159,
           skillId: 59,
           slvl,
-          originX: nearest.x + ox,
-          originY: nearest.y + oy,
-          targetX: nearest.x + ox,
-          targetY: nearest.y + oy,
+          originX: nearest.x,
+          originY: nearest.y,
+          targetX: nearest.x,
+          targetY: nearest.y,
           speedSubTilesPerFrame: 0,
-          rangeFrames: 45,
+          rangeFrames: 9,
           size: 2,
-          collideType: 0,
+          collideType: 3,
           pierce: true,
-          nextHit: true,
-          nextDelay: 5,
           element: 'cold',
           physDamage: 0,
           elemDamage: coldDmg,
+          elemDurationFrames: chillFrames,
         })
       }
       const fcrDiv = 100 + monster.monProps.fcrPct
@@ -2418,6 +3293,8 @@ function stepAncientBarbAi113c(this: GameInstanceHost, monster: InternalMonsterR
       (ally) =>
         !ally.dead &&
         !ally.isNpc &&
+        ally.align === monster.align &&
+        !this.isMonsterConverted(ally) &&
         ally.areaId === monster.areaId &&
         Math.hypot(ally.x - monster.x, ally.y - monster.y) <= 20 &&
         !ally.states.has(26),
@@ -2431,6 +3308,8 @@ function stepAncientBarbAi113c(this: GameInstanceHost, monster: InternalMonsterR
         if (
           ally.dead ||
           ally.isNpc ||
+          ally.align !== monster.align ||
+          this.isMonsterConverted(ally) ||
           ally.areaId !== monster.areaId ||
           Math.hypot(ally.x - monster.x, ally.y - monster.y) > 20
         ) {
@@ -2542,18 +3421,17 @@ function stepAncientBarbAi113c(this: GameInstanceHost, monster: InternalMonsterR
           targetY: Math.round(landing.y),
           areaId: monster.areaId,
         })
-        // `+100 + 30*(slvl-1)%` = `+220%` (`3.2x`) physical Leap Attack impact!
+        // `+100 + 30*(slvl-1)%` = `+220%` (`3.2x`) physical Leap Attack impact with `+50 + 15*(slvl-1)%` AR (#1994)!
         const leapMult = 1 + (100 + 30 * Math.max(0, slvl - 1)) / 100
-        const leapDmg = Math.max(
-          12,
-          Math.round(this.rollInclusive(monster.minDmg, monster.maxDmg) * leapMult),
-        )
-        this.dealMonsterDirectHitToHostile113c(
-          monster,
-          nearest,
-          { phys: leapDmg },
-          { knockbackSteps: 2 },
-        )
+        const leapMin = Math.max(12, Math.round(monster.minDmg * leapMult))
+        const leapMax = Math.max(leapMin, Math.round(monster.maxDmg * leapMult))
+        this.executeMonsterMeleeSkillStrike113c(monster, nearest, {
+          skillId: 143,
+          minDmg: leapMin,
+          maxDmg: leapMax,
+          arBonusPct: 50 + 15 * Math.max(0, slvl - 1),
+          knockbackSteps: 2,
+        })
         monster.cooldown = Math.max(12, monster.cooldownTicks)
         monster.skillCooldown = 28
         return
@@ -2582,7 +3460,15 @@ function stepAncientBarbAi113c(this: GameInstanceHost, monster: InternalMonsterR
 }
 
 export interface BossEncountersAiMethods {
-  tryCastMonsterSkill(monster: InternalMonsterRecord, target: { readonly x: number; readonly y: number }, distance: number, options?: { readonly hitMonsters?: boolean | undefined }): boolean
+  tryCastMonsterSkill(
+    monster: InternalMonsterRecord,
+    target: { readonly x: number; readonly y: number },
+    distance: number,
+    options?: {
+      readonly hitMonsters?: boolean | undefined
+      readonly forcedSkillId?: number | undefined
+    },
+  ): boolean
   tryCastMonsterUtilitySkill(monster: InternalMonsterRecord, target: { readonly x: number; readonly y: number }, distance: number, healOrWhipOnly?: boolean | undefined): boolean
   setMonsterSkillCooldown(monster: InternalMonsterRecord, delay: string): void
   monsterSkillMode(mode?: string): number
@@ -2608,10 +3494,26 @@ export interface BossEncountersAiMethods {
     readonly physDamage: number
     readonly elemDamage: number
     readonly elemDurationFrames?: number | undefined
+    readonly groundFire256?: { readonly min: number; readonly max: number } | undefined
     readonly guaranteedHit?: boolean | undefined
     readonly hitMonsters?: boolean | undefined
   }): number
   knockbackPlayerFromBoss113c(player: InternalPlayerRecord, fromX: number, fromY: number, maxSteps?: number | undefined): boolean
+  executeMonsterMeleeSkillStrike113c(monster: InternalMonsterRecord, target: | { readonly kind: 'player'; readonly player: InternalPlayerRecord }
+    | { readonly kind: 'merc'; readonly merc: InternalMercenaryRecord }
+    | { readonly kind: 'pet'; readonly pet: SummonedPetUnit }, spec: {
+    readonly skillId: number
+    readonly minDmg: number
+    readonly maxDmg: number
+    readonly skillMode?: 'A1' | 'A2' | 'S1' | undefined
+    readonly arBonusPct?: number | undefined
+    readonly autoHit?: boolean | undefined
+    readonly unblockable?: boolean | undefined
+    readonly stunFrames?: number | undefined
+    readonly knockbackSteps?: number | undefined
+    readonly knockbackOriginX?: number | undefined
+    readonly knockbackOriginY?: number | undefined
+  }): boolean
   dealMonsterDirectHitToHostile113c(monster: InternalMonsterRecord, target: | { readonly kind: 'player'; readonly player: InternalPlayerRecord }
     | { readonly kind: 'merc'; readonly merc: InternalMercenaryRecord }
     | { readonly kind: 'pet'; readonly pet: SummonedPetUnit }, parts: {
@@ -2653,6 +3555,7 @@ export const bossEncountersAiMethods: Record<keyof BossEncountersAiMethods, unkn
   emitBossSkillCast113c,
   emitBossProjectile113c,
   knockbackPlayerFromBoss113c,
+  executeMonsterMeleeSkillStrike113c,
   dealMonsterDirectHitToHostile113c,
   listHostilesInMonsterArea113c,
   stepBossChannelsAndSummonLifespans113c,

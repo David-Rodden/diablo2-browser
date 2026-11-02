@@ -1100,9 +1100,6 @@ function executePlayerRespec113c(this: GameInstanceHost, player: InternalPlayerR
       base.perStatPoint.manaPerEnergy * eneDiff * FIXED_ONE,
     )
     player.maxManaFixed = Math.max(0, player.maxManaFixed + manaDeltaFixed)
-    player.manaFixed = Math.min(player.manaFixed, player.maxManaFixed)
-    player.maxMana = Math.max(0, Math.floor(player.maxManaFixed / FIXED_ONE))
-    player.mana = Math.max(0, Math.min(player.maxMana, Math.floor(player.manaFixed / FIXED_ONE)))
   }
   const vitDiff = base.baseAttributes.vitality - player.vitality
   if (vitDiff !== 0) {
@@ -1115,18 +1112,9 @@ function executePlayerRespec113c(this: GameInstanceHost, player: InternalPlayerR
       base.perStatPoint.staminaPerVitality * vitDiff * FIXED_ONE,
     )
     player.maxHpFixed = Math.max(FIXED_ONE, player.maxHpFixed + lifeDeltaFixed)
-    player.hpFixed = Math.min(player.hpFixed, player.maxHpFixed)
-    player.maxHp = Math.max(1, Math.floor(player.maxHpFixed / FIXED_ONE))
-    player.hp = Math.max(1, Math.min(player.maxHp, Math.floor(player.hpFixed / FIXED_ONE)))
-
     player.maxStaminaFixed = Math.max(FIXED_ONE, player.maxStaminaFixed + stamDeltaFixed)
-    player.staminaFixed = Math.min(player.staminaFixed, player.maxStaminaFixed)
-    player.maxStamina = Math.max(1, Math.floor(player.maxStaminaFixed / FIXED_ONE))
-    player.stamina = Math.max(
-      1,
-      Math.min(player.maxStamina, Math.floor(player.staminaFixed / FIXED_ONE)),
-    )
   }
+  this.refreshPlayerAccruedMaxPools(player)
 
   for (const [statId, val] of [
     [0, player.strength],

@@ -18,6 +18,7 @@ import {
   OPEN_BNET_POLICY,
   PER_LEVEL_STAT_MAP_113C,
   QUEST_ITEM_EQUIVALENT_CODES_113C,
+  QUEST_ITEM_SUPERSEDING_CODES_113C,
   SINGLE_PLAYER_POLICY,
   resolveGameModePolicy,
 } from './game-instance/constants-and-helpers.ts'
@@ -98,6 +99,7 @@ export class GameInstance extends GameInstanceState {
   static readonly PER_LEVEL_STAT_MAP_113C = PER_LEVEL_STAT_MAP_113C
   static readonly CHAR_ANIM_TOKEN_BY_CLASS_113C = CHAR_ANIM_TOKEN_BY_CLASS_113C
   static readonly QUEST_ITEM_EQUIVALENT_CODES_113C = QUEST_ITEM_EQUIVALENT_CODES_113C
+  static readonly QUEST_ITEM_SUPERSEDING_CODES_113C = QUEST_ITEM_SUPERSEDING_CODES_113C
 }
 
 export interface GameInstance extends GameInstancePublicMethods {}

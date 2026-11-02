@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest'
 import { GameInstance } from '../../src/server/engine/game-instance.ts'
 
-function connect(game: GameInstance, x = 80, y = 80): number {
+function connect(game: GameInstance, x = 42, y = 30): number {
   return game.connectPlayer({ charClass: 'bar', name: 'Target', x, y, areaId: 1 })
 }
 

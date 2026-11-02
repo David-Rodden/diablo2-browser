@@ -26,6 +26,7 @@ import {
   type IsoDraw,
 } from '../../common/world/d2map.ts'
 import { DRLG_GetActNoFromLevelId } from '../../common/drlg/drlg-drlg.ts'
+import type { D2DrlgRoomStrc } from '../../common/drlg/drlg-types.ts'
 import type { DrlgActSpawnCapture } from '../../common/drlg/drlg-act-spawn.ts'
 import { ACT_SPAWN_TILE_ENTRY, findActSpawnLocationTile } from '../../common/world/act-spawn-location.ts'
 import {
@@ -85,6 +86,8 @@ export interface LevelRoomView {
   readonly worldSubY: number
   readonly room1InitSeed: number
   readonly revealed: boolean
+  /** Same-level DRLG `ppRoomsNear` as room indices (room itself included), in D2Common order. */
+  readonly nearIndices?: readonly number[] | undefined
 }
 
 export interface LevelView {
@@ -603,6 +606,7 @@ export function buildLevelView(options: BuildLevelViewOptions): LevelView {
     worldSubY: r.worldSubY,
     room1InitSeed: r.room1InitSeed,
     revealed: revealMode === 'all' ? true : r.revealed,
+    nearIndices: nearRoomIndices(r.pRoom),
   }))
 
   const originX = map.coord.x * 5
@@ -861,4 +865,21 @@ export function getCollisionWorldSubTile(
   const ox = view.subOriginX ?? view.originX ?? 0
   const oy = view.subOriginY ?? view.originY ?? 0
   return getCollisionLocalSubTile(view, worldSubX - ox, worldSubY - oy)
+}
+
+/**
+ * Same-level `ppRoomsNear` of a DRLG room (D2Common `sub_6FD77BB0`: rooms within 6 tiles, collected in
+ * `pFirstRoomEx` order and sorted by `DRLGROOM_SortRoomListByPosition` 0x6FD77EB0), as room indices
+ * (`pFirstRoomEx` chain positions, the `LevelRoomView.index` numbering), the room itself included.
+ */
+export function nearRoomIndices(pRoom: D2DrlgRoomStrc): readonly number[] {
+  const indexOf = new Map<D2DrlgRoomStrc, number>()
+  let i = 0
+  for (let p = pRoom.pLevel.pFirstRoomEx; p; p = p.pDrlgRoomNext, i += 1) indexOf.set(p, i)
+  const out: number[] = []
+  for (let k = 0; k < pRoom.nRoomsNear; k += 1) {
+    const idx = indexOf.get(pRoom.ppRoomsNear[k]!)
+    if (idx !== undefined) out.push(idx)
+  }
+  return out
 }

@@ -30,6 +30,7 @@
  *     `durationMs = ticks * 40`
  */
 
+import { ANIMDATA_PLAYER_CLIPS_113C } from './char-anim-clips-113c.generated.ts'
 import { cltStAttackRate113c } from '../skills/clt-st-attackrate-113c.ts'
 import { RAW_ARMOR, RAW_WEAPONS } from '../data/canonical-drop-data.ts'
 import { parseWeaponsTable, type WeaponBase, type WeaponTable } from '../items/weapons.ts'
@@ -97,161 +98,45 @@ function makeClip113c(
   }
 }
 
+/** Player COF mode code per clip key (`<token><mode><wclass>` in AnimData.D2). */
+const CLIP_KEY_MODE_CODE_113C: Readonly<Record<CharAnimClipKey, string>> = {
+  wl: 'WL', nu: 'NU', rn: 'RN', a1: 'A1', a2: 'A2', bl: 'BL', sc: 'SC', th: 'TH', kk: 'KK',
+  s1: 'S1', s2: 'S2', s3: 'S3', s4: 'S4', gh: 'GH', dt: 'DT', dd: 'DD', tn: 'TN', tw: 'TW',
+}
+const PLAYER_TOKENS_113C = ['AM', 'SO', 'NE', 'PA', 'BA', 'DZ', 'AI'] as const
+const WCLASS_CODES_113C = ['HTH', 'BOW', '1HS', '1HT', 'STF', '2HS', '2HT', 'XBW', '1JS', '1JT', '1SS', '1ST', 'HT1', 'HT2'] as const
+const LOOPING_CLIPS_113C: ReadonlySet<CharAnimClipKey> = new Set<CharAnimClipKey>(['wl', 'nu', 'rn', 'tn', 'tw'])
+
+function clipFromAnimData113c(key: CharAnimClipKey, name: string): CharAnimClip113c | undefined {
+  const t = ANIMDATA_PLAYER_CLIPS_113C[name]
+  if (!t) return undefined
+  return makeClip113c(t[0], t[1], LOOPING_CLIPS_113C.has(key), t[2].map(([f, c]) => ({ f, c })))
+}
+
 /**
  * Canonical 1.13c `AnimData.d2` clip metadata for all 7 playable classes (`0..6`:
- * `am, so, ne, pa, ba, dz, ai`), matching `public/entities/char-*.json`.
+ * `am, so, ne, pa, ba, dz, ai`): the bare-handed (`HTH`) record of every mode, built from the
+ * generated AnimData.D2 extract (`char-anim-clips-113c.generated.ts`, D2Common `#10385` lookup).
  */
 export const CHAR_ANIM_CLIPS_113C: Readonly<
   Record<number, Readonly<Record<CharAnimClipKey, CharAnimClip113c>>>
-> = {
-  // 0: Amazon (am)
-  0: {
-    wl: makeClip113c(8, 256, true, []),
-    nu: makeClip113c(8, 128, true, []),
-    rn: makeClip113c(8, 256, true, []),
-    a1: makeClip113c(13, 256, false, [{ f: 6, c: 1 }]),
-    a2: makeClip113c(13, 256, false, [{ f: 6, c: 1 }]),
-    bl: makeClip113c(3, 256, false, []),
-    sc: makeClip113c(20, 256, false, [{ f: 13, c: 1 }]),
-    th: makeClip113c(16, 256, false, [{ f: 9, c: 2 }]),
-    kk: makeClip113c(12, 256, false, [{ f: 5, c: 1 }]),
-    s1: makeClip113c(9, 256, false, [{ f: 2, c: 1 }]),
-    s2: makeClip113c(9, 256, false, [{ f: 2, c: 1 }]),
-    s3: makeClip113c(9, 256, false, [{ f: 2, c: 1 }]),
-    s4: makeClip113c(9, 256, false, [{ f: 2, c: 1 }]),
-    gh: makeClip113c(6, 256, false, []),
-    dt: makeClip113c(23, 256, false, []),
-    dd: makeClip113c(1, 256, false, []),
-    tn: makeClip113c(16, 80, true, []),
-    tw: makeClip113c(8, 256, true, []),
-  },
-  // 1: Sorceress (so)
-  1: {
-    wl: makeClip113c(8, 256, true, []),
-    nu: makeClip113c(8, 128, true, []),
-    rn: makeClip113c(8, 256, true, []),
-    a1: makeClip113c(16, 256, false, [{ f: 9, c: 1 }]),
-    a2: makeClip113c(16, 256, false, [{ f: 8, c: 1 }]),
-    bl: makeClip113c(5, 256, false, []),
-    sc: makeClip113c(14, 256, false, [{ f: 7, c: 1 }]),
-    th: makeClip113c(20, 256, false, [{ f: 10, c: 2 }]),
-    kk: makeClip113c(12, 256, false, [{ f: 6, c: 1 }]),
-    s1: makeClip113c(14, 256, false, [{ f: 7, c: 1 }]),
-    s2: makeClip113c(14, 256, false, [{ f: 7, c: 1 }]),
-    s3: makeClip113c(14, 256, false, [{ f: 7, c: 1 }]),
-    s4: makeClip113c(14, 256, false, [{ f: 7, c: 1 }]),
-    gh: makeClip113c(8, 256, false, []),
-    dt: makeClip113c(24, 256, false, []),
-    dd: makeClip113c(1, 256, false, []),
-    tn: makeClip113c(16, 80, true, []),
-    tw: makeClip113c(8, 256, true, []),
-  },
-  // 2: Necromancer (ne)
-  2: {
-    wl: makeClip113c(8, 256, true, []),
-    nu: makeClip113c(8, 128, true, []),
-    rn: makeClip113c(8, 256, true, []),
-    a1: makeClip113c(15, 256, false, [{ f: 9, c: 1 }]),
-    a2: makeClip113c(15, 256, false, [{ f: 9, c: 1 }]),
-    bl: makeClip113c(6, 256, false, []),
-    sc: makeClip113c(16, 256, false, [{ f: 8, c: 1 }]),
-    th: makeClip113c(20, 256, false, [{ f: 10, c: 2 }]),
-    kk: makeClip113c(12, 256, false, [{ f: 6, c: 1 }]),
-    s1: makeClip113c(16, 256, false, [{ f: 8, c: 1 }]),
-    s2: makeClip113c(16, 256, false, [{ f: 8, c: 1 }]),
-    s3: makeClip113c(16, 256, false, [{ f: 8, c: 1 }]),
-    s4: makeClip113c(16, 256, false, [{ f: 8, c: 1 }]),
-    gh: makeClip113c(7, 256, false, []),
-    dt: makeClip113c(27, 176, false, []),
-    dd: makeClip113c(1, 256, false, []),
-    tn: makeClip113c(16, 80, true, []),
-    tw: makeClip113c(8, 256, true, []),
-  },
-  // 3: Paladin (pa)
-  3: {
-    wl: makeClip113c(10, 288, true, []),
-    nu: makeClip113c(8, 184, true, []),
-    rn: makeClip113c(8, 256, true, []),
-    a1: makeClip113c(14, 256, false, [{ f: 7, c: 1 }]),
-    a2: makeClip113c(14, 256, false, [{ f: 8, c: 1 }]),
-    bl: makeClip113c(3, 256, false, []),
-    sc: makeClip113c(16, 256, false, [{ f: 9, c: 1 }]),
-    th: makeClip113c(12, 256, false, [{ f: 6, c: 2 }]),
-    kk: makeClip113c(12, 256, false, [{ f: 5, c: 1 }]),
-    s1: makeClip113c(12, 256, false, [{ f: 7, c: 1 }]),
-    s2: makeClip113c(12, 256, false, [{ f: 7, c: 1 }]),
-    s3: makeClip113c(12, 256, false, [{ f: 7, c: 1 }]),
-    s4: makeClip113c(12, 256, false, [{ f: 7, c: 1 }]),
-    gh: makeClip113c(5, 256, false, []),
-    dt: makeClip113c(28, 256, false, []),
-    dd: makeClip113c(1, 256, false, []),
-    tn: makeClip113c(16, 128, true, []),
-    tw: makeClip113c(10, 288, true, []),
-  },
-  // 4: Barbarian (ba)
-  4: {
-    wl: makeClip113c(8, 168, true, []),
-    nu: makeClip113c(8, 96, true, []),
-    rn: makeClip113c(8, 216, true, []),
-    a1: makeClip113c(12, 256, false, [{ f: 7, c: 1 }]),
-    a2: makeClip113c(12, 256, false, [{ f: 7, c: 1 }]),
-    bl: makeClip113c(4, 256, false, []),
-    sc: makeClip113c(14, 256, false, [{ f: 9, c: 1 }]),
-    th: makeClip113c(16, 256, false, [{ f: 8, c: 2 }]),
-    kk: makeClip113c(12, 256, false, [{ f: 4, c: 1 }]),
-    s1: makeClip113c(15, 256, false, []),
-    s2: makeClip113c(15, 256, false, []),
-    s3: makeClip113c(12, 256, false, [{ f: 7, c: 1 }]),
-    s4: makeClip113c(16, 256, false, [{ f: 9, c: 2 }]),
-    gh: makeClip113c(5, 256, false, []),
-    dt: makeClip113c(27, 240, false, []),
-    dd: makeClip113c(1, 256, false, []),
-    tn: makeClip113c(16, 80, true, []),
-    tw: makeClip113c(8, 256, true, []),
-  },
-  // 5: Druid (dz)
-  5: {
-    wl: makeClip113c(8, 136, true, []),
-    nu: makeClip113c(6, 120, true, []),
-    rn: makeClip113c(8, 168, true, []),
-    a1: makeClip113c(16, 256, false, [{ f: 8, c: 1 }]),
-    a2: makeClip113c(16, 256, false, [{ f: 8, c: 1 }]),
-    bl: makeClip113c(6, 256, false, []),
-    sc: makeClip113c(15, 208, false, [{ f: 8, c: 1 }]),
-    th: makeClip113c(18, 256, false, [{ f: 9, c: 2 }]),
-    kk: makeClip113c(12, 256, false, [{ f: 5, c: 1 }]),
-    s1: makeClip113c(15, 256, false, [{ f: 8, c: 1 }]),
-    s2: makeClip113c(15, 256, false, [{ f: 8, c: 1 }]),
-    s3: makeClip113c(15, 256, false, [{ f: 8, c: 1 }]),
-    s4: makeClip113c(15, 256, false, [{ f: 8, c: 1 }]),
-    gh: makeClip113c(7, 256, false, []),
-    dt: makeClip113c(25, 176, false, []),
-    dd: makeClip113c(1, 256, false, []),
-    tn: makeClip113c(16, 96, true, []),
-    tw: makeClip113c(8, 128, true, []),
-  },
-  // 6: Assassin (ai)
-  6: {
-    wl: makeClip113c(8, 256, true, []),
-    nu: makeClip113c(8, 128, true, []),
-    rn: makeClip113c(8, 256, true, []),
-    a1: makeClip113c(11, 256, false, [{ f: 6, c: 1 }]),
-    a2: makeClip113c(12, 256, false, [{ f: 6, c: 1 }]),
-    bl: makeClip113c(3, 256, false, []),
-    sc: makeClip113c(17, 256, false, [{ f: 9, c: 1 }]),
-    th: makeClip113c(16, 256, false, [{ f: 7, c: 2 }]),
-    kk: makeClip113c(13, 256, false, [{ f: 4, c: 1 }]),
-    s1: makeClip113c(17, 256, false, [{ f: 10, c: 1 }]),
-    s2: makeClip113c(8, 128, false, [{ f: 4, c: 2 }]),
-    s3: makeClip113c(10, 256, false, []),
-    s4: makeClip113c(12, 208, false, [{ f: 6, c: 1 }]),
-    gh: makeClip113c(5, 256, false, []),
-    dt: makeClip113c(20, 208, false, []),
-    dd: makeClip113c(1, 256, false, []),
-    tn: makeClip113c(12, 64, true, []),
-    tw: makeClip113c(8, 256, true, []),
-  },
-}
+> = (() => {
+  const out: Record<number, Record<CharAnimClipKey, CharAnimClip113c>> = {}
+  PLAYER_TOKENS_113C.forEach((token, classId) => {
+    const clips = {} as Record<CharAnimClipKey, CharAnimClip113c>
+    for (const key of Object.keys(CLIP_KEY_MODE_CODE_113C) as CharAnimClipKey[]) {
+      const code = CLIP_KEY_MODE_CODE_113C[key]
+      let clip = clipFromAnimData113c(key, `${token}${code}HTH`)
+      for (const w of WCLASS_CODES_113C) {
+        if (clip) break
+        clip = clipFromAnimData113c(key, `${token}${code}${w}`)
+      }
+      clips[key] = clip ?? makeClip113c(1, 256, false, [])
+    }
+    out[classId] = clips
+  })
+  return out
+})()
 
 const TOKEN_TO_CLASS_ID: Readonly<Record<string, number>> = {
   am: 0,
@@ -394,257 +279,27 @@ export const MORPH_ANIM_CLIPS_113C: Readonly<
 }
 
 /**
- * Per-weapon-class (`wclass`) 1.13c `AnimData.d2` overrides by player class (`0..6`) and mode.
- * Ground truth extracted directly from `data/global/AnimData.d2` (`public/anim/animdata.json`).
+ * Per-weapon-class (`wclass`) 1.13c `AnimData.d2` records by player class (`0..6`) and mode, for every
+ * `<token><mode><wclass>` COF that exists in AnimData.D2 (generated extract, no hand edits).
  */
 export const CHAR_WCLASS_ANIM_CLIPS_113C: Readonly<
-  Record<
-    number,
-    Readonly<Partial<Record<CharAnimClipKey, Readonly<Record<string, CharAnimClip113c>>>>>
-  >
-> = {
-  // 0: Amazon (AM)
-  0: {
-    a1: {
-      hth: makeClip113c(13, 256, false, [{ f: 8, c: 1 }]),
-      bow: makeClip113c(14, 256, false, [{ f: 6, c: 2 }]),
-      '1ht': makeClip113c(15, 256, false, [{ f: 9, c: 1 }]),
-      '1hs': makeClip113c(16, 256, false, [{ f: 10, c: 1 }]),
-      '2ht': makeClip113c(18, 256, false, [{ f: 11, c: 1 }]),
-      '2hs': makeClip113c(20, 256, false, [{ f: 12, c: 1 }]),
-      stf: makeClip113c(20, 256, false, [{ f: 12, c: 1 }]),
-      xbw: makeClip113c(20, 256, false, [{ f: 9, c: 2 }]),
-    },
-    a2: {
-      hth: makeClip113c(13, 256, false, [{ f: 8, c: 1 }]),
-      bow: makeClip113c(14, 256, false, [{ f: 6, c: 2 }]),
-      '1ht': makeClip113c(15, 256, false, [{ f: 9, c: 1 }]),
-      '1hs': makeClip113c(16, 256, false, [{ f: 10, c: 1 }]),
-      '2ht': makeClip113c(18, 256, false, [{ f: 11, c: 1 }]),
-      '2hs': makeClip113c(20, 256, false, [{ f: 12, c: 1 }]),
-      stf: makeClip113c(20, 256, false, [{ f: 12, c: 1 }]),
-      xbw: makeClip113c(20, 256, false, [{ f: 9, c: 2 }]),
-    },
-    bl: {
-      '1hs': makeClip113c(3, 88, false, []),
-    },
-    sc: {
-      '2hs': makeClip113c(20, 256, false, [{ f: 10, c: 1 }]),
-      '2ht': makeClip113c(20, 256, false, [{ f: 10, c: 1 }]),
-      stf: makeClip113c(20, 256, false, [{ f: 11, c: 1 }]),
-      bow: makeClip113c(20, 256, false, [{ f: 12, c: 1 }]),
-    },
-  },
-  // 1: Sorceress (SO)
-  1: {
-    a1: {
-      hth: makeClip113c(16, 256, false, [{ f: 9, c: 1 }]),
-      bow: makeClip113c(17, 256, false, [{ f: 9, c: 2 }]),
-      stf: makeClip113c(18, 256, false, [{ f: 11, c: 1 }]),
-      '1ht': makeClip113c(19, 256, false, [{ f: 11, c: 1 }]),
-      '1hs': makeClip113c(20, 256, false, [{ f: 12, c: 1 }]),
-      xbw: makeClip113c(20, 256, false, [{ f: 11, c: 2 }]),
-      '2ht': makeClip113c(23, 256, false, [{ f: 13, c: 1 }]),
-      '2hs': makeClip113c(24, 256, false, [{ f: 14, c: 1 }]),
-    },
-    a2: {
-      hth: makeClip113c(16, 256, false, [{ f: 8, c: 1 }]),
-      bow: makeClip113c(17, 256, false, [{ f: 9, c: 2 }]),
-      stf: makeClip113c(18, 256, false, [{ f: 11, c: 1 }]),
-      '1ht': makeClip113c(19, 256, false, [{ f: 11, c: 1 }]),
-      '1hs': makeClip113c(20, 256, false, [{ f: 12, c: 1 }]),
-      xbw: makeClip113c(20, 256, false, [{ f: 11, c: 2 }]),
-      '2ht': makeClip113c(23, 256, false, [{ f: 13, c: 1 }]),
-      '2hs': makeClip113c(24, 256, false, [{ f: 14, c: 1 }]),
-    },
-  },
-  // 2: Necromancer (NE)
-  2: {
-    a1: {
-      hth: makeClip113c(15, 256, false, [{ f: 8, c: 1 }]),
-      bow: makeClip113c(18, 256, false, [{ f: 9, c: 2 }]),
-      '1hs': makeClip113c(19, 256, false, [{ f: 9, c: 1 }]),
-      '1ht': makeClip113c(19, 256, false, [{ f: 9, c: 1 }]),
-      stf: makeClip113c(20, 256, false, [{ f: 11, c: 1 }]),
-      xbw: makeClip113c(20, 256, false, [{ f: 11, c: 2 }]),
-      '2hs': makeClip113c(23, 256, false, [{ f: 11, c: 1 }]),
-      '2ht': makeClip113c(24, 256, false, [{ f: 10, c: 1 }]),
-    },
-    a2: {
-      hth: makeClip113c(15, 256, false, [{ f: 8, c: 1 }]),
-      bow: makeClip113c(18, 256, false, [{ f: 9, c: 2 }]),
-      '1hs': makeClip113c(19, 256, false, [{ f: 9, c: 1 }]),
-      '1ht': makeClip113c(19, 256, false, [{ f: 9, c: 1 }]),
-      stf: makeClip113c(20, 256, false, [{ f: 11, c: 1 }]),
-      xbw: makeClip113c(20, 256, false, [{ f: 11, c: 2 }]),
-      '2hs': makeClip113c(23, 256, false, [{ f: 11, c: 1 }]),
-      '2ht': makeClip113c(24, 256, false, [{ f: 10, c: 1 }]),
-    },
-  },
-  // 3: Paladin (PA)
-  3: {
-    a1: {
-      hth: makeClip113c(14, 256, false, [{ f: 7, c: 1 }]),
-      '1hs': makeClip113c(15, 256, false, [{ f: 7, c: 1 }]),
-      bow: makeClip113c(16, 256, false, [{ f: 8, c: 2 }]),
-      '1ht': makeClip113c(17, 256, false, [{ f: 8, c: 1 }]),
-      '2hs': makeClip113c(18, 256, false, [{ f: 8, c: 1 }]),
-      stf: makeClip113c(18, 256, false, [{ f: 9, c: 1 }]),
-      '2ht': makeClip113c(20, 256, false, [{ f: 8, c: 1 }]),
-      xbw: makeClip113c(20, 256, false, [{ f: 10, c: 2 }]),
-    },
-    a2: {
-      hth: makeClip113c(14, 256, false, [{ f: 8, c: 1 }]),
-      '1hs': makeClip113c(15, 256, false, [{ f: 7, c: 1 }]),
-      bow: makeClip113c(16, 256, false, [{ f: 8, c: 2 }]),
-      '1ht': makeClip113c(17, 256, false, [{ f: 8, c: 1 }]),
-      stf: makeClip113c(18, 256, false, [{ f: 9, c: 1 }]),
-      '2hs': makeClip113c(19, 256, false, [{ f: 8, c: 1 }]),
-      '2ht': makeClip113c(20, 256, false, [{ f: 9, c: 1 }]),
-      xbw: makeClip113c(20, 256, false, [{ f: 10, c: 2 }]),
-    },
-    th: {
-      hth: makeClip113c(12, 256, false, [{ f: 6, c: 2 }]),
-      '1hs': makeClip113c(16, 256, false, [{ f: 8, c: 2 }]),
-      '1ht': makeClip113c(16, 256, false, [{ f: 8, c: 2 }]),
-    },
-    bl: {
-      '2hs': makeClip113c(3, 168, false, []),
-    },
-    gh: {
-      '2ht': makeClip113c(5, 192, false, []),
-      stf: makeClip113c(5, 192, false, []),
-    },
-  },
-  // 4: Barbarian (BA)
-  4: {
-    a1: {
-      hth: makeClip113c(12, 256, false, [{ f: 6, c: 1 }]),
-      bow: makeClip113c(15, 256, false, [{ f: 7, c: 2 }]),
-      '1hs': makeClip113c(16, 256, false, [{ f: 7, c: 1 }]),
-      '1ht': makeClip113c(16, 256, false, [{ f: 7, c: 1 }]),
-      '1ss': makeClip113c(16, 256, false, [{ f: 7, c: 1 }]),
-      '1st': makeClip113c(16, 256, false, [{ f: 7, c: 1 }]),
-      '1js': makeClip113c(16, 256, false, [{ f: 7, c: 1 }]),
-      '1jt': makeClip113c(16, 256, false, [{ f: 7, c: 1 }]),
-      '2hs': makeClip113c(18, 256, false, [{ f: 8, c: 1 }]),
-      '2ht': makeClip113c(19, 256, false, [{ f: 9, c: 1 }]),
-      stf: makeClip113c(19, 256, false, [{ f: 9, c: 1 }]),
-      xbw: makeClip113c(20, 256, false, [{ f: 10, c: 2 }]),
-    },
-    a2: {
-      hth: makeClip113c(12, 256, false, [{ f: 6, c: 1 }]),
-      bow: makeClip113c(15, 256, false, [{ f: 7, c: 2 }]),
-      '1hs': makeClip113c(16, 256, false, [{ f: 7, c: 1 }]),
-      '1ht': makeClip113c(16, 256, false, [{ f: 7, c: 1 }]),
-      '1ss': makeClip113c(16, 256, false, [{ f: 7, c: 1 }]),
-      '1st': makeClip113c(16, 256, false, [{ f: 7, c: 1 }]),
-      '1js': makeClip113c(16, 256, false, [{ f: 8, c: 1 }]),
-      '1jt': makeClip113c(16, 256, false, [{ f: 7, c: 1 }]),
-      '2hs': makeClip113c(18, 256, false, [{ f: 8, c: 1 }]),
-      '2ht': makeClip113c(19, 256, false, [{ f: 9, c: 1 }]),
-      stf: makeClip113c(19, 256, false, [{ f: 9, c: 1 }]),
-      xbw: makeClip113c(20, 256, false, [{ f: 10, c: 2 }]),
-    },
-    s3: {
-      '1ss': makeClip113c(12, 256, false, [{ f: 7, c: 1 }]),
-      '1st': makeClip113c(12, 256, false, [{ f: 7, c: 1 }]),
-      '1js': makeClip113c(12, 256, false, [{ f: 8, c: 1 }]),
-      '1jt': makeClip113c(12, 256, false, [{ f: 8, c: 1 }]),
-    },
-    s4: {
-      '1ss': makeClip113c(16, 256, false, [{ f: 9, c: 2 }]),
-      '1st': makeClip113c(16, 256, false, [{ f: 9, c: 2 }]),
-      '1js': makeClip113c(16, 256, false, [{ f: 8, c: 2 }]),
-      '1jt': makeClip113c(16, 256, false, [{ f: 8, c: 2 }]),
-    },
-  },
-  // 5: Druid (DZ)
-  5: {
-    a1: {
-      hth: makeClip113c(16, 256, false, [{ f: 8, c: 1 }]),
-      bow: makeClip113c(16, 256, false, [{ f: 8, c: 2 }]),
-      stf: makeClip113c(17, 256, false, [{ f: 9, c: 1 }]),
-      '1hs': makeClip113c(19, 256, false, [{ f: 9, c: 1 }]),
-      '1ht': makeClip113c(19, 256, false, [{ f: 8, c: 1 }]),
-      xbw: makeClip113c(20, 256, false, [{ f: 10, c: 2 }]),
-      '2hs': makeClip113c(21, 256, false, [{ f: 10, c: 1 }]),
-      '2ht': makeClip113c(23, 256, false, [{ f: 9, c: 1 }]),
-    },
-    a2: {
-      hth: makeClip113c(16, 256, false, [{ f: 8, c: 1 }]),
-      bow: makeClip113c(16, 256, false, [{ f: 8, c: 2 }]),
-      stf: makeClip113c(17, 256, false, [{ f: 9, c: 1 }]),
-      '1hs': makeClip113c(19, 256, false, [{ f: 9, c: 1 }]),
-      '1ht': makeClip113c(19, 256, false, [{ f: 8, c: 1 }]),
-      xbw: makeClip113c(20, 256, false, [{ f: 10, c: 2 }]),
-      '2hs': makeClip113c(21, 256, false, [{ f: 10, c: 1 }]),
-      '2ht': makeClip113c(23, 256, false, [{ f: 9, c: 1 }]),
-    },
-    th: {
-      hth: makeClip113c(18, 256, false, [{ f: 9, c: 2 }]),
-      '1hs': makeClip113c(18, 256, false, [{ f: 8, c: 2 }]),
-      '1ht': makeClip113c(18, 256, false, [{ f: 8, c: 2 }]),
-    },
-    kk: {
-      '1hs': makeClip113c(12, 224, false, [{ f: 5, c: 1 }]),
-      '2hs': makeClip113c(12, 224, false, [{ f: 5, c: 1 }]),
-    },
-    s1: {
-      '2hs': makeClip113c(15, 208, false, [{ f: 8, c: 1 }]),
-      '2ht': makeClip113c(15, 208, false, [{ f: 8, c: 1 }]),
-      bow: makeClip113c(15, 208, false, [{ f: 8, c: 1 }]),
-      stf: makeClip113c(15, 208, false, [{ f: 8, c: 1 }]),
-      '1hs': makeClip113c(15, 256, false, [{ f: 9, c: 1 }]),
-    },
-    gh: {
-      '1hs': makeClip113c(7, 248, false, []),
-    },
-  },
-  // 6: Assassin (AI)
-  6: {
-    a1: {
-      hth: makeClip113c(11, 256, false, [{ f: 6, c: 1 }]),
-      ht1: makeClip113c(11, 208, false, [{ f: 6, c: 1 }]),
-      ht2: makeClip113c(11, 208, false, [{ f: 6, c: 1 }]),
-      '1hs': makeClip113c(15, 256, false, [{ f: 7, c: 1 }]),
-      '1ht': makeClip113c(15, 256, false, [{ f: 7, c: 1 }]),
-      bow: makeClip113c(16, 256, false, [{ f: 7, c: 2 }]),
-      stf: makeClip113c(19, 256, false, [{ f: 9, c: 1 }]),
-      xbw: makeClip113c(21, 256, false, [{ f: 10, c: 2 }]),
-      '2hs': makeClip113c(23, 256, false, [{ f: 11, c: 1 }]),
-      '2ht': makeClip113c(23, 256, false, [{ f: 10, c: 1 }]),
-    },
-    a2: {
-      hth: makeClip113c(12, 256, false, [{ f: 6, c: 1 }]),
-      ht1: makeClip113c(12, 208, false, [{ f: 6, c: 1 }]),
-      ht2: makeClip113c(12, 208, false, [{ f: 6, c: 1 }]),
-      '1hs': makeClip113c(15, 256, false, [{ f: 7, c: 1 }]),
-      '1ht': makeClip113c(15, 256, false, [{ f: 7, c: 1 }]),
-      bow: makeClip113c(16, 256, false, [{ f: 7, c: 2 }]),
-      stf: makeClip113c(19, 256, false, [{ f: 9, c: 1 }]),
-      xbw: makeClip113c(21, 256, false, [{ f: 10, c: 2 }]),
-      '2hs': makeClip113c(23, 256, false, [{ f: 11, c: 1 }]),
-      '2ht': makeClip113c(23, 256, false, [{ f: 10, c: 1 }]),
-    },
-    s1: {
-      hth: makeClip113c(17, 256, false, [{ f: 10, c: 1 }]),
-      ht1: makeClip113c(17, 256, false, [{ f: 10, c: 1 }]),
-      ht2: makeClip113c(15, 256, false, [{ f: 10, c: 1 }]),
-      '1hs': makeClip113c(15, 256, false, [{ f: 7, c: 1 }]),
-      '1ht': makeClip113c(15, 256, false, [{ f: 7, c: 1 }]),
-      '2hs': makeClip113c(15, 256, false, [{ f: 7, c: 1 }]),
-      '2ht': makeClip113c(15, 256, false, [{ f: 7, c: 1 }]),
-      bow: makeClip113c(15, 256, false, [{ f: 7, c: 1 }]),
-      stf: makeClip113c(15, 256, false, [{ f: 7, c: 1 }]),
-      xbw: makeClip113c(15, 256, false, [{ f: 7, c: 1 }]),
-    },
-    s4: {
-      ht1: makeClip113c(12, 208, false, [{ f: 6, c: 1 }]),
-      ht2: makeClip113c(12, 208, false, [{ f: 6, c: 1 }]),
-    },
-  },
-}
+  Record<number, Readonly<Partial<Record<CharAnimClipKey, Readonly<Record<string, CharAnimClip113c>>>>>>
+> = (() => {
+  const out: Record<number, Partial<Record<CharAnimClipKey, Record<string, CharAnimClip113c>>>> = {}
+  PLAYER_TOKENS_113C.forEach((token, classId) => {
+    const byKey: Partial<Record<CharAnimClipKey, Record<string, CharAnimClip113c>>> = {}
+    for (const key of Object.keys(CLIP_KEY_MODE_CODE_113C) as CharAnimClipKey[]) {
+      const byW: Record<string, CharAnimClip113c> = {}
+      for (const w of WCLASS_CODES_113C) {
+        const clip = clipFromAnimData113c(key, `${token}${CLIP_KEY_MODE_CODE_113C[key]}${w}`)
+        if (clip) byW[w.toLowerCase()] = clip
+      }
+      if (Object.keys(byW).length > 0) byKey[key] = byW
+    }
+    out[classId] = byKey
+  })
+  return out
+})()
 
 /**
  * Resolves the canonical 1.13c `AnimData.d2` clip metadata for a given character class
@@ -712,6 +367,20 @@ export function computeDiminishingRate113c(rate: number): number {
   if (v === 0) return 0
   if (120 + v <= 0) return -100
   return Math.trunc((120 * v) / (120 + v))
+}
+
+/**
+ * Unclamped 1.13c `D2Common.dll` `0x6FD823E0` diminishing-rate helper (table `0x6FDE4608`,
+ * `base = 120` for indices `0..3`, `150` for index `4` FRW):
+ * `v == 0 ? 0 : trunc(imul(base, v) / ((base + v) | 0))` (divides by zero at `v == -base`).
+ */
+export function computeRawDiminishingRate113c(rate: number, base = 120): number {
+  const v = rate | 0
+  const b = base | 0
+  if (v === 0) return 0
+  const den = (b + v) | 0
+  if (den === 0) return 0
+  return Math.trunc(Math.imul(b, v) / den) | 0
 }
 
 /**
@@ -2003,4 +1672,79 @@ export function computeAnimFrameIndex(params: {
     return Math.max(0, Math.min(frameCount - 1, rawFrame))
   }
   return ((rawFrame % frameCount) + frameCount) % frameCount
+}
+
+/**
+ * Raw 1.13c `D2Common #10385` (`ANIMDATA_GetAnimDataInfo` @ `0x6FD91EF0..0x6FD91F39`):
+ * scans `0 .. min(frames, 0x90) - 1` for the first non-zero event byte; when none is non-zero,
+ * returns `min(frames, 0x90)`.
+ */
+export function computeRawAnimDataActionFrame113c(clip: CharAnimClip113c): number {
+  return clip.events[0]?.f ?? Math.min(clip.frames, 0x90)
+}
+
+function uDiv100_32(x: number): number {
+  return Number(((BigInt(x >>> 0) * 0x51eb851fn) >> 32n) >> 5n) | 0
+}
+
+/**
+ * Raw 1.13c `D2Common #10819` (`UNITS_UpdateAnimRateAndVelocity` @ `0x6FD83180..0x6FD835E4`)
+ * 16-bit animation step speed (`pUnit->nActionFrame` / `wAnimSpeed`) for a non-morphed player
+ * wielding a 0-WSM weapon (`weaponClass` default `'1hs'`).
+ * - Cast (`mode === 10`), Block (`mode === 9`), GetHit (`mode === 4`), and Attack (`mode === 7`)
+ *   use x86 unsigned magic `/ 100` (`mul 0x51eb851f; shr edx, 5`) on `imul(clip.speed, rate)`,
+ *   treating negative intermediate products as unsigned 32-bit before clamping to `[0, 0x7fff]`
+ *   (`[1, 0x7fff]` for Block).
+ * - Walk (`mode === 2`) and Run (`mode === 3`) use signed `idiv 100` on `imul(base, max(25, stat67 + dim150(frw)))`
+ *   where `base = 101` (Run) or `213` (Walk).
+ */
+export function computeRawPlayerAnimSpeed113c(params: {
+  readonly mode: number
+  readonly classId: number
+  readonly statAcc: number
+  readonly stat68Acc: number
+  readonly stat67Acc: number
+  readonly weaponClass?: string | undefined
+  readonly holyShield?: boolean | undefined
+}): number {
+  const mode = params.mode | 0
+  const clip = getCharAnimClip113c(params.classId | 0, mode, {
+    weaponClass: params.weaponClass ?? '1hs',
+  })
+  if (mode === 10) {
+    let rate = (computeRawDiminishingRate113c(params.statAcc | 0, 120) + 100) | 0
+    if (rate > 175) rate = 175
+    const edx = uDiv100_32(Math.imul(clip.speed, rate))
+    return edx <= 0 ? 0 : edx >= 0x7fff ? 0x7fff : edx
+  }
+  if (mode === 9) {
+    const base = params.holyShield ? 100 : 50
+    const rate = (base + computeRawDiminishingRate113c(params.statAcc | 0, 120)) | 0
+    const edx = uDiv100_32(Math.imul(clip.speed, rate))
+    return edx < 1 ? 1 : edx >= 0x7fff ? 0x7fff : edx
+  }
+  if (mode === 4) {
+    const rate = (computeRawDiminishingRate113c(params.statAcc | 0, 120) + 50) | 0
+    const edx = uDiv100_32(Math.imul(clip.speed, rate))
+    return edx <= 0 ? 0 : edx >= 0x7fff ? 0x7fff : edx
+  }
+  if (mode === 2 || mode === 3) {
+    let esi = ((params.stat67Acc | 0) + computeRawDiminishingRate113c(params.statAcc | 0, 150)) | 0
+    if (esi < 25) esi = 25
+    const base = mode === 3 ? PLAYER_RUN_BASE_ANIM_SPEED_113C : PLAYER_WALK_BASE_ANIM_SPEED_113C
+    const eax = Math.trunc(Math.imul(base, esi) / 100) | 0
+    return eax <= 0 ? 0 : eax >= 0x7fff ? 0x7fff : eax
+  }
+  let ebp = ((params.stat68Acc | 0) + computeRawDiminishingRate113c(params.statAcc | 0, 120)) | 0
+  if (ebp < 15) ebp = 15
+  else if (ebp > 175) ebp = 175
+  const edx = uDiv100_32(Math.imul(clip.speed, ebp))
+  return edx <= 0 ? 0 : edx >= 0x7fff ? 0x7fff : edx
+}
+
+/**
+ * Raw 1.13c one-shot tick count (`ceil((recFrames * 256) / speed) - 1`, or `-1` when `speed <= 0`).
+ */
+export function computeRawOneShotTicks113c(recFrames: number, speed: number): number {
+  return speed > 0 ? Math.ceil(((recFrames | 0) * 256) / speed) - 1 : -1
 }

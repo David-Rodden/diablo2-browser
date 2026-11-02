@@ -42,6 +42,7 @@ export function levelViewToAreaGeometry(
         w: r.subW,
         h: r.subH,
         seed: r.room1InitSeed >>> 0,
+        ...(r.nearIndices !== undefined ? { near: r.nearIndices } : {}),
       })),
     presetUnits: view.presetUnits.map((u) => ({
       type: u.type,
@@ -49,6 +50,7 @@ export function levelViewToAreaGeometry(
       mode: u.mode,
       subX: u.subX,
       subY: u.subY,
+      ...(u.mapAi !== undefined ? { mapAi: u.mapAi } : {}),
     })),
     warps: view.entrances.flatMap((e) =>
       e.warp !== undefined

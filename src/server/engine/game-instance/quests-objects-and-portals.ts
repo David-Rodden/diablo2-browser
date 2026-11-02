@@ -9,7 +9,7 @@ import { D2Common_10399_AtSubtiles } from '../../../common/path/step.ts'
 import { CANONICAL_113C_OBJECTS, CANONICAL_113C_SHRINES, getShrineMeta113c, isObjectInInteractRange113c } from '../../../common/world/objects-meta.ts'
 import { ONE_WAY_DOOR_OPERATE_FNS_113C, QUEST_CHEST_OPERATE_FNS_113C, classifyObjectOperate113c, computeShrineResetFrame113c, getContainerOperateDropChance113c, getObjectOperatingTicks113c } from '../../../common/world/object-operate-113c.ts'
 import { PANDEMONIUM_FINALE_AREA_ID_113C } from '../../world/pandemonium-113c.ts'
-import { QUEST_AREA_GATES_113C, QUEST_FLAG_COMPLETED_113C, QUEST_FLAG_COMPLETED_NOW_113C, QUEST_FLAG_CUSTOM_3_113C, QUEST_FLAG_CUSTOM_4_113C, QUEST_FLAG_PRIMARY_GOAL_DONE_113C, QUEST_FLAG_REWARD_PENDING_113C, QUEST_FLAG_STARTED_113C, QUEST_OBJECT_TO_QUEST_113C, computeA2Q6StatusByte113c, computeA3Q1StatusByte113c, hasQuestFlag113c, questWordIndex113c, setQuestFlag113c } from '../quests-113c.ts'
+import { QUEST_AREA_GATES_113C, QUEST_FLAG_COMPLETED_113C, QUEST_FLAG_COMPLETED_NOW_113C, QUEST_FLAG_CUSTOM_3_113C, QUEST_FLAG_CUSTOM_4_113C, QUEST_FLAG_CUSTOM_5_113C, QUEST_FLAG_CUSTOM_7_113C, QUEST_FLAG_CUSTOM_8_113C, QUEST_FLAG_PRIMARY_GOAL_DONE_113C, QUEST_FLAG_REWARD_PENDING_113C, QUEST_FLAG_STARTED_113C, QUEST_OBJECT_TO_QUEST_113C, computeQuestStatusByte113c, computeQuestStatusBytes113c, hasQuestFlag113c, questProtocolId113c, questWordIndex113c, setQuestFlag113c } from '../quests-113c.ts'
 import { rollHellforgeDrop } from '../../../common/items/drop-tables.ts'
 import { canEnterPortalInPvp113c, canLootPlayerCorpse113c, canUseWaypointInPvp113c, isPlayerHardcore113c } from '../../combat/pvp-engine-113c.ts'
 import { CANONICAL_CHARSTATS } from '../../../common/units/classes.ts'
@@ -21,7 +21,7 @@ import { FIXED_ONE } from '../stat-list.ts'
 import { TRADE_INTERACT_RANGE_SUBTILES_113C } from '../../net/trade-manager-113c.ts'
 import type { GameInstanceHost } from './host.ts'
 import type { AreaArrival, InternalObjectRecord, InternalPlayerRecord, LoadedAreaRecord, ServerItemEntry } from './types.ts'
-import { ACT_TOWN_AREA, ACT_TOWN_AREAS, ANCIENT_BARBARIANS_113C, LEGACY_TEST_GRID_SPAWN, MAX_PLAYER_LEVEL_113C, NPC_INTERACT_DISTANCE_SUBTILES, PLAYER_SIZE_X_113C, QUEST_ITEM_EQUIVALENT_CODES_113C, QUEST_OBJECT_DROP_ITEM_CODE_113C, SEAL_BOSS_113C, TOWN_AREAS, WARP_INTERACT_DISTANCE_SUBTILES, WAYPOINT_AREA_IDS, WAYPOINT_INTERACT_DISTANCE_SUBTILES, areaToAct, computeObjectApproachSearchRadius113c, experienceForLevel113c, findBestInteractApproachSubTile113c, lookupBaseInfo, playerWirePosition, toItemContainer, UNIT_TYPE_113C, type UnitType113c } from './constants-and-helpers.ts'
+import { ACT_TOWN_AREA, ACT_TOWN_AREAS, ANCIENT_BARBARIANS_113C, LEGACY_TEST_GRID_SPAWN, MAX_PLAYER_LEVEL_113C, NPC_INTERACT_DISTANCE_SUBTILES, PLAYER_SIZE_X_113C, QUEST_ITEM_EQUIVALENT_CODES_113C, QUEST_ITEM_SUPERSEDING_CODES_113C, QUEST_OBJECT_DROP_ITEM_CODE_113C, SEAL_BOSS_113C, TOWN_AREAS, WARP_INTERACT_DISTANCE_SUBTILES, WAYPOINT_AREA_IDS, WAYPOINT_INTERACT_DISTANCE_SUBTILES, areaToAct, computeObjectApproachSearchRadius113c, experienceForLevel113c, findBestInteractApproachSubTile113c, lookupBaseInfo, playerWirePosition, toItemContainer, UNIT_TYPE_113C, type UnitType113c } from './constants-and-helpers.ts'
 
 
 function operateObject(this: GameInstanceHost, player: InternalPlayerRecord, obj: InternalObjectRecord): void {
@@ -359,11 +359,19 @@ function operateObject(this: GameInstanceHost, player: InternalPlayerRecord, obj
       },
     })
     for (const recipient of this.getQuestEligiblePartyRecipients113c(player, obj.areaId)) {
-      this.setPlayerQuestFlag(recipient, 'a3q3', QUEST_FLAG_COMPLETED_113C)
-      // 1.13c ACT3Q3_OperateCompellingOrb (`D2Game.dll` `0x6FD0A22C..0x6FD0A262`, #1984):
-      // smashing Compelling Orb (`404`) also completes `a3q5` if not already completed.
+      this.setPlayerQuestFlag(
+        recipient,
+        'a3q3',
+        QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_COMPLETED_NOW_113C,
+      )
+      // 1.13c ACT3Q3_OperateCompellingOrb (`D2Game.dll` `0x6FD0A1EE..0x6FD0A262`, #1984 / #1998):
+      // smashing Compelling Orb (`404`) sets `0x2001` (`COMPLETED | COMPLETED_NOW`) and also completes `a3q5`.
       if (!hasQuestFlag113c(recipient.questFlags, 'a3q5', QUEST_FLAG_COMPLETED_113C)) {
-        this.setPlayerQuestFlag(recipient, 'a3q5', QUEST_FLAG_COMPLETED_113C)
+        this.setPlayerQuestFlag(
+          recipient,
+          'a3q5',
+          QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_COMPLETED_NOW_113C,
+        )
       }
     }
     // Kill the invisible MonStats 366 compellingorb monster in MONMODE_DEATH (0) so
@@ -654,7 +662,9 @@ function operateObject(this: GameInstanceHost, player: InternalPlayerRecord, obj
       const destX = stand?.x ?? bestOther.x
       const destY = stand?.y ?? bestOther.y
       this.movePlayer(player.unitId, destX, destY)
-      this.revealAreaRoomsNearPlayer(player)
+      this.activatePresetRoomsNearPlayer113c(player)
+      this.streamWildernessRoomsForPlayer(player)
+      this.revealAreaRoomsNearPlayer(player, true)
       this.emitToPlayer(player.unitId, {
         type: 'UnitReassign',
         unitType: 0,
@@ -1011,22 +1021,23 @@ function operateObject(this: GameInstanceHost, player: InternalPlayerRecord, obj
 
 function getEquivalentQuestItemCodes(this: GameInstanceHost, code: string): readonly string[] {
   const clean = code.trim().toLowerCase()
-  return QUEST_ITEM_EQUIVALENT_CODES_113C[clean] ?? [clean]
+  return QUEST_ITEM_SUPERSEDING_CODES_113C[clean] ?? [clean]
 }
 
 
 
 /**
  * 1.13c `ITEMS_CheckQuestItemPickup` (`D2Game.dll` @ `0x6fcf2f00`):
- * all quest items (`ItemsTxt.nQuest != 0`, except `leg` which has `unique = 0`)
- * enforce one-per-player ownership across all containers.
+ * all quest items (`ItemsTxt.nQuest != 0`, except `leg` which is explicitly exempted)
+ * enforce one-per-player ownership and post-quest pickup gates.
  */
 function isOnePerPlayerQuestItem(this: GameInstanceHost, code: string): boolean {
   const clean = code.trim().toLowerCase()
   if (clean === 'leg') return false
   return (
     lookupBaseInfo(clean).quest ||
-    QUEST_ITEM_EQUIVALENT_CODES_113C[clean] !== undefined
+    QUEST_ITEM_EQUIVALENT_CODES_113C[clean] !== undefined ||
+    QUEST_ITEM_SUPERSEDING_CODES_113C[clean] !== undefined
   )
 }
 
@@ -1050,21 +1061,110 @@ function resolveCarry1UniqueId113c(this: GameInstanceHost, item: ServerItemEntry
 
 
 function playerHasQuestItem(this: GameInstanceHost, player: InternalPlayerRecord, code: string): boolean {
-  const equiv = this.getEquivalentQuestItemCodes(code)
-  return player.items.some((item) => equiv.includes(item.code.trim().toLowerCase()))
+  const superseding = this.getEquivalentQuestItemCodes(code)
+  return player.items.some((item) => {
+    if (item.location === 'vendor') return false
+    const clean = item.code.trim().toLowerCase()
+    if (!superseding.includes(clean)) return false
+    if (item.stats.has(356) && clean !== 'box' && (item.stats.get(356) ?? this.difficulty) < this.difficulty) {
+      return false
+    }
+    return true
+  })
 }
 
 
 
 function playerOrGroundHasQuestItem(this: GameInstanceHost, player: InternalPlayerRecord, code: string): boolean {
   if (this.playerHasQuestItem(player, code)) return true
-  const equiv = this.getEquivalentQuestItemCodes(code)
+  const superseding = this.getEquivalentQuestItemCodes(code)
   for (const gItem of this.groundItems.values()) {
-    if (gItem.areaId === player.areaId && equiv.includes(gItem.code.trim().toLowerCase())) {
+    if (gItem.areaId === player.areaId && superseding.includes(gItem.code.trim().toLowerCase())) {
       return true
     }
   }
   return false
+}
+
+
+
+/**
+ * 1.13c `ITEMS_CheckQuestItemPickup` (`D2Game.dll` @ `0x6FCF2F00..0x6FCF31AD`)
+ * + `ITEMS_HasConflictingQuestItem` (`0x6FCF2070..0x6FCF22B8`, `#2002`):
+ * 1. Enforces custom-bit / completed-quest ground-pickup gates (`0x6FCF2FA2..0x6FCF3117`
+ *    + `.data` table `0x6FD22CC0`), explicitly exempting Horadric Cube (`'box'`, `0x6FCF3098`)
+ *    and Wirt's Leg (`'leg'`, `0x6FCF30C7`).
+ * 2. Enforces symmetric conflict pairs (`QUEST_ITEM_EQUIVALENT_CODES_113C`) across both
+ *    the player's inventory (`0x6FCF3124`) and alive hired mercenary equipment (`0x6FCF318B`).
+ */
+function canPickupQuestItem113c(
+  this: GameInstanceHost,
+  player: InternalPlayerRecord,
+  gItem: ServerItemEntry,
+): boolean {
+  const clean = gItem.code.trim().toLowerCase()
+  if (!this.isOnePerPlayerQuestItem(clean)) return true
+
+  const qf = player.questFlags
+  if (clean === 'ass') {
+    // 0x6FCF2FA8..0x6FCF2FCF: requires A2Q1 Radament custom bit 5 (0x0020) armed & unconsumed.
+    if (!hasQuestFlag113c(qf, 'a2q1', QUEST_FLAG_CUSTOM_5_113C)) return false
+  } else if (clean === 'j34') {
+    // 0x6FCF2FD8..0x6FCF2FFB: blocked once A3Q1 The Golden Bird is completed (bit 0).
+    if (hasQuestFlag113c(qf, 'a3q1', QUEST_FLAG_COMPLETED_113C)) return false
+  } else if (clean === 'xyz') {
+    // 0x6FCF2FFE..0x6FCF3011: requires A3Q1 Alkor custom bit 5 (0x0020) armed & unconsumed.
+    if (!hasQuestFlag113c(qf, 'a3q1', QUEST_FLAG_CUSTOM_5_113C)) return false
+  } else if (clean === 'tr2') {
+    // 0x6FCF3036..0x6FCF306B: requires A5Q3 Malah bit 8 (0x0100) armed and bit 7 (0x0080) unconsumed.
+    if (
+      !hasQuestFlag113c(qf, 'a5q3', QUEST_FLAG_CUSTOM_8_113C) ||
+      hasQuestFlag113c(qf, 'a5q3', QUEST_FLAG_CUSTOM_7_113C)
+    ) {
+      return false
+    }
+  } else if (clean === 'msf' || clean === 'vip' || clean === 'hst' || clean === 'tr1') {
+    // 0x6FCF3078..0x6FCF30AA: nQuest == 10 blocked after A2Q2 completed; 'box' exempted at 0x6FCF3098.
+    if (hasQuestFlag113c(qf, 'a2q2', QUEST_FLAG_COMPLETED_113C)) return false
+  } else if (clean === 'bks' || clean === 'bkd') {
+    // 0x6FCF30AD..0x6FCF30D9: nQuest == 5 blocked after A1Q3 completed; 'leg' exempted at 0x6FCF30C7.
+    if (hasQuestFlag113c(qf, 'a1q3', QUEST_FLAG_COMPLETED_113C)) return false
+  } else if (clean === 'hdm') {
+    // 0x6FD22CC0[0] {0x03, 0x04}: Horadric Malus blocked after A1Q5 completed.
+    if (hasQuestFlag113c(qf, 'a1q5', QUEST_FLAG_COMPLETED_113C)) return false
+  } else if (
+    clean === 'qey' ||
+    clean === 'qhr' ||
+    clean === 'qbr' ||
+    clean === 'qf1' ||
+    clean === 'qf2'
+  ) {
+    // 0x6FD22CC0[1] {0x12, 0x11}: Khalim organs/flails blocked after A3Q3 completed.
+    if (hasQuestFlag113c(qf, 'a3q3', QUEST_FLAG_COMPLETED_113C)) return false
+  } else if (clean === 'g33' || clean === 'd33') {
+    // 0x6FD22CC0[2] {0x13, 0x12}: Gidbinn / Decoy Gidbinn blocked after A3Q2 completed.
+    if (hasQuestFlag113c(qf, 'a3q2', QUEST_FLAG_COMPLETED_113C)) return false
+  } else if (clean === 'hfh') {
+    // 0x6FD22CC0[3] {0x1B, 0x19}: Hellforge Hammer blocked after A4Q2 completed.
+    if (hasQuestFlag113c(qf, 'a4q2', QUEST_FLAG_COMPLETED_113C)) return false
+  }
+
+  const conflicting = QUEST_ITEM_EQUIVALENT_CODES_113C[clean] ?? [clean]
+  if (
+    player.items.some(
+      (owned) =>
+        owned.location !== 'vendor' && conflicting.includes(owned.code.trim().toLowerCase()),
+    )
+  ) {
+    return false
+  }
+  for (const merc of this.mercenaries.values()) {
+    if (merc.ownerPlayerId !== player.unitId || !merc.alive) continue
+    if (merc.equipment.some((eq) => conflicting.includes(eq.code.trim().toLowerCase()))) {
+      return false
+    }
+  }
+  return true
 }
 
 
@@ -1189,17 +1289,62 @@ function advanceQuestObject(this: GameInstanceHost,
     }
   }
   if (obj.classId === 473) {
-    // Rescue on Mount Arreat: three cages (five barbarians each).
+    // Rescue on Mount Arreat (`D2Game.dll` `0x6fc76b80` / `0x6fc7cbe0`): three cages (five soldiers each).
+    if (obj.useCount > 0) return
     obj.useCount = 1
     const cages = [...this.objects.values()].filter(
       (candidate) => candidate.areaId === obj.areaId && candidate.classId === 473 && candidate.useCount > 0,
     )
+    const barbsRemaining = Math.max(0, (3 - cages.length) * 5)
     if (cages.length >= 3) {
       for (const recipient of this.getQuestEligiblePartyRecipients113c(player, obj.areaId)) {
         if (hasQuestFlag113c(recipient.questFlags, 'a5q2', QUEST_FLAG_COMPLETED_113C)) continue
-        this.setPlayerQuestFlag(recipient, 'a5q2', QUEST_FLAG_REWARD_PENDING_113C)
+        this.setPlayerQuestFlag(
+          recipient,
+          'a5q2',
+          QUEST_FLAG_STARTED_113C | QUEST_FLAG_REWARD_PENDING_113C,
+        )
+      }
+    } else {
+      const a5q2Proto = questProtocolId113c('a5q2') ?? 0x20
+      for (const recipient of this.getQuestEligiblePartyRecipients113c(player, obj.areaId)) {
+        if (
+          hasQuestFlag113c(
+            recipient.questFlags,
+            'a5q2',
+            QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_REWARD_PENDING_113C,
+          )
+        ) {
+          continue
+        }
+        setQuestFlag113c(recipient.questFlags, 'a5q2', QUEST_FLAG_STARTED_113C)
+        this.emitQuestLog(recipient)
+        this.emitToPlayer(recipient.unitId, {
+          type: 'QuestState',
+          kind: 'update',
+          source: 0x28,
+          updateType: 6,
+          unitId: 0,
+          timer: 0,
+          quests: new Uint16Array(recipient.questFlags),
+          flags: Array.from(recipient.questFlags),
+        })
+        this.emitToPlayer(recipient.unitId, {
+          type: 'QuestState',
+          kind: 'status',
+          source: 0x5d,
+          quests: new Uint16Array([a5q2Proto]),
+          questStatus: {
+            questId: a5q2Proto,
+            alertFlags: 0x20,
+            filterStatus: 2,
+            extra: barbsRemaining,
+          },
+        })
+        this.emitQuestAvailability(recipient)
       }
     }
+    return
   }
   if (obj.classId === 26) {
     // #1926: Objects.txt 26 Cain's Gibbet (`OperateFn 10`, `D2Game.dll` `0x6FC9CCF0`)
@@ -1209,7 +1354,10 @@ function advanceQuestObject(this: GameInstanceHost,
       this.setPlayerQuestFlag(
         recipient,
         'a1q3',
-        QUEST_FLAG_STARTED_113C | QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_PRIMARY_GOAL_DONE_113C,
+        QUEST_FLAG_STARTED_113C |
+          QUEST_FLAG_COMPLETED_113C |
+          QUEST_FLAG_COMPLETED_NOW_113C |
+          QUEST_FLAG_PRIMARY_GOAL_DONE_113C,
       )
     }
     const hasRescuedCain = [...this.monsters.values()].some(
@@ -1264,7 +1412,11 @@ function advanceQuestObject(this: GameInstanceHost,
     if (assembledStaff === undefined) return
     this.removePlayerQuestItem(player, assembledStaff)
     for (const recipient of this.getQuestEligiblePartyRecipients113c(player, obj.areaId)) {
-      this.setPlayerQuestFlag(recipient, 'a2q2', QUEST_FLAG_COMPLETED_113C)
+      this.setPlayerQuestFlag(
+        recipient,
+        'a2q2',
+        QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_COMPLETED_NOW_113C,
+      )
     }
     const horadricStaffMeta = this.registry.getMissileById(338)
     const orificeDelayTicks = Math.max(
@@ -1342,10 +1494,14 @@ function advanceQuestObject(this: GameInstanceHost,
     this.setPlayerQuestFlag(player, pendingQuest, QUEST_FLAG_REWARD_PENDING_113C)
     return
   }
-  // 1.13c objects whose operation itself completes the objective (`149` Tainted Sun Altar, `357` Horazon's Journal).
+  // 1.13c objects whose operation itself completes the objective (`149` Tainted Sun Altar, `357` Horazon's Journal, `0x6fce5ca8`).
   if ([149, 357].includes(obj.classId)) {
     for (const recipient of this.getQuestEligiblePartyRecipients113c(player, obj.areaId)) {
-      this.setPlayerQuestFlag(recipient, questId, QUEST_FLAG_COMPLETED_113C)
+      this.setPlayerQuestFlag(
+        recipient,
+        questId,
+        QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_COMPLETED_NOW_113C,
+      )
     }
     // #1961: Smashing Tainted Sun Altar (`149`, `a2q3.cpp` `0x6fce76b0..0x6fce7a40`) clears the
     // solar eclipse across Act 2 (`S2C 0x53 EnvironmentSync` with `eclipse: false`).
@@ -1572,43 +1728,153 @@ function grantQuestCompletionReward113c(this: GameInstanceHost,
 
 
 
+function getDenMonstersRemaining113c(this: GameInstanceHost): number {
+  const population = this.areaPopulations.get(8)
+  const allRoomsVisited =
+    population === undefined || population.populated.size >= population.rooms.length
+  if (!allRoomsVisited) return 0
+  let count = 0
+  for (const m of this.monsters.values()) {
+    if (m.dead || m.isNpc || !m.isKillable || m.areaId !== 8) continue
+    count++
+  }
+  return count
+}
+
+
+
+function getArreatSoldiersRemaining113c(this: GameInstanceHost): number {
+  let openedCages = 0
+  for (const candidate of this.objects.values()) {
+    if (candidate.areaId === 111 && candidate.classId === 473 && candidate.useCount > 0) {
+      openedCages++
+    }
+  }
+  return Math.max(0, (3 - Math.min(3, openedCages)) * 5)
+}
+
+
+
+/**
+ * 1.13c `PACKET_Recv40_QuestLogRequest` (`D2Game.dll` `0x6fcebd30`) ->
+ * `QUESTS_SendLogUpdate` (`0x6fc55640..0x6fc55880`):
+ * 1) `QUESTS_SendPlayerQuestFlags` (`0x6fc54c00`): `103B` `S2C 0x28` with `updateType = 6`, `unitId = 0`, `timer = 0`.
+ * 2) Compute `41B` status filter array (`statusBytes[0..40]`).
+ * 3) Conditionally send `15B` `S2C 0x50` type `1` (`[1, den, tombOffset, barbs, 0, 0, 0]`) when
+ *    `statusBytes[1] !== 0`, `statusBytes[36] !== 0`, or `(player.questFlags[12] & 0x2001) !== 0`.
+ * 4) Send `42B` `S2C 0x52` (`statusBytes[0..40]`).
+ */
+function sendQuestLogUpdate113c(this: GameInstanceHost, player: InternalPlayerRecord): void {
+  this.emitToPlayer(player.unitId, {
+    type: 'QuestState',
+    source: 0x28,
+    kind: 'update',
+    updateType: 6,
+    unitId: 0,
+    timer: 0,
+    quests: new Uint16Array(player.questFlags),
+    flags: Array.from(player.questFlags),
+  })
+
+  const itemCodes = new Set<string>()
+  for (const item of player.items) {
+    itemCodes.add(item.code.toLowerCase().trim())
+  }
+  const denRaw = this.getDenMonstersRemaining113c()
+  const barbsRemaining = this.getArreatSoldiersRemaining113c()
+  const statusBytes = computeQuestStatusBytes113c(player.questFlags, {
+    playerAreaId: player.areaId,
+    itemCodes,
+    denRemaining: denRaw >= 1 && denRaw <= 5 ? denRaw : undefined,
+    barbsRemaining,
+  })
+
+  let send50 = false
+  let denWord = 0
+  let tombOffsetWord = 0
+  let barbsWord = 0
+  if ((statusBytes[1] ?? 0) !== 0) {
+    denWord = denRaw & 0xffff
+    send50 = true
+  }
+  if ((statusBytes[36] ?? 0) !== 0) {
+    barbsWord = barbsRemaining & 0xffff
+    send50 = true
+  }
+  const a2q4Word = (player.questFlags[12] ?? 0) & 0xffff
+  if ((a2q4Word & 0x2001) !== 0) {
+    tombOffsetWord = Math.max(0, Math.min(6, this.getTrueTalRashaTombAreaId() - 66))
+    send50 = true
+  }
+  if (send50) {
+    const words = new Uint16Array([1, denWord, tombOffsetWord, barbsWord, 0, 0, 0])
+    this.emitToPlayer(player.unitId, {
+      type: 'QuestState',
+      source: 0x50,
+      kind: 'item',
+      quests: words,
+      flags: Array.from(words),
+    })
+  }
+
+  this.emitToPlayer(player.unitId, {
+    type: 'QuestState',
+    source: 0x52,
+    kind: 'history',
+    quests: new Uint16Array(0),
+    statusBytes,
+  })
+}
+
+
+
 function emitQuestFlagSync113c(this: GameInstanceHost, player: InternalPlayerRecord, questId: string): void {
   const questIndex = questWordIndex113c(questId)
+  const protocolId = questProtocolId113c(questId)
   this.emitQuestLog(player)
-  // S2C 0x28 QuestInfo: the per-quest update channel.
+  // S2C 0x28 QuestInfo (`D2Game.dll` `0x6fc54c00` `QUESTS_SendPlayerQuestFlags`: `updateType = 6, unitId = 0`).
   this.emitToPlayer(player.unitId, {
     type: 'QuestState',
     kind: 'update',
     source: 0x28,
+    updateType: 6,
+    unitId: 0,
+    timer: 0,
     quests: new Uint16Array(player.questFlags),
     flags: Array.from(player.questFlags),
   })
-  // S2C 0x5D QuestStatus for the quest that just changed.
-  if (questIndex !== undefined) {
-    const hasJ34 =
-      questId === 'a3q1' &&
-      player.items.some((item) => item.code.toLowerCase().trim() === 'j34')
-    const hasG34 =
-      questId === 'a3q1' &&
-      player.items.some((item) => item.code.toLowerCase().trim() === 'g34')
+  // S2C 0x5D QuestStatus (`D2Game.dll` `0x6fc554f0` `QUESTS_StatusCallback`: `pkt5D[1] = nQuest` `0x01..0x24`).
+  if (questIndex !== undefined && protocolId !== undefined) {
+    const itemCodes = new Set<string>()
+    for (const item of player.items) {
+      itemCodes.add(item.code.toLowerCase().trim())
+    }
+    const denRaw = questId === 'a1q1' ? this.getDenMonstersRemaining113c() : 0
+    const barbsRemaining = questId === 'a5q2' ? this.getArreatSoldiersRemaining113c() : 0
+    const computedStatus = computeQuestStatusByte113c(questId, player.questFlags, {
+      playerAreaId: player.areaId,
+      itemCodes,
+      denRemaining: denRaw >= 1 && denRaw <= 5 ? denRaw : undefined,
+      barbsRemaining,
+    })
     const filterStatus =
-      questId === 'a3q1'
-        ? computeA3Q1StatusByte113c(player.questFlags, hasJ34, hasG34)
-        : questId === 'a2q6'
-          ? computeA2Q6StatusByte113c(player.questFlags, player.areaId === 73)
-          : (player.questFlags[questIndex] ?? 0) & QUEST_FLAG_STARTED_113C
-            ? 2
-            : 1
+      questId === 'a3q1' || questId === 'a2q6' || computedStatus !== 0 ? computedStatus : 1
+    const extra =
+      questId === 'a1q1'
+        ? denRaw & 0xffff
+        : questId === 'a5q2'
+          ? barbsRemaining & 0xffff
+          : 0
     this.emitToPlayer(player.unitId, {
       type: 'QuestState',
       kind: 'status',
       source: 0x5d,
-      quests: new Uint16Array([questIndex]),
+      quests: new Uint16Array([protocolId]),
       questStatus: {
-        questId: questIndex,
+        questId: protocolId,
         alertFlags: 0,
         filterStatus,
-        extra: 0,
+        extra,
       },
     })
   }
@@ -1632,6 +1898,15 @@ function setPlayerQuestFlag(this: GameInstanceHost,
     ((player.questFlags[questIndex] ?? 0) & QUEST_FLAG_COMPLETED_113C) !== 0
   if (!wasCompleted && nowCompleted) {
     this.grantQuestCompletionReward113c(player, questId)
+  }
+  if (questId === 'a1q3') {
+    this.syncRogueEncampmentA1Q3State113c(player)
+  } else if (questId.startsWith('a2q')) {
+    this.syncLutGholeinAct2NpcState113c(player)
+  } else if (questId.startsWith('a3q')) {
+    this.syncKurastDocksAct3NpcState113c(player)
+  } else if (questId === 'a5q3' || questId === 'a5q4') {
+    this.syncHarrogathA5Q3State113c(player)
   }
   this.emitQuestFlagSync113c(player, questId)
   return true
@@ -2689,7 +2964,16 @@ function switchPlayerAreaSeamless(this: GameInstanceHost, player: InternalPlayer
   player.act = areaToAct(destAreaId)
   player.unlockedAct = Math.max(player.unlockedAct, player.act)
   player.activeWaypointUnitId = 0
-  if (destAreaId === 109) {
+  if (destAreaId === 1) {
+    this.syncRogueEncampmentA1Q3State113c(player)
+  }
+  if (destAreaId === 40) {
+    this.syncLutGholeinAct2NpcState113c(player)
+  }
+  if (destAreaId === 75) {
+    this.syncKurastDocksAct3NpcState113c(player)
+  }
+  if (destAreaId === 109 || (destAreaId >= 121 && destAreaId <= 124)) {
     this.syncHarrogathA5Q3State113c(player)
   }
   if (destAreaId === 73) {
@@ -2743,6 +3027,8 @@ function switchPlayerAreaSeamless(this: GameInstanceHost, player: InternalPlayer
     player.y,
     player.unitId,
   )
+  this.activatePresetRoomsNearPlayer113c(player)
+  this.streamWildernessRoomsForPlayer(player)
   if (dest.rooms.length > 0) {
     this.revealAreaRoomsNearPlayer(player, true)
   } else {
@@ -2864,7 +3150,16 @@ function transitionPlayerArea(this: GameInstanceHost,
     player.targetX = landing.x
     player.targetY = landing.y
   }
-  if (destAreaId === 109) {
+  if (destAreaId === 1) {
+    this.syncRogueEncampmentA1Q3State113c(player)
+  }
+  if (destAreaId === 40) {
+    this.syncLutGholeinAct2NpcState113c(player)
+  }
+  if (destAreaId === 75) {
+    this.syncKurastDocksAct3NpcState113c(player)
+  }
+  if (destAreaId === 109 || (destAreaId >= 121 && destAreaId <= 124)) {
     this.syncHarrogathA5Q3State113c(player)
   }
   if (destAreaId === 73) {
@@ -2977,11 +3272,15 @@ export interface QuestsObjectsAndPortalsMethods {
   resolveCarry1UniqueId113c(item: ServerItemEntry): number | undefined
   playerHasQuestItem(player: InternalPlayerRecord, code: string): boolean
   playerOrGroundHasQuestItem(player: InternalPlayerRecord, code: string): boolean
+  canPickupQuestItem113c(player: InternalPlayerRecord, gItem: ServerItemEntry): boolean
   givePlayerInventoryQuestItem(player: InternalPlayerRecord, code: string, dropOrigin?: { readonly x: number; readonly y: number }): ServerItemEntry
   removePlayerQuestItem(player: InternalPlayerRecord, item: ServerItemEntry): void
   advanceQuestObject(player: InternalPlayerRecord, obj: InternalObjectRecord): void
   emitQuestLog(player: InternalPlayerRecord): void
   emitQuestAvailability(player: InternalPlayerRecord): void
+  getDenMonstersRemaining113c(): number
+  getArreatSoldiersRemaining113c(): number
+  sendQuestLogUpdate113c(player: InternalPlayerRecord): void
   grantQuestCompletionReward113c(player: InternalPlayerRecord, questId: string): void
   emitQuestFlagSync113c(player: InternalPlayerRecord, questId: string): void
   setPlayerQuestFlag(player: InternalPlayerRecord, questId: string, mask: number): boolean
@@ -3017,11 +3316,15 @@ export const questsObjectsAndPortalsMethods: Record<keyof QuestsObjectsAndPortal
   resolveCarry1UniqueId113c,
   playerHasQuestItem,
   playerOrGroundHasQuestItem,
+  canPickupQuestItem113c,
   givePlayerInventoryQuestItem,
   removePlayerQuestItem,
   advanceQuestObject,
   emitQuestLog,
   emitQuestAvailability,
+  getDenMonstersRemaining113c,
+  getArreatSoldiersRemaining113c,
+  sendQuestLogUpdate113c,
   grantQuestCompletionReward113c,
   emitQuestFlagSync113c,
   setPlayerQuestFlag,

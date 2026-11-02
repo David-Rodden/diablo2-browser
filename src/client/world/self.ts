@@ -46,6 +46,11 @@ export interface SelfPlayerState {
   readonly stats: StatList
   readonly skills: ReadonlyMap<number, number>
   readonly skillEntries: ReadonlyMap<number, SkillLevel>
+  /**
+   * Class-less default skills the client player unit owns (Attack + CharStats.txt Skill 1..10, level 1), added
+   * when the unit is created like D2Client 0x6FAC91E0 -> D2Common #10506 (src/common/units/default-skills-113c.ts).
+   */
+  readonly defaultSkills: ReadonlyMap<number, number>
   readonly states: ReadonlySet<number>
   readonly skillCharges?: ReadonlyMap<number, number> | undefined
   leftSkill: number
@@ -117,6 +122,7 @@ export class MutableSelfPlayerState implements SelfPlayerState {
   readonly stats = new StatList()
   readonly skills = new Map<number, number>()
   readonly skillEntries = new Map<number, SkillLevel>()
+  readonly defaultSkills = new Map<number, number>()
   readonly states = new Set<number>()
   readonly skillCharges = new Map<number, number>()
   leftSkill = 0
@@ -271,6 +277,7 @@ export class MutableSelfPlayerState implements SelfPlayerState {
     this.stats.clear()
     this.skills.clear()
     this.skillEntries.clear()
+    this.defaultSkills.clear()
     this.states.clear()
     this.skillCharges.clear()
     this.leftSkill = 0

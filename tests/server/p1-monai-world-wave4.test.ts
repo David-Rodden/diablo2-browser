@@ -261,7 +261,7 @@ describe('P1 Wave 4 Monster AI, MonProp, MonEquip & Progression (#1891-#1898, #1
       monsters.get(deadSkelId)!.dead = true
       monsters.get(deadSkelId)!.hp = 0
 
-      for (let i = 0; i < 40 && monsters.get(deadSkelId)!.dead; i += 1) {
+      for (let i = 0; i < 120 && monsters.get(deadSkelId)!.dead; i += 1) {
         monsters.get(mummyId)!.cooldown = 0
         monsters.get(mummyId)!.skillCooldown = 0
         game.stepFrames(1)

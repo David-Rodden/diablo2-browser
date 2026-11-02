@@ -46,6 +46,38 @@ export function doesSkillUseAttackRating(skillId: number | null | undefined): bo
 const DESCATT_TABLE_POPULATED: ReadonlySet<number> = new Set([1, 2, 3, 4, 5])
 
 /**
+ * Ground Truth (`D2Client.dll 0x6FADFD30`, the character sheet attack block): the "Damage" row is drawn only when
+ * `SkillDesc.txt` `descdam` selects a non-null entry of the descdam dispatch table at `0x6FBA5210`
+ * (`mov ax,[skilldesc+0x12]; cmp ax,0x90; jae skip; cmp [eax*4+0x6FBA5210],0; je skip`, 0x6FADFEA4..0x6FADFEC6).
+ * Entries 1..24 are populated (0x6FAE5470 .. 0x6FAE5140), 0 and 25+ are null (oracle P5.4,
+ * kb/ui/oracle-client-display-113c.md §5).
+ */
+export function doesSkillShowDamageRow(skillId: number | null | undefined): boolean {
+  if (skillId === null || skillId === undefined || skillId < 0) return false
+  const rec = SKILL_DESC_BY_SKILL_ID[skillId]
+  if (!rec) return false
+  return rec.descdam >= 1 && rec.descdam <= 24
+}
+
+/**
+ * Ground Truth (`D2Client.dll 0x6FADFD30`): the attack block's skill name is `SkillDesc.txt` `str alt`
+ * (string id at SkillDesc+0x0E, after str name/short/long at +0x08/+0x0A/+0x0C -> D2Lang #10003), upper-cased in
+ * place by `0x6FB6E800` (D2Lang case table for code units below 0x100; others unchanged), e.g. "KICK TARGET",
+ * "BATTLE CMD", "AMPLIFY".
+ */
+export function getCharSheetSkillBlockName(skillId: number, lang: TblLang): string {
+  const rec = SKILL_DESC_BY_SKILL_ID[skillId]
+  const text = rec?.strAlt ?? rec?.strName
+  const raw = text ? (lang === 'ENG' ? text.en : text.zh) : getSkillName(skillId, lang)
+  let out = ''
+  for (const ch of raw) {
+    const up = ch.toUpperCase()
+    out += ch.charCodeAt(0) < 0x100 && up.length === 1 && up.charCodeAt(0) < 0x100 ? up : ch
+  }
+  return out
+}
+
+/**
  * Ground Truth (`D2Common.dll #10428` / `D2Client.dll 0x6FB6C760` & `0x6FB6C8F0`):
  * Computes hit chance percentage clamped to `[5, 95]`:
  * `clamp(5, 95, floor(200 * ar * alvl / ((ar + def) * (alvl + dlvl))))`.
@@ -120,6 +152,9 @@ export interface CharacterSheetAttributes extends CharacterAttributes {
   rightSkillDmg?: string | undefined
   leftSkillDmgColor?: D2ColorCode | undefined
   rightSkillDmgColor?: D2ColorCode | undefined
+  /** The skill's descdam/descatt handlers draw nothing because the item it uses is missing (0x6FADFD30). */
+  leftSkillBlockEmpty?: boolean | undefined
+  rightSkillBlockEmpty?: boolean | undefined
   leftDamageFormula?: CombatDamageFormulaBreakdown | undefined
   rightDamageFormula?: CombatDamageFormulaBreakdown | undefined
   maxHp?: number | undefined
@@ -1468,43 +1503,52 @@ export class CharacterSheetPanel {
 
     // 6. Combat Ratings (Left/Right Skill Damage, Left/Right Attack Rating, Defense), Stamina, Life, Mana
     const dmgLabel = requireTbl('strchrskm', this.lang)
-    const defaultAtkName = getSkillName(0, this.lang)
-    const leftSkillLabel = this.attrs.leftSkillName || defaultAtkName
-    const rightSkillLabel = this.attrs.rightSkillName || defaultAtkName
+    const leftId = this.attrs.leftSkillId ?? 0
+    const rightId = this.attrs.rightSkillId ?? 0
+    const leftSkillLabel = this.attrs.leftSkillName || getCharSheetSkillBlockName(leftId, this.lang)
+    const rightSkillLabel = this.attrs.rightSkillName || getCharSheetSkillBlockName(rightId, this.lang)
     const leftDmgStr = liveRuntime.leftSkillDmg || this.attrs.leftSkillDmg || '1-2'
     const rightDmgStr = liveRuntime.rightSkillDmg || this.attrs.rightSkillDmg || '1-2'
+    // 0x6FADFD30: the "Damage" row needs a descdam handler (0x6FBA5210) that produces a value; the handlers of
+    // Throw / Left Hand Throw / Left Hand Swing produce nothing without the item they use (leftSkillBlockEmpty).
+    const leftShowsDamage = doesSkillShowDamageRow(leftId) && this.attrs.leftSkillBlockEmpty !== true
+    const rightShowsDamage = doesSkillShowDamageRow(rightId) && this.attrs.rightSkillBlockEmpty !== true
 
     font.drawText(ctx, leftSkillLabel, ox + 214, oy + 89, {
       font: isEn ? 'font6' : 'font8',
       color: 'tan',
       align: 'center',
     })
-    font.drawText(ctx, dmgLabel, ox + 214, oy + 98, {
-      font: isEn ? 'font6' : 'font8',
-      color: 'tan',
-      align: 'center',
-    })
-    font.drawText(ctx, leftDmgStr, ox + 288, oy + 94, {
-      font: 'font6',
-      color: this.attrs.leftSkillDmgColor ?? 'white',
-      align: 'center',
-    })
+    if (leftShowsDamage) {
+      font.drawText(ctx, dmgLabel, ox + 214, oy + 98, {
+        font: isEn ? 'font6' : 'font8',
+        color: 'tan',
+        align: 'center',
+      })
+      font.drawText(ctx, leftDmgStr, ox + 288, oy + 94, {
+        font: 'font6',
+        color: this.attrs.leftSkillDmgColor ?? 'white',
+        align: 'center',
+      })
+    }
 
     font.drawText(ctx, rightSkillLabel, ox + 214, oy + 113, {
       font: isEn ? 'font6' : 'font8',
       color: 'tan',
       align: 'center',
     })
-    font.drawText(ctx, dmgLabel, ox + 214, oy + 122, {
-      font: isEn ? 'font6' : 'font8',
-      color: 'tan',
-      align: 'center',
-    })
-    font.drawText(ctx, rightDmgStr, ox + 288, oy + 118, {
-      font: 'font6',
-      color: this.attrs.rightSkillDmgColor ?? 'white',
-      align: 'center',
-    })
+    if (rightShowsDamage) {
+      font.drawText(ctx, dmgLabel, ox + 214, oy + 122, {
+        font: isEn ? 'font6' : 'font8',
+        color: 'tan',
+        align: 'center',
+      })
+      font.drawText(ctx, rightDmgStr, ox + 288, oy + 118, {
+        font: 'font6',
+        color: this.attrs.rightSkillDmgColor ?? 'white',
+        align: 'center',
+      })
+    }
 
     // Three boxes next to Dexterity (y=138..159 Left AR, y=164..185 Right AR, y=192..213 Defense)
     const arTemplate = requireTbl('strchratr', this.lang)
@@ -1515,7 +1559,7 @@ export class CharacterSheetPanel {
       color: 'tan',
     })
     // Box 1: Left-hand Attack Rating (y=138..159, baseline oy + 153) — gated by doesSkillUseAttackRating (0x6FADE350)
-    const leftSkillUsesAr = doesSkillUseAttackRating(this.attrs.leftSkillId ?? 0)
+    const leftSkillUsesAr = doesSkillUseAttackRating(leftId) && this.attrs.leftSkillBlockEmpty !== true
     if (leftSkillUsesAr) {
       const leftAr = this.attrs.leftAttackRating ?? this.attrs.leftAR ?? this.attrs.attackRating
       font.drawText(ctx, String(leftAr), ox + 290, oy + 153, {
@@ -1525,7 +1569,7 @@ export class CharacterSheetPanel {
       })
     }
     // Box 2: Right-hand Attack Rating (y=164..185, baseline oy + 178) — gated by doesSkillUseAttackRating (0x6FADE350)
-    const rightSkillUsesAr = doesSkillUseAttackRating(this.attrs.rightSkillId ?? 0)
+    const rightSkillUsesAr = doesSkillUseAttackRating(rightId) && this.attrs.rightSkillBlockEmpty !== true
     if (rightSkillUsesAr) {
       const rightAr = this.attrs.rightAttackRating ?? this.attrs.rightAR ?? this.attrs.attackRating
       font.drawText(ctx, String(rightAr), ox + 290, oy + 178, {

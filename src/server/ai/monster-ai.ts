@@ -102,6 +102,9 @@ import {
   calculateShiverArmorDamage,
 } from '../engine/missile-engine.ts'
 import {
+  computeLightningEnchantedBoltSlvl113c,
+  computeLightningUniqueBoltDamage113c,
+  computeScarabBugLightningDamage113c,
   computeScarabChargedBoltFanTargets113c,
   computeScarabChargedBoltSlvl113c,
   hasImplicitScarabUMod113c,
@@ -627,6 +630,18 @@ function collectRawMonsterMods(monster: Monster): (number | string)[] {
   return rawMods
 }
 
+function isMinionMonster113c(monster: Monster): boolean {
+  const monAny = monster as unknown as {
+    readonly rank?: string | undefined
+    readonly isMinion?: boolean | undefined
+  }
+  return (
+    monster.stats?.rank === 'minion' ||
+    monAny.rank === 'minion' ||
+    monAny.isMinion === true
+  )
+}
+
 export function damageMonster(
   world: CombatWorld,
   monsterIndexOrMonster: number | Monster,
@@ -650,15 +665,18 @@ export function damageMonster(
 
   const hcIdx = monster.stats?.hcIdx ?? 0
   const rawMods = collectRawMonsterMods(monster)
-  const hasLe = hasMonsterUMod(rawMods, MON_UMOD.LIGHTNING)
+  const hasLe = !isMinionMonster113c(monster) && hasMonsterUMod(rawMods, MON_UMOD.LIGHTNING)
   const hasScarab =
     hasMonsterUMod(rawMods, MON_UMOD.SCARAB) ||
     isScarabMonster(hcIdx, monster.stats?.id ?? '') ||
     hasImplicitScarabUMod113c({ hcIdx, defId: monster.stats?.id })
   if (amount > 0 && (hasLe || hasScarab)) {
     const mlvl = Math.max(1, monster.stats?.level ?? 1)
-    const emitChargedBoltBurst = (slvl: number, vectors: readonly { readonly targetX: number; readonly targetY: number }[]): void => {
-      const boltDmg = Math.max(1, Math.floor(mlvl * 1.5))
+    const emitChargedBoltBurst = (
+      slvl: number,
+      boltDmg: number,
+      vectors: readonly { readonly targetX: number; readonly targetY: number }[],
+    ): void => {
       world.events.push({
         kind: 'unitSkillEvent',
         x: monster.x,
@@ -700,13 +718,15 @@ export function damageMonster(
     }
     if (hasLe) {
       emitChargedBoltBurst(
-        Math.max(1, Math.floor(mlvl / 2)),
+        computeLightningEnchantedBoltSlvl113c(mlvl),
+        computeLightningUniqueBoltDamage113c(mlvl),
         computeChargedBolt8WayVectors(monster.x, monster.y, 12),
       )
     }
     if (hasScarab) {
       emitChargedBoltBurst(
         computeScarabChargedBoltSlvl113c(mlvl),
+        computeScarabBugLightningDamage113c(mlvl),
         computeScarabChargedBoltFanTargets113c(
           monster.x,
           monster.y,
@@ -1375,7 +1395,8 @@ function applyMonsterAttackToPlayer(
   }
 
   // On-hit MonUMod effects: Cursed (#7), ManaBurn (#25), ColdEnchanted (#18), Freeze (#43), PoisonHit (#23), SpectralHit (#27)
-  if (hasMonsterUMod(rawMods, MON_UMOD.CURSE)) {
+  const isMinionAttacker = isMinionMonster113c(monster)
+  if (!isMinionAttacker && hasMonsterUMod(rawMods, MON_UMOD.CURSE)) {
     player.curse = {
       id: 'amplify_damage',
       name: 'amplifydamage',
@@ -1404,7 +1425,7 @@ function applyMonsterAttackToPlayer(
     const manaDrain = Math.max(4, dmg * 4)
     player.mana = Math.max(0, player.mana - manaDrain)
   }
-  if (hasMonsterUMod(rawMods, MON_UMOD.SPECTRALHIT)) {
+  if (!isMinionAttacker && hasMonsterUMod(rawMods, MON_UMOD.SPECTRALHIT)) {
     const spectralElements = ['fire', 'lightning', 'cold', 'poison', 'magic'] as const
     const elem = spectralElements[Math.abs((world.tick >>> 0) + (monster.index >>> 0)) % spectralElements.length]!
     const spectralBonus = Math.max(2, Math.floor(dmg * 0.66))
@@ -1601,7 +1622,8 @@ export function tickMonsters(
     }
 
     const rawMods = collectRawMonsterMods(monster)
-    if (hasMonsterUMod(rawMods, MON_UMOD.AURA)) {
+    const isMinionStep = isMinionMonster113c(monster)
+    if (!isMinionStep && hasMonsterUMod(rawMods, MON_UMOD.AURA)) {
       const mlvl = Math.max(1, monster.stats?.level ?? 1)
       const eligibleAuras = AURA_ENCHANTED_TABLE_113C.filter((entry) => mlvl >= entry.minMlvl)
       const auraPool = eligibleAuras.length > 0 ? eligibleAuras.map((e) => e.name) : AURA_ENCHANTED_PALADIN_AURAS
@@ -1627,6 +1649,7 @@ export function tickMonsters(
       }
     }
     if (
+      !isMinionStep &&
       hasMonsterUMod(rawMods, MON_UMOD.TELEPORT) &&
       monster.hp < monster.stats.hp * 0.33 &&
       (monster.aiCooldownTicks ?? 0) === 0
@@ -2388,7 +2411,7 @@ export function tickMonsters(
           (hcIdx >= 0 ? getMonsterModeMissile113c(hcIdx, 'A1') : undefined) ??
           getMonsterModeMissile113c(monster.stats.id, 'A1') ??
           'trapfirebolt'
-        const fanCount = hasMonsterUMod(rawMods, MON_UMOD.MULTISHOT) ? 3 : 1
+        const fanCount = !isMinionStep && hasMonsterUMod(rawMods, MON_UMOD.MULTISHOT) ? 3 : 1
         for (let mIdx = 0; mIdx < fanCount; mIdx += 1) {
           world.events.push({
             kind: 'missileHit',
@@ -2416,7 +2439,7 @@ export function tickMonsters(
         getMonsterModeMissile113c(monster.stats.id, 'A1') ??
         monster.stats.modeMissiles?.A1 ??
         'arrow'
-      const fanCount = hasMonsterUMod(rawMods, MON_UMOD.MULTISHOT) ? 3 : 1
+      const fanCount = !isMinionStep && hasMonsterUMod(rawMods, MON_UMOD.MULTISHOT) ? 3 : 1
       if (distance < kiteDangerPx) {
         monster.facing = facingOf(-dx, -dy)
         stepMonsterVector(monster, -dx, -dy, distance || 1, terrain, rawMods, 1)
@@ -2468,7 +2491,7 @@ export function tickMonsters(
     }
 
     // --- Standard Melee Attack & Chase (R2.1) ---
-    if (distance <= monster.stats.reach || (hasMonsterUMod(rawMods, MON_UMOD.MULTISHOT) && distance <= Math.max(220, sightRadius * 0.85))) {
+    if (distance <= monster.stats.reach || (!isMinionStep && hasMonsterUMod(rawMods, MON_UMOD.MULTISHOT) && distance <= Math.max(220, sightRadius * 0.85))) {
       monster.state = 'attack'
       monster.animMode = (world.tick + monster.index) % 2 === 0 || !monster.stats.attack2 ? 'a1' : 'a2'
       if (monster.cooldown === 0) {
@@ -2483,7 +2506,7 @@ export function tickMonsters(
         ) {
           monster.frenzyStacks = Math.min(8, (monster.frenzyStacks ?? 0) + 1)
         }
-        const hasMultishot = hasMonsterUMod(rawMods, MON_UMOD.MULTISHOT)
+        const hasMultishot = !isMinionStep && hasMonsterUMod(rawMods, MON_UMOD.MULTISHOT)
         if (hasMultishot) {
           const missileKey =
             (hcIdx >= 0 ? getMonsterModeMissile113c(hcIdx, 'A1') : undefined) ??
@@ -2705,13 +2728,17 @@ export function executeShamanResurrect113c(
   const isMummy =
     shamanAi === 'GreaterMummy' ||
     shamanAi === 'Unraveler' ||
+    shamanHc === 229 ||
     (shamanHc >= 101 && shamanHc <= 105) ||
     (shamanHc >= 284 && shamanHc <= 288) ||
-    /unraveler|greatermummy|horadrim/i.test(shamanId)
+    (shamanHc >= 667 && shamanHc <= 670) ||
+    /unraveler|greatermummy|horadrim|radament/i.test(shamanId)
   const isFetishShaman =
     !isMummy &&
     (shamanAi === 'FetishShaman' ||
       (shamanHc >= 136 && shamanHc <= 140) ||
+      (shamanHc >= 278 && shamanHc <= 282) ||
+      (shamanHc >= 662 && shamanHc <= 664) ||
       /fetishshaman/i.test(shamanId))
 
   let bestCorpse: Monster | null = null
@@ -3138,15 +3165,25 @@ export function executeActBossAi113c(
       const pick = durielSkills[stepIdx % durielSkills.length]!
       skillId = pick.id
       skillName = pick.name
-    } else if (hcIdx === 242 || idLower.includes('mephisto')) {
-      const mephSkills = [
-        { id: 'lightning', name: 'Lightning' },
-        { id: 'chargedbolt', name: 'ChargedBolt' },
-        { id: 'skullmissile', name: 'SkullMissile' },
-        { id: 'frostnova', name: 'FrostNova' },
-        { id: 'blizzard', name: 'Blizzard' },
-        { id: 'poisonnova', name: 'PoisonNova' },
-      ] as const
+    } else if (hcIdx === 242 || hcIdx === 704 || idLower.includes('mephisto')) {
+      // 1.13c `D2Game.dll` `AITHINK_Fn050_Mephisto` (`0x6FCA5ED1` & `0x6FCA5F1C`, #2008):
+      // Normal `#242` never casts `#346 MephFrostNova` or `#59 Blizzard` unless Nightmare/Hell or `#704 ubermephisto`.
+      const mephSkills =
+        isNmOrHell || hcIdx === 704 || idLower.includes('ubermephisto')
+          ? ([
+              { id: 'lightning', name: 'Lightning' },
+              { id: 'chargedbolt', name: 'ChargedBolt' },
+              { id: 'skullmissile', name: 'SkullMissile' },
+              { id: 'frostnova', name: 'FrostNova' },
+              { id: 'blizzard', name: 'Blizzard' },
+              { id: 'poisonnova', name: 'PoisonNova' },
+            ] as const)
+          : ([
+              { id: 'lightning', name: 'Lightning' },
+              { id: 'chargedbolt', name: 'ChargedBolt' },
+              { id: 'skullmissile', name: 'SkullMissile' },
+              { id: 'poisonnova', name: 'PoisonNova' },
+            ] as const)
       const pick = mephSkills[stepIdx % mephSkills.length]!
       skillId = pick.id
       skillName = pick.name
@@ -3556,7 +3593,7 @@ export function triggerMonsterDeathAffixes113c(
   }
 
   if (
-    hasMonsterUMod(rawMods, MON_UMOD.LIGHTNING) ||
+    (hasMonsterUMod(rawMods, MON_UMOD.LIGHTNING) && !isMinion) ||
     hasMonsterUMod(rawMods, MON_UMOD.SCARAB) ||
     isScarabMonster(hcIdx, monId)
   ) {

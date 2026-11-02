@@ -2,12 +2,14 @@
  * GameInstance Subsystem: Monster Combat/Summon Skill AI, Baal Throne Waves, Submerge AI & stepMonsterAi (`src/server/engine/game-instance/monster-combat-ai.ts`).
  */
 
+import { compute5BandScaling } from '../../../common/data/calc-ast.ts'
 import { MONMODE_KNOCKBACK } from '../../../common/path/types.ts'
 import { QUEST_FLAG_STARTED_113C } from '../quests-113c.ts'
-import { isBaalTentacleHcIdx113c, isBonePrisonMonsterHcIdx113c, isFrogDemonHcIdx113c, isTentacleHcIdx113c, isTentacleHeadHcIdx113c, monaiParam113c } from '../../../common/units/monai-113c.ts'
+import { isBaalTentacleHcIdx113c, isBonePrisonMonsterHcIdx113c, isFrogDemonHcIdx113c, isNonMeleeMonsterAi113c, isPassiveMonsterAi113c, isTentacleHcIdx113c, isTentacleHeadHcIdx113c, monaiParam113c, normalizeMonAiName113c } from '../../../common/units/monai-113c.ts'
 import { MON_UMOD } from '../../../common/units/monster-death-fx.ts'
 import type { MonsterSkillEntry } from '../../../common/units/unit-types.ts'
 import { BAAL_THRONE_WAVES_113C } from '../../ai/monster-ai.ts'
+import { computeMissileElementalLength113c, evaluateMonsterMissileDamage113c, resolveMonsterModeMissileSlvl113c, resolveMonsterRegisteredSkillSlvl113c } from '../../ai/monster-missile-damage-113c.ts'
 import type { SummonedPetUnit } from '../../ai/summon-manager.ts'
 import { FIXED_ONE } from '../stat-list.ts'
 import type { GameInstanceHost } from './host.ts'
@@ -76,10 +78,11 @@ function tryCastMonsterCombatOrSummonSkill113c(this: GameInstanceHost,
     }
   }
 
+  const monsterDiffIdx: 0 | 1 | 2 = this.difficulty === 2 ? 2 : this.difficulty === 1 ? 1 : 0
   for (const entry of scanOrder) {
     const sid = entry.skillId
     if (sid === undefined) continue
-    const slvl = Math.max(1, entry.level)
+    const slvl = Math.max(1, resolveMonsterRegisteredSkillSlvl113c(entry.level, monsterDiffIdx) || entry.level)
     const mode = this.monsterSkillMode(entry.mode)
 
     // Self-armor buffs (`#60 Chilling Armor` -> state 20, `#210 MonBoneArmor` -> state 14).
@@ -99,16 +102,33 @@ function tryCastMonsterCombatOrSummonSkill113c(this: GameInstanceHost,
       return true
     }
 
-    // `#337 HydraMissile` (`hydra1..3` #351..353 stationary turret firebolt -> `#247 hydra`).
+    // `#337 HydraMissile` (`hydra1..3` #351..353 stationary turret firebolt -> `Missiles.txt #247 hydra`, linked `Skill = Hydra` #62, #2001).
     if (sid === 337 && distance <= 24) {
       monster.skillCursor = (monster.skillCursor + 1) % Math.max(1, ordered.length)
       this.emitBossSkillCast113c(monster, 337, slvl, 4, target.x, target.y)
       const ownerBoss =
         monster.bossUnitId !== undefined ? this.monsters.get(monster.bossUnitId) : undefined
       const extraFirePct = ownerBoss?.monProps.extraFirePct ?? monster.monProps.extraFirePct
-      const rawFireDmg = this.rollInclusive(14, 22) + 6 * Math.max(0, slvl - 1) + 12 * this.difficulty
-      const fireDmg =
-        extraFirePct > 0 ? Math.max(1, Math.floor((rawFireDmg * (100 + extraFirePct)) / 100)) : rawFireDmg
+      const hydraMissileRec = this.registry.getMissileById(247) ?? this.registry.getMissileByName('hydra')
+      let fireDmg: number
+      if (hydraMissileRec !== undefined) {
+        const evalBolt = evaluateMonsterMissileDamage113c({
+          registry: this.registry,
+          missile: hydraMissileRec,
+          slvl,
+          difficulty: monsterDiffIdx,
+          monsterMinPhys: monster.minDmg,
+          monsterMaxPhys: monster.maxDmg,
+          attackMode: 'A1',
+          extraFirePct,
+          rng: this.rng,
+        })
+        fireDmg = Math.max(1, evalBolt.elemDamage || evalBolt.totalDamage)
+      } else {
+        const rawFireDmg = Math.max(1, Math.floor((28 + 11 * Math.max(0, slvl - 1)) / 2))
+        fireDmg =
+          extraFirePct > 0 ? Math.max(1, Math.floor((rawFireDmg * (100 + extraFirePct)) / 100)) : rawFireDmg
+      }
       this.emitBossProjectile113c(monster, {
         missileId: 247,
         skillId: 337,
@@ -130,14 +150,36 @@ function tryCastMonsterCombatOrSummonSkill113c(this: GameInstanceHost,
       return true
     }
 
-    // `#203 DesertTurret` (`#372 firetower`, `#348..350 turret1..3`) & `#204 ArcaneTower` (`#371 lightningspire`, `#1892`).
+    // `#203 DesertTurret` (`#372 firetower`, `#348..350 turret1..3` -> `#283 desertfireball`) &
+    // `#204 ArcaneTower` (`#371 lightningspire` -> `#643 lightningtowernova`, `#1892`, `#2006`).
     if ((sid === 203 || sid === 204) && distance <= 22) {
+      const diffIdx: 0 | 1 | 2 = this.difficulty === 2 ? 2 : this.difficulty === 1 ? 1 : 0
       monster.skillCursor = (monster.skillCursor + 1) % Math.max(1, ordered.length)
       this.emitBossSkillCast113c(monster, sid, slvl, 4, target.x, target.y)
       if (sid === 203) {
-        const fireDmg = this.rollInclusive(12, 24) + 7 * Math.max(0, slvl - 1) + 16 * this.difficulty
+        const fireRec =
+          this.registry.getMissileByName('desertfireball') ?? this.registry.getMissileById(283)
+        const fireEval =
+          fireRec !== undefined
+            ? evaluateMonsterMissileDamage113c({
+                registry: this.registry,
+                missile: fireRec,
+                slvl,
+                difficulty: diffIdx,
+                monsterMinPhys: 0,
+                monsterMaxPhys: 0,
+                extraFirePct: monster.monProps.extraFirePct,
+                rng: this.rng,
+              })
+            : undefined
+        const fbMin = 6 + 10 * Math.max(0, slvl - 1)
+        const fbMax = Math.max(fbMin, 9 + 11 * Math.max(0, slvl - 1))
+        const fireDmg =
+          fireEval !== undefined && fireEval.elemDamage > 0
+            ? fireEval.elemDamage
+            : this.rollInclusive(fbMin, fbMax)
         this.emitBossProjectile113c(monster, {
-          missileId: 247,
+          missileId: fireRec?.id ?? 283,
           skillId: 203,
           slvl,
           originX: monster.x,
@@ -150,17 +192,37 @@ function tryCastMonsterCombatOrSummonSkill113c(this: GameInstanceHost,
           element: 'fire',
           physDamage: 0,
           elemDamage: fireDmg,
+          elemDurationFrames: fireEval?.elemDurationFrames ?? 600,
           hitMonsters,
         })
         monster.skillCooldown = 15
         monster.cooldown = Math.max(monster.cooldown, 12)
       } else {
         const ltngRec =
+          this.registry.getMissileByName('lightningtowernova') ??
+          this.registry.getMissileById(643) ??
           this.registry.getMissileByName('arcanelightningbolt') ??
           this.registry.getMissileByName('lightning')
-        const ltngDmg = this.rollInclusive(8, 38) + 10 * Math.max(0, slvl - 1) + 22 * this.difficulty
+        const ltngEval =
+          ltngRec !== undefined
+            ? evaluateMonsterMissileDamage113c({
+                registry: this.registry,
+                missile: ltngRec,
+                slvl,
+                difficulty: diffIdx,
+                monsterMinPhys: 0,
+                monsterMaxPhys: 0,
+                rng: this.rng,
+              })
+            : undefined
+        const ltMin = 12 + 12 * Math.max(0, slvl - 1)
+        const ltMax = Math.max(ltMin, 14 + 14 * Math.max(0, slvl - 1))
+        const ltngDmg =
+          ltngEval !== undefined && ltngEval.elemDamage > 0
+            ? ltngEval.elemDamage
+            : this.rollInclusive(ltMin, ltMax)
         this.emitBossProjectile113c(monster, {
-          missileId: ltngRec?.id ?? 63,
+          missileId: ltngRec?.id ?? 643,
           skillId: 204,
           slvl,
           originX: monster.x,
@@ -193,6 +255,9 @@ function tryCastMonsterCombatOrSummonSkill113c(this: GameInstanceHost,
         if (
           ally.dead ||
           ally.isNpc ||
+          ally.align !== monster.align ||
+          !ally.isKillable ||
+          this.isMonsterConverted(ally) ||
           ally.isBoss ||
           ally.isPrimeEvil ||
           ally.unitId === monster.unitId ||
@@ -223,21 +288,39 @@ function tryCastMonsterCombatOrSummonSkill113c(this: GameInstanceHost,
       }
     }
 
-    // `#214 RegurgitatorEat` & `#213 CorpseSpit` (`regurgitator1..4` `hcIdx 307..309, 694`, `#1895`):
+    // `#214 RegurgitatorEat` & `#213 CorpseSpit` (`regurgitator1..4` `hcIdx 307..309, 694`, `#1895`, `#2006`):
     // Eats nearby intact non-boss corpses (permanently consuming them + healing 35% maxHp + loading `corpseAmmo`)
-    // and spits `regurgitatorcorpse` (`MissA2`) at hostiles!
+    // and spits `regurgitatorcorpse` (`#341`, `MissA2`: `HitShift = 8, MinDmg = 25..55 + 15/lvl`, pure physical) at hostiles!
     if ((sid === 214 || sid === 213) && !hitMonsters) {
       if (monster.corpseAmmo > 0 && distance <= 18) {
+        const diffIdx: 0 | 1 | 2 = this.difficulty === 2 ? 2 : this.difficulty === 1 ? 1 : 0
         monster.corpseAmmo -= 1
         monster.skillCursor = (monster.skillCursor + 1) % Math.max(1, ordered.length)
         this.emitBossSkillCast113c(monster, 213, slvl, 5, target.x, target.y)
         const spitRec =
           (monster.modeMissiles?.A2 ? this.registry.getMissileByName(monster.modeMissiles.A2) : undefined) ??
-          this.registry.getMissileByName('regurgitatorcorpse')
-        const spitPhys = Math.max(8, this.rollInclusive(monster.minDmg, monster.maxDmg))
-        const spitPois = 18 + 10 * slvl + 20 * this.difficulty
+          this.registry.getMissileByName('regurgitatorcorpse') ??
+          this.registry.getMissileById(341)
+        const spitEval =
+          spitRec !== undefined
+            ? evaluateMonsterMissileDamage113c({
+                registry: this.registry,
+                missile: spitRec,
+                slvl,
+                difficulty: diffIdx,
+                monsterMinPhys: 0,
+                monsterMaxPhys: 0,
+                rng: this.rng,
+              })
+            : undefined
+        const spMin = 25 + 15 * Math.max(0, slvl - 1)
+        const spMax = Math.max(spMin, 55 + 15 * Math.max(0, slvl - 1))
+        const spitPhys =
+          spitEval !== undefined && spitEval.physDamage > 0
+            ? spitEval.physDamage
+            : this.rollInclusive(spMin, spMax)
         this.emitBossProjectile113c(monster, {
-          missileId: spitRec?.id ?? 232,
+          missileId: spitRec?.id ?? 341,
           skillId: 213,
           slvl,
           originX: monster.x,
@@ -247,9 +330,10 @@ function tryCastMonsterCombatOrSummonSkill113c(this: GameInstanceHost,
           speedSubTilesPerFrame: 18 / 16,
           rangeFrames: 26,
           size: 2,
-          element: 'pois',
+          element: spitEval?.element ?? 'phys',
           physDamage: spitPhys,
-          elemDamage: spitPois,
+          elemDamage: spitEval?.elemDamage ?? 0,
+          elemDurationFrames: spitEval?.elemDurationFrames ?? 0,
         })
         monster.skillCooldown = 25
         monster.cooldown = Math.max(monster.cooldown, monster.cooldownTicks)
@@ -312,12 +396,28 @@ function tryCastMonsterCombatOrSummonSkill113c(this: GameInstanceHost,
       }
     }
 
-    // `#62 Hydra` (Council `#345..347`, Bartuc `#557`): summon `hydra1` (#351, `0` XP, 250-frame lifespan, cap 3).
-    if (sid === 62 && !hitMonsters && distance <= 22) {
-      const activeHydras = [...this.monsters.values()].filter(
-        (m) => !m.dead && m.bossUnitId === monster.unitId && m.hcIdx >= 351 && m.hcIdx <= 353,
-      ).length
-      if (activeHydras < 3) {
+    // `#62 Hydra` (`HighPriest` Council `#345..347`, Bartuc `#557`): summon `hydra1` (#351, `0` XP, 250-frame lifespan, cap 3).
+    // `D2Game.dll` `0x6FC390BB` & `0x6FC39234..0x6FC392EA` (#2001, #2004):
+    // - `HighPriest` only casts `#62 Hydra` when `bInMeleeRange == 0` (`distance > meleeCutoff`),
+    //   `distance < aip8` (`30` subtiles via `WORD PTR [ebx+edx*2+0x80]` at `0x6FC39255`), and
+    //   `rand(100) < aip4` (`40..50%`, `0x6FC3926E`), setting `dwSpellTimer = dwGameFrame + 100` (`0x64` frames, `0x6FC392DF`).
+    if (sid === 62 && !hitMonsters) {
+      const isHighPriest = monster.ai === 'HighPriest'
+      const meleeCutoff = Math.max(2.5, monster.meleeRange + 1.5)
+      const maxHydraDist = isHighPriest ? monster.aiParams[7] || 30 : 22
+      const hydraDistanceOk = isHighPriest
+        ? distance > meleeCutoff && distance < maxHydraDist
+        : distance <= maxHydraDist
+      const activeHydras = hydraDistanceOk
+        ? [...this.monsters.values()].filter(
+            (m) => !m.dead && m.bossUnitId === monster.unitId && m.hcIdx >= 351 && m.hcIdx <= 353,
+          ).length
+        : 3
+      if (
+        hydraDistanceOk &&
+        activeHydras < 3 &&
+        (!isHighPriest || this.rng.rand(100) < (monster.aiParams[3] || 40))
+      ) {
         const ang = (this.rng.rand(360) * Math.PI) / 180
         const hx = target.x + Math.cos(ang) * 2.5
         const hy = target.y + Math.sin(ang) * 2.5
@@ -341,17 +441,18 @@ function tryCastMonsterCombatOrSummonSkill113c(this: GameInstanceHost,
             velocity: 0,
             runSpeed: 0,
             bossUnitId: monster.unitId,
+            align: monster.align,
           })
           const hRec = this.monsters.get(hId)
           if (hRec !== undefined) {
             hRec.despawnAtFrame = this.currentFrame + 250
-            if (!hRec.skills.some((s) => s.skillId === 337)) {
-              ;(hRec as { skills: readonly MonsterSkillEntry[] }).skills = [
-                { slot: 1, skill: 'HydraMissile', skillId: 337, mode: 'A1', level: slvl },
-              ]
-            }
+            // Store base `entry.level` (`Sk1lvl`) so line 84 (`resolveMonsterRegisteredSkillSlvl113c`)
+            // applies difficulty `MonsterSkillBonus` (`[0, 3, 7]`) exactly once (`0x6FC63F1C`, #2001).
+            ;(hRec as { skills: readonly MonsterSkillEntry[] }).skills = [
+              { slot: 1, skill: 'HydraMissile', skillId: 337, mode: 'A1', level: entry.level },
+            ]
           }
-          monster.skillCooldown = 50
+          monster.skillCooldown = isHighPriest ? 100 : 50
           monster.cooldown = Math.max(monster.cooldown, monster.cooldownTicks)
           return true
         }
@@ -705,10 +806,35 @@ function tryCastMonsterCombatOrSummonSkill113c(this: GameInstanceHost,
       }
     }
 
-    // `#44 Frost Nova` (`#256 izual`, `#706 uberizual`: 16-bolt radial `#119 frostnova` ring + cold/chill AoE).
+    // `#44 Frost Nova` (`SKILLS_SrvDo022_NovaAttack` `0x6FC63AA0` -> `0x6FCC2800`, `#256 izual`, `#250 summoner`, `#706 uberizual`, `#2006`):
+    // Spawns radial `#119 frostnova` bolts (`nextHit = 1, nextDelay = 4`, `HitShift = 7`, `ELen = 200 + 25*(slvl-1)`) ONLY —
+    // never a second synchronous direct-hit AoE loop!
     if (sid === 44 && !hitMonsters && distance <= 10) {
+      const diffIdx: 0 | 1 | 2 = this.difficulty === 2 ? 2 : this.difficulty === 1 ? 1 : 0
       this.emitBossSkillCast113c(monster, 44, slvl, mode, monster.x, monster.y)
-      const coldDmg = this.rollInclusive(18, 32) + 8 * slvl + 16 * this.difficulty
+      const novaRec = this.registry.getMissileById(119)
+      const novaEval =
+        novaRec !== undefined
+          ? evaluateMonsterMissileDamage113c({
+              registry: this.registry,
+              missile: novaRec,
+              slvl,
+              difficulty: diffIdx,
+              monsterMinPhys: 0,
+              monsterMaxPhys: 0,
+              rng: this.rng,
+            })
+          : undefined
+      const fbMin = Math.max(1, (compute5BandScaling(slvl, 4, 4, 6, 8, 10, 12) << 7) >> 8)
+      const fbMax = Math.max(fbMin, (compute5BandScaling(slvl, 8, 5, 7, 9, 11, 13) << 7) >> 8)
+      const coldDmg =
+        novaEval !== undefined && novaEval.elemDamage > 0
+          ? novaEval.elemDamage
+          : this.rollInclusive(fbMin, fbMax)
+      const chillFrames =
+        novaEval !== undefined && novaEval.elemDurationFrames > 0
+          ? novaEval.elemDurationFrames
+          : 200 + 25 * Math.max(0, slvl - 1)
       for (let i = 0; i < 16; i++) {
         const theta = (i / 16) * Math.PI * 2
         this.emitBossProjectile113c(monster, {
@@ -717,9 +843,9 @@ function tryCastMonsterCombatOrSummonSkill113c(this: GameInstanceHost,
           slvl,
           originX: monster.x,
           originY: monster.y,
-          targetX: monster.x + Math.cos(theta) * 10,
-          targetY: monster.y + Math.sin(theta) * 10,
-          speedSubTilesPerFrame: 18 / 16,
+          targetX: monster.x + Math.cos(theta) * 12,
+          targetY: monster.y + Math.sin(theta) * 12,
+          speedSubTilesPerFrame: 20 / 16,
           rangeFrames: 14,
           size: 2,
           pierce: true,
@@ -728,17 +854,8 @@ function tryCastMonsterCombatOrSummonSkill113c(this: GameInstanceHost,
           element: 'cold',
           physDamage: 0,
           elemDamage: coldDmg,
+          elemDurationFrames: chillFrames,
         })
-      }
-      for (const h of this.listHostilesInMonsterArea113c(monster)) {
-        if (Math.hypot(h.x - monster.x, h.y - monster.y) <= 9) {
-          this.dealMonsterDirectHitToHostile113c(
-            monster,
-            h,
-            { cold: coldDmg },
-            { chillFrames: 175 + 25 * Math.max(0, slvl - 1) },
-          )
-        }
       }
       monster.skillCursor = (monster.skillCursor + 1) % Math.max(1, ordered.length)
       monster.skillCooldown = 30
@@ -750,7 +867,29 @@ function tryCastMonsterCombatOrSummonSkill113c(this: GameInstanceHost,
     if (sid === 164 && !hitMonsters && distance <= 20) {
       this.emitBossSkillCast113c(monster, 164, slvl, mode, target.x, target.y)
       const baseAngle = Math.atan2(target.y - monster.y, target.x - monster.x)
-      const poisDmg = this.rollInclusive(22, 42) + 12 * slvl + 24 * this.difficulty
+      const sprayRec = this.registry.getMissileById(32)
+      const diffIdx: 0 | 1 | 2 = this.difficulty === 2 ? 2 : this.difficulty === 1 ? 1 : 0
+      const sprayEval =
+        sprayRec !== undefined
+          ? evaluateMonsterMissileDamage113c({
+              registry: this.registry,
+              missile: sprayRec,
+              slvl,
+              difficulty: diffIdx,
+              monsterMinPhys: 0,
+              monsterMaxPhys: 0,
+              rng: this.rng,
+            })
+          : undefined
+      const sprayPhys = sprayEval?.physDamage ?? 0
+      const poisDmg =
+        sprayEval !== undefined && sprayEval.elemDamage > 0
+          ? sprayEval.elemDamage
+          : this.rollInclusive(22, 42) + 12 * slvl + 24 * this.difficulty
+      const sprayDur =
+        sprayEval !== undefined && sprayEval.elemDurationFrames > 0
+          ? sprayEval.elemDurationFrames
+          : (sprayRec !== undefined ? computeMissileElementalLength113c(sprayRec, slvl) : 0) || 400
       for (let b = -4; b <= 4; b++) {
         const ang = baseAngle + b * 0.14
         this.emitBossProjectile113c(monster, {
@@ -768,8 +907,9 @@ function tryCastMonsterCombatOrSummonSkill113c(this: GameInstanceHost,
           nextHit: true,
           nextDelay: 4,
           element: 'pois',
-          physDamage: 0,
+          physDamage: sprayPhys,
           elemDamage: poisDmg,
+          elemDurationFrames: sprayDur,
         })
       }
       monster.skillCursor = (monster.skillCursor + 1) % Math.max(1, ordered.length)
@@ -778,10 +918,85 @@ function tryCastMonsterCombatOrSummonSkill113c(this: GameInstanceHost,
       return true
     }
 
+    // `#192 PrimePoisonNova` (`SrvDo099`: 16-bolt radial ring of `#220 primepoisoncloud`, `ELen = 300` frames).
+    if (sid === 192 && !hitMonsters && distance <= 18) {
+      this.emitBossSkillCast113c(monster, 192, slvl, mode, monster.x, monster.y)
+      const cloudRec = this.registry.getMissileById(220) ?? this.registry.getMissileById(118)
+      const diffIdx: 0 | 1 | 2 = this.difficulty === 2 ? 2 : this.difficulty === 1 ? 1 : 0
+      const cloudEval =
+        cloudRec !== undefined
+          ? evaluateMonsterMissileDamage113c({
+              registry: this.registry,
+              missile: cloudRec,
+              slvl,
+              difficulty: diffIdx,
+              monsterMinPhys: 0,
+              monsterMaxPhys: 0,
+              rng: this.rng,
+            })
+          : undefined
+      const poisDmg =
+        cloudEval !== undefined && cloudEval.elemDamage > 0
+          ? cloudEval.elemDamage
+          : 12 + 8 * slvl + 16 * this.difficulty
+      const cloudDur =
+        cloudEval !== undefined && cloudEval.elemDurationFrames > 0
+          ? cloudEval.elemDurationFrames
+          : 300
+      for (let i = 0; i < 16; i++) {
+        const theta = (i / 16) * Math.PI * 2
+        this.emitBossProjectile113c(monster, {
+          missileId: cloudRec?.id ?? 220,
+          skillId: 192,
+          slvl,
+          originX: monster.x,
+          originY: monster.y,
+          targetX: monster.x + Math.cos(theta) * 18,
+          targetY: monster.y + Math.sin(theta) * 18,
+          speedSubTilesPerFrame: 16 / 16,
+          rangeFrames: 26,
+          size: 2,
+          pierce: true,
+          nextHit: true,
+          nextDelay: 4,
+          element: 'pois',
+          physDamage: 0,
+          elemDamage: poisDmg,
+          elemDurationFrames: cloudDur,
+        })
+      }
+      monster.skillCursor = (monster.skillCursor + 1) % Math.max(1, ordered.length)
+      monster.skillCooldown = 30
+      monster.cooldown = Math.max(monster.cooldown, monster.cooldownTicks)
+      return true
+    }
+
     // `#201 AndyPoisonBolt` (`#156 andariel`, `#707 uberandariel` Lilith: `#203 andypoisonbolt` long-range poison projectile).
     if (sid === 201 && !hitMonsters && distance <= 24) {
       this.emitBossSkillCast113c(monster, 201, slvl, mode, target.x, target.y)
-      const poisDmg = this.rollInclusive(28, 52) + 14 * slvl + 28 * this.difficulty
+      const boltRec = this.registry.getMissileById(203)
+      const diffIdx: 0 | 1 | 2 = this.difficulty === 2 ? 2 : this.difficulty === 1 ? 1 : 0
+      const boltEval =
+        boltRec !== undefined
+          ? evaluateMonsterMissileDamage113c({
+              registry: this.registry,
+              missile: boltRec,
+              slvl,
+              difficulty: diffIdx,
+              monsterMinPhys: 0,
+              monsterMaxPhys: 0,
+              rng: this.rng,
+            })
+          : undefined
+      const boltPhys = boltEval?.physDamage ?? 0
+      const poisDmg =
+        boltEval !== undefined && boltEval.elemDamage > 0
+          ? boltEval.elemDamage
+          : this.rollInclusive(28, 52) + 14 * slvl + 28 * this.difficulty
+      const boltDur =
+        boltEval !== undefined && boltEval.elemDurationFrames > 0
+          ? boltEval.elemDurationFrames
+          : (boltRec !== undefined ? computeMissileElementalLength113c(boltRec, slvl) : 0) || 800
       this.emitBossProjectile113c(monster, {
         missileId: 203,
         skillId: 201,
@@ -794,8 +1009,9 @@ function tryCastMonsterCombatOrSummonSkill113c(this: GameInstanceHost,
         rangeFrames: 34,
         size: 2,
         element: 'pois',
-        physDamage: 0,
+        physDamage: boltPhys,
         elemDamage: poisDmg,
+        elemDurationFrames: boltDur,
       })
       monster.skillCursor = (monster.skillCursor + 1) % Math.max(1, ordered.length)
       monster.skillCooldown = 22
@@ -853,17 +1069,25 @@ function tryCastMonsterCombatOrSummonSkill113c(this: GameInstanceHost,
           areaId: monster.areaId,
         })
         if (resolvedHostile !== undefined && Math.hypot(target.x - monster.x, target.y - monster.y) <= 3.5) {
-          const chargeMult = 1 + (100 + 25 * Math.max(0, slvl - 1)) / 100
-          const chargeDmg = Math.max(
-            6,
-            Math.round(this.rollInclusive(monster.minDmg, monster.maxDmg) * chargeMult),
-          )
-          this.dealMonsterDirectHitToHostile113c(
-            monster,
-            resolvedHostile,
-            { phys: chargeDmg },
-            { knockbackSteps: 3 },
-          )
+          const baseMin =
+            monster.minDmg > 0
+              ? monster.minDmg
+              : monster.special1MinDmg || monster.attack2MinDmg || 4
+          const baseMax =
+            monster.maxDmg > 0
+              ? monster.maxDmg
+              : Math.max(baseMin, monster.special1MaxDmg || monster.attack2MaxDmg || 6)
+          const chargeMult =
+            sid === 352 ? 1 : 1 + (100 + 25 * Math.max(0, slvl - 1)) / 100
+          const chargeMin = Math.max(6, Math.round(baseMin * chargeMult))
+          const chargeMax = Math.max(chargeMin, Math.round(baseMax * chargeMult))
+          this.executeMonsterMeleeSkillStrike113c(monster, resolvedHostile, {
+            skillId: sid,
+            minDmg: chargeMin,
+            maxDmg: chargeMax,
+            arBonusPct: 50 + 15 * Math.max(0, slvl - 1),
+            knockbackSteps: 3,
+          })
         }
         monster.skillCursor = (monster.skillCursor + 1) % Math.max(1, ordered.length)
         monster.skillCooldown = 45
@@ -872,18 +1096,22 @@ function tryCastMonsterCombatOrSummonSkill113c(this: GameInstanceHost,
       }
     }
 
-    // Melee-range non-missile combat skills (`distance <= 3.5`).
+    // Melee-range non-missile combat skills (`distance <= 3.5`, #1994 1.13c ToHit & Block parity).
     if (!hitMonsters && resolvedHostile !== undefined && distance <= 3.5) {
-      // `#10 Jab` (Duriel `#211`, Uber Duriel `#708`, Scarab, CorruptLancer): 3 rapid physical strikes!
+      // `#10 Jab` (Duriel `#211`, Uber Duriel `#708`, Scarab, CorruptLancer): 3 rapid physical strikes (`ToHit = 10 + 9*(slvl-1)`).
       if (sid === 10) {
         this.emitBossSkillCast113c(monster, 10, slvl, 4, target.x, target.y)
         const jabMult = Math.max(0.85, 1 + (-15 + 3 * Math.max(0, slvl - 1)) / 100)
+        const jabMin = Math.max(2, Math.round(monster.minDmg * jabMult))
+        const jabMax = Math.max(jabMin, Math.round(monster.maxDmg * jabMult))
+        const jabArBonusPct = 10 + 9 * Math.max(0, slvl - 1)
         for (let strike = 0; strike < 3; strike++) {
-          const strikeDmg = Math.max(
-            2,
-            Math.round(this.rollInclusive(monster.minDmg, monster.maxDmg) * jabMult),
-          )
-          this.dealMonsterDirectHitToHostile113c(monster, resolvedHostile, { phys: strikeDmg })
+          this.executeMonsterMeleeSkillStrike113c(monster, resolvedHostile, {
+            skillId: 10,
+            minDmg: jabMin,
+            maxDmg: jabMax,
+            arBonusPct: jabArBonusPct,
+          })
         }
         monster.skillCursor = (monster.skillCursor + 1) % Math.max(1, ordered.length)
         monster.skillCooldown = 22
@@ -891,42 +1119,55 @@ function tryCastMonsterCombatOrSummonSkill113c(this: GameInstanceHost,
         return true
       }
 
-      // `#97 Smite` (Duriel `#211`, Uber Duriel `#708`, Lister `#571`, Blunderbore, Overseer): auto-hit + Knockback + Stun (`state 21`).
+      // `#97 Smite` (Duriel `#211`, Uber Duriel `#708`, Lister `#571`, Blunderbore, Overseer): auto-hit + unblockable + Knockback + Stun (`state 21`).
       if (sid === 97) {
         this.emitBossSkillCast113c(monster, 97, slvl, 5, target.x, target.y)
-        const smiteDmg = Math.max(
-          4,
-          Math.round(this.rollInclusive(monster.minDmg, monster.maxDmg) * (1 + (15 * slvl) / 100)),
-        )
+        const smiteMult = 1 + (15 * slvl) / 100
+        const smiteMin = Math.max(4, Math.round(monster.minDmg * smiteMult))
+        const smiteMax = Math.max(smiteMin, Math.round(monster.maxDmg * smiteMult))
         const stunFrames = Math.min(250, 15 + 15 * slvl)
-        this.dealMonsterDirectHitToHostile113c(
-          monster,
-          resolvedHostile,
-          { phys: smiteDmg },
-          { stunFrames, knockbackSteps: 3 },
-        )
+        this.executeMonsterMeleeSkillStrike113c(monster, resolvedHostile, {
+          skillId: 97,
+          minDmg: smiteMin,
+          maxDmg: smiteMax,
+          autoHit: true,
+          unblockable: true,
+          stunFrames,
+          knockbackSteps: 3,
+        })
         monster.skillCursor = (monster.skillCursor + 1) % Math.max(1, ordered.length)
         monster.skillCooldown = 28
         monster.cooldown = Math.max(monster.cooldown, monster.cooldownTicks)
         return true
       }
 
-      // `#126 Bash` (Smith `#402`, Hephasto `#409`) & `#156 Fire Hit` (SandRaider).
+      // `#126 Bash` (Smith `#402`, Hephasto `#409`) & `#156 Fire Hit` (SandRaider `S1` Fire/Cold rider).
       if (sid === 126 || sid === 156) {
         this.emitBossSkillCast113c(monster, sid, slvl, 4, target.x, target.y)
-        const basePhys = Math.max(2, this.rollInclusive(monster.minDmg, monster.maxDmg))
         if (sid === 126) {
-          const bashPhys = Math.round(basePhys * (1 + (50 + 5 * Math.max(0, slvl - 1)) / 100)) + slvl
-          this.dealMonsterDirectHitToHostile113c(
-            monster,
-            resolvedHostile,
-            { phys: bashPhys },
-            { knockbackSteps: 2 },
-          )
+          const bashMult = 1 + (50 + 5 * Math.max(0, slvl - 1)) / 100
+          const bashMin = Math.max(2, Math.round(monster.minDmg * bashMult)) + slvl
+          const bashMax = Math.max(bashMin, Math.round(monster.maxDmg * bashMult) + slvl)
+          this.executeMonsterMeleeSkillStrike113c(monster, resolvedHostile, {
+            skillId: 126,
+            minDmg: bashMin,
+            maxDmg: bashMax,
+            arBonusPct: 15 + 5 * slvl,
+            knockbackSteps: 2,
+          })
         } else {
-          this.dealMonsterDirectHitToHostile113c(monster, resolvedHostile, {
-            phys: basePhys,
-            fire: 6 + 4 * slvl + 8 * this.difficulty,
+          const s1Min =
+            monster.special1MinDmg > 0 ? monster.special1MinDmg : Math.max(2, monster.minDmg)
+          const s1Max =
+            monster.special1MaxDmg > 0
+              ? Math.max(s1Min, monster.special1MaxDmg)
+              : Math.max(s1Min, monster.maxDmg)
+          this.executeMonsterMeleeSkillStrike113c(monster, resolvedHostile, {
+            skillId: 156,
+            skillMode: 'S1',
+            minDmg: s1Min,
+            maxDmg: s1Max,
+            arBonusPct: 20 + 10 * Math.max(0, slvl - 1),
           })
         }
         monster.skillCursor = (monster.skillCursor + 1) % Math.max(1, ordered.length)
@@ -935,16 +1176,20 @@ function tryCastMonsterCombatOrSummonSkill113c(this: GameInstanceHost,
         return true
       }
 
-      // `#301 Siege Beast Stomp`: AoE melee physical slam within 4.0 sub-tiles.
+      // `#301 Siege Beast Stomp` (`ResultFlags = 1`): auto-hit vs Defense, still rolls Shield Block (`unblockable: false`).
       if (sid === 301) {
         this.emitBossSkillCast113c(monster, 301, slvl, 8, target.x, target.y)
+        const stompMin = Math.max(6, Math.round(monster.minDmg * 1.25))
+        const stompMax = Math.max(stompMin, Math.round(monster.maxDmg * 1.25))
         for (const h of this.listHostilesInMonsterArea113c(monster)) {
           if (Math.hypot(h.x - monster.x, h.y - monster.y) <= 4.0) {
-            const stompDmg = Math.max(
-              6,
-              Math.round(this.rollInclusive(monster.minDmg, monster.maxDmg) * 1.25),
-            )
-            this.dealMonsterDirectHitToHostile113c(monster, h, { phys: stompDmg })
+            this.executeMonsterMeleeSkillStrike113c(monster, h, {
+              skillId: 301,
+              minDmg: stompMin,
+              maxDmg: stompMax,
+              autoHit: true,
+              unblockable: false,
+            })
           }
         }
         monster.skillCursor = (monster.skillCursor + 1) % Math.max(1, ordered.length)
@@ -953,17 +1198,22 @@ function tryCastMonsterCombatOrSummonSkill113c(this: GameInstanceHost,
         return true
       }
 
-      // `#215 MonFrenzy` & `#328 BloodLordFrenzy`: self-frenzy attack/move haste (`state 141`).
+      // `#215 MonFrenzy` & `#328 BloodLordFrenzy`: self-frenzy (`state 141`) ONLY when `ResultFlags & 1` hit succeeds (`0x6FCD67EC`).
       if (sid === 215 || sid === 328) {
         this.emitBossSkillCast113c(monster, sid, slvl, 5, target.x, target.y)
-        this.applyMonsterState(monster.unitId, 141, 150)
-        monster.frenzyUntilFrame = this.currentFrame + 150
-        monster.frenzySpeedPct = Math.max(monster.frenzySpeedPct, 35)
-        const frenzyDmg = Math.max(
-          4,
-          Math.round(this.rollInclusive(monster.minDmg, monster.maxDmg) * 1.3),
-        )
-        this.dealMonsterDirectHitToHostile113c(monster, resolvedHostile, { phys: frenzyDmg })
+        const frenzyMin = Math.max(4, Math.round(monster.minDmg * 1.3))
+        const frenzyMax = Math.max(frenzyMin, Math.round(monster.maxDmg * 1.3))
+        const hit = this.executeMonsterMeleeSkillStrike113c(monster, resolvedHostile, {
+          skillId: sid,
+          minDmg: frenzyMin,
+          maxDmg: frenzyMax,
+          arBonusPct: 10 + 10 * Math.max(0, slvl - 1),
+        })
+        if (hit) {
+          this.applyMonsterState(monster.unitId, 141, 150)
+          monster.frenzyUntilFrame = this.currentFrame + 150
+          monster.frenzySpeedPct = Math.max(monster.frenzySpeedPct, 35)
+        }
         monster.skillCursor = (monster.skillCursor + 1) % Math.max(1, ordered.length)
         monster.skillCooldown = 30
         monster.cooldown = Math.max(monster.cooldown, monster.cooldownTicks)
@@ -1416,25 +1666,54 @@ function stepTentacleHeadAi(this: GameInstanceHost, monster: InternalMonsterReco
       at: { x: Math.round(monster.x), y: Math.round(monster.y) },
       lifePct,
     })
-    const mslDmg = Math.max(
-      2,
-      monster.minDmg + this.rng.rand(Math.max(0, monster.maxDmg - monster.minDmg) + 1),
-    )
     const missileId = missileRec?.id ?? 139
-    const element = normalizeMissileElement(missileRec?.eType) ?? 'pois'
+    const diffIdx: 0 | 1 | 2 = this.difficulty === 2 ? 2 : this.difficulty === 1 ? 1 : 0
+    const modeMissileSlvl = resolveMonsterModeMissileSlvl113c(diffIdx)
+    const mslEval =
+      missileRec !== undefined
+        ? evaluateMonsterMissileDamage113c({
+            registry: this.registry,
+            missile: missileRec,
+            slvl: modeMissileSlvl,
+            difficulty: diffIdx,
+            monsterMinPhys: monster.minDmg,
+            monsterMaxPhys: monster.maxDmg,
+            attackMode: 'A1',
+            elementalAttacks: monster.elementalAttacks,
+            extraFirePct: monster.monProps.extraFirePct,
+            rng: this.rng,
+          })
+        : undefined
+    const physDamage = mslEval?.physDamage ?? 0
+    const elemDamage =
+      mslEval?.elemDamage ??
+      Math.max(
+        2,
+        monster.minDmg + this.rng.rand(Math.max(0, monster.maxDmg - monster.minDmg) + 1),
+      )
+    const element = mslEval?.element ?? normalizeMissileElement(missileRec?.eType) ?? 'pois'
     const elemDurationFrames =
-      element === 'pois' ? Math.max(50, missileRec?.eLen ?? 200) : 0
-    this.spawnMonsterMissile(monster, nearest.x, nearest.y, mslDmg, missileId, 0, {
-      missile: missileRec,
-      skillLevel: monster.level,
-      ...(element === 'phys'
-        ? { physDamage: mslDmg }
-        : {
-            elemDamage: mslDmg,
-            element,
-            ...(elemDurationFrames > 0 ? { elemDurationFrames } : {}),
-          }),
-    })
+      mslEval !== undefined && mslEval.elemDurationFrames > 0
+        ? mslEval.elemDurationFrames
+        : element === 'pois'
+          ? Math.max(50, missileRec?.eLen ?? 200)
+          : 0
+    this.spawnMonsterMissile(
+      monster,
+      nearest.x,
+      nearest.y,
+      Math.max(1, physDamage + elemDamage),
+      missileId,
+      0,
+      {
+        missile: missileRec,
+        skillLevel: modeMissileSlvl,
+        physDamage,
+        elemDamage,
+        element,
+        ...(elemDurationFrames > 0 ? { elemDurationFrames } : {}),
+      },
+    )
     return
   }
 }
@@ -1548,7 +1827,7 @@ function stepTentacleAi(this: GameInstanceHost, monster: InternalMonsterRecord):
         id: monster.unitId,
         mode: 4,
         at: { x: Math.round(monster.x), y: Math.round(monster.y) },
-        lifePct: monster.maxHp > 0 ? Math.round((monster.hp / monster.maxHp) * 128) : 0,
+        lifePct: monster.maxHp > 0 ? Math.round((monster.hp / monster.maxHp) * 128) : 128,
       })
       this.beginMonsterMeleeAttackOnAlly(monster, {
         kind: 'merc',
@@ -1562,7 +1841,7 @@ function stepTentacleAi(this: GameInstanceHost, monster: InternalMonsterRecord):
         id: monster.unitId,
         mode: 4,
         at: { x: Math.round(monster.x), y: Math.round(monster.y) },
-        lifePct: monster.maxHp > 0 ? Math.round((monster.hp / monster.maxHp) * 128) : 0,
+        lifePct: monster.maxHp > 0 ? Math.round((monster.hp / monster.maxHp) * 128) : 128,
       })
       this.beginMonsterMeleeAttackOnAlly(monster, {
         kind: 'pet',
@@ -1752,6 +2031,50 @@ function stepMonsterAi(this: GameInstanceHost, monster: InternalMonsterRecord): 
     return
   }
 
+  // 1.13c `AITHINK_Fn028_Vampire` (`D2Game.dll` `0x6FCA6954`, #2007):
+  // Decrement `dwAiParam4` (`vampireUpgradeCooldownTicks`) by `1` per AI think tick when `> 0`.
+  if (
+    normalizeMonAiName113c(monster.ai) === 'vampire' &&
+    monster.vampireUpgradeCooldownTicks > 0
+  ) {
+    monster.vampireUpgradeCooldownTicks -= 1
+  }
+
+  // 1.13c `AIGENERAL_Think` (`D2Game.dll` `0x6FCBD4A2` -> `AI_TryTeleportUMod` `0x6FCBCDE0`, #1993):
+  // Evaluates `MonUMod #26` (`Teleport`) on boss units (`rank !== 'minion'`) before dispatching `pfnAiThink`.
+  if (
+    monster.rank !== 'minion' &&
+    monster.umodIds.includes(MON_UMOD.TELEPORT) &&
+    !monster.submerged &&
+    !isConverted &&
+    this.currentFrame >= monster.teleportCooldownUntilFrame
+  ) {
+    const isBossOrUniqueEarly =
+      monster.isBoss || monster.isPrimeEvil || monster.rank === 'unique'
+    const hasDimVisionEarly = !isBossOrUniqueEarly && monster.states.has(23)
+    const hasTauntEarly = !isBossOrUniqueEarly && monster.states.has(27)
+    const aggroEarly = hasDimVisionEarly && !hasTauntEarly ? 3.5 : monster.aggroRadius
+    let teleportTarget = this.nearestHostileForMonster(monster, aggroEarly)
+    if (!teleportTarget && this.currentFrame <= monster.threatUntilFrame) {
+      const threat = this.players.get(monster.threatPlayerId)
+      if (
+        threat !== undefined &&
+        !threat.dead &&
+        this.isAreaSeamAdjacent(monster.areaId, threat.areaId) &&
+        Math.hypot(threat.x - monster.x, threat.y - monster.y) <=
+          Math.max(aggroEarly, MONSTER_ACTIVATION_RADIUS_SUBTILES)
+      ) {
+        teleportTarget = { kind: 'player', x: threat.x, y: threat.y, player: threat }
+      }
+    }
+    if (
+      teleportTarget &&
+      this.teleportEliteAwayFrom(monster, { x: teleportTarget.x, y: teleportTarget.y })
+    ) {
+      return
+    }
+  }
+
   if (monster.ai === 'BaalThrone') {
     this.stepBaalThroneAi(monster)
     return
@@ -1932,6 +2255,189 @@ function stepMonsterAi(this: GameInstanceHost, monster: InternalMonsterRecord): 
 
   // Chill/Decrepify/Holy Freeze slow movement by their 1.13c percentages.
   const isSlowed = this.monsterSlowPercent(monster) > 0
+  const normAiKey = normalizeMonAiName113c(monster.ai)
+
+  // `#2005`: 1.13c passive / controller AIs (`None` `0x6FCBC990`, `Idle` `0x6FCBCB00`, `BoneWall` `0x6FC36410`,
+  // `7TIllusion` `0x6FCC4B90`, `DarkWanderer` `0x6FCC6E60`, `AncientStatue` `0x6FCC4F40`, `InvisoSpawner` `0x6FC3BCA0`,
+  // `InvisoPet` `0x6FCC5350`, non-combat NPC AIs) and Neutral `Align = 2` rows (`#179 cow`) never fight or chase.
+  if (monster.align === 2 || isPassiveMonsterAi113c(monster.ai)) {
+    monster.nextAiFrame = Math.max(
+      monster.nextAiFrame,
+      this.currentFrame + (normAiKey === 'idle' ? 200 : 50),
+    )
+    return
+  }
+
+  // `#2005`: 1.13c `#97 Spirit` (`AITHINK_Fn097_Spirit` @ `0x6FC360B0`, `hcIdx 401 mephistospirit`):
+  // Checks `pAiControl->dwAiFlags3` (`spiritAttackedOnce`). Swings `MONMODE_ATTACK1` (`mode = 4`) at most once
+  // when a hostile enters melee range, then permanently calls `AI_SetIdle(pGame, pMonster, 50)`.
+  if (normAiKey === 'spirit') {
+    if (monster.spiritAttackedOnce) {
+      monster.nextAiFrame = Math.max(monster.nextAiFrame, this.currentFrame + 50)
+      return
+    }
+    const spiritReach = Math.max(2.5, monster.meleeRange + 1.5)
+    const spiritTarget = this.nearestHostileForMonster(monster, spiritReach)
+    if (
+      spiritTarget !== null &&
+      Math.hypot(spiritTarget.x - monster.x, spiritTarget.y - monster.y) <= spiritReach &&
+      monster.cooldown <= 0 &&
+      monster.pendingAttack === undefined &&
+      monster.pendingAllyAttack === undefined
+    ) {
+      monster.spiritAttackedOnce = true
+      monster.cooldown = Math.max(50, monster.cooldownTicks)
+      monster.nextAiFrame = this.currentFrame + 50
+      if (spiritTarget.kind === 'player') {
+        this.beginMonsterMeleeAttack(monster, spiritTarget.player)
+      } else if (spiritTarget.kind === 'merc') {
+        monster.mode = 4
+        this.broadcastToArea(monster.areaId, {
+          type: 'UnitMode',
+          unitType: 1,
+          id: monster.unitId,
+          mode: 4,
+          at: { x: Math.round(spiritTarget.merc.x), y: Math.round(spiritTarget.merc.y) },
+          lifePct: monster.maxHp > 0 ? Math.round((monster.hp / monster.maxHp) * 128) : 0,
+        })
+        this.beginMonsterMeleeAttackOnAlly(monster, { kind: 'merc', id: spiritTarget.merc.unitId })
+      } else {
+        monster.mode = 4
+        this.broadcastToArea(monster.areaId, {
+          type: 'UnitMode',
+          unitType: 1,
+          id: monster.unitId,
+          mode: 4,
+          at: { x: Math.round(spiritTarget.pet.x), y: Math.round(spiritTarget.pet.y) },
+          lifePct: monster.maxHp > 0 ? Math.round((monster.hp / monster.maxHp) * 128) : 0,
+        })
+        this.beginMonsterMeleeAttackOnAlly(monster, { kind: 'pet', id: spiritTarget.pet.uid })
+      }
+    } else {
+      monster.nextAiFrame = Math.max(monster.nextAiFrame, this.currentFrame + 15)
+    }
+    return
+  }
+
+  // `#2005`: 1.13c `#99 TrappedSoul` (`AITHINK_Fn099_TrappedSoul` @ `0x6FCC5580`, `hcIdx 403..404 trappedsoul1..2`):
+  // Harmless proximity fidget (`MONMODE_SKILL2 = 9` wake when player `< 5` subtiles, visual fidget modes `4/5`
+  // without `SUnitDmg`, `MONMODE_SKILL1 = 8` return-to-rest when no player `< 5` subtiles). Never deals melee damage.
+  if (normAiKey === 'trappedsoul') {
+    let nearPlayer: InternalPlayerRecord | undefined
+    for (const p of this.players.values()) {
+      if (p.dead || p.areaId !== monster.areaId) continue
+      if (Math.hypot(p.x - monster.x, p.y - monster.y) < 5) {
+        nearPlayer = p
+        break
+      }
+    }
+    const lifePct = monster.maxHp > 0 ? Math.round((monster.hp / monster.maxHp) * 128) : 0
+    if (monster.trappedSoulState === 0) {
+      if (nearPlayer !== undefined) {
+        monster.trappedSoulState = 1
+        monster.mode = 9
+        this.broadcastToArea(monster.areaId, {
+          type: 'UnitMode',
+          unitType: 1,
+          id: monster.unitId,
+          mode: 9,
+          at: { x: Math.round(nearPlayer.x), y: Math.round(nearPlayer.y) },
+          lifePct,
+        })
+        monster.nextAiFrame = this.currentFrame + 35
+      } else {
+        monster.nextAiFrame = this.currentFrame + 15
+      }
+    } else if (nearPlayer === undefined) {
+      monster.trappedSoulState = 0
+      monster.mode = 8
+      this.broadcastToArea(monster.areaId, {
+        type: 'UnitMode',
+        unitType: 1,
+        id: monster.unitId,
+        mode: 8,
+        at: { x: Math.round(monster.x), y: Math.round(monster.y) },
+        lifePct,
+      })
+      monster.nextAiFrame = this.currentFrame + 15
+    } else {
+      const roll = this.rng.rand(100)
+      if (roll < 70) {
+        const fidgetMode = roll < 35 ? 4 : 5
+        monster.mode = fidgetMode
+        this.broadcastToArea(monster.areaId, {
+          type: 'UnitMode',
+          unitType: 1,
+          id: monster.unitId,
+          mode: fidgetMode,
+          at: { x: Math.round(nearPlayer.x), y: Math.round(nearPlayer.y) },
+          lifePct,
+        })
+      }
+      monster.nextAiFrame = this.currentFrame + 35
+    }
+    return
+  }
+
+  // `#2005`: 1.13c Good/Friendly (`Align = 1`) world monsters (`#522..523 act5barb1..2` `NpcBarb` @ `0x6FCC66E0`,
+  // `#534 act5pow` `Wussie` @ `0x6FCC7A10`, `#535..536 act5barb3..4`, ambient critters):
+  // Never target players, mercenaries, or player pets. `NpcBarb` engages nearby evil (`align === 0`) monsters.
+  if (monster.align === 1) {
+    if (normAiKey === 'npcbarb') {
+      let barbTarget: InternalMonsterRecord | undefined
+      let bestEvilDist = Math.max(1, monster.aggroRadius)
+      for (const other of this.monsters.values()) {
+        if (
+          other.unitId === monster.unitId ||
+          other.align !== 0 ||
+          other.dead ||
+          other.isNpc ||
+          !other.isKillable ||
+          other.submerged ||
+          this.isMonsterConverted(other) ||
+          isBonePrisonMonsterHcIdx113c(other.hcIdx) ||
+          other.areaId !== monster.areaId
+        ) {
+          continue
+        }
+        const d = Math.hypot(other.x - monster.x, other.y - monster.y)
+        if (d < bestEvilDist) {
+          bestEvilDist = d
+          barbTarget = other
+        }
+      }
+      if (barbTarget !== undefined) {
+        if (bestEvilDist <= 2.5) {
+          if (monster.cooldown <= 0) {
+            monster.cooldown = monster.cooldownTicks
+            this.attackMonsterTarget(monster, barbTarget)
+          }
+        } else {
+          this.moveMonsterToward(monster, barbTarget.x, barbTarget.y, bestEvilDist > 5 && !isSlowed)
+        }
+        return
+      }
+      if (Math.hypot(monster.homeX - monster.x, monster.homeY - monster.y) > 12) {
+        this.moveMonsterToward(monster, monster.homeX, monster.homeY, false)
+        return
+      }
+      if (monster.wanderCooldown <= 0) {
+        const angle = (this.rng.rand(360) * Math.PI) / 180
+        const radius = 1 + this.rng.rand(4)
+        const tx = monster.homeX + Math.cos(angle) * radius
+        const ty = monster.homeY + Math.sin(angle) * radius
+        if (
+          !this.isClosedDoorAt(monster.areaId, Math.round(tx), Math.round(ty)) &&
+          (!this.terrainWalkableCheck ||
+            this.terrainWalkableCheck(monster.areaId, Math.round(tx), Math.round(ty), false))
+        ) {
+          this.moveMonsterToward(monster, tx, ty, false)
+        }
+        monster.wanderCooldown = 45 + this.rng.rand(60)
+      }
+    }
+    return
+  }
 
   // Terror (56) or pack morale fleeTicks causes non-boss monsters to flee away from player (overridden by Taunt 27)
   const isBossOrUnique =
@@ -2024,6 +2530,7 @@ function stepMonsterAi(this: GameInstanceHost, monster: InternalMonsterRecord): 
         other.unitId === monster.unitId ||
         other.dead ||
         other.isNpc ||
+        other.align !== 0 ||
         other.areaId !== monster.areaId ||
         this.isMonsterConverted(other)
       ) {
@@ -2042,6 +2549,7 @@ function stepMonsterAi(this: GameInstanceHost, monster: InternalMonsterRecord): 
         other.unitId === monster.unitId ||
         other.dead ||
         other.isNpc ||
+        other.align !== 0 ||
         other.areaId !== monster.areaId ||
         this.isMonsterConverted(other)
       ) {
@@ -2055,7 +2563,7 @@ function stepMonsterAi(this: GameInstanceHost, monster: InternalMonsterRecord): 
     }
   } else if (!isBossOrUnique && !hasTaunt) {
     // Attract is a curse on the target; nearby monsters engage it within their own
-    // MonStats `aidist`-derived aggro radius (not a hardcoded 20).
+    // MonStats `aidist`-derived aggro radius (not a hardcoded 20), plus friendly `NpcBarb` soldiers (#2005).
     let bestAttractDist = Math.max(1, monster.aggroRadius)
     for (const other of this.monsters.values()) {
       if (
@@ -2069,7 +2577,12 @@ function stepMonsterAi(this: GameInstanceHost, monster: InternalMonsterRecord): 
       const converted = this.isMonsterConverted(other)
       const attracted = other.states.has(57)
       const boneWall = other.boneConstructOwnerPlayerId !== undefined
-      if (!converted && !attracted && !boneWall) continue
+      const friendlySoldier =
+        other.align === 1 &&
+        other.isKillable &&
+        !other.submerged &&
+        normalizeMonAiName113c(other.ai) === 'npcbarb'
+      if (!converted && !attracted && !boneWall && !friendlySoldier) continue
       const d = Math.hypot(other.x - monster.x, other.y - monster.y)
       const maxEngageDist = boneWall && !converted && !attracted ? 4.5 : bestAttractDist
       if (d < maxEngageDist && d < bestAttractDist) {
@@ -2093,6 +2606,16 @@ function stepMonsterAi(this: GameInstanceHost, monster: InternalMonsterRecord): 
       monsterTarget.x - monster.x,
       monsterTarget.y - monster.y,
     )
+    if (normalizeMonAiName113c(monster.ai) === 'vampire') {
+      this.stepVampireTargetAi113c(
+        monster,
+        { kind: 'monster', x: monsterTarget.x, y: monsterTarget.y, monster: monsterTarget },
+        mDist,
+        hasDimVision,
+        hasTaunt,
+      )
+      return
+    }
     // Confused/converted/attracted casters and archers keep their ranged Skill1..8
     // and MissA1/A2/S1/C attacks against the hostile monster instead of walking into melee.
     if (
@@ -2122,13 +2645,13 @@ function stepMonsterAi(this: GameInstanceHost, monster: InternalMonsterRecord): 
               ? 'A1'
               : 'C'
     const monsterShootMissile = monster.modeMissiles?.[selectedShootMode]
+    const isConvertedGreaterMummy = monster.ai === 'GreaterMummy'
     if (
-      (monster.isRanged || aiBehavior === 'ranged' || aiBehavior === 'kiter') &&
+      (monster.isRanged || aiProfile.ranged || isConvertedGreaterMummy) &&
       !hasDimVision &&
       !hasTaunt &&
       monsterShootMissile !== undefined &&
-      mDist > 2.5 &&
-      mDist <= monsterShootRange(monster) &&
+      (isConvertedGreaterMummy ? mDist > 1.5 && mDist < 5 : mDist > 2.5 && mDist <= monsterShootRange(monster)) &&
       monster.cooldown <= 0
     ) {
       const missileRec = this.registry.getMissileByName(monsterShootMissile)
@@ -2144,25 +2667,55 @@ function stepMonsterAi(this: GameInstanceHost, monster: InternalMonsterRecord): 
           at: { x: Math.round(monsterTarget.x), y: Math.round(monsterTarget.y) },
           lifePct: monster.maxHp > 0 ? Math.round((monster.hp / monster.maxHp) * 128) : 0,
         })
-        const mslDmg = Math.max(
-          2,
-          this.rollInclusive(monster.minDmg, monster.maxDmg),
-        )
-        const element = normalizeMissileElement(missileRec.eType) ?? 'phys'
+        const modeMinPhys =
+          selectedShootMode === 'S1'
+            ? monster.special1MinDmg
+            : selectedShootMode === 'A2'
+              ? monster.attack2MinDmg
+              : monster.minDmg
+        const modeMaxPhys =
+          selectedShootMode === 'S1'
+            ? monster.special1MaxDmg
+            : selectedShootMode === 'A2'
+              ? monster.attack2MaxDmg
+              : monster.maxDmg
+        const diffIdx: 0 | 1 | 2 = this.difficulty === 2 ? 2 : this.difficulty === 1 ? 1 : 0
+        const modeMissileSlvl = resolveMonsterModeMissileSlvl113c(diffIdx)
+        const mslEval = evaluateMonsterMissileDamage113c({
+          registry: this.registry,
+          missile: missileRec,
+          slvl: modeMissileSlvl,
+          difficulty: diffIdx,
+          monsterMinPhys: modeMinPhys,
+          monsterMaxPhys: modeMaxPhys,
+          attackMode: selectedShootMode,
+          elementalAttacks: monster.elementalAttacks,
+          extraFirePct: monster.monProps.extraFirePct,
+          rng: this.rng,
+        })
+        const physDamage =
+          mslEval.totalDamage > 0
+            ? mslEval.physDamage
+            : this.rollInclusive(modeMinPhys, modeMaxPhys)
+        const elemDamage = mslEval.elemDamage
+        const element = mslEval.element
         this.spawnMonsterMissile(
           monster,
           monsterTarget.x,
           monsterTarget.y,
-          mslDmg,
+          Math.max(1, physDamage + elemDamage),
           missileRec.id,
           0,
           {
             missile: missileRec,
-            skillLevel: monster.level,
+            skillLevel: modeMissileSlvl,
             hitMonsters: true,
-            ...(element === 'phys'
-              ? { physDamage: mslDmg }
-              : { elemDamage: mslDmg, element }),
+            physDamage,
+            elemDamage,
+            element,
+            ...(mslEval.elemDurationFrames > 0
+              ? { elemDurationFrames: mslEval.elemDurationFrames }
+              : {}),
           },
         )
         return
@@ -2182,123 +2735,9 @@ function stepMonsterAi(this: GameInstanceHost, monster: InternalMonsterRecord): 
   // Converted monsters never fall through to the player-hostile path.
   if (isConverted) return
 
-  // `#1896`: Monster healers (`ZakarumPriest` `#179`, `HighPriest` `#179/#182`, `GreaterMummy` `#182`,
-  // `OblivionKnight` `#182`) evaluate healing wounded allies (`!state 52`) before resurrect/curse/attack!
-  if (
-    !hasTaunt &&
-    aiProfile.healRangeParam !== undefined &&
-    monster.skillCooldown <= 0 &&
-    monster.cooldown <= 0
-  ) {
-    const checkRange = Math.max(
-      12,
-      monaiParam113c(aiProfile, monster.aiParams, aiProfile.healRangeParam, 12),
-    )
-    let hasWoundedAlly = !monster.states.has(52) && monster.hp < monster.maxHp * 0.85
-    if (!hasWoundedAlly) {
-      for (const ally of this.monsters.values()) {
-        if (
-          !ally.dead &&
-          !ally.isNpc &&
-          !ally.states.has(52) &&
-          ally.areaId === monster.areaId &&
-          ally.hp < ally.maxHp &&
-          Math.hypot(ally.x - monster.x, ally.y - monster.y) <= checkRange
-        ) {
-          hasWoundedAlly = true
-          break
-        }
-      }
-    }
-    if (
-      hasWoundedAlly &&
-      this.tryCastMonsterUtilitySkill(monster, { x: monster.x, y: monster.y }, 0)
-    ) {
-      monster.cooldown = Math.max(monster.cooldown, monster.cooldownTicks)
-      return
-    }
-  }
-
-  // F11.5 / `#1891`: Shaman / Greater Mummy / Blood Raven resurrection of non-shattered, unconsumed corpses.
-  if (
-    !hasTaunt &&
-    (monster.resurrectSkillId !== undefined || monster.hcIdx === 267) &&
-    monster.cooldown <= 0
-  ) {
-    const configuredRange =
-      aiProfile.resurrectRangeParam !== undefined
-        ? monaiParam113c(aiProfile, monster.aiParams, aiProfile.resurrectRangeParam, 0)
-        : 0
-    const resurrectRange = Math.max(
-      1,
-      Math.floor(
-        configuredRange ||
-          (monster.hcIdx === 267 ? 20 : monster.aiParams[3] || monster.aiParams[4] || 15),
-      ),
-    )
-    for (const corpse of this.monsters.values()) {
-      if (
-        !corpse.dead ||
-        corpse.shattered ||
-        corpse.corpseConsumed ||
-        corpse.states.has(104) ||
-        corpse.isBoss ||
-        corpse.isPrimeEvil ||
-        corpse.rank === 'unique' ||
-        corpse.rank === 'champion' ||
-        corpse.superUniqueId !== undefined ||
-        corpse.isNpc ||
-        corpse.areaId !== monster.areaId
-      ) {
-        continue
-      }
-      // 1.13c race rules (`D2Game.dll` `0x6fc9bd50` / `0x6fc9bb90` / `0x6fc9b8e0`, `#1891`):
-      // - Fallen/Fetish shamans raise their own MonType (`fallen` / `fetish`);
-      // - Blood Raven (`hcIdx 267`) raises cemetery zombies (`monType === 'zombie'`);
-      // - Greater Mummies (`unraveler1..8`, `radament` `#229`) raise any undead ally
-      //   (non-Radament unravelers cannot raise other unravelers).
-      const isGreaterMummy =
-        monster.monType === 'unraveler' || monster.ai === 'GreaterMummy'
-      const isBloodRaven = monster.hcIdx === 267 || monster.ai === 'BloodRaven'
-      const sameRace =
-        !isGreaterMummy && !isBloodRaven && corpse.monType !== '' && corpse.monType === monster.monType
-      const raisesZombie =
-        isBloodRaven && (corpse.monType === 'zombie' || corpse.defId.startsWith('zombie'))
-      const raisesUndead =
-        (isGreaterMummy ||
-          monster.resurrectSkillId === 158 ||
-          monster.resurrectSkillId === 183 ||
-          monster.resurrectSkillId === 190) &&
-        corpse.isUndead &&
-        (monster.hcIdx === 229 || (corpse.monType !== 'unraveler' && corpse.ai !== 'GreaterMummy'))
-      if (!sameRace && !raisesZombie && !raisesUndead) continue
-      if (Math.hypot(corpse.x - monster.x, corpse.y - monster.y) > resurrectRange) {
-        continue
-      }
-      monster.cooldown = Math.max(
-        aiInterval,
-        Math.floor(monster.aiParams[0] || aiInterval),
-      )
-      monster.mode = 8
-      this.broadcastToArea(monster.areaId, {
-        type: 'UnitMode',
-        unitType: 1,
-        id: monster.unitId,
-        mode: 8,
-        at: { x: Math.round(corpse.x), y: Math.round(corpse.y) },
-        lifePct:
-          monster.maxHp > 0
-            ? Math.round((monster.hp / monster.maxHp) * 128)
-            : 0,
-      })
-      monster.pendingResurrection = {
-        corpseUnitId: corpse.unitId,
-        frame: this.currentFrame + 6,
-      }
-      return
-    }
-  }
-
+  // `#2010`: `AIGENERAL_Think` (`D2Game.dll` `0x6FCBD494 -> 0x6FCBD160 -> 0x6FD13220`) gates every
+  // `nTargetMode = 1` AI row (`g_MonAiTable` `0x6FD2E788`, all 104 hostile combat/healer/shaman/boss AIs)
+  // on acquiring a valid hostile `pTarget` before invoking `pfnAiThink` (`0x6FCBD4E9`).
   const effectiveAggro = hasDimVision && !hasTaunt ? 3.5 : monster.aggroRadius
 
   let nearest = this.nearestHostileForMonster(monster, effectiveAggro)
@@ -2375,16 +2814,18 @@ function stepMonsterAi(this: GameInstanceHost, monster: InternalMonsterRecord): 
     -1,
   )
   if (woundedPct >= 0 && nearest.kind === 'player') {
+    const nearestMaxHpFixed = this.getPlayerAccruedMaxHpFixed(nearest.player)
     const nearestHpPct =
-      nearest.player.maxHpFixed > 0
-        ? (nearest.player.hpFixed / nearest.player.maxHpFixed) * 100
+      nearestMaxHpFixed > 0
+        ? (nearest.player.hpFixed / nearestMaxHpFixed) * 100
         : 100
     if (nearestHpPct > woundedPct) {
       for (const candidate of this.players.values()) {
         if (candidate.dead || candidate.areaId !== monster.areaId) continue
+        const candidateMaxHpFixed = this.getPlayerAccruedMaxHpFixed(candidate)
         const hpPct =
-          candidate.maxHpFixed > 0
-            ? (candidate.hpFixed / candidate.maxHpFixed) * 100
+          candidateMaxHpFixed > 0
+            ? (candidate.hpFixed / candidateMaxHpFixed) * 100
             : 100
         if (hpPct > woundedPct) continue
         if (Math.hypot(candidate.x - monster.x, candidate.y - monster.y) > effectiveAggro) {
@@ -2402,25 +2843,277 @@ function stepMonsterAi(this: GameInstanceHost, monster: InternalMonsterRecord): 
   }
   const bestDist = Math.hypot(nearest.x - monster.x, nearest.y - monster.y)
 
-  // 1.13c `MonUMod #26` (`Teleport`, `0x6FC441B0` / `0x6FCBCDE0`, #1899):
-  // Teleports away when low HP (`< 30%`) or blinks toward target when far (`>= 12`) / melee-blocked.
+  // `#1896` / `#1990` / `#2010`: Monster healers (`ZakarumPriest` `#179`, `HighPriest` `#179/#182`, `GreaterMummy` `#182`,
+  // `OblivionKnight` `#182`) evaluate healing wounded allies (`!state 52`, `ally !== self` per `0x6FCD37B9`,
+  // same alignment & non-converted per `D2Common.#10666`/`#10830`) only after acquiring a hostile target
+  // (`nTargetMode = 1`) and when no hostile is already in melee range (`0x6FCA8380` / `0x6FC39080`).
   if (
-    monster.umodIds.includes(MON_UMOD.TELEPORT) &&
-    this.currentFrame >= monster.teleportCooldownUntilFrame
+    !hasTaunt &&
+    aiProfile.healRangeParam !== undefined &&
+    monster.skillCooldown <= 0 &&
+    monster.cooldown <= 0
   ) {
-    let meleeBlocked = false
-    if (!monster.isRanged && bestDist > monster.meleeRange + 1.5 && bestDist > 0.5) {
-      const probeX = Math.round(monster.x + ((nearest.x - monster.x) / bestDist) * 2)
-      const probeY = Math.round(monster.y + ((nearest.y - monster.y) / bestDist) * 2)
-      meleeBlocked =
-        this.isClosedDoorAt(monster.areaId, probeX, probeY) ||
-        Boolean(
-          this.terrainWalkableCheck &&
-            !this.terrainWalkableCheck(monster.areaId, probeX, probeY, monster.isFlying),
-        )
+    const meleeHostile = this.nearestHostileForMonster(
+      monster,
+      Math.max(2.5, monster.meleeRange + 1.5),
+    )
+    if (meleeHostile === null) {
+      const baseCheckRange = monaiParam113c(
+        aiProfile,
+        monster.aiParams,
+        aiProfile.healRangeParam,
+        12,
+      )
+      const checkRange =
+        monster.ai === 'HighPriest'
+          ? Math.max(50, baseCheckRange)
+          : monster.ai === 'GreaterMummy'
+            ? Math.max(12, baseCheckRange) + (monster.hcIdx === 229 ? 10 : 0)
+            : Math.max(12, baseCheckRange)
+      let hasWoundedAlly = false
+      for (const ally of this.monsters.values()) {
+        if (
+          ally.dead ||
+          ally.isNpc ||
+          ally.align !== monster.align ||
+          !ally.isKillable ||
+          this.isMonsterConverted(ally) ||
+          (ally.hcIdx >= 351 && ally.hcIdx <= 353) ||
+          isBonePrisonMonsterHcIdx113c(ally.hcIdx) ||
+          isBaalTentacleHcIdx113c(ally.hcIdx) ||
+          ally.states.has(52) ||
+          ally.unitId === monster.unitId ||
+          ally.areaId !== monster.areaId ||
+          ally.maxHp <= 0 ||
+          ally.hp >= ally.maxHp ||
+          Math.hypot(ally.x - monster.x, ally.y - monster.y) > checkRange
+        ) {
+          continue
+        }
+        if (monster.ai === 'GreaterMummy') {
+          if (!ally.isUndead) continue
+          if (monster.hcIdx !== 229 && ally.rank === 'unique') continue
+        }
+        const allyHpPct = Math.trunc((ally.hp * 100) / ally.maxHp)
+        const belowThreshold =
+          monster.ai === 'HighPriest'
+            ? allyHpPct < 75
+            : monster.ai === 'ZakarumPriest'
+              ? allyHpPct <= 60
+              : monster.ai === 'OblivionKnight'
+                ? allyHpPct < 40
+                : true
+        if (belowThreshold) {
+          hasWoundedAlly = true
+          break
+        }
+      }
+      if (hasWoundedAlly) {
+        const passedGate =
+          monster.ai === 'GreaterMummy'
+            ? this.rng.rand(100) < (monster.aiParams[2] || 40)
+            : monster.ai === 'HighPriest'
+              ? this.rng.rand(100) < (monster.aiParams[1] || 25)
+              : monster.ai === 'ZakarumPriest'
+                ? this.rng.rand(100) < 25
+                : monster.ai === 'OblivionKnight'
+                  ? this.rng.rand(100) < (monster.aiParams[4] || 65) &&
+                    this.rng.rand(100) < (monster.aiParams[5] || 30)
+                  : true
+        if (
+          passedGate &&
+          this.tryCastMonsterUtilitySkill(monster, { x: monster.x, y: monster.y }, 0, true)
+        ) {
+          monster.cooldown = Math.max(monster.cooldown, monster.cooldownTicks)
+          return
+        }
+      }
     }
-    if (this.teleportEliteAwayFrom(monster, { x: nearest.x, y: nearest.y }, { meleeBlocked })) {
-      return
+  }
+
+  // F11.5 / `#1891` / `#1992` / `#2010`: 1.13c Corpse Resurrection (`D2Game.dll` `0x6FCA8380` `GreaterMummy`,
+  // `0x6FCA90A0` `FallenShaman`, `0x6FCA7BB0` `FetishShaman`, `0x6FC39E70` `BloodRaven`):
+  // - Gated by `AIGENERAL_Think` `nTargetMode = 1` hostile target acquisition (`0x6FCBD494`).
+  // - Melee (`bInMeleeRange`), `FetishShaman` close `FetishInferno` (`<= 5` sub-tiles, `0x6FCA7BC6`),
+  //   and `GreaterMummy` close poison breath (`< 5` sub-tiles, `0x6FCA843A`, `rand(100) < aip1`)
+  //   take precedence over corpse resurrection.
+  // - Spatial callbacks (`0x6FC9B8E0`, `0x6FC9BD50`, `0x6FC9BB90`) pick the nearest valid corpse
+  //   within `resurrectRange` (`+10` for Radament `#229` per `0x6FCA856E`), enforcing wall/door LOS
+  //   (`DUNGEON_CheckLos`, bypassed only by Radament `#229` or `FetishShaman` with `aip2 >= 3`)
+  //   and walkable corpse sub-tile (`SKILLS_CanUnitCorpseBeResurrected` `0x6FD13E30`).
+  // - Per-AI `rand(100)` gates: `GreaterMummy` `< aip2` (`0x6FCA864A`), `FallenShaman` approach roll
+  //   + `< aip1` (`0x6FCA91E5` / `0x6FCA9263`), `FetishShaman` `< aip1` + walk toward corpse when
+  //   `corpseDist > aip3` (`0x6FCA7D0D` / `0x6FCA7D5F`).
+  if (
+    !hasTaunt &&
+    (monster.resurrectSkillId !== undefined || monster.hcIdx === 267) &&
+    monster.cooldown <= 0
+  ) {
+    const isGreaterMummy =
+      monster.monType === 'unraveler' || monster.ai === 'GreaterMummy'
+    const isFetishShaman = monster.ai === 'FetishShaman'
+    const isFallenShaman = monster.ai === 'FallenShaman'
+    const isBloodRaven = monster.hcIdx === 267 || monster.ai === 'BloodRaven'
+    const meleeHostile = this.nearestHostileForMonster(
+      monster,
+      Math.max(2.5, monster.meleeRange + 1.5),
+    )
+    const closeFetishHostile = isFetishShaman ? this.nearestHostileForMonster(monster, 5) : null
+    const closeMummyBreath =
+      isGreaterMummy &&
+      meleeHostile === null &&
+      monster.modeMissiles?.A2 !== undefined &&
+      this.nearestHostileForMonster(monster, 5) !== null &&
+      this.rng.rand(100) < (monster.aiParams[0] || 70)
+    if (meleeHostile === null && closeFetishHostile === null && !closeMummyBreath) {
+      const configuredRange =
+        aiProfile.resurrectRangeParam !== undefined
+          ? monaiParam113c(aiProfile, monster.aiParams, aiProfile.resurrectRangeParam, 0)
+          : 0
+      const baseResurrectRange = Math.max(
+        1,
+        Math.floor(
+          configuredRange ||
+            (monster.hcIdx === 267 ? 20 : monster.aiParams[3] || monster.aiParams[4] || 15),
+        ),
+      )
+      const resurrectRange = baseResurrectRange + (monster.hcIdx === 229 ? 10 : 0)
+      const bypassCorpseLos =
+        monster.hcIdx === 229 || (isFetishShaman && (monster.aiParams[1] ?? 0) >= 3)
+      let bestCorpse: InternalMonsterRecord | undefined
+      let bestCorpseDist = resurrectRange + 1e-6
+      for (const corpse of this.monsters.values()) {
+        if (
+          !corpse.dead ||
+          corpse.shattered ||
+          corpse.corpseConsumed ||
+          corpse.states.has(104) ||
+          corpse.isBoss ||
+          corpse.isPrimeEvil ||
+          (corpse.rank === 'unique' && !(isGreaterMummy && monster.hcIdx === 229)) ||
+          corpse.rank === 'champion' ||
+          corpse.superUniqueId !== undefined ||
+          corpse.isNpc ||
+          corpse.areaId !== monster.areaId
+        ) {
+          continue
+        }
+        // 1.13c race rules (`D2Game.dll` `0x6fc9bd50` / `0x6fc9bb90` / `0x6fc9b8e0`, `#1891`):
+        // - Fallen/Fetish shamans raise their own MonType (`fallen` / `fetish`);
+        // - Blood Raven (`hcIdx 267`) raises cemetery zombies (`monType === 'zombie'`);
+        // - Greater Mummies (`unraveler1..9`, `radament` `#229`) raise any undead ally
+        //   (non-Radament unravelers cannot raise other unravelers).
+        const sameRace =
+          !isGreaterMummy &&
+          !isBloodRaven &&
+          corpse.monType !== '' &&
+          corpse.monType === monster.monType
+        const raisesZombie =
+          isBloodRaven && (corpse.monType === 'zombie' || corpse.defId.startsWith('zombie'))
+        const raisesUndead =
+          (isGreaterMummy ||
+            monster.resurrectSkillId === 158 ||
+            monster.resurrectSkillId === 183 ||
+            monster.resurrectSkillId === 190) &&
+          corpse.isUndead &&
+          (monster.hcIdx === 229 ||
+            (corpse.monType !== 'unraveler' && corpse.ai !== 'GreaterMummy'))
+        if (!sameRace && !raisesZombie && !raisesUndead) continue
+        const corpseDist = Math.hypot(corpse.x - monster.x, corpse.y - monster.y)
+        if (corpseDist > resurrectRange || corpseDist >= bestCorpseDist) {
+          continue
+        }
+        if (
+          this.terrainWalkableCheck &&
+          !this.terrainWalkableCheck(
+            corpse.areaId,
+            Math.round(corpse.x),
+            Math.round(corpse.y),
+            corpse.isFlying,
+          )
+        ) {
+          continue
+        }
+        if (
+          !bypassCorpseLos &&
+          !this.isMonsterStepWalkable(
+            monster.areaId,
+            monster.x,
+            monster.y,
+            corpse.x,
+            corpse.y,
+            true,
+          )
+        ) {
+          continue
+        }
+        bestCorpse = corpse
+        bestCorpseDist = corpseDist
+      }
+      if (bestCorpse !== undefined) {
+        let passedResurrectGate = true
+        if (isGreaterMummy) {
+          const rawChance = monaiParam113c(
+            aiProfile,
+            monster.aiParams,
+            aiProfile.resurrectChanceParam,
+            -1,
+          )
+          const chance = rawChance >= 0 ? Math.min(100, rawChance) : 30
+          passedResurrectGate = this.rng.rand(100) < chance
+        } else if (isFallenShaman) {
+          const rawChance = monaiParam113c(
+            aiProfile,
+            monster.aiParams,
+            aiProfile.resurrectChanceParam,
+            -1,
+          )
+          const chance = rawChance >= 0 ? Math.min(100, rawChance) : 45
+          passedResurrectGate = this.rng.rand(100) < chance
+        } else if (isFetishShaman) {
+          const rawChance = monaiParam113c(
+            aiProfile,
+            monster.aiParams,
+            aiProfile.resurrectChanceParam,
+            -1,
+          )
+          const chance = rawChance >= 0 ? Math.min(100, rawChance) : 40
+          passedResurrectGate = this.rng.rand(100) < chance
+        }
+        if (passedResurrectGate) {
+          if (isFetishShaman) {
+            const rawMaxCastRange = monaiParam113c(
+              aiProfile,
+              monster.aiParams,
+              aiProfile.resurrectCastRangeParam,
+              0,
+            )
+            const maxCastRange = Math.max(1, rawMaxCastRange > 0 ? rawMaxCastRange : 15)
+            if (bestCorpseDist > maxCastRange) {
+              this.moveMonsterToward(monster, bestCorpse.x, bestCorpse.y, true)
+              return
+            }
+          }
+          monster.cooldown = Math.max(aiInterval, monster.cooldownTicks)
+          monster.mode = 8
+          this.broadcastToArea(monster.areaId, {
+            type: 'UnitMode',
+            unitType: 1,
+            id: monster.unitId,
+            mode: 8,
+            at: { x: Math.round(bestCorpse.x), y: Math.round(bestCorpse.y) },
+            lifePct:
+              monster.maxHp > 0
+                ? Math.round((monster.hp / monster.maxHp) * 128)
+                : 0,
+          })
+          monster.pendingResurrection = {
+            corpseUnitId: bestCorpse.unitId,
+            frame: this.currentFrame + 6,
+          }
+          return
+        }
+      }
     }
   }
 
@@ -2456,28 +3149,35 @@ function stepMonsterAi(this: GameInstanceHost, monster: InternalMonsterRecord): 
       Math.hypot(nearest.x - monster.x, nearest.y - monster.y) <= 3.5
     ) {
       const chargeSkill = monster.skills.find((s) => s.skillId === 107 || s.skillId === 352)
+      const chargeSid = chargeSkill?.skillId ?? 107
       const chargeSlvl = Math.max(1, chargeSkill?.level ?? 1)
-      const chargeDmg = Math.max(
-        6,
-        Math.round(
-          this.rollInclusive(monster.minDmg, monster.maxDmg) *
-            (1 + (100 + 25 * Math.max(0, chargeSlvl - 1)) / 100),
-        ),
-      )
+      const baseMin =
+        monster.minDmg > 0
+          ? monster.minDmg
+          : monster.special1MinDmg || monster.attack2MinDmg || 4
+      const baseMax =
+        monster.maxDmg > 0
+          ? monster.maxDmg
+          : Math.max(baseMin, monster.special1MaxDmg || monster.attack2MaxDmg || 6)
+      const chargeMult =
+        chargeSid === 352 ? 1 : 1 + (100 + 25 * Math.max(0, chargeSlvl - 1)) / 100
+      const chargeMin = Math.max(6, Math.round(baseMin * chargeMult))
+      const chargeMax = Math.max(chargeMin, Math.round(baseMax * chargeMult))
       this.emitBossSkillCast113c(
         monster,
-        chargeSkill?.skillId ?? 107,
+        chargeSid,
         chargeSlvl,
         14,
         nearest.x,
         nearest.y,
       )
-      this.dealMonsterDirectHitToHostile113c(
-        monster,
-        nearest,
-        { phys: chargeDmg },
-        { knockbackSteps: 3 },
-      )
+      this.executeMonsterMeleeSkillStrike113c(monster, nearest, {
+        skillId: chargeSid,
+        minDmg: chargeMin,
+        maxDmg: chargeMax,
+        arBonusPct: 50 + 15 * Math.max(0, chargeSlvl - 1),
+        knockbackSteps: 3,
+      })
     }
     return
   }
@@ -2503,7 +3203,11 @@ function stepMonsterAi(this: GameInstanceHost, monster: InternalMonsterRecord): 
     }
     return
   }
-  // Archers/vampires/finger mages back away when the player closes in.
+  if (normalizeMonAiName113c(monster.ai) === 'vampire') {
+    this.stepVampireTargetAi113c(monster, nearest, bestDist, hasDimVision, hasTaunt)
+    return
+  }
+  // Archers/finger mages back away when the player closes in.
   const kiteDistance = Math.max(
     2,
     monaiParam113c(aiProfile, monster.aiParams, aiProfile.kiteDistanceParam, 4),
@@ -2693,20 +3397,28 @@ function stepMonsterAi(this: GameInstanceHost, monster: InternalMonsterRecord): 
   }
 
   // F12.3: Ranged monster missile firing (suppressed when Dim Vision 23 or Taunt 27 is active)
+  // 1.13c `AITHINK_Fn022_GreaterMummy` (`0x6FCA8380`, `0x6FCA843A: cmp eax, 5`, #1989):
+  // `GreaterMummy` (`unraveler1..9`, `Radament`, `Achmel`) fires `MissA2` (`mummy1..4` / `mummyex`
+  // close-range poison breath) ONLY when `bestDist < 5` sub-tiles, never at `bestDist >= 5`.
+  const isGreaterMummy = monster.ai === 'GreaterMummy'
+  const isNonMeleeStationary = isNonMeleeMonsterAi113c(monster.ai)
+  const inRangedMissileBand = isGreaterMummy
+    ? bestDist > 1.5 && bestDist < 5 && monster.modeMissiles?.A2 !== undefined
+    : (isNonMeleeStationary ? bestDist >= 0 : bestDist > 2.5) && bestDist <= monsterShootRange(monster)
   if (
-    (monster.isRanged || aiBehavior === 'ranged') &&
+    (monster.isRanged || aiProfile.ranged || isGreaterMummy) &&
     !hasDimVision &&
     !hasTaunt &&
-    bestDist > 2.5 &&
-    bestDist <= monsterShootRange(monster) &&
+    inRangedMissileBand &&
     (monster.cooldown > 0 || monsterCanFireRanged113c(monster, this.rng.rand(100)))
   ) {
     if (monster.cooldown <= 0) {
       // The AI mode picks the MonStats Missiles.txt column: S1 for pure casters,
-      // A2 for rows with a secondary attack, otherwise A1. Only fall back to the
-      // next declared column when the selected one is empty.
-      const preferredMode =
-        monster.modeMissiles?.S1 !== undefined && monster.maxDmg <= 1
+      // A2 for GreaterMummy poison breath (`dist < 5`) or rows with a secondary attack,
+      // otherwise A1. Only fall back to the next declared column when the selected one is empty.
+      const preferredMode = isGreaterMummy
+        ? 'A2'
+        : monster.modeMissiles?.S1 !== undefined && monster.maxDmg <= 1
           ? 'S1'
           : monster.modeMissiles?.A2 !== undefined &&
               monster.hasAttack2 &&
@@ -2741,25 +3453,62 @@ function stepMonsterAi(this: GameInstanceHost, monster: InternalMonsterRecord): 
           at: { x: Math.round(nearest.x), y: Math.round(nearest.y) },
           lifePct: monster.maxHp > 0 ? Math.round((monster.hp / monster.maxHp) * 128) : 0,
         })
-        // `resolveMonsterAttackOnPlayer` applies `monsterAuraDamageBonusPct` to
-        // the projectile packet, so roll the raw MonStats band here.
-        const mslDmg = Math.max(
-          2,
-          monster.minDmg +
-            this.rng.rand(Math.max(0, monster.maxDmg - monster.minDmg) + 1),
-        )
-        const element = normalizeMissileElement(missileRec.eType) ?? 'phys'
-        // MonUMod 29 `multishot` (`+2` fan projectiles) is applied inside `spawnMonsterMissile` (#1900).
-        this.spawnMonsterMissile(monster, nearest.x, nearest.y, mslDmg, missileRec.id, 0, {
+        // 1.13c `D2Common#10413` (`0x6FDBBAA0`, #1989): evaluate `Missiles.txt` `MinDamage..MaxDamage` /
+        // `EMin..EMax << HitShift`, inheriting monster `minDmg..maxDmg` & `El1..3` ONLY when `SrcDamage > 0`.
+        const modeMinPhys =
+          selectedMode === 'S1'
+            ? monster.special1MinDmg
+            : selectedMode === 'A2'
+              ? monster.attack2MinDmg
+              : monster.minDmg
+        const modeMaxPhys =
+          selectedMode === 'S1'
+            ? monster.special1MaxDmg
+            : selectedMode === 'A2'
+              ? monster.attack2MaxDmg
+              : monster.maxDmg
+        const diffIdx: 0 | 1 | 2 = this.difficulty === 2 ? 2 : this.difficulty === 1 ? 1 : 0
+        const modeMissileSlvl = resolveMonsterModeMissileSlvl113c(diffIdx)
+        const mslEval = evaluateMonsterMissileDamage113c({
+          registry: this.registry,
           missile: missileRec,
-          skillLevel: monster.level,
-          ...(element === 'phys'
-            ? { physDamage: mslDmg }
-            : { elemDamage: mslDmg, element }),
+          slvl: modeMissileSlvl,
+          difficulty: diffIdx,
+          monsterMinPhys: modeMinPhys,
+          monsterMaxPhys: modeMaxPhys,
+          attackMode: selectedMode,
+          elementalAttacks: monster.elementalAttacks,
+          extraFirePct: monster.monProps.extraFirePct,
+          rng: this.rng,
         })
+        const physDamage =
+          mslEval.totalDamage > 0
+            ? mslEval.physDamage
+            : this.rollInclusive(modeMinPhys, modeMaxPhys)
+        const elemDamage = mslEval.elemDamage
+        const element = mslEval.element
+        // MonUMod 29 `multishot` (`+2` fan projectiles) is applied inside `spawnMonsterMissile` (#1900).
+        this.spawnMonsterMissile(
+          monster,
+          nearest.x,
+          nearest.y,
+          Math.max(1, physDamage + elemDamage),
+          missileRec.id,
+          0,
+          {
+            missile: missileRec,
+            skillLevel: modeMissileSlvl,
+            physDamage,
+            elemDamage,
+            element,
+            ...(mslEval.elemDurationFrames > 0
+              ? { elemDurationFrames: mslEval.elemDurationFrames }
+              : {}),
+          },
+        )
         return
       }
-    } else {
+    } else if (!isGreaterMummy) {
       return
     }
   }
@@ -2772,6 +3521,9 @@ function stepMonsterAi(this: GameInstanceHost, monster: InternalMonsterRecord): 
         nearest.kind === 'player' ? nearest.player : undefined,
         'phys',
       )
+      return
+    }
+    if (isNonMeleeStationary) {
       return
     }
     if (
@@ -2817,6 +3569,173 @@ function stepMonsterAi(this: GameInstanceHost, monster: InternalMonsterRecord): 
   }
 }
 
+/**
+ * 1.13c `AITHINK_Fn028_Vampire` (`D2Game.dll` `0x6FCA6900..0x6FCA7000`, `#2007`):
+ * - `aip1` (`aiParams[0]`, `55..85`): melee fight vs retreat chance (`%`).
+ * - `aip2` (`aiParams[1]`, `20..40` Normal / `40..70` NM / `45..80` Hell): ranged spell cast gate (`%`).
+ * - `aip3` (`aiParams[2]`, `24..28`): max ranged spell evaluation distance (sub-tiles).
+ * - `aip4` (`aiParams[3]`, `25..51`): `#170 VampireFirewall` / `#171 VampireMeteor` upgrade roll (`%`).
+ * - `aip5` (`aiParams[4]`, `1 | 3 | 5 | 7`): spell repertoire bitmask (`1` = `#169/#333`, `2` = `#170`, `4` = `#171`).
+ * - `vampireUpgradeCooldownTicks` (`dwAiParam4`, `0x6FCA6EC3`): `11` AI think ticks lockout after `#170` or `#171`.
+ */
+function stepVampireTargetAi113c(
+  this: GameInstanceHost,
+  monster: InternalMonsterRecord,
+  target:
+    | { readonly kind: 'player'; readonly x: number; readonly y: number; readonly player: InternalPlayerRecord }
+    | { readonly kind: 'merc'; readonly x: number; readonly y: number; readonly merc: InternalMercenaryRecord }
+    | { readonly kind: 'pet'; readonly x: number; readonly y: number; readonly pet: SummonedPetUnit }
+    | { readonly kind: 'monster'; readonly x: number; readonly y: number; readonly monster: InternalMonsterRecord },
+  dist: number,
+  hasDimVision: boolean,
+  hasTaunt: boolean,
+): void {
+  const hitMonsters = target.kind === 'monster'
+  const aip1 = monster.aiParams[0] || 55
+  const aip2 = monster.aiParams[1] || 20
+  const aip3 = monster.aiParams[2] || 24
+  const aip4 = monster.aiParams[3] || 25
+  const hasExplicitAiParams = monster.aiParams.some((v) => v !== 0)
+  const aip5 = hasExplicitAiParams ? (monster.aiParams[4] ?? 0) : 7
+
+  const hasSkill = (sid: number): boolean => monster.skills.some((s) => s.skillId === sid)
+  const pickBaseProjectileSkillId = (): number | undefined => {
+    const has169 = hasSkill(169)
+    const has333 = hasSkill(333)
+    if (has169 && has333) {
+      return this.rng.rand(100) < 50 ? 169 : 333
+    }
+    return has169 ? 169 : has333 ? 333 : undefined
+  }
+  const retreatAway = (): void => {
+    const dx = monster.x - target.x
+    const dy = monster.y - target.y
+    const d = Math.max(0.5, Math.hypot(dx, dy))
+    this.moveMonsterToward(monster, monster.x + (dx / d) * 4, monster.y + (dy / d) * 4, false)
+  }
+
+  // `bInMeleeRange != 0` (`0x6FCA6CC5..0x6FCA6DEB`)
+  if (dist <= 2.5) {
+    if (this.rng.rand(100) < aip1) {
+      if (
+        !hasDimVision &&
+        !hasTaunt &&
+        (aip5 & 1) !== 0 &&
+        dist <= 20 &&
+        monster.skillCooldown <= 0 &&
+        this.isMonsterStepWalkable(monster.areaId, monster.x, monster.y, target.x, target.y, true) &&
+        this.rng.rand(100) <= 30
+      ) {
+        const baseSid = pickBaseProjectileSkillId()
+        if (
+          baseSid !== undefined &&
+          this.tryCastMonsterSkill(monster, target, dist, { hitMonsters, forcedSkillId: baseSid })
+        ) {
+          monster.cooldown = Math.max(monster.cooldown, monster.cooldownTicks)
+          return
+        }
+      }
+      if (target.kind === 'monster') {
+        if (monster.cooldown <= 0) {
+          monster.cooldown = monster.cooldownTicks
+          this.attackMonsterTarget(monster, target.monster)
+        }
+      } else if (
+        monster.cooldown <= 0 &&
+        monster.pendingAttack === undefined &&
+        monster.pendingAllyAttack === undefined
+      ) {
+        monster.cooldown = monster.cooldownTicks
+        if (target.kind === 'player') {
+          this.beginMonsterMeleeAttack(monster, target.player)
+        } else if (target.kind === 'merc') {
+          monster.mode = 4
+          this.broadcastToArea(monster.areaId, {
+            type: 'UnitMode',
+            unitType: 1,
+            id: monster.unitId,
+            mode: 4,
+            at: { x: Math.round(target.merc.x), y: Math.round(target.merc.y) },
+            lifePct: monster.maxHp > 0 ? Math.round((monster.hp / monster.maxHp) * 128) : 0,
+          })
+          this.beginMonsterMeleeAttackOnAlly(monster, { kind: 'merc', id: target.merc.unitId })
+        } else {
+          monster.mode = 4
+          this.broadcastToArea(monster.areaId, {
+            type: 'UnitMode',
+            unitType: 1,
+            id: monster.unitId,
+            mode: 4,
+            at: { x: Math.round(target.pet.x), y: Math.round(target.pet.y) },
+            lifePct: monster.maxHp > 0 ? Math.round((monster.hp / monster.maxHp) * 128) : 0,
+          })
+          this.beginMonsterMeleeAttackOnAlly(monster, { kind: 'pet', id: target.pet.uid })
+        }
+      }
+      return
+    }
+    retreatAway()
+    return
+  }
+
+  // `bInMeleeRange == 0` (`0x6FCA6DEE..0x6FCA6FD2`)
+  if (
+    dist < aip3 &&
+    !hasDimVision &&
+    !hasTaunt &&
+    monster.skillCooldown <= 0 &&
+    monster.cooldown <= 0 &&
+    this.rng.rand(100) < aip2
+  ) {
+    // Upgrade 1: `#170 VampireFirewall` (`(aip5 & 2) != 0`, `0x6FCA6E2C..0x6FCA6E6E`)
+    if (
+      (aip5 & 2) !== 0 &&
+      monster.vampireUpgradeCooldownTicks <= 0 &&
+      hasSkill(170) &&
+      this.rng.rand(100) < aip4 &&
+      this.tryCastMonsterSkill(monster, target, dist, { hitMonsters, forcedSkillId: 170 })
+    ) {
+      monster.vampireUpgradeCooldownTicks = 11
+      monster.cooldown = Math.max(monster.cooldown, monster.cooldownTicks)
+      return
+    }
+    // Upgrade 2: `#171 VampireMeteor` (`(aip5 & 4) != 0`, `0x6FCA6E70..0x6FCA6ECE`)
+    if (
+      (aip5 & 4) !== 0 &&
+      monster.vampireUpgradeCooldownTicks <= 0 &&
+      hasSkill(171) &&
+      this.rng.rand(100) < aip4 &&
+      this.tryCastMonsterSkill(monster, target, dist, { hitMonsters, forcedSkillId: 171 })
+    ) {
+      monster.vampireUpgradeCooldownTicks = 11
+      monster.cooldown = Math.max(monster.cooldown, monster.cooldownTicks)
+      return
+    }
+    // Base projectile: `#169 VampireFireball` / `#333 VampireMissile` (`(aip5 & 1) != 0`, `0x6FCA6ED1..0x6FCA6F65`)
+    if (
+      (aip5 & 1) !== 0 &&
+      dist <= 20 &&
+      this.isMonsterStepWalkable(monster.areaId, monster.x, monster.y, target.x, target.y, true)
+    ) {
+      if (this.rng.rand(100) < 75) {
+        const baseSid = pickBaseProjectileSkillId()
+        if (
+          baseSid !== undefined &&
+          this.tryCastMonsterSkill(monster, target, dist, { hitMonsters, forcedSkillId: baseSid })
+        ) {
+          monster.cooldown = Math.max(monster.cooldown, monster.cooldownTicks)
+          return
+        }
+      } else {
+        retreatAway()
+        return
+      }
+    }
+  }
+
+  this.moveMonsterToward(monster, target.x, target.y, false)
+}
+
 export interface MonsterCombatAiMethods {
   tryCastMonsterCombatOrSummonSkill113c(monster: InternalMonsterRecord, target: { readonly x: number; readonly y: number }, distance: number, hitMonsters: boolean): boolean
   stepBaalThroneAi(monster: InternalMonsterRecord): void
@@ -2826,6 +3745,17 @@ export interface MonsterCombatAiMethods {
   stepTentacleHeadAi(monster: InternalMonsterRecord): void
   stepTentacleAi(monster: InternalMonsterRecord): void
   stepFrogDemonSubmergeAi(monster: InternalMonsterRecord): boolean
+  stepVampireTargetAi113c(
+    monster: InternalMonsterRecord,
+    target:
+      | { readonly kind: 'player'; readonly x: number; readonly y: number; readonly player: InternalPlayerRecord }
+      | { readonly kind: 'merc'; readonly x: number; readonly y: number; readonly merc: InternalMercenaryRecord }
+      | { readonly kind: 'pet'; readonly x: number; readonly y: number; readonly pet: SummonedPetUnit }
+      | { readonly kind: 'monster'; readonly x: number; readonly y: number; readonly monster: InternalMonsterRecord },
+    dist: number,
+    hasDimVision: boolean,
+    hasTaunt: boolean,
+  ): void
   stepMonsterAi(monster: InternalMonsterRecord): void
 }
 
@@ -2838,5 +3768,6 @@ export const monsterCombatAiMethods: Record<keyof MonsterCombatAiMethods, unknow
   stepTentacleHeadAi,
   stepTentacleAi,
   stepFrogDemonSubmergeAi,
+  stepVampireTargetAi113c,
   stepMonsterAi,
 }

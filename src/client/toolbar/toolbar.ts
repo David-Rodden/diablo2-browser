@@ -27,6 +27,7 @@ import {
   type ViewportResolution,
 } from '../settings/client-settings.ts'
 import { getGlobalSettingsStore, type SettingsStore } from '../settings/settings-store.ts'
+import { normalizeGraphicsQuality, VALID_GRAPHICS_QUALITIES } from '../settings/graphics-quality.ts'
 import { FullscreenController, type FullscreenDocLike } from './fullscreen-controller.ts'
 import {
   clearClientAssetCache,
@@ -303,6 +304,8 @@ export class Toolbar {
   private viewportSelectEl: HTMLSelectElement | null = null
   private fpsLabelEl: HTMLElement | null = null
   private worldFpsSelectEl: HTMLSelectElement | null = null
+  private graphicsLabelEl: HTMLElement | null = null
+  private graphicsSelectEl: HTMLSelectElement | null = null
   private hudLayoutLabelEl: HTMLElement | null = null
   private hudLayoutSelectEl: HTMLSelectElement | null = null
   private volumeLabelEl: HTMLElement | null = null
@@ -2104,6 +2107,27 @@ a.d2-toolbar__btn:active {
     fpsRow.appendChild(fpsLabel)
     fpsRow.appendChild(fpsSelect)
 
+    // Config Row: Graphics Quality / performance mode (#d2-toolbar-graphics-select)
+    const graphicsRow = doc.createElement('div')
+    graphicsRow.className = 'd2-toolbar-modal__row'
+    const graphicsLabel = doc.createElement('label')
+    graphicsLabel.id = 'd2-config-graphics-label'
+    graphicsLabel.className = 'd2-toolbar__label d2-toolbar-modal__row-label'
+    graphicsLabel.htmlFor = 'd2-toolbar-graphics-select'
+    const graphicsSelect = doc.createElement('select')
+    graphicsSelect.id = 'd2-toolbar-graphics-select'
+    graphicsSelect.className = 'd2-toolbar__select'
+    for (const quality of VALID_GRAPHICS_QUALITIES) {
+      const opt = doc.createElement('option')
+      opt.value = quality
+      graphicsSelect.appendChild(opt)
+    }
+    graphicsSelect.addEventListener('change', () => {
+      this.store.set({ graphicsQuality: normalizeGraphicsQuality(graphicsSelect.value) })
+    })
+    graphicsRow.appendChild(graphicsLabel)
+    graphicsRow.appendChild(graphicsSelect)
+
     // Config Row 3b: Touch HUD Layout (#d2-config-hud-layout-row, #d2-toolbar-hud-layout-select)
     const hudLayoutRow = doc.createElement('div')
     hudLayoutRow.id = 'd2-config-hud-layout-row'
@@ -2290,6 +2314,7 @@ a.d2-toolbar__btn:active {
     configBody.appendChild(displayRow)
     configBody.appendChild(viewportRow)
     configBody.appendChild(fpsRow)
+    configBody.appendChild(graphicsRow)
     configBody.appendChild(hudLayoutRow)
     configBody.appendChild(serverRow)
     configBody.appendChild(serverStatus)
@@ -2529,6 +2554,8 @@ a.d2-toolbar__btn:active {
     this.viewportSelectEl = viewportSelect
     this.fpsLabelEl = fpsLabel
     this.worldFpsSelectEl = fpsSelect
+    this.graphicsLabelEl = graphicsLabel
+    this.graphicsSelectEl = graphicsSelect
     this.hudLayoutLabelEl = hudLayoutLabel
     this.hudLayoutSelectEl = hudLayoutSelect
     this.volumeLabelEl = volumeLabel
@@ -2751,6 +2778,15 @@ a.d2-toolbar__btn:active {
     if (this.fpsLabelEl) {
       this.fpsLabelEl.textContent = tToolbar('toolbar.config.fps', lang)
     }
+    if (this.graphicsLabelEl) {
+      this.graphicsLabelEl.textContent = tToolbar('toolbar.config.graphics', lang)
+    }
+    if (this.graphicsSelectEl) {
+      for (const opt of Array.from(this.graphicsSelectEl.options)) {
+        const quality = normalizeGraphicsQuality(opt.value)
+        opt.textContent = tToolbar(`toolbar.config.graphics.${quality}`, lang)
+      }
+    }
     if (this.hudLayoutLabelEl) {
       this.hudLayoutLabelEl.textContent = tToolbar('toolbar.config.hudLayout', lang)
     }
@@ -2852,8 +2888,16 @@ a.d2-toolbar__btn:active {
       }
       this.viewportSelectEl.value = snap.settings.viewport
     }
+    const graphicsQuality = normalizeGraphicsQuality(snap.settings.graphicsQuality)
     if (this.worldFpsSelectEl) {
-      this.worldFpsSelectEl.value = String(snap.settings.worldRenderFps)
+      // The low preset locks 30 FPS without overwriting the user's own choice.
+      const lockedFps = graphicsQuality === 'low'
+      this.worldFpsSelectEl.value = lockedFps ? '30' : String(snap.settings.worldRenderFps)
+      this.worldFpsSelectEl.disabled = lockedFps
+      this.worldFpsSelectEl.title = lockedFps ? tToolbar('toolbar.config.graphics.lowHint', lang) : ''
+    }
+    if (this.graphicsSelectEl) {
+      this.graphicsSelectEl.value = graphicsQuality
     }
     if (this.muteBtnEl) {
       const muted = snap.settings.audioMuted

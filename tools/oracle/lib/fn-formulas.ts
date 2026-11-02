@@ -5,39 +5,44 @@
  * compared against. Oracle-side calling conventions:
  * `kb/engine/oracle-fn-harness-113c.md`.
  */
-import { evaluateCalc, compute5BandScaling, computeDiminishingReturnsRaw, type CalcEvalContext } from '../../../src/common/data/calc-ast.ts'
+import {
+  evaluateCalc,
+  compute5BandScaling,
+  computeDiminishingReturnsRaw,
+  computeRawSkillMana256_113c,
+  computeRawSkillPhysDmg256_113c,
+  type CalcEvalContext,
+} from '../../../src/common/data/calc-ast.ts'
 import type { D2DataRegistry, SkillRecord } from '../../../src/common/data/data-registry.ts'
 import {
-  computeBlockRate113c,
-  computeEffectiveResistance,
+  applyRawStealDelta256_113c,
   computeLifeManaSteal113c,
-  computeToHitChance,
-  defenderResistParams113c,
-  executeSUnitDmg,
+  computeRawDamagePipe113c,
+  computeRawEffectiveResistance113c,
+  computeRawPlayerBlockRate113c,
+  computeRawToHitChance113c,
   mulDiv113c,
-  type CombatUnitContext,
   type ResistChannel113c,
 } from '../../../src/server/engine/combat-pipeline.ts'
-import { CHARACTER_CLASS_CODES, calculateVitalsAtLevel, resolveCharacterClass } from '../../../src/common/units/classes.ts'
 import {
-  computeDiminishingRate113c,
-  computeEffectiveAnimRate113c,
-  computeLocomotionStepSpeed256,
-  computeMoveVelocityPercent113c,
-  computeOneShotTicks,
-  computeStepSpeed256,
+  CHARACTER_CLASS_CODES,
+  calculateVitalsAtLevel,
+  computeRawAttackRating113c,
+  computeRawStatAllocDelta256_113c,
+  resolveCharacterClass,
+} from '../../../src/common/units/classes.ts'
+import {
+  computeRawAnimDataActionFrame113c,
+  computeRawDiminishingRate113c,
+  computeRawOneShotTicks113c,
+  computeRawPlayerAnimSpeed113c,
   getCharAnimClip113c,
-  resolvePlayerLocomotionBaseSpeed256,
-  resolveWeaponWsm,
 } from '../../../src/common/units/char-anim-speed.ts'
-import { StateBus } from '../../../src/server/engine/state-bus.ts'
-import { D2Rng } from '../../../src/common/rng/d2-rng.ts'
-import { applyExpRatio113c, computeMonsterExpGrant113c } from '../../../src/common/progression/experience-113c.ts'
+import { applyRawExpRatio113c, computeRawMonsterExpGrant113c } from '../../../src/common/progression/experience-113c.ts'
 import { difficultyLifeStealDivisor, difficultyManaStealDivisor, difficultyResistPenalty } from '../../../src/server/engine/difficulty-resist-penalty.ts'
-import { playerSkillsTargetAndMeleeMethods } from '../../../src/server/engine/game-instance/player-skills-target-and-melee.ts'
 import { fogMulDiv113c } from '../../../src/common/items/transaction-cost.ts'
 import { evaluateSkill113c } from '../../../src/server/skills/registry.ts'
-import { UnitStatList } from '../../../src/server/engine/stat-list.ts'
+import { computeRawDefense113c, UnitStatList } from '../../../src/server/engine/stat-list.ts'
 
 /** `SkillCalc.txt` row order = D2Common SkillCalc callback code (`#10147`, table `0x6FDA174C`). */
 export const SKILLCALC_CODES: readonly string[] = (
@@ -200,11 +205,11 @@ export function tsSkillFn(
     case 'tohit':
       return evaluateCalc('toht', ctx)
     case 'phmin':
-      return tsSkillEvalFn(reg, 'eval.minPhysDmg', skillId, lvl, env, cache)
+      return computeRawSkillPhysDmg256_113c(skill, lvl, ctx, false)
     case 'phmax':
-      return tsSkillEvalFn(reg, 'eval.maxPhysDmg', skillId, lvl, env, cache)
+      return computeRawSkillPhysDmg256_113c(skill, lvl, ctx, true)
     case 'rawmana':
-      return tsSkillEvalFn(reg, 'eval.rawManaCost256', skillId, lvl, env, cache)
+      return computeRawSkillMana256_113c(skill, lvl)
   }
 }
 
@@ -230,7 +235,14 @@ export function tsSkillEvalFn(
   const skill = reg.getSkillById(skillId)
   if (!skill) return 0
   cache.statList ??= envStatList(reg, env)
-  const r = evaluateSkill113c({ registry: reg, skill, slvl: lvl, blvl: env.hard.get(skill.id) ?? 0, statList: cache.statList })
+  const r = evaluateSkill113c({
+    registry: reg,
+    skill,
+    slvl: lvl,
+    blvl: env.hard.get(skill.id) ?? 0,
+    statList: cache.statList,
+    includeMissileFallback: false,
+  })
   switch (fn) {
     case 'eval.minElemDmg256': return r.minElemDmg256
     case 'eval.maxElemDmg256': return r.maxElemDmg256
@@ -302,58 +314,49 @@ function vitalsDelta256(cls: number, levels: number, vit: number, ene: number, w
 export function tsCombatFn(reg: D2DataRegistry, fn: CombatFn, a: readonly number[]): number {
   const n = (i: number): number => a[i] ?? 0
   switch (fn) {
-    case 'ar': {
-      const host = { sumPlayerItemStat: (_p: unknown, id: number) => (id === 19 ? n(2) : 0) }
-      const player = { classCode: CLASS_BY_ID[n(0)] ?? 'ama', dexterity: n(1) }
-      const f = playerSkillsTargetAndMeleeMethods.computePlayerBaseToHit113c as (this: unknown, p: unknown) => number
-      return f.call(host, player)
-    }
-    case 'def': {
-      const sl = new UnitStatList(reg, undefined, { ownerType: 'player', charClass: 'bar' })
-      sl.setBaseStat(2, n(0))
-      sl.setBaseStat(31, n(1))
-      sl.setBaseStat(171, n(2))
-      sl.setBaseStat(16, n(3))
-      sl.setBaseStat(182, n(4))
-      return sl.getDefense()
-    }
-    case 'block': {
-      const sl = new UnitStatList(reg, undefined, { ownerType: 'player', charClass: CLASS_BY_ID[n(0)] ?? 'ama' })
-      sl.setBaseStat(2, n(2))
-      sl.setBaseStat(12, n(3))
-      sl.setBaseStat(20, n(4))
-      const unit = { id: 'p', name: 'p', unitType: 'player', hasShield: true, charClass: CLASS_BY_ID[n(0)], statList: sl }
-      return computeBlockRate113c(unit as unknown as CombatUnitContext, n(1) !== 0)
-    }
-    case 'vit.maxhp': return vitalsDelta256(n(0), 0, n(1), 0, 'life')
-    case 'vit.maxstamina': return vitalsDelta256(n(0), 0, n(1), 0, 'stamina')
-    case 'ene.maxmana': return vitalsDelta256(n(0), 0, 0, n(1), 'mana')
+    case 'ar':
+      return computeRawAttackRating113c(n(0), n(1), n(2))
+    case 'def':
+      return computeRawDefense113c({
+        dex: n(0),
+        armorclass: n(1),
+        skillArmorPct: n(2),
+        itemArmorPct: n(3),
+        overridePct: n(4),
+      })
+    case 'block':
+      return computeRawPlayerBlockRate113c(n(0), n(1) !== 0, n(2), n(3), n(4))
+    case 'vit.maxhp': return computeRawStatAllocDelta256_113c(n(0), n(1), 'life', resolveCharacterClass('bar').baseVitals.life * 256)
+    case 'vit.maxstamina': return computeRawStatAllocDelta256_113c(n(0), n(1), 'stamina', resolveCharacterClass('bar').baseVitals.stamina * 256)
+    case 'ene.maxmana': return computeRawStatAllocDelta256_113c(n(0), n(1), 'mana', resolveCharacterClass('bar').baseVitals.mana * 256)
     case 'levelup.maxhp': return vitalsDelta256(n(0), n(1), 0, 0, 'life')
     case 'levelup.maxmana': return vitalsDelta256(n(0), n(1), 0, 0, 'mana')
     case 'levelup.maxstamina': return vitalsDelta256(n(0), n(1), 0, 0, 'stamina')
     case 'levelup.statpts': return resolveCharacterClass(CLASS_BY_ID[n(0)] ?? 'ama').perLevel.statPoints * n(1)
     case 'levelup.newskills': return n(1)
     case 'hit':
-      return computeToHitChance({
-        attackerAr: n(0),
-        defenderDef: n(1),
-        attackerLvl: n(2),
-        defenderLvl: n(3),
-        skillArBonusPct: n(4),
-        itemArBonusPct: n(5),
-        attackKind: n(6) ? 'missile' : 'melee',
-        ...(n(6) ? { defenderAcVsMissile: n(7) } : { defenderAcVsHth: n(7) }),
+      return computeRawToHitChance113c({
+        ar: n(0),
+        def: n(1),
+        alvl: n(2),
+        dlvl: n(3),
+        extraPct: n(4),
+        itemPct: n(5),
+        acVs: n(7),
       })
     case 'resist': {
       const row = RESIST_ROWS[n(0)]
       if (!row) return 0
-      if (n(1)) {
-        const sl = new UnitStatList(reg, undefined, { ownerType: 'player', charClass: 'bar' })
-        if (row.max >= 0) sl.setBaseStat(row.max, n(3))
-        const params = defenderResistParams113c({ unitType: 'player', statList: sl, resistPenalty: n(5) }, row.channel)
-        return computeEffectiveResistance({ baseRes: n(2), passiveEnemyPierce: n(4), ...params }).effectiveRes
-      }
-      return computeEffectiveResistance({ baseRes: n(2), passiveEnemyPierce: n(4), isDefenderPlayer: false }).effectiveRes
+      return computeRawEffectiveResistance113c({
+        resStatId: row.res,
+        maxStatId: row.max,
+        pierceStatId: row.pierce,
+        defenderIsPlayer: n(1) !== 0,
+        res: n(2),
+        maxStat: n(3),
+        pierce: n(4),
+        penalty: n(5),
+      })
     }
     case 'steal.life':
     case 'steal.mana': {
@@ -367,11 +370,11 @@ export function tsCombatFn(reg: D2DataRegistry, fn: CombatFn, a: readonly number
         defenderIsMonster: true,
         defenderDrain: n(4),
       })
-      return fn === 'steal.life' ? r.life256 : r.mana256
+      return applyRawStealDelta256_113c(fn === 'steal.life' ? r.life256 : r.mana256)
     }
-    case 'diminish': return computeDiminishingRate113c(n(1))
-    case 'explvl': return computeMonsterExpGrant113c(n(2), n(0), n(1))
-    case 'expratio': return applyExpRatio113c(n(0), n(1))
+    case 'diminish': return computeRawDiminishingRate113c(n(1), n(0) === 4 ? 150 : 120)
+    case 'explvl': return computeRawMonsterExpGrant113c(n(0), n(1), n(2))
+    case 'expratio': return applyRawExpRatio113c(n(0), n(1))
   }
 }
 
@@ -394,54 +397,37 @@ export const DMG_CHANNELS: readonly {
 
 export type DmgFn = 'dmg.phys' | 'dmg.elem' | 'dmg.total' | 'dmg.absorb'
 
-function combatUnit(reg: D2DataRegistry, unitType: 'player' | 'monster', stats: readonly (readonly [number, number])[]): CombatUnitContext {
-  const sl = new UnitStatList(reg, undefined, { ownerType: unitType === 'player' ? 'player' : 'monster', charClass: 'bar' })
-  sl.setBaseStat(12, 1)
-  sl.setBaseStat(7, 0x3fffff00)
-  sl.setHp256(0x3fffff00)
-  for (const [id, v] of stats) sl.setBaseStat(id, v)
-  return { id: unitType, name: unitType, unitType, statList: sl, stateBus: new StateBus(sl) } as unknown as CombatUnitContext
-}
-
 /**
- * TS value of one damage-pipeline case through `executeSUnitDmg` (spell, auto-hit, fixed ranges).
+ * TS value of one damage-pipeline case (`D2Game.dll` `0x6FCFC0B0` `SUNITDMG_CalcResistAndAbsorb`).
  * a = [defIsPlayer, difficulty, phys256, channel, elem256, rate54, dr, mdr, physRes, res, maxRes, absPct, absFlat, pierce]
  */
-export function tsDmgFn(reg: D2DataRegistry, fn: DmgFn, a: readonly number[]): number {
+export function tsDmgFn(_reg: D2DataRegistry, fn: DmgFn, a: readonly number[]): number {
   const n = (i: number): number => a[i] ?? 0
   const ch = DMG_CHANNELS[n(3)] ?? DMG_CHANNELS[0]!
-  const defStats: [number, number][] = [[34, n(6)], [35, n(7)], [36, n(8)], [ch.res, n(9)], [ch.max, n(10)], [ch.absPct, n(11)], [ch.absFlat, n(12)]]
-  const defender = combatUnit(reg, n(0) ? 'player' : 'monster', defStats)
-  // The caller supplies the DifficultyLevels.txt ResistPenalty for player defenders (defenderResistParams113c).
-  if (n(0)) (defender as { resistPenalty?: number }).resistPenalty = difficultyResistPenalty(n(1))
-  const attacker = combatUnit(reg, n(0) ? 'monster' : 'player', ch.pierce >= 0 ? [[ch.pierce, n(13)]] : [])
-  const out = executeSUnitDmg(
-    attacker,
-    defender,
-    {
-      skillId: 0,
-      attackKind: 'spell',
-      srcDam: 0,
-      flatPhysMin256: n(2),
-      flatPhysMax256: n(2),
-      elemType: ch.elemType,
-      elemMin256: n(4),
-      elemMax256: n(4),
-      autoHit: true,
-      unblockable: true,
-      unavoidable: true,
-      difficulty: n(1) as 0 | 1 | 2,
-      isExpansion: true,
-      noHitRecovery: true,
-      ...(n(5) > 0 ? { frameRate1024: n(5) } : {}),
-    },
-    new D2Rng(1),
-  )
+  const defIsPlayer = n(0) !== 0
+  const out = computeRawDamagePipe113c({
+    defenderIsPlayer: defIsPlayer,
+    phys256: n(2),
+    elem256: n(4),
+    rate54: n(5),
+    dr: n(6),
+    mdr: n(7),
+    physRes: n(8),
+    elemResStatId: ch.res,
+    elemMaxStatId: ch.max,
+    elemPierceStatId: ch.pierce,
+    res: n(9),
+    maxRes: n(10),
+    absPct: n(11),
+    absFlat: n(12),
+    pierce: n(13),
+    penalty: defIsPlayer ? difficultyResistPenalty(n(1)) : 0,
+  })
   switch (fn) {
     case 'dmg.phys': return out.physDamage256
     case 'dmg.elem': return out.elemDamage256
     case 'dmg.total': return out.totalDamage256
-    case 'dmg.absorb': return out.absorbHeal256 ?? 0
+    case 'dmg.absorb': return out.absorb256
   }
 }
 
@@ -465,18 +451,19 @@ export function tsAnimFn(fn: AnimFn, a: readonly number[]): number {
   const n = (i: number): number => a[i] ?? 0
   if (fn.startsWith('animdata.')) {
     const clip = getCharAnimClip113c(n(0), n(1), { weaponClass: (WCLASS_CODES[n(2)] ?? 'hth').toLowerCase() })
-    return fn === 'animdata.frames' ? clip.frames : fn === 'animdata.speed' ? clip.speed : clip.actionFrame
+    return fn === 'animdata.frames'
+      ? clip.frames
+      : fn === 'animdata.speed'
+        ? clip.speed
+        : computeRawAnimDataActionFrame113c(clip)
   }
-  const mode = n(0)
-  const clip = getCharAnimClip113c(n(1), mode, { weaponClass: '1hs' })
-  let speed: number
-  if (mode === 2 || mode === 3) {
-    const base = resolvePlayerLocomotionBaseSpeed256(mode === 3 ? 'rn' : 'wl', clip.speed)
-    speed = computeLocomotionStepSpeed256(base, computeMoveVelocityPercent113c({ stat67: n(4), itemFrw: n(2), running: mode === 3 }))
-  } else {
-    const stats =
-      mode === 10 ? { fcr: n(2) } : mode === 4 ? { fhr: n(2) } : mode === 9 ? { fbr: n(2) } : { itemIas: n(2), skillIas: n(3) - 100, weaponWsm: resolveWeaponWsm('hax') }
-    speed = computeStepSpeed256(clip.speed, computeEffectiveAnimRate113c(mode, stats))
-  }
-  return fn === 'anim.speed' ? speed : computeOneShotTicks(clip.frames, speed)
+  const speed = computeRawPlayerAnimSpeed113c({
+    mode: n(0),
+    classId: n(1),
+    statAcc: n(2),
+    stat68Acc: n(3),
+    stat67Acc: n(4),
+    weaponClass: '1hs',
+  })
+  return fn === 'anim.speed' ? speed : computeRawOneShotTicks113c(n(5), speed)
 }

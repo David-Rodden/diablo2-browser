@@ -539,6 +539,13 @@ export function handleServerEvent(host: SessionEventProcessorHost, rawEv: Server
       : undefined
   let preRemoveNpcCancelId: number | null = null
   let preRemoveStashClose = false
+  const preRoomHideNpcId =
+    ev.type === 'RoomHide' && host.world.npcInteraction.unitType !== 2
+      ? host.world.npcInteraction.npcId
+      : null
+  const preRoomHideStashOpen =
+    ev.type === 'RoomHide' &&
+    Boolean(host.world.npcInteraction.stashOpen || host.hudManager.leftPanel === 'stash')
   if (ev.type === 'UnitRemove') {
     const rmTypeId = unitTypeToId(ev.unitType)
     const rmId = Number((ev as any).id ?? (ev as any).unitId ?? 0)
@@ -894,6 +901,24 @@ export function handleServerEvent(host: SessionEventProcessorHost, rawEv: Server
         notifyMapService: false,
       })
       host.pruneMissingInterpolatorEntities()
+      if (
+        preRoomHideNpcId !== null &&
+        host.world.getUnit('monster', preRoomHideNpcId) === undefined
+      ) {
+        preRemoveNpcCancelId = preRoomHideNpcId
+        host.hudModel.cancelNpcSession(preRoomHideNpcId)
+        if (host.hudManager.leftPanel === 'vendor') {
+          host.hudManager.worldPanels.clearVendorShop()
+          host.hudManager.hideLeftPanelFromWorld('vendor')
+        }
+      }
+      if (preRoomHideStashOpen && !host.world.npcInteraction.stashOpen) {
+        preRemoveStashClose = true
+        host.hudModel.closeStash()
+        if (host.hudManager.leftPanel === 'stash') {
+          host.hudManager.hideLeftPanelFromWorld('stash')
+        }
+      }
       break
     }
 
@@ -1349,7 +1374,11 @@ export function handleServerEvent(host: SessionEventProcessorHost, rawEv: Server
       if (ev.kind === 'item' || ev.source === 0x50) {
         const arr = ev.quests ?? ev.flags ?? []
         const itemQuestKind = (arr[0] ?? 0) & 0xffff
-        if (itemQuestKind === 1 && typeof host.automapView.setStaffTombLevelOverride === 'function') {
+        if (
+          itemQuestKind === 1 &&
+          typeof host.automapView.setStaffTombLevelOverride === 'function' &&
+          (((host.world.quests[12] ?? 0) & 0x2001) !== 0 || (host.world.questTombOffset & 0xffff) > 0)
+        ) {
           host.automapView.setStaffTombLevelOverride(66 + (host.world.questTombOffset & 0xffff))
         } else if (itemQuestKind === 4 && host.world.questLog.cairnStoneOrder) {
           host.hudManager.worldPanels.openBarkscroll(true, host.world.questLog.cairnStoneOrder)
@@ -1488,7 +1517,11 @@ export function handleServerEvent(host: SessionEventProcessorHost, rawEv: Server
   if (ev.type === 'RoomReveal' || ev.type === 'RoomHide') {
     const prevArea = host.lastSyncedAreaId > 0 ? host.lastSyncedAreaId : host.world.areaId
     host.syncActiveAreaFromPlayerPosition({ emitHudSync: false })
-    if (host.world.areaId !== prevArea) {
+    if (
+      host.world.areaId !== prevArea ||
+      preRemoveNpcCancelId !== null ||
+      preRemoveStashClose
+    ) {
       host.hudModel.syncFromWorld()
     } else {
       host.hudModel.syncTargetMonsterFromWorld()
@@ -1506,7 +1539,11 @@ export function handleServerEvent(host: SessionEventProcessorHost, rawEv: Server
   ) {
     const prevArea = host.lastSyncedAreaId > 0 ? host.lastSyncedAreaId : host.world.areaId
     host.syncActiveAreaFromPlayerPosition({ emitHudSync: false })
-    if (host.world.areaId !== prevArea) {
+    if (
+      host.world.areaId !== prevArea ||
+      preRemoveNpcCancelId !== null ||
+      preRemoveStashClose
+    ) {
       host.hudModel.syncFromWorld()
     } else {
       host.hudModel.syncVitalsFromWorld()

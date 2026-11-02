@@ -941,6 +941,7 @@ export class PluginHost {
           showWeaponDamageFormula: s.showWeaponDamageFormula,
           showAdvancedStatsButton: s.showAdvancedStatsButton,
           showRuneNumbers: s.showRuneNumbers,
+          showItemStatRanges: s.showItemStatRanges,
         }
       },
       setHudEnhancements: (patch: Partial<HudEnhancementsConfig>): void => {
@@ -961,7 +962,9 @@ export class PluginHost {
           (patch.showAdvancedStatsButton !== undefined &&
             typeof patch.showAdvancedStatsButton !== 'boolean') ||
           (patch.showRuneNumbers !== undefined &&
-            typeof patch.showRuneNumbers !== 'boolean')
+            typeof patch.showRuneNumbers !== 'boolean') ||
+          (patch.showItemStatRanges !== undefined &&
+            typeof patch.showItemStatRanges !== 'boolean')
         ) {
           throw new Error(
             `[PluginHost] HudEnhancementsConfig fields must be booleans on plugin "${pluginId}"`,
@@ -976,13 +979,15 @@ export class PluginHost {
         const nextWeapDmgFormula = patch.showWeaponDamageFormula ?? curr.showWeaponDamageFormula
         const nextAdvStatsBtn = patch.showAdvancedStatsButton ?? curr.showAdvancedStatsButton
         const nextRuneNumbers = patch.showRuneNumbers ?? curr.showRuneNumbers
+        const nextItemStatRanges = patch.showItemStatRanges ?? curr.showItemStatRanges
         if (
           nextStats !== curr.showBasePlusBonusStats ||
           nextSkills !== curr.showBasePlusBonusSkills ||
           nextStatTips !== curr.showStatGainTooltips ||
           nextWeapDmgFormula !== curr.showWeaponDamageFormula ||
           nextAdvStatsBtn !== curr.showAdvancedStatsButton ||
-          nextRuneNumbers !== curr.showRuneNumbers
+          nextRuneNumbers !== curr.showRuneNumbers ||
+          nextItemStatRanges !== curr.showItemStatRanges
         ) {
           this.settingsStore.set({
             showBasePlusBonusStats: nextStats,
@@ -991,6 +996,7 @@ export class PluginHost {
             showWeaponDamageFormula: nextWeapDmgFormula,
             showAdvancedStatsButton: nextAdvStatsBtn,
             showRuneNumbers: nextRuneNumbers,
+            showItemStatRanges: nextItemStatRanges,
           })
         }
         this.syncToolbarState()
@@ -1005,13 +1011,15 @@ export class PluginHost {
               !changed.includes('showStatGainTooltips') &&
               !changed.includes('showWeaponDamageFormula') &&
               !changed.includes('showAdvancedStatsButton') &&
-              !changed.includes('showRuneNumbers')) ||
+              !changed.includes('showRuneNumbers') &&
+              !changed.includes('showItemStatRanges')) ||
             (next.showBasePlusBonusStats === prev.showBasePlusBonusStats &&
               next.showBasePlusBonusSkills === prev.showBasePlusBonusSkills &&
               next.showStatGainTooltips === prev.showStatGainTooltips &&
               next.showWeaponDamageFormula === prev.showWeaponDamageFormula &&
               next.showAdvancedStatsButton === prev.showAdvancedStatsButton &&
-              next.showRuneNumbers === prev.showRuneNumbers)
+              next.showRuneNumbers === prev.showRuneNumbers &&
+              next.showItemStatRanges === prev.showItemStatRanges)
           ) {
             return
           }
@@ -1023,6 +1031,7 @@ export class PluginHost {
               showWeaponDamageFormula: next.showWeaponDamageFormula,
               showAdvancedStatsButton: next.showAdvancedStatsButton,
               showRuneNumbers: next.showRuneNumbers,
+              showItemStatRanges: next.showItemStatRanges,
             })
           } catch (err) {
             this.recordPluginError(record, 'hudEnhancements subscriber', err)
@@ -1204,7 +1213,8 @@ export class PluginHost {
       curr.showStatGainTooltips ||
       curr.showWeaponDamageFormula ||
       curr.showAdvancedStatsButton ||
-      curr.showRuneNumbers
+      curr.showRuneNumbers ||
+      curr.showItemStatRanges
     ) {
       this.settingsStore.set({
         showBasePlusBonusStats: false,
@@ -1213,6 +1223,7 @@ export class PluginHost {
         showWeaponDamageFormula: false,
         showAdvancedStatsButton: false,
         showRuneNumbers: false,
+        showItemStatRanges: false,
       })
     }
   }

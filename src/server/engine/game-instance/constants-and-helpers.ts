@@ -1270,9 +1270,13 @@ export const CHAR_ANIM_TOKEN_BY_CLASS_113C: Readonly<Record<string, string>> = {
 
 
 /**
- * 1.13c quest item equivalence classes (`D2Game.dll` @ `0x6fcf2f00` / `0x6fcf2070`):
- * owning an upgraded/combined quest item counts as already possessing the raw
- * quest component so duplicate quest items cannot be picked up or minted.
+ * 1.13c ground-pickup quest item conflict table (`ITEMS_HasConflictingQuestItem`,
+ * `D2Game.dll` @ `0x6FCF2070..0x6FCF22B8`, called by `ITEMS_CheckQuestItemPickup`
+ * @ `0x6FCF2F00`): symmetric bidirectional conflict pairs (`j34 <-> g34`,
+ * `bks <-> bkd`, `d33 <-> g33`, `hst <-> msf/vip`, `qf2 <-> qf1/qhr/qey/qbr`)
+ * preventing a player (or hired mercenary) from picking up a raw quest item while
+ * holding its assembled upgrade OR picking up an assembled upgrade while holding
+ * any raw component (`#2002`).
  */
 export const QUEST_ITEM_EQUIVALENT_CODES_113C: Readonly<
   Record<string, readonly string[]>
@@ -1282,8 +1286,8 @@ export const QUEST_ITEM_EQUIVALENT_CODES_113C: Readonly<
   msf: ['msf', 'hst'],
   vip: ['vip', 'hst'],
   hst: ['hst', 'msf', 'vip'],
-  j34: ['j34', 'g34', 'xyz'],
-  g34: ['g34', 'j34', 'xyz'],
+  j34: ['j34', 'g34'],
+  g34: ['g34', 'j34'],
   xyz: ['xyz'],
   g33: ['g33', 'd33'],
   d33: ['d33', 'g33'],
@@ -1292,6 +1296,44 @@ export const QUEST_ITEM_EQUIVALENT_CODES_113C: Readonly<
   qbr: ['qbr', 'qf2'],
   qf1: ['qf1', 'qf2'],
   qf2: ['qf2', 'qf1', 'qey', 'qhr', 'qbr'],
+  tr2: ['tr2'],
+  ice: ['ice'],
+  box: ['box'],
+  tr1: ['tr1'],
+  ass: ['ass'],
+  hdm: ['hdm'],
+  bbb: ['bbb'],
+  hfh: ['hfh'],
+  mss: ['mss'],
+}
+
+/**
+ * 1.13c upward-only quest item superseding table (`QUESTS_FindItemByCode`,
+ * `D2Game.dll` @ `0x6FC2E660..0x6FC2E73C` + quest drop/mint checks such as
+ * `ACT3Q5_CountFlailNeeds` @ `0x6FD036A0` and Meshif `0x6FD08E1E`, `#2002`):
+ * a quest drop or NPC mint is satisfied ONLY by the item itself or its upgraded /
+ * transmuted evolution — NEVER by uncombined raw ingredients (e.g. holding `qey`,
+ * `qhr`, or `qbr` must NOT count as already owning `qf2`, and a ground `j34` must
+ * NOT suppress Meshif minting `g34`).
+ */
+export const QUEST_ITEM_SUPERSEDING_CODES_113C: Readonly<
+  Record<string, readonly string[]>
+> = {
+  bks: ['bks', 'bkd'],
+  bkd: ['bkd'],
+  msf: ['msf', 'hst'],
+  vip: ['vip', 'hst'],
+  hst: ['hst'],
+  j34: ['j34', 'g34', 'xyz'],
+  g34: ['g34', 'xyz'],
+  xyz: ['xyz'],
+  g33: ['g33', 'd33'],
+  d33: ['d33'],
+  qey: ['qey', 'qf2'],
+  qhr: ['qhr', 'qf2'],
+  qbr: ['qbr', 'qf2'],
+  qf1: ['qf1', 'qf2'],
+  qf2: ['qf2'],
   tr2: ['tr2'],
   ice: ['ice'],
   box: ['box'],

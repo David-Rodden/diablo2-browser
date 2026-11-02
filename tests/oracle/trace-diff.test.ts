@@ -102,4 +102,43 @@ describe('oracle trace diff', () => {
     expect(parseTrace(t).frames.size).toBe(3)
     expect(() => parseTrace('{"frame":1}\n')).toThrow(/header/)
   })
+
+  it('compares per-unit seeds when compareSeeds is enabled, and compares gs, st, and dmg keys', () => {
+    const oFrames = {
+      1: {
+        ...structuredClone(base[1]),
+        gs: [2189963941, 588192779],
+        st: [[0, 1, 64, 105], [1, 2, 105]],
+        dmg: [{ att: [0, 1], def: [1, 2], hp: [256, 256], ret: 128, raw: [34, 5, 128, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] }],
+      },
+    }
+    const rFrames = structuredClone(oFrames)
+    expect(diffTraces(parseTrace(trace('oracle', oFrames)), parseTrace(trace('replica', rFrames)), { compareSeeds: true }).firstDivergence).toBeNull()
+
+    const badGs = structuredClone(oFrames)
+    badGs[1].gs = [111, 222]
+    expect(diffTraces(parseTrace(trace('oracle', oFrames)), parseTrace(trace('replica', badGs))).firstDivergence).toMatchObject({
+      frame: 1,
+      kind: 'game-seed',
+      field: 'gs',
+    })
+
+    const badSt = structuredClone(oFrames)
+    badSt[1].st = [[0, 1, 105], [1, 2, 105]]
+    expect(diffTraces(parseTrace(trace('oracle', oFrames)), parseTrace(trace('replica', badSt))).firstDivergence).toMatchObject({
+      frame: 1,
+      kind: 'states',
+      type: 0,
+      unitId: 1,
+      field: 'st',
+    })
+
+    const badDmg = structuredClone(oFrames)
+    badDmg[1].dmg[0]!.ret = 64
+    expect(diffTraces(parseTrace(trace('oracle', oFrames)), parseTrace(trace('replica', badDmg))).firstDivergence).toMatchObject({
+      frame: 1,
+      kind: 'damage',
+      field: 'dmg[0]',
+    })
+  })
 })

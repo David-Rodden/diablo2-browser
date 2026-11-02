@@ -1378,12 +1378,12 @@ export function aggregateUnit(input: StatEngineUnitInput): UnitAggregate {
     addAuraStateSource(26, 138, (flat, eff) => {
       flat.add(171, 0, 100 + 10 * (eff - 1))
     })
-    // Barbarian #149 Battle Orders (state 32): +35 + 3*(slvl-1) % Max HP/Mana/Stamina
+    // Barbarian #149 Battle Orders (state 32): +35 + 3*(slvl-1) % Max HP/Mana/Stamina (Skills.txt aurastat3 = skill_staminapercent = 162)
     addAuraStateSource(32, 149, (flat, eff) => {
       const boPct = 35 + 3 * (eff - 1)
       flat.add(76, 0, boPct)
       flat.add(77, 0, boPct)
-      flat.add(163, 0, boPct)
+      flat.add(162, 0, boPct)
     })
     // Barbarian #152 Berserk (state 95): sets STAT_ARMOR_OVERRIDE_PERCENT (182) = -100, reducing defense to 0
     if (input.activeStates.has(95) && !serverActiveStates.has(95)) {

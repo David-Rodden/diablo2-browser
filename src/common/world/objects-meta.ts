@@ -6247,30 +6247,30 @@ export function getObjectHitBox113c(
 }
 
 /**
- * 1.13c Ground Truth: Objects.txt IDs that act as static map placeholders for dynamic NPCs (#900).
- * In Diablo II 1.13c, certain NPCs exist both as static DS1 map object presets (Objects.txt Token=ss)
- * with specific InitFunctions and as dynamic monster/NPC entities (MonPreset.txt).
- * When the server assigns an active dynamic NPC entity (0xAC AssignNPC), the static placeholder
- * object (0x51 AssignObject) must be suppressed/hidden to avoid duplicate rendering.
- *
- * - Object ID 121: Jerhyn outside palace (InitFn 18, Token=ss, DS1 ID 16 -> 121:JE:NU:d1:m)
- * - Object ID 122: Jerhyn inside palace (InitFn 19, Token=ss, DS1 ID 17 -> 122:JE:NU:d7:m)
- * - Object ID 378: Hratli at docks (Objects.txt InitFn 18, DS1 ID 109 -> 378:HR:NU:d1:m)
- * - Object ID 379: Hratli near town exit (Objects.txt InitFn 19, DS1 ID 110 -> 379:HR:NU:d7:m)
- * - Object ID 461: Qual-Kehk (Objects.txt InitFn 18, DS1 ID 55 -> 461:0J:NU:d1:m)
- * - Object ID 462: Qual-Kehk alternate (Objects.txt InitFn 19, DS1 ID 56 -> 462:0J:NU:d7:m)
- * - Object ID 542: Anya (Objects.txt InitFn 18, DS1 ID 125 -> 542:XR:NU:d1:m)
- * - Object ID 543: Anya alternate (Objects.txt InitFn 19, DS1 ID 126 -> 543:XR:NU:m)
+ * 1.13c Ground Truth: `Objects.txt` IDs that act as DS1 map placeholders/anchors for dynamic NPCs & bosses (#900, #2000).
+ * Verified against `D2Game.dll` `gpObjectInitFnTable` (`0x6fd2e050`) + `Objects.txt` + `object-lookup-data.ts`:
+ * - Object ID 121: Jerhyn (`hcIdx 201`) at docks / palace approach (`InitFn 18` @ `0x6fce7c20`, `Sync=1`, `16:121:JE:NU:d1:m`)
+ * - Object ID 122: Jerhyn (`hcIdx 201`) + Kaelan (`hcIdx 331`) at palace entrance (`InitFn 19` @ `0x6fce9b70`, `Sync=1`, `17:122:JE:NU:d7:m`)
+ * - Object ID 378: Hratli (`hcIdx 253`) at docks (`InitFn 49` @ `0x6fd086a0`, `Sync=1`, `109:378:HR:NU:d1:m`)
+ * - Object ID 379: Hratli (`hcIdx 253`) at forge (`InitFn 50` @ `0x6fd08560`, `Sync=1`, `110:379:HR:NU:d7:m`)
+ * - Object ID 385: Deckard Cain (`hcIdx 265`) in Rogue Encampment (`InitFn 54` @ `0x6fc860d0`, `Sync=0`, `110:385:DC:NU:d1:m`)
+ * - Object ID 459: Town Anya (`hcIdx 512`) in Harrogath (`InitFn 66` @ `0x6fc7eb30`, `Sync=0`, `53:459:XS:NU:d7:m`)
+ * - Object ID 461: Town Nihlathak (`hcIdx 514`) in Harrogath (`InitFn 68` @ `0x6fc7c5c0`, `Sync=0`, `55:461:0J:NU:d1:m`)
+ * - Object ID 462: Boss Nihlathak (`hcIdx 526`, `SU 60`) in Halls of Vaught (`InitFn 69` @ `0x6fc7cf70`, `Sync=0`, `56:462:0J:NU:d7:m`)
+ * - Object ID 542: Larzuk (`hcIdx 511`) greeting in Harrogath (`InitFn 70` @ `0x6fc7c470`, `Sync=0`, `125:542:XR:NU:d1:m`)
+ * - Object ID 543: Larzuk (`hcIdx 511`) standard in Harrogath (`InitFn 71` @ `0x6fc7c3a0`, `Sync=0`, `126:543:XR:NU:m`)
  */
 export const NPC_PLACEHOLDER_OBJECTS: Readonly<Record<number, number>> = Object.freeze({
   121: 201, // Jerhyn (Act 2 Lut Gholein)
   122: 201, // Jerhyn (Act 2 Lut Gholein)
   378: 253, // Hratli (Act 3 Kurast Docks)
   379: 253, // Hratli (Act 3 Kurast Docks)
-  461: 515, // Qual-Kehk (Act 5 Harrogath)
-  462: 515, // Qual-Kehk (Act 5 Harrogath)
-  542: 512, // Anya (Act 5 Harrogath)
-  543: 512, // Anya (Act 5 Harrogath)
+  385: 265, // Deckard Cain (Act 1 Rogue Encampment)
+  459: 512, // Town Anya (Act 5 Harrogath)
+  461: 514, // Town Nihlathak (Act 5 Harrogath)
+  462: 526, // Boss Nihlathak SU 60 (Act 5 Halls of Vaught)
+  542: 511, // Larzuk (Act 5 Harrogath)
+  543: 511, // Larzuk (Act 5 Harrogath)
 })
 
 export function getNpcPlaceholderHcIdx(objectClassId: number): number | undefined {
