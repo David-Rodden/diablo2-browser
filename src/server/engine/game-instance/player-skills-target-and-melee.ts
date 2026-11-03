@@ -2805,6 +2805,8 @@ function spawnMonsterMissile(this: GameInstanceHost,
   options: {
     readonly missile?: MissileRecord | undefined
     readonly skillLevel?: number | undefined
+    /** Explicit lifetime override in 25Hz frames (`SKILLS_SetInfernoMissileRange` `0x6FCD32E0`, #2012). */
+    readonly rangeFrames?: number | undefined
     readonly physDamage?: number | undefined
     readonly elemDamage?: number | undefined
     readonly element?: MissileDamageChannel | undefined
@@ -2836,7 +2838,11 @@ function spawnMonsterMissile(this: GameInstanceHost,
   // 1.13c `D2Game.dll` `0x6FC460D0` -> `0x6FC61F50` (`0x6FC61F64..0x6FC61F77`, #1997):
   // Caps `#225 buglightning` (`Range = 98`) lifetime to `0x4D` (`77` frames) when `>= 78`.
   const rangeTicks =
-    resolvedClassId === 225 && rawRangeTicks >= 78 ? 77 : rawRangeTicks
+    options.rangeFrames !== undefined && options.rangeFrames > 0
+      ? Math.max(1, Math.min(255, Math.trunc(options.rangeFrames)))
+      : resolvedClassId === 225 && rawRangeTicks >= 78
+        ? 77
+        : rawRangeTicks
   const element =
     options.element ??
     normalizeMissileElement(meta?.eType) ??
@@ -2926,10 +2932,12 @@ function spawnMonsterMissile(this: GameInstanceHost,
     areaId: monster.areaId,
   } as ServerEvent)
 
-  // 1.13c `MonUMod #29` (`Multishot`, `ev5 = 0x6FC45AD0`, boss-only `bBoss != 0`, #1900 / #1993):
-  // Spawns `+2` angled fan projectiles (`1 + 2 = 3` total) on boss units (`rank !== 'minion'`).
+  // 1.13c `MonUMod #29` (`Multishot`, `ev5 = 0x6FC45AD0`, boss-only `bBoss != 0`, #1900 / #1993 / #2017):
+  // Spawns `+2` angled fan projectiles (`1 + 2 = 3` total) on boss units (`rank !== 'minion'`),
+  // skipping any `Missiles.txt` row with `NoMultiShot == 1` (`0x6FC45B67..0x6FC45B72`).
   if (
     options.skipMultishot !== true &&
+    meta?.noMultiShot !== true &&
     missile.carrier !== 'none' &&
     missile.carrier !== 'groundfire' &&
     monster.rank !== 'minion' &&
@@ -3257,6 +3265,8 @@ export interface PlayerSkillsTargetAndMeleeMethods {
   spawnMonsterMissile(monster: InternalMonsterRecord, targetX: number, targetY: number, damage: number, missileClassId?: number | undefined, skillId?: number | undefined, options?: {
     readonly missile?: MissileRecord | undefined
     readonly skillLevel?: number | undefined
+    /** Explicit lifetime override in 25Hz frames (`SKILLS_SetInfernoMissileRange` `0x6FCD32E0`, #2012). */
+    readonly rangeFrames?: number | undefined
     readonly physDamage?: number | undefined
     readonly elemDamage?: number | undefined
     readonly element?: MissileDamageChannel | undefined

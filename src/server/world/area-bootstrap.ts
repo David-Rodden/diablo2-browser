@@ -61,7 +61,8 @@ import { applyPandemoniumAreaBootstrap113c } from './pandemonium-113c.ts'
  * - `342` (`Hellgate`, `OperateFn 46` @ `0x6FC8CD40`): Durance of Hate L3 (`102`) -> Pandemonium Fortress (`103`)
  * - `366` (`SewerStairs`, `OperateFn 44` @ `0x6FD095E0`): Kurast Sewers L1 (`92`) -> Kurast Sewers L2 (`93`)
  * - `386` (`DuranceOfHateStairs`, `OperateFn 50` @ `0x6FC8F4F0`): Travincal (`83`) -> Durance of Hate L1 (`100`)
- * - `547` (`AncientsDoor`, `OperateFn 66` @ `0x6FC7E2E0`): Arreat Summit (`120`) -> Worldstone Keep L1 (`128`)
+ * - `547` (`AncientsDoor`, `OperateFn 66` @ `0x6FC7E2E0`): Arreat Summit (`120`) -> Worldstone Keep Level 1 (`128`)
+ * - `564` (`SummitDoor` / `Glacial Caves Level 1`, `OperateFn 71` @ `0x6FC7D690`): Arreat Summit (`120`) -> The Ancients' Way (`118`)
  * - `563` (`BaalsPortal`, `OperateFn 70` @ `0x6FC7DF70`): Throne of Destruction (`131`) -> The Worldstone Chamber (`132`)
  * - `569` (`BaalsPortalReturn`, `OperateFn 70` @ `0x6FC7DFDE`): The Worldstone Chamber (`132`) -> Throne of Destruction (`131`)
  */
@@ -78,6 +79,7 @@ export function resolvePresetPortalDestArea113c(
   if (classId === 366) return areaId === 92 ? 93 : undefined
   if (classId === 386) return 100
   if (classId === 547) return 128
+  if (classId === 564) return areaId === 120 ? 118 : undefined
   if (classId === 563) return 132
   if (classId === 569) return 131
   return undefined

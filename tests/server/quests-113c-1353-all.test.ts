@@ -139,16 +139,23 @@ describe('issue #1353 full quest coverage', () => {
     game.stepFrames(1)
     expect(player.questFlags[questIndex('a3q2')]! & QUEST_FLAG_COMPLETED_113C).toBe(1)
 
-    // Anya: Malah gives ice -> thaw Anya -> Malah completes.
+    // Anya (#2019): discover Frozen Anya (558) -> Malah gives ice -> thaw Anya -> Malah ('tr2') -> Town Anya (512) completes.
     const malah = game.spawnMonster({ classId: 513, name: 'Malah', x: 11, y: 10, areaId: 1, isNpc: true })
+    const anyaObj = game.spawnObject({ classId: 558, x: 11, y: 10, areaId: 1 })
+    game.enqueueCommand(playerId, { type: 'OperateObject', objectId: anyaObj })
+    game.stepFrames(1)
     game.enqueueCommand(playerId, { type: 'NpcInit', target: { unitType: 1, id: malah } } as never)
     game.stepFrames(1)
     expect(player.items.some((i) => i.code === 'ice')).toBe(true)
-    operate(game, playerId, 558)
+    game.enqueueCommand(playerId, { type: 'OperateObject', objectId: anyaObj })
+    game.stepFrames(1)
     expect(player.questFlags[questIndex('a5q3')]! & QUEST_FLAG_REWARD_PENDING_113C).toBe(
       QUEST_FLAG_REWARD_PENDING_113C,
     )
     game.enqueueCommand(playerId, { type: 'NpcInit', target: { unitType: 1, id: malah } } as never)
+    game.stepFrames(1)
+    const townAnya = game.spawnMonster({ classId: 512, name: 'Anya', x: 11, y: 10, areaId: 1, isNpc: true })
+    game.enqueueCommand(playerId, { type: 'NpcInit', target: { unitType: 1, id: townAnya } } as never)
     game.stepFrames(1)
     expect(player.questFlags[questIndex('a5q3')]! & QUEST_FLAG_COMPLETED_113C).toBe(1)
 
@@ -245,7 +252,7 @@ describe('issue #1353 full quest coverage', () => {
     expect(player.items.some((i) => i.code === 'bkd')).toBe(true)
 
     // A2Q1 (Radament) drops Book of Skill ('ass') and arms bit 5 (0x0020); using 'ass' grants +1 skill point.
-    // A4Q1 (Izual) directly grants +2 skill points.
+    // A4Q1 (Izual) sets reward-pending (0x2002) and spawns izualghost (406); talking to Tyrael (367) grants +2 skill points (#2011).
     const skills0 = player.newSkills
     const level0 = player.level
     const radament = game.spawnMonster({ defId: 'radament', x: 12, y: 10, areaId: 1, hp: 10, maxHp: 10 })
@@ -263,6 +270,13 @@ describe('issue #1353 full quest coverage', () => {
 
     const izual = game.spawnMonster({ defId: 'izual', x: 13, y: 10, areaId: 1, hp: 10, maxHp: 10 })
     game.applyDamageToMonster(izual, 1000, playerId)
+    expect(player.questFlags[questIndex('a4q1')]! & QUEST_FLAG_REWARD_PENDING_113C).toBe(
+      QUEST_FLAG_REWARD_PENDING_113C,
+    )
+    expect(player.newSkills - (player.level - level0)).toBe(skills0 + 1)
+    const tyrael2 = game.spawnMonster({ classId: 367, name: 'Tyrael', x: 11, y: 10, areaId: 1, isNpc: true })
+    game.enqueueCommand(playerId, { type: 'NpcInit', target: { unitType: 1, id: tyrael2 } } as never)
+    game.stepFrames(1)
     expect(player.newSkills - (player.level - level0)).toBe(skills0 + 3)
 
     // A3Q4 (Lam Esen's Tome 'bbb') picked up and turned in to Alkor (254) -> +5 stat points.
@@ -302,12 +316,16 @@ describe('issue #1353 full quest coverage', () => {
       expect(player.items.some((i) => i.code === rune)).toBe(true)
     }
 
-    // A5Q3 (Malah -> Anya -> Malah) mints Scroll of Resistance ('tr2'); using 'tr2' grants +10 all resistances.
+    // A5Q3 (#2019: Anya discover -> Malah 'ice' -> Anya thaw -> Malah 'tr2') mints Scroll of Resistance ('tr2'); using 'tr2' grants +10 all resistances.
     const res0 = p.playerResistPct(player, 'fire')
     const malah = game.spawnMonster({ classId: 513, name: 'Malah', x: 11, y: 10, areaId: 1, isNpc: true })
+    const anyaObj2 = game.spawnObject({ classId: 558, x: 11, y: 10, areaId: 1 })
+    game.enqueueCommand(playerId, { type: 'OperateObject', objectId: anyaObj2 })
+    game.stepFrames(1)
     game.enqueueCommand(playerId, { type: 'NpcInit', target: { unitType: 1, id: malah } } as never)
     game.stepFrames(1)
-    operate(game, playerId, 558)
+    game.enqueueCommand(playerId, { type: 'OperateObject', objectId: anyaObj2 })
+    game.stepFrames(1)
     game.enqueueCommand(playerId, { type: 'NpcInit', target: { unitType: 1, id: malah } } as never)
     game.stepFrames(1)
     expect(p.playerResistPct(player, 'fire')).toBe(res0)

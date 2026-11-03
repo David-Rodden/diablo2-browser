@@ -53,6 +53,10 @@ function applyDamageToMonster(this: GameInstanceHost,
     readonly skipElemMastery?: boolean | undefined
     readonly suppressReturnFireThreat?: boolean | undefined
     readonly isGroundFire?: boolean | undefined
+    readonly damageRate?: number | undefined
+    readonly noHitRecovery?: boolean | undefined
+    readonly suppressBlockAnim?: boolean | undefined
+    readonly missileKnockbackChancePct?: number | undefined
     readonly fromPet?: boolean | undefined
     readonly vengeanceSpec?:
       | {
@@ -607,6 +611,9 @@ function applyDamageToMonster(this: GameInstanceHost,
       ...(isSpellPhys
         ? {}
         : { weaponHand: hitContext?.weaponHand }),
+      ...(hitContext?.damageRate !== undefined && hitContext.damageRate > 0
+        ? { damageRate: hitContext.damageRate }
+        : {}),
       toHitBonusPct: skillToHitBonusPct,
       autoHit: hitAutoHit,
       unblockable: hitUnblockable,
@@ -615,7 +622,7 @@ function applyDamageToMonster(this: GameInstanceHost,
       hitContext.outHitResult.landedHitRoll = dmgOut.hit
     }
     if (!dmgOut.hit) {
-      if (dmgOut.avoidedReason === 'block') {
+      if (dmgOut.avoidedReason === 'block' && !hitContext?.suppressBlockAnim) {
         monster.mode = MONMODE_BLOCK
         this.broadcastToArea(monster.areaId, {
           type: 'UnitMode',
@@ -794,12 +801,15 @@ function applyDamageToMonster(this: GameInstanceHost,
         elemType: 'pois',
         elemMin256: rawDmg * FIXED_ONE,
         elemMax256: rawDmg * FIXED_ONE,
+        ...(hitContext?.damageRate !== undefined && hitContext.damageRate > 0
+          ? { damageRate: hitContext.damageRate }
+          : {}),
         toHitBonusPct: skillToHitBonusPct,
         autoHit: false,
         unblockable: hitUnblockable,
       }, this.rng)
       if (!hitOut.hit) {
-        if (hitOut.avoidedReason === 'block') {
+        if (hitOut.avoidedReason === 'block' && !hitContext?.suppressBlockAnim) {
           monster.mode = MONMODE_BLOCK
           this.broadcastToArea(monster.areaId, {
             type: 'UnitMode',
@@ -849,6 +859,9 @@ function applyDamageToMonster(this: GameInstanceHost,
       ...(hitContext?.concentrationAlreadyApplied === true
         ? { concentrationAlreadyApplied: true }
         : {}),
+      ...(hitContext?.damageRate !== undefined && hitContext.damageRate > 0
+        ? { damageRate: hitContext.damageRate }
+        : {}),
       toHitBonusPct: skillToHitBonusPct,
       autoHit: hitAutoHit,
       unblockable: hitUnblockable,
@@ -857,7 +870,7 @@ function applyDamageToMonster(this: GameInstanceHost,
       hitContext.outHitResult.landedHitRoll = dmgOut.hit
     }
     if (!dmgOut.hit) {
-      if (dmgOut.avoidedReason === 'block') {
+      if (dmgOut.avoidedReason === 'block' && !hitContext?.suppressBlockAnim) {
         monster.mode = MONMODE_BLOCK
         this.broadcastToArea(monster.areaId, {
           type: 'UnitMode',
@@ -970,6 +983,10 @@ function applyDamageToMonster(this: GameInstanceHost,
     {
       fromPet: petAttacker !== undefined || hitContext?.fromPet === true,
       isGroundFire: hitContext?.isGroundFire === true,
+      noHitRecovery: hitContext?.noHitRecovery === true,
+      ...(hitContext?.missileKnockbackChancePct !== undefined && hitContext.missileKnockbackChancePct > 0
+        ? { missileKnockbackChancePct: hitContext.missileKnockbackChancePct }
+        : {}),
       suppressReturnFireThreat: hitContext?.suppressReturnFireThreat === true,
       dmg256: resolvedDmg256,
       ...(hitContext?.weaponHand !== undefined ? { weaponHand: hitContext.weaponHand } : {}),
@@ -1263,6 +1280,8 @@ function finishMonsterDamage(this: GameInstanceHost,
   finishOpts?: {
     readonly fromPet?: boolean | undefined
     readonly isGroundFire?: boolean | undefined
+    readonly noHitRecovery?: boolean | undefined
+    readonly missileKnockbackChancePct?: number | undefined
     readonly suppressReturnFireThreat?: boolean | undefined
     readonly dmg256?: number | undefined
     readonly weaponHand?: 'right' | 'left' | undefined
@@ -1370,11 +1389,15 @@ function finishMonsterDamage(this: GameInstanceHost,
     // Size-based 128-point roll (Small=128/128, Medium=64/128, Large=32/128) applies ONLY to
     // item_knockback (stat 81). Skills in MONSTER_KNOCKBACK_SKILLS set ResultFlags |= 0x08 directly
     // (with Telekinesis #43 rolling Param2 = 35% at 0x6FC631C0, and Molten Boulder #229 gating sizeX < 3).
+    const missileKnockbackTriggered =
+      (finishOpts?.missileKnockbackChancePct ?? 0) > 0 &&
+      this.rng.rand(100) < finishOpts!.missileKnockbackChancePct!
     const skillKnockback =
       MONSTER_KNOCKBACK_SKILLS.has(skillId) &&
       (skillId !== 43 || this.rng.rand(100) < 35) &&
       (skillId !== 229 || monster.sizeX < 3)
     const itemKnockbackTriggered =
+      !missileKnockbackTriggered &&
       !skillKnockback &&
       hasItemKnockback &&
       rollItemKnockback113c(this.rng, { unitType: 'monster', sizeX: monster.sizeX })
@@ -1382,12 +1405,12 @@ function finishMonsterDamage(this: GameInstanceHost,
     // is evaluated first; if knockback is blocked (`mKB == 0`) or does not trigger, `0x04` GetHit runs.
     const knockedBack =
       attacker.areaId === monster.areaId &&
-      (skillKnockback || itemKnockbackTriggered)
+      (missileKnockbackTriggered || skillKnockback || itemKnockbackTriggered)
         ? this.knockbackMonster(monster, attacker.x, attacker.y)
         : false
-    // 1.13c `SrvDmg03` ground fire (`Fire Wall` / `Meteor` patch / `Blaze`, `0x6FC59670`, #1940):
-    // never sets `HITFLAG_GETHIT (0x04)`.
-    if (!knockedBack && !finishOpts?.isGroundFire) {
+    // 1.13c `SrvDmg03` ground fire (`Fire Wall` / `Meteor` patch / `Blaze`, `0x6FC59670`, #1940) and
+    // `Missiles.txt` `GetHit == 0` streams (`0x6FC5AEAB..0x6FC5AEEB`, #2017) never set `HITFLAG_GETHIT (0x04)`.
+    if (!knockedBack && !finishOpts?.isGroundFire && !finishOpts?.noHitRecovery) {
       this.maybeEnterMonsterHitRecovery(monster, dealtDamage, {
         hitClass,
         isPurePoison: channel === 'pois',
@@ -2417,7 +2440,8 @@ function broadcastExplosionMissile(this: GameInstanceHost,
  * Boss-only (`rank !== 'minion'`) 8-bolt radial `Missiles.txt` ID `195` (`lightunique`) burst on struck,
  * gated by per-monster `dwLastLeFrame` 10-frame cooldown (`abs(dwGameFrame - dwLastLeFrame) >= 10`) and
  * using exact `Missiles.txt` `lightunique` damage (`2 * slvl - 1` at `slvl = max(1, floor(mlvl / 2))`, `physDamage = 0`).
- * Note: `skipMultishot` is intentionally omitted so `MonUMod #29` (`Multishot`) duplicates `#195` (classic MSLE).
+ * In 1.13c `Missiles.txt`, `#195 lightunique` has `NoMultiShot = 1`, so `MONUMOD_Ev5_Multishot`
+ * (`0x6FC45B67..0x6FC45B72`) suppresses fan duplication (`8` bolts even with `MonUMod #29`).
  */
 function emitLightningEnchantedBoltsOnStruck113c(
   this: GameInstanceHost,
@@ -2512,6 +2536,10 @@ export interface MonsterDamageMethods {
     readonly skipElemMastery?: boolean | undefined
     readonly suppressReturnFireThreat?: boolean | undefined
     readonly isGroundFire?: boolean | undefined
+    readonly damageRate?: number | undefined
+    readonly noHitRecovery?: boolean | undefined
+    readonly suppressBlockAnim?: boolean | undefined
+    readonly missileKnockbackChancePct?: number | undefined
     readonly fromPet?: boolean | undefined
     readonly vengeanceSpec?:
       | {
@@ -2530,6 +2558,8 @@ export interface MonsterDamageMethods {
   finishMonsterDamage(attacker: InternalPlayerRecord, monster: InternalMonsterRecord, dealtDamage: number, skillId: number, channel: 'phys' | 'fire' | 'ltng' | 'cold' | 'mag' | 'pois', hitClass?: number | string | undefined, elemDurationFrames?: number | undefined, fromMerc?: boolean | undefined, finishOpts?: {
     readonly fromPet?: boolean | undefined
     readonly isGroundFire?: boolean | undefined
+    readonly noHitRecovery?: boolean | undefined
+    readonly missileKnockbackChancePct?: number | undefined
     readonly suppressReturnFireThreat?: boolean | undefined
     readonly dmg256?: number | undefined
     readonly weaponHand?: 'right' | 'left' | undefined

@@ -637,6 +637,8 @@ export interface InternalPlayerRecord {
   activeNpcId: number | undefined
   /** Tracks the NPC unitId whose C2S 0x13 -> S2C 0x28 handshake just ran, preventing duplicate S2C 0x27 info on immediate 0x2F follow-up. */
   lastNpcInteractHandshakeId?: number | undefined
+  /** `D2Game.dll` `0x6FC7F89F..0x6FC7F94A`: once-per-game replacement of a lost unconsumed A5Q3 `'tr2'` scroll. */
+  a5q3ReplacedTr2InGame?: boolean | undefined
   /** Cached 1.13c mercenary vendor candidate list (`D2Game.dll` `0x6FCDCED0` / `D2Common.dll` `0x6FD7CCC0`). */
   mercHireCandidates?: readonly HirelingCandidateDesc[] | undefined
   /** End frame of the player's `PLRMODE_GETHIT` (`mode = 4`) animation (`D2Game.dll` `0x6FCFD0FC`). */
@@ -946,19 +948,28 @@ export interface InternalMonsterRecord {
   /** Real `baalcrab` (#544): count of Vile Effigy (`#570 baalclone`) spawns & active clone `unitId` (`0` = none, #1826). */
   baalCloneSpawnCount: number
   activeBaalCloneUnitId: number
-  /** Active multi-frame boss channel (`DiabLight #193`, `Baal Inferno #317`, Talic `Whirlwind #151`, #1825..#1827). */
+  /** Active multi-frame boss / monster channel (`DiabLight #193`, `Baal Inferno #317`, Talic `Whirlwind #151`, `SrvDo095` Monster Inferno, #1825..#1827, #2012). */
   activeBossChannel:
     | {
-        readonly kind: 'diablight' | 'baalinferno' | 'whirlwind'
+        readonly kind: 'diablight' | 'baalinferno' | 'whirlwind' | 'monsterinferno'
         readonly skillId: number
         readonly slvl: number
         remainingFrames: number
+        elapsedFrames?: number | undefined
         angle: number
         targetX: number
         targetY: number
         readonly startOffset: number
         readonly stepVx?: number | undefined
         readonly stepVy?: number | undefined
+        readonly missileId?: number | undefined
+        readonly rangeFrames?: number | undefined
+        readonly stepFrames?: number | undefined
+        readonly physDamage?: number | undefined
+        readonly elemDamage?: number | undefined
+        readonly element?: MissileDamageChannel | undefined
+        readonly elemDurationFrames?: number | undefined
+        readonly hitMonsters?: boolean | undefined
         readonly nextHitFrames: Map<number, number>
       }
     | undefined

@@ -16,7 +16,7 @@
  */
 
 import { compute3BandDuration, compute5BandScaling, evaluateCalc } from '../../common/data/calc-ast.ts'
-import type { D2DataRegistry, MissileRecord } from '../../common/data/data-registry.ts'
+import type { D2DataRegistry, MissileRecord, SkillRecord } from '../../common/data/data-registry.ts'
 import type { D2Rng } from '../../common/rng/d2-rng.ts'
 import { MONSTATS_113C_ROWS } from '../../common/units/monstats-113c-data.ts'
 import type { MonsterElementalAttack } from '../../common/units/unit-types.ts'
@@ -78,7 +78,7 @@ export interface MonsterMissileDamageInput113c {
   readonly difficulty: 0 | 1 | 2
   readonly monsterMinPhys: number
   readonly monsterMaxPhys: number
-  readonly attackMode?: 'A1' | 'A2' | 'S1' | 'C' | undefined
+  readonly attackMode?: 'A1' | 'A2' | 'S1' | 'C' | 'SC' | undefined
   readonly elementalAttacks?: readonly MonsterElementalAttack[] | undefined
   readonly extraFirePct?: number | undefined
   readonly rng: Pick<D2Rng, 'rand'>
@@ -304,9 +304,16 @@ export function evaluateMonsterMissileDamage113c(
     const elemList = input.elementalAttacks ?? []
     if (elemList.length > 0) {
       const modeKey = input.attackMode ?? 'A1'
+      // 1.13c `MonStats.txt` encodes `MONMODE_CAST` (`MissC`) elemental rows under `El*Mode = 'SC'`
+      // (e.g., `WillOWisp` `hcIdx 118..121, 639..641, 733`: `El1Mode = 'A1' mana`, `El2Mode = 'SC' ltng`, #2012).
+      // Never fall back to `elemList[0]` (`A1`) when evaluating `'C'` / `'SC'` / `'S1'` / `'A2'`.
       const candidate =
-        elemList.find((e) => e.mode === modeKey) ??
-        (input.monsterMaxPhys <= 1 ? elemList[0] : undefined)
+        elemList.find(
+          (e) =>
+            e.mode === modeKey ||
+            (modeKey === 'C' && e.mode === 'SC') ||
+            (modeKey === 'SC' && e.mode === 'C'),
+        ) ?? (modeKey === 'A1' && input.monsterMaxPhys <= 1 ? elemList[0] : undefined)
       if (candidate !== undefined) {
         const chance = Math.max(0, Math.min(100, candidate.chancePct ?? 100))
         if (chance >= 100 || rng.rand(100) < chance) {
@@ -382,4 +389,71 @@ export function evaluateMonsterMissileDamage113c(
     elemDurationFrames: finalElemDuration,
     totalDamage: physDamage + elemDamage,
   }
+}
+
+/**
+ * 1.13c `D2Game.dll` `SKILLS_SetInfernoMissileRange` (`0x6FCD32E0..0x6FCD33A6`, #2012):
+ * Evaluates `Skills.txt` `calc1`; when `<= 0` (empty on `#178 FetishInferno`, `#317 Baal Inferno`,
+ * `#319 MegademonInferno`, `#323 Horror Arctic Blast`), computes `Missiles.txt.Param2 + slvl - 1`
+ * and clamps the resulting lifetime in 25Hz frames to `[1, 255]`.
+ */
+export function computeMonsterInfernoMissileRange113c(
+  registry: D2DataRegistry,
+  skill: SkillRecord,
+  missile: MissileRecord,
+  slvl: number,
+): number {
+  const effSlvl = Math.max(1, Math.trunc(slvl))
+  let raw = 0
+  if (skill.calc1.trim() !== '') {
+    raw = evaluateCalc(skill.calc1, {
+      registry,
+      activeSkill: skill,
+      activeMissile: missile,
+      slvl: effSlvl,
+      blvl: effSlvl,
+    })
+  }
+  if (raw <= 0) {
+    raw = missile.param2 + effSlvl - 1
+  }
+  return Math.max(1, Math.min(255, Math.trunc(raw)))
+}
+
+/**
+ * 1.13c `D2Game.dll` `SKILLS_SrvSt53_MonsterInferno` (`0x6FCD65E0`) &
+ * `SKILLS_SrvDo095_MonsterInferno` (`0x6FCD6A60`, #2012):
+ * Evaluates channel duration (`calc2` / `param1`, e.g. `15` or `20` frames) and per-jet spawn
+ * interval (`calc3`, e.g. `2` or `3` frames) for all `srvDoFunc === 95` monster Inferno skills.
+ */
+export function computeMonsterInfernoChannelParams113c(
+  registry: D2DataRegistry,
+  skill: SkillRecord,
+  slvl: number,
+): { readonly durationFrames: number; readonly stepFrames: number } {
+  const effSlvl = Math.max(1, Math.trunc(slvl))
+  const rawDur =
+    skill.calc2.trim() !== ''
+      ? evaluateCalc(skill.calc2, {
+          registry,
+          activeSkill: skill,
+          slvl: effSlvl,
+          blvl: effSlvl,
+        })
+      : skill.param1
+  const durationFrames = Math.max(
+    1,
+    Math.trunc(rawDur > 0 ? rawDur : skill.param1 > 0 ? skill.param1 : 15),
+  )
+  const rawStep =
+    skill.calc3.trim() !== ''
+      ? evaluateCalc(skill.calc3, {
+          registry,
+          activeSkill: skill,
+          slvl: effSlvl,
+          blvl: effSlvl,
+        })
+      : 2
+  const stepFrames = Math.max(1, Math.trunc(rawStep > 0 ? rawStep : 2))
+  return { durationFrames, stepFrames }
 }

@@ -6,7 +6,7 @@ import { ACT_SPAWN_TILE_ENTRY } from '../../../common/world/act-spawn-location.t
 import { SPARKLY_CHEST_INIT57_CLASS_IDS_113C, PRE_OPERATE_ROLLED_OBJECTS_113C, rollChestLocked113c } from '../../../common/world/object-operate-113c.ts'
 import { getLevelMonsterLevel113c } from '../../../common/world/levels-monlvl-113c.ts'
 import { PANDEMONIUM_AREA_IDS_113C, findFreePortalCoordNear113c } from '../../world/pandemonium-113c.ts'
-import { QUEST_FLAG_COMPLETED_113C, QUEST_FLAG_COMPLETED_NOW_113C, QUEST_FLAG_LEAVE_BEFORE_113C, QUEST_FLAG_REWARD_PENDING_113C, hasQuestFlag113c, questWordIndex113c } from '../quests-113c.ts'
+import { QUEST_FLAG_COMPLETED_113C, QUEST_FLAG_COMPLETED_NOW_113C, QUEST_FLAG_CUSTOM_4_113C, QUEST_FLAG_LEAVE_BEFORE_113C, QUEST_FLAG_REWARD_PENDING_113C, hasQuestFlag113c, questWordIndex113c } from '../quests-113c.ts'
 import { D2Rng } from '../../../common/rng/d2-rng.ts'
 import {
   allocUnitSeed113c,
@@ -139,6 +139,7 @@ const OBJECT_INITFN_ANCHOR_CLASS_IDS_113C = new Set<number>([
   382, // InitFn 52 (0x6fd08310): Natalya start (Area 75)
   385, // InitFn 54 (0x6fc860d0): Deckard Cain start (Area 1)
   459, // InitFn 66 (0x6fc7eb30): Town Anya start (Area 109)
+  460, // InitFn 67 (0x6fc7e8d0): Frozen Anya start outside town -> Objects.txt 558 (Area 114)
   461, // InitFn 68 (0x6fc7c5c0): Town Nihlathak inside town (Area 109)
   462, // InitFn 69 (0x6fc7cf70): Boss Nihlathak SU 60 outside town (Area 124)
   542, // InitFn 70 (0x6fc7c470): Larzuk greeting (Area 109)
@@ -146,18 +147,20 @@ const OBJECT_INITFN_ANCHOR_CLASS_IDS_113C = new Set<number>([
 ])
 
 /**
- * `Objects.txt` `Sync == 0` server-only NPC/boss spawner markers (`D2Game.dll` `0x6fd2e050`, #2000):
- * never broadcast `UnitAssign` (`0x51`) to clients so `459` (`XS`) and `461`/`462` (`0J`) never render
- * unclickable ghost sprites when their dynamic `UNIT_MONSTER` is absent or slain.
+ * `Objects.txt` `Sync == 0` server-only NPC/boss/dummy spawner markers (`D2Game.dll` `0x6fd2e050`, #2000, #2020):
+ * never broadcast `UnitAssign` (`0x51`) to clients so `459`/`460` (`XS`), `461`/`462` (`0J`), and `567` (`Zoo`)
+ * never render unclickable ghost sprites when their dynamic unit is absent, thawed, or slain.
  */
 const SERVER_ONLY_NPC_SPAWNER_OBJECT_IDS_113C = new Set<number>([
   382,
   385,
   459,
+  460,
   461,
   462,
   542,
   543,
+  567,
 ])
 
 function loadArea(this: GameInstanceHost, areaId: number): LoadedAreaRecord | null {
@@ -358,6 +361,9 @@ function loadArea(this: GameInstanceHost, areaId: number): LoadedAreaRecord | nu
   }
   if (areaId === 109) {
     this.syncHarrogathA5Q3State113c()
+  }
+  if (areaId === 114) {
+    this.syncFrozenRiverA5Q3State113c()
   }
   return record
 }
@@ -1026,8 +1032,8 @@ function isMonsterStepWalkable(this: GameInstanceHost,
     const py = fromY + (toY - fromY) * t
     const rx = Math.round(px)
     const ry = Math.round(py)
-    const pArea = this.areaIdAtWorldPoint(Math.floor(px), Math.floor(py)) ?? areaId
-    const rArea = this.areaIdAtWorldPoint(rx, ry) ?? areaId
+    const pArea = this.areaIdAtWorldPoint(Math.floor(px), Math.floor(py), areaId) ?? areaId
+    const rArea = this.areaIdAtWorldPoint(rx, ry, areaId) ?? areaId
     // Closed doors block every walker, including flying units.
     if (this.isClosedDoorAt(rArea, rx, ry, ignoreObjectUnitId)) return false
     if (!check) continue
@@ -1505,6 +1511,17 @@ function connectPlayer(this: GameInstanceHost, spec: ConnectPlayerSpec = {}): nu
         questFlags[a1q6Idx] = nextA1q6
       }
     }
+    // 1.13c `ACT5Q3_Callback13_PlayerStartedGame` (`D2Game.dll` `0x6FC781BD`, #2019):
+    // joining a new game from `.d2s` clears transient bit 4 (`0x0010`, Frozen Anya discovered in session) on `a5q3` (word 37).
+    if (parsedD2s !== undefined && spec.questFlags === undefined) {
+      const a5q3Idx = questWordIndex113c('a5q3')
+      if (a5q3Idx !== undefined) {
+        const a5q3Bits = questFlags[a5q3Idx] ?? 0
+        if ((a5q3Bits & QUEST_FLAG_CUSTOM_4_113C) !== 0) {
+          questFlags[a5q3Idx] = a5q3Bits & ~QUEST_FLAG_CUSTOM_4_113C
+        }
+      }
+    }
   }
 
   const record: InternalPlayerRecord = {
@@ -1617,6 +1634,7 @@ function connectPlayer(this: GameInstanceHost, spec: ConnectPlayerSpec = {}): nu
   if (areaId === 109 || (areaId >= 121 && areaId <= 124)) {
     this.syncHarrogathA5Q3State113c(record)
   }
+  this.syncFrozenRiverA5Q3State113c(record)
   this.players.set(unitId, record)
   this.areaPathWorld.spawnOrSyncPlayer(areaId, unitId, classId, spawnX, spawnY, record.mode)
   this.activatePresetRoomsNearPlayer113c(record)

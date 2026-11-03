@@ -331,6 +331,9 @@ export interface MissileRecord {
   readonly holy: number
   readonly canSlow: boolean
   readonly canDestroy: boolean
+  readonly getHit: boolean
+  readonly softHit: boolean
+  readonly knockBack: number
   readonly toHit: boolean
   readonly pierce: boolean
   readonly applyMastery: boolean
@@ -1032,6 +1035,9 @@ export class D2DataRegistry {
         holy: numberCell(row, 'Holy', 0),
         canSlow: numberCell(row, 'CanSlow', 0) !== 0,
         canDestroy: numberCell(row, 'CanDestroy', 0) !== 0,
+        getHit: numberCell(row, 'GetHit', 0) !== 0,
+        softHit: numberCell(row, 'SoftHit', 0) !== 0,
+        knockBack: numberCell(row, 'KnockBack', 0),
         toHit: numberCell(row, 'ToHit', 0) !== 0,
         pierce: numberCell(row, 'Pierce', 0) !== 0,
         applyMastery: numberCell(row, 'ApplyMastery', 0) !== 0,

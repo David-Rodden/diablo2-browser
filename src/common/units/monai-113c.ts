@@ -241,10 +241,15 @@ add(['Mosquito'], {
   shootDistanceParam: 4,
   drain: 'life',
 })
+// 1.13c `AITHINK_Fn025_WillOWisp` (`D2Game.dll` `0x6FCA0F20..0x6FCA1C6F`, #2012):
+// Never calls `CastSkill` (`Skill1 = #53 Chain Lightning` is unused by WillOWisp AI);
+// rolls `rand(100) < aip1` (`40..75%`, unconditional on HP) up to `aip3` (`30..50` sub-tiles)
+// to fire `MissC` (`#320 willowisplightningbolt` / `#666 willowisplightningbolt2`).
 add(['WillOWisp'], {
   family: 'ranged',
   ranged: true,
   shootDistanceParam: 2,
+  fireGate: { hurtParam: 0, healthyChanceParam: 0, hurtChanceParam: 0 },
   drain: 'mana',
 })
 add(['Arach'], {

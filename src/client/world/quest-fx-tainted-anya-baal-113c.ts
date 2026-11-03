@@ -78,8 +78,9 @@ export function taintedSunControlTick(
   }
 }
 
-/** Objects.txt 460 `FrozenAnya` (`0x1cc`), looked up by special quest event 16 (`0x6fb02b70`). */
+/** Objects.txt 460 `FrozenAnya` (`0x1cc`) and dynamic interactive `Objects.txt` 558 `anya_framing` (`0x22e`, #2020), looked up by special quest event 16 (`0x6fb02b70`). */
 export const FROZEN_ANYA_OBJECT_CLASS = 0x1cc
+export const FROZEN_ANYA_INTERACT_OBJECT_CLASS = 0x22e
 /** Missiles.txt 528 `anya center` (`0x210`), 532 `anya icemagic` (`0x214`), 597 `anyasteam1` (`0x255`), 615 `anyasteamvent` (`0x267`), 616 `anyasteam` (`0x268`). */
 export const ANYA_CENTER_MISSILE = 0x210
 export const ANYA_ICEMAGIC_MISSILE = 0x214

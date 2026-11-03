@@ -3,6 +3,7 @@
  */
 
 import { PANDEMONIUM_FINALE_AREA_ID_113C, UBER_PRIME_EVIL_SET_113C } from '../../world/pandemonium-113c.ts'
+import { findStandableNear } from '../../world/area-bootstrap.ts'
 import { QUEST_FLAG_COMPLETED_113C, QUEST_FLAG_COMPLETED_NOW_113C, QUEST_FLAG_CUSTOM_5_113C, QUEST_FLAG_PRIMARY_GOAL_DONE_113C, QUEST_FLAG_REWARD_PENDING_113C, QUEST_FLAG_STARTED_113C, hasQuestFlag113c } from '../quests-113c.ts'
 import { calculateKillExperienceGain113c, evaluateMercenaryKillExperience113c, isWithinPartyExpRange113c, PARTY_EXP_MAX_MEMBERS_113C, partyExpPool113c, partyExpShare113c, type DeathKillerKind113c } from '../../../common/progression/experience-113c.ts'
 import { PALADIN_AURA_STATE_BY_SKILL_ID, PALADIN_AURA_TARGET_STATE_BY_SKILL_ID, calculateConvictionStats, calculateFanaticismStats, calculateHolyFireStats, calculateHolyFreezeStats, calculateHolyShockStats, calculateMightStats } from '../../../common/skills/paladin-auras.ts'
@@ -17,6 +18,7 @@ import { applyElementalAbsorb113c, getPrePierceResistance113c, resolveConviction
 import { FIXED_ONE } from '../stat-list.ts'
 import { isWithinAuraRange } from '../../../common/skills/aura-filter.ts'
 import { evaluateCalc } from '../../../common/data/calc-ast.ts'
+import { mulDiv113c } from '../../../common/data/mul-div-113c.ts'
 import { difficultyResistPenalty } from '../difficulty-resist-penalty.ts'
 import type { GameInstanceHost } from './host.ts'
 import type { InternalMercenaryRecord, InternalMonsterRecord, InternalPlayerRecord } from './types.ts'
@@ -126,39 +128,113 @@ function applyPlayerElementalDamage(this: GameInstanceHost,
   options?: {
     readonly hitClass?: number | string | undefined
     readonly skipGetHit?: boolean | undefined
+    readonly damageRate?: number | undefined
     readonly killerType?: DeathKillerKind113c
     readonly killerUnitId?: number | undefined
   },
 ): void {
   let total = 0
   let absorbHeal256 = 0
-  const normalizedParts = {
-    phys: parts.phys ?? 0,
-    fire: parts.fire ?? 0,
-    cold: parts.cold ?? 0,
-    light: (parts.light ?? 0) + (parts.ltng ?? 0),
-  }
-  for (const kind of ['phys', 'fire', 'cold', 'light'] as const) {
-    const dmg = normalizedParts[kind]
-    if (dmg <= 0) continue
-    const postRes = Math.max(0, Math.round(dmg * (1 - this.playerResistPct(player, kind) / 100)))
-    if (kind !== 'phys' && postRes > 0) {
-      const abs = this.playerElementalAbsorb(player, kind)
-      if (abs.pct > 0 || abs.flat > 0) {
-        const absOut = applyElementalAbsorb113c(postRes * FIXED_ONE, abs.pct, abs.flat * FIXED_ONE)
-        total += Math.floor(absOut.remainingDamage256 / FIXED_ONE)
-        absorbHeal256 += absOut.absorbHeal256
-        continue
+  const damageRate = Math.trunc(options?.damageRate ?? 0)
+  if (damageRate > 0) {
+    // 1.13c `D2Game.dll` `0x6FCFC13B..0x6FCFC519` (#1795 / #2017): continuous stream / object missiles
+    // with `DamageRate > 0` (`#172 diablight` `DamageRate = 82`, etc.) scale flat PDR (`stat 34`) and
+    // flat MDR (`stat 35`) by `mulDiv(rate, dr256, 1024)` in `1/256` fixed-point, spilling signed
+    // PDR/MDR overflow across physical and non-poison elemental channels before resistances & absorb.
+    const flatPdr256 = mulDiv113c(
+      damageRate,
+      Math.max(0, this.sumPlayerItemStat(player, 34)) * FIXED_ONE,
+      1024,
+    )
+    let remMdr256 = mulDiv113c(
+      damageRate,
+      Math.max(0, this.sumPlayerItemStat(player, 35)) * FIXED_ONE,
+      1024,
+    )
+    let signedOverflow256 = 0
+    let postPhysAndMag256 = 0
+    const rawPhys256 = Math.max(0, (parts.phys ?? 0) * FIXED_ONE)
+    if (rawPhys256 > 0) {
+      const afterPdr256 = rawPhys256 - flatPdr256
+      if (afterPdr256 <= 0) {
+        signedOverflow256 += -afterPdr256
+      } else {
+        const physRes = this.playerResistPct(player, 'phys')
+        postPhysAndMag256 += Math.max(0, Math.trunc((afterPdr256 * (100 - physRes)) / 100))
       }
     }
-    total += postRes
-  }
-  const rawMag = parts.mag ?? 0
-  if (rawMag > 0) {
-    const magMdr = Math.max(0, this.sumPlayerItemStat(player, 35))
-    const magRes = Math.max(-100, Math.min(95, this.sumPlayerItemStat(player, 37)))
-    const afterMdr = Math.max(0, rawMag - magMdr)
-    total += Math.max(0, Math.round(afterMdr * (1 - magRes / 100)))
+    const rawMag256 = Math.max(0, (parts.mag ?? 0) * FIXED_ONE)
+    if (rawMag256 > 0) {
+      const mdrUsed = remMdr256
+      remMdr256 = 0
+      const afterMdr256 = rawMag256 - mdrUsed
+      if (afterMdr256 <= 0) {
+        signedOverflow256 += -afterMdr256
+      } else {
+        const magRes = Math.max(-100, Math.min(95, this.sumPlayerItemStat(player, 37)))
+        postPhysAndMag256 += Math.max(0, Math.trunc((afterMdr256 * (100 - magRes)) / 100))
+      }
+    }
+    const elemChannels = {
+      fire: Math.max(0, (parts.fire ?? 0) * FIXED_ONE),
+      light: Math.max(0, ((parts.light ?? 0) + (parts.ltng ?? 0)) * FIXED_ONE),
+      cold: Math.max(0, (parts.cold ?? 0) * FIXED_ONE),
+    }
+    let postElem256 = 0
+    for (const kind of ['fire', 'light', 'cold'] as const) {
+      const raw256 = elemChannels[kind]
+      if (raw256 <= 0) continue
+      const mdrUsed = remMdr256
+      remMdr256 = 0
+      const afterMdr256 = raw256 - mdrUsed
+      if (afterMdr256 <= 0) {
+        signedOverflow256 += -afterMdr256
+        continue
+      }
+      const resPct = this.playerResistPct(player, kind)
+      const postRes256 = Math.max(0, Math.trunc((afterMdr256 * (100 - resPct)) / 100))
+      if (postRes256 > 0) {
+        const abs = this.playerElementalAbsorb(player, kind)
+        if (abs.pct > 0 || abs.flat > 0) {
+          const absOut = applyElementalAbsorb113c(postRes256, abs.pct, abs.flat * FIXED_ONE)
+          postElem256 += absOut.remainingDamage256
+          absorbHeal256 += absOut.absorbHeal256
+          continue
+        }
+      }
+      postElem256 += postRes256
+    }
+    const combined256 = Math.max(0, postPhysAndMag256 + postElem256 - signedOverflow256)
+    total = Math.floor(combined256 / FIXED_ONE)
+  } else {
+    const normalizedParts = {
+      phys: parts.phys ?? 0,
+      fire: parts.fire ?? 0,
+      cold: parts.cold ?? 0,
+      light: (parts.light ?? 0) + (parts.ltng ?? 0),
+    }
+    for (const kind of ['phys', 'fire', 'cold', 'light'] as const) {
+      const dmg = normalizedParts[kind]
+      if (dmg <= 0) continue
+      const postRes = Math.max(0, Math.round(dmg * (1 - this.playerResistPct(player, kind) / 100)))
+      if (kind !== 'phys' && postRes > 0) {
+        const abs = this.playerElementalAbsorb(player, kind)
+        if (abs.pct > 0 || abs.flat > 0) {
+          const absOut = applyElementalAbsorb113c(postRes * FIXED_ONE, abs.pct, abs.flat * FIXED_ONE)
+          total += Math.floor(absOut.remainingDamage256 / FIXED_ONE)
+          absorbHeal256 += absOut.absorbHeal256
+          continue
+        }
+      }
+      total += postRes
+    }
+    const rawMag = parts.mag ?? 0
+    if (rawMag > 0) {
+      const magMdr = Math.max(0, this.sumPlayerItemStat(player, 35))
+      const magRes = Math.max(-100, Math.min(95, this.sumPlayerItemStat(player, 37)))
+      const afterMdr = Math.max(0, rawMag - magMdr)
+      total += Math.max(0, Math.round(afterMdr * (1 - magRes / 100)))
+    }
   }
   const rawPois = parts.pois ?? 0
   if (rawPois > 0 && !player.dead) {
@@ -993,9 +1069,12 @@ function onMonsterKilled(this: GameInstanceHost,
       const soulstone = this.createQuestDropItem('mss', monster.level)
       if (soulstone) this.spawnDroppedItems([soulstone], monster.areaId, monster.x, monster.y)
     }
-    const quest = QUEST_BOSS_KILL_113C.find(
-      ([prefix]) => defId.startsWith(prefix) || (suId !== '' && suId.startsWith(prefix)),
-    )
+    const quest =
+      defId === 'izualghost' || monster.hcIdx === 406
+        ? undefined
+        : QUEST_BOSS_KILL_113C.find(
+            ([prefix]) => defId.startsWith(prefix) || (suId !== '' && suId.startsWith(prefix)),
+          )
     if (quest !== undefined) {
       if (
         quest[1] === 'a2q1' &&
@@ -1004,17 +1083,19 @@ function onMonsterKilled(this: GameInstanceHost,
         const book = this.createQuestDropItem('ass', monster.level)
         if (book) this.spawnDroppedItems([book], monster.areaId, monster.x, monster.y)
       }
-      // 1.13c D2Game.dll ACT5Q1 (`0x6fc7869f` / `0x6fc78774`, word 35) & ACT5Q4 (`0x6fc778de` / `0x6fc77a00`, word 38):
-      // Shenk and Nihlathak kills set ONLY `QFLAG_REWARDPENDING | QFLAG_COMPLETEDNOW` (`0x2002`), leaving
-      // `QFLAG_REWARDGRANTED` (`0x0001`) clear until Larzuk sockets (`0x6fc785cf`) or Anya personalizes (`0x6fc77803`) (#1987).
+      // 1.13c D2Game.dll ACT4Q1 (`0x6fcdabf0..0x6fcdad32`, word 25, #2011),
+      // ACT5Q1 (`0x6fc7869f` / `0x6fc78774`, word 35) & ACT5Q4 (`0x6fc778de` / `0x6fc77a00`, word 38):
+      // Izual, Shenk, and Nihlathak kills set ONLY `QFLAG_REWARDPENDING | QFLAG_COMPLETEDNOW` (`0x2002`), leaving
+      // `QFLAG_REWARDGRANTED` (`0x0001`) clear until Tyrael (`#367`, `0x6fcda768`), Larzuk (`0x6fc785cf`),
+      // or Anya (`0x6fc77803`) completes the turn-in (#1987, #2011).
       const mask =
-        quest[1] === 'a5q1' || quest[1] === 'a5q4'
+        quest[1] === 'a4q1' || quest[1] === 'a5q1' || quest[1] === 'a5q4'
           ? QUEST_FLAG_REWARD_PENDING_113C | QUEST_FLAG_COMPLETED_NOW_113C
           : quest[1] === 'a2q1'
             ? QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_COMPLETED_NOW_113C | QUEST_FLAG_CUSTOM_5_113C
             : QUEST_FLAG_COMPLETED_113C
       const alreadyCreditedMask =
-        quest[1] === 'a5q1' || quest[1] === 'a5q4'
+        quest[1] === 'a4q1' || quest[1] === 'a5q1' || quest[1] === 'a5q4'
           ? QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_REWARD_PENDING_113C
           : QUEST_FLAG_COMPLETED_113C
       let completedFirstTime = false
@@ -1028,6 +1109,26 @@ function onMonsterKilled(this: GameInstanceHost,
         this.setPlayerQuestFlag(recipient, quest[1], mask)
         if (quest[1] === 'a5q4') {
           this.syncHarrogathA5Q3State113c(recipient)
+        }
+      }
+      if (quest[1] === 'a4q1') {
+        // D2Game.dll `ACT4Q1_SpawnIzualGhost` (`0x6fcda960..0x6fcdaa2b`, #2011):
+        // spawn Izual's Spirit (`MonStats.txt` `hcIdx 406` `izualghost`, `inTown=1`, `Align=2`, `killable=0`)
+        // at `(monster.x, monster.y)` when Izual (`hcIdx 256`) dies.
+        const hasIzualGhost = [...this.monsters.values()].some(
+          (m) => m.areaId === monster.areaId && m.hcIdx === 406 && !m.dead,
+        )
+        if (!hasIzualGhost) {
+          this.spawnMonster({
+            classId: 406,
+            defId: 'izualghost',
+            name: 'Izual',
+            x: Math.round(monster.x),
+            y: Math.round(monster.y),
+            areaId: monster.areaId,
+            isNpc: true,
+            experience: 0,
+          })
         }
       }
       if (quest[1] === 'a1q4' && completedFirstTime) {
@@ -1093,22 +1194,42 @@ function onMonsterKilled(this: GameInstanceHost,
     if (actBossQuest === 'a2q6') {
       this.syncDurielsLairA2Q6State113c(monster.areaId, monster.x, monster.y)
     } else if (actBossQuest === 'a5q6') {
-      const hasTyrael3 = [...this.monsters.values()].some(
+      // D2Game.dll 0x6FC7C1F0 (`push 0x64 -> call 0x6FC54130`) & 0x6FC7D760 (`push 0x64 -> call 0x6FC54130`, #2018):
+      // snaps `tyrael3` (#521) from `(baal.x - 5, baal.y - 5)` and `Destruction's End` (`Objects.txt 565`) from
+      // `(tyrael.x + 5, tyrael.y)` onto connected walkable floor within 100 subtiles so chasm-edge Baal deaths
+      // in Worldstone Chamber (`Area 132`) never drop Tyrael or `LastPortal` into unwalkable void.
+      const hasLoadedArea = this.loadedAreas.has(monster.areaId)
+      const existingTyrael3 = [...this.monsters.values()].find(
         (m) => m.areaId === monster.areaId && m.hcIdx === 521 && !m.dead,
       )
-      const tyraelX = monster.x - 5
-      const tyraelY = monster.y - 5
-      if (!hasTyrael3) {
-        this.spawnMonster({
+      const rawTyraelX = monster.x - 5
+      const rawTyraelY = monster.y - 5
+      const tyraelStand = hasLoadedArea
+        ? findStandableNear(
+            (x, y) => this.isWorldWalkableForPlayer(monster.areaId, x, y),
+            rawTyraelX,
+            rawTyraelY,
+            100,
+          )
+        : null
+      let tyraelAnchorX = existingTyrael3?.x ?? tyraelStand?.x ?? rawTyraelX
+      let tyraelAnchorY = existingTyrael3?.y ?? tyraelStand?.y ?? rawTyraelY
+      if (existingTyrael3 === undefined && (!hasLoadedArea || tyraelStand !== null)) {
+        const tyraelId = this.spawnMonster({
           classId: 521,
           defId: 'tyrael3',
           name: 'Tyrael',
-          x: tyraelX,
-          y: tyraelY,
+          x: tyraelAnchorX,
+          y: tyraelAnchorY,
           areaId: monster.areaId,
           isNpc: true,
           experience: 0,
         })
+        const spawnedTyrael = this.monsters.get(tyraelId)
+        if (spawnedTyrael !== undefined) {
+          tyraelAnchorX = spawnedTyrael.x
+          tyraelAnchorY = spawnedTyrael.y
+        }
       }
       const existingLastPortal = [...this.objects.values()].find(
         (o) => o.areaId === monster.areaId && o.classId === 565,
@@ -1116,13 +1237,35 @@ function onMonsterKilled(this: GameInstanceHost,
       if (existingLastPortal !== undefined) {
         this.setObjectMode(existingLastPortal, 2)
       } else {
-        this.spawnObject({
-          classId: 565,
-          x: tyraelX + 5,
-          y: tyraelY,
-          areaId: monster.areaId,
-          mode: 2,
-        })
+        const rawPortalX = tyraelAnchorX + 5
+        const rawPortalY = tyraelAnchorY
+        const tyraelCellX = Math.round(tyraelAnchorX)
+        const tyraelCellY = Math.round(tyraelAnchorY)
+        const portalStand = hasLoadedArea
+          ? (findStandableNear(
+              (x, y) =>
+                this.isWorldWalkableForPlayer(monster.areaId, x, y) &&
+                (x !== tyraelCellX || y !== tyraelCellY),
+              rawPortalX,
+              rawPortalY,
+              100,
+            ) ??
+            findStandableNear(
+              (x, y) => this.isWorldWalkableForPlayer(monster.areaId, x, y),
+              rawPortalX,
+              rawPortalY,
+              100,
+            ))
+          : null
+        if (!hasLoadedArea || portalStand !== null) {
+          this.spawnObject({
+            classId: 565,
+            x: portalStand?.x ?? rawPortalX,
+            y: portalStand?.y ?? rawPortalY,
+            areaId: monster.areaId,
+            mode: 2,
+          })
+        }
       }
     } else if (actBossQuest === 'a3q6') {
       // D2Game.dll 0x6FD0A950: Mephisto's death opens Hellgate (Objects.txt 342 -> Area 103).
@@ -1269,12 +1412,15 @@ function onMonsterKilled(this: GameInstanceHost,
     deaths.add(monster.superUniqueId)
     if (deaths.size >= ANCIENT_BARBARIANS_113C.length) {
       // D2Game.dll 0x6FC7E660 & ACT5Q5_GrantReward (0x6FC7BF70): upon killing all three Ancients,
-      // restore statues 474..476 to mode 2 and award a5q5 completion + XP to eligible party members
-      // in the Summit arena meeting the difficulty level requirement (20 / 40 / 60).
+      // restore statues 474..476 and SummitDoor 564 to mode 2 (#2020) and award a5q5 completion + XP to eligible
+      // party members in the Summit arena meeting the difficulty level requirement (20 / 40 / 60).
       for (const obj of this.objects.values()) {
         if (
           obj.areaId === monster.areaId &&
-          (obj.classId === 474 || obj.classId === 475 || obj.classId === 476)
+          (obj.classId === 474 ||
+            obj.classId === 475 ||
+            obj.classId === 476 ||
+            obj.classId === 564)
         ) {
           this.setObjectMode(obj, 2)
         }
@@ -1779,6 +1925,7 @@ export interface MonsterDeathAndXpMethods {
   }, options?: {
     readonly hitClass?: number | string | undefined
     readonly skipGetHit?: boolean | undefined
+    readonly damageRate?: number | undefined
     readonly killerType?: DeathKillerKind113c
     readonly killerUnitId?: number | undefined
   }): void

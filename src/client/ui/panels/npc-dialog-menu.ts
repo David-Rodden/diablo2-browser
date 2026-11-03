@@ -286,7 +286,9 @@ export function buildNpcMenuOptions(
   if (descriptor.canTrade) {
     let allowTrade = true
     if (descriptor.hcIdx === 512 && context?.questFlags && context.questFlags.length > 0) {
-      allowTrade = ((context.questFlags[37] ?? 0) & 1) !== 0
+      // D2Client.dll 0x6fba3ba0 row 41 + D2Game.dll InitFn 66 (0x6fc7eb30, #2019):
+      // Town Anya (512) offers Trade & Gamble as soon as she is rescued (`REWARD_PENDING | COMPLETED` = `0x0003`).
+      allowTrade = ((context.questFlags[37] ?? 0) & 3) !== 0
     }
     if (allowTrade) {
       if (descriptor.canRepair) {
@@ -311,9 +313,9 @@ export function buildNpcMenuOptions(
   if (descriptor.canGamble) {
     let allowGamble = true
     if (descriptor.hcIdx === 512 && context?.questFlags && context.questFlags.length > 0) {
-      allowGamble = ((context.questFlags[37] ?? 0) & 1) !== 0
+      allowGamble = ((context.questFlags[37] ?? 0) & 3) !== 0
     } else if (descriptor.hcIdx === 514 && context?.questFlags && context.questFlags.length > 0) {
-      allowGamble = ((context.questFlags[37] ?? 0) & 1) === 0
+      allowGamble = ((context.questFlags[37] ?? 0) & 3) === 0
     }
     if (allowGamble) {
       opts.push({

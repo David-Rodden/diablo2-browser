@@ -46,10 +46,20 @@ function stepFrame(this: GameInstanceHost): Map<number, readonly ServerEvent[]> 
     const pending = this.pendingObjectSpawns[i]!
     if (this.currentFrame < pending.frame) continue
     this.pendingObjectSpawns.splice(i, 1)
+    const hasLoadedArea = this.loadedAreas.has(pending.areaId)
+    const stand = hasLoadedArea
+      ? findStandableNear(
+          (x, y) => this.isWorldWalkableForPlayer(pending.areaId, x, y),
+          pending.x,
+          pending.y,
+          100,
+        )
+      : null
+    if (hasLoadedArea && stand === null) continue
     const spawnedId = this.spawnObject({
       classId: pending.classId,
-      x: pending.x,
-      y: pending.y,
+      x: stand?.x ?? pending.x,
+      y: stand?.y ?? pending.y,
       areaId: pending.areaId,
       mode: 1,
       ...(pending.destAreaId !== undefined ? { destAreaId: pending.destAreaId } : {}),
@@ -185,25 +195,28 @@ function stepFrame(this: GameInstanceHost): Map<number, readonly ServerEvent[]> 
     }
   }
 
-  // 3c. Scheduled Chaos Sanctuary Diablo spawns (`ACT4Q3` 125-frame / 5-second timer, #1928)
+  // 3c. Scheduled Chaos Sanctuary Diablo spawns (`ACT4Q3` 125-frame / 5-second timer, #1928, #2018)
   for (let i = this.pendingDiabloSpawns.length - 1; i >= 0; i--) {
     const pending = this.pendingDiabloSpawns[i]!
     if (this.currentFrame >= pending.frame) {
       this.pendingDiabloSpawns.splice(i, 1)
-      const stand = this.loadedAreas.has(pending.areaId)
+      const hasLoadedArea = this.loadedAreas.has(pending.areaId)
+      const stand = hasLoadedArea
         ? findStandableNear(
             (x, y) => this.isWorldWalkableForPlayer(pending.areaId, x, y),
             pending.x,
             pending.y,
-            10,
+            100,
           )
         : null
-      this.spawnMonster({
-        defId: 'diablo',
-        x: stand?.x ?? pending.x,
-        y: stand?.y ?? pending.y,
-        areaId: pending.areaId,
-      })
+      if (!hasLoadedArea || stand !== null) {
+        this.spawnMonster({
+          defId: 'diablo',
+          x: stand?.x ?? pending.x,
+          y: stand?.y ?? pending.y,
+          areaId: pending.areaId,
+        })
+      }
     }
   }
 

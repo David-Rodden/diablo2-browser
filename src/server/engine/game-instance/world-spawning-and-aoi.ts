@@ -15,7 +15,7 @@ import { CANONICAL_BOSS_MINIONS, getCanonicalMonsterKinds, getMonsterKindByHcIdx
 import { getLevelMonsterPlan113c } from '../../../common/world/level-monster-plans.ts'
 import { OBJECTS_TXT_113C } from '../../../common/world/objects-txt-113c.ts'
 import { MONSTATS2_COMP_BIT_WIDTHS_BY_HCIDX, type ClientCommand, type ServerEvent } from '../../../netproto/index.ts'
-import { resolvePresetObject113c, resolvePresetPortalDestArea113c } from '../../world/area-bootstrap.ts'
+import { findStandableNear, isStandableSubTile, resolvePresetObject113c, resolvePresetPortalDestArea113c } from '../../world/area-bootstrap.ts'
 import { planLevelPopulation113c, planRoomPopulation113c } from '../../ai/room-streamer.ts'
 import { resolveMonsterMonProps113c } from '../../ai/monprop-113c.ts'
 import { rollMonsterOrPetLoadout113c } from '../../ai/monequip-helper-113c.ts'
@@ -958,6 +958,13 @@ function spawnObject(this: GameInstanceHost, spec: SpawnObjectSpec): number {
       QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_COMPLETED_NOW_113C,
     ),
   )
+  const a5q5Completed = [...this.players.values()].some((p) =>
+    hasQuestFlag113c(
+      p.questFlags,
+      'a5q5',
+      QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_COMPLETED_NOW_113C,
+    ),
+  )
   // D2Game InitFn 47 (0x6fc8f140) for Durance of Hate Stairs (Objects.txt 386),
   // InitFn 60 (0x6fd084a0) for Compelling Orb (Objects.txt 404), and InitFn 44 (0x6fd086c0)
   // for Mephisto Hellgate (Objects.txt 342): start in OBJMODE_OPENED (2) when their quest is complete.
@@ -977,8 +984,9 @@ function spawnObject(this: GameInstanceHost, spec: SpawnObjectSpec): number {
   const effectiveLocked = isNeverLocked ? false : Boolean(spec.isLocked)
   // D2Game InitFn 41/42 (`0x6fd04980` / `0x6fd02e00`, Sewer Stairs 366 & Sewer Lever 367),
   // InitFn 47 (`0x6fc8f140`, Durance of Hate Stairs 386), InitFn 60 (`0x6fd084a0`, Compelling Orb 404),
-  // InitFn 44 (`0x6fd086c0`, Mephisto Hellgate 342), InitFn 75 (`0x6fc76520`, Baal Return Portal 569 in Area 132),
-  // and OperateFn 34 (`0x6fc8d620`, paired Arcane Sanctuary Portal 298): start in OBJMODE_OPENED (2) when unlocked (#1983).
+  // InitFn 44 (`0x6fd086c0`, Mephisto Hellgate 342), InitFn 73 (`0x6fc765b0`, Ancients Door 547),
+  // InitFn 75 (`0x6fc76520`, Baal Return Portal 569 in Area 132), InitFn 76 (`0x6fc773d0`, SummitDoor 564 in Area 120),
+  // and OperateFn 34 (`0x6fc8d620`, paired Arcane Sanctuary Portal 298): start in OBJMODE_OPENED (2) when unlocked (#1983, #2020).
   const pairedArcanePortalOpened =
     classId === 298 &&
     [...this.objects.values()].some(
@@ -988,6 +996,8 @@ function spawnObject(this: GameInstanceHost, spec: SpawnObjectSpec): number {
     spec.mode ??
     ((((classId === 366 || classId === 367 || classId === 386 || classId === 404) && a3q3Completed) ||
       (classId === 342 && a3q6Completed) ||
+      (classId === 547 && a5q5Completed) ||
+      (classId === 564 && areaId === 120 && !this.isAncientsEncounterActive(areaId)) ||
       (classId === 569 && areaId === 132) ||
       pairedArcanePortalOpened)
       ? 2
@@ -1950,14 +1960,47 @@ function spawnSuperUnique(this: GameInstanceHost, spec: {
   const bossUMods = isBaalWaveBoss
     ? [...rolledSuUMods, MON_UMOD.QUESTCOMPLETE]
     : rolledSuUMods
+  // #2018: Snap SuperUnique boss onto connected walkable floor within 100 subtiles (`D2GAME_FindFreeCoords`
+  // @ `0x6FC54130`, `maxRadius = 0x64`) when `(spec.x, spec.y)` lands on blocked/void terrain, and center
+  // minion rings around `(bossX, bossY)` up to `r = 12` so large packs (e.g. Baal Wave 2 `5 + 10 = 15`)
+  // never clip into walls or starve near pillars.
+  const hasLoadedArea = this.loadedAreas.has(areaId)
+  const isWalkable = (x: number, y: number): boolean =>
+    hasLoadedArea
+      ? this.isWorldWalkableForPlayer(areaId, x, y)
+      : !this.terrainWalkableCheck || this.terrainWalkableCheck(areaId, x, y, false)
+  let bossX = spec.x
+  let bossY = spec.y
+  const rawBossCellX = Math.round(spec.x)
+  const rawBossCellY = Math.round(spec.y)
+  if (hasLoadedArea) {
+    if (!isStandableSubTile(isWalkable, rawBossCellX, rawBossCellY)) {
+      const stand = findStandableNear(isWalkable, spec.x, spec.y, 100)
+      if (stand !== null) {
+        bossX = stand.x
+        bossY = stand.y
+      } else if (!isWalkable(rawBossCellX, rawBossCellY)) {
+        return []
+      }
+    }
+  } else if (
+    this.terrainWalkableCheck &&
+    !this.terrainWalkableCheck(areaId, rawBossCellX, rawBossCellY, false)
+  ) {
+    const stand = findStandableNear(isWalkable, spec.x, spec.y, 100)
+    if (stand !== null) {
+      bossX = stand.x
+      bossY = stand.y
+    }
+  }
   const ids: number[] = []
   ids.push(
     this.spawnMonster({
       classId: bossKind.hcIdx,
       name: su.name ?? su.nameKey,
       areaId,
-      x: spec.x,
-      y: spec.y,
+      x: bossX,
+      y: bossY,
       rank: 'superunique',
       superUniqueId: su.id,
       monUMods: bossUMods,
@@ -1974,10 +2017,12 @@ function spawnSuperUnique(this: GameInstanceHost, spec: {
   const extraColdMageCount = spec.superUniqueIndex === 62 ? 10 : 0
   const totalNeeded = count + extraColdMageCount
   const offsets: (readonly [number, number])[] = []
-  for (let r = 1; r <= 5 && offsets.length < Math.max(totalNeeded * 4, 24); r++) {
-    for (let dy = -r; dy <= r; dy++) {
-      for (let dx = -r; dx <= r; dx++) {
-        if (Math.max(Math.abs(dx), Math.abs(dy)) === r) offsets.push([dx, dy])
+  if (totalNeeded > 0) {
+    for (let r = 1; r <= 12; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) === r) offsets.push([dx, dy])
+        }
       }
     }
   }
@@ -1985,13 +2030,15 @@ function spawnSuperUnique(this: GameInstanceHost, spec: {
     const row = MONUMOD_113C_ROWS.find((r) => r.umodId === id)
     return row !== undefined && row.xfer && !row.champion
   })
+  const bossCenterX = Math.round(bossX)
+  const bossCenterY = Math.round(bossY)
   let placed = 0
   let offsetCursor = 0
   for (; offsetCursor < offsets.length && placed < count; offsetCursor++) {
     const [dx, dy] = offsets[offsetCursor]!
-    const x = Math.round(spec.x) + dx
-    const y = Math.round(spec.y) + dy
-    if (this.terrainWalkableCheck && !this.terrainWalkableCheck(areaId, x, y, false)) continue
+    const x = bossCenterX + dx
+    const y = bossCenterY + dy
+    if (!isWalkable(x, y)) continue
     const minionId = minionIds[this.rng.rand(minionIds.length)]!
     const minionKind = kinds.get(minionId)
     if (!minionKind) {
@@ -2017,9 +2064,9 @@ function spawnSuperUnique(this: GameInstanceHost, spec: {
     let extraPlaced = 0
     for (; offsetCursor < offsets.length && extraPlaced < extraColdMageCount; offsetCursor++) {
       const [dx, dy] = offsets[offsetCursor]!
-      const x = Math.round(spec.x) + dx
-      const y = Math.round(spec.y) + dy
-      if (this.terrainWalkableCheck && !this.terrainWalkableCheck(areaId, x, y, false)) continue
+      const x = bossCenterX + dx
+      const y = bossCenterY + dy
+      if (!isWalkable(x, y)) continue
       ids.push(
         this.spawnMonster({
           classId: 381,
@@ -2038,8 +2085,8 @@ function spawnSuperUnique(this: GameInstanceHost, spec: {
     this.spawnedSuperUniquePackIds.set(ids[0], {
       superUniqueIndex: spec.superUniqueIndex,
       areaId,
-      x: spec.x,
-      y: spec.y,
+      x: bossX,
+      y: bossY,
       allUnitIds: [...ids],
     })
   }

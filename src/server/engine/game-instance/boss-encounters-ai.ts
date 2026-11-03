@@ -7,12 +7,14 @@ import type { MissileRecord, SkillRecord } from '../../../common/data/data-regis
 import { getEmbeddedDropTables } from '../../../common/items/embedded-drop-tables.ts'
 import { PANDEMONIUM_FINALE_AREA_ID_113C, UBER_PRIME_EVIL_SET_113C, UBER_PRIME_MINION_SPECS_113C, computeUberPrimeMinionCap113c, createPandemoniumFinaleDrops113c } from '../../world/pandemonium-113c.ts'
 import { MONSTATS_113C_ROWS } from '../../../common/units/monstats-113c-data.ts'
-import { isBaalTentacleHcIdx113c, isBonePrisonMonsterHcIdx113c, monaiParam113c } from '../../../common/units/monai-113c.ts'
+import { isBaalTentacleHcIdx113c, isBonePrisonMonsterHcIdx113c, monaiParam113c, normalizeMonAiName113c } from '../../../common/units/monai-113c.ts'
 import { MON_UMOD } from '../../../common/units/monster-death-fx.ts'
 import type { MonsterSkillEntry } from '../../../common/units/unit-types.ts'
 import type { ServerEvent } from '../../../netproto/index.ts'
 import type { SummonedPetUnit } from '../../ai/summon-manager.ts'
 import {
+  computeMonsterInfernoChannelParams113c,
+  computeMonsterInfernoMissileRange113c,
   evaluateMonsterMissileDamage113c,
   resolveMonsterMonStatsSkillSlvl113c,
   resolveMonsterRegisteredSkillSlvl113c,
@@ -44,6 +46,11 @@ function tryCastMonsterSkill(this: GameInstanceHost,
   if (monster.skillCooldown > 0 || monster.skills.length === 0) return false
   const profile = monsterProfile113c(monster.ai)
   const forcedSkillId = options?.forcedSkillId
+  const aiKey = normalizeMonAiName113c(monster.ai)
+  // 1.13c `AITHINK_Fn025_WillOWisp` (`0x6FCA0F20..0x6FCA1C6F`, #2012):
+  // Never calls `CastSkill` (`Skill1 = #53 Chain Lightning` is unused by WillOWisp AI);
+  // ranged lightning attacks strictly use `MissC` (`#320` / `#666`).
+  if (forcedSkillId === undefined && aiKey === 'willowisp') return false
   // Healers with `profile.healRangeParam !== undefined` (`HighPriest`, `ZakarumPriest`, `GreaterMummy`,
   // `OblivionKnight`) already evaluate `#179 ZakarumHeal` / `#182 Bestow` once per `aidel` think tick in
   // `stepMonsterAi` (`monster-combat-ai.ts`) when `bInMeleeRange == 0` (`D2Game.dll` `0x6FC390BB`, #2001).
@@ -178,31 +185,52 @@ function tryCastMonsterSkill(this: GameInstanceHost,
       ? this.tryCastMonsterUtilitySkill(monster, target, distance)
       : false
   }
-  // Melee-range monsters alternate between their skill and A1 instead of never
-  // swinging; at range the cooldown alone paces the casts (`forcedSkillId` callers
-  // such as `AITHINK_Fn028_Vampire` already ran their own point-blank RNG gate, #2007).
-  if (forcedSkillId === undefined && distance <= 2.5 && this.rng.rand(2) !== 0) return false
   const chosen = candidates[monster.skillCursor % candidates.length]!
   const { entry, skill, missileRec } = chosen
-  if (forcedSkillId === undefined) {
-    monster.skillCursor = (monster.skillCursor + 1) % Math.max(1, candidates.length)
-  }
   const diffIdx: 0 | 1 | 2 = this.difficulty === 2 ? 2 : this.difficulty === 1 ? 1 : 0
   const skillLevel = Math.max(1, resolveMonsterRegisteredSkillSlvl113c(entry.level, diffIdx) || entry.level)
-  const rangeFrames = Math.max(2, missileRec.range + missileRec.levRange * skillLevel)
-  // `SKILLS_SrvDo024_FireWall` (`0x6FC637D0`, #1999) & `SKILLS_SrvDo028` (`0x6FC62D90`, #2007):
-  // Target-placed wall / sky-fall controller rows (`#171 VampireMeteor`, `#205 MonBlizzard`,
-  // `#213 HellMeteor`, `#234 Eruption`, `#284 Baal Taunt`, `#287/#288/#303/#304/#305` Catapult)
-  // store lateral half-width or sky-fall countdown frames in `Range` (`Vel = 0`), NOT caster-to-target reach.
+  const rangeFrames =
+    skill.srvDoFunc === 95
+      ? computeMonsterInfernoMissileRange113c(this.registry, skill, missileRec, skillLevel)
+      : Math.max(2, missileRec.range + missileRec.levRange * skillLevel)
+  // `SKILLS_SrvDo024_FireWall` (`0x6FC637D0`, #1999), `SKILLS_SrvDo028` (`0x6FC62D90`, #2007),
+  // & `SKILLS_SetInfernoMissileRange` / `SrvDo095` (`0x6FCD32E0` / `0x6FCD6A60`, #2012):
+  // Target-placed wall / sky-fall controller rows store lateral half-width or sky-fall countdown frames,
+  // while `SrvDo095` flame/arctic jets travel exact `(vel / 16) * rangeFrames` sub-tiles (`7.5..11.25`).
   const missileReach =
     skill.srvDoFunc === 24
       ? 25
       : skill.srvDoFunc === 28
         ? 35
-        : missileRec.vel > 0
-          ? Math.max(rangeFrames, (missileRec.vel / 16) * rangeFrames)
-          : rangeFrames
+        : skill.srvDoFunc === 95
+          ? missileRec.vel > 0
+            ? (missileRec.vel / 16) * rangeFrames
+            : rangeFrames
+          : missileRec.vel > 0
+            ? Math.max(rangeFrames, (missileRec.vel / 16) * rangeFrames)
+            : rangeFrames
   if (distance > Math.min(35, Math.max(4, missileReach))) return false
+  // 1.13c per-AI cast probability gates (#2012):
+  // - `AITHINK_Fn089_Megademon` (`0x6FC38CE0`): rolls `aip1` (`50..90%`) at range (`> 2.5`) or `aip2` (`40..65%`) in melee (`<= 2.5`).
+  // - `AITHINK_Fn124_FrozenHorror` (`0x6FC379A0`): requires `!STATE_INFERNO (12)` and rolls `aip3` (`60..80%`).
+  // - Generic melee-range monsters alternate between their skill and A1 (`forcedSkillId` callers already ran their gate, #2007).
+  if (forcedSkillId === undefined) {
+    if (aiKey === 'megademon') {
+      if (monster.aiParams.length > 0) {
+        const castChance = monaiParam113c(profile, monster.aiParams, distance <= 2.5 ? 1 : 0, 100)
+        if (this.rng.rand(100) >= castChance) return false
+      }
+    } else if (aiKey === 'frozenhorror') {
+      if (monster.states.has(12)) return false
+      if (monster.aiParams.length > 0) {
+        const castChance = monaiParam113c(profile, monster.aiParams, 2, 100)
+        if (this.rng.rand(100) >= castChance) return false
+      }
+    } else if (distance <= 2.5 && this.rng.rand(2) !== 0) {
+      return false
+    }
+    monster.skillCursor = (monster.skillCursor + 1) % Math.max(1, candidates.length)
+  }
   const statList = new UnitStatList(this.registry)
   statList.setBaseStat('level', monster.level)
   statList.setBaseStat('tohit', monster.ar)
@@ -362,6 +390,112 @@ function tryCastMonsterSkill(this: GameInstanceHost,
       ...(elemDurationFrames > 0 ? { elemDurationFrames } : {}),
       ...(options?.hitMonsters === true ? { hitMonsters: true } : {}),
     })
+  } else if (skill.srvDoFunc === 95) {
+    // 1.13c `D2Game.dll` `SKILLS_SrvSt53_MonsterInferno` (`0x6FCD65E0`) &
+    // `SKILLS_SrvDo095_MonsterInferno` (`0x6FCD6A60`, #2012):
+    // Applies `STATE_INFERNO (12)` for `calc2` (`param1 = 15` or `20` frames) and spawns 1 `srvMissileA`
+    // jet (`rangeFrames = SKILLS_SetInfernoMissileRange`, `skipMultishot: true`) every `calc3` (`2` or `3`) frames.
+    const { durationFrames, stepFrames } = computeMonsterInfernoChannelParams113c(
+      this.registry,
+      skill,
+      skillLevel,
+    )
+    this.applyMonsterState(monster.unitId, 12, durationFrames)
+    const ang = Math.atan2(target.y - monster.y, target.x - monster.x)
+    const jetDist = Math.max(4, missileReach)
+    this.spawnMonsterMissile(
+      monster,
+      monster.x + Math.cos(ang) * jetDist,
+      monster.y + Math.sin(ang) * jetDist,
+      phys + elem,
+      missileRec.id,
+      skill.id,
+      {
+        missile: missileRec,
+        skillLevel,
+        rangeFrames,
+        physDamage: phys,
+        elemDamage: elem,
+        element,
+        skipMultishot: true,
+        ...(elemDurationFrames > 0 ? { elemDurationFrames } : {}),
+        ...(options?.hitMonsters === true ? { hitMonsters: true } : {}),
+      },
+    )
+    monster.cooldown = Math.max(monster.cooldown, durationFrames)
+    if (durationFrames > 1) {
+      monster.activeBossChannel = {
+        kind: 'monsterinferno',
+        skillId: skill.id,
+        slvl: skillLevel,
+        remainingFrames: durationFrames - 1,
+        elapsedFrames: 0,
+        angle: ang,
+        targetX: target.x,
+        targetY: target.y,
+        startOffset: 0,
+        missileId: missileRec.id,
+        rangeFrames,
+        stepFrames,
+        physDamage: phys,
+        elemDamage: elem,
+        element,
+        ...(elemDurationFrames > 0 ? { elemDurationFrames } : {}),
+        ...(options?.hitMonsters === true ? { hitMonsters: true } : {}),
+        nextHitFrames: new Map(),
+      }
+    }
+  } else if (skill.srvDoFunc === 148) {
+    // 1.13c `D2Game.dll` `MONMODE_ChangeAnimMode` (`0x6FC3F573..0x6FC3F5BE`) &
+    // `SKILLS_SrvDo148` (`0x6FCD4C20..0x6FCD4D25`, `#335 DoomKnightMissile`, #2017):
+    // `doomknight2` (`311`) and `doomknight3` (`312`, plus `701/702/713`) roll `S3v = pos,fir,col,unh` (`0..3`)
+    // into `pMonsterData->byte_0E`, and `SKILLS_SrvDo148` spawns `wSrvMissileA + byte_0E`:
+    // `#323 undeadmissile1` (Poison), `#324 undeadmissile2` (Fire), `#325 undeadmissile3` (Cold), `#326 undeadmissile4` (Unholy/Phys).
+    const variantIdx = this.rng.rand(4)
+    const variantRec = this.registry.getMissileById(missileRec.id + variantIdx) ?? missileRec
+    const varEval = evaluateMonsterMissileDamage113c({
+      registry: this.registry,
+      missile: variantRec,
+      slvl: skillLevel,
+      difficulty,
+      monsterMinPhys: monster.minDmg,
+      monsterMaxPhys: monster.maxDmg,
+      attackMode: 'S1',
+      elementalAttacks: monster.elementalAttacks,
+      extraFirePct: monster.monProps.extraFirePct,
+      rng: this.rng,
+    })
+    let varPhys = varEval.physDamage
+    let varElem = varEval.elemDamage
+    const varElement: MissileDamageChannel = varEval.element
+    let varDur = varEval.elemDurationFrames
+    if (varPhys + varElem <= 0) {
+      varPhys = this.rollInclusive(monster.minDmg, monster.maxDmg)
+    }
+    if (varElement !== 'phys' && variantRec.srcDamage <= 0) {
+      varElem += varPhys
+      varPhys = 0
+    }
+    if (varElement === 'pois' && varElem > 0 && varDur <= 0) {
+      varDur = 50
+    }
+    this.spawnMonsterMissile(
+      monster,
+      target.x,
+      target.y,
+      varPhys + varElem,
+      variantRec.id,
+      skill.id,
+      {
+        missile: variantRec,
+        skillLevel,
+        physDamage: varPhys,
+        elemDamage: varElem,
+        element: varElement,
+        ...(varDur > 0 ? { elemDurationFrames: varDur } : {}),
+        ...(options?.hitMonsters === true ? { hitMonsters: true } : {}),
+      },
+    )
   } else {
     this.spawnMonsterMissile(monster, target.x, target.y, phys + elem, missileRec.id, skill.id, {
       missile: missileRec,
@@ -374,10 +508,16 @@ function tryCastMonsterSkill(this: GameInstanceHost,
     })
   }
   const delay = Number.parseInt(skill.delay, 10)
+  const megademonCooldown =
+    aiKey === 'megademon' && monster.aiParams.length > 0
+      ? monaiParam113c(profile, monster.aiParams, 5, 0)
+      : 0
   const rawCooldown =
-    Number.isFinite(delay) && delay > 0
-      ? delay
-      : Math.max(25, monster.cooldownTicks * 2)
+    megademonCooldown > 0
+      ? megademonCooldown
+      : Number.isFinite(delay) && delay > 0
+        ? delay
+        : Math.max(25, monster.cooldownTicks * 2)
   monster.skillCooldown =
     monster.monProps.fcrPct > 0
       ? Math.max(5, Math.floor((rawCooldown * 100) / (100 + monster.monProps.fcrPct)))
@@ -1184,6 +1324,8 @@ function dealMonsterDirectHitToHostile113c(this: GameInstanceHost,
     readonly knockbackSteps?: number | undefined
     readonly knockbackOriginX?: number | undefined
     readonly knockbackOriginY?: number | undefined
+    readonly skipGetHit?: boolean | undefined
+    readonly damageRate?: number | undefined
   },
 ): void {
   if (target.kind === 'player') {
@@ -1200,11 +1342,19 @@ function dealMonsterDirectHitToHostile113c(this: GameInstanceHost,
           cold: parts.cold,
           light: parts.light,
         },
-        { killerType: 'monster', killerUnitId: monster.unitId },
+        {
+          ...(effects?.skipGetHit === true ? { skipGetHit: true } : {}),
+          ...(effects?.damageRate !== undefined && effects.damageRate > 0
+            ? { damageRate: effects.damageRate }
+            : {}),
+          killerType: 'monster',
+          killerUnitId: monster.unitId,
+        },
       )
     }
     if ((parts.magic ?? 0) > 0 && !p.dead) {
       this.applyDamageToPlayer(p, Math.max(1, Math.round(parts.magic!)), {
+        ...(effects?.skipGetHit === true ? { skipGetHit: true } : {}),
         killerType: 'monster',
         killerUnitId: monster.unitId,
       })
@@ -1254,7 +1404,12 @@ function dealMonsterDirectHitToHostile113c(this: GameInstanceHost,
     ),
   )
   if (target.kind === 'merc') {
-    this.applyDamageToMerc(target.merc, rawTotal, monster.areaId)
+    this.applyDamageToMerc(
+      target.merc,
+      rawTotal,
+      monster.areaId,
+      effects?.skipGetHit === true ? { skipGetHit: true } : undefined,
+    )
     return
   }
   this.applyDamageToSummon(target.pet, rawTotal, monster.areaId)
@@ -1615,21 +1770,90 @@ function stepBossChannelsAndSummonLifespans113c(this: GameInstanceHost, monster:
 
   const ch = monster.activeBossChannel
   if (ch === undefined) return false
+  if (
+    ch.kind === 'monsterinferno' &&
+    (this.currentFrame < monster.hitRecoveryUntilFrame ||
+      monster.states.has(1) ||
+      monster.states.has(29) ||
+      monster.states.has(21) ||
+      monster.states.has(25) ||
+      monster.frozenTicks > 0 ||
+      !monster.states.has(12))
+  ) {
+    monster.activeBossChannel = undefined
+    if (monster.states.has(12)) {
+      this.clearUnitState(monster.states, monster.stateTimers, 'monster', monster.unitId, monster.areaId, 12)
+    }
+    if (monster.mode !== 1 && this.currentFrame >= monster.hitRecoveryUntilFrame) {
+      monster.mode = 1
+    }
+    return false
+  }
   if (ch.remainingFrames <= 0) {
     monster.activeBossChannel = undefined
+    if (ch.kind === 'monsterinferno' && monster.states.has(12)) {
+      this.clearUnitState(monster.states, monster.stateTimers, 'monster', monster.unitId, monster.areaId, 12)
+    }
     if (monster.mode !== 1) monster.mode = 1
     return false
   }
   ch.remainingFrames -= 1
 
   const nearHostile = this.nearestHostileForMonster(monster, 35)
-  if (nearHostile !== null && (ch.kind === 'diablight' || ch.kind === 'baalinferno')) {
+  if (
+    nearHostile !== null &&
+    (ch.kind === 'diablight' || ch.kind === 'baalinferno' || ch.kind === 'monsterinferno')
+  ) {
     const desired = Math.atan2(nearHostile.y - monster.y, nearHostile.x - monster.x)
     let delta = desired - ch.angle
     while (delta > Math.PI) delta -= Math.PI * 2
     while (delta < -Math.PI) delta += Math.PI * 2
-    const maxTurn = ch.kind === 'diablight' ? 0.08 : 0.06
+    const maxTurn = ch.kind === 'diablight' || ch.kind === 'monsterinferno' ? 0.08 : 0.06
     ch.angle += Math.max(-maxTurn, Math.min(maxTurn, delta))
+  }
+
+  if (ch.kind === 'monsterinferno') {
+    const elapsed = (ch.elapsedFrames ?? 0) + 1
+    ch.elapsedFrames = elapsed
+    const stepEvery = Math.max(1, ch.stepFrames ?? 2)
+    if (elapsed % stepEvery === 0 && ch.missileId !== undefined) {
+      const mRec = this.registry.getMissileById(ch.missileId)
+      if (mRec !== undefined) {
+        const rf = Math.max(1, ch.rangeFrames ?? 10)
+        const jetDist = Math.max(4, mRec.vel > 0 ? (mRec.vel / 16) * rf : rf)
+        const phys = ch.physDamage ?? 0
+        const elem = ch.elemDamage ?? 0
+        this.spawnMonsterMissile(
+          monster,
+          monster.x + Math.cos(ch.angle) * jetDist,
+          monster.y + Math.sin(ch.angle) * jetDist,
+          phys + elem,
+          mRec.id,
+          ch.skillId,
+          {
+            missile: mRec,
+            skillLevel: ch.slvl,
+            rangeFrames: rf,
+            physDamage: phys,
+            elemDamage: elem,
+            ...(ch.element !== undefined ? { element: ch.element } : {}),
+            skipMultishot: true,
+            ...(ch.elemDurationFrames !== undefined && ch.elemDurationFrames > 0
+              ? { elemDurationFrames: ch.elemDurationFrames }
+              : {}),
+            ...(ch.hitMonsters === true ? { hitMonsters: true } : {}),
+          },
+        )
+      }
+    }
+    if (ch.remainingFrames <= 0) {
+      monster.activeBossChannel = undefined
+      if (monster.states.has(12)) {
+        this.clearUnitState(monster.states, monster.stateTimers, 'monster', monster.unitId, monster.areaId, 12)
+      }
+      monster.mode = 1
+    }
+    return true
   }
 
   if (ch.kind === 'diablight') {
@@ -1691,10 +1915,19 @@ function stepBossChannelsAndSummonLifespans113c(this: GameInstanceHost, monster:
             lightEval !== undefined && lightEval.elemDamage > 0
               ? lightEval.elemDamage
               : Math.max(1, ((this.rollInclusive(25, 66) + 16 * Math.max(0, ch.slvl - 1)) << 6) >> 8)
-          this.dealMonsterDirectHitToHostile113c(monster, h, {
-            phys: physDmg,
-            light: ltngDmg,
-          })
+          this.dealMonsterDirectHitToHostile113c(
+            monster,
+            h,
+            {
+              phys: physDmg,
+              light: ltngDmg,
+            },
+            {
+              // 1.13c `#172 diablight` (`Missiles.txt`: `GetHit = 0`, `DamageRate = 82`, #2017).
+              skipGetHit: diabLightRec !== undefined ? !diabLightRec.getHit : true,
+              damageRate: diabLightRec !== undefined && diabLightRec.damageRate > 0 ? diabLightRec.damageRate : 82,
+            },
+          )
         }
       }
     }
@@ -3528,6 +3761,8 @@ export interface BossEncountersAiMethods {
     readonly knockbackSteps?: number | undefined
     readonly knockbackOriginX?: number | undefined
     readonly knockbackOriginY?: number | undefined
+    readonly skipGetHit?: boolean | undefined
+    readonly damageRate?: number | undefined
   }): void
   listHostilesInMonsterArea113c(monster: InternalMonsterRecord): (
   | { readonly kind: 'player'; readonly key: number; readonly x: number; readonly y: number; readonly player: InternalPlayerRecord }

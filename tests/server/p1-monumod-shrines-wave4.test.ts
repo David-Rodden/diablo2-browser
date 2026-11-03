@@ -4,7 +4,7 @@
  * Covers all 11 P1 issues:
  * - #1890: MonUMod #9 (Fire Enchanted) & #17 (Lightning Enchanted) melee elemental bonus damage
  * - #1899: MonUMod #26 (Teleport) <30% HP / blocked blink, 60f cooldown, 25% heal & PMH/DoT suppression
- * - #1900: MonUMod #29 (Multishot) +2 angled fan projectiles (unique boss + minions + MSLE #195)
+ * - #1900: MonUMod #29 (Multishot) +2 angled fan projectiles (unique boss vs minions + 1.13c NoMultiShot=1 on #195 MSLE)
  * - #1901: MonUMod #34 (ai_after_death / #293 Self-resurrect) Act 5 reanimatedhorde timer, aip1%, Pindleskin exclusion, 0 repeat XP/drops, RIP block
  * - #1902: MonUMod #28 (Stone Skin) +100% Defense & +50% Phys Res ONLY (not 2x HP) + removal of fake 1.2x dmg / speed boosts
  * - #1903: Champion sub-types (#16, #36..#39), Possessed curse immunity, and WillOWisp (hcIdx 118) halved %Damage bonus
@@ -333,7 +333,7 @@ describe('P1 Wave 4 — MonUMod & Shrine 1.13c Parity (#1890, #1899-#1906, #1919
     expect(pmhBlinks).toBeGreaterThan(10)
   })
 
-  it('#1900 / #1993: Multishot (#29) spawns +2 angled fan projectiles (3 total) on boss units only (minions fire 1), including MSLE (#17 + #29)', () => {
+  it('#1900 / #1993 / #2017: Multishot (#29) spawns +2 angled fan projectiles (3 total) on boss units only (minions fire 1) and respects 1.13c NoMultiShot=1 on #195 MSLE (8 bolts)', () => {
     const [left, right] = computeMultishotFanTargets113c(10, 10, 20, 10)
     expect(left[1]).toBeLessThan(10)
     expect(right[1]).toBeGreaterThan(10)
@@ -362,7 +362,7 @@ describe('P1 Wave 4 — MonUMod & Shrine 1.13c Parity (#1890, #1899-#1906, #1919
       expect(created).toHaveLength(expectedCount)
     }
 
-    // MSLE (#17 Lightning Enchanted + #29 Multishot): 8 base bolts * 3 = 24 bolts on hit
+    // 1.13c MSLE (#17 Lightning Enchanted + #29 Multishot): #195 lightunique has NoMultiShot = 1 in 1.13c Missiles.txt -> 8 bolts
     const msleId = game.spawnMonster({
       defId: 'zombie1',
       x: 52,
@@ -380,7 +380,7 @@ describe('P1 Wave 4 — MonUMod & Shrine 1.13c Parity (#1890, #1899-#1906, #1919
       .filter(
         (e) => e.type === 'CreateMissile' && (e as { missileClassId?: number }).missileClassId === 195,
       )
-    expect(msleBolts).toHaveLength(24)
+    expect(msleBolts).toHaveLength(8)
   })
 
   it('#1901: Reanimated Horde (#34 ai_after_death) arms 100..224f self-resurrect timer, excludes Pindleskin (unique), blocks shattered/RIP corpses, and grants 0 repeat XP/drops', () => {

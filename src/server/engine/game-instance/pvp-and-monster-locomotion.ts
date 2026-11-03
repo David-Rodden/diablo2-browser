@@ -653,6 +653,10 @@ function applyPvpHitToTarget113c(this: GameInstanceHost,
     readonly autoHit?: boolean | undefined
     readonly unblockable?: boolean | undefined
     readonly nonLethal?: boolean | undefined
+    readonly damageRate?: number | undefined
+    readonly skipGetHit?: boolean | undefined
+    readonly suppressBlockAnim?: boolean | undefined
+    readonly missileKnockbackChancePct?: number | undefined
     readonly toHitBonusPct?: number | undefined
     readonly concentrationAlreadyApplied?: boolean | undefined
     readonly vengeanceBasePhys?: number | undefined
@@ -720,6 +724,7 @@ function applyPvpHitToTarget113c(this: GameInstanceHost,
       : {}),
     ...(spec.concentrationAlreadyApplied === true ? { concentrationAlreadyApplied: true } : {}),
     ...(spec.multiElemPacket !== undefined ? { multiElemPacket: spec.multiElemPacket } : {}),
+    ...(spec.damageRate !== undefined && spec.damageRate > 0 ? { damageRate: spec.damageRate } : {}),
     ...(spec.toHitBonusPct !== undefined ? { toHitBonusPct: spec.toHitBonusPct } : {}),
     ...(spec.autoHit === true || isSpell || spec.skillId === 97 ? { autoHit: true } : {}),
     ...(spec.unblockable === true || isSpell ? { unblockable: true } : {}),
@@ -731,7 +736,10 @@ function applyPvpHitToTarget113c(this: GameInstanceHost,
     const snap = this.buildPlayerDefenderSnapshot113c(defender)
     const dmgOut = executeSUnitDmg(atkCtx, snap.defenderCtx, packet, this.rng)
     if (!dmgOut.hit) {
-      if (dmgOut.avoidedReason === 'block' || dmgOut.avoidedReason === 'weapon_block') {
+      if (
+        (dmgOut.avoidedReason === 'block' || dmgOut.avoidedReason === 'weapon_block') &&
+        !spec.suppressBlockAnim
+      ) {
         defender.mode = 9
         this.broadcastToArea(defender.areaId, {
           type: 'UnitMode',
@@ -874,11 +882,18 @@ function applyPvpHitToTarget113c(this: GameInstanceHost,
       })
     }
     if (finalDmg > 0 && !defender.dead) {
+      const pvpMissileKb =
+        (spec.missileKnockbackChancePct ?? 0) > 0 &&
+        this.rng.rand(100) < spec.missileKnockbackChancePct!
       this.applyDamageToPlayer(defender, finalDmg, {
         isPurePoison: elemChannel === 'pois' && physDmg <= 0,
+        ...(spec.skipGetHit === true || pvpMissileKb ? { skipGetHit: true } : {}),
         killerType: atk.killerType,
         killerUnitId: atk.killerUnitId,
       })
+      if (!defender.dead && pvpMissileKb) {
+        this.knockbackPlayerFromBoss113c(defender, attackerOwner.x, attackerOwner.y, 2)
+      }
     }
     return true
   }
@@ -1534,11 +1549,43 @@ function findRoomRectInArea113c(
   return undefined
 }
 
+/**
+ * 1.13c `DUNGEON_GetRoomAtPosition` (`D2Common.dll` `#11022` @ `0x6FD51330`, #2016):
+ * When `referenceAreaId` is supplied, checks `referenceAreaId`'s own rooms first
+ * (`0x6FD51337..0x6FD51355`), then only rooms in stitched seam-adjacent areas
+ * (`ppRoomList` @ `0x6FD51357..0x6FD513A0`), returning `undefined` (`NULL`) outside
+ * so cross-Act or disjoint levels sharing world coordinates never pollute collision.
+ */
 function lookupAreaIdWithSpatialIndex113c(
+  host: GameInstanceHost,
   index: RoomSpatialIndex113c,
   x: number,
   y: number,
+  referenceAreaId?: number,
 ): number | undefined {
+  if (referenceAreaId !== undefined) {
+    if (findRoomRectInArea113c(index, referenceAreaId, x, y) !== undefined) {
+      return referenceAreaId
+    }
+    const bx = Math.floor(x) >> ROOM_SPATIAL_BUCKET_SHIFT_113C
+    const by = Math.floor(y) >> ROOM_SPATIAL_BUCKET_SHIFT_113C
+    const list = index.buckets.get(roomSpatialBucketKey113c(bx, by))
+    if (list === undefined) return undefined
+    for (let i = 0; i < list.length; i++) {
+      const room = list[i]!
+      if (
+        room.areaId !== referenceAreaId &&
+        x >= room.x &&
+        x < room.x + room.w &&
+        y >= room.y &&
+        y < room.y + room.h &&
+        host.isAreaSeamAdjacent(referenceAreaId, room.areaId)
+      ) {
+        return room.areaId
+      }
+    }
+    return undefined
+  }
   const bx = Math.floor(x) >> ROOM_SPATIAL_BUCKET_SHIFT_113C
   const by = Math.floor(y) >> ROOM_SPATIAL_BUCKET_SHIFT_113C
   const list = index.buckets.get(roomSpatialBucketKey113c(bx, by))
@@ -1552,9 +1599,14 @@ function lookupAreaIdWithSpatialIndex113c(
   return undefined
 }
 
-function areaIdAtWorldPoint(this: GameInstanceHost, x: number, y: number): number | undefined {
+function areaIdAtWorldPoint(
+  this: GameInstanceHost,
+  x: number,
+  y: number,
+  referenceAreaId?: number,
+): number | undefined {
   if (!Number.isFinite(x) || !Number.isFinite(y)) return undefined
-  return lookupAreaIdWithSpatialIndex113c(syncRoomSpatialIndex113c(this), x, y)
+  return lookupAreaIdWithSpatialIndex113c(this, syncRoomSpatialIndex113c(this), x, y, referenceAreaId)
 }
 
 
@@ -1597,7 +1649,7 @@ function findMonsterPath(this: GameInstanceHost,
       const wx = minX + x
       const wy = minY + y
       const pointArea =
-        lookupAreaIdWithSpatialIndex113c(spatialIndex, wx, wy) ?? monster.areaId
+        lookupAreaIdWithSpatialIndex113c(this, spatialIndex, wx, wy, monster.areaId) ?? monster.areaId
       const blockedByBone =
         hasBoneWall &&
         this.isBlockedByBonePrison(pointArea, wx, wy) &&
@@ -2112,6 +2164,10 @@ export interface PvpAndMonsterLocomotionMethods {
     readonly autoHit?: boolean | undefined
     readonly unblockable?: boolean | undefined
     readonly nonLethal?: boolean | undefined
+    readonly damageRate?: number | undefined
+    readonly skipGetHit?: boolean | undefined
+    readonly suppressBlockAnim?: boolean | undefined
+    readonly missileKnockbackChancePct?: number | undefined
     readonly toHitBonusPct?: number | undefined
     readonly concentrationAlreadyApplied?: boolean | undefined
     readonly vengeanceBasePhys?: number | undefined
@@ -2174,7 +2230,7 @@ export interface PvpAndMonsterLocomotionMethods {
   monsterSlowPercent(monster: InternalMonsterRecord): number
   stepMonsterPoison(monster: InternalMonsterRecord): void
   stepMonsterRegen(monster: InternalMonsterRecord): void
-  areaIdAtWorldPoint(x: number, y: number): number | undefined
+  areaIdAtWorldPoint(x: number, y: number, referenceAreaId?: number): number | undefined
   findMonsterPath(monster: InternalMonsterRecord, targetX: number, targetY: number): readonly SubTilePoint[]
   isMonsterCellOccupied(monster: InternalMonsterRecord, x: number, y: number): boolean
   moveMonsterToward(monster: InternalMonsterRecord, targetX: number, targetY: number, running: boolean): number

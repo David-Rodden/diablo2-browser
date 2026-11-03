@@ -34,6 +34,7 @@ import { SETFUNC_FADE_STATES } from '../world/quest-fx-data-113c.ts'
 import { HORADRIC_ORIFICE_OBJECT_CLASS } from '../world/quest-fx-horadric-113c.ts'
 import { HELLFORGE_OBJECT_CLASS } from '../world/quest-fx-hellforge-113c.ts'
 import {
+  FROZEN_ANYA_INTERACT_OBJECT_CLASS,
   FROZEN_ANYA_OBJECT_CLASS,
   TAINTED_SUN_ALTAR_OBJECT_CLASS,
 } from '../world/quest-fx-tainted-anya-baal-113c.ts'
@@ -769,9 +770,11 @@ export function spawnTaintedSunShowIfAltarNear(host: SessionLevelNavigationHost)
   if (altar !== null) host.world.spawnTaintedSunShowAtAltar(altar)
 }
 
-/** Special quest event 16 (0x6fb02b70): the Anya rescue show at Frozen Anya when #10754 finds Objects.txt 460. */
+/** Special quest event 16 (0x6fb02b70): the Anya rescue show at Frozen Anya when #10754 finds Objects.txt 460 or dynamic 558 (#2020). */
 export function spawnAnyaRescueShowIfAnyaNear(host: SessionLevelNavigationHost): void {
-  const anya = host.findObjectNearLocalPlayer(FROZEN_ANYA_OBJECT_CLASS)
+  const anya =
+    host.findObjectNearLocalPlayer(FROZEN_ANYA_OBJECT_CLASS) ??
+    host.findObjectNearLocalPlayer(FROZEN_ANYA_INTERACT_OBJECT_CLASS)
   if (anya !== null) host.world.spawnAnyaRescueShowAtAnya(anya)
 }
 

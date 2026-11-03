@@ -2,7 +2,7 @@
  * Issue #1995 — 1.13c MonUMod on-struck & death missile handlers parity (`D2Game.dll` `0x6FD2F448`):
  * - `#17` (`lightning` / Lightning Enchanted): `col1` (`0x6FC41AD0`) & `col4` (`0x6FC468C0`) -> `0x6FC46320`
  *   boss-only 10-frame cooldown (`dwLastLeFrame`), `#195 lightunique` (`2 * slvl - 1` ltng at `slvl = max(1, floor(mlvl / 2))`),
- *   `!isGroundFire` gate, and `Multishot` (`#29`) MSLE fan compatibility (`24` bolts).
+ *   `!isGroundFire` gate, and 1.13c `Missiles.txt` `NoMultiShot = 1` (`8` bolts even with `Multishot` `#29`).
  * - `#20` (`scarab`): `col1` (`0x6FC41B00`, `col4 = 0`) -> `0x6FC460D0`
  *   all-ranks `#225 buglightning` radial 8-way burst on `MONMODE_GETHIT` (`mode = 3`) AND `MONMODE_DEATH` (`mode = 0`),
  *   `slvl = mlvl`, `1 + floor((mlvl - 1) / 2)` ltng damage, and client `ClientWorld` minion Scarab GetHit/Death parity.
@@ -31,7 +31,7 @@ import {
 import { GameInstance } from '../../src/server/engine/game-instance.ts'
 
 describe('Issue #1995 — 1.13c MonUMod #17, #20, #10 & #42 on-struck and death missile parity', () => {
-  it('MonUMod #17 (Lightning Enchanted): enforces 10-frame cooldown, Missiles.txt #195 2*slvl-1 damage, ground-fire exclusion, and MSLE 24-bolt fan', () => {
+  it('MonUMod #17 (Lightning Enchanted): enforces 10-frame cooldown, Missiles.txt #195 2*slvl-1 damage, ground-fire exclusion, and 1.13c NoMultiShot=1 8-bolt cap on MSLE', () => {
     expect(LIGHTNING_UMOD_COOLDOWN_FRAMES_113C).toBe(10)
     expect(computeLightningEnchantedBoltSlvl113c(1)).toBe(1)
     expect(computeLightningEnchantedBoltSlvl113c(18)).toBe(9)
@@ -89,7 +89,8 @@ describe('Issue #1995 — 1.13c MonUMod #17, #20, #10 & #42 on-struck and death 
     game.applyDamageToMonster(leBossId, 5, pid, 36, 'fire', 'player', { autoHit: true })
     expect([...internal.missiles.values()].filter((m) => m.missileId === 195)).toHaveLength(8)
 
-    // MSLE (`#17 + #29 Multishot`): each of the 8 #195 bolts duplicates +2 fan projectiles -> 24 total #195 bolts
+    // 1.13c MSLE (`#17 + #29 Multishot`): `#195 lightunique` has `NoMultiShot = 1` in 1.13c `Missiles.txt`
+    // (`0x6FC45B67..0x6FC45B72`), capping the on-struck burst at 8 `#195` bolts instead of 1.09's 24
     const msleBossId = game.spawnMonster({
       defId: 'fallen1',
       rank: 'unique',
@@ -103,7 +104,7 @@ describe('Issue #1995 — 1.13c MonUMod #17, #20, #10 & #42 on-struck and death 
     })
     internal.missiles.clear()
     game.applyDamageToMonster(msleBossId, 5, pid, 36, 'fire', 'player', { autoHit: true })
-    expect([...internal.missiles.values()].filter((m) => m.missileId === 195)).toHaveLength(24)
+    expect([...internal.missiles.values()].filter((m) => m.missileId === 195)).toHaveLength(8)
   })
 
   it('MonUMod #20 (Scarab): emits 8 radial #225 buglightning bolts on GetHit & Death across all ranks with 1+floor((mlvl-1)/2) damage', () => {

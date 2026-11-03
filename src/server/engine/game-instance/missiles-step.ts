@@ -197,6 +197,8 @@ function applyMonsterMissileToDefender(this: GameInstanceHost,
     missile.element === 'pois' && missile.elemDamage > 0 && missile.elemDurationFrames <= 0
       ? 50
       : missile.elemDurationFrames
+  const mRow =
+    missile.missileId !== undefined ? this.registry.getMissileById(missile.missileId) : undefined
   const dmgOut = executeSUnitDmg(this.buildMonsterAttackerContext(monster, missile.skillMode), ctx, {
     skillId: missile.skillId,
     attackKind,
@@ -211,6 +213,7 @@ function applyMonsterMissileToDefender(this: GameInstanceHost,
           elemDurationFrames: resolvedElemDur,
         }
       : {}),
+    ...(mRow !== undefined && mRow.damageRate > 0 ? { damageRate: mRow.damageRate } : {}),
     ...(missile.toHitBonusPct !== undefined ? { toHitBonusPct: missile.toHitBonusPct } : {}),
     ...(missile.guaranteedHit === true ? { autoHit: true } : {}),
     ...(missile.unblockable !== undefined ? { unblockable: missile.unblockable } : {}),
@@ -371,7 +374,7 @@ function missileSegmentBlocked(this: GameInstanceHost,
     const t = i / steps
     const sx = Math.round(prevX + dx * t)
     const sy = Math.round(prevY + dy * t)
-    const pointArea = this.areaIdAtWorldPoint(sx, sy) ?? missile.areaId
+    const pointArea = this.areaIdAtWorldPoint(sx, sy, missile.areaId) ?? missile.areaId
     if (this.isClosedDoorAt(pointArea, sx, sy)) {
       return true
     }
@@ -742,12 +745,17 @@ function applyOnlineMissileSplash113c(this: GameInstanceHost,
   if (missile.ownerType === 'player') {
     const owner = this.players.get(missile.ownerId)
     if (owner === undefined) return
-    const mRow = this.registry.getMissileById(missile.missileId)
+    const mRow =
+    missile.missileId !== undefined ? this.registry.getMissileById(missile.missileId) : undefined
     const skipElemMastery =
       (missile.srcDamage ?? 0) <= 0 &&
       mRow !== undefined &&
       mRow.skill === '' &&
       !mRow.applyMastery
+    const splashDamageRate = mRow !== undefined && mRow.damageRate > 0 ? mRow.damageRate : undefined
+    const splashNoHitRecovery = mRow !== undefined && !mRow.getHit
+    const splashSuppressBlock = mRow !== undefined && !mRow.getHit && mRow.knockBack <= 0
+    const splashKbChance = mRow !== undefined && mRow.knockBack > 0 ? mRow.knockBack : undefined
     const ch = missile.element !== 'phys' ? missile.element : this.resolveSkillDamageChannel(missile.skillId)
     const hasSplitPhysElem =
       missile.physDamage > 0 && missile.elemDamage > 0 && missile.element !== 'phys'
@@ -769,6 +777,10 @@ function applyOnlineMissileSplash113c(this: GameInstanceHost,
           srcDam: 0,
           skipHitRiders: true,
           ...(skipElemMastery ? { skipElemMastery: true } : {}),
+          ...(splashDamageRate !== undefined ? { damageRate: splashDamageRate } : {}),
+          ...(splashNoHitRecovery ? { noHitRecovery: true } : {}),
+          ...(splashSuppressBlock ? { suppressBlockAnim: true } : {}),
+          ...(splashKbChance !== undefined ? { missileKnockbackChancePct: splashKbChance } : {}),
         })
         if (!m.dead) {
           this.applyDamageToMonster(owner, m, missile.elemDamage, missile.skillId, missile.element, 'player', {
@@ -778,6 +790,9 @@ function applyOnlineMissileSplash113c(this: GameInstanceHost,
             srcDam: 0,
             skipHitRiders: true,
             ...(skipElemMastery ? { skipElemMastery: true } : {}),
+            ...(splashDamageRate !== undefined ? { damageRate: splashDamageRate } : {}),
+            ...(splashNoHitRecovery ? { noHitRecovery: true } : {}),
+            ...(splashSuppressBlock ? { suppressBlockAnim: true } : {}),
             elemDurationFrames: missile.elemDurationFrames,
           })
         }
@@ -788,6 +803,10 @@ function applyOnlineMissileSplash113c(this: GameInstanceHost,
           unblockable: true,
           srcDam: 0,
           ...(skipElemMastery ? { skipElemMastery: true } : {}),
+          ...(splashDamageRate !== undefined ? { damageRate: splashDamageRate } : {}),
+          ...(splashNoHitRecovery ? { noHitRecovery: true } : {}),
+          ...(splashSuppressBlock ? { suppressBlockAnim: true } : {}),
+          ...(splashKbChance !== undefined ? { missileKnockbackChancePct: splashKbChance } : {}),
           elemDurationFrames: missile.elemDurationFrames,
         })
       }
@@ -802,6 +821,10 @@ function applyOnlineMissileSplash113c(this: GameInstanceHost,
       attackKind: 'spell' as const,
       autoHit: true,
       unblockable: true,
+      ...(splashDamageRate !== undefined ? { damageRate: splashDamageRate } : {}),
+      ...(splashNoHitRecovery ? { skipGetHit: true } : {}),
+      ...(splashSuppressBlock ? { suppressBlockAnim: true } : {}),
+      ...(splashKbChance !== undefined ? { missileKnockbackChancePct: splashKbChance } : {}),
     }
     for (const p of pvp.players) {
       if (splash.excludeKey === this.onlineUnitKey113c('player', p.unitId)) continue
@@ -1446,6 +1469,7 @@ function stepMissiles(this: GameInstanceHost): void {
         1,
       )
     if (missile.ownerType === 'monster') {
+      const monMissileRow = this.registry.getMissileById(missile.missileId)
       const ownerMon = missile.ownerIsObject ? undefined : this.monsters.get(missile.ownerId)
       const ownerObj = missile.ownerIsObject ? this.objects.get(missile.ownerId) : undefined
       if (ownerMon === undefined && ownerObj === undefined) {
@@ -1501,6 +1525,10 @@ function stepMissiles(this: GameInstanceHost): void {
               autoHit: missile.guaranteedHit,
             })
           } else if (ownerObj !== undefined) {
+            const objMissileKb =
+              monMissileRow !== undefined &&
+              monMissileRow.knockBack > 0 &&
+              this.rng.rand(100) < monMissileRow.knockBack
             this.applyPlayerElementalDamage(
               player,
               {
@@ -1521,8 +1549,20 @@ function stepMissiles(this: GameInstanceHost): void {
                           ? { mag: missile.elemDamage }
                           : {}),
               },
-              { killerType: 'trap', killerUnitId: ownerObj.unitId },
+              {
+                ...((monMissileRow !== undefined && !monMissileRow.getHit) || objMissileKb
+                  ? { skipGetHit: true }
+                  : {}),
+                ...(monMissileRow !== undefined && monMissileRow.damageRate > 0
+                  ? { damageRate: monMissileRow.damageRate }
+                  : {}),
+                killerType: 'trap',
+                killerUnitId: ownerObj.unitId,
+              },
             )
+            if (!player.dead && objMissileKb) {
+              this.knockbackPlayerFromBoss113c(player, ownerObj.x, ownerObj.y, 2)
+            }
           }
           if (missile.element === 'cold') {
             const diffKey: 'normal' | 'nightmare' | 'hell' =
@@ -1588,7 +1628,12 @@ function stepMissiles(this: GameInstanceHost): void {
               equipment: merc.equipment,
             })
             if (nextHp < prevHp) {
-              this.applyDamageToMerc(merc, prevHp - nextHp, merc.areaId)
+              this.applyDamageToMerc(
+                merc,
+                prevHp - nextHp,
+                merc.areaId,
+                monMissileRow !== undefined && !monMissileRow.getHit ? { skipGetHit: true } : undefined,
+              )
             }
             armUnitJustHit('merc', merc.unitId, merc.areaId)
             markHit(merc.unitId)
@@ -1761,6 +1806,9 @@ function stepMissiles(this: GameInstanceHost): void {
                     elemDurationFrames: mvmElemDur,
                   }
                 : {}),
+              ...(monMissileRow !== undefined && monMissileRow.damageRate > 0
+                ? { damageRate: monMissileRow.damageRate }
+                : {}),
             },
             this.rng,
           )
@@ -1781,10 +1829,7 @@ function stepMissiles(this: GameInstanceHost): void {
                 statId: 6,
                 value: target.hp,
               })
-              if (
-                !ownerMon.dead &&
-                this.registry.getMissileById(missile.missileId)?.pSrvHitFunc === 31
-              ) {
+              if (!ownerMon.dead && monMissileRow?.pSrvHitFunc === 31) {
                 const nextOwnerHp = Math.min(ownerMon.maxHp, ownerMon.hp + dealtDamage)
                 if (nextOwnerHp !== ownerMon.hp) {
                   ownerMon.hp = nextOwnerHp
@@ -1806,14 +1851,21 @@ function stepMissiles(this: GameInstanceHost): void {
                 )
               } else {
                 this.emitLightningEnchantedBoltsOnStruck113c(target)
-                this.maybeEnterMonsterHitRecovery(target, dealtDamage, {
-                  hitClass: this.resolveMonsterHitClass113c(
-                    ownerMon,
-                    missile.skillId,
-                    missile.missileId,
-                  ),
-                  isPurePoison: missile.element === 'pois' && missile.physDamage <= 0,
-                })
+                const mvmKb =
+                  monMissileRow !== undefined &&
+                  monMissileRow.knockBack > 0 &&
+                  this.rng.rand(100) < monMissileRow.knockBack &&
+                  this.knockbackMonster(target, ownerMon.x, ownerMon.y)
+                if (!mvmKb && (monMissileRow === undefined || monMissileRow.getHit)) {
+                  this.maybeEnterMonsterHitRecovery(target, dealtDamage, {
+                    hitClass: this.resolveMonsterHitClass113c(
+                      ownerMon,
+                      missile.skillId,
+                      missile.missileId,
+                    ),
+                    isPurePoison: missile.element === 'pois' && missile.physDamage <= 0,
+                  })
+                }
               }
             }
             if (!target.dead && poisonBitrate256 > 0 && poisonDurationFrames > 0) {
@@ -1836,7 +1888,10 @@ function stepMissiles(this: GameInstanceHost): void {
                 target.poisonRemainingFrames,
               )
             }
-          } else if (dmgOut.avoidedReason === 'block') {
+          } else if (
+            dmgOut.avoidedReason === 'block' &&
+            !(monMissileRow !== undefined && !monMissileRow.getHit && monMissileRow.knockBack <= 0)
+          ) {
             target.mode = MONMODE_BLOCK
             this.broadcastToArea(target.areaId, {
               type: 'UnitMode',
@@ -2122,7 +2177,8 @@ function stepMissiles(this: GameInstanceHost): void {
                 continue
               }
               const isWeaponProjectile = (missile.srcDamage ?? 0) > 0
-              const mRow = this.registry.getMissileById(missile.missileId)
+              const mRow =
+    missile.missileId !== undefined ? this.registry.getMissileById(missile.missileId) : undefined
               if (mRow?.pSrvHitFunc === 17) {
                 // 1.13c `MISSMODE_SrvHit17_Howl` (`0x6FC5EAE0`): `aurafilter = 0x8583` (excludes bosses/champions/uniques),
                 // monster level gate `slvl + 1 + clvl > mlvl`, duration `75 + 25*(slvl-1)` without `AiCurseDivisor`.
@@ -2235,6 +2291,14 @@ function stepMissiles(this: GameInstanceHost): void {
                 ...(missile.bladeWeaponHit === true ? { bladeWeaponHit: true } : {}),
                 ...(isWeaponProjectile ? { srcDam: missile.srcDamage } : {}),
                 ...(skipElemMastery ? { skipElemMastery: true } : {}),
+                ...(mRow !== undefined && mRow.damageRate > 0 ? { damageRate: mRow.damageRate } : {}),
+                ...(mRow !== undefined && !mRow.getHit ? { noHitRecovery: true } : {}),
+                ...(mRow !== undefined && !mRow.getHit && mRow.knockBack <= 0
+                  ? { suppressBlockAnim: true }
+                  : {}),
+                ...(mRow !== undefined && mRow.knockBack > 0
+                  ? { missileKnockbackChancePct: mRow.knockBack }
+                  : {}),
                 ...(suppressReturnFireThreat ? { suppressReturnFireThreat: true } : {}),
                 ...(missile.trapPetUid !== undefined ? { fromPet: true } : {}),
               }
@@ -2459,6 +2523,22 @@ function stepMissiles(this: GameInstanceHost): void {
                 1,
                 Math.floor((missile.poisonBitrate256! * missile.elemDurationFrames) / FIXED_ONE),
               )
+              const pvpMslOpts = {
+                ...(missileRowForHit !== undefined && missileRowForHit.damageRate > 0
+                  ? { damageRate: missileRowForHit.damageRate }
+                  : {}),
+                ...(missileRowForHit !== undefined && !missileRowForHit.getHit
+                  ? { skipGetHit: true }
+                  : {}),
+                ...(missileRowForHit !== undefined &&
+                !missileRowForHit.getHit &&
+                missileRowForHit.knockBack <= 0
+                  ? { suppressBlockAnim: true }
+                  : {}),
+                ...(missileRowForHit !== undefined && missileRowForHit.knockBack > 0
+                  ? { missileKnockbackChancePct: missileRowForHit.knockBack }
+                  : {}),
+              }
               this.applyPvpHitToTarget113c(owner, target, {
                 skillId: missile.skillId,
                 physDamage: missile.physDamage,
@@ -2468,10 +2548,27 @@ function stepMissiles(this: GameInstanceHost): void {
                 attackKind: missile.guaranteedHit ? 'spell' : 'missile',
                 autoHit: missile.guaranteedHit,
                 unblockable: missile.guaranteedHit,
+                ...pvpMslOpts,
               })
             } else {
               const ch =
                 missile.element !== 'phys' ? missile.element : this.resolveSkillDamageChannel(missile.skillId)
+              const pvpMslOpts = {
+                ...(missileRowForHit !== undefined && missileRowForHit.damageRate > 0
+                  ? { damageRate: missileRowForHit.damageRate }
+                  : {}),
+                ...(missileRowForHit !== undefined && !missileRowForHit.getHit
+                  ? { skipGetHit: true }
+                  : {}),
+                ...(missileRowForHit !== undefined &&
+                !missileRowForHit.getHit &&
+                missileRowForHit.knockBack <= 0
+                  ? { suppressBlockAnim: true }
+                  : {}),
+                ...(missileRowForHit !== undefined && missileRowForHit.knockBack > 0
+                  ? { missileKnockbackChancePct: missileRowForHit.knockBack }
+                  : {}),
+              }
               this.applyPvpHitToTarget113c(owner, target, {
                 skillId: missile.skillId,
                 physDamage: ch === 'phys' ? missile.damage : 0,
@@ -2483,6 +2580,7 @@ function stepMissiles(this: GameInstanceHost): void {
                 unblockable: missile.guaranteedHit,
                 ...(missile.elemDamage256 !== undefined ? { elemDamage256: missile.elemDamage256 } : {}),
                 ...(missile.concentrationSnapshotted === true ? { concentrationAlreadyApplied: true } : {}),
+                ...pvpMslOpts,
               })
             }
             armUnitJustHit(justHitType, unitId, areaId, states, timers)

@@ -32,6 +32,8 @@ import { WorldPanelsHud } from '../src/client/ui/world-panels.ts'
 import { GameInstance } from '../src/server/engine/game-instance.ts'
 import {
   QUEST_FLAG_COMPLETED_113C,
+  QUEST_FLAG_CUSTOM_8_113C,
+  QUEST_FLAG_CUSTOM_9_113C,
   QUEST_FLAG_PRIMARY_GOAL_DONE_113C,
   QUEST_FLAG_REWARD_PENDING_113C,
   QUEST_FLAG_STARTED_113C,
@@ -371,13 +373,32 @@ describe('Issue #1772 — Frozen Anya (hcIdx 527) S2C 0x27 Stack Padding & 5-Act
     expect(player.items.some((it: { code: string }) => it.code.trim() === 'ice')).toBe(false)
     expect(hasQuestFlag113c(player.questFlags, 'a5q3', QUEST_FLAG_REWARD_PENDING_113C)).toBe(true)
 
-    // Step 4: Return to Malah -> receives Scroll of Resistance ('tr2') and completes a5q3
+    // Step 4: Return to Malah (0x6FC7F7CB) -> receives Scroll of Resistance ('tr2'), sets CUSTOM_8, keeps REWARD_PENDING until Town Anya reward
     game.enqueueCommand(playerId, {
       type: 'NpcInit',
       target: { unitType: 1, id: malahId },
     })
     game.stepFrame()
     expect(player.items.some((it: { code: string }) => it.code.trim() === 'tr2')).toBe(true)
+    expect(hasQuestFlag113c(player.questFlags, 'a5q3', QUEST_FLAG_CUSTOM_8_113C)).toBe(true)
+    expect(hasQuestFlag113c(player.questFlags, 'a5q3', QUEST_FLAG_REWARD_PENDING_113C)).toBe(true)
+    expect(hasQuestFlag113c(player.questFlags, 'a5q3', QUEST_FLAG_COMPLETED_113C)).toBe(false)
+
+    // Step 5: Talk to Town Anya (hcIdx 512, 0x6FC7FA8E) -> grants class Rare item, sets CUSTOM_9, and finalizes COMPLETED
+    const townAnyaId = game.spawnMonster({
+      hcIdx: 512, // drehya (Town Anya)
+      areaId: 114,
+      x: 5102,
+      y: 5101,
+      isNpc: true,
+    })
+    game.enqueueCommand(playerId, {
+      type: 'NpcInit',
+      target: { unitType: 1, id: townAnyaId },
+    })
+    game.stepFrame()
+    expect(hasQuestFlag113c(player.questFlags, 'a5q3', QUEST_FLAG_CUSTOM_9_113C)).toBe(true)
+    expect(hasQuestFlag113c(player.questFlags, 'a5q3', QUEST_FLAG_REWARD_PENDING_113C)).toBe(false)
     expect(hasQuestFlag113c(player.questFlags, 'a5q3', QUEST_FLAG_COMPLETED_113C)).toBe(true)
   })
 
