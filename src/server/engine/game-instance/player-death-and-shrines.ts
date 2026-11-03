@@ -2112,17 +2112,19 @@ function relocatePlayerFollowersToPlayer(this: GameInstanceHost,
 
 function spawnEvilUrnAmbush113c(this: GameInstanceHost, urn: InternalObjectRecord): void {
   const members = planEvilUrnPack113c(urn.areaId, this.difficulty, this.rng)
+  const hasLoadedArea = this.loadedAreas.has(urn.areaId)
   for (const m of members) {
     const targetX = urn.x + m.dx
     const targetY = urn.y + m.dy
-    const stand = this.loadedAreas.has(urn.areaId)
+    const stand = hasLoadedArea
       ? findStandableNear(
           (x, y) => this.isWorldWalkableForPlayer(urn.areaId, x, y),
           targetX,
           targetY,
-          8,
+          100,
         )
       : null
+    if (hasLoadedArea && stand === null) continue
     const sx = stand?.x ?? targetX
     const sy = stand?.y ?? targetY
     this.spawnMonster({
@@ -2406,14 +2408,16 @@ function spawnContainerAmbushMonster113c(this: GameInstanceHost, obj: InternalOb
       : []
   const defId =
     pool.length > 0 ? pool[this.rng.rand(pool.length)]! : 'skeleton1'
-  const stand = this.loadedAreas.has(obj.areaId)
+  const hasLoadedArea = this.loadedAreas.has(obj.areaId)
+  const stand = hasLoadedArea
     ? findStandableNear(
         (x, y) => this.isWorldWalkableForPlayer(obj.areaId, x, y),
         obj.x + 1,
         obj.y + 1,
-        6,
+        32,
       )
     : null
+  if (hasLoadedArea && stand === null) return undefined
   const sx = stand?.x ?? obj.x + 1
   const sy = stand?.y ?? obj.y + 1
   return this.spawnMonster({

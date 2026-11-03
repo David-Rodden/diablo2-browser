@@ -752,18 +752,24 @@ describe('P1 Wave 4 — Quests, Objects, Corpse, Ground Expiry & Room AOI (#1857
         isNpc: true,
       })
 
-      // Malah gives 'ice' potion -> thaw Frozen Anya (558) -> talk to Malah -> completes a5q3!
-      game.enqueueCommand(pid, { type: 'NpcInit', target: { unitType: 1, id: malah } } as never)
-      game.stepFrames(1)
-      expect(player.items.some((i) => i.code === 'ice')).toBe(true)
-
+      // Discover Frozen Anya (558) -> Malah gives 'ice' -> thaw Frozen Anya (558) -> Malah ('tr2') -> Town Anya completes a5q3 (#2019)!
       const frozenAnya = game.spawnObject({ classId: 558, x: 5111, y: 5115, areaId: 109 })
       game.enqueueCommand(pid, { type: 'OperateObject', objectId: frozenAnya })
       game.stepFrames(1)
 
       game.enqueueCommand(pid, { type: 'NpcInit', target: { unitType: 1, id: malah } } as never)
       game.stepFrames(1)
-      expect(player.questFlags[qIdx('a5q3')]! & QUEST_FLAG_COMPLETED_113C).toBe(1)
+      expect(player.items.some((i) => i.code === 'ice')).toBe(true)
+
+      game.enqueueCommand(pid, { type: 'OperateObject', objectId: frozenAnya })
+      game.stepFrames(1)
+
+      game.enqueueCommand(pid, { type: 'NpcInit', target: { unitType: 1, id: malah } } as never)
+      game.stepFrames(1)
+      expect(player.items.some((i) => i.code === 'tr2')).toBe(true)
+      expect(player.questFlags[qIdx('a5q3')]! & QUEST_FLAG_REWARD_PENDING_113C).toBe(
+        QUEST_FLAG_REWARD_PENDING_113C,
+      )
 
       // Town Nihlathak (514) is removed from 109, Town Anya (512) & Red Portal (60 -> 121) exist in 109!
       expect(internal.monsters.has(townNihl)).toBe(false)
@@ -777,12 +783,13 @@ describe('P1 Wave 4 — Quests, Objects, Corpse, Ground Expiry & Room AOI (#1857
         ),
       ).toBe(true)
 
-      // Talk to Town Anya (512) -> grants Sorceress (classId 1) Normal tier Rare item ('ob1'..'ob5')!
+      // Talk to Town Anya (512) -> grants Sorceress (classId 1) Normal tier Rare item ('ob1'..'ob5') & completes a5q3!
       game.enqueueCommand(pid, {
         type: 'NpcInit',
         target: { unitType: 1, id: townAnyaEntry![0] },
       } as never)
       game.stepFrames(1)
+      expect(player.questFlags[qIdx('a5q3')]! & QUEST_FLAG_COMPLETED_113C).toBe(1)
       const sorcNormalPool = ANYA_CLASS_REWARD_POOLS_113C[0][1]
       const rareReward = player.items.find(
         (i) => i.quality === 6 && sorcNormalPool.includes(i.code.trim()),
@@ -853,20 +860,29 @@ describe('P1 Wave 4 — Quests, Objects, Corpse, Ground Expiry & Room AOI (#1857
 
       const players = (game as unknown as { players: Map<number, { questFlags: Uint16Array; newSkills: number }> }).players
 
-      // 1. Non-Act-boss quest kill (Izual -> a4q1 +2 skills): credits killer & same-area party ally ONLY (not town ally, not unpartied bystander)!
+      // 1. Non-Act-boss quest kill (Izual -> a4q1 0x2002 reward pending -> Tyrael #367 +2 skills, #2011):
+      // credits killer & same-area party ally ONLY (not town ally, not unpartied bystander)!
       const izualSkills0 = players.get(partySameAreaId)!.newSkills
       const izual = game.spawnMonster({ defId: 'izual', x: 15, y: 10, areaId: 37, hp: 10, maxHp: 10, experience: 0 })
       game.applyDamageToMonster(izual, 1000, killerId)
 
-      expect(players.get(killerId)!.questFlags[qIdx('a4q1')]! & QUEST_FLAG_COMPLETED_113C).toBe(
-        QUEST_FLAG_COMPLETED_113C,
+      expect(players.get(killerId)!.questFlags[qIdx('a4q1')]! & QUEST_FLAG_REWARD_PENDING_113C).toBe(
+        QUEST_FLAG_REWARD_PENDING_113C,
       )
+      expect(players.get(partySameAreaId)!.questFlags[qIdx('a4q1')]! & QUEST_FLAG_REWARD_PENDING_113C).toBe(
+        QUEST_FLAG_REWARD_PENDING_113C,
+      )
+      expect(players.get(partySameAreaId)!.newSkills).toBe(izualSkills0)
+      expect(players.get(partyTownId)!.questFlags[qIdx('a4q1')]).toBe(0)
+      expect(players.get(unpartiedId)!.questFlags[qIdx('a4q1')]).toBe(0)
+
+      const tyrael2 = game.spawnMonster({ classId: 367, name: 'Tyrael', x: 12, y: 10, areaId: 37, isNpc: true })
+      game.enqueueCommand(partySameAreaId, { type: 'NpcInit', target: { unitType: 1, id: tyrael2 } } as never)
+      game.stepFrames(1)
       expect(players.get(partySameAreaId)!.questFlags[qIdx('a4q1')]! & QUEST_FLAG_COMPLETED_113C).toBe(
         QUEST_FLAG_COMPLETED_113C,
       )
       expect(players.get(partySameAreaId)!.newSkills).toBe(izualSkills0 + 2)
-      expect(players.get(partyTownId)!.questFlags[qIdx('a4q1')]).toBe(0)
-      expect(players.get(unpartiedId)!.questFlags[qIdx('a4q1')]).toBe(0)
 
       // 2. Act-end boss kill (Andariel -> a1q6): credits killer + same-area party ally + Act 1 town party ally with 0x3000 (before Warriv talk), NEVER unpartied bystander!
       const andariel = game.spawnMonster({ defId: 'andariel', x: 16, y: 10, areaId: 37, hp: 10, maxHp: 10 })

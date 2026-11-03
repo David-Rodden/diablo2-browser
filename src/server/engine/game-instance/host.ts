@@ -171,6 +171,7 @@ export interface GameInstancePublicMethods {
   ): void
   applyDamageToSummon(ownerIdOrPet: number | SummonedPetUnit, petOrDamage: SummonedPetUnit | string | number, damageOverride?: number, areaIdOverride?: number): void
   isAreaSeamAdjacent(a: number, b: number): boolean
+  areaIdAtWorldPoint(x: number, y: number, referenceAreaId?: number): number | undefined
   applyDamageToPlayer(playerUnitIdOrRecord: number | InternalPlayerRecord, damage: number, options?: {
     readonly dmg256?: number | undefined
     readonly hitClass?: number | string | undefined

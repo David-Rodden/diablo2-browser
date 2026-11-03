@@ -11,6 +11,7 @@ import {
 import {
   ANYA_CENTER_MISSILE,
   ANYA_INITIAL_TARGET_Y,
+  FROZEN_ANYA_INTERACT_OBJECT_CLASS,
   FROZEN_ANYA_OBJECT_CLASS,
   TAINTED_SUN_ALTAR_OBJECT_CLASS,
   TAINTED_SUN_CONTROL_MISSILE,
@@ -944,13 +945,16 @@ export function spawnTaintedSunShowAtAltarImpl(this: ClientWorldInternal, altar:
 }
 
 /**
- * 0x6fb02b70 (special quest event 16) once Frozen Anya (`Objects.txt` 460) is found:
+ * 0x6fb02b70 (special quest event 16) once Frozen Anya (`Objects.txt` 460 or dynamic 558, #2020) is found:
  * spawns client missile 528 (`0x210` `anya center`) at `(anyaX, anyaY)` with
  * `TargetX = anya.id`, `TargetY = 25` (`0x19`, `0x6fb02bcd`).
  */
 export function spawnAnyaRescueShowAtAnyaImpl(this: ClientWorldInternal, anya: ClientUnit): ClientUnit {
-  if (anya.unitType !== 'object' || anya.classId !== FROZEN_ANYA_OBJECT_CLASS) {
-    throw new Error(`spawnAnyaRescueShowAtAnya: unit ${anya.key} is not objects.txt 460 FrozenAnya`)
+  if (
+    anya.unitType !== 'object' ||
+    (anya.classId !== FROZEN_ANYA_OBJECT_CLASS && anya.classId !== FROZEN_ANYA_INTERACT_OBJECT_CLASS)
+  ) {
+    throw new Error(`spawnAnyaRescueShowAtAnya: unit ${anya.key} is not objects.txt 460/558 FrozenAnya`)
   }
   const x = Math.floor(anya.x)
   const y = Math.floor(anya.y)

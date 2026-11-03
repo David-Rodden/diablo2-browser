@@ -58,9 +58,11 @@ export const ALL_CURSE_STATE_IDS_113C: ReadonlySet<number> = new Set([
 ])
 
 /**
- * Missiles excluded from `MonUMod #29` (`Multishot`) fan duplication (stationary death/controller FX,
- * radial death novas, and `#225 buglightning` spawned directly via `MISSILES_CreateMissileFromParams`
- * at `0x6FC460D0`). Note: `#195` (`lightunique` Charged Bolt on struck) IS eligible (classic MSLE).
+ * Missiles excluded from `MonUMod #29` (`Multishot`) fan duplication in addition to `Missiles.txt`
+ * `NoMultiShot = 1` (`0x6FC45B67..0x6FC45B72`, which already excludes `#195 lightunique` in 1.13c
+ * so `#17 + #29` MSLE emits 8 bolts rather than 1.09's 24, as well as `#194 coldunique`, `#284`,
+ * and `#426..#428`), covering `#225 buglightning` spawned directly via `MISSILES_CreateMissileFromParams`
+ * (`0x6FC460D0` without `0x400` multishot flag at `0x6FC45AFB`).
  */
 const MULTISHOT_EXCLUDED_MISSILE_IDS_113C: ReadonlySet<number> = new Set([
   82, // Fire Enchanted corpse explosion visual

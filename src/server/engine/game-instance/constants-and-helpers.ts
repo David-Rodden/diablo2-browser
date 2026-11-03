@@ -383,7 +383,7 @@ export function monsterCanFireRanged113c(
 ): boolean {
   const profile = monsterProfile113c(monster.ai)
   const gate = profile.fireGate
-  if (gate === undefined) return true
+  if (gate === undefined || monster.aiParams.length === 0) return true
   const hurtPct = Math.max(
     0,
     Math.min(100, monaiParam113c(profile, monster.aiParams, gate.hurtParam, 0)),

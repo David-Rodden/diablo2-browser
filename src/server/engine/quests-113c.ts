@@ -48,13 +48,13 @@ export const QUEST_INFO_BY_ID_113C: ReadonlyMap<string, QuestFlagInfo113c> = (()
 export const QUEST_FLAG_COMPLETED_113C = 0x0001 // reward granted
 export const QUEST_FLAG_REWARD_PENDING_113C = 0x0002 // objective done, NPC reward pending
 export const QUEST_FLAG_STARTED_113C = 0x0004 // quest accepted
-export const QUEST_FLAG_CUSTOM_3_113C = 0x0008 // QFLAG_CUSTOM0 (bit 3): A2Q6 Tyrael spoken -> "Talk to Jerhyn" (slot 5, qstsa2q64)
-export const QUEST_FLAG_CUSTOM_4_113C = 0x0010 // QFLAG_CUSTOM1 (bit 4): A2Q6 Jerhyn spoken -> "Talk to Meshif" (slot 6, qstsa2q65); A3Q1 Cain showed Golden Bird ('g34', 0x6fd08c09)
-export const QUEST_FLAG_CUSTOM_5_113C = 0x0020 // QFLAG_CUSTOM2 (bit 5): A2Q1 ('ass') & A3Q1 ('xyz') consumable reward armed
+export const QUEST_FLAG_CUSTOM_3_113C = 0x0008 // QFLAG_CUSTOM0 (bit 3): A2Q6 Tyrael spoken -> "Talk to Jerhyn"; A5Q3 entered Area 112..114 (0x6fc78180)
+export const QUEST_FLAG_CUSTOM_4_113C = 0x0010 // QFLAG_CUSTOM1 (bit 4): A2Q6 Jerhyn spoken; A3Q1 Cain showed Golden Bird ('g34'); A5Q3 Frozen Anya (558/527) discovered in session (0x6fc781bd)
+export const QUEST_FLAG_CUSTOM_5_113C = 0x0020 // QFLAG_CUSTOM2 (bit 5): A2Q1 ('ass') & A3Q1 ('xyz') consumable reward armed; A4Q1 Izual's Spirit (#406) spoken (0x6fcda768)
 export const QUEST_FLAG_CUSTOM_6_113C = 0x0040 // QFLAG_CUSTOM3 (bit 6): A3Q1 Jade Figurine ('j34') picked up (0x6fd07734)
 export const QUEST_FLAG_CUSTOM_7_113C = 0x0080 // QFLAG_CUSTOM4 (bit 7): A5Q3 ('tr2') Scroll of Resistance consumed (+10 all resist active)
 export const QUEST_FLAG_CUSTOM_8_113C = 0x0100 // QFLAG_CUSTOM5 (bit 8): A5Q3 ('tr2') Scroll of Resistance granted by Malah
-export const QUEST_FLAG_CUSTOM_9_113C = 0x0200 // QFLAG_CUSTOM6 (bit 9): NPC secondary reward granted (A1Q2 Kashya merc / A1Q3 Akara ring / A3Q2 Asheara merc)
+export const QUEST_FLAG_CUSTOM_9_113C = 0x0200 // QFLAG_CUSTOM6 (bit 9): NPC secondary reward granted (A1Q2 Kashya merc / A1Q3 Akara ring / A3Q2 Asheara merc / A5Q3 Town Anya rare item 0x6fc7f7cb)
 export const QUEST_FLAG_CUSTOM_10_113C = 0x0400 // QFLAG_CUSTOM7 (bit 10): A5Q3 Anya class-specific Rare item granted (0x6fc7f9c7)
 export const QUEST_FLAG_PRIMARY_GOAL_DONE_113C = 0x1000
 export const QUEST_FLAG_COMPLETED_NOW_113C = 0x2000 // QFLAG_COMPLETEDNOW (bit 13: reward consumed in session)
@@ -309,8 +309,10 @@ export function computeQuestStatusByte113c(
       if (rewardPending || primaryDone) return 4
       return started ? (ctx.playerAreaId === 102 ? 4 : 2) : 0
     case 'a4q1':
-      if (rewardPending) return 4
-      return started ? 1 : 0
+      if (rewardPending) {
+        return (w & QUEST_FLAG_CUSTOM_5_113C) === 0 && ctx.playerAreaId === 105 ? 3 : 4
+      }
+      return started ? (ctx.playerAreaId === 105 ? 2 : 1) : 0
     case 'a4q3':
       if (primaryDone) return 2
       return started ? 1 : 0
@@ -331,7 +333,11 @@ export function computeQuestStatusByte113c(
         return (w & QUEST_FLAG_CUSTOM_8_113C) !== 0 ? 6 : 5
       }
       if (hasCode('ice')) return 4
-      return started ? 1 : 0
+      if ((w & QUEST_FLAG_CUSTOM_4_113C) !== 0) return 3
+      if (started || (w & QUEST_FLAG_CUSTOM_3_113C) !== 0) {
+        return ctx.playerAreaId === 114 ? 2 : 1
+      }
+      return 0
     case 'a5q4':
       if (rewardPending) return 5
       return started ? 1 : 0

@@ -1542,7 +1542,7 @@ function isRayBlockedByClosedDoor(this: GameInstanceHost,
     const t = i / steps
     const rx = Math.round(fromX + (toX - fromX) * t)
     const ry = Math.round(fromY + (toY - fromY) * t)
-    const rArea = this.areaIdAtWorldPoint(rx, ry) ?? areaId
+    const rArea = this.areaIdAtWorldPoint(rx, ry, areaId) ?? areaId
     if (this.isClosedDoorAt(rArea, rx, ry)) return true
   }
   return false
@@ -2668,17 +2668,21 @@ function stepMonsterAi(this: GameInstanceHost, monster: InternalMonsterRecord): 
           lifePct: monster.maxHp > 0 ? Math.round((monster.hp / monster.maxHp) * 128) : 0,
         })
         const modeMinPhys =
-          selectedShootMode === 'S1'
-            ? monster.special1MinDmg
-            : selectedShootMode === 'A2'
-              ? monster.attack2MinDmg
-              : monster.minDmg
+          selectedShootMode === 'C'
+            ? 0
+            : selectedShootMode === 'S1'
+              ? monster.special1MinDmg
+              : selectedShootMode === 'A2'
+                ? monster.attack2MinDmg
+                : monster.minDmg
         const modeMaxPhys =
-          selectedShootMode === 'S1'
-            ? monster.special1MaxDmg
-            : selectedShootMode === 'A2'
-              ? monster.attack2MaxDmg
-              : monster.maxDmg
+          selectedShootMode === 'C'
+            ? 0
+            : selectedShootMode === 'S1'
+              ? monster.special1MaxDmg
+              : selectedShootMode === 'A2'
+                ? monster.attack2MaxDmg
+                : monster.maxDmg
         const diffIdx: 0 | 1 | 2 = this.difficulty === 2 ? 2 : this.difficulty === 1 ? 1 : 0
         const modeMissileSlvl = resolveMonsterModeMissileSlvl113c(diffIdx)
         const mslEval = evaluateMonsterMissileDamage113c({
@@ -3456,17 +3460,21 @@ function stepMonsterAi(this: GameInstanceHost, monster: InternalMonsterRecord): 
         // 1.13c `D2Common#10413` (`0x6FDBBAA0`, #1989): evaluate `Missiles.txt` `MinDamage..MaxDamage` /
         // `EMin..EMax << HitShift`, inheriting monster `minDmg..maxDmg` & `El1..3` ONLY when `SrcDamage > 0`.
         const modeMinPhys =
-          selectedMode === 'S1'
-            ? monster.special1MinDmg
-            : selectedMode === 'A2'
-              ? monster.attack2MinDmg
-              : monster.minDmg
+          selectedMode === 'C'
+            ? 0
+            : selectedMode === 'S1'
+              ? monster.special1MinDmg
+              : selectedMode === 'A2'
+                ? monster.attack2MinDmg
+                : monster.minDmg
         const modeMaxPhys =
-          selectedMode === 'S1'
-            ? monster.special1MaxDmg
-            : selectedMode === 'A2'
-              ? monster.attack2MaxDmg
-              : monster.maxDmg
+          selectedMode === 'C'
+            ? 0
+            : selectedMode === 'S1'
+              ? monster.special1MaxDmg
+              : selectedMode === 'A2'
+                ? monster.attack2MaxDmg
+                : monster.maxDmg
         const diffIdx: 0 | 1 | 2 = this.difficulty === 2 ? 2 : this.difficulty === 1 ? 1 : 0
         const modeMissileSlvl = resolveMonsterModeMissileSlvl113c(diffIdx)
         const mslEval = evaluateMonsterMissileDamage113c({

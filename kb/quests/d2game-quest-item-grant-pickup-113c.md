@@ -15,16 +15,23 @@ When an NPC grants a quest item (e.g., Akara granting `bkd`, Alkor granting `xyz
    - It does **not** silently discard the item or fail the interaction.
    - Instead, it spawns the item on the ground at a free subtile near the player/NPC (`D2Game_SpawnGroundItem`, action `0x02` drop) and plays sound `23` (`player_cantcarry_1` / `cantCarry1`).
 
-## 2. A5Q3 (`Prison of Ice`) Malah (`hcIdx = 513`) State Machine (`0x6fc56470..0x6fc56586`)
+## 2. A5Q3 (`Prison of Ice`, Word `37` / `0x25`, Protocol ID `0x21`) Full State Machine (`0x6fc77d80..0x6fc7fcff`)
 
-- **Initial talk to Malah (Anya still frozen)**:
-  - Checks if `a5q3` is neither completed (`0x0001`) nor reward-pending (`0x0002`), and the player does not already possess `ice` (`Malah's Potion`) in any container or on the ground.
-  - Grants `ice` via `QUESTS_CreateItem` (inventory if space is available, or dropped on the ground if inventory is full) and marks the quest state (`QUEST_FLAG_STARTED_113C | QUEST_FLAG_PRIMARY_GOAL_DONE_113C`) so talking to Malah repeatedly does not mint duplicate potions.
-- **Interacting with Frozen Anya (`classId = 558`)**:
-  - Consumes `ice` from the player's items and sets `QUEST_FLAG_REWARD_PENDING_113C` (`0x0002`) on `a5q3`.
-- **Reward talk to Malah (`REWARD_PENDING` set, `COMPLETED` not set)**:
-  - Clears `QUEST_FLAG_REWARD_PENDING_113C` (`0x0002`), sets `QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_COMPLETED_NOW_113C` (`0x0001 | 0x2000`), and grants `tr2` (`Scroll of Resistance`) via `QUESTS_CreateItem` (inventory or ground drop if full) if the player does not already have `tr2`.
-  - Subsequent talks to Malah see `COMPLETED` set and `REWARD_PENDING` cleared, preventing duplicate `tr2` grants.
+- **Initial Malah Interaction (`hcIdx = 513`, `0x6fc7f625`, Scroll `0x4e94` `A5Q3Init`)**:
+  - Talking to Malah before discovering Frozen Anya **never** grants `'ice '` (`Malah's Potion`).
+  - Once `a5q2` (`Rescue on Mount Arreat`) is completed, `A5Q3Init` sets `fState = 2` and `w37 |= 0x0004` (`QFLAG_QSTARTED`, `status = 1` `qstsa5q31`: `"Look for Anya under the Crystalline Passage by the Frozen River."`). Before `a5q2` completion, Malah does not start `a5q3`.
+- **Entering Crystalline Passage / Glacial Trail / Frozen River (`Area 112..114`, `0x6fc7f3f0..0x6fc7f495`)**:
+  - While `a5q3` is neither completed (`0x0001`) nor reward-pending (`0x0002`), entering `112..114` sets `fState = 3` and `w37 |= 0x000C` (`QFLAG_QSTARTED | QFLAG_CUSTOM3`; `status = 1` in `112..113`, `status = 2` `qstsa5q31a` in `114`).
+- **Discovering Frozen Anya Without `'ice '` (`Objects.txt 558` @ `0x6fc7cd50..0x6fc7cde3` / `NPC 527` @ `0x6fc7fac9..0x6fc7fb2b`)**:
+  - Emits `20131` (`0x4ea3` `A5Q3FoundAnyaAnya`), advances `fState = 4`, and sets `bState = 3` (`qstsa5q32`: `"Talk to Malah."`, tracked via `QFLAG_CUSTOM4` = `0x0010`, cleared on `.d2s` new-game entry at `0x6fc781bd`).
+- **Malah Thawing Potion Handout (`0x6fc7db44` & `0x6fc7f692`, Scroll `0x4e9f` `A5Q3AfterAnyaMalah`)**:
+  - Offered **only** when Frozen Anya has been discovered (`fState == 4` / `QFLAG_CUSTOM4`) and the player does not already possess `'ice '`.
+  - Grants `'ice '` via `QUESTS_CreateItem` (`0x6fc56470`, inventory or ground drop if full) and sets `status = 4` (`qstsa5q33`: `"Use the potion Malah gave you to thaw Anya."`).
+- **Thawing Frozen Anya (`558` / `527`, `0x6fc7ce39..0x6fc7ce95`)**:
+  - Consumes `'ice '` and sets `QFLAG_REWARDPENDING | QFLAG_COMPLETEDNOW` (`0x2002`, `status = 5` `qstsa5q34`), spawning Town Anya (`512`) and Nihlathak's Temple red portal (`60 -> 121`) in Harrogath (`InitFn 66` @ `0x6fc7eb30`).
+- **Symmetric Dual-Reward Completion (`Malah 513` @ `0x6fc7f73e..0x6fc7f94a` & `Town Anya 512` @ `0x6fc7f956..0x6fc7fac4`)**:
+  - **Malah (`513`)**: when `QFLAG_REWARDPENDING` (`0x0002`) is set and `QFLAG_CUSTOM8` (`0x0100`) is `0`, mints `'tr2'` (`Scroll of Resistance`), sets `QFLAG_CUSTOM8` (`0x0100`), and clears `QFLAG_REWARDPENDING` + sets `QFLAG_REWARDGRANTED | QFLAG_COMPLETEDNOW` (`0x2001`) **only if `QFLAG_CUSTOM9` (`0x0200`) is already set** (`0x6fc7f7cb`); otherwise `QFLAG_REWARDPENDING` stays set (`status = 6` `qstsa5q35`: `"Talk to Anya."`). If an unconsumed `'tr2'` (`0x0100` set, `0x0080` clear) is lost, Malah replaces it once per game (`0x6fc7f89f..0x6fc7f94a`).
+  - **Town Anya (`512`)**: when `(w37 & 0x0003) != 0` and `QFLAG_CUSTOM10` (`0x0400`) is `0`, mints the class-specific Rare item, sets `QFLAG_CUSTOM9 | QFLAG_CUSTOM10` (`0x0600`), and clears `QFLAG_REWARDPENDING` + sets `QFLAG_REWARDGRANTED | QFLAG_COMPLETEDNOW` (`0x2001`) **only if `QFLAG_CUSTOM8` (`0x0100`) is already set** (`0x6fc7fa8e`).
 
 ## 3. `ITEMS_PickUpGroundItem` (`0x6fcf7020`) — Pre-Removal Validation
 
@@ -47,7 +54,7 @@ In `D2Game.dll` (`ITEMS_UseConsumableItem` @ `0x6fcf9e73..0x6fcf9f52`), the thre
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | `'ass '` | Book of Skill | Word `9` (`0x09`, `a2q1`) | Radament death (`0x6fce6163..0x6fce6185`) drops `'ass'` and sets bit `5` (`0x0020`, `QUEST_FLAG_CUSTOM_5_113C`) + bit `13` (`0x2000`) + bit `0` (`0x0001`). Does **not** add `newskills`. | `0x6fcf9e7b`: requires bit `5` (`0x0020`) == 1. Clears bit `5` (`0x6fcf9e93`), adds `+1` to stat `5` (`newskills` @ `0x6fcf9e9f`), sends `S2C 0x5D`, and removes `'ass'` (`0x6fcf9f43`). | `+1` `newskills` (stat `5`) |
 | `'xyz '` | Potion of Life | Word `20` (`0x14`, `a3q1`) | Alkor turn-in (`0x6fd08c5a..0x6fd08d9a`) removes `'g34'` (Golden Bird), mints `'xyz'`, and sets bit `0` (`0x0001`) + bit `13` (`0x2000`) + bit `5` (`0x0020`, `QUEST_FLAG_CUSTOM_5_113C`). Does **not** add `maxhp`. | `0x6fcf9ed1`: requires bit `5` (`0x0020`) == 1. Clears bit `5` (`0x6fcf9ee2`), adds `+0x1400` (`20 << 8`) to stat `7` (`maxhp` @ `0x6fcf9ef1`), sends `S2C 0x5D`, and removes `'xyz'` (`0x6fcf9f43`). | `+20` `maxhp` (`+0x1400` fixed-point, stat `7`) |
-| `'tr2 '` | Scroll of Resistance | Word `37` (`0x25`, `a5q3`) | Malah reward turn-in (`0x6fc7f73e..0x6fc7f78b`) clears bit `1` (`0x0002`), mints `'tr2'`, and sets bit `0` (`0x0001`) + bit `13` (`0x2000`) + bit `8` (`0x0100`, `QUEST_FLAG_CUSTOM_8_113C`). Does **not** add resistances. | `0x6fcf9f07..0x6fcf9f1c`: requires bit `8` (`0x0100`) == 1 **and** bit `7` (`0x0080`, `QUEST_FLAG_CUSTOM_7_113C`) == 0. Sets bit `7` (`0x6fcf9f28`), calls `0x6fc7b0b0` (grants `+10` to stats `39, 41, 43, 45` per difficulty where bit `7` is set), sends `S2C 0x5D`, and removes `'tr2'`. | `+10` Fire/Light/Cold/Poison Resist (stats `39, 41, 43, 45`) |
+| `'tr2 '` | Scroll of Resistance | Word `37` (`0x25`, `a5q3`) | Malah reward turn-in (`0x6fc7f73e..0x6fc7f7ed`) mints `'tr2'`, sets bit `8` (`0x0100`, `QUEST_FLAG_CUSTOM_8_113C`), and clears bit `1` (`0x0002`) + sets bit `0` (`0x0001`) + bit `13` (`0x2000`) once Town Anya's bit `9` (`0x0200`) is also set (`0x6fc7f7cb` / `0x6fc7fa8e`). Does **not** add resistances. | `0x6fcf9f07..0x6fcf9f1c`: requires bit `8` (`0x0100`) == 1 **and** bit `7` (`0x0080`, `QUEST_FLAG_CUSTOM_7_113C`) == 0. Sets bit `7` (`0x6fcf9f28`), calls `0x6fc7b0b0` (grants `+10` to stats `39, 41, 43, 45` per difficulty where bit `7` is set), sends `S2C 0x5D`, and removes `'tr2'`. | `+10` Fire/Light/Cold/Poison Resist (stats `39, 41, 43, 45`) |
 
 - **Rejection Path (`0x6fcf9eab`)**: If the required custom bit condition fails (e.g., bit `5` is `0` for `'ass'`/`'xyz'`, or bit `8` is `0` / bit `7` is `1` for `'tr2'`), `D2Game.dll` sends `S2C 0x2C` sound `19` (`0x13` = `impossible1` via `0x6fcfffd0`) and returns `1` **without** calling `0x6fcf39b0` (the item remains in the player's inventory/belt and no stats are added).
 

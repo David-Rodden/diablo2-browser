@@ -1014,6 +1014,10 @@ function resolveMonsterAttackOnPlayer(this: GameInstanceHost,
               : 0))
   const elemDuration =
     elementalType === 'pois' && elemMax > 0 && rawElemDuration <= 0 ? 50 : rawElemDuration
+  const missileRec =
+    swing?.fromMissile === true && swing.missileId !== undefined
+      ? this.registry.getMissileById(swing.missileId)
+      : undefined
   // Pure elemental monster projectiles (`physMax <= 0 && elemMax > 0`) are spell missiles (#1796):
   // Shield Block cannot block them (`unblockable: true`), whereas Assassin dual-claw `Weapon Block` (#263)
   // and Amazon `Avoid` (#18) / `Evade` (#28) CAN!
@@ -1039,6 +1043,9 @@ function resolveMonsterAttackOnPlayer(this: GameInstanceHost,
           elemMax256: Math.max(0, elemMax) * FIXED_ONE,
           elemDurationFrames: elemDuration,
         }
+      : {}),
+    ...(missileRec !== undefined && missileRec.damageRate > 0
+      ? { damageRate: missileRec.damageRate }
       : {}),
     ...(swing?.arBonusPct !== undefined ? { toHitBonusPct: swing.arBonusPct } : {}),
     ...(swing?.autoHit === true || isPureElemMonsterMissile ? { autoHit: true } : {}),
@@ -1275,11 +1282,15 @@ function resolveMonsterAttackOnPlayer(this: GameInstanceHost,
         elemMax,
         elementType: swing?.elementType,
       })
+      // 1.13c `Missiles.txt` `NoUniqueMod` (`D2Game.dll` `0x6FC42026..0x6FC42032`, #2017):
+      // Skips `MonUMod` hit riders (`#7 Cursed`, `#25 Mana Burn`, `#9/#17/#18/#23/#27/#36` Enchanted)
+      // when `MissilesTxt.NoUniqueMod != 0`.
+      const allowUniqueModRiders = isPhysicalOrWeaponHit && missileRec?.noUniqueMod !== true
       // 1.13c `MonUMod #7` (`Cursed`, `D2Game.dll` `0x6FC44250`, boss-only `bBoss != 0`, #1904 / #1993 / #2003):
       // Rolls `75%` chance (`rand(100) < 75`) on physical/weapon hits to apply `#66 Amplify Damage` (`state 9`)
       // at `slvl = floor(mlvl / 5) + 1` for `200 + 75 * (slvl - 1)` frames (scaled by `curse_resistance`).
       if (
-        isPhysicalOrWeaponHit &&
+        allowUniqueModRiders &&
         monster.rank !== 'minion' &&
         monster.umodIds.includes(MON_UMOD.CURSE) &&
         this.rng.rand(100) < CURSED_PROC_CHANCE_PCT_113C &&
@@ -1326,7 +1337,7 @@ function resolveMonsterAttackOnPlayer(this: GameInstanceHost,
       // 1.13c `MonUMod #25` (`Mana Burn`, `D2Game.dll` `0x6FC421D0` / `0x6FC422DD: shl esi, 0x8`, #1905 / #2003):
       // Drains `66%..100%` (`33%..50%` minion) of monster physical base damage on physical/weapon hits,
       // with melee `<< 8` (`256x`) shift. Pure elemental spell missiles never proc Mana Burn.
-      if (isPhysicalOrWeaponHit && monster.umodIds.includes(MON_UMOD.MANahit)) {
+      if (allowUniqueModRiders && monster.umodIds.includes(MON_UMOD.MANahit)) {
         const drainFixed = computeManaBurnDrainFixed113c({
           isMinion: monster.rank === 'minion',
           isMelee: swing?.fromMissile !== true,
@@ -1355,7 +1366,7 @@ function resolveMonsterAttackOnPlayer(this: GameInstanceHost,
       // 1.13c melee/weapon elemental riders (`#9 Fire`, `#17 Lightning`, `#18 Cold`, `#23 Poison`,
       // boss-only `#27 Spectral Hit` 1-of-5 roll, and `#36 Ghostly`; #1890, #1903, #2003).
       if (
-        isPhysicalOrWeaponHit &&
+        allowUniqueModRiders &&
         (monster.umodIds.includes(MON_UMOD.FIRE) ||
           monster.umodIds.includes(MON_UMOD.LIGHTNING) ||
           monster.umodIds.includes(MON_UMOD.COLD) ||
@@ -1420,6 +1431,16 @@ function resolveMonsterAttackOnPlayer(this: GameInstanceHost,
           }
         }
       }
+      // 1.13c `MISSILES_ApplyDamageInner` (`D2Game.dll` `0x6FC5AEAB..0x6FC5AEEB`, #2017):
+      // `MissilesTxt.GetHit == 0` never sets `RESULTFLAG_GETHIT (0x0004)` (`#675 megademoninferno`,
+      // `#176 diabfire`, `#180 diabwall`, etc.), while `MissilesTxt.KnockBack > 0` (`byte [ebx+0xAE]`)
+      // rolls `rand(100) < KnockBack` to set `RESULTFLAG_KNOCKBACK (0x0008)`.
+      const missileKnockbackTriggered =
+        missileRec !== undefined &&
+        missileRec.knockBack > 0 &&
+        this.rng.rand(100) < missileRec.knockBack
+      const skipMissileGetHit =
+        missileRec !== undefined && !missileRec.getHit && !missileKnockbackTriggered
       this.applyDamageToPlayer(player, finalDmg, {
         hitClass: this.resolveMonsterHitClass113c(
           monster,
@@ -1427,6 +1448,7 @@ function resolveMonsterAttackOnPlayer(this: GameInstanceHost,
           swing?.missileId ?? 0,
         ),
         isPurePoison: elementalType === 'pois' && physMin <= 0 && physMax <= 0,
+        ...(skipMissileGetHit || missileKnockbackTriggered ? { skipGetHit: true } : {}),
         killerType: monKillerType,
         killerUnitId: monster.unitId,
       })
@@ -1434,9 +1456,10 @@ function resolveMonsterAttackOnPlayer(this: GameInstanceHost,
       if (!player.dead && player.hp > 0) {
         this.triggerPlayerCtcProcs113c(player, 201, { target: monster })
       }
-      // `#1897` / `#1898` `MonProp.txt` & `MonEquip.txt` on-hit effects:
-      // 1) Knockback (`bloodraven` in Hell, or Rare bow with `knock`):
-      if (
+      // `#1897` / `#1898` / `#2017` `Missiles.txt` `KnockBack`, `MonProp.txt` & `MonEquip.txt` on-hit effects:
+      if (!player.dead && missileKnockbackTriggered) {
+        this.knockbackPlayerFromBoss113c(player, monster.x, monster.y, 2)
+      } else if (
         !player.dead &&
         (monster.monProps.knockback || Boolean(monster.monEquipLoadout?.knockback)) &&
         !isPureElemMonsterMissile &&
@@ -1596,8 +1619,10 @@ function resolveMonsterAttackOnPlayer(this: GameInstanceHost,
       }
     }
   } else if (
-    dmgOut.avoidedReason === 'block' ||
-    dmgOut.avoidedReason === 'weapon_block'
+    (dmgOut.avoidedReason === 'block' || dmgOut.avoidedReason === 'weapon_block') &&
+    // 1.13c `D2Game.dll` `0x6FC5AF0D..0x6FC5AF3B` (#2017): blocking a `GetHit == 0 && KnockBack == 0`
+    // stream clears `RESULTFLAG_HIT`, sets `RESULTFLAG_SOFTHIT`, and suppresses `PLRMODE_BLOCK` (`mode 9`).
+    !(missileRec !== undefined && !missileRec.getHit && missileRec.knockBack <= 0)
   ) {
     if (!this.isPlayerSkillUninterruptible113c(player)) {
       this.interruptPendingPlayerAnimAction113c(player, 'BL')

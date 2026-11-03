@@ -8,7 +8,7 @@ import { getEmbeddedDropTables } from '../../../common/items/embedded-drop-table
 import { resolveGambledItem, resolveStorePageForBase } from '../../../common/items/vendor-generator.ts'
 import { CURABLE_STATE_IDS_113C } from '../../../common/world/object-operate-113c.ts'
 import { findFreePortalCoordNear113c } from '../../world/pandemonium-113c.ts'
-import { ANYA_CLASS_REWARD_POOLS_113C, QUEST_FLAG_COMPLETED_113C, QUEST_FLAG_COMPLETED_NOW_113C, QUEST_FLAG_CUSTOM_3_113C, QUEST_FLAG_CUSTOM_4_113C, QUEST_FLAG_CUSTOM_5_113C, QUEST_FLAG_CUSTOM_8_113C, QUEST_FLAG_CUSTOM_9_113C, QUEST_FLAG_CUSTOM_10_113C, QUEST_FLAG_PRIMARY_GOAL_DONE_113C, QUEST_FLAG_REWARD_PENDING_113C, QUEST_FLAG_STARTED_113C, clearQuestFlag113c, hasQuestFlag113c, questWordIndex113c } from '../quests-113c.ts'
+import { ANYA_CLASS_REWARD_POOLS_113C, QUEST_FLAG_COMPLETED_113C, QUEST_FLAG_COMPLETED_NOW_113C, QUEST_FLAG_CUSTOM_3_113C, QUEST_FLAG_CUSTOM_4_113C, QUEST_FLAG_CUSTOM_5_113C, QUEST_FLAG_CUSTOM_7_113C, QUEST_FLAG_CUSTOM_8_113C, QUEST_FLAG_CUSTOM_9_113C, QUEST_FLAG_CUSTOM_10_113C, QUEST_FLAG_PRIMARY_GOAL_DONE_113C, QUEST_FLAG_REWARD_PENDING_113C, QUEST_FLAG_STARTED_113C, clearQuestFlag113c, hasQuestFlag113c, questWordIndex113c } from '../quests-113c.ts'
 import { createDroppedItem, getMaxSockets113c, imbueItem113c, isEligibleForCharsiImbue113c, resolveAutoPrefixGroup, resolveStaffModsClass, rollAutoMagic, rollStaffMods } from '../../../common/items/drop-tables.ts'
 import { isQuestItemBase113c } from '../../../common/items/runeword.ts'
 import { CANONICAL_AUTOMAGIC_TABLE } from '../../../common/items/automagic.ts'
@@ -984,9 +984,10 @@ function upsertTownNpcAtAnchor113c(
         (x, y) => host.isWorldWalkableForPlayer(spec.areaId, x, y),
         spec.anchorX,
         spec.anchorY,
-        8,
+        100,
       )
     : null
+  if (loadedArea && stand === null) return undefined
   const destX = stand?.x ?? spec.anchorX
   const destY = stand?.y ?? spec.anchorY
   const existing = [...host.monsters.values()].find(
@@ -1144,8 +1145,9 @@ function syncRogueEncampmentA1Q3State113c(
           ? refPlayer.y
           : LEGACY_TEST_GRID_SPAWN
   const stand = area1
-    ? findStandableNear((x, y) => this.isWorldWalkableForPlayer(1, x, y), baseX, baseY, 10)
+    ? findStandableNear((x, y) => this.isWorldWalkableForPlayer(1, x, y), baseX, baseY, 100)
     : null
+  if (area1 && stand === null) return
   this.spawnMonster({
     classId: 265,
     name: 'Deckard Cain',
@@ -1410,20 +1412,22 @@ function syncHarrogathA5Q3State113c(this: GameInstanceHost, triggerPlayer?: Inte
           ? refPlayer.y
           : LEGACY_TEST_GRID_SPAWN
     const stand = area109
-      ? findStandableNear((x, y) => this.isWorldWalkableForPlayer(109, x, y), baseX, baseY, 10)
+      ? findStandableNear((x, y) => this.isWorldWalkableForPlayer(109, x, y), baseX, baseY, 100)
       : null
-    const anyaId = this.spawnMonster({
-      classId: 512,
-      name: 'Anya',
-      x: stand?.x ?? baseX,
-      y: stand?.y ?? baseY,
-      areaId: 109,
-      isNpc: true,
-      isVendor: true,
-      isKillable: false,
-      aiDisabled: true,
-    })
-    townAnya = this.monsters.get(anyaId)
+    if (!area109 || stand !== null) {
+      const anyaId = this.spawnMonster({
+        classId: 512,
+        name: 'Anya',
+        x: stand?.x ?? baseX,
+        y: stand?.y ?? baseY,
+        areaId: 109,
+        isNpc: true,
+        isVendor: true,
+        isKillable: false,
+        aiDisabled: true,
+      })
+      townAnya = this.monsters.get(anyaId)
+    }
   }
 
   // 3. Open (or close) Nihlathak's Temple red portal (`109 -> 121` Pindleskin).
@@ -1445,29 +1449,32 @@ function syncHarrogathA5Q3State113c(this: GameInstanceHost, triggerPlayer?: Inte
     if (existingPortal === undefined && townAnya !== undefined) {
       const targetX = townAnya.x + 3
       const targetY = townAnya.y + 2
-      const stand = this.loadedAreas.has(109)
+      const hasLoadedArea109 = this.loadedAreas.has(109)
+      const stand = hasLoadedArea109
         ? findStandableNear(
             (x, y) => this.isWorldWalkableForPlayer(109, x, y),
             targetX,
             targetY,
-            8,
+            100,
           )
         : null
-      const portalId = this.spawnObject({
-        classId: 60,
-        x: stand?.x ?? targetX,
-        y: stand?.y ?? targetY,
-        areaId: 109,
-        mode: 2,
-        destAreaId: 121,
-      })
-      const returnObj = [...this.objects.values()].find(
-        (o) => o.areaId === 121 && o.classId === 60 && o.destAreaId === 109,
-      )
-      const townPortalObj = this.objects.get(portalId)
-      if (returnObj !== undefined && townPortalObj !== undefined) {
-        returnObj.linkedPortalId = townPortalObj.unitId
-        townPortalObj.linkedPortalId = returnObj.unitId
+      if (!hasLoadedArea109 || stand !== null) {
+        const portalId = this.spawnObject({
+          classId: 60,
+          x: stand?.x ?? targetX,
+          y: stand?.y ?? targetY,
+          areaId: 109,
+          mode: 2,
+          destAreaId: 121,
+        })
+        const returnObj = [...this.objects.values()].find(
+          (o) => o.areaId === 121 && o.classId === 60 && o.destAreaId === 109,
+        )
+        const townPortalObj = this.objects.get(portalId)
+        if (returnObj !== undefined && townPortalObj !== undefined) {
+          returnObj.linkedPortalId = townPortalObj.unitId
+          townPortalObj.linkedPortalId = returnObj.unitId
+        }
       }
     } else if (existingPortal !== undefined && existingPortal.mode !== 2) {
       this.setObjectMode(existingPortal, 2)
@@ -1481,6 +1488,59 @@ function syncHarrogathA5Q3State113c(this: GameInstanceHost, triggerPlayer?: Inte
       areaId: 109,
     })
     this.objects.delete(existingPortal.unitId)
+  }
+}
+
+/**
+ * 1.13c A5Q3 Frozen River (`areaId === 114`) `InitFn 67` (`D2Game.dll` `0x6FC7E8D0 -> 0x6FC7E940`, #2020):
+ * Real DRLG stamps server-only marker `Objects.txt 460` (`drehya_start_outside_town`, `Sync = 0`) in Frozen River (`Area 114`)
+ * and relies on `InitFn 67` to spawn interactive `Objects.txt 558` (`anya_framing` / Frozen Anya, `OperateFn = 67`)
+ * at `(anchor460.x, anchor460.y)` only while `a5q3` is unrescued (`!(REWARD_PENDING | COMPLETED)`).
+ */
+function syncFrozenRiverA5Q3State113c(
+  this: GameInstanceHost,
+  triggerPlayer?: InternalPlayerRecord,
+): void {
+  const anchor460 = findAreaInitFnAnchor113c(this, 114, 460)
+  if (anchor460 === undefined) return
+  const candidates =
+    triggerPlayer !== undefined
+      ? [triggerPlayer, ...[...this.players.values()].filter((p) => p.unitId !== triggerPlayer.unitId)]
+      : [...this.players.values()]
+  const rescued = candidates.some((p) =>
+    hasQuestFlag113c(
+      p.questFlags,
+      'a5q3',
+      QUEST_FLAG_REWARD_PENDING_113C | QUEST_FLAG_COMPLETED_113C,
+    ),
+  )
+  if (rescued) {
+    for (const [oid, obj] of [...this.objects.entries()]) {
+      if (obj.areaId === 114 && obj.classId === 558) {
+        this.objects.delete(oid)
+        this.doorFootprintsWatermark = -1
+        this.broadcastToArea(114, {
+          type: 'UnitRemove',
+          unitType: 2,
+          id: oid,
+          unitId: oid,
+          areaId: 114,
+        })
+      }
+    }
+    return
+  }
+  const existing558 = [...this.objects.values()].find(
+    (obj) => obj.areaId === 114 && obj.classId === 558,
+  )
+  if (existing558 === undefined) {
+    this.spawnObject({
+      classId: 558,
+      x: anchor460.x,
+      y: anchor460.y,
+      areaId: 114,
+      mode: 0,
+    })
   }
 }
 
@@ -1561,8 +1621,9 @@ function syncDurielsLairA2Q6State113c(
           ? refPlayer.y
           : LEGACY_TEST_GRID_SPAWN
   const stand = loadedArea
-    ? findStandableNear((x, y) => this.isWorldWalkableForPlayer(areaId, x, y), rawX, rawY, 12)
+    ? findStandableNear((x, y) => this.isWorldWalkableForPlayer(areaId, x, y), rawX, rawY, 100)
     : null
+  if (loadedArea && stand === null) return
   this.spawnMonster({
     classId: 251,
     defId: 'tyrael1',
@@ -2218,9 +2279,9 @@ function handleNpcInteract(this: GameInstanceHost,
       this.grantFreeQuestMercenary113c(player, 3)
     }
   } else if (npc?.hcIdx === 512) {
-    // Town Anya (`hcIdx === 512`, `D2Game.dll` `0x6FC7F987..0x6FC7FA18`, #1929):
-    // rewards a class-specific identified Rare item (`ilvl = player.level`) from the 3-tier
-    // `ANYA_CLASS_REWARD_POOLS_113C` table and syncs Nihlathak's Temple red portal (`109 -> 121`).
+    // Town Anya (`hcIdx === 512`, `D2Game.dll` `0x6FC7F956..0x6FC7FAC4`, #1929 / #2019):
+    // rewards a class-specific identified Rare item (`ilvl = player.level`) from `ANYA_CLASS_REWARD_POOLS_113C`,
+    // sets bits 9 & 10 (`0x0600`), and completes `a5q3` (`0x2001`, clearing `REWARD_PENDING`) once Malah's `'tr2'` bit 8 (`0x0100`) is also set (`0x6FC7FA8E`).
     if (
       hasQuestFlag113c(
         player.questFlags,
@@ -2241,52 +2302,93 @@ function handleNpcInteract(this: GameInstanceHost,
         ['jav']
       const rewardCode = classPool[this.rng.rand(classPool.length)] ?? classPool[0]!
       this.grantQuestRareItem113c(player, rewardCode, Math.max(1, player.level), npc)
-      this.setPlayerQuestFlag(
-        player,
-        'a5q3',
-        QUEST_FLAG_CUSTOM_9_113C | QUEST_FLAG_CUSTOM_10_113C,
-      )
+      if (hasQuestFlag113c(player.questFlags, 'a5q3', QUEST_FLAG_CUSTOM_8_113C)) {
+        clearQuestFlag113c(player.questFlags, 'a5q3', QUEST_FLAG_REWARD_PENDING_113C)
+        this.setPlayerQuestFlag(
+          player,
+          'a5q3',
+          QUEST_FLAG_CUSTOM_9_113C |
+            QUEST_FLAG_CUSTOM_10_113C |
+            QUEST_FLAG_COMPLETED_113C |
+            QUEST_FLAG_COMPLETED_NOW_113C,
+        )
+      } else {
+        this.setPlayerQuestFlag(
+          player,
+          'a5q3',
+          QUEST_FLAG_CUSTOM_9_113C | QUEST_FLAG_CUSTOM_10_113C,
+        )
+      }
     }
     this.syncHarrogathA5Q3State113c(player)
   } else if (npc?.hcIdx === 513) {
+    // Malah (`hcIdx === 513`, `D2Game.dll` `0x6FC7DA70..0x6FC7DBAE`, `0x6FC7F5E0..0x6FC7F94A`, #2019):
+    // 1) After Anya thaw (`REWARD_PENDING` set, `CUSTOM_8` clear): grants `'tr2'`, sets `CUSTOM_8` (`0x0100`),
+    //    and finalizes `COMPLETED | COMPLETED_NOW` (`0x2001`, clearing `REWARD_PENDING`) ONLY if Town Anya's `CUSTOM_9` (`0x0200`) is already set (`0x6FC7F7CB`).
+    // 2) Lost unconsumed `'tr2'` (`CUSTOM_8` set, `CUSTOM_7` clear, missing `'tr2'`): replaces once per game (`0x6FC7F89F..0x6FC7F94A`).
+    // 3) Thawing potion `'ice'`: granted ONLY after Frozen Anya (`558`/`527`) is discovered (`CUSTOM_4` = `0x0010`, `0x6FC7DB44` / `0x6FC7F692`).
+    // 4) `A5Q3Init` (`0x6FC7F625`, scroll `0x4E94`): after `a5q2` completion, starts `a5q3` (`0x0004`) without granting `'ice'`.
     const idx = questWordIndex113c('a5q3')
     const bits = idx === undefined ? 0 : (player.questFlags[idx] ?? 0)
     if (
       (bits & QUEST_FLAG_REWARD_PENDING_113C) !== 0 &&
-      (bits & QUEST_FLAG_COMPLETED_113C) === 0
+      (bits & QUEST_FLAG_COMPLETED_113C) === 0 &&
+      (bits & QUEST_FLAG_CUSTOM_8_113C) === 0
     ) {
-      if (idx !== undefined) {
-        player.questFlags[idx] = bits & ~QUEST_FLAG_REWARD_PENDING_113C
-      }
       if (!this.playerOrGroundHasQuestItem(player, 'tr2')) {
         this.givePlayerInventoryQuestItem(player, 'tr2', npc)
       }
-      // D2Game.dll 0x6fc7f76f..0x6fc7f78b: sets bit 0 (0x0001), bit 13 (0x2000), and bit 8 (0x0100).
-      this.setPlayerQuestFlag(
-        player,
-        'a5q3',
-        QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_COMPLETED_NOW_113C | QUEST_FLAG_CUSTOM_8_113C,
-      )
+      if ((bits & QUEST_FLAG_CUSTOM_9_113C) !== 0) {
+        clearQuestFlag113c(player.questFlags, 'a5q3', QUEST_FLAG_REWARD_PENDING_113C)
+        this.setPlayerQuestFlag(
+          player,
+          'a5q3',
+          QUEST_FLAG_CUSTOM_8_113C | QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_COMPLETED_NOW_113C,
+        )
+      } else {
+        this.setPlayerQuestFlag(player, 'a5q3', QUEST_FLAG_CUSTOM_8_113C)
+      }
       this.syncHarrogathA5Q3State113c(player)
     } else if (
-      (bits &
-        (QUEST_FLAG_COMPLETED_113C |
-          QUEST_FLAG_REWARD_PENDING_113C |
-          QUEST_FLAG_PRIMARY_GOAL_DONE_113C)) ===
-        0 &&
+      (bits & QUEST_FLAG_CUSTOM_8_113C) !== 0 &&
+      (bits & QUEST_FLAG_CUSTOM_7_113C) === 0 &&
+      !player.a5q3ReplacedTr2InGame &&
+      !this.playerOrGroundHasQuestItem(player, 'tr2')
+    ) {
+      player.a5q3ReplacedTr2InGame = true
+      this.givePlayerInventoryQuestItem(player, 'tr2', npc)
+    } else if (
+      (bits & (QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_REWARD_PENDING_113C)) === 0 &&
+      (bits & QUEST_FLAG_CUSTOM_4_113C) !== 0 &&
       !this.playerOrGroundHasQuestItem(player, 'ice')
     ) {
-      // Malah gives the thawing potion once (inventory or ground drop if full).
+      clearQuestFlag113c(player.questFlags, 'a5q3', QUEST_FLAG_CUSTOM_4_113C)
       this.givePlayerInventoryQuestItem(player, 'ice', npc)
       this.setPlayerQuestFlag(
         player,
         'a5q3',
         QUEST_FLAG_STARTED_113C | QUEST_FLAG_PRIMARY_GOAL_DONE_113C,
       )
+    } else if (
+      (bits &
+        (QUEST_FLAG_COMPLETED_113C |
+          QUEST_FLAG_REWARD_PENDING_113C |
+          QUEST_FLAG_STARTED_113C |
+          QUEST_FLAG_CUSTOM_3_113C |
+          QUEST_FLAG_CUSTOM_4_113C)) ===
+        0 &&
+      hasQuestFlag113c(
+        player.questFlags,
+        'a5q2',
+        QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_REWARD_PENDING_113C,
+      )
+    ) {
+      this.setPlayerQuestFlag(player, 'a5q3', QUEST_FLAG_STARTED_113C)
     }
   } else if (npc?.hcIdx === 527) {
-    // Frozen Anya (drehyaiced, hcIdx 527): before thawing, emits A5Q3FoundAnyaAnya (20131);
-    // holding Malah's potion ('ice') thaws Anya, sets a5q3 reward pending, and updates Harrogath (#1929).
+    // Frozen Anya (drehyaiced, hcIdx 527, D2Game.dll 0x6FC7FAC9..0x6FC7FB2B, #1929 / #2019):
+    // before thawing, records Frozen Anya discovered (`CUSTOM_4` = `0x0010`) and emits A5Q3FoundAnyaAnya (20131);
+    // holding Malah's potion ('ice') thaws Anya, sets a5q3 reward pending, and updates Harrogath.
     if (
       !hasQuestFlag113c(
         player.questFlags,
@@ -2299,15 +2401,35 @@ function handleNpcInteract(this: GameInstanceHost,
         this.removePlayerQuestItem(player, potion)
         for (const recipient of this.getQuestEligiblePartyRecipients113c(player, player.areaId)) {
           if (hasQuestFlag113c(recipient.questFlags, 'a5q3', QUEST_FLAG_COMPLETED_113C)) continue
+          clearQuestFlag113c(
+            recipient.questFlags,
+            'a5q3',
+            QUEST_FLAG_CUSTOM_4_113C | QUEST_FLAG_PRIMARY_GOAL_DONE_113C,
+          )
           this.setPlayerQuestFlag(
             recipient,
             'a5q3',
-            QUEST_FLAG_STARTED_113C | QUEST_FLAG_REWARD_PENDING_113C,
+            QUEST_FLAG_STARTED_113C | QUEST_FLAG_REWARD_PENDING_113C | QUEST_FLAG_COMPLETED_NOW_113C,
           )
         }
         this.syncHarrogathA5Q3State113c(player)
       } else {
-        this.setPlayerQuestFlag(player, 'a5q3', QUEST_FLAG_STARTED_113C)
+        for (const recipient of this.getQuestEligiblePartyRecipients113c(player, player.areaId)) {
+          if (
+            hasQuestFlag113c(
+              recipient.questFlags,
+              'a5q3',
+              QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_REWARD_PENDING_113C,
+            )
+          ) {
+            continue
+          }
+          this.setPlayerQuestFlag(
+            recipient,
+            'a5q3',
+            QUEST_FLAG_STARTED_113C | QUEST_FLAG_CUSTOM_4_113C,
+          )
+        }
         const skipDuplicateFrozenAnyaInfo =
           !fromInteractPacket && player.lastNpcInteractHandshakeId === npcId
         if (!skipDuplicateFrozenAnyaInfo) {
@@ -2388,8 +2510,50 @@ function handleNpcInteract(this: GameInstanceHost,
       })
     }
   }
-  // D2Game.dll `ACT4Q2_NpcActivate`: talking to `tyrael2` (#367) after `a4q3` (Diablo) completion
-  // spawns/opens the `Harrogath` portal (#566) in `OBJMODE_OPENED (2)`.
+  // D2Game.dll `ACT4Q1_NpcActivate` (`0x6fcda68f..0x6fcda7e6`, #2011):
+  // - `izualghost` (`hcIdx === 406`): sets `QUEST_FLAG_CUSTOM_5_113C` (`0x0020`, `A4Q1SuccessfulIzual`)
+  //   when `a4q1` is reward-pending or completed, advancing Plains of Despair quest log `3 -> 4`.
+  // - `tyrael2` (`hcIdx === 367`): when `a4q1` has `QUEST_FLAG_REWARD_PENDING_113C` (`0x0002`),
+  //   clears `0x0002` and sets `0x2001` (`COMPLETED | COMPLETED_NOW`), granting `+2` `STAT_NEWSKILLS`
+  //   and unlocking Act 4 vendor `10%` discount; otherwise sets `QUEST_FLAG_STARTED_113C` (`0x0004`).
+  if (npc?.hcIdx === 406) {
+    const idx = questWordIndex113c('a4q1')
+    const bits = idx === undefined ? 0 : (player.questFlags[idx] ?? 0)
+    if (
+      (bits & (QUEST_FLAG_REWARD_PENDING_113C | QUEST_FLAG_COMPLETED_113C)) !== 0 &&
+      (bits & QUEST_FLAG_CUSTOM_5_113C) === 0
+    ) {
+      this.setPlayerQuestFlag(player, 'a4q1', QUEST_FLAG_CUSTOM_5_113C)
+    }
+  }
+  if (npc?.hcIdx === 367) {
+    const idx = questWordIndex113c('a4q1')
+    const bits = idx === undefined ? 0 : (player.questFlags[idx] ?? 0)
+    if (
+      (bits & QUEST_FLAG_REWARD_PENDING_113C) !== 0 &&
+      (bits & QUEST_FLAG_COMPLETED_113C) === 0
+    ) {
+      if (idx !== undefined) {
+        player.questFlags[idx] = bits & ~QUEST_FLAG_REWARD_PENDING_113C
+      }
+      this.setPlayerQuestFlag(
+        player,
+        'a4q1',
+        QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_COMPLETED_NOW_113C,
+      )
+    } else if (
+      (bits &
+        (QUEST_FLAG_COMPLETED_113C |
+          QUEST_FLAG_REWARD_PENDING_113C |
+          QUEST_FLAG_STARTED_113C)) ===
+      0
+    ) {
+      this.setPlayerQuestFlag(player, 'a4q1', QUEST_FLAG_STARTED_113C)
+    }
+  }
+  // D2Game.dll `ACT4Q2_NpcActivate` (`0x6FCDB006..0x6FCDB06A`, #2018): talking to `tyrael2` (#367) after `a4q3`
+  // (Diablo) completion computes `(tyrael.x + 5, tyrael.y)` (`add ebx, 0x5`) and calls `D2GAME_FindFreeCoords`
+  // (`0x6FC54130`, `nSize = 2`, `mask = 0x400`, `maxRadius = 0x64 = 100`) before spawning `Harrogath` portal (#566).
   if (
     npc?.hcIdx === 367 &&
     hasQuestFlag113c(
@@ -2404,13 +2568,36 @@ function handleNpcInteract(this: GameInstanceHost,
     if (existingHarrogathPortal !== undefined) {
       this.setObjectMode(existingHarrogathPortal, 2)
     } else {
-      this.spawnObject({
-        classId: 566,
-        x: npc.x + 4,
-        y: npc.y,
-        areaId: player.areaId,
-        mode: 2,
-      })
+      const hasLoadedArea = this.loadedAreas.has(player.areaId)
+      const rawPortalX = npc.x + 5
+      const rawPortalY = npc.y
+      const npcCellX = Math.round(npc.x)
+      const npcCellY = Math.round(npc.y)
+      const portalStand = hasLoadedArea
+        ? (findStandableNear(
+            (x, y) =>
+              this.isWorldWalkableForPlayer(player.areaId, x, y) &&
+              (x !== npcCellX || y !== npcCellY),
+            rawPortalX,
+            rawPortalY,
+            100,
+          ) ??
+          findStandableNear(
+            (x, y) => this.isWorldWalkableForPlayer(player.areaId, x, y),
+            rawPortalX,
+            rawPortalY,
+            100,
+          ))
+        : null
+      if (!hasLoadedArea || portalStand !== null) {
+        this.spawnObject({
+          classId: 566,
+          x: portalStand?.x ?? rawPortalX,
+          y: portalStand?.y ?? rawPortalY,
+          areaId: player.areaId,
+          mode: 2,
+        })
+      }
     }
   }
   const canHeal =
@@ -3664,6 +3851,7 @@ export interface NpcVendorsAndArtisansMethods {
   syncDurielsLairA2Q6State113c(areaId?: number, fallbackX?: number, fallbackY?: number, triggerPlayer?: InternalPlayerRecord): void
   syncKurastDocksAct3NpcState113c(triggerPlayer?: InternalPlayerRecord): void
   syncHarrogathA5Q3State113c(triggerPlayer?: InternalPlayerRecord): void
+  syncFrozenRiverA5Q3State113c(triggerPlayer?: InternalPlayerRecord): void
   handleNpcHireList(player: InternalPlayerRecord, npcId: number): void
   handleNpcHire(player: InternalPlayerRecord, npcId: number, mercId: number): void
   handleMercResurrect(player: InternalPlayerRecord, npcId: number): void
@@ -3704,6 +3892,7 @@ export const npcVendorsAndArtisansMethods: Record<keyof NpcVendorsAndArtisansMet
   syncDurielsLairA2Q6State113c,
   syncKurastDocksAct3NpcState113c,
   syncHarrogathA5Q3State113c,
+  syncFrozenRiverA5Q3State113c,
   handleNpcHireList,
   handleNpcHire,
   handleMercResurrect,

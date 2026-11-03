@@ -8,6 +8,7 @@ import { ClientWorld } from '../src/client/world/client-world.ts'
 import { GameInstance } from '../src/server/engine/game-instance.ts'
 import {
   QUEST_FLAG_COMPLETED_113C,
+  QUEST_FLAG_CUSTOM_8_113C,
   QUEST_FLAG_PRIMARY_GOAL_DONE_113C,
   QUEST_FLAG_REWARD_PENDING_113C,
   QUEST_FLAG_STARTED_113C,
@@ -180,9 +181,14 @@ describe('Issue #1404: Quest item full-inventory ground drop, one-time grant & d
     }
   }
 
-  it('drops Malah potion (ice) on the ground with sound 23 when inventory is full, and does not mint duplicates on repeat clicks', () => {
+  it('drops Malah potion (ice) on the ground with sound 23 when inventory is full after Frozen Anya discovery, and does not mint duplicates on repeat clicks', () => {
     const { game, playerId, player, groundItems } = setupGame(14041)
     fillInventory(player)
+
+    // Discover Frozen Anya (558) first per D2Game.dll 0x6fc7cd50 -> 0x6fc7db44 (#2019).
+    const frozenAnya = game.spawnObject({ classId: 558, x: 21, y: 20, areaId: 109 })
+    game.enqueueCommand(playerId, { type: 'OperateObject', objectId: frozenAnya })
+    game.stepFrames(1)
     game.drainEvents(playerId)
 
     const malah = game.spawnMonster({
@@ -213,7 +219,7 @@ describe('Issue #1404: Quest item full-inventory ground drop, one-time grant & d
     expect([...groundItems.values()].filter((g) => g.code.trim().toLowerCase() === 'ice')).toHaveLength(1)
   })
 
-  it('grants Scroll of Resistance (tr2) once on A5Q3 turn-in, clears REWARD_PENDING, and never grants a second tr2', () => {
+  it('grants Scroll of Resistance (tr2) once on A5Q3 turn-in, finalizes COMPLETED after Town Anya, and never grants a second tr2 while holding tr2', () => {
     const { game, playerId, player, groundItems } = setupGame(14042)
     const malah = game.spawnMonster({
       classId: 513,
@@ -223,8 +229,11 @@ describe('Issue #1404: Quest item full-inventory ground drop, one-time grant & d
       areaId: 109,
       isNpc: true,
     })
+    const anyaObj = game.spawnObject({ classId: 558, x: 21, y: 20, areaId: 109 })
 
-    // 1. Talk to Malah -> get 'ice' in inventory
+    // 1. Discover Frozen Anya (558) -> Talk to Malah -> get 'ice' in inventory (#2019)
+    game.enqueueCommand(playerId, { type: 'OperateObject', objectId: anyaObj })
+    game.stepFrames(1)
     game.enqueueCommand(playerId, { type: 'NpcInit', target: { unitType: 1, id: malah } } as never)
     game.stepFrames(1)
     expect(player.items.filter((i) => i.code === 'ice')).toHaveLength(1)
@@ -250,7 +259,6 @@ describe('Issue #1404: Quest item full-inventory ground drop, one-time grant & d
     game.stepFrames(1)
     expect(player.items.filter((i) => i.code === 'ice')).toHaveLength(1)
 
-    const anyaObj = game.spawnObject({ classId: 558, x: 21, y: 20, areaId: 109 })
     game.enqueueCommand(playerId, { type: 'OperateObject', objectId: anyaObj })
     game.stepFrames(1)
 
@@ -259,18 +267,35 @@ describe('Issue #1404: Quest item full-inventory ground drop, one-time grant & d
       QUEST_FLAG_REWARD_PENDING_113C,
     )
 
-    // 3. Talk to Malah -> grants 'tr2', sets COMPLETED, clears REWARD_PENDING
+    // 3. Talk to Malah -> grants 'tr2', sets CUSTOM_8 (0x0100), keeps REWARD_PENDING until Town Anya (0x6fc7f7cb)
     game.enqueueCommand(playerId, { type: 'NpcInit', target: { unitType: 1, id: malah } } as never)
     game.stepFrames(1)
     expect(player.items.filter((i) => i.code === 'tr2')).toHaveLength(1)
-    expect(player.questFlags[a5q3Idx]! & QUEST_FLAG_COMPLETED_113C).toBe(QUEST_FLAG_COMPLETED_113C)
-    expect(player.questFlags[a5q3Idx]! & QUEST_FLAG_REWARD_PENDING_113C).toBe(0)
+    expect(player.questFlags[a5q3Idx]! & QUEST_FLAG_CUSTOM_8_113C).toBe(QUEST_FLAG_CUSTOM_8_113C)
+    expect(player.questFlags[a5q3Idx]! & QUEST_FLAG_COMPLETED_113C).toBe(0)
+    expect(player.questFlags[a5q3Idx]! & QUEST_FLAG_REWARD_PENDING_113C).toBe(
+      QUEST_FLAG_REWARD_PENDING_113C,
+    )
 
-    // 4. Talk to Malah again -> must NOT grant a second 'tr2'
+    // 4. Talk to Malah again while holding 'tr2' -> must NOT grant a second 'tr2'
     game.enqueueCommand(playerId, { type: 'NpcInit', target: { unitType: 1, id: malah } } as never)
     game.stepFrames(1)
     expect(player.items.filter((i) => i.code === 'tr2')).toHaveLength(1)
     expect([...groundItems.values()].filter((g) => g.code === 'tr2')).toHaveLength(0)
+
+    // 5. Talk to Town Anya (512) -> grants Rare item, clears REWARD_PENDING, and sets COMPLETED (0x6fc7fa8e)
+    const townAnya = game.spawnMonster({
+      classId: 512,
+      name: 'Anya',
+      x: 21,
+      y: 20,
+      areaId: 109,
+      isNpc: true,
+    })
+    game.enqueueCommand(playerId, { type: 'NpcInit', target: { unitType: 1, id: townAnya } } as never)
+    game.stepFrames(1)
+    expect(player.questFlags[a5q3Idx]! & QUEST_FLAG_COMPLETED_113C).toBe(QUEST_FLAG_COMPLETED_113C)
+    expect(player.questFlags[a5q3Idx]! & QUEST_FLAG_REWARD_PENDING_113C).toBe(0)
   })
 
   it('rejects picking up a duplicate quest item, full-inventory item, or cursor-occupied item without deleting the ground item', () => {

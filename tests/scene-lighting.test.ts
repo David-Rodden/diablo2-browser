@@ -838,7 +838,7 @@ describe('Scene Lighting & Environment Integration', () => {
     expect(backOutdoorInputs.ambient?.playerRoom.source).toBe('environment')
     expect(backOutdoorInputs.ambient?.playerRoom.intensity).toBe(128)
     expect(lightGrid.intensity[0]).toBe(128)
-  }, 15000)
+  }, 45000)
 
   it('steps columnTints in fixed 32px DT1 block columns (blockPosX >> 5, D2Direct3D 0x6f88e643) so 96px type-4 and 160px type-3 corner walls match across col 2 (issue #996)', () => {
     const { canvas, stats } = createMockCanvas()

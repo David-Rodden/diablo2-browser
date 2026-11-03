@@ -211,10 +211,12 @@ describe('issue #1439: 1.13c consumable quest item rewards (ass, xyz, tr2)', () 
     game.enqueueCommand(playerId, { type: 'NpcInit', target: { unitType: 1, id: malah } } as never)
     game.stepFrames(1)
 
-    // Malah grants 'tr2' and sets bit 8 (0x0100), bit 7 (0x0080) is still 0, and resistances are unchanged!
+    // Malah grants 'tr2' and sets bit 8 (0x0100), bit 7 (0x0080) is still 0, REWARD_PENDING remains set until Town Anya (#2019), and resistances are unchanged!
     const tr2Item = player.items.find((i) => i.code.trim().toLowerCase() === 'tr2')
     expect(tr2Item).toBeDefined()
-    expect(player.questFlags[a5q3Idx]! & QUEST_FLAG_COMPLETED_113C).toBe(QUEST_FLAG_COMPLETED_113C)
+    expect(player.questFlags[a5q3Idx]! & QUEST_FLAG_REWARD_PENDING_113C).toBe(
+      QUEST_FLAG_REWARD_PENDING_113C,
+    )
     expect(player.questFlags[a5q3Idx]! & QUEST_FLAG_CUSTOM_8_113C).toBe(QUEST_FLAG_CUSTOM_8_113C)
     expect(player.questFlags[a5q3Idx]! & QUEST_FLAG_CUSTOM_7_113C).toBe(0)
     expect(internal.playerResistPct(player, 'fire')).toBe(fire0)

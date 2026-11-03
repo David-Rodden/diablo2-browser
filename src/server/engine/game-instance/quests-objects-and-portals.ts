@@ -9,7 +9,7 @@ import { D2Common_10399_AtSubtiles } from '../../../common/path/step.ts'
 import { CANONICAL_113C_OBJECTS, CANONICAL_113C_SHRINES, getShrineMeta113c, isObjectInInteractRange113c } from '../../../common/world/objects-meta.ts'
 import { ONE_WAY_DOOR_OPERATE_FNS_113C, QUEST_CHEST_OPERATE_FNS_113C, classifyObjectOperate113c, computeShrineResetFrame113c, getContainerOperateDropChance113c, getObjectOperatingTicks113c } from '../../../common/world/object-operate-113c.ts'
 import { PANDEMONIUM_FINALE_AREA_ID_113C } from '../../world/pandemonium-113c.ts'
-import { QUEST_AREA_GATES_113C, QUEST_FLAG_COMPLETED_113C, QUEST_FLAG_COMPLETED_NOW_113C, QUEST_FLAG_CUSTOM_3_113C, QUEST_FLAG_CUSTOM_4_113C, QUEST_FLAG_CUSTOM_5_113C, QUEST_FLAG_CUSTOM_7_113C, QUEST_FLAG_CUSTOM_8_113C, QUEST_FLAG_PRIMARY_GOAL_DONE_113C, QUEST_FLAG_REWARD_PENDING_113C, QUEST_FLAG_STARTED_113C, QUEST_OBJECT_TO_QUEST_113C, computeQuestStatusByte113c, computeQuestStatusBytes113c, hasQuestFlag113c, questProtocolId113c, questWordIndex113c, setQuestFlag113c } from '../quests-113c.ts'
+import { QUEST_AREA_GATES_113C, QUEST_FLAG_COMPLETED_113C, QUEST_FLAG_COMPLETED_NOW_113C, QUEST_FLAG_CUSTOM_3_113C, QUEST_FLAG_CUSTOM_4_113C, QUEST_FLAG_CUSTOM_5_113C, QUEST_FLAG_CUSTOM_7_113C, QUEST_FLAG_CUSTOM_8_113C, QUEST_FLAG_PRIMARY_GOAL_DONE_113C, QUEST_FLAG_REWARD_PENDING_113C, QUEST_FLAG_STARTED_113C, QUEST_OBJECT_TO_QUEST_113C, clearQuestFlag113c, computeQuestStatusByte113c, computeQuestStatusBytes113c, hasQuestFlag113c, questProtocolId113c, questWordIndex113c, setQuestFlag113c } from '../quests-113c.ts'
 import { rollHellforgeDrop } from '../../../common/items/drop-tables.ts'
 import { canEnterPortalInPvp113c, canLootPlayerCorpse113c, canUseWaypointInPvp113c, isPlayerHardcore113c } from '../../combat/pvp-engine-113c.ts'
 import { CANONICAL_CHARSTATS } from '../../../common/units/classes.ts'
@@ -111,15 +111,41 @@ function operateObject(this: GameInstanceHost, player: InternalPlayerRecord, obj
     return
   }
 
-  // Objects.txt 564 SummitDoor (OperateFn 71, D2Game 0x6FC7D690):
-  // locked while the Ancients encounter is active (#1843).
-  if (obj.classId === 564 && this.isAncientsEncounterActive(obj.areaId)) {
-    if (obj.mode !== 0) this.setObjectMode(obj, 0)
-    this.emitToPlayer(player.unitId, {
-      type: 'PlaySound',
-      unit: { unitType: 0, id: player.unitId },
-      sound: 19,
-    })
+  // Objects.txt 564 SummitDoor (InitFn 76 @ 0x6FC773D0, OperateFn 71 @ 0x6FC7D690, #1843, #2020):
+  // locked in mode 0 while the Ancients encounter is active; otherwise opens (0 -> 1 -> 2)
+  // or warps back to The Ancients' Way (Area 118) when already open (mode 2).
+  if (obj.classId === 564) {
+    if (this.isAncientsEncounterActive(obj.areaId)) {
+      if (obj.mode !== 0) this.setObjectMode(obj, 0)
+      this.emitToPlayer(player.unitId, {
+        type: 'PlaySound',
+        unit: { unitType: 0, id: player.unitId },
+        sound: 19,
+      })
+      return
+    }
+    if (obj.mode === 0) {
+      const gateOperatingTicks = getObjectOperatingTicks113c(564)
+      this.setObjectMode(obj, 1)
+      if (gateOperatingTicks > 0) {
+        this.pendingObjectModeTransitions.push({
+          frame: this.currentFrame + gateOperatingTicks,
+          unitId: obj.unitId,
+          mode: 2,
+        })
+      } else {
+        this.setObjectMode(obj, 2)
+      }
+      return
+    }
+    if (obj.mode === 2 && this.consumeWarpCooldown(player)) {
+      const destAreaId =
+        obj.destAreaId ?? resolvePresetPortalDestArea113c(564, obj.areaId) ?? 118
+      this.transitionPlayerArea(player, destAreaId, {
+        kind: 'warp',
+        fromAreaId: obj.areaId,
+      })
+    }
     return
   }
 
@@ -165,7 +191,10 @@ function operateObject(this: GameInstanceHost, player: InternalPlayerRecord, obj
     return
   }
 
-  // Chaos Sanctuary seals (`392, 394, 396`) spawn their SuperUnique boss + minion pack on first use (#1928).
+  // Chaos Sanctuary seals (`392, 394, 396`) spawn their SuperUnique boss + minion pack on first use (#1928, #2018).
+  // D2Game.dll OperateFn 54/55/56 (`0x6FCDC580`, `0x6FCDC510`, `0x6FCDC4A0`) -> `0x6FCDC050`:
+  // calls `D2GAME_FindFreeCoords(..., nSize = 3, mask = 0x3F11, maxRadius = 0x64 = 100)` (`0x6FCDC0A2..0x6FCDC0BD`)
+  // and aborts void placement if `pOutRoom == NULL` (e.g., North Wing West-seal DS1 where `rawX = seal.x - 39` is 33 subtiles in void).
   const sealBoss = SEAL_BOSS_113C[obj.classId]
   if (sealBoss !== undefined && obj.useCount === 0) {
     obj.useCount = 1
@@ -177,27 +206,30 @@ function operateObject(this: GameInstanceHost, player: InternalPlayerRecord, obj
           (x, y) => this.isWorldWalkableForPlayer(obj.areaId, x, y),
           rawX,
           rawY,
-          10,
+          100,
         )
       : null
-    const sx = stand?.x ?? rawX
-    const sy = stand?.y ?? rawY
-    const spawnedIds = this.spawnSuperUnique({
-      superUniqueIndex: sealBoss.superUniqueIndex,
-      x: sx,
-      y: sy,
-      areaId: obj.areaId,
-    })
-    const bossId = spawnedIds[0]
-    if (bossId !== undefined) {
-      this.broadcastToArea(obj.areaId, {
-        type: 'UnitMode',
-        unitType: 1,
-        id: bossId,
-        mode: 1,
-        at: { x: Math.round(sx), y: Math.round(sy) },
-        lifePct: 128,
+    if (!hasLoadedArea || stand !== null) {
+      const sx = stand?.x ?? rawX
+      const sy = stand?.y ?? rawY
+      const spawnedIds = this.spawnSuperUnique({
+        superUniqueIndex: sealBoss.superUniqueIndex,
+        x: sx,
+        y: sy,
+        areaId: obj.areaId,
       })
+      const bossId = spawnedIds[0]
+      if (bossId !== undefined) {
+        const bossRec = this.monsters.get(bossId)
+        this.broadcastToArea(obj.areaId, {
+          type: 'UnitMode',
+          unitType: 1,
+          id: bossId,
+          mode: 1,
+          at: { x: Math.round(bossRec?.x ?? sx), y: Math.round(bossRec?.y ?? sy) },
+          lifePct: 128,
+        })
+      }
     }
   }
 
@@ -794,8 +826,9 @@ function operateObject(this: GameInstanceHost, player: InternalPlayerRecord, obj
       return
     }
   }
-  // Objects.txt 558 Frozen Anya (OperateFn 67, D2Game 0x6fc7cd50):
-  // without Malah's Potion ('ice'), starts a5q3 (0x6fc7cdb3) and keeps mode 0 so she can be thawed later.
+  // Objects.txt 558 Frozen Anya (OperateFn 67, D2Game 0x6fc7cd50, #2019):
+  // without Malah's Potion ('ice'), records Frozen Anya discovered (`CUSTOM_4` = `0x0010`, status 3 `qstsa5q32` "Talk to Malah."),
+  // emits A5Q3FoundAnyaAnya (20131), and keeps mode 0 so she can be thawed after receiving 'ice' from Malah (513).
   if (obj.classId === 558) {
     if (
       hasQuestFlag113c(
@@ -810,7 +843,22 @@ function operateObject(this: GameInstanceHost, player: InternalPlayerRecord, obj
       (item) => item.code.toLowerCase().trim() === 'ice',
     )
     if (!hasPotion) {
-      this.setPlayerQuestFlag(player, 'a5q3', QUEST_FLAG_STARTED_113C)
+      for (const recipient of this.getQuestEligiblePartyRecipients113c(player, obj.areaId)) {
+        if (
+          hasQuestFlag113c(
+            recipient.questFlags,
+            'a5q3',
+            QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_REWARD_PENDING_113C,
+          )
+        ) {
+          continue
+        }
+        this.setPlayerQuestFlag(
+          recipient,
+          'a5q3',
+          QUEST_FLAG_STARTED_113C | QUEST_FLAG_CUSTOM_4_113C,
+        )
+      }
       // D2Game.dll 0x6fc7cdae..0x6fc7cdb3: QUESTS_NPCMessage(pGame, pPlayer, pObject, 0x4EA3) -> 20131 (A5Q3FoundAnyaAnya)
       this.emitToPlayer(player.unitId, {
         type: 'Npc',
@@ -888,22 +936,25 @@ function operateObject(this: GameInstanceHost, player: InternalPlayerRecord, obj
       this.cairnPortalAreas.add(obj.areaId)
       this.removePlayerQuestItem(player, keyScroll)
       const anchor = areaStones[0] ?? obj
-      const stand = this.loadedAreas.has(obj.areaId)
+      const hasLoadedArea = this.loadedAreas.has(obj.areaId)
+      const stand = hasLoadedArea
         ? findStandableNear(
             (x, y) => this.isWorldWalkableForPlayer(obj.areaId, x, y),
             anchor.x + 2,
             anchor.y,
-            8,
+            100,
           )
         : null
-      this.spawnObject({
-        classId: 60,
-        x: stand?.x ?? anchor.x + 2,
-        y: stand?.y ?? anchor.y,
-        areaId: obj.areaId,
-        mode: 2,
-        destAreaId: 38,
-      })
+      if (!hasLoadedArea || stand !== null) {
+        this.spawnObject({
+          classId: 60,
+          x: stand?.x ?? anchor.x + 2,
+          y: stand?.y ?? anchor.y,
+          areaId: obj.areaId,
+          mode: 2,
+          destAreaId: 38,
+        })
+      }
     }
     return
   }
@@ -1364,24 +1415,27 @@ function advanceQuestObject(this: GameInstanceHost,
       (m) => m.areaId === obj.areaId && m.hcIdx === 265 && !m.dead,
     )
     if (!hasRescuedCain) {
-      const stand = this.loadedAreas.has(obj.areaId)
+      const hasLoadedArea = this.loadedAreas.has(obj.areaId)
+      const stand = hasLoadedArea
         ? findStandableNear(
             (x, y) => this.isWorldWalkableForPlayer(obj.areaId, x, y),
             obj.x + 2,
             obj.y,
-            6,
+            100,
           )
         : null
-      this.spawnMonster({
-        classId: 265,
-        name: 'Deckard Cain',
-        x: stand?.x ?? obj.x + 2,
-        y: stand?.y ?? obj.y,
-        areaId: obj.areaId,
-        isNpc: true,
-        isKillable: false,
-        aiDisabled: true,
-      })
+      if (!hasLoadedArea || stand !== null) {
+        this.spawnMonster({
+          classId: 265,
+          name: 'Deckard Cain',
+          x: stand?.x ?? obj.x + 2,
+          y: stand?.y ?? obj.y,
+          areaId: obj.areaId,
+          isNpc: true,
+          isKillable: false,
+          aiDisabled: true,
+        })
+      }
     }
     this.syncRogueEncampmentA1Q3State113c(player)
   }
@@ -1441,7 +1495,7 @@ function advanceQuestObject(this: GameInstanceHost,
   }
   const questId = QUEST_OBJECT_TO_QUEST_113C[obj.classId]
   if (questId === undefined) return
-  // A5Q3: thawing Anya requires Malah's potion ('ice').
+  // A5Q3: thawing Anya requires Malah's potion ('ice', D2Game.dll 0x6fc7ce39..0x6fc7ce95, #2019).
   if (obj.classId === 558) {
     if (
       hasQuestFlag113c(
@@ -1459,11 +1513,25 @@ function advanceQuestObject(this: GameInstanceHost,
     this.removePlayerQuestItem(player, potion)
     for (const recipient of this.getQuestEligiblePartyRecipients113c(player, obj.areaId)) {
       if (hasQuestFlag113c(recipient.questFlags, 'a5q3', QUEST_FLAG_COMPLETED_113C)) continue
+      clearQuestFlag113c(
+        recipient.questFlags,
+        'a5q3',
+        QUEST_FLAG_CUSTOM_4_113C | QUEST_FLAG_PRIMARY_GOAL_DONE_113C,
+      )
       this.setPlayerQuestFlag(
         recipient,
         'a5q3',
-        QUEST_FLAG_STARTED_113C | QUEST_FLAG_REWARD_PENDING_113C,
+        QUEST_FLAG_STARTED_113C | QUEST_FLAG_REWARD_PENDING_113C | QUEST_FLAG_COMPLETED_NOW_113C,
       )
+      // D2Game.dll ACT5Q3_Timer_ThawAnya (0x6fc7c4fb..0x6fc7c50d, #2020):
+      // broadcast S2C 0x89 SpecialQuestEvent 16 so D2Client spawns `anya center` (#528) steam/shake FX.
+      this.emitToPlayer(recipient.unitId, {
+        type: 'QuestState',
+        kind: 'special',
+        source: 0x89,
+        quests: new Uint16Array(recipient.questFlags),
+        specialEventId: 16,
+      })
     }
     this.syncHarrogathA5Q3State113c(player)
     return
@@ -1531,22 +1599,25 @@ function advanceQuestObject(this: GameInstanceHost,
         candidate.destAreaId === 46,
     )
     if (existingPortal === undefined) {
-      const stand = this.loadedAreas.has(obj.areaId)
+      const hasLoadedArea = this.loadedAreas.has(obj.areaId)
+      const stand = hasLoadedArea
         ? findStandableNear(
             (x, y) => this.isWorldWalkableForPlayer(obj.areaId, x, y),
             obj.x + 3,
             obj.y,
-            8,
+            100,
           )
         : null
-      this.spawnObject({
-        classId: 60,
-        x: stand?.x ?? obj.x + 3,
-        y: stand?.y ?? obj.y,
-        areaId: obj.areaId,
-        mode: 2,
-        destAreaId: 46,
-      })
+      if (!hasLoadedArea || stand !== null) {
+        this.spawnObject({
+          classId: 60,
+          x: stand?.x ?? obj.x + 3,
+          y: stand?.y ?? obj.y,
+          areaId: obj.areaId,
+          mode: 2,
+          destAreaId: 46,
+        })
+      }
     }
   }
 }
@@ -1993,10 +2064,10 @@ function hasInteractionLineOfSight(this: GameInstanceHost,
   // `(toX, toY)` even when the player is standing right against the wall face (#1373, #1986).
   // Allow interaction only when `(toX, toY)` itself is sight-blocked and the ray to the adjacent
   // floor face within the object's footprint toward the player is completely clear.
-  const tFloorArea = this.areaIdAtWorldPoint(Math.floor(toX), Math.floor(toY)) ?? areaId
+  const tFloorArea = this.areaIdAtWorldPoint(Math.floor(toX), Math.floor(toY), areaId) ?? areaId
   const tRoundX = Math.round(toX)
   const tRoundY = Math.round(toY)
-  const tRoundArea = this.areaIdAtWorldPoint(tRoundX, tRoundY) ?? areaId
+  const tRoundArea = this.areaIdAtWorldPoint(tRoundX, tRoundY, areaId) ?? areaId
   const targetSightOpen =
     check(tFloorArea, toX, toY, true) &&
     check(tRoundArea, tRoundX, tRoundY, true)
@@ -2025,8 +2096,8 @@ function hasInteractionLineOfSight(this: GameInstanceHost,
     const py = toY + ((fromY - toY) / dist) * d
     const rx = Math.round(px)
     const ry = Math.round(py)
-    const pArea = this.areaIdAtWorldPoint(Math.floor(px), Math.floor(py)) ?? areaId
-    const rArea = this.areaIdAtWorldPoint(rx, ry) ?? areaId
+    const pArea = this.areaIdAtWorldPoint(Math.floor(px), Math.floor(py), areaId) ?? areaId
+    const rArea = this.areaIdAtWorldPoint(rx, ry, areaId) ?? areaId
     if (this.isClosedDoorAt(rArea, rx, ry, targetObjectUnitId)) return false
     if (
       d > 3.5 &&
@@ -2413,6 +2484,7 @@ function handleInteract(
       obj.classId !== 298 &&
       obj.classId !== 342 &&
       obj.classId !== 547 &&
+      obj.classId !== 564 &&
       obj.classId !== 565 &&
       obj.classId !== 566
     ) {
@@ -2558,8 +2630,8 @@ function handleWarpTileInteract(this: GameInstanceHost, player: InternalPlayerRe
   }
   player.pendingInteraction = undefined
   player.pendingInteractionSteps = 0
-  // #1983: Refuse DS1 `UNIT_TILE` warps co-located with sealed quest stair/portal objects
-  // (`366` Kurast Sewers Stairs, `386` Durance Stairs, `547` Ancients' Door, `563` Baal's Portal)
+  // #1983, #2020: Refuse DS1 `UNIT_TILE` warps co-located with sealed quest stair/portal objects
+  // (`366` Kurast Sewers Stairs, `386` Durance Stairs, `547` Ancients' Door, `563` Baal's Portal, `564` SummitDoor)
   // while the gating object in `tile.areaId` has not yet opened (`mode !== 2`).
   for (const gateObj of this.objects.values()) {
     if (gateObj.areaId !== tile.areaId) continue
@@ -2567,7 +2639,8 @@ function handleWarpTileInteract(this: GameInstanceHost, player: InternalPlayerRe
       gateObj.classId !== 366 &&
       gateObj.classId !== 386 &&
       gateObj.classId !== 547 &&
-      gateObj.classId !== 563
+      gateObj.classId !== 563 &&
+      gateObj.classId !== 564
     ) {
       continue
     }
@@ -2845,6 +2918,8 @@ function openTownPortal(this: GameInstanceHost,
       ) {
         obj.useCount = 0
         this.setObjectMode(obj, 0)
+      } else if (obj.classId === 564 && obj.mode !== 2) {
+        this.setObjectMode(obj, 2)
       }
     }
   }
@@ -2855,7 +2930,7 @@ function openTownPortal(this: GameInstanceHost,
         (x, y) => this.isWorldWalkableForPlayer(fromArea, x, y),
         rawFieldX,
         rawFieldY,
-        8,
+        100,
       )
     : null
   const portalId = this.spawnObject({
@@ -2975,6 +3050,41 @@ function switchPlayerAreaSeamless(this: GameInstanceHost, player: InternalPlayer
   }
   if (destAreaId === 109 || (destAreaId >= 121 && destAreaId <= 124)) {
     this.syncHarrogathA5Q3State113c(player)
+  }
+  if (destAreaId === 114) {
+    this.syncFrozenRiverA5Q3State113c(player)
+  }
+  // D2Game.dll ACT5Q3_Callback03_ChangedLevel (0x6fc7f3f0..0x6fc7f495, #2019):
+  // entering Area 112..114 starts a5q3 with CUSTOM_3 (0x0008), and entering/leaving 114 refreshes status 2 <-> 1.
+  if (destAreaId >= 112 && destAreaId <= 114) {
+    if (
+      !hasQuestFlag113c(
+        player.questFlags,
+        'a5q3',
+        QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_REWARD_PENDING_113C,
+      )
+    ) {
+      setQuestFlag113c(
+        player.questFlags,
+        'a5q3',
+        QUEST_FLAG_STARTED_113C | QUEST_FLAG_CUSTOM_3_113C,
+      )
+      this.emitQuestFlagSync113c(player, 'a5q3')
+    }
+  } else if (
+    prevArea === 114 &&
+    hasQuestFlag113c(
+      player.questFlags,
+      'a5q3',
+      QUEST_FLAG_STARTED_113C | QUEST_FLAG_CUSTOM_3_113C,
+    ) &&
+    !hasQuestFlag113c(
+      player.questFlags,
+      'a5q3',
+      QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_REWARD_PENDING_113C,
+    )
+  ) {
+    this.emitQuestFlagSync113c(player, 'a5q3')
   }
   if (destAreaId === 73) {
     this.syncDurielsLairA2Q6State113c(73, undefined, undefined, player)
@@ -3161,6 +3271,41 @@ function transitionPlayerArea(this: GameInstanceHost,
   }
   if (destAreaId === 109 || (destAreaId >= 121 && destAreaId <= 124)) {
     this.syncHarrogathA5Q3State113c(player)
+  }
+  if (destAreaId === 114) {
+    this.syncFrozenRiverA5Q3State113c(player)
+  }
+  // D2Game.dll ACT5Q3_Callback03_ChangedLevel (0x6fc7f3f0..0x6fc7f495, #2019):
+  // entering Area 112..114 starts a5q3 with CUSTOM_3 (0x0008), and entering/leaving 114 refreshes status 2 <-> 1.
+  if (destAreaId >= 112 && destAreaId <= 114) {
+    if (
+      !hasQuestFlag113c(
+        player.questFlags,
+        'a5q3',
+        QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_REWARD_PENDING_113C,
+      )
+    ) {
+      setQuestFlag113c(
+        player.questFlags,
+        'a5q3',
+        QUEST_FLAG_STARTED_113C | QUEST_FLAG_CUSTOM_3_113C,
+      )
+      this.emitQuestFlagSync113c(player, 'a5q3')
+    }
+  } else if (
+    prevArea === 114 &&
+    hasQuestFlag113c(
+      player.questFlags,
+      'a5q3',
+      QUEST_FLAG_STARTED_113C | QUEST_FLAG_CUSTOM_3_113C,
+    ) &&
+    !hasQuestFlag113c(
+      player.questFlags,
+      'a5q3',
+      QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_REWARD_PENDING_113C,
+    )
+  ) {
+    this.emitQuestFlagSync113c(player, 'a5q3')
   }
   if (destAreaId === 73) {
     this.syncDurielsLairA2Q6State113c(73, undefined, undefined, player)

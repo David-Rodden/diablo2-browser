@@ -21,7 +21,7 @@
    - **`src/**` 对具体插件 100% 无感知**：`src/**`（含 `src/client/main.ts`）包含 **0 个** 指向 `plugins/` 的导入语句，且包含 **0 个** `'plugins/'` 或具体插件 ID（如 `'kill-stats'`、`'drop-tracker'`、`'trade-hall'`）的字符串字面量。
 2. **Rule 7 — 根 HTML 入口与内联组合根校验**：
    - 仓库根目录仅包含两个 HTML 入口文件：`index.html`（庇护之地主页门户，提供进入 `/play.html` 与 `/musicbox.html` 的导航）与 `play.html`（游戏客户端组合根）。
-   - `index.html` 与 `play.html` 均声明本地 `D2Exocet`（`/ui/fonts/D2Exocet.ttf`）与 `D2Formal436`（`/ui/fonts/D2Formal436.ttf`）字体，且 `play.html` 的内联 `<script type="module">` 仅导入 `['/src/client/main.ts', '/plugins/index.ts']`。
+   - `index.html` 与 `play.html` 均声明本地 `D2Exocet`（`/ui/fonts/D2Exocet.ttf`）与 `D2Formal436`（`/ui/fonts/D2Formal436.ttf`）字体，`play.html` 的外部 `<script type="module" src="/src/server/loopback-adapter.ts">` 仅负责向 `src/netproto` 注册可选单机钩子，而内联 `<script type="module">` 仅导入 `['/src/client/main.ts', '/plugins/index.ts']`。
 3. **Rule 9 — `plugins/` 依赖白名单、物理隔离与核心零耦合**：
    - `plugins/index.ts` 仅允许导入 `./<id>/index.ts` 与 `src/client/plugin-host/api.ts`。
    - `plugins/<id>/**` 仅允许导入：
@@ -334,7 +334,7 @@ The plugin system enforces zero core coupling, guarded by [`tests/arch/boundarie
    - **`src/**` is 100% Plugin-Agnostic**: `src/**` (including `src/client/main.ts`) contains **zero** imports pointing to `plugins/` and **zero** string literals referencing `'plugins/'` or any specific plugin ID (such as `'kill-stats'`, `'drop-tracker'`, or `'trade-hall'`).
 2. **Rule 7 — Root HTML Entry & Inline Composition Check**:
    - The repository root contains only two HTML entry files: `index.html` (Sanctuary homepage portal linking to `/play.html` and `/musicbox.html`) and `play.html` (game client composition root).
-   - Both `index.html` and `play.html` declare local `D2Exocet` (`/ui/fonts/D2Exocet.ttf`) and `D2Formal436` (`/ui/fonts/D2Formal436.ttf`) fonts, and `play.html`'s inline `<script type="module">` imports exclusively `['/src/client/main.ts', '/plugins/index.ts']`.
+   - Both `index.html` and `play.html` declare local `D2Exocet` (`/ui/fonts/D2Exocet.ttf`) and `D2Formal436` (`/ui/fonts/D2Formal436.ttf`) fonts; `play.html` loads `/src/server/loopback-adapter.ts` via an external `<script type="module" src="...">` to register optional local Single-Player / loopback hooks on `src/netproto`, while its inline `<script type="module">` imports exclusively `['/src/client/main.ts', '/plugins/index.ts']`.
 3. **Rule 9 — `plugins/` Import Whitelist, Physical Isolation & Core Decoupling**:
    - `plugins/index.ts` may only import `./<id>/index.ts` and `src/client/plugin-host/api.ts`.
    - `plugins/<id>/**` may only import:
