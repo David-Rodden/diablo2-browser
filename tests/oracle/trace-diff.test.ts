@@ -141,4 +141,87 @@ describe('oracle trace diff', () => {
       field: 'dmg[0]',
     })
   })
+
+  it('compares dot events when both headers advertise dot:true, reports mismatches, and skips when either header lacks dot', () => {
+    const dotHdr = { ...HDR, dot: true }
+    const oFrames = {
+      1: {
+        ...structuredClone(base[1]),
+        dot: [
+          [0, 1, 13800, 13810],
+          [1, 2, 256, 156],
+        ],
+      },
+      2: { ...structuredClone(base[2]) },
+      3: {
+        ...structuredClone(base[3]),
+        dot: [[1, 2, 156, 0]],
+      },
+    }
+    const rFrames = structuredClone(oFrames)
+    expect(
+      diffTraces(parseTrace(trace('oracle', oFrames, dotHdr)), parseTrace(trace('replica', rFrames, dotHdr))).firstDivergence,
+    ).toBeNull()
+
+    // Value mismatch in dot[1] on frame 1
+    const badVal = structuredClone(oFrames)
+    badVal[1].dot![1] = [1, 2, 256, 155]
+    const divVal = diffTraces(
+      parseTrace(trace('oracle', oFrames, dotHdr)),
+      parseTrace(trace('replica', badVal, dotHdr)),
+    ).firstDivergence
+    expect(divVal).toMatchObject({
+      frame: 1,
+      kind: 'dot',
+      type: 1,
+      unitId: 2,
+      field: 'dot[1]',
+      oracle: [1, 2, 256, 156],
+      replica: [1, 2, 256, 155],
+    })
+
+    // Missing dot event on frame 3 when both headers have dot:true
+    const missingDot = structuredClone(oFrames)
+    delete (missingDot[3] as { dot?: unknown }).dot
+    expect(
+      diffTraces(
+        parseTrace(trace('oracle', oFrames, dotHdr)),
+        parseTrace(trace('replica', missingDot, dotHdr)),
+        { context: 2 },
+      ).firstDivergence,
+    ).toMatchObject({
+      frame: 3,
+      kind: 'dot',
+      type: 1,
+      unitId: 2,
+      field: 'dot[0]',
+      oracle: [1, 2, 156, 0],
+      replica: null,
+    })
+
+    // Backward compatibility: legacy oracle header without dot:true ignores replica dot events
+    expect(
+      diffTraces(
+        parseTrace(trace('oracle', base, HDR)),
+        parseTrace(trace('replica', rFrames, dotHdr)),
+      ).firstDivergence,
+    ).toBeNull()
+
+    // Symmetry: oracle header with dot:true against a trace without dot:true also skips dot comparison
+    expect(
+      diffTraces(
+        parseTrace(trace('oracle', oFrames, dotHdr)),
+        parseTrace(trace('replica', base, HDR)),
+      ).firstDivergence,
+    ).toBeNull()
+
+    // Explicit opt-out via compareDot: false
+    expect(
+      diffTraces(
+        parseTrace(trace('oracle', oFrames, dotHdr)),
+        parseTrace(trace('replica', badVal, dotHdr)),
+        { compareDot: false },
+      ).firstDivergence,
+    ).toBeNull()
+  })
 })

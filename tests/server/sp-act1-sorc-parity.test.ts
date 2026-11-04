@@ -369,8 +369,14 @@ describe('Single Player 1.13c starter gear & Act 1 quest parity', () => {
     expect(host.isClosedDoorAt(28, 105, 105)).toBe(false)
     expect(host.isWorldWalkableForPlayer(28, 105, 105)).toBe(true)
 
-    // BoneWall / BonePrison (hcIdx 179) blocks while alive and unblocks when killed or removed
-    const boneWallId = game.spawnMonster({ hcIdx: 179, areaId: 28, x: 108, y: 108, hp: 20, maxHp: 20 })
+    // Town Cow (hcIdx 179) must NOT be misclassified as BoneWall / BonePrison
+    const cowId = game.spawnMonster({ hcIdx: 179, areaId: 28, x: 107, y: 107, hp: 20, maxHp: 20 })
+    expect(host.hasLivingBonePrisonInArea(28)).toBe(false)
+    expect(host.isBlockedByBonePrison(28, 107, 107)).toBe(false)
+    game.monsters.delete(cowId)
+
+    // BoneWall / BonePrison (hcIdx 344 / 340..343) blocks while alive and unblocks when killed or removed
+    const boneWallId = game.spawnMonster({ hcIdx: 344, areaId: 28, x: 108, y: 108, hp: 20, maxHp: 20 })
     expect(host.hasLivingBonePrisonInArea(28)).toBe(true)
     expect(host.isBlockedByBonePrison(28, 108, 108)).toBe(true)
     expect(host.isWorldWalkableForPlayer(28, 108, 108)).toBe(false)

@@ -626,6 +626,18 @@ export function toItemContainer(loc: ServerItemEntry['location']): ItemContainer
 export let cachedEmbeddedFallbackRegistry: D2DataRegistry | null = null
 
 
+/**
+ * 1.13c missile speed in sub-tiles per server frame for a raw `Vel + trunc(VelLev * slvl / 8)`:
+ * `MISSILE_CreateMissileFromParams` builds `vel256 = rawVel << 8` (`0x6FC8FA34`) and then applies the
+ * unconditional `* 75 / 100` (`0x6FC8FAA3..0x6FC8FAB8`, kb/missile-velocity-range-113c.md §2.3); the
+ * path advances `vel256 / 4096` sub-tiles per frame (Fire Ball `Vel = 20` -> 3840 / 4096 = 15/16).
+ * Oracle: p52-sorceress-elemental Fire Ball launched on frame 636 reaches zombie #9 on frame 683.
+ */
+export function missileSpeedSubtilesPerFrame113c(rawVel: number): number {
+  if (rawVel <= 0) return 0
+  return Math.trunc(((rawVel << 8) * 75) / 100) / 4096
+}
+
 /** Player missile flight speed in subtiles per 25 Hz frame (GameInstance linear missile model). */
 export const PLAYER_MISSILE_SPEED_SUBTILES = 2.0
 
@@ -1400,4 +1412,13 @@ export function findBestInteractApproachSubTile113c(params: {
     }
   }
   return bestStandable ?? bestWalkable
+}
+
+
+/**
+ * A monster's raw 1/256 hit points: the fractional `hp256` while it is in sync with the integer `hp`
+ * (see `InternalMonsterRecord.hp256`), else `hp << 8`.
+ */
+export function monsterHp256_113c(monster: { readonly hp: number; readonly hp256?: number | undefined; readonly hp256Whole?: number | undefined }): number {
+  return monster.hp256 !== undefined && monster.hp256Whole === monster.hp ? monster.hp256 : monster.hp * 256
 }

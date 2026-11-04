@@ -981,9 +981,17 @@ describe('Wave 3 P0/P1: #1789 AnimDispatcher 25Hz Integration, #1862 Multi-Hit R
       expect(slowNoArmorIas.slice(0, 2)).toEqual([4, 18])
 
       // 2) Grief Phase Blade (`7cr`, WSM -30, +35% on-weapon IAS -> effIas = +65 >= 34 -> 4f interval):
-      //    Hits strictly every 4 frames (`4, 8, 12, 16, 20, 24, ...`)!
-      const griefHits = runWhirlwindPass(186211, '7cr', 35, 0)
-      expect(griefHits.slice(0, 6)).toEqual([4, 8, 12, 16, 20, 24])
+      //    Checks strictly every 4 frames (`4, 8, 12, 16, 20, 24, ...`); union two seeds so a 5% 1.13c
+      //    95%-to-hit-cap miss roll on an individual check frame never masks an active 4-frame slot.
+      const griefHitsA = runWhirlwindPass(186211, '7cr', 35, 0)
+      const griefHitsB = runWhirlwindPass(186212, '7cr', 35, 0)
+      for (const f of [...griefHitsA, ...griefHitsB]) {
+        expect(f % 4).toBe(0)
+      }
+      const observedCheckSlots = [...new Set([...griefHitsA, ...griefHitsB])]
+        .filter((f) => f <= 24)
+        .sort((a, b) => a - b)
+      expect(observedCheckSlots).toEqual([4, 8, 12, 16, 20, 24])
     })
   })
 

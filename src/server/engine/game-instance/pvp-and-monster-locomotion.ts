@@ -14,6 +14,13 @@ import { doesDoorOrGateBlockMode113c, isDoorOrGateObject113c } from '../../../co
 import type { SummonedPetUnit } from '../../ai/summon-manager.ts'
 import { executeSUnitDmg, getPrePierceResistance113c, type SUnitDmgPacket, type CombatUnitContext } from '../combat-pipeline.ts'
 import { FIXED_ONE, UnitStatList } from '../stat-list.ts'
+import {
+  allocateEvent3Seq113c,
+  computeMonsterBaseDamageRegen113c,
+  emitDotTraceEvent113c,
+  hasLifeMaskState113c,
+  stepMonsterEvent3HpRegen113c,
+} from '../statregen-dot-113c.ts'
 import { StateBus } from '../state-bus.ts'
 import type { SkillTargetUnitType113c } from '../../skills/martial-dualwield-113c.ts'
 import { computeDiminishingReturns } from '../../../common/data/calc-ast.ts'
@@ -21,7 +28,7 @@ import { difficultyResistPenalty } from '../difficulty-resist-penalty.ts'
 import { RABIES_CONTAGION_INTERVAL_FRAMES_113C, RABIES_CONTAGION_RADIUS_SUBTILES_113C, STATE_RABIES_113C } from '../../skills/p1-wave4-skills-113c.ts'
 import type { GameInstanceHost } from './host.ts'
 import type { InternalMercenaryRecord, InternalMonsterRecord, InternalPlayerRecord, PlayerSkillCast } from './types.ts'
-import { CANONICAL_OUTDOOR_SEAM_ADJACENT_PAIRS_113C, MONSTER_ACTIVATION_RADIUS_SUBTILES, monsterAiBehavior, playerWirePosition } from './constants-and-helpers.ts'
+import { CANONICAL_OUTDOOR_SEAM_ADJACENT_PAIRS_113C, MONSTER_ACTIVATION_RADIUS_SUBTILES, monsterAiBehavior, monsterHp256_113c, playerWirePosition } from './constants-and-helpers.ts'
 
 
 // ===========================================================================================
@@ -1374,6 +1381,16 @@ function stepMonsterPoison(this: GameInstanceHost, monster: InternalMonsterRecor
       }
     }
   }
+  if (this.drlgRoomPopulator !== null) {
+    // DRLG 1.13c path handles poison and `stat 74` DoT ticks inside `MONSTER_Event3_HpRegen` (`stepMonsterRegen`).
+    if (!monster.states.has(2)) {
+      monster.poisonRemainingFrames = 0
+      monster.poisonBitrate256 = 0
+      monster.poisonCarry256 = 0
+      monster.poisonKillSource = undefined
+    }
+    return
+  }
   if (monster.poisonRemainingFrames <= 0 || monster.poisonBitrate256 <= 0) return
   monster.poisonRemainingFrames -= 1
   monster.poisonCarry256 += monster.poisonBitrate256
@@ -1420,7 +1437,86 @@ function stepMonsterPoison(this: GameInstanceHost, monster: InternalMonsterRecor
  * The fractional remainder is carried so low regeneration rates still tick.
  */
 function stepMonsterRegen(this: GameInstanceHost, monster: InternalMonsterRecord): void {
-  if (monster.dead || monster.damageRegen <= 0 || monster.hp >= monster.maxHp) return
+  if (this.drlgRoomPopulator !== null) {
+    if (monster.nextEvent3Frame113c !== this.currentFrame) return
+    monster.nextEvent3Frame113c = undefined
+    if (monster.dead || monster.isNpc || !monster.isKillable || monster.mode === 0 || monster.mode === 12) return
+    if (!monster.states.has(2)) {
+      monster.poisonRemainingFrames = 0
+      monster.poisonBitrate256 = 0
+      monster.poisonCarry256 = 0
+      monster.poisonKillSource = undefined
+    }
+    const combat = this.monsterCombat.get(monster.unitId)
+    const stateBus = combat?.stateBus
+    const hasState = (id: number): boolean =>
+      monster.states.has(id) ||
+      Boolean(stateBus?.hasState(id)) ||
+      (id === 62 && this.monsterOpenWounds.has(monster.unitId))
+    const hp0 = monsterHp256_113c(monster)
+    const maxHp256 = monster.maxHp * FIXED_ONE
+    const baseRegen256 = computeMonsterBaseDamageRegen113c(
+      maxHp256,
+      monster.damageRegen,
+      monster.boneConstructOwnerPlayerId !== undefined,
+    )
+    const poisonMod256 = monster.states.has(2) && monster.poisonBitrate256 > 0 ? -monster.poisonBitrate256 : 0
+    const owEntry = this.monsterOpenWounds.get(monster.unitId)
+    const owMod256 = owEntry !== undefined && owEntry.remainingFrames > 0 ? -owEntry.bitrate256 : 0
+    const statListMod256 = combat !== undefined ? Math.trunc(combat.statList.getModifierBonus('hpregen')) : 0
+    const outcome = stepMonsterEvent3HpRegen113c({
+      hp0,
+      maxHp256,
+      baseRegen256,
+      modRegen256: poisonMod256 + owMod256 + statListMod256,
+      hasLifeMaskState: hasLifeMaskState113c(hasState),
+      hasPreventHeal: hasState(52),
+      inTown: isTownArea113c(monster.areaId),
+    })
+    if (outcome.reschedule && !outcome.killed) {
+      monster.nextEvent3Frame113c = this.currentFrame + 1
+      monster.event3Seq113c = allocateEvent3Seq113c(this)
+    }
+    if (outcome.changed) {
+      monster.hp = Math.ceil(outcome.hp1 / FIXED_ONE)
+      monster.hp256 = outcome.hp1
+      monster.hp256Whole = monster.hp
+      emitDotTraceEvent113c({
+        unitType: 1,
+        unitId: monster.unitId,
+        hp0,
+        hp1: outcome.hp1,
+      })
+    }
+    if (outcome.killed) {
+      const attackerId = monster.states.has(2)
+        ? monster.poisonAttackerId
+        : (owEntry?.attackerId ?? monster.poisonAttackerId)
+      const attacker =
+        (attackerId ? this.players.get(attackerId) : undefined) ??
+        this.players.values().next().value
+      const killSource = monster.poisonKillSource ?? (monster.lastHitByMerc ? 'merc' : 'player')
+      monster.poisonRemainingFrames = 0
+      monster.poisonBitrate256 = 0
+      monster.poisonCarry256 = 0
+      monster.poisonKillSource = undefined
+      monster.nextEvent3Frame113c = undefined
+      if (attacker !== undefined) {
+        this.applyMonsterDeath(monster, attacker, 'pois', killSource)
+      } else {
+        monster.dead = true
+        monster.mode = 0
+      }
+    }
+    return
+  }
+  if (
+    monster.dead ||
+    monster.damageRegen <= 0 ||
+    monster.hp >= monster.maxHp
+  ) {
+    return
+  }
   // Poison (state 2), Open Wounds (62) and Prevent Monster Heal (52) suppress
   // natural regeneration in 1.13c.
   const stateBus = this.monsterCombat.get(monster.unitId)?.stateBus

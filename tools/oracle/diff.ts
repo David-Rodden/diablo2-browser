@@ -35,6 +35,7 @@ function main(argv: string[]): number {
     else if (a === '--no-gs') opts.compareGameSeed = false
     else if (a === '--no-states') opts.compareStates = false
     else if (a === '--no-dmg') opts.compareDamage = false
+    else if (a === '--no-dot') opts.compareDot = false
     else if (a === '--stats') opts.statIds = nums(next())
     else if (a === '--from') opts.fromFrame = Number(next())
     else if (a === '--to') opts.toFrame = Number(next())

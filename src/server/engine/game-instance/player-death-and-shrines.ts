@@ -31,7 +31,7 @@ import { compute3BandDuration, computeDiminishingReturns } from '../../../common
 import { difficultyDeathExpPenalty } from '../difficulty-resist-penalty.ts'
 import type { GameInstanceHost } from './host.ts'
 import type { InternalMercenaryRecord, InternalMissileRecord, InternalMonsterRecord, InternalObjectRecord, InternalPlayerRecord, MissileDamageChannel, ServerItemEntry } from './types.ts'
-import { ACT_TOWN_AREA, ANCIENT_BARBARIANS_113C, MAX_PLAYER_LEVEL_113C, NPC_INTERACT_DISTANCE_SUBTILES, PLAYER_SIZE_X_113C, TOWN_AREAS, WARP_INTERACT_COOLDOWN_FRAMES, experienceForLevel113c, normalizeMissileElement, playerWirePosition, UNIT_TYPE_113C } from './constants-and-helpers.ts'
+import { ACT_TOWN_AREA, ANCIENT_BARBARIANS_113C, MAX_PLAYER_LEVEL_113C, NPC_INTERACT_DISTANCE_SUBTILES, PLAYER_SIZE_X_113C, TOWN_AREAS, WARP_INTERACT_COOLDOWN_FRAMES, experienceForLevel113c, normalizeMissileElement, playerWirePosition, UNIT_TYPE_113C, missileSpeedSubtilesPerFrame113c } from './constants-and-helpers.ts'
 
 
 function applyDamageToPlayer(this: GameInstanceHost, 
@@ -53,7 +53,14 @@ function applyDamageToPlayer(this: GameInstanceHost,
   if (!player || player.dead) return
 
   const dmgInt = Math.max(1, Math.floor(damage))
-  player.hpFixed = Math.max(0, player.hpFixed - dmgInt * FIXED_ONE)
+  if (options?.dmg256 !== undefined) {
+    // 1.13c `SUNITDMG_ExecuteMissileDamage` (`0x6FCFE242..0x6FCFE264`): `life = STAT_HITPOINTS - dwDmgTotal`
+    // in 256ths, `life < 0x100 -> 0` (`kb/combat/d2game-sunitdmg-player-defender-113c.md` §5).
+    const nextHpFixed = player.hpFixed - Math.max(0, Math.trunc(options.dmg256))
+    player.hpFixed = nextHpFixed < FIXED_ONE ? 0 : nextHpFixed
+  } else {
+    player.hpFixed = Math.max(0, player.hpFixed - dmgInt * FIXED_ONE)
+  }
   player.hp = Math.max(0, Math.ceil(player.hpFixed / FIXED_ONE))
 
   this.emitToPlayer(player.unitId, {
@@ -915,6 +922,9 @@ function clearUnitState(this: GameInstanceHost,
 
 
 
+/** Frame on which each timed state was (re)applied, per unit timer map (see `stepUnitStates`). */
+const stateTimerAppliedFrame113c = new WeakMap<Map<number, number>, Map<number, number>>()
+
 function applyUnitState(this: GameInstanceHost, 
   states: Set<number>,
   timers: Map<number, number>,
@@ -1017,6 +1027,12 @@ function applyUnitState(this: GameInstanceHost,
   }
   states.add(stateId)
   timers.set(stateId, durationFrames)
+  let appliedFrames = stateTimerAppliedFrame113c.get(timers)
+  if (appliedFrames === undefined) {
+    appliedFrames = new Map()
+    stateTimerAppliedFrame113c.set(timers, appliedFrames)
+  }
+  appliedFrames.set(stateId, this.currentFrame)
   if (
     unitType === 'monster' &&
     (stateId === 1 || stateId === 29 || stateId === 21 || stateId === 25)
@@ -1073,7 +1089,12 @@ function stepUnitStates(this: GameInstanceHost,
   unitId: number,
   areaId: number,
 ): void {
+  const appliedFrames = this.drlgRoomPopulator !== null ? stateTimerAppliedFrame113c.get(timers) : undefined
   for (const [stateId, rem] of timers.entries()) {
+    // 1.13c `STATES_SetTimer`: the removal event fires on `nGameFrame + duration`; a state set earlier in
+    // this frame is not aged until the next frame (oracle `p52-necromancer-curses`: Decrepify on zombie #9
+    // set on F=697 with 100 frames is still present on F=796 and gone on F=797).
+    if (appliedFrames?.get(stateId) === this.currentFrame) continue
     if (rem <= 1) {
       timers.delete(stateId)
       states.delete(stateId)
@@ -1247,7 +1268,7 @@ function spawnShrineMissile(this: GameInstanceHost,
   const stationary = (dx === 0 && dy === 0) || (meta !== undefined && meta.vel <= 0)
   const dist = Math.max(0.5, Math.hypot(dx, dy))
   const rawVel = meta === undefined ? 0 : meta.vel + Math.trunc((meta.velLev * slvl) / 8)
-  const speed = stationary ? 0 : meta === undefined ? 1.0 : rawVel / 16
+  const speed = stationary ? 0 : meta === undefined ? 1.0 : missileSpeedSubtilesPerFrame113c(rawVel)
   const rangeTicks =
     meta === undefined ? 25 : Math.max(1, meta.range + meta.levRange * slvl)
   const element: MissileDamageChannel =
@@ -1293,6 +1314,7 @@ function spawnShrineMissile(this: GameInstanceHost,
     hitCooldowns: new Map(),
     guaranteedHit: !(meta?.toHit ?? false),
   }
+  missile.createdFrame = this.currentFrame
   this.missiles.set(missileUnitId, missile)
   this.broadcastToArea(areaId, {
     type: 'CreateMissile',
@@ -2189,6 +2211,7 @@ function spawnTrapProjectile113c(this: GameInstanceHost, spec: {
     hitCooldowns: new Map(),
     guaranteedHit: true,
   }
+  rec.createdFrame = this.currentFrame
   this.missiles.set(unitId, rec)
   const sx = Math.round(rec.x)
   const sy = Math.round(rec.y)

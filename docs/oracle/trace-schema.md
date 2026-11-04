@@ -18,6 +18,8 @@ them field by field.
 | `initSeed` | `pGame->dwInitSeed` (`-seed N` on the oracle; `mapSeed`/game seed on the replica) |
 | `unitFields` | column names of each unit row (before stats) |
 | `statIds` | stat ids appended to every player (`t0`) and monster (`t1`) row, accrued value (`STATLIST_GetUnitStat(unit, id, 0)`, fixed point as stored: HP/mana/stamina are `<<8`) |
+| `rng` | optional capability flag (`true` when `gs` and unit `seedLo`/`seedHi` are authoritative and compared by default) |
+| `dot` | optional capability flag (`true` when per-frame `dot` StatRegen / DoT `stat 6` tick events are recorded; `trace-diff` compares `dot` iff both headers set `dot: true`) |
 
 ## Frame lines
 
@@ -46,6 +48,7 @@ them field by field.
 | `gs` | `[lo, hi]` | game RNG `D2SeedStrc` (`pGame+0xD0`) after the frame |
 | `st` | `[[type, unitId, stateId, ...], ...]` | active states of players/monsters (`STATES_CheckState` #10871 for ids `1..stateCount-1`; only units with at least one state) |
 | `dmg` | `[{att:[type,id], def:[type,id], hp:[before,after], ret, raw:[18 dwords]}]` | every `SUNITDMG_ApplyDamage` (`0x6FCFC0B0`) call this frame; `raw` is the 0x48-byte `D2DamageStrc` after the call, `hp` the defender's stat 6 around it |
+| `dot` | `[[type, unitId, hp0, hp1], ...]` | every non-zero `STATLIST_SetUnitStat(unit, 6, hp1, 0)` (`D2Common.#10887`) tick from `MONSTER_Event3_HpRegen` (`0x6FC9684A`) or `PLAYER_UpdateHpRegen` (`0x6FC97D12`) this frame (`hp0` / `hp1` in `1/256`ths, emitted in execution order when non-empty; gated on `header.dot`) |
 | `in` | `[[dispatchResult, hex], ...]` | C2S packets delivered this frame (scenario inputs and `steer` moves) |
 
 RNG: D2 inlines its `SEED` recurrence at every call site, so individual draws cannot be hooked

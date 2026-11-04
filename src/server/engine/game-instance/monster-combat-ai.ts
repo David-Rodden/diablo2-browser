@@ -3,18 +3,22 @@
  */
 
 import { compute5BandScaling } from '../../../common/data/calc-ast.ts'
+import { SEED_RollRandomNumber } from '../../../common/rng/d2-rng.ts'
 import { MONMODE_KNOCKBACK } from '../../../common/path/types.ts'
 import { QUEST_FLAG_STARTED_113C } from '../quests-113c.ts'
 import { isBaalTentacleHcIdx113c, isBonePrisonMonsterHcIdx113c, isFrogDemonHcIdx113c, isNonMeleeMonsterAi113c, isPassiveMonsterAi113c, isTentacleHcIdx113c, isTentacleHeadHcIdx113c, monaiParam113c, normalizeMonAiName113c } from '../../../common/units/monai-113c.ts'
 import { MON_UMOD } from '../../../common/units/monster-death-fx.ts'
+import { MONSTATS_113C_ROWS } from '../../../common/units/monstats-113c-data.ts'
 import type { MonsterSkillEntry } from '../../../common/units/unit-types.ts'
 import { BAAL_THRONE_WAVES_113C } from '../../ai/monster-ai.ts'
+import { unitsGetMeleeDistance113c } from '../../ai/town-npc-ai-113c.ts'
 import { computeMissileElementalLength113c, evaluateMonsterMissileDamage113c, resolveMonsterModeMissileSlvl113c, resolveMonsterRegisteredSkillSlvl113c } from '../../ai/monster-missile-damage-113c.ts'
 import type { SummonedPetUnit } from '../../ai/summon-manager.ts'
 import { FIXED_ONE } from '../stat-list.ts'
 import type { GameInstanceHost } from './host.ts'
 import type { InternalMercenaryRecord, InternalMonsterRecord, InternalPlayerRecord } from './types.ts'
-import { MONSTER_ACTIVATION_RADIUS_SUBTILES, monsterCanFireRanged113c, monsterProfile113c, monsterShootRange, normalizeMissileElement, UNIT_TYPE_113C } from './constants-and-helpers.ts'
+import { MONSTER_ACTIVATION_RADIUS_SUBTILES, monsterCanFireRanged113c, monsterProfile113c, monsterShootRange, normalizeMissileElement, unitsDistanceToCoordinates113c, UNIT_TYPE_113C } from './constants-and-helpers.ts'
+import { rollLimitedSeed113c } from './unit-seeds-113c.ts'
 
 
 /**
@@ -1955,8 +1959,12 @@ function stepMonsterAi(this: GameInstanceHost, monster: InternalMonsterRecord): 
   if (this.currentFrame < monster.hitRecoveryUntilFrame) {
     return
   }
-  if (monster.mode === MONMODE_KNOCKBACK) {
+  if (monster.mode === MONMODE_KNOCKBACK || (this.drlgRoomPopulator !== null && monster.mode === 3)) {
     monster.mode = 1
+  }
+  if (this.drlgRoomPopulator !== null) {
+    stepDrlgMonsterAi113c.call(this, monster)
+    return
   }
   const isConverted = this.isMonsterConverted(monster)
   const aiProfile = monsterProfile113c(monster.ai)
@@ -3742,6 +3750,346 @@ function stepVampireTargetAi113c(
   }
 
   this.moveMonsterToward(monster, target.x, target.y, false)
+}
+
+/**
+ * DRLG oracle path: 1.13c `AiZombie` (D2Game `0x6FCA38B0`) with `AI_ApproachTarget` (`0x6FD12540`) and
+ * `AI_IdleWander` (`0x6FD11B10`). Pseudocode, RNG table and fields: kb/monsters/d2game-zombie-ai-113c.md.
+ * NOTE: every DRLG-populated monster currently runs this AI regardless of its MonStats `AI` column.
+ */
+function stepDrlgMonsterAi113c(this: GameInstanceHost, monster: InternalMonsterRecord): void {
+  const aiInterval = Math.max(1, Math.round(monster.aiDelay))
+  if (
+    !monster.submerged &&
+    (monster.states.has(1) ||
+      monster.states.has(29) ||
+      monster.states.has(21) ||
+      monster.states.has(25) ||
+      monster.frozenTicks > 0)
+  ) {
+    monster.pendingAttack = undefined
+    monster.pendingAllyAttack = undefined
+    monster.actionAnimEndFrame = 0
+    if (monster.mode !== 1) {
+      monster.mode = 1
+      this.areaPathWorld.stopMonsterMove113c(monster.areaId, monster.unitId, 1)
+    }
+    return
+  }
+
+  if (monster.actionAnimEndFrame !== undefined && monster.actionAnimEndFrame > 0) {
+    if (this.currentFrame < monster.actionAnimEndFrame) {
+      return
+    }
+    monster.actionAnimEndFrame = 0
+    monster.mode = 1
+    monster.nextAiFrame = this.currentFrame + aiInterval
+    return
+  }
+
+  let immediateAi = false
+  if (monster.mode === 2 || monster.mode === 15) {
+    const slowPct = this.monsterSlowPercent(monster)
+    const velPct = 75 + (monster.mode === 15 ? (monster.runVelocityBonus ?? 0) : 0) - slowPct
+    const res = this.areaPathWorld.stepMonsterMove113c({
+      areaId: monster.areaId,
+      unitId: monster.unitId,
+      hcIdx: monster.hcIdx,
+      velocityPct: velPct,
+      mode: monster.mode,
+    })
+    if (res !== null) {
+      monster.x = res.x
+      monster.y = res.y
+      if (res.stepped === 0) {
+        monster.mode = 1
+        monster.runVelocityBonus = 0
+        this.areaPathWorld.stopMonsterMove113c(monster.areaId, monster.unitId, 1)
+        immediateAi = true
+      } else {
+        return
+      }
+    } else {
+      monster.mode = 1
+      monster.runVelocityBonus = 0
+      immediateAi = true
+    }
+  }
+
+  if (!immediateAi && this.currentFrame < monster.nextAiFrame) {
+    return
+  }
+
+  const unitSeed = this.unitSeeds.get(`${UNIT_TYPE_113C.monster}:${monster.unitId}`)
+  if (unitSeed === undefined) {
+    monster.nextAiFrame = this.currentFrame + aiInterval
+    return
+  }
+
+  // MonAI flag-1 tick (`0x6FCBD196` -> `0x6FD13220`, kb/monsters/d2game-zombie-ai-113c.md §6): without a
+  // player strictly inside `MonStats.aidist` (35 when 0) by `UNITS_GetDistanceToCoordinates` the think
+  // function is skipped and the AI re-scheduled: `d >= 35` -> 25, `d < 25` -> 10, else `d - 10` frames.
+  {
+    const aiDist = monStatsAiDist113c(monster.hcIdx, this.difficulty)
+    const mx = Math.floor(monster.x + 0.5)
+    const my = Math.floor(monster.y + 0.5)
+    let minDist = 0x7fffffff
+    for (const p of this.players.values()) {
+      if (p.dead || !this.isAreaSeamAdjacent(monster.areaId, p.areaId)) continue
+      const d = unitsDistanceToCoordinates113c(Math.floor(p.x + 0.5), Math.floor(p.y + 0.5), mx, my)
+      if (d < minDist) minDist = d
+    }
+    if (minDist >= aiDist) {
+      monster.nextAiFrame =
+        this.currentFrame + (minDist >= 35 ? 25 : minDist < 25 ? 10 : minDist - 10)
+      return
+    }
+  }
+
+  const hasDimVision = monster.states.has(23)
+  const hasTaunt = monster.states.has(54)
+  const effectiveAggro = hasDimVision && !hasTaunt ? 3.5 : monster.aggroRadius
+  const target = this.nearestHostileForMonster(monster, effectiveAggro)
+
+  let dist = Infinity
+  let inMeleeRange = false
+  if (target !== null) {
+    // `AI_FindNearestPlayerOrAlly_6FCD1C90` (`0x6FCD1DE6`): `nTargetDist` uses `0x6FCD08F0`
+    // (`unitsDistanceToCoordinates113c`), while `bInMeleeRange` (`0x6FCD20F2`) calls
+    // `D2Common.#11138` (`UNITS_IsInMeleeRange(pMonster, pTarget, 0)` `0x6FD826C0`).
+    dist = unitsDistanceToCoordinates113c(
+      Math.round(monster.x),
+      Math.round(monster.y),
+      Math.round(target.x),
+      Math.round(target.y),
+    )
+    if (target.kind === 'player') {
+      const exactMelee = this.areaPathWorld.isMonsterInMeleeRange113c(
+        monster.areaId,
+        monster.unitId,
+        0,
+        target.player.unitId,
+        0,
+      )
+      if (exactMelee !== null) {
+        inMeleeRange = exactMelee
+      } else {
+        const rawRng = MONSTATS_113C_ROWS[monster.hcIdx]?.meleeRng ?? 0
+        const meleeRng = rawRng === 0xff ? 0 : rawRng
+        const meleeDist = unitsGetMeleeDistance113c(
+          Math.round(monster.x),
+          Math.round(monster.y),
+          MONSTATS_113C_ROWS[monster.hcIdx]?.sizeX ?? 2,
+          Math.round(target.x),
+          Math.round(target.y),
+          2,
+        )
+        inMeleeRange = meleeDist <= 0 || meleeRng + 1 >= meleeDist
+      }
+    } else {
+      const targetMonId =
+        target.kind === 'merc'
+          ? target.merc.unitId
+          : (this.petUnitIds.get(target.pet.uid) ?? -1)
+      const exactMelee =
+        targetMonId > 0
+          ? this.areaPathWorld.isMonsterInMeleeRange113c(
+              monster.areaId,
+              monster.unitId,
+              1,
+              targetMonId,
+              0,
+            )
+          : null
+      if (exactMelee !== null) {
+        inMeleeRange = exactMelee
+      } else {
+        const rawRng = MONSTATS_113C_ROWS[monster.hcIdx]?.meleeRng ?? 0
+        const meleeRng = rawRng === 0xff ? 0 : rawRng
+        const targetHcIdx =
+          target.kind === 'merc' ? target.merc.classId : (target.pet.classId ?? 0)
+        const meleeDist = unitsGetMeleeDistance113c(
+          Math.round(monster.x),
+          Math.round(monster.y),
+          MONSTATS_113C_ROWS[monster.hcIdx]?.sizeX ?? 2,
+          Math.round(target.x),
+          Math.round(target.y),
+          MONSTATS_113C_ROWS[targetHcIdx]?.sizeX ?? 2,
+        )
+        inMeleeRange = meleeDist <= 0 || meleeRng + 1 >= meleeDist
+      }
+    }
+  }
+
+  if (target !== null && inMeleeRange) {
+    // AiZombie 0x6FCA38D7..0x6FCA3906: `pMonster->pSeed % 100 < aip4` -> A1 (mode 4), else A2 (mode 5).
+    const aip4 = monStatsAip113c(this, monster, 4)
+    const useA1 = rollLimitedSeed113c(unitSeed, 100) < aip4 || !monster.hasAttack2
+    const skillMode: 'A1' | 'A2' = useA1 ? 'A1' : 'A2'
+    const mode = skillMode === 'A1' ? 4 : 5
+    const minDmg = skillMode === 'A2' ? monster.attack2MinDmg : monster.minDmg
+    const maxDmg = skillMode === 'A2' ? monster.attack2MaxDmg : monster.maxDmg
+    const timing = this.monsterAttackTiming(monster, skillMode)
+    monster.mode = mode
+    monster.actionAnimEndFrame = this.currentFrame + timing.totalFrames
+    if (target.kind === 'player') {
+      monster.pendingAttack = {
+        playerId: target.player.unitId,
+        frame: this.currentFrame + timing.actionFrame,
+        mode,
+        skillMode,
+        minDmg,
+        maxDmg,
+      }
+    } else if (target.kind === 'merc') {
+      monster.pendingAllyAttack = {
+        targetKind: 'merc',
+        targetId: target.merc.unitId,
+        frame: this.currentFrame + timing.actionFrame,
+        mode,
+        skillMode,
+        minDmg,
+        maxDmg,
+      }
+    } else if (target.kind === 'pet') {
+      monster.pendingAllyAttack = {
+        targetKind: 'pet',
+        targetId: target.pet.uid,
+        frame: this.currentFrame + timing.actionFrame,
+        mode,
+        skillMode,
+        minDmg,
+        maxDmg,
+      }
+    }
+    return
+  }
+
+  // AiZombie 0x6FCA3A07..0x6FCA3A6B (kb/monsters/d2game-zombie-ai-113c.md §AiZombie): the "always chase"
+  // special case is tested first, then `dist < aip2` gates one `pMonster->pSeed % 100 < aip1` roll, and
+  // only when that fails is the Burial Grounds level check (#10331 -> #10826 == 17) made.
+  const aip1 = monStatsAip113c(this, monster, 1)
+  const aip2 = monStatsAip113c(this, monster, 2)
+  const suKey = monster.superUniqueId?.toLowerCase()
+  const shouldChase =
+    suKey === 'corpsefire' ||
+    suKey === 'creeping feature' ||
+    hasTaunt ||
+    (target !== null && dist < aip2 && rollLimitedSeed113c(unitSeed, 100) < aip1) ||
+    monster.areaId === 17
+
+  const slowPct = this.monsterSlowPercent(monster)
+  if (shouldChase && target !== null) {
+    const hasDecrep = monster.states.has(60)
+    const moveMode = hasDecrep ? 2 : 15
+    const velBonus = hasDecrep ? 0 : 100
+    monster.runVelocityBonus = velBonus
+    const pts =
+      target.kind === 'player'
+        ? this.areaPathWorld.startMonsterMoveToTarget113c({
+            areaId: monster.areaId,
+            unitId: monster.unitId,
+            hcIdx: monster.hcIdx,
+            targetUnitType: 0,
+            targetUnitId: target.player.unitId,
+            pathType: MONSTER_MOVE_PATHTYPE_113C,
+            stepNum: 1,
+            velocityPct: 75 + velBonus - slowPct,
+          })
+        : this.areaPathWorld.startMonsterMoveToPos113c({
+            areaId: monster.areaId,
+            unitId: monster.unitId,
+            hcIdx: monster.hcIdx,
+            targetX: Math.round(target.x),
+            targetY: Math.round(target.y),
+            pathType: MONSTER_MOVE_PATHTYPE_113C,
+            stepNum: 1,
+            velocityPct: 75 + velBonus - slowPct,
+          })
+    if (pts > 0) {
+      monster.mode = moveMode
+    } else {
+      monster.mode = 1
+      monster.runVelocityBonus = 0
+      monster.nextAiFrame = this.currentFrame + aiInterval
+    }
+    return
+  }
+
+  // `AI_IdleWander(pGame, pMonster, 3)` (`D2Game.dll` `0x6FD11B10`)
+  const s1 = SEED_RollRandomNumber(unitSeed)
+  let dx: number
+  let dy: number
+  if ((s1 & 1) !== 0) {
+    dy = rollLimitedSeed113c(unitSeed, 3)
+    dx = 3
+  } else {
+    dx = rollLimitedSeed113c(unitSeed, 3)
+    dy = 3
+  }
+  if ((SEED_RollRandomNumber(unitSeed) & 1) !== 0) dx = -dx
+  if ((SEED_RollRandomNumber(unitSeed) & 1) !== 0) dy = -dy
+
+  monster.runVelocityBonus = 0
+  const pts = this.areaPathWorld.startMonsterMoveToPos113c({
+    areaId: monster.areaId,
+    unitId: monster.unitId,
+    hcIdx: monster.hcIdx,
+    targetX: Math.round(monster.x) + dx,
+    targetY: Math.round(monster.y) + dy,
+    pathType: MONSTER_MOVE_PATHTYPE_113C,
+    stepNum: 1,
+    velocityPct: 75 - slowPct,
+  })
+  if (pts > 0) {
+    monster.mode = 2
+  } else {
+    monster.mode = 1
+    monster.nextAiFrame = this.currentFrame + aiInterval
+  }
+}
+
+/**
+ * `MONSTER_StartMode` path type for a moving mode (D2Game `0x6FC95070` stores 101 in the mode-change
+ * struct when the mode-flag table `0x6FD1BC50[mode].bMoving` is set, i.e. WL/KB/S4?/RN; `0x6FC94FE3`
+ * maps 101 to `PATHTYPE_TOWARD_FINISH` 13 unless the AI control block overrides it at `+0x18`).
+ * See kb/monsters/d2game-zombie-ai-113c.md §MONSTER_StartMode.
+ */
+const MONSTER_MOVE_PATHTYPE_113C = 13
+
+/**
+ * MonStats `aip<n>` for the game difficulty, read the way D2Game does
+ * (`pMonStatsTxt->wAiParam[n - 1][pGame->nDifficulty]`: int16 rows at +0x56 / +0x5C / +0x62 / +0x68 ...,
+ * e.g. AiZombie 0x6FCA38FD aip4, 0x6FCA3A12 aip1, 0x6FCA3A0D aip2). No default: a missing row is a
+ * data error.
+ */
+function monStatsAip113c(host: GameInstanceHost, monster: InternalMonsterRecord, n: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8): number {
+  const row = MONSTATS_113C_ROWS[monster.hcIdx]
+  if (row === undefined) {
+    throw new Error(`monStatsAip113c: no MonStats.txt row for hcIdx ${monster.hcIdx}`)
+  }
+  const value = row[`aip${n}`][host.difficulty]
+  if (value === undefined) {
+    throw new Error(`monStatsAip113c: MonStats aip${n} of ${row.id} has no difficulty ${host.difficulty}`)
+  }
+  return value
+}
+
+/**
+ * Target-search radius of `AI_FindNearestPlayerOrAlly` (`0x6FCD1C90`): `MonStats.txt` `aidist[diff]`
+ * (byte at `pMonStatsTxt + 0x52 + nDifficulty`, `0x6FCD1D5D..0x6FCD1D6C`), replaced by the hard-coded `0x23`
+ * (35, `0x6FCD1D41`) when that byte is 0. Players qualify when their distance is strictly below it.
+ */
+export function monStatsAiDist113c(hcIdx: number, difficulty: number): number {
+  const row = MONSTATS_113C_ROWS[hcIdx]
+  if (row === undefined || row.hcIdx !== hcIdx) {
+    throw new Error(`monStatsAiDist113c: no MonStats.txt row for hcIdx ${hcIdx}`)
+  }
+  const value = (row as { aidist?: readonly number[] }).aidist?.[difficulty]
+  if (value === undefined) {
+    throw new Error(`monStatsAiDist113c: MonStats aidist of ${row.id} has no difficulty ${difficulty}`)
+  }
+  return value !== 0 ? value : 0x23
 }
 
 export interface MonsterCombatAiMethods {

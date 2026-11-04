@@ -14,7 +14,11 @@ import type { SummonedPetUnit } from '../../ai/summon-manager.ts'
 import { evaluateMonsterMissileDamage113c } from '../../ai/monster-missile-damage-113c.ts'
 import { applyElementalAbsorb113c, executeSUnitDmg, type CombatUnitContext } from '../combat-pipeline.ts'
 import { checkMissileSegmentFootprintOverlap113c, getMissileCollideEntry113c, MissileEngine as OnlineMissileEngine, type OnlineMissileSpawn113c, type OnlineMissileSplash113c, type OnlineMissileTarget113c } from '../missile-engine.ts'
+import { checkMissileSizeFootprintOverlap113c, stepMissileSubtileRay113c } from '../../../common/skills/missile-size-footprint-113c.ts'
 import { FIXED_ONE, UnitStatList } from '../stat-list.ts'
+import { mulDiv113c } from '../../../common/data/mul-div-113c.ts'
+import { createLinearMissilePath113c, linearMissileStep16_113c, stepLinearMissilePath113c } from '../missile-path-113c.ts'
+import { D2SEED_AdvanceInline, SEED_RollLimitedRandomNumber } from '../../../common/rng/d2-rng.ts'
 import { resolveMissilePierceIdx } from '../missile-pierce.ts'
 import { StateBus } from '../state-bus.ts'
 import { compute5BandScaling } from '../../../common/data/calc-ast.ts'
@@ -22,7 +26,7 @@ import { difficultyResistPenalty } from '../difficulty-resist-penalty.ts'
 import { STATE_SLOWMISSILES_113C, stepBladeSentinelPatrol113c } from '../../skills/p1-wave4-skills-113c.ts'
 import type { GameInstanceHost } from './host.ts'
 import type { InternalMercenaryRecord, InternalMissileRecord, InternalMonsterRecord, InternalObjectRecord, InternalPlayerRecord, PlayerSkillCast, PlayerSkillMissileLaunchOptions113c, ServerItemEntry } from './types.ts'
-import { PLAYER_MISSILE_SPEED_SUBTILES, TOWN_AREAS, monsterProfile113c, normalizeMissileElement, playerWirePosition, stableUnitKey, UNIT_TYPE_113C } from './constants-and-helpers.ts'
+import { PLAYER_MISSILE_SPEED_SUBTILES, TOWN_AREAS, monsterProfile113c, normalizeMissileElement, playerWirePosition, stableUnitKey, UNIT_TYPE_113C, missileSpeedSubtilesPerFrame113c } from './constants-and-helpers.ts'
 
 
 /** Route a monster projectile or melee skill hit through `executeSUnitDmg` for mercs/pets too (#1345, #1994). */
@@ -571,6 +575,7 @@ function registerPlayerSkillMissile113c(this: GameInstanceHost,
         (opts?.lockedMonsterId !== undefined ? this.onlineUnitKey113c('monster', opts.lockedMonsterId) : undefined),
     },
   )
+  missile.createdFrame = this.currentFrame
   this.missiles.set(missile.unitId, missile)
 }
 
@@ -647,6 +652,14 @@ function stepOnlineMissileSrvDo113c(this: GameInstanceHost, missile: InternalMis
   online.vx = missile.vx
   online.vy = missile.vy
   const kind = engine.classifyOnlineSrvDo113c(online.row)
+  if (kind === 'pathspawner' && this.drlgRoomPopulator !== null) {
+    // `SrvDo06` (`0x6FC61850`): one `SubMissile1` when `D2Common_10234` reports that the path stepped
+    // onto a new sub-tile. The do-function runs before the frame's move, so it sees the step flag of
+    // the previous move (oracle p52-sorceress-fire-dot: crossings 637/639/.., spawns 638/640/..).
+    online.pathLastX = online.x
+    online.pathLastY = online.y
+    online.pathStepAccum = missile.pathStepPrev113c === true ? 1 : 0
+  }
   const targets = kind === 'homing' ? this.onlineMissileTargets113c(missile) : []
   const res = engine.stepOnlineMissileSrvDo113c(online, targets, this.onlineMissileBlocker113c(missile.areaId))
   missile.vx = online.vx
@@ -697,7 +710,11 @@ function dispatchOnlineMissileUnitHit113c(this: GameInstanceHost,
   )
   if (res.outcome === 'passthrough') return 'passthrough'
   for (const spawn of res.spawns) this.pendingOnlineMissileChildren.push({ parent: missile, spawn })
-  if (res.splash !== undefined) this.applyOnlineMissileSplash113c(missile, x, y, res.splash)
+  if (this.isOracleSrvHit01Missile113c(missile)) {
+    this.applySrvHit01Radial113c(missile)
+  } else if (res.splash !== undefined) {
+    this.applyOnlineMissileSplash113c(missile, x, y, res.splash)
+  }
   if (missile.pierceRemaining !== undefined) {
     missile.pierce = missile.pierceRemaining > 0
   } else if (res.outcome === 'expire') {
@@ -725,7 +742,163 @@ function finishOnlineMissile113c(this: GameInstanceHost, missile: InternalMissil
     this.onlineMissileBlocker113c(missile.areaId),
   )
   for (const spawn of res.spawns) this.pendingOnlineMissileChildren.push({ parent: missile, spawn })
-  if (res.splash !== undefined) this.applyOnlineMissileSplash113c(missile, missile.x, missile.y, res.splash)
+  if (res.splash === undefined) return
+  if (this.isOracleSrvHit01Missile113c(missile)) {
+    this.applySrvHit01Radial113c(missile)
+  } else {
+    this.applyOnlineMissileSplash113c(missile, missile.x, missile.y, res.splash)
+  }
+}
+
+/**
+ * Where a missile stops when it runs into a unit (`PATH_StepMissile`, `D2Common.#10229` `0x6FD80F80`,
+ * see `kb/skills/missiles/missile-collision-113c.md` §2): the 16.16 per-frame displacement is halved
+ * until both components are below one sub-tile, then the path advances step by step and stops on the
+ * last position before the first step whose footprint overlaps the unit. Returns that position.
+ */
+export function resolveMissileUnitImpactPoint113c(
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  tx: number,
+  ty: number,
+  missileSize: number,
+  targetSize: number,
+): { x: number; y: number } {
+  let sx = Math.trunc((x1 - x0) * 65536)
+  let sy = Math.trunc((y1 - y0) * 65536)
+  let steps = 1
+  while (Math.abs(sx) >= 0x10000 || Math.abs(sy) >= 0x10000) {
+    sx >>= 1
+    sy >>= 1
+    steps <<= 1
+  }
+  let px = Math.trunc(x0 * 65536)
+  let py = Math.trunc(y0 * 65536)
+  for (let k = 0; k < steps; k++) {
+    const nx = px + sx
+    const ny = py + sy
+    const fx = nx / 65536
+    const fy = ny / 65536
+    if (checkMissileSegmentFootprintOverlap113c(fx, fy, fx, fy, tx, ty, missileSize, targetSize, 1)) break
+    px = nx
+    py = ny
+  }
+  return { x: px / 65536, y: py / 65536 }
+}
+
+/** `SrvHit01` element switch `0x6FC5A280` (`#10557` element of the missile row) -> unit stat ids. */
+const SRVHIT01_ELEM_STATS_113C = {
+  fire: { minStat: 48, maxStat: 49, pctStat: 'passive_fire_mastery' },
+  ltng: { minStat: 50, maxStat: 51, pctStat: 'passive_ltng_mastery' },
+  mag: { minStat: 52, maxStat: 53, pctStat: 'passive_mag_mastery' },
+} as const
+
+/**
+ * DRLG oracle path: player missiles whose `pSrvHitFunc` is 1 (`MISSMODE_SrvHit01`, `0x6FC5B990`) and
+ * whose element is one of the ported single-channel cases of `0x6FC5A280` (fire / lightning / magic).
+ */
+function isOracleSrvHit01Missile113c(this: GameInstanceHost, missile: InternalMissileRecord): boolean {
+  if (this.drlgRoomPopulator === null || missile.ownerType !== 'player') return false
+  if (missile.srvHitElem256 === undefined) return false
+  const row = this.registry.getMissileById(missile.missileId)
+  if (row === undefined || row.pSrvHitFunc !== 1) return false
+  return missile.element === 'fire' || missile.element === 'ltng' || missile.element === 'mag'
+}
+
+/**
+ * 1.13c `MISSMODE_SrvHit01` (`D2Game.dll` `0x6FC5B990`, fastcall `ecx = pGame`, `edx = pMissile`),
+ * see `kb/skills/missiles/d2game-srvhit01-fireball-113c.md`:
+ *
+ * 1. `0x6FC5B9E4`: `pMissile->dwFlags & 0x400` (damage stats present) and owner `0x6FD003A0` required.
+ * 2. `0x6FC5BA1A`: radius = `MissilesTxt.sHitPar1` (`+0x4C`) when `> 0` (else the skill `calc1`, not ported:
+ *    every 1.13c `SrvHit01` row has `sHitPar1 > 0`).
+ * 3. `0x6FC5BAFC` -> `0x6FC5A280`: ONE damage packet per impact, the element rolled by `0x6FC59B40`
+ *    from the missile's own min/max stats + mastery pct (`mulDiv113c(pct, v, 100)`), as
+ *    `min + RollLimited(&pMissile->pSeed, max - min)` — one draw of the missile unit seed.
+ * 4. `0x6FC5BB05..0x6FC5BB22`: `HitFlags |= MissilesTxt+0xA8`, `ResultFlags |= MissilesTxt+0xAC`.
+ * 5. `0x6FC5BB44` -> scan `0x6FCC0C70(owner, x, y, radius, filter 0x8583, cb 0x6FCC1210)`: every unit in
+ *    the owner's adjacent rooms with sub-tile `dx² + dy² <= radius²` gets a copy of the packet (the
+ *    directly struck unit included, the owner skipped).
+ */
+function applySrvHit01Radial113c(this: GameInstanceHost, missile: InternalMissileRecord): void {
+  const owner = this.players.get(missile.ownerId)
+  if (owner === undefined) return
+  const row = this.registry.getMissileById(missile.missileId)
+  if (row === undefined) throw new Error(`SrvHit01: missile ${missile.missileId} has no Missiles.txt row`)
+  if (row.sHitPar1 <= 0) {
+    throw new Error(`SrvHit01: '${row.name}' sHitPar1 <= 0 needs the skill calc1 radius (0x6FC5BA25), not ported`)
+  }
+  const radius = row.sHitPar1
+  const elem = missile.element
+  if (elem !== 'fire' && elem !== 'ltng' && elem !== 'mag') return
+  const range = missile.srvHitElem256
+  if (range === undefined) throw new Error(`SrvHit01: missile ${missile.unitId} carries no element stats`)
+  const seed = this.unitSeeds.get(`${UNIT_TYPE_113C.missile}:${missile.unitId}`)
+  if (seed === undefined) throw new Error(`SrvHit01: missile ${missile.unitId} has no unit seed`)
+  // 0x6FC59B40: max <= 0 or min <= 0 -> 0 (no draw); swap when min > max; mastery pct via 0x6FC214D0.
+  let rolled256 = 0
+  let lo = range.min
+  let hi = range.max
+  if (hi > 0 && lo > 0) {
+    if (lo > hi) [lo, hi] = [hi, lo]
+    // The missile inherits the owner's mastery stat; read it from the caster's stat list.
+    const pct = this.playerCombatContext(owner).statList.getAccruedStat(SRVHIT01_ELEM_STATS_113C[elem].pctStat)
+    if (pct !== 0) {
+      lo += mulDiv113c(pct, lo, 100)
+      hi += mulDiv113c(pct, hi, 100)
+    }
+    rolled256 = lo + SEED_RollLimitedRandomNumber(seed, hi - lo)
+  }
+  const cx = Math.floor(missile.x)
+  const cy = Math.floor(missile.y)
+  const r2 = radius * radius
+  const inRange = (ux: number, uy: number): boolean => {
+    const dx = Math.floor(ux) - cx
+    const dy = Math.floor(uy) - cy
+    return dx * dx + dy * dy <= r2
+  }
+  // Room unit lists are LIFO (`pRoom->pUnitFirst`, next `+0xE8`): newer units come first. Without a
+  // per-room unit model the monsters are visited by descending unit id (see the kb section).
+  const monsters = [...this.monsters.values()]
+    .filter((m) => {
+      if (m.dead || m.isNpc || m.submerged || m.align !== 0 || this.isMonsterConverted(m)) return false
+      if (TOWN_AREAS.has(m.areaId)) return false
+      if (m.areaId !== missile.areaId && !this.isAreaSeamAdjacent(missile.areaId, m.areaId)) return false
+      return inRange(m.x, m.y)
+    })
+    .sort((a, b) => b.unitId - a.unitId)
+  if (rolled256 <= 0) return
+  const dmg = Math.max(1, Math.floor(rolled256 / FIXED_ONE))
+  for (const m of monsters) {
+    if (m.dead) continue
+    this.applyDamageToMonster(owner, m, dmg, missile.skillId, elem, 'player', {
+      attackKind: 'spell',
+      autoHit: true,
+      unblockable: true,
+      srcDam: 0,
+      skipElemMastery: true,
+      elemDamage256: rolled256,
+      missileHitFlags113c: row.hitFlags,
+      elemDurationFrames: missile.elemDurationFrames,
+    })
+  }
+  const pvp = this.collectHostilePvpTargetsInArea113c(owner.unitId, missile.areaId, true)
+  const spec = {
+    skillId: missile.skillId,
+    physDamage: 0,
+    elemDamage: dmg,
+    elemType: elem,
+    elemDamage256: rolled256,
+    elemDurationFrames: missile.elemDurationFrames,
+    attackKind: 'spell' as const,
+    autoHit: true,
+    unblockable: true,
+  }
+  for (const p of pvp.players) if (inRange(p.x, p.y)) this.applyPvpHitToTarget113c(owner, { kind: 'player', player: p }, spec)
+  for (const c of pvp.mercs) if (inRange(c.x, c.y)) this.applyPvpHitToTarget113c(owner, { kind: 'merc', merc: c }, spec)
+  for (const e of pvp.pets) if (inRange(e.pet.x, e.pet.y)) this.applyPvpHitToTarget113c(owner, { kind: 'pet', ...e }, spec)
 }
 
 
@@ -1183,6 +1356,98 @@ function applyMonsterOnlineGroundFireTick113c(this: GameInstanceHost,
 
 
 
+/**
+ * DRLG oracle path: unit contact of a player missile without a hit function and without damage
+ * stats (`firewallmaker` #68: `CollideType 8`, `CollideKill 0`, `pSrvHitFunc 0`). `MISSMODE_SrvHitDispatch`
+ * (`0x6FC5EDE0`, see `kb/skills/missiles/missile-collision-113c.md` §5):
+ * - `0x6FC5EE9A` `#10227`: the unit equal to the missile's LastCollide unit is skipped; `#10024` stores it.
+ * - `0x6FC5EEBD` enemy filter `0x6FC58FB0`, hostility `0x6FD00A60` / `CollideFriend`.
+ * - result `2` (no `Explosion` flag), `CollideKill = 0` keeps the missile.
+ * - `0x6FC5F06B` packet `0x6FC5A4E0` from the missile's (empty) damage stats -> no RNG draw; `SrvDmgFunc 0`;
+ *   `0x6FC5F0AF` `0x6FC5AFF0` applies it: a zero-damage `SUNITDMG` (`raw[0] = 0`, `raw[1] = 1`).
+ */
+function applyMissileDefaultUnitContact113c(
+  this: GameInstanceHost,
+  missile: InternalMissileRecord,
+  prevX: number,
+  prevY: number,
+): void {
+  const row = this.registry.getMissileById(missile.missileId)
+  if (row === undefined || row.pSrvHitFunc !== 0 || row.collideKill) return
+  if ((getMissileCollideEntry113c(missile.collideType).unitTypeMask & 0x0100) === 0) return
+  if (missile.carrier !== 'none') return
+  const owner = this.players.get(missile.ownerId)
+  if (owner === undefined) return
+  const candidates = [...this.monsters.values()]
+    .filter((m) => {
+      if (m.dead || m.isNpc || m.submerged || m.align !== 0 || this.isMonsterConverted(m)) return false
+      if (m.areaId !== missile.areaId) return false
+      const size = Math.max(1, Math.min(3, getMonsterPathRecord(m.hcIdx)?.sizeX ?? 2))
+      // `COLLISION_CheckMaskWithSize` works on integer sub-tiles: `floor(16.16)` = the rounded replica position.
+      return checkMissileSegmentFootprintOverlap113c(
+        Math.round(prevX), Math.round(prevY), Math.round(missile.x), Math.round(missile.y), m.x, m.y, missile.size, size, 1,
+      )
+    })
+    .sort((a, b) => b.unitId - a.unitId)
+  const target = candidates[0]
+  if (target === undefined) return
+  const key = this.onlineUnitKey113c('monster', target.unitId)
+  if (missile.lastCollideKey113c === key) return
+  missile.lastCollideKey113c = key
+  this.applyDamageToMonster(owner, target, 0, missile.skillId, 'fire', 'player', {
+    attackKind: 'spell',
+    autoHit: true,
+    unblockable: true,
+    srcDam: 0,
+    skipElemMastery: true,
+    missileHitFlags113c: row.hitFlags,
+    missileResultFlags113c: row.resultFlags,
+  })
+}
+
+/**
+ * DRLG oracle path: one frame of a player ground fire patch (`firewall` #69, `SrvDmgFunc 3`) on a unit.
+ * `MISSMODE_SrvHitDispatch` (`0x6FC5EDE0`) -> packet `0x6FC5A4E0` (fire via `0x6FC59B40`:
+ * `min + RollLimited(&pMissile->pSeed, max - min)`, draw 1) -> `SrvDmg03` (`0x6FC59670`: inline LCG step
+ * of the missile seed, `(lo & 0x7F) < MissilesTxt.dParam1 (+0x78)` -> `ResultFlags |= 0x4000` softhit,
+ * draw 2) -> `0x6FC5AFF0` SUNITDMG with the 1/256 value (no get-hit bit).
+ * See `kb/skills/missiles/d2game-srvhit01-fireball-113c.md` §5.
+ */
+function applySrvDmg03GroundFireHit113c(
+  this: GameInstanceHost,
+  owner: InternalPlayerRecord,
+  monster: InternalMonsterRecord,
+  missile: InternalMissileRecord,
+): void {
+  missile.hitCooldowns.set(monster.unitId, this.currentFrame + 1)
+  const row = this.registry.getMissileById(missile.missileId)
+  if (row === undefined) throw new Error(`SrvDmg03: missile ${missile.missileId} has no Missiles.txt row`)
+  const range = missile.groundFire256
+  if (range === undefined) throw new Error(`SrvDmg03: ground fire missile ${missile.unitId} carries no fire stats`)
+  const seed = this.unitSeeds.get(`${UNIT_TYPE_113C.missile}:${missile.unitId}`)
+  if (seed === undefined) throw new Error(`SrvDmg03: missile ${missile.unitId} has no unit seed`)
+  let lo = range.min
+  let hi = range.max
+  let fire256 = 0
+  if (hi > 0 && lo > 0) {
+    if (lo > hi) [lo, hi] = [hi, lo]
+    fire256 = lo + SEED_RollLimitedRandomNumber(seed, hi - lo)
+  }
+  D2SEED_AdvanceInline(seed)
+  const softHit = (seed.lo & 0x7f) < row.dParam1
+  this.applyDamageToMonster(owner, monster, Math.floor(fire256 / FIXED_ONE), missile.skillId, 'fire', 'player', {
+    attackKind: 'spell',
+    autoHit: true,
+    unblockable: true,
+    srcDam: 0,
+    isGroundFire: true,
+    skipElemMastery: true,
+    elemDamage256: fire256,
+    missileHitFlags113c: row.hitFlags,
+    missileResultFlags113c: row.resultFlags | (softHit ? 0x4000 : 0),
+  })
+}
+
 /** Create the child missiles queued by srvdo / srvhit functions this frame (after the sweep). */
 function flushOnlineMissileChildren113c(this: GameInstanceHost): void {
   if (this.pendingOnlineMissileChildren.length === 0) return
@@ -1207,7 +1472,7 @@ function spawnOnlineChildMissile113c(this: GameInstanceHost, parent: InternalMis
       : row.vel <= 0
         ? 0
         : rawVel > 0
-          ? rawVel / 16
+          ? missileSpeedSubtilesPerFrame113c(rawVel)
           : PLAYER_MISSILE_SPEED_SUBTILES
   const ownerSlowed =
     parent.ownerType === 'monster'
@@ -1230,6 +1495,14 @@ function spawnOnlineChildMissile113c(this: GameInstanceHost, parent: InternalMis
       : row.srcDamage === 0 && row.skill !== ''
         ? (this.registry.getSkillByName(row.skill)?.srcDam ?? 0)
         : 0
+  // DRLG oracle path: `MISSILE_CreateMissile` takes integer sub-tile coordinates (the parent's
+  // `floor(16.16 position)`, i.e. the rounded replica position, whose origin is the sub-tile centre).
+  const spawnX = this.drlgRoomPopulator !== null ? Math.round(spawn.x) : spawn.x
+  const spawnY = this.drlgRoomPopulator !== null ? Math.round(spawn.y) : spawn.y
+  const childLinearPath113c =
+    this.drlgRoomPopulator !== null && speed > 0
+      ? createLinearMissilePath113c(spawnX, spawnY, spawn.targetX, spawn.targetY, speed, row.accel, row.maxVel)
+      : undefined
   const child: InternalMissileRecord = {
     unitId,
     missileId: row.id,
@@ -1238,10 +1511,12 @@ function spawnOnlineChildMissile113c(this: GameInstanceHost, parent: InternalMis
     ...(parent.ownerIsObject ? { ownerIsObject: true } : {}),
     ownerId: parent.ownerId,
     areaId: parent.areaId,
-    x: spawn.x,
-    y: spawn.y,
-    vx: dist > 1e-9 ? (dx / dist) * speed : 0,
-    vy: dist > 1e-9 ? (dy / dist) * speed : 0,
+    x: spawnX,
+    y: spawnY,
+    ...(this.drlgRoomPopulator !== null
+      ? linearMissileStep16_113c(spawnX, spawnY, spawn.targetX, spawn.targetY, speed)
+      : { vx: dist > 1e-9 ? (dx / dist) * speed : 0, vy: dist > 1e-9 ? (dy / dist) * speed : 0 }),
+    ...(childLinearPath113c !== undefined ? { linearPath113c: childLinearPath113c } : {}),
     damage: parent.damage,
     ...(childSrcDamage > 0 ? { srcDamage: childSrcDamage } : {}),
     remainingFrames: lifetime,
@@ -1319,6 +1594,7 @@ function spawnOnlineChildMissile113c(this: GameInstanceHost, parent: InternalMis
     targetOffsetX: spawn.targetOffsetX,
     targetOffsetY: spawn.targetOffsetY,
   })
+  child.createdFrame = this.currentFrame
   this.missiles.set(unitId, child)
   this.broadcastToArea(parent.areaId, {
     type: 'CreateMissile',
@@ -1343,7 +1619,12 @@ function spawnOnlineChildMissile113c(this: GameInstanceHost, parent: InternalMis
 
 
 function stepMissiles(this: GameInstanceHost): void {
-  for (const [mId, missile] of this.missiles.entries()) {
+  // DRLG oracle path: room unit lists are LIFO (`pRoom->pUnitFirst`), so the newest missile ticks first.
+  const order = [...this.missiles.entries()]
+  if (this.drlgRoomPopulator !== null) order.reverse()
+  for (const [mId, missile] of order) {
+    if (!this.missiles.has(mId)) continue
+    if (this.drlgRoomPopulator !== null && missile.createdFrame === this.currentFrame) continue
     const prevX = missile.x
     const prevY = missile.y
     // `#1884` `#257 Blade Sentinel` (`Missiles.txt` `#392` `blade creeper`) back-and-forth shuttle patrol.
@@ -1355,11 +1636,22 @@ function stepMissiles(this: GameInstanceHost): void {
       missile.vy = vel.vy
     } else if (!this.advanceOnlineMissile113c(missile)) {
       // #1790: path-mode trajectories (Blessed Hammer spiral) are advanced by `MissileEngine`.
+      if (missile.linearPath113c !== undefined) {
+        const step = stepLinearMissilePath113c(missile.linearPath113c)
+        missile.vx = step.vx
+        missile.vy = step.vy
+      }
       missile.x += missile.vx
       missile.y += missile.vy
     }
     const ticksElapsed = (missile.ticksElapsed ?? 0) + 1
     missile.ticksElapsed = ticksElapsed
+    if (this.drlgRoomPopulator !== null) {
+      // 16.16 sub-tile = rounded replica position (origin at the sub-tile centre).
+      missile.pathStepPrev113c = missile.pathStepNow113c === true
+      missile.pathStepNow113c =
+        Math.round(prevX) !== Math.round(missile.x) || Math.round(prevY) !== Math.round(missile.y)
+    }
     missile.remainingFrames--
     // #1790: per-frame `pSrvDoFunc` (homing, Frozen Orb spiral, makers, Blizzard shards, nova curl).
     if (this.stepOnlineMissileSrvDo113c(missile)) {
@@ -1393,6 +1685,9 @@ function stepMissiles(this: GameInstanceHost): void {
     }
     // #1790: makers / area spawners without a hit function (Fire Wall makers) pass through units.
     if (this.isOnlinePassThroughMissile113c(missile)) {
+      if (this.drlgRoomPopulator !== null && missile.ownerType === 'player') {
+        this.applyMissileDefaultUnitContact113c(missile, prevX, prevY)
+      }
       if (missile.remainingFrames <= 0) {
         this.finishOnlineMissile113c(missile, 'expire')
         this.missiles.delete(mId)
@@ -1457,17 +1752,28 @@ function stepMissiles(this: GameInstanceHost): void {
       }
     }
     const hitsTargetFootprint = (tx: number, ty: number, targetSize: number): boolean =>
-      checkMissileSegmentFootprintOverlap113c(
-        prevX,
-        prevY,
-        missile.x,
-        missile.y,
-        tx,
-        ty,
-        missile.size,
-        targetSize,
-        1,
-      )
+      this.drlgRoomPopulator !== null
+        ? // 1.13c `PATH_StepMissile` (`#10229`) + `COLLISION_CheckMaskWithSize` (`#10389`, `0x6FDCF6A0`):
+          // compares integer sub-tiles (`dwPrecision >> 16`, i.e. `Math.round` of the centered replica position).
+          stepMissileSubtileRay113c(prevX, prevY, missile.x, missile.y, 1).some((pt) =>
+            checkMissileSizeFootprintOverlap113c(
+              Math.round(pt.x) - Math.round(tx),
+              Math.round(pt.y) - Math.round(ty),
+              missile.size,
+              targetSize,
+            ),
+          )
+        : checkMissileSegmentFootprintOverlap113c(
+            prevX,
+            prevY,
+            missile.x,
+            missile.y,
+            tx,
+            ty,
+            missile.size,
+            targetSize,
+            1,
+          )
     if (missile.ownerType === 'monster') {
       const monMissileRow = this.registry.getMissileById(missile.missileId)
       const ownerMon = missile.ownerIsObject ? undefined : this.monsters.get(missile.ownerId)
@@ -2173,7 +2479,23 @@ function stepMissiles(this: GameInstanceHost): void {
             if (hitsTargetFootprint(monster.x, monster.y, monsterSize)) {
               // #1790: `pSrvHitFunc` runs on contact even for zero-damage carriers; a guided arrow
               // passes cleanly through units that are not its locked target.
+              if (this.isOracleSrvHit01Missile113c(missile)) {
+                // The missile stops in front of the unit it runs into; SrvHit01 explodes there.
+                const impact = resolveMissileUnitImpactPoint113c(
+                  prevX, prevY, missile.x, missile.y, monster.x, monster.y, missile.size, monsterSize,
+                )
+                missile.x = impact.x
+                missile.y = impact.y
+              }
               if (this.dispatchOnlineMissileUnitHit113c(missile, monster.unitId, monster.x, monster.y) === 'passthrough') {
+                continue
+              }
+              if (this.isOracleSrvHit01Missile113c(missile)) {
+                // `MISSMODE_SrvHit01` (0x6FC5B990) already damaged every unit in its radius, the struck
+                // one included; the collision itself deals no separate hit.
+                markHit(monster.unitId)
+                hit = true
+                if (!missile.pierce) break
                 continue
               }
               const isWeaponProjectile = (missile.srcDamage ?? 0) > 0
@@ -2302,7 +2624,9 @@ function stepMissiles(this: GameInstanceHost): void {
                 ...(suppressReturnFireThreat ? { suppressReturnFireThreat: true } : {}),
                 ...(missile.trapPetUid !== undefined ? { fromPet: true } : {}),
               }
-              if (missile.carrier === 'groundfire') {
+              if (missile.carrier === 'groundfire' && this.drlgRoomPopulator !== null) {
+                this.applySrvDmg03GroundFireHit113c(owner, monster, missile)
+              } else if (missile.carrier === 'groundfire') {
                 this.applyOnlineGroundFireTick113c(owner, monster, missile)
               } else if (missile.carrier === 'none') {
                 // Functional carrier: the hit function above is its whole effect (no minimum-1 damage).
@@ -2323,13 +2647,35 @@ function stepMissiles(this: GameInstanceHost): void {
                   )
                 }
                 if (!monster.dead) {
+                  let impactPoisonBitrate256 = missile.poisonBitrate256!
+                  let preMasteryApplied = false
+                  if (this.drlgRoomPopulator !== null && missile.srvHitElem256 !== undefined) {
+                    const mSeed = this.unitSeeds.get(`${UNIT_TYPE_113C.missile}:${missile.unitId}`)
+                    if (mSeed !== undefined) {
+                      let lo = missile.srvHitElem256.min
+                      let hi = missile.srvHitElem256.max
+                      if (hi > 0 && lo > 0) {
+                        if (lo > hi) [lo, hi] = [hi, lo]
+                        if (missile.trapPetUid === undefined) {
+                          const pct = this.playerCombatContext(owner).statList.getAccruedStat(332)
+                          if (pct !== 0) {
+                            lo += mulDiv113c(pct, lo, 100)
+                            hi += mulDiv113c(pct, hi, 100)
+                          }
+                        }
+                        impactPoisonBitrate256 = lo + SEED_RollLimitedRandomNumber(mSeed, hi - lo)
+                        preMasteryApplied = true
+                      }
+                    }
+                  }
                   this.applyMonsterPoisonDot(
                     owner,
                     monster,
-                    missile.poisonBitrate256!,
+                    impactPoisonBitrate256,
                     missile.elemDurationFrames,
                     missile.skillId,
                     missile.trapPetUid !== undefined ? 'pet' : 'player',
+                    preMasteryApplied ? { preMasteryApplied: true } : undefined,
                   )
                 }
               } else {
@@ -2431,7 +2777,9 @@ function stepMissiles(this: GameInstanceHost): void {
             if (this.dispatchOnlineMissileUnitHit113c(missile, unitId, tx, ty, target.kind) === 'passthrough') {
               return false
             }
-            if (missile.carrier === 'groundfire') {
+            if (this.isOracleSrvHit01Missile113c(missile)) {
+              // Damage already applied by `MISSMODE_SrvHit01` (0x6FC5B990) inside the dispatch.
+            } else if (missile.carrier === 'groundfire') {
               this.applyOnlineGroundFirePvpTick113c(owner, target, cooldownKey, missile)
             } else if (missile.carrier === 'none') {
               // Functional carrier (`MISSMODE_SrvHit21_BattleCry` `0x6FC5ABD0` on hostile PvP target).
@@ -2736,6 +3084,10 @@ export interface MissilesStepMethods {
   dispatchOnlineMissileUnitHit113c(missile: InternalMissileRecord, targetUnitId: number, x: number, y: number, hitKind?: 'monster' | 'player' | 'merc' | 'pet' | undefined): 'passthrough' | 'hit'
   finishOnlineMissile113c(missile: InternalMissileRecord, trigger: 'wall' | 'expire'): void
   applyOnlineMissileSplash113c(missile: InternalMissileRecord, x: number, y: number, splash: OnlineMissileSplash113c): void
+  isOracleSrvHit01Missile113c(missile: InternalMissileRecord): boolean
+  applyMissileDefaultUnitContact113c(missile: InternalMissileRecord, prevX: number, prevY: number): void
+  applySrvDmg03GroundFireHit113c(owner: InternalPlayerRecord, monster: InternalMonsterRecord, missile: InternalMissileRecord): void
+  applySrvHit01Radial113c(missile: InternalMissileRecord): void
   applyOnlineGroundFireTick113c(owner: InternalPlayerRecord, monster: InternalMonsterRecord, missile: InternalMissileRecord): void
   applyOnlineGroundFirePvpTick113c(owner: InternalPlayerRecord, target: | { readonly kind: 'player'; readonly player: InternalPlayerRecord }
     | { readonly kind: 'merc'; readonly merc: InternalMercenaryRecord }
@@ -2785,6 +3137,10 @@ export const missilesStepMethods: Record<keyof MissilesStepMethods, unknown> = {
   dispatchOnlineMissileUnitHit113c,
   finishOnlineMissile113c,
   applyOnlineMissileSplash113c,
+  isOracleSrvHit01Missile113c,
+  applyMissileDefaultUnitContact113c,
+  applySrvDmg03GroundFireHit113c,
+  applySrvHit01Radial113c,
   applyOnlineGroundFireTick113c,
   applyOnlineGroundFirePvpTick113c,
   applyMonsterOnlineGroundFireTick113c,

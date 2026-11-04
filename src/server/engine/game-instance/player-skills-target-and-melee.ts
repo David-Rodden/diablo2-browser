@@ -2,6 +2,7 @@
  * GameInstance Subsystem: AnimDispatcher Windup, Target/Location Skills, Multi-Hit Melee, Martial Arts & Hit Rolls (`src/server/engine/game-instance/player-skills-target-and-melee.ts`).
  */
 
+import { itemTypeIsA } from '../../../common/items/item-types.ts'
 import type { MissileRecord, SkillRecord } from '../../../common/data/data-registry.ts'
 import { resolveEquippedWeaponClass, resolveEquippedWeaponWsm, resolvePrimaryWeaponWsm113c, resolveWeaponBase113c } from '../../../common/units/char-anim-speed.ts'
 import { getSkillAnimModes } from '../../../common/skills/skill-anim-modes.ts'
@@ -21,10 +22,12 @@ import { evaluateCalc } from '../../../common/data/calc-ast.ts'
 import { difficultyLifeStealDivisor, difficultyManaStealDivisor } from '../difficulty-resist-penalty.ts'
 import { calculateVengeanceStats } from '../../skills/paladin-combat.ts'
 import { STATE_RABIES_113C, STATE_SLOWMISSILES_113C } from '../../skills/p1-wave4-skills-113c.ts'
+import { resolveWeaponMasteryBonus113c } from '../../skills/passives-procs-113c.ts'
 import { strafeShotCount113c } from '../player-srvdo-113c.ts'
+import { rollLimitedSeed113c } from './unit-seeds-113c.ts'
 import type { GameInstanceHost } from './host.ts'
 import type { InternalMercenaryRecord, InternalMissileRecord, InternalMonsterRecord, InternalObjectRecord, InternalPlayerRecord, MissileDamageChannel, PlayerSkillCast, ServerItemEntry } from './types.ts'
-import { BODYLOC_LEFT_ARM, BODYLOC_RIGHT_ARM, CHAR_ANIM_TOKEN_BY_CLASS_113C, PLAYER_MELEE_REACH_SUBTILES, SKILL_TELEPORT, SRVDOFUNC_CHARGE, SRVDOFUNC_CONVERSION, SRVDOFUNC_CORPSE_EXPLOSION, SRVDOFUNC_DRAGON_FLIGHT, SRVDOFUNC_FIND_ITEM, SRVDOFUNC_FIND_POTION, SRVDOFUNC_GRIM_WARD, SRVDOFUNC_JAB, SRVDOFUNC_LEAP, SRVDOFUNC_LEAP_ATTACK, SRVDOFUNC_MIND_BLAST, SRVDOFUNC_NOVA, SRVDOFUNC_PSYCHIC_HAMMER, SRVDOFUNC_TELEKINESIS, SRVDOFUNC_WHIRLWIND, SRVDOFUNC_ZEAL_FURY_FEND, STAT_QUANTITY, TOWN_AREAS, collectItemStats, missileClassElementFallback, normalizeMissileElement, playerWirePosition, resolveArmorCombatMeta113c, UNIT_TYPE_113C } from './constants-and-helpers.ts'
+import { BODYLOC_LEFT_ARM, BODYLOC_RIGHT_ARM, CHAR_ANIM_TOKEN_BY_CLASS_113C, PLAYER_MELEE_REACH_SUBTILES, SKILL_TELEPORT, SRVDOFUNC_CHARGE, SRVDOFUNC_CONVERSION, SRVDOFUNC_CORPSE_EXPLOSION, SRVDOFUNC_DRAGON_FLIGHT, SRVDOFUNC_FIND_ITEM, SRVDOFUNC_FIND_POTION, SRVDOFUNC_GRIM_WARD, SRVDOFUNC_JAB, SRVDOFUNC_LEAP, SRVDOFUNC_LEAP_ATTACK, SRVDOFUNC_MIND_BLAST, SRVDOFUNC_NOVA, SRVDOFUNC_PSYCHIC_HAMMER, SRVDOFUNC_TELEKINESIS, SRVDOFUNC_WHIRLWIND, SRVDOFUNC_ZEAL_FURY_FEND, STAT_QUANTITY, TOWN_AREAS, collectItemStats, missileClassElementFallback, normalizeMissileElement, playerWirePosition, resolveArmorCombatMeta113c, UNIT_TYPE_113C, missileSpeedSubtilesPerFrame113c } from './constants-and-helpers.ts'
 
 
 /**
@@ -199,6 +202,37 @@ function isPlayerActionAnimLocked113c(this: GameInstanceHost,
     ) {
       return false
     }
+    // 1.13c `D2Game.dll` `PLRMODE_CheckSkillInterrupt` (`0x6FC97FA0`..`0x6FC98065`):
+    // When a C2S skill packet arrives mid-animation of an interruptible skill (`Skills.txt` `interrupt=1`)
+    // while `STATE_CONCENTRATION` (`state 42`) is active, `0x6FC9805E` rolls `SEED_RollLimitedRandomNumber(&pPlayer->pSeed, 100)`
+    // against `STAT_SKILL_CONCENTRATION` (`0xA4 = 164`, 20%).
+    if (
+      this.drlgRoomPopulator !== null &&
+      nextSkill !== undefined &&
+      isSkillInterruptible113c(cur.skill)
+    ) {
+      const pCombat = this.playerCombat.get(player.unitId)
+      let blockedByConcentration = false
+      if (
+        player.states.has(42) ||
+        Boolean(pCombat?.stateBus.hasState(42)) ||
+        Boolean(pCombat?.statList.getActiveModifiers().some((m) => m.stateId === 42))
+      ) {
+        const pSeed = this.unitSeeds.get(`${UNIT_TYPE_113C.player}:${player.unitId}`)
+        if (pSeed !== undefined) {
+          const concChance = Math.max(20, pCombat?.statList.getAccruedStat('skill_concentration') ?? 20)
+          blockedByConcentration = rollLimitedSeed113c(pSeed, 100) < concChance
+        }
+      }
+      // `PLRMODE_SetMode` (`0x6FC98550`) -> `0x6FC98340` (current mode A1/A2/SC/TH: allowed while the
+      // end-of-animation event is pending) -> `0x6FC97FA0`: an interruptible current skill without a
+      // successful Concentration roll lets the new command restart the mode (oracle `a1-bloodmoor-melee`
+      // F=1075 attack restarted by the F=1080 command: hit F=1086, NU F=1095; kb/engine/d2game-plrmode-gethit-113c.md §4).
+          if (!blockedByConcentration && (cur.skill.id === 0 || nextSkill.id === 0)) {
+        player.animRestartFrame113c = this.currentFrame
+        return false
+      }
+    }
     return true
   }
   return disp.isInRecovery()
@@ -266,6 +300,25 @@ function isPlayerSkillUninterruptible113c(this: GameInstanceHost, player: Intern
   if (cur && !cur.completed && !isSkillInterruptible113c(cur.skill)) {
     return true
   }
+  // 1.13c `D2Game.dll` `PLRMODE_CheckSkillInterrupt` (`0x6FC98033`..`0x6FC98065`):
+  // Active `STATE_CONCENTRATION` (`state 42`) rolls `pPlayer->pSeed % 100 < STAT_SKILL_CONCENTRATION` (`0xA4 = 164`, 20%)
+  // to prevent `GH` / `BL` from interrupting an active interruptible skill animation.
+  if (cur && !cur.completed && isSkillInterruptible113c(cur.skill)) {
+    const pCombat = this.playerCombat.get(player.unitId)
+    if (
+      player.states.has(42) ||
+      Boolean(pCombat?.stateBus.hasState(42)) ||
+      Boolean(pCombat?.statList.getActiveModifiers().some((m) => m.stateId === 42))
+    ) {
+      const concChance = Math.max(20, pCombat?.statList.getAccruedStat('skill_concentration') ?? 20)
+      const pSeed =
+        this.drlgRoomPopulator !== null
+          ? this.unitSeeds.get(`${UNIT_TYPE_113C.player}:${player.unitId}`)
+          : undefined
+      const roll = pSeed !== undefined ? rollLimitedSeed113c(pSeed, 100) : this.rng.rand(100)
+      if (roll < concChance) return true
+    }
+  }
   // Also honor active Concentrate state (`state 15`) if set during a Concentrate swing
   if (player.states.has(15)) return true
   return false
@@ -321,6 +374,8 @@ function stepPlayerAnimations113c(this: GameInstanceHost): void {
       }
       this.playerSkillDelayUntilFrame.delete(player.unitId)
       player.blockRecoveryUntilFrame = undefined
+      player.animResetFrame = undefined
+      player.animStartSkipFrame = undefined
       disp?.clearAnimation()
       disp?.clearRecovery()
       continue
@@ -336,9 +391,10 @@ function stepPlayerAnimations113c(this: GameInstanceHost): void {
     ) {
       player.blockRecoveryUntilFrame = undefined
       disp?.clearRecovery()
-      if (player.mode === 9 && !this.isPlayerWhirlwinding113c(player)) {
+      if ((player.mode === 9 || player.mode === player.blockRecoveryMode113c) && !this.isPlayerWhirlwinding113c(player)) {
         player.mode = TOWN_AREAS.has(player.areaId) ? 5 : 1
       }
+      player.blockRecoveryMode113c = undefined
     }
 
     if (
@@ -353,6 +409,29 @@ function stepPlayerAnimations113c(this: GameInstanceHost): void {
     }
 
     if (!disp) continue
+
+    if (player.animResetFrame !== undefined && this.currentFrame >= player.animResetFrame) {
+      player.animResetFrame = undefined
+      const curAnim = disp.getCurrentAnimation()
+      if (
+        (!curAnim || curAnim.completed) &&
+        !this.isPlayerInHitRecovery(player) &&
+        !this.isPlayerInBlockRecovery(player) &&
+        !this.isPlayerWhirlwinding113c(player) &&
+        (player.mode === 7 ||
+          player.mode === 8 ||
+          player.mode === 10 ||
+          player.mode === 11 ||
+          player.mode === 18)
+      ) {
+        player.mode = TOWN_AREAS.has(player.areaId) ? 5 : 1
+      }
+    }
+
+    if (player.animStartSkipFrame === this.currentFrame) {
+      player.animStartSkipFrame = undefined
+      continue
+    }
 
     const { anim } = disp.tick(this.currentFrame, (activeAnim, _tick, strikeIdx) => {
       const pending = this.pendingPlayerAnimActions.get(player.unitId)
@@ -389,7 +468,11 @@ function stepPlayerAnimations113c(this: GameInstanceHost): void {
         !this.isPlayerInHitRecovery(player) &&
         !this.isPlayerWhirlwinding113c(player)
       ) {
-        player.mode = TOWN_AREAS.has(player.areaId) ? 5 : 1
+        if (this.drlgRoomPopulator !== null) {
+          player.animResetFrame = this.currentFrame + 1
+        } else {
+          player.mode = TOWN_AREAS.has(player.areaId) ? 5 : 1
+        }
       }
     }
   }
@@ -419,6 +502,17 @@ function schedulePlayerSkillWindup113c(this: GameInstanceHost,
   },
 ): boolean {
   const disp = this.syncPlayerAnimDispatcher113c(player)
+  if (player.animRestartFrame113c === this.currentFrame) {
+    // `PLRMODE_SetMode` restart of an interruptible attack (see `isPlayerActionAnimLocked113c`): the old
+    // mode and its pending action event are dropped before the new mode starts.
+    player.animRestartFrame113c = undefined
+    const prev = this.pendingPlayerAnimActions.get(player.unitId)
+    if (prev !== undefined) {
+      prev.onCleanup?.()
+      this.pendingPlayerAnimActions.delete(player.unitId)
+    }
+    disp.clearAnimation()
+  }
   const res = disp.startSkillAnimation({
     skill: cast.skill,
     slvl: cast.slvl,
@@ -455,6 +549,11 @@ function schedulePlayerSkillWindup113c(this: GameInstanceHost,
   })
 
   const animMode = getSkillAnimModes(cast.skill.id).playerMode
+  player.animResetFrame = undefined
+  player.animStartSkipFrame =
+    this.drlgRoomPopulator !== null && this.inStepPlayerMovement
+      ? this.currentFrame
+      : undefined
   player.mode = animMode
   player.targetX = player.x
   player.targetY = player.y
@@ -695,7 +794,7 @@ function executeSkillAtLocation(this: GameInstanceHost,
     if (doFunc === SRVDOFUNC_LEAP || doFunc === SRVDOFUNC_LEAP_ATTACK) {
       this.relocatePlayerForSkill(player, tx, ty, false)
     }
-    if (doFunc === SRVDOFUNC_NOVA && skillId !== 130) {
+    if (this.drlgRoomPopulator === null && doFunc === SRVDOFUNC_NOVA && skillId !== 130) {
       this.executeNovaSkill(player, cast)
       if (cast.missile !== undefined) {
         this.launchPlayerSkillMissile(player, cast, cast.missile, tx, ty, 0)
@@ -843,8 +942,20 @@ function executeSkillOnTarget(this: GameInstanceHost,
     }
     return
   }
-  if (clicked && clicked.dead && !clicked.isNpc && clicked.areaId === player.areaId) {
-    // A cast on a corpse (Corpse Explosion, Raise Skeleton, Revive, ...) targets that corpse.
+  const allowDyingTarget113c =
+    this.drlgRoomPopulator !== null &&
+    skillId === 0 &&
+    clicked !== undefined &&
+    clicked.dead &&
+    clicked.mode === 0
+  if (
+    clicked &&
+    clicked.dead &&
+    !allowDyingTarget113c &&
+    !clicked.isNpc &&
+    clicked.areaId === player.areaId
+  ) {
+    // A cast on a corpse (Corpse Explosion, Raise Skeleton, Revive, or clicking a settled mode-12 corpse) targets that location/corpse.
     this.executeSkillAtLocation(player, skillId, clicked.x, clicked.y, clicked)
     return
   }
@@ -856,13 +967,21 @@ function executeSkillOnTarget(this: GameInstanceHost,
         !TOWN_AREAS.has(monster.areaId) &&
         monster.isKillable &&
         this.isAreaSeamAdjacent(player.areaId, monster.areaId)))
-  if (!monster || monster.dead || monster.isNpc || monster.submerged || !monsterInReachArea) {
-    // Fallback: if targetId refers to the nearest hostile monster in the player's area
+  if (
+    !monster ||
+    (monster.dead && !allowDyingTarget113c) ||
+    monster.isNpc ||
+    monster.submerged ||
+    !monsterInReachArea
+  ) {
     monster = undefined
-    for (const candidate of this.monsters.values()) {
-      if (!candidate.dead && !candidate.isNpc && !candidate.submerged && candidate.areaId === player.areaId) {
-        monster = candidate
-        break
+    if (clicked === undefined && this.drlgRoomPopulator === null) {
+      // Synthetic unit-test fallback only when no real target unit exists and DRLG room population is inactive.
+      for (const candidate of this.monsters.values()) {
+        if (!candidate.dead && !candidate.isNpc && !candidate.submerged && candidate.areaId === player.areaId) {
+          monster = candidate
+          break
+        }
       }
     }
   }
@@ -888,6 +1007,35 @@ function executeSkillOnTarget(this: GameInstanceHost,
   if (isMeleeStrike && !this.isPlayerMeleeInRangeOfMonster(player, monster)) {
     if (options?.shift) {
       this.executeSkillAtLocation(player, skillId, monster.x, monster.y)
+      return
+    }
+    // 1.13c `D2Game.dll` `0x6FCEE745` -> `0x6FCEE120`: out-of-range melee `0x06`/`0x0D` runs toward target
+    // (`SKILLS_CastOnUnit(skillId=3)`) and queues the melee skill (`D2Common#10329`) to fire on arrival.
+    if (this.consumeOrBlockMoveDuringPlayerAnim113c(player)) {
+      return
+    }
+    this.clearPlayerChannelState(player)
+    player.pendingInteraction = undefined
+    player.pendingInteractionSteps = 0
+    player.pendingNpcGamble = undefined
+    player.moveTargetUnitId = monster.unitId
+    player.moveTargetUnitType = UNIT_TYPE_113C.monster
+    player.targetX = monster.x
+    player.targetY = monster.y
+    const staminaExhausted =
+      player.staminaExhausted || player.stamina <= 0 || player.staminaFixed <= 0
+    player.run = !staminaExhausted
+    player.animResetFrame = undefined
+    player.mode = player.run ? 3 : (TOWN_AREAS.has(player.areaId) ? 6 : 2)
+    const motion = this.playerMotion.get(player.unitId)
+    if (motion !== undefined) {
+      motion.plannedX = Number.NaN
+      motion.plannedY = Number.NaN
+    }
+    player.queuedSkillOnTarget = {
+      skillId,
+      targetId: monster.unitId,
+      targetType: UNIT_TYPE_113C.monster,
     }
     return
   }
@@ -1069,7 +1217,7 @@ function executeSkillOnTarget(this: GameInstanceHost,
           if (doFunc === SRVDOFUNC_LEAP) {
             this.relocatePlayerForSkill(player, primaryMonster.x, primaryMonster.y, false)
           }
-          if (doFunc === SRVDOFUNC_NOVA && skillId !== 130) {
+          if (this.drlgRoomPopulator === null && doFunc === SRVDOFUNC_NOVA && skillId !== 130) {
             this.executeNovaSkill(player, cast)
             if (cast.missile !== undefined) {
               this.launchPlayerSkillMissile(player, cast, cast.missile, primaryMonster.x, primaryMonster.y, 0)
@@ -1137,7 +1285,12 @@ function executeSkillOnTarget(this: GameInstanceHost,
             return
           }
           if (isMeleeStrike) {
-            if (!primaryMonster.dead && this.isPlayerMeleeInRangeOfMonster(player, primaryMonster)) {
+            const allowLockedDeadTarget113c =
+              this.drlgRoomPopulator !== null && skillId === 0
+            if (
+              (!primaryMonster.dead || allowLockedDeadTarget113c) &&
+              this.isPlayerMeleeInRangeOfMonster(player, primaryMonster)
+            ) {
               this.executeStandardSkillMeleeHit113c(player, cast, primaryMonster)
             }
             return
@@ -1222,7 +1375,7 @@ function executeSkillOnTarget(this: GameInstanceHost,
   if (doFunc === SRVDOFUNC_LEAP) {
     this.relocatePlayerForSkill(player, monster.x, monster.y, false)
   }
-  if (doFunc === SRVDOFUNC_NOVA && skillId !== 130) {
+  if (this.drlgRoomPopulator === null && doFunc === SRVDOFUNC_NOVA && skillId !== 130) {
     this.executeNovaSkill(player, cast)
     if (cast.missile !== undefined) {
       this.launchPlayerSkillMissile(player, cast, cast.missile, monster.x, monster.y, 0)
@@ -1722,7 +1875,7 @@ function executePvpSkillImmediateRelease113c(this: GameInstanceHost,
   if (doFunc === SRVDOFUNC_LEAP) {
     this.relocatePlayerForSkill(player, tx, ty, false)
   }
-  if (doFunc === SRVDOFUNC_NOVA) {
+  if (this.drlgRoomPopulator === null && doFunc === SRVDOFUNC_NOVA) {
     this.executeNovaSkill(player, cast)
     if (cast.missile !== undefined) {
       this.launchPlayerSkillMissile(player, cast, cast.missile, tx, ty, 0)
@@ -1894,6 +2047,96 @@ function executeStandardSkillMeleeHit113c(this: GameInstanceHost,
     }
     if (hitResult.landedHitRoll) this.applyPlayerMeleeRiders113c(player, monster)
     return
+  }
+  if (
+    this.drlgRoomPopulator !== null &&
+    cast.evalResult.srcDam > 0 &&
+    cast.evalResult.minPhysDmg === 0 &&
+    cast.evalResult.maxPhysDmg === 0 &&
+    cast.skill.eType === '' &&
+    (cast.missile?.eType ?? '') === ''
+  ) {
+    const pSeed = this.unitSeeds.get(`${UNIT_TYPE_113C.player}:${player.unitId}`)
+    if (pSeed !== undefined) {
+      const baseBand = this.resolvePlayerWeaponDamage(player, 0, {
+        baseOnlyWithoutOffWeaponEd: true,
+      })
+      const combat = this.playerCombat.get(player.unitId)
+      const offWeaponItemEd =
+        this.sumPlayerItemStat(player, 17, { excludeWeaponHands: true }) +
+        this.sumPlayerItemStat(player, 25, { excludeWeaponHands: true })
+      const offWeaponEdPercent =
+        (combat === undefined ? 0 : combat.statList.getModifierBonus('damagepercent')) +
+        offWeaponItemEd +
+        cast.evalResult.physDamagePct
+      const totalStr =
+        player.strength +
+        this.sumPlayerItemStat(player, 0) +
+        (combat === undefined ? 0 : combat.statList.getModifierBonus('strength'))
+      const totalDex =
+        player.dexterity +
+        this.sumPlayerItemStat(player, 2) +
+        (combat === undefined ? 0 : combat.statList.getModifierBonus('dexterity'))
+      const { right, left } = this.activeHandItems113c(player)
+      const rightBase = right ? resolveWeaponBase113c(right.code) : undefined
+      const leftBase = left ? resolveWeaponBase113c(left.code) : undefined
+      const weapon = rightBase ? right : leftBase ? left : undefined
+      const wBase = rightBase ?? leftBase
+      let combinedEdPct: number
+      let enDmgPct113c = 0
+      if (wBase === undefined) {
+        combinedEdPct = Math.max(-90, offWeaponEdPercent + totalStr)
+      } else {
+        const masteryEdPct =
+          resolveWeaponMasteryBonus113c(wBase.type, false, (id) =>
+            player.skills.has(id) || combat?.statList.getEffectiveSkillLevel(id) !== undefined
+              ? this.resolvePlayerSkillLevelById(player, id)
+              : 0,
+          )?.damagePct ?? 0
+        const statBonusPercent =
+          Math.trunc((totalStr * wBase.strBonus) / 100) +
+          Math.trunc((totalDex * wBase.dexBonus) / 100)
+        // `SUNITDMG_FillDamageValues` (`0x6FCFD4E2` -> `0x6FCFA8C0`): vs an undead defender (`#10239`) a blunt
+        // weapon (`#10744(weapon, 0x39 'blun')`) adds 50 to `pDamage->dwEnDmgPct` (`+0x0C`), which seeds the
+        // `SUNITDMG_FillPacket` %ED pool (oracle `p52-necromancer-curses` F=948: `raw[3] = 50`, 1477 damage).
+        // `item_undeaddamage_percent` (122) of the same routine is added by `executeSUnitDmg`.
+        const bluntVsUndeadPct = monster.isUndead && itemTypeIsA(wBase.type, 'blun') ? 50 : 0
+        enDmgPct113c = bluntVsUndeadPct
+        combinedEdPct = Math.max(
+          -90,
+          offWeaponEdPercent + masteryEdPct + statBonusPercent + bluntVsUndeadPct,
+        )
+      }
+      const wasDeadBefore = monster.dead
+      const landed = this.applyDamageToMonster(player, monster, 0, skillId, 'phys', 'player', {
+        attackKind: 'melee',
+        allowDeadTarget113c: wasDeadBefore,
+        d2AttackerSeed113c: pSeed,
+        unrolledWeaponBase113c: {
+          min256: baseBand.min * FIXED_ONE,
+          max256: baseBand.max * FIXED_ONE,
+          edPct: combinedEdPct,
+          srcDam: cast.evalResult.srcDam,
+          enDmgPct113c,
+        },
+      })
+      if (landed) {
+        if (
+          weapon !== undefined &&
+          weapon.maxDurability > 0 &&
+          weapon.durability > 0 &&
+          !collectItemStats(weapon).some((s) => s.statId === 152 && s.value > 0)
+        ) {
+          if (rollLimitedSeed113c(pSeed, 100) < 4) {
+            this.degradeEquippedWeaponDurabilityOnHit113c(player)
+          }
+        }
+        if (!wasDeadBefore) {
+          this.applyPlayerMeleeRiders113c(player, monster)
+        }
+      }
+      return
+    }
   }
   const damage = this.rollPlayerSkillDamage(player, cast)
   if (damage > 0) {
@@ -2830,7 +3073,7 @@ function spawnMonsterMissile(this: GameInstanceHost,
   const resolvedClassId = meta?.id ?? missileClassId
   const skillLevel = Math.max(1, options.skillLevel ?? monster.level)
   const rawVel = meta === undefined ? 0 : meta.vel + Math.trunc((meta.velLev * skillLevel) / 8)
-  const baseSpeed = meta === undefined ? 1.8 : rawVel > 0 ? rawVel / 16 : 0
+  const baseSpeed = meta === undefined ? 1.8 : rawVel > 0 ? missileSpeedSubtilesPerFrame113c(rawVel) : 0
   const speed =
     baseSpeed > 0 && monster.states.has(STATE_SLOWMISSILES_113C) ? baseSpeed * 0.33 : baseSpeed
   const rawRangeTicks =
@@ -2911,6 +3154,7 @@ function spawnMonsterMissile(this: GameInstanceHost,
   if (meta !== undefined) {
     this.attachOnlineMissileState113c(missile, meta, skillId, skillLevel, speed > 0 ? Math.ceil(dist / speed) : 0)
   }
+  missile.createdFrame = this.currentFrame
   this.missiles.set(missileUnitId, missile)
 
   this.broadcastToArea(monster.areaId, {

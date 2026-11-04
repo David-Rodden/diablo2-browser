@@ -57,6 +57,9 @@ and comparing $\text{distFlatPx} \le \text{radiusSubtiles} \times 20$.
   - Reads `sHitPar1` (`[esi+0x4C]`).
   - If `sHitPar1 <= 0`, looks up `SkillsTxt` for `m.skillId` and evaluates `calc1` (`[esi+0x138]`) via `sub_6FC573A0`, clamping to `max(1, val)`.
   - Calls `sub_6FC5D450` to deal radial damage within `radiusSubtiles` sub-tiles.
+  - **Correction**: the 1.13c body calls the scanner `0x6FCC0C70` directly (`0x6FC5BB44`, filter `0x8583`,
+    callback `0x6FCC1210`) with one packet rolled on the missile seed, the struck unit included. Full port:
+    [`d2game-srvhit01-fireball-113c.md`](./d2game-srvhit01-fireball-113c.md).
 
 ### 2. `SrvHit02` — `0x6FC5E330` (Plague Javelin / Poison Gas Cloud Ring)
 - **Missiles**: `plaguejavelin` (#43, `sHitPar1=1, sHitPar2=2, sHitPar3=3`), `rancidgasepotion` (#47), `chokinggaspoition` (#48), `stranglinggaspotion` (#49), `catapult plague ball` (#419), `plaguejavelin2` (#436).

@@ -3,9 +3,9 @@ import {
   buildAdjacentRoomLists,
   D2Common_10142,
   D2Common_10226,
-  D2Common_10399,
   D2COMMON_10170_PathSetTargetPos,
   D2COMMON_10193_PATH_AdjustDirection,
+  DUNGEON_GetRoomAtPosition,
   DynamicPath,
   getMonsterModeBaseAnimSpeed256,
   getMonsterModeBaseFrameCount113c,
@@ -41,7 +41,15 @@ import {
 import { CANONICAL_113C_OBJECTS } from '../../common/world/objects-meta.ts';
 import type { LocalAreaMapAiNode } from '../../netproto/index.ts';
 import type { D2SeedStrc } from '../../common/rng/d2-rng.ts';
+import { CANONICAL_OUTDOOR_SEAM_ADJACENT_PAIRS_113C } from '../engine/game-instance/constants-and-helpers.ts';
 import { rollLimitedSeed113c } from '../engine/game-instance/unit-seeds-113c.ts';
+
+function areAreasSeamAdjacent113c(a: number, b: number): boolean {
+  if (a === b) return true;
+  const lo = a < b ? a : b;
+  const hi = a < b ? b : a;
+  return CANONICAL_OUTDOOR_SEAM_ADJACENT_PAIRS_113C.has(`${lo}:${hi}`);
+}
 
 const TOWN_AREA_IDS_113C: ReadonlySet<number> = new Set<number>([1, 40, 75, 103, 109]);
 
@@ -104,6 +112,239 @@ export function distApprox113c(
   const dx = Math.abs(x1 - x2);
   const dy = Math.abs(y1 - y2);
   return dx >= dy ? dx + (dy >> 1) : dy + (dx >> 1);
+}
+
+function getPathUnitSubtileCoords113c(unit: PathUnit): { x: number; y: number } {
+  if (unit.pDynamicPath) {
+    return { x: unit.pDynamicPath.wPosX, y: unit.pDynamicPath.wPosY };
+  }
+  if (unit.pStaticPath) {
+    return { x: unit.pStaticPath.x, y: unit.pStaticPath.y };
+  }
+  return { x: 0, y: 0 };
+}
+
+function getUnitSizeX113c(unit: PathUnit): number {
+  if (unit.dwUnitType === UNIT_PLAYER) return 2;
+  if (unit.dwUnitType === UNIT_MONSTER) {
+    return getMonsterPathRecord(unit.dwClassId).sizeX;
+  }
+  if (unit.dwUnitType === UNIT_OBJECT) {
+    return unit.objectTxt?.sizeX ?? 0;
+  }
+  return 1;
+}
+
+/**
+ * D2Game.dll 0x6FCD0A20 (`UNIT_GetSizeSubtractedOctileDist`):
+ * Subtracts `D2Common_10589(unitA)` (`sizeX` of `unitA`) from `|x1 - x2|` and `|y1 - y2|`
+ * (clamped >= 0), then returns `trunc((max * 2 + min) / 2)`.
+ */
+export function unitSizeSubtractedOctileDist113c(
+  unitA: PathUnit,
+  unitB: PathUnit,
+): number {
+  const a = getPathUnitSubtileCoords113c(unitA);
+  const b = getPathUnitSubtileCoords113c(unitB);
+  const sizeA = getUnitSizeX113c(unitA);
+  const dx = Math.max(0, Math.abs(a.x - b.x) - sizeA);
+  const dy = Math.max(0, Math.abs(a.y - b.y) - sizeA);
+  const num = dx > dy ? dy + dx * 2 : dx + dy * 2;
+  return Math.trunc(num / 2);
+}
+
+/**
+ * Exact 8x8 lookup table from `D2Common.dll` `0x6FDDABC0`, indexed by `dx + dy * 8` (`dx, dy in 0..7`),
+ * read by `D2Common.#10935` (`UNITS_GetMeleeDistance` `0x6FDCFCD0`).
+ */
+const D2COMMON_MELEE_DIST_TABLE_8X8: readonly number[] = Object.freeze([
+  -1, -1, -1, 0, 2, 4, 6, 8,
+  -1, -1, 0, 1, 2, 4, 6, 8,
+  -1, 0, 0, 2, 3, 5, 7, 8,
+  0, 1, 2, 2, 4, 5, 7, 8,
+  2, 2, 3, 4, 5, 6, 7, 9,
+  4, 4, 5, 5, 6, 7, 8, 9,
+  6, 6, 7, 7, 7, 8, 10, 10,
+  8, 8, 8, 8, 9, 9, 10, 11,
+]);
+
+/**
+ * `D2Common.#10935` (`0x6FDCFCD0`): inter-unit melee distance between two footprints.
+ */
+export function unitsGetMeleeDistance113c(
+  x1: number,
+  y1: number,
+  size1: number,
+  x2: number,
+  y2: number,
+  size2: number,
+): number {
+  const dx = Math.abs((x1 | 0) - (x2 | 0));
+  const dy = Math.abs((y1 | 0) - (y2 | 0));
+  if (dx < 8 && dy < 8 && size1 < 4 && size2 < 4) {
+    let v = D2COMMON_MELEE_DIST_TABLE_8X8[dx + dy * 8]!;
+    if (v < 0) return 0;
+    if (size1 === 3 || size2 === 3) v -= 1;
+    if (v < 0) v = 0;
+    if (size1 <= 1 || size2 <= 1) return v + 1;
+    return v;
+  }
+  let halfSum = ((size1 >>> 1) + (size2 >>> 1)) | 0;
+  if (halfSum < 0) halfSum = -halfSum;
+  const bx = Math.max(0, dx - halfSum);
+  const di = Math.max(0, dy - halfSum);
+  return bx > di ? di + bx * 2 : bx + di * 2;
+}
+
+/**
+ * `D2Common` `0x6FD9AD20` (`COLLISION_RayTrace`) over `PathRoom` adjacency / grid:
+ * returns `true` when any subtile along the single-major-axis Bresenham ray hits `mask` or lies outside rooms.
+ */
+function pathRoomRayTrace113c(
+  startRoom: PathRoom | null,
+  startX: number,
+  startY: number,
+  endX: number,
+  endY: number,
+  mask: number,
+): boolean {
+  if (!startRoom) return true;
+  let x = startX | 0;
+  let y = startY | 0;
+  const x1 = endX | 0;
+  const y1 = endY | 0;
+  const dx = Math.abs(x1 - x);
+  const dy = Math.abs(y1 - y);
+  const sx = x1 - x < 0 ? -1 : 1;
+  const sy = y1 - y < 0 ? -1 : 1;
+  const xMajor = dx >= dy;
+  const majorDelta = xMajor ? dx : dy;
+  const minorDelta = xMajor ? dy : dx;
+
+  let curRoom: PathRoom | null = startRoom;
+  let acc = 0;
+  for (let step = 0; step <= majorDelta; step += 1) {
+    if (
+      !curRoom ||
+      x < curRoom.subX ||
+      y < curRoom.subY ||
+      x >= curRoom.subX + curRoom.subW ||
+      y >= curRoom.subY + curRoom.subH
+    ) {
+      let nextRoom: PathRoom | null = null;
+      if (curRoom) {
+        for (const adj of curRoom.adjacentRooms) {
+          if (
+            adj &&
+            x >= adj.subX &&
+            y >= adj.subY &&
+            x < adj.subX + adj.subW &&
+            y < adj.subY + adj.subH
+          ) {
+            nextRoom = adj;
+            break;
+          }
+        }
+      }
+      curRoom = nextRoom;
+      if (!curRoom || !curRoom.grid) return true;
+    }
+    if (!curRoom.grid || (curRoom.grid.get(x, y) & mask) !== 0) {
+      return true;
+    }
+    acc += minorDelta;
+    if (xMajor) {
+      x += sx;
+      if (acc >= majorDelta) {
+        acc -= majorDelta;
+        y += sy;
+      }
+    } else {
+      y += sy;
+      if (acc >= majorDelta) {
+        acc -= majorDelta;
+        x += sx;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * `D2Common` `0x6FD814A0` -> `0x6FD80730`: footprint-inset collision ray check between two units.
+ * Returns `true` when blocked (`0x6FD80730 != 0`), `false` when clear (`0`).
+ */
+function unitsHasCollisionBetween113c(
+  room1: PathRoom | null,
+  x1In: number,
+  y1In: number,
+  size1In: number,
+  x2In: number,
+  y2In: number,
+  size2In: number,
+  mask: number,
+): boolean {
+  if (!room1) return true;
+  const s1 = size1In < 3 ? size1In : 2;
+  const s2 = size2In < 3 ? size2In : 2;
+  const absDx = Math.abs((x2In | 0) - (x1In | 0));
+  const absDy = Math.abs((y2In | 0) - (y1In | 0));
+  if (absDx + absDy < s1 + s2) return false;
+
+  let x1 = x1In | 0;
+  let y1 = y1In | 0;
+  let x2 = x2In | 0;
+  let y2 = y2In | 0;
+  if (s1 !== 0 || s2 !== 0) {
+    if (absDx >= absDy) {
+      if (x2 > x1) {
+        x1 += s1;
+        x2 -= s2;
+      } else {
+        x1 -= s1;
+        x2 += s2;
+      }
+    }
+    if (absDy >= absDx) {
+      if (y2 > y1) {
+        y1 += s1;
+        y2 -= s2;
+      } else {
+        y1 -= s1;
+        y2 += s2;
+      }
+    }
+  }
+  return pathRoomRayTrace113c(room1, x1, y1, x2, y2, mask);
+}
+
+/**
+ * `D2Common.#11138` (`UNITS_IsInMeleeRange` `0x6FD826C0`):
+ * Exact 1.13c monster melee range test against a target unit.
+ */
+function unitsIsMonsterInMeleeRange113c(
+  monUnit: PathUnit,
+  targetUnit: PathUnit,
+  bonus: number,
+): boolean {
+  const a = getPathUnitSubtileCoords113c(monUnit);
+  const b = getPathUnitSubtileCoords113c(targetUnit);
+  const size1 = getUnitSizeX113c(monUnit);
+  const size2 = getUnitSizeX113c(targetUnit);
+  const rawMeleeRng = MONSTATS_113C_ROWS[monUnit.dwClassId]?.meleeRng ?? 0;
+  const meleeRng = rawMeleeRng === 0xff ? 0 : rawMeleeRng;
+  const dist = unitsGetMeleeDistance113c(a.x, a.y, size1, b.x, b.y, size2);
+
+  if (targetUnit.dwUnitType === UNIT_MONSTER) {
+    const targetBaseId = getMonsterPathRecord(targetUnit.dwClassId).baseId;
+    if ((targetBaseId === 0x102 || targetBaseId === 0x105) && meleeRng + 8 > dist) {
+      return true;
+    }
+  }
+  if (dist <= 0) return true;
+  if (meleeRng + bonus + 1 < dist) return false;
+  const room1 = monUnit.pDynamicPath?.pRoom ?? monUnit.pStaticPath?.room ?? null;
+  return !unitsHasCollisionBetween113c(room1, a.x, a.y, size1, b.x, b.y, size2, 0x804);
 }
 
 interface NpcNode4State {
@@ -176,6 +417,7 @@ interface AreaPathContext113c {
   subHeight: number;
   roomCols: number;
   roomRows: number;
+  hasExplicitRooms: boolean;
   rooms: PathRoom[];
   objects: Map<number, PathUnit>;
   monsters: Map<number, MonsterPathEntry>;
@@ -203,15 +445,21 @@ export function computePlayerVelocity113c(
  * MONSTER_InitStats (D2Game.dll 0x6FCCFFD1) initializes base stat 67 (STAT_VELOCITYPERCENT) = 75 (0x4B)
  * on all monsters (confirmed by 0x67 NPCMove captures in 04-d2gs-idle-60s.d2cap and a1-town-walk Oracle trace).
  */
-export function computeMonsterWalkVelocity113c(hcIdx: number, pct = 75): number {
-  const rec = getMonsterPathRecord(hcIdx);
+export function computeMonsterWalkVelocity113c(hcIdx: number, pct = 75, baseVelocityFp8?: number): number {
+  // `UNITS_UpdateAnimRateAndVelocity` 0x6FD833AE: base = 0x6FD80D50(type, class) (monsters: MonStats
+  // `Velocity << 8`), unless a transform state (0x6FDA01E0, States.bin +0x2D/+0x2E) remaps the unit to a
+  // player class (CharStats `WalkVelocity << 8`), passed in as `baseVelocityFp8`.
+  const base = baseVelocityFp8 ?? getMonsterPathRecord(hcIdx).velocity << 8;
   const clamped = Math.max(25, pct | 0);
-  return Math.trunc(Math.imul(clamped, rec.velocity << 8) / 100) | 0;
+  return Math.trunc(Math.imul(clamped, base) / 100) | 0;
 }
 
 /**
  * 1.13c MONSTER_StartMove (0x6FC95E10 -> 0x6FC94F90 -> 0x6FC94D50):
- * - Sets target coord and PATH_SetDistance(pPath, 20) (#10022 0x6FD84630, called at 0x6FC95EE7).
+ * - Sets target coord and PATH_SetDistance(pPath, 20) (#10022 0x6FD84880, called at 0x6FC95EE7).
+ * - 0x6FC94F90 defaults nMaxDist (al) to 5 when neither pAiPath+0x20 nor pModeChange+0x1c sets one
+ *   (0x6FC94FDA: mov byte ptr [esp+0x1c], 5), and 0x6FC94D50 calls PATH_SetNewDistance(pPath, al)
+ *   (#10168 0x6FD84F50, called at 0x6FC94D5C).
  * - Sets PATH_SetType(pPath, pathType) and calls D2Common_10142(pPath, npcUnit, 0).
  * - When pts === 0 and pathType is in {2, 7, 9, 13} (jump table 0x6FC94E2C),
  *   falls back to PATHTYPE_WALL_FOLLOW (15) and retries D2Common_10142 (0x6FC94DF0).
@@ -224,11 +472,13 @@ function startNpcWalkToPos113c(
   targetY: number,
   pathType: number,
   stepNum: number,
+  maxDist = 5,
 ): number {
   PATH_SetStepNum(pPath, stepNum);
-  PATH_SetTargetUnit(pPath, null);
+  // MONSTER_StartMode 0x6FC95EDB: position target -> #10286 only (it clears pTargetUnit itself).
   D2COMMON_10170_PathSetTargetPos(pPath, targetX, targetY);
   PATH_SetDistance(pPath, 20);
+  PATH_SetNewDistance(pPath, maxDist > 0 ? maxDist : 5);
   PATH_SetVelocity(pPath, computeMonsterWalkVelocity113c(hcIdx));
   PATH_SetType(pPath, pathType);
   let pts = D2Common_10142(pPath, npcUnit, 0);
@@ -277,6 +527,7 @@ export class AreaPathWorld113c {
   private readonly playerAreaById = new Map<number, number>();
   private readonly monsterAreaById = new Map<number, number>();
   private readonly objectAreaById = new Map<number, number>();
+  private readonly hibernatedNpcAi = new Map<number, TownNpcAiState113c>();
 
   initArea(
     areaId: number,
@@ -285,6 +536,12 @@ export class AreaPathWorld113c {
     subWidth?: number,
     subHeight?: number,
     collision?: Uint16Array,
+    roomRects?: ReadonlyArray<{
+      readonly x: number;
+      readonly y: number;
+      readonly w: number;
+      readonly h: number;
+    }>,
   ): boolean {
     if (
       originX === undefined ||
@@ -301,28 +558,39 @@ export class AreaPathWorld113c {
     const isTown = TOWN_AREA_IDS_113C.has(areaId);
     const roomCols = Math.max(1, Math.ceil(subWidth / ROOM_CHUNK_SUBTILES));
     const roomRows = Math.max(1, Math.ceil(subHeight / ROOM_CHUNK_SUBTILES));
+    const validRects = roomRects?.filter((r) => r.w > 0 && r.h > 0) ?? [];
+    const hasExplicitRooms = validRects.length > 0;
     const rooms: PathRoom[] = [];
-    for (let ry = 0; ry < roomRows; ry += 1) {
-      const sy = originY + ry * ROOM_CHUNK_SUBTILES;
-      const sh = Math.min(ROOM_CHUNK_SUBTILES, originY + subHeight - sy);
-      for (let rx = 0; rx < roomCols; rx += 1) {
-        const sx = originX + rx * ROOM_CHUNK_SUBTILES;
-        const sw = Math.min(ROOM_CHUNK_SUBTILES, originX + subWidth - sx);
+    if (hasExplicitRooms) {
+      for (const rect of validRects) {
         rooms.push({
-          subX: sx,
-          subY: sy,
-          subW: sw,
-          subH: sh,
+          subX: rect.x,
+          subY: rect.y,
+          subW: rect.w,
+          subH: rect.h,
           isTown,
           adjacentRooms: [],
           grid,
         });
       }
-    }
-    const adjacentMap = buildAdjacentRoomLists(rooms);
-    for (const room of rooms) {
-      (room as { adjacentRooms: readonly PathRoom[] }).adjacentRooms =
-        adjacentMap.get(room) ?? [];
+    } else {
+      for (let ry = 0; ry < roomRows; ry += 1) {
+        const sy = originY + ry * ROOM_CHUNK_SUBTILES;
+        const sh = Math.min(ROOM_CHUNK_SUBTILES, originY + subHeight - sy);
+        for (let rx = 0; rx < roomCols; rx += 1) {
+          const sx = originX + rx * ROOM_CHUNK_SUBTILES;
+          const sw = Math.min(ROOM_CHUNK_SUBTILES, originX + subWidth - sx);
+          rooms.push({
+            subX: sx,
+            subY: sy,
+            subW: sw,
+            subH: sh,
+            isTown,
+            adjacentRooms: [],
+            grid,
+          });
+        }
+      }
     }
     this.areas.set(areaId, {
       areaId,
@@ -332,15 +600,68 @@ export class AreaPathWorld113c {
       subHeight,
       roomCols,
       roomRows,
+      hasExplicitRooms,
       rooms,
       objects: new Map(),
       monsters: new Map(),
       players: new Map(),
     });
+    this.relinkSeamComponentRooms(areaId);
     return true;
   }
 
+  private getSeamConnectedAreaIds(areaId: number): number[] {
+    if (!this.areas.has(areaId)) return [];
+    const visited = new Set<number>([areaId]);
+    const queue: number[] = [areaId];
+    while (queue.length > 0) {
+      const cur = queue.shift()!;
+      for (const cand of this.areas.keys()) {
+        if (visited.has(cand)) continue;
+        if (areAreasSeamAdjacent113c(cur, cand)) {
+          visited.add(cand);
+          queue.push(cand);
+        }
+      }
+    }
+    return [...visited].sort((a, b) => a - b);
+  }
+
+  private areAreasSeamConnected(a: number, b: number): boolean {
+    if (a === b) return true;
+    return this.getSeamConnectedAreaIds(a).includes(b);
+  }
+
+  private relinkSeamComponentRooms(areaId: number): void {
+    const componentIds = this.getSeamConnectedAreaIds(areaId);
+    const componentRooms: PathRoom[] = [];
+    for (const id of componentIds) {
+      const ctx = this.areas.get(id);
+      if (ctx) componentRooms.push(...ctx.rooms);
+    }
+    const adjacentMap = buildAdjacentRoomLists(componentRooms);
+    for (const room of componentRooms) {
+      (room as { adjacentRooms: readonly PathRoom[] }).adjacentRooms =
+        adjacentMap.get(room) ?? [];
+    }
+  }
+
   private findRoom(ctx: AreaPathContext113c, x: number, y: number): PathRoom | null {
+    if (ctx.hasExplicitRooms) {
+      const ix = x | 0;
+      const iy = y | 0;
+      for (const room of ctx.rooms) {
+        if (
+          ix >= room.subX &&
+          iy >= room.subY &&
+          ix < room.subX + room.subW &&
+          iy < room.subY + room.subH
+        ) {
+          return room;
+        }
+      }
+      return null;
+    }
     const lx = (x - ctx.originX) | 0;
     const ly = (y - ctx.originY) | 0;
     if (lx < 0 || ly < 0 || lx >= ctx.subWidth || ly >= ctx.subHeight) return null;
@@ -351,6 +672,222 @@ export class AreaPathWorld113c {
 
   hasArea(areaId: number): boolean {
     return this.areas.has(areaId);
+  }
+
+  getCollisionAt(areaId: number, x: number, y: number): number {
+    const ctx = this.areas.get(areaId);
+    const grid = ctx?.rooms[0]?.grid;
+    if (!grid) return 0xffff;
+    return grid.get(x | 0, y | 0);
+  }
+
+  addCollisionMaskAt(areaId: number, x: number, y: number, mask: number): void {
+    const ix = x | 0;
+    const iy = y | 0;
+    for (const id of this.getSeamConnectedAreaIds(areaId)) {
+      const grid = this.areas.get(id)?.rooms[0]?.grid;
+      if (!grid) continue;
+      const cur = grid.get(ix, iy);
+      if (cur !== 0xffff) {
+        grid.set(ix, iy, (cur | mask) & 0xffff);
+      }
+    }
+  }
+
+  removeCollisionMaskAt(areaId: number, x: number, y: number, mask: number): void {
+    const ix = x | 0;
+    const iy = y | 0;
+    for (const id of this.getSeamConnectedAreaIds(areaId)) {
+      const grid = this.areas.get(id)?.rooms[0]?.grid;
+      if (!grid) continue;
+      const cur = grid.get(ix, iy);
+      if (cur !== 0xffff) {
+        grid.set(ix, iy, cur & ~mask & 0xffff);
+      }
+    }
+  }
+
+  unitSizeSubtractedDistToTarget(
+    areaId: number,
+    monUnitId: number,
+    targetUnitType: number,
+    targetUnitId: number,
+  ): number | null {
+    const ctx = this.areas.get(areaId);
+    const monEntry = ctx?.monsters.get(monUnitId);
+    if (!ctx || !monEntry) return null;
+    const targetUnit = this.findTargetPathUnit(ctx, targetUnitType, targetUnitId);
+    if (!targetUnit) return null;
+    return unitSizeSubtractedOctileDist113c(monEntry.unit, targetUnit);
+  }
+
+  isMonsterInMeleeRange113c(
+    areaId: number,
+    monUnitId: number,
+    targetUnitType: number,
+    targetUnitId: number,
+    bonus = 0,
+  ): boolean | null {
+    const ctx = this.areas.get(areaId);
+    const monEntry = ctx?.monsters.get(monUnitId);
+    if (!ctx || !monEntry) return null;
+    const targetUnit = this.findTargetPathUnit(ctx, targetUnitType, targetUnitId);
+    if (!targetUnit) return null;
+    return unitsIsMonsterInMeleeRange113c(monEntry.unit, targetUnit, bonus);
+  }
+
+  startMonsterMoveToTarget113c(params: {
+    readonly areaId: number;
+    readonly unitId: number;
+    readonly hcIdx: number;
+    readonly targetUnitType: number;
+    readonly targetUnitId: number;
+    readonly pathType: number;
+    readonly stepNum: number;
+    readonly velocityPct: number;
+    readonly baseVelocityFp8?: number | undefined;
+    readonly maxDist?: number | undefined;
+  }): number {
+    const ctx = this.areas.get(params.areaId);
+    const monEntry = ctx?.monsters.get(params.unitId);
+    const pPath = monEntry?.unit.pDynamicPath;
+    if (!ctx || !monEntry || !pPath) return 0;
+    const targetUnit = this.findTargetPathUnit(
+      ctx,
+      params.targetUnitType,
+      params.targetUnitId,
+    );
+    if (!targetUnit) return 0;
+    // `AI_ApproachTarget` 0x6FD12599: #11005 PATH_SetStepNum, then `MONSTER_StartMode` 0x6FC95EBE..
+    // 0x6FC95EE7 sets EITHER #10336 PATH_SetTargetUnit (target unit given) OR #10286 PathSetTargetPos
+    // (no unit), never both, then #10022 PATH_SetDistance(20)
+    // (kb/engine/path-call-order-audit-113c.md, row MONSTER_StartMode).
+    PATH_SetStepNum(pPath, params.stepNum);
+    PATH_SetTargetUnit(pPath, targetUnit);
+    PATH_SetDistance(pPath, 20);
+    const md = params.maxDist ?? 5;
+    PATH_SetNewDistance(pPath, md > 0 ? md : 5);
+    PATH_SetVelocity(pPath, computeMonsterWalkVelocity113c(params.hcIdx, params.velocityPct, params.baseVelocityFp8));
+    PATH_SetType(pPath, params.pathType);
+    let pts = D2Common_10142(pPath, monEntry.unit, 0);
+    if (
+      pts <= 0 &&
+      (params.pathType === 2 ||
+        params.pathType === PATHTYPE_STRAIGHT ||
+        params.pathType === 9 ||
+        params.pathType === 13)
+    ) {
+      PATH_SetType(pPath, PATHTYPE_WALL_FOLLOW);
+      pts = D2Common_10142(pPath, monEntry.unit, 0);
+    }
+    return pts;
+  }
+
+  startMonsterMoveToPos113c(params: {
+    readonly areaId: number;
+    readonly unitId: number;
+    readonly hcIdx: number;
+    readonly targetX: number;
+    readonly targetY: number;
+    readonly pathType: number;
+    readonly stepNum: number;
+    readonly velocityPct: number;
+    readonly baseVelocityFp8?: number | undefined;
+    readonly maxDist?: number | undefined;
+  }): number {
+    const ctx = this.areas.get(params.areaId);
+    const monEntry = ctx?.monsters.get(params.unitId);
+    const pPath = monEntry?.unit.pDynamicPath;
+    if (!ctx || !monEntry || !pPath) return 0;
+    PATH_SetStepNum(pPath, params.stepNum);
+    // MONSTER_StartMode 0x6FC95EDB: position target -> #10286 only (it clears pTargetUnit itself).
+    D2COMMON_10170_PathSetTargetPos(pPath, params.targetX | 0, params.targetY | 0);
+    PATH_SetDistance(pPath, 20);
+    const md = params.maxDist ?? 5;
+    PATH_SetNewDistance(pPath, md > 0 ? md : 5);
+    PATH_SetVelocity(pPath, computeMonsterWalkVelocity113c(params.hcIdx, params.velocityPct, params.baseVelocityFp8));
+    PATH_SetType(pPath, params.pathType);
+    let pts = D2Common_10142(pPath, monEntry.unit, 0);
+    if (
+      pts <= 0 &&
+      (params.pathType === 2 ||
+        params.pathType === PATHTYPE_STRAIGHT ||
+        params.pathType === 9 ||
+        params.pathType === 13)
+    ) {
+      PATH_SetType(pPath, PATHTYPE_WALL_FOLLOW);
+      pts = D2Common_10142(pPath, monEntry.unit, 0);
+    }
+    return pts;
+  }
+
+  stepMonsterMove113c(params: {
+    readonly areaId: number;
+    readonly unitId: number;
+    readonly hcIdx: number;
+    readonly velocityPct: number;
+    readonly baseVelocityFp8?: number | undefined;
+    readonly mode: number;
+  }): { readonly stepped: number; readonly x: number; readonly y: number } | null {
+    const ctx = this.areas.get(params.areaId);
+    const monEntry = ctx?.monsters.get(params.unitId);
+    const pPath = monEntry?.unit.pDynamicPath;
+    if (!ctx || !monEntry || !pPath) return null;
+    monEntry.unit.dwAnimMode = params.mode;
+    PATH_SetVelocity(pPath, computeMonsterWalkVelocity113c(params.hcIdx, params.velocityPct, params.baseVelocityFp8));
+    const stepped = D2Common_10226(monEntry.unit, 0x400);
+    D2COMMON_10193_PATH_AdjustDirection(pPath);
+    if (pPath.pRoom) {
+      for (const id of this.getSeamConnectedAreaIds(params.areaId)) {
+        const cand = this.areas.get(id);
+        if (cand && cand.rooms.includes(pPath.pRoom) && id !== params.areaId) {
+          this.migrateMonsterAreaIfSeamConnected(params.unitId, id);
+          break;
+        }
+      }
+    }
+    return { stepped, x: pPath.wPosX, y: pPath.wPosY };
+  }
+
+  stopMonsterMove113c(areaId: number, unitId: number, mode = MONMODE_NEUTRAL): void {
+    const entry = this.areas.get(areaId)?.monsters.get(unitId);
+    const pPath = entry?.unit.pDynamicPath;
+    if (!entry || !pPath) return;
+    PATH_StopMovement(pPath);
+    entry.unit.dwAnimMode = mode;
+  }
+
+  /**
+   * Diagnostics only (oracle trace-window tool): a plain snapshot of a player's (`unitType` 0) or
+   * monster's (`unitType` 1) `D2DynamicPathStrc` fields that drive `D2Common_10226` stepping, or
+   * `null` when the unit has no dynamic path in any area. Never used by the simulation.
+   */
+  describeUnitPath113c(unitType: number, unitId: number): Record<string, number | string | null> | null {
+    for (const ctx of this.areas.values()) {
+      const unit =
+        unitType === UNIT_PLAYER
+          ? ctx.players.get(unitId)?.unit
+          : unitType === UNIT_MONSTER
+            ? ctx.monsters.get(unitId)?.unit
+            : undefined;
+      const p = unit?.pDynamicPath;
+      if (!unit || !p) continue;
+      const t = p.pTargetUnit;
+      const tp = t?.pDynamicPath;
+      return {
+        area: ctx.areaId,
+        animMode: unit.dwAnimMode,
+        pos: `${p.wPosX},${p.wPosY}`,
+        pathType: p.dwPathType,
+        point: `${p.dwCurrentPointIdx}/${p.dwPathPoints}`,
+        stepNum: p.nStepNum,
+        dist: p.nDist,
+        vel: `${p.tVelocityVector.nX},${p.tVelocityVector.nY}`,
+        targetPos: `${p.tTargetCoord.X},${p.tTargetCoord.Y}`,
+        targetUnit: t ? `${t.dwUnitType}:${t.dwUnitId}@${tp ? `${tp.wPosX},${tp.wPosY}` : '?'}` : null,
+      };
+    }
+    return null;
   }
 
   /**
@@ -392,12 +929,49 @@ export class AreaPathWorld113c {
     if (!ctx || !Number.isFinite(x) || !Number.isFinite(y)) return false;
     const ix = Math.round(x);
     const iy = Math.round(y);
+    if (ctx.hasExplicitRooms) {
+      return this.findRoom(ctx, ix, iy) !== null;
+    }
     return (
       ix >= ctx.originX &&
       iy >= ctx.originY &&
       ix < ctx.originX + ctx.subWidth &&
       iy < ctx.originY + ctx.subHeight
     );
+  }
+
+  isInReachableBounds(areaId: number, x: number, y: number): boolean {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+    for (const candId of this.getSeamConnectedAreaIds(areaId)) {
+      if (this.isInBounds(candId, x, y)) return true;
+    }
+    return false;
+  }
+
+  private migratePlayerAreaIfSeamConnected(unitId: number, areaId: number): void {
+    const prevArea = this.playerAreaById.get(unitId);
+    if (prevArea === undefined || prevArea === areaId) return;
+    if (!this.areAreasSeamConnected(prevArea, areaId)) return;
+    const prevCtx = this.areas.get(prevArea);
+    const nextCtx = this.areas.get(areaId);
+    const entry = prevCtx?.players.get(unitId);
+    if (!prevCtx || !nextCtx || !entry) return;
+    prevCtx.players.delete(unitId);
+    nextCtx.players.set(unitId, entry);
+    this.playerAreaById.set(unitId, areaId);
+  }
+
+  private migrateMonsterAreaIfSeamConnected(unitId: number, areaId: number): void {
+    const prevArea = this.monsterAreaById.get(unitId);
+    if (prevArea === undefined || prevArea === areaId) return;
+    if (!this.areAreasSeamConnected(prevArea, areaId)) return;
+    const prevCtx = this.areas.get(prevArea);
+    const nextCtx = this.areas.get(areaId);
+    const entry = prevCtx?.monsters.get(unitId);
+    if (!prevCtx || !nextCtx || !entry) return;
+    prevCtx.monsters.delete(unitId);
+    nextCtx.monsters.set(unitId, entry);
+    this.monsterAreaById.set(unitId, areaId);
   }
 
   spawnObject(
@@ -485,8 +1059,20 @@ export class AreaPathWorld113c {
     if (monster.dead || monster.mode === 0 || monster.mode === 12) {
       PATH_SetUnitDeadCollision(unit, true);
     }
-    const npcAi: TownNpcAiState113c | null = monster.townNpcAiEnabled
-      ? {
+    let npcAi: TownNpcAiState113c | null = null;
+    if (monster.townNpcAiEnabled) {
+      const savedAi = this.hibernatedNpcAi.get(monster.unitId);
+      if (savedAi) {
+        this.hibernatedNpcAi.delete(monster.unitId);
+        savedAi.nextAiFrame =
+          monster.mode === MONMODE_NEUTRAL
+            ? currentFrame === 0
+              ? 4
+              : currentFrame + 2
+            : Infinity;
+        npcAi = savedAi;
+      } else {
+        npcAi = {
           homeInitialized: false,
           homeX: 0,
           homeY: 0,
@@ -497,8 +1083,9 @@ export class AreaPathWorld113c {
           node4: null,
           node4RetryCounter: 0,
           node7: null,
-        }
-      : null;
+        };
+      }
+    }
     ctx.monsters.set(monster.unitId, { unit, npcAi });
     this.monsterAreaById.set(monster.unitId, areaId);
   }
@@ -512,6 +1099,7 @@ export class AreaPathWorld113c {
   ): void {
     const ix = Math.round(x);
     const iy = Math.round(y);
+    this.migrateMonsterAreaIfSeamConnected(unitId, areaId);
     const prevArea = this.monsterAreaById.get(unitId);
     if (prevArea !== undefined && prevArea !== areaId) {
       this.removeMonster(unitId);
@@ -544,7 +1132,26 @@ export class AreaPathWorld113c {
     PATH_SetUnitDeadCollision(entry.unit, true);
   }
 
+  hibernateMonster(unitId: number): void {
+    const areaId = this.monsterAreaById.get(unitId);
+    if (areaId !== undefined) {
+      const entry = this.areas.get(areaId)?.monsters.get(unitId);
+      if (entry?.npcAi) {
+        this.hibernatedNpcAi.set(unitId, entry.npcAi);
+      }
+    }
+    this.removeMonster(unitId);
+  }
+
+  setTownNpcNextAiFrame(areaId: number, unitId: number, nextAiFrame: number): void {
+    const entry = this.areas.get(areaId)?.monsters.get(unitId);
+    if (entry?.npcAi) {
+      entry.npcAi.nextAiFrame = nextAiFrame;
+    }
+  }
+
   removeMonster(unitId: number): void {
+    this.hibernatedNpcAi.delete(unitId);
     const areaId = this.monsterAreaById.get(unitId);
     if (areaId === undefined) return;
     this.monsterAreaById.delete(unitId);
@@ -568,6 +1175,7 @@ export class AreaPathWorld113c {
   ): PlayerPathEntry | null {
     const ix = Math.round(x);
     const iy = Math.round(y);
+    this.migratePlayerAreaIfSeamConnected(unitId, areaId);
     const prevArea = this.playerAreaById.get(unitId);
     if (prevArea !== undefined && prevArea !== areaId) {
       this.removePlayer(unitId);
@@ -650,6 +1258,7 @@ export class AreaPathWorld113c {
   }
 
   isPlayerMoving(areaId: number, unitId: number): boolean {
+    this.migratePlayerAreaIfSeamConnected(unitId, areaId);
     const ctx = this.areas.get(areaId);
     const pPath = ctx?.players.get(unitId)?.unit.pDynamicPath;
     if (!pPath) return false;
@@ -660,6 +1269,7 @@ export class AreaPathWorld113c {
     areaId: number,
     unitId: number,
   ): { x: number; y: number } | null {
+    this.migratePlayerAreaIfSeamConnected(unitId, areaId);
     const ctx = this.areas.get(areaId);
     const pPath = ctx?.players.get(unitId)?.unit.pDynamicPath;
     if (!pPath || pPath.dwPathPoints <= 0 || pPath.dwCurrentPointIdx >= pPath.dwPathPoints) {
@@ -683,10 +1293,11 @@ export class AreaPathWorld113c {
   ): boolean {
     const tx = Math.round(targetX);
     const ty = Math.round(targetY);
-    if (!this.isInBounds(areaId, curX, curY) || !this.isInBounds(areaId, tx, ty)) {
+    if (!this.isInBounds(areaId, curX, curY) || !this.isInReachableBounds(areaId, tx, ty)) {
       return false;
     }
-    const entry = this.spawnOrSyncPlayer(areaId, unitId, charClassId, curX, curY, moveMode);
+    const neutralMode = TOWN_AREA_IDS_113C.has(areaId) ? 5 : 1;
+    const entry = this.spawnOrSyncPlayer(areaId, unitId, charClassId, curX, curY, neutralMode);
     const pPath = entry?.unit.pDynamicPath;
     if (!entry || !pPath) return false;
     entry.run = run;
@@ -705,6 +1316,7 @@ export class AreaPathWorld113c {
       entry.unit.dwAnimMode = moveMode;
       return true;
     }
+    this.stopPlayer(unitId, neutralMode);
     return false;
   }
 
@@ -741,7 +1353,8 @@ export class AreaPathWorld113c {
         moveMode,
       );
     }
-    const entry = this.spawnOrSyncPlayer(areaId, unitId, charClassId, curX, curY, moveMode);
+    const neutralMode = TOWN_AREA_IDS_113C.has(areaId) ? 5 : 1;
+    const entry = this.spawnOrSyncPlayer(areaId, unitId, charClassId, curX, curY, neutralMode);
     const pPath = entry?.unit.pDynamicPath;
     if (!entry || !pPath) return false;
     entry.run = run;
@@ -765,6 +1378,7 @@ export class AreaPathWorld113c {
       entry.unit.dwAnimMode = moveMode;
       return true;
     }
+    this.stopPlayer(unitId, neutralMode);
     return false;
   }
 
@@ -778,6 +1392,7 @@ export class AreaPathWorld113c {
     run: boolean,
     velocityPercentBonus: number,
   ): { x: number; y: number; stillMoving: boolean } | null {
+    this.migratePlayerAreaIfSeamConnected(unitId, areaId);
     const ctx = this.areas.get(areaId);
     const entry = ctx?.players.get(unitId);
     const pPath = entry?.unit.pDynamicPath;
@@ -924,7 +1539,10 @@ export class AreaPathWorld113c {
         if (p.areaId !== mon.areaId || p.warrivGreeted) continue;
         const pEntry = ctx.players.get(p.unitId);
         if (!pEntry) continue;
-        const d = D2Common_10399(pEntry.unit, npcUnit);
+        // AI_FindNearestPlayer (0x6FD130C0 -> 0x6FD11A90) uses 0x6FCD0A20(npc, player)
+        // and rejects players with dist > 15 (cmp esi, 0x0f; jg).
+        const d = unitSizeSubtractedOctileDist113c(npcUnit, pEntry.unit);
+        if (d > 15) continue;
         if (d < bestDist) {
           bestDist = d;
           nearestPlayer = p;
@@ -1172,19 +1790,83 @@ export class AreaPathWorld113c {
     }
   }
 
+  /**
+   * Raw `D2DynamicPathStrc` fields of a player (`unitType` 0) or monster (`unitType` 1) for AI ports that
+   * read them through D2Common getters (kb/monsters/d2game-necropet-ai-113c.md §3):
+   * `x`/`y` = `#10867` / `#10750` (`wPosX` / `wPosY`), `targetX`/`targetY` = `#10983` / `#10764`
+   * (`tTargetCoord`), `finalX`/`finalY` = `#10690` / `#10999` (`tFinalTargetCoord`), `room` = `#10331`
+   * `UNITS_GetRoom`. `null` when the unit has no dynamic path in `areaId` (or a seam-connected area).
+   */
+  getUnitPathState113c(
+    areaId: number,
+    unitType: number,
+    unitId: number,
+  ): {
+    readonly x: number;
+    readonly y: number;
+    readonly targetX: number;
+    readonly targetY: number;
+    readonly finalX: number;
+    readonly finalY: number;
+    readonly room: PathRoom | null;
+  } | null {
+    const ctx = this.areas.get(areaId);
+    if (!ctx) return null;
+    const p = this.findTargetPathUnit(ctx, unitType, unitId)?.pDynamicPath;
+    if (!p) return null;
+    return {
+      x: p.wPosX,
+      y: p.wPosY,
+      targetX: p.tTargetCoord.X,
+      targetY: p.tTargetCoord.Y,
+      finalX: p.tFinalTargetCoord.X,
+      finalY: p.tFinalTargetCoord.Y,
+      room: p.pRoom,
+    };
+  }
+
+  /**
+   * `D2Common #10916` (1.13c `0x6FD8C6D0`) as used by the pet AI: `DUNGEON_GetRoomAtPosition`
+   * (`0x6FD51330`) from `room`; `null` (the original returns 0) when `(x, y)` is in neither the room nor
+   * an adjacent one. On a hit the original returns the `+0x28` value of the RoomEx tile-grid entry at
+   * `(x / 5, y / 5)` (`0x6FDD19C0`, a per-tile zone id, `-1` when the tile has none). The replica has no
+   * RoomEx tile grid; it returns the level (area) id owning the found room, which is that zone id for
+   * single-level rooms (kb/monsters/d2game-necropet-ai-113c.md §4, open item).
+   */
+  tileZoneAtPosition113c(room: PathRoom | null, x: number, y: number): number | null {
+    const hit = DUNGEON_GetRoomAtPosition(room, x | 0, y | 0);
+    if (!hit) return null;
+    for (const ctx of this.areas.values()) {
+      if (ctx.rooms.includes(hit)) return ctx.areaId;
+    }
+    throw new Error(`#10916: room at ${x},${y} belongs to no area context`);
+  }
+
   private findTargetPathUnit(
     ctx: AreaPathContext113c,
     targetUnitType: number,
     targetUnitId: number,
   ): PathUnit | null {
-    if (targetUnitType === UNIT_MONSTER) {
-      return ctx.monsters.get(targetUnitId)?.unit ?? null;
-    }
-    if (targetUnitType === UNIT_OBJECT) {
-      return ctx.objects.get(targetUnitId) ?? null;
-    }
-    if (targetUnitType === UNIT_PLAYER) {
-      return ctx.players.get(targetUnitId)?.unit ?? null;
+    const lookup = (c: AreaPathContext113c): PathUnit | null => {
+      if (targetUnitType === UNIT_MONSTER) {
+        return c.monsters.get(targetUnitId)?.unit ?? null;
+      }
+      if (targetUnitType === UNIT_OBJECT) {
+        return c.objects.get(targetUnitId) ?? null;
+      }
+      if (targetUnitType === UNIT_PLAYER) {
+        return c.players.get(targetUnitId)?.unit ?? null;
+      }
+      return null;
+    };
+    const direct = lookup(ctx);
+    if (direct) return direct;
+    for (const candId of this.getSeamConnectedAreaIds(ctx.areaId)) {
+      if (candId === ctx.areaId) continue;
+      const cand = this.areas.get(candId);
+      if (!cand) continue;
+      const hit = lookup(cand);
+      if (hit) return hit;
     }
     return null;
   }

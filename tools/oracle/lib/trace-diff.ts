@@ -13,6 +13,7 @@ export interface TraceHeader {
   schema: string
   source: string
   initSeed?: number
+  dot?: boolean
   unitFields: string[]
   statIds: number[]
 }
@@ -29,12 +30,16 @@ export interface TraceDmgEvent {
   raw: number[]
 }
 
+/** One `STATLIST_SetUnitStat` (`0x6FC9684A` / `0x6FC97D12`) `[type, id, hp0, hp1]` tick emitted in `dot`. */
+export type TraceDotEvent = [number, number, number, number]
+
 export interface TraceFrame {
   frame: number
   [unitKey: `t${number}`]: UnitRow[] | undefined
   gs?: [number, number]
   st?: number[][]
   dmg?: TraceDmgEvent[]
+  dot?: TraceDotEvent[]
   in?: unknown[]
 }
 
@@ -56,6 +61,8 @@ export interface DiffOptions {
   compareStates?: boolean
   /** Compare per-frame `SUNITDMG_ApplyDamage` `dmg` events when present (default true). */
   compareDamage?: boolean
+  /** Compare per-frame `stat 6` DoT / regen `dot` events when both headers advertise `dot: true` (default true). */
+  compareDot?: boolean
   /** Stat ids to compare (default all stat ids present in both headers). */
   statIds?: number[]
   /** Absolute tolerance per field/stat name (default 0 = exact). */
@@ -75,6 +82,7 @@ export type DivergenceKind =
   | 'game-seed'
   | 'states'
   | 'damage'
+  | 'dot'
 
 export interface Divergence {
   frame: number
@@ -82,8 +90,8 @@ export interface Divergence {
   type?: number
   unitId?: number
   field?: string
-  oracle?: number | null | UnitRow | TraceDmgEvent
-  replica?: number | null | UnitRow | TraceDmgEvent
+  oracle?: number | null | UnitRow | TraceDmgEvent | TraceDotEvent
+  replica?: number | null | UnitRow | TraceDmgEvent | TraceDotEvent
   /** Rows of the involved unit in the preceding frames: [frame, oracleRow, replicaRow]. */
   context: [number, UnitRow | null, UnitRow | null][]
 }
@@ -368,6 +376,33 @@ export function diffTraces(oracle: Trace, replica: Trace, opts: DiffOptions = {}
               oracle: ea ?? null,
               replica: eb ?? null,
               context: [],
+            },
+          }
+        }
+      }
+    }
+
+    if (opts.compareDot !== false && Boolean(oracle.header.dot && replica.header.dot)) {
+      const da = fa.dot ?? []
+      const db = fb.dot ?? []
+      const maxLen = Math.max(da.length, db.length)
+      for (let k = 0; k < maxLen; k++) {
+        const ea = da[k]
+        const eb = db[k]
+        if (!ea || !eb || !sameIntArray(ea, eb)) {
+          return {
+            uncomparedFields,
+            comparedFrames: compared,
+            oracleFrames: oracle.frames.size,
+            replicaFrames: replica.frames.size,
+            firstDivergence: {
+              frame,
+              kind: 'dot',
+              ...(ea ? { type: ea[0], unitId: ea[1] } : eb ? { type: eb[0], unitId: eb[1] } : {}),
+              field: `dot[${k}]`,
+              oracle: ea ?? null,
+              replica: eb ?? null,
+              context: ea ? context(frame, ea[0], ea[1]) : eb ? context(frame, eb[0], eb[1]) : [],
             },
           }
         }

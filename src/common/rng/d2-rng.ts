@@ -261,6 +261,12 @@ export interface D2SeedTraceSink {
   roll(seed: D2SeedStrc, kind: 'R' | 'L' | 'P', arg: number, result: number): void
   /** D2CMP_10088_GetTiles ('T'). */
   tile?(nType: number, nStyle: number, nSequence: number, n: number, nRaritySum: number): void
+  /**
+   * Inlined LCG steps ({@link D2SEED_AdvanceInline}). Optional so the DRLG trace writer keeps
+   * mirroring the native oracle (which does not report inlined steps); diagnostic sinks use it to
+   * count every draw.
+   */
+  inline?(seed: D2SeedStrc): void
 }
 
 let seedTraceSink: D2SeedTraceSink | null = null
@@ -302,6 +308,7 @@ function advanceD2Seed(seed: D2SeedStrc): void {
  */
 export function D2SEED_AdvanceInline(seed: D2SeedStrc): void {
   advanceD2Seed(seed)
+  seedTraceSink?.inline?.(seed)
 }
 
 //D2Common.0x6FDAEAB0 (#10912)

@@ -119,7 +119,7 @@ Applies to `roguehire` (#271), `act2hire` (#338), `act3hire` (#359), `act5hire1`
 Applies to `necromancer` (#363 Skeleton), `necromage` (#364 Skeletal Mage), `claygolem` (#289), `bloodgolem` (#290), `irongolem` (#291), `firegolem` (#292), `valkyrie` (#357), and revived monsters (`Revive` #95).
 
 - **Dispatcher (`0x6FC3E900..0x6FC3E94B`)**:
-  - Checks if `hcIdx == 364` (`necromage`, `cmp eax, 0x16c` at `0x6FC3E932`). If `necromage`, calls `AITHINK_NecroMage_6FC3E3D0`; otherwise calls `AITHINK_NecroPetMelee_6FC3E640`.
+  - **Corrected** (see [`d2game-necropet-ai-113c.md`](./d2game-necropet-ai-113c.md)): tests `pAiTick->pAiGeneral->[+0x14]` (`0x6FC3E929..0x6FC3E934`, no `hcIdx` compare); non-zero calls the ranged `0x6FC3E3D0`, otherwise the melee `0x6FC3E640`.
 - **Melee `NecroPet` (`0x6FC3E640..0x6FC3E8FD`)**:
   - **Leash Teleport**: `ownerDist > 50` subtiles (`cmp ebx, 0x32` at `0x6FC3E70A` & `0x6FC3E35C`; `800` px) -> teleports to owner.
   - **Leash Run**: `ownerDist > 28` subtiles (`cmp ebx, 0x1c` at `0x6FC3E753`; `448` px) -> drops combat target and runs to within `5` subtiles of owner (`0x6FC3E765`).

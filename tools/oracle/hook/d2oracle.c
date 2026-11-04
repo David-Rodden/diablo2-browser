@@ -48,9 +48,12 @@ static uintptr_t G(uintptr_t va) { /* rebase a D2Game VA */
 
 /* ---------------------------------------------------------------- frame */
 
-/* D2Common exports (stdcall): STATLIST_GetUnitStat (accrued) #10973. */
+/* D2Common exports (stdcall): STATLIST_GetUnitStat (accrued) #10973,
+ * STATLIST_SetUnitStat #10887. */
 typedef int(__stdcall *GetUnitStat_t)(void *unit, int stat, int layer);
+typedef int(__stdcall *SetUnitStat_t)(void *unit, int stat, int value, int layer);
 static GetUnitStat_t p_GetUnitStat;
+static SetUnitStat_t p_SetUnitStat;
 /* STATES_CheckState #10871 (stdcall(unit, state), ret 8). */
 typedef int(__stdcall *CheckState_t)(void *unit, int state);
 static CheckState_t p_CheckState;
@@ -67,6 +70,17 @@ typedef int(__stdcall *ApplyDamage_t)(void *, void *, void *, uint32_t *);
 static ApplyDamage_t p_ApplyDamage;
 static char g_dmglog[65536];
 static int g_dmglog_len;
+
+/* STATLIST_SetUnitStat (#10887) call sites in MONSTER_Event3_HpRegen
+ * (0x6FC9684A) and PLAYER_UpdateHpRegen (0x6FC97D12): per-frame stat 6 ticks. */
+typedef struct {
+  int type;
+  uint32_t id;
+  int hp0;
+  int hp1;
+} DotEntry;
+static DotEntry g_dotlog[512];
+static int g_dotn;
 
 /* Stats sampled per player/monster each frame (overridable via scenario). */
 static int g_stat_ids[64] = {0, 1, 2, 3, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
@@ -220,8 +234,6 @@ static int g_nsteer;
  * STATLIST_SetUnitStat (#10887) and run the original PLAYER_LevelUp
  * (0x6FD0B090: esi = player, stack pGame, ret 4) - the same sequence as the
  * D2Game path at 0x6FC7C033..0x6FC7C03D. Used only to author save fixtures. */
-typedef int(__stdcall *SetUnitStat_t)(void *unit, int stat, int value, int layer);
-static SetUnitStat_t p_SetUnitStat;
 void *g_levelup_fn, *g_lu_game, *g_lu_player; /* referenced from asm */
 static uint32_t g_setexp_frame, g_setexp_value;
 /* "dumpcoll FRAME RADIUS": write the collision map around the player. */
@@ -438,15 +450,32 @@ static void dump_collision(uint8_t *game, uint32_t frame) {
   free(queue);
 }
 
+static int __stdcall dot_setstat_hook(uint8_t *u, int stat, int val,
+                                      int layer) {
+  int hp0 = (u && stat == 6 && p_GetUnitStat) ? p_GetUnitStat(u, 6, 0) : val;
+  int ret = p_SetUnitStat(u, stat, val, layer);
+  if (u && stat == 6 && val != hp0 && g_dotn < 512) {
+    g_dotlog[g_dotn].type = (int)RD32(u, U_TYPE);
+    g_dotlog[g_dotn].id = RD32(u, U_ID);
+    g_dotlog[g_dotn].hp0 = hp0;
+    g_dotlog[g_dotn].hp1 = val;
+    g_dotn++;
+  }
+  return ret;
+}
+
 void __cdecl on_frame(uint8_t *game) {
   LONG n = InterlockedIncrement(&g_frames);
   if (g_coll_frame && RD32(game, G_FRAME) == g_coll_frame)
     dump_collision(game, g_coll_frame);
-  if (!g_trace) return;
+  if (!g_trace) {
+    g_dotn = 0;
+    return;
+  }
   if (n == 1) {
     fprintf(g_trace,
             "{\"schema\":\"d2oracle/1\",\"source\":\"oracle\","
-            "\"initSeed\":%u,\"seedOverride\":%u,"
+            "\"initSeed\":%u,\"seedOverride\":%u,\"dot\":true,"
             "\"unitFields\":[\"id\",\"class\",\"mode\",\"x\",\"y\","
             "\"seedLo\",\"seedHi\",\"level\"],\"statIds\":[",
             RD32(game, 0x7C), RD32(game, 0x84));
@@ -464,6 +493,15 @@ void __cdecl on_frame(uint8_t *game) {
   if (g_dmglog_len) {
     fprintf(g_trace, ",\"dmg\":[%s]", g_dmglog);
     g_dmglog_len = 0;
+  }
+  if (g_dotn > 0) {
+    fputs(",\"dot\":[", g_trace);
+    for (int i = 0; i < g_dotn; i++) {
+      fprintf(g_trace, "%s[%d,%u,%d,%d]", i ? "," : "", g_dotlog[i].type,
+              g_dotlog[i].id, g_dotlog[i].hp0, g_dotlog[i].hp1);
+    }
+    fputc(']', g_trace);
+    g_dotn = 0;
   }
   if (g_inlog_len) fprintf(g_trace, ",\"in\":[%s]", g_inlog);
   fputs("}\n", g_trace);
@@ -552,6 +590,12 @@ static void install_d2game_hooks(void) {
     dk += patch_call(G(dmg_sites[i]), (void *)apply_damage_hook,
                      (uintptr_t)p_ApplyDamage);
   logf_("%d/4 damage hooks", dk);
+  static const uintptr_t dot_sites[] = {0x6FC9684A, 0x6FC97D12};
+  int dotk = 0;
+  for (int i = 0; i < 2; i++)
+    dotk += patch_call(G(dot_sites[i]), (void *)dot_setstat_hook,
+                       G(0x6FC2A472));
+  logf_("%d/2 dot hooks", dotk);
 }
 
 /* ----------------------------------------------------------------- menu */

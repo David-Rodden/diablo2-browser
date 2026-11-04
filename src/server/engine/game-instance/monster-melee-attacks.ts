@@ -3,7 +3,7 @@
  */
 
 import { getEmbeddedDropTables } from '../../../common/items/embedded-drop-tables.ts'
-import { resolveArmorBlock113c, resolveWeaponBase113c } from '../../../common/units/char-anim-speed.ts'
+import { computeOneShotTicks, resolveArmorBlock113c, resolveCharacterAnimSpeedParams, resolveEquippedWeaponClass, resolveWeaponBase113c } from '../../../common/units/char-anim-speed.ts'
 import type { DeathKillerKind113c } from '../../../common/progression/experience-113c.ts'
 import { MONSTATS_113C_ROWS } from '../../../common/units/monstats-113c-data.ts'
 import { monaiParam113c, normalizeMonAiName113c } from '../../../common/units/monai-113c.ts'
@@ -19,7 +19,8 @@ import { computeDiminishingReturns } from '../../../common/data/calc-ast.ts'
 import { difficultyMonsterColdDivisor, difficultyMonsterFreezeDivisor, difficultyResistPenalty } from '../difficulty-resist-penalty.ts'
 import type { GameInstanceHost } from './host.ts'
 import type { InternalMonsterRecord, InternalPlayerRecord, MissileDamageChannel } from './types.ts'
-import { monsterProfile113c, normalizeMissileElement, playerWirePosition, resolveArmorCombatMeta113c } from './constants-and-helpers.ts'
+import { monStatsCritPct113c, monsterFillPacketPhysRange113c, rollPlayerDefenderArmorDurability113c } from './sunitdmg-player-defender-113c.ts'
+import { monsterProfile113c, normalizeMissileElement, playerWirePosition, resolveArmorCombatMeta113c, UNIT_TYPE_113C } from './constants-and-helpers.ts'
 
 
 /** Pick the 1.13c melee mode (A1/A2/S1) and schedule damage on its action frame. */
@@ -129,9 +130,15 @@ function monsterAttackTiming(this: GameInstanceHost,
     if (record !== undefined && record.framesPerDirection > 0 && record.hasSpeed) {
       const speed = Math.max(1, Math.floor((record.animationSpeed * attackRatePct) / 100))
       const event = record.events.find((entry) => entry.code !== 0)
-      const actionIdx = event !== undefined ? event.frame + 1 : record.framesPerDirection
+      // The mode starts with the anim frame accumulator at 0 and every later server frame adds
+      // `speed`; the AnimData event fires once `accumulator >> 8` reaches the event frame index, i.e.
+      // `ceil(eventFrame * 256 / speed)` frames after the mode change (same index the player
+      // AnimDispatcher uses). Oracle: zombie #9 enters A2 (`ZMA2HTH`, event frame 9, speed 256) on
+      // frame 748 of p52-paladin-auras and draws its to-hit roll on frame 757
+      // (kb/monsters/d2game-zombie-ai-113c.md §Attack timing).
+      const actionIdx = event !== undefined ? event.frame : record.framesPerDirection
       return {
-        actionFrame: Math.max(1, Math.floor((actionIdx * 256) / speed)),
+        actionFrame: Math.max(1, Math.ceil((actionIdx * 256) / speed)),
         totalFrames: Math.max(1, Math.floor((record.framesPerDirection * 256) / speed)),
       }
     }
@@ -1028,14 +1035,59 @@ function resolveMonsterAttackOnPlayer(this: GameInstanceHost,
     : swing?.fromMissile === true
       ? 'missile'
       : (swing?.attackKind ?? 'melee')
+  // 1.13c `SUNITDMG` rolls the to-hit / damage / burn draws on `pAttacker->pSeed` (the monster) and the
+  // block / avoid draws on `pDefender->pSeed` (the player), exactly like the player -> monster path in
+  // `applyDamageToMonster`. Oracle trace: a missed zombie A2 swing draws once from the zombie seed.
+  const monsterSeed113c =
+    this.drlgRoomPopulator !== null
+      ? this.unitSeeds.get(`${UNIT_TYPE_113C.monster}:${monster.unitId}`)
+      : undefined
+  const playerSeed113c =
+    monsterSeed113c !== undefined
+      ? this.unitSeeds.get(`${UNIT_TYPE_113C.player}:${player.unitId}`)
+      : undefined
+  // 1.13c monster melee swing (`kb/combat/d2game-sunitdmg-player-defender-113c.md` §2-§3):
+  // `SUNITDMG_FillPacket` (`0x6FCFC530`) reads the attacker's `STAT_MINDAMAGE` / `STAT_MAXDAMAGE`
+  // (21 / 22, the current A1/A2/S1 mode's MonStats damage) plus `item_normaldamage` (111) in 256ths and
+  // `0x6FCFBED0` rolls `min + RAND(&pAttacker->pSeed, max - min)` (exclusive span, mask when the span is
+  // a power of two). The FillDamageValues tail (`RAND(1)` + `MonStats.crit`) follows in `executeSUnitDmg`.
+  const d2MeleeFillPacket113c =
+    monsterSeed113c !== undefined && swing?.fromMissile !== true
+      ? monsterFillPacketPhysRange113c(physMin, physMax, attackerCtx.statList.getAccruedStat('item_normaldamage'))
+      : undefined
+  const d2MonStatsCrit113c =
+    d2MeleeFillPacket113c !== undefined ? monStatsCritPct113c(monster.hcIdx) : undefined
   const dmgOut = executeSUnitDmg(attackerCtx, defenderCtx, {
     skillId: swing?.skillId ?? 0,
     attackKind: resolvedAttackKind,
-    // `weaponMaxPhys` is `0` on `attackerCtx`, so `srcDam: 128` adds 0 weapon damage while
-    // enabling `executeSUnitDmg`'s physical-missile Crushing Blow & knockback checks (`#1897`, `#1898`).
-    srcDam: resolvedAttackKind === 'missile' ? 128 : 0,
-    flatPhysMin256: Math.floor(physMin * FIXED_ONE * (1 + auraDmgPct / 100)),
-    flatPhysMax256: Math.floor(physMax * FIXED_ONE * (1 + auraDmgPct / 100)),
+    ...(monsterSeed113c !== undefined
+      ? { d2AttackerSeed113c: monsterSeed113c, d2DefenderSeed113c: playerSeed113c }
+      : {}),
+    ...(d2MeleeFillPacket113c !== undefined
+      ? {
+          srcDam: 128,
+          riderSrcDam: 0,
+          unrolledWeaponBase113c: {
+            min256: d2MeleeFillPacket113c.min256,
+            max256: d2MeleeFillPacket113c.max256,
+            // `FillPacket` %ED pool: `STAT 25 damagepercent` (+ 17 / 18) of the attacker, which carries curses
+            // such as Weaken (state 19, oracle `p52-necromancer-curses` F=1137: 512..768 at -33% -> 475).
+            edPct: auraDmgPct + Math.trunc(attackerCtx.statList.getModifierBonus('damagepercent')),
+            srcDam: 128,
+          },
+          monStatsCritPct113c: d2MonStatsCrit113c,
+          // Only read by the `attackedinmelee` reactive events (`0x6FCFC0B0` callers); the physical roll
+          // above uses `unrolledWeaponBase113c`.
+          flatPhysMin256: d2MeleeFillPacket113c.min256,
+          flatPhysMax256: d2MeleeFillPacket113c.max256,
+        }
+      : {
+          // `weaponMaxPhys` is `0` on `attackerCtx`, so `srcDam: 128` adds 0 weapon damage while
+          // enabling `executeSUnitDmg`'s physical-missile Crushing Blow & knockback checks (`#1897`, `#1898`).
+          srcDam: resolvedAttackKind === 'missile' ? 128 : 0,
+          flatPhysMin256: Math.floor(physMin * FIXED_ONE * (1 + auraDmgPct / 100)),
+          flatPhysMax256: Math.floor(physMax * FIXED_ONE * (1 + auraDmgPct / 100)),
+        }),
     ...(elementalType !== undefined
       ? {
           elemType: elementalType,
@@ -1274,6 +1326,17 @@ function resolveMonsterAttackOnPlayer(this: GameInstanceHost,
         elemDuration,
       )
     }
+    // 1.13c `SUNITDMG_ExecuteCombat` (`0x6FCFED30`) -> `0x6FCFEBA0`: after a landed hit, a player defender
+    // picks a weighted armor slot and may lose durability (2-3 draws on `pDefender->pSeed`), before the
+    // GetHit / mode decision of `SUNITDMG_ExecuteEvents` (`0x6FCFCF20`).
+    if (playerSeed113c !== undefined && swing?.fromMissile !== true) {
+      rollPlayerDefenderArmorDurability113c(
+        playerSeed113c,
+        player.items.filter(
+          (i) => i.location === 'equipped' && i.bodyLoc !== 11 && i.bodyLoc !== 12,
+        ),
+      )
+    }
     if (finalDmg > 0) {
       const isPhysicalOrWeaponHit = isPhysicalOrWeaponMonsterHit113c({
         autoHit: swing?.autoHit,
@@ -1442,6 +1505,7 @@ function resolveMonsterAttackOnPlayer(this: GameInstanceHost,
       const skipMissileGetHit =
         missileRec !== undefined && !missileRec.getHit && !missileKnockbackTriggered
       this.applyDamageToPlayer(player, finalDmg, {
+        ...(d2MeleeFillPacket113c !== undefined ? { dmg256: instantDamage256 } : {}),
         hitClass: this.resolveMonsterHitClass113c(
           monster,
           swing?.skillId ?? 0,
@@ -1624,11 +1688,28 @@ function resolveMonsterAttackOnPlayer(this: GameInstanceHost,
     // stream clears `RESULTFLAG_HIT`, sets `RESULTFLAG_SOFTHIT`, and suppresses `PLRMODE_BLOCK` (`mode 9`).
     !(missileRec !== undefined && !missileRec.getHit && missileRec.knockBack <= 0)
   ) {
-    if (!this.isPlayerSkillUninterruptible113c(player)) {
+    // `0x6FCFD2F8..0x6FCFD337` (kb/engine/d2game-plrmode-gethit-113c.md §1): the BL mode is only started when
+    // `dwGameFrame - STAT 95 > 15 + STAT 102 (FBR) / 8`; `STAT 95 = dwGameFrame` afterwards.
+    let blockModeAllowed = true
+    if (this.drlgRoomPopulator !== null) {
+      const combatForFbr = this.playerCombat.get(player.unitId)
+      const fbr =
+        this.sumPlayerItemStat(player, 102) +
+        (combatForFbr?.statList ? Math.trunc(combatForFbr.statList.getModifierBonus('item_fasterblockrate')) : 0)
+      blockModeAllowed = this.currentFrame - (player.lastBlockFrame113c ?? 0) > 15 + Math.trunc(fbr / 8)
+    }
+    if (blockModeAllowed && !this.isPlayerSkillUninterruptible113c(player)) {
       this.interruptPendingPlayerAnimAction113c(player, 'BL')
       const blockFrames = this.playerBlockRecoveryFrames(player)
       player.mode = 9
-      player.blockRecoveryUntilFrame = this.currentFrame + blockFrames
+      player.blockRecoveryMode113c = 9
+      // `SUNITDMG_ExecuteEvents` (`0x6FCFCF20`) starts `PLRMODE_BLOCK` inside the MONSTER's update, after
+      // the player's own unit update of this frame, so the BL animation accumulator first advances on the
+      // next frame: the mode lasts `ceil(frames * 256 / speed)` frames = `computeOneShotTicks + 1`
+      // (oracle `p52-amazon-defense`: BL at F=916, NU at F=922). See
+      // `kb/combat/d2game-sunitdmg-player-defender-113c.md` §7.
+      player.blockRecoveryUntilFrame =
+        this.currentFrame + blockFrames + (this.drlgRoomPopulator !== null ? 1 : 0)
       player.targetX = player.x
       player.targetY = player.y
       const motion = this.playerMotion.get(player.unitId)
@@ -1645,6 +1726,54 @@ function resolveMonsterAttackOnPlayer(this: GameInstanceHost,
         unitType: 0,
         id: player.unitId,
         mode: 9,
+        at: playerWirePosition(player),
+        lifePct:
+          player.maxHp > 0
+            ? Math.max(0, Math.round((player.hp / player.maxHp) * 128))
+            : 0,
+      })
+    }
+    if (blockModeAllowed && this.drlgRoomPopulator !== null) {
+      player.lastBlockFrame113c = this.currentFrame
+    }
+  } else if (
+    this.drlgRoomPopulator !== null &&
+    (dmgOut.avoidedReason === 'dodge' || dmgOut.avoidedReason === 'avoid')
+  ) {
+    // `SUNITDMG_ExecuteEvents` player branch (`0x6FCFD1CE..0x6FCFD258`, kb/engine/d2game-plrmode-gethit-113c.md §1):
+    // dodge (`0x80`) / avoid (`0x100`) read the skill of state 65 / 66 (`#10871` + `#10680(.., 350)` + `#10630`)
+    // and start `PLRMODE_StartMode(13 = S1, skill)` (`0x6FC98430`); no state / skill -> no mode.
+    const passiveStateId = dmgOut.avoidedReason === 'dodge' ? 65 : 66
+    const passiveSkillId = dmgOut.avoidedReason === 'dodge' ? 13 : 18
+    const passiveCombat = this.playerCombat.get(player.unitId)
+    const hasPassiveState =
+      player.states.has(passiveStateId) ||
+      Boolean(passiveCombat?.stateBus.hasState(passiveStateId)) ||
+      Boolean(passiveCombat?.statList.getActiveModifiers().some((m) => m.stateId === passiveStateId))
+    if (hasPassiveState && this.resolvePlayerSkillLevelById(player, passiveSkillId) > 0) {
+      const equippedForAnim = player.items.filter(
+        (item) => item.location === 'equipped' && item.bodyLoc !== 11 && item.bodyLoc !== 12,
+      )
+      const s1Params = resolveCharacterAnimSpeedParams(player.classCode, 's1', {
+        equipment: equippedForAnim.map((item) => ({ code: item.code, bodyLoc: item.bodyLoc })),
+        weaponClass: resolveEquippedWeaponClass(
+          equippedForAnim.map((item) => ({ code: item.code, bodyLoc: item.bodyLoc })),
+        ),
+        skillId: passiveSkillId,
+      })
+      this.interruptPendingPlayerAnimAction113c(player, 'BL')
+      player.mode = 13
+      // Started inside the monster's update: visible for `ceil(frames * 256 / speed)` frames (§2).
+      player.blockRecoveryUntilFrame =
+        this.currentFrame + computeOneShotTicks(s1Params.frames, s1Params.stepSpeed256) + 1
+      player.blockRecoveryMode113c = 13
+      player.targetX = player.x
+      player.targetY = player.y
+      this.broadcastToArea(player.areaId, {
+        type: 'UnitMode',
+        unitType: 0,
+        id: player.unitId,
+        mode: 13,
         at: playerWirePosition(player),
         lifePct:
           player.maxHp > 0

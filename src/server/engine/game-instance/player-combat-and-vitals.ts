@@ -2,6 +2,7 @@
  * GameInstance Subsystem: Weapon Damage Rolls, Cast Commit, Player Pathfinding, Velocity & Vitals (`src/server/engine/game-instance/player-combat-and-vitals.ts`).
  */
 
+import { createLinearMissilePath113c, linearMissileStep16_113c } from '../missile-path-113c.ts'
 import type { MissileRecord, SkillRecord } from '../../../common/data/data-registry.ts'
 import { LocalMovementPredictor } from '../../../common/path/movement-predictor.ts'
 import { resolveArmorBlock113c, resolveArmorSpeed113c, resolveWeaponBase113c } from '../../../common/units/char-anim-speed.ts'
@@ -14,6 +15,7 @@ import { isBonePrisonMonsterHcIdx113c } from '../../../common/units/monai-113c.t
 import { CANONICAL_CHARSTATS } from '../../../common/units/classes.ts'
 import type { ServerEvent, UnitType } from '../../../netproto/index.ts'
 import { FIXED_ONE } from '../stat-list.ts'
+import { emitDotTraceEvent113c, stepPlayerUpdateHpRegen113c } from '../statregen-dot-113c.ts'
 import { evaluateMonsterMissileDamage113c } from '../../ai/monster-missile-damage-113c.ts'
 import { resolveMissilePierceIdx } from '../missile-pierce.ts'
 import { resolveWeaponMasteryBonus113c } from '../../skills/passives-procs-113c.ts'
@@ -23,7 +25,7 @@ import { STATE_SLOWMISSILES_113C, snapshotBlessedHammerDamage256_113c } from '..
 import { skillTabStatParam } from '../../../common/skills/skills-data.ts'
 import type { GameInstanceHost } from './host.ts'
 import type { InternalMissileRecord, InternalPlayerRecord, PlayerMotionState, PlayerSkillCast, PlayerSkillMissileLaunchOptions113c } from './types.ts'
-import { BODYLOC_LEFT_ARM, BODYLOC_RIGHT_ARM, CLASS_CODE_TO_ID, PLAYER_MISSILE_SPEED_SUBTILES, PLAYER_PATH_WINDOW_MARGIN, STAT_ITEM_CHARGED_SKILL, STAT_ITEM_MAXDAMAGE_PERCENT, STAT_MAXDAMAGE, STAT_MINDAMAGE, STAT_SECONDARY_MAXDAMAGE, STAT_SECONDARY_MINDAMAGE, SYNC_WARP_DELAY_FRAMES, SYNC_WARP_RANDOM_DELAY_FRAMES, TOWN_AREAS, UPDATE_POS_IGNORE_DISTANCE, UPDATE_POS_WARP_MAX_DISTANCE, UPDATE_POS_WARP_MIN_DISTANCE, collectItemStats, consumeSkillCharge, normalizeMissileElement, playerWirePosition, resolveArmorCombatMeta113c, unitsDistanceToCoordinates113c, UNIT_TYPE_113C } from './constants-and-helpers.ts'
+import { BODYLOC_LEFT_ARM, BODYLOC_RIGHT_ARM, CLASS_CODE_TO_ID, PLAYER_MISSILE_SPEED_SUBTILES, PLAYER_PATH_WINDOW_MARGIN, STAT_ITEM_CHARGED_SKILL, STAT_ITEM_MAXDAMAGE_PERCENT, STAT_MAXDAMAGE, STAT_MINDAMAGE, STAT_SECONDARY_MAXDAMAGE, STAT_SECONDARY_MINDAMAGE, SYNC_WARP_DELAY_FRAMES, SYNC_WARP_RANDOM_DELAY_FRAMES, TOWN_AREAS, UPDATE_POS_IGNORE_DISTANCE, UPDATE_POS_WARP_MAX_DISTANCE, UPDATE_POS_WARP_MIN_DISTANCE, collectItemStats, consumeSkillCharge, normalizeMissileElement, playerWirePosition, resolveArmorCombatMeta113c, unitsDistanceToCoordinates113c, UNIT_TYPE_113C, missileSpeedSubtilesPerFrame113c } from './constants-and-helpers.ts'
 
 
 /**
@@ -503,6 +505,9 @@ function launchPlayerSkillMissile(this: GameInstanceHost,
   const startY = stationary ? ty : fromY
   const rawDx = tx - fromX
   const rawDy = ty - fromY
+  if (this.drlgRoomPopulator !== null && !stationary && Math.hypot(rawDx, rawDy) >= 100) {
+    return
+  }
   const isInPlaceHammer = cast.skill.id === 112 && Math.hypot(rawDx, rawDy) < 1e-6
   const effTx = isInPlaceHammer ? fromX - 1 : tx
   const effTy = isInPlaceHammer ? fromY - 1 : ty
@@ -513,7 +518,7 @@ function launchPlayerSkillMissile(this: GameInstanceHost,
     missileRec.vel +
     Math.trunc((missileRec.velLev * cast.slvl) / 8) +
     Math.trunc(opts?.velDelta ?? 0)
-  const baseSpeed = stationary ? 0 : rawVel > 0 ? rawVel / 16 : PLAYER_MISSILE_SPEED_SUBTILES
+  const baseSpeed = stationary ? 0 : rawVel > 0 ? missileSpeedSubtilesPerFrame113c(rawVel) : PLAYER_MISSILE_SPEED_SUBTILES
   const speed = player.states.has(STATE_SLOWMISSILES_113C) ? baseSpeed * 0.33 : baseSpeed
   // 1.13c `SKILLS_SrvDo003_Throw` (`0x6FCC2BDC`) -> `SKILLS_SpawnLobbedMissile` (`0x6FCC1880`):
   // Throwing potions (`type = tpot`, `Missiles.txt` `#44..#49`, `CollideType = 6`, `AlwaysExplode = 1`)
@@ -566,7 +571,9 @@ function launchPlayerSkillMissile(this: GameInstanceHost,
     (missileElem === 'pois' || cast.evalResult.elemType === 'pois') &&
     cast.evalResult.durationFrames > 0
   const poisonBitrate256 = isPoisonSkillMissile
-    ? this.rollInclusive(cast.evalResult.minElemDmg256, cast.evalResult.maxElemDmg256)
+    ? this.drlgRoomPopulator !== null
+      ? cast.evalResult.minElemDmg256
+      : this.rollInclusive(cast.evalResult.minElemDmg256, cast.evalResult.maxElemDmg256)
     : 0
   const physDamage =
     lobbedPhysDamage !== undefined
@@ -608,6 +615,10 @@ function launchPlayerSkillMissile(this: GameInstanceHost,
       : missileRec.srcDamage === 0 && cast.evalResult.srcDam > 0
         ? cast.evalResult.srcDam
         : 0
+  const linearPath113c =
+    this.drlgRoomPopulator !== null && !stationary
+      ? createLinearMissilePath113c(startX, startY, effTx, effTy, speed, missileRec.accel, missileRec.maxVel)
+      : undefined
   const missile: InternalMissileRecord = {
     unitId: missileUnitId,
     missileId: missileRec.id,
@@ -617,8 +628,11 @@ function launchPlayerSkillMissile(this: GameInstanceHost,
     areaId: player.areaId,
     x: startX,
     y: startY,
-    vx: (dx / dist) * speed,
-    vy: (dy / dist) * speed,
+    // DRLG oracle path: the 1.13c 16.16 linear path direction (`0x6FD5CF40`, kb/missile-velocity-range-113c.md).
+    ...(this.drlgRoomPopulator !== null
+      ? linearMissileStep16_113c(startX, startY, effTx, effTy, speed)
+      : { vx: (dx / dist) * speed, vy: (dy / dist) * speed }),
+    ...(linearPath113c !== undefined ? { linearPath113c } : {}),
     damage,
     ...(resolvedSrcDamage > 0 ? { srcDamage: resolvedSrcDamage } : {}),
     remainingFrames: lifetime,
@@ -643,6 +657,7 @@ function launchPlayerSkillMissile(this: GameInstanceHost,
     ...(opts?.bladeWeaponHit === true ? { bladeWeaponHit: true } : {}),
     elemDurationFrames,
     ...(isPoisonSkillMissile ? { poisonBitrate256 } : {}),
+    srvHitElem256: { min: cast.evalResult.minElemDmg256, max: cast.evalResult.maxElemDmg256 },
     hitCooldowns: new Map(),
     guaranteedHit: !missileRec.toHit,
   }
@@ -839,7 +854,7 @@ function syncDoorFootprintsIndex113c(host: GameInstanceHost): void {
  * Walkability of a world sub-tile for a player standing in `areaId`: the active area plus
  * every loaded seam neighbour (#1335), matching the client's cross-LevelView composite.
  */
-/** True when at least one living BoneWall / Diablo BonePrison (`hcIdx 179` or `340..343`) exists in `areaId`. */
+/** True when at least one living BoneWall / Diablo BonePrison (`hcIdx 340..344`) exists in `areaId`. */
 function hasLivingBonePrisonInArea(this: GameInstanceHost, areaId: number): boolean {
   syncBonePrisonMonstersIndex113c(this)
   for (let i = 0; i < this.bonePrisonMonsters.length; i++) {
@@ -1023,6 +1038,41 @@ function applyPlayerVelocityModifiers(this: GameInstanceHost, player: InternalPl
  * - Life regenerates `maxhp/65536` per frame plus `hpregen` (1/256 HP per frame);
  *   `item_replenish_life` is the equipped stat 74.
  */
+/**
+ * 1.13c `D2Game.dll` `0x6FC97BB0` (`PLAYER_DrainRunStamina`), invoked from `0x6FC99B90`
+ * (`PLRMODE_WalkRunStep`) BEFORE `0x6FD01930` (`D2Common_10226`) advances the unit's position/room.
+ */
+function drainPlayerRunStamina113c(this: GameInstanceHost, player: InternalPlayerRecord): void {
+  if (player.dead || !player.run || TOWN_AREAS.has(player.areaId)) return
+  const charStats = CANONICAL_CHARSTATS[player.classCode]
+  let drain = charStats.runDrain * 2
+  for (const item of player.items) {
+    if (
+      item.location === 'equipped' &&
+      item.bodyLoc === 3 &&
+      (item.durability > 0 || item.maxDurability === 0)
+    ) {
+      const torsoSpeed = resolveArmorSpeed113c(item.code)
+      drain = Math.imul(drain, Math.trunc(torsoSpeed / 5) + 1)
+      break
+    }
+  }
+  const combat = this.playerCombatContext(player)
+  const stat154 =
+    this.sumPlayerItemStat(player, 154) +
+    Math.trunc(combat.statList.getAccruedStat('item_staminadrainpct'))
+  if (stat154 !== 0) {
+    drain += Math.trunc((drain * stat154) / 100)
+  }
+  drain = Math.max(1, drain)
+  player.staminaFixed = Math.max(0, player.staminaFixed - drain)
+  if (player.staminaFixed <= 0) {
+    player.staminaExhausted = true
+    player.run = false
+    player.mode = TOWN_AREAS.has(player.areaId) ? 6 : 2
+  }
+}
+
 function stepPlayerVitals(this: GameInstanceHost, player: InternalPlayerRecord): void {
   if (player.dead) return
   const motion = this.getPlayerMotion(player)
@@ -1038,12 +1088,11 @@ function stepPlayerVitals(this: GameInstanceHost, player: InternalPlayerRecord):
   player.maxMana = Math.max(0, Math.floor(accruedMaxManaFixed / FIXED_ONE))
   player.maxStamina = Math.max(1, Math.floor(accruedMaxStaminaFixed / FIXED_ONE))
 
-  // 1.13c run-drain `D2Game.dll` `0x6FC97BB0`: `DUNGEON_IsRoomInTown(UNITS_GetRoom(unit))` (D2Common
-  // #10057 via `0x6FC2A808`) returns early, so running in town never drains stamina. The recovery
-  // routine `0x6FC97A50` (jump table `0x6FC97B04`, mode - 1) handles `PLRMODE_RUN` (3) only through its
-  // default case: recover at `maxstamina >> 8` when `staminarecoverybonus` (stat 28) >= 1000, else nothing.
-  const runningInTown = running && TOWN_AREAS.has(player.areaId)
-  if (runningInTown) {
+  // 1.13c `D2Game.dll` `0x6FC97A50` (jump table `0x6FC97B04`, `mode - 1`) handles `PLRMODE_RUN` (3)
+  // only through its default case: recover at `maxstamina >> 8` when `staminarecoverybonus` (stat 28) >= 1000
+  // (e.g. Stamina Shrine state 136), else nothing. Per-tick run drain (`0x6FC97BB0`) runs inside
+  // `stepPlayerMovement` before stepping the unit (`0x6FC99B90`).
+  if (running) {
     const recoveryPct =
       this.sumPlayerItemStat(player, 28) +
       Math.trunc(this.playerCombatContext(player).statList.getAccruedStat('staminarecoverybonus'))
@@ -1052,45 +1101,6 @@ function stepPlayerVitals(this: GameInstanceHost, player: InternalPlayerRecord):
       const recover = Math.max(0, base + Math.trunc((base * recoveryPct) / 100))
       player.staminaFixed = Math.min(accruedMaxStaminaFixed, player.staminaFixed + recover)
     }
-  } else if (running) {
-    // 1.13c PLAYER_UpdateStamina 0x6FC95DC0: chest (bodyLoc 3) and shield
-    // (bodyLoc 4/5) Armor.txt `speed` raise the drain; item stat 162 is the
-    // drain percentage, and the Stamina Shrine (state 136) suppresses it.
-    let armorSpeed = 0
-    for (const item of player.items) {
-      if (
-        item.location === 'equipped' &&
-        item.bodyLoc !== 11 &&
-        item.bodyLoc !== 12 &&
-        item.durability > 0 &&
-        (item.bodyLoc === 3 || item.bodyLoc === 4 || item.bodyLoc === 5)
-      ) {
-        armorSpeed += resolveArmorSpeed113c(item.code)
-      }
-    }
-    const armorPenalty = 100 + armorSpeed
-    const combat = this.playerCombatContext(player)
-    const stat162 =
-      this.sumPlayerItemStat(player, 162) +
-      Math.trunc(combat.statList.getAccruedStat('item_staminadrainpct')) +
-      (player.states.has(136) && !combat.stateBus.hasState(136) ? -100 : 0)
-    const drainPct = 100 + stat162
-    // 1.13c `D2Game.dll` `0x6FC97A50`: `base = CharStats.RunDrain * 2`, scaled by `100 + armorSpeed` and `100 + stat162` (#1632).
-    const baseRunDrain = charStats.runDrain * 2
-    const afterArmor = baseRunDrain + Math.trunc((baseRunDrain * armorSpeed) / 100)
-    const drain =
-      drainPct <= 0 || player.states.has(136)
-        ? 0
-        : Math.max(
-            1,
-            afterArmor + Math.trunc((afterArmor * stat162) / 100),
-          )
-    player.staminaFixed = Math.max(0, player.staminaFixed - drain)
-    if (player.staminaFixed <= 0) {
-      player.staminaExhausted = true
-      player.run = false
-      if (motion.moving) player.mode = TOWN_AREAS.has(player.areaId) ? 6 : 2
-    }
   } else {
     // 1.13c `D2Game.dll` `0x6FC97A50` (`PLAYER_UpdateStamina`, #1632):
     // - Standing (`PLRMODE_NEUTRAL` / `PLRMODE_TOWNNEUTRAL`): shift `S = 8` (`maxStaminaFixed >> 8`), in town or outdoors.
@@ -1098,12 +1108,23 @@ function stepPlayerVitals(this: GameInstanceHost, player: InternalPlayerRecord):
     //   - Town walking (`inTown`) OR outdoor walking while `staminaFixed >= 256 && !staminaExhausted`: shift `S = 9` (`maxStaminaFixed >> 9`, half rate).
     //   - Outdoor walking while exhausted (`staminaFixed < 256 || staminaExhausted`): `0` recovery.
     const inTown = TOWN_AREAS.has(player.areaId)
-    const standing = !motion.moving
     let baseStamRate = 0
-    if (standing) {
-      baseStamRate = accruedMaxStaminaFixed >> 8
-    } else if (inTown || (player.staminaFixed >= 256 && !player.staminaExhausted)) {
-      baseStamRate = accruedMaxStaminaFixed >> 9
+    if (this.drlgRoomPopulator !== null) {
+      if (player.mode === 1 || player.mode === 5) {
+        baseStamRate = accruedMaxStaminaFixed >> 8
+      } else if (
+        (player.mode === 2 || player.mode === 6) &&
+        (inTown || (player.staminaFixed >= 256 && !player.staminaExhausted))
+      ) {
+        baseStamRate = accruedMaxStaminaFixed >> 9
+      }
+    } else {
+      const standing = !motion.moving
+      if (standing) {
+        baseStamRate = accruedMaxStaminaFixed >> 8
+      } else if (inTown || (player.staminaFixed >= 256 && !player.staminaExhausted)) {
+        baseStamRate = accruedMaxStaminaFixed >> 9
+      }
     }
     if (baseStamRate > 0) {
       const recoveryPct =
@@ -1161,10 +1182,23 @@ function stepPlayerVitals(this: GameInstanceHost, player: InternalPlayerRecord):
   const hpRegen =
     this.sumPlayerItemStat(player, 74) +
     Math.trunc(hpCombat.statList.getAccruedStat('hpregen'))
-  if (hpRegen > 0) {
-    player.hpFixed = Math.min(accruedMaxHpFixed, player.hpFixed + hpRegen)
-  } else if (hpRegen < 0 && player.hpFixed > 256) {
-    player.hpFixed = Math.max(256, player.hpFixed + hpRegen)
+  const hp0Fixed = player.hpFixed
+  const playerRegenStep = stepPlayerUpdateHpRegen113c({
+    hp0: hp0Fixed,
+    maxHp256: accruedMaxHpFixed,
+    hpRegen256: hpRegen,
+  })
+  if (playerRegenStep.clearHealthPot && player.states.has(100)) {
+    this.clearUnitState(player.states, player.stateTimers, 'player', player.unitId, player.areaId, 100)
+  }
+  if (playerRegenStep.changed) {
+    player.hpFixed = playerRegenStep.hp1
+    emitDotTraceEvent113c({
+      unitType: 0,
+      unitId: player.unitId,
+      hp0: hp0Fixed,
+      hp1: playerRegenStep.hp1,
+    })
   }
 
   player.hp = Math.floor(player.hpFixed / FIXED_ONE)
@@ -1239,6 +1273,12 @@ function finishPlayerMove(this: GameInstanceHost, player: InternalPlayerRecord, 
     vx: 0,
     vy: 0,
   })
+  if (player.queuedSkillOnTarget !== undefined) {
+    const queued = player.queuedSkillOnTarget
+    player.queuedSkillOnTarget = undefined
+    player.moveTargetUnitId = undefined
+    this.executeSkillOnTarget(player, queued.skillId, queued.targetId, queued.targetType)
+  }
 }
 
 
@@ -1404,6 +1444,7 @@ export interface PlayerCombatAndVitalsMethods {
   isPlayerSubTileBlocked(areaId: number, subX: number, subY: number): boolean
   findPlayerPath(areaId: number, fromX: number, fromY: number, toX: number, toY: number): readonly SubTilePoint[]
   applyPlayerVelocityModifiers(player: InternalPlayerRecord, mover: LocalMovementPredictor): void
+  drainPlayerRunStamina113c(player: InternalPlayerRecord): void
   stepPlayerVitals(player: InternalPlayerRecord): void
   finishPlayerMove(player: InternalPlayerRecord, motion: PlayerMotionState): void
   handleRequestEntityUpdate(player: InternalPlayerRecord, unitType: number, unitId: number): void
@@ -1434,6 +1475,7 @@ export const playerCombatAndVitalsMethods: Record<keyof PlayerCombatAndVitalsMet
   isPlayerSubTileBlocked,
   findPlayerPath,
   applyPlayerVelocityModifiers,
+  drainPlayerRunStamina113c,
   stepPlayerVitals,
   finishPlayerMove,
   handleRequestEntityUpdate,

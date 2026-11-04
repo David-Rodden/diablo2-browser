@@ -918,7 +918,12 @@ export class AnimDispatcher {
         onActionFrame(anim, currentTick, strikeIndex)
         if (anim.completed) break
       }
-      if (anim.currentFrame >= anim.framesPerDirection) {
+      // Player SQ (mode 18) sequences end one advance before the remaining counter reaches 0
+      // (oracle-derived: Chain Lightning seq 12 = 19 entries is visible 18 frames, like a 14-frame SC
+      // cast is visible 13). D2Common `0x6FD82820` sets remaining `+0x48 = count << 8`, `0x6FD82460`
+      // subtracts `+0x3C` each advance and #10426 `0x6FD7EF5E` tests `remaining <= 0`; the SQ mode-end
+      // site in D2Game (`0x6FC95CE0` skill path) is pending. kb/engine/d2game-plrmode-gethit-113c.md §5.
+      if (anim.frameAcc256 + anim.stepSpeed256 >= anim.framesPerDirection * 256) {
         anim.completed = true
       }
       return { actionFired, strikesFiredThisTick, anim }
@@ -964,7 +969,8 @@ export class AnimDispatcher {
     }
 
     // D2Common.dll #10426 (0x6FD7EF30):
-    // - Sequence animations (0x6FD7EF57): complete when dwFrame >= dwFrameCount
+    // - Sequence animations (0x6FD7EF57): complete when remaining (+0x48) <= 0 (event-less sequences only;
+    //   sequences with event frames use the branch above, kb/engine/d2game-plrmode-gethit-113c.md §5)
     // - Standard one-shot animations (0x6FD7EF6D): complete when dwFrame + wAnimSpeed >= dwFrameCount
     if (anim.isSequence) {
       if (anim.currentFrame >= anim.framesPerDirection) {

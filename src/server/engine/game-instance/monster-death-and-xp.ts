@@ -1453,6 +1453,37 @@ function onMonsterKilled(this: GameInstanceHost,
     this.syncDenOfEvilProgress113c(killer, monster.unitId)
   }
 
+  // Act V Rescue on Mount Arreat (`A5Q2`, `D2Game.dll` `0x6fc7a310..0x6fc7a4ff`, #2021):
+  // - `act5pow` (`hcIdx 534`) death before rescue increments `arreatDeadPowCount`.
+  // - `prisondoor` (`hcIdx 434`) destruction breaches the nearest walled Barbarian pen (`Objects.txt 473`),
+  //   spawns temporary rescue portal (`Objects.txt 189`), rescues surviving `act5pow`, and advances `questFlags[36]`.
+  if (monster.hcIdx === 534 && monster.areaId === 111) {
+    this.arreatDeadPowCount += 1
+  } else if (monster.hcIdx === 434) {
+    let nearestPen: (typeof this.objects extends Map<number, infer V> ? V : never) | undefined
+    let bestPenDist = 24
+    for (const candidate of this.objects.values()) {
+      if (
+        candidate.areaId !== monster.areaId ||
+        candidate.classId !== 473 ||
+        candidate.useCount > 0
+      ) {
+        continue
+      }
+      const d = Math.hypot(candidate.x - monster.x, candidate.y - monster.y)
+      if (d <= bestPenDist) {
+        bestPenDist = d
+        nearestPen = candidate
+      }
+    }
+    if (nearestPen !== undefined) {
+      this.breachArreatPrisonPen113c(nearestPen, killer, {
+        x: monster.x + 2,
+        y: monster.y,
+      })
+    }
+  }
+
   // 1.13c pack morale: a Fallen/Fetish death scares same-race minions within the
   // pack radius with the AI's own `aip1` percentage (30/40/50 Normal/NM/Hell).
   if (monsterAiBehavior(monster.ai) === 'flee') {
@@ -1519,6 +1550,7 @@ function onMonsterKilled(this: GameInstanceHost,
       if (
         surrounding.dead ||
         surrounding.isNpc ||
+        surrounding.align !== 0 ||
         !surrounding.isKillable ||
         surrounding.unitId === monster.unitId ||
         surrounding.areaId !== monster.areaId ||

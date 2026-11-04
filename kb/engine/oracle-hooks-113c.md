@@ -103,9 +103,23 @@ carries a `seed` command-line switch, so `Game.exe -seed N` pins the game seed. 
 6fd510a3: mov eax, [eax+0x10]                               ; static Y
 ```
 
-## 6. Stat reads
-`D2Common #10973` (`0x6FD88B70`, `STATLIST_GetUnitStat`, accrued, `stdcall(unit, stat, layer)`, `ret 0xc`)
-and `#10587` (`0x6FD88C20`, base stat). See also `progression/d2game-levelup-vitals-gold-113c.md`.
+## 6. Stat reads & per-frame DoT / StatRegen hook (`dot`)
+`D2Common #10973` (`0x6FD88B70`, `STATLIST_GetUnitStat`, accrued, `stdcall(unit, stat, layer)`, `ret 0xc`),
+`#10587` (`0x6FD88C20`, base stat), and `#10887` (`0x6FD893D0`, `STATLIST_SetUnitStat`, `stdcall(unit, stat, val, layer)`, `ret 0x10`, imported in `D2Game.dll` via thunk `0x6FC2A472`). See also `progression/d2game-levelup-vitals-gold-113c.md`.
+
+### 6.1 Per-frame `stat 6` (`HP`) DoT / StatRegen tick hook (`dot_setstat_hook`)
+Per-frame poison ticks, burning-ground / negative `STAT_HPREGEN` (`74`) ticks, and positive `STAT_HPREGEN`
+(`damageRegen` / `Replenish Life`) ticks bypass `SUNITDMG_CalcDamageResists` (`0x6FCFC0B0`) and write
+`STAT_HITPOINTS` (`6`) directly through `D2Common.#10887`:
+```
+6fc9684a: e8 23 3c f9 ff   call 0x6fc2a472   ; MONSTER_Event3_HpRegen (0x6FC96740) -> STATLIST_SetUnitStat(pUnit, 6, newHp, 0)
+6fc97d12: e8 5b 27 f9 ff   call 0x6fc2a472   ; PLAYER_UpdateHpRegen   (0x6FC97CB0) -> STATLIST_SetUnitStat(pPlayer, 6, newHp, 0)
+```
+`d2oracle.c` redirects both `E8` call sites via `patch_call(..., G(0x6FC2A472), dot_setstat_hook)` while leaving
+`apply_damage_hook` (`0x6FCFC0B0`) untouched. `dot_setstat_hook` snapshots `hp0 = p_GetUnitStat(u, 6, 0)` before
+calling `p_SetUnitStat(u, stat, val, layer)` and appends `[dwType, dwUnitId, hp0, val]` to `g_dotlog` whenever
+`u && stat == 6 && val != hp0`. Traces recorded with this hook emit `"dot":true` in the frame-1 header and
+`"dot":[[type,id,hp0,hp1],...]` on any frame with `g_dotn > 0`. Full disassembly: [`../combat/d2game-statregen-dot-113c.md`](../combat/d2game-statregen-dot-113c.md).
 
 ## 7. Time sources inside `D2Game.dll`
 `GetTickCount` (IAT `0x6FD18D10`, 30+ call sites), `timeGetTime` (`0x6FD18D60`, only `#10008`),

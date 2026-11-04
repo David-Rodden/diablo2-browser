@@ -281,6 +281,10 @@ export interface MissileRecord {
   readonly cParam4: number
   readonly cParam5: number
   readonly sHitCalc1: string
+  /** `HitFlags` (`MissilesTxt+0xA8`), OR-ed into `D2DamageStrc.dwHitFlags` by `SrvHit01` (0x6FC5BB11). */
+  readonly hitFlags: number
+  /** `ResultFlags` (`MissilesTxt+0xAC`, word), OR-ed into the packet result flags (0x6FC5BB22). */
+  readonly resultFlags: number
   readonly sHitPar1: number
   readonly sHitPar2: number
   readonly sHitPar3: number
@@ -985,6 +989,8 @@ export class D2DataRegistry {
         cParam4: numberCell(row, 'CltParam4', 0),
         cParam5: numberCell(row, 'CltParam5', 0),
         sHitCalc1: textCell(row, 'SHitCalc1'),
+        hitFlags: numberCell(row, 'HitFlags', 0),
+        resultFlags: numberCell(row, 'ResultFlags', 0),
         sHitPar1: numberCell(row, 'sHitPar1', 0),
         sHitPar2: numberCell(row, 'sHitPar2', 0),
         sHitPar3: numberCell(row, 'sHitPar3', 0),

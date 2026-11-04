@@ -5,7 +5,7 @@
 import { CANONICAL_113C_OBJECTS } from '../../../common/world/objects-meta.ts'
 import { QUEST_CHEST_OPERATE_FNS_113C, SPARKLY_CHEST_INIT57_CLASS_IDS_113C, WELL_DEFAULT_PARMS_113C, classifyObjectOperate113c, computeWellInitialCharges113c, rollChestTrapType113c, rollPreOperateOpen113c, rollShrineType113c } from '../../../common/world/object-operate-113c.ts'
 import { getLevelMonsterLevel113c } from '../../../common/world/levels-monlvl-113c.ts'
-import { QUEST_FLAG_COMPLETED_113C, QUEST_FLAG_COMPLETED_NOW_113C, hasQuestFlag113c } from '../quests-113c.ts'
+import { QUEST_FLAG_COMPLETED_113C, QUEST_FLAG_COMPLETED_NOW_113C, QUEST_FLAG_REWARD_PENDING_113C, hasQuestFlag113c } from '../quests-113c.ts'
 import { PALADIN_AURA_STATE_BY_SKILL_ID } from '../../../common/skills/paladin-auras.ts'
 import { MONSTATS_113C_ROWS, MONUMOD_113C_ROWS } from '../../../common/units/monstats-113c-data.ts'
 import { isBaalTentacleHcIdx113c, isBonePrisonMonsterHcIdx113c, isSubmergeCapableMonsterHcIdx113c, isTentacleHcIdx113c, isTentacleHeadHcIdx113c, resolveInnateMonsterAura113c, rollAuraEnchanted113c } from '../../../common/units/monai-113c.ts'
@@ -22,7 +22,7 @@ import { rollMonsterOrPetLoadout113c } from '../../ai/monequip-helper-113c.ts'
 import type { GameInstanceHost } from './host.ts'
 import type { InternalMercenaryRecord, InternalMonsterRecord, InternalObjectRecord, InternalPlayerRecord, ServerItemEntry, SpawnMonsterSpec, SpawnObjectSpec } from './types.ts'
 import { ACT_TOWN_AREA, MON_UMOD_LABELS_113C, MON_UMOD_ROW_BY_ID_113C, TOWN_AREAS, areaToAct, lookupBaseInfo, monsterProfile113c, UNIT_TYPE_113C } from './constants-and-helpers.ts'
-import { rollMonsterInitStats113c, rollMonsterOutfit113c } from './unit-seeds-113c.ts'
+import { canMonsterBlock113c, rollMonsterInitStats113c, rollMonsterOutfit113c } from './unit-seeds-113c.ts'
 import { isTownNpcMonster113c } from '../../ai/town-npc-ai-113c.ts'
 
 
@@ -189,7 +189,9 @@ function spawnMonster(this: GameInstanceHost, spec: SpawnMonsterSpec): number {
   const noRatio = Boolean(spec.noRatio ?? kind?.noRatio ?? false)
   const unitSeed = this.unitSeeds.get(`${UNIT_TYPE_113C.monster}:${unitId}`)
   const actPalette =
-    this.actMonsterOutfitPalettes[areaToAct(areaId)] ?? this.actMonsterOutfitPalettes[0]!
+    this.drlgRoomPopulator?.getLevelOutfitPalette(areaId) ??
+    this.actMonsterOutfitPalettes[areaToAct(areaId)] ??
+    this.actMonsterOutfitPalettes[0]!
   const rolledOutfit =
     unitSeed !== undefined ? rollMonsterOutfit113c(actPalette, hcIdx, unitSeed) : undefined
   const initStatsRoll =
@@ -740,7 +742,11 @@ function spawnMonster(this: GameInstanceHost, spec: SpawnMonsterSpec): number {
     poisonCarry256: 0,
     poisonAttackerId: 0,
     poisonSkillId: 0,
-    toBlock: spec.toBlock ?? kind?.toBlock ?? 0,
+    toBlock:
+      spec.toBlock ??
+      (this.drlgRoomPopulator !== null && !canMonsterBlock113c(hcIdx, rolledOutfit)
+        ? 0
+        : (kind?.toBlock ?? 0)),
     velocity:
       spec.velocity ??
       (umodIds.includes(MON_UMOD.GHOSTLY)
@@ -858,6 +864,10 @@ function spawnMonster(this: GameInstanceHost, spec: SpawnMonsterSpec): number {
     trappedSoulState: 0,
     mapAi: spec.mapAi,
     townNpcAiEnabled: isTownNpcMonster113c(hcIdx),
+    aiAwake: this.drlgRoomPopulator === null,
+    runVelocityBonus: 0,
+    deathAnimEndFrame: 0,
+    actionAnimEndFrame: 0,
   }
   this.monsters.set(unitId, record)
   this.areaPathWorld.spawnMonster(areaId, record, this.currentFrame)
@@ -958,6 +968,15 @@ function spawnObject(this: GameInstanceHost, spec: SpawnObjectSpec): number {
       QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_COMPLETED_NOW_113C,
     ),
   )
+  const a5q2Completed = [...this.players.values()].some((p) =>
+    hasQuestFlag113c(
+      p.questFlags,
+      'a5q2',
+      QUEST_FLAG_REWARD_PENDING_113C |
+        QUEST_FLAG_COMPLETED_113C |
+        QUEST_FLAG_COMPLETED_NOW_113C,
+    ),
+  )
   const a5q5Completed = [...this.players.values()].some((p) =>
     hasQuestFlag113c(
       p.questFlags,
@@ -996,6 +1015,7 @@ function spawnObject(this: GameInstanceHost, spec: SpawnObjectSpec): number {
     spec.mode ??
     ((((classId === 366 || classId === 367 || classId === 386 || classId === 404) && a3q3Completed) ||
       (classId === 342 && a3q6Completed) ||
+      (classId === 473 && areaId === 111 && a5q2Completed) ||
       (classId === 547 && a5q5Completed) ||
       (classId === 564 && areaId === 120 && !this.isAncientsEncounterActive(areaId)) ||
       (classId === 569 && areaId === 132) ||
@@ -1049,7 +1069,7 @@ function spawnObject(this: GameInstanceHost, spec: SpawnObjectSpec): number {
         ? computeWellInitialCharges113c(WELL_DEFAULT_PARMS_113C.parm2)
         : 0,
     wellRegenFrames: [],
-    useCount: 0,
+    useCount: classId === 473 && areaId === 111 && a5q2Completed ? 1 : 0,
   }
   this.objects.set(unitId, record)
   this.areaPathWorld.spawnObject(areaId, unitId, record.classId, record.x, record.y, record.mode)
@@ -1716,6 +1736,7 @@ function enqueueCommand(this: GameInstanceHost, playerUnitId: number, command: C
  * `[current, ...near rooms ascending (y, x)]` with head insertion (docs/oracle/P4-first-divergence.md #2).
  */
 function activatePresetRoomsNearPlayer113c(this: GameInstanceHost, player: InternalPlayerRecord): void {
+  if (this.drlgRoomPopulator !== null) return
   const pending = this.pendingPresetMonsters.get(player.areaId)
   if (pending === undefined) return
   const area = this.loadedAreas.get(player.areaId)
@@ -1751,13 +1772,63 @@ function activatePresetRoomsNearPlayer113c(this: GameInstanceHost, player: Inter
   const activation = [current, ...near].filter((r) => !pending.activated.has(r.index))
   if (activation.length === 0) return
   for (const room of activation) pending.activated.add(room.index)
+  const a5q2AlreadyDone =
+    player.areaId === 111 &&
+    [...this.players.values()].some((p) =>
+      hasQuestFlag113c(
+        p.questFlags,
+        'a5q2',
+        QUEST_FLAG_REWARD_PENDING_113C |
+          QUEST_FLAG_COMPLETED_113C |
+          QUEST_FLAG_COMPLETED_NOW_113C,
+      ),
+    )
   // Head insertion into the new-room list: processed in reverse activation order. Per room
   // (`0x6FC4CBE0` -> `0x6FD01430`): preset objects, then preset monsters; the room's warp tiles follow.
   for (let i = activation.length - 1; i >= 0; i -= 1) {
     const entry = pending.byRoom.get(activation[i]!.index)
     if (entry === undefined) continue
     pending.byRoom.delete(activation[i]!.index)
-    for (const objectId of entry.objectIds) this.drawDeferredUnitSeed113c(UNIT_TYPE_113C.object, objectId)
+    for (const objectId of entry.objectIds) {
+      this.drawDeferredUnitSeed113c(UNIT_TYPE_113C.object, objectId)
+      // D2Game.dll InitFn 28 (`ACT5Q2_ObjInit` @ `0x6FC7C850 -> 0x6FC7C2A0`, #2021):
+      // when `cagedwussie1` (`Objects.txt 473`) activates in Frigid Highlands (`Area 111`) before `a5q2`
+      // completion, spawn 5 friendly `act5pow` (`hcIdx 534`, `Align = 1`) soldiers inside the pen.
+      if (player.areaId === 111 && !a5q2AlreadyDone) {
+        const penObj = this.objects.get(objectId)
+        if (
+          penObj !== undefined &&
+          penObj.classId === 473 &&
+          penObj.useCount === 0 &&
+          !this.arreatSpawnedPenObjectIds.has(penObj.unitId)
+        ) {
+          this.arreatSpawnedPenObjectIds.add(penObj.unitId)
+          const powOffsets: readonly (readonly [number, number])[] = [
+            [-1, -1],
+            [1, -1],
+            [0, 0],
+            [-1, 1],
+            [1, 1],
+          ]
+          for (const [dx, dy] of powOffsets) {
+            const stand = findStandableNear(
+              (x, y) => area.isWalkable(111, x, y),
+              penObj.x + dx,
+              penObj.y + dy,
+              6,
+            )
+            this.spawnMonster({
+              classId: 534,
+              defId: 'act5pow',
+              x: stand?.x ?? penObj.x + dx,
+              y: stand?.y ?? penObj.y + dy,
+              areaId: 111,
+              align: 1,
+            })
+          }
+        }
+      }
+    }
     for (const mon of entry.monsters) this.spawnAreaPresetMonster113c(player.areaId, mon)
     for (const tileId of entry.tileIds) this.drawDeferredUnitSeed113c(UNIT_TYPE_113C.tile, tileId)
   }
@@ -1767,6 +1838,7 @@ function activatePresetRoomsNearPlayer113c(this: GameInstanceHost, player: Inter
 
 
 function streamWildernessRoomsForPlayer(this: GameInstanceHost, player: InternalPlayerRecord): void {
+  if (this.drlgRoomPopulator !== null) return
   if (TOWN_AREAS.has(player.areaId)) return
   const provider = this.areaRoomProvider
   const walkable = this.terrainWalkableCheck

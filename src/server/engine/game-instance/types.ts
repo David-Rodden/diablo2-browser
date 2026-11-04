@@ -3,6 +3,7 @@
  */
 
 import type { MissileRecord, SkillRecord } from '../../../common/data/data-registry.ts'
+import type { DrlgEnv } from '../../../common/drlg/drlg-types.ts'
 import type { Item } from '../../../common/items/items.ts'
 import type { LocalMovementPredictor } from '../../../common/path/movement-predictor.ts'
 import type { SubTilePoint } from '../../../common/path/pathfind.ts'
@@ -18,6 +19,7 @@ import type { ResolvedMonsterMonProps113c } from '../../ai/monprop-113c.ts'
 import type { RolledMonsterLoadout113c } from '../../ai/monequip-helper-113c.ts'
 import type { CombatUnitContext } from '../combat-pipeline.ts'
 import type { OnlineMissileState113c } from '../missile-engine.ts'
+import type { LinearMissilePathState113c } from '../missile-path-113c.ts'
 import type { D2sDecodedCharacterSave } from '../../save/d2s-reader.ts'
 import type { UnitStatList } from '../stat-list.ts'
 import type { StateBus } from '../state-bus.ts'
@@ -74,6 +76,12 @@ export interface GameInstanceConfig {
    */
   readonly animActionWindup?: boolean | undefined
   readonly enableAnimWindup?: boolean | undefined
+  /**
+   * 1.13c DRLG environment (`MapService.getDrlgEnv()`): when provided, enables per-room DRLG
+   * activation, procedural monster/object population (`0x6FD01430`), per-level `D2MonRegStrc`
+   * outfit pre-rolls (`0x6FCEAB30`), and 12-frame distant-room hibernation (`0x6FC4CB60`).
+   */
+  readonly drlgEnv?: DrlgEnv | null | undefined
 }
 
 
@@ -530,6 +538,12 @@ export interface ItemBaseSizeInfo {
 
 export interface InternalPlayerRecord {
   unitId: number
+  /**
+   * 1.13c `D2PlayerDataStrc+0x148/+0x14C`: destination of the player's last SUNIT warp (written at
+   * `D2Game.dll` `0x6FD01B19..0x6FD01B23`, cleared at `0x6FD0042B`); zero until the first warp. Read by
+   * the NecroPet follow check `0x6FC3E366` (kb/monsters/d2game-necropet-ai-113c.md §3).
+   */
+  lastWarpPos113c?: { x: number; y: number } | undefined
   name: string
   classId: CharClassId
   classCode: CharacterClassCode
@@ -543,6 +557,14 @@ export interface InternalPlayerRecord {
   moveTargetUnitId?: number | undefined
   /** 1.13c unit type of `moveTargetUnitId` (ids are per type); undefined = legacy any-kind lookup. */
   moveTargetUnitType?: 0 | 1 | 2 | 3 | 4 | 5 | undefined
+  /** 1.13c `D2Common#10329` (`0x6FCEE120`): skill queued while running into melee range of a unit. */
+  queuedSkillOnTarget?:
+    | {
+        readonly skillId: number
+        readonly targetId: number
+        readonly targetType?: 0 | 1 | 2 | 3 | 4 | 5 | undefined
+      }
+    | undefined
   run: boolean
   mode: number
   hp: number
@@ -647,6 +669,16 @@ export interface InternalPlayerRecord {
   hostilePortalLockUntilFrame?: number | undefined
   /** End frame of the player's `PLRMODE_BLOCK` (`mode = 9`) animation (`D2Common.dll` `0x6FD831FE`). */
   blockRecoveryUntilFrame?: number | undefined
+  /** Mode held until `blockRecoveryUntilFrame`: 9 (BL) or 13 (S1 dodge / avoid, `0x6FCFD1DC`). */
+  blockRecoveryMode113c?: number | undefined
+  /** `STAT 95` (frame of the last block, `0x6FCFD337`) gating the next BL mode (`0x6FCFD2F8`). */
+  lastBlockFrame113c?: number | undefined
+  /** Frame on which a new command may restart the current interruptible attack (`0x6FC98340` / `0x6FC97FA0`). */
+  animRestartFrame113c?: number | undefined
+  /** 1.13c `D2Game.dll` `0x6FC89E00`: 1-frame deferred reset to `NU`/`TN` after skill animation completion. */
+  animResetFrame?: number | undefined
+  /** 1.13c arrival-triggered skill windup: skip ticking `AnimDispatcher` on the movement arrival frame itself. */
+  animStartSkipFrame?: number | undefined
   /** 1.13c interact queue: walk into range, then run the interaction. */
   pendingInteraction?:
     | {
@@ -702,6 +734,18 @@ export interface InternalMonsterRecord {
   x: number
   y: number
   hp: number
+  /**
+   * 1/256 hit points (`STAT_HITPOINTS` raw storage) after a fractional hit (`SrvDmg03` ground fire).
+   * Authoritative only while `hp256Whole === hp`; any integer write to `hp` invalidates it.
+   */
+  hp256?: number | undefined
+  hp256Whole?: number | undefined
+  /** Frame of the last `finishMonsterDamage` (oracle-path regen skips that frame). */
+  lastDamagedFrame113c?: number | undefined
+  /** Next frame on which `MONSTER_Event3_HpRegen` (`0x6FC96740`) fires (`undefined` = no `Event 3` queued). */
+  nextEvent3Frame113c?: number | undefined
+  /** Monotonic insertion counter into the `EVENT_SetEvent(..., 3, frame)` FIFO bucket (`0x6FCAEA80`). */
+  event3Seq113c?: number | undefined
   maxHp: number
   baseMaxHp: number
   /** Unmultiplied single-player normal-rank base max HP (`D2Game.dll` `0x6FC4673A`, #1821). */
@@ -1031,6 +1075,14 @@ export interface InternalMonsterRecord {
   mapAi?: LocalAreaPresetMonster['mapAi']
   /** Whether 1.13c Town NPC AI (`AI_Npc` `0x6FC3DB40`) is active on this monster. */
   townNpcAiEnabled?: boolean | undefined
+  /** 1.13c monster AI dormancy gate (`AI_ActivateMonstersNearPlayers` every 25 frames within dist 35). */
+  aiAwake?: boolean | undefined
+  /** 1.13c `MONMODE_RUN` (`15`) velocity bonus (`+100` in `AiZombie` `0x6FCA38B0`). */
+  runVelocityBonus?: number | undefined
+  /** 1.13c `MONMODE_DEATH` (`0`) -> `MONMODE_DEAD` (`12`) transition frame. */
+  deathAnimEndFrame?: number | undefined
+  /** 1.13c monster attack/action animation end frame (`mode 4/5/8 -> 1`). */
+  actionAnimEndFrame?: number | undefined
 }
 
 
@@ -1175,6 +1227,8 @@ export interface InternalMissileRecord {
   remainingFrames: number
   /** Elapsed movement ticks since creation (`MISSMODE_MoveMissile` `0x6FC5F413` `Activate` gate, #1997). */
   ticksElapsed?: number | undefined
+  /** Frame on which this missile was spawned (`D2Game.dll` skips stepping newly spawned missiles until next frame). */
+  createdFrame?: number | undefined
   /** `Missiles.txt` `CollideType` (0 = ignore terrain, 8 = floor-hugging, 1/3/6 = flying). */
   collideType: number
   /** `Missiles.txt` `Size` — collision radius contribution. */
@@ -1217,6 +1271,19 @@ export interface InternalMissileRecord {
   groundFireCarry?: Map<number, number> | undefined
   /** Exact 1/256 fixed-point elemental/magic damage payload (e.g. `#112 Blessed Hammer` Concentration snapshot, #1878). */
   elemDamage256?: number | undefined
+  /**
+   * Elemental min/max unit stats (1/256) the missile carries from its skill (`minfire`/`maxfire` 48/49,
+   * `lightmindam`/`lightmaxdam` 50/51, `magicmindam`/`magicmaxdam` 52/53), rolled at impact by
+   * `0x6FC59B40` (see `kb/skills/missiles/d2game-srvhit01-fireball-113c.md`).
+   */
+  srvHitElem256?: { readonly min: number; readonly max: number } | undefined
+  /** `D2Common.#10024` LastCollide unit (`'<kind>:<id>'`), checked by `#10227` in `MISSMODE_SrvHitDispatch`. */
+  lastCollideKey113c?: string | undefined
+  /** Path stepped onto a new sub-tile in this frame's move / in the previous frame's move (`D2Common_10234`). */
+  pathStepNow113c?: boolean | undefined
+  pathStepPrev113c?: boolean | undefined
+  /** 1.13c `D2Common` 16.16 linear path state including 5-step `Accel` (`PATH_StepVelocity` `0x6FD5CEB0`). */
+  linearPath113c?: LinearMissilePathState113c | undefined
   /** True when `#112 Blessed Hammer` already snapshotted caster's Concentration `floor(concEd / 2)` at cast time (#1878). */
   concentrationSnapshotted?: boolean | undefined
   /** True for `#266 Blade Fury` / `#257 Blade Sentinel` weapon-carrying blade missiles (#1884). */

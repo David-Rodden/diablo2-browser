@@ -727,7 +727,8 @@ function createServerEntryFromItem(this: GameInstanceHost,
     readonly gamble: boolean
   },
 ): ServerItemEntry {
-  const unitId = this.allocateUnitId(UNIT_TYPE_113C.item)
+  const preAllocId = (item as { preAllocatedUnitId113c?: number }).preAllocatedUnitId113c
+  const unitId = preAllocId ?? this.allocateUnitId(UNIT_TYPE_113C.item)
   const code = (item.code ?? item.base.id).trim()
   const info = requireBaseInfo(code)
   const data = domainItemToItemData113c(item, getEmbeddedDropTables(), {
@@ -1996,10 +1997,58 @@ function rollMonsterDeathDrop(this: GameInstanceHost, killer: InternalPlayerReco
       : []
   if (!pending) {
     if (equippedDeathDrops.length > 0) {
+      if (this.drlgRoomPopulator !== null) {
+        return this.spawnDroppedItems(equippedDeathDrops, monster.areaId, monster.x, monster.y)
+      }
       monster.pendingDropItems = equippedDeathDrops
       monster.pendingDropFrame = this.currentFrame + this.monsterDeathDropDelayFrames(monster)
     }
     return []
+  }
+  if (this.drlgRoomPopulator !== null) {
+    const mSeed = this.unitSeeds.get(`${UNIT_TYPE_113C.monster}:${monster.unitId}`)
+    if (mSeed !== undefined) {
+      const monRng = new D2Rng({ lo: mSeed.lo, hi: mSeed.hi })
+      const rolledDrops = executeDropPipeline(tables, {
+        tcName: pending.tcName,
+        nLevel: pending.monsterLevel,
+        monsterType: pending.monsterType,
+        difficulty,
+        gamePlayers: pending.killerContext.gamePlayers,
+        partyPlayers: pending.killerContext.partyPlayers,
+        ...(pending.killerContext.monsterPlayerCount !== undefined
+          ? { monsterPlayerCount: pending.killerContext.monsterPlayerCount }
+          : {}),
+        playerMf: pending.killerContext.playerMf,
+        playerGf: pending.killerContext.playerGf,
+        isBoss: pending.isBoss,
+        isNoRatio: pending.isNoRatio,
+        monsterRng: monRng,
+        spawnedUniqueIds: this.spawnedUniqueIds,
+        allocItemRng113c: () => {
+          const preAllocatedUnitId = this.allocateUnitId(UNIT_TYPE_113C.item)
+          const iSeed = this.unitSeeds.get(`${UNIT_TYPE_113C.item}:${preAllocatedUnitId}`)!
+          const itemRng = new D2Rng({ lo: iSeed.lo, hi: iSeed.hi })
+          return {
+            preAllocatedUnitId,
+            dwInitSeed: iSeed.lo >>> 0,
+            itemRng,
+            syncBack: () => {
+              const s = itemRng.getSeed()
+              iSeed.lo = s.lo
+              iSeed.hi = s.hi
+            },
+          }
+        },
+      })
+      const ms = monRng.getSeed()
+      mSeed.lo = ms.lo
+      mSeed.hi = ms.hi
+      const syncItems = [...equippedDeathDrops, ...rolledDrops]
+      return syncItems.length > 0
+        ? this.spawnDroppedItems(syncItems, monster.areaId, monster.x, monster.y)
+        : []
+    }
   }
   const items = [
     ...equippedDeathDrops,
