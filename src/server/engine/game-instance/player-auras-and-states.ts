@@ -18,7 +18,7 @@ import { difficultyLifeStealDivisor, difficultyManaStealDivisor, difficultyResis
 import { STATE_CONVERSION_113C, STATE_CONVERSION_SAVE_113C, restoreConversionLevelScaling113c } from '../../skills/p1-wave4-skills-113c.ts'
 import type { GameInstanceHost } from './host.ts'
 import type { FriendlyAuraAlliesResult113c, InternalMercenaryRecord, InternalMonsterRecord, InternalPlayerRecord, MercAuraRuntime, MercAuraSourceEntry, PersistentCombatUnit } from './types.ts'
-import { MERC_AURA_TO_SKILL_ID, STAT_ITEM_ALLSKILLS, TOWN_AREAS, collectEquippedItemStats, collectItemStats } from './constants-and-helpers.ts'
+import { MERC_AURA_TO_SKILL_ID, STAT_ITEM_ALLSKILLS, TOWN_AREAS, collectEquippedItemStats, collectItemStats, monsterHp256_113c } from './constants-and-helpers.ts'
 
 
 /**
@@ -240,11 +240,12 @@ function monsterCombatContext(this: GameInstanceHost, monster: InternalMonsterRe
   const st = unit.statList
   st.setOwnerType('monster')
   st.setBaseStat('level', monster.level)
+  st.setBaseStat('experience', monster.experience)
   st.setBaseStat('tohit', monster.ar)
   st.setBaseStat('armorclass', monster.ac)
   st.setBaseStat('toblock', monster.toBlock)
   st.setBaseStat('maxhp', monster.maxHp * FIXED_ONE)
-  st.setHp256(monster.hp * FIXED_ONE)
+  st.setHp256(monsterHp256_113c(monster))
   st.setBaseStat('damageresist', monster.resistances.phys)
   st.setBaseStat('magicresist', monster.resistances.magic)
   st.setBaseStat('fireresist', monster.resistances.fire)
@@ -283,6 +284,7 @@ function mercCombatContext(this: GameInstanceHost, merc: InternalMercenaryRecord
   }
   const st = unit.statList
   st.setBaseStat('level', merc.level)
+  st.setBaseStat('experience', merc.experience)
   st.setBaseStat('armorclass', merc.defense)
   st.setBaseStat('maxhp', merc.maxHp * FIXED_ONE)
   st.setHp256(merc.hp * FIXED_ONE)

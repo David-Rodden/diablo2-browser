@@ -208,107 +208,110 @@ function loadArea(this: GameInstanceHost, areaId: number): LoadedAreaRecord | nu
     bootstrap.subWidth,
     bootstrap.subHeight,
     bootstrap.collision,
+    bootstrap.roomRects,
   )
-  const areaLvl = getLevelMonsterLevel113c(areaId, this.difficulty, true)
-  // DRLG room of a preset (rooms are activated near players; see `activatePresetRoomsNearPlayer113c`).
-  const roomOf = (x: number, y: number): number | undefined =>
-    bootstrap.roomRects.find((r) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h)?.index
-  const pendingByRoom = new Map<number, PendingRoomPresets113c>()
-  const pendingFor = (room: number): PendingRoomPresets113c => {
-    let entry = pendingByRoom.get(room)
-    if (entry === undefined) {
-      entry = { objectIds: [], monsters: [], tileIds: [] }
-      pendingByRoom.set(room, entry)
+  if (this.drlgRoomPopulator === null) {
+    const areaLvl = getLevelMonsterLevel113c(areaId, this.difficulty, true)
+    // DRLG room of a preset (rooms are activated near players; see `activatePresetRoomsNearPlayer113c`).
+    const roomOf = (x: number, y: number): number | undefined =>
+      bootstrap.roomRects.find((r) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h)?.index
+    const pendingByRoom = new Map<number, PendingRoomPresets113c>()
+    const pendingFor = (room: number): PendingRoomPresets113c => {
+      let entry = pendingByRoom.get(room)
+      if (entry === undefined) {
+        entry = { objectIds: [], monsters: [], tileIds: [] }
+        pendingByRoom.set(room, entry)
+      }
+      return entry
     }
-    return entry
-  }
-  for (const obj of bootstrap.objects) {
-    const objRoom = roomOf(obj.x, obj.y)
-    const resolved = resolvePresetObject113c(obj.classId, areaId, (n: number) => this.rng.rand(n))
-    if (!resolved) continue
-    if (OBJECT_INITFN_ANCHOR_CLASS_IDS_113C.has(resolved.classId)) {
-      initFnAnchors.push({ classId: resolved.classId, x: obj.x, y: obj.y })
-    }
-    // D2Game.dll InitFn 69 (0x6fc7cf70): Object 462 in Halls of Vaught (Area 124) spawns SuperUnique
-    // Nihlathak (`SU 60`, `hcIdx 526`, `nihlathakboss`) + minions in its DS1 room (#2000).
-    if (
-      areaId === 124 &&
-      resolved.classId === 462 &&
-      !bootstrap.monsters.some((m) => m.superUniqueIndex === 60 || m.classId === 526) &&
-      !synthesizedMonsters.some((m) => m.superUniqueIndex === 60 || m.classId === 526)
-    ) {
-      synthesizedMonsters.push({
-        classId: 526,
+    for (const obj of bootstrap.objects) {
+      const objRoom = roomOf(obj.x, obj.y)
+      const resolved = resolvePresetObject113c(obj.classId, areaId, (n: number) => this.rng.rand(n))
+      if (!resolved) continue
+      if (OBJECT_INITFN_ANCHOR_CLASS_IDS_113C.has(resolved.classId)) {
+        initFnAnchors.push({ classId: resolved.classId, x: obj.x, y: obj.y })
+      }
+      // D2Game.dll InitFn 69 (0x6fc7cf70): Object 462 in Halls of Vaught (Area 124) spawns SuperUnique
+      // Nihlathak (`SU 60`, `hcIdx 526`, `nihlathakboss`) + minions in its DS1 room (#2000).
+      if (
+        areaId === 124 &&
+        resolved.classId === 462 &&
+        !bootstrap.monsters.some((m) => m.superUniqueIndex === 60 || m.classId === 526) &&
+        !synthesizedMonsters.some((m) => m.superUniqueIndex === 60 || m.classId === 526)
+      ) {
+        synthesizedMonsters.push({
+          classId: 526,
+          x: obj.x,
+          y: obj.y,
+          superUniqueIndex: 60,
+        })
+      }
+      if (SERVER_ONLY_NPC_SPAWNER_OBJECT_IDS_113C.has(resolved.classId)) {
+        // `D2Game.dll` (`0x6FD01430`) still allocates the server-only object unit and draws its seed on room
+        // activation, while `Sync == 0` suppresses `0x51` client assignment (#2000).
+        const markerId = this.allocateUnitId(UNIT_TYPE_113C.object, objRoom === undefined)
+        if (objRoom !== undefined) pendingFor(objRoom).objectIds.push(markerId)
+        continue
+      }
+      const isSparkling = Boolean(
+        obj.isSparkling ??
+          resolved.isSparkling ??
+          SPARKLY_CHEST_INIT57_CLASS_IDS_113C.has(resolved.classId),
+      )
+      const createdObjId = this.spawnObject({
+        classId: resolved.classId,
         x: obj.x,
         y: obj.y,
-        superUniqueIndex: 60,
+        areaId,
+        mode: obj.mode === 0 ? undefined : obj.mode,
+        isWaypoint: obj.isWaypoint,
+        isShrine: obj.isShrine,
+        isLocked:
+          isSparkling
+            ? false
+            : ((obj as { readonly isLocked?: boolean }).isLocked ??
+              rollChestLocked113c(resolved.classId, areaLvl, this.rng)),
+        isSparkling,
+        destAreaId: obj.destAreaId,
+        rollTrap: !TOWN_AREAS.has(areaId),
+        rollPreOperate: !TOWN_AREAS.has(areaId) && !PRE_OPERATE_ROLLED_OBJECTS_113C.has(obj),
+        // Object units stay available for gameplay right away; their unit seed is drawn when the room
+        // is activated, in 1.13c spawn order (`0x6FD01430`, objects before monsters).
+        deferUnitSeed: objRoom !== undefined,
       })
+      if (objRoom !== undefined) {
+        pendingFor(objRoom).objectIds.push(createdObjId)
+      }
     }
-    if (SERVER_ONLY_NPC_SPAWNER_OBJECT_IDS_113C.has(resolved.classId)) {
-      // `D2Game.dll` (`0x6FD01430`) still allocates the server-only object unit and draws its seed on room
-      // activation, while `Sync == 0` suppresses `0x51` client assignment (#2000).
-      const markerId = this.allocateUnitId(UNIT_TYPE_113C.object, objRoom === undefined)
-      if (objRoom !== undefined) pendingFor(objRoom).objectIds.push(markerId)
-      continue
+    // Preset monsters belong to their DRLG room and are spawned when that room is activated by a nearby
+    // player (`activatePresetRoomsNearPlayer113c`, D2Game new-room processing `0x6FC4CBE0` ->
+    // `0x6FD01430`). Presets outside every room rectangle (synthetic geometry) are spawned right away.
+    for (const mon of [...bootstrap.monsters, ...synthesizedMonsters]) {
+      const monRoom = roomOf(mon.x, mon.y)
+      if (monRoom === undefined) {
+        this.spawnAreaPresetMonster113c(areaId, mon)
+        continue
+      }
+      pendingFor(monRoom).monsters.push(mon)
     }
-    const isSparkling = Boolean(
-      obj.isSparkling ??
-        resolved.isSparkling ??
-        SPARKLY_CHEST_INIT57_CLASS_IDS_113C.has(resolved.classId),
-    )
-    const createdObjId = this.spawnObject({
-      classId: resolved.classId,
-      x: obj.x,
-      y: obj.y,
-      areaId,
-      mode: obj.mode === 0 ? undefined : obj.mode,
-      isWaypoint: obj.isWaypoint,
-      isShrine: obj.isShrine,
-      isLocked:
-        isSparkling
-          ? false
-          : ((obj as { readonly isLocked?: boolean }).isLocked ??
-            rollChestLocked113c(resolved.classId, areaLvl, this.rng)),
-      isSparkling,
-      destAreaId: obj.destAreaId,
-      rollTrap: !TOWN_AREAS.has(areaId),
-      rollPreOperate: !TOWN_AREAS.has(areaId) && !PRE_OPERATE_ROLLED_OBJECTS_113C.has(obj),
-      // Object units stay available for gameplay right away; their unit seed is drawn when the room
-      // is activated, in 1.13c spawn order (`0x6FD01430`, objects before monsters).
-      deferUnitSeed: objRoom !== undefined,
-    })
-    if (objRoom !== undefined) {
-      pendingFor(objRoom).objectIds.push(createdObjId)
+    for (const warp of bootstrap.warps) {
+      const warpRoom = roomOf(warp.x, warp.y)
+      const unitId = this.allocateUnitId(UNIT_TYPE_113C.tile, warpRoom === undefined)
+      if (warpRoom !== undefined) pendingFor(warpRoom).tileIds.push(unitId)
+      const tile: InternalWarpTileRecord = {
+        unitId,
+        lvlWarpId: warp.lvlWarpId,
+        areaId,
+        x: warp.x,
+        y: warp.y,
+        destAreaId: warp.destAreaId,
+      }
+      this.warpTiles.set(unitId, tile)
+      this.broadcastToArea(areaId, this.warpTileAssignEvent(tile))
     }
-  }
-  // Preset monsters belong to their DRLG room and are spawned when that room is activated by a nearby
-  // player (`activatePresetRoomsNearPlayer113c`, D2Game new-room processing `0x6FC4CBE0` ->
-  // `0x6FD01430`). Presets outside every room rectangle (synthetic geometry) are spawned right away.
-  for (const mon of [...bootstrap.monsters, ...synthesizedMonsters]) {
-    const monRoom = roomOf(mon.x, mon.y)
-    if (monRoom === undefined) {
-      this.spawnAreaPresetMonster113c(areaId, mon)
-      continue
+    if (pendingByRoom.size > 0) {
+      this.pendingPresetMonsters.set(areaId, { byRoom: pendingByRoom, activated: new Set() })
     }
-    pendingFor(monRoom).monsters.push(mon)
-  }
-  for (const warp of bootstrap.warps) {
-    const warpRoom = roomOf(warp.x, warp.y)
-    const unitId = this.allocateUnitId(UNIT_TYPE_113C.tile, warpRoom === undefined)
-    if (warpRoom !== undefined) pendingFor(warpRoom).tileIds.push(unitId)
-    const tile: InternalWarpTileRecord = {
-      unitId,
-      lvlWarpId: warp.lvlWarpId,
-      areaId,
-      x: warp.x,
-      y: warp.y,
-      destAreaId: warp.destAreaId,
-    }
-    this.warpTiles.set(unitId, tile)
-    this.broadcastToArea(areaId, this.warpTileAssignEvent(tile))
-  }
-  if (pendingByRoom.size > 0) {
-    this.pendingPresetMonsters.set(areaId, { byRoom: pendingByRoom, activated: new Set() })
   }
   if (PANDEMONIUM_AREA_IDS_113C.has(areaId) || areaId === 39 || areaId === 121) {
     const returnTownAreaId = areaId === 39 ? 1 : 109
@@ -1526,6 +1529,8 @@ function connectPlayer(this: GameInstanceHost, spec: ConnectPlayerSpec = {}): nu
 
   const record: InternalPlayerRecord = {
     unitId,
+    // `pPlayerData+0x148/+0x14C`: zero-initialised, written by the SUNIT warp at 0x6FD01B19.
+    lastWarpPos113c: { x: 0, y: 0 },
     name: charName,
     classId,
     classCode,
@@ -1637,7 +1642,12 @@ function connectPlayer(this: GameInstanceHost, spec: ConnectPlayerSpec = {}): nu
   this.syncFrozenRiverA5Q3State113c(record)
   this.players.set(unitId, record)
   this.areaPathWorld.spawnOrSyncPlayer(areaId, unitId, classId, spawnX, spawnY, record.mode)
-  this.activatePresetRoomsNearPlayer113c(record)
+  if (this.drlgRoomPopulator !== null) {
+    this.drlgRoomPopulator.activateNear(this, record.act, Math.round(spawnX), Math.round(spawnY))
+    this.drlgRoomPopulator.updateProgress(this)
+  } else {
+    this.activatePresetRoomsNearPlayer113c(record)
+  }
   this.refreshPlayerAccruedMaxPools(record, {
     fillHpIfAtBaseMax:
       spec.hp === undefined &&

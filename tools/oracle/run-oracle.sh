@@ -25,7 +25,8 @@ export WINEPREFIX=${ORACLE_PREFIX:-$ROOT/wine/prefix} WINESERVER=$W/wineserver W
 export WINEDEBUG=${WINEDEBUG:--all}
 export WINEDLLOVERRIDES="mscoree,mshtml="
 
-"$HERE/hook/build.sh" "$ROOT/build" >/dev/null
+BUILD_DIR=${ORACLE_BUILD:-$ROOT/build}
+"$HERE/hook/build.sh" "$BUILD_DIR" >/dev/null
 C=$WINEPREFIX/drive_c
 mkdir -p "$C/oracle/out" "$OUT"
 rm -f "$C/oracle/out/"*
@@ -36,7 +37,7 @@ rm -rf "$C/D2/Save"
 mkdir -p "$C/D2/Save"
 if [ -n "${ORACLE_SAVE:-}" ]; then cp "$ORACLE_SAVE" "$C/D2/Save/Oracle.d2s"; fi
 DLL=${ORACLE_DLL:-d2oracle.dll}
-cp "$ROOT/build/$DLL" "$ROOT/build/oracle-inject.exe" "$C/D2/"
+cp "$BUILD_DIR/$DLL" "$BUILD_DIR/oracle-inject.exe" "$C/D2/"
 
 # Let Xvfb pick a free display number (-displayfd) so concurrent runs never
 # share (and later kill) each other's X server.

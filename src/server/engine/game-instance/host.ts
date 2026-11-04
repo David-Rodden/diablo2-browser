@@ -151,6 +151,8 @@ export interface GameInstancePublicMethods {
     readonly srcDam?: number | undefined
     readonly skipHitRiders?: boolean | undefined
     readonly skipElemMastery?: boolean | undefined
+    readonly missileHitFlags113c?: number | undefined
+    readonly missileResultFlags113c?: number | undefined
     readonly suppressReturnFireThreat?: boolean | undefined
     readonly isGroundFire?: boolean | undefined
     readonly fromPet?: boolean | undefined

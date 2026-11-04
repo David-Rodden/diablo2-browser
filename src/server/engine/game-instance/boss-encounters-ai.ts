@@ -7,9 +7,11 @@ import type { MissileRecord, SkillRecord } from '../../../common/data/data-regis
 import { getEmbeddedDropTables } from '../../../common/items/embedded-drop-tables.ts'
 import { PANDEMONIUM_FINALE_AREA_ID_113C, UBER_PRIME_EVIL_SET_113C, UBER_PRIME_MINION_SPECS_113C, computeUberPrimeMinionCap113c, createPandemoniumFinaleDrops113c } from '../../world/pandemonium-113c.ts'
 import { MONSTATS_113C_ROWS } from '../../../common/units/monstats-113c-data.ts'
+import { getMonsterKindByHcIdx, resolveMonsterStats } from '../../../common/units/monsters-data.ts'
 import { isBaalTentacleHcIdx113c, isBonePrisonMonsterHcIdx113c, monaiParam113c, normalizeMonAiName113c } from '../../../common/units/monai-113c.ts'
 import { MON_UMOD } from '../../../common/units/monster-death-fx.ts'
 import type { MonsterSkillEntry } from '../../../common/units/unit-types.ts'
+import { getLevelMonsterPlan113c } from '../../../common/world/level-monster-plans.ts'
 import type { ServerEvent } from '../../../netproto/index.ts'
 import type { SummonedPetUnit } from '../../ai/summon-manager.ts'
 import {
@@ -25,6 +27,7 @@ import { evaluateSkill113c } from '../../skills/registry.ts'
 import type { GameInstanceHost } from './host.ts'
 import type { InternalMercenaryRecord, InternalMissileRecord, InternalMonsterRecord, InternalPlayerRecord, MissileDamageChannel } from './types.ts'
 import { monsterProfile113c, normalizeMissileElement, playerWirePosition, UNIT_TYPE_113C } from './constants-and-helpers.ts'
+import { rollMonsterInitStats113c } from './unit-seeds-113c.ts'
 
 
 /**
@@ -885,23 +888,112 @@ function tryCastMonsterUtilitySkill(this: GameInstanceHost,
       }
       this.applyMonsterState(whipTarget.unitId, 140, 250)
       if (whipTarget.hcIdx >= 453 && whipTarget.hcIdx <= 460 && this.rng.rand(100) < 35) {
+        // D2Game.dll SrvDo131 (`0x6FC2D9C0 -> 0x6FC2D850`) -> MONSTER_MorphIntoClass (`0x6FCCFC50 -> 0x6FCD0320 -> 0x6FCCFDB0`, #2021):
+        // Reinitialize the morphed `suicideminion1..8` (`hcIdx 461..468`) stats from `MonStats.txt[newHcIdx]` + `MonLvl.txt[mlvl]`
+        // (`0x6FCD006C..0x6FCD0080` sets both `STAT_MAXHP` and `STAT_HITPOINTS` to `newMaxHp << 8`, `Velocity = 10, Run = 10`,
+        // and `A1MinD/A1MaxD` from `L-DM * 100..150 / 100`, stripping any pre-morph boss-minion `2x` HP multiplier).
         const newHcIdx = whipTarget.hcIdx + 8
         const newDefId = `suicideminion${String(newHcIdx - 460)}`
+        const diffName =
+          this.difficulty === 2 ? 'hell' : this.difficulty === 1 ? 'nightmare' : 'normal'
+        const newKind = getMonsterKindByHcIdx(newHcIdx, diffName)
+        const effectiveAreaLevel = getLevelMonsterPlan113c(whipTarget.areaId, diffName)?.monsterLevel
+        const resolvedMorph = newKind
+          ? resolveMonsterStats(newKind, {
+              difficulty: diffName,
+              rank: 'normal',
+              modifiers: [],
+              playersCount: 1,
+              ...(effectiveAreaLevel !== undefined ? { areaLevel: effectiveAreaLevel } : {}),
+            })
+          : undefined
+        const unitSeed = this.unitSeeds.get(`${UNIT_TYPE_113C.monster}:${whipTarget.unitId}`)
+        const noRatio = Boolean(newKind?.noRatio ?? false)
+        const initRoll =
+          unitSeed !== undefined && newKind !== undefined
+            ? rollMonsterInitStats113c({
+                kind: newKind,
+                difficulty: this.difficulty,
+                effectiveAreaLevel,
+                isBoss: false,
+                noRatio,
+                isExpansion: true,
+                unitSeed,
+              })
+            : undefined
+        const newBaseMaxHp = Math.max(
+          1,
+          initRoll?.rolledHp ?? resolvedMorph?.maxHp ?? resolvedMorph?.hp ?? 50,
+        )
+        const px = this.playersX
+        const newMaxHp = noRatio
+          ? newBaseMaxHp
+          : Math.max(1, Math.floor((newBaseMaxHp * (px + 1)) / 2))
+        const morphBaseMinDmg = Math.max(
+          1,
+          resolvedMorph?.attack1?.minDamage ??
+            resolvedMorph?.attack1?.min ??
+            resolvedMorph?.damage ??
+            20,
+        )
+        const morphBaseMaxDmg = Math.max(
+          morphBaseMinDmg,
+          resolvedMorph?.attack1?.maxDamage ??
+            resolvedMorph?.attack1?.max ??
+            resolvedMorph?.damage ??
+            30,
+        )
+        const arDmgNum = noRatio ? 16 : 15 + px
+
         whipTarget.hcIdx = newHcIdx
         whipTarget.classId = newHcIdx
         whipTarget.defId = newDefId
+        whipTarget.rank = 'normal'
+        whipTarget.level = Math.max(
+          1,
+          initRoll?.level ?? resolvedMorph?.level ?? whipTarget.level,
+        )
+        whipTarget.baseMaxHp = newBaseMaxHp
+        whipTarget.unscaledMaxHp = newBaseMaxHp
+        whipTarget.maxHp = newMaxHp
+        whipTarget.hp = newMaxHp
+        whipTarget.baseMinDmg = morphBaseMinDmg
+        whipTarget.baseMaxDmg = morphBaseMaxDmg
+        whipTarget.minDmg = Math.max(1, Math.floor((morphBaseMinDmg * arDmgNum) / 16))
+        whipTarget.maxDmg = Math.max(
+          whipTarget.minDmg,
+          Math.floor((morphBaseMaxDmg * arDmgNum) / 16),
+        )
         whipTarget.ai = 'SuicideMinion'
+        whipTarget.aiParams = newKind?.aiParams ?? [0, 0, 0, 0, 0, 0, 0, 0]
         whipTarget.aiDelay = Math.min(whipTarget.aiDelay, 5)
         whipTarget.cooldownTicks = Math.min(whipTarget.cooldownTicks, 5)
-        whipTarget.velocity = Math.max(whipTarget.velocity, 10)
-        whipTarget.runSpeed = Math.max(whipTarget.runSpeed, 14)
-        whipTarget.minDmg = Math.max(whipTarget.minDmg * 3, 100)
-        whipTarget.maxDmg = Math.max(whipTarget.maxDmg * 3, 150)
+        whipTarget.velocity = Math.max(1, newKind?.velocity ?? 10)
+        whipTarget.runSpeed = Math.max(whipTarget.velocity, newKind?.runVelocity ?? 10)
+        const whipCombat = this.monsterCombat.get(whipTarget.unitId)
+        if (whipCombat !== undefined) {
+          whipCombat.statList.setBaseStat('maxhp', newMaxHp * FIXED_ONE)
+          whipCombat.statList.setHp256(newMaxHp * FIXED_ONE)
+        }
         if (!whipTarget.umodIds.includes(MON_UMOD.SUICIDEMINION)) {
           whipTarget.umodIds = [...whipTarget.umodIds, MON_UMOD.SUICIDEMINION]
         }
         this.applyMonsterState(whipTarget.unitId, 142, 2500)
         this.broadcastToArea(whipTarget.areaId, this.buildMonsterUnitAssignEvent(whipTarget))
+        this.broadcastToArea(whipTarget.areaId, {
+          type: 'UnitStatUpdate',
+          unitType: 'monster',
+          unitId: whipTarget.unitId,
+          statId: 7,
+          value: whipTarget.maxHp,
+        })
+        this.broadcastToArea(whipTarget.areaId, {
+          type: 'UnitStatUpdate',
+          unitType: 'monster',
+          unitId: whipTarget.unitId,
+          statId: 6,
+          value: whipTarget.hp,
+        })
       }
       monster.mode = 5
       const whipPt = { x: Math.round(whipTarget.x), y: Math.round(whipTarget.y) }
@@ -1236,6 +1328,7 @@ function emitBossProjectile113c(this: GameInstanceHost,
       speed > 0 ? Math.ceil(dist / speed) : 0,
     )
   }
+  missile.createdFrame = this.currentFrame
   this.missiles.set(missileUnitId, missile)
   this.broadcastToArea(monster.areaId, {
     type: 'CreateMissile',

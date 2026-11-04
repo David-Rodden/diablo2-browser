@@ -17,6 +17,7 @@ import { createMapServiceAreaLevelSource } from '../../../src/client/map/map-ser
 import { hexToBytes } from '../../../src/netproto/index.ts'
 import { GameInstance } from '../../../src/server/engine/game-instance.ts'
 import {
+  setDotTraceObserver113c,
   setSUnitDmgTraceObserver113c,
   type SUnitDmgTraceEvent113c,
 } from '../../../src/server/engine/combat-pipeline.ts'
@@ -188,6 +189,19 @@ function withMonsterStatList<T>(host: GameInstanceHost, m: InternalMonsterRecord
   }
 }
 
+function withMercStatList<T>(
+  host: GameInstanceHost,
+  m: Parameters<GameInstanceHost['mercCombatContext']>[0],
+  fn: (st: UnitStatList) => T,
+): T {
+  const had = host.mercCombat.has(m.unitId)
+  try {
+    return fn(host.mercCombatContext(m).statList)
+  } finally {
+    if (!had) host.mercCombat.delete(m.unitId)
+  }
+}
+
 /**
  * Player stat value in raw 1.13c storage (`STATLIST_GetUnitStat(unit, id, 0)`): the `UnitStatList`
  * already keeps hitpoints/maxhp/mana/maxmana/stamina/maxstamina in `<<8` fixed point (`FIXED_ONE`).
@@ -239,6 +253,7 @@ export function sampleFrame(
   statIds: readonly number[],
   injected: readonly (readonly [number, string])[],
   dmgEvents: readonly SUnitDmgTraceEvent113c[] = [],
+  dotEvents: readonly (readonly [number, number, number, number])[] = [],
 ): string {
   const host = game as unknown as GameInstanceHost
   const t0: Row[] = []
@@ -261,6 +276,23 @@ export function sampleFrame(
     t1.push([m.unitId, m.classId, m.mode, subtile(m.x), subtile(m.y), ...unitSeed(host, 1, m.unitId), m.areaId, ...stats])
     if (states.length > 0) st1.push([1, m.unitId, ...states])
   }
+  for (const m of host.mercenaries.values()) {
+    const { stats, states } = withMercStatList(host, m, (st) => ({
+      stats: sampleMonsterStats(st, statIds),
+      states: collectActiveStateIds(m.states, st),
+    }))
+    const mercMode = !m.alive ? 12 : m.state === 'attack' ? 4 : m.state === 'follow' || m.state === 'chase' ? 2 : 1
+    t1.push([m.unitId, m.classId, mercMode, subtile(m.x), subtile(m.y), ...unitSeed(host, 1, m.unitId), m.areaId, ...stats])
+    if (states.length > 0) st1.push([1, m.unitId, ...states])
+  }
+  for (const [petUnitId, vis] of host.petVisualStates.entries()) {
+    if (vis.pet.alive === false || vis.pet.hp <= 0) continue
+    const stats = sampleMonsterStats(vis.pet.statList, statIds)
+    const states = collectActiveStateIds(vis.states, vis.pet.statList)
+    const petMode = (vis.pet as unknown as { mode?: number }).mode ?? 1
+    t1.push([petUnitId, vis.pet.classId ?? 363, petMode, subtile(vis.pet.x), subtile(vis.pet.y), ...unitSeed(host, 1, petUnitId), vis.areaId, ...stats])
+    if (states.length > 0) st1.push([1, petUnitId, ...states])
+  }
   const t3: Row[] = []
   for (const ms of host.missiles.values()) {
     // InternalMissileRecord has no dwMode equivalent -> null (consumers skip null columns).
@@ -281,6 +313,7 @@ export function sampleFrame(
     st: stAll,
   }
   if (dmgEvents.length > 0) line.dmg = dmgEvents
+  if (dotEvents.length > 0) line.dot = dotEvents
   if (injected.length > 0) line.in = injected.map(([pid, hex]) => [pid, hex])
   return JSON.stringify(line)
 }
@@ -357,6 +390,10 @@ export function runReplica(
     readonly onLine?: ((line: string) => void) | undefined
     /** `false` skips per-frame sampling (used to prove sampling does not perturb the simulation). */
     readonly observe?: boolean | undefined
+    /** Diagnostics: called before frame `f` is simulated (after its inputs are enqueued). */
+    readonly beforeFrame?: ((frame: number, game: GameInstance) => void) | undefined
+    /** Diagnostics: called after frame `f` is simulated and sampled. */
+    readonly afterFrame?: ((frame: number, game: GameInstance) => void) | undefined
   } = {},
 ): ReplicaRunResult {
   const savePath = resolve(opts.repoRoot ?? process.cwd(), scenario.save)
@@ -373,6 +410,7 @@ export function runReplica(
     mapSeed: scenario.seed,
     animActionWindup: true,
     registry: env.registry,
+    drlgEnv: env.mapService.getDrlgEnv(),
     resolveAreaBootstrap: createAreaBootstrapResolver(createMapServiceAreaLevelSource(env.mapService)),
   })
   if (game.mapSeed !== scenario.seed) {
@@ -394,6 +432,7 @@ export function runReplica(
       schema: TRACE_SCHEMA,
       source: 'replica',
       initSeed: scenario.seed,
+      dot: true,
       unitFields: UNIT_FIELDS,
       statIds,
       scenario: scenario.name,
@@ -409,16 +448,22 @@ export function runReplica(
       injected.push([playerUnitId, inp.c2s])
     }
     const frameDmg: SUnitDmgTraceEvent113c[] = []
+    const frameDot: [number, number, number, number][] = []
     if (opts.observe !== false) {
       setSUnitDmgTraceObserver113c((ev) => {
         frameDmg.push(ev)
       })
+      setDotTraceObserver113c((ev) => {
+        frameDot.push([ev.unitType, ev.unitId, ev.hp0, ev.hp1])
+      })
     }
+    opts.beforeFrame?.(f, game)
     try {
       game.stepFrame()
     } finally {
       if (opts.observe !== false) {
         setSUnitDmgTraceObserver113c(null)
+        setDotTraceObserver113c(null)
       }
     }
     // Outbox is only copied by stepFrame; drain so per-player event queues do not grow unbounded.
@@ -426,7 +471,8 @@ export function runReplica(
     if (game.tickCount !== f) {
       throw new Error(`replica: frame counter ${game.tickCount} != expected ${f} (paused game?)`)
     }
-    if (opts.observe !== false) emit(sampleFrame(game, statIds, injected, frameDmg))
+    if (opts.observe !== false) emit(sampleFrame(game, statIds, injected, frameDmg, frameDot))
+    opts.afterFrame?.(f, game)
   }
   return { lines, playerUnitId, mapSeed: game.mapSeed, lockstepHash: game.computeFrameLockstepHash() }
 }

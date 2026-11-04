@@ -19,6 +19,7 @@ import { isWithinAuraRange, passesAuraFilter } from '../../../common/skills/aura
 import type { GameInstanceHost } from './host.ts'
 import type { InternalMercenaryRecord, InternalMonsterRecord, InternalPlayerRecord, ServerItemEntry, SummonPetSpec } from './types.ts'
 import { TOWN_AREAS, normalizeMissileElement, UNIT_TYPE_113C } from './constants-and-helpers.ts'
+import { initOracleSummonedPet113c, NecroPetNotPortedError113c, stepNecroPet113c } from './necropet-ai-113c.ts'
 
 
 function getSummonManager(this: GameInstanceHost, ownerPlayerId: number): SummonManager {
@@ -504,6 +505,7 @@ function summonPet(this: GameInstanceHost, ownerPlayerId: number, spec: SummonPe
     x: spawnX,
     y: spawnY,
     difficulty: this.difficulty,
+    ...(this.drlgRoomPopulator !== null ? { skipMonEquipLoadout113c: true } : {}),
     ...(requiresCorpse ? { corpses } : {}),
     ...(ironGolemExtracted !== undefined ? { ironGolemItem: ironGolemExtracted.props } : {}),
   })
@@ -617,6 +619,9 @@ function summonPet(this: GameInstanceHost, ownerPlayerId: number, spec: SummonPe
     petMeta.unitId = petUnitId
     petMeta.areaId = areaId
     petMeta.states = vis.states
+    if (this.drlgRoomPopulator !== null) {
+      initOracleSummonedPet113c(this, outcome.pet, petUnitId, areaId, spec.skillId)
+    }
     if (ironGolemExtracted !== undefined && ironGolemExtracted.auraLevels.size > 0) {
       petMeta.inheritedAuraLevels = ironGolemExtracted.auraLevels
     }
@@ -1181,6 +1186,16 @@ function stepSummonedPets(this: GameInstanceHost): void {
               false,
               inheritedSlvl,
             )
+          }
+        }
+        if (pet.oracleAi113c !== undefined && pet.hp > 0) {
+          try {
+            stepNecroPet113c(this, owner, pet, petUnitId, petMeta.areaId)
+          } catch (err) {
+            if (!(err instanceof NecroPetNotPortedError113c)) throw err
+            // Unported NecroPet branch: report and hand the pet back to the generic AI (outside 1:1).
+            console.warn(`[necropet-113c] frame ${this.currentFrame} pet ${petUnitId}: ${err.message}`)
+            pet.oracleAi113c = undefined
           }
         }
       }

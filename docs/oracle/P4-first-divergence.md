@@ -280,3 +280,35 @@ FIRST DIVERGENCE at frame 24: field monster #3
 
 - **9 scenarios (`a1-bloodmoor-melee`, `p52-*`), frame 66:** Warriv (`m#4`, `hcIdx = 155`) obstacle/greeting retry timing around the Rogue Encampment campfire (`mode: oracle=2 replica=1`).
 - **`a1-town-walk`, frame 60:** Warriv (`m#4`) `PATHTYPE_WALL_FOLLOW` 1-sub-tile detour around the campfire (`x: oracle=5650 replica=5649`); player track (`--types 0`) matches through frame `155`.
+
+---
+
+## Iteration 7 — World Combat, Summon, Missile & Player-Defender 1:1 Parity (`10/10 >= 801`, `5/10` 100%)
+
+**Root causes & 1:1 ports (documented in `kb/` and `kb/engine/path-call-order-audit-113c.md`):**
+
+1. *`PATH_SetTargetUnit` vs `PATH_SetTargetPos` call order (`0x6FD12599`, `D2Common.#10286` `0x6FD845C0`):*
+   Calling `D2COMMON_10170_PathSetTargetPos` after `PATH_SetTargetUnit` cleared `pPath->pTargetUnit`, breaking monster target tracking (`PATHTYPE_TOWARD (0)` / `PATHTYPE_MON_OTHER_2 (13)`). Restored exact `MONSTER_StartMode` (`0x6FC94D50` / `0x6FC95070`) targetUnit XOR targetPos exclusivity.
+2. *Zombie AI (`0x6FCFD710`), Monster Melee (`0x6FC97240` / `0x6FC970E0`) & Player-Defender `SUNITDMG` (`0x6FCFC0B0` / `0x6FCFD1CE` / `0x6FCFEBA0`):*
+   Ported monster melee action frame `ceil(eventFrame * 256 / speed)`, monster->player RNG draws on `monster`/`player` `D2SeedStrc` (hit roll, damage roll `min256 + rand(max256 - min256)`, `RAND(1)` + `MonStats.crit`, 3 armor durability draws in `SUNITDMG_ItemDurability` `0x6FCFEBA0` -> `0x6FC32EE0`), blunt `+50%` vs undead (`0x6FCFA8C0`), `1/256` player/monster HP & monster regen (`maxHp256 * DamageRegen >> 12`, `0x6FCD00B5`), Amazon `Dodge`/`Avoid` `PLRMODE_S1 (13)` (`0x6FCFD1CE`), `BL` cooldown gate (`0x6FCFD2F8`), `GH` `ceil(frames * 256 / speed)`, `SQ (18)` sequence length (`0x6FD82820` / `0x6FD82460`), and timed state expiration (`applyFrame + duration`).
+3. *Missile Velocity (`75/100`, `0x6FC8FAA3`), `MISSMODE_SrvHit01` (`0x6FC5B990`) & Fire Wall (`0x6FC5EDE0` / `SrvDmg03` / `SrvDo06`):*
+   Swept `trunc(vel * 75 / 100)` across all 5 launch sites, ported radial explosion `SrvHit01` (`0x6FC5B990` -> `0x6FC5A280` -> `0x6FC59B40`) on the missile seed with `HitFlags`/`ResultFlags`, and ported Fire Wall LIFO ticking, `16.16` direction stepping (`src/server/engine/missile-path-113c.ts`), `LastCollide` contact gate, and `SrvDmg03` ground fire ticks.
+4. *Summon Spawn (`0x6FC6FC00`), `NecroPet` AI (`0x6FC3E640`) & `MonEquip` Item Creation (`0x6FCCFCE0` -> `0x6FC31980`):*
+   Ported pet outfit + `MONSTER_InitStats` seed draws, `summode = S1`, `AreaPathWorld113c` registration, `+25`/`+20` first AI event, `NecroPet` melee movement/target/leash AI (`src/server/engine/game-instance/necropet-ai-113c.ts`), Valkyrie passive states (`64/65/66/68/98` + state `93` walk speed), and 1:1 `MonEquip` rare/magic item affix generation (`src/server/items/monster-item-create-113c.ts`).
+5. *Diagnostic Tooling (`tools/oracle/trace-window.ts`):*
+   Added per-frame game/unit seed divergence detection, offline LCG draw count recovery (`0..256`), and exact replica RNG call-site (`file:line fn`) & `D2DynamicPathStrc` inspection.
+
+**Current `parity-baseline.json` (`tests/oracle/golden-parity.test.ts`):**
+
+| Scenario | Matched Frames | Baseline (`firstDivergenceFrame`) | Status |
+|---|---:|---:|---|
+| `a1-bloodmoor-melee` | `1800/1800` (`100.0%`) | `1801` | Full match (0 divergences) |
+| `a1-town-walk` | `750/750` (`100.0%`) | `751` | Full match (0 divergences) |
+| `p52-paladin-auras` | `1700/1700` (`100.0%`) | `1701` | Full match (0 divergences) |
+| `p52-sorceress-elemental` | `1800/1800` (`100.0%`) | `1801` | Full match (0 divergences) |
+| `p52-sorceress-fire-dot` | `1800/1800` (`100.0%`) | `1801` | Full match (0 divergences) |
+| `p52-necromancer-curses` | `1509/2000` (`75.4%`) | `1510` | `>= 750` target met |
+| `p52-amazon-defense` | `1210/1800` (`67.2%`) | `1211` | `>= 750` target met |
+| `p52-barbarian-warcries` | `1012/1600` (`63.2%`) | `1013` | `>= 750` target met |
+| `p52-amazon-valkyrie` | `850/1500` (`56.7%`) | `851` | `>= 750` target met (`NecroPet` `A1` `0x6FD12220` unported) |
+| `p52-necromancer-poison-golem` | `801/1800` (`44.5%`) | `802` | `>= 750` target met (`NecroPet` `A1` `0x6FD12220` unported) |

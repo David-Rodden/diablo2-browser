@@ -181,6 +181,11 @@ export class MapService {
     return this
   }
 
+  /** Underlying in-process `DrlgEnv` (`tables` + DS1/DT1 `data` source), or `null` when Worker-backed. */
+  getDrlgEnv(): DrlgEnv | null {
+    return this.engine?.getDrlgEnv() ?? null
+  }
+
   /**
    * Register a platform-specific directory loader (e.g. from `tools/lib/node-map-loader.ts`).
    */

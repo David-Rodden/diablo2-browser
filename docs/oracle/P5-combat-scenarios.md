@@ -25,12 +25,14 @@ Every oracle scenario was run twice and produced byte-identical traces; goldens 
 | `p52-necromancer-poison-golem` | necromancer L40 (poison/golem build) | Clay Golem (monster #12) fights; Poison Nova poison state 2 on the zombies, all three die (881/888/1085) | 5 summons, 6 DoT |
 | `p52-sorceress-fire-dot` | sorceress L40 (fire build) | Fire Wall burning damage (fire channel `raw[4]`), up to 62 missiles; Inferno | 6 DoT, 4 spells |
 | `p52-amazon-valkyrie` | amazon L40 | Valkyrie (monster #12, passive states 64/65/66/68/98) kills all three zombies | 5 summons |
+| `p52-dot-ticks` | necromancer L40 (poison/golem build) | `"dot":true` hook: 19 `+1` `Event 3` `damageRegen` ticks on zombie #10 (`789..807`), Poison Nova `state 2` suppresses `damageRegen` and ticks `-651`/frame killing #9 to `0` HP (`881..883`) | 6 DoT (`dot` ticks) |
 
 ## Gaps (next scenarios)
 
 - Mercenary auras / party auras (needs a hired mercenary → author via the original Kashya dialog).
 - Item-driven defence (DR/MDR, absorb, thorns, CtC): needs saves with equipment; author by
   injecting the original `0x9x` vendor/pickup packets or via a cube/vendor flow.
-- Per-frame DoT ticks that bypass `SUNITDMG_ApplyDamage` (burning ground, poison ticks) are visible
-  only as defender HP (`stat6`) changes in `t1`; add a hook on the DoT tick path if per-tick events
-  are needed.
+- ~~Per-frame DoT ticks that bypass `SUNITDMG_ApplyDamage`~~ **Closed**: `dot_setstat_hook` on
+  `MONSTER_Event3_HpRegen` (`0x6FC9684A`) and `PLAYER_UpdateHpRegen` (`0x6FC97D12`) emits per-frame
+  `dot: [[type, id, hp0, hp1], ...]` under `"dot": true` (`kb/combat/d2game-statregen-dot-113c.md`),
+  verified 1:1 over `1200/1200` frames in `p52-dot-ticks`.

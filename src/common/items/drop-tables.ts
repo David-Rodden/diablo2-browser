@@ -369,6 +369,20 @@ export interface DropPipelineOptions {
   readonly allowEthereal?: boolean | undefined
   /** `pItemDrop->dwFlags2 & 0x400000` or `pItemDrop->wInitFlags & 0x4` (`0x6FC2EC26..0x6FC2EC3F`): forces Ethereal if eligible. */
   readonly forceEthereal?: boolean | undefined
+  /**
+   * Optional 1.13c per-item unit seed allocator (`SUNIT_AllocUnitData` on `pGame->pGameSeed`).
+   * When provided, `ITEMS_RollItemQuality` (`0x6FC2FC40`) rolls on `monsterRng` (`pMonster->pSeed`)
+   * BEFORE allocating the item unit, and item initialization (`0x6FC31070` / affixes / sockets)
+   * rolls on the allocated item's `pItem->pSeed`.
+   */
+  readonly allocItemRng113c?:
+    | (() => {
+        readonly preAllocatedUnitId: number
+        readonly dwInitSeed: number
+        readonly itemRng: D2Rng
+        readonly syncBack: () => void
+      })
+    | undefined
   /** Parsed drop tables (defaults to `getEmbeddedDropTables()` when omitted in 1-arg form). */
   readonly dropTables?: DropTables | undefined
   /** Alias for `dropTables` used by 1-arg callers. */
@@ -1576,11 +1590,12 @@ export function executeDropPipeline(
     }
     if (leaf.isGold) {
       // D2Game!0x6FC31880 -> 0x6FC31490 -> 0x6FD01D90 -> 0x6FD00110:
-      // Allocate the gold item unit first, seeding its own PRNG (`pItem->pSeed` / `dwInitSeed`) from `rng`.
+      // Allocate the gold item unit first, seeding its own PRNG (`pItem->pSeed` / `dwInitSeed`).
       // Note: D2Game!0x6FC2FC40 (`ITEMS_RollItemQuality`) sees `ItemTypes[4].bNormal == 1` (`0x6FC2FC99`)
       // and returns `ITEMQUAL_NORMAL (2)` without advancing `rng`.
-      const dwInitSeed = (rng.rand(0xFFFFFFFF) >>> 0)
-      const itemRng = new D2Rng(dwInitSeed)
+      const alloc113c = options.allocItemRng113c?.()
+      const dwInitSeed = alloc113c ? alloc113c.dwInitSeed : (rng.rand(0xFFFFFFFF) >>> 0)
+      const itemRng = alloc113c ? alloc113c.itemRng : new D2Rng(dwInitSeed)
 
       // D2Game!0x6FC31070..0x6FC310AA (`ITEMS_InitItemStats` for `ITEMTYPE_GOLD = 4`):
       // Rolls `RAND_RollRange(&pItem->pSeed, 5 * ilvl) + ilvl`, clamping `<= 0` to `1`.
@@ -1600,12 +1615,17 @@ export function executeDropPipeline(
         goldAmount = Math.max(0, Math.trunc((goldAmount * (100 + playerGf)) / 100))
       }
 
-      drops.push({
+      const gItem: Item = {
         ...goldItem(goldAmount),
         uniqueId: dwInitSeed,
         ilvl: effectiveIlvl,
         itemLevel: effectiveIlvl,
-      })
+      }
+      if (alloc113c) {
+        ;(gItem as { preAllocatedUnitId113c?: number }).preAllocatedUnitId113c = alloc113c.preAllocatedUnitId
+        alloc113c.syncBack()
+      }
+      drops.push(gItem)
       continue
     }
 
@@ -1622,9 +1642,17 @@ export function executeDropPipeline(
         ? base
         : upgradeItemBase(base, qf4, qf5, rng, dropTables.getBase, effectiveIlvl).base
 
-    // Initialize item PRNG
-    const dwInitSeed = (rng.rand(0xFFFFFFFF) >>> 0)
-    const itemRng = new D2Rng(dwInitSeed)
+    // Initialize item PRNG (when `allocItemRng113c` is active, defer unit allocation until AFTER `rollItemQuality` on `rng` per `0x6FC2FC40`).
+    let alloc113c:
+      | {
+          readonly preAllocatedUnitId: number
+          readonly dwInitSeed: number
+          readonly itemRng: D2Rng
+          readonly syncBack: () => void
+        }
+      | undefined
+    let dwInitSeed = options.allocItemRng113c ? 0 : (rng.rand(0xFFFFFFFF) >>> 0)
+    let itemRng = options.allocItemRng113c ? rng : new D2Rng(dwInitSeed)
 
     // Resolve ItemTypes.txt quality, uber (D2Common!0x6FD74D00), & class-specific (D2Common!0x6FD74320) flags
     const typeFlags = resolveItemTypeFlags(effectiveBase, dropTables.itemTypes, dropTables.isA)
@@ -1676,7 +1704,7 @@ export function executeDropPipeline(
           magic: leaf.qualityFactors[3],
         },
         table: dropTables.itemRatio,
-        rng: itemRng,
+        rng: options.allocItemRng113c ? rng : itemRng,
         base: effectiveBase,
         isA: dropTables.isA,
         uber: isUber ? 1 : 0,
@@ -1690,6 +1718,20 @@ export function executeDropPipeline(
       ) {
         quality = 'magic'
       }
+    }
+
+    if (options.allocItemRng113c) {
+      alloc113c = options.allocItemRng113c()
+      dwInitSeed = alloc113c.dwInitSeed
+      itemRng = alloc113c.itemRng
+    }
+    const pushLeafItem = (created: Item): void => {
+      if (alloc113c) {
+        ;(created as { preAllocatedUnitId113c?: number }).preAllocatedUnitId113c =
+          alloc113c.preAllocatedUnitId
+        alloc113c.syncBack()
+      }
+      drops.push(created)
     }
 
     let durabilityMultiplier = 1
@@ -1767,7 +1809,7 @@ export function executeDropPipeline(
                 : hasFixedIndestruct
                   ? false
                   : rolledEthereal
-          drops.push(createDroppedItem(effectiveBase, 'unique', {
+          pushLeafItem(createDroppedItem(effectiveBase, 'unique', {
             uniqueItem: chosenUnique,
             ethereal: uniqueEthereal,
             sockets: 0,
@@ -1824,7 +1866,7 @@ export function executeDropPipeline(
       }
       if (chosenSet) {
         // 1.13c Ground Truth: Set items NEVER spawn Ethereal
-        drops.push(createDroppedItem(effectiveBase, 'set', {
+        pushLeafItem(createDroppedItem(effectiveBase, 'set', {
           setItem: chosenSet,
           ethereal: false,
           itemTypes: dropTables.itemTypes,
@@ -1876,7 +1918,7 @@ export function executeDropPipeline(
                   isExpansion,
                 })
               : undefined
-          drops.push(createDroppedItem(effectiveBase, 'rare', {
+          pushLeafItem(createDroppedItem(effectiveBase, 'rare', {
             rareAffixes,
             autoMagicAffix,
             staffMods,
@@ -1925,7 +1967,7 @@ export function executeDropPipeline(
               isExpansion,
             })
           : undefined
-      drops.push(createDroppedItem(effectiveBase, 'magic', {
+      pushLeafItem(createDroppedItem(effectiveBase, 'magic', {
         magicAffixes,
         autoMagicAffix,
         staffMods,
@@ -1967,7 +2009,7 @@ export function executeDropPipeline(
         difficulty,
         isExpansion,
       })
-      drops.push(createDroppedItem(effectiveBase, 'superior', {
+      pushLeafItem(createDroppedItem(effectiveBase, 'superior', {
         autoMagicAffix,
         staffMods,
         ethereal: rolledEthereal,
@@ -1986,7 +2028,7 @@ export function executeDropPipeline(
         difficulty,
         isExpansion,
       })
-      drops.push(createDroppedItem(effectiveBase, 'low', {
+      pushLeafItem(createDroppedItem(effectiveBase, 'low', {
         autoMagicAffix,
         staffMods,
         ethereal: false,
@@ -2005,7 +2047,7 @@ export function executeDropPipeline(
       difficulty,
       isExpansion,
     })
-    drops.push(createDroppedItem(effectiveBase, 'normal', {
+    pushLeafItem(createDroppedItem(effectiveBase, 'normal', {
       autoMagicAffix,
       staffMods,
       ethereal: rolledEthereal,

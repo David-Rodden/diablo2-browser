@@ -186,6 +186,15 @@ describe('#1417 GameInstance missile volleys per Skills.txt srvdofunc', () => {
     expect(created).toHaveLength(2)
     expect(created.every((e) => e.targetX === 106)).toBe(true)
   })
+
+  it('Howl (130, srvdofunc 22, sub_6FCC2800) spawns 64 howl spokes around the caster', () => {
+    const { game, playerId } = setupGame(0x1492, 4, { 130: 5 })
+    const created = castAt(game, playerId, 130, 108, 100)
+    expect(created).toHaveLength(64)
+    expect(created.every((e) => e.missileClassId === missileId('howl'))).toBe(true)
+    expect([created[0]!.targetX, created[0]!.targetY]).toEqual([130, 100])
+    expect([created[16]!.targetX, created[16]!.targetY]).toEqual([100, 130])
+  })
 })
 
 describe('#1417 class-of-bug sweep: every player missile srvdofunc is classified', () => {
@@ -207,12 +216,12 @@ describe('#1417 class-of-bug sweep: every player missile srvdofunc is classified
     // 74 Double Throw is also a single-create srvdofunc, but its row has no srvmissile (weapon missile).
     expect(sorted('single')).toEqual([0, 10, 14, 26, 28, 73, 80])
     // Known srvdofuncs still lacking a GameInstance volley runtime; reported at cast time, never
-    // silently treated as a verified single missile (22 Nova and 77 Leap have dedicated GameInstance paths).
+    // silently treated as a verified single missile (77 Leap has a dedicated GameInstance path).
     // 24 Fire Wall: two perpendicular makers + centre pillar (#1790).
-    // 68 Warcry Ring: 64-spoke expanding missile ring (`WARCRY_RING_DX_64` / `WARCRY_RING_DY_64`).
+    // 22 / 68 Expanding 64-spoke missile ring (`sub_6FCC2800`: `WARCRY_RING_DX_64` / `WARCRY_RING_DY_64`).
     expect(sorted('firewall')).toEqual([24])
-    expect(sorted('ring64')).toEqual([68])
-    expect(sorted('unmodeled')).toEqual([11, 18, 19, 22, 23, 29, 34, 43, 44, 48, 50, 54, 60, 63, 75, 77, 121, 123, 124])
+    expect(sorted('ring64')).toEqual([22, 68])
+    expect(sorted('unmodeled')).toEqual([11, 18, 19, 23, 29, 34, 43, 44, 48, 50, 54, 60, 63, 75, 77, 121, 123, 124])
   })
 
   it('reports an unmodeled srvdofunc instead of silently treating it as a single missile', () => {

@@ -176,6 +176,13 @@ export interface SummonedPetUnit {
   snapshottedSkelMasteryLvl?: number | undefined
   snapshottedGolemMasteryLvl?: number | undefined
   targetId?: string | number | undefined
+  /** `D2UnitStrc.dwAnimMode` of the pet unit on the DRLG oracle path (`MonMode.txt` index). */
+  mode?: number | undefined
+  /**
+   * DRLG oracle path: the pet runs the 1:1 `NecroPet` port (`necropet-ai-113c.ts`) instead of the
+   * generic `tickPets` behaviour; `tickPets` only keeps its lifetime bookkeeping.
+   */
+  oracleAi113c?: { nextAiFrame: number; ovPathType: number; ovVelocity: number; ovNewDist: number } | undefined
 }
 
 export interface CreatePetOutcome {
@@ -248,6 +255,11 @@ export class SummonManager {
     owner: CombatUnitContext
     skillId: number
     slvl: number
+    /**
+     * DRLG oracle path: the Valkyrie's `MonEquip.txt` items are created 1:1 by
+     * `initOracleSummonedPet113c` (`monster-item-create-113c.ts`), so the loadout model is not rolled.
+     */
+    skipMonEquipLoadout113c?: boolean | undefined
     x?: number | undefined
     y?: number | undefined
     difficulty?: 'normal' | 'nightmare' | 'hell' | 0 | 1 | 2 | undefined
@@ -911,7 +923,7 @@ export class SummonManager {
     let monEquipLoadout: RolledMonsterLoadout113c | undefined
     let resolvedMonEquipSeed: number | undefined
     let hasShield: boolean | undefined
-    if (params.skillId === 32) {
+    if (params.skillId === 32 && params.skipMonEquipLoadout113c !== true) {
       resolvedMonEquipSeed = params.monEquipSeed ?? (this.rng.rand(0x7fffffff) || 1)
       monEquipLoadout = rollMonsterOrPetLoadout113c({
         monster: 'valkyrie',
@@ -1415,6 +1427,9 @@ export class SummonManager {
           continue
         }
       }
+
+      // DRLG oracle path: AI owned by the 1:1 NecroPet port (`stepNecroPet113c`).
+      if (pet.oracleAi113c !== undefined) continue
 
       const aiProfile = resolvePetAiProfile113c(pet, this.pets.length)
       const isStationary = aiProfile.isStationary

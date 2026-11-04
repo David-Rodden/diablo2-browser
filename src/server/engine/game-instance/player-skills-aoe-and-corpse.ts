@@ -32,7 +32,7 @@ import { classifyPlayerSrvDoMissile113c, srvdo008FanTargets113c, srvdoRing64Targ
 import { findStandableNear } from '../../world/area-bootstrap.ts'
 import type { GameInstanceHost } from './host.ts'
 import type { InternalMercenaryRecord, InternalMissileRecord, InternalMonsterRecord, InternalPlayerRecord, PlayerSkillCast, ServerItemEntry } from './types.ts'
-import { BODYLOC_LEFT_ARM, BODYLOC_RIGHT_ARM, PER_LEVEL_STAT_MAP_113C, PLAYER_MELEE_REACH_SUBTILES, SKILL_UNSUMMON, SRVDOFUNC_WHIRLWIND, STAT_ITEM_MAXDAMAGE_PERCENT, STAT_MAXDAMAGE, STAT_MINDAMAGE, STAT_SECONDARY_MAXDAMAGE, STAT_SECONDARY_MINDAMAGE, TOWN_AREAS, areaToAct, collectItemStats, UNIT_TYPE_113C } from './constants-and-helpers.ts'
+import { BODYLOC_LEFT_ARM, BODYLOC_RIGHT_ARM, PER_LEVEL_STAT_MAP_113C, PLAYER_MELEE_REACH_SUBTILES, SKILL_UNSUMMON, SRVDOFUNC_WHIRLWIND, STAT_ITEM_MAXDAMAGE_PERCENT, STAT_MAXDAMAGE, STAT_MINDAMAGE, STAT_SECONDARY_MAXDAMAGE, STAT_SECONDARY_MINDAMAGE, TOWN_AREAS, areaToAct, collectItemStats, UNIT_TYPE_113C, missileSpeedSubtilesPerFrame113c } from './constants-and-helpers.ts'
 
 
 function applyPlayerSkillEffect(this: GameInstanceHost, 
@@ -1144,7 +1144,7 @@ function executeBladeSentinel113c(this: GameInstanceHost,
   const dmg = Math.max(1, this.rollInclusive(calc.totalMin, calc.totalMax))
   const mRec = this.registry.getMissileById(392) ?? cast.missile
   const rawVel = mRec !== undefined ? mRec.vel + Math.trunc((mRec.velLev * cast.slvl) / 8) : 12
-  const baseSpeed = rawVel > 0 ? rawVel / 16 : 0.75
+  const baseSpeed = rawVel > 0 ? missileSpeedSubtilesPerFrame113c(rawVel) : 0.75
   const speed = player.states.has(STATE_SLOWMISSILES_113C) ? baseSpeed * 0.33 : baseSpeed
   const sameSpot = Math.hypot(tx - player.x, ty - player.y) < 0.5
   const effTx = sameSpot ? player.x + 4 : tx
@@ -1188,6 +1188,7 @@ function executeBladeSentinel113c(this: GameInstanceHost,
     trapOwnerPlayerId: player.unitId,
     ...(outcome.pet !== undefined ? { trapPetUid: outcome.pet.uid } : {}),
   }
+  missile.createdFrame = this.currentFrame
   this.missiles.set(missileUnitId, missile)
   this.broadcastToArea(player.areaId, {
     type: 'CreateMissile',
@@ -2817,14 +2818,23 @@ function launchPlayerSkillMissiles(this: GameInstanceHost,
     return
   }
   if (mode === 'ring64' || cast.skill.id === 130) {
-    // 1.13c `sub_6FCC2800` (`0x6FCC2800`): 64 radial missiles for `SrvDo022` (`#130 Howl`, `velDelta = calc1`)
-    // and `SrvDo068` (`0x6FC49720`: `#138 Shout`, `#146 Battle Cry`, `#149 Battle Orders`, `#154 War Cry`, `#155 Battle Command`).
-    const velDelta = cast.skill.id === 130 ? this.evaluatePlayerSkillCalc(cast, cast.skill.calc1) : 0
+    // 1.13c `sub_6FCC2800` (`0x6FCC2800`): 64 radial missiles for `SrvDo022` (`0x6FC63AA0`: `#44 Frost Nova`, `#48 Nova`,
+    // `#92 Poison Nova`, `#130 Howl`, `velDelta = calc1`) and `SrvDo068` (`0x6FC49720`: `#138 Shout`, `#146 Battle Cry`,
+    // `#149 Battle Orders`, `#154 War Cry`, `#155 Battle Command`).
+    const velDelta =
+      cast.skill.srvDoFunc === 22 && cast.skill.calc1.trim() !== ''
+        ? this.evaluatePlayerSkillCalc(cast, cast.skill.calc1)
+        : 0
     for (const pt of srvdoRing64Targets113c(player.x, player.y)) {
-      const dmg = cast.skill.id === 154 ? this.rollPlayerSkillPhysDamage(player, cast) : 0
+      const dmg =
+        cast.skill.id === 154
+          ? this.rollPlayerSkillPhysDamage(player, cast)
+          : cast.skill.srvDoFunc === 22 && cast.skill.id !== 130
+            ? Math.max(1, Math.floor(cast.evalResult.maxElemDmg256 / FIXED_ONE))
+            : 0
       this.launchPlayerSkillMissile(player, cast, missileRec, pt.x, pt.y, dmg, {
         velDelta,
-        forcePierce: true,
+        forcePierce: !missileRec.collideKill,
       })
     }
     if (cast.skill.srvDoFunc === 68 && cast.skill.auraState.trim() !== '') {

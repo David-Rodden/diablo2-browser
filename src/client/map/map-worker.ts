@@ -237,6 +237,10 @@ export class MapWorkerEngine {
     return this.tileAtlas
   }
 
+  getDrlgEnv(): DrlgEnv | null {
+    return this.env
+  }
+
   /**
    * Drop the active game's `DrlgActSession` and built `LevelView` cache while keeping
    * the shared DRLG tables, DS1/DT1 headers, and `TileAtlas` warm for the next game.

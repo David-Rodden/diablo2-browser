@@ -20,13 +20,15 @@ import type { SummonedPetUnit } from '../../ai/summon-manager.ts'
 import { calculateCrushingBlow113c, computeKnockbackStep113c, executeSUnitDmg, resolveHitClassCode113c, rollItemKnockback113c, shouldEnterGetHit113c, type SUnitDmgPacket, type CombatUnitContext } from '../combat-pipeline.ts'
 import { createDefaultNpcIntroData } from '../../save/d2s-writer.ts'
 import { FIXED_ONE, UnitStatList } from '../stat-list.ts'
+import { allocateEvent3Seq113c, computeMonsterBaseDamageRegen113c } from '../statregen-dot-113c.ts'
 import { StateBus } from '../state-bus.ts'
 import { compute3BandDuration, computeDiminishingReturns, evaluateCalc } from '../../../common/data/calc-ast.ts'
 import { difficultyLifeStealDivisor, difficultyManaStealDivisor, difficultyMonsterColdDivisor, difficultyMonsterFreezeDivisor } from '../difficulty-resist-penalty.ts'
 import { scaleMonStatsPoisonRider113c } from '../../ai/monster-missile-damage-113c.ts'
 import type { GameInstanceHost } from './host.ts'
 import type { InternalMercenaryRecord, InternalMonsterRecord, InternalPlayerRecord } from './types.ts'
-import { MONSTER_HIT_RECOVERY_FRAMES, MONSTER_KNOCKBACK_DISTANCE, MONSTER_KNOCKBACK_SKILLS, MONSTER_THREAT_FRAMES, SKILL_WHIRLWIND_113C, STATE_SANCTUARY_113C, playerWirePosition, UNIT_TYPE_113C } from './constants-and-helpers.ts'
+import { monsterHp256_113c, MONSTER_HIT_RECOVERY_FRAMES, MONSTER_KNOCKBACK_DISTANCE, MONSTER_KNOCKBACK_SKILLS, MONSTER_THREAT_FRAMES, SKILL_WHIRLWIND_113C, STATE_SANCTUARY_113C, playerWirePosition, UNIT_TYPE_113C } from './constants-and-helpers.ts'
+import { rollLimitedSeed113c } from './unit-seeds-113c.ts'
 
 
 function applyDamageToMonster(this: GameInstanceHost, 
@@ -51,6 +53,8 @@ function applyDamageToMonster(this: GameInstanceHost,
     readonly srcDam?: number | undefined
     readonly skipHitRiders?: boolean | undefined
     readonly skipElemMastery?: boolean | undefined
+    readonly missileHitFlags113c?: number | undefined
+    readonly missileResultFlags113c?: number | undefined
     readonly suppressReturnFireThreat?: boolean | undefined
     readonly isGroundFire?: boolean | undefined
     readonly damageRate?: number | undefined
@@ -58,6 +62,17 @@ function applyDamageToMonster(this: GameInstanceHost,
     readonly suppressBlockAnim?: boolean | undefined
     readonly missileKnockbackChancePct?: number | undefined
     readonly fromPet?: boolean | undefined
+    readonly allowDeadTarget113c?: boolean | undefined
+    readonly d2AttackerSeed113c?: { lo: number; hi: number } | undefined
+    readonly unrolledWeaponBase113c?:
+      | {
+          readonly min256: number
+          readonly max256: number
+          readonly edPct: number
+          readonly srcDam: number
+          readonly enDmgPct113c?: number | undefined
+        }
+      | undefined
     readonly vengeanceSpec?:
       | {
           readonly weaponBaseRolled: number
@@ -112,7 +127,8 @@ function applyDamageToMonster(this: GameInstanceHost,
     damage = Number(damageOrAttackerId ?? 0)
     skillId = resolvedSkillId
   }
-  if (!monster || monster.dead || monster.isNpc || !monster.isKillable || monster.submerged) return false
+  const wasAlreadyDead113c = Boolean(monster?.dead && hitContext?.allowDeadTarget113c)
+  if (!monster || (monster.dead && !wasAlreadyDead113c) || monster.isNpc || !monster.isKillable || monster.submerged) return false
   if (monster.align !== 0) {
     const canBreakHostileBoneWall =
       monster.boneConstructOwnerPlayerId !== undefined &&
@@ -438,7 +454,7 @@ function applyDamageToMonster(this: GameInstanceHost,
   defenderStats.setBaseStat('armorclass', monster.ac)
   defenderStats.setBaseStat('toblock', monster.toBlock)
   defenderStats.setBaseStat('maxhp', monster.maxHp * FIXED_ONE)
-  defenderStats.setHp256(monster.hp * FIXED_ONE)
+  defenderStats.setHp256(wasAlreadyDead113c ? 0 : monsterHp256_113c(monster))
   defenderStats.setBaseStat('damageresist', monster.resistances.phys)
   defenderStats.setBaseStat('magicresist', monster.resistances.magic)
   defenderStats.setBaseStat('fireresist', monster.resistances.fire)
@@ -588,15 +604,23 @@ function applyDamageToMonster(this: GameInstanceHost,
       this.playerCtcProcDepth === 0
     if (isPlayerWeaponSwing) {
       this.triggerPlayerCtcProcs113c(attacker, 195, { target: monster })
-      if (monster.dead) return false
+      if (monster.dead && !wasAlreadyDead113c) return false
     }
+    const uwb113c = hitContext?.unrolledWeaponBase113c
     const dmgOut = executeSUnitDmg(attackerCtx, defenderCtx, {
       skillId,
       attackKind: hitAttackKind,
-      srcDam: vSpec !== undefined ? 128 : 0,
+      srcDam: vSpec !== undefined ? 128 : uwb113c !== undefined ? uwb113c.srcDam : 0,
       ...(vSpec === undefined && weaponSrcDam > 0 ? { riderSrcDam: weaponSrcDam } : {}),
-      flatPhysMin256: vSpec !== undefined ? 0 : rawDmg * FIXED_ONE,
-      flatPhysMax256: vSpec !== undefined ? 0 : rawDmg * FIXED_ONE,
+      flatPhysMin256: vSpec !== undefined || uwb113c !== undefined ? 0 : rawDmg * FIXED_ONE,
+      flatPhysMax256: vSpec !== undefined || uwb113c !== undefined ? 0 : rawDmg * FIXED_ONE,
+      ...(hitContext?.d2AttackerSeed113c !== undefined
+        ? {
+            d2AttackerSeed113c: hitContext.d2AttackerSeed113c,
+            d2DefenderSeed113c: this.unitSeeds.get(`${UNIT_TYPE_113C.monster}:${monster.unitId}`),
+          }
+        : {}),
+      ...(uwb113c !== undefined ? { unrolledWeaponBase113c: uwb113c } : {}),
       ...(vSpec !== undefined
         ? {
             physDamagePct: vSpec.physDamagePct,
@@ -856,6 +880,12 @@ function applyDamageToMonster(this: GameInstanceHost,
       elemType: channel,
       elemMin256: elem256,
       elemMax256: elem256,
+      ...(hitContext?.missileHitFlags113c !== undefined
+        ? { missileHitFlags113c: hitContext.missileHitFlags113c }
+        : {}),
+      ...(hitContext?.missileResultFlags113c !== undefined
+        ? { missileResultFlags113c: hitContext.missileResultFlags113c }
+        : {}),
       ...(hitContext?.concentrationAlreadyApplied === true
         ? { concentrationAlreadyApplied: true }
         : {}),
@@ -970,6 +1000,10 @@ function applyDamageToMonster(this: GameInstanceHost,
             skillId,
           )
         : this.resolvePlayerWeaponHitClass113c(attacker, skillId)
+  if (wasAlreadyDead113c) {
+    if (ctcOnHitPending) this.triggerPlayerCtcProcs113c(attacker, 198, { target: monster })
+    return true
+  }
   const effectiveElemFrames = hitContext?.elemDurationFrames
   this.finishMonsterDamage(
     attacker,
@@ -1010,6 +1044,7 @@ function applyMonsterPoisonDot(this: GameInstanceHost,
   durationFrames: number,
   skillId: number,
   effectiveSource: 'player' | 'merc' | 'pet' = 'player',
+  opts?: { readonly preMasteryApplied?: boolean | undefined },
 ): boolean {
   if (monster.dead || monster.isNpc || !monster.isKillable || monster.submerged || monster.align !== 0) return false
   if (rawBitrate256 <= 0 || durationFrames <= 0) return false
@@ -1038,6 +1073,9 @@ function applyMonsterPoisonDot(this: GameInstanceHost,
     this.applyItemMasteryPierceStats113c(attackerStats, (statId) => this.sumPlayerItemStat(attacker, statId))
     this.syncPlayerSkillLevelsToStatList113c(attacker, attackerStats, this.playerCombat.get(attacker.unitId)?.stateBus)
   }
+  if (opts?.preMasteryApplied === true) {
+    attackerStats.setBaseStat(332, 0)
+  }
   const attackerStateBus = new StateBus(attackerStats, this.registry)
   const attackerCtx: CombatUnitContext = {
     id: `player_${attacker.unitId}`,
@@ -1053,7 +1091,7 @@ function applyMonsterPoisonDot(this: GameInstanceHost,
   defenderStats.setBaseStat('level', monster.level)
   defenderStats.setBaseStat('armorclass', monster.ac)
   defenderStats.setBaseStat('maxhp', monster.maxHp * FIXED_ONE)
-  defenderStats.setHp256(monster.hp * FIXED_ONE)
+  defenderStats.setHp256(this.drlgRoomPopulator !== null ? monsterHp256_113c(monster) : monster.hp * FIXED_ONE)
   defenderStats.setBaseStat('poisonresist', monster.resistances.poison)
   const defenderStateBus = new StateBus(defenderStats, this.registry)
   this.mirrorPersistentStates(this.monsterCombat.get(monster.unitId), defenderStateBus)
@@ -1097,6 +1135,50 @@ function applyMonsterPoisonDot(this: GameInstanceHost,
   monster.lastHitByMerc = effectiveSource === 'merc'
   monster.threatPlayerId = attacker.unitId
   monster.threatUntilFrame = this.currentFrame + MONSTER_THREAT_FRAMES
+
+  if (this.drlgRoomPopulator !== null) {
+    if (monster.aiAwake === false) {
+      monster.nextAiFrame = Math.max(monster.nextAiFrame, this.currentFrame + 1)
+    }
+    monster.aiAwake = true
+    monster.lastDamagedFrame113c = this.currentFrame
+    // 1.13c `SUNITDMG_ApplyDamage` (`0x6FCFE242..0x6FCFE264`): immediate 1-frame subtraction (`life < 0x100 -> 0`).
+    let next256 = monsterHp256_113c(monster) - bitrate256
+    if (next256 < FIXED_ONE) next256 = 0
+    monster.hp = Math.ceil(next256 / FIXED_ONE)
+    monster.hp256 = next256
+    monster.hp256Whole = monster.hp
+    if (next256 <= 0) {
+      monster.poisonRemainingFrames = 0
+      monster.poisonBitrate256 = 0
+      monster.poisonCarry256 = 0
+      monster.poisonKillSource = undefined
+      monster.nextEvent3Frame113c = undefined
+      this.applyMonsterDeath(monster, attacker, 'pois', effectiveSource)
+      return true
+    }
+    // 1.13c `SUNITDMG_ApplyPoison` (`0x6FCFCAB0..0x6FCFCC0C`): overwrite `state 2` iff not active or `new >= cur`.
+    if (!monster.states.has(2) || monster.poisonRemainingFrames <= 0 || bitrate256 >= monster.poisonBitrate256) {
+      monster.poisonBitrate256 = bitrate256
+      monster.poisonRemainingFrames = durationFrames
+      monster.poisonCarry256 = 0
+      monster.poisonAttackerId = attacker.unitId
+      monster.poisonSkillId = skillId
+      monster.poisonKillSource = effectiveSource
+      this.applyUnitState(
+        monster.states,
+        monster.stateTimers,
+        'monster',
+        monster.unitId,
+        monster.areaId,
+        2,
+        durationFrames,
+      )
+    }
+    monster.nextEvent3Frame113c = this.currentFrame + 1
+    monster.event3Seq113c = allocateEvent3Seq113c(this)
+    return true
+  }
 
   // In 1.13c (`0x6FCF6C60`), a new poison overrides when no poison is active or the new bitrate >= current
   if (monster.poisonRemainingFrames <= 0 || bitrate256 >= monster.poisonBitrate256) {
@@ -1287,7 +1369,55 @@ function finishMonsterDamage(this: GameInstanceHost,
     readonly weaponHand?: 'right' | 'left' | undefined
   },
 ): void {
-  monster.hp = Math.max(0, monster.hp - dealtDamage)
+  if (this.drlgRoomPopulator !== null && monster.aiAwake === false) {
+    // A hit wakes a dormant DRLG monster, but its first AI think is not run in the frame of the hit
+    // (oracle p52-sorceress-fire-dot F639: Fire Wall hit, zombie seed draws 0). Unverified against
+    // the original wake path; see kb/skills/missiles/d2game-srvhit01-fireball-113c.md §6.
+    monster.nextAiFrame = Math.max(monster.nextAiFrame, this.currentFrame + 1)
+  }
+  monster.aiAwake = true
+  monster.lastDamagedFrame113c = this.currentFrame
+  if (finishOpts?.isGroundFire === true && finishOpts.dmg256 !== undefined && this.drlgRoomPopulator !== null) {
+    // `SUNITDMG` subtracts the 1/256 damage from the raw `STAT_HITPOINTS`; ground fire (`SrvDmg03`)
+    // deals fractional hits, so keep the remainder (`InternalMonsterRecord.hp256`).
+    const next256 = Math.max(0, monsterHp256_113c(monster) - finishOpts.dmg256)
+    monster.hp = Math.ceil(next256 / FIXED_ONE)
+    monster.hp256 = next256
+    monster.hp256Whole = monster.hp
+  } else if (
+    this.drlgRoomPopulator !== null &&
+    finishOpts?.dmg256 !== undefined &&
+    Math.floor(finishOpts.dmg256 / FIXED_ONE) === dealtDamage
+  ) {
+    // `SUNITDMG_ExecuteMissileDamage` (`0x6FCFE242..0x6FCFE264`): `life = STAT_HITPOINTS - dwDmgTotal` in
+    // 256ths, `life < 0x100 -> 0` (oracle `a1-bloodmoor-melee` F=1086: 2304 - 1022 = 1282).
+    let next256 = monsterHp256_113c(monster) - Math.max(0, Math.trunc(finishOpts.dmg256))
+    if (next256 < FIXED_ONE) next256 = 0
+    monster.hp = Math.ceil(next256 / FIXED_ONE)
+    monster.hp256 = next256
+    monster.hp256Whole = monster.hp
+  } else {
+    monster.hp = Math.max(0, monster.hp - dealtDamage)
+  }
+  if (
+    this.drlgRoomPopulator !== null &&
+    monster.hp > 0 &&
+    (dealtDamage > 0 || (finishOpts?.dmg256 ?? 0) > 0)
+  ) {
+    // 1.13c `SUNITDMG_ApplyDamage` (`0x6FCFE2E2..0x6FCFE335`): when `dwDmgTotal > 0` and accrued `stat 74 != 0`,
+    // deletes existing `Event 3` timers and schedules `Event 3` at `dwGameFrame + 1`.
+    const baseRegen256 = computeMonsterBaseDamageRegen113c(
+      monster.maxHp * FIXED_ONE,
+      monster.damageRegen,
+      monster.boneConstructOwnerPlayerId !== undefined,
+    )
+    const poisonMod256 = monster.states.has(2) && monster.poisonBitrate256 > 0 ? -monster.poisonBitrate256 : 0
+    const statListMod256 = Math.trunc(this.monsterCombat.get(monster.unitId)?.statList.getModifierBonus('hpregen') ?? 0)
+    if (baseRegen256 + poisonMod256 + statListMod256 !== 0) {
+      monster.nextEvent3Frame113c = this.currentFrame + 1
+      monster.event3Seq113c = allocateEvent3Seq113c(this)
+    }
+  }
   if (fromMerc) {
     monster.lastHitByMerc = true
   }
@@ -1444,7 +1574,7 @@ function applyMonsterDeath(this: GameInstanceHost,
   killSource: 'player' | 'merc' | 'pet' | 'other' = monster.lastHitByMerc ? 'merc' : 'player',
 ): void {
   if (monster.dead) return
-  // `#1883` Bone Wall / Bone Prison (`hcIdx 344` & Diablo `179/340..343`) shatter & despawn immediately
+  // `#1883` Bone Wall / Bone Prison (`hcIdx 344` & Diablo `340..343`) shatter & despawn immediately
   // on destruction with zero corpse, zero XP, and zero drops, clearing all blocked collision cells!
   if (isBonePrisonMonsterHcIdx113c(monster.hcIdx)) {
     this.despawnTemporaryMonsterUnit113c(monster)
@@ -1517,7 +1647,34 @@ function applyMonsterDeath(this: GameInstanceHost,
     }
   }
   monster.dead = true
-  monster.mode = 12
+  monster.nextEvent3Frame113c = undefined
+  monster.event3Seq113c = undefined
+  if (this.drlgRoomPopulator !== null) {
+    // Oracle `p52-necromancer-curses` F=968: zombie #10 dies with Weaken (state 19, timed) -> the timed states
+    // are gone in the death frame, the untimed state 105 stays. Original removal routine not yet disassembled
+    // (kb/combat/d2game-sunitdmg-player-defender-113c.md §10).
+    for (const timedStateId of [...monster.stateTimers.keys()]) {
+      if (monster.states.has(timedStateId) && monster.stateTimers.get(timedStateId)! > 0) {
+        this.clearUnitState(monster.states, monster.stateTimers, 'monster', monster.unitId, monster.areaId, timedStateId)
+      }
+    }
+  }
+  if (this.drlgRoomPopulator !== null) {
+    const code = MONSTATS_113C_ROWS[monster.hcIdx]?.code?.trim().toUpperCase()
+    const dtRec = code ? this.registry.getAnimDataRecord(`${code}DTHTH`) : undefined
+    const dtFrames =
+      dtRec !== undefined && dtRec.framesPerDirection > 0 && dtRec.animationSpeed > 0
+        ? Math.max(
+            2,
+            Math.floor(((dtRec.framesPerDirection << 8) + dtRec.animationSpeed - 1) / dtRec.animationSpeed),
+          )
+        : 24
+    monster.mode = 0
+    monster.deathAnimEndFrame = this.currentFrame + dtFrames
+    this.areaPathWorld.setMonsterDead(monster.unitId)
+  } else {
+    monster.mode = 12
+  }
   if (monster.auraSkillId !== undefined) {
     const leaderStateId = PALADIN_AURA_STATE_BY_SKILL_ID[monster.auraSkillId]
     if (leaderStateId !== undefined && monster.states.has(leaderStateId)) {
@@ -1956,8 +2113,12 @@ function maybeEnterPlayerHitRecovery(this: GameInstanceHost,
   },
 ): void {
   if (player.dead) return
-  if (this.isPlayerSkillUninterruptible113c(player)) return
   const dmg256 = options?.dmg256 ?? dealtDamage * FIXED_ONE
+  // `SUNITDMG_CheckSkipGetHit` rolls `SEED_RollRandom(&pDefender->pSeed, 2 / 4)` (`0x6FCFB9A1`, `0x6FCFB9CC`).
+  const playerSeed113c =
+    this.drlgRoomPopulator !== null
+      ? this.unitSeeds.get(`${UNIT_TYPE_113C.player}:${player.unitId}`)
+      : undefined
   // 1.13c `D2Game.dll` `0x6FCFB945..0x6FCFB948` (`SUNITDMG_CheckHitRecovery`):
   // Divides accrued `D2Common.#10913` (`GetMaxLifeFromUnit`) by `16` / `8` / `4`, not base `maxHpFixed` (#1996).
   const shouldEnter = shouldEnterGetHit113c(
@@ -1971,9 +2132,12 @@ function maybeEnterPlayerHitRecovery(this: GameInstanceHost,
     },
     dmg256,
     options?.hitClass,
-    this.rng,
+    playerSeed113c !== undefined
+      ? { rand: (n: number) => rollLimitedSeed113c(playerSeed113c, n) }
+      : this.rng,
   )
   if (!shouldEnter) return
+  if (this.isPlayerSkillUninterruptible113c(player)) return
 
   this.interruptPendingPlayerAnimAction113c(player, 'GH')
   const recoveryFrames = this.playerHitRecoveryFrames(player)
@@ -2052,7 +2216,17 @@ function maybeEnterMonsterHitRecovery(this: GameInstanceHost,
   monster.pendingAttack = undefined
   monster.pendingAllyAttack = undefined
   monster.pendingResurrection = undefined
+  monster.actionAnimEndFrame = 0
   monster.hitRecoveryUntilFrame = this.currentFrame + this.monsterHitRecoveryFrames(monster)
+  if (this.drlgRoomPopulator !== null) {
+    // A GH started by another unit's update is visible for `ceil(frames * 256 / speed)` frames
+    // (`computeOneShotTicks + 1`; oracle `a1-bloodmoor-melee` zombie #10 GH F=1086..1102, NU F=1103;
+    // kb/engine/d2game-plrmode-gethit-113c.md §2).
+    monster.hitRecoveryUntilFrame += 1
+    this.areaPathWorld.stopMonsterMove113c(monster.areaId, monster.unitId, 3)
+    monster.nextAiFrame =
+      monster.hitRecoveryUntilFrame + Math.max(1, Math.round(monster.aiDelay || 15))
+  }
   monster.path = []
   monster.pathIndex = 0
   monster.pathTargetX = Number.NaN
@@ -2534,6 +2708,8 @@ export interface MonsterDamageMethods {
     readonly srcDam?: number | undefined
     readonly skipHitRiders?: boolean | undefined
     readonly skipElemMastery?: boolean | undefined
+    readonly missileHitFlags113c?: number | undefined
+    readonly missileResultFlags113c?: number | undefined
     readonly suppressReturnFireThreat?: boolean | undefined
     readonly isGroundFire?: boolean | undefined
     readonly damageRate?: number | undefined
@@ -2541,6 +2717,17 @@ export interface MonsterDamageMethods {
     readonly suppressBlockAnim?: boolean | undefined
     readonly missileKnockbackChancePct?: number | undefined
     readonly fromPet?: boolean | undefined
+    readonly allowDeadTarget113c?: boolean | undefined
+    readonly d2AttackerSeed113c?: { lo: number; hi: number } | undefined
+    readonly unrolledWeaponBase113c?:
+      | {
+          readonly min256: number
+          readonly max256: number
+          readonly edPct: number
+          readonly srcDam: number
+          readonly enDmgPct113c?: number | undefined
+        }
+      | undefined
     readonly vengeanceSpec?:
       | {
           readonly weaponBaseRolled: number
@@ -2550,7 +2737,7 @@ export interface MonsterDamageMethods {
         }
       | undefined
   }): boolean
-  applyMonsterPoisonDot(attacker: InternalPlayerRecord, monster: InternalMonsterRecord, rawBitrate256: number, durationFrames: number, skillId: number, effectiveSource?: 'player' | 'merc' | 'pet' | undefined): boolean
+  applyMonsterPoisonDot(attacker: InternalPlayerRecord, monster: InternalMonsterRecord, rawBitrate256: number, durationFrames: number, skillId: number, effectiveSource?: 'player' | 'merc' | 'pet' | undefined, opts?: { readonly preMasteryApplied?: boolean | undefined } | undefined): boolean
   resolveSkillColdOrFreezeDuration113c(attacker: InternalPlayerRecord, skillId: number, channel: 'phys' | 'fire' | 'ltng' | 'cold' | 'mag' | 'pois', explicitDurationFrames?: number | undefined, missileRec?: MissileRecord | undefined, handItemOpts?: {
     readonly weaponHand?: 'right' | 'left'
     readonly excludePlayerItems?: boolean | undefined

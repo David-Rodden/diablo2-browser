@@ -22,6 +22,7 @@ import type { FrenzyStack113c, MartialChargeState113c } from '../../skills/marti
 import type { WhirlwindSpinState113c } from '../../skills/whirlwind-113c.ts'
 import { TradeManager113c } from '../../net/trade-manager-113c.ts'
 import { AreaPathWorld113c } from '../../ai/town-npc-ai-113c.ts'
+import { DrlgRoomPopulator113c } from '../../world/room-populate-113c.ts'
 import type { AreaPopulationState, GameInstanceConfig, GameMode, GameModePolicy, InternalMercenaryRecord, InternalMissileRecord, InternalMonsterRecord, InternalObjectRecord, InternalPlayerRecord, InternalWarpTileRecord, LoadedAreaRecord, MercAuraRuntime, PendingRoomPresets113c, PersistentCombatUnit, PlayerAuraRuntime, PlayerMotionState, PlayerSkillCast, QueuedPlayerCommand, ServerItemEntry } from './types.ts'
 import { CLOSED_REALM_POLICY, OPEN_BNET_POLICY, SINGLE_PLAYER_POLICY, getOrCreateEmbeddedFallbackRegistry, resolveGameModePolicy } from './constants-and-helpers.ts'
 
@@ -91,6 +92,9 @@ export class GameInstanceState {
   /** @internal Per-Act 13-slot monster outfit palette (`pGame->pMonReg[nAct]`, `0x6FCEA5F0`). */
   actMonsterOutfitPalettes: ActMonsterOutfitPalette113c[] = createActMonsterOutfitPalettes113c()
 
+  /** @internal 1.13c per-room DRLG populator & distant-room hibernator (`0x6FD01430` / `0x6FC4CB60`). */
+  readonly drlgRoomPopulator: DrlgRoomPopulator113c | null
+
   /**
    * @internal DRLG preset monsters of loaded areas not yet spawned, by room index; a room's presets are
    * spawned once when it is activated near a player (D2Game `0x6FC4CBE0` -> `0x6FD01430`).
@@ -134,7 +138,7 @@ export class GameInstanceState {
   /** @internal Tracked `objects.size` + object `nextUnitIdByType` watermark for `doorFootprintsByArea` cache coherence. */
   doorFootprintsWatermark = -1
 
-  /** @internal Indexed BoneWall / Diablo BonePrison (`hcIdx 179 | 340..343`) records for O(1) collision checks. */
+  /** @internal Indexed BoneWall / Diablo BonePrison (`hcIdx 340..344`) records for O(1) collision checks. */
   readonly bonePrisonMonsters: InternalMonsterRecord[] = []
 
   /** @internal Tracked `monsters.size` + monster `nextUnitIdByType` watermark for `bonePrisonMonsters` cache coherence. */
@@ -191,6 +195,14 @@ export class GameInstanceState {
   /** 1.13c A3Q1 per-game Jade Figurine (j34) drop gate (`D2Game.dll` @ `0x6fd08010..0x6fd080c6`). */
   /** @internal */
   a3q1JadeFigurineDropped = false
+
+  /** 1.13c A5Q2 (`D2Game.dll` `0x6FC7A41B..0x6FC7A4FF`, #2021): slain `act5pow` (`hcIdx 534`) count in Frigid Highlands (`Area 111`). */
+  /** @internal */
+  arreatDeadPowCount = 0
+
+  /** 1.13c A5Q2 (`ACT5Q2_ObjInit` @ `0x6FC7C850 -> 0x6FC7C2A0`, #2021): `Objects.txt 473` pens whose 5 `act5pow` soldiers were spawned. */
+  /** @internal */
+  readonly arreatSpawnedPenObjectIds = new Set<number>()
 
   /** 1.13c A4Q2 Hellforge (`pQuestDataEx->wForgeMode` @ `0x6fcdae11`: 0 = idle, 2 = soulstone placed, 3 = smashed). */
   /** @internal */
@@ -530,6 +542,9 @@ export class GameInstanceState {
   inStepPlayerAnimations113c = false
 
   /** @internal */
+  inStepPlayerMovement = false
+
+  /** @internal */
 
   readonly mercMissiles = new Map<
     number,
@@ -641,8 +656,17 @@ export class GameInstanceState {
     this.hasExplicitMapSeed = rawSeed !== undefined && rawSeed !== 0
     this.currentMapSeed = ((rawSeed ?? 0x12345678) >>> 0) || 1
     this.rng = new D2Rng(this.currentMapSeed)
-    initGameSeed113c(this.gameSeed, this.currentMapSeed)
+    const initDraws4 = initGameSeed113c(this.gameSeed, this.currentMapSeed)
     this.actMonsterOutfitPalettes = createActMonsterOutfitPalettes113c()
+    this.drlgRoomPopulator = config.drlgEnv
+      ? new DrlgRoomPopulator113c({
+          drlgEnv: config.drlgEnv,
+          mapSeed: this.currentMapSeed,
+          difficulty: this.difficulty,
+          monCtrlInit: initDraws4[0],
+          objCtrlInit: initDraws4[1],
+        })
+      : null
     {
       const stoneRng = new D2Rng(((this.currentMapSeed ^ 0x6a09e667) >>> 0) || 1)
       const stones = [17, 18, 19, 20, 21]

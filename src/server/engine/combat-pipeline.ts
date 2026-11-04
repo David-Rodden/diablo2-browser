@@ -36,6 +36,7 @@ import {
 } from '../skills/barbarian-masteries.ts'
 import { computeVenomPoisonDamage } from '../skills/assassin-shadow.ts'
 import { CHARACTER_CLASS_CODES, resolveCharacterClass } from '../../common/units/classes.ts'
+import { rollLimitedSeed113c } from './game-instance/unit-seeds-113c.ts'
 
 /**
  * RNG contract required by 1.13c combat pipeline functions (`D2Game.dll` `pUnit + 0x20` LCG).
@@ -1112,7 +1113,43 @@ export interface SUnitDmgPacket {
   readonly owRoll100?: number | undefined
   readonly hitClass?: number | string | undefined
   readonly rng?: CombatRng | undefined
+  readonly d2AttackerSeed113c?: { lo: number; hi: number } | undefined
+  readonly d2DefenderSeed113c?: { lo: number; hi: number } | undefined
+  readonly unrolledWeaponBase113c?:
+    | {
+        readonly min256: number
+        readonly max256: number
+        readonly edPct: number
+        readonly srcDam: number
+        /** `pDamage->dwEnDmgPct` (`+0x0C`) part of `edPct` (blunt vs undead, `0x6FCFA8C0`); trace only. */
+        readonly enDmgPct113c?: number | undefined
+      }
+    | undefined
+  /**
+   * `MissilesTxt` `HitFlags` (`+0xA8`) OR-ed into `D2DamageStrc.dwHitFlags` by missile hit functions
+   * before the area scan (`MISSMODE_SrvHit01` `0x6FC5BB05..0x6FC5BB17`); reported in the trace packet.
+   */
+  readonly missileHitFlags113c?: number | undefined
+  /**
+   * Result flags of a missile packet built by `0x6FC5A4E0` (+ `SrvDmg` bits, e.g. `SrvDmg03` softhit
+   * `0x4000`): replaces the derived `0x04` get-hit bit in the trace packet (`0x01` is always set).
+   */
+  readonly missileResultFlags113c?: number | undefined
+  /**
+   * Monster attacker `MonStats.txt` `crit` column (`pMonStatsTxt + 0xA6`). When set together with
+   * `d2AttackerSeed113c`, the tail of `SUNITDMG_FillDamageValues` (`0x6FCFD450`) runs for a monster
+   * attacker before the resistances: the unconditional `RAND(1)` draw at `0x6FCFD908` and the monster
+   * critical hit `0x6FC970E0` (`rand(100) < crit` doubles every damage field). See
+   * `kb/combat/d2game-sunitdmg-player-defender-113c.md` §3.
+   */
+  readonly monStatsCritPct113c?: number | undefined
 }
+
+export {
+  emitDotTraceEvent113c,
+  setDotTraceObserver113c,
+  type DotTraceEvent113c,
+} from './statregen-dot-113c.ts'
 
 export interface SUnitDmgTraceEvent113c {
   readonly att: readonly [number, number]
@@ -1144,6 +1181,8 @@ export interface SUnitDmgOutcome {
   readonly targetHpAfter256: number
   readonly targetKilled: boolean
   readonly isCritical?: boolean
+  /** Monster `MonStats.crit` hit (`0x6FC970E0`): sets the `0x10` hit-class nibble (`pDamage + 0x60`). */
+  readonly monsterCrit113c?: boolean
   readonly uninterrupted?: boolean
   readonly knockedBack?: boolean
   readonly noHitRecovery?: boolean
@@ -1788,7 +1827,15 @@ export function executeSUnitDmg(
   packet: SUnitDmgPacket,
   rng?: CombatRng,
 ): SUnitDmgOutcome {
-  const resolvedRng = rng ?? packet.rng
+  const seedRng113c: CombatRng | undefined =
+    packet.d2AttackerSeed113c !== undefined
+      ? { rand: (n: number) => rollLimitedSeed113c(packet.d2AttackerSeed113c!, n) }
+      : undefined
+  const defenderSeedRng113c: CombatRng | undefined =
+    packet.d2DefenderSeed113c !== undefined
+      ? { rand: (n: number) => rollLimitedSeed113c(packet.d2DefenderSeed113c!, n) }
+      : undefined
+  const resolvedRng = seedRng113c ?? rng ?? packet.rng
   if (!resolvedRng || typeof resolvedRng.rand !== 'function') {
     throw new Error('executeSUnitDmg: rng is required (D2Game.dll SUnitDmg 0x6FCFCD80 / 0x6FCFE011)')
   }
@@ -2084,20 +2131,23 @@ export function executeSUnitDmg(
 
   // 2. Avoidance & Block (Smite `97` bypasses both block and dodge; `unblockable` skips Shield Block while
   // still allowing `Evade` / dual-claw `Weapon Block` / `Avoid` on projectile spells per D2Game.dll 0x6FCFB790 / 0x6FCFB030).
-  // Draws its own independent rng.rand(100) roll(s), never reusing hitRoll.
-  const avoidCheck = evaluateAvoidanceAndBlock({
-    defender,
-    attackKind,
-    rng: resolvedRng,
-    skillId: packet.skillId,
-    unblockable: packet.unblockable ?? packet.skillId === 97,
-    unavoidable: packet.unavoidable ?? packet.skillId === 97,
-    isPersistentGroundFire: Boolean(
-      packet.isPersistentGroundFire ??
-        (packet as unknown as Record<string, unknown>)['isPersistentGroundFire'],
-    ),
-    ...(packet.blockRoll100 !== undefined ? { roll100: packet.blockRoll100 } : {}),
-  })
+  // Draws on `pDefender->pSeed` (`0x6FCFB7F5` / `0x6FCFB0DE`), never `pAttacker->pSeed` or reusing hitRoll.
+  const avoidCheck =
+    hpBefore256 <= 0 && packet.d2AttackerSeed113c !== undefined
+      ? { avoided: false as const }
+      : evaluateAvoidanceAndBlock({
+          defender,
+          attackKind,
+          rng: defenderSeedRng113c ?? rng ?? packet.rng ?? resolvedRng,
+          skillId: packet.skillId,
+          unblockable: packet.unblockable ?? packet.skillId === 97,
+          unavoidable: packet.unavoidable ?? packet.skillId === 97,
+          isPersistentGroundFire: Boolean(
+            packet.isPersistentGroundFire ??
+              (packet as unknown as Record<string, unknown>)['isPersistentGroundFire'],
+          ),
+          ...(packet.blockRoll100 !== undefined ? { roll100: packet.blockRoll100 } : {}),
+        })
   if (avoidCheck.avoided) {
     return {
       hit: false,
@@ -2209,6 +2259,53 @@ export function executeSUnitDmg(
           : Math.trunc((attacker.statList.getAccruedStat('strength') * 100) / 100)
         const smiteEdPct = Math.max(-90, (packet.physDamagePct ?? 0) + dmgPctBonus + smiteStrEd)
         rawPhys256 = Math.max(0, Math.trunc((baseWeapPhys256 * (100 + smiteEdPct)) / 100))
+      }
+    } else if (packet.unrolledWeaponBase113c !== undefined) {
+      // 1.13c `D2Game.dll` `0x6FCFC530..0x6FCFC71F` + `SUNITDMG_RollDamageValue` (`0x6FCFCD80` -> `0x6FCFBED0`):
+      // Scale `min256` and `max256` by the combined `%ED` pool FIRST in 256-fixed point, then draw
+      // a single `RAND_RollLimited(&pAttacker->pSeed, scaledMax256 - scaledMin256)` exclusive roll.
+      const uwb = packet.unrolledWeaponBase113c
+      const targetTypeEdPct =
+        (defender.isUndead ? attacker.statList.getAccruedStat('item_undeaddamage_percent') : 0) +
+        (defender.isDemon ? attacker.statList.getAccruedStat('item_demondamage_percent') : 0) +
+        attacker.statList.getAccruedStat('damage_vs_montype')
+      const totalEdPct = Math.max(-90, uwb.edPct + targetTypeEdPct)
+      const scaledMin256 = Math.max(
+        FIXED_ONE,
+        uwb.min256 + Math.trunc((uwb.min256 * totalEdPct) / 100),
+      )
+      const scaledMax256 = Math.max(
+        scaledMin256,
+        uwb.max256 + Math.trunc((uwb.max256 * totalEdPct) / 100),
+      )
+      const span256 = scaledMax256 - scaledMin256
+      const rolledWeap256 =
+        span256 > 0 ? scaledMin256 + resolvedRng.rand(span256) : scaledMin256
+      rawPhys256 =
+        uwb.srcDam === 128
+          ? rolledWeap256
+          : Math.max(0, Math.trunc((rolledWeap256 * uwb.srcDam) / 128))
+      baseWeapPhysWithoutNormal256 = rawPhys256
+      baseWeapPhys256 = rawPhys256
+
+      const csChance = Math.min(100, Math.max(0, attacker.statList.getAccruedStat('passive_critical_strike')))
+      const rawMasteryCrit = barMasteryCritPct ?? 0
+      const masteryCritChance = Math.min(100, Math.max(0, rawMasteryCrit))
+      const dsChance = Math.min(100, Math.max(0, attacker.statList.getAccruedStat('item_deadlystrike')))
+      if (masteryCritChance > 0) {
+        const masteryRoll = packet.masteryCritRoll100 ?? packet.critRoll100 ?? resolvedRng.rand(100)
+        if (masteryRoll < masteryCritChance) isCritical = true
+      }
+      if (!isCritical && csChance > 0) {
+        const csRoll = packet.csRoll100 ?? packet.critRoll100 ?? resolvedRng.rand(100)
+        if (csRoll < csChance) isCritical = true
+      }
+      if (!isCritical && dsChance > 0) {
+        const dsRoll = packet.dsRoll100 ?? packet.critRoll100 ?? resolvedRng.rand(100)
+        if (dsRoll < dsChance) isCritical = true
+      }
+      if (isCritical) {
+        rawPhys256 *= 2
       }
     } else {
       // 1.13c Unarmed / missing weapon base damage (`D2Game.dll` `0x6FCFC5A2..0x6FCFC5C8`):
@@ -2487,6 +2584,26 @@ export function executeSUnitDmg(
     }
     if (defender.isUndead) {
       rawElem256 = Math.trunc((rawElem256 * 150) / 100)
+    }
+  }
+
+  // 1.13c `SUNITDMG_FillDamageValues` (`0x6FCFD450`) tail for a MONSTER attacker on the oracle seed path
+  // (`kb/combat/d2game-sunitdmg-player-defender-113c.md` §3):
+  // - `0x6FCFD8F0..0x6FCFD926`: unconditional `0x6FC211D0(&pAttacker->pSeed, 1)` (one LCG step, value 0);
+  // - `0x6FCFDA6C` -> `0x6FC970E0`: `MonStats.crit` (`+0xA6`) > 0 -> `pAttacker->pSeed % 100 < crit` doubles
+  //   phys / fire / ltng / magic / cold / poison (`+0x08 +0x10 +0x1C +0x20 +0x24 +0x28`) and ORs `0x10` into
+  //   the hit class (`+0x60`) when its upper nibble is empty.
+  // Both happen before `SUNITDMG_ApplyDamage` (`0x6FCFC0B0`) applies resistances.
+  let fillDamageTailDone113c = false
+  let monsterCrit113c = false
+  if (packet.d2AttackerSeed113c !== undefined && packet.monStatsCritPct113c !== undefined) {
+    resolvedRng.rand(1)
+    fillDamageTailDone113c = true
+    const critPct = packet.monStatsCritPct113c
+    if (critPct > 0 && resolvedRng.rand(100) < critPct) {
+      monsterCrit113c = true
+      rawPhys256 *= 2
+      rawElem256 *= 2
     }
   }
 
@@ -3740,11 +3857,18 @@ export function executeSUnitDmg(
     }
   }
 
-  // 1.13c Skills.txt #113 Concentration: aurastat2 = skill_concentration = Param5 (20%),
-  // evaluated in D2Game.dll 0x6FCFC8D6..0x6FCFC8FA (20% chance attack will not be interrupted).
+  if (packet.d2AttackerSeed113c !== undefined && attackKind !== 'spell' && !fillDamageTailDone113c) {
+    // 1.13c `SUNITDMG_FillDamageValues` (`0x6FCFD610`): `dwBurnLength = 25 + RAND_RollLimited(&pAttacker->pSeed, 50)`.
+    resolvedRng.rand(50)
+  }
+
+  // 1.13c Skills.txt #113 Concentration: aurastat2 = skill_concentration = Param5 (20%).
+  // Note: When `d2AttackerSeed113c` is active, Concentration uninterruptibility is rolled on the
+  // interrupted windup path (`schedulePlayerSkillWindup113c`), never on `pAttacker->pSeed` inside `SUnitDmg`.
   const hasConcentration =
-    attacker.stateBus.hasState('concentration') ||
-    attacker.statList.getModifierBonus('skill_concentration') > 0
+    packet.d2AttackerSeed113c === undefined &&
+    (attacker.stateBus.hasState('concentration') ||
+      attacker.statList.getModifierBonus('skill_concentration') > 0)
   const isUninterrupted = hasConcentration
     ? (packet.rollUninterrupted !== undefined
         ? packet.rollUninterrupted < 20
@@ -3757,13 +3881,18 @@ export function executeSUnitDmg(
     (!rawElem256 && anyRiderChannelRaw && !anyRiderChannelNonImmune && finalElem256 === 0)
 
   if (sUnitDmgTraceObserver113c !== null) {
+    // `0x20` is OR'd by `SUNITDMG_FillDamageValues` (`0x6FCFD492`). The monster melee caller
+    // `0x6FC64AC0` zeroes the damage struct (`0x6FC64BDE rep stos`), so its swings never carry `0x02`.
     const hitFlags =
       ((attackKind !== 'spell' ? 0x20 : 0) |
-        (finalPhys256 > 0 || rawPhys256 > 0 ? 0x02 : 0)) >>>
+        (packet.monStatsCritPct113c === undefined && (finalPhys256 > 0 || rawPhys256 > 0) ? 0x02 : 0) |
+        (packet.missileHitFlags113c ?? 0)) >>>
       0
     const resultFlags =
       (0x01 |
-        (!(packet.noHitRecovery || packet.isPersistentGroundFire) &&
+        (packet.missileResultFlags113c ?? 0) |
+        (packet.missileResultFlags113c === undefined &&
+        !(packet.noHitRecovery || packet.isPersistentGroundFire) &&
         (finalPhys256 + traceFire256 + traceLtng256 + traceMag256 + traceCold256 > 0)
           ? 0x04
           : 0) |
@@ -3787,7 +3916,7 @@ export function executeSUnitDmg(
         hitFlags,
         resultFlags,
         finalPhys256 >>> 0,
-        0,
+        (packet.unrolledWeaponBase113c?.enDmgPct113c ?? 0) >>> 0,
         traceFire256 >>> 0,
         attackKind !== 'spell' ? 2 : 0,
         0,
@@ -3819,6 +3948,7 @@ export function executeSUnitDmg(
     targetHpAfter256: hpAfter256,
     targetKilled: hpAfter256 === 0 && hpBefore256 > 0,
     ...(isCritical ? { isCritical: true } : {}),
+    ...(monsterCrit113c ? { monsterCrit113c: true } : {}),
     ...(isUninterrupted ? { uninterrupted: true } : {}),
     ...(knockedBack ? { knockedBack: true } : {}),
     ...(packet.noHitRecovery || packet.isPersistentGroundFire ? { noHitRecovery: true } : {}),

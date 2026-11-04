@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest'
 import { getSharedDataRegistry } from '../../src/common/data/data-registry.ts'
 import type { ServerEvent } from '../../src/netproto/index.ts'
 import { GameInstance } from '../../src/server/engine/game-instance.ts'
+import { createLinearMissilePath113c, stepLinearMissilePath113c } from '../../src/server/engine/missile-path-113c.ts'
 import {
   srvdoRing64Targets113c,
   WARCRY_RING_DX_64,
@@ -74,17 +75,17 @@ function setupBarbarianGame(
 }
 
 describe('1.13c Warcry 64-missile ring & hit/damage handlers', () => {
-  it('WARCRY_RING_DX_64 / WARCRY_RING_DY_64 match the 64-spoke radius-30 circle at 0x6FD1B770 / 0x6FD1B870', () => {
+  it('WARCRY_RING_DX_64 / WARCRY_RING_DY_64 match the 64-spoke radius-30 circle at 0x6FD1B870 / 0x6FD1B770', () => {
     expect(WARCRY_RING_DX_64).toHaveLength(64)
     expect(WARCRY_RING_DY_64).toHaveLength(64)
-    expect([WARCRY_RING_DX_64[0], WARCRY_RING_DY_64[0]]).toEqual([0, 30])
-    expect([WARCRY_RING_DX_64[16], WARCRY_RING_DY_64[16]]).toEqual([30, 0])
-    expect([WARCRY_RING_DX_64[32], WARCRY_RING_DY_64[32]]).toEqual([0, -30])
-    expect([WARCRY_RING_DX_64[48], WARCRY_RING_DY_64[48]]).toEqual([-30, 0])
+    expect([WARCRY_RING_DX_64[0], WARCRY_RING_DY_64[0]]).toEqual([30, 0])
+    expect([WARCRY_RING_DX_64[16], WARCRY_RING_DY_64[16]]).toEqual([0, 30])
+    expect([WARCRY_RING_DX_64[32], WARCRY_RING_DY_64[32]]).toEqual([-30, 0])
+    expect([WARCRY_RING_DX_64[48], WARCRY_RING_DY_64[48]]).toEqual([0, -30])
     const targets = srvdoRing64Targets113c(100, 200)
     expect(targets).toHaveLength(64)
-    expect(targets[0]).toEqual({ x: 100, y: 230 })
-    expect(targets[32]).toEqual({ x: 100, y: 170 })
+    expect(targets[0]).toEqual({ x: 130, y: 200 })
+    expect(targets[32]).toEqual({ x: 70, y: 200 })
   })
 
   it('spawns 64 carrier missiles for #130 Howl, #138 Shout, #146 Battle Cry, #149 Battle Orders, #154 War Cry, #155 Battle Command', () => {
@@ -204,5 +205,21 @@ describe('1.13c Warcry 64-missile ring & hit/damage handlers', () => {
     expect(game.getMonster(normalMon)!.states.has(stunnedId)).toBe(true)
     expect(game.getMonster(bossMon)!.hp).toBeLessThan(5000)
     expect(game.getMonster(bossMon)!.states.has(stunnedId)).toBe(false)
+  })
+
+  it('PATH_StepVelocity (0x6FD5CEB0) steps warcry Accel=-600 every 5th tick matching 1.13c oracle sub-tiles', () => {
+    // Missiles.txt #235 warcry: Vel=12, MaxVel=12, Accel=-600, Range=16 -> initial vel256 = 2304 (speed = 2304/4096)
+    const path = createLinearMissilePath113c(5661, 5806, 5691, 5806, 2304 / 4096, -600, 12)
+    let x = 5661
+    const subTiles = [Math.round(x)]
+    for (let tick = 1; tick <= 15; tick++) {
+      const step = stepLinearMissilePath113c(path)
+      x += step.vx
+      subTiles.push(Math.round(x))
+    }
+    expect(subTiles).toEqual([
+      5661, 5662, 5662, 5663, 5663, 5664, 5664, 5664, 5665, 5665, 5666, 5666, 5666, 5666, 5667, 5667,
+    ])
+    expect(path.vel256).toBe(504)
   })
 })

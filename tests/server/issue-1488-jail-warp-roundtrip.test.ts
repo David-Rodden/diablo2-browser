@@ -59,6 +59,7 @@ describe('issue #1488 Jail Level 2 <-> Jail Level 3 staircase round-trip & 12x12
     const playerId = game.connectPlayer({
       charClass: 'sor',
       name: 'JailRunner',
+      level: 20,
       x: 17540,
       y: 8060,
       areaId: 30,

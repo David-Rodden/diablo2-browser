@@ -1340,61 +1340,7 @@ function advanceQuestObject(this: GameInstanceHost,
     }
   }
   if (obj.classId === 473) {
-    // Rescue on Mount Arreat (`D2Game.dll` `0x6fc76b80` / `0x6fc7cbe0`): three cages (five soldiers each).
-    if (obj.useCount > 0) return
-    obj.useCount = 1
-    const cages = [...this.objects.values()].filter(
-      (candidate) => candidate.areaId === obj.areaId && candidate.classId === 473 && candidate.useCount > 0,
-    )
-    const barbsRemaining = Math.max(0, (3 - cages.length) * 5)
-    if (cages.length >= 3) {
-      for (const recipient of this.getQuestEligiblePartyRecipients113c(player, obj.areaId)) {
-        if (hasQuestFlag113c(recipient.questFlags, 'a5q2', QUEST_FLAG_COMPLETED_113C)) continue
-        this.setPlayerQuestFlag(
-          recipient,
-          'a5q2',
-          QUEST_FLAG_STARTED_113C | QUEST_FLAG_REWARD_PENDING_113C,
-        )
-      }
-    } else {
-      const a5q2Proto = questProtocolId113c('a5q2') ?? 0x20
-      for (const recipient of this.getQuestEligiblePartyRecipients113c(player, obj.areaId)) {
-        if (
-          hasQuestFlag113c(
-            recipient.questFlags,
-            'a5q2',
-            QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_REWARD_PENDING_113C,
-          )
-        ) {
-          continue
-        }
-        setQuestFlag113c(recipient.questFlags, 'a5q2', QUEST_FLAG_STARTED_113C)
-        this.emitQuestLog(recipient)
-        this.emitToPlayer(recipient.unitId, {
-          type: 'QuestState',
-          kind: 'update',
-          source: 0x28,
-          updateType: 6,
-          unitId: 0,
-          timer: 0,
-          quests: new Uint16Array(recipient.questFlags),
-          flags: Array.from(recipient.questFlags),
-        })
-        this.emitToPlayer(recipient.unitId, {
-          type: 'QuestState',
-          kind: 'status',
-          source: 0x5d,
-          quests: new Uint16Array([a5q2Proto]),
-          questStatus: {
-            questId: a5q2Proto,
-            alertFlags: 0x20,
-            filterStatus: 2,
-            extra: barbsRemaining,
-          },
-        })
-        this.emitQuestAvailability(recipient)
-      }
-    }
+    this.breachArreatPrisonPen113c(obj, player)
     return
   }
   if (obj.classId === 26) {
@@ -1700,7 +1646,11 @@ function grantQuestCompletionReward113c(this: GameInstanceHost,
       value: player.statPts,
     })
   } else if (questId === 'a5q2') {
-    for (const runeCode of ['r08', 'r09', 'r07']) {
+    // D2Game.dll 0x6fc7ca76..0x6fc7cb7f (#2021): Qual-Kehk awards Ral (`r08`), Ort (`r09`), Tal (`r07`)
+    // scaled by rescued count bits on `questFlags[36]` (`0x0080 -> 1`, `0x0040 -> 2`, default/`0x0020 -> 3`).
+    const w36 = player.questFlags[36] ?? 0
+    const runeCount = (w36 & 0x0080) !== 0 ? 1 : (w36 & 0x0040) !== 0 ? 2 : 3
+    for (const runeCode of ['r08', 'r09', 'r07'].slice(0, runeCount)) {
       this.givePlayerInventoryQuestItem(player, runeCode)
     }
   } else if (questId === 'a5q5') {
@@ -1813,6 +1763,123 @@ function getDenMonstersRemaining113c(this: GameInstanceHost): number {
 }
 
 
+
+function breachArreatPrisonPen113c(
+  this: GameInstanceHost,
+  obj: InternalObjectRecord,
+  actorPlayer: InternalPlayerRecord | undefined,
+  portalAnchor?: { readonly x: number; readonly y: number } | undefined,
+): void {
+  // Rescue on Mount Arreat (`D2Game.dll` `0x6fc76b80`, `0x6fc7a310..0x6fc7a4ff`, `0x6fc7ba40..0x6fc7bd83`, #2021):
+  // Breaching a pen (`prisondoor` `#434` death or synthetic `#473` operation) marks `cagedwussie1` (`#473`)
+  // opened (`mode = 2`), spawns rescue Town Portal (`Objects.txt 189`, `mode = 2`), rescues surviving
+  // `act5pow` (`#534`) soldiers in the pen, and advances `questFlags[36]`.
+  if (obj.useCount > 0) return
+  obj.useCount = 1
+  if (obj.mode !== 2) {
+    this.setObjectMode(obj, 2)
+  }
+  if (portalAnchor !== undefined) {
+    const hasLoadedArea = this.loadedAreas.has(obj.areaId)
+    const rawPortalX = Math.round(portalAnchor.x)
+    const rawPortalY = Math.round(portalAnchor.y)
+    const portalStand = hasLoadedArea
+      ? findStandableNear(
+          (x, y) => this.isWorldWalkableForPlayer(obj.areaId, x, y),
+          rawPortalX,
+          rawPortalY,
+          12,
+        )
+      : null
+    this.spawnObject({
+      classId: 189,
+      x: portalStand?.x ?? rawPortalX,
+      y: portalStand?.y ?? rawPortalY,
+      areaId: obj.areaId,
+      mode: 2,
+    })
+    for (const m of [...this.monsters.values()]) {
+      if (
+        m.areaId === obj.areaId &&
+        m.hcIdx === 534 &&
+        !m.dead &&
+        Math.hypot(m.x - obj.x, m.y - obj.y) <= 20
+      ) {
+        this.monsters.delete(m.unitId)
+        this.monsterCombat.delete(m.unitId)
+        this.broadcastToArea(obj.areaId, {
+          type: 'UnitRemove',
+          unitType: 1,
+          id: m.unitId,
+          unitId: m.unitId,
+        })
+      }
+    }
+  }
+
+  const cages = [...this.objects.values()].filter(
+    (candidate) =>
+      candidate.areaId === obj.areaId && candidate.classId === 473 && candidate.useCount > 0,
+  )
+  const barbsRemaining = Math.max(0, (3 - Math.min(3, cages.length)) * 5)
+  const recipients =
+    actorPlayer !== undefined
+      ? this.getQuestEligiblePartyRecipients113c(actorPlayer, obj.areaId)
+      : [...this.players.values()].filter((p) => !p.dead && p.areaId === obj.areaId)
+
+  if (cages.length >= 3) {
+    const rescuedCount = Math.max(0, 15 - this.arreatDeadPowCount)
+    // D2Game.dll 0x6fc7bc20: >= 15 rescued -> 0x0020 (3 runes), 14 -> 0x0040 (2 runes), 12..13 -> 0x0080 (1 rune); < 12 fails.
+    if (rescuedCount < 12) return
+    const countBit = rescuedCount >= 15 ? 0x0020 : rescuedCount === 14 ? 0x0040 : 0x0080
+    for (const recipient of recipients) {
+      if (hasQuestFlag113c(recipient.questFlags, 'a5q2', QUEST_FLAG_COMPLETED_113C)) continue
+      this.setPlayerQuestFlag(
+        recipient,
+        'a5q2',
+        QUEST_FLAG_STARTED_113C | QUEST_FLAG_REWARD_PENDING_113C | countBit,
+      )
+    }
+  } else {
+    const a5q2Proto = questProtocolId113c('a5q2') ?? 0x20
+    for (const recipient of recipients) {
+      if (
+        hasQuestFlag113c(
+          recipient.questFlags,
+          'a5q2',
+          QUEST_FLAG_COMPLETED_113C | QUEST_FLAG_REWARD_PENDING_113C,
+        )
+      ) {
+        continue
+      }
+      setQuestFlag113c(recipient.questFlags, 'a5q2', QUEST_FLAG_STARTED_113C)
+      this.emitQuestLog(recipient)
+      this.emitToPlayer(recipient.unitId, {
+        type: 'QuestState',
+        kind: 'update',
+        source: 0x28,
+        updateType: 6,
+        unitId: 0,
+        timer: 0,
+        quests: new Uint16Array(recipient.questFlags),
+        flags: Array.from(recipient.questFlags),
+      })
+      this.emitToPlayer(recipient.unitId, {
+        type: 'QuestState',
+        kind: 'status',
+        source: 0x5d,
+        quests: new Uint16Array([a5q2Proto]),
+        questStatus: {
+          questId: a5q2Proto,
+          alertFlags: 0x20,
+          filterStatus: 2,
+          extra: barbsRemaining,
+        },
+      })
+      this.emitQuestAvailability(recipient)
+    }
+  }
+}
 
 function getArreatSoldiersRemaining113c(this: GameInstanceHost): number {
   let openedCages = 0
@@ -3137,8 +3204,6 @@ function switchPlayerAreaSeamless(this: GameInstanceHost, player: InternalPlayer
     player.y,
     player.unitId,
   )
-  this.activatePresetRoomsNearPlayer113c(player)
-  this.streamWildernessRoomsForPlayer(player)
   if (dest.rooms.length > 0) {
     this.revealAreaRoomsNearPlayer(player, true)
   } else {
@@ -3424,6 +3489,11 @@ export interface QuestsObjectsAndPortalsMethods {
   emitQuestLog(player: InternalPlayerRecord): void
   emitQuestAvailability(player: InternalPlayerRecord): void
   getDenMonstersRemaining113c(): number
+  breachArreatPrisonPen113c(
+    obj: InternalObjectRecord,
+    actorPlayer: InternalPlayerRecord | undefined,
+    portalAnchor?: { readonly x: number; readonly y: number } | undefined,
+  ): void
   getArreatSoldiersRemaining113c(): number
   sendQuestLogUpdate113c(player: InternalPlayerRecord): void
   grantQuestCompletionReward113c(player: InternalPlayerRecord, questId: string): void
@@ -3468,6 +3538,7 @@ export const questsObjectsAndPortalsMethods: Record<keyof QuestsObjectsAndPortal
   emitQuestLog,
   emitQuestAvailability,
   getDenMonstersRemaining113c,
+  breachArreatPrisonPen113c,
   getArreatSoldiersRemaining113c,
   sendQuestLogUpdate113c,
   grantQuestCompletionReward113c,
