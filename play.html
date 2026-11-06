@@ -694,26 +694,45 @@
         flex: 0 0 auto;
       }
 
-      /* Mobile Phase 1 (#1381 / #1968): Collapsible Top Toolbar Pill docked in bottom-left safe corner so it never occludes chat line 1, merc portrait, or 400x553 dock panels */
+      /* Mobile Phase 1 (#1381 / #1968): Collapsible Top Toolbar Pill docked at top-left safe offset so it never falls inside the bottom-left floating joystick zone */
       #d2-mobile-toolbar-pill {
         position: fixed;
-        bottom: calc(var(--safe-bottom, 0px) + 6px);
-        left: calc(var(--safe-left, 0px) + 6px);
+        top: calc(var(--safe-top, 0px) + 6px);
+        left: calc(var(--safe-left, 0px) + 88px);
+        bottom: auto;
         z-index: 65;
         display: none;
         align-items: center;
-        gap: 4px;
-        height: 24px;
-        padding: 0 8px;
-        background: rgba(18, 14, 10, 0.82);
+        gap: 5px;
+        height: 28px;
+        padding: 0 12px;
+        background: rgba(18, 14, 10, 0.86);
         border: 1px solid #8c6f39;
-        border-radius: 12px;
+        border-radius: 14px;
         color: #e8c878;
         font-family: var(--font-body);
-        font-size: 11px;
+        font-size: 11.5px;
         letter-spacing: 0.04em;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.82);
         cursor: pointer;
+      }
+
+      @media (pointer: coarse) {
+        .d2-toolbar {
+          height: 36px;
+        }
+        .d2-toolbar__btn,
+        a.d2-toolbar__btn,
+        .d2-toolbar__select,
+        .d2-toolbar__status {
+          height: 30px;
+          padding: 0 10px;
+          font-size: 12px;
+        }
+        .d2-toolbar__btn--icon {
+          min-width: 34px;
+          padding: 0 9px;
+        }
       }
 
       body[data-d2-mobile-toolbar="collapsed"] #d2-toolbar-container {

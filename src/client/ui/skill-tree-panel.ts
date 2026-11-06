@@ -605,14 +605,7 @@ export class SkillTreePanel {
     // Close button (authentic per-class/per-tab 32x32 stone socket at y = oy + 385) —
     // press only latches the depressed cell; the tree closes on mouse-up landing back
     // on the button (see `handleMouseUp`).
-    const closeBounds = this.getCloseButtonBounds()
-    if (
-      closeBounds &&
-      logicalX >= closeBounds.x &&
-      logicalX <= closeBounds.x + closeBounds.w &&
-      logicalY >= closeBounds.y &&
-      logicalY <= closeBounds.y + closeBounds.h
-    ) {
+    if (this.closeButton.contains(logicalX, logicalY)) {
       this.closeButton.press(logicalX, logicalY)
       return true
     }

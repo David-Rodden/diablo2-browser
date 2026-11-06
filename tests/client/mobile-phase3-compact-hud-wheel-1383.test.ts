@@ -49,11 +49,11 @@ describe('Mobile Phase 3 (#1383): D2R 524px Compact Center Bar & 6x2 Skill Wheel
     const m800 = computeCompactD2rHudMetrics(800, 600)
     expect(m800.barWidth).toBe(COMPACT_HUD_WIDTH)
     expect(m800.barWidth).toBe(524)
-    // Centered at (800 - 524) / 2 = 138 -> frees 138px on left and 138px on right
-    expect(m800.barX).toBe(138)
+    // Shifted left on 800x600 (barX = 28 -> barRight = 552) so right-side 6x2 skill wheel never overlaps the mana globe
+    expect(m800.barX).toBe(28)
     expect(m800.barY).toBe(496)
     expect(m800.beltSlots).toHaveLength(4)
-    expect(m800.beltSlots[0]?.size).toBe(44)
+    expect(m800.beltSlots[0]?.size).toBe(48)
     expect(m800.topUtilityBar.buttons).toHaveLength(6)
     expect(m800.wheel.arcSlots).toHaveLength(5)
     expect(m800.wheel.mainR).toBe(SKILL_WHEEL_MAIN_RADIUS)
@@ -105,7 +105,8 @@ describe('Mobile Phase 3 (#1383): D2R 524px Compact Center Bar & 6x2 Skill Wheel
     })
 
     // 5. Popbelt 4x4 Drawer when beltExpanded = true (row 3 is top row of expanded popbelt)
-    const row3Y = m.beltSlots[0]!.y - 3 * (44 + 4) + 10
+    const slotSize = m.beltSlots[0]!.size
+    const row3Y = m.beltSlots[0]!.y - 3 * (slotSize + 4) + 10
     const hitPopSlot = hitTestCompactD2rHud(
       m.beltSlots[0]!.x + 10,
       row3Y,
@@ -211,26 +212,38 @@ describe('Mobile Phase 3 (#1383): D2R 524px Compact Center Bar & 6x2 Skill Wheel
     expect(tc.syncFromEnvironment(mockMobileWin)).toBe(false)
     expect(tc.enabled).toBe(false)
 
-    // Dynamic skill wheel slot resolution from HudManager.hotkeys when wheelSlots is empty
+    // Dynamic skill wheel slot resolution from HudManager.hotkeys when wheelSlots is empty:
+    // Page 1 (0..5) = Left-Hand shortcuts (5 = leftSkillId), Page 2 (6..11) = Right-Hand shortcuts (11 = rightSkillId)
     const hud = new HudManager(createMockHudCanvas(1068, 600))
     hud.resize(1068, 600)
     hud.touchControls.enabled = true
-    hud.hotkeys.leftSkillId = 0
-    hud.hotkeys.rightSkillId = 54 // Teleport
+    hud.hotkeys.leftSkillId = 47 // Fire Ball on Left Hand
+    hud.hotkeys.rightSkillId = 54 // Teleport on Right Hand
     hud.hotkeys.setAvailableSkills([
       { skillId: 0, name: 'Attack', nameZh: '普通攻击', level: 1, manaCost: 0, leftUsable: true, rightUsable: false },
       { skillId: 47, name: 'Fire Ball', nameZh: '火球', level: 1, manaCost: 5, leftUsable: true, rightUsable: true },
       { skillId: 54, name: 'Teleport', nameZh: '传送', level: 1, manaCost: 24, leftUsable: false, rightUsable: true },
       { skillId: 59, name: 'Blizzard', nameZh: '暴风雪', level: 1, manaCost: 23, leftUsable: false, rightUsable: true },
     ])
-    hud.hotkeys.bindHotkey('F1', 'right', 59)
+    hud.hotkeys.bindHotkey('F1', 'left', 0)
+    hud.hotkeys.bindHotkey('F7', 'right', 59)
 
-    // F1 (index 0) resolves to bound Blizzard (#59)
-    expect(hud.touchControls.resolveWheelSlot(0, hud.hotkeys).skillId).toBe(59)
-    // Primary slot F6 (index 5) resolves to active rightSkillId (#54 Teleport)
-    expect(hud.touchControls.resolveWheelSlot(5, hud.hotkeys).skillId).toBe(54)
+    // Page 1 satellite F1 (index 0) resolves to bound Left-Hand Attack (#0)
+    expect(hud.touchControls.resolveWheelSlot(0, hud.hotkeys).skillId).toBe(0)
+    expect(hud.touchControls.resolveWheelSlot(0, hud.hotkeys).hand).toBe('left')
+    // Page 1 Main Button F6 (index 5) resolves to active leftSkillId (#47 Fire Ball)
+    expect(hud.touchControls.resolveWheelSlot(5, hud.hotkeys).skillId).toBe(47)
+    expect(hud.touchControls.resolveWheelSlot(5, hud.hotkeys).hand).toBe('left')
 
-    // Clicking satellite F1 on the wheel selects Blizzard (#59) even when wheelSlots was not manually populated
+    // Page 2 satellite F7 (index 6) resolves to bound Right-Hand Blizzard (#59)
+    expect(hud.touchControls.resolveWheelSlot(6, hud.hotkeys).skillId).toBe(59)
+    expect(hud.touchControls.resolveWheelSlot(6, hud.hotkeys).hand).toBe('right')
+    // Page 2 Main Button F12 (index 11) resolves to active rightSkillId (#54 Teleport)
+    expect(hud.touchControls.resolveWheelSlot(11, hud.hotkeys).skillId).toBe(54)
+    expect(hud.touchControls.resolveWheelSlot(11, hud.hotkeys).hand).toBe('right')
+
+    // Clicking satellite F7 on Page 2 selects Blizzard (#59) as rightSkillId
+    hud.touchControls.activeSkillBank = 1
     const m = computeCompactD2rHudMetrics(1068, 600)
     const arc0 = m.wheel.arcSlots[0]!
     handleCompactD2rHudClick(hud, arc0.cx, arc0.cy)

@@ -54,7 +54,11 @@ import {
 } from './hud-viewport-layout.ts'
 import type { HudManager } from './hud-manager.ts'
 import { renderLevelEntryTitle113c } from './level-entry-title.ts'
-import { layoutTouchGroundLabels, toMonsterTargetHudInfo } from './touch-controls.ts'
+import {
+  layoutTouchGroundLabels,
+  readSafeAreaInsetsLogical,
+  toMonsterTargetHudInfo,
+} from './touch-controls.ts'
 import { resolveTouchHudContext } from './hud-input-router.ts'
 
 interface HudRenderInternal {
@@ -227,7 +231,7 @@ export function hudRepaintUnchanged(hud: HudManager, nowMs: number): boolean {
     Math.round(hud.touchControls.joystick.knobY),
     hud.touchControls.lockedMonster?.candidate.unitId ?? -1,
     hud.touchControls.utilityMenuExpanded ? 1 : 0,
-    hud.touchControls.pendingBindSkillId ?? -1,
+    hud.touchControls.wheelPickerSlotIndex ?? -1,
     hud.touchControls.selectedPanelItem?.item.id ?? '',
     hud.touchControls.lockedInteractable?.id ?? -1,
     hud.touchControls.vectorAim
@@ -913,6 +917,7 @@ export function renderHudFrame(
     // Trade Hall mode intentionally omits the bottom control bar, globes, belt, and skill speedbar.
   } else if (hud.touchControls.compactHudActive) {
     const cbState = internal.buildControlBarState()
+    const safeInsets = readSafeAreaInsetsLogical(profile.width, profile.height)
     hud.touchControls.drawCompactD2rHudAndWheel(ctx, hud.font, {
       logicalWidth: profile.width,
       logicalHeight: profile.height,
@@ -946,6 +951,7 @@ export function renderHudFrame(
       showLifeText: hud.globes.lifeTextPinned,
       showManaText: hud.globes.manaTextPinned,
       beltMaxRows: hud.belt.maxRows,
+      marginRightPx: safeInsets.right,
       itemRects: internal.itemRects,
     })
   } else {
@@ -1085,6 +1091,7 @@ export function renderHudFrame(
   }
 
   // 10. Hover Tooltips (Inventory / Equipment / Stash / Cube / Vendor / Merc / Trade / Quest Reward / Skill Tree)
+  // Suppress PC hover item tooltip while mobile Tap-to-Inspect comparison card overlay (#1384 / #1969) is open.
   if (
     (hud.rightPanel === 'inv' ||
       hud.leftPanel === 'stash' ||
@@ -1097,7 +1104,8 @@ export function renderHudFrame(
       hud.leftPanel === 'personalize' ||
       hud.leftPanel === 'orifice') &&
     hud.inventory.hoveredItem &&
-    !hud.inventory.cursorItem
+    !hud.inventory.cursorItem &&
+    !(hud.touchControls.enabled && hud.touchControls.selectedPanelItem !== null)
   ) {
     hud.worldPanels.drawItemTooltip(
       ctx,
@@ -1136,6 +1144,7 @@ export function renderHudFrame(
       rightPanel: hud.rightPanel,
       vendorMode: hud.worldPanels.vendorMode,
       equipped: hud.inventory.equipped,
+      images: internal.images,
       lang: hud.lang,
     })
   }

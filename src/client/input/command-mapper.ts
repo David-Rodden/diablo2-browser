@@ -78,7 +78,12 @@ import {
   type SkillWheelSlotDescriptor,
   type TouchControlsHud,
 } from '../ui/touch-controls.ts'
-import { buildCompactHudLayoutOptions, resolveTouchHudContext } from '../ui/hud-input-router.ts'
+import {
+  applyWheelSkillPickerSelection,
+  buildCompactHudLayoutOptions,
+  clearWheelSkillPickerSlot,
+  resolveTouchHudContext,
+} from '../ui/hud-input-router.ts'
 import { handleEscapeSubmenuKeyDown } from '../ui/world-panels.ts'
 import { matchesKeyBinding } from '../settings/client-settings.ts'
 import { SAY_MESSAGE_PHRASE_113C, type ControlActionId } from '../settings/key-bindings.ts'
@@ -314,6 +319,8 @@ export const TOUCH_SKILL_REPEAT_MS = 200
 export const TOUCH_VECTOR_AIM_DRAG_PX = 18
 /** Per-item cooldown for walk-over auto-pickup (#1967). */
 export const TOUCH_AUTO_PICKUP_COOLDOWN_MS = 500
+/** Stationary hold duration on a satellite skill slot (`arcIndex = 0..4`) that opens the Wheel Skill Picker Popup. */
+export const TOUCH_SATELLITE_LONG_PRESS_MS = 400
 
 export type ActiveTouchKind = 'joystick' | 'l2Hold' | 'skillWheel' | 'hud' | 'world'
 
@@ -321,10 +328,14 @@ export interface ActiveTouchEntry {
   readonly kind: ActiveTouchKind
   readonly startX: number
   readonly startY: number
+  readonly startMs: number
   lastX: number
   lastY: number
   lastRepeatMs: number
   aiming: boolean
+  readonly isSatellite?: boolean | undefined
+  longPressTriggered?: boolean | undefined
+  castDuringHold?: boolean | undefined
   readonly slot?: SkillWheelSlotDescriptor | undefined
 }
 
@@ -497,6 +508,8 @@ export class CommandMapper {
    */
   castTouchWheelSkill(slot: SkillWheelSlotDescriptor, nowMs = performance.now()): void {
     if (!slot || slot.skillId < 0) return
+    // Paladin Auras on Right Hand are activated via SelectSkill (0x3C) and never emit SkillAt/SkillOn casts.
+    if (isAuraSkill(slot.skillId)) return
     const tc = (this.hudManager as { touchControls?: TouchControlsHud } | undefined)?.touchControls
     const predSnap = this.predictor?.getSnapshot()
     const selfX =
@@ -505,17 +518,32 @@ export class CommandMapper {
       predSnap && (predSnap.x !== 0 || predSnap.y !== 0) ? predSnap.y : (this.world.self?.y ?? 0)
     const lockedId = tc?.lockedMonster?.candidate.unitId
     const lockedUnit =
-      lockedId !== undefined ? (this.world.getUnit?.('monster', lockedId) ?? null) : null
+      slot.skillId === 54
+        ? null
+        : lockedId !== undefined
+          ? (this.world.getUnit?.('monster', lockedId) ?? null)
+          : null
     const angle = tc?.lastFacingAngleRad ?? -Math.PI / 5
+    const stepDistance = slot.skillId === 54 ? 12 : 6
     const aimTarget = computeJoystickWorldSubTileTarget(
       selfX,
       selfY,
       Math.cos(angle),
       Math.sin(angle),
-      6,
+      stepDistance,
     )
     if (slot.hand === 'left') {
-      this.triggerPrimaryWorldAction(aimTarget.x, aimTarget.y, lockedUnit, nowMs, false)
+      const hasValidTarget =
+        lockedUnit !== null && this.isValidSkillTargetUnit(lockedUnit, slot.skillId)
+      const prevShift = this.shiftHeld
+      if (!hasValidTarget) {
+        this.shiftHeld = true
+      }
+      try {
+        this.triggerPrimaryWorldAction(aimTarget.x, aimTarget.y, lockedUnit, nowMs, false)
+      } finally {
+        this.shiftHeld = prevShift
+      }
     } else if (slot.skillId > 0) {
       this.triggerSecondaryWorldAction(
         aimTarget.x,
@@ -4410,6 +4438,7 @@ export class CommandMapper {
         kind,
         startX: screenX,
         startY: screenY,
+        startMs: nowMs,
         lastX: screenX,
         lastY: screenY,
         lastRepeatMs: nowMs,
@@ -4430,7 +4459,7 @@ export class CommandMapper {
     const profile = this.camera.viewportProfile
     const context = resolveTouchHudContext(hud)
 
-    // 1. Compact HUD: L2 hold and skill wheel get dedicated per-finger handling.
+    // 1. Compact HUD: L2 switch, wheel skill picker popup, and skill wheel get dedicated per-finger handling.
     if (tc.compactHudActive && context === 'world' && !this.isExternalUiIntercepted?.(screenX, screenY)) {
       const hit = hitTestCompactD2rHud(
         screenX,
@@ -4441,26 +4470,75 @@ export class CommandMapper {
         tc.activeSkillBank,
         buildCompactHudLayoutOptions(hud),
       )
+      if (hit?.kind === 'wheelSkillPickerSelect') {
+        triggerMobileHaptic('tap', tc.hapticsEnabled)
+        applyWheelSkillPickerSelection(hud, hit.hotkeyIndex, hit.side, hit.skillId, hit.itemId)
+        if (this.world.self) {
+          if (hit.side === 'left') {
+            this.world.self.leftSkill = hit.skillId
+          } else {
+            this.world.self.rightSkill = hit.skillId
+          }
+        }
+        return track('hud')
+      }
+      if (hit?.kind === 'wheelSkillPickerClear') {
+        triggerMobileHaptic('tap', tc.hapticsEnabled)
+        clearWheelSkillPickerSlot(hud, hit.hotkeyIndex, hit.side)
+        return track('hud')
+      }
+      if (hit?.kind === 'wheelSkillPickerClose') {
+        triggerMobileHaptic('tap', tc.hapticsEnabled)
+        tc.closeWheelSkillPicker()
+        hud.syncPublishedState()
+        return track('hud')
+      }
       if (hit?.kind === 'l2BankSwitch') {
-        tc.beginL2BankPress(pid)
+        tc.toggleSkillBank()
         triggerMobileHaptic('tap', tc.hapticsEnabled)
         hud.syncPublishedState()
         return track('l2Hold')
       }
-      if (hit?.kind === 'primarySkill' || hit?.kind === 'wheelSkill') {
+      if (hit?.kind === 'primarySkill') {
+        tc.closeWheelSkillPicker()
         const slot = tc.resolveWheelSlot(hit.hotkeyIndex, hud.hotkeys, hud.lang)
         triggerMobileHaptic('tap', tc.hapticsEnabled)
         if (slot.skillId < 0) return track('hud')
         this.selectTouchWheelSkill(slot)
         if (slot.directionalAim) {
-          const ps = this.selfScreen()
-          tc.beginVectorAim(pid, slot.hotkeyIndex, slot.skillId, screenX, screenY, ps.x, ps.y)
+          // Defer casting until release (quick tap casts forward / at lockedMonster; drag >= 18px casts at vectorAim target; hold repeats).
           hud.syncPublishedState()
-          return track('skillWheel', { slot, aiming: true })
+          return track('skillWheel', { slot, aiming: false, isSatellite: false, castDuringHold: false })
         }
         this.castTouchWheelSkill(slot, nowMs)
         hud.syncPublishedState()
-        return track('skillWheel', { slot })
+        return track('skillWheel', { slot, aiming: false, isSatellite: false, castDuringHold: true })
+      }
+      if (hit?.kind === 'wheelSkill') {
+        const slot = tc.resolveWheelSlot(hit.hotkeyIndex, hud.hotkeys, hud.lang)
+        triggerMobileHaptic('tap', tc.hapticsEnabled)
+        if (slot.skillId < 0) {
+          // Empty satellite button: short tap immediately opens the Wheel Skill Picker Popup!
+          tc.openWheelSkillPicker(hit.hotkeyIndex)
+          hud.syncPublishedState()
+          return track('skillWheel', { slot, isSatellite: true, longPressTriggered: true })
+        }
+        tc.closeWheelSkillPicker()
+        this.selectTouchWheelSkill(slot)
+        hud.syncPublishedState()
+        return track('skillWheel', { slot, isSatellite: true, longPressTriggered: false })
+      }
+      if (tc.wheelPickerSlotIndex !== null && hit === null) {
+        tc.closeWheelSkillPicker()
+        hud.syncPublishedState()
+        return track('hud')
+      }
+      if (hit !== null) {
+        // Any remaining compact HUD hit (e.g. popbeltCell col 0 at x=258..280 in 800x600, beltSlot, runToggle, weaponSwap, etc.)
+        // must be routed directly to HUD click handling and never intercepted by the left joystick zone in step 2!
+        if (this.hasActiveTouchKind('hud') || this.hasActiveTouchKind('world')) return null
+        this.handlePointerDown(screenX, screenY, 0, nowMs)
+        return track('hud')
       }
     }
 
@@ -4477,7 +4555,15 @@ export class CommandMapper {
     if (
       canUseFloatingJoystick &&
       !tc.joystick.active &&
-      tc.handlePointerDown(pid, screenX, screenY, profile.width, profile.height, hud.leftPanel !== 'none')
+      tc.handlePointerDown(
+        pid,
+        screenX,
+        screenY,
+        profile.width,
+        profile.height,
+        hud.leftPanel !== 'none',
+        hud.belt.isExpanded,
+      )
     ) {
       this.lastJoystickMoveMs = -Infinity
       this.emitJoystickMove(nowMs)
@@ -4532,7 +4618,9 @@ export class CommandMapper {
         }
         return
       case 'skillWheel': {
-        if (!tc || !entry.slot) return
+        if (!tc || !entry.slot || entry.longPressTriggered || entry.slot.skillId < 0) return
+        // Non-directional skills ignore slight thumb jitter and continue repeat-casting smoothly while held.
+        if (!entry.slot.directionalAim) return
         const ps = this.selfScreen()
         if (!entry.aiming) {
           const dragged = Math.hypot(screenX - entry.startX, screenY - entry.startY)
@@ -4569,14 +4657,34 @@ export class CommandMapper {
         }
         return
       case 'l2Hold':
-        tc?.endL2BankPress(pid)
         this.hudManager.syncPublishedState()
         return
       case 'skillWheel': {
         if (!tc || !entry.slot) return
         const finished = entry.aiming ? tc.endVectorAim(pid) : null
         if (finished) {
-          this.castTouchSkillAtScreen(entry.slot, finished.targetScreenX, finished.targetScreenY, nowMs)
+          if (!entry.castDuringHold) {
+            this.castTouchSkillAtScreen(entry.slot, finished.targetScreenX, finished.targetScreenY, nowMs)
+          }
+          this.hudManager.syncPublishedState()
+          return
+        }
+        if (entry.isSatellite) {
+          if (!entry.longPressTriggered && nowMs - entry.startMs >= TOUCH_SATELLITE_LONG_PRESS_MS) {
+            entry.longPressTriggered = true
+            tc.openWheelSkillPicker(entry.slot.hotkeyIndex)
+            triggerMobileHaptic('tap', tc.hapticsEnabled)
+            this.hudManager.syncPublishedState()
+            return
+          }
+          if (!entry.longPressTriggered && entry.slot.skillId >= 0) {
+            this.selectTouchWheelSkill(entry.slot)
+            this.castTouchWheelSkill(entry.slot, nowMs)
+            this.hudManager.syncPublishedState()
+            return
+          }
+        } else if (!entry.castDuringHold && entry.slot.skillId >= 0) {
+          this.castTouchWheelSkill(entry.slot, nowMs)
         }
         this.hudManager.syncPublishedState()
         return
@@ -4611,18 +4719,32 @@ export class CommandMapper {
         hotkeys.leftSkillId = slot.skillId
         this.hudManager.commandSink?.selectSkill?.('left', slot.skillId)
       }
-    } else if (slot.skillId > 0 && hotkeys.rightSkillId !== slot.skillId) {
-      hotkeys.rightSkillId = slot.skillId
-      this.hudManager.commandSink?.selectSkill?.('right', slot.skillId)
+      if (this.world.self) {
+        this.world.self.leftSkill = slot.skillId
+      }
+    } else if (slot.skillId >= 0) {
+      if (hotkeys.rightSkillId !== slot.skillId) {
+        hotkeys.rightSkillId = slot.skillId
+        this.hudManager.commandSink?.selectSkill?.('right', slot.skillId)
+      }
+      if (this.world.self) {
+        this.world.self.rightSkill = slot.skillId
+      }
     }
   }
 
   /** Release-to-cast for a vector-aimed skill wheel press (#1967). */
   castTouchSkillAtScreen(slot: SkillWheelSlotDescriptor, targetScreenX: number, targetScreenY: number, nowMs = performance.now()): void {
-    if (slot.skillId < 0) return
+    if (slot.skillId < 0 || isAuraSkill(slot.skillId)) return
     const target = this.resolveLiveCursorSubtile(targetScreenX, targetScreenY)
     if (slot.hand === 'left') {
-      this.triggerPrimaryWorldAction(target.x, target.y, null, nowMs, false)
+      const prevShift = this.shiftHeld
+      this.shiftHeld = true
+      try {
+        this.triggerPrimaryWorldAction(target.x, target.y, null, nowMs, false)
+      } finally {
+        this.shiftHeld = prevShift
+      }
     } else if (slot.skillId > 0) {
       this.triggerSecondaryWorldAction(target.x, target.y, null, nowMs, false, slot.skillId)
     }
@@ -4687,11 +4809,25 @@ export class CommandMapper {
       this.emitJoystickMove(nowMs)
     }
     for (const entry of this.activeTouches.values()) {
-      if (entry.kind !== 'skillWheel' || entry.aiming || !entry.slot) continue
+      if (entry.kind !== 'skillWheel' || !entry.slot) continue
+      if (entry.isSatellite) {
+        if (!entry.longPressTriggered && !entry.aiming && nowMs - entry.startMs >= TOUCH_SATELLITE_LONG_PRESS_MS) {
+          entry.longPressTriggered = true
+          tc.openWheelSkillPicker(entry.slot.hotkeyIndex)
+          triggerMobileHaptic('tap', tc.hapticsEnabled)
+          this.hudManager.syncPublishedState()
+        }
+        continue
+      }
       if (nowMs - entry.lastRepeatMs < TOUCH_SKILL_REPEAT_MS) continue
       if (this.isPlayerBusyCasting(nowMs, entry.slot.skillId)) continue
       entry.lastRepeatMs = nowMs
-      this.castTouchWheelSkill(entry.slot, nowMs)
+      entry.castDuringHold = true
+      if (entry.aiming && tc.vectorAim?.active) {
+        this.castTouchSkillAtScreen(entry.slot, tc.vectorAim.targetScreenX, tc.vectorAim.targetScreenY, nowMs)
+      } else {
+        this.castTouchWheelSkill(entry.slot, nowMs)
+      }
     }
     if (typeof this.world.listUnits !== 'function') return
     const ps = this.selfScreen()

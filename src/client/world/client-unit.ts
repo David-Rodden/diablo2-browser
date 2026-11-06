@@ -119,6 +119,7 @@ export interface UnitCastState {
    * missiles must not spawn at cast start but once the animation reaches its
    * first event frame. `missileSpawned` latches the one-shot trigger.
    */
+  targetUnit?: UnitRef | undefined
   missileFireDelayMs?: number | undefined
   missileSkillLevel?: number | undefined
   missileSpawned?: boolean | undefined

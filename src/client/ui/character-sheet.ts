@@ -601,10 +601,10 @@ export const STAT_ALLOC_BUTTONS: Readonly<Record<BaseStatKey, { x: number; y: nu
 }
 
 export const STAT_BATCH5_BUTTONS: Readonly<Record<BaseStatKey, { x: number; y: number; w: number; h: number }>> = {
-  str: { x: 80 + 122, y: 60 + 107, w: 30, h: 20 },
-  dex: { x: 80 + 122, y: 60 + 169, w: 30, h: 20 },
-  vit: { x: 80 + 122, y: 60 + 255, w: 30, h: 20 },
-  ene: { x: 80 + 122, y: 60 + 317, w: 30, h: 20 },
+  str: { x: 80 + 84, y: 60 + 106, w: 34, h: 28 },
+  dex: { x: 80 + 84, y: 60 + 168, w: 34, h: 28 },
+  vit: { x: 80 + 84, y: 60 + 254, w: 34, h: 28 },
+  ene: { x: 80 + 84, y: 60 + 316, w: 34, h: 28 },
 }
 
 export const STAT_ROW_BOUNDS: Readonly<Record<BaseStatKey, { x: number; y: number; w: number; h: number }>> = {
@@ -1210,12 +1210,7 @@ export class CharacterSheetPanel {
 
     // Close button — press only latches the depressed cell; the sheet closes on
     // mouse-up landing back on the button (see `handleMouseUp`).
-    if (
-      logicalX >= CHAR_CLOSE_BTN_BOUNDS.x &&
-      logicalX <= CHAR_CLOSE_BTN_BOUNDS.x + CHAR_CLOSE_BTN_BOUNDS.w &&
-      logicalY >= CHAR_CLOSE_BTN_BOUNDS.y &&
-      logicalY <= CHAR_CLOSE_BTN_BOUNDS.y + CHAR_CLOSE_BTN_BOUNDS.h
-    ) {
+    if (this.closeButton.contains(logicalX, logicalY)) {
       this.closeButton.press(logicalX, logicalY)
       return true
     }
@@ -1463,12 +1458,27 @@ export class CharacterSheetPanel {
           const b5 = STAT_BATCH5_BUTTONS[r.key]
           const batchCount = Math.min(5, Math.floor(this.attrs.statPoints))
           const isBatchPressed = this.pressedBatch5Stat === r.key
-          ctx.fillStyle = isBatchPressed ? 'rgba(98, 28, 22, 0.96)' : 'rgba(54, 18, 14, 0.92)'
-          ctx.fillRect(b5.x, b5.y, b5.w, b5.h)
-          ctx.strokeStyle = isBatchPressed ? '#ffd54f' : '#c7a158'
-          ctx.lineWidth = 1.2
-          ctx.strokeRect(b5.x + 0.5, b5.y + 0.5, b5.w - 1, b5.h - 1)
-          font.drawText(ctx, `+${batchCount}`, Math.round(b5.x + b5.w / 2), b5.y + 14, {
+          drawStatPointsSunkenSlot(ctx, b5.x, b5.y, b5.w, b5.h)
+          if (assets.levelBtnImg) {
+            const batchFrame = isBatchPressed ? 1 : 0
+            ctx.drawImage(
+              assets.levelBtnImg,
+              batchFrame * LEVEL_BTN_CELL_SIZE,
+              0,
+              LEVEL_BTN_CELL_SIZE,
+              LEVEL_BTN_CELL_SIZE,
+              b5.x + 2,
+              b5.y + 1,
+              26,
+              26,
+            )
+          }
+          ctx.fillStyle = 'rgba(10, 6, 4, 0.86)'
+          ctx.fillRect(b5.x + 12, b5.y + 14, 20, 12)
+          ctx.strokeStyle = isBatchPressed ? '#ffd54f' : '#a88438'
+          ctx.lineWidth = 1
+          ctx.strokeRect(b5.x + 12.5, b5.y + 14.5, 19, 11)
+          font.drawText(ctx, `+${batchCount}`, b5.x + 22, b5.y + 24, {
             font: 'font6',
             color: 'gold',
             align: 'center',

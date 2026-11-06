@@ -5603,6 +5603,7 @@ export function applySkillCastToUnitImpl(
     skillId,
     targetX,
     targetY,
+    ...(unit.targetUnit !== undefined ? { targetUnit: unit.targetUnit } : {}),
     mode: isChargeInPlace ? (unit.unitType === 'monster' ? 4 : 7) : mode,
     startedAtMs: now,
     untilMs: now + durationMs,

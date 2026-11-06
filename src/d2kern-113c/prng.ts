@@ -37,9 +37,16 @@ export function seedNext(seed: D2SeedStrc): number {
   return (seed.lo | 0) // signed 32-bit int
 }
 
+/**
+ * `SEED_RollLimited` (`D2Game:0x6FC21180` / `D2Common.#10920 @ 0x6FD510B0`).
+ * @va D2Game:0x6FC21180
+ * @va D2Common:0x6FD510B0
+ */
 export function seedRoll(seed: D2SeedStrc, nMax: number): number {
   const max = nMax | 0
   if (max <= 0) return 0
   const raw = seedNext(seed) >>> 0
   return (raw % (max >>> 0)) >>> 0
 }
+
+export const seedRollLimited113c = seedRoll

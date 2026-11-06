@@ -2229,7 +2229,9 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         isSelfPlayer && moveMode === 'run' && isSelfStaminaExhausted(this) ? 'walk' : moveMode
       unit.targetX = targetX
       unit.targetY = targetY
-      unit.targetUnit = effectiveMoveMode === 'stop' ? undefined : ev.target
+      if (!preserveActiveCast) {
+        unit.targetUnit = effectiveMoveMode === 'stop' ? undefined : ev.target
+      }
       unit.moveMode = effectiveMoveMode
       unit.moving =
         effectiveMoveMode !== 'stop' &&
@@ -2651,6 +2653,12 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
       } else if (isSelfEcho) {
         this._lastLocalCastSkillId = -1
         if (unit.castState && unit.castState.skillId === skillId && now < unit.castState.untilMs) {
+          unit.castState.targetX = targetX
+          unit.castState.targetY = targetY
+          if (unit.targetUnit !== undefined) {
+            unit.castState.targetUnit = unit.targetUnit
+          }
+          unit.castState.missileSkillLevel = Math.max(unit.castState.missileSkillLevel ?? 1, level)
           unit.faceToward(targetX, targetY, false)
         } else {
           this.applySkillCastToUnit(unit, skillId, targetX, targetY, level, false, nowMs)

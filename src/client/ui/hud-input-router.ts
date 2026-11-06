@@ -67,6 +67,7 @@ import {
   computeTouchActionBarLayout,
   hitTestCompactD2rHud,
   hitTestTouchActionBar,
+  readSafeAreaInsetsLogical,
   resolveEquippedComparisonCounterpart,
   triggerMobileHaptic,
   type CompactHudHitResult,
@@ -339,6 +340,7 @@ export function resolveTouchHudContext(hud: HudManager): TouchHudContext {
 /** Layout options shared by compact HUD draw and hit-test so both always agree (#1968). */
 export function buildCompactHudLayoutOptions(hud: HudManager): CompactHudLayoutOptions {
   const docking = hud.getDockingLayout()
+  const safeInsets = readSafeAreaInsetsLogical(hud.viewportProfile.width, hud.viewportProfile.height)
   return {
     context: resolveTouchHudContext(hud),
     panelOffsetY: docking.panelOffsetY ?? hud.viewportProfile.panelOffsetY,
@@ -346,8 +348,54 @@ export function buildCompactHudLayoutOptions(hud: HudManager): CompactHudLayoutO
     rightPanel: hud.rightPanel,
     utilityMenuExpanded: hud.touchControls.utilityMenuExpanded,
     beltMaxRows: hud.belt.maxRows,
-    pendingBindSkillId: hud.touchControls.pendingBindSkillId,
+    marginRightPx: safeInsets.right,
+    wheelPickerSlotIndex: hud.touchControls.wheelPickerSlotIndex,
+    availableSkills: hud.hotkeys.availableSkills,
+    weaponEquipState: hud.hotkeys.weaponEquipState,
   }
+}
+
+export function applyWheelSkillPickerSelection(
+  hud: HudManager,
+  hotkeyIndex: number,
+  side: 'left' | 'right',
+  skillId: number,
+  itemId?: number,
+): void {
+  const fKey = SkillHotkeysHud.keyFromSlotIndex(hotkeyIndex) ?? `F${hotkeyIndex + 1}`
+  hud.hotkeys.bindHotkey(fKey, side, skillId, itemId)
+  if (hotkeyIndex >= 8) {
+    hud.hotkeys.bindHotkey(`F${hotkeyIndex + 1}`, side, skillId, itemId)
+  }
+  hud.commandSink?.assignSkillHotkey?.(hotkeyIndex, side, skillId, itemId)
+  hud.hotkeys.onAssignHotkey?.(hotkeyIndex, side, skillId, itemId)
+  if (side === 'left') {
+    hud.hotkeys.leftSkillId = skillId
+    hud.commandSink?.selectSkill?.('left', skillId, itemId)
+    hud.hotkeys.onSelectSkill?.('left', skillId, itemId)
+  } else {
+    hud.hotkeys.rightSkillId = skillId
+    hud.commandSink?.selectSkill?.('right', skillId, itemId)
+    hud.hotkeys.onSelectSkill?.('right', skillId, itemId)
+  }
+  hud.touchControls.closeWheelSkillPicker()
+  hud.syncPublishedState()
+}
+
+export function clearWheelSkillPickerSlot(
+  hud: HudManager,
+  hotkeyIndex: number,
+  side: 'left' | 'right',
+): void {
+  const fKey = SkillHotkeysHud.keyFromSlotIndex(hotkeyIndex) ?? `F${hotkeyIndex + 1}`
+  hud.hotkeys.bindings.delete(fKey)
+  hud.hotkeys.bindings.delete(`F${hotkeyIndex + 1}`)
+  if (hud.touchControls.wheelSlots[hotkeyIndex]) {
+    delete (hud.touchControls.wheelSlots as ( unknown | undefined )[])[hotkeyIndex]
+  }
+  hud.commandSink?.assignSkillHotkey?.(hotkeyIndex, side, 0xffff, 0xffffffff)
+  hud.touchControls.closeWheelSkillPicker()
+  hud.syncPublishedState()
 }
 
 /** Action bar layout for the currently tap-selected panel item (`null` when nothing is selected). */
@@ -408,6 +456,7 @@ export function isPointInterceptedByHud(hud: HudManager, logicalX: number, logic
         profile.width,
         profile.height,
         hud.leftPanel !== 'none',
+        hud.belt.isExpanded,
       ))
   ) {
     return true
@@ -635,24 +684,22 @@ export function handleCompactD2rHudClick(
         case 'closePanels':
           hud.closeAllPanels()
           hud.touchControls.clearSelectedPanelItem()
-          hud.touchControls.pendingBindSkillId = null
+          hud.touchControls.closeWheelSkillPicker()
           break
       }
       hud.touchControls.utilityMenuExpanded = false
       hud.syncPublishedState()
       return hit
-    case 'skillBindSlot': {
-      const skillId = hud.touchControls.pendingBindSkillId
-      if (skillId !== null) {
-        const fKey = SkillHotkeysHud.keyFromSlotIndex(hit.hotkeyIndex) ?? `F${hit.hotkeyIndex + 1}`
-        const side: 'left' | 'right' = 'right'
-        hud.hotkeys.bindHotkey(fKey, side, skillId)
-        hud.commandSink?.assignSkillHotkey?.(hit.hotkeyIndex, side, skillId)
-        hud.touchControls.pendingBindSkillId = null
-      }
+    case 'wheelSkillPickerSelect':
+      applyWheelSkillPickerSelection(hud, hit.hotkeyIndex, hit.side, hit.skillId, hit.itemId)
+      return hit
+    case 'wheelSkillPickerClear':
+      clearWheelSkillPickerSlot(hud, hit.hotkeyIndex, hit.side)
+      return hit
+    case 'wheelSkillPickerClose':
+      hud.touchControls.closeWheelSkillPicker()
       hud.syncPublishedState()
       return hit
-    }
     case 'utilityAction':
       switch (hit.action) {
         case 'char':
@@ -705,17 +752,40 @@ export function handleCompactD2rHudClick(
       }
       hud.syncPublishedState()
       return hit
-    case 'primarySkill':
-    case 'wheelSkill': {
-      const slot = hud.touchControls.resolveWheelSlot(hit.hotkeyIndex, hud.hotkeys)
+    case 'primarySkill': {
+      hud.touchControls.closeWheelSkillPicker()
+      const slot = hud.touchControls.resolveWheelSlot(hit.hotkeyIndex, hud.hotkeys, hud.lang)
       if (slot && slot.skillId >= 0) {
         if (slot.hand === 'left') {
           hud.hotkeys.leftSkillId = slot.skillId
           hud.commandSink?.selectSkill?.('left', slot.skillId)
-        } else if (slot.skillId > 0) {
+        } else if (slot.skillId >= 0) {
           hud.hotkeys.rightSkillId = slot.skillId
           hud.commandSink?.selectSkill?.('right', slot.skillId)
         }
+        if (!isAuraSkill(slot.skillId)) {
+          ;(hud as any).onTouchSkillCast?.(slot)
+        }
+      }
+      hud.syncPublishedState()
+      return hit
+    }
+    case 'wheelSkill': {
+      const slot = hud.touchControls.resolveWheelSlot(hit.hotkeyIndex, hud.hotkeys, hud.lang)
+      if (!slot || slot.skillId < 0) {
+        hud.touchControls.openWheelSkillPicker(hit.hotkeyIndex)
+        hud.syncPublishedState()
+        return hit
+      }
+      hud.touchControls.closeWheelSkillPicker()
+      if (slot.hand === 'left') {
+        hud.hotkeys.leftSkillId = slot.skillId
+        hud.commandSink?.selectSkill?.('left', slot.skillId)
+      } else {
+        hud.hotkeys.rightSkillId = slot.skillId
+        hud.commandSink?.selectSkill?.('right', slot.skillId)
+      }
+      if (!isAuraSkill(slot.skillId)) {
         ;(hud as any).onTouchSkillCast?.(slot)
       }
       hud.syncPublishedState()
@@ -1051,9 +1121,11 @@ export function handleTouchTapToInspect(
   }
   if (current && current.item.id === hit.item.id && current.source === hit.source) {
     hud.touchControls.clearSelectedPanelItem()
+    hud.inventory.hoveredItem = null
     return false
   }
   hud.touchControls.selectPanelItem(hit)
+  hud.inventory.hoveredItem = null
   triggerMobileHaptic('tap', hud.touchControls.hapticsEnabled)
   return true
 }
@@ -1842,6 +1914,12 @@ export function handleHudMouseDown(
       return
     }
   }
+  if (hud.touchControls.compactHudActive) {
+    const compactHit = handleCompactD2rHudClick(hud, pt.x, pt.y)
+    if (compactHit !== null) {
+      return
+    }
+  }
   if (
     e.button === 0 &&
     hud.touchControls.enabled &&
@@ -1853,16 +1931,11 @@ export function handleHudMouseDown(
       hud.viewportProfile.width,
       hud.viewportProfile.height,
       false,
+      hud.belt.isExpanded,
     )
   ) {
     hud.syncPublishedState()
     return
-  }
-  if (hud.touchControls.compactHudActive) {
-    const compactHit = handleCompactD2rHudClick(hud, pt.x, pt.y)
-    if (compactHit !== null) {
-      return
-    }
   }
   const docking = hud.getDockingLayout()
   const barPt = toControlBarLocal(pt.x, pt.y, docking)
@@ -2486,17 +2559,6 @@ export function handleHudMouseDown(
       hud.syncPublishedState()
       return
     } else if (hud.rightPanel === 'skill') {
-      // #1969: on touch, tapping a learned skill arms it for binding to `F1..F12` in the skill bind bar.
-      if (hud.touchControls.enabled && e.button === 0) {
-        const tapped = hitTestSkillTreeNode(hud, rightPt.x, rightPt.y)
-        if (tapped !== null && !hud.skillTree.canAllocate(tapped) && hud.skillTree.getEffectiveLevel(tapped) > 0) {
-          hud.touchControls.pendingBindSkillId =
-            hud.touchControls.pendingBindSkillId === tapped ? null : tapped
-          triggerMobileHaptic('tap', hud.touchControls.hapticsEnabled)
-          hud.syncPublishedState()
-          return
-        }
-      }
       hud.skillTree.handleClick(rightPt.x, rightPt.y, (skillId) => (hud as any).handleSkillAllocated(skillId))
       if (!hud.skillTree.visible) hud.rightPanel = 'none'
       hud.syncPublishedState()

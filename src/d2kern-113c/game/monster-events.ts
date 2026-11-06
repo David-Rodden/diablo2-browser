@@ -1,6 +1,7 @@
 /**
  * Diablo II v1.13c Monster Event Dispatch (`0x6FC969A0`), Mode Tables (`0x6FD1A498` / `0x6FD1BC50`),
- * `SUNIT_IsDeadOrDying` (`0x6FCFFA90`), and Continuous Mode Persistent Registration (`0x6FD00B40`).
+ * `SUNIT_IsDeadOrDying` (`0x6FCFFA90`), Null-Handler Fallback (`0x6FC950F0` -> `0x6FC94E60`),
+ * Two-Pass `MONSTER_ClearModeEvents` (`0x6FD00750`), and Continuous Mode Registration (`0x6FD00B40`).
  *
  * Binary evidence: `kb/monsters/d2game-monster-events-113c.md`.
  */
@@ -13,16 +14,22 @@ import {
   D2TimerStrc,
   D2UnitStrc,
 } from '../mem/layout.generated.ts'
-import { STATES_CheckState113c } from '../common/statlist.ts'
-import { UNIT_MONSTER, UNIT_PLAYER } from '../common/unit.ts'
 import {
-  EVENT_DeleteEventByType113c,
+  STATLIST_ExpireStateListsOnModeChange113c,
+  STATES_CheckState113c,
+} from '../common/statlist.ts'
+import { UNIT_MONSTER, UNIT_PLAYER, UNITROOM_RefreshUnit113c } from '../common/unit.ts'
+import {
+  EVENT_DeleteEventByArg14_113c,
   EVENT_FLAG_DEFERRED_FREE,
   EVENT_FLAG_FIRING,
   EVENT_FreeNode113c,
+  EVENT_GetNextEventFrame113c,
+  EVENT_SetEventFull113c,
   EVENT_SetPersistentEventFull113c,
   type EventDispatchCallback113c,
 } from './timer-wheel.ts'
+import { MONSTATS_113C_ROWS } from '../../common/units/monstats-113c-data.ts'
 
 export const MON_EVENT_MODE_STEP = 0
 export const MON_EVENT_MODE_END = 1
@@ -30,6 +37,7 @@ export const MON_EVENT_AI_THINK = 2
 export const MON_EVENT_STAT_REGEN = 3
 
 export const UNITFLAG_DEAD_113C = 0x00010000
+export const STATE_STUNNED_113C = 0x15
 
 /**
  * `D2Game 0x6FD1BC14[0..14]` monster event handler VA table (`D2Game.dll` base `0x6FC20000`).
@@ -68,74 +76,175 @@ export interface MonsterModeEntry113c {
 }
 
 /**
- * `D2Game 0x6FD1A498[0..15]` base monster mode table (`16` bytes per entry).
+ * `D2Game 0x6FD1A498[0..15]` base monster mode table (`16` bytes per entry:
+ * `{pfnStart, pfnStep, pfnEnd, bScheduleEvents}`), verified via `objdump -s 0x6fd1a498`.
  */
 export const MONSTER_MODE_TABLE_113C: readonly MonsterModeEntry113c[] = [
-  { mode: 0, pfnStart: 0x6fc960b0, pfnStep: 0x6fc96ce0, pfnEnd: 0x6fc96040, scheduleEvents: 1 }, // DT
-  { mode: 1, pfnStart: 0x6fc95bc0, pfnStep: 0x00000000, pfnEnd: 0x00000000, scheduleEvents: 0 }, // NU
-  { mode: 2, pfnStart: 0x6fc956f0, pfnStep: 0x6fc96900, pfnEnd: 0x6fc95670, scheduleEvents: 1 }, // WL
-  { mode: 3, pfnStart: 0x6fc95ba0, pfnStep: 0x6fc95070, pfnEnd: 0x6fc96bf0, scheduleEvents: 1 }, // GH
-  { mode: 4, pfnStart: 0x6fc95bc0, pfnStep: 0x6fc96ce0, pfnEnd: 0x6fc96bf0, scheduleEvents: 1 }, // A1
-  { mode: 5, pfnStart: 0x6fc95bc0, pfnStep: 0x6fc96ce0, pfnEnd: 0x6fc96bf0, scheduleEvents: 1 }, // A2
-  { mode: 6, pfnStart: 0x6fc95bc0, pfnStep: 0x6fc950f0, pfnEnd: 0x6fc96bf0, scheduleEvents: 1 }, // BL
-  { mode: 7, pfnStart: 0x6fc95bc0, pfnStep: 0x6fc96ce0, pfnEnd: 0x6fc96bf0, scheduleEvents: 1 }, // SC
-  { mode: 8, pfnStart: 0x6fc95bc0, pfnStep: 0x6fc96ce0, pfnEnd: 0x6fc96bf0, scheduleEvents: 1 }, // S1
-  { mode: 9, pfnStart: 0x6fc95bc0, pfnStep: 0x6fc96ce0, pfnEnd: 0x6fc96bf0, scheduleEvents: 1 }, // S2
-  { mode: 10, pfnStart: 0x6fc95bc0, pfnStep: 0x6fc96ce0, pfnEnd: 0x6fc96bf0, scheduleEvents: 0 }, // S3
-  { mode: 11, pfnStart: 0x6fc95bc0, pfnStep: 0x6fc96ce0, pfnEnd: 0x6fc96bf0, scheduleEvents: 0 }, // S4
-  { mode: 12, pfnStart: 0x6fc95010, pfnStep: 0x00000000, pfnEnd: 0x00000000, scheduleEvents: 0 }, // DD
-  { mode: 13, pfnStart: 0x6fc95a20, pfnStep: 0x6fc95900, pfnEnd: 0x6fc96bf0, scheduleEvents: 1 }, // KB
-  { mode: 14, pfnStart: 0x6fc958a0, pfnStep: 0x6fc96830, pfnEnd: 0x6fc957d0, scheduleEvents: 1 }, // SQ
-  { mode: 15, pfnStart: 0x6fc95770, pfnStep: 0x6fc96900, pfnEnd: 0x6fc95670, scheduleEvents: 1 }, // RN
+  { mode: 0, pfnStart: 0x6fc96270, pfnStep: 0x6fc959f0, pfnEnd: 0x6fc96040, scheduleEvents: 1 }, // DT
+  { mode: 1, pfnStart: 0x6fc94e60, pfnStep: 0x6fc95320, pfnEnd: 0x00000000, scheduleEvents: 0 }, // NU
+  { mode: 2, pfnStart: 0x6fc94c60, pfnStep: 0x6fc97010, pfnEnd: 0x00000000, scheduleEvents: 1 }, // WL
+  { mode: 3, pfnStart: 0x6fc95210, pfnStep: 0x6fc95320, pfnEnd: 0x6fc96bf0, scheduleEvents: 1 }, // GH
+  { mode: 4, pfnStart: 0x6fc95510, pfnStep: 0x6fc95ce0, pfnEnd: 0x6fc96bf0, scheduleEvents: 1 }, // A1
+  { mode: 5, pfnStart: 0x6fc95510, pfnStep: 0x6fc95ce0, pfnEnd: 0x6fc96bf0, scheduleEvents: 1 }, // A2
+  { mode: 6, pfnStart: 0x6fc94c10, pfnStep: 0x6fc95320, pfnEnd: 0x6fc96bf0, scheduleEvents: 1 }, // BL
+  { mode: 7, pfnStart: 0x6fc95510, pfnStep: 0x6fc95ce0, pfnEnd: 0x6fc96bf0, scheduleEvents: 1 }, // SC
+  { mode: 8, pfnStart: 0x6fc95510, pfnStep: 0x6fc95ce0, pfnEnd: 0x6fc96bf0, scheduleEvents: 1 }, // S1
+  { mode: 9, pfnStart: 0x6fc95510, pfnStep: 0x6fc95ce0, pfnEnd: 0x6fc96bf0, scheduleEvents: 1 }, // S2
+  { mode: 10, pfnStart: 0x6fc94c90, pfnStep: 0x6fc959b0, pfnEnd: 0x6fc94890, scheduleEvents: 0 }, // S3
+  { mode: 11, pfnStart: 0x6fc96700, pfnStep: 0x6fc95320, pfnEnd: 0x00000000, scheduleEvents: 0 }, // S4
+  { mode: 12, pfnStart: 0x6fc95460, pfnStep: 0x6fc95320, pfnEnd: 0x00000000, scheduleEvents: 0 }, // DD
+  { mode: 13, pfnStart: 0x6fc95160, pfnStep: 0x6fc96a10, pfnEnd: 0x6fc965e0, scheduleEvents: 1 }, // KB
+  { mode: 14, pfnStart: 0x6fc954E0, pfnStep: 0x6fc96f20, pfnEnd: 0x6fc96bf0, scheduleEvents: 1 }, // SQ
+  { mode: 15, pfnStart: 0x6fc94c30, pfnStep: 0x6fc96fe0, pfnEnd: 0x00000000, scheduleEvents: 1 }, // RN
 ]
 
-const SPECIAL_MODE_273_S2: MonsterModeEntry113c = {
-  mode: 9,
-  pfnStart: 0x6fc95bc0,
-  pfnStep: 0x6fc96ce0,
-  pfnEnd: 0x6fc95320,
-  scheduleEvents: 1,
-}
-const SPECIAL_MODE_297_SC: MonsterModeEntry113c = {
-  mode: 7,
-  pfnStart: 0x6fc95bc0,
-  pfnStep: 0x6fc96d90,
+/**
+ * `MonStats.bin + 0x1A5` (`SplGetModeChart`, 20 rows out of 734 in official 1.13c `monstats.bin`).
+ * Checked at `0x6FC949E7: mov al, [edx + 0x1A5]; test al, al; je base_table`.
+ */
+export const SPL_GET_MODE_CHART_HCIDX_SET_113C: ReadonlySet<number> = new Set<number>([
+  243, 333, 403, 404, 417, 418, 543, 544, 546, 547, 548, 549, 550, 559, 570, 571, 572, 573, 705, 709,
+])
+
+// 0x6FD1A598: Diablo (243, 333, 705) mode 11 (S4)
+const SPECIAL_MODE_DIABLO_S4: MonsterModeEntry113c = {
+  mode: 11,
+  pfnStart: 0x6fc95510,
+  pfnStep: 0x6fc95ce0,
   pfnEnd: 0x6fc96bf0,
   scheduleEvents: 1,
 }
-const SPECIAL_MODE_543_S1: MonsterModeEntry113c = {
-  mode: 8,
-  pfnStart: 0x6fc95bc0,
-  pfnStep: 0x6fc96ce0,
-  pfnEnd: 0x6fc95440,
+// 0x6FD1A5A8: Diablo (243, 333, 705) mode 10 (S3)
+const SPECIAL_MODE_DIABLO_S3: MonsterModeEntry113c = {
+  mode: 10,
+  pfnStart: 0x6fc95510,
+  pfnStep: 0x6fc95ce0,
+  pfnEnd: 0x6fc96bf0,
   scheduleEvents: 1,
 }
-const SPECIAL_MODE_499_S4: MonsterModeEntry113c = {
+// 0x6FD1A5B8: TrappedSoul1 (403) modes 4 (A1) & 5 (A2)
+const SPECIAL_MODE_403_A1: MonsterModeEntry113c = {
+  mode: 4,
+  pfnStart: 0x6fc95510,
+  pfnStep: 0x6fc95ce0,
+  pfnEnd: 0x6fc96b20,
+  scheduleEvents: 1,
+}
+const SPECIAL_MODE_403_A2: MonsterModeEntry113c = {
+  mode: 5,
+  pfnStart: 0x6fc95510,
+  pfnStep: 0x6fc95ce0,
+  pfnEnd: 0x6fc96b20,
+  scheduleEvents: 1,
+}
+// 0x6FD1A5C8: TrappedSoul1 (403) modes 8 (S1) & 9 (S2)
+const SPECIAL_MODE_403_S1: MonsterModeEntry113c = {
+  mode: 8,
+  pfnStart: 0x6fc95510,
+  pfnStep: 0x6fc95ce0,
+  pfnEnd: 0x6fc96a50,
+  scheduleEvents: 1,
+}
+const SPECIAL_MODE_403_S2: MonsterModeEntry113c = {
+  mode: 9,
+  pfnStart: 0x6fc95510,
+  pfnStep: 0x6fc95ce0,
+  pfnEnd: 0x6fc96a50,
+  scheduleEvents: 1,
+}
+// 0x6FD1A5D8: ShadowWarrior/Master (417, 418) mode 11 (S4)
+const SPECIAL_MODE_SHADOW_S4: MonsterModeEntry113c = {
   mode: 11,
-  pfnStart: 0x6fc95bc0,
-  pfnStep: 0x6fc96ce0,
-  pfnEnd: 0x6fc95390,
+  pfnStart: 0x6fc95510,
+  pfnStep: 0x6fc95ce0,
+  pfnEnd: 0x6fc96bf0,
   scheduleEvents: 1,
 }
-const SPECIAL_MODE_511_512_S1: MonsterModeEntry113c = {
-  mode: 8,
-  pfnStart: 0x6fc95bc0,
-  pfnStep: 0x6fc96ce0,
-  pfnEnd: 0x6fc95650,
-  scheduleEvents: 1,
-}
-const SPECIAL_MODE_362_S1: MonsterModeEntry113c = {
-  mode: 8,
-  pfnStart: 0x6fc95bc0,
-  pfnStep: 0x6fc95570,
-  pfnEnd: 0x6fc955e0,
+// 0x6FD1A508: Baal (543, 544, 570, 709) mode 10 (S3)
+const SPECIAL_MODE_BAAL_S3: MonsterModeEntry113c = {
+  mode: 10,
+  pfnStart: 0x6fc95510,
+  pfnStep: 0x6fc95ce0,
+  pfnEnd: 0x6fc96bf0,
   scheduleEvents: 1,
 }
 
+export interface ContinuousModeRule113c {
+  readonly alwaysTrue: number
+  readonly alwaysFalse: number
+  readonly checkMonStats2MoveBit: number
+}
+
 /**
- * `D2Game 0x6FD1BC50[0..15]` continuous-mode flags (`d0 == 1` for `{2 WL, 13 KB, 14 SQ, 15 RN}`).
+ * `D2Game 0x6FD1BC50[0..15]` 12-byte (`3 * uint32`) continuous-mode dispatch table:
+ * - `+0x00 alwaysTrue == 1`: `{2 WL, 13 KB, 14 SQ, 15 RN}` -> returns `true`
+ * - `+0x04 alwaysFalse == 1`: `{0 DT, 1 NU, 3 GH, 6 BL, 12 DD}` -> returns `false`
+ * - `+0x08 checkMonStats2MoveBit == 1`: `{4 A1, 5 A2, 7 SC, 8 S1, 9 S2, 10 S3, 11 S4}` ->
+ *   reads `MonStats2[MonStats[hcIdx].wMonStatsEx].wMoveFlags (+0x104) & (1 << mode)`.
  */
-export const MONSTER_CONTINUOUS_MODE_TABLE_113C: readonly number[] = [
+export const MONSTER_CONTINUOUS_MODE_TABLE_113C: readonly ContinuousModeRule113c[] = [
+  { alwaysTrue: 0, alwaysFalse: 1, checkMonStats2MoveBit: 0 }, // 0: DT
+  { alwaysTrue: 0, alwaysFalse: 1, checkMonStats2MoveBit: 0 }, // 1: NU
+  { alwaysTrue: 1, alwaysFalse: 0, checkMonStats2MoveBit: 0 }, // 2: WL
+  { alwaysTrue: 0, alwaysFalse: 1, checkMonStats2MoveBit: 0 }, // 3: GH
+  { alwaysTrue: 0, alwaysFalse: 0, checkMonStats2MoveBit: 1 }, // 4: A1
+  { alwaysTrue: 0, alwaysFalse: 0, checkMonStats2MoveBit: 1 }, // 5: A2
+  { alwaysTrue: 0, alwaysFalse: 1, checkMonStats2MoveBit: 0 }, // 6: BL
+  { alwaysTrue: 0, alwaysFalse: 0, checkMonStats2MoveBit: 1 }, // 7: SC
+  { alwaysTrue: 0, alwaysFalse: 0, checkMonStats2MoveBit: 1 }, // 8: S1
+  { alwaysTrue: 0, alwaysFalse: 0, checkMonStats2MoveBit: 1 }, // 9: S2
+  { alwaysTrue: 0, alwaysFalse: 0, checkMonStats2MoveBit: 1 }, // 10: S3
+  { alwaysTrue: 0, alwaysFalse: 0, checkMonStats2MoveBit: 1 }, // 11: S4
+  { alwaysTrue: 0, alwaysFalse: 1, checkMonStats2MoveBit: 0 }, // 12: DD
+  { alwaysTrue: 1, alwaysFalse: 0, checkMonStats2MoveBit: 0 }, // 13: KB
+  { alwaysTrue: 1, alwaysFalse: 0, checkMonStats2MoveBit: 0 }, // 14: SQ
+  { alwaysTrue: 1, alwaysFalse: 0, checkMonStats2MoveBit: 0 }, // 15: RN
+]
+
+/**
+ * Exact `MonStats2.bin + 0x104` (`wMoveFlags`: `A1mv=1<<4`, `A2mv=1<<5`, `SCmv=1<<7`, `S1mv=1<<8`,
+ * `S2mv=1<<9`, `S3mv=1<<10`, `S4mv=1<<11`) indexed by `MonStats.hcIdx` (`30` non-zero rows out of `734`
+ * in official 1.13c `monstats.bin` + `monstats2.bin`).
+ */
+export const MONSTATS2_MOVE_FLAGS_BY_HCIDX_113C: ReadonlyMap<number, number> = new Map<number, number>([
+  [110, 0x0300], // vulture1: S1mv | S2mv
+  [111, 0x0300], // vulture2
+  [112, 0x0300], // vulture3
+  [113, 0x0300], // vulture4
+  [149, 0x0100], // anubisguard4 (carrionbird): S1mv
+  [157, 0x0100], // batdemon1: S1mv
+  [158, 0x0100], // batdemon2
+  [159, 0x0100], // batdemon3
+  [244, 0x0020], // maggot1: A2mv
+  [245, 0x0020], // maggot2
+  [246, 0x0020], // maggot3
+  [251, 0x0020], // sandleaper1: A2mv
+  [252, 0x0020], // sandleaper2
+  [253, 0x0020], // sandleaper3
+  [254, 0x0020], // sandleaper4
+  [255, 0x0020], // sandleaper5
+  [256, 0x0020], // scarab1: A2mv
+  [257, 0x0020], // scarab2
+  [264, 0x0020], // maggot4
+  [265, 0x0020], // maggot5
+  [268, 0x0100], // vulture5: S1mv
+  [283, 0x0100], // batdemon4: S1mv
+  [297, 0x0020], // scarab3: A2mv
+  [367, 0x0020], // tyrael1: A2mv
+  [520, 0x0020], // snowdrifter1: A2mv
+  [521, 0x0020], // snowdrifter2
+  [527, 0x0020], // snowdrifter3
+  [556, 0x0100], // batdemon5: S1mv
+  [608, 0x0300], // vulture6: S1mv | S2mv
+  [706, 0x0020], // uberduriel: A2mv
+])
+
+/**
+ * `D2Game 0x6FD2F14C[0..15]` inline-AI-on-mode-end flags (`1` ONLY for `2 WL` and `15 RN`).
+ * Used by `0x6FC96BF0` (`MONSTER_EndToAiOrNeutral`) to transition directly `dwAnimMode = 1`
+ * without `MONSTER_ClearModeEvents` and immediately invoke `AI_RunMonsterAI` (`0x6FCBD3B0`).
+ */
+export const MONSTER_INLINE_AI_ON_END_TABLE_113C: readonly number[] = [
   0, // 0: DT
   0, // 1: NU
   1, // 2: WL
@@ -149,38 +258,83 @@ export const MONSTER_CONTINUOUS_MODE_TABLE_113C: readonly number[] = [
   0, // 10: S3
   0, // 11: S4
   0, // 12: DD
-  1, // 13: KB
-  1, // 14: SQ
+  0, // 13: KB
+  0, // 14: SQ
   1, // 15: RN
 ]
 
-/** `D2Game 0x6FC949A0` (`MONSTER_GetModeEntry`, `ecx = pUnit`, `eax = nMode`). */
+/** `@va D2Game:0x6FC949A0` (`MONSTER_GetModeEntry`, `ecx = pUnit`, `eax = nMode`). */
 export function MONSTER_GetModeEntry113c(
   m: Memory113c,
   pUnit: number,
   mode: number,
 ): MonsterModeEntry113c | null {
+  if (pUnit === 0 || m.get(pUnit, D2UnitStrc.dwUnitType) !== UNIT_MONSTER) return null
   if ((mode >>> 0) >= 16) return null
-  const classId = pUnit !== 0 ? m.get(pUnit, D2UnitStrc.dwClassId) : 0xffffffff
-  if (mode === 9 && classId === 273) return SPECIAL_MODE_273_S2
-  if (mode === 7 && classId === 297) return SPECIAL_MODE_297_SC
-  if (mode === 8) {
-    if (classId === 543) return SPECIAL_MODE_543_S1
-    if (classId === 511 || classId === 512) return SPECIAL_MODE_511_512_S1
-    if (classId === 362) return SPECIAL_MODE_362_S1
+  const classId = m.get(pUnit, D2UnitStrc.dwClassId) >>> 0
+  if (classId >= 734) return null
+
+  // `0x6FC949E7: mov al, [edx + 0x1A5]; test al, al; je base_table` (`SplGetModeChart`)
+  if (SPL_GET_MODE_CHART_HCIDX_SET_113C.has(classId)) {
+    if (classId === 243 || classId === 333 || classId === 705) {
+      if (mode === 11) return SPECIAL_MODE_DIABLO_S4
+      if (mode === 10) return SPECIAL_MODE_DIABLO_S3
+    } else if (classId === 403) {
+      if (mode === 4) return SPECIAL_MODE_403_A1
+      if (mode === 5) return SPECIAL_MODE_403_A2
+      if (mode === 8) return SPECIAL_MODE_403_S1
+      if (mode === 9) return SPECIAL_MODE_403_S2
+    } else if (classId === 417 || classId === 418) {
+      if (mode === 11) return SPECIAL_MODE_SHADOW_S4
+    } else if (classId === 543 || classId === 544 || classId === 570 || classId === 709) {
+      if (mode === 10) return SPECIAL_MODE_BAAL_S3
+    }
   }
-  if (mode === 11 && classId === 499) return SPECIAL_MODE_499_S4
-  return MONSTER_MODE_TABLE_113C[mode] ?? null
+
+  const baseEntry = MONSTER_MODE_TABLE_113C[mode]
+  if (baseEntry === undefined) {
+    throw new RangeError(`MONSTER_GetModeEntry113c: missing base mode table entry for mode=${mode}`)
+  }
+  return baseEntry
 }
 
-/** `D2Game 0x6FC94F20` (`MONSTER_IsContinuousMode`, `eax = nMode`). */
-export function MONSTER_IsContinuousMode113c(mode: number): boolean {
-  return (MONSTER_CONTINUOUS_MODE_TABLE_113C[mode >>> 0] ?? 0) !== 0
+/**
+ * `@va D2Game:0x6FC94F20` (`MONSTER_IsContinuousMode`, `ecx = pUnit`, `eax = nMode`).
+ * Evaluates the 12-byte `0x6FD1BC50[nMode]` entry and, for `{4,5,7,8,9,10,11}`, checks
+ * `MonStats2[wMonStatsEx].wMoveFlags (+0x104) & (1 << nMode)` (`0x6FC94F48..0x6FC94F7A`).
+ */
+export function MONSTER_IsContinuousMode113c(
+  m: Memory113c,
+  pUnit: number,
+  mode: number,
+): boolean {
+  if (pUnit === 0 || (mode >>> 0) >= 16) return false
+  const rule = MONSTER_CONTINUOUS_MODE_TABLE_113C[mode >>> 0]
+  if (rule === undefined) {
+    throw new RangeError(`MONSTER_IsContinuousMode113c: missing rule for mode=${mode}`)
+  }
+  if (rule.alwaysTrue === 1) return true
+  if (rule.alwaysFalse === 1) return false
+  if (rule.checkMonStats2MoveBit === 1) {
+    const classId = m.get(pUnit, D2UnitStrc.dwClassId) >>> 0
+    if (classId >= 734) return false
+    const moveFlags = MONSTATS2_MOVE_FLAGS_BY_HCIDX_113C.get(classId)
+    if (moveFlags === undefined) return false
+    return (moveFlags & (1 << (mode & 31))) !== 0
+  }
+  return false
 }
 
-/** `D2Game 0x6FCFFA90` (`SUNIT_IsDeadOrDying`, `eax = pUnit`). */
+/**
+ * `@va D2Game:0x6FCFFA90` (`SUNIT_IsDeadOrDying`, `eax = pUnit`).
+ * - `pUnit == 0` -> returns `1` (`0x6FCFFA93: mov eax, 1; ret`)
+ * - `(pUnit->dwFlags & 0x10000) != 0` -> returns `1` (`0x6FCFFA9A`)
+ * - `dwUnitType == 0` (`UNIT_PLAYER`): `dwAnimMode == 0 || dwAnimMode == 17` -> `1`, else `0`
+ * - `dwUnitType == 1` (`UNIT_MONSTER`): `dwAnimMode == 0 || dwAnimMode == 12` -> `1`, else `0`
+ * - Any other `dwUnitType` (`object`, `missile`, `item`, `tile`) -> returns `1` (`0x6FCFFAAD`).
+ */
 export function SUNIT_IsDeadOrDying113c(m: Memory113c, pUnit: number): number {
-  if (pUnit === 0) return 0
+  if (pUnit === 0) return 1
   if ((m.get(pUnit, D2UnitStrc.dwFlags) & UNITFLAG_DEAD_113C) !== 0) return 1
   const unitType = m.get(pUnit, D2UnitStrc.dwUnitType)
   const animMode = m.get(pUnit, D2UnitStrc.dwAnimMode)
@@ -190,10 +344,10 @@ export function SUNIT_IsDeadOrDying113c(m: Memory113c, pUnit: number): number {
   if (unitType === UNIT_MONSTER) {
     return animMode === 0 || animMode === 12 ? 1 : 0
   }
-  return 0
+  return 1
 }
 
-/** `D2Game 0x6FCAE940`: wrapper around `0x6FCAE810` with explicit `pfnHandler`. */
+/** `@va D2Game:0x6FCAE940`: wrapper around `0x6FCAE810` with explicit `pfnHandler`. */
 export function EVENT_SetPersistentEventWithHandler113c(
   m: Memory113c,
   pGame: number,
@@ -206,7 +360,7 @@ export function EVENT_SetPersistentEventWithHandler113c(
   return EVENT_SetPersistentEventFull113c(m, pGame, pUnit, type, handler, arg14, arg18)
 }
 
-/** `D2Game 0x6FCAE960`: wrapper around `0x6FCAE810` with `pfnHandler = 0`. */
+/** `@va D2Game:0x6FCAE960`: wrapper around `0x6FCAE810` with `pfnHandler = 0`. */
 export function EVENT_SetPersistentUnitEvent113c(
   m: Memory113c,
   pGame: number,
@@ -219,25 +373,120 @@ export function EVENT_SetPersistentUnitEvent113c(
 }
 
 /**
- * `D2Game 0x6FD00750` (`MONSTER_ClearModeEvents`, `eax = pGame`, `ebx = pUnit`):
- * Frees all `nType == 0` (`MODE_STEP`) and `nType == 1` (`MODE_END`) nodes on `pUnit`
- * while preserving `nType == 2` (`AI_THINK`) and `nType == 3` (`STAT_REGEN`).
+ * `@va D2Game:0x6FD00750` (`MONSTER_ClearModeEvents`, `eax = pGame`, `ebx = pUnit`):
+ * Runs TWO separate `nType`-only passes — first `nType == 0` (`0x6FD00762: cmp byte ptr [eax], 0`),
+ * then `nType == 1` (`0x6FD00780: cmp byte ptr [eax], 1`) — without filtering on `pfnHandler`, matching
+ * exact `D2Game.dll` chunk free-list LIFO order when both types coexist on `pUnit` while preserving
+ * `nType == 2` (`AI_THINK`) and `nType == 3` (`STAT_REGEN`).
  */
 export function MONSTER_ClearModeEvents113c(m: Memory113c, pGame: number, pUnit: number): void {
   if (pGame === 0 || pUnit === 0) return
-  let cur = m.get(pUnit, D2UnitStrc.pEventFirst)
-  while (cur !== 0) {
-    const next = m.get(cur, D2EventStrc.pUnitNext)
-    const evType = m.get(cur, D2EventStrc.nType)
-    if (evType === MON_EVENT_MODE_STEP || evType === MON_EVENT_MODE_END) {
-      EVENT_FreeNode113c(m, pGame, cur)
-    }
-    cur = next
-  }
+  EVENT_DeleteEventByArg14_113c(m, pGame, pUnit, MON_EVENT_MODE_STEP, 0)
+  EVENT_DeleteEventByArg14_113c(m, pGame, pUnit, MON_EVENT_MODE_END, 0)
 }
 
 /**
- * `D2Game 0x6FD00B40` (`MONSTER_RegisterContinuousModeEvent`, `eax = pGame`, `[esp+4] = pUnit`):
+ * `@va D2Game:0x6FC95320` (`MONSTER_ClearStepEvents`, `ecx = pGame`, `edx = pUnit`):
+ * `pfnStep` handler for `NU (1)`, `GH (3)`, `BL (6)`, `S4 (11)`, `DD (12)`:
+ * frees all `nType == 0` (`MODE_STEP`, `0x6FC95332: cmp byte ptr [eax], 0`) nodes on `pUnit` and returns `1`.
+ */
+export function MONSTER_ClearStepEvents113c(m: Memory113c, pGame: number, pUnit: number): number {
+  if (pUnit === 0) return 1
+  EVENT_DeleteEventByArg14_113c(m, pGame, pUnit, MON_EVENT_MODE_STEP, 0)
+  return 1
+}
+
+/**
+ * `@va D2Common:0x6FD803E0` (`D2Common.#11103` `SKILLS_SetUsedSkill`):
+ * Sets `pUnit->pSkills->pUsedSkill (+0x10) = pSkill` when `pSkills (+0xA8) != 0`.
+ */
+export function SKILLS_SetUsedSkill113c(m: Memory113c, pUnit: number, pSkill: number): void {
+  if (pUnit === 0) return
+  const pSkills = m.get(pUnit, D2UnitStrc.pSkills)
+  if (pSkills !== 0) {
+    m.setU32(pSkills + 0x10, pSkill >>> 0)
+  }
+}
+
+export const SKILLS_SetSkillMode113c = SKILLS_SetUsedSkill113c
+
+/**
+ * `@va D2Common:0x6FD83920` (`D2Common.#11090` `UNITS_ChangeAnimMode`):
+ * Sets `pUnit->dwAnimMode (+0x10) = nMode`, refreshes the unit in its room (`D2Common.#10158` `0x6FDB65C0`),
+ * and expires mode-bound statlists (`0x6FD8AE60` with `bIsClient = 0`).
+ */
+export function UNITS_ChangeAnimMode113c(m: Memory113c, pUnit: number, nMode: number): number {
+  if (pUnit === 0) return 0
+  m.set(pUnit, D2UnitStrc.dwAnimMode, nMode >>> 0)
+  UNITROOM_RefreshUnit113c(m, pUnit)
+  STATLIST_ExpireStateListsOnModeChange113c(m, pUnit, 0)
+  return 1
+}
+
+/**
+ * `@va D2Game:0x6FC94E60` (`MONSTER_StartNeutral`, `ecx = pGame`, `edx = pModeChange { eMode=1, pUnit }`):
+ * Forces `pUnit` into `MONMODE_NEUTRAL (1)` via `D2Common.#11090` (`0x6FD83920`) and, if no future
+ * `Event 2` (`AI_THINK`) is scheduled past `dwGameFrame`, schedules `Event 2` at `dwGameFrame + 45`
+ * (when `STATE_STUNNED = 0x15` is active) or `dwGameFrame + (aidel > 0 ? aidel : 15)`.
+ */
+export function MONSTER_StartNeutral113c(m: Memory113c, pGame: number, pUnit: number): number {
+  if (pGame === 0 || pUnit === 0) return 0
+  if (m.get(pUnit, D2UnitStrc.dwAnimMode) !== 1) {
+    UNITS_ChangeAnimMode113c(m, pUnit, 1)
+  }
+  const gameFrame = m.get(pGame, D2GameStrc.dwGameFrame) | 0
+  const nextAiFrame = EVENT_GetNextEventFrame113c(m, pUnit, MON_EVENT_AI_THINK) | 0
+  if (nextAiFrame > gameFrame) {
+    return 1
+  }
+  if (STATES_CheckState113c(m, pUnit, STATE_STUNNED_113C) !== 0) {
+    EVENT_SetEventFull113c(m, pGame, pUnit, MON_EVENT_AI_THINK, (gameFrame + 0x2d) >>> 0, 0, 0, 0)
+    return 1
+  }
+  if (m.get(pUnit, D2UnitStrc.dwUnitType) === UNIT_MONSTER) {
+    const classId = m.get(pUnit, D2UnitStrc.dwClassId) >>> 0
+    const row = MONSTATS_113C_ROWS[classId]
+    if (row !== undefined) {
+      // 0x6FC94ED3..0x6FC94EDF: `cmp byte ptr [ebx+0x6A], 0; jnz exp; cmp dword ptr [ebx+0x74], 0; jz classic`
+      const isExp =
+        m.u8(pGame + 0x6a) !== 0 ||
+        m.u32(pGame + 0x74) !== 0 ||
+        m.get(pGame, D2GameStrc.bExpansion) !== 0
+      const rawDiff = m.get(pGame, D2GameStrc.nDifficulty) & 0xff
+      const diff: 0 | 1 | 2 = isExp ? (rawDiff >= 2 ? 2 : rawDiff === 1 ? 1 : 0) : 0
+      const rawAidel = row.aidel[diff]
+      const delay = rawAidel > 0 ? rawAidel : 15
+      EVENT_SetEventFull113c(m, pGame, pUnit, MON_EVENT_AI_THINK, (gameFrame + delay) >>> 0, 0, 0, 0)
+    }
+  }
+  return 1
+}
+
+/**
+ * `@va D2Game:0x6FC950F0` (`MONSTER_NullModeEventFallback`, `esi = pUnit`, `edi = nMode`, `[esp+4] = pGame`):
+ * Invoked by `MONSTER_Event0_ModeStep` (`0x6FC952E0`) / `MONSTER_Event1_ModeEnd` (`0x6FC952A0`) when
+ * `entry == NULL` or `pfnStep` / `pfnEnd == 0`:
+ * 1. Calls `D2Common.#11103(pUnit, 0)` (`0x6FD803E0`).
+ * 2. If `nMode != 0 && nMode != 12 && SUNIT_IsDeadOrDying(pUnit) != 0`, returns `1`.
+ * 3. Otherwise forces `MONMODE_NEUTRAL (1)` via `0x6FC94E60` (`MONSTER_StartNeutral113c`) and returns `0`.
+ */
+export function MONSTER_NullModeEventFallback113c(
+  m: Memory113c,
+  pGame: number,
+  pUnit: number,
+  mode: number,
+): number {
+  if (pUnit === 0) return 0
+  SKILLS_SetUsedSkill113c(m, pUnit, 0)
+  if (mode !== 0 && mode !== 12 && SUNIT_IsDeadOrDying113c(m, pUnit) !== 0) {
+    return 1
+  }
+  MONSTER_StartNeutral113c(m, pGame, pUnit)
+  return 0
+}
+
+/**
+ * `@va D2Game:0x6FD00B40` (`MONSTER_RegisterContinuousModeEvent`, `eax = pGame`, `[esp+4] = pUnit`):
  * Deletes any existing `nType == 0` node on `pUnit`, then registers a persistent `nType = 0`
  * (`dwFrame = 0xFFFFFFFF`, `fFlags |= 0x04`) node at the LIFO head of `pTimer->pPersistentHead[1]`.
  */
@@ -247,7 +496,7 @@ export function MONSTER_RegisterContinuousModeEvent113c(
   pUnit: number,
 ): number {
   if (pGame === 0 || pUnit === 0) return 0
-  EVENT_DeleteEventByType113c(m, pGame, pUnit, MON_EVENT_MODE_STEP)
+  EVENT_DeleteEventByArg14_113c(m, pGame, pUnit, MON_EVENT_MODE_STEP, 0)
   return EVENT_SetPersistentEventFull113c(m, pGame, pUnit, MON_EVENT_MODE_STEP, 0, 0, 0)
 }
 
@@ -297,7 +546,7 @@ export interface MonsterEventCallbacks113c {
   ) => void
 }
 
-/** `D2Game 0x6FC952E0` (`MONSTER_Event0_ModeStep`). */
+/** `@va D2Game:0x6FC952E0` (`MONSTER_Event0_ModeStep`). */
 export function MONSTER_Event0_ModeStep113c(
   m: Memory113c,
   pGame: number,
@@ -310,14 +559,13 @@ export function MONSTER_Event0_ModeStep113c(
   const mode = m.get(pUnit, D2UnitStrc.dwAnimMode)
   const entry = MONSTER_GetModeEntry113c(m, pUnit, mode)
   if (entry === null || entry.pfnStep === 0) {
-    // 0x6FC950F0 fallback: clear mode events (`0x6FD00750`)
-    MONSTER_ClearModeEvents113c(m, pGame, pUnit)
+    MONSTER_NullModeEventFallback113c(m, pGame, pUnit, mode)
     return
   }
   callbacks.onModeStep?.(m, pGame, pUnit, entry, arg14, arg18)
 }
 
-/** `D2Game 0x6FC952A0` (`MONSTER_Event1_ModeEnd`). */
+/** `@va D2Game:0x6FC952A0` (`MONSTER_Event1_ModeEnd`). */
 export function MONSTER_Event1_ModeEnd113c(
   m: Memory113c,
   pGame: number,
@@ -330,13 +578,13 @@ export function MONSTER_Event1_ModeEnd113c(
   const mode = m.get(pUnit, D2UnitStrc.dwAnimMode)
   const entry = MONSTER_GetModeEntry113c(m, pUnit, mode)
   if (entry === null || entry.pfnEnd === 0) {
-    MONSTER_ClearModeEvents113c(m, pGame, pUnit)
+    MONSTER_NullModeEventFallback113c(m, pGame, pUnit, mode)
     return
   }
   callbacks.onModeEnd?.(m, pGame, pUnit, entry, arg14, arg18)
 }
 
-/** `D2Game 0x6FCBD3B0` (`AI_RunMonsterAI`). */
+/** `@va D2Game:0x6FCBD3B0` (`AI_RunMonsterAI` -> `0x6FCBD160` -> `0x6FCBCC70`). */
 export function AI_RunMonsterAI113c(
   m: Memory113c,
   pGame: number,
@@ -346,6 +594,20 @@ export function AI_RunMonsterAI113c(
   callbacks: MonsterEventCallbacks113c,
 ): void {
   if (pUnit === 0 || m.get(pUnit, D2UnitStrc.dwUnitType) !== UNIT_MONSTER) return
+  if (SUNIT_IsDeadOrDying113c(m, pUnit) !== 0) return
+  // 0x6FCBCD94: `STATES_CheckState(pUnit, STATE_STUNNED = 0x15)` -> `AI_Stall(pGame, pUnit, 15)`
+  if (STATES_CheckState113c(m, pUnit, STATE_STUNNED_113C) !== 0) {
+    SKILLS_SetUsedSkill113c(m, pUnit, 0)
+    if (m.get(pUnit, D2UnitStrc.dwAnimMode) !== 1) {
+      UNITS_ChangeAnimMode113c(m, pUnit, 1)
+    }
+    if (pGame !== 0) {
+      EVENT_DeleteEventByArg14_113c(m, pGame, pUnit, MON_EVENT_AI_THINK, 0)
+      const frame = m.get(pGame, D2GameStrc.dwGameFrame) >>> 0
+      EVENT_SetEventFull113c(m, pGame, pUnit, MON_EVENT_AI_THINK, (frame + 15) >>> 0, 0, 0, 0)
+    }
+    return
+  }
   const pMonsterData = m.get(pUnit, D2UnitStrc.pUnitData)
   if (pMonsterData === 0) return
   const pAiGeneral = m.get(pMonsterData, D2MonsterDataStrc.pAiGeneral)
@@ -355,7 +617,7 @@ export function AI_RunMonsterAI113c(
 }
 
 /**
- * `D2Game 0x6FC969A0` (`MONSTER_DispatchEvent`):
+ * `@va D2Game:0x6FC969A0` (`MONSTER_DispatchEvent`):
  * Bounds check (`0 <= eventType < 15`), `STATE_FREEZE` guard (`0x6FC969A9..0x6FC969D4` + `0x6FCFFA90`),
  * and `0x6FD1BC14[eventType]` handler dispatch.
  */
@@ -380,7 +642,10 @@ export function MONSTER_DispatchEvent113c(
     }
   }
 
-  const handlerVa = MONSTER_EVENT_HANDLER_VAS_113C[ev] ?? 0
+  const handlerVa = MONSTER_EVENT_HANDLER_VAS_113C[ev]
+  if (handlerVa === undefined) {
+    throw new RangeError(`MONSTER_DispatchEvent113c: missing handler table entry for eventType=${ev}`)
+  }
   if (handlerVa === 0) return
 
   switch (ev) {

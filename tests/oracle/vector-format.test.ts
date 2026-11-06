@@ -7,7 +7,6 @@ import {
   writeVectorHeader,
 } from '../../tools/oracle/vectors/vector-format.ts'
 import {
-  generatePrngVectors,
   verifyPrngVectors,
   PRNG_RECORD_SIZE,
 } from '../../tools/oracle/vectors/prng-vector.ts'
@@ -50,22 +49,20 @@ describe('Vector Header Format (D2TV)', () => {
   })
 })
 
-describe('PRNG Subsystem Vectors (D2TV kind = PRNG)', () => {
-  it('generates and verifies 10,000 PRNG test vectors with zero mismatch (TS emitter)', () => {
-    const vectorBytes = generatePrngVectors(10_000, 987654)
-    expect(vectorBytes.length).toBe(32 + 10_000 * PRNG_RECORD_SIZE)
-
-    const res = verifyPrngVectors(vectorBytes)
-    expect(res.errors).toEqual([])
-    expect(res.passed).toBe(10_000)
-    expect(res.total).toBe(10_000)
-  })
-
-  it('verifies 10,000 PRNG test vectors collected from C + original D2Game.dll / D2Common.dll with 0 errors', () => {
-    const cVectorPath = path.resolve(__dirname, '../../tools/oracle/vectors/prng-10k.d2tv')
+describe('PRNG Subsystem Vectors (D2TV kind = PRNG, emitted by D2Game.dll 0x6FC21180 / D2Common.dll 0x6FD510B0)', () => {
+  it('verifies 10,000 DLL-emitted PRNG test vectors with 0 errors and matches fixture copy byte-for-byte', () => {
+    const cVectorPath = path.resolve(import.meta.dirname, '../../tools/oracle/vectors/prng-10k.d2tv')
+    const fixtureCopyPath = path.resolve(import.meta.dirname, '../fixtures/oracle/vectors/prng-10k.d2tv')
     expect(fs.existsSync(cVectorPath)).toBe(true)
+    expect(fs.existsSync(fixtureCopyPath)).toBe(true)
+
     const bytes = fs.readFileSync(cVectorPath)
+    const fixtureBytes = fs.readFileSync(fixtureCopyPath)
+    expect(Buffer.compare(bytes, fixtureBytes)).toBe(0)
+
     const u8 = new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+    expect(u8.length).toBe(32 + 10_000 * PRNG_RECORD_SIZE)
+
     const res = verifyPrngVectors(u8)
     expect(res.errors).toEqual([])
     expect(res.passed).toBe(10_000)
@@ -79,11 +76,17 @@ describe('PRNG Subsystem Vectors (D2TV kind = PRNG)', () => {
   })
 })
 
-describe('Event Wheel Subsystem Vectors (D2TV kind = EVTWHEEL)', () => {
-  it('verifies 256 EVTWHEEL scenarios (45,101 fired events: 64-slot wrap, FIFO+LIFO, in-exec delete, >600 pool growth) collected from original D2Game.dll with 0 errors', () => {
-    const cVectorPath = path.resolve(__dirname, '../../tools/oracle/vectors/eventwheel-113c.d2tv')
+describe('Event Wheel Subsystem Vectors (D2TV kind = EVTWHEEL, emitted by D2Game.dll)', () => {
+  it('verifies 256 DLL-emitted EVTWHEEL scenarios (45,101 fired events) with 0 errors and matches fixture copy byte-for-byte', () => {
+    const cVectorPath = path.resolve(import.meta.dirname, '../../tools/oracle/vectors/eventwheel-113c.d2tv')
+    const fixtureCopyPath = path.resolve(import.meta.dirname, '../fixtures/oracle/vectors/eventwheel-113c.d2tv')
     expect(fs.existsSync(cVectorPath)).toBe(true)
+    expect(fs.existsSync(fixtureCopyPath)).toBe(true)
+
     const bytes = fs.readFileSync(cVectorPath)
+    const fixtureBytes = fs.readFileSync(fixtureCopyPath)
+    expect(Buffer.compare(bytes, fixtureBytes)).toBe(0)
+
     const u8 = new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength)
     expect(u8.length).toBe(32 + 256 * EVTWHEEL_RECORD_SIZE)
 
@@ -93,7 +96,7 @@ describe('Event Wheel Subsystem Vectors (D2TV kind = EVTWHEEL)', () => {
     expect(res.total).toBe(256)
     expect(res.totalFired).toBe(45_101)
 
-    // Byte-for-byte parity between C/D2Game.dll .d2tv and TS generator
+    // Byte-for-byte parity between C/D2Game.dll .d2tv and TS d2kern-113c replay
     const tsGenerated = generateEventWheelVectors(256)
     expect(Buffer.compare(Buffer.from(u8), Buffer.from(tsGenerated))).toBe(0)
 

@@ -20,12 +20,7 @@ import type { SummonedPetUnit } from '../../ai/summon-manager.ts'
 import { calculateCrushingBlow113c, computeKnockbackStep113c, executeSUnitDmg, resolveHitClassCode113c, rollItemKnockback113c, shouldEnterGetHit113c, type SUnitDmgPacket, type CombatUnitContext } from '../combat-pipeline.ts'
 import { createDefaultNpcIntroData } from '../../save/d2s-writer.ts'
 import { FIXED_ONE, UnitStatList } from '../stat-list.ts'
-import { computeMonsterBaseDamageRegen113c } from '../statregen-dot-113c.ts'
-import {
-  cancelKernMonsterEvent3_113c,
-  scheduleKernMonsterDeathEnd113c,
-  scheduleKernMonsterEvent3_113c,
-} from './kern-monster-wheel-113c.ts'
+import { allocateEvent3Seq113c, computeMonsterBaseDamageRegen113c } from '../statregen-dot-113c.ts'
 import { StateBus } from '../state-bus.ts'
 import { compute3BandDuration, computeDiminishingReturns, evaluateCalc } from '../../../common/data/calc-ast.ts'
 import { difficultyLifeStealDivisor, difficultyManaStealDivisor, difficultyMonsterColdDivisor, difficultyMonsterFreezeDivisor } from '../difficulty-resist-penalty.ts'
@@ -1158,7 +1153,7 @@ function applyMonsterPoisonDot(this: GameInstanceHost,
       monster.poisonBitrate256 = 0
       monster.poisonCarry256 = 0
       monster.poisonKillSource = undefined
-      cancelKernMonsterEvent3_113c(this, monster)
+      monster.nextEvent3Frame113c = undefined
       this.applyMonsterDeath(monster, attacker, 'pois', effectiveSource)
       return true
     }
@@ -1180,7 +1175,8 @@ function applyMonsterPoisonDot(this: GameInstanceHost,
         durationFrames,
       )
     }
-    scheduleKernMonsterEvent3_113c(this, monster, this.currentFrame + 1)
+    monster.nextEvent3Frame113c = this.currentFrame + 1
+    monster.event3Seq113c = allocateEvent3Seq113c(this)
     return true
   }
 
@@ -1369,7 +1365,8 @@ export function armMonsterEvent3AfterDamage113c(host: GameInstanceHost, monster:
   const poisonMod256 = monster.states.has(2) && monster.poisonBitrate256 > 0 ? -monster.poisonBitrate256 : 0
   const statListMod256 = Math.trunc(host.monsterCombat.get(monster.unitId)?.statList.getModifierBonus('hpregen') ?? 0)
   if (baseRegen256 + poisonMod256 + statListMod256 !== 0) {
-    scheduleKernMonsterEvent3_113c(host, monster, host.currentFrame + 1)
+    monster.nextEvent3Frame113c = host.currentFrame + 1
+    monster.event3Seq113c = allocateEvent3Seq113c(host)
   }
 }
 
@@ -1660,7 +1657,8 @@ function applyMonsterDeath(this: GameInstanceHost,
     }
   }
   monster.dead = true
-  cancelKernMonsterEvent3_113c(this, monster)
+  monster.nextEvent3Frame113c = undefined
+  monster.event3Seq113c = undefined
   if (this.drlgRoomPopulator !== null) {
     // Oracle `p52-necromancer-curses` F=968: zombie #10 dies with Weaken (state 19, timed) -> the timed states
     // are gone in the death frame, the untimed state 105 stays. Original removal routine not yet disassembled
@@ -1682,7 +1680,7 @@ function applyMonsterDeath(this: GameInstanceHost,
           )
         : 24
     monster.mode = 0
-    scheduleKernMonsterDeathEnd113c(this, monster, this.currentFrame + dtFrames)
+    monster.deathAnimEndFrame = this.currentFrame + dtFrames
     // Death mode start (`0x6FC962FC..0x6FC96302`): `#10873(GetRoom(pMonster), unitId)` death ring, read by
     // `AiFallen` (kb/monsters/d2game-fallen-ai-113c.md).
     this.drlgRoomPopulator.recordMonsterDeath113c(

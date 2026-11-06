@@ -15,15 +15,12 @@ import type { SummonedPetUnit } from '../../ai/summon-manager.ts'
 import { executeSUnitDmg, getPrePierceResistance113c, type SUnitDmgPacket, type CombatUnitContext } from '../combat-pipeline.ts'
 import { FIXED_ONE, UnitStatList } from '../stat-list.ts'
 import {
+  allocateEvent3Seq113c,
   computeMonsterBaseDamageRegen113c,
   emitDotTraceEvent113c,
   hasLifeMaskState113c,
   stepMonsterEvent3HpRegen113c,
 } from '../statregen-dot-113c.ts'
-import {
-  cancelKernMonsterEvent3_113c,
-  scheduleKernMonsterEvent3_113c,
-} from './kern-monster-wheel-113c.ts'
 import { StateBus } from '../state-bus.ts'
 import type { SkillTargetUnitType113c } from '../../skills/martial-dualwield-113c.ts'
 import { computeDiminishingReturns } from '../../../common/data/calc-ast.ts'
@@ -1491,7 +1488,8 @@ function stepMonsterRegen(this: GameInstanceHost, monster: InternalMonsterRecord
       inTown: isTownArea113c(monster.areaId),
     })
     if (outcome.reschedule && !outcome.killed) {
-      scheduleKernMonsterEvent3_113c(this, monster, this.currentFrame + 1)
+      monster.nextEvent3Frame113c = this.currentFrame + 1
+      monster.event3Seq113c = allocateEvent3Seq113c(this)
     }
     if (outcome.changed) {
       monster.hp = Math.ceil(outcome.hp1 / FIXED_ONE)
@@ -1516,7 +1514,7 @@ function stepMonsterRegen(this: GameInstanceHost, monster: InternalMonsterRecord
       monster.poisonBitrate256 = 0
       monster.poisonCarry256 = 0
       monster.poisonKillSource = undefined
-      cancelKernMonsterEvent3_113c(this, monster)
+      monster.nextEvent3Frame113c = undefined
       if (attacker !== undefined) {
         this.applyMonsterDeath(monster, attacker, 'pois', killSource)
       } else {

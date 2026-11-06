@@ -1,6 +1,6 @@
 /**
  * Diablo II v1.13c `D2StatListStrc` (`0x3C` bytes), `D2StatListExStrc` (`0x64` bytes),
- * `EvalStatWithOps` (`0x6FD89530` `op 1..13`), and `STATES` bitvectors (`184` states).
+ * `EvalStatWithOps` (`0x6FD89530` `op 1..13`), and `STATES` bitvectors (`185` states).
  *
  * Binary evidence (`D2Common.dll`, image base `0x6FD50000`, `kb/stats/d2common-statlist-struct-113c.md`):
  * - `#11013` (`0x6FD88100`): `STATLIST_AllocStatList` (`0x3C` bytes)
@@ -12,11 +12,13 @@
  * - `#10973` (`0x6FD88B70` -> `0x6FD88A80`): `STATLIST_GetUnitStat` (with `fMin` floor clamp on player/monster)
  * - `#10587` (`0x6FD88C20` -> `0x6FD88B00`): `STATLIST_GetUnitBaseStat` (with `fMin` floor clamp on player/monster)
  * - `0x6FD89530`: `EvalStatWithOps` (`op 1..13` jump table at `0x6FD89AF0`)
- * - `#10494` (`0x6FD83CD0`): `STATES_CheckState` (`dwUnitType` in `{0, 1, 3}`, `0 <= stateId < 184`)
+ * - `#10494` (`0x6FD83CD0`): `STATES_CheckState` (`dwUnitType` in `{0, 1, 3}`, `0 <= stateId < 185`)
  * - `0x6FD88730`: `STATES_ToggleState` (active dwords `[0..5]` + dirty/gfx dwords `[6..11]`)
  */
 import type { Memory113c } from '../mem/sparse-memory.ts'
 import {
+  D2ActStrc,
+  D2EnvironmentStrc,
   D2StatListExStrc,
   D2StatListExStrc_SIZE,
   D2StatListStrc,
@@ -24,6 +26,62 @@ import {
   D2UnitStrc,
 } from '../mem/layout.generated.ts'
 import { imul32, mulDiv113c, sar32, shl32 } from './int-math.ts'
+import { UNITROOM_RefreshUnit113c } from './unit.ts'
+import {
+  CANONICAL_CHAR_GROWTH_113C,
+  CANONICAL_ITEM_STAT_COST_113C,
+  CHAR_STATS_BIN_STRIDE_113C,
+  CHAR_STATS_COUNT_113C,
+  ISC_FLAG_CSV_SIGNED,
+  ISC_FLAG_DAMAGE_RELATED,
+  ISC_FLAG_DIRECT,
+  ISC_FLAG_FCALLBACK,
+  ISC_FLAG_FMIN,
+  ISC_FLAG_ITEM_SPECIFIC,
+  ISC_FLAG_RUNTIME_MAXHP,
+  ISC_FLAG_RUNTIME_MAXMANA,
+  ISC_FLAG_RUNTIME_MAXSTAM,
+  ISC_FLAG_RUNTIME_MAXSTAT,
+  ISC_FLAG_SAVED,
+  ISC_FLAG_SEND_OTHER,
+  ISC_FLAG_SIGNED,
+  ISC_FLAG_UPDATE_ANIM_RATE,
+  ITEM_STAT_COST_BIN_STRIDE_113C,
+  ITEM_STAT_COST_COUNT_113C,
+  STAT_ID_NONE_113C,
+  parseCharStatsBin113c,
+  parseItemStatCostBin113c,
+  type CharStatsGrowthMeta113c,
+  type ItemStatCostMeta113c,
+} from '../tables/item-stat-cost-113c.ts'
+
+export {
+  CANONICAL_CHAR_GROWTH_113C,
+  CANONICAL_ITEM_STAT_COST_113C,
+  CHAR_STATS_BIN_STRIDE_113C,
+  CHAR_STATS_COUNT_113C,
+  ISC_FLAG_CSV_SIGNED,
+  ISC_FLAG_DAMAGE_RELATED,
+  ISC_FLAG_DIRECT,
+  ISC_FLAG_FCALLBACK,
+  ISC_FLAG_FMIN,
+  ISC_FLAG_ITEM_SPECIFIC,
+  ISC_FLAG_RUNTIME_MAXHP,
+  ISC_FLAG_RUNTIME_MAXMANA,
+  ISC_FLAG_RUNTIME_MAXSTAM,
+  ISC_FLAG_RUNTIME_MAXSTAT,
+  ISC_FLAG_SAVED,
+  ISC_FLAG_SEND_OTHER,
+  ISC_FLAG_SIGNED,
+  ISC_FLAG_UPDATE_ANIM_RATE,
+  ITEM_STAT_COST_BIN_STRIDE_113C,
+  ITEM_STAT_COST_COUNT_113C,
+  STAT_ID_NONE_113C,
+  parseCharStatsBin113c,
+  parseItemStatCostBin113c,
+  type CharStatsGrowthMeta113c,
+  type ItemStatCostMeta113c,
+}
 
 export const STATLIST_FLAG_TIMED = 0x00000002
 export const STATLIST_FLAG_SET = 0x00002000
@@ -31,8 +89,8 @@ export const STATLIST_FLAG_DYNAMIC_OP = 0x20000000
 export const STATLIST_FLAG_MERGED = 0x40000000
 export const STATLIST_FLAG_EXTENDED = 0x80000000
 
-export const STATES_COUNT_113C = 184
-export const STATE_DWORDS_113C = 6 // ceil(184 / 32) = 6 active dwords + 6 dirty/gfx dwords = 48 bytes
+export const STATES_COUNT_113C = 185 // [sgptDataTables+0xC4] = 185 (States.txt rows 0..184, 184 = uberminion)
+export const STATE_DWORDS_113C = 6 // ceil(185 / 32) = 6 active dwords + 6 dirty/gfx dwords = 48 bytes
 
 export interface StatOpEntry113c {
   readonly op: number // 1..13
@@ -41,35 +99,6 @@ export interface StatOpEntry113c {
   readonly sourceStat: number // source stat ID (`wSourceStat`)
 }
 
-export interface ItemStatCostMeta113c {
-  readonly statId: number
-  readonly valShift?: number // `bValShift` (+0x18)
-  readonly fMin?: boolean // `wFlags & 0x0400` (`byte +0x05 & 0x04`)
-  readonly minAccr?: number // `dwMinAccr` (+0x2C, unshifted)
-  readonly keepZero?: boolean // `bKeepZero` (+0x50)
-  readonly op?: number // forward `bOp` (+0x54)
-  readonly opParam?: number // forward `bOpParam` (+0x55)
-  readonly opBase?: number // forward `wOpBase` (+0x56)
-  readonly opStats?: readonly number[] // forward `wOpStat[0..2]` (+0x58..+0x5D)
-  readonly evalByTime?: (pOwner: number, statVal: number) => number // optional `op 6/7` callback (`0x6FD893B0`)
-}
-
-export interface CharStatsGrowthMeta113c {
-  readonly lifePerVitality: number // quarter-points (`CharStatsTxt + 0x46`, e.g. Barb=16 -> +4 HP/vit)
-  readonly staminaPerVitality: number // quarter-points (`CharStatsTxt + 0x47`)
-  readonly manaPerMagic: number // quarter-points (`CharStatsTxt + 0x48`)
-}
-
-const DEFAULT_CHAR_GROWTH_113C: readonly CharStatsGrowthMeta113c[] = [
-  { lifePerVitality: 12, staminaPerVitality: 4, manaPerMagic: 6 }, // 0: Amazon (3, 1, 1.5)
-  { lifePerVitality: 8, staminaPerVitality: 4, manaPerMagic: 8 }, // 1: Sorceress (2, 1, 2)
-  { lifePerVitality: 8, staminaPerVitality: 4, manaPerMagic: 8 }, // 2: Necromancer (2, 1, 2)
-  { lifePerVitality: 12, staminaPerVitality: 4, manaPerMagic: 6 }, // 3: Paladin (3, 1, 1.5)
-  { lifePerVitality: 16, staminaPerVitality: 4, manaPerMagic: 4 }, // 4: Barbarian (4, 1, 1)
-  { lifePerVitality: 8, staminaPerVitality: 4, manaPerMagic: 8 }, // 5: Druid (2, 1, 2)
-  { lifePerVitality: 12, staminaPerVitality: 5, manaPerMagic: 7 }, // 6: Assassin (3, 1.25, 1.75)
-]
-
 export class StatTableRegistry113c {
   private readonly meta = new Map<number, ItemStatCostMeta113c>()
   private readonly reverseOps = new Map<number, StatOpEntry113c[]>()
@@ -77,8 +106,8 @@ export class StatTableRegistry113c {
   private readonly charGrowth: readonly CharStatsGrowthMeta113c[]
 
   constructor(
-    entries: readonly ItemStatCostMeta113c[] = CANONICAL_CORE_STATS_113C,
-    charGrowth: readonly CharStatsGrowthMeta113c[] = DEFAULT_CHAR_GROWTH_113C,
+    entries: readonly ItemStatCostMeta113c[] = CANONICAL_ITEM_STAT_COST_113C,
+    charGrowth: readonly CharStatsGrowthMeta113c[] = CANONICAL_CHAR_GROWTH_113C,
   ) {
     this.charGrowth = charGrowth
     for (const e of entries) {
@@ -86,9 +115,34 @@ export class StatTableRegistry113c {
     }
   }
 
+  private removeContributions(statId: number, prev: ItemStatCostMeta113c): void {
+    if (prev.opBase !== undefined && prev.opBase >= 0 && prev.opBase !== 0xffff) {
+      const deps = this.baseDeps.get(prev.opBase)
+      if (deps) {
+        const idx = deps.indexOf(statId)
+        if (idx >= 0) deps.splice(idx, 1)
+      }
+    }
+    if (prev.opStats) {
+      for (const targetStat of prev.opStats) {
+        if (targetStat < 0 || targetStat === 0xffff) continue
+        const rev = this.reverseOps.get(targetStat)
+        if (rev) {
+          for (let i = rev.length - 1; i >= 0; i--) {
+            if (rev[i]!.sourceStat === statId) rev.splice(i, 1)
+          }
+        }
+      }
+    }
+  }
+
   register(entry: ItemStatCostMeta113c): void {
-    this.meta.set(entry.statId, entry)
-    const op = entry.op ?? 0
+    const prev = this.meta.get(entry.statId)
+    if (prev !== undefined) {
+      this.removeContributions(entry.statId, prev)
+    }
+    let postLoadFlags = entry.flags !== undefined ? entry.flags >>> 0 : 0
+    const op = entry.op !== undefined ? entry.op : 0
     if (op >= 1 && op <= 13) {
       // 0x6FDC3CE3..0x6FDC3D35: table[wOpBase].wBaseDepStats (+0x5E) stores `entry.statId` (NOT targetStat!)
       if (entry.opBase !== undefined && entry.opBase >= 0 && entry.opBase !== 0xffff) {
@@ -112,14 +166,41 @@ export class StatTableRegistry113c {
           if (rev.length < 16) {
             rev.push({
               op,
-              opParam: entry.opParam ?? 0,
-              opBase: entry.opBase ?? 0xffff,
+              opParam: entry.opParam !== undefined ? entry.opParam : 0,
+              opBase: entry.opBase !== undefined ? entry.opBase : 0xffff,
               sourceStat: entry.statId,
             })
+            // 0x6FDC3DA8..0x6FDC3E7A: post-load runtime `dwFlags` bits 5..8 for maxhp(7), maxmana(9), maxstamina(11)
+            if (entry.statId === 7 || targetStat === 7) {
+              postLoadFlags =
+                (postLoadFlags | ISC_FLAG_RUNTIME_MAXHP | ISC_FLAG_RUNTIME_MAXSTAT) >>> 0
+            } else if (entry.statId === 9 || targetStat === 9) {
+              postLoadFlags =
+                (postLoadFlags | ISC_FLAG_RUNTIME_MAXMANA | ISC_FLAG_RUNTIME_MAXSTAT) >>> 0
+            } else if (entry.statId === 11 || targetStat === 11) {
+              postLoadFlags =
+                (postLoadFlags | ISC_FLAG_RUNTIME_MAXSTAM | ISC_FLAG_RUNTIME_MAXSTAT) >>> 0
+            }
           }
         }
       }
     }
+    const normalized: ItemStatCostMeta113c =
+      entry.flags === postLoadFlags
+        ? entry
+        : {
+            ...entry,
+            flags: postLoadFlags,
+            runtimeMaxStat: (postLoadFlags & ISC_FLAG_RUNTIME_MAXSTAT) !== 0,
+            runtimeMaxHp: (postLoadFlags & ISC_FLAG_RUNTIME_MAXHP) !== 0,
+            runtimeMaxMana: (postLoadFlags & ISC_FLAG_RUNTIME_MAXMANA) !== 0,
+            runtimeMaxStam: (postLoadFlags & ISC_FLAG_RUNTIME_MAXSTAM) !== 0,
+          }
+    this.meta.set(entry.statId, normalized)
+  }
+
+  get size(): number {
+    return this.meta.size
   }
 
   get(statId: number): ItemStatCostMeta113c | undefined {
@@ -127,12 +208,14 @@ export class StatTableRegistry113c {
   }
 
   getReverseOps(targetStatId: number): readonly StatOpEntry113c[] {
-    return this.reverseOps.get(targetStatId) ?? []
+    const rev = this.reverseOps.get(targetStatId)
+    return rev !== undefined ? rev : []
   }
 
   /** `+0x5E..+0xDD` `wBaseDepStats[0..63]`: stats whose `wOpBase == baseStatId` (`0x6FDC3D06`). */
   getBaseDependents(baseStatId: number): readonly number[] {
-    return this.baseDeps.get(baseStatId) ?? []
+    const deps = this.baseDeps.get(baseStatId)
+    return deps !== undefined ? deps : []
   }
 
   getDependents(changedStatId: number): readonly number[] {
@@ -158,43 +241,15 @@ export class StatTableRegistry113c {
 }
 
 /**
- * Core canonical 1.13c `ItemStatCost.txt` / `ItemStatCost.bin` (`Patch_D2.mpq`, 359 rows × `0x144` bytes)
+ * Complete canonical 1.13c `ItemStatCost.bin` (`Patch_D2.mpq`, 359 rows × `0x144` bytes)
  * definitions verified byte-for-byte against `ItemStatCost.bin`.
  */
-export const CANONICAL_CORE_STATS_113C: readonly ItemStatCostMeta113c[] = [
-  { statId: 0, fMin: true, minAccr: 1 }, // strength
-  { statId: 1, fMin: true, minAccr: 1, op: 8, opBase: 0xffff, opStats: [9] }, // energy -> maxmana
-  { statId: 2, fMin: true, minAccr: 1 }, // dexterity
-  { statId: 3, fMin: true, minAccr: 1, op: 9, opBase: 0xffff, opStats: [7, 11] }, // vitality -> maxhp (7), maxstamina (11)
-  { statId: 4 }, // statpts
-  { statId: 5 }, // newskills
-  { statId: 6, valShift: 8 }, // hitpoints (8.8 fixed, keepzero=0 in 1.13c ItemStatCost.bin)
-  { statId: 7, valShift: 8, fMin: true, minAccr: 1 }, // maxhp (8.8 fixed, minAccr=1 -> 256 when present & < 1)
-  { statId: 8, valShift: 8, keepZero: true }, // mana (8.8 fixed, keepzero=1)
-  { statId: 9, valShift: 8, fMin: true, minAccr: 0 }, // maxmana (8.8 fixed, fMin=1, minAccr=0)
-  { statId: 10, valShift: 8, keepZero: true }, // stamina (8.8 fixed, keepzero=1)
-  { statId: 11, valShift: 8, fMin: true, minAccr: 0 }, // maxstamina (8.8 fixed, fMin=1, minAccr=0)
-  { statId: 12 }, // level (fMin=0 in 1.13c ItemStatCost.bin)
-  { statId: 13 }, // experience
-  { statId: 16, op: 13, opStats: [31] }, // item_armor_percent -> armorclass (local item)
-  { statId: 31 }, // armorclass
-  { statId: 73 }, // maxdurability
-  { statId: 75, op: 13, opStats: [73] }, // item_maxdurability_percent -> maxdurability
-  { statId: 76, op: 11, opStats: [7] }, // item_maxhp_percent (op=11 in 1.13c ItemStatCost.bin) -> maxhp
-  { statId: 77, op: 11, opStats: [9] }, // item_maxmana_percent (op=11 in 1.13c ItemStatCost.bin) -> maxmana
-  { statId: 162, op: 1, opStats: [11] }, // skill_staminapercent (op=1) -> maxstamina
-  { statId: 163, op: 1, opStats: [11] }, // skill_passive_staminapercent (op=1) -> maxstamina
-  { statId: 214, op: 4, opParam: 3, opBase: 12, opStats: [31] }, // item_armor_perlevel
-  { statId: 215, op: 5, opParam: 3, opBase: 12, opStats: [31] }, // item_armorpercent_perlevel
-  { statId: 216, valShift: 8, op: 2, opParam: 3, opBase: 12, opStats: [7] }, // item_hp_perlevel
-  { statId: 217, valShift: 8, op: 2, opParam: 3, opBase: 12, opStats: [9] }, // item_mana_perlevel
-  { statId: 220, op: 2, opParam: 3, opBase: 12, opStats: [0] }, // item_strength_perlevel -> strength
-  { statId: 221, op: 2, opParam: 3, opBase: 12, opStats: [2] }, // item_dexterity_perlevel -> dexterity
-  { statId: 222, op: 2, opParam: 3, opBase: 12, opStats: [1] }, // item_energy_perlevel -> energy (chains op=8 -> maxmana)
-  { statId: 223, op: 2, opParam: 3, opBase: 12, opStats: [3] }, // item_vitality_perlevel -> vitality (chains op=9 -> maxhp, maxstamina)
-]
+export const CANONICAL_CORE_STATS_113C: readonly ItemStatCostMeta113c[] = CANONICAL_ITEM_STAT_COST_113C
 
-export const DEFAULT_STAT_REGISTRY_113C = new StatTableRegistry113c()
+export const DEFAULT_STAT_REGISTRY_113C = new StatTableRegistry113c(
+  CANONICAL_ITEM_STAT_COST_113C,
+  CANONICAL_CHAR_GROWTH_113C,
+)
 
 /** Pack `(statId, layer)` into 1.13c `D2StatStrc.dwKey` (`(statId << 16) | (layer & 0xFFFF)`). */
 export function statKey113c(statId: number, layer = 0): number {
@@ -308,6 +363,7 @@ function writeFullStat(
   dwKey: number,
   value: number,
   keepZero: boolean,
+  hasItemDynamicOp = false,
 ): void {
   const pFullHdr = pListEx + D2StatListExStrc.pFullStat.off
   const idx = STATLIST_FindStatIndex113c(m, pFullHdr, dwKey)
@@ -323,6 +379,53 @@ function writeFullStat(
     const ins = STATLIST_FindInsertPos113c(m, pFullHdr, dwKey)
     const entryPtr = insertStatSlot(m, pFullHdr, ins, dwKey)
     m.setU32(entryPtr + 4, val >>> 0)
+  }
+  if (val !== 0 && hasItemDynamicOp) {
+    // 0x6FD88997..0x6FD8899E: if `isc[+0x53] != 0` (`op == 4 || op == 5`), set `0x20000000`
+    m.set(
+      pListEx,
+      D2StatListStrc.dwFlags,
+      (m.get(pListEx, D2StatListStrc.dwFlags) | STATLIST_FLAG_DYNAMIC_OP) >>> 0,
+    )
+  }
+}
+
+/**
+ * `D2Common 0x6FD889E0` (`STATLIST_AddFullStatDelta`):
+ * Direct additive fast-path on `pListEx->FullStats` (`+0x48`) used by `0x6FD89F70` when neither
+ * `bHasOpStat` (`+0x51`) nor `bIsOpTarget` (`+0x52`) is set on the `ItemStatCostTxt` record.
+ */
+function addFullStatDelta(
+  m: Memory113c,
+  pListEx: number,
+  dwKey: number,
+  delta: number,
+  keepZero: boolean,
+  hasItemDynamicOp = false,
+): void {
+  const pFullHdr = pListEx + D2StatListExStrc.pFullStat.off
+  let idx = STATLIST_FindStatIndex113c(m, pFullHdr, dwKey)
+  let entryPtr = 0
+  if (idx >= 0) {
+    entryPtr = m.u32(pFullHdr) + idx * 8
+  } else {
+    const ins = STATLIST_FindInsertPos113c(m, pFullHdr, dwKey)
+    entryPtr = insertStatSlot(m, pFullHdr, ins, dwKey)
+    idx = ins
+  }
+  const prevVal = m.u32(entryPtr + 4) | 0
+  const nextVal = (prevVal + (delta | 0)) | 0
+  m.setU32(entryPtr + 4, nextVal >>> 0)
+  if (nextVal > 0 && hasItemDynamicOp) {
+    // 0x6FD88A17..0x6FD88A24: `jle` skips when `nextVal <= 0`
+    m.set(
+      pListEx,
+      D2StatListStrc.dwFlags,
+      (m.get(pListEx, D2StatListStrc.dwFlags) | STATLIST_FLAG_DYNAMIC_OP) >>> 0,
+    )
+  }
+  if (nextVal === 0 && !keepZero) {
+    removeStatSlot(m, pFullHdr, idx)
   }
 }
 
@@ -372,8 +475,60 @@ export function STATLIST_CreateEx113c(
 }
 
 /**
+ * `D2Common 0x6FD87470` (`ENVIRONMENT_GetTimeOfDayAndAngle`):
+ * Reads `pEnv = pAct->pEnvironment` (`+0x04`), returns `nTimeOfDay` (`+0x04`) and `nAngle`
+ * (`pEnv->dwCyclePeriod != 0 ? trunc(pEnv->dwTicks / pEnv->dwCyclePeriod) : 0`).
+ */
+export function ENVIRONMENT_GetTimeOfDayAndAngle113c(
+  m: Memory113c,
+  pAct: number,
+): { readonly timeOfDay: number; readonly angle: number } {
+  if (pAct === 0) return { timeOfDay: 0, angle: 0 }
+  const pEnv = m.get(pAct, D2ActStrc.pEnvironment)
+  if (pEnv === 0) return { timeOfDay: 0, angle: 0 }
+  const period = m.get(pEnv, D2EnvironmentStrc.dwCyclePeriod) | 0
+  const ticks = m.get(pEnv, D2EnvironmentStrc.dwTicks) | 0
+  const angle = period !== 0 ? Math.trunc(ticks / period) | 0 : 0
+  const timeOfDay = m.get(pEnv, D2EnvironmentStrc.nTimeOfDay) | 0
+  return { timeOfDay, angle }
+}
+
+/**
+ * `D2Common.#10449` (`0x6FD96330` `ITEMS_CalcByTimeStat`):
+ * Unpacks packed `(period:2, min:10, max:10)` signed `[-256, 767]` range from `rawValue`,
+ * snaps `|nAngle - period * 90|` to 15-degree steps (`(delta + 7) / 15 * 15`), clamps to `[0, 359]`,
+ * folds `(180, 359]` via `360 - step`, and interpolates `max - trunc(((max - min) * step) / 180)`.
+ */
+export function ITEMS_CalcByTimeStat113c(
+  rawValue: number,
+  _nTimeOfDay: number,
+  nAngle: number,
+): number {
+  const raw = rawValue | 0
+  const period = raw & 3
+  const minVal = (((raw >> 2) & 0x3ff) - 0x100) | 0
+  const maxVal = (((raw >> 12) & 0x3ff) - 0x100) | 0
+  let delta = ((nAngle | 0) - imul32(period, 90)) | 0
+  if (delta < 0) delta = (-delta) | 0
+  const plus7 = (delta + 7) | 0
+  let step = imul32(Math.trunc(plus7 / 15) | 0, 15)
+  if (step <= 0) {
+    step = 0
+  } else if (step >= 0x167) {
+    step = 0x168 - 0x167
+  } else if (step > 0xb4) {
+    step = (0x168 - step) | 0
+  }
+  const prod = imul32((maxVal - minVal) | 0, step)
+  const scaled = Math.trunc(prod / 180) | 0
+  return (maxVal - scaled) | 0
+}
+
+/**
  * `D2Common 0x6FD88CD0`: sum `dwKey` across `pList`'s own `BaseStats` (`+0x24`) and, when extended,
- * all active sub-lists chained from `pMyLastList` (`+0x3C`) along `pPrevLink` (`+0x2C`).
+ * all active sub-lists chained from `pMyLastList` (`+0x3C`) along `pPrevLink` (`+0x2C`), skipping
+ * `STATLIST_FLAG_MERGED` (`0x40000000`, `bType == 0` non-active weapon/armor merge) when
+ * `ISC_FLAG_DAMAGE_RELATED` (`0x04`, `gdwBitMasks[2]`) is set (`0x6FD88D04..0x6FD88D3B`).
  */
 export function STATLIST_SumDirectAndSubLists113c(
   m: Memory113c,
@@ -386,55 +541,27 @@ export function STATLIST_SumDirectAndSubLists113c(
   if ((flags & STATLIST_FLAG_EXTENDED) === 0) {
     return sum | 0
   }
-  // Walk sub-lists (`pMyLastList` via `pPrevLink` `+0x2C` per `0x6FD88CD6..0x6FD88CF8`)
+  const statId = (dwKey >>> 16) & 0xffff
+  const meta = registry.get(statId)
+  const metaFlags = meta !== undefined && meta.flags !== undefined ? meta.flags : 0
+  const isDamageRelated = (metaFlags & ISC_FLAG_DAMAGE_RELATED) !== 0
+  // Walk sub-lists (`pMyLastList` via `pPrevLink` `+0x2C` per `0x6FD88D23..0x6FD88D99`)
   for (
     let sub = m.get(pList, D2StatListExStrc.pMyLastList);
     sub !== 0;
     sub = m.get(sub, D2StatListStrc.pPrevLink)
   ) {
     const subFlags = m.get(sub, D2StatListStrc.dwFlags)
-    if ((subFlags & STATLIST_FLAG_EXTENDED) !== 0) {
-      sum = (sum + EvalStatWithOps113c(m, sub, dwKey, registry)) | 0
-    } else {
-      sum = (sum + EvalSubListStat113c(m, sub, dwKey, registry)) | 0
+    if (isDamageRelated && (subFlags & STATLIST_FLAG_MERGED) !== 0) {
+      continue
     }
+    const pSubHdr =
+      (subFlags & STATLIST_FLAG_EXTENDED) !== 0
+        ? sub + D2StatListExStrc.pFullStat.off
+        : sub + D2StatListStrc.pStat.off
+    sum = (sum + readStatFromArray(m, pSubHdr, dwKey)) | 0
   }
   return sum | 0
-}
-
-/** Evaluate a non-extended attached sub-list (e.g. equipped item list with `pUnit` at `+0x04` for `op 4/5`). */
-function EvalSubListStat113c(
-  m: Memory113c,
-  pSubList: number,
-  dwKey: number,
-  registry: StatTableRegistry113c,
-): number {
-  const statId = (dwKey >>> 16) & 0xffff
-  const baseSum = readStatFromArray(m, pSubList + D2StatListStrc.pStat.off, dwKey)
-  let total = baseSum | 0
-  const revOps = registry.getReverseOps(statId)
-  if (revOps.length === 0) return total
-
-  const pAttachUnit = m.get(pSubList, D2StatListStrc.pUnit)
-  for (const r of revOps) {
-    if (r.op !== 4 && r.op !== 5) continue
-    if (pAttachUnit === 0) continue
-    const uType = m.get(pAttachUnit, D2UnitStrc.dwUnitType)
-    if (uType !== 0 && uType !== 1) continue
-    const opBaseVal = STATLIST_GetUnitStat113c(m, pAttachUnit, r.opBase, 0, registry)
-    const opBaseShift = registry.get(r.opBase)?.valShift ?? 0
-    const shiftedBase = sar32(opBaseVal, opBaseShift)
-    if (shiftedBase <= 0) continue
-    const srcVal = readStatFromArray(m, pSubList + D2StatListStrc.pStat.off, statKey113c(r.sourceStat, 0))
-    if (srcVal === 0) continue
-    const scaled = sar32(imul32(srcVal, shiftedBase), r.opParam)
-    if (r.op === 4) {
-      total = (total + scaled) | 0
-    } else {
-      total = (total + mulDiv113c(scaled, baseSum, 100)) | 0
-    }
-  }
-  return total | 0
 }
 
 /**
@@ -488,7 +615,9 @@ export function EvalStatWithOps113c(
         if (opBaseRaw === 0 && isEx) {
           opBaseRaw = EvalStatWithOps113c(m, pList, statKey113c(r.opBase, 0), registry)
         }
-        const bValShift = registry.get(r.opBase)?.valShift ?? 0
+        const opBaseMeta = registry.get(r.opBase)
+        const bValShift =
+          opBaseMeta !== undefined && opBaseMeta.valShift !== undefined ? opBaseMeta.valShift : 0
         const opBaseShifted = sar32(opBaseRaw, bValShift)
         if (opBaseShifted <= 0) break
         const srcVal = EvalStatWithOps113c(m, pList, srcKey, registry)
@@ -509,7 +638,9 @@ export function EvalStatWithOps113c(
         const uType = m.get(pAttachUnit, D2UnitStrc.dwUnitType)
         if (uType !== 0 && uType !== 1) break
         const opBaseRaw = STATLIST_GetUnitStat113c(m, pAttachUnit, r.opBase, 0, registry)
-        const bValShift = registry.get(r.opBase)?.valShift ?? 0
+        const opBaseMeta = registry.get(r.opBase)
+        const bValShift =
+          opBaseMeta !== undefined && opBaseMeta.valShift !== undefined ? opBaseMeta.valShift : 0
         const opBaseShifted = sar32(opBaseRaw, bValShift)
         if (opBaseShifted <= 0) break
         const srcVal = EvalStatWithOps113c(m, pList, srcKey, registry)
@@ -524,16 +655,25 @@ export function EvalStatWithOps113c(
       }
       case 6:
       case 7: {
-        // 0x6FD89873 / 0x6FD898D2: by-time scaling
+        // 0x6FD89872 / 0x6FD898D2: by-time scaling via 0x6FD87470 + 0x6FD96330
         if (pOwner === 0) break
+        const pAct = m.get(pOwner, D2UnitStrc.pAct)
+        const srcMeta = registry.get(r.sourceStat)
+        if (pAct === 0 && !srcMeta?.evalByTime) break
         const srcVal = EvalStatWithOps113c(m, pList, srcKey, registry)
         if (srcVal === 0) break
-        const srcMeta = registry.get(r.sourceStat)
-        const byTime = srcMeta?.evalByTime ? srcMeta.evalByTime(pOwner, srcVal) : srcVal
+        let byTime: number
+        if (pAct !== 0) {
+          const env = ENVIRONMENT_GetTimeOfDayAndAngle113c(m, pAct)
+          byTime = ITEMS_CalcByTimeStat113c(srcVal, env.timeOfDay, env.angle)
+        } else {
+          byTime = srcMeta!.evalByTime!(pOwner, srcVal)
+        }
         if (r.op === 6) {
           total = (total + byTime) | 0
-        } else if (baseRef !== 0) {
-          total = (total + mulDiv113c(byTime, baseRef, 100)) | 0
+        } else {
+          // 0x6FD8992C..0x6FD8993E: op 7 scales running `total` ([esp+0x10]), NOT `baseRef`!
+          total = (total + mulDiv113c(byTime, total, 100)) | 0
         }
         break
       }
@@ -618,19 +758,20 @@ export function STATLIST_RecomputeExStat113c(
 
   const val = EvalStatWithOps113c(m, pListEx, key, registry)
   const meta = registry.get(statId)
-  const keepZero = meta?.keepZero ?? false
-  const op = meta?.op ?? 0
-  const opStats = meta?.opStats ?? []
+  const keepZero = meta !== undefined && meta.keepZero !== undefined ? meta.keepZero : false
+  const op = meta !== undefined && meta.op !== undefined ? meta.op : 0
+  const opStats = meta !== undefined && meta.opStats !== undefined ? meta.opStats : []
   const baseDeps = registry.getBaseDependents(statId)
   const hasOpStat = (op >= 1 && op <= 13 && opStats.length > 0) || baseDeps.length > 0
 
+  const hasDynOp = op === 4 || op === 5
   if (!hasOpStat) {
     // 0x6FD89CFD: byte [esi + 0x51] == 0 -> write directly to FullStats and return
-    writeFullStat(m, pListEx, key, val, keepZero)
+    writeFullStat(m, pListEx, key, val, keepZero, hasDynOp)
   } else {
     // 0x6FD89D1E: if evaluated carrier == 0, clear stale FullStats slot immediately
     if (val === 0) {
-      writeFullStat(m, pListEx, key, 0, keepZero)
+      writeFullStat(m, pListEx, key, 0, keepZero, hasDynOp)
     }
     let keepCarrier = true // [esp + 0x10] = 1 at 0x6FD89D38
     const flags = m.get(pListEx, D2StatListStrc.dwFlags)
@@ -642,14 +783,18 @@ export function STATLIST_RecomputeExStat113c(
       if (targetStat < 0 || targetStat === 0xffff) break
       const targetKey = statKey113c(targetStat, 0)
       const targetVal = STATLIST_RecomputeExStat113c(m, pListEx, targetStat, 0, registry, visited)
-      const targetKeepZero = registry.get(targetStat)?.keepZero ?? false
-      writeFullStat(m, pListEx, targetKey, targetVal, targetKeepZero)
+      const targetMeta = registry.get(targetStat)
+      const targetKeepZero =
+        targetMeta !== undefined && targetMeta.keepZero !== undefined ? targetMeta.keepZero : false
+      const targetDynOp = targetMeta !== undefined && (targetMeta.op === 4 || targetMeta.op === 5)
+      writeFullStat(m, pListEx, targetKey, targetVal, targetKeepZero, targetDynOp)
 
       if (targetVal !== 0) {
         // 0x6FD89DBB..0x6FD89E65: jump table 0x6FD89F48 indexed by 0x6FD89F60[bOp]
         // Note 0x6FD89DEA / 0x6FD89E38: 1.13c reads `word [esi + 0xDE + i*6]` (`unk_DE[i].wOpBase`,
         // zero-initialized to stat 0 `strength` unless another stat targets this carrier).
-        const unkDeBase = selfRevOps[i]?.opBase ?? 0
+        const revEntry = selfRevOps[i]
+        const unkDeBase = revEntry !== undefined ? revEntry.opBase : 0
         switch (op) {
           case 1:
           case 12:
@@ -699,33 +844,155 @@ export function STATLIST_RecomputeExStat113c(
 
     // 0x6FD89E9D..0x6FD89F36: write carrier if unconsumed, then recompute wBaseDepStats[0..63] (+0x5E)
     if (keepCarrier && val !== 0) {
-      writeFullStat(m, pListEx, key, val, keepZero)
+      writeFullStat(m, pListEx, key, val, keepZero, hasDynOp)
       for (const depStat of baseDeps) {
         const depKey = statKey113c(depStat, 0)
         const depVal = STATLIST_RecomputeExStat113c(m, pListEx, depStat, 0, registry, visited)
-        const depKeepZero = registry.get(depStat)?.keepZero ?? false
-        writeFullStat(m, pListEx, depKey, depVal, depKeepZero)
+        const depMeta = registry.get(depStat)
+        const depKeepZero =
+          depMeta !== undefined && depMeta.keepZero !== undefined ? depMeta.keepZero : false
+        const depDynOp = depMeta !== undefined && (depMeta.op === 4 || depMeta.op === 5)
+        writeFullStat(m, pListEx, depKey, depVal, depKeepZero, depDynOp)
       }
     }
-  }
-
-  // Propagate up `pParent` (`+0x34`) if this extended list is attached to an owner (`0x6FD89F70`)
-  const pParent = m.get(pListEx, D2StatListStrc.pParent)
-  if (pParent !== 0) {
-    STATLIST_RecomputeExStat113c(m, pParent, statId, layer, registry, new Set<number>())
   }
   return val
 }
 
-function collectListStatKeys(m: Memory113c, pList: number, keys: Set<number>): void {
+/**
+ * `D2Common 0x6FD89F70` (`STATLIST_PropagateDelta`):
+ * Propagates `(dwKey, delta)` from `pStartList` up the `pParent` (`+0x34`) chain:
+ * - If `bHasOpStat == 0` (`+0x51`) and `bIsOpTarget == 0` (`+0x52`), applies additive fast-path
+ *   `0x6FD889E0` (`addFullStatDelta(cur, dwKey, delta)`).
+ * - Otherwise calls `0x6FD89CE0` (`STATLIST_RecomputeExStat113c(cur, statId, layer)`).
+ * - Stops climbing `pParent` when `STATLIST_FLAG_SET` (`0x2000`) or
+ *   (`ISC_FLAG_DAMAGE_RELATED` (`0x04`) && `STATLIST_FLAG_MERGED` (`0x40000000`)) is set on `cur`.
+ */
+export function STATLIST_PropagateDelta113c(
+  m: Memory113c,
+  pStartList: number,
+  statId: number,
+  layer: number,
+  delta: number,
+  registry: StatTableRegistry113c = DEFAULT_STAT_REGISTRY_113C,
+): void {
+  const d = delta | 0
+  if (pStartList === 0 || d === 0 || statId < 0) return
+  const meta = registry.get(statId)
+  if (!meta) return
+  const startFlags = m.get(pStartList, D2StatListStrc.dwFlags)
+  if ((startFlags & STATLIST_FLAG_SET) !== 0) return
+
+  const metaFlags = meta.flags !== undefined ? meta.flags : 0
+  const isDamageRelated = (metaFlags & ISC_FLAG_DAMAGE_RELATED) !== 0
+  const keepZero = meta.keepZero !== undefined ? meta.keepZero : false
+  const op = meta.op !== undefined ? meta.op : 0
+  const opStats = meta.opStats !== undefined ? meta.opStats : []
+  const baseDeps = registry.getBaseDependents(statId)
+  const bHasOpStat = (op >= 1 && op <= 13 && opStats.length > 0) || baseDeps.length > 0
+  const bIsOpTarget = registry.getReverseOps(statId).length > 0
+  const hasDynOp = op === 4 || op === 5
+  const key = statKey113c(statId, layer)
+
+  let cur =
+    (startFlags & STATLIST_FLAG_EXTENDED) !== 0
+      ? pStartList
+      : m.get(pStartList, D2StatListStrc.pParent)
+
+  while (cur !== 0) {
+    if (!bHasOpStat && !bIsOpTarget) {
+      addFullStatDelta(m, cur, key, d, keepZero, hasDynOp)
+    } else {
+      STATLIST_RecomputeExStat113c(m, cur, statId, layer, registry, new Set<number>())
+    }
+    const curFlags = m.get(cur, D2StatListStrc.dwFlags)
+    cur = m.get(cur, D2StatListStrc.pParent)
+    if ((curFlags & STATLIST_FLAG_SET) !== 0) break
+    if (isDamageRelated && (curFlags & STATLIST_FLAG_MERGED) !== 0) break
+  }
+}
+
+function collectSubListEntries113c(
+  m: Memory113c,
+  pSubList: number,
+  registry: StatTableRegistry113c,
+  skipDamageRelated: boolean,
+): Array<readonly [number, number]> {
+  const subFlags = m.get(pSubList, D2StatListStrc.dwFlags)
+  const pHdr =
+    (subFlags & STATLIST_FLAG_EXTENDED) !== 0
+      ? pSubList + D2StatListExStrc.pFullStat.off
+      : pSubList + D2StatListStrc.pStat.off
+  const n = (m.u16(pHdr + 4) << 16) >> 16
+  const p = m.u32(pHdr)
+  const out: Array<readonly [number, number]> = []
+  for (let i = 0; i < n; i++) {
+    const k = m.u32(p + i * 8) | 0
+    const v = m.u32(p + i * 8 + 4) | 0
+    if (skipDamageRelated) {
+      const sid = (k >>> 16) & 0xffff
+      const sidMeta = registry.get(sid)
+      const sidFlags = sidMeta !== undefined && sidMeta.flags !== undefined ? sidMeta.flags : 0
+      if ((sidFlags & ISC_FLAG_DAMAGE_RELATED) !== 0) continue
+    }
+    out.push([k, v])
+  }
+  return out
+}
+
+function collectListStatKeys(
+  m: Memory113c,
+  pList: number,
+  keys: Set<number>,
+  registry: StatTableRegistry113c = DEFAULT_STAT_REGISTRY_113C,
+  skipDamageRelated = false,
+): void {
   const collectHdr = (pHdr: number): void => {
     const n = (m.u16(pHdr + 4) << 16) >> 16
     const p = m.u32(pHdr)
-    for (let i = 0; i < n; i++) keys.add(m.u32(p + i * 8) | 0)
+    for (let i = 0; i < n; i++) {
+      const k = m.u32(p + i * 8) | 0
+      if (skipDamageRelated) {
+        const sid = (k >>> 16) & 0xffff
+        const sidMeta = registry.get(sid)
+        const sidFlags = sidMeta !== undefined && sidMeta.flags !== undefined ? sidMeta.flags : 0
+        if ((sidFlags & ISC_FLAG_DAMAGE_RELATED) !== 0) continue
+      }
+      keys.add(k)
+    }
   }
   collectHdr(pList + D2StatListStrc.pStat.off)
   if ((m.get(pList, D2StatListStrc.dwFlags) & STATLIST_FLAG_EXTENDED) !== 0) {
     collectHdr(pList + D2StatListExStrc.pFullStat.off)
+  }
+}
+
+function recomputeItemDynamicOps113c(
+  m: Memory113c,
+  pSubList: number,
+  registry: StatTableRegistry113c,
+): void {
+  const subFlags = m.get(pSubList, D2StatListStrc.dwFlags)
+  if ((subFlags & STATLIST_FLAG_EXTENDED) === 0 || (subFlags & STATLIST_FLAG_DYNAMIC_OP) === 0) {
+    return
+  }
+  const pFullHdr = pSubList + D2StatListExStrc.pFullStat.off
+  const n = (m.u16(pFullHdr + 4) << 16) >> 16
+  const p = m.u32(pFullHdr)
+  const dynKeys: number[] = []
+  for (let i = 0; i < n; i++) {
+    const k = m.u32(p + i * 8) | 0
+    const sid = (k >>> 16) & 0xffff
+    const sidMeta = registry.get(sid)
+    const op = sidMeta !== undefined && sidMeta.op !== undefined ? sidMeta.op : 0
+    if (op === 4 || op === 5) {
+      dynKeys.push(k)
+    }
+  }
+  for (const k of dynKeys) {
+    const sid = (k >>> 16) & 0xffff
+    const layer = k & 0xffff
+    STATLIST_RecomputeExStat113c(m, pSubList, sid, layer, registry, new Set<number>())
   }
 }
 
@@ -738,19 +1005,115 @@ export function STATLIST_RebuildAllExStats113c(
 ): void {
   if (pListEx === 0 || (m.get(pListEx, D2StatListStrc.dwFlags) & STATLIST_FLAG_EXTENDED) === 0) return
   const keys = new Set<number>(extraKeys)
-  collectListStatKeys(m, pListEx, keys)
+  collectListStatKeys(m, pListEx, keys, registry, false)
   for (
     let sub = m.get(pListEx, D2StatListExStrc.pMyLastList);
     sub !== 0;
     sub = m.get(sub, D2StatListStrc.pPrevLink)
   ) {
-    collectListStatKeys(m, sub, keys)
+    const subMerged = (m.get(sub, D2StatListStrc.dwFlags) & STATLIST_FLAG_MERGED) !== 0
+    collectListStatKeys(m, sub, keys, registry, subMerged)
   }
+  const plainKeys: number[] = []
+  const opTargetKeys: number[] = []
   for (const k of keys) {
     const statId = (k >>> 16) & 0xffff
-    const layer = k & 0xffff
-    STATLIST_RecomputeExStat113c(m, pListEx, statId, layer, registry, new Set<number>())
+    if (registry.getReverseOps(statId).length === 0) {
+      plainKeys.push(k)
+    } else {
+      opTargetKeys.push(k)
+    }
   }
+  for (const k of plainKeys) {
+    STATLIST_RecomputeExStat113c(m, pListEx, (k >>> 16) & 0xffff, k & 0xffff, registry, new Set<number>())
+  }
+  for (const k of opTargetKeys) {
+    STATLIST_RecomputeExStat113c(m, pListEx, (k >>> 16) & 0xffff, k & 0xffff, registry, new Set<number>())
+  }
+}
+
+/**
+ * `D2Common 0x6FD88160`: binary search `pModStat` (`pListEx + 0x50`: `+0 pModStat`, `+4 wModStatCount`, `+6 wModStatCap`)
+ * under signed 32-bit `dwKey` ordering. Returns `-1` if `dwKey` is already present (`0x6FD88195`),
+ * or the sorted insertion index `0 <= ins <= count` (`0x6FD88190`).
+ */
+export function STATLIST_FindModStatInsertPos113c(
+  m: Memory113c,
+  pModHdr: number,
+  dwKey: number,
+): number {
+  const count = (m.u16(pModHdr + 4) << 16) >> 16
+  if (count <= 0) return 0
+  const pMod = m.u32(pModHdr)
+  const target = dwKey | 0
+  let lo = 0
+  let hi = count
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    const curKey = m.u32(pMod + mid * 4) | 0
+    if (target > curKey) {
+      lo = mid + 1
+    } else if (target < curKey) {
+      hi = mid
+    } else {
+      return -1
+    }
+  }
+  return lo
+}
+
+/**
+ * `@va D2Common:0x6FD88550` (`STATLIST_RecordModStat`, `ebx = pListEx`, `eax = dwKey`):
+ * Records `dwKey` in `pListEx->pModStat` (`+0x50` ptr, `+0x54` `wModStatCount`, `+0x56` `wModStatCap`)
+ * when `pListEx` is extended, `statId` is not in `{6, 8, 10, 13, 14}` (`0x6FD88568..0x6FD88577`),
+ * `0 <= statId < 359`, and `ItemStatCost.bin[statId].dwFlags & ISC_FLAG_SAVED` (`0x1000`, `0x6FD885AA`) is set.
+ * Grows `pModStat` by `+4` dwords (`newCap * 4` bytes) when `count >= cap` (`0x6FD885CB..0x6FD885F8`).
+ */
+export function STATLIST_RecordModStat113c(
+  m: Memory113c,
+  pListEx: number,
+  dwKey: number,
+  registry: StatTableRegistry113c = DEFAULT_STAT_REGISTRY_113C,
+): void {
+  if (pListEx === 0) return
+  if ((m.get(pListEx, D2StatListStrc.dwFlags) & STATLIST_FLAG_EXTENDED) === 0) return
+  const statId = (dwKey >>> 16) & 0xffff
+  // 0x6FD88568..0x6FD88577 jump table at 0x6FD88628 / 0x6FD88630: skip 6, 8, 10, 13, 14
+  if (statId === 6 || statId === 8 || statId === 10 || statId === 13 || statId === 14) {
+    return
+  }
+  if ((statId | 0) < 0 || statId >= ITEM_STAT_COST_COUNT_113C) return
+  const meta = registry.get(statId)
+  if (meta === undefined) return
+  const metaFlags = meta.flags !== undefined ? meta.flags : 0
+  if ((metaFlags & ISC_FLAG_SAVED) === 0) return
+
+  const pModHdr = pListEx + D2StatListExStrc.pModStat.off
+  const ins = STATLIST_FindModStatInsertPos113c(m, pModHdr, dwKey)
+  if (ins < 0) return
+
+  const count = (m.u16(pModHdr + 4) << 16) >> 16
+  let cap = (m.u16(pModHdr + 6) << 16) >> 16
+  let pMod = m.u32(pModHdr)
+  if (count >= cap) {
+    const newCap = (cap + 4) & 0xffff
+    const nextBuf = m.alloc(((newCap << 16) >> 16) * 4)
+    for (let i = 0; i < count * 4; i += 4) {
+      m.setU32(nextBuf + i, m.u32(pMod + i))
+    }
+    if (pMod !== 0) {
+      ;(m as { free?: (p: number) => void }).free?.(pMod)
+    }
+    pMod = nextBuf
+    cap = (newCap << 16) >> 16
+    m.setU32(pModHdr, pMod)
+    m.setU16(pModHdr + 6, newCap)
+  }
+  for (let i = count; i > ins; i--) {
+    m.setU32(pMod + i * 4, m.u32(pMod + (i - 1) * 4))
+  }
+  m.setU32(pMod + ins * 4, dwKey >>> 0)
+  m.setU16(pModHdr + 4, (count + 1) & 0xffff)
 }
 
 /**
@@ -788,15 +1151,11 @@ export function STATLIST_SetStat113c(
     m.setU32(entryPtr + 4, newVal >>> 0)
   }
 
-  // Propagate to `FullStats` on self (if extended) or `pParent` (`0x6FD89F70`)
-  const flags = m.get(pList, D2StatListStrc.dwFlags)
-  if ((flags & STATLIST_FLAG_EXTENDED) !== 0) {
-    STATLIST_RecomputeExStat113c(m, pList, statId, layer, registry)
-  } else {
-    const pParent = m.get(pList, D2StatListStrc.pParent)
-    if (pParent !== 0) {
-      STATLIST_RecomputeExStat113c(m, pParent, statId, layer, registry)
-    }
+  // 0x6FD8A2FC..0x6FD8A301: propagate `(dwKey, newVal - oldVal)` via `0x6FD89F70`
+  STATLIST_PropagateDelta113c(m, pList, statId, layer, (newVal - oldVal) | 0, registry)
+  // 0x6FD8A309..0x6FD8A316: when `eOwnerType == 0` (player), record modified stat key via `0x6FD88550`
+  if (m.get(pList, D2StatListStrc.eOwnerType) === 0) {
+    STATLIST_RecordModStat113c(m, pList, key, registry)
   }
   return 1
 }
@@ -811,15 +1170,20 @@ export function STATLIST_AddStat113c(
   registry: StatTableRegistry113c = DEFAULT_STAT_REGISTRY_113C,
 ): number {
   if (pList === 0 || (delta | 0) === 0) return 0
-  const cur = readStatFromArray(m, pList + D2StatListStrc.pStat.off, statKey113c(statId, layer))
-  return STATLIST_SetStat113c(m, pList, statId, (cur + (delta | 0)) | 0, layer, registry)
+  const key = statKey113c(statId, layer)
+  const cur = readStatFromArray(m, pList + D2StatListStrc.pStat.off, key)
+  const changed = STATLIST_SetStat113c(m, pList, statId, (cur + (delta | 0)) | 0, layer, registry)
+  if (changed !== 0 && m.get(pList, D2StatListStrc.eOwnerType) === 0) {
+    STATLIST_RecordModStat113c(m, pList, key, registry)
+  }
+  return changed
 }
 
 /**
  * `D2Common.#10887` (`0x6FD8A740` `STATLIST_SetUnitStat`).
  * Note: in native 1.13c `D2Common.dll`, `#10887` has C return type `void` (when `pUnit->dwUnitType == 0`
- * and `STATLIST_SetStat` returns `1`, `0x6FD8A775` calls `void 0x6FD88550` `STATLIST_RecordClientDirtyStat`
- * which clobbers `eax`); `#10188` (`0x6FD8A780` -> `0x6FD8A280`) returns `BOOL` (`0` or `1`).
+ * and `STATLIST_SetStat` returns `1`, `0x6FD8A775` calls `void 0x6FD88550` `STATLIST_RecordModStat`
+ * which clobbers `eax`); `#10188` (`0x6FD8A7B0` -> `0x6FD8A280`) returns `BOOL` (`0` or `1`).
  */
 export function STATLIST_SetUnitStat113c(
   m: Memory113c,
@@ -830,14 +1194,16 @@ export function STATLIST_SetUnitStat113c(
   registry: StatTableRegistry113c = DEFAULT_STAT_REGISTRY_113C,
 ): number {
   if (pUnit === 0) return 0
-  let pList = m.get(pUnit, D2UnitStrc.pStatListEx)
-  if (pList === 0) {
-    pList = STATLIST_CreateEx113c(m, pUnit, 0, m.get(pUnit, D2UnitStrc.pGame))
+  const pList = m.get(pUnit, D2UnitStrc.pStatListEx)
+  if (pList === 0) return 0
+  const changed = STATLIST_SetStat113c(m, pList, statId, value, layer, registry)
+  if (changed !== 0 && m.get(pUnit, D2UnitStrc.dwUnitType) === 0) {
+    STATLIST_RecordModStat113c(m, pList, statKey113c(statId, layer), registry)
   }
-  return STATLIST_SetStat113c(m, pList, statId, value, layer, registry)
+  return changed
 }
 
-/** `D2Common.#10627` (`STATLIST_AddUnitStat`). */
+/** `D2Common.#10551` (`0x6FD8A710` `STATLIST_AddUnitStat`). */
 export function STATLIST_AddUnitStat113c(
   m: Memory113c,
   pUnit: number,
@@ -847,10 +1213,8 @@ export function STATLIST_AddUnitStat113c(
   registry: StatTableRegistry113c = DEFAULT_STAT_REGISTRY_113C,
 ): number {
   if (pUnit === 0 || (delta | 0) === 0) return 0
-  let pList = m.get(pUnit, D2UnitStrc.pStatListEx)
-  if (pList === 0) {
-    pList = STATLIST_CreateEx113c(m, pUnit, 0, m.get(pUnit, D2UnitStrc.pGame))
-  }
+  const pList = m.get(pUnit, D2UnitStrc.pStatListEx)
+  if (pList === 0) return 0
   return STATLIST_AddStat113c(m, pList, statId, delta, layer, registry)
 }
 
@@ -874,11 +1238,11 @@ function clampPresentMinStat113c(
   const ownerType = m.get(pOwner, D2UnitStrc.dwUnitType)
   if (ownerType !== 0 && ownerType !== 1) return rawVal | 0
   const meta = registry.get(statId)
-  if (!meta?.fMin) return rawVal | 0
-  const minAccr = (meta.minAccr ?? 0) | 0
+  if (meta === undefined || !meta.fMin) return rawVal | 0
+  const minAccr = (meta.minAccr !== undefined ? meta.minAccr : 0) | 0
   const val = rawVal | 0
   if (val < minAccr) {
-    return shl32(minAccr, meta.valShift ?? 0)
+    return shl32(minAccr, meta.valShift !== undefined ? meta.valShift : 0)
   }
   return val
 }
@@ -924,22 +1288,71 @@ export function STATLIST_GetUnitBaseStat113c(
 }
 
 /**
- * `D2Common 0x6FD8A600` (`STATLIST_MergeStatLists` / sub-list attach):
- * Links `pSubList` into `pParentEx->pMyLastList` (`+0x3C`, walked via `pPrevLink` `+0x2C`),
- * sets `pSubList->pParent = pParentEx` and `pSubList->pUnit = pParentEx->pOwner`, and recomputes `FullStats`.
+ * `D2Common.#10807` (`0x6FD8A7D0` `STATLIST_MergeStatLists`):
+ * Unlinks `pSubList` if previously attached, links into `pMyStats` (`+0x40`) when `STATLIST_FLAG_SET` (`0x2000`),
+ * otherwise links into `pMyLastList` (`+0x3C`), sets `pSubList->pUnit = pTargetUnit`, re-evaluates `op 4/5`
+ * dynamic item stats (`STATLIST_FLAG_DYNAMIC_OP`), sets (`bType == 0`) or clears (`bType != 0`)
+ * `STATLIST_FLAG_MERGED` (`0x40000000`), and propagates stats to `pTargetUnit`'s `D2StatListExStrc`.
+ */
+export function STATLIST_MergeStatLists113c(
+  m: Memory113c,
+  pTargetUnit: number,
+  pSubList: number,
+  bType: number,
+  registry: StatTableRegistry113c = DEFAULT_STAT_REGISTRY_113C,
+): void {
+  if (pTargetUnit === 0 || pSubList === 0) return
+  const pParentEx = m.get(pTargetUnit, D2UnitStrc.pStatListEx)
+  if (pParentEx === 0 || (m.get(pParentEx, D2StatListStrc.dwFlags) & STATLIST_FLAG_EXTENDED) === 0) {
+    return
+  }
+  STATLIST_InsertSubList113c(m, pParentEx, pSubList, registry, bType, pTargetUnit)
+}
+
+/**
+ * Attach `pSubList` onto `pParentEx` (`bType = 0` for equipped item with `ISC_FLAG_ITEM_SPECIFIC`
+ * isolation; `bType = 1` default for state/aura/buff sub-list).
  */
 export function STATLIST_InsertSubList113c(
   m: Memory113c,
   pParentEx: number,
   pSubList: number,
   registry: StatTableRegistry113c = DEFAULT_STAT_REGISTRY_113C,
+  bType = 1,
+  pTargetUnitOverride?: number,
 ): void {
   if (pParentEx === 0 || pSubList === 0) return
   if ((m.get(pParentEx, D2StatListStrc.dwFlags) & STATLIST_FLAG_EXTENDED) === 0) return
-  const oldParent = m.get(pSubList, D2StatListStrc.pParent)
-  if (oldParent === pParentEx) return
-  if (oldParent !== 0) {
+  if (m.get(pSubList, D2StatListStrc.pParent) !== 0) {
     STATLIST_RemoveSubList113c(m, pSubList, registry)
+  }
+
+  // 0x6FD8A800..0x6FD8A80D: cycle check up pParent chain
+  for (let cur = pParentEx; cur !== 0; cur = m.get(cur, D2StatListStrc.pParent)) {
+    if (cur === pSubList) return
+  }
+
+  const pTargetUnit =
+    pTargetUnitOverride !== undefined ? pTargetUnitOverride : m.get(pParentEx, D2StatListExStrc.pOwner)
+  const subFlags0 = m.get(pSubList, D2StatListStrc.dwFlags)
+  if ((subFlags0 & 0x04) !== 0) {
+    m.set(
+      pParentEx,
+      D2StatListStrc.dwFlags,
+      (m.get(pParentEx, D2StatListStrc.dwFlags) | STATLIST_FLAG_TIMED) >>> 0,
+    )
+  }
+
+  // 0x6FD8A81C..0x6FD8A844: STATLIST_FLAG_SET (0x2000) links into pMyStats (+0x40) without FullStats merge
+  if ((subFlags0 & STATLIST_FLAG_SET) !== 0) {
+    const oldSet = m.get(pParentEx, D2StatListExStrc.pMyStats)
+    m.set(pSubList, D2StatListStrc.pPrevLink, oldSet)
+    if (oldSet !== 0) m.set(oldSet, D2StatListStrc.pNextLink, pSubList)
+    m.set(pSubList, D2StatListStrc.pNextLink, 0)
+    m.set(pParentEx, D2StatListExStrc.pMyStats, pSubList)
+    m.set(pSubList, D2StatListStrc.pParent, pParentEx)
+    m.set(pSubList, D2StatListStrc.pUnit, pTargetUnit)
+    return
   }
 
   const oldLast = m.get(pParentEx, D2StatListExStrc.pMyLastList)
@@ -949,18 +1362,44 @@ export function STATLIST_InsertSubList113c(
     m.set(oldLast, D2StatListStrc.pNextLink, pSubList)
   }
   m.set(pParentEx, D2StatListExStrc.pMyLastList, pSubList)
-  m.set(pSubList, D2StatListStrc.pParent, pParentEx)
-  m.set(pSubList, D2StatListStrc.pUnit, m.get(pParentEx, D2StatListExStrc.pOwner))
-  m.set(
-    pSubList,
-    D2StatListStrc.dwFlags,
-    (m.get(pSubList, D2StatListStrc.dwFlags) | STATLIST_FLAG_MERGED) >>> 0,
-  )
+  m.set(pSubList, D2StatListStrc.pUnit, pTargetUnit)
 
-  STATLIST_RebuildAllExStats113c(m, pParentEx, registry)
+  // 0x6FD8A87C..0x6FD8A91A: re-evaluate op 4/5 dynamic item stats on extended sub-list BEFORE setting pParent
+  recomputeItemDynamicOps113c(m, pSubList, registry)
+
+  m.set(pSubList, D2StatListStrc.pParent, pParentEx)
+  const curFlags = m.get(pSubList, D2StatListStrc.dwFlags)
+  const nextFlags =
+    bType === 0
+      ? (curFlags | STATLIST_FLAG_MERGED) >>> 0
+      : (curFlags & ~STATLIST_FLAG_MERGED) >>> 0
+  m.set(pSubList, D2StatListStrc.dwFlags, nextFlags)
+
+  // 0x6FD8A91C..0x6FD8A9D5: propagate each sub-list entry via `0x6FD89F70`
+  const entries = collectSubListEntries113c(m, pSubList, registry, bType === 0)
+  for (const [k, v] of entries) {
+    STATLIST_PropagateDelta113c(m, pParentEx, (k >>> 16) & 0xffff, k & 0xffff, v, registry)
+  }
 }
 
-/** Unlink `pSubList` from its parent `D2StatListExStrc` and recompute parent `FullStats`. */
+/** `D2Common.#11111` (`0x6FD8A5F0` `STATLIST_UnlinkSubList`). */
+export function STATLIST_UnlinkSubList113c(
+  m: Memory113c,
+  _pTargetUnit: number,
+  pSubList: number,
+  registry: StatTableRegistry113c = DEFAULT_STAT_REGISTRY_113C,
+): void {
+  STATLIST_RemoveSubList113c(m, pSubList, registry)
+}
+
+export const STATLIST_RemoveStatListFromUnit113c = STATLIST_UnlinkSubList113c
+
+/**
+ * `D2Common 0x6FD8A3B0` (`STATLIST_UnlinkSubListInternal`):
+ * Unlinks `pSubList` from its parent `D2StatListExStrc`, clears `pUnit`, re-evaluates any active
+ * `op 4/5` dynamic stats on `pSubList`, and subtracts each sub-list entry from parent `FullStats`
+ * via `0x6FD89F70`.
+ */
 export function STATLIST_RemoveSubList113c(
   m: Memory113c,
   pSubList: number,
@@ -968,40 +1407,50 @@ export function STATLIST_RemoveSubList113c(
 ): void {
   if (pSubList === 0) return
   const pParentEx = m.get(pSubList, D2StatListStrc.pParent)
-  if (pParentEx === 0) return
-
-  const detachedKeys = new Set<number>()
-  collectListStatKeys(m, pSubList, detachedKeys)
+  const subFlags = m.get(pSubList, D2StatListStrc.dwFlags)
+  const wasMerged = (subFlags & STATLIST_FLAG_MERGED) !== 0
 
   const prev = m.get(pSubList, D2StatListStrc.pPrevLink)
   const next = m.get(pSubList, D2StatListStrc.pNextLink)
-  if (prev !== 0) m.set(prev, D2StatListStrc.pNextLink, next)
-  if (next !== 0) {
-    m.set(next, D2StatListStrc.pPrevLink, prev)
-  } else if (m.get(pParentEx, D2StatListExStrc.pMyLastList) === pSubList) {
-    m.set(pParentEx, D2StatListExStrc.pMyLastList, prev)
+  if (pParentEx !== 0 && (m.get(pParentEx, D2StatListStrc.dwFlags) & STATLIST_FLAG_EXTENDED) !== 0) {
+    if (m.get(pParentEx, D2StatListExStrc.pMyLastList) === pSubList) {
+      m.set(pParentEx, D2StatListExStrc.pMyLastList, prev)
+    }
+    if (m.get(pParentEx, D2StatListExStrc.pMyStats) === pSubList) {
+      m.set(pParentEx, D2StatListExStrc.pMyStats, prev)
+    }
   }
+  if (next !== 0) m.set(next, D2StatListStrc.pPrevLink, prev)
+  if (prev !== 0) m.set(prev, D2StatListStrc.pNextLink, next)
 
+  m.set(pSubList, D2StatListStrc.pParent, 0)
   m.set(pSubList, D2StatListStrc.pPrevLink, 0)
   m.set(pSubList, D2StatListStrc.pNextLink, 0)
-  m.set(pSubList, D2StatListStrc.pParent, 0)
   m.set(pSubList, D2StatListStrc.pUnit, 0)
-  m.set(
-    pSubList,
-    D2StatListStrc.dwFlags,
-    (m.get(pSubList, D2StatListStrc.dwFlags) & ~STATLIST_FLAG_MERGED) >>> 0,
-  )
 
-  STATLIST_RebuildAllExStats113c(m, pParentEx, registry, detachedKeys)
+  if ((subFlags & STATLIST_FLAG_SET) !== 0) {
+    return
+  }
+
+  // 0x6FD8A44E..0x6FD8A4EA: re-evaluate op 4/5 dynamic item stats after clearing pUnit
+  recomputeItemDynamicOps113c(m, pSubList, registry)
+
+  // 0x6FD8A4EF..0x6FD8A59D: propagate `-nVal` for each sub-list entry via `0x6FD89F70`
+  if (pParentEx !== 0) {
+    const entries = collectSubListEntries113c(m, pSubList, registry, wasMerged)
+    for (const [k, v] of entries) {
+      STATLIST_PropagateDelta113c(m, pParentEx, (k >>> 16) & 0xffff, k & 0xffff, (-v) | 0, registry)
+    }
+  }
 }
 
-/** `D2Common.#10871` (`0x6FD88520` `STATLIST_GetStatListFromUnitAndState`). */
+/** `D2Common.#10871` (`0x6FD88520` -> `0x6FD87F80` `STATLIST_GetStatListFromUnitAndState`). */
 export function STATLIST_GetStatListFromUnitAndState113c(
   m: Memory113c,
   pUnit: number,
   stateId: number,
 ): number {
-  if (pUnit === 0) return 0
+  if (pUnit === 0 || stateId === 0) return 0
   const pListEx = m.get(pUnit, D2UnitStrc.pStatListEx)
   if (pListEx === 0 || (m.get(pListEx, D2StatListStrc.dwFlags) & STATLIST_FLAG_EXTENDED) === 0) {
     return 0
@@ -1026,7 +1475,7 @@ export function STATLIST_GetStatListFromUnitAndState113c(
 
 /**
  * `D2Common.#10494` (`0x6FD83CD0` `STATES_CheckState`):
- * Valid only on `dwUnitType` in `{0, 1, 3}` (`player`, `monster`, `missile`) and `0 <= stateId < 184`.
+ * Valid only on `dwUnitType` in `{0, 1, 3}` (`player`, `monster`, `missile`) and `0 <= stateId < 185`.
  * Returns raw masked bit (`1 << (stateId & 31)` >>> 0) or `0`.
  */
 export function STATES_CheckState113c(m: Memory113c, pUnit: number, stateId: number): number {
@@ -1046,42 +1495,121 @@ export function STATES_CheckState113c(m: Memory113c, pUnit: number, stateId: num
 }
 
 /**
- * `D2Common 0x6FD88730` (`STATES_ToggleState`):
- * Sets or clears `stateId` in `pStateFlags[0..5]`; if the bit actually flipped, sets the
- * corresponding dirty/gfx bit in `pStateFlags[6..11]` (`wordIdx + 6`).
+ * `States.bin` (`185` states, stride `60` bytes) `+0x12` bit `0` (`disguise`, `fStateMasks[16]` at `[sgptDataTables+0x10C]`)
+ * 6-dword bitmask: exact active states `{63, 93, 119, 139, 140, 176, 177}` extracted from 1.13c `states.bin`.
+ */
+export const DISGUISE_STATE_MASK_WORDS_113C: readonly [
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+] = [
+  0x00000000, // states 0..31:   none
+  0x80000000, // states 32..63:  63 (bit 31)
+  0x20000000, // states 64..95:  93 (bit 29)
+  0x00800000, // states 96..127: 119 (bit 23)
+  0x00001800, // states 128..159: 139 (bit 11), 140 (bit 12)
+  0x00030000, // states 160..184: 176 (bit 16), 177 (bit 17)
+]
+
+export const UNITFLAG2_DISGUISE_113C = 0x00000008
+
+/**
+ * `@va D2Common:0x6FD83C20` (`STATES_CheckStateMaskOnUnit`, `eax = pUnit`, `ecx = pMaskWords`):
+ * Checks `pUnit != 0`, `pListEx = pUnit->pStatListEx (+0x5C)`, `(pListEx->dwFlags & 0x80000000) != 0`,
+ * and `pStateFlags = pListEx->pStateFlags (+0x58) != 0`, then scans the `6` active state dwords
+ * `pStateFlags[0..5]` against `maskWords[0..5]`, returning `1` if any `pStateFlags[i] & maskWords[i]`
+ * is non-zero, else `0`.
+ */
+export function STATES_CheckStateMaskOnUnit113c(
+  m: Memory113c,
+  pUnit: number,
+  maskWords: ArrayLike<number>,
+): number {
+  if (pUnit === 0) return 0
+  const pListEx = m.get(pUnit, D2UnitStrc.pStatListEx)
+  if (pListEx === 0 || (m.get(pListEx, D2StatListStrc.dwFlags) & STATLIST_FLAG_EXTENDED) === 0) {
+    return 0
+  }
+  const pStateFlags = m.get(pListEx, D2StatListExStrc.pStateFlags)
+  if (pStateFlags === 0) return 0
+  for (let i = 0; i < STATE_DWORDS_113C; i++) {
+    const maskWord = (i < maskWords.length ? maskWords[i]! : 0) >>> 0
+    if (maskWord !== 0 && (m.u32(pStateFlags + i * 4) & maskWord) !== 0) {
+      return 1
+    }
+  }
+  return 0
+}
+
+/**
+ * `@va D2Common:0x6FD88730` (`STATES_ToggleState`):
+ * - Internal helper called by `D2Common.#10945` (`0x6FD84510`), `0x6FD83060`, `0x6FD8AE97`, and `0x6FDA1FA1`
+ *   (caller enforces `0 <= stateId < 185`; we retain `0 <= stateId < STATES_COUNT_113C` array-bounds safety).
+ * - Reads `pListEx = pUnit->pStatListEx (+0x5C)`: returns immediately when `0` or non-extended
+ *   (NEVER allocates a `D2StatListExStrc`).
+ * - Toggles `stateId` in `pStateFlags[0..5]`; if the bit actually flipped, sets the dirty/gfx bit
+ *   in `pStateFlags[6..11]` (`wordIdx + 6`) and updates `pUnit->dwFlags2 (+0xC8)` bit `0x08`
+ *   for `States.bin + 0x12` bit `0` (`disguise`: `{63, 93, 119, 139, 140, 176, 177}`) via `0x6FD83C20`.
  */
 export function STATES_ToggleState113c(
   m: Memory113c,
   pUnit: number,
   stateId: number,
-  bSet: boolean,
+  bSet: boolean | number,
 ): void {
   if (pUnit === 0 || stateId < 0 || stateId >= STATES_COUNT_113C) return
-  const uType = m.get(pUnit, D2UnitStrc.dwUnitType)
-  if (uType !== 0 && uType !== 1 && uType !== 3) return
-  let pListEx = m.get(pUnit, D2UnitStrc.pStatListEx)
-  if (pListEx === 0) {
-    pListEx = STATLIST_CreateEx113c(m, pUnit, 0, m.get(pUnit, D2UnitStrc.pGame))
+  const pListEx = m.get(pUnit, D2UnitStrc.pStatListEx)
+  if (pListEx === 0 || (m.get(pListEx, D2StatListStrc.dwFlags) & STATLIST_FLAG_EXTENDED) === 0) {
+    return
   }
-  if ((m.get(pListEx, D2StatListStrc.dwFlags) & STATLIST_FLAG_EXTENDED) === 0) return
   const pStateFlags = m.get(pListEx, D2StatListExStrc.pStateFlags)
   if (pStateFlags === 0) return
 
+  const setFlag = Boolean(bSet)
   const wordIdx = stateId >> 5
   const mask = (1 << (stateId & 31)) >>> 0
   const curWord = m.u32(pStateFlags + wordIdx * 4)
   const wasSet = (curWord & mask) !== 0
-  if (wasSet === bSet) return
+  if (wasSet === setFlag) return
 
-  const nextWord = bSet ? (curWord | mask) >>> 0 : (curWord & ~mask) >>> 0
+  const nextWord = setFlag ? (curWord | mask) >>> 0 : (curWord & ~mask) >>> 0
   m.setU32(pStateFlags + wordIdx * 4, nextWord)
 
   // Dirty/gfx bitvector sits immediately after the 6 active dwords (`+6 * 4 = +0x18`)
   const dirtyAddr = pStateFlags + (wordIdx + STATE_DWORDS_113C) * 4
   m.setU32(dirtyAddr, (m.u32(dirtyAddr) | mask) >>> 0)
+
+  // `0x6FD887E8..0x6FD88838`: `States.bin + 0x12` bit 0 (`disguise`) -> `pUnit->dwFlags2 (+0xC8)` bit `0x08`
+  if (((DISGUISE_STATE_MASK_WORDS_113C[wordIdx] as number) & mask) !== 0) {
+    const flags2 = m.get(pUnit, D2UnitStrc.dwFlags2)
+    if (setFlag) {
+      m.set(pUnit, D2UnitStrc.dwFlags2, (flags2 | UNITFLAG2_DISGUISE_113C) >>> 0)
+    } else if (STATES_CheckStateMaskOnUnit113c(m, pUnit, DISGUISE_STATE_MASK_WORDS_113C) === 0) {
+      m.set(pUnit, D2UnitStrc.dwFlags2, (flags2 & ~UNITFLAG2_DISGUISE_113C) >>> 0)
+    }
+  }
 }
 
-/** Read dirty/gfx state bit (`pStateFlags[(stateId >> 5) + 6] & (1 << (stateId & 31))`). */
+/**
+ * `@va D2Common:0x6FD84510` (`D2Common.#10945` `STATES_ToggleGfxStateFlag`):
+ * Checks `0 <= stateId < 185` (`[sgptDataTables+0xC4]`), calls `0x6FD88730` (`STATES_ToggleState113c`),
+ * and calls `D2Common.#10158` (`0x6FDB65C0` `UNITROOM_RefreshUnit113c`) at `0x6FD84537`.
+ */
+export function STATES_ToggleGfxStateFlag113c(
+  m: Memory113c,
+  pUnit: number,
+  stateId: number,
+  bSet: number | boolean,
+): void {
+  if (stateId < 0 || stateId >= STATES_COUNT_113C) return
+  STATES_ToggleState113c(m, pUnit, stateId, Boolean(bSet))
+  UNITROOM_RefreshUnit113c(m, pUnit)
+}
+
+/** `D2Common.#10446` (`0x6FD843E0`): read dirty/gfx state bit (`pStateFlags[(stateId >> 5) + 6] & (1 << (stateId & 31))`). */
 export function STATES_CheckGfxStateFlag113c(m: Memory113c, pUnit: number, stateId: number): number {
   if (pUnit === 0 || stateId < 0 || stateId >= STATES_COUNT_113C) return 0
   const pListEx = m.get(pUnit, D2UnitStrc.pStatListEx)
@@ -1095,8 +1623,19 @@ export function STATES_CheckGfxStateFlag113c(m: Memory113c, pUnit: number, state
   return (m.u32(pStateFlags + wordIdx * 4) & mask) >>> 0
 }
 
-/** Clear dirty/gfx state bit (`pStateFlags[(stateId >> 5) + 6] &= ~mask`). */
-export function STATES_ClearGfxStateFlag113c(m: Memory113c, pUnit: number, stateId: number): void {
+/**
+ * `@va D2Common:0x6FD84450` (`D2Common.#11039` `STATES_ClearGfxStateFlag`):
+ * Checks `pUnit != 0`, `pListEx != 0`, `(pListEx->dwFlags & 0x80000000) != 0`, `pStateFlags != 0`,
+ * and `0 <= stateId < 185`. When `bSet == 0` (default), clears `pStateFlags[6 + (stateId >> 5)] &= ~mask`
+ * (`0x6FD844DD`); when `bSet != 0`, sets `pStateFlags[6 + (stateId >> 5)] |= mask` (`0x6FD844BA`);
+ * both paths then call `D2Common.#10158` (`0x6FDB65C0` `UNITROOM_RefreshUnit113c`) at `0x6FD844C0` / `0x6FD844E3`.
+ */
+export function STATES_ClearGfxStateFlag113c(
+  m: Memory113c,
+  pUnit: number,
+  stateId: number,
+  bSet: number | boolean = 0,
+): void {
   if (pUnit === 0 || stateId < 0 || stateId >= STATES_COUNT_113C) return
   const pListEx = m.get(pUnit, D2UnitStrc.pStatListEx)
   if (pListEx === 0 || (m.get(pListEx, D2StatListStrc.dwFlags) & STATLIST_FLAG_EXTENDED) === 0) {
@@ -1106,5 +1645,48 @@ export function STATES_ClearGfxStateFlag113c(m: Memory113c, pUnit: number, state
   if (pStateFlags === 0) return
   const wordIdx = (stateId >> 5) + STATE_DWORDS_113C
   const mask = (1 << (stateId & 31)) >>> 0
-  m.setU32(pStateFlags + wordIdx * 4, (m.u32(pStateFlags + wordIdx * 4) & ~mask) >>> 0)
+  const cur = m.u32(pStateFlags + wordIdx * 4)
+  if (bSet) {
+    m.setU32(pStateFlags + wordIdx * 4, (cur | mask) >>> 0)
+  } else {
+    m.setU32(pStateFlags + wordIdx * 4, (cur & ~mask) >>> 0)
+  }
+  UNITROOM_RefreshUnit113c(m, pUnit)
+}
+
+/**
+ * `@va D2Common:0x6FD8AE60` (`STATLIST_ExpireStateListsOnModeChange`):
+ * When `(pListEx->dwFlags & 0x02) != 0`, walks `pListEx->pMyLastList (+0x3C)` along `pPrevLink (+0x2C)`
+ * and expires any sub-list with `(sub->dwFlags & 0x04) != 0` (clearing its `dwStateNo` in `pStateFlags`,
+ * calling `UNITROOM_RefreshUnit113c`, and unlinking/freeing non-extended sub-lists), then clears bit `0x02`
+ * on `pListEx->dwFlags`.
+ */
+export function STATLIST_ExpireStateListsOnModeChange113c(
+  m: Memory113c,
+  pUnit: number,
+  _bIsClient = 0,
+  registry: StatTableRegistry113c = DEFAULT_STAT_REGISTRY_113C,
+): void {
+  if (pUnit === 0) return
+  const pListEx = m.get(pUnit, D2UnitStrc.pStatListEx)
+  if (pListEx === 0 || (m.get(pListEx, D2StatListStrc.dwFlags) & 0x02) === 0) return
+
+  let sub = m.get(pListEx, D2StatListExStrc.pMyLastList)
+  while (sub !== 0) {
+    let nextSub = m.get(sub, D2StatListStrc.pPrevLink)
+    const subFlags = m.get(sub, D2StatListStrc.dwFlags)
+    if ((subFlags & 0x04) !== 0) {
+      const stateNo = m.get(sub, D2StatListStrc.dwStateNo) | 0
+      if (stateNo > 0 && stateNo < STATES_COUNT_113C) {
+        STATES_ToggleState113c(m, pUnit, stateNo, 0)
+        UNITROOM_RefreshUnit113c(m, pUnit)
+      }
+      if ((subFlags & STATLIST_FLAG_EXTENDED) === 0) {
+        STATLIST_RemoveSubList113c(m, sub, registry)
+      }
+      nextSub = m.get(pListEx, D2StatListExStrc.pMyLastList)
+    }
+    sub = nextSub
+  }
+  m.set(pListEx, D2StatListStrc.dwFlags, (m.get(pListEx, D2StatListStrc.dwFlags) & ~0x02) >>> 0)
 }
