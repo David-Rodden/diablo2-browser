@@ -17,14 +17,16 @@
  *      trace.ndjson / fnrec / orderlog / memdump / setexp / equip / inputs.
  *   5. Drives exact SP handshake over D2Net.#10024:
  *        - C2S 0x67 (CS_CREATEGAME, 46 bytes) -> D2Game.#10040()
- *        - Frame 1 via D2Game.#10002 (single-step -> 0x6FC4E050, pre-join)
+ *        - Frame 1 via D2Game.#10008(1) + D2Game.#10024(1, 0) (pre-join tick)
  *        - C2S 0x6B (CS_ENTER_GAME, 1 byte)  -> D2Game.#10040() (spawns player)
- *        - Frames 2..N via D2Game.#10040() + D2Game.#10002 at full CPU speed
- *          with zero 25 fps Sleep throttle.
+ *        - Frames 2..N via D2Game.#10040() + D2Game.#10008(1) + D2Game.#10024(1, 0)
+ *          at full CPU speed with zero 25 fps Sleep throttle.
  *
  * Usage:
  *   d2host-113c.exe --seed <N> --frames <N> [--difficulty 0|1|2]
  *                   [--char <Name>] [--save <path.d2s>] [--oracle-dll <dll>]
+ *                   [--dump-isc <out.bin>] [--dump-layout <out.ndjson>]
+ *                   [--test-huffman <out.ndjson>]
  */
 
 #include <windows.h>
@@ -66,10 +68,36 @@ typedef int(__fastcall *D2Lang_Init_t)(int bUnusedEcx,
 typedef int(__stdcall *D2Common_InitDataTables_t)(int nUnused,
                                                   int bUnused2,
                                                   int bCompileTxt);
+typedef const uint8_t *(__stdcall *D2Common_GetRoomFromUnit_t)(const void *pUnit);
+typedef void(__stdcall *D2Common_GetRoomCoords_t)(const void *pRoom, int32_t *pCoords);
+typedef int32_t(__stdcall *D2Common_GetLevelIdFromRoom_t)(const void *pRoom);
+typedef uint8_t(__stdcall *D2Common_GetActFromRoom_t)(const void *pRoom);
+
+typedef void *(__fastcall *Fog_AllocClientMemory_t)(uint32_t dwSize,
+                                                    const char *szFile,
+                                                    int nLine,
+                                                    int nZero);
+typedef void *(__fastcall *Fog_AllocServerMemory_t)(void *pMemPool,
+                                                    uint32_t dwSize,
+                                                    const char *szFile,
+                                                    int nLine,
+                                                    int nZero);
+typedef int(__fastcall *Fog_CreatePacket_t)(uint8_t *pDst,
+                                            int nDstCap,
+                                            const uint8_t *pSrc,
+                                            int nSrcLen);
+typedef int(__fastcall *Fog_DecompressPacket_t)(uint8_t *pDst,
+                                                int nDstCap,
+                                                const uint8_t *pSrc,
+                                                int nSrcLen);
 
 /* ----------------------------------------------------- D2Net / D2Game APIs */
 
 typedef int(__stdcall *D2Net_InitServer_t)(int nProtocol, int nMaxClients);
+typedef int(__stdcall *D2Net_SendToClient_t)(int nQueue,
+                                             int nClientId,
+                                             const void *pBuf,
+                                             int nLen);
 typedef int(__stdcall *D2Net_ConnectClient_t)(int nProtocol, const char *szAddr);
 typedef int(__stdcall *D2Net_GetConnStatus_t)(void);
 typedef int(__stdcall *D2Net_SetAccept_t)(int bAccept);
@@ -115,6 +143,102 @@ typedef struct {
 
 static Storm_SMemAlloc_t p_SMemAlloc = NULL;
 static Storm_SMemFree_t p_SMemFree = NULL;
+static Fog_AllocClientMemory_t g_orig_Fog10042 = NULL;
+static Fog_AllocServerMemory_t g_orig_Fog10045 = NULL;
+
+typedef struct {
+  uintptr_t ptr;
+  uint32_t size;
+} AllocRecord;
+
+#define MAX_ALLOC_RECORDS 65536
+static AllocRecord g_alloc_records[MAX_ALLOC_RECORDS];
+static uint32_t g_alloc_record_count = 0;
+
+static void record_alloc(const void *ptr, uint32_t size) {
+  if (!ptr || size == 0) return;
+  uintptr_t p = (uintptr_t)ptr;
+  for (uint32_t i = g_alloc_record_count; i > 0; i--) {
+    if (g_alloc_records[i - 1].ptr == p) {
+      g_alloc_records[i - 1].size = size;
+      return;
+    }
+  }
+  if (g_alloc_record_count < MAX_ALLOC_RECORDS) {
+    g_alloc_records[g_alloc_record_count].ptr = p;
+    g_alloc_records[g_alloc_record_count].size = size;
+    g_alloc_record_count++;
+  }
+}
+
+static uint32_t lookup_alloc_size(const void *ptr) {
+  if (!ptr) return 0;
+  uintptr_t p = (uintptr_t)ptr;
+  for (uint32_t i = g_alloc_record_count; i > 0; i--) {
+    if (g_alloc_records[i - 1].ptr == p) {
+      return g_alloc_records[i - 1].size;
+    }
+  }
+  return 0;
+}
+
+static void *__fastcall hook_Fog10042(uint32_t dwSize,
+                                      const char *szFile,
+                                      int nLine,
+                                      int nZero) {
+  void *p = g_orig_Fog10042(dwSize, szFile, nLine, nZero);
+  record_alloc(p, dwSize);
+  return p;
+}
+
+static void *__fastcall hook_Fog10045(void *pMemPool,
+                                      uint32_t dwSize,
+                                      const char *szFile,
+                                      int nLine,
+                                      int nZero) {
+  void *p = g_orig_Fog10045(pMemPool, dwSize, szFile, nLine, nZero);
+  record_alloc(p, dwSize);
+  return p;
+}
+
+static void hook_module_iat_ptr(HMODULE m, void *origFn, void *hookFn) {
+  if (!m || !origFn || !hookFn) return;
+  uint8_t *base = (uint8_t *)m;
+  IMAGE_DOS_HEADER *dos = (IMAGE_DOS_HEADER *)base;
+  IMAGE_NT_HEADERS32 *nt = (IMAGE_NT_HEADERS32 *)(base + dos->e_lfanew);
+  DWORD impRva = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress;
+  if (!impRva) return;
+  IMAGE_IMPORT_DESCRIPTOR *imp = (IMAGE_IMPORT_DESCRIPTOR *)(base + impRva);
+  for (; imp->Name; imp++) {
+    IMAGE_THUNK_DATA32 *thunk = (IMAGE_THUNK_DATA32 *)(base + imp->FirstThunk);
+    for (; thunk->u1.Function; thunk++) {
+      if ((void *)(uintptr_t)thunk->u1.Function == origFn) {
+        DWORD oldProt = 0;
+        VirtualProtect(&thunk->u1.Function, sizeof(void *), PAGE_EXECUTE_READWRITE, &oldProt);
+        thunk->u1.Function = (DWORD)(uintptr_t)hookFn;
+        VirtualProtect(&thunk->u1.Function, sizeof(void *), oldProt, &oldProt);
+      }
+    }
+  }
+}
+
+static uint8_t g_captured_wire[2048];
+static int g_captured_wire_len = 0;
+
+static int __stdcall hook_qserver_send(void *pServer,
+                                       int nClientId,
+                                       const uint8_t *pWire,
+                                       int nWireLen) {
+  (void)pServer;
+  (void)nClientId;
+  if (pWire && nWireLen > 0 && nWireLen <= (int)sizeof(g_captured_wire)) {
+    memcpy(g_captured_wire, pWire, (size_t)nWireLen);
+    g_captured_wire_len = nWireLen;
+  } else {
+    g_captured_wire_len = 0;
+  }
+  return 1;
+}
 
 static void init_explicit_list(TSExplicitList *lst, int32_t linkOffset) {
   uintptr_t headAddr = (uintptr_t)&lst->prev;
@@ -144,6 +268,7 @@ static void *__fastcall game_hash_alloc_node(D2GameHashTable *self,
   uint8_t *node = (uint8_t *)p_SMemAlloc(totalSize, "d2host-113c.c", 120, flags | 8u);
   if (!node) return NULL;
   memset(node, 0, totalSize);
+  record_alloc(node, totalSize);
 
   /* Link node into pBucket at linkOffset (+0x04), matching 0x6FAB2459. */
   uintptr_t headAddr = (uintptr_t)&pBucket->prev;
@@ -305,6 +430,22 @@ static LONG WINAPI crash_filter(EXCEPTION_POINTERS *ep) {
   return EXCEPTION_EXECUTE_HANDLER;
 }
 
+static void write_json_hex_block(FILE *f,
+                                 const char *name,
+                                 const void *ptr,
+                                 size_t len,
+                                 int *first) {
+  if (!ptr || len == 0) return;
+  if (!*first) fprintf(f, ",");
+  *first = 0;
+  fprintf(f, "{\"n\":\"%s\",\"a\":%u,\"h\":\"", name, (uint32_t)(uintptr_t)ptr);
+  const uint8_t *b = (const uint8_t *)ptr;
+  for (size_t i = 0; i < len; i++) {
+    fprintf(f, "%02x", b[i]);
+  }
+  fprintf(f, "\"}");
+}
+
 /* --------------------------------------------------------------------- main */
 
 int main(int argc, char **argv) {
@@ -316,6 +457,9 @@ int main(int argc, char **argv) {
   char charName[16] = "Oracle";
   const char *savePathArg = NULL;
   const char *oracleDllPath = NULL;
+  const char *dumpIscPath = NULL;
+  const char *dumpLayoutPath = NULL;
+  const char *testHuffmanPath = NULL;
 
   for (int i = 1; i < argc; i++) {
     if (!strcmp(argv[i], "--seed") && i + 1 < argc) {
@@ -331,6 +475,12 @@ int main(int argc, char **argv) {
       savePathArg = argv[++i];
     } else if (!strcmp(argv[i], "--oracle-dll") && i + 1 < argc) {
       oracleDllPath = argv[++i];
+    } else if (!strcmp(argv[i], "--dump-isc") && i + 1 < argc) {
+      dumpIscPath = argv[++i];
+    } else if (!strcmp(argv[i], "--dump-layout") && i + 1 < argc) {
+      dumpLayoutPath = argv[++i];
+    } else if (!strcmp(argv[i], "--test-huffman") && i + 1 < argc) {
+      testHuffmanPath = argv[++i];
     }
   }
 
@@ -406,6 +556,121 @@ int main(int argc, char **argv) {
   if (p_FogInitMasks) p_FogInitMasks();
   SetUnhandledExceptionFilter(crash_filter);
 
+  if (dumpLayoutPath && dumpLayoutPath[0]) {
+    g_orig_Fog10042 = (Fog_AllocClientMemory_t)(void (*)(void))GetProcAddress(
+        hFog, MAKEINTRESOURCEA(10042));
+    g_orig_Fog10045 = (Fog_AllocServerMemory_t)(void (*)(void))GetProcAddress(
+        hFog, MAKEINTRESOURCEA(10045));
+    hook_module_iat_ptr(hD2Common, (void *)g_orig_Fog10042, (void *)hook_Fog10042);
+    hook_module_iat_ptr(hD2Common, (void *)g_orig_Fog10045, (void *)hook_Fog10045);
+    hook_module_iat_ptr(hD2Game, (void *)g_orig_Fog10042, (void *)hook_Fog10042);
+    hook_module_iat_ptr(hD2Game, (void *)g_orig_Fog10045, (void *)hook_Fog10045);
+  }
+
+  /* Optional Fog.#10218/#10223/#10224 + D2Net.#10006 server-mode Huffman & framing oracle. */
+  if (testHuffmanPath && testHuffmanPath[0]) {
+    Fog_CreatePacket_t p_FogCreatePacket =
+        (Fog_CreatePacket_t)(void (*)(void))GetProcAddress(hFog, MAKEINTRESOURCEA(10223));
+    Fog_DecompressPacket_t p_FogDecompressPacket =
+        (Fog_DecompressPacket_t)(void (*)(void))GetProcAddress(hFog, MAKEINTRESOURCEA(10224));
+    D2Net_SendToClient_t p_NetSendToClient =
+        (D2Net_SendToClient_t)(void (*)(void))GetProcAddress(hD2Net, MAKEINTRESOURCEA(10002));
+    if (!p_FogCreatePacket || !p_FogDecompressPacket || !p_NetSendToClient) {
+      fprintf(stderr, "[d2host-113c] missing Fog.#10223/#10224 or D2Net.#10002\n");
+      return 11;
+    }
+    uintptr_t d2netRebase = (uintptr_t)hD2Net - pref_base(hD2Net);
+    uintptr_t fogRebase = (uintptr_t)hFog - pref_base(hFog);
+    /* Force D2Net server mode ([0x6FBFB418] = 0) and hook IAT slot 0x6FBF8080 (QServer_Send). */
+    *(uint32_t *)(0x6FBFB418u + d2netRebase) = 0u;
+    void **ppQServerSend = (void **)(0x6FBF8080u + d2netRebase);
+    DWORD oldProt = 0;
+    VirtualProtect(ppQServerSend, sizeof(void *), PAGE_EXECUTE_READWRITE, &oldProt);
+    *ppQServerSend = (void *)hook_qserver_send;
+    VirtualProtect(ppQServerSend, sizeof(void *), oldProt, &oldProt);
+
+    FILE *fHuff = fopen(testHuffmanPath, "wb");
+    if (!fHuff) {
+      fprintf(stderr, "[d2host-113c] failed to open %s\n", testHuffmanPath);
+      return 12;
+    }
+    const uint8_t *pBitLens = (const uint8_t *)(0x6FF7F210u + fogRebase);
+    uint8_t sym8 = 0x04;
+    for (int s = 0; s < 256; s++) {
+      if (pBitLens[s] == 8 && s != 0xAF) {
+        sym8 = (uint8_t)s;
+        break;
+      }
+    }
+    uint8_t rawBuf[520];
+    uint8_t compBuf[1032];
+    uint8_t decompBuf[1032];
+    int vecIdx = 0;
+    /* Total vectors:
+     *   0..255:   all 256 single-byte payloads (nQueue = (b == 0xAF ? 1 : 0))
+     *   256..257: raw 0xAF handshake bypass on nQueue = 0 ([0xAF, 0x01], [0xAF, 0x00])
+     *   258..773: deterministic payloads of lengths 1..0x204 (516 lengths)
+     *   774..777: compressedLen = 237, 238 (-> header 0xEF), 239 (-> header 0xF0 0xF1), 240
+     */
+    for (int step = 0; step < 778; step++) {
+      int nQueue = 0;
+      int rawLen = 1;
+      if (step < 256) {
+        rawBuf[0] = (uint8_t)step;
+        rawLen = 1;
+        nQueue = (step == 0xAF) ? 1 : 0;
+      } else if (step == 256) {
+        rawBuf[0] = 0xAF;
+        rawBuf[1] = 0x01;
+        rawLen = 2;
+        nQueue = 0;
+      } else if (step == 257) {
+        rawBuf[0] = 0xAF;
+        rawBuf[1] = 0x00;
+        rawLen = 2;
+        nQueue = 0;
+      } else if (step < 258 + 0x204) {
+        rawLen = (step - 258) + 1;
+        nQueue = 0;
+        for (int k = 0; k < rawLen; k++) {
+          uint8_t v = (uint8_t)((rawLen * 37 + k * 131 + 19) & 0xFF);
+          if (k == 0 && v == 0xAF) v = 0xAE;
+          rawBuf[k] = v;
+        }
+      } else {
+        int rep = 237 + (step - (258 + 0x204));
+        rawLen = rep;
+        nQueue = 0;
+        memset(rawBuf, sym8, (size_t)rawLen);
+      }
+
+      int compLen = p_FogCreatePacket(compBuf, 0x408, rawBuf, rawLen);
+      int decLen = p_FogDecompressPacket(decompBuf, rawLen, compBuf, compLen);
+      if (decLen != rawLen || memcmp(decompBuf, rawBuf, (size_t)rawLen) != 0) {
+        fprintf(stderr, "[d2host-113c] Fog.#10224 roundtrip mismatch at step=%d\n", step);
+        fclose(fHuff);
+        return 13;
+      }
+      g_captured_wire_len = 0;
+      int ret = p_NetSendToClient(nQueue, 1, rawBuf, rawLen);
+      if (ret != g_captured_wire_len || g_captured_wire_len <= 0) {
+        fprintf(stderr, "[d2host-113c] D2Net.#10006 wire capture mismatch at step=%d (ret=%d len=%d)\n",
+                step, ret, g_captured_wire_len);
+        fclose(fHuff);
+        return 14;
+      }
+      fprintf(fHuff, "{\"idx\":%d,\"q\":%d,\"ret\":%d,\"raw\":\"", vecIdx++, nQueue, ret);
+      for (int k = 0; k < rawLen; k++) fprintf(fHuff, "%02x", rawBuf[k]);
+      fprintf(fHuff, "\",\"comp\":\"");
+      for (int k = 0; k < compLen; k++) fprintf(fHuff, "%02x", compBuf[k]);
+      fprintf(fHuff, "\",\"wire\":\"");
+      for (int k = 0; k < g_captured_wire_len; k++) fprintf(fHuff, "%02x", g_captured_wire[k]);
+      fprintf(fHuff, "\"}\n");
+    }
+    fclose(fHuff);
+    ExitProcess(0);
+  }
+
   /* 3. Mount MPQ archives in exact priority order (D2Win.#10086 + #10005). */
   char exeDir[MAX_PATH] = {0};
   if (GetModuleFileNameA(NULL, exeDir, sizeof(exeDir))) {
@@ -433,6 +698,27 @@ int main(int argc, char **argv) {
   if (!p_InitDataTables || !p_InitDataTables(0, 0, 0)) {
     fprintf(stderr, "[d2host-113c] D2Common.#10943 failed\n");
     return 3;
+  }
+
+  /* Optional post-load D2Common ItemStatCostTxt (359 x 0x144) memory dump. */
+  if (dumpIscPath && dumpIscPath[0]) {
+    uintptr_t d2commonRebase = (uintptr_t)hD2Common - pref_base(hD2Common);
+    const uint8_t *pIsc = *(const uint8_t **)(0x6FDF0AA4u + d2commonRebase);
+    uint32_t nIsc = *(const uint32_t *)(0x6FDF0AACu + d2commonRebase);
+    if (!pIsc || nIsc == 0) {
+      fprintf(stderr, "[d2host-113c] pItemStatCostTxt missing (%p, n=%u)\n",
+              (const void *)pIsc, nIsc);
+      return 7;
+    }
+    FILE *fOut = fopen(dumpIscPath, "wb");
+    if (!fOut) {
+      fprintf(stderr, "[d2host-113c] failed to open %s\n", dumpIscPath);
+      return 8;
+    }
+    fwrite(&nIsc, sizeof(uint32_t), 1, fOut);
+    fwrite(pIsc, 0x144u, nIsc, fOut);
+    fclose(fOut);
+    ExitProcess(0);
   }
 
   /* 5. Initialize D2Net in local memory queue mode (protocol=1, maxClients=1),
@@ -580,18 +866,33 @@ int main(int argc, char **argv) {
    *     player #1 and Rogue Encampment rooms spawn before Frame 2. */
   uint8_t pkt6B[1] = {0x6B};
   p_NetSend(1, 0, pkt6B);
-  for (int i = 0; i < 50; i++) {
+  for (int i = 0; i < 200; i++) {
     p_RecvPackets();
     if (p_SendUpdates) p_SendUpdates(1, 0);
-    int any = 0;
     while (p_NetRecv(s2cDrain, sizeof(s2cDrain)) > 0) {
-      any = 1;
     }
-    if (any) break;
+    int hasPlayer = 0;
+    for (int b = 0; b < 1024 && !hasPlayer; b++) {
+      uintptr_t headAddr = (uintptr_t)&g_game_hash_buckets[b].prev;
+      uint32_t first = g_game_hash_buckets[b].next;
+      if (first != 0 && first != ~(uint32_t)headAddr) {
+        const uint8_t *g0 = (const uint8_t *)(uintptr_t)first;
+        for (int h = 0; h < 128; h++) {
+          if (*(const uint32_t *)(g0 + 0x1120 + h * 4) != 0) {
+            hasPlayer = 1;
+            break;
+          }
+        }
+      }
+    }
+    if (hasPlayer) break;
     Sleep(1);
   }
 
   /* 12. Run unthrottled server frame loop (Frames 2..N). */
+  if (dumpLayoutPath && dumpLayoutPath[0] && maxFrames == 0) {
+    maxFrames = 35;
+  }
   uint32_t executedFrames = 1;
   for (;;) {
     if (p_OracleIsDone && p_OracleIsDone()) break;
@@ -604,6 +905,211 @@ int main(int argc, char **argv) {
     if (p_SendUpdates) p_SendUpdates(1, 0);
     while (p_NetRecv(s2cDrain, sizeof(s2cDrain)) > 0) {
     }
+  }
+
+  /* Optional live server struct layout dump (Game, Act, Env, Room1, RoomEx, CollGrid, CoordList, Monster/AI, alloc_sizes, oracle getters). */
+  if (dumpLayoutPath && dumpLayoutPath[0]) {
+    const uint8_t *pGame = NULL;
+    for (int b = 0; b < 1024 && !pGame; b++) {
+      uintptr_t headAddr = (uintptr_t)&g_game_hash_buckets[b].prev;
+      uint32_t first = g_game_hash_buckets[b].next;
+      if (first != 0 && first != ~(uint32_t)headAddr) {
+        pGame = (const uint8_t *)(uintptr_t)first;
+      }
+    }
+    if (!pGame) {
+      fprintf(stderr, "[d2host-113c] --dump-layout: no live D2GameStrc\n");
+      return 9;
+    }
+    const uint8_t *pTimer = *(const uint8_t *const *)(pGame + 0xB8);
+    const uint8_t *pAct = *(const uint8_t *const *)(pGame + 0xBC);
+    const uint8_t *pEnv = pAct ? *(const uint8_t *const *)(pAct + 0x04) : NULL;
+    const uint8_t *pUnit = NULL;
+    for (int h = 0; h < 128 && !pUnit; h++) {
+      pUnit = *(const uint8_t *const *)(pGame + 0x1120 + h * 4);
+    }
+    const uint8_t *pData = pUnit ? *(const uint8_t *const *)(pUnit + 0x14) : NULL;
+    const uint8_t *pPath = pUnit ? *(const uint8_t *const *)(pUnit + 0x2C) : NULL;
+    const uint8_t *pSlex = pUnit ? *(const uint8_t *const *)(pUnit + 0x5C) : NULL;
+    const uint8_t *pStateFlags = pSlex ? *(const uint8_t *const *)(pSlex + 0x58) : NULL;
+    const uint8_t *pMyStats = pSlex ? *(const uint8_t *const *)(pSlex + 0x24) : NULL;
+    uint16_t myCnt = pSlex ? *(const uint16_t *)(pSlex + 0x28) : 0;
+    const uint8_t *pFullStats = pSlex ? *(const uint8_t *const *)(pSlex + 0x48) : NULL;
+    uint16_t fullCnt = pSlex ? *(const uint16_t *)(pSlex + 0x4C) : 0;
+    const uint8_t *pRoom = pPath ? *(const uint8_t *const *)(pPath + 0x1C) : NULL;
+    if (!pRoom && pAct) {
+      pRoom = *(const uint8_t *const *)(pAct + 0x10);
+    }
+    const uint8_t *pRoomEx = pRoom ? *(const uint8_t *const *)(pRoom + 0x10) : NULL;
+    const uint8_t *pCollGrid = pRoom ? *(const uint8_t *const *)(pRoom + 0x20) : NULL;
+    const uint8_t *pLogic = pRoomEx ? *(const uint8_t *const *)(pRoomEx + 0x64) : NULL;
+    const uint8_t *pCoordList = pLogic ? *(const uint8_t *const *)(pLogic + 0x30) : NULL;
+
+    const uint8_t *pMonUnit = NULL;
+    const uint8_t *pMonData = NULL;
+    const uint8_t *pAiGeneral = NULL;
+    const uint8_t *pAiControl = NULL;
+    for (int h = 0; h < 128; h++) {
+      const uint8_t *m = *(const uint8_t *const *)(pGame + 0x1320 + h * 4);
+      while (m) {
+        const uint8_t *md = *(const uint8_t *const *)(m + 0x14);
+        const uint8_t *ag = md ? *(const uint8_t *const *)(md + 0x28) : NULL;
+        const uint8_t *ac = md ? *(const uint8_t *const *)(md + 0x2C) : NULL;
+        if (md && !pMonUnit) {
+          pMonUnit = m;
+          pMonData = md;
+        }
+        if (ag && !pAiGeneral) pAiGeneral = ag;
+        if (ac && !pAiControl) pAiControl = ac;
+        m = *(const uint8_t *const *)(m + 0xE4);
+      }
+    }
+
+    D2Common_GetRoomFromUnit_t p_GetRoomFromUnit =
+        (D2Common_GetRoomFromUnit_t)(void (*)(void))GetProcAddress(
+            hD2Common, MAKEINTRESOURCEA(10331));
+    D2Common_GetRoomCoords_t p_GetRoomCoords =
+        (D2Common_GetRoomCoords_t)(void (*)(void))GetProcAddress(
+            hD2Common, MAKEINTRESOURCEA(10561));
+    D2Common_GetLevelIdFromRoom_t p_GetLevelIdFromRoom =
+        (D2Common_GetLevelIdFromRoom_t)(void (*)(void))GetProcAddress(
+            hD2Common, MAKEINTRESOURCEA(10826));
+    D2Common_GetActFromRoom_t p_GetActFromRoom =
+        (D2Common_GetActFromRoom_t)(void (*)(void))GetProcAddress(
+            hD2Common, MAKEINTRESOURCEA(10057));
+
+    uint32_t oracleUnitRoom = (p_GetRoomFromUnit && pUnit)
+                                  ? (uint32_t)(uintptr_t)p_GetRoomFromUnit(pUnit)
+                                  : 0;
+    int32_t oracleRoomCoords[8] = {0};
+    if (p_GetRoomCoords && pRoom) {
+      p_GetRoomCoords(pRoom, oracleRoomCoords);
+    }
+    int32_t oracleRoomLevelId = (p_GetLevelIdFromRoom && pRoom)
+                                    ? p_GetLevelIdFromRoom(pRoom)
+                                    : 0;
+    uint32_t oracleRoomAct = (p_GetActFromRoom && pRoom)
+                                 ? (uint32_t)p_GetActFromRoom(pRoom)
+                                 : 0;
+
+    uint32_t gameFrame = *(const uint32_t *)(pGame + 0xA8);
+    uint32_t gsLo = *(const uint32_t *)(pGame + 0xD0);
+    uint32_t gsHi = *(const uint32_t *)(pGame + 0xD4);
+    uint32_t uId = pUnit ? *(const uint32_t *)(pUnit + 0x0C) : 1;
+    uint32_t uCls = pUnit ? *(const uint32_t *)(pUnit + 0x04) : 0;
+    uint32_t uMode = pUnit ? *(const uint32_t *)(pUnit + 0x10) : 0;
+    uint16_t uPosX = pPath ? *(const uint16_t *)(pPath + 0x02) : 0;
+    uint16_t uPosY = pPath ? *(const uint16_t *)(pPath + 0x06) : 0;
+    uint32_t uSeedLo = pUnit ? *(const uint32_t *)(pUnit + 0x20) : 0;
+    uint32_t uSeedHi = pUnit ? *(const uint32_t *)(pUnit + 0x24) : 0;
+
+    const uint8_t *pBaseSub = NULL;
+    if (pSlex) {
+      const uint8_t *pSub = *(const uint8_t *const *)(pSlex + 0x3C);
+      for (int guard = 0; pSub && guard < 32; guard++) {
+        uint32_t subFlags = *(const uint32_t *)(pSub + 0x10);
+        if ((subFlags & 0x80000000u) == 0 && !pBaseSub) {
+          pBaseSub = pSub;
+        }
+        pSub = *(const uint8_t *const *)(pSub + 0x2C);
+      }
+      if (!pBaseSub) pBaseSub = *(const uint8_t *const *)(pSlex + 0x3C);
+    }
+    const uint8_t *pEventPoolChunk = pTimer ? *(const uint8_t *const *)(pTimer + 0xA1C) : NULL;
+
+    FILE *fOut = fopen(dumpLayoutPath, "wb");
+    if (!fOut) {
+      fprintf(stderr, "[d2host-113c] failed to open %s\n", dumpLayoutPath);
+      return 10;
+    }
+    fprintf(fOut,
+            "{\"frame\":%u,\"gs\":[%u,%u],\"t0\":[[%u,%u,%u,%u,%u,%u,%u]],"
+            "\"oracle\":{\"unitRoom\":%u,\"roomCoords\":[%d,%d,%d,%d,%d,%d,%d,%d],\"roomLevelId\":%d,\"roomAct\":%u},"
+            "\"alloc_sizes\":{\"D2GameStrc\":%u,\"D2TimerStrc\":%u,\"D2EventPoolChunk\":%u,"
+            "\"D2UnitStrc\":%u,\"D2DynamicPathStrc\":%u,\"D2StatListExStrc\":%u,\"D2StatListStrc\":%u,"
+            "\"D2ActStrc\":%u,\"D2EnvironmentStrc\":%u,\"D2ActiveRoomStrc\":%u,\"D2RoomExStrc\":%u,"
+            "\"D2RoomCollisionGridAlloc\":%u,\"D2RoomCoordListStrc\":%u,"
+            "\"D2MonsterDataStrc\":%u,\"D2AiGeneralStrc\":%u,\"D2AiControlStrc\":%u},"
+            "\"mem\":[{\"type\":0,\"id\":%u,\"blocks\":[",
+            gameFrame, gsLo, gsHi, uId, uCls, uMode,
+            (unsigned)uPosX, (unsigned)uPosY, uSeedLo, uSeedHi,
+            oracleUnitRoom,
+            oracleRoomCoords[0], oracleRoomCoords[1], oracleRoomCoords[2], oracleRoomCoords[3],
+            oracleRoomCoords[4], oracleRoomCoords[5], oracleRoomCoords[6], oracleRoomCoords[7],
+            oracleRoomLevelId, oracleRoomAct,
+            lookup_alloc_size(pGame),
+            lookup_alloc_size(pTimer),
+            lookup_alloc_size(pEventPoolChunk),
+            lookup_alloc_size(pUnit),
+            lookup_alloc_size(pPath),
+            lookup_alloc_size(pSlex),
+            lookup_alloc_size(pBaseSub),
+            lookup_alloc_size(pAct),
+            lookup_alloc_size(pEnv),
+            lookup_alloc_size(pRoom),
+            lookup_alloc_size(pRoomEx),
+            lookup_alloc_size(pCollGrid),
+            lookup_alloc_size(pCoordList),
+            lookup_alloc_size(pMonData),
+            lookup_alloc_size(pAiGeneral),
+            lookup_alloc_size(pAiControl),
+            uId);
+    int first = 1;
+    write_json_hex_block(fOut, "game", pGame, 0x1DF4u, &first);
+    write_json_hex_block(fOut, "timer", pTimer, 0xA20u, &first);
+    write_json_hex_block(fOut, "unit", pUnit, 0xF4u, &first);
+    write_json_hex_block(fOut, "data", pData, 0x28u, &first);
+    write_json_hex_block(fOut, "path", pPath, 0x200u, &first);
+    write_json_hex_block(fOut, "statlistex", pSlex, 0x64u, &first);
+    write_json_hex_block(fOut, "stateflags", pStateFlags, 0x20u, &first);
+    if (pMyStats && myCnt > 0) {
+      write_json_hex_block(fOut, "mystats", pMyStats, (size_t)myCnt * 8u, &first);
+    }
+    if (pFullStats && fullCnt > 0) {
+      write_json_hex_block(fOut, "fullstats", pFullStats, (size_t)fullCnt * 8u, &first);
+    }
+    if (pSlex) {
+      const uint8_t *pSub = *(const uint8_t *const *)(pSlex + 0x3C);
+      for (int guard = 0; pSub && guard < 32; guard++) {
+        write_json_hex_block(fOut, "childstatlist", pSub, 0x3Cu, &first);
+        pSub = *(const uint8_t *const *)(pSub + 0x2C);
+      }
+    }
+    write_json_hex_block(fOut, "act", pAct, 0x60u, &first);
+    write_json_hex_block(fOut, "env", pEnv, 0x38u, &first);
+    write_json_hex_block(fOut, "room", pRoom, 0x80u, &first);
+    write_json_hex_block(fOut, "roomex", pRoomEx, 0xECu, &first);
+    write_json_hex_block(fOut, "collgrid", pCollGrid, 0x24u, &first);
+    write_json_hex_block(fOut, "coordlist", pCoordList, 0x30u, &first);
+    write_json_hex_block(fOut, "monunit", pMonUnit, 0xF4u, &first);
+    write_json_hex_block(fOut, "mondata", pMonData, 0x60u, &first);
+    write_json_hex_block(fOut, "aigeneral", pAiGeneral, 0x40u, &first);
+    write_json_hex_block(fOut, "aicontrol", pAiControl, 0x24u, &first);
+    if (pRoom) {
+      const uint32_t *ppNear = *(const uint32_t *const *)(pRoom + 0x00);
+      uint32_t nNear = *(const uint32_t *)(pRoom + 0x24);
+      if (ppNear && nNear <= 64) {
+        for (uint32_t r = 0; r < nNear; r++) {
+          const uint8_t *adj = (const uint8_t *)(uintptr_t)ppNear[r];
+          if (adj && adj != pRoom) {
+            write_json_hex_block(fOut, "adjroom", adj, 0x80u, &first);
+          }
+        }
+      }
+      const uint8_t *pRoomUnit = *(const uint8_t *const *)(pRoom + 0x74);
+      for (int guard = 0; pRoomUnit && guard < 64; guard++) {
+        write_json_hex_block(fOut, "roomunit", pRoomUnit, 0xF4u, &first);
+        pRoomUnit = *(const uint8_t *const *)(pRoomUnit + 0xE8);
+      }
+    }
+    const uint8_t *pEv = pUnit ? *(const uint8_t *const *)(pUnit + 0xDC) : NULL;
+    for (int guard = 0; pEv && guard < 32; guard++) {
+      write_json_hex_block(fOut, "event", pEv, 0x30u, &first);
+      pEv = *(const uint8_t *const *)(pEv + 0x24);
+    }
+    fprintf(fOut, "]}]}\n");
+    fclose(fOut);
+    ExitProcess(0);
   }
 
   QueryPerformanceCounter(&tEnd);

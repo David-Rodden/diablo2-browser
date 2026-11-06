@@ -94,11 +94,11 @@ void MONSTER_DispatchEvent(
 
 - `eax`: `D2UnitStrc* pUnit`
 - Checks:
-  1. `pUnit == NULL` -> `0`.
+  1. `pUnit == NULL` -> **`1`** (`0x6FCFFA93: mov eax, 1; ret` — null units are treated as dead/invalid).
   2. `test byte ptr [eax + 0xC6], 0x01` (`pUnit->dwFlags & 0x00010000`, `UNITFLAG_DEAD`) -> `1`.
-  3. `pUnit->dwUnitType == 0` (`UNIT_PLAYER`): `dwAnimMode == 0` (`PLRMODE_DEATH`) or `dwAnimMode == 17` (`PLRMODE_DEAD`) -> `1`, else `0`.
-  4. `pUnit->dwUnitType == 1` (`UNIT_MONSTER`): `dwAnimMode == 0` (`MONMODE_DEATH`) or `dwAnimMode == 12` (`MONMODE_DEAD`) -> `1`, else `0`.
-  5. All other unit types -> `0`.
+  3. `pUnit->dwUnitType == 0` (`UNIT_PLAYER`): `dwAnimMode == 0` (`PLRMODE_DEATH (0)`) or `dwAnimMode == 17` (`PLRMODE_DEAD (17)`) -> `1`, else `0`.
+  4. `pUnit->dwUnitType == 1` (`UNIT_MONSTER`): `dwAnimMode == 0` or `dwAnimMode == 12` (`MONMODE_DEATH (0) / MONMODE_DEAD (12)`) -> `1`, else `0`.
+  5. All other unit types (`object`, `missile`, `item`, `tile`, `dwUnitType > 1`) -> **`1`** (`0x6FCFFAAD: mov eax, 1; ret`).
 
 ---
 
@@ -107,37 +107,43 @@ void MONSTER_DispatchEvent(
 ### 3.1 `MONSTER_GetModeEntry` (`0x6FC949A0`)
 
 - Signature: `(ecx = D2UnitStrc* pUnit, eax = int nMode)` -> returns `const D2MonModeEntry*` (`16` bytes: `{+0x00 pfnStart, +0x04 pfnStep, +0x08 pfnEnd, +0x0C bScheduleEvents}`).
-- Checks 6 class-specific overrides first (`0x6FC949A7..0x6FC94A22`), falling back to `&g_aMonModeTable_6FD1A498[nMode]`:
-  - `nMode == 9` (`S2`), `dwClassId == 273`: `0x6FD1A508` (`{0x6FC95BC0, 0x6FC96CE0, 0x6FC95320, 1}`)
-  - `nMode == 7` (`SC`), `dwClassId == 297`: `0x6FD1A5A8` (`{0x6FC95BC0, 0x6FC96D90, 0x6FC96BF0, 1}`)
-  - `nMode == 8` (`S1`), `dwClassId == 543`: `0x6FD1A5B8` (`{0x6FC95BC0, 0x6FC96CE0, 0x6FC95440, 1}`)
-  - `nMode == 11` (`S4`), `dwClassId == 499`: `0x6FD1A598` (`{0x6FC95BC0, 0x6FC96CE0, 0x6FC95390, 1}`)
-  - `nMode == 8` (`S1`), `dwClassId in {511, 512}` (`catapult`): `0x6FD1A5C8` (`{0x6FC95BC0, 0x6FC96CE0, 0x6FC95650, 1}`)
-  - `nMode == 8` (`S1`), `dwClassId == 362`: `0x6FD1A5D8` (`{0x6FC95BC0, 0x6FC95570, 0x6FC955E0, 1}`)
+- Validates `pUnit != NULL && pUnit->dwUnitType == 1`, `0 <= dwClassId < nMonStatsTxt (734)`, `0 <= nMode < 16`.
+- First checks `MonStats[dwClassId].bSplGetModeChart (+0x1A5) != 0` (`0x6FC949E7`, non-zero on 20 `hcIdx` rows: `{243, 333, 403, 404, 417, 418, 543, 544, 546, 547, 548, 549, 550, 559, 570, 571, 572, 573, 705, 709}`); when `0`, jumps straight to `&g_aMonModeTable_6FD1A498[nMode]`. When non-zero, checks class-specific jump-table overrides (`0x6FC949F6..0x6FC94A89`), falling back to `&g_aMonModeTable_6FD1A498[nMode]`:
+  - `dwClassId in {243, 333, 705}` (Diablo): `nMode == 11` (`S4`) -> `0x6FD1A598` (`{0x6FC95510, 0x6FC95CE0, 0x6FC96BF0, 1}`); `nMode == 10` (`S3`) -> `0x6FD1A5A8` (`{0x6FC95510, 0x6FC95CE0, 0x6FC96BF0, 1}`)
+  - `dwClassId == 403` (`trappedsoul1`): `nMode in {4, 5}` (`A1`/`A2`) -> `0x6FD1A5B8` (`{0x6FC95510, 0x6FC95CE0, 0x6FC96B20, 1}`); `nMode in {8, 9}` (`S1`/`S2`) -> `0x6FD1A5C8` (`{0x6FC95510, 0x6FC95CE0, 0x6FC96A50, 1}`)
+  - `dwClassId in {417, 418}` (Shadow Warrior / Master): `nMode == 11` (`S4`) -> `0x6FD1A5D8` (`{0x6FC95510, 0x6FC95CE0, 0x6FC96BF0, 1}`)
+  - `dwClassId in {543, 544, 570, 709}` (Baal): `nMode == 10` (`S3`) -> `0x6FD1A508` (`{0x6FC95510, 0x6FC95CE0, 0x6FC96BF0, 1}`)
 
-### 3.2 Base Table `0x6FD1A498[0..15]` and Continuous Table `0x6FD1BC50[0..15]`
+### 3.2 Base Table `0x6FD1A498[0..15]`, Continuous Table `0x6FD1BC50[0..15]`, and Inline-AI End Table `0x6FD2F14C[0..15]`
 
-| Mode | Mnemonic | `pfnStart` (`+0x00`) | `pfnStep` (`+0x04`, Event 0) | `pfnEnd` (`+0x08`, Event 1) | `bScheduleEvents` (`+0x0C`) | `isContinuous` (`0x6FD1BC50[m].d0`) |
-|---:|---|---|---|---|---:|---:|
-| `0` | `DT` | `0x6FC960B0` | `0x6FC96CE0` | `0x6FC96040` | `1` | `0` |
-| `1` | `NU` | `0x6FC95BC0` | `0x00000000` | `0x00000000` | `0` | `0` |
-| `2` | `WL` | `0x6FC956F0` | `0x6FC96900` | `0x6FC95670` | `1` | **`1`** |
-| `3` | `GH` | `0x6FC95BA0` | `0x6FC95070` | `0x6FC96BF0` | `1` | `0` |
-| `4` | `A1` | `0x6FC95BC0` | `0x6FC96CE0` | `0x6FC96BF0` | `1` | `0` |
-| `5` | `A2` | `0x6FC95BC0` | `0x6FC96CE0` | `0x6FC96BF0` | `1` | `0` |
-| `6` | `BL` | `0x6FC95BC0` | `0x6FC950F0` | `0x6FC96BF0` | `1` | `0` |
-| `7` | `SC` | `0x6FC95BC0` | `0x6FC96CE0` | `0x6FC96BF0` | `1` | `0` |
-| `8` | `S1` | `0x6FC95BC0` | `0x6FC96CE0` | `0x6FC96BF0` | `1` | `0` |
-| `9` | `S2` | `0x6FC95BC0` | `0x6FC96CE0` | `0x6FC96BF0` | `1` | `0` |
-| `10` | `S3` | `0x6FC95BC0` | `0x6FC96CE0` | `0x6FC96BF0` | `0` | `0` |
-| `11` | `S4` | `0x6FC95BC0` | `0x6FC96CE0` | `0x6FC96BF0` | `0` | `0` |
-| `12` | `DD` | `0x6FC95010` | `0x00000000` | `0x00000000` | `0` | `0` |
-| `13` | `KB` | `0x6FC95A20` | `0x6FC95900` | `0x6FC96BF0` | `1` | **`1`** |
-| `14` | `SQ` | `0x6FC958A0` | `0x6FC96830` | `0x6FC957D0` | `1` | **`1`** |
-| `15` | `RN` | `0x6FC95770` | `0x6FC96900` | `0x6FC95670` | `1` | **`1`** |
+`MONSTER_IsContinuousMode` (`0x6FC94F20`, `ecx = pUnit`, `eax = nMode`) indexes the 12-byte (`3 * uint32`) table `0x6FD1BC50[nMode]`:
+- `d0 == 1` (`{2 WL, 13 KB, 14 SQ, 15 RN}`): unconditionally returns `1`.
+- `d1 == 1` (`{0 DT, 1 NU, 3 GH, 6 BL, 12 DD}`): unconditionally returns `0`.
+- `d2 == 1` (`{4 A1, 5 A2, 7 SC, 8 S1, 9 S2, 10 S3, 11 S4}`): reads `MonStats2[MonStats[hcIdx].wMonStatsEx].wMoveFlags (+0x104)` (`A1mv..S4mv`) and returns `(wMoveFlags & (1 << nMode)) != 0` (non-zero on 30 `hcIdx` rows such as Vulture `S1`/`S2`, Maggot/SandLeaper/Scarab/SnowDrifter `A2`).
 
-- `MONSTER_Event0_ModeStep` (`0x6FC952E0`): looks up `entry = MONSTER_GetModeEntry(pUnit, pUnit->dwAnimMode)`. Calls `entry->pfnStep` if non-null, else `0x6FC950F0` (frees `Event 0` & `Event 1` via `0x6FD00750`).
-- `MONSTER_Event1_ModeEnd` (`0x6FC952A0`): looks up `entry = MONSTER_GetModeEntry(pUnit, pUnit->dwAnimMode)`. Calls `entry->pfnEnd` if non-null, else `0x6FC950F0`.
+| Mode | Mnemonic | `pfnStart` (`+0x00`) | `pfnStep` (`+0x04`, Event 0) | `pfnEnd` (`+0x08`, Event 1) | `bScheduleEvents` (`+0x0C`) | `0x6FD1BC50[m]` `(d0,d1,d2)` | `inlineAiOnEnd` (`0x6FD2F14C[m]`) |
+|---:|---|---|---|---|---:|---|---:|
+| `0` | `DT` | `0x6FC96270` | `0x6FC959F0` | `0x6FC96040` | `1` | `(0,1,0)` | `0` |
+| `1` | `NU` | `0x6FC94E60` | `0x6FC95320` | `0x00000000` | `0` | `(0,1,0)` | `0` |
+| `2` | `WL` | `0x6FC94C60` | `0x6FC97010` | `0x00000000` | `1` | **`(1,0,0)`** | **`1`** |
+| `3` | `GH` | `0x6FC95210` | `0x6FC95320` | `0x6FC96BF0` | `1` | `(0,1,0)` | `0` |
+| `4` | `A1` | `0x6FC95510` | `0x6FC95CE0` | `0x6FC96BF0` | `1` | `(0,0,1)` | `0` |
+| `5` | `A2` | `0x6FC95510` | `0x6FC95CE0` | `0x6FC96BF0` | `1` | `(0,0,1)` | `0` |
+| `6` | `BL` | `0x6FC94C10` | `0x6FC95320` | `0x6FC96BF0` | `1` | `(0,1,0)` | `0` |
+| `7` | `SC` | `0x6FC95510` | `0x6FC95CE0` | `0x6FC96BF0` | `1` | `(0,0,1)` | `0` |
+| `8` | `S1` | `0x6FC95510` | `0x6FC95CE0` | `0x6FC96BF0` | `1` | `(0,0,1)` | `0` |
+| `9` | `S2` | `0x6FC95510` | `0x6FC95CE0` | `0x6FC96BF0` | `1` | `(0,0,1)` | `0` |
+| `10` | `S3` | `0x6FC94C90` | `0x6FC959B0` | `0x6FC94890` | `0` | `(0,0,1)` | `0` |
+| `11` | `S4` | `0x6FC96700` | `0x6FC95320` | `0x00000000` | `0` | `(0,0,1)` | `0` |
+| `12` | `DD` | `0x6FC95460` | `0x6FC95320` | `0x00000000` | `0` | `(0,1,0)` | `0` |
+| `13` | `KB` | `0x6FC95160` | `0x6FC96A10` | `0x6FC965E0` | `1` | **`(1,0,0)`** | `0` |
+| `14` | `SQ` | `0x6FC954E0` | `0x6FC96F20` | `0x6FC96BF0` | `1` | **`(1,0,0)`** | `0` |
+| `15` | `RN` | `0x6FC94C30` | `0x6FC96FE0` | `0x00000000` | `1` | **`(1,0,0)`** | **`1`** |
+
+- `MONSTER_Event0_ModeStep` (`0x6FC952E0`): looks up `entry = MONSTER_GetModeEntry(pUnit, pUnit->dwAnimMode)`. Calls `entry->pfnStep` if non-null, else `0x6FC950F0` (calls `D2Common.#11103(pUnit, 0)` `0x6FD803E0`; if `mode != 0 && mode != 12 && SUNIT_IsDeadOrDying(pUnit)`, returns `1`; else forces `MONMODE_NEUTRAL (1)` via `0x6FC94E60`).
+- `MONSTER_ClearStepEvents` (`0x6FC95320`): `pfnStep` for `NU`, `GH`, `BL`, `S4`, `DD`; frees all `nType == 0` (`MODE_STEP`, `0x6FC95332: cmp byte ptr [eax], 0`, no `pfnHandler` check) nodes on `pUnit` via `0x6FCAE6F0`.
+- `MONSTER_StepWalk` (`0x6FC97010`) / `MONSTER_StepRun` (`0x6FC96FE0`): calls `MONSTER_StepPath` (`0x6FD01930` -> `D2Common_10226(pUnit, 0x400)`). When path completion returns `eax == 2`, calls `MONSTER_EndToAiOrNeutral` (`0x6FC96BF0`) inline. For `0x6FD2F14C[mode] == 1` (`WL=2, RN=15`), `0x6FC96E3D` sets `pUnit->dwAnimMode = 1` (`NU`) via `D2Common.#10348` **without** `MONSTER_ClearModeEvents` and immediately calls `AI_RunMonsterAI` (`0x6FCBD3B0`) inline. If AI stalls (`0x6FD122C0`), `dwAnimMode == 1` skips `MONSTER_StartMode(1)`, leaving persistent `Event 0` to fire one final cleanup frame via `0x6FC95320`.
+- `MONSTER_Event1_ModeEnd` (`0x6FC952A0`): looks up `entry = MONSTER_GetModeEntry(pUnit, pUnit->dwAnimMode)`. Calls `entry->pfnEnd` if non-null, else `0x6FC950F0` (`D2Common.#11103` + `0x6FC94E60` neutral fallback).
 
 ---
 
@@ -145,12 +151,12 @@ void MONSTER_DispatchEvent(
 
 Resolves §7 open item of [`d2game-event-wheel-and-room-units-113c.md`](../engine/d2game-event-wheel-and-room-units-113c.md):
 
-1. `MONSTER_ClearModeEvents` (`0x6FD00750`, `eax = pGame`, `ebx = pUnit`): walks `pUnit->pEventFirst (+0xDC)` and calls `EVENT_FreeNode` (`0x6FCAE6F0`) on every node with `nType == 0` or `nType == 1` (preserving `nType == 2` AI and `nType == 3` regen timers!).
+1. `MONSTER_ClearModeEvents` (`0x6FD00750`, `eax = pGame`, `ebx = pUnit`): runs **two separate `nType`-only passes** (`0x6FCAE6F0`, no `pfnHandler` check, equivalent to `EVENT_DeleteEventByArg14` with `arg14 = 0`) — first `nType == 0` (`0x6FD00762`), then `nType == 1` (`0x6FD00780`) — preserving `nType == 2` AI and `nType == 3` regen timers while matching `D2Game.dll` chunk free-list order.
 2. Updates `pUnit->dwAnimMode` and invokes `entry->pfnStart`.
 3. If `entry->bScheduleEvents != 0` (`0x6FC95EC2`):
-   - Calls `MONSTER_IsContinuousMode` (`0x6FC94F20`, checks `0x6FD1BC50[mode].d0 != 0`):
-     - **Continuous (`WL=2, KB=13, SQ=14, RN=15`)**: calls `MONSTER_RegisterContinuousModeEvent` (`0x6FD00B40`, `eax = pGame`, `[esp+4] = pUnit`), which frees any remaining `nType == 0` node on `pUnit` and **inlines** `EVENT_SetPersistentEvent` (`0x6FCAE680` + `fFlags |= 0x04`, `nType = 0`, `dwFrame = 0xFFFFFFFF`, LIFO head-insert at `pTimer->pPersistentHead[1]`). Note that standalone wrappers `0x6FCAE940` and `0x6FCAE960` wrap `0x6FCAE810` directly, while `MONSTER_ChangeMode` uses the inlined `0x6FD00B40` helper.
-     - **Timed (`DT=0, GH=3, A1=4, A2=5, BL=6, SC=7, S1=8, S2=9`)**: calls `0x6FCFF7B0` to schedule `AnimData.d2` action keyframe (`nType = 0`) and animation end (`nType = 1`) into the 64-slot FIFO wheel (`0x6FCAEA80`).
+   - Calls `MONSTER_IsContinuousMode` (`0x6FC94F20`, checks `0x6FD1BC50[mode]` + `MonStats2.wMoveFlags`):
+     - **Continuous (`WL=2, KB=13, SQ=14, RN=15`, or `MonStats2.wMoveFlags & (1 << mode)`)**: calls `MONSTER_RegisterContinuousModeEvent` (`0x6FD00B40`, `eax = pGame`, `[esp+4] = pUnit`), which frees any remaining `nType == 0` node on `pUnit` and **inlines** `EVENT_SetPersistentEvent` (`0x6FCAE680` + `fFlags |= 0x04`, `nType = 0`, `dwFrame = 0xFFFFFFFF`, LIFO head-insert at `pTimer->pPersistentHead[1]`). Note that standalone wrappers `0x6FCAE940` and `0x6FCAE960` wrap `0x6FCAE810` directly, while `MONSTER_ChangeMode` uses the inlined `0x6FD00B40` helper.
+     - **Timed (`DT=0, GH=3, A1=4, A2=5, BL=6, SC=7, S1=8, S2=9`)**: calls `0x6FCFF7B0` to schedule `AnimData.d2` action keyframe (`nType = 0`) and animation end (`nType = 1`, `dwArg14 = 0`) into the 64-slot FIFO wheel (`0x6FCAEA80`).
 
 ---
 

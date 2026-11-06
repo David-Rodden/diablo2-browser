@@ -788,7 +788,7 @@ export class AreaPathWorld113c {
       PATH_SetType(pPath, PATHTYPE_WALL_FOLLOW);
       pts = D2Common_10142(pPath, monEntry.unit, 0);
     }
-    if (pts > 0) this.monsterMoveEventHooks113c?.onMoveStart(params.unitId);
+    if (pts > 0) this.monsterMoveSeq113c.set(params.unitId, ++this.monsterMoveSeqCounter113c);
     return pts;
   }
 
@@ -827,7 +827,7 @@ export class AreaPathWorld113c {
       PATH_SetType(pPath, PATHTYPE_WALL_FOLLOW);
       pts = D2Common_10142(pPath, monEntry.unit, 0);
     }
-    if (pts > 0) this.monsterMoveEventHooks113c?.onMoveStart(params.unitId);
+    if (pts > 0) this.monsterMoveSeq113c.set(params.unitId, ++this.monsterMoveSeqCounter113c);
     return pts;
   }
 
@@ -860,19 +860,15 @@ export class AreaPathWorld113c {
   }
 
   /**
-   * 1.13c continuous mode hooks (`MONSTER_ChangeMode` -> `0x6FD00B40` persistent `Event 0` LIFO
-   * registration on `pTimer->pPersistentHead[1]`; `kb/monsters/d2game-monster-events-113c.md` §4).
+   * Registration order of the monsters' moves: a 1.13c move (WL / RN) installs a persistent per-frame
+   * mode-update event at the head of the monster partition list (kb/engine/d2game-event-wheel-and-room-
+   * units-113c.md §6), so the newest move is updated first.
    */
-  private monsterMoveEventHooks113c: {
-    readonly onMoveStart: (unitId: number) => void;
-    readonly onMoveStop: (unitId: number, mode: number) => void;
-  } | null = null;
+  private readonly monsterMoveSeq113c = new Map<number, number>();
+  private monsterMoveSeqCounter113c = 0;
 
-  setMonsterMoveEventHooks113c(hooks: {
-    readonly onMoveStart: (unitId: number) => void;
-    readonly onMoveStop: (unitId: number, mode: number) => void;
-  } | null): void {
-    this.monsterMoveEventHooks113c = hooks;
+  getMonsterMoveSeq113c(unitId: number): number {
+    return this.monsterMoveSeq113c.get(unitId) ?? 0;
   }
 
   stopMonsterMove113c(areaId: number, unitId: number, mode = MONMODE_NEUTRAL): void {
@@ -881,7 +877,6 @@ export class AreaPathWorld113c {
     if (!entry || !pPath) return;
     PATH_StopMovement(pPath);
     entry.unit.dwAnimMode = mode;
-    this.monsterMoveEventHooks113c?.onMoveStop(unitId, mode);
   }
 
   getMonsterAreaId113c(unitId: number): number | undefined {

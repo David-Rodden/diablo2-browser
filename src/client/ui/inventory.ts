@@ -3249,12 +3249,7 @@ export class InventoryPanel {
     // Left-Click (`button === 0`): UI Buttons & Item Move / Pick Up / Place / Swap / Stack
     // 1. Close button — press only latches the depressed cell; the close fires on
     // mouse-up landing back on the button (see `handleMouseUp`).
-    if (
-      logicalX >= INV_CLOSE_BTN_BOUNDS.x &&
-      logicalX <= INV_CLOSE_BTN_BOUNDS.x + INV_CLOSE_BTN_BOUNDS.w &&
-      logicalY >= INV_CLOSE_BTN_BOUNDS.y &&
-      logicalY <= INV_CLOSE_BTN_BOUNDS.y + INV_CLOSE_BTN_BOUNDS.h
-    ) {
+    if (this.closeButton.contains(logicalX, logicalY)) {
       this.closeButton.press(logicalX, logicalY)
       return true
     }

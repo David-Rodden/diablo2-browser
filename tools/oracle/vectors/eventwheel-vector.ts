@@ -13,16 +13,19 @@
  */
 
 import { parseVectorHeader, writeVectorHeader } from './vector-format.ts'
-import { SparseMemory113c } from '../../../src/server/route2/sparse-memory.ts'
-import { D2GameStrc, D2GameStrc_SIZE, D2UnitStrc, D2UnitStrc_SIZE } from '../../../src/server/route2/layout.generated.ts'
 import {
+  D2GameStrc,
+  D2GameStrc_SIZE,
+  D2UnitStrc,
+  D2UnitStrc_SIZE,
   EVENT_DeleteEventByType113c,
   EVENT_InitTimerQueue113c,
   EVENT_RemoveUnitEvents113c,
   EVENT_SetEventFull113c,
   EVENT_SetPersistentEventFull113c,
   EVENT_UpdateTimers113c,
-} from '../../../src/d2kern-113c/game/timer-wheel.ts'
+  SparseMemory113c,
+} from '../../../src/d2kern-113c/index.ts'
 
 export const EVTWHEEL_RECORD_SIZE = 32
 export const EVTWHEEL_DEFAULT_SEED = 0xd2113ce7

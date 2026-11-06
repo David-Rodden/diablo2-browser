@@ -23,7 +23,7 @@ export interface EventWheelHooks113c {
   readonly onMonsterAiEventWithState36: (pUnit: number) => void
 }
 
-/** Node pool allocation `0x6FCAE540` (`esi = timer`): first chunk with a free node, pop it, zero it. */
+/** Node pool allocation (`esi = timer`, canonical `@va` in `game/timer-wheel.ts`): first chunk with a free node, pop it, zero it. */
 export function EVENT_AllocNode113c(m: Memory113c, timer: number): number {
   for (let chunk = m.u32(timer + TIMER_POOL); chunk !== 0; chunk = m.u32(chunk + POOL_CHUNK_NEXT)) {
     const node = m.u32(chunk + POOL_CHUNK_FREE)
@@ -32,10 +32,10 @@ export function EVENT_AllocNode113c(m: Memory113c, timer: number): number {
     m.fill(node, EVENT_NODE_SIZE, 0)
     return node
   }
-  throw new Error('EVENT_AllocNode113c: pool exhausted; chunk allocation 0x6FCAE420 not ported')
+  throw new Error('EVENT_AllocNode113c: pool exhausted; chunk allocation not ported')
 }
 
-/** `0x6FCAE680(eax = pGame, ecx = pUnit)`: allocate a node and link it at the head of `unit+0xDC`. */
+/** `EVENT_CreateNode` (`eax = pGame, ecx = pUnit`, canonical `@va` in `game/timer-wheel.ts`): allocate a node and link it at the head of `unit+0xDC`. */
 export function EVENT_CreateNode113c(m: Memory113c, pGame: number, pUnit: number): number {
   const timer = m.get(pGame, D2GameStrc.pTimer)
   const node = EVENT_AllocNode113c(m, timer)
@@ -58,7 +58,7 @@ export function EVENT_CreateNode113c(m: Memory113c, pGame: number, pUnit: number
   return node
 }
 
-/** `0x6FCAE810` (persistent event): frame -1, flag 0x04, handler from the caller, head insert per partition. */
+/** `EVENT_SetPersistentEvent` (canonical `@va` in `game/timer-wheel.ts`): frame -1, flag 0x04, handler from the caller, head insert per partition. */
 export function EVENT_SetPersistentEvent113c(
   m: Memory113c,
   pGame: number,
@@ -89,8 +89,8 @@ export function EVENT_SetPersistentEvent113c(
 }
 
 /**
- * `EVENT_SetEvent` (`0x6FCAEA80`, `ecx = pGame`, `edx = pUnit`, stack `type, frame, handler, arg14, arg18`).
- * A frame at or before the current one becomes `current + 1` (signed compare `0x6FCAEABE`).
+ * `EVENT_SetEvent` (`ecx = pGame`, `edx = pUnit`, stack `type, frame, handler, arg14, arg18`; canonical `@va` in `game/timer-wheel.ts`).
+ * A frame at or before the current one becomes `current + 1`.
  */
 export function EVENT_SetEvent113c(
   m: Memory113c,
@@ -105,7 +105,7 @@ export function EVENT_SetEvent113c(
 ): void {
   if ((type | 0) >= 15) return
   if ((frame | 0) === -1) {
-    // 0x6FCAEA9E..0x6FCAEAAC: the persistent path is called with handler 0.
+    // Persistent path is called with handler 0.
     EVENT_SetPersistentEvent113c(m, pGame, pUnit, type, 0, arg14, arg18)
     return
   }
@@ -135,7 +135,7 @@ export function EVENT_SetEvent113c(
   if (m.u32(tailAddr) === 0) m.setU32(tailAddr, node)
 }
 
-/** Partition walk order of `EVENT_UpdateTimers` (`0x6FCAF070`): missiles, players, monsters, objects, items. */
+/** Partition walk order of `EVENT_UpdateTimers` (canonical `@va` in `game/timer-wheel.ts`): missiles, players, monsters, objects, items. */
 export const EVENT_UPDATE_PARTITION_ORDER_113C: readonly number[] = [2, 0, 1, 3, 4]
 
 export interface WheelFire113c {

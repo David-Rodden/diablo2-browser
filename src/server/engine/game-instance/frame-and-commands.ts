@@ -25,7 +25,6 @@ import type { TownNpcPlayerContext } from '../../ai/town-npc-ai-113c.ts'
 import { questWordIndex113c } from '../quests-113c.ts'
 import type { GameInstanceHost } from './host.ts'
 import { updatePlayerBreadcrumbs113c } from './hireable-ai-113c.ts'
-import { getKernMonsterWheelRuntime113c } from './kern-monster-wheel-113c.ts'
 import { stepOracleNecroPetsEarly113c } from './summoned-pets.ts'
 import type { InternalMonsterRecord, InternalPlayerRecord, PlayerSkillCast, QueuedPlayerCommand, ServerItemEntry } from './types.ts'
 import { ACT_TOWN_AREAS, BODYLOC_LEFT_ARM, BODYLOC_RIGHT_ARM, NPC_INTRO_BIT_BY_HCIDX_113C, PLAYER_SIZE_X_113C, SKILL_TELEPORT, SRVDOFUNC_MIND_BLAST, SRVDOFUNC_WHIRLWIND, STAT_ITEM_ADDCLASSSKILLS, STAT_ITEM_ADDSKILL_TAB, STAT_ITEM_ALLSKILLS, STAT_ITEM_EXPLOSIVEARROW, STAT_ITEM_MAGICARROW, STAT_ITEM_NONCLASSSKILL, STAT_ITEM_SINGLESKILL, STAT_QUANTITY, TOWN_AREAS, UNIVERSAL_PLAYER_SKILL_IDS, WARP_INTERACT_DISTANCE_SUBTILES, WAYPOINT_AREA_IDS, WAYPOINT_INTERACT_DISTANCE_SUBTILES, areaToAct, collectEquippedItemStats, collectItemStats, computeObjectApproachSearchRadius113c, findBestInteractApproachSubTile113c, findChargedSkill, normalizeMissileElement, resolvePlayerServerMissileName, UNIT_TYPE_113C, type UnitType113c } from './constants-and-helpers.ts'
@@ -146,8 +145,6 @@ function stepFrame(this: GameInstanceHost): Map<number, readonly ServerEvent[]> 
 
   // 2. Stream wilderness rooms & step player movement
   if (this.drlgRoomPopulator !== null) {
-    // Sync any frame-0 / end-of-prev-frame monster events before advancing `dwGameFrame`
-    getKernMonsterWheelRuntime113c(this).installMoveHooks(this)
     for (const player of this.players.values()) {
       this.ensureAdjacentAreasLoaded(player.areaId)
       this.drlgRoomPopulator.activateNear(
@@ -330,8 +327,8 @@ function stepFrame(this: GameInstanceHost): Map<number, readonly ServerEvent[]> 
   if (this.drlgRoomPopulator !== null) stepOracleNecroPetsEarly113c(this)
   const drlgDeferred: InternalMonsterRecord[] = []
   if (this.drlgRoomPopulator !== null) {
-    // Sync any events scheduled outside the monster phase (player hits, missiles, pets, room wake) into the 64-slot wheel.
-    getKernMonsterWheelRuntime113c(this).syncAllMonsters(this, true)
+    // Events scheduled outside the monster phase (player hits, missiles, pets) get their sequence now.
+    for (const monster of this.monsters.values()) refreshMonsterEventSeq113c(this, monster)
   }
   for (const monster of [...this.monsters.values()]) {
     if (monster.dead) {
@@ -454,6 +451,14 @@ function stepFrame(this: GameInstanceHost): Map<number, readonly ServerEvent[]> 
     stepMonsterAiAndPending113c(this, monster)
   }
   if (this.drlgRoomPopulator !== null) runDrlgMonsterEventPhase113c(this, drlgDeferred)
+  if (this.drlgRoomPopulator !== null) {
+    const dueEvent3 = [...this.monsters.values()]
+      .filter((m) => !m.dead && !m.isNpc && m.nextEvent3Frame113c === this.currentFrame)
+      .sort((a, b) => (a.event3Seq113c ?? 0) - (b.event3Seq113c ?? 0))
+    for (const monster of dueEvent3) {
+      this.stepMonsterRegen(monster)
+    }
+  }
 
   // 5. Step mercenaries & summoned pets (F13)
   this.stepMercenaries()
@@ -469,7 +474,6 @@ function stepFrame(this: GameInstanceHost): Map<number, readonly ServerEvent[]> 
     if (this.currentFrame > 0 && this.currentFrame % 11 === 0) {
       this.drlgRoomPopulator.incrementInactiveRoomFrames()
     }
-    getKernMonsterWheelRuntime113c(this).syncAllMonsters(this, false)
   }
 
   const frameMap = new Map<number, readonly ServerEvent[]>()
@@ -2656,13 +2660,87 @@ function stepMonsterAiAndPending113c(host: GameInstanceHost, monster: InternalMo
   host.stepPendingResurrection(monster)
 }
 
-/**
- * DRLG oracle path, monster partition (`partition = 1`) of `EVENT_UpdateTimers` (`0x6FCAF070`)
- * dispatched via `src/d2kern-113c` `MONSTER_DispatchEvent113c` (`0x6FC969A0`) with zero array-sort
- * or sequence-number stand-ins (`kb/monsters/d2game-monster-events-113c.md`).
- */
-function runDrlgMonsterEventPhase113c(host: GameInstanceHost, deferred: readonly InternalMonsterRecord[]): void {
-  getKernMonsterWheelRuntime113c(host).runMonsterEventPhase(host, deferred, stepMonsterAiAndPending113c)
+const monsterEventSeqByHost113c = new WeakMap<object, number>()
+function nextMonsterEventSeq113c(host: object): number {
+  const next = (monsterEventSeqByHost113c.get(host) ?? 0) + 1
+  monsterEventSeqByHost113c.set(host, next)
+  return next
 }
 
+/**
+ * Event sequence numbers that stand in for the 1.13c wheel insertion order: a monster's AI event
+ * (`nextAiFrame`), its mode end (`actionAnimEndFrame`) and its death end (`deathAnimEndFrame`) get a new
+ * sequence number whenever their frame changes, in the order the replica schedules them.
+ */
+function refreshMonsterEventSeq113c(host: GameInstanceHost, monster: InternalMonsterRecord): void {
+  const seq = monster.eventSeq113c ?? (monster.eventSeq113c = { ai: 0, act: 0, death: 0, seenAi: NaN, seenAct: NaN, seenDeath: NaN })
+  if (monster.nextAiFrame !== seq.seenAi) {
+    seq.seenAi = monster.nextAiFrame
+    seq.ai = nextMonsterEventSeq113c(host)
+  }
+  const act = monster.actionAnimEndFrame ?? 0
+  if (act !== seq.seenAct) {
+    seq.seenAct = act
+    seq.act = nextMonsterEventSeq113c(host)
+  }
+  const death = monster.deathAnimEndFrame ?? 0
+  if (death !== seq.seenDeath) {
+    seq.seenDeath = death
+    seq.death = nextMonsterEventSeq113c(host)
+  }
+}
+
+/**
+ * DRLG oracle path, monster partition of `EVENT_UpdateTimers` (`0x6FCAEBC0`, oracle order log a1c F760..F840):
+ * 1. persistent mode updates of moving monsters (WL / RN), newest move registration first (LIFO);
+ * 2. the frame's slot events in scheduling order (FIFO): AI thinks, mode ends (attack end, DT -> DD).
+ * Monsters with nothing due are stepped afterwards in unit-id order (per-frame counters only).
+ */
+function runDrlgMonsterEventPhase113c(host: GameInstanceHost, deferred: readonly InternalMonsterRecord[]): void {
+  const frame = host.currentFrame
+  const moving = deferred.filter((m) => m.mode === 2 || m.mode === 15)
+  moving.sort(
+    (a, b) => host.areaPathWorld.getMonsterMoveSeq113c(b.unitId) - host.areaPathWorld.getMonsterMoveSeq113c(a.unitId),
+  )
+  const done = new Set<InternalMonsterRecord>()
+  for (const m of moving) {
+    done.add(m)
+    stepMonsterAiAndPending113c(host, m)
+    refreshMonsterEventSeq113c(host, m)
+  }
+  type Due = { readonly seq: number; readonly monster: InternalMonsterRecord; readonly kind: 'step' | 'death' }
+  const due: Due[] = []
+  for (const m of deferred) {
+    if (done.has(m)) continue
+    const seq = m.eventSeq113c
+    const aiDue = m.nextAiFrame <= frame
+    const actDue = (m.actionAnimEndFrame ?? 0) > 0 && frame >= (m.actionAnimEndFrame ?? 0)
+    if (seq !== undefined && (aiDue || actDue)) {
+      due.push({ seq: actDue ? seq.act : seq.ai, monster: m, kind: 'step' })
+    }
+  }
+  for (const m of host.monsters.values()) {
+    if (m.dead && m.mode === 0 && (m.deathAnimEndFrame ?? 0) > 0 && frame >= (m.deathAnimEndFrame ?? 0)) {
+      due.push({ seq: m.eventSeq113c?.death ?? 0, monster: m, kind: 'death' })
+    }
+  }
+  due.sort((a, b) => a.seq - b.seq)
+  for (const d of due) {
+    if (d.kind === 'death') {
+      d.monster.deathAnimEndFrame = 0
+      d.monster.mode = 12
+      refreshMonsterEventSeq113c(host, d.monster)
+      continue
+    }
+    if (done.has(d.monster)) continue
+    done.add(d.monster)
+    stepMonsterAiAndPending113c(host, d.monster)
+    refreshMonsterEventSeq113c(host, d.monster)
+  }
+  for (const m of deferred) {
+    if (done.has(m)) continue
+    stepMonsterAiAndPending113c(host, m)
+    refreshMonsterEventSeq113c(host, m)
+  }
+}
 

@@ -746,6 +746,8 @@ export interface InternalMonsterRecord {
   lastDamagedFrame113c?: number | undefined
   /** Next frame on which `MONSTER_Event3_HpRegen` (`0x6FC96740`) fires (`undefined` = no `Event 3` queued). */
   nextEvent3Frame113c?: number | undefined
+  /** Monotonic insertion counter into the `EVENT_SetEvent(..., 3, frame)` FIFO bucket (`0x6FCAEA80`). */
+  event3Seq113c?: number | undefined
   maxHp: number
   baseMaxHp: number
   /** Unmultiplied single-player normal-rank base max HP (`D2Game.dll` `0x6FC4673A`, #1821). */
@@ -1093,6 +1095,10 @@ export interface InternalMonsterRecord {
   aiCommands113c?: number[] | undefined
   /** `AiFallen` per-monster "afraid" flag (`pAiTick->[0]+0x14`, set by the death-flee branch). */
   fallenAfraid113c?: boolean | undefined
+  /** DRLG event order: wheel-insertion stand-ins for the AI event, mode end and death end (frame-and-commands). */
+  eventSeq113c?:
+    | { ai: number; act: number; death: number; seenAi: number; seenAct: number; seenDeath: number }
+    | undefined
 }
 
 

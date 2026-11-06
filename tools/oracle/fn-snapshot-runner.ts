@@ -2,15 +2,19 @@
  * Single-Function Snapshot Differential Harness (`Plan §3.3`).
  *
  * Bridges the two complementary function-level verification paths required to scale to all
- * 4,551 `D2Game`/`D2Common` server functions:
- * 1. Offline `fnrec` pre/post sparse-memory block replay (`SparseMemory113c`).
+ * `D2Game`/`D2Common` server functions:
+ * 1. Offline `fnrec` pre/post sparse-memory block replay (`SparseMemory113c` + write-set verification).
  * 2. Live warm `FnOracleDaemon` (`fnharness v2` `SNAP_CALL` `op 200`) comparing return `eax`,
  *    PRNG `D2SeedStrc`, `D2StatListExStrc` `[base, full]` stats, `STATES` `[active, dirty]`
  *    masks, and outbound `D2Net.#10002` S2C packets, emitting minimal JSON reproducers on mismatch.
  */
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { SparseMemory113c } from '../../src/server/route2/sparse-memory.ts'
+import {
+  SparseMemory113c,
+  type FieldLayout113c,
+  type Memory113c,
+} from '../../src/d2kern-113c/index.ts'
 import {
   SNAP_PTR_BUF,
   SNAP_PTR_GAME,
@@ -68,21 +72,225 @@ export interface SnapshotSweepReport113c {
   readonly reproducerFiles: readonly string[]
 }
 
+/**
+ * `Memory113c` wrapper over `SparseMemory113c` that records every post-load written byte address
+ * and `alloc()` range so `fnrec` replay verifies:
+ * 1. Every pre+post block byte-for-byte.
+ * 2. Every written byte inside post-only blocks against the DLL's post block.
+ * 3. Zero unexpected writes outside `post` blocks and `alloc()` ranges.
+ */
+export class TrackedMemory113c implements Memory113c {
+  private readonly inner = new SparseMemory113c()
+  readonly writtenAddrs = new Set<number>()
+  readonly allocRanges: Array<readonly [number, number]> = []
+
+  loadPreBlock(addr: number, data: Uint8Array): void {
+    this.inner.loadBlock(addr, data)
+  }
+
+  readBytes(addr: number, len: number): Uint8Array {
+    return this.inner.readBytes(addr, len)
+  }
+
+  alloc(size: number): number {
+    const p = this.inner.alloc(size)
+    this.allocRanges.push([p, (p + size) >>> 0])
+    return p
+  }
+
+  u8(p: number): number {
+    return this.inner.u8(p)
+  }
+
+  u16(p: number): number {
+    return this.inner.u16(p)
+  }
+
+  u32(p: number): number {
+    return this.inner.u32(p)
+  }
+
+  setU8(p: number, v: number): void {
+    const a = p >>> 0
+    this.writtenAddrs.add(a)
+    this.inner.setU8(a, v)
+  }
+
+  setU16(p: number, v: number): void {
+    const a = p >>> 0
+    this.writtenAddrs.add(a)
+    this.writtenAddrs.add((a + 1) >>> 0)
+    this.inner.setU16(a, v)
+  }
+
+  setU32(p: number, v: number): void {
+    const a = p >>> 0
+    this.writtenAddrs.add(a)
+    this.writtenAddrs.add((a + 1) >>> 0)
+    this.writtenAddrs.add((a + 2) >>> 0)
+    this.writtenAddrs.add((a + 3) >>> 0)
+    this.inner.setU32(a, v)
+  }
+
+  fill(p: number, len: number, v: number): void {
+    const base = p >>> 0
+    for (let i = 0; i < len; i++) {
+      this.writtenAddrs.add((base + i) >>> 0)
+    }
+    this.inner.fill(base, len, v)
+  }
+
+  get(base: number, f: FieldLayout113c, index = 0): number {
+    return this.inner.get(base, f, index)
+  }
+
+  set(base: number, f: FieldLayout113c, v: number, index = 0): void {
+    if (base === 0) throw new Error('SparseMemory113c: NULL base')
+    if (index < 0 || index >= f.count) {
+      throw new Error(`SparseMemory113c: index ${index} outside 0..${f.count - 1}`)
+    }
+    const width = f.type === 'u8' ? 1 : f.type === 'u16' ? 2 : 4
+    const p = (base + f.off + index * width) >>> 0
+    if (width === 1) this.setU8(p, v)
+    else if (width === 2) this.setU16(p, v)
+    else this.setU32(p, v)
+  }
+}
+
 function decodeHex(h: string): Uint8Array {
   return Uint8Array.from(Buffer.from(h, 'hex'))
 }
 
+export function verifyTrackedPostState113c(
+  rec: FnrecCallRecord113c,
+  m: TrackedMemory113c,
+): string | null {
+  const preMap = new Map<number, Uint8Array>()
+  for (const [rawAddr, h] of rec.pre) {
+    if (h !== '') preMap.set(rawAddr >>> 0, decodeHex(h))
+  }
+  // Identify untouched event-pool free-list lookahead nodes (`*(chunk+0x7080)` -> `oldFree+0x1c`)
+  // that `d2oracle` snapshots after `pFreeHead` advances without the callee touching the next node.
+  const lookaheadFreeNodes = new Set<number>()
+  for (const [, b] of preMap) {
+    if (b.length === 8) {
+      const oldFree = (b[0]! | (b[1]! << 8) | (b[2]! << 16) | (b[3]! << 24)) >>> 0
+      const oldNode = preMap.get(oldFree)
+      if (oldNode !== undefined && oldNode.length === 0x30) {
+        const nextFree =
+          (oldNode[0x1c]! | (oldNode[0x1d]! << 8) | (oldNode[0x1e]! << 16) | (oldNode[0x1f]! << 24)) >>> 0
+        if (nextFree !== 0 && !preMap.has(nextFree)) {
+          lookaheadFreeNodes.add(nextFree)
+        }
+      }
+    }
+  }
+
+  const postSpans: Array<readonly [number, number]> = []
+  const usedAllocIndices = new Set<number>()
+
+  for (const [rawAddr, h] of rec.post) {
+    if (h === '') continue
+    const addr = rawAddr >>> 0
+    const want = decodeHex(h)
+    postSpans.push([addr, (addr + want.length) >>> 0])
+
+    if (preMap.has(addr)) {
+      const got = m.readBytes(addr, want.length)
+      for (let i = 0; i < want.length; i++) {
+        if (want[i] !== got[i]) {
+          return (
+            `F${rec.frame} ${rec.fn} args=${JSON.stringify(rec.args)}: ` +
+            `block 0x${addr.toString(16)}+0x${i.toString(16)} got 0x${got[i]!.toString(16)}, want 0x${want[i]!.toString(16)}`
+          )
+        }
+      }
+    } else {
+      // Post-only block: compare the full block bytes against the recorded DLL post dump
+      // (either at `addr` or in a matching newly `alloc()`'d block), failing on any missing write or wrong byte.
+      let hasDirectWrite = false
+      for (let i = 0; i < want.length; i++) {
+        if (m.writtenAddrs.has((addr + i) >>> 0)) {
+          hasDirectWrite = true
+          break
+        }
+      }
+      if (!hasDirectWrite && lookaheadFreeNodes.has(addr)) {
+        continue
+      }
+
+      let targetAddr = addr
+      if (!hasDirectWrite) {
+        for (let aIdx = 0; aIdx < m.allocRanges.length; aIdx++) {
+          if (usedAllocIndices.has(aIdx)) continue
+          const [lo, hi] = m.allocRanges[aIdx]!
+          if ((hi - lo) >>> 0 === want.length) {
+            targetAddr = lo
+            usedAllocIndices.add(aIdx)
+            break
+          }
+        }
+      }
+
+      for (let i = 0; i < want.length; i++) {
+        const byteAddr = (targetAddr + i) >>> 0
+        if (!m.writtenAddrs.has(byteAddr)) {
+          return (
+            `F${rec.frame} ${rec.fn} args=${JSON.stringify(rec.args)}: ` +
+            `post-only block 0x${addr.toString(16)}+0x${i.toString(16)} missing write (want 0x${want[i]!.toString(16)})`
+          )
+        }
+        const gotByte = m.u8(byteAddr)
+        if (want[i] !== gotByte) {
+          return (
+            `F${rec.frame} ${rec.fn} args=${JSON.stringify(rec.args)}: ` +
+            `post-only block 0x${addr.toString(16)}+0x${i.toString(16)} got 0x${gotByte.toString(16)}, want 0x${want[i]!.toString(16)}`
+          )
+        }
+      }
+    }
+  }
+
+  for (const wAddr of m.writtenAddrs) {
+    let covered = false
+    for (let i = 0; i < postSpans.length; i++) {
+      const [lo, hi] = postSpans[i]!
+      if (wAddr >= lo && wAddr < hi) {
+        covered = true
+        break
+      }
+    }
+    if (!covered) {
+      for (let i = 0; i < m.allocRanges.length; i++) {
+        const [lo, hi] = m.allocRanges[i]!
+        if (wAddr >= lo && wAddr < hi) {
+          covered = true
+          break
+        }
+      }
+    }
+    if (!covered) {
+      return (
+        `F${rec.frame} ${rec.fn} args=${JSON.stringify(rec.args)}: ` +
+        `unexpected write outside recorded post blocks at 0x${wAddr.toString(16)}`
+      )
+    }
+  }
+
+  return null
+}
+
 /**
- * Replay a recorded `fnrec` pre/post memory record through a TypeScript port operating on `SparseMemory113c`.
- * Returns `null` when every pre-existing modified byte matches identically, or a diagnostic string on mismatch.
+ * Replay a recorded `fnrec` pre/post memory record through a TypeScript port operating on `Memory113c`.
+ * Returns `null` when every pre/post block and write-set check matches identically, or a diagnostic string on mismatch.
  */
 export function runFnrecDifferential113c(
   rec: FnrecCallRecord113c,
-  invokeTs: (m: SparseMemory113c, args: readonly number[]) => number | void,
+  invokeTs: (m: Memory113c, args: readonly number[]) => number | void,
 ): string | null {
-  const m = new SparseMemory113c()
+  const m = new TrackedMemory113c()
   for (const [addr, h] of rec.pre) {
-    if (h !== '') m.loadBlock(addr, decodeHex(h))
+    if (h !== '') m.loadPreBlock(addr >>> 0, decodeHex(h))
   }
   let tsRet: number | void
   try {
@@ -93,19 +301,7 @@ export function runFnrecDifferential113c(
   if (rec.ret !== undefined && tsRet !== undefined && (tsRet | 0) !== (rec.ret | 0)) {
     return `F${rec.frame} ${rec.fn}: eax got ${tsRet | 0}, want ${rec.ret | 0}`
   }
-
-  const preAddrs = new Set(rec.pre.map(([a]) => a))
-  for (const [addr, h] of rec.post) {
-    if (!preAddrs.has(addr) || h === '') continue
-    const want = decodeHex(h)
-    const got = m.readBytes(addr, want.length)
-    for (let i = 0; i < want.length; i++) {
-      if (want[i] !== got[i]) {
-        return `F${rec.frame} ${rec.fn}: block 0x${addr.toString(16)}+0x${i.toString(16)} got 0x${got[i]!.toString(16)}, want 0x${want[i]!.toString(16)}`
-      }
-    }
-  }
-  return null
+  return verifyTrackedPostState113c(rec, m)
 }
 
 /**

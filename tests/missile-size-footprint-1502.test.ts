@@ -16,6 +16,7 @@ import {
   checkMissileSegmentFootprintOverlap113c,
   checkMissileSizeFootprintOverlap113c,
   checkMissileSubtileRayFootprintOverlap113c,
+  getMissileSizeFootprintOffsets113c,
 } from '../src/common/skills/missile-size-footprint-113c.ts'
 import { getMonsterSizeXByHcIdx } from '../src/common/units/monster-mapping.ts'
 import * as serverEngine from '../src/server/engine/missile-engine.ts'
@@ -119,5 +120,130 @@ describe('Issue #1502: client stepper hit test', () => {
     expect(spawnMagicArrowAtMonster(1.99).hit).toBe(true)
     // Two sub-tile rows away is outside the footprint.
     expect(spawnMagicArrowAtMonster(2.2).hit).toBe(false)
+  })
+
+  it('blocks Size=2 missiles (chainlightning/lightningfury) on 5-cell + cross wall footprint (0x6FD9CE00) while Size=1 missiles pass', () => {
+    expect(getMissileSizeFootprintOffsets113c(1)).toHaveLength(1)
+    expect(getMissileSizeFootprintOffsets113c(2)).toHaveLength(5)
+    expect(getMissileSizeFootprintOffsets113c(3)).toHaveLength(9)
+    expect(missileCltColsByName113c('chainlightning')!.size).toBe(2)
+    expect(missileCltColsByName113c('magicarrow')!.size).toBe(1)
+
+    const world = new ClientWorld()
+    // Place a single missile-barrier wall cell at (105, 101), 1 sub-tile off the y=100 flight axis
+    world.setMissileCollisionChecker((ix, iy) => ix === 105 && iy === 101)
+
+    const chainLightning = world.spawnMissileByKey('chainlightning', 100, 100, 115, 100, {
+      ownerType: 'player',
+      ownerId: 1,
+      sourceSkillId: 53,
+      skillLevel: 1,
+      maxTicks: 40,
+    })
+    const arrow = world.spawnMissileByKey('magicarrow', 100, 100, 115, 100, {
+      ownerType: 'player',
+      ownerId: 1,
+      sourceSkillId: 6,
+      skillLevel: 1,
+      maxTicks: 40,
+    })
+
+    for (let t = 0; t < 15; t++) {
+      world.tick(40)
+    }
+
+    // Chain Lightning (Size=2) collides with the adjacent wall at (105, 101) when entering (105, 100)
+    expect(world.getUnit('missile', chainLightning.id)).toBeUndefined()
+    // Magic Arrow (Size=1) tests only (x, y) and flies past x=105
+    const activeArrow = world.getUnit('missile', arrow.id)
+    expect(activeArrow).toBeDefined()
+    expect(activeArrow!.x).toBeGreaterThan(106)
+  })
+
+  it('refreshes targeted unit coordinates at the action frame (0x6FB51340) even after an intervening stop UnitMove', () => {
+    const world = new ClientWorld()
+    world.selfId = 1
+    world.apply(
+      {
+        type: 'UnitAssign',
+        unit: {
+          unitType: 0,
+          id: 1,
+          classId: 1, // Sorceress
+          name: 'Sorc',
+          x: 100,
+          y: 100,
+          mode: 1,
+        },
+      },
+      1000,
+    )
+    world.apply(
+      {
+        type: 'UnitAssign',
+        unit: {
+          unitType: 1,
+          id: 777,
+          classId: 0, // Fallen
+          name: 'Fallen',
+          x: 110,
+          y: 100,
+          mode: 1,
+        },
+      },
+      1000,
+    )
+
+    const selfUnit = world.getUnit('player', 1)!
+    const monster = world.getUnit('monster', 777)!
+    selfUnit.targetUnit = { unitType: 1, id: 777 }
+
+    // Start casting Ice Bolt (skillId=39) at t=1000 while monster is at (110, 100)
+    ;(world as any).applySkillCastToUnit(selfUnit, 39, monster.x, monster.y, 1, true, 1000)
+    expect(selfUnit.castState?.targetUnit).toEqual({ unitType: 1, id: 777 })
+    expect(selfUnit.castState?.missileSpawned).toBe(false)
+
+    // Server sends S2C 0x0D PlayerStop (UnitMove with mode='stop') during wind-up: must NOT clear targetUnit
+    world.apply(
+      {
+        type: 'UnitMove',
+        unitType: 0,
+        id: 1,
+        from: { x: 100, y: 100 },
+        to: { x: 100, y: 100 },
+        mode: 'stop',
+      },
+      1040,
+    )
+    expect(selfUnit.targetUnit).toEqual({ unitType: 1, id: 777 })
+
+    // Monster moves to (125, 115) before the action frame fires
+    world.apply(
+      {
+        type: 'UnitReassign',
+        unitType: 1,
+        id: 777,
+        at: { x: 125, y: 115 },
+      },
+      1050,
+    )
+
+    // Advance until the action-frame missile spawns
+    let icebolt: ClientUnit | undefined
+    for (let step = 1; step <= 20; step++) {
+      world.tick(40, 1000 + step * 40)
+      for (const u of (world as any)._units.values() as Iterable<ClientUnit>) {
+        if (u.unitType === 'missile' && u.missileKey === 'icebolt') {
+          icebolt = u
+          break
+        }
+      }
+      if (icebolt) break
+    }
+    expect(icebolt).toBeDefined()
+    // Ice Bolt must be aimed toward the monster's action-frame position (125, 115), so vy > 0
+    expect(icebolt!.vy ?? 0).toBeGreaterThan(0.1)
+    expect(icebolt!.targetX).toBe(125)
+    expect(icebolt!.targetY).toBe(115)
   })
 })

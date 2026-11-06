@@ -140,3 +140,41 @@ export function checkMissileSubtileRayFootprintOverlap113c(
   }
   return false
 }
+
+const MISSILE_WALL_FOOTPRINT_SIZE_1: readonly (readonly [number, number])[] = Object.freeze([[0, 0]])
+const MISSILE_WALL_FOOTPRINT_SIZE_2: readonly (readonly [number, number])[] = Object.freeze([
+  [0, 0],
+  [-1, 0],
+  [1, 0],
+  [0, -1],
+  [0, 1],
+])
+const MISSILE_WALL_FOOTPRINT_SIZE_3: readonly (readonly [number, number])[] = Object.freeze([
+  [0, 0],
+  [-1, 0],
+  [1, 0],
+  [0, -1],
+  [0, 1],
+  [-1, -1],
+  [1, -1],
+  [-1, 1],
+  [1, 1],
+])
+
+/**
+ * 1.13c `D2Common.#10229` (`0x6FD80F80` `UNITS_GetUnitSizeX` -> `0x6FD5D420` -> `0x6FD9D760`
+ * `COLLISION_TryMoveUnitCollisionMask` -> `0x6FD9CE00` `COLLISION_CheckMaskWithSize`):
+ * Sub-tile `(dx, dy)` offsets tested against static wall / missile barrier collision masks when a
+ * missile of `Missiles.txt` `Size` (`1..3`, stored in `pDynamicPath->dwUnitSize`) enters a new sub-tile:
+ * - `Size <= 1`: single sub-tile `(0, 0)`
+ * - `Size === 2`: 5-cell `"+"` cross (`(0,0), (-1,0), (1,0), (0,-1), (0,1)`)
+ * - `Size >= 3`: 9-cell `3x3` bounding box (`dx in -1..1, dy in -1..1`)
+ */
+export function getMissileSizeFootprintOffsets113c(
+  missileSize: number,
+): readonly (readonly [number, number])[] {
+  const mSize = Math.trunc(missileSize)
+  if (mSize >= 3) return MISSILE_WALL_FOOTPRINT_SIZE_3
+  if (mSize === 2) return MISSILE_WALL_FOOTPRINT_SIZE_2
+  return MISSILE_WALL_FOOTPRINT_SIZE_1
+}

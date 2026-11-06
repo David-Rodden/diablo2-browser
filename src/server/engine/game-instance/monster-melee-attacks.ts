@@ -15,8 +15,7 @@ import type { SummonedPetUnit } from '../../ai/summon-manager.ts'
 import { computeToHitChance, emitSUnitDmgTraceEvent113c, executeSUnitDmg, getPrePierceResistance113c, rollItemKnockback113c, type CombatUnitContext } from '../combat-pipeline.ts'
 import { rollLimitedSeed113c } from './unit-seeds-113c.ts'
 import { FIXED_ONE, UnitStatList } from '../stat-list.ts'
-import { computeMonsterBaseDamageRegen113c } from '../statregen-dot-113c.ts'
-import { scheduleKernMonsterEvent3_113c } from './kern-monster-wheel-113c.ts'
+import { allocateEvent3Seq113c, computeMonsterBaseDamageRegen113c } from '../statregen-dot-113c.ts'
 import { StateBus } from '../state-bus.ts'
 import { computeDiminishingReturns } from '../../../common/data/calc-ast.ts'
 import { difficultyMonsterColdDivisor, difficultyMonsterFreezeDivisor, difficultyResistPenalty } from '../difficulty-resist-penalty.ts'
@@ -1393,7 +1392,8 @@ function resolveMonsterAttackOnPlayer(this: GameInstanceHost,
           this.monsterCombat.get(targetMon.unitId)?.statList.getModifierBonus('hpregen') ?? 0,
         )
         if (baseRegen256 + poisonMod256 + statListMod256 !== 0) {
-          scheduleKernMonsterEvent3_113c(this, targetMon, this.currentFrame + 1)
+          targetMon.nextEvent3Frame113c = this.currentFrame + 1
+          targetMon.event3Seq113c = allocateEvent3Seq113c(this)
         }
       }
     }

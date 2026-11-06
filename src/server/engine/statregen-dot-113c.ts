@@ -40,6 +40,15 @@ export function setDotTraceObserver113c(
   dotTraceObserver113c = observer
 }
 
+const event3SeqByHost113c = new WeakMap<object, number>()
+
+/** Monotonic per-game sequence counter matching 1.13c's FIFO `EVENT_SetEvent(..., 3, frame)` bucket append (`0x6FCAEA80`). */
+export function allocateEvent3Seq113c(host: object): number {
+  const next = (event3SeqByHost113c.get(host) ?? 0) + 1
+  event3SeqByHost113c.set(host, next)
+  return next
+}
+
 /** Notify the active DoT trace observer when a per-frame `stat 6` write changed raw hitpoints (`hp1 !== hp0`). */
 export function emitDotTraceEvent113c(ev: DotTraceEvent113c): void {
   if (dotTraceObserver113c !== null && ev.hp1 !== ev.hp0) {

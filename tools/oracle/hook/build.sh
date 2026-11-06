@@ -11,13 +11,15 @@ mkdir -p "$OUT"
 CFLAGS="-O2 -Wall -Wextra -Wno-unused-parameter -static-libgcc"
 
 build() { # <output> <source> [extra flags...]
-  local out=$1 src=$2
+  local out=$1 src=$2 src_hash old_hash tmp
   shift 2
-  if [ -f "$out" ] && [ "$out" -nt "$src" ]; then return; fi
-  local tmp
+  src_hash=$(sha256sum "$src" | cut -d' ' -f1)
+  old_hash=$(cat "$out.sha256" 2>/dev/null || true)
+  if [ -f "$out" ] && [ "$out" -nt "$src" ] && [ "$src_hash" = "$old_hash" ]; then return; fi
   tmp=$(mktemp "$OUT/.build.XXXXXX")
   $CC $CFLAGS -o "$tmp" "$src" "$@"
   mv -f "$tmp" "$out"
+  printf '%s\n' "$src_hash" > "$out.sha256"
 }
 
 build "$OUT/oracle-inject.exe" "$HERE/injector.c"

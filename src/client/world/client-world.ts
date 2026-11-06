@@ -8,6 +8,7 @@
 
 import { NEHLITHAK_CONTROL_MISSILE, NIHLATHAK_MONSTER_CLASS, NIHLITHAK1_MISSILE } from './boss-death-cltdo-113c.ts'
 import { isWorldstoneShakeLevel, WORLDSTONE_SHAKE_MISSILE } from './quest-fx-worldstone-113c.ts'
+import { getMissileSizeFootprintOffsets113c } from '../../common/skills/missile-size-footprint-113c.ts'
 import { computeDiminishingReturns } from '../../common/data/calc-ast.ts'
 import {
   unitTypeFromId,
@@ -1613,23 +1614,31 @@ export class ClientWorld {
    * - `CollideType === 0`: never blocked by terrain/walls (`false`).
    * - `CollideType === 8`: floor-hugging missiles blocked by `COLLIDE_WALL | COLLIDE_MISSILE_BARRIER | COLLIDE_DOOR` (`0x0805`).
    * - `CollideType === 1, 3, 6` (default `3`): flying missiles blocked by `COLLIDE_MISSILE_BARRIER | COLLIDE_DOOR` (`0x0804`).
+   * - `missileSize` (`1..3`, `D2Common.#10229` `0x6FD80F80` -> `0x6FD9CE00` `COLLISION_CheckMaskWithSize`):
+   *   tests 1 cell (`Size <= 1`), 5-cell `+` cross (`Size === 2`), or 9-cell `3x3` box (`Size >= 3`).
    */
-  isSubTileMissileBlocked(subX: number, subY: number, collideType = 3): boolean {
+  isSubTileMissileBlocked(subX: number, subY: number, collideType = 3, missileSize = 1): boolean {
     if (collideType === 0) return false
-    const ix = Math.floor(subX)
-    const iy = Math.floor(subY)
-    const key = `${ix},${iy}`
-    if (this._missileBlockedSubTiles.size > 0 && this._missileBlockedSubTiles.has(key)) {
-      return true
-    }
-    if (this._unblockedSubTiles.size > 0 && this._unblockedSubTiles.has(key)) {
-      return false
-    }
-    if (this._missileCollisionChecker) {
-      return Boolean(this._missileCollisionChecker(ix, iy, collideType))
-    }
-    if (this._collisionChecker) {
-      return Boolean(this._collisionChecker(ix, iy))
+    const baseX = Math.floor(subX)
+    const baseY = Math.floor(subY)
+    const offsets = getMissileSizeFootprintOffsets113c(missileSize)
+    for (const [dx, dy] of offsets) {
+      const ix = baseX + dx
+      const iy = baseY + dy
+      const key = `${ix},${iy}`
+      if (this._missileBlockedSubTiles.size > 0 && this._missileBlockedSubTiles.has(key)) {
+        return true
+      }
+      if (this._unblockedSubTiles.size > 0 && this._unblockedSubTiles.has(key)) {
+        continue
+      }
+      if (this._missileCollisionChecker) {
+        if (this._missileCollisionChecker(ix, iy, collideType)) return true
+        continue
+      }
+      if (this._collisionChecker) {
+        if (this._collisionChecker(ix, iy)) return true
+      }
     }
     return false
   }

@@ -2,7 +2,10 @@
  * Missile Frame Stepping, Impact Triggers, and 25Hz Discrete Simulation Ticks (`src/client/world/world-missile-stepper.ts`).
  */
 
-import { checkMissileSubtileRayFootprintOverlap113c } from '../../common/skills/missile-size-footprint-113c.ts'
+import {
+  checkMissileSubtileRayFootprintOverlap113c,
+  stepMissileSubtileRay113c,
+} from '../../common/skills/missile-size-footprint-113c.ts'
 import { resolveUnitMonSoundRow113c } from '../../common/audio/mon-sounds-113c.ts'
 import { getMissileSoundEntry113c } from '../../common/audio/skill-sounds-113c.ts'
 import { CHAT_LINE_TTL_MS, OVERHEAD_SPEECH_TTL_MS } from '../../common/chat/chat-113c.ts'
@@ -3537,10 +3540,12 @@ export function stepMissileUnitImpl(this: ClientWorldInternal, unit: ClientUnit)
   }
 
   // Wall / obstacle collision check along the step segment (only for ground-level flying projectiles)
-  // 1.13c D2Client.dll 0x6FB81340 / D2Game.dll 0x6FD2A5B0:
+  // 1.13c D2Client.dll 0x6FB81340 / D2Common.dll 0x6FD80F80 -> 0x6FD5D420 -> 0x6FD5D580 -> 0x6FD9CE00:
   // Check COLLIDE_MISSILE_BARRIER | COLLIDE_DOOR (0x0804) for flying missiles (CollideType 1, 3, 6),
-  // 0x0805 for floor-hugging missiles (CollideType 8), or 0 for CollideType 0.
+  // 0x0805 for floor-hugging missiles (CollideType 8), or 0 for CollideType 0, testing the missile's
+  // Missiles.txt Size footprint (1, 2, or 3) whenever a halved sub-tile ray step crosses into a new sub-tile.
   const missileCollideType = getMissileCollideType113c(unit.missileKey)
+  const missileSize = missileCltColsByName113c(unit.missileKey ?? '')?.size ?? 0
   if (
     isMoving &&
     !isMeteor3D &&
@@ -3550,13 +3555,21 @@ export function stepMissileUnitImpl(this: ClientWorldInternal, unit: ClientUnit)
     (unit.altitude ?? 0) <= 0 &&
     missileCollideType !== 0
   ) {
-    const stepDist = Math.hypot(unit.x - prevX, unit.y - prevY)
-    const samples = Math.max(1, Math.ceil(stepDist * 2))
-    for (let s = 1; s <= samples; s++) {
-      const t = s / samples
-      const sx = prevX + (unit.x - prevX) * t
-      const sy = prevY + (unit.y - prevY) * t
-      if (this.isSubTileMissileBlocked(sx, sy, missileCollideType)) {
+    const rayPoints = stepMissileSubtileRay113c(prevX, prevY, unit.x, unit.y, 1)
+    for (let i = 1; i < rayPoints.length; i++) {
+      const prevPt = rayPoints[i - 1]!
+      const pt = rayPoints[i]!
+      const sx = pt.x
+      const sy = pt.y
+      const enteredNewSubtile = pathEnteredNewSubtile(prevPt.x, prevPt.y, sx, sy)
+      if (
+        this.isSubTileMissileBlocked(
+          sx,
+          sy,
+          missileCollideType,
+          enteredNewSubtile ? Math.max(1, missileSize) : 1,
+        )
+      ) {
         unit.x = sx
         unit.y = sy
         if (
@@ -3604,7 +3617,6 @@ export function stepMissileUnitImpl(this: ClientWorldInternal, unit: ClientUnit)
   ) {
     // 1.13c unit collision is the D2Common #10389 footprint (0x6fdcf6a0) of Missiles.txt Size against the target's
     // sub-tile SizeX at each sub-tile of the step (missile-size-footprint-113c.ts), shared with the server (#1502).
-    const missileSize = missileCltColsByName113c(unit.missileKey ?? '')?.size ?? 0
     const hitsTarget = (target: ClientUnit): boolean =>
       checkMissileSubtileRayFootprintOverlap113c(prevX, prevY, unit.x, unit.y, target.x, target.y, missileSize, this.getUnitSizeX(target))
     const consumePierceOrKillOnUnitHit = (hitX?: number, hitY?: number): boolean => {
@@ -4143,6 +4155,19 @@ export function expireCastStatesImpl(this: ClientWorldInternal, nowMs?: number, 
           effNow >= unit.castState.startedAtMs + unit.castState.missileFireDelayMs - 1e-6
         if (firedByElapsed || firedByClock) {
           unit.castState.missileSpawned = true
+          // 1.13c D2Client.dll 0x6FB52C90 (SKILLS_ClientDo) -> 0x6FB51340 (SKILLS_GetUseSkillTargetCoordinates):
+          // At the animation action frame (Event = 1), if the cast targets a unit (PATH_GetTargetUnit),
+          // refresh target coordinates from the target unit's current position rather than Frame-0 coordinates.
+          if (unit.castState.skillId !== 164) {
+            const targetRef = unit.castState.targetUnit ?? unit.targetUnit
+            if (targetRef !== undefined) {
+              const liveTarget = this.getUnit(targetRef.unitType, targetRef.id)
+              if (liveTarget && (liveTarget.x !== 0 || liveTarget.y !== 0)) {
+                unit.castState.targetX = liveTarget.x
+                unit.castState.targetY = liveTarget.y
+              }
+            }
+          }
           const isSelfUnit =
             unit.unitType === 'player' && (unit.id === this.selfId || this.selfId === 0)
           this.emitSkillKeyframeSound({
@@ -4177,6 +4202,16 @@ export function expireCastStatesImpl(this: ClientWorldInternal, nowMs?: number, 
           effNow >= unit.castState.startedAtMs + unit.castState.secondMissileFireDelayMs - 1e-6
         if (firedByElapsed || firedByClock) {
           unit.castState.secondMissileSpawned = true
+          if (unit.castState.skillId !== 164) {
+            const targetRef = unit.castState.targetUnit ?? unit.targetUnit
+            if (targetRef !== undefined) {
+              const liveTarget = this.getUnit(targetRef.unitType, targetRef.id)
+              if (liveTarget && (liveTarget.x !== 0 || liveTarget.y !== 0)) {
+                unit.castState.targetX = liveTarget.x
+                unit.castState.targetY = liveTarget.y
+              }
+            }
+          }
           const isSelfUnit =
             unit.unitType === 'player' && (unit.id === this.selfId || this.selfId === 0)
           this.emitSkillKeyframeSound({

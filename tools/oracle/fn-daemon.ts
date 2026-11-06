@@ -80,6 +80,91 @@ export interface SnapCallResponse113c {
   readonly s2c: readonly { readonly q: number; readonly cid: number; readonly hex: string }[]
 }
 
+export interface MultilistCallRequest113c {
+  readonly uType?: 0 | 1
+  readonly pClass?: number
+  readonly envTimeOfDay?: number
+  readonly envTicks?: number
+  readonly envTicksPerDeg?: number
+  /** Optional `[targetStat, srcStat, bOp, bOpParam, wOpBase]` patch on `ItemStatCostTxt` during this call. */
+  readonly patchOp?: readonly [number, number, number, number, number]
+  readonly pStats?: readonly number[]
+  readonly c1Stats?: readonly number[]
+  readonly c2Stats?: readonly number[]
+  readonly itemStats?: readonly number[]
+  readonly removeMask?: number
+  readonly qStats: readonly number[]
+  readonly qItemStats?: readonly number[]
+}
+
+export interface MultilistCallResponse113c {
+  readonly fault: number
+  readonly qStats: readonly (readonly [number, number, number])[]
+  readonly qItemStats: readonly (readonly [number, number, number])[]
+  readonly qStatsPost?: readonly (readonly [number, number, number])[]
+}
+
+export interface StatesSeqCallRequest113c {
+  readonly uType?: number
+  readonly noStatList?: 0 | 1
+  readonly initFlags2?: number
+  /** Flat `[kind, sid, arg, ...]` triples (`0=toggle`, `1=clearGfx`, `2=checkState`). */
+  readonly steps: readonly number[]
+}
+
+export interface StatesSeqCallResponse113c {
+  readonly fault: number
+  readonly hasStatList: 0 | 1
+  readonly unitFlags2: number
+  readonly stateFlags: readonly [number, number, number, number, number, number]
+  readonly gfxFlags: readonly [number, number, number, number, number, number]
+  readonly stepFlags2: readonly number[]
+  readonly checks: readonly number[]
+}
+
+export interface EventTimerSeqCallRequest113c {
+  readonly initFrame: number
+  /** Flat `[cmd, uIdx, p2, p3, p4, p5, ...]` 6-tuples executed against real `D2Game.dll`. */
+  readonly ops: readonly number[]
+}
+
+export interface EventTimerSeqCallResponse113c {
+  readonly fault: number
+  readonly endFrame: number
+  readonly u0State36: number
+  readonly u6State36: number
+  readonly u0Flags2: number
+  /** Fired callbacks `[frame, evType, unitType, unitId, arg14, arg18]`. */
+  readonly fired: readonly (readonly [number, number, number, number, number, number])[]
+  readonly nextFrames: readonly number[]
+  /** Free-list node indices `(ptr - chunk0) / 0x30` starting at `chunk0 + 0x7080` (`pFreeHead`). */
+  readonly freeTop: readonly number[]
+  /** Remaining `u0` event chain `[evType, scheduledFrame, arg14, nodeIdx]`. */
+  readonly u0Chain: readonly (readonly [number, number, number, number])[]
+}
+
+export interface SunitRoomCallRequest113c {
+  readonly roomFlags?: number
+  readonly initCounters?: readonly number[]
+  /** Flat `[uType, classId, unitId, x, y, hasPath, ...]` 6-tuples (`<= 8` units). */
+  readonly units: readonly number[]
+  /** Flat `[cmd, a, b, c, ...]` 4-tuples executed against `D2Game.dll` & `D2Common.dll`. */
+  readonly ops: readonly number[]
+}
+
+export interface SunitRoomCallResponse113c {
+  readonly fault: number
+  readonly nPlayers: number
+  readonly actFlag: number
+  readonly newIds: readonly number[]
+  readonly found: readonly number[]
+  readonly coords: readonly number[]
+  readonly roomUnits: readonly number[]
+  readonly roomUpdates: readonly number[]
+  readonly unitFlags: readonly number[]
+  readonly unitRooms: readonly number[]
+}
+
 export interface FnDaemonOptions113c {
   readonly oracleRoot?: string
   readonly workerId?: number
@@ -179,6 +264,7 @@ export class FnOracleDaemon {
           ...process.env,
           D2_ORACLE_ROOT: this.root,
           ORACLE_PREFIX: this.prefixDir,
+          ORACLE_BUILD: join(this.runOutDir, 'build'),
           ORACLE_DLL: 'fnharness.dll',
           ORACLE_SAVE: this.savePath,
           ORACLE_SHOT_EVERY: '1',
@@ -273,6 +359,70 @@ export class FnOracleDaemon {
     }
     return {
       responses: lines.map((l) => JSON.parse(l) as SnapCallResponse113c),
+      elapsedMs,
+    }
+  }
+
+  /** Execute multi-sub-list / item-merge / by-time `MULTILIST_STAT_CALL` (`op 201`) requests against real `D2Common.dll`. */
+  async execMultilistBatch(
+    requests: readonly MultilistCallRequest113c[],
+    timeoutMs = 30_000,
+  ): Promise<{ responses: MultilistCallResponse113c[]; elapsedMs: number }> {
+    const reqLines = requests.map((r) => JSON.stringify({ op: 201, ...r }))
+    const { lines, elapsedMs } = await this.execLines(reqLines, timeoutMs)
+    if (lines.length !== requests.length) {
+      throw new Error(`FnOracleDaemon multilist count mismatch: got ${lines.length}, expected ${requests.length}`)
+    }
+    return {
+      responses: lines.map((l) => JSON.parse(l) as MultilistCallResponse113c),
+      elapsedMs,
+    }
+  }
+
+  /** Execute multi-step stateful `STATES_SEQ_CALL` (`op 202`) requests against real `D2Common.dll`. */
+  async execStatesSeqBatch(
+    requests: readonly StatesSeqCallRequest113c[],
+    timeoutMs = 30_000,
+  ): Promise<{ responses: StatesSeqCallResponse113c[]; elapsedMs: number }> {
+    const reqLines = requests.map((r) => JSON.stringify({ op: 202, ...r }))
+    const { lines, elapsedMs } = await this.execLines(reqLines, timeoutMs)
+    if (lines.length !== requests.length) {
+      throw new Error(`FnOracleDaemon statesSeq count mismatch: got ${lines.length}, expected ${requests.length}`)
+    }
+    return {
+      responses: lines.map((l) => JSON.parse(l) as StatesSeqCallResponse113c),
+      elapsedMs,
+    }
+  }
+
+  /** Execute multi-operation stateful `EVENT_TIMER_SEQ_CALL` (`op 203`) requests against real `D2Game.dll`. */
+  async execEventTimerSeqBatch(
+    requests: readonly EventTimerSeqCallRequest113c[],
+    timeoutMs = 30_000,
+  ): Promise<{ responses: EventTimerSeqCallResponse113c[]; elapsedMs: number }> {
+    const reqLines = requests.map((r) => JSON.stringify({ op: 203, ...r }))
+    const { lines, elapsedMs } = await this.execLines(reqLines, timeoutMs)
+    if (lines.length !== requests.length) {
+      throw new Error(`FnOracleDaemon eventTimerSeq count mismatch: got ${lines.length}, expected ${requests.length}`)
+    }
+    return {
+      responses: lines.map((l) => JSON.parse(l) as EventTimerSeqCallResponse113c),
+      elapsedMs,
+    }
+  }
+
+  /** Execute `SUNIT_UNITROOM_CALL` (`op 204`) server hash + room spatial requests against `D2Game.dll` & `D2Common.dll`. */
+  async execSunitRoomBatch(
+    requests: readonly SunitRoomCallRequest113c[],
+    timeoutMs = 30_000,
+  ): Promise<{ responses: SunitRoomCallResponse113c[]; elapsedMs: number }> {
+    const reqLines = requests.map((r) => JSON.stringify({ op: 204, ...r }))
+    const { lines, elapsedMs } = await this.execLines(reqLines, timeoutMs)
+    if (lines.length !== requests.length) {
+      throw new Error(`FnOracleDaemon sunitRoom count mismatch: got ${lines.length}, expected ${requests.length}`)
+    }
+    return {
+      responses: lines.map((l) => JSON.parse(l) as SunitRoomCallResponse113c),
       elapsedMs,
     }
   }

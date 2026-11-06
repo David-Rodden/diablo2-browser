@@ -37,12 +37,17 @@ export class PanelCloseButton {
     return this.pressed
   }
 
-  contains(logicalX: number, logicalY: number): boolean {
+  contains(logicalX: number, logicalY: number, pad = 6): boolean {
     const r = this.getRect()
     if (!r) return false
     const w = r.w ?? r.width ?? 0
     const h = r.h ?? r.height ?? 0
-    return logicalX >= r.x && logicalX <= r.x + w && logicalY >= r.y && logicalY <= r.y + h
+    return (
+      logicalX >= r.x - pad &&
+      logicalX <= r.x + w + pad &&
+      logicalY >= r.y - pad &&
+      logicalY <= r.y + h + pad
+    )
   }
 
   /**
@@ -50,15 +55,16 @@ export class PanelCloseButton {
    * fires here, only on the matching `release` landing back inside the button.
    */
   press(logicalX: number, logicalY: number): void {
-    this.pressed = this.contains(logicalX, logicalY)
+    this.pressed = this.contains(logicalX, logicalY, 6)
   }
 
   /**
    * Mouse-up: clears the latch and reports whether the panel should close — true only
-   * when the button was pressed AND the release landed back inside its rect.
+   * when the button was pressed AND the release landed back inside its rect (with a
+   * generous 12px release slop so touch thumb roll on release does not cancel the close).
    */
   release(logicalX: number, logicalY: number): boolean {
-    const triggered = this.pressed && this.contains(logicalX, logicalY)
+    const triggered = this.pressed && this.contains(logicalX, logicalY, 12)
     this.pressed = false
     return triggered
   }

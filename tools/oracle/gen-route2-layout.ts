@@ -1,5 +1,5 @@
 /**
- * Route-2 pilot: generate `src/server/route2/layout.generated.ts` from `docs/oracle/route2-layout.json`.
+ * Generate `src/d2kern-113c/mem/layout.generated.ts` from `docs/oracle/route2-layout.json`.
  *
  *   npx tsx tools/oracle/gen-route2-layout.ts          # write
  *   npx tsx tools/oracle/gen-route2-layout.ts --check  # fail if the generated file is stale
@@ -13,9 +13,11 @@ interface FieldDef {
   readonly off: number
   readonly type: 'u8' | 'u16' | 'u32' | 'ptr'
   readonly count?: number
+  readonly aliases?: readonly string[]
 }
 interface StructDef {
   readonly size: number
+  readonly allocEvidence?: string
   readonly fields: readonly FieldDef[]
 }
 
@@ -37,10 +39,16 @@ function generate(): string {
     '',
   ]
   for (const [name, def] of Object.entries(layout.structs)) {
+    if (def.allocEvidence) {
+      lines.push(`/** ${def.allocEvidence} */`)
+    }
     lines.push(`export const ${name}_SIZE = ${def.size}`)
     lines.push(`export const ${name} = {`)
     for (const f of def.fields) {
       lines.push(`  ${f.name}: { off: 0x${f.off.toString(16).toUpperCase()}, type: '${f.type}', count: ${f.count ?? 1} },`)
+      for (const alias of f.aliases ?? []) {
+        lines.push(`  ${alias}: { off: 0x${f.off.toString(16).toUpperCase()}, type: '${f.type}', count: ${f.count ?? 1} },`)
+      }
     }
     lines.push('} as const satisfies Record<string, FieldLayout113c>')
     lines.push('')

@@ -23,7 +23,7 @@ Authoritative binary disassembly evidence from `D2Common.dll` (image base `0x6FD
     - `+0x08`: `pOwner ? pOwner->dwUnitType : 6`
     - `+0x0C`: `pOwner ? pOwner->dwUnitId : 0`
     - `+0x44`: `pOwner` (`D2UnitStrc*`)
-    - `+0x58`: `pStateFlags` — allocates `2 * ceil(nStatesCount / 32) * 4` bytes (`48` bytes for `184` states: `6` active dwords at `+0x00..+0x17` + `6` dirty/gfx dwords at `+0x18..+0x2F`; verified at `0x6FD8AF79..0x6FD8AFB2`, `0x6FD87DB0`, `0x6FD88730`).
+    - `+0x58`: `pStateFlags` — allocates `2 * ceil(nStatesCount / 32) * 4` bytes (`48` bytes for `185` states (`0..184`, `184 = uberminion`, `[sgptDataTables+0xC4] = 185`): `6` active dwords at `+0x00..+0x17` + `6` dirty/gfx dwords at `+0x18..+0x2F`; verified at `0x6FD8AF79..0x6FD8AFB2`, `0x6FD87DB0`, `0x6FD88730`).
 
 ### Field Offset Table
 
@@ -93,7 +93,7 @@ Authoritative binary disassembly evidence from `D2Common.dll` (image base `0x6FD
 
 ### `STATES` Bitvectors (`0x6FD83CD0` `#10494`, `0x6FD88730`)
 - **`STATES_CheckState` (`0x6FD83CD0`):**
-  - Returns `0` unless `pUnit != NULL`, `dwUnitType` in `{0, 1, 3}` (`player`, `monster`, `missile`), `0 <= stateId < nStatesCount` (`184`), and `(pStatListEx->dwFlags & 0x80000000)`.
+  - Returns `0` unless `pUnit != NULL`, `dwUnitType` in `{0, 1, 3}` (`player`, `monster`, `missile`), `0 <= stateId < nStatesCount` (`185` states: `0..184`, `184 = uberminion`, `[sgptDataTables+0xC4] = 185`), and `(pStatListEx->dwFlags & 0x80000000)`.
   - Reads `pStateFlags[stateId >> 5] & (1 << (stateId & 31))` (raw masked `u32`).
 - **`STATES_ToggleState` (`0x6FD88730`):**
   - Reads `wordIdx = stateId >> 5`, `mask = 1 << (stateId & 31)`.

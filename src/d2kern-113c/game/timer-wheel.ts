@@ -8,9 +8,11 @@
  * - `0x6FCAE680`: `EVENT_CreateNode` (links at head of `unit+0xDC` along `+0x24/+0x28`)
  * - `0x6FCAE6F0`: `EVENT_FreeNode` (`fFlags & 0x01` deferred `0x08` re-entrant guard, `pSavedNext` advance, wheel + unit unlink, push free-list)
  * - `0x6FCAE810`: `EVENT_SetPersistentEvent` (`dwFrame = 0xFFFFFFFF`, `fFlags |= 0x04`, LIFO head-insert at `T+0xA04+part*4`)
- * - `0x6FCAEA80`: `EVENT_SetEvent` (`frame <= dwGameFrame` -> `dwGameFrame + 1`, FIFO tail->head at `T+0x004` / `T+0x504`)
+ * - `0x6FCAEA80`: `EVENT_SetEvent` (`frame <= dwGameFrame` -> `dwGameFrame + 1`, state-`0x36` `0x6FD02240` refresh, FIFO tail->head at `T+0x004` / `T+0x504`)
+ * - `0x6FD02240`: `MONSTER_RefreshAiEvent` (`STATES_ToggleState(0x36, bSet)`, `0x5C` check, frees `nType == 2` AI events on monster)
  * - `0x6FCAE880`: `EVENT_RemoveUnitEvents`
- * - `0x6FCAE8C0`: `EVENT_DeleteEventByType`
+ * - `0x6FCAE8C0`: `EVENT_DeleteEventByType` (matches `nType` and `pfnHandler` `+0x2C`)
+ * - `0x6FCAE900`: `EVENT_DeleteEventByArg14` (matches `nType` and, when `arg14 != 0`, `dwArg14` `+0x14`)
  * - `0x6FCAE490`: `EVENT_GetNextEventFrame`
  * - `0x6FCAF070`: `EVENT_UpdateTimers` (partition order `[2, 0, 1, 3, 4]`: persistent list first, then slot `frame & 63`)
  */
@@ -27,7 +29,9 @@ import {
   EVENT_UPDATE_PARTITION_ORDER_113C,
   type EventWheelHooks113c,
 } from '../mem/event-wheel-113c.ts'
-import { STATES_CheckState113c } from '../common/statlist.ts'
+import { STATES_CheckState113c, STATES_ToggleGfxStateFlag113c } from '../common/statlist.ts'
+import { UNITROOM_RefreshUnit113c } from '../common/unit.ts'
+import { SUNIT_GetServerUnit113c } from './game-strc.ts'
 
 export { EVENT_PARTITION_BY_UNIT_TYPE_113C, EVENT_UPDATE_PARTITION_ORDER_113C, type EventWheelHooks113c }
 
@@ -41,6 +45,9 @@ export const EVENT_FLAG_FIRING = 0x01
 export const EVENT_FLAG_PERSISTENT = 0x04
 export const EVENT_FLAG_DEFERRED_FREE = 0x08
 
+export const STATE_UNINTERRUPTABLE_113C = 0x36
+export const STATE_CORPSE_DELAY_113C = 0x5c
+
 export type EventDispatchCallback113c = (
   m: Memory113c,
   pGame: number,
@@ -52,7 +59,7 @@ export type EventDispatchCallback113c = (
   pNode: number,
 ) => void
 
-/** `D2Game 0x6FCAE420`: allocate one `0x7088` chunk of 600 `0x30`-byte `D2EventStrc` nodes. */
+/** `@va D2Game:0x6FCAE420`: allocate one `0x7088` chunk of 600 `0x30`-byte `D2EventStrc` nodes. */
 export function EVENT_AllocChunk113c(m: Memory113c, pTimer: number): number {
   const chunk = m.alloc(EVENT_CHUNK_SIZE_113C)
   for (let i = 0; i < EVENT_NODES_PER_CHUNK_113C - 1; i++) {
@@ -76,7 +83,7 @@ export function EVENT_AllocChunk113c(m: Memory113c, pTimer: number): number {
   return chunk
 }
 
-/** `D2Game 0x6FCAE630`: allocate `D2TimerStrc` (`0xA20`) and initial `0x7088` node pool chunk. */
+/** `@va D2Game:0x6FCAE630`: allocate `D2TimerStrc` (`0xA20`) and initial `0x7088` node pool chunk. */
 export function EVENT_InitTimerQueue113c(m: Memory113c, pGame: number): number {
   const pTimer = m.alloc(D2TimerStrc_SIZE)
   m.set(pGame, D2GameStrc.pTimer, pTimer)
@@ -84,7 +91,7 @@ export function EVENT_InitTimerQueue113c(m: Memory113c, pGame: number): number {
   return pTimer
 }
 
-/** `D2Game 0x6FCAE540`: pop a free `D2EventStrc` node across pool chunks, allocating a new chunk if full. */
+/** `@va D2Game:0x6FCAE540`: pop a free `D2EventStrc` node across pool chunks, allocating a new chunk if full. */
 export function EVENT_AllocNodeWithGrowth113c(m: Memory113c, pTimer: number): number {
   for (let chunk = m.get(pTimer, D2TimerStrc.pPool); chunk !== 0; chunk = m.u32(chunk + EVENT_CHUNK_NEXT_OFF_113C)) {
     const node = m.u32(chunk + EVENT_CHUNK_FREE_OFF_113C)
@@ -100,7 +107,7 @@ export function EVENT_AllocNodeWithGrowth113c(m: Memory113c, pTimer: number): nu
   return node
 }
 
-/** `D2Game 0x6FCAE680`: allocate event node and prepend to `pUnit->pEventFirst (+0xDC)`. */
+/** `@va D2Game:0x6FCAE680`: allocate event node and prepend to `pUnit->pEventFirst (+0xDC)`. */
 export function EVENT_CreateNodeWithGrowth113c(m: Memory113c, pGame: number, pUnit: number): number {
   const pTimer = m.get(pGame, D2GameStrc.pTimer)
   const node = EVENT_AllocNodeWithGrowth113c(m, pTimer)
@@ -124,7 +131,7 @@ export function EVENT_CreateNodeWithGrowth113c(m: Memory113c, pGame: number, pUn
 }
 
 /**
- * `D2Game 0x6FCAE6F0` (`EVENT_FreeNode`, `edi = pGame`, `eax = pNode`).
+ * `@va D2Game:0x6FCAE6F0` (`EVENT_FreeNode`, `edi = pGame`, `eax = pNode`).
  * Implements re-entrancy deferred free (`fFlags & 0x01` -> `fFlags |= 0x08`), `pSavedNext` cursor
  * advance, wheel unlink, unit list unlink, and free-list return.
  */
@@ -145,13 +152,18 @@ export function EVENT_FreeNode113c(m: Memory113c, pGame: number, pNode: number):
   }
 
   const unitType = m.get(pNode, D2EventStrc.dwUnitType)
-  const part = EVENT_PARTITION_BY_UNIT_TYPE_113C[unitType] ?? 0
+  const part = EVENT_PARTITION_BY_UNIT_TYPE_113C[unitType]
+  if (part === undefined) {
+    throw new RangeError(`EVENT_FreeNode113c: invalid unitType=${unitType}`)
+  }
   const frame = m.get(pNode, D2EventStrc.dwFrame) >>> 0
 
   if (older !== 0) {
     m.set(older, D2EventStrc.pWheelNewer, newer)
   } else if (frame === 0xffffffff) {
-    m.set(pTimer, D2TimerStrc.pPersistentHead, newer, part)
+    if (part >= 0) {
+      m.set(pTimer, D2TimerStrc.pPersistentHead, newer, part)
+    }
   } else if (part >= 0) {
     const slot = part * 64 + (frame & 63)
     m.set(pTimer, D2TimerStrc.pSlotTail, newer, slot)
@@ -166,19 +178,14 @@ export function EVENT_FreeNode113c(m: Memory113c, pGame: number, pNode: number):
     }
   }
 
-  // Unlink from `pUnit->pEventFirst` (`+0x24 / +0x28`)
+  // Unlink from `pUnit->pEventFirst` (`0x6FCAE7B6..0x6FCAE7E3`: leaves `pNode` fields +0x08/+0x24/+0x28 untouched)
   const pUnit = m.get(pNode, D2EventStrc.pUnit)
   if (pUnit !== 0) {
     const uNext = m.get(pNode, D2EventStrc.pUnitNext)
     const uPrev = m.get(pNode, D2EventStrc.pUnitPrev)
     if (uNext !== 0) m.set(uNext, D2EventStrc.pUnitPrev, uPrev)
     if (uPrev !== 0) m.set(uPrev, D2EventStrc.pUnitNext, uNext)
-    else if (m.get(pUnit, D2UnitStrc.pEventFirst) === pNode) {
-      m.set(pUnit, D2UnitStrc.pEventFirst, uNext)
-    }
-    m.set(pNode, D2EventStrc.pUnit, 0)
-    m.set(pNode, D2EventStrc.pUnitNext, 0)
-    m.set(pNode, D2EventStrc.pUnitPrev, 0)
+    else m.set(pUnit, D2UnitStrc.pEventFirst, uNext)
   }
 
   // Push onto first pool chunk free-list (`chunk + 0x7080`) and mark freed (`0x6FCAE805: word [eax+2] = 2`)
@@ -192,7 +199,70 @@ export function EVENT_FreeNode113c(m: Memory113c, pGame: number, pNode: number):
   m.setU16(pNode + 0x02, 0x0002)
 }
 
-/** `D2Game 0x6FCAE810` (`EVENT_SetPersistentEvent`). */
+/**
+ * `@va D2Game:0x6FD009D0` (`SUNIT_GetLastAttacker`, `eax = pUnit`, `ecx = pGame`):
+ * If `(pUnit->dwFlags2 (+0xC8) & 0x20000) == 0`, returns `0`; otherwise resolves the attacker unit via
+ * `SUNIT_GetServerUnit113c(m, pGame, u32(pUnit + 0x9C), u32(pUnit + 0xA0))`.
+ */
+export function SUNIT_GetLastAttacker113c(m: Memory113c, pGame: number, pUnit: number): number {
+  if (pUnit === 0 || pGame === 0) return 0
+  if ((m.get(pUnit, D2UnitStrc.dwFlags2) & 0x20000) === 0) return 0
+  return SUNIT_GetServerUnit113c(m, pGame, m.u32(pUnit + 0x9c), m.u32(pUnit + 0xa0))
+}
+
+/**
+ * `@va D2Game:0x6FD02240` (`MONSTER_SetUninterruptable` / `MONSTER_RefreshAiEvent`, `ecx = pUnit`, `edx = bSet`).
+ * - Toggles `STATE_UNINTERRUPTABLE` (`0x36 = 54`) via `D2Common.#10945` (`STATES_ToggleGfxStateFlag113c` at `0x6FD0224D`).
+ * - Loads `pGame = pUnit->pGame (+0x80)` (`0x6FD02276`); if `pGame == 0`, returns immediately (`0x6FD0227E`).
+ * - When `bSet == 0` and `STATE_CORPSE_DELAY` (`0x5C = 92`) is set (`0x6FD02280..0x6FD022D1`), clears `0x5C`
+ *   via `D2Common.#10945`, resolves killer via `0x6FD009D0` (`SUNIT_GetLastAttacker113c`), and:
+ *   - if `pKiller != 0` (`0x6FD022B9..0x6FD022D1`), zeroes `D2DamageStrc`, sets `wResultFlags = 2`, and calls
+ *     `0x6FCFCF20(pGame, pKiller, pUnit, 1, &dmg)` (`SUNITDMG_ExecuteDamageResult`);
+ *   - if `pKiller == 0` (`0x6FD022A9..0x6FD022B7`), calls `0x6FCFEEE0(pGame, pUnit, 0, 1)` (`SUNITDMG_KillMonster`),
+ *     which returns immediately at `0x6FCFEF0C..0x6FCFEF1A` when `uType == 1 && (dwAnimMode == 0 || dwAnimMode == 12)`.
+ * - When `pUnit->dwUnitType == 1` (`UNIT_MONSTER`), walks `pUnit->pEventFirst` (`+0xDC`) and frees all
+ *   `nType == 2` (`MON_EVENT_AI_THINK`) nodes via `EVENT_FreeNode113c` (`0x6FCAE6F0`).
+ */
+export function MONSTER_RefreshAiEvent113c(
+  m: Memory113c,
+  pUnit: number,
+  bSet: number,
+  onCorpseNoDrawKill?: (m: Memory113c, pGame: number, pUnit: number, pKiller: number) => void,
+): void {
+  if (pUnit === 0) return
+  STATES_ToggleGfxStateFlag113c(m, pUnit, STATE_UNINTERRUPTABLE_113C, bSet)
+  const pGame = m.get(pUnit, D2UnitStrc.pGame)
+  if (pGame === 0) return
+
+  if (bSet === 0 && STATES_CheckState113c(m, pUnit, STATE_CORPSE_DELAY_113C) !== 0) {
+    STATES_ToggleGfxStateFlag113c(m, pUnit, STATE_CORPSE_DELAY_113C, 0)
+    const pKiller = SUNIT_GetLastAttacker113c(m, pGame, pUnit)
+    if (onCorpseNoDrawKill !== undefined) {
+      onCorpseNoDrawKill(m, pGame, pUnit, pKiller)
+    } else {
+      const uType = m.get(pUnit, D2UnitStrc.dwUnitType)
+      const curMode = m.get(pUnit, D2UnitStrc.dwAnimMode)
+      if (pKiller !== 0 || uType !== 1 || (curMode !== 0 && curMode !== 12)) {
+        throw new Error(
+          'MONSTER_RefreshAiEvent113c (0x6FD02240): live state-0x5C kill requires onCorpseNoDrawKill (0x6FCFCF20 / 0x6FCFEEE0)',
+        )
+      }
+    }
+  }
+
+  if (m.get(pUnit, D2UnitStrc.dwUnitType) === 1) {
+    let cur = m.get(pUnit, D2UnitStrc.pEventFirst)
+    while (cur !== 0) {
+      const next = m.get(cur, D2EventStrc.pUnitNext)
+      if (m.get(cur, D2EventStrc.nType) === 2) {
+        EVENT_FreeNode113c(m, pGame, cur)
+      }
+      cur = next
+    }
+  }
+}
+
+/** `@va D2Game:0x6FCAE810` (`EVENT_SetPersistentEvent`). */
 export function EVENT_SetPersistentEventFull113c(
   m: Memory113c,
   pGame: number,
@@ -225,7 +295,7 @@ export function EVENT_SetPersistentEventFull113c(
   return node
 }
 
-/** `D2Game 0x6FCAEA80` (`EVENT_SetEvent`) with automatic chunk growth and default state-0x36 check. */
+/** `@va D2Game:0x6FCAEA80` (`EVENT_SetEvent`) with automatic chunk growth and default state-`0x36` `0x6FD02240` refresh. */
 export function EVENT_SetEventFull113c(
   m: Memory113c,
   pGame: number,
@@ -246,9 +316,12 @@ export function EVENT_SetEventFull113c(
   if (f <= (gameFrame | 0)) f = (gameFrame + 1) | 0
 
   if (pUnit !== 0 && m.get(pUnit, D2UnitStrc.dwUnitType) === 1 && type === 2) {
-    const hasState36 = hooks ? hooks.checkState(pUnit, 0x36) : STATES_CheckState113c(m, pUnit, 0x36) !== 0
-    if (hasState36 && hooks) {
-      hooks.onMonsterAiEventWithState36(pUnit)
+    if (hooks !== undefined) {
+      if (hooks.checkState(pUnit, STATE_UNINTERRUPTABLE_113C)) {
+        hooks.onMonsterAiEventWithState36(pUnit)
+      }
+    } else if (STATES_CheckState113c(m, pUnit, STATE_UNINTERRUPTABLE_113C) !== 0) {
+      MONSTER_RefreshAiEvent113c(m, pUnit, 0)
     }
   }
 
@@ -276,37 +349,40 @@ export function EVENT_SetEventFull113c(
   return node
 }
 
-/** `D2Game 0x6FCAE880` (`EVENT_RemoveUnitEvents`). */
+/** `@va D2Game:0x6FCAE880` (`EVENT_RemoveUnitEvents`). */
 export function EVENT_RemoveUnitEvents113c(m: Memory113c, pGame: number, pUnit: number): void {
   if (pGame === 0 || pUnit === 0) return
   let cur = m.get(pUnit, D2UnitStrc.pEventFirst)
   while (cur !== 0) {
     const next = m.get(cur, D2EventStrc.pUnitNext)
-    // Detach unit pointer even if `cur` is currently firing (`fFlags & 0x01`) per `0x6FCAE89D: mov [esi+8], 0`.
+    // Detach unit pointer even if `cur` is currently firing (`fFlags & 0x01`) per `0x6FCAE8A1: mov [eax+8], 0`.
     EVENT_FreeNode113c(m, pGame, cur)
     m.set(cur, D2EventStrc.pUnit, 0)
-    m.set(cur, D2EventStrc.pUnitNext, 0)
-    m.set(cur, D2EventStrc.pUnitPrev, 0)
     cur = next
   }
   m.set(pUnit, D2UnitStrc.pEventFirst, 0)
 }
 
-/** `D2Game 0x6FCAE8C0` (`EVENT_DeleteEventByType`). */
+/**
+ * `@va D2Game:0x6FCAE8C0` (`EVENT_DeleteEventByType`, `ecx = pGame`, `eax = pUnit`, `ebx = type`, `[esp+4] = pfnHandler`).
+ * Frees every node on `pUnit` where `nType == (type & 0xff)` AND `pfnHandler (+0x2C) == (handler >>> 0)`.
+ */
 export function EVENT_DeleteEventByType113c(
   m: Memory113c,
   pGame: number,
   pUnit: number,
   type: number,
-  handler?: number,
+  handler = 0,
 ): void {
   if (pGame === 0 || pUnit === 0) return
+  const expectedType = type & 0xff
+  const expectedHandler = handler >>> 0
   let cur = m.get(pUnit, D2UnitStrc.pEventFirst)
   while (cur !== 0) {
     const next = m.get(cur, D2EventStrc.pUnitNext)
     if (
-      m.get(cur, D2EventStrc.nType) === (type & 0xff) &&
-      (handler === undefined || m.get(cur, D2EventStrc.pfnHandler) === (handler >>> 0))
+      m.get(cur, D2EventStrc.nType) === expectedType &&
+      m.get(cur, D2EventStrc.pfnHandler) === expectedHandler
     ) {
       EVENT_FreeNode113c(m, pGame, cur)
     }
@@ -314,7 +390,34 @@ export function EVENT_DeleteEventByType113c(
   }
 }
 
-/** `D2Game 0x6FCAE490` (`EVENT_GetNextEventFrame`, `eax = pUnit`, `esi = type`). */
+/**
+ * `@va D2Game:0x6FCAE900` (`EVENT_DeleteEventByArg14`, `ecx = pGame`, `eax = pUnit`, `[esp+4] = evType`, `ebx = arg14`).
+ * Frees every node on `pUnit` where `nType == (evType & 0xff)` and (`arg14 == 0` OR `dwArg14 (+0x14) == (arg14 >>> 0)`).
+ */
+export function EVENT_DeleteEventByArg14_113c(
+  m: Memory113c,
+  pGame: number,
+  pUnit: number,
+  evType: number,
+  arg14 = 0,
+): void {
+  if (pGame === 0 || pUnit === 0) return
+  const expectedType = evType & 0xff
+  const expectedArg14 = arg14 >>> 0
+  let cur = m.get(pUnit, D2UnitStrc.pEventFirst)
+  while (cur !== 0) {
+    const next = m.get(cur, D2EventStrc.pUnitNext)
+    if (
+      m.get(cur, D2EventStrc.nType) === expectedType &&
+      (expectedArg14 === 0 || m.get(cur, D2EventStrc.dwArg14) === expectedArg14)
+    ) {
+      EVENT_FreeNode113c(m, pGame, cur)
+    }
+    cur = next
+  }
+}
+
+/** `@va D2Game:0x6FCAE490` (`EVENT_GetNextEventFrame`, `eax = pUnit`, `esi = type`). */
 export function EVENT_GetNextEventFrame113c(m: Memory113c, pUnit: number, type: number): number {
   if (pUnit === 0) return 0
   let best = 0
@@ -329,7 +432,7 @@ export function EVENT_GetNextEventFrame113c(m: Memory113c, pUnit: number, type: 
 }
 
 /**
- * `D2Game 0x6FCAF070` (`EVENT_UpdateTimers`):
+ * `@va D2Game:0x6FCAF070` (`EVENT_UpdateTimers`):
  * Walks partitions `[2, 0, 1, 3, 4]`; in each partition walks persistent events LIFO (`+0x1C` from head)
  * followed by current slot (`dwGameFrame & 63`) FIFO (`+0x1C` from tail where `dwFrame == dwGameFrame`).
  */

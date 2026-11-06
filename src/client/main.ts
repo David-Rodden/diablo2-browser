@@ -749,7 +749,7 @@ export async function startPlayApp(options?: {
   hudManager.enableIdleThrottle = true
   hudManager.touchControls.applyHudLayoutMode(initialSettings.hudLayoutMode ?? 'auto', window)
   hudManager.onToggleChatInput = toggleInGameChatInput
-  hudManager.touchControls.skillWheelBankMode = initialSettings.skillWheelBankMode ?? 'hold'
+  hudManager.touchControls.skillWheelBankMode = initialSettings.skillWheelBankMode ?? 'toggle'
   hudManager.touchControls.autoPickupGoldAndPotions = initialSettings.mobileAutoPickupGoldAndPotions ?? false
   hudManager.touchControls.hapticsEnabled = initialSettings.mobileHapticsEnabled ?? true
 
@@ -1185,7 +1185,7 @@ export async function startPlayApp(options?: {
       session.hudManager.touchControls.applyHudLayoutMode(next.hudLayoutMode ?? 'auto', window)
       session.hudManager.syncPublishedState()
     }
-    session.hudManager.touchControls.skillWheelBankMode = next.skillWheelBankMode ?? 'hold'
+    session.hudManager.touchControls.skillWheelBankMode = next.skillWheelBankMode ?? 'toggle'
     session.hudManager.touchControls.autoPickupGoldAndPotions = next.mobileAutoPickupGoldAndPotions ?? false
     session.hudManager.touchControls.hapticsEnabled = next.mobileHapticsEnabled ?? true
   })
