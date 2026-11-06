@@ -85,6 +85,58 @@ export function formatD2CapEntry(entry: PacketTapEntry): string {
   return JSON.stringify(rec)
 }
 
+export interface RecentS2cPacketSummary {
+  readonly seq: number
+  readonly t: number
+  readonly packetId: number
+  readonly len: number
+  readonly hex: string
+}
+
+/**
+ * Extracts the most recent `limit` framed `game` S->C packets from a `PacketTapEntry` list
+ * for disconnect / stream-desync diagnostics (`opcode` + `hex` truncated to `maxPacketHexBytes`).
+ */
+export function summarizeRecentGameS2cPackets(
+  entries: readonly PacketTapEntry[],
+  limit = 64,
+  maxPacketHexBytes = 48,
+): RecentS2cPacketSummary[] {
+  if (limit <= 0 || entries.length === 0) return []
+  const picked: Array<{ readonly entry: PacketTapEntry; readonly seq: number }> = []
+  let s2cSeq = 0
+  for (let i = 0; i < entries.length; i++) {
+    const e = entries[i]!
+    if (e.conn !== 'game' || e.dir !== 's2c' || e.isRawStreamChunk) continue
+    s2cSeq++
+    picked.push({ entry: e, seq: s2cSeq })
+  }
+  const slice = picked.slice(-limit)
+  return slice.map(({ entry, seq }) => {
+    const raw = entry.raw
+    const pid = entry.packetId ?? (raw.byteLength > 0 ? raw[0]! : 0)
+    const head = raw.byteLength > maxPacketHexBytes ? raw.subarray(0, maxPacketHexBytes) : raw
+    const hex = bytesToHex(head) + (raw.byteLength > maxPacketHexBytes ? '…' : '')
+    return {
+      seq,
+      t: entry.t,
+      packetId: pid,
+      len: raw.byteLength,
+      hex,
+    }
+  })
+}
+
+export function formatRecentS2cPacketSummaries(items: readonly RecentS2cPacketSummary[]): string {
+  if (items.length === 0) return '(none)'
+  return items
+    .map(
+      (p) =>
+        `#${p.seq} 0x${p.packetId.toString(16).padStart(2, '0')}(${p.len}B):${p.hex}`,
+    )
+    .join(', ')
+}
+
 export class InMemoryPacketTap implements PacketTap {
   readonly entries: PacketTapEntry[] = []
   private readonly maxEntries: number
@@ -102,6 +154,14 @@ export class InMemoryPacketTap implements PacketTap {
 
   clear(): void {
     this.entries.length = 0
+  }
+
+  recentGameS2cPackets(limit = 64, maxPacketHexBytes = 48): RecentS2cPacketSummary[] {
+    return summarizeRecentGameS2cPackets(this.entries, limit, maxPacketHexBytes)
+  }
+
+  formatRecentGameS2cSummary(limit = 64, maxPacketHexBytes = 48): string {
+    return formatRecentS2cPacketSummaries(this.recentGameS2cPackets(limit, maxPacketHexBytes))
   }
 
   toD2CapJsonl(header: D2CapHeader): string {

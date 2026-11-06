@@ -24,9 +24,11 @@ import { evaluateSkill113c } from '../../skills/registry.ts'
 import type { TownNpcPlayerContext } from '../../ai/town-npc-ai-113c.ts'
 import { questWordIndex113c } from '../quests-113c.ts'
 import type { GameInstanceHost } from './host.ts'
-import { monStatsAiDist113c } from './monster-combat-ai.ts'
+import { updatePlayerBreadcrumbs113c } from './hireable-ai-113c.ts'
+import { getKernMonsterWheelRuntime113c } from './kern-monster-wheel-113c.ts'
+import { stepOracleNecroPetsEarly113c } from './summoned-pets.ts'
 import type { InternalMonsterRecord, InternalPlayerRecord, PlayerSkillCast, QueuedPlayerCommand, ServerItemEntry } from './types.ts'
-import { ACT_TOWN_AREAS, BODYLOC_LEFT_ARM, BODYLOC_RIGHT_ARM, NPC_INTRO_BIT_BY_HCIDX_113C, PLAYER_SIZE_X_113C, SKILL_TELEPORT, SRVDOFUNC_MIND_BLAST, SRVDOFUNC_WHIRLWIND, STAT_ITEM_ADDCLASSSKILLS, STAT_ITEM_ADDSKILL_TAB, STAT_ITEM_ALLSKILLS, STAT_ITEM_EXPLOSIVEARROW, STAT_ITEM_MAGICARROW, STAT_ITEM_NONCLASSSKILL, STAT_ITEM_SINGLESKILL, STAT_QUANTITY, TOWN_AREAS, UNIVERSAL_PLAYER_SKILL_IDS, WARP_INTERACT_DISTANCE_SUBTILES, WAYPOINT_AREA_IDS, WAYPOINT_INTERACT_DISTANCE_SUBTILES, areaToAct, collectEquippedItemStats, collectItemStats, computeObjectApproachSearchRadius113c, findBestInteractApproachSubTile113c, findChargedSkill, normalizeMissileElement, resolvePlayerServerMissileName, unitsDistanceToCoordinates113c, UNIT_TYPE_113C, type UnitType113c } from './constants-and-helpers.ts'
+import { ACT_TOWN_AREAS, BODYLOC_LEFT_ARM, BODYLOC_RIGHT_ARM, NPC_INTRO_BIT_BY_HCIDX_113C, PLAYER_SIZE_X_113C, SKILL_TELEPORT, SRVDOFUNC_MIND_BLAST, SRVDOFUNC_WHIRLWIND, STAT_ITEM_ADDCLASSSKILLS, STAT_ITEM_ADDSKILL_TAB, STAT_ITEM_ALLSKILLS, STAT_ITEM_EXPLOSIVEARROW, STAT_ITEM_MAGICARROW, STAT_ITEM_NONCLASSSKILL, STAT_ITEM_SINGLESKILL, STAT_QUANTITY, TOWN_AREAS, UNIVERSAL_PLAYER_SKILL_IDS, WARP_INTERACT_DISTANCE_SUBTILES, WAYPOINT_AREA_IDS, WAYPOINT_INTERACT_DISTANCE_SUBTILES, areaToAct, collectEquippedItemStats, collectItemStats, computeObjectApproachSearchRadius113c, findBestInteractApproachSubTile113c, findChargedSkill, normalizeMissileElement, resolvePlayerServerMissileName, UNIT_TYPE_113C, type UnitType113c } from './constants-and-helpers.ts'
 
 
 
@@ -133,7 +135,10 @@ function stepFrame(this: GameInstanceHost): Map<number, readonly ServerEvent[]> 
   this.currentFrame++
   this.rng.nextUint32()
   this.areaPathWorld.syncWorldUnits(
-    (id) => this.monsters.has(id) || this.petVisualStates.has(id),
+    (id) =>
+      this.monsters.has(id) ||
+      this.petVisualStates.has(id) ||
+      this.mercenaries.get(id)?.alive === true,
     (id) => Boolean(this.monsters.get(id)?.dead),
     (id) => this.objects.has(id),
     (id) => this.players.has(id),
@@ -141,6 +146,8 @@ function stepFrame(this: GameInstanceHost): Map<number, readonly ServerEvent[]> 
 
   // 2. Stream wilderness rooms & step player movement
   if (this.drlgRoomPopulator !== null) {
+    // Sync any frame-0 / end-of-prev-frame monster events before advancing `dwGameFrame`
+    getKernMonsterWheelRuntime113c(this).installMoveHooks(this)
     for (const player of this.players.values()) {
       this.ensureAdjacentAreasLoaded(player.areaId)
       this.drlgRoomPopulator.activateNear(
@@ -166,6 +173,9 @@ function stepFrame(this: GameInstanceHost): Map<number, readonly ServerEvent[]> 
     } finally {
       this.inStepPlayerMovement = false
     }
+    if (this.drlgRoomPopulator !== null) {
+      updatePlayerBreadcrumbs113c(player)
+    }
     this.revealAreaRoomsNearPlayer(player, true)
     this.stepUnitStates(
       player.states,
@@ -174,31 +184,6 @@ function stepFrame(this: GameInstanceHost): Map<number, readonly ServerEvent[]> 
       player.unitId,
       player.areaId,
     )
-  }
-
-  // 1.13c 25-frame `AI_ActivateMonstersNearPlayers` (`(currentFrame - 1) % 25 === 0`, octile dist <= 35)
-  if (this.drlgRoomPopulator !== null && (this.currentFrame - 1) % 25 === 0) {
-    for (const player of this.players.values()) {
-      if (player.dead) continue
-      const px = Math.floor(player.x + 0.5)
-      const py = Math.floor(player.y + 0.5)
-      for (const mon of this.monsters.values()) {
-        if (mon.aiAwake || mon.dead || mon.isNpc) continue
-        if (!this.isAreaSeamAdjacent(player.areaId, mon.areaId)) continue
-        const mx = Math.floor(mon.x + 0.5)
-        const my = Math.floor(mon.y + 0.5)
-        // `AI_FindNearestPlayerOrAlly` (`0x6FCD1C90`): a player is a target only when
-        // `UNITS_GetDistanceToCoordinates(pPlayer, monX, monY)` (`0x6FCD08F0`, plain octile, no unit-size
-        // subtraction) is below `MonStats.aidist[diff]` (`+0x52`, `0x6FCD1D5D..0x6FCD1D6C`) or 35 when that
-        // byte is 0 (`0x6FCD1D41`). Without a target `0x6FD13220` re-schedules the AI in 25 frames when the
-        // distance is >= 35 (`0x6FD1330F`). kb/monsters/d2game-zombie-ai-113c.md §6.
-        const dist = unitsDistanceToCoordinates113c(px, py, mx, my)
-        if (dist < monStatsAiDist113c(mon.hcIdx, this.difficulty)) {
-          mon.aiAwake = true
-          mon.nextAiFrame = this.currentFrame
-        }
-      }
-    }
   }
 
   // 2a. Step per-player 25Hz `AnimDispatcher` windup / keyframe actions / follow-through (#1789, #1862),
@@ -341,16 +326,17 @@ function stepFrame(this: GameInstanceHost): Map<number, readonly ServerEvent[]> 
         monster.areaId,
       )
     }
-    const dueEvent3 = [...this.monsters.values()]
-      .filter((m) => !m.dead && !m.isNpc && m.nextEvent3Frame113c === this.currentFrame)
-      .sort((a, b) => (a.event3Seq113c ?? 0) - (b.event3Seq113c ?? 0))
-    for (const monster of dueEvent3) {
-      this.stepMonsterRegen(monster)
-    }
+  }
+  if (this.drlgRoomPopulator !== null) stepOracleNecroPetsEarly113c(this)
+  const drlgDeferred: InternalMonsterRecord[] = []
+  if (this.drlgRoomPopulator !== null) {
+    // Sync any events scheduled outside the monster phase (player hits, missiles, pets, room wake) into the 64-slot wheel.
+    getKernMonsterWheelRuntime113c(this).syncAllMonsters(this, true)
   }
   for (const monster of [...this.monsters.values()]) {
     if (monster.dead) {
       if (
+        this.drlgRoomPopulator === null &&
         monster.mode === 0 &&
         monster.deathAnimEndFrame !== undefined &&
         monster.deathAnimEndFrame > 0 &&
@@ -459,46 +445,15 @@ function stepFrame(this: GameInstanceHost): Map<number, readonly ServerEvent[]> 
         this.applyMonsterAura(monster)
       }
     }
-    if (
-      !monster.aiDisabled &&
-      !monster.isNpc &&
-      monster.aiAwake !== false &&
-      (this.drlgRoomPopulator !== null || this.isMonsterInActiveAoi(monster))
-    ) {
-      const monPrevArea = monster.areaId
-      const monPrevX = monster.x
-      const monPrevY = monster.y
-      this.stepMonsterAi(monster)
-      if (this.drlgRoomPopulator === null) {
-        this.areaPathWorld.syncMonsterPosition(
-          monster.areaId,
-          monster.unitId,
-          monster.x,
-          monster.y,
-          monster.mode,
-        )
-      }
-      if (
-        monster.areaId !== monPrevArea ||
-        monster.x !== monPrevX ||
-        monster.y !== monPrevY
-      ) {
-        this.syncUnitMoveAcrossViewerAoi113c(
-          'monster',
-          monster.unitId,
-          monPrevArea,
-          monPrevX,
-          monPrevY,
-          monster.areaId,
-          monster.x,
-          monster.y,
-        )
-      }
+    if (this.drlgRoomPopulator !== null) {
+      // Route-2 event order (kb/engine/d2game-event-wheel-and-room-units-113c.md §6): the AI step runs in
+      // the ordered monster phase below.
+      drlgDeferred.push(monster)
+      continue
     }
-    this.stepPendingMonsterAttack(monster)
-    this.stepPendingAllyAttack(monster)
-    this.stepPendingResurrection(monster)
+    stepMonsterAiAndPending113c(this, monster)
   }
+  if (this.drlgRoomPopulator !== null) runDrlgMonsterEventPhase113c(this, drlgDeferred)
 
   // 5. Step mercenaries & summoned pets (F13)
   this.stepMercenaries()
@@ -514,6 +469,7 @@ function stepFrame(this: GameInstanceHost): Map<number, readonly ServerEvent[]> 
     if (this.currentFrame > 0 && this.currentFrame % 11 === 0) {
       this.drlgRoomPopulator.incrementInactiveRoomFrames()
     }
+    getKernMonsterWheelRuntime113c(this).syncAllMonsters(this, false)
   }
 
   const frameMap = new Map<number, readonly ServerEvent[]>()
@@ -2665,3 +2621,48 @@ export const frameAndCommandsMethods: Record<keyof FrameAndCommandsMethods, unkn
   validatePlayerActiveSkills,
   syncPlayerSelectedRightAura113c,
 }
+
+
+/** AI step of one monster plus the pending action resolution that follows it in the monster loop. */
+function stepMonsterAiAndPending113c(host: GameInstanceHost, monster: InternalMonsterRecord): void {
+  if (
+    !monster.aiDisabled &&
+    !monster.isNpc &&
+    monster.aiAwake !== false &&
+    (host.drlgRoomPopulator !== null || host.isMonsterInActiveAoi(monster))
+  ) {
+    const monPrevArea = monster.areaId
+    const monPrevX = monster.x
+    const monPrevY = monster.y
+    host.stepMonsterAi(monster)
+    if (host.drlgRoomPopulator === null) {
+      host.areaPathWorld.syncMonsterPosition(monster.areaId, monster.unitId, monster.x, monster.y, monster.mode)
+    }
+    if (monster.areaId !== monPrevArea || monster.x !== monPrevX || monster.y !== monPrevY) {
+      host.syncUnitMoveAcrossViewerAoi113c(
+        'monster',
+        monster.unitId,
+        monPrevArea,
+        monPrevX,
+        monPrevY,
+        monster.areaId,
+        monster.x,
+        monster.y,
+      )
+    }
+  }
+  host.stepPendingMonsterAttack(monster)
+  host.stepPendingAllyAttack(monster)
+  host.stepPendingResurrection(monster)
+}
+
+/**
+ * DRLG oracle path, monster partition (`partition = 1`) of `EVENT_UpdateTimers` (`0x6FCAF070`)
+ * dispatched via `src/d2kern-113c` `MONSTER_DispatchEvent113c` (`0x6FC969A0`) with zero array-sort
+ * or sequence-number stand-ins (`kb/monsters/d2game-monster-events-113c.md`).
+ */
+function runDrlgMonsterEventPhase113c(host: GameInstanceHost, deferred: readonly InternalMonsterRecord[]): void {
+  getKernMonsterWheelRuntime113c(host).runMonsterEventPhase(host, deferred, stepMonsterAiAndPending113c)
+}
+
+

@@ -281,7 +281,9 @@ export function sampleFrame(
       stats: sampleMonsterStats(st, statIds),
       states: collectActiveStateIds(m.states, st),
     }))
-    const mercMode = !m.alive ? 12 : m.state === 'attack' ? 4 : m.state === 'follow' || m.state === 'chase' ? 2 : 1
+    const mercMode = !m.alive
+      ? 12
+      : m.mode ?? (m.state === 'attack' ? 4 : m.state === 'follow' || m.state === 'chase' ? 2 : 1)
     t1.push([m.unitId, m.classId, mercMode, subtile(m.x), subtile(m.y), ...unitSeed(host, 1, m.unitId), m.areaId, ...stats])
     if (states.length > 0) st1.push([1, m.unitId, ...states])
   }

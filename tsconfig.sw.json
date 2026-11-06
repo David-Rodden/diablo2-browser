@@ -13,6 +13,8 @@
     "src/common/**/*.d.ts"
   ],
   "exclude": [
+    "src/d2kern-113c",
+    "src/d2kern-113c/**",
     "src/server",
     "src/server/**",
     "src/baker",

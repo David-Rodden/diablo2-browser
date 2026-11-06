@@ -254,9 +254,17 @@ export function createD2OnlineFlow(config: D2OnlineConfig): D2OnlineFlow {
   }
 
   function watchGameConnection(session: D2gsSession): void {
-    session.onClose((reason) => {
+    const unsubClose = session.onClose((reason) => {
+      unsubErr()
       if (lost || d2gsSession !== session) return
       const info = describeClose('d2gs', reason)
+      const earlier = pendingLost
+      declareLost(earlier ? { ...info, message: `${info.message}; earlier: ${earlier.message}` } : info)
+    })
+    const unsubErr = session.onError((err) => {
+      unsubClose()
+      if (lost || d2gsSession !== session) return
+      const info = describeClose('d2gs', { kind: 'error', error: err })
       const earlier = pendingLost
       declareLost(earlier ? { ...info, message: `${info.message}; earlier: ${earlier.message}` } : info)
     })

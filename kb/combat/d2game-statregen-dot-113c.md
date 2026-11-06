@@ -24,6 +24,14 @@ Authoritative reverse-engineering specification for per-frame `stat 6` (`hitpoin
 
 ---
 
+### 1.1 `Event 3` re-arm after damage (`SUNITDMG_ApplyDamage` `0x6FCFE2E2..0x6FCFE335`)
+
+For a surviving monster defender with `dwDmgTotal > 0` and a non-zero accrued `stat 74`, the pending
+`Event 3` timers are deleted and `Event 3` is re-queued at `dwGameFrame + 1`. This applies to every damage
+source: player hits, merc missiles and 1:1 pet melee. TS: `armMonsterEvent3AfterDamage113c`
+(`monster-damage.ts`), called from the player, `hireable-ai-113c.ts` missile and `necropet-ai-113c.ts`
+melee paths.
+
 ## 2. Monster Base `stat 74` Initialization (`MONSTER_InitStats` `0x6FCD00ED..0x6FCD011C`)
 
 During monster spawn (`MONSTER_InitStats` `0x6FCCFF90`), base `stat 74` (`hpregen`) is derived from `maxHp256` (`stat 7`, already shifted `<< 8`) and `MonStats.txt` `DamageRegen` (`+0x19C` in `MonStatsTxt`):

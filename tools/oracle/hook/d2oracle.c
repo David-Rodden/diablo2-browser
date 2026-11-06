@@ -236,8 +236,66 @@ static int g_nsteer;
  * D2Game path at 0x6FC7C033..0x6FC7C03D. Used only to author save fixtures. */
 void *g_levelup_fn, *g_lu_game, *g_lu_player; /* referenced from asm */
 static uint32_t g_setexp_frame, g_setexp_value;
+/* "setgold FRAME GOLD": set inventory gold (stat 14) for save-authoring
+ * flows such as genuine C2S 0x36 mercenary hiring. */
+static uint32_t g_setgold_frame, g_setgold_value;
+/* "equip FRAME CODE BODYLOC QUALITY ILVL": spawn a genuine 1.13c item via
+ * D2GAME_CreateItemEx (0x6FC31490), identify it via ITEMS_SetItemFlag
+ * (0x6FC2A65E, IFLAG_IDENTIFIED=0x10), and equip via ITEMS_EquipOnBody
+ * (0x6FCF60D0: eax=itemId, ecx=player, stack: game, bodyloc, 0, &swapped).
+ * Strictly gated on g_nequip > 0 for save-fixture authoring only. */
+typedef int(__stdcall *GetItemIdx_t)(uint32_t code);
+typedef uint8_t *(__stdcall *CreateItemEx_t)(void *game, void *drop, int zero);
+typedef int(__stdcall *SetItemFlag_t)(void *item, uint32_t flag, int set);
+static GetItemIdx_t p_GetItemIdx;
+static CreateItemEx_t p_CreateItemEx;
+static SetItemFlag_t p_SetItemFlag;
+void *g_equip_fn, *g_eq_game, *g_eq_player, *g_eq_swapped;
+uint32_t g_eq_itemid, g_eq_bodyloc, g_eq_ret;
+typedef struct {
+  uint32_t frame, bodyloc, quality, ilvl;
+  char code[5];
+} Equip;
+static Equip g_equip[16];
+static int g_nequip;
 /* "dumpcoll FRAME RADIUS": write the collision map around the player. */
 static uint32_t g_coll_frame, g_coll_radius;
+/* "animdump CLASS FROM TO": per frame in [FROM, TO], log every monster of MonStats class CLASS as
+ * `frame id mode cof frames recSpeed unitSpeed` to out\anim.txt. unit+0x50 is the AnimData record
+ * chosen by UNITS_UpdateAnimRateAndVelocity (D2Common 0x6FD83140 -> 0x6FD91F70: name[8], +0x08 frames,
+ * +0x0C speed) and unit+0x4C the resulting anim speed WORD. Diagnostics only; off by default. */
+static uint32_t g_anim_class = 0xFFFFFFFFu, g_anim_from, g_anim_to;
+static FILE *g_anim;
+/* "orderlog FROM TO": per frame in [FROM, TO], log the order of monster event dispatches
+ * (EVENT_UpdateTimers monster partition default handler 0x6FC969A0: kind 1 = slot list call
+ * 0x6FCAEC25, kind 2 = persistent list call 0x6FCAEC89; entry [kind, eventType, unitType,
+ * unitId, mode]) and of PATH_StepDynamicPath (#10226 call 0x6FCC02B1: [3, 0, unitType, unitId,
+ * mode]) into the trace key "ord". Route-2 pilot step 0 (kb/engine/d2game-event-wheel-and-room-
+ * units-113c.md); off unless the scenario asks for it. */
+static uint32_t g_ord_from = 0xFFFFFFFFu, g_ord_to;
+static char g_ordlog[16384];
+static int g_ordlog_len;
+void *g_evt_fn, *g_step_fn; /* referenced from asm */
+/* "memdump FRAME TYPE ID": at the end of FRAME, dump raw memory around one unit into the trace key
+ * "mem" (route-2 pilot layout checks): the unit (0x100), its unit data (0x100), pAiGeneral and
+ * pAiControl (0x40 each, monsters), its event nodes (0x30 each, via unit+0xDC / node+0x24), its room
+ * (#10331, 0x80) and pGame (0x100 + timer block pGame+0xB8, 0xA1C). Addresses are raw pointers. */
+typedef struct { uint32_t frame, type, id; } MemDump;
+static MemDump g_memdump[16];
+static int g_nmemdump;
+/* "fnrec setevent FROM TO MAX": record EVENT_SetEvent (0x6FCAEA80) calls in frames [FROM, TO] (at most
+ * MAX) to out\fnrec.ndjson for the route-2 replay (tools/oracle/route2-replay.ts). Entry detour on
+ * the 5-byte prologue (push ebx; mov ebx,[esp+8]); pre/post blocks: pGame (0x100), timer block (0xA20, incl. the node
+ * pool pointer +0xA1C), every pool chunk's free/next words (+0x7080, 8 bytes), the free-list head node,
+ * the unit (0x100), its first event node, and the old head of the target slot / persistent list. */
+static uint32_t g_rec_from = 0xFFFFFFFFu, g_rec_to, g_rec_max, g_rec_n;
+static FILE *g_rec;
+void *g_se_tramp; /* referenced from asm */
+/* "fnrec timers FROM TO": at the EVENT_UpdateTimers call (0x6FC4E0D5) of every frame in [FROM, TO], write
+ * the wheel state it will walk (timer block + every node of the persistent lists and of the current
+ * slot, 0x30 each) as a record {"fn":"EVENT_UpdateTimers"} to out\\fnrec.ndjson. */
+static uint32_t g_tm_from = 0xFFFFFFFFu, g_tm_to;
+void *g_timers_fn; /* referenced from asm */
 static char g_inlog[8192];
 static int g_inlog_len;
 
@@ -289,8 +347,28 @@ static void load_scenario(void) {
         g_nsteer++;
     } else if (sscanf(line, "setexp %u %u", &fr, &g_setexp_value) == 2) {
       g_setexp_frame = fr;
+    } else if (sscanf(line, "setgold %u %u", &fr, &g_setgold_value) == 2) {
+      g_setgold_frame = fr;
+    } else if (!strncmp(line, "equip ", 6) && g_nequip < 16) {
+      Equip *eq = &g_equip[g_nequip];
+      if (sscanf(line, "equip %u %4s %u %u %u", &eq->frame, eq->code,
+                 &eq->bodyloc, &eq->quality, &eq->ilvl) == 5)
+        g_nequip++;
     } else if (sscanf(line, "dumpcoll %u %u", &fr, &g_coll_radius) == 2) {
       g_coll_frame = fr;
+    } else if (g_nmemdump < 16 &&
+               sscanf(line, "memdump %u %u %u", &g_memdump[g_nmemdump].frame,
+                      &g_memdump[g_nmemdump].type, &g_memdump[g_nmemdump].id) == 3) {
+      g_nmemdump++;
+    } else if (sscanf(line, "fnrec setevent %u %u %u", &g_rec_from, &g_rec_to, &g_rec_max) == 3) {
+      if (!g_rec) g_rec = fopen(ORACLE_DIR "out\\fnrec.ndjson", "w");
+    } else if (sscanf(line, "fnrec timers %u %u", &g_tm_from, &g_tm_to) == 2) {
+      if (!g_rec) g_rec = fopen(ORACLE_DIR "out\\fnrec.ndjson", "w");
+    } else if (sscanf(line, "orderlog %u %u", &g_ord_from, &g_ord_to) == 2) {
+      logf_("orderlog %u..%u", g_ord_from, g_ord_to);
+    } else if (sscanf(line, "animdump %u %u %u", &g_anim_class, &g_anim_from,
+                      &g_anim_to) == 3) {
+      g_anim = fopen(ORACLE_DIR "out\\anim.txt", "w");
     } else if (sscanf(line, "states %u", &fr) == 1) {
       g_nstates = (int)fr;
     } else if (sscanf(line, "frames %u", &fr) == 1) {
@@ -336,6 +414,53 @@ static void level_up(void *game, void *player) {
       "popal\n\t" ::: "memory");
 }
 
+static void author_equip_item(uint8_t *game, uint8_t *pl, const Equip *eq) {
+  if (!p_GetItemIdx || !p_CreateItemEx || !p_SetItemFlag || !g_equip_fn) return;
+  uint32_t code = 0x20202020u;
+  for (int i = 0; i < 4 && eq->code[i]; i++)
+    code = (code & ~(0xFFu << (i * 8))) | ((uint32_t)(uint8_t)eq->code[i] << (i * 8));
+  int idx = p_GetItemIdx(code);
+  if (idx < 0) {
+    logf_("equip %s: unknown code", eq->code);
+    return;
+  }
+  uint8_t drop[0x84];
+  memset(drop, 0, sizeof drop);
+  *(uint32_t *)(drop + 0x00) = (uintptr_t)pl;
+  *(uint32_t *)(drop + 0x08) = (uintptr_t)game;
+  *(uint32_t *)(drop + 0x0C) = eq->ilvl;
+  *(uint32_t *)(drop + 0x14) = (uint32_t)idx;
+  *(uint32_t *)(drop + 0x18) = 4; /* IMODE_ONCURSOR */
+  *(uint16_t *)(drop + 0x28) = 1;
+  *(uint16_t *)(drop + 0x2A) = *(uint16_t *)(game + 0x78);
+  *(uint32_t *)(drop + 0x30) = eq->quality;
+  uint8_t *item = p_CreateItemEx(game, drop, 0);
+  if (!item) {
+    logf_("equip %s: CreateItemEx failed", eq->code);
+    return;
+  }
+  p_SetItemFlag(item, 0x10u, 1); /* IFLAG_IDENTIFIED */
+  uint32_t swapped = 0;
+  g_eq_game = game;
+  g_eq_player = pl;
+  g_eq_itemid = RD32(item, U_ID);
+  g_eq_bodyloc = eq->bodyloc;
+  g_eq_swapped = &swapped;
+  __asm__ volatile(
+      "pushal\n\t"
+      "push _g_eq_swapped\n\t"
+      "push $0\n\t"
+      "push _g_eq_bodyloc\n\t"
+      "push _g_eq_game\n\t"
+      "mov _g_eq_itemid, %%eax\n\t"
+      "mov _g_eq_player, %%ecx\n\t"
+      "call *_g_equip_fn\n\t"
+      "mov %%eax, _g_eq_ret\n\t"
+      "popal\n\t" ::: "memory");
+  logf_("equip %s idx=%d id=%u loc=%u q=%u -> ret=%u swap=%u", eq->code, idx,
+        g_eq_itemid, eq->bodyloc, eq->quality, g_eq_ret, swapped);
+}
+
 void __cdecl on_pre_frame(uint8_t *game) {
   uint32_t next = RD32(game, G_FRAME) + 1;
   g_inlog_len = 0;
@@ -346,6 +471,22 @@ void __cdecl on_pre_frame(uint8_t *game) {
       level_up(game, pl);
       logf_("setexp %u -> level %d", g_setexp_value,
             p_GetUnitStat ? p_GetUnitStat(pl, 12, 0) : -1);
+    }
+  }
+  if (g_setgold_frame && next == g_setgold_frame && p_SetUnitStat) {
+    uint8_t *pl = first_player(game);
+    if (pl) {
+      p_SetUnitStat(pl, 14, (int)g_setgold_value, 0);
+      logf_("setgold %u -> gold %d", g_setgold_value,
+            p_GetUnitStat ? p_GetUnitStat(pl, 14, 0) : -1);
+    }
+  }
+  if (g_nequip > 0) {
+    for (int i = 0; i < g_nequip; i++) {
+      if (g_equip[i].frame == next) {
+        uint8_t *pl = first_player(game);
+        if (pl) author_equip_item(game, pl, &g_equip[i]);
+      }
     }
   }
   for (int i = 0; i < g_nsteer; i++) {
@@ -464,10 +605,80 @@ static int __stdcall dot_setstat_hook(uint8_t *u, int stat, int val,
   return ret;
 }
 
+static void mem_block(const char *name, const void *p, uint32_t len, int *first) {
+  if (!p || IsBadReadPtr(p, len)) {
+    fprintf(g_trace, "%s{\"n\":\"%s\",\"a\":%u,\"h\":null}", *first ? "" : ",", name,
+            (uint32_t)(uintptr_t)p);
+    *first = 0;
+    return;
+  }
+  fprintf(g_trace, "%s{\"n\":\"%s\",\"a\":%u,\"h\":\"", *first ? "" : ",", name,
+          (uint32_t)(uintptr_t)p);
+  for (uint32_t i = 0; i < len; i++) fprintf(g_trace, "%02x", ((const uint8_t *)p)[i]);
+  fputs("\"}", g_trace);
+  *first = 0;
+}
+
+static void dump_memory(uint8_t *game, uint32_t fr) {
+  int any = 0;
+  for (int i = 0; i < g_nmemdump; i++) {
+    if (g_memdump[i].frame != fr || g_memdump[i].type > 4) continue;
+    uint8_t *u = (uint8_t *)(uintptr_t)RD32(game, G_UNITS + g_memdump[i].type * 0x200 +
+                                                      (g_memdump[i].id & 0x7F) * 4);
+    for (; u && RD32(u, U_ID) != g_memdump[i].id; u = (uint8_t *)(uintptr_t)RD32(u, U_GAME_NEXT)) {}
+    fputs(any ? "," : ",\"mem\":[", g_trace);
+    any = 1;
+    fprintf(g_trace, "{\"type\":%u,\"id\":%u,\"blocks\":[", g_memdump[i].type, g_memdump[i].id);
+    int first = 1;
+    mem_block("game", game, 0x100, &first);
+    mem_block("timer", (void *)(uintptr_t)RD32(game, 0xB8), 0xA1C, &first);
+    if (u) {
+      mem_block("unit", u, 0x100, &first);
+      uint8_t *data = (uint8_t *)(uintptr_t)RD32(u, 0x14);
+      mem_block("data", data, 0x100, &first);
+      if (RD32(u, U_TYPE) == 1 && data && !IsBadReadPtr(data, 0x30)) {
+        mem_block("aigeneral", (void *)(uintptr_t)RD32(data, 0x28), 0x40, &first);
+        mem_block("aicontrol", (void *)(uintptr_t)RD32(data, 0x2C), 0x40, &first);
+      }
+      uint8_t *ev = (uint8_t *)(uintptr_t)RD32(u, 0xDC);
+      for (int k = 0; ev && k < 16 && !IsBadReadPtr(ev, 0x30); k++) {
+        mem_block("event", ev, 0x30, &first);
+        ev = (uint8_t *)(uintptr_t)RD32(ev, 0x24);
+      }
+      if (p_GetRoom) mem_block("room", p_GetRoom(u), 0x80, &first);
+    }
+    fputs("]}", g_trace);
+  }
+  if (any) fputc(']', g_trace);
+}
+
 void __cdecl on_frame(uint8_t *game) {
   LONG n = InterlockedIncrement(&g_frames);
   if (g_coll_frame && RD32(game, G_FRAME) == g_coll_frame)
     dump_collision(game, g_coll_frame);
+  if (g_anim) {
+    uint32_t fr = RD32(game, G_FRAME);
+    if (fr >= g_anim_from && fr <= g_anim_to) {
+      for (int list = 0; list < 5; list++)
+        for (int b = 0; b < 128; b++) {
+          uint8_t *u = (uint8_t *)(uintptr_t)RD32(game, G_UNITS + list * 0x200 + b * 4);
+          for (; u; u = (uint8_t *)(uintptr_t)RD32(u, U_GAME_NEXT)) {
+            if (RD32(u, U_TYPE) != 1 || RD32(u, U_CLASS) != g_anim_class) continue;
+            uint8_t *rec = (uint8_t *)(uintptr_t)RD32(u, 0x50);
+            char cof[9] = {0};
+            uint32_t frames = 0, speed = 0;
+            if (rec) {
+              memcpy(cof, rec, 8);
+              frames = RD32(rec, 0x08);
+              speed = RD32(rec, 0x0C);
+            }
+            fprintf(g_anim, "%u %u %u %s %u %u %d\n", fr, RD32(u, U_ID), RD32(u, U_MODE),
+                    rec ? cof : "-", frames, speed, (int)*(int16_t *)(u + 0x4C));
+          }
+        }
+      fflush(g_anim);
+    }
+  }
   if (!g_trace) {
     g_dotn = 0;
     return;
@@ -503,6 +714,11 @@ void __cdecl on_frame(uint8_t *game) {
     fputc(']', g_trace);
     g_dotn = 0;
   }
+  if (g_nmemdump) dump_memory(game, RD32(game, G_FRAME));
+  if (g_ordlog_len) {
+    fprintf(g_trace, ",\"ord\":[%s]", g_ordlog);
+    g_ordlog_len = 0;
+  }
   if (g_inlog_len) fprintf(g_trace, ",\"in\":[%s]", g_inlog);
   fputs("}\n", g_trace);
   if (g_max_frames && RD32(game, G_FRAME) >= g_max_frames) {
@@ -510,6 +726,10 @@ void __cdecl on_frame(uint8_t *game) {
     g_trace = NULL;
     FILE *d = fopen(ORACLE_DIR "out\\done", "w");
     if (d) fclose(d);
+    if (g_rec) {
+      fclose(g_rec);
+      g_rec = NULL;
+    }
     logf_("reached %u frames", g_max_frames);
   }
   if ((n & 31) == 0) fflush(g_trace);
@@ -532,6 +752,217 @@ __attribute__((naked)) static void frame_stub(void) {
       "add $4, %%esp\n\t"
       "popal\n\t"
       "ret\n\t" ::"m"(g_frame_fn));
+}
+
+static void ord_append(int kind, int evtype, uint8_t *u) {
+  if (!u) return;
+  uint8_t *game = (uint8_t *)(uintptr_t)RD32(u, 0x80);
+  if (!game) return;
+  uint32_t fr = RD32(game, G_FRAME);
+  if (fr < g_ord_from || fr > g_ord_to) return;
+  if (g_ordlog_len > (int)sizeof g_ordlog - 64) return;
+  g_ordlog_len += snprintf(g_ordlog + g_ordlog_len, sizeof g_ordlog - g_ordlog_len,
+                           "%s[%d,%d,%u,%u,%u]", g_ordlog_len ? "," : "", kind, evtype,
+                           RD32(u, U_TYPE), RD32(u, U_ID), RD32(u, U_MODE));
+}
+void __cdecl ord_evt(int kind, int evtype, uint8_t *u) { ord_append(kind, evtype, u); }
+void __cdecl ord_step(uint8_t *u) { ord_append(3, 0, u); }
+
+/* 0x6FC969A0: esi = event type, edi = pUnit, stack (pGame, a, b), ret 0xC. */
+__attribute__((naked)) static void evt_stub_slot(void) {
+  __asm__ volatile(
+      "pushal\n\t"
+      "push %%edi\n\t"
+      "push %%esi\n\t"
+      "push $1\n\t"
+      "call _ord_evt\n\t"
+      "add $12, %%esp\n\t"
+      "popal\n\t"
+      "jmp *%0\n\t" ::"m"(g_evt_fn));
+}
+__attribute__((naked)) static void evt_stub_persist(void) {
+  __asm__ volatile(
+      "pushal\n\t"
+      "push %%edi\n\t"
+      "push %%esi\n\t"
+      "push $2\n\t"
+      "call _ord_evt\n\t"
+      "add $12, %%esp\n\t"
+      "popal\n\t"
+      "jmp *%0\n\t" ::"m"(g_evt_fn));
+}
+/* #10226 thunk: stdcall(pUnit, ...); pUnit at [esp+4] on entry (+32 after pushal). */
+__attribute__((naked)) static void step_stub(void) {
+  __asm__ volatile(
+      "pushal\n\t"
+      "push 36(%%esp)\n\t"
+      "call _ord_step\n\t"
+      "add $4, %%esp\n\t"
+      "popal\n\t"
+      "jmp *%0\n\t" ::"m"(g_step_fn));
+}
+
+/* ---------------------------------------------------------- fnrec (route 2) */
+typedef struct { uint32_t addr, len; } RecBlk;
+static RecBlk g_rec_blk[1024];
+static int g_rec_nblk;
+static int g_rec_active;
+static uint32_t g_rec_args[8];
+
+static void rec_add(uint32_t addr, uint32_t len) {
+  if (!addr || g_rec_nblk >= 1024) return;
+  for (int i = 0; i < g_rec_nblk; i++)
+    if (g_rec_blk[i].addr == addr) return;
+  g_rec_blk[g_rec_nblk].addr = addr;
+  g_rec_blk[g_rec_nblk].len = len;
+  g_rec_nblk++;
+}
+
+static void rec_dump_blocks(const char *key) {
+  fprintf(g_rec, ",\"%s\":[", key);
+  for (int i = 0; i < g_rec_nblk; i++) {
+    const uint8_t *p = (const uint8_t *)(uintptr_t)g_rec_blk[i].addr;
+    fprintf(g_rec, "%s[%u,\"", i ? "," : "", g_rec_blk[i].addr);
+    if (!IsBadReadPtr(p, g_rec_blk[i].len))
+      for (uint32_t k = 0; k < g_rec_blk[i].len; k++) fprintf(g_rec, "%02x", p[k]);
+    fputs("\"]", g_rec);
+  }
+  fputc(']', g_rec);
+}
+
+static void rec_collect(uint8_t *game, uint8_t *unit, uint32_t type, uint32_t frame) {
+  uint8_t *timer = (uint8_t *)(uintptr_t)RD32(game, 0xB8);
+  rec_add((uint32_t)(uintptr_t)game, 0x100);
+  rec_add((uint32_t)(uintptr_t)timer, 0xA20);
+  for (uint8_t *chunk = (uint8_t *)(uintptr_t)RD32(timer, 0xA1C); chunk;
+       chunk = (uint8_t *)(uintptr_t)RD32(chunk, 0x7084)) {
+    rec_add((uint32_t)(uintptr_t)chunk + 0x7080, 8);
+    uint32_t freeHead = RD32(chunk, 0x7080);
+    if (freeHead) rec_add(freeHead, 0x30);
+  }
+  if (unit) {
+    rec_add((uint32_t)(uintptr_t)unit, 0x100);
+    rec_add(RD32(unit, 0xDC), 0x30);
+  }
+  static const int part_by_type[7] = {0, 1, 3, 2, 4, -1, 0};
+  uint32_t ut = unit ? RD32(unit, U_TYPE) : 6;
+  int part = ut < 7 ? part_by_type[ut] : 0;
+  if (part < 0 || type >= 15) return;
+  if (frame == 0xFFFFFFFFu) {
+    rec_add(RD32(timer, 0xA04 + part * 4), 0x30);
+  } else {
+    uint32_t gf = RD32(game, G_FRAME);
+    if (frame <= gf) frame = gf + 1;
+    rec_add(RD32(timer, 0x504 + (part * 64 + (frame & 63)) * 4), 0x30);
+  }
+}
+
+/* stack: [0] ret, [1] type, [2] frame, [3] handler, [4] arg14, [5] arg18 */
+void __cdecl se_pre(uint8_t *game, uint8_t *unit, uint32_t *stack) {
+  g_rec_active = 0;
+  if (!g_rec || !game || g_rec_n >= g_rec_max) return;
+  uint32_t fr = RD32(game, G_FRAME);
+  if (fr < g_rec_from || fr > g_rec_to) return;
+  g_rec_active = 1;
+  g_rec_nblk = 0;
+  g_rec_args[0] = (uint32_t)(uintptr_t)game;
+  g_rec_args[1] = (uint32_t)(uintptr_t)unit;
+  for (int i = 1; i <= 5; i++) g_rec_args[1 + i] = stack[i];
+  rec_collect(game, unit, stack[1], stack[2]);
+  fprintf(g_rec, "{\"fn\":\"EVENT_SetEvent\",\"va\":%u,\"frame\":%u,\"args\":[", 0x6FCAEA80u, fr);
+  for (int i = 0; i < 7; i++) fprintf(g_rec, "%s%u", i ? "," : "", g_rec_args[i]);
+  fputc(']', g_rec);
+  rec_dump_blocks("pre");
+}
+
+void __cdecl se_post(void) {
+  if (!g_rec_active) return;
+  g_rec_active = 0;
+  uint8_t *game = (uint8_t *)(uintptr_t)g_rec_args[0];
+  uint8_t *unit = (uint8_t *)(uintptr_t)g_rec_args[1];
+  /* The new node is now the head of its list: add it (and anything else that moved) to the set. */
+  rec_collect(game, unit, g_rec_args[2], g_rec_args[3]);
+  rec_dump_blocks("post");
+  fputs("}\n", g_rec);
+  g_rec_n++;
+  if ((g_rec_n & 15) == 0) fflush(g_rec);
+}
+
+__attribute__((naked)) static void se_wrap(void) {
+  __asm__ volatile(
+      "pushal\n\t"
+      "lea 32(%%esp), %%eax\n\t"
+      "push %%eax\n\t"
+      "push %%edx\n\t"
+      "push %%ecx\n\t"
+      "call _se_pre\n\t"
+      "add $12, %%esp\n\t"
+      "popal\n\t"
+      "push 20(%%esp)\n\t"
+      "push 20(%%esp)\n\t"
+      "push 20(%%esp)\n\t"
+      "push 20(%%esp)\n\t"
+      "push 20(%%esp)\n\t"
+      "call *%0\n\t"
+      "pushal\n\t"
+      "call _se_post\n\t"
+      "popal\n\t"
+      "ret $0x14\n\t" ::"m"(g_se_tramp));
+}
+
+void __cdecl rec_timers(uint8_t *game) {
+  if (!g_rec || !game) return;
+  uint32_t fr = RD32(game, G_FRAME);
+  if (fr < g_tm_from || fr > g_tm_to) return;
+  uint8_t *timer = (uint8_t *)(uintptr_t)RD32(game, 0xB8);
+  g_rec_nblk = 0;
+  rec_add((uint32_t)(uintptr_t)game, 0x100);
+  rec_add((uint32_t)(uintptr_t)timer, 0xA20);
+  for (int part = 0; part < 5; part++) {
+    uint8_t *n = (uint8_t *)(uintptr_t)RD32(timer, 0xA04 + part * 4);
+    for (int k = 0; n && k < 200; k++, n = (uint8_t *)(uintptr_t)RD32(n, 0x1C))
+      rec_add((uint32_t)(uintptr_t)n, 0x30);
+    n = (uint8_t *)(uintptr_t)RD32(timer, 0x004 + (part * 64 + (fr & 63)) * 4);
+    for (int k = 0; n && k < 400; k++, n = (uint8_t *)(uintptr_t)RD32(n, 0x1C))
+      rec_add((uint32_t)(uintptr_t)n, 0x30);
+  }
+  fprintf(g_rec, "{\"fn\":\"EVENT_UpdateTimers\",\"va\":%u,\"frame\":%u,\"args\":[%u]", 0x6FCAF070u, fr,
+          (uint32_t)(uintptr_t)game);
+  rec_dump_blocks("pre");
+  fputs(",\"post\":[]}\n", g_rec);
+}
+
+/* call 0x6FCAF070 with esi = pGame (0x6FC4E0D5). */
+__attribute__((naked)) static void timers_stub(void) {
+  __asm__ volatile(
+      "pushal\n\t"
+      "push %%esi\n\t"
+      "call _rec_timers\n\t"
+      "add $4, %%esp\n\t"
+      "popal\n\t"
+      "jmp *%0\n\t" ::"m"(g_timers_fn));
+}
+
+static int patch_entry_jmp(uintptr_t fn, const uint8_t *expect, int n, void *target, void **tramp_out) {
+  uint8_t *p = (uint8_t *)fn;
+  if (memcmp(p, expect, n) != 0) {
+    logf_("entry patch %p: prologue mismatch", p);
+    return 0;
+  }
+  uint8_t *t = (uint8_t *)VirtualAlloc(NULL, 32, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+  if (!t) return 0;
+  memcpy(t, p, n);
+  t[n] = 0xE9;
+  *(int32_t *)(t + n + 1) = (int32_t)((uintptr_t)(p + n) - (uintptr_t)(t + n + 5));
+  DWORD old;
+  VirtualProtect(p, n, PAGE_EXECUTE_READWRITE, &old);
+  p[0] = 0xE9;
+  *(int32_t *)(p + 1) = (int32_t)((uintptr_t)target - (uintptr_t)(p + 5));
+  for (int i = 5; i < n; i++) p[i] = 0x90;
+  VirtualProtect(p, n, old, &old);
+  FlushInstructionCache(GetCurrentProcess(), p, n);
+  *tramp_out = t;
+  return 1;
 }
 
 static int patch_call(uintptr_t site, void *target, uintptr_t expect) {
@@ -574,6 +1005,10 @@ static void install_d2game_hooks(void) {
         (void *)p_GetUnitStat, (void *)p_CheckState);
   p_ApplyDamage = (ApplyDamage_t)G(0x6FCFC0B0);
   g_levelup_fn = (void *)G(0x6FD0B090);
+  p_GetItemIdx = (GetItemIdx_t)G(0x6FC2AE74);
+  p_CreateItemEx = (CreateItemEx_t)G(0x6FC31490);
+  p_SetItemFlag = (SetItemFlag_t)G(0x6FC2A65E);
+  g_equip_fn = (void *)G(0x6FCF60D0);
   if (common)
     p_SetUnitStat = (SetUnitStat_t)(void (*)(void))GetProcAddress(
         common, MAKEINTRESOURCEA(10887));
@@ -596,6 +1031,24 @@ static void install_d2game_hooks(void) {
     dotk += patch_call(G(dot_sites[i]), (void *)dot_setstat_hook,
                        G(0x6FC2A472));
   logf_("%d/2 dot hooks", dotk);
+  if (g_rec && g_rec_from != 0xFFFFFFFFu) {
+    static const uint8_t se_prologue[5] = {0x53, 0x8B, 0x5C, 0x24, 0x08};
+    int rk = patch_entry_jmp(G(0x6FCAEA80), se_prologue, 5, (void *)se_wrap, &g_se_tramp);
+    logf_("%d/1 fnrec setevent hooks", rk);
+  }
+  if (g_rec && g_tm_from != 0xFFFFFFFFu) {
+    g_timers_fn = (void *)G(0x6FCAF070);
+    int tk = patch_call(G(0x6FC4E0D5), (void *)timers_stub, (uintptr_t)g_timers_fn);
+    logf_("%d/1 fnrec timers hooks", tk);
+  }
+  if (g_ord_from != 0xFFFFFFFFu) {
+    g_evt_fn = (void *)G(0x6FC969A0);
+    g_step_fn = (void *)G(0x6FC2AE9E);
+    int ordk = patch_call(G(0x6FCAEC25), (void *)evt_stub_slot, (uintptr_t)g_evt_fn) +
+               patch_call(G(0x6FCAEC89), (void *)evt_stub_persist, (uintptr_t)g_evt_fn) +
+               patch_call(G(0x6FCC02B1), (void *)step_stub, (uintptr_t)g_step_fn);
+    logf_("%d/3 orderlog hooks", ordk);
+  }
 }
 
 /* ----------------------------------------------------------------- menu */
@@ -729,10 +1182,33 @@ static DWORD WINAPI oracle_thread(LPVOID unused) {
   return 0;
 }
 
+__declspec(dllexport) void __cdecl d2oracle_headless_init(void) {
+  CreateDirectoryA(ORACLE_DIR "out", NULL);
+  g_log = fopen(ORACLE_DIR "out\\log.txt", "w");
+  g_trace = fopen(ORACLE_DIR "out\\trace.ndjson", "wb");
+  logf_("d2oracle headless init");
+  load_scenario();
+  g_d2game = GetModuleHandleA("D2Game.dll");
+  if (g_d2game) {
+    install_d2game_hooks();
+  } else {
+    logf_("ERROR: D2Game.dll not loaded before d2oracle_headless_init");
+  }
+}
+
+__declspec(dllexport) int __cdecl d2oracle_is_done(void) {
+  return (g_max_frames && !g_trace) ? 1 : 0;
+}
+
 BOOL WINAPI DllMain(HINSTANCE h, DWORD reason, LPVOID r) {
   (void)r;
   if (reason == DLL_PROCESS_ATTACH) {
     DisableThreadLibraryCalls(h);
+    char headless[8] = {0};
+    if (GetEnvironmentVariableA("ORACLE_HEADLESS", headless, sizeof headless) > 0 &&
+        headless[0] == '1') {
+      return TRUE;
+    }
     CreateThread(NULL, 0, oracle_thread, NULL, 0, NULL);
   }
   return TRUE;

@@ -23,8 +23,20 @@ with open(sys.argv[2], 'w') as f:
         f.write('stats ' + ','.join(str(int(x)) for x in s['statIds']) + '\n')
     if s.get('oracleSetExp'):
         f.write('setexp ' + ' '.join(str(int(v)) for v in s['oracleSetExp']) + '\n')
+    if s.get('oracleSetGold'):
+        f.write('setgold ' + ' '.join(str(int(v)) for v in s['oracleSetGold']) + '\n')
+    for eq in s.get('oracleEquip', []):
+        f.write(f"equip {int(eq[0])} {str(eq[1])} {int(eq[2])} {int(eq[3])} {int(eq[4])}\n")
     if s.get('oracleDumpColl'):
         f.write('dumpcoll ' + ' '.join(str(int(v)) for v in s['oracleDumpColl']) + '\n')
+    for md in s.get('oracleMemDump', []):
+        f.write('memdump ' + ' '.join(str(int(v)) for v in md) + '\n')
+    for fr in s.get('oracleFnRec', []):
+        f.write('fnrec ' + ' '.join(str(v) for v in fr) + '\n')
+    if s.get('oracleOrderLog'):
+        f.write('orderlog ' + ' '.join(str(int(v)) for v in s['oracleOrderLog']) + '\n')
+    if s.get('oracleAnimDump'):
+        f.write('animdump ' + ' '.join(str(int(v)) for v in s['oracleAnimDump']) + '\n')
     for st in s.get('oracleSteer', []):
         f.write('steer ' + ' '.join(str(int(v)) for v in st) + '\n')
     for i in s.get('inputs', []):

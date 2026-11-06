@@ -134,6 +134,8 @@ export class DrlgRoomPopulator113c {
   private readonly pDrlgByAct = new Map<number, D2DrlgStrc>()
   private readonly simByPRoom = new Map<D2DrlgRoomStrc, SimRoomState113c>()
   private readonly levelMonTable = new Map<number, LevelMonRegionRuntime113c>()
+  /** Per-room ring of the last 4 monsters that entered DT (`#10873`, room `+0x38[4]`, index byte `+0x14`). */
+  private readonly deathRing113c = new Map<D2DrlgRoomStrc, { readonly ids: number[]; idx: number }>()
   private readonly activeRooms: SimRoomState113c[] = []
   private hasPending = false
 
@@ -263,6 +265,39 @@ export class DrlgRoomPopulator113c {
     return null
   }
 
+  /**
+   * D2Common `#10873` (`0x6FD8AFD0`), called from the monster death mode start (`0x6FC96302`) with the
+   * unit's room: stores the unit id at `room+0x38[idx]` and advances `idx = (idx + 1) & 3`.
+   */
+  recordMonsterDeath113c(act: number, x: number, y: number, unitId: number): void {
+    const pRoom = this.findPRoomAt(act, x, y)
+    if (pRoom === null) throw new Error(`recordMonsterDeath113c: no room at ${x},${y}`)
+    let ring = this.deathRing113c.get(pRoom)
+    if (ring === undefined) {
+      ring = { ids: [0, 0, 0, 0], idx: 0 }
+      this.deathRing113c.set(pRoom, ring)
+    }
+    ring.ids[ring.idx] = unitId
+    ring.idx = (ring.idx + 1) & 3
+  }
+
+  /**
+   * Unit ids in the death rings of the room at `(x, y)` and its near rooms (`0x6FC2A55C` adjacent room
+   * list, walked by `AiFallen` `0x6FCA31B4..0x6FCA3285`), room by room, slots 0..3.
+   */
+  recentDeathIdsNear113c(act: number, x: number, y: number): number[] {
+    const pRoom = this.findPRoomAt(act, x, y)
+    if (pRoom === null) throw new Error(`recentDeathIdsNear113c: no room at ${x},${y}`)
+    const rooms = pRoom.ppRoomsNear.includes(pRoom) ? pRoom.ppRoomsNear : [pRoom, ...pRoom.ppRoomsNear]
+    const out: number[] = []
+    for (const r of rooms) {
+      const ring = this.deathRing113c.get(r)
+      if (ring === undefined) continue
+      for (const id of ring.ids) if (id !== 0) out.push(id)
+    }
+    return out
+  }
+
   private ensureSimRoom(host: GameInstanceHost, pRoom: D2DrlgRoomStrc): SimRoomState113c {
     const existing = this.simByPRoom.get(pRoom)
     if (existing) {
@@ -369,7 +404,9 @@ export class DrlgRoomPopulator113c {
     }
     for (const sr of order) {
       sr.inactiveTicks = 0
-      sr.hasClientNear = true
+      if (host.currentFrame === 0) {
+        sr.hasClientNear = true
+      }
       if (!sr.active) {
         this.ensureRoom1Active113c(host, sr.pRoom)
       }
@@ -403,22 +440,20 @@ export class DrlgRoomPopulator113c {
     for (const sr of this.activeRooms) {
       if (nearSet.has(sr)) {
         sr.inactiveTicks = 0
-        if (!sr.hasClientNear) {
+        if (sr.populated && !sr.hasClientNear) {
           sr.hasClientNear = true
-          if (sr.populated) {
-            for (const mon of host.monsters.values()) {
-              if (mon.areaId !== sr.areaId || mon.dead) continue
-              const mx = Math.round(mon.x)
-              const my = Math.round(mon.y)
-              if (mx < sr.subX || mx >= sr.subX + sr.subW || my < sr.subY || my >= sr.subY + sr.subH) {
-                continue
-              }
-              if (mon.mode === 1) {
-                if (mon.townNpcAiEnabled) {
-                  host.areaPathWorld.setTownNpcNextAiFrame(mon.areaId, mon.unitId, host.currentFrame + 2)
-                } else if (mon.aiAwake && !mon.isNpc) {
-                  mon.nextAiFrame = host.currentFrame + 2
-                }
+          for (const mon of host.monsters.values()) {
+            if (mon.areaId !== sr.areaId || mon.dead) continue
+            const mx = Math.round(mon.x)
+            const my = Math.round(mon.y)
+            if (mx < sr.subX || mx >= sr.subX + sr.subW || my < sr.subY || my >= sr.subY + sr.subH) {
+              continue
+            }
+            if (mon.mode === 1) {
+              if (mon.townNpcAiEnabled) {
+                host.areaPathWorld.setTownNpcNextAiFrame(mon.areaId, mon.unitId, host.currentFrame + 2)
+              } else if (mon.aiAwake && !mon.isNpc) {
+                mon.nextAiFrame = host.currentFrame + 2
               }
             }
           }
@@ -597,6 +632,17 @@ export class DrlgRoomPopulator113c {
 
   private coordListIndexAt(sr: SimRoomState113c, x: number, y: number): number {
     return sub_6FD77110(sr.pRoom, x, y)?.nIndex ?? -1
+  }
+
+  /**
+   * `D2Common.#10916` (`0x6FD8C6D0` -> `0x6FDD19C0` / `sub_6FD77110`):
+   * returns `0` when `(x, y)` is outside active (`DRLGROOMFLAG_HAS_ROOM`) rooms, `-1` when the tile has
+   * no `D2RoomCoordListStrc`, or `coordList.nIndex` (`+0x28`, >= 1).
+   */
+  tileZoneAt113c(act: number, x: number, y: number): number {
+    const pRoom = this.findPRoomAt(act, x | 0, y | 0)
+    if (!pRoom || !(pRoom.dwFlags & DRLGROOMFLAG_HAS_ROOM) || !pRoom.pLogicalRoomInfo) return 0
+    return sub_6FD77110(pRoom, x | 0, y | 0)?.nIndex ?? -1
   }
 
   /**
@@ -831,6 +877,63 @@ export class DrlgRoomPopulator113c {
     if (trapType > 0) {
       const objRec = host.objects.get(objId)
       if (objRec) objRec.trapType = trapType
+    }
+  }
+
+  /**
+   * 1.13c party spawner `0x6FD0E480` (end of `MONSTER_Create` `0x6FD0EF10`, skipped for spawn flag `0x40`).
+   * `MonStats.minion1` (`+0x26`) must be valid; `minion2` (`+0x28`) enables round-robin. Party size is
+   * `PartyMin + rollLimited(leader seed, PartyMax - PartyMin + 1)` (`0x6FD0E623..0x6FD0E644`, no draw when
+   * `PartyMin >= PartyMax`). Each minion is created by `0x6FD0DDB0` with flags `0x40` and 4 ring steps around
+   * the leader (`0x6FD0E65D..0x6FD0E669`), so it never spawns a party of its own. The leader / minion link
+   * (`0x6FC40CF0`) is not modelled here.
+   */
+  private spawnPartyMinions113c(
+    host: GameInstanceHost,
+    sr: SimRoomState113c,
+    cBox: D2DrlgCoordStrc | null,
+    coordIdx: number,
+    leader: { readonly x: number; readonly y: number; readonly unitId?: number | undefined },
+    hcIdx: number,
+    leaderSeed: D2SeedStrc,
+    monLvl: number,
+  ): void {
+    const row = MONSTATS_113C_ROWS[hcIdx]
+    if (!row) throw new Error(`party spawner: no MonStats row ${hcIdx}`)
+    if (row.minions.length === 0) return
+    // `0x6FD0E51C`: `BaseId == 0x105` (`tentaclehead1`) takes a different branch (`0x6FD0E527..0x6FD0E5F0`).
+    if (row.baseId === 'tentaclehead1') {
+      throw new Error('party spawner: tentaclehead branch 0x6FD0E527 not ported')
+    }
+    const minionIds = row.minions.map((id) => {
+      const idx = MONSTATS_113C_ROWS.findIndex((r) => r.id === id)
+      if (idx < 0) throw new Error(`party spawner: unknown minion ${id} of ${row.id}`)
+      return idx
+    })
+    const count =
+      row.partyMin < row.partyMax
+        ? row.partyMin + rollLimitedSeed113c(leaderSeed, row.partyMax - row.partyMin + 1)
+        : row.partyMin
+    // `0x6FD0E5C0..0x6FD0E5F0`: with the MonStats `SetBoss` bit the leader's `pAiGeneral` points at itself
+    // (`0x6FC40D90`: `+0x28` group, `+0x2C` leader id, `+0x30` type 1).
+    const leaderRec = leader.unitId !== undefined ? host.monsters.get(leader.unitId) : undefined
+    if (row.setBoss) {
+      if (leaderRec === undefined) throw new Error(`party spawner: leader ${leader.unitId} missing`)
+      leaderRec.groupLeader113c = leaderRec.unitId
+      leaderRec.groupMinions113c ??= []
+    }
+    let idx = 0
+    for (let i = 0; i < count; i++) {
+      const minion = this.tryPlaceMonsterRing113c(host, sr, cBox, coordIdx, leader.x, leader.y, minionIds[idx]!, 4, false, monLvl)
+      // `0x6FD0E672..0x6FD0E6B3`: with the leader row's `SetBoss` bit the minion is linked to the leader and
+      // the leader prepends it to its minion list (`0x6FC40CF0`, `+0x34`).
+      if (minion?.unitId !== undefined && row.setBoss && leaderRec !== undefined) {
+        const minionRec = host.monsters.get(minion.unitId)
+        if (minionRec === undefined) throw new Error(`party spawner: minion ${minion.unitId} missing`)
+        minionRec.groupLeader113c = leaderRec.unitId
+        ;(leaderRec.groupMinions113c ??= []).unshift(minionRec.unitId)
+      }
+      idx = idx + 1 > minionIds.length - 1 ? 0 : idx + 1
     }
   }
 
@@ -1294,10 +1397,17 @@ export class DrlgRoomPopulator113c {
           if (!leader || leader.unitId === undefined) continue
           const leaderSeed = host.unitSeeds.get(`${UNIT_TYPE_113C.monster}:${leader.unitId}`)
           if (!leaderSeed) continue
-          const extra =
-            row.minGrp - 1 + rollLimitedSeed113c(leaderSeed, row.maxGrp - row.minGrp + 1)
+          // `MONSTER_Create` (`0x6FD0EF10`) ends with the party spawner `0x6FD0E480` (`0x6FD0F41B`).
+          this.spawnPartyMinions113c(host, sr, c.pBox[1], c.nIndex, leader, hcIdx, leaderSeed, reg.monLvl)
+          // `0x6FC67BB9`: `0x6FC66D40` (`BaseId == 19` fallen / `91` scarab) forces the group size to
+          // `(1, 1)` because those packs come from the party spawner; `0x6FC677CD..0x6FC677E1` still draws
+          // `rollLimited(1)` on the leader seed.
+          const fixedGroup = row.baseId === 'fallen1' || row.baseId === 'scarab1'
+          const minGrp = fixedGroup ? 1 : row.minGrp
+          const maxGrp = fixedGroup ? 1 : row.maxGrp
+          const extra = minGrp - 1 + rollLimitedSeed113c(leaderSeed, maxGrp - minGrp + 1)
           for (let e = 0; e < extra; e++) {
-            this.tryPlaceMonsterRing113c(
+            const member = this.tryPlaceMonsterRing113c(
               host,
               sr,
               c.pBox[1],
@@ -1309,8 +1419,29 @@ export class DrlgRoomPopulator113c {
               false,
               reg.monLvl,
             )
+            // Group members are created by `0x6FD0F570` with spawn flags 0, so they run the party spawner too.
+            if (member?.unitId === undefined) continue
+            const memberSeed = host.unitSeeds.get(`${UNIT_TYPE_113C.monster}:${member.unitId}`)
+            if (!memberSeed) throw new Error(`room populate: group member ${member.unitId} has no unit seed`)
+            this.spawnPartyMinions113c(host, sr, c.pBox[1], c.nIndex, member, hcIdx, memberSeed, reg.monLvl)
           }
         }
+      }
+    }
+
+    // `D2GAME_SpawnMonsterInCurrentRoom` (`0x6FCCE3BC`): when `pRoom1->nNumClients == 0` during
+    // room population (`!sr.hasClientNear`), no initial `EVENTTYPE_MONAI` (`+25`) is queued;
+    // `syncClientRoomPresence` (`SUB_AddClientToRoom` `0x6FCCF920`) at end of frame queues `+2`
+    // once a client is in `ppRoomsNear`.
+    if (!sr.hasClientNear) {
+      for (const mon of host.monsters.values()) {
+        if (mon.areaId !== sr.areaId || mon.dead || mon.isNpc) continue
+        const mx = Math.round(mon.x)
+        const my = Math.round(mon.y)
+        if (mx < sr.subX || mx >= sr.subX + sr.subW || my < sr.subY || my >= sr.subY + sr.subH) {
+          continue
+        }
+        mon.nextAiFrame = Infinity
       }
     }
 

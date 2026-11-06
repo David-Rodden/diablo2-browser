@@ -1241,6 +1241,48 @@ function wornSetPieceCounts(this: GameInstanceHost, worn: readonly ServerItemEnt
   return counts
 }
 
+/**
+ * 1.13c `ITEMS_UpdateSets` (`D2Game.dll` `0x6FCF51A0..0x6FCF555C` -> `D2Common.#10600` `0x6FD7C630`):
+ * `0x6FDDCA08` maps up to 6 distinct equipped sets (`Sets.txt` `wSetId`, scanned across unbroken
+ * active body locations `1..10`) onto unit states `165..170` (`itemset1..itemset6`), toggling
+ * `165 .. 165 + min(K, 6) - 1` on and clearing `165 + min(K, 6) .. 170`.
+ */
+function syncPlayerEquippedSetStates113c(this: GameInstanceHost, player: InternalPlayerRecord): void {
+  const tables = getEmbeddedDropTables()
+  const activeWorn = player.items
+    .filter(
+      (it) =>
+        it.location === 'equipped' &&
+        it.bodyLoc !== undefined &&
+        it.bodyLoc >= 1 &&
+        it.bodyLoc <= 10 &&
+        it.identified !== false &&
+        it.rawItemData?.identified !== false &&
+        it.rawItemData?.broken !== true &&
+        (it.maxDurability <= 0 || it.durability > 0),
+    )
+    .sort((a, b) => (a.bodyLoc ?? 0) - (b.bodyLoc ?? 0))
+  const distinctSets = new Set<string>()
+  for (const item of activeWorn) {
+    const setId = item.rawItemData?.setItemId
+    if (setId === undefined || setId < 0 || setId === 0xfff) continue
+    const setItem = tables.sets.items.getById(setId)
+    if (setItem === undefined) continue
+    distinctSets.add(setItem.set)
+    if (distinctSets.size >= 6) break
+  }
+  const slotCount = Math.min(6, distinctSets.size)
+  for (let i = 0; i < 6; i++) {
+    const stateId = 165 + i
+    if (i < slotCount) {
+      player.states.add(stateId)
+    } else {
+      player.states.delete(stateId)
+      player.stateTimers.delete(stateId)
+    }
+  }
+}
+
 
 
 /** Resolve set-bonus stats across active worn equipment (`ITEMS_UpdateSetBonuses` 0x6FD96A40, #1629, #1630). */
@@ -2261,6 +2303,7 @@ export interface ItemStatsAndDropsMethods {
   applyPlayerStealOutcome(player: InternalPlayerRecord, out: SUnitDmgOutcome): void
   countPartyPlayersInArea(player: InternalPlayerRecord, areaId: number): number
   wornSetPieceCounts(worn: readonly ServerItemEntry[]): Map<string, number>
+  syncPlayerEquippedSetStates113c(player: InternalPlayerRecord): void
   sumEquippedSetBonusStat(worn: readonly ServerItemEntry[], statId: number, level: number): number
   sumPlayerItemStat(player: InternalPlayerRecord, statId: number, options?: {
     readonly excludeWeaponHands?: boolean
@@ -2311,6 +2354,7 @@ export const itemStatsAndDropsMethods: Record<keyof ItemStatsAndDropsMethods, un
   applyPlayerStealOutcome,
   countPartyPlayersInArea,
   wornSetPieceCounts,
+  syncPlayerEquippedSetStates113c,
   sumEquippedSetBonusStat,
   sumPlayerItemStat,
   isActiveInventoryCharm113c,

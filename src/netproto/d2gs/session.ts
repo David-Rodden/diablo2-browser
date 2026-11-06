@@ -10,7 +10,12 @@
 import { type Clock, defaultClock } from '../core/clock.ts'
 import { Emitter } from '../core/emitter.ts'
 import { ProtocolError } from '../core/errors.ts'
-import type { PacketTap } from '../core/packet-tap.ts'
+import {
+  bytesToHex,
+  formatRecentS2cPacketSummaries,
+  type PacketTap,
+  type RecentS2cPacketSummary,
+} from '../core/packet-tap.ts'
 import type { ByteStream, CloseReason } from '../transport/byte-stream.ts'
 import {
   type D2gsGameLogonParams,
@@ -19,7 +24,9 @@ import {
   encodeC2sLeaveGame,
   encodeC2sPing,
 } from './c2s/session.ts'
-import { D2gsS2cFramer } from './framing-s2c.ts'
+import { type D2gsFramedS2cPacket, D2gsS2cFramer } from './framing-s2c.ts'
+
+export const D2GS_S2C_RING_BUFFER_SIZE = 64
 
 function formatD2gsCantEnterError(reason: number, charName: string): ProtocolError {
   const hex = `0x${(reason >>> 0).toString(16).padStart(2, '0')}`
@@ -93,6 +100,8 @@ export class D2gsSession {
   private finishLeave: (() => void) | undefined
   private hasPacketListener = false
   private readonly earlyPackets: Uint8Array[] = []
+  private readonly recentS2cRing: RecentS2cPacketSummary[] = []
+  private protocolFailed = false
 
   constructor(options: D2gsSessionOptions) {
     this.stream = options.stream
@@ -102,22 +111,43 @@ export class D2gsSession {
     this.pingIntervalMs = options.pingIntervalMs ?? 5000
 
     this.stream.onData((chunk) => {
+      if (this.stateValue === 'closed') return
       this.bytesInValue += chunk.byteLength
+      const packets: D2gsFramedS2cPacket[] = []
+      let framingErr: unknown = undefined
       try {
-        const packets = this.framer.push(chunk)
-        for (const pkt of packets) {
-          this.packetsInValue++
-          this.tap?.record({
-            t: this.clock.now(),
-            conn: 'game',
-            dir: 's2c',
-            raw: pkt.bytes,
-            packetId: pkt.packetId,
-          })
-          this.handleIncomingPacket(pkt.bytes)
-        }
+        this.framer.push(chunk, packets)
       } catch (err) {
-        this.errorEmitter.emit(err instanceof Error ? err : new Error(String(err)))
+        framingErr = err
+      }
+
+      for (const pkt of packets) {
+        if (this.protocolFailed || this.state === 'closed') break
+        const now = this.clock.now()
+        this.packetsInValue++
+        this.pushRecentS2c(this.packetsInValue, now, pkt.packetId, pkt.bytes)
+        this.tap?.record({
+          t: now,
+          conn: 'game',
+          dir: 's2c',
+          raw: pkt.bytes,
+          packetId: pkt.packetId,
+        })
+        this.handleIncomingPacket(pkt.bytes)
+      }
+
+      if (framingErr !== undefined) {
+        const baseErr =
+          framingErr instanceof Error ? framingErr : new Error(String(framingErr))
+        const unreadHex = bytesToHex(this.framer.peekUnreadBytes(32))
+        const protocolErr =
+          baseErr instanceof ProtocolError
+            ? baseErr
+            : new ProtocolError(
+                `D2GS S->C stream framing failed: ${baseErr.message}${unreadHex ? ` (unread=${unreadHex})` : ''}`,
+                { proto: 'd2gs' },
+              )
+        this.failProtocol(protocolErr, unreadHex)
       }
     })
 
@@ -195,6 +225,56 @@ export class D2gsSession {
 
   onClose(cb: (reason: CloseReason) => void): () => void {
     return this.closeEmitter.on(cb)
+  }
+
+  getRecentS2cPackets(limit = D2GS_S2C_RING_BUFFER_SIZE): readonly RecentS2cPacketSummary[] {
+    if (limit <= 0) return []
+    return this.recentS2cRing.slice(-limit)
+  }
+
+  formatRecentS2cPackets(limit = D2GS_S2C_RING_BUFFER_SIZE): string {
+    return formatRecentS2cPacketSummaries(this.getRecentS2cPackets(limit))
+  }
+
+  /**
+   * Fails the D2GS session closed when the S->C byte stream is desynchronized or carries an
+   * unrecoverable corrupt bootstrap/act packet (`0x01`, `0x03`), dumping the 64-packet S->C ring buffer.
+   */
+  failProtocol(error: Error, unreadHex?: string): void {
+    if (this.protocolFailed) return
+    this.protocolFailed = true
+    const unreadPart = unreadHex ? `; unread=[${unreadHex}]` : ''
+    console.error(
+      `[d2gs] Fatal S2C protocol/framing error: ${error.message}${unreadPart}; recentS2C(${this.recentS2cRing.length})=[${this.formatRecentS2cPackets()}]`,
+    )
+    this.stopPing()
+    const reason: CloseReason = { kind: 'error', error }
+    try {
+      this.stream.close(reason)
+    } catch {
+      // Ignore stream close errors on already-closed transport.
+    }
+    if ((this.stateValue as D2gsSessionState) !== 'closed') {
+      this.setState('closed')
+      this.closeEmitter.emit(reason)
+      this.errorEmitter.emit(error)
+    }
+  }
+
+  private pushRecentS2c(seq: number, t: number, packetId: number, raw: Uint8Array): void {
+    const maxHexBytes = 48
+    const head = raw.byteLength > maxHexBytes ? raw.subarray(0, maxHexBytes) : raw
+    const hex = bytesToHex(head) + (raw.byteLength > maxHexBytes ? '…' : '')
+    if (this.recentS2cRing.length >= D2GS_S2C_RING_BUFFER_SIZE) {
+      this.recentS2cRing.shift()
+    }
+    this.recentS2cRing.push({
+      seq,
+      t,
+      packetId,
+      len: raw.byteLength,
+      hex,
+    })
   }
 
   sendRawPacket(pkt: Uint8Array): void {

@@ -23,3 +23,19 @@
    - 对于无 `0x01` / `0x02` 标志事件的记录（例如 `40S1HTH` 16 帧、`TGS1HTH` 16 帧、`AIS3HT1` 10 帧），1.13c 动作在末帧完成判定（`framesPerDirection - 1` 或与 `GameInstance` 统一在完成时触发），绝非随意折半截取（`Math.trunc(frames / 2)`）。
 5. **变形攻击延迟 (`D2Common.dll` `0x6FDA0CE0` `ShapeshiftWeaponDelay`)**：
    - 狼人（`40`）与熊人（`TG`）的攻击速度受人类形态武器基础延迟约束，按 `computeShapeshiftWeaponDelay113c` 复合计算步进速度。
+
+## 2. Player-type start frame (`0x6FD82220`, table `0x6FDE4480`)
+
+Mode-start init `0x6FD835F0` sets the animation position to `start << 8`, where `start = 0x6FD82220(class,
+mode, wclass)`:
+
+- Only for player-type units (players, and monsters remapped by a transform state, e.g. the Valkyrie with
+  state 93 → class 0) in `A1` / `A2`.
+- The weapon-class index comes from `0x6FDEF028`. An unknown class uses index 0.
+- Amazon and Sorceress: `HTH` → 1; `1HS`, `1HT`, `STF`, `2HS`, `2HT` → 2. Every other class/weapon → 0.
+- The action frame and the end then count from `start`: action after `ceil((event - start) * 256 / speed)`
+  ticks, end after `ceil((frames - start) * 256 / speed)`.
+
+TS: `playerAnimStartFrame113c` (`src/common/units/char-anim-speed.ts`), applied in `AnimDispatcher`
+(unmorphed non-sequence A1/A2) and in NecroPet `petAttackTiming113c`. Oracle: `p52-amazon-defense` and
+`p52-amazon-valkyrie` (`AMA12HT`, start 2: action +9, end +15).

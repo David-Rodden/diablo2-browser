@@ -16,6 +16,7 @@ import { AuraScanner, type CorpseContext } from '../aura-scanner.ts'
 import { isWithinAuraRange, passesAuraFilter } from '../../../common/skills/aura-filter.ts'
 import { evaluateSkill113c } from '../../skills/registry.ts'
 import type { GameInstanceHost } from './host.ts'
+import { stepOracleHireableMerc113c } from './hireable-ai-113c.ts'
 import type { HireMercenarySpec, InternalMercenaryRecord, InternalMonsterRecord, InternalPlayerRecord, MercAuraRuntime, MercAuraSourceEntry, ServerItemEntry, ServerMercenaryState } from './types.ts'
 import { MERC_AURA_TO_SKILL_ID, MERC_AURA_TO_STATE_ID, TOWN_AREAS, collectItemStats, normalizeMissileElement, UNIT_TYPE_113C } from './constants-and-helpers.ts'
 
@@ -1326,6 +1327,10 @@ function stepMercenaries(this: GameInstanceHost): void {
     }
     const owner = this.players.get(merc.ownerPlayerId)
     if (!owner || owner.dead) continue
+    if (merc.oracleMercAi113c !== undefined && this.drlgRoomPopulator !== null) {
+      stepOracleHireableMerc113c(this, owner, merc)
+      continue
+    }
 
     // 1.13c `MERCS_SetStats` (`D2Game.dll` `0x6FC68EE6..0x6FC68F0D`, #1671) & `MONSTER_Regen` (`0x6FC96740`, #1989):
     // Mercenaries have natural `stat 74 hpregen = maxhp_256 / 2000` (`>= 0`, `~1000` frames = 40s full heal),

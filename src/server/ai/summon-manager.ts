@@ -182,7 +182,15 @@ export interface SummonedPetUnit {
    * DRLG oracle path: the pet runs the 1:1 `NecroPet` port (`necropet-ai-113c.ts`) instead of the
    * generic `tickPets` behaviour; `tickPets` only keeps its lifetime bookkeeping.
    */
-  oracleAi113c?: { nextAiFrame: number; ovPathType: number; ovVelocity: number; ovNewDist: number } | undefined
+  oracleAi113c?:
+    | {
+        nextAiFrame: number
+        ovPathType: number
+        ovVelocity: number
+        ovNewDist: number
+        swing?: { readonly targetUnitId: number; readonly actionFrame: number; readonly endFrame: number; resolved: boolean } | undefined
+      }
+    | undefined
 }
 
 export interface CreatePetOutcome {

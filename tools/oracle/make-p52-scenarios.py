@@ -152,3 +152,49 @@ scenario('p52-amazon-valkyrie', 'amazon-l40-passives', 1500,
              {'frame': 630, 'c2s': r_loc(PX, PY - 8), 'note': 'summon Valkyrie'},
              {'frame': 700, 'c2s': run(5662, 5806), 'note': 'run towards the zombies'},
          ])
+
+scenario('p52-item-defense', 'paladin-item-defense', 1600,
+         'Paladin L70 equipped with Howltusk (ATD 3, MDR 2, 35% Damage to Mana), '
+         "Hwanin's Refuge (10% CtC L3 Static Field When Struck, +100 Life), "
+         'String of Ears (15% DR, MDR 10), Goblin Toe (DR 1, MDR 1), Hellmouth '
+         "(Fire Absorb +15), and Nord's Tenderizer (Cold Absorb 8%): takes zombie "
+         'melee hits testing DR/%DR, Damage to Mana, ATD, armor durability, '
+         'CtC Static Field When Struck, and Thorns aura reflect.', [
+             {'frame': 620, 'c2s': run(5662, 5793), 'note': 'run to zombies #9 and #10'},
+             *[
+                 {
+                     'frame': f,
+                     'c2s': run(5664, 5796) if ((f - 656) // 6) % 2 == 1 else run(5661, 5793),
+                     'note': 'pace near zombies #9/#10 (DR/%DR + Damage to Mana + ATD + CtC rolls)',
+                 }
+                 for f in range(656, 971, 6)
+             ],
+             {'frame': 980, 'c2s': run(5642, 5786), 'note': 'lure zombie #11 without crossing western room boundary'},
+             *[
+                 {
+                     'frame': f,
+                     'c2s': run(5645, 5787) if ((f - 1004) // 6) % 2 == 1 else run(5642, 5786),
+                     'note': 'pace near zombie #11 (ATD + CtC rolls)',
+                 }
+                 for f in range(1004, 1095, 6)
+             ],
+             {'frame': 1099, 'c2s': sel(103), 'note': 'select Thorns aura (right)'},
+             *[
+                 {
+                     'frame': f,
+                     'c2s': run(5645, 5787) if ((f - 1004) // 6) % 2 == 1 else run(5642, 5786),
+                     'note': 'pace near zombie #11 with Thorns active (ATD + Thorns)',
+                 }
+                 for f in range(1100, 1593, 6)
+             ],
+         ])
+
+scenario('p52-paladin-merc-aura', 'paladin-l40-merc-aura', 1700,
+         'Paladin L40 + hired Act 1 Rogue Scout: Concentration radial party aura '
+         'onto mercenary in Blood Moor combat, then switch to Fanaticism.', [
+             {'frame': 620, 'c2s': sel(113), 'note': 'select Concentration (right aura)'},
+             {'frame': 660, 'c2s': run(5662, 5806), 'note': 'run next to the zombies'},
+             *every(740, 1120, 20, l_unit(11), 'attack zombie #11'),
+             {'frame': 1120, 'c2s': sel(122), 'note': 'select Fanaticism (right aura)'},
+             *every(1140, 1620, 20, l_unit(10), 'attack zombie #10'),
+         ])

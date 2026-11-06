@@ -533,6 +533,12 @@ function summonPet(this: GameInstanceHost, ownerPlayerId: number, spec: SummonPe
         unitId: c._monsterRef.unitId,
         areaId: c._monsterRef.areaId,
       })
+      // 1.13c `SKILLS_SrvDo031_RaiseSkeleton_Mage` (`0x6FC718B0`) frees the corpse unit with
+      // `SUNIT_RemoveUnit` (`0x6FD020A0`, call at `0x6FC7199B`) before `0x6FCC3610` spawns the pet.
+      // `SKILLS_SrvDo058_Revive` (`0x6FC71340`) and the other corpse consumers never call it.
+      if (spec.skillId === 70 || spec.skillId === 80) {
+        this.monsters.delete(c._monsterRef.unitId)
+      }
     }
   }
   for (const evictedUid of outcome.evictedPetUids) {
@@ -658,7 +664,6 @@ function summonPet(this: GameInstanceHost, ownerPlayerId: number, spec: SummonPe
       isSummonAction: true,
       summonAction: 1,
       petType: petTypeIdx,
-      count: mgr.getActivePets().filter((p: any) => (PET_TYPE_IDX_BY_NAME_113C[p.petType] ?? 1) === petTypeIdx).length,
       mercId: petUnitId,
       ownerId: ownerPlayerId,
       classId,
@@ -723,7 +728,6 @@ function unsummonPetAt(this: GameInstanceHost,
         isSummonAction: true,
         summonAction: 0,
         petType: PET_TYPE_IDX_BY_NAME_113C[removed.petType] ?? 1,
-        count: mgr.getActivePets().filter((p: any) => (PET_TYPE_IDX_BY_NAME_113C[p.petType] ?? 1) === (PET_TYPE_IDX_BY_NAME_113C[removed.petType] ?? 1)).length,
         mercId: petUnitId,
         ownerId: ownerPlayerId,
         classId: removed.classId ?? 363,
@@ -1090,6 +1094,33 @@ function stepPetMissiles113c(this: GameInstanceHost): void {
 
 
 
+/**
+ * DRLG oracle path: run the 1:1 NecroPet summons before the monster loop. D2Game updates the units of a
+ * room in its LIFO unit list (newest first, the order already observed for merc missile collisions), and a
+ * summon is always newer than the room's monsters; oracle `p52-necromancer-poison-golem` F802: the Clay
+ * Golem steps to (5667,5798) and zombie #9's unit-targeted run path ends on that same frame.
+ */
+export function stepOracleNecroPetsEarly113c(host: GameInstanceHost): void {
+  for (const [ownerPlayerId, mgr] of host.summonManagers.entries()) {
+    const owner = host.players.get(ownerPlayerId)
+    if (!owner || owner.dead) continue
+    for (const pet of mgr.getActivePets()) {
+      if (pet.oracleAi113c === undefined || pet.hp <= 0 || pet.alive === false) continue
+      const petUnitId = host.petUnitIds.get(pet.uid)
+      const areaId = (pet as { areaId?: number }).areaId
+      if (petUnitId === undefined || areaId === undefined || areaId !== owner.areaId) continue
+      ;(pet as { necroPetSteppedFrame113c?: number }).necroPetSteppedFrame113c = host.currentFrame
+      try {
+        stepNecroPet113c(host, owner, pet, petUnitId, areaId)
+      } catch (err) {
+        if (!(err instanceof NecroPetNotPortedError113c)) throw err
+        console.warn(`[necropet-113c] frame ${host.currentFrame} pet ${petUnitId}: ${err.message}`)
+        pet.oracleAi113c = undefined
+      }
+    }
+  }
+}
+
 function stepSummonedPets(this: GameInstanceHost): void {
   this.stepPetMissiles113c()
 
@@ -1122,9 +1153,29 @@ function stepSummonedPets(this: GameInstanceHost): void {
       ) {
         pet.x = owner.x
         pet.y = owner.y
+        pet.mode = 1
+        if (pet.oracleAi113c !== undefined) {
+          pet.oracleAi113c.ovPathType = 0
+          pet.oracleAi113c.ovVelocity = 0
+          pet.oracleAi113c.ovNewDist = 0
+        }
         petMeta.areaId = owner.areaId
         crossAreaSnapped = true
         if (petUnitId !== undefined) {
+          this.areaPathWorld.removeMonster(petUnitId)
+          this.areaPathWorld.spawnMonster(
+            owner.areaId,
+            {
+              unitId: petUnitId,
+              hcIdx: pet.classId ?? 363,
+              areaId: owner.areaId,
+              x: Math.floor(pet.x + 0.5),
+              y: Math.floor(pet.y + 0.5),
+              mode: 1,
+              dead: false,
+            },
+            this.currentFrame,
+          )
           this.broadcastToArea(owner.areaId, {
             type: 'UnitReassign',
             unitType: 1,
@@ -1188,7 +1239,11 @@ function stepSummonedPets(this: GameInstanceHost): void {
             )
           }
         }
-        if (pet.oracleAi113c !== undefined && pet.hp > 0) {
+        if (
+          pet.oracleAi113c !== undefined &&
+          pet.hp > 0 &&
+          (pet as { necroPetSteppedFrame113c?: number }).necroPetSteppedFrame113c !== this.currentFrame
+        ) {
           try {
             stepNecroPet113c(this, owner, pet, petUnitId, petMeta.areaId)
           } catch (err) {

@@ -655,6 +655,46 @@ export function computeActionFrameTicks(actionFrame: number, stepSpeed256: numbe
   return computeSequenceTicks(actionFrame, stepSpeed256)
 }
 
+/**
+ * 1.13c `D2Common.dll` weapon-class index table `0x6FDEF028` (`{code, index}` pairs read by `0x6FD72430`
+ * from `ItemsTxt+0xC0`): `hth` 0 (no weapon), `bow` 1, `1hs` 2, `1ht` 3, `stf` 4, `2hs` 5, `2ht` 6, `xbw` 7,
+ * `ht1` 12.
+ */
+const WCLASS_INDEX_113C: Readonly<Record<string, number>> = {
+  HTH: 0, BOW: 1, '1HS': 2, '1HT': 3, STF: 4, '2HS': 5, '2HT': 6, XBW: 7, HT1: 12,
+}
+
+/**
+ * 1.13c `D2Common.dll` animation starting-frame table `0x6FDE4480` (dwords indexed `wclassIdx * 7 + class`):
+ * only Amazon (class 0) and Sorceress (class 1) have non-zero entries, `1` for `hth` and `2` for
+ * `1hs`/`1ht`/`stf`/`2hs`/`2ht`; every other cell is 0.
+ */
+function animStartFrameTable113c(classId: number, wclassIdx: number): number {
+  if (classId !== 0 && classId !== 1) return 0
+  if (wclassIdx === 0) return 1
+  return wclassIdx >= 2 && wclassIdx <= 6 ? 2 : 0
+}
+
+/**
+ * 1.13c `D2Common.dll` `0x6FD82220` (`UNITS_GetAnimStartFrame`, called by the mode-start init `0x6FD835F0`
+ * which stores `dwFrame = start << 8` at `0x6FD8363C`, and by the frame-wrap path `0x6FD8254C`). After the
+ * transform remap `0x6FDA01E0` only player-type units (`type == 0`) can start late:
+ * `PlayerMode - 7` through the byte table `0x6FD8231C` = `{0, 0, 2, 2, 2, 2, 2, 2, 1, 1}` selects
+ * - A1 / A2 (7 / 8): `table[wclassIdx(weapon) * 7 + class]` (weapon from `0x6FD81B90(unit, 1)`, `hth`
+ *   when none);
+ * - S3 / S4 (15 / 16): the same lookup only for dual-wield units (`0x6FD80530`: player Barbarian /
+ *   Assassin, monsters 417..418), whose table cells are all 0;
+ * - every other mode: 0.
+ * Oracle: Amazon (and the Amazon-transformed Valkyrie, state 93) A1 with a spear starts at frame 2
+ * (`p52-amazon-defense` F1200 -> action F1206 -> NU F1211; `p52-amazon-valkyrie` F851 -> F860 -> F866).
+ */
+export function playerAnimStartFrame113c(classId: number, playerMode: number, wclass: string): number {
+  if (playerMode !== 7 && playerMode !== 8) return 0
+  // `0x6FD724A2`: a weapon class missing from the table returns index 0.
+  const idx = WCLASS_INDEX_113C[wclass.trim().toUpperCase()] ?? 0
+  return animStartFrameTable113c(classId, idx)
+}
+
 let cachedWeaponsTable: WeaponTable | null = null
 
 /**

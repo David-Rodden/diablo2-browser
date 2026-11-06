@@ -55,6 +55,11 @@ SkillsTxt `+0x128` is `perdelay` (calc expression).
     (`0x6FCBA46C..0x6FCBA47E`) call `0x6FCBE970` (`nextFrame = d * trunc((F + d - 1) / d) + 1`)
     and compute `nextFrame + 1 - F`, yielding the identical duration `d * trunc((F + d - 1) / d) - F + 2`.
 
+- **Activation pulse gate (`Skills.txt` `immediate` at `0x6FCC1D9C..0x6FCC1E72` & `0x6FCCDBC8..0x6FCCDBE9`)**:
+  - When `D2GAME_AssignSkill` (`0x6FCC2100`) activates a right-hand aura via `0x6FCC1D10`, it checks `SkillsTxt` flag `immediate` (`[ebx+0x05] & [0x6FD18BE0+0x1C]`):
+    - `immediate = 1` (`#98, #100, #104, #105, #108, #110, #113, #115, #122, #125`): immediately invokes `0x6FCC19A0` (`SrvDo065`) on the `SelectSkill` frame and schedules `EVENTTYPE_PERIODICSKILLS` via `0x6FCBF3B0`.
+    - `immediate = 0` (`#99, #102, #103 Thorns, #109, #114, #118, #119, #120, #123, #124, #296..#298`): toggles `aurastate` (`0x6FCC1DDE`) with only `STAT_MODIFIERLIST_SKILL (350)` / `LEVEL (351)` and defers the first `SrvDo` pulse until `nextFrame = d * trunc((F + d - 1) / d) + 1` (`0x6FCBF3B0`).
+
 Implementation: `src/server/engine/aura-scanner.ts` (`setActiveAura`, `pulseAura`, `tick`), tests
 `tests/skills/aura-self-stats-1409.test.ts`, `tests/skills/aura-perdelay-duration-1443.test.ts`, `tests/skills/aura-mana-nomanaregen-1444.test.ts`.
 

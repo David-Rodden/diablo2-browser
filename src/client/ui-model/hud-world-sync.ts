@@ -1561,7 +1561,8 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
       : false
     attrs.werewolfState = self.states.has(139)
     attrs.werebearState = self.states.has(140)
-    attrs.vampireState = self.states.has(65)
+    // States.txt 176 `monsterset` (Vampire morph); 65 is the Amazon `dodge` passive state.
+    attrs.vampireState = self.states.has(176)
     attrs.skillEias = tot(68)
 
     attrs.crushingBlow = tot(136)

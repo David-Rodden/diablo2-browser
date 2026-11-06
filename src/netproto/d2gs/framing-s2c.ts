@@ -90,6 +90,19 @@ export class D2gsS2cFramer {
     return this.packetTail - this.packetHead
   }
 
+  /**
+   * Returns a copy of up to `maxBytes` of unread bytes at the current stream head
+   * (`packetBuf` in compressed mode, `tcpBuf` in uncompressed mode) for framing error diagnostics.
+   */
+  peekUnreadBytes(maxBytes = 32): Uint8Array {
+    if (this.compressedMode) {
+      const avail = Math.min(maxBytes, Math.max(0, this.packetTail - this.packetHead))
+      return this.packetBuf.slice(this.packetHead, this.packetHead + avail)
+    }
+    const avail = Math.min(maxBytes, Math.max(0, this.tcpTail - this.tcpHead))
+    return this.tcpBuf.slice(this.tcpHead, this.tcpHead + avail)
+  }
+
   reset(initialCompressedMode = false): void {
     this.tcpHead = 0
     this.tcpTail = 0
@@ -99,12 +112,10 @@ export class D2gsS2cFramer {
     this.huffmanCodec = defaultD2gsHuffmanCodec
   }
 
-  push(chunk: Uint8Array): D2gsFramedS2cPacket[] {
+  push(chunk: Uint8Array, out: D2gsFramedS2cPacket[] = []): D2gsFramedS2cPacket[] {
     if (chunk.byteLength > 0) {
       this.appendTcp(chunk)
     }
-
-    const out: D2gsFramedS2cPacket[] = []
 
     // Phase 1: If still in uncompressed mode (waiting for 0xAF greeting), split directly from tcpBuf
     while (!this.compressedMode && this.tcpHead < this.tcpTail) {

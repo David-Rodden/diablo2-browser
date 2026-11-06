@@ -8644,3 +8644,263 @@ export function generateHireCandidates113c(
     lang,
   )
 }
+
+export interface MercScaledSkill113c {
+  readonly slot: 1 | 2 | 3 | 4 | 5 | 6
+  readonly skillId: number
+  readonly skillName: string
+  readonly mode: number
+  readonly slvl: number
+  readonly chance: number
+  readonly chancePerLvl: number
+}
+
+export interface MercSetStats113c {
+  readonly row: HirelingRecord
+  readonly level: number
+  readonly delta: number
+  readonly strength: number
+  readonly dexterity: number
+  readonly energy: 0
+  readonly vitality: 0
+  readonly maxHp256: number
+  readonly hp256: number
+  readonly hpRegen256: number
+  readonly defense: number
+  readonly toHit: number
+  readonly secondaryMinDamage: number
+  readonly secondaryMaxDamage: number
+  readonly baseResist: number
+  readonly skills: readonly MercScaledSkill113c[]
+}
+
+export type MercSkillChoice113c =
+  | {
+      readonly kind: 'default'
+      readonly classId: number
+      readonly skillId: number
+      readonly mode: number
+      readonly slvl: number
+      readonly pick: number
+      readonly totalWeight: number
+      readonly cumWeights: readonly number[]
+    }
+  | {
+      readonly kind: 'skill'
+      readonly classId: number
+      readonly slot: 1 | 2 | 3 | 4 | 5 | 6
+      readonly skillId: number
+      readonly skillName: string
+      readonly mode: number
+      readonly slvl: number
+      readonly pick: number
+      readonly totalWeight: number
+      readonly cumWeights: readonly number[]
+    }
+
+/**
+ * 1.13c `D2Common.dll` ordinal 11156 (`0x6FDA32C0`):
+ * Resolves the highest-level `Hireling.txt` bracket row with `Version == (expansion ? 100 : 0)`,
+ * `Id == subTypeId`, and `row.Level <= mercLevel`. When `allowLowestFallback` is true
+ * (`SAVE_LoadMercData` `0x6FD0DA4A` for `lvl < row0.Level`), falls back to the lowest-level row.
+ */
+export function resolveHirelingRecord113c(
+  subTypeId: number,
+  mercLevel: number,
+  expansion = true,
+  allowLowestFallback = true,
+): HirelingRecord | null {
+  const version = expansion ? 100 : 0
+  let best: HirelingRecord | null = null
+  let lowest: HirelingRecord | null = null
+  for (const row of HIRELING_RECORDS) {
+    if (row.version !== version || row.subTypeId !== subTypeId) continue
+    if (lowest === null || row.level < lowest.level) {
+      lowest = row
+    }
+    if (row.level <= mercLevel && (best === null || row.level >= best.level)) {
+      best = row
+    }
+  }
+  if (best !== null) return best
+  return allowLowestFallback ? lowest : null
+}
+
+/**
+ * 1.13c `D2Game.dll` `SAVE_LoadMercData` (`0x6FD0DA80..0x6FD0DACF`):
+ * Dynamic-bracket experience-to-level loop re-querying `#11156` at each level step so bracket
+ * `Exp/Lvl` transitions (e.g. `Id = 1` L3 `105` -> L25 `110`) match `D2Game.dll` 1:1.
+ */
+export function resolveHirelingLevelFromExp113c(
+  subTypeId: number,
+  experience: number,
+  expansion = true,
+  maxLevel = 98,
+): number {
+  let lvl = 1
+  let row = resolveHirelingRecord113c(subTypeId, 1, expansion, true)
+  if (!row) return 1
+  const exp = Math.max(0, Math.trunc(experience))
+  const cap = Math.min(98, Math.max(1, Math.trunc(maxLevel)))
+  while (lvl + 1 <= cap) {
+    const nextLvl = lvl + 1
+    const threshold = (nextLvl + 1) * nextLvl * nextLvl * row.expPerLvl
+    if (exp < threshold) break
+    lvl = nextLvl
+    row = resolveHirelingRecord113c(subTypeId, lvl, expansion, true) ?? row
+  }
+  return lvl
+}
+
+/**
+ * 1.13c `D2Game.dll` `D2GAME_MERCS_SetStats_6FC68BA0` (`0x6FC68BA0..0x6FC68F9D`):
+ * Computes deterministic mercenary stats, 8.8 fixed-point HP/regen, resists, and skill levels
+ * from `Hireling.txt` at `(subTypeId, mercLevel)`. Consumes 0 RNG draws.
+ */
+export function computeMercSetStats113c(
+  subTypeId: number,
+  mercLevel: number,
+  expansion = true,
+): MercSetStats113c | null {
+  const level = Math.max(1, Math.trunc(mercLevel))
+  const row = resolveHirelingRecord113c(subTypeId, level, expansion, true)
+  if (!row) return null
+  const delta = Math.max(0, level - row.level)
+
+  const strength = Math.max(10, row.str + Math.trunc((delta * row.strPerLvl) / 8))
+  const dexterity = Math.max(10, row.dex + Math.trunc((delta * row.dexPerLvl) / 8))
+  const maxHp256 = Math.max(0x2800, (row.hp << 8) + (row.hpPerLvl << 8) * delta)
+  const hpRegen256 = Math.max(0, Math.trunc(maxHp256 / 2000))
+  const defense = Math.max(0, row.defense + delta * row.defPerLvl)
+  const toHit = Math.max(0, row.ar + delta * row.arPerLvl)
+  const secondaryMinDamage = Math.max(0, row.dmgMin + Math.trunc((delta * row.dmgPerLvl) / 8))
+  const secondaryMaxDamage = Math.max(1, row.dmgMax + Math.trunc((delta * row.dmgPerLvl) / 8))
+  const baseResist = Math.max(0, row.resist + Math.trunc((delta * row.resistPerLvl) / 4))
+
+  const skills: MercScaledSkill113c[] = []
+  for (const entry of row.skillEntries) {
+    if (entry.skillId <= 0) continue
+    const slvl = Math.min(32, entry.level + ((delta * entry.lvlPerLvl) >> 5))
+    skills.push({
+      slot: entry.slot,
+      skillId: entry.skillId,
+      skillName: entry.skillName,
+      mode: entry.mode,
+      slvl,
+      chance: entry.chance,
+      chancePerLvl: entry.chancePerLvl,
+    })
+  }
+
+  return {
+    row,
+    level,
+    delta,
+    strength,
+    dexterity,
+    energy: 0,
+    vitality: 0,
+    maxHp256,
+    hp256: maxHp256,
+    hpRegen256,
+    defense,
+    toHit,
+    secondaryMinDamage,
+    secondaryMaxDamage,
+    baseResist,
+    skills,
+  }
+}
+
+/**
+ * 1.13c `D2Game.dll` `AIMERC_ChooseSkill_6FC3C4E0` (`0x6FC3C4E0..0x6FC3C89B`):
+ * Evaluates cumulative slot weights (`DefaultChance` + active skill chances), consumes 1 RNG draw
+ * via `rollLimitedFn(totalWeight + 1)` (`0..totalWeight` inclusive), and resolves the chosen
+ * skill slot (`pick <= cum[i]`) or default attack (`pick < DefaultChance`).
+ */
+export function chooseMercSkill113c(
+  subTypeId: number,
+  mercLevel: number,
+  expansion: boolean,
+  rollLimitedFn: (limit: number) => number,
+  options?: {
+    readonly activeAuraSkillIds?: ReadonlySet<number> | undefined
+    readonly targetDistanceSubtiles?: number | undefined
+    readonly defaultRogueSkillId?: number | undefined
+  },
+): MercSkillChoice113c | null {
+  const stats = computeMercSetStats113c(subTypeId, mercLevel, expansion)
+  if (!stats) return null
+  const { row, delta, skills } = stats
+
+  let totalWeight = row.defaultChance
+  const cumWeights = [0, 0, 0, 0, 0, 0]
+  const slotSkills: (MercScaledSkill113c | null)[] = [null, null, null, null, null, null]
+
+  for (const sk of skills) {
+    const idx = sk.slot - 1
+    slotSkills[idx] = sk
+    if (sk.slvl <= 0) {
+      cumWeights[idx] = 0
+      continue
+    }
+    if (options?.activeAuraSkillIds?.has(sk.skillId)) {
+      cumWeights[idx] = 0
+      continue
+    }
+    if (
+      sk.skillId === 41 &&
+      options?.targetDistanceSubtiles !== undefined &&
+      options.targetDistanceSubtiles > (sk.slvl >> 1) + 4
+    ) {
+      cumWeights[idx] = 0
+      continue
+    }
+    const weight = sk.chance + Math.trunc((delta * sk.chancePerLvl) / 4)
+    totalWeight += weight
+    cumWeights[idx] = totalWeight
+  }
+
+  const pick = rollLimitedFn(totalWeight + 1)
+  if (pick < row.defaultChance) {
+    return {
+      kind: 'default',
+      classId: row.classId,
+      skillId: row.classId === 271 ? (options?.defaultRogueSkillId ?? 0) : 0,
+      mode: 4,
+      slvl: 1,
+      pick,
+      totalWeight,
+      cumWeights,
+    }
+  }
+
+  for (let idx = 0; idx < 6; idx++) {
+    const sk = slotSkills[idx]
+    if (sk && cumWeights[idx]! > 0 && pick <= cumWeights[idx]!) {
+      return {
+        kind: 'skill',
+        classId: row.classId,
+        slot: sk.slot,
+        skillId: sk.skillId,
+        skillName: sk.skillName,
+        mode: sk.mode,
+        slvl: sk.slvl,
+        pick,
+        totalWeight,
+        cumWeights,
+      }
+    }
+  }
+
+  return {
+    kind: 'default',
+    classId: row.classId,
+    skillId: row.classId === 271 ? (options?.defaultRogueSkillId ?? 0) : 0,
+    mode: 4,
+    slvl: 1,
+    pick,
+    totalWeight,
+    cumWeights,
+  }
+}

@@ -12,7 +12,8 @@ D2Common calls are written as `#ordinal` (import thunk → IAT). TS port:
 Verification: `npx tsx tools/oracle/trace-window.ts p52-necromancer-poison-golem --unit 1:12` (Clay
 Golem, unit 12) and `p52-amazon-valkyrie --unit 1:12`. Ported classes in the replica:
 `NECROPET_PORTED_HCIDX_113C = {289, 290, 291, 292, 357}`; skeletons/mages/revives still run the generic
-`SummonManager.tickPets` AI.
+`SummonManager.tickPets` AI (the skeleton spawn init `0x6FC6EB50` → `0x6FC6E960` / `0x6FC6E390` is not
+ported; first blocker of `p52-necromancer-curses` at F1517).
 
 > [!IMPORTANT]
 > Correction to [`d2game-pet-hireable-ai-113c.md`](./d2game-pet-hireable-ai-113c.md) §5: the dispatcher
@@ -20,7 +21,7 @@ Golem, unit 12) and `p52-amazon-valkyrie --unit 1:12`. Ported classes in the rep
 > `pAiGeneral = pMonsterData+0x28`); non-zero → ranged `0x6FC3E3D0`, else melee `0x6FC3E640`. The replica
 > treats `necromage` as the ranged case and throws "not ported" for it.
 
-## 0. AI tick driver (`0x6FCBD3C0`) and timing
+## 0. AI tick driver (`0x6FCBD3B0`) and timing
 
 The type-2 event (`EVENT_SetEvent(pGame, pUnit, 2, frame, 0, 0, 0)` `0x6FCAEA80`) runs the driver:
 `0x6FCBCD90` (stun state `0x15` → stall 3; `0x6FCBCCF0`; `0x6FCBCB30` leader follow), the
@@ -56,7 +57,7 @@ r = SEED_Inline(pPet).lo % 100                                      ; 0x6FC3E7F0
 if (r < 15 ? Follow(target, melee, 1, 8) : Follow(target, melee, 0, 7)): return   ; 0x6FC3E832
 if !target || town: return AI_IdleWander(4)                         ; 0x6FC3E853 -> 0x6FD129B0
 if melee:                                                           ; 0x6FC3E874
-  if rollLimited(100) < 80: 0x6FD12220(A1, target) else stall 10    ; attack NOT PORTED
+  if rollLimited(100) < 80: 0x6FD12220(A1, target) else stall 10    ; attack: see §2.1
 else: pAiControl+0x20 = 12; 0x6FD13000(pGame, pPet, target, 7)      ; 0x6FC3E8B7
 ```
 
@@ -74,6 +75,56 @@ else: pAiControl+0x20 = 12; 0x6FD13000(pGame, pPet, target, 7)      ; 0x6FC3E8B7
 | no follow, no target | wander: 4 |
 | target, not melee | 0 (+1 `lo % 100` if the approach fails) |
 | target, melee | 1 (`rollLimited(100)`) |
+
+### 2.1 Attack `0x6FD12220` and the A1 swing
+
+`0x6FD12220(eax = pPet, pGame, nMode, pTarget)` fills the mode-change struct (`0x6FC95070`) and calls
+`MONSTER_StartMode(pGame, &struct, 1)` (`0x6FC95E10`). The path stops, the `pAiControl` overrides are
+consumed, and no type-2 event is pending while `A1` runs. TS `aiAttack113c`.
+
+**Timing** (`UNITS_UpdateAnimRateAndVelocity` `0x6FD833DE..0x6FD8354F`, mode init `0x6FD835F0`; TS
+`petAttackTiming113c`):
+
+- Transform remap `0x6FDA01E0`: a `gfxtype = 2` state (Valkyrie state 93 → player class 0) makes the pet a
+  player-type unit. Monster mode 4 becomes player mode 7 (`0x6FDE30D8[4]`) and the COF is
+  `token + A1 + wclass(weapon)` (`0x6FD93860`). Otherwise the COF is `code + A1 + HTH`.
+- `rate = STAT 68 (100 from MONSTER_InitStats 0x6FCCFFC5) + diminished item_fasterattackrate`
+  (`0x6FD823E0`, base 120), clamped `[15, 175]`. `speed = AnimData.speed * rate / 100`.
+- Start frame `0x6FD82220` (table `0x6FDE4480`, weapon-class index `0x6FDEF028`): non-zero only for
+  player-type Amazon / Sorceress A1/A2 (`HTH` → 1; `1HS/1HT/STF/2HS/2HT` → 2). Shared with players, see
+  [`../engine/d2common-animdata-dispatcher-113c.md`](../engine/d2common-animdata-dispatcher-113c.md).
+- Action on `ceil((event - start) * 256 / speed)`, `NU` on `ceil((frames - start) * 256 / speed)`, then the
+  next AI event at `end + max(1, MonStats.aidel[diff])` (golem 15, Valkyrie 6).
+
+Oracle: Clay Golem `G1A1HTH` (16 frames, event 9, speed 232) F813 → hit F823 → NU F831; Valkyrie
+`AMA12HT` (18 / 11, rate 110, start 2) F851 → hit F860 → NU F866.
+
+**Swing resolution** on the action frame (`0x6FC64AC0` → `0x6FCFE5A0` → `0x6FCFDDE0` → `SUNITDMG`; TS
+`resolvePetMeleeSwing113c`), all draws on `pPet->pSeed`:
+
+1. To-hit (`0x6FCFE011`), then the defender's shield block on the defender seed (`toblock > 0` only).
+2. `SUNITDMG_FillPacket` (`0x6FCFC530`): weapon damage (two-handed → `secondary_min/maxdamage`) or the pet
+   stats 21/22. The pet stats come raw from MonStats `A1MinD/A1MaxD` (no MonLvl ratio for summons). For the
+   Valkyrie, item op 13 (`item_min/maxdamage_percent`) folds into the weapon base damage. One exclusive roll.
+3. CS/DS block `0x6FCFD51A..0x6FCFD5B4` (any attacker): one `rand(100)` per non-zero chance
+   ([`../combat/d2game-sunitdmg-player-defender-113c.md`](../combat/d2game-sunitdmg-player-defender-113c.md) §3).
+4. Elemental pairs fire 48/49, lightning 50/51, cold 54/55, magic 52/53 (draw only when `max > min`).
+5. `RAND(1)` (`0x6FCFD908`, unconditional), then `MonStats.crit` (`0x6FC9713B`).
+
+Oracle draws: Valkyrie F860 6 (to-hit, phys 1300 + 886 = 2186, CS, lightning 256 + 936 = 1192, `RAND(1)`,
+crit); Clay Golem F823 4 (to-hit, phys 1228 + 188 = 1416, `RAND(1)`, crit).
+
+After a non-lethal hit:
+- The target's Event 3 is re-armed (`armMonsterEvent3AfterDamage113c`, shared with merc missiles).
+- Clay Golem `EventFunc27_SlowTarget` (`0x6FC6EF70` → `ITEMEVENTS_ApplySlow` `0x6FCCD2C0`, no draw) puts
+  state 24 on the target for 750 frames, `item_slow` capped 90 / 75 / 50 by difficulty.
+
+**Step order:** pets are stepped before the room monster loop (`stepOracleNecroPetsEarly113c`). This follows
+the LIFO room unit list: a pet spawned later sits at the list head. The fix moved golem F802 → F860.
+
+The reverse direction (zombie → pet) is `resolveDrlgMonsterSwingOnPet113c`. It uses reach `#11138` with
+bonus 3 and to-hit on the monster seed, then block, FillPacket, `RAND(1)` and crit. The hit branch is not
+oracle-verified yet.
 
 ## 3. Follow check `0x6FC3E140(pGame, pPet, pTarget, bMelee, bSkipIdle, nFollow)`
 
@@ -124,10 +175,11 @@ positions (`#10867` X / `#10750` Y for dynamic paths).
   **5** `0x6FC3D2EC` (`0x6FD12870` step away): not ported.
 
 `#10916` (`0x6FD8C6D0`): `DUNGEON_GetRoomAtPosition(room, x, y)` (`0x6FD51330`); 0 when outside the room and
-its neighbours; otherwise `0x6FDD19C0(pRoomEx, x / 5, y / 5)` returns the `+0x28` value of the RoomEx
-tile-grid entry (`-1` if none). TS `AreaPathWorld113c.tileZoneAtPosition113c` returns the area id of the
-found room (no RoomEx tile grid in the replica) — open item for multi-zone rooms. Comparing room identity
-instead was wrong (rejected the golem's F707 candidate one room north).
+its neighbours; otherwise `0x6FDD19C0(pRoomEx, x / 5, y / 5)` returns the `+0x28` (`nIndex`) value of the RoomEx
+`D2RoomCoordListStrc` entry (`-1` if none). TS `AreaPathWorld113c.tileZoneAtPosition113c` delegates to
+`DrlgRoomPopulator113c.tileZoneAt113c` (`sub_6FD77110` in `drlg-logic.ts`), falling back to the area id only when
+no DRLG room populator is active. Comparing room identity instead was wrong (rejected the golem's F707 candidate
+one room north).
 
 `AI_ApproachTarget` / `MONSTER_StartMode` (`0x6FD12540`, `0x6FC94F90`): see
 [`d2game-zombie-ai-113c.md`](./d2game-zombie-ai-113c.md) §2/§4; `0x6FC94F90` consumes and clears
@@ -145,10 +197,11 @@ area; `pAiGeneral+8` flag bits (`0x40`, `0x08`) and `0x6FCD1AB0` are not modelle
 
 ## 6. Open items
 
-- Melee attack `0x6FD12220` (mode A1) and pet melee damage; states 1, 3, 5; state 4 with stacked pets;
+- Melee attack `0x6FD12220`: ported (§2.1). Still open: PetMove states 1, 3, 5; state 4 with stacked pets;
   ranged `0x6FC3E3D0`. On these branches the replica throws `NecroPetNotPortedError113c` and
-  `stepSummonedPets` hands the pet back to the generic AI (golem scenario: first attack at F821, after the
-  first divergence).
+  `stepSummonedPets` hands the pet back to the generic AI (Valkyrie: move state 1 at F984 / F1052).
+- Pet `STAT_LEVEL` MonLvl to-hit / AC (`0x6FC6E2A0`) are not ported; outcomes are clamped `[5, 95]`, so no
+  divergence has shown up yet.
 - Walk velocity: `pct * base / 100` with `pct = 75 + accrued STAT_VELOCITYPERCENT` (monster base 75 from
   `MONSTER_InitStats` `0x6FCCFFD1`, see [`../engine/d2common-unit-velocity-113c.md`](../engine/d2common-unit-velocity-113c.md))
   and `base = MonStats.Velocity << 8`, or CharStats `WalkVelocity << 8` under a transform state (Valkyrie

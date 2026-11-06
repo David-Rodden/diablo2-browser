@@ -12,15 +12,30 @@ import { CURSED_PROC_CHANCE_PCT_113C, computeCursedAmplifyDamage113c, computeMan
 import { scaleMonStatsPoisonRider113c } from '../../ai/monster-missile-damage-113c.ts'
 import { computeEquippedArmorPieceDefense113c, computeWornSetSiblingMasks113c } from '../../items/server-item-data.ts'
 import type { SummonedPetUnit } from '../../ai/summon-manager.ts'
-import { executeSUnitDmg, getPrePierceResistance113c, rollItemKnockback113c, type CombatUnitContext } from '../combat-pipeline.ts'
+import { computeToHitChance, emitSUnitDmgTraceEvent113c, executeSUnitDmg, getPrePierceResistance113c, rollItemKnockback113c, type CombatUnitContext } from '../combat-pipeline.ts'
+import { rollLimitedSeed113c } from './unit-seeds-113c.ts'
 import { FIXED_ONE, UnitStatList } from '../stat-list.ts'
+import { computeMonsterBaseDamageRegen113c } from '../statregen-dot-113c.ts'
+import { scheduleKernMonsterEvent3_113c } from './kern-monster-wheel-113c.ts'
 import { StateBus } from '../state-bus.ts'
 import { computeDiminishingReturns } from '../../../common/data/calc-ast.ts'
 import { difficultyMonsterColdDivisor, difficultyMonsterFreezeDivisor, difficultyResistPenalty } from '../difficulty-resist-penalty.ts'
 import type { GameInstanceHost } from './host.ts'
 import type { InternalMonsterRecord, InternalPlayerRecord, MissileDamageChannel } from './types.ts'
-import { monStatsCritPct113c, monsterFillPacketPhysRange113c, rollPlayerDefenderArmorDurability113c } from './sunitdmg-player-defender-113c.ts'
-import { monsterProfile113c, normalizeMissileElement, playerWirePosition, resolveArmorCombatMeta113c, UNIT_TYPE_113C } from './constants-and-helpers.ts'
+import {
+  collectPlayerDefenderItemEventsLifo113c,
+  computeDamageToManaGain256_113c,
+  computeIronMaidenReflectRawPhys256_113c,
+  computePreDamageAbsorbAndLife113c,
+  computeStaticFieldTargetLtng256_113c,
+  computeThornsAuraReflectRawPhys256_113c,
+  monStatsCritPct113c,
+  monsterFillPacketPhysRange113c,
+  resolveSecondaryMonsterSUnitDmg113c,
+  rollPlayerDefenderArmorDurability113c,
+  rollPlayerDefenderCtcEntry113c,
+} from './sunitdmg-player-defender-113c.ts'
+import { monsterHp256_113c, monsterProfile113c, normalizeMissileElement, playerWirePosition, resolveArmorCombatMeta113c, TOWN_AREAS, UNIT_TYPE_113C } from './constants-and-helpers.ts'
 
 
 /** Pick the 1.13c melee mode (A1/A2/S1) and schedule damage on its action frame. */
@@ -111,7 +126,7 @@ function beginMonsterMeleeAttack(this: GameInstanceHost,
 /** AnimData `{code}A1/A2/S1HTH` action frame and full animation duration. */
 function monsterAttackTiming(this: GameInstanceHost, 
   monster: InternalMonsterRecord,
-  mode: 'A1' | 'A2' | 'S1',
+  mode: 'A1' | 'A2' | 'S1' | 'S2',
 ): { readonly actionFrame: number; readonly totalFrames: number } {
   const attackRatePct = Math.max(
     15,
@@ -262,8 +277,18 @@ function stepPendingMonsterAttack(this: GameInstanceHost, monster: InternalMonst
   monster.pendingAttack = undefined
   const player = this.players.get(pending.playerId)
   if (!player || player.dead || !this.isAreaSeamAdjacent(monster.areaId, player.areaId)) return
-  const maxMeleeReach = Math.max(3.5, monster.meleeRange + 1.5)
-  if (Math.hypot(player.x - monster.x, player.y - monster.y) > maxMeleeReach) return
+  // 1.13c `MONSTER_MeleeAttack` (`0x6FC64AC0` -> `SUNITDMG_RollMelee` `0x6FCFE5A0..0x6FCFE629`):
+  // Action-frame melee reach uses `UNITS_IsInMeleeRange(pMonster, pPlayer, bonus = 3)` (`0x6FCFE60D`).
+  const exactInRange =
+    this.drlgRoomPopulator !== null
+      ? this.areaPathWorld.isMonsterInMeleeRange113c(monster.areaId, monster.unitId, 0, player.unitId, 3)
+      : null
+  if (exactInRange !== null) {
+    if (!exactInRange) return
+  } else {
+    const maxMeleeReach = Math.max(3.5, monster.meleeRange + 1.5)
+    if (Math.hypot(player.x - monster.x, player.y - monster.y) > maxMeleeReach) return
+  }
   this.resolveMonsterAttackOnPlayer(monster, player, pending)
 }
 
@@ -394,6 +419,10 @@ function stepPendingAllyAttack(this: GameInstanceHost, monster: InternalMonsterR
     if (pet !== undefined) break
   }
   if (pet === undefined || pet.alive === false || pet.hp <= 0) return
+  if (this.drlgRoomPopulator !== null && pet.oracleAi113c !== undefined) {
+    resolveDrlgMonsterSwingOnPet113c(this, monster, pet, pending)
+    return
+  }
   const maxPetReach = Math.max(3.5, monster.meleeRange + 1.5)
   if (Math.hypot(pet.x - monster.x, pet.y - monster.y) > maxPetReach) return
   const prevHp = pet.hp
@@ -418,6 +447,72 @@ function stepPendingAllyAttack(this: GameInstanceHost, monster: InternalMonsterR
     pet.hp = prevHp
     this.applyDamageToSummon(pet, prevHp - nextHp, monster.areaId)
   }
+}
+
+/**
+ * DRLG oracle path: a monster's melee action frame on a 1:1-ported NecroPet summon (`0x6FC64AC0` ->
+ * `0x6FCFE5A0` -> `0x6FCFDDE0`), same `SUNITDMG` order as the player defender
+ * (kb/combat/d2game-sunitdmg-player-defender-113c.md §1-§3):
+ * 1. reach `#11138 UNITS_IsInMeleeRange(pMonster, pPet, 3)` (`0x6FCFE60D..0x6FCFE624`), no draw when out of reach;
+ * 2. to-hit `rand(100)` on the monster seed (`0x6FCFE017`, `0x6FCFDE90` chance clamped `[5, 95]`), a miss
+ *    ends the swing (oracle: every zombie swing on the Valkyrie / Clay Golem draws once and misses);
+ * 3. defender block on the pet seed only when its block rate is positive (`0x6FCFB7F8`);
+ * 4. `FillPacket` physical `min + RAND(max - min)` (mode damage, aura `%ED`), `RAND(1)`, `MonStats.crit`;
+ * 5. the pet's `damageresist`, then life in 256ths.
+ * The landed-hit branch has no oracle sample yet (no zombie hit lands on a pet in the goldens).
+ */
+function resolveDrlgMonsterSwingOnPet113c(
+  host: GameInstanceHost,
+  monster: InternalMonsterRecord,
+  pet: SummonedPetUnit,
+  pending: NonNullable<InternalMonsterRecord['pendingAllyAttack']>,
+): void {
+  const petUnitId = host.petUnitIds.get(pet.uid)
+  if (petUnitId === undefined) throw new Error(`resolveDrlgMonsterSwingOnPet113c: pet ${pet.uid} has no unit id`)
+  const inReach = host.areaPathWorld.isMonsterInMeleeRange113c(
+    monster.areaId,
+    monster.unitId,
+    UNIT_TYPE_113C.monster,
+    petUnitId,
+    3,
+  )
+  if (inReach === null) throw new Error(`resolveDrlgMonsterSwingOnPet113c: no path units for ${monster.unitId} -> ${petUnitId}`)
+  if (!inReach) return
+  const monsterSeed = host.unitSeeds.get(`${UNIT_TYPE_113C.monster}:${monster.unitId}`)
+  const petSeed = host.unitSeeds.get(`${UNIT_TYPE_113C.monster}:${petUnitId}`)
+  if (monsterSeed === undefined || petSeed === undefined) {
+    throw new Error(`resolveDrlgMonsterSwingOnPet113c: missing seed for ${monster.unitId} / ${petUnitId}`)
+  }
+  const attackerCtx = host.buildMonsterAttackerContext(monster, pending.skillMode)
+  const cth = computeToHitChance({
+    attackerAr: Math.trunc(attackerCtx.statList.getAccruedStat('tohit')),
+    defenderDef: Math.max(0, Math.trunc(pet.statList.getAccruedStat('armorclass'))),
+    attackerLvl: Math.max(1, monster.level),
+    defenderLvl: Math.max(1, Math.trunc(pet.statList.getAccruedStat('level'))),
+    attackKind: 'melee',
+  })
+  if (rollLimitedSeed113c(monsterSeed, 100) >= cth) return
+  const petBlock = Math.trunc(pet.statList.getAccruedStat('toblock'))
+  if (petBlock > 0 && rollLimitedSeed113c(petSeed, 100) < Math.min(75, petBlock)) return
+  const range = monsterFillPacketPhysRange113c(
+    pending.minDmg,
+    pending.maxDmg,
+    attackerCtx.statList.getAccruedStat('item_normaldamage'),
+  )
+  const edPct = Math.max(-90, Math.trunc(attackerCtx.statList.getModifierBonus('damagepercent')))
+  const min = range.min256 + Math.trunc((range.min256 * edPct) / 100)
+  const max = range.max256 + Math.trunc((range.max256 * edPct) / 100)
+  let phys = max > min ? min + rollLimitedSeed113c(monsterSeed, max - min) : min
+  rollLimitedSeed113c(monsterSeed, 1)
+  const crit = monStatsCritPct113c(monster.hcIdx)
+  if (crit > 0 && rollLimitedSeed113c(monsterSeed, 100) < crit) phys *= 2
+  const res = Math.min(100, Math.max(-100, Math.trunc(pet.statList.getAccruedStat('damageresist'))))
+  const dealt256 = res >= 100 ? 0 : Math.max(0, phys - Math.trunc((phys * res) / 100))
+  if (dealt256 <= 0) return
+  const prevHp = pet.hp
+  const nextHp256 = Math.max(0, prevHp * FIXED_ONE - dealt256)
+  const nextHp = nextHp256 < FIXED_ONE ? 0 : Math.ceil(nextHp256 / FIXED_ONE)
+  if (nextHp < prevHp) host.applyDamageToSummon(pet, prevHp - nextHp, monster.areaId)
 }
 
 
@@ -754,10 +849,20 @@ function resolveMonsterAttackOnPlayer(this: GameInstanceHost,
   defenderStats.setBaseStat('item_cannotbefrozen', this.sumPlayerItemStat(player, 153))
   defenderStats.setBaseStat('item_halffreezeduration', this.sumPlayerItemStat(player, 118))
   defenderStats.setBaseStat('curse_resistance', this.sumPlayerItemStat(player, 109))
+  defenderStats.setBaseStat('level', player.level)
+  const defenderItemPoolStats = new UnitStatList(this.registry, undefined, {
+    ownerType: 'item',
+    charClass: player.classCode,
+  })
+  defenderItemPoolStats.setBaseStat('maxhp', this.sumPlayerItemPoolStat256(player, 7))
+  defenderItemPoolStats.setBaseStat('maxmana', this.sumPlayerItemPoolStat256(player, 9))
+  defenderItemPoolStats.setBaseStat('item_maxhp_percent', this.sumPlayerItemStat(player, 76))
+  defenderItemPoolStats.setBaseStat('item_maxmana_percent', this.sumPlayerItemStat(player, 77))
+  defenderItemPoolStats.setBaseStat('item_hp_perlevel', this.sumPlayerItemPoolStat256(player, 216))
+  defenderItemPoolStats.setBaseStat('item_mana_perlevel', this.sumPlayerItemPoolStat256(player, 217))
+  defenderStats.attachStatList(defenderItemPoolStats)
   defenderStats.setBaseStat('maxhp', player.maxHpFixed)
-  defenderStats.setHp256(player.hpFixed)
   defenderStats.setBaseStat('maxmana', player.maxManaFixed)
-  defenderStats.setMana256(player.manaFixed)
   // 1.13c defensive passive statlists at their exact `SKILLS_GetSkillLevel` level (`#13 Dodge`, `#18 Avoid`,
   // `#29 Evade`, `#263 Weapon Block`, `#145 Iron Skin`, `#153 Natural Resistance`; #1796, #1802..#1804).
   this.syncPlayerSkillLevelsToStatList113c(player, defenderStats, this.playerCombat.get(player.unitId)?.stateBus)
@@ -766,6 +871,8 @@ function resolveMonsterAttackOnPlayer(this: GameInstanceHost,
   // Mirror persistent buffs / received auras first, then overlay live Bone Armor / Cyclone Armor
   // remaining absorb pools so `StateBus.triggerReactiveEvents` uses the exact remaining pool (#1793).
   this.mirrorPersistentStates(this.playerCombat.get(player.unitId), defenderStateBus)
+  defenderStats.setHp256(player.hpFixed)
+  defenderStats.setMana256(player.manaFixed)
   // 1.13c `#267 Fade` (`state 159`, or legacy tests seeding `state 157` when `skills.get(267) > 0`, #1945):
   // grants `+slvl%` physical `damageresist` (`stat 36`), resistances (`dm34(10, 75)`), and `curse_resistance` (`dm12(19, 85)`).
   const hasFadeActive =
@@ -816,6 +923,12 @@ function resolveMonsterAttackOnPlayer(this: GameInstanceHost,
       sourceSkillId: 50,
       slvl: Math.max(1, this.resolvePlayerSkillLevelById(player, 50)),
       durationFrames: player.stateTimers.get(88) ?? 300,
+    })
+  }
+  if (player.states.has(54) && !defenderStateBus.hasState(54)) {
+    defenderStateBus.applyState({
+      stateNameOrId: 54,
+      durationFrames: player.stateTimers.get(54) ?? 25,
     })
   }
   let activeBaPool: { current: number; max: number } | undefined
@@ -1057,12 +1170,15 @@ function resolveMonsterAttackOnPlayer(this: GameInstanceHost,
       : undefined
   const d2MonStatsCrit113c =
     d2MeleeFillPacket113c !== undefined ? monStatsCritPct113c(monster.hcIdx) : undefined
+  const useExact113cDefenderDispatch =
+    playerSeed113c !== undefined && !player.states.has(10) && !player.states.has(88)
   const dmgOut = executeSUnitDmg(attackerCtx, defenderCtx, {
     skillId: swing?.skillId ?? 0,
     attackKind: resolvedAttackKind,
     ...(monsterSeed113c !== undefined
       ? { d2AttackerSeed113c: monsterSeed113c, d2DefenderSeed113c: playerSeed113c }
       : {}),
+    ...(useExact113cDefenderDispatch ? { deferDefenderReactiveEvents113c: true } : {}),
     ...(d2MeleeFillPacket113c !== undefined
       ? {
           srcDam: 128,
@@ -1098,6 +1214,9 @@ function resolveMonsterAttackOnPlayer(this: GameInstanceHost,
       : {}),
     ...(missileRec !== undefined && missileRec.damageRate > 0
       ? { damageRate: missileRec.damageRate }
+      : {}),
+    ...(playerSeed113c !== undefined && missileRec !== undefined && !missileRec.getHit
+      ? { noHitRecovery: true }
       : {}),
     ...(swing?.arBonusPct !== undefined ? { toHitBonusPct: swing.arBonusPct } : {}),
     ...(swing?.autoHit === true || isPureElemMonsterMissile ? { autoHit: true } : {}),
@@ -1219,21 +1338,225 @@ function resolveMonsterAttackOnPlayer(this: GameInstanceHost,
         }
       }
     }
-    const reactiveMonsterDmg = Math.floor(
-      ((dmgOut.attackerColdDamage256 ?? 0) + (dmgOut.reflectedPhys256 ?? 0)) /
-        FIXED_ONE,
-    )
-    if (reactiveMonsterDmg > 0 && !monster.dead && monster.isKillable) {
-      monster.hp = Math.max(0, monster.hp - reactiveMonsterDmg)
-      this.broadcastToArea(monster.areaId, {
+    const applySecondaryMonsterHit113c = (
+      targetMon: InternalMonsterRecord,
+      resultFlags: number,
+      rawPhys256: number,
+      rawLtng256: number,
+      channel: 'phys' | 'ltng',
+    ): void => {
+      if (targetMon.dead || !targetMon.isKillable) return
+      const mStats = new UnitStatList(this.registry, undefined, { ownerType: 'monster' })
+      mStats.setBaseStat('damageresist', targetMon.resistances.phys)
+      mStats.setBaseStat('lightresist', targetMon.resistances.light)
+      const mStateBus = new StateBus(mStats, this.registry)
+      this.mirrorPersistentStates(this.monsterCombat.get(targetMon.unitId), mStateBus)
+      const sec = resolveSecondaryMonsterSUnitDmg113c({
+        playerUnitId: player.unitId,
+        monsterUnitId: targetMon.unitId,
+        monsterHpBefore256: monsterHp256_113c(targetMon),
+        monsterMaxHp256: targetMon.maxHp * FIXED_ONE,
+        resultFlags,
+        rawPhys256,
+        rawLtng256,
+        monsterPhysRes: Math.trunc(getPrePierceResistance113c(mStats, 'damageresist')),
+        monsterLtngRes: Math.trunc(getPrePierceResistance113c(mStats, 'lightresist')),
+        casterLtngPierce: this.sumPlayerItemStat(player, 334),
+      })
+      emitSUnitDmgTraceEvent113c(sec.traceEvent)
+      if (this.drlgRoomPopulator !== null && targetMon.aiAwake === false) {
+        targetMon.nextAiFrame = Math.max(targetMon.nextAiFrame, this.currentFrame + 1)
+      }
+      targetMon.aiAwake = true
+      targetMon.lastDamagedFrame113c = this.currentFrame
+      targetMon.hp256 = sec.monsterHpAfter256
+      targetMon.hp = Math.ceil(sec.monsterHpAfter256 / FIXED_ONE)
+      targetMon.hp256Whole = targetMon.hp
+      this.broadcastToArea(targetMon.areaId, {
         type: 'UnitStatUpdate',
         unitType: 'monster',
-        unitId: monster.unitId,
+        unitId: targetMon.unitId,
         statId: 6,
-        value: monster.hp,
+        value: targetMon.hp,
       })
-      if (monster.hp <= 0) {
-        this.applyMonsterDeath(monster, player, 'phys')
+      if (sec.killed) {
+        this.applyMonsterDeath(targetMon, player, channel)
+      } else if (this.drlgRoomPopulator !== null && sec.dealt256 > 0 && targetMon.hp > 0) {
+        const baseRegen256 = computeMonsterBaseDamageRegen113c(
+          targetMon.maxHp * FIXED_ONE,
+          targetMon.damageRegen,
+          targetMon.boneConstructOwnerPlayerId !== undefined,
+        )
+        const poisonMod256 =
+          targetMon.states.has(2) && targetMon.poisonBitrate256 > 0 ? -targetMon.poisonBitrate256 : 0
+        const statListMod256 = Math.trunc(
+          this.monsterCombat.get(targetMon.unitId)?.statList.getModifierBonus('hpregen') ?? 0,
+        )
+        if (baseRegen256 + poisonMod256 + statListMod256 !== 0) {
+          scheduleKernMonsterEvent3_113c(this, targetMon, this.currentFrame + 1)
+        }
+      }
+    }
+
+    const poisonBitrate256 = dmgOut.poisonBitrate256 ?? 0
+    const poisonDurationFrames = dmgOut.poisonDurationFrames ?? 0
+    const poisonTotal256 =
+      poisonBitrate256 > 0 && poisonDurationFrames > 0 ? poisonBitrate256 * poisonDurationFrames : 0
+    const signedTotalAll256 = dmgOut.signedTotalDamage256 ?? dmgOut.totalDamage256
+    const signedInstant256 = signedTotalAll256 - poisonBitrate256
+    const resultFlags113c = dmgOut.resultFlags113c ?? 0x05
+
+    if (useExact113cDefenderDispatch && playerSeed113c !== undefined) {
+      // 1.13c `0x6FCFE1E2`: Attacker `ITEMEVENTS_Dispatch(5 /* domeleedamage */)` (`#76 Iron Maiden` `state 55`).
+      if (swing?.fromMissile !== true && !monster.dead && monster.isKillable && monster.states.has(55)) {
+        const imState = attackerCtx.stateBus.getState('ironmaiden') ?? attackerCtx.stateBus.getState(55)
+        const imPct =
+          imState?.stats['thorns_percent'] ??
+          200 + 25 * (Math.max(1, imState?.slvl ?? 1) - 1)
+        const rawIm256 = computeIronMaidenReflectRawPhys256_113c(
+          dmgOut.signedPhysDamage256 ?? dmgOut.physDamage256,
+          imPct,
+          false,
+        )
+        if (rawIm256 > 0) {
+          applySecondaryMonsterHit113c(monster, 0x4021, rawIm256, 0, 'phys')
+        }
+      }
+      // 1.13c `0x6FCFE1F2` / `0x6FCFE1D6`: Defender `ITEMEVENTS_Dispatch(1 | 2)` in LIFO equip order.
+      const eventBit = swing?.fromMissile === true ? 0x04 : 0x02
+      const itemEvents = collectPlayerDefenderItemEventsLifo113c(player.items)
+      for (const node of itemEvents.nodes) {
+        if ((node.eventMask & eventBit) === 0) continue
+        if (node.statId === 78) {
+          const atd =
+            Math.trunc(defenderStats.getAccruedStat('item_attackertakesdamage')) +
+            this.sumPlayerItemStat(player, 78)
+          if (atd > 0) {
+            applySecondaryMonsterHit113c(monster, 0x4021, atd * FIXED_ONE, 0, 'phys')
+          }
+        } else if (node.statId === 128) {
+          const atld =
+            Math.trunc(defenderStats.getAccruedStat('item_attackertakeslightdamage')) +
+            this.sumPlayerItemStat(player, 128)
+          if (atld > 0) {
+            applySecondaryMonsterHit113c(monster, 0x4021, 0, atld * FIXED_ONE, 'ltng')
+          }
+        } else if (node.statId === 114) {
+          const dtmPct =
+            Math.trunc(defenderStats.getAccruedStat('item_damagetomana')) +
+            this.sumPlayerItemStat(player, 114)
+          const dtmOut = computeDamageToManaGain256_113c(
+            signedTotalAll256,
+            dtmPct,
+            player.manaFixed,
+            this.getPlayerAccruedMaxManaFixed(player),
+          )
+          if (dtmOut.gain256 > 0) {
+            player.manaFixed = dtmOut.nextMana256
+            player.mana = Math.floor(player.manaFixed / FIXED_ONE)
+            this.emitToPlayer(player.unitId, {
+              type: 'UnitStatUpdate',
+              unitType: 'player',
+              unitId: player.unitId,
+              statId: 8,
+              value: player.manaFixed,
+            })
+          }
+        } else if (node.statId === 201 && !player.states.has(54)) {
+          const ctc = itemEvents.ctcChanceByLayer.get(node.layer)
+          if (ctc !== undefined && rollPlayerDefenderCtcEntry113c(playerSeed113c, resultFlags113c, ctc.chance)) {
+            if (ctc.skillId === 42) {
+              const radius = 5 + (ctc.slvl - 1)
+              const r2 = radius * radius
+              const cx = Math.floor(player.x)
+              const cy = Math.floor(player.y)
+              const staticMin = this.difficulty === 2 ? 50 : this.difficulty === 1 ? 33 : 0
+              const sfTargets = [...this.monsters.values()]
+                .filter((m) => {
+                  if (m.dead || !m.isKillable || m.isNpc || m.submerged || m.align !== 0 || this.isMonsterConverted(m)) {
+                    return false
+                  }
+                  if (TOWN_AREAS.has(m.areaId)) return false
+                  if (m.areaId !== player.areaId && !this.isAreaSeamAdjacent(player.areaId, m.areaId)) return false
+                  const dx = Math.floor(m.x) - cx
+                  const dy = Math.floor(m.y) - cy
+                  return dx * dx + dy * dy <= r2
+                })
+                .sort((a, b) => b.unitId - a.unitId)
+              for (const m of sfTargets) {
+                if (m.dead) continue
+                const mStats = new UnitStatList(this.registry, undefined, { ownerType: 'monster' })
+                mStats.setBaseStat('lightresist', m.resistances.light)
+                const mStateBus = new StateBus(mStats, this.registry)
+                this.mirrorPersistentStates(this.monsterCombat.get(m.unitId), mStateBus)
+                const rawLtng256 = computeStaticFieldTargetLtng256_113c({
+                  curHp256: monsterHp256_113c(m),
+                  maxHp256: m.maxHp * FIXED_ONE,
+                  staticFieldMinPct: staticMin,
+                  rawTargetLtngRes: Math.trunc(getPrePierceResistance113c(mStats, 'lightresist')),
+                })
+                if (rawLtng256 !== null) {
+                  applySecondaryMonsterHit113c(m, 0x4001, 0, rawLtng256, 'ltng')
+                }
+              }
+            } else {
+              this.executePlayerItemProcSkill113c(player, ctc.skillId, ctc.slvl, 201, { target: monster })
+            }
+          }
+        }
+      }
+    } else {
+      const atdBonus256 =
+        swing?.fromMissile !== true
+          ? (Math.trunc(defenderStats.getAccruedStat('item_attackertakesdamage')) +
+              this.sumPlayerItemStat(player, 78)) *
+            Math.max(0, Math.trunc((100 - monster.resistances.phys) * FIXED_ONE / 100))
+          : 0
+      const atldBonus256 =
+        swing?.fromMissile !== true
+          ? (Math.trunc(defenderStats.getAccruedStat('item_attackertakeslightdamage')) +
+              this.sumPlayerItemStat(player, 128)) *
+            Math.max(0, Math.trunc((100 - monster.resistances.light) * FIXED_ONE / 100))
+          : 0
+      const reactiveMonsterDmg = Math.floor(
+        ((dmgOut.attackerColdDamage256 ?? 0) +
+          (dmgOut.reflectedPhys256 ?? 0) +
+          atdBonus256 +
+          atldBonus256) /
+          FIXED_ONE,
+      )
+      if (reactiveMonsterDmg > 0 && !monster.dead && monster.isKillable) {
+        monster.hp = Math.max(0, monster.hp - reactiveMonsterDmg)
+        this.broadcastToArea(monster.areaId, {
+          type: 'UnitStatUpdate',
+          unitType: 'monster',
+          unitId: monster.unitId,
+          statId: 6,
+          value: monster.hp,
+        })
+        if (monster.hp <= 0) {
+          this.applyMonsterDeath(monster, player, 'phys')
+        }
+      }
+      const dtmPct =
+        Math.trunc(defenderStats.getAccruedStat('item_damagetomana')) +
+        this.sumPlayerItemStat(player, 114)
+      const dtmOut = computeDamageToManaGain256_113c(
+        signedTotalAll256,
+        dtmPct,
+        player.manaFixed,
+        this.getPlayerAccruedMaxManaFixed(player),
+      )
+      if (dtmOut.gain256 > 0) {
+        player.manaFixed = dtmOut.nextMana256
+        player.mana = Math.floor(player.manaFixed / FIXED_ONE)
+        this.emitToPlayer(player.unitId, {
+          type: 'UnitStatUpdate',
+          unitType: 'player',
+          unitId: player.unitId,
+          statId: 8,
+          value: player.manaFixed,
+        })
       }
     }
 
@@ -1241,11 +1564,9 @@ function resolveMonsterAttackOnPlayer(this: GameInstanceHost,
     // Poison damage (`poisonBitrate256 * poisonDurationFrames`) is NEVER deducted instantaneously on impact;
     // it arms `STATE_POISON` (`2`) with `STAT_HPREGEN = -poisonBitrate256`, ticked per frame in `stepPlayerVitals`
     // (`0x6FC97CB0`, clamped at `256` = `1 HP`).
-    const poisonBitrate256 = dmgOut.poisonBitrate256 ?? 0
-    const poisonDurationFrames = dmgOut.poisonDurationFrames ?? 0
-    const poisonTotal256 =
-      poisonBitrate256 > 0 && poisonDurationFrames > 0 ? poisonBitrate256 * poisonDurationFrames : 0
-    const instantDamage256 = Math.max(0, dmgOut.totalDamage256 - poisonTotal256)
+    const instantDamage256 = useExact113cDefenderDispatch
+      ? Math.max(0, signedInstant256)
+      : Math.max(0, dmgOut.totalDamage256 - poisonTotal256)
     const finalDmg = Math.floor(instantDamage256 / FIXED_ONE)
     if (poisonBitrate256 > 0 && poisonDurationFrames > 0 && !player.dead) {
       const playerCtx = this.playerCombatContext(player)
@@ -1279,63 +1600,156 @@ function resolveMonsterAttackOnPlayer(this: GameInstanceHost,
         )
       }
     }
-    // 1.13c `SUNITDMG_ExecuteEvents` (`0x6FCFE237` -> `SUNITDMG_AddLife` `0x6FCFB570`):
-    // Add `dwAbsorbLife` (`dmgOut.absorbHeal256`) to defender life (clamped at `maxhp`) BEFORE
-    // subtracting `dwTotalDamage` (`finalDmg`).
     const absorbHeal256 = dmgOut.absorbHeal256 ?? 0
-    if (absorbHeal256 > 0 && !player.dead && player.hpFixed > 0 && !player.states.has(92)) {
-      const accruedMaxHpFixed = this.getPlayerAccruedMaxHpFixed(player)
-      const nextHpFixed = Math.min(accruedMaxHpFixed, player.hpFixed + absorbHeal256)
-      if (nextHpFixed !== player.hpFixed) {
-        player.hpFixed = nextHpFixed
+    let exact113cKilledPlayer = false
+    if (useExact113cDefenderDispatch && !player.dead) {
+      // 1.13c `0x6FCFE200..0x6FCFE269`: clamp `dwPhysDamage <= curHp256`, apply `dwAbsorbLife` heal,
+      // subtract exact `dwDmgTotal` in 256ths (`< 0x100 -> 0`), then roll durability (`0x6FCFEE2B`)
+      // and `0x6FCB8A70` `stat 131` `thorns_percent` (`0x6FCFEE8E`).
+      const lifeOut = computePreDamageAbsorbAndLife113c({
+        hpBefore256: player.hpFixed,
+        maxHp256: this.getPlayerAccruedMaxHpFixed(player),
+        signedPhys256: dmgOut.signedPhysDamage256 ?? dmgOut.physDamage256,
+        signedTotalInstant256: signedInstant256,
+        absorbHeal256,
+        hasDeathDelayState: player.states.has(92),
+      })
+      exact113cKilledPlayer = lifeOut.killed
+      if (lifeOut.hpAfter256 !== player.hpFixed) {
+        player.hpFixed = lifeOut.hpAfter256
         player.hp = Math.max(0, Math.ceil(player.hpFixed / FIXED_ONE))
-        if (finalDmg <= 0) {
-          this.emitToPlayer(player.unitId, {
-            type: 'UnitStatUpdate',
-            unitType: 'player',
-            unitId: player.unitId,
-            statId: 6,
-            value: player.hpFixed,
-          })
-          this.emitToPlayer(player.unitId, {
-            type: 'LifeMana',
-            life: player.hp,
-            mana: player.mana,
-            stamina: player.stamina,
-            at: playerWirePosition(player),
-            vx: 0,
-            vy: 0,
-          })
+        this.emitToPlayer(player.unitId, {
+          type: 'UnitStatUpdate',
+          unitType: 'player',
+          unitId: player.unitId,
+          statId: 6,
+          value: player.hpFixed,
+        })
+        this.emitToPlayer(player.unitId, {
+          type: 'LifeMana',
+          life: player.hp,
+          mana: player.mana,
+          stamina: player.stamina,
+          at: playerWirePosition(player),
+          vx: 0,
+          vy: 0,
+        })
+      }
+      if (
+        elementalType === 'cold' &&
+        elemDuration > 0 &&
+        swing?.fromMissile !== true &&
+        dmgOut.elemDamage256 > 0 &&
+        player.hp > 0
+      ) {
+        this.applyUnitState(
+          player.states,
+          player.stateTimers,
+          'player',
+          player.unitId,
+          player.areaId,
+          11,
+          elemDuration,
+        )
+      }
+      if (playerSeed113c !== undefined && swing?.fromMissile !== true) {
+        const durabilityDraws = rollPlayerDefenderArmorDurability113c(
+          playerSeed113c,
+          player.items.filter(
+            (i) => i.location === 'equipped' && i.bodyLoc !== 11 && i.bodyLoc !== 12,
+          ),
+        )
+        if (durabilityDraws > 0) {
+          this.syncPlayerEquippedSetStates113c(player)
         }
       }
+      if (
+        (resultFlags113c & 0x04) !== 0 &&
+        swing?.fromMissile !== true &&
+        !monster.dead &&
+        monster.isKillable
+      ) {
+        const thornsPct =
+          Math.trunc(defenderStats.getAccruedStat('thorns_percent')) +
+          this.sumPlayerItemStat(player, 131)
+        const rawThorns256 = computeThornsAuraReflectRawPhys256_113c(
+          lifeOut.lifeClampedPhys256,
+          thornsPct,
+          false,
+        )
+        if (rawThorns256 > 0) {
+          applySecondaryMonsterHit113c(monster, 0x4021, rawThorns256, 0, 'phys')
+        }
+      }
+    } else {
+      // 1.13c `SUNITDMG_ExecuteEvents` (`0x6FCFE237` -> `SUNITDMG_AddLife` `0x6FCFB570`):
+      // Add `dwAbsorbLife` (`dmgOut.absorbHeal256`) to defender life (clamped at `maxhp`) BEFORE
+      // subtracting `dwTotalDamage` (`finalDmg`).
+      if (absorbHeal256 > 0 && !player.dead && player.hpFixed > 0 && !player.states.has(92)) {
+        const accruedMaxHpFixed = this.getPlayerAccruedMaxHpFixed(player)
+        const nextHpFixed = Math.min(accruedMaxHpFixed, player.hpFixed + absorbHeal256)
+        if (nextHpFixed !== player.hpFixed) {
+          player.hpFixed = nextHpFixed
+          player.hp = Math.max(0, Math.ceil(player.hpFixed / FIXED_ONE))
+          if (finalDmg <= 0) {
+            this.emitToPlayer(player.unitId, {
+              type: 'UnitStatUpdate',
+              unitType: 'player',
+              unitId: player.unitId,
+              statId: 6,
+              value: player.hpFixed,
+            })
+            this.emitToPlayer(player.unitId, {
+              type: 'LifeMana',
+              life: player.hp,
+              mana: player.mana,
+              stamina: player.stamina,
+              at: playerWirePosition(player),
+              vx: 0,
+              vy: 0,
+            })
+          }
+        }
+      }
+      if (
+        elementalType === 'cold' &&
+        elemDuration > 0 &&
+        swing?.fromMissile !== true &&
+        dmgOut.elemDamage256 > 0 &&
+        !player.dead
+      ) {
+        this.applyUnitState(
+          player.states,
+          player.stateTimers,
+          'player',
+          player.unitId,
+          player.areaId,
+          11,
+          elemDuration,
+        )
+      }
+      // 1.13c `SUNITDMG_ExecuteCombat` (`0x6FCFED30`) -> `0x6FCFEBA0`: after a landed hit, a player defender
+      // picks a weighted armor slot and may lose durability (2-3 draws on `pDefender->pSeed`), before the
+      // GetHit / mode decision of `SUNITDMG_ExecuteEvents` (`0x6FCFCF20`).
+      if (playerSeed113c !== undefined && swing?.fromMissile !== true) {
+        rollPlayerDefenderArmorDurability113c(
+          playerSeed113c,
+          player.items.filter(
+            (i) => i.location === 'equipped' && i.bodyLoc !== 11 && i.bodyLoc !== 12,
+          ),
+        )
+      }
     }
-    if (
-      elementalType === 'cold' &&
-      elemDuration > 0 &&
-      swing?.fromMissile !== true &&
-      dmgOut.elemDamage256 > 0 &&
-      !player.dead
-    ) {
-      this.applyUnitState(
-        player.states,
-        player.stateTimers,
-        'player',
-        player.unitId,
-        player.areaId,
-        11,
-        elemDuration,
-      )
-    }
-    // 1.13c `SUNITDMG_ExecuteCombat` (`0x6FCFED30`) -> `0x6FCFEBA0`: after a landed hit, a player defender
-    // picks a weighted armor slot and may lose durability (2-3 draws on `pDefender->pSeed`), before the
-    // GetHit / mode decision of `SUNITDMG_ExecuteEvents` (`0x6FCFCF20`).
-    if (playerSeed113c !== undefined && swing?.fromMissile !== true) {
-      rollPlayerDefenderArmorDurability113c(
-        playerSeed113c,
-        player.items.filter(
-          (i) => i.location === 'equipped' && i.bodyLoc !== 11 && i.bodyLoc !== 12,
-        ),
-      )
+    if (useExact113cDefenderDispatch && exact113cKilledPlayer && finalDmg <= 0) {
+      const monKillerTypeOnFractionalDeath: DeathKillerKind113c =
+        monster.convertedUntilFrame > this.currentFrame && monster.convertedByPlayerId > 0
+          ? 'player_pet'
+          : 'monster'
+      this.triggerPlayerCtcProcs113c(player, 197, { target: monster })
+      this.killPlayer(player, {
+        killerType: monKillerTypeOnFractionalDeath,
+        killerUnitId: monster.unitId,
+      })
     }
     if (finalDmg > 0) {
       const isPhysicalOrWeaponHit = isPhysicalOrWeaponMonsterHit113c({
@@ -1504,21 +1918,43 @@ function resolveMonsterAttackOnPlayer(this: GameInstanceHost,
         this.rng.rand(100) < missileRec.knockBack
       const skipMissileGetHit =
         missileRec !== undefined && !missileRec.getHit && !missileKnockbackTriggered
-      this.applyDamageToPlayer(player, finalDmg, {
-        ...(d2MeleeFillPacket113c !== undefined ? { dmg256: instantDamage256 } : {}),
-        hitClass: this.resolveMonsterHitClass113c(
-          monster,
-          swing?.skillId ?? 0,
-          swing?.missileId ?? 0,
-        ),
-        isPurePoison: elementalType === 'pois' && physMin <= 0 && physMax <= 0,
-        ...(skipMissileGetHit || missileKnockbackTriggered ? { skipGetHit: true } : {}),
-        killerType: monKillerType,
-        killerUnitId: monster.unitId,
-      })
-      // 1.13c `item_skillongethit` (201): a damaging hit that the player survives (#1797).
-      if (!player.dead && player.hp > 0) {
-        this.triggerPlayerCtcProcs113c(player, 201, { target: monster })
+      const resolvedHitClassForGetHit = this.resolveMonsterHitClass113c(
+        monster,
+        swing?.skillId ?? 0,
+        swing?.missileId ?? 0,
+      )
+      const isPurePoisonHit = elementalType === 'pois' && physMin <= 0 && physMax <= 0
+      if (useExact113cDefenderDispatch) {
+        if (exact113cKilledPlayer || player.hp <= 0) {
+          this.triggerPlayerCtcProcs113c(player, 197, { target: monster })
+          this.killPlayer(player, {
+            killerType: monKillerType,
+            killerUnitId: monster.unitId,
+          })
+        } else if (
+          (resultFlags113c & 0x04) !== 0 &&
+          !skipMissileGetHit &&
+          !missileKnockbackTriggered
+        ) {
+          this.maybeEnterPlayerHitRecovery(player, finalDmg, {
+            dmg256: instantDamage256,
+            hitClass: resolvedHitClassForGetHit,
+            isPurePoison: isPurePoisonHit,
+          })
+        }
+      } else {
+        this.applyDamageToPlayer(player, finalDmg, {
+          ...(d2MeleeFillPacket113c !== undefined ? { dmg256: instantDamage256 } : {}),
+          hitClass: resolvedHitClassForGetHit,
+          isPurePoison: isPurePoisonHit,
+          ...(skipMissileGetHit || missileKnockbackTriggered ? { skipGetHit: true } : {}),
+          killerType: monKillerType,
+          killerUnitId: monster.unitId,
+        })
+        // 1.13c `item_skillongethit` (201): a damaging hit that the player survives (#1797).
+        if (!player.dead && player.hp > 0) {
+          this.triggerPlayerCtcProcs113c(player, 201, { target: monster })
+        }
       }
       // `#1897` / `#1898` / `#2017` `Missiles.txt` `KnockBack`, `MonProp.txt` & `MonEquip.txt` on-hit effects:
       if (!player.dead && missileKnockbackTriggered) {
@@ -1787,7 +2223,7 @@ function resolveMonsterAttackOnPlayer(this: GameInstanceHost,
 
 export interface MonsterMeleeAttacksMethods {
   beginMonsterMeleeAttack(monster: InternalMonsterRecord, player: InternalPlayerRecord): void
-  monsterAttackTiming(monster: InternalMonsterRecord, mode: 'A1' | 'A2' | 'S1'): { readonly actionFrame: number; readonly totalFrames: number }
+  monsterAttackTiming(monster: InternalMonsterRecord, mode: 'A1' | 'A2' | 'S1' | 'S2'): { readonly actionFrame: number; readonly totalFrames: number }
   stepPendingResurrection(monster: InternalMonsterRecord): void
   reviveMonsterCorpse(caster: InternalMonsterRecord, corpse: InternalMonsterRecord): void
   stepPendingMonsterAttack(monster: InternalMonsterRecord): void

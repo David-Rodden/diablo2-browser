@@ -346,9 +346,9 @@ export class AuraScanner {
         if (!acceptsTarget(ally, 'ally', 'player')) continue
 
         const allyStats = { ...stats }
-        // Fanaticism (`122`, `samples/d2/excel/Skills.txt`): allies receive `aurastat1 = damagepercent` (`aurastatcalc1 = ln56/2`)
+        // Fanaticism (`122`, `samples/d2/excel/Skills.txt`): allies receive `aurastat3 = damagepercent` (`aurastatcalc3 = ln56/2`)
         if (skill.id === 122 && hasEnoughManaForPulse) {
-          allyStats['damagepercent'] = evaluateCalc(skill.auraStatCalc1 || 'ln56/2', calcCtx)
+          allyStats['damagepercent'] = evaluateCalc(skill.auraStatCalc3 || 'ln56/2', calcCtx)
         }
 
         ally.stateBus.applyState({

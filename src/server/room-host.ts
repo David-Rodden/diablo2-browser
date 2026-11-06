@@ -279,8 +279,11 @@ export class MultiClientRoomHost {
 
   stepFrame(): number {
     if (this.closed) return this.gameInstance.tickCount
-    this.gameInstance.stepFrame()
-    this.flushAllClientEvents()
+    try {
+      this.gameInstance.stepFrame()
+    } finally {
+      this.flushAllClientEvents()
+    }
     return this.gameInstance.tickCount
   }
 

@@ -116,7 +116,7 @@ describe('Wave 5 P2 Network Packet Parity (#1932, #1933, #1934)', () => {
     host.close()
   })
 
-  it('#1934: S2C 0x7A SummonAction count on summon', async () => {
+  it('#1934: S2C 0x7A SummonAction 13-byte wire parity on summon', async () => {
     const host = new Server.MultiClientRoomHost({
       policy: Server.CLOSED_REALM_POLICY,
       mapSeed: 0x1934,
@@ -145,9 +145,13 @@ describe('Wave 5 P2 Network Packet Parity (#1932, #1933, #1934)', () => {
 
     const adapter1 = new Netproto.D2gsServerAdapter(c1)
     const adapter2 = new Netproto.D2gsServerAdapter(c2)
+    const world1 = new ClientWorld()
     const events1: Netproto.ServerEvent[] = []
     const events2: Netproto.ServerEvent[] = []
-    adapter1.onEvent(ev => events1.push(ev))
+    adapter1.onEvent((ev) => {
+      events1.push(ev)
+      world1.apply(ev)
+    })
     adapter2.onEvent(ev => events2.push(ev))
 
     host.stepFrames(5); await new Promise(r => setImmediate(r));
@@ -162,15 +166,22 @@ describe('Wave 5 P2 Network Packet Parity (#1932, #1933, #1934)', () => {
     
     const summonEvent = events1.find(e => e.type === 'Merc' && e.mercId === (petId1 as any)?.pet?.unitId)
     expect(summonEvent).toBeDefined()
-    expect((summonEvent as any).count).toBe(1)
+    expect((summonEvent as any).isSummonAction).toBe(true)
+    expect((summonEvent as any).summonAction).toBe(1)
+    expect(
+      [...world1.pets.values()].filter((p) => p.ownerId === p1Record.unitId && p.petType === (summonEvent as any).petType).length,
+    ).toBe(1)
 
-    // Spawn a second one
+    // Spawn a second one: 13-byte 0x7A adds a second entry to ClientWorld.pets (matching D2Client g_pPetList 0x6fbcc4d4)
     events1.length = 0
     const petId2 = game.summonPet(p1Record.unitId, { skillId: 221, slvl: 5, x: p1Record.x - 1, y: p1Record.y })
     host.stepFrame(); await new Promise(r => setImmediate(r));
     const summonEvent2 = events1.find(e => e.type === 'Merc' && e.mercId === (petId2 as any)?.pet?.unitId)
     expect(summonEvent2).toBeDefined()
-    expect((summonEvent2 as any).count).toBe(2)
+    expect((summonEvent2 as any).isSummonAction).toBe(true)
+    expect(
+      [...world1.pets.values()].filter((p) => p.ownerId === p1Record.unitId && p.petType === (summonEvent2 as any).petType).length,
+    ).toBe(2)
 
     host.close()
   })

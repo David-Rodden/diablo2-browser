@@ -76,7 +76,9 @@ Called by `NecroPet` (`0x6FC3E3D0`, `0x6FC3E640`), `DruidWolf` (`0x6FCCAC30`, `0
 
 ---
 
-## 4. `Hireable` (Index 61 — `0x6FC3DD40..0x6FC3E0A4`)
+## 4. `Hireable` (Index 61 — `0x6FC3DD40..0x6FC3E139`)
+
+> **1:1 Basic-Block Reference**: See [`d2game-mercenary-hire-aura-113c.md`](./d2game-mercenary-hire-aura-113c.md) §1–§7 for the verified instruction-by-instruction disassembly and RNG draw tables (correcting earlier summary notes: `Hireable` clears state `12` `hide`, calls `AIMERC_HireablePetMove` `0x6FC3D3C0` states `0/1/3/5`, stalls `5` frames on idle with a `5%` `AIMOV_WalkAroundTarget(16)` orbit roll, and `AIMERC_ChooseSkill` `0x6FC3C4E0` rolls `rollLimited(totalWeight + 1)` with `<= cum[i]` cumulative slot bounds).
 
 Applies to `roguehire` (#271), `act2hire` (#338), `act3hire` (#359), `act5hire1` (#560), and `act5hire2` (#561).
 

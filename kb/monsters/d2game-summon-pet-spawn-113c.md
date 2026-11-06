@@ -83,5 +83,14 @@ variants `0x6FD144B0` / `/100` first for large values); `STAT_MAXHP = STAT_HITPO
   at F726 / F803 / F734. TS: `transformBaseVelocityFp8113c` → `computeMonsterWalkVelocity113c(…, baseVelocityFp8)`.
   Other transform states (`+0x2D` 1/2): 63 (→ player 0), 119 (→ player 6), 139/140/176/177 (→ monster
   430/431/135/212) — not wired.
-- Next blocker (F851): Valkyrie melee attack `0x6FD12220` (NecroPet target engagement), not ported.
+- Valkyrie melee attack `0x6FD12220`: ported ([`d2game-necropet-ai-113c.md`](./d2game-necropet-ai-113c.md) §2.1).
+  Next Valkyrie blocker: F990, pet y off by one subtile after an extra pet-seed draw at F988
+  (PetMove state 1 `0x6FC3CAE0` not ported).
+- Raise Skeleton / Skeletal Mage (`SKILLS_SrvDo031` `0x6FC718B0`):
+  - The corpse is freed with `SUNIT_RemoveUnit` (`0x6FD020A0`, call `0x6FC7199B`) before `0x6FCC3610`.
+    Ported. Revive (`SrvDo058` `0x6FC71340`) does not free the corpse.
+  - `0x6FC6EB50` (pet class 363 → `0x6FC6E960`, 364 → `0x6FC6E900`) is not ported. For slvl > 2,
+    `0x6FC6E960` draws `rand(100)` on the owner seed, then calls `0x6FC6E390`.
+  - Oracle F1517: the skeleton's max HP is 757.5 in the oracle vs 757.0 in the replica, and the player seed
+    draws 1 vs 0.
 - `0x6FC6F970` passive / aura stats and `sumskill`s are still the `SummonManager` model.

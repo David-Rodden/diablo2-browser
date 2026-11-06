@@ -24,7 +24,7 @@ import { TradeManager113c } from '../../net/trade-manager-113c.ts'
 import { AreaPathWorld113c } from '../../ai/town-npc-ai-113c.ts'
 import { DrlgRoomPopulator113c } from '../../world/room-populate-113c.ts'
 import type { AreaPopulationState, GameInstanceConfig, GameMode, GameModePolicy, InternalMercenaryRecord, InternalMissileRecord, InternalMonsterRecord, InternalObjectRecord, InternalPlayerRecord, InternalWarpTileRecord, LoadedAreaRecord, MercAuraRuntime, PendingRoomPresets113c, PersistentCombatUnit, PlayerAuraRuntime, PlayerMotionState, PlayerSkillCast, QueuedPlayerCommand, ServerItemEntry } from './types.ts'
-import { CLOSED_REALM_POLICY, OPEN_BNET_POLICY, SINGLE_PLAYER_POLICY, getOrCreateEmbeddedFallbackRegistry, resolveGameModePolicy } from './constants-and-helpers.ts'
+import { CLOSED_REALM_POLICY, OPEN_BNET_POLICY, SINGLE_PLAYER_POLICY, areaToAct, getOrCreateEmbeddedFallbackRegistry, resolveGameModePolicy } from './constants-and-helpers.ts'
 
 export class GameInstanceState {
 
@@ -667,6 +667,12 @@ export class GameInstanceState {
           objCtrlInit: initDraws4[1],
         })
       : null
+    if (this.drlgRoomPopulator !== null) {
+      const populator = this.drlgRoomPopulator
+      this.areaPathWorld.setDrlgTileZoneResolver113c((areaId, x, y) =>
+        populator.tileZoneAt113c(areaToAct(areaId), x, y),
+      )
+    }
     {
       const stoneRng = new D2Rng(((this.currentMapSeed ^ 0x6a09e667) >>> 0) || 1)
       const stones = [17, 18, 19, 20, 21]

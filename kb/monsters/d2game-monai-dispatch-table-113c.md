@@ -8,176 +8,168 @@
 
 > **Correction Note (Issue #1466)**: `0x6FD274A8` is `gpSkillSrvDoFuncTable` (dispatched at `0x6FC4F3D2` by skill `srvdofunc`). The actual `MonAI.txt` 148-entry table (`gpMonsterAiFunctionTable`, 16-byte stride `{ dwAiFlag, pfnAiInit, pfnAiThink, pfnAiExtra }`) is at **`0x6FD2E788`**, indexed by `D2MonStatsTxt.wAI` (`+0x01C`) in `AIGENERAL_SetAiFunction` (`0x6FCC03D0`). See `kb/monsters/d2game-pet-hireable-ai-113c.md` for the exact `pfnAiThink` VAs of all pet and hireling AI rows.
 
-- Table VA: **`0x6FD274A8`**, 148 entries (4 bytes each), index `0..147`
-  matching the `MonAi.txt` row order in `MONAI_113C_ROWS`.
-- Dispatch site: `0x6FC4F3D2`:
-
-  ```asm
-  movzx edx, al                          ; AI id from the monster record
-  mov   eax, [edx*4+0x6FD274A8]          ; gpMonsterAiTable[ai]
-  test  eax, eax
-  je    0x6FC4F441
-  call  eax                              ; run the per-AI state machine
-  ```
-
-- Entry 0 (`None`) is a null pointer; the dispatcher skips the call.
-- Prior notes citing `0x6FD132D8` as the table are incorrect for this binary:
-  that address falls inside `.text` instruction bytes. Cross-references in
-  `.text` all resolve to `0x6FD274A8` (e.g. `0x6FCB1D4B`, `0x6FCBE42B`,
-  `0x6FCC1B1D`).
+- Table VA: **`0x6FD2E788`**, 148 entries of 16 bytes `{ dwAiFlag, pfnAiInit, pfnAiThink, pfnAiExtra }`,
+  index `0..147` = `MonStats.txt` `AI` (`MonAI.txt` row order, `MONAI_113C_ROWS`).
+- The table below was regenerated from the binary (2026-11-05). The previous version listed the
+  `gpSkillSrvDoFuncTable` entries (`0x6FD274A8`) under the MonAI names, so its addresses were skill
+  functions, not AI thinks. Verified rows: `Zombie` think `0x6FCA38B0`
+  ([`d2game-zombie-ai-113c.md`](./d2game-zombie-ai-113c.md)), `Fallen` think `0x6FCA3130`
+  ([`d2game-fallen-ai-113c.md`](./d2game-fallen-ai-113c.md)).
+- `dwAiFlag` selects the driver's target search (`0x6FCBD160`, jump table `0x6FCBD20C`); flag 1 is the
+  "skip the think while no player is inside `aidist`" tick (kb zombie §6).
 
 ## Full table
 
-| Index | MonAi row | D2Game function |
-|------:|-----------|-----------------|
-| 0 | `None` | `null` |
-| 1 | `Idle` | `0x6fcc2c40` |
-| 2 | `Skeleton` | `0x6fcc3220` |
-| 3 | `Zombie` | `0x6fcc2b40` |
-| 4 | `Bighead` | `0x6fcc2ea0` |
-| 5 | `BloodHawk` | `0x6fcc2a40` |
-| 6 | `Fallen` | `0x6fc6c2a0` |
-| 7 | `Brute` | `0x6fc6cb00` |
-| 8 | `SandRaider` | `0x6fc6d420` |
-| 9 | `Wraith` | `0x6fc49600` |
-| 10 | `CorruptRogue` | `0x6fc6d270` |
-| 11 | `Baboon` | `0x6fc6d040` |
-| 12 | `Goatman` | `0x6fc6dcd0` |
-| 13 | `FallenShaman` | `0x6fc6dac0` |
-| 14 | `QuillRat` | `0x6fc6ce10` |
-| 15 | `SandMaggot` | `0x6fc6d8c0` |
-| 16 | `ClawViper` | `0x6fc6d710` |
-| 17 | `SandLeaper` | `0x6fc63b60` |
-| 18 | `PantherWoman` | `0x6fc628f0` |
-| 19 | `Swarm` | `0x6fc64390` |
-| 20 | `Scarab` | `0x6fc630d0` |
-| 21 | `Mummy` | `0x6fc631c0` |
-| 22 | `GreaterMummy` | `0x6fc63aa0` |
-| 23 | `Vulture` | `0x6fc62730` |
-| 24 | `Mosquito` | `0x6fc637d0` |
-| 25 | `WillOWisp` | `0x6fc62570` |
-| 26 | `Arach` | `0x6fc63720` |
-| 27 | `ThornHulk` | `0x6fc63450` |
-| 28 | `Vampire` | `0x6fc62d90` |
-| 29 | `BatDemon` | `0x6fc63fa0` |
-| 30 | `Fetish` | `0x6fc705d0` |
-| 31 | `NpcOutOfTown` | `0x6fc718b0` |
-| 32 | `Npc` | `0x6fc6f920` |
-| 33 | `HellMeteor` | `0x6fcb2770` |
-| 34 | `Andariel` | `0x6fcb5690` |
-| 35 | `CorruptArcher` | `0x6fcb61a0` |
-| 36 | `CorruptLancer` | `0x6fcb5040` |
-| 37 | `SkeletonBow` | `0x6fcb4f50` |
-| 38 | `MaggotLarva` | `0x6fcb3340` |
-| 39 | `PinHead` | `0x6fcb4970` |
-| 40 | `MaggotEgg` | `0x6fcb2230` |
-| 41 | `Towner` | `0x6fcb3bc0` |
-| 42 | `Vendor` | `0x6fcb5fe0` |
-| 43 | `FoulCrowNest` | `0x6fcb4dc0` |
-| 44 | `Duriel` | `0x6fcb6310` |
-| 45 | `Sarcophagus` | `0x6fcb6280` |
-| 46 | `ElementalBeast` | `0x6fcb3270` |
-| 47 | `FlyingScimitar` | `0x6fcb4b10` |
-| 48 | `ZakarumZealot` | `0x6fcb5560` |
-| 49 | `ZakarumPriest` | `0x6fcb5980` |
-| 50 | `Mephisto` | `0x6fcb3110` |
-| 51 | `Diablo` | `0x6fcb57f0` |
-| 52 | `FrogDemon` | `0x6fcb3680` |
-| 53 | `Summoner` | `0x6fcb2cf0` |
-| 54 | `NpcStationary` | `0x6fcb35f0` |
-| 55 | `Izual` | `0x6fc6f4d0` |
-| 56 | `Tentacle` | `0x6fc71750` |
-| 57 | `TentacleHead` | `0x6fc71540` |
-| 58 | `Navi` | `0x6fc71340` |
-| 59 | `BloodRaven` | `0x6fc71c60` |
-| 60 | `GoodNpcRanged` | `0x6fc70fe0` |
-| 61 | `Hireable` | `0x6fc71a90` |
-| 62 | `TownRogue` | `0x6fc71e70` |
-| 63 | `GargoyleTrap` | `0x6fc70190` |
-| 64 | `SkeletonMage` | `0x6fcb9290` |
-| 65 | `FetishShaman` | `0x6fcba8d0` |
-| 66 | `SandMaggotQueen` | `0x6fcbaf50` |
-| 67 | `NecroPet` | `0x6fcb9d20` |
-| 68 | `VileMother` | `0x6fc49720` |
-| 69 | `VileDog` | `0x6fc47600` |
-| 70 | `FingerMage` | `0x6fc47b90` |
-| 71 | `Regurgitator` | `0x6fc49000` |
-| 72 | `DoomKnight` | `0x6fc476d0` |
-| 73 | `AbyssKnight` | `0x6fcb94c0` |
-| 74 | `OblivionKnight` | `0x6fc47e30` |
-| 75 | `QuillMother` | `0x6fc47c90` |
-| 76 | `EvilHole` | `0x6fc48be0` |
-| 77 | `Trap-Missile` | `0x6fc494a0` |
-| 78 | `Trap-RightArrow` | `0x6fc493b0` |
-| 79 | `Trap-LeftArrow` | `0x6fcb9830` |
-| 80 | `Trap-Poison` | `0x6fcb93a0` |
-| 81 | `JarJar` | `0x6fcbabc0` |
-| 82 | `InvisoSpawner` | `0x6fcba400` |
-| 83 | `MosquitoNest` | `0x6fcd4660` |
-| 84 | `BoneWall` | `0x6fcd65e0` |
-| 85 | `HighPriest` | `0x6fcd58a0` |
-| 86 | `Hydra` | `0x6fcd3060` |
-| 87 | `Trap-Melee` | `0x6fcd42d0` |
-| 88 | `7TIllusion` | `0x6fcd56c0` |
-| 89 | `Megademon` | `0x6fcd60c0` |
-| 90 | `Griswold` | `0x6fcd2fc0` |
-| 91 | `DarkWanderer` | `0x6fcd5e50` |
-| 92 | `Trap-Nova` | `0x6fcd5600` |
-| 93 | `ArcaneTower` | `0x6fcd5450` |
-| 94 | `DesertTurret` | `0x6fcd2e90` |
-| 95 | `PantherJavelin` | `0x6fcd6a60` |
-| 96 | `FetishBlowgun` | `0x6fcd3770` |
-| 97 | `Spirit` | `0x6fcd5bd0` |
-| 98 | `Smith` | `0x6fcd46b0` |
-| 99 | `TrappedSoul` | `0x6fcd52a0` |
-| 100 | `Buffy` | `0x6fcd3d60` |
-| 101 | `AssassinSentry` | `0x6fcd5110` |
-| 102 | `BladeCreeper` | `0x6fcd4ff0` |
-| 103 | `InvisoPet` | `0x6fcd3f10` |
-| 104 | `DeathSentry` | `0x6fcd4410` |
-| 105 | `ShadowWarrior` | `0x6fcd4de0` |
-| 106 | `ShadowMaster` | `0x6fcd4d30` |
-| 107 | `Raven` | `0x6fcd3b20` |
-| 108 | `DruidWolf` | `0x6fcd5d40` |
-| 109 | `Totem` | `0x6fcd6790` |
-| 110 | `Vines` | `0x6fcd49f0` |
-| 111 | `CycleOfLife` | `0x6fcd39f0` |
-| 112 | `DruidBear` | `0x6fcd5950` |
-| 113 | `SiegeTower` | `0x6fccdfa0` |
-| 114 | `ReanimatedHorde` | `0x6fc668a0` |
-| 115 | `SiegeBeast` | `0x6fc66720` |
-| 116 | `Minion` | `0x6fc66210` |
-| 117 | `SuicideMinion` | `0x6fc656b0` |
-| 118 | `Succubus` | `0x6fc65600` |
-| 119 | `SuccubusWitch` | `0x6fc66560` |
-| 120 | `Overseer` | `0x6fc66000` |
-| 121 | `MinionSpawner` | `0x6fc66a20` |
-| 122 | `Imp` | `0x6fc65000` |
-| 123 | `Catapult` | `0x6fc652c0` |
-| 124 | `FrozenHorror` | `0x6fc65ce0` |
-| 125 | `BloodLord` | `0x6fc2d680` |
-| 126 | `CatapultSpotter` | `0x6fc2de70` |
-| 127 | `NpcBarb` | `0x6fc2cf00` |
-| 128 | `Nihlathak` | `0x6fc2c310` |
-| 129 | `GenericSpawner` | `0x6fc2dbd0` |
-| 130 | `DeathMauler` | `0x6fc2d7b0` |
-| 131 | `Wussie` | `0x6fc2d9c0` |
-| 132 | `AncientStatue` | `0x6fc2d530` |
-| 133 | `Ancient` | `0x6fc2c5d0` |
-| 134 | `BaalThrone` | `0x6fc2c900` |
-| 135 | `BaalCrab` | `0x6fc2cdc0` |
-| 136 | `BaalTaunt` | `0x6fc2c400` |
-| 137 | `PutridDefiler` | `0x6fc2dd50` |
-| 138 | `BaalToStairs` | `0x6fc2d370` |
-| 139 | `BaalTentacle` | `0x6fc2d290` |
-| 140 | `BaalCrabClone` | `0x6fc2cb30` |
-| 141 | `BaalMinion` | `0x6fc2ca20` |
-| 142 | `ClawViperEx` | `0x6fcb34a0` |
-| 143 | `ShadowMasterNoInit` | `0x6fcb4e60` |
-| 144 | `UberIzual` | `0x6fc63d40` |
-| 145 | `UberBaal` | `0x6fc65af0` |
-| 146 | `UberMephisto` | `0x6fc65850` |
-| 147 | `UberDiablo` | `0x6fc2c170` |
+| Index | MonAi row | dwAiFlag | pfnAiInit | pfnAiThink | pfnAiExtra |
+|------:|-----------|---:|---|---|---|
+| 0 | `None` | 0 | `null` | `0x6fcbc990` | `null` |
+| 1 | `Idle` | 0 | `null` | `0x6fcbcb00` | `null` |
+| 2 | `Skeleton` | 1 | `null` | `0x6fca3ac0` | `null` |
+| 3 | `Zombie` | 1 | `null` | `0x6fca38b0` | `null` |
+| 4 | `Bighead` | 1 | `null` | `0x6fca74a0` | `null` |
+| 5 | `BloodHawk` | 1 | `null` | `0x6fca3550` | `null` |
+| 6 | `Fallen` | 1 | `null` | `0x6fca3130` | `null` |
+| 7 | `Brute` | 1 | `null` | `0x6fca3ce0` | `null` |
+| 8 | `SandRaider` | 1 | `null` | `0x6fca4a90` | `null` |
+| 9 | `Wraith` | 1 | `null` | `0x6fc9d7c0` | `null` |
+| 10 | `CorruptRogue` | 1 | `null` | `0x6fca2ec0` | `null` |
+| 11 | `Baboon` | 1 | `null` | `0x6fca2990` | `null` |
+| 12 | `Goatman` | 1 | `null` | `0x6fca2570` | `null` |
+| 13 | `FallenShaman` | 1 | `null` | `0x6fca90a0` | `null` |
+| 14 | `QuillRat` | 1 | `null` | `0x6fca26b0` | `null` |
+| 15 | `SandMaggot` | 4 | `null` | `0x6fca7010` | `0x6fc9d670` |
+| 16 | `ClawViper` | 1 | `null` | `0x6fca8d80` | `null` |
+| 17 | `SandLeaper` | 1 | `null` | `0x6fca8810` | `null` |
+| 18 | `PantherWoman` | 1 | `null` | `0x6fca4800` | `null` |
+| 19 | `Swarm` | 1 | `null` | `0x6fca2430` | `null` |
+| 20 | `Scarab` | 1 | `null` | `0x6fca20d0` | `null` |
+| 21 | `Mummy` | 1 | `null` | `0x6fca1f50` | `null` |
+| 22 | `GreaterMummy` | 1 | `null` | `0x6fca8380` | `null` |
+| 23 | `Vulture` | 1 | `null` | `0x6fca9c30` | `null` |
+| 24 | `Mosquito` | 1 | `null` | `0x6fca1c80` | `null` |
+| 25 | `WillOWisp` | 1 | `null` | `0x6fca0f20` | `null` |
+| 26 | `Arach` | 1 | `null` | `0x6fca0b00` | `null` |
+| 27 | `ThornHulk` | 1 | `null` | `0x6fca08a0` | `null` |
+| 28 | `Vampire` | 1 | `null` | `0x6fca6900` | `null` |
+| 29 | `BatDemon` | 1 | `null` | `0x6fca0450` | `0x6fc9d550` |
+| 30 | `Fetish` | 1 | `null` | `0x6fca00c0` | `null` |
+| 31 | `NpcOutOfTown` | 0 | `null` | `0x6fc3bf60` | `null` |
+| 32 | `Npc` | 0 | `null` | `0x6fc3db40` | `null` |
+| 33 | `HellMeteor` | 1 | `null` | `0x6fc9d400` | `null` |
+| 34 | `Andariel` | 1 | `null` | `0x6fc9fe60` | `null` |
+| 35 | `CorruptArcher` | 1 | `null` | `0x6fca64a0` | `null` |
+| 36 | `CorruptLancer` | 1 | `null` | `0x6fc9fb30` | `null` |
+| 37 | `SkeletonBow` | 1 | `null` | `0x6fca6280` | `null` |
+| 38 | `MaggotLarva` | 1 | `null` | `0x6fc9f9a0` | `null` |
+| 39 | `PinHead` | 1 | `null` | `0x6fc9f760` | `null` |
+| 40 | `MaggotEgg` | 1 | `null` | `0x6fc9d310` | `null` |
+| 41 | `Towner` | 0 | `null` | `0x6fc3bc60` | `null` |
+| 42 | `Vendor` | 0 | `null` | `0x6fcc58d0` | `null` |
+| 43 | `FoulCrowNest` | 1 | `0x6fc9b4f0` | `0x6fc9d170` | `null` |
+| 44 | `Duriel` | 1 | `null` | `0x6fca9430` | `null` |
+| 45 | `Sarcophagus` | 1 | `0x6fc9b4f0` | `0x6fc9cfd0` | `null` |
+| 46 | `ElementalBeast` | 1 | `null` | `0x6fc9f5a0` | `null` |
+| 47 | `FlyingScimitar` | 1 | `null` | `0x6fc9f370` | `null` |
+| 48 | `ZakarumZealot` | 1 | `null` | `0x6fc9ed90` | `null` |
+| 49 | `ZakarumPriest` | 1 | `null` | `0x6fca7e60` | `null` |
+| 50 | `Mephisto` | 1 | `null` | `0x6fca5b60` | `null` |
+| 51 | `Diablo` | 1 | `null` | `0x6fcc9610` | `0x6fcc59b0` |
+| 52 | `FrogDemon` | 5 | `null` | `0x6fca9870` | `0x6fc9ce40` |
+| 53 | `Summoner` | 1 | `null` | `0x6fca5780` | `null` |
+| 54 | `NpcStationary` | 0 | `null` | `0x6fc39880` | `null` |
+| 55 | `Izual` | 1 | `null` | `0x6fc9ea10` | `null` |
+| 56 | `Tentacle` | 2 | `null` | `0x6fc9cb10` | `null` |
+| 57 | `TentacleHead` | 2 | `null` | `0x6fca5500` | `null` |
+| 58 | `Navi` | 0 | `null` | `0x6fcc80c0` | `null` |
+| 59 | `BloodRaven` | 1 | `0x6fc35520` | `0x6fc39e70` | `null` |
+| 60 | `GoodNpcRanged` | 0 | `null` | `0x6fc39740` | `null` |
+| 61 | `Hireable` | 0 | `null` | `0x6fc3dd40` | `0x6fc36060` |
+| 62 | `TownRogue` | 1 | `null` | `0x6fcc8350` | `null` |
+| 63 | `GargoyleTrap` | 1 | `null` | `0x6fc9c910` | `null` |
+| 64 | `SkeletonMage` | 1 | `null` | `0x6fca51e0` | `null` |
+| 65 | `FetishShaman` | 1 | `null` | `0x6fca7bb0` | `0x6fc9c8c0` |
+| 66 | `SandMaggotQueen` | 0 | `null` | `0x6fca7a60` | `null` |
+| 67 | `NecroPet` | 0 | `null` | `0x6fc3e900` | `null` |
+| 68 | `VileMother` | 1 | `null` | `0x6fca43f0` | `null` |
+| 69 | `VileDog` | 1 | `null` | `0x6fc9e4d0` | `null` |
+| 70 | `FingerMage` | 1 | `null` | `0x6fc9e070` | `null` |
+| 71 | `Regurgitator` | 1 | `null` | `0x6fca3fe0` | `null` |
+| 72 | `DoomKnight` | 1 | `null` | `0x6fc9df00` | `null` |
+| 73 | `AbyssKnight` | 1 | `null` | `0x6fc9db70` | `null` |
+| 74 | `OblivionKnight` | 1 | `null` | `0x6fca4db0` | `null` |
+| 75 | `QuillMother` | 1 | `null` | `0x6fc9d910` | `null` |
+| 76 | `EvilHole` | 1 | `null` | `0x6fca77b0` | `null` |
+| 77 | `Trap-Missile` | 2 | `null` | `0x6fc9c580` | `null` |
+| 78 | `Trap-RightArrow` | 1 | `null` | `0x6fc9c460` | `null` |
+| 79 | `Trap-LeftArrow` | 1 | `null` | `0x6fc9c340` | `null` |
+| 80 | `Trap-Poison` | 2 | `null` | `0x6fc9c1d0` | `null` |
+| 81 | `JarJar` | 0 | `null` | `0x6fc3b950` | `null` |
+| 82 | `InvisoSpawner` | 1 | `null` | `0x6fc3bca0` | `null` |
+| 83 | `MosquitoNest` | 0 | `null` | `0x6fc364a0` | `null` |
+| 84 | `BoneWall` | 0 | `0x6fc356c0` | `0x6fc36410` | `null` |
+| 85 | `HighPriest` | 1 | `null` | `0x6fc39080` | `null` |
+| 86 | `Hydra` | 2 | `null` | `0x6fcc57e0` | `null` |
+| 87 | `Trap-Melee` | 1 | `null` | `0x6fc9bf50` | `null` |
+| 88 | `7TIllusion` | 1 | `null` | `0x6fcc4b90` | `null` |
+| 89 | `Megademon` | 1 | `null` | `0x6fc38ce0` | `null` |
+| 90 | `Griswold` | 1 | `null` | `0x6fc372b0` | `null` |
+| 91 | `DarkWanderer` | 1 | `null` | `0x6fcc6e60` | `null` |
+| 92 | `Trap-Nova` | 1 | `null` | `0x6fc9c060` | `null` |
+| 93 | `ArcaneTower` | 1 | `null` | `0x6fc36270` | `null` |
+| 94 | `DesertTurret` | 1 | `null` | `0x6fc3c1e0` | `null` |
+| 95 | `PantherJavelin` | 1 | `null` | `0x6fc3b780` | `null` |
+| 96 | `FetishBlowgun` | 1 | `null` | `0x6fc3b2f0` | `null` |
+| 97 | `Spirit` | 1 | `null` | `0x6fc360b0` | `null` |
+| 98 | `Smith` | 1 | `null` | `0x6fc376b0` | `null` |
+| 99 | `TrappedSoul` | 1 | `null` | `0x6fcc5580` | `null` |
+| 100 | `Buffy` | 0 | `null` | `0x6fcc5d40` | `null` |
+| 101 | `AssassinSentry` | 0 | `0x6fcc39b0` | `0x6fcc7dc0` | `null` |
+| 102 | `BladeCreeper` | 0 | `0x6fcc3990` | `0x6fcc6b70` | `null` |
+| 103 | `InvisoPet` | 0 | `null` | `0x6fcc5350` | `null` |
+| 104 | `DeathSentry` | 0 | `0x6fcc39b0` | `0x6fcc7c20` | `null` |
+| 105 | `ShadowWarrior` | 2 | `0x6fcc4450` | `0x6fccc410` | `null` |
+| 106 | `ShadowMaster` | 2 | `0x6fcc4320` | `0x6fccb580` | `null` |
+| 107 | `Raven` | 2 | `0x6fcc3c30` | `0x6fcca1d0` | `null` |
+| 108 | `DruidWolf` | 0 | `null` | `0x6fccc8e0` | `null` |
+| 109 | `Totem` | 0 | `null` | `0x6fcca4d0` | `null` |
+| 110 | `Vines` | 2 | `0x6fcc3980` | `0x6fccb360` | `null` |
+| 111 | `CycleOfLife` | 2 | `0x6fcc3980` | `0x6fccb070` | `null` |
+| 112 | `DruidBear` | 0 | `null` | `0x6fcc9e80` | `null` |
+| 113 | `SiegeTower` | 1 | `null` | `0x6fc389e0` | `null` |
+| 114 | `ReanimatedHorde` | 1 | `null` | `0x6fc38a90` | `null` |
+| 115 | `SiegeBeast` | 1 | `null` | `0x6fc38730` | `null` |
+| 116 | `Minion` | 1 | `null` | `0x6fc38480` | `null` |
+| 117 | `SuicideMinion` | 1 | `null` | `0x6fc38360` | `null` |
+| 118 | `Succubus` | 1 | `null` | `0x6fc3af80` | `null` |
+| 119 | `SuccubusWitch` | 1 | `null` | `0x6fc3a9f0` | `null` |
+| 120 | `Overseer` | 1 | `null` | `0x6fc37cb0` | `null` |
+| 121 | `MinionSpawner` | 1 | `0x6fc9b4f0` | `0x6fc37bc0` | `null` |
+| 122 | `Imp` | 1 | `0x6fc35530` | `0x6fc3a550` | `null` |
+| 123 | `Catapult` | 1 | `null` | `0x6fc36190` | `null` |
+| 124 | `FrozenHorror` | 1 | `null` | `0x6fc379a0` | `null` |
+| 125 | `BloodLord` | 1 | `null` | `0x6fc377e0` | `null` |
+| 126 | `CatapultSpotter` | 1 | `null` | `0x6fcc4fd0` | `null` |
+| 127 | `NpcBarb` | 2 | `0x6fcc3930` | `0x6fcc66e0` | `null` |
+| 128 | `Nihlathak` | 2 | `0x6fcc3920` | `0x6fcc7580` | `0x6fc36060` |
+| 129 | `GenericSpawner` | 1 | `0x6fc35540` | `0x6fc35e00` | `null` |
+| 130 | `DeathMauler` | 1 | `null` | `0x6fcc6530` | `null` |
+| 131 | `Wussie` | 2 | `null` | `0x6fcc7a10` | `null` |
+| 132 | `AncientStatue` | 0 | `null` | `0x6fcc4f40` | `null` |
+| 133 | `Ancient` | 2 | `null` | `0x6fcc7530` | `null` |
+| 134 | `BaalThrone` | 2 | `0x6fcc3880` | `0x6fcc8430` | `null` |
+| 135 | `BaalCrab` | 0 | `null` | `0x6fcd8610` | `0x6fcd78a0` |
+| 136 | `BaalTaunt` | 1 | `null` | `0x6fcc9d40` | `null` |
+| 137 | `PutridDefiler` | 1 | `null` | `0x6fcc7290` | `null` |
+| 138 | `BaalToStairs` | 1 | `null` | `0x6fcc7410` | `null` |
+| 139 | `BaalTentacle` | 1 | `null` | `0x6fcc4d10` | `null` |
+| 140 | `BaalCrabClone` | 0 | `null` | `0x6fcd8460` | `0x6fcd78a0` |
+| 141 | `BaalMinion` | 1 | `null` | `0x6fcc5d70` | `null` |
+| 142 | `ClawViperEx` | 1 | `null` | `0x6fca8a70` | `null` |
+| 143 | `ShadowMasterNoInit` | 2 | `0x6fcc4260` | `0x6fccb580` | `null` |
+| 144 | `UberIzual` | 1 | `null` | `0x6fc9e640` | `null` |
+| 145 | `UberBaal` | 1 | `null` | `0x6fcd6c80` | `0x6fcd78a0` |
+| 146 | `UberMephisto` | 1 | `null` | `0x6fc9b4e0` | `null` |
+| 147 | `UberDiablo` | 1 | `null` | `0x6fcc39d0` | `0x6fcc59b0` |
 
 ## Reading
 

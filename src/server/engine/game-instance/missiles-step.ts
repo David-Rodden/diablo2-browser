@@ -24,7 +24,9 @@ import { StateBus } from '../state-bus.ts'
 import { compute5BandScaling } from '../../../common/data/calc-ast.ts'
 import { difficultyResistPenalty } from '../difficulty-resist-penalty.ts'
 import { STATE_SLOWMISSILES_113C, stepBladeSentinelPatrol113c } from '../../skills/p1-wave4-skills-113c.ts'
+import { MONSTATS_113C_ROWS } from '../../../common/units/monstats-113c-data.ts'
 import type { GameInstanceHost } from './host.ts'
+import { resolveMercMissileCollision113c } from './hireable-ai-113c.ts'
 import type { InternalMercenaryRecord, InternalMissileRecord, InternalMonsterRecord, InternalObjectRecord, InternalPlayerRecord, PlayerSkillCast, PlayerSkillMissileLaunchOptions113c, ServerItemEntry } from './types.ts'
 import { PLAYER_MISSILE_SPEED_SUBTILES, TOWN_AREAS, monsterProfile113c, normalizeMissileElement, playerWirePosition, stableUnitKey, UNIT_TYPE_113C, missileSpeedSubtilesPerFrame113c } from './constants-and-helpers.ts'
 
@@ -1774,6 +1776,45 @@ function stepMissiles(this: GameInstanceHost): void {
             targetSize,
             1,
           )
+    if (missile.mercOwnerUnitId !== undefined && this.drlgRoomPopulator !== null) {
+      const mx0 = Math.round(prevX)
+      const my0 = Math.round(prevY)
+      const mx1 = Math.round(missile.x)
+      const my1 = Math.round(missile.y)
+      const mercTargets = [...this.monsters.values()].sort((a, b) => b.unitId - a.unitId)
+      for (const m of mercTargets) {
+        if (m.dead || m.isNpc || !m.isKillable || m.align !== 0) continue
+        if (!this.isAreaSeamAdjacent(missile.areaId, m.areaId)) continue
+        if (this.isMonsterConverted(m)) continue
+        if (isUnitInJustHit('monster', m.unitId, m.states)) continue
+        const mSize = Math.max(1, Math.min(3, MONSTATS_113C_ROWS[m.hcIdx]?.sizeX ?? 2))
+        if (
+          !checkMissileSegmentFootprintOverlap113c(
+            mx0,
+            my0,
+            mx1,
+            my1,
+            Math.round(m.x),
+            Math.round(m.y),
+            missile.size,
+            mSize,
+            1,
+          )
+        ) {
+          continue
+        }
+        if (!canHit(m.unitId)) continue
+        armUnitJustHit('monster', m.unitId, m.areaId, m.states, m.stateTimers)
+        markHit(m.unitId)
+        resolveMercMissileCollision113c(this, missile, m)
+        hit = true
+        if (!missile.pierce) break
+      }
+      if ((hit && !missile.pierce) || missile.remainingFrames <= 0) {
+        this.missiles.delete(mId)
+      }
+      continue
+    }
     if (missile.ownerType === 'monster') {
       const monMissileRow = this.registry.getMissileById(missile.missileId)
       const ownerMon = missile.ownerIsObject ? undefined : this.monsters.get(missile.ownerId)

@@ -272,6 +272,20 @@ function consumeOrBlockMoveDuringPlayerAnim113c(this: GameInstanceHost, player: 
   if (!disp) return false
   const cur = disp.getCurrentAnimation()
   if (cur && !cur.completed) {
+    // `PLRMODE_SetMode` already accepted this command over the interruptible attack (`animRestartFrame113c`,
+    // see `isPlayerActionAnimLocked113c`): an out-of-range attack target turns it into the run toward the
+    // target, so the old mode and its pending action are dropped (oracle `a1c-bloodmoor-fallen` F1000:
+    // the attack command on Fallen #13 switches the swinging player to RN at once).
+    if (player.animRestartFrame113c === this.currentFrame) {
+      player.animRestartFrame113c = undefined
+      const pending = this.pendingPlayerAnimActions.get(player.unitId)
+      if (pending !== undefined) {
+        pending.onCleanup?.()
+        this.pendingPlayerAnimActions.delete(player.unitId)
+      }
+      disp.clearAnimation()
+      return false
+    }
     if (cur.skill.startMana > 0 && cur.actionTriggered) {
       const pending = this.pendingPlayerAnimActions.get(player.unitId)
       if (pending !== undefined) {
@@ -541,9 +555,15 @@ function schedulePlayerSkillWindup113c(this: GameInstanceHost,
   if (prevPending !== undefined) {
     prevPending.onCleanup?.()
   }
+  // 1.13c `SKILLS_DoSkillStart` (`0x6FCBFD00`): when the skill has a `srvstfunc` (`SkillsTxt+0x2C`, table
+  // `0x6FD27338`) that succeeds and `usemanaondo` is clear (`0x6FCBFE69..0x6FCBFE77`), `SKILLS_UseMana`
+  // (`0x6FCBF850`) runs in the start phase; otherwise the mana is paid by `SKILLS_DoSkillDo` on the action
+  // frame (oracle `p52-necromancer-curses`: Raise Skeleton, srvstfunc 15, pays 5351 on cast start F1510).
+  const manaCommittedOnStart = cast.skill.srvStFunc > 0 && !cast.skill.useManaOnDo
+  if (manaCommittedOnStart) this.commitPlayerSkillCast(player, cast)
   this.pendingPlayerAnimActions.set(player.unitId, {
     cast,
-    manaCommittedOnStart: false,
+    manaCommittedOnStart,
     onStrike: opts.onStrike,
     onCleanup: opts.onCleanup,
   })

@@ -19,6 +19,7 @@ import { STATE_CONVERSION_113C, STATE_CONVERSION_SAVE_113C, restoreConversionLev
 import type { GameInstanceHost } from './host.ts'
 import type { FriendlyAuraAlliesResult113c, InternalMercenaryRecord, InternalMonsterRecord, InternalPlayerRecord, MercAuraRuntime, MercAuraSourceEntry, PersistentCombatUnit } from './types.ts'
 import { MERC_AURA_TO_SKILL_ID, STAT_ITEM_ALLSKILLS, TOWN_AREAS, collectEquippedItemStats, collectItemStats, monsterHp256_113c } from './constants-and-helpers.ts'
+import { syncUnitStateTimerFromExpireFrame113c } from './player-death-and-shrines.ts'
 
 
 /**
@@ -35,6 +36,7 @@ import { MERC_AURA_TO_SKILL_ID, STAT_ITEM_ALLSKILLS, TOWN_AREAS, collectEquipped
  */
 /** Persistent combat context of a player, re-synced from the authoritative record. */
 function playerCombatContext(this: GameInstanceHost, player: InternalPlayerRecord): CombatUnitContext {
+  this.syncPlayerEquippedSetStates113c(player)
   let unit = this.playerCombat.get(player.unitId)
   if (unit === undefined) {
     const statList = new UnitStatList(this.registry, undefined, {
@@ -283,11 +285,16 @@ function mercCombatContext(this: GameInstanceHost, merc: InternalMercenaryRecord
     this.mercCombat.set(merc.unitId, unit)
   }
   const st = unit.statList
+  st.setBaseStat('strength', (merc.strength ?? 0) + this.sumMercItemStat(merc, 0))
+  st.setBaseStat('dexterity', (merc.dexterity ?? 0) + this.sumMercItemStat(merc, 2))
   st.setBaseStat('level', merc.level)
   st.setBaseStat('experience', merc.experience)
   st.setBaseStat('armorclass', merc.defense)
-  st.setBaseStat('maxhp', merc.maxHp * FIXED_ONE)
-  st.setHp256(merc.hp * FIXED_ONE)
+  st.setBaseStat('tohit', (merc.ar ?? 0) + this.sumMercItemStat(merc, 19))
+  st.setBaseStat('secondary_mindamage', merc.minDmg ?? merc.damage)
+  st.setBaseStat('secondary_maxdamage', merc.maxDmg ?? merc.damage)
+  st.setBaseStat('maxhp', merc.maxHp256 ?? merc.maxHp * FIXED_ONE)
+  st.setHp256(merc.hp256 ?? merc.hp * FIXED_ONE)
   st.setBaseStat('fireresist', merc.resist + this.sumMercItemStat(merc, 39))
   st.setBaseStat('lightresist', merc.resist + this.sumMercItemStat(merc, 41))
   st.setBaseStat('coldresist', merc.resist + this.sumMercItemStat(merc, 43))
@@ -673,6 +680,8 @@ function syncAuraEnemyStates113c(this: GameInstanceHost, m: InternalMonsterRecor
       const prevRem = m.stateTimers.get(auraStateId) ?? 0
       if (!m.states.has(auraStateId) || rem > prevRem) {
         this.applyUnitState(m.states, m.stateTimers, 'monster', m.unitId, m.areaId, auraStateId, rem)
+      } else if (entry.expireFrame > 0) {
+        syncUnitStateTimerFromExpireFrame113c(m.stateTimers, auraStateId, rem, this.currentFrame)
       } else {
         m.stateTimers.set(auraStateId, rem)
       }
@@ -716,7 +725,7 @@ function syncAuraAllyStates113c(this: GameInstanceHost,
           if (p !== undefined) this.refreshPlayerAccruedMaxPools(p)
         }
       } else {
-        timers.set(auraStateId, rem)
+        syncUnitStateTimerFromExpireFrame113c(timers, auraStateId, rem, this.currentFrame)
       }
     } else if (states.has(auraStateId)) {
       this.clearUnitState(states, timers, unitType, unitId, areaId, auraStateId)
@@ -739,7 +748,7 @@ function syncAuraAllyStates113c(this: GameInstanceHost,
         if (sbEntry !== undefined && sbEntry.expireFrame > this.currentFrame) {
           const rem = Math.max(1, sbEntry.expireFrame - this.currentFrame)
           if ((timers.get(sid) ?? 0) > rem) {
-            timers.set(sid, rem)
+            syncUnitStateTimerFromExpireFrame113c(timers, sid, rem, this.currentFrame)
           }
         } else {
           const curRem = timers.get(sid) ?? 0

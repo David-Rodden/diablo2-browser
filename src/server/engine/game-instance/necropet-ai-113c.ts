@@ -32,6 +32,15 @@ import {
   type CreatedMonsterItem113c,
 } from '../../items/monster-item-create-113c.ts'
 import { evaluateCalc } from '../../../common/data/calc-ast.ts'
+import { mulDiv113c } from '../../../common/data/mul-div-113c.ts'
+import type { WeaponBase } from '../../../common/items/weapons.ts'
+import {
+  computeRawDiminishingRate113c,
+  playerAnimStartFrame113c,
+  resolveWeaponBase113c,
+} from '../../../common/units/char-anim-speed.ts'
+import { capTargetSlowPct113c, computeToHitChance, emitSUnitDmgTraceEvent113c } from '../combat-pipeline.ts'
+import { armMonsterEvent3AfterDamage113c } from './monster-damage.ts'
 import { FIXED_ONE } from '../stat-list.ts'
 
 /**
@@ -49,7 +58,11 @@ export class NecroPetNotPortedError113c extends Error {
 /** Monster modes used here (`MonMode.txt`). */
 const MODE_NU = 1
 const MODE_WL = 2
+const MODE_A1 = 4
 const MODE_RN = 15
+
+/** `PlrType.txt` tokens by player class (`0x6FDA01E0` transform class -> COF token). */
+const PLAYER_TOKEN_BY_CLASS_113C: readonly string[] = ['AM', 'SO', 'NE', 'PA', 'BA', 'DZ', 'AI']
 
 /** `0x6FC94F90`: `bMoving == 101` maps to `PATHTYPE_TOWARD_FINISH` unless `pAiControl+0x18` overrides it. */
 const PATHTYPE_TOWARD_FINISH = 13
@@ -66,6 +79,16 @@ export interface NecroPetAiState113c {
   ovPathType: number
   ovVelocity: number
   ovNewDist: number
+  /** Pending `MONMODE_ATTACK1` swing started by `0x6FD12220` (no AI event while the mode runs). */
+  swing?: NecroPetSwing113c | undefined
+}
+
+/** One `A1` swing: the AnimData event frame fires the hit, the one-shot end returns the pet to `NU`. */
+export interface NecroPetSwing113c {
+  readonly targetUnitId: number
+  readonly actionFrame: number
+  readonly endFrame: number
+  resolved: boolean
 }
 
 export function createNecroPetAiState113c(firstThinkFrame: number): NecroPetAiState113c {
@@ -184,8 +207,24 @@ function initOracleValkyrie113c(
   pet.statList.setHp256(hp)
   const items = createMonsterEquipmentUnits113c(host, pet, seed, ilvl)
   for (const item of items) {
+    const weaponBase = resolveWeaponBase113c(item.code)
     for (const st of item.stats) {
       if (st.layer !== 0) throw new Error(`initOracleValkyrie113c: layered item stat ${st.name}/${st.layer} not applied`)
+      // ItemStatCost op 13 (`item_mindamage_percent` 18 / `item_maxdamage_percent` 17, `0x6FD89530`): the
+      // percent is folded into the item's own base damage (`op stat1..3` = min/secondary/throw damage) and
+      // never reaches the wearer's stat (oracle F851: STAT 17 / 18 = 0, STAT 23 / 24 = 4 / 32 for a 3..15
+      // spear with +59% ED and +9 max: 3 + 3*59/100, 15 + 9 + 15*59/100).
+      if (st.name === 'item_mindamage_percent' || st.name === 'item_maxdamage_percent') {
+        if (weaponBase === undefined) throw new Error(`initOracleValkyrie113c: ${st.name} on non-weapon ${item.code}`)
+        const isMin = st.name === 'item_mindamage_percent'
+        const oneH = isMin ? weaponBase.mindam : weaponBase.maxdam
+        const twoH = (isMin ? weaponBase.twoHandedMindam : weaponBase.twoHandedMaxdam) ?? 0
+        const thr = (isMin ? weaponBase.minMisDam : weaponBase.maxMisDam) ?? 0
+        if (oneH > 0) pet.statList.addStat(isMin ? 'mindamage' : 'maxdamage', Math.trunc((oneH * st.value) / 100))
+        if (twoH > 0) pet.statList.addStat(isMin ? 'secondary_mindamage' : 'secondary_maxdamage', Math.trunc((twoH * st.value) / 100))
+        if (thr > 0) pet.statList.addStat(isMin ? 'item_throw_mindamage' : 'item_throw_maxdamage', Math.trunc((thr * st.value) / 100))
+        continue
+      }
       pet.statList.addStat(st.stat, st.value)
     }
   }
@@ -226,6 +265,9 @@ function initOracleValkyrie113c(
   const ama = host.registry.getCharStats('ama')
   if (ama === undefined) throw new Error('initOracleValkyrie113c: CharStats has no Amazon row')
   ;(pet as { transformBaseVelocityFp8113c?: number }).transformBaseVelocityFp8113c = ama.walkVelocity << 8
+  // The same remap makes the Valkyrie a player-type class-0 unit for the animation lookup (`0x6FD82670`
+  // COF `AM` + mode + weapon class) and the start frame (`0x6FD82220`).
+  ;(pet as { transformPlayerClass113c?: number }).transformPlayerClass113c = 0
   // SKILLS_SrvDo016_Valkyrie 0x6FC6D892: #10210(pPet, pOwner) (0x6FD83020) stores the source unit and
   // switches on state 98 `sourceunit` (0x6FD8306C).
   const sourceUnit = host.registry.getStateByName('sourceunit')
@@ -279,6 +321,15 @@ export function initOracleSummonedPet113c(
   if (petLevel <= 1) petLevel = 1
   if (petLevel > ownerLevel) petLevel = ownerLevel
   pet.statList.setBaseStat('level', petLevel)
+
+  // MONSTER_InitStats damage of the A1 mode (STAT 21 / 22). The 1:1-ported summons are all MonStats
+  // `noRatio = 1`, so the raw `A1MinD` / `A1MaxD` are used without MonLvl scaling (oracle: Clay Golem
+  // 21 / 22 = 2 / 5, Valkyrie 9 / 24).
+  const statsRow = MONSTATS_113C_ROWS[hcIdx]
+  if (statsRow === undefined) throw new Error(`initOracleSummonedPet113c: no MonStats row ${hcIdx}`)
+  if (!statsRow.noRatio) throw new Error(`initOracleSummonedPet113c: MonLvl damage scaling for ${hcIdx} not ported`)
+  pet.statList.setBaseStat('mindamage', statsRow.a1.minD[host.difficulty]!)
+  pet.statList.setBaseStat('maxdamage', statsRow.a1.maxD[host.difficulty]!)
 
   if (skillId === 32) initOracleValkyrie113c(host, pet, seed, init.rolledHp)
 
@@ -336,6 +387,51 @@ export function stepNecroPet113c(
   if (seed === undefined) throw new Error(`stepNecroPet113c: pet ${petUnitId} has no unit seed`)
   const c: PetCtx = { host, owner, pet, petUnitId, areaId, ai, seed }
 
+  const existingPetPath = host.areaPathWorld.getUnitPathState113c(
+    areaId,
+    UNIT_TYPE_113C.monster,
+    petUnitId,
+  )
+  if (existingPetPath === null) {
+    host.areaPathWorld.removeMonster(petUnitId)
+    pet.mode = MODE_NU
+    // The re-spawned path unit starts in NU, so a pending A1 one-shot cannot continue.
+    ai.swing = undefined
+    host.areaPathWorld.spawnMonster(
+      areaId,
+      {
+        unitId: petUnitId,
+        hcIdx: petClassId(pet),
+        areaId,
+        x: Math.floor(pet.x + 0.5),
+        y: Math.floor(pet.y + 0.5),
+        mode: MODE_NU,
+        dead: false,
+      },
+      host.currentFrame,
+    )
+  }
+
+  // MONMODE_ATTACK1 started by 0x6FD12220: no AI event is pending while the one-shot runs
+  // (kb/monsters/d2game-necropet-ai-113c.md §2.1).
+  const swing = ai.swing
+  if (swing !== undefined) {
+    if (!swing.resolved && host.currentFrame >= swing.actionFrame) {
+      swing.resolved = true
+      resolvePetMeleeSwing113c(c, swing.targetUnitId)
+    }
+    if (host.currentFrame >= swing.endFrame) {
+      // One-shot end (`#10426` 0x6FD7EF6D) -> MONSTER_StartMode(NU); the AI driver re-arms the type-2
+      // event `MonStats.aidel[diff]` frames later (oracle: Clay Golem aidel 15 NU F831 -> think F846,
+      // Valkyrie aidel 6 NU F866 -> think F872).
+      ai.swing = undefined
+      pet.mode = MODE_NU
+      host.areaPathWorld.stopMonsterMove113c(areaId, petUnitId, MODE_NU)
+      ai.nextAiFrame = host.currentFrame + petAiDelay113c(c)
+    }
+    return
+  }
+
   let immediateAi = false
   if (pet.mode === MODE_WL || pet.mode === MODE_RN) {
     const res = host.areaPathWorld.stepMonsterMove113c({
@@ -346,13 +442,17 @@ export function stepNecroPet113c(
       baseVelocityFp8: petTransformBaseVelocity113c(c.pet),
       mode: pet.mode,
     })
-    if (res === null) throw new Error(`stepNecroPet113c: pet ${petUnitId} has no dynamic path`)
-    pet.x = res.x
-    pet.y = res.y
-    if (res.stepped !== 0) return
-    pet.mode = MODE_NU
-    host.areaPathWorld.stopMonsterMove113c(areaId, petUnitId, MODE_NU)
-    immediateAi = true
+    if (res === null) {
+      pet.mode = MODE_NU
+      immediateAi = true
+    } else {
+      pet.x = res.x
+      pet.y = res.y
+      if (res.stepped !== 0) return
+      pet.mode = MODE_NU
+      host.areaPathWorld.stopMonsterMove113c(areaId, petUnitId, MODE_NU)
+      immediateAi = true
+    }
   }
   if (!immediateAi && host.currentFrame < ai.nextAiFrame) return
   necroPetThink113c(c)
@@ -444,7 +544,8 @@ function necroPetMeleeThink113c(c: PetCtx): void {
   if (petFind.meleeFlag) {
     // 0x6FC3E87C: rollLimited(100) < 80 -> attack (0x6FD12220, mode A1) else stall 10 (0x6FD122C0).
     if (rollLimitedSeed113c(c.seed, 100) < 80) {
-      throw new NecroPetNotPortedError113c('melee attack 0x6FD12220 (mode A1)')
+      aiAttack113c(c, target)
+      return
     }
     aiStall113c(c, 10)
     return
@@ -698,6 +799,268 @@ function aiStall113c(c: PetCtx, frames: number): void {
     c.ai.ovNewDist = 0
   }
   c.ai.nextAiFrame = c.host.currentFrame + (frames === 0 ? 1 : frames)
+}
+
+/** `MonStats.aidel[diff]`: frames between the end of a mode and the next type-2 AI event. */
+function petAiDelay113c(c: PetCtx): number {
+  const row = MONSTATS_113C_ROWS[petClassId(c.pet)]
+  const aidel = row?.aidel[c.host.difficulty]
+  if (aidel === undefined) throw new Error(`NecroPet: MonStats aidel missing for ${petClassId(c.pet)}`)
+  return Math.max(1, aidel)
+}
+
+/** `0x6FD81B90(pPet, 1)`: the pet's equipped weapon (MonEquip item with a `Weapons.txt` base), if any. */
+function petEquippedWeapon113c(pet: SummonedPetUnit): WeaponBase | undefined {
+  const items = (pet as { monEquipItems113c?: readonly CreatedMonsterItem113c[] }).monEquipItems113c ?? []
+  for (const item of items) {
+    const base = resolveWeaponBase113c(item.code)
+    if (base !== undefined) return base
+  }
+  return undefined
+}
+
+/**
+ * Animation timing of the pet's `A1` (`UNITS_UpdateAnimRateAndVelocity` `0x6FD833DE..0x6FD8354F` +
+ * mode-start init `0x6FD835F0`):
+ * - `0x6FDA01E0` transform remap: a `States.txt` `gfxtype = 2` state (Valkyrie state 93 -> player class 0)
+ *   turns the monster into a player-type unit, monster mode 4 -> player mode 7 (`0x6FDE30D8[4]`), and the
+ *   COF is `token + A1 + wclass(weapon)` (`0x6FD93860`, `hth` without weapon); otherwise `code + A1 + hth`.
+ * - rate = `STAT_ATTACKRATE (68)` + diminished `item_fasterattackrate` (`0x6FD823E0`, base 120), clamped
+ *   `[15, 175]`; the dual-wield averaging `0x6FD80530` and the shapeshift weapon delay `0x6FDA0CE0` do not
+ *   apply to pets. `MONSTER_InitStats` seeds STAT 68 = 100 (`0x6FCCFFC5`; the pet stat list here holds only
+ *   the item / skill contributions, same convention as `petVelocityPct113c`).
+ * - speed = `AnimData.speed * rate / 100` (unsigned `/100`); the mode starts at `start << 8`
+ *   (`0x6FD82220`, non-zero only for player-type Amazon / Sorceress weapon classes).
+ * - action on `ceil((event - start) * 256 / speed)`, `NU` on `ceil((frames - start) * 256 / speed)`.
+ * Oracle: Clay Golem `G1A1HTH` (16 frames, event 9, speed 232) F813 -> hit F823 -> NU F831; Valkyrie
+ * `AMA12HT` (18 / 11, rate 110, start 2) F851 -> hit F860 -> NU F866.
+ */
+function petAttackTiming113c(c: PetCtx): { readonly actionTicks: number; readonly endTicks: number } {
+  const { host, pet } = c
+  const transformClass = (pet as { transformPlayerClass113c?: number }).transformPlayerClass113c
+  let cofName: string
+  let startFrame = 0
+  if (transformClass !== undefined) {
+    const token = PLAYER_TOKEN_BY_CLASS_113C[transformClass]
+    if (token === undefined) throw new Error(`NecroPet: no player token for class ${transformClass}`)
+    const wclass = (petEquippedWeapon113c(pet)?.wclass ?? 'hth').trim().toUpperCase()
+    cofName = `${token}A1${wclass}`
+    startFrame = playerAnimStartFrame113c(transformClass, 7, wclass)
+  } else {
+    const code = MONSTATS_113C_ROWS[petClassId(pet)]?.code?.trim().toUpperCase()
+    if (code === undefined || code === '') throw new Error(`NecroPet: MonStats code missing for ${petClassId(pet)}`)
+    cofName = `${code}A1HTH`
+  }
+  const record = host.registry.getAnimDataRecord(cofName)
+  if (record === undefined || record.framesPerDirection <= 0) {
+    throw new Error(`NecroPet: AnimData record ${cofName} missing`)
+  }
+  const event = record.events.find((e) => e.code !== 0)
+  if (event === undefined) throw new Error(`NecroPet: AnimData record ${cofName} has no action event`)
+  let rate =
+    100 +
+    Math.trunc(pet.statList.getAccruedStat('attackrate')) +
+    computeRawDiminishingRate113c(Math.trunc(pet.statList.getAccruedStat('item_fasterattackrate')), 120)
+  if (rate < 15) rate = 15
+  else if (rate > 175) rate = 175
+  const speed = Math.trunc(((record.animationSpeed * rate) >>> 0) / 100)
+  if (speed <= 0) throw new Error(`NecroPet: zero anim speed for ${cofName}`)
+  return {
+    actionTicks: Math.max(1, Math.ceil(((event.frame - startFrame) * 256) / speed)),
+    endTicks: Math.max(1, Math.ceil(((record.framesPerDirection - startFrame) * 256) / speed)),
+  }
+}
+
+/**
+ * `0x6FD12220(eax = pPet, pGame, nMode, pTarget)`: fills the mode-change struct (`0x6FC95070`) with
+ * `nMode` and the target and calls `MONSTER_StartMode(pGame, &struct, 1)` (`0x6FC95E10`): the moving path
+ * stops, the `pAiControl` overrides are consumed, and the pet stays in `A1` until the one-shot ends.
+ */
+function aiAttack113c(c: PetCtx, target: InternalMonsterRecord): void {
+  c.ai.ovPathType = 0
+  c.ai.ovVelocity = 0
+  c.ai.ovNewDist = 0
+  c.pet.mode = MODE_A1
+  c.host.areaPathWorld.stopMonsterMove113c(c.areaId, c.petUnitId, MODE_A1)
+  const timing = petAttackTiming113c(c)
+  c.ai.swing = {
+    targetUnitId: target.unitId,
+    actionFrame: c.host.currentFrame + timing.actionTicks,
+    endFrame: c.host.currentFrame + timing.endTicks,
+    resolved: false,
+  }
+}
+
+/**
+ * `0x6FCFCD80` elemental pair roll (no mastery for pets): `min = STAT(minId) << 8`, `max = STAT(maxId) << 8`,
+ * one exclusive `RAND(&pPet->pSeed, max - min)` only when `max > min`.
+ */
+function rollPetElemPair113c(c: PetCtx, minStat: string, maxStat: string): number {
+  const min = Math.trunc(c.pet.statList.getAccruedStat(minStat)) << 8
+  const max = Math.trunc(c.pet.statList.getAccruedStat(maxStat)) << 8
+  if (max <= 0 && min <= 0) return 0
+  return max > min ? min + rollLimitedSeed113c(c.seed, max - min) : min
+}
+
+/**
+ * Pet melee action frame on a monster (`0x6FC64AC0` -> `0x6FCFE5A0` -> `0x6FCFDDE0` -> `SUNITDMG`):
+ * 1. to-hit on `pPet->pSeed` (`0x6FCFE011`), defender shield block on its seed (`0x6FCFB7F8`, `toblock > 0`);
+ * 2. `SUNITDMG_FillPacket` (`0x6FCFC530`): weapon -> `secondary_min/maxdamage` (two-handed, `0x6FC2A7C0 == 2`)
+ *    or `min/maxdamage`, else `min/maxdamage` with the `1` / `2` floors; `<< 8` + `STAT 111`; `%` pool =
+ *    `damagepercent` + weapon `StrBonus * str / 100` + `DexBonus * dex / 100` + weapon-mastery ED (0 for pets),
+ *    clamped `>= -90`, plus `item_min/maxdamage_percent` (0 on pets: op 13 is folded into the damage stats);
+ *    `0x6FCFBED0`: `min' = min + min * pct / 100`, roll `RAND(max' - min')` (exclusive);
+ * 3. `0x6FCFD51A..0x6FCFD5B4` (any attacker, `nSrcDam` arg 0): weapon-mastery crit (weapon only, 0 for pets),
+ *    `passive_critical_strike` (337), `item_deadlystrike` (141): one `rand(100)` each while > 0 and no proc
+ *    yet; a proc doubles the physical damage and sets result flag `0x2000`;
+ * 4. elemental pairs fire 48/49, lightning 50/51, cold 54/55, magic 52/53 (`0x6FCFD664..0x6FCFD6CE`);
+ * 5. `RAND(1)` (`0x6FCFD908`, unconditional) and `MonStats.crit` (`0x6FC9713B`, doubles every channel).
+ * Oracle: Valkyrie F860 draws 6 (to-hit 78, phys 1300 + 886 = 2186, CS 67 >= 56, lightning 256 + 936 = 1192,
+ * `RAND(1)`, crit 90 >= 5); Clay Golem F823 draws 4 (to-hit 78, phys 1228 + 188 = 1416, `RAND(1)`, crit 56).
+ */
+function resolvePetMeleeSwing113c(c: PetCtx, targetUnitId: number): void {
+  const { host, pet, owner } = c
+  const target = host.monsters.get(targetUnitId)
+  if (target === undefined || target.dead) return
+  const row = MONSTATS_113C_ROWS[petClassId(pet)]
+  if (row === undefined) throw new Error(`NecroPet: no MonStats row for ${petClassId(pet)}`)
+  const sl = pet.statList
+  for (const unsupported of ['poisonmindam', 'lifedrainmindam', 'manadrainmindam', 'item_crushingblow', 'item_openwounds'] as const) {
+    if (Math.trunc(sl.getAccruedStat(unsupported)) !== 0) {
+      throw new NecroPetNotPortedError113c(`pet melee stat ${unsupported} (0x6FCFD6D7..0x6FCFD8F0)`)
+    }
+  }
+  const defCtx = host.monsterCombatContext(target)
+  const targetSeed = host.unitSeeds.get(`${UNIT_TYPE_113C.monster}:${target.unitId}`)
+
+  // 1. to-hit (attacker seed) and the defender's shield block (defender seed).
+  const cth = computeToHitChance({
+    attackerAr: Math.trunc(sl.getAccruedStat('tohit')),
+    defenderDef: Math.max(0, Math.trunc(defCtx.statList.getAccruedStat('armorclass'))),
+    attackerLvl: Math.max(1, Math.trunc(sl.getAccruedStat('level'))),
+    defenderLvl: Math.max(1, target.level),
+    attackKind: 'melee',
+  })
+  if (rollLimitedSeed113c(c.seed, 100) >= cth) return
+  const toBlock = Math.trunc(defCtx.statList.getAccruedStat('toblock'))
+  if (toBlock > 0) {
+    if (targetSeed === undefined) throw new Error(`NecroPet: target ${target.unitId} has no unit seed`)
+    if (rollLimitedSeed113c(targetSeed, 100) < Math.min(75, toBlock)) return
+  }
+
+  // 2. SUNITDMG_FillPacket physical roll.
+  const weapon = petEquippedWeapon113c(pet)
+  let min: number
+  let max: number
+  if (weapon !== undefined) {
+    min = Math.trunc(sl.getAccruedStat(weapon.twoHanded ? 'secondary_mindamage' : 'mindamage')) << 8
+    max = Math.trunc(sl.getAccruedStat(weapon.twoHanded ? 'secondary_maxdamage' : 'maxdamage')) << 8
+  } else {
+    const rawMin = Math.trunc(sl.getAccruedStat('mindamage'))
+    const rawMax = Math.trunc(sl.getAccruedStat('maxdamage'))
+    min = (rawMin <= 0 ? 1 : rawMin) << 8
+    max = (rawMax <= 1 ? 2 : rawMax) << 8
+  }
+  const normal = Math.trunc(sl.getAccruedStat('item_normaldamage')) << 8
+  min += normal
+  max += normal
+  if (min < 1) min = 0x100
+  if (max <= min) max = min + 0x100
+  let pct = Math.trunc(sl.getAccruedStat('damagepercent'))
+  if (weapon !== undefined) {
+    pct += Math.trunc((weapon.strBonus * Math.trunc(sl.getAccruedStat('strength'))) / 100)
+    pct += Math.trunc((weapon.dexBonus * Math.trunc(sl.getAccruedStat('dexterity'))) / 100)
+  }
+  if (pct < -90) pct = -90
+  const minScaled = min + mulDiv113c(min, pct + Math.trunc(sl.getAccruedStat('item_mindamage_percent')), 100)
+  const maxScaled = max + mulDiv113c(max, pct + Math.trunc(sl.getAccruedStat('item_maxdamage_percent')), 100)
+  let phys = maxScaled > minScaled ? minScaled + rollLimitedSeed113c(c.seed, maxScaled - minScaled) : minScaled
+
+  // 3. Critical Strike / Deadly Strike.
+  let doubled = false
+  for (const stat of ['passive_critical_strike', 'item_deadlystrike'] as const) {
+    if (doubled) break
+    const chance = Math.trunc(sl.getAccruedStat(stat))
+    if (chance > 0 && rollLimitedSeed113c(c.seed, 100) < chance) doubled = true
+  }
+  if (doubled) phys *= 2
+
+  // 4. Elemental pairs in FillDamageValues order.
+  let fire = rollPetElemPair113c(c, 'firemindam', 'firemaxdam')
+  let ltng = rollPetElemPair113c(c, 'lightmindam', 'lightmaxdam')
+  let cold = rollPetElemPair113c(c, 'coldmindam', 'coldmaxdam')
+  let mag = rollPetElemPair113c(c, 'magicmindam', 'magicmaxdam')
+
+  // 5. RAND(1) + MonStats crit.
+  rollLimitedSeed113c(c.seed, 1)
+  if (row.crit > 0 && rollLimitedSeed113c(c.seed, 100) < row.crit) {
+    phys *= 2
+    fire *= 2
+    ltng *= 2
+    cold *= 2
+    mag *= 2
+  }
+
+  // SUNITDMG_ApplyResistances (0x6FCFB3C0) for a monster defender (no pierce on pets).
+  const applyRes = (dmg256: number, statName: string): number => {
+    if (dmg256 <= 0) return 0
+    const res = Math.min(100, Math.max(-100, Math.trunc(defCtx.statList.getAccruedStat(statName))))
+    if (res >= 100) return 0
+    return Math.max(0, dmg256 - Math.trunc((dmg256 * res) / 100))
+  }
+  const finalPhys = applyRes(phys, 'damageresist')
+  const finalFire = applyRes(fire, 'fireresist')
+  const finalLtng = applyRes(ltng, 'lightresist')
+  const finalCold = applyRes(cold, 'coldresist')
+  const finalMag = applyRes(mag, 'magicresist')
+  if (cold > 0) throw new NecroPetNotPortedError113c('pet melee cold length (0x6FCFD1F0)')
+  const total = finalPhys + finalFire + finalLtng + finalCold + finalMag
+  const hpBefore256 = target.hp256 ?? target.hp * FIXED_ONE
+  let hpAfter256 = hpBefore256 - total
+  if (hpAfter256 < FIXED_ONE) hpAfter256 = 0
+
+  emitSUnitDmgTraceEvent113c({
+    att: [UNIT_TYPE_113C.monster, c.petUnitId],
+    def: [UNIT_TYPE_113C.monster, target.unitId],
+    hp: [hpBefore256 >>> 0, hpBefore256 >>> 0],
+    ret: total >>> 0,
+    raw: [
+      0x20,
+      (0x01 | (total > 0 ? 0x04 : 0) | (doubled ? 0x2000 : 0)) >>> 0,
+      finalPhys >>> 0,
+      0,
+      finalFire >>> 0,
+      finalPhys > 0 ? 2 : 0,
+      0,
+      finalLtng >>> 0,
+      finalMag >>> 0,
+      finalCold >>> 0,
+      0, 0, 0, 0, 0, 0, 0, 0,
+    ],
+  })
+  if (total <= 0) return
+
+  if (target.aiAwake === false) target.nextAiFrame = Math.max(target.nextAiFrame, host.currentFrame + 1)
+  target.aiAwake = true
+  target.lastDamagedFrame113c = host.currentFrame
+  target.hp256 = hpAfter256
+  target.hp = Math.ceil(hpAfter256 / FIXED_ONE)
+  target.hp256Whole = target.hp
+  if (hpAfter256 <= 0) {
+    host.applyMonsterDeath(target, owner, finalLtng > finalPhys ? 'ltng' : 'phys', 'pet')
+    return
+  }
+  armMonsterEvent3AfterDamage113c(host, target)
+  // Clay Golem `EventFunc27_SlowTarget` (`0x6FC6EF70` -> `ITEMEVENTS_ApplySlow` `0x6FCCD2C0`, no draw): a landed
+  // hit puts state 24 `slowed` on the target for 750 frames, `item_slow` capped 90 / 75 / 50
+  // (oracle `p52-necromancer-poison-golem`: zombie #9 F823 and #11 F1028 gain state 24 on the golem's hit).
+  if (petClassId(pet) === 289) {
+    const rawSlow = pet.slowPct
+    if (rawSlow === undefined || rawSlow <= 0) throw new Error('NecroPet: Clay Golem has no item_slow')
+    target.slowedPct113c = capTargetSlowPct113c(rawSlow, defCtx)
+    host.applyMonsterState(target.unitId, 24, 750)
+  }
+  host.maybeEnterMonsterHitRecovery(target, Math.max(1, Math.floor(total / FIXED_ONE)), { dmg256: total })
 }
 
 /** `0x6FCD0A20(pPet, pUnit)`: size-subtracted octile distance from the pet to a player/monster. */

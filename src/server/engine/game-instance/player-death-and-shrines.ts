@@ -271,8 +271,13 @@ function killPlayer(this: GameInstanceHost,
   player.hp = 0
   player.hpFixed = 0
   player.mode = 17
-  // 1.13c `D2Game.dll` `0x6FD0D880` / `0x6FC583A0`: all player summons (including Iron Golem)
-  // perish on owner death and `ironGolemItem` (`kf`) is cleared (#1787).
+  // 1.13c `D2Game.dll` `0x6FD0D880` / `0x6FC583A0` / `0x6FCB7730`: all player summons (including
+  // Iron Golem) and any alive hireling (`petType = 7` via `0x6FCB7420`) perish on owner death.
+  for (const merc of this.mercenaries.values()) {
+    if (merc.ownerPlayerId === player.unitId && merc.alive && merc.hp > 0) {
+      this.applyDamageToMerc(merc, merc.hp, merc.areaId, { skipGetHit: true })
+    }
+  }
   player.ironGolemItem = null
   const playerSummonMgr = this.summonManagers.get(player.unitId)
   if (playerSummonMgr) {
@@ -924,6 +929,26 @@ function clearUnitState(this: GameInstanceHost,
 
 /** Frame on which each timed state was (re)applied, per unit timer map (see `stepUnitStates`). */
 const stateTimerAppliedFrame113c = new WeakMap<Map<number, number>, Map<number, number>>()
+
+/**
+ * Sync a unit timer directly from an authoritative `StateBus` `expireFrame - currentFrame` value
+ * so a later `stepUnitStates` pass on the same frame (`stepMonsters` / `stepMercenaries`) does not
+ * double-decrement `rem` and expire the state 1 frame before `expireFrame`.
+ */
+export function syncUnitStateTimerFromExpireFrame113c(
+  timers: Map<number, number>,
+  stateId: number,
+  rem: number,
+  currentFrame: number,
+): void {
+  timers.set(stateId, rem)
+  let appliedFrames = stateTimerAppliedFrame113c.get(timers)
+  if (appliedFrames === undefined) {
+    appliedFrames = new Map()
+    stateTimerAppliedFrame113c.set(timers, appliedFrames)
+  }
+  appliedFrames.set(stateId, currentFrame)
+}
 
 function applyUnitState(this: GameInstanceHost, 
   states: Set<number>,
@@ -2084,11 +2109,39 @@ function relocatePlayerFollowersToPlayer(this: GameInstanceHost,
   player: InternalPlayerRecord,
   emitReassign: boolean,
 ): void {
+  const px = Math.floor(player.x + 0.5)
+  const py = Math.floor(player.y + 0.5)
   for (const merc of this.mercenaries.values()) {
     if (merc.ownerPlayerId !== player.unitId || !merc.alive) continue
+    // 1.13c D2Game.dll 0x6fcb71f0..0x6fcb7317: unlink follower from old room, spawn in new room at MONMODE_NEUTRAL (1).
+    this.areaPathWorld.removeMonster(merc.unitId)
     merc.areaId = player.areaId
     merc.x = player.x
     merc.y = player.y
+    merc.mode = 1
+    merc.state = 'idle'
+    if (merc.oracleMercAi113c !== undefined) {
+      merc.oracleMercAi113c.activeVelBonus = 0
+      merc.oracleMercAi113c.ovPathType = 0
+      merc.oracleMercAi113c.ovVelocity = 0
+      merc.oracleMercAi113c.ovNewDist = 0
+      merc.oracleMercAi113c.actionFrame = 0
+      merc.oracleMercAi113c.animEndFrame = 0
+      merc.oracleMercAi113c.pendingAction = undefined
+    }
+    this.areaPathWorld.spawnMonster(
+      player.areaId,
+      {
+        unitId: merc.unitId,
+        hcIdx: merc.classId,
+        areaId: player.areaId,
+        x: px,
+        y: py,
+        mode: 1,
+        dead: false,
+      },
+      this.currentFrame,
+    )
     if (emitReassign) {
       this.broadcastToArea(player.areaId, {
         type: 'UnitReassign',
@@ -2108,12 +2161,32 @@ function relocatePlayerFollowersToPlayer(this: GameInstanceHost,
     for (const pet of mgr.getActivePets()) {
       if (pet.alive === false || pet.hp <= 0) continue
       if (resolvePetAiProfile113c(pet).isStationary) continue
+      const petUnitId = this.resolvePetUnitId(pet)
+      this.areaPathWorld.removeMonster(petUnitId)
       pet.x = player.x
       pet.y = player.y
+      pet.mode = 1
+      if (pet.oracleAi113c !== undefined) {
+        pet.oracleAi113c.ovPathType = 0
+        pet.oracleAi113c.ovVelocity = 0
+        pet.oracleAi113c.ovNewDist = 0
+      }
       const petMeta = pet as unknown as { areaId?: number }
       petMeta.areaId = player.areaId
+      this.areaPathWorld.spawnMonster(
+        player.areaId,
+        {
+          unitId: petUnitId,
+          hcIdx: pet.classId ?? 363,
+          areaId: player.areaId,
+          x: px,
+          y: py,
+          mode: 1,
+          dead: false,
+        },
+        this.currentFrame,
+      )
       if (emitReassign) {
-        const petUnitId = this.resolvePetUnitId(pet)
         this.broadcastToArea(player.areaId, {
           type: 'UnitReassign',
           unitType: 1,

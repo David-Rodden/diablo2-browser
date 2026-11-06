@@ -4,6 +4,7 @@
 
 import { type Clock, defaultClock } from '../core/clock.ts'
 import { Emitter } from '../core/emitter.ts'
+import { ProtocolError } from '../core/errors.ts'
 import type { TextEncoding } from '../core/text-codec.ts'
 import type { ClientCommand } from '../domain/client-command.ts'
 import type { GameServerAdapter, GameServerStats } from '../domain/game-server-adapter.ts'
@@ -36,12 +37,18 @@ function isByteStream(arg: D2gsAdapterOptions | ByteStream): arg is ByteStream {
   return typeof (arg as ByteStream).onData === 'function' && typeof (arg as ByteStream).write === 'function'
 }
 
-/** Reports a failed S2C packet loudly: stage, opcode, raw hex and the error stack. */
-function reportPacketError(stage: string, pkt: Uint8Array, err: unknown): void {
+/** Reports a failed S2C packet loudly: stage, opcode, raw hex, recent S2C context and the error stack. */
+function reportPacketError(
+  stage: string,
+  pkt: Uint8Array,
+  err: unknown,
+  recentS2c?: string | undefined,
+): void {
   const opcode = pkt.byteLength > 0 ? `0x${pkt[0]!.toString(16).padStart(2, '0')}` : '(empty)'
   const hex = Array.from(pkt, (b) => b.toString(16).padStart(2, '0')).join(' ')
   const detail = err instanceof Error ? (err.stack ?? `${err.name}: ${err.message}`) : String(err)
-  console.error(`[d2gs] S2C ${opcode} ${stage} failed; packet=[${hex}]\n${detail}`)
+  const historySuffix = recentS2c ? `; recentS2C=[${recentS2c}]` : ''
+  console.error(`[d2gs] S2C ${opcode} ${stage} failed; packet=[${hex}]${historySuffix}\n${detail}`)
 }
 
 export class D2gsAdapter implements GameServerAdapter {
@@ -116,7 +123,25 @@ export class D2gsAdapter implements GameServerAdapter {
       })
     } catch (err) {
       this.protocolErrorsCount++
-      reportPacketError('decode', pkt, err)
+      const recent =
+        typeof this.session.formatRecentS2cPackets === 'function'
+          ? this.session.formatRecentS2cPackets(16)
+          : undefined
+      reportPacketError('decode', pkt, err, recent)
+      // An out-of-bounds 0x01 GameFlags or 0x03 LoadAct indicates S2C stream misalignment or corrupt
+      // bootstrap/act data (D2Client 0x6faf405f crashes on invalid act): fail the D2GS stream closed
+      // instead of continuing to apply misaligned bytes onto ClientWorld (#2022).
+      const op = pkt.byteLength > 0 ? pkt[0]! : -1
+      if ((op === 0x01 || op === 0x03) && typeof this.session.failProtocol === 'function') {
+        const msg = err instanceof Error ? err.message : String(err)
+        this.session.failProtocol(
+          new ProtocolError(msg, {
+            proto: 'd2gs',
+            packetId: op,
+            ...(err instanceof Error ? { cause: err } : {}),
+          }),
+        )
+      }
       return
     }
     if (ev.type === 'Opaque') {

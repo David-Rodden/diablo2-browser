@@ -78,3 +78,15 @@ point as the non-sequence predictive rule: `p52-sorceress-elemental` Chain Light
 is mode 18 on F=910..927 and NU on F=928 (a 14-frame SC Fire Ball is 13 frames, F=720..732). TS: the sequence
 branch of `AnimDispatcher.tick` completes when `acc + speed >= count * 256`. **Address pending**: where the SQ
 per-frame handler `0x6FC95CE0` (skill-present path `0x6FC95CF4..0x6FC95D4E` has no `#10426` call) ends the mode.
+
+## 6. Monster GetHit vs. a pending AI event (DRLG path, oracle-observed)
+
+- An **idle** monster that already has a type-2 AI event pending keeps it through a GetHit. When the event
+  fires, its think replaces the GH mode. Oracle `p52-necromancer-poison-golem` zombie #9: A2 ends F818,
+  event at F833 (= 818 + aidel 15), GH from F823, A2 starts on F833, although the 17-frame GH would run to F840.
+- A **walking** monster has no event pending. It re-arms `aidel` after the full GH. Oracle
+  `a1-bloodmoor-melee` zombie #10: GH F1086..F1102, no think through F1105.
+
+TS: `maybeEnterMonsterHitRecovery` (`wasIdleWithPendingAi`, `monster-damage.ts`) and
+`drlgAiEventInterruptsGh` (`monster-combat-ai.ts`). **Address pending**: the event-queue code that makes the
+pending event survive `MONSTER_StartMode(GH)`.
