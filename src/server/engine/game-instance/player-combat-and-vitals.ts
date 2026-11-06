@@ -1053,7 +1053,8 @@ function drainPlayerRunStamina113c(this: GameInstanceHost, player: InternalPlaye
       (item.durability > 0 || item.maxDurability === 0)
     ) {
       const torsoSpeed = resolveArmorSpeed113c(item.code)
-      drain = Math.imul(drain, Math.trunc(torsoSpeed / 5) + 1)
+      // 1.13c `0x6FC97C27..0x6FC97C36`: `mov eax, 0x66666667; imul ecx; sar edx, 2` -> `trunc(dwSpeed / 10) + 1`.
+      drain = Math.imul(drain, Math.trunc(torsoSpeed / 10) + 1)
       break
     }
   }

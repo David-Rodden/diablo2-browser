@@ -1547,6 +1547,26 @@ export class OnlineSession {
     this.sessionLostValue = error
     this.lostFlow = this.flow
 
+    if (input.session === 'd2gs' && input.cause === 'error') {
+      const recentS2c = this.packetTap.recentGameS2cPackets(64)
+      const recentSummary = this.packetTap.formatRecentGameS2cSummary(64)
+      console.error(
+        `[OnlineSession] Unexpected D2GS error disconnect: ${input.technical}; areaId=${this.world.areaId}, act=${this.world.act}; recentS2C(${recentS2c.length})=[${recentSummary}]`,
+      )
+      this.commandMapper.assists.journal?.('d2gs-error-disconnect', {
+        technical: input.technical,
+        areaId: this.world.areaId,
+        act: this.world.act,
+        recentS2cCount: recentS2c.length,
+        recentS2c: recentS2c.map((p) => ({
+          seq: p.seq,
+          op: `0x${p.packetId.toString(16).padStart(2, '0')}`,
+          len: p.len,
+          hex: p.hex,
+        })),
+      })
+    }
+
     this.detachGameServerListeners()
     const adapter = this.gameAdapter
     this.gameAdapter = null

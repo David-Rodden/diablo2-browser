@@ -135,6 +135,8 @@ static int sc(uintptr_t fn, int n, const uint32_t *args, uint32_t *out) {
 #define VA_SETSTAT 0x6FD8A740  /* #10887 STATLIST_SetUnitStat (unit, stat, value, layer) */
 #define VA_GETSTAT 0x6FD88B70  /* #10973 STATLIST_GetUnitStat accrued (unit, stat, layer) */
 #define VA_GETBASE 0x6FD88C20  /* #10587 STATLIST_GetUnitBaseStat (unit, stat, layer) */
+#define VA_CHKSTATE 0x6FD83CD0 /* #10494 STATES_CheckState (unit, stateId), ret 8 */
+#define VA_TOGSTATE 0x6FD88730 /* internal STATES_ToggleState: ebx=stateId, stack(unit, bSet), ret 8 */
 #define VA_MULDIV 0x6FD511E0   /* internal: eax=b, edx=a, ecx=div -> a*b/div */
 #define VA_DIMRET 0x6FD9DC30   /* #10115 (lvl, a, b) */
 #define VA_BAND5 0x6FD9DDB0    /* internal: eax=lvl, ecx=&lev[5] */
@@ -145,6 +147,11 @@ static int sc(uintptr_t fn, int n, const uint32_t *args, uint32_t *out) {
 #define VA_EXPTHRESH 0x6FDAE810 /* #10399 GetExpThreshold (class, level) */
 /* D2Game (preferred base 0x6FC20000). */
 #define GVA_MULDIV 0x6FC214D0   /* internal: eax=b, edx=a, ecx=div (same body as 0x6FD511E0) */
+#define GVA_SETEVENT 0x6FCAEA80 /* ecx=pGame, edx=pUnit, stack(type,frame,fn,arg14,arg18), ret 0x14 */
+#define GVA_NEXTEVFR 0x6FCAE490 /* eax=pUnit, esi=type -> earliest positive dwFrame */
+#define GVA_DELEVTYP 0x6FCAE8C0 /* ecx=pGame, eax=pUnit, ebx=type, stack(fn), ret 4 */
+#define GVA_NEWUID 0x6FCFF9C0   /* edx=pGame, ecx=unitType -> new dwUnitId */
+#define GVA_IAT_SEND 0x6FD18B64 /* D2Game IAT slot for D2Net.#10002 SendPacket(q,cid,pkt,len) */
 #define GVA_HIT 0x6FCFDE90      /* eax=attacker; stack defender, extraToHitPct, bMissile; ret 0xC */
 #define GVA_RESIST 0x6FCFB3C0   /* ebx=descriptor (0x6FD22AB0 + i*0x2C), edi=context */
 #define GVA_RESDESC 0x6FD22AB0
@@ -246,6 +253,59 @@ static int32_t g_orig_hard[1024];
 static uint8_t g_orig_hard_set[1024];
 static int32_t g_orig_stat[1024];
 static uint8_t g_orig_stat_set[1024];
+
+/* ---- v2: D2Net.#10002 S2C packet capture ring & stateful snapshot scratch ---- */
+typedef int(__stdcall *d2net_send_fn)(int nQueue, int nClientId, const uint8_t *pPacket, int nLen);
+static d2net_send_fn g_orig_net_send;
+static volatile LONG g_net_capture;
+
+#define MAX_S2C_CAP 64
+struct s2c_pkt {
+  int queue;
+  int client_id;
+  int len;
+  uint8_t bytes[0x208];
+};
+static struct s2c_pkt g_s2c_ring[MAX_S2C_CAP];
+static int g_s2c_count;
+static uint8_t g_snap_buf[512];
+
+static int __stdcall hook_net_send(int nQueue, int nClientId, const uint8_t *pPacket, int nLen) {
+  if (g_net_capture) {
+    if (pPacket && nLen > 0 && nLen <= 0x204 && g_s2c_count < MAX_S2C_CAP) {
+      struct s2c_pkt *p = &g_s2c_ring[g_s2c_count++];
+      p->queue = nQueue;
+      p->client_id = nClientId;
+      p->len = nLen;
+      memcpy(p->bytes, pPacket, (size_t)nLen);
+    }
+    return nLen;
+  }
+  return g_orig_net_send ? g_orig_net_send(nQueue, nClientId, pPacket, nLen) : 0;
+}
+
+static int install_net_hook(void) {
+  uintptr_t *iat = (uintptr_t *)G(GVA_IAT_SEND);
+  DWORD old;
+  if (!VirtualProtect(iat, sizeof(uintptr_t), PAGE_EXECUTE_READWRITE, &old)) return 0;
+  g_orig_net_send = (d2net_send_fn)(*iat);
+  *iat = (uintptr_t)hook_net_send;
+  VirtualProtect(iat, sizeof(uintptr_t), old, &old);
+  return 1;
+}
+
+static uint32_t *unit_state_flags(uint8_t *u) {
+  if (!u) return NULL;
+  uint8_t *lex = (uint8_t *)(uintptr_t)RD32(u, 0x5C);
+  if (!lex || !(RD32(lex, 0x10) & 0x80000000u)) return NULL;
+  return (uint32_t *)(uintptr_t)RD32(lex, 0x58);
+}
+
+static uint8_t g_orig_state_saved[2][256];
+static uint32_t g_orig_state_act[2][256];
+static uint32_t g_orig_state_drt[2][256];
+static uint32_t g_orig_uflags2[2];
+static uint8_t g_orig_uflags2_saved[2];
 
 /* Evaluate one non-range op. Returns 0 ok, 1 fault, 2 bad request. */
 static int eval_op(int32_t op, const int32_t *a, int na, int32_t *res) {
@@ -671,6 +731,121 @@ static int eval_op(int32_t op, const int32_t *a, int na, int32_t *res) {
       r = a[0] == 0 ? found : a[0] == 1 ? fr : a[0] == 2 ? sp : ev;
       break;
     }
+    case 70: { /* UTOGSTATE sel stateId bSet -> 0 (calls D2Common 0x6FD88730) */
+      NEED(3);
+      if (a[0] < 0 || a[0] > 1 || a[1] < 0 || a[1] >= 184) return 2;
+      uint8_t *u = unit_sel(a[0]);
+      uint32_t *sf = unit_state_flags(u);
+      if (!u || !sf) return 2;
+      int w = a[1] >> 5;
+      uint32_t mask = 1u << (a[1] & 31);
+      if (!g_orig_state_saved[a[0]][a[1]]) {
+        g_orig_state_saved[a[0]][a[1]] = 1;
+        g_orig_state_act[a[0]][a[1]] = sf[w] & mask;
+        g_orig_state_drt[a[0]][a[1]] = sf[w + 6] & mask;
+      }
+      if (!g_orig_uflags2_saved[a[0]]) {
+        g_orig_uflags2_saved[a[0]] = 1;
+        g_orig_uflags2[a[0]] = RD32(u, 0xC8);
+      }
+      uint32_t args[2] = {(uint32_t)(uintptr_t)u, a[2] ? 1u : 0u}, ign = 0;
+      g_sc_ebx = (uint32_t)a[1];
+      f = sc(C(VA_TOGSTATE), 2, args, &ign);
+      r = 0;
+      break;
+    }
+    case 71: { /* UCHKSTATE sel stateId -> #10494 STATES_CheckState */
+      NEED(2);
+      if (a[0] < 0 || a[0] > 1) return 2;
+      uint8_t *u = unit_sel(a[0]);
+      if (!u) return 2;
+      uint32_t args[2] = {(uint32_t)(uintptr_t)u, (uint32_t)a[1]};
+      f = sc(C(VA_CHKSTATE), 2, args, &r);
+      break;
+    }
+    case 72: { /* UCHKGFXSTATE sel stateId -> dirty/gfx state bit (pStateFlags[(id>>5)+6] & mask) */
+      NEED(2);
+      if (a[0] < 0 || a[0] > 1 || a[1] < 0 || a[1] >= 184) return 2;
+      uint32_t *sf = unit_state_flags(unit_sel(a[0]));
+      if (!sf) return 2;
+      r = sf[(a[1] >> 5) + 6] & (1u << (a[1] & 31));
+      break;
+    }
+    case 73: { /* URESTORESTATE sel stateId -> restores active/dirty bits + dwFlags2 */
+      NEED(2);
+      if (a[0] < 0 || a[0] > 1 || a[1] < 0 || a[1] >= 184 || !g_orig_state_saved[a[0]][a[1]]) return 2;
+      uint8_t *u = unit_sel(a[0]);
+      uint32_t *sf = unit_state_flags(u);
+      if (!u || !sf) return 2;
+      int w = a[1] >> 5;
+      uint32_t mask = 1u << (a[1] & 31);
+      sf[w] = (sf[w] & ~mask) | g_orig_state_act[a[0]][a[1]];
+      sf[w + 6] = (sf[w + 6] & ~mask) | g_orig_state_drt[a[0]][a[1]];
+      if (g_orig_uflags2_saved[a[0]]) RD32(u, 0xC8) = g_orig_uflags2[a[0]];
+      r = 0;
+      break;
+    }
+    case 74: { /* UGETBASE sel stat layer -> #10587 STATLIST_GetUnitBaseStat */
+      NEED(3);
+      if (!unit_sel(a[0])) return 2;
+      f = ustat(1, unit_sel(a[0]), a[1], a[2], &r);
+      break;
+    }
+    case 75: { /* UGETSTAT_CLS classOverride stat layer -> player accrued stat under classOverride */
+      NEED(3);
+      class_push(a[0]);
+      f = ustat(0, g_player, a[1], a[2], &r);
+      class_pop();
+      break;
+    }
+    case 76: { /* SUNIT_NEWID unitType preCounter -> calls D2Game 0x6FCFF9C0 and restores counter */
+      NEED(2);
+      if (a[0] < 0 || a[0] >= 6) return 2;
+      uint32_t off = 0x90u + (uint32_t)a[0] * 4u;
+      uint32_t saved = RD32(g_game, off);
+      RD32(g_game, off) = (uint32_t)a[1];
+      g_sc_edx = (uint32_t)(uintptr_t)g_game;
+      g_sc_ecx = (uint32_t)a[0];
+      f = sc(G(GVA_NEWUID), 0, NULL, &r);
+      RD32(g_game, off) = saved;
+      break;
+    }
+    case 77: { /* EVENT_PROBE sel evType targetFrame simGameFrame -> schedules via 0x6FCAEA80, reads 0x6FCAE490, deletes via 0x6FCAE8C0 */
+      NEED(4);
+      uint8_t *u = unit_sel(a[0]);
+      if (!u || a[1] < 0 || a[1] >= 15) return 2;
+      uint32_t saved_fr = RD32(g_game, 0xA8);
+      uint32_t sentinel_fn = 0x77770001u;
+      RD32(g_game, 0xA8) = (uint32_t)a[3];
+      uint32_t sargs[5] = {(uint32_t)a[1], (uint32_t)a[2], sentinel_fn, 0x1111u, 0x2222u}, ign = 0;
+      g_sc_ecx = (uint32_t)(uintptr_t)g_game;
+      g_sc_edx = (uint32_t)(uintptr_t)u;
+      f = sc(G(GVA_SETEVENT), 5, sargs, &ign);
+      if (!f) {
+        g_sc_eax = (uint32_t)(uintptr_t)u;
+        g_sc_esi = (uint32_t)a[1];
+        f = sc(G(GVA_NEXTEVFR), 0, NULL, &r);
+      }
+      uint32_t dargs[1] = {sentinel_fn};
+      g_sc_ecx = (uint32_t)(uintptr_t)g_game;
+      g_sc_eax = (uint32_t)(uintptr_t)u;
+      g_sc_ebx = (uint32_t)a[1];
+      sc(G(GVA_DELEVTYP), 1, dargs, &ign);
+      RD32(g_game, 0xA8) = saved_fr;
+      break;
+    }
+    case 78: { /* D2NET_SEND_PROBE queue clientId b0 b1 b2 b3 -> calls D2Game IAT 0x6FD18B64 under capture */
+      NEED(6);
+      uint8_t pkt[4] = {(uint8_t)a[2], (uint8_t)a[3], (uint8_t)a[4], (uint8_t)a[5]};
+      g_s2c_count = 0;
+      g_net_capture = 1;
+      d2net_send_fn fn = *(d2net_send_fn *)G(GVA_IAT_SEND);
+      int sent = fn(a[0], a[1], pkt, 4);
+      g_net_capture = 0;
+      r = ((uint32_t)g_s2c_count << 24) | ((uint32_t)(sent & 0xFF) << 16) |
+          ((uint32_t)g_s2c_ring[0].bytes[0] << 8) | (uint32_t)g_s2c_ring[0].bytes[3];
+      break;
+    }
     default:
       return 2;
   }
@@ -683,7 +858,245 @@ static int eval_op(int32_t op, const int32_t *a, int na, int32_t *res) {
 static FILE *g_req, *g_resp;
 static long g_nreq, g_nfault, g_nbad;
 static int g_done;
-static char g_line[4096];
+static char g_line[65536];
+
+static uint32_t resolve_ptr_token(uint32_t v) {
+  if (v == 0xDEAD0001u) return (uint32_t)(uintptr_t)g_game;
+  if (v == 0xDEAD0002u) return (uint32_t)(uintptr_t)g_player;
+  if (v == 0xDEAD0003u) return (uint32_t)(uintptr_t)g_monster;
+  if (v == 0xDEAD0004u) return (uint32_t)(uintptr_t)g_snap_buf;
+  return v;
+}
+
+static const char *json_find_key(const char *s, const char *key) {
+  char pat[64];
+  snprintf(pat, sizeof pat, "\"%s\"", key);
+  const char *p = strstr(s, pat);
+  if (!p) return NULL;
+  p += strlen(pat);
+  while (*p == ' ' || *p == '\t' || *p == ':') p++;
+  return p;
+}
+
+static int json_get_i64(const char *s, const char *key, int64_t *out) {
+  const char *p = json_find_key(s, key);
+  if (!p) return 0;
+  char *e;
+  long long v = strtoll(p, &e, 0);
+  if (e == p) return 0;
+  *out = (int64_t)v;
+  return 1;
+}
+
+static int json_get_flat_array(const char *s, const char *key, int32_t *out, int max) {
+  const char *p = json_find_key(s, key);
+  if (!p || *p != '[') return 0;
+  int depth = 0, n = 0;
+  while (*p) {
+    if (*p == '[') {
+      depth++;
+      p++;
+      continue;
+    }
+    if (*p == ']') {
+      depth--;
+      p++;
+      if (depth <= 0) break;
+      continue;
+    }
+    if (*p == ' ' || *p == ',' || *p == '\t') {
+      p++;
+      continue;
+    }
+    char *e;
+    long long v = strtoll(p, &e, 0);
+    if (e == p) break;
+    if (n < max) out[n++] = (int32_t)v;
+    p = e;
+  }
+  return n;
+}
+
+/*
+ * JSON object op (`{"op":200,...}`): SNAP_CALL stateful snapshot invocation.
+ * Applies temporary pre-state on g_game / g_player / g_monster, invokes target VA
+ * via VEH-protected `sc()`, captures return value, post-state stats/states/seeds
+ * and outbound D2Net.#10002 S2C packets, then restores clean baseline state.
+ */
+static void handle_json_obj(const char *line) {
+  g_nreq++;
+  int64_t op = 0, mod = 0, va = 0, tmp = 0;
+  if (!json_get_i64(line, "op", &op) || op != 200 || !json_get_i64(line, "va", &va)) {
+    g_nbad++;
+    fputs("{\"error\":\"bad_request\"}\n", g_resp);
+    return;
+  }
+  json_get_i64(line, "mod", &mod);
+
+  /* Save game pre-state */
+  uint32_t sv_frame = RD32(g_game, 0xA8);
+  uint32_t sv_gs0 = RD32(g_game, 0xD0), sv_gs1 = RD32(g_game, 0xD4);
+  uint8_t sv_diff = g_game[0x6D];
+  uint32_t sv_ps0 = RD32(g_player, 0x20), sv_ps1 = RD32(g_player, 0x24);
+  uint32_t sv_pcls = RD32(g_player, 0x04);
+  uint8_t *plex = (uint8_t *)(uintptr_t)RD32(g_player, 0x5C);
+  uint8_t *mlex = g_monster ? (uint8_t *)(uintptr_t)RD32(g_monster, 0x5C) : NULL;
+  uint32_t sv_pcb = (plex && (RD32(plex, 0x10) & 0x80000000u)) ? RD32(plex, 0x5C) : 0;
+  uint32_t sv_mcb = (mlex && (RD32(mlex, 0x10) & 0x80000000u)) ? RD32(mlex, 0x5C) : 0;
+  int no_stat_cb = (json_get_i64(line, "noStatCb", &tmp) && tmp != 0) ? 1 : 0;
+  if (no_stat_cb) {
+    if (plex && (RD32(plex, 0x10) & 0x80000000u)) RD32(plex, 0x5C) = 0;
+    if (mlex && (RD32(mlex, 0x10) & 0x80000000u)) RD32(mlex, 0x5C) = 0;
+  }
+
+  if (json_get_i64(line, "frame", &tmp)) RD32(g_game, 0xA8) = (uint32_t)tmp;
+  if (json_get_i64(line, "diff", &tmp)) g_game[0x6D] = (uint8_t)tmp;
+  if (json_get_i64(line, "pClass", &tmp) && tmp >= 0 && tmp <= 6) RD32(g_player, 0x04) = (uint32_t)tmp;
+
+  int32_t gs[2];
+  if (json_get_flat_array(line, "gameSeed", gs, 2) == 2) {
+    RD32(g_game, 0xD0) = (uint32_t)gs[0];
+    RD32(g_game, 0xD4) = (uint32_t)gs[1];
+  }
+  if (json_get_flat_array(line, "pSeed", gs, 2) == 2) {
+    RD32(g_player, 0x20) = (uint32_t)gs[0];
+    RD32(g_player, 0x24) = (uint32_t)gs[1];
+  }
+
+  /* Apply player stats (`pStats`: [statId, val, statId, val, ...]) */
+  int32_t pstats[128], pstats_orig[64];
+  int np = json_get_flat_array(line, "pStats", pstats, 128) & ~1;
+  for (int i = 0; i < np; i += 2) {
+    uint32_t ov = 0;
+    ustat(1, g_player, pstats[i], 0, &ov);
+    pstats_orig[i / 2] = (int32_t)ov;
+    uset(g_player, pstats[i], pstats[i + 1]);
+  }
+
+  /* Apply monster stats (`mStats`: [statId, val, ...]) */
+  int32_t mstats[128], mstats_orig[64];
+  int nm = g_monster ? (json_get_flat_array(line, "mStats", mstats, 128) & ~1) : 0;
+  for (int i = 0; i < nm; i += 2) {
+    uint32_t ov = 0;
+    ustat(1, g_monster, mstats[i], 0, &ov);
+    mstats_orig[i / 2] = (int32_t)ov;
+    uset(g_monster, mstats[i], mstats[i + 1]);
+  }
+
+  /* Apply player states (`pStates`: [stateId, bSet, ...]) */
+  int32_t pstates[64];
+  uint32_t pstate_act_orig[32], pstate_drt_orig[32];
+  uint32_t sv_pf2 = RD32(g_player, 0xC8);
+  uint32_t *psf = unit_state_flags(g_player);
+  int nst = psf ? (json_get_flat_array(line, "pStates", pstates, 64) & ~1) : 0;
+  for (int i = 0; i < nst; i += 2) {
+    int sid = pstates[i];
+    if (sid < 0 || sid >= 184) continue;
+    int w = sid >> 5;
+    uint32_t mask = 1u << (sid & 31);
+    pstate_act_orig[i / 2] = psf[w] & mask;
+    pstate_drt_orig[i / 2] = psf[w + 6] & mask;
+    uint32_t targs[2] = {(uint32_t)(uintptr_t)g_player, pstates[i + 1] ? 1u : 0u}, ign = 0;
+    g_sc_ebx = (uint32_t)sid;
+    sc(C(VA_TOGSTATE), 2, targs, &ign);
+  }
+
+  /* Populate optional scratch buffer (`buf`: u32 dwords) */
+  memset(g_snap_buf, 0, sizeof g_snap_buf);
+  int32_t bwords[128];
+  int nbuf = json_get_flat_array(line, "buf", bwords, 128);
+  for (int i = 0; i < nbuf; i++) {
+    RD32(g_snap_buf, i * 4) = resolve_ptr_token((uint32_t)bwords[i]);
+  }
+
+  /* Stage registers & stack arguments */
+  int32_t raw_args[8];
+  uint32_t call_args[8];
+  int nargs = json_get_flat_array(line, "args", raw_args, 8);
+  for (int i = 0; i < nargs; i++) call_args[i] = resolve_ptr_token((uint32_t)raw_args[i]);
+
+  g_sc_eax = json_get_i64(line, "eax", &tmp) ? resolve_ptr_token((uint32_t)tmp) : 0;
+  g_sc_ecx = json_get_i64(line, "ecx", &tmp) ? resolve_ptr_token((uint32_t)tmp) : 0;
+  g_sc_edx = json_get_i64(line, "edx", &tmp) ? resolve_ptr_token((uint32_t)tmp) : 0;
+  g_sc_ebx = json_get_i64(line, "ebx", &tmp) ? resolve_ptr_token((uint32_t)tmp) : 0;
+  g_sc_esi = json_get_i64(line, "esi", &tmp) ? resolve_ptr_token((uint32_t)tmp) : 0;
+  g_sc_edi = json_get_i64(line, "edi", &tmp) ? resolve_ptr_token((uint32_t)tmp) : 0;
+
+  uintptr_t target_fn = mod == 0 ? G((uintptr_t)(uint32_t)va) : C((uintptr_t)(uint32_t)va);
+  g_s2c_count = 0;
+  g_net_capture = 1;
+  uint32_t ret = 0;
+  int fault = sc(target_fn, nargs, call_args, &ret);
+  g_net_capture = 0;
+  if (fault) g_nfault++;
+
+  /* Serialize post-call snapshot JSON */
+  fprintf(g_resp, "{\"fault\":%d,\"eax\":%ld,\"gameSeed\":[%lu,%lu],\"pSeed\":[%lu,%lu]",
+          fault, (long)(int32_t)ret, (unsigned long)RD32(g_game, 0xD0),
+          (unsigned long)RD32(g_game, 0xD4), (unsigned long)RD32(g_player, 0x20),
+          (unsigned long)RD32(g_player, 0x24));
+
+  int32_t qstats[64];
+  int nqs = json_get_flat_array(line, "qStats", qstats, 64);
+  fputs(",\"qStats\":[", g_resp);
+  for (int i = 0; i < nqs; i++) {
+    uint32_t bv = 0, fv = 0;
+    ustat(1, g_player, qstats[i], 0, &bv);
+    ustat(0, g_player, qstats[i], 0, &fv);
+    if (i > 0) fputc(',', g_resp);
+    fprintf(g_resp, "[%ld,%ld,%ld]", (long)qstats[i], (long)(int32_t)bv, (long)(int32_t)fv);
+  }
+  fputc(']', g_resp);
+
+  int32_t qstates[64];
+  int nqst = json_get_flat_array(line, "qStates", qstates, 64);
+  fputs(",\"qStates\":[", g_resp);
+  for (int i = 0; i < nqst; i++) {
+    uint32_t ca[2] = {(uint32_t)(uintptr_t)g_player, (uint32_t)qstates[i]}, cv = 0;
+    sc(C(VA_CHKSTATE), 2, ca, &cv);
+    uint32_t gv = (psf && qstates[i] >= 0 && qstates[i] < 184)
+                      ? (psf[(qstates[i] >> 5) + 6] & (1u << (qstates[i] & 31)))
+                      : 0;
+    if (i > 0) fputc(',', g_resp);
+    fprintf(g_resp, "[%ld,%lu,%lu]", (long)qstates[i], (unsigned long)cv, (unsigned long)gv);
+  }
+  fputc(']', g_resp);
+
+  fputs(",\"s2c\":[", g_resp);
+  for (int i = 0; i < g_s2c_count; i++) {
+    if (i > 0) fputc(',', g_resp);
+    fprintf(g_resp, "{\"q\":%d,\"cid\":%d,\"hex\":\"", g_s2c_ring[i].queue, g_s2c_ring[i].client_id);
+    for (int b = 0; b < g_s2c_ring[i].len; b++) {
+      fprintf(g_resp, "%02x", g_s2c_ring[i].bytes[b]);
+    }
+    fputs("\"}", g_resp);
+  }
+  fputs("]}\n", g_resp);
+
+  /* Restore pre-call state */
+  for (int i = nst - 2; i >= 0; i -= 2) {
+    int sid = pstates[i];
+    if (sid < 0 || sid >= 184) continue;
+    int w = sid >> 5;
+    uint32_t mask = 1u << (sid & 31);
+    psf[w] = (psf[w] & ~mask) | pstate_act_orig[i / 2];
+    psf[w + 6] = (psf[w + 6] & ~mask) | pstate_drt_orig[i / 2];
+  }
+  RD32(g_player, 0xC8) = sv_pf2;
+  for (int i = nm - 2; i >= 0; i -= 2) uset(g_monster, mstats[i], mstats_orig[i / 2]);
+  for (int i = np - 2; i >= 0; i -= 2) uset(g_player, pstats[i], pstats_orig[i / 2]);
+  if (no_stat_cb) {
+    if (plex && (RD32(plex, 0x10) & 0x80000000u)) RD32(plex, 0x5C) = sv_pcb;
+    if (mlex && (RD32(mlex, 0x10) & 0x80000000u)) RD32(mlex, 0x5C) = sv_mcb;
+  }
+  RD32(g_player, 0x04) = sv_pcls;
+  RD32(g_player, 0x20) = sv_ps0;
+  RD32(g_player, 0x24) = sv_ps1;
+  RD32(g_game, 0xD0) = sv_gs0;
+  RD32(g_game, 0xD4) = sv_gs1;
+  g_game[0x6D] = sv_diff;
+  RD32(g_game, 0xA8) = sv_frame;
+}
 
 static int parse_ints(const char *s, int32_t *v, int max) {
   int n = 0;
@@ -721,8 +1134,14 @@ static void put_result(int st, int32_t v, int first) {
  * lvl = lo..hi and code = 0..72 (lvl-major).
  */
 static void handle_line(const char *line) {
+  const char *p = line;
+  while (*p == ' ' || *p == '\t') p++;
+  if (*p == '{') {
+    handle_json_obj(p);
+    return;
+  }
   int32_t v[64];
-  int n = parse_ints(line, v, 64);
+  int n = parse_ints(p, v, 64);
   if (n == 0) return;
   g_nreq++;
   fputc('[', g_resp);
@@ -775,6 +1194,62 @@ static uint8_t *pick_monster(uint8_t *game) {
 
 static uint32_t g_ready_frame;
 
+static void pump_messages(void) {
+  MSG msg;
+  while (PeekMessageA(&msg, NULL, 0, 0, PM_REMOVE)) {
+    TranslateMessage(&msg);
+    DispatchMessageA(&msg);
+  }
+}
+
+static void run_daemon_loop(void) {
+  CreateDirectoryA(ORACLE_DIR "spool", NULL);
+  FILE *rdy = fopen(ORACLE_DIR "out\\daemon.ready", "w");
+  if (rdy) {
+    fprintf(rdy, "{\"pid\":%lu,\"game\":%lu,\"player\":%lu,\"monster\":%lu}\n",
+            (unsigned long)GetCurrentProcessId(), (unsigned long)(uintptr_t)g_game,
+            (unsigned long)(uintptr_t)g_player, (unsigned long)(uintptr_t)g_monster);
+    fclose(rdy);
+  }
+  logf_("daemon ready: game=%p player=%p monster=%p", (void *)g_game, (void *)g_player,
+        (void *)g_monster);
+
+  for (;;) {
+    pump_messages();
+    if (GetFileAttributesA(ORACLE_DIR "spool\\shutdown") != INVALID_FILE_ATTRIBUTES) {
+      DeleteFileA(ORACLE_DIR "spool\\shutdown");
+      logf_("daemon shutdown after %ld requests (%ld faults, %ld bad)", g_nreq, g_nfault, g_nbad);
+      FILE *d = fopen(ORACLE_DIR "out\\done", "w");
+      if (d) fclose(d);
+      g_done = 1;
+      return;
+    }
+    if (GetFileAttributesA(ORACLE_DIR "spool\\req.ndjson") != INVALID_FILE_ATTRIBUTES) {
+      g_req = fopen(ORACLE_DIR "spool\\req.ndjson", "r");
+      g_resp = fopen(ORACLE_DIR "spool\\resp.tmp", "w");
+      if (g_req && g_resp) {
+        setvbuf(g_resp, NULL, _IOFBF, 1 << 20);
+        while (fgets(g_line, sizeof g_line, g_req)) {
+          handle_line(g_line);
+        }
+        fclose(g_req);
+        fclose(g_resp);
+        g_req = g_resp = NULL;
+        DeleteFileA(ORACLE_DIR "spool\\req.ndjson");
+        DeleteFileA(ORACLE_DIR "spool\\resp.ndjson");
+        MoveFileA(ORACLE_DIR "spool\\resp.tmp", ORACLE_DIR "spool\\resp.ndjson");
+      } else {
+        if (g_req) fclose(g_req);
+        if (g_resp) fclose(g_resp);
+        g_req = g_resp = NULL;
+        Sleep(1);
+      }
+      continue;
+    }
+    Sleep(1);
+  }
+}
+
 void __cdecl on_frame(uint8_t *game) {
   InterlockedIncrement(&g_frames);
   if (g_done) return;
@@ -787,6 +1262,13 @@ void __cdecl on_frame(uint8_t *game) {
     return;
   }
   if (fr < g_ready_frame) return;
+  if (GetFileAttributesA(ORACLE_DIR "daemon.mode") != INVALID_FILE_ATTRIBUTES) {
+    g_game = game;
+    g_player = pl;
+    g_monster = pick_monster(game);
+    run_daemon_loop();
+    return;
+  }
   if (!g_req) {
     g_game = game;
     g_player = pl;
@@ -866,10 +1348,11 @@ static DWORD WINAPI oracle_thread(LPVOID unused) {
   g_game_pref = pref_base(g_d2game);
   g_common_pref = pref_base(g_d2common);
   g_frame_fn = (void *)G(0x6FC4E050);
+  int net_ok = install_net_hook();
   int ok = patch_call(G(0x6FC4E2DB), frame_stub, (uintptr_t)g_frame_fn) +
            patch_call(G(0x6FC72712), frame_stub, (uintptr_t)g_frame_fn);
-  logf_("D2Game %p (pref %p) D2Common %p (pref %p): %d/2 frame hooks", (void *)g_d2game,
-        (void *)g_game_pref, (void *)g_d2common, (void *)g_common_pref, ok);
+  logf_("D2Game %p (pref %p) D2Common %p (pref %p): %d/2 frame hooks, net_hook=%d", (void *)g_d2game,
+        (void *)g_game_pref, (void *)g_d2common, (void *)g_common_pref, ok, net_ok);
   for (;;) {
     Sleep(5000);
     logf_("frames=%ld", g_frames);

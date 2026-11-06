@@ -20,14 +20,19 @@ import type { SummonedPetUnit } from '../../ai/summon-manager.ts'
 import { calculateCrushingBlow113c, computeKnockbackStep113c, executeSUnitDmg, resolveHitClassCode113c, rollItemKnockback113c, shouldEnterGetHit113c, type SUnitDmgPacket, type CombatUnitContext } from '../combat-pipeline.ts'
 import { createDefaultNpcIntroData } from '../../save/d2s-writer.ts'
 import { FIXED_ONE, UnitStatList } from '../stat-list.ts'
-import { allocateEvent3Seq113c, computeMonsterBaseDamageRegen113c } from '../statregen-dot-113c.ts'
+import { computeMonsterBaseDamageRegen113c } from '../statregen-dot-113c.ts'
+import {
+  cancelKernMonsterEvent3_113c,
+  scheduleKernMonsterDeathEnd113c,
+  scheduleKernMonsterEvent3_113c,
+} from './kern-monster-wheel-113c.ts'
 import { StateBus } from '../state-bus.ts'
 import { compute3BandDuration, computeDiminishingReturns, evaluateCalc } from '../../../common/data/calc-ast.ts'
 import { difficultyLifeStealDivisor, difficultyManaStealDivisor, difficultyMonsterColdDivisor, difficultyMonsterFreezeDivisor } from '../difficulty-resist-penalty.ts'
 import { scaleMonStatsPoisonRider113c } from '../../ai/monster-missile-damage-113c.ts'
 import type { GameInstanceHost } from './host.ts'
 import type { InternalMercenaryRecord, InternalMonsterRecord, InternalPlayerRecord } from './types.ts'
-import { monsterHp256_113c, MONSTER_HIT_RECOVERY_FRAMES, MONSTER_KNOCKBACK_DISTANCE, MONSTER_KNOCKBACK_SKILLS, MONSTER_THREAT_FRAMES, SKILL_WHIRLWIND_113C, STATE_SANCTUARY_113C, playerWirePosition, UNIT_TYPE_113C } from './constants-and-helpers.ts'
+import { monsterHp256_113c, MONSTER_HIT_RECOVERY_FRAMES, MONSTER_KNOCKBACK_DISTANCE, MONSTER_KNOCKBACK_SKILLS, MONSTER_THREAT_FRAMES, SKILL_WHIRLWIND_113C, STATE_SANCTUARY_113C, areaToAct, playerWirePosition, UNIT_TYPE_113C } from './constants-and-helpers.ts'
 import { rollLimitedSeed113c } from './unit-seeds-113c.ts'
 
 
@@ -1153,7 +1158,7 @@ function applyMonsterPoisonDot(this: GameInstanceHost,
       monster.poisonBitrate256 = 0
       monster.poisonCarry256 = 0
       monster.poisonKillSource = undefined
-      monster.nextEvent3Frame113c = undefined
+      cancelKernMonsterEvent3_113c(this, monster)
       this.applyMonsterDeath(monster, attacker, 'pois', effectiveSource)
       return true
     }
@@ -1175,8 +1180,7 @@ function applyMonsterPoisonDot(this: GameInstanceHost,
         durationFrames,
       )
     }
-    monster.nextEvent3Frame113c = this.currentFrame + 1
-    monster.event3Seq113c = allocateEvent3Seq113c(this)
+    scheduleKernMonsterEvent3_113c(this, monster, this.currentFrame + 1)
     return true
   }
 
@@ -1350,6 +1354,25 @@ function resolveSkillColdOrFreezeDuration113c(this: GameInstanceHost,
  * Apply resolved damage to a monster: HP loss, chill from cold skills, the HP update, Lightning
  * Enchanted on-struck bolts, and the death / get-hit mode (shared by hits and aura pulses).
  */
+/**
+ * 1.13c `SUNITDMG_ApplyDamage` (`0x6FCFE2E2..0x6FCFE335`) tail for a surviving monster defender with
+ * `dwDmgTotal > 0`: when the accrued `stat 74` is non-zero, the pending `Event 3` timers are deleted and
+ * `Event 3` is scheduled at `dwGameFrame + 1` (kb/combat/d2game-statregen-dot-113c.md). Shared by every
+ * DRLG damage path (player hits, merc missiles, 1:1 pet melee).
+ */
+export function armMonsterEvent3AfterDamage113c(host: GameInstanceHost, monster: InternalMonsterRecord): void {
+  const baseRegen256 = computeMonsterBaseDamageRegen113c(
+    monster.maxHp * FIXED_ONE,
+    monster.damageRegen,
+    monster.boneConstructOwnerPlayerId !== undefined,
+  )
+  const poisonMod256 = monster.states.has(2) && monster.poisonBitrate256 > 0 ? -monster.poisonBitrate256 : 0
+  const statListMod256 = Math.trunc(host.monsterCombat.get(monster.unitId)?.statList.getModifierBonus('hpregen') ?? 0)
+  if (baseRegen256 + poisonMod256 + statListMod256 !== 0) {
+    scheduleKernMonsterEvent3_113c(host, monster, host.currentFrame + 1)
+  }
+}
+
 function finishMonsterDamage(this: GameInstanceHost, 
   attacker: InternalPlayerRecord,
   monster: InternalMonsterRecord,
@@ -1406,17 +1429,7 @@ function finishMonsterDamage(this: GameInstanceHost,
   ) {
     // 1.13c `SUNITDMG_ApplyDamage` (`0x6FCFE2E2..0x6FCFE335`): when `dwDmgTotal > 0` and accrued `stat 74 != 0`,
     // deletes existing `Event 3` timers and schedules `Event 3` at `dwGameFrame + 1`.
-    const baseRegen256 = computeMonsterBaseDamageRegen113c(
-      monster.maxHp * FIXED_ONE,
-      monster.damageRegen,
-      monster.boneConstructOwnerPlayerId !== undefined,
-    )
-    const poisonMod256 = monster.states.has(2) && monster.poisonBitrate256 > 0 ? -monster.poisonBitrate256 : 0
-    const statListMod256 = Math.trunc(this.monsterCombat.get(monster.unitId)?.statList.getModifierBonus('hpregen') ?? 0)
-    if (baseRegen256 + poisonMod256 + statListMod256 !== 0) {
-      monster.nextEvent3Frame113c = this.currentFrame + 1
-      monster.event3Seq113c = allocateEvent3Seq113c(this)
-    }
+    armMonsterEvent3AfterDamage113c(this, monster)
   }
   if (fromMerc) {
     monster.lastHitByMerc = true
@@ -1647,8 +1660,7 @@ function applyMonsterDeath(this: GameInstanceHost,
     }
   }
   monster.dead = true
-  monster.nextEvent3Frame113c = undefined
-  monster.event3Seq113c = undefined
+  cancelKernMonsterEvent3_113c(this, monster)
   if (this.drlgRoomPopulator !== null) {
     // Oracle `p52-necromancer-curses` F=968: zombie #10 dies with Weaken (state 19, timed) -> the timed states
     // are gone in the death frame, the untimed state 105 stays. Original removal routine not yet disassembled
@@ -1670,7 +1682,15 @@ function applyMonsterDeath(this: GameInstanceHost,
           )
         : 24
     monster.mode = 0
-    monster.deathAnimEndFrame = this.currentFrame + dtFrames
+    scheduleKernMonsterDeathEnd113c(this, monster, this.currentFrame + dtFrames)
+    // Death mode start (`0x6FC962FC..0x6FC96302`): `#10873(GetRoom(pMonster), unitId)` death ring, read by
+    // `AiFallen` (kb/monsters/d2game-fallen-ai-113c.md).
+    this.drlgRoomPopulator.recordMonsterDeath113c(
+      areaToAct(monster.areaId),
+      Math.floor(monster.x + 0.5),
+      Math.floor(monster.y + 0.5),
+      monster.unitId,
+    )
     this.areaPathWorld.setMonsterDead(monster.unitId)
   } else {
     monster.mode = 12
@@ -2213,6 +2233,7 @@ function maybeEnterMonsterHitRecovery(this: GameInstanceHost,
     this.rng,
   )
   if (!shouldEnter) return
+  const wasIdleWithPendingAi = monster.mode === 1 && monster.nextAiFrame > this.currentFrame
   monster.pendingAttack = undefined
   monster.pendingAllyAttack = undefined
   monster.pendingResurrection = undefined
@@ -2224,8 +2245,13 @@ function maybeEnterMonsterHitRecovery(this: GameInstanceHost,
     // kb/engine/d2game-plrmode-gethit-113c.md §2).
     monster.hitRecoveryUntilFrame += 1
     this.areaPathWorld.stopMonsterMove113c(monster.areaId, monster.unitId, 3)
-    monster.nextAiFrame =
-      monster.hitRecoveryUntilFrame + Math.max(1, Math.round(monster.aiDelay || 15))
+    // An idle monster keeps its pending type-2 AI event through the GetHit and that event interrupts the GH
+    // (oracle `p52-necromancer-poison-golem` zombie #9: A2 ends F818 -> event F833 = 818 + aidel 15, GH from
+    // F823, A2 on F833); a walking monster has none pending and re-arms `aidel` after the full GH (oracle
+    // `a1-bloodmoor-melee` zombie #10: GH F1086..F1102, no think through F1105).
+    monster.nextAiFrame = wasIdleWithPendingAi
+      ? monster.nextAiFrame
+      : monster.hitRecoveryUntilFrame + Math.max(1, Math.round(monster.aiDelay || 15))
   }
   monster.path = []
   monster.pathIndex = 0

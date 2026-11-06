@@ -17,7 +17,7 @@ import { hirelingLevelFromExp, MAX_MERCENARY_LEVEL_113C } from '../../../common/
 import { isTentacleHeadHcIdx113c } from '../../../common/units/monai-113c.ts'
 import { hasMonStats2Flag, MONSTATS2_FLAGINDEX } from '../../../common/units/monstats2-flags.ts'
 import { CANONICAL_CHARSTATS, CHARSTATS_STARTING_ITEMS_113C } from '../../../common/units/classes.ts'
-import { HIRELING_RECORDS } from '../../../common/units/hireling-table.ts'
+import { computeMercResurrectCost113c, HIRELING_RECORDS } from '../../../common/units/hireling-table.ts'
 import type { LocalAreaPresetMonster, ServerEvent, UnitId } from '../../../netproto/index.ts'
 import { findStandableNear, resolvePresetObject113c } from '../../world/area-bootstrap.ts'
 import { readD2sSave113c, type D2sDecodedCharacterSave } from '../../save/d2s-reader.ts'
@@ -25,6 +25,7 @@ import { createDefaultNpcIntroData } from '../../save/d2s-writer.ts'
 import { FIXED_ONE } from '../stat-list.ts'
 import type { AnimDispatcher } from '../anim-dispatcher.ts'
 import type { GameInstanceHost } from './host.ts'
+import { initOracleHireableMerc113c, updatePlayerBreadcrumbs113c } from './hireable-ai-113c.ts'
 import type { AreaArrival, ConnectPlayerSpec, InternalPlayerRecord, InternalWarpTileRecord, LoadedAreaRecord, PendingRoomPresets113c, ServerItemEntry } from './types.ts'
 import { ACT_TOWN_AREA, CLASS_ID_TO_CODE, CLASS_SKILL_OFFSET, LEGACY_TEST_GRID_SPAWN, PLAYER_UNIT_SIZE, ROOM_HIDE_RADIUS_TILES, ROOM_REVEAL_RADIUS_TILES, ROOM_TILE_SPAN_113C, SUBTILES_PER_TILE, TOWN_AREAS, WAYPOINT_AREA_IDS, areaToAct, experienceForLevel113c, lookupBaseInfo, normalizeClassId, requireBaseInfo, type UnitType113c, UNIT_TYPE_113C } from './constants-and-helpers.ts'
 
@@ -1641,7 +1642,18 @@ function connectPlayer(this: GameInstanceHost, spec: ConnectPlayerSpec = {}): nu
   }
   this.syncFrozenRiverA5Q3State113c(record)
   this.players.set(unitId, record)
+  this.syncPlayerEquippedSetStates113c(record)
   this.areaPathWorld.spawnOrSyncPlayer(areaId, unitId, classId, spawnX, spawnY, record.mode)
+  updatePlayerBreadcrumbs113c(record)
+  const preSpawnedOracleMerc =
+    this.drlgRoomPopulator !== null &&
+    spec.restoreMercenary &&
+    parsedD2s?.merc &&
+    !parsedD2s.merc.dead &&
+    parsedD2s.merc.seed !== 0 &&
+    parsedD2s.merc.typeId > 0
+      ? initOracleHireableMerc113c(this, record, parsedD2s.merc, parsedD2s.isExpansion)
+      : undefined
   if (this.drlgRoomPopulator !== null) {
     this.drlgRoomPopulator.activateNear(this, record.act, Math.round(spawnX), Math.round(spawnY))
     this.drlgRoomPopulator.updateProgress(this)
@@ -1802,21 +1814,84 @@ function connectPlayer(this: GameInstanceHost, spec: ConnectPlayerSpec = {}): nu
         mercExp > 0
           ? Math.min(record.level, hirelingLevelFromExp(mercExp, hireRec.expPerLvl))
           : Math.min(MAX_MERCENARY_LEVEL_113C, record.level)
-      const mercId = this.hireMercenary(unitId, {
-        act: (hireRec.act === 1 || hireRec.act === 2 || hireRec.act === 3 || hireRec.act === 5
-          ? hireRec.act
-          : 2) as 1 | 2 | 3 | 5,
-        subType: hireRec.subTypeId,
-        level: mercLevel,
-        experience: mercExp,
-        difficulty: ((hireRec.difficulty ?? (this.difficulty + 1)) === 3
-          ? 3
-          : (hireRec.difficulty ?? (this.difficulty + 1)) === 2
-            ? 2
-            : 1) as 1 | 2 | 3,
-        dead: parsedD2s.merc.dead,
-      })
-      const mercRecord = mercId !== null ? this.mercenaries.get(mercId) : undefined
+      const mercId =
+        preSpawnedOracleMerc !== undefined
+          ? preSpawnedOracleMerc.unitId
+          : this.hireMercenary(unitId, {
+              act: (hireRec.act === 1 || hireRec.act === 2 || hireRec.act === 3 || hireRec.act === 5
+                ? hireRec.act
+                : 2) as 1 | 2 | 3 | 5,
+              subType: hireRec.subTypeId,
+              level: mercLevel,
+              experience: mercExp,
+              difficulty: ((hireRec.difficulty ?? (this.difficulty + 1)) === 3
+                ? 3
+                : (hireRec.difficulty ?? (this.difficulty + 1)) === 2
+                  ? 2
+                  : 1) as 1 | 2 | 3,
+              dead: parsedD2s.merc.dead,
+            })
+      const mercRecord =
+        preSpawnedOracleMerc ?? (mercId !== null ? this.mercenaries.get(mercId) : undefined)
+      if (preSpawnedOracleMerc !== undefined && mercRecord !== undefined) {
+        if (!mercRecord.alive) {
+          this.emitToPlayer(unitId, {
+            type: 'Merc',
+            kind: 'stat',
+            nameId: mercRecord.subType,
+            value: computeMercResurrectCost113c(mercRecord.level),
+          })
+        } else {
+          this.broadcastToArea(areaId, {
+            type: 'UnitAssign',
+            unitType: 'monster',
+            unitId: mercRecord.unitId,
+            classId: mercRecord.classId,
+            name: mercRecord.name,
+            x: mercRecord.x,
+            y: mercRecord.y,
+            areaId,
+            unit: {
+              unitType: 1,
+              id: mercRecord.unitId,
+              classId: mercRecord.classId,
+              name: mercRecord.name,
+              x: mercRecord.x,
+              y: mercRecord.y,
+              mode: 1,
+              lifePct: 128,
+            },
+          })
+          this.broadcastToArea(areaId, {
+            type: 'Merc',
+            kind: 'assign',
+            mercId: mercRecord.unitId,
+            ownerId: unitId,
+            classId: mercRecord.classId,
+          })
+          this.emitToPlayer(unitId, {
+            type: 'Merc',
+            kind: 'stat',
+            nameId: 0xffff,
+            value: 0,
+          })
+          this.broadcastToArea(areaId, {
+            type: 'UnitStatUpdate',
+            unitType: 'monster',
+            unitId: mercRecord.unitId,
+            statId: 12,
+            value: Math.max(1, Math.floor(mercRecord.level)),
+          })
+          this.broadcastToArea(areaId, {
+            type: 'UnitStatUpdate',
+            unitType: 'monster',
+            unitId: mercRecord.unitId,
+            statId: 13,
+            value: Math.max(0, Math.floor(mercRecord.experience)),
+          })
+          this.broadcastAllyHp(areaId, mercRecord.unitId, mercRecord.hp)
+        }
+      }
       const savedMercItems = parsedD2s.mercItems ?? parsedD2s.merc.items
       if (mercRecord && Array.isArray(savedMercItems) && savedMercItems.length > 0) {
         for (const mi of savedMercItems) {

@@ -29,27 +29,30 @@ Note on `ItemStatCost.txt` per-level stats (`234..237`, `op = 2`, `op param = 3`
 - `236` `item_absorb_ltng_perlevel` -> `op stat1 = item_absorblight` (`145`)
 - `237` `item_absorb_pois_perlevel` -> `op stat1 = item_absorbmagic` (`147`)
 
-## `SUNITDMG_ApplyAbsorb` (`0x6FCFAD00..0x6FCFAD88`)
+## `SUNITDMG_ApplyAbsorb` (`0x6FCFAD00..0x6FCFAD66`)
 
 ```c
-// edi = pDamage, esi = pContext ([esi+0x0C] = pDefender), ebx = pDescriptor, [esp+0x10] = dmg256
-if (dmg256 > 0 && pDescriptor->absPctStat != -1) {
-  int pct = D2Common_10519_GetStatSigned(pDefender, pDescriptor->absPctStat, 0);
-  if (pct > 0) {
-    if (pct > 40) pct = 40; // 0x6FCFAD37: cmp eax, 0x28
-    int pctAbsorbed256 = mulDiv113c(dmg256, pct, 100); // 0x6FCFAD40: call 0x6FC214D0
-    pDamage->dwAbsorbLife += pctAbsorbed256;           // 0x6FCFAD48: add [edi+0x48], eax
-    dmg256 -= pctAbsorbed256;                          // 0x6FCFAD4B: sub ebp, eax
+// edi = dmg256 (signed; CAN be < 0 when MDR > rawElem), esi = pContext ([esi+0x0C] = pDefender,
+// [esi+0x18] = pDamage), ebx = pDescriptor
+if (pDescriptor->absPctStat != -1) {                    // 0x6FCFAD04..0x6FCFAD0C
+  int pct = D2Common_10519_GetStatSigned(pDefender, pDescriptor->absPctStat, 0); // 0x6FCFAD15
+  if (pct >= 40) pct = 40;                              // 0x6FCFAD1A..0x6FCFAD24
+  if (pct > 0) {                                        // 0x6FCFAD26..0x6FCFAD28 (NO dmg256 > 0 guard!)
+    int pctAbsorbed256 = mulDiv113c(pct, dmg256, 100);  // 0x6FCFAD31: call 0x6FC214D0
+    pDamage->dwAbsorbLife += pctAbsorbed256;            // 0x6FCFAD39: add [ecx+0x48], eax
+    dmg256 -= pctAbsorbed256;                           // 0x6FCFAD3C: sub edi, eax
   }
-  int flat256 = D2Common_10519_GetStatSigned(pDefender, pDescriptor->absFlatStat, 0) << 8; // 0x6FCFAD66
-  if (flat256 > 0) {
-    int flatAbsorbed256 = dmg256 >= flat256 ? flat256 : dmg256; // 0x6FCFAD6D..0x6FCFAD75
-    pDamage->dwAbsorbLife += flatAbsorbed256;                   // 0x6FCFAD77: add [edi+0x48], ecx
-    dmg256 -= flatAbsorbed256;                                  // 0x6FCFAD7A: sub ebp, ecx
+  int flat256 = D2Common_10519_GetStatSigned(pDefender, pDescriptor->absFlatStat, 0) << 8; // 0x6FCFAD48..0x6FCFAD4D
+  if (flat256 > 0) {                                    // 0x6FCFAD50..0x6FCFAD52
+    int flatAbsorbed256 = flat256 < dmg256 ? flat256 : dmg256; // 0x6FCFAD54..0x6FCFAD58 (signed jl)
+    pDamage->dwAbsorbLife += flatAbsorbed256;           // 0x6FCFAD5D: add [esi+0x48], eax
+    dmg256 -= flatAbsorbed256;                          // 0x6FCFAD60: sub edi, eax
   }
 }
-return dmg256;
+return dmg256;                                          // 0x6FCFAD62..0x6FCFAD66
 ```
+
+See also [`d2game-item-defense-absorb-thorns-ctc-113c.md`](./d2game-item-defense-absorb-thorns-ctc-113c.md) for the full `0x6FCFC0B0` -> `0x6FCFBD00` -> `0x6FCFAD00` -> `0x6FCFE0C0` call tree, signed `DR`/`MDR` overflow spill, and `ITEMEVENTS` ordering.
 
 ## Pre-Damage Life Addition (`0x6FCFE237` -> `SUNITDMG_AddLife` `0x6FCFB570`)
 

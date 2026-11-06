@@ -544,6 +544,8 @@ export interface InternalPlayerRecord {
    * the NecroPet follow check `0x6FC3E366` (kb/monsters/d2game-necropet-ai-113c.md §3).
    */
   lastWarpPos113c?: { x: number; y: number } | undefined
+  /** 1.13c `D2PlayerDataStrc::tHistoryPos` (`0x6FC99BF0`): 20-entry breadcrumb ring (`dx^2 + dy^2 > 45`). */
+  breadcrumbs113c?: Array<{ x: number; y: number }> | undefined
   name: string
   classId: CharClassId
   classCode: CharacterClassCode
@@ -744,8 +746,6 @@ export interface InternalMonsterRecord {
   lastDamagedFrame113c?: number | undefined
   /** Next frame on which `MONSTER_Event3_HpRegen` (`0x6FC96740`) fires (`undefined` = no `Event 3` queued). */
   nextEvent3Frame113c?: number | undefined
-  /** Monotonic insertion counter into the `EVENT_SetEvent(..., 3, frame)` FIFO bucket (`0x6FCAEA80`). */
-  event3Seq113c?: number | undefined
   maxHp: number
   baseMaxHp: number
   /** Unmultiplied single-player normal-rank base max HP (`D2Game.dll` `0x6FC4673A`, #1821). */
@@ -1083,6 +1083,16 @@ export interface InternalMonsterRecord {
   deathAnimEndFrame?: number | undefined
   /** 1.13c monster attack/action animation end frame (`mode 4/5/8 -> 1`). */
   actionAnimEndFrame?: number | undefined
+  /** `item_slow` of the active state 24 `slowed` (Clay Golem `ITEMEVENTS_ApplySlow` 0x6FCCD2C0, capped). */
+  slowedPct113c?: number | undefined
+  /** `pAiGeneral` group leader unit id (`+0x2C`, set by the party spawner `0x6FD0E480` for `SetBoss` rows). */
+  groupLeader113c?: number | undefined
+  /** Leader only: minion unit ids, newest first (`pAiGeneral+0x34` list, `0x6FC40CF0`). */
+  groupMinions113c?: number[] | undefined
+  /** `pAiGeneral` command stack (`+0x20` head = last element), command type at node `+0x08` (`0x6FC40F30`). */
+  aiCommands113c?: number[] | undefined
+  /** `AiFallen` per-monster "afraid" flag (`pAiTick->[0]+0x14`, set by the death-flee branch). */
+  fallenAfraid113c?: boolean | undefined
 }
 
 
@@ -1120,6 +1130,15 @@ export interface InternalMercenaryRecord {
   equipment: ServerItemEntry[]
   /** 1/256 fixed-point HP regeneration carry (`MERCS_SetStats` `0x6FC68EE6..0x6FC68F0D`, #1671). */
   regenCarry256?: number | undefined
+  mode?: number | undefined
+  strength?: number | undefined
+  dexterity?: number | undefined
+  minDmg?: number | undefined
+  maxDmg?: number | undefined
+  maxHp256?: number | undefined
+  hp256?: number | undefined
+  hpRegen256?: number | undefined
+  oracleMercAi113c?: import('./hireable-ai-113c.ts').OracleHireableAiState113c | undefined
   states: Set<number>
   stateTimers: Map<number, number>
 }
@@ -1293,6 +1312,18 @@ export interface InternalMissileRecord {
   /** Linked `SummonManager` `'assassintrap'` pet `uid` for `#257 Blade Sentinel` 5-trap cap (#1884). */
   trapOwnerPlayerId?: number | undefined
   trapPetUid?: string | undefined
+  /** Oracle 1.13c mercenary-launched projectile state (`D2Common #10413` `0x6FDBBE60` + `SrvDmg01` `0x6FC5A850`). */
+  mercOwnerUnitId?: number | undefined
+  mercSlvl113c?: number | undefined
+  mercSrvDmgFunc113c?: number | undefined
+  mercPhysMin256?: number | undefined
+  mercPhysMax256?: number | undefined
+  mercPhysEdPct?: number | undefined
+  mercDeadlyStrike?: boolean | undefined
+  mercElemType?: 'fire' | 'cold' | 'mag' | undefined
+  mercElemMin256?: number | undefined
+  mercElemMax256?: number | undefined
+  mercColdLenFrames?: number | undefined
 }
 
 

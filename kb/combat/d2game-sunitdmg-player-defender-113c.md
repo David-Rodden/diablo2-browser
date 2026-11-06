@@ -48,8 +48,21 @@ TS: `monsterFillPacketPhysRange113c` + `executeSUnitDmg` `unrolledWeaponBase113c
 
 ## 3. `SUNITDMG_FillDamageValues` (`0x6FCFD450`) — tail for a monster attacker
 
-Order after the physical roll (attacker = monster, so the player-only Weapon-Mastery / CS / DS block
-`0x6FCFD51A..0x6FCFD5A6` is skipped):
+Order after the physical roll. Correction: the Weapon-Mastery / CS / DS block
+`0x6FCFD51A..0x6FCFD5B4` is **not** player-only. It runs for any attacker. Each of the three checks draws
+`RAND(&pAttacker->pSeed, 100)` (`0x6FC21480`, `esi = 0x64`) only when its chance is `> 0`, and the first
+success jumps to `0x6FCFD5A8` and skips the remaining checks:
+1. Weapon mastery: `0x6FC572C0` (mastery skill) → `0x6FC2A80E(.., 0, 2)` chance (`0x6FCFD522..0x6FCFD552`).
+2. Stat `0x151 = 337` (`0x6FCFD554..0x6FCFD57C`).
+3. Stat `0x8D = 141` deadly strike (`0x6FCFD57E..0x6FCFD5A6`).
+
+Plain MonStats monsters have all three at `0`, so they draw nothing here. The Amazon Valkyrie
+(`#357`) gets those stats from its `MonEquip` items, and the oracle shows its 337/141 draws between the
+physical roll and lightning `50/51` (`p52-amazon-valkyrie`). For the Valkyrie, item op `13`
+(`item_min/maxdamage_percent`) folds into the base item damage of the equipped weapon, not into the pet
+stat `%ED`.
+
+The rest of the tail, in order:
 
 1. Elemental stat pairs 48/49, 50/51, 52/53, 54/55 through `0x6FCFCD80` (draw only when `max > min`).
 2. Poison 57/58 through `0x6FCFBED0` (`0x6FCFD84C`).

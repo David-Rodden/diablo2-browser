@@ -1,6 +1,7 @@
 import { MONSTATS_113C_ROWS } from '../../common/units/monstats-113c-data.ts';
 import {
   buildAdjacentRoomLists,
+  COLLISION_CheckMaskWithSize,
   D2Common_10142,
   D2Common_10226,
   D2COMMON_10170_PathSetTargetPos,
@@ -528,6 +529,13 @@ export class AreaPathWorld113c {
   private readonly monsterAreaById = new Map<number, number>();
   private readonly objectAreaById = new Map<number, number>();
   private readonly hibernatedNpcAi = new Map<number, TownNpcAiState113c>();
+  private drlgTileZoneResolver: ((areaId: number, x: number, y: number) => number) | null = null;
+
+  setDrlgTileZoneResolver113c(
+    resolver: ((areaId: number, x: number, y: number) => number) | null,
+  ): void {
+    this.drlgTileZoneResolver = resolver;
+  }
 
   initArea(
     areaId: number,
@@ -780,6 +788,7 @@ export class AreaPathWorld113c {
       PATH_SetType(pPath, PATHTYPE_WALL_FOLLOW);
       pts = D2Common_10142(pPath, monEntry.unit, 0);
     }
+    if (pts > 0) this.monsterMoveEventHooks113c?.onMoveStart(params.unitId);
     return pts;
   }
 
@@ -818,6 +827,7 @@ export class AreaPathWorld113c {
       PATH_SetType(pPath, PATHTYPE_WALL_FOLLOW);
       pts = D2Common_10142(pPath, monEntry.unit, 0);
     }
+    if (pts > 0) this.monsterMoveEventHooks113c?.onMoveStart(params.unitId);
     return pts;
   }
 
@@ -849,12 +859,40 @@ export class AreaPathWorld113c {
     return { stepped, x: pPath.wPosX, y: pPath.wPosY };
   }
 
+  /**
+   * 1.13c continuous mode hooks (`MONSTER_ChangeMode` -> `0x6FD00B40` persistent `Event 0` LIFO
+   * registration on `pTimer->pPersistentHead[1]`; `kb/monsters/d2game-monster-events-113c.md` §4).
+   */
+  private monsterMoveEventHooks113c: {
+    readonly onMoveStart: (unitId: number) => void;
+    readonly onMoveStop: (unitId: number, mode: number) => void;
+  } | null = null;
+
+  setMonsterMoveEventHooks113c(hooks: {
+    readonly onMoveStart: (unitId: number) => void;
+    readonly onMoveStop: (unitId: number, mode: number) => void;
+  } | null): void {
+    this.monsterMoveEventHooks113c = hooks;
+  }
+
   stopMonsterMove113c(areaId: number, unitId: number, mode = MONMODE_NEUTRAL): void {
     const entry = this.areas.get(areaId)?.monsters.get(unitId);
     const pPath = entry?.unit.pDynamicPath;
     if (!entry || !pPath) return;
     PATH_StopMovement(pPath);
     entry.unit.dwAnimMode = mode;
+    this.monsterMoveEventHooks113c?.onMoveStop(unitId, mode);
+  }
+
+  getMonsterAreaId113c(unitId: number): number | undefined {
+    return this.monsterAreaById.get(unitId);
+  }
+
+  checkMonsterCrowdedMask113c(areaId: number, unitId: number, mask: number): boolean {
+    const entry = this.areas.get(areaId)?.monsters.get(unitId);
+    const pPath = entry?.unit.pDynamicPath;
+    if (!entry || !pPath) return false;
+    return COLLISION_CheckMaskWithSize(pPath.pRoom, pPath.wPosX, pPath.wPosY, pPath.dwUnitSize | 0, mask) !== 0;
   }
 
   /**
@@ -1826,18 +1864,21 @@ export class AreaPathWorld113c {
   }
 
   /**
-   * `D2Common #10916` (1.13c `0x6FD8C6D0`) as used by the pet AI: `DUNGEON_GetRoomAtPosition`
-   * (`0x6FD51330`) from `room`; `null` (the original returns 0) when `(x, y)` is in neither the room nor
-   * an adjacent one. On a hit the original returns the `+0x28` value of the RoomEx tile-grid entry at
-   * `(x / 5, y / 5)` (`0x6FDD19C0`, a per-tile zone id, `-1` when the tile has none). The replica has no
-   * RoomEx tile grid; it returns the level (area) id owning the found room, which is that zone id for
-   * single-level rooms (kb/monsters/d2game-necropet-ai-113c.md §4, open item).
+   * `D2Common #10916` (1.13c `0x6FD8C6D0`) as used by pet/hireable AI: `DUNGEON_GetRoomAtPosition`
+   * (`0x6FD51330`) from `room`; returns `0` when `(x, y)` is in neither `room` nor an adjacent active
+   * room. On a hit, delegates to `0x6FDD19C0` (`sub_6FD77110` on `pRoomEx->pLogicalRoomInfo`, returning
+   * `coordList.nIndex` or `-1` when none) when DRLG rooms are active, or falls back to `ctx.areaId`.
    */
-  tileZoneAtPosition113c(room: PathRoom | null, x: number, y: number): number | null {
+  tileZoneAtPosition113c(room: PathRoom | null, x: number, y: number): number {
     const hit = DUNGEON_GetRoomAtPosition(room, x | 0, y | 0);
-    if (!hit) return null;
+    if (!hit) return 0;
     for (const ctx of this.areas.values()) {
-      if (ctx.rooms.includes(hit)) return ctx.areaId;
+      if (ctx.rooms.includes(hit)) {
+        if (this.drlgTileZoneResolver !== null) {
+          return this.drlgTileZoneResolver(ctx.areaId, x | 0, y | 0);
+        }
+        return ctx.areaId;
+      }
     }
     throw new Error(`#10916: room at ${x},${y} belongs to no area context`);
   }

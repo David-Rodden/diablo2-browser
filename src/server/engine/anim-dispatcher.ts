@@ -33,8 +33,14 @@ import {
   computeShapeshiftWeaponDelay113c,
   computeStepSpeed256,
   getCharAnimClip113c,
+  playerAnimStartFrame113c,
   type CharAnimClipKey,
 } from '../../common/units/char-anim-speed.ts'
+
+/** `PlrType.txt` token -> player class id (`unit+0x04`) for `0x6FD82220`. */
+const PLAYER_CLASS_ID_BY_TOKEN_113C: Readonly<Record<string, number>> = {
+  AM: 0, SO: 1, NE: 2, PA: 3, BA: 4, DZ: 5, AI: 6,
+}
 import { UnitStatList } from './stat-list.ts'
 import { StateBus } from './state-bus.ts'
 
@@ -309,7 +315,8 @@ export class AnimDispatcher {
       !inBear &&
       (this.stateBus.hasState('monsterset') ||
         this.stateBus.hasState('vampire') ||
-        this.stateBus.hasState(65))
+        // States.txt 176 `monsterset` (Vampire morph); 65 is the Amazon `dodge` passive state.
+        this.stateBus.hasState(176))
     const activeToken = inWolf ? '40' : inBear ? 'TG' : inVamp ? 'VA' : this.charToken
     const activeWclass = inWolf || inBear || inVamp ? 'HTH' : this.weaponClass
     const morphMonsterClassId = inWolf ? 430 : inBear ? 431 : inVamp ? 135 : undefined
@@ -673,6 +680,16 @@ export class AnimDispatcher {
       }
     }
 
+    // 1.13c `0x6FD835F0` mode-start init: `dwFrame = UNITS_GetAnimStartFrame(unit) << 8` (`0x6FD8363C`).
+    // Only an unmorphed player in A1 / A2 can start late (Amazon / Sorceress weapon classes, `0x6FDE4480`);
+    // a sequence (`PLRMODE_SEQUENCE` 18) and a morphed (monster-type) unit start at frame 0.
+    const playerClassId = PLAYER_CLASS_ID_BY_TOKEN_113C[this.charToken]
+    if (playerClassId === undefined) throw new Error(`AnimDispatcher: unknown player token '${this.charToken}'`)
+    const startFrame =
+      isSequence || inWolf || inBear || morphMonsterClassId !== undefined
+        ? 0
+        : playerAnimStartFrame113c(playerClassId, mode === 'A1' ? 7 : mode === 'A2' ? 8 : -1, activeWclass)
+
     this.currentAnim = {
       skill,
       slvl,
@@ -688,8 +705,8 @@ export class AnimDispatcher {
       targetX: params.targetX ?? 0,
       targetY: params.targetY ?? 0,
       manaDeductedOnStart: params.skipResourceCommit ? true : manaDeductedOnStart,
-      frameAcc256: 0,
-      currentFrame: 0,
+      frameAcc256: startFrame * 256,
+      currentFrame: startFrame,
       strikesFired: 0,
       actionTriggered: false,
       completed: false,

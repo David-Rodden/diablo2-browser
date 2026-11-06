@@ -526,6 +526,20 @@ export function handleServerEvent(host: SessionEventProcessorHost, rawEv: Server
       to: { x: toX, y: toY },
     } as ServerEvent
   }
+  if (ev.type === 'LoadAct') {
+    if (!Number.isInteger(ev.areaId) || ev.areaId <= 0) {
+      host.handleUnexpectedDisconnect(
+        `0x03 LoadAct carried no areaId (act=${String(ev.act)}): cannot build the level the server placed the player in`,
+      )
+      return
+    }
+    if (!Number.isInteger(ev.act) || ev.act < 0 || ev.act > 4 || ev.areaId > 136) {
+      host.handleUnexpectedDisconnect(
+        `0x03 LoadAct out of 1.13c bounds (act=${String(ev.act)}, areaId=${String(ev.areaId)}, seed=0x${(ev.mapSeed >>> 0).toString(16)}): expected act 0..4 and areaId 1..136`,
+      )
+      return
+    }
+  }
   const preMoveUnit =
     ev.type === 'UnitMove'
       ? host.world.getUnit(
@@ -660,21 +674,6 @@ export function handleServerEvent(host: SessionEventProcessorHost, rawEv: Server
 
   switch (ev.type) {
     case 'LoadAct': {
-      // D2Client 0x6FB5DB50 → 0x6FAF3F90 ends with `[0x6FBC981C] = max(old, now + 10000)`
-      // (0x6FAF4098..0x6FAF40AF): no tick catch-up for 10 s after an act load.
-      host.logicClock.suppressCatchUp(performance.now() + LOAD_ACT_NO_CATCH_UP_MS)
-      host.interpolator.clear()
-      host.hudModel.closeAllPanels()
-      host.hudManager.closeAllPanels()
-      // 1.13c `0x03 LoadAct` (D2Client 0x6fb5db50) always names the level the player is being
-      // loaded into. Without it (or without a buildable LevelView) the client cannot place the
-      // player on the server's map, so fail fast instead of guessing a town (#539).
-      if (ev.areaId <= 0) {
-        host.handleUnexpectedDisconnect(
-          `0x03 LoadAct carried no areaId (act=${String(ev.act)}): cannot build the level the server placed the player in`,
-        )
-        break
-      }
       if (host.mapService) {
         try {
           host.mapService.onLoadActPacket(
@@ -693,6 +692,12 @@ export function handleServerEvent(host: SessionEventProcessorHost, rawEv: Server
           break
         }
       }
+      // D2Client 0x6FB5DB50 → 0x6FAF3F90 ends with `[0x6FBC981C] = max(old, now + 10000)`
+      // (0x6FAF4098..0x6FAF40AF): no tick catch-up for 10 s after an act load.
+      host.logicClock.suppressCatchUp(performance.now() + LOAD_ACT_NO_CATCH_UP_MS)
+      host.interpolator.clear()
+      host.hudModel.closeAllPanels()
+      host.hudManager.closeAllPanels()
       host.knownAreaIds.clear()
       host.knownAreaIds.add(ev.areaId)
       host.prefetchedGateForAreaId = -1

@@ -726,7 +726,12 @@ function spawnMonster(this: GameInstanceHost, spec: SpawnMonsterSpec): number {
       ),
     ),
     aiParams: spec.aiParams ?? kind?.aiParams ?? [0, 0, 0, 0, 0, 0, 0, 0],
-    nextAiFrame: 0,
+    nextAiFrame:
+      this.drlgRoomPopulator !== null && !isNpc
+        ? this.currentFrame === 0
+          ? 4
+          : this.currentFrame + 25
+        : 0,
     pathRunning: false,
     spawnedChildren: 0,
     consecutiveA2: 0,
@@ -864,7 +869,7 @@ function spawnMonster(this: GameInstanceHost, spec: SpawnMonsterSpec): number {
     trappedSoulState: 0,
     mapAi: spec.mapAi,
     townNpcAiEnabled: isTownNpcMonster113c(hcIdx),
-    aiAwake: this.drlgRoomPopulator === null,
+    aiAwake: true,
     runVelocityBonus: 0,
     deathAnimEndFrame: 0,
     actionAnimEndFrame: 0,

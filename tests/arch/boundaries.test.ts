@@ -11,7 +11,7 @@ const SRC_DIR = resolve(ROOT_DIR, 'src')
 const PLUGINS_DIR = resolve(ROOT_DIR, 'plugins')
 const TOOLS_DIR = resolve(ROOT_DIR, 'tools')
 
-const CANONICAL_MODULES = ['baker', 'client', 'common', 'netproto', 'server'] as const
+const CANONICAL_MODULES = ['baker', 'client', 'common', 'd2kern-113c', 'netproto', 'server'] as const
 const LEGACY_HTML_FILES = ['acts.html', 'acts-zh.html', 'acts-en.html', 'bnet.html', 'stats.html'] as const
 const RETIRED_SERVER_SUBPATHS = [
   'engine/engine.ts',
@@ -24,7 +24,8 @@ const RETIRED_SERVER_SUBPATHS = [
 const ALLOWED_MODULE_TARGETS: Record<string, ReadonlySet<string>> = {
   common: new Set(['common']),
   netproto: new Set(['netproto']),
-  server: new Set(['common', 'netproto', 'server']),
+  'd2kern-113c': new Set(['common', 'netproto', 'd2kern-113c']),
+  server: new Set(['common', 'netproto', 'd2kern-113c', 'server']),
   client: new Set(['common', 'netproto', 'client']),
   baker: new Set(['common', 'baker']),
 }
@@ -172,8 +173,8 @@ describe('Architectural Boundaries & 5-Module + Plugin Isolation (Rules 1â€“10 â
     expect(violations).toEqual([])
   })
 
-  it('Rule 3: common, netproto, server, and client never import node:* builtins or Node globals (0 exceptions)', () => {
-    const browserAndSimModules = ['common', 'netproto', 'server', 'client'] as const
+  it('Rule 3: common, netproto, d2kern-113c, server, and client never import node:* builtins or Node globals (0 exceptions)', () => {
+    const browserAndSimModules = ['common', 'netproto', 'd2kern-113c', 'server', 'client'] as const
     const violations: string[] = []
     for (const modName of browserAndSimModules) {
       for (const file of collectTsFiles(resolve(SRC_DIR, modName))) {
@@ -193,8 +194,8 @@ describe('Architectural Boundaries & 5-Module + Plugin Isolation (Rules 1â€“10 â
     expect(violations).toEqual([])
   })
 
-  it('Rule 4: common, netproto, and server are strictly deterministic (zero Math.random, Date.now, performance.now) and zero DOM globals (0 exceptions)', () => {
-    const pureModules = ['common', 'netproto', 'server'] as const
+  it('Rule 4: common, netproto, d2kern-113c, and server are strictly deterministic (zero Math.random, Date.now, performance.now) and zero DOM globals (0 exceptions)', () => {
+    const pureModules = ['common', 'netproto', 'd2kern-113c', 'server'] as const
     const violations: string[] = []
     for (const modName of pureModules) {
       for (const file of collectTsFiles(resolve(SRC_DIR, modName))) {
@@ -228,12 +229,12 @@ describe('Architectural Boundaries & 5-Module + Plugin Isolation (Rules 1â€“10 â
     expect(violations).toEqual([])
   })
 
-  it('Rule 6: every import from src/{common,server,client,baker}/** and tools/** into src/netproto/ resolves specifically to src/netproto/index.ts', () => {
+  it('Rule 6: every import from src/{common,d2kern-113c,server,client,baker}/** and tools/** into src/netproto/ resolves specifically to src/netproto/index.ts', () => {
     const netprotoDir = resolve(SRC_DIR, 'netproto')
     const netprotoIndex = resolve(netprotoDir, 'index.ts')
     const violations: string[] = []
     const filesToCheck = [
-      ...(['common', 'server', 'client', 'baker'] as const).flatMap((m) =>
+      ...(['common', 'd2kern-113c', 'server', 'client', 'baker'] as const).flatMap((m) =>
         collectTsFiles(resolve(SRC_DIR, m)),
       ),
       ...collectTsFiles(TOOLS_DIR),

@@ -1764,11 +1764,37 @@ function handleMercResurrect(this: GameInstanceHost, player: InternalPlayerRecor
   })
   if (!this.spendGold(player, cost)) return
   merc.alive = true
+  merc.mode = 1
   merc.state = 'follow'
   merc.hp = merc.maxHp
+  merc.hp256 = merc.maxHp256 ?? merc.maxHp * 256
   merc.areaId = player.areaId
   merc.x = player.x + 1
   merc.y = player.y + 1
+  if (merc.oracleMercAi113c !== undefined) {
+    merc.oracleMercAi113c.activeVelBonus = 0
+    merc.oracleMercAi113c.ovPathType = 0
+    merc.oracleMercAi113c.ovVelocity = 0
+    merc.oracleMercAi113c.ovNewDist = 0
+    merc.oracleMercAi113c.actionFrame = 0
+    merc.oracleMercAi113c.animEndFrame = 0
+    merc.oracleMercAi113c.pendingAction = undefined
+    merc.oracleMercAi113c.nextAiFrame = this.currentFrame + 15
+  }
+  this.areaPathWorld.removeMonster(merc.unitId)
+  this.areaPathWorld.spawnMonster(
+    merc.areaId,
+    {
+      unitId: merc.unitId,
+      hcIdx: merc.classId,
+      areaId: merc.areaId,
+      x: Math.floor(merc.x + 0.5),
+      y: Math.floor(merc.y + 0.5),
+      mode: 1,
+      dead: false,
+    },
+    this.currentFrame,
+  )
   this.broadcastToArea(merc.areaId, {
     type: 'UnitAssign',
     unitType: 'monster',

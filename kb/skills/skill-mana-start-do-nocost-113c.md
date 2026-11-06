@@ -42,6 +42,10 @@
   - After `gpSkillSrvStFnTable[wSrvStFunc]` succeeds (`0x6FCBFE5C`), tests `usemanaondo` (`bit 0x25` at `0x6FCBFE6C`).
   - Only calls `SKILLS_ConsumeMana` (`0x6FCBF850`) at start when `wSrvStFunc > 0` AND `usemanaondo == 0`.
   - When `usemanaondo == 1` (`Plague Javelin` #25, `Blade Fury` #266), no mana is consumed during `SKILLS_DoSkillStart`.
+  - TS: `schedulePlayerSkillWindup113c` (`player-skills-target-and-melee.ts`) commits the cast at start when
+    `srvStFunc > 0 && !useManaOnDo` (`manaCommittedOnStart`). Oracle `p52-necromancer-curses`: Raise Skeleton
+    (`srvstfunc` 15) pays its mana on the cast-start frame F1510, not on the action frame. The TS check does not
+    model a failing `srvstfunc` (then the original pays nothing at start).
 - **`SKILLS_DoSkillDo` (`0x6FCC19A0`)**:
   - At `0x6FCC1AE5`, when `usemanaondo == 1`, calls `SKILLS_CheckSkillMana` (`0x6FCBEC80`) before invoking `gpSkillSrvDoFnTable[wSrvDoFunc]`, aborting if mana fell below `manaCost256` during wind-up.
   - At `0x6FCC1C5F..0x6FCC1C8A`, after `gpSkillSrvDoFnTable[wSrvDoFunc]` returns non-zero, calls `SKILLS_ConsumeMana` (`0x6FCBF850`) when `gpSkillSrvStFnTable[wSrvStFunc] == NULL` (`wSrvStFunc == 0`) OR `usemanaondo == 1`.

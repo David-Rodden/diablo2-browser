@@ -35,8 +35,17 @@ export function decode0x4FMercForHireListStart(_pkt: Uint8Array): ServerEvent {
   }
 }
 
-/** 0x7A SummonAction (13B, D2Client.dll 0x6fb5c720) */
+/**
+ * 0x7A SummonAction (13B, D2Client.dll 0x6fb5c720; D2Game.dll 0x6fcab290 / 0x6fcb6810):
+ * - [0]     = 0x7A
+ * - [1]     = u8 action (0 = remove from g_pPetList 0x6fad1840, non-zero = add 0x6fad18c0)
+ * - [2]     = u8 petType (PetType.txt row index)
+ * - [3..4]  = u16LE classId (MonStats.txt hcIdx)
+ * - [5..8]  = u32LE ownerId
+ * - [9..12] = u32LE mercId (pet unitId)
+ */
 export function decode0x7ASummonAction(pkt: Uint8Array): ServerEvent {
+  requirePacketLength(pkt, '0x7A SummonAction', 13)
   const r = new ByteReader(pkt)
   r.u8() // 0x7A
   const action = r.u8()
@@ -44,13 +53,11 @@ export function decode0x7ASummonAction(pkt: Uint8Array): ServerEvent {
   const classId = r.u16LE()
   const ownerId = r.u32LE()
   const mercId = r.u32LE()
-  const count = pkt.length >= 17 ? r.u32LE() : undefined
   return {
     type: 'Merc',
     kind: 'assign',
     ownerId,
     mercId,
-    ...(count !== undefined ? { count } : {}),
     classId,
     stat: action,
     value: petType,

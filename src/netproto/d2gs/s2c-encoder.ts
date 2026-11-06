@@ -1967,15 +1967,13 @@ export function encodeTypedServerEventToS2cPackets(
       }
       if (ev.kind === 'assign') {
         if (ev.isSummonAction || ev.summonAction !== undefined) {
-          const hasCount = ev.count !== undefined
-          const w = new ByteWriter(17)
+          const w = new ByteWriter(13)
           w.u8(0x7a)
           w.u8((ev.summonAction ?? ev.stat ?? 1) & 0xff)
           w.u8((ev.petType ?? ev.value ?? 0) & 0xff)
           w.u16LE((ev.classId ?? 0) & 0xffff)
           w.u32LE((ev.ownerId ?? 0) >>> 0)
           w.u32LE((ev.mercId ?? 0) >>> 0)
-          w.u32LE(hasCount ? (ev.count! >>> 0) : 0)
           return [w.toUint8Array()]
         }
         const w = new ByteWriter(20)

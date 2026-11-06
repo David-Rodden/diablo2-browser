@@ -15,12 +15,15 @@ import type { SummonedPetUnit } from '../../ai/summon-manager.ts'
 import { executeSUnitDmg, getPrePierceResistance113c, type SUnitDmgPacket, type CombatUnitContext } from '../combat-pipeline.ts'
 import { FIXED_ONE, UnitStatList } from '../stat-list.ts'
 import {
-  allocateEvent3Seq113c,
   computeMonsterBaseDamageRegen113c,
   emitDotTraceEvent113c,
   hasLifeMaskState113c,
   stepMonsterEvent3HpRegen113c,
 } from '../statregen-dot-113c.ts'
+import {
+  cancelKernMonsterEvent3_113c,
+  scheduleKernMonsterEvent3_113c,
+} from './kern-monster-wheel-113c.ts'
 import { StateBus } from '../state-bus.ts'
 import type { SkillTargetUnitType113c } from '../../skills/martial-dualwield-113c.ts'
 import { computeDiminishingReturns } from '../../../common/data/calc-ast.ts'
@@ -28,7 +31,7 @@ import { difficultyResistPenalty } from '../difficulty-resist-penalty.ts'
 import { RABIES_CONTAGION_INTERVAL_FRAMES_113C, RABIES_CONTAGION_RADIUS_SUBTILES_113C, STATE_RABIES_113C } from '../../skills/p1-wave4-skills-113c.ts'
 import type { GameInstanceHost } from './host.ts'
 import type { InternalMercenaryRecord, InternalMonsterRecord, InternalPlayerRecord, PlayerSkillCast } from './types.ts'
-import { CANONICAL_OUTDOOR_SEAM_ADJACENT_PAIRS_113C, MONSTER_ACTIVATION_RADIUS_SUBTILES, monsterAiBehavior, monsterHp256_113c, playerWirePosition } from './constants-and-helpers.ts'
+import { CANONICAL_OUTDOOR_SEAM_ADJACENT_PAIRS_113C, MONSTER_ACTIVATION_RADIUS_SUBTILES, TOWN_AREAS, monsterAiBehavior, monsterHp256_113c, playerWirePosition, unitsDistanceToCoordinates113c } from './constants-and-helpers.ts'
 
 
 // ===========================================================================================
@@ -309,10 +312,20 @@ function buildPlayerDefenderSnapshot113c(this: GameInstanceHost, player: Interna
   defenderStats.setBaseStat('item_cannotbefrozen', this.sumPlayerItemStat(player, 153))
   defenderStats.setBaseStat('item_halffreezeduration', this.sumPlayerItemStat(player, 118))
   defenderStats.setBaseStat('curse_resistance', this.sumPlayerItemStat(player, 109))
+  defenderStats.setBaseStat('level', player.level)
+  const defenderItemPoolStats = new UnitStatList(this.registry, undefined, {
+    ownerType: 'item',
+    charClass: player.classCode,
+  })
+  defenderItemPoolStats.setBaseStat('maxhp', this.sumPlayerItemPoolStat256(player, 7))
+  defenderItemPoolStats.setBaseStat('maxmana', this.sumPlayerItemPoolStat256(player, 9))
+  defenderItemPoolStats.setBaseStat('item_maxhp_percent', this.sumPlayerItemStat(player, 76))
+  defenderItemPoolStats.setBaseStat('item_maxmana_percent', this.sumPlayerItemStat(player, 77))
+  defenderItemPoolStats.setBaseStat('item_hp_perlevel', this.sumPlayerItemPoolStat256(player, 216))
+  defenderItemPoolStats.setBaseStat('item_mana_perlevel', this.sumPlayerItemPoolStat256(player, 217))
+  defenderStats.attachStatList(defenderItemPoolStats)
   defenderStats.setBaseStat('maxhp', player.maxHpFixed)
-  defenderStats.setHp256(player.hpFixed)
   defenderStats.setBaseStat('maxmana', player.maxManaFixed)
-  defenderStats.setMana256(player.manaFixed)
   for (const [skId, lvl] of player.skills.entries()) {
     defenderStats.setBaseSkillLevel(skId, lvl)
   }
@@ -328,6 +341,8 @@ function buildPlayerDefenderSnapshot113c(this: GameInstanceHost, player: Interna
 
   const defenderStateBus = new StateBus(defenderStats, this.registry)
   this.mirrorPersistentStates(this.playerCombat.get(player.unitId), defenderStateBus)
+  defenderStats.setHp256(player.hpFixed)
+  defenderStats.setMana256(player.manaFixed)
   const hasFadeActive =
     player.states.has(159) ||
     (player.states.has(157) && (player.skills.get(267) ?? 0) > 0 && (player.skills.get(258) ?? 0) === 0)
@@ -1303,6 +1318,8 @@ function monsterSlowPercent(this: GameInstanceHost, monster: InternalMonsterReco
     slowPct += Math.min(100, Math.abs(entry?.stats.velocitypercent ?? fallbackPct))
   }
   addStateSlow(60, 50)
+  // State 24 `slowed` (Clay Golem slow target): the capped `item_slow` stored when it was applied.
+  if (monster.states.has(24) && monster.slowedPct113c !== undefined) slowPct += monster.slowedPct113c
   // `holywindcold` (44) is the target state; `holywind` (43) is the caster's own aura.
   if (bus?.hasState(44) || monster.states.has(44)) {
     addStateSlow(44, 25)
@@ -1474,8 +1491,7 @@ function stepMonsterRegen(this: GameInstanceHost, monster: InternalMonsterRecord
       inTown: isTownArea113c(monster.areaId),
     })
     if (outcome.reschedule && !outcome.killed) {
-      monster.nextEvent3Frame113c = this.currentFrame + 1
-      monster.event3Seq113c = allocateEvent3Seq113c(this)
+      scheduleKernMonsterEvent3_113c(this, monster, this.currentFrame + 1)
     }
     if (outcome.changed) {
       monster.hp = Math.ceil(outcome.hp1 / FIXED_ONE)
@@ -1500,7 +1516,7 @@ function stepMonsterRegen(this: GameInstanceHost, monster: InternalMonsterRecord
       monster.poisonBitrate256 = 0
       monster.poisonCarry256 = 0
       monster.poisonKillSource = undefined
-      monster.nextEvent3Frame113c = undefined
+      cancelKernMonsterEvent3_113c(this, monster)
       if (attacker !== undefined) {
         this.applyMonsterDeath(monster, attacker, 'pois', killSource)
       } else {
@@ -2045,20 +2061,33 @@ function nearestHostileForMonster(this: GameInstanceHost,
     }
     return this.isMonsterStepWalkable(monster.areaId, monster.x, monster.y, x, y, monster.isFlying)
   }
+  const useOctile = this.drlgRoomPopulator !== null
+  const mx = Math.floor(monster.x + 0.5)
+  const my = Math.floor(monster.y + 0.5)
+  const distTo = (tx: number, ty: number): number =>
+    useOctile
+      ? unitsDistanceToCoordinates113c(mx, my, Math.floor(tx + 0.5), Math.floor(ty + 0.5))
+      : Math.hypot(tx - monster.x, ty - monster.y)
   for (const p of this.players.values()) {
-    if (p.dead || !this.isAreaSeamAdjacent(monster.areaId, p.areaId)) continue
-    const d = Math.hypot(p.x - monster.x, p.y - monster.y)
-    if (d < bestDist && hasLineOfSight(p.x, p.y)) {
+    if (p.dead || (useOctile && TOWN_AREAS.has(p.areaId)) || !this.isAreaSeamAdjacent(monster.areaId, p.areaId)) {
+      continue
+    }
+    const d = distTo(p.x, p.y)
+    if (d < bestDist && (useOctile || hasLineOfSight(p.x, p.y))) {
       bestDist = d
       best = { kind: 'player', x: p.x, y: p.y, player: p }
     }
   }
   for (const merc of this.mercenaries.values()) {
-    if (!merc.alive || !this.isAreaSeamAdjacent(monster.areaId, merc.areaId)) continue
+    if (!merc.alive || (useOctile && TOWN_AREAS.has(merc.areaId)) || !this.isAreaSeamAdjacent(monster.areaId, merc.areaId)) {
+      continue
+    }
     const mercOwner = this.players.get(merc.ownerPlayerId)
-    if (mercOwner !== undefined && (mercOwner.dead || !this.isAreaSeamAdjacent(monster.areaId, mercOwner.areaId))) continue
-    const d = Math.hypot(merc.x - monster.x, merc.y - monster.y)
-    if (d < bestDist && hasLineOfSight(merc.x, merc.y)) {
+    if (mercOwner !== undefined && (mercOwner.dead || (!useOctile && !this.isAreaSeamAdjacent(monster.areaId, mercOwner.areaId)))) {
+      continue
+    }
+    const d = distTo(merc.x, merc.y)
+    if (d < bestDist && (useOctile || hasLineOfSight(merc.x, merc.y))) {
       bestDist = d
       best = { kind: 'merc', x: merc.x, y: merc.y, merc }
     }

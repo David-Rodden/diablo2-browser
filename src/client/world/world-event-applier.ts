@@ -4744,53 +4744,54 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
     case 'Merc': {
       if (ev.kind === 'assign' && ev.mercId !== undefined) {
         const isSummonAction = (ev as any).isSummonAction === true || (ev as any).summonAction !== undefined
+        const action = (ev as any).summonAction ?? ev.stat ?? 1
+        if (isSummonAction && action === 0) {
+          // 1.13c D2Client.dll 0x6fb5c720 -> 0x6fad1840(mercId):
+          // D2Game.dll 0x6fcb8205 / 0x6fcb74b5 sends 0x7A(action=0) with petType=0, classId=0, ownerId=0
+          // and only mercId populated at pkt[9..12]. Match against the stored mercenary / pet record by mercId.
+          if (this._merc && this._merc.mercId === ev.mercId) {
+            this._merc.isDead = true
+            this._merc.lifePct = 0
+          }
+          this._pets.delete(ev.mercId)
+          break
+        }
         const petType = (ev as any).petType ?? ((ev as any).stat !== undefined ? ev.value : undefined) ?? 0
         const isSummonPet = isSummonAction && petType !== 7
 
         if (isSummonPet) {
-          const action = (ev as any).summonAction ?? ev.stat ?? 1
-          if (action === 0) {
-            this._pets.delete(ev.mercId)
-          } else {
-            const petUnit = this.getUnit('monster', ev.mercId)
-            if (petUnit && petUnit.classId === 0 && ev.classId && ev.classId > 0) {
-              petUnit.classId = ev.classId
-            }
-            const petOwnerId = ev.ownerId ?? this.selfId
-            if (petUnit) {
-              petUnit.ownerType = 'player'
-              petUnit.ownerId = petOwnerId
-            }
-            const resolvedPetClassId = ev.classId ?? petUnit?.classId ?? 0
-            if (ev.mercId < 900000 && (resolvedPetClassId === 356 || resolvedPetClassId === 357)) {
-              for (const m of Array.from(this._monsters.values())) {
-                if (m.id >= 900000 && m.classId === resolvedPetClassId) {
-                  this._units.delete(m.key)
-                  this._monsters.delete(m.id)
-                  this._pets.delete(m.id)
-                  this.npcMotion.removeMonster(m.id)
-                }
+          const petUnit = this.getUnit('monster', ev.mercId)
+          if (petUnit && petUnit.classId === 0 && ev.classId && ev.classId > 0) {
+            petUnit.classId = ev.classId
+          }
+          const petOwnerId = ev.ownerId ?? this.selfId
+          if (petUnit) {
+            petUnit.ownerType = 'player'
+            petUnit.ownerId = petOwnerId
+          }
+          const resolvedPetClassId = ev.classId ?? petUnit?.classId ?? 0
+          if (ev.mercId < 900000 && (resolvedPetClassId === 356 || resolvedPetClassId === 357)) {
+            for (const m of Array.from(this._monsters.values())) {
+              if (m.id >= 900000 && m.classId === resolvedPetClassId) {
+                this._units.delete(m.key)
+                this._monsters.delete(m.id)
+                this._pets.delete(m.id)
+                this.npcMotion.removeMonster(m.id)
               }
             }
-            this._pets.set(ev.mercId, {
-              unitId: ev.mercId,
-              ownerId: petOwnerId,
-              petType,
-              classId: resolvedPetClassId,
-              lifePct: petUnit?.lifePct && petUnit.lifePct > 0 ? petUnit.lifePct : 128,
-              lifePctScale: 128,
-              isDead: false,
-            })
           }
+          this._pets.set(ev.mercId, {
+            unitId: ev.mercId,
+            ownerId: petOwnerId,
+            petType,
+            classId: resolvedPetClassId,
+            lifePct: petUnit?.lifePct && petUnit.lifePct > 0 ? petUnit.lifePct : 128,
+            lifePctScale: 128,
+            isDead: false,
+          })
         } else {
           if (ev.ownerId === undefined || ev.ownerId === this.selfId || this.selfId === 0) {
-            if (isSummonAction && (ev as any).summonAction === 0) {
-              if (this._merc && this._merc.mercId === ev.mercId) {
-                this._merc.isDead = true
-                this._merc.lifePct = 0
-              }
-              this._pets.delete(ev.mercId)
-            } else {
+            {
               const prevMerc = this._merc
               const evSeed =
                 typeof (ev as { seed?: number }).seed === 'number'

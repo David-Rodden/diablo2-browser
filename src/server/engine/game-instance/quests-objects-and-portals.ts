@@ -3402,6 +3402,18 @@ function transitionPlayerArea(this: GameInstanceHost,
     this.emitQuestFlagSync113c(player, 'a2q6')
   }
   this.ensureAdjacentAreasLoaded(destAreaId)
+  const landedX = Math.floor(player.x + 0.5)
+  const landedY = Math.floor(player.y + 0.5)
+  player.lastWarpPos113c = { x: landedX, y: landedY }
+  player.breadcrumbs113c = [{ x: landedX, y: landedY }]
+  this.areaPathWorld.spawnOrSyncPlayer(
+    player.areaId,
+    player.unitId,
+    player.classId,
+    player.x,
+    player.y,
+    player.mode,
+  )
   this.relocatePlayerFollowersToPlayer(player, false)
 
   if (prevArea !== destAreaId) {

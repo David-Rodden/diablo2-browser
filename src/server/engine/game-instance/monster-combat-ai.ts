@@ -17,8 +17,9 @@ import type { SummonedPetUnit } from '../../ai/summon-manager.ts'
 import { FIXED_ONE } from '../stat-list.ts'
 import type { GameInstanceHost } from './host.ts'
 import type { InternalMercenaryRecord, InternalMonsterRecord, InternalPlayerRecord } from './types.ts'
-import { MONSTER_ACTIVATION_RADIUS_SUBTILES, monsterCanFireRanged113c, monsterProfile113c, monsterShootRange, normalizeMissileElement, unitsDistanceToCoordinates113c, UNIT_TYPE_113C } from './constants-and-helpers.ts'
+import { MONSTER_ACTIVATION_RADIUS_SUBTILES, TOWN_AREAS, monsterCanFireRanged113c, monsterProfile113c, monsterShootRange, normalizeMissileElement, unitsDistanceToCoordinates113c, UNIT_TYPE_113C } from './constants-and-helpers.ts'
 import { rollLimitedSeed113c } from './unit-seeds-113c.ts'
+import { stepFallenThink113c } from './fallen-ai-113c.ts'
 
 
 /**
@@ -1956,9 +1957,15 @@ function stepMonsterAi(this: GameInstanceHost, monster: InternalMonsterRecord): 
   }
   // GetHit / Knockback animation lock: the monster may not start a new action while the
   // GH animation plays (1.13c AnimData `GH`, D2Game.dll 0x6FC95070 / 0x6FC965E0).
-  if (this.currentFrame < monster.hitRecoveryUntilFrame) {
+  // DRLG oracle path: a type-2 AI event that was already pending when the GH started still fires and its
+  // think replaces the GH mode (oracle `p52-necromancer-poison-golem` zombie #9: GH F823, event F833 ->
+  // A2 on F833 while the 17-frame GH would run to F840).
+  const drlgAiEventInterruptsGh =
+    this.drlgRoomPopulator !== null && monster.mode === 3 && this.currentFrame >= monster.nextAiFrame
+  if (this.currentFrame < monster.hitRecoveryUntilFrame && !drlgAiEventInterruptsGh) {
     return
   }
+  if (drlgAiEventInterruptsGh) monster.hitRecoveryUntilFrame = this.currentFrame
   if (monster.mode === MONMODE_KNOCKBACK || (this.drlgRoomPopulator !== null && monster.mode === 3)) {
     monster.mode = 1
   }
@@ -3790,7 +3797,9 @@ function stepDrlgMonsterAi113c(this: GameInstanceHost, monster: InternalMonsterR
   let immediateAi = false
   if (monster.mode === 2 || monster.mode === 15) {
     const slowPct = this.monsterSlowPercent(monster)
-    const velPct = 75 + (monster.mode === 15 ? (monster.runVelocityBonus ?? 0) : 0) - slowPct
+    // `pAiControl+0x1C` velocity override, stored by `0x6FC94F90` into the mode struct (`+0x10`) for the
+    // whole move: zombie RN chase 100, Fallen WL flee 50 (`0x6FCA3255`); 0 for every other move.
+    const velPct = 75 + (monster.runVelocityBonus ?? 0) - slowPct
     const res = this.areaPathWorld.stepMonsterMove113c({
       areaId: monster.areaId,
       unitId: monster.unitId,
@@ -3835,8 +3844,18 @@ function stepDrlgMonsterAi113c(this: GameInstanceHost, monster: InternalMonsterR
     const my = Math.floor(monster.y + 0.5)
     let minDist = 0x7fffffff
     for (const p of this.players.values()) {
-      if (p.dead || !this.isAreaSeamAdjacent(monster.areaId, p.areaId)) continue
+      // `AI_FindNearestPlayerOrAlly` (`0x6FCD1DCD`): players in town (`DRLGROOM_IsInTown`) are skipped.
+      if (p.dead || TOWN_AREAS.has(p.areaId) || !this.isAreaSeamAdjacent(monster.areaId, p.areaId)) {
+        continue
+      }
       const d = unitsDistanceToCoordinates113c(Math.floor(p.x + 0.5), Math.floor(p.y + 0.5), mx, my)
+      if (d < minDist) minDist = d
+    }
+    for (const merc of this.mercenaries.values()) {
+      if (!merc.alive || TOWN_AREAS.has(merc.areaId) || !this.isAreaSeamAdjacent(monster.areaId, merc.areaId)) {
+        continue
+      }
+      const d = unitsDistanceToCoordinates113c(Math.floor(merc.x + 0.5), Math.floor(merc.y + 0.5), mx, my)
       if (d < minDist) minDist = d
     }
     if (minDist >= aiDist) {
@@ -3848,21 +3867,79 @@ function stepDrlgMonsterAi113c(this: GameInstanceHost, monster: InternalMonsterR
 
   const hasDimVision = monster.states.has(23)
   const hasTaunt = monster.states.has(54)
-  const effectiveAggro = hasDimVision && !hasTaunt ? 3.5 : monster.aggroRadius
-  const target = this.nearestHostileForMonster(monster, effectiveAggro)
-
+  // `AI_FindNearestPlayerOrAlly` (`D2Game.dll` `0x6FCD1C90`):
+  // - Initial radius `[esp+0x14] = MonStats.aidist[diff]` (35 when 0; 4 under Dim Vision without Taunt).
+  // - Distance uses `UNITS_GetDistanceToCoordinates` (`0x6FCD08F0`, `< 0x37` and `< bestDist`).
+  // - Sight check (`#10839(..., 4)` `COLLIDE_MISSILE_BARRIER`, skipped in outdoor rooms `#10685`):
+  //   approximated via `isMonsterStepWalkable(..., true)` (`0x0804` missile-barrier + closed-door ray).
+  let target:
+    | { readonly kind: 'player'; readonly x: number; readonly y: number; readonly player: InternalPlayerRecord }
+    | { readonly kind: 'merc'; readonly x: number; readonly y: number; readonly merc: InternalMercenaryRecord }
+    | { readonly kind: 'pet'; readonly x: number; readonly y: number; readonly pet: SummonedPetUnit }
+    | null = null
   let dist = Infinity
+  if (monster.align === 0) {
+    const mx = Math.floor(monster.x + 0.5)
+    const my = Math.floor(monster.y + 0.5)
+    let bestDist =
+      hasDimVision && !hasTaunt ? 4 : monStatsAiDist113c(monster.hcIdx, this.difficulty)
+    const hasSight = (tx: number, ty: number): boolean =>
+      this.isMonsterStepWalkable(monster.areaId, monster.x, monster.y, tx, ty, true)
+    for (const p of this.players.values()) {
+      if (p.dead || TOWN_AREAS.has(p.areaId) || !this.isAreaSeamAdjacent(monster.areaId, p.areaId)) {
+        continue
+      }
+      const pd = unitsDistanceToCoordinates113c(Math.floor(p.x + 0.5), Math.floor(p.y + 0.5), mx, my)
+      if (pd < 0x37 && pd < bestDist && hasSight(p.x, p.y)) {
+        bestDist = pd
+        target = { kind: 'player', x: p.x, y: p.y, player: p }
+      }
+      const mgr = this.summonManagers.get(p.unitId)
+      if (mgr !== undefined) {
+        for (const pet of mgr.getActivePets()) {
+          if (pet.alive === false || pet.hp <= 0) continue
+          const petD = unitsDistanceToCoordinates113c(
+            Math.floor(pet.x + 0.5),
+            Math.floor(pet.y + 0.5),
+            mx,
+            my,
+          )
+          if (petD < bestDist && hasSight(pet.x, pet.y)) {
+            bestDist = petD
+            target = { kind: 'pet', x: pet.x, y: pet.y, pet }
+          }
+        }
+      }
+    }
+    for (const merc of this.mercenaries.values()) {
+      if (!merc.alive || TOWN_AREAS.has(merc.areaId) || !this.isAreaSeamAdjacent(monster.areaId, merc.areaId)) {
+        continue
+      }
+      const mercOwner = this.players.get(merc.ownerPlayerId)
+      if (
+        mercOwner !== undefined &&
+        (mercOwner.dead || TOWN_AREAS.has(mercOwner.areaId) || !this.isAreaSeamAdjacent(monster.areaId, mercOwner.areaId))
+      ) {
+        continue
+      }
+      const md = unitsDistanceToCoordinates113c(
+        Math.floor(merc.x + 0.5),
+        Math.floor(merc.y + 0.5),
+        mx,
+        my,
+      )
+      if (md < bestDist && hasSight(merc.x, merc.y)) {
+        bestDist = md
+        target = { kind: 'merc', x: merc.x, y: merc.y, merc }
+      }
+    }
+    if (target !== null) {
+      dist = bestDist
+    }
+  }
+
   let inMeleeRange = false
   if (target !== null) {
-    // `AI_FindNearestPlayerOrAlly_6FCD1C90` (`0x6FCD1DE6`): `nTargetDist` uses `0x6FCD08F0`
-    // (`unitsDistanceToCoordinates113c`), while `bInMeleeRange` (`0x6FCD20F2`) calls
-    // `D2Common.#11138` (`UNITS_IsInMeleeRange(pMonster, pTarget, 0)` `0x6FD826C0`).
-    dist = unitsDistanceToCoordinates113c(
-      Math.round(monster.x),
-      Math.round(monster.y),
-      Math.round(target.x),
-      Math.round(target.y),
-    )
     if (target.kind === 'player') {
       const exactMelee = this.areaPathWorld.isMonsterInMeleeRange113c(
         monster.areaId,
@@ -3919,6 +3996,21 @@ function stepDrlgMonsterAi113c(this: GameInstanceHost, monster: InternalMonsterR
         inMeleeRange = meleeDist <= 0 || meleeRng + 1 >= meleeDist
       }
     }
+  }
+
+  // MonAI dispatch (`0x6FD2E788 + ai * 16`, think at `+8`): ported families get their own think; every other
+  // family still runs the Zombie think below (kb/monsters/d2game-zombie-ai-113c.md).
+  if (MONSTATS_113C_ROWS[monster.hcIdx]?.ai === 'Fallen') {
+    stepFallenThink113c(this, monster, {
+      seed: unitSeed,
+      target,
+      dist,
+      inMelee: target !== null && inMeleeRange,
+      alwaysChase: hasTaunt,
+      aip: (n) => monStatsAip113c(this, monster, n),
+      aiInterval,
+    })
+    return
   }
 
   if (target !== null && inMeleeRange) {
@@ -3984,6 +4076,9 @@ function stepDrlgMonsterAi113c(this: GameInstanceHost, monster: InternalMonsterR
     const moveMode = hasDecrep ? 2 : 15
     const velBonus = hasDecrep ? 0 : 100
     monster.runVelocityBonus = velBonus
+    // AiZombie chase: `AI_ApproachTarget(pGame, pMonster, pTarget, RN/WL, 0, 0, 1, 0)` (`0x6FD12540`) for any
+    // unit target (player, mercenary or summon; summons are monster-type path units keyed by their unit id).
+    const petTargetUnitId = target.kind === 'pet' ? this.petUnitIds.get(target.pet.uid) : undefined
     const pts =
       target.kind === 'player'
         ? this.areaPathWorld.startMonsterMoveToTarget113c({
@@ -3996,16 +4091,27 @@ function stepDrlgMonsterAi113c(this: GameInstanceHost, monster: InternalMonsterR
             stepNum: 1,
             velocityPct: 75 + velBonus - slowPct,
           })
-        : this.areaPathWorld.startMonsterMoveToPos113c({
-            areaId: monster.areaId,
-            unitId: monster.unitId,
-            hcIdx: monster.hcIdx,
-            targetX: Math.round(target.x),
-            targetY: Math.round(target.y),
-            pathType: MONSTER_MOVE_PATHTYPE_113C,
-            stepNum: 1,
-            velocityPct: 75 + velBonus - slowPct,
-          })
+        : target.kind === 'merc' || (petTargetUnitId !== undefined && target.pet.oracleAi113c !== undefined)
+          ? this.areaPathWorld.startMonsterMoveToTarget113c({
+              areaId: monster.areaId,
+              unitId: monster.unitId,
+              hcIdx: monster.hcIdx,
+              targetUnitType: 1,
+              targetUnitId: target.kind === 'merc' ? target.merc.unitId : petTargetUnitId!,
+              pathType: MONSTER_MOVE_PATHTYPE_113C,
+              stepNum: 1,
+              velocityPct: 75 + velBonus - slowPct,
+            })
+          : this.areaPathWorld.startMonsterMoveToPos113c({
+              areaId: monster.areaId,
+              unitId: monster.unitId,
+              hcIdx: monster.hcIdx,
+              targetX: Math.round(target.x),
+              targetY: Math.round(target.y),
+              pathType: MONSTER_MOVE_PATHTYPE_113C,
+              stepNum: 1,
+              velocityPct: 75 + velBonus - slowPct,
+            })
     if (pts > 0) {
       monster.mode = moveMode
     } else {

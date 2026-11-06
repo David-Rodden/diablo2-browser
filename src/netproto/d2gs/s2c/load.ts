@@ -51,14 +51,33 @@ export function decode0x02GameLogonSuccess(_pkt: Uint8Array): ServerEvent {
   return { type: 'GameLoading' }
 }
 
-/** 0x03 LoadAct (12B, D2Client.dll 0x6fb5db50) */
+/** Max act index in 1.13c (`ACT_NUM_ACTS = 5`, indices `0..4`, D2Client.dll 0x6faf405f). */
+export const MAX_ACT_113C = 4
+
+/** Max playable area ID in 1.13c `Levels.txt` (`1..136`). */
+export const MAX_AREA_ID_113C = 136
+
+/**
+ * 0x03 LoadAct (12B, D2Client.dll 0x6fb5db50 -> 0x6faf3f90):
+ * - [0]     = 0x03
+ * - [1]     = u8 act (0..4; 0x6faf3fcf ACT_LoadAct & 0x6faf405f 5-entry table [esi*4+0x6fba9eb4])
+ * - [2..5]  = u32LE mapSeed
+ * - [6..7]  = u16LE areaId (1..136 in 1.13c Levels.txt; stored at [0x6fbcc3c0] @ 0x6faf4054)
+ * - [8..11] = u32LE objectSeed
+ */
 export function decode0x03LoadAct(pkt: Uint8Array): ServerEvent {
+  requirePacketLength(pkt, '0x03 LoadAct', 12)
   const r = new ByteReader(pkt)
   r.u8() // 0x03
   const act = r.u8()
   const mapSeed = r.u32LE()
   const areaId = r.u16LE()
   const objectSeed = r.u32LE()
+  if (act > MAX_ACT_113C || areaId < 1 || areaId > MAX_AREA_ID_113C) {
+    throw new RangeError(
+      `0x03 LoadAct: act=${String(act)} areaId=${String(areaId)} outside 1.13c bounds (expected act 0..${MAX_ACT_113C}, areaId 1..${MAX_AREA_ID_113C}, seed=0x${(mapSeed >>> 0).toString(16)})`,
+    )
+  }
   return {
     type: 'LoadAct',
     act,

@@ -1,0 +1,177 @@
+{
+  "$comment": "Route-2 pilot memory layout (1.13c). Offsets in bytes; ptr = 32-bit pointer. Evidence: kb/engine/d2game-event-wheel-and-room-units-113c.md and the kb files cited per field. Checked against oracle memdumps by tools/oracle/route2-layout-check.py.",
+  "structs": {
+    "D2UnitStrc": {
+      "size": 256,
+      "fields": [
+        {"name": "dwUnitType", "off": 0, "type": "u32"},
+        {"name": "dwClassId", "off": 4, "type": "u32"},
+        {"name": "pMemPool", "off": 8, "type": "ptr"},
+        {"name": "dwUnitId", "off": 12, "type": "u32"},
+        {"name": "dwAnimMode", "off": 16, "type": "u32"},
+        {"name": "pUnitData", "off": 20, "type": "ptr"},
+        {"name": "nAct", "off": 24, "type": "u8"},
+        {"name": "pAct", "off": 28, "type": "ptr"},
+        {"name": "seedLo", "off": 32, "type": "u32"},
+        {"name": "seedHi", "off": 36, "type": "u32"},
+        {"name": "pPath", "off": 44, "type": "ptr"},
+        {"name": "pStatListEx", "off": 92, "type": "ptr"},
+        {"name": "pInventory", "off": 96, "type": "ptr"},
+        {"name": "pGame", "off": 128, "type": "ptr"},
+        {"name": "pSkills", "off": 168, "type": "ptr"},
+        {"name": "dwFlags", "off": 196, "type": "u32"},
+        {"name": "dwFlags2", "off": 200, "type": "u32"},
+        {"name": "pEventFirst", "off": 220, "type": "ptr"},
+        {"name": "pRoomUpdateNext", "off": 224, "type": "ptr"},
+        {"name": "pGameHashNext", "off": 228, "type": "ptr"},
+        {"name": "pRoomUnitNext", "off": 232, "type": "ptr"}
+      ]
+    },
+    "D2StatListStrc": {
+      "size": 60,
+      "fields": [
+        {"name": "pMemPool", "off": 0, "type": "ptr"},
+        {"name": "pUnit", "off": 4, "type": "ptr"},
+        {"name": "eOwnerType", "off": 8, "type": "u32"},
+        {"name": "dwOwnerId", "off": 12, "type": "u32"},
+        {"name": "dwFlags", "off": 16, "type": "u32"},
+        {"name": "dwStateNo", "off": 20, "type": "u32"},
+        {"name": "dwExpireFrame", "off": 24, "type": "u32"},
+        {"name": "nSkillNo", "off": 28, "type": "u32"},
+        {"name": "nSkillLevel", "off": 32, "type": "u32"},
+        {"name": "pStat", "off": 36, "type": "ptr"},
+        {"name": "wStatCount", "off": 40, "type": "u16"},
+        {"name": "wStatCapacity", "off": 42, "type": "u16"},
+        {"name": "pPrevLink", "off": 44, "type": "ptr"},
+        {"name": "pNextLink", "off": 48, "type": "ptr"},
+        {"name": "pParent", "off": 52, "type": "ptr"},
+        {"name": "fpRemove", "off": 56, "type": "ptr"}
+      ]
+    },
+    "D2StatListExStrc": {
+      "size": 100,
+      "fields": [
+        {"name": "pMemPool", "off": 0, "type": "ptr"},
+        {"name": "pUnit", "off": 4, "type": "ptr"},
+        {"name": "eOwnerType", "off": 8, "type": "u32"},
+        {"name": "dwOwnerId", "off": 12, "type": "u32"},
+        {"name": "dwFlags", "off": 16, "type": "u32"},
+        {"name": "dwStateNo", "off": 20, "type": "u32"},
+        {"name": "dwExpireFrame", "off": 24, "type": "u32"},
+        {"name": "nSkillNo", "off": 28, "type": "u32"},
+        {"name": "nSkillLevel", "off": 32, "type": "u32"},
+        {"name": "pStat", "off": 36, "type": "ptr"},
+        {"name": "wStatCount", "off": 40, "type": "u16"},
+        {"name": "wStatCapacity", "off": 42, "type": "u16"},
+        {"name": "pPrevLink", "off": 44, "type": "ptr"},
+        {"name": "pNextLink", "off": 48, "type": "ptr"},
+        {"name": "pParent", "off": 52, "type": "ptr"},
+        {"name": "fpRemove", "off": 56, "type": "ptr"},
+        {"name": "pMyLastList", "off": 60, "type": "ptr"},
+        {"name": "pMyStats", "off": 64, "type": "ptr"},
+        {"name": "pOwner", "off": 68, "type": "ptr"},
+        {"name": "pFullStat", "off": 72, "type": "ptr"},
+        {"name": "wFullStatCount", "off": 76, "type": "u16"},
+        {"name": "wFullStatCapacity", "off": 78, "type": "u16"},
+        {"name": "pModStat", "off": 80, "type": "ptr"},
+        {"name": "wModStatCount", "off": 84, "type": "u16"},
+        {"name": "wModStatCapacity", "off": 86, "type": "u16"},
+        {"name": "pStateFlags", "off": 88, "type": "ptr"},
+        {"name": "fpStatChanged", "off": 92, "type": "ptr"},
+        {"name": "pGame", "off": 96, "type": "ptr"}
+      ]
+    },
+    "D2MonsterDataStrc": {
+      "size": 256,
+      "fields": [
+        {"name": "pMonStatsTxt", "off": 0, "type": "ptr"},
+        {"name": "pAiGeneral", "off": 40, "type": "ptr"},
+        {"name": "pAiControl", "off": 44, "type": "ptr"},
+        {"name": "dwAlwaysChaseField", "off": 84, "type": "u32"}
+      ]
+    },
+    "D2AiGeneralStrc": {
+      "size": 64,
+      "fields": [
+        {"name": "pfnThink", "off": 4, "type": "ptr"},
+        {"name": "dwFlags", "off": 8, "type": "u32"},
+        {"name": "pCommandHead", "off": 32, "type": "ptr"},
+        {"name": "pCommandTail", "off": 36, "type": "ptr"},
+        {"name": "pGroup", "off": 40, "type": "ptr"},
+        {"name": "dwLeaderId", "off": 44, "type": "u32"},
+        {"name": "dwLeaderType", "off": 48, "type": "u32"},
+        {"name": "pMinionList", "off": 52, "type": "ptr"}
+      ]
+    },
+    "D2AiControlStrc": {
+      "size": 64,
+      "fields": [
+        {"name": "dwPathTypeOverride", "off": 24, "type": "u32"},
+        {"name": "dwVelocityOverride", "off": 28, "type": "u32"},
+        {"name": "bNewDistOverride", "off": 32, "type": "u8"}
+      ]
+    },
+    "D2EventStrc": {
+      "size": 48,
+      "fields": [
+        {"name": "nType", "off": 0, "type": "u8"},
+        {"name": "fFlags", "off": 2, "type": "u8"},
+        {"name": "dwFrame", "off": 4, "type": "u32"},
+        {"name": "pUnit", "off": 8, "type": "ptr"},
+        {"name": "dwUnitId", "off": 12, "type": "u32"},
+        {"name": "dwUnitType", "off": 16, "type": "u32"},
+        {"name": "dwArg14", "off": 20, "type": "u32"},
+        {"name": "dwArg18", "off": 24, "type": "u32"},
+        {"name": "pWheelNewer", "off": 28, "type": "ptr"},
+        {"name": "pWheelOlder", "off": 32, "type": "ptr"},
+        {"name": "pUnitNext", "off": 36, "type": "ptr"},
+        {"name": "pUnitPrev", "off": 40, "type": "ptr"},
+        {"name": "pfnHandler", "off": 44, "type": "ptr"}
+      ]
+    },
+    "D2TimerStrc": {
+      "size": 2592,
+      "fields": [
+        {"name": "nCurrentSlot", "off": 0, "type": "u32"},
+        {"name": "pSlotTail", "off": 4, "type": "ptr", "count": 320, "$comment": "[partition * 64 + slot]"},
+        {"name": "pSlotHead", "off": 1284, "type": "ptr", "count": 320},
+        {"name": "pPersistentHead", "off": 2564, "type": "ptr", "count": 5},
+        {"name": "pSavedNext", "off": 2584, "type": "ptr"},
+        {"name": "pPool", "off": 2588, "type": "ptr"}
+      ]
+    },
+    "D2GameStrc": {
+      "size": 7464,
+      "fields": [
+        {"name": "nDifficulty", "off": 109, "type": "u8"},
+        {"name": "bExpansion", "off": 112, "type": "u32"},
+        {"name": "dwInitSeed", "off": 124, "type": "u32"},
+        {"name": "dwSeedOverride", "off": 132, "type": "u32"},
+        {"name": "pClientList", "off": 136, "type": "ptr"},
+        {"name": "dwLastUnitId", "off": 144, "type": "u32", "count": 6},
+        {"name": "dwGameFrame", "off": 168, "type": "u32"},
+        {"name": "pTimer", "off": 184, "type": "ptr"},
+        {"name": "pAct", "off": 188, "type": "ptr", "count": 5},
+        {"name": "seedLo", "off": 208, "type": "u32"},
+        {"name": "seedHi", "off": 212, "type": "u32"},
+        {"name": "pUnitHash", "off": 4384, "type": "ptr", "count": 640, "$comment": "0:player +0x1120, 1:monster +0x1320, 2:object +0x1520, 4:item +0x1720, 3:missile +0x1920"},
+        {"name": "pTileList", "off": 6944, "type": "ptr"}
+      ]
+    },
+    "D2ActiveRoomStrc": {
+      "size": 128,
+      "fields": [
+        {"name": "ppRoomsNear", "off": 0, "type": "ptr"},
+        {"name": "bDeathRingIdx", "off": 20, "type": "u8"},
+        {"name": "pUpdateList", "off": 28, "type": "ptr"},
+        {"name": "pCollisionGrid", "off": 32, "type": "ptr"},
+        {"name": "nRoomsNear", "off": 36, "type": "u32"},
+        {"name": "nPlayers", "off": 40, "type": "u32"},
+        {"name": "pActUpdateFlag", "off": 44, "type": "ptr"},
+        {"name": "dwFlags", "off": 52, "type": "u32"},
+        {"name": "dwDeathRing", "off": 56, "type": "u32", "count": 4},
+        {"name": "pUnitFirst", "off": 116, "type": "ptr"}
+      ]
+    }
+  }
+}

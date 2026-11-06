@@ -1143,6 +1143,13 @@ export interface SUnitDmgPacket {
    * `kb/combat/d2game-sunitdmg-player-defender-113c.md` §3.
    */
   readonly monStatsCritPct113c?: number | undefined
+  /**
+   * When `true`, skips the inline step-9 `damagedinmelee`/`ironmaiden`/`thorns_percent` reflection inside
+   * `executeSUnitDmg` so `resolveMonsterAttackOnPlayer` can dispatch `event 5` (`Iron Maiden`), `event 1`
+   * (`ATD`/`ATLD`/`DamageToMana`/`CtC`), armor durability, and `0x6FCB8A70` (`thorns_percent`) in exact
+   * `D2Game.dll` `0x6FCFED30` -> `0x6FCFE0C0` call & `dmg`-trace order (`kb/combat/d2game-item-defense-absorb-thorns-ctc-113c.md`).
+   */
+  readonly deferDefenderReactiveEvents113c?: boolean | undefined
 }
 
 export {
@@ -1168,6 +1175,13 @@ export function setSUnitDmgTraceObserver113c(
   sUnitDmgTraceObserver113c = observer
 }
 
+/** Notify the active `SUNITDMG` (`0x6FCFC0B0`) oracle trace observer of a landed hit (`ATD`, `Thorns`, `Iron Maiden`, `Static Field`, merc missile, etc.). */
+export function emitSUnitDmgTraceEvent113c(ev: SUnitDmgTraceEvent113c): void {
+  if (sUnitDmgTraceObserver113c !== null) {
+    sUnitDmgTraceObserver113c(ev)
+  }
+}
+
 export interface SUnitDmgOutcome {
   readonly hit: boolean
   readonly avoidedReason: 'none' | 'miss' | 'block' | 'weapon_block' | 'dodge' | 'avoid' | 'evade'
@@ -1177,6 +1191,12 @@ export interface SUnitDmgOutcome {
   readonly elemDamage256: number
   readonly totalDamage256: number
   readonly totalDamage: number
+  /** Exact signed `pDamage->dwPhysDamage` (`+0x08`, before MDR spill; negative when `flatDR > rawPhys`). */
+  readonly signedPhysDamage256?: number | undefined
+  /** Exact signed `pDamage->dwDmgTotal` (`+0x4C`). */
+  readonly signedTotalDamage256?: number | undefined
+  /** Exact `pDamage->wResultFlags` (`+0x04`) at `0x6FCFC0B0` return. */
+  readonly resultFlags113c?: number | undefined
   readonly targetHpBefore256: number
   readonly targetHpAfter256: number
   readonly targetKilled: boolean
@@ -2799,12 +2819,15 @@ export function executeSUnitDmg(
     ? 0
     : Math.max(0, applyResist113c(prePvpAfterShieldPhys256, physResRec.effectiveRes))
 
-  // 1.13c MDR Overflow Spill (`D2Game.dll` `0x6FCFBD41..0x6FCFBD47` + `0x6FCFC50A`, #1795):
+  // 1.13c MDR Overflow Spill (`D2Game.dll` `0x6FCFBD41..0x6FCFBD47` + `0x6FCFAD6D..0x6FCFAD7C` + `0x6FCFC50A`, #1795):
   // When an active non-poison elemental channel (`afterShieldElem256 > 0`) has `flatMagicDr256` subtracted below 0,
-  // `0x6FCFBD47` (`jle`) skips resistance & absorb while retaining the negative channel value, which then subtracts
-  // from Physical damage in `dwDmgTotal` (`0x6FCFC50A`)!
+  // `0x6FCFBD47` (`jle`) skips resistance & `%` absorb (`0x6FCFAD16`), then reaches flat absorb (`0x6FCFAD4D`):
+  // - If `flatAbsorb == 0`, the negative channel value stays in `pDamage` (`raw[4/7/8/9]`) and subtracts from `dwDmgTotal`.
+  // - If `flatAbsorb > 0`, `min(flatAbsorb, esi) == esi` (negative), cancelling `esi` to `0` and adding negative `esi` to `dwAbsorbLife`.
   let mdrOverflow256 = 0
   let remRawElem256 = 0
+  let negElemTrace256 = 0
+  let negElemAbsorbDelta256 = 0
   if (afterShieldElem256 > 0) {
     if (elemType === 'pois') {
       remRawElem256 = afterShieldElem256
@@ -2812,7 +2835,23 @@ export function executeSUnitDmg(
       const signedElemAfterMdr256 = afterShieldElem256 - flatMagicDr256
       if (signedElemAfterMdr256 <= 0) {
         remRawElem256 = 0
-        mdrOverflow256 += -signedElemAfterMdr256
+        let remNeg256 = signedElemAfterMdr256
+        const negAbsPair = elemType ? ELEM_ABSORB_STAT_MAP[elemType] : undefined
+        if (negAbsPair !== undefined && packet.skillId !== 42 && !isSanctuaryBypassUndead) {
+          const negPct = Math.min(40, Math.trunc(defender.statList.getAccruedStat(negAbsPair.pct)))
+          if (negPct > 0) {
+            const pctDelta = mulDiv113c(negPct, remNeg256, 100)
+            negElemAbsorbDelta256 = (negElemAbsorbDelta256 + pctDelta) | 0
+            remNeg256 = (remNeg256 - pctDelta) | 0
+          }
+          const negFlatAbs256 = Math.max(0, defender.statList.getAccruedStat(negAbsPair.flat)) * FIXED_ONE
+          if (negFlatAbs256 > 0) {
+            negElemAbsorbDelta256 = (negElemAbsorbDelta256 + remNeg256) | 0
+            remNeg256 = 0
+          }
+        }
+        mdrOverflow256 += -remNeg256
+        negElemTrace256 = remNeg256
       } else {
         remRawElem256 = signedElemAfterMdr256
       }
@@ -2832,7 +2871,7 @@ export function executeSUnitDmg(
       ? defender.statList.getAccruedStat('item_absorbfire_percent')
       : 0
   const isFireGolemAbsorb = fireGolemAbsorbPct > 0
-  let absorbHeal256 = 0
+  let absorbHeal256 = negElemAbsorbDelta256
   if (isFireGolemAbsorb && remRawElem256 > 0) {
     absorbHeal256 += Math.trunc((remRawElem256 * fireGolemAbsorbPct) / 100)
   }
@@ -2846,13 +2885,14 @@ export function executeSUnitDmg(
     ? 0
     : Math.max(0, applyResist113c(remRawElem256, elemResRec.effectiveRes))
 
-  // Track resolved poison bitrate/duration and per-channel post-absorb damage for #1871 / #1873 & oracle `dmg` trace
+  // Track resolved poison bitrate/duration and signed per-channel post-absorb damage (`0x6FCFBD80`) for #1871 / #1873 & oracle `dmg` trace
   let resolvedPoisonBitrate256 = 0
   let resolvedPoisonDurationFrames = 0
-  let traceFire256 = 0
-  let traceLtng256 = 0
-  let traceMag256 = 0
-  let traceCold256 = 0
+  let tracePhys256 = packet.skillId === 42 ? 0 : physDrOverflow256 > 0 ? -physDrOverflow256 : finalPhys256
+  let traceFire256 = elemType === 'fire' ? negElemTrace256 : 0
+  let traceLtng256 = elemType === 'ltng' ? negElemTrace256 : 0
+  let traceMag256 = elemType === 'mag' ? negElemTrace256 : 0
+  let traceCold256 = elemType === 'cold' ? negElemTrace256 : 0
   let traceColdLen = 0
 
   // Skill-packet poison length resist scaling (`stat 110 item_poisonlengthresist` + player difficulty penalty, #1871)
@@ -2996,7 +3036,30 @@ export function executeSUnitDmg(
       anyRiderChannelRaw = true
       const signedCh256 = chDmg256 - riderFlatMdr256
       if (signedCh256 <= 0) {
-        if (chDmg256 > 0) mdrOverflow256 += -signedCh256
+        if (chDmg256 > 0) {
+          let remNegCh256 = signedCh256
+          const rAbsPair = ELEM_ABSORB_STAT_MAP[ch]
+          if (rAbsPair !== undefined && !isSanctuaryBypassUndead) {
+            const rPct = Math.min(40, Math.trunc(defender.statList.getAccruedStat(rAbsPair.pct)))
+            if (rPct > 0) {
+              const pctDelta = mulDiv113c(rPct, remNegCh256, 100)
+              absorbHeal256 = (absorbHeal256 + pctDelta) | 0
+              remNegCh256 = (remNegCh256 - pctDelta) | 0
+            }
+            const rFlatAbs256 = Math.max(0, defender.statList.getAccruedStat(rAbsPair.flat)) * FIXED_ONE
+            if (rFlatAbs256 > 0) {
+              absorbHeal256 = (absorbHeal256 + remNegCh256) | 0
+              remNegCh256 = 0
+            }
+          }
+          if (remNegCh256 !== 0) {
+            mdrOverflow256 += -remNegCh256
+            if (ch === 'fire') traceFire256 += remNegCh256
+            else if (ch === 'ltng') traceLtng256 += remNegCh256
+            else if (ch === 'cold') traceCold256 += remNegCh256
+            else if (ch === 'mag') traceMag256 += remNegCh256
+          }
+        }
         return
       }
       chDmg256 = signedCh256
@@ -3698,7 +3761,7 @@ export function executeSUnitDmg(
   }
 
   // 9. Reactive events post-damage (damagedinmelee for melee, hitbymissile for missile)
-  if (attackKind === 'melee') {
+  if (attackKind === 'melee' && !packet.deferDefenderReactiveEvents113c) {
     const isClayGolemUnit =
       defender.stateBus.hasState('claygolem') ||
       (defender as { kind?: string }).kind === 'clay_golem' ||
@@ -3880,6 +3943,31 @@ export function executeSUnitDmg(
     (elemResRec.isImmune && (rawElem256 > 0 || packet.skillId === 42) && !anyRiderChannelNonImmune) ||
     (!rawElem256 && anyRiderChannelRaw && !anyRiderChannelNonImmune && finalElem256 === 0)
 
+  const defenderUninterruptable113c =
+    defender.stateBus.hasState('uninterruptable') || defender.stateBus.hasState(54)
+  const hasNonPoisonHitChannel113c =
+    rawPhys256 > 0 || (rawElem256 > 0 && elemType !== 'pois') || anyRiderChannelRaw
+  const resultFlags113c =
+    (0x01 |
+      (packet.missileResultFlags113c ?? 0) |
+      (packet.missileResultFlags113c === undefined &&
+      !(packet.noHitRecovery || packet.isPersistentGroundFire) &&
+      !defenderUninterruptable113c &&
+      hasNonPoisonHitChannel113c
+        ? 0x04
+        : 0) |
+      (knockedBack ? 0x08 : 0) |
+      (isCritical ? 0x2000 : 0)) >>>
+    0
+  const signedTotalDamage256 =
+    (tracePhys256 +
+      traceFire256 +
+      traceLtng256 +
+      traceMag256 +
+      traceCold256 +
+      resolvedPoisonBitrate256) |
+    0
+
   if (sUnitDmgTraceObserver113c !== null) {
     // `0x20` is OR'd by `SUNITDMG_FillDamageValues` (`0x6FCFD492`). The monster melee caller
     // `0x6FC64AC0` zeroes the damage struct (`0x6FC64BDE rep stos`), so its swings never carry `0x02`.
@@ -3888,34 +3976,16 @@ export function executeSUnitDmg(
         (packet.monStatsCritPct113c === undefined && (finalPhys256 > 0 || rawPhys256 > 0) ? 0x02 : 0) |
         (packet.missileHitFlags113c ?? 0)) >>>
       0
-    const resultFlags =
-      (0x01 |
-        (packet.missileResultFlags113c ?? 0) |
-        (packet.missileResultFlags113c === undefined &&
-        !(packet.noHitRecovery || packet.isPersistentGroundFire) &&
-        (finalPhys256 + traceFire256 + traceLtng256 + traceMag256 + traceCold256 > 0)
-          ? 0x04
-          : 0) |
-        (knockedBack ? 0x08 : 0) |
-        (isCritical ? 0x2000 : 0)) >>>
-      0
-    const retDmg =
-      (finalPhys256 +
-        traceFire256 +
-        traceLtng256 +
-        traceMag256 +
-        traceCold256 +
-        resolvedPoisonBitrate256) >>>
-      0
+    const traceStunLen = Math.max(0, Math.trunc(packet.stunDurationFrames ?? 0)) >>> 0
     sUnitDmgTraceObserver113c({
       att: [atkRawType, atkNumericId],
       def: [defRawType, defNumericId],
       hp: [hpBefore256 >>> 0, hpBefore256 >>> 0],
-      ret: retDmg,
+      ret: signedTotalDamage256,
       raw: [
         hitFlags,
-        resultFlags,
-        finalPhys256 >>> 0,
+        resultFlags113c,
+        tracePhys256 >>> 0,
         (packet.unrolledWeaponBase113c?.enDmgPct113c ?? 0) >>> 0,
         traceFire256 >>> 0,
         attackKind !== 'spell' ? 2 : 0,
@@ -3930,7 +4000,7 @@ export function executeSUnitDmg(
         attackerHealed256 >>> 0,
         attackerManaLeeched256 >>> 0,
         0,
-        absorbHeal256 >>> 0,
+        traceStunLen,
       ],
     })
   }
@@ -3944,6 +4014,9 @@ export function executeSUnitDmg(
     elemDamage256: finalElem256,
     totalDamage256,
     totalDamage: Math.ceil(totalDamage256 / FIXED_ONE),
+    signedPhysDamage256: tracePhys256,
+    signedTotalDamage256,
+    resultFlags113c,
     targetHpBefore256: hpBefore256,
     targetHpAfter256: hpAfter256,
     targetKilled: hpAfter256 === 0 && hpBefore256 > 0,

@@ -237,7 +237,7 @@ export function preRollMonsterOutfits113c(seed: D2SeedStrc, hcIdx: number): numb
  * Returns the 16-component variant array (`0..15`), or `undefined` when `hcIdx` is outside `MonStats`.
  */
 export function rollMonsterOutfit113c(
-  palette: ActMonsterOutfitPalette113c,
+  palette: ActMonsterOutfitPalette113c | null,
   hcIdx: number,
   unitSeed: D2SeedStrc,
 ): number[] | undefined {
@@ -248,7 +248,7 @@ export function rollMonsterOutfit113c(
   for (let i = 0; i < 16; i++) variants[i] = meta[i + 1] ?? 0
 
   let outfits: readonly (readonly number[])[] | null = null
-  if (!OUTFIT_PALETTE_SKIP_HCIDX_113C.has(hcIdx)) {
+  if (palette !== null && !OUTFIT_PALETTE_SKIP_HCIDX_113C.has(hcIdx)) {
     const cached = palette.byHcIdx.get(hcIdx)
     if (cached !== undefined) {
       outfits = cached

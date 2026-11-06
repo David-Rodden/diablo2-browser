@@ -1285,7 +1285,10 @@ describe('Wave 3 P0/P1: #1789 AnimDispatcher 25Hz Integration, #1862 Multi-Hit R
           }
         ).spawnGroundItem({ code: 'hp1', x: 110, y: 100, areaId: 2 })
 
-        // Cast #1: Interrupted at tick 3 by >=25% maxHp GH hit -> 0 mana spent, potion remains on ground!
+        // Cast #1: Interrupted at tick 3 by >=25% maxHp GH hit -> potion remains on ground. Telekinesis has
+        // `srvstfunc` 12 (`0x6FC62360`, succeeds for a valid target) and no `usemanaondo`, so 1.13c
+        // `SKILLS_DoSkillStart` (`0x6FCBFE69..0x6FCBFE87` -> `0x6FCBF850`) pays the mana at cast start and the
+        // GH cancel does not refund it.
         game.enqueueCommand(sorcId, {
           type: 'CastSkillOnTarget',
           skillId: 43,
@@ -1294,13 +1297,14 @@ describe('Wave 3 P0/P1: #1789 AnimDispatcher 25Hz Integration, #1862 Multi-Hit R
         })
         game.stepFrames(3)
         expect((game as unknown as { groundItems: Map<number, unknown> }).groundItems.has(potId)).toBe(true)
-        expect(p.manaFixed).toBe(manaBefore)
+        const manaAfterStart = p.manaFixed
+        expect(manaAfterStart).toBeLessThan(manaBefore)
 
         v.maybeEnterPlayerHitRecovery(p, 150)
         expect(p.mode).toBe(4)
         game.stepFrames(20)
         expect((game as unknown as { groundItems: Map<number, unknown> }).groundItems.has(potId)).toBe(true)
-        expect(p.manaFixed).toBe(manaBefore)
+        expect(p.manaFixed).toBeLessThan(manaBefore)
 
         // Cast #2: Uninterrupted -> ticks 1..6 windup leaves potion on ground; tick 7 picks it up!
         game.enqueueCommand(sorcId, {
@@ -1309,14 +1313,15 @@ describe('Wave 3 P0/P1: #1789 AnimDispatcher 25Hz Integration, #1862 Multi-Hit R
           targetType: 'item',
           targetId: potId,
         })
+        const manaBeforeCast2 = p.manaFixed
         for (let t = 1; t <= 6; t++) {
           game.stepFrame()
           expect((game as unknown as { groundItems: Map<number, unknown> }).groundItems.has(potId)).toBe(true)
-          expect(p.manaFixed).toBe(manaBefore)
+          expect(p.manaFixed).toBeLessThan(manaBeforeCast2)
         }
         game.stepFrame()
         expect((game as unknown as { groundItems: Map<number, unknown> }).groundItems.has(potId)).toBe(false)
-        expect(p.manaFixed).toBeLessThan(manaBefore)
+        expect(p.manaFixed).toBeLessThan(manaBeforeCast2)
       }
 
       // 2) Necromancer #90 Iron Golem: deferred metal item consumption & golem spawn until ActionFlag=1
@@ -1356,9 +1361,10 @@ describe('Wave 3 P0/P1: #1789 AnimDispatcher 25Hz Integration, #1862 Multi-Hit R
           game.stepFrame()
           expect((game as unknown as { groundItems: Map<number, unknown> }).groundItems.has(swordId)).toBe(true)
           expect(game.getPetsForOwner(necId).length).toBe(0)
-          expect(p.manaFixed).toBe(manaBefore)
+          // `srvstfunc` 20 (`0x6FC6EDD0`) succeeds on a metal item, so the mana is paid at cast start.
+          expect(p.manaFixed).toBeLessThan(manaBefore)
         }
-        // Tick 8 (ActionFlag=1): consumes sword, deducts mana, spawns Iron Golem!
+        // Tick 8 (ActionFlag=1): consumes sword, spawns Iron Golem!
         game.stepFrame()
         expect((game as unknown as { groundItems: Map<number, unknown> }).groundItems.has(swordId)).toBe(false)
         expect(game.getPetsForOwner(necId).some((pet) => pet.sourceSkillId === 90)).toBe(true)

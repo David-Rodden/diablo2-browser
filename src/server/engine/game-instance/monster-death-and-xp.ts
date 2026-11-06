@@ -452,15 +452,38 @@ function applyDamageToMerc(this: GameInstanceHost,
   this.broadcastAllyHp(areaId, merc.unitId, merc.hp)
   if (merc.hp <= 0) {
     merc.hp = 0
+    merc.hp256 = 0
+    merc.mode = 12
     merc.alive = false
     merc.state = 'dead'
+    if (merc.oracleMercAi113c !== undefined) {
+      merc.oracleMercAi113c.activeVelBonus = 0
+      merc.oracleMercAi113c.ovPathType = 0
+      merc.oracleMercAi113c.ovVelocity = 0
+      merc.oracleMercAi113c.ovNewDist = 0
+      merc.oracleMercAi113c.actionFrame = 0
+      merc.oracleMercAi113c.animEndFrame = 0
+      merc.oracleMercAi113c.pendingAction = undefined
+    }
+    this.areaPathWorld.removeMonster(merc.unitId)
     this.stopMercenaryAura(merc)
-    // D2Game.dll 0x6fcb8120 -> 0x6fcb8200: emit S2C 0x9B MercReviveCost(nameId, cost) on hireling death.
+    // D2Game.dll 0x6fcb8120 -> 0x6fcb8200..0x6fcb8235: emit S2C 0x9B MercReviveCost(nameId, cost)
+    // and broadcast 13B S2C 0x7A SummonAction(action=0, petUnitId=merc.unitId) on hireling death.
     this.emitToPlayer(merc.ownerPlayerId, {
       type: 'Merc',
       kind: 'stat',
       nameId: merc.subType,
       value: computeMercResurrectCost113c(merc.level),
+    })
+    this.broadcastToArea(areaId, {
+      type: 'Merc',
+      kind: 'assign',
+      isSummonAction: true,
+      summonAction: 0,
+      petType: 0,
+      mercId: merc.unitId,
+      ownerId: 0,
+      classId: 0,
     })
     this.broadcastAllyRemoved(areaId, merc.unitId)
   } else if (dmg > 0 && !options?.skipGetHit) {

@@ -661,7 +661,6 @@ export type ServerEvent =
       readonly isSummonAction?: boolean | undefined
       readonly summonAction?: number | undefined
       readonly petType?: number | undefined
-      readonly count?: number | undefined
     }
   | {
       readonly type: 'Portal'

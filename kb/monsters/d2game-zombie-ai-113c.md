@@ -186,10 +186,12 @@ Oracle (`p52-barbarian-warcries`, zombie #11 at `5639,5784`): F=901 player at `5
 re-scheduled in 25 frames, 0 draws); F=926 player at `5661,5806` -> `d = 33` -> target -> AiZombie wanders (4 draws).
 The size-subtracted distance (`0x6FCD0A20`) gives 34 at F=901, which woke the replica 25 frames early.
 
-TS: the 25-frame activation sweep in `frame-and-commands.ts` (`stepFrame`) now uses
-`unitsDistanceToCoordinates113c(player, monster) < monStatsAiDist113c(hcIdx, difficulty)`, and every AI tick of
-`stepDrlgMonsterAi113c` re-runs the no-target branch of `0x6FD13220`: minimum plain distance over the players
-`>= aidist` -> no think, AI delay 25 / 10 / `d - 10` (oracle `p52-paladin-auras` F=1363: zombie #11 wandered to
-`5629,5803`, `d = 35`, no draws). Not ported: the `IdleWander(5)` no-target branch (`0x6FD13248..0x6FD132FD`,
+TS: initial `EVENTTYPE_MONAI` scheduling follows `D2GAME_SpawnMonsterInCurrentRoom` (`0x6FCCE3CB`: `+25` only when
+`pRoom1->nNumClients > 0`, skipped when `0`) and `SUB_AddClientToRoom` (`0x6FCBD950 -> 0x6FCCF920`: `dwGameFrame + 2`
+when a populated room transitions `hasClientNear: false -> true`, e.g. `224 + 2 = 226` in `p52-paladin-auras` /
+`p52-barbarian-warcries` and `229 + 2 = 231` in `p52-item-defense`). Every AI tick of `stepDrlgMonsterAi113c` re-runs
+the no-target branch of `0x6FD13220`: minimum plain distance over out-of-town players (`!DRLGROOM_IsInTown`
+`0x6FCD1DCD`) `>= aidist` -> no think, AI delay 25 / 10 / `d - 10` (oracle `p52-paladin-auras` F=1363: zombie #11
+wandered to `5629,5803`, `d = 35`, no draws). Not ported: the `IdleWander(5)` no-target branch (`0x6FD13248..0x6FD132FD`,
 `pMonsterData+0x54 in {3, 0x13}` or `#10851(room, x, y, .., 0x40)`, plus MonStats2 mode bit 2), and the merc / pet
 candidate lists of `0x6FCD1C90` (`0x6FCD1EF5..0x6FCD1FD5`).
