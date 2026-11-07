@@ -383,6 +383,7 @@ export class Autopilot {
     const { assists, guide } = this.host
     Object.assign(this, { active: true, pausedUntil: Number.NEGATIVE_INFINITY, talk: null, waypointTo: null, trip: null })
     this.uses.clear()
+    this.stubborn.clear()
     this.errandsAt.clear()
     guide.enabled = true
     assists.questPickup = true
@@ -1084,8 +1085,9 @@ export class Autopilot {
     if (rounds < (waypoint || portal ? WAYPOINT_ROUNDS : 1)) {
       this.stubborn.set(unit.id, rounds + 1)
       this.uses.delete(unit.id)
-      this.host.hudModel?.cancelNpcSession(this.host.world.npcInteraction.npcId ?? this.lastNpc ?? undefined)
-      this.host.assists.journal?.('stubborn', { classId: unit.classId, rounds: rounds + 1, npc: this.host.world.npcInteraction.npcId, window: this.host.world.npcInteraction.window })
+      const townNpcs = this.town() ? this.host.world.getUnitsByType(1).filter((npc) => npc.isNpc).map((npc) => npc.id) : []
+      new Set([this.host.world.npcInteraction.npcId ?? this.lastNpc ?? undefined, ...townNpcs]).forEach((id) => this.host.hudModel?.cancelNpcSession(id))
+      this.host.assists.journal?.('stubborn', { classId: unit.classId, rounds: rounds + 1, npc: this.host.world.npcInteraction.npcId, lastNpc: this.lastNpc, cancelled: townNpcs.length, window: this.host.world.npcInteraction.window })
       const away = Math.atan2(me.y - unit.y, me.x - unit.x) + (rounds * 2 * Math.PI) / WAYPOINT_ROUNDS
       this.host.assists.stepTo(unit.x + Math.cos(away) * BACK_OFF, unit.y + Math.sin(away) * BACK_OFF, nowMs)
     } else if (waypoint) this.stuck("The waypoint wouldn't open")

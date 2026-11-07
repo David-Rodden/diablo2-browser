@@ -712,6 +712,25 @@ describe('autopilot', () => {
     expect(hudModel.cancelNpcSession).toHaveBeenCalledWith(29)
   })
 
+  it('gives a stuck waypoint full tries again after being switched back on', () => {
+    const { pilot, assists, units, tick } = setup({ step: { kind: 'waypoint', level: 74 }, target: { x: 102, y: 101, label: 'Waypoint', unit: { id: 41, kind: 'object' } } })
+    units.push(unit({ id: 41, unitType: 'object', classId: 119, x: 102, y: 101 }))
+    for (let i = 0; i < 100 && pilot.active; i++) tick(700)
+    const first = assists.use.mock.calls.length
+    pilot.start()
+    for (let i = 0; i < 100 && pilot.active; i++) tick(700)
+    expect(assists.use.mock.calls.length - first).toBe(first)
+  })
+
+  it('tells every town NPC the talk is over when the town waypoint will not open', () => {
+    const { world, hudModel, units, tick } = setup({ step: { kind: 'waypoint', level: 74 }, target: { x: 102, y: 101, label: 'Waypoint', unit: { id: 41, kind: 'object' } } })
+    Object.assign(world, { areaId: ROGUE_ENCAMPMENT })
+    Object.assign(world.self, { gold: 0, stashGold: 0 })
+    units.push(unit({ id: 41, unitType: 'object', classId: 119, x: 102, y: 101 }), Object.assign(unit({ id: 77, classId: 148, x: 140, y: 120 }), { isNpc: true }), Object.assign(unit({ id: 78, classId: 150, x: 90, y: 130 }), { isNpc: true }))
+    for (let i = 0; i < 100 && hudModel.cancelNpcSession.mock.calls.length < 2; i++) tick(700)
+    expect(hudModel.cancelNpcSession.mock.calls.map(([id]) => id)).toEqual(expect.arrayContaining([77, 78]))
+  })
+
   it('starts a fresh game by itself when stuck, and hands control back only once that runs out', async () => {
     const { pilot, host, hudManager, units, guide, tick } = setup({ step: { kind: 'waypoint', level: 74 }, target: { x: 102, y: 101, label: 'Waypoint', unit: { id: 41, kind: 'object' } } })
     const freshGame = vi.fn(() => Promise.resolve(true))
@@ -725,11 +744,10 @@ describe('autopilot', () => {
     expect(pilot.active).toBe(false)
     await vi.waitFor(() => expect(pilot.active).toBe(true))
     expect([freshGame.mock.calls.length, guide.skipped.size]).toEqual([1, 0])
-    for (let round = 0; round < 5; round++) {
+    for (let round = 0; round < 12 && (pilot.active || pilot.rejoining); round++) {
       for (let i = 0; i < 100 && pilot.active; i++) tick(700)
-      await vi.waitFor(() => expect(pilot.active).toBe(true))
+      await vi.waitFor(() => expect(pilot.rejoining).toBe(false))
     }
-    for (let i = 0; i < 100 && pilot.active; i++) tick(700)
     expect([freshGame.mock.calls.length, pilot.active]).toEqual([6, false])
     expect(hudManager.toasts.push).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Autopilot needs you' }), expect.any(Number))
   })
