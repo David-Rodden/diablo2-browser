@@ -376,9 +376,10 @@ KERN_BINDINGS_113C = [
         "module": "D2Common",
         "va": 0x6FD87F80,
         "name": "STATLIST_FindSubListByStateAndFlags",
-        "kernFile": "src/d2kern-113c/common/statlist.ts",
-        "tsSymbol": "STATLIST_GetStatListFromUnitAndState113c",
-        "status": "ported",
+        "kernFile": "src/d2kern-113c/game/fallen-ai-113c.ts",
+        "tsSymbol": "STATLIST_FindSubListByStateAndFlags113c",
+        "status": "diff-verified",
+        "diffEvidence": "tests/oracle/vectors/fn-emitter-selftest.test.ts (18 real-DLL vectors via fn-emitter.c)",
     },
     {
         "module": "D2Common",
@@ -413,7 +414,7 @@ KERN_BINDINGS_113C = [
         "kernFile": "src/d2kern-113c/common/unit.ts",
         "tsSymbol": "UNITS_GetX113c",
         "status": "diff-verified",
-        "diffEvidence": "tests/oracle/kern-10k-diff.test.ts (500 SUNIT_UNITROOM_CALL records)",
+        "diffEvidence": "tests/oracle/kern-10k-diff.test.ts (500 SUNIT_UNITROOM_CALL records) + tests/oracle/vectors/fn-emitter-selftest.test.ts (19 real-DLL vectors via fn-emitter.c)",
     },
     {
         "module": "D2Common",
@@ -951,8 +952,8 @@ KERN_BINDINGS_113C = [
         "name": "ITEMS_CheckNotBrokenOrUnequipping",
         "kernFile": "src/d2kern-113c/game/fallen-ai-113c.ts",
         "tsSymbol": "ITEMS_CheckNotBrokenOrUnequipping113c",
-        "status": "ported",
-        "diffEvidence": "tests/oracle/kern-fallen-f790-f821.test.ts (ITEMFLAG_BROKEN / ITEMFLAG_UNEQUIPPING guard)",
+        "status": "diff-verified",
+        "diffEvidence": "tests/oracle/vectors/fn-emitter-selftest.test.ts (23 real-DLL vectors via fn-emitter.c) + tests/oracle/kern-fallen-f790-f821.test.ts",
     },
     {
         "module": "D2Common",
@@ -1014,8 +1015,8 @@ KERN_BINDINGS_113C = [
         "name": "UNITS_CanDualWield",
         "kernFile": "src/d2kern-113c/game/fallen-ai-113c.ts",
         "tsSymbol": "UNITS_CanDualWield113c",
-        "status": "ported",
-        "diffEvidence": "tests/oracle/kern-fallen-f790-f821.test.ts (D2Common.#10747 Barbarian/Assassin/Shadow dual-wield check)",
+        "status": "diff-verified",
+        "diffEvidence": "tests/oracle/vectors/fn-emitter-selftest.test.ts (36 real-DLL vectors with synthetic sgptDataTables via fn-emitter.c) + tests/oracle/kern-fallen-f790-f821.test.ts",
     },
     {
         "module": "D2Common",
@@ -1068,8 +1069,8 @@ KERN_BINDINGS_113C = [
         "name": "SKILLS_GetFlags",
         "kernFile": "src/d2kern-113c/game/fallen-ai-113c.ts",
         "tsSymbol": "SKILLS_GetFlags113c",
-        "status": "ported",
-        "diffEvidence": "tests/oracle/kern-fallen-f790-f821.test.ts (D2Common.#10397 pSkill->dwFlags +0x0C)",
+        "status": "diff-verified",
+        "diffEvidence": "tests/oracle/vectors/fn-emitter-selftest.test.ts (14 real-DLL vectors via fn-emitter.c) + tests/oracle/kern-fallen-f790-f821.test.ts",
     },
     {
         "module": "D2Common",
@@ -1203,6 +1204,63 @@ KERN_BINDINGS_113C = [
     },
 ]
 
+# K1 per-batch binding files. KERN_BINDINGS_113C above is the FROZEN K0 list (its totals are pinned as
+# K0_BASE in tests/oracle/callgraph.test.ts); every K1 binding lives in exactly one
+# tools/oracle/callgraph/bindings/<batch>.json file so parallel batches never edit a shared Python list.
+# Format and workflow: tools/oracle/callgraph/bindings/README.md.
+BINDINGS_DIR = os.path.join(SCRIPT_DIR, "bindings")
+_BINDING_FILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*\.json$")
+_BINDING_KEYS_REQ = {"module", "va", "name", "kernFile", "tsSymbol", "status"}
+_BINDING_KEYS_OPT = {"diffEvidence"}
+_VA_HEX_RE = re.compile(r"^0x[0-9A-Fa-f]{8}$")
+K0_BINDINGS_SRC = "KERN_BINDINGS_113C"
+
+
+def load_batch_bindings(bindings_dir: str = BINDINGS_DIR) -> list:
+    """Loads bindings/*.json deterministically (files sorted by name, entries in file order).
+
+    Each file is a non-empty JSON array of objects with exactly the keys
+    module, va ("0x" + 8 hex digits), name, kernFile, tsSymbol, status [, diffEvidence],
+    strictly ascending by va. Entries are returned with an int va and a "_src" tag and are then
+    validated by build_verified_kern_registry exactly like KERN_BINDINGS_113C entries.
+    """
+    out = []
+    if not os.path.isdir(bindings_dir):
+        return out
+    for fname in sorted(os.listdir(bindings_dir)):
+        if fname == "README.md":
+            continue
+        if not _BINDING_FILE_RE.match(fname):
+            raise ValueError(f"Unexpected file in bindings/: {fname}")
+        src = f"bindings/{fname}"
+        with open(os.path.join(bindings_dir, fname), "r", encoding="utf-8") as f:
+            arr = json.load(f)
+        if not isinstance(arr, list) or not arr:
+            raise ValueError(f"{src}: must be a non-empty JSON array")
+        prev_va = -1
+        for i, e in enumerate(arr):
+            if not isinstance(e, dict):
+                raise ValueError(f"{src}[{i}]: entry must be a JSON object")
+            keys = set(e)
+            if not _BINDING_KEYS_REQ <= keys or keys - _BINDING_KEYS_REQ - _BINDING_KEYS_OPT:
+                raise ValueError(f"{src}[{i}]: bad keys {sorted(keys)}")
+            for k in keys:
+                if not isinstance(e[k], str) or not e[k].strip():
+                    raise ValueError(f"{src}[{i}]: '{k}' must be a non-empty string")
+            if e["module"] not in ("D2Common", "D2Game"):
+                raise ValueError(f"{src}[{i}]: bad module '{e['module']}'")
+            if not _VA_HEX_RE.match(e["va"]):
+                raise ValueError(f"{src}[{i}]: va must be '0x' + 8 hex digits, got '{e['va']}'")
+            va = int(e["va"], 16)
+            if va <= prev_va:
+                raise ValueError(f"{src}[{i}]: entries must be strictly ascending by va")
+            prev_va = va
+            item = dict(e)
+            item["va"] = va
+            item["_src"] = src
+            out.append(item)
+    return out
+
 
 def build_verified_kern_registry(starts_set_by_mod: dict, reachable_nodes: set) -> dict:
     """Validates every 1-to-1 src/d2kern-113c/ closure binding against disk & PE starts."""
@@ -1211,7 +1269,8 @@ def build_verified_kern_registry(starts_set_by_mod: dict, reachable_nodes: set) 
     file_cache = {}
     re_oracle_test = re.compile(r"tests/oracle/[A-Za-z0-9_./-]+\.test\.ts")
 
-    for item in KERN_BINDINGS_113C:
+    all_bindings = [dict(k, _src=K0_BINDINGS_SRC) for k in KERN_BINDINGS_113C] + load_batch_bindings()
+    for item in all_bindings:
         mod = item["module"]
         va = item["va"]
         key = (mod, va)
@@ -1220,23 +1279,24 @@ def build_verified_kern_registry(starts_set_by_mod: dict, reachable_nodes: set) 
         rel_file = item["kernFile"]
         ts_sym = item["tsSymbol"]
         status = item["status"]
+        src = item["_src"]
 
         if key in registry:
-            raise ValueError(f"Duplicate KERN_BINDINGS_113C key {mod}:{va_hex}")
+            raise ValueError(f"Duplicate KERN_BINDINGS_113C key {mod}:{va_hex} ({src})")
         if name in seen_names:
-            raise ValueError(f"Duplicate symbol name '{name}' in KERN_BINDINGS_113C")
+            raise ValueError(f"Duplicate symbol name '{name}' in KERN_BINDINGS_113C ({src})")
         seen_names.add(name)
 
         if va not in starts_set_by_mod[mod]:
-            raise ValueError(f"{mod}:{va_hex} ({name}) is NOT a genuine CFG function start!")
+            raise ValueError(f"{mod}:{va_hex} ({name}) is NOT a genuine CFG function start! ({src})")
         if key not in reachable_nodes:
-            raise ValueError(f"{mod}:{va_hex} ({name}) is outside the reachable K0 closure!")
+            raise ValueError(f"{mod}:{va_hex} ({name}) is outside the reachable K0 closure! ({src})")
         if not rel_file.startswith("src/d2kern-113c/"):
-            raise ValueError(f"Invalid kernFile '{rel_file}' for {mod}:{va_hex}")
+            raise ValueError(f"Invalid kernFile '{rel_file}' for {mod}:{va_hex} ({src})")
 
         abs_file = os.path.join(REPO_ROOT, rel_file)
         if not os.path.isfile(abs_file):
-            raise ValueError(f"Missing kernFile on disk: {rel_file} for {mod}:{va_hex}")
+            raise ValueError(f"Missing kernFile on disk: {rel_file} for {mod}:{va_hex} ({src})")
 
         if rel_file not in file_cache:
             with open(abs_file, "r", encoding="utf-8") as f:
@@ -1244,12 +1304,12 @@ def build_verified_kern_registry(starts_set_by_mod: dict, reachable_nodes: set) 
         src_text = file_cache[rel_file]
 
         if va_hex.lower() not in src_text.lower():
-            raise ValueError(f"{rel_file} does not contain exact VA {va_hex} for {name}")
+            raise ValueError(f"{rel_file} does not contain exact VA {va_hex} for {name} ({src})")
         if ts_sym not in src_text:
-            raise ValueError(f"{rel_file} does not contain tsSymbol '{ts_sym}' for {mod}:{va_hex}")
+            raise ValueError(f"{rel_file} does not contain tsSymbol '{ts_sym}' for {mod}:{va_hex} ({src})")
 
         if status not in ("diff-verified", "ported"):
-            raise ValueError(f"Invalid status '{status}' for {mod}:{va_hex}")
+            raise ValueError(f"Invalid status '{status}' for {mod}:{va_hex} ({src})")
 
         rec = {
             "name": name,
@@ -1262,15 +1322,30 @@ def build_verified_kern_registry(starts_set_by_mod: dict, reachable_nodes: set) 
         if status == "diff-verified":
             test_paths = re_oracle_test.findall(ev)
             if not ev or not test_paths:
-                raise ValueError(f"diff-verified {mod}:{va_hex} ({name}) missing tests/oracle/*.test.ts evidence")
+                raise ValueError(
+                    f"diff-verified {mod}:{va_hex} ({name}) missing tests/oracle/*.test.ts evidence ({src})"
+                )
             for tp in test_paths:
                 if not os.path.isfile(os.path.join(REPO_ROOT, tp)):
-                    raise ValueError(f"Missing oracle test file {tp} referenced by {mod}:{va_hex}")
+                    raise ValueError(f"Missing oracle test file {tp} referenced by {mod}:{va_hex} ({src})")
+            if src != K0_BINDINGS_SRC:
+                # K1 JSON bindings only (K0 list is frozen): citation-only evidence is rejected; at least
+                # one cited oracle test must itself name the exact VA it diff-verifies.
+                cites_va = False
+                for tp in test_paths:
+                    with open(os.path.join(REPO_ROOT, tp), "r", encoding="utf-8") as f:
+                        if va_hex.lower() in f.read().lower():
+                            cites_va = True
+                            break
+                if not cites_va:
+                    raise ValueError(
+                        f"diff-verified {mod}:{va_hex} ({name}): no cited test file contains '{va_hex}' ({src})"
+                    )
             rec["diffEvidence"] = ev
         elif ev:
             for tp in re_oracle_test.findall(ev):
                 if not os.path.isfile(os.path.join(REPO_ROOT, tp)):
-                    raise ValueError(f"Missing oracle test file {tp} referenced by {mod}:{va_hex}")
+                    raise ValueError(f"Missing oracle test file {tp} referenced by {mod}:{va_hex} ({src})")
             rec["diffEvidence"] = ev
 
         registry[key] = rec
@@ -1874,7 +1949,8 @@ def verify_rdata_data_dispatch_completeness(analyzers: dict, dispatch_meta: dict
         )
 
 
-def main() -> None:
+def build_manifest() -> dict:
+    """Runs the full deterministic extraction and returns the manifest dict (no file I/O on outputs)."""
     print(f"[callgraph] Using D2 data dir: {D2_DATA_DIR}")
     d2game_path = os.path.join(D2_DATA_DIR, "D2Game.dll")
     d2common_path = os.path.join(D2_DATA_DIR, "D2Common.dll")
@@ -2272,19 +2348,73 @@ def main() -> None:
         "functions": manifest_entries,
     }
 
-    out_path = os.path.join(SCRIPT_DIR, "manifest-113c.json")
-    with open(out_path, "w", encoding="utf-8") as f:
-        json.dump(manifest, f, indent=2, sort_keys=True)
-        f.write("\n")
-
     print(
-        f"[callgraph] Wrote {out_path}: {len(manifest_entries)} kernel fns "
+        f"[callgraph] Built manifest: {len(manifest_entries)} kernel fns "
         f"(diff-verified={diff_verified_cnt}, ported={ported_cnt}, unported={unported_cnt}, "
         f"ready={len(ready_entries)} [pureLeaf={ready_pure_leaf_cnt}, hostImport={ready_host_import_cnt}, "
         f"internalComposite={ready_internal_composite_cnt}], "
         f"legacyRef={legacy_ref_cnt}, pruned={len(all_pruned_records)})"
     )
+    return manifest
+
+
+DEFAULT_MANIFEST_PATH = os.path.join(SCRIPT_DIR, "manifest-113c.json")
+
+
+def serialize_manifest(manifest: dict) -> str:
+    """Canonical byte form of the committed manifest (sorted keys, 2-space indent, trailing newline)."""
+    return json.dumps(manifest, indent=2, sort_keys=True) + "\n"
+
+
+def first_manifest_difference(old_text: str, new_text: str) -> str:
+    """Human-readable description of the first differing function key (or summary/pruned section)."""
+    try:
+        old = json.loads(old_text)
+    except ValueError:
+        return "committed manifest is not valid JSON"
+    new = json.loads(new_text)
+    old_fns = {f"{f['module']}:{f['va']}": f for f in old.get("functions", [])}
+    new_fns = {f"{f['module']}:{f['va']}": f for f in new.get("functions", [])}
+    for key in sorted(set(old_fns) | set(new_fns)):
+        if old_fns.get(key) != new_fns.get(key):
+            a, b = old_fns.get(key), new_fns.get(key)
+            sa = a.get("status") if a else "<absent>"
+            sb = b.get("status") if b else "<absent>"
+            return f"function {key} differs (committed status={sa}, regenerated status={sb})"
+    for sect in sorted(set(old) | set(new)):
+        if old.get(sect) != new.get(sect):
+            return f"top-level section '{sect}' differs"
+    return "byte formatting differs"
+
+
+def main(argv=None) -> int:
+    import argparse
+
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--out", default=DEFAULT_MANIFEST_PATH, help="output path (default: committed manifest)")
+    ap.add_argument(
+        "--check",
+        action="store_true",
+        help="regenerate in memory and exit 1 if it differs byte-for-byte from --out (never writes)",
+    )
+    args = ap.parse_args(argv)
+
+    text = serialize_manifest(build_manifest())
+    if args.check:
+        old_text = ""
+        if os.path.isfile(args.out):
+            with open(args.out, "r", encoding="utf-8") as f:
+                old_text = f.read()
+        if old_text != text:
+            print(f"[callgraph] CHECK FAILED: {args.out} is stale: {first_manifest_difference(old_text, text)}")
+            return 1
+        print(f"[callgraph] CHECK OK: {args.out} is byte-identical to the regenerated manifest")
+        return 0
+    with open(args.out, "w", encoding="utf-8") as f:
+        f.write(text)
+    print(f"[callgraph] Wrote {args.out}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

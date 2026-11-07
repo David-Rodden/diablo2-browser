@@ -241,6 +241,27 @@ export function pushSoundRequestImpl(this: ClientWorldInternal, req: WorldSoundR
       return
     }
   }
+  if (req.kind === 'unit-loop-start' && req.soundId !== undefined) {
+    const cleanUnit = clean.unit as { readonly unitType?: string; readonly id?: number } | undefined
+    for (let i = queue.length - 1; i >= 0; i--) {
+      const q = queue[i]!
+      const sameUnitOrLocal =
+        cleanUnit !== undefined
+          ? q.unit?.unitType === cleanUnit.unitType && q.unit?.id === cleanUnit.id
+          : q.unit === undefined && Boolean(q.local) === Boolean(clean.local)
+      if (!sameUnitOrLocal) continue
+      if (
+        (q.kind === 'unit-sound-stop' && q.soundId === req.soundId) ||
+        q.kind === 'unit-loop-stop'
+      ) {
+        break
+      }
+      if (q.kind === 'unit-loop-start' && q.soundId === req.soundId) {
+        queue[i] = clean as unknown as WorldSoundRequest
+        return
+      }
+    }
+  }
   if (entityId !== undefined) {
     const tracked = this._soundMissileIds as Set<number> | undefined
     if (req.kind === 'missile-spawn') tracked?.add(entityId)

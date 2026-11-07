@@ -1375,11 +1375,25 @@ export class HudManager {
     return this._commandSink
   }
 
+  /**
+   * Release any server-backed left panel (`stash`, `cube`, `vendor`, `waypoint`, etc.) that is
+   * being replaced by `incoming` so `D2Game` clears `pPlayer->bInteract` (`+0x6C`).
+   */
+  releaseReplacedServerPanel113c(incoming: Exclude<LeftPanelType, 'none'>): void {
+    const prev = this.leftPanel
+    if (prev !== 'none' && prev !== incoming) {
+      this.leftPanel = 'none'
+      ;(this.worldPanels as any).activePanel = 'none'
+      this.leaveLeftPanel(prev)
+    }
+  }
+
   /** Server opened a store (`ClientWorld.npcInteraction.window`): show the vendor panel with the inventory. */
   showVendorPanel(): void {
     if (!this.worldPanels.activeVendorDescriptor) {
       throw new Error('HudManager.showVendorPanel: no store set (WorldPanelsHud.setVendorShop)')
     }
+    this.releaseReplacedServerPanel113c('vendor')
     this.worldPanels.npcMenu = null
     this.leftPanel = 'vendor'
     this.charSheet.visible = false
@@ -1389,6 +1403,7 @@ export class HudManager {
 
   /** Server opened the stash (S2C 0x77 action 0x10): show the stash panel with the inventory. */
   showStashPanel(): void {
+    this.releaseReplacedServerPanel113c('stash')
     this.leftPanel = 'stash'
     ;(this.worldPanels as any).activePanel = 'stash'
     this.charSheet.visible = false
@@ -1398,6 +1413,7 @@ export class HudManager {
 
   /** Server opened the Horadric Cube (S2C 0x77 action 0x15): show the cube panel with the inventory. */
   showCubePanel(): void {
+    this.releaseReplacedServerPanel113c('cube')
     this.leftPanel = 'cube'
     ;(this.worldPanels as any).activePanel = 'cube'
     this.charSheet.visible = false
@@ -1406,7 +1422,7 @@ export class HudManager {
   }
 
   /** World state closed `kind` (already noted by `ClientWorld`): hide it without sending anything. */
-  hideLeftPanelFromWorld(kind: 'vendor' | 'stash' | 'cube' | 'orifice'): void {
+  hideLeftPanelFromWorld(kind: 'vendor' | 'stash' | 'cube' | 'orifice' | 'waypoint'): void {
     if (this.leftPanel !== kind) return
     this.leftPanel = 'none'
     ;(this.worldPanels as any).activePanel = 'none'
@@ -1429,7 +1445,7 @@ export class HudManager {
     if ((this.goldDialog?.mode === 3 || this.goldDialog?.mode === 4) && kind === 'stash') {
       this.goldDialog = null
     }
-    if (this.rightPanel === 'inv' && !this.tradeHallMode) {
+    if (this.rightPanel === 'inv' && !this.tradeHallMode && kind !== 'waypoint') {
       this.rightPanel = 'none'
       this.inventory.visible = false
     }

@@ -22,6 +22,7 @@
  * interaction open and the player permanently "busy".
  */
 import { describe, expect, it } from 'vitest'
+import { CommandMapper } from '../../src/client/input/command-mapper.ts'
 import { HudModel } from '../../src/client/ui-model/hud-model.ts'
 import { HudManager } from '../../src/client/ui/hud-manager.ts'
 import { ClientWorld } from '../../src/client/world/client-world.ts'
@@ -81,5 +82,78 @@ describe('#920 waypoint UI close always tells the server (D2Client 0x6fb5a380)',
     world.apply({ type: 'WaypointMenu', unitId: 77, open: [1, 3] })
     hudManager.closeAllPanels()
     expect(waypointGos(commands)).toEqual([{ type: 'WaypointGo', waypointId: 77, destAreaId: 0 }])
+  })
+
+  it('sends 0x49 {waypoint, 0} when Escape or Space closes the waypoint panel via CommandMapper / closeActiveNpcPanel', () => {
+    const { world, hudManager, hudModel, commands } = setup()
+    const mapper = new CommandMapper({
+      world,
+      hudManager,
+      hudModel,
+      sendCommand: (cmd) => commands.push(cmd),
+    })
+
+    // 1) Escape closes waypoint and sends C2S 0x49 { waypointId: 77, destAreaId: 0 }
+    world.apply({ type: 'WaypointMenu', unitId: 77, open: [1, 3] })
+    expect(hudManager.leftPanel).toBe('waypoint')
+    expect(world.waypointOpen).toBe(true)
+
+    const handledEsc = mapper.handleKeyDown({ key: 'Escape' })
+    expect(handledEsc).toBe(true)
+    expect(hudManager.leftPanel).toBe('none')
+    expect(hudManager.worldPanels.activePanel).toBe('none')
+    expect(world.waypointOpen).toBe(false)
+    expect(waypointGos(commands)).toEqual([{ type: 'WaypointGo', waypointId: 77, destAreaId: 0 }])
+
+    // 2) Space (clearScreen) closes waypoint and sends C2S 0x49 { waypointId: 88, destAreaId: 0 }
+    commands.length = 0
+    world.apply({ type: 'WaypointMenu', unitId: 88, open: [1, 3] })
+    expect(hudManager.leftPanel).toBe('waypoint')
+    const handledSpace = mapper.handleKeyDown({ key: ' ', code: 'Space' })
+    expect(handledSpace).toBe(true)
+    expect(hudManager.leftPanel).toBe('none')
+    expect(hudManager.worldPanels.activePanel).toBe('none')
+    expect(world.waypointOpen).toBe(false)
+    expect(waypointGos(commands)).toEqual([{ type: 'WaypointGo', waypointId: 88, destAreaId: 0 }])
+  })
+
+  it('sends 0x49 {waypoint, 0} before Interact (0x13) when clicking a Town Portal or walking while waypoint UI is open (D2Client 0x6fb5a60e)', () => {
+    const { world, hudManager, hudModel, commands } = setup()
+    const mapper = new CommandMapper({
+      world,
+      hudManager,
+      hudModel,
+      sendCommand: (cmd) => commands.push(cmd),
+    })
+
+    // Spawn another player's Town Portal (classId 60) next to the player
+    world.apply({
+      type: 'UnitAssign',
+      unit: { unitType: 2, id: 201, classId: 60, mode: 2, x: 5001, y: 5000 },
+    })
+    const portalUnit = world.getUnit('object', 201)!
+    expect(portalUnit).toBeDefined()
+
+    // Player clicks already-lit multiplayer waypoint -> S2C 0x63 WaypointMenu opens
+    world.apply({ type: 'WaypointMenu', unitId: 77, open: [1, 3] })
+    expect(hudManager.leftPanel).toBe('waypoint')
+    expect(world.waypointOpen).toBe(true)
+
+    // Player clicks directly on the Town Portal while Waypoint UI is open
+    mapper.triggerPrimaryWorldAction(5001, 5000, portalUnit, 1000)
+
+    expect(hudManager.leftPanel).toBe('none')
+    expect(hudManager.worldPanels.activePanel).toBe('none')
+    expect(world.waypointOpen).toBe(false)
+    const types = commands.map((c) => c.type)
+    const wpCloseIdx = types.indexOf('WaypointGo')
+    const interactIdx = types.indexOf('Interact')
+    expect(wpCloseIdx).toBeGreaterThanOrEqual(0)
+    expect(interactIdx).toBeGreaterThan(wpCloseIdx)
+    expect(commands[wpCloseIdx]).toEqual({ type: 'WaypointGo', waypointId: 77, destAreaId: 0 })
+    expect(commands[interactIdx]).toEqual({
+      type: 'Interact',
+      target: { unitType: 2, id: 201 },
+    })
   })
 })

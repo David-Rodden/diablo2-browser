@@ -49,6 +49,232 @@ STRUCT_SIZE_PE_PROBES = {
 
 FIELD_PE_PROBES = {'D2UnitStrc': {'dwUnitType': ['D2Common.dll', 1876422656, 1, 0, '0000'], 'dwClassId': ['D2Common.dll', 1876422752, 3, 1, '8b4424'], 'pMemPool': ['D2Common.dll', 1876422890, 3, 1, '8b5424'], 'dwUnitId': ['D2Common.dll', 1876422760, 3, 1, '8b4c24'], 'dwAnimMode': ['D2Common.dll', 1876422924, 3, 1, '8d4c24'], 'pUnitData': ['D2Common.dll', 1876422961, 3, 1, '8b4424'], 'nAct': ['D2Common.dll', 1876423515, 2, 1, '8950'], 'pAct': ['D2Common.dll', 1876422929, 3, 1, '8b4c24'], 'seedLo': ['D2Common.dll', 1876422941, 3, 1, '8d4424'], 'seedHi': ['D2Common.dll', 1876428596, 3, 1, '8b5c24'], 'pPath': ['D2Common.dll', 1876423247, 2, 1, '8b40'], 'wAnimSpeed': ['D2Common.dll', 1876422756, 3, 1, '0fbf50'], 'wActionFrame': ['D2Common.dll', 1876422985, 2, 1, '8856'], 'pAnimData': ['D2Common.dll', 1876436222, 2, 1, '8b4e'], 'pStatListEx': ['D2Common.dll', 1876426239, 2, 1, '8b40'], 'pInventory': ['D2Common.dll', 1876426143, 2, 1, '8b40'], 'pGame': ['D2Common.dll', 1876424028, 2, 4, '8988'], 'pSkills': ['D2Common.dll', 1876427719, 2, 4, '8b80'], 'pCombat': ['D2Game.dll', 1875897680, 2, 4, '8b85'], 'dwFlags': ['D2Common.dll', 1876436082, 2, 4, '8b86'], 'dwFlags2': ['D2Common.dll', 1876425202, 2, 4, '8188'], 'pEventFirst': ['D2Common.dll', 1876442037, 2, 4, '8b80'], 'pRoomUpdateNext': ['D2Common.dll', 1876443141, 2, 4, '8b88'], 'pGameHashNext': ['D2Common.dll', 1876443109, 2, 4, '8b88'], 'pRoomUnitNext': ['D2Common.dll', 1876443077, 2, 4, '8b88']}, 'D2StatListStrc': {'pMemPool': ['D2Common.dll', 1876459842, 1, 0, '8932'], 'pUnit': ['D2Common.dll', 1876459280, 3, 1, '8b4424'], 'eOwnerType': ['D2Common.dll', 1876459295, 3, 1, '8b4c24'], 'dwOwnerId': ['D2Common.dll', 1876459659, 2, 1, '8b40'], 'dwFlags': ['D2Common.dll', 1876459299, 2, 1, '8548'], 'dwStateNo': ['D2Common.dll', 1876459424, 2, 1, '3950'], 'dwExpireFrame': ['D2Common.dll', 1876459531, 2, 1, '8b40'], 'nSkillNo': ['D2Common.dll', 1876459823, 3, 1, '8b4c24'], 'nSkillLevel': ['D2Common.dll', 1876464965, 3, 1, '897c24'], 'pStat': ['D2Common.dll', 1876459497, 2, 1, '8b40'], 'wStatCount': ['D2Common.dll', 1876459480, 3, 1, '0fbf50'], 'wStatCapacity': ['D2Common.dll', 1876382294, 3, 1, '0fbf56'], 'pPrevLink': ['D2Common.dll', 1876459266, 2, 1, '8b40'], 'pNextLink': ['D2Common.dll', 1876466949, 3, 1, '8b4424'], 'pParent': ['D2Common.dll', 1876467670, 2, 1, '8b5b'], 'fpRemove': ['D2Common.dll', 1876469159, 2, 1, '8b45']}, 'D2StatListExStrc': {'pMemPool': ['D2Common.dll', 1876459842, 1, 0, '8932'], 'pUnit': ['D2Common.dll', 1876459280, 3, 1, '8b4424'], 'eOwnerType': ['D2Common.dll', 1876459295, 3, 1, '8b4c24'], 'dwOwnerId': ['D2Common.dll', 1876459659, 2, 1, '8b40'], 'dwFlags': ['D2Common.dll', 1876459299, 2, 1, '8548'], 'dwStateNo': ['D2Common.dll', 1876459424, 2, 1, '3950'], 'dwExpireFrame': ['D2Common.dll', 1876459531, 2, 1, '8b40'], 'nSkillNo': ['D2Common.dll', 1876459823, 3, 1, '8b4c24'], 'nSkillLevel': ['D2Common.dll', 1876464965, 3, 1, '897c24'], 'pStat': ['D2Common.dll', 1876459497, 2, 1, '8b40'], 'wStatCount': ['D2Common.dll', 1876459480, 3, 1, '0fbf50'], 'wStatCapacity': ['D2Common.dll', 1876382294, 3, 1, '0fbf56'], 'pPrevLink': ['D2Common.dll', 1876459266, 2, 1, '8b40'], 'pNextLink': ['D2Common.dll', 1876466949, 3, 1, '8b4424'], 'pParent': ['D2Common.dll', 1876467670, 2, 1, '8b5b'], 'fpRemove': ['D2Common.dll', 1876469159, 2, 1, '8b45'], 'pMyLastList': ['D2Common.dll', 1876459349, 2, 1, '8b40'], 'pMyStats': ['D2Common.dll', 1876459344, 2, 1, '8b40'], 'pOwner': ['D2Common.dll', 1876462029, 2, 1, '8b53'], 'pFullStat': ['D2Common.dll', 1876460291, 2, 1, '8d68'], 'wFullStatCount': ['D2Common.dll', 1876459700, 3, 1, '0fbf40'], 'wFullStatCapacity': ['D2Common.dll', 1876341392, 2, 1, '8a47'], 'pModStat': ['D2Common.dll', 1876460985, 2, 1, '8d73'], 'wModStatCount': ['D2Common.dll', 1876461007, 3, 1, '663943'], 'wModStatCapacity': ['D2Common.dll', 1876461003, 3, 1, '668b43'], 'pStateFlags': ['D2Common.dll', 1876460688, 2, 1, '8b49'], 'fpStatChanged': ['D2Common.dll', 1876459688, 2, 1, '8b40'], 'pGame': ['D2Common.dll', 1876462033, 2, 1, '8b4b']}, 'D2MonsterDataStrc': {'pMonStatsTxt': ['D2Common.dll', 1876423584, 1, 0, '8906'], 'pAiGeneral': ['D2Game.dll', 1875706794, 2, 1, '8953'], 'pAiControl': ['D2Common.dll', 1876423652, 2, 1, '8b50'], 'dwAlwaysChaseField': ['D2Game.dll', 1875708914, 2, 1, '8b40']}, 'D2AiGeneralStrc': {'pfnThink': ['D2Game.dll', 1875706826, 2, 1, '894a'], 'dwFlags': ['D2Game.dll', 1875706829, 2, 1, '894a'], 'bAfraid': ['D2Game.dll', 1875706660, 3, 1, '8b7424'], 'pCommandHead': ['D2Game.dll', 1875706848, 2, 1, '894a'], 'pCommandTail': ['D2Game.dll', 1875707369, 3, 1, '895424'], 'pGroup': ['D2Game.dll', 1875706794, 2, 1, '8953'], 'dwLeaderId': ['D2Game.dll', 1875706782, 2, 1, '894a'], 'dwLeaderType': ['D2Game.dll', 1875706785, 2, 1, '8942'], 'pMinionList': ['D2Game.dll', 1875707384, 3, 1, '895424']}, 'D2AiCmdStrc': {'pNext': ['D2Game.dll', 1875119925, 1, 0, '8338'], 'pPrev': ['D2Game.dll', 1875119888, 3, 1, '8b4424'], 'dwCmdType': ['D2Game.dll', 1875119950, 3, 1, '8b4424'], 'dwParam1': ['D2Game.dll', 1875119988, 2, 1, '894a'], 'dwParam2': ['D2Game.dll', 1875119991, 2, 1, '894a'], 'dwParam3': ['D2Game.dll', 1875119930, 2, 1, '8b40'], 'dwParam4': ['D2Game.dll', 1875119997, 2, 1, '894a']}, 'D2AiControlStrc': {'dwPathTypeOverride': ['D2Game.dll', 1875706841, 2, 1, '894a'], 'dwVelocityOverride': ['D2Game.dll', 1875706675, 3, 1, '8b4424'], 'bNewDistOverride': ['D2Game.dll', 1875706848, 2, 1, '894a']}, 'D2EventStrc': {'nType': ['D2Game.dll', 1875567616, 1, 0, '8b0a'], 'fFlags': ['D2Game.dll', 1875568328, 2, 1, '8060'], 'dwFrame': ['D2Game.dll', 1875567791, 2, 1, '8b49'], 'pUnit': ['D2Game.dll', 1875568274, 2, 1, '8978'], 'dwUnitId': ['D2Game.dll', 1875568332, 2, 1, '8978'], 'dwUnitType': ['D2Game.dll', 1875568320, 2, 1, '8948'], 'dwArg14': ['D2Game.dll', 1875568687, 2, 1, '8948'], 'dwArg18': ['D2Game.dll', 1875568703, 2, 1, '8950'], 'pWheelNewer': ['D2Game.dll', 1875567620, 2, 1, '8948'], 'pWheelOlder': ['D2Game.dll', 1875567623, 2, 1, 'c740'], 'pUnitNext': ['D2Game.dll', 1875567786, 2, 1, '8b51'], 'pUnitPrev': ['D2Game.dll', 1875568296, 2, 1, '8941'], 'pfnHandler': ['D2Game.dll', 1875568706, 2, 1, '8948']}, 'D2TimerStrc': {'nCurrentSlot': ['D2Game.dll', 1875567616, 1, 0, '8b0a'], 'pSlotTail': ['D2Game.dll', 1875567791, 2, 1, '8b49'], 'pSlotHead': ['D2Game.dll', 1875568092, 3, 4, '8d8491'], 'pPersistentHead': ['D2Game.dll', 1875568130, 3, 4, '8d8482'], 'pSavedNext': ['D2Game.dll', 1875568395, 2, 4, '3b83'], 'pPool': ['D2Game.dll', 1875567835, 2, 4, '8b93']}, 'D2GameStrc': {'nDifficulty': ['D2Game.dll', 1875166180, 2, 1, '8853'], 'bExpansion': ['D2Game.dll', 1875163589, 2, 1, '8b48'], 'dwInitSeed': ['D2Game.dll', 1875159394, 2, 1, '8947'], 'dwSeedOverride': ['D2Game.dll', 1875159316, 2, 4, 'c787'], 'pClientList': ['D2Game.dll', 1875159936, 2, 4, '8b88'], 'dwLastUnitId': ['D2Game.dll', 1875162545, 2, 4, '8b8b'], 'dwGameFrame': ['D2Game.dll', 1875162879, 2, 4, '8b8b'], 'pTimer': ['D2Game.dll', 1875905445, 2, 4, '8b97'], 'pAct': ['D2Game.dll', 1875165120, 3, 4, '8b8c86'], 'seedLo': ['D2Game.dll', 1875159332, 2, 4, '8db7'], 'seedHi': ['D2Game.dll', 1875180288, 2, 4, '8bb5'], 'pUnitHash': ['D2Game.dll', 1875161023, 2, 4, '8d90'], 'pTileList': ['D2Game.dll', 1875903143, 2, 4, '8d8a'], 'dwMonSpawnCount': ['D2Game.dll', 1875162816, 2, 4, '8dbb'], 'dwMonSpawnTotal': ['D2Game.dll', 1875162669, 2, 4, '8b83'], 'dwUberStateEnd': ['D2Game.dll', 1875167057, 2, 4, '89ae']}, 'D2ActiveRoomStrc': {'ppRoomsNear': ['D2Common.dll', 1876478116, 1, 0, '8b08'], 'pCoords': ['D2Common.dll', 1876477505, 3, 1, '8b7424'], 'pRoomEx': ['D2Common.dll', 1876477581, 2, 1, '8b72'], 'bDeathRingIdx': ['D2Common.dll', 1876477600, 3, 1, '8b4424'], 'pUpdateList': ['D2Common.dll', 1876477796, 3, 1, '8b7424'], 'pCollisionGrid': ['D2Common.dll', 1876477800, 3, 1, '8b5424'], 'nRoomsNear': ['D2Common.dll', 1876477821, 3, 1, '8b4c24'], 'nPlayers': ['D2Common.dll', 1876477817, 3, 1, '8b4424'], 'pAct': ['D2Common.dll', 1876477874, 2, 1, '896b'], 'dwFlags': ['D2Common.dll', 1876477825, 2, 1, '8943'], 'dwDeathRing': ['D2Common.dll', 1876482853, 3, 1, '8b6c24'], 'nSubtileX': ['D2Common.dll', 1876477845, 2, 1, '8d7b'], 'nSubtileY': ['D2Common.dll', 1876478699, 2, 1, '8b4b'], 'nSubtileWidth': ['D2Common.dll', 1876477867, 2, 1, 'c745'], 'nSubtileHeight': ['D2Common.dll', 1876478004, 2, 1, '8b71'], 'nTileX': ['D2Common.dll', 1876477768, 2, 1, '8b4d'], 'nTileY': ['D2Common.dll', 1876478705, 2, 1, '8947'], 'nTileWidth': ['D2Common.dll', 1876650710, 3, 1, '894424'], 'nTileHeight': ['D2Common.dll', 1876482376, 3, 1, '8b7c95'], 'seedLo': ['D2Common.dll', 1876477832, 2, 1, '894b'], 'seedHi': ['D2Common.dll', 1876477835, 2, 1, 'c743'], 'pUnitFirst': ['D2Common.dll', 1876477550, 2, 1, '8b46'], 'pRoomNext': ['D2Common.dll', 1876477861, 2, 1, '894b']}, 'D2DynamicPathStrc': {'wOffsetX': ['D2Common.dll', 1876451468, 1, 0, '890e'], 'wPosX': ['D2Common.dll', 1876451707, 3, 1, '0fbf48'], 'wOffsetY': ['D2Common.dll', 1876451376, 3, 1, '8b4c24'], 'wPosY': ['D2Common.dll', 1876452029, 3, 1, '668b4d'], 'dwClientCoordX': ['D2Common.dll', 1876451859, 2, 1, '8956'], 'dwClientCoordY': ['D2Common.dll', 1876451862, 2, 1, '894e'], 'wTargetX': ['D2Common.dll', 1876452048, 3, 1, '895424'], 'wTargetY': ['D2Common.dll', 1876452129, 3, 1, '66837d'], 'wPrevTargetX': ['D2Common.dll', 1876451330, 4, 1, '663b4424'], 'wPrevTargetY': ['D2Common.dll', 1876452163, 4, 1, '668b5424'], 'wFinalTargetX': ['D2Common.dll', 1876451347, 3, 1, '8b4424'], 'wFinalTargetY': ['D2Common.dll', 1876452437, 3, 1, '668955'], 'pRoom': ['D2Common.dll', 1876451453, 3, 1, '8b4424'], 'pPreviousRoom': ['D2Common.dll', 1876451470, 3, 1, '8b4c24'], 'dwCurrentPointIdx': ['D2Common.dll', 1876451420, 3, 1, '8b7c24'], 'dwPathPoints': ['D2Common.dll', 1876451848, 3, 1, '8b4424'], 'pUnit': ['D2Common.dll', 1876451428, 2, 1, '897e'], 'dwFlags': ['D2Common.dll', 1876451587, 2, 1, '8b56'], 'dwPathType': ['D2Common.dll', 1876451605, 2, 1, 'c746'], 'dwPrevPathType': ['D2Common.dll', 1876451590, 2, 1, '8b46'], 'dwUnitSize': ['D2Common.dll', 1876451438, 2, 1, '8946'], 'dwCollisionPattern': ['D2Common.dll', 1876451450, 2, 1, '8946'], 'nFootprintCollisionMask': ['D2Common.dll', 1876451553, 2, 1, '895e'], 'nMoveTestCollisionMask': ['D2Common.dll', 1876451556, 2, 1, '895e'], 'wCollidedWithMask': ['D2Common.dll', 1876451981, 3, 1, '66c745'], 'pTargetUnit': ['D2Common.dll', 1876451976, 2, 1, '8b75'], 'dwTargetType': ['D2Common.dll', 1876578216, 3, 1, 'c74424'], 'dwTargetId': ['D2Common.dll', 1876578224, 3, 1, '897424'], 'nDirection': ['D2Common.dll', 1876578228, 3, 1, '895c24'], 'nNewDirection': ['D2Common.dll', 1876284304, 2, 1, '3a4e'], 'nDiffDirection': ['D2Common.dll', 1876284329, 2, 1, '884e'], 'dwVelocity': ['D2Common.dll', 1876451495, 2, 1, 'c746'], 'nPreviousVelocity': ['D2Common.dll', 1876579085, 3, 4, '89b424'], 'dwMaxVelocity': ['D2Common.dll', 1876578256, 3, 4, 'c78424'], 'dwAcceleration': ['D2Common.dll', 1876578267, 3, 4, '89bc24'], 'nDist': ['D2Common.dll', 1876578281, 3, 4, 'c78424'], 'nDistMax': ['D2Common.dll', 1876451738, 2, 4, 'c686'], 'nIDAStarInitFScore': ['D2Common.dll', 1876451802, 2, 4, 'c686'], 'nStepNum': ['D2Common.dll', 1876451505, 2, 4, '889e'], 'nDistance': ['D2Common.dll', 1876578292, 3, 4, '899c24'], 'wPathPoints': ['D2Common.dll', 1876578310, 3, 4, '89b424'], 'nSavedStepsCount': ['D2Common.dll', 1876451511, 2, 4, 'c786'], 'wSavedSteps': ['D2Common.dll', 1876451485, 3, 4, '668986']}, 'D2DamageStrc': {'dwHitFlags': ['D2Game.dll', 1875465472, 1, 0, '0000'], 'wResultFlags': ['D2Game.dll', 1875465496, 2, 1, '8b7e'], 'wExtra': ['D2Game.dll', 1875257507, 3, 1, '0fbf47'], 'dwPhysDamage': ['D2Game.dll', 1875465786, 2, 1, '8b7d'], 'dwEnhDmgPct': ['D2Game.dll', 1875465781, 3, 1, '804c24'], 'dwFireDamage': ['D2Game.dll', 1875465701, 2, 1, '837e'], 'dwBurnDamage': ['D2Game.dll', 1875465765, 4, 1, '66c74424'], 'dwBurnLen': ['D2Game.dll', 1875465761, 3, 1, '894424'], 'dwLtngDamage': ['D2Game.dll', 1875465860, 3, 1, '8b5c24'], 'dwMagDamage': ['D2Game.dll', 1875466004, 3, 1, '8b5424'], 'dwColdDamage': ['D2Game.dll', 1875466251, 3, 1, '8b4c24'], 'dwPoisDamage': ['D2Game.dll', 1875466391, 3, 1, '8b5c24'], 'dwPoisLen': ['D2Game.dll', 1875465512, 2, 1, '8b6f'], 'dwColdLen': ['D2Game.dll', 1875466171, 3, 1, '8b4424'], 'dwFrzLen': ['D2Game.dll', 1875469652, 3, 1, '8b4424'], 'dwLifeLeech': ['D2Game.dll', 1875247443, 2, 1, '8b6a'], 'dwManaLeech': ['D2Game.dll', 1875469477, 2, 1, '8b45'], 'dwStamLeech': ['D2Game.dll', 1875466418, 3, 1, '8b5424'], 'dwStunLen': ['D2Game.dll', 1875247508, 2, 1, '3b41'], 'dwAbsorbLife': ['D2Game.dll', 1875247653, 3, 1, '894424'], 'dwDmgTotal': ['D2Game.dll', 1875247668, 3, 1, '895424'], 'dwPiercePct': ['D2Game.dll', 1875247676, 3, 1, '894c24'], 'dwDamageRate': ['D2Game.dll', 1875469012, 2, 1, '8b40'], 'dwHitClass': ['D2Game.dll', 1875256862, 2, 1, '8b57'], 'bHitClassActiveSet': ['D2Game.dll', 1875247415, 2, 1, '8b4e'], 'eConvType': ['D2Game.dll', 1875412857, 2, 1, '8a47'], 'dwConvPct': ['D2Game.dll', 1875469632, 3, 1, '8d5424'], 'nOverlays': ['D2Game.dll', 1875249900, 3, 1, '894c24']}, 'D2ActStrc': {'pEnvironment': ['D2Common.dll', 1876478913, 2, 1, '8943'], 'dwTownId': ['D2Common.dll', 1876478889, 2, 1, '894b'], 'dwMapSeed': ['D2Common.dll', 1876478823, 2, 1, '8943'], 'pRoom1': ['D2Common.dll', 1876478796, 3, 1, '8a5424'], 'nAct': ['D2Common.dll', 1876478819, 3, 1, '8b4424'], 'pDrlg': ['D2Common.dll', 1876478905, 2, 1, '8943'], 'pfnActCallBack': ['D2Common.dll', 1876478826, 2, 1, '894b'], 'bInitialized': ['D2Common.dll', 1876235070, 2, 1, '8b50'], 'pMemPool': ['D2Common.dll', 1876478737, 2, 1, '8b4b']}, 'D2EnvironmentStrc': {'dwCycleIndex': ['D2Common.dll', 1876458440, 1, 0, 'c706'], 'nTimeOfDay': ['D2Common.dll', 1876458266, 2, 1, '8b70'], 'dwTicks': ['D2Common.dll', 1876458485, 2, 1, '894e'], 'dwIntensity': ['D2Common.dll', 1876459223, 3, 1, '8b5424'], 'dwInitTick': ['D2Common.dll', 1876458283, 2, 1, '8b40'], 'nLastLight': ['D2Common.dll', 1876458269, 3, 1, '8b4424'], 'bRed': ['D2Common.dll', 1876458353, 2, 1, 'c646'], 'bGreen': ['D2Common.dll', 1876458357, 2, 1, 'c646'], 'bBlue': ['D2Common.dll', 1876458361, 2, 1, 'c646'], 'dwCyclePeriod': ['D2Common.dll', 1876458458, 2, 1, '894e'], 'dwTimeRateIndex': ['D2Common.dll', 1876458437, 2, 1, '8b46'], 'bEclipse': ['D2Common.dll', 1876458453, 2, 1, '8b46'], 'dwPrevTicks': ['D2Common.dll', 1876459135, 2, 1, '8b48']}, 'D2RoomExStrc': {'dwInitSeed': ['D2Common.dll', 1876511520, 3, 1, '8b4424'], 'seedLo': ['D2Common.dll', 1876511538, 2, 1, '8b77'], 'seedHi': ['D2Common.dll', 1876511804, 2, 1, 'c746'], 'pStatusPrev': ['D2Common.dll', 1876513513, 3, 1, '837c24'], 'pTypeData': ['D2Common.dll', 1876511897, 2, 1, '8956'], 'dwFlags': ['D2Common.dll', 1876511833, 2, 1, '814e'], 'pRoom1': ['D2Common.dll', 1876512121, 2, 1, '8b40'], 'nTileXPos': ['D2Common.dll', 1876512262, 2, 1, '8b47'], 'nTileYPos': ['D2Common.dll', 1876512288, 2, 1, '8b47'], 'nTileWidth': ['D2Common.dll', 1876512272, 2, 1, '2b4f'], 'nTileHeight': ['D2Common.dll', 1876512298, 2, 1, '2b4f'], 'nRoomStatus': ['D2Common.dll', 1876511753, 2, 1, 'c646'], 'nType': ['D2Common.dll', 1876511750, 2, 1, '896e'], 'pLevel': ['D2Common.dll', 1876511747, 2, 1, '895e'], 'pLogicalRoomInfo': ['D2Common.dll', 1876237882, 2, 1, '8b78'], 'pStatusNext': ['D2Common.dll', 1876304277, 2, 4, '8bb6']}, 'D2RoomCoordListStrc': {'nBox0PosX': ['D2Common.dll', 1876758727, 1, 0, 'f600'], 'nBox0PosY': ['D2Common.dll', 1876758582, 2, 1, '8946'], 'nEndGameX': ['D2Common.dll', 1876758660, 3, 1, '8b4424'], 'nEndGameY': ['D2Common.dll', 1876758754, 3, 1, '8b5424'], 'nBox1PosX': ['D2Common.dll', 1876758858, 3, 1, '8b4c24'], 'nBox1PosY': ['D2Common.dll', 1876758984, 2, 1, '8951'], 'nEndTileX': ['D2Common.dll', 1876758820, 3, 1, '894c24'], 'nEndTileY': ['D2Common.dll', 1876758762, 2, 1, '8b50'], 'bNode': ['D2Common.dll', 1876758743, 2, 1, '8b70'], 'nIndex': ['D2Common.dll', 1876758930, 2, 1, '8948'], 'pNext': ['D2Common.dll', 1876759265, 2, 1, '8956']}, 'D2RoomCollisionGridStrc': {'nSubtileX': ['D2Common.dll', 1876545671, 1, 0, '8b12'], 'nSubtileY': ['D2Common.dll', 1876545747, 2, 1, '8b50'], 'nSubtileWidth': ['D2Common.dll', 1876545552, 3, 1, '8b4424'], 'nSubtileHeight': ['D2Common.dll', 1876545710, 2, 1, '8b50'], 'nTileX': ['D2Common.dll', 1876545571, 3, 1, '8d4c24'], 'nTileY': ['D2Common.dll', 1876545775, 2, 1, '8b48'], 'nTileWidth': ['D2Common.dll', 1876545592, 4, 1, '0faf6c24'], 'nTileHeight': ['D2Common.dll', 1876545582, 3, 1, '8b4424'], 'pMapStart': ['D2Common.dll', 1876545648, 2, 1, '895a']}}
 
+# Inventory / item / player / Txt-record structs used by the lane A B002+B005+B008+B014 ports
+# (record sizes come from the `imul eax, eax, imm32` strides of the D2Common lookups).
+STRUCT_SIZE_PE_PROBES.update({
+    'D2InventoryStrc': ('D2Common.dll', 0x6FD6E731, 'ba', 1, 4, 1),
+    'D2InventoryGridStrc': ('D2Common.dll', 0x6FD6E26E, '8d55', 2, 1, 1),
+    'D2CorpseStrc': ('D2Common.dll', 0x6FD6DDF4, 'ba', 1, 4, 1),
+    'D2InventoryNodeStrc': ('D2Common.dll', 0x6FD6E53B, 'ba', 1, 4, 1),
+    'D2ItemDataStrc': ('D2Common.dll', 0x6FD73C8E, 'ba', 1, 4, 1),
+    'D2PlayerDataStrc': ('D2Common.dll', 0x6FD809B8, 'ba', 1, 4, 1),
+    'D2MonStatsTxt': ('D2Common.dll', 0x6FD512B8, '69c0', 2, 4, 1),
+    'D2MonStats2Txt': ('D2Common.dll', 0x6FD513E5, '69c0', 2, 4, 1),
+    'D2SkillsTxt': ('D2Common.dll', 0x6FD51268, '69c0', 2, 4, 1),
+    'D2MissilesTxt': ('D2Common.dll', 0x6FD51168, '69c0', 2, 4, 1),
+    'D2CharStatsTxt': ('D2Common.dll', 0x6FD512E8, '69c0', 2, 4, 1),
+    'D2ItemTypesTxt': ('D2Common.dll', 0x6FD51318, '69c0', 2, 4, 1),
+})
+FIELD_PE_PROBES.update({
+    'D2InventoryStrc': {
+        'dwSignature': ['D2Common.dll', 0x6FD6E751, 1, 0, 'c702'],
+        'pFirstItem': ['D2Common.dll', 0x6FD6F6D0, 2, 1, '894e'],
+        'pLastItem': ['D2Common.dll', 0x6FD6F6A9, 2, 1, '8b46'],
+        'pCursorItem': ['D2Common.dll', 0x6FD6DFC5, 2, 1, '8b40'],
+        'dwLeftItemGuid': ['D2Common.dll', 0x6FD6DE66, 2, 1, '8b40'],
+        'dwItemCount': ['D2Common.dll', 0x6FD6DEA5, 2, 1, '8b40'],
+        'pFirstNode': ['D2Common.dll', 0x6FD6DF85, 2, 1, '8b40'],
+        'pLastNode': ['D2Common.dll', 0x6FD6DF65, 2, 1, 'c747'],
+        'pFirstCorpse': ['D2Common.dll', 0x6FD6DD35, 2, 1, '8b40'],
+        'pLastCorpse': ['D2Common.dll', 0x6FD6DD09, 2, 1, 'c747'],
+        'nCorpseCount': ['D2Common.dll', 0x6FD6DCC5, 2, 1, '8b40'],
+    },
+    'D2InventoryGridStrc': {
+        'pFirstItem': ['D2Common.dll', 0x6FD6F678, 1, 0, '890e'],
+        'pLastItem': ['D2Common.dll', 0x6FD6F651, 2, 1, '8b46'],
+        'nGridWidth': ['D2Common.dll', 0x6FD6E37C, 3, 1, '0fb647'],
+        'nGridHeight': ['D2Common.dll', 0x6FD6E11E, 3, 1, '0fb67b'],
+        'ppItems': ['D2Common.dll', 0x6FD6E38A, 2, 1, '8b4f'],
+    },
+    'D2CorpseStrc': {
+        'bCountAsCorpse': ['D2Common.dll', 0x6FD6DC4B, 1, 0, '8b00'],
+        'dwUnitId': ['D2Common.dll', 0x6FD6DC7B, 2, 1, '8b40'],
+        'eClass': ['D2Common.dll', 0x6FD6DC5B, 2, 1, '8b40'],
+        'pNextCorpse': ['D2Common.dll', 0x6FD6DC9B, 2, 1, '8b40'],
+    },
+    'D2InventoryNodeStrc': {
+        'dwItemId': ['D2Common.dll', 0x6FD6DEBB, 1, 0, '8b00'],
+        'pNext': ['D2Common.dll', 0x6FD6DECB, 2, 1, '8b40'],
+    },
+    'D2ItemDataStrc': {
+        'wRarePrefix': ['D2Common.dll', 0x6FD739D9, 3, 1, '668948'],
+        'wRareSuffix': ['D2Common.dll', 0x6FD73989, 3, 1, '668948'],
+        'wMagicPrefix': ['D2Common.dll', 0x6FD73ADD, 4, 1, '66895448'],
+        'wMagicSuffix': ['D2Common.dll', 0x6FD73A2D, 4, 1, '66895448'],
+        'nBodyLoc': ['D2Common.dll', 0x6FD73C64, 2, 1, '8a40'],
+        'nInvPage': ['D2Common.dll', 0x6FD737B8, 2, 1, '8848'],
+        'pExtraOwnerInventory': ['D2Common.dll', 0x6FD6E89F, 2, 1, '83c0'],
+    },
+    'D2PlayerDataStrc': {
+        'dwField150': ['D2Common.dll', 0x6FD51010, 2, 4, 'c781'],
+        'dwField154': ['D2Common.dll', 0x6FD51021, 2, 4, '898a'],
+        'dwField158': ['D2Common.dll', 0x6FD5102E, 2, 4, '898a'],
+        'dwField15C': ['D2Common.dll', 0x6FD5103B, 2, 4, '8982'],
+    },
+    'D2MonStatsTxt': {
+        'wMonStatsEx': ['D2Common.dll', 0x6FD513CE, 4, 1, '0fbf4402'],
+    },
+    'D2MonStats2Txt': {
+        'dwFlags': ['D2Common.dll', 0x6FD514BB, 4, 1, '0fb65402'],
+        'dwModeFlags': ['D2Common.dll', 0x6FD5144B, 4, 4, '0fb69402'],
+    },
+    'D2SkillsTxt': {
+        'wMaxLvl': ['D2Common.dll', 0x6FD514EE, 4, 4, '0fbf8401'],
+        'dwParam1': ['D2Common.dll', 0x6FD51577, 2, 4, '8b80'],
+        'dwParam2': ['D2Common.dll', 0x6FD515A7, 2, 4, '8b80'],
+        'dwParam3': ['D2Common.dll', 0x6FD515D7, 2, 4, '8b80'],
+        'wSkillDesc': ['D2Common.dll', 0x6FD51524, 3, 4, '0fbf80'],
+    },
+})
+
+# Lane C (k1r2 B001/B007) additions. Kept as separate statements so parallel lanes can append without
+# touching the frozen one-line table above. Each probe cites the instruction whose immediate/displacement is read.
+STRUCT_SIZE_PE_PROBES.update({
+    'D2DrlgLevelStrc': ('D2Common.dll', 0x6FD7D9CA, 'ba', 1, 4, 1),    # mov edx, 0x230
+    'D2DrlgMapStrc': ('D2Common.dll', 0x6FD5BC83, 'ba', 1, 4, 1),      # mov edx, 0x58
+    'D2DrlgCoordStrc': ('D2Common.dll', 0x6FD59CF9, '83c1', 2, 1, 1),  # add ecx, 0x10 (pPopsLocation stride)
+    'D2LvlPrestTxt': ('D2Common.dll', 0x6FDBC983, '69c0', 2, 4, 1),    # imul eax, eax, 0x1b0
+})
+FIELD_PE_PROBES['D2DynamicPathStrc'].update({
+    'tDirectionVectorX': ['D2Common.dll', 0x6FD5CF11, 2, 1, '8b50'],   # mov edx, [eax+0x6a]
+    'tDirectionVectorY': ['D2Common.dll', 0x6FD5CF23, 2, 1, '8b50'],   # mov edx, [eax+0x6e]
+    'tVelocityVectorX': ['D2Common.dll', 0x6FD5CF20, 2, 1, '8950'],    # mov [eax+0x72], edx
+    'tVelocityVectorY': ['D2Common.dll', 0x6FD5CF2C, 2, 1, '8950'],    # mov [eax+0x76], edx
+    'nAccelStepCounter': ['D2Common.dll', 0x6FD5CEC6, 2, 4, '8b90'],   # mov edx, [eax+0x8c]
+})
+FIELD_PE_PROBES['D2DrlgLevelStrc'] = {
+    'nLevelId': ['D2Common.dll', 0x6FD8C011, 2, 4, '8b81'],            # mov eax, [ecx+0x1d0]
+}
+FIELD_PE_PROBES['D2DrlgMapStrc'] = {
+    'nPosX': ['D2Common.dll', 0x6FD59CB9, 2, 1, '8b5e'],               # mov ebx, [esi+0x10]
+    'nPosY': ['D2Common.dll', 0x6FD59CC2, 2, 1, '8b6e'],               # mov ebp, [esi+0x14]
+    'nPops': ['D2Common.dll', 0x6FD59C6C, 2, 1, '8946'],               # mov [esi+0x40], eax
+    'pPopsIndex': ['D2Common.dll', 0x6FD59CDC, 2, 1, '8b46'],          # mov eax, [esi+0x44]
+    'pPopsLocation': ['D2Common.dll', 0x6FD59C84, 2, 1, '8b46'],       # mov eax, [esi+0x50]
+}
+FIELD_PE_PROBES['D2DrlgCoordStrc'] = {
+    'nPosX': ['D2Common.dll', 0x6FD59CC0, 1, 0, '89'],                 # mov [eax], ebx (no displacement)
+    'nPosY': ['D2Common.dll', 0x6FD59CCB, 2, 1, '8968'],               # mov [eax+0x4], ebp
+    'nWidth': ['D2Common.dll', 0x6FD59CD5, 2, 1, '8950'],              # mov [eax+0x8], edx
+    'nHeight': ['D2Common.dll', 0x6FD59CD9, 2, 1, '8948'],             # mov [eax+0xc], ecx
+}
+FIELD_PE_PROBES['D2LvlPrestTxt'] = {
+    'dwLevelId': ['D2Common.dll', 0x6FDBC969, 2, 1, '8d4f'],           # lea ecx, [edi+0x4]
+}
+
+# Lane B (k1r2 B003/B006) additions.
+STRUCT_SIZE_PE_PROBES.update({
+    'D2SkillListStrc': ('D2Common.dll', 0x6FD9E401, 'ba', 1, 4, 1),     # mov edx, 0x18
+    'D2SkillStrc': ('D2Common.dll', 0x6FD9EF58, 'ba', 1, 4, 1),         # mov edx, 0x40
+    'D2LvlTypesTxt': ('D2Common.dll', 0x6FDBC9AC, '69c0', 2, 4, 1),     # imul eax, eax, 0x1b0
+    'D2LevelDefBin': ('D2Common.dll', 0x6FDBCB3A, '69c0', 2, 4, 1),     # imul eax, eax, 0x9c
+    'D2LevelsTxt': ('D2Common.dll', 0x6FDBCCDC, '69c0', 2, 4, 1),       # imul eax, eax, 0x220
+    'D2AStarNodeStrc': ('D2Common.dll', 0x6FDCB125, '6bc9', 2, 1, 1),   # imul ecx, ecx, 0x38
+})
+FIELD_PE_PROBES['D2RoomExStrc'].update({
+    'ppRoomsNear': ['D2Common.dll', 0x6FDCBB31, 2, 1, '8b45'],          # mov eax, [ebp+0x8]
+    'wStatusCount': ['D2Common.dll', 0x6FDCBB3E, 4, 1, '66ff4c46'],     # dec word [esi+eax*2+0xc]
+    'nRoomsNear': ['D2Common.dll', 0x6FDCBB24, 2, 1, '8b45'],           # mov eax, [ebp+0x2c]
+})
+FIELD_PE_PROBES['D2SkillsTxt'].update({
+    'wSkillId': ['D2Common.dll', 0x6FD9E1DD, 2, 0, '0fbf'],             # movsx eax, word [eax]
+})
+FIELD_PE_PROBES['D2MissilesTxt'] = {
+    'nSubLoop': ['D2Common.dll', 0x6FDCC4CE, 3, 4, '0fb689'],           # movzx ecx, byte [ecx+0x9a]
+    'nSubStart': ['D2Common.dll', 0x6FDCC4C2, 3, 4, '0fb681'],          # movzx eax, byte [ecx+0x9b]
+}
+FIELD_PE_PROBES['D2DrlgLevelStrc'].update({
+    'pDrlg': ['D2Common.dll', 0x6FDCBBB1, 2, 4, '8b89'],                # mov ecx, [ecx+0x1b4]
+})
+FIELD_PE_PROBES['D2SkillListStrc'] = {
+    'pMemPool': ['D2Common.dll', 0x6FD9E411, 1, 0, '89'],               # mov [edx], ecx
+    'pFirstSkill': ['D2Common.dll', 0x6FD9E3DB, 2, 1, '8b40'],          # mov eax, [eax+0x4]
+    'pLeftSkill': ['D2Common.dll', 0x6FD9E18B, 2, 1, '8b40'],           # mov eax, [eax+0x8]
+    'pRightSkill': ['D2Common.dll', 0x6FD9E419, 2, 1, '894a'],          # mov [edx+0xc], ecx
+    'pUsedSkill': ['D2Common.dll', 0x6FD9E41C, 2, 1, '894a'],           # mov [edx+0x10], ecx
+    'dwFlags': ['D2Common.dll', 0x6FD9E41F, 2, 1, '894a'],              # mov [edx+0x14], ecx
+}
+FIELD_PE_PROBES['D2SkillStrc'] = {
+    'pSkillsTxt': ['D2Common.dll', 0x6FD9E1DB, 1, 0, '8b'],             # mov eax, [eax]
+    'pNextSkill': ['D2Common.dll', 0x6FD9E3BB, 2, 1, '8b40'],           # mov eax, [eax+0x4]
+    'nSlotIndex': ['D2Common.dll', 0x6FD9E1B5, 2, 1, '8941'],           # mov [ecx+0x8], eax
+    'nSkillLevel': ['D2Common.dll', 0x6FD9E4B6, 2, 1, '8b79'],          # mov edi, [ecx+0x28]
+    'nOwnerItemGuid': ['D2Common.dll', 0x6FD9E4AC, 2, 1, '3951'],       # cmp [ecx+0x34], edx
+    'dwFlags': ['D2Common.dll', 0x6FD9E4A1, 2, 1, '8b79'],              # mov edi, [ecx+0x3c]
+}
+FIELD_PE_PROBES['D2LevelDefBin'] = {
+    'dwLayer': ['D2Common.dll', 0x6FDBCB6F, 2, 4, '8d8d'],              # lea ecx, [ebp+0x8c]
+}
+FIELD_PE_PROBES['D2LevelsTxt'] = {
+    'nAct': ['D2Common.dll', 0x6FDBCCB2, 3, 1, '8a4401'],               # mov al, [ecx+eax+0x5]
+    'nTeleport': ['D2Common.dll', 0x6FDBCC52, 3, 1, '8a4401'],          # mov al, [ecx+eax+0x6]
+    'nRain': ['D2Common.dll', 0x6FDBCC82, 3, 1, '8a4401'],              # mov al, [ecx+eax+0x7]
+}
+
+# Lane C (k1r2 B004/B016) additions.
+STRUCT_SIZE_PE_PROBES.update({
+    'D2DrlgOrthStrc': ('D2Common.dll', 0x6FD94986, 'ba', 1, 4, 1),     # mov edx, 0x18
+    'D2DrlgTileGridStrc': ('D2Common.dll', 0x6FDB8143, 'ba', 1, 4, 1), # mov edx, 0x2c
+    'D2DrlgTileLinkStrc': ('D2Common.dll', 0x6FDB996C, 'ba', 1, 4, 1), # mov edx, 0x0c
+    'D2DrlgTileDataStrc': ('D2Common.dll', 0x6FDB9340, '83c6', 2, 1, 1), # add esi, 0x30
+    'D2IdaStarNodeStrc': ('D2Common.dll', 0x6FDC0773, '6bc0', 2, 1, 1), # imul eax, eax, 0x1c
+    'D2AStarNodeStrc': ('D2Common.dll', 0x6FDCAC22, '6bd2', 2, 1, 1),   # imul edx, edx, 0x38
+})
+FIELD_PE_PROBES['D2DynamicPathStrc'].update({
+    'dwVelocityChangeCounter': ['D2Common.dll', 0x6FD84D51, 2, 1, 'c740'], # mov dword [eax+0x38], 0xf
+})
+FIELD_PE_PROBES['D2RoomExStrc'].update({
+    'pRoomNext': ['D2Common.dll', 0x6FD94F02, 2, 1, '8b52'],           # mov edx, [edx+0x24]
+    'pTileGrid': ['D2Common.dll', 0x6FDB81A0, 2, 1, '8b46'],           # mov eax, [esi+0x54]
+})
+FIELD_PE_PROBES['D2MonStatsTxt'].update({
+    'nBitField1': ['D2Common.dll', 0x6FD8513F, 2, 1, '8a40'],          # mov al, [eax+0xc]
+    'nBitField2': ['D2Common.dll', 0x6FD85131, 2, 1, '8a50'],          # mov dl, [eax+0xd]
+})
+FIELD_PE_PROBES['D2DrlgLevelStrc'].update({
+    'pFirstRoomEx': ['D2Common.dll', 0x6FD94EB0, 2, 1, '8b50'],        # mov edx, [eax+0x10]
+})
+FIELD_PE_PROBES['D2DrlgOrthStrc'] = {
+    'nDirection': ['D2Common.dll', 0x6FD94870, 2, 1, '8b41'],          # mov eax, [ecx+0x4]
+    'pBox': ['D2Common.dll', 0x6FD94889, 2, 1, '8b42'],                # mov eax, [edx+0x10]
+}
+FIELD_PE_PROBES['D2DrlgTileGridStrc'] = {
+    'pMapLinks': ['D2Common.dll', 0x6FDB81E5, 1, 0, '8b38'],           # mov edi, [eax]
+    'nWallCapacity': ['D2Common.dll', 0x6FDB8B72, 2, 1, '8b56'],       # mov edx, [esi+0x18]
+    'nFloorCapacity': ['D2Common.dll', 0x6FDB8054, 2, 1, '8b46'],      # mov eax, [esi+0x20]
+    'nRoofCapacity': ['D2Common.dll', 0x6FDB82CA, 2, 1, '3946'],       # cmp [esi+0x28], eax
+}
+FIELD_PE_PROBES['D2DrlgTileLinkStrc'] = {
+    'bFloor': ['D2Common.dll', 0x6FDB9976, 1, 0, 'c700'],              # mov dword [eax], 1
+    'pTileData': ['D2Common.dll', 0x6FDB81F6, 2, 1, '8b47'],           # mov eax, [edi+0x4]
+    'pNext': ['D2Common.dll', 0x6FDB8269, 2, 1, '8b7f'],               # mov edi, [edi+0x8]
+}
+FIELD_PE_PROBES['D2DrlgTileDataStrc'] = {
+    'nPosX': ['D2Common.dll', 0x6FDB8210, 2, 1, '8b48'],               # mov ecx, [eax+0x8]
+    'nPosY': ['D2Common.dll', 0x6FDB821D, 2, 1, '8b68'],               # mov ebp, [eax+0xc]
+    'dwFlags': ['D2Common.dll', 0x6FDB8240, 2, 1, '8b48'],             # mov ecx, [eax+0x14]
+    'nTileType': ['D2Common.dll', 0x6FDB822B, 2, 1, '8b48'],           # mov ecx, [eax+0x1c]
+    'pNext': ['D2Common.dll', 0x6FDB825E, 2, 1, '8b40'],               # mov eax, [eax+0x20]
+}
+FIELD_PE_PROBES['D2IdaStarNodeStrc'] = {
+    'wPosX': ['D2Common.dll', 0x6FDC0696, 3, 1, '0fb751'],             # movzx edx, word [ecx+0x8]
+    'wPosY': ['D2Common.dll', 0x6FDC06A0, 3, 1, '0fb771'],             # movzx esi, word [ecx+0xa]
+    'pBestDirection': ['D2Common.dll', 0x6FDC0809, 2, 1, '8b4e'],      # mov ecx, [esi+0xc]
+    'nNextNeighborIndex': ['D2Common.dll', 0x6FDC080E, 2, 1, '8b4e'],  # mov ecx, [esi+0x10]
+    'pParent': ['D2Common.dll', 0x6FDC0685, 2, 1, '8b51'],             # mov edx, [ecx+0x14]
+}
+FIELD_PE_PROBES['D2AStarNodeStrc'] = {
+    'wPosX': ['D2Common.dll', 0x6FDCAB95, 2, 0, '0fb711'],             # movzx edx, word [ecx]
+    'wPosY': ['D2Common.dll', 0x6FDCAB9E, 3, 1, '0fb771'],             # movzx esi, word [ecx+0x2]
+    'wFScore': ['D2Common.dll', 0x6FDCAE54, 3, 1, '0fbf46'],           # movsx eax, word [esi+0x4]
+    'wHScore': ['D2Common.dll', 0x6FDCACC4, 3, 1, '668b7a'],           # mov di, [edx+0x6]
+    'wGScore': ['D2Common.dll', 0x6FDCACB7, 3, 1, '668b71'],           # mov si, [ecx+0x8]
+    'pParent': ['D2Common.dll', 0x6FDCAB85, 2, 1, '8b51'],             # mov edx, [ecx+0xc]
+    'pChildren': ['D2Common.dll', 0x6FDCB088, 2, 1, '8b4b'],           # mov ecx, [ebx+0x10]
+    'pHashNext': ['D2Common.dll', 0x6FDCAE4E, 2, 1, '8956'],           # mov [esi+0x30], edx
+    'pBestNext': ['D2Common.dll', 0x6FDCAE6A, 2, 1, '8b49'],           # mov ecx, [ecx+0x34]
+}
+
 
 def field(struct_name, name):
     for f in LAYOUT[struct_name]['fields']:

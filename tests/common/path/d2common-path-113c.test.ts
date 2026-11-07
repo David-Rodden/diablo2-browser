@@ -57,6 +57,7 @@ import {
   D2Common_10231,
   D2Common_10232,
   D2Common_10399,
+  D2Common_10399_AtSubtiles,
   D2Common_10434_FaceSubtile,
   DUNGEON_GetRoomAtPosition,
   MONMODE_DEAD,
@@ -779,3 +780,58 @@ describe('1.13c Teleports (#10533, #10906, #10075, #10223) & Ordinal Map', () =>
 
 const __FILE__ = 'd2common-path-113c.test.ts'
 const __LINE__ = 0
+
+describe('D2Common_10399 / D2Common_10399_AtSubtiles', () => {
+  it('correctly calculates unit-size-adjusted distance using fast branch (UNIT_DISTANCE_TABLE)', () => {
+    // UNIT_DISTANCE_TABLE[dx + dy * 8] 
+    // Example: dx=2, dy=3. Table value at 2 + 3*8 = 26.
+    // Let's check table[26] = 2.
+    // If sizes are < 4, it should use the fast branch.
+    // Default (size1=2, size2=2) => val=2
+    // If one size is <=1 (e.g. size1=1, size2=2) => val=2+1 = 3
+    // If one size is 3 (e.g. size1=3, size2=2) => val=2-1 = 1
+    // If size1=3, size2=1 => val=2-1=1, then +1 = 2
+    expect(D2Common_10399_AtSubtiles(0, 0, 2, 2, 3, 2)).toBe(2)
+    // 1. || check applies (i.e., testing size pairs where only one size is <= 1).
+    expect(D2Common_10399_AtSubtiles(0, 0, 1, 2, 3, 2)).toBe(3) // 2 + 1
+    expect(D2Common_10399_AtSubtiles(0, 0, 2, 2, 3, 1)).toBe(3) // 2 + 1
+    
+    // Check when dx=1, dy=1. dx+dy*8=9 => -1. val<0 => 0. Then if size=1, +1 => 1.
+    expect(D2Common_10399_AtSubtiles(0, 0, 2, 1, 1, 2)).toBe(0) // -1 => 0
+    expect(D2Common_10399_AtSubtiles(0, 0, 1, 1, 1, 2)).toBe(0) // early returns 0 if table<0
+
+    // 3. fast branch properly decrements/increments correctly based on sizes.
+    // dx=4, dy=5 => 4 + 40 = 44 => table[44] = 6
+    expect(D2Common_10399_AtSubtiles(0, 0, 2, 4, 5, 2)).toBe(6)
+    // Decrements by 1 if either unit has size 3
+    expect(D2Common_10399_AtSubtiles(0, 0, 3, 4, 5, 2)).toBe(5)
+    expect(D2Common_10399_AtSubtiles(0, 0, 2, 4, 5, 3)).toBe(5)
+    // And adds 1 if either unit has size <= 1
+    expect(D2Common_10399_AtSubtiles(0, 0, 3, 4, 5, 1)).toBe(6) // 6 - 1 = 5, 5 + 1 = 6
+  })
+
+  it('correctly calculates unit-size-adjusted distance using the far branch', () => {
+    // The far branch mathematically equals 2 * max(dx, dy) + min(dx, dy).
+    // dx=10, dy=5. sizes=2,2
+    // halfSum = 1 + 1 = 2.
+    // adjusted_dx = 10 - 2 = 8
+    // adjusted_dy = 5 - 2 = 3
+    // max(8, 3)*2 + min(8, 3) = 16 + 3 = 19
+    expect(D2Common_10399_AtSubtiles(0, 0, 2, 10, 5, 2)).toBe(19)
+
+    // dx=4, dy=12, sizes=2,3 (size1 < 4 && size2 < 4 but dy >= 8 -> far branch)
+    // halfSum = 1 + 1 = 2
+    // adjusted_dx = max(4 - 2, 0) = 2
+    // adjusted_dy = max(12 - 2, 0) = 10
+    // 2 * 10 + 2 = 22
+    expect(D2Common_10399_AtSubtiles(0, 0, 2, 4, 12, 3)).toBe(22)
+
+    // Clamping to 0:
+    // dx=3, dy=8, size1=4, size2=4
+    // halfSum = 2 + 2 = 4
+    // adjusted_dx = 3 - 4 = -1 => 0
+    // adjusted_dy = 8 - 4 = 4
+    // max(0, 4)*2 + min(0, 4) = 8
+    expect(D2Common_10399_AtSubtiles(0, 0, 4, 3, 8, 4)).toBe(8)
+  })
+})

@@ -3441,6 +3441,7 @@ export function syncNpcInteractionImpl(model: any, hud: HudManager): void {
       npcWin === 'orifice')
   ) {
     const targetWin = (npcWin === 'hire' || activeWin === 'hire') ? 'hire' : npcWin
+    hud.releaseReplacedServerPanel113c(targetWin as any)
     hud.leftPanel = targetWin as any
     ;(wp as any).activePanel = targetWin
     if (targetWin === 'hire') {

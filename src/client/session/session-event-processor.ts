@@ -1706,6 +1706,7 @@ export function drainWorldSoundRequests(
       continue
     }
     if (req.kind === 'unit-sound-stop' || req.kind === 'skill-cast-stop') {
+      const isLocalStop = Boolean(req.local ?? req.unit?.isLocalPlayer)
       const unitRef =
         req.unit ??
         (req.unitId !== undefined ? { unitType: 'player' as const, id: req.unitId } : undefined)
@@ -1715,14 +1716,23 @@ export function drainWorldSoundRequests(
           : req.skillId === 151
             ? 2531
             : 0
-      if (unitRef !== undefined && stopSid > 0) {
-        runtime?.stopUnitSound(
-          {
-            unitType: unitRef.unitType,
-            id: unitRef.id,
-          },
-          stopSid,
-        )
+      if (stopSid > 0) {
+        if (unitRef !== undefined) {
+          const stopped =
+            runtime?.stopUnitSound(
+              {
+                unitType: unitRef.unitType,
+                id: unitRef.id,
+                ...(isLocalStop ? { isLocalPlayer: true } : {}),
+              },
+              stopSid,
+            ) ?? 0
+          if (stopped === 0 && isLocalStop) {
+            runtime?.stopSoundById?.(stopSid)
+          }
+        } else {
+          runtime?.stopSoundById?.(stopSid)
+        }
       }
       runtime?.skillSounds.onSkillCastStop(req)
       continue
@@ -1796,12 +1806,17 @@ export function drainWorldSoundRequests(
       }
     } else {
       const rel = req.local ? {} : toRelPos(req.x, req.y, soundId)
-      runtime?.playSound(soundId, {
+      const noUnitOpts = {
         ...rel,
         ...(req.local !== undefined ? { local: req.local } : {}),
         ...(req.delayTicks !== undefined ? { delayTicks: req.delayTicks } : {}),
         ...(volume !== undefined ? { volume } : {}),
-      })
+      }
+      if (req.kind === 'unit-loop-start' && runtime?.startUnitLoopSound) {
+        runtime.startUnitLoopSound(soundId, noUnitOpts)
+      } else {
+        runtime?.playSound(soundId, noUnitOpts)
+      }
     }
   }
 }

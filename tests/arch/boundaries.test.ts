@@ -138,7 +138,7 @@ function checkNoDynamicImportBypasses(files: readonly string[]): string[] {
   return dynamicViolations
 }
 
-describe('Architectural Boundaries & 5-Module + Plugin Isolation (Rules 1–10 — Zero Whitelist Exceptions)', () => {
+describe('Architectural Boundaries & 5-Module + Plugin Isolation (Rules 1–12 — Zero Whitelist Exceptions)', () => {
   it('Rule 1: src/ contains ONLY the 5 canonical module directories (common, netproto, server, client, baker)', () => {
     const entries = readdirSync(SRC_DIR).sort()
     expect(entries).toEqual([...CANONICAL_MODULES].sort())
@@ -505,5 +505,39 @@ describe('Architectural Boundaries & 5-Module + Plugin Isolation (Rules 1–10 �
       expect(existsSync(`${targetPath}.old`)).toBe(false)
     }
   })
+
+  it('Rule 12: src/d2kern-113c/** has zero .sort()/.toSorted() calls and zero server/ path strings or imports (raw text incl. comments, 0 exceptions)', () => {
+    // Detector self-check (negative + positive controls): the rule must fire on known-bad snippets and
+    // must not fire on benign identifiers, so a broken regex cannot turn this rule into a no-op.
+    expect(findKernPurityViolations113c('x.ts', 'a.sort((p, q) => p - q)').length).toBe(1)
+    expect(findKernPurityViolations113c('x.ts', 'const b = a.toSorted()').length).toBe(1)
+    expect(findKernPurityViolations113c('x.ts', 'xs . sort ()').length).toBe(1)
+    expect(findKernPurityViolations113c('x.ts', 'const o = arr["sort"]').length).toBe(1)
+    expect(findKernPurityViolations113c('x.ts', "import { y } from '../../server/sim/y.ts'").length).toBeGreaterThan(0)
+    expect(findKernPurityViolations113c('x.ts', "const m = await import('../server/x.ts')").length).toBeGreaterThan(0)
+    expect(findKernPurityViolations113c('x.ts', '// see src/server/engine for the old path').length).toBe(1)
+    expect(findKernPurityViolations113c('x.ts', 'const sorted = 1; resort(); x.sortKey; serverMode = 1').length).toBe(0)
+    expect(findKernPurityViolations113c('x.ts', '// server-mode wire framing, bucket is sorted descending').length).toBe(0)
+
+    const kernFiles = collectTsFiles(resolve(SRC_DIR, 'd2kern-113c'))
+    expect(kernFiles.length).toBeGreaterThan(10)
+    const violations = kernFiles.flatMap((f) =>
+      findKernPurityViolations113c(relative(ROOT_DIR, f).replace(/\\/g, '/'), readFileSync(f, 'utf8')),
+    )
+    expect(violations).toEqual([])
+  })
 })
+
+function findKernPurityViolations113c(relFile: string, source: string): string[] {
+  const v: string[] = []
+  if (/\.\s*(?:sort|toSorted)\s*\(/.test(source)) v.push(`${relFile}: forbidden .sort()/.toSorted()`)
+  if (/\[\s*['"`](?:sort|toSorted)['"`]\s*\]/.test(source)) v.push(`${relFile}: forbidden ['sort'] access`)
+  if (/(?:^|[^A-Za-z0-9_])src\/server\b|['"`][^'"`\n]*\bserver\//.test(source)) {
+    v.push(`${relFile}: server/ path string`)
+  }
+  for (const spec of extractImportSpecifiers(source)) {
+    if (/(^|\/)server(\/|$)/.test(spec)) v.push(`${relFile}: import '${spec}' into server`)
+  }
+  return v
+}
 

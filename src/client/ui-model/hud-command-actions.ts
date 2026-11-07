@@ -986,6 +986,14 @@ export function closeActiveNpcPanelImpl(model: any): void {
     (model.hudManager?.worldPanels as any)?.activeNpcId ??
     null
   model.pendingArtisanConfirmNpcId = null
+  if (
+    model.world.waypointOpen ||
+    model.activeWaypointUnitId !== null ||
+    model.hudManager?.leftPanel === 'waypoint' ||
+    (model.hudManager?.worldPanels as any)?.activePanel === 'waypoint'
+  ) {
+    model.closeWaypoint()
+  }
   if (wasOrifice) {
     closeHoradricOrificeImpl(model, npcId ?? undefined)
     model.hudManager?.closeAllPanels()
@@ -1398,8 +1406,13 @@ export function closeWaypointImpl(model: any): void {
   model.waypointPacketSent = true
   model.activeWaypointUnitId = null
   model.world.clearWaypointInteraction()
-  if (model.hudManager && model.hudManager.leftPanel === 'waypoint') {
-    model.hudManager.setLeftPanel('none')
+  if (model.hudManager) {
+    if (model.hudManager.leftPanel === 'waypoint') {
+      model.hudManager.setLeftPanel('none')
+    }
+    if ((model.hudManager.worldPanels as any)?.activePanel === 'waypoint') {
+      ;(model.hudManager.worldPanels as any).activePanel = 'none'
+    }
   }
   if (shouldSendCancel && unitId !== null) {
     model.emitCommand({

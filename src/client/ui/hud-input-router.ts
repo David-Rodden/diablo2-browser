@@ -2301,6 +2301,7 @@ export function handleHudMouseDown(
       hud.worldPanels.handleLeftDockClick(dockKind as any, leftPt.x, leftPt.y, {
         onClose: () => {
           hud.leftPanel = 'none'
+          ;(hud.worldPanels as any).activePanel = 'none'
           hud.leaveLeftPanel(dockKind)
         },
         onPartyAction: (action: number, targetPlayerId: number) => {

@@ -2842,6 +2842,46 @@ export class CommandMapper {
       }
     }
 
+    // D2Client.dll 0x6FB5A4E0..0x6FB5A6D7 (`WaypointUI_OnLButtonDown` -> `0x6FB5A380` `WaypointUI_Close`):
+    // Clicking in the world (`mouseX > screenWidth / 2`) while `UI_WAYPOINT` (`0x14`) is open closes the
+    // Waypoint UI and sends `C2S 0x49 { waypointGUID, 0 }` BEFORE forwarding the click to the world so
+    // `D2Game.dll` (`0x6FC8E930`) clears `pPlayer->bInteract = 0` (`+0x6C`) while the player is still in
+    // range of the waypoint (`distSq <= 51` at `0x6FCECB50`), allowing subsequent `0x13` object interactions
+    // (Town Portal / Waypoint / Chest) to succeed.
+    const activeWaypointId =
+      (this.hudModel ? ((this.hudModel as any).activeWaypointUnitId ?? null) : null) ??
+      this.world.waypointUnitId ??
+      null
+    const isWaypointOpen = Boolean(
+      this.world.waypointOpen ||
+        this.hudManager.leftPanel === 'waypoint' ||
+        wp?.activePanel === 'waypoint' ||
+        (this.hudModel && !(this.hudModel as any).waypointPacketSent && activeWaypointId !== null),
+    )
+    if (isWaypointOpen) {
+      if (this.hudModel) {
+        this.hudModel.closeWaypoint()
+        if (this.hudManager.leftPanel === 'waypoint') {
+          this.hudManager.hideLeftPanelFromWorld('waypoint')
+        }
+      } else {
+        if (activeWaypointId !== null && activeWaypointId > 0) {
+          const closeCmd: ClientCommand = {
+            type: 'WaypointGo',
+            waypointId: activeWaypointId,
+            destAreaId: 0,
+          }
+          this.world.noteOutgoingCommand(closeCmd, nowMs)
+          this.sendCommand(closeCmd, nowMs)
+        }
+        this.world.clearWaypointInteraction?.()
+        this.hudManager.hideLeftPanelFromWorld('waypoint')
+      }
+      if (wp && wp.activePanel === 'waypoint') {
+        wp.activePanel = 'none'
+      }
+    }
+
     const isOrificeOpen = Boolean(
       npcInt.window === 'orifice' ||
         npcInt.activeWindow === 'orifice' ||

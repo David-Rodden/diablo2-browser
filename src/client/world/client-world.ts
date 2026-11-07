@@ -121,6 +121,7 @@ import {
   type TradeSessionState,
 } from './world-skill-state-tables.ts'
 import {
+  clearScreenShakeImpl,
   spawnCairnSkyBoltImpl,
   spawnCairnStonesControllerImpl,
   spawnCompellingOrbMistImpl,
@@ -245,6 +246,12 @@ export class ClientWorld {
     if (this._areaId !== 0 && value !== 0 && this._areaId !== value) {
       this._waypointOpen = false
       this._waypointUnitId = null
+      if (
+        !(isWorldstoneShakeLevel(this._areaId) && isWorldstoneShakeLevel(value)) &&
+        (this._screenShake.active || this._screenShakeSoundActive)
+      ) {
+        this.clearScreenShake()
+      }
     }
     this._areaId = value
   }
@@ -545,6 +552,9 @@ export class ClientWorld {
     offsetX: 0,
     offsetY: 0,
   }
+  _screenShakeSoundActive = false
+  _screenShakeSoundVol = 0
+  _screenShakeSoundUnitId = 0
   private _lastLocalCastSkillId = -1
   private _lastLocalCastAtMs = -1000
   private _simTimeMs = 0
@@ -1699,6 +1709,10 @@ export class ClientWorld {
     startScreenShakeImpl.call(this as unknown as ClientWorldInternal, sustainMs, amplitude, rampUpMs, rampDownMs)
   }
 
+  clearScreenShake(): void {
+    clearScreenShakeImpl.call(this as unknown as ClientWorldInternal)
+  }
+
   private updateScreenShake(): void {
     updateScreenShakeImpl.call(this as unknown as ClientWorldInternal)
   }
@@ -1773,7 +1787,15 @@ export class ClientWorld {
    */
   updateWorldstoneShakeTrigger(levelId: number): ClientUnit | undefined {
     if (!isWorldstoneShakeLevel(levelId)) {
-      this._worldstoneShakeSpawned = false
+      if (this._worldstoneShakeSpawned) {
+        this._worldstoneShakeSpawned = false
+        for (const [k, u] of this._units.entries()) {
+          if (u.unitType === 'missile' && u.classId === WORLDSTONE_SHAKE_MISSILE) {
+            this._units.delete(k)
+          }
+        }
+        this.clearScreenShake()
+      }
       return undefined
     }
     if (this._worldstoneShakeSpawned || !this._worldstoneShakeArmed || this.selfId === 0) return undefined
@@ -3008,7 +3030,23 @@ export class ClientWorld {
     this._pendingBeltPickupItemIds.clear()
     this._pendingGambleIdentifyItemIds.length = 0
     this._pendingGambleBuyCount = 0
+    this._worldstoneShakeArmed = false
+    this._worldstoneShakeSpawned = false
+    const wasShakeSoundActive = this._screenShakeSoundActive
+    const shakeUnitId = this._screenShakeSoundUnitId || this.selfId || 1
+    this._screenShakeSoundActive = false
+    this._screenShakeSoundVol = 0
+    this._screenShakeSoundUnitId = 0
     this._soundRequests.length = 0
+    if (wasShakeSoundActive) {
+      this._soundRequests.push({
+        kind: 'unit-sound-stop',
+        soundId: 0x1c4,
+        unitId: shakeUnitId,
+        unit: { unitType: 'player', id: shakeUnitId, isLocalPlayer: true },
+        local: true,
+      })
+    }
     // Missile ids restart at 0x70000000: stop every running travel sound now so a reused id cannot keep it (#991).
     for (const entityId of this._soundMissileIds) {
       this._soundRequests.push({ kind: 'missile-destroy', entityId })
