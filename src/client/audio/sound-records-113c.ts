@@ -830,6 +830,10 @@ export class SoundRecords113c {
     return this.records().find((r) => r.handle === handle)
   }
 
+  get activeCount(): number {
+    return this.active.length
+  }
+
   /** Returns the 2-slot recent variant pick history `[mostRecent, secondMostRecent]` for `id`. */
   recentOf(id: number): [number, number] {
     let recent = this.recent.get(id)
@@ -1127,6 +1131,65 @@ export class SoundRecords113c {
   }
 
   /**
+   * Returns true when any active, non-stopping unitless or local record exists in `soundId`'s
+   * variant group (`[groupBase, groupBase + groupSize)`).
+   */
+  isSoundGroupPlaying(soundId: number): boolean {
+    const targetRow = this.rows.get(soundId)
+    if (targetRow === undefined) return false
+    const groupBase = targetRow.groupBase
+    const groupEnd = groupBase + Math.max(1, targetRow.groupSize)
+    for (const r of this.active) {
+      if (r.stop || r.state === 2) continue
+      if (r.id >= groupBase && r.id < groupEnd && (r.units.length === 0 || r.local)) {
+        return true
+      }
+    }
+    return false
+  }
+
+  /**
+   * SetVolume 0x6fb37ed0 on active records in `soundId`'s variant group attached to `unit`
+   * (used by `UpdateScreenShakeSound` 0x6fb3ad30 to modulate `0x1c4` without re-starting the loop).
+   */
+  setUnitSoundVolume(unit: SoundUnitRef113c, soundId: number, vol: number): boolean {
+    const targetRow = this.rows.get(soundId)
+    if (targetRow === undefined) return false
+    const groupBase = targetRow.groupBase
+    const groupEnd = groupBase + Math.max(1, targetRow.groupSize)
+    const clamped = Math.max(0, Math.min(255, Math.trunc(vol)))
+    let updated = false
+    for (const r of this.active) {
+      if (r.stop || r.state === 2) continue
+      if (r.id >= groupBase && r.id < groupEnd && r.units.some((u) => sameUnit(u, unit))) {
+        r.vol = clamped
+        updated = true
+      }
+    }
+    return updated
+  }
+
+  /**
+   * SetVolume 0x6fb37ed0 on active unitless or local records in `soundId`'s variant group.
+   */
+  setSoundGroupVolume(soundId: number, vol: number): boolean {
+    const targetRow = this.rows.get(soundId)
+    if (targetRow === undefined) return false
+    const groupBase = targetRow.groupBase
+    const groupEnd = groupBase + Math.max(1, targetRow.groupSize)
+    const clamped = Math.max(0, Math.min(255, Math.trunc(vol)))
+    let updated = false
+    for (const r of this.active) {
+      if (r.stop || r.state === 2) continue
+      if (r.id >= groupBase && r.id < groupEnd && (r.units.length === 0 || r.local)) {
+        r.vol = clamped
+        updated = true
+      }
+    }
+    return updated
+  }
+
+  /**
    * 0x6fad3070 → 0x6fb38c20(handle, unit, 0): detaches `unit` from every active looping sound record;
    * each record left with no attached units is stopped via `StopWithFade` (0x6fb38550).
    *
@@ -1165,6 +1228,31 @@ export class SoundRecords113c {
       r.units = r.units.filter((u) => !sameUnit(u, unit))
       stopped += 1
       if (r.units.length > 0) continue
+      const keepsPlaying = r.fading && r.ft === 0
+      if (!keepsPlaying) this.stopWithFade(r)
+    }
+    if (stopped === 0 && unit.isLocalPlayer === true) {
+      return this.stopSoundById(soundId)
+    }
+    return stopped
+  }
+
+  /**
+   * StopSound 0x6fb38bf0 by `Sounds.txt` group id for unitless or local-player records (e.g. screen shake
+   * `0x1c4` `andariel_quake_loop` at `0x6fb3ad30 -> 0x6fb38bf0`).
+   */
+  stopSoundById(soundId: number): number {
+    const targetRow = this.rows.get(soundId)
+    if (targetRow === undefined) return 0
+    const groupBase = targetRow.groupBase
+    const groupEnd = groupBase + Math.max(1, targetRow.groupSize)
+    let stopped = 0
+    for (const r of this.active) {
+      if (r.stop || r.state === 2) continue
+      if (r.id < groupBase || r.id >= groupEnd) continue
+      if (r.units.length > 0 && !r.local && !r.units.every((u) => u.isLocalPlayer === true)) continue
+      r.units = []
+      stopped += 1
       const keepsPlaying = r.fading && r.ft === 0
       if (!keepsPlaying) this.stopWithFade(r)
     }

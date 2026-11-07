@@ -2267,6 +2267,7 @@ export function stepMissileUnitImpl(this: ClientWorldInternal, unit: ClientUnit)
     const owner = unit.ownerType && unit.ownerId !== undefined ? this.getUnit(unit.ownerType, unit.ownerId) : undefined
     if (!owner || !isWorldstoneShakeLevel(this.areaId)) {
       this._units.delete(unit.key)
+      this.clearScreenShake()
       return
     }
     unit.x = owner.x

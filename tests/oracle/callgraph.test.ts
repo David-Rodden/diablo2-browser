@@ -80,6 +80,48 @@ function nodeKey(mod: string, vaHexOrInt: string | number): string {
   return `${mod}:${vaNum.toString(16).toUpperCase().padStart(8, '0')}`;
 }
 
+// Frozen K0 contribution of KERN_BINDINGS_113C (extract-callgraph.py). K1 adds bindings ONLY through
+// tools/oracle/callgraph/bindings/*.json (see its README.md); editing these literals requires editing the
+// K0 list itself (e.g. a justified K0 promotion), never a per-batch bump.
+const K0_BASE = { dv: 93, ported: 36, d2CommonDv: 47, d2CommonPorted: 18 } as const;
+
+const BINDINGS_DIR = path.join(REPO_ROOT, 'tools', 'oracle', 'callgraph', 'bindings');
+interface BatchBinding {
+  module: 'D2Game' | 'D2Common';
+  va: string;
+  name: string;
+  kernFile: string;
+  tsSymbol: string;
+  status: 'diff-verified' | 'ported';
+  diffEvidence?: string;
+  src: string;
+}
+function loadBatchBindings(): BatchBinding[] {
+  if (!fs.existsSync(BINDINGS_DIR)) return [];
+  const out: BatchBinding[] = [];
+  const required = ['kernFile', 'module', 'name', 'status', 'tsSymbol', 'va'];
+  for (const f of fs.readdirSync(BINDINGS_DIR).filter(n => n !== 'README.md').sort()) {
+    expect(f).toMatch(/^[A-Za-z0-9][A-Za-z0-9_.-]*\.json$/);
+    const arr: unknown = JSON.parse(fs.readFileSync(path.join(BINDINGS_DIR, f), 'utf-8'));
+    expect(Array.isArray(arr) && arr.length > 0, `bindings/${f} must be a non-empty JSON array`).toBe(true);
+    let prevVa = -1;
+    for (const e of arr as Array<Record<string, unknown>>) {
+      const keys = Object.keys(e);
+      expect(required.every(k => keys.includes(k)), `bindings/${f}: missing keys in ${JSON.stringify(e)}`).toBe(true);
+      expect(keys.every(k => required.includes(k) || k === 'diffEvidence'), `bindings/${f}: extra keys`).toBe(true);
+      for (const k of keys) expect(typeof e[k] === 'string' && (e[k] as string).trim().length > 0).toBe(true);
+      expect(['D2Game', 'D2Common']).toContain(e.module);
+      expect(['diff-verified', 'ported']).toContain(e.status);
+      expect(e.va).toMatch(/^0x[0-9A-Fa-f]{8}$/);
+      const va = parseInt(e.va as string, 16);
+      expect(va, `bindings/${f}: entries must be strictly ascending by va`).toBeGreaterThan(prevVa);
+      prevVa = va;
+      out.push({ ...(e as unknown as Omit<BatchBinding, 'src'>), src: `bindings/${f}` });
+    }
+  }
+  return out;
+}
+
 function collectFilesRecursive(dir: string, exts: ReadonlySet<string>): string[] {
   const out: string[] = [];
   if (!fs.existsSync(dir)) return out;
@@ -181,8 +223,21 @@ describe('Diablo II v1.13c Kernel Call Graph & Manifest ([K0] Track A)', () => {
     expect(readySummary.ready).toBe(
       readySummary.readyPureLeaf + readySummary.readyHostImport + readySummary.readyInternalComposite
     );
-    expect(readySummary.readyPureLeaf).toBeGreaterThan(500);
-    expect(readySummary.readyHostImport).toBeGreaterThan(200);
+    // Status-independent CFG shape of the closure (binary-derived like sccCount 4626 / maxTopoLevel 30):
+    // porting never changes it, so these are exact pins. They replace the K0 snapshot thresholds
+    // readyPureLeaf > 500 / readyHostImport > 200, which necessarily failed after ~189 pure-leaf or ~155
+    // host-import ports; any dropped callee edge or external dep still moves one of these exact counts.
+    const isUnported = (f: (typeof manifest.functions)[number]) => f.status === 'unported';
+    const uPure = manifest.functions.filter(f => f.callees.length === 0 && f.externalDeps.length === 0);
+    const uHost = manifest.functions.filter(f => f.externalDeps.length > 0);
+    const uComp = manifest.functions.filter(f => f.callees.length > 0 && f.externalDeps.length === 0);
+    expect([uPure.length, uHost.length, uComp.length]).toEqual([688, 1425, 2697]);
+    const d2cCount = (a: typeof uPure) => a.filter(f => f.module === 'D2Common').length;
+    expect([d2cCount(uPure), d2cCount(uHost), d2cCount(uComp)]).toEqual([444, 464, 571]);
+    // Pure leaves have no internal deps, so every unported pure leaf is ready (frontier completeness).
+    expect(readySummary.readyPureLeaf).toBe(uPure.filter(isUnported).length);
+    expect(readySummary.readyHostImport).toBeLessThanOrEqual(uHost.filter(isUnported).length);
+    expect(readySummary.readyInternalComposite).toBeLessThanOrEqual(uComp.filter(isUnported).length);
 
     const implementedKeys = new Set(
       manifest.functions
@@ -643,21 +698,56 @@ describe('Diablo II v1.13c Kernel Call Graph & Manifest ([K0] Track A)', () => {
 
     expect(verifiedFns.length).toBe(manifest.summary.statusBreakdown['diff-verified']);
     expect(portedFns.length).toBe(manifest.summary.statusBreakdown.ported);
-    expect(verifiedFns.length).toBe(89);
-    expect(portedFns.length).toBe(40);
 
-    // Verify docs/oracle/function-map.md K0 ported row matches manifest-113c.json 1-to-1
+    // Exact totals = frozen K0 contribution + the reviewed K1 bindings/*.json files (read here, independently
+    // of the generator), each of which must appear 1:1 in the manifest with identical metadata.
+    const batch = loadBatchBindings();
+    const batchKeys = new Set<string>();
+    for (const b of batch) {
+      const k = nodeKey(b.module, b.va);
+      expect(batchKeys.has(k), `duplicate binding ${k} (${b.src})`).toBe(false);
+      batchKeys.add(k);
+      const fn = fnByKey.get(k);
+      expect(fn, `${k} (${b.src}) not in closure`).toBeDefined();
+      expect(fn!.status, `${k} (${b.src}) status`).toBe(b.status);
+      expect(fn!.name).toBe(b.name);
+      expect(fn!.kernFile).toBe(b.kernFile);
+      expect(fn!.tsSymbol).toBe(b.tsSymbol);
+      expect(fn!.diffEvidence).toBe(b.diffEvidence?.trim());
+      if (b.status === 'diff-verified') {
+        const testRefs = b.diffEvidence!.match(/tests\/oracle\/[A-Za-z0-9_./-]+\.test\.ts/g) || [];
+        expect(
+          testRefs.some(t => fs.readFileSync(path.join(REPO_ROOT, t), 'utf-8').toLowerCase().includes(b.va.toLowerCase())),
+          `diff-verified ${k} (${b.src}) must cite a tests/oracle test that contains ${b.va}`
+        ).toBe(true);
+      }
+    }
+    const nBatch = (mod: string | null, status: string) =>
+      batch.filter(b => (mod === null || b.module === mod) && b.status === status).length;
+    expect(verifiedFns.length).toBe(K0_BASE.dv + nBatch(null, 'diff-verified'));
+    expect(portedFns.length).toBe(K0_BASE.ported + nBatch(null, 'ported'));
+    const d2c = (s: string) => manifest.functions.filter(f => f.module === 'D2Common' && f.status === s).length;
+    expect(d2c('diff-verified')).toBe(K0_BASE.d2CommonDv + nBatch('D2Common', 'diff-verified'));
+    expect(d2c('ported')).toBe(K0_BASE.d2CommonPorted + nBatch('D2Common', 'ported'));
+
+    // Verify docs/oracle/function-map.md summary + generated ported row match manifest-113c.json 1-to-1
     const fnMapText = fs.readFileSync(path.join(REPO_ROOT, 'docs', 'oracle', 'function-map.md'), 'utf-8');
-    expect(fnMapText).toContain('**`89` `diff-verified` (`1.85%`) + `40` `ported` (`0.83%`)');
-    const portedRow = fnMapText.split('\n').find(line => line.includes('| **ported** (`40` closure functions'));
-    expect(portedRow).toBeDefined();
-    const portedRowVas = [...portedRow!.split('|')[1]!.matchAll(/0x6F[CD][0-9A-Fa-f]{5}/g)].map(m =>
+    const pct = (n: number) => ((100 * n) / manifest.summary.totalReachable).toFixed(2);
+    const nv = verifiedFns.length;
+    const np = portedFns.length;
+    expect(fnMapText).toContain(
+      `**\`${nv.toLocaleString('en-US')}\` \`diff-verified\` (\`${pct(nv)}%\`) + \`${np.toLocaleString('en-US')}\` \`ported\` (\`${pct(np)}%\`)`
+    );
+    const portedRows = fnMapText
+      .split('\n')
+      .filter(line => line.includes(`| **ported** (\`${np.toLocaleString('en-US')}\` closure functions`));
+    expect(portedRows.length).toBe(1);
+    const portedRow = portedRows[0]!;
+    const portedRowVas = [...portedRow.split('|')[1]!.matchAll(/0x6F[CD][0-9A-Fa-f]{5}/g)].map(m =>
       m[0]!.toLowerCase()
     );
-    expect(portedRowVas.length).toBe(40);
-    for (const fn of portedFns) {
-      expect(portedRowVas).toContain(fn.va.toLowerCase());
-    }
+    // exact set and multiplicity (stronger than the K0 containment check)
+    expect([...portedRowVas].sort()).toEqual(portedFns.map(f => f.va.toLowerCase()).sort());
 
     // Unexercised or unit-tested 100%-complete helpers in src/d2kern-113c/ must be classified as 'ported', while slice-scoped helpers remain 'unported'
     expect(fnByKey.get('D2Game:6FCA38B0')!.status).toBe('ported'); // AiZombie (dormant in F786..F825)

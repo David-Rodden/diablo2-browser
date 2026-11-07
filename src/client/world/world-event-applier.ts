@@ -4117,6 +4117,9 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
       }
       if (ev.kind === 'special' || ev.source === 0x89) {
         this._specialQuestEvent = ev.specialEventId ?? ev.quests[0] ?? 0
+        if (this._specialQuestEvent === 19) {
+          this.armWorldstoneShake()
+        }
         break
       }
       if (ev.kind === 'log' || ev.source === 0x29) {

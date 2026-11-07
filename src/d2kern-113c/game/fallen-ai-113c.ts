@@ -29,11 +29,13 @@ import {
   D2RoomExStrc,
   D2StatListExStrc,
   D2StatListExStrc_SIZE,
+  D2StatListStrc,
   D2TimerStrc,
   D2UnitStrc,
 } from '../mem/layout.generated.ts'
 import { seedNext, seedRoll, type D2SeedStrc } from '../prng.ts'
 import { mulDiv113c } from '../common/int-math.ts'
+import { D2COMMON_SGPT_DATATABLES_VA_113C } from '../common/inline-helpers.ts'
 import {
   STATLIST_AddUnitStat113c,
   STATLIST_GetStatListFromUnitAndState113c,
@@ -434,11 +436,12 @@ export function ITEMS_CheckItemTypeId113c(
 
 /**
  * `@va D2Common:0x6FD73EF0` (`D2Common.#11006` `ITEMS_CheckNotBrokenOrUnequipping`):
- * Returns `1` when `pItem` is a `UNIT_ITEM` whose `pItemData->dwFlags (+0x18)` has neither
- * `ITEMFLAG_BROKEN (0x100)` nor `ITEMFLAG_UNEQUIPPING (0x4000)` set (`(dwFlags & 0x4100) == 0`).
+ * Returns `0` if `pItem == 0`, `1` if `pItem->dwUnitType != UNIT_ITEM` (`0x6FD73EFD: jne 0x6FD73F26`),
+ * and for `UNIT_ITEM` returns `1` iff `pItemData == 0` or `(pItemData->dwFlags (+0x18) & 0x4100) == 0`.
  */
 export function ITEMS_CheckNotBrokenOrUnequipping113c(m: Memory113c, pItem: number): number {
-  if (pItem === 0 || m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0
+  if (pItem === 0) return 0
+  if (m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 1
   const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
   if (pItemData !== 0) {
     const flags = m.u32(pItemData + ITEMDATA_OFF_DWFLAGS)
@@ -673,19 +676,27 @@ export function INVENTORY_GetWeaponByHandSlot113c(
   return 0
 }
 
+export const DATATABLES_OFF_MONSTATS_COUNT_113C = 0x0a80
+export const STATLIST_FLAG_EXTENDED_113C = 0x80000000
+
 /**
  * `@va D2Common:0x6FD80530` (`D2Common.#10747` `UNITS_CanDualWield`):
- * Returns `1` for Player Barbarian (`4`) / Assassin (`6`) or Monster Shadow Warrior (`417`) / Shadow Master (`418`).
+ * Returns `1` for Player Barbarian (`4`) / Assassin (`6`) or Monster Shadow Warrior (`417`) / Shadow Master (`418`)
+ * when `0 <= classId < sgptDataTables->nMonStatsCount` (`0x6FDE9E1C` -> `+0xA80`).
  */
 export function UNITS_CanDualWield113c(m: Memory113c, pUnit: number): number {
   if (pUnit === 0) return 0
   const uType = m.get(pUnit, D2UnitStrc.dwUnitType)
-  const classId = m.get(pUnit, D2UnitStrc.dwClassId) >>> 0
+  const classId = m.get(pUnit, D2UnitStrc.dwClassId) | 0
   if (uType === UNIT_PLAYER) {
     return classId === 4 || classId === 6 ? 1 : 0
   }
   if (uType === UNIT_MONSTER) {
-    return classId === 417 || classId === 418 ? 1 : 0
+    if (classId < 0) return 0
+    const pDataTables = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+    const monStatsCount = m.u32(pDataTables + DATATABLES_OFF_MONSTATS_COUNT_113C) | 0
+    if (classId >= monStatsCount) return 0
+    return classId >= 417 && classId <= 418 ? 1 : 0
   }
   return 0
 }
@@ -707,6 +718,39 @@ export function SKILLS_GetUsedSkill113c(m: Memory113c, pUnit: number): number {
 export function SKILLS_GetFlags113c(m: Memory113c, pSkill: number): number {
   if (pSkill === 0) return 0
   return m.u32(pSkill + 0x0c)
+}
+
+/**
+ * `@va D2Common:0x6FD87F80` (`STATLIST_FindSubListByStateAndFlags`, `__fastcall (ecx = pStatListEx, edx = stateId)`):
+ * Returns `0` if `pStatListEx == 0`, `stateId == 0`, or `(pStatListEx->dwFlags (+0x10) & 0x80000000) == 0`;
+ * otherwise walks `pMyLastList (+0x3C)` then `pMyStats (+0x40)` via `pPrevLink (+0x2C)` and returns the first
+ * sublist with `dwStateNo (+0x14) == stateId` (`0` if not found).
+ */
+export function STATLIST_FindSubListByStateAndFlags113c(
+  m: Memory113c,
+  pStatListEx: number,
+  stateId: number,
+): number {
+  if (pStatListEx === 0 || stateId === 0) return 0
+  if ((m.get(pStatListEx, D2StatListStrc.dwFlags) & STATLIST_FLAG_EXTENDED_113C) === 0) {
+    return 0
+  }
+  const target = stateId >>> 0
+  for (
+    let sub = m.get(pStatListEx, D2StatListExStrc.pMyLastList);
+    sub !== 0;
+    sub = m.get(sub, D2StatListStrc.pPrevLink)
+  ) {
+    if (m.get(sub, D2StatListStrc.dwStateNo) === target) return sub
+  }
+  for (
+    let sub = m.get(pStatListEx, D2StatListExStrc.pMyStats);
+    sub !== 0;
+    sub = m.get(sub, D2StatListStrc.pPrevLink)
+  ) {
+    if (m.get(sub, D2StatListStrc.dwStateNo) === target) return sub
+  }
+  return 0
 }
 
 /**

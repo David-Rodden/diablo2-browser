@@ -18,7 +18,9 @@
 
 import { existsSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
+import { AudioRuntime113c } from '../../src/client/audio/audio-runtime-113c.ts'
 import { MISSILE_METAS } from '../../src/client/render/missiles-meta.ts'
+import { drainWorldSoundRequests } from '../../src/client/session/session-event-processor.ts'
 import { ClientWorldSceneSource } from '../../src/client/view/scene-source.ts'
 import { buildSceneDrawables } from '../../src/client/view/unit-drawables.ts'
 import { ClientWorld } from '../../src/client/world/client-world.ts'
@@ -508,6 +510,110 @@ describe('1.13c Quest FX Missiles (Issue #873)', () => {
       expect(world.screenShake.active).toBe(false)
       const endReqs = world.drainWorldSoundRequests()
       expect(endReqs.some(r => r.kind === 'unit-sound-stop' && r.soundId === 452)).toBe(true)
+    })
+
+    it('Issue #2023: stops andariel_quake_loop (#452) in AudioRuntime113c when shake ends (amp 20 -> 0), updates volume in place across 10 ramp changes without duplicate loops, and cleans up on reset() / area change', () => {
+      const runtime = new AudioRuntime113c({
+        listenerPos: () => ({ x: 100, y: 100 }),
+      })
+      const world = new ClientWorld()
+      world.apply({ type: 'LoadAct', act: 0, mapSeed: 123, areaId: 37 })
+      world.applyEvent({
+        type: 'UnitAssign',
+        isSelf: true,
+        unit: { unitType: 'player', id: 1, classId: 0, x: 100, y: 100, mode: 1, lifePct: 100 },
+      })
+      world.drainWorldSoundRequests()
+
+      // 1. Repeatedly trigger 10 different amplitudes (2..20) and verify at most 1 active record in AudioRuntime113c
+      let handle = 0
+      for (let i = 1; i <= 10; i += 1) {
+        const amp = i * 2
+        world.startScreenShake(120, amp, 0, 0)
+        const reqs = world.drainWorldSoundRequests()
+        expect(reqs).toHaveLength(1)
+        expect(reqs[0]?.kind).toBe('unit-loop-start')
+        expect(reqs[0]?.soundId).toBe(452)
+        expect(reqs[0]?.unit?.id).toBe(1)
+        const handles = runtime.drainWorldRequests(reqs)
+        if (i === 1) {
+          expect(handles).toHaveLength(1)
+          handle = handles[0]!
+        } else {
+          expect(handles).toHaveLength(0)
+        }
+        expect(runtime.records.activeCount).toBe(1)
+        expect(runtime.records.getVolume(handle)).toBe(Math.min(255, Math.trunc((amp * 255) / 20)))
+      }
+      expect(runtime.records.isUnitSoundPlaying({ unitType: 'player', id: 1 }, 452)).toBe(true)
+      expect(runtime.records.isSoundGroupPlaying(452)).toBe(true)
+
+      // 2. Advance past sustain (120ms -> 160ms): amp drops 20 -> 0, stop request carries unit and stops 452 in runtime
+      world.tick(40)
+      world.tick(40)
+      world.tick(40)
+      world.tick(40)
+      expect(world.screenShake.active).toBe(false)
+      const stopReqs = world.drainWorldSoundRequests()
+      expect(stopReqs).toEqual([
+        expect.objectContaining({
+          kind: 'unit-sound-stop',
+          soundId: 452,
+          unitId: 1,
+          local: true,
+        }),
+      ])
+      runtime.drainWorldRequests(stopReqs)
+      runtime.records.update()
+      expect(runtime.records.isUnitSoundPlaying({ unitType: 'player', id: 1 }, 452)).toBe(false)
+      expect(runtime.records.isSoundGroupPlaying(452)).toBe(false)
+      expect(runtime.records.activeCount).toBe(0)
+
+      // 3. Unitless unit-loop-start and unit-sound-stop via session-event-processor also deduplicate and stop 452
+      const host = {
+        world,
+        audioRuntime: runtime,
+        hudManager: null,
+        predictor: { getSnapshot: () => ({ x: 100, y: 100 }) },
+        interpolator: { getEntityState: () => null },
+        resolveTargetUnitWorldPos: () => ({ x: 100, y: 100 }),
+      } as any
+      world.pushSoundRequest({ kind: 'unit-loop-start', soundId: 452, local: true, volume: 120 })
+      world.pushSoundRequest({ kind: 'unit-loop-start', soundId: 452, local: true, volume: 200 })
+      drainWorldSoundRequests(host)
+      expect(runtime.records.activeCount).toBe(1)
+      expect(runtime.records.isSoundGroupPlaying(452)).toBe(true)
+      world.pushSoundRequest({ kind: 'unit-sound-stop', soundId: 452, local: true })
+      drainWorldSoundRequests(host)
+      runtime.records.update()
+      expect(runtime.records.isSoundGroupPlaying(452)).toBe(false)
+      expect(runtime.records.activeCount).toBe(0)
+
+      // 4. Area change (37 -> 1) during active shake stops shake and 452 immediately
+      world.startScreenShake(5000, 15, 0, 0)
+      runtime.drainWorldRequests(world.drainWorldSoundRequests())
+      expect(runtime.records.activeCount).toBe(1)
+      world.areaId = 1
+      expect(world.screenShake.active).toBe(false)
+      runtime.drainWorldRequests(world.drainWorldSoundRequests())
+      runtime.records.update()
+      expect(runtime.records.activeCount).toBe(0)
+
+      // 5. world.reset() during active shake emits unit-sound-stop (surviving queue overflow) and resets shake sound state
+      world.startScreenShake(5000, 18, 0, 0)
+      runtime.drainWorldRequests(world.drainWorldSoundRequests())
+      expect(runtime.records.activeCount).toBe(1)
+      world.reset()
+      for (let i = 0; i < 80; i += 1) {
+        world.pushSoundRequest({ soundId: 4, x: 0, y: 0 })
+      }
+      const resetReqs = world.drainWorldSoundRequests()
+      expect(resetReqs.some(r => r.kind === 'unit-sound-stop' && r.soundId === 452)).toBe(true)
+      runtime.drainWorldRequests(resetReqs)
+      runtime.records.update()
+      expect(runtime.records.isUnitSoundPlaying({ unitType: 'player', id: 1 }, 452)).toBe(false)
+      expect(runtime.records.isSoundGroupPlaying(452)).toBe(false)
+      expect(runtime.records.records().filter(r => r.id === 452)).toHaveLength(0)
     })
   })
 })

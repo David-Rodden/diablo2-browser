@@ -829,6 +829,9 @@ export class AudioRuntime113c {
     if (options?.volume !== undefined) {
       this.records.setVolume(handle, options.volume)
     }
+    if (this.inFlightHandles.has(handle)) {
+      return handle
+    }
 
     const recView = this.records.record(handle)
     const priority = recView?.priority ?? (row.priority & 0xff)
@@ -862,6 +865,7 @@ export class AudioRuntime113c {
   /**
    * 0x6fad387c..0x6fad389e: checks `0x6fad25d0` (`isUnitSoundPlaying`) for `unit` and `soundId`;
    * starts the unit-attached loop sound only if the unit does not already have an active record in that group.
+   * When the loop is already active (`0x6fb3ad30` `UpdateScreenShakeSound`), updates its volume in place.
    */
   startUnitLoopSound(
     soundId: number,
@@ -869,6 +873,15 @@ export class AudioRuntime113c {
   ): number {
     const resolvedUnit = normalizeUnitRef(options)
     if (resolvedUnit && this.records.isUnitSoundPlaying(resolvedUnit, soundId)) {
+      if (options?.volume !== undefined) {
+        this.records.setUnitSoundVolume(resolvedUnit, soundId, options.volume)
+      }
+      return 0
+    }
+    if (!resolvedUnit && this.records.isSoundGroupPlaying(soundId)) {
+      if (options?.volume !== undefined) {
+        this.records.setSoundGroupVolume(soundId, options.volume)
+      }
       return 0
     }
     return this.playSound(soundId, options)
@@ -891,6 +904,13 @@ export class AudioRuntime113c {
     return this.records.stopUnitSound(unit, soundId)
   }
 
+  /**
+   * StopSound 0x6fb38bf0 by `Sounds.txt` group id for unitless or local-player records (`0x6fb3ad30` `0x1c4`).
+   */
+  stopSoundById(soundId: number): number {
+    return this.records.stopSoundById(soundId)
+  }
+
   drainWorldRequests(requests: readonly WorldSoundRequest113c[]): number[] {
     const handles: number[] = []
     for (const req of requests) {
@@ -905,12 +925,14 @@ export class AudioRuntime113c {
         continue
       }
       if (req.kind === 'unit-sound-stop' || req.kind === 'skill-cast-stop') {
+        const isLocalStop = Boolean(req.local ?? req.isLocalPlayer ?? req.unit?.isLocalPlayer)
         const resolvedUnit: SoundUnitRef113c | undefined =
           req.unit ??
           (req.unitId !== undefined
             ? {
                 unitType: (req.unitType as SoundUnitRef113c['unitType']) ?? 'player',
                 id: req.unitId,
+                ...(isLocalStop ? { isLocalPlayer: true } : {}),
               }
             : undefined)
         const stopSid =
@@ -919,8 +941,20 @@ export class AudioRuntime113c {
             : req.skillId === 151
               ? 2531
               : 0
-        if (resolvedUnit && stopSid > 0) {
-          this.stopUnitSound(resolvedUnit, stopSid)
+        if (stopSid > 0) {
+          if (resolvedUnit) {
+            const stopped = this.stopUnitSound(
+              isLocalStop && resolvedUnit.isLocalPlayer !== true
+                ? { ...resolvedUnit, isLocalPlayer: true }
+                : resolvedUnit,
+              stopSid,
+            )
+            if (stopped === 0 && isLocalStop) {
+              this.stopSoundById(stopSid)
+            }
+          } else {
+            this.stopSoundById(stopSid)
+          }
         }
         this.skillSounds.onSkillCastStop(req)
         continue

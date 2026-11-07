@@ -599,19 +599,24 @@ export function triggerMonsterDeathFxImpl(this: ClientWorldInternal, unit: Clien
 }
 
 /**
- * 1.13c `D2Client.dll` `0x6FB3AD30` (called by `UpdateScreenShake` `0x6FB3AFD0`, Issue #1721):
+ * 1.13c `D2Client.dll` `0x6FB3AD30` (called by `UpdateScreenShake` `0x6FB3AFD0`, Issue #1721, #2023):
  * Computes `vol = clamp(trunc(amp * 255 / 20), 0, 255)`, plays/updates looping sound `0x1C4` (`452` `andariel_quake_loop`)
  * while `vol > 0`, and stops it when `vol === 0`.
  */
-function updateScreenShakeSound113c(this: ClientWorldInternal, amp: number): void {
+export function updateScreenShakeSound113c(this: ClientWorldInternal, amp: number): void {
   const vol = Math.max(0, Math.min(255, Math.trunc((amp * 255) / 20)))
   if (vol > 0) {
+    const unitId = this._screenShakeSoundUnitId || this.selfId || 1
+    this._screenShakeSoundUnitId = unitId
+    const unit = { unitType: 'player' as const, id: unitId, isLocalPlayer: true }
     if (!this._screenShakeSoundActive) {
       this._screenShakeSoundActive = true
       this._screenShakeSoundVol = vol
       this.pushSoundRequest({
         kind: 'unit-loop-start',
         soundId: 0x1c4,
+        unitId,
+        unit,
         local: true,
         volume: vol,
         volumeOverride: vol,
@@ -621,19 +626,44 @@ function updateScreenShakeSound113c(this: ClientWorldInternal, amp: number): voi
       this.pushSoundRequest({
         kind: 'unit-loop-start',
         soundId: 0x1c4,
+        unitId,
+        unit,
         local: true,
         volume: vol,
         volumeOverride: vol,
       })
     }
   } else if (this._screenShakeSoundActive) {
+    const unitId = this._screenShakeSoundUnitId || this.selfId || 1
+    const unit = { unitType: 'player' as const, id: unitId, isLocalPlayer: true }
     this._screenShakeSoundActive = false
     this._screenShakeSoundVol = 0
+    this._screenShakeSoundUnitId = 0
     this.pushSoundRequest({
       kind: 'unit-sound-stop',
       soundId: 0x1c4,
+      unitId,
+      unit,
       local: true,
     })
+  }
+}
+
+/**
+ * 1.13c `D2Client.dll` `0x6FB39EB0` (`ClearScreenShake`): zeroes the active screen shake state and stops
+ * any active `0x1C4` (`452` `andariel_quake_loop`) loop sound.
+ */
+export function clearScreenShakeImpl(this: ClientWorldInternal): void {
+  updateScreenShakeSound113c.call(this, 0)
+  this._screenShake = {
+    active: false,
+    startMs: 0,
+    rampUpMs: 0,
+    sustainMs: 0,
+    rampDownMs: 0,
+    amplitude: 0,
+    offsetX: 0,
+    offsetY: 0,
   }
 }
 
@@ -661,17 +691,7 @@ export function updateScreenShakeImpl(this: ClientWorldInternal): void {
   const totalMs = sh.rampUpMs + sh.sustainMs + sh.rampDownMs
   // 1.13c UpdateScreenShake (0x6FB3AFD0 -> 0x6FB3AFFF..0x6FB3B005): cmp ecx, eax; jbe -> ends when dt > totalMs (#1721).
   if (dt < 0 || dt > totalMs) {
-    updateScreenShakeSound113c.call(this, 0)
-    this._screenShake = {
-      active: false,
-      startMs: 0,
-      rampUpMs: 0,
-      sustainMs: 0,
-      rampDownMs: 0,
-      amplitude: 0,
-      offsetX: 0,
-      offsetY: 0,
-    }
+    clearScreenShakeImpl.call(this)
     return
   }
   let amp = 0
@@ -693,7 +713,11 @@ export function updateScreenShakeImpl(this: ClientWorldInternal): void {
   } else {
     this._screenShake = { ...sh, offsetX: 0, offsetY: 0 }
   }
-  updateScreenShakeSound113c.call(this, amp)
+  const soundAmp =
+    this._screenShakeSoundActive && sh.amplitude > 0 && dt >= 0 && dt < sh.rampUpMs && amp === 0
+      ? 1
+      : amp
+  updateScreenShakeSound113c.call(this, soundAmp)
 }
 
 export function spawnDenOfEvilLightsInRoomImpl(

@@ -189,6 +189,7 @@ export const D2ActiveRoomStrc_SIZE = 128
 export const D2ActiveRoomStrc = {
   ppRoomsNear: { off: 0x0, type: 'ptr', count: 1 },
   pCoords: { off: 0x8, type: 'ptr', count: 1 },
+  pRoomTiles: { off: 0x8, type: 'ptr', count: 1 },
   pRoomEx: { off: 0x10, type: 'ptr', count: 1 },
   bDeathRingIdx: { off: 0x14, type: 'u8', count: 1 },
   pUpdateList: { off: 0x1C, type: 'ptr', count: 1 },
@@ -234,6 +235,7 @@ export const D2DynamicPathStrc = {
   dwPathPoints: { off: 0x28, type: 'u32', count: 1 },
   pUnit: { off: 0x30, type: 'ptr', count: 1 },
   dwFlags: { off: 0x34, type: 'u32', count: 1 },
+  dwVelocityChangeCounter: { off: 0x38, type: 'u32', count: 1 },
   dwPathType: { off: 0x3C, type: 'u32', count: 1 },
   dwPrevPathType: { off: 0x40, type: 'u32', count: 1 },
   dwUnitSize: { off: 0x44, type: 'u32', count: 1 },
@@ -247,10 +249,15 @@ export const D2DynamicPathStrc = {
   nDirection: { off: 0x64, type: 'u8', count: 1 },
   nNewDirection: { off: 0x65, type: 'u8', count: 1 },
   nDiffDirection: { off: 0x66, type: 'u8', count: 1 },
+  tDirectionVectorX: { off: 0x6A, type: 'u32', count: 1 },
+  tDirectionVectorY: { off: 0x6E, type: 'u32', count: 1 },
+  tVelocityVectorX: { off: 0x72, type: 'u32', count: 1 },
+  tVelocityVectorY: { off: 0x76, type: 'u32', count: 1 },
   dwVelocity: { off: 0x7C, type: 'u32', count: 1 },
   nPreviousVelocity: { off: 0x80, type: 'u32', count: 1 },
   dwMaxVelocity: { off: 0x84, type: 'u32', count: 1 },
   dwAcceleration: { off: 0x88, type: 'u32', count: 1 },
+  nAccelStepCounter: { off: 0x8C, type: 'u32', count: 1 },
   nDist: { off: 0x90, type: 'u8', count: 1 },
   nDistMax: { off: 0x91, type: 'u8', count: 1 },
   nIDAStarInitFScore: { off: 0x92, type: 'u8', count: 1 },
@@ -332,11 +339,15 @@ export const D2EnvironmentStrc = {
 export const D2RoomExStrc_SIZE = 236
 export const D2RoomExStrc = {
   dwInitSeed: { off: 0x4, type: 'u32', count: 1 },
+  ppRoomsNear: { off: 0x8, type: 'ptr', count: 1 },
+  wStatusCount: { off: 0xC, type: 'u16', count: 4 },
   seedLo: { off: 0x14, type: 'u32', count: 1 },
   seedHi: { off: 0x18, type: 'u32', count: 1 },
   pStatusPrev: { off: 0x1C, type: 'ptr', count: 1 },
   pTypeData: { off: 0x20, type: 'ptr', count: 1 },
+  pRoomNext: { off: 0x24, type: 'ptr', count: 1 },
   dwFlags: { off: 0x28, type: 'u32', count: 1 },
+  nRoomsNear: { off: 0x2C, type: 'u32', count: 1 },
   pRoom1: { off: 0x30, type: 'ptr', count: 1 },
   nTileXPos: { off: 0x34, type: 'u32', count: 1 },
   nTileYPos: { off: 0x38, type: 'u32', count: 1 },
@@ -345,6 +356,7 @@ export const D2RoomExStrc = {
   nRoomStatus: { off: 0x44, type: 'u8', count: 1 },
   bTriggerType: { off: 0x44, type: 'u8', count: 1 },
   nType: { off: 0x48, type: 'u32', count: 1 },
+  pTileGrid: { off: 0x54, type: 'ptr', count: 1 },
   pLevel: { off: 0x58, type: 'ptr', count: 1 },
   pLogicalRoomInfo: { off: 0x64, type: 'ptr', count: 1 },
   pStatusNext: { off: 0xE8, type: 'ptr', count: 1 },
@@ -383,4 +395,251 @@ export const D2RoomCollisionGridStrc = {
   nTileWidth: { off: 0x18, type: 'u32', count: 1 },
   nTileHeight: { off: 0x1C, type: 'u32', count: 1 },
   pMapStart: { off: 0x20, type: 'ptr', count: 1 },
+} as const satisfies Record<string, FieldLayout113c>
+
+/** D2Common 0x6FD6E731 mov edx, 0x40 (Fog alloc in INVENTORY_Create); 0x6FD6E748 mov ecx, 0x10; rep stosd */
+export const D2InventoryStrc_SIZE = 64
+export const D2InventoryStrc = {
+  dwSignature: { off: 0x0, type: 'u32', count: 1 },
+  pFirstItem: { off: 0xC, type: 'ptr', count: 1 },
+  pLastItem: { off: 0x10, type: 'ptr', count: 1 },
+  pCursorItem: { off: 0x20, type: 'ptr', count: 1 },
+  dwLeftItemGuid: { off: 0x24, type: 'u32', count: 1 },
+  dwItemCount: { off: 0x28, type: 'u32', count: 1 },
+  pFirstNode: { off: 0x2C, type: 'ptr', count: 1 },
+  pLastNode: { off: 0x30, type: 'ptr', count: 1 },
+  pFirstCorpse: { off: 0x34, type: 'ptr', count: 1 },
+  pLastCorpse: { off: 0x38, type: 'ptr', count: 1 },
+  nCorpseCount: { off: 0x3C, type: 'u32', count: 1 },
+} as const satisfies Record<string, FieldLayout113c>
+
+/** D2Common 0x6FD6E266 shl ebp, 4; 0x6FD6E26E lea edx, [ebp+0x10] ((gridIdx+1)*0x10 realloc size in INVENTORY_GetOrInitGrid) */
+export const D2InventoryGridStrc_SIZE = 16
+export const D2InventoryGridStrc = {
+  pFirstItem: { off: 0x0, type: 'ptr', count: 1 },
+  pLastItem: { off: 0x4, type: 'ptr', count: 1 },
+  nGridWidth: { off: 0x8, type: 'u8', count: 1 },
+  nGridHeight: { off: 0x9, type: 'u8', count: 1 },
+  ppItems: { off: 0xC, type: 'ptr', count: 1 },
+} as const satisfies Record<string, FieldLayout113c>
+
+/** D2Common 0x6FD6DDF4 mov edx, 0x10 (Fog alloc in INVENTORY_AllocCorpse) */
+export const D2CorpseStrc_SIZE = 16
+export const D2CorpseStrc = {
+  bCountAsCorpse: { off: 0x0, type: 'u32', count: 1 },
+  dwUnitId: { off: 0x4, type: 'u32', count: 1 },
+  eClass: { off: 0x8, type: 'u32', count: 1 },
+  pNextCorpse: { off: 0xC, type: 'ptr', count: 1 },
+} as const satisfies Record<string, FieldLayout113c>
+
+/** D2Common 0x6FD6E53B mov edx, 0x8 (Fog alloc in INVENTORY_AddItemNode) */
+export const D2InventoryNodeStrc_SIZE = 8
+export const D2InventoryNodeStrc = {
+  dwItemId: { off: 0x0, type: 'u32', count: 1 },
+  pNext: { off: 0x4, type: 'ptr', count: 1 },
+} as const satisfies Record<string, FieldLayout113c>
+
+/** D2Common 0x6FD73C8E mov edx, 0x74 (Fog alloc stored to pUnit->pUnitData at 0x6FD73CD0); 0x6FD73CBE mov ecx, 0x1D; rep stosd */
+export const D2ItemDataStrc_SIZE = 116
+export const D2ItemDataStrc = {
+  wRarePrefix: { off: 0x32, type: 'u16', count: 1 },
+  wRareSuffix: { off: 0x34, type: 'u16', count: 1 },
+  wMagicPrefix: { off: 0x38, type: 'u16', count: 3 },
+  wMagicSuffix: { off: 0x3E, type: 'u16', count: 3 },
+  nBodyLoc: { off: 0x44, type: 'u8', count: 1 },
+  nInvPage: { off: 0x45, type: 'u8', count: 1 },
+  pExtraOwnerInventory: { off: 0x5C, type: 'ptr', count: 1 },
+} as const satisfies Record<string, FieldLayout113c>
+
+/** D2Common 0x6FD809B8 mov edx, 0x16C (Fog alloc stored to pUnit->pUnitData at 0x6FD809C4); 0x6FD809C9 mov ecx, 0x5B; rep stosd */
+export const D2PlayerDataStrc_SIZE = 364
+export const D2PlayerDataStrc = {
+  dwField150: { off: 0x150, type: 'u32', count: 1 },
+  dwField154: { off: 0x154, type: 'u32', count: 1 },
+  dwField158: { off: 0x158, type: 'u32', count: 1 },
+  dwField15C: { off: 0x15C, type: 'u32', count: 1 },
+} as const satisfies Record<string, FieldLayout113c>
+
+/** D2Common 0x6FD512B8 imul eax, eax, 0x1A8 (record stride in the MonStats lookup 0x6FD512A0) */
+export const D2MonStatsTxt_SIZE = 424
+export const D2MonStatsTxt = {
+  nBitField1: { off: 0xC, type: 'u8', count: 1 },
+  nBitField2: { off: 0xD, type: 'u8', count: 1 },
+  wMonStatsEx: { off: 0x18, type: 'u16', count: 1 },
+} as const satisfies Record<string, FieldLayout113c>
+
+/** D2Common 0x6FD513E5 imul eax, eax, 0x134 (record stride in the MonStats2 lookup 0x6FD513B0) */
+export const D2MonStats2Txt_SIZE = 308
+export const D2MonStats2Txt = {
+  dwFlags: { off: 0x4, type: 'u32', count: 1 },
+  dwModeFlags: { off: 0xF0, type: 'u32', count: 1 },
+} as const satisfies Record<string, FieldLayout113c>
+
+/** D2Common 0x6FD51268 imul eax, eax, 0x23C (record stride in the Skills lookup 0x6FD51250); skills.bin is 4 + 357 * 0x23C bytes */
+export const D2SkillsTxt_SIZE = 572
+export const D2SkillsTxt = {
+  wSkillId: { off: 0x0, type: 'u16', count: 1 },
+  wMaxLvl: { off: 0x12C, type: 'u16', count: 1 },
+  dwParam1: { off: 0x148, type: 'u32', count: 1 },
+  dwParam2: { off: 0x14C, type: 'u32', count: 1 },
+  dwParam3: { off: 0x150, type: 'u32', count: 1 },
+  wSkillDesc: { off: 0x194, type: 'u16', count: 1 },
+} as const satisfies Record<string, FieldLayout113c>
+
+/** D2Common 0x6FD51168 imul eax, eax, 0x1A4 (record stride in the Missiles lookup 0x6FD51150) */
+export const D2MissilesTxt_SIZE = 420
+export const D2MissilesTxt = {
+  nSubLoop: { off: 0x9A, type: 'u8', count: 1 },
+  nSubStart: { off: 0x9B, type: 'u8', count: 1 },
+} as const satisfies Record<string, FieldLayout113c>
+
+/** D2Common 0x6FD512E8 imul eax, eax, 0xC4 (record stride in the CharStats lookup 0x6FD512D0) */
+export const D2CharStatsTxt_SIZE = 196
+export const D2CharStatsTxt = {
+} as const satisfies Record<string, FieldLayout113c>
+
+/** D2Common 0x6FD51318 imul eax, eax, 0xE4 (record stride in the ItemTypes lookup 0x6FD51300); itemtypes.bin is 4 + 103 * 0xE4 bytes */
+export const D2ItemTypesTxt_SIZE = 228
+export const D2ItemTypesTxt = {
+} as const satisfies Record<string, FieldLayout113c>
+
+/** D2Common 0x6FD7D9CA mov edx, 0x230 */
+export const D2DrlgLevelStrc_SIZE = 560
+export const D2DrlgLevelStrc = {
+  pFirstRoomEx: { off: 0x10, type: 'ptr', count: 1 },
+  pDrlg: { off: 0x1B4, type: 'ptr', count: 1 },
+  nLevelId: { off: 0x1D0, type: 'u32', count: 1 },
+} as const satisfies Record<string, FieldLayout113c>
+
+/** D2Common 0x6FD5BC83 mov edx, 0x58; 0x6FD5BC93 mov ecx, 0x16; rep stosd */
+export const D2DrlgMapStrc_SIZE = 88
+export const D2DrlgMapStrc = {
+  nPosX: { off: 0x10, type: 'u32', count: 1 },
+  nPosY: { off: 0x14, type: 'u32', count: 1 },
+  nPops: { off: 0x40, type: 'u32', count: 1 },
+  pPopsIndex: { off: 0x44, type: 'ptr', count: 1 },
+  pPopsLocation: { off: 0x50, type: 'ptr', count: 1 },
+} as const satisfies Record<string, FieldLayout113c>
+
+/** D2Common 0x6FD59CF9 add ecx, 0x10 (array stride of pDrlgMap->pPopsLocation) */
+export const D2DrlgCoordStrc_SIZE = 16
+export const D2DrlgCoordStrc = {
+  nPosX: { off: 0x0, type: 'u32', count: 1 },
+  nPosY: { off: 0x4, type: 'u32', count: 1 },
+  nWidth: { off: 0x8, type: 'u32', count: 1 },
+  nHeight: { off: 0xC, type: 'u32', count: 1 },
+} as const satisfies Record<string, FieldLayout113c>
+
+/** D2Common 0x6FDBC983 imul eax, eax, 0x1B0 (record stride of sgptDataTables->pLvlPrestTxt; also 0x6FDBC975 add ecx, 0x1b0) */
+export const D2LvlPrestTxt_SIZE = 432
+export const D2LvlPrestTxt = {
+  dwLevelId: { off: 0x4, type: 'u32', count: 1 },
+} as const satisfies Record<string, FieldLayout113c>
+
+/** D2Common 0x6FD9E401 mov edx, 0x18 (Fog alloc in SKILLS_AllocSkillList) */
+export const D2SkillListStrc_SIZE = 24
+export const D2SkillListStrc = {
+  pMemPool: { off: 0x0, type: 'ptr', count: 1 },
+  pFirstSkill: { off: 0x4, type: 'ptr', count: 1 },
+  pLeftSkill: { off: 0x8, type: 'ptr', count: 1 },
+  pRightSkill: { off: 0xC, type: 'ptr', count: 1 },
+  pUsedSkill: { off: 0x10, type: 'ptr', count: 1 },
+  dwFlags: { off: 0x14, type: 'u32', count: 1 },
+} as const satisfies Record<string, FieldLayout113c>
+
+/** D2Common 0x6FD9EF58 mov edx, 0x40 (Fog alloc in SKILLS_AddSkill); 0x6FD9EF66 mov ecx, 0x10; rep stosd */
+export const D2SkillStrc_SIZE = 64
+export const D2SkillStrc = {
+  pSkillsTxt: { off: 0x0, type: 'ptr', count: 1 },
+  pNextSkill: { off: 0x4, type: 'ptr', count: 1 },
+  nSlotIndex: { off: 0x8, type: 'u32', count: 1 },
+  nSkillLevel: { off: 0x28, type: 'u32', count: 1 },
+  nOwnerItemGuid: { off: 0x34, type: 'u32', count: 1 },
+  dwFlags: { off: 0x3C, type: 'u32', count: 1 },
+} as const satisfies Record<string, FieldLayout113c>
+
+/** D2Common 0x6FDBC9AC imul eax, eax, 0x1B0 (record stride in DATATBLS_GetLvlTypesTxtRecord) */
+export const D2LvlTypesTxt_SIZE = 432
+export const D2LvlTypesTxt = {
+} as const satisfies Record<string, FieldLayout113c>
+
+/** D2Common 0x6FDBCB3A imul eax, eax, 0x9C (record stride in DATATBLS_GetLevelDefRecord) */
+export const D2LevelDefBin_SIZE = 156
+export const D2LevelDefBin = {
+  dwLayer: { off: 0x8C, type: 'u32', count: 1 },
+} as const satisfies Record<string, FieldLayout113c>
+
+/** D2Common 0x6FDBCCDC imul eax, eax, 0x220 (record stride in DATATBLS_GetLevelsTxtRecord) */
+export const D2LevelsTxt_SIZE = 544
+export const D2LevelsTxt = {
+  nAct: { off: 0x5, type: 'u8', count: 1 },
+  nTeleport: { off: 0x6, type: 'u8', count: 1 },
+  nRain: { off: 0x7, type: 'u8', count: 1 },
+} as const satisfies Record<string, FieldLayout113c>
+
+/** D2Common 0x6FD94986 mov edx, 0x18 */
+export const D2DrlgOrthStrc_SIZE = 24
+export const D2DrlgOrthStrc = {
+  nDirection: { off: 0x4, type: 'u32', count: 1 },
+  pBox: { off: 0x10, type: 'ptr', count: 1 },
+} as const satisfies Record<string, FieldLayout113c>
+
+/** D2Common 0x6FDB8143 mov edx, 0x2C; 0x6FDB8152 mov ecx, 0xB; rep stosd */
+export const D2DrlgTileGridStrc_SIZE = 44
+export const D2DrlgTileGridStrc = {
+  pMapLinks: { off: 0x0, type: 'ptr', count: 1 },
+  nWallCapacity: { off: 0x18, type: 'u32', count: 1 },
+  nFloorCapacity: { off: 0x20, type: 'u32', count: 1 },
+  nRoofCapacity: { off: 0x28, type: 'u32', count: 1 },
+} as const satisfies Record<string, FieldLayout113c>
+
+/** D2Common 0x6FDB996C mov edx, 0x0C */
+export const D2DrlgTileLinkStrc_SIZE = 12
+export const D2DrlgTileLinkStrc = {
+  bFloor: { off: 0x0, type: 'u32', count: 1 },
+  pTileData: { off: 0x4, type: 'ptr', count: 1 },
+  pNext: { off: 0x8, type: 'ptr', count: 1 },
+} as const satisfies Record<string, FieldLayout113c>
+
+/** D2Common 0x6FDB9340 add esi, 0x30 */
+export const D2DrlgTileDataStrc_SIZE = 48
+export const D2DrlgTileDataStrc = {
+  nPosX: { off: 0x8, type: 'u32', count: 1 },
+  nPosY: { off: 0xC, type: 'u32', count: 1 },
+  dwFlags: { off: 0x14, type: 'u32', count: 1 },
+  nTileType: { off: 0x1C, type: 'u32', count: 1 },
+  pNext: { off: 0x20, type: 'ptr', count: 1 },
+} as const satisfies Record<string, FieldLayout113c>
+
+/** D2Common 0x6FDC0773 imul eax, eax, 0x1C */
+export const D2IdaStarNodeStrc_SIZE = 28
+export const D2IdaStarNodeStrc = {
+  wPosX: { off: 0x8, type: 'u16', count: 1 },
+  wPosY: { off: 0xA, type: 'u16', count: 1 },
+  pBestDirection: { off: 0xC, type: 'ptr', count: 1 },
+  nNextNeighborIndex: { off: 0x10, type: 'u32', count: 1 },
+  pParent: { off: 0x14, type: 'ptr', count: 1 },
+} as const satisfies Record<string, FieldLayout113c>
+
+/** D2Common 0x6FDCAC22 imul edx, edx, 0x38 */
+export const D2AStarNodeStrc_SIZE = 56
+export const D2AStarNodeStrc = {
+  wPosX: { off: 0x0, type: 'u16', count: 1 },
+  wX: { off: 0x0, type: 'u16', count: 1 },
+  wPosY: { off: 0x2, type: 'u16', count: 1 },
+  wY: { off: 0x2, type: 'u16', count: 1 },
+  wFScore: { off: 0x4, type: 'u16', count: 1 },
+  nFScore: { off: 0x4, type: 'u16', count: 1 },
+  wHScore: { off: 0x6, type: 'u16', count: 1 },
+  nHeuristicDistanceToTarget: { off: 0x6, type: 'u16', count: 1 },
+  wGScore: { off: 0x8, type: 'u16', count: 1 },
+  nBestDistanceFromStart: { off: 0x8, type: 'u16', count: 1 },
+  pParent: { off: 0xC, type: 'ptr', count: 1 },
+  pBestParent: { off: 0xC, type: 'ptr', count: 1 },
+  pChildren: { off: 0x10, type: 'ptr', count: 8 },
+  pChild0: { off: 0x10, type: 'ptr', count: 8 },
+  pHashNext: { off: 0x30, type: 'ptr', count: 1 },
+  pNextCachePoint: { off: 0x30, type: 'ptr', count: 1 },
+  pBestNext: { off: 0x34, type: 'ptr', count: 1 },
+  pNextSortedByFScore: { off: 0x34, type: 'ptr', count: 1 },
 } as const satisfies Record<string, FieldLayout113c>

@@ -25,7 +25,17 @@ import {
   D2StatListStrc_SIZE,
   D2UnitStrc,
 } from '../mem/layout.generated.ts'
+import {
+  D2COMMON_GDWBITMASKS_IAT_VA_113C,
+  D2COMMON_SGPT_DATATABLES_VA_113C,
+} from './inline-helpers.ts'
 import { imul32, mulDiv113c, sar32, shl32 } from './int-math.ts'
+import {
+  ITEMS_SetMagicPrefix113c,
+  ITEMS_SetMagicSuffix113c,
+  ITEMS_SetRarePrefix113c,
+  ITEMS_SetRareSuffix113c,
+} from './items.ts'
 import { UNITROOM_RefreshUnit113c } from './unit.ts'
 import {
   CANONICAL_CHAR_GROWTH_113C,
@@ -1690,3 +1700,201 @@ export function STATLIST_ExpireStateListsOnModeChange113c(
   }
   m.set(pListEx, D2StatListStrc.dwFlags, (m.get(pListEx, D2StatListStrc.dwFlags) & ~0x02) >>> 0)
 }
+
+export {
+  ITEMS_SetMagicPrefix113c,
+  ITEMS_SetMagicSuffix113c,
+  ITEMS_SetRarePrefix113c,
+  ITEMS_SetRareSuffix113c,
+}
+
+/** `D2DataTablesStrc` offsets read by `STATES_CheckStateMaskExpOnUnit` (`0x6FD83AB0`). */
+export const DATATABLES_OFF_STATES_COUNT_113C = 0xc4
+export const DATATABLES_OFF_PLAYER_STATE_MASK_EXP_113C = 0x100
+export const DATATABLES_OFF_MONSTER_STATE_MASK_EXP_113C = 0x104
+
+/**
+ * `@va D2Common:0x6FD83AB0` (`D2Common.#11061` `STATES_CheckStateMaskExpOnUnit`,
+ * stdcall `[esp+4] = pUnit`, `[esp+8] = nState`, `ret 8` -> masked bit or `0`).
+ *
+ * Checks `0 <= nState < sgptDataTables->nStatesTxtRecordCount (+0xC4)`, selects
+ * `sgptDataTables->pMonsterStateMaskExp (+0x104)` when `pUnit != NULL && pUnit->dwUnitType == 1`
+ * or `sgptDataTables->pPlayerStateMaskExp (+0x100)` otherwise, and returns
+ * `pMask[nState >> 5] & gdwBitMasks[nState & 31]`.
+ */
+export function STATES_CheckStateMaskExpOnUnit113c(
+  m: Memory113c,
+  pUnit: number,
+  nState: number,
+): number {
+  const state = nState | 0
+  if (state < 0) return 0
+  const dt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+  if (state >= (m.u32((dt + DATATABLES_OFF_STATES_COUNT_113C) >>> 0) | 0)) return 0
+  const pMask =
+    pUnit !== 0 && m.get(pUnit, D2UnitStrc.dwUnitType) === 1
+      ? m.u32((dt + DATATABLES_OFF_MONSTER_STATE_MASK_EXP_113C) >>> 0)
+      : m.u32((dt + DATATABLES_OFF_PLAYER_STATE_MASK_EXP_113C) >>> 0)
+  const word = m.u32((pMask + (sar32(state, 5) << 2)) >>> 0)
+  const pBitMasks = m.u32(D2COMMON_GDWBITMASKS_IAT_VA_113C)
+  const bit = m.u32((pBitMasks + ((state & 0x1f) << 2)) >>> 0)
+  return (word & bit) >>> 0
+}
+
+/**
+ * `@va D2Common:0x6FD87D30` (`D2Common.#10515` `STATLIST_GetSkillLevel`,
+ * stdcall `[esp+4] = pStatList`, `ret 4` -> `pStatList->nSkillLevel (+0x20)`).
+ */
+export function STATLIST_GetSkillLevel113c(m: Memory113c, pStatList: number): number {
+  if (pStatList === 0) return 0
+  return m.get(pStatList, D2StatListStrc.nSkillLevel) >>> 0
+}
+
+/**
+ * `@va D2Common:0x6FD87D40` (`D2Common.#11081` `STATLIST_SetSkillLevel`,
+ * stdcall `[esp+4] = pStatList`, `[esp+8] = nSkillLevel`, `ret 8`, void).
+ */
+export function STATLIST_SetSkillLevel113c(
+  m: Memory113c,
+  pStatList: number,
+  nSkillLevel: number,
+): void {
+  if (pStatList === 0) return
+  m.set(pStatList, D2StatListStrc.nSkillLevel, nSkillLevel >>> 0)
+}
+
+/**
+ * `@va D2Common:0x6FD87D50` (`D2Common.#10555` `STATLIST_GetSkillId`,
+ * stdcall `[esp+4] = pStatList`, `ret 4` -> `pStatList->nSkillNo (+0x1C)`).
+ */
+export function STATLIST_GetSkillId113c(m: Memory113c, pStatList: number): number {
+  if (pStatList === 0) return 0
+  return m.get(pStatList, D2StatListStrc.nSkillNo) >>> 0
+}
+
+/**
+ * `@va D2Common:0x6FD87D60` (`D2Common.#10725` `STATLIST_SetSkillId`,
+ * stdcall `[esp+4] = pStatList`, `[esp+8] = nSkillNo`, `ret 8`, void).
+ */
+export function STATLIST_SetSkillId113c(m: Memory113c, pStatList: number, nSkillNo: number): void {
+  if (pStatList === 0) return
+  m.set(pStatList, D2StatListStrc.nSkillNo, nSkillNo >>> 0)
+}
+
+/**
+ * `@va D2Common:0x6FD87D70` (`D2Common.#10911` `STATLIST_SetStatRemoveProc`,
+ * stdcall `[esp+4] = pStatList`, `[esp+8] = pfOnRemove`, `ret 8`, void).
+ */
+export function STATLIST_SetStatRemoveProc113c(
+  m: Memory113c,
+  pStatList: number,
+  pfOnRemove: number,
+): void {
+  if (pStatList === 0) return
+  m.set(pStatList, D2StatListStrc.fpRemove, pfOnRemove >>> 0)
+}
+
+/**
+ * `@va D2Common:0x6FD87DE0` (`D2Common.#10354` `STATLIST_CheckUnitStatListFlag100`,
+ * stdcall `[esp+4] = pUnit`, `ret 4` -> `(pUnit->pStatListEx->dwFlags >> 8) & 1` or `0`).
+ */
+export function STATLIST_CheckUnitStatListFlag100113c(m: Memory113c, pUnit: number): number {
+  if (pUnit === 0) return 0
+  const pStatList = m.get(pUnit, D2UnitStrc.pStatListEx)
+  if (pStatList === 0) return 0
+  return ((m.get(pStatList, D2StatListStrc.dwFlags) >>> 8) & 1) >>> 0
+}
+
+/**
+ * `@va D2Common:0x6FD87E70` (`D2Common.#11160` `STATLIST_GetOwnerAndDynamicFlag`,
+ * stdcall `[esp+4] = pUnit`, `[esp+8] = pOutNotMerged`, `ret 8` -> `pParent->pOwner (+0x44)` or `0`).
+ */
+export function STATLIST_GetOwnerAndDynamicFlag113c(
+  m: Memory113c,
+  pUnit: number,
+  pOutNotMerged: number,
+): number {
+  if (pUnit !== 0) {
+    const pList = m.get(pUnit, D2UnitStrc.pStatListEx)
+    if (pList !== 0) {
+      const pParent = m.get(pList, D2StatListStrc.pParent)
+      if (
+        pParent !== 0 &&
+        (m.get(pParent, D2StatListStrc.dwFlags) & STATLIST_FLAG_EXTENDED) !== 0
+      ) {
+        if (pOutNotMerged !== 0) {
+          const notMerged = (~(m.get(pList, D2StatListStrc.dwFlags) >>> 30) & 1) >>> 0
+          m.setU32(pOutNotMerged >>> 0, notMerged)
+        }
+        return m.get(pParent, D2StatListExStrc.pOwner) >>> 0
+      }
+    }
+  }
+  if (pOutNotMerged !== 0) {
+    m.setU32(pOutNotMerged >>> 0, 0)
+  }
+  return 0
+}
+
+/**
+ * `@va D2Common:0x6FD87EC0` (`D2Common.#10930` `STATLIST_GetStatListFromUnitStateAndFlag`,
+ * stdcall `[esp+4] = pUnit`, `[esp+8] = nState`, `[esp+0xC] = dwFilterFlags`, `ret 0xC` -> `pSub` or `0`).
+ */
+export function STATLIST_GetStatListFromUnitStateAndFlag113c(
+  m: Memory113c,
+  pUnit: number,
+  nState: number,
+  dwFilterFlags: number,
+): number {
+  if (pUnit === 0) return 0
+  const pListEx = m.get(pUnit, D2UnitStrc.pStatListEx)
+  if (pListEx === 0) return 0
+  if ((m.get(pListEx, D2StatListStrc.dwFlags) & STATLIST_FLAG_EXTENDED) === 0) return 0
+  let mask = dwFilterFlags >>> 0
+  let pCur: number
+  if ((mask & 0x2000) !== 0) {
+    pCur = m.get(pListEx, D2StatListExStrc.pMyStats)
+    mask = (mask & 0xffffdfff) >>> 0
+  } else {
+    pCur = m.get(pListEx, D2StatListExStrc.pMyLastList)
+  }
+  const targetState = nState >>> 0
+  while (pCur !== 0) {
+    if (
+      m.get(pCur, D2StatListStrc.dwStateNo) === targetState &&
+      (mask === 0 || (m.get(pCur, D2StatListStrc.dwFlags) & mask) !== 0)
+    ) {
+      return pCur >>> 0
+    }
+    pCur = m.get(pCur, D2StatListStrc.pPrevLink)
+  }
+  return 0
+}
+
+/**
+ * `@va D2Common:0x6FD87F40` (`STATLIST_GetStatListFromFlag`,
+ * internal LTCG `eax = pStatList`, `ecx = dwFilterFlags`, `ret` -> `pSub` or `0`).
+ */
+export function STATLIST_GetStatListFromFlag113c(
+  m: Memory113c,
+  pStatList: number,
+  dwFilterFlags: number,
+): number {
+  if (pStatList === 0) return 0
+  let pCur = pStatList >>> 0
+  if ((m.get(pStatList, D2StatListStrc.dwFlags) & STATLIST_FLAG_EXTENDED) !== 0) {
+    pCur =
+      (dwFilterFlags & 0x2000) !== 0
+        ? m.get(pStatList, D2StatListExStrc.pMyStats)
+        : m.get(pStatList, D2StatListExStrc.pMyLastList)
+  }
+  const mask = (dwFilterFlags & 0xffffdfff) >>> 0
+  while (pCur !== 0) {
+    if ((m.get(pCur, D2StatListStrc.dwFlags) & mask) !== 0) {
+      return pCur >>> 0
+    }
+    pCur = m.get(pCur, D2StatListStrc.pPrevLink)
+  }
+  return 0
+}
+

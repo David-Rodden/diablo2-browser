@@ -99,13 +99,12 @@ export function UNITS_SetRoom113c(m: Memory113c, pUnit: number, pRoom: number): 
 
 /** `D2Common 0x6FD51050` (`UNITS_GetX`, `ecx = pUnit`). */
 export function UNITS_GetX113c(m: Memory113c, pUnit: number): number {
-  if (pUnit === 0) return 0
   const unitType = m.get(pUnit, D2UnitStrc.dwUnitType)
   const pPath = m.get(pUnit, D2UnitStrc.pPath)
-  if (pPath === 0) return 0
   if (unitType === UNIT_OBJECT || unitType === UNIT_ITEM || unitType === UNIT_TILE) {
     return m.u32(pPath + 0x0c) | 0
   }
+  if (pPath === 0) return 0
   return m.u16(pPath + 0x02)
 }
 

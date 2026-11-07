@@ -1217,6 +1217,18 @@ function onMonsterKilled(this: GameInstanceHost,
     if (actBossQuest === 'a2q6') {
       this.syncDurielsLairA2Q6State113c(monster.areaId, monster.x, monster.y)
     } else if (actBossQuest === 'a5q6') {
+      // D2Game.dll 0x6FC7FE30 (`ACT5Q6_Callback08_MonsterKilled`) -> `QUESTS_TriggerFX` (`0x6FC55E90`, `nEvent = 0x13`):
+      // broadcasts `S2C 0x89 SpecialQuestEvent 19` (`0x13`) to all players in the game so `D2Client.dll 0x6FB02410`
+      // arms `worldstone shake` (`#639`) in Worldstone Chamber / Throne of Destruction (`Levels 131 / 132`).
+      for (const p of this.players.values()) {
+        this.emitToPlayer(p.unitId, {
+          type: 'QuestState',
+          kind: 'special',
+          source: 0x89,
+          quests: new Uint16Array(p.questFlags),
+          specialEventId: 19,
+        })
+      }
       // D2Game.dll 0x6FC7C1F0 (`push 0x64 -> call 0x6FC54130`) & 0x6FC7D760 (`push 0x64 -> call 0x6FC54130`, #2018):
       // snaps `tyrael3` (#521) from `(baal.x - 5, baal.y - 5)` and `Destruction's End` (`Objects.txt 565`) from
       // `(tyrael.x + 5, tyrael.y)` onto connected walkable floor within 100 subtiles so chasm-edge Baal deaths

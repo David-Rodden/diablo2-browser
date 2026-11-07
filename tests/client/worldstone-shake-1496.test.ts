@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { AudioRuntime113c } from '../../src/client/audio/audio-runtime-113c.ts'
 import { SEED_RollLimitedRandomNumber } from '../../src/common/rng/d2-rng.ts'
 import { missileCltColsByName113c } from '../../src/common/skills/missile-clt-cols-113c.ts'
 import { MISSILE_CLASS_ID_TO_KEY } from '../../src/common/skills/missiles-data.ts'
@@ -11,6 +12,7 @@ import {
 } from '../../src/client/world/quest-fx-worldstone-113c.ts'
 import { QuestFxLight } from '../../src/client/world/quest-fx-light.ts'
 import { ClientWorld } from '../../src/client/world/client-world.ts'
+import { GameInstance } from '../../src/server/engine/game-instance.ts'
 
 describe('worldstone shake (event 19, 0x6fb032c0, CltDo66 0x6fb69ea0, #1496)', () => {
   it('rows and levels', () => {
@@ -85,5 +87,55 @@ describe('worldstone shake (event 19, 0x6fb032c0, CltDo66 0x6fb69ea0, #1496)', (
     const world = new ClientWorld() as any
     world.apply({ type: 'PlayerAssign', unitId: 1, charClass: 0, name: 'P', x: 100, y: 100 })
     expect(world.updateWorldstoneShakeTrigger(131)).toBeUndefined()
+  })
+
+  it('Issue #2023: S2C 0x89 SpecialQuestEvent 19 (emitted on A5Q6 Baal death) arms worldstone shake in ClientWorld and leaving 132 stops shake + 452 loop', () => {
+    const game = new GameInstance({ seed: 12345, difficulty: 0, areaId: 132 })
+    const p1 = game.addPlayer({ name: 'Hero', classId: 0, level: 80, x: 15100, y: 5900, areaId: 132 })
+    const baalId = game.spawnMonster({
+      classId: 544,
+      defId: 'baalcrab',
+      name: 'Baal',
+      x: 15110,
+      y: 5900,
+      areaId: 132,
+      hp: 10,
+      maxHp: 10,
+    })
+    game.drainEvents()
+    game.applyDamageToMonster(baalId, 100, p1)
+    const events = game.drainEvents()
+    const special19 = events.find(
+      ev => ev.type === 'QuestState' && ev.kind === 'special' && ev.specialEventId === 19,
+    )
+    expect(special19).toBeDefined()
+
+    const runtime = new AudioRuntime113c({
+      listenerPos: () => ({ x: 100, y: 100 }),
+    })
+    const world = new ClientWorld()
+    world.apply({ type: 'LoadAct', act: 4, mapSeed: 12345, areaId: 132 })
+    world.apply({ type: 'PlayerAssign', unitId: 1, charClass: 0, name: 'Hero', x: 100, y: 100 })
+    world.apply(special19!)
+
+    // Tick 10 frames (400ms into 2000ms rampUp so amp >= 1 and 452 loop is active)
+    for (let i = 0; i < 10; i += 1) {
+      world.tick(40)
+      runtime.drainWorldRequests(world.drainWorldSoundRequests())
+    }
+    expect(world.screenShake.active).toBe(true)
+    expect(runtime.records.activeCount).toBe(1)
+    expect(runtime.records.isUnitSoundPlaying({ unitType: 'player', id: 1 }, 452)).toBe(true)
+
+    // Leave Worldstone Chamber (132 -> 109 Harrogath): shake and 452 loop stop immediately
+    world.apply({ type: 'LoadAct', act: 4, mapSeed: 12345, areaId: 109 })
+    world.tick(40)
+    runtime.drainWorldRequests(world.drainWorldSoundRequests())
+    runtime.records.update()
+    expect(world.screenShake.active).toBe(false)
+    expect(world.screenShake.offsetX).toBe(0)
+    expect(world.screenShake.offsetY).toBe(0)
+    expect(runtime.records.activeCount).toBe(0)
+    expect(runtime.records.isUnitSoundPlaying({ unitType: 'player', id: 1 }, 452)).toBe(false)
   })
 })
