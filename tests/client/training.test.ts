@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { shortestRoute } from '../../src/client/guide/route.ts'
 import { SkipMemory } from '../../src/client/guide/skip-memory.ts'
 import { TrainingFloor } from '../../src/client/guide/training-floor.ts'
-import { bareSlots, lockedLevels, monsterLevel, readiness, setbacksOf, slowGround, trainingGround } from '../../src/client/guide/training.ts'
+import { bareSlots, fightableLevel, lockedLevels, monsterLevel, readiness, setbacksOf, slowGround, trainingGround } from '../../src/client/guide/training.ts'
 
 const BLOOD_MOOR = 2
 const COLD_PLAINS = 3
@@ -17,6 +17,15 @@ describe('training before a hard goal', () => {
     expect(readiness(me(20), ARCANE, 0)).toBeNull()
     expect(readiness(me(20), ARCANE, 2)).toMatchObject({ level: 22, why: 'Too strong for now, training to level 22' })
     expect(readiness(me(20, 100), ARCANE, 0)).toMatchObject({ why: 'Gathering gold for supplies' })
+  })
+
+  it('trains below the goal that beat it rather than in the goal itself', () => {
+    const nightmare = (level: number) => ({ level, gold: 50_000, bare: 0, difficulty: 1 as const })
+    const temple = 61
+    const cap = fightableLevel(temple, 1)
+    const ground = trainingGround(40, nightmare(50), new Set([40, 42, 43, 44, 46]), new Set(), undefined, undefined, cap)!
+    expect(monsterLevel(ground, 1)).toBeLessThanOrEqual(cap)
+    expect(monsterLevel(trainingGround(40, nightmare(50), new Set([40, 42, 43, 44, 46]), new Set())!, 1)).toBeGreaterThan(cap)
   })
 
   it('keeps a training level it set earlier, and gives the Chaos Sanctuary a wider margin', () => {

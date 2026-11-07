@@ -36,7 +36,7 @@ import LAIRS from './data/boss-lairs.json'
 import { WAYPOINT_LEVELS } from './level-links.ts'
 import { TrainingFloor } from './training-floor.ts'
 import { OPTIONAL_ROWS } from './quest-stages.ts'
-import { bareSlots, GEAR_HUNT_MS, GEAR_REST_MS, lockedLevels, NAKED_SLOTS, readiness, setbacksOf, slowGround, trainingGround, type Readiness, type Trainee } from './training.ts'
+import { bareSlots, fightableLevel, GEAR_HUNT_MS, GEAR_REST_MS, lockedLevels, NAKED_SLOTS, readiness, setbacksOf, slowGround, trainingGround, type Readiness, type Trainee } from './training.ts'
 import { ACT_TOWNS, actOfLevel, campaignDone, levelName, type Goal } from './route.ts'
 import TOWNS from './data/towns.json'
 import THREAT from '../../common/skills/data/monster-threat.json'
@@ -597,11 +597,16 @@ export class Autopilot {
       return
     }
     const need = readiness(me, this.questLevel, this.setbacks(nowMs), nowMs >= this.gearRestUntil || me.bare >= NAKED_SLOTS, this.floor.of(character, this.questLevel))
-    const ground = need && trainingGround(world.areaId, me, this.waypointLevels(), this.offLimits(), this.rateOf(), lockedLevels(this.host.world.quests))
+    const ground = need && this.groundFor(world.areaId, need.why)
     if (!need || ground === null) return
     if (need.level > me.level) this.floor.set(character, this.questLevel, need.level)
     this.training = { ...need, ground, since: nowMs }
     this.toast(need.why, `In ${levelName(ground)}`, 'gold')
+  }
+
+  private groundFor(from: number, why: string): number | null {
+    const pick = (cap?: number) => trainingGround(from, this.trainee(), this.waypointLevels(), this.offLimits(), this.rateOf(), lockedLevels(this.host.world.quests), cap)
+    return this.questLevel !== null && why.startsWith(HUMBLED) ? (pick(fightableLevel(this.questLevel, this.host.world.difficulty)) ?? pick()) : pick()
   }
 
   private offLimits(): ReadonlySet<number> {
@@ -660,7 +665,7 @@ export class Autopilot {
     const training = this.training
     if (training === null || this.host.guide.detour?.title !== 'Training') return false
     this.trainedOut.add(training.ground)
-    const next = trainingGround(this.host.world.areaId, this.trainee(), this.waypointLevels(), this.offLimits(), this.rateOf(), lockedLevels(this.host.world.quests))
+    const next = this.groundFor(this.host.world.areaId, training.why)
     if (next === null) return false
     this.training = { ...training, ground: next }
     this.toast('Training somewhere else', `No way into ${levelName(training.ground)}, going to ${levelName(next)}`, 'tan')
@@ -677,7 +682,7 @@ export class Autopilot {
     if (!slow && this.exploreLevel(view, nowMs, `${training.why} in ${levelName(training.ground)}`)) return true
     this.trainedOut.add(training.ground)
     this.explored.delete(training.ground)
-    const next = trainingGround(training.ground, this.trainee(), this.waypointLevels(), this.offLimits(), this.rateOf(), lockedLevels(this.host.world.quests))
+    const next = this.groundFor(training.ground, training.why)
     if (next === null) this.trainedOut.clear()
     Object.assign(this, { training: { ...training, ground: next ?? training.ground }, ground: null })
     return true
