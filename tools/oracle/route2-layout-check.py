@@ -275,6 +275,486 @@ FIELD_PE_PROBES['D2AStarNodeStrc'] = {
     'pBestNext': ['D2Common.dll', 0x6FDCAE6A, 2, 1, '8b49'],           # mov ecx, [ecx+0x34]
 }
 
+# Iteration 3 (Lane A B011/B017 + Lane B B009/B012 + Lane C B010/B013) additions.
+STRUCT_SIZE_PE_PROBES.update({
+    'D2HoverTextStrc': ('D2Common.dll', 0x6FD682BE, 'ba', 1, 4, 1),          # mov edx, 0x110
+    'D2DrlgWarpStrc': ('D2Common.dll', 0x6FD7D786, 'ba', 1, 4, 1),           # mov edx, 0x48
+    'D2AnimSeqTxt': ('D2Common.dll', 0x6FD7E77B, '83c2', 2, 1, 1),           # add edx, 0x6
+    'D2ObjectDataStrc': ('D2Game.dll', 0x6FC4FC4D, 'ba', 1, 4, 1),           # mov edx, 0x38
+    'D2ObjectsTxt': ('D2Common.dll', 0x6FD8E9BC, '69c0', 2, 4, 1),           # imul eax, eax, 0x1c0
+    'D2DrlgVertexStrc': ('D2Common.dll', 0x6FD8D99C, 'ba', 1, 4, 1),         # mov edx, 0x14
+    'D2DrlgStrc': ('D2Common.dll', 0x6FD7E3F7, 'ba', 1, 4, 1),               # mov edx, 0x48c
+    'D2DrlgLevelLinkDataStrc': ('D2Common.dll', 0x6FD62895, '81ec', 2, 4, 1), # sub esp, 0x1f4
+    'D2DrlgOutdoorInfoStrc': ('D2Common.dll', 0x6FD7DA8E, 'ba', 1, 4, 1),     # mov edx, 0x268
+    'D2HirelingTxt': ('D2Common.dll', 0x6FDA30AB, '69c0', 2, 4, 1),           # imul eax, eax, 0x118
+    'D2SuperUniquesTxt': ('D2Common.dll', 0x6FDA3387, '6bc0', 2, 1, 1),       # imul eax, eax, 0x34
+    'D2TreasureClassExStrc': ('D2Common.dll', 0x6FDA343D, '6bc0', 2, 1, 1),   # imul eax, eax, 0x2c
+    'D2StaticPathStrc': ('D2Common.dll', 0x6FD8D99C, 'ba', 1, 4, 1),          # mov edx, 0x14
+    'D2DrlgGridStrc': ('D2Common.dll', 0x6FD5A4BC, '83c6', 2, 1, 1),          # add esi, 0x14
+    'D2PresetUnitStrc': ('D2Common.dll', 0x6FD5A54C, 'ba', 1, 4, 1),          # mov edx, 0x20
+    'D2RoomLogicalInfoStrc': ('D2Common.dll', 0x6FDD1CD5, 'ba', 1, 4, 1),     # mov edx, 0x34
+})
+FIELD_PE_PROBES['D2RoomExStrc'].update({
+    'pPresetUnits': ['D2Common.dll', 0x6FD5A416, 2, 1, '8b53'],               # mov edx, [ebx+0x5c]
+})
+FIELD_PE_PROBES['D2MonStatsTxt'].update({
+    'nSubClassCount': ['D2Common.dll', 0x6FDA3877, 4, 1, '0fb65432'],         # movzx edx, byte [edx+esi+0x4a]
+    'nSubClassIndex': ['D2Common.dll', 0x6FDA3894, 4, 1, '0fb65432'],         # movzx edx, byte [edx+esi+0x4b]
+})
+FIELD_PE_PROBES['D2SkillsTxt'].update({
+    'nCharClass': ['D2Common.dll', 0x6FD9E8E8, 2, 1, '8a40'],                 # mov al, [eax+0xc]
+    'wPassiveState': ['D2Common.dll', 0x6FD9F108, 3, 4, '668b80'],            # mov ax, [eax+0x94]
+    'wReqLevel': ['D2Common.dll', 0x6FD9EB30, 3, 4, '0fbf80'],                # movsx eax, word [eax+0x174]
+    'nManaShift': ['D2Common.dll', 0x6FD9EA43, 2, 4, '8a89'],                 # mov cl, [ecx+0x188]
+    'wMana': ['D2Common.dll', 0x6FD9EA3C, 3, 4, '0fbf91'],                    # movsx edx, word [ecx+0x18a]
+    'wLvlMana': ['D2Common.dll', 0x6FD9EA2D, 3, 4, '0fbf81'],                 # movsx eax, word [ecx+0x18c]
+})
+FIELD_PE_PROBES['D2MissilesTxt'].update({
+    'dwELen': ['D2Common.dll', 0x6FDB9DF5, 2, 4, '8b80'],                     # mov eax, [eax+0x11c]
+    'dwELevLen1': ['D2Common.dll', 0x6FDB9E16, 2, 4, '8b90'],                 # mov edx, [eax+0x120]
+    'dwELevLen2': ['D2Common.dll', 0x6FDB9E03, 2, 4, '8b90'],                 # mov edx, [eax+0x124]
+    'dwELevLen3': ['D2Common.dll', 0x6FDB9E0C, 3, 4, '0faf88'],               # imul ecx, [eax+0x128]
+})
+FIELD_PE_PROBES['D2DrlgLevelStrc'].update({
+    'nRooms': ['D2Common.dll', 0x6FD7D420, 2, 1, '8b42'],                     # mov eax, [edx+0x8]
+    'pOutdoors': ['D2Common.dll', 0x6FD92270, 2, 1, '8b41'],                  # mov eax, [ecx+0x14]
+    'nPosX': ['D2Common.dll', 0x6FD7D700, 2, 1, '8b75'],                      # mov esi, [ebp+0x1c]
+    'nPosY': ['D2Common.dll', 0x6FD7D70D, 2, 1, '8b75'],                      # mov esi, [ebp+0x20]
+    'nWidth': ['D2Common.dll', 0x6FD7D6BA, 2, 1, '8b75'],                     # mov esi, [ebp+0x24]
+    'nHeight': ['D2Common.dll', 0x6FD7D6D5, 2, 1, '8b7d'],                    # mov edi, [ebp+0x28]
+    'pNextLevel': ['D2Common.dll', 0x6FD7D5E0, 2, 4, '8b80'],                 # mov eax, [eax+0x1ac]
+    'sSeed': ['D2Common.dll', 0x6FD92466, 2, 4, '8b86'],                      # mov eax, [esi+0x1c4]
+    'pRoomWarpFlags': ['D2Common.dll', 0x6FD7D427, 2, 4, '8b82'],             # mov eax, [edx+0x22c]
+})
+FIELD_PE_PROBES['D2DrlgMapStrc'].update({
+    'pPresetUnit': ['D2Common.dll', 0x6FD5A3A0, 2, 1, '8b45'],                # mov eax, [ebp+0x38]
+})
+FIELD_PE_PROBES['D2LevelDefBin'].update({
+    'dwOffsetX': ['D2Common.dll', 0x6FD90F98, 2, 1, '8b70'],                  # mov esi, [eax+0x24]
+    'dwOffsetY': ['D2Common.dll', 0x6FD90FA8, 2, 1, '8b40'],                  # mov eax, [eax+0x28]
+})
+FIELD_PE_PROBES['D2LevelsTxt'].update({
+    'nWaypoint': ['D2Common.dll', 0x6FDB7E82, 4, 4, '660fb680'],             # movzx ax, byte [eax+0xe4]
+})
+FIELD_PE_PROBES['D2DrlgTileGridStrc'].update({
+    'pWalls': ['D2Common.dll', 0x6FDD1A2E, 2, 1, '83c0'],                     # add eax, 0x14
+})
+FIELD_PE_PROBES['D2DrlgTileDataStrc'].update({
+    'pRoomCoordList': ['D2Common.dll', 0x6FDD1A95, 2, 1, '8948'],             # mov [eax+0x10], ecx
+})
+FIELD_PE_PROBES['D2HoverTextStrc'] = {
+    'dwDisplayTime': ['D2Common.dll', 0x6FD68254, 1, 0, '8b00'],             # mov eax, [eax]
+    'dwExpireTime': ['D2Common.dll', 0x6FD68244, 2, 1, '8b40'],              # mov eax, [eax+0x4]
+    'nLangId': ['D2Common.dll', 0x6FD681F4, 2, 1, '8a40'],                   # mov al, [eax+0x8]
+    'bUsed': ['D2Common.dll', 0x6FD68214, 2, 1, '8b40'],                     # mov eax, [eax+0xc]
+    'szMsg': ['D2Common.dll', 0x6FD68228, 2, 1, '83c0'],                     # add eax, 0x10
+}
+FIELD_PE_PROBES['D2DrlgWarpStrc'] = {
+    'nLevel': ['D2Common.dll', 0x6FD7D790, 1, 0, '8918'],                    # mov [eax], ebx
+    'nVis': ['D2Common.dll', 0x6FD7D216, 2, 1, '8d50'],                      # lea edx, [eax+0x4]
+    'nWarp': ['D2Common.dll', 0x6FD7D23D, 2, 1, '8d50'],                     # lea edx, [eax+0x24]
+    'pNext': ['D2Common.dll', 0x6FD7D7FE, 2, 1, '8948'],                     # mov [eax+0x44], ecx
+}
+FIELD_PE_PROBES['D2AnimSeqTxt'] = {
+    'wSequence': ['D2Common.dll', 0x6FDA53BE, 2, 0, '0fbf02'],                # movsx eax, word [edx]
+    'nMode': ['D2Common.dll', 0x6FD7E71A, 3, 1, '0fb64a'],                   # movzx ecx, byte [edx+0x2]
+    'nFrame': ['D2Common.dll', 0x6FD7E720, 3, 1, '0fb64a'],                  # movzx ecx, byte [edx+0x3]
+    'nDir': ['D2Common.dll', 0x6FD7E72A, 3, 1, '0fb64a'],                    # movzx ecx, byte [edx+0x4]
+    'nEvent': ['D2Common.dll', 0x6FD7E73C, 3, 1, '0fb652'],                  # movzx edx, byte [edx+0x5]
+}
+FIELD_PE_PROBES['D2ObjectDataStrc'] = {
+    'pObjectTxt': ['D2Common.dll', 0x6FD7ED3C, 1, 0, '8b08'],                # mov ecx, [eax]
+}
+FIELD_PE_PROBES['D2ObjectsTxt'] = {
+    'nSubClass': ['D2Common.dll', 0x6FD7ED3E, 2, 4, '8a91'],                 # mov dl, [ecx+0x167]
+}
+FIELD_PE_PROBES['D2DrlgVertexStrc'] = {
+    'nPosX': ['D2Common.dll', 0x6FD8D4A0, 1, 0, '8b02'],                     # mov eax, [edx]
+    'nPosY': ['D2Common.dll', 0x6FD8D4A8, 2, 1, '8b42'],                     # mov eax, [edx+0x4]
+    'nDirection': ['D2Common.dll', 0x6FD8D4B1, 3, 1, '0fb652'],              # movzx edx, byte [edx+0x8]
+    'dwFlags': ['D2Common.dll', 0x6FD8D9B2, 2, 1, '894a'],                   # mov [edx+0xc], ecx
+    'pNext': ['D2Common.dll', 0x6FD8D9B5, 2, 1, '894a'],                     # mov [edx+0x10], ecx
+}
+FIELD_PE_PROBES['D2DrlgStrc'] = {
+    'dwFlags': ['D2Common.dll', 0x6FD7E43D, 2, 4, '8996'],                   # mov [esi+0x8c], edx
+    'nBossTombLevel': ['D2Common.dll', 0x6FD8B08F, 2, 4, '8b80'],            # mov eax, [eax+0x94]
+    'pWarpList0Prev': ['D2Common.dll', 0x6FDCB8D6, 2, 4, '8988'],            # mov [eax+0xbc], ecx
+    'nWarpAct0': ['D2Common.dll', 0x6FDCB90C, 2, 4, 'c680'],                 # mov byte [eax+0xe4], 0
+    'pWarpList0Next': ['D2Common.dll', 0x6FDCB8DC, 2, 4, '8988'],            # mov [eax+0x188], ecx
+    'pMemPool': ['D2Common.dll', 0x6FD7E422, 2, 4, '8986'],                  # mov [esi+0x478], eax
+    'pLevel': ['D2Common.dll', 0x6FD7D5B0, 2, 4, '8b80'],                    # mov eax, [eax+0x47c]
+}
+FIELD_PE_PROBES['D2DrlgLevelLinkDataStrc'] = {
+    'seedLo': ['D2Common.dll', 0x6FD90E25, 1, 0, '8b01'],                     # mov eax, [ecx]
+    'seedHi': ['D2Common.dll', 0x6FD90E27, 2, 1, '8b79'],                     # mov edi, [ecx+0x4]
+    'nPosX': ['D2Common.dll', 0x6FD90EDD, 3, 1, '897408'],                    # mov [eax+ecx+0x8], esi
+    'nPosY': ['D2Common.dll', 0x6FD90EEF, 3, 1, '895408'],                    # mov [eax+ecx+0xc], edx
+    'nWidth': ['D2Common.dll', 0x6FD90EC1, 3, 1, 'c74408'],                   # mov dword [eax+ecx+0x10], 0
+    'nHeight': ['D2Common.dll', 0x6FD90EC9, 3, 1, 'c74408'],                  # mov dword [eax+ecx+0x14], 0
+    'pLink': ['D2Common.dll', 0x6FD90E81, 2, 4, '8b91'],                      # mov edx, [ecx+0xf8]
+    'nRand0': ['D2Common.dll', 0x6FD90E53, 3, 4, '899481'],                   # mov [ecx+eax*4+0xfc], edx
+    'nRand1': ['D2Common.dll', 0x6FD90E18, 3, 4, '8b84b1'],                   # mov eax, [ecx+esi*4+0x138]
+    'nIteration': ['D2Common.dll', 0x6FD90E12, 2, 4, '8bb1'],                 # mov esi, [ecx+0x1ec]
+    'nCurrentLevel': ['D2Common.dll', 0x6FD90F68, 2, 4, '8b81'],              # mov eax, [ecx+0x1f0]
+}
+FIELD_PE_PROBES['D2DrlgOutdoorInfoStrc'] = {
+    'dwFlags': ['D2Common.dll', 0x6FDCE9C0, 1, 0, '830f'],                    # or dword [edi], 2
+    'pGrid0Cells': ['D2Common.dll', 0x6FDCEA5A, 2, 1, '8b51'],                # mov edx, [ecx+0x4]
+    'pGrid0RowOffsets': ['D2Common.dll', 0x6FDCEA53, 2, 1, '8b69'],           # mov ebp, [ecx+0x8]
+    'pGrid2Cells': ['D2Common.dll', 0x6FDCEA06, 2, 1, '8b68'],                # mov ebp, [eax+0x2c]
+    'pGrid2RowOffsets': ['D2Common.dll', 0x6FDCEA00, 2, 1, '8b78'],           # mov edi, [eax+0x30]
+    'nGridWidth': ['D2Common.dll', 0x6FDCEA46, 2, 1, '8b71'],                 # mov esi, [ecx+0x5c]
+    'nGridHeight': ['D2Common.dll', 0x6FDCE9F5, 2, 1, '8b70'],                # mov esi, [eax+0x60]
+    'pVertex': ['D2Common.dll', 0x6FDCE8CA, 2, 1, '8b47'],                    # mov eax, [edi+0x64]
+}
+FIELD_PE_PROBES['D2HirelingTxt'] = {
+    'wVersion': ['D2Common.dll', 0x6FDA30C9, 2, 0, '663908'],                 # cmp [eax], cx
+    'dwSubTypeId': ['D2Common.dll', 0x6FDA3320, 2, 1, '8b51'],                # mov edx, [ecx+0x4]
+    'dwClass': ['D2Common.dll', 0x6FDA31E2, 2, 1, '3958'],                    # cmp [eax+0x8], ebx
+    'dwDifficulty': ['D2Common.dll', 0x6FDA30B1, 3, 1, '8d5418'],             # lea edx, [eax+ebx+0x10]
+    'dwHirelingLevel': ['D2Common.dll', 0x6FDA3090, 2, 1, '8b77'],            # mov esi, [edi+0x1c]
+    'wNameFirst': ['D2Common.dll', 0x6FDA978C, 4, 4, '6689840f'],             # mov [edi+ecx+0x114], ax
+    'wNameLast': ['D2Common.dll', 0x6FDA3271, 3, 4, '8d8418'],                # lea eax, [eax+ebx+0x116]
+}
+FIELD_PE_PROBES['D2SuperUniquesTxt'] = {}
+FIELD_PE_PROBES['D2TreasureClassExStrc'] = {
+    'wGroup': ['D2Common.dll', 0x6FDA344B, 2, 0, '668b10'],                   # mov dx, [eax]
+    'wLevel': ['D2Common.dll', 0x6FDA3460, 3, 1, '0fbf51'],                   # movsx edx, word [ecx+0x2]
+}
+FIELD_PE_PROBES['D2StaticPathStrc'] = {
+    'nPosX': ['D2Common.dll', 0x6FDCF60A, 2, 1, '8b72'],                      # mov esi, [edx+0xc]
+    'nPosY': ['D2Common.dll', 0x6FDCF636, 2, 1, '8b52'],                      # mov edx, [edx+0x10]
+}
+FIELD_PE_PROBES['D2DrlgGridStrc'] = {
+    'pCells': ['D2Common.dll', 0x6FD8680D, 1, 0, '89'],                       # mov [ecx], edx
+    'pRowOffsets': ['D2Common.dll', 0x6FD86813, 2, 1, '8951'],                # mov [ecx+0x4], edx
+    'nWidth': ['D2Common.dll', 0x6FD867F3, 2, 1, '8951'],                     # mov [ecx+0x8], edx
+    'nHeight': ['D2Common.dll', 0x6FD867F9, 2, 1, '8951'],                    # mov [ecx+0xc], edx
+    'bInitialized': ['D2Common.dll', 0x6FD86832, 2, 1, 'c741'],               # mov dword [ecx+0x10], 1
+}
+FIELD_PE_PROBES['D2PresetUnitStrc'] = {
+    'nUnitType': ['D2Common.dll', 0x6FD5A597, 1, 0, 'c700'],                  # mov dword [eax], 0
+    'nIndex': ['D2Common.dll', 0x6FD5A579, 2, 1, '8948'],                     # mov [eax+0x4], ecx
+    'nXpos': ['D2Common.dll', 0x6FD5A3C0, 2, 1, '8b48'],                      # mov ecx, [eax+0x8]
+    'pNext': ['D2Common.dll', 0x6FD5A431, 2, 1, '8b40'],                      # mov eax, [eax+0xc]
+    'nMode': ['D2Common.dll', 0x6FD5A590, 2, 1, 'c740'],                      # mov dword [eax+0x14], 2
+    'nYpos': ['D2Common.dll', 0x6FD5A3C9, 2, 1, '8b50'],                      # mov edx, [eax+0x18]
+    'dwFlags': ['D2Common.dll', 0x6FD5A583, 2, 1, '8b48'],                    # mov ecx, [eax+0x1c]
+}
+FIELD_PE_PROBES['D2RoomLogicalInfoStrc'] = {
+    'dwFlags': ['D2Common.dll', 0x6FDD1D02, 1, 0, '8b13'],                    # mov edx, [ebx]
+    'pIndexCells': ['D2Common.dll', 0x6FDD1A8F, 2, 1, '8b56'],                # mov edx, [esi+0x1c]
+    'pIndexRowOffsets': ['D2Common.dll', 0x6FDD1A85, 2, 1, '8b7e'],           # mov edi, [esi+0x20]
+    'pCoordList': ['D2Common.dll', 0x6FDD197B, 2, 1, '8b41'],                 # mov eax, [ecx+0x30]
+}
+
+# Iteration 4 Lane A (B020 + B023) additions.
+STRUCT_SIZE_PE_PROBES.update({
+    'D2StatesTxt': ('D2Common.dll', 0x6FD51788, '6bc0', 2, 1, 1),             # imul eax, eax, 0x3c
+    'D2ItemStatCostTxt': ('D2Common.dll', 0x6FD517B8, '69c0', 2, 4, 1),       # imul eax, eax, 0x144
+    'D2SetsTxt': ('D2Common.dll', 0x6FD517E8, '69c0', 2, 4, 1),               # imul eax, eax, 0x128
+    'D2SetItemsTxt': ('D2Common.dll', 0x6FD51818, '69c0', 2, 4, 1),           # imul eax, eax, 0x1b8
+    'D2UniqueItemsTxt': ('D2Common.dll', 0x6FD51848, '69c0', 2, 4, 1),        # imul eax, eax, 0x14c
+    'D2MissileDataStrc': ('D2Common.dll', 0x6FDBA3B2, 'ba', 1, 4, 1),         # mov edx, 0x34
+    'D2MissileDamageDataStrc': ('D2Common.dll', 0x6FDBBAAB, 'b9', 1, 4, 4),   # mov ecx, 0x1f; rep stosd
+})
+FIELD_PE_PROBES['D2MonStatsTxt'].update({
+    'wBaseId': ['D2Common.dll', 0x6FD51891, 3, 1, '0fbf40'],                  # movsx eax, word [eax+0x2]
+    'wNextInClass': ['D2Common.dll', 0x6FD51966, 3, 1, '0fbf41'],             # movsx eax, word [ecx+0x4]
+})
+FIELD_PE_PROBES['D2SkillsTxt'].update({
+    'dwParam4': ['D2Common.dll', 0x6FD51607, 2, 4, '8b80'],                   # mov eax, [eax+0x154]
+    'dwParam5': ['D2Common.dll', 0x6FD51637, 2, 4, '8b80'],                   # mov eax, [eax+0x158]
+    'dwParam6': ['D2Common.dll', 0x6FD51667, 2, 4, '8b80'],                   # mov eax, [eax+0x15c]
+    'dwParam7': ['D2Common.dll', 0x6FD51767, 2, 4, '0381'],                   # add eax, [ecx+0x160]
+    'dwParam8': ['D2Common.dll', 0x6FD51760, 3, 4, '0faf81'],                 # imul eax, [ecx+0x164]
+})
+FIELD_PE_PROBES['D2MissilesTxt'].update({
+    'dwMissileFlags': ['D2Common.dll', 0x6FDBA174, 2, 1, '8a40'],             # mov al, [eax+0x4]
+    'nActivate': ['D2Common.dll', 0x6FDBA084, 3, 4, '0fb680'],                # movzx eax, byte [eax+0x94]
+    'nHitShift': ['D2Common.dll', 0x6FDB9E9D, 2, 4, '8a80'],                  # mov al, [eax+0xe4]
+})
+FIELD_PE_PROBES['D2StatesTxt'] = {}
+FIELD_PE_PROBES['D2ItemStatCostTxt'] = {}
+FIELD_PE_PROBES['D2SetsTxt'] = {}
+FIELD_PE_PROBES['D2SetItemsTxt'] = {}
+FIELD_PE_PROBES['D2UniqueItemsTxt'] = {}
+FIELD_PE_PROBES['D2MissileDataStrc'] = {
+    'nAdditionalFrames': ['D2Common.dll', 0x6FDBA0F4, 3, 1, '0fbf40'],         # movsx eax, word [eax+0x4]
+    'nLatestFrame': ['D2Common.dll', 0x6FDBA0B4, 3, 1, '0fbf40'],              # movsx eax, word [eax+0x6]
+    'nActivateFrame': ['D2Common.dll', 0x6FDBA044, 3, 1, '0fbf40'],            # movsx eax, word [eax+0x8]
+    'nSkill': ['D2Common.dll', 0x6FDBA2C4, 3, 1, '0fbf40'],                    # movsx eax, word [eax+0xa]
+    'nLevel': ['D2Common.dll', 0x6FDBA2E4, 3, 1, '0fbf40'],                    # movsx eax, word [eax+0xc]
+    'nTotalFrames': ['D2Common.dll', 0x6FDBA2A4, 3, 1, '0fbf40'],              # movsx eax, word [eax+0xe]
+    'nRemainingFrames': ['D2Common.dll', 0x6FDBA284, 3, 1, '0fbf40'],          # movsx eax, word [eax+0x10]
+    'dwStreamFlags': ['D2Common.dll', 0x6FDBA344, 2, 1, '8b40'],               # mov eax, [eax+0x14]
+    'nOwnerType': ['D2Common.dll', 0x6FDBA18B, 2, 1, '3948'],                  # cmp [eax+0x18], ecx
+    'dwOwnerId': ['D2Common.dll', 0x6FDBA193, 2, 1, '3948'],                   # cmp [eax+0x1c], ecx
+    'nTargetX': ['D2Common.dll', 0x6FDB9FA4, 2, 1, '8b40'],                    # mov eax, [eax+0x28]
+    'nTargetY': ['D2Common.dll', 0x6FDB9F64, 2, 1, '8b40'],                    # mov eax, [eax+0x2c]
+}
+FIELD_PE_PROBES['D2MissileDamageDataStrc'] = {
+    'nFireMinDamage': ['D2Common.dll', 0x6FDB9C6C, 2, 1, '8b41'],             # mov eax, [ecx+0xc]
+    'nFireMaxDamage': ['D2Common.dll', 0x6FDB9C7E, 2, 1, '8b41'],             # mov eax, [ecx+0x10]
+    'nLtngMinDamage': ['D2Common.dll', 0x6FDB9C90, 2, 1, '8b41'],             # mov eax, [ecx+0x18]
+    'nLtngMaxDamage': ['D2Common.dll', 0x6FDB9CA2, 2, 1, '8b41'],             # mov eax, [ecx+0x1c]
+    'nMagMinDamage': ['D2Common.dll', 0x6FDB9CB4, 2, 1, '8b41'],              # mov eax, [ecx+0x20]
+    'nMagMaxDamage': ['D2Common.dll', 0x6FDB9CC6, 2, 1, '8b41'],              # mov eax, [ecx+0x24]
+    'nColdMinDamage': ['D2Common.dll', 0x6FDB9CD8, 2, 1, '8b41'],             # mov eax, [ecx+0x28]
+    'nColdMaxDamage': ['D2Common.dll', 0x6FDB9CEA, 2, 1, '8b41'],             # mov eax, [ecx+0x2c]
+    'nColdLength': ['D2Common.dll', 0x6FDB9CFC, 2, 1, '8b41'],                # mov eax, [ecx+0x30]
+    'nPoisMinDamage': ['D2Common.dll', 0x6FDB9D0E, 2, 1, '8b41'],             # mov eax, [ecx+0x34]
+    'nPoisMaxDamage': ['D2Common.dll', 0x6FDB9D20, 2, 1, '8b41'],             # mov eax, [ecx+0x38]
+    'nPoisCount': ['D2Common.dll', 0x6FDB9D32, 2, 1, '8b41'],                 # mov eax, [ecx+0x40]
+    'nLifeDrainMinDamage': ['D2Common.dll', 0x6FDB9D44, 2, 1, '8b41'],        # mov eax, [ecx+0x44]
+    'nManaDrainMinDamage': ['D2Common.dll', 0x6FDB9D56, 2, 1, '8b41'],        # mov eax, [ecx+0x4c]
+    'nBurningMin': ['D2Common.dll', 0x6FDB9D68, 2, 1, '8b41'],                # mov eax, [ecx+0x60]
+    'nBurningMax': ['D2Common.dll', 0x6FDB9D7A, 2, 1, '8b41'],                # mov eax, [ecx+0x64]
+    'nBurnLength': ['D2Common.dll', 0x6FDB9D8C, 2, 1, '8b41'],                # mov eax, [ecx+0x68]
+}
+
+# Iteration 4 (Lane B B015/B018) additions.
+STRUCT_SIZE_PE_PROBES.update({
+    'D2ItemsTxt': ('D2Common.dll', 0x6FDC19DA, '69c0', 2, 4, 1),              # imul eax, eax, 0x1a8
+    'D2DrlgPresetRoomStrc': ('D2Common.dll', 0x6FD94C81, 'ba', 1, 4, 1),      # mov edx, 0xf8
+})
+FIELD_PE_PROBES['D2ItemDataStrc'].update({
+    'dwItemFlags': ['D2Common.dll', 0x6FD73895, 2, 1, '8950'],                # mov [eax+0x14], edx
+    'dwCommandFlags': ['D2Common.dll', 0x6FD738F4, 2, 1, '8b40'],             # mov eax, [eax+0x18]
+    'dwActionStamp': ['D2Common.dll', 0x6FD725BB, 2, 1, '8b50'],              # mov edx, [eax+0x1c]
+    'dwFileIndex': ['D2Common.dll', 0x6FD725C4, 2, 1, '8b50'],                # mov edx, [eax+0x20]
+    'dwItemLevel': ['D2Common.dll', 0x6FD73802, 2, 1, '8948'],                # mov [eax+0x2c], ecx
+    'bCmdFlags': ['D2Common.dll', 0x6FD73778, 2, 1, '8848'],                  # mov [eax+0x46], cl
+    'bNodePage': ['D2Common.dll', 0x6FD73738, 2, 1, '8848'],                  # mov [eax+0x47], cl
+    'bEarLevel': ['D2Common.dll', 0x6FD736A8, 2, 1, '8848'],                  # mov [eax+0x48], cl
+    'bVarGfxIndex': ['D2Common.dll', 0x6FD73668, 2, 1, '8848'],               # mov [eax+0x49], cl
+    'szPlayerName': ['D2Common.dll', 0x6FD73714, 2, 1, '83c0'],               # add eax, 0x4a
+})
+FIELD_PE_PROBES['D2ItemTypesTxt'] = {
+    'wShoots': ['D2Common.dll', 0x6FD735FD, 3, 1, '0fbf40'],                  # movsx eax, word [eax+0xe]
+    'nNormal': ['D2Common.dll', 0x6FD72FAD, 3, 1, '0fb640'],                  # movzx eax, byte [eax+0x10]
+}
+FIELD_PE_PROBES['D2DrlgLevelStrc'].update({
+    'nDrlgType': ['D2Common.dll', 0x6FD63FD0, 1, 0, '8339'],                  # cmp dword [ecx], 3
+    'nLevelType': ['D2Common.dll', 0x6FD5E700, 2, 4, '8b81'],                 # mov eax, [ecx+0x1c0]
+})
+FIELD_PE_PROBES['D2ItemsTxt'] = {
+    'nLevelReq': ['D2Common.dll', 0x6FD72FE3, 3, 1, '0fb649'],                # movzx ecx, byte [ecx+0x65]
+    'nClass': ['D2Common.dll', 0x6FD72FC7, 2, 1, '8a51'],                     # mov dl, [ecx+0x67]
+    'nClassLevelReq': ['D2Common.dll', 0x6FD72FDD, 3, 1, '0fb649'],           # movzx ecx, byte [ecx+0x68]
+}
+FIELD_PE_PROBES['D2DrlgPresetRoomStrc'] = {
+    'nLevelPrest': ['D2Common.dll', 0x6FD5E446, 1, 0, '3931'],                # cmp [ecx], esi
+    'nOrientation': ['D2Common.dll', 0x6FD5E463, 2, 1, '8951'],               # mov [ecx+0x4], edx
+    'dwFlags': ['D2Common.dll', 0x6FD5E43A, 2, 1, '8b51'],                    # mov edx, [ecx+0xc]
+}
+
+# Iteration 4 (Lane C B019/B022/B025) additions.
+FIELD_PE_PROBES['D2MonStatsTxt'].update({
+    'wBaseId': ['D2Common.dll', 0x6FD6A7F6, 3, 1, '0fbf41'],                  # movsx eax, word [ecx+0x2]
+    'wNextInClass': ['D2Common.dll', 0x6FD6A87E, 3, 1, '0fbf56'],             # movsx edx, word [esi+0x4]
+    'wLevel': ['D2Common.dll', 0x6FD6A8D7, 3, 4, '0fbfa9'],                   # movsx ebp, word [ecx+0xaa]
+})
+FIELD_PE_PROBES['D2LevelsTxt'].update({
+    'nNumMon': ['D2Common.dll', 0x6FD6A7B9, 2, 1, '8a45'],                    # mov al, byte [ebp+0x33]
+    'wMon': ['D2Common.dll', 0x6FD6A840, 2, 1, '83c3'],                       # add ebx, 0x36
+})
+FIELD_PE_PROBES['D2DrlgLevelLinkDataStrc'].update({
+    'nRand2': ['D2Common.dll', 0x6FD64AD2, 3, 4, '8b84a9'],                   # mov eax, [ecx+ebp*4+0x174]
+    'nRand3': ['D2Common.dll', 0x6FD64FFA, 3, 4, '898491'],                   # mov [ecx+edx*4+0x1b0], eax
+})
+FIELD_PE_PROBES['D2DrlgOutdoorInfoStrc'].update({
+    'nWidth': ['D2Common.dll', 0x6FD67C98, 2, 1, '8b51'],                     # mov edx, [ecx+0x54]
+    'nHeight': ['D2Common.dll', 0x6FD67CA0, 2, 1, '8b79'],                    # mov edi, [ecx+0x58]
+})
+
+# Iteration 5 Lane A (B026 + B029) additions.
+STRUCT_SIZE_PE_PROBES.update({
+    'D2UnitFindDataStrc': ('D2Game.dll', 0x6FCBE58D, 'ba', 1, 4, 1),          # mov edx, 0x2c
+    'D2TextHeaderStrc': ('D2Common.dll', 0x6FD8D28E, 'ba', 1, 4, 1),          # mov edx, 0x0c
+    'D2TextNodeStrc': ('D2Common.dll', 0x6FD8D224, 'ba', 1, 4, 1),            # mov edx, 0x0c
+})
+FIELD_PE_PROBES['D2UnitStrc'].update({
+    'pAnimSeq': ['D2Common.dll', 0x6FD7F1C6, 2, 1, '8b48'],                   # mov ecx, [eax+0x30]
+    'dwSeqMode': ['D2Common.dll', 0x6FD7F1CD, 2, 1, '8b40'],                  # mov eax, [eax+0x40]
+    'dwFramePrecise': ['D2Common.dll', 0x6FD7EE84, 2, 1, '8b50'],             # mov edx, [eax+0x44]
+    'dwFrameCountPrecise': ['D2Common.dll', 0x6FD7EEAE, 2, 1, '8b40'],        # mov eax, [eax+0x48]
+})
+FIELD_PE_PROBES['D2ItemDataStrc'].update({
+    'dwItemCell': ['D2Common.dll', 0x6FD72635, 2, 1, '8948'],                 # mov [eax+0x28], ecx
+})
+FIELD_PE_PROBES['D2MonStatsTxt'].update({
+    'wVelocity': ['D2Common.dll', 0x6FD80D7B, 3, 1, '0fbf40'],                # movsx eax, word [eax+0x32]
+    'wSeqVelocity': ['D2Common.dll', 0x6FD7FB46, 3, 1, '0fbf40'],             # movsx eax, word [eax+0x36]
+    'wRun': ['D2Common.dll', 0x6FD7FB4B, 3, 1, '0fbf40'],                     # movsx eax, word [eax+0x38]
+})
+FIELD_PE_PROBES['D2CharStatsTxt'] = {
+    'nWalkSpeed': ['D2Common.dll', 0x6FD80DAF, 2, 1, '8a68'],                 # mov ch, [eax+0x40]
+    'nRunSpeed': ['D2Common.dll', 0x6FD82EB4, 3, 1, '0fb643'],                # movzx eax, byte [ebx+0x41]
+}
+FIELD_PE_PROBES['D2DrlgLevelStrc'].update({
+    'pTileSubtypes': ['D2Common.dll', 0x6FD8B1CD, 1, 4, '05'],                # add eax, 0x1e0
+})
+FIELD_PE_PROBES['D2ObjectsTxt'].update({
+    'dwFrameCnt': ['D2Common.dll', 0x6FD7EE95, 3, 4, '8b9491'],               # mov edx, [ecx+edx*4+0xd8]
+})
+FIELD_PE_PROBES['D2UnitFindDataStrc'] = {
+    'pMemPool': ['D2Common.dll', 0x6FD62010, 1, 0, '8b0e'],                   # mov ecx, [esi]
+    'pUnitsArray': ['D2Common.dll', 0x6FD62009, 2, 1, '8b56'],                # mov edx, [esi+0x4]
+    'pRoom': ['D2Common.dll', 0x6FD620B9, 2, 1, '8946'],                      # mov [esi+0x8], eax
+    'nX': ['D2Common.dll', 0x6FD620DC, 2, 1, '894e'],                         # mov [esi+0xc], ecx
+    'nY': ['D2Common.dll', 0x6FD620DF, 2, 1, '8956'],                         # mov [esi+0x10], edx
+    'dwFlags': ['D2Common.dll', 0x6FD620B2, 2, 1, '8946'],                    # mov [esi+0x14], eax
+    'nIndex': ['D2Common.dll', 0x6FD620AF, 2, 1, '8946'],                     # mov [esi+0x18], eax
+    'nMaxCount': ['D2Common.dll', 0x6FD62119, 2, 1, '8b7e'],                  # mov edi, [esi+0x1c]
+    'pFilterUnit': ['D2Common.dll', 0x6FD620C0, 2, 1, '894e'],                # mov [esi+0x20], ecx
+    'pfnCallback': ['D2Common.dll', 0x6FD620C7, 2, 1, '8956'],                # mov [esi+0x24], edx
+    'dwSize': ['D2Common.dll', 0x6FD620D9, 2, 1, '8946'],                     # mov [esi+0x28], eax
+}
+FIELD_PE_PROBES['D2TextHeaderStrc'] = {
+    'pMemPool': ['D2Common.dll', 0x6FD8D215, 1, 0, '8b0e'],                   # mov ecx, [esi]
+    'wCount': ['D2Common.dll', 0x6FD8D240, 3, 1, '66ff46'],                   # inc word [esi+0x4]
+    'pFirstNode': ['D2Common.dll', 0x6FD8D218, 2, 1, '8b7e'],                 # mov edi, [esi+0x8]
+}
+FIELD_PE_PROBES['D2TextNodeStrc'] = {
+    'wStringId': ['D2Common.dll', 0x6FD8D23A, 2, 0, '668908'],                # mov [eax], cx
+    'nMenuIndex': ['D2Common.dll', 0x6FD8D23D, 2, 1, '8950'],                 # mov [eax+0x4], edx
+    'pNext': ['D2Common.dll', 0x6FD8D237, 2, 1, '8978'],                      # mov [eax+0x8], edi
+}
+
+# Iteration 5 (Lane B B021/B024) additions.
+STRUCT_SIZE_PE_PROBES.update({
+    'D2ShrinesTxt': ('D2Common.dll', 0x6FD8E972, '6bc0', 2, 1, 1),              # imul eax, eax, 0x34
+    'D2MonLvlTxt': ('D2Common.dll', 0x6FDB03E0, '6bc0', 2, 1, 1),               # imul eax, eax, 0x58
+})
+FIELD_PE_PROBES['D2ItemDataStrc'].update({
+    'dwQuality': ['D2Common.dll', 0x6FD73B38, 1, 0, '8908'],                    # mov [eax], ecx
+    'dwSeedLo': ['D2Common.dll', 0x6FD73BF4, 2, 1, 'c740'],                     # mov dword [eax+0x4], 1
+    'dwSeedHi': ['D2Common.dll', 0x6FD73BFB, 2, 1, 'c740'],                     # mov dword [eax+0x8], 0x29a
+    'dwOwnerGuid': ['D2Common.dll', 0x6FD73BD4, 2, 1, '8b40'],                  # mov eax, [eax+0x10]
+    'wAutoAffix': ['D2Common.dll', 0x6FD73A89, 3, 1, '668948'],                 # mov [eax+0x36], cx
+})
+FIELD_PE_PROBES['D2LevelsTxt'].update({
+    'wMonLv1': ['D2Common.dll', 0x6FDBE11A, 4, 1, '0fbf4450'],                  # movsx eax, word [eax+edx*2+0x10]
+    'wMonLvEx1': ['D2Common.dll', 0x6FDBE10E, 4, 1, '0fbf4448'],                # movsx eax, word [eax+ecx*2+0x16]
+})
+FIELD_PE_PROBES['D2ShrinesTxt'] = {}
+FIELD_PE_PROBES['D2MonLvlTxt'] = {}
+
+# Iteration 5 (Lane C B028/B031) additions.
+STRUCT_SIZE_PE_PROBES.update({
+    'D2CubemainTxt': ('D2Common.dll', 0x6FD6B8CC, '69c0', 2, 4, 1),            # imul eax, eax, 0x148
+})
+FIELD_PE_PROBES['D2ActiveRoomStrc'].update({
+    'nIdleCounter': ['D2Common.dll', 0x6FD8B385, 2, 1, '8b40'],                # mov eax, [eax+0xc]
+    'pPortalNodes': ['D2Common.dll', 0x6FD8B497, 2, 1, '8b40'],                # mov eax, [eax+0x18]
+    'pClientList': ['D2Common.dll', 0x6FD8B3A9, 2, 1, '8b49'],                 # mov ecx, [ecx+0x48]
+    'nNumClients': ['D2Common.dll', 0x6FD8B377, 2, 1, '8b48'],                 # mov ecx, [eax+0x78]
+})
+FIELD_PE_PROBES['D2DrlgTileGridStrc'].update({
+    'nRoofs': ['D2Common.dll', 0x6FDB7FF7, 2, 1, '8b4e'],                      # mov ecx, [esi+0x10]
+    'pRoofs': ['D2Common.dll', 0x6FDB7FD7, 2, 1, '8b56'],                      # mov edx, [esi+0x24]
+})
+FIELD_PE_PROBES['D2DrlgStrc'].update({
+    'nDifficulty': ['D2Common.dll', 0x6FD5E411, 3, 4, '0fb691'],               # movzx edx, byte [ecx+0x450]
+})
+FIELD_PE_PROBES['D2CubemainTxt'] = {}
+
+# Iteration 6 (Lane B B027/B030) additions.
+FIELD_PE_PROBES['D2ItemDataStrc'].update({
+    'dwInitSeed': ['D2Common.dll', 0x6FD73CC9, 2, 1, 'c742'],                  # mov dword [edx+0xc], 0xffffffff
+    'wItemFormat': ['D2Common.dll', 0x6FD72201, 3, 1, '668b40'],               # mov ax, word [eax+0x30]
+})
+FIELD_PE_PROBES['D2ItemTypesTxt'].update({
+    'nRarity': ['D2Common.dll', 0x6FD74396, 2, 1, '8078'],                     # cmp byte [eax+0x21], 7
+})
+FIELD_PE_PROBES['D2ItemStatCostTxt'].update({
+    'bValShift': ['D2Common.dll', 0x6FD79E8F, 2, 1, '8a4e'],                   # mov cl, [esi+0x18]
+    'nSaveBits': ['D2Common.dll', 0x6FD79D9F, 4, 1, '0fb67c06'],               # movzx edi, byte [esi+eax+0x19]
+    'dwSaveAdd': ['D2Common.dll', 0x6FD79D95, 3, 1, '8b5c86'],                 # mov ebx, [esi+eax*4+0x1c]
+    'dwSaveParamBits': ['D2Common.dll', 0x6FD79D90, 3, 1, '8b5486'],           # mov edx, [esi+eax*4+0x24]
+})
+FIELD_PE_PROBES['D2ItemsTxt'].update({
+    'dwCode': ['D2Common.dll', 0x6FD732D7, 2, 4, '8b80'],                      # mov eax, [eax+0x80]
+    'dwAlternateGfx': ['D2Common.dll', 0x6FD7302C, 2, 4, '8b88'],              # mov ecx, [eax+0x84]
+    'nMinAc': ['D2Common.dll', 0x6FD79FD5, 2, 4, '8bbb'],                      # mov edi, [ebx+0xd0]
+    'dwBitField1': ['D2Common.dll', 0x6FD72806, 2, 4, '8b80'],                 # mov eax, [eax+0xdc]
+    'dwCost': ['D2Common.dll', 0x6FD74ACA, 2, 4, '8b80'],                      # mov eax, [eax+0xe0]
+    'dwGambleCost': ['D2Common.dll', 0x6FD72B16, 2, 4, '8b80'],                # mov eax, [eax+0xe4]
+    'dwSpeed': ['D2Common.dll', 0x6FD72BB6, 2, 4, '8b80'],                     # mov eax, [eax+0xe8]
+    'dwBitField2': ['D2Common.dll', 0x6FD72B66, 2, 4, '8b80'],                 # mov eax, [eax+0xec]
+    'nMinDam': ['D2Common.dll', 0x6FD7A0BA, 2, 4, '8a83'],                     # mov al, [ebx+0xfe]
+    'nMaxDam': ['D2Common.dll', 0x6FD7A015, 2, 4, '8a83'],                     # mov al, [ebx+0xff]
+    'nMinMisDam': ['D2Common.dll', 0x6FD7A11F, 2, 4, '8a83'],                  # mov al, [ebx+0x100]
+    'nMaxMisDam': ['D2Common.dll', 0x6FD7A07E, 2, 4, '8a83'],                  # mov al, [ebx+0x101]
+    'n2HandMinDam': ['D2Common.dll', 0x6FD7A0E0, 2, 4, '8a83'],                # mov al, [ebx+0x102]
+    'n2HandMaxDam': ['D2Common.dll', 0x6FD7A03B, 2, 4, '8a83'],                # mov al, [ebx+0x103]
+    'wType1': ['D2Common.dll', 0x6FD730E6, 3, 4, '0fbf80'],                    # movsx eax, word [eax+0x11e]
+    'wType2': ['D2Common.dll', 0x6FD744B7, 3, 4, '668b80'],                    # mov ax, word [eax+0x120]
+    'nComponent': ['D2Common.dll', 0x6FD72C07, 3, 4, '0fb680'],                # movzx eax, byte [eax+0x12a]
+    'nTwoHanded': ['D2Common.dll', 0x6FD72E59, 3, 4, '0fb680'],                # movzx eax, byte [eax+0x132]
+    'nSubType': ['D2Common.dll', 0x6FD72964, 3, 4, '0fb680'],                  # movzx eax, byte [eax+0x137]
+    'bBelt': ['D2Common.dll', 0x6FD72914, 2, 4, '8a80'],                       # mov al, [eax+0x138]
+    'bQuest': ['D2Common.dll', 0x6FD723C7, 2, 4, '8a80'],                      # mov al, [eax+0x13c]
+    'nGemApplyType': ['D2Common.dll', 0x6FD728C6, 3, 4, '0fb680'],             # movzx eax, byte [eax+0x13e]
+    'nDropSound': ['D2Common.dll', 0x6FD722FE, 3, 4, '0fb680'],                # movzx eax, byte [eax+0x143]
+})
+
+# Iteration 6 (Lane C B034/B037/B042) additions.
+FIELD_PE_PROBES['D2DynamicPathStrc'].update({
+    'nStepAttr': ['D2Common.dll', 0x6FD8E0C0, 3, 1, '0fb646'],                  # movzx eax, byte [esi+0x33]
+    'pfnPathfind': ['D2Common.dll', 0x6FD84FEA, 2, 4, '8988'],                  # mov [eax+0x1f8], ecx
+})
+FIELD_PE_PROBES['D2RoomExStrc'].update({
+    'pDrlgOrth': ['D2Common.dll', 0x6FD94953, 1, 0, '8b06'],                    # mov eax, [esi]
+    'dwDT1Mask': ['D2Common.dll', 0x6FDB8440, 2, 1, '8b5e'],                    # mov ebx, [esi+0x40]
+})
+FIELD_PE_PROBES['D2DrlgLevelStrc'].update({
+    'dwFlags': ['D2Common.dll', 0x6FD94C53, 2, 1, 'f643'],                      # test byte [ebx+0x04], 0x20
+    'pWarp': ['D2Common.dll', 0x6FD94CE0, 2, 4, '8b80'],                        # mov eax, [eax+0x1b4]
+    'pCurrentMap': ['D2Common.dll', 0x6FD5BD49, 2, 4, '8b90'],                  # mov edx, [eax+0x1bc]
+})
+FIELD_PE_PROBES['D2DrlgMapStrc'].update({
+    'nLevelPrest': ['D2Common.dll', 0x6FD5BCC3, 1, 0, '892e'],                  # mov [esi], ebp
+    'nPickedFile': ['D2Common.dll', 0x6FD5BD04, 2, 1, '8956'],                  # mov [esi+0x04], edx
+    'pLvlPrestTxt': ['D2Common.dll', 0x6FD5BCC0, 2, 1, '8946'],                 # mov [esi+0x08], eax
+    'pFile': ['D2Common.dll', 0x6FD5A461, 2, 1, '8b48'],                        # mov ecx, [eax+0x0c]
+    'nWidth': ['D2Common.dll', 0x6FD5AF20, 2, 1, '8b46'],                       # mov eax, [esi+0x18]
+    'nHeight': ['D2Common.dll', 0x6FD5AF34, 2, 1, '8b46'],                      # mov eax, [esi+0x1c]
+    'bInited': ['D2Common.dll', 0x6FD5BD42, 2, 1, 'c746'],                      # mov dword [esi+0x20], 1
+    'pNext': ['D2Common.dll', 0x6FD5BD4F, 2, 1, '8956'],                        # mov [esi+0x68], edx
+})
+FIELD_PE_PROBES['D2LvlPrestTxt'].update({
+    'nSizeX': ['D2Common.dll', 0x6FD5BD19, 2, 1, '8b48'],                       # mov ecx, [eax+0x38]
+    'nSizeY': ['D2Common.dll', 0x6FD5BD20, 2, 1, '8b78'],                       # mov edi, [eax+0x3c]
+    'dwFiles': ['D2Common.dll', 0x6FD5BCC5, 2, 1, '8b48'],                      # mov ecx, [eax+0x48]
+})
+FIELD_PE_PROBES['D2DrlgOrthStrc'].update({
+    'pRoomEx': ['D2Common.dll', 0x6FD94960, 1, 0, '3938'],                      # cmp [eax], edi
+    'bInit': ['D2Common.dll', 0x6FD949B8, 2, 1, 'c740'],                        # mov dword [eax+0x0c], 0
+    'pNext': ['D2Common.dll', 0x6FD94964, 2, 1, '8b40'],                        # mov eax, [eax+0x14]
+})
+FIELD_PE_PROBES['D2ObjectsTxt'].update({
+    'nOperateFn': ['D2Common.dll', 0x6FD8519B, 3, 4, '0fb6be'],                 # movzx edi, byte [esi+0x144]
+    'nDoor': ['D2Common.dll', 0x6FD851C9, 2, 4, '80be'],                        # cmp byte [esi+0x168], 0
+})
+FIELD_PE_PROBES['D2PresetUnitStrc'].update({
+    'pSaveChain': ['D2Common.dll', 0x6FD59FE3, 2, 1, '8b73'],                   # mov esi, [ebx+0x10]
+})
+FIELD_PE_PROBES['D2RoomLogicalInfoStrc'].update({
+    'pGrid0Cells': ['D2Common.dll', 0x6FDD0FB2, 2, 1, '896f'],                  # mov [edi+0x04], ebp
+    'pGrid0RowOffsets': ['D2Common.dll', 0x6FDD0F99, 2, 1, '8b57'],             # mov edx, [edi+0x08]
+})
+FIELD_PE_PROBES['D2DrlgPresetRoomStrc'].update({
+    'pMap': ['D2Common.dll', 0x6FD5A456, 2, 1, '8b46'],                         # mov eax, [esi+0x04]
+    'pWall0Cells': ['D2Common.dll', 0x6FD5AAD6, 2, 1, '8b46'],                  # mov eax, [esi+0x28]
+    'pWall0RowOffsets': ['D2Common.dll', 0x6FD5AAD0, 2, 1, '8b46'],             # mov eax, [esi+0x2c]
+    'pCellGridCells': ['D2Common.dll', 0x6FD5A528, 2, 4, '89b8'],               # mov [eax+0xd8], edi
+    'pCellGridRowOffsets': ['D2Common.dll', 0x6FD5A507, 2, 4, '8b96'],          # mov edx, [esi+0xdc]
+    'pTombCoords': ['D2Common.dll', 0x6FD5AA89, 2, 4, '8b86'],                  # mov eax, [esi+0x104]
+    'nTombCoords': ['D2Common.dll', 0x6FD5AB39, 2, 4, '89be'],                  # mov [esi+0x108], edi
+})
+
 
 def field(struct_name, name):
     for f in LAYOUT[struct_name]['fields']:

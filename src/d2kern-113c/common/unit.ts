@@ -21,7 +21,24 @@
  */
 import type { Memory113c } from '../mem/sparse-memory.ts'
 import type { D2SeedStrc } from '../prng.ts'
-import { D2ActiveRoomStrc, D2StatListStrc, D2UnitStrc } from '../mem/layout.generated.ts'
+import {
+  D2ActiveRoomStrc,
+  D2CharStatsTxt,
+  D2CharStatsTxt_SIZE,
+  D2MonStatsTxt,
+  D2MonStatsTxt_SIZE,
+  D2ObjectDataStrc,
+  D2ObjectsTxt,
+  D2StatListExStrc,
+  D2StatListStrc,
+  D2UnitStrc,
+} from '../mem/layout.generated.ts'
+import {
+  D2COMMON_GDWBITMASKS_IAT_VA_113C,
+  D2COMMON_SGPT_DATATABLES_VA_113C,
+  DATATABLES_OFF_113C,
+} from './inline-helpers.ts'
+import { imul32, sar32 } from './int-math.ts'
 import { STATES_CheckState113c, STATLIST_FLAG_EXTENDED } from './statlist.ts'
 
 export const UNIT_PLAYER = 0
@@ -249,3 +266,326 @@ export function UNITS_SetSeed113c(m: Memory113c, pUnit: number, lo: number, hi: 
   m.set(pUnit, D2UnitStrc.seedLo, lo >>> 0)
   m.set(pUnit, D2UnitStrc.seedHi, hi >>> 0)
 }
+
+/** `.rdata` weapon speed animation rate tables read by `0x6FD7FAC0` (`UNITS_GetWeaponSpeedAnimRate`). */
+export const D2COMMON_PLAYER_WEAP_ANIM_RATE_TABLE_VA_113C = 0x6fddc608
+export const D2COMMON_MON_WEAP_ANIM_RATE_TABLE_CLASSIC_VA_113C = 0x6fddc788
+export const D2COMMON_MON_WEAP_ANIM_RATE_TABLE_EXP_VA_113C = 0x6fddc8c8
+
+/**
+ * `@va D2Common:0x6FD7EE60` (`D2Common.#10582` `UNITS_GetFrameAndFrameCount`,
+ * stdcall `[esp+4] = pUnit`, `[esp+8] = pFrame`, `[esp+0xC] = pFrameCount`, `ret 0xC`, void).
+ *
+ * When `pUnit == 0`, zeroes `*pFrame` and `*pFrameCount`.
+ * When `pUnit->dwUnitType == 2` (`UNIT_OBJECT`), writes `*pFrame = pUnit->dwFramePrecise (+0x44)`
+ * and `*pFrameCount = pUnit->pUnitData->pObjectsTxt->dwFrameCnt[pUnit->dwAnimMode] (+0xD8 + mode*4)`.
+ * Otherwise writes `*pFrame = pUnit->dwFramePrecise (+0x44)` and `*pFrameCount = pUnit->dwFrameCountPrecise (+0x48)`.
+ */
+export function UNITS_GetFrameAndFrameCount113c(
+  m: Memory113c,
+  pUnit: number,
+  pFrame: number,
+  pFrameCount: number,
+): void {
+  const u = pUnit >>> 0
+  if (u === 0) {
+    m.setU32(pFrame >>> 0, 0)
+    m.setU32(pFrameCount >>> 0, 0)
+    return
+  }
+  if (m.get(u, D2UnitStrc.dwUnitType) === 2) {
+    m.setU32(pFrame >>> 0, m.get(u, D2UnitStrc.dwFramePrecise))
+    const nMode = m.get(u, D2UnitStrc.dwAnimMode) | 0
+    const pObjectData = m.get(u, D2UnitStrc.pUnitData)
+    const pObjectsTxt = m.get(pObjectData, D2ObjectDataStrc.pObjectTxt)
+    const frameCntAddr = (pObjectsTxt + imul32(nMode, 4) + D2ObjectsTxt.dwFrameCnt.off) >>> 0
+    m.setU32(pFrameCount >>> 0, m.u32(frameCntAddr))
+    return
+  }
+  m.setU32(pFrame >>> 0, m.get(u, D2UnitStrc.dwFramePrecise))
+  m.setU32(pFrameCount >>> 0, m.get(u, D2UnitStrc.dwFrameCountPrecise))
+}
+
+/**
+ * `@va D2Common:0x6FD7EF90` (`UNITS_IsWalkModeForType`,
+ * custom LTCG `eax = nUnitType`, `ecx = nMode`, plain `ret` -> `1` or `0`).
+ */
+export function UNITS_IsWalkModeForType113c(
+  _m: Memory113c,
+  nUnitType: number,
+  nMode: number,
+): number {
+  const t = nUnitType | 0
+  const mode = nMode | 0
+  if (t === 0) return mode === 9 ? 1 : 0
+  if (t === 1) return mode === 6 ? 1 : 0
+  return 0
+}
+
+/**
+ * `@va D2Common:0x6FD7EFC0` (`UNITS_IsGetHitModeForType`,
+ * custom LTCG `eax = nUnitType`, `ecx = nMode`, plain `ret` -> `1` or `0`).
+ */
+export function UNITS_IsGetHitModeForType113c(
+  _m: Memory113c,
+  nUnitType: number,
+  nMode: number,
+): number {
+  const t = nUnitType | 0
+  const mode = nMode | 0
+  if (t === 0) return mode === 4 ? 1 : 0
+  if (t === 1) return mode === 3 ? 1 : 0
+  return 0
+}
+
+/**
+ * `@va D2Common:0x6FD7F010` (`UNITS_IsRunModeForType`,
+ * custom LTCG `eax = nUnitType`, `ecx = nMode`, plain `ret` -> `1` or `0`).
+ */
+export function UNITS_IsRunModeForType113c(
+  _m: Memory113c,
+  nUnitType: number,
+  nMode: number,
+): number {
+  const t = nUnitType | 0
+  const mode = nMode | 0
+  if (t === 0) return mode === 0x13 ? 1 : 0
+  if (t === 1) return mode === 0x0d ? 1 : 0
+  return 0
+}
+
+/**
+ * `@va D2Common:0x6FD7F1B0` (`D2Common.#10175` `UNITS_GetAnimOrSeqMode`,
+ * stdcall `[esp+4] = pUnit`, `ret 4` -> `dwSeqMode (+0x40)` or `dwAnimMode (+0x10)`).
+ */
+export function UNITS_GetAnimOrSeqMode113c(m: Memory113c, pUnit: number): number {
+  const u = pUnit >>> 0
+  if (u === 0) return 0
+  const uType = m.get(u, D2UnitStrc.dwUnitType)
+  if ((uType === 0 || uType === 1) && m.get(u, D2UnitStrc.pAnimSeq) !== 0) {
+    return m.get(u, D2UnitStrc.dwSeqMode) | 0
+  }
+  return m.get(u, D2UnitStrc.dwAnimMode) | 0
+}
+
+/**
+ * `@va D2Common:0x6FD7FAC0` (`UNITS_GetWeaponSpeedAnimRate`,
+ * custom LTCG `eax = nUnitType`, `ecx = nWeapClass`, `[esp+4] = nClassId`, `ret 4`).
+ *
+ * Unconditionally reads `.rdata` weapon animation rate tables at `0x6FDDC608` (player),
+ * `0x6FDDC788` (monster `nClassId < 0x19A`), or `0x6FDDC8C8` (expansion monster `nClassId >= 0x19A`).
+ */
+export function UNITS_GetWeaponSpeedAnimRate113c(
+  m: Memory113c,
+  nUnitType: number,
+  nWeapClass: number,
+  nClassId: number,
+): number {
+  const t = nUnitType | 0
+  const wc = nWeapClass | 0
+  const cid = nClassId | 0
+  if (t === 0) {
+    const addr = (D2COMMON_PLAYER_WEAP_ANIM_RATE_TABLE_VA_113C + imul32(wc, 20)) >>> 0
+    return m.u32(addr) | 0
+  }
+  if (t === 1) {
+    const base =
+      cid < 0x19a
+        ? D2COMMON_MON_WEAP_ANIM_RATE_TABLE_CLASSIC_VA_113C
+        : D2COMMON_MON_WEAP_ANIM_RATE_TABLE_EXP_VA_113C
+    const addr = (base + imul32(wc, 20) + 0x10) >>> 0
+    return m.u32(addr) | 0
+  }
+  return 0
+}
+
+/**
+ * `@va D2Common:0x6FD7FB10` (`UNITS_GetBaseAnimSpeed`,
+ * custom LTCG `ecx = nUnitType`, `eax = nClassId`, `edx = nAnimMode`, plain `ret`).
+ */
+export function UNITS_GetBaseAnimSpeed113c(
+  m: Memory113c,
+  nUnitType: number,
+  nClassId: number,
+  nAnimMode: number,
+): number {
+  const t = nUnitType | 0
+  const cid = nClassId | 0
+  const mode = nAnimMode | 0
+  if (t === 0) {
+    return mode === 3 ? 0x65 : 0xd5
+  }
+  if (t === 1) {
+    let pRecord = 0
+    if (cid >= 0) {
+      const dt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+      if (cid < (m.u32((dt + DATATABLES_OFF_113C.nMonStatsTxtRecordCount) >>> 0) | 0)) {
+        const pMonStats = m.u32((dt + DATATABLES_OFF_113C.pMonStatsTxt) >>> 0)
+        pRecord = (pMonStats + imul32(cid, D2MonStatsTxt_SIZE)) >>> 0
+      }
+    }
+    if (mode === 0x0f) {
+      return (m.get(pRecord, D2MonStatsTxt.wRun) << 16) >> 16
+    }
+    return (m.get(pRecord, D2MonStatsTxt.wSeqVelocity) << 16) >> 16
+  }
+  return 0
+}
+
+/**
+ * `@va D2Common:0x6FD80D50` (`UNITS_GetBaseWalkVelocity`,
+ * custom LTCG `ecx = nUnitType`, `eax = nClassId`, plain `ret`).
+ */
+export function UNITS_GetBaseWalkVelocity113c(
+  m: Memory113c,
+  nUnitType: number,
+  nClassId: number,
+): number {
+  const t = nUnitType | 0
+  const cid = nClassId | 0
+  if (t === 0) {
+    let pRecord = 0
+    if (cid >= 0) {
+      const dt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+      if (cid < (m.u32((dt + DATATABLES_OFF_113C.nCharStatsTxtRecordCount) >>> 0) | 0)) {
+        const pCharStats = m.u32((dt + DATATABLES_OFF_113C.pCharStatsTxt) >>> 0)
+        pRecord = (pCharStats + imul32(cid, D2CharStatsTxt_SIZE)) >>> 0
+      }
+    }
+    return ((m.get(pRecord, D2CharStatsTxt.nWalkSpeed) & 0xff) << 8) | 0
+  }
+  if (t === 1) {
+    let pRecord = 0
+    if (cid >= 0) {
+      const dt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+      if (cid < (m.u32((dt + DATATABLES_OFF_113C.nMonStatsTxtRecordCount) >>> 0) | 0)) {
+        const pMonStats = m.u32((dt + DATATABLES_OFF_113C.pMonStatsTxt) >>> 0)
+        pRecord = (pMonStats + imul32(cid, D2MonStatsTxt_SIZE)) >>> 0
+      }
+    }
+    const wVel = (m.get(pRecord, D2MonStatsTxt.wVelocity) << 16) >> 16
+    return (wVel << 8) | 0
+  }
+  return 0
+}
+
+/**
+ * `@va D2Common:0x6FD83A70` (`D2Common.#10226` `UNITS_CheckStateMaskOnCurse`,
+ * stdcall `[esp+4] = nState`, `ret 4` -> masked bit word or `0`).
+ */
+export function UNITS_CheckStateMaskOnCurse113c(m: Memory113c, nState: number): number {
+  const state = nState | 0
+  if (state < 0) return 0
+  const dt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+  if (state >= (m.u32((dt + DATATABLES_OFF_113C.nStatesTxtRecordCount) >>> 0) | 0)) return 0
+  const pMaskArray = m.u32((dt + DATATABLES_OFF_113C.fStateMasksOnCurse) >>> 0)
+  const wordVal = m.u32((pMaskArray + (sar32(state, 5) << 2)) >>> 0)
+  const pBitMasks = m.u32(D2COMMON_GDWBITMASKS_IAT_VA_113C)
+  const bitMask = m.u32((pBitMasks + ((state & 0x1f) << 2)) >>> 0)
+  return (wordVal & bitMask) | 0
+}
+
+/**
+ * `@va D2Common:0x6FD83B00` (`D2Common.#10590` `UNITS_CheckStateMaskExp`,
+ * stdcall `[esp+4] = nState`, `ret 4` -> masked bit word or `0`).
+ */
+export function UNITS_CheckStateMaskExp113c(m: Memory113c, nState: number): number {
+  const state = nState | 0
+  if (state < 0) return 0
+  const dt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+  if (state >= (m.u32((dt + DATATABLES_OFF_113C.nStatesTxtRecordCount) >>> 0) | 0)) return 0
+  const pMaskArray = m.u32((dt + DATATABLES_OFF_113C.fStateMasksExp) >>> 0)
+  const wordVal = m.u32((pMaskArray + (sar32(state, 5) << 2)) >>> 0)
+  const pBitMasks = m.u32(D2COMMON_GDWBITMASKS_IAT_VA_113C)
+  const bitMask = m.u32((pBitMasks + ((state & 0x1f) << 2)) >>> 0)
+  return (wordVal & bitMask) | 0
+}
+
+/**
+ * `@va D2Common:0x6FD83B40` (`D2Common.#10033` `UNITS_CheckStateMaskAura`,
+ * stdcall `[esp+4] = nState`, `ret 4` -> masked bit word or `0`).
+ */
+export function UNITS_CheckStateMaskAura113c(m: Memory113c, nState: number): number {
+  const state = nState | 0
+  if (state < 0) return 0
+  const dt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+  if (state >= (m.u32((dt + DATATABLES_OFF_113C.nStatesTxtRecordCount) >>> 0) | 0)) return 0
+  const pMaskArray = m.u32((dt + DATATABLES_OFF_113C.fStateMasksAura) >>> 0)
+  const wordVal = m.u32((pMaskArray + (sar32(state, 5) << 2)) >>> 0)
+  const pBitMasks = m.u32(D2COMMON_GDWBITMASKS_IAT_VA_113C)
+  const bitMask = m.u32((pBitMasks + ((state & 0x1f) << 2)) >>> 0)
+  return (wordVal & bitMask) | 0
+}
+
+/**
+ * `@va D2Common:0x6FD83B80` (`D2Common.#10683` `UNITS_IsShapeshifted`,
+ * stdcall `[esp+4] = pUnit`, `ret 4` -> `(pUnit->dwFlags2 >> 3) & 1` or `0`).
+ */
+export function UNITS_IsShapeshifted113c(m: Memory113c, pUnit: number): number {
+  const u = pUnit >>> 0
+  if (u === 0) return 0
+  return (m.get(u, D2UnitStrc.dwFlags2) >>> 3) & 1
+}
+
+/**
+ * `@va D2Common:0x6FD83CA0` (`D2Common.#11150` `UNITS_GetStateFlagsPtr`,
+ * stdcall `[esp+4] = pUnit`, `ret 4` -> `pStatListEx->pStateFlags (+0x58)` or `0`).
+ */
+export function UNITS_GetStateFlagsPtr113c(m: Memory113c, pUnit: number): number {
+  const u = pUnit >>> 0
+  if (u === 0) return 0
+  const pStatListEx = m.get(u, D2UnitStrc.pStatListEx)
+  if (pStatListEx === 0) return 0
+  if ((m.get(pStatListEx, D2StatListStrc.dwFlags) | 0) >= 0) return 0
+  return m.get(pStatListEx, D2StatListExStrc.pStateFlags) >>> 0
+}
+
+/**
+ * `@va D2Common:0x6FD84330` (`D2Common.#11149` `UNITS_HasAnyGfxStateFlag`,
+ * stdcall `[esp+4] = pUnit`, `ret 4` -> `1` if any dirty/gfx state word is non-zero, else `0`).
+ */
+export function UNITS_HasAnyGfxStateFlag113c(m: Memory113c, pUnit: number): number {
+  const u = pUnit >>> 0
+  if (u === 0) return 0
+  const pStatListEx = m.get(u, D2UnitStrc.pStatListEx)
+  if (pStatListEx === 0) return 0
+  if ((m.get(pStatListEx, D2StatListStrc.dwFlags) | 0) >= 0) return 0
+  const dt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+  const nStates = m.u32((dt + DATATABLES_OFF_113C.nStatesTxtRecordCount) >>> 0) | 0
+  const pStateFlags = m.get(pStatListEx, D2StatListExStrc.pStateFlags)
+  const plus31 = (nStates + 31) | 0
+  const bias = (plus31 >> 31) & 0x1f
+  const nDwords = ((plus31 + bias) | 0) >> 5
+  const pGfxFlags = (pStateFlags + (nDwords << 2)) >>> 0
+  if (pGfxFlags === 0 || nDwords <= 0) return 0
+  for (let i = 0; i < nDwords; i++) {
+    if (m.u32((pGfxFlags + i * 4) >>> 0) !== 0) return 1
+  }
+  return 0
+}
+
+/**
+ * `@va D2Common:0x6FD84390` (`D2Common.#10960` `UNITS_ClearGfxStateFlags`,
+ * stdcall `[esp+4] = pUnit`, `ret 4`, void).
+ */
+export function UNITS_ClearGfxStateFlags113c(m: Memory113c, pUnit: number): void {
+  const u = pUnit >>> 0
+  if (u === 0) return
+  const pStatListEx = m.get(u, D2UnitStrc.pStatListEx)
+  if (pStatListEx === 0) return
+  if ((m.get(pStatListEx, D2StatListStrc.dwFlags) | 0) >= 0) return
+  const dt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+  const nStates = m.u32((dt + DATATABLES_OFF_113C.nStatesTxtRecordCount) >>> 0) | 0
+  const plus31 = (nStates + 31) | 0
+  const bias = (plus31 >> 31) & 0x1f
+  const nDwords = ((plus31 + bias) | 0) >> 5
+  const pStateFlags = m.get(pStatListEx, D2StatListExStrc.pStateFlags)
+  const nBytes = (nDwords << 2) >>> 0
+  const pGfxFlags = (pStateFlags + nBytes) >>> 0
+  if (pGfxFlags === 0) return
+  const dwordCount = nBytes >>> 2
+  for (let i = 0; i < dwordCount; i++) {
+    m.setU32((pGfxFlags + i * 4) >>> 0, 0)
+  }
+}
+

@@ -221,3 +221,358 @@ export function DUNGEON_GetLevelIdFromRoom113c(m: Memory113c, pRoom: number): nu
   const pLevel = m.get(pRoomEx, D2RoomExStrc.pLevel)
   return m.get(pLevel, D2DrlgLevelStrc.nLevelId) | 0
 }
+
+/**
+ * `@va D2Common:0x6FD7D600` (`DRLG_GetRoomExFromCoordinates113c`, custom `eax = pDrlg`, `edi = nX`, `esi = nY`, plain `ret`).
+ *
+ * Walks `pDrlg->pRoomEx (+0x10)` via `pRoomExNext (+0x24)` and returns the first `D2RoomExStrc*`
+ * whose tile box `[nTileXPos..nTileXPos+nTileWidth) x [nTileYPos..nTileYPos+nTileHeight)` (`+0x34/+0x38/+0x3C/+0x40`)
+ * contains `(nX, nY)` (signed comparisons), or `0` if none matches.
+ */
+export function DRLG_GetRoomExFromCoordinates113c(
+  m: Memory113c,
+  eax: number,
+  edi: number,
+  esi: number,
+): number {
+  if (eax === 0) {
+    throw new Error('DRLG_GetRoomExFromCoordinates113c: pDrlg == 0 (line 765)')
+  }
+  let pRoomEx = m.u32((eax + 0x10) >>> 0)
+  if (pRoomEx === 0) {
+    throw new Error('DRLG_GetRoomExFromCoordinates113c: pDrlg->pRoomEx == 0 (line 766)')
+  }
+  const x = edi | 0
+  const y = esi | 0
+  do {
+    const rx = m.u32((pRoomEx + 0x34) >>> 0) | 0
+    if (x >= rx) {
+      const ry = m.u32((pRoomEx + 0x38) >>> 0) | 0
+      if (y >= ry) {
+        const rw = m.u32((pRoomEx + 0x3c) >>> 0) | 0
+        if (x < ((rx + rw) | 0)) {
+          const rh = m.u32((pRoomEx + 0x40) >>> 0) | 0
+          if (y < ((ry + rh) | 0)) {
+            return pRoomEx >>> 0
+          }
+        }
+      }
+    }
+    pRoomEx = m.u32((pRoomEx + 0x24) >>> 0)
+  } while (pRoomEx !== 0)
+  return 0
+}
+
+/**
+ * `@va D2Common:0x6FD8B350` (`D2Common.#10557` `DUNGEON_UpdateRoomIdleCounter`, stdcall `(pRoom)`, `ret 4`).
+ *
+ * If `pRoom->nNumClients (+0x78) != 0`, resets `pRoom->nIdleCounter (+0x0C) = 0` and returns `0`;
+ * otherwise increments `pRoom->nIdleCounter` and returns the new value.
+ */
+export function DUNGEON_UpdateRoomIdleCounter113c(m: Memory113c, pRoom: number): number {
+  if (pRoom === 0) {
+    throw new Error('DUNGEON_UpdateRoomIdleCounter113c: pRoom == 0 (line 1198)')
+  }
+  const nClients = m.u32((pRoom + 0x78) >>> 0)
+  if (nClients !== 0) {
+    m.setU32((pRoom + 0x0c) >>> 0, 0)
+    return m.u32((pRoom + 0x0c) >>> 0) | 0
+  }
+  const next = ((m.u32((pRoom + 0x0c) >>> 0) | 0) + 1) | 0
+  m.setU32((pRoom + 0x0c) >>> 0, next >>> 0)
+  return next
+}
+
+/**
+ * `@va D2Common:0x6FD8B3A0` (`DUNGEON_VerifyRoomClientsNonNull113c`, fastcall `ecx = pRoom`, plain `ret`).
+ *
+ * Verifies that all `pRoom->nNumClients (+0x78)` entries in `pRoom->pClientList (+0x48)` are non-NULL,
+ * then returns `1`.
+ */
+export function DUNGEON_VerifyRoomClientsNonNull113c(m: Memory113c, ecx: number): number {
+  const nClients = m.u32((ecx + 0x78) >>> 0)
+  if (nClients > 0) {
+    let pList = m.u32((ecx + 0x48) >>> 0)
+    for (let i = 0; i < nClients; i++, pList = (pList + 4) >>> 0) {
+      if (m.u32(pList) === 0) {
+        throw new Error('DUNGEON_VerifyRoomClientsNonNull113c: null client (line 1107)')
+      }
+    }
+  }
+  return 1
+}
+
+/**
+ * `@va D2Common:0x6FD8B3F0` (`D2Common.#10627` `DUNGEON_SetRoomFlag2`, stdcall `(pRoom, bSet)`, `ret 8`).
+ *
+ * Sets (`bSet != 0`) or clears (`bSet == 0`) bit `0x02` on `pRoom->dwFlags (+0x34)`.
+ */
+export function DUNGEON_SetRoomFlag2_113c(m: Memory113c, pRoom: number, bSet: number): void {
+  if (pRoom === 0) {
+    throw new Error('DUNGEON_SetRoomFlag2_113c: pRoom == 0 (line 1080)')
+  }
+  const flags = m.u32((pRoom + 0x34) >>> 0)
+  if (bSet !== 0) {
+    m.setU32((pRoom + 0x34) >>> 0, (flags | 0x02) >>> 0)
+  } else {
+    m.setU32((pRoom + 0x34) >>> 0, (flags & ~0x02) >>> 0)
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD8B440` (`D2Common.#11035` `DUNGEON_CheckRoomFlag2`, stdcall `(pRoom)`, `ret 4`).
+ *
+ * Returns `pRoom->dwFlags (+0x34) & 0x02`.
+ */
+export function DUNGEON_CheckRoomFlag2_113c(m: Memory113c, pRoom: number): number {
+  if (pRoom === 0) {
+    throw new Error('DUNGEON_CheckRoomFlag2_113c: pRoom == 0 (line 1071)')
+  }
+  return (m.u32((pRoom + 0x34) >>> 0) & 0x02) >>> 0
+}
+
+/**
+ * `@va D2Common:0x6FD8B470` (`D2Common.#10275` `DUNGEON_GetRoomPortalList`, stdcall `(pRoom)`, `ret 4`).
+ *
+ * Returns `pRoom->pPortalNodes (+0x18)`.
+ */
+export function DUNGEON_GetRoomPortalList113c(m: Memory113c, pRoom: number): number {
+  if (pRoom === 0) {
+    throw new Error('DUNGEON_GetRoomPortalList113c: pRoom == 0 (line 934)')
+  }
+  return m.u32((pRoom + 0x18) >>> 0)
+}
+
+/**
+ * `@va D2Common:0x6FD8B4A0` (`DUNGEON_FreeRoomPortalList113c`, stdcall `(pRoom)`, `ret 4`).
+ *
+ * Walks `pRoom->pPortalNodes (+0x18)` (next at `+0x08`), freeing each node via `Fog.#10046` with
+ * `pRoom->pAct (+0x2C)->pMemPool (+0x5C)`, and zeroes `pRoom->pPortalNodes`.
+ */
+export function DUNGEON_FreeRoomPortalList113c(m: Memory113c, pRoom: number): void {
+  if (pRoom === 0) {
+    throw new Error('DUNGEON_FreeRoomPortalList113c: pRoom == 0 (line 912)')
+  }
+  const pAct = m.u32((pRoom + 0x2c) >>> 0)
+  let pNode = m.u32((pRoom + 0x18) >>> 0)
+  void m.u32((pAct + 0x5c) >>> 0)
+  if (pNode !== 0) {
+    const freeFn = (m as { free?: (p: number) => void }).free
+    do {
+      const cur = pNode
+      pNode = m.u32((pNode + 0x08) >>> 0)
+      freeFn?.call(m, cur)
+    } while (pNode !== 0)
+    m.setU32((pRoom + 0x18) >>> 0, 0)
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD8B500` (`D2Common.#10903` `DUNGEON_AddRoomPortalNode`, stdcall `(pRoom, nField0, nField4)`, `ret 0xC`).
+ *
+ * If `pRoom != 0`, allocates a 12-byte portal node via `Fog.#10045` (`[nField0, nField4, pRoom->pPortalNodes]`),
+ * prepends it to `pRoom->pPortalNodes (+0x18)`, and sets `pRoom->pAct (+0x2C)->bHasPendingPortalUpdates (+0x58) = 1`.
+ */
+export function DUNGEON_AddRoomPortalNode113c(
+  m: Memory113c,
+  pRoom: number,
+  nField0: number,
+  nField4: number,
+): void {
+  if (pRoom === 0) return
+  const pAct0 = m.u32((pRoom + 0x2c) >>> 0)
+  void m.u32((pAct0 + 0x5c) >>> 0)
+  const pNode = m.alloc(0x0c)
+  m.setU32(pNode, nField0 >>> 0)
+  m.setU32((pNode + 0x04) >>> 0, nField4 >>> 0)
+  const prevHead = m.u32((pRoom + 0x18) >>> 0)
+  m.setU32((pNode + 0x08) >>> 0, prevHead)
+  const pAct = m.u32((pRoom + 0x2c) >>> 0)
+  m.setU32((pRoom + 0x18) >>> 0, pNode)
+  m.setU32((pAct + 0x58) >>> 0, 1)
+}
+
+/**
+ * `@va D2Common:0x6FD8B550` (`D2Common.#10055` `DUNGEON_GetRoomExFromRoom`, stdcall `(pRoom)`, `ret 4`).
+ *
+ * Returns `pRoom->pRoomEx (+0x10)`.
+ */
+export function DUNGEON_GetRoomExFromRoom113c(m: Memory113c, pRoom: number): number {
+  if (pRoom === 0) {
+    throw new Error('DUNGEON_GetRoomExFromRoom113c: pRoom == 0 (line 798)')
+  }
+  return m.u32((pRoom + 0x10) >>> 0)
+}
+
+/**
+ * `@va D2Common:0x6FD8B5B0` (`DUNGEON_GetCollisionGridFromRoomFast113c`, custom `eax = pRoom`, plain `ret`).
+ *
+ * Returns `pRoom->pCollisionGrid (+0x20)`.
+ */
+export function DUNGEON_GetCollisionGridFromRoomFast113c(m: Memory113c, eax: number): number {
+  if (eax === 0) {
+    throw new Error('DUNGEON_GetCollisionGridFromRoomFast113c: pRoom == 0 (line 709)')
+  }
+  return m.u32((eax + 0x20) >>> 0)
+}
+
+/**
+ * `@va D2Common:0x6FD8BA20` (`D2Common.#10786` `DUNGEON_GetAdjacentRoomsListFromRoom`, stdcall `(pRoom, pppRoomsNear, pnRoomsNear)`, `ret 0xC`).
+ *
+ * Stores `pRoom->nRoomsNear (+0x24)` to `*pnRoomsNear` and `pRoom->ppRoomsNear (+0x00)` to `*pppRoomsNear`.
+ */
+export function DUNGEON_GetAdjacentRoomsListFromRoom113c(
+  m: Memory113c,
+  pRoom: number,
+  pppRoomsNear: number,
+  pnRoomsNear: number,
+): void {
+  if (pRoom === 0) {
+    throw new Error('DUNGEON_GetAdjacentRoomsListFromRoom113c: pRoom == 0 (line 236)')
+  }
+  const nNear = m.u32((pRoom + 0x24) >>> 0)
+  m.setU32(pnRoomsNear, nNear)
+  const ppNear = m.u32(pRoom)
+  m.setU32(pppRoomsNear, ppNear)
+}
+
+/**
+ * `@va D2Common:0x6FD8BA60` (`D2Common.#10035` `DUNGEON_GetRoomCoordinates`, stdcall `(pRoom, pOutCoords)`, `ret 8`).
+ *
+ * Copies the 8 dwords at `pRoom + 0x4C .. pRoom + 0x68` (`D2DrlgCoordsStrc`) to `pOutCoords`,
+ * or zeroes the 8 dwords at `pOutCoords` if `pRoom == 0`.
+ */
+export function DUNGEON_GetRoomCoordinates113c(
+  m: Memory113c,
+  pRoom: number,
+  pOutCoords: number,
+): void {
+  if (pOutCoords === 0) {
+    throw new Error('DUNGEON_GetRoomCoordinates113c: pOutCoords == 0 (line 209)')
+  }
+  if (pRoom === 0) {
+    for (let i = 0; i < 8; i++) {
+      m.setU32((pOutCoords + i * 4) >>> 0, 0)
+    }
+    return
+  }
+  for (let i = 0; i < 8; i++) {
+    m.setU32((pOutCoords + i * 4) >>> 0, m.u32((pRoom + 0x4c + i * 4) >>> 0))
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD8BD60` (`D2Common.#10006` `DUNGEON_GetLogicalRoomField30`, stdcall `(pRoom)`, `ret 4`).
+ *
+ * Reads `pLogical = pRoom->pRoomEx (+0x10)->pLogicalRoomInfo (+0x64)`, asserts `pLogical != 0`,
+ * and returns `*[pLogical + 0x30]`.
+ */
+export function DUNGEON_GetLogicalRoomField30_113c(m: Memory113c, pRoom: number): number {
+  const pRoomEx = m.u32((pRoom + 0x10) >>> 0)
+  const pLogical = m.u32((pRoomEx + 0x64) >>> 0)
+  if (pLogical === 0) {
+    throw new Error('DUNGEON_GetLogicalRoomField30_113c: pLogical == 0 (line 717)')
+  }
+  return m.u32((pLogical + 0x30) >>> 0) | 0
+}
+
+/**
+ * `@va D2Common:0x6FD8BE90` (`DUNGEON_AreAllAdjacentRoomsActive113c`, stdcall `(pRoom)`, `ret 4`).
+ *
+ * Returns `1` iff `pRoom->nRoomsNear (+0x24) == pRoom->pRoomEx (+0x10)->nRoomsNear (+0x2C)` and every
+ * entry in `pRoom->ppRoomsNear[0..nRoomsNear)` has `(pAdj->dwFlags (+0x34) & 1) != 0`.
+ */
+export function DUNGEON_AreAllAdjacentRoomsActive113c(m: Memory113c, pRoom: number): number {
+  if (pRoom === 0) {
+    throw new Error('DUNGEON_AreAllAdjacentRoomsActive113c: pRoom == 0 (line 1007)')
+  }
+  const pRoomEx = m.u32((pRoom + 0x10) >>> 0)
+  const nExNear = m.u32((pRoomEx + 0x2c) >>> 0)
+  const nNear = m.u32((pRoom + 0x24) >>> 0)
+  if (nNear !== nExNear) return 0
+  if (nNear > 0) {
+    const ppNear = m.u32(pRoom)
+    for (let i = 0; i < nNear; i++) {
+      const pAdj = m.u32((ppNear + i * 4) >>> 0)
+      if ((m.u8((pAdj + 0x34) >>> 0) & 0x01) === 0) {
+        return 0
+      }
+    }
+  }
+  return 1
+}
+
+/**
+ * `@va D2Common:0x6FD8BF60` (`D2Common.#10615` `DUNGEON_HasRoomExWaypointFlags`, stdcall `(pRoom)`, `ret 4`).
+ *
+ * Returns `1` if `(pRoom->pRoomEx (+0x10)->dwFlags (+0x28) & 0x30000) != 0`, else `0`.
+ */
+export function DUNGEON_HasRoomExWaypointFlags113c(m: Memory113c, pRoom: number): number {
+  if (pRoom === 0) {
+    throw new Error('DUNGEON_HasRoomExWaypointFlags113c: pRoom == 0 (line 867)')
+  }
+  const pRoomEx = m.u32((pRoom + 0x10) >>> 0)
+  if (pRoomEx === 0) {
+    throw new Error('DUNGEON_HasRoomExWaypointFlags113c: pRoomEx == 0 (line 630)')
+  }
+  return (m.u32((pRoomEx + 0x28) >>> 0) & 0x30000) !== 0 ? 1 : 0
+}
+
+/**
+ * `@va D2Common:0x6FD8BFB0` (`D2Common.#10057` `DUNGEON_GetLevelIdIfNotHidden`, stdcall `(pRoom)`, `ret 4`).
+ *
+ * Returns `0` if `pRoom == 0` or `(pRoom->pRoomEx->dwFlags (+0x28) & 0x800000) != 0`; otherwise returns
+ * `pRoom->pRoomEx->pLevel (+0x58)->nLevelId (+0x1D0)`.
+ */
+export function DUNGEON_GetLevelIdIfNotHidden113c(m: Memory113c, pRoom: number): number {
+  if (pRoom === 0) return 0
+  const pRoomEx = m.u32((pRoom + 0x10) >>> 0)
+  if (pRoomEx === 0) {
+    throw new Error('DUNGEON_GetLevelIdIfNotHidden113c: pRoomEx == 0 (line 619)')
+  }
+  if ((m.u32((pRoomEx + 0x28) >>> 0) & 0x800000) !== 0) {
+    return 0
+  }
+  const pLevel = m.u32((pRoomEx + 0x58) >>> 0)
+  return m.u32((pLevel + 0x1d0) >>> 0) | 0
+}
+
+/**
+ * `@va D2Common:0x6FD8C020` (`D2Common.#10142` `DUNGEON_AcquireRoomExDT1Mask`, stdcall `(pRoom)`, `ret 4`).
+ *
+ * Reads `flags = pRoom->pRoomEx (+0x10)->dwFlags (+0x28)`. If `(flags & 0x40000) != 0`, returns
+ * `pRoomEx->dwDT1Mask (+0x5C)` without modifying `dwFlags`. Otherwise, if `(flags & 0x4000000) != 0`,
+ * returns `0`; else sets `pRoomEx->dwFlags |= 0x4000000` and returns `pRoomEx->dwDT1Mask (+0x5C)`.
+ */
+export function DUNGEON_AcquireRoomExDT1Mask113c(m: Memory113c, pRoom: number): number {
+  if (pRoom === 0) {
+    throw new Error('DUNGEON_AcquireRoomExDT1Mask113c: pRoom == 0 (line 699)')
+  }
+  const pRoomEx = m.u32((pRoom + 0x10) >>> 0)
+  const flags = m.u32((pRoomEx + 0x28) >>> 0)
+  if ((flags & 0x40000) === 0) {
+    if ((flags & 0x4000000) !== 0) {
+      return 0
+    }
+    m.setU32((pRoomEx + 0x28) >>> 0, (flags | 0x4000000) >>> 0)
+  }
+  return m.u32((pRoomEx + 0x5c) >>> 0)
+}
+
+/**
+ * `@va D2Common:0x6FD8C330` (`D2Common.#10099` `DUNGEON_CheckPresetRoomFlag80`, stdcall `(pRoom)`, `ret 4`).
+ *
+ * If `pRoom->pRoomEx (+0x10)->nType (+0x48) == 1`, returns `pRoomEx->pPresetType2info (+0x20)->fFlags (+0x54) & 0x80`;
+ * otherwise returns `0`.
+ */
+export function DUNGEON_CheckPresetRoomFlag80_113c(m: Memory113c, pRoom: number): number {
+  if (pRoom === 0) {
+    throw new Error('DUNGEON_CheckPresetRoomFlag80_113c: pRoom == 0 (line 1445)')
+  }
+  const pRoomEx = m.u32((pRoom + 0x10) >>> 0)
+  const nType = m.u32((pRoomEx + 0x48) >>> 0) | 0
+  if (nType !== 1) return 0
+  const pPreset = m.u32((pRoomEx + 0x20) >>> 0)
+  return (m.u32((pPreset + 0x54) >>> 0) & 0x80) >>> 0
+}
+

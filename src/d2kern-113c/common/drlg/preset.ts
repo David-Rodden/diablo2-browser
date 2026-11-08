@@ -54,3 +54,295 @@ export function DRLGPRESET_MovePointerAndClear113c(m: Memory113c, ppSrc: number,
   m.setU32(ppSrc, 0)
   return m.u32(ppDst)
 }
+
+/**
+ * `D2Common.dll` `.data` pointer to `sgptDataTables`.
+ *
+ * `@va D2Common:0x6FDE9E1C`
+ */
+export const SGPT_DATA_TABLES_PTR_VA_6FDE9E1C = 0x6fde9e1c
+
+/**
+ * `D2Common.dll` `.bss` `sgptDataTables.pLvlPrestTxt` (`D2LvlPrestTxt*`).
+ *
+ * `@va D2Common:0x6FDF0B3C`
+ */
+export const SGPT_LVLPREST_TXT_VA_6FDF0B3C = 0x6fdf0b3c
+
+/**
+ * `@va D2Common:0x6FD59610` (`DRLGPRESET_ReadFileData113c`, not exported;
+ * custom LTCG `esi = hFile`, `edi = nSize`, stack `[esp+4] = pBuffer`, `ret 4`).
+ *
+ * - Asserts `hFile != 0` (`line 135`, `0x87`).
+ * - Calls `Fog.#10104` (`FOG_MPQReadFile(ecx=hFile, edx=pBuffer, nSize, &dwRead, 0, 0, 0)`):
+ *   asserts non-zero return (`line 143`, `0x8F`) and `dwRead == nSize` (`line 146`, `0x92`),
+ *   copying `nSize` bytes from `hFile` into `pBuffer`.
+ */
+export function DRLGPRESET_ReadFileData113c(
+  m: Memory113c,
+  hFile: number,
+  nSize: number,
+  pBuffer: number,
+): void {
+  if (hFile === 0) {
+    throw new Error('DRLGPRESET_ReadFileData113c: hFile == 0 (line 135)')
+  }
+  if (pBuffer === 0) {
+    throw new Error('DRLGPRESET_ReadFileData113c: Fog.#10104 failed (line 143)')
+  }
+  if ((nSize | 0) < 0) {
+    throw new Error('DRLGPRESET_ReadFileData113c: short read (line 146)')
+  }
+  const len = nSize >>> 0
+  for (let i = 0; i < len; i++) {
+    m.setU8((pBuffer + i) >>> 0, m.u8((hFile + i) >>> 0))
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD59700` (`DRLGPRESET_GetFileSize113c`, not exported;
+ * custom LTCG `esi = hFile`, stack `[esp+4] = lpFileSizeHigh`, `ret 4`).
+ *
+ * - Asserts `hFile != 0` (`line 89`, `0x59`).
+ * - Calls `Fog.#10105` (`FOG_MPQGetFileSize(ecx=hFile, edx=lpFileSizeHigh)`):
+ *   reads `dwSizeLow = *(u32*)hFile`, optionally writes `*(u32*)(hFile + 4)` to `*lpFileSizeHigh`
+ *   when `lpFileSizeHigh != 0`, asserts `dwSizeLow != 0` (`line 95`, `0x5F`), and returns `dwSizeLow`.
+ */
+export function DRLGPRESET_GetFileSize113c(
+  m: Memory113c,
+  hFile: number,
+  lpFileSizeHigh: number,
+): number {
+  if (hFile === 0) {
+    throw new Error('DRLGPRESET_GetFileSize113c: hFile == 0 (line 89)')
+  }
+  const sizeLow = m.u32(hFile >>> 0)
+  if (lpFileSizeHigh !== 0) {
+    const sizeHigh = m.u32((hFile + 4) >>> 0)
+    m.setU32(lpFileSizeHigh >>> 0, sizeHigh)
+  }
+  if (sizeLow === 0) {
+    throw new Error('DRLGPRESET_GetFileSize113c: file size == 0 (line 95)')
+  }
+  return sizeLow | 0
+}
+
+/**
+ * `@va D2Common:0x6FD59D90` (`D2Common.#10850` `DRLGPRESET_FreeSaveHeaderBlock113c`,
+ * fastcall `ecx = pMemPool`, `edx = pBlock`, plain `ret`).
+ *
+ * Reads `pData = pBlock->pData (+0x04)`, frees `pData` via `Fog.#10046`, then frees `pBlock` via `Fog.#10046`.
+ */
+export function DRLGPRESET_FreeSaveHeaderBlock113c(
+  m: Memory113c,
+  _pMemPool: number,
+  pBlock: number,
+): void {
+  const freeFn = (m as { free?: (p: number) => void }).free
+  const pData = m.u32((pBlock + 4) >>> 0)
+  if (pData !== 0) {
+    freeFn?.call(m, pData)
+  }
+  if (pBlock !== 0) {
+    freeFn?.call(m, pBlock >>> 0)
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD59DE0` (`D2Common.#10496` `DRLGPRESET_CloneSaveHeaderBlock113c`,
+ * fastcall `ecx = pMemPool`, `edx = pSrcBlock`, plain `ret`).
+ *
+ * Allocates an 8-byte `D2SaveHeaderBlockStrc`, zeroes `[0, +4]`, copies `nCount = pSrcBlock->nCount (+0x00)`,
+ * allocates `(nCount * 3) << 2` (`12 * nCount`) bytes at `pDstBlock->pData (+0x04)`, copies `(nCount * 3) << 2`
+ * bytes from `pSrcBlock->pData (+0x04)`, and returns `pDstBlock`.
+ */
+export function DRLGPRESET_CloneSaveHeaderBlock113c(
+  m: Memory113c,
+  _pMemPool: number,
+  pSrcBlock: number,
+): number {
+  const pDst = m.alloc(8)
+  m.setU32(pDst, 0)
+  m.setU32((pDst + 4) >>> 0, 0)
+  const nCount = m.u32(pSrcBlock >>> 0)
+  const allocBytes = (Math.imul(nCount | 0, 3) << 2) >>> 0
+  m.setU32(pDst, nCount)
+  const pBuf = m.alloc(allocBytes)
+  const copyBytes = (Math.imul(m.u32(pDst) | 0, 3) << 2) >>> 0
+  m.setU32((pDst + 4) >>> 0, pBuf)
+  const pSrcData = m.u32((pSrcBlock + 4) >>> 0)
+  const dwords = copyBytes >>> 2
+  for (let i = 0; i < dwords; i++) {
+    m.setU32((pBuf + i * 4) >>> 0, m.u32((pSrcData + i * 4) >>> 0))
+  }
+  for (let i = dwords << 2; i < copyBytes; i++) {
+    m.setU8((pBuf + i) >>> 0, m.u8((pSrcData + i) >>> 0))
+  }
+  return pDst >>> 0
+}
+
+/**
+ * `@va D2Common:0x6FD59FA0` (`DRLGPRESET_FreeDrlgFile113c`, not exported;
+ * stdcall `(pDrlgFile)`, `ret 4`).
+ *
+ * - If `pDrlgFile->pBuffer (+0x04) != 0`, frees it via `Fog.#10043` (`0x6FD5922E`).
+ * - If `pDrlgFile->pTileData (+0x50) != 0`, frees it via `Fog.#10046` (`0x6FD59228`).
+ * - Walks `pDrlgFile->pPresetUnit (+0x54)` (next at `+0x0C`): if `pUnit->pSaveChain (+0x10) != 0`,
+ *   frees `pSaveChain->pData (+0x04)` and `pSaveChain`, then frees `pUnit`.
+ * - Finally frees `pDrlgFile` via `Fog.#10046`.
+ */
+export function DRLGPRESET_FreeDrlgFile113c(m: Memory113c, pDrlgFile: number): void {
+  const freeFn = (m as { free?: (p: number) => void }).free
+  const pBuffer = m.u32((pDrlgFile + 0x04) >>> 0)
+  if (pBuffer !== 0) {
+    freeFn?.call(m, pBuffer)
+  }
+  const pTileData = m.u32((pDrlgFile + 0x50) >>> 0)
+  if (pTileData !== 0) {
+    freeFn?.call(m, pTileData)
+  }
+  let pUnit = m.u32((pDrlgFile + 0x54) >>> 0)
+  while (pUnit !== 0) {
+    const curUnit = pUnit
+    const pSaveChain = m.u32((curUnit + 0x10) >>> 0)
+    pUnit = m.u32((curUnit + 0x0c) >>> 0)
+    if (pSaveChain !== 0) {
+      const pSaveData = m.u32((pSaveChain + 0x04) >>> 0)
+      if (pSaveData !== 0) {
+        freeFn?.call(m, pSaveData)
+      }
+      freeFn?.call(m, pSaveChain)
+    }
+    freeFn?.call(m, curUnit)
+  }
+  if (pDrlgFile !== 0) {
+    freeFn?.call(m, pDrlgFile >>> 0)
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD5AA80` (`DRLGPRESET_BuildRoomTombCoords113c`, not exported;
+ * stdcall `(pRoomEx)`, `ret 4`).
+ *
+ * - Reads `pPresetRoom = pRoomEx->pTypeData (+0x20)`; if `pPresetRoom->pTombCoords (+0xF0) != 0`, returns immediately.
+ * - Allocates `0x30` (`48`) bytes (`6` `D2CoordStrc` entries) at `pPresetRoom->pTombCoords (+0xF0)`.
+ * - Scans `y = 0 .. pRoomEx->nTileHeight (+0x40) - 1`, `x = 0 .. pRoomEx->nTileWidth (+0x3C) - 1`
+ *   in `pPresetRoom->pWallGrid0` (`pCells` at `+0x10`, `pRowOffsets` at `+0x14`):
+ *   when `style == ((cell >>> 20) & 0x3F) == 10` and `0x17 <= ((cell >>> 8) & 0xFF) <= 0x1B` and `count < 6`,
+ *   writes `subX = (pRoomEx->nTileXPos (+0x34) + x) * 5 + 2` and `subY = (pRoomEx->nTileYPos (+0x38) + y) * 5 + 2`
+ *   into `pTombCoords[count++]`.
+ * - Stores `count` at `pPresetRoom->nTombCoords (+0xF4)`.
+ */
+export function DRLGPRESET_BuildRoomTombCoords113c(m: Memory113c, pRoomEx: number): void {
+  const pPresetRoom = m.u32((pRoomEx + 0x20) >>> 0)
+  if (m.u32((pPresetRoom + 0xf0) >>> 0) !== 0) {
+    return
+  }
+  const pBuf = m.alloc(0x30)
+  m.setU32((pPresetRoom + 0xf0) >>> 0, pBuf)
+  let count = 0
+  const h0 = m.u32((pRoomEx + 0x40) >>> 0) | 0
+  if (h0 > 0) {
+    for (let y = 0; ; ) {
+      const w0 = m.u32((pRoomEx + 0x3c) >>> 0) | 0
+      if (w0 > 0) {
+        for (let x = 0; ; ) {
+          const pRowOffsets = m.u32((pPresetRoom + 0x14) >>> 0)
+          const rowOff = m.u32((pRowOffsets + y * 4) >>> 0) | 0
+          const pCells = m.u32((pPresetRoom + 0x10) >>> 0)
+          const cell = m.u32((pCells + (((rowOff + x) | 0) << 2)) >>> 0)
+          const style = (cell >>> 20) & 0x3f
+          const seq = (cell >>> 8) & 0xff
+          if (style === 10 && seq >= 0x17 && seq <= 0x1b && count < 6) {
+            const subY = (Math.imul(((m.u32((pRoomEx + 0x38) >>> 0) | 0) + y) | 0, 5) + 2) | 0
+            const pCoordsX = m.u32((pPresetRoom + 0xf0) >>> 0)
+            const subX = (Math.imul(((m.u32((pRoomEx + 0x34) >>> 0) | 0) + x) | 0, 5) + 2) | 0
+            m.setU32((pCoordsX + count * 8) >>> 0, subX >>> 0)
+            const pCoordsY = m.u32((pPresetRoom + 0xf0) >>> 0)
+            m.setU32((pCoordsY + count * 8 + 4) >>> 0, subY >>> 0)
+            count = (count + 1) | 0
+          }
+          const curW = m.u32((pRoomEx + 0x3c) >>> 0) | 0
+          x = (x + 1) | 0
+          if (x >= curW) break
+        }
+      }
+      const curH = m.u32((pRoomEx + 0x40) >>> 0) | 0
+      y = (y + 1) | 0
+      if (y >= curH) break
+    }
+  }
+  m.setU32((pPresetRoom + 0xf4) >>> 0, count >>> 0)
+}
+
+/**
+ * `@va D2Common:0x6FD5BC60` (`DRLGPRESET_AllocDrlgMap113c`, not exported;
+ * custom LTCG `ebx = pSeed`, stack `[esp+4] = pLevel`, `[esp+8] = nLvlPrestId`, `[esp+0xC] = pBox`, `ret 0xC`).
+ *
+ * Allocates and zero-initializes a `0x58`-byte `D2DrlgMapStrc`, looks up `D2LvlPrestTxt` record `nLvlPrestId`
+ * via `sgptDataTables` (`0x6FDE9E1C` `+0xC68` count, `0x6FDF0B3C` base, stride `0x1B0`), rolls `nPickedFile`
+ * against `pPrest->dwFiles (+0x40)` using `pSeed`, initializes coordinates/dimensions from `pPrest` or `pBox`,
+ * sets `bInited (+0x3C) = 1`, prepends to `pLevel->pPresetMaps (+0x1B0)`, and returns `pMap`.
+ */
+export function DRLGPRESET_AllocDrlgMap113c(
+  m: Memory113c,
+  pSeed: number,
+  pLevel: number,
+  nLvlPrestId: number,
+  pBox: number,
+): number {
+  const pDrlg = m.u32((pLevel + 0x1b4) >>> 0)
+  void m.u32((pDrlg + 0x478) >>> 0)
+  const pMap = m.alloc(0x58)
+  m.fill(pMap, 0x58, 0)
+
+  let pPrest = 0
+  const prestId = nLvlPrestId | 0
+  if (prestId >= 0) {
+    const pDataTables = m.u32(SGPT_DATA_TABLES_PTR_VA_6FDE9E1C)
+    const dwRecs = m.u32((pDataTables + 0xc68) >>> 0) | 0
+    if (prestId < dwRecs) {
+      const pBase = m.u32(SGPT_LVLPREST_TXT_VA_6FDF0B3C)
+      pPrest = (pBase + Math.imul(prestId, 0x1b0)) >>> 0
+    }
+  }
+  m.setU32((pMap + 0x08) >>> 0, pPrest)
+  m.setU32(pMap, prestId >>> 0)
+
+  const nFiles = m.u32((pPrest + 0x40) >>> 0) | 0
+  let pickedFile = 0
+  if (nFiles > 0) {
+    const hi0 = m.u32((pSeed + 4) >>> 0) >>> 0
+    const lo0 = m.u32(pSeed >>> 0) >>> 0
+    const prod = BigInt(lo0) * 0x6ac690c5n + BigInt(hi0)
+    const newLo = Number(prod & 0xffffffffn) >>> 0
+    const newHi = Number((prod >> 32n) & 0xffffffffn) >>> 0
+    m.setU32((pSeed + 4) >>> 0, newHi)
+    m.setU32(pSeed >>> 0, newLo)
+    if ((nFiles & (nFiles - 1)) !== 0) {
+      pickedFile = ((newLo >>> 0) % (nFiles >>> 0)) | 0
+    } else {
+      pickedFile = (newLo & (nFiles - 1)) | 0
+    }
+  }
+  m.setU32((pMap + 0x04) >>> 0, pickedFile >>> 0)
+  m.setU32((pMap + 0x10) >>> 0, m.u32(pBox >>> 0))
+  const boxY = m.u32((pBox + 0x04) >>> 0)
+  const pPrestCur = m.u32((pMap + 0x08) >>> 0)
+  m.setU32((pMap + 0x14) >>> 0, boxY)
+
+  const sizeX = m.u32((pPrestCur + 0x28) >>> 0)
+  if (sizeX !== 0 && m.u32((pPrestCur + 0x2c) >>> 0) !== 0) {
+    m.setU32((pMap + 0x18) >>> 0, sizeX)
+    m.setU32((pMap + 0x1c) >>> 0, m.u32((pPrestCur + 0x2c) >>> 0))
+  } else {
+    m.setU32((pMap + 0x18) >>> 0, m.u32((pBox + 0x08) >>> 0))
+    m.setU32((pMap + 0x1c) >>> 0, m.u32((pBox + 0x0c) >>> 0))
+  }
+
+  m.setU32((pMap + 0x3c) >>> 0, 1)
+  m.setU32((pMap + 0x54) >>> 0, m.u32((pLevel + 0x1b0) >>> 0))
+  m.setU32((pLevel + 0x1b0) >>> 0, pMap)
+  return pMap >>> 0
+}
+

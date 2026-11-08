@@ -21,7 +21,7 @@ import {
   SEED_RollLimitedRandomNumberInline113c,
   SEED_RollRandomNumberInline113c,
 } from '../../../src/d2kern-113c/common/inline-helpers.ts'
-import { SparseMemory113c } from '../../../src/d2kern-113c/mem/sparse-memory.ts'
+import { SparseMemory113c, type Memory113c } from '../../../src/d2kern-113c/mem/sparse-memory.ts'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -107,10 +107,63 @@ function fnv1aUpdate(h: number, data: Uint8Array): number {
   return hash >>> 0
 }
 
+function createGuardedMemory(preBlocks: MemBlockJson[]): {
+  raw: SparseMemory113c
+  mem: Memory113c
+  rogueWrites: number[]
+} {
+  const raw = new SparseMemory113c()
+  const spans: Array<{ start: number; end: number }> = []
+  for (const blk of preBlocks) {
+    const start = u32(blk.addr)
+    const bytes = hexToBytes(blk.hex)
+    raw.loadBlock(start, bytes)
+    spans.push({ start, end: (start + bytes.length) >>> 0 })
+  }
+  const rogueWrites: number[] = []
+  const checkWrite = (addr: number, width: number): void => {
+    for (let i = 0; i < width; i++) {
+      const a = (addr + i) >>> 0
+      if (!spans.some(s => a >= s.start && a < s.end)) {
+        rogueWrites.push(a)
+      }
+    }
+  }
+  const mem: Memory113c = {
+    alloc: size => raw.alloc(size),
+    u8: p => raw.u8(p),
+    u16: p => raw.u16(p),
+    u32: p => raw.u32(p),
+    setU8: (p, v) => {
+      checkWrite(p, 1)
+      raw.setU8(p, v)
+    },
+    setU16: (p, v) => {
+      checkWrite(p, 2)
+      raw.setU16(p, v)
+    },
+    setU32: (p, v) => {
+      checkWrite(p, 4)
+      raw.setU32(p, v)
+    },
+    get: (base, f, idx) => raw.get(base, f, idx),
+    set: (base, f, v, idx = 0) => {
+      const width = f.type === 'u8' ? 1 : f.type === 'u16' ? 2 : 4
+      checkWrite((base + f.off + idx * width) >>> 0, width)
+      raw.set(base, f, v, idx)
+    },
+    fill: (p, len, v) => {
+      checkWrite(p, len)
+      raw.fill(p, len, v)
+    },
+  }
+  return { raw, mem, rogueWrites }
+}
+
 /**
  * Dispatch map for all 17 functions in B002 (`0x6FD51000..0x6FD515B0`).
  */
-const B002_DISPATCH: Record<string, (m: SparseMemory113c, v: VectorCaseJson) => number | undefined> = {
+const B002_DISPATCH: Record<string, (m: Memory113c, v: VectorCaseJson) => number | undefined> = {
   '0x6FD51000': (m, v) => {
     PLAYER_SetPlayerData150Params113c(
       m,
@@ -144,22 +197,31 @@ function replayVector(
   v: VectorCaseJson,
   mutateReturn = false,
   mutatePostByte = false,
+  injectRogueWrite = false,
 ): { ok: boolean; reason?: string; outEax: number; postHash: number } {
   const fn = B002_DISPATCH[v.va]
   if (!fn) {
     return { ok: false, reason: `Missing dispatch handler for ${v.va}`, outEax: 0, postHash: 0 }
   }
-  const m = new SparseMemory113c()
-  for (const blk of v.preBlocks) {
-    m.loadBlock(u32(blk.addr), hexToBytes(blk.hex))
+  const { raw, mem, rogueWrites } = createGuardedMemory(v.preBlocks)
+  let ret = fn(mem, v)
+  if (injectRogueWrite) {
+    mem.setU8(0x0dead000, 0x99)
   }
-  let ret = fn(m, v)
+  if (rogueWrites.length > 0) {
+    return {
+      ok: false,
+      reason: `${v.va} ${v.caseId}: rogue writes outside preBlocks @ 0x${rogueWrites[0]!.toString(16)}`,
+      outEax: 0,
+      postHash: 0,
+    }
+  }
   if (mutateReturn && ret !== undefined) {
     ret = (ret ^ 1) >>> 0
   }
   if (mutatePostByte && v.postBlocks.length > 0) {
     const firstAddr = u32(v.postBlocks[0]!.addr)
-    m.setU8(firstAddr, m.u8(firstAddr) ^ 0xff)
+    raw.setU8(firstAddr, raw.u8(firstAddr) ^ 0xff)
   }
 
   const actualEax = v.compareMode === 'void' ? 0 : (ret ?? 0) >>> 0
@@ -179,7 +241,7 @@ function replayVector(
   for (const blk of v.postBlocks) {
     const addr = u32(blk.addr)
     const expectedBytes = hexToBytes(blk.hex)
-    const actualBytes = m.readBytes(addr, expectedBytes.length)
+    const actualBytes = raw.readBytes(addr, expectedBytes.length)
     postHash = fnv1aUpdate(postHash, actualBytes)
     const actualHex = bytesToHex(actualBytes)
     if (actualHex !== blk.hex) {
@@ -225,23 +287,27 @@ describe('K1 Lane A — B002 D2Common Inline Helpers Real-DLL Differential Repla
     }
   })
 
-  it('enforces negative controls: mutating return value or post-memory bytes fails comparison', () => {
+  it('enforces negative controls: mutating return value, post-memory bytes, or rogue write fails comparison', () => {
     const eaxVec = fixture.cases.find(v => v.va === '0x6FD51100' && v.caseId === 'max_eight_pow2')!
     expect(eaxVec).toBeDefined()
-    expect(replayVector(eaxVec, false, false).ok).toBe(true)
-    const mutatedRet = replayVector(eaxVec, true, false)
+    expect(replayVector(eaxVec, false, false, false).ok).toBe(true)
+    const mutatedRet = replayVector(eaxVec, true, false, false)
     expect(mutatedRet.ok).toBe(false)
     expect(mutatedRet.reason).toContain('eax mismatch')
 
-    const mutatedMemSeed = replayVector(eaxVec, false, true)
+    const mutatedMemSeed = replayVector(eaxVec, false, true, false)
     expect(mutatedMemSeed.ok).toBe(false)
     expect(mutatedMemSeed.reason).toContain('postBlock mismatch')
 
     const playerVec = fixture.cases.find(v => v.va === '0x6FD51000' && v.caseId === 'valid_player_extremes')!
     expect(playerVec).toBeDefined()
-    expect(replayVector(playerVec, false, false).ok).toBe(true)
-    const mutatedPlayerMem = replayVector(playerVec, false, true)
+    expect(replayVector(playerVec, false, false, false).ok).toBe(true)
+    const mutatedPlayerMem = replayVector(playerVec, false, true, false)
     expect(mutatedPlayerMem.ok).toBe(false)
     expect(mutatedPlayerMem.reason).toContain('postBlock mismatch')
+
+    const rogueRes = replayVector(playerVec, false, false, true)
+    expect(rogueRes.ok).toBe(false)
+    expect(rogueRes.reason).toContain('rogue writes outside preBlocks')
   })
 })

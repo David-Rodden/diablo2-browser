@@ -171,20 +171,20 @@ const B014_LEAF_DISPATCH: Record<string, (m: Memory113c, v: VectorCaseJson) => n
     INVENTORY_ScoreGridRectPlacement113c(
       m,
       v.regs.eax | 0,
-      v.regs.ecx & 0xff,
+      v.regs.ecx >>> 0,
       v.stack[0]! >>> 0,
       v.stack[1]! | 0,
-      v.stack[2]! & 0xff,
+      v.stack[2]! >>> 0,
     ) >>> 0,
   '0x6FD6E190': (m, v) => INVENTORY_GetFirstItem113c(m, v.stack[0]! >>> 0) >>> 0,
   '0x6FD6E310': (m, v) => {
     INVENTORY_FillGridRect113c(
       m,
-      v.regs.eax & 0xff,
+      v.regs.eax >>> 0,
       v.regs.ecx | 0,
       v.regs.edx | 0,
       v.stack[0]! >>> 0,
-      v.stack[1]! & 0xff,
+      v.stack[1]! >>> 0,
       v.stack[2]! >>> 0,
     )
     return undefined

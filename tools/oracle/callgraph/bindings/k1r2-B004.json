@@ -91,15 +91,6 @@
   },
   {
     "module": "D2Common",
-    "va": "0x6FD95990",
-    "name": "D2Common_10665_ApplyMonProp",
-    "kernFile": "src/d2kern-113c/common/drlg/drlg-room.ts",
-    "tsSymbol": "D2Common_10665_ApplyMonProp113c",
-    "status": "diff-verified",
-    "diffEvidence": "tests/oracle/k1/laneC-B004-drlg.test.ts + tests/fixtures/oracle/k1/laneC/b004-vectors.ndjson (6 real D2Common.dll vectors)"
-  },
-  {
-    "module": "D2Common",
     "va": "0x6FDB81A0",
     "name": "DRLGROOMTILE_FindPresetRoomTile",
     "kernFile": "src/d2kern-113c/common/drlg/room-tile.ts",

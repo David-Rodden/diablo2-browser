@@ -23,7 +23,7 @@ import {
   ITEMS_SetOrClearFlagMask113c,
   ITEMS_TestFlagMask113c,
 } from '../../../src/d2kern-113c/common/items.ts'
-import { SparseMemory113c } from '../../../src/d2kern-113c/mem/sparse-memory.ts'
+import { SparseMemory113c, type Memory113c } from '../../../src/d2kern-113c/mem/sparse-memory.ts'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -109,10 +109,63 @@ function fnv1aUpdate(h: number, data: Uint8Array): number {
   return hash >>> 0
 }
 
+function createGuardedMemory(preBlocks: MemBlockJson[]): {
+  raw: SparseMemory113c
+  mem: Memory113c
+  rogueWrites: number[]
+} {
+  const raw = new SparseMemory113c()
+  const spans: Array<{ start: number; end: number }> = []
+  for (const blk of preBlocks) {
+    const start = u32(blk.addr)
+    const bytes = hexToBytes(blk.hex)
+    raw.loadBlock(start, bytes)
+    spans.push({ start, end: (start + bytes.length) >>> 0 })
+  }
+  const rogueWrites: number[] = []
+  const checkWrite = (addr: number, width: number): void => {
+    for (let i = 0; i < width; i++) {
+      const a = (addr + i) >>> 0
+      if (!spans.some(s => a >= s.start && a < s.end)) {
+        rogueWrites.push(a)
+      }
+    }
+  }
+  const mem: Memory113c = {
+    alloc: size => raw.alloc(size),
+    u8: p => raw.u8(p),
+    u16: p => raw.u16(p),
+    u32: p => raw.u32(p),
+    setU8: (p, v) => {
+      checkWrite(p, 1)
+      raw.setU8(p, v)
+    },
+    setU16: (p, v) => {
+      checkWrite(p, 2)
+      raw.setU16(p, v)
+    },
+    setU32: (p, v) => {
+      checkWrite(p, 4)
+      raw.setU32(p, v)
+    },
+    get: (base, f, idx) => raw.get(base, f, idx),
+    set: (base, f, v, idx = 0) => {
+      const width = f.type === 'u8' ? 1 : f.type === 'u16' ? 2 : 4
+      checkWrite((base + f.off + idx * width) >>> 0, width)
+      raw.set(base, f, v, idx)
+    },
+    fill: (p, len, v) => {
+      checkWrite(p, len)
+      raw.fill(p, len, v)
+    },
+  }
+  return { raw, mem, rogueWrites }
+}
+
 /**
  * Dispatch map for all 17 leaf functions in B005 (`0x6FD6E360..0x6FD73C50`, excluding `0x6FD6E920` which has its own suite).
  */
-const B005_LEAF_DISPATCH: Record<string, (m: SparseMemory113c, v: VectorCaseJson) => number | undefined> = {
+const B005_LEAF_DISPATCH: Record<string, (m: Memory113c, v: VectorCaseJson) => number | undefined> = {
   '0x6FD6E360': (m, v) =>
     INVENTORY_IsGridRectEmpty113c(
       m,
@@ -161,22 +214,31 @@ function replayVector(
   v: VectorCaseJson,
   mutateReturn = false,
   mutatePostByte = false,
+  injectRogueWrite = false,
 ): { ok: boolean; reason?: string; outEax: number; postHash: number } {
   const fn = B005_LEAF_DISPATCH[v.va]
   if (!fn) {
     return { ok: false, reason: `Missing dispatch handler for ${v.va}`, outEax: 0, postHash: 0 }
   }
-  const m = new SparseMemory113c()
-  for (const blk of v.preBlocks) {
-    m.loadBlock(u32(blk.addr), hexToBytes(blk.hex))
+  const { raw, mem, rogueWrites } = createGuardedMemory(v.preBlocks)
+  let ret = fn(mem, v)
+  if (injectRogueWrite) {
+    mem.setU8(0x0dead000, 0x99)
   }
-  let ret = fn(m, v)
+  if (rogueWrites.length > 0) {
+    return {
+      ok: false,
+      reason: `${v.va} ${v.caseId}: rogue writes outside preBlocks @ 0x${rogueWrites[0]!.toString(16)}`,
+      outEax: 0,
+      postHash: 0,
+    }
+  }
   if (mutateReturn && ret !== undefined) {
     ret = (ret ^ 1) >>> 0
   }
   if (mutatePostByte && v.postBlocks.length > 0) {
     const firstAddr = u32(v.postBlocks[0]!.addr)
-    m.setU8(firstAddr, m.u8(firstAddr) ^ 0xff)
+    raw.setU8(firstAddr, raw.u8(firstAddr) ^ 0xff)
   }
 
   let actualOut = 0
@@ -197,7 +259,7 @@ function replayVector(
   for (const blk of v.postBlocks) {
     const addr = u32(blk.addr)
     const expectedBytes = hexToBytes(blk.hex)
-    const actualBytes = m.readBytes(addr, expectedBytes.length)
+    const actualBytes = raw.readBytes(addr, expectedBytes.length)
     postHash = fnv1aUpdate(postHash, actualBytes)
     const actualHex = bytesToHex(actualBytes)
     if (actualHex !== blk.hex) {
@@ -246,26 +308,30 @@ describe('K1 Lane A — B005 Inventory & Items Leaves Real-DLL Differential Repl
     }
   })
 
-  it('enforces negative controls: mutating return value or post-memory bytes fails comparison', () => {
+  it('enforces negative controls: mutating return value, post-memory bytes, or rogue write fails comparison', () => {
     const rectVec = fixture.cases.find(v => v.va === '0x6FD6E360' && v.caseId === 'rect_2x2_all_empty')!
     expect(rectVec).toBeDefined()
-    expect(replayVector(rectVec, false, false).ok).toBe(true)
-    const mutatedRet = replayVector(rectVec, true, false)
+    expect(replayVector(rectVec, false, false, false).ok).toBe(true)
+    const mutatedRet = replayVector(rectVec, true, false, false)
     expect(mutatedRet.ok).toBe(false)
     expect(mutatedRet.reason).toContain('eax mismatch')
 
     const linkVec = fixture.cases.find(v => v.va === '0x6FD6F690' && v.caseId === 'append_second_item')!
     expect(linkVec).toBeDefined()
-    expect(replayVector(linkVec, false, false).ok).toBe(true)
-    const mutatedLinkMem = replayVector(linkVec, false, true)
+    expect(replayVector(linkVec, false, false, false).ok).toBe(true)
+    const mutatedLinkMem = replayVector(linkVec, false, true, false)
     expect(mutatedLinkMem.ok).toBe(false)
     expect(mutatedLinkMem.reason).toContain('postBlock mismatch')
 
     const bodyLocVec = fixture.cases.find(v => v.va === '0x6FD73C50' && v.caseId === 'bodyloc_0xff')!
     expect(bodyLocVec).toBeDefined()
-    expect(replayVector(bodyLocVec, false, false).ok).toBe(true)
-    const mutatedAl = replayVector(bodyLocVec, true, false)
+    expect(replayVector(bodyLocVec, false, false, false).ok).toBe(true)
+    const mutatedAl = replayVector(bodyLocVec, true, false, false)
     expect(mutatedAl.ok).toBe(false)
     expect(mutatedAl.reason).toContain('al mismatch')
+
+    const rogueRes = replayVector(linkVec, false, false, true)
+    expect(rogueRes.ok).toBe(false)
+    expect(rogueRes.reason).toContain('rogue writes outside preBlocks')
   })
 })

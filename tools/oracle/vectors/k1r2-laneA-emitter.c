@@ -61,9 +61,28 @@
 #define ADDR_ITYPE_EQUIV  0x20009000u /* 80 * 16 bytes (80 types x 4 dwords) */
 #define ADDR_ITEMSTXT     0x20010000u /* 260 * 0x1A8 bytes */
 
+/* Lane A Iteration-3 (B011 + B017) arena regions */
+#define ADDR_HOVER_MSG    0x20020000u /* 272 bytes: D2HoverTextStrc */
+#define ADDR_HOVER_DEST   0x20020200u /* 256 bytes: szDest buffer */
+#define ADDR_WARP         0x20020400u /* 72 bytes: D2DrlgWarpStrc */
+#define ADDR_ANIMSEQ      0x20020500u /* 48 bytes: 8 * D2AnimSeqTxt (6 bytes each) */
+#define ADDR_ANIM_OUT     0x20020600u /* 16 bytes: 4 output dwords (mode, frame, dir, event) */
+#define ADDR_OBJDATA      0x20020700u /* 56 bytes: D2ObjectDataStrc */
+#define ADDR_OBJTXT       0x20020800u /* 448 bytes: D2ObjectsTxt */
+#define ADDR_VERTEX_SRC   0x20020A00u /* 20 bytes: D2DrlgVertexStrc (src) */
+#define ADDR_VERTEX_DST   0x20020A40u /* 20 bytes: D2DrlgVertexStrc (dst) */
+#define ADDR_DRLG_LEVEL   0x20020B00u /* 560 bytes: D2DrlgLevelStrc */
+#define ADDR_LEVELS_TXT   0x20021000u /* 4 * 0x220 bytes: D2LevelsTxt[0..3] */
+#define ADDR_WP_OUT       0x20021900u /* 16 bytes: uint16_t output box */
+#define ADDR_STAT_ARRAY   0x20022000u /* 64 bytes: D2StatStrc[8] */
+#define ADDR_STAT_OUT     0x20022100u /* 64 bytes: D2StatStrc[8] output buffer */
+#define ADDR_ACT          0x20022200u /* 96 bytes: D2ActStrc */
+#define ADDR_DRLG         0x20022300u /* 1164 bytes: D2DrlgStrc */
+
 /* D2Common.dll canonical VAs (ImageBase = 0x6FD50000) */
 #define VA_SGPT_DATATABLES    0x6FDE9E1Cu
 #define VA_GDWBITMASKS_IAT    0x6FDD90B0u
+#define VA_WEAPON_CLASS_TABLE 0x6FDE3368u
 #define VA_STATIC_GFX_TABLE   0x6FDED888u
 #define VA_ITEMS_TXT_COUNT    0x6FDEFB94u
 #define VA_ITEMS_TXT_PTR      0x6FDEFB98u
@@ -236,6 +255,79 @@ static uint32_t call_edx_esi(uintptr_t fn, uint32_t edx_item, uint32_t esi_list)
   return out;
 }
 
+static uint32_t call_edx(uintptr_t fn, uint32_t edx_in) {
+  uint32_t out;
+  __asm__ volatile (
+    "call *%[fn]\n\t"
+    : "=a"(out), "+d"(edx_in)
+    : [fn]"r"(fn)
+    : "ecx", "memory", "cc"
+  );
+  return out;
+}
+
+static uint32_t call_ecx(uintptr_t fn, uint32_t ecx_in) {
+  uint32_t out;
+  __asm__ volatile (
+    "call *%[fn]\n\t"
+    : "=a"(out), "+c"(ecx_in)
+    : [fn]"r"(fn)
+    : "edx", "memory", "cc"
+  );
+  return out;
+}
+
+static uint32_t call_ecx_edx(uintptr_t fn, uint32_t ecx_in, uint32_t edx_in) {
+  uint32_t out;
+  __asm__ volatile (
+    "call *%[fn]\n\t"
+    : "=a"(out), "+c"(ecx_in), "+d"(edx_in)
+    : [fn]"r"(fn)
+    : "memory", "cc"
+  );
+  return out;
+}
+
+static uint32_t call_ecx_edx_esi(uintptr_t fn, uint32_t ecx_in, uint32_t edx_in, uint32_t esi_in) {
+  uint32_t out;
+  __asm__ volatile (
+    "call *%[fn]\n\t"
+    : "=a"(out), "+c"(ecx_in), "+d"(edx_in), "+S"(esi_in)
+    : [fn]"r"(fn)
+    : "memory", "cc"
+  );
+  return out;
+}
+
+static __attribute__((noinline)) uint32_t call_eax_ebx_ecx_stack1_ret4(
+  uintptr_t fn,
+  uint32_t eax_in,
+  uint32_t ebx_in,
+  uint32_t ecx_in,
+  uint32_t s0
+) {
+  uint32_t out;
+  __asm__ volatile (
+    "pushl %[s0]\n\t"
+    "call *%[fn]\n\t"
+    : "=a"(out), "+b"(ebx_in), "+c"(ecx_in)
+    : "a"(eax_in), [s0]"r"(s0), [fn]"D"(fn)
+    : "edx", "memory", "cc"
+  );
+  return out;
+}
+
+static __attribute__((noinline)) uint32_t call_eax_ebx(uintptr_t fn, uint32_t eax_in, uint32_t ebx_in) {
+  uint32_t out;
+  __asm__ volatile (
+    "call *%[fn]\n\t"
+    : "=a"(out), "+b"(ebx_in)
+    : "a"(eax_in), [fn]"D"(fn)
+    : "ecx", "edx", "memory", "cc"
+  );
+  return out;
+}
+
 static uint32_t call_stdcall1(uintptr_t fn, uint32_t a0) {
   typedef uint32_t (__stdcall *Fn1)(uint32_t);
   return ((Fn1)fn)(a0);
@@ -249,6 +341,11 @@ static uint32_t call_stdcall2(uintptr_t fn, uint32_t a0, uint32_t a1) {
 static uint32_t call_stdcall3(uintptr_t fn, uint32_t a0, uint32_t a1, uint32_t a2) {
   typedef uint32_t (__stdcall *Fn3)(uint32_t, uint32_t, uint32_t);
   return ((Fn3)fn)(a0, a1, a2);
+}
+
+static uint32_t call_stdcall7(uintptr_t fn, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t a5, uint32_t a6) {
+  typedef uint32_t (__stdcall *Fn7)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
+  return ((Fn7)fn)(a0, a1, a2, a3, a4, a5, a6);
 }
 
 static uint32_t call_stdcall8(uintptr_t fn, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t a5, uint32_t a6, uint32_t a7) {
@@ -1071,6 +1168,66 @@ static void emit_b005_leaves(FILE *fp) {
     capture_pre(r, 7, pre);
     eax = call_edx_esi(va, ADDR_UNIT_B, hdr);
     emit_case_json(fp, &first, va, nm, "unlink_tail_item", "void", 0, 0, ADDR_UNIT_B, hdr, 0, NULL, 0, eax, r, 7, pre);
+
+    /* Case 5: NULL pItem -> no-op */
+    capture_pre(r, 7, pre);
+    eax = call_edx_esi(va, 0u, hdr);
+    emit_case_json(fp, &first, va, nm, "null_item_noop", "void", 0, 0, 0u, hdr, 0, NULL, 0, eax, r, 7, pre);
+
+    /* Case 6: Non-item pItem (dwUnitType != 4) -> no-op */
+    init_item_unit(ADDR_UNIT_A, ADDR_ITEMDATA_A, ADDR_INVENTORY);
+    w32(ADDR_UNIT_A + 0x00, 1u);
+    capture_pre(r, 7, pre);
+    eax = call_edx_esi(va, ADDR_UNIT_A, hdr);
+    emit_case_json(fp, &first, va, nm, "non_item_unit_noop", "void", 0, 0, ADDR_UNIT_A, hdr, 0, NULL, 0, eax, r, 7, pre);
+
+    /* Case 7: Item with pItemData == 0 -> no-op */
+    init_item_unit(ADDR_UNIT_A, ADDR_ITEMDATA_A, ADDR_INVENTORY);
+    w32(ADDR_UNIT_A + 0x14, 0u);
+    capture_pre(r, 7, pre);
+    eax = call_edx_esi(va, ADDR_UNIT_A, hdr);
+    emit_case_json(fp, &first, va, nm, "null_itemdata_noop", "void", 0, 0, ADDR_UNIT_A, hdr, 0, NULL, 0, eax, r, 7, pre);
+
+    /* Case 8: pPrev == 0 and pNext == 0, but head/tail pointers in hdr do NOT match pItem */
+    memset((void *)(uintptr_t)ADDR_INVENTORY, 0, 64);
+    init_item_unit(ADDR_UNIT_A, ADDR_ITEMDATA_A, ADDR_INVENTORY);
+    init_item_unit(ADDR_UNIT_B, ADDR_ITEMDATA_B, ADDR_INVENTORY);
+    init_item_unit(ADDR_UNIT_C, ADDR_ITEMDATA_C, ADDR_INVENTORY);
+    w32(hdr + 0x00, ADDR_UNIT_B); /* pFirstItem != UNIT_A */
+    w32(hdr + 0x04, ADDR_UNIT_C); /* pLastItem != UNIT_A */
+    w32(ADDR_ITEMDATA_A + 0x5C + 0x04, 0u); /* pPrevItem = 0 */
+    w32(ADDR_ITEMDATA_A + 0x5C + 0x08, 0u); /* pNextItem = 0 */
+    capture_pre(r, 7, pre);
+    eax = call_edx_esi(va, ADDR_UNIT_A, hdr);
+    emit_case_json(fp, &first, va, nm, "head_and_tail_mismatch_preserves_hdr", "void", 0, 0, ADDR_UNIT_A, hdr, 0, NULL, 0, eax, r, 7, pre);
+
+    /* Case 9: Middle item B where pPrev (A) is non-item (dwUnitType = 1) and pNext (C) has pItemData == 0 */
+    memset((void *)(uintptr_t)ADDR_INVENTORY, 0, 64);
+    init_item_unit(ADDR_UNIT_A, ADDR_ITEMDATA_A, ADDR_INVENTORY);
+    init_item_unit(ADDR_UNIT_B, ADDR_ITEMDATA_B, ADDR_INVENTORY);
+    init_item_unit(ADDR_UNIT_C, ADDR_ITEMDATA_C, ADDR_INVENTORY);
+    call_ecx_esi(0x6FD6F690u, ADDR_UNIT_A, ADDR_INVENTORY);
+    call_ecx_esi(0x6FD6F690u, ADDR_UNIT_B, ADDR_INVENTORY);
+    call_ecx_esi(0x6FD6F690u, ADDR_UNIT_C, ADDR_INVENTORY);
+    w32(ADDR_UNIT_A + 0x00, 1u); /* pPrev is non-item */
+    w32(ADDR_UNIT_C + 0x14, 0u); /* pNext has NULL pItemData */
+    capture_pre(r, 7, pre);
+    eax = call_edx_esi(va, ADDR_UNIT_B, hdr);
+    emit_case_json(fp, &first, va, nm, "prev_non_item_and_next_null_itemdata", "void", 0, 0, ADDR_UNIT_B, hdr, 0, NULL, 0, eax, r, 7, pre);
+
+    /* Case 10: Middle item B where pPrev (A) has pItemData == 0 and pNext (C) is non-item (dwUnitType = 1) */
+    memset((void *)(uintptr_t)ADDR_INVENTORY, 0, 64);
+    init_item_unit(ADDR_UNIT_A, ADDR_ITEMDATA_A, ADDR_INVENTORY);
+    init_item_unit(ADDR_UNIT_B, ADDR_ITEMDATA_B, ADDR_INVENTORY);
+    init_item_unit(ADDR_UNIT_C, ADDR_ITEMDATA_C, ADDR_INVENTORY);
+    call_ecx_esi(0x6FD6F690u, ADDR_UNIT_A, ADDR_INVENTORY);
+    call_ecx_esi(0x6FD6F690u, ADDR_UNIT_B, ADDR_INVENTORY);
+    call_ecx_esi(0x6FD6F690u, ADDR_UNIT_C, ADDR_INVENTORY);
+    w32(ADDR_UNIT_A + 0x14, 0u); /* pPrev has NULL pItemData */
+    w32(ADDR_UNIT_C + 0x00, 1u); /* pNext is non-item */
+    capture_pre(r, 7, pre);
+    eax = call_edx_esi(va, ADDR_UNIT_B, hdr);
+    emit_case_json(fp, &first, va, nm, "prev_null_itemdata_and_next_non_item", "void", 0, 0, ADDR_UNIT_B, hdr, 0, NULL, 0, eax, r, 7, pre);
   }
 
   /* 11. 0x6FD71F60 ITEMS_NoOpReturnZero */
@@ -1396,6 +1553,76 @@ static void emit_b005_gfx_cache(FILE *fp) {
     uint32_t eax = call_void0(va);
     emit_case_json(fp, &first, va, nm, "overflow_255_clamp_backfills_nextfree", "void", 0, 0, 0, 0, 0, NULL, 0, eax, r, 9, pre);
   }
+
+  /* Case 7: Weapon/weapon static-slot collision (0x6FD6EB42..0x6FD6EB59) and item with dwCode == 0 */
+  {
+    /* Set weapon bit 45 on static-table type 37 so static[4..] (type 37) weapon-collide with weapon item before landing on type 3 */
+    set_equiv_bit(37, 45);
+    put_item_rec(0, 0u, 0u, 45);          /* dwCode == 0, dwAltGfx == 0 -> matches slot 0 (dup=true) and is skipped */
+    put_item_rec(1, 0x37706577u, 0u, 45); /* 'wep7', weapon (45): collides with static[4..] where tt==37 has bit 45 */
+
+    RangeSpec r[9] = {
+      { VA_SGPT_DATATABLES, 4 },
+      { VA_GDWBITMASKS_IAT, 4 },
+      { ADDR_BITMASKS, 128 },
+      { ADDR_DATATABLES + 0xBF8, 0x10 },
+      { ADDR_ITYPE_EQUIV, 80 * 16 },
+      { VA_STATIC_GFX_TABLE, 0x840 },
+      { VA_ITEMS_TXT_COUNT, 8 },
+      { ADDR_ITEMSTXT, 2 * 0x1A8 },
+      { VA_GFX_CACHE, 0x6FDF148Cu - VA_GFX_CACHE }
+    };
+    memset((void *)(uintptr_t)VA_GFX_CACHE, 0, 0x6FDF148Cu - VA_GFX_CACHE);
+    w32(VA_GFX_INIT_FLAG, 0u);
+    w32(VA_ITEMS_TXT_COUNT, 2u);
+    capture_pre(r, 9, pre);
+    uint32_t eax = call_void0(va);
+    emit_case_json(fp, &first, va, nm, "weapon_static_collision_and_dwcode_zero", "void", 0, 0, 0, 0, 0, NULL, 0, eax, r, 9, pre);
+
+    /* Restore ADDR_ITYPE_EQUIV */
+    memset((void *)(uintptr_t)ADDR_ITYPE_EQUIV, 0, 80 * 16);
+    set_equiv_bit(1, 3);   set_equiv_bit(1, 50);
+    set_equiv_bit(3, 3);   set_equiv_bit(3, 50);
+    set_equiv_bit(37, 37); set_equiv_bit(37, 50);
+    set_equiv_bit(45, 45);
+    set_equiv_bit(50, 50);
+    set_equiv_bit(51, 51); set_equiv_bit(51, 50);
+    set_equiv_bit(60, 37); set_equiv_bit(60, 75);
+  }
+
+  /* Cases 8..10: NT boundary gates NT = 3, NT = 37, NT = 51 */
+  {
+    const uint32_t nts[3] = { 3u, 37u, 51u };
+    const char *nt_cids[3] = { "nt_boundary_gate_3", "nt_boundary_gate_37", "nt_boundary_gate_51" };
+    set_equiv_bit(2, 3);    /* type 2 has body armor bit 3 */
+    set_equiv_bit(36, 37);  /* type 36 has helm bit 37 */
+    set_equiv_bit(48, 51);  /* type 48 has shield bit 51 */
+    put_item_rec(0, 0x326D7261u, 0u, 2);  /* type 2 (body armor bit 3): blocked when NT=3, allowed when NT=37,51 */
+    put_item_rec(1, 0x366D6C68u, 0u, 36); /* type 36 (helm bit 37): blocked when NT=3,37, allowed when NT=51 */
+    put_item_rec(2, 0x38646873u, 0u, 48); /* type 48 (shield bit 51): blocked when NT=3,37,51 */
+
+    RangeSpec r[9] = {
+      { VA_SGPT_DATATABLES, 4 },
+      { VA_GDWBITMASKS_IAT, 4 },
+      { ADDR_BITMASKS, 128 },
+      { ADDR_DATATABLES + 0xBF8, 0x10 },
+      { ADDR_ITYPE_EQUIV, 80 * 16 },
+      { VA_STATIC_GFX_TABLE, 0x840 },
+      { VA_ITEMS_TXT_COUNT, 8 },
+      { ADDR_ITEMSTXT, 3 * 0x1A8 },
+      { VA_GFX_CACHE, 0x6FDF148Cu - VA_GFX_CACHE }
+    };
+    for (int k = 0; k < 3; k++) {
+      w32(ADDR_DATATABLES + 0xBFC, nts[k]);
+      memset((void *)(uintptr_t)VA_GFX_CACHE, 0, 0x6FDF148Cu - VA_GFX_CACHE);
+      w32(VA_GFX_INIT_FLAG, 0u);
+      w32(VA_ITEMS_TXT_COUNT, 3u);
+      capture_pre(r, 9, pre);
+      uint32_t eax = call_void0(va);
+      emit_case_json(fp, &first, va, nm, nt_cids[k], "void", 0, 0, 0, 0, 0, NULL, 0, eax, r, 9, pre);
+    }
+    w32(ADDR_DATATABLES + 0xBFC, 80u);
+  }
 }
 
 static void emit_b008(FILE *fp) {
@@ -1667,16 +1894,17 @@ static void emit_b008(FILE *fp) {
     RangeSpec r[2] = { { ADDR_UNIT_A, 244 }, { ADDR_STATLIST_EX, 100 } };
     memset((void *)(uintptr_t)ADDR_UNIT_A, 0, 244);
     memset((void *)(uintptr_t)ADDR_STATLIST_EX, 0, 100);
-    w32(ADDR_UNIT_A + 0x5C, ADDR_STATLIST_EX);
 
-    struct { uint32_t pUnit; uint32_t flags; const char *cid; } cases[5] = {
-      { 0u, 0x00000100u, "null_unit" },
-      { ADDR_UNIT_A, 0x00000100u, "flag_set_exact" },
-      { ADDR_UNIT_A, 0x8000FEFFu, "flag_clear_all_others_set" },
-      { ADDR_UNIT_A, 0xFFFFFFFFu, "flag_set_all_ones" },
-      { ADDR_UNIT_A, 0x00000000u, "flag_clear_zero" }
+    struct { uint32_t pUnit; uint32_t pSlex; uint32_t flags; const char *cid; } cases[6] = {
+      { 0u, ADDR_STATLIST_EX, 0x00000100u, "null_unit" },
+      { ADDR_UNIT_A, 0u, 0x00000100u, "unit_null_statlistex_returns_0" },
+      { ADDR_UNIT_A, ADDR_STATLIST_EX, 0x00000100u, "flag_set_exact" },
+      { ADDR_UNIT_A, ADDR_STATLIST_EX, 0x8000FEFFu, "flag_clear_all_others_set" },
+      { ADDR_UNIT_A, ADDR_STATLIST_EX, 0xFFFFFFFFu, "flag_set_all_ones" },
+      { ADDR_UNIT_A, ADDR_STATLIST_EX, 0x00000000u, "flag_clear_zero" }
     };
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 6; i++) {
+      w32(ADDR_UNIT_A + 0x5C, cases[i].pSlex);
       w32(ADDR_STATLIST_EX + 0x10, cases[i].flags);
       uint32_t st[1] = { cases[i].pUnit };
       capture_pre(r, 2, pre);
@@ -1762,20 +1990,32 @@ static void emit_b008(FILE *fp) {
     w32(ADDR_STATLIST_C + 0x14, 8u);
     w32(ADDR_STATLIST_C + 0x2C, 0u);
 
-    struct { uint32_t pSlex; uint32_t exFlags; uint32_t state; uint32_t filter; const char *cid; } cases[7] = {
-      { ADDR_STATLIST_EX, 0x80000000u, 12u, 0u, "filter0_my_last_list_first_match" },
-      { ADDR_STATLIST_EX, 0x80000000u, 12u, 0x0040u, "filter_0x40_my_last_list_second_match" },
-      { ADDR_STATLIST_EX, 0x80000000u, 8u, 0x2000u, "filter_0x2000_my_stats_any_flag" },
-      { ADDR_STATLIST_EX, 0x80000000u, 8u, 0x2008u, "filter_0x2008_my_stats_flag_0x08" },
-      { ADDR_STATLIST_EX, 0x80000000u, 8u, 0x2040u, "filter_0x2040_my_stats_flag_mismatch" },
-      { ADDR_STATLIST_EX, 0x00000000u, 12u, 0u, "non_extended_statlist" },
-      { 0u, 0x80000000u, 12u, 0u, "null_statlistex" }
+    struct {
+      uint32_t pSlex;
+      uint32_t exFlags;
+      uint32_t pLastList;
+      uint32_t pMyStats;
+      uint32_t state;
+      uint32_t filter;
+      const char *cid;
+    } cases[11] = {
+      { ADDR_STATLIST_EX, 0x80000000u, ADDR_STATLIST_A, ADDR_STATLIST_C, 12u, 0u, "filter0_my_last_list_first_match" },
+      { ADDR_STATLIST_EX, 0x80000000u, ADDR_STATLIST_A, ADDR_STATLIST_C, 12u, 0x0040u, "filter_0x40_my_last_list_second_match" },
+      { ADDR_STATLIST_EX, 0x80000000u, ADDR_STATLIST_A, ADDR_STATLIST_C, 8u, 0x2000u, "filter_0x2000_my_stats_any_flag" },
+      { ADDR_STATLIST_EX, 0x80000000u, ADDR_STATLIST_A, ADDR_STATLIST_C, 8u, 0x2008u, "filter_0x2008_my_stats_flag_0x08" },
+      { ADDR_STATLIST_EX, 0x80000000u, ADDR_STATLIST_A, ADDR_STATLIST_C, 8u, 0x2040u, "filter_0x2040_my_stats_flag_mismatch" },
+      { ADDR_STATLIST_EX, 0x80000000u, 0u, ADDR_STATLIST_C, 12u, 0u, "my_last_list_head_null" },
+      { ADDR_STATLIST_EX, 0x80000000u, ADDR_STATLIST_A, 0u, 8u, 0x2000u, "my_stats_head_null" },
+      { ADDR_STATLIST_EX, 0x80000000u, ADDR_STATLIST_A, ADDR_STATLIST_C, 99u, 0u, "state_mismatch_my_last_list" },
+      { ADDR_STATLIST_EX, 0x80000000u, ADDR_STATLIST_A, ADDR_STATLIST_C, 99u, 0x2008u, "state_mismatch_my_stats" },
+      { ADDR_STATLIST_EX, 0x00000000u, ADDR_STATLIST_A, ADDR_STATLIST_C, 12u, 0u, "non_extended_statlist" },
+      { 0u, 0x80000000u, ADDR_STATLIST_A, ADDR_STATLIST_C, 12u, 0u, "null_statlistex" }
     };
-    for (int i = 0; i < 7; i++) {
+    for (int i = 0; i < 11; i++) {
       w32(ADDR_UNIT_A + 0x5C, cases[i].pSlex);
       w32(ADDR_STATLIST_EX + 0x10, cases[i].exFlags);
-      w32(ADDR_STATLIST_EX + 0x3C, ADDR_STATLIST_A);
-      w32(ADDR_STATLIST_EX + 0x40, ADDR_STATLIST_C);
+      w32(ADDR_STATLIST_EX + 0x3C, cases[i].pLastList);
+      w32(ADDR_STATLIST_EX + 0x40, cases[i].pMyStats);
       uint32_t st[3] = { ADDR_UNIT_A, cases[i].state, cases[i].filter };
       capture_pre(r, 5, pre);
       uint32_t eax = call_stdcall3(va, ADDR_UNIT_A, cases[i].state, cases[i].filter);
@@ -1808,18 +2048,20 @@ static void emit_b008(FILE *fp) {
     w32(ADDR_STATLIST_B + 0x10, 0x00000020u);
     w32(ADDR_STATLIST_B + 0x2C, 0u);
 
-    w32(ADDR_STATLIST_C + 0x10, 0x00000040u);
+    /* Give node C both 0x2000 and 0x0040 so filter=0x2000 would match C if &0xFFFFDFFF were omitted! */
+    w32(ADDR_STATLIST_C + 0x10, 0x00002040u);
     w32(ADDR_STATLIST_C + 0x2C, 0u);
 
-    struct { uint32_t pList; uint32_t filter; const char *cid; } cases[6] = {
+    struct { uint32_t pList; uint32_t filter; const char *cid; } cases[7] = {
       { 0u, 0x20u, "null_list" },
       { ADDR_STATLIST_EX, 0x0020u, "extended_my_last_list_match_b" },
       { ADDR_STATLIST_EX, 0x2040u, "extended_my_stats_match_c" },
       { ADDR_STATLIST_A, 0x0008u, "non_extended_matches_self" },
       { ADDR_STATLIST_A, 0x0020u, "non_extended_walks_prev_to_b" },
-      { ADDR_STATLIST_EX, 0x2000u, "filter_0x2000_only_mask_zero_returns_0" }
+      { ADDR_STATLIST_EX, 0x2000u, "filter_0x2000_only_mask_zero_returns_0" },
+      { ADDR_STATLIST_C, 0x2000u, "non_extended_node_has_0x2000_filter_0x2000_masked_to_0" }
     };
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < 7; i++) {
       capture_pre(r, 4, pre);
       uint32_t eax = call_eax_ecx(va, cases[i].pList, cases[i].filter);
       emit_case_json(fp, &first, va, nm, cases[i].cid, "eax", cases[i].pList, cases[i].filter, 0, 0, 0, NULL, 0, eax, r, 4, pre);
@@ -2258,6 +2500,785 @@ static void emit_b014(FILE *fp) {
   }
 }
 
+static void emit_b011(FILE *fp) {
+  int first = 1;
+  uint8_t *pre[8];
+
+  /* 1. 0x6FD68220 CHAT_CopyHoverMsg (__stdcall(pHoverMsg, szDest), void) */
+  {
+    const uint32_t va = 0x6FD68220u;
+    const char *nm = "CHAT_CopyHoverMsg";
+    RangeSpec r[2] = { { ADDR_HOVER_MSG, 272 }, { ADDR_HOVER_DEST, 64 } };
+    const char *msgs[4] = {
+      "",
+      "Hi!",
+      "Stay awhile and listen!",
+      "Diablo II Lord of Destruction v1.13c Hover Message Test String!"
+    };
+    const char *cids[4] = { "empty_string", "short_hi", "stay_awhile", "long_63_chars" };
+    for (int i = 0; i < 4; i++) {
+      memset((void *)(uintptr_t)ADDR_HOVER_MSG, 0, 272);
+      memset((void *)(uintptr_t)ADDR_HOVER_DEST, 0xCC, 64);
+      w32(ADDR_HOVER_MSG + 0x00, 100u);
+      w32(ADDR_HOVER_MSG + 0x04, 350u);
+      w8(ADDR_HOVER_MSG + 0x08, 0u);
+      w32(ADDR_HOVER_MSG + 0x0C, 1u);
+      strcpy((char *)(uintptr_t)(ADDR_HOVER_MSG + 0x10), msgs[i]);
+      uint32_t st[2] = { ADDR_HOVER_MSG, ADDR_HOVER_DEST };
+      capture_pre(r, 2, pre);
+      uint32_t eax = call_stdcall2(va, ADDR_HOVER_MSG, ADDR_HOVER_DEST);
+      emit_case_json(fp, &first, va, nm, cids[i], "void", 0, 0, 0, 0, 0, st, 2, eax, r, 2, pre);
+    }
+  }
+
+  /* 2. 0x6FD68240 CHAT_GetTimeoutFromHoverMsg (__stdcall(pHoverMsg) -> eax) */
+  {
+    const uint32_t va = 0x6FD68240u;
+    const char *nm = "CHAT_GetTimeoutFromHoverMsg";
+    RangeSpec r[1] = { { ADDR_HOVER_MSG, 32 } };
+    uint32_t timeouts[4] = { 0u, 125u, 0x7FFFFFFFu, 0xDEADBEEFu };
+    const char *cids[4] = { "timeout_0", "timeout_125", "timeout_max_pos", "timeout_deadbeef" };
+    for (int i = 0; i < 4; i++) {
+      memset((void *)(uintptr_t)ADDR_HOVER_MSG, 0, 32);
+      w32(ADDR_HOVER_MSG + 0x00, 50u);
+      w32(ADDR_HOVER_MSG + 0x04, timeouts[i]);
+      uint32_t st[1] = { ADDR_HOVER_MSG };
+      capture_pre(r, 1, pre);
+      uint32_t eax = call_stdcall1(va, ADDR_HOVER_MSG);
+      emit_case_json(fp, &first, va, nm, cids[i], "eax", 0, 0, 0, 0, 0, st, 1, eax, r, 1, pre);
+    }
+  }
+
+  /* 3. 0x6FD6A660 MONSTERS_IsTownOrFriendlyUnit (edx = pUnit -> eax) */
+  {
+    const uint32_t va = 0x6FD6A660u;
+    const char *nm = "MONSTERS_IsTownOrFriendlyUnit";
+    setup_synthetic_datatables();
+    /* Configure MonStats[0..3].bFlags1 (+0x0D) */
+    w8(ADDR_MONSTATS + 0 * 0x1A8 + 0x0D, 0x00u); /* neither bit 0 nor bit 2 */
+    w8(ADDR_MONSTATS + 1 * 0x1A8 + 0x0D, 0x01u); /* bit 0 set (gdwBitMasks[0]) */
+    w8(ADDR_MONSTATS + 2 * 0x1A8 + 0x0D, 0x04u); /* bit 2 set (gdwBitMasks[2]) */
+    w8(ADDR_MONSTATS + 3 * 0x1A8 + 0x0D, 0xFB0u & 0xFFu); /* bits 0 and 2 clear */
+
+    RangeSpec r[5] = {
+      { VA_SGPT_DATATABLES, 4 },
+      { VA_GDWBITMASKS_IAT, 4 },
+      { ADDR_BITMASKS, 16 },
+      { ADDR_DATATABLES + 0xA78, 12 },
+      { ADDR_UNIT_A, 244 }
+    };
+    struct { uint32_t ptr; uint32_t utype; uint32_t cid; uint32_t uflags; const char *name; } cases[8] = {
+      { 0u, 1u, 0u, 0u, "null_unit" },
+      { ADDR_UNIT_A, 0u, 1u, 0u, "non_monster_type_0" },
+      { ADDR_UNIT_A, 1u, 0xFFFFFFFFu, 0u, "negative_class_id" },
+      { ADDR_UNIT_A, 1u, 4u, 0u, "oob_class_id_4" },
+      { ADDR_UNIT_A, 1u, 1u, 0u, "monstats_bflags1_bit0_set" },
+      { ADDR_UNIT_A, 1u, 2u, 0u, "monstats_bflags1_bit2_set" },
+      { ADDR_UNIT_A, 1u, 0u, 0x80000000u, "unit_flags_bit31_set" },
+      { ADDR_UNIT_A, 1u, 3u, 0x7FFFFFFFu, "hostile_monster_returns_0" }
+    };
+    RangeSpec r_full[6] = {
+      { VA_SGPT_DATATABLES, 4 },
+      { VA_GDWBITMASKS_IAT, 4 },
+      { ADDR_BITMASKS, 128 },
+      { ADDR_DATATABLES + 0xA78, 12 },
+      { ADDR_MONSTATS, 4 * 0x1A8 },
+      { ADDR_UNIT_A, 244 }
+    };
+    (void)r;
+    for (int i = 0; i < 8; i++) {
+      memset((void *)(uintptr_t)ADDR_UNIT_A, 0, 244);
+      w32(ADDR_UNIT_A + 0x00, cases[i].utype);
+      w32(ADDR_UNIT_A + 0x04, cases[i].cid);
+      w32(ADDR_UNIT_A + 0xC4, cases[i].uflags);
+      capture_pre(r_full, 6, pre);
+      uint32_t eax = call_edx(va, cases[i].ptr);
+      emit_case_json(fp, &first, va, nm, cases[i].name, "eax", 0, 0, cases[i].ptr, 0, 0, NULL, 0, eax, r_full, 6, pre);
+    }
+  }
+
+  /* 4. 0x6FD7C990 HIRELING_GetExpForLevel (__stdcall(nLevel, nExpPerLvl) -> eax) */
+  {
+    const uint32_t va = 0x6FD7C990u;
+    const char *nm = "HIRELING_GetExpForLevel";
+    RangeSpec r[1] = { { ADDR_FLAGS_BOX, 4 } };
+    uint32_t pairs[5][2] = {
+      { 0u, 100u },
+      { 1u, 110u },
+      { 10u, 120u },
+      { 98u, 150u },
+      { 500u, 100000u }
+    };
+    const char *cids[5] = { "level_0", "level_1", "level_10", "level_98", "level_500_wrap32" };
+    for (int i = 0; i < 5; i++) {
+      capture_pre(r, 1, pre);
+      uint32_t eax = call_stdcall2(va, pairs[i][0], pairs[i][1]);
+      emit_case_json(fp, &first, va, nm, cids[i], "eax", 0, 0, 0, 0, 0, pairs[i], 2, eax, r, 1, pre);
+    }
+  }
+
+  /* 5. 0x6FD7D210 DRLG_SetWarpId (eax = pWarp, ebx = nVis, ecx = nIndex, [esp+4] = nWarpId, ret 4, void)
+   * Note: ebx (nVis) is recorded in regs.edx in the JSON vector.
+   * Captures [ADDR_WARP - 0x10, ADDR_WARP + 0x60] (112 bytes) so out-of-range writes (nIndex = -1, -2, 9) are verified byte-for-byte.
+   */
+  {
+    const uint32_t va = 0x6FD7D210u;
+    const char *nm = "DRLG_SetWarpId";
+    RangeSpec r[1] = { { ADDR_WARP - 0x10u, 0x70u } };
+    struct { uint32_t vis; uint32_t idx; uint32_t warp_id; int setup_mode; const char *cid; } cases[12] = {
+      { 3u, 0xFFFFFFFFu, 42u, 0, "update_existing_vis_slot_0" },
+      { 7u, 0xFFFFFFFFu, 99u, 0, "update_existing_vis_slot_5" },
+      { 5u, 0xFFFFFFFFu, 17u, 0, "insert_first_empty_slot_1" },
+      { 8u, 0xFFFFFFFFu, 88u, 1, "insert_second_unrolled_chunk_slot_6" },
+      { 4u, 3u, 55u, 0, "explicit_index_3_override" },
+      { 6u, 0xFFFFFFFFu, 60u, 2, "free_slot_mod4_eq_0_slot_0" },
+      { 6u, 0xFFFFFFFFu, 61u, 3, "reserved_slot_0_skips_to_free_slot_1" },
+      { 6u, 0xFFFFFFFFu, 62u, 4, "free_slot_mod4_eq_2_slot_2" },
+      { 6u, 0xFFFFFFFFu, 63u, 5, "free_slot_mod4_eq_3_slot_3" },
+      { 99u, 0xFFFFFFFFu, 777u, 6, "full_array_idx_neg1_clobbers_select_and_vis7" },
+      { 11u, 9u, 222u, 0, "explicit_index_9_oob_high" },
+      { 12u, (uint32_t)-2, 333u, 0, "explicit_index_neg2_oob_low" }
+    };
+    for (int i = 0; i < 12; i++) {
+      memset((void *)(uintptr_t)(ADDR_WARP - 0x10u), 0xCC, 0x70u);
+      memset((void *)(uintptr_t)ADDR_WARP, 0, 72);
+      w32(ADDR_WARP + 0x00, 0x11111111u); /* nSelect */
+      for (int k = 0; k < 8; k++) {
+        w32(ADDR_WARP + 0x04 + k * 4, 0u);
+        w32(ADDR_WARP + 0x24 + k * 4, 0xFFFFFFFFu);
+      }
+      if (cases[i].setup_mode == 0) {
+        w32(ADDR_WARP + 0x04 + 0 * 4, 3u);
+        w32(ADDR_WARP + 0x24 + 0 * 4, 10u);
+        w32(ADDR_WARP + 0x04 + 5 * 4, 7u);
+        w32(ADDR_WARP + 0x24 + 5 * 4, 50u);
+      } else if (cases[i].setup_mode == 1) {
+        /* Fill slots 0..5 so first empty is slot 6 */
+        for (int k = 0; k < 6; k++) {
+          w32(ADDR_WARP + 0x04 + k * 4, (uint32_t)(k + 1));
+          w32(ADDR_WARP + 0x24 + k * 4, (uint32_t)(100 + k));
+        }
+      } else if (cases[i].setup_mode == 2) {
+        /* All slots empty (slot 0 is first free, k % 4 == 0) */
+      } else if (cases[i].setup_mode == 3) {
+        /* Slot 0 is reserved: nVis[0] == 0 && nWarp[0] != -1 (25), so scan skips slot 0 and picks slot 1 (k % 4 == 1) */
+        w32(ADDR_WARP + 0x04 + 0 * 4, 0u);
+        w32(ADDR_WARP + 0x24 + 0 * 4, 25u);
+      } else if (cases[i].setup_mode == 4) {
+        /* Slot 0 occupied, slot 1 reserved -> picks slot 2 (k % 4 == 2) */
+        w32(ADDR_WARP + 0x04 + 0 * 4, 1u);
+        w32(ADDR_WARP + 0x24 + 0 * 4, 10u);
+        w32(ADDR_WARP + 0x04 + 1 * 4, 0u);
+        w32(ADDR_WARP + 0x24 + 1 * 4, 25u);
+      } else if (cases[i].setup_mode == 5) {
+        /* Slots 0..2 occupied/reserved -> picks slot 3 (k % 4 == 3) */
+        for (int k = 0; k < 3; k++) {
+          w32(ADDR_WARP + 0x04 + k * 4, (uint32_t)(k + 1));
+          w32(ADDR_WARP + 0x24 + k * 4, (uint32_t)(10 + k));
+        }
+      } else if (cases[i].setup_mode == 6) {
+        /* All 8 slots full (nVis[0..7] = 1..8) -> idx stays -1, writes to pWarp + 0 and pWarp + 0x20 */
+        for (int k = 0; k < 8; k++) {
+          w32(ADDR_WARP + 0x04 + k * 4, (uint32_t)(k + 1));
+          w32(ADDR_WARP + 0x24 + k * 4, (uint32_t)(100 + k));
+        }
+      }
+      uint32_t st[1] = { cases[i].warp_id };
+      capture_pre(r, 1, pre);
+      uint32_t eax = call_eax_ebx_ecx_stack1_ret4(va, ADDR_WARP, cases[i].vis, cases[i].idx, cases[i].warp_id);
+      emit_case_json(fp, &first, va, nm, cases[i].cid, "void", ADDR_WARP, cases[i].idx, cases[i].vis, 0, 0, st, 1, eax, r, 1, pre);
+    }
+  }
+
+  /* 6. 0x6FD7E6B0 ANIMSEQ_GetEventAtFrame (__stdcall(pSeqRecord, dwFrameFp8, pEventOut), void) */
+  {
+    const uint32_t va = 0x6FD7E6B0u;
+    const char *nm = "ANIMSEQ_GetEventAtFrame";
+    RangeSpec r[2] = { { ADDR_ANIMSEQ, 48 }, { ADDR_ANIM_OUT, 16 } };
+    memset((void *)(uintptr_t)ADDR_ANIMSEQ, 0, 48);
+    for (int k = 0; k < 8; k++) {
+      uint32_t rec = ADDR_ANIMSEQ + k * 6;
+      w16(rec + 0, (uint16_t)(k + 1));
+      w8(rec + 2, (uint8_t)(k + 10));
+      w8(rec + 3, (uint8_t)(k * 2));
+      w8(rec + 4, (uint8_t)(k & 7));
+      w8(rec + 5, (uint8_t)(k == 2 ? 1 : (k == 5 ? 4 : (k == 6 ? 0x85u : 0))));
+    }
+    struct { uint32_t seq; uint32_t fp8; const char *cid; } cases[6] = {
+      { 0u, 0x0200u, "null_seq_record" },
+      { ADDR_ANIMSEQ, 0x0000u, "frame_0_event_0" },
+      { ADDR_ANIMSEQ, 0x0280u, "frame_2_event_1" },
+      { ADDR_ANIMSEQ, 0x05FFu, "frame_5_event_4" },
+      { ADDR_ANIMSEQ + 18u, 0xFFFFFF80u, "negative_frame_minus_1_reads_slot_2" },
+      { ADDR_ANIMSEQ, 0x0600u, "frame_6_event_0x85_unsigned_movzx" }
+    };
+    for (int i = 0; i < 6; i++) {
+      w32(ADDR_ANIM_OUT, 0xDEADBEEFu);
+      uint32_t st[3] = { cases[i].seq, cases[i].fp8, ADDR_ANIM_OUT };
+      capture_pre(r, 2, pre);
+      uint32_t eax = call_stdcall3(va, cases[i].seq, cases[i].fp8, ADDR_ANIM_OUT);
+      emit_case_json(fp, &first, va, nm, cases[i].cid, "void", 0, 0, 0, 0, 0, st, 3, eax, r, 2, pre);
+    }
+  }
+
+  /* 7. 0x6FD7E6E0 ANIMSEQ_EvaluateSequenceFrame (__stdcall 7 args, void) */
+  {
+    const uint32_t va = 0x6FD7E6E0u;
+    const char *nm = "ANIMSEQ_EvaluateSequenceFrame";
+    RangeSpec r[2] = { { ADDR_ANIMSEQ, 48 }, { ADDR_ANIM_OUT, 16 } };
+    memset((void *)(uintptr_t)ADDR_ANIMSEQ, 0, 48);
+    /* Populate 8 records: events at idx 1 -> 2, idx 2 -> 0, idx 3 -> 0, idx 4 -> 3, idx 5 -> 0 */
+    uint8_t evs[8] = { 1, 2, 0, 0, 3, 0, 4, 0 };
+    for (int k = 0; k < 8; k++) {
+      uint32_t rec = ADDR_ANIMSEQ + k * 6;
+      w16(rec + 0, (uint16_t)k);
+      w8(rec + 2, (uint8_t)(k + 1));       /* nMode */
+      w8(rec + 3, (uint8_t)(k * 3 + 2));   /* nFrame */
+      w8(rec + 4, (uint8_t)((k + 5) & 7)); /* nDir */
+      w8(rec + 5, evs[k]);                 /* nEvent */
+    }
+    struct { uint32_t seq; uint32_t curr; uint32_t prev; const char *cid; } cases[6] = {
+      { 0u, 0x0400u, 0x0100u, "null_seq_zeros_all_outputs" },
+      { ADDR_ANIMSEQ, 0x0180u, 0x0180u, "same_curr_and_prev_fp8_reads_direct" },
+      { ADDR_ANIMSEQ, 0x01FFu, 0x0100u, "same_frame_idx_diff_subframe_event_0" },
+      { ADDR_ANIMSEQ, 0x0140u, 0x0080u, "advance_0_to_1_event_2" },
+      { ADDR_ANIMSEQ, 0x0520u, 0x0000u, "advance_0_to_5_picks_last_nonzero_event_3" },
+      { ADDR_ANIMSEQ, 0x0380u, 0x0180u, "advance_1_to_3_all_zero_events" }
+    };
+    for (int i = 0; i < 6; i++) {
+      w32(ADDR_ANIM_OUT + 0x00, 0xAAAAAAAAu);
+      w32(ADDR_ANIM_OUT + 0x04, 0xBBBBBBBBu);
+      w32(ADDR_ANIM_OUT + 0x08, 0xCCCCCCCCu);
+      w32(ADDR_ANIM_OUT + 0x0C, 0xDDDDDDDDu);
+      uint32_t st[7] = {
+        cases[i].seq,
+        cases[i].curr,
+        cases[i].prev,
+        ADDR_ANIM_OUT + 0x00,
+        ADDR_ANIM_OUT + 0x04,
+        ADDR_ANIM_OUT + 0x08,
+        ADDR_ANIM_OUT + 0x0C
+      };
+      capture_pre(r, 2, pre);
+      uint32_t eax = call_stdcall7(va, st[0], st[1], st[2], st[3], st[4], st[5], st[6]);
+      emit_case_json(fp, &first, va, nm, cases[i].cid, "void", 0, 0, 0, 0, 0, st, 7, eax, r, 2, pre);
+    }
+  }
+
+  /* 8. 0x6FD7E9C0 UNITS_GetStashGoldLimit (__stdcall(pUnit) -> eax) */
+  {
+    const uint32_t va = 0x6FD7E9C0u;
+    const char *nm = "UNITS_GetStashGoldLimit";
+    RangeSpec r[1] = { { ADDR_UNIT_A, 32 } };
+    uint32_t arg0s[4] = { 0u, ADDR_UNIT_A, ADDR_UNIT_B, 0xFFFFFFFFu };
+    const char *cids[4] = { "null_unit", "unit_a", "unit_b", "max_u32" };
+    for (int i = 0; i < 4; i++) {
+      uint32_t st[1] = { arg0s[i] };
+      capture_pre(r, 1, pre);
+      uint32_t eax = call_stdcall1(va, arg0s[i]);
+      emit_case_json(fp, &first, va, nm, cids[i], "eax", 0, 0, 0, 0, 0, st, 1, eax, r, 1, pre);
+    }
+  }
+
+  /* 9. 0x6FD7ED30 UNITS_HasObjectSubClassBit0 (__stdcall(pUnit) -> eax) */
+  {
+    const uint32_t va = 0x6FD7ED30u;
+    const char *nm = "UNITS_HasObjectSubClassBit0";
+    RangeSpec r[3] = { { ADDR_UNIT_A, 32 }, { ADDR_OBJDATA, 56 }, { ADDR_OBJTXT, 448 } };
+    struct { uint32_t utype; uint8_t sub; const char *cid; } cases[5] = {
+      { 0u, 0x01u, "unit_type_0_player_returns_0" },
+      { 1u, 0xFFu, "unit_type_1_monster_returns_0" },
+      { 2u, 0x00u, "object_subclass_0x00_returns_0" },
+      { 2u, 0x01u, "object_subclass_0x01_returns_1" },
+      { 2u, 0xFEu, "object_subclass_0xfe_returns_0" }
+    };
+    for (int i = 0; i < 5; i++) {
+      memset((void *)(uintptr_t)ADDR_UNIT_A, 0, 32);
+      memset((void *)(uintptr_t)ADDR_OBJDATA, 0, 56);
+      memset((void *)(uintptr_t)ADDR_OBJTXT, 0, 448);
+      w32(ADDR_UNIT_A + 0x00, cases[i].utype);
+      w32(ADDR_UNIT_A + 0x14, ADDR_OBJDATA);
+      w32(ADDR_OBJDATA + 0x00, ADDR_OBJTXT);
+      w8(ADDR_OBJTXT + 0x167, cases[i].sub);
+      uint32_t st[1] = { ADDR_UNIT_A };
+      capture_pre(r, 3, pre);
+      uint32_t eax = call_stdcall1(va, ADDR_UNIT_A);
+      emit_case_json(fp, &first, va, nm, cases[i].cid, "eax", 0, 0, 0, 0, 0, st, 1, eax, r, 3, pre);
+    }
+  }
+
+  /* 10. 0x6FD80B40 UNITS_SetAnimSpeed (__stdcall(pUnit, nSpeed), void) */
+  {
+    const uint32_t va = 0x6FD80B40u;
+    const char *nm = "UNITS_SetAnimSpeed";
+    RangeSpec r[1] = { { ADDR_UNIT_A + 0x40, 32 } };
+    uint32_t speeds[5] = { (uint32_t)-100, 0u, 256u, 0x7FFEu, 0x10000u };
+    const char *cids[5] = { "neg_100_clamps_0", "zero_clamps_0", "speed_256", "speed_0x7ffe", "speed_0x10000_clamps_0x7fff" };
+    for (int i = 0; i < 5; i++) {
+      memset((void *)(uintptr_t)(ADDR_UNIT_A + 0x40), 0, 32);
+      w16(ADDR_UNIT_A + 0x4C, 0x1234u);
+      uint32_t st[2] = { ADDR_UNIT_A, speeds[i] };
+      capture_pre(r, 1, pre);
+      uint32_t eax = call_stdcall2(va, ADDR_UNIT_A, speeds[i]);
+      emit_case_json(fp, &first, va, nm, cids[i], "void", 0, 0, 0, 0, 0, st, 2, eax, r, 1, pre);
+    }
+  }
+
+  /* 11. 0x6FD86740 SEED_InitLowSeed (ecx = pSeed, edx = nLowSeed, void) */
+  {
+    const uint32_t va = 0x6FD86740u;
+    const char *nm = "SEED_InitLowSeed";
+    RangeSpec r[1] = { { ADDR_SEED, 8 } };
+    uint32_t lows[4] = { 0u, 1u, 0x12345678u, 0xFFFFFFFFu };
+    const char *cids[4] = { "low_0", "low_1", "low_0x12345678", "low_all_ones" };
+    for (int i = 0; i < 4; i++) {
+      w32(ADDR_SEED + 0x00, 0xAAAAAAAAu);
+      w32(ADDR_SEED + 0x04, 0xBBBBBBBBu);
+      capture_pre(r, 1, pre);
+      uint32_t eax = call_ecx_edx(va, ADDR_SEED, lows[i]);
+      emit_case_json(fp, &first, va, nm, cids[i], "void", 0, ADDR_SEED, lows[i], 0, 0, NULL, 0, eax, r, 1, pre);
+    }
+  }
+
+  /* 12. 0x6FD86750 SEED_InitSeed (ecx = pSeed, void) */
+  {
+    const uint32_t va = 0x6FD86750u;
+    const char *nm = "SEED_InitSeed";
+    RangeSpec r[1] = { { ADDR_SEED, 8 } };
+    uint32_t init_vals[4][2] = {
+      { 0u, 0u },
+      { 0xFFFFFFFFu, 0xFFFFFFFFu },
+      { 0x12345678u, 0x9ABCDEF0u },
+      { 1u, 0x29Au }
+    };
+    const char *cids[4] = { "from_zeros", "from_all_ones", "from_arbitrary", "from_already_init" };
+    for (int i = 0; i < 4; i++) {
+      w32(ADDR_SEED + 0x00, init_vals[i][0]);
+      w32(ADDR_SEED + 0x04, init_vals[i][1]);
+      capture_pre(r, 1, pre);
+      uint32_t eax = call_ecx(va, ADDR_SEED);
+      emit_case_json(fp, &first, va, nm, cids[i], "void", 0, ADDR_SEED, 0, 0, 0, NULL, 0, eax, r, 1, pre);
+    }
+  }
+
+  /* 13. 0x6FD8D4A0 DRLGVER_SnapAndOffsetVertex (ecx = pDstVertex, edx = pSrcVertex, esi = pLevel, void) */
+  {
+    const uint32_t va = 0x6FD8D4A0u;
+    const char *nm = "DRLGVER_SnapAndOffsetVertex";
+    RangeSpec r[3] = { { ADDR_VERTEX_SRC, 20 }, { ADDR_VERTEX_DST, 20 }, { ADDR_DRLG_LEVEL, 40 } };
+    struct { uint32_t sx; uint32_t sy; uint8_t dir; uint32_t lx; uint32_t ly; int alias; const char *cid; } cases[7] = {
+      { 125u, 230u, 0u, 100u, 200u, 0, "dir_0_snaps_x_plus_11" },
+      { 125u, 230u, 1u, 100u, 200u, 0, "dir_1_snaps_y_plus_11" },
+      { 125u, 230u, 2u, 100u, 200u, 0, "dir_2_snaps_x_minus_5" },
+      { 125u, 230u, 3u, 100u, 200u, 0, "dir_3_snaps_y_minus_5" },
+      { 85u, 170u, 0u, 100u, 200u, 0, "dir_0_negative_rel_x" },
+      { 125u, 230u, 4u, 100u, 200u, 0, "dir_4_no_snap" },
+      { 143u, 259u, 2u, 100u, 200u, 1, "aliased_dst_eq_src_dir_2" }
+    };
+    for (int i = 0; i < 7; i++) {
+      memset((void *)(uintptr_t)ADDR_VERTEX_SRC, 0, 20);
+      memset((void *)(uintptr_t)ADDR_VERTEX_DST, 0, 20);
+      memset((void *)(uintptr_t)ADDR_DRLG_LEVEL, 0, 40);
+      w32(ADDR_VERTEX_SRC + 0x00, cases[i].sx);
+      w32(ADDR_VERTEX_SRC + 0x04, cases[i].sy);
+      w8(ADDR_VERTEX_SRC + 0x08, cases[i].dir);
+      w32(ADDR_DRLG_LEVEL + 0x1C, cases[i].lx);
+      w32(ADDR_DRLG_LEVEL + 0x20, cases[i].ly);
+      uint32_t dst_ptr = cases[i].alias ? ADDR_VERTEX_SRC : ADDR_VERTEX_DST;
+      capture_pre(r, 3, pre);
+      uint32_t eax = call_ecx_edx_esi(va, dst_ptr, ADDR_VERTEX_SRC, ADDR_DRLG_LEVEL);
+      emit_case_json(fp, &first, va, nm, cases[i].cid, "void", 0, dst_ptr, ADDR_VERTEX_SRC, ADDR_DRLG_LEVEL, 0, NULL, 0, eax, r, 3, pre);
+    }
+  }
+
+  /* 14. 0x6FD937F0 COMPOSIT_GetWeaponClassIdFromCode (__stdcall(dwWeaponClassCode) -> eax) */
+  {
+    const uint32_t va = 0x6FD937F0u;
+    const char *nm = "COMPOSIT_GetWeaponClassIdFromCode";
+    RangeSpec r[1] = { { VA_WEAPON_CLASS_TABLE, 104 } };
+    uint32_t codes[6] = {
+      0x20736831u, /* '1hs ' -> 2 */
+      0x20776F62u, /* 'bow ' -> 1 */
+      0x20667473u, /* 'stf ' -> 4 */
+      0x20327468u, /* 'ht2 ' -> 13 */
+      0x20787878u, /* 'xxx ' -> 0 */
+      0u           /* 0 -> 0 */
+    };
+    const char *cids[6] = { "code_1hs", "code_bow", "code_stf", "code_ht2_last", "code_unknown", "code_zero" };
+    for (int i = 0; i < 6; i++) {
+      uint32_t st[1] = { codes[i] };
+      capture_pre(r, 1, pre);
+      uint32_t eax = call_stdcall1(va, codes[i]);
+      emit_case_json(fp, &first, va, nm, cids[i], "eax", 0, 0, 0, 0, 0, st, 1, eax, r, 1, pre);
+    }
+  }
+
+  /* 15. 0x6FDB7E50 WAYPOINT_GetWaypointNoFromLevelId (__stdcall(nLevelId, pWaypointNoOut) -> eax) */
+  {
+    const uint32_t va = 0x6FDB7E50u;
+    const char *nm = "WAYPOINT_GetWaypointNoFromLevelId";
+    setup_synthetic_datatables();
+    memset((void *)(uintptr_t)ADDR_LEVELS_TXT, 0, 4 * 0x220);
+    w32(ADDR_DATATABLES + 0xC58, ADDR_LEVELS_TXT);
+    w32(ADDR_DATATABLES + 0xC5C, 4u);
+    w8(ADDR_LEVELS_TXT + 1 * 0x220 + 0xE4, 0u);    /* Level 1 -> waypoint 0 */
+    w8(ADDR_LEVELS_TXT + 2 * 0x220 + 0xE4, 0xFFu); /* Level 2 -> no waypoint (0xFF) */
+    w8(ADDR_LEVELS_TXT + 3 * 0x220 + 0xE4, 27u);   /* Level 3 -> waypoint 27 */
+
+    RangeSpec r[4] = {
+      { VA_SGPT_DATATABLES, 4 },
+      { ADDR_DATATABLES + 0xC58, 8 },
+      { ADDR_LEVELS_TXT, 4 * 0x220 },
+      { ADDR_WP_OUT, 4 }
+    };
+    uint32_t lvls[6] = { (uint32_t)-1, 0u, 4u, 1u, 2u, 3u };
+    const char *cids[6] = {
+      "level_neg_1_returns_0",
+      "level_0_returns_0",
+      "level_4_oob_returns_0",
+      "level_1_wp_0_returns_1",
+      "level_2_wp_0xff_returns_0",
+      "level_3_wp_27_returns_1"
+    };
+    for (int i = 0; i < 6; i++) {
+      w32(ADDR_WP_OUT, 0x12345678u);
+      uint32_t st[2] = { lvls[i], ADDR_WP_OUT };
+      capture_pre(r, 4, pre);
+      uint32_t eax = call_stdcall2(va, lvls[i], ADDR_WP_OUT);
+      emit_case_json(fp, &first, va, nm, cids[i], "eax", 0, 0, 0, 0, 0, st, 2, eax, r, 4, pre);
+    }
+  }
+}
+
+static void emit_b017(FILE *fp) {
+  int first = 1;
+  uint8_t *pre[8];
+
+  /* 1. 0x6FD88000 STATLIST_GetExpireFrame (__stdcall(pStatList) -> eax) */
+  {
+    const uint32_t va = 0x6FD88000u;
+    const char *nm = "STATLIST_GetExpireFrame";
+    RangeSpec r[1] = { { ADDR_STATLIST_A, 60 } };
+    struct { uint32_t ptr; uint32_t val; const char *cid; } cases[4] = {
+      { 0u, 100u, "null_statlist" },
+      { ADDR_STATLIST_A, 0u, "expire_frame_0" },
+      { ADDR_STATLIST_A, 500u, "expire_frame_500" },
+      { ADDR_STATLIST_A, 0xFFFFFFFFu, "expire_frame_all_ones" }
+    };
+    for (int i = 0; i < 4; i++) {
+      memset((void *)(uintptr_t)ADDR_STATLIST_A, 0, 60);
+      w32(ADDR_STATLIST_A + 0x18, cases[i].val);
+      uint32_t st[1] = { cases[i].ptr };
+      capture_pre(r, 1, pre);
+      uint32_t eax = call_stdcall1(va, cases[i].ptr);
+      emit_case_json(fp, &first, va, nm, cases[i].cid, "eax", 0, 0, 0, 0, 0, st, 1, eax, r, 1, pre);
+    }
+  }
+
+  /* 2. 0x6FD88020 STATLIST_SetExpireFrame (__stdcall(pStatList, nExpireFrame), void) */
+  {
+    const uint32_t va = 0x6FD88020u;
+    const char *nm = "STATLIST_SetExpireFrame";
+    RangeSpec r[1] = { { ADDR_STATLIST_A, 60 } };
+    struct { uint32_t ptr; uint32_t init_flags; uint32_t frame; const char *cid; } cases[5] = {
+      { 0u, 0u, 100u, "null_statlist_noop" },
+      { ADDR_STATLIST_A, 0u, (uint32_t)-5, "negative_frame_no_flag_0x2" },
+      { ADDR_STATLIST_A, 0u, 0u, "zero_frame_no_flag_0x2" },
+      { ADDR_STATLIST_A, 0u, 120u, "positive_frame_sets_flag_0x2" },
+      { ADDR_STATLIST_A, 0x80000100u, 300u, "positive_frame_ors_flag_0x2" }
+    };
+    for (int i = 0; i < 5; i++) {
+      memset((void *)(uintptr_t)ADDR_STATLIST_A, 0, 60);
+      w32(ADDR_STATLIST_A + 0x10, cases[i].init_flags);
+      w32(ADDR_STATLIST_A + 0x18, 0x11111111u);
+      uint32_t st[2] = { cases[i].ptr, cases[i].frame };
+      capture_pre(r, 1, pre);
+      uint32_t eax = call_stdcall2(va, cases[i].ptr, cases[i].frame);
+      emit_case_json(fp, &first, va, nm, cases[i].cid, "void", 0, 0, 0, 0, 0, st, 2, eax, r, 1, pre);
+    }
+  }
+
+  /* 3. 0x6FD88040 STATLIST_GetState (__stdcall(pStatList) -> eax) */
+  {
+    const uint32_t va = 0x6FD88040u;
+    const char *nm = "STATLIST_GetState";
+    RangeSpec r[1] = { { ADDR_STATLIST_A, 60 } };
+    struct { uint32_t ptr; uint32_t val; const char *cid; } cases[4] = {
+      { 0u, 10u, "null_statlist" },
+      { ADDR_STATLIST_A, 0u, "state_0" },
+      { ADDR_STATLIST_A, 32u, "state_32" },
+      { ADDR_STATLIST_A, 184u, "state_184" }
+    };
+    for (int i = 0; i < 4; i++) {
+      memset((void *)(uintptr_t)ADDR_STATLIST_A, 0, 60);
+      w32(ADDR_STATLIST_A + 0x14, cases[i].val);
+      uint32_t st[1] = { cases[i].ptr };
+      capture_pre(r, 1, pre);
+      uint32_t eax = call_stdcall1(va, cases[i].ptr);
+      emit_case_json(fp, &first, va, nm, cases[i].cid, "eax", 0, 0, 0, 0, 0, st, 1, eax, r, 1, pre);
+    }
+  }
+
+  /* 4. 0x6FD88060 STATLIST_SetState (__stdcall(pStatList, nState), void) */
+  {
+    const uint32_t va = 0x6FD88060u;
+    const char *nm = "STATLIST_SetState";
+    RangeSpec r[1] = { { ADDR_STATLIST_A, 60 } };
+    struct { uint32_t ptr; uint32_t state; const char *cid; } cases[4] = {
+      { 0u, 15u, "null_statlist_noop" },
+      { ADDR_STATLIST_A, 0u, "set_state_0" },
+      { ADDR_STATLIST_A, 23u, "set_state_23" },
+      { ADDR_STATLIST_A, 0xFFFFFFFFu, "set_state_all_ones" }
+    };
+    for (int i = 0; i < 4; i++) {
+      memset((void *)(uintptr_t)ADDR_STATLIST_A, 0, 60);
+      w32(ADDR_STATLIST_A + 0x14, 99u);
+      uint32_t st[2] = { cases[i].ptr, cases[i].state };
+      capture_pre(r, 1, pre);
+      uint32_t eax = call_stdcall2(va, cases[i].ptr, cases[i].state);
+      emit_case_json(fp, &first, va, nm, cases[i].cid, "void", 0, 0, 0, 0, 0, st, 2, eax, r, 1, pre);
+    }
+  }
+
+  /* 5. 0x6FD88080 STATLIST_GetOwnerId (__stdcall(pStatList) -> eax) */
+  {
+    const uint32_t va = 0x6FD88080u;
+    const char *nm = "STATLIST_GetOwnerId";
+    RangeSpec r[1] = { { ADDR_STATLIST_A, 60 } };
+    struct { uint32_t ptr; uint32_t val; const char *cid; } cases[4] = {
+      { 0u, 42u, "null_statlist" },
+      { ADDR_STATLIST_A, 0u, "owner_id_0" },
+      { ADDR_STATLIST_A, 42u, "owner_id_42" },
+      { ADDR_STATLIST_A, 0xDEADBEEFu, "owner_id_deadbeef" }
+    };
+    for (int i = 0; i < 4; i++) {
+      memset((void *)(uintptr_t)ADDR_STATLIST_A, 0, 60);
+      w32(ADDR_STATLIST_A + 0x0C, cases[i].val);
+      uint32_t st[1] = { cases[i].ptr };
+      capture_pre(r, 1, pre);
+      uint32_t eax = call_stdcall1(va, cases[i].ptr);
+      emit_case_json(fp, &first, va, nm, cases[i].cid, "eax", 0, 0, 0, 0, 0, st, 1, eax, r, 1, pre);
+    }
+  }
+
+  /* 6. 0x6FD880A0 STATLIST_GetUnitFullStatsCount (__stdcall(pUnit) -> eax) */
+  {
+    const uint32_t va = 0x6FD880A0u;
+    const char *nm = "STATLIST_GetUnitFullStatsCount";
+    RangeSpec r[2] = { { ADDR_UNIT_A, 244 }, { ADDR_STATLIST_EX, 100 } };
+    struct { uint32_t uptr; uint32_t sptr; uint16_t cnt; const char *cid; } cases[5] = {
+      { 0u, ADDR_STATLIST_EX, 5u, "null_unit" },
+      { ADDR_UNIT_A, 0u, 5u, "unit_null_statlistex" },
+      { ADDR_UNIT_A, ADDR_STATLIST_EX, 0u, "full_stats_count_0" },
+      { ADDR_UNIT_A, ADDR_STATLIST_EX, 12u, "full_stats_count_12" },
+      { ADDR_UNIT_A, ADDR_STATLIST_EX, 0xFFFEu, "full_stats_count_neg_2_sign_ext" }
+    };
+    for (int i = 0; i < 5; i++) {
+      memset((void *)(uintptr_t)ADDR_UNIT_A, 0, 244);
+      memset((void *)(uintptr_t)ADDR_STATLIST_EX, 0, 100);
+      w32(ADDR_UNIT_A + 0x5C, cases[i].sptr);
+      w16(ADDR_STATLIST_EX + 0x4C, cases[i].cnt);
+      uint32_t st[1] = { cases[i].uptr };
+      capture_pre(r, 2, pre);
+      uint32_t eax = call_stdcall1(va, cases[i].uptr);
+      emit_case_json(fp, &first, va, nm, cases[i].cid, "eax", 0, 0, 0, 0, 0, st, 1, eax, r, 2, pre);
+    }
+  }
+
+  /* 7. 0x6FD880E0 STATLIST_GetOwnerType (__stdcall(pStatList) -> eax) */
+  {
+    const uint32_t va = 0x6FD880E0u;
+    const char *nm = "STATLIST_GetOwnerType";
+    RangeSpec r[1] = { { ADDR_STATLIST_A, 60 } };
+    struct { uint32_t ptr; uint32_t val; const char *cid; } cases[5] = {
+      { 0u, 0u, "null_statlist_returns_6" },
+      { ADDR_STATLIST_A, 0u, "owner_type_0_player" },
+      { ADDR_STATLIST_A, 1u, "owner_type_1_monster" },
+      { ADDR_STATLIST_A, 4u, "owner_type_4_item" },
+      { ADDR_STATLIST_A, 6u, "owner_type_6_none" }
+    };
+    for (int i = 0; i < 5; i++) {
+      memset((void *)(uintptr_t)ADDR_STATLIST_A, 0, 60);
+      w32(ADDR_STATLIST_A + 0x08, cases[i].val);
+      uint32_t st[1] = { cases[i].ptr };
+      capture_pre(r, 1, pre);
+      uint32_t eax = call_stdcall1(va, cases[i].ptr);
+      emit_case_json(fp, &first, va, nm, cases[i].cid, "eax", 0, 0, 0, 0, 0, st, 1, eax, r, 1, pre);
+    }
+  }
+
+  /* 8. 0x6FD88220 STATLIST_FindStatFirstIndexOrLowerBound (eax = pStatArrayHdr, ebx = dwKey -> eax)
+   * Note: ebx (dwKey) is recorded in regs.edx in the JSON vector.
+   */
+  {
+    const uint32_t va = 0x6FD88220u;
+    const char *nm = "STATLIST_FindStatFirstIndexOrLowerBound";
+    uint32_t hdr_addr = ADDR_STATLIST_A + 0x24;
+    RangeSpec r[2] = { { ADDR_STATLIST_A, 60 }, { ADDR_STAT_ARRAY, 64 } };
+    /* Sorted signed 32-bit keys: [-0x00100000, 0x00010000, 0x00050000, 0x000A0000, 0x00140000] */
+    uint32_t keys[5] = { 0xFFF00000u, 0x00010000u, 0x00050000u, 0x000A0000u, 0x00140000u };
+    struct { uint16_t cnt; uint32_t search_key; const char *cid; } cases[7] = {
+      { 0u, 0x00050000u, "empty_array_returns_minus_1" },
+      { 5u, 0xFFE00000u, "before_first_negative_returns_0" },
+      { 5u, 0xFFF00000u, "exact_match_first_negative_returns_0" },
+      { 5u, 0x00050000u, "exact_match_middle_returns_2" },
+      { 5u, 0x00070000u, "between_elements_returns_lower_bound_3" },
+      { 5u, 0x00140000u, "exact_match_last_returns_4" },
+      { 5u, 0x00200000u, "after_last_returns_minus_1" }
+    };
+    for (int i = 0; i < 7; i++) {
+      memset((void *)(uintptr_t)ADDR_STATLIST_A, 0, 60);
+      memset((void *)(uintptr_t)ADDR_STAT_ARRAY, 0, 64);
+      for (int k = 0; k < 5; k++) {
+        w32(ADDR_STAT_ARRAY + k * 8 + 0, keys[k]);
+        w32(ADDR_STAT_ARRAY + k * 8 + 4, (uint32_t)((k + 1) * 10));
+      }
+      w32(hdr_addr + 0x00, ADDR_STAT_ARRAY);
+      w16(hdr_addr + 0x04, cases[i].cnt);
+      w16(hdr_addr + 0x06, 8u);
+      capture_pre(r, 2, pre);
+      uint32_t eax = call_eax_ebx(va, hdr_addr, cases[i].search_key);
+      emit_case_json(fp, &first, va, nm, cases[i].cid, "eax", hdr_addr, 0, cases[i].search_key, 0, 0, NULL, 0, eax, r, 2, pre);
+    }
+  }
+
+  /* 9. 0x6FD88380 STATLIST_SetExpireFrameEx (__stdcall(pStatList, nExpireFrame), void) */
+  {
+    const uint32_t va = 0x6FD88380u;
+    const char *nm = "STATLIST_SetExpireFrameEx";
+    RangeSpec r[1] = { { ADDR_STATLIST_EX, 100 } };
+    struct { uint32_t ptr; uint32_t init_flags; uint32_t frame; const char *cid; } cases[5] = {
+      { 0u, 0u, 250u, "null_statlist_noop" },
+      { ADDR_STATLIST_EX, 0x80000000u, (uint32_t)-1, "negative_frame_no_flag_0x2" },
+      { ADDR_STATLIST_EX, 0x80000000u, 0u, "zero_frame_no_flag_0x2" },
+      { ADDR_STATLIST_EX, 0x80000000u, 250u, "positive_frame_sets_flag_0x2" },
+      { ADDR_STATLIST_EX, 0x80002000u, 999u, "positive_frame_ors_flag_0x2" }
+    };
+    for (int i = 0; i < 5; i++) {
+      memset((void *)(uintptr_t)ADDR_STATLIST_EX, 0, 100);
+      w32(ADDR_STATLIST_EX + 0x10, cases[i].init_flags);
+      w32(ADDR_STATLIST_EX + 0x18, 0x22222222u);
+      uint32_t st[2] = { cases[i].ptr, cases[i].frame };
+      capture_pre(r, 1, pre);
+      uint32_t eax = call_stdcall2(va, cases[i].ptr, cases[i].frame);
+      emit_case_json(fp, &first, va, nm, cases[i].cid, "void", 0, 0, 0, 0, 0, st, 2, eax, r, 1, pre);
+    }
+  }
+
+  /* 10. 0x6FD883A0 STATLIST_GetExpireFrameEx (__stdcall(pStatList) -> eax) */
+  {
+    const uint32_t va = 0x6FD883A0u;
+    const char *nm = "STATLIST_GetExpireFrameEx";
+    RangeSpec r[1] = { { ADDR_STATLIST_EX, 100 } };
+    struct { uint32_t ptr; uint32_t val; const char *cid; } cases[4] = {
+      { 0u, 250u, "null_statlist" },
+      { ADDR_STATLIST_EX, 0u, "expire_frame_ex_0" },
+      { ADDR_STATLIST_EX, 250u, "expire_frame_ex_250" },
+      { ADDR_STATLIST_EX, 0x80000000u, "expire_frame_ex_high_bit" }
+    };
+    for (int i = 0; i < 4; i++) {
+      memset((void *)(uintptr_t)ADDR_STATLIST_EX, 0, 100);
+      w32(ADDR_STATLIST_EX + 0x18, cases[i].val);
+      uint32_t st[1] = { cases[i].ptr };
+      capture_pre(r, 1, pre);
+      uint32_t eax = call_stdcall1(va, cases[i].ptr);
+      emit_case_json(fp, &first, va, nm, cases[i].cid, "eax", 0, 0, 0, 0, 0, st, 1, eax, r, 1, pre);
+    }
+  }
+
+  /* 11. 0x6FD883C0 STATLIST_CopyBaseStatsToBuffer (__stdcall(pStatList, pOutStats, nMaxStats) -> eax) */
+  {
+    const uint32_t va = 0x6FD883C0u;
+    const char *nm = "STATLIST_CopyBaseStatsToBuffer";
+    RangeSpec r[3] = { { ADDR_STATLIST_A, 60 }, { ADDR_STAT_ARRAY, 32 }, { ADDR_STAT_OUT, 32 } };
+    struct { uint32_t ptr; uint16_t cnt; uint32_t max_s; const char *cid; } cases[5] = {
+      { 0u, 3u, 4u, "null_statlist_returns_0" },
+      { ADDR_STATLIST_A, 0u, 4u, "empty_statlist_count_0" },
+      { ADDR_STATLIST_A, 3u, 4u, "copy_all_3_stats_max_4" },
+      { ADDR_STATLIST_A, 4u, 2u, "clamped_by_max_2_of_4" },
+      { ADDR_STATLIST_A, 3u, 0u, "max_0_copies_none" }
+    };
+    for (int i = 0; i < 5; i++) {
+      memset((void *)(uintptr_t)ADDR_STATLIST_A, 0, 60);
+      memset((void *)(uintptr_t)ADDR_STAT_ARRAY, 0, 32);
+      memset((void *)(uintptr_t)ADDR_STAT_OUT, 0xCC, 32);
+      for (int k = 0; k < 4; k++) {
+        w32(ADDR_STAT_ARRAY + k * 8 + 0, (uint32_t)((k + 1) << 16));
+        w32(ADDR_STAT_ARRAY + k * 8 + 4, (uint32_t)((k + 1) * 100));
+      }
+      w32(ADDR_STATLIST_A + 0x24, ADDR_STAT_ARRAY);
+      w16(ADDR_STATLIST_A + 0x28, cases[i].cnt);
+      w16(ADDR_STATLIST_A + 0x2A, 4u);
+      uint32_t st[3] = { cases[i].ptr, ADDR_STAT_OUT, cases[i].max_s };
+      capture_pre(r, 3, pre);
+      uint32_t eax = call_stdcall3(va, st[0], st[1], st[2]);
+      emit_case_json(fp, &first, va, nm, cases[i].cid, "eax", 0, 0, 0, 0, 0, st, 3, eax, r, 3, pre);
+    }
+  }
+
+  /* 12. 0x6FD88410 STATLIST_CopyUnitFullStatsToBuffer (__stdcall(pUnit, pOutStats, nMaxStats) -> eax) */
+  {
+    const uint32_t va = 0x6FD88410u;
+    const char *nm = "STATLIST_CopyUnitFullStatsToBuffer";
+    RangeSpec r[4] = {
+      { ADDR_UNIT_A, 244 },
+      { ADDR_STATLIST_EX, 100 },
+      { ADDR_STAT_ARRAY, 32 },
+      { ADDR_STAT_OUT, 32 }
+    };
+    struct { uint32_t uptr; uint32_t sptr; uint32_t flags; uint16_t cnt; uint32_t max_s; const char *cid; } cases[6] = {
+      { 0u, ADDR_STATLIST_EX, 0x80000000u, 3u, 4u, "null_unit_returns_0" },
+      { ADDR_UNIT_A, 0u, 0x80000000u, 3u, 4u, "unit_null_statlistex_returns_0" },
+      { ADDR_UNIT_A, ADDR_STATLIST_EX, 0x00000000u, 3u, 4u, "non_extended_statlist_returns_0" },
+      { ADDR_UNIT_A, ADDR_STATLIST_EX, 0x80000000u, 0u, 4u, "extended_count_0" },
+      { ADDR_UNIT_A, ADDR_STATLIST_EX, 0x80000000u, 3u, 4u, "extended_copy_all_3_stats" },
+      { ADDR_UNIT_A, ADDR_STATLIST_EX, 0x80000000u, 4u, 2u, "extended_clamped_by_max_2_of_4" }
+    };
+    for (int i = 0; i < 6; i++) {
+      memset((void *)(uintptr_t)ADDR_UNIT_A, 0, 244);
+      memset((void *)(uintptr_t)ADDR_STATLIST_EX, 0, 100);
+      memset((void *)(uintptr_t)ADDR_STAT_ARRAY, 0, 32);
+      memset((void *)(uintptr_t)ADDR_STAT_OUT, 0xDD, 32);
+      for (int k = 0; k < 4; k++) {
+        w32(ADDR_STAT_ARRAY + k * 8 + 0, (uint32_t)((k + 7) << 16));
+        w32(ADDR_STAT_ARRAY + k * 8 + 4, (uint32_t)((k + 1) * 250));
+      }
+      w32(ADDR_UNIT_A + 0x5C, cases[i].sptr);
+      w32(ADDR_STATLIST_EX + 0x10, cases[i].flags);
+      w32(ADDR_STATLIST_EX + 0x48, ADDR_STAT_ARRAY);
+      w16(ADDR_STATLIST_EX + 0x4C, cases[i].cnt);
+      w16(ADDR_STATLIST_EX + 0x4E, 4u);
+      uint32_t st[3] = { cases[i].uptr, ADDR_STAT_OUT, cases[i].max_s };
+      capture_pre(r, 4, pre);
+      uint32_t eax = call_stdcall3(va, st[0], st[1], st[2]);
+      emit_case_json(fp, &first, va, nm, cases[i].cid, "eax", 0, 0, 0, 0, 0, st, 3, eax, r, 4, pre);
+    }
+  }
+
+  /* 13. 0x6FD8B080 DRLGLOGIC_GetBossTombLevel (__stdcall(pAct) -> eax) */
+  {
+    const uint32_t va = 0x6FD8B080u;
+    const char *nm = "DRLGLOGIC_GetBossTombLevel";
+    RangeSpec r[2] = { { ADDR_ACT, 96 }, { ADDR_DRLG, 160 } };
+    struct { uint32_t aptr; uint32_t dptr; uint32_t tomb; const char *cid; } cases[4] = {
+      { 0u, ADDR_DRLG, 69u, "null_act_returns_0" },
+      { ADDR_ACT, 0u, 69u, "act_null_drlg_returns_0" },
+      { ADDR_ACT, ADDR_DRLG, 69u, "valid_boss_tomb_level_69" },
+      { ADDR_ACT, ADDR_DRLG, 72u, "valid_boss_tomb_level_72" }
+    };
+    for (int i = 0; i < 4; i++) {
+      memset((void *)(uintptr_t)ADDR_ACT, 0, 96);
+      memset((void *)(uintptr_t)ADDR_DRLG, 0, 160);
+      w32(ADDR_ACT + 0x48, cases[i].dptr);
+      w32(ADDR_DRLG + 0x94, cases[i].tomb);
+      uint32_t st[1] = { cases[i].aptr };
+      capture_pre(r, 2, pre);
+      uint32_t eax = call_stdcall1(va, cases[i].aptr);
+      emit_case_json(fp, &first, va, nm, cases[i].cid, "eax", 0, 0, 0, 0, 0, st, 1, eax, r, 2, pre);
+    }
+  }
+}
+
 int main(int argc, char **argv) {
   const char *out_dir = ".";
   if (argc > 1) out_dir = argv[1];
@@ -2345,8 +3366,25 @@ int main(int argc, char **argv) {
   fprintf(fp14, "\n  ]\n}\n");
   fclose(fp14);
 
-  printf("Emitted real-DLL vectors across B002, B005, B008, and B014 into %s\n", out_dir);
+  snprintf(path, sizeof(path), "%s/b011-vectors.json", out_dir);
+  FILE *fp11 = fopen(path, "wb");
+  if (!fp11) { perror("fopen b011"); return 11; }
+  fprintf(fp11, "{\n  \"batch\": \"B011\",\n  \"module\": \"D2Common\",\n  \"cases\": [\n");
+  emit_b011(fp11);
+  fprintf(fp11, "\n  ]\n}\n");
+  fclose(fp11);
+
+  snprintf(path, sizeof(path), "%s/b017-vectors.json", out_dir);
+  FILE *fp17 = fopen(path, "wb");
+  if (!fp17) { perror("fopen b017"); return 12; }
+  fprintf(fp17, "{\n  \"batch\": \"B017\",\n  \"module\": \"D2Common\",\n  \"cases\": [\n");
+  emit_b017(fp17);
+  fprintf(fp17, "\n  ]\n}\n");
+  fclose(fp17);
+
+  printf("Emitted real-DLL vectors across B002, B005, B008, B014, B011, and B017 into %s\n", out_dir);
   TerminateProcess(GetCurrentProcess(), 0);
   return 0;
 }
+
 

@@ -89,6 +89,49 @@ function fnv1aUpdate(h: number, data: Uint8Array): number {
   return hash >>> 0
 }
 
+function createGuardedMemory(preBlocks: MemBlockJson[], postBlocks: MemBlockJson[]) {
+  const m = new SparseMemory113c()
+  for (const blk of preBlocks) {
+    m.loadBlock(u32(blk.addr), hexToBytes(blk.hex))
+  }
+  const postRanges = postBlocks.map(b => ({
+    start: u32(b.addr),
+    end: (u32(b.addr) + b.hex.length / 2) >>> 0,
+  }))
+  const rogueWrites: number[] = []
+  const checkWrite = (addr: number, len: number) => {
+    const start = addr >>> 0
+    for (let off = 0; off < len; off++) {
+      const a = (start + off) >>> 0
+      if (!postRanges.some(r => a >= r.start && a < r.end)) {
+        rogueWrites.push(a)
+      }
+    }
+  }
+  const origSetU8 = m.setU8.bind(m)
+  const origSetU16 = m.setU16.bind(m)
+  const origSetU32 = m.setU32.bind(m)
+  const origSet = m.set.bind(m)
+  m.setU8 = (addr: number, val: number) => {
+    checkWrite(addr, 1)
+    origSetU8(addr, val)
+  }
+  m.setU16 = (addr: number, val: number) => {
+    checkWrite(addr, 2)
+    origSetU16(addr, val)
+  }
+  m.setU32 = (addr: number, val: number) => {
+    checkWrite(addr, 4)
+    origSetU32(addr, val)
+  }
+  m.set = (base, f, v, idx = 0) => {
+    const width = f.type === 'u8' ? 1 : f.type === 'u16' ? 2 : 4
+    checkWrite((base + f.off + idx * width) >>> 0, width)
+    origSet(base, f, v, idx)
+  }
+  return { m, rogueWrites }
+}
+
 function replayGfxCacheVector(
   v: VectorCaseJson,
   mutateCacheByte = false,
@@ -96,11 +139,16 @@ function replayGfxCacheVector(
   if (v.va !== '0x6FD6E920') {
     return { ok: false, reason: `Unexpected VA ${v.va}`, postHash: 0 }
   }
-  const m = new SparseMemory113c()
-  for (const blk of v.preBlocks) {
-    m.loadBlock(u32(blk.addr), hexToBytes(blk.hex))
-  }
+  const { m, rogueWrites } = createGuardedMemory(v.preBlocks, v.postBlocks)
   INVENTORY_InitItemGfxCodeTable113c(m)
+
+  if (rogueWrites.length > 0) {
+    return {
+      ok: false,
+      reason: `${v.va} ${v.caseId}: rogue write outside postBlocks at 0x${rogueWrites[0]!.toString(16)}`,
+      postHash: 0,
+    }
+  }
 
   if (mutateCacheByte) {
     m.setU8(0x6fdf0bb0, m.u8(0x6fdf0bb0) ^ 0xff)
@@ -137,8 +185,8 @@ describe('K1 Lane A — B005 0x6FD6E920 INVENTORY_InitItemGfxCodeTable Real-DLL 
   )
   const d2tv = parseD2tv(fs.readFileSync(path.join(FIXTURE_DIR, 'laneA-b002-b005.d2tv')))
 
-  it('replays all 6 cases of 0x6FD6E920 (guard, zero/negative count, nt boundary, multi-item collisions, and s>=255 backfill) byte-identically against D2Common.dll', () => {
-    expect(fixture.cases.length).toBe(6)
+  it('replays all 10 cases of 0x6FD6E920 (guard, zero/negative count, nt boundary, multi-item collisions, s>=255 backfill, dwCode==0, and NT=3/37/51) byte-identically against D2Common.dll', () => {
+    expect(fixture.cases.length).toBe(10)
     const baseIdx = b002Fixture.cases.length + b005Fixture.cases.length
     expect(baseIdx + fixture.cases.length).toBe(d2tv.count)
 

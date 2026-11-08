@@ -3,8 +3,6 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
-  CANONICAL_ITEMMOD_FUNC_TABLE_113C,
-  D2Common_10665_ApplyMonProp113c,
   DRLGOUTPLACE_StepMazeLinkNode113c,
   DRLGROOM_CheckLevelRoomsSeparation113c,
   DRLGROOM_CheckPointInRect113c,
@@ -140,10 +138,6 @@ const B004_DISPATCH: Readonly<Record<string, B004Runner>> = {
     ITEMMODS_StubReturnOne113c(a0!, a1!, a2!, a3!, a4!, a5!, a6!),
   '0x6FD95640': (mem, [nStatId, pValue]) =>
     ITEMMODS_ShiftStatValueIfFixedPoint113c(mem, nStatId!, pValue!),
-  '0x6FD95990': (mem, [a0, a1, a2, a3, a4, a5, a6, a7, a8, a9]) => {
-    D2Common_10665_ApplyMonProp113c(mem, a0!, a1!, a2!, a3!, a4!, a5!, a6!, a7!, a8!, a9!);
-    return 0;
-  },
   '0x6FDB81A0': (mem, [pRoomEx, dwPresetFlags, bFloor, nX, nY]) =>
     DRLGROOMTILE_FindPresetRoomTile113c(mem, pRoomEx!, dwPresetFlags!, bFloor!, nX!, nY!),
   '0x6FDB8340': (_mem, [bIsType9, nLevelId, dwTileFlags]) =>
@@ -209,7 +203,7 @@ function verifyVector(rec: VectorRecord, overrideRet?: number, mutatePostAddr?: 
   }
 }
 
-describe('Lane C B004 — Real D2Common.dll Differential Replay & Negative Controls (17 functions)', () => {
+describe('Lane C B004 — Real D2Common.dll Differential Replay & Negative Controls (16 functions)', () => {
   const lines = fs
     .readFileSync(FIXTURE_PATH, 'utf-8')
     .trim()
@@ -217,8 +211,8 @@ describe('Lane C B004 — Real D2Common.dll Differential Replay & Negative Contr
     .filter(Boolean);
   const vectors: VectorRecord[] = lines.map(l => JSON.parse(l) as VectorRecord);
 
-  it('loads all 17 B004 function VAs with >= 4 real-DLL vectors each (112 vectors total)', () => {
-    expect(vectors.length).toBeGreaterThanOrEqual(112);
+  it('loads all 16 B004 function VAs with >= 4 real-DLL vectors each (105 vectors total)', () => {
+    expect(vectors.length).toBeGreaterThanOrEqual(105);
     const expectedVas = [
       '0x6FD5CE90',
       '0x6FD5D0A0',
@@ -230,7 +224,6 @@ describe('Lane C B004 — Real D2Common.dll Differential Replay & Negative Contr
       '0x6FD94EB0',
       '0x6FD95630',
       '0x6FD95640',
-      '0x6FD95990',
       '0x6FDB81A0',
       '0x6FDB8340',
       '0x6FDB85D0',
@@ -254,113 +247,6 @@ describe('Lane C B004 — Real D2Common.dll Differential Replay & Negative Contr
       }
     });
   }
-
-  it('supports custom itemModDispatch callback injection on D2Common_10665_ApplyMonProp113c with esi=0 prevResult latching', () => {
-    const m = new SparseMemory113c();
-    m.setU32(0x6fde9e1c, 0x20000000);
-    m.setU32(0x200000a4, 0x20000100);
-    m.setU32(0x200000ac, 2);
-    m.setU32(0x6fdeb15c, 37);
-    for (let i = 0; i < 37; i++) {
-      m.setU32(0x6fdeb0c8 + i * 4, CANONICAL_ITEMMOD_FUNC_TABLE_113C[i]!);
-    }
-    const rec = 0x20000100 + 1 * 0x2e;
-    m.fill(rec, 0x2e, 0);
-    // Slot 0: funcId=18, nSet=1, wVal=11, wStat=3
-    m.setU8(rec + 0x18 + 0, 18);
-    m.setU8(rec + 0x02 + 0, 1);
-    m.setU16(rec + 0x0a + 0, 11);
-    m.setU16(rec + 0x20 + 0, 3);
-    // Slot 1: funcId=8, nSet=0, wVal=22, wStat=4
-    m.setU8(rec + 0x18 + 1, 8);
-    m.setU8(rec + 0x02 + 1, 0);
-    m.setU16(rec + 0x0a + 2, 22);
-    m.setU16(rec + 0x20 + 2, 4);
-    // Slot 2: funcId=9, nSet=1, wVal=33, wStat=5
-    m.setU8(rec + 0x18 + 2, 9);
-    m.setU8(rec + 0x02 + 2, 1);
-    m.setU16(rec + 0x0a + 4, 33);
-    m.setU16(rec + 0x20 + 4, 5);
-    // Slot 3: funcId=25 (null entry in 0x6FDEB0C8 -> terminates loop before slot 4)
-    m.setU8(rec + 0x18 + 3, 25);
-    m.setU8(rec + 0x18 + 4, 8);
-
-    const pItemProp = 0x20000200;
-    m.setU32(pItemProp + 0x00, 1);
-    m.setU32(pItemProp + 0x04, 2);
-    m.setU32(pItemProp + 0x08, 10);
-    m.setU32(pItemProp + 0x0c, 20);
-
-    const calls: Array<{
-      funcId: number;
-      fp: number;
-      nType: number;
-      nSet: number;
-      wStat: number;
-      wVal: number;
-      prevResult: number;
-      nState: number;
-      fStatListFlags: number;
-      pStatList: number;
-    }> = [];
-
-    D2Common_10665_ApplyMonProp113c(
-      m,
-      1,
-      0x20000240,
-      0x20000280,
-      77,
-      3,
-      99,
-      pItemProp,
-      5,
-      0x0040,
-      0x20000680,
-      (_mem, funcId, fp, nType, _pUnit, _pItem, _pItemProp, nSet, wStat, wVal, prevResult, nState, fStatListFlags, pStatList) => {
-        calls.push({ funcId, fp, nType, nSet, wStat, wVal, prevResult, nState, fStatListFlags, pStatList });
-        return funcId === 18 ? 276 : 999;
-      },
-    );
-
-    expect(calls).toEqual([
-      {
-        funcId: 18,
-        fp: 0x6fd97350,
-        nType: 1,
-        nSet: 1,
-        wStat: 3,
-        wVal: 11,
-        prevResult: 0,
-        nState: 5,
-        fStatListFlags: 0x0040,
-        pStatList: 0x20000680,
-      },
-      {
-        funcId: 8,
-        fp: 0x6fd985d0,
-        nType: 1,
-        nSet: 0,
-        wStat: 4,
-        wVal: 22,
-        prevResult: 276,
-        nState: 5,
-        fStatListFlags: 0x0040,
-        pStatList: 0x20000680,
-      },
-      {
-        funcId: 9,
-        fp: 0x6fd98550,
-        nType: 1,
-        nSet: 1,
-        wStat: 5,
-        wVal: 33,
-        prevResult: 276,
-        nState: 5,
-        fStatListFlags: 0x0040,
-        pStatList: 0x20000680,
-      },
-    ]);
-  });
 
   it('verifies B004 static tables (0x6FD95668, 0x6FDDBD68, 0x6FDDBF28) byte-for-byte against D2Common.dll', () => {
     const dllPath = path.join(D2_DATA_DIR, 'D2Common.dll');

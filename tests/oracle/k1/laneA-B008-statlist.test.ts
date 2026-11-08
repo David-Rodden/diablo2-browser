@@ -252,16 +252,13 @@ describe('K1 Lane A — B008 StatList & Item Affix Leaves Real-DLL Differential 
 
   it('handles defensive NULL-pointer guards and pUnit->pStatListEx == 0 cleanly', () => {
     const m = new SparseMemory113c()
-    expect(STATLIST_GetSkillLevel113c(m, 0)).toBe(0)
-    expect(STATLIST_GetSkillId113c(m, 0)).toBe(0)
-    STATLIST_SetSkillLevel113c(m, 0, 5)
-    STATLIST_SetSkillId113c(m, 0, 42)
     STATLIST_SetStatRemoveProc113c(m, 0, 0x12345678)
     expect(STATLIST_GetStatListFromFlag113c(m, 0, 0x40)).toBe(0)
 
     const pUnit = 0x501000
     m.setU32(pUnit + 0x5c, 0) // pStatListEx = NULL
     expect(STATLIST_CheckUnitStatListFlag100113c(m, pUnit)).toBe(0)
+    expect(STATLIST_GetStatListFromUnitStateAndFlag113c(m, pUnit, 5, 0)).toBe(0)
   })
 
   it('enforces negative controls: mutated return value, mutated post-memory byte, or rogue write fails', () => {

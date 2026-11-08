@@ -37,4 +37,6 @@ mkdir -p "$PFX/drive_c/out"
 
 cp "$PFX/drive_c/out/b003-vectors.json" "$OUT_DIR/b003-vectors.json"
 cp "$PFX/drive_c/out/b006-vectors.json" "$OUT_DIR/b006-vectors.json"
-sha256sum "$OUT_DIR/b003-vectors.json" "$OUT_DIR/b006-vectors.json"
+cp "$PFX/drive_c/out/b009-vectors.json" "$OUT_DIR/b009-vectors.json"
+cp "$PFX/drive_c/out/b012-vectors.json" "$OUT_DIR/b012-vectors.json"
+sha256sum "$OUT_DIR/b003-vectors.json" "$OUT_DIR/b006-vectors.json" "$OUT_DIR/b009-vectors.json" "$OUT_DIR/b012-vectors.json"
