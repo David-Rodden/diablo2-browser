@@ -620,14 +620,15 @@ describe('autopilot', () => {
 
   it('drinks the stamina potions blocking its belt while in town', async () => {
     const { world, hudModel, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } }, ROGUE_ENCAMPMENT)
-    Object.assign(hudModel, { useBeltSlot: vi.fn((slot: number) => world.containers.belt.delete(100 + slot)) })
+    const useBeltSlot = vi.fn((slot: number) => world.containers.belt.delete(100 + slot))
+    Object.assign(hudModel, { useBeltSlot })
     Object.assign(world.self, { gold: 0, stashGold: 0 })
     ;[1, 3, 4, 8, 9, 10].forEach((bodyLoc) => world.containers.equipment.set(bodyLoc, { id: 50 + bodyLoc, code: 'cap', bodyLoc }))
     world.containers.belt.set(100, { id: 100, code: 'hp2', gridX: 0 })
     world.containers.belt.set(102, { id: 102, code: 'vps', gridX: 2 })
     tick()
     expect(guide.pilotStatus).toBe('Drinking the odd potions in the belt')
-    await vi.waitFor(() => expect(hudModel.useBeltSlot).toHaveBeenCalledWith(2, false))
+    await vi.waitFor(() => expect(useBeltSlot).toHaveBeenCalledWith(2, false))
     expect([...world.containers.belt.keys()]).toEqual([100])
   })
 
