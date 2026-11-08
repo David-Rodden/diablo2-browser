@@ -214,8 +214,8 @@ describe('Lane C B016 — Real D2Common.dll Differential Replay & Negative Contr
     .filter(Boolean);
   const vectors: VectorRecord[] = lines.map(l => JSON.parse(l) as VectorRecord);
 
-  it('loads all 17 B016 function VAs with >= 4 real-DLL vectors each (109 vectors total)', () => {
-    expect(vectors.length).toBeGreaterThanOrEqual(109);
+  it('loads all 17 B016 function VAs with >= 4 real-DLL vectors each (111 vectors total)', () => {
+    expect(vectors.length).toBeGreaterThanOrEqual(111);
     const expectedVas = [
       '0x6FD84D30',
       '0x6FD84D40',

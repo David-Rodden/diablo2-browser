@@ -89,8 +89,8 @@ export function PATH_AStar_PropagateNewFScoreToChildren113c(
 
   while ((m.u32((ctx + ASTAR_CTX_STACK_COUNT_OFF_113C) >>> 0) | 0) !== 0) {
     const nextCount = ((m.u32((ctx + ASTAR_CTX_STACK_COUNT_OFF_113C) >>> 0) | 0) - 1) | 0
-    const pCur = m.u32((ctx + ASTAR_CTX_POINTS_STACK_OFF_113C + ((nextCount << 2) >>> 0)) >>> 0)
     m.setU32((ctx + ASTAR_CTX_STACK_COUNT_OFF_113C) >>> 0, nextCount >>> 0)
+    const pCur = m.u32((ctx + ASTAR_CTX_POINTS_STACK_OFF_113C + ((nextCount << 2) >>> 0)) >>> 0)
 
     for (let k = 0; k < 8; k++) {
       const pChild = m.get(pCur, D2AStarNodeStrc.pChildren, k)

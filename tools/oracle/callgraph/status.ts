@@ -36,6 +36,7 @@ export interface FunctionEntry {
   callees: string[];
   callers: string[];
   externalDeps: string[];
+  indirectUnknown?: boolean;
   kernFile?: string;
   tsSymbol?: string;
   tsReference?: string;
@@ -170,7 +171,7 @@ export function runStatusCli(): void {
       stat.ported++;
     } else {
       const unportedCallees = fn.callees.filter(c => !implementedKeys.has(c.toUpperCase()));
-      if (unportedCallees.length === 0) {
+      if (unportedCallees.length === 0 && !fn.indirectUnknown) {
         stat.ready++;
         if (fn.callees.length === 0 && fn.externalDeps.length === 0) {
           stat.readyPure++;
@@ -215,7 +216,7 @@ export function runStatusCli(): void {
 
   printHeader(`Next Work Orders: Unblocked Pure-Leaf Functions (0 Callees, 0 Imports — Top 12)`);
   const pureLeaves = functions
-    .filter(f => f.status === 'unported' && f.callees.length === 0 && f.externalDeps.length === 0)
+    .filter(f => f.status === 'unported' && f.callees.length === 0 && f.externalDeps.length === 0 && !f.indirectUnknown)
     .sort((a, b) => b.callers.length - a.callers.length || a.va.localeCompare(b.va));
 
   console.log(`Found ${pureLeaves.length} unported pure-leaf functions (0 closure callees, 0 external DLL imports).`);

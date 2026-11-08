@@ -25,6 +25,7 @@
 import type { Memory113c } from '../mem/sparse-memory.ts'
 import {
   D2CharStatsTxt_SIZE,
+  D2ItemStatCostTxt_SIZE,
   D2ItemTypesTxt_SIZE,
   D2MissilesTxt_SIZE,
   D2MonStats2Txt,
@@ -32,8 +33,12 @@ import {
   D2MonStatsTxt,
   D2MonStatsTxt_SIZE,
   D2PlayerDataStrc,
+  D2SetItemsTxt_SIZE,
+  D2SetsTxt_SIZE,
   D2SkillsTxt,
   D2SkillsTxt_SIZE,
+  D2StatesTxt_SIZE,
+  D2UniqueItemsTxt_SIZE,
   D2UnitStrc,
   type FieldLayout113c,
 } from '../mem/layout.generated.ts'
@@ -47,6 +52,11 @@ export const D2COMMON_GDWBITMASKS_IAT_VA_113C = 0x6fdd90b0
 
 /** Byte offsets inside the data-tables block pointed to by `sgptDataTables` (evidence in the file header). */
 export const DATATABLES_OFF_113C = {
+  pStatesTxt: 0xbc,
+  nStatesTxtRecordCount: 0xc4,
+  fStateMasksAura: 0xf8,
+  fStateMasksExp: 0xfc,
+  fStateMasksOnCurse: 0x144,
   pMonStatsTxt: 0xa78,
   nMonStatsTxtRecordCount: 0xa80,
   pMonStats2Txt: 0xa90,
@@ -59,11 +69,32 @@ export const DATATABLES_OFF_113C = {
   nSkillsTxtRecordCount: 0xba0,
   pCharStatsTxt: 0xbc4,
   nCharStatsTxtRecordCount: 0xbc8,
+  pItemStatCostTxt: 0xbcc,
+  nItemStatCostTxtRecordCount: 0xbd4,
   pItemTypesTxt: 0xbf8,
   nItemTypesTxtRecordCount: 0xbfc,
   nItemTypesEquivDwords: 0xc00,
   pItemTypesEquiv: 0xc04,
+  pSetsTxt: 0xc0c,
+  nSetsTxtRecordCount: 0xc10,
+  pSetItemsTxt: 0xc18,
+  nSetItemsTxtRecordCount: 0xc1c,
+  pUniqueItemsTxt: 0xc24,
+  nUniqueItemsTxtRecordCount: 0xc28,
 } as const
+
+/** Assertion error thrown when a `D2Common.dll` function hits `FOG.#10023` (`FOG_DisplayAssert`). */
+export class D2CommonAssertError extends Error {
+  readonly file: string
+  readonly line: number
+
+  constructor(file: string, line: number) {
+    super(`D2Common assertion failed at ${file}:${line}`)
+    this.name = 'D2CommonAssertError'
+    this.file = file
+    this.line = line
+  }
+}
 
 /** SkillDesc record stride `0x120`: `lea eax, [eax+eax*8]; shl eax, 5` at 0x6FD5153D..0x6FD51540. */
 export const SKILLDESC_TXT_STRIDE_113C = 0x120
@@ -365,3 +396,202 @@ export function DATATBLS_GetSkillsTxtParam2Inline113c(m: Memory113c, nSkillId: n
 export function DATATBLS_GetSkillsTxtParam3Inline113c(m: Memory113c, nSkillId: number): number {
   return skillsParam(m, nSkillId, D2SkillsTxt.dwParam3)
 }
+
+/** `@va D2Common:0x6FD515E0` (`DATATBLS_GetSkillsTxtParam4Inline`, internal LTCG helper, `eax = nSkillId` -> `Param4 (+0x154)` or 0). */
+export function DATATBLS_GetSkillsTxtParam4Inline113c(m: Memory113c, nSkillId: number): number {
+  return skillsParam(m, nSkillId, D2SkillsTxt.dwParam4)
+}
+
+/** `@va D2Common:0x6FD51610` (`DATATBLS_GetSkillsTxtParam5Inline`, internal LTCG helper, `eax = nSkillId` -> `Param5 (+0x158)` or 0). */
+export function DATATBLS_GetSkillsTxtParam5Inline113c(m: Memory113c, nSkillId: number): number {
+  return skillsParam(m, nSkillId, D2SkillsTxt.dwParam5)
+}
+
+/** `@va D2Common:0x6FD51640` (`DATATBLS_GetSkillsTxtParam6Inline`, internal LTCG helper, `eax = nSkillId` -> `Param6 (+0x15C)` or 0). */
+export function DATATBLS_GetSkillsTxtParam6Inline113c(m: Memory113c, nSkillId: number): number {
+  return skillsParam(m, nSkillId, D2SkillsTxt.dwParam6)
+}
+
+/**
+ * Shared linear skill parameter interpolation (`0x6FD51670 / 0x6FD516B0 / 0x6FD516F0 / 0x6FD51730`):
+ * `eax = nSkillId`, `edx = nLevel`; if record is NULL or `nLevel <= 0`, returns 0; otherwise
+ * `base + (nLevel - 1) * perLvl` (`lea eax, [edx-1]; imul eax, [ecx+perLvl]; add eax, [ecx+base]`).
+ */
+function skillsLinearParam(
+  m: Memory113c,
+  nSkillId: number,
+  nLevel: number,
+  baseField: FieldLayout113c,
+  perLvlField: FieldLayout113c,
+): number {
+  const pSkill = DATATBLS_GetSkillsTxtRecordInline113c(m, nSkillId)
+  const lvl = nLevel | 0
+  if (pSkill === 0 || lvl <= 0) return 0
+  const perLvl = m.get(pSkill, perLvlField) | 0
+  const base = m.get(pSkill, baseField) | 0
+  return (base + imul32((lvl - 1) | 0, perLvl)) | 0
+}
+
+/**
+ * `@va D2Common:0x6FD51670` (`DATATBLS_CalcSkillLinearParam12Inline`, internal LTCG helper,
+ * `eax = nSkillId`, `edx = nLevel` -> `dwParam1 + (nLevel - 1) * dwParam2` or 0).
+ */
+export function DATATBLS_CalcSkillLinearParam12Inline113c(m: Memory113c, nSkillId: number, nLevel: number): number {
+  return skillsLinearParam(m, nSkillId, nLevel, D2SkillsTxt.dwParam1, D2SkillsTxt.dwParam2)
+}
+
+/**
+ * `@va D2Common:0x6FD516B0` (`DATATBLS_CalcSkillLinearParam34Inline`, internal LTCG helper,
+ * `eax = nSkillId`, `edx = nLevel` -> `dwParam3 + (nLevel - 1) * dwParam4` or 0).
+ */
+export function DATATBLS_CalcSkillLinearParam34Inline113c(m: Memory113c, nSkillId: number, nLevel: number): number {
+  return skillsLinearParam(m, nSkillId, nLevel, D2SkillsTxt.dwParam3, D2SkillsTxt.dwParam4)
+}
+
+/**
+ * `@va D2Common:0x6FD516F0` (`DATATBLS_CalcSkillLinearParam56Inline`, internal LTCG helper,
+ * `eax = nSkillId`, `edx = nLevel` -> `dwParam5 + (nLevel - 1) * dwParam6` or 0).
+ */
+export function DATATBLS_CalcSkillLinearParam56Inline113c(m: Memory113c, nSkillId: number, nLevel: number): number {
+  return skillsLinearParam(m, nSkillId, nLevel, D2SkillsTxt.dwParam5, D2SkillsTxt.dwParam6)
+}
+
+/**
+ * `@va D2Common:0x6FD51730` (`DATATBLS_CalcSkillLinearParam78Inline`, internal LTCG helper,
+ * `eax = nSkillId`, `edx = nLevel` -> `dwParam7 + (nLevel - 1) * dwParam8` or 0).
+ */
+export function DATATBLS_CalcSkillLinearParam78Inline113c(m: Memory113c, nSkillId: number, nLevel: number): number {
+  return skillsLinearParam(m, nSkillId, nLevel, D2SkillsTxt.dwParam7, D2SkillsTxt.dwParam8)
+}
+
+/** `@va D2Common:0x6FD51770` (`DATATBLS_GetStatesTxtRecordInline`, internal LTCG helper, `eax = nStateId` -> record or 0). */
+export function DATATBLS_GetStatesTxtRecordInline113c(m: Memory113c, nStateId: number): number {
+  return lookupTxtRecord(
+    m,
+    nStateId,
+    DATATABLES_OFF_113C.pStatesTxt,
+    DATATABLES_OFF_113C.nStatesTxtRecordCount,
+    D2StatesTxt_SIZE,
+  )
+}
+
+/** `@va D2Common:0x6FD517A0` (`DATATBLS_GetItemStatCostTxtRecordInline`, internal LTCG helper, `eax = nStatId` -> record or 0). */
+export function DATATBLS_GetItemStatCostTxtRecordInline113c(m: Memory113c, nStatId: number): number {
+  return lookupTxtRecord(
+    m,
+    nStatId,
+    DATATABLES_OFF_113C.pItemStatCostTxt,
+    DATATABLES_OFF_113C.nItemStatCostTxtRecordCount,
+    D2ItemStatCostTxt_SIZE,
+  )
+}
+
+/** `@va D2Common:0x6FD517D0` (`DATATBLS_GetSetsTxtRecordInline`, internal LTCG helper, `eax = nSetId` -> record or 0). */
+export function DATATBLS_GetSetsTxtRecordInline113c(m: Memory113c, nSetId: number): number {
+  return lookupTxtRecord(
+    m,
+    nSetId,
+    DATATABLES_OFF_113C.pSetsTxt,
+    DATATABLES_OFF_113C.nSetsTxtRecordCount,
+    D2SetsTxt_SIZE,
+  )
+}
+
+/** `@va D2Common:0x6FD51800` (`DATATBLS_GetSetItemsTxtRecordInline`, internal LTCG helper, `eax = nSetItemId` -> record or 0). */
+export function DATATBLS_GetSetItemsTxtRecordInline113c(m: Memory113c, nSetItemId: number): number {
+  return lookupTxtRecord(
+    m,
+    nSetItemId,
+    DATATABLES_OFF_113C.pSetItemsTxt,
+    DATATABLES_OFF_113C.nSetItemsTxtRecordCount,
+    D2SetItemsTxt_SIZE,
+  )
+}
+
+/** `@va D2Common:0x6FD51830` (`DATATBLS_GetUniqueItemsTxtRecordInline`, internal LTCG helper, `eax = nUniqueItemId` -> record or 0). */
+export function DATATBLS_GetUniqueItemsTxtRecordInline113c(m: Memory113c, nUniqueItemId: number): number {
+  return lookupTxtRecord(
+    m,
+    nUniqueItemId,
+    DATATABLES_OFF_113C.pUniqueItemsTxt,
+    DATATABLES_OFF_113C.nUniqueItemsTxtRecordCount,
+    D2UniqueItemsTxt_SIZE,
+  )
+}
+
+/**
+ * `@va D2Common:0x6FD51860` (`MONSTERS_GetBaseIdFromMonsterUnitInline`, internal LTCG helper, `eax = pUnit` -> `eax`).
+ *
+ * Returns `-1` when `pUnit == NULL` or `pUnit->dwUnitType != 1` (UNIT_MONSTER). Otherwise loads
+ * `ecx = pUnit->dwClassId`; if `ecx < 0 || ecx >= nMonStatsTxtRecordCount || pMonStats == NULL`,
+ * returns `ecx` (`mov eax, ecx; ret` at 0x6FD5188E); otherwise returns `movsx eax, word ptr [pMonStats+2]` (`wBaseId`).
+ */
+export function MONSTERS_GetBaseIdFromMonsterUnitInline113c(m: Memory113c, pUnit: number): number {
+  if (pUnit === 0) return -1
+  if (m.get(pUnit, D2UnitStrc.dwUnitType) !== 1) return -1
+  const nClassId = m.get(pUnit, D2UnitStrc.dwClassId) | 0
+  const pMonStats = DATATBLS_GetMonStatsTxtRecordInline113c(m, nClassId)
+  if (pMonStats === 0) return nClassId
+  return s16(m.get(pMonStats, D2MonStatsTxt.wBaseId))
+}
+
+/**
+ * `@va D2Common:0x6FD518A0` (`DATATBLS_CheckMonStatsFlagInline`, internal LTCG helper,
+ * `eax = nMonStatsId`, `edx = nFlag` -> `gdwBitMasks[nFlag & 7] & MonStats.dwMonStatsFlags.byte[nFlag sar 3]`).
+ */
+export function DATATBLS_CheckMonStatsFlagInline113c(m: Memory113c, nMonStatsId: number, nFlag: number): number {
+  const pMonStats = DATATBLS_GetMonStatsTxtRecordInline113c(m, nMonStatsId)
+  if (pMonStats === 0) return 0
+  const idx = nFlag | 0
+  const byte = m.u8((pMonStats + D2MonStatsTxt.dwMonStatsFlags.off + sar32(idx, 3)) >>> 0)
+  const pBitMasks = m.u32(D2COMMON_GDWBITMASKS_IAT_VA_113C)
+  return (m.u32((pBitMasks + (idx & 7) * 4) >>> 0) & byte) >>> 0
+}
+
+/**
+ * `@va D2Common:0x6FD518F0` (`DATATBLS_HasValidSkillDescInline`, internal LTCG helper,
+ * `eax = nSkillId` -> `1` if `0 <= wSkillDesc < nSkillDescTxtRecordCount`, else `0`).
+ */
+export function DATATBLS_HasValidSkillDescInline113c(m: Memory113c, nSkillId: number): number {
+  const n = nSkillId | 0
+  if (n < 0) return 0
+  const dt = DATATBLS_GetDataTablesPtr113c(m)
+  if (n >= (m.u32(dt + DATATABLES_OFF_113C.nSkillsTxtRecordCount) | 0)) return 0
+  const pSkill = (m.u32(dt + DATATABLES_OFF_113C.pSkillsTxt) + imul32(n, D2SkillsTxt_SIZE)) >>> 0
+  if (pSkill === 0) return 0
+  const d = s16(m.get(pSkill, D2SkillsTxt.wSkillDesc))
+  if (d < 0) return 0
+  return d < (m.u32(dt + DATATABLES_OFF_113C.nSkillDescTxtRecordCount) | 0) ? 1 : 0
+}
+
+/**
+ * `@va D2Common:0x6FD51930` (`DATATBLS_WalkMonsterClassChainInline`, internal LTCG helper,
+ * `ecx = nMonStatsId`, `ebx = nSteps` -> `eax`).
+ *
+ * Looks up `MonStatsTxt[nMonStatsId]`; if NULL returns `-1`. Reads `eax = (int16) rec->wBaseId (+0x02)`;
+ * if `nSteps > 0`, walks `wNextInClass (+0x04)` up to `nSteps` times, stopping early and returning `eax`
+ * if `eax < 0 || eax >= nMonStatsTxtRecordCount` or `pMonStatsTxt + eax * 0x1A8 == 0`.
+ */
+export function DATATBLS_WalkMonsterClassChainInline113c(
+  m: Memory113c,
+  nMonStatsId: number,
+  nSteps: number,
+): number {
+  const rec0 = DATATBLS_GetMonStatsTxtRecordInline113c(m, nMonStatsId)
+  if (rec0 === 0) return -1
+  let eax = s16(m.get(rec0, D2MonStatsTxt.wBaseId))
+  const steps = nSteps | 0
+  if (steps <= 0) return eax
+  const dt = DATATBLS_GetDataTablesPtr113c(m)
+  const count = m.u32(dt + DATATABLES_OFF_113C.nMonStatsTxtRecordCount) | 0
+  const base = m.u32(dt + DATATABLES_OFF_113C.pMonStatsTxt)
+  let rec = rec0
+  for (let i = 0; i < steps; i++) {
+    eax = s16(m.get(rec, D2MonStatsTxt.wNextInClass))
+    if (eax < 0 || eax >= count) return eax
+    rec = (base + imul32(eax, D2MonStatsTxt_SIZE)) >>> 0
+    if (rec === 0) return eax
+  }
+  return eax
+}
+

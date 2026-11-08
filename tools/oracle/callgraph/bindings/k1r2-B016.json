@@ -87,7 +87,7 @@
     "kernFile": "src/d2kern-113c/common/path.ts",
     "tsSymbol": "PATH_QuantizeDirectionIndex25_113c",
     "status": "diff-verified",
-    "diffEvidence": "tests/oracle/k1/laneC-B016-path.test.ts + tests/fixtures/oracle/k1/laneC/b016-vectors.ndjson (12 real D2Common.dll vectors)"
+    "diffEvidence": "tests/oracle/k1/laneC-B016-path.test.ts + tests/fixtures/oracle/k1/laneC/b016-vectors.ndjson (14 real D2Common.dll vectors)"
   },
   {
     "module": "D2Common",

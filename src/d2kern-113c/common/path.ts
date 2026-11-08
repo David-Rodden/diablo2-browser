@@ -1048,3 +1048,645 @@ export function PATH_AStar_PopBestOpenToClosed113c(m: Memory113c, pContext: numb
   return pNode
 }
 
+/**
+ * `@va D2Common:0x6FD84990` (`D2Common.#10390` `PATH_SetCurrentRoomInvalid`, stdcall `(pPath, bInvalid)`, `ret 8`).
+ *
+ * Tests `bInvalid` (`[esp+8]`, no NULL check on `pPath`); if `bInvalid != 0`, sets bit `0x02`
+ * (`PATH_CURRENT_ROOM_INVALID`) on `pPath->dwFlags (+0x34)`, else clears bit `0x02` (`& 0xFFFFFFFD`).
+ */
+export function PATH_SetCurrentRoomInvalid113c(m: Memory113c, pPath: number, bInvalid: number): void {
+  const flags = m.get(pPath, D2DynamicPathStrc.dwFlags)
+  if ((bInvalid | 0) !== 0) {
+    m.set(pPath, D2DynamicPathStrc.dwFlags, (flags | 2) >>> 0)
+  } else {
+    m.set(pPath, D2DynamicPathStrc.dwFlags, (flags & 0xfffffffd) >>> 0)
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD849D0` (`D2Common.#10286` `PATH_SetTargetPos`, stdcall `(pPath, nTargetX, nTargetY)`, `ret 0xC`).
+ *
+ * - NULL `pPath` -> no-op (`0x6FD849D4`).
+ * - Writes `u16` `nTargetX` to `pPath->wTargetX (+0x10)`, `u16` `nTargetY` to `pPath->wTargetY (+0x12)`,
+ *   and `u32` `0` to `pPath->pTargetUnit (+0x58)`.
+ */
+export function PATH_SetTargetPos113c(m: Memory113c, pPath: number, nTargetX: number, nTargetY: number): void {
+  if (pPath === 0) return
+  m.set(pPath, D2DynamicPathStrc.wTargetX, nTargetX & 0xffff)
+  m.set(pPath, D2DynamicPathStrc.wTargetY, nTargetY & 0xffff)
+  m.set(pPath, D2DynamicPathStrc.pTargetUnit, 0)
+}
+
+/**
+ * `@va D2Common:0x6FD84A00` (`D2Common.#10451` `PATH_ClearNextRoom`, stdcall `(pPath)`, `ret 4`).
+ *
+ * Unconditionally stores `0` at `pPath->pPreviousRoom (+0x20)` (`0x6FD84A04`, no NULL check).
+ */
+export function PATH_ClearNextRoom113c(m: Memory113c, pPath: number): void {
+  m.set(pPath, D2DynamicPathStrc.pPreviousRoom, 0)
+}
+
+/**
+ * `@va D2Common:0x6FD84A10` (`D2Common.#10950` `PATH_GetNextRoom`, stdcall `(pPath)`, `ret 4`).
+ *
+ * Unconditionally reads and returns `pPath->pPreviousRoom (+0x20)` (`0x6FD84A14`, no NULL check).
+ */
+export function PATH_GetNextRoom113c(m: Memory113c, pPath: number): number {
+  return m.get(pPath, D2DynamicPathStrc.pPreviousRoom) | 0
+}
+
+/**
+ * `@va D2Common:0x6FD84A40` (`D2Common.#11001` `PATH_GetLastPointY`, stdcall `(pPath)`, `ret 4`).
+ *
+ * Unconditionally reads `count = pPath->dwPathPoints (+0x28)`; if `count == 0`, returns `0`;
+ * otherwise returns `u16(pPath + 0x9A + count * 4)` (`wPathPoints[count - 1].y`).
+ */
+export function PATH_GetLastPointY113c(m: Memory113c, pPath: number): number {
+  const count = m.get(pPath, D2DynamicPathStrc.dwPathPoints)
+  if (count === 0) return 0
+  return m.u16((pPath + 0x9a + ((count << 2) >>> 0)) >>> 0)
+}
+
+/**
+ * `@va D2Common:0x6FD84A60` (`D2Common.#10976` `PATH_GetLastPointX`, stdcall `(pPath)`, `ret 4`).
+ *
+ * Unconditionally reads `count = pPath->dwPathPoints (+0x28)`; if `count == 0`, returns `0`;
+ * otherwise returns `u16(pPath + 0x98 + count * 4)` (`wPathPoints[count - 1].x`).
+ */
+export function PATH_GetLastPointX113c(m: Memory113c, pPath: number): number {
+  const count = m.get(pPath, D2DynamicPathStrc.dwPathPoints)
+  if (count === 0) return 0
+  return m.u16((pPath + 0x98 + ((count << 2) >>> 0)) >>> 0)
+}
+
+/**
+ * `@va D2Common:0x6FD84A80` (`D2Common.#10999` `PATH_GetPrevTargetY`, stdcall `(pPath)`, `ret 4`).
+ *
+ * Unconditionally zero-extends `pPath->wFinalTargetY (+0x1A)` (`0x6FD84A84`, no NULL check).
+ */
+export function PATH_GetPrevTargetY113c(m: Memory113c, pPath: number): number {
+  return m.get(pPath, D2DynamicPathStrc.wFinalTargetY)
+}
+
+/**
+ * `@va D2Common:0x6FD84A90` (`D2Common.#10690` `PATH_GetPrevTargetX`, stdcall `(pPath)`, `ret 4`).
+ *
+ * Unconditionally zero-extends `pPath->wFinalTargetX (+0x18)` (`0x6FD84A94`, no NULL check).
+ */
+export function PATH_GetPrevTargetX113c(m: Memory113c, pPath: number): number {
+  return m.get(pPath, D2DynamicPathStrc.wFinalTargetX)
+}
+
+/**
+ * `@va D2Common:0x6FD84AA0` (`D2Common.#10764` `PATH_GetFirstPointY`, stdcall `(pPath)`, `ret 4`).
+ *
+ * Unconditionally zero-extends `pPath->wTargetY (+0x12)` (`0x6FD84AA4`, no NULL check).
+ */
+export function PATH_GetFirstPointY113c(m: Memory113c, pPath: number): number {
+  return m.get(pPath, D2DynamicPathStrc.wTargetY)
+}
+
+/**
+ * `@va D2Common:0x6FD84AB0` (`D2Common.#10983` `PATH_GetFirstPointX`, stdcall `(pPath)`, `ret 4`).
+ *
+ * Unconditionally zero-extends `pPath->wTargetX (+0x10)` (`0x6FD84AB4`, no NULL check).
+ */
+export function PATH_GetFirstPointX113c(m: Memory113c, pPath: number): number {
+  return m.get(pPath, D2DynamicPathStrc.wTargetX)
+}
+
+/**
+ * `@va D2Common:0x6FD84BE0` (`D2Common.#10706` `PATH_ForceDirection`, stdcall `(pPath, nDir)`, `ret 8`).
+ *
+ * - NULL `pPath` -> no-op (`0x6FD84BE4`).
+ * - Masks `d = nDir & 0x3F` (`0x6FD84BEC`) and writes `u8` `d` to `pPath->nDirection (+0x64)`
+ *   and `pPath->nNewDirection (+0x65)`.
+ */
+export function PATH_ForceDirection113c(m: Memory113c, pPath: number, nDir: number): void {
+  if (pPath === 0) return
+  const d = nDir & 0x3f
+  m.set(pPath, D2DynamicPathStrc.nDirection, d)
+  m.set(pPath, D2DynamicPathStrc.nNewDirection, d)
+}
+
+/**
+ * `@va D2Common:0x6FD84C00` (`D2Common.#10788` `PATH_GetNewDirection`, stdcall `(pPath)`, `ret 4`).
+ *
+ * Unconditionally reads and returns `pPath->nNewDirection (+0x65)` (`mov al, [eax+0x65]`, no NULL check).
+ */
+export function PATH_GetNewDirection113c(m: Memory113c, pPath: number): number {
+  return m.get(pPath, D2DynamicPathStrc.nNewDirection)
+}
+
+/**
+ * `@va D2Common:0x6FD84C10` (`D2Common.#10042` `PATH_GetDirection`, stdcall `(pPath)`, `ret 4`).
+ *
+ * NULL `pPath` -> `0`; otherwise returns `pPath->nDirection (+0x64)` (`mov al, [eax+0x64]`).
+ */
+export function PATH_GetDirection113c(m: Memory113c, pPath: number): number {
+  if (pPath === 0) return 0
+  return m.get(pPath, D2DynamicPathStrc.nDirection)
+}
+
+/**
+ * `@va D2Common:0x6FD84C30` (`D2Common.#10817` `PATH_GetPathPoints`, stdcall `(pPath, ppPathPoints)`, `ret 8`).
+ *
+ * Unconditionally stores `(pPath + 0x9C)` at `*ppPathPoints` and returns `pPath->dwPathPoints (+0x28)` (no NULL check).
+ */
+export function PATH_GetPathPoints113c(m: Memory113c, pPath: number, ppPathPoints: number): number {
+  m.setU32(ppPathPoints >>> 0, (pPath + D2DynamicPathStrc.wPathPoints.off) >>> 0)
+  return m.get(pPath, D2DynamicPathStrc.dwPathPoints) | 0
+}
+
+/**
+ * `@va D2Common:0x6FD84C60` (`D2Common.#10800` `PATH_GetNumberOfPathPoints`, stdcall `(pPath)`, `ret 4`).
+ *
+ * Unconditionally reads and returns `pPath->dwPathPoints (+0x28)` (no NULL check).
+ */
+export function PATH_GetNumberOfPathPoints113c(m: Memory113c, pPath: number): number {
+  return m.get(pPath, D2DynamicPathStrc.dwPathPoints) | 0
+}
+
+/**
+ * `@va D2Common:0x6FD84CB0` (`D2Common.#10159` `PATH_ClearPathPointsAndFlag0x20`, stdcall `(pPath)`, `ret 4`).
+ *
+ * Unconditionally clears bit `0x20` (`& 0xFFFFFFDF`) on `pPath->dwFlags (+0x34)` and stores `0`
+ * to `pPath->dwPathPoints (+0x28)` (no NULL check).
+ */
+export function PATH_ClearPathPointsAndFlag0x20_113c(m: Memory113c, pPath: number): void {
+  m.set(pPath, D2DynamicPathStrc.dwFlags, (m.get(pPath, D2DynamicPathStrc.dwFlags) & 0xffffffdf) >>> 0)
+  m.set(pPath, D2DynamicPathStrc.dwPathPoints, 0)
+}
+
+/**
+ * `@va D2Common:0x6FD84CE0` (`D2Common.#11022` `PATH_SetAcceleration`, stdcall `(pPath, nAcceleration)`, `ret 8`).
+ *
+ * Unconditionally stores `nAcceleration` at `pPath->dwAcceleration (+0x88)` (no NULL check).
+ */
+export function PATH_SetAcceleration113c(m: Memory113c, pPath: number, nAcceleration: number): void {
+  m.set(pPath, D2DynamicPathStrc.dwAcceleration, nAcceleration >>> 0)
+}
+
+/**
+ * `@va D2Common:0x6FD84D10` (`D2Common.#10378` `PATH_SetMaxVelocity`, stdcall `(pPath, nMaxVelocity)`, `ret 8`).
+ *
+ * Unconditionally stores `nMaxVelocity` at `pPath->dwMaxVelocity (+0x84)` (no NULL check).
+ */
+export function PATH_SetMaxVelocity113c(m: Memory113c, pPath: number, nMaxVelocity: number): void {
+  m.set(pPath, D2DynamicPathStrc.dwMaxVelocity, nMaxVelocity >>> 0)
+}
+
+/**
+ * `D2Common.dll` `.data` table `gdwPathTypeFlags` at `0x6FDE4180` (`18` `uint32_t` entries).
+ *
+ * `@va D2Common:0x6FDE4180`
+ */
+export const PATH_TYPE_FLAGS_VA_6FDE4180 = 0x6fde4180
+
+/**
+ * `D2Common.dll` `.data` table `gdwPathTypeStepNums` at `0x6FDE4138` (`18` `uint32_t` entries).
+ *
+ * `@va D2Common:0x6FDE4138`
+ */
+export const PATH_TYPE_STEP_NUMS_VA_6FDE4138 = 0x6fde4138
+
+/**
+ * `D2Common.dll` `.rdata` table `PATH_DIR_TURN_RATE_TABLE` at `0x6FDE41C8` (`64` `int32_t` entries).
+ *
+ * `@va D2Common:0x6FDE41C8`
+ */
+export const PATH_DIR_TURN_RATE_VA_6FDE41C8 = 0x6fde41c8
+
+/**
+ * `Fog.dll` `.data` 512-entry `float32` sine/cosine lookup table at `0x6FF7F470`
+ * (`Fog.#10084` `FOG_SinLUT(idx) = *(float*)(0x6FF7F470 + (idx & 0x1FF)*4)`,
+ * `Fog.#10083` `FOG_CosLUT(idx) = *(float*)(0x6FF7F470 + ((idx + 0x80) & 0x1FF)*4)`).
+ *
+ * `@va Fog:0x6FF7F470`
+ */
+export const FOG_TRIG_LUT_VA_6FF7F470 = 0x6ff7f470
+
+const _f32ScratchBuf = new ArrayBuffer(4)
+const _f32ScratchU32 = new Uint32Array(_f32ScratchBuf)
+const _f32ScratchF32 = new Float32Array(_f32ScratchBuf)
+
+function u32BitsToF32(bits: number): number {
+  _f32ScratchU32[0] = bits >>> 0
+  return _f32ScratchF32[0]!
+}
+
+/**
+ * `@va D2Common:0x6FD68400` (`PATH_SpliceSegmentPoints113c`, not exported;
+ * custom LTCG `eax = nInsertIdx`, `ecx = pSubPath`, `ebx = pnTotalPoints`,
+ * stack `[esp+4] = pPointsBuf`, `[esp+8] = pnCurIdx`, `ret 8`).
+ *
+ * Shifts `(*pnTotalPoints - nInsertIdx - 1)` `D2PathPointStrc` dwords starting at `pPointsBuf + (nInsertIdx + 1)*4`
+ * to `pPointsBuf + (*pnCurIdx + pSubPath->nSubPoints (+0x04))*4` via `_memmove` (`0x6FD52320`),
+ * copies `pSubPath->nSubPoints (+0x04)` dwords from `pSubPath + 0x24` into `pPointsBuf + (*pnCurIdx)*4`,
+ * adds `(*pnCurIdx - nInsertIdx + pSubPath->nSubPoints - 1)` to `*pnTotalPoints`,
+ * and sets `*pnCurIdx = *pnCurIdx + pSubPath->nSubPoints`.
+ */
+export function PATH_SpliceSegmentPoints113c(
+  m: Memory113c,
+  nInsertIdx: number,
+  pSubPath: number,
+  pnTotalPoints: number,
+  pPointsBuf: number,
+  pnCurIdx: number,
+): void {
+  const insIdx = nInsertIdx | 0
+  const subPath = pSubPath >>> 0
+  const pTotal = pnTotalPoints >>> 0
+  const ptsBuf = pPointsBuf >>> 0
+  const pCur = pnCurIdx >>> 0
+
+  const curIdx0 = m.u32(pCur) | 0
+  const subCount0 = m.u32((subPath + 0x04) >>> 0) | 0
+  const delta = (((curIdx0 - insIdx) | 0) + subCount0 - 1) | 0
+  const total0 = m.u32(pTotal) | 0
+  const dstIdx = (delta + insIdx) | 0
+  const moveBytes = ((((total0 - insIdx) | 0) * 4 - 4) | 0) >>> 0
+  const srcAddr = (ptsBuf + insIdx * 4 + 4) >>> 0
+  const dstAddr = (ptsBuf + dstIdx * 4 + 4) >>> 0
+
+  if (moveBytes > 0 && moveBytes < 0x80000000) {
+    const tmp = new Uint8Array(moveBytes)
+    for (let i = 0; i < moveBytes; i++) {
+      tmp[i] = m.u8((srcAddr + i) >>> 0)
+    }
+    for (let i = 0; i < moveBytes; i++) {
+      m.setU8((dstAddr + i) >>> 0, tmp[i]!)
+    }
+  }
+
+  const subCount1 = m.u32((subPath + 0x04) >>> 0) | 0
+  const curIdx1 = m.u32(pCur) | 0
+  const copyBytes = (subCount1 << 2) >>> 0
+  const pWrite = (ptsBuf + curIdx1 * 4) >>> 0
+  const pRead = (subPath + 0x24) >>> 0
+  const dwords = copyBytes >>> 2
+  for (let i = 0; i < dwords; i++) {
+    m.setU32((pWrite + i * 4) >>> 0, m.u32((pRead + i * 4) >>> 0))
+  }
+  for (let i = dwords << 2; i < copyBytes; i++) {
+    m.setU8((pWrite + i) >>> 0, m.u8((pRead + i) >>> 0))
+  }
+
+  const total1 = m.u32(pTotal) | 0
+  m.setU32(pTotal, ((total1 + delta) | 0) >>> 0)
+  m.setU32(pCur, ((dstIdx + 1) | 0) >>> 0)
+}
+
+/**
+ * `@va D2Common:0x6FD84630` (`D2Common.#10022` `PATH_SetStepDistance113c`,
+ * stdcall `(pPath, nDistance)`, `ret 8`).
+ *
+ * Asserts `0 <= (int32)nDistance <= 0xFF` (`line 2405`, `0x965`) and writes `u8(nDistance)`
+ * to `pPath + 0x94` (`nStepDistance`).
+ */
+export function PATH_SetStepDistance113c(
+  m: Memory113c,
+  pPath: number,
+  nDistance: number,
+): void {
+  const dist = nDistance | 0
+  if (dist < 0 || dist > 0xff) {
+    throw new Error(
+      'PATH_SetStepDistance113c: nDistance out of [0, 255] (line 2405)',
+    )
+  }
+  m.setU8((pPath + 0x94) >>> 0, dist & 0xff)
+}
+
+/**
+ * `@va D2Common:0x6FD847C0` (`D2Common.#10214` `PATH_GetSavedSteps113c`,
+ * stdcall `(pPath, ppOutSavedSteps)`, `ret 8`).
+ *
+ * Asserts `(pPath->dwFlags (+0x34) & 0x20000) != 0` (`line 2292`, `0x8F4`), writes `pPath + 0x1D8`
+ * to `*ppOutSavedSteps`, and returns `*(int32*)(pPath + 0x1D4)` (`nSavedStepsCount`).
+ */
+export function PATH_GetSavedSteps113c(
+  m: Memory113c,
+  pPath: number,
+  ppOutSavedSteps: number,
+): number {
+  const path = pPath >>> 0
+  if ((m.u32((path + 0x34) >>> 0) & 0x20000) === 0) {
+    throw new Error('PATH_GetSavedSteps113c: missing flag 0x20000 (line 2292)')
+  }
+  m.setU32(ppOutSavedSteps >>> 0, (path + 0x1d8) >>> 0)
+  return m.u32((path + 0x1d4) >>> 0) | 0
+}
+
+/**
+ * `@va D2Common:0x6FD84910` (`D2Common.#11163` `PATH_GetTargetTypeAndId113c`,
+ * stdcall `(pPath, pOutTargetType, pOutTargetId)`, `ret 0xC`).
+ *
+ * Asserts `pPath->pTargetUnit (+0x58) != 0` (`line 1984`, `0x7C0`), then copies `pPath->dwTargetType (+0x5C)`
+ * to `*pOutTargetType` and `pPath->dwTargetId (+0x60)` to `*pOutTargetId`.
+ */
+export function PATH_GetTargetTypeAndId113c(
+  m: Memory113c,
+  pPath: number,
+  pOutTargetType: number,
+  pOutTargetId: number,
+): void {
+  const path = pPath >>> 0
+  if (m.u32((path + 0x58) >>> 0) === 0) {
+    throw new Error('PATH_GetTargetTypeAndId113c: pTargetUnit == 0 (line 1984)')
+  }
+  m.setU32(pOutTargetType >>> 0, m.u32((path + 0x5c) >>> 0))
+  m.setU32(pOutTargetId >>> 0, m.u32((path + 0x60) >>> 0))
+}
+
+/**
+ * `@va D2Common:0x6FD84B80` (`D2Common.#10750` `PATH_GetPosY113c`,
+ * stdcall `(pPath)`, `ret 4`).
+ *
+ * Asserts `pPath != 0` (`line 1693`, `0x69D`) and returns `u16(pPath + 0x06)` (`wPosY`).
+ */
+export function PATH_GetPosY113c(m: Memory113c, pPath: number): number {
+  if (pPath === 0) {
+    throw new Error('PATH_GetPosY113c: pPath == 0 (line 1693)')
+  }
+  return m.u16((pPath + 0x06) >>> 0)
+}
+
+/**
+ * `@va D2Common:0x6FD84BB0` (`D2Common.#10867` `PATH_GetPosX113c`,
+ * stdcall `(pPath)`, `ret 4`).
+ *
+ * Asserts `pPath != 0` (`line 1682`, `0x692`) and returns `u16(pPath + 0x02)` (`wPosX`).
+ */
+export function PATH_GetPosX113c(m: Memory113c, pPath: number): number {
+  if (pPath === 0) {
+    throw new Error('PATH_GetPosX113c: pPath == 0 (line 1682)')
+  }
+  return m.u16((pPath + 0x02) >>> 0)
+}
+
+/**
+ * `@va D2Common:0x6FD84DC0` (`D2Common.#10692` `PATH_FreeDynamicPath113c`,
+ * stdcall `(pMemPool, pPath)`, `ret 8`).
+ *
+ * Frees `pPath` via `Fog.#10046` (`0x6FD59228`).
+ */
+export function PATH_FreeDynamicPath113c(
+  m: Memory113c,
+  _pMemPool: number,
+  pPath: number,
+): void {
+  const freeFn = (m as { free?: (p: number) => void }).free
+  if (pPath !== 0) {
+    freeFn?.call(m, pPath >>> 0)
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD84F80` (`D2Common.#10647` `PATH_SetType113c`,
+ * stdcall `(pPath, nPathType)`, `ret 8`).
+ *
+ * - Asserts `!(pPath->pUnit != 0 && pPath->pUnit->dwUnitType == 0 && nPathType == 2)` (`line 2145`, `0x861`).
+ * - Reads `flagMask = gdwPathTypeFlags[nPathType]` (`0x6FDE4180 + nPathType * 4`).
+ * - If `(flagMask & 0x2000) != 0 && (pPath->dwFlags & 0x4000) == 0`, saves `pPath->dwPrevPathType (+0x40) = pPath->dwPathType (+0x3C)`.
+ * - If `(flagMask & 0x8000) != 0 && (pPath->dwFlags & 0x10000) == 0`, saves `*(u32*)(pPath + 0x80) = pPath->dwVelocity (+0x7C)`.
+ * - Updates `pPath->dwFlags = (pPath->dwFlags & 0xFFF800FF) | flagMask`, `pPath->dwPathType (+0x3C) = nPathType`,
+ *   and `pPath->nStepNum (+0x98) = gdwPathTypeStepNums[nPathType]` (`0x6FDE4138 + nPathType * 4`).
+ * - Asserts `pPath->dwPrevPathType != 11` (`line 2161`), `pPath->dwPrevPathType != 8` (`line 2162`),
+ *   and `!(nPathType == 4 && pPath->nDistMax (+0x91) >= 0x4E)` (`line 2163`).
+ */
+export function PATH_SetType113c(
+  m: Memory113c,
+  pPath: number,
+  nPathType: number,
+): void {
+  const path = pPath >>> 0
+  const type = nPathType | 0
+  const pUnit = m.u32((path + 0x30) >>> 0)
+  if (pUnit !== 0 && m.u32(pUnit) === 0 && type === 2) {
+    throw new Error(
+      'PATH_SetType113c: player path type 2 forbidden (line 2145)',
+    )
+  }
+
+  const flagMask = m.u32((PATH_TYPE_FLAGS_VA_6FDE4180 + type * 4) >>> 0)
+  if ((flagMask & 0x2000) !== 0 && (m.u32((path + 0x34) >>> 0) & 0x4000) === 0) {
+    m.setU32((path + 0x40) >>> 0, m.u32((path + 0x3c) >>> 0))
+  }
+  if (
+    (flagMask & 0x8000) !== 0 &&
+    (m.u32((path + 0x34) >>> 0) & 0x10000) === 0
+  ) {
+    m.setU32((path + 0x80) >>> 0, m.u32((path + 0x7c) >>> 0))
+  }
+
+  const newFlags = ((m.u32((path + 0x34) >>> 0) & 0xfff800ff) | flagMask) >>> 0
+  m.setU32((path + 0x34) >>> 0, newFlags)
+  m.setU32((path + 0x3c) >>> 0, type >>> 0)
+  const stepNum = m.u32((PATH_TYPE_STEP_NUMS_VA_6FDE4138 + type * 4) >>> 0)
+  m.setU32((path + 0x98) >>> 0, stepNum)
+
+  const prevType = m.u32((path + 0x40) >>> 0) | 0
+  if (prevType === 0x0b) {
+    throw new Error('PATH_SetType113c: dwPrevPathType == 11 (line 2161)')
+  }
+  if (prevType === 0x08) {
+    throw new Error('PATH_SetType113c: dwPrevPathType == 8 (line 2162)')
+  }
+  if (type === 4 && m.u8((path + 0x91) >>> 0) >= 0x4e) {
+    throw new Error(
+      'PATH_SetType113c: nDistMax >= 78 for type 4 (line 2163)',
+    )
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD85160` (`PATH_AdjustTargetForDoorObject113c`, not exported;
+ * custom LTCG `eax = pContext`, plain `ret`).
+ *
+ * - Reads `pPath = *(u32*)(pContext + 0x30)` and `pTargetUnit = pPath->pTargetUnit (+0x58)`.
+ * - Asserts `pTargetUnit != 0` (`line 3600`, `0xE10`), `pTargetUnit->dwUnitType (+0x00) == 2` (`line 533`, `0x215`),
+ *   and `pObjectTxt = **(u32**)(pTargetUnit + 0x14)` has `nSubClass (+0x13A) != 0` (`line 533`, `0x215`).
+ * - Reads `pStaticPath = pTargetUnit->pStaticPath (+0x2C)`:
+ *   - If `u8(pObjectTxt + 0x13C) == 1`, adjusts `pPath->wTargetY (+0x12)` by `-2` if `pPath->wPosY (+0x06) < pStaticPath->nYPos (+0x10)` (unsigned) else `+2`.
+ *   - Otherwise adjusts `pPath->wTargetX (+0x10)` by `-2` if `pPath->wPosX (+0x02) < pStaticPath->nXPos (+0x0C)` (unsigned) else `+2`.
+ */
+export function PATH_AdjustTargetForDoorObject113c(
+  m: Memory113c,
+  pContext: number,
+): void {
+  const pPath = m.u32((pContext + 0x30) >>> 0)
+  const pTargetUnit = m.u32((pPath + 0x58) >>> 0)
+  if (pTargetUnit === 0) {
+    throw new Error(
+      'PATH_AdjustTargetForDoorObject113c: pTargetUnit == 0 (line 3600)',
+    )
+  }
+  if ((m.u32(pTargetUnit) | 0) !== 2) {
+    throw new Error(
+      'PATH_AdjustTargetForDoorObject113c: unitType != 2 (line 533)',
+    )
+  }
+  const pObjectData = m.u32((pTargetUnit + 0x14) >>> 0)
+  const pObjectTxt = m.u32(pObjectData)
+  if (m.u8((pObjectTxt + 0x13a) >>> 0) === 0) {
+    throw new Error(
+      'PATH_AdjustTargetForDoorObject113c: not a door object (line 533)',
+    )
+  }
+
+  const pStaticPath = m.u32((pTargetUnit + 0x2c) >>> 0)
+  if (m.u8((pObjectTxt + 0x13c) >>> 0) === 1) {
+    const posY = m.u16((pPath + 0x06) >>> 0) >>> 0
+    const doorY = m.u32((pStaticPath + 0x10) >>> 0) >>> 0
+    const deltaY = posY < doorY ? 0xfffe : 2
+    m.setU16((pPath + 0x12) >>> 0, (m.u16((pPath + 0x12) >>> 0) + deltaY) & 0xffff)
+  } else {
+    const posX = m.u16((pPath + 0x02) >>> 0) >>> 0
+    const doorX = m.u32((pStaticPath + 0x0c) >>> 0) >>> 0
+    const deltaX = posX < doorX ? 0xfffe : 2
+    m.setU16((pPath + 0x10) >>> 0, (m.u16((pPath + 0x10) >>> 0) + deltaX) & 0xffff)
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD85270` (`D2Common.#10425` `PATH_SetNewDirection113c`,
+ * stdcall `(pPath, nNewDir)`, `ret 8`).
+ *
+ * - Asserts `(nNewDir & 0xFF) < 0x40` (`line 1650`, `0x672`).
+ * - Masks `dir = nNewDir & 0x3F`, reads `pUnit = pPath->pUnit (+0x30)`, `uType = pUnit ? pUnit->dwUnitType : 6`:
+ *   - `uType == 2` or `uType == 4`: writes `pPath->nDirection (+0x64) = dir`.
+ *   - `uType == 3`: if `(u8(pPath + 0x34) & 0x40) == 0`, writes `pPath->nDirection (+0x64) = dir`.
+ *   - Otherwise: if `dir != pPath->nNewDirection (+0x65)`, sets `nNewDirection = dir` and
+ *     `nDiffDirection (+0x66) = u8(0x6FDE41C8 + ((dir - nDirection) & 0x3F) * 4)`.
+ */
+export function PATH_SetNewDirection113c(
+  m: Memory113c,
+  pPath: number,
+  nNewDir: number,
+): void {
+  const rawByte = nNewDir & 0xff
+  if (rawByte >= 0x40) {
+    throw new Error('PATH_SetNewDirection113c: nNewDir >= 64 (line 1650)')
+  }
+  const path = pPath >>> 0
+  const pUnit = m.u32((path + 0x30) >>> 0)
+  const dir = rawByte & 0x3f
+  const uType = pUnit === 0 ? 6 : m.u32(pUnit) | 0
+  if (uType === 2 || uType === 4) {
+    m.setU8((path + 0x64) >>> 0, dir)
+    return
+  }
+  if (uType === 3) {
+    if ((m.u8((path + 0x34) >>> 0) & 0x40) === 0) {
+      m.setU8((path + 0x64) >>> 0, dir)
+    }
+    return
+  }
+  if (dir !== m.u8((path + 0x65) >>> 0)) {
+    const oldDir = m.u8((path + 0x64) >>> 0)
+    m.setU8((path + 0x65) >>> 0, dir)
+    const diff = (dir - oldDir) & 0x3f
+    const step = m.u8((PATH_DIR_TURN_RATE_VA_6FDE41C8 + diff * 4) >>> 0)
+    m.setU8((path + 0x66) >>> 0, step)
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD8E080` (`PATH_OffsetTargetByUnitRadius113c`, not exported;
+ * custom LTCG `esi = pPath`, plain `ret`).
+ *
+ * - Asserts `pPath != 0` (`line 490`, `0x1EA`) and `pTargetUnit = pPath->pTargetUnit (+0x58) != 0` (`line 491`, `0x1EB`).
+ * - Reads `targetDir = pTargetUnit->pPath (+0x2C) ? u8(pTargetPath + 0x64) : 0` and `offset = u8(pPath + 0x68)`.
+ * - Computes `lutIdx = ((targetDir - (offset << 5)) << 3) & 0x1FF`, evaluates `dx = _ftol2(FOG_CosLUT(lutIdx) * (float)offset)`
+ *   and `dy = _ftol2(FOG_SinLUT(lutIdx) * (float)offset)` from `Fog.dll` LUT at `0x6FF7F470`, and adds `(dx, dy)`
+ *   to `(pPath->wTargetX (+0x10), pPath->wTargetY (+0x12))`.
+ */
+export function PATH_OffsetTargetByUnitRadius113c(
+  m: Memory113c,
+  pPath: number,
+): void {
+  if (pPath === 0) {
+    throw new Error('PATH_OffsetTargetByUnitRadius113c: pPath == 0 (line 490)')
+  }
+  const path = pPath >>> 0
+  const pTargetUnit = m.u32((path + 0x58) >>> 0)
+  if (pTargetUnit === 0) {
+    throw new Error(
+      'PATH_OffsetTargetByUnitRadius113c: pTargetUnit == 0 (line 491)',
+    )
+  }
+  const pTargetPath = m.u32((pTargetUnit + 0x2c) >>> 0)
+  const targetDir = pTargetPath === 0 ? 0 : m.u8((pTargetPath + 0x64) >>> 0)
+  const offsetParam = m.u8((path + 0x68) >>> 0)
+  const radiusF32 = Math.fround(offsetParam)
+  const lutIdx = ((targetDir - (offsetParam << 5)) << 3) & 0x1ff
+
+  const cosBits = m.u32(
+    (FOG_TRIG_LUT_VA_6FF7F470 + ((lutIdx + 0x80) & 0x1ff) * 4) >>> 0,
+  )
+  const dx = Math.trunc(Math.fround(u32BitsToF32(cosBits) * radiusF32)) | 0
+  m.setU16((path + 0x10) >>> 0, (m.u16((path + 0x10) >>> 0) + dx) & 0xffff)
+
+  const sinBits = m.u32((FOG_TRIG_LUT_VA_6FF7F470 + (lutIdx & 0x1ff) * 4) >>> 0)
+  const dy = Math.trunc(Math.fround(u32BitsToF32(sinBits) * radiusF32)) | 0
+  m.setU16((path + 0x12) >>> 0, (m.u16((path + 0x12) >>> 0) + dy) & 0xffff)
+}
+
+/**
+ * `@va D2Common:0x6FDB6920` (`PATH_BuildSpiralPath77Points113c`, not exported;
+ * stdcall `(pPath)`, `ret 4`).
+ *
+ * Generates an outward spiral of `77` (`0x4D`) distinct subtile coordinates around `(pPath->dwPrecisionX (+0x00), pPath->dwPrecisionY (+0x04))`
+ * by stepping `radius += 0x2580` (`9600`) and `angleIdx += 0x10` (`16`) per iteration, projecting via `Fog.dll` cosine/sine LUT
+ * at `0x6FF7F470`, and appending `(curX >>> 16, curY >>> 16)` to `pPath->wPathPoints (+0x9C)` whenever the subtile changes
+ * until `77` points are recorded (`pPath->dwPathPoints (+0x28) = 77`).
+ */
+export function PATH_BuildSpiralPath77Points113c(
+  m: Memory113c,
+  pPath: number,
+): void {
+  const path = pPath >>> 0
+  const originX = m.u32(path) | 0
+  const originY = m.u32((path + 4) >>> 0) | 0
+  let prevX = originX
+  let prevY = originY
+  let radiusStep = 0
+  let count = 0
+  let angleIdx = 0
+  let pWriteY = (path + 0x9e) >>> 0
+
+  while (count < 0x4d) {
+    radiusStep = (radiusStep + 0x2580) | 0
+    const rF32 = Math.fround(radiusStep)
+    angleIdx = (angleIdx + 0x10) | 0
+
+    const cosBits = m.u32(
+      (FOG_TRIG_LUT_VA_6FF7F470 + ((angleIdx + 0x80) & 0x1ff) * 4) >>> 0,
+    )
+    const dx = Math.trunc(Math.fround(u32BitsToF32(cosBits) * rF32)) | 0
+    const curX = (dx + originX) | 0
+
+    const sinBits = m.u32(
+      (FOG_TRIG_LUT_VA_6FF7F470 + (angleIdx & 0x1ff) * 4) >>> 0,
+    )
+    const dy = Math.trunc(Math.fround(u32BitsToF32(sinBits) * rF32)) | 0
+    const curY = (dy + originY) | 0
+
+    const tileX = curX >>> 16
+    const prevTileX = prevX >>> 16
+    const tileY = curY >>> 16
+    const prevTileY = prevY >>> 16
+
+    if ((tileX & 0xffff) !== (prevTileX & 0xffff) || tileY !== prevTileY) {
+      m.setU16((pWriteY - 2) >>> 0, tileX & 0xffff)
+      m.setU16(pWriteY, tileY & 0xffff)
+      prevY = curY
+      prevX = curX
+      count = (count + 1) | 0
+      pWriteY = (pWriteY + 4) >>> 0
+    }
+  }
+  m.setU32((path + 0x28) >>> 0, count >>> 0)
+}
+

@@ -14,9 +14,9 @@ metric is the share of rows in **diff-verified**.
 > the **`4,810` reachable `D2Game.dll` (`3,331`) + `D2Common.dll` (`1,479`)** room-tick/packet closure
 > functions (`4,626` Tarjan SCCs across `31` topological layers `0..30`, `45` binary-verified dispatch
 > tables, `49` pruned host/CRT/Realm targets, `721` `D2Game` + `880` `D2Common` outside closure) strictly
-> 1-to-1 against `src/d2kern-113c/**/*.ts`: **`255` `diff-verified` (`5.30%`) + `36` `ported` (`0.75%`) =
-> `291` implemented closure functions** (`4,519` `unported`, **`1,122` unblocked `ready`** = `505`
-> `readyPureLeaf` + `377` `readyHostImport` + `240` `readyInternalComposite`). Startup `.bin` loaders
+> 1-to-1 against `src/d2kern-113c/**/*.ts`: **`671` `diff-verified` (`13.95%`) + `36` `ported` (`0.75%`) =
+> `707` implemented closure functions** (`4,103` `unported`, **`873` unblocked `ready`** = `232`
+> `readyPureLeaf` + `270` `readyHostImport` + `371` `readyInternalComposite`). Startup `.bin` loaders
 > (`0x6FDC3330`, `0x6FDB0A80`), outer loop / standalone persistent-event wrappers (`0x6FC4E460`,
 > `0x6FCAE940`, `0x6FCAE960`), and the external 11-slot `D2Net.dll` IAT boundary
 > (`0x6FD18B48..0x6FD18B70`) sit outside the room-tick closure. Earlier rows mapped only to legacy

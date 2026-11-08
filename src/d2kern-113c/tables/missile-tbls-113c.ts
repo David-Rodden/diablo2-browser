@@ -1,9 +1,8 @@
 /**
  * Diablo II v1.13c `D2Common.dll` `DRLG\DrlgRoom.cpp` & `DATATBLS\MissileTbls.cpp` pure-leaf functions
- * (`0x6FDCBB20..0x6FDCC4A0`, image base `0x6FD50000`).
+ * (`0x6FDCBB70..0x6FDCC4A0`, image base `0x6FD50000`).
  *
- * Batch `B006` (6 functions in this module):
- * - `0x6FDCBB20` `DRLGROOM_DecrementNearRoomsStatusCount113c` (internal)
+ * Batch `B006` (5 functions in this module):
  * - `0x6FDCBB70` `DRLGROOM_SetStatusLink113c` (internal)
  * - `0x6FDCBC60` `DRLGROOM_SetStatusLink3_113c` (internal)
  * - `0x6FDCBCD0` `DRLGROOM_SetStatusLink1_113c` (internal)
@@ -29,17 +28,18 @@ export const SGN_MISSILES_TXT_COUNT_VA_113C = 0x6fdf0a44
 export const DRLG_STATUS_ROOMS_LIST_OFF_113C = 0xa0
 
 /**
- * `@va D2Common:0x6FDCBB70` (internal, custom reg `eax=pRoomEx, ebx(bl)=nNewStatus -> void`).
+ * `@va D2Common:0x6FDCBB70` (internal, custom reg `eax=pRoomEx, ebx(bl)=nNewStatus -> EAX = pRoomEx`).
  *
  * Unlinks `pRoomEx` from its current doubly-linked status list if both `pStatusNext` (`+0xE8`) and
  * `pStatusPrev` (`+0x1C`) are non-null, and if `(nNewStatus & 0xFF) < 4`, inserts `pRoomEx` after
  * the sentinel node `pRoomEx->pLevel (+0x58)->pDrlg (+0x1B4) + 0xA0 + (nNewStatus & 0xFF) * 0xEC`
  * and updates `pRoomEx->nRoomStatus (+0x44) = nNewStatus & 0xFF`.
+ * Preserves `EAX = pRoomEx` on all return paths as relied upon by all 4 callers (`mov byte [eax+0x44], bl`).
  */
-export function DRLGROOM_SetStatusLink113c(m: Memory113c, pRoomEx: number, nNewStatus: number): void {
+export function DRLGROOM_SetStatusLink113c(m: Memory113c, pRoomEx: number, nNewStatus: number): number {
   const room = pRoomEx >>> 0
   const bl = nNewStatus & 0xff
-  if (m.get(room, D2RoomExStrc.nRoomStatus) === bl) return
+  if (m.get(room, D2RoomExStrc.nRoomStatus) === bl) return room
 
   const pNext = m.get(room, D2RoomExStrc.pStatusNext)
   if (pNext !== 0) {
@@ -54,7 +54,7 @@ export function DRLGROOM_SetStatusLink113c(m: Memory113c, pRoomEx: number, nNewS
     }
   }
 
-  if (bl >= 4) return
+  if (bl >= 4) return room
 
   const pLevel = m.get(room, D2RoomExStrc.pLevel)
   const pDrlg = m.get(pLevel, D2DrlgLevelStrc.pDrlg)
@@ -66,6 +66,7 @@ export function DRLGROOM_SetStatusLink113c(m: Memory113c, pRoomEx: number, nNewS
   m.set(pOldNextReload, D2RoomExStrc.pStatusPrev, room)
   m.set(pSentinel, D2RoomExStrc.pStatusNext, room)
   m.set(room, D2RoomExStrc.nRoomStatus, bl)
+  return room
 }
 
 /**
@@ -90,56 +91,6 @@ export function DRLGROOM_SetStatusLink1_113c(m: Memory113c, pRoomEx: number): vo
  */
 export function DRLGROOM_SetStatusLink0_113c(m: Memory113c, pRoomEx: number): void {
   DRLGROOM_SetStatusLink113c(m, pRoomEx, 0)
-}
-
-/**
- * Room-status recalculation helper invoked via the function pointer table at `0x6FDE9BF8`
- * (`[0x6FDCBE90, 0x6FDCBE50, 0x6FDCBE10, 0x6FDCBDB0]` -> `0x6FDCBC20` -> `0x6FDCBB70`).
- */
-function updateRoomStatusFromCounts113c(m: Memory113c, pRoomEx: number, nDispatchedStatus: number): void {
-  const room = pRoomEx >>> 0
-  const cur = m.get(room, D2RoomExStrc.nRoomStatus)
-  if (nDispatchedStatus === 3 && cur === 4) return
-  if (cur < 4 && m.get(room, D2RoomExStrc.wStatusCount, cur) !== 0) return
-
-  let newStatus = 0
-  while (newStatus < 4) {
-    if (m.get(room, D2RoomExStrc.wStatusCount, newStatus) !== 0) break
-    newStatus++
-  }
-  DRLGROOM_SetStatusLink113c(m, room, newStatus)
-  m.set(room, D2RoomExStrc.nRoomStatus, newStatus)
-}
-
-/**
- * `@va D2Common:0x6FDCBB20` (internal, `__fastcall(ecx=pRoomEx, edx(dl)=nStatus) -> void`).
- *
- * Iterates `edi = 0 .. pRoomEx->nRoomsNear - 1`; for each non-null neighbor `esi = ppRoomsNear[edi]`,
- * decrements `esi->wStatusCount[bl]`, invokes the status transition handler at `0x6FDE9BF8[bl]`, and
- * if `bl < 3` recursively calls `DRLGROOM_DecrementNearRoomsStatusCount113c(m, esi, (bl + 1) & 0xFF)`.
- */
-export function DRLGROOM_DecrementNearRoomsStatusCount113c(
-  m: Memory113c,
-  pRoomEx: number,
-  nStatus: number,
-): void {
-  const ebp = pRoomEx >>> 0
-  const bl = nStatus & 0xff
-  const nNear = m.get(ebp, D2RoomExStrc.nRoomsNear) | 0
-  if (nNear <= 0) return
-
-  for (let edi = 0; edi < (m.get(ebp, D2RoomExStrc.nRoomsNear) | 0); edi++) {
-    const ppRoomsNear = m.get(ebp, D2RoomExStrc.ppRoomsNear)
-    const esi = m.u32((ppRoomsNear + ((edi << 2) >>> 0)) >>> 0)
-    if (esi !== 0) {
-      const prevCount = m.get(esi, D2RoomExStrc.wStatusCount, bl)
-      m.set(esi, D2RoomExStrc.wStatusCount, (prevCount - 1) & 0xffff, bl)
-      updateRoomStatusFromCounts113c(m, esi, bl)
-      if (bl < 3) {
-        DRLGROOM_DecrementNearRoomsStatusCount113c(m, esi, (bl + 1) & 0xff)
-      }
-    }
-  }
 }
 
 /**

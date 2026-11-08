@@ -1455,12 +1455,42 @@ class ModuleAnalyzer:
         self.jt_data_bytes = set()
         self.jt_site_targets = {}
         self.cb_reloc_at_slot = {}
+        self.fn_ptr_tables = {}
+        self.vtable_call_targets = {}
 
         self.pruned_targets_hit = set()
         self.pruned_callsites_skipped = set()
 
         self._load_pe_tables()
         self._detect_jump_tables_and_callbacks()
+        self._init_indirect_dispatch_tables()
+
+    def _init_indirect_dispatch_tables(self) -> None:
+        if self.mod_name == "D2Common":
+            table_ranges = [
+                (0x6FDEB244, 0x6FDEB25C),  # pathRayAndStepDirTable (6 entries)
+                (0x6FDE9BE8, 0x6FDE9BF8),  # collisionSpanTables[0..3] (4 entries)
+                (0x6FDE9BF8, 0x6FDE9C08),  # collisionSpanTables[4..7] (4 entries)
+                (0x6FDE6178, 0x6FDE6184),  # drlgLevelAlgoTable (3 entries)
+                (0x6FDE42F0, 0x6FDE4334),  # pathMovementTypeTable (17 entries)
+                (0x6FDEB0C8, 0x6FDEB15C),  # itemsModFuncTable (37 entries)
+                (0x6FDEA928, 0x6FDEB0C8),  # itemsPropertyAssignTable (244 entries * 8B)
+            ]
+            for lo, hi in table_ranges:
+                targets = sorted(
+                    {
+                        val
+                        for slot, val in self.non_text_code_relocs.items()
+                        if lo <= slot < hi and self.tstart <= val < self.tend
+                    }
+                )
+                if targets:
+                    self.fn_ptr_tables[lo] = targets
+            # D2DrlgSubstContextStrc vtable callback targets initialized in 0x6FD91AD0 / 0x6FD93120
+            self.vtable_call_targets = {
+                0x6FDD3990: [0x6FD90C20, 0x6FD922A0, 0x6FD922F0, 0x6FD92A70],
+                0x6FDD3B30: [0x6FD90DB0, 0x6FD92270, 0x6FD92370],
+            }
 
     def in_pruned_code_range(self, va: int) -> bool:
         for lo, hi, _ in self.pruned_code_ranges:
@@ -1668,6 +1698,8 @@ class ModuleAnalyzer:
             bqueue = [fstart]
             bseen = set()
             max_addr = fstart + 1
+            reg_iat = {}
+            reg_fn_table = {}
 
             while bqueue:
                 bva = bqueue.pop()
@@ -1720,7 +1752,27 @@ class ModuleAnalyzer:
                             if cb_va is not None:
                                 edges.add(("call", cb_va))
 
-                    if mnem == "call":
+                    if mnem == "mov" and not skip_site:
+                        if b0 == 0xA1 and size == 5:
+                            disp = struct.unpack_from("<I", self.tdata, ioff + 1)[0]
+                            if disp in self.iat:
+                                reg_iat[0] = self.iat[disp]
+                        elif b0 == 0x8B and size == 6 and (self.tdata[ioff + 1] & 0xC7) == 0x05:
+                            reg_idx = (self.tdata[ioff + 1] >> 3) & 0x07
+                            disp = struct.unpack_from("<I", self.tdata, ioff + 2)[0]
+                            if disp in self.iat:
+                                reg_iat[reg_idx] = self.iat[disp]
+                        elif (
+                            b0 == 0x8B
+                            and size == 7
+                            and (self.tdata[ioff + 1] & 0xC7) == 0x04
+                            and (self.tdata[ioff + 2] & 0x07) == 0x05
+                        ):
+                            reg_idx = (self.tdata[ioff + 1] >> 3) & 0x07
+                            disp = struct.unpack_from("<I", self.tdata, ioff + 3)[0]
+                            if disp in self.fn_ptr_tables:
+                                reg_fn_table[reg_idx] = disp
+                    elif mnem == "call":
                         if not skip_site:
                             if b0 == 0xE8 and size == 5:
                                 rel = struct.unpack_from("<i", self.tdata, ioff + 1)[0]
@@ -1731,6 +1783,34 @@ class ModuleAnalyzer:
                                 disp = struct.unpack_from("<I", self.tdata, ioff + 2)[0]
                                 if disp in self.iat:
                                     edges.add(("iat", self.iat[disp][0], self.iat[disp][1]))
+                                elif disp in self.non_text_code_relocs:
+                                    edges.add(("call", self.non_text_code_relocs[disp]))
+                                else:
+                                    edges.add(("indirect_unknown", iva))
+                            elif size == 7 and b0 == 0xFF and self.tdata[ioff + 1] == 0x14:
+                                disp = struct.unpack_from("<I", self.tdata, ioff + 3)[0]
+                                if disp in self.fn_ptr_tables:
+                                    for t in self.fn_ptr_tables[disp]:
+                                        edges.add(("call", t))
+                                else:
+                                    edges.add(("indirect_unknown", iva))
+                            elif size == 2 and b0 == 0xFF and (self.tdata[ioff + 1] & 0xF8) == 0xD0:
+                                reg_idx = self.tdata[ioff + 1] & 0x07
+                                if reg_idx in reg_iat:
+                                    edges.add(("iat", reg_iat[reg_idx][0], reg_iat[reg_idx][1]))
+                                elif reg_idx in reg_fn_table:
+                                    for t in self.fn_ptr_tables[reg_fn_table[reg_idx]]:
+                                        edges.add(("call", t))
+                                elif fstart in self.vtable_call_targets:
+                                    for t in self.vtable_call_targets[fstart]:
+                                        edges.add(("call", t))
+                                else:
+                                    edges.add(("indirect_unknown", iva))
+                            elif fstart in self.vtable_call_targets:
+                                for t in self.vtable_call_targets[fstart]:
+                                    edges.add(("call", t))
+                            else:
+                                edges.add(("indirect_unknown", iva))
                     elif mnem == "jmp":
                         if b0 in (0xEB, 0xE9):
                             if b0 == 0xEB and size == 2:
@@ -1762,6 +1842,12 @@ class ModuleAnalyzer:
                             disp = struct.unpack_from("<I", self.tdata, ioff + 2)[0]
                             if disp in self.iat and not skip_site:
                                 edges.add(("iat", self.iat[disp][0], self.iat[disp][1]))
+                            elif disp in self.non_text_code_relocs and not skip_site:
+                                edges.add(("call", self.non_text_code_relocs[disp]))
+                            elif not skip_site:
+                                edges.add(("indirect_unknown", iva))
+                        elif not skip_site:
+                            edges.add(("indirect_unknown", iva))
                         terminated = True
                         break
                     elif mnem.startswith("j") or mnem in ("loop", "loope", "loopne", "jecxz"):
@@ -2270,6 +2356,9 @@ def build_manifest() -> dict:
             fn_name = legacy_info.get("fallbackName") or f"{mod_name}_{addr:08X}"
             fn_status = "unported"
 
+        raw_e = game_raw_edges.get(addr, set()) if mod_name == "D2Game" else comm_raw_edges.get(addr, set())
+        has_indirect_unknown = any(kind == "indirect_unknown" for kind, *_ in raw_e)
+
         entry = {
             "va": f"0x{addr:08X}",
             "module": mod_name,
@@ -2282,6 +2371,8 @@ def build_manifest() -> dict:
             "callers": [f"{m}:{u:08X}" for (m, u) in callers.get((mod_name, addr), [])],
             "externalDeps": [f"{dll}:{sym}" for (dll, sym) in external_deps.get((mod_name, addr), [])],
         }
+        if has_indirect_unknown:
+            entry["indirectUnknown"] = True
         if kern_info is not None:
             entry["kernFile"] = kern_info["kernFile"]
             entry["tsSymbol"] = kern_info["tsSymbol"]
@@ -2303,11 +2394,16 @@ def build_manifest() -> dict:
         if e["status"] in ("diff-verified", "ported")
     }
     ready_entries = [
-        e for e in manifest_entries
-        if e["status"] == "unported" and all(c in implemented_keys for c in e["callees"])
+        e
+        for e in manifest_entries
+        if e["status"] == "unported"
+        and not e.get("indirectUnknown", False)
+        and all(c in implemented_keys for c in e["callees"])
     ]
     ready_pure_leaf_cnt = sum(
-        1 for e in ready_entries if len(e["callees"]) == 0 and len(e["externalDeps"]) == 0
+        1
+        for e in ready_entries
+        if len(e["callees"]) == 0 and len(e["externalDeps"]) == 0 and not e.get("indirectUnknown", False)
     )
     ready_host_import_cnt = sum(1 for e in ready_entries if len(e["externalDeps"]) > 0)
     ready_internal_composite_cnt = sum(

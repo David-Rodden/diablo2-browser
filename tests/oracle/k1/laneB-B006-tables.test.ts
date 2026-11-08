@@ -18,7 +18,6 @@ import {
 } from '../../../src/d2kern-113c/tables/item-tbls-113c.ts'
 import {
   DATATBLS_CalcMissileSubLoopFrames113c,
-  DRLGROOM_DecrementNearRoomsStatusCount113c,
   DRLGROOM_SetStatusLink0_113c,
   DRLGROOM_SetStatusLink113c,
   DRLGROOM_SetStatusLink1_113c,
@@ -143,14 +142,7 @@ const B006_DISPATCH: Readonly<Record<string, (m: Memory113c, v: VectorCaseJson) 
   },
   '0x6FDCAED0': (m, v) => PATH_AStar_FindPointInVisitedCache113c(m, v.stack[0]! >>> 0, v.stack[1]! >>> 0) >>> 0,
   '0x6FDCAF20': (m, v) => PATH_AStar_GetNodeFromPendingCache113c(m, v.stack[0]! >>> 0, v.stack[1]! >>> 0) >>> 0,
-  '0x6FDCBB20': (m, v) => {
-    DRLGROOM_DecrementNearRoomsStatusCount113c(m, v.regs.ecx >>> 0, v.regs.edx >>> 0)
-    return undefined
-  },
-  '0x6FDCBB70': (m, v) => {
-    DRLGROOM_SetStatusLink113c(m, v.regs.eax >>> 0, v.regs.ebx >>> 0)
-    return undefined
-  },
+  '0x6FDCBB70': (m, v) => DRLGROOM_SetStatusLink113c(m, v.regs.eax >>> 0, v.regs.ebx >>> 0) >>> 0,
   '0x6FDCBC60': (m, v) => {
     DRLGROOM_SetStatusLink3_113c(m, v.regs.eax >>> 0)
     return undefined
@@ -204,14 +196,14 @@ function verifyVector(v: VectorCaseJson, mutateReturn = false, mutatePostByte = 
   }
 }
 
-describe('K1 Lane B — B006 D2Common Table & DRLG Room Leaf Functions Real-DLL Differential Replay (17 functions)', () => {
+describe('K1 Lane B — B006 D2Common Table & DRLG Room Leaf Functions Real-DLL Differential Replay (16 functions)', () => {
   const fixture: VectorFileJson = JSON.parse(fs.readFileSync(FIXTURE_PATH, 'utf-8'))
 
-  it('loads all 17 B006 function VAs with >= 4 real-DLL vectors each', () => {
+  it('loads all 16 B006 function VAs with >= 4 real-DLL vectors each', () => {
     expect(fixture.batch).toBe('B006')
     expect(fixture.module).toBe('D2Common')
     const expectedVas = Object.keys(B006_DISPATCH)
-    expect(expectedVas.length).toBe(17)
+    expect(expectedVas.length).toBe(16)
     for (const va of expectedVas) {
       const fnCases = fixture.cases.filter(c => c.va === va)
       expect(fnCases.length, `Insufficient vectors for ${va}`).toBeGreaterThanOrEqual(4)

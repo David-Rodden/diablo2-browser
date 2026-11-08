@@ -41,11 +41,16 @@ cp "$PFX/drive_c/out/b005-gfx-cache-vectors.json" "$OUT_DIR/b005-gfx-cache-vecto
 cp "$PFX/drive_c/out/laneA-b002-b005.d2tv" "$OUT_DIR/laneA-b002-b005.d2tv"
 cp "$PFX/drive_c/out/b008-vectors.json" "$REPO_ROOT/tests/fixtures/oracle/k1/b008-vectors.json"
 cp "$PFX/drive_c/out/b014-vectors.json" "$REPO_ROOT/tests/fixtures/oracle/k1/b014-vectors.json"
+cp "$PFX/drive_c/out/b011-vectors.json" "$REPO_ROOT/tests/fixtures/oracle/k1/b011-vectors.json"
+cp "$PFX/drive_c/out/b017-vectors.json" "$REPO_ROOT/tests/fixtures/oracle/k1/b017-vectors.json"
 sha256sum \
   "$OUT_DIR/b002-vectors.json" \
   "$OUT_DIR/b005-vectors.json" \
   "$OUT_DIR/b005-gfx-cache-vectors.json" \
   "$OUT_DIR/laneA-b002-b005.d2tv" \
   "$REPO_ROOT/tests/fixtures/oracle/k1/b008-vectors.json" \
-  "$REPO_ROOT/tests/fixtures/oracle/k1/b014-vectors.json"
+  "$REPO_ROOT/tests/fixtures/oracle/k1/b014-vectors.json" \
+  "$REPO_ROOT/tests/fixtures/oracle/k1/b011-vectors.json" \
+  "$REPO_ROOT/tests/fixtures/oracle/k1/b017-vectors.json"
+
 

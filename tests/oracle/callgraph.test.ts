@@ -223,21 +223,44 @@ describe('Diablo II v1.13c Kernel Call Graph & Manifest ([K0] Track A)', () => {
     expect(readySummary.ready).toBe(
       readySummary.readyPureLeaf + readySummary.readyHostImport + readySummary.readyInternalComposite
     );
-    // Status-independent CFG shape of the closure (binary-derived like sccCount 4626 / maxTopoLevel 30):
-    // porting never changes it, so these are exact pins. They replace the K0 snapshot thresholds
-    // readyPureLeaf > 500 / readyHostImport > 200, which necessarily failed after ~189 pure-leaf or ~155
-    // host-import ports; any dropped callee edge or external dep still moves one of these exact counts.
+    // Status-independent CFG shape of the closure (binary-derived like sccCount 4626 / maxTopoLevel 35):
+    // porting never changes it, so these are exact pins. Functions with unresolved indirect calls
+    // (indirectUnknown) are never classified as pure leaves.
     const isUnported = (f: (typeof manifest.functions)[number]) => f.status === 'unported';
-    const uPure = manifest.functions.filter(f => f.callees.length === 0 && f.externalDeps.length === 0);
+    const uPure = manifest.functions.filter(
+      f => f.callees.length === 0 && f.externalDeps.length === 0 && !f.indirectUnknown
+    );
     const uHost = manifest.functions.filter(f => f.externalDeps.length > 0);
     const uComp = manifest.functions.filter(f => f.callees.length > 0 && f.externalDeps.length === 0);
-    expect([uPure.length, uHost.length, uComp.length]).toEqual([688, 1425, 2697]);
+    expect([uPure.length, uHost.length, uComp.length]).toEqual([668, 1431, 2707]);
     const d2cCount = (a: typeof uPure) => a.filter(f => f.module === 'D2Common').length;
-    expect([d2cCount(uPure), d2cCount(uHost), d2cCount(uComp)]).toEqual([444, 464, 571]);
-    // Pure leaves have no internal deps, so every unported pure leaf is ready (frontier completeness).
+    expect([d2cCount(uPure), d2cCount(uHost), d2cCount(uComp)]).toEqual([428, 465, 586]);
+    // Pure leaves have no internal deps or unresolved indirect calls, so every unported pure leaf is ready.
     expect(readySummary.readyPureLeaf).toBe(uPure.filter(isUnported).length);
     expect(readySummary.readyHostImport).toBeLessThanOrEqual(uHost.filter(isUnported).length);
     expect(readySummary.readyInternalComposite).toBeLessThanOrEqual(uComp.filter(isUnported).length);
+
+    // Verify indirect call/table/vtable resolution on D2Common dispatchers
+    expect(fnByKey.get('D2Common:6FD95990')!.callees.length).toBe(25);
+    expect(fnByKey.get('D2Common:6FDCBB20')!.callees).toEqual([
+      'D2Common:6FDCBDB0',
+      'D2Common:6FDCBE10',
+      'D2Common:6FDCBE50',
+      'D2Common:6FDCBE90',
+    ]);
+    expect(fnByKey.get('D2Common:6FDD3990')!.callees).toEqual([
+      'D2Common:6FD90C20',
+      'D2Common:6FD922A0',
+      'D2Common:6FD922F0',
+      'D2Common:6FD92A70',
+    ]);
+    expect(fnByKey.get('D2Common:6FDD3B30')!.callees).toEqual([
+      'D2Common:6FD90DB0',
+      'D2Common:6FD92270',
+      'D2Common:6FD92370',
+    ]);
+    expect(fnByKey.get('D2Common:6FDB8400')!.externalDeps).toContain('user32.dll:wsprintfA');
+    expect(fnByKey.get('D2Game:6FCBE420')!.indirectUnknown).toBe(true);
 
     const implementedKeys = new Set(
       manifest.functions
@@ -245,7 +268,7 @@ describe('Diablo II v1.13c Kernel Call Graph & Manifest ([K0] Track A)', () => {
         .map(f => nodeKey(f.module, f.va))
     );
     const recomputedReady = manifest.functions.filter(
-      f => f.status === 'unported' && f.callees.every(c => implementedKeys.has(c))
+      f => f.status === 'unported' && !f.indirectUnknown && f.callees.every(c => implementedKeys.has(c))
     );
     expect(recomputedReady.length).toBe(readySummary.ready);
     expect(
@@ -285,7 +308,7 @@ describe('Diablo II v1.13c Kernel Call Graph & Manifest ([K0] Track A)', () => {
 
   it('enforces Tarjan SCC mutual reachability and strict topological level invariants (0..maxTopoLevel)', () => {
     const maxLevel = manifest.summary.maxTopoLevel;
-    expect(maxLevel).toBe(30);
+    expect(maxLevel).toBe(35);
 
     const levelPopulations = new Array<number>(maxLevel + 1).fill(0);
     const sccMembers = new Map<number, string[]>();

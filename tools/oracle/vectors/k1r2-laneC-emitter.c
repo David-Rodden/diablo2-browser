@@ -1016,7 +1016,6 @@ static void emit_b007(FILE *fp) {
 }
 
 typedef uint32_t(__stdcall *Std7)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
-typedef uint32_t(__stdcall *Std10)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
 
 /* 0x6FD5D0A0: edx=pPath + 1 stack arg (pOutStepVec); ret 4 */
 static __attribute__((noinline)) uint32_t call_6FD5D0A0(uint32_t pPath, uint32_t pOutStepVec) {
@@ -1171,13 +1170,6 @@ static __attribute__((noinline)) void call_6FDB8660(uint32_t pRoomEx, uint32_t p
     : "S"(sargs), "D"(fn)
     : "ecx", "edx", "memory", "cc"
   );
-}
-
-static void write_prop_slot(uint32_t recOff, int slot, uint8_t funcId, uint8_t nSet, uint16_t wVal, uint16_t wStat) {
-  wr8(recOff + 0x18 + (uint32_t)slot, funcId);
-  wr8(recOff + 0x02 + (uint32_t)slot, nSet);
-  wr16(recOff + 0x0A + (uint32_t)slot * 2, wVal);
-  wr16(recOff + 0x20 + (uint32_t)slot * 2, wStat);
 }
 
 /* 0x6FDB9DA0 / 0x6FDB9DB0: ecx=a, edx=b + 2 unused stack dwords; ret 8 */
@@ -1757,160 +1749,6 @@ static void emit_b004(FILE *fp) {
     }
   }
 
-  /* 11. 0x6FD95990 D2Common_10665_ApplyMonProp */
-  {
-    Std10 fn = (Std10)RVA(0x6FD95990);
-    uint32_t sgptVa = (uint32_t)RVA(0x6FDE9E1C);
-    uint32_t savedSgpt = *(uint32_t *)(uintptr_t)sgptVa;
-    uint32_t cnt6FDEB15C = (uint32_t)RVA(0x6FDEB15C);
-    uint32_t tbl6FDEB0C8 = (uint32_t)RVA(0x6FDEB0C8);
-
-    struct {
-      const char *id;
-      uint32_t nType;
-      uint32_t pItemProp;
-      int32_t propId;
-      int32_t nLayer;
-      int32_t nMin;
-      int32_t nMax;
-      int32_t nState;
-      uint32_t fFlags;
-      uint32_t pStatList;
-    } cases[7] = {
-      /* Case 0: propId=1 ([8, 20, 25(null), 8]) resolved via 0x6FD87F40 (nState=0, fFlags=0x10 -> PTR(0x0600));
-         slot 0 (funcId=8) sets stat 2 = 35, slot 1 (funcId=20, 0x6FD972E0) adds stat 0x98 = 1, slot 2 (funcId=25) is null in 0x6FDEB0C8 -> breaks before slot 3 */
-      {"prop1_vel_and_null_break", 1u, PTR(0x0200),  1, 0, 35, 35, 0, 0x0010u, PTR(0x0680)},
-      /* Case 1: propId=2 ([18, 8, 9, 0]) with pStatList=0, nState=5 (resolved via 0x6FD87F80 to PTR(0x0600));
-         slot 0 (funcId=18) returns b=276 latched into prevResult, propagated to slot 1 (funcId=8, nSet=0 add, shift=2) and slot 2 (funcId=9, nSet=1 set, shift=1, layer=2) */
-      {"prop2_lightcolor_prevresult_skill", 1u, PTR(0x0200),  2, 2, 10, 20, 5, 0x0040u, 0u},
-      /* Case 2: propId=3 ([37(>=max), 8]) -> funcId 37 >= u32[0x6FDEB15C] (37) breaks immediately at slot 0 */
-      {"prop3_oob_func37", 1u, PTR(0x0200),  3, 0, 15, 15, 0, 0x0010u, PTR(0x0680)},
-      /* Case 3: propId=4 ([8, 8, 8, 8, 8, 8, 8]) -> all 7 slots active, resolved via 0x6FD87F40 (nState=0, fFlags=0x2040 -> pMyStats PTR(0x0640)) */
-      {"prop4_all_7_slots_mystats", 1u, PTR(0x0200),  4, 0, 12, 12, 0, 0x2040u, 0u},
-      /* Case 4: pItemProp == 0 (null guard) */
-      {"null_itemprop", 1u, 0u,  1, 0, 10, 10, 0, 0x0010u, PTR(0x0680)},
-      /* Case 5: nPropId < 0 (-1 guard) */
-      {"neg_propid", 1u, PTR(0x0200), -1, 0, 10, 10, 0, 0x0010u, PTR(0x0680)},
-      /* Case 6: nPropId >= count (5 >= 5 guard) */
-      {"oob_propid", 1u, PTR(0x0200),  5, 0, 10, 10, 0, 0x0010u, PTR(0x0680)},
-    };
-
-    for (unsigned i = 0; i < 7; i++) {
-      reset_arena();
-      *(uint32_t *)(uintptr_t)sgptVa = PTR(0x0000);
-      /* sgptDataTables fields at PTR(0x0000):
-       * +0xA4  pPropertiesTxt = PTR(0x0100), +0xAC nPropertiesTxtRecordCount = 5
-       * +0xBA0 nSkillsTxtRecordCount = 300
-       * +0xBCC pItemStatCostTxt = PTR(0x1000), +0xBD4 nItemStatCostCount = 200
-       */
-      wr32(0x00A4, PTR(0x0100));
-      wr32(0x00AC, 5u);
-      wr32(0x0BA0, 300u);
-      wr32(0x0BCC, PTR(0x1000));
-      wr32(0x0BD4, 200u);
-
-      /* ItemStatCost records (stride 0x144): set nValShift (+0x18) on stat 4 (shift=2) and stat 5 (shift=1) */
-      wr8(0x1000 + 4 * 0x144 + 0x18, 2u);
-      wr8(0x1000 + 5 * 0x144 + 0x18, 1u);
-
-      /* Record 1: [8 (stat 2, set=1), 20 (indestructible stat 0x98, set=0), 25 (null slot in 0x6FDEB0C8), 8 (stat 6, set=1)] */
-      uint32_t rec1 = 0x0100 + 1 * 0x2E;
-      write_prop_slot(rec1, 0,  8, 1, 10, 2);
-      write_prop_slot(rec1, 1, 20, 0, 20, 0);
-      write_prop_slot(rec1, 2, 25, 1, 30, 6);
-      write_prop_slot(rec1, 3,  8, 1, 40, 6);
-
-      /* Record 2: [18 (lightcolor stat 3, set=1), 8 (stat 4, set=0 add), 9 (skill stat 5, set=1), 0] */
-      uint32_t rec2 = 0x0100 + 2 * 0x2E;
-      write_prop_slot(rec2, 0, 18, 1, 11, 3);
-      write_prop_slot(rec2, 1,  8, 0, 22, 4);
-      write_prop_slot(rec2, 2,  9, 1, 33, 5);
-      write_prop_slot(rec2, 3,  0, 0,  0, 0);
-
-      /* Record 3: [37 (out-of-bounds >= 37), 8 (stat 2, set=1)] */
-      uint32_t rec3 = 0x0100 + 3 * 0x2E;
-      write_prop_slot(rec3, 0, 37, 1, 10, 2);
-      write_prop_slot(rec3, 1,  8, 1, 20, 2);
-
-      /* Record 4: all 7 slots active [8, 8, 8, 8, 8, 8, 8] on stats [2, 3, 4, 5, 6, 67, 96] */
-      uint32_t rec4 = 0x0100 + 4 * 0x2E;
-      const uint16_t rec4_stats[7] = { 2, 3, 4, 5, 6, 67, 96 };
-      for (int s = 0; s < 7; s++) {
-        write_prop_slot(rec4, s, 8, 1, (uint16_t)(s + 1), rec4_stats[s]);
-      }
-
-      /* pUnit at PTR(0x0240) (dwUnitType = 1 monster, pStatListEx = PTR(0x0500)) */
-      wr32(0x0240 + 0x00, 1u);
-      wr32(0x0240 + 0x5C, PTR(0x0500));
-
-      /* pItem at PTR(0x0280) (dwUnitType = 4 item) */
-      wr32(0x0280 + 0x00, 4u);
-
-      /* pStatListEx at PTR(0x0500) (dwFlags = 0x80000000, pMyLastList = PTR(0x0600), pMyStats = PTR(0x0640)) */
-      wr32(0x0500 + 0x08, 1u);
-      wr32(0x0500 + 0x10, 0x80000000u);
-      wr32(0x0500 + 0x3C, PTR(0x0600));
-      wr32(0x0500 + 0x40, PTR(0x0640));
-
-      /* Sublist 1 (state 5) at PTR(0x0600): pStat = PTR(0x0700), wStatCount = 1 (stat 4 pre-seeded to 50), wStatCapacity = 8 */
-      wr32(0x0600 + 0x08, 1u);
-      wr32(0x0600 + 0x10, 0x00000010u);
-      wr32(0x0600 + 0x14, 5u);
-      wr32(0x0600 + 0x24, PTR(0x0700));
-      wr16(0x0600 + 0x28, 1u);
-      wr16(0x0600 + 0x2A, 8u);
-      wr32(0x0700 + 0x00, (4u << 16));
-      wr32(0x0700 + 0x04, 50u);
-
-      /* Sublist 2 (pMyStats set-list) at PTR(0x0640): dwFlags = 0x2040, pStat = PTR(0x0780), wStatCount = 0, wStatCapacity = 8 */
-      wr32(0x0640 + 0x08, 1u);
-      wr32(0x0640 + 0x10, 0x00002040u);
-      wr32(0x0640 + 0x24, PTR(0x0780));
-      wr16(0x0640 + 0x28, 0u);
-      wr16(0x0640 + 0x2A, 8u);
-
-      /* Explicit pDirectStatList at PTR(0x0680): dwFlags = 0x10, pStat = PTR(0x0800), wStatCount = 1 (stat 67 pre-seeded to 10), wStatCapacity = 8 */
-      wr32(0x0680 + 0x08, 1u);
-      wr32(0x0680 + 0x10, 0x00000010u);
-      wr32(0x0680 + 0x24, PTR(0x0800));
-      wr16(0x0680 + 0x28, 1u);
-      wr16(0x0680 + 0x2A, 8u);
-      wr32(0x0800 + 0x00, (67u << 16));
-      wr32(0x0800 + 0x04, 10u);
-
-      /* pItemProp at PTR(0x0200): +0x00 nPropId, +0x04 nLayer, +0x08 nMin, +0x0C nMax */
-      wr32(0x0200 + 0x00, (uint32_t)cases[i].propId);
-      wr32(0x0200 + 0x04, (uint32_t)cases[i].nLayer);
-      wr32(0x0200 + 0x08, (uint32_t)cases[i].nMin);
-      wr32(0x0200 + 0x0C, (uint32_t)cases[i].nMax);
-
-      track_block(sgptVa, 4);
-      track_block(cnt6FDEB15C, 4);
-      track_block(tbl6FDEB0C8, 37 * 4);
-      track_block(PTR(0x00A4), 12);
-      track_block(PTR(0x0BA0), 4);
-      track_block(PTR(0x0BCC), 12);
-      track_block(PTR(0x0100), 5 * 0x2E);
-      track_block(PTR(0x0200), 0x100);
-      track_block(PTR(0x0500), 0x64);
-      track_block(PTR(0x0600), 0xC0);
-      track_block(PTR(0x0700), 0x140);
-      track_block(PTR(0x1000 + 2 * 0x144), 5 * 0x144);
-      track_block(PTR(0x1000 + 67 * 0x144), 0x144);
-      track_block(PTR(0x1000 + 96 * 0x144), 0x144);
-      track_block(PTR(0x1000 + 0x98 * 0x144), 0x144);
-
-      uint32_t a[10] = {
-        cases[i].nType, PTR(0x0240), PTR(0x0280), 77u,
-        3u, 99u, cases[i].pItemProp, (uint32_t)cases[i].nState, cases[i].fFlags, cases[i].pStatList
-      };
-      fn(a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7], a[8], a[9]);
-      emit_record(fp, 0x6FD95990, "D2Common_10665_ApplyMonProp", cases[i].id, a, 10, 0, 0);
-    }
-
-    *(uint32_t *)(uintptr_t)sgptVa = savedSgpt;
-  }
-
   /* 12. 0x6FDB81A0 DRLGROOMTILE_FindPresetRoomTile */
   {
     /* Case 1: pTileGrid == NULL */
@@ -2423,6 +2261,8 @@ static void emit_b016(FILE *fp, const uint8_t *saved_bitmasks) {
       {"far_nx3_ny10_ymajor_neg_x", PT(100, 100), PT(97, 90)},
       {"diag_px5_py5_clamped_2_2", PT(100, 100), PT(105, 105)},
       {"diag_nx5_ny5_clamped_neg2_neg2", PT(100, 100), PT(95, 95)},
+      {"boundary_dx4_dy2_eq_2x", PT(100, 100), PT(104, 102)},
+      {"boundary_dx2_dy4_eq_2y", PT(100, 100), PT(102, 104)},
     };
     for (unsigned i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
       reset_arena();

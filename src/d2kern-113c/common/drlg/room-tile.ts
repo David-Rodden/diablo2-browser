@@ -12,6 +12,7 @@ import {
   D2DynamicPathStrc,
   D2RoomExStrc,
 } from '../../mem/layout.generated.ts';
+import { SEED_RollRandomNumberInline113c } from '../inline-helpers.ts';
 
 /**
  * `.rdata` table at `0x6FDDBD68` (`0x6FDDBD68..0x6FDDBF24`, 37 entries of 3 `int32_t`: `[nLevelId, nStartIdx, nEndIdx]`).
@@ -428,3 +429,544 @@ export function DRLGROOMTILE_MinInt113c(a: number, b: number): number {
   const sb = b | 0;
   return sa < sb ? sa : sb;
 }
+
+/**
+ * `@va D2CMP:0x6FE22700` (`D2CMP.#10051` via `D2Common` thunk `0x6FD592FA`, stdcall `(pTileEntry)`, `ret 4`).
+ *
+ * Returns `movzx eax, word ptr [pTileEntry + 0x06]`.
+ */
+export function D2CMP_10051_GetTileFlags113c(m: Memory113c, pTileEntry: number): number {
+  if (pTileEntry === 0) {
+    throw new Error('D2CMP_10051_GetTileFlags113c: pTileEntry == 0');
+  }
+  return m.u16((pTileEntry + 0x06) >>> 0);
+}
+
+/**
+ * `@va D2CMP:0x6FE22730` (`D2CMP.#10027` via `D2Common` thunk `0x6FD5930C`, stdcall `(pTileEntry)`, `ret 4`).
+ *
+ * Returns `dword ptr [pTileEntry + 0x20]`.
+ */
+export function D2CMP_10027_GetTileRarity113c(m: Memory113c, pTileEntry: number): number {
+  if (pTileEntry === 0) {
+    throw new Error('D2CMP_10027_GetTileRarity113c: pTileEntry == 0');
+  }
+  return m.u32((pTileEntry + 0x20) >>> 0) | 0;
+}
+
+/**
+ * `@va D2CMP:0x6FE23140` (`D2CMP.#10059` via `D2Common` thunk `0x6FD59306`, stdcall
+ * `(ppTileLibraryHash, nOrientation, nStyle, nSeq, pOutArray, nMax)`, `ret 0x18`).
+ *
+ * Walks up to 32 `D2TileLibraryHashStrc*` slots at `ppTileLibraryHash[0..31]` (`bucket = (((nStyle << 1) - nOrientation + nSeq) & 0x7f)`),
+ * matching `(nOrientation, nStyle, nSeq)` in `pHash->pNodes[bucket]` (`+0x0C + bucket * 4`) and storing up to `nMax`
+ * `D2TileLibraryEntryStrc*` pointers into `pOutArray`.
+ */
+export function D2CMP_10059_FindTiles113c(
+  m: Memory113c,
+  ppTileLibraryHash: number,
+  nOrientation: number,
+  nStyle: number,
+  nSeq: number,
+  pOutArray: number | Uint32Array,
+  nMax: number,
+): number {
+  if (ppTileLibraryHash === 0) {
+    throw new Error('D2CMP_10059_FindTiles113c: ppTileLibraryHash == 0');
+  }
+  let total = 0;
+  const orient = nOrientation | 0;
+  const style = nStyle | 0;
+  const seq = nSeq | 0;
+  const maxCount = nMax >>> 0;
+  const bucket = ((((seq & 0xff) << 1) - (orient & 0xff) + (style & 0xff)) & 0x7f) >>> 0;
+
+  for (let slot = 0; slot < 32; slot++) {
+    const pHash = m.u32((ppTileLibraryHash + slot * 4) >>> 0);
+    if (pHash === 0 || (total >>> 0) >= maxCount) break;
+    const rem = (maxCount - (total >>> 0)) >>> 0;
+    if (rem === 0) break;
+    let pNode = m.u32((pHash + bucket * 4) >>> 0);
+    while (pNode !== 0) {
+      if (
+        (m.u32(pNode) | 0) === style &&
+        (m.u32((pNode + 0x04) >>> 0) | 0) === seq &&
+        (m.u32((pNode + 0x08) >>> 0) | 0) === orient
+      ) {
+        let pBlock = m.u32((pNode + 0x0c) >>> 0);
+        let found = 0;
+        while (pBlock !== 0) {
+          const pEntry = m.u32(pBlock);
+          const outIdx = (total + found) >>> 0;
+          if (typeof pOutArray === 'number') {
+            m.setU32((pOutArray + outIdx * 4) >>> 0, pEntry);
+          } else {
+            pOutArray[outIdx] = pEntry;
+          }
+          found = (found + 1) >>> 0;
+          if (found === rem) break;
+          pBlock = m.u32((pBlock + 0x04) >>> 0);
+        }
+        total = (total + found) >>> 0;
+        break;
+      }
+      pNode = m.u32((pNode + 0x10) >>> 0);
+    }
+  }
+  return total | 0;
+}
+
+/**
+ * `@va D2Common:0x6FD62E50` (`DRLGROOMTILE_CountPresetTileTypes113c`, custom `edi = pRoomEx`,
+ * `eax = bNoExtraWidth`, `edx = bNoExtraHeight`, stack `[esp+4] = pFlagGrid`, `[esp+8] = pTypeGrid`,
+ * `[esp+0xC] = nDefaultType`, `ret 0xC`).
+ *
+ * Scans `maxW = nTileWidth + (bNoExtraWidth == 0 ? 1 : 0)` by `maxH = nTileHeight + (bNoExtraHeight == 0 ? 1 : 0)`
+ * cells in `pFlagGrid`; for cells with `(ebx & 0x08000003) != 0`, queries `D2CMP.#10059` (`pRoomEx + 0x68`)
+ * and `D2CMP.#10051` (`wFlags & 0x0100`) and adds `count - 1` to `nFloorCapacity`, `nWallCapacity`, or `nRoofCapacity`
+ * while setting `pRoomEx->dwFlags |= 0x08000000`.
+ */
+export function DRLGROOMTILE_CountPresetTileTypes113c(
+  m: Memory113c,
+  edi: number,
+  eax: number,
+  edx: number,
+  pFlagGrid: number,
+  pTypeGrid: number,
+  nDefaultType: number,
+): void {
+  const maxW = ((m.u32((edi + 0x3c) >>> 0) | 0) + ((eax | 0) === 0 ? 1 : 0)) | 0;
+  const maxH = ((m.u32((edi + 0x40) >>> 0) | 0) + ((edx | 0) === 0 ? 1 : 0)) | 0;
+  const ebp = (m.u32((edi + 0x54) >>> 0) + 0x14) >>> 0;
+  if (maxH <= 0) return;
+
+  const localBuf = new Uint32Array(40);
+  for (let y = 0; y < maxH; y++) {
+    if (maxW <= 0) continue;
+    for (let x = 0; x < maxW; x++) {
+      const pFlagRows = m.u32((pFlagGrid + 0x04) >>> 0);
+      const flagRowBase = m.u32((pFlagRows + y * 4) >>> 0) | 0;
+      const pFlagCells = m.u32(pFlagGrid);
+      const ebx = m.u32((pFlagCells + ((flagRowBase + x) | 0) * 4) >>> 0);
+      if ((ebx & 0x08000003) === 0) continue;
+
+      let orient: number;
+      if (pTypeGrid !== 0) {
+        const pTypeRows = m.u32((pTypeGrid + 0x04) >>> 0);
+        const typeRowBase = m.u32((pTypeRows + y * 4) >>> 0) | 0;
+        const pTypeCells = m.u32(pTypeGrid);
+        orient = m.u32((pTypeCells + ((typeRowBase + x) | 0) * 4) >>> 0) | 0;
+      } else {
+        orient = nDefaultType | 0;
+      }
+
+      const style = ebx !== 0 ? (ebx >>> 20) & 0x3f : 0;
+      const seq = ebx !== 0 ? (ebx >>> 8) & 0xff : 0;
+
+      const count = D2CMP_10059_FindTiles113c(
+        m,
+        (edi + 0x68) >>> 0,
+        orient,
+        style,
+        seq,
+        localBuf,
+        40,
+      );
+      if (count !== 0) {
+        const flags = D2CMP_10051_GetTileFlags113c(m, localBuf[0]!);
+        if ((flags & 0x0100) !== 0) {
+          const addCount = (count - 1) | 0;
+          if ((ebx & 0x02) !== 0) {
+            m.setU32((ebp + 0x0c) >>> 0, (m.u32((ebp + 0x0c) >>> 0) + addCount) >>> 0);
+          } else if ((ebx & 0x01) !== 0) {
+            m.setU32((ebp + 0x04) >>> 0, (m.u32((ebp + 0x04) >>> 0) + addCount) >>> 0);
+          } else {
+            m.setU32((ebp + 0x14) >>> 0, (m.u32((ebp + 0x14) >>> 0) + addCount) >>> 0);
+          }
+          m.setU32((edi + 0x28) >>> 0, (m.u32((edi + 0x28) >>> 0) | 0x08000000) >>> 0);
+        }
+      }
+    }
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD69950` (`DRLGROOMTILE_GetWarpLevelsArray113c`, custom `eax = pLevel`, `edx = nLevelId`, plain `ret`).
+ *
+ * Walks `pLevel->pPreset (`+0x90`)` list (next at `+0x44`) comparing `*[pNode + 0x00] == nLevelId`;
+ * on match returns `pNode + 0x24`. Otherwise validates `0 <= nLevelId < sgptDataTables->nLevelsTxtRecordCount (+0xC5C)`
+ * and returns `gpLevelDefBin (`0x6FDF0B38`) + nLevelId * 0x9C + 0x68` (or `0x68` if out of bounds).
+ */
+export function DRLGROOMTILE_GetWarpLevelsArray113c(
+  m: Memory113c,
+  eax: number,
+  edx: number,
+): number {
+  let pNode = m.u32((eax + 0x90) >>> 0);
+  const lvl = edx | 0;
+  while (pNode !== 0) {
+    const ecx = m.u32(pNode) | 0;
+    if (ecx === 0) {
+      throw new Error('DRLGROOMTILE_GetWarpLevelsArray113c: [pNode] == 0 (line 418)');
+    }
+    if (lvl === ecx) {
+      return (pNode + 0x24) >>> 0;
+    }
+    pNode = m.u32((pNode + 0x44) >>> 0);
+  }
+  if (lvl < 0) {
+    return 0x68;
+  }
+  const sgpt = m.u32(0x6fde9e1c);
+  const nLevels = m.u32((sgpt + 0x0c5c) >>> 0) | 0;
+  if (lvl >= nLevels) {
+    return 0x68;
+  }
+  const pLevelDefBin = m.u32(0x6fdf0b38);
+  return (pLevelDefBin + Math.imul(lvl, 0x9c) + 0x68) >>> 0;
+}
+
+/**
+ * `@va D2Common:0x6FDB7F50` (`DRLGROOMTILE_FreeTileDataArrays113c`, custom `eax = pRoomEx`, `edi = pMemPool`, plain `ret`).
+ *
+ * If `pRoomEx->pTileGrid (+0x54)` is non-NULL, frees non-NULL `pWalls (+0x14)`, `pFloors (+0x1C)`,
+ * and `pRoofs (+0x24)` via `Fog.#10046` in that exact order.
+ */
+export function DRLGROOMTILE_FreeTileDataArrays113c(
+  m: Memory113c,
+  eax: number,
+  _edi: number,
+): void {
+  const pTileGrid = m.u32((eax + 0x54) >>> 0);
+  if (pTileGrid === 0) return;
+  const esi = (pTileGrid + 0x14) >>> 0;
+  if (esi === 0) return;
+  const freeFn = (m as { free?: (p: number) => void }).free;
+  const pWalls = m.u32(esi);
+  if (pWalls !== 0) {
+    freeFn?.call(m, pWalls);
+  }
+  const pFloors = m.u32((esi + 0x08) >>> 0);
+  if (pFloors !== 0) {
+    freeFn?.call(m, pFloors);
+  }
+  const pRoofs = m.u32((esi + 0x10) >>> 0);
+  if (pRoofs !== 0) {
+    freeFn?.call(m, pRoofs);
+  }
+}
+
+/**
+ * `@va D2Common:0x6FDB7FD0` (`DRLGROOMTILE_ReallocRoofTiles113c`, custom `esi = pTileGrid`, `edi = nAddRoofs`, plain `ret`).
+ *
+ * If `nAddRoofs != 0`, reallocates `pTileGrid->pRoofs (+0x24)` via `Fog.#10047` to `(nRoofCapacity + nAddRoofs) * 48`
+ * bytes, links existing `0 .. nRoofs - 2` entries via `pNext (+0x20)`, zeroes `pNext` of `max(0, nRoofs - 1)`,
+ * and increments `nRoofCapacity (+0x28)` by `nAddRoofs`.
+ */
+export function DRLGROOMTILE_ReallocRoofTiles113c(
+  m: Memory113c,
+  esi: number,
+  edi: number,
+): void {
+  if (edi === 0) return;
+  const curCap = m.u32((esi + 0x28) >>> 0);
+  const newBytes = Math.imul((curCap + edi) | 0, 0x30) >>> 0;
+  const newRoofs = m.alloc(newBytes);
+  m.setU32((esi + 0x24) >>> 0, newRoofs);
+
+  let eax = 0;
+  const firstLimit = ((m.u32((esi + 0x10) >>> 0) | 0) - 1) | 0;
+  if (firstLimit > 0) {
+    let edx = 0;
+    do {
+      const ecx = (m.u32((esi + 0x24) >>> 0) + edx) >>> 0;
+      m.setU32((ecx + 0x20) >>> 0, (ecx + 0x30) >>> 0);
+      const limit = ((m.u32((esi + 0x10) >>> 0) | 0) - 1) | 0;
+      eax = (eax + 1) | 0;
+      edx = (edx + 0x30) | 0;
+      if (eax >= limit) break;
+    } while (true);
+  }
+  const tailOff = Math.imul(eax, 0x30) >>> 0;
+  const baseRoofs = m.u32((esi + 0x24) >>> 0);
+  m.setU32((baseRoofs + tailOff + 0x20) >>> 0, 0);
+  m.setU32((esi + 0x28) >>> 0, (m.u32((esi + 0x28) >>> 0) + edi) >>> 0);
+}
+
+/**
+ * `@va D2Common:0x6FDB8040` (`DRLGROOMTILE_AllocTileData113c`, custom `eax = pRoomEx`, plain `ret`).
+ *
+ * Allocates and zero-fills `pFloors` (`nFloorCapacity * 48`), `pWalls` (`nWallCapacity * 48`),
+ * and `pRoofs` (`nRoofCapacity * 48`, only when `pRoofs == 0`) via `Fog.#10045`.
+ */
+export function DRLGROOMTILE_AllocTileData113c(m: Memory113c, eax: number): void {
+  const pLevel = m.u32((eax + 0x58) >>> 0);
+  const pDrlg = m.u32((pLevel + 0x1b4) >>> 0);
+  void m.u32((pDrlg + 0x478) >>> 0);
+
+  const pTileGrid = m.u32((eax + 0x54) >>> 0);
+  const nFloorCap = m.u32((pTileGrid + 0x20) >>> 0);
+  const esi = (pTileGrid + 0x14) >>> 0;
+
+  if (nFloorCap !== 0) {
+    const pFloors = m.alloc(Math.imul(nFloorCap, 0x30) >>> 0);
+    const zeroBytes = Math.imul(m.u32((esi + 0x0c) >>> 0), 0x30) >>> 0;
+    m.setU32((esi + 0x08) >>> 0, pFloors);
+    m.fill(pFloors, zeroBytes, 0);
+  }
+
+  const nWallCap = m.u32((esi + 0x04) >>> 0);
+  if (nWallCap !== 0) {
+    const pWalls = m.alloc(Math.imul(nWallCap, 0x30) >>> 0);
+    const zeroBytes = Math.imul(m.u32((esi + 0x04) >>> 0), 0x30) >>> 0;
+    m.setU32(esi, pWalls);
+    m.fill(pWalls, zeroBytes, 0);
+  }
+
+  const nRoofCap = m.u32((esi + 0x14) >>> 0);
+  if (nRoofCap !== 0 && m.u32((esi + 0x10) >>> 0) === 0) {
+    const pRoofs = m.alloc(Math.imul(nRoofCap, 0x30) >>> 0);
+    m.setU32((esi + 0x10) >>> 0, pRoofs);
+    const zeroBytes = Math.imul(m.u32((esi + 0x14) >>> 0), 0x30) >>> 0;
+    m.fill(pRoofs, zeroBytes, 0);
+  }
+}
+
+/**
+ * `@va D2Common:0x6FDB8B90` (`DRLGROOMTILE_GetTileCache113c`, custom `ecx = pRoomEx`, `eax = dwTileFlags`,
+ * stack `[esp+4] = nOrientation`, `ret 4`).
+ *
+ * Queries `D2CMP.#10059` (`pRoomEx + 0x68`, `nOrientation`, `style`, `seq`); if 0 matches, falls back to
+ * `(10, 0, 0)` and returns the first entry. Otherwise sums `D2CMP.#10027` rarities across matches, rolls
+ * `pRoomEx->pSeed (+0x14)` when `totalRarity > 0`, and selects the weighted tile entry.
+ */
+export function DRLGROOMTILE_GetTileCache113c(
+  m: Memory113c,
+  ecx: number,
+  eax: number,
+  nOrientation: number,
+): number {
+  let style = 0;
+  let seq = 0;
+  if (eax !== 0) {
+    style = (eax >>> 20) & 0x3f;
+    seq = (eax >>> 8) & 0xff;
+  }
+
+  const localTiles = new Uint32Array(40);
+  const ppHash = (ecx + 0x68) >>> 0;
+  const ebp = D2CMP_10059_FindTiles113c(
+    m,
+    ppHash,
+    nOrientation | 0,
+    style,
+    seq,
+    localTiles,
+    40,
+  );
+  if (ebp === 0) {
+    const fallback = D2CMP_10059_FindTiles113c(m, ppHash, 10, 0, 0, localTiles, 40);
+    if (fallback === 0) {
+      throw new Error('DRLGROOMTILE_GetTileCache113c: fallback (10,0,0) empty (line 115)');
+    }
+    return localTiles[0]!;
+  }
+
+  let totalRarity = 0;
+  for (let i = 0; (i >>> 0) < (ebp >>> 0); i++) {
+    const pEntry = localTiles[i]!;
+    if (pEntry === 0) {
+      throw new Error('DRLGROOMTILE_GetTileCache113c: null tile entry (line 124)');
+    }
+    totalRarity = (totalRarity + D2CMP_10027_GetTileRarity113c(m, pEntry)) | 0;
+  }
+
+  const edx = SEED_RollRandomNumberInline113c(m, (ecx + 0x14) >>> 0, totalRarity);
+
+  let idx = 0;
+  let rem = (edx + 1) | 0;
+  if (totalRarity !== 0) {
+    while ((ebp >>> 0) > 1 && rem > 0) {
+      const r = D2CMP_10027_GetTileRarity113c(m, localTiles[idx]!);
+      rem = (rem - r) | 0;
+      idx = (idx + 1) | 0;
+    }
+    if (idx !== 0) {
+      idx = (idx - 1) | 0;
+    }
+  }
+  return localTiles[idx]!;
+}
+
+/**
+ * `@va D2Common:0x6FDB8CD0` (`DRLGROOMTILE_InitRoofTileData113c`, custom `ecx = pRoomEx`, `edx = nX`,
+ * `ebx = dwTileFlags`, stack `[esp+4] = ppTileList`, `[esp+8] = nY`, `[esp+0xC] = pTileCache`, `ret 0xC`).
+ *
+ * Initializes roof `D2DrlgTileDataStrc` at `&pTileGrid->pRoofs[pTileGrid->nRoofs++]`, optionally prepends
+ * it to `*ppTileList`, computes relative and isometric coordinates, and translates `dwTileFlags` +
+ * `D2CMP.#10051(pTileCache)` into `pTileData->dwFlags (+0x14)`. Returns `pTileData`.
+ */
+export function DRLGROOMTILE_InitRoofTileData113c(
+  m: Memory113c,
+  ecx: number,
+  edx: number,
+  ebx: number,
+  ppTileList: number,
+  nY: number,
+  pTileCache: number,
+): number {
+  const pTileGrid = m.u32((ecx + 0x54) >>> 0);
+  const nRoofs = m.u32((pTileGrid + 0x10) >>> 0);
+  const esi = (m.u32((pTileGrid + 0x24) >>> 0) + Math.imul(nRoofs, 0x30)) >>> 0;
+
+  if (ppTileList !== 0) {
+    const prevHead = m.u32(ppTileList);
+    m.setU32((esi + 0x20) >>> 0, prevHead);
+    m.setU32(ppTileList, esi);
+  } else {
+    m.setU32((esi + 0x20) >>> 0, 0);
+  }
+
+  m.setU32((pTileGrid + 0x10) >>> 0, (m.u32((pTileGrid + 0x10) >>> 0) + 1) >>> 0);
+
+  const relX = (edx - (m.u32((ecx + 0x34) >>> 0) | 0)) | 0;
+  m.setU32((esi + 0x08) >>> 0, relX >>> 0);
+
+  const y = nY | 0;
+  const relY = (y - (m.u32((ecx + 0x38) >>> 0) | 0)) | 0;
+  m.setU32((esi + 0x0c) >>> 0, relY >>> 0);
+
+  const yPlus1 = (y + 1) | 0;
+  const isoX = (Math.imul((edx - yPlus1) | 0, 5) << 4) | 0;
+  m.setU32(esi, isoX >>> 0);
+
+  const isoY = (((Math.imul((yPlus1 + edx) | 0, 5) << 4) >> 1) + 0x28) | 0;
+  m.setU32((esi + 0x04) >>> 0, isoY >>> 0);
+  m.setU32((esi + 0x18) >>> 0, pTileCache >>> 0);
+  m.setU32((esi + 0x1c) >>> 0, 0x0d);
+  m.setU32((esi + 0x14) >>> 0, 0);
+  m.setU32((esi + 0x24) >>> 0, 0);
+  m.setU8((esi + 0x29) >>> 0, 0xff);
+  m.setU8((esi + 0x2a) >>> 0, 0xff);
+  m.setU8((esi + 0x28) >>> 0, 0xff);
+
+  let flags = 0;
+  if ((ebx & 0x80) !== 0) {
+    flags = 1;
+  }
+  if ((ebx & 0x10000000) !== 0) {
+    flags |= 0x102;
+  }
+  if ((ebx & 0x20000) !== 0) {
+    flags |= 0x40;
+  }
+  if ((ebx & 0x10000) !== 0) {
+    flags |= 0x80;
+  }
+  if ((ebx & 0x08) !== 0) {
+    flags |= 0x04;
+  }
+  if ((ebx | 0) < 0) {
+    flags |= 0x08;
+  } else {
+    flags &= ~0x08;
+  }
+  if ((ebx & 0x04000000) !== 0) {
+    flags |= 0x20c;
+  }
+  if ((ebx & 0x20000000) !== 0) {
+    flags |= 0x800;
+  }
+  if ((ebx & 0x04) !== 0) {
+    flags |= 0x2000;
+  }
+
+  const tileFlags = D2CMP_10051_GetTileFlags113c(m, pTileCache);
+  if ((tileFlags & 0x01) !== 0) {
+    flags |= 0x04;
+  }
+  if ((tileFlags & 0x04) !== 0) {
+    flags |= 0x800;
+  }
+  m.setU32((esi + 0x14) >>> 0, flags >>> 0);
+  return esi >>> 0;
+}
+
+/**
+ * `@va D2Common:0x6FDB8DF0` (`DRLGROOMTILE_InitTileData113c`, custom `eax = pRoomEx`, `esi = pTileData`,
+ * `edx = nX`, `ecx = nY`, stack `[esp+4] = dwTileFlags`, `[esp+8] = pTileCache`, `ret 8`).
+ *
+ * Initializes floor/wall `D2DrlgTileDataStrc` at `esi`, computes relative and isometric coordinates
+ * when `pRoomEx != 0`, and populates `pTileData->dwFlags (+0x14)` from `dwTileFlags` (including layer
+ * bits `(((dwTileFlags >> 18) & 3) + 1) << 14`) and `D2CMP.#10051(pTileCache)`.
+ */
+export function DRLGROOMTILE_InitTileData113c(
+  m: Memory113c,
+  eax: number,
+  esi: number,
+  edx: number,
+  ecx: number,
+  dwTileFlags: number,
+  pTileCache: number,
+): void {
+  m.setU32((esi + 0x18) >>> 0, pTileCache >>> 0);
+  m.setU32((esi + 0x1c) >>> 0, 0);
+  m.setU32((esi + 0x14) >>> 0, 0);
+  m.setU32((esi + 0x24) >>> 0, 0);
+  m.setU8((esi + 0x29) >>> 0, 0xff);
+  m.setU8((esi + 0x2a) >>> 0, 0xff);
+  m.setU8((esi + 0x28) >>> 0, 0xff);
+
+  if (eax !== 0) {
+    const relX = (edx - (m.u32((eax + 0x34) >>> 0) | 0)) | 0;
+    m.setU32((esi + 0x08) >>> 0, relX >>> 0);
+    const relY = (ecx - (m.u32((eax + 0x38) >>> 0) | 0)) | 0;
+    const yPlus1 = (ecx + 1) | 0;
+    const isoX = (Math.imul((edx - yPlus1) | 0, 5) << 4) | 0;
+    m.setU32(esi, isoX >>> 0);
+    const isoY = (((Math.imul((yPlus1 + edx) | 0, 5) << 4) >> 1) + 0x28) | 0;
+    m.setU32((esi + 0x0c) >>> 0, relY >>> 0);
+    m.setU32((esi + 0x04) >>> 0, isoY >>> 0);
+  }
+
+  let flags = ((((dwTileFlags >>> 18) & 0x03) + 1) << 14) >>> 0;
+  if ((dwTileFlags & 0x80) !== 0) {
+    flags |= 0x01;
+  }
+  if ((dwTileFlags & 0x10000000) !== 0) {
+    flags |= 0x102;
+  }
+  if ((dwTileFlags & 0x20000) !== 0) {
+    flags |= 0x40;
+  }
+  if ((dwTileFlags & 0x10000) !== 0) {
+    flags |= 0x80;
+  }
+  if ((dwTileFlags & 0x08) !== 0) {
+    flags |= 0x04;
+  }
+  if ((dwTileFlags | 0) < 0) {
+    flags |= 0x08;
+  } else {
+    flags &= ~0x08;
+  }
+  if ((dwTileFlags & 0x04000000) !== 0) {
+    flags |= 0x20c;
+  }
+  if ((dwTileFlags & 0x20000000) !== 0) {
+    flags |= 0x800;
+  }
+  if ((dwTileFlags & 0x04) !== 0) {
+    flags |= 0x2000;
+  }
+
+  const tileFlags = D2CMP_10051_GetTileFlags113c(m, pTileCache);
+  if ((tileFlags & 0x01) !== 0) {
+    flags |= 0x04;
+  }
+  if ((tileFlags & 0x04) !== 0) {
+    flags |= 0x800;
+  }
+  m.setU32((esi + 0x14) >>> 0, flags >>> 0);
+}
+

@@ -14,6 +14,8 @@
  *     return raw % nMax;
  */
 
+import type { Memory113c } from './mem/sparse-memory.ts'
+
 export interface D2SeedStrc {
   lo: number // uint32
   hi: number // uint32
@@ -50,3 +52,27 @@ export function seedRoll(seed: D2SeedStrc, nMax: number): number {
 }
 
 export const seedRollLimited113c = seedRoll
+
+/**
+ * `@va D2Common:0x6FD86740` (`D2Common.#10614` `SEED_InitLowSeed`,
+ * fastcall `ecx = pSeed`, `edx = nLowSeed`, plain `ret`, void).
+ *
+ * Writes `pSeed->nLowSeed = nLowSeed` (`+0x00`) and `pSeed->nHighSeed = 0x29A` (`666`, `+0x04`).
+ */
+export function SEED_InitLowSeed113c(m: Memory113c, pSeed: number, nLowSeed: number): void {
+  const s = pSeed >>> 0
+  m.setU32(s, nLowSeed >>> 0)
+  m.setU32((s + 4) >>> 0, 0x29a)
+}
+
+/**
+ * `@va D2Common:0x6FD86750` (`D2Common.#10936` `SEED_InitSeed`,
+ * fastcall `ecx = pSeed`, plain `ret`, void).
+ *
+ * Writes `pSeed->nLowSeed = 1` (`+0x00`) and `pSeed->nHighSeed = 0x29A` (`666`, `+0x04`).
+ */
+export function SEED_InitSeed113c(m: Memory113c, pSeed: number): void {
+  const s = pSeed >>> 0
+  m.setU32(s, 1)
+  m.setU32((s + 4) >>> 0, 0x29a)
+}
