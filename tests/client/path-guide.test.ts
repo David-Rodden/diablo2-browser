@@ -27,6 +27,16 @@ describe('path guide route', () => {
     expect(actOfLevel(108)).toBe(3)
   })
 
+  it('heads out for the Act III quests the NPCs only bring up once you have been there', () => {
+    const actTwoDone = Object.fromEntries(Array.from({ length: 17 }, (_, row) => [row, 0x1001]))
+    const carrying = (...codes: string[]) => (code: string) => codes.includes(code)
+    expect(goalOf(75, quests(actTwoDone))).toEqual([78, 'Blade of the Old Religion', 'Find the Gidbinn altar'])
+    expect(goalOf(75, quests(actTwoDone), 'story', carrying('g33'))).toEqual([75, 'Blade of the Old Religion', 'Bring the Gidbinn to Ormus'])
+    expect(goalOf(75, quests({ ...actTwoDone, 19: 0x1001 }))).toEqual([94, "Lam Esen's Tome", 'Find the Tome in the Ruined Temple'])
+    expect(goalOf(75, quests(actTwoDone), 'required')).toEqual([85, "Khalim's Will", "Find Khalim's Eye in the Spider Cavern"])
+    expect(goalOf(75, quests(actTwoDone), 'required', carrying('qey', 'qbr'))).toEqual([93, "Khalim's Will", "Find Khalim's Heart in the sewers"])
+  })
+
   it('comes back to a skipped quest the act needs instead of sailing on without it', () => {
     const skippedGoal = (done: Record<number, number>, skipped: readonly number[]) => currentGoal(1, quests(done), 'story', undefined, new Set(skipped))?.title
     expect(skippedGoal({}, [1, 2, 3, 4, 5, 6])).toBe('Sisters to the Slaughter')

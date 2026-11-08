@@ -1695,7 +1695,7 @@ export class Autopilot {
     const care = assists.inventoryCare
     care.hardUp = me.gold < Math.max(BARE_SHOP_GOLD, me.level * RESERVE_PER_LEVEL * 2) || (me.gold < BARE_SHOP_GOLD * 2 && this.healingPotions() === 0)
     care.identifiable = scrollSource(world.containers.inventory.values(), 'ibk', 'isc') !== null
-    const selling = care.sellable.length > 0
+    const selling = care.config?.sellJunk === true && care.sellable.length > 0
     const cooldown = (key: string) => (key === 'heal' ? HEAL_COOLDOWN_MS : (key === 'potions' && (this.healingPotions() < STOCKED_POTIONS || selling || !this.host.assists.hasTownPortal())) || key === 'cube' ? RESTOCK_COOLDOWN_MS : ERRAND_COOLDOWN_MS)
     const ready = (key: string) => nowMs - (this.errandsAt.get(key) ?? Number.NEGATIVE_INFINITY) >= cooldown(key)
     const wounded = me.life < lifeCap(hudManager, me.maxLife) * HEAL_LIFE || me.mana < (hudManager.maxMana || me.maxMana) * HEAL_MANA
@@ -2068,7 +2068,7 @@ export class Autopilot {
     const { world, hudManager } = this.host
     const rows = hudManager.belt.maxRows
     const [healing, mana] = POTION_COLUMNS[this.isCaster() ? 'caster' : 'melee']
-    const count = (prefix: string) => [...world.containers.belt.values()].filter((item) => item.code.startsWith(prefix)).length
+    const count = (prefix: string) => [...world.containers.belt.values(), ...world.containers.inventory.values()].filter((item) => item.code.startsWith(prefix)).length
     const free = rows * 4 - world.containers.belt.size
     return Math.min(free, Math.max(0, healing * rows - count('hp')) + Math.max(0, mana * rows - count('mp')))
   }

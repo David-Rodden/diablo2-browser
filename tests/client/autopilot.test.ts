@@ -610,6 +610,14 @@ describe('autopilot', () => {
     expect([run(2), run(8)]).toEqual(['Buying potions and portals', 'Head to Blood Moor'])
   })
 
+  it('counts the potions in its bags before shopping for more', () => {
+    const { pilot, world } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } }, ROGUE_ENCAMPMENT)
+    const wanted = () => (pilot as unknown as { potionsWanted: () => number }).potionsWanted()
+    const short = wanted()
+    Array.from({ length: 16 }, (_, n) => world.containers.inventory.set(60 + n, { id: 60 + n, code: n % 2 ? 'mp2' : 'hp2', gridX: n, gridY: 1 }))
+    expect([short > 0, wanted()]).toEqual([true, 0])
+  })
+
   it('does not step back through its portal with no potions and no gold to buy any', () => {
     const { pilot, world, units, guide, tick } = setup({ goal: { level: 62, title: 'The Horadric Staff' }, step: { kind: 'waypoint', level: 43 }, target: { x: 130, y: 100, label: 'Waypoint' } }, ROGUE_ENCAMPMENT)
     Object.assign(world.self, { gold: 16, stashGold: 0 })
