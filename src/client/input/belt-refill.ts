@@ -4,8 +4,10 @@ import { areBeltPotionsCompatible, BELT_COLS, itemToBeltPotion, type BeltModel, 
 export type BeltSlots = Pick<BeltModel, 'findAutoPlacePotionSlot' | 'getSlot'>
 export type BeltColumnKinds = readonly (BeltPotion | null)[]
 
+const REFILLED = new Set(['hp', 'mana', 'rejuv'])
+
 export const beltColumnKinds = (belt: BeltSlots, remembered: BeltColumnKinds = []): BeltColumnKinds =>
-  Array.from({ length: BELT_COLS }, (_, col) => belt.getSlot(col, 0) ?? remembered[col] ?? null)
+  Array.from({ length: BELT_COLS }, (_, col) => belt.getSlot(col, 0) ?? (REFILLED.has(remembered[col]?.kind ?? '') ? remembered[col]! : null))
 
 export const beltRefillPick = (belt: BeltSlots, potions: readonly Potion[], kinds: BeltColumnKinds = beltColumnKinds(belt), skip?: number): number | null => {
   const carried = potions.flatMap((p) => {

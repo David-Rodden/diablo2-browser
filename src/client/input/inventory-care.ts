@@ -29,6 +29,20 @@ const FUTURE_UPGRADE = 'Better'
 const SPARE_KINDS = new Set<Appraisal['kind']>(['charm', 'jewel', 'rune', 'gem', 'magic', 'rare', 'set', 'unique', 'base', 'normal'])
 const STASHED_KINDS = new Set<Appraisal['kind']>(['rune', 'gem', 'jewel', 'unique', 'set', 'rare', 'base'])
 
+export const STRAY_SUPPLIES: ReadonlySet<string> = new Set(['vps', 'yps', 'wms', 'opl', 'opm', 'ops', 'gpl', 'gpm', 'gps'])
+const POTION = /^(hp|mp)[1-5]$/
+
+export interface PotionKeep {
+  readonly hp: number
+  readonly mp: number
+}
+
+export const surplusSupplies = (items: readonly ItemData[], keep: PotionKeep): ItemData[] => {
+  const code = (item: ItemData) => item.code.trim()
+  const beyond = (prefix: keyof PotionKeep) => items.filter((item) => POTION.test(code(item)) && code(item).startsWith(prefix)).sort((a, b) => code(b).localeCompare(code(a))).slice(keep[prefix])
+  return [...items.filter((item) => STRAY_SUPPLIES.has(code(item))), ...beyond('hp'), ...beyond('mp')]
+}
+
 const nameOf = (item: ItemData) => onlineItemDataToUiInventoryItem(item).name || item.code.trim()
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`
 
@@ -40,6 +54,7 @@ export class InventoryCare {
   hardUp = false
   hold = false
   identifiable = false
+  potionKeep: PotionKeep | null = null
   private job: Promise<unknown> | null = null
   private readonly appraisals = new WeakMap<ItemData, { readonly context: AppraisalContext; readonly appraisal: Appraisal }>()
   private visited: 'vendor' | 'stash' | null = null
@@ -121,7 +136,7 @@ export class InventoryCare {
 
   get sellable(): ItemData[] {
     const refused = this.inventoryWhere(() => true).filter((item) => this.refused.has(item.id))
-    return [...new Set([...this.junk, ...this.clutter, ...this.surplus, ...this.excessCharms.filter((charm) => this.appraise(charm).tier !== 'great'), ...refused, ...(this.hardUp ? this.spares : [])])].filter((item) => !this.unsold.has(item.id))
+    return [...new Set([...this.junk, ...this.clutter, ...this.surplus, ...this.spareSupplies, ...this.excessCharms.filter((charm) => this.appraise(charm).tier !== 'great'), ...refused, ...(this.hardUp ? this.spares : [])])].filter((item) => !this.unsold.has(item.id))
   }
 
   get stashable(): ItemData[] {
@@ -155,12 +170,17 @@ export class InventoryCare {
     return [...this.host.world.containers.inventory.values()].filter((item) => spare.has(item.id) && !this.unsold.has(item.id))
   }
 
+  get spareSupplies(): ItemData[] {
+    return this.potionKeep === null ? [] : surplusSupplies([...this.host.world.containers.inventory.values()], this.potionKeep)
+  }
+
   get untidy(): ItemData[] {
     const spare = this.spareIds()
+    const supplies = this.potionKeep !== null
     const { stash, inventory } = this.host.world.containers
     const free = INVENTORY_CELLS - [...inventory.values()].reduce((cells, item) => cells + item.invWidth * item.invHeight, 0)
     return [...stash.values()]
-      .filter((item) => spare.has(item.id) || (this.identifiable && !item.identified))
+      .filter((item) => spare.has(item.id) || (this.identifiable && !item.identified) || (supplies && (STRAY_SUPPLIES.has(item.code.trim()) || POTION.test(item.code.trim()))))
       .reduce<ItemData[]>((taken, item) => (free - [...taken, item].reduce((cells, out) => cells + out.invWidth * out.invHeight, 0) >= LOOT_ROOM ? [...taken, item] : taken), [])
   }
 

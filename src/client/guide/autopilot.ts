@@ -3,6 +3,7 @@ import { MONSTER_PATH_IDS } from '../../common/path/monster-path-data.ts'
 import { getLevelMonsterLevel113c } from '../../common/world/levels-monlvl-113c.ts'
 import { CANONICAL_113C_OBJECTS, WAYPOINT_CLASS_IDS_113C } from '../../common/world/objects-meta.ts'
 import type { ItemData } from '../../netproto/index.ts'
+import { STRAY_SUPPLIES, type PotionKeep } from '../input/inventory-care.ts'
 import { BOSS_CLASSES, TELEPORT } from '../input/combat-planner.ts'
 import { scrollsCarried, scrollSource } from '../input/town-portal.ts'
 import { isClosedDoor, type PlayAssists } from '../input/play-assists.ts'
@@ -211,6 +212,7 @@ const POTION_GOLD = 100
 const SPARE_POTIONS = { melee: [4, 1], caster: [3, 3] } as const
 const SPARE_GOLD = 2000
 const BELT_ROWS = 4
+const BELT_DRINK_MS = 1500
 const GEAR_ROOM = 8
 const INVENTORY_CELLS = 40
 const SHOP_GOLD = 6000
@@ -1694,6 +1696,7 @@ export class Autopilot {
     const me = world.self
     const care = assists.inventoryCare
     care.hardUp = me.gold < Math.max(BARE_SHOP_GOLD, me.level * RESERVE_PER_LEVEL * 2) || (me.gold < BARE_SHOP_GOLD * 2 && this.healingPotions() === 0)
+    care.potionKeep = this.potionSpares()
     care.identifiable = scrollSource(world.containers.inventory.values(), 'ibk', 'isc') !== null
     const selling = care.config?.sellJunk === true && care.sellable.length > 0
     const cooldown = (key: string) => (key === 'heal' ? HEAL_COOLDOWN_MS : (key === 'potions' && (this.healingPotions() < STOCKED_POTIONS || selling || !this.host.assists.hasTownPortal())) || key === 'cube' ? RESTOCK_COOLDOWN_MS : ERRAND_COOLDOWN_MS)
@@ -1725,6 +1728,7 @@ export class Autopilot {
       (me.gold >= SHOP_GOLD || (this.bare() > 0 && me.gold >= BARE_SHOP_GOLD) || (this.unarmed() && me.gold >= UNARMED_SHOP_GOLD)) && ready('shop') && { key: 'shop', reason: 'Looking for better gear at the smith', npc: 'repair', action: 'trade_repair', work: () => this.buyUpgrade() },
       gambleFund >= GAMBLING_RULES.spare && me.gold >= GAMBLING_RULES.spare && ready('gamble') && { key: 'gamble', reason: 'Gambling for rings and amulets', npc: 'gamble', action: 'gamble', work: () => this.gamble() },
       care.config?.sellJunk === true && care.sellable.length > 0 && ready('sell') && { key: 'sell', reason: 'Selling junk', npc: 'potions', action: 'trade' },
+      this.strayBelt().length > 0 && ready('belt') && { key: 'belt', reason: 'Drinking the odd potions in the belt', work: () => this.clearBelt() },
       spend === 0 && me.gold > this.purseKeep() + BANK_MARGIN && me.stashGold < getStashGoldLimit(me.level) && ready('bank') && { key: 'bank', reason: 'Putting gold in the stash', work: () => this.bank() },
       untidy && ready('tidy') && { key: 'tidy', reason: 'Clearing out the stash', work: () => this.tidy() },
       this.storedQuestItem() !== null && ready('fetch') && { key: 'fetch', reason: 'Taking the quest item out of storage', work: () => this.fetch(this.storedQuestItem()!) },
@@ -2292,16 +2296,35 @@ export class Autopilot {
         if (!hudModel.vendorBuy(potion.id, false) || !(await waitFor(() => belt(prefix) > before, 1500))) break
       }
     }
-    const spares = this.isCaster() ? SPARE_POTIONS.caster : SPARE_POTIONS.melee
     const total = (prefix: string) => [...world.containers.belt.values(), ...world.containers.inventory.values()].filter((item) => item.code.startsWith(prefix)).length
-    const bossFight = Object.values(LAIRS.resists).some((resist) => resist.row === this.host.guide.currentPlan?.goal.row) ? LAIRS.bossPotions : 0
-    for (const [prefix, spare] of [['hp', spares[0] + (BELT_ROWS - rows) * healing + bossFight], ['mp', spares[1]]] as const) {
+    const spares = this.potionSpares()
+    for (const [prefix, spare] of [['hp', spares.hp], ['mp', spares.mp]] as const) {
       const potion = bestIn(prefix)
       const wanted = Math.min(belt(prefix) + spare, total(prefix) + this.freeCells() - GEAR_ROOM)
       for (let tries = 0; potion && tries < BUY_TRIES && total(prefix) < wanted && world.self.gold >= (prefix === 'hp' ? price(potion) : SPARE_GOLD); tries++) {
         const before = total(prefix)
         if (!hudModel.vendorBuy(potion.id, false) || !(await waitFor(() => total(prefix) > before, 1500))) break
       }
+    }
+  }
+
+  private potionSpares(): PotionKeep {
+    const [hp, mp] = this.isCaster() ? SPARE_POTIONS.caster : SPARE_POTIONS.melee
+    const [healing] = POTION_COLUMNS[this.isCaster() ? 'caster' : 'melee']
+    const bossFight = Object.values(LAIRS.resists).some((resist) => resist.row === this.host.guide.currentPlan?.goal.row) ? LAIRS.bossPotions : 0
+    return { hp: hp + (BELT_ROWS - this.host.hudManager.belt.maxRows) * healing + bossFight, mp }
+  }
+
+  private strayBelt(): ItemData[] {
+    return [...this.host.world.containers.belt.values()].filter((item) => STRAY_SUPPLIES.has(item.code.trim()))
+  }
+
+  private async clearBelt(): Promise<void> {
+    const { world, hudModel } = this.host
+    for (const item of this.strayBelt()) {
+      if (hudModel === null || !this.active) return
+      hudModel.useBeltSlot(item.gridX ?? item.x ?? 0, false)
+      await waitFor(() => !world.containers.belt.has(item.id), BELT_DRINK_MS)
     }
   }
 
