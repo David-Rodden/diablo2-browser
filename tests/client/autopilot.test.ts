@@ -618,6 +618,20 @@ describe('autopilot', () => {
     expect([short > 0, wanted()]).toEqual([true, 0])
   })
 
+  it('drinks the stamina potions blocking its belt while in town', async () => {
+    const { world, hudModel, guide, tick } = setup({ target: { x: 130, y: 100, label: 'Cold Plains' } }, ROGUE_ENCAMPMENT)
+    const useBeltSlot = vi.fn((slot: number) => world.containers.belt.delete(100 + slot))
+    Object.assign(hudModel, { useBeltSlot })
+    Object.assign(world.self, { gold: 0, stashGold: 0 })
+    ;[1, 3, 4, 8, 9, 10].forEach((bodyLoc) => world.containers.equipment.set(bodyLoc, { id: 50 + bodyLoc, code: 'cap', bodyLoc }))
+    world.containers.belt.set(100, { id: 100, code: 'hp2', gridX: 0 })
+    world.containers.belt.set(102, { id: 102, code: 'vps', gridX: 2 })
+    tick()
+    expect(guide.pilotStatus).toBe('Drinking the odd potions in the belt')
+    await vi.waitFor(() => expect(useBeltSlot).toHaveBeenCalledWith(2, false))
+    expect([...world.containers.belt.keys()]).toEqual([100])
+  })
+
   it('does not step back through its portal with no potions and no gold to buy any', () => {
     const { pilot, world, units, guide, tick } = setup({ goal: { level: 62, title: 'The Horadric Staff' }, step: { kind: 'waypoint', level: 43 }, target: { x: 130, y: 100, label: 'Waypoint' } }, ROGUE_ENCAMPMENT)
     Object.assign(world.self, { gold: 16, stashGold: 0 })

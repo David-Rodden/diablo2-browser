@@ -25,6 +25,8 @@ const ROMAN = ['I', 'II', 'III', 'IV', 'V']
 const PORTALS: Readonly<Record<string, { readonly hint: string; readonly find: readonly Find[] }>> = {
   '1>40': { hint: 'Talk to Warriv', find: ['warriv1'] },
   '40>75': { hint: 'Talk to Meshif', find: ['meshif1'] },
+  '75>40': { hint: 'Talk to Meshif to sail west', find: ['meshif2'] },
+  '40>1': { hint: 'Talk to Warriv to go west', find: ['warriv2'] },
   '102>103': { hint: 'Take the red portal', find: [[60, 342]] },
   '103>109': { hint: 'Talk to Tyrael', find: ['tyrael2'] },
   '4>38': { hint: 'Touch the Cairn Stones, then take the portal', find: [60, [17, 18, 19, 20, 21]] },

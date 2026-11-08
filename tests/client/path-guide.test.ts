@@ -37,6 +37,11 @@ describe('path guide route', () => {
     expect(goalOf(75, quests(actTwoDone), 'required', carrying('qey', 'qbr'))).toEqual([93, "Khalim's Will", "Find Khalim's Heart in the sewers"])
   })
 
+  it('sails back west with Meshif and Warriv instead of looking for a portal', () => {
+    expect(nextStep(75, 41)).toMatchObject({ kind: 'portal', level: 40, hint: 'Talk to Meshif to sail west', find: ['meshif2'] })
+    expect(nextStep(40, 2)).toMatchObject({ kind: 'portal', level: 1, hint: 'Talk to Warriv to go west', find: ['warriv2'] })
+  })
+
   it('comes back to a skipped quest the act needs instead of sailing on without it', () => {
     const skippedGoal = (done: Record<number, number>, skipped: readonly number[]) => currentGoal(1, quests(done), 'story', undefined, new Set(skipped))?.title
     expect(skippedGoal({}, [1, 2, 3, 4, 5, 6])).toBe('Sisters to the Slaughter')
