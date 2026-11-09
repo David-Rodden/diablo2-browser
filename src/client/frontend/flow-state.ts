@@ -278,6 +278,8 @@ export interface BnetFlowState {
   roster: RosterCharacter[]
   avatarAnims: Record<HeroToken, HeroAvatarAnimState>
   selectedSlotIndex: number
+  /** Character selection scroll offset in roster entries (`D2Launch.dll` `0x6fa65ed4`, steps by 2 per row via `0x6fa4c250`). */
+  charSelectScrollOffset?: number | undefined
   deleteConfirmOpen: boolean
 
   // Stage 5: Battle.net Lobby & Create/Join Game Room
@@ -1237,6 +1239,7 @@ export function createInitialFlowState(initialRoster: RosterCharacter[] = []): B
     roster: [...initialRoster],
     avatarAnims: createInitialHeroAvatarAnims(),
     selectedSlotIndex: 0,
+    charSelectScrollOffset: 0,
     deleteConfirmOpen: false,
 
     lobbySubPanel: 'create',
@@ -1781,6 +1784,7 @@ export function clickSinglePlayerButton(state: BnetFlowState): void {
   } else {
     state.stage = 'char_select'
     state.selectedSlotIndex = 0
+    state.charSelectScrollOffset = 0
     state.activeInput = null
     resetHeroAvatarAnims(state)
   }
@@ -1827,6 +1831,7 @@ export function submitBattleNetLogin(state: BnetFlowState): boolean {
   } else {
     state.stage = 'char_select'
     state.selectedSlotIndex = 0
+    state.charSelectScrollOffset = 0
     state.activeInput = null
     resetHeroAvatarAnims(state)
   }
@@ -1965,8 +1970,9 @@ export function submitCharacterCreate(
     avatarDesc,
     createdAt: Date.now(),
   }
-  state.roster = [newChar, ...state.roster].slice(0, 8)
+  state.roster = [newChar, ...state.roster]
   state.selectedSlotIndex = 0
+  state.charSelectScrollOffset = 0
   state.stageTicks = 0
   state.activeInput = null
   if (state.playMode === 'single') {
@@ -2703,6 +2709,54 @@ export function charSummaryToRosterCharacter(
   }
 }
 
+/**
+ * Compute the `char_select` scrollbar maximum steps (`D2Launch.dll` `0x6fa4d56b..0x6fa4d59e`,
+ * passed to `D2Win.#10160` @ `0x6f8e86e0`): `0` when `rosterLength <= 8`, otherwise
+ * `ceil((rosterLength - 8) / 2)` (each step scrolls 1 row = 2 character slots).
+ */
+export function getCharSelectMaxScrollStep(rosterLength: number): number {
+  if (!Number.isFinite(rosterLength) || rosterLength <= 8) return 0
+  return Math.ceil((rosterLength - 8) / 2)
+}
+
+/**
+ * Scroll the `char_select` 2x4 viewport by `deltaRows` rows (`D2Launch.dll` `0x6fa4c250`:
+ * `step = clamp(step + deltaRows, 0, maxSteps); charSelectScrollOffset = step * 2`).
+ */
+export function scrollCharSelectRoster(state: BnetFlowState, deltaRows: number): number {
+  const maxSteps = getCharSelectMaxScrollStep(state.roster.length)
+  const curStep = Math.floor(Math.max(0, state.charSelectScrollOffset ?? 0) / 2)
+  const nextStep = Math.max(0, Math.min(maxSteps, curStep + Math.trunc(deltaRows)))
+  const nextOffset = nextStep * 2
+  state.charSelectScrollOffset = nextOffset
+  return nextOffset
+}
+
+/**
+ * Ensure `slotIndex` falls inside the visible 8-slot window `[charSelectScrollOffset, charSelectScrollOffset + 7]`.
+ */
+export function ensureCharSelectSlotVisible(
+  state: BnetFlowState,
+  slotIndex: number = state.selectedSlotIndex,
+): number {
+  const maxSteps = getCharSelectMaxScrollStep(state.roster.length)
+  let step = Math.max(
+    0,
+    Math.min(maxSteps, Math.floor(Math.max(0, state.charSelectScrollOffset ?? 0) / 2)),
+  )
+  if (slotIndex >= 0 && slotIndex < state.roster.length) {
+    const row = Math.floor(slotIndex / 2)
+    if (row < step) {
+      step = row
+    } else if (row >= step + 4) {
+      step = Math.min(maxSteps, row - 3)
+    }
+  }
+  const offset = step * 2
+  state.charSelectScrollOffset = offset
+  return offset
+}
+
 export function applyOnlineCharactersToFlowState(
   state: BnetFlowState,
   characters: readonly {
@@ -2726,13 +2780,15 @@ export function applyOnlineCharactersToFlowState(
   state.onlineConnected = true
   state.popupModal = null
   state.popup = null
-  state.roster = characters.slice(0, 8).map((ch) => charSummaryToRosterCharacter(ch))
+  state.roster = characters.map((ch) => charSummaryToRosterCharacter(ch))
   const preservedIdx = options?.preserveSelectedName
     ? state.roster.findIndex(
         (c) => c.name.toLowerCase() === options.preserveSelectedName!.toLowerCase(),
       )
     : -1
   state.selectedSlotIndex = preservedIdx >= 0 ? preservedIdx : 0
+  state.charSelectScrollOffset = 0
+  ensureCharSelectSlotVisible(state, state.selectedSlotIndex)
   if (state.roster.length === 0 && !options?.stayOnCharSelect) {
     enterCharCreate(state)
   } else {
@@ -3082,6 +3138,7 @@ export function returnToLoginAfterSessionLoss(state: BnetFlowState, reason: stri
   state.statusText = ''
   state.roster = []
   state.selectedSlotIndex = 0
+  state.charSelectScrollOffset = 0
   state.deleteConfirmOpen = false
   state.charCreateError = null
   state.createGameError = null

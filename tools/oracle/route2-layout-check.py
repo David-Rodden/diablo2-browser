@@ -755,6 +755,54 @@ FIELD_PE_PROBES['D2DrlgPresetRoomStrc'].update({
     'nTombCoords': ['D2Common.dll', 0x6FD5AB39, 2, 4, '89be'],                  # mov [esi+0x108], edi
 })
 
+# Iteration 7 (Lane A B038/B041) additions.
+FIELD_PE_PROBES['D2UnitStrc'].update({
+    'dwSeqFramePrecise': ['D2Common.dll', 0x6FD7F0E7, 2, 1, '8b48'],             # mov ecx, [eax+0x38]
+    'dwField7C': ['D2Common.dll', 0x6FD7E983, 2, 1, '8b41'],                     # mov eax, [ecx+0x7c]
+    'dwOwnerType': ['D2Common.dll', 0x6FD7F9E3, 2, 4, '8990'],                   # mov [eax+0x9c], edx
+    'dwOwnerId': ['D2Common.dll', 0x6FD7F9EC, 2, 4, '8988'],                     # mov [eax+0xa0], ecx
+})
+FIELD_PE_PROBES['D2PlayerDataStrc'].update({
+    'dwActiveWeaponFlags': ['D2Common.dll', 0x6FD7EB26, 2, 1, '8b40'],           # mov eax, [eax+0x2c]
+    'dwLeftTargetVal': ['D2Common.dll', 0x6FD7F84B, 2, 1, '8b50'],               # mov edx, [eax+0x70]
+    'dwRightTargetVal': ['D2Common.dll', 0x6FD7F7EB, 2, 1, '8b50'],              # mov edx, [eax+0x74]
+    'dwLeftTargetGuid': ['D2Common.dll', 0x6FD7F854, 2, 1, '8b50'],              # mov edx, [eax+0x78]
+    'dwRightTargetGuid': ['D2Common.dll', 0x6FD7F7F4, 2, 1, '8b50'],             # mov edx, [eax+0x7c]
+    'dwLeftSubtargetType': ['D2Common.dll', 0x6FD7F60B, 2, 4, '8b90'],           # mov edx, [eax+0x80]
+    'dwRightSubtargetType': ['D2Common.dll', 0x6FD7F67B, 2, 4, '8b90'],          # mov edx, [eax+0x84]
+    'dwLeftSubtargetGuid': ['D2Common.dll', 0x6FD7F617, 2, 4, '8b90'],           # mov edx, [eax+0x88]
+    'dwRightSubtargetGuid': ['D2Common.dll', 0x6FD7F687, 2, 4, '8b90'],          # mov edx, [eax+0x8c]
+    'dwInteractItemGuid': ['D2Common.dll', 0x6FD7F4A1, 2, 4, '8b80'],            # mov eax, [eax+0x90]
+    'dwInteractType': ['D2Common.dll', 0x6FD7F711, 2, 4, '8990'],                # mov [eax+0x94], edx
+})
+FIELD_PE_PROBES['D2CharStatsTxt'].update({
+    'nToHitFactor': ['D2Common.dll', 0x6FD81F7F, 2, 1, '8b40'],                  # mov eax, [eax+0x3c]
+})
+FIELD_PE_PROBES['D2ObjectDataStrc'].update({
+    'nPortalFlags': ['D2Common.dll', 0x6FD7EAA6, 2, 1, '8a40'],                  # mov al, [eax+0x5]
+    'pShrineTxt': ['D2Common.dll', 0x6FD7ECC7, 2, 1, '8b40'],                    # mov eax, [eax+0x8]
+})
+FIELD_PE_PROBES['D2ObjectsTxt'].update({
+    'bBlocksVis': ['D2Common.dll', 0x6FD7FF8D, 2, 4, '8a88'],                    # mov cl, [eax+0x13b]
+    'bBlocksLight': ['D2Common.dll', 0x6FD7FF9D, 2, 4, '8a80'],                  # mov al, [eax+0x1b6]
+})
+# Iteration 7 (Lane B B033/B036) additions.
+FIELD_PE_PROBES['D2SkillStrc'].update({
+    'dwParam0C': ['D2Common.dll', 0x6FD9DE8B, 2, 1, '8948'],                    # mov [eax+0xc], ecx
+    'dwParam1': ['D2Common.dll', 0x6FD9E057, 2, 1, '8b40'],                     # mov eax, [eax+0x18]
+    'dwParam2': ['D2Common.dll', 0x6FD9E027, 2, 1, '8b40'],                     # mov eax, [eax+0x1c]
+    'dwParam3': ['D2Common.dll', 0x6FD9DFF7, 2, 1, '8b40'],                     # mov eax, [eax+0x20]
+    'dwParam4': ['D2Common.dll', 0x6FD9DFC7, 2, 1, '8b40'],                     # mov eax, [eax+0x24]
+    'nQuantity': ['D2Common.dll', 0x6FD9DD97, 2, 1, '8b40'],                    # mov eax, [eax+0x30]
+    'nCharges': ['D2Common.dll', 0x6FD9E2A2, 2, 1, '8b49'],                     # mov ecx, [ecx+0x38]
+})
+FIELD_PE_PROBES['D2ItemsTxt'].update({
+    'dw2HandedWClass': ['D2Common.dll', 0x6FD73327, 2, 4, '8b80'],              # mov eax, [eax+0xc4]
+    'nLevel': ['D2Common.dll', 0x6FD73097, 2, 4, '8a80'],                       # mov al, [eax+0xfd]
+    'nUseable': ['D2Common.dll', 0x6FD72CB9, 3, 4, '0fb680'],                   # movzx eax, byte [eax+0x11d]
+    'nUnique': ['D2Common.dll', 0x6FD72C67, 3, 4, '0fb680'],                    # movzx eax, byte [eax+0x129]
+})
+
 
 def field(struct_name, name):
     for f in LAYOUT[struct_name]['fields']:

@@ -15,8 +15,10 @@ import {
   D2AnimSeqTxt_SIZE,
   D2ObjectDataStrc,
   D2ObjectsTxt,
+  D2PlayerDataStrc,
   D2UnitStrc,
 } from '../mem/layout.generated.ts'
+import { D2CommonAssertError } from './inline-helpers.ts'
 import { imul32 } from './int-math.ts'
 
 const UNIT_OBJECT = 2
@@ -183,4 +185,207 @@ export function COMPOSIT_GetWeaponClassIdFromCode113c(
     }
   }
   return 0
+}
+
+const COMPOSIT_UNITS_CPP_FILE_113C = '..\\Source\\D2Common\\UNITS\\Units.cpp'
+
+/**
+ * `@va D2Common:0x6FD7E960` (`D2Common.#10181` `UNITS_GetField7C`, 39 bytes,
+ * fastcall `ecx = pUnit`, `ret` -> `number`).
+ */
+export function UNITS_GetField7C_113c(m: Memory113c, pUnit: number): number {
+  if (pUnit >>> 0 === 0) {
+    throw new D2CommonAssertError(COMPOSIT_UNITS_CPP_FILE_113C, 0x1513)
+  }
+  return m.get(pUnit, D2UnitStrc.dwField7C)
+}
+
+/**
+ * `@va D2Common:0x6FD7E990` (`D2Common.#10169` `UNITS_SetField7C`, 39 bytes,
+ * fastcall `ecx = pUnit`, `edx = dwValue`, `ret`, void).
+ */
+export function UNITS_SetField7C_113c(m: Memory113c, pUnit: number, dwValue: number): void {
+  if (pUnit >>> 0 === 0) {
+    throw new D2CommonAssertError(COMPOSIT_UNITS_CPP_FILE_113C, 0x150b)
+  }
+  m.set(pUnit, D2UnitStrc.dwField7C, dwValue >>> 0)
+}
+
+/**
+ * `@va D2Common:0x6FD7EA30` (`D2Common.#10111` `UNITS_SetObjectPortalFlags`, 64 bytes,
+ * stdcall `[esp+4] = pUnit`, `[esp+8] = nFlags`, `ret 0x8`, void).
+ */
+export function UNITS_SetObjectPortalFlags113c(
+  m: Memory113c,
+  pUnit: number,
+  nFlags: number,
+): void {
+  if (pUnit >>> 0 === 0) {
+    throw new D2CommonAssertError(COMPOSIT_UNITS_CPP_FILE_113C, 0xfef)
+  }
+  if (m.get(pUnit, D2UnitStrc.dwUnitType) !== UNIT_OBJECT) {
+    throw new D2CommonAssertError(COMPOSIT_UNITS_CPP_FILE_113C, 0xff0)
+  }
+  const pObjectData = m.get(pUnit, D2UnitStrc.pUnitData)
+  m.set(pObjectData, D2ObjectDataStrc.nPortalFlags, nFlags & 0xff)
+}
+
+/**
+ * `@va D2Common:0x6FD7EA70` (`D2Common.#10258` `UNITS_GetObjectPortalFlags`, 60 bytes,
+ * stdcall `[esp+4] = pUnit`, `ret 0x4`, `retMask: 0xFF`).
+ */
+export function UNITS_GetObjectPortalFlags113c(m: Memory113c, pUnit: number): number {
+  if (pUnit >>> 0 === 0) {
+    throw new D2CommonAssertError(COMPOSIT_UNITS_CPP_FILE_113C, 0xfe4)
+  }
+  if (m.get(pUnit, D2UnitStrc.dwUnitType) !== UNIT_OBJECT) {
+    throw new D2CommonAssertError(COMPOSIT_UNITS_CPP_FILE_113C, 0xfe5)
+  }
+  const pObjectData = m.get(pUnit, D2UnitStrc.pUnitData)
+  return m.get(pObjectData, D2ObjectDataStrc.nPortalFlags)
+}
+
+/**
+ * `@va D2Common:0x6FD7EAF0` (`D2Common.#10187` `UNITS_GetPlayerActiveWeaponFlags`, 60 bytes,
+ * stdcall `[esp+4] = pUnit`, `ret 0x4` -> `number`).
+ */
+export function UNITS_GetPlayerActiveWeaponFlags113c(m: Memory113c, pUnit: number): number {
+  if (pUnit >>> 0 === 0) {
+    throw new D2CommonAssertError(COMPOSIT_UNITS_CPP_FILE_113C, 0xfc9)
+  }
+  if (m.get(pUnit, D2UnitStrc.dwUnitType) !== 0) {
+    throw new D2CommonAssertError(COMPOSIT_UNITS_CPP_FILE_113C, 0xfca)
+  }
+  const pPlayerData = m.get(pUnit, D2UnitStrc.pUnitData)
+  return m.get(pPlayerData, D2PlayerDataStrc.dwActiveWeaponFlags)
+}
+
+/**
+ * `@va D2Common:0x6FD7EB30` (`D2Common.#10073` `UNITS_SetPlayerActiveWeaponFlags`, 64 bytes,
+ * stdcall `[esp+4] = pUnit`, `[esp+8] = dwFlags`, `ret 0x8`, void).
+ */
+export function UNITS_SetPlayerActiveWeaponFlags113c(
+  m: Memory113c,
+  pUnit: number,
+  dwFlags: number,
+): void {
+  if (pUnit >>> 0 === 0) {
+    throw new D2CommonAssertError(COMPOSIT_UNITS_CPP_FILE_113C, 0xfbf)
+  }
+  if (m.get(pUnit, D2UnitStrc.dwUnitType) !== 0) {
+    throw new D2CommonAssertError(COMPOSIT_UNITS_CPP_FILE_113C, 0xfc0)
+  }
+  const pPlayerData = m.get(pUnit, D2UnitStrc.pUnitData)
+  m.set(pPlayerData, D2PlayerDataStrc.dwActiveWeaponFlags, dwFlags >>> 0)
+}
+
+/**
+ * `@va D2Common:0x6FD7EB70` (`D2Common.#10920` `UNITS_GetPlayerData`, 57 bytes,
+ * stdcall `[esp+4] = pUnit`, `ret 0x4` -> `D2PlayerDataStrc*`).
+ */
+export function UNITS_GetPlayerData113c(m: Memory113c, pUnit: number): number {
+  if (pUnit >>> 0 === 0) {
+    throw new D2CommonAssertError(COMPOSIT_UNITS_CPP_FILE_113C, 0xfb4)
+  }
+  if (m.get(pUnit, D2UnitStrc.dwUnitType) !== 0) {
+    throw new D2CommonAssertError(COMPOSIT_UNITS_CPP_FILE_113C, 0xfb6)
+  }
+  return m.get(pUnit, D2UnitStrc.pUnitData)
+}
+
+/**
+ * `@va D2Common:0x6FD7EBB0` (`D2Common.#10746` `UNITS_GetPlayerName`, 68 bytes,
+ * stdcall `[esp+4] = pUnit`, `ret 0x4` -> `char*`).
+ */
+export function UNITS_GetPlayerName113c(m: Memory113c, pUnit: number): number {
+  if (pUnit >>> 0 === 0) {
+    throw new D2CommonAssertError(COMPOSIT_UNITS_CPP_FILE_113C, 0xfa5)
+  }
+  const pPlayerData = m.get(pUnit, D2UnitStrc.pUnitData)
+  if (pPlayerData === 0) {
+    throw new D2CommonAssertError(COMPOSIT_UNITS_CPP_FILE_113C, 0xfa7)
+  }
+  if (m.get(pUnit, D2UnitStrc.dwUnitType) !== 0) {
+    throw new D2CommonAssertError(COMPOSIT_UNITS_CPP_FILE_113C, 0xfa8)
+  }
+  return pPlayerData
+}
+
+/**
+ * `@va D2Common:0x6FD7EC00` (`D2Common.#10140` `UNITS_SetPlayerName`, 84 bytes,
+ * stdcall `[esp+4] = pUnit`, `[esp+8] = szName`, `ret 0x8`, void).
+ */
+export function UNITS_SetPlayerName113c(m: Memory113c, pUnit: number, szName: number): void {
+  if (pUnit >>> 0 === 0) {
+    throw new D2CommonAssertError(COMPOSIT_UNITS_CPP_FILE_113C, 0xf97)
+  }
+  const pPlayerData = m.get(pUnit, D2UnitStrc.pUnitData)
+  if (pPlayerData === 0) {
+    throw new D2CommonAssertError(COMPOSIT_UNITS_CPP_FILE_113C, 0xf99)
+  }
+  if (m.get(pUnit, D2UnitStrc.dwUnitType) !== 0) {
+    throw new D2CommonAssertError(COMPOSIT_UNITS_CPP_FILE_113C, 0xf9a)
+  }
+  if (szName >>> 0 !== 0) {
+    const maxIdx = 0x7ffffffe
+    let i = 0
+    while (i < maxIdx) {
+      const ch = m.u8((szName + i) >>> 0)
+      m.setU8((pPlayerData + i) >>> 0, ch)
+      if (ch === 0) {
+        return
+      }
+      i++
+    }
+    m.setU8((pPlayerData + i) >>> 0, 0)
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD7EC60` (`D2Common.#10128` `UNITS_SetObjectShrineTxt`, 65 bytes,
+ * stdcall `[esp+4] = pUnit`, `[esp+8] = pShrineTxt`, `ret 0x8`, void).
+ */
+export function UNITS_SetObjectShrineTxt113c(
+  m: Memory113c,
+  pUnit: number,
+  pShrineTxt: number,
+): void {
+  if (pUnit >>> 0 === 0) {
+    throw new D2CommonAssertError(COMPOSIT_UNITS_CPP_FILE_113C, 0xe60)
+  }
+  if (m.get(pUnit, D2UnitStrc.dwUnitType) !== UNIT_OBJECT) {
+    throw new D2CommonAssertError(COMPOSIT_UNITS_CPP_FILE_113C, 0xe67)
+  }
+  const pObjectData = m.get(pUnit, D2UnitStrc.pUnitData)
+  m.set(pObjectData, D2ObjectDataStrc.pShrineTxt, pShrineTxt >>> 0)
+}
+
+/**
+ * `@va D2Common:0x6FD7ECB0` (`D2Common.#10092` `UNITS_GetObjectShrineTxt`, 61 bytes,
+ * stdcall `[esp+4] = pUnit`, `ret 0x4` -> `D2ShrinesTxt*`).
+ */
+export function UNITS_GetObjectShrineTxt113c(m: Memory113c, pUnit: number): number {
+  if (pUnit >>> 0 === 0) {
+    throw new D2CommonAssertError(COMPOSIT_UNITS_CPP_FILE_113C, 0xe4e)
+  }
+  if (m.get(pUnit, D2UnitStrc.dwUnitType) !== UNIT_OBJECT) {
+    throw new D2CommonAssertError(COMPOSIT_UNITS_CPP_FILE_113C, 0xe55)
+  }
+  const pObjectData = m.get(pUnit, D2UnitStrc.pUnitData)
+  return m.get(pObjectData, D2ObjectDataStrc.pShrineTxt)
+}
+
+/**
+ * `@va D2Common:0x6FD7ECF0` (`D2Common.#10296` `UNITS_GetObjectTxt`, 60 bytes,
+ * stdcall `[esp+4] = pUnit`, `ret 0x4` -> `D2ObjectsTxt*`).
+ */
+export function UNITS_GetObjectTxt113c(m: Memory113c, pUnit: number): number {
+  if (pUnit >>> 0 === 0) {
+    throw new D2CommonAssertError(COMPOSIT_UNITS_CPP_FILE_113C, 0xe3c)
+  }
+  if (m.get(pUnit, D2UnitStrc.dwUnitType) !== UNIT_OBJECT) {
+    throw new D2CommonAssertError(COMPOSIT_UNITS_CPP_FILE_113C, 0xe43)
+  }
+  const pObjectData = m.get(pUnit, D2UnitStrc.pUnitData)
+  return m.get(pObjectData, D2ObjectDataStrc.pObjectTxt)
 }

@@ -34,7 +34,8 @@
  * - `0x6FDCF5E0` `UNITS_GetUnitDistanceToCoordinates113c` (`#10080`)
  */
 import type { Memory113c } from '../mem/sparse-memory.ts'
-import { sdiv32 } from './int-math.ts'
+import { D2CommonAssertError } from './inline-helpers.ts'
+import { imul32, sar32, sdiv32 } from './int-math.ts'
 import {
   D2DynamicPathStrc,
   D2MissilesTxt,
@@ -43,6 +44,7 @@ import {
   D2MonStatsTxt,
   D2MonStatsTxt_SIZE,
   D2SkillListStrc,
+  D2SkillListStrc_SIZE,
   D2SkillsTxt,
   D2SkillsTxt_SIZE,
   D2SkillStrc,
@@ -695,5 +697,380 @@ export function UNITS_GetUnitDistanceToCoordinates113c(
 
   const sum = (dx > dy ? dy + (dx << 1) : dx + (dy << 1)) | 0
   return sdiv32(sum, 2) >>> 0
+}
+
+// ============================================================================
+// K1r2 Iteration 7 Lane B — Batch B036 (19 D2Common hostImport functions)
+// ============================================================================
+
+/**
+ * `@va D2Common:0x6FD9DD30` (`D2Common.#10252` `SKILLS_SetCharges`,
+ * stdcall `[esp+4] = pSkill`, `[esp+8] = nCharges`, `ret 8`, void).
+ */
+export function SKILLS_SetCharges113c(m: Memory113c, pSkill: number, nCharges: number): void {
+  const ptr = pSkill >>> 0
+  if (ptr === 0) {
+    throw new D2CommonAssertError('Skills.cpp', 0xdae)
+  }
+  m.set(ptr, D2SkillStrc.nQuantity, nCharges >>> 0)
+}
+
+/**
+ * `@va D2Common:0x6FD9DD70` (`D2Common.#10353` `SKILLS_GetCharges`,
+ * stdcall `[esp+4] = pSkill`, `ret 4` -> `int32_t`).
+ */
+export function SKILLS_GetCharges113c(m: Memory113c, pSkill: number): number {
+  const ptr = pSkill >>> 0
+  if (ptr === 0) {
+    throw new D2CommonAssertError('Skills.cpp', 0xda5)
+  }
+  return m.get(ptr, D2SkillStrc.nQuantity)
+}
+
+/**
+ * `@va D2Common:0x6FD9DE60` (`D2Common.#10137` `SKILLS_SetParam0C`,
+ * stdcall `[esp+4] = pSkill`, `[esp+8] = nVal`, `ret 8`, void).
+ */
+export function SKILLS_SetParam0C113c(m: Memory113c, pSkill: number, nVal: number): void {
+  const ptr = pSkill >>> 0
+  if (ptr === 0) {
+    throw new D2CommonAssertError('Skills.cpp', 0xa9b)
+  }
+  m.set(ptr, D2SkillStrc.dwParam0C, nVal >>> 0)
+}
+
+/**
+ * `@va D2Common:0x6FD9DEA0` (`D2Common.#11031` `SKILLS_SetParam4`,
+ * stdcall `[esp+4] = pSkill`, `[esp+8] = nVal`, `ret 8`, void).
+ */
+export function SKILLS_SetParam4113c(m: Memory113c, pSkill: number, nVal: number): void {
+  const ptr = pSkill >>> 0
+  if (ptr === 0) {
+    throw new D2CommonAssertError('Skills.cpp', 0xa92)
+  }
+  m.set(ptr, D2SkillStrc.dwParam4, nVal >>> 0)
+}
+
+/**
+ * `@va D2Common:0x6FD9DEE0` (`D2Common.#10748` `SKILLS_SetParam3`,
+ * stdcall `[esp+4] = pSkill`, `[esp+8] = nVal`, `ret 8`, void).
+ */
+export function SKILLS_SetParam3113c(m: Memory113c, pSkill: number, nVal: number): void {
+  const ptr = pSkill >>> 0
+  if (ptr === 0) {
+    throw new D2CommonAssertError('Skills.cpp', 0xa89)
+  }
+  m.set(ptr, D2SkillStrc.dwParam3, nVal >>> 0)
+}
+
+/**
+ * `@va D2Common:0x6FD9DF20` (`D2Common.#10554` `SKILLS_SetParam2`,
+ * stdcall `[esp+4] = pSkill`, `[esp+8] = nVal`, `ret 8`, void).
+ */
+export function SKILLS_SetParam2113c(m: Memory113c, pSkill: number, nVal: number): void {
+  const ptr = pSkill >>> 0
+  if (ptr === 0) {
+    throw new D2CommonAssertError('Skills.cpp', 0xa80)
+  }
+  m.set(ptr, D2SkillStrc.dwParam2, nVal >>> 0)
+}
+
+/**
+ * `@va D2Common:0x6FD9DF60` (`D2Common.#10243` `SKILLS_SetParam1`,
+ * stdcall `[esp+4] = pSkill`, `[esp+8] = nVal`, `ret 8`, void).
+ */
+export function SKILLS_SetParam1113c(m: Memory113c, pSkill: number, nVal: number): void {
+  const ptr = pSkill >>> 0
+  if (ptr === 0) {
+    throw new D2CommonAssertError('Skills.cpp', 0xa77)
+  }
+  m.set(ptr, D2SkillStrc.dwParam1, nVal >>> 0)
+}
+
+/**
+ * `@va D2Common:0x6FD9DFA0` (`D2Common.#10631` `SKILLS_GetParam4`,
+ * stdcall `[esp+4] = pSkill`, `ret 4` -> `int32_t`).
+ */
+export function SKILLS_GetParam4113c(m: Memory113c, pSkill: number): number {
+  const ptr = pSkill >>> 0
+  if (ptr === 0) {
+    throw new D2CommonAssertError('Skills.cpp', 0xa6e)
+  }
+  return m.get(ptr, D2SkillStrc.dwParam4)
+}
+
+/**
+ * `@va D2Common:0x6FD9DFD0` (`D2Common.#10179` `SKILLS_GetParam3`,
+ * stdcall `[esp+4] = pSkill`, `ret 4` -> `int32_t`).
+ */
+export function SKILLS_GetParam3113c(m: Memory113c, pSkill: number): number {
+  const ptr = pSkill >>> 0
+  if (ptr === 0) {
+    throw new D2CommonAssertError('Skills.cpp', 0xa65)
+  }
+  return m.get(ptr, D2SkillStrc.dwParam3)
+}
+
+/**
+ * `@va D2Common:0x6FD9E000` (`D2Common.#10649` `SKILLS_GetParam2`,
+ * stdcall `[esp+4] = pSkill`, `ret 4` -> `int32_t`).
+ */
+export function SKILLS_GetParam2113c(m: Memory113c, pSkill: number): number {
+  const ptr = pSkill >>> 0
+  if (ptr === 0) {
+    throw new D2CommonAssertError('Skills.cpp', 0xa5c)
+  }
+  return m.get(ptr, D2SkillStrc.dwParam2)
+}
+
+/**
+ * `@va D2Common:0x6FD9E030` (`D2Common.#10980` `SKILLS_GetParam1`,
+ * stdcall `[esp+4] = pSkill`, `ret 4` -> `int32_t`).
+ */
+export function SKILLS_GetParam1113c(m: Memory113c, pSkill: number): number {
+  const ptr = pSkill >>> 0
+  if (ptr === 0) {
+    throw new D2CommonAssertError('Skills.cpp', 0xa53)
+  }
+  return m.get(ptr, D2SkillStrc.dwParam1)
+}
+
+/**
+ * `@va D2Common:0x6FD9E240` (`D2Common.#10537` `SKILLS_GetItemSkillInfo`,
+ * stdcall `[esp+4] = pSkill`, `[esp+8] = pOutItemGuid`, `[esp+0xC] = pOutSkillId`,
+ * `[esp+0x10] = pOutLevel`, `[esp+0x14] = pOutCharges`, `ret 0x14` -> `BOOL`).
+ */
+export function SKILLS_GetItemSkillInfo113c(
+  m: Memory113c,
+  pSkill: number,
+  pOutItemGuid: number,
+  pOutSkillId: number,
+  pOutLevel: number,
+  pOutCharges: number,
+): number {
+  const ptr = pSkill >>> 0
+  if (ptr === 0) {
+    throw new D2CommonAssertError('Skills.cpp', 0x642)
+  }
+  const ownerGuid = m.get(ptr, D2SkillStrc.nOwnerItemGuid)
+  if (ownerGuid === 0xffffffff) {
+    return 0
+  }
+  const outGuid = pOutItemGuid >>> 0
+  if (outGuid !== 0) {
+    m.setU32(outGuid, ownerGuid)
+  }
+  const outSkillId = pOutSkillId >>> 0
+  if (outSkillId !== 0) {
+    const pSkillsTxt = m.get(ptr, D2SkillStrc.pSkillsTxt)
+    const skillId = i16(m.get(pSkillsTxt, D2SkillsTxt.wSkillId))
+    m.setU32(outSkillId, skillId >>> 0)
+  }
+  const outLevel = pOutLevel >>> 0
+  if (outLevel !== 0) {
+    m.setU32(outLevel, m.get(ptr, D2SkillStrc.nSkillLevel))
+  }
+  const outCharges = pOutCharges >>> 0
+  if (outCharges !== 0) {
+    m.setU32(outCharges, m.get(ptr, D2SkillStrc.nCharges))
+  }
+  return 1
+}
+
+/**
+ * `@va D2Common:0x6FD9E2B0` (`D2Common.#10304` `SKILLS_GetOwnerItemGuid`,
+ * stdcall `[esp+4] = pSkill`, `ret 4` -> `uint32_t`).
+ */
+export function SKILLS_GetOwnerItemGuid113c(m: Memory113c, pSkill: number): number {
+  const ptr = pSkill >>> 0
+  if (ptr === 0) {
+    throw new D2CommonAssertError('Skills.cpp', 0x638)
+  }
+  return m.get(ptr, D2SkillStrc.nOwnerItemGuid)
+}
+
+/**
+ * `@va D2Common:0x6FD9E3F0` (`D2Common.#10856` `SKILLS_AllocSkillList`,
+ * stdcall `[esp+4] = pMemPool`, `ret 4` -> `D2SkillListStrc*`).
+ */
+export function SKILLS_AllocSkillList113c(m: Memory113c, pMemPool: number): number {
+  const pList = m.alloc(D2SkillListStrc_SIZE) >>> 0
+  m.set(pList, D2SkillListStrc.pMemPool, 0)
+  m.set(pList, D2SkillListStrc.pFirstSkill, 0)
+  m.set(pList, D2SkillListStrc.pLeftSkill, 0)
+  m.set(pList, D2SkillListStrc.pRightSkill, 0)
+  m.set(pList, D2SkillListStrc.pUsedSkill, 0)
+  m.set(pList, D2SkillListStrc.dwFlags, 0)
+  m.set(pList, D2SkillListStrc.pMemPool, pMemPool >>> 0)
+  return pList
+}
+
+/**
+ * `@va D2Common:0x6FD9E6D0` (`D2Common.#10102` `SKILLS_EvaluateSkillManaCost`,
+ * stdcall `[esp+4] = nSkillId`, `[esp+8] = nLevel`, `ret 8` -> `int32_t`).
+ */
+export function SKILLS_EvaluateSkillManaCost113c(
+  m: Memory113c,
+  nSkillId: number,
+  nLevel: number,
+): number {
+  const skillId = nSkillId | 0
+  if (skillId < 0) {
+    throw new D2CommonAssertError('Skills.cpp', 0x100d)
+  }
+  const sgpt = m.u32(SGPT_DATATABLES_VA_113C)
+  if (skillId >= (m.u32((sgpt + DATATABLES_SKILLS_COUNT_OFF_113C) >>> 0) | 0)) {
+    throw new D2CommonAssertError('Skills.cpp', 0x100d)
+  }
+  const pSkillsTxt =
+    (m.u32((sgpt + DATATABLES_SKILLS_TXT_OFF_113C) >>> 0) + imul32(skillId, D2SkillsTxt_SIZE)) >>> 0
+  if (pSkillsTxt === 0) {
+    throw new D2CommonAssertError('Skills.cpp', 0x100d)
+  }
+  const wLvlMana = i16(m.get(pSkillsTxt, D2SkillsTxt.wLvlMana))
+  const wMana = i16(m.get(pSkillsTxt, D2SkillsTxt.wMana))
+  const nManaShift = m.get(pSkillsTxt, D2SkillsTxt.nManaShift) & 0x1f
+  const val = sar32(
+    ((imul32(wLvlMana, ((nLevel | 0) - 1) | 0) + wMana) | 0) << nManaShift,
+    8,
+  )
+  return val < 0 ? 0 : val >>> 0
+}
+
+/**
+ * `@va D2Common:0x6FD9EB40` (internal LTCG helper `SKILLS_HasSkillByTxtRecord`,
+ * custom reg `eax = pUnit`, `ecx = pSkillsTxt`, `ret` -> `BOOL`).
+ */
+export function SKILLS_HasSkillByTxtRecord113c(
+  m: Memory113c,
+  eax: number,
+  ecx: number,
+): number {
+  const pUnit = eax >>> 0
+  if (pUnit === 0) {
+    throw new D2CommonAssertError('Skills.cpp', 0x638)
+  }
+  const pSkills = m.get(pUnit, D2UnitStrc.pSkills)
+  let pSkill = pSkills !== 0 ? m.get(pSkills, D2SkillListStrc.pFirstSkill) : 0
+  if (pSkill === 0) {
+    throw new D2CommonAssertError('Skills.cpp', 0xab1)
+  }
+  const targetTxt = ecx >>> 0
+  while (pSkill !== 0) {
+    if (m.get(pSkill, D2SkillStrc.pSkillsTxt) === targetTxt) {
+      return 1
+    }
+    pSkill = m.get(pSkill, D2SkillStrc.pNextSkill)
+  }
+  return 0
+}
+
+/**
+ * `@va D2Common:0x6FD9ECC0` (`D2Common.#10978` `SKILLS_SetRightSkill`,
+ * stdcall `[esp+4] = pUnit`, `[esp+8] = nSkillId`, `[esp+0xC] = dwOwnerGuid`, `ret 0xC`, void).
+ */
+export function SKILLS_SetRightSkill113c(
+  m: Memory113c,
+  pUnit: number,
+  nSkillId: number,
+  dwOwnerGuid: number,
+): void {
+  const skillId = nSkillId | 0
+  if (skillId < 0) {
+    throw new D2CommonAssertError('Skills.cpp', 0x680)
+  }
+  const sgpt = m.u32(SGPT_DATATABLES_VA_113C)
+  if (skillId >= (m.u32((sgpt + DATATABLES_SKILLS_COUNT_OFF_113C) >>> 0) | 0)) {
+    throw new D2CommonAssertError('Skills.cpp', 0x680)
+  }
+  const pSkillsTxt =
+    (m.u32((sgpt + DATATABLES_SKILLS_TXT_OFF_113C) >>> 0) + imul32(skillId, D2SkillsTxt_SIZE)) >>> 0
+  if (pSkillsTxt === 0) {
+    throw new D2CommonAssertError('Skills.cpp', 0x680)
+  }
+  const unitPtr = pUnit >>> 0
+  if (unitPtr === 0) {
+    throw new D2CommonAssertError('Skills.cpp', 0x638)
+  }
+  const pSkills = m.get(unitPtr, D2UnitStrc.pSkills)
+  let pSkill = pSkills !== 0 ? m.get(pSkills, D2SkillListStrc.pFirstSkill) : 0
+  const targetOwner = dwOwnerGuid >>> 0
+  while (pSkill !== 0) {
+    if (
+      m.get(pSkill, D2SkillStrc.pSkillsTxt) === pSkillsTxt &&
+      m.get(pSkill, D2SkillStrc.nOwnerItemGuid) === targetOwner
+    ) {
+      m.set(pSkills, D2SkillListStrc.pRightSkill, pSkill)
+      return
+    }
+    pSkill = m.get(pSkill, D2SkillStrc.pNextSkill)
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD9ED60` (`D2Common.#10546` `SKILLS_SetLeftSkill`,
+ * stdcall `[esp+4] = pUnit`, `[esp+8] = nSkillId`, `[esp+0xC] = dwOwnerGuid`, `ret 0xC`, void).
+ */
+export function SKILLS_SetLeftSkill113c(
+  m: Memory113c,
+  pUnit: number,
+  nSkillId: number,
+  dwOwnerGuid: number,
+): void {
+  const skillId = nSkillId | 0
+  if (skillId < 0) {
+    throw new D2CommonAssertError('Skills.cpp', 0x669)
+  }
+  const sgpt = m.u32(SGPT_DATATABLES_VA_113C)
+  if (skillId >= (m.u32((sgpt + DATATABLES_SKILLS_COUNT_OFF_113C) >>> 0) | 0)) {
+    throw new D2CommonAssertError('Skills.cpp', 0x669)
+  }
+  const pSkillsTxt =
+    (m.u32((sgpt + DATATABLES_SKILLS_TXT_OFF_113C) >>> 0) + imul32(skillId, D2SkillsTxt_SIZE)) >>> 0
+  if (pSkillsTxt === 0) {
+    throw new D2CommonAssertError('Skills.cpp', 0x669)
+  }
+  const unitPtr = pUnit >>> 0
+  if (unitPtr === 0) {
+    throw new D2CommonAssertError('Skills.cpp', 0x638)
+  }
+  const pSkills = m.get(unitPtr, D2UnitStrc.pSkills)
+  let pSkill = pSkills !== 0 ? m.get(pSkills, D2SkillListStrc.pFirstSkill) : 0
+  const targetOwner = dwOwnerGuid >>> 0
+  while (pSkill !== 0) {
+    if (
+      m.get(pSkill, D2SkillStrc.pSkillsTxt) === pSkillsTxt &&
+      m.get(pSkill, D2SkillStrc.nOwnerItemGuid) === targetOwner
+    ) {
+      m.set(pSkills, D2SkillListStrc.pLeftSkill, pSkill)
+      return
+    }
+    pSkill = m.get(pSkill, D2SkillStrc.pNextSkill)
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD9F000` (`D2Common.#10335` `SKILLS_FreeSkillList`,
+ * stdcall `[esp+4] = pUnit`, `ret 4`, void).
+ */
+export function SKILLS_FreeSkillList113c(m: Memory113c, pUnit: number): void {
+  const unitPtr = pUnit >>> 0
+  if (unitPtr === 0) {
+    return
+  }
+  const pSkills = m.get(unitPtr, D2UnitStrc.pSkills)
+  if (pSkills === 0) {
+    return
+  }
+  let pSkill = m.get(pSkills, D2SkillListStrc.pFirstSkill)
+  while (pSkill !== 0) {
+    m.get(unitPtr, D2UnitStrc.pMemPool)
+    const pNext = m.get(pSkill, D2SkillStrc.pNextSkill)
+    ;(m as { free?: (p: number) => void }).free?.(pSkill)
+    pSkill = pNext
+  }
+  m.get(unitPtr, D2UnitStrc.pMemPool)
+  ;(m as { free?: (p: number) => void }).free?.(pSkills)
+  m.set(unitPtr, D2UnitStrc.pSkills, 0)
 }
 

@@ -7,8 +7,13 @@
  * - `#10436` (`0x6FDB7E50`): `WAYPOINT_GetWaypointNoFromLevelId` (`__stdcall(nLevelId, pWaypointNoOut)`, `ret 0x8`)
  */
 import type { Memory113c } from '../mem/sparse-memory.ts'
-import { D2LevelsTxt, D2LevelsTxt_SIZE, D2UnitStrc } from '../mem/layout.generated.ts'
-import { D2COMMON_SGPT_DATATABLES_VA_113C } from './inline-helpers.ts'
+import {
+  D2DynamicPathStrc,
+  D2LevelsTxt,
+  D2LevelsTxt_SIZE,
+  D2UnitStrc,
+} from '../mem/layout.generated.ts'
+import { D2COMMON_SGPT_DATATABLES_VA_113C, D2CommonAssertError } from './inline-helpers.ts'
 import { imul32 } from './int-math.ts'
 
 /** Byte offsets of `pLevelsTxt` and `nLevelsTxtRecordCount` in `sgptDataTables` (`0x6FDB7E64..0x6FDB7E70`). */
@@ -69,4 +74,107 @@ export function WAYPOINT_GetWaypointNoFromLevelId113c(
   const wp = m.get(pRec, D2LevelsTxt.nWaypoint) & 0xff
   m.setU16(outPtr, wp)
   return wp === 0xff ? 0 : 1
+}
+
+const WAYPOINT_ASSERT_FILE_113C = '..\\Source\\D2Common\\WayPoint\\Waypoint.cpp'
+export const GW_WAYPOINT_TABLE_BASE_VA_113C = 0x6fde9c58
+export const GDW_WAYPOINT_TABLE_COUNT_VA_113C = 0x6fde9e18
+
+/**
+ * `@va D2Common:0x6FD80E80` (`D2Common.#11129` `UNITS_SetTargetUnitForDynamicUnit`, 90 bytes,
+ * stdcall `[esp+4] = pUnit`, `[esp+8] = pTargetUnit`, `ret 0x8`, void).
+ */
+export function UNITS_SetTargetUnitForDynamicUnit113c(
+  m: Memory113c,
+  pUnit: number,
+  pTargetUnit: number,
+): void {
+  if (pUnit >>> 0 === 0) {
+    throw new D2CommonAssertError(WAYPOINT_ASSERT_FILE_113C, 0x8ac)
+  }
+  const unitType = m.get(pUnit, D2UnitStrc.dwUnitType) | 0
+  if (unitType < 0 || (unitType > 1 && unitType !== 3)) {
+    throw new D2CommonAssertError(WAYPOINT_ASSERT_FILE_113C, 0x8ae)
+  }
+  const pDynamicPath = m.get(pUnit, D2UnitStrc.pPath)
+  m.set(pDynamicPath, D2DynamicPathStrc.pTargetUnit, pTargetUnit >>> 0)
+  if (pTargetUnit >>> 0 !== 0) {
+    m.set(
+      pDynamicPath,
+      D2DynamicPathStrc.dwTargetType,
+      m.get(pTargetUnit, D2UnitStrc.dwUnitType),
+    )
+    m.set(pDynamicPath, D2DynamicPathStrc.dwTargetId, m.get(pTargetUnit, D2UnitStrc.dwUnitId))
+  }
+}
+
+/**
+ * `@va D2Common:0x6FDB7C20` (`D2Common.#11154` `WAYPOINT_ActivateWaypoint`, 103 bytes,
+ * stdcall `[esp+4] = pWaypointData`, `[esp+8] = nWaypoint`, `ret 0x8`, void).
+ */
+export function WAYPOINT_ActivateWaypoint113c(
+  m: Memory113c,
+  pWaypointData: number,
+  nWaypoint: number,
+): void {
+  if (pWaypointData >>> 0 === 0) {
+    throw new D2CommonAssertError(WAYPOINT_ASSERT_FILE_113C, 0xed)
+  }
+  if (m.u32(GDW_WAYPOINT_TABLE_COUNT_VA_113C) !== 0x70) {
+    throw new D2CommonAssertError(WAYPOINT_ASSERT_FILE_113C, 0xee)
+  }
+  const wpIdx = nWaypoint & 0xffff
+  if (wpIdx >= 0x70) {
+    throw new D2CommonAssertError(WAYPOINT_ASSERT_FILE_113C, 0xf1)
+  }
+  const wordIdx = m.u16((GW_WAYPOINT_TABLE_BASE_VA_113C + wpIdx * 4) >>> 0)
+  const bitMask = m.u16((GW_WAYPOINT_TABLE_BASE_VA_113C + 2 + wpIdx * 4) >>> 0)
+  const wordAddr = (pWaypointData + wordIdx * 2) >>> 0
+  m.setU16(wordAddr, (m.u16(wordAddr) | bitMask) & 0xffff)
+}
+
+/**
+ * `@va D2Common:0x6FDB7C90` (`D2Common.#10373` `WAYPOINT_GetWaypointState`, 102 bytes,
+ * stdcall `[esp+4] = pWaypointData`, `[esp+8] = nWaypoint`, `ret 0x8` -> `number`).
+ */
+export function WAYPOINT_GetWaypointState113c(
+  m: Memory113c,
+  pWaypointData: number,
+  nWaypoint: number,
+): number {
+  if (pWaypointData >>> 0 === 0) {
+    throw new D2CommonAssertError(WAYPOINT_ASSERT_FILE_113C, 0xdd)
+  }
+  if (m.u32(GDW_WAYPOINT_TABLE_COUNT_VA_113C) !== 0x70) {
+    throw new D2CommonAssertError(WAYPOINT_ASSERT_FILE_113C, 0xde)
+  }
+  const wpIdx = nWaypoint & 0xffff
+  if (wpIdx >= 0x70) {
+    throw new D2CommonAssertError(WAYPOINT_ASSERT_FILE_113C, 0xe1)
+  }
+  const wordIdx = m.u16((GW_WAYPOINT_TABLE_BASE_VA_113C + wpIdx * 4) >>> 0)
+  const bitMask = m.u16((GW_WAYPOINT_TABLE_BASE_VA_113C + 2 + wpIdx * 4) >>> 0)
+  return (m.u16((pWaypointData + wordIdx * 2) >>> 0) & bitMask) >>> 0
+}
+
+/**
+ * `@va D2Common:0x6FDB7D00` (`D2Common.#10027` `WAYPOINT_CopyAndValidateWaypointData`, 91 bytes,
+ * stdcall `[esp+4] = pSrc`, `[esp+8] = pDst`, `ret 0x8`, void).
+ */
+export function WAYPOINT_CopyAndValidateWaypointData113c(
+  m: Memory113c,
+  pSrc: number,
+  pDst: number,
+): void {
+  const wMagic = m.u16(pSrc >>> 0)
+  if (wMagic !== 0x0102) {
+    if (wMagic === 0 || wMagic === 0x0101) {
+      m.setU16(pSrc >>> 0, 0x0102)
+    } else {
+      throw new D2CommonAssertError(WAYPOINT_ASSERT_FILE_113C, 0x113)
+    }
+  }
+  for (let i = 0; i < 0x10; i += 4) {
+    m.setU32((pDst + i) >>> 0, m.u32((pSrc + i) >>> 0))
+  }
 }

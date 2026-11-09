@@ -9,7 +9,8 @@ import {
   D2EnvironmentStrc,
 } from '../mem/layout.generated.ts';
 import type { Memory113c } from '../mem/sparse-memory.ts';
-import { imul32 } from './int-math.ts';
+import { DRLG_GetActNoFromLevelId113c } from './drlg/drlg.ts';
+import { imul32, sdiv32 } from './int-math.ts';
 
 /**
  * Environment cycle tables at `0x6FDEB160` (normal), `0x6FDEB1A8` (Act 3 eclipse), and `0x6FDEB1F0` (default eclipse).
@@ -42,6 +43,23 @@ export const ENV_CYCLE_ECLIPSE_6FDEB1F0 = Int32Array.from([
   180, 2, 15998464,
   240, 2, 15932928,
 ]);
+
+export const ENV_TICK_RATES_6FDEB238 = Int32Array.from([128, 4, 8]);
+
+const KERNEL32_GET_TICK_COUNT_IAT_VA_6FDD91FC = 0x6fdd91fc;
+
+const F32_SCRATCH_BUF = new ArrayBuffer(4);
+const F32_SCRATCH_VIEW = new DataView(F32_SCRATCH_BUF);
+
+function f32ToBits113c(val: number): number {
+  F32_SCRATCH_VIEW.setFloat32(0, val, true);
+  return F32_SCRATCH_VIEW.getUint32(0, true);
+}
+
+function bitsToF32_113c(bits: number): number {
+  F32_SCRATCH_VIEW.setUint32(0, bits >>> 0, true);
+  return F32_SCRATCH_VIEW.getFloat32(0, true);
+}
 
 function applyCellOp(
   m: Memory113c,
@@ -235,6 +253,85 @@ export function ENVIRONMENT_SetCycleIndex113c(
 }
 
 /**
+ * `@va D2Common:0x6FD871C0` (`ENV_UpdateLightColor113c`, custom `edx = nAct`, `[esp+4] = pEnv`, `ret 4`).
+ *
+ * Interpolates RGB channels (`pEnv + 0x18..+0x1A`) between `dwCycleIndex` and `(dwCycleIndex + 1) % 6`
+ * in `ENV_CYCLE_ACT3_ECLIPSE_6FDEB1A8` (`nAct == 3`), `ENV_CYCLE_NORMAL_6FDEB160` (`bEclipse == 0`),
+ * or `ENV_CYCLE_ECLIPSE_6FDEB1F0` (`bEclipse != 0`).
+ */
+export function ENV_UpdateLightColor113c(
+  m: Memory113c,
+  nAct: number,
+  pEnv: number,
+): void {
+  const env = pEnv >>> 0;
+  const curIdx = m.u32(env) | 0;
+  let nextIdx = (curIdx + 1) | 0;
+  if (nextIdx === 6) {
+    nextIdx = 0;
+  }
+
+  let table: Int32Array;
+  if ((nAct | 0) === 3) {
+    table = ENV_CYCLE_ACT3_ECLIPSE_6FDEB1A8;
+  } else if ((m.u32((env + 0x30) >>> 0) | 0) === 0) {
+    table = ENV_CYCLE_NORMAL_6FDEB160;
+  } else {
+    table = ENV_CYCLE_ECLIPSE_6FDEB1F0;
+  }
+
+  const nRate = m.u32((env + 0x28) >>> 0) | 0;
+  const nCurStart = imul32(table[curIdx * 3]!, nRate);
+  const nTicks = m.u32((env + 0x08) >>> 0) | 0;
+  const nElapsed = (nTicks - nCurStart) | 0;
+  const nNextStart = imul32(table[nextIdx * 3]!, nRate);
+  const nSpan = (nNextStart - nCurStart) | 0;
+  const fRatio = nElapsed / nSpan;
+
+  const curRgb = table[curIdx * 3 + 2]! >>> 0;
+  const nextRgb = table[nextIdx * 3 + 2]! >>> 0;
+
+  const curR = curRgb & 0xff;
+  const curG = (curRgb >>> 8) & 0xff;
+  const curB = (curRgb >>> 16) & 0xff;
+
+  const nextR = nextRgb & 0xff;
+  const nextG = (nextRgb >>> 8) & 0xff;
+  const nextB = (nextRgb >>> 16) & 0xff;
+
+  const dG = Math.trunc((nextG - curG) * fRatio + 0.5) | 0;
+  const dB = Math.trunc((nextB - curB) * fRatio + 0.5) | 0;
+  const dR = Math.trunc((nextR - curR) * fRatio + 0.5) | 0;
+
+  m.setU8((env + 0x18) >>> 0, (curR + dR) & 0xff);
+  m.setU8((env + 0x19) >>> 0, (curG + dG) & 0xff);
+  m.setU8((env + 0x1a) >>> 0, (curB + dB) & 0xff);
+}
+
+/**
+ * `@va D2Common:0x6FD873B0` (`D2Common.#11062` `ENV_GetCycleState113c`,
+ * `__stdcall(pAct, pCycleIndex, pTicks, pEclipse)`, `ret 0x10`).
+ *
+ * Asserts `pAct != 0` (`line 1351`), reads `pEnv = pAct->pEnvironment (+0x04)`, and stores
+ * `pEnv->dwCycleIndex (+0x00)`, `pEnv->dwTicks (+0x08)`, and `pEnv->bEclipse (+0x30)`.
+ */
+export function ENV_GetCycleState113c(
+  m: Memory113c,
+  pAct: number,
+  pCycleIndex: number,
+  pTicks: number,
+  pEclipse: number,
+): void {
+  if (pAct === 0) {
+    throw new Error('ENV_GetCycleState113c: pAct == 0 (line 1351)');
+  }
+  const pEnv = m.u32((pAct + 0x04) >>> 0);
+  m.setU32(pCycleIndex >>> 0, m.u32(pEnv));
+  m.setU32(pTicks >>> 0, m.u32((pEnv + 0x08) >>> 0));
+  m.setU32(pEclipse >>> 0, m.u32((pEnv + 0x30) >>> 0));
+}
+
+/**
  * `@va D2Common:0x6FD87570` (`ENVIRONMENT_ApplyCycleColors113c`, custom `eax = pEnv`, `ecx = nAct`, `ret`).
  *
  * Advances `pEnv->dwTicks (+0x08)` with Act 2 / Act 3 non-eclipse accelerations, wraps at `360 * dwCyclePeriod`,
@@ -306,3 +403,198 @@ export function ENVIRONMENT_ApplyCycleColors113c(
     );
   }
 }
+
+/**
+ * `@va D2Common:0x6FD87660` (`D2Common.#11045` `ENV_StepCycle113c`, `__stdcall(pAct, nActNo)`, `ret 8`).
+ *
+ * Advances the environment cycle via `0x6FD87570` (`ENVIRONMENT_ApplyCycleColors113c`) and returns `1`
+ * if `abs((dwTicks / dwCyclePeriod) - nPrevDegrees) > 16` (updating `nPrevDegrees` at `+0x34`) or if
+ * `nTimeOfDay (+0x04)` or `dwCycleIndex (+0x00)` changed; otherwise returns `0`.
+ */
+export function ENV_StepCycle113c(
+  m: Memory113c,
+  pAct: number,
+  nActNo: number,
+): number {
+  if (pAct === 0) {
+    throw new Error('ENV_StepCycle113c: pAct == 0 (line 1351)');
+  }
+  const pEnv = m.u32((pAct + 0x04) >>> 0);
+  if (pEnv === 0) {
+    return 0;
+  }
+  const oldIndex = m.u32(pEnv) | 0;
+  const oldPeriod = m.u32((pEnv + 0x04) >>> 0) | 0;
+  ENVIRONMENT_ApplyCycleColors113c(m, pEnv, nActNo | 0);
+
+  const nRate = m.u32((pEnv + 0x28) >>> 0) | 0;
+  if (nRate !== 0) {
+    const nQuotient = sdiv32(m.u32((pEnv + 0x08) >>> 0) | 0, nRate);
+    let nDiff = (nQuotient - (m.u32((pEnv + 0x34) >>> 0) | 0)) | 0;
+    if (nDiff < 0) {
+      nDiff = (-nDiff) | 0;
+    }
+    if (nDiff > 0x10) {
+      m.setU32((pEnv + 0x34) >>> 0, nQuotient >>> 0);
+      return 1;
+    }
+  }
+
+  if (
+    oldPeriod !== (m.u32((pEnv + 0x04) >>> 0) | 0) ||
+    oldIndex !== (m.u32(pEnv) | 0)
+  ) {
+    return 1;
+  }
+  return 0;
+}
+
+/**
+ * `@va D2Common:0x6FD876F0` (`ENV_UpdateIntensityAndSunAngle113c`, custom `esi = pEnv`, `edi = nAct`, `ecx = nLevelNo`, `ret`).
+ *
+ * Updates `pEnv->nIntensity (+0x0C)`, `pEnv->fCos (+0x1C)`, `pEnv->fLast (+0x20)`, and `pEnv->fSin (+0x24)`.
+ */
+export function ENV_UpdateIntensityAndSunAngle113c(
+  m: Memory113c,
+  pEnv: number,
+  nAct: number,
+  nLevelNo: number,
+): void {
+  const env = pEnv >>> 0;
+  const act = nAct | 0;
+  const lvl = nLevelNo | 0;
+
+  if (act === 3) {
+    const idx = ((lvl - 103) | 0) >>> 0;
+    let target = 0x10;
+    if (idx === 0) target = 0x80;
+    else if (idx === 1) target = 0x40;
+    else if (idx === 2) target = 0x38;
+    else if (idx === 3) target = 0x30;
+
+    let cur = m.u32((env + 0x0c) >>> 0) | 0;
+    if (cur < target) {
+      cur = (cur + 1) | 0;
+      m.setU32((env + 0x0c) >>> 0, cur >>> 0);
+    }
+    cur = m.u32((env + 0x0c) >>> 0) | 0;
+    if (cur > target) {
+      cur = (cur - 1) | 0;
+      m.setU32((env + 0x0c) >>> 0, cur >>> 0);
+    }
+    cur = m.u32((env + 0x0c) >>> 0) | 0;
+    if (cur === 0) {
+      m.setU32((env + 0x0c) >>> 0, target >>> 0);
+    }
+    return;
+  }
+
+  if ((m.u32((env + 0x30) >>> 0) | 0) !== 0) {
+    let cur = m.u32((env + 0x0c) >>> 0) | 0;
+    if (cur > 0x20) {
+      cur = (cur - 8) | 0;
+      m.setU32((env + 0x0c) >>> 0, cur >>> 0);
+    }
+    if ((m.u32((env + 0x0c) >>> 0) | 0) < 0x20) {
+      m.setU32((env + 0x0c) >>> 0, 0x20);
+    }
+    return;
+  }
+
+  if (lvl === 0x78) {
+    m.setU32((env + 0x0c) >>> 0, 0xc8);
+    return;
+  }
+
+  const nTicks = m.u32((env + 0x08) >>> 0) | 0;
+  const nRate = m.u32((env + 0x28) >>> 0) | 0;
+  const nHalfDay = imul32(nRate, 0xb4);
+
+  const angle = (nTicks / nRate) * (1.0 / 180.0) * 3.1415927410125732;
+  const fCosBits = f32ToBits113c(-Math.cos(angle));
+  m.setU32((env + 0x1c) >>> 0, fCosBits);
+
+  let fSinVal = Math.sin(angle);
+  if (nTicks >= nHalfDay) {
+    fSinVal *= 0.5;
+  }
+  const fSinBits = f32ToBits113c(fSinVal);
+  m.setU32((env + 0x24) >>> 0, fSinBits);
+  m.setU32((env + 0x20) >>> 0, 0);
+
+  const fSinReloaded = bitsToF32_113c(m.u32((env + 0x24) >>> 0));
+  let nIntensity = Math.trunc(fSinReloaded * 128.0 + 128.0 + 0.5) | 0;
+  m.setU32((env + 0x0c) >>> 0, nIntensity >>> 0);
+
+  const nMax = act === 4 ? 0xaa : 0xff;
+  if (nIntensity <= 0) {
+    nIntensity = 0;
+  }
+  if (nIntensity >= nMax) {
+    nIntensity = nMax;
+  }
+  m.setU32((env + 0x0c) >>> 0, nIntensity >>> 0);
+}
+
+/**
+ * `@va D2Common:0x6FD87BA0` (`ENV_AllocDrlgEnvironment113c`, custom `ecx = pMemPool`, `ret`).
+ *
+ * Allocates and zeroes a `0x38`-byte `D2EnvironmentStrc`, initializes `dwCycleIndex = 2`,
+ * `dwCyclePeriod = 128`, calls `0x6FD876F0` and `0x6FD871C0`, and records `KERNEL32.GetTickCount()`
+ * at `+0x10`.
+ */
+export function ENV_AllocDrlgEnvironment113c(
+  m: Memory113c,
+  _pMemPool = 0,
+): number {
+  const pEnv = m.alloc(0x38);
+  m.fill(pEnv, 0x38, 0);
+  const rateIdx = m.u32((pEnv + 0x2c) >>> 0) | 0;
+  m.setU32(pEnv, 2);
+  const nRate = ENV_TICK_RATES_6FDEB238[rateIdx]!;
+  const bEclipse = m.u32((pEnv + 0x30) >>> 0) | 0;
+  m.setU32((pEnv + 0x28) >>> 0, nRate >>> 0);
+
+  const table =
+    bEclipse === 0 ? ENV_CYCLE_NORMAL_6FDEB160 : ENV_CYCLE_ECLIPSE_6FDEB1F0;
+  m.setU32((pEnv + 0x04) >>> 0, table[2 * 3 + 1]! >>> 0);
+  m.setU32((pEnv + 0x08) >>> 0, imul32(nRate, table[2 * 3]!) >>> 0);
+
+  ENV_UpdateIntensityAndSunAngle113c(m, pEnv, 0, 0);
+  ENV_UpdateLightColor113c(m, 0, pEnv);
+
+  m.setU32((pEnv + 0x14) >>> 0, 0);
+  const dwTick = m.u32(KERNEL32_GET_TICK_COUNT_IAT_VA_6FDD91FC);
+  m.setU32((pEnv + 0x30) >>> 0, 0);
+  m.setU32((pEnv + 0x10) >>> 0, dwTick);
+  return pEnv >>> 0;
+}
+
+/**
+ * `@va D2Common:0x6FD87CA0` (`D2Common.#10337` `ENV_InitEclipseEnvironment113c`, `__stdcall(pAct)`, `ret 4`).
+ *
+ * Initializes `pAct->pEnvironment (+0x04)` into the eclipse state (`dwRateIdx = 1`, `dwCyclePeriod = 4`,
+ * `dwCycleIndex = 0`, `nTimeOfDay = 3`, `bEclipse = 1`) and updates intensity, sun angle, and light color.
+ */
+export function ENV_InitEclipseEnvironment113c(
+  m: Memory113c,
+  pAct: number,
+): void {
+  if (pAct === 0) {
+    throw new Error('ENV_InitEclipseEnvironment113c: pAct == 0 (line 1351)');
+  }
+  const pEnv0 = m.u32((pAct + 0x04) >>> 0);
+  m.setU32((pEnv0 + 0x2c) >>> 0, 1);
+  m.setU32((pEnv0 + 0x28) >>> 0, ENV_TICK_RATES_6FDEB238[1]! >>> 0);
+  const pEnv = m.u32((pAct + 0x04) >>> 0);
+  m.setU32(pEnv, 0);
+  m.setU32((pEnv + 0x08) >>> 0, 0);
+  m.setU32((pEnv + 0x04) >>> 0, ENV_CYCLE_ECLIPSE_6FDEB1F0[1]! >>> 0);
+  const nActNo = DRLG_GetActNoFromLevelId113c(m, 0) & 0xff;
+  ENV_UpdateIntensityAndSunAngle113c(m, pEnv, nActNo, 0);
+  m.setU32((pEnv + 0x30) >>> 0, 1);
+  ENVIRONMENT_SetCycleIndex113c(m, pEnv);
+  ENV_UpdateIntensityAndSunAngle113c(m, pEnv, nActNo, 0);
+  ENV_UpdateLightColor113c(m, nActNo, pEnv);
+}
+

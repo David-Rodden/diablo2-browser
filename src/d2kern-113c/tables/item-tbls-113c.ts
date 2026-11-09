@@ -13,6 +13,7 @@
  */
 import type { Memory113c } from '../mem/sparse-memory.ts'
 import { D2AStarNodeStrc } from '../mem/layout.generated.ts'
+import { fogGetRowFromTxt113c, SGPT_ITEMS_LINKER_PTR_VA } from './datatbls-113c.ts'
 
 /** `.data` `&sgItemDataTables` at `0x6FDEFB94` (`0x6FDC1A40 mov eax, 0x6fdefb94`). */
 export const SG_ITEM_DATATABLES_VA_113C = 0x6fdefb94
@@ -169,3 +170,16 @@ export function PATH_AStar_GetNodeFromPendingCache113c(
   }
   return 0
 }
+
+// ============================================================================
+// K1r2 Iteration 7 Lane B — Batch B036 (item-tbls-113c.ts)
+// ============================================================================
+
+/**
+ * `@va D2Common:0x6FDC1940` (`D2Common.#10814` `DATATBLS_GetItemIdFromItemCode`,
+ * stdcall `[esp+4] = dwCode`, `ret 4` -> `int32_t` item row index or `-1`).
+ */
+export function DATATBLS_GetItemIdFromItemCode113c(m: Memory113c, dwCode: number): number {
+  return fogGetRowFromTxt113c(m, m.u32(SGPT_ITEMS_LINKER_PTR_VA), dwCode >>> 0, 0) >>> 0
+}
+

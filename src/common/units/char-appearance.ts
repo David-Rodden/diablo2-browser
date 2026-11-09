@@ -1733,59 +1733,51 @@ function resolveAvatarComponentToken(component: AvatarComponentName, rawCode: nu
     return 'nil'
   }
   const entry = D2WIN_COMPONENT_TABLE[rawCode]
-  if (!entry) {
-    throw new Error(
-      `Out-of-range 1.13c component code ${rawCode} for slot ${component} (not in D2Win stru_6F8C1520)`,
-    )
-  }
   switch (component) {
     case 'HD':
-      if (!VALID_HD_TOKENS.has(entry.token)) {
-        throw new Error(
-          `Invalid HD component token "${entry.token}" (rawCode=${rawCode}): 1.13c HD slot only accepts lit or helm tokens`,
-        )
+      if (entry && VALID_HD_TOKENS.has(entry.token)) {
+        return entry.token
       }
-      return entry.token
+      // D2Win.dll 0x6f8ec16e: invalid/unrecognized HD code falls back to 1 ('lit')
+      return 'lit'
     case 'TR':
     case 'LG':
     case 'RA':
     case 'LA':
     case 'S1':
     case 'S2':
-      if (!VALID_ARMOR_TIER_TOKENS.has(entry.token)) {
-        throw new Error(
-          `Invalid ${component} component token "${entry.token}" (rawCode=${rawCode}): expected armor tier token`,
-        )
+      if (entry && VALID_ARMOR_TIER_TOKENS.has(entry.token)) {
+        return entry.token
       }
-      return entry.token
+      // D2Win.dll 0x6f8ec08c: non-tier armor code falls back to (rawCode % 3) + 1 ('lit'|'med'|'hvy')
+      return (['lit', 'med', 'hvy'] as const)[rawCode % 3]!
     case 'S3':
-      if (!VALID_S3_TOKENS.has(entry.token)) {
-        throw new Error(
-          `Invalid S3 component token "${entry.token}" (rawCode=${rawCode}): expected S3/head token`,
-        )
+      if (entry && VALID_S3_TOKENS.has(entry.token)) {
+        return entry.token
       }
-      return entry.token
+      // D2Win.dll 0x6f8ec014: invalid S3 code clears to 0 ('nil')
+      return 'nil'
     case 'RH':
     case 'LH':
-      if (!entry.wclass) {
-        throw new Error(
-          `Invalid ${component} weapon component token "${entry.token}" (rawCode=${rawCode}): not a weapon entry`,
-        )
+      if (entry?.wclass) {
+        return entry.token
       }
-      return entry.token
+      // D2Win.dll 0x6f8ec014: non-weapon RH/LH code clears to 0 ('nil')
+      return 'nil'
     case 'SH':
-      if (!VALID_SHIELD_TOKENS.has(entry.token)) {
-        throw new Error(
-          `Invalid SH shield component token "${entry.token}" (rawCode=${rawCode}): not a shield entry`,
-        )
+      if (entry && VALID_SHIELD_TOKENS.has(entry.token)) {
+        return entry.token
       }
-      return entry.token
+      // D2Win.dll 0x6f8ec014: non-shield SH code clears to 0 ('nil')
+      return 'nil'
   }
 }
 
 function resolveAvatarWeaponClass(rhCode: number, lhCode: number, shToken: string): string {
-  const rh = rhCode !== 0xff && rhCode !== 0 ? D2WIN_COMPONENT_TABLE[rhCode] : undefined
-  const lh = lhCode !== 0xff && lhCode !== 0 ? D2WIN_COMPONENT_TABLE[lhCode] : undefined
+  const rhEntry = rhCode !== 0xff && rhCode !== 0 ? D2WIN_COMPONENT_TABLE[rhCode] : undefined
+  const lhEntry = lhCode !== 0xff && lhCode !== 0 ? D2WIN_COMPONENT_TABLE[lhCode] : undefined
+  const rh = rhEntry?.wclass ? rhEntry : undefined
+  const lh = lhEntry?.wclass ? lhEntry : undefined
   if (!rh && !lh) return 'hth'
   if (rh && lh) {
     const rhW = rh.wclass
@@ -1801,10 +1793,7 @@ function resolveAvatarWeaponClass(rhCode: number, lhCode: number, shToken: strin
   if (single.twoHandedWclass && shToken === 'nil') {
     return single.twoHandedWclass
   }
-  if (!single.wclass) {
-    throw new Error(`Weapon component "${single.token}" is missing wclass`)
-  }
-  return single.wclass
+  return single.wclass ?? 'hth'
 }
 
 function toStatstringBytes(

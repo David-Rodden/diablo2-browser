@@ -9,7 +9,14 @@
 import { describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
-import { parseMcpAvatarStatstring } from '../src/client/frontend/statstring-avatar.ts'
+import {
+  applyOnlineCharactersToFlowState,
+  createInitialFlowState,
+  ensureCharSelectSlotVisible,
+  getCharSelectMaxScrollStep,
+  parseMcpAvatarStatstring,
+  scrollCharSelectRoster,
+} from '../src/client/frontend/flow-state.ts'
 import type { ParsedMcpAvatarStatstring } from '../src/client/frontend/statstring-avatar.ts'
 import {
   buildAvatarSpecFromStatstring,
@@ -175,5 +182,52 @@ describe('[Issue #926] Character-select avatar equipment compositing', () => {
 
     expect(getSharedClassLayerCompositor('pa')).toBe(paladin)
     expect(getSharedClassLayerCompositor('so')).not.toBe(sorceress)
+  })
+
+  it('5. applies D2Win 0x6f8ebf60 component fallbacks and preserves > 8 characters with 2-per-row scrolling (D2Launch 0x6fa4cb00..0x6fa4d59e)', () => {
+    const fromHex = (hex: string): Uint8Array => {
+      const bytes = new Uint8Array(hex.length / 2)
+      for (let i = 0; i < bytes.length; i++) {
+        bytes[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16)
+      }
+      return bytes
+    }
+
+    // 1.13c Assassin initial statstring: HD=0x39=57 ('cap'), RH=0x19=25 ('dgr'), SH=0x4f=79 ('buc')
+    const javaStat = fromHex('8d80390201010119ff4f0202ff07ffffffffffffffffffffff03a0808080ffffff')
+    const parsedJava = parseMcpAvatarStatstring(javaStat, 'as')
+    expect(parsedJava.components.HD).toBe('cap')
+    expect(parsedJava.components.RH).toBe('dgr')
+    expect(parsedJava.components.SH).toBe('buc')
+    expect(parsedJava.weaponClass).toBe('1ht')
+
+    // D2Win 0x6f8ebf60 fallback: non-helm HD code (e.g. 25 'dgr') falls back to 'lit' instead of throwing
+    const fallbackStat = fromHex('8d80190405060157ff010202ff07ffffffffffffffffffffff03a0808080ffffff')
+    const parsedFallback = parseMcpAvatarStatstring(fallbackStat, 'as')
+    expect(parsedFallback.components.HD).toBe('lit')
+    expect(parsedFallback.components.TR).toBe('med') // 4 % 3 = 1 -> 'med'
+    expect(parsedFallback.components.RH).toBe('nil') // 0x57 (87 'dr4') is not a weapon
+    expect(parsedFallback.components.SH).toBe('nil') // 0x01 ('lit') is not a shield
+    expect(parsedFallback.weaponClass).toBe('hth')
+
+    // 9 characters in MCP_CHARLIST2: all 9 preserved, maxSteps = 1, scroll offset steps by 2
+    const chars = Array.from({ length: 9 }, (_, idx) => ({
+      name: `Hero_${idx + 1}`,
+      charClass: idx % 7,
+      level: idx + 1,
+      expansion: true,
+      hardcore: false,
+      ladder: true,
+      rawStatString: javaStat,
+    }))
+    const state = createInitialFlowState()
+    applyOnlineCharactersToFlowState(state, chars)
+    expect(state.roster).toHaveLength(9)
+    expect(getCharSelectMaxScrollStep(8)).toBe(0)
+    expect(getCharSelectMaxScrollStep(9)).toBe(1)
+    expect(scrollCharSelectRoster(state, 1)).toBe(2)
+    expect(scrollCharSelectRoster(state, -1)).toBe(0)
+    state.selectedSlotIndex = 8
+    expect(ensureCharSelectSlotVisible(state)).toBe(2)
   })
 })

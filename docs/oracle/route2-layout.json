@@ -17,6 +17,7 @@
         {"name": "seedHi", "off": 36, "type": "u32"},
         {"name": "pPath", "off": 44, "type": "ptr"},
         {"name": "pAnimSeq", "off": 48, "type": "ptr", "$comment": "0x6FD7F1C6 mov ecx, [eax+0x30]"},
+        {"name": "dwSeqFramePrecise", "off": 56, "type": "u32", "$comment": "0x6FD7F0E7 mov ecx, [eax+0x38]"},
         {"name": "dwSeqMode", "off": 64, "type": "u32", "$comment": "0x6FD7F1CD mov eax, [eax+0x40]"},
         {"name": "dwFramePrecise", "off": 68, "type": "u32", "$comment": "0x6FD7EE84 mov edx, [eax+0x44]"},
         {"name": "dwFrameCountPrecise", "off": 72, "type": "u32", "$comment": "0x6FD7EEAE mov eax, [eax+0x48]"},
@@ -25,7 +26,10 @@
         {"name": "pAnimData", "off": 80, "type": "ptr"},
         {"name": "pStatListEx", "off": 92, "type": "ptr"},
         {"name": "pInventory", "off": 96, "type": "ptr"},
+        {"name": "dwField7C", "off": 124, "type": "u32", "$comment": "0x6FD7E983 mov eax, [ecx+0x7c]"},
         {"name": "pGame", "off": 128, "type": "ptr"},
+        {"name": "dwOwnerType", "off": 156, "type": "u32", "$comment": "0x6FD7F9E3 mov [eax+0x9c], edx"},
+        {"name": "dwOwnerId", "off": 160, "type": "u32", "$comment": "0x6FD7F9EC mov [eax+0xa0], ecx"},
         {"name": "pSkills", "off": 168, "type": "ptr"},
         {"name": "pCombat", "off": 172, "type": "ptr"},
         {"name": "dwFlags", "off": 196, "type": "u32"},
@@ -493,6 +497,17 @@
       "size": 364,
       "allocEvidence": "D2Common 0x6FD809B8 mov edx, 0x16C (Fog alloc stored to pUnit->pUnitData at 0x6FD809C4); 0x6FD809C9 mov ecx, 0x5B; rep stosd",
       "fields": [
+        {"name": "dwActiveWeaponFlags", "off": 44, "type": "u32", "$comment": "0x6FD7EB26 mov eax, [eax+0x2c]"},
+        {"name": "dwLeftTargetVal", "off": 112, "type": "u32", "$comment": "0x6FD7F84B mov edx, [eax+0x70]"},
+        {"name": "dwRightTargetVal", "off": 116, "type": "u32", "$comment": "0x6FD7F7EB mov edx, [eax+0x74]"},
+        {"name": "dwLeftTargetGuid", "off": 120, "type": "u32", "$comment": "0x6FD7F854 mov edx, [eax+0x78]"},
+        {"name": "dwRightTargetGuid", "off": 124, "type": "u32", "$comment": "0x6FD7F7F4 mov edx, [eax+0x7c]"},
+        {"name": "dwLeftSubtargetType", "off": 128, "type": "u32", "$comment": "0x6FD7F60B mov edx, [eax+0x80]"},
+        {"name": "dwRightSubtargetType", "off": 132, "type": "u32", "$comment": "0x6FD7F67B mov edx, [eax+0x84]"},
+        {"name": "dwLeftSubtargetGuid", "off": 136, "type": "u32", "$comment": "0x6FD7F617 mov edx, [eax+0x88]"},
+        {"name": "dwRightSubtargetGuid", "off": 140, "type": "u32", "$comment": "0x6FD7F687 mov edx, [eax+0x8c]"},
+        {"name": "dwInteractItemGuid", "off": 144, "type": "u32", "$comment": "0x6FD7F4A1 mov eax, [eax+0x90]"},
+        {"name": "dwInteractType", "off": 148, "type": "u32", "$comment": "0x6FD7F711 mov [eax+0x94], edx"},
         {"name": "dwField150", "off": 336, "type": "u32", "$comment": "0x6FD51010 mov dword [ecx+0x150], 1 (also 0x6FDCF683)"},
         {"name": "dwField154", "off": 340, "type": "u32", "$comment": "0x6FD51021 mov [edx+0x154], ecx"},
         {"name": "dwField158", "off": 344, "type": "u32", "$comment": "0x6FD5102E mov [edx+0x158], ecx"},
@@ -566,6 +581,7 @@
       "size": 196,
       "allocEvidence": "D2Common 0x6FD512E8 imul eax, eax, 0xC4 (record stride in the CharStats lookup 0x6FD512D0)",
       "fields": [
+        {"name": "nToHitFactor", "off": 60, "type": "u32", "$comment": "0x6FD81F7F mov eax, [eax+0x3c]"},
         {"name": "nWalkSpeed", "off": 64, "type": "u8", "$comment": "0x6FD80DAF mov ch, [eax+0x40]"},
         {"name": "nRunSpeed", "off": 65, "type": "u8", "$comment": "0x6FD82EB4 movzx eax, byte [ebx+0x41]"}
       ]
@@ -662,8 +678,15 @@
         {"name": "pSkillsTxt", "off": 0, "type": "ptr", "$comment": "0x6FD9E1DB mov eax, [eax]"},
         {"name": "pNextSkill", "off": 4, "type": "ptr", "$comment": "0x6FD9E3BB mov eax, [eax+0x4]"},
         {"name": "nSlotIndex", "off": 8, "type": "u32", "$comment": "0x6FD9E1B5 mov [ecx+0x8], eax"},
+        {"name": "dwParam0C", "off": 12, "type": "u32", "$comment": "0x6FD9DE8B mov [eax+0xc], ecx"},
+        {"name": "dwParam1", "off": 24, "type": "u32", "$comment": "0x6FD9E057 mov eax, [eax+0x18]"},
+        {"name": "dwParam2", "off": 28, "type": "u32", "$comment": "0x6FD9E027 mov eax, [eax+0x1c]"},
+        {"name": "dwParam3", "off": 32, "type": "u32", "$comment": "0x6FD9DFF7 mov eax, [eax+0x20]"},
+        {"name": "dwParam4", "off": 36, "type": "u32", "$comment": "0x6FD9DFC7 mov eax, [eax+0x24]"},
         {"name": "nSkillLevel", "off": 40, "type": "u32", "$comment": "0x6FD9E4B6 mov edi, [ecx+0x28]"},
+        {"name": "nQuantity", "off": 48, "type": "u32", "$comment": "0x6FD9DD97 mov eax, [eax+0x30]"},
         {"name": "nOwnerItemGuid", "off": 52, "type": "u32", "$comment": "0x6FD9E4AC cmp [ecx+0x34], edx"},
+        {"name": "nCharges", "off": 56, "type": "u32", "$comment": "0x6FD9E2A2 mov ecx, [ecx+0x38]"},
         {"name": "dwFlags", "off": 60, "type": "u32", "$comment": "0x6FD9E4A1 mov edi, [ecx+0x3c]"}
       ]
     },
@@ -802,7 +825,9 @@
       "size": 56,
       "allocEvidence": "D2Game 0x6FC4FC4D mov edx, 0x38 (Fog alloc in SUNIT_AllocUnitData)",
       "fields": [
-        {"name": "pObjectTxt", "off": 0, "type": "ptr", "$comment": "0x6FD7ED3C mov ecx, [eax]"}
+        {"name": "pObjectTxt", "off": 0, "type": "ptr", "$comment": "0x6FD7ED3C mov ecx, [eax]"},
+        {"name": "nPortalFlags", "off": 5, "type": "u8", "$comment": "0x6FD7EAA6 mov al, [eax+0x5]"},
+        {"name": "pShrineTxt", "off": 8, "type": "ptr", "$comment": "0x6FD7ECC7 mov eax, [eax+0x8]"}
       ]
     },
     "D2ObjectsTxt": {
@@ -810,9 +835,11 @@
       "allocEvidence": "D2Common 0x6FD8E9BC imul eax, eax, 0x1C0 (record stride in DATATBLS_GetObjectsTxtRecord)",
       "fields": [
         {"name": "dwFrameCnt", "off": 216, "type": "u32", "count": 8, "$comment": "0x6FD7EE95 mov edx, [ecx+edx*4+0xd8]"},
-        {"name": "nOperateFn", "off": 314, "type": "u8", "$comment": "0x6FD8519B movzx edi, byte [esi+0x13a]"},
+        {"name": "nOperateFn", "off": 314, "type": "u8", "aliases": ["bIsDoor"], "$comment": "0x6FD8519B movzx edi, byte [esi+0x13a]; 0x6FD7EDD8 mov al, [ecx+0x13a]"},
+        {"name": "bBlocksVis", "off": 315, "type": "u8", "$comment": "0x6FD7FF8D mov cl, [eax+0x13b]"},
         {"name": "nDoor", "off": 316, "type": "u8", "$comment": "0x6FD851C9 cmp byte [esi+0x13c], 0x1"},
-        {"name": "nSubClass", "off": 359, "type": "u8", "$comment": "0x6FD7ED3E mov dl, [ecx+0x167]"}
+        {"name": "nSubClass", "off": 359, "type": "u8", "$comment": "0x6FD7ED3E mov dl, [ecx+0x167]"},
+        {"name": "bBlocksLight", "off": 438, "type": "u8", "$comment": "0x6FD7FF9D mov al, [eax+0x1b6]"}
       ]
     },
     "D2DrlgVertexStrc": {
@@ -1026,20 +1053,24 @@
         {"name": "nClassLevelReq", "off": 104, "type": "u8", "$comment": "0x6FD72FDD movzx ecx, byte [ecx+0x68]"},
         {"name": "dwCode", "off": 128, "type": "u32", "$comment": "0x6FD732D7 mov eax, [eax+0x80]"},
         {"name": "dwAlternateGfx", "off": 132, "type": "u32", "$comment": "0x6FD7302C mov ecx, [eax+0x84]"},
+        {"name": "dw2HandedWClass", "off": 196, "type": "u32", "$comment": "0x6FD73327 mov eax, [eax+0xc4]"},
         {"name": "nMinAc", "off": 208, "type": "u32", "$comment": "0x6FD79FD5 mov edi, [ebx+0xd0]"},
         {"name": "dwBitField1", "off": 220, "type": "u32", "$comment": "0x6FD72806 mov eax, [eax+0xdc]"},
         {"name": "dwCost", "off": 224, "type": "u32", "$comment": "0x6FD74ACA mov eax, [eax+0xe0]"},
         {"name": "dwGambleCost", "off": 228, "type": "u32", "$comment": "0x6FD72B16 mov eax, [eax+0xe4]"},
         {"name": "dwSpeed", "off": 232, "type": "u32", "$comment": "0x6FD72BB6 mov eax, [eax+0xe8]"},
         {"name": "dwBitField2", "off": 236, "type": "u32", "$comment": "0x6FD72B66 mov eax, [eax+0xec]"},
+        {"name": "nLevel", "off": 253, "type": "u8", "$comment": "0x6FD73097 mov al, [eax+0xfd]"},
         {"name": "nMinDam", "off": 254, "type": "u8", "$comment": "0x6FD7A0BA mov al, [ebx+0xfe]"},
         {"name": "nMaxDam", "off": 255, "type": "u8", "$comment": "0x6FD7A015 mov al, [ebx+0xff]"},
         {"name": "nMinMisDam", "off": 256, "type": "u8", "$comment": "0x6FD7A11F mov al, [ebx+0x100]"},
         {"name": "nMaxMisDam", "off": 257, "type": "u8", "$comment": "0x6FD7A07E mov al, [ebx+0x101]"},
         {"name": "n2HandMinDam", "off": 258, "type": "u8", "$comment": "0x6FD7A0E0 mov al, [ebx+0x102]"},
         {"name": "n2HandMaxDam", "off": 259, "type": "u8", "$comment": "0x6FD7A03B mov al, [ebx+0x103]"},
+        {"name": "nUseable", "off": 285, "type": "u8", "$comment": "0x6FD72CB9 movzx eax, byte [eax+0x11d]"},
         {"name": "wType1", "off": 286, "type": "u16", "$comment": "0x6FD730E6 movsx eax, word [eax+0x11e]"},
         {"name": "wType2", "off": 288, "type": "u16", "$comment": "0x6FD744B7 mov ax, word [eax+0x120]"},
+        {"name": "nUnique", "off": 297, "type": "u8", "$comment": "0x6FD72C67 movzx eax, byte [eax+0x129]"},
         {"name": "nComponent", "off": 298, "type": "u8", "$comment": "0x6FD72C07 movzx eax, byte [eax+0x12a]"},
         {"name": "nTwoHanded", "off": 306, "type": "u8", "$comment": "0x6FD72E59 movzx eax, byte [eax+0x132]"},
         {"name": "nSubType", "off": 311, "type": "u8", "$comment": "0x6FD72964 movzx eax, byte [eax+0x137]"},

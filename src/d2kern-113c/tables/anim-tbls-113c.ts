@@ -7,6 +7,7 @@
  * - `0x6FD90FC0` `DRLGOUTROOM_LinkLevelsByLevelCoords113c` (internal, `__fastcall(ecx=pLinkData)`)
  */
 import type { Memory113c } from '../mem/sparse-memory.ts'
+import { D2CommonAssertError } from '../common/inline-helpers.ts'
 import {
   D2DrlgCoordStrc,
   D2DrlgCoordStrc_SIZE,
@@ -186,3 +187,41 @@ export function DRLGOUTROOM_LinkLevelsByLevelCoords113c(
   m.set(coordIt, D2DrlgCoordStrc.nPosY, (hLink - hIt + yLink - 16) >>> 0)
   return 1
 }
+
+// ============================================================================
+// K1r2 Iteration 7 Lane B — Batch B036 (anim-tbls-113c.ts)
+// ============================================================================
+
+/**
+ * `@va D2Common:0x6FD91D00` (internal `__fastcall(ecx = pStr1, edx = pStr2)` -> `BOOL`, `ret`).
+ *
+ * Validates `strlen(pStr1) <= 8` (`line 0xD6 = 214`) and `strlen(pStr2) <= 8` (`line 0xD7 = 215`),
+ * then compares the two 8-byte blocks as two 32-bit dwords (`+0x00` and `+0x04`).
+ */
+export function ANIMTBLS_CompareCode8113c(m: Memory113c, ecx: number, edx: number): number {
+  const s1 = ecx >>> 0
+  const s2 = edx >>> 0
+  let len1 = 0
+  if (m.u8(s1) !== 0) {
+    do {
+      len1 = (len1 + 1) >>> 0
+    } while (m.u8((s1 + len1) >>> 0) !== 0)
+    if (len1 > 8) {
+      throw new D2CommonAssertError('AnimTbls.cpp', 0xd6)
+    }
+  }
+  let len2 = 0
+  if (m.u8(s2) !== 0) {
+    do {
+      len2 = (len2 + 1) >>> 0
+    } while (m.u8((s2 + len2) >>> 0) !== 0)
+    if (len2 > 8) {
+      throw new D2CommonAssertError('AnimTbls.cpp', 0xd7)
+    }
+  }
+  if (m.u32(s1) !== m.u32(s2)) {
+    return 0
+  }
+  return m.u32((s1 + 4) >>> 0) === m.u32((s2 + 4) >>> 0) ? 1 : 0
+}
+

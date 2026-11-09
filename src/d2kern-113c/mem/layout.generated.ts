@@ -22,6 +22,7 @@ export const D2UnitStrc = {
   seedHi: { off: 0x24, type: 'u32', count: 1 },
   pPath: { off: 0x2C, type: 'ptr', count: 1 },
   pAnimSeq: { off: 0x30, type: 'ptr', count: 1 },
+  dwSeqFramePrecise: { off: 0x38, type: 'u32', count: 1 },
   dwSeqMode: { off: 0x40, type: 'u32', count: 1 },
   dwFramePrecise: { off: 0x44, type: 'u32', count: 1 },
   dwFrameCountPrecise: { off: 0x48, type: 'u32', count: 1 },
@@ -30,7 +31,10 @@ export const D2UnitStrc = {
   pAnimData: { off: 0x50, type: 'ptr', count: 1 },
   pStatListEx: { off: 0x5C, type: 'ptr', count: 1 },
   pInventory: { off: 0x60, type: 'ptr', count: 1 },
+  dwField7C: { off: 0x7C, type: 'u32', count: 1 },
   pGame: { off: 0x80, type: 'ptr', count: 1 },
+  dwOwnerType: { off: 0x9C, type: 'u32', count: 1 },
+  dwOwnerId: { off: 0xA0, type: 'u32', count: 1 },
   pSkills: { off: 0xA8, type: 'ptr', count: 1 },
   pCombat: { off: 0xAC, type: 'ptr', count: 1 },
   dwFlags: { off: 0xC4, type: 'u32', count: 1 },
@@ -487,6 +491,17 @@ export const D2ItemDataStrc = {
 /** D2Common 0x6FD809B8 mov edx, 0x16C (Fog alloc stored to pUnit->pUnitData at 0x6FD809C4); 0x6FD809C9 mov ecx, 0x5B; rep stosd */
 export const D2PlayerDataStrc_SIZE = 364
 export const D2PlayerDataStrc = {
+  dwActiveWeaponFlags: { off: 0x2C, type: 'u32', count: 1 },
+  dwLeftTargetVal: { off: 0x70, type: 'u32', count: 1 },
+  dwRightTargetVal: { off: 0x74, type: 'u32', count: 1 },
+  dwLeftTargetGuid: { off: 0x78, type: 'u32', count: 1 },
+  dwRightTargetGuid: { off: 0x7C, type: 'u32', count: 1 },
+  dwLeftSubtargetType: { off: 0x80, type: 'u32', count: 1 },
+  dwRightSubtargetType: { off: 0x84, type: 'u32', count: 1 },
+  dwLeftSubtargetGuid: { off: 0x88, type: 'u32', count: 1 },
+  dwRightSubtargetGuid: { off: 0x8C, type: 'u32', count: 1 },
+  dwInteractItemGuid: { off: 0x90, type: 'u32', count: 1 },
+  dwInteractType: { off: 0x94, type: 'u32', count: 1 },
   dwField150: { off: 0x150, type: 'u32', count: 1 },
   dwField154: { off: 0x154, type: 'u32', count: 1 },
   dwField158: { off: 0x158, type: 'u32', count: 1 },
@@ -557,6 +572,7 @@ export const D2MissilesTxt = {
 /** D2Common 0x6FD512E8 imul eax, eax, 0xC4 (record stride in the CharStats lookup 0x6FD512D0) */
 export const D2CharStatsTxt_SIZE = 196
 export const D2CharStatsTxt = {
+  nToHitFactor: { off: 0x3C, type: 'u32', count: 1 },
   nWalkSpeed: { off: 0x40, type: 'u8', count: 1 },
   nRunSpeed: { off: 0x41, type: 'u8', count: 1 },
 } as const satisfies Record<string, FieldLayout113c>
@@ -646,8 +662,15 @@ export const D2SkillStrc = {
   pSkillsTxt: { off: 0x0, type: 'ptr', count: 1 },
   pNextSkill: { off: 0x4, type: 'ptr', count: 1 },
   nSlotIndex: { off: 0x8, type: 'u32', count: 1 },
+  dwParam0C: { off: 0xC, type: 'u32', count: 1 },
+  dwParam1: { off: 0x18, type: 'u32', count: 1 },
+  dwParam2: { off: 0x1C, type: 'u32', count: 1 },
+  dwParam3: { off: 0x20, type: 'u32', count: 1 },
+  dwParam4: { off: 0x24, type: 'u32', count: 1 },
   nSkillLevel: { off: 0x28, type: 'u32', count: 1 },
+  nQuantity: { off: 0x30, type: 'u32', count: 1 },
   nOwnerItemGuid: { off: 0x34, type: 'u32', count: 1 },
+  nCharges: { off: 0x38, type: 'u32', count: 1 },
   dwFlags: { off: 0x3C, type: 'u32', count: 1 },
 } as const satisfies Record<string, FieldLayout113c>
 
@@ -786,6 +809,8 @@ export const D2AnimSeqTxt = {
 export const D2ObjectDataStrc_SIZE = 56
 export const D2ObjectDataStrc = {
   pObjectTxt: { off: 0x0, type: 'ptr', count: 1 },
+  nPortalFlags: { off: 0x5, type: 'u8', count: 1 },
+  pShrineTxt: { off: 0x8, type: 'ptr', count: 1 },
 } as const satisfies Record<string, FieldLayout113c>
 
 /** D2Common 0x6FD8E9BC imul eax, eax, 0x1C0 (record stride in DATATBLS_GetObjectsTxtRecord) */
@@ -793,8 +818,11 @@ export const D2ObjectsTxt_SIZE = 448
 export const D2ObjectsTxt = {
   dwFrameCnt: { off: 0xD8, type: 'u32', count: 8 },
   nOperateFn: { off: 0x13A, type: 'u8', count: 1 },
+  bIsDoor: { off: 0x13A, type: 'u8', count: 1 },
+  bBlocksVis: { off: 0x13B, type: 'u8', count: 1 },
   nDoor: { off: 0x13C, type: 'u8', count: 1 },
   nSubClass: { off: 0x167, type: 'u8', count: 1 },
+  bBlocksLight: { off: 0x1B6, type: 'u8', count: 1 },
 } as const satisfies Record<string, FieldLayout113c>
 
 /** D2Common 0x6FD8D99C mov edx, 0x14 (Fog alloc in DRLGVER_AllocVertex) */
@@ -994,20 +1022,24 @@ export const D2ItemsTxt = {
   nClassLevelReq: { off: 0x68, type: 'u8', count: 1 },
   dwCode: { off: 0x80, type: 'u32', count: 1 },
   dwAlternateGfx: { off: 0x84, type: 'u32', count: 1 },
+  dw2HandedWClass: { off: 0xC4, type: 'u32', count: 1 },
   nMinAc: { off: 0xD0, type: 'u32', count: 1 },
   dwBitField1: { off: 0xDC, type: 'u32', count: 1 },
   dwCost: { off: 0xE0, type: 'u32', count: 1 },
   dwGambleCost: { off: 0xE4, type: 'u32', count: 1 },
   dwSpeed: { off: 0xE8, type: 'u32', count: 1 },
   dwBitField2: { off: 0xEC, type: 'u32', count: 1 },
+  nLevel: { off: 0xFD, type: 'u8', count: 1 },
   nMinDam: { off: 0xFE, type: 'u8', count: 1 },
   nMaxDam: { off: 0xFF, type: 'u8', count: 1 },
   nMinMisDam: { off: 0x100, type: 'u8', count: 1 },
   nMaxMisDam: { off: 0x101, type: 'u8', count: 1 },
   n2HandMinDam: { off: 0x102, type: 'u8', count: 1 },
   n2HandMaxDam: { off: 0x103, type: 'u8', count: 1 },
+  nUseable: { off: 0x11D, type: 'u8', count: 1 },
   wType1: { off: 0x11E, type: 'u16', count: 1 },
   wType2: { off: 0x120, type: 'u16', count: 1 },
+  nUnique: { off: 0x129, type: 'u8', count: 1 },
   nComponent: { off: 0x12A, type: 'u8', count: 1 },
   nTwoHanded: { off: 0x132, type: 'u8', count: 1 },
   nSubType: { off: 0x137, type: 'u8', count: 1 },

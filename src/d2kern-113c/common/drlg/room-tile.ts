@@ -970,3 +970,120 @@ export function DRLGROOMTILE_InitTileData113c(
   m.setU32((esi + 0x14) >>> 0, flags >>> 0);
 }
 
+/**
+ * `@va D2Common:0x6FDBC5D0` (`DATATBLS_FindFloorWindowTileCacheEntry113c`, custom `ebx = nTileId`, `dl = nWallType`, `ret`).
+ *
+ * Scans `gpFloorWindowTileCache` (`0x6FDF142C`, count at `0x6FDF1430`, stride `0x30` = 48 bytes) for
+ * `[pCur] == nTileId` where `nWallType == 0x62` (`'b'`), `u8(pCur + 0x2C) == 0x62`, or `u8(pCur + 0x2C) == nWallType`.
+ */
+export function DATATBLS_FindFloorWindowTileCacheEntry113c(
+  m: Memory113c,
+  nTileId: number,
+  nWallType: number,
+): number {
+  let pCur = m.u32(0x6fdf142c);
+  if (pCur === 0) {
+    throw new Error(
+      'DATATBLS_FindFloorWindowTileCacheEntry113c: gpFloorWindowTileCache == 0 (line 811)',
+    );
+  }
+  const nCount = m.u32(0x6fdf1430) | 0;
+  const targetId = nTileId | 0;
+  const dl = nWallType & 0xff;
+  for (let i = 0; i < nCount; i++) {
+    if ((m.u32(pCur) | 0) === targetId) {
+      if (dl === 0x62) {
+        return pCur >>> 0;
+      }
+      const cl = m.u8((pCur + 0x2c) >>> 0);
+      if (cl === 0x62 || cl === dl) {
+        return pCur >>> 0;
+      }
+    }
+    pCur = (pCur + 0x30) >>> 0;
+  }
+  throw new Error(
+    'DATATBLS_FindFloorWindowTileCacheEntry113c: entry not found (line 826)',
+  );
+}
+
+/**
+ * `@va D2Common:0x6FDB8510` (`DRLGROOMTILE_FreeRoomTileGridAndAnimList113c`, `__stdcall(pRoomEx)`, `ret 4`).
+ *
+ * Calls `0x6FDB7F50` (`DRLGROOMTILE_FreeTileDataArrays113c`), then if `pRoomEx->pTileGrid (+0x54) != 0`,
+ * frees all nodes on `pTileGrid->pAnimTiles (+0x00)` (next at `+0x08`), all nodes and their `[pNode]`
+ * buffers on `pTileGrid->pMapLinks (+0x04)` (next at `+0x10`), and `pTileGrid` itself via `Fog.#10046`,
+ * zeroing `pRoomEx->pTileGrid (+0x54)`.
+ */
+export function DRLGROOMTILE_FreeRoomTileGridAndAnimList113c(
+  m: Memory113c,
+  pRoomEx: number,
+): void {
+  const roomEx = pRoomEx >>> 0;
+  const pLevel = m.u32((roomEx + 0x58) >>> 0);
+  const pDrlg = m.u32((pLevel + 0x1b4) >>> 0);
+  const pMemPool = m.u32((pDrlg + 0x478) >>> 0);
+  DRLGROOMTILE_FreeTileDataArrays113c(m, roomEx, pMemPool);
+
+  const pTileGrid = m.u32((roomEx + 0x54) >>> 0);
+  if (pTileGrid !== 0) {
+    const freeFn = (m as { free?: (p: number) => void }).free;
+    let pAnim = m.u32(pTileGrid);
+    while (pAnim !== 0) {
+      const curAnim = pAnim;
+      pAnim = m.u32((curAnim + 0x08) >>> 0);
+      freeFn?.call(m, curAnim);
+    }
+    let pWall = m.u32((pTileGrid + 0x04) >>> 0);
+    m.setU32(pTileGrid, 0);
+    while (pWall !== 0) {
+      const curWall = pWall;
+      const pWallData = m.u32(curWall);
+      pWall = m.u32((curWall + 0x10) >>> 0);
+      if (pWallData !== 0) {
+        freeFn?.call(m, pWallData);
+      }
+      freeFn?.call(m, curWall);
+    }
+    freeFn?.call(m, pTileGrid);
+    m.setU32((roomEx + 0x54) >>> 0, 0);
+  }
+}
+
+/**
+ * `@va D2Common:0x6FDB8800` (`DRLGROOMTILE_UpdateWindowTileCacheEntry113c`, custom `esi = pWindowNode`, `[esp+4] = nOrientation`, `ret 4`).
+ *
+ * Asserts `pWindowNode != 0` (`line 627`) and `pCacheEntry = pWindowNode->pCacheEntry (+0x10) != 0` (`line 628`).
+ * If `u8(pCacheEntry + 0x2C) != 0x62` (`'b'`), maps `nOrientation == 11 ? 0x72 ('r') : 0x6C ('l')` and updates
+ * `pWindowNode->pCacheEntry (+0x10)` via `0x6FDBC5D0` (`DATATBLS_FindFloorWindowTileCacheEntry113c`) when different.
+ */
+export function DRLGROOMTILE_UpdateWindowTileCacheEntry113c(
+  m: Memory113c,
+  pWindowNode: number,
+  nOrientation: number,
+): void {
+  if (pWindowNode === 0) {
+    throw new Error(
+      'DRLGROOMTILE_UpdateWindowTileCacheEntry113c: pWindowNode == 0 (line 627)',
+    );
+  }
+  const node = pWindowNode >>> 0;
+  const pCacheEntry = m.u32((node + 0x10) >>> 0);
+  if (pCacheEntry === 0) {
+    throw new Error(
+      'DRLGROOMTILE_UpdateWindowTileCacheEntry113c: pCacheEntry == 0 (line 628)',
+    );
+  }
+  const cl = m.u8((pCacheEntry + 0x2c) >>> 0);
+  if (cl === 0x62) {
+    return;
+  }
+  const dl = (nOrientation | 0) === 0x0b ? 0x72 : 0x6c;
+  if (cl !== dl) {
+    const nTileId = m.u32(pCacheEntry) | 0;
+    const pNewEntry = DATATBLS_FindFloorWindowTileCacheEntry113c(m, nTileId, dl);
+    m.setU32((node + 0x10) >>> 0, pNewEntry);
+  }
+}
+
+

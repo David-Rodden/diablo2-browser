@@ -14,6 +14,7 @@ import type { Memory113c } from '../mem/sparse-memory.ts'
 import {
   D2MissileDamageDataStrc,
   D2MissileDataStrc,
+  D2MissileDataStrc_SIZE,
   D2MissilesTxt,
   D2UnitStrc,
   type FieldLayout113c,
@@ -377,4 +378,40 @@ export function MISSILE_SetSkill113c(m: Memory113c, pMissile: number, nSkill: nu
   const pData = getMissileData(m, pMissile)
   if (pData === 0) return
   m.set(pData, D2MissileDataStrc.nSkill, clamped & 0xffff)
+}
+
+/**
+ * `@va D2Common:0x6FDBA350` (`D2Common.#10178` `MISSILE_FreeMissileData`, 49 bytes,
+ * stdcall `[esp+4] = pMissile`, `ret 0x4`, void).
+ */
+export function MISSILE_FreeMissileData113c(m: Memory113c, pMissile: number): void {
+  if (pMissile >>> 0 === 0 || m.get(pMissile, D2UnitStrc.dwUnitType) !== UNIT_MISSILE) {
+    return
+  }
+  const pMissileData = m.get(pMissile, D2UnitStrc.pUnitData)
+  if (pMissileData !== 0) {
+    m.get(pMissile, D2UnitStrc.pMemPool)
+    ;(m as { free?: (p: number) => void }).free?.(pMissileData)
+    m.set(pMissile, D2UnitStrc.pUnitData, 0)
+  }
+}
+
+/**
+ * `@va D2Common:0x6FDBA390` (`D2Common.#10098` `MISSILE_AllocMissileData`, 72 bytes,
+ * stdcall `[esp+4] = pMissile`, `ret 0x4`, void).
+ */
+export function MISSILE_AllocMissileData113c(m: Memory113c, pMissile: number): void {
+  if (pMissile >>> 0 === 0 || m.get(pMissile, D2UnitStrc.dwUnitType) !== UNIT_MISSILE) {
+    return
+  }
+  if (m.get(pMissile, D2UnitStrc.pUnitData) !== 0) {
+    return
+  }
+  m.get(pMissile, D2UnitStrc.pMemPool)
+  const pData = m.alloc(D2MissileDataStrc_SIZE)
+  for (let i = 0; i < D2MissileDataStrc_SIZE; i += 4) {
+    m.setU32((pData + i) >>> 0, 0)
+  }
+  m.set(pData, D2MissileDataStrc.dwOwnerId, 0xffffffff)
+  m.set(pMissile, D2UnitStrc.pUnitData, pData >>> 0)
 }

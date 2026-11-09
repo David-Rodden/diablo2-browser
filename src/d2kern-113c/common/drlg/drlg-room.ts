@@ -12,6 +12,10 @@ import {
   D2RoomExStrc,
 } from '../../mem/layout.generated.ts';
 import { imul32, sdiv32 } from '../int-math.ts';
+import {
+  DATATBLS_FindFloorWindowTileCacheEntry113c,
+  DRLGROOMTILE_GetWarpLevelsArray113c,
+} from './room-tile.ts';
 
 
 /**
@@ -587,6 +591,47 @@ export function DRLGROOM_AddOrthRoomData113c(
 }
 
 /**
+ * `@va D2Common:0x6FD94A30` (`DRLGROOM_AppendAndSortAdjacentRoom113c`, custom `eax = pRoomEx`,
+ * `ecx = pMemPool`, `[esp+4] = pAdjRoomEx`, `ret 4`).
+ *
+ * Increments `pRoomEx->nRoomsNear (+0x2C)`, reallocates `pRoomEx->ppRoomsNear (+0x08)` via `Fog.#10047`
+ * (`0x6FD59252`) to `nRoomsNear * 4` bytes, appends `pAdjRoomEx`, and sorts via `0x6FD945A0`
+ * (`DRLGROOM_SortRoomExArrayByBounds113c`).
+ */
+export function DRLGROOM_AppendAndSortAdjacentRoom113c(
+  m: Memory113c,
+  pRoomEx: number,
+  _pMemPool: number,
+  pAdjRoomEx: number,
+): void {
+  const roomEx = pRoomEx >>> 0;
+  const pOldArr = m.u32((roomEx + 0x08) >>> 0);
+  const nNewCount = ((m.u32((roomEx + 0x2c) >>> 0) | 0) + 1) | 0;
+  m.setU32((roomEx + 0x2c) >>> 0, nNewCount >>> 0);
+
+  const pNewArr = m.alloc((nNewCount << 2) >>> 0);
+  if (pNewArr === 0) {
+    throw new Error(
+      'DRLGROOM_AppendAndSortAdjacentRoom113c: realloc failed (line 789)',
+    );
+  }
+  if (pOldArr !== 0) {
+    for (let i = 0; i < nNewCount - 1; i++) {
+      m.setU32((pNewArr + i * 4) >>> 0, m.u32((pOldArr + i * 4) >>> 0));
+    }
+  }
+  m.setU32((roomEx + 0x08) >>> 0, pNewArr);
+
+  const nCount = m.u32((roomEx + 0x2c) >>> 0) | 0;
+  m.setU32((pNewArr + (nCount - 1) * 4) >>> 0, pAdjRoomEx >>> 0);
+  DRLGROOM_SortRoomExArrayByBounds113c(
+    m,
+    m.u32((roomEx + 0x2c) >>> 0) | 0,
+    m.u32((roomEx + 0x08) >>> 0),
+  );
+}
+
+/**
  * `@va D2Common:0x6FD94BD0` (`DRLGROOM_AllocRoomEx113c`, not exported;
  * custom LTCG `ebx = pLevel`, stack `[esp+4] = nType`, `ret 4`).
  *
@@ -694,6 +739,99 @@ export function DRLGWARP_GetWarpDstAdjustData113c(
     }
   }
   return 0x48;
+}
+
+/**
+ * `@va D2Common:0x6FD94DF0` (`DRLGROOM_BuildRoomExNearList113c`, custom `edi = pRoomEx`, `[esp+4] = pMemPool`, `ret 4`).
+ *
+ * Walks `pRoomEx->pLevel (+0x58)->pFirstRoomEx (+0x10)` via `pRoomNext (+0x24)`, collects all rooms whose
+ * X and Y tile gaps from `pRoomEx` are both `< 6` into a 30-entry stack array, sorts via `0x6FD945A0`
+ * (`DRLGROOM_SortRoomExArrayByBounds113c`), allocates `nCount * 4` bytes at `pRoomEx->ppRoomsNear (+0x08)`,
+ * and copies the sorted pointers.
+ */
+export function DRLGROOM_BuildRoomExNearList113c(
+  m: Memory113c,
+  pRoomEx: number,
+  _pMemPool = 0,
+): void {
+  const roomEx = pRoomEx >>> 0;
+  const pLevel = m.u32((roomEx + 0x58) >>> 0);
+  let pCur = m.u32((pLevel + 0x10) >>> 0);
+  m.setU32((roomEx + 0x2c) >>> 0, 0);
+
+  const tempNear = new Uint32Array(30);
+  while (pCur !== 0) {
+    const x1 = m.u32((roomEx + 0x34) >>> 0) | 0;
+    const x2 = m.u32((pCur + 0x34) >>> 0) | 0;
+    const gapX =
+      x1 < x2
+        ? ((x2 - (m.u32((roomEx + 0x3c) >>> 0) | 0)) - x1) | 0
+        : ((x1 - (m.u32((pCur + 0x3c) >>> 0) | 0)) - x2) | 0;
+
+    const y1 = m.u32((roomEx + 0x38) >>> 0) | 0;
+    const y2 = m.u32((pCur + 0x38) >>> 0) | 0;
+    const gapY =
+      y1 < y2
+        ? ((y2 - (m.u32((roomEx + 0x40) >>> 0) | 0)) - y1) | 0
+        : ((y1 - (m.u32((pCur + 0x40) >>> 0) | 0)) - y2) | 0;
+
+    if (gapX < 6 && gapY < 6) {
+      const idx = m.u32((roomEx + 0x2c) >>> 0) | 0;
+      tempNear[idx] = pCur;
+      m.setU32((roomEx + 0x2c) >>> 0, ((idx + 1) | 0) >>> 0);
+    }
+    pCur = m.u32((pCur + 0x24) >>> 0);
+  }
+
+  const nCount = m.u32((roomEx + 0x2c) >>> 0) | 0;
+  const pDest = m.alloc((nCount * 4) >>> 0);
+  m.setU32((roomEx + 0x08) >>> 0, pDest);
+  for (let i = 0; i < nCount; i++) {
+    m.setU32((pDest + i * 4) >>> 0, tempNear[i]!);
+  }
+  DRLGROOM_SortRoomExArrayByBounds113c(m, nCount, pDest);
+}
+
+/**
+ * `@va D2Common:0x6FD95240` (`DRLGROOM_AllocRoomTileWindowNode113c`, custom `edi = pRoomEx`,
+ * `[esp+4] = nPackedCoords`, `[esp+8] = nSideIndex`, `ret 8`).
+ *
+ * Allocates and zeroes a `0x18`-byte window node via `Fog.#10045`, resolves `nTileId` from
+ * `0x6FD69950` (`DRLGROOMTILE_GetWarpLevelsArray113c`) indexed by `nSideIndex & 0xFF`, looks up the
+ * cache entry via `0x6FDBC5D0` (`DATATBLS_FindFloorWindowTileCacheEntry113c` with `0x62`), and prepends
+ * the node to `pRoomEx + 0x4C`.
+ */
+export function DRLGROOM_AllocRoomTileWindowNode113c(
+  m: Memory113c,
+  pRoomEx: number,
+  nPackedCoords: number,
+  nSideIndex: number,
+): void {
+  const roomEx = pRoomEx >>> 0;
+  const pLevel0 = m.u32((roomEx + 0x58) >>> 0);
+  const pDrlg0 = m.u32((pLevel0 + 0x1b4) >>> 0);
+  void m.u32((pDrlg0 + 0x478) >>> 0);
+
+  const pNode = m.alloc(0x18);
+  m.fill(pNode, 0x18, 0);
+  m.setU32(pNode, nPackedCoords >>> 0);
+
+  const pLevel = m.u32((roomEx + 0x58) >>> 0);
+  const nLevelId = m.u32((pLevel + 0x1d0) >>> 0) | 0;
+  const pDrlg = m.u32((pLevel + 0x1b4) >>> 0);
+  const pWarpLevels = DRLGROOMTILE_GetWarpLevelsArray113c(m, pDrlg, nLevelId);
+  const sideIdx = nSideIndex & 0xff;
+  const nTileId = m.u32((pWarpLevels + sideIdx * 4) >>> 0) | 0;
+
+  const pCacheEntry = DATATBLS_FindFloorWindowTileCacheEntry113c(
+    m,
+    nTileId,
+    0x62,
+  );
+  m.setU32((pNode + 0x10) >>> 0, pCacheEntry);
+  m.setU32((pNode + 0x08) >>> 0, 1);
+  m.setU32((pNode + 0x04) >>> 0, m.u32((roomEx + 0x4c) >>> 0));
+  m.setU32((roomEx + 0x4c) >>> 0, pNode);
 }
 
 /**
@@ -876,4 +1014,5 @@ export function DRLGROOM_LoadDt1Files113c(
     (m.u32((roomEx + 0x28) >>> 0) | 0x01000000) >>> 0,
   );
 }
+
 

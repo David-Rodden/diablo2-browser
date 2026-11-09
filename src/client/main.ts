@@ -661,6 +661,7 @@ export async function startPlayApp(options?: {
       chatInputEl.value = ''
       syncChatInputToHud()
       if (sessionRef) {
+        sessionRef.commandMapper.resetModifiers()
         sessionRef.chatInputHistoryIndex = sessionRef.chatInputHistory.length
       }
       chatInputEl.focus()
@@ -2354,7 +2355,11 @@ export async function startPlayApp(options?: {
       return
     }
     const pt = toStageCoords(e)
-    session.commandMapper.handlePointerMove(pt.x, pt.y, performance.now())
+    session.commandMapper.handlePointerMove(pt.x, pt.y, performance.now(), {
+      shiftKey: e.shiftKey,
+      ctrlKey: e.ctrlKey,
+      altKey: e.altKey,
+    })
   })
 
   // Issue #1310: When holding LMB/RMB in-game and the cursor slips into the 4:3 pillarbox
@@ -2373,7 +2378,11 @@ export async function startPlayApp(options?: {
     const raw = rawToStageCoords(e)
     const clampedX = Math.max(0, Math.min(profile.width, raw.x))
     const clampedY = Math.max(0, Math.min(profile.height, raw.y))
-    session.commandMapper.handlePointerMove(clampedX, clampedY, performance.now())
+    session.commandMapper.handlePointerMove(clampedX, clampedY, performance.now(), {
+      shiftKey: e.shiftKey,
+      ctrlKey: e.ctrlKey,
+      altKey: e.altKey,
+    })
   })
 
   // The victory screen's handler table (D2Client 0x6fba4828) maps WM_RBUTTONDOWN/UP like the left button.
@@ -2393,7 +2402,11 @@ export async function startPlayApp(options?: {
     if (e.defaultPrevented) return
     ;(e as { _d2HandledByCommandMapper?: boolean })._d2HandledByCommandMapper = true
     const pt = toStageCoords(e)
-    session.commandMapper.handlePointerDown(pt.x, pt.y, e.button, performance.now())
+    session.commandMapper.handlePointerDown(pt.x, pt.y, e.button, performance.now(), {
+      shiftKey: e.shiftKey,
+      ctrlKey: e.ctrlKey,
+      altKey: e.altKey,
+    })
     if (session.hudManager.isPointInterceptedByHud(pt.x, pt.y)) {
       e.preventDefault()
     }
@@ -2607,9 +2620,9 @@ export async function startPlayApp(options?: {
     'keyup',
     (e: KeyboardEvent) => {
       if (!instanceFocused) return
-      if (isModalDomOverlayOpen()) {
-        return
-      }
+      // Always deliver keyup to CommandMapper even when a DOM modal overlay (settings, help, etc.)
+      // is open so held state latches (custom standStill, run, showItems, Shift, Ctrl) never remain
+      // stuck down after closing the modal.
       if (inGameView) {
         session.commandMapper.handleKeyUp(e)
       }
@@ -2654,7 +2667,14 @@ export async function startPlayApp(options?: {
   let nextWorldRenderMs: number | null = null
   trackListener(document, 'visibilitychange', () => {
     reconcileModalOverlays()
-    if (document.hidden) session.commandMapper.cancelAllTouches(performance.now())
+    if (document.hidden) {
+      session.commandMapper.resetModifiers()
+      session.commandMapper.cancelAllTouches(performance.now())
+      if (inGameView) {
+        session.commandMapper.handlePointerUp(0)
+        session.commandMapper.handlePointerUp(2)
+      }
+    }
     if (document.hidden) {
       if (hiddenTickTimer === null) {
         hiddenTickTimer = backgroundInterval(() => {

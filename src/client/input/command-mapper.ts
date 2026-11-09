@@ -111,29 +111,7 @@ import { isMetalItemCode113c } from '../../common/items/metal-items-113c.ts'
 import { ITEM_PICKUP_REACH_SUBTILES, PlayAssists, type PlayAssistHost } from './play-assists.ts'
 import { PET_TYPE_UNSUMMON_IDX_113C } from '../../common/units/pet-type-table.ts'
 
-export const CORPSE_TARGET_SKILL_IDS = new Set<number>([
-  ...TARGET_CORPSE_SKILL_IDS_113C,
-  54,  // Find Potion (alias)
-  70,  // Raise Skeleton
-  80,  // Raise Skeletal Mage
-  95,  // Revive
-  124, // Redemption
-  131, // Find Potion
-  142, // Find Item
-  149, // Grim Ward (alias)
-  150, // Grim Ward
-  158, // Heart of Wolverine
-  175, // Carrion Vine
-  181, // Solar Creeper
-  214, // Rest in Peace / corpse redemption
-  276, // Death Sentry
-  307, // Death Sentry (sub-skill)
-  312, // Wake of Fire
-  314, // Blade Sentinel
-  325, // Blade Shield
-  327, // Blade Fury
-  351, // Carrion Vine / Creeper
-])
+export const CORPSE_TARGET_SKILL_IDS = new Set<number>(TARGET_CORPSE_SKILL_IDS_113C)
 
 export const ALLY_OR_PET_TARGET_SKILL_IDS = new Set<number>(TARGET_PET_OR_ALLY_SKILL_IDS_113C)
 
@@ -350,6 +328,12 @@ const D2_ITEM_QUALITY_NAMES: Readonly<Record<number, string>> = {
   8: 'crafted',
 }
 
+export interface PointerModifierState {
+  readonly shiftKey?: boolean | undefined
+  readonly ctrlKey?: boolean | undefined
+  readonly altKey?: boolean | undefined
+}
+
 const TOUCH_KIND_TO_UNIT_TYPE: Readonly<Record<InteractableCandidateKind, ClientUnit['unitType']>> = {
   item: 'item',
   npc: 'monster',
@@ -384,9 +368,21 @@ export class CommandMapper {
   private readonly onAutomapCenter?: (() => void) | undefined
   private dispatchingFreshPress = false
 
-  private shiftHeld = false
+  private shiftKeyHeld = false
+  private customStandStillHeld = false
   private altHeld = false
   private ctrlHeld = false
+
+  private get shiftHeld(): boolean {
+    return this.shiftKeyHeld || this.customStandStillHeld
+  }
+
+  private set shiftHeld(value: boolean) {
+    this.shiftKeyHeld = value
+    if (!value) {
+      this.customStandStillHeld = false
+    }
+  }
   /** Run command (34) held: D2Client.dll run-held flag `0x6FBCC3E8`. */
   private runKeyHeld = false
   /** 1.13c D2Client.dll 0x6fad34ba..0x6fad34f6 (`[0x6fbcc4cc]`): 75-tick (3000ms) duplicate error speech cooldown. */
@@ -451,6 +447,24 @@ export class CommandMapper {
   readonly activeTouches = new Map<number, ActiveTouchEntry>()
   private lastJoystickMoveMs = -Infinity
   private readonly autoPickupAttemptAtMs = new Map<number, number>()
+
+  private isShiftBoundToStandStill(): boolean {
+    const kb = this.hudManager.getActiveKeyBindings?.()
+    return (
+      matchesKeyBinding(kb, 'standStill', { key: 'Shift', code: 'ShiftLeft' }) ||
+      matchesKeyBinding(kb, 'standStill', { key: 'Shift', code: 'ShiftRight' })
+    )
+  }
+
+  private syncPointerModifiers(modifiers?: PointerModifierState): void {
+    if (!modifiers) return
+    if (modifiers.shiftKey !== undefined) {
+      this.shiftKeyHeld = modifiers.shiftKey ? this.isShiftBoundToStandStill() : false
+    }
+    if (modifiers.ctrlKey === false && this.ctrlHeld) {
+      this.ctrlHeld = false
+    }
+  }
 
   constructor(deps?: Partial<CommandMapperDeps>) {
     this.world = deps?.world ?? ({} as ClientWorld)
@@ -1086,23 +1100,26 @@ export class CommandMapper {
   }
 
   isMonsterCorpse(unit: ClientUnit, world: ClientWorld = this.world): boolean {
-    if (unit.unitType !== 'monster') return false
-    if (this.isTownOrInteractiveNpc(unit, world)) return false
+    if (!this.isMonsterDead(unit, world)) return false
     if (unit.corpseSuppressed || unit.clientNoDraw) return false
-    // 1.13c D2Common_10633_CheckCorpseCanBeSelected: corpses with udead/hide states
-    // (99 redeemed, 104 corpse_nodraw, 107 shatter, 118 corpse_noselect, 172 restinpeace, 173 corpseexp)
+    // 1.13c D2Common_10633_CheckCorpseCanBeSelected & D2Client unit-drawables CORPSE_HIDE_STATES_113C:
+    // corpses with udead/hide states (1 freeze, 99 redeemed, 104 corpse_nodraw, 107 shatter,
+    // 118 corpse_noselect, 154 recycled, 172 restinpeace, 173 corpseexp, 184 uberminion)
     // cannot be targeted by corpse skills.
     if (
+      unit.states?.has(1) ||
       unit.states?.has(99) ||
       unit.states?.has(104) ||
       unit.states?.has(107) ||
       unit.states?.has(118) ||
+      unit.states?.has(154) ||
       unit.states?.has(172) ||
-      unit.states?.has(173)
+      unit.states?.has(173) ||
+      unit.states?.has(184)
     ) {
       return false
     }
-    return this.isMonsterDead(unit, world)
+    return true
   }
 
   isMonsterDead(unit: ClientUnit, world: ClientWorld = this.world): boolean {
@@ -1202,8 +1219,19 @@ export class CommandMapper {
       }
       // Live monster: 1.13c TargetCorpse=1 skills (70/74/80/83/95/131/142/150) cannot target live monsters.
       if (TARGET_CORPSE_SKILL_IDS_113C.has(skillId)) return false
+      if ((unit as { killable?: boolean }).killable === false) return false
       const monKind = getMonsterKindByHcIdx(unit.classId, world.difficulty)
       if (monKind !== undefined && !monKind.killable) return false
+      if (
+        Number.isInteger(unit.classId) &&
+        unit.classId >= 0 &&
+        unit.classId < MONSTATS_113C_ROWS.length &&
+        (!hasMonStats2Flag(unit.classId, MONSTATS2_FLAGINDEX.ISATT) ||
+          hasMonStats2Flag(unit.classId, MONSTATS2_FLAGINDEX.CRITTER) ||
+          MONSTATS_113C_ROWS[unit.classId]?.align === 2)
+      ) {
+        return false
+      }
       return true
     }
     if (unit.unitType === 'player') {
@@ -1352,12 +1380,12 @@ export class CommandMapper {
       canCastSkillHere &&
       TARGET_CORPSE_SKILL_IDS_113C.has(skillId) &&
       !(ev.hoveredUnit && this.isValidSkillTargetUnit(ev.hoveredUnit, skillId, activeWorld)) &&
-      (isRight || isShift || !ev.hoveredUnit)
+      (isRight || isShift)
         ? this.findNearestValidCorpseForSkill(ev.worldX, ev.worldY, skillId, activeWorld)
         : canCastSkillHere &&
             skillId === 121 &&
             !(ev.hoveredUnit && this.isValidSkillTargetUnit(ev.hoveredUnit, skillId, activeWorld)) &&
-            (isRight || isShift || !ev.hoveredUnit)
+            (isRight || isShift)
           ? (this.findNearestMonsterForTargetableOnlySkill(
               ev.worldX,
               ev.worldY,
@@ -1826,7 +1854,7 @@ export class CommandMapper {
         // 1.13c Submerge (#176 cltstfunc 53 `0x6FB069C0`: `dwFlags &= ~0x0E`) & MagottDown (#162):
         // submerged TE/TN/FD and burrowed SandMaggot in MONMODE_SEQUENCE (14) are non-targetable.
         if (
-          !this.isMonsterCorpse(unit) &&
+          !this.isMonsterDead(unit) &&
           isMonsterSubmergedMode113c(unit.classId, unit.mode, unit.castState?.skillId ?? unit.lastSkillId)
         ) {
           return false
@@ -1838,7 +1866,7 @@ export class CommandMapper {
             return false
           }
           if (
-            !this.isMonsterCorpse(unit) &&
+            !this.isMonsterDead(unit) &&
             unit.classId >= 0 &&
             unit.classId < MONSTATS2_FLAGS_BY_HCIDX.length &&
             MONSTATS2_FLAGS_BY_HCIDX[unit.classId] != null &&
@@ -2015,7 +2043,7 @@ export class CommandMapper {
               continue
             }
             if (
-              !this.isMonsterCorpse(unit) &&
+              !this.isMonsterDead(unit) &&
               unit.classId >= 0 &&
               unit.classId < MONSTATS2_FLAGS_BY_HCIDX.length &&
               MONSTATS2_FLAGS_BY_HCIDX[unit.classId] != null &&
@@ -2131,7 +2159,8 @@ export class CommandMapper {
       unit &&
       unit.unitType === 'monster' &&
       !this.isTownOrInteractiveNpc(unit) &&
-      !this.isFriendlySummonOrPet(unit)
+      !this.isFriendlySummonOrPet(unit) &&
+      !this.isMonsterDead(unit)
     ) {
       this.hudModel?.setHoveredMonster(unit.id)
     } else {
@@ -2331,9 +2360,12 @@ export class CommandMapper {
    * Handle pointer move at `(screenX, screenY)` in canvas coordinates.
    */
   handlePointerMove(
-    screenXOrEvent: number | { readonly clientX: number; readonly clientY: number },
+    screenXOrEvent:
+      | number
+      | ({ readonly clientX: number; readonly clientY: number } & PointerModifierState),
     screenY = 0,
     nowMs = performance.now(),
+    modifiers?: PointerModifierState,
   ): void {
     const screenX =
       typeof screenXOrEvent === 'number' ? screenXOrEvent : screenXOrEvent.clientX
@@ -2341,6 +2373,9 @@ export class CommandMapper {
       typeof screenXOrEvent === 'number' ? screenY : screenXOrEvent.clientY
     const resolvedNowMs =
       typeof screenXOrEvent === 'number' ? nowMs : (screenY || performance.now())
+    const resolvedModifiers =
+      typeof screenXOrEvent === 'number' ? modifiers : (modifiers ?? screenXOrEvent)
+    this.syncPointerModifiers(resolvedModifiers)
     this.hasPointerMoved = true
     this.lastPointerX = screenX
     this.lastPointerY = resolvedY
@@ -2419,7 +2454,8 @@ export class CommandMapper {
         target.hoveredUnit &&
         target.hoveredUnit.unitType === 'monster' &&
         !this.isTownOrInteractiveNpc(target.hoveredUnit) &&
-        !this.isFriendlySummonOrPet(target.hoveredUnit)
+        !this.isFriendlySummonOrPet(target.hoveredUnit) &&
+        !this.isMonsterDead(target.hoveredUnit)
       ) {
         this.assists.showHoveredMonster(target.hoveredUnit.id)
       } else {
@@ -2495,10 +2531,14 @@ export class CommandMapper {
    * @param button 0 = left button, 2 = right button
    */
   handlePointerDown(
-    screenXOrEvent: number | { readonly clientX: number; readonly clientY: number; readonly button?: number },
+    screenXOrEvent:
+      | number
+      | ({ readonly clientX: number; readonly clientY: number; readonly button?: number } &
+          PointerModifierState),
     screenY = 0,
     button = 0,
     nowMs = performance.now(),
+    modifiers?: PointerModifierState,
   ): DispatchedCommandRecord | null {
     const screenX =
       typeof screenXOrEvent === 'number' ? screenXOrEvent : screenXOrEvent.clientX
@@ -2508,6 +2548,9 @@ export class CommandMapper {
       typeof screenXOrEvent === 'number' ? button : (screenXOrEvent.button ?? 0)
     const resolvedNowMs =
       typeof screenXOrEvent === 'number' ? nowMs : (screenY || performance.now())
+    const resolvedModifiers =
+      typeof screenXOrEvent === 'number' ? modifiers : (modifiers ?? screenXOrEvent)
+    this.syncPointerModifiers(resolvedModifiers)
     if (typeof screenXOrEvent !== 'number') {
       ;(screenXOrEvent as { _d2HandledByCommandMapper?: boolean })._d2HandledByCommandMapper = true
     }
@@ -2660,12 +2703,16 @@ export class CommandMapper {
   }
 
   handleMouseDown(
-    screenXOrEvent: number | { readonly clientX: number; readonly clientY: number; readonly button?: number },
+    screenXOrEvent:
+      | number
+      | ({ readonly clientX: number; readonly clientY: number; readonly button?: number } &
+          PointerModifierState),
     screenY = 0,
     button = 0,
     nowMs = performance.now(),
+    modifiers?: PointerModifierState,
   ): DispatchedCommandRecord | null {
-    return this.handlePointerDown(screenXOrEvent, screenY, button, nowMs)
+    return this.handlePointerDown(screenXOrEvent, screenY, button, nowMs, modifiers)
   }
 
   /**
@@ -2981,7 +3028,10 @@ export class CommandMapper {
     const selfY =
       predSnap && (predSnap.x !== 0 || predSnap.y !== 0) ? predSnap.y : this.world.self.y
 
+    // 1.13c D2Client ProcessClick 0x6FACB844..0x6FACB8BE: plain left-click (!this.shiftHeld) on
+    // empty ground walks unconditionally; only Shift+left-click snaps Fist of the Heavens (#121).
     if (
+      this.shiftHeld &&
       canCastLeftSkillHere &&
       leftSkillId === 121 &&
       !(hoveredUnit !== null && this.isValidSkillTargetUnit(hoveredUnit, leftSkillId, this.world))
@@ -3738,12 +3788,18 @@ export class CommandMapper {
     if (this.assists.handleKey(event)) return true
 
     const kb = this.hudManager.getActiveKeyBindings?.()
-    if (event.key === 'Shift' || event.shiftKey || matchesKeyBinding(kb, 'standStill', event)) {
-      this.shiftHeld = true
-      if (event.key === 'Shift' || matchesKeyBinding(kb, 'standStill', event)) {
-        if (event.key === 'Shift') return false
-        return true
-      }
+    const isPhysicalShiftKey =
+      event.key === 'Shift' || event.code === 'ShiftLeft' || event.code === 'ShiftRight'
+    const shiftBoundToStandStill = this.isShiftBoundToStandStill()
+    if ((isPhysicalShiftKey || event.shiftKey) && shiftBoundToStandStill) {
+      this.shiftKeyHeld = true
+    }
+    if (!isPhysicalShiftKey && matchesKeyBinding(kb, 'standStill', event)) {
+      this.customStandStillHeld = true
+    }
+    if ((isPhysicalShiftKey && shiftBoundToStandStill) || matchesKeyBinding(kb, 'standStill', event)) {
+      if (isPhysicalShiftKey) return false
+      return true
     }
     if (event.key === 'Alt' || event.altKey || matchesKeyBinding(kb, 'showItems', event)) {
       this.altHeld = true
@@ -3919,6 +3975,8 @@ export class CommandMapper {
           return true
         }
         if (this.onToggleChatInput) {
+          this.shiftKeyHeld = false
+          this.customStandStillHeld = false
           this.onToggleChatInput()
           event.preventDefault?.()
           return true
@@ -4368,8 +4426,13 @@ export class CommandMapper {
     nowMs = performance.now(),
   ): void {
     const kb = this.hudManager.getActiveKeyBindings?.()
-    if (event.key === 'Shift' || event.shiftKey === false || matchesKeyBinding(kb, 'standStill', event)) {
-      this.shiftHeld = false
+    const isPhysicalShiftKey =
+      event.key === 'Shift' || event.code === 'ShiftLeft' || event.code === 'ShiftRight'
+    if (isPhysicalShiftKey || event.shiftKey === false) {
+      this.shiftKeyHeld = false
+    }
+    if (!isPhysicalShiftKey && matchesKeyBinding(kb, 'standStill', event)) {
+      this.customStandStillHeld = false
     }
     if (
       event.key === 'Control' ||
@@ -4403,7 +4466,8 @@ export class CommandMapper {
    */
   resetModifiers(): void {
     this.assists.reset()
-    this.shiftHeld = false
+    this.shiftKeyHeld = false
+    this.customStandStillHeld = false
     this.altHeld = false
     this.ctrlHeld = false
     this.runKeyHeld = false

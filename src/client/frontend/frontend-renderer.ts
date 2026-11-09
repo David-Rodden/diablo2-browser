@@ -37,12 +37,14 @@ import {
   cycleCreateAccountFocus,
   disagreeTermsOfUse,
   dismissPopupModal,
+  ensureCharSelectSlotVisible,
   enterCharCreate,
   formatCharacterExpirationText,
   formatCharacterLevelAndClass,
   formatJoinGameDetailLines,
   getAnimImageLoopFrame,
   getCampfireSlotHitBox,
+  getCharSelectMaxScrollStep,
   getRosterCharacterTitle,
   hoverCampfireClass,
   isChiFrontendActive,
@@ -55,6 +57,7 @@ import {
   resetHeroAvatarAnims,
   resolveBnetConnectStageText,
   resolveStringByTblId,
+  scrollCharSelectRoster,
   scrollTermsOfUse,
   selectCampfireClass,
   submitBattleNetLogin,
@@ -1705,6 +1708,7 @@ export class FrontendRenderer {
                     0,
                     Math.min(this.state.selectedSlotIndex, this.state.roster.length - 1),
                   )
+                  ensureCharSelectSlotVisible(this.state, this.state.selectedSlotIndex)
                   resetHeroAvatarAnims(this.state)
                 }
               }
@@ -2743,19 +2747,27 @@ export class FrontendRenderer {
       })
     }
 
-    // 8 character slots (2 columns x 4 rows)
+    // 8 visible character slots (2 columns x 4 rows) scrolled by `charSelectScrollOffset`
+    // (`D2Launch.dll` `0x6fa4c250` & `0x6fa4d56b..0x6fa4d59e`, 2 characters per scrollbar step).
     // Col 0: x = 37, Col 1: x = 309
     // Row tops: y = 85, 178, 271, 364 (height = 93 each)
+    const maxScrollSteps = getCharSelectMaxScrollStep(this.state.roster.length)
+    const curScrollStep = Math.max(
+      0,
+      Math.min(maxScrollSteps, Math.floor(Math.max(0, this.state.charSelectScrollOffset ?? 0) / 2)),
+    )
+    const scrollOffset = curScrollStep * 2
     const boxImg = this.images.get('charselectbox.png')
     for (let i = 0; i < 8; i++) {
-      const char = this.state.roster[i]
+      const rosterIdx = scrollOffset + i
+      const char = this.state.roster[rosterIdx]
       if (!char) continue
       const col = i % 2
       const row = Math.floor(i / 2)
       const slotX = col === 0 ? 37 : 309
       const slotY = 85 + row * 93
 
-      if (i === this.state.selectedSlotIndex && boxImg) {
+      if (rosterIdx === this.state.selectedSlotIndex && boxImg) {
         this.ctx.drawImage(boxImg, slotX, slotY)
       }
 
@@ -2819,6 +2831,22 @@ export class FrontendRenderer {
           color: expBanner.isUrgent ? 1 : 9,
           align: 'left',
         })
+      }
+    }
+
+    // Character selection scrollbar (`D2Launch.dll` `0x6fa65aa0` @ `0x6fa60f14` + `0x6fa62e70`:
+    // `x = 585, y_bottom = 457, w = 10, h = 363` -> `y = 94..457`; `D2Win_Scrollbar_Draw` `0x6f8eaf40`
+    // only draws when `maxScrollSteps > 0`, i.e. `roster.length > 8`).
+    if (maxScrollSteps > 0) {
+      const sbImg = this.images.get('scrollbar.png')
+      if (sbImg) {
+        const fw = 12
+        const fh = 14
+        const trackTop = 108
+        const trackBottom = 429
+        const ratio = curScrollStep / maxScrollSteps
+        const thumbY = Math.round(trackTop + ratio * (trackBottom - trackTop))
+        this.ctx.drawImage(sbImg, fw * 4, 0, fw, fh, 585, thumbY, fw, fh)
       }
     }
 
@@ -3430,23 +3458,44 @@ export class FrontendRenderer {
 
     if (this.state.stage === 'char_select') {
       this.setActiveInput(null, false)
-      for (let i = 0; i < this.state.roster.length; i++) {
+      const maxSteps = getCharSelectMaxScrollStep(this.state.roster.length)
+      if (maxSteps > 0 && x >= 581 && x <= 602 && y >= 85 && y <= 457) {
+        this.onPlaySound?.(4)
+        if (y <= 112) {
+          scrollCharSelectRoster(this.state, -1)
+        } else if (y >= 435) {
+          scrollCharSelectRoster(this.state, 1)
+        } else {
+          const ratio = Math.max(0, Math.min(1, (y - 112) / (435 - 112)))
+          const targetStep = Math.round(ratio * maxSteps)
+          this.state.charSelectScrollOffset = targetStep * 2
+        }
+        return
+      }
+      const curStep = Math.max(
+        0,
+        Math.min(maxSteps, Math.floor(Math.max(0, this.state.charSelectScrollOffset ?? 0) / 2)),
+      )
+      const scrollOffset = curStep * 2
+      for (let i = 0; i < 8; i++) {
+        const rosterIdx = scrollOffset + i
+        if (rosterIdx >= this.state.roster.length) break
         const col = i % 2
         const row = Math.floor(i / 2)
         const slotX = col === 0 ? 37 : 309
         const slotY = 85 + row * 93
         if (x >= slotX && x <= slotX + 272 && y >= slotY && y <= slotY + 93) {
           this.onPlaySound?.(4)
-          if (this.lastClickSlotIndex === i && nowMs - this.lastClickSlotTime < 450) {
-            this.state.selectedSlotIndex = i
+          if (this.lastClickSlotIndex === rosterIdx && nowMs - this.lastClickSlotTime < 450) {
+            this.state.selectedSlotIndex = rosterIdx
             if (this.asyncHandlers?.onSelectCharacter) {
               void this.asyncHandlers.onSelectCharacter(this.state)
             } else if (confirmCharacterSelect(this.state) && this.state.playMode === 'single') {
               this.onEnterDoorLoading?.(this.state)
             }
           } else {
-            this.state.selectedSlotIndex = i
-            this.lastClickSlotIndex = i
+            this.state.selectedSlotIndex = rosterIdx
+            this.lastClickSlotIndex = rosterIdx
             this.lastClickSlotTime = nowMs
           }
           return
@@ -3635,6 +3684,11 @@ export class FrontendRenderer {
       if (deltaLines !== 0) {
         scrollTermsOfUse(this.state, deltaLines, this.getTermsMaxScrollLine())
       }
+    } else if (this.state.stage === 'char_select') {
+      const deltaRows = deltaY > 0 ? 1 : deltaY < 0 ? -1 : 0
+      if (deltaRows !== 0) {
+        scrollCharSelectRoster(this.state, deltaRows)
+      }
     } else if (this.state.stage === 'bnet_lobby' && this.state.lobbySubPanel === 'join') {
       const deltaLines = deltaY > 0 ? 3 : deltaY < 0 ? -3 : 0
       if (deltaLines !== 0) {
@@ -3678,6 +3732,44 @@ export class FrontendRenderer {
         dismissPopupModal(this.state)
       }
       return
+    }
+
+    if (this.state.stage === 'char_select' && this.state.roster.length > 0) {
+      const maxIdx = this.state.roster.length - 1
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        this.state.selectedSlotIndex = Math.max(0, this.state.selectedSlotIndex - 2)
+        ensureCharSelectSlotVisible(this.state, this.state.selectedSlotIndex)
+        return
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        this.state.selectedSlotIndex = Math.min(maxIdx, this.state.selectedSlotIndex + 2)
+        ensureCharSelectSlotVisible(this.state, this.state.selectedSlotIndex)
+        return
+      }
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault()
+        this.state.selectedSlotIndex = Math.max(0, this.state.selectedSlotIndex - 1)
+        ensureCharSelectSlotVisible(this.state, this.state.selectedSlotIndex)
+        return
+      }
+      if (e.key === 'ArrowRight') {
+        e.preventDefault()
+        this.state.selectedSlotIndex = Math.min(maxIdx, this.state.selectedSlotIndex + 1)
+        ensureCharSelectSlotVisible(this.state, this.state.selectedSlotIndex)
+        return
+      }
+      if (e.key === 'PageUp') {
+        e.preventDefault()
+        scrollCharSelectRoster(this.state, -4)
+        return
+      }
+      if (e.key === 'PageDown') {
+        e.preventDefault()
+        scrollCharSelectRoster(this.state, 4)
+        return
+      }
     }
 
     if (this.state.stage === 'bnet_terms_of_use') {
