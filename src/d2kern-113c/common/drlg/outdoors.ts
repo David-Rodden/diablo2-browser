@@ -259,3 +259,49 @@ export function DRLGOUTDOORS_SpawnRandomOutdoorThemes113c(
     }
   }
 }
+
+/**
+ * `@va D2Common:0x6FD92070` (`DRLGOUTDOORS_ScaleAndCompactVertices113c`, custom `edi = ppVertexHead`, `ebx = pMemPool`, `ret`).
+ *
+ * Scales every vertex's `(nPosX, nPosY)` in the circular `D2DrlgVertexStrc` list at `*ppVertexHead` by truncating signed division by `8`
+ * (`(v + (v < 0 ? 7 : 0)) >> 3`), then compacts adjacent duplicate vertices (`pCur->nPosX == pNext->nPosX && pCur->nPosY == pNext->nPosY`)
+ * by updating `*ppVertexHead` when `pNext == *ppVertexHead`, unlinking `pNext`, ORing `pNext->dwFlags` into `pCur->dwFlags`,
+ * copying `pNext->nDirection` to `pCur->nDirection`, and freeing `pNext` via `Fog.#10046`.
+ */
+export function DRLGOUTDOORS_ScaleAndCompactVertices113c(
+  m: Memory113c,
+  ppVertexHead: number,
+  _pMemPool = 0,
+): void {
+  const ppHead = ppVertexHead >>> 0;
+  let pCur = m.u32(ppHead);
+  do {
+    const x = m.u32(pCur) | 0;
+    m.setU32(pCur, sdiv32(x, 8) >>> 0);
+    const y = m.u32((pCur + 0x04) >>> 0) | 0;
+    m.setU32((pCur + 0x04) >>> 0, sdiv32(y, 8) >>> 0);
+    pCur = m.u32((pCur + 0x10) >>> 0);
+  } while (pCur !== m.u32(ppHead));
+
+  const freeFn = (m as { free?: (p: number) => void }).free;
+  do {
+    const pNext = m.u32((pCur + 0x10) >>> 0);
+    if (
+      (m.u32(pCur) | 0) === (m.u32(pNext) | 0) &&
+      (m.u32((pCur + 0x04) >>> 0) | 0) === (m.u32((pNext + 0x04) >>> 0) | 0)
+    ) {
+      if (pNext === m.u32(ppHead)) {
+        m.setU32(ppHead, pCur);
+      }
+      m.setU32((pCur + 0x10) >>> 0, m.u32((pNext + 0x10) >>> 0));
+      const nextFlags = m.u32((pNext + 0x0c) >>> 0);
+      const curFlags = m.u32((pCur + 0x0c) >>> 0);
+      m.setU32((pCur + 0x0c) >>> 0, (curFlags | nextFlags) >>> 0);
+      const nextDir = m.u8((pNext + 0x08) >>> 0);
+      m.setU8((pCur + 0x08) >>> 0, nextDir);
+      freeFn?.call(m, pNext);
+    }
+    pCur = m.u32((pCur + 0x10) >>> 0);
+  } while (pCur !== m.u32(ppHead));
+}
+

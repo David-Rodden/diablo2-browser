@@ -9,6 +9,7 @@
  * - `0x6FDCEA40` `DRLGOUTWILD_GetBridgeCoords113c` (internal, `eax=pLevel, edi=nX, [esp+4]=pOutX, [esp+8]=pOutY`)
  */
 import type { Memory113c } from '../mem/sparse-memory.ts'
+import { D2CommonAssertError } from '../common/inline-helpers.ts'
 import {
   D2DrlgLevelStrc,
   D2DrlgOutdoorInfoStrc,
@@ -202,3 +203,82 @@ export function DRLGOUTWILD_GetBridgeCoords113c(
   m.setU32(pOutX, 0xffffffff)
   m.setU32(pOutY, 0xffffffff)
 }
+
+// ============================================================================
+// K1r2 Iteration 7 Lane B — Batch B036 (field-tbls-113c.ts)
+// ============================================================================
+
+export const FIELD_DIR_DELTA_X_VA = 0x6fde9ba0
+export const FIELD_DIR_DELTA_Y_VA = 0x6fde9bc4
+export const SGPT_FIELD_DATA_PTR_VA = 0x6fdf1404
+export const SGPT_FIELD_CENTER_X_VA = 0x6fdf1414
+export const SGPT_FIELD_CENTER_Y_VA = 0x6fdf1418
+
+/**
+ * `@va D2Common:0x6FDCE290` (`D2Common.#10139` `FIELD_StepFieldCoords`,
+ * stdcall `[esp+4] = pField`, `[esp+8] = pX`, `[esp+0xC] = pY`, `ret 0xC` -> `BOOL`).
+ */
+export function FIELD_StepFieldCoords113c(
+  m: Memory113c,
+  pField: number,
+  pX: number,
+  pY: number,
+): number {
+  const fieldPtr = pField >>> 0
+  if (fieldPtr === 0) {
+    throw new D2CommonAssertError('FieldTbls.cpp', 0xbf)
+  }
+  const xPtr = pX >>> 0
+  const yPtr = pY >>> 0
+  const fieldY = m.u32((fieldPtr + 0x04) >>> 0) | 0
+  const fieldX = m.u32(fieldPtr) | 0
+  const x = m.u32(xPtr) | 0
+  const y = m.u32(yPtr) | 0
+  const centerY = m.u32(SGPT_FIELD_CENTER_Y_VA) | 0
+  const pFieldData = m.u32(SGPT_FIELD_DATA_PTR_VA)
+  const centerX = m.u32(SGPT_FIELD_CENTER_X_VA) | 0
+  const addr1 = (((((y - fieldY + centerY) | 0) << 8) - fieldX + x + pFieldData + centerX) >>> 0)
+  const dir = m.u8(addr1)
+  const dx = m.u32((FIELD_DIR_DELTA_X_VA + dir * 4) >>> 0) | 0
+  m.setU32(xPtr, (x + dx) >>> 0)
+  const dy = m.u32((FIELD_DIR_DELTA_Y_VA + dir * 4) >>> 0) | 0
+  const y0 = m.u32(yPtr) | 0
+  const pFieldData2 = m.u32(SGPT_FIELD_DATA_PTR_VA)
+  const newY = (y0 + dy) | 0
+  m.setU32(yPtr, newY >>> 0)
+  const fieldY2 = m.u32((fieldPtr + 0x04) >>> 0) | 0
+  const fieldX2 = m.u32(fieldPtr) | 0
+  const newX = m.u32(xPtr) | 0
+  const centerX2 = m.u32(SGPT_FIELD_CENTER_X_VA) | 0
+  const addr2 =
+    (((((newY - fieldY2 + centerY) | 0) << 8) - fieldX2 + newX + pFieldData2 + centerX2) >>> 0)
+  const dir2 = m.u8(addr2)
+  return dir2 !== 8 ? 1 : 0
+}
+
+/**
+ * `@va D2Common:0x6FDCE3D0` (`D2Common.#10791` `FIELD_FreeField`,
+ * stdcall `[esp+4] = pField`, `ret 4`, void).
+ */
+export function FIELD_FreeField113c(m: Memory113c, pField: number): void {
+  const ptr = pField >>> 0
+  if (ptr === 0) {
+    throw new D2CommonAssertError('FieldTbls.cpp', 0x93)
+  }
+  ;(m as { free?: (p: number) => void }).free?.(ptr)
+}
+
+/**
+ * `@va D2Common:0x6FDCE410` (`D2Common.#10415` `FIELD_AllocField`,
+ * stdcall 0-arg `ret` -> `D2FieldStrc*`).
+ */
+export function FIELD_AllocField113c(m: Memory113c): number {
+  const ptr = m.alloc(8) >>> 0
+  if (ptr === 0) {
+    throw new D2CommonAssertError('FieldTbls.cpp', 0x88)
+  }
+  m.setU32(ptr, 0)
+  m.setU32((ptr + 0x04) >>> 0, 0)
+  return ptr
+}
+

@@ -21,7 +21,8 @@
  * - `0x6FD6A5B0` `MONSTERS_IsDemonOrUndead113c` (`#10239`)
  */
 import type { Memory113c } from '../mem/sparse-memory.ts'
-import { imul32, sdiv32 } from '../common/int-math.ts'
+import { D2CommonAssertError } from '../common/inline-helpers.ts'
+import { imul32, sar32, sdiv32 } from '../common/int-math.ts'
 import {
   D2DrlgCoordStrc,
   D2DrlgCoordStrc_SIZE,
@@ -29,6 +30,9 @@ import {
   D2DrlgLevelStrc,
   D2DrlgOutdoorInfoStrc,
   D2DrlgPresetRoomStrc,
+  D2DynamicPathStrc,
+  D2ItemsTxt,
+  D2ItemsTxt_SIZE,
   D2LevelsTxt,
   D2LevelsTxt_SIZE,
   D2MonLvlTxt_SIZE,
@@ -36,6 +40,7 @@ import {
   D2MonStatsTxt_SIZE,
   D2RoomExStrc,
   D2ShrinesTxt_SIZE,
+  D2StaticPathStrc,
   D2UnitStrc,
 } from '../mem/layout.generated.ts'
 import {
@@ -797,5 +802,495 @@ export function UNITS_IsPointWithinRadius113c(
   const dy = (m.u32((pt + 4) >>> 0) - uy) | 0
   const r = nRadius | 0
   return ((imul32(dx, dx) + imul32(dy, dy)) | 0) <= imul32(r, r) ? 1 : 0
+}
+
+// ============================================================================
+// K1r2 Iteration 7 Lane B — Batch B033 (18 D2Common hostImport functions)
+// ============================================================================
+
+export const SGPT_MONSTATS_TXT_PTR_VA = 0x6fdf0950
+export const SGPT_MONSTATS_TXT_COUNT_VA = 0x6fdf0958
+export const MONSTER_SUBCLASS_VEL_TABLE_VA = 0x6fde4e78
+export const SGPT_OBJGROUP_TXT_PTR_VA = 0x6fdf0b8c
+export const SGPT_OBJGROUP_TXT_COUNT_VA = 0x6fdf0b90
+export const SGPT_LVLSUB_TXT_PTR_VA = 0x6fdf143c
+export const SGPT_LVLSUB_TYPE_LUT_PTR_VA = 0x6fdf1444
+export const SGPT_LVLWARP_TXT_PTR_VA = 0x6fdf142c
+export const SGPT_LVLWARP_TXT_COUNT_VA = 0x6fdf1430
+export const SGPT_BOOKS_TXT_COUNT_VA = 0x6fdefd98
+export const SGPT_BOOKS_TXT_PTR_VA = 0x6fdefd9c
+export const SGPT_QUALITYITEMS_TXT_COUNT_VA = 0x6fdefda0
+export const SGPT_QUALITYITEMS_TXT_PTR_VA = 0x6fdefda4
+export const SGPT_GEMS_TXT_COUNT_VA = 0x6fdefbcc
+export const SGPT_GEMS_TXT_PTR_VA = 0x6fdefbd0
+export const SGPT_BELTS_TXT_COUNT_VA = 0x6fdefd90
+export const SGPT_BELTS_TXT_PTR_VA = 0x6fdefd94
+export const SGPT_MAGICAFFIX_TXT_COUNT_VA = 0x6fdefbb8
+export const SGPT_MAGICAFFIX_TXT_PTR_VA = 0x6fdefbbc
+export const SGPT_ITEMS_TXT_COUNT_VA = 0x6fdefb94
+export const SGPT_ITEMS_TXT_PTR_VA = 0x6fdefb98
+export const SGPT_ITEMS_LINKER_PTR_VA = 0x6fdeff6c
+export const SGPT_ARENA_TXT_PTR_VA = 0x6fdf1400
+export const SGPT_CHARTEMPLATE_CLASS_START_VA = 0x6fdefa60
+export const SGPT_CHARTEMPLATE_TXT_PTR_VA = 0x6fdf13f8
+export const SGPT_CHARTEMPLATE_TXT_COUNT_VA = 0x6fdf13fc
+export const SGPT_INVENTORY_TXT_MAX_VA = 0x6fdefa58
+export const SGPT_INVENTORY_TXT_PTR_VA = 0x6fdefa5c
+
+/** `Fog.dll` `.data` 512-entry `float32` sine/cosine lookup table at `0x6FF7F470` (`Fog.#10084` / `Fog.#10083`). */
+export const FOG_TRIG_LUT_VA_113C = 0x6ff7f470
+
+const _f32Buf = new ArrayBuffer(4)
+const _f32U32 = new Uint32Array(_f32Buf)
+const _f32F32 = new Float32Array(_f32Buf)
+
+function bitsToF32(bits: number): number {
+  _f32U32[0] = bits >>> 0
+  return _f32F32[0]!
+}
+
+function lookupItemsTxtById113c(m: Memory113c, nItemId: number): number {
+  if ((nItemId >>> 0) >= m.u32(SGPT_ITEMS_TXT_COUNT_VA)) return 0
+  const base = m.u32(SGPT_ITEMS_TXT_PTR_VA)
+  if (base === 0) {
+    throw new D2CommonAssertError('ItemTbls.cpp', 0x1ef)
+  }
+  return (base + imul32(nItemId, D2ItemsTxt_SIZE)) >>> 0
+}
+
+/** `Fog.#10213` (`0x6FF61F00`): binary-searches sorted 8-byte `{dwCode, nIndex}` table at `pLinker`. */
+export function fogGetRowFromTxt113c(
+  m: Memory113c,
+  pLinker: number,
+  dwCode: number,
+  _bLogError = 0,
+): number {
+  const link = pLinker >>> 0
+  const esi = m.u32(link) | 0
+  const edi = m.u32((link + 0x08) >>> 0)
+  if (esi <= 0) return -1
+  const ebx = dwCode >>> 0
+  let ecx = 0
+  let high = esi
+  while (ecx < high) {
+    const diff = (high - ecx) | 0
+    const mid = (ecx + sar32((diff - (diff >> 31)) | 0, 1)) | 0
+    const entryCode = m.u32((edi + mid * 8) >>> 0)
+    if (ebx > entryCode) {
+      ecx = (mid + 1) | 0
+    } else if (ebx === entryCode) {
+      return m.u32((edi + mid * 8 + 4) >>> 0) | 0
+    } else {
+      high = mid
+    }
+  }
+  return -1
+}
+
+/**
+ * `@va D2Common:0x6FD6A330` (`D2Common.#10065` `MONSTER_GetSubClassVelocityInfo`,
+ * stdcall `[esp+4] = pUnit`, `[esp+8] = pOut0`, `[esp+0xC] = pOut1`, `ret 0xC`, void).
+ */
+export function MONSTER_GetSubClassVelocityInfo113c(
+  m: Memory113c,
+  pUnit: number,
+  pOut0: number,
+  pOut1: number,
+): void {
+  const unitPtr = pUnit >>> 0
+  if (unitPtr === 0 || m.get(unitPtr, D2UnitStrc.dwUnitType) !== UNIT_MONSTER) {
+    throw new D2CommonAssertError('Monsters.cpp', 0x2bc)
+  }
+  const nClassId = m.get(unitPtr, D2UnitStrc.dwClassId) | 0
+  let idx = 0
+  if (nClassId >= 0 && nClassId < (m.u32(SGPT_MONSTATS_TXT_COUNT_VA) | 0)) {
+    const pMonStatsTxt = m.u32(SGPT_MONSTATS_TXT_PTR_VA)
+    const pRec = (pMonStatsTxt + imul32(nClassId, D2MonStatsTxt_SIZE)) >>> 0
+    idx = m.get(pRec, D2MonStatsTxt.nSubClassIndex)
+    if (idx >= 4) {
+      throw new D2CommonAssertError('Monsters.cpp', 0x2c8)
+    }
+  }
+  m.setU32(pOut0 >>> 0, m.u32((MONSTER_SUBCLASS_VEL_TABLE_VA + idx * 8) >>> 0))
+  m.setU32(pOut1 >>> 0, m.u32((MONSTER_SUBCLASS_VEL_TABLE_VA + 4 + idx * 8) >>> 0))
+}
+
+/**
+ * `@va D2Common:0x6FD72C20` (`D2Common.#10119` `ITEMS_CheckIfUnique`,
+ * stdcall `[esp+4] = pItem`, `ret 4` -> `D2ItemsTxt.nUnique (+0x129)`).
+ */
+export function ITEMS_CheckIfUnique113c(m: Memory113c, pItem: number): number {
+  const ptr = pItem >>> 0
+  if (ptr === 0) {
+    throw new D2CommonAssertError('Items.cpp', 0x9ce)
+  }
+  if (m.get(ptr, D2UnitStrc.dwUnitType) !== 4) {
+    throw new D2CommonAssertError('Items.cpp', 0x9cf)
+  }
+  const pRec = lookupItemsTxtById113c(m, m.get(ptr, D2UnitStrc.dwClassId))
+  if (pRec === 0) {
+    throw new D2CommonAssertError('Items.cpp', 0x9d2)
+  }
+  return m.get(pRec, D2ItemsTxt.nUnique)
+}
+
+/**
+ * `@va D2Common:0x6FD72C80` (`D2Common.#10478` `ITEMS_CheckIfUseable`,
+ * stdcall `[esp+4] = pItem`, `ret 4` -> `D2ItemsTxt.nUseable (+0x11D)` or `0` on NULL / non-item).
+ */
+export function ITEMS_CheckIfUseable113c(m: Memory113c, pItem: number): number {
+  const ptr = pItem >>> 0
+  if (ptr === 0 || m.get(ptr, D2UnitStrc.dwUnitType) !== 4) {
+    return 0
+  }
+  const pRec = lookupItemsTxtById113c(m, m.get(ptr, D2UnitStrc.dwClassId))
+  if (pRec === 0) {
+    throw new D2CommonAssertError('Items.cpp', 0x9c5)
+  }
+  return m.get(pRec, D2ItemsTxt.nUseable)
+}
+
+/**
+ * `@va D2Common:0x6FD73050` (`D2Common.#10395` `ITEMS_GetBaseLevel`,
+ * stdcall `[esp+4] = pItem`, `ret 4` -> `AL` = `D2ItemsTxt.nLevel (+0xFD)`).
+ */
+export function ITEMS_GetBaseLevel113c(m: Memory113c, pItem: number): number {
+  const ptr = pItem >>> 0
+  if (ptr === 0) {
+    throw new D2CommonAssertError('Items.cpp', 0x697)
+  }
+  if (m.get(ptr, D2UnitStrc.dwUnitType) !== 4) {
+    throw new D2CommonAssertError('Items.cpp', 0x698)
+  }
+  const pRec = lookupItemsTxtById113c(m, m.get(ptr, D2UnitStrc.dwClassId))
+  if (pRec === 0) {
+    throw new D2CommonAssertError('Items.cpp', 0x69b)
+  }
+  return m.get(pRec, D2ItemsTxt.nLevel)
+}
+
+/**
+ * `@va D2Common:0x6FD732E0` (`D2Common.#10664` `ITEMS_Get2HandedWClass`,
+ * stdcall `[esp+4] = pItem`, `ret 4` -> `D2ItemsTxt.dw2HandedWClass (+0xC4)`).
+ */
+export function ITEMS_Get2HandedWClass113c(m: Memory113c, pItem: number): number {
+  const ptr = pItem >>> 0
+  if (ptr === 0) {
+    throw new D2CommonAssertError('Items.cpp', 0x609)
+  }
+  if (m.get(ptr, D2UnitStrc.dwUnitType) !== 4) {
+    throw new D2CommonAssertError('Items.cpp', 0x60a)
+  }
+  const pRec = lookupItemsTxtById113c(m, m.get(ptr, D2UnitStrc.dwClassId))
+  if (pRec === 0) {
+    throw new D2CommonAssertError('Items.cpp', 0x60d)
+  }
+  return m.get(pRec, D2ItemsTxt.dw2HandedWClass)
+}
+
+/**
+ * `@va D2Common:0x6FD8E310` (internal LTCG helper `PATH_GetTargetUnitCoordsWithTrigOffset`,
+ * custom reg `edx = pDynamicPath`, `edi = pOutCoordsWordPair`, `ret`, void).
+ */
+export function PATH_GetTargetUnitCoordsWithTrigOffset113c(
+  m: Memory113c,
+  edx: number,
+  edi: number,
+): void {
+  const pDynamicPath = edx >>> 0
+  const pOut = edi >>> 0
+  if (pDynamicPath === 0) {
+    throw new D2CommonAssertError('PathUtil.cpp', 0x201)
+  }
+  let pTargetUnit = m.get(pDynamicPath, D2DynamicPathStrc.pTargetUnit)
+  if (pTargetUnit === 0) {
+    throw new D2CommonAssertError('PathUtil.cpp', 0x202)
+  }
+  const unitTypeX = m.get(pTargetUnit, D2UnitStrc.dwUnitType) | 0
+  let x = 0
+  if (unitTypeX === 2 || (unitTypeX > 3 && unitTypeX <= 5)) {
+    const pStaticPath = m.get(pTargetUnit, D2UnitStrc.pPath)
+    x = m.get(pStaticPath, D2StaticPathStrc.nPosX) & 0xffff
+  } else {
+    const pPath = m.get(pTargetUnit, D2UnitStrc.pPath)
+    x = pPath !== 0 ? m.get(pPath, D2DynamicPathStrc.wPosX) : 0
+  }
+  m.setU16(pOut, x)
+
+  pTargetUnit = m.get(pDynamicPath, D2DynamicPathStrc.pTargetUnit)
+  const unitTypeY = m.get(pTargetUnit, D2UnitStrc.dwUnitType) | 0
+  let y = 0
+  if (unitTypeY === 2 || (unitTypeY > 3 && unitTypeY <= 5)) {
+    const pStaticPath = m.get(pTargetUnit, D2UnitStrc.pPath)
+    y = m.get(pStaticPath, D2StaticPathStrc.nPosY) & 0xffff
+  } else {
+    const pPath = m.get(pTargetUnit, D2UnitStrc.pPath)
+    y = pPath !== 0 ? m.get(pPath, D2DynamicPathStrc.wPosY) : 0
+  }
+  m.setU16((pOut + 2) >>> 0, y)
+
+  const nDist = m.get(pDynamicPath, D2DynamicPathStrc.nStepAttr)
+  if (nDist !== 0) {
+    const pTarget2 = m.get(pDynamicPath, D2DynamicPathStrc.pTargetUnit)
+    const pTargetPath = m.get(pTarget2, D2UnitStrc.pPath)
+    const nTargetDir = pTargetPath !== 0 ? m.get(pTargetPath, D2DynamicPathStrc.nDirection) : 0
+    const distByte = m.get(pDynamicPath, D2DynamicPathStrc.nStepAttr)
+    const fDist = Math.fround(distByte)
+    const angle512 = ((nTargetDir - (distByte << 5)) << 3) & 0x1ff
+    const cosBits = m.u32((FOG_TRIG_LUT_VA_113C + ((angle512 + 0x80) & 0x1ff) * 4) >>> 0)
+    const dx = Math.trunc(Math.fround(bitsToF32(cosBits) * fDist)) | 0
+    m.setU16(pOut, (m.u16(pOut) + dx) & 0xffff)
+    const sinBits = m.u32((FOG_TRIG_LUT_VA_113C + angle512 * 4) >>> 0)
+    const dy = Math.trunc(Math.fround(bitsToF32(sinBits) * fDist)) | 0
+    m.setU16((pOut + 2) >>> 0, (m.u16((pOut + 2) >>> 0) + dy) & 0xffff)
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD8E910` (`D2Common.#10403` `DATATBLS_GetObjGroupTxtRecord`,
+ * stdcall `[esp+4] = nIndex`, `ret 4` -> `D2ObjGroupTxt*`).
+ */
+export function DATATBLS_GetObjGroupTxtRecord113c(m: Memory113c, nIndex: number): number {
+  const idx = nIndex | 0
+  if (idx >= (m.u32(SGPT_OBJGROUP_TXT_COUNT_VA) | 0)) {
+    throw new D2CommonAssertError('ObjectsTbls.cpp', 0x15f)
+  }
+  if (idx < 0) {
+    throw new D2CommonAssertError('ObjectsTbls.cpp', 0x160)
+  }
+  return (m.u32(SGPT_OBJGROUP_TXT_PTR_VA) + imul32(idx, 0xb8)) >>> 0
+}
+
+/**
+ * `@va D2Common:0x6FDBC4D0` (internal LTCG helper `DATATBLS_GetLvlSubTxtRecordBySubType`,
+ * custom reg `edx = nSubType`, `ret` -> `D2LvlSubTxt*`).
+ */
+export function DATATBLS_GetLvlSubTxtRecordBySubType113c(m: Memory113c, edx: number): number {
+  const nSubType = edx | 0
+  if (nSubType < 0) {
+    throw new D2CommonAssertError('LvlTbls.cpp', 0x402)
+  }
+  const pLvlSubTxt = m.u32(SGPT_LVLSUB_TXT_PTR_VA)
+  if (pLvlSubTxt === 0) {
+    throw new D2CommonAssertError('LvlTbls.cpp', 0x403)
+  }
+  const pTypeLut = m.u32(SGPT_LVLSUB_TYPE_LUT_PTR_VA)
+  if (pTypeLut === 0) {
+    throw new D2CommonAssertError('LvlTbls.cpp', 0x404)
+  }
+  const rowIdx = m.u32((pTypeLut + ((nSubType << 2) >>> 0)) >>> 0) | 0
+  return (pLvlSubTxt + imul32(rowIdx, 0x15c)) >>> 0
+}
+
+/**
+ * `@va D2Common:0x6FDBC5D0` (internal LTCG helper `DATATBLS_GetLvlWarpTxtRecordByIdAndDir`,
+ * custom reg `ebx = nWarpId`, `dl = cDirection`, `ret` -> `D2LvlWarpTxt*`).
+ */
+export function DATATBLS_GetLvlWarpTxtRecordByIdAndDir113c(
+  m: Memory113c,
+  ebx: number,
+  edx: number,
+): number {
+  const pLvlWarpTxt = m.u32(SGPT_LVLWARP_TXT_PTR_VA)
+  if (pLvlWarpTxt === 0) {
+    throw new D2CommonAssertError('LvlTbls.cpp', 0x32b)
+  }
+  const nCount = m.u32(SGPT_LVLWARP_TXT_COUNT_VA) | 0
+  const targetId = ebx >>> 0
+  const dirByte = edx & 0xff
+  let pRec = pLvlWarpTxt
+  for (let i = 0; i < nCount; i = (i + 1) | 0) {
+    if (m.u32(pRec) === targetId) {
+      if (dirByte === 0x62) {
+        return pRec
+      }
+      const recDir = m.u8((pRec + 0x2c) >>> 0)
+      if (recDir === 0x62 || recDir === dirByte) {
+        return pRec
+      }
+    }
+    pRec = (pRec + 0x30) >>> 0
+  }
+  throw new D2CommonAssertError('LvlTbls.cpp', 0x33a)
+}
+
+/**
+ * `@va D2Common:0x6FDC1430` (`D2Common.#10961` `DATATBLS_GetBooksTxtRecord`,
+ * stdcall `[esp+4] = nIndex`, `ret 4` -> `D2BooksTxt*` or `0`).
+ */
+export function DATATBLS_GetBooksTxtRecord113c(m: Memory113c, nIndex: number): number {
+  const idx = nIndex | 0
+  if (idx >= (m.u32(SGPT_BOOKS_TXT_COUNT_VA) | 0) || idx === -1) {
+    return 0
+  }
+  const pBase = m.u32(SGPT_BOOKS_TXT_PTR_VA)
+  if (pBase === 0) {
+    throw new D2CommonAssertError('ItemTbls.cpp', 0x5d0)
+  }
+  const res = (pBase + imul32(idx, 0x22)) >>> 0
+  if (res === 0) {
+    throw new D2CommonAssertError('ItemTbls.cpp', 0x5d1)
+  }
+  return res
+}
+
+/**
+ * `@va D2Common:0x6FDC14D0` (`D2Common.#11065` `DATATBLS_GetQualityItemsTxtRecord`,
+ * stdcall `[esp+4] = nIndex`, `ret 4` -> `D2QualityItemsTxt*` or `0`).
+ */
+export function DATATBLS_GetQualityItemsTxtRecord113c(m: Memory113c, nIndex: number): number {
+  const idx = nIndex | 0
+  if (idx >= (m.u32(SGPT_QUALITYITEMS_TXT_COUNT_VA) | 0) || idx === -1) {
+    return 0
+  }
+  const pBase = m.u32(SGPT_QUALITYITEMS_TXT_PTR_VA)
+  if (pBase === 0) {
+    throw new D2CommonAssertError('ItemTbls.cpp', 0x59c)
+  }
+  const res = (pBase + ((idx << 5) >>> 0)) >>> 0
+  if (res === 0) {
+    throw new D2CommonAssertError('ItemTbls.cpp', 0x59d)
+  }
+  return res
+}
+
+/**
+ * `@va D2Common:0x6FDC1570` (`D2Common.#10806` `DATATBLS_GetGemsTxtRecord`,
+ * stdcall `[esp+4] = nIndex`, `ret 4` -> `D2GemsTxt*` or `0`).
+ */
+export function DATATBLS_GetGemsTxtRecord113c(m: Memory113c, nIndex: number): number {
+  const idx = nIndex | 0
+  if (idx >= (m.u32(SGPT_GEMS_TXT_COUNT_VA) | 0) || idx === -1) {
+    return 0
+  }
+  const pBase = m.u32(SGPT_GEMS_TXT_PTR_VA)
+  if (pBase === 0) {
+    throw new D2CommonAssertError('ItemTbls.cpp', 0x563)
+  }
+  const res = (pBase + imul32(idx, 0xc0)) >>> 0
+  if (res === 0) {
+    throw new D2CommonAssertError('ItemTbls.cpp', 0x564)
+  }
+  return res
+}
+
+/**
+ * `@va D2Common:0x6FDC1610` (`D2Common.#11007` `DATATBLS_GetBeltsTxtRecord`,
+ * stdcall `[esp+4] = nIndex`, `ret 4` -> `D2BeltsTxt*` or `0`).
+ */
+export function DATATBLS_GetBeltsTxtRecord113c(m: Memory113c, nIndex: number): number {
+  const idx = nIndex | 0
+  if (idx >= (m.u32(SGPT_BELTS_TXT_COUNT_VA) | 0) || idx === -1) {
+    return 0
+  }
+  const pBase = m.u32(SGPT_BELTS_TXT_PTR_VA)
+  if (pBase === 0) {
+    throw new D2CommonAssertError('ItemTbls.cpp', 0x4f2)
+  }
+  const res = (pBase + imul32(idx, 0x70)) >>> 0
+  if (res === 0) {
+    throw new D2CommonAssertError('ItemTbls.cpp', 0x4f3)
+  }
+  return res
+}
+
+/**
+ * `@va D2Common:0x6FDC1820` (`D2Common.#10248` `DATATBLS_GetMagicAffixTxtRecord`,
+ * stdcall `[esp+4] = nIndex1Based`, `ret 4` -> `D2MagicAffixTxt*` or `0`).
+ */
+export function DATATBLS_GetMagicAffixTxtRecord113c(m: Memory113c, nIndex: number): number {
+  const pBase = m.u32(SGPT_MAGICAFFIX_TXT_PTR_VA)
+  if (pBase === 0) {
+    throw new D2CommonAssertError('ItemTbls.cpp', 0x2c8)
+  }
+  const idx = nIndex | 0
+  if (idx > (m.u32(SGPT_MAGICAFFIX_TXT_COUNT_VA) | 0) || idx <= 0) {
+    return 0
+  }
+  return (pBase + imul32(idx, 0x90) - 0x90) >>> 0
+}
+
+/**
+ * `@va D2Common:0x6FDC1960` (`D2Common.#10450` `DATATBLS_GetItemsTxtRecordByCode`,
+ * stdcall `[esp+4] = dwCode`, `[esp+8] = pOutIndex`, `ret 8` -> `D2ItemsTxt*` or `0`).
+ */
+export function DATATBLS_GetItemsTxtRecordByCode113c(
+  m: Memory113c,
+  dwCode: number,
+  pOutIndex: number,
+): number {
+  const idx = fogGetRowFromTxt113c(m, m.u32(SGPT_ITEMS_LINKER_PTR_VA), dwCode >>> 0, 0) | 0
+  if (idx < 0) {
+    m.setU32(pOutIndex >>> 0, 0)
+    return 0
+  }
+  m.setU32(pOutIndex >>> 0, idx >>> 0)
+  return (m.u32(SGPT_ITEMS_TXT_PTR_VA) + imul32(idx, D2ItemsTxt_SIZE)) >>> 0
+}
+
+/**
+ * `@va D2Common:0x6FDCFF80` (`D2Common.#10827` `DATATBLS_GetArenaTxtRecord`,
+ * `__fastcall(ecx = nArenaType)` -> `D2ArenaTxt*`, `ret`).
+ */
+export function DATATBLS_GetArenaTxtRecord113c(m: Memory113c, ecx: number): number {
+  const idx = ecx | 0
+  if (idx >= 1) {
+    throw new D2CommonAssertError('ArenaTbls.cpp', 0x41)
+  }
+  return (m.u32(SGPT_ARENA_TXT_PTR_VA) + imul32(idx, 0x1c)) >>> 0
+}
+
+/**
+ * `@va D2Common:0x6FDCFFB0` (`D2Common.#10241` `DATATBLS_GetCharTemplateStartLevel`,
+ * `__fastcall(ecx = nTemplate, edx = nClass)` -> `uint32_t`, `ret`).
+ */
+export function DATATBLS_GetCharTemplateStartLevel113c(
+  m: Memory113c,
+  ecx: number,
+  edx: number,
+): number {
+  const nTemplate = ecx | 0
+  const nClass = edx | 0
+  if (nTemplate <= 0) {
+    throw new D2CommonAssertError('CharTemplateTbls.cpp', 0xf5)
+  }
+  const baseIdx = m.u32((SGPT_CHARTEMPLATE_CLASS_START_VA + ((nClass << 2) >>> 0)) >>> 0) | 0
+  const idx = (baseIdx + nTemplate - 1) | 0
+  if (idx >= (m.u32(SGPT_CHARTEMPLATE_TXT_COUNT_VA) | 0)) {
+    throw new D2CommonAssertError('CharTemplateTbls.cpp', 0xf8)
+  }
+  return m.u8((m.u32(SGPT_CHARTEMPLATE_TXT_PTR_VA) + imul32(idx, 0xf0) + 0x1e) >>> 0)
+}
+
+/**
+ * `@va D2Common:0x6FDD1FB0` (`D2Common.#10760` `DATATBLS_GetInventoryGridInfo`,
+ * stdcall `[esp+4] = nIndex`, `[esp+8] = nMode`, `[esp+0xC] = pOutGridInfo`, `ret 0xC`, void).
+ */
+export function DATATBLS_GetInventoryGridInfo113c(
+  m: Memory113c,
+  nIndex: number,
+  nMode: number,
+  pOutGridInfo: number,
+): void {
+  const idx = ((nMode << 4) + nIndex) >>> 0
+  const pBase = m.u32(SGPT_INVENTORY_TXT_PTR_VA)
+  if (pBase === 0) {
+    throw new D2CommonAssertError('InvTbls.cpp', 0x7f)
+  }
+  if (idx > m.u32(SGPT_INVENTORY_TXT_MAX_VA)) {
+    throw new D2CommonAssertError('InvTbls.cpp', 0x97)
+  }
+  const pRec = (pBase + imul32(idx | 0, 0xf0)) >>> 0
+  if (pRec === 0) {
+    throw new D2CommonAssertError('InvTbls.cpp', 0x97)
+  }
+  const out = pOutGridInfo >>> 0
+  const src = (pRec + 0x10) >>> 0
+  m.setU32(out, m.u32(src))
+  m.setU32((out + 0x04) >>> 0, m.u32((src + 0x04) >>> 0))
+  m.setU32((out + 0x08) >>> 0, m.u32((src + 0x08) >>> 0))
+  m.setU32((out + 0x0c) >>> 0, m.u32((src + 0x0c) >>> 0))
+  m.setU32((out + 0x10) >>> 0, m.u32((src + 0x10) >>> 0))
+  m.setU32((out + 0x14) >>> 0, m.u32((src + 0x14) >>> 0))
 }
 

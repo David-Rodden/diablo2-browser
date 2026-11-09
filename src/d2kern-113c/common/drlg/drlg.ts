@@ -11,7 +11,16 @@ import {
   D2RoomExStrc,
 } from '../../mem/layout.generated.ts';
 import type { Memory113c } from '../../mem/sparse-memory.ts';
+import {
+  ENV_CYCLE_NORMAL_6FDEB160,
+  ENV_TICK_RATES_6FDEB238,
+  ENV_UpdateIntensityAndSunAngle113c,
+} from '../env.ts';
 import { imul32 } from '../int-math.ts';
+import {
+  D2CMP_10051_GetTileFlags113c,
+  D2CMP_10059_FindTiles113c,
+} from './room-tile.ts';
 
 /**
  * Act level threshold table at `0x6FDE4668` (`int32[6] = [1, 40, 75, 103, 109, 1024]`).
@@ -26,6 +35,34 @@ export const ACT_LEVEL_THRESHOLDS_6FDE4668 = Int32Array.from([
  */
 export const SGPT_DATA_TABLES_PTR_VA_6FDE9E1C = 0x6fde9e1c;
 export const SG_LEVEL_DEF_BIN_PTR_VA_6FDF0B38 = 0x6fdf0b38;
+export const GP_WALL_TILE_CACHE_VA_6FDF1434 = 0x6fdf1434;
+export const GN_WALL_TILE_CACHE_COUNT_VA_6FDF1438 = 0x6fdf1438;
+const DT1_GLOBAL_PREFIX_VA_6FDDAD5C = 0x6fddad5c;
+export const DT1_ACT3_TOWN_FMT_VA_6FDE46A4 = 0x6fde46a4;
+export const DT1_ACT2_TOWN_FMT_VA_6FDE46C4 = 0x6fde46c4;
+export const DT1_ACT1_TOWN_FMT_VA_6FDE46E4 = 0x6fde46e4;
+
+function readCString113c(m: Memory113c, pStr: number): string {
+  let out = '';
+  for (let p = pStr >>> 0; ; p = (p + 1) >>> 0) {
+    const b = m.u8(p);
+    if (b === 0) break;
+    out += String.fromCharCode(b);
+  }
+  return out;
+}
+
+function hashDt1PathIntoTiles113c(
+  m: Memory113c,
+  ppTiles: number,
+  path: string,
+): void {
+  let h = m.u32(ppTiles >>> 0);
+  for (let i = 0; i < path.length; i++) {
+    h = (imul32(h, 33) + (path.charCodeAt(i) & 0xff)) >>> 0;
+  }
+  m.setU32(ppTiles >>> 0, h);
+}
 
 /**
  * `@va D2Common:0x6FD7D2C0` (`DRLG_GetActNoFromLevelId113c`, `__stdcall(nLevelId)`, `ret 4`).
@@ -165,6 +202,34 @@ export function DRLG_GetRectTouchDirection113c(
 }
 
 /**
+ * `@va D2Common:0x6FD7D4E0` (`DRLG_LoadActTownTileLibrary113c`, custom `eax = pDrlg`, `ret`).
+ *
+ * Reads `nAct = u8(pDrlg + 0x480)`. For `nAct` in `{0, 1, 2}`, formats the town DT1 path from
+ * `.rdata` (`0x6FDE46E4`, `0x6FDE46C4`, or `0x6FDE46A4` with prefix `"DATA\\GLOBAL"` at `0x6FDDAD5C`)
+ * and calls `D2CMP.#10085` (`0x6FD592F4`) on `pDrlg + 0x0C`.
+ */
+export function DRLG_LoadActTownTileLibrary113c(
+  m: Memory113c,
+  pDrlg: number,
+): void {
+  const drlg = pDrlg >>> 0;
+  const nAct = m.u8((drlg + 0x480) >>> 0);
+  let fmtVa: number;
+  if (nAct === 0) {
+    fmtVa = DT1_ACT1_TOWN_FMT_VA_6FDE46E4;
+  } else if (nAct === 1) {
+    fmtVa = DT1_ACT2_TOWN_FMT_VA_6FDE46C4;
+  } else if (nAct === 2) {
+    fmtVa = DT1_ACT3_TOWN_FMT_VA_6FDE46A4;
+  } else {
+    return;
+  }
+  const prefix = readCString113c(m, DT1_GLOBAL_PREFIX_VA_6FDDAD5C);
+  const fmt = readCString113c(m, fmtVa);
+  hashDt1PathIntoTiles113c(m, (drlg + 0x0c) >>> 0, fmt.replace('%s', prefix));
+}
+
+/**
  * `@va D2Common:0x6FD7D5B0` (`DRLG_FindLevelIdAtCoord113c`, custom `eax = pDrlg`, `edi = nX`, `esi = nY`, `ret`).
  *
  * Walks `pDrlg->pLevel (+0x47C)` along `pLevel->pNextLevel (+0x1AC)` and returns `pLevel->nLevelId (+0x1D0)`
@@ -199,6 +264,56 @@ export function DRLG_FindLevelIdAtCoord113c(
 }
 
 /**
+ * `@va D2Common:0x6FD7D730` (`DRLG_GetOrAllocObjectPresetRecord113c`, custom `edi = pDrlg`, `ebx = nObjId`, `ret`).
+ *
+ * Searches `pDrlg + 0x90` (linked via `+0x44`) for `[pNode] == nObjId`. If not found, allocates a `0x48`-byte
+ * node via `Fog.#10045`, copies `16` dwords (`+0x48..+0x87`) from `gpLevelDefBin[nObjId]` (stride `0x9C`),
+ * prepends to `pDrlg + 0x90`, and returns `pNode`.
+ */
+export function DRLG_GetOrAllocObjectPresetRecord113c(
+  m: Memory113c,
+  pDrlg: number,
+  nObjId: number,
+): number {
+  const drlg = pDrlg >>> 0;
+  const objId = nObjId | 0;
+  let pCur = m.u32((drlg + 0x90) >>> 0);
+  while (pCur !== 0) {
+    if ((m.u32(pCur) | 0) === objId) {
+      return pCur >>> 0;
+    }
+    pCur = m.u32((pCur + 0x44) >>> 0);
+  }
+
+  let pObjTxt = 0;
+  if (objId >= 0) {
+    const pDataTables = m.u32(SGPT_DATA_TABLES_PTR_VA_6FDE9E1C);
+    if (objId < (m.u32((pDataTables + 0xc5c) >>> 0) | 0)) {
+      pObjTxt =
+        (m.u32(SG_LEVEL_DEF_BIN_PTR_VA_6FDF0B38) + imul32(objId, 0x9c)) >>> 0;
+    }
+  }
+
+  void m.u32((drlg + 0x478) >>> 0);
+  const pNode = m.alloc(0x48);
+  m.setU32(pNode, objId >>> 0);
+  for (let i = 0; i < 8; i++) {
+    m.setU32(
+      (pNode + 0x04 + i * 4) >>> 0,
+      m.u32((pObjTxt + 0x48 + i * 4) >>> 0),
+    );
+    m.setU32(
+      (pNode + 0x24 + i * 4) >>> 0,
+      m.u32((pObjTxt + 0x68 + i * 4) >>> 0),
+    );
+  }
+  const pOldHead = m.u32((drlg + 0x90) >>> 0);
+  m.setU32((pNode + 0x44) >>> 0, pOldHead);
+  m.setU32((drlg + 0x90) >>> 0, pNode);
+  return pNode >>> 0;
+}
+
+/**
  * `@va D2Common:0x6FD7D850` (`DRLG_GetLevelDefField94_113c`, `__stdcall(nLevelId)`, `ret 4`).
  *
  * Looks up `D2LevelDefBin` record `nLevelId` (stride `0x9C`) from `*(0x6FDF0B38)` (bounded by
@@ -216,6 +331,140 @@ export function DRLG_GetLevelDefField94_113c(
       ? 0
       : (m.u32(SG_LEVEL_DEF_BIN_PTR_VA_6FDF0B38) + imul32(id, 0x9c)) >>> 0;
   return m.u32((pLevelDef + 0x94) >>> 0) | 0;
+}
+
+/**
+ * `@va D2Common:0x6FD7E0C0` (`DRLG_InitActTownFloorTileData113c`, custom `eax = pDrlg`, `esi = pTileData`, `ret`).
+ *
+ * Zeroes `0x30` bytes at `pTileData`, maps `nAct = u8(pDrlg + 0x480)` (`0 -> (0,0)`, `1 -> (0,1)`, `2 -> (29,12)`),
+ * queries `D2CMP.#10059` (`pDrlg + 0x0C`), and initializes `pTileData` fields and flags via `D2CMP.#10051`.
+ */
+export function DRLG_InitActTownFloorTileData113c(
+  m: Memory113c,
+  pDrlg: number,
+  pTileData: number,
+): void {
+  if (pDrlg === 0) {
+    throw new Error('DRLG_InitActTownFloorTileData113c: pDrlg == 0 (line 1079)');
+  }
+  if (pTileData === 0) {
+    throw new Error(
+      'DRLG_InitActTownFloorTileData113c: pTileData == 0 (line 1080)',
+    );
+  }
+  const drlg = pDrlg >>> 0;
+  const tileData = pTileData >>> 0;
+  for (let i = 0; i < 0x30; i += 4) {
+    m.setU32((tileData + i) >>> 0, 0);
+  }
+
+  const nAct = m.u8((drlg + 0x480) >>> 0);
+  let nStyle = 0;
+  let nSeq = 0;
+  if (nAct === 0) {
+    nStyle = 0;
+    nSeq = 0;
+  } else if (nAct === 1) {
+    nStyle = 0;
+    nSeq = 1;
+  } else if (nAct === 2) {
+    nStyle = 0x1d;
+    nSeq = 0x0c;
+  } else {
+    return;
+  }
+
+  const aTiles = new Uint32Array(40);
+  const nFound = D2CMP_10059_FindTiles113c(
+    m,
+    (drlg + 0x0c) >>> 0,
+    0,
+    nStyle,
+    nSeq,
+    aTiles,
+    0x28,
+  );
+  if (nFound === 0) {
+    throw new Error(
+      'DRLG_InitActTownFloorTileData113c: FindTiles returned 0 (line 1100)',
+    );
+  }
+  const pTile = aTiles[0]!;
+  m.setU32((tileData + 0x18) >>> 0, pTile);
+  m.setU32((tileData + 0x1c) >>> 0, 0);
+  m.setU32((tileData + 0x24) >>> 0, 0);
+  m.setU8((tileData + 0x29) >>> 0, 0xff);
+  m.setU8((tileData + 0x2a) >>> 0, 0xff);
+  m.setU8((tileData + 0x28) >>> 0, 0xff);
+  m.setU32((tileData + 0x14) >>> 0, 0x4000);
+
+  const nFlags = D2CMP_10051_GetTileFlags113c(m, pTile);
+  if ((nFlags & 0x01) !== 0) {
+    m.setU32(
+      (tileData + 0x14) >>> 0,
+      (m.u32((tileData + 0x14) >>> 0) | 0x04) >>> 0,
+    );
+  }
+  if ((nFlags & 0x04) !== 0) {
+    m.setU32(
+      (tileData + 0x14) >>> 0,
+      (m.u32((tileData + 0x14) >>> 0) | 0x800) >>> 0,
+    );
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD87C20` (`D2Common.#10895` `ENV_ResetDefaultEnvironment113c`, `__stdcall(pAct)`, `ret 4`).
+ *
+ * Resets `pAct->pEnvironment (+0x04)` to default normal cycle row 2 (`dwRateIdx = 0`, `dwCyclePeriod = 128`,
+ * `dwCycleIndex = 2`, `dwTicks = 0`, `nTimeOfDay = 0`, `bEclipse = 0`) and updates intensity and sun angle.
+ */
+export function ENV_ResetDefaultEnvironment113c(
+  m: Memory113c,
+  pAct: number,
+): void {
+  if (pAct === 0) {
+    throw new Error('ENV_ResetDefaultEnvironment113c: pAct == 0 (line 1351)');
+  }
+  const pEnv0 = m.u32((pAct + 0x04) >>> 0);
+  m.setU32((pEnv0 + 0x2c) >>> 0, 0);
+  m.setU32((pEnv0 + 0x28) >>> 0, ENV_TICK_RATES_6FDEB238[0]! >>> 0);
+  const pEnv = m.u32((pAct + 0x04) >>> 0);
+  m.setU32(pEnv, 2);
+  m.setU32((pEnv + 0x08) >>> 0, 0);
+  m.setU32((pEnv + 0x04) >>> 0, ENV_CYCLE_NORMAL_6FDEB160[2 * 3 + 1]! >>> 0);
+  const nActNo = DRLG_GetActNoFromLevelId113c(m, 0) & 0xff;
+  ENV_UpdateIntensityAndSunAngle113c(m, pEnv, nActNo, 0);
+  m.setU32((pEnv + 0x30) >>> 0, 0);
+}
+
+/**
+ * `@va D2Common:0x6FDBC520` (`DATATBLS_FindWallTileCacheEntry113c`, custom `edi = nPackedTileId`, `ret`).
+ *
+ * Scans `gpWallTileCache` (`0x6FDF1434`, count at `0x6FDF1438`, stride `0x1C` = 28 bytes) for
+ * `[pEntry] == nPackedTileId` and returns `pEntry` (asserting at lines `867` and `876` if null or missing).
+ */
+export function DATATBLS_FindWallTileCacheEntry113c(
+  m: Memory113c,
+  nPackedTileId: number,
+): number {
+  const pTable = m.u32(GP_WALL_TILE_CACHE_VA_6FDF1434);
+  if (pTable === 0) {
+    throw new Error(
+      'DATATBLS_FindWallTileCacheEntry113c: gpWallTileCache == 0 (line 867)',
+    );
+  }
+  const nCount = m.u32(GN_WALL_TILE_CACHE_COUNT_VA_6FDF1438) | 0;
+  const target = nPackedTileId | 0;
+  for (let i = 0; i < nCount; i++) {
+    const pEntry = (pTable + imul32(i, 0x1c)) >>> 0;
+    if ((m.u32(pEntry) | 0) === target) {
+      return pEntry;
+    }
+  }
+  throw new Error(
+    'DATATBLS_FindWallTileCacheEntry113c: entry not found (line 876)',
+  );
 }
 
 /**
@@ -242,3 +491,4 @@ export function DRLG_InitActWarpLists113c(m: Memory113c, pDrlg: number): void {
   m.setU32((base + 0x44c) >>> 0, c3);
   m.setU8((base + 0x3a8) >>> 0, 3);
 }
+

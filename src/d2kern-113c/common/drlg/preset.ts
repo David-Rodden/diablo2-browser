@@ -7,6 +7,7 @@
 import type { Memory113c } from '../../mem/sparse-memory.ts'
 import { D2DrlgCoordStrc, D2DrlgCoordStrc_SIZE, D2DrlgMapStrc } from '../../mem/layout.generated.ts'
 import { sdiv32 } from '../int-math.ts'
+import { STATLIST_FindStatIndex113c } from '../statlist.ts'
 
 /**
  * `@va D2Common:0x6FD59C60` (`DRLGPRESET_FinalizePopsLocations`, not exported; LTCG `esi = pDrlgMap` + 1 stack arg `nPops`, `ret 4`).
@@ -345,4 +346,73 @@ export function DRLGPRESET_AllocDrlgMap113c(
   m.setU32((pLevel + 0x1b0) >>> 0, pMap)
   return pMap >>> 0
 }
+
+export type StatEnumCallbackFn113c = (
+  m: Memory113c,
+  pUnit: number,
+  nStatId: number,
+  nValue: number,
+  pArg: number,
+) => void
+
+/**
+ * `@va D2Common:0x6FD88850` (`D2Common.#10984` `STATLIST_EnumerateCopyListStats113c`,
+ * `__stdcall(pUnit, pArg, pfCallback)`, `ret 0xC`).
+ *
+ * Enumerates the `wCopyListCount` (`pStatListEx + 0x54`) packed stat keys in `pStatListEx->pCopyListKeys (+0x50)`
+ * when `pUnit != 0`, `!(pArg == 0 && pfCallback != 0)`, `pStatListEx != 0`, `(pStatListEx->dwFlags & 0x80000000) != 0`,
+ * and `wCopyListCount > 0`. For each key, looks up the stat in `&pStatListEx->FullStats (+0x24)` via `0x6FD882B0`
+ * (`STATLIST_FindStatIndex113c`) and invokes `pfCallback(ecx=pUnit, edx=nStatId, nValue, pArg)` (passing `nValue = 0`
+ * and `nStatId = (dwKey >> 16) & 0xFFFF` if absent).
+ */
+export function STATLIST_EnumerateCopyListStats113c(
+  m: Memory113c,
+  pUnit: number,
+  pArg: number,
+  pfCallback: number,
+  customCallback?: StatEnumCallbackFn113c,
+): void {
+  if (pUnit === 0) return
+  if (pArg === 0 && pfCallback !== 0) return
+
+  const unit = pUnit >>> 0
+  const pStatListEx = m.u32((unit + 0x5c) >>> 0)
+  if (pStatListEx === 0) return
+  if ((m.u32((pStatListEx + 0x10) >>> 0) | 0) >= 0) return
+  if (((m.u16((pStatListEx + 0x54) >>> 0) << 16) >> 16) <= 0) return
+
+  const pFullStats = (pStatListEx + 0x24) >>> 0
+  let i = 0
+  do {
+    const pKeyArray = m.u32((pStatListEx + 0x50) >>> 0)
+    const dwPackedKey = m.u32((pKeyArray + i * 4) >>> 0) | 0
+    const idx = STATLIST_FindStatIndex113c(m, pFullStats, dwPackedKey)
+
+    let nStatId: number
+    let nValue: number
+    const pStat = idx >= 0 ? (m.u32(pFullStats) + idx * 8) >>> 0 : 0
+    if (idx >= 0 && pStat !== 0) {
+      nValue = m.u32((pStat + 0x04) >>> 0) | 0
+      nStatId = m.u16((pStat + 0x02) >>> 0)
+    } else {
+      nValue = 0
+      nStatId = (dwPackedKey >> 16) & 0xffff
+    }
+
+    if (customCallback !== undefined) {
+      customCallback(m, unit, nStatId, nValue, pArg)
+    } else if (pfCallback !== 0 && pArg !== 0) {
+      const arg = pArg >>> 0
+      const nCalls = m.u32(arg)
+      const base = (arg + 0x04 + nCalls * 12) >>> 0
+      m.setU32(base, unit)
+      m.setU32((base + 0x04) >>> 0, nStatId >>> 0)
+      m.setU32((base + 0x08) >>> 0, nValue >>> 0)
+      m.setU32(arg, (nCalls + 1) >>> 0)
+    }
+
+    i = (i + 1) | 0
+  } while (i < ((m.u16((pStatListEx + 0x54) >>> 0) << 16) >> 16))
+}
+
 

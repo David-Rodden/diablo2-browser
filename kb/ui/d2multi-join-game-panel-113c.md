@@ -149,3 +149,27 @@ When `MCP_JOINGAME (0x04)` returns a non-zero `result` status (`0x6FA265A0`), `D
 | `32` | `0x20` | `5139` (`0x1413`) | `"Server Down"` | `"伺服器停機"` |
 | Default | `*` | `5140` (`0x1414`) | `"Error Creating Game"` | `"開創遊戲錯誤"` |
 
+---
+
+## 7. `D2Launch.dll` (`0x6fa4a8c0..0x6fa4d5ce`) Character Selection Roster (`MCP_CHARLIST2 0x19`) & `D2Win.dll` (`0x6f8ebf60` / `0x6f8ec180`) Avatar Component Fallbacks
+
+### 7.1 `D2Win.dll` `0x6f8ed880` (`D2Win_BuildComponentTable`), `0x6f8ebf60` (`D2Win_ValidateAndMapAvatarComponents`) & `0x6f8ec180` (`D2Win_ResolveAvatarWeaponClass`)
+
+- **Component Table Construction (`D2Win.dll` `0x6f8ed880`)**: Builds the 255-entry runtime component table `0x6f9a8cb0[1..254]` (`1: 'lit'`, `2: 'med'`, `3: 'hvy'`, `4..56: Weapons.txt`, `57..97: Armor.txt`, plus non-body / fallback weapon slots at `117..129, 134, 235..254`).
+- **Non-Throwing Component Validation & Fallbacks (`D2Win.dll` `0x6f8ebf60` & `D2Launch.dll` `0x6fa4c985..0x6fa4c9c9`)**:
+  - `D2Win.dll` `0x6f8ebf60` NEVER aborts `MCP_CHARLIST2` on an unrecognized or mismatched statstring component byte:
+    - `HD` (`ebx == 0`): if the code is not a valid `helm` (`0x25`) in `0x6f9a8cb0` or legacy `0x6f8ffee0`, `0x6f8ec16e` sets `HD = 1` (`'lit'`).
+    - `TR`, `LG`, `RA`, `LA` (`ebx in 1..4`): if the code is not a valid armor tier, `0x6f8ec08c` sets it to `(rawCode % 3) + 1` (`'lit' | 'med' | 'hvy'`).
+    - `RH`, `LH`, `SH`, `S3`: if the code does not match the slot's item type (`weap` `0x2d`, `shie` `0x02`, `head` `0x45`), `0x6f8ec014` clears the slot to `0` (`'nil'`).
+  - `D2Win.dll` `0x6f8ec180` (`D2Win_ResolveAvatarWeaponClass`): resolves weapon class from `RH`/`LH`, falling back to `'hth'` when neither hand holds a valid weapon entry.
+  - `D2Launch.dll` `0x6fa4c985..0x6fa4c9c9`: if `D2Win.#10131` returns `NULL`, `D2Launch.dll` zeroes `components[0..15]`, sets `TR = 1` (`'lit'`), sets `colors[0..15] = 0xff`, and retries `D2Win.#10131` with a default naked avatar.
+
+### 7.2 `D2Launch.dll` `0x6fa4cb00..0x6fa4d59e` Multi-Row Character Roster (`> 8` Characters) & Scrollbar (`0x6fa65aa0`)
+
+- **Unbounded Linked List (`0x6fa4cb60..0x6fa4cbd6`)**: Although `D2MCPClient.dll` (`0x6fa26cd0`) requests `u16 maxChars = 8` in `C2S 0x19` (`MCP_CHARLIST2`), PvPGN `d2cs` returns all characters on the account (`totalChars`, `returned` up to 9..18+). `D2Launch.dll` loops `min(returned, totalChars)` times, appending every character to the linked list at `0x6fa65ec8` (`count` at `0x6fa65ed0`).
+- **2-Per-Row Scrollbar (`0x6fa65aa0` @ `0x6fa60f14` + `0x6fa62e70`)**:
+  - Control record at `0x6fa60f14`: `type = 9` (`Scrollbar`), `x = 585`, `y_bottom = 457`, `w = 10`, `h = 363` (`y_top = 94..457`), callback `0x6fa4c250`.
+  - At `0x6fa4d56b..0x6fa4d59e`, `D2Launch.dll` sets `maxSteps = max(0, ceil((count - 8) / 2))` via `D2Win.#10160` (`0x6f8e86e0`).
+  - Each scrollbar step (`0x6fa4c250`) sets `0x6fa65ed4` (`charSelectScrollOffset`) to `step * 2` (`shl eax, 1`), scrolling the 2×4 slot grid by 2 characters (1 row) per step (`0x6fa4c274`).
+  - `D2Win_Scrollbar_Draw` (`0x6f8eaf40`) returns early at `0x6f8eaf9a` when `maxSteps == 0` (`count <= 8`), and draws the scrollbar thumb at `x = 585` when `maxSteps > 0`.
+

@@ -12,6 +12,8 @@
  */
 import type { Memory113c } from '../mem/sparse-memory.ts'
 import { D2ActStrc, D2ActiveRoomStrc, D2DrlgLevelStrc, D2RoomExStrc } from '../mem/layout.generated.ts'
+import { DRLGROOM_PackAdjacentRooms113c } from './drlg/drlg-room.ts'
+import { UNITROOM_RemoveUnitFromRoom113c } from './unit.ts'
 
 /**
  * `.bss` `int32_t* gpPortalLevelIds` at `0x6FDF1420` (array of level ids whose `LevelDefs.bin` `dwPortal` is set).
@@ -477,6 +479,53 @@ export function DUNGEON_GetLogicalRoomField30_113c(m: Memory113c, pRoom: number)
 }
 
 /**
+ * `@va D2Common:0x6FD8BDD0` (`DUNGEON_SortRoomClientArray113c`, custom `eax = pRoom`, `ret`).
+ *
+ * Verifies all client pointers via `0x6FD8B3A0` (`DUNGEON_VerifyRoomClientsNonNull113c`), bubble-sorts
+ * `pRoom->pClientList (+0x48)` of length `pRoom->nNumClients (+0x78)` in ascending unsigned pointer order,
+ * and re-verifies non-null entries if the outer loop runs to completion.
+ */
+export function DUNGEON_SortRoomClientArray113c(m: Memory113c, pRoom: number): void {
+  const room = pRoom >>> 0
+  if (DUNGEON_VerifyRoomClientsNonNull113c(m, room) === 0) {
+    throw new Error('DUNGEON_SortRoomClientArray113c: VerifyRoomClientsNonNull failed (line 1115)')
+  }
+  let edi = ((m.u32((room + 0x78) >>> 0) | 0) - 1) | 0
+  if (edi > 0) {
+    while (edi > 0) {
+      let bSwapped = 0
+      for (let ecx = 0; ecx < edi; ecx++) {
+        const pArr = m.u32((room + 0x48) >>> 0)
+        const a = m.u32((pArr + ecx * 4) >>> 0)
+        const b = m.u32((pArr + ecx * 4 + 4) >>> 0)
+        if ((a >>> 0) > (b >>> 0)) {
+          const pArr2 = m.u32((room + 0x48) >>> 0)
+          const vNext = m.u32((pArr2 + ecx * 4 + 4) >>> 0)
+          const vCur = m.u32((pArr2 + ecx * 4) >>> 0)
+          m.setU32((pArr2 + ecx * 4) >>> 0, vNext)
+          const pArr3 = m.u32((room + 0x48) >>> 0)
+          m.setU32((pArr3 + ecx * 4 + 4) >>> 0, vCur)
+          bSwapped = 1
+        }
+      }
+      if (bSwapped === 0) {
+        return
+      }
+      edi = (edi - 1) | 0
+    }
+  }
+  const nCount = m.u32((room + 0x78) >>> 0)
+  if (nCount > 0) {
+    const pArr = m.u32((room + 0x48) >>> 0)
+    for (let i = 0; i < nCount; i++) {
+      if (m.u32((pArr + i * 4) >>> 0) === 0) {
+        throw new Error('DUNGEON_SortRoomClientArray113c: null client after sort (line 1107)')
+      }
+    }
+  }
+}
+
+/**
  * `@va D2Common:0x6FD8BE90` (`DUNGEON_AreAllAdjacentRoomsActive113c`, stdcall `(pRoom)`, `ret 4`).
  *
  * Returns `1` iff `pRoom->nRoomsNear (+0x24) == pRoom->pRoomEx (+0x10)->nRoomsNear (+0x2C)` and every
@@ -560,6 +609,44 @@ export function DUNGEON_AcquireRoomExDT1Mask113c(m: Memory113c, pRoom: number): 
 }
 
 /**
+ * `@va D2Common:0x6FD8C200` (`DUNGEON_AllocAndBuildRoomNeighborList113c`, custom `esi = pRoom`, `ecx = pMemPool`, `ret`).
+ *
+ * Allocates `pRoom->ppRoomsNear (+0x00)` of size `pRoom->pRoomEx (+0x10)->nRoomsNear (+0x2C) * 4`,
+ * packs active neighbor rooms via `0x6FD94540` (`DRLGROOM_PackAdjacentRooms113c`), and refreshes each
+ * distinct neighbor's `ppRoomsNear` and `nRoomsNear (+0x24)`.
+ */
+export function DUNGEON_AllocAndBuildRoomNeighborList113c(
+  m: Memory113c,
+  pRoom: number,
+  _pMemPool = 0,
+): void {
+  const room = pRoom >>> 0
+  const pRoomEx = m.u32((room + 0x10) >>> 0)
+  const nCap = m.u32((pRoomEx + 0x2c) >>> 0)
+  const ppRoomsNear = m.alloc((nCap * 4) >>> 0)
+  m.setU32(room, ppRoomsNear)
+
+  const nCount = DRLGROOM_PackAdjacentRooms113c(m, pRoomEx, ppRoomsNear) >>> 0
+  m.setU32((room + 0x24) >>> 0, nCount)
+
+  for (let i = 0; (i >>> 0) < (m.u32((room + 0x24) >>> 0) >>> 0); i++) {
+    const pArr = m.u32(room)
+    const pNeighbor = m.u32((pArr + i * 4) >>> 0)
+    if (pNeighbor === 0) {
+      throw new Error('DUNGEON_AllocAndBuildRoomNeighborList113c: null neighbor (line 264)')
+    }
+    if (pNeighbor !== room) {
+      const nSubCount = DRLGROOM_PackAdjacentRooms113c(
+        m,
+        m.u32((pNeighbor + 0x10) >>> 0),
+        m.u32(pNeighbor),
+      )
+      m.setU32((pNeighbor + 0x24) >>> 0, nSubCount >>> 0)
+    }
+  }
+}
+
+/**
  * `@va D2Common:0x6FD8C330` (`D2Common.#10099` `DUNGEON_CheckPresetRoomFlag80`, stdcall `(pRoom)`, `ret 4`).
  *
  * If `pRoom->pRoomEx (+0x10)->nType (+0x48) == 1`, returns `pRoomEx->pPresetType2info (+0x20)->fFlags (+0x54) & 0x80`;
@@ -575,4 +662,112 @@ export function DUNGEON_CheckPresetRoomFlag80_113c(m: Memory113c, pRoom: number)
   const pPreset = m.u32((pRoomEx + 0x20) >>> 0)
   return (m.u32((pPreset + 0x54) >>> 0) & 0x80) >>> 0
 }
+
+/**
+ * `@va D2Common:0x6FD8C870` (`DUNGEON_FreeRoomAndDetachUnits113c`, custom `edi = pRoom`, `[esp+4] = pMemPool`, `ret 4`).
+ *
+ * Detaches all units on `pRoom->pUnitFirst (+0x74)` via `0x6FDB6700` (`UNITROOM_RemoveUnitFromRoom113c`),
+ * frees `pRoom->pCollisionGrid (+0x20)`, calls `0x6FD8B4A0` (`DUNGEON_FreeRoomPortalList113c`),
+ * and frees `pRoom->pClientList (+0x48)`, `pRoom->ppRoomsNear (+0x00)`, and `pRoom` via `Fog.#10046`.
+ */
+export function DUNGEON_FreeRoomAndDetachUnits113c(
+  m: Memory113c,
+  pRoom: number,
+  _pMemPool = 0,
+): void {
+  const room = pRoom >>> 0
+  let pUnit = m.u32((room + 0x74) >>> 0)
+  while (pUnit !== 0) {
+    const dwFlags = m.u32((pUnit + 0xc4) >>> 0)
+    if (((dwFlags >>> 0x16) & 1) === 0) {
+      m.setU32((pUnit + 0xc8) >>> 0, (m.u32((pUnit + 0xc8) >>> 0) | 0x20) >>> 0)
+    }
+    m.setU32((pUnit + 0xc4) >>> 0, (dwFlags | 0x800000) >>> 0)
+
+    const nType = m.u32(pUnit) | 0
+    const pPath = m.u32((pUnit + 0x2c) >>> 0)
+    if (nType === 2 || (nType > 3 && nType <= 5)) {
+      if (m.u32(pPath) !== 0) {
+        UNITROOM_RemoveUnitFromRoom113c(m, pUnit)
+      }
+      m.setU32(pPath, 0)
+    } else {
+      const zero5c = m.u32(0x6fddd45c)
+      const zero58 = m.u32(0x6fddd458)
+      m.setU32((pPath + 0x04) >>> 0, zero5c)
+      m.setU32((pPath + 0x0c) >>> 0, zero5c)
+      const pPathRoom = m.u32((pPath + 0x1c) >>> 0)
+      m.setU32(pPath, zero58)
+      m.setU32((pPath + 0x08) >>> 0, zero58)
+      m.setU32((pPath + 0x28) >>> 0, 0)
+      if (pPathRoom !== 0) {
+        m.setU32((pPath + 0x20) >>> 0, pPathRoom)
+        UNITROOM_RemoveUnitFromRoom113c(m, m.u32((pPath + 0x30) >>> 0))
+        m.setU32((pPath + 0x34) >>> 0, (m.u32((pPath + 0x34) >>> 0) | 0x02) >>> 0)
+      }
+    }
+    pUnit = m.u32((room + 0x74) >>> 0)
+  }
+
+  const freeFn = (m as { free?: (p: number) => void }).free
+  const pCollGrid = m.u32((room + 0x20) >>> 0)
+  if (pCollGrid !== 0) {
+    freeFn?.call(m, pCollGrid)
+    m.setU32((room + 0x20) >>> 0, 0)
+  }
+  DUNGEON_FreeRoomPortalList113c(m, room)
+  const pClients = m.u32((room + 0x48) >>> 0)
+  if (pClients !== 0) {
+    const pAct = m.u32((room + 0x2c) >>> 0)
+    void m.u32((pAct + 0x5c) >>> 0)
+    freeFn?.call(m, pClients)
+  }
+  const ppRoomsNear = m.u32(room)
+  if (ppRoomsNear !== 0) {
+    freeFn?.call(m, ppRoomsNear)
+  }
+  if (room !== 0) {
+    freeFn?.call(m, room)
+  }
+}
+
+/**
+ * `@va D2Common:0x6FDCBA00` (`DUNGEON_ShouldDeactivateRoomEx113c`, custom `edx = pRoomEx`, `ret`).
+ *
+ * Returns `0` if `(pRoomEx->dwFlags & 0x400000) != 0` or `pRoomEx->fRoomStatus (+0x44) <= 1`.
+ * For town levels (`0x6FD7D320`) or Arreat Summit (`120`), returns `0` if any room in
+ * `pLevel->pFirstRoomEx (+0x10)` has `fRoomStatus <= 1`. Otherwise returns `1`.
+ */
+export function DUNGEON_ShouldDeactivateRoomEx113c(m: Memory113c, pRoomEx: number): number {
+  const roomEx = pRoomEx >>> 0
+  if ((m.u32((roomEx + 0x28) >>> 0) & 0x400000) !== 0) {
+    return 0
+  }
+  const pLevel = m.u32((roomEx + 0x58) >>> 0)
+  if (pLevel === 0) {
+    throw new Error('DUNGEON_ShouldDeactivateRoomEx113c: pLevel == 0 (line 1068)')
+  }
+  const pDrlg = m.u32((pLevel + 0x1b4) >>> 0)
+  if (pDrlg === 0) {
+    throw new Error('DUNGEON_ShouldDeactivateRoomEx113c: pDrlg == 0 (line 1069)')
+  }
+  if ((m.u8((pDrlg + 0x8c) >>> 0) & 0x01) !== 0) {
+    throw new Error('DUNGEON_ShouldDeactivateRoomEx113c: invalid drlg flag (line 743)')
+  }
+  if (m.u8((roomEx + 0x44) >>> 0) <= 1) {
+    return 0
+  }
+  const nLevelId = m.u32((pLevel + 0x1d0) >>> 0) | 0
+  if (DRLG_IsTownLevel113c(nLevelId) !== 0 || nLevelId === 0x78) {
+    let pCur = m.u32((pLevel + 0x10) >>> 0)
+    while (pCur !== 0) {
+      if (m.u8((pCur + 0x44) >>> 0) <= 1) {
+        return 0
+      }
+      pCur = m.u32((pCur + 0x24) >>> 0)
+    }
+  }
+  return 1
+}
+
 
