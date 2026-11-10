@@ -13,6 +13,7 @@ import {
   UNITS_InitPlayerData113c,
   UNITS_InitStaticPathCoords113c,
 } from '../../../src/d2kern-113c/common/quest-record.ts'
+import { D2CommonAssertError } from '../../../src/d2kern-113c/common/inline-helpers.ts'
 import { SparseMemory113c, type Memory113c } from '../../../src/d2kern-113c/mem/sparse-memory.ts'
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '../../..')
@@ -164,10 +165,7 @@ function verifyVector(rec: VectorRecord, overrideRet?: number): void {
     } catch (err) {
       caught = err
     }
-    if (
-      !(caught instanceof Error) ||
-      !caught.message.startsWith(`Fog.#10024/10265 assert at line ${rec.expectedAssert.line}:`)
-    ) {
+    if (!(caught instanceof D2CommonAssertError) || caught.line !== rec.expectedAssert.line) {
       throw new Error(
         `${rec.va} ${rec.name} [${rec.caseId}] expected assert at line ${rec.expectedAssert.line}, got ${String(caught)}`,
       )

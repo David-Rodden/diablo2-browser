@@ -11,6 +11,7 @@ import {
   D2DrlgOrthStrc,
   D2RoomExStrc,
 } from '../../mem/layout.generated.ts';
+import { D2CommonAssertError } from '../inline-helpers.ts';
 import { imul32, sdiv32 } from '../int-math.ts';
 import {
   DATATBLS_FindFloorWindowTileCacheEntry113c,
@@ -611,9 +612,7 @@ export function DRLGROOM_AppendAndSortAdjacentRoom113c(
 
   const pNewArr = m.alloc((nNewCount << 2) >>> 0);
   if (pNewArr === 0) {
-    throw new Error(
-      'DRLGROOM_AppendAndSortAdjacentRoom113c: realloc failed (line 789)',
-    );
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DRLG\\DrlgRoom.cpp', 789);
   }
   if (pOldArr !== 0) {
     for (let i = 0; i < nNewCount - 1; i++) {
@@ -720,9 +719,7 @@ export function DRLGWARP_GetWarpDstAdjustData113c(
   while (pWarp !== 0) {
     const entryLvlId = m.u32(pWarp) | 0;
     if (entryLvlId === 0) {
-      throw new Error(
-        'DRLGWARP_GetWarpDstAdjustData113c: entryLvlId == 0 (line 1040)',
-      );
+      throw new D2CommonAssertError('..\\Source\\D2Common\\DRLG\\OutRoom.cpp', 1040);
     }
     if (lvlId === entryLvlId) {
       return (pWarp + 4) | 0;
@@ -848,11 +845,11 @@ export function DRLG_GetAutomapCoordSlotPtr113c(
 ): number {
   const grp = nGroup >>> 0;
   if (grp >= 3) {
-    throw new Error('DRLG_GetAutomapCoordSlotPtr113c: nGroup >= 3 (line 143)');
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DRLG\\DrlgRoom.cpp', 143);
   }
   const idx = nIndex >>> 0;
   if (idx >= 3) {
-    throw new Error('DRLG_GetAutomapCoordSlotPtr113c: nIndex >= 3 (line 144)');
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DRLG\\DrlgRoom.cpp', 144);
   }
   return ((pBase >>> 0) + (grp + 1) * 0x30 + (idx << 4)) | 0;
 }
@@ -882,20 +879,16 @@ export function DRLGROOM_RollItemCoordinate113c(
     min = tmp;
   }
   if (pUnit === 0) {
-    throw new Error('DRLGROOM_RollItemCoordinate113c: pUnit == 0 (line 5381)');
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DRLG\\DrlgRoom.cpp', 5381);
   }
   const unit = pUnit >>> 0;
   const unitType = m.u32(unit) | 0;
   if (unitType !== 4) {
-    throw new Error(
-      'DRLGROOM_RollItemCoordinate113c: unitType != 4 (line 5382)',
-    );
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DRLG\\DrlgRoom.cpp', 5382);
   }
   const pItemData = m.u32((unit + 0x14) >>> 0);
   if (pItemData === 0) {
-    throw new Error(
-      'DRLGROOM_RollItemCoordinate113c: pItemData == 0 (line 5384)',
-    );
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DRLG\\DrlgRoom.cpp', 5384);
   }
   let range = (max - min) | 0;
   if (m.u16((pItemData + 0x30) >>> 0) >= 1) {
@@ -978,9 +971,7 @@ export function DRLGROOM_LoadDt1Files113c(
   const pLevel = m.u32((roomEx + 0x58) >>> 0);
   const nDrlgType = m.u32((pLevel + 0x1c0) >>> 0) | 0;
   if (pLvlTypesTxt === 0) {
-    throw new Error(
-      'DRLGROOM_LoadDt1Files113c: sgpLvlTypesTxt == 0 (line 593)',
-    );
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DRLG\\RoomTile.cpp', 593);
   }
 
   let mask = m.u32((roomEx + 0x50) >>> 0) >>> 0;

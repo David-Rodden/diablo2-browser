@@ -6,7 +6,77 @@
  */
 import { D2RoomCollisionGridStrc } from '../mem/layout.generated.ts';
 import type { Memory113c } from '../mem/sparse-memory.ts';
+import { FIELD_StepFieldCoords113c } from '../tables/field-tbls-113c.ts';
+import {
+  DUNGEON_GetCollisionGridFromRoomFast113c,
+  DUNGEON_GetRoomAtPosition113c,
+  DUNGEON_GetRoomCoordinates113c,
+} from './dungeon.ts';
+import { D2CommonAssertError } from './inline-helpers.ts';
 import { imul32 } from './int-math.ts';
+
+const STACK_SCRATCH_BASE = 0x7fff0000;
+const STACK_SCRATCH_SIZE = 0x1000;
+const _stackBuf = new ArrayBuffer(STACK_SCRATCH_SIZE);
+const _stackU8 = new Uint8Array(_stackBuf);
+const _stackDV = new DataView(_stackBuf);
+
+function withStackScratch113c(m: Memory113c): Memory113c {
+  if ((m as { __hasStackScratch?: boolean }).__hasStackScratch) {
+    return m;
+  }
+  const isStack = (p: number): boolean => {
+    const u = p >>> 0;
+    return u >= STACK_SCRATCH_BASE && u < STACK_SCRATCH_BASE + STACK_SCRATCH_SIZE;
+  };
+  const wrapped: Memory113c & { __hasStackScratch: boolean; free?: (p: number) => void } = {
+    __hasStackScratch: true,
+    alloc: size => m.alloc(size),
+    free: p => (m as { free?: (addr: number) => void }).free?.(p),
+    u8: p => (isStack(p) ? _stackU8[(p >>> 0) - STACK_SCRATCH_BASE]! : m.u8(p)),
+    u16: p => (isStack(p) ? _stackDV.getUint16((p >>> 0) - STACK_SCRATCH_BASE, true) : m.u16(p)),
+    u32: p => (isStack(p) ? _stackDV.getUint32((p >>> 0) - STACK_SCRATCH_BASE, true) : m.u32(p)),
+    setU8: (p, v) => {
+      if (isStack(p)) _stackU8[(p >>> 0) - STACK_SCRATCH_BASE] = v & 0xff;
+      else m.setU8(p, v);
+    },
+    setU16: (p, v) => {
+      if (isStack(p)) _stackDV.setUint16((p >>> 0) - STACK_SCRATCH_BASE, v & 0xffff, true);
+      else m.setU16(p, v);
+    },
+    setU32: (p, v) => {
+      if (isStack(p)) _stackDV.setUint32((p >>> 0) - STACK_SCRATCH_BASE, v >>> 0, true);
+      else m.setU32(p, v);
+    },
+    get: (base, f, idx = 0) => {
+      const width = f.type === 'u8' ? 1 : f.type === 'u16' ? 2 : 4;
+      const addr = (base + f.off + idx * width) >>> 0;
+      if (isStack(addr)) {
+        return width === 1 ? wrapped.u8(addr) : width === 2 ? wrapped.u16(addr) : wrapped.u32(addr);
+      }
+      return m.get(base, f, idx);
+    },
+    set: (base, f, v, idx = 0) => {
+      const width = f.type === 'u8' ? 1 : f.type === 'u16' ? 2 : 4;
+      const addr = (base + f.off + idx * width) >>> 0;
+      if (isStack(addr)) {
+        if (width === 1) wrapped.setU8(addr, v);
+        else if (width === 2) wrapped.setU16(addr, v);
+        else wrapped.setU32(addr, v);
+      } else {
+        m.set(base, f, v, idx);
+      }
+    },
+    fill: (p, len, v) => {
+      if (isStack(p)) {
+        _stackU8.fill(v & 0xff, (p >>> 0) - STACK_SCRATCH_BASE, (p >>> 0) - STACK_SCRATCH_BASE + len);
+      } else {
+        m.fill(p, len, v);
+      }
+    },
+  };
+  return wrapped;
+}
 
 /**
  * `@va D2Common:0x6FD9AB60` (`COLLISION_SetMaskForBoundingBox113c`, custom `eax = pCollGrid`, `edx = pBox`, `[esp+4] = wMask`, `ret 4`).
@@ -188,7 +258,7 @@ export function COLLISION_SplitClipRectByRoomBounds113c(
     return 0;
   }
   if (pRoom === 0) {
-    throw new Error('COLLISION_SplitClipRectByRoomBounds113c: pRoom == NULL (line 709)');
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DRLG\\RoomTile.cpp', 709);
   }
   const pCollGrid = m.u32(((pRoom >>> 0) + 0x20) >>> 0);
   if (pCollGrid === 0) {
@@ -404,7 +474,7 @@ export function COLLISION_InitBoundingBox113c(
   nBottom: number,
 ): void {
   if (pBox === 0) {
-    throw new Error('COLLISION_InitBoundingBox113c: pBox == NULL (line 161)');
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DATATBLS\\FieldTbls.cpp', 161);
   }
   const box = pBox >>> 0;
   m.setU32(box, nLeft >>> 0);
@@ -443,7 +513,7 @@ export function COLLISION_StampRoomTileGridToCollGrid113c(
     const subtileY = imul32(tileY, 5);
 
     if (grid === 0) {
-      throw new Error('COLLISION_StampRoomTileGridToCollGrid113c: pCollGrid == NULL (line 530)');
+      throw new D2CommonAssertError('..\\Source\\D2Common\\COLLISN\\Collisn.cpp', 530);
     }
 
     const posX = m.get(grid, D2RoomCollisionGridStrc.nSubtileX) | 0;
@@ -499,3 +569,1350 @@ export function COLLISION_StampRoomTileGridToCollGrid113c(
   }
 }
 
+/**
+ * `@va D2Common:0x6FD9AD20` (`COLLISION_RayTrace113c`,
+ * `__stdcall(pRoom, pPt1, pPt2, dwMask) -> BOOL`, `ret 0x10`).
+ */
+export function COLLISION_RayTrace113c(
+  m: Memory113c,
+  pRoom: number,
+  pPt1: number,
+  pPt2: number,
+  dwMask: number,
+): number {
+  const pt1 = pPt1 >>> 0;
+  const pt2 = pPt2 >>> 0;
+  const y1 = m.u32((pt1 + 0x04) >>> 0) | 0;
+  let ebx = m.u32(pt1) | 0;
+  const x2 = m.u32(pt2) | 0;
+  const y2 = m.u32((pt2 + 0x04) >>> 0) | 0;
+  let esi = pRoom >>> 0;
+  let curY = y1;
+  let dx = (x2 - ebx) | 0;
+  let dy = (y2 - y1) | 0;
+  let stepX = 1;
+  let stepY = 1;
+
+  const hitOrStop = (): number => {
+    m.setU32(pt2, ebx >>> 0);
+    m.setU32((pt2 + 0x04) >>> 0, curY >>> 0);
+    return 1;
+  };
+
+  if (esi === 0) {
+    return hitOrStop();
+  }
+  if (dx < 0) {
+    dx = -dx | 0;
+    stepX = -1;
+  }
+  if (dy < 0) {
+    dy = -dy | 0;
+    stepY = -1;
+  }
+
+  let rW = m.u32((esi + 0x54) >>> 0) | 0;
+  let edi = m.u32((esi + 0x4c) >>> 0) | 0;
+  let ebp = m.u32((esi + 0x50) >>> 0) | 0;
+  let rMaxX = (rW + edi) | 0;
+  let rMaxY = ((m.u32((esi + 0x58) >>> 0) | 0) + ebp) | 0;
+
+  if (ebx < edi || ebx >= rMaxX || curY < ebp || curY >= rMaxY) {
+    esi = DUNGEON_GetRoomAtPosition113c(m, esi, ebx, curY);
+    if (esi === 0) return hitOrStop();
+    rW = m.u32((esi + 0x54) >>> 0) | 0;
+    edi = m.u32((esi + 0x4c) >>> 0) | 0;
+    ebp = m.u32((esi + 0x50) >>> 0) | 0;
+    rMaxX = (edi + rW) | 0;
+    rMaxY = ((m.u32((esi + 0x58) >>> 0) | 0) + ebp) | 0;
+    if (ebx < edi || ebx >= rMaxX || curY < ebp || curY >= rMaxY) {
+      return hitOrStop();
+    }
+  }
+
+  const mask16 = dwMask & 0xffff;
+
+  if (dx === 0) {
+    if (dy === 0) {
+      const pGrid = DUNGEON_GetCollisionGridFromRoomFast113c(m, esi);
+      const pMap = m.u32((pGrid + 0x20) >>> 0);
+      const stride = m.u32((pGrid + 0x08) >>> 0) | 0;
+      const idx = (imul32((curY - ebp) | 0, stride) - edi + ebx) | 0;
+      const cell = m.u16((pMap + (idx << 1)) >>> 0);
+      if ((cell & mask16) !== 0) {
+        return hitOrStop();
+      }
+      return 0;
+    }
+
+    let remY = (dy + 1) | 0;
+    for (;;) {
+      let nextRemY = 0;
+      let countY = remY;
+      if (stepY > 0) {
+        if (y2 >= rMaxY) {
+          const span = (rMaxY - curY) | 0;
+          nextRemY = (remY - span) | 0;
+          countY = span;
+        }
+      } else {
+        if (y2 < ebp) {
+          const span = ((curY - ebp + 1) | 0);
+          nextRemY = (remY - span) | 0;
+          countY = span;
+        }
+      }
+
+      const pGrid = m.u32((esi + 0x20) >>> 0);
+      const stride = m.u32((pGrid + 0x08) >>> 0) | 0;
+      const pMap = m.u32((pGrid + 0x20) >>> 0);
+      const stepElem = imul32( rW, stepY );
+      let pCell = (pMap + (((imul32((curY - ebp) | 0, stride) - edi + ebx) | 0) << 1)) >>> 0;
+      const pEnd = (pCell + (imul32(stepElem, countY) << 1)) >>> 0;
+
+      while (pCell !== pEnd) {
+        if ((m.u16(pCell) & mask16) !== 0) {
+          return hitOrStop();
+        }
+        pCell = (pCell + (stepElem << 1)) >>> 0;
+        curY = (curY + stepY) | 0;
+      }
+
+      if (nextRemY === 0) {
+        return 0;
+      }
+
+      esi = DUNGEON_GetRoomAtPosition113c(m, esi, ebx, curY);
+      if (esi === 0) return hitOrStop();
+      ebp = m.u32((esi + 0x50) >>> 0) | 0;
+      rMaxY = ((m.u32((esi + 0x58) >>> 0) | 0) + ebp) | 0;
+      edi = m.u32((esi + 0x4c) >>> 0) | 0;
+      if (ebx < edi) return hitOrStop();
+      rW = m.u32((esi + 0x54) >>> 0) | 0;
+      rMaxX = (rW + edi) | 0;
+      if (ebx >= rMaxX || curY < ebp || curY >= rMaxY) {
+        return hitOrStop();
+      }
+      remY = nextRemY;
+    }
+  }
+
+  if (dy === 0) {
+    let remX = (dx + 1) | 0;
+    for (;;) {
+      let nextRemX = 0;
+      let countX = remX;
+      if (stepX > 0) {
+        if (x2 >= rMaxX) {
+          const span = (rMaxX - ebx) | 0;
+          nextRemX = (remX - span) | 0;
+          countX = span;
+        }
+      } else {
+        if (x2 < edi) {
+          const span = ((ebx - edi + 1) | 0);
+          nextRemX = (remX - span) | 0;
+          countX = span;
+        }
+      }
+
+      const pGrid = m.u32((esi + 0x20) >>> 0);
+      const stride = m.u32((pGrid + 0x08) >>> 0) | 0;
+      const pMap = m.u32((pGrid + 0x20) >>> 0);
+      let pCell = (pMap + (((imul32((curY - ebp) | 0, stride) - edi + ebx) | 0) << 1)) >>> 0;
+      const pEnd = (pCell + (imul32(stepX, countX) << 1)) >>> 0;
+
+      while (pCell !== pEnd) {
+        if ((m.u16(pCell) & mask16) !== 0) {
+          return hitOrStop();
+        }
+        pCell = (pCell + (stepX << 1)) >>> 0;
+        ebx = (ebx + stepX) | 0;
+      }
+
+      if (nextRemX === 0) {
+        return 0;
+      }
+
+      esi = DUNGEON_GetRoomAtPosition113c(m, esi, ebx, curY);
+      if (esi === 0) return hitOrStop();
+      edi = m.u32((esi + 0x4c) >>> 0) | 0;
+      rW = m.u32((esi + 0x54) >>> 0) | 0;
+      ebp = m.u32((esi + 0x50) >>> 0) | 0;
+      rMaxX = (rW + edi) | 0;
+      rMaxY = ((m.u32((esi + 0x58) >>> 0) | 0) + ebp) | 0;
+      if (ebx < edi || ebx >= rMaxX || curY < ebp || curY >= rMaxY) {
+        return hitOrStop();
+      }
+      remX = nextRemX;
+    }
+  }
+
+  let acc = 0;
+  if (dx >= dy) {
+    const endX = (x2 + stepX) | 0;
+    for (;;) {
+      const boundX = stepX < 0 ? (edi - 1) | 0 : rMaxX;
+      const boundY = stepY < 0 ? (ebp - 1) | 0 : rMaxY;
+      if (curY >= rMaxY) {
+        return hitOrStop();
+      }
+      const pGrid = DUNGEON_GetCollisionGridFromRoomFast113c(m, esi);
+      const pMap = m.u32((pGrid + 0x20) >>> 0);
+      const stride = m.u32((pGrid + 0x08) >>> 0) | 0;
+      let pCell = (pMap + (((imul32((curY - ebp) | 0, stride) - edi + ebx) | 0) << 1)) >>> 0;
+      const rowStep = imul32(m.u32((esi + 0x54) >>> 0) | 0, stepY);
+
+      for (;;) {
+        if ((m.u16(pCell) & mask16) !== 0) {
+          return hitOrStop();
+        }
+        acc = (acc + dy) | 0;
+        ebx = (ebx + stepX) | 0;
+        if (acc >= dx) {
+          acc = (acc - dx) | 0;
+          curY = (curY + stepY) | 0;
+          pCell = (pCell + (rowStep << 1)) >>> 0;
+        }
+        pCell = (pCell + (stepX << 1)) >>> 0;
+        if (ebx === boundX || curY === boundY) {
+          break;
+        }
+        if (ebx === endX) {
+          return 0;
+        }
+      }
+
+      if (ebx === endX) {
+        return 0;
+      }
+      esi = DUNGEON_GetRoomAtPosition113c(m, esi, ebx, curY);
+      if (esi === 0) return hitOrStop();
+      edi = m.u32((esi + 0x4c) >>> 0) | 0;
+      ebp = m.u32((esi + 0x50) >>> 0) | 0;
+      rW = m.u32((esi + 0x54) >>> 0) | 0;
+      rMaxX = (rW + edi) | 0;
+      rMaxY = ((m.u32((esi + 0x58) >>> 0) | 0) + ebp) | 0;
+      if (ebx < edi || ebx >= rMaxX || curY < ebp || curY >= rMaxY) {
+        return hitOrStop();
+      }
+    }
+  } else {
+    const endY = (y2 + stepY) | 0;
+    for (;;) {
+      const boundX = stepX < 0 ? (edi - 1) | 0 : rMaxX;
+      const boundY = stepY < 0 ? (ebp - 1) | 0 : rMaxY;
+      if (curY >= rMaxY) {
+        return hitOrStop();
+      }
+      const pGrid = DUNGEON_GetCollisionGridFromRoomFast113c(m, esi);
+      const pMap = m.u32((pGrid + 0x20) >>> 0);
+      const stride = m.u32((pGrid + 0x08) >>> 0) | 0;
+      let pCell = (pMap + (((imul32((curY - ebp) | 0, stride) - edi + ebx) | 0) << 1)) >>> 0;
+      const rowStep = imul32(m.u32((esi + 0x54) >>> 0) | 0, stepY);
+
+      for (;;) {
+        if ((m.u16(pCell) & mask16) !== 0) {
+          return hitOrStop();
+        }
+        curY = (curY + stepY) | 0;
+        acc = (acc + dx) | 0;
+        if (acc >= dy) {
+          acc = (acc - dy) | 0;
+          ebx = (ebx + stepX) | 0;
+          pCell = (pCell + (stepX << 1)) >>> 0;
+        }
+        pCell = (pCell + (rowStep << 1)) >>> 0;
+        if (ebx === boundX || curY === boundY) {
+          break;
+        }
+        if (curY === endY) {
+          return 0;
+        }
+      }
+
+      if (curY === endY) {
+        return 0;
+      }
+      esi = DUNGEON_GetRoomAtPosition113c(m, esi, ebx, curY);
+      if (esi === 0) return hitOrStop();
+      edi = m.u32((esi + 0x4c) >>> 0) | 0;
+      ebp = m.u32((esi + 0x50) >>> 0) | 0;
+      rW = m.u32((esi + 0x54) >>> 0) | 0;
+      rMaxX = (rW + edi) | 0;
+      rMaxY = ((m.u32((esi + 0x58) >>> 0) | 0) + ebp) | 0;
+      if (ebx < edi || ebx >= rMaxX || curY < ebp || curY >= rMaxY) {
+        return hitOrStop();
+      }
+    }
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD9B280` (`COLLISION_SetMaskForBoundingBoxRecursively113c`,
+ * `__fastcall(ecx=pRoom, edx=pClipRect, [esp+4]=wMask)`, `ret 4`).
+ */
+export function COLLISION_SetMaskForBoundingBoxRecursively113c(
+  m: Memory113c,
+  pRoom: number,
+  pClipRect: number,
+  wMask: number,
+  depth = 0,
+): void {
+  const sm = withStackScratch113c(m);
+  const rect = pClipRect >>> 0;
+  const edi = DUNGEON_GetRoomAtPosition113c(sm, pRoom, sm.u32(rect) | 0, sm.u32((rect + 0x04) >>> 0) | 0);
+  if (edi === 0) return;
+  const pCollGrid = sm.u32((edi + 0x20) >>> 0);
+  if (pCollGrid === 0) return;
+
+  const pOutRects = (STACK_SCRATCH_BASE + depth * 0x30) >>> 0;
+  const nSplit = COLLISION_SplitClipRectByRoomBounds113c(sm, edi, rect, pOutRects) | 0;
+  if (nSplit <= 0) return;
+
+  COLLISION_SetMaskForBoundingBox113c(sm, pCollGrid, pOutRects, wMask);
+
+  if (nSplit > 1) {
+    let i = 1;
+    do {
+      COLLISION_SetMaskForBoundingBoxRecursively113c(
+        sm,
+        edi,
+        (pOutRects + i * 0x10) >>> 0,
+        wMask,
+        depth + 1,
+      );
+      i = (i + 1) | 0;
+    } while (i < nSplit);
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD9B2F0` (`COLLISION_ClearMaskForBoundingBoxRecursively113c`,
+ * `__fastcall(ecx=pRoom, edx=pClipRect, [esp+4]=wMask)`, `ret 4`).
+ */
+export function COLLISION_ClearMaskForBoundingBoxRecursively113c(
+  m: Memory113c,
+  pRoom: number,
+  pClipRect: number,
+  wMask: number,
+  depth = 0,
+): void {
+  const sm = withStackScratch113c(m);
+  const rect = pClipRect >>> 0;
+  const edi = DUNGEON_GetRoomAtPosition113c(sm, pRoom, sm.u32(rect) | 0, sm.u32((rect + 0x04) >>> 0) | 0);
+  if (edi === 0) return;
+  const pCollGrid = sm.u32((edi + 0x20) >>> 0);
+  if (pCollGrid === 0) return;
+
+  const pOutRects = (STACK_SCRATCH_BASE + depth * 0x30) >>> 0;
+  const nSplit = COLLISION_SplitClipRectByRoomBounds113c(sm, edi, rect, pOutRects) | 0;
+  if (nSplit <= 0) return;
+
+  COLLISION_ClearMaskForBoundingBox113c(sm, pCollGrid, pOutRects, wMask);
+
+  if (nSplit > 1) {
+    let i = 1;
+    do {
+      COLLISION_ClearMaskForBoundingBoxRecursively113c(
+        sm,
+        edi,
+        (pOutRects + i * 0x10) >>> 0,
+        wMask,
+        depth + 1,
+      );
+      i = (i + 1) | 0;
+    } while (i < nSplit);
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD9B360` (`COLLISION_CheckAnyCollisionWithBoxRecursively113c`,
+ * `__fastcall(ecx=pRoom, edx=pClipRect, [esp+4]=wMask) -> BOOL`, `ret 4`).
+ */
+export function COLLISION_CheckAnyCollisionWithBoxRecursively113c(
+  m: Memory113c,
+  pRoom: number,
+  pClipRect: number,
+  wMask: number,
+  depth = 0,
+): number {
+  const sm = withStackScratch113c(m);
+  const rect = pClipRect >>> 0;
+  const edi = DUNGEON_GetRoomAtPosition113c(sm, pRoom, sm.u32(rect) | 0, sm.u32((rect + 0x04) >>> 0) | 0);
+  if (edi === 0) return 1;
+  const pCollGrid = sm.u32((edi + 0x20) >>> 0);
+  if (pCollGrid === 0) return 1;
+
+  const pOutRects = (STACK_SCRATCH_BASE + depth * 0x30) >>> 0;
+  const nSplit = COLLISION_SplitClipRectByRoomBounds113c(sm, edi, rect, pOutRects) | 0;
+  if (nSplit <= 0) return 1;
+
+  if ((COLLISION_CheckMaskForBoundingBox113c(sm, pCollGrid, pOutRects, wMask) & 0xffff) !== 0) {
+    return 1;
+  }
+
+  let i = 1;
+  if (nSplit > 1) {
+    while (
+      COLLISION_CheckAnyCollisionWithBoxRecursively113c(
+        sm,
+        edi,
+        (pOutRects + i * 0x10) >>> 0,
+        wMask,
+        depth + 1,
+      ) === 0
+    ) {
+      i = (i + 1) | 0;
+      if (i >= nSplit) {
+        return 0;
+      }
+    }
+    return 1;
+  }
+  return 0;
+}
+
+/**
+ * `@va D2Common:0x6FD9B3F0` (`COLLISION_GetCombinedMaskForBoxRecursively113c`,
+ * `__fastcall(ecx=pRoom, edx=pClipRect, [esp+4]=wMask) -> uint16`, `ret 4`).
+ */
+export function COLLISION_GetCombinedMaskForBoxRecursively113c(
+  m: Memory113c,
+  pRoom: number,
+  pClipRect: number,
+  wMask: number,
+  depth = 0,
+): number {
+  const sm = withStackScratch113c(m);
+  const rect = pClipRect >>> 0;
+  const edi = DUNGEON_GetRoomAtPosition113c(sm, pRoom, sm.u32(rect) | 0, sm.u32((rect + 0x04) >>> 0) | 0);
+  if (edi === 0) return 0x27;
+  const pCollGrid = sm.u32((edi + 0x20) >>> 0);
+  if (pCollGrid === 0) return 0x27;
+
+  const pOutRects = (STACK_SCRATCH_BASE + depth * 0x30) >>> 0;
+  const nSplit = COLLISION_SplitClipRectByRoomBounds113c(sm, edi, rect, pOutRects) | 0;
+  if (nSplit <= 0) return 0x27;
+
+  let acc = COLLISION_CheckMaskForBoundingBox113c(sm, pCollGrid, pOutRects, wMask) & 0xffff;
+
+  if (nSplit > 1) {
+    let i = 1;
+    do {
+      acc =
+        (acc |
+          COLLISION_GetCombinedMaskForBoxRecursively113c(
+            sm,
+            edi,
+            (pOutRects + i * 0x10) >>> 0,
+            wMask,
+            depth + 1,
+          )) &
+        0xffff;
+      i = (i + 1) | 0;
+    } while (i < nSplit);
+  }
+  return acc;
+}
+
+/**
+ * `@va D2Common:0x6FD9B4D0` (`COLLISION_ClearSubtileMaskInRoom113c`,
+ * custom register ABI `eax = pRoom`, `ecx = wMask`, `edx = nY`, `[esp+4] = nX`, `ret 4`).
+ */
+export function COLLISION_ClearSubtileMaskInRoom113c(
+  m: Memory113c,
+  pRoom: number,
+  wMask: number,
+  nY: number,
+  nX: number,
+): void {
+  const room = DUNGEON_GetRoomAtPosition113c(m, pRoom, nX | 0, nY | 0);
+  if (room === 0) return;
+  const pCollGrid = m.u32((room + 0x20) >>> 0);
+  if (pCollGrid === 0) return;
+  const pMap = m.u32((pCollGrid + 0x20) >>> 0);
+  if (pMap === 0) return;
+  const rx = ((nX | 0) - (m.u32(pCollGrid) | 0)) | 0;
+  const ry = ((nY | 0) - (m.u32((pCollGrid + 0x04) >>> 0) | 0)) | 0;
+  const stride = m.u32((pCollGrid + 0x08) >>> 0) | 0;
+  const addr = (pMap + (((imul32(stride, ry) + rx) | 0) << 1)) >>> 0;
+  m.setU16(addr, m.u16(addr) & (~wMask & 0xffff));
+}
+
+/**
+ * `@va D2Common:0x6FD9B930` (`COLLISION_SetSubtileMaskInRoom113c`,
+ * custom register ABI `eax = pRoom`, `ecx = nY`, `edx = nX`, `[esp+4] = wMask`, `ret 4`).
+ */
+export function COLLISION_SetSubtileMaskInRoom113c(
+  m: Memory113c,
+  pRoom: number,
+  nY: number,
+  nX: number,
+  wMask: number,
+): void {
+  const room = DUNGEON_GetRoomAtPosition113c(m, pRoom, nX | 0, nY | 0);
+  if (room === 0) return;
+  const pCollGrid = m.u32((room + 0x20) >>> 0);
+  if (pCollGrid === 0) return;
+  const pMap = m.u32((pCollGrid + 0x20) >>> 0);
+  if (pMap === 0) return;
+  const rx = ((nX | 0) - (m.u32(pCollGrid) | 0)) | 0;
+  const ry = ((nY | 0) - (m.u32((pCollGrid + 0x04) >>> 0) | 0)) | 0;
+  const stride = m.u32((pCollGrid + 0x08) >>> 0) | 0;
+  const addr = (pMap + (((imul32(stride, ry) + rx) | 0) << 1)) >>> 0;
+  m.setU16(addr, (m.u16(addr) | (wMask & 0xffff)) & 0xffff);
+}
+
+/**
+ * `@va D2Common:0x6FD9B970` (`COLLISION_SetCrossPatternMask113c`,
+ * custom register ABI `esi = nY`, `[esp+4] = pRoom`, `[esp+8] = nX`, `[esp+0xC] = wMask`, `ret 0xC`).
+ */
+export function COLLISION_SetCrossPatternMask113c(
+  m: Memory113c,
+  nY: number,
+  pRoom: number,
+  nX: number,
+  wMask: number,
+): void {
+  const x = nX | 0;
+  const y = nY | 0;
+  const mask16 = wMask & 0xffff;
+
+  const setPoint = (px: number, py: number): void => {
+    const r = DUNGEON_GetRoomAtPosition113c(m, pRoom, px, py);
+    if (r === 0) return;
+    const pGrid = m.u32((r + 0x20) >>> 0);
+    if (pGrid === 0) return;
+    const pMap = m.u32((pGrid + 0x20) >>> 0);
+    if (pMap === 0) return;
+    const rx = (px - (m.u32(pGrid) | 0)) | 0;
+    const ry = (py - (m.u32((pGrid + 0x04) >>> 0) | 0)) | 0;
+    const stride = m.u32((pGrid + 0x08) >>> 0) | 0;
+    const addr = (pMap + (((imul32(stride, ry) + rx) | 0) << 1)) >>> 0;
+    m.setU16(addr, (m.u16(addr) | mask16) & 0xffff);
+  };
+
+  setPoint((x - 1) | 0, y);
+  setPoint(x, y);
+  setPoint((x + 1) | 0, y);
+  setPoint(x, (y - 1) | 0);
+  setPoint(x, (y + 1) | 0);
+}
+
+/**
+ * `@va D2Common:0x6FD9BB70` (`COLLISION_ClearSubtileMaskInRoom_6FD9BB70_113c`,
+ * custom register ABI `eax = pRoom`, `ecx = wMask`, `edx = nY`, `[esp+4] = nX`, `ret 4`).
+ */
+export function COLLISION_ClearSubtileMaskInRoom_6FD9BB70_113c(
+  m: Memory113c,
+  pRoom: number,
+  wMask: number,
+  nY: number,
+  nX: number,
+): void {
+  COLLISION_ClearSubtileMaskInRoom113c(m, pRoom, wMask, nY, nX);
+}
+
+/**
+ * `@va D2Common:0x6FD9BBB0` (`COLLISION_ClearCrossPatternMask113c`,
+ * custom register ABI `esi = nY`, `[esp+4] = pRoom`, `[esp+8] = nX`, `[esp+0xC] = wMask`, `ret 0xC`).
+ */
+export function COLLISION_ClearCrossPatternMask113c(
+  m: Memory113c,
+  nY: number,
+  pRoom: number,
+  nX: number,
+  wMask: number,
+): void {
+  const x = nX | 0;
+  const y = nY | 0;
+  const invMask16 = ~wMask & 0xffff;
+
+  const clearPoint = (px: number, py: number): void => {
+    const r = DUNGEON_GetRoomAtPosition113c(m, pRoom, px, py);
+    if (r === 0) return;
+    const pGrid = m.u32((r + 0x20) >>> 0);
+    if (pGrid === 0) return;
+    const pMap = m.u32((pGrid + 0x20) >>> 0);
+    if (pMap === 0) return;
+    const rx = (px - (m.u32(pGrid) | 0)) | 0;
+    const ry = (py - (m.u32((pGrid + 0x04) >>> 0) | 0)) | 0;
+    const stride = m.u32((pGrid + 0x08) >>> 0) | 0;
+    const addr = (pMap + (((imul32(stride, ry) + rx) | 0) << 1)) >>> 0;
+    m.setU16(addr, m.u16(addr) & invMask16);
+  };
+
+  clearPoint((x - 1) | 0, y);
+  clearPoint(x, y);
+  clearPoint((x + 1) | 0, y);
+  clearPoint(x, (y - 1) | 0);
+  clearPoint(x, (y + 1) | 0);
+}
+
+/**
+ * `@va D2Common:0x6FD9C570` (`COLLISION_CheckSubtileMaskInRoomFast113c`,
+ * custom register ABI `eax = pRoom`, `ecx = nY`, `edx = nX`, `[esp+4] = wMask`, `ret 4 -> uint16`).
+ */
+export function COLLISION_CheckSubtileMaskInRoomFast113c(
+  m: Memory113c,
+  pRoom: number,
+  nY: number,
+  nX: number,
+  wMask: number,
+): number {
+  const room = DUNGEON_GetRoomAtPosition113c(m, pRoom, nX | 0, nY | 0);
+  if (room === 0) return 0x27;
+  const pCollGrid = m.u32((room + 0x20) >>> 0);
+  if (pCollGrid === 0) return 0x27;
+  const pMap = m.u32((pCollGrid + 0x20) >>> 0);
+  if (pMap === 0) return 0x27;
+  const rx = ((nX | 0) - (m.u32(pCollGrid) | 0)) | 0;
+  const ry = ((nY | 0) - (m.u32((pCollGrid + 0x04) >>> 0) | 0)) | 0;
+  const stride = m.u32((pCollGrid + 0x08) >>> 0) | 0;
+  const cell = m.u16((pMap + (((imul32(stride, ry) + rx) | 0) << 1)) >>> 0);
+  return (cell & wMask) >>> 0;
+}
+
+/**
+ * `@va D2Common:0x6FD9C940` (`D2Common.#10212` `COLLISION_ClearSubtileMask113c`,
+ * `__stdcall(pRoom, nX, nY, wMask)`, `ret 0x10`).
+ */
+export function COLLISION_ClearSubtileMask113c(
+  m: Memory113c,
+  pRoom: number,
+  nX: number,
+  nY: number,
+  wMask: number,
+): void {
+  COLLISION_ClearSubtileMaskInRoom113c(m, pRoom, wMask, nY, nX);
+}
+
+/**
+ * `@va D2Common:0x6FD9C990` (`D2Common.#10628` `COLLISION_SetSubtileMask113c`,
+ * `__stdcall(pRoom, nX, nY, wMask)`, `ret 0x10`).
+ */
+export function COLLISION_SetSubtileMask113c(
+  m: Memory113c,
+  pRoom: number,
+  nX: number,
+  nY: number,
+  wMask: number,
+): void {
+  COLLISION_SetSubtileMaskInRoom113c(m, pRoom, nY, nX, wMask);
+}
+
+/**
+ * `@va D2Common:0x6FD9C9D0` (`D2Common.#10288` `COLLISION_CheckSubtileMask113c`,
+ * `__stdcall(pRoom, nX, nY, wMask) -> uint16`, `ret 0x10`).
+ */
+export function COLLISION_CheckSubtileMask113c(
+  m: Memory113c,
+  pRoom: number,
+  nX: number,
+  nY: number,
+  wMask: number,
+): number {
+  return COLLISION_CheckSubtileMaskInRoomFast113c(m, pRoom, nY, nX, wMask);
+}
+
+/**
+ * `@va D2Common:0x6FD9CA20` (`COLLISION_ReplaceTileSubtileFlagsInRoom113c`,
+ * custom register ABI `eax = pRoom`, `[esp+4] = pTileEntry`, `[esp+8] = pNewTileLibraryEntry`, `ret 8`).
+ */
+export function COLLISION_ReplaceTileSubtileFlagsInRoom113c(
+  m: Memory113c,
+  pRoom: number,
+  pTileEntry: number,
+  pNewTileLibraryEntry: number,
+): void {
+  const room0 = pRoom >>> 0;
+  if (room0 === 0) return;
+  const pRoomCoords = m.u32((room0 + 0x20) >>> 0);
+  if (pRoomCoords === 0) return;
+  const te = pTileEntry >>> 0;
+  const tileX = ((m.u32((pRoomCoords + 0x10) >>> 0) | 0) + (m.u32((te + 0x08) >>> 0) | 0)) | 0;
+  const tileY = ((m.u32((pRoomCoords + 0x14) >>> 0) | 0) + (m.u32((te + 0x0c) >>> 0) | 0)) | 0;
+  const subX = imul32(tileX, 5);
+  const subY = imul32(tileY, 5);
+
+  const room = DUNGEON_GetRoomAtPosition113c(m, room0, subX, subY);
+  if (room === 0) return;
+  const pCollGrid = m.u32((room + 0x20) >>> 0);
+  if (pCollGrid === 0) return;
+
+  const relY = (subY - (m.u32((pCollGrid + 0x04) >>> 0) | 0)) | 0;
+  const relX = (subX - (m.u32(pCollGrid) | 0)) | 0;
+  const pOldTileLibraryEntry = m.u32((te + 0x18) >>> 0);
+  COLLISION_ClearTileSubtileFlagsFromCollGrid113c(m, relY, relX, pCollGrid, pOldTileLibraryEntry);
+  if ((pNewTileLibraryEntry >>> 0) !== 0) {
+    COLLISION_OrTileSubtileFlagsToCollGrid113c(m, relY, relX, pCollGrid, pNewTileLibraryEntry >>> 0);
+  }
+}
+
+/**
+ * `@va D2Common:0x6FDCE6C0` (`D2Common.#10697` `COLLISION_TraceFieldCollision113c`,
+ * `__stdcall(pField, pRoom, nX, nY, wMask) -> BOOL`, `ret 0x14`).
+ */
+export function COLLISION_TraceFieldCollision113c(
+  m: Memory113c,
+  pField: number,
+  pRoom: number,
+  nX: number,
+  nY: number,
+  wMask: number,
+): number {
+  const sm = withStackScratch113c(m);
+  const room0 = pRoom >>> 0;
+  if (room0 === 0) return 0;
+
+  const x0 = nX | 0;
+  const y0 = nY | 0;
+  const mask16 = wMask & 0xffff;
+
+  let r = DUNGEON_GetRoomAtPosition113c(sm, room0, x0, y0);
+  if (r === 0) return 1;
+  let pGrid = sm.u32((r + 0x20) >>> 0);
+  if (pGrid === 0) return 1;
+  let pMap = sm.u32((pGrid + 0x20) >>> 0);
+  if (pMap === 0) return 1;
+  let rx = (x0 - (sm.u32(pGrid) | 0)) | 0;
+  let ry = (y0 - (sm.u32((pGrid + 0x04) >>> 0) | 0)) | 0;
+  let stride = sm.u32((pGrid + 0x08) >>> 0) | 0;
+  if ((sm.u16((pMap + (((imul32(stride, ry) + rx) | 0) << 1)) >>> 0) & mask16) !== 0) {
+    return 1;
+  }
+
+  const pStackXY = STACK_SCRATCH_BASE + 0x800;
+  sm.setU32(pStackXY, x0 >>> 0);
+  sm.setU32((pStackXY + 0x04) >>> 0, y0 >>> 0);
+
+  while (FIELD_StepFieldCoords113c(sm, pField, pStackXY, (pStackXY + 0x04) >>> 0) !== 0) {
+    const curX = sm.u32(pStackXY) | 0;
+    const curY = sm.u32((pStackXY + 0x04) >>> 0) | 0;
+    r = DUNGEON_GetRoomAtPosition113c(sm, room0, curX, curY);
+    if (r === 0) return 1;
+    pGrid = sm.u32((r + 0x20) >>> 0);
+    if (pGrid === 0) return 1;
+    pMap = sm.u32((pGrid + 0x20) >>> 0);
+    if (pMap === 0) return 1;
+    rx = (curX - (sm.u32(pGrid) | 0)) | 0;
+    ry = (curY - (sm.u32((pGrid + 0x04) >>> 0) | 0)) | 0;
+    stride = sm.u32((pGrid + 0x08) >>> 0) | 0;
+    if ((sm.u16((pMap + (((imul32(stride, ry) + rx) | 0) << 1)) >>> 0) & mask16) !== 0) {
+      return 1;
+    }
+  }
+  return 0;
+}
+
+/**
+ * `@va D2Common:0x6FDCF490` (`COLLISION_IsPointWithinRoomMargin113c`,
+ * custom register ABI `eax = nY`, `ecx = pRoom`, `edx = nX`, `edi = nMargin -> BOOL`).
+ */
+export function COLLISION_IsPointWithinRoomMargin113c(
+  m: Memory113c,
+  nY: number,
+  pRoom: number,
+  nX: number,
+  nMargin: number,
+): number {
+  const sm = withStackScratch113c(m);
+  const pRoomCoords = STACK_SCRATCH_BASE + 0x900;
+  DUNGEON_GetRoomCoordinates113c(sm, pRoom, pRoomCoords);
+
+  const margin = nMargin | 0;
+  const x = nX | 0;
+  const y = nY | 0;
+  const rX = sm.u32(pRoomCoords) | 0;
+  const rY = sm.u32((pRoomCoords + 0x04) >>> 0) | 0;
+  const rW = sm.u32((pRoomCoords + 0x08) >>> 0) | 0;
+  const rH = sm.u32((pRoomCoords + 0x0c) >>> 0) | 0;
+
+  if (((x + margin) | 0) < rX) {
+    if (((x - margin) | 0) > ((rX + rW) | 0)) {
+      return 0;
+    }
+  }
+  if (((y + margin) | 0) >= rY) {
+    return 1;
+  }
+  if (((y - margin) | 0) > ((rY + rH) | 0)) {
+    return 0;
+  }
+  return 1;
+}
+
+/**
+ * `@va D2Common:0x6FD9B510` (`COLLISION_GetMaskAt113c`,
+ * custom register ABI `eax = pRoom`, `edx = nX`, `ecx = nY`, `[esp+4] = wMask`, `ret 4 -> uint16`).
+ */
+export function COLLISION_GetMaskAt113c(
+  m: Memory113c,
+  pRoom: number,
+  nX: number,
+  nY: number,
+  wMask: number,
+): number {
+  const room = DUNGEON_GetRoomAtPosition113c(m, pRoom, nX | 0, nY | 0);
+  if (room === 0) return 0x27;
+  const pCollGrid = m.u32((room + 0x20) >>> 0);
+  if (pCollGrid === 0) return 0x27;
+  const pMap = m.u32((pCollGrid + 0x20) >>> 0);
+  if (pMap === 0) return 0x27;
+  const rx = ((nX | 0) - (m.u32(pCollGrid) | 0)) | 0;
+  const ry = ((nY | 0) - (m.u32((pCollGrid + 0x04) >>> 0) | 0)) | 0;
+  const stride = m.u32((pCollGrid + 0x08) >>> 0) | 0;
+  const cell = m.u16((pMap + (((imul32(stride, ry) + rx) | 0) << 1)) >>> 0);
+  return (cell & wMask) & 0xffff;
+}
+
+/**
+ * `@va D2Common:0x6FD80730` (`COLLISION_RayTraceBetweenSizedPoints113c`,
+ * custom register ABI `eax = nX2`, `ecx = nX1`, `edx = nSize2`,
+ * `[esp+4] = nY1`, `[esp+8] = nSize1`, `[esp+0xC] = nY2`, `[esp+0x10] = pRoom`, `[esp+0x14] = dwMask`,
+ * `ret 0x14 -> BOOL`).
+ */
+export function COLLISION_RayTraceBetweenSizedPoints113c(
+  m: Memory113c,
+  nX2: number,
+  nX1: number,
+  nSize2: number,
+  nY1: number,
+  nSize1: number,
+  nY2: number,
+  pRoom: number,
+  dwMask: number,
+): number {
+  const sm = withStackScratch113c(m);
+  const s1 = (nSize1 | 0) >= 3 ? 2 : (nSize1 | 0);
+  const s2 = (nSize2 | 0) >= 3 ? 2 : (nSize2 | 0);
+  let x1 = nX1 | 0;
+  let y1 = nY1 | 0;
+  let x2 = nX2 | 0;
+  let y2 = nY2 | 0;
+  let dx = (x2 - x1) | 0;
+  if (dx < 0) dx = -dx | 0;
+  let dy = (y2 - y1) | 0;
+  if (dy < 0) dy = -dy | 0;
+  if (((dx + dy) | 0) < ((s1 + s2) | 0)) {
+    return 0;
+  }
+  if (s1 !== 0 || s2 !== 0) {
+    if (dx >= dy) {
+      if (x2 > x1) {
+        x1 = (x1 + s1) | 0;
+        x2 = (x2 - s2) | 0;
+      } else {
+        x1 = (x1 - s1) | 0;
+        x2 = (x2 + s2) | 0;
+      }
+    }
+    if (dy >= dx) {
+      if (y2 > y1) {
+        y1 = (y1 + s1) | 0;
+        y2 = (y2 - s2) | 0;
+      } else {
+        y1 = (y1 - s1) | 0;
+        y2 = (y2 + s2) | 0;
+      }
+    }
+  }
+  const pt1 = STACK_SCRATCH_BASE + 0xa00;
+  const pt2 = STACK_SCRATCH_BASE + 0xa08;
+  sm.setU32(pt1, x1 >>> 0);
+  sm.setU32((pt1 + 0x04) >>> 0, y1 >>> 0);
+  sm.setU32(pt2, x2 >>> 0);
+  sm.setU32((pt2 + 0x04) >>> 0, y2 >>> 0);
+  return COLLISION_RayTrace113c(sm, pRoom, pt1, pt2, dwMask);
+}
+
+/**
+ * `@va D2Common:0x6FD9B840` (`D2Common.#10200` `COLLISION_SetMaskWithSizeXY113c`,
+ * `__stdcall(pRoom, nX, nY, nSizeX, nSizeY, wMask)`, `ret 0x18`).
+ */
+export function COLLISION_SetMaskWithSizeXY113c(
+  m: Memory113c,
+  pRoom: number,
+  nX: number,
+  nY: number,
+  nSizeX: number,
+  nSizeY: number,
+  wMask: number,
+): void {
+  const sx = nSizeX | 0;
+  const sy = nSizeY | 0;
+  if (sx === 1 && sy === 1) {
+    COLLISION_SetSubtileMaskInRoom113c(m, pRoom, nY, nX, wMask);
+    return;
+  }
+  const sm = withStackScratch113c(m);
+  const left = ((nX | 0) - ((nSizeX >>> 0) >>> 1)) | 0;
+  const right = (left + sx - 1) | 0;
+  const top = ((nY | 0) - ((nSizeY >>> 0) >>> 1)) | 0;
+  const bottom = (top + sy - 1) | 0;
+  const box = STACK_SCRATCH_BASE + 0xa20;
+  sm.setU32(box, left >>> 0);
+  sm.setU32((box + 0x04) >>> 0, top >>> 0);
+  sm.setU32((box + 0x08) >>> 0, right >>> 0);
+  sm.setU32((box + 0x0c) >>> 0, bottom >>> 0);
+  COLLISION_SetMaskForBoundingBoxRecursively113c(sm, pRoom, box, wMask);
+}
+
+/**
+ * `@va D2Common:0x6FD9B8F0` (`COLLISION_SetMask3x3_113c`,
+ * custom register ABI `ecx = pRoom`, `eax = nX`, `[esp+4] = nY`, `[esp+8] = wMask`, `ret 8`).
+ */
+export function COLLISION_SetMask3x3_113c(
+  m: Memory113c,
+  pRoom: number,
+  nX: number,
+  nY: number,
+  wMask: number,
+): void {
+  const sm = withStackScratch113c(m);
+  const x = nX | 0;
+  const y = nY | 0;
+  const box = STACK_SCRATCH_BASE + 0xa30;
+  sm.setU32(box, ((x - 1) | 0) >>> 0);
+  sm.setU32((box + 0x04) >>> 0, ((y - 1) | 0) >>> 0);
+  sm.setU32((box + 0x08) >>> 0, ((x + 1) | 0) >>> 0);
+  sm.setU32((box + 0x0c) >>> 0, ((y + 1) | 0) >>> 0);
+  COLLISION_SetMaskForBoundingBoxRecursively113c(sm, pRoom, box, wMask);
+}
+
+/**
+ * `@va D2Common:0x6FD9BAB0` (`D2Common.#10958` `COLLISION_ResetMaskWithSizeXY113c`,
+ * `__stdcall(pRoom, nX, nY, nSizeX, nSizeY, wMask)`, `ret 0x18`).
+ */
+export function COLLISION_ResetMaskWithSizeXY113c(
+  m: Memory113c,
+  pRoom: number,
+  nX: number,
+  nY: number,
+  nSizeX: number,
+  nSizeY: number,
+  wMask: number,
+): void {
+  const sx = nSizeX | 0;
+  const sy = nSizeY | 0;
+  if (sx <= 0 || sy <= 0) return;
+  if (sx === 1 && sy === 1) {
+    COLLISION_ClearSubtileMaskInRoom113c(m, pRoom, wMask, nY, nX);
+    return;
+  }
+  const sm = withStackScratch113c(m);
+  const left = ((nX | 0) - ((nSizeX >>> 0) >>> 1)) | 0;
+  const right = (left + sx - 1) | 0;
+  const top = ((nY | 0) - ((nSizeY >>> 0) >>> 1)) | 0;
+  const bottom = (top + sy - 1) | 0;
+  const box = STACK_SCRATCH_BASE + 0xa40;
+  sm.setU32(box, left >>> 0);
+  sm.setU32((box + 0x04) >>> 0, top >>> 0);
+  sm.setU32((box + 0x08) >>> 0, right >>> 0);
+  sm.setU32((box + 0x0c) >>> 0, bottom >>> 0);
+  COLLISION_ClearMaskForBoundingBoxRecursively113c(sm, pRoom, box, wMask);
+}
+
+/**
+ * `@va D2Common:0x6FD9BB30` (`COLLISION_ResetMask3x3_113c`,
+ * custom register ABI `ecx = pRoom`, `eax = nX`, `[esp+4] = nY`, `[esp+8] = wMask`, `ret 8`).
+ */
+export function COLLISION_ResetMask3x3_113c(
+  m: Memory113c,
+  pRoom: number,
+  nX: number,
+  nY: number,
+  wMask: number,
+): void {
+  const sm = withStackScratch113c(m);
+  const x = nX | 0;
+  const y = nY | 0;
+  const box = STACK_SCRATCH_BASE + 0xa50;
+  sm.setU32(box, ((x - 1) | 0) >>> 0);
+  sm.setU32((box + 0x04) >>> 0, ((y - 1) | 0) >>> 0);
+  sm.setU32((box + 0x08) >>> 0, ((x + 1) | 0) >>> 0);
+  sm.setU32((box + 0x0c) >>> 0, ((y + 1) | 0) >>> 0);
+  COLLISION_ClearMaskForBoundingBoxRecursively113c(sm, pRoom, box, wMask);
+}
+
+/**
+ * `@va D2Common:0x6FD9BFC0` (`D2Common.#10552` `COLLISION_SetMaskWithPattern113c`,
+ * `__stdcall(pRoom, nX, nY, nPattern, wMask)`, `ret 0x14`).
+ */
+export function COLLISION_SetMaskWithPattern113c(
+  m: Memory113c,
+  pRoom: number,
+  nX: number,
+  nY: number,
+  nPattern: number,
+  wMask: number,
+): void {
+  const pat = nPattern | 0;
+  if (pat === 1) {
+    COLLISION_SetSubtileMaskInRoom113c(m, pRoom, nY, nX, wMask);
+  } else if (pat === 2) {
+    COLLISION_SetCrossPatternMask113c(m, nY, pRoom, nX, wMask);
+  } else if (pat === 3) {
+    COLLISION_SetMask3x3_113c(m, pRoom, nX, nY, wMask);
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD9C080` (`D2Common.#10303` `COLLISION_CheckMaskWithSizeXY113c`,
+ * `__stdcall(pRoom, nX, nY, nSizeX, nSizeY, wMask) -> uint16`, `ret 0x18`).
+ */
+export function COLLISION_CheckMaskWithSizeXY113c(
+  m: Memory113c,
+  pRoom: number,
+  nX: number,
+  nY: number,
+  nSizeX: number,
+  nSizeY: number,
+  wMask: number,
+): number {
+  const sx = nSizeX | 0;
+  const sy = nSizeY | 0;
+  if (sx <= 1 && sy <= 1) {
+    return COLLISION_GetMaskAt113c(m, pRoom, nX, nY, wMask) & 0xffff;
+  }
+  const sm = withStackScratch113c(m);
+  const left = ((nX | 0) - ((nSizeX >>> 0) >>> 1)) | 0;
+  const right = (left + sx - 1) | 0;
+  const top = ((nY | 0) - ((nSizeY >>> 0) >>> 1)) | 0;
+  const bottom = (top + sy - 1) | 0;
+  const box = STACK_SCRATCH_BASE + 0xa60;
+  sm.setU32(box, left >>> 0);
+  sm.setU32((box + 0x04) >>> 0, top >>> 0);
+  sm.setU32((box + 0x08) >>> 0, right >>> 0);
+  sm.setU32((box + 0x0c) >>> 0, bottom >>> 0);
+  return COLLISION_GetCombinedMaskForBoxRecursively113c(sm, pRoom, box, wMask) & 0xffff;
+}
+
+/**
+ * `@va D2Common:0x6FD9C140` (`COLLISION_CheckCrossPatternCollision113c`,
+ * custom register ABI `eax = nX`, `esi = wMask`, `[esp+4] = pRoom`, `[esp+8] = nY`,
+ * `ret 8 -> BOOL`).
+ */
+export function COLLISION_CheckCrossPatternCollision113c(
+  m: Memory113c,
+  nX: number,
+  wMask: number,
+  pRoom: number,
+  nY: number,
+): number {
+  const x = nX | 0;
+  const y = nY | 0;
+  const mask16 = wMask & 0xffff;
+  const r = DUNGEON_GetRoomAtPosition113c(m, pRoom, x, y);
+  if (r === 0) return 1;
+  const g = m.u32((r + 0x20) >>> 0);
+  if (g === 0) return 1;
+  const pMap = m.u32((g + 0x20) >>> 0);
+  if (pMap === 0) return 1;
+
+  const gx = m.u32(g) | 0;
+  const gy = m.u32((g + 0x04) >>> 0) | 0;
+  const gw = m.u32((g + 0x08) >>> 0) | 0;
+  const gh = m.u32((g + 0x0c) >>> 0) | 0;
+
+  let edge = 0;
+  if (gx >= x) edge = 1;
+  if (gy >= y) edge = (edge + 2) | 0;
+  if (((gx + gw) | 0) <= ((x + 1) | 0)) edge = (edge + 4) | 0;
+  if (((gy + gh) | 0) <= ((y + 1) | 0)) edge = (edge + 8) | 0;
+
+  const rx = (x - gx) | 0;
+  const ry = (y - gy) | 0;
+  const pCenter = (pMap + (((imul32(gw, ry) + rx) | 0) << 1)) >>> 0;
+  const rowBytes = (gw << 1) | 0;
+  const cellAt = (byteOff: number): number => m.u16((pCenter + byteOff) >>> 0) & mask16;
+
+  switch (edge >>> 0) {
+    case 0:
+      if (cellAt(0) !== 0) return 1;
+      if (cellAt(-2) !== 0) return 1;
+      if (cellAt(2) !== 0) return 1;
+      if (cellAt(-rowBytes) !== 0) return 1;
+      if (cellAt(rowBytes) !== 0) return 1;
+      return 0;
+    case 1:
+      if (cellAt(0) !== 0) return 1;
+      if (cellAt(2) !== 0) return 1;
+      if (cellAt(-rowBytes) !== 0) return 1;
+      if (cellAt(rowBytes) !== 0) return 1;
+      if (COLLISION_GetMaskAt113c(m, r, (x - 1) | 0, y, mask16) !== 0) return 1;
+      return 0;
+    case 2:
+      if (cellAt(0) !== 0) return 1;
+      if (cellAt(-2) !== 0) return 1;
+      if (cellAt(2) !== 0) return 1;
+      if (cellAt(rowBytes) !== 0) return 1;
+      if (COLLISION_GetMaskAt113c(m, r, x, (y - 1) | 0, mask16) !== 0) return 1;
+      return 0;
+    case 3:
+      if (cellAt(0) !== 0) return 1;
+      if (cellAt(2) !== 0) return 1;
+      if (cellAt(rowBytes) !== 0) return 1;
+      if (COLLISION_GetMaskAt113c(m, r, x, (y - 1) | 0, mask16) !== 0) return 1;
+      if (COLLISION_GetMaskAt113c(m, r, (x - 1) | 0, y, mask16) !== 0) return 1;
+      return 0;
+    case 4:
+      if (cellAt(0) !== 0) return 1;
+      if (cellAt(-2) !== 0) return 1;
+      if (cellAt(-rowBytes) !== 0) return 1;
+      if (cellAt(rowBytes) !== 0) return 1;
+      if (COLLISION_GetMaskAt113c(m, r, (x + 1) | 0, y, mask16) !== 0) return 1;
+      return 0;
+    case 6:
+      if (cellAt(0) !== 0) return 1;
+      if (cellAt(-2) !== 0) return 1;
+      if (cellAt(rowBytes) !== 0) return 1;
+      if (COLLISION_GetMaskAt113c(m, r, (x + 1) | 0, y, mask16) !== 0) return 1;
+      if (COLLISION_GetMaskAt113c(m, r, x, (y - 1) | 0, mask16) !== 0) return 1;
+      return 0;
+    case 8:
+      if (cellAt(0) !== 0) return 1;
+      if (cellAt(-2) !== 0) return 1;
+      if (cellAt(2) !== 0) return 1;
+      if (cellAt(-rowBytes) !== 0) return 1;
+      if (COLLISION_GetMaskAt113c(m, r, x, (y + 1) | 0, mask16) !== 0) return 1;
+      return 0;
+    case 9:
+      if (cellAt(0) !== 0) return 1;
+      if (cellAt(2) !== 0) return 1;
+      if (cellAt(-rowBytes) !== 0) return 1;
+      if (COLLISION_GetMaskAt113c(m, r, (x - 1) | 0, y, mask16) !== 0) return 1;
+      if (COLLISION_GetMaskAt113c(m, r, x, (y + 1) | 0, mask16) !== 0) return 1;
+      return 0;
+    case 12:
+      if (cellAt(0) !== 0) return 1;
+      if (cellAt(-2) !== 0) return 1;
+      if (cellAt(-rowBytes) !== 0) return 1;
+      if (COLLISION_GetMaskAt113c(m, r, (x + 1) | 0, y, mask16) !== 0) return 1;
+      if (COLLISION_GetMaskAt113c(m, r, x, (y + 1) | 0, mask16) !== 0) return 1;
+      return 0;
+    default:
+      return 1;
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD9C530` (`COLLISION_GetMask3x3_113c`,
+ * custom register ABI `ecx = pRoom`, `eax = nX`, `[esp+4] = nY`, `[esp+8] = wMask`,
+ * `ret 8 -> uint16`).
+ */
+export function COLLISION_GetMask3x3_113c(
+  m: Memory113c,
+  pRoom: number,
+  nX: number,
+  nY: number,
+  wMask: number,
+): number {
+  const sm = withStackScratch113c(m);
+  const x = nX | 0;
+  const y = nY | 0;
+  const box = STACK_SCRATCH_BASE + 0xa70;
+  sm.setU32(box, ((x - 1) | 0) >>> 0);
+  sm.setU32((box + 0x04) >>> 0, ((y - 1) | 0) >>> 0);
+  sm.setU32((box + 0x08) >>> 0, ((x + 1) | 0) >>> 0);
+  sm.setU32((box + 0x0c) >>> 0, ((y + 1) | 0) >>> 0);
+  return COLLISION_GetCombinedMaskForBoxRecursively113c(sm, pRoom, box, wMask) & 0xffff;
+}
+
+/**
+ * `@va D2Common:0x6FD9C5C0` (`COLLISION_GetCrossPatternMask113c`,
+ * custom register ABI `eax = pRoom`, `[esp+4] = nX`, `[esp+8] = nY`, `[esp+0xC] = wMask`,
+ * `ret 0xC -> uint16`).
+ */
+export function COLLISION_GetCrossPatternMask113c(
+  m: Memory113c,
+  pRoom: number,
+  nX: number,
+  nY: number,
+  wMask: number,
+): number {
+  const x = nX | 0;
+  const y = nY | 0;
+  const mask16 = wMask & 0xffff;
+  const r = DUNGEON_GetRoomAtPosition113c(m, pRoom, x, y);
+  if (r === 0) return mask16;
+  const g = m.u32((r + 0x20) >>> 0);
+  if (g === 0) return mask16;
+  const pMap = m.u32((g + 0x20) >>> 0);
+  if (pMap === 0) return mask16;
+
+  const gx = m.u32(g) | 0;
+  const gy = m.u32((g + 0x04) >>> 0) | 0;
+  const gw = m.u32((g + 0x08) >>> 0) | 0;
+  const gh = m.u32((g + 0x0c) >>> 0) | 0;
+
+  let edge = 0;
+  if (gx >= x) edge = 1;
+  if (gy >= y) edge = (edge + 2) | 0;
+  if (((gx + gw) | 0) <= ((x + 1) | 0)) edge = (edge + 4) | 0;
+  if (((gy + gh) | 0) <= ((y + 1) | 0)) edge = (edge + 8) | 0;
+
+  const rx = (x - gx) | 0;
+  const ry = (y - gy) | 0;
+  const pCenter = (pMap + (((imul32(gw, ry) + rx) | 0) << 1)) >>> 0;
+  const rowBytes = (gw << 1) | 0;
+  const cellAt = (byteOff: number): number => m.u16((pCenter + byteOff) >>> 0) & mask16;
+
+  switch (edge >>> 0) {
+    case 0:
+      return (cellAt(0) | cellAt(-2) | cellAt(2) | cellAt(-rowBytes) | cellAt(rowBytes)) & 0xffff;
+    case 1:
+      return (
+        (cellAt(0) |
+          cellAt(2) |
+          cellAt(-rowBytes) |
+          cellAt(rowBytes) |
+          COLLISION_GetMaskAt113c(m, r, (x - 1) | 0, y, mask16)) &
+        0xffff
+      );
+    case 2:
+      return (
+        (cellAt(0) |
+          cellAt(-2) |
+          cellAt(2) |
+          cellAt(rowBytes) |
+          COLLISION_GetMaskAt113c(m, r, x, (y - 1) | 0, mask16)) &
+        0xffff
+      );
+    case 3:
+      return (
+        (cellAt(0) |
+          cellAt(2) |
+          cellAt(rowBytes) |
+          COLLISION_GetMaskAt113c(m, r, x, (y - 1) | 0, mask16) |
+          COLLISION_GetMaskAt113c(m, r, (x - 1) | 0, y, mask16)) &
+        0xffff
+      );
+    case 4:
+      return (
+        (cellAt(0) |
+          cellAt(-2) |
+          cellAt(-rowBytes) |
+          cellAt(rowBytes) |
+          COLLISION_GetMaskAt113c(m, r, (x + 1) | 0, y, mask16)) &
+        0xffff
+      );
+    case 6:
+      return (
+        (cellAt(0) |
+          cellAt(-2) |
+          cellAt(rowBytes) |
+          COLLISION_GetMaskAt113c(m, r, x, (y - 1) | 0, mask16) |
+          COLLISION_GetMaskAt113c(m, r, (x + 1) | 0, y, mask16)) &
+        0xffff
+      );
+    case 8:
+      return (
+        (cellAt(0) |
+          cellAt(-2) |
+          cellAt(2) |
+          cellAt(-rowBytes) |
+          COLLISION_GetMaskAt113c(m, r, x, (y + 1) | 0, mask16)) &
+        0xffff
+      );
+    case 9:
+      return (
+        (cellAt(0) |
+          cellAt(2) |
+          cellAt(-rowBytes) |
+          COLLISION_GetMaskAt113c(m, r, (x - 1) | 0, y, mask16) |
+          COLLISION_GetMaskAt113c(m, r, x, (y + 1) | 0, mask16)) &
+        0xffff
+      );
+    case 12:
+      return (
+        (cellAt(0) |
+          cellAt(-2) |
+          cellAt(-rowBytes) |
+          COLLISION_GetMaskAt113c(m, r, (x + 1) | 0, y, mask16) |
+          COLLISION_GetMaskAt113c(m, r, x, (y + 1) | 0, mask16)) &
+        0xffff
+      );
+    default:
+      return mask16;
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD9CB90` (`D2Common.#11135` `COLLISION_FindFreeCoordsNear113c`,
+ * custom register ABI `ecx = pRoom`, `edx = pCoord`, `[esp+4] = nSize`, `[esp+8] = wMask`, `[esp+0xC] = ppRoomOut`,
+ * `ret 0xC`).
+ */
+export function COLLISION_FindFreeCoordsNear113c(
+  m: Memory113c,
+  pRoom: number,
+  pCoord: number,
+  nSize: number,
+  wMask: number,
+  ppRoomOut: number,
+): void {
+  const sm = withStackScratch113c(m);
+  const coord = pCoord >>> 0;
+  const roomOut = ppRoomOut >>> 0;
+  const x0 = sm.u32(coord) | 0;
+  const y0 = sm.u32((coord + 0x04) >>> 0) | 0;
+  const pCo = STACK_SCRATCH_BASE + 0xa80;
+  const box = STACK_SCRATCH_BASE + 0xaa0;
+
+  DUNGEON_GetRoomCoordinates113c(sm, pRoom, pCo);
+
+  let lim = 1;
+  let s = -1;
+  do {
+    for (let dy = s; dy < lim; dy = (dy + 2) | 0) {
+      const y = (y0 + dy) | 0;
+      sm.setU32((coord + 0x04) >>> 0, y >>> 0);
+      const coSubY = sm.u32((pCo + 0x04) >>> 0) | 0;
+      const coSubH = sm.u32((pCo + 0x0c) >>> 0) | 0;
+      let rr = pRoom >>> 0;
+      if (y < coSubY || y >= ((coSubY + coSubH) | 0)) {
+        rr = DUNGEON_GetRoomAtPosition113c(sm, pRoom, sm.u32(coord) | 0, y);
+      }
+      if (rr !== 0) {
+        for (let dx = s; dx < lim; dx = (dx + 2) | 0) {
+          DUNGEON_GetRoomCoordinates113c(sm, rr, pCo);
+          const x = (x0 + dx) | 0;
+          sm.setU32(coord, x >>> 0);
+          const coSubX = sm.u32(pCo) | 0;
+          const coSubW = sm.u32((pCo + 0x08) >>> 0) | 0;
+          let cr = rr;
+          if (x < coSubX || x >= ((coSubX + coSubW) | 0)) {
+            cr = DUNGEON_GetRoomAtPosition113c(sm, rr, x, sm.u32((coord + 0x04) >>> 0) | 0);
+          }
+          if (cr !== 0) {
+            const curY = sm.u32((coord + 0x04) >>> 0) | 0;
+            const curX = sm.u32(coord) | 0;
+            const dim = ((nSize | 0) + 2) | 0;
+            let maskRes: number;
+            if (dim <= 1) {
+              maskRes = COLLISION_GetMaskAt113c(sm, cr, curX, curY, wMask) & 0xffff;
+            } else {
+              const half = (dim >>> 0) >>> 1;
+              const l = (curX - half) | 0;
+              const t = (curY - half) | 0;
+              sm.setU32(box, l >>> 0);
+              sm.setU32((box + 0x04) >>> 0, t >>> 0);
+              sm.setU32((box + 0x08) >>> 0, ((l + dim - 1) | 0) >>> 0);
+              sm.setU32((box + 0x0c) >>> 0, ((t + dim - 1) | 0) >>> 0);
+              maskRes = COLLISION_GetCombinedMaskForBoxRecursively113c(sm, cr, box, wMask) & 0xffff;
+            }
+            if ((maskRes & 0xffff) === 0) {
+              sm.setU32(roomOut, cr >>> 0);
+              return;
+            }
+          }
+        }
+      }
+    }
+    lim = (lim + 1) | 0;
+    s = (s - 1) | 0;
+  } while (s > -50);
+
+  sm.setU32(roomOut, 0);
+}

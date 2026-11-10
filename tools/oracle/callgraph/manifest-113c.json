@@ -863,6 +863,7 @@
       "callers": [
         "D2Common:6FD5B560"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B050-drlg-path.test.ts (4 real-DLL vectors; 84 total in tests/fixtures/oracle/k1/b050-vectors.ndjson via k1r2-laneC-it8-emitter.c)",
       "externalDeps": [
         "d2common.msvc_libcmt:0x6FD51B0D",
         "fog.dll:10024",
@@ -873,12 +874,15 @@
         "fog.dll:10265",
         "kernel32.dll:GetLastError"
       ],
+      "kernFile": "src/d2kern-113c/common/drlg/preset.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD59900",
+      "name": "DRLGPRESET_LoadFileFromArchive",
       "sccId": 40,
       "size": 175,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "DRLGPRESET_LoadFileFromArchive113c (src/d2kern-113c/common/drlg/preset.ts)",
+      "tsSymbol": "DRLGPRESET_LoadFileFromArchive113c",
       "va": "0x6FD59900"
     },
     {
@@ -981,15 +985,19 @@
       "callers": [
         "D2Common:6FD5B320"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B050-drlg-path.test.ts (4 real-DLL vectors; 84 total in tests/fixtures/oracle/k1/b050-vectors.ndjson via k1r2-laneC-it8-emitter.c)",
       "externalDeps": [
         "fog.dll:10045"
       ],
+      "kernFile": "src/d2kern-113c/common/drlg/preset.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD59EA0",
+      "name": "DRLGPRESET_CopyMapPresetUnitNode",
       "sccId": 45,
       "size": 188,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "DRLGPRESET_CopyMapPresetUnitNode113c (src/d2kern-113c/common/drlg/preset.ts)",
+      "tsSymbol": "DRLGPRESET_CopyMapPresetUnitNode113c",
       "va": "0x6FD59EA0"
     },
     {
@@ -1059,18 +1067,22 @@
       "callers": [
         "D2Common:6FD5A8E0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B050-drlg-path.test.ts (5 real-DLL vectors; 84 total in tests/fixtures/oracle/k1/b050-vectors.ndjson via k1r2-laneC-it8-emitter.c)",
       "externalDeps": [
         "fog.dll:10046",
         "fog.dll:10050",
         "kernel32.dll:InterlockedDecrement",
         "kernel32.dll:LeaveCriticalSection"
       ],
+      "kernFile": "src/d2kern-113c/common/drlg/preset.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD5A5B0",
+      "name": "DRLGPRESET_ReleaseCachedPresetFile",
       "sccId": 49,
       "size": 202,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "DRLGPRESET_ReleaseCachedPresetFile113c (src/d2kern-113c/common/drlg/preset.ts)",
+      "tsSymbol": "DRLGPRESET_ReleaseCachedPresetFile113c",
       "va": "0x6FD5A5B0"
     },
     {
@@ -1122,15 +1134,19 @@
       "callers": [
         "D2Common:6FDCC0E0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B050-drlg-path.test.ts (5 real-DLL vectors; 84 total in tests/fixtures/oracle/k1/b050-vectors.ndjson via k1r2-laneC-it8-emitter.c)",
       "externalDeps": [
         "fog.dll:10045"
       ],
+      "kernFile": "src/d2kern-113c/common/drlg/drlg-grid.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD5AB50",
+      "name": "DRLGPRESET_BuildPresetRoomGridsFromFile",
       "sccId": 62,
       "size": 702,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "DRLGPRESET_BuildPresetRoomGridsFromFile113c (src/d2kern-113c/common/drlg/drlg-grid.ts)",
+      "tsSymbol": "DRLGPRESET_BuildPresetRoomGridsFromFile113c",
       "va": "0x6FD5AB50"
     },
     {
@@ -1156,15 +1172,19 @@
       "callers": [
         "D2Common:6FD94F90"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B050-drlg-path.test.ts (4 real-DLL vectors; 84 total in tests/fixtures/oracle/k1/b050-vectors.ndjson via k1r2-laneC-it8-emitter.c)",
       "externalDeps": [
         "fog.dll:10046"
       ],
+      "kernFile": "src/d2kern-113c/common/drlg/preset.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD5AEC0",
+      "name": "DRLGPRESET_FreePresetRoomData",
       "sccId": 65,
       "size": 91,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "DRLGPRESET_FreePresetRoomData113c (src/d2kern-113c/common/drlg/preset.ts)",
+      "tsSymbol": "DRLGPRESET_FreePresetRoomData113c",
       "va": "0x6FD5AEC0"
     },
     {
@@ -1568,13 +1588,17 @@
       "callers": [
         "D2Game:6FC71E70"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B061-path.test.ts (11 real-DLL vectors; 118 total in tests/fixtures/oracle/k1/b061-vectors.ndjson via k1r4-laneC-it9-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/path.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD5D180",
+      "name": "PATH_ComputeDirection",
       "sccId": 313,
       "size": 87,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "PATH_ComputeDirection113c (src/d2kern-113c/common/path.ts)",
+      "tsSymbol": "PATH_ComputeDirection113c",
       "va": "0x6FD5D180"
     },
     {
@@ -1587,13 +1611,17 @@
         "D2Common:6FD86230",
         "D2Common:6FDB7630"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B061-path.test.ts (12 real-DLL vectors; 118 total in tests/fixtures/oracle/k1/b061-vectors.ndjson via k1r4-laneC-it9-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/path.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD5D240",
+      "name": "PATH_ComputeVelocityToNextPoint",
       "sccId": 314,
       "size": 387,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "PATH_ComputeVelocityToNextPoint113c (src/d2kern-113c/common/path.ts)",
+      "tsSymbol": "PATH_ComputeVelocityToNextPoint113c",
       "va": "0x6FD5D240"
     },
     {
@@ -1626,13 +1654,17 @@
       "callers": [
         "D2Common:6FDB68A0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B045-inventory-unit.test.ts (2 real-DLL vectors via k1r2-laneA-it8-emitter.c -> b045-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/unit.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD5D540",
+      "name": "PATH_ResetDynamicPathRoomAndCoordsInline",
       "sccId": 352,
       "size": 53,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 5,
+      "tsReference": "PATH_ResetDynamicPathRoomAndCoordsInline113c (src/d2kern-113c/common/unit.ts)",
+      "tsSymbol": "PATH_ResetDynamicPathRoomAndCoordsInline113c",
       "va": "0x6FD5D540"
     },
     {
@@ -1662,13 +1694,17 @@
       "callers": [
         "D2Common:6FD5DA40"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B061-path.test.ts (9 real-DLL vectors; 118 total in tests/fixtures/oracle/k1/b061-vectors.ndjson via k1r4-laneC-it9-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/path.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD5D760",
+      "name": "PATH_RecacheRoom",
       "sccId": 358,
       "size": 177,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 5,
+      "tsReference": "PATH_RecacheRoom113c (src/d2kern-113c/common/path.ts)",
+      "tsSymbol": "PATH_RecacheRoom113c",
       "va": "0x6FD5D760"
     },
     {
@@ -1929,17 +1965,21 @@
         "D2Common:6FD60EB0",
         "D2Common:6FD616B0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B050-drlg-path.test.ts (22 real-DLL vectors; 84 total in tests/fixtures/oracle/k1/b050-vectors.ndjson via k1r2-laneC-it8-emitter.c)",
       "externalDeps": [
         "d2common.msvc_libcmt:0x6FD51B0D",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
+      "kernFile": "src/d2kern-113c/common/drlg/maze.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD5E490",
+      "name": "DRLGMAZE_AssignMazeRoomPrestId",
       "sccId": 140,
       "size": 476,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "DRLGMAZE_AssignMazeRoomPrestId113c (src/d2kern-113c/common/drlg/maze.ts)",
+      "tsSymbol": "DRLGMAZE_AssignMazeRoomPrestId113c",
       "va": "0x6FD5E490"
     },
     {
@@ -1989,15 +2029,19 @@
       "callers": [
         "D2Common:6FD5F110"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B050-drlg-path.test.ts (18 real-DLL vectors; 84 total in tests/fixtures/oracle/k1/b050-vectors.ndjson via k1r2-laneC-it8-emitter.c)",
       "externalDeps": [
         "fog.dll:10045"
       ],
+      "kernFile": "src/d2kern-113c/common/drlg/maze.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD5ECB0",
+      "name": "DRLGMAZE_PickSequentialSpecialPresetFileIndex",
       "sccId": 131,
       "size": 308,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "DRLGMAZE_PickSequentialSpecialPresetFileIndex113c (src/d2kern-113c/common/drlg/maze.ts)",
+      "tsSymbol": "DRLGMAZE_PickSequentialSpecialPresetFileIndex113c",
       "va": "0x6FD5ECB0"
     },
     {
@@ -2851,17 +2895,21 @@
         "D2Game:6FCEC6E0",
         "D2Game:6FCF0BC0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B048-unit-statlist.test.ts (real-DLL vectors via k1r4-laneA-it9-emitter.c -> b048-vectors.ndjson)",
       "externalDeps": [
         "d2common.msvc_libcmt:0x6FD51B0D",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
+      "kernFile": "src/d2kern-113c/common/unit.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD62450",
+      "name": "UNITS_AreInAdjacentRooms",
       "sccId": 441,
       "size": 131,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "UNITS_AreInAdjacentRooms113c (src/d2kern-113c/common/unit.ts)",
+      "tsSymbol": "UNITS_AreInAdjacentRooms113c",
       "va": "0x6FD62450"
     },
     {
@@ -2953,16 +3001,20 @@
       "callers": [
         "D2Game:6FC98430"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B048-unit-statlist.test.ts (host-I/O void function calling MSVCRT fwrite/fflush + Fog.#10050/LeaveCriticalSection; verified via direct memory-probe unit tests)",
       "externalDeps": [
         "fog.dll:10050",
         "kernel32.dll:LeaveCriticalSection"
       ],
+      "kernFile": "src/d2kern-113c/common/logging.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD62C00",
+      "name": "LOGGING_WriteLockedEntry",
       "sccId": 449,
       "size": 89,
-      "status": "unported",
+      "status": "ported",
       "topoLevel": 1,
+      "tsReference": "LOGGING_WriteLockedEntry113c (src/d2kern-113c/common/logging.ts)",
+      "tsSymbol": "LOGGING_WriteLockedEntry113c",
       "va": "0x6FD62C00"
     },
     {
@@ -3982,17 +4034,21 @@
       "callers": [
         "D2Common:6FD6A130"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B048-unit-statlist.test.ts (real-DLL vectors via k1r4-laneA-it9-emitter.c -> b048-vectors.ndjson)",
       "externalDeps": [
         "d2common.msvc_libcmt:0x6FD51B0D",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
+      "kernFile": "src/d2kern-113c/prng.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD69A50",
+      "name": "SEED_PickRandomListNode",
       "sccId": 487,
       "size": 90,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "SEED_PickRandomListNode113c (src/d2kern-113c/prng.ts)",
+      "tsSymbol": "SEED_PickRandomListNode113c",
       "va": "0x6FD69A50"
     },
     {
@@ -4245,13 +4301,17 @@
         "D2Game:6FCB5D50",
         "D2Game:6FCBEE50"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B045-inventory-unit.test.ts (3 real-DLL vectors via k1r2-laneA-it8-emitter.c -> b045-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/unit.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD6A3D0",
+      "name": "UNITS_GetSpawnedMonsterOrSkillSummonInfo",
       "sccId": 503,
       "size": 333,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "UNITS_GetSpawnedMonsterOrSkillSummonInfo113c (src/d2kern-113c/common/unit.ts)",
+      "tsSymbol": "UNITS_GetSpawnedMonsterOrSkillSummonInfo113c",
       "va": "0x6FD6A3D0"
     },
     {
@@ -4582,15 +4642,19 @@
       "callers": [
         "D2Common:6FD93580"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B050-drlg-path.test.ts (4 real-DLL vectors; 84 total in tests/fixtures/oracle/k1/b050-vectors.ndjson via k1r2-laneC-it8-emitter.c)",
       "externalDeps": [
         "fog.dll:10045"
       ],
+      "kernFile": "src/d2kern-113c/common/drlg/drlg-ver.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD6B6E0",
+      "name": "DRLGVER_BuildAndLocalizeRoomVertices",
       "sccId": 189,
       "size": 412,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "DRLGVER_BuildAndLocalizeRoomVertices113c (src/d2kern-113c/common/drlg/drlg-ver.ts)",
+      "tsSymbol": "DRLGVER_BuildAndLocalizeRoomVertices113c",
       "va": "0x6FD6B6E0"
     },
     {
@@ -5355,18 +5419,22 @@
         "D2Game:6FCF8970",
         "D2Game:6FCF8EA0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B048-unit-statlist.test.ts (real-DLL vectors via k1r4-laneA-it9-emitter.c -> b048-vectors.ndjson)",
       "externalDeps": [
         "d2common.msvc_libcmt:0x6FD51B0D",
         "fog.dll:10024",
         "fog.dll:10045",
         "fog.dll:10265"
       ],
+      "kernFile": "src/d2kern-113c/common/inventory.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD6E4F0",
+      "name": "INVENTORY_AppendItemGuidNode",
       "sccId": 585,
       "size": 180,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "INVENTORY_AppendItemGuidNode113c (src/d2kern-113c/common/inventory.ts)",
+      "tsSymbol": "INVENTORY_AppendItemGuidNode113c",
       "va": "0x6FD6E4F0"
     },
     {
@@ -5378,13 +5446,17 @@
         "D2Game:6FCF2540",
         "D2Game:6FCF7E30"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B045-inventory-unit.test.ts (2 real-DLL vectors via k1r2-laneA-it8-emitter.c -> b045-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/inventory.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD6E5B0",
+      "name": "INVENTORY_GetBeltItem",
       "sccId": 586,
       "size": 65,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "INVENTORY_GetBeltItem113c (src/d2kern-113c/common/inventory.ts)",
+      "tsSymbol": "INVENTORY_GetBeltItem113c",
       "va": "0x6FD6E5B0"
     },
     {
@@ -5395,13 +5467,17 @@
         "D2Game:6FC565E0",
         "D2Game:6FCF3280"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B045-inventory-unit.test.ts (2 real-DLL vectors via k1r2-laneA-it8-emitter.c -> b045-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/inventory.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD6E600",
+      "name": "INVENTORY_GetItemGridXIfInInventory",
       "sccId": 587,
       "size": 42,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "INVENTORY_GetItemGridXIfInInventory113c (src/d2kern-113c/common/inventory.ts)",
+      "tsSymbol": "INVENTORY_GetItemGridXIfInInventory113c",
       "va": "0x6FD6E600"
     },
     {
@@ -5412,13 +5488,17 @@
         "D2Game:6FCF5590",
         "D2Game:6FD01110"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B045-inventory-unit.test.ts (2 real-DLL vectors via k1r2-laneA-it8-emitter.c -> b045-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/inventory.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD6E630",
+      "name": "INVENTORY_GetItemBodyLocFromX",
       "sccId": 588,
       "size": 53,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "INVENTORY_GetItemBodyLocFromX113c (src/d2kern-113c/common/inventory.ts)",
+      "tsSymbol": "INVENTORY_GetItemBodyLocFromX113c",
       "va": "0x6FD6E630"
     },
     {
@@ -5531,13 +5611,17 @@
       "callers": [
         "D2Common:6FD71C50"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B051-inv-unit.test.ts (real-DLL vectors via k1r4-laneA-it9-emitter.c -> b051-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/inventory.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD6E7B0",
+      "name": "INVENTORY_CopyGrid2Cells",
       "sccId": 594,
       "size": 195,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "INVENTORY_CopyGrid2Cells113c (src/d2kern-113c/common/inventory.ts)",
+      "tsSymbol": "INVENTORY_CopyGrid2Cells113c",
       "va": "0x6FD6E7B0"
     },
     {
@@ -5676,13 +5760,17 @@
       "callers": [
         "D2Common:6FD74B20"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B051-inv-unit.test.ts (real-DLL vectors via k1r4-laneA-it9-emitter.c -> b051-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/inventory.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD6EEE0",
+      "name": "INVENTORY_CanStackIntoBeltRow",
       "sccId": 600,
       "size": 162,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "INVENTORY_CanStackIntoBeltRow113c (src/d2kern-113c/common/inventory.ts)",
+      "tsSymbol": "INVENTORY_CanStackIntoBeltRow113c",
       "va": "0x6FD6EEE0"
     },
     {
@@ -5694,13 +5782,17 @@
         "D2Common:6FD70560",
         "D2Common:6FD705A0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B051-inv-unit.test.ts (real-DLL vectors via k1r4-laneA-it9-emitter.c -> b051-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/inventory.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD6F370",
+      "name": "INVENTORY_FindFirstFitColMajor",
       "sccId": 601,
       "size": 159,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "INVENTORY_FindFirstFitColMajor113c (src/d2kern-113c/common/inventory.ts)",
+      "tsSymbol": "INVENTORY_FindFirstFitColMajor113c",
       "va": "0x6FD6F370"
     },
     {
@@ -5713,13 +5805,17 @@
         "D2Common:6FD70560",
         "D2Common:6FD705A0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B051-inv-unit.test.ts (real-DLL vectors via k1r4-laneA-it9-emitter.c -> b051-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/inventory.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD6F410",
+      "name": "INVENTORY_FindBestFitRowMajor",
       "sccId": 602,
       "size": 198,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "INVENTORY_FindBestFitRowMajor113c (src/d2kern-113c/common/inventory.ts)",
+      "tsSymbol": "INVENTORY_FindBestFitRowMajor113c",
       "va": "0x6FD6F410"
     },
     {
@@ -5729,13 +5825,17 @@
       "callers": [
         "D2Common:6FD705E0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B051-inv-unit.test.ts (real-DLL vectors via k1r4-laneA-it9-emitter.c -> b051-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/inventory.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD6F4E0",
+      "name": "INVENTORY_FindFirstFitRightToLeft",
       "sccId": 603,
       "size": 153,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "INVENTORY_FindFirstFitRightToLeft113c (src/d2kern-113c/common/inventory.ts)",
+      "tsSymbol": "INVENTORY_FindFirstFitRightToLeft113c",
       "va": "0x6FD6F4E0"
     },
     {
@@ -5746,13 +5846,17 @@
       "callers": [
         "D2Common:6FD705E0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B051-inv-unit.test.ts (real-DLL vectors via k1r4-laneA-it9-emitter.c -> b051-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/inventory.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD6F580",
+      "name": "INVENTORY_FindBestFitReverse",
       "sccId": 604,
       "size": 170,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "INVENTORY_FindBestFitReverse113c (src/d2kern-113c/common/inventory.ts)",
+      "tsSymbol": "INVENTORY_FindBestFitReverse113c",
       "va": "0x6FD6F580"
     },
     {
@@ -5822,13 +5926,17 @@
       "callers": [
         "D2Common:6FD71640"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B045-inventory-unit.test.ts (2 real-DLL vectors via k1r2-laneA-it8-emitter.c -> b045-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/inventory.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD6F720",
+      "name": "INVENTORY_RemoveItemFromGrid",
       "sccId": 608,
       "size": 455,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "INVENTORY_RemoveItemFromGrid113c (src/d2kern-113c/common/inventory.ts)",
+      "tsSymbol": "INVENTORY_RemoveItemFromGrid113c",
       "va": "0x6FD6F720"
     },
     {
@@ -5879,13 +5987,17 @@
         "D2Common:6FD71300",
         "D2Common:6FD71420"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B051-inv-unit.test.ts (real-DLL vectors via k1r4-laneA-it9-emitter.c -> b051-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/inventory.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD6FB50",
+      "name": "INVENTORY_FindItemGfxCodeIndex",
       "sccId": 614,
       "size": 42,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "INVENTORY_FindItemGfxCodeIndex113c (src/d2kern-113c/common/inventory.ts)",
+      "tsSymbol": "INVENTORY_FindItemGfxCodeIndex113c",
       "va": "0x6FD6FB50"
     },
     {
@@ -5932,13 +6044,17 @@
         "D2Game:6FCF8970",
         "D2Game:6FCF8EA0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B051-inv-unit.test.ts (real-DLL vectors via k1r4-laneA-it9-emitter.c -> b051-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/inventory.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD6FC70",
+      "name": "INVENTORY_UpdateWeaponGuidOnRemoval",
       "sccId": 615,
       "size": 202,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "INVENTORY_UpdateWeaponGuidOnRemoval113c (src/d2kern-113c/common/inventory.ts)",
+      "tsSymbol": "INVENTORY_UpdateWeaponGuidOnRemoval113c",
       "va": "0x6FD6FC70"
     },
     {
@@ -5953,13 +6069,17 @@
         "D2Game:6FC8B430",
         "D2Game:6FC98DD0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B051-inv-unit.test.ts (real-DLL vectors via k1r4-laneA-it9-emitter.c -> b051-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/inventory.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD6FE10",
+      "name": "INVENTORY_FindBackpackItemByType",
       "sccId": 616,
       "size": 222,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "INVENTORY_FindBackpackItemByType113c (src/d2kern-113c/common/inventory.ts)",
+      "tsSymbol": "INVENTORY_FindBackpackItemByType113c",
       "va": "0x6FD6FE10"
     },
     {
@@ -5974,13 +6094,17 @@
         "D2Game:6FCB8390",
         "D2Game:6FCB9000"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B045-inventory-unit.test.ts (3 real-DLL vectors via k1r2-laneA-it8-emitter.c -> b045-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/inventory.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD6FF40",
+      "name": "INVENTORY_GetEquippedShield",
       "sccId": 617,
       "size": 208,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "INVENTORY_GetEquippedShield113c (src/d2kern-113c/common/inventory.ts)",
+      "tsSymbol": "INVENTORY_GetEquippedShield113c",
       "va": "0x6FD6FF40"
     },
     {
@@ -6016,13 +6140,17 @@
         "D2Game:6FC57260",
         "D2Game:6FC57540"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B045-inventory-unit.test.ts (3 real-DLL vectors via k1r2-laneA-it8-emitter.c -> b045-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/inventory.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD70270",
+      "name": "INVENTORY_GetSecondaryWeapon",
       "sccId": 622,
       "size": 169,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "INVENTORY_GetSecondaryWeapon113c (src/d2kern-113c/common/inventory.ts)",
+      "tsSymbol": "INVENTORY_GetSecondaryWeapon113c",
       "va": "0x6FD70270"
     },
     {
@@ -6176,13 +6304,17 @@
         "D2Game:6FCF8600",
         "D2Game:6FCF8EA0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B051-inv-unit.test.ts (real-DLL vectors via k1r4-laneA-it9-emitter.c -> b051-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/inventory.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD70620",
+      "name": "INVENTORY_UpdateWeaponGuidOnInsert",
       "sccId": 544,
       "size": 212,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 3,
+      "tsReference": "INVENTORY_UpdateWeaponGuidOnInsert113c (src/d2kern-113c/common/inventory.ts)",
+      "tsSymbol": "INVENTORY_UpdateWeaponGuidOnInsert113c",
       "va": "0x6FD70620"
     },
     {
@@ -6517,13 +6649,17 @@
         "D2Common:6FD71B40",
         "D2Common:6FD7A5C0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B051-inv-unit.test.ts (real-DLL vectors via k1r4-laneA-it9-emitter.c -> b051-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/inventory.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD71640",
+      "name": "INVENTORY_RemoveItemInternal",
       "sccId": 676,
       "size": 199,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 8,
+      "tsReference": "INVENTORY_RemoveItemInternal113c (src/d2kern-113c/common/inventory.ts)",
+      "tsSymbol": "INVENTORY_RemoveItemInternal113c",
       "va": "0x6FD71640"
     },
     {
@@ -7031,13 +7167,17 @@
         "D2Game:6FC307E0",
         "D2Game:6FC3F9F0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B051-inv-unit.test.ts (real-DLL vectors via k1r4-laneA-it9-emitter.c -> b051-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/inventory.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD72150",
+      "name": "ITEMS_DecodeItemCompactBitstreamV96",
       "sccId": 700,
       "size": 30,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "ITEMS_DecodeItemCompactBitstreamV96_113c (src/d2kern-113c/common/inventory.ts)",
+      "tsSymbol": "ITEMS_DecodeItemCompactBitstreamV96_113c",
       "va": "0x6FD72150"
     },
     {
@@ -7746,13 +7886,17 @@
         "D2Common:6FD6EEE0",
         "D2Common:6FD700D0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B045-inventory-unit.test.ts (3 real-DLL vectors via k1r2-laneA-it8-emitter.c -> b045-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/inventory.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD72CD0",
+      "name": "ITEMS_AreStackablesCompatible",
       "sccId": 599,
       "size": 327,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "ITEMS_AreStackablesCompatible113c (src/d2kern-113c/common/inventory.ts)",
+      "tsSymbol": "ITEMS_AreStackablesCompatible113c",
       "va": "0x6FD72CD0"
     },
     {
@@ -7830,13 +7974,17 @@
       "callers": [
         "D2Common:6FD825C0"
       ],
+      "diffEvidence": "3 real D2Common.dll differential vectors (55 total in tests/fixtures/oracle/k1/b039-vectors.ndjson) replayed in tests/oracle/k1/laneB-B039-items-skills.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/tables/datatbls-113c.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD72F20",
+      "name": "ITEMS_GetQuiverType",
       "sccId": 721,
       "size": 36,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "ITEMS_GetQuiverType113c (src/d2kern-113c/tables/datatbls-113c.ts)",
+      "tsSymbol": "ITEMS_GetQuiverType113c",
       "va": "0x6FD72F20"
     },
     {
@@ -7848,13 +7996,17 @@
         "D2Game:6FCC2A40",
         "D2Game:6FCC2B40"
       ],
+      "diffEvidence": "3 real D2Common.dll differential vectors (55 total in tests/fixtures/oracle/k1/b039-vectors.ndjson) replayed in tests/oracle/k1/laneB-B039-items-skills.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD72F50",
+      "name": "ITEMS_GetMissileType",
       "sccId": 722,
       "size": 38,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "ITEMS_GetMissileType113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_GetMissileType113c",
       "va": "0x6FD72F50"
     },
     {
@@ -8036,17 +8188,21 @@
         "D2Game:6FCF9BF0",
         "D2Game:6FCF9FB0"
       ],
+      "diffEvidence": "2 real D2Common.dll differential vectors (60 total in tests/fixtures/oracle/k1/b049-vectors.ndjson) replayed in tests/oracle/k1/laneB-B049-items-skills-tbls.test.ts",
       "externalDeps": [
         "d2common.msvc_libcmt:0x6FD51B0D",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD730F0",
+      "name": "ITEMS_GetItemTypeFromItem",
       "sccId": 610,
       "size": 61,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "ITEMS_GetItemTypeFromItem113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_GetItemTypeFromItem113c",
       "va": "0x6FD730F0"
     },
     {
@@ -8060,13 +8216,17 @@
         "D2Game:6FCEFBC0",
         "D2Game:6FCF2610"
       ],
+      "diffEvidence": "9 real D2Common.dll differential vectors (227 total in tests/fixtures/oracle/k1/i9b-a-vectors.ndjson, emitted by tools/oracle/vectors/k1r4-laneB-it9-emitter.c) replayed in tests/oracle/k1/laneB-I9B-A-itemtypes.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD73130",
+      "name": "ITEMS_GetAllowedBodyLocations",
       "sccId": 650,
       "size": 110,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "ITEMS_GetAllowedBodyLocations113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_GetAllowedBodyLocations113c",
       "va": "0x6FD73130"
     },
     {
@@ -8080,13 +8240,17 @@
         "D2Game:6FCF0950",
         "D2Game:6FCF4E80"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B045-inventory-unit.test.ts (2 real-DLL vectors via k1r2-laneA-it8-emitter.c -> b045-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/inventory.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD731A0",
+      "name": "INVENTORY_GetItemDimensionsCallback",
       "sccId": 618,
       "size": 53,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "INVENTORY_GetItemDimensionsCallback113c (src/d2kern-113c/common/inventory.ts)",
+      "tsSymbol": "INVENTORY_GetItemDimensionsCallback113c",
       "va": "0x6FD731A0"
     },
     {
@@ -8188,13 +8352,17 @@
       "callers": [
         "D2Common:6FD93860"
       ],
+      "diffEvidence": "4 real D2Common.dll differential vectors (55 total in tests/fixtures/oracle/k1/b039-vectors.ndjson) replayed in tests/oracle/k1/laneB-B039-items-skills.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/tables/datatbls-113c.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD73330",
+      "name": "ITEMS_GetWeaponClassCode",
       "sccId": 548,
       "size": 40,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "ITEMS_GetWeaponClassCode113c (src/d2kern-113c/tables/datatbls-113c.ts)",
+      "tsSymbol": "ITEMS_GetWeaponClassCode113c",
       "va": "0x6FD73330"
     },
     {
@@ -8204,13 +8372,17 @@
       "callers": [
         "D2Game:6FC30A20"
       ],
+      "diffEvidence": "12 real D2Common.dll differential vectors (227 total in tests/fixtures/oracle/k1/i9b-a-vectors.ndjson, emitted by tools/oracle/vectors/k1r4-laneB-it9-emitter.c) replayed in tests/oracle/k1/laneB-I9B-A-itemtypes.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD73360",
+      "name": "ITEMS_IsNormalQualityAllowed",
       "sccId": 727,
       "size": 70,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "ITEMS_IsNormalQualityAllowed113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_IsNormalQualityAllowed113c",
       "va": "0x6FD73360"
     },
     {
@@ -8220,13 +8392,17 @@
       "callers": [
         "D2Game:6FC30A20"
       ],
+      "diffEvidence": "12 real D2Common.dll differential vectors (227 total in tests/fixtures/oracle/k1/i9b-a-vectors.ndjson, emitted by tools/oracle/vectors/k1r4-laneB-it9-emitter.c) replayed in tests/oracle/k1/laneB-I9B-A-itemtypes.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD733B0",
+      "name": "ITEMS_IsMagicQualityAllowed",
       "sccId": 728,
       "size": 67,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "ITEMS_IsMagicQualityAllowed113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_IsMagicQualityAllowed113c",
       "va": "0x6FD733B0"
     },
     {
@@ -8238,13 +8414,17 @@
         "D2Game:6FC30A20",
         "D2Game:6FC354F0"
       ],
+      "diffEvidence": "12 real D2Common.dll differential vectors (227 total in tests/fixtures/oracle/k1/i9b-a-vectors.ndjson, emitted by tools/oracle/vectors/k1r4-laneB-it9-emitter.c) replayed in tests/oracle/k1/laneB-I9B-A-itemtypes.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD73400",
+      "name": "ITEMS_IsRareQualityAllowed",
       "sccId": 729,
       "size": 67,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "ITEMS_IsRareQualityAllowed113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_IsRareQualityAllowed113c",
       "va": "0x6FD73400"
     },
     {
@@ -8254,13 +8434,17 @@
       "callers": [
         "D2Game:6FC31070"
       ],
+      "diffEvidence": "12 real D2Common.dll differential vectors (227 total in tests/fixtures/oracle/k1/i9b-a-vectors.ndjson, emitted by tools/oracle/vectors/k1r4-laneB-it9-emitter.c) replayed in tests/oracle/k1/laneB-I9B-A-itemtypes.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD73450",
+      "name": "ITEMS_GetVarInvGfxCount",
       "sccId": 730,
       "size": 66,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "ITEMS_GetVarInvGfxCount113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_GetVarInvGfxCount113c",
       "va": "0x6FD73450"
     },
     {
@@ -8271,13 +8455,17 @@
         "D2Game:6FCDEE30",
         "D2Game:6FCDF990"
       ],
+      "diffEvidence": "12 real D2Common.dll differential vectors (227 total in tests/fixtures/oracle/k1/i9b-a-vectors.ndjson, emitted by tools/oracle/vectors/k1r4-laneB-it9-emitter.c) replayed in tests/oracle/k1/laneB-I9B-A-itemtypes.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD734A0",
+      "name": "ITEMS_GetStorePage",
       "sccId": 731,
       "size": 67,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "ITEMS_GetStorePage113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_GetStorePage113c",
       "va": "0x6FD734A0"
     },
     {
@@ -8287,13 +8475,17 @@
       "callers": [
         "D2Game:6FC98DD0"
       ],
+      "diffEvidence": "12 real D2Common.dll differential vectors (227 total in tests/fixtures/oracle/k1/i9b-a-vectors.ndjson, emitted by tools/oracle/vectors/k1r4-laneB-it9-emitter.c) replayed in tests/oracle/k1/laneB-I9B-A-itemtypes.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD734F0",
+      "name": "ITEMS_IsReEquip",
       "sccId": 732,
       "size": 67,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "ITEMS_IsReEquip113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_IsReEquip113c",
       "va": "0x6FD734F0"
     },
     {
@@ -8303,13 +8495,17 @@
       "callers": [
         "D2Game:6FC98DD0"
       ],
+      "diffEvidence": "12 real D2Common.dll differential vectors (227 total in tests/fixtures/oracle/k1/i9b-a-vectors.ndjson, emitted by tools/oracle/vectors/k1r4-laneB-it9-emitter.c) replayed in tests/oracle/k1/laneB-I9B-A-itemtypes.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD73540",
+      "name": "ITEMS_IsReload",
       "sccId": 733,
       "size": 67,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "ITEMS_IsReload113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_IsReload113c",
       "va": "0x6FD73540"
     },
     {
@@ -9387,15 +9583,19 @@
         "D2Game:6FCCEA40",
         "D2Game:6FCCEDC0"
       ],
+      "diffEvidence": "4 real D2Common.dll differential vectors (60 total in tests/fixtures/oracle/k1/b049-vectors.ndjson) replayed in tests/oracle/k1/laneB-B049-items-skills-tbls.test.ts",
       "externalDeps": [
         "fog.dll:10253"
       ],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD73CE0",
+      "name": "ITEMS_EvalItemCalc",
       "sccId": 767,
       "size": 103,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "ITEMS_EvalItemCalc113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_EvalItemCalc113c",
       "va": "0x6FD73CE0"
     },
     {
@@ -9437,13 +9637,17 @@
       "callers": [
         "D2Common:6FD7C7C0"
       ],
+      "diffEvidence": "4 real D2Common.dll differential vectors (78 total in tests/fixtures/oracle/k1/b052-vectors.ndjson) replayed in tests/oracle/k1/laneB-B052-items.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD73D70",
+      "name": "ITEMS_GetSetItemsSetId",
       "sccId": 770,
       "size": 82,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "ITEMS_GetSetItemsSetId113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_GetSetItemsSetId113c",
       "va": "0x6FD73D70"
     },
     {
@@ -9546,13 +9750,17 @@
       "callers": [
         "D2Common:6FD7C7C0"
       ],
+      "diffEvidence": "3 real D2Common.dll differential vectors (78 total in tests/fixtures/oracle/k1/b052-vectors.ndjson) replayed in tests/oracle/k1/laneB-B052-items.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD73F40",
+      "name": "ITEMS_GetSetItemsTxtRecordFromItem",
       "sccId": 773,
       "size": 73,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "ITEMS_GetSetItemsTxtRecordFromItem113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_GetSetItemsTxtRecordFromItem113c",
       "va": "0x6FD73F40"
     },
     {
@@ -9571,13 +9779,17 @@
         "D2Common:6FD7C910",
         "D2Common:6FD95F90"
       ],
+      "diffEvidence": "4 real D2Common.dll differential vectors (78 total in tests/fixtures/oracle/k1/b052-vectors.ndjson) replayed in tests/oracle/k1/laneB-B052-items.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD73F90",
+      "name": "ITEMS_GetEquippedSetItemsMask",
       "sccId": 774,
       "size": 305,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "ITEMS_GetEquippedSetItemsMask113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_GetEquippedSetItemsMask113c",
       "va": "0x6FD73F90"
     },
     {
@@ -9631,13 +9843,17 @@
       "callers": [
         "D2Game:6FCDF990"
       ],
+      "diffEvidence": "3 real D2Common.dll differential vectors (78 total in tests/fixtures/oracle/k1/b052-vectors.ndjson) replayed in tests/oracle/k1/laneB-B052-items.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD741D0",
+      "name": "ITEMS_CanItemBeShownInTradeOrStash",
       "sccId": 777,
       "size": 61,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "ITEMS_CanItemBeShownInTradeOrStash113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_CanItemBeShownInTradeOrStash113c",
       "va": "0x6FD741D0"
     },
     {
@@ -9672,13 +9888,17 @@
         "D2Common:6FD76DB0",
         "D2Game:6FC344D0"
       ],
+      "diffEvidence": "12 real D2Common.dll differential vectors (227 total in tests/fixtures/oracle/k1/i9b-a-vectors.ndjson, emitted by tools/oracle/vectors/k1r4-laneB-it9-emitter.c) replayed in tests/oracle/k1/laneB-I9B-A-itemtypes.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD74280",
+      "name": "ITEMS_GetClassOfClassSpecificItem",
       "sccId": 652,
       "size": 73,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "ITEMS_GetClassOfClassSpecificItem113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_GetClassOfClassSpecificItem113c",
       "va": "0x6FD74280"
     },
     {
@@ -9688,13 +9908,17 @@
       "callers": [
         "D2Common:6FD78E80"
       ],
+      "diffEvidence": "12 real D2Common.dll differential vectors (227 total in tests/fixtures/oracle/k1/i9b-a-vectors.ndjson, emitted by tools/oracle/vectors/k1r4-laneB-it9-emitter.c) replayed in tests/oracle/k1/laneB-I9B-A-itemtypes.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD742D0",
+      "name": "ITEMS_IsClassSpecific",
       "sccId": 779,
       "size": 71,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "ITEMS_IsClassSpecific113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_IsClassSpecific113c",
       "va": "0x6FD742D0"
     },
     {
@@ -9727,13 +9951,17 @@
       "callers": [
         "D2Game:6FCF2610"
       ],
+      "diffEvidence": "11 real D2Common.dll differential vectors (227 total in tests/fixtures/oracle/k1/i9b-a-vectors.ndjson, emitted by tools/oracle/vectors/k1r4-laneB-it9-emitter.c) replayed in tests/oracle/k1/laneB-I9B-A-itemtypes.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD743B0",
+      "name": "ITEMS_CanBeEquipped",
       "sccId": 781,
       "size": 115,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 3,
+      "tsReference": "ITEMS_CanBeEquipped113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_CanBeEquipped113c",
       "va": "0x6FD743B0"
     },
     {
@@ -9861,13 +10089,17 @@
         "D2Common:6FD74D00",
         "D2Game:6FC91060"
       ],
+      "diffEvidence": "6 real D2Common.dll differential vectors (78 total in tests/fixtures/oracle/k1/b052-vectors.ndjson) replayed in tests/oracle/k1/laneB-B052-items.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD74500",
+      "name": "ITEMS_CheckItemIdMatchesItemType",
       "sccId": 782,
       "size": 185,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "ITEMS_CheckItemIdMatchesItemType113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_CheckItemIdMatchesItemType113c",
       "va": "0x6FD74500"
     },
     {
@@ -9878,13 +10110,17 @@
         "D2Game:6FC2E0A0",
         "D2Game:6FCF4A70"
       ],
+      "diffEvidence": "3 real D2Common.dll differential vectors (55 total in tests/fixtures/oracle/k1/b039-vectors.ndjson) replayed in tests/oracle/k1/laneB-B039-items-skills.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD745C0",
+      "name": "ITEMS_CheckIfSocketFiller",
       "sccId": 783,
       "size": 15,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "ITEMS_CheckIfSocketFiller113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_CheckIfSocketFiller113c",
       "va": "0x6FD745C0"
     },
     {
@@ -9894,17 +10130,21 @@
       "callers": [
         "D2Game:6FCF47C0"
       ],
+      "diffEvidence": "2 real D2Common.dll differential vectors (60 total in tests/fixtures/oracle/k1/b049-vectors.ndjson) replayed in tests/oracle/k1/laneB-B049-items-skills-tbls.test.ts",
       "externalDeps": [
         "d2common.msvc_libcmt:0x6FD51B0D",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD745D0",
+      "name": "ITEMS_GetGemApplyTypeFromItem",
       "sccId": 784,
       "size": 63,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "ITEMS_GetGemApplyTypeFromItem113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_GetGemApplyTypeFromItem113c",
       "va": "0x6FD745D0"
     },
     {
@@ -9926,13 +10166,17 @@
         "D2Game:6FC92220",
         "D2Game:6FCE00C0"
       ],
+      "diffEvidence": "17 real D2Common.dll differential vectors (227 total in tests/fixtures/oracle/k1/i9b-a-vectors.ndjson, emitted by tools/oracle/vectors/k1r4-laneB-it9-emitter.c) replayed in tests/oracle/k1/laneB-I9B-A-itemtypes.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD74610",
+      "name": "ITEMS_GetMaxSocketsFromItemType",
       "sccId": 666,
       "size": 129,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "ITEMS_GetMaxSocketsFromItemType113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_GetMaxSocketsFromItemType113c",
       "va": "0x6FD74610"
     },
     {
@@ -9942,13 +10186,17 @@
       "callers": [
         "D2Game:6FC33DE0"
       ],
+      "diffEvidence": "12 real D2Common.dll differential vectors (227 total in tests/fixtures/oracle/k1/i9b-a-vectors.ndjson, emitted by tools/oracle/vectors/k1r4-laneB-it9-emitter.c) replayed in tests/oracle/k1/laneB-I9B-A-itemtypes.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD746A0",
+      "name": "ITEMS_GetStaffModsClass",
       "sccId": 785,
       "size": 70,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "ITEMS_GetStaffModsClass113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_GetStaffModsClass113c",
       "va": "0x6FD746A0"
     },
     {
@@ -9968,13 +10216,17 @@
         "D2Game:6FCF4A70",
         "D2Game:6FCF5080"
       ],
+      "diffEvidence": "3 real D2Common.dll differential vectors (78 total in tests/fixtures/oracle/k1/b052-vectors.ndjson) replayed in tests/oracle/k1/laneB-B052-items.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD746F0",
+      "name": "ITEMS_GetSubTypeFromItem",
       "sccId": 786,
       "size": 30,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "ITEMS_GetSubTypeFromItem113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_GetSubTypeFromItem113c",
       "va": "0x6FD746F0"
     },
     {
@@ -9986,17 +10238,21 @@
       "callers": [
         "D2Game:6FCCCFD0"
       ],
+      "diffEvidence": "3 real D2Common.dll differential vectors (60 total in tests/fixtures/oracle/k1/b049-vectors.ndjson) replayed in tests/oracle/k1/laneB-B049-items-skills-tbls.test.ts",
       "externalDeps": [
         "d2common.msvc_libcmt:0x6FD51B0D",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD74710",
+      "name": "ITEMS_GetMagicLevelFromItem",
       "sccId": 788,
       "size": 161,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "ITEMS_GetMagicLevelFromItem113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_GetMagicLevelFromItem113c",
       "va": "0x6FD74710"
     },
     {
@@ -10006,17 +10262,21 @@
       "callers": [
         "D2Game:6FC31070"
       ],
+      "diffEvidence": "2 real D2Common.dll differential vectors (60 total in tests/fixtures/oracle/k1/b049-vectors.ndjson) replayed in tests/oracle/k1/laneB-B049-items-skills-tbls.test.ts",
       "externalDeps": [
         "d2common.msvc_libcmt:0x6FD51B0D",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD747C0",
+      "name": "ITEMS_GetGambleCostFromItem",
       "sccId": 789,
       "size": 63,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "ITEMS_GetGambleCostFromItem113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_GetGambleCostFromItem113c",
       "va": "0x6FD747C0"
     },
     {
@@ -10026,17 +10286,21 @@
       "callers": [
         "D2Game:6FC31070"
       ],
+      "diffEvidence": "2 real D2Common.dll differential vectors (60 total in tests/fixtures/oracle/k1/b049-vectors.ndjson) replayed in tests/oracle/k1/laneB-B049-items-skills-tbls.test.ts",
       "externalDeps": [
         "d2common.msvc_libcmt:0x6FD51B0D",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD74800",
+      "name": "ITEMS_GetBitField2FromItem",
       "sccId": 790,
       "size": 63,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "ITEMS_GetBitField2FromItem113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_GetBitField2FromItem113c",
       "va": "0x6FD74800"
     },
     {
@@ -10047,18 +10311,22 @@
       "callers": [
         "D2Common:6FD78E80"
       ],
+      "diffEvidence": "5 real D2Common.dll differential vectors (60 total in tests/fixtures/oracle/k1/b049-vectors.ndjson) replayed in tests/oracle/k1/laneB-B049-items-skills-tbls.test.ts",
       "externalDeps": [
         "d2common.msvc_libcmt:0x6FD51B0D",
         "fog.dll:10024",
         "fog.dll:10213",
         "fog.dll:10265"
       ],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD74840",
+      "name": "ITEMS_ComputeGambleBaseCost",
       "sccId": 791,
       "size": 528,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "ITEMS_ComputeGambleBaseCost113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_ComputeGambleBaseCost113c",
       "va": "0x6FD74840"
     },
     {
@@ -10118,13 +10386,17 @@
         "D2Game:6FCF6760",
         "D2Game:6FCF6E30"
       ],
+      "diffEvidence": "12 real D2Common.dll differential vectors (227 total in tests/fixtures/oracle/k1/i9b-a-vectors.ndjson, emitted by tools/oracle/vectors/k1r4-laneB-it9-emitter.c) replayed in tests/oracle/k1/laneB-I9B-A-itemtypes.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD74BA0",
+      "name": "ITEMS_IsBeltable",
       "sccId": 619,
       "size": 67,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "ITEMS_IsBeltable113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_IsBeltable113c",
       "va": "0x6FD74BA0"
     },
     {
@@ -10139,13 +10411,17 @@
         "D2Game:6FCF1C00",
         "D2Game:6FCF1F60"
       ],
+      "diffEvidence": "3 real D2Common.dll differential vectors (78 total in tests/fixtures/oracle/k1/b052-vectors.ndjson) replayed in tests/oracle/k1/laneB-B052-items.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD74BF0",
+      "name": "ITEMS_GetInvWidthFromItem",
       "sccId": 537,
       "size": 30,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "ITEMS_GetInvWidthFromItem113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_GetInvWidthFromItem113c",
       "va": "0x6FD74BF0"
     },
     {
@@ -10202,13 +10478,17 @@
       "callers": [
         "D2Common:6FD711D0"
       ],
+      "diffEvidence": "22 real D2Common.dll differential vectors (227 total in tests/fixtures/oracle/k1/i9b-a-vectors.ndjson, emitted by tools/oracle/vectors/k1r4-laneB-it9-emitter.c) replayed in tests/oracle/k1/laneB-I9B-A-itemtypes.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD74C80",
+      "name": "ITEMS_CheckBodyLocation",
       "sccId": 651,
       "size": 115,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 3,
+      "tsReference": "ITEMS_CheckBodyLocation113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_CheckBodyLocation113c",
       "va": "0x6FD74C80"
     },
     {
@@ -10242,13 +10522,17 @@
         "D2Game:6FCF3CB0",
         "D2Game:6FCF4360"
       ],
+      "diffEvidence": "12 real D2Common.dll differential vectors (227 total in tests/fixtures/oracle/k1/i9b-a-vectors.ndjson, emitted by tools/oracle/vectors/k1r4-laneB-it9-emitter.c) replayed in tests/oracle/k1/laneB-I9B-A-itemtypes.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD74E10",
+      "name": "ITEMS_IsAutoStack",
       "sccId": 796,
       "size": 67,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "ITEMS_IsAutoStack113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_IsAutoStack113c",
       "va": "0x6FD74E10"
     },
     {
@@ -10264,13 +10548,17 @@
         "D2Game:6FCF3CB0",
         "D2Game:6FCF51A0"
       ],
+      "diffEvidence": "12 real D2Common.dll differential vectors (227 total in tests/fixtures/oracle/k1/i9b-a-vectors.ndjson, emitted by tools/oracle/vectors/k1r4-laneB-it9-emitter.c) replayed in tests/oracle/k1/laneB-I9B-A-itemtypes.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD74E60",
+      "name": "ITEMS_GetItemTypeShootsFromItem",
       "sccId": 611,
       "size": 67,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "ITEMS_GetItemTypeShootsFromItem113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_GetItemTypeShootsFromItem113c",
       "va": "0x6FD74E60"
     },
     {
@@ -10284,13 +10572,17 @@
         "D2Game:6FCF1C00",
         "D2Game:6FCF2610"
       ],
+      "diffEvidence": "12 real D2Common.dll differential vectors (227 total in tests/fixtures/oracle/k1/i9b-a-vectors.ndjson, emitted by tools/oracle/vectors/k1r4-laneB-it9-emitter.c) replayed in tests/oracle/k1/laneB-I9B-A-itemtypes.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD74EB0",
+      "name": "ITEMS_GetItemTypeQuiverFromItem",
       "sccId": 612,
       "size": 67,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "ITEMS_GetItemTypeQuiverFromItem113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_GetItemTypeQuiverFromItem113c",
       "va": "0x6FD74EB0"
     },
     {
@@ -10304,17 +10596,21 @@
         "D2Common:6FD77090",
         "D2Common:6FD7A210"
       ],
+      "diffEvidence": "5 real D2Common.dll differential vectors (60 total in tests/fixtures/oracle/k1/b049-vectors.ndjson) replayed in tests/oracle/k1/laneB-B049-items-skills-tbls.test.ts",
       "externalDeps": [
         "d2common.msvc_libcmt:0x6FD51B0D",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD74F00",
+      "name": "ITEMS_CanItemBePersonalizedOrRepaired",
       "sccId": 797,
       "size": 135,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 3,
+      "tsReference": "ITEMS_CanItemBePersonalizedOrRepaired113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_CanItemBePersonalizedOrRepaired113c",
       "va": "0x6FD74F00"
     },
     {
@@ -10324,13 +10620,17 @@
       "callers": [
         "D2Common:6FD77180"
       ],
+      "diffEvidence": "4 real D2Common.dll differential vectors (78 total in tests/fixtures/oracle/k1/b052-vectors.ndjson) replayed in tests/oracle/k1/laneB-B052-items.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD74F90",
+      "name": "ITEMS_CountSocketedItemsInGemSocketable",
       "sccId": 798,
       "size": 96,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "ITEMS_CountSocketedItemsInGemSocketable113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_CountSocketedItemsInGemSocketable113c",
       "va": "0x6FD74F90"
     },
     {
@@ -10365,17 +10665,21 @@
       "callers": [
         "D2Game:6FCE00C0"
       ],
+      "diffEvidence": "10 real D2Common.dll differential vectors (60 total in tests/fixtures/oracle/k1/b049-vectors.ndjson) replayed in tests/oracle/k1/laneB-B049-items-skills-tbls.test.ts",
       "externalDeps": [
         "d2common.msvc_libcmt:0x6FD51B0D",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD750B0",
+      "name": "ITEMS_CheckIfImbueable",
       "sccId": 800,
       "size": 265,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 3,
+      "tsReference": "ITEMS_CheckIfImbueable113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_CheckIfImbueable113c",
       "va": "0x6FD750B0"
     },
     {
@@ -10455,18 +10759,22 @@
       "callers": [
         "D2Common:6FD78D70"
       ],
+      "diffEvidence": "4 real D2Common.dll differential vectors (60 total in tests/fixtures/oracle/k1/b049-vectors.ndjson) replayed in tests/oracle/k1/laneB-B049-items-skills-tbls.test.ts",
       "externalDeps": [
         "d2common.msvc_libcmt:0x6FD51B0D",
         "fog.dll:10024",
         "fog.dll:10128",
         "fog.dll:10265"
       ],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD75C10",
+      "name": "ITEMS_EncodeCompactAndBasicItemStream",
       "sccId": 803,
       "size": 1122,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 3,
+      "tsReference": "ITEMS_EncodeCompactAndBasicItemStream113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_EncodeCompactAndBasicItemStream113c",
       "va": "0x6FD75C10"
     },
     {
@@ -10526,17 +10834,21 @@
         "D2Game:6FCF3CB0",
         "D2Game:6FCFA480"
       ],
+      "diffEvidence": "3 real D2Common.dll differential vectors (60 total in tests/fixtures/oracle/k1/b049-vectors.ndjson) replayed in tests/oracle/k1/laneB-B049-items-skills-tbls.test.ts",
       "externalDeps": [
         "d2common.msvc_libcmt:0x6FD51B0D",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD760F0",
+      "name": "ITEMS_GetTotalMaxStack",
       "sccId": 634,
       "size": 148,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "ITEMS_GetTotalMaxStack113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_GetTotalMaxStack113c",
       "va": "0x6FD760F0"
     },
     {
@@ -10574,13 +10886,17 @@
       "callers": [
         "D2Common:6FD76DB0"
       ],
+      "diffEvidence": "3 real D2Common.dll differential vectors (78 total in tests/fixtures/oracle/k1/b052-vectors.ndjson) replayed in tests/oracle/k1/laneB-B052-items.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD766E0",
+      "name": "ITEMS_SumStatAcrossSocketedItems",
       "sccId": 660,
       "size": 215,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "ITEMS_SumStatAcrossSocketedItems113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_SumStatAcrossSocketedItems113c",
       "va": "0x6FD766E0"
     },
     {
@@ -10588,13 +10904,17 @@
         "D2Common:6FD51180"
       ],
       "callers": [],
+      "diffEvidence": "2 real D2Common.dll differential vectors (78 total in tests/fixtures/oracle/k1/b052-vectors.ndjson) replayed in tests/oracle/k1/laneB-B052-items.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD767C0",
+      "name": "ITEMS_RollRandomInRangeCallback",
       "sccId": 804,
       "size": 33,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "ITEMS_RollRandomInRangeCallback113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_RollRandomInRangeCallback113c",
       "va": "0x6FD767C0"
     },
     {
@@ -10642,13 +10962,17 @@
         "D2Game:6FCF3CB0",
         "D2Game:6FCF4230"
       ],
+      "diffEvidence": "9 real D2Common.dll differential vectors (78 total in tests/fixtures/oracle/k1/b052-vectors.ndjson) replayed in tests/oracle/k1/laneB-B052-items.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD76930",
+      "name": "ITEMS_AreStackableWeaponsCompatible",
       "sccId": 643,
       "size": 411,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 3,
+      "tsReference": "ITEMS_AreStackableWeaponsCompatible113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_AreStackableWeaponsCompatible113c",
       "va": "0x6FD76930"
     },
     {
@@ -10688,13 +11012,17 @@
         "D2Game:6FC74810",
         "D2Game:6FCF4A70"
       ],
+      "diffEvidence": "6 real D2Common.dll differential vectors (78 total in tests/fixtures/oracle/k1/b052-vectors.ndjson) replayed in tests/oracle/k1/laneB-B052-items.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD76BA0",
+      "name": "ITEMS_FindMatchingRunesTxtRecord",
       "sccId": 812,
       "size": 412,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 3,
+      "tsReference": "ITEMS_FindMatchingRunesTxtRecord113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_FindMatchingRunesTxtRecord113c",
       "va": "0x6FD76BA0"
     },
     {
@@ -10721,13 +11049,17 @@
         "D2Game:6FCF3CB0",
         "D2Game:6FCFA480"
       ],
+      "diffEvidence": "6 real D2Common.dll differential vectors (78 total in tests/fixtures/oracle/k1/b052-vectors.ndjson) replayed in tests/oracle/k1/laneB-B052-items.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD76D40",
+      "name": "ITEMS_CanItemLoseDurability",
       "sccId": 814,
       "size": 89,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 3,
+      "tsReference": "ITEMS_CanItemLoseDurability113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_CanItemLoseDurability113c",
       "va": "0x6FD76D40"
     },
     {
@@ -10798,13 +11130,17 @@
         "D2Common:6FD89430"
       ],
       "callers": [],
+      "diffEvidence": "6 real D2Common.dll differential vectors (78 total in tests/fixtures/oracle/k1/b052-vectors.ndjson) replayed in tests/oracle/k1/laneB-B052-items.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD77120",
+      "name": "ITEMS_EvalItemStatCallback",
       "sccId": 817,
       "size": 87,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 3,
+      "tsReference": "ITEMS_EvalItemStatCallback113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_EvalItemStatCallback113c",
       "va": "0x6FD77120"
     },
     {
@@ -10888,15 +11224,19 @@
       "callers": [
         "D2Common:6FD78E80"
       ],
+      "diffEvidence": "3 real D2Common.dll differential vectors (60 total in tests/fixtures/oracle/k1/b049-vectors.ndjson) replayed in tests/oracle/k1/laneB-B049-items-skills-tbls.test.ts",
       "externalDeps": [
         "d2common.msvc_libcmt:0x6FD55AD0"
       ],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD78850",
+      "name": "ITEMS_CalculateAdditionalCostsForBonusStats",
       "sccId": 823,
       "size": 1282,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 3,
+      "tsReference": "ITEMS_CalculateAdditionalCostsForBonusStats113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_CalculateAdditionalCostsForBonusStats113c",
       "va": "0x6FD78850"
     },
     {
@@ -11385,13 +11725,17 @@
         "D2Game:6FC68FC0",
         "D2Game:6FCE1510"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B051-inv-unit.test.ts (real-DLL vectors via k1r4-laneA-it9-emitter.c -> b051-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/quest-record.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD7C9E0",
+      "name": "HIRELING_GetActIndex",
       "sccId": 949,
       "size": 46,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "HIRELING_GetActIndex113c (src/d2kern-113c/common/quest-record.ts)",
+      "tsSymbol": "HIRELING_GetActIndex113c",
       "va": "0x6FD7C9E0"
     },
     {
@@ -12464,17 +12808,21 @@
       "callers": [
         "D2Common:6FD61BF0"
       ],
+      "diffEvidence": "1 real D2Common.dll differential vector (60 total in tests/fixtures/oracle/k1/b049-vectors.ndjson) replayed in tests/oracle/k1/laneB-B049-items-skills-tbls.test.ts",
       "externalDeps": [
         "d2common.msvc_libcmt:0x6FD51B0D",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
+      "kernFile": "src/d2kern-113c/tables/datatbls-113c.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD7D660",
+      "name": "DRLG_ValidateAndRebaseLevelRooms",
       "sccId": 180,
       "size": 203,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "DRLG_ValidateAndRebaseLevelRooms113c (src/d2kern-113c/tables/datatbls-113c.ts)",
+      "tsSymbol": "DRLG_ValidateAndRebaseLevelRooms113c",
       "va": "0x6FD7D660"
     },
     {
@@ -14084,13 +14432,17 @@
         "D2Common:6FD82460",
         "D2Common:6FD82820"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B051-inv-unit.test.ts (real-DLL vectors via k1r4-laneA-it9-emitter.c -> b051-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/unit.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD7F100",
+      "name": "UNITS_StepAnimSeqFrame",
       "sccId": 842,
       "size": 85,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "UNITS_StepAnimSeqFrame113c (src/d2kern-113c/common/unit.ts)",
+      "tsSymbol": "UNITS_StepAnimSeqFrame113c",
       "va": "0x6FD7F100"
     },
     {
@@ -14495,13 +14847,17 @@
         "D2Game:6FCD56C0",
         "D2Game:6FCFEEE0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B061-path.test.ts (10 real-DLL vectors; 118 total in tests/fixtures/oracle/k1/b061-vectors.ndjson via k1r4-laneC-it9-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/path.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD7F910",
+      "name": "UNITS_GetDirectionToCoords",
       "sccId": 1003,
       "size": 158,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "UNITS_GetDirectionToCoords113c (src/d2kern-113c/common/path.ts)",
+      "tsSymbol": "UNITS_GetDirectionToCoords113c",
       "va": "0x6FD7F910"
     },
     {
@@ -15265,17 +15621,21 @@
         "D2Game:6FCFAB00",
         "D2Game:6FD057D0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B050-drlg-path.test.ts (6 real-DLL vectors; 84 total in tests/fixtures/oracle/k1/b050-vectors.ndjson via k1r2-laneC-it8-emitter.c)",
       "externalDeps": [
         "d2common.msvc_libcmt:0x6FD51B0D",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
+      "kernFile": "src/d2kern-113c/common/path.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD80050",
+      "name": "PATH_GetTargetTypeAndPosition",
       "sccId": 1010,
       "size": 137,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "PATH_GetTargetTypeAndPosition113c (src/d2kern-113c/common/path.ts)",
+      "tsSymbol": "PATH_GetTargetTypeAndPosition113c",
       "va": "0x6FD80050"
     },
     {
@@ -15358,14 +15718,14 @@
         "fog.dll:10024",
         "fog.dll:10265"
       ],
-      "kernFile": "src/d2kern-113c/game/fallen-ai-113c.ts",
+      "kernFile": "src/d2kern-113c/common/skills.ts",
       "module": "D2Common",
       "name": "SKILLS_GetUsedSkill",
       "sccId": 851,
       "size": 58,
       "status": "ported",
       "topoLevel": 0,
-      "tsReference": "SKILLS_GetUsedSkill113c (src/d2kern-113c/game/fallen-ai-113c.ts)",
+      "tsReference": "SKILLS_GetUsedSkill113c (src/d2kern-113c/common/skills.ts)",
       "tsSymbol": "SKILLS_GetUsedSkill113c",
       "va": "0x6FD803A0"
     },
@@ -15651,17 +16011,21 @@
       "callers": [
         "D2Game:6FCF8EA0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B048-unit-statlist.test.ts (real-DLL vectors via k1r4-laneA-it9-emitter.c -> b048-vectors.ndjson)",
       "externalDeps": [
         "d2common.msvc_libcmt:0x6FD51B0D",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
+      "kernFile": "src/d2kern-113c/common/quest-record.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD80590",
+      "name": "PLAYER_StoreSwitchLeftSkill",
       "sccId": 1014,
       "size": 102,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "PLAYER_StoreSwitchLeftSkill113c (src/d2kern-113c/common/quest-record.ts)",
+      "tsSymbol": "PLAYER_StoreSwitchLeftSkill113c",
       "va": "0x6FD80590"
     },
     {
@@ -15671,17 +16035,21 @@
       "callers": [
         "D2Game:6FCF8EA0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B048-unit-statlist.test.ts (real-DLL vectors via k1r4-laneA-it9-emitter.c -> b048-vectors.ndjson)",
       "externalDeps": [
         "d2common.msvc_libcmt:0x6FD51B0D",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
+      "kernFile": "src/d2kern-113c/common/quest-record.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD80600",
+      "name": "PLAYER_StoreSwitchRightSkill",
       "sccId": 1015,
       "size": 102,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "PLAYER_StoreSwitchRightSkill113c (src/d2kern-113c/common/quest-record.ts)",
+      "tsSymbol": "PLAYER_StoreSwitchRightSkill113c",
       "va": "0x6FD80600"
     },
     {
@@ -15692,17 +16060,21 @@
         "D2Game:6FCEF480",
         "D2Game:6FCF28D0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B048-unit-statlist.test.ts (real-DLL vectors via k1r4-laneA-it9-emitter.c -> b048-vectors.ndjson)",
       "externalDeps": [
         "d2common.msvc_libcmt:0x6FD51B0D",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
+      "kernFile": "src/d2kern-113c/common/quest-record.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD80670",
+      "name": "PLAYER_StoreLeftSkill",
       "sccId": 1016,
       "size": 96,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "PLAYER_StoreLeftSkill113c (src/d2kern-113c/common/quest-record.ts)",
+      "tsSymbol": "PLAYER_StoreLeftSkill113c",
       "va": "0x6FD80670"
     },
     {
@@ -15713,17 +16085,21 @@
         "D2Game:6FCEF480",
         "D2Game:6FCF28D0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B048-unit-statlist.test.ts (real-DLL vectors via k1r4-laneA-it9-emitter.c -> b048-vectors.ndjson)",
       "externalDeps": [
         "d2common.msvc_libcmt:0x6FD51B0D",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
+      "kernFile": "src/d2kern-113c/common/quest-record.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD806D0",
+      "name": "PLAYER_StoreRightSkill",
       "sccId": 1017,
       "size": 96,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "PLAYER_StoreRightSkill113c (src/d2kern-113c/common/quest-record.ts)",
+      "tsSymbol": "PLAYER_StoreRightSkill113c",
       "va": "0x6FD806D0"
     },
     {
@@ -15735,13 +16111,17 @@
         "D2Common:6FD815E0",
         "D2Common:6FD819C0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B066-collision.test.ts (15 real-DLL vectors; 155 total in tests/fixtures/oracle/k1/b066-vectors.ndjson via k1r4-laneC-it9-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/collision.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD80730",
+      "name": "COLLISION_RayTraceBetweenSizedPoints",
       "sccId": 1020,
       "size": 253,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "COLLISION_RayTraceBetweenSizedPoints113c (src/d2kern-113c/common/collision.ts)",
+      "tsSymbol": "COLLISION_RayTraceBetweenSizedPoints113c",
       "va": "0x6FD80730"
     },
     {
@@ -15818,13 +16198,17 @@
       "callers": [
         "D2Common:6FD83110"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B051-inv-unit.test.ts (real-DLL vectors via k1r4-laneA-it9-emitter.c -> b051-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/unit.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD80B80",
+      "name": "UNITS_IsCastAnimMode",
       "sccId": 852,
       "size": 72,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "UNITS_IsCastAnimMode113c (src/d2kern-113c/common/unit.ts)",
+      "tsSymbol": "UNITS_IsCastAnimMode113c",
       "va": "0x6FD80B80"
     },
     {
@@ -15835,17 +16219,21 @@
       "callers": [
         "D2Common:6FD83110"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B048-unit-statlist.test.ts (real-DLL vectors via k1r4-laneA-it9-emitter.c -> b048-vectors.ndjson)",
       "externalDeps": [
         "d2common.msvc_libcmt:0x6FD51B0D",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
+      "kernFile": "src/d2kern-113c/common/unit.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD80BD0",
+      "name": "UNITS_IsAttackAnimMode",
       "sccId": 853,
       "size": 158,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "UNITS_IsAttackAnimMode113c (src/d2kern-113c/common/unit.ts)",
+      "tsSymbol": "UNITS_IsAttackAnimMode113c",
       "va": "0x6FD80BD0"
     },
     {
@@ -15940,13 +16328,17 @@
         "D2Game:6FCF8970",
         "D2Game:6FD0B090"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B045-inventory-unit.test.ts (2 real-DLL vectors via k1r2-laneA-it8-emitter.c -> b045-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/unit.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD80DC0",
+      "name": "UNITS_SetUnitUpdateFlags",
       "sccId": 1024,
       "size": 82,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "UNITS_SetUnitUpdateFlags113c (src/d2kern-113c/common/unit.ts)",
+      "tsSymbol": "UNITS_SetUnitUpdateFlags113c",
       "va": "0x6FD80DC0"
     },
     {
@@ -16009,17 +16401,21 @@
         "D2Game:6FC8DEC0",
         "D2Game:6FC8DFC0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B048-unit-statlist.test.ts (real-DLL vectors via k1r4-laneA-it9-emitter.c -> b048-vectors.ndjson)",
       "externalDeps": [
         "d2common.msvc_libcmt:0x6FD51B0D",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
+      "kernFile": "src/d2kern-113c/common/unit.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD80EE0",
+      "name": "UNITS_GetUnitSizeY",
       "sccId": 382,
       "size": 129,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "UNITS_GetUnitSizeY113c (src/d2kern-113c/common/unit.ts)",
+      "tsSymbol": "UNITS_GetUnitSizeY113c",
       "va": "0x6FD80EE0"
     },
     {
@@ -16065,13 +16461,17 @@
         "D2Game:6FD01C00",
         "D2Game:6FD13E30"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B051-inv-unit.test.ts (real-DLL vectors via k1r4-laneA-it9-emitter.c -> b051-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/unit.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD80F80",
+      "name": "UNITS_GetUnitSizeX",
       "sccId": 368,
       "size": 98,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "UNITS_GetUnitSizeX113c (src/d2kern-113c/common/unit.ts)",
+      "tsSymbol": "UNITS_GetUnitSizeX113c",
       "va": "0x6FD80F80"
     },
     {
@@ -16101,13 +16501,17 @@
       "callers": [
         "D2Game:6FC2C1F0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B051-inv-unit.test.ts (real-DLL vectors via k1r4-laneA-it9-emitter.c -> b051-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/waypoint.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD811B0",
+      "name": "UNITS_IsCorpseUseable",
       "sccId": 1028,
       "size": 75,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "UNITS_IsCorpseUseable113c (src/d2kern-113c/common/waypoint.ts)",
+      "tsSymbol": "UNITS_IsCorpseUseable113c",
       "va": "0x6FD811B0"
     },
     {
@@ -16164,17 +16568,21 @@
         "D2Game:6FCB1B70",
         "D2Game:6FCFB790"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B048-unit-statlist.test.ts (real-DLL vectors via k1r4-laneA-it9-emitter.c -> b048-vectors.ndjson)",
       "externalDeps": [
         "d2common.msvc_libcmt:0x6FD51B0D",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
+      "kernFile": "src/d2kern-113c/common/waypoint.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD813F0",
+      "name": "UNITS_IsInMovingMode",
       "sccId": 1031,
       "size": 147,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "UNITS_IsInMovingMode113c (src/d2kern-113c/common/waypoint.ts)",
+      "tsSymbol": "UNITS_IsInMovingMode113c",
       "va": "0x6FD813F0"
     },
     {
@@ -16413,13 +16821,17 @@
       "callers": [
         "D2Common:6FDBBAA0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B043-missile-statlist.test.ts (3 real-DLL vectors via k1r2-laneA-it8-emitter.c -> b043-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/missile.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD81B40",
+      "name": "UNITS_GetMonsterActiveWeapon",
       "sccId": 1042,
       "size": 67,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 4,
+      "tsReference": "UNITS_GetMonsterActiveWeapon113c (src/d2kern-113c/common/missile.ts)",
+      "tsSymbol": "UNITS_GetMonsterActiveWeapon113c",
       "va": "0x6FD81B40"
     },
     {
@@ -16443,13 +16855,17 @@
         "D2Common:6FDBBAA0",
         "D2Game:6FC89EE0"
       ],
+      "diffEvidence": "11 real D2Common.dll differential vectors (55 total in tests/fixtures/oracle/k1/b039-vectors.ndjson) replayed in tests/oracle/k1/laneB-B039-items-skills.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD81B90",
+      "name": "ITEMS_GetActiveWeaponForAttack",
       "sccId": 840,
       "size": 374,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 4,
+      "tsReference": "ITEMS_GetActiveWeaponForAttack113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_GetActiveWeaponForAttack113c",
       "va": "0x6FD81B90"
     },
     {
@@ -16510,13 +16926,17 @@
         "D2Game:6FC6DCD0",
         "D2Game:6FCDE640"
       ],
+      "diffEvidence": "2 real D2Common.dll differential vectors (78 total in tests/fixtures/oracle/k1/b052-vectors.ndjson) replayed in tests/oracle/k1/laneB-B052-items.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD821C0",
+      "name": "ITEMS_GetActiveWeaponClassCodeIdx",
       "sccId": 1044,
       "size": 25,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 5,
+      "tsReference": "ITEMS_GetActiveWeaponClassCodeIdx113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_GetActiveWeaponClassCodeIdx113c",
       "va": "0x6FD821C0"
     },
     {
@@ -16529,13 +16949,17 @@
         "D2Game:6FC47820",
         "D2Game:6FCFED30"
       ],
+      "diffEvidence": "5 real D2Common.dll differential vectors (78 total in tests/fixtures/oracle/k1/b052-vectors.ndjson) replayed in tests/oracle/k1/laneB-B052-items.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD821E0",
+      "name": "ITEMS_GetUnitHitClass",
       "sccId": 1045,
       "size": 62,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 5,
+      "tsReference": "ITEMS_GetUnitHitClass113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_GetUnitHitClass113c",
       "va": "0x6FD821E0"
     },
     {
@@ -16620,14 +17044,17 @@
       "callers": [
         "D2Common:6FD83110"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B045-inventory-unit.test.ts (2 real-DLL vectors via k1r2-laneA-it8-emitter.c -> b045-vectors.ndjson)",
       "externalDeps": [],
-      "legacyRef": "`getCharAnimClip113c`, `computeDiminishingRate113c` `src/common/units/char-anim-speed.ts`, `char-anim-clips-113c.generated.ts`",
+      "kernFile": "src/d2kern-113c/common/unit.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD823E0",
+      "name": "UNITS_GetDiminishingStatBonusInline",
       "sccId": 856,
       "size": 124,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "UNITS_GetDiminishingStatBonusInline113c (src/d2kern-113c/common/unit.ts)",
+      "tsSymbol": "UNITS_GetDiminishingStatBonusInline113c",
       "va": "0x6FD823E0"
     },
     {
@@ -17297,15 +17724,19 @@
       "callers": [
         "D2Game:6FD020A0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B048-unit-statlist.test.ts (real-DLL vectors via k1r4-laneA-it9-emitter.c -> b048-vectors.ndjson)",
       "externalDeps": [
         "fog.dll:10046"
       ],
+      "kernFile": "src/d2kern-113c/common/unit.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD83990",
+      "name": "UNITS_FreeUnit",
       "sccId": 1066,
       "size": 108,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 8,
+      "tsReference": "UNITS_FreeUnit113c (src/d2kern-113c/common/unit.ts)",
+      "tsSymbol": "UNITS_FreeUnit113c",
       "va": "0x6FD83990"
     },
     {
@@ -17649,13 +18080,17 @@
         "D2Game:6FC9BD50",
         "D2Game:6FCD12B0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B051-inv-unit.test.ts (real-DLL vectors via k1r4-laneA-it9-emitter.c -> b051-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/statlist.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD83D60",
+      "name": "STATES_CheckStateMask33OnUnit",
       "sccId": 1027,
       "size": 23,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "STATES_CheckStateMask33OnUnit113c (src/d2kern-113c/common/statlist.ts)",
+      "tsSymbol": "STATES_CheckStateMask33OnUnit113c",
       "va": "0x6FD83D60"
     },
     {
@@ -17698,13 +18133,17 @@
       "callers": [
         "D2Common:6FD9F590"
       ],
+      "diffEvidence": "5 real D2Common.dll differential vectors (55 total in tests/fixtures/oracle/k1/b039-vectors.ndjson) replayed in tests/oracle/k1/laneB-B039-items-skills.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/skills.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD83F40",
+      "name": "STATES_CheckUnitAnyActiveStateMask",
       "sccId": 1076,
       "size": 23,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "STATES_CheckUnitAnyActiveStateMask113c (src/d2kern-113c/common/skills.ts)",
+      "tsSymbol": "STATES_CheckUnitAnyActiveStateMask113c",
       "va": "0x6FD83F40"
     },
     {
@@ -17766,13 +18205,17 @@
       "callers": [
         "D2Common:6FD844F0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B045-inventory-unit.test.ts (2 real-DLL vectors via k1r2-laneA-it8-emitter.c -> b045-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/unit.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD84080",
+      "name": "UNITS_TransferStateMaskToRemoved",
       "sccId": 1080,
       "size": 202,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "UNITS_TransferStateMaskToRemoved113c (src/d2kern-113c/common/unit.ts)",
+      "tsSymbol": "UNITS_TransferStateMaskToRemoved113c",
       "va": "0x6FD84080"
     },
     {
@@ -17783,13 +18226,17 @@
         "D2Game:6FC95350",
         "D2Game:6FC98230"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B045-inventory-unit.test.ts (3 real-DLL vectors via k1r2-laneA-it8-emitter.c -> b045-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/unit.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD84150",
+      "name": "STATES_UpdateGfxStateFlagsByMask",
       "sccId": 1081,
       "size": 376,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "STATES_UpdateGfxStateFlagsByMask113c (src/d2kern-113c/common/unit.ts)",
+      "tsSymbol": "STATES_UpdateGfxStateFlagsByMask113c",
       "va": "0x6FD84150"
     },
     {
@@ -17894,13 +18341,17 @@
       "callers": [
         "D2Game:6FCB1B70"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B061-path.test.ts (6 real-DLL vectors; 118 total in tests/fixtures/oracle/k1/b061-vectors.ndjson via k1r4-laneC-it9-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/path.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD844F0",
+      "name": "UNITS_TransferStateMaskDCToRemoved",
       "sccId": 1086,
       "size": 17,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 3,
+      "tsReference": "UNITS_TransferStateMaskDCToRemoved113c (src/d2kern-113c/common/path.ts)",
+      "tsSymbol": "UNITS_TransferStateMaskDCToRemoved113c",
       "va": "0x6FD844F0"
     },
     {
@@ -19649,17 +20100,21 @@
         "D2Game:6FC965E0",
         "D2Game:6FC98610"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B050-drlg-path.test.ts (4 real-DLL vectors; 84 total in tests/fixtures/oracle/k1/b050-vectors.ndjson via k1r2-laneC-it8-emitter.c)",
       "externalDeps": [
         "d2common.msvc_libcmt:0x6FD51B0D",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
+      "kernFile": "src/d2kern-113c/common/path.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD85210",
+      "name": "PATH_ResetToDefaultType",
       "sccId": 1131,
       "size": 94,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "PATH_ResetToDefaultType113c (src/d2kern-113c/common/path.ts)",
+      "tsSymbol": "PATH_ResetToDefaultType113c",
       "va": "0x6FD85210"
     },
     {
@@ -19692,13 +20147,17 @@
       "callers": [
         "D2Game:6FCD5110"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B061-path.test.ts (8 real-DLL vectors; 118 total in tests/fixtures/oracle/k1/b061-vectors.ndjson via k1r4-laneC-it9-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/path.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD852F0",
+      "name": "PATH_FaceTowardsCoords",
       "sccId": 1133,
       "size": 102,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "PATH_FaceTowardsCoords113c (src/d2kern-113c/common/path.ts)",
+      "tsSymbol": "PATH_FaceTowardsCoords113c",
       "va": "0x6FD852F0"
     },
     {
@@ -19710,13 +20169,17 @@
         "D2Common:6FD85CF0",
         "D2Common:6FD86030"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B061-path.test.ts (15 real-DLL vectors; 118 total in tests/fixtures/oracle/k1/b061-vectors.ndjson via k1r4-laneC-it9-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/path.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD85360",
+      "name": "PATH_GetCollisionPatternForSize",
       "sccId": 1134,
       "size": 98,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "PATH_GetCollisionPatternForSize113c (src/d2kern-113c/common/path.ts)",
+      "tsSymbol": "PATH_GetCollisionPatternForSize113c",
       "va": "0x6FD85360"
     },
     {
@@ -19728,13 +20191,17 @@
       "callers": [
         "D2Common:6FD86230"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B061-path.test.ts (12 real-DLL vectors; 118 total in tests/fixtures/oracle/k1/b061-vectors.ndjson via k1r4-laneC-it9-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/path.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD85470",
+      "name": "PATH_ResolveTargetUnitPosition",
       "sccId": 373,
       "size": 169,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "PATH_ResolveTargetUnitPosition113c (src/d2kern-113c/common/path.ts)",
+      "tsSymbol": "PATH_ResolveTargetUnitPosition113c",
       "va": "0x6FD85470"
     },
     {
@@ -19792,13 +20259,17 @@
       "callers": [
         "D2Common:6FD86230"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B061-path.test.ts (10 real-DLL vectors; 118 total in tests/fixtures/oracle/k1/b061-vectors.ndjson via k1r4-laneC-it9-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/path.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD856E0",
+      "name": "PATH_IsMonsterDestinationAllowed",
       "sccId": 375,
       "size": 147,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "PATH_IsMonsterDestinationAllowed113c (src/d2kern-113c/common/path.ts)",
+      "tsSymbol": "PATH_IsMonsterDestinationAllowed113c",
       "va": "0x6FD856E0"
     },
     {
@@ -21497,13 +21968,17 @@
         "D2Common:6FD9F640",
         "D2Common:6FDBB4A0"
       ],
+      "diffEvidence": "indirect real-DLL coverage via MISSILE_RollCriticalStrike113c vectors (b043 throwing_mastery_crit_100 / non_throwing_skill_no_melee_mastery, k1r2-laneA-it8-emitter.c); no direct vectors, so ported only",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/missile.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD882F0",
+      "name": "STATLIST_GetStatsByIdFromList",
       "sccId": 656,
       "size": 135,
-      "status": "unported",
+      "status": "ported",
       "topoLevel": 1,
+      "tsReference": "STATLIST_GetStatsByIdFromList113c (src/d2kern-113c/common/missile.ts)",
+      "tsSymbol": "STATLIST_GetStatsByIdFromList113c",
       "va": "0x6FD882F0"
     },
     {
@@ -22528,13 +23003,17 @@
         "D2Game:6FCF5690",
         "D2Game:6FCFA480"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B043-missile-statlist.test.ts (3 real-DLL vectors via k1r2-laneA-it8-emitter.c -> b043-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/statlist.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD88FF0",
+      "name": "STATLIST_GetMaxDurabilityFromUnit",
       "sccId": 813,
       "size": 96,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "STATLIST_GetMaxDurabilityFromUnit113c (src/d2kern-113c/common/statlist.ts)",
+      "tsSymbol": "STATLIST_GetMaxDurabilityFromUnit113c",
       "va": "0x6FD88FF0"
     },
     {
@@ -22552,13 +23031,17 @@
         "D2Game:6FCF14B0",
         "D2Game:6FD0B090"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B043-missile-statlist.test.ts (2 real-DLL vectors via k1r2-laneA-it8-emitter.c -> b043-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/statlist.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD89050",
+      "name": "STATLIST_GetMaxStaminaFromUnit",
       "sccId": 1182,
       "size": 69,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "STATLIST_GetMaxStaminaFromUnit113c (src/d2kern-113c/common/statlist.ts)",
+      "tsSymbol": "STATLIST_GetMaxStaminaFromUnit113c",
       "va": "0x6FD89050"
     },
     {
@@ -22589,13 +23072,17 @@
         "D2Game:6FCFAE70",
         "D2Game:6FD0B090"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B043-missile-statlist.test.ts (2 real-DLL vectors via k1r2-laneA-it8-emitter.c -> b043-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/statlist.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD890A0",
+      "name": "STATLIST_GetMaxManaFromUnit",
       "sccId": 1183,
       "size": 69,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "STATLIST_GetMaxManaFromUnit113c (src/d2kern-113c/common/statlist.ts)",
+      "tsSymbol": "STATLIST_GetMaxManaFromUnit113c",
       "va": "0x6FD890A0"
     },
     {
@@ -22665,13 +23152,17 @@
         "D2Game:6FD0B090",
         "D2Game:6FD13360"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B043-missile-statlist.test.ts (2 real-DLL vectors via k1r2-laneA-it8-emitter.c -> b043-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/statlist.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD890F0",
+      "name": "STATLIST_GetMaxLifeFromUnit",
       "sccId": 1184,
       "size": 69,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "STATLIST_GetMaxLifeFromUnit113c (src/d2kern-113c/common/statlist.ts)",
+      "tsSymbol": "STATLIST_GetMaxLifeFromUnit113c",
       "va": "0x6FD890F0"
     },
     {
@@ -22726,13 +23217,17 @@
         "D2Game:6FCFCF20",
         "D2Game:6FD00460"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B043-missile-statlist.test.ts (3 real-DLL vectors via k1r2-laneA-it8-emitter.c -> b043-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/statlist.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD89140",
+      "name": "STATLIST_GetStatValue",
       "sccId": 818,
       "size": 84,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "STATLIST_GetStatValue113c (src/d2kern-113c/common/statlist.ts)",
+      "tsSymbol": "STATLIST_GetStatValue113c",
       "va": "0x6FD89140"
     },
     {
@@ -22742,13 +23237,17 @@
       "callers": [
         "D2Game:6FC9A570"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B043-missile-statlist.test.ts (2 real-DLL vectors via k1r2-laneA-it8-emitter.c -> b043-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/statlist.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD891A0",
+      "name": "STATLIST_GetTotalStatValueLayer0",
       "sccId": 1185,
       "size": 77,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "STATLIST_GetTotalStatValueLayer0_113c (src/d2kern-113c/common/statlist.ts)",
+      "tsSymbol": "STATLIST_GetTotalStatValueLayer0_113c",
       "va": "0x6FD891A0"
     },
     {
@@ -22824,13 +23323,17 @@
         "D2Common:6FD78850",
         "D2Common:6FD89CC0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B043-missile-statlist.test.ts (3 real-DLL vectors via k1r2-laneA-it8-emitter.c -> b043-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/statlist.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD89380",
+      "name": "STATLIST_GetStatBonusFromListInline",
       "sccId": 822,
       "size": 161,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "STATLIST_GetStatBonusFromListInline113c (src/d2kern-113c/common/statlist.ts)",
+      "tsSymbol": "STATLIST_GetStatBonusFromListInline113c",
       "va": "0x6FD89380"
     },
     {
@@ -22887,13 +23390,17 @@
         "D2Game:6FCFD450",
         "D2Game:6FCFDE90"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B043-missile-statlist.test.ts (3 real-DLL vectors via k1r2-laneA-it8-emitter.c -> b043-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/statlist.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD89430",
+      "name": "STATLIST_GetUnitStatWithLayer",
       "sccId": 805,
       "size": 87,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "STATLIST_GetUnitStatWithLayer113c (src/d2kern-113c/common/statlist.ts)",
+      "tsSymbol": "STATLIST_GetUnitStatWithLayer113c",
       "va": "0x6FD89430"
     },
     {
@@ -22903,13 +23410,17 @@
       "callers": [
         "D2Common:6FD97980"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B043-missile-statlist.test.ts (3 real-DLL vectors via k1r2-laneA-it8-emitter.c -> b043-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/statlist.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD894E0",
+      "name": "STATLIST_GetBaseStatFromListInline",
       "sccId": 919,
       "size": 74,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "STATLIST_GetBaseStatFromListInline113c (src/d2kern-113c/common/statlist.ts)",
+      "tsSymbol": "STATLIST_GetBaseStatFromListInline113c",
       "va": "0x6FD894E0"
     },
     {
@@ -23079,13 +23590,17 @@
         "D2Common:6FD8A790",
         "D2Common:6FD97120"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B043-missile-statlist.test.ts (3 real-DLL vectors via k1r2-laneA-it8-emitter.c -> b043-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/statlist.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD8A1D0",
+      "name": "STATLIST_SetBaseStatEx",
       "sccId": 1188,
       "size": 170,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 6,
+      "tsReference": "STATLIST_SetBaseStatEx113c (src/d2kern-113c/common/statlist.ts)",
+      "tsSymbol": "STATLIST_SetBaseStatEx113c",
       "va": "0x6FD8A1D0"
     },
     {
@@ -23222,13 +23737,17 @@
         "D2Game:6FCF24B0",
         "D2Game:6FCF46B0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B043-missile-statlist.test.ts (2 real-DLL vectors via k1r2-laneA-it8-emitter.c -> b043-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/statlist.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD8A5D0",
+      "name": "STATLIST_UnlinkUnitStatList",
       "sccId": 675,
       "size": 24,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 7,
+      "tsReference": "STATLIST_UnlinkUnitStatList113c (src/d2kern-113c/common/statlist.ts)",
+      "tsSymbol": "STATLIST_UnlinkUnitStatList113c",
       "va": "0x6FD8A5D0"
     },
     {
@@ -23290,13 +23809,17 @@
         "D2Common:6FD8AC50",
         "D2Game:6FC97240"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B043-missile-statlist.test.ts (2 real-DLL vectors via k1r2-laneA-it8-emitter.c -> b043-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/statlist.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD8A650",
+      "name": "STATLIST_ClearBaseStats",
       "sccId": 879,
       "size": 178,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 6,
+      "tsReference": "STATLIST_ClearBaseStats113c (src/d2kern-113c/common/statlist.ts)",
+      "tsSymbol": "STATLIST_ClearBaseStats113c",
       "va": "0x6FD8A650"
     },
     {
@@ -23774,13 +24297,17 @@
       "callers": [
         "D2Common:6FD7C7C0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B043-missile-statlist.test.ts (3 real-DLL vectors via k1r2-laneA-it8-emitter.c -> b043-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/statlist.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD8AAB0",
+      "name": "STATLIST_UpdateUnitStateSetFlag",
       "sccId": 943,
       "size": 124,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 8,
+      "tsReference": "STATLIST_UpdateUnitStateSetFlag113c (src/d2kern-113c/common/statlist.ts)",
+      "tsSymbol": "STATLIST_UpdateUnitStateSetFlag113c",
       "va": "0x6FD8AAB0"
     },
     {
@@ -26338,13 +26865,17 @@
         "D2Common:6FD91EF0",
         "D2Common:6FD91F70"
       ],
+      "diffEvidence": "12 real D2Common.dll differential vectors (198 total in tests/fixtures/oracle/k1/i9b-b-vectors.ndjson, emitted by tools/oracle/vectors/k1r3-laneB-it9-emitter.c) replayed in tests/oracle/k1/laneB-I9B-B-tables-skills.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/tables/anim-tbls-113c.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD91DD0",
+      "name": "ANIMDATA_FindRecordByCode",
       "sccId": 807,
       "size": 114,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "ANIMDATA_FindRecordByCode113c (src/d2kern-113c/tables/anim-tbls-113c.ts)",
+      "tsSymbol": "ANIMDATA_FindRecordByCode113c",
       "va": "0x6FD91DD0"
     },
     {
@@ -26354,13 +26885,17 @@
       "callers": [
         "D2Common:6FD767F0"
       ],
+      "diffEvidence": "13 real D2Common.dll differential vectors (198 total in tests/fixtures/oracle/k1/i9b-b-vectors.ndjson, emitted by tools/oracle/vectors/k1r3-laneB-it9-emitter.c) replayed in tests/oracle/k1/laneB-I9B-B-tables-skills.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/tables/anim-tbls-113c.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD91EF0",
+      "name": "ANIMDATA_GetAnimDataInfo",
       "sccId": 808,
       "size": 127,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "ANIMDATA_GetAnimDataInfo113c (src/d2kern-113c/tables/anim-tbls-113c.ts)",
+      "tsSymbol": "ANIMDATA_GetAnimDataInfo113c",
       "va": "0x6FD91EF0"
     },
     {
@@ -26407,15 +26942,19 @@
       "callers": [
         "D2Common:6FD7DAF0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B050-drlg-path.test.ts (4 real-DLL vectors; 84 total in tests/fixtures/oracle/k1/b050-vectors.ndjson via k1r2-laneC-it8-emitter.c)",
       "externalDeps": [
         "fog.dll:10046"
       ],
+      "kernFile": "src/d2kern-113c/common/drlg/drlg-grid.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD920E0",
+      "name": "DRLGOUTDOORS_FreeOutdoorLevelData",
       "sccId": 961,
       "size": 349,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "DRLGOUTDOORS_FreeOutdoorLevelData113c (src/d2kern-113c/common/drlg/drlg-grid.ts)",
+      "tsSymbol": "DRLGOUTDOORS_FreeOutdoorLevelData113c",
       "va": "0x6FD920E0"
     },
     {
@@ -27557,17 +28096,21 @@
       "callers": [
         "D2Game:6FC340B0"
       ],
+      "diffEvidence": "4 real D2Common.dll differential vectors (60 total in tests/fixtures/oracle/k1/b049-vectors.ndjson) replayed in tests/oracle/k1/laneB-B049-items-skills-tbls.test.ts",
       "externalDeps": [
         "d2common.msvc_libcmt:0x6FD51B0D",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD95BE0",
+      "name": "ITEMS_CheckQualityItemMatch",
       "sccId": 1277,
       "size": 335,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "ITEMS_CheckQualityItemMatch113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_CheckQualityItemMatch113c",
       "va": "0x6FD95BE0"
     },
     {
@@ -27581,17 +28124,21 @@
         "D2Game:6FC34210",
         "D2Game:6FC34370"
       ],
+      "diffEvidence": "5 real D2Common.dll differential vectors (60 total in tests/fixtures/oracle/k1/b049-vectors.ndjson) replayed in tests/oracle/k1/laneB-B049-items-skills-tbls.test.ts",
       "externalDeps": [
         "d2common.msvc_libcmt:0x6FD51B0D",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD95D30",
+      "name": "ITEMS_CheckAffixAssignableToItem",
       "sccId": 1278,
       "size": 282,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 3,
+      "tsReference": "ITEMS_CheckAffixAssignableToItem113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_CheckAffixAssignableToItem113c",
       "va": "0x6FD95D30"
     },
     {
@@ -27766,13 +28313,17 @@
         "D2Common:6FD991C0",
         "D2Common:6FD99340"
       ],
+      "diffEvidence": "3 real D2Common.dll differential vectors (78 total in tests/fixtures/oracle/k1/b052-vectors.ndjson) replayed in tests/oracle/k1/laneB-B052-items.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/items.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD965B0",
+      "name": "ITEMS_RollItemOrUnitSeedRange",
       "sccId": 882,
       "size": 66,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "ITEMS_RollItemOrUnitSeedRange113c (src/d2kern-113c/common/items.ts)",
+      "tsSymbol": "ITEMS_RollItemOrUnitSeedRange113c",
       "va": "0x6FD965B0"
     },
     {
@@ -27894,13 +28445,17 @@
       "callers": [
         "D2Common:6FD95AA0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B043-missile-statlist.test.ts (2 real-DLL vectors via k1r2-laneA-it8-emitter.c -> b043-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/statlist.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD96D50",
+      "name": "STATLIST_RemoveItemDurabilityStatsModHandler",
       "sccId": 915,
       "size": 244,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 6,
+      "tsReference": "STATLIST_RemoveItemDurabilityStatsModHandler113c (src/d2kern-113c/common/statlist.ts)",
+      "tsSymbol": "STATLIST_RemoveItemDurabilityStatsModHandler113c",
       "va": "0x6FD96D50"
     },
     {
@@ -27967,17 +28522,21 @@
         "D2Common:6FD99AF0",
         "D2Common:6FD99F30"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B048-unit-statlist.test.ts (real-DLL vectors via k1r4-laneA-it9-emitter.c -> b048-vectors.ndjson)",
       "externalDeps": [
         "d2common.msvc_libcmt:0x6FD51B0D",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
+      "kernFile": "src/d2kern-113c/common/statlist.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD97020",
+      "name": "ITEMMODS_GetOrCreateStatList",
       "sccId": 886,
       "size": 249,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 8,
+      "tsReference": "ITEMMODS_GetOrCreateStatList113c (src/d2kern-113c/common/statlist.ts)",
+      "tsSymbol": "ITEMMODS_GetOrCreateStatList113c",
       "va": "0x6FD97020"
     },
     {
@@ -28965,15 +29524,19 @@
         "D2Common:6FD94F90",
         "D2Common:6FDB88B0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B050-drlg-path.test.ts (4 real-DLL vectors; 84 total in tests/fixtures/oracle/k1/b050-vectors.ndjson via k1r2-laneC-it8-emitter.c)",
       "externalDeps": [
         "fog.dll:10046"
       ],
+      "kernFile": "src/d2kern-113c/common/drlg/drlg-grid.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD9A4D0",
+      "name": "DRLGOUTROOM_FreeOutdoorRoomData",
       "sccId": 133,
       "size": 140,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "DRLGOUTROOM_FreeOutdoorRoomData113c (src/d2kern-113c/common/drlg/drlg-grid.ts)",
+      "tsSymbol": "DRLGOUTROOM_FreeOutdoorRoomData113c",
       "va": "0x6FD9A4D0"
     },
     {
@@ -29131,13 +29694,17 @@
         "D2Game:6FC5D450",
         "D2Game:6FCC0370"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B053-collision-drlg.test.ts (12 real-DLL vectors; 111 total in tests/fixtures/oracle/k1/b053-vectors.ndjson via k1r2-laneC-it8-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/collision.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD9AD20",
+      "name": "COLLISION_RayTrace",
       "sccId": 1019,
       "size": 1375,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "COLLISION_RayTrace113c (src/d2kern-113c/common/collision.ts)",
+      "tsSymbol": "COLLISION_RayTrace113c",
       "va": "0x6FD9AD20"
     },
     {
@@ -29152,13 +29719,17 @@
         "D2Common:6FD9B8F0",
         "D2Common:6FD9BFC0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B053-collision-drlg.test.ts (4 real-DLL vectors; 111 total in tests/fixtures/oracle/k1/b053-vectors.ndjson via k1r2-laneC-it8-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/collision.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD9B280",
+      "name": "COLLISION_SetMaskForBoundingBoxRecursively",
       "sccId": 323,
       "size": 111,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "COLLISION_SetMaskForBoundingBoxRecursively113c (src/d2kern-113c/common/collision.ts)",
+      "tsSymbol": "COLLISION_SetMaskForBoundingBoxRecursively113c",
       "va": "0x6FD9B280"
     },
     {
@@ -29171,13 +29742,17 @@
         "D2Common:6FD9BAB0",
         "D2Common:6FD9BB30"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B053-collision-drlg.test.ts (4 real-DLL vectors; 111 total in tests/fixtures/oracle/k1/b053-vectors.ndjson via k1r2-laneC-it8-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/collision.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD9B2F0",
+      "name": "COLLISION_ClearMaskForBoundingBoxRecursively",
       "sccId": 317,
       "size": 111,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "COLLISION_ClearMaskForBoundingBoxRecursively113c (src/d2kern-113c/common/collision.ts)",
+      "tsSymbol": "COLLISION_ClearMaskForBoundingBoxRecursively113c",
       "va": "0x6FD9B2F0"
     },
     {
@@ -29189,13 +29764,17 @@
       "callers": [
         "D2Common:6FD9CE90"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B053-collision-drlg.test.ts (4 real-DLL vectors; 111 total in tests/fixtures/oracle/k1/b053-vectors.ndjson via k1r2-laneC-it8-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/collision.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD9B360",
+      "name": "COLLISION_CheckAnyCollisionWithBoxRecursively",
       "sccId": 362,
       "size": 138,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "COLLISION_CheckAnyCollisionWithBoxRecursively113c (src/d2kern-113c/common/collision.ts)",
+      "tsSymbol": "COLLISION_CheckAnyCollisionWithBoxRecursively113c",
       "va": "0x6FD9B360"
     },
     {
@@ -29210,13 +29789,17 @@
         "D2Common:6FD9CB90",
         "D2Common:6FD9CF40"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B053-collision-drlg.test.ts (4 real-DLL vectors; 111 total in tests/fixtures/oracle/k1/b053-vectors.ndjson via k1r2-laneC-it8-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/collision.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD9B3F0",
+      "name": "COLLISION_GetCombinedMaskForBoxRecursively",
       "sccId": 329,
       "size": 147,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "COLLISION_GetCombinedMaskForBoxRecursively113c (src/d2kern-113c/common/collision.ts)",
+      "tsSymbol": "COLLISION_GetCombinedMaskForBoxRecursively113c",
       "va": "0x6FD9B3F0"
     },
     {
@@ -29226,13 +29809,17 @@
       "callers": [
         "D2Common:6FD9BAB0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B053-collision-drlg.test.ts (4 real-DLL vectors; 111 total in tests/fixtures/oracle/k1/b053-vectors.ndjson via k1r2-laneC-it8-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/collision.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD9B4D0",
+      "name": "COLLISION_ClearSubtileMaskInRoom",
       "sccId": 383,
       "size": 59,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "COLLISION_ClearSubtileMaskInRoom113c (src/d2kern-113c/common/collision.ts)",
+      "tsSymbol": "COLLISION_ClearSubtileMaskInRoom113c",
       "va": "0x6FD9B4D0"
     },
     {
@@ -29244,13 +29831,17 @@
         "D2Common:6FD9C140",
         "D2Common:6FD9C5C0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B066-collision.test.ts (8 real-DLL vectors; 155 total in tests/fixtures/oracle/k1/b066-vectors.ndjson via k1r4-laneC-it9-emitter.c; pulled from B056)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/collision.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD9B510",
+      "name": "COLLISION_GetMaskAt",
       "sccId": 331,
       "size": 66,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "COLLISION_GetMaskAt113c (src/d2kern-113c/common/collision.ts)",
+      "tsSymbol": "COLLISION_GetMaskAt113c",
       "va": "0x6FD9B510"
     },
     {
@@ -29341,13 +29932,17 @@
         "D2Common:6FD81850",
         "D2Common:6FD859D0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B066-collision.test.ts (12 real-DLL vectors; 155 total in tests/fixtures/oracle/k1/b066-vectors.ndjson via k1r4-laneC-it9-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/collision.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD9B840",
+      "name": "COLLISION_SetMaskWithSizeXY",
       "sccId": 386,
       "size": 163,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "COLLISION_SetMaskWithSizeXY113c (src/d2kern-113c/common/collision.ts)",
+      "tsSymbol": "COLLISION_SetMaskWithSizeXY113c",
       "va": "0x6FD9B840"
     },
     {
@@ -29357,13 +29952,17 @@
       "callers": [
         "D2Common:6FD9BE90"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B066-collision.test.ts (5 real-DLL vectors; 155 total in tests/fixtures/oracle/k1/b066-vectors.ndjson via k1r4-laneC-it9-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/collision.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD9B8F0",
+      "name": "COLLISION_SetMask3x3",
       "sccId": 324,
       "size": 50,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "COLLISION_SetMask3x3_113c (src/d2kern-113c/common/collision.ts)",
+      "tsSymbol": "COLLISION_SetMask3x3_113c",
       "va": "0x6FD9B8F0"
     },
     {
@@ -29373,13 +29972,17 @@
       "callers": [
         "D2Common:6FD9BE90"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B053-collision-drlg.test.ts (4 real-DLL vectors; 111 total in tests/fixtures/oracle/k1/b053-vectors.ndjson via k1r2-laneC-it8-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/collision.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD9B930",
+      "name": "COLLISION_SetSubtileMaskInRoom",
       "sccId": 325,
       "size": 56,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "COLLISION_SetSubtileMaskInRoom113c (src/d2kern-113c/common/collision.ts)",
+      "tsSymbol": "COLLISION_SetSubtileMaskInRoom113c",
       "va": "0x6FD9B930"
     },
     {
@@ -29390,13 +29993,17 @@
         "D2Common:6FD9BE90",
         "D2Common:6FD9BFC0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B053-collision-drlg.test.ts (4 real-DLL vectors; 111 total in tests/fixtures/oracle/k1/b053-vectors.ndjson via k1r2-laneC-it8-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/collision.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD9B970",
+      "name": "COLLISION_SetCrossPatternMask",
       "sccId": 326,
       "size": 305,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "COLLISION_SetCrossPatternMask113c (src/d2kern-113c/common/collision.ts)",
+      "tsSymbol": "COLLISION_SetCrossPatternMask113c",
       "va": "0x6FD9B970"
     },
     {
@@ -29408,13 +30015,17 @@
         "D2Common:6FD818C0",
         "D2Common:6FD85800"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B066-collision.test.ts (11 real-DLL vectors; 155 total in tests/fixtures/oracle/k1/b066-vectors.ndjson via k1r4-laneC-it9-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/collision.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD9BAB0",
+      "name": "COLLISION_ResetMaskWithSizeXY",
       "sccId": 384,
       "size": 126,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "COLLISION_ResetMaskWithSizeXY113c (src/d2kern-113c/common/collision.ts)",
+      "tsSymbol": "COLLISION_ResetMaskWithSizeXY113c",
       "va": "0x6FD9BAB0"
     },
     {
@@ -29425,13 +30036,17 @@
         "D2Common:6FD9BCF0",
         "D2Common:6FD9BE10"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B066-collision.test.ts (5 real-DLL vectors; 155 total in tests/fixtures/oracle/k1/b066-vectors.ndjson via k1r4-laneC-it9-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/collision.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD9BB30",
+      "name": "COLLISION_ResetMask3x3",
       "sccId": 318,
       "size": 50,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "COLLISION_ResetMask3x3_113c (src/d2kern-113c/common/collision.ts)",
+      "tsSymbol": "COLLISION_ResetMask3x3_113c",
       "va": "0x6FD9BB30"
     },
     {
@@ -29442,13 +30057,17 @@
         "D2Common:6FD9BCF0",
         "D2Common:6FD9BE10"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B053-collision-drlg.test.ts (4 real-DLL vectors; 111 total in tests/fixtures/oracle/k1/b053-vectors.ndjson via k1r2-laneC-it8-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/collision.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD9BB70",
+      "name": "COLLISION_ClearSubtileMaskInRoom_6FD9BB70",
       "sccId": 319,
       "size": 59,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "COLLISION_ClearSubtileMaskInRoom_6FD9BB70_113c (src/d2kern-113c/common/collision.ts)",
+      "tsSymbol": "COLLISION_ClearSubtileMaskInRoom_6FD9BB70_113c",
       "va": "0x6FD9BB70"
     },
     {
@@ -29459,13 +30078,17 @@
         "D2Common:6FD9BCF0",
         "D2Common:6FD9BE10"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B053-collision-drlg.test.ts (4 real-DLL vectors; 111 total in tests/fixtures/oracle/k1/b053-vectors.ndjson via k1r2-laneC-it8-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/collision.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD9BBB0",
+      "name": "COLLISION_ClearCrossPatternMask",
       "sccId": 320,
       "size": 309,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "COLLISION_ClearCrossPatternMask113c (src/d2kern-113c/common/collision.ts)",
+      "tsSymbol": "COLLISION_ClearCrossPatternMask113c",
       "va": "0x6FD9BBB0"
     },
     {
@@ -29562,13 +30185,17 @@
         "D2Common:6FD9D760",
         "D2Game:6FC61980"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B066-collision.test.ts (8 real-DLL vectors; 155 total in tests/fixtures/oracle/k1/b066-vectors.ndjson via k1r4-laneC-it9-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/collision.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD9BFC0",
+      "name": "COLLISION_SetMaskWithPattern",
       "sccId": 336,
       "size": 181,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "COLLISION_SetMaskWithPattern113c (src/d2kern-113c/common/collision.ts)",
+      "tsSymbol": "COLLISION_SetMaskWithPattern113c",
       "va": "0x6FD9BFC0"
     },
     {
@@ -29588,13 +30215,17 @@
         "D2Game:6FC8A9D0",
         "D2Game:6FCC0630"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B066-collision.test.ts (9 real-DLL vectors; 155 total in tests/fixtures/oracle/k1/b066-vectors.ndjson via k1r4-laneC-it9-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/collision.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD9C080",
+      "name": "COLLISION_CheckMaskWithSizeXY",
       "sccId": 1286,
       "size": 119,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "COLLISION_CheckMaskWithSizeXY113c (src/d2kern-113c/common/collision.ts)",
+      "tsSymbol": "COLLISION_CheckMaskWithSizeXY113c",
       "va": "0x6FD9C080"
     },
     {
@@ -29605,13 +30236,17 @@
       "callers": [
         "D2Common:6FD9CE90"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B066-collision.test.ts (39 real-DLL vectors; 155 total in tests/fixtures/oracle/k1/b066-vectors.ndjson via k1r4-laneC-it9-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/collision.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD9C140",
+      "name": "COLLISION_CheckCrossPatternCollision",
       "sccId": 363,
       "size": 942,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "COLLISION_CheckCrossPatternCollision113c (src/d2kern-113c/common/collision.ts)",
+      "tsSymbol": "COLLISION_CheckCrossPatternCollision113c",
       "va": "0x6FD9C140"
     },
     {
@@ -29621,13 +30256,17 @@
       "callers": [
         "D2Common:6FD9CE00"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B066-collision.test.ts (7 real-DLL vectors; 155 total in tests/fixtures/oracle/k1/b066-vectors.ndjson via k1r4-laneC-it9-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/collision.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD9C530",
+      "name": "COLLISION_GetMask3x3",
       "sccId": 337,
       "size": 50,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "COLLISION_GetMask3x3_113c (src/d2kern-113c/common/collision.ts)",
+      "tsSymbol": "COLLISION_GetMask3x3_113c",
       "va": "0x6FD9C530"
     },
     {
@@ -29639,14 +30278,17 @@
         "D2Common:6FD9CE90",
         "D2Common:6FD9CF40"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B053-collision-drlg.test.ts (4 real-DLL vectors; 111 total in tests/fixtures/oracle/k1/b053-vectors.ndjson via k1r2-laneC-it8-emitter.c)",
       "externalDeps": [],
-      "legacyRef": "collision maps (`MapService`)",
+      "kernFile": "src/d2kern-113c/common/collision.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD9C570",
+      "name": "COLLISION_CheckSubtileMaskInRoomFast",
       "sccId": 330,
       "size": 67,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "COLLISION_CheckSubtileMaskInRoomFast113c (src/d2kern-113c/common/collision.ts)",
+      "tsSymbol": "COLLISION_CheckSubtileMaskInRoomFast113c",
       "va": "0x6FD9C570"
     },
     {
@@ -29658,13 +30300,17 @@
         "D2Common:6FD9CE00",
         "D2Common:6FD9CF40"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B066-collision.test.ts (27 real-DLL vectors; 155 total in tests/fixtures/oracle/k1/b066-vectors.ndjson via k1r4-laneC-it9-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/collision.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD9C5C0",
+      "name": "COLLISION_GetCrossPatternMask",
       "sccId": 332,
       "size": 839,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "COLLISION_GetCrossPatternMask113c (src/d2kern-113c/common/collision.ts)",
+      "tsSymbol": "COLLISION_GetCrossPatternMask113c",
       "va": "0x6FD9C5C0"
     },
     {
@@ -29674,13 +30320,17 @@
       "callers": [
         "D2Game:6FC9BE10"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B053-collision-drlg.test.ts (4 real-DLL vectors; 111 total in tests/fixtures/oracle/k1/b053-vectors.ndjson via k1r2-laneC-it8-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/collision.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD9C940",
+      "name": "COLLISION_ClearSubtileMask",
       "sccId": 1287,
       "size": 65,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "COLLISION_ClearSubtileMask113c (src/d2kern-113c/common/collision.ts)",
+      "tsSymbol": "COLLISION_ClearSubtileMask113c",
       "va": "0x6FD9C940"
     },
     {
@@ -29690,13 +30340,17 @@
       "callers": [
         "D2Game:6FC61AE0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B053-collision-drlg.test.ts (4 real-DLL vectors; 111 total in tests/fixtures/oracle/k1/b053-vectors.ndjson via k1r2-laneC-it8-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/collision.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD9C990",
+      "name": "COLLISION_SetSubtileMask",
       "sccId": 1288,
       "size": 64,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "COLLISION_SetSubtileMask113c (src/d2kern-113c/common/collision.ts)",
+      "tsSymbol": "COLLISION_SetSubtileMask113c",
       "va": "0x6FD9C990"
     },
     {
@@ -29712,13 +30366,17 @@
         "D2Game:6FCA9870",
         "D2Game:6FD0DF60"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B053-collision-drlg.test.ts (4 real-DLL vectors; 111 total in tests/fixtures/oracle/k1/b053-vectors.ndjson via k1r2-laneC-it8-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/collision.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD9C9D0",
+      "name": "COLLISION_CheckSubtileMask",
       "sccId": 444,
       "size": 75,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "COLLISION_CheckSubtileMask113c (src/d2kern-113c/common/collision.ts)",
+      "tsSymbol": "COLLISION_CheckSubtileMask113c",
       "va": "0x6FD9C9D0"
     },
     {
@@ -29730,13 +30388,17 @@
       "callers": [
         "D2Common:6FDB95D0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B053-collision-drlg.test.ts (5 real-DLL vectors; 111 total in tests/fixtures/oracle/k1/b053-vectors.ndjson via k1r2-laneC-it8-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/collision.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD9CA20",
+      "name": "COLLISION_ReplaceTileSubtileFlagsInRoom",
       "sccId": 108,
       "size": 102,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "COLLISION_ReplaceTileSubtileFlagsInRoom113c (src/d2kern-113c/common/collision.ts)",
+      "tsSymbol": "COLLISION_ReplaceTileSubtileFlagsInRoom113c",
       "va": "0x6FD9CA20"
     },
     {
@@ -29776,13 +30438,17 @@
         "D2Game:6FC44950",
         "D2Game:6FC8B7A0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B066-collision.test.ts (9 real-DLL vectors; 155 total in tests/fixtures/oracle/k1/b066-vectors.ndjson via k1r4-laneC-it9-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/collision.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD9CB90",
+      "name": "COLLISION_FindFreeCoordsNear",
       "sccId": 1289,
       "size": 502,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "COLLISION_FindFreeCoordsNear113c (src/d2kern-113c/common/collision.ts)",
+      "tsSymbol": "COLLISION_FindFreeCoordsNear113c",
       "va": "0x6FD9CB90"
     },
     {
@@ -30868,13 +31534,17 @@
         "D2Game:6FCB57F0",
         "D2Game:6FCD5950"
       ],
+      "diffEvidence": "12 real D2Common.dll differential vectors (198 total in tests/fixtures/oracle/k1/i9b-b-vectors.ndjson, emitted by tools/oracle/vectors/k1r3-laneB-it9-emitter.c) replayed in tests/oracle/k1/laneB-I9B-B-tables-skills.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/skills.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD9E5E0",
+      "name": "SKILLS_EvalParam56DimReturns",
       "sccId": 1052,
       "size": 76,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "SKILLS_EvalParam56DimReturns113c (src/d2kern-113c/common/skills.ts)",
+      "tsSymbol": "SKILLS_EvalParam56DimReturns113c",
       "va": "0x6FD9E5E0"
     },
     {
@@ -30884,13 +31554,17 @@
       "callers": [
         "D2Common:6FDA1070"
       ],
+      "diffEvidence": "12 real D2Common.dll differential vectors (198 total in tests/fixtures/oracle/k1/i9b-b-vectors.ndjson, emitted by tools/oracle/vectors/k1r3-laneB-it9-emitter.c) replayed in tests/oracle/k1/laneB-I9B-B-tables-skills.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/skills.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD9E630",
+      "name": "SKILLS_EvalParam34DimReturns",
       "sccId": 1053,
       "size": 76,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "SKILLS_EvalParam34DimReturns113c (src/d2kern-113c/common/skills.ts)",
+      "tsSymbol": "SKILLS_EvalParam34DimReturns113c",
       "va": "0x6FD9E630"
     },
     {
@@ -30901,13 +31575,17 @@
         "D2Common:6FDA1070",
         "D2Game:6FC6E5F0"
       ],
+      "diffEvidence": "12 real D2Common.dll differential vectors (198 total in tests/fixtures/oracle/k1/i9b-b-vectors.ndjson, emitted by tools/oracle/vectors/k1r3-laneB-it9-emitter.c) replayed in tests/oracle/k1/laneB-I9B-B-tables-skills.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/skills.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD9E680",
+      "name": "SKILLS_EvalParam12DimReturns",
       "sccId": 1054,
       "size": 76,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "SKILLS_EvalParam12DimReturns113c (src/d2kern-113c/common/skills.ts)",
+      "tsSymbol": "SKILLS_EvalParam12DimReturns113c",
       "va": "0x6FD9E680"
     },
     {
@@ -31147,13 +31825,17 @@
       "callers": [
         "D2Common:6FDA0930"
       ],
+      "diffEvidence": "4 real D2Common.dll differential vectors (55 total in tests/fixtures/oracle/k1/b039-vectors.ndjson) replayed in tests/oracle/k1/laneB-B039-items-skills.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/skills.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD9EBF0",
+      "name": "SKILLS_GetWeaponFromArmSlot",
       "sccId": 1323,
       "size": 84,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "SKILLS_GetWeaponFromArmSlot113c (src/d2kern-113c/common/skills.ts)",
+      "tsSymbol": "SKILLS_GetWeaponFromArmSlot113c",
       "va": "0x6FD9EBF0"
     },
     {
@@ -31238,16 +31920,20 @@
       "callers": [
         "D2Common:6FD9F610"
       ],
+      "diffEvidence": "5 real D2Common.dll differential vectors (60 total in tests/fixtures/oracle/k1/b049-vectors.ndjson) replayed in tests/oracle/k1/laneB-B049-items-skills-tbls.test.ts",
       "externalDeps": [
         "fog.dll:10045",
         "fog.dll:10046"
       ],
+      "kernFile": "src/d2kern-113c/common/skills.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD9EE00",
+      "name": "SKILLS_AddOrRemoveItemChargedSkill",
       "sccId": 1326,
       "size": 490,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "SKILLS_AddOrRemoveItemChargedSkill113c (src/d2kern-113c/common/skills.ts)",
+      "tsSymbol": "SKILLS_AddOrRemoveItemChargedSkill113c",
       "va": "0x6FD9EE00"
     },
     {
@@ -31323,13 +32009,17 @@
         "D2Game:6FCFCF20",
         "D2Game:6FD13CB0"
       ],
+      "diffEvidence": "5 real D2Common.dll differential vectors (198 total in tests/fixtures/oracle/k1/i9b-b-vectors.ndjson, emitted by tools/oracle/vectors/k1r3-laneB-it9-emitter.c) replayed in tests/oracle/k1/laneB-I9B-B-tables-skills.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/skills.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD9F070",
+      "name": "SKILLS_GetHighestLevelSkillFromUnitAndIdFastcall",
       "sccId": 1327,
       "size": 12,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "SKILLS_GetHighestLevelSkillFromUnitAndIdFastcall113c (src/d2kern-113c/common/skills.ts)",
+      "tsSymbol": "SKILLS_GetHighestLevelSkillFromUnitAndIdFastcall113c",
       "va": "0x6FD9F070"
     },
     {
@@ -31489,17 +32179,21 @@
         "D2Common:6FD9F640",
         "D2Game:6FCBE4F0"
       ],
+      "diffEvidence": "indirect real-DLL coverage via MISSILE_RollCriticalStrike113c vectors (b043 throwing_mastery_crit_100 / non_throwing_skill_no_melee_mastery, k1r2-laneA-it8-emitter.c); no direct vectors, so ported only",
       "externalDeps": [
         "d2common.msvc_libcmt:0x6FD51B0D",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
+      "kernFile": "src/d2kern-113c/common/missile.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD9F200",
+      "name": "SKILLS_GetThrowingWeaponMasteryBonus",
       "sccId": 1334,
       "size": 397,
-      "status": "unported",
+      "status": "ported",
       "topoLevel": 3,
+      "tsReference": "SKILLS_GetThrowingWeaponMasteryBonus113c (src/d2kern-113c/common/missile.ts)",
+      "tsSymbol": "SKILLS_GetThrowingWeaponMasteryBonus113c",
       "va": "0x6FD9F200"
     },
     {
@@ -31629,13 +32323,17 @@
         "D2Common:6FDA0360",
         "D2Common:6FDA0460"
       ],
+      "diffEvidence": "8 real D2Common.dll differential vectors (55 total in tests/fixtures/oracle/k1/b039-vectors.ndjson) replayed in tests/oracle/k1/laneB-B039-items-skills.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/skills.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD9F870",
+      "name": "SKILLS_ApplyElementalMasteryBonus",
       "sccId": 1056,
       "size": 150,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 3,
+      "tsReference": "SKILLS_ApplyElementalMasteryBonus113c (src/d2kern-113c/common/skills.ts)",
+      "tsSymbol": "SKILLS_ApplyElementalMasteryBonus113c",
       "va": "0x6FD9F870"
     },
     {
@@ -31646,13 +32344,17 @@
         "D2Common:6FDA1FF0",
         "D2Common:6FDA2100"
       ],
+      "diffEvidence": "7 real D2Common.dll differential vectors (55 total in tests/fixtures/oracle/k1/b039-vectors.ndjson) replayed in tests/oracle/k1/laneB-B039-items-skills.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/skills.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD9F930",
+      "name": "SKILLS_GetBasePhysDamageMinOrMax",
       "sccId": 1340,
       "size": 246,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "SKILLS_GetBasePhysDamageMinOrMax113c (src/d2kern-113c/common/skills.ts)",
+      "tsSymbol": "SKILLS_GetBasePhysDamageMinOrMax113c",
       "va": "0x6FD9F930"
     },
     {
@@ -31762,13 +32464,17 @@
         "D2Game:6FCB8490",
         "D2Game:6FCB8680"
       ],
+      "diffEvidence": "13 real D2Common.dll differential vectors (198 total in tests/fixtures/oracle/k1/i9b-b-vectors.ndjson, emitted by tools/oracle/vectors/k1r3-laneB-it9-emitter.c) replayed in tests/oracle/k1/laneB-I9B-B-tables-skills.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/skills.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD9FF80",
+      "name": "SKILLS_IsSelectableCorpse10501",
       "sccId": 1346,
       "size": 76,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "SKILLS_IsSelectableCorpse10501_113c (src/d2kern-113c/common/skills.ts)",
+      "tsSymbol": "SKILLS_IsSelectableCorpse10501_113c",
       "va": "0x6FD9FF80"
     },
     {
@@ -31782,13 +32488,17 @@
         "D2Game:6FC70190",
         "D2Game:6FCBE2E0"
       ],
+      "diffEvidence": "13 real D2Common.dll differential vectors (198 total in tests/fixtures/oracle/k1/i9b-b-vectors.ndjson, emitted by tools/oracle/vectors/k1r3-laneB-it9-emitter.c) replayed in tests/oracle/k1/laneB-I9B-B-tables-skills.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/skills.ts",
       "module": "D2Common",
-      "name": "D2Common_6FD9FFD0",
+      "name": "SKILLS_IsSelectableCorpse11157",
       "sccId": 1347,
       "size": 76,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "SKILLS_IsSelectableCorpse11157_113c (src/d2kern-113c/common/skills.ts)",
+      "tsSymbol": "SKILLS_IsSelectableCorpse11157_113c",
       "va": "0x6FD9FFD0"
     },
     {
@@ -31800,13 +32510,17 @@
         "D2Game:6FC47240",
         "D2Game:6FC476D0"
       ],
+      "diffEvidence": "13 real D2Common.dll differential vectors (198 total in tests/fixtures/oracle/k1/i9b-b-vectors.ndjson, emitted by tools/oracle/vectors/k1r3-laneB-it9-emitter.c) replayed in tests/oracle/k1/laneB-I9B-B-tables-skills.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/skills.ts",
       "module": "D2Common",
-      "name": "D2Common_6FDA0090",
+      "name": "SKILLS_IsSelectableCorpse10678",
       "sccId": 1348,
       "size": 76,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "SKILLS_IsSelectableCorpse10678_113c (src/d2kern-113c/common/skills.ts)",
+      "tsSymbol": "SKILLS_IsSelectableCorpse10678_113c",
       "va": "0x6FDA0090"
     },
     {
@@ -31820,13 +32534,17 @@
         "D2Game:6FC47600",
         "D2Game:6FC47C90"
       ],
+      "diffEvidence": "13 real D2Common.dll differential vectors (198 total in tests/fixtures/oracle/k1/i9b-b-vectors.ndjson, emitted by tools/oracle/vectors/k1r3-laneB-it9-emitter.c) replayed in tests/oracle/k1/laneB-I9B-B-tables-skills.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/skills.ts",
       "module": "D2Common",
-      "name": "D2Common_6FDA00E0",
+      "name": "SKILLS_IsSelectableCorpseWithFlag12",
       "sccId": 1349,
       "size": 103,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "SKILLS_IsSelectableCorpseWithFlag12_113c (src/d2kern-113c/common/skills.ts)",
+      "tsSymbol": "SKILLS_IsSelectableCorpseWithFlag12_113c",
       "va": "0x6FDA00E0"
     },
     {
@@ -31842,13 +32560,17 @@
         "D2Game:6FC718B0",
         "D2Game:6FCCE200"
       ],
+      "diffEvidence": "30 real D2Common.dll differential vectors (198 total in tests/fixtures/oracle/k1/i9b-b-vectors.ndjson, emitted by tools/oracle/vectors/k1r3-laneB-it9-emitter.c) replayed in tests/oracle/k1/laneB-I9B-B-tables-skills.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/skills.ts",
       "module": "D2Common",
-      "name": "D2Common_6FDA0150",
+      "name": "SKILLS_IsSelectableCorpseWithVelocity",
       "sccId": 1350,
       "size": 140,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "SKILLS_IsSelectableCorpseWithVelocity113c (src/d2kern-113c/common/skills.ts)",
+      "tsSymbol": "SKILLS_IsSelectableCorpseWithVelocity113c",
       "va": "0x6FDA0150"
     },
     {
@@ -31866,13 +32588,17 @@
         "D2Game:6FCF9470",
         "D2Game:6FCFBA40"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B051-inv-unit.test.ts (real-DLL vectors via k1r4-laneA-it9-emitter.c -> b051-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/unit.ts",
       "module": "D2Common",
-      "name": "D2Common_6FDA01E0",
+      "name": "UNITS_GetTransformGfx",
       "sccId": 552,
       "size": 374,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "UNITS_GetTransformGfx113c (src/d2kern-113c/common/unit.ts)",
+      "tsSymbol": "UNITS_GetTransformGfx113c",
       "va": "0x6FDA01E0"
     },
     {
@@ -32033,13 +32759,17 @@
       "callers": [
         "D2Common:6FDA2340"
       ],
+      "diffEvidence": "7 real D2Common.dll differential vectors (55 total in tests/fixtures/oracle/k1/b039-vectors.ndjson) replayed in tests/oracle/k1/laneB-B039-items-skills.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/skills.ts",
       "module": "D2Common",
-      "name": "D2Common_6FDA0870",
+      "name": "SKILLS_CheckItemChargedSkillHasCharges",
       "sccId": 1354,
       "size": 188,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 3,
+      "tsReference": "SKILLS_CheckItemChargedSkillHasCharges113c (src/d2kern-113c/common/skills.ts)",
+      "tsSymbol": "SKILLS_CheckItemChargedSkillHasCharges113c",
       "va": "0x6FDA0870"
     },
     {
@@ -33159,14 +33889,17 @@
         "D2Game:6FC97240",
         "D2Game:6FCCFDB0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B043-missile-statlist.test.ts (4 real-DLL vectors via k1r2-laneA-it8-emitter.c -> b043-vectors.ndjson)",
       "externalDeps": [],
-      "legacyRef": "`spawnMonsterInternal` `world-spawning-and-aoi.ts`, `computeMonsterWalkVelocity113c` `town-npc-ai-113c.ts` (note: legacy float hostile monster stepper in `pvp-and-monster-locomotion.ts` still uses `100%` pending hostile `D2Path` migration)",
+      "kernFile": "src/d2kern-113c/common/statlist.ts",
       "module": "D2Common",
-      "name": "D2Common_6FDA4A00",
+      "name": "DATATBLS_CalculateMonsterStatsByLevel",
       "sccId": 1387,
       "size": 1252,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "DATATBLS_CalculateMonsterStatsByLevel113c (src/d2kern-113c/common/statlist.ts)",
+      "tsSymbol": "DATATBLS_CalculateMonsterStatsByLevel113c",
       "va": "0x6FDA4A00"
     },
     {
@@ -33332,17 +34065,21 @@
       "callers": [
         "D2Common:6FDB6700"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B048-unit-statlist.test.ts (real-DLL vectors via k1r4-laneA-it9-emitter.c -> b048-vectors.ndjson)",
       "externalDeps": [
         "d2common.msvc_libcmt:0x6FD51B0D",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
+      "kernFile": "src/d2kern-113c/common/unit.ts",
       "module": "D2Common",
-      "name": "D2Common_6FDB6410",
+      "name": "UNITROOM_UnlinkUnitFromUpdateList",
       "sccId": 350,
       "size": 157,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "UNITROOM_UnlinkUnitFromUpdateList113c (src/d2kern-113c/common/unit.ts)",
+      "tsSymbol": "UNITROOM_UnlinkUnitFromUpdateList113c",
       "va": "0x6FDB6410"
     },
     {
@@ -33462,17 +34199,21 @@
       "callers": [
         "D2Common:6FDB6800"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B048-unit-statlist.test.ts (real-DLL vectors via k1r4-laneA-it9-emitter.c -> b048-vectors.ndjson)",
       "externalDeps": [
         "d2common.msvc_libcmt:0x6FD51B0D",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
+      "kernFile": "src/d2kern-113c/common/unit.ts",
       "module": "D2Common",
-      "name": "D2Common_6FDB6630",
+      "name": "UNITROOM_ValidateUnitInRoom",
       "sccId": 356,
       "size": 204,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "UNITROOM_ValidateUnitInRoom113c (src/d2kern-113c/common/unit.ts)",
+      "tsSymbol": "UNITROOM_ValidateUnitInRoom113c",
       "va": "0x6FDB6630"
     },
     {
@@ -33560,17 +34301,21 @@
         "D2Game:6FC40760",
         "D2Game:6FC409B0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B048-unit-statlist.test.ts (real-DLL vectors via k1r4-laneA-it9-emitter.c -> b048-vectors.ndjson)",
       "externalDeps": [
         "d2common.msvc_libcmt:0x6FD51B0D",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
+      "kernFile": "src/d2kern-113c/common/unit.ts",
       "module": "D2Common",
-      "name": "D2Common_6FDB68A0",
+      "name": "UNITROOM_ClearUnitRoom",
       "sccId": 1394,
       "size": 93,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 6,
+      "tsReference": "UNITROOM_ClearUnitRoom113c (src/d2kern-113c/common/unit.ts)",
+      "tsSymbol": "UNITROOM_ClearUnitRoom113c",
       "va": "0x6FDB68A0"
     },
     {
@@ -33582,13 +34327,17 @@
         "D2Game:6FD00D00",
         "D2Game:6FD00F40"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B045-inventory-unit.test.ts (2 real-DLL vectors via k1r2-laneA-it8-emitter.c -> b045-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/unit.ts",
       "module": "D2Common",
-      "name": "D2Common_6FDB6900",
+      "name": "UNITROOM_SortUnitListByY",
       "sccId": 1395,
       "size": 20,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 5,
+      "tsReference": "UNITROOM_SortUnitListByY113c (src/d2kern-113c/common/unit.ts)",
+      "tsSymbol": "UNITROOM_SortUnitListByY113c",
       "va": "0x6FDB6900"
     },
     {
@@ -33620,13 +34369,17 @@
       "callers": [
         "D2Common:6FD85780"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B061-path.test.ts (7 real-DLL vectors; 118 total in tests/fixtures/oracle/k1/b061-vectors.ndjson via k1r4-laneC-it9-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/path.ts",
       "module": "D2Common",
-      "name": "D2Common_6FDB6AA0",
+      "name": "PATH_ComputePathChargedBolt",
       "sccId": 379,
       "size": 381,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "PATH_ComputePathChargedBolt113c (src/d2kern-113c/common/path.ts)",
+      "tsSymbol": "PATH_ComputePathChargedBolt113c",
       "va": "0x6FDB6AA0"
     },
     {
@@ -35366,13 +36119,17 @@
       "callers": [
         "D2Common:6FDBBAA0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B043-missile-statlist.test.ts (4 real-DLL vectors via k1r2-laneA-it8-emitter.c -> b043-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/statlist.ts",
       "module": "D2Common",
-      "name": "D2Common_6FDBAB20",
+      "name": "MISSILE_CalculateMasteryBonus",
       "sccId": 1427,
       "size": 150,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 3,
+      "tsReference": "MISSILE_CalculateMasteryBonus113c (src/d2kern-113c/common/statlist.ts)",
+      "tsSymbol": "MISSILE_CalculateMasteryBonus113c",
       "va": "0x6FDBAB20"
     },
     {
@@ -35382,13 +36139,17 @@
       "callers": [
         "D2Common:6FDBBAA0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B043-missile-statlist.test.ts (2 real-DLL vectors via k1r2-laneA-it8-emitter.c -> b043-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/missile.ts",
       "module": "D2Common",
-      "name": "D2Common_6FDBABE0",
+      "name": "MISSILE_AddStatsToDamage",
       "sccId": 1428,
       "size": 1365,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "MISSILE_AddStatsToDamage113c (src/d2kern-113c/common/missile.ts)",
+      "tsSymbol": "MISSILE_AddStatsToDamage113c",
       "va": "0x6FDBABE0"
     },
     {
@@ -35396,13 +36157,17 @@
         "D2Common:6FD51180"
       ],
       "callers": [],
+      "diffEvidence": "tests/oracle/k1/laneA-B051-inv-unit.test.ts (real-DLL vectors via k1r4-laneA-it9-emitter.c -> b051-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/missile.ts",
       "module": "D2Common",
-      "name": "D2Common_6FDBB140",
+      "name": "MISSILE_RollLimitedFromUnitSeed",
       "sccId": 1429,
       "size": 31,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "MISSILE_RollLimitedFromUnitSeed113c (src/d2kern-113c/common/missile.ts)",
+      "tsSymbol": "MISSILE_RollLimitedFromUnitSeed113c",
       "va": "0x6FDBB140"
     },
     {
@@ -35429,13 +36194,17 @@
       "callers": [
         "D2Common:6FDBBAA0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B043-missile-statlist.test.ts (4 real-DLL vectors via k1r2-laneA-it8-emitter.c -> b043-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/missile.ts",
       "module": "D2Common",
-      "name": "D2Common_6FDBB180",
+      "name": "MISSILE_RollCriticalStrike",
       "sccId": 1430,
       "size": 290,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 5,
+      "tsReference": "MISSILE_RollCriticalStrike113c (src/d2kern-113c/common/missile.ts)",
+      "tsSymbol": "MISSILE_RollCriticalStrike113c",
       "va": "0x6FDBB180"
     },
     {
@@ -35807,13 +36576,17 @@
       "callers": [
         "D2Common:6FDC08F0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B061-path.test.ts (7 real-DLL vectors; 118 total in tests/fixtures/oracle/k1/b061-vectors.ndjson via k1r4-laneC-it9-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/path.ts",
       "module": "D2Common",
-      "name": "D2Common_6FDC0840",
+      "name": "PATH_IdaStar_AdvanceToNextCandidate",
       "sccId": 415,
       "size": 162,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "PATH_IdaStar_AdvanceToNextCandidate113c (src/d2kern-113c/common/path.ts)",
+      "tsSymbol": "PATH_IdaStar_AdvanceToNextCandidate113c",
       "va": "0x6FDC0840"
     },
     {
@@ -36469,13 +37242,17 @@
       "callers": [
         "D2Common:6FDCB3C0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B061-path.test.ts (11 real-DLL vectors; 118 total in tests/fixtures/oracle/k1/b061-vectors.ndjson via k1r4-laneC-it9-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/path.ts",
       "module": "D2Common",
-      "name": "D2Common_6FDCAFB0",
+      "name": "PATH_AStar_ProcessNeighbor",
       "sccId": 408,
       "size": 624,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "PATH_AStar_ProcessNeighbor113c (src/d2kern-113c/common/path.ts)",
+      "tsSymbol": "PATH_AStar_ProcessNeighbor113c",
       "va": "0x6FDCAFB0"
     },
     {
@@ -36641,13 +37418,17 @@
       "callers": [
         "D2Common:6FDCBDB0"
       ],
+      "diffEvidence": "10 real D2Common.dll differential vectors (198 total in tests/fixtures/oracle/k1/i9b-b-vectors.ndjson, emitted by tools/oracle/vectors/k1r3-laneB-it9-emitter.c) replayed in tests/oracle/k1/laneB-I9B-B-tables-skills.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/tables/missile-tbls-113c.ts",
       "module": "D2Common",
-      "name": "D2Common_6FDCBC20",
+      "name": "DRLGROOM_RefreshStatusFromCountsEax",
       "sccId": 1239,
       "size": 60,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "DRLGROOM_RefreshStatusFromCountsEax113c (src/d2kern-113c/tables/missile-tbls-113c.ts)",
+      "tsSymbol": "DRLGROOM_RefreshStatusFromCountsEax113c",
       "va": "0x6FDCBC20"
     },
     {
@@ -36732,13 +37513,17 @@
       "callers": [
         "D2Common:6FDCBB20"
       ],
+      "diffEvidence": "10 real D2Common.dll differential vectors (198 total in tests/fixtures/oracle/k1/i9b-b-vectors.ndjson, emitted by tools/oracle/vectors/k1r3-laneB-it9-emitter.c) replayed in tests/oracle/k1/laneB-I9B-B-tables-skills.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/tables/missile-tbls-113c.ts",
       "module": "D2Common",
-      "name": "D2Common_6FDCBE10",
+      "name": "DRLGROOM_RefreshStatusFromCountsA",
       "sccId": 1241,
       "size": 60,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "DRLGROOM_RefreshStatusFromCountsA113c (src/d2kern-113c/tables/missile-tbls-113c.ts)",
+      "tsSymbol": "DRLGROOM_RefreshStatusFromCountsA113c",
       "va": "0x6FDCBE10"
     },
     {
@@ -36748,13 +37533,17 @@
       "callers": [
         "D2Common:6FDCBB20"
       ],
+      "diffEvidence": "10 real D2Common.dll differential vectors (198 total in tests/fixtures/oracle/k1/i9b-b-vectors.ndjson, emitted by tools/oracle/vectors/k1r3-laneB-it9-emitter.c) replayed in tests/oracle/k1/laneB-I9B-B-tables-skills.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/tables/missile-tbls-113c.ts",
       "module": "D2Common",
-      "name": "D2Common_6FDCBE50",
+      "name": "DRLGROOM_RefreshStatusFromCountsB",
       "sccId": 1242,
       "size": 60,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "DRLGROOM_RefreshStatusFromCountsB113c (src/d2kern-113c/tables/missile-tbls-113c.ts)",
+      "tsSymbol": "DRLGROOM_RefreshStatusFromCountsB113c",
       "va": "0x6FDCBE50"
     },
     {
@@ -36765,13 +37554,17 @@
         "D2Common:6FD8CC40",
         "D2Common:6FDCBB20"
       ],
+      "diffEvidence": "10 real D2Common.dll differential vectors (198 total in tests/fixtures/oracle/k1/i9b-b-vectors.ndjson, emitted by tools/oracle/vectors/k1r3-laneB-it9-emitter.c) replayed in tests/oracle/k1/laneB-I9B-B-tables-skills.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/tables/missile-tbls-113c.ts",
       "module": "D2Common",
-      "name": "D2Common_6FDCBE90",
+      "name": "DRLGROOM_RefreshStatusFromCounts",
       "sccId": 1243,
       "size": 60,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "DRLGROOM_RefreshStatusFromCounts113c (src/d2kern-113c/tables/missile-tbls-113c.ts)",
+      "tsSymbol": "DRLGROOM_RefreshStatusFromCounts113c",
       "va": "0x6FDCBE90"
     },
     {
@@ -36782,13 +37575,17 @@
         "D2Common:6FDCBFA0",
         "D2Common:6FDCC090"
       ],
+      "diffEvidence": "4 real D2Common.dll differential vectors (198 total in tests/fixtures/oracle/k1/i9b-b-vectors.ndjson, emitted by tools/oracle/vectors/k1r3-laneB-it9-emitter.c) replayed in tests/oracle/k1/laneB-I9B-B-tables-skills.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/tables/missile-tbls-113c.ts",
       "module": "D2Common",
-      "name": "D2Common_6FDCBED0",
+      "name": "DRLGROOM_SetStatusLink0Fastcall",
       "sccId": 1246,
       "size": 7,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "DRLGROOM_SetStatusLink0Fastcall113c (src/d2kern-113c/tables/missile-tbls-113c.ts)",
+      "tsSymbol": "DRLGROOM_SetStatusLink0Fastcall113c",
       "va": "0x6FDCBED0"
     },
     {
@@ -37067,13 +37864,17 @@
       "callers": [
         "D2Common:6FD9D140"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B053-collision-drlg.test.ts (9 real-DLL vectors; 111 total in tests/fixtures/oracle/k1/b053-vectors.ndjson via k1r2-laneC-it8-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/collision.ts",
       "module": "D2Common",
-      "name": "D2Common_6FDCE6C0",
+      "name": "COLLISION_TraceFieldCollision",
       "sccId": 1261,
       "size": 205,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "COLLISION_TraceFieldCollision113c (src/d2kern-113c/common/collision.ts)",
+      "tsSymbol": "COLLISION_TraceFieldCollision113c",
       "va": "0x6FDCE6C0"
     },
     {
@@ -37279,13 +38080,17 @@
       "callers": [
         "D2Common:6FDCF6A0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B053-collision-drlg.test.ts (6 real-DLL vectors; 111 total in tests/fixtures/oracle/k1/b053-vectors.ndjson via k1r2-laneC-it8-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/collision.ts",
       "module": "D2Common",
-      "name": "D2Common_6FDCF490",
+      "name": "COLLISION_IsPointWithinRoomMargin",
       "sccId": 1449,
       "size": 108,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "COLLISION_IsPointWithinRoomMargin113c (src/d2kern-113c/common/collision.ts)",
+      "tsSymbol": "COLLISION_IsPointWithinRoomMargin113c",
       "va": "0x6FDCF490"
     },
     {
@@ -37343,13 +38148,17 @@
       "callers": [
         "D2Game:6FCEE120"
       ],
+      "diffEvidence": "6 real D2Common.dll differential vectors (198 total in tests/fixtures/oracle/k1/i9b-b-vectors.ndjson, emitted by tools/oracle/vectors/k1r3-laneB-it9-emitter.c) replayed in tests/oracle/k1/laneB-I9B-B-tables-skills.test.ts",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/tables/datatbls-113c.ts",
       "module": "D2Common",
-      "name": "D2Common_6FDCF670",
+      "name": "PLAYER_SetPlayerData150ParamsExport",
       "sccId": 1451,
       "size": 48,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "PLAYER_SetPlayerData150ParamsExport113c (src/d2kern-113c/tables/datatbls-113c.ts)",
+      "tsSymbol": "PLAYER_SetPlayerData150ParamsExport113c",
       "va": "0x6FDCF670"
     },
     {
@@ -37634,13 +38443,17 @@
       "callers": [
         "D2Common:6FDD1AD0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B053-collision-drlg.test.ts (8 real-DLL vectors; 111 total in tests/fixtures/oracle/k1/b053-vectors.ndjson via k1r2-laneC-it8-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/drlg/drlg-logic.ts",
       "module": "D2Common",
-      "name": "D2Common_6FDD16C0",
+      "name": "DRLGLOGIC_LinkAdjacentRoomCoordListsAtSubtile",
       "sccId": 122,
       "size": 130,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "DRLGLOGIC_LinkAdjacentRoomCoordListsAtSubtile113c (src/d2kern-113c/common/drlg/drlg-logic.ts)",
+      "tsSymbol": "DRLGLOGIC_LinkAdjacentRoomCoordListsAtSubtile113c",
       "va": "0x6FDD16C0"
     },
     {
@@ -37748,13 +38561,17 @@
       "callers": [
         "D2Common:6FDD1CA0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B053-collision-drlg.test.ts (4 real-DLL vectors; 111 total in tests/fixtures/oracle/k1/b053-vectors.ndjson via k1r2-laneC-it8-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/drlg/drlg-logic.ts",
       "module": "D2Common",
-      "name": "D2Common_6FDD1BC0",
+      "name": "DRLGLOGIC_AssignCoordListIndicesAcrossGrid",
       "sccId": 125,
       "size": 149,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 2,
+      "tsReference": "DRLGLOGIC_AssignCoordListIndicesAcrossGrid113c (src/d2kern-113c/common/drlg/drlg-logic.ts)",
+      "tsSymbol": "DRLGLOGIC_AssignCoordListIndicesAcrossGrid113c",
       "va": "0x6FDD1BC0"
     },
     {
@@ -37852,13 +38669,17 @@
       "callers": [
         "D2Common:6FD9A5C0"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B053-collision-drlg.test.ts (5 real-DLL vectors; 111 total in tests/fixtures/oracle/k1/b053-vectors.ndjson via k1r2-laneC-it8-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/drlg/drlg-grid.ts",
       "module": "D2Common",
-      "name": "D2Common_6FDD3740",
+      "name": "DRLGTILESUB_RollSubThemeMask",
       "sccId": 219,
       "size": 163,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "DRLGTILESUB_RollSubThemeMask113c (src/d2kern-113c/common/drlg/drlg-grid.ts)",
+      "tsSymbol": "DRLGTILESUB_RollSubThemeMask113c",
       "va": "0x6FDD3740"
     },
     {
@@ -37955,13 +38776,17 @@
       "callers": [
         "D2Common:6FDD4110"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B053-collision-drlg.test.ts (5 real-DLL vectors; 111 total in tests/fixtures/oracle/k1/b053-vectors.ndjson via k1r2-laneC-it8-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/drlg/drlg-grid.ts",
       "module": "D2Common",
-      "name": "D2Common_6FDD3E20",
+      "name": "DRLGTILESUB_ApplyNonPresetSubTheme",
       "sccId": 211,
       "size": 747,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 3,
+      "tsReference": "DRLGTILESUB_ApplyNonPresetSubTheme113c (src/d2kern-113c/common/drlg/drlg-grid.ts)",
+      "tsSymbol": "DRLGTILESUB_ApplyNonPresetSubTheme113c",
       "va": "0x6FDD3E20"
     },
     {
@@ -38086,13 +38911,17 @@
         "D2Game:6FCACA20",
         "D2Game:6FCCF730"
       ],
+      "diffEvidence": "tests/oracle/k1/laneC-B053-collision-drlg.test.ts (5 real-DLL vectors; 111 total in tests/fixtures/oracle/k1/b053-vectors.ndjson via k1r2-laneC-it8-emitter.c)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/drlg/out-jung.ts",
       "module": "D2Common",
-      "name": "D2Common_6FDD4C30",
+      "name": "UNITS_GetMonStats2ComponentChoice",
       "sccId": 1456,
       "size": 55,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 1,
+      "tsReference": "UNITS_GetMonStats2ComponentChoice113c (src/d2kern-113c/common/drlg/out-jung.ts)",
+      "tsSymbol": "UNITS_GetMonStats2ComponentChoice113c",
       "va": "0x6FDD4C30"
     },
     {
@@ -38132,13 +38961,17 @@
         "D2Game:6FD00570",
         "D2Game:6FD00A60"
       ],
+      "diffEvidence": "tests/oracle/k1/laneA-B045-inventory-unit.test.ts (3 real-DLL vectors via k1r2-laneA-it8-emitter.c -> b045-vectors.ndjson)",
       "externalDeps": [],
+      "kernFile": "src/d2kern-113c/common/unit.ts",
       "module": "D2Common",
-      "name": "D2Common_6FDD4D30",
+      "name": "UNITS_AreUnitsAligned",
       "sccId": 1457,
       "size": 98,
-      "status": "unported",
+      "status": "diff-verified",
       "topoLevel": 4,
+      "tsReference": "UNITS_AreUnitsAligned113c (src/d2kern-113c/common/unit.ts)",
+      "tsSymbol": "UNITS_AreUnitsAligned113c",
       "va": "0x6FDD4D30"
     },
     {
@@ -115459,23 +116292,23 @@
   "summary": {
     "d2CommonReachable": 1479,
     "d2GameReachable": 3331,
-    "legacyRefCount": 48,
+    "legacyRefCount": 45,
     "maxTopoLevel": 35,
     "outsideClosureD2CommonCount": 880,
     "outsideClosureD2GameCount": 721,
     "outsideClosureNote": "Outside K0 room-tick/packet closure (350 unimported client/outer-loop exports: 349 D2Common + D2Game.#10040 0x6FC4E460, plus init/shutdown, arena/client-notify/debug, and unreferenced helpers)",
     "prunedCount": 49,
     "readySummary": {
-      "ready": 982,
-      "readyHostImport": 236,
-      "readyInternalComposite": 514,
+      "ready": 945,
+      "readyHostImport": 225,
+      "readyInternalComposite": 488,
       "readyPureLeaf": 232
     },
     "sccCount": 4626,
     "statusBreakdown": {
-      "diff-verified": 787,
-      "ported": 37,
-      "unported": 3986
+      "diff-verified": 993,
+      "ported": 40,
+      "unported": 3777
     },
     "totalReachable": 4810
   },

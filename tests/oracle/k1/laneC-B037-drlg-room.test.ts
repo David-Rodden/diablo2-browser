@@ -201,25 +201,25 @@ describe('Lane C B037 real-DLL differential vectors (drlg-room.ts, 11 functions)
     // 0x6FD94CE0: entryLvlId == 0
     m.setU32(0x100 + 0x90, 0x200);
     m.setU32(0x200, 0);
-    expect(() => DRLGWARP_GetWarpDstAdjustData113c(m, 0x100, 10)).toThrow(/line 1040/);
+    expect(() => DRLGWARP_GetWarpDstAdjustData113c(m, 0x100, 10)).toThrow(/^D2Common assertion failed at .*:1040$/);
 
     // 0x6FD958C0: nGroup >= 3, nIndex >= 3
-    expect(() => DRLG_GetAutomapCoordSlotPtr113c(0x1000, 3, 0)).toThrow(/line 143/);
-    expect(() => DRLG_GetAutomapCoordSlotPtr113c(0x1000, 0, 3)).toThrow(/line 144/);
+    expect(() => DRLG_GetAutomapCoordSlotPtr113c(0x1000, 3, 0)).toThrow(/^D2Common assertion failed at .*:143$/);
+    expect(() => DRLG_GetAutomapCoordSlotPtr113c(0x1000, 0, 3)).toThrow(/^D2Common assertion failed at .*:144$/);
 
     // 0x6FD963F0 / 0x6FD964D0: pUnit == 0, unitType != 4, pItemData == 0
-    expect(() => DRLGROOM_RollItemCoordinate113c(m, 10, 5, 0)).toThrow(/line 5381/);
+    expect(() => DRLGROOM_RollItemCoordinate113c(m, 10, 5, 0)).toThrow(/^D2Common assertion failed at .*:5381$/);
     m.setU32(0x300, 1);
-    expect(() => DRLGROOM_RollItemCoordinate113c(m, 10, 5, 0x300)).toThrow(/line 5382/);
+    expect(() => DRLGROOM_RollItemCoordinate113c(m, 10, 5, 0x300)).toThrow(/^D2Common assertion failed at .*:5382$/);
     m.setU32(0x300, 4);
     m.setU32(0x300 + 0x14, 0);
-    expect(() => DRLGROOM_RollItemCoordinateAlt113c(m, 10, 5, 0x300)).toThrow(/line 5384/);
+    expect(() => DRLGROOM_RollItemCoordinateAlt113c(m, 10, 5, 0x300)).toThrow(/^D2Common assertion failed at .*:5384$/);
 
     // 0x6FDB8400: sgpLvlTypesTxt == 0
     m.setU32(SGPT_LVLTYPES_TXT_VA_6FDF141C, 0);
     m.setU32(0x400 + 0x58, 0x500);
     m.setU32(0x500 + 0x1c0, 0);
-    expect(() => DRLGROOM_LoadDt1Files113c(m, 0x400)).toThrow(/line 593/);
+    expect(() => DRLGROOM_LoadDt1Files113c(m, 0x400)).toThrow(/^D2Common assertion failed at .*:593$/);
   });
 
   it('kills >= 11/11 single-site mutations across B037 functions (>= 90% kill rate)', () => {

@@ -1555,14 +1555,16 @@ export const UNITFLAG2_DISGUISE_113C = 0x00000008
 /**
  * `@va D2Common:0x6FD83C20` (`STATES_CheckStateMaskOnUnit`, `eax = pUnit`, `ecx = pMaskWords`):
  * Checks `pUnit != 0`, `pListEx = pUnit->pStatListEx (+0x5C)`, `(pListEx->dwFlags & 0x80000000) != 0`,
- * and `pStateFlags = pListEx->pStateFlags (+0x58) != 0`, then scans the `6` active state dwords
- * `pStateFlags[0..5]` against `maskWords[0..5]`, returning `1` if any `pStateFlags[i] & maskWords[i]`
- * is non-zero, else `0`.
+ * and `pStateFlags = pListEx->pStateFlags (+0x58) != 0`, then computes
+ * `nDwords = ((nStatesTxtRecordCount + 31) + (((nStatesTxtRecordCount + 31) >> 31) & 31)) >> 5`
+ * from `sgptDataTables+0xC4` (falling back to `STATE_DWORDS_113C = 6` when `sgptDataTables == 0`)
+ * and scans `pStateFlags[0..nDwords-1]` against `maskWords[0..nDwords-1]`, returning `1` if any
+ * `pStateFlags[i] & maskWords[i]` is non-zero, else `0`.
  */
 export function STATES_CheckStateMaskOnUnit113c(
   m: Memory113c,
   pUnit: number,
-  maskWords: ArrayLike<number>,
+  maskWords: number | ArrayLike<number>,
 ): number {
   if (pUnit === 0) return 0
   const pListEx = m.get(pUnit, D2UnitStrc.pStatListEx)
@@ -1571,13 +1573,44 @@ export function STATES_CheckStateMaskOnUnit113c(
   }
   const pStateFlags = m.get(pListEx, D2StatListExStrc.pStateFlags)
   if (pStateFlags === 0) return 0
-  for (let i = 0; i < STATE_DWORDS_113C; i++) {
-    const maskWord = (i < maskWords.length ? maskWords[i]! : 0) >>> 0
-    if (maskWord !== 0 && (m.u32(pStateFlags + i * 4) & maskWord) !== 0) {
-      return 1
+  if (typeof maskWords === 'number') {
+    const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+    let nDwords = STATE_DWORDS_113C
+    if (sgpt !== 0) {
+      const cnt = ((m.u32((sgpt + 0xc4) >>> 0) | 0) + 31) | 0
+      nDwords = sar32((cnt + ((cnt >> 31) & 31)) | 0, 5)
+    }
+    if (nDwords <= 0) return 0
+    const pMask = maskWords >>> 0
+    for (let i = 0; i < nDwords; i++) {
+      const stateWord = m.u32((pStateFlags + i * 4) >>> 0)
+      const maskWord = m.u32((pMask + i * 4) >>> 0)
+      if ((stateWord & maskWord) !== 0) {
+        return 1
+      }
+    }
+  } else {
+    for (let i = 0; i < STATE_DWORDS_113C; i++) {
+      const maskWord = (i < maskWords.length ? maskWords[i]! : 0) >>> 0
+      if (maskWord !== 0 && (m.u32((pStateFlags + i * 4) >>> 0) & maskWord) !== 0) {
+        return 1
+      }
     }
   }
   return 0
+}
+
+/**
+ * `@va D2Common:0x6FD83D60` (`D2Common.#10541` `STATES_CheckStateMask33OnUnit`,
+ * stdcall `[esp+4] = pUnit`, `ret 4` -> `0` or `1`).
+ *
+ * Reads `pMask = [sgptDataTables + 0x150]` (`fStateMasks[33]`)
+ * and delegates to `0x6FD83C20` (`STATES_CheckStateMaskOnUnit113c`).
+ */
+export function STATES_CheckStateMask33OnUnit113c(m: Memory113c, pUnit: number): number {
+  const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+  const pMask = m.u32((sgpt + 0x150) >>> 0)
+  return STATES_CheckStateMaskOnUnit113c(m, pUnit, pMask)
 }
 
 /**
@@ -2494,4 +2527,902 @@ export function STATLIST_RollRandomItemGraphicStat113c(m: Memory113c, pItem: num
   }
 }
 
+function getTotalStatWithMinFromList113c(
+  m: Memory113c,
+  pStatList: number,
+  dwKey: number,
+  pIscRec: number,
+): number {
+  const isEx = (m.u32((pStatList + 0x10) >>> 0) & 0x80000000) !== 0
+  const pHdr = isEx ? (pStatList + 0x48) >>> 0 : (pStatList + 0x24) >>> 0
+  const idx = STATLIST_FindStatIndex113c(m, pHdr, dwKey)
+  if (idx < 0) return 0
+  const pEntry = (m.u32(pHdr) + idx * 8) >>> 0
+  if (pEntry === 0) return 0
+  let val = m.u32((pEntry + 4) >>> 0) | 0
+  if (pIscRec !== 0) {
+    const dl = m.u8((pIscRec + 5) >>> 0)
+    const pBitMasks = m.u32(D2COMMON_GDWBITMASKS_IAT_VA_113C)
+    if ((m.u8((pBitMasks + 8) >>> 0) & dl) !== 0 && isEx) {
+      const pOwner = m.u32((pStatList + 0x44) >>> 0)
+      if (pOwner !== 0) {
+        const ownerType = m.u32(pOwner)
+        if (ownerType === 0 || ownerType === 1) {
+          const minVal = m.u32((pIscRec + 0x2c) >>> 0) | 0
+          if (val < minVal) {
+            const shift = m.u8((pIscRec + 0x18) >>> 0) & 0x1f
+            val = (minVal << shift) | 0
+          }
+        }
+      }
+    }
+  }
+  return val >>> 0
+}
+
+function getBaseStatWithMinFromList113c(
+  m: Memory113c,
+  pStatList: number,
+  dwKey: number,
+  pIscRec: number,
+): number {
+  const pHdr = (pStatList + 0x24) >>> 0
+  const idx = STATLIST_FindStatIndex113c(m, pHdr, dwKey)
+  if (idx < 0) return 0
+  const pEntry = (m.u32(pHdr) + idx * 8) >>> 0
+  if (pEntry === 0) return 0
+  let val = m.u32((pEntry + 4) >>> 0) | 0
+  if (pIscRec !== 0) {
+    const dl = m.u8((pIscRec + 5) >>> 0)
+    const pBitMasks = m.u32(D2COMMON_GDWBITMASKS_IAT_VA_113C)
+    if ((m.u8((pBitMasks + 8) >>> 0) & dl) !== 0) {
+      if ((m.u32((pStatList + 0x10) >>> 0) | 0) < 0) {
+        const pOwner = m.u32((pStatList + 0x44) >>> 0)
+        if (pOwner !== 0) {
+          const ownerType = m.u32(pOwner)
+          if (ownerType === 0 || ownerType === 1) {
+            const minVal = m.u32((pIscRec + 0x2c) >>> 0) | 0
+            if (val < minVal) {
+              const shift = m.u8((pIscRec + 0x18) >>> 0) & 0x1f
+              val = (minVal << shift) | 0
+            }
+          }
+        }
+      }
+    }
+  }
+  return val >>> 0
+}
+
+function propagateDeltaMem113c(
+  m: Memory113c,
+  pStartList: number,
+  dwKey: number,
+  delta: number,
+  _pUnit: number,
+): void {
+  const d = delta | 0
+  if (d === 0) return
+  const statId = (dwKey >> 16) & 0xffff
+  if ((statId | 0) < 0) return
+  const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+  if (statId >= (m.u32((sgpt + 0xbd4) >>> 0) | 0)) return
+  const iscBase = m.u32((sgpt + 0xbcc) >>> 0)
+  const pIscRec = (iscBase + imul32(statId, 0x144)) >>> 0
+  if (pIscRec === 0) return
+  const startFlags = m.u32((pStartList + 0x10) >>> 0)
+  if ((startFlags & 0x2000) !== 0) return
+  const pBitMasks = m.u32(D2COMMON_GDWBITMASKS_IAT_VA_113C)
+  const isDmgRelated = (m.u8((pIscRec + 4) >>> 0) & m.u32((pBitMasks + 8) >>> 0)) >>> 0
+  let cur = (startFlags | 0) < 0 ? pStartList : m.u32((pStartList + 0x34) >>> 0)
+  while (cur !== 0) {
+    const bHasOpStat = m.u8((pIscRec + 0x51) >>> 0)
+    const bIsOpTarget = bHasOpStat === 0 ? m.u8((pIscRec + 0x52) >>> 0) : 1
+    if (bHasOpStat === 0 && bIsOpTarget === 0) {
+      const pFullHdr = (cur + 0x48) >>> 0
+      let idx = STATLIST_FindStatIndex113c(m, pFullHdr, dwKey)
+      let entryPtr = idx >= 0 ? (m.u32(pFullHdr) + idx * 8) >>> 0 : 0
+      if (entryPtr === 0) {
+        m.u32(cur)
+        const ins = STATLIST_FindInsertPos113c(m, pFullHdr, dwKey)
+        entryPtr = insertStatSlot(m, pFullHdr, ins, dwKey)
+        idx = ins
+      }
+      const prevVal = m.u32((entryPtr + 4) >>> 0) | 0
+      const nextVal = (prevVal + d) | 0
+      m.setU32((entryPtr + 4) >>> 0, nextVal >>> 0)
+      if (nextVal > 0 && m.u8((pIscRec + 0x53) >>> 0) !== 0) {
+        m.setU32((cur + 0x10) >>> 0, (m.u32((cur + 0x10) >>> 0) | 0x20000000) >>> 0)
+      }
+      if (m.u32((entryPtr + 4) >>> 0) === 0 && m.u8((pIscRec + 0x50) >>> 0) === 0) {
+        m.u32(cur)
+        removeStatSlot(m, pFullHdr, idx)
+      }
+      const pfOnValue = m.u32((cur + 0x5c) >>> 0)
+      if (pfOnValue !== 0) {
+        m.u8((pIscRec + 5) >>> 0)
+        m.u8((m.u32(D2COMMON_GDWBITMASKS_IAT_VA_113C) + 0x0c) >>> 0)
+      }
+    } else {
+      // 0x6FD89FFD..0x6FD8A003: op-stat source/target -> `0x6FD89CE0` (`STATLIST_RecomputeExStat`).
+      STATLIST_RecomputeExStat113c(m, cur, statId, dwKey & 0xffff)
+    }
+    const curFlags = m.u32((cur + 0x10) >>> 0)
+    cur = m.u32((cur + 0x34) >>> 0)
+    if ((curFlags & 0x2000) !== 0) break
+    if (isDmgRelated !== 0 && (curFlags & 0x40000000) !== 0) break
+  }
+}
+
+function recordModStatMem113c(m: Memory113c, pListEx: number, dwKey: number): void {
+  if ((m.u32((pListEx + 0x10) >>> 0) | 0) >= 0) return
+  const statId = (dwKey >> 16) & 0xffff
+  if (statId === 6 || statId === 8 || statId === 10 || statId === 13 || statId === 14) return
+  if ((statId | 0) < 0) return
+  const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+  if (statId >= (m.u32((sgpt + 0xbd4) >>> 0) | 0)) return
+  const pIscRec = (m.u32((sgpt + 0xbcc) >>> 0) + imul32(statId, 0x144)) >>> 0
+  if (pIscRec === 0) return
+  const dl = m.u8((pIscRec + 5) >>> 0)
+  const pBitMasks = m.u32(D2COMMON_GDWBITMASKS_IAT_VA_113C)
+  if ((m.u8((pBitMasks + 0x10) >>> 0) & dl) === 0) return
+  const pModHdr = (pListEx + 0x50) >>> 0
+  const ins = STATLIST_FindModStatInsertPos113c(m, pModHdr, dwKey)
+  if (ins < 0) return
+  const cap = (m.u16((pListEx + 0x56) >>> 0) << 16) >> 16
+  const count = (m.u16((pListEx + 0x54) >>> 0) << 16) >> 16
+  if (count >= cap) {
+    const newCap = (cap + 4) & 0xffff
+    const nextBuf = m.alloc(((newCap << 16) >> 16) * 4)
+    const oldMod = m.u32(pModHdr)
+    for (let i = 0; i < count * 4; i += 4) {
+      m.setU32((nextBuf + i) >>> 0, m.u32((oldMod + i) >>> 0))
+    }
+    m.setU16((pListEx + 0x56) >>> 0, newCap)
+    m.setU32(pModHdr, nextBuf)
+  }
+  const curCount = (m.u16((pListEx + 0x54) >>> 0) << 16) >> 16
+  const pMod = m.u32(pModHdr)
+  for (let i = curCount; i > ins; i--) {
+    m.setU32((pMod + i * 4) >>> 0, m.u32((pMod + (i - 1) * 4) >>> 0))
+  }
+  m.setU32((pMod + ins * 4) >>> 0, dwKey >>> 0)
+  m.setU16((pListEx + 0x54) >>> 0, (curCount + 1) & 0xffff)
+}
+
+/**
+ * `@va D2Common:0x6FD88FF0` (`D2Common.#11116` `STATLIST_GetMaxDurabilityFromUnit`,
+ * stdcall `[esp+4] = pUnit`, `ret 4` -> total stat `0x49` if base stat `0x49 != 0`, else `0`).
+ */
+export function STATLIST_GetMaxDurabilityFromUnit113c(m: Memory113c, pUnit: number): number {
+  const u = pUnit >>> 0
+  if (u === 0) return 0
+  const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+  if ((m.u32((sgpt + 0xbd4) >>> 0) | 0) <= 0x49) return 0
+  const pIscRec = (m.u32((sgpt + 0xbcc) >>> 0) + 0x5c64) >>> 0
+  if (pIscRec === 0) return 0
+  const pStatList = m.u32((u + 0x5c) >>> 0)
+  if (pStatList === 0) return 0
+  if (getBaseStatWithMinFromList113c(m, pStatList, 0x00490000, pIscRec) === 0) return 0
+  return getTotalStatWithMinFromList113c(m, pStatList, 0x00490000, pIscRec)
+}
+
+/**
+ * `@va D2Common:0x6FD89050` (`D2Common.#10578` `STATLIST_GetMaxStaminaFromUnit`,
+ * stdcall `[esp+4] = pUnit`, `ret 4` -> total stat `0x0B` or `0`).
+ */
+export function STATLIST_GetMaxStaminaFromUnit113c(m: Memory113c, pUnit: number): number {
+  const u = pUnit >>> 0
+  if (u === 0) return 0
+  const pStatList = m.u32((u + 0x5c) >>> 0)
+  if (pStatList === 0) return 0
+  const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+  if ((m.u32((sgpt + 0xbd4) >>> 0) | 0) <= 0x0b) return 0
+  const pIscRec = (m.u32((sgpt + 0xbcc) >>> 0) + 0xdec) >>> 0
+  if (pIscRec === 0) return 0
+  return getTotalStatWithMinFromList113c(m, pStatList, 0x000b0000, pIscRec)
+}
+
+/**
+ * `@va D2Common:0x6FD890A0` (`D2Common.#10186` `STATLIST_GetMaxManaFromUnit`,
+ * stdcall `[esp+4] = pUnit`, `ret 4` -> total stat `0x09` or `0`).
+ */
+export function STATLIST_GetMaxManaFromUnit113c(m: Memory113c, pUnit: number): number {
+  const u = pUnit >>> 0
+  if (u === 0) return 0
+  const pStatList = m.u32((u + 0x5c) >>> 0)
+  if (pStatList === 0) return 0
+  const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+  if ((m.u32((sgpt + 0xbd4) >>> 0) | 0) <= 0x09) return 0
+  const pIscRec = (m.u32((sgpt + 0xbcc) >>> 0) + 0xb64) >>> 0
+  if (pIscRec === 0) return 0
+  return getTotalStatWithMinFromList113c(m, pStatList, 0x00090000, pIscRec)
+}
+
+/**
+ * `@va D2Common:0x6FD890F0` (`D2Common.#10913` `STATLIST_GetMaxLifeFromUnit`,
+ * stdcall `[esp+4] = pUnit`, `ret 4` -> total stat `0x07` or `0`).
+ */
+export function STATLIST_GetMaxLifeFromUnit113c(m: Memory113c, pUnit: number): number {
+  const u = pUnit >>> 0
+  if (u === 0) return 0
+  const pStatList = m.u32((u + 0x5c) >>> 0)
+  if (pStatList === 0) return 0
+  const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+  if ((m.u32((sgpt + 0xbd4) >>> 0) | 0) <= 0x07) return 0
+  const pIscRec = (m.u32((sgpt + 0xbcc) >>> 0) + 0x8dc) >>> 0
+  if (pIscRec === 0) return 0
+  return getTotalStatWithMinFromList113c(m, pStatList, 0x00070000, pIscRec)
+}
+
+/**
+ * `@va D2Common:0x6FD89140` (`D2Common.#10680` `STATLIST_GetStatValue`,
+ * stdcall `[esp+4] = pStatList`, `[esp+8] = nStatId`, `[esp+0xC] = nLayer`, `ret 0xC`).
+ */
+export function STATLIST_GetStatValue113c(
+  m: Memory113c,
+  pStatList: number,
+  nStatId: number,
+  nLayer: number,
+): number {
+  const s = pStatList >>> 0
+  if (s === 0) return 0
+  const statId = nStatId | 0
+  if (statId < 0) return 0
+  const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+  if (statId >= (m.u32((sgpt + 0xbd4) >>> 0) | 0)) return 0
+  const pIscRec = (m.u32((sgpt + 0xbcc) >>> 0) + imul32(statId, 0x144)) >>> 0
+  if (pIscRec === 0) return 0
+  const dwKey = ((statId << 16) + (nLayer & 0xffff)) >>> 0
+  return getBaseStatWithMinFromList113c(m, s, dwKey, pIscRec)
+}
+
+/**
+ * `@va D2Common:0x6FD891A0` (`D2Common.#10848` `STATLIST_GetTotalStatValueLayer0`,
+ * stdcall `[esp+4] = pStatList`, `[esp+8] = nStatId`, `ret 8`).
+ */
+export function STATLIST_GetTotalStatValueLayer0_113c(
+  m: Memory113c,
+  pStatList: number,
+  nStatId: number,
+): number {
+  const s = pStatList >>> 0
+  if (s === 0) return 0
+  const statId = nStatId | 0
+  if (statId < 0) return 0
+  const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+  if (statId >= (m.u32((sgpt + 0xbd4) >>> 0) | 0)) return 0
+  const pIscRec = (m.u32((sgpt + 0xbcc) >>> 0) + imul32(statId, 0x144)) >>> 0
+  if (pIscRec === 0) return 0
+  return getTotalStatWithMinFromList113c(m, s, (statId << 16) >>> 0, pIscRec)
+}
+
+/**
+ * `@va D2Common:0x6FD89380` (`STATLIST_GetStatBonusFromListInline`,
+ * custom LTCG `eax = pStatList`, `esi = nStatId`, `[esp+4] = nLayer`, `ret 4`).
+ */
+export function STATLIST_GetStatBonusFromListInline113c(
+  m: Memory113c,
+  pStatList: number,
+  nStatId: number,
+  nLayer: number,
+): number {
+  const s = pStatList >>> 0
+  if (s === 0) return 0
+  const statId = nStatId | 0
+  let totalVal = 0
+  if (statId >= 0) {
+    const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+    if (statId < (m.u32((sgpt + 0xbd4) >>> 0) | 0)) {
+      const pIscRec = (m.u32((sgpt + 0xbcc) >>> 0) + imul32(statId, 0x144)) >>> 0
+      if (pIscRec !== 0) {
+        const dwKey = ((statId << 16) + (nLayer & 0xffff)) >>> 0
+        totalVal = getTotalStatWithMinFromList113c(m, s, dwKey, pIscRec) | 0
+      }
+    }
+  }
+  let baseVal = 0
+  if (statId >= 0) {
+    const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+    if (statId < (m.u32((sgpt + 0xbd4) >>> 0) | 0)) {
+      const pIscRec = (m.u32((sgpt + 0xbcc) >>> 0) + imul32(statId, 0x144)) >>> 0
+      if (pIscRec !== 0) {
+        const dwKey = ((statId << 16) + (nLayer & 0xffff)) >>> 0
+        baseVal = getBaseStatWithMinFromList113c(m, s, dwKey, pIscRec) | 0
+      }
+    }
+  }
+  return ((totalVal - baseVal) | 0) >>> 0
+}
+
+/**
+ * `@va D2Common:0x6FD89430` (`D2Common.#10910` `STATLIST_GetUnitStatWithLayer`,
+ * stdcall `[esp+4] = pUnit`, `[esp+8] = nStatId`, `[esp+0xC] = nLayer`, `ret 0xC`).
+ */
+export function STATLIST_GetUnitStatWithLayer113c(
+  m: Memory113c,
+  pUnit: number,
+  nStatId: number,
+  nLayer: number,
+): number {
+  const pStatList = m.u32(((pUnit >>> 0) + 0x5c) >>> 0)
+  if (pStatList === 0) return 0
+  const statId = nStatId | 0
+  if (statId < 0) return 0
+  const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+  if (statId >= (m.u32((sgpt + 0xbd4) >>> 0) | 0)) return 0
+  const pIscRec = (m.u32((sgpt + 0xbcc) >>> 0) + imul32(statId, 0x144)) >>> 0
+  if (pIscRec === 0) return 0
+  const dwKey = ((statId << 16) + (nLayer & 0xffff)) >>> 0
+  return getTotalStatWithMinFromList113c(m, pStatList, dwKey, pIscRec)
+}
+
+/**
+ * `@va D2Common:0x6FD894E0` (`STATLIST_GetBaseStatFromListInline`,
+ * custom LTCG `ecx = pStatList`, `eax = nStatId`, `[esp+4] = nLayer`, `ret 4`).
+ */
+export function STATLIST_GetBaseStatFromListInline113c(
+  m: Memory113c,
+  pStatList: number,
+  nStatId: number,
+  nLayer: number,
+): number {
+  const s = pStatList >>> 0
+  if (s === 0) return 0
+  const statId = nStatId | 0
+  if (statId < 0) return 0
+  const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+  if (statId >= (m.u32((sgpt + 0xbd4) >>> 0) | 0)) return 0
+  const pIscRec = (m.u32((sgpt + 0xbcc) >>> 0) + imul32(statId, 0x144)) >>> 0
+  if (pIscRec === 0) return 0
+  const dwKey = ((statId << 16) + (nLayer & 0xffff)) >>> 0
+  return getBaseStatWithMinFromList113c(m, s, dwKey, pIscRec)
+}
+
+/**
+ * `@va D2Common:0x6FD8A1D0` (`D2Common.#10745` `STATLIST_SetBaseStatEx`,
+ * stdcall `[esp+4] = pStatList`, `[esp+8] = nStatId`, `[esp+0xC] = nValue`, `[esp+0x10] = nLayer`, `[esp+0x14] = pUnit`, `ret 0x14`).
+ */
+export function STATLIST_SetBaseStatEx113c(
+  m: Memory113c,
+  pStatList: number,
+  nStatId: number,
+  nValue: number,
+  nLayer: number,
+  pUnit: number,
+): number {
+  const s = pStatList >>> 0
+  if (s === 0) return 0
+  const dwKey = ((nStatId << 16) + (nLayer & 0xffff)) >>> 0
+  const pBaseHdr = (s + 0x24) >>> 0
+  let idx = STATLIST_FindStatIndex113c(m, pBaseHdr, dwKey)
+  let pEntry = idx >= 0 ? (m.u32(pBaseHdr) + idx * 8) >>> 0 : 0
+  const val = nValue | 0
+  if (pEntry === 0) {
+    if (val === 0) return 0
+    m.u32(s)
+    const ins = STATLIST_FindInsertPos113c(m, pBaseHdr, dwKey)
+    pEntry = insertStatSlot(m, pBaseHdr, ins, dwKey)
+    idx = ins
+  }
+  const oldVal = m.u32((pEntry + 4) >>> 0) | 0
+  const delta = (val - oldVal) | 0
+  if (delta === 0) return 0
+  if (val === 0) {
+    m.u32(s)
+    removeStatSlot(m, pBaseHdr, idx)
+  } else {
+    m.setU32((pEntry + 4) >>> 0, val >>> 0)
+  }
+  propagateDeltaMem113c(m, s, dwKey, delta, pUnit >>> 0)
+  if ((m.u32((s + 0x10) >>> 0) | 0) < 0 && m.u32((s + 0x08) >>> 0) === 0) {
+    recordModStatMem113c(m, s, dwKey)
+  }
+  return 1
+}
+
+/** `D2Common 0x6FD517A0` (`eax = statId`): ItemStatCost record or `0` (signed range check vs `+0xBD4`). */
+function getIscRecordOrZeroMem113c(m: Memory113c, statId: number): number {
+  const id = statId | 0
+  if (id < 0) return 0
+  const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+  if (id >= (m.u32((sgpt + 0xbd4) >>> 0) | 0)) return 0
+  return (m.u32((sgpt + 0xbcc) >>> 0) + imul32(id, 0x144)) >>> 0
+}
+
+/**
+ * Dynamic-op refresh shared by 0x6FD8A442..0x6FD8A4ED and 0x6FD8A87C..0x6FD8A91A: for an extended list with
+ * `0x20000000` set, collects the `pFullStat (+0x48)` keys whose ItemStatCost `+0x53` byte is non-zero, then
+ * re-evaluates each through `0x6FD89CE0` (`STATLIST_RecomputeExStat`).
+ */
+function refreshDynamicOpStatsMem113c(m: Memory113c, s: number): void {
+  const flags = m.u32((s + 0x10) >>> 0)
+  if ((flags | 0) >= 0 || (flags & 0x20000000) === 0) return
+  const pArr = m.u32((s + 0x48) >>> 0)
+  const count = (m.u16((s + 0x4c) >>> 0) << 16) >> 16
+  const keys: number[] = []
+  for (let i = 0; i < count; i++) {
+    const k = m.u32((pArr + i * 8) >>> 0)
+    const pRec = getIscRecordOrZeroMem113c(m, (k >> 16) & 0xffff)
+    if (pRec !== 0 && m.u8((pRec + 0x53) >>> 0) !== 0) keys.push(k)
+  }
+  for (const k of keys) {
+    if (getIscRecordOrZeroMem113c(m, (k >> 16) & 0xffff) !== 0) {
+      STATLIST_RecomputeExStat113c(m, s, (k >> 16) & 0xffff, k & 0xffff)
+    }
+  }
+}
+
+/**
+ * Propagates every entry of `s` (`pFullStat` when extended, else `pStat`) into `pTarget` via `0x6FD89F70`
+ * with `sign * value`; when `bSkipDamageRelated`, entries whose ItemStatCost `+0x04` byte hits
+ * `gdwBitMasks[2]` (`[0x6FDD90B0] + 8`) are skipped (0x6FD8A552..0x6FD8A55D / 0x6FD8A9AD..0x6FD8A9B8).
+ */
+function propagateSubListEntriesMem113c(
+  m: Memory113c,
+  s: number,
+  pTarget: number,
+  sign: number,
+  bSkipDamageRelated: boolean,
+): void {
+  const flags = m.u32((s + 0x10) >>> 0)
+  const pHdr = (flags | 0) < 0 ? (s + 0x48) >>> 0 : (s + 0x24) >>> 0
+  const pArr = m.u32(pHdr)
+  const count = (m.u16((pHdr + 4) >>> 0) << 16) >> 16
+  for (let i = 0; i < count; i++) {
+    const k = m.u32((pArr + i * 8) >>> 0)
+    if (bSkipDamageRelated) {
+      const pRec = getIscRecordOrZeroMem113c(m, (k >> 16) & 0xffff)
+      if (pRec === 0) continue
+      const pBitMasks = m.u32(D2COMMON_GDWBITMASKS_IAT_VA_113C)
+      if ((m.u8((pBitMasks + 8) >>> 0) & m.u8((pRec + 4) >>> 0)) !== 0) continue
+    }
+    const v = m.u32((pArr + i * 8 + 4) >>> 0) | 0
+    propagateDeltaMem113c(m, pTarget, k, imul32(sign, v), 0)
+  }
+}
+
+/**
+ * Memory port of `D2Common 0x6FD8A3B0` (`STATLIST_UnlinkSubListInternal`): unlinks `s` from its parent's
+ * `pMyLastList (+0x3C)` / `pMyStats (+0x40)` and from the `+0x2C/+0x30` chain, clears `pPrev/pNext/pOwner`,
+ * stops for `0x2000` lists, refreshes dynamic-op stats, then removes its entries from the parent (skipping
+ * damage-related stats when `0x40000000` is set, 0x6FD8A50F). The trailing `pfnCallback (+0x38)` call
+ * (0x6FD8A5A7..0x6FD8A5B6) is a host callback and is not modelled.
+ */
+function unlinkSubListMem113c(m: Memory113c, pSub: number): void {
+  const s = pSub >>> 0
+  if (s === 0) return
+  const pParent = m.u32((s + 0x34) >>> 0)
+  if (pParent !== 0) {
+    if ((m.u32((pParent + 0x10) >>> 0) | 0) < 0) {
+      if (m.u32((pParent + 0x3c) >>> 0) === s) {
+        m.setU32((pParent + 0x3c) >>> 0, m.u32((s + 0x2c) >>> 0))
+      }
+      if (m.u32((pParent + 0x40) >>> 0) === s) {
+        m.setU32((pParent + 0x40) >>> 0, m.u32((s + 0x2c) >>> 0))
+      }
+    }
+    m.setU32((s + 0x34) >>> 0, 0)
+  }
+  const pNext = m.u32((s + 0x30) >>> 0)
+  if (pNext !== 0) {
+    m.setU32((pNext + 0x2c) >>> 0, m.u32((s + 0x2c) >>> 0))
+  }
+  const pPrev = m.u32((s + 0x2c) >>> 0)
+  if (pPrev !== 0) {
+    m.setU32((pPrev + 0x30) >>> 0, m.u32((s + 0x30) >>> 0))
+  }
+  m.u32((s + 0x04) >>> 0)
+  const subFlags = m.u32((s + 0x10) >>> 0)
+  m.setU32((s + 0x2c) >>> 0, 0)
+  m.setU32((s + 0x30) >>> 0, 0)
+  m.setU32((s + 0x04) >>> 0, 0)
+  if ((subFlags & 0x2000) !== 0) return
+  refreshDynamicOpStatsMem113c(m, s)
+  if (pParent !== 0) {
+    const bMerged = (m.u32((s + 0x10) >>> 0) & 0x40000000) !== 0
+    propagateSubListEntriesMem113c(m, s, pParent, -1, bMerged)
+  }
+}
+
+/**
+ * Memory port of `D2Common 0x6FD8A7D0` (`STATLIST_MergeStatLists`, stdcall `(pUnit, pSub, bType)`): requires an
+ * extended `pUnit->pStatListEx`, unlinks `pSub` (0x6FD8A7F8), returns if it is already in the parent chain,
+ * links it as `pMyStats` (`0x2000` lists) or `pMyLastList`, refreshes dynamic-op stats (0x6FD8A87C), then
+ * adds its entries into the parent: `bType != 0` clears `0x40000000` and adds all; `bType == 0` sets it and
+ * skips damage-related stats (0x6FD8A973..0x6FD8A9D5).
+ */
+function mergeSubListMem113c(m: Memory113c, pTargetUnit: number, pSub: number, bType: number): void {
+  const u = pTargetUnit >>> 0
+  const s = pSub >>> 0
+  const pParentEx = m.u32((u + 0x5c) >>> 0)
+  if (pParentEx === 0 || (m.u32((pParentEx + 0x10) >>> 0) | 0) >= 0) return
+  unlinkSubListMem113c(m, s)
+  for (let cur = pParentEx; cur !== 0; cur = m.u32((cur + 0x34) >>> 0)) {
+    if (cur === s) return
+  }
+  if ((m.u8((s + 0x10) >>> 0) & 0x04) !== 0) {
+    m.setU32((pParentEx + 0x10) >>> 0, (m.u32((pParentEx + 0x10) >>> 0) | 0x02) >>> 0)
+  }
+  if ((m.u32((s + 0x10) >>> 0) & 0x2000) !== 0) {
+    m.setU32((s + 0x2c) >>> 0, m.u32((pParentEx + 0x40) >>> 0))
+    const oldSet = m.u32((pParentEx + 0x40) >>> 0)
+    if (oldSet !== 0) {
+      m.setU32((oldSet + 0x30) >>> 0, s)
+    }
+    m.setU32((s + 0x30) >>> 0, 0)
+    m.setU32((pParentEx + 0x40) >>> 0, s)
+    m.setU32((s + 0x34) >>> 0, pParentEx)
+    m.setU32((s + 0x04) >>> 0, u)
+    return
+  }
+  const oldLast = m.u32((pParentEx + 0x3c) >>> 0)
+  m.setU32((s + 0x2c) >>> 0, oldLast)
+  if (oldLast !== 0) {
+    m.setU32((oldLast + 0x30) >>> 0, s)
+  }
+  m.setU32((s + 0x34) >>> 0, pParentEx)
+  m.setU32((pParentEx + 0x3c) >>> 0, s)
+  m.setU32((s + 0x04) >>> 0, u)
+  refreshDynamicOpStatsMem113c(m, s)
+  const flags = m.u32((s + 0x10) >>> 0)
+  if (bType !== 0) {
+    m.setU32((s + 0x10) >>> 0, (flags & 0xbfffffff) >>> 0)
+    propagateSubListEntriesMem113c(m, s, pParentEx, 1, false)
+  } else {
+    m.setU32((s + 0x10) >>> 0, (flags | 0x40000000) >>> 0)
+    propagateSubListEntriesMem113c(m, s, pParentEx, 1, true)
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD8A5D0` (`D2Common.#11127` `STATLIST_UnlinkUnitStatList`,
+ * stdcall `[esp+4] = pUnusedUnit`, `[esp+8] = pTargetUnit`, `ret 8`, void).
+ */
+export function STATLIST_UnlinkUnitStatList113c(
+  m: Memory113c,
+  _pUnusedUnit: number,
+  pTargetUnit: number,
+): void {
+  const u = pTargetUnit >>> 0
+  if (u === 0) return
+  const pStatList = m.u32((u + 0x5c) >>> 0)
+  if (pStatList === 0) return
+  unlinkSubListMem113c(m, pStatList)
+}
+
+/**
+ * `@va D2Common:0x6FD8A650` (`D2Common.#10343` `STATLIST_ClearBaseStats`,
+ * stdcall `[esp+4] = pStatList`, `ret 4`, void).
+ */
+export function STATLIST_ClearBaseStats113c(m: Memory113c, pStatList: number): void {
+  const s = pStatList >>> 0
+  if (s === 0) return
+  if ((m.u16((s + 0x28) >>> 0) << 16) >> 16 <= 0) return
+  const pBaseHdr = (s + 0x24) >>> 0
+  while ((m.u16((s + 0x28) >>> 0) << 16) >> 16 > 0) {
+    const pArr0 = m.u32(pBaseHdr)
+    const statId = m.u16((pArr0 + 2) >>> 0)
+    const layer = m.u16(pArr0)
+    const dwKey = ((statId << 16) + layer) >>> 0
+    const idx = STATLIST_FindStatIndex113c(m, pBaseHdr, dwKey)
+    if (idx >= 0) {
+      const pEntry = (m.u32(pBaseHdr) + idx * 8) >>> 0
+      if (pEntry !== 0) {
+        const negVal = -(m.u32((pEntry + 4) >>> 0) | 0) | 0
+        if (negVal !== 0) {
+          m.u32(s)
+          removeStatSlot(m, pBaseHdr, idx)
+          propagateDeltaMem113c(m, s, dwKey, negVal, 0)
+          if ((m.u32((s + 0x10) >>> 0) | 0) < 0 && m.u32((s + 0x08) >>> 0) === 0) {
+            recordModStatMem113c(m, s, dwKey)
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD8AAB0` (`D2Common.#10656` `STATLIST_UpdateUnitStateSetFlag`,
+ * stdcall `[esp+4] = pUnit`, `[esp+8] = nState`, `[esp+0xC] = bSet`, `ret 0xC`).
+ */
+export function STATLIST_UpdateUnitStateSetFlag113c(
+  m: Memory113c,
+  pUnit: number,
+  nState: number,
+  bSet: number,
+): number {
+  const state = nState | 0
+  if (state === 0) return 0
+  const u = pUnit >>> 0
+  const pListEx = m.u32((u + 0x5c) >>> 0)
+  if (pListEx === 0) return 0
+  if ((m.u32((pListEx + 0x10) >>> 0) | 0) >= 0) return 0
+  const pSub = findSubListByStateAndFlags113c(m, pListEx, state)
+  if (pSub === 0) return 0
+  const subFlags = m.u32((pSub + 0x10) >>> 0)
+  if (bSet !== 0) {
+    if ((subFlags & 0x2000) !== 0) return 0
+    unlinkSubListMem113c(m, pSub)
+    m.setU32((pSub + 0x10) >>> 0, (m.u32((pSub + 0x10) >>> 0) | 0x2000) >>> 0)
+    mergeSubListMem113c(m, u, pSub, 1)
+    return 1
+  }
+  if ((subFlags & 0x2000) === 0) return 0
+  unlinkSubListMem113c(m, pSub)
+  m.setU32((pSub + 0x10) >>> 0, (m.u32((pSub + 0x10) >>> 0) & ~0x2000) >>> 0)
+  mergeSubListMem113c(m, u, pSub, 1)
+  return 1
+}
+
+/**
+ * `@va D2Common:0x6FD96D50` (`STATLIST_RemoveItemDurabilityStatsModHandler`,
+ * stdcall `[esp+4] = pItem`, `[esp+8..0x18] = a1..a5`, `[esp+0x1C] = pTargetUnit`, `ret 0x1C`).
+ */
+export function STATLIST_RemoveItemDurabilityStatsModHandler113c(
+  m: Memory113c,
+  pItem: number,
+  _a1: number,
+  _a2: number,
+  _a3: number,
+  _a4: number,
+  _a5: number,
+  pTargetUnit: number,
+): number {
+  const target = pTargetUnit >>> 0
+  const u = target !== 0 && m.u32(target) === 4 ? target : pItem >>> 0
+  for (const statKey of [0x00490000, 0x00480000]) {
+    const pStatList = m.u32((u + 0x5c) >>> 0)
+    if (pStatList !== 0) {
+      const pBaseHdr = (pStatList + 0x24) >>> 0
+      const idx = STATLIST_FindStatIndex113c(m, pBaseHdr, statKey)
+      if (idx >= 0) {
+        const pEntry = (m.u32(pBaseHdr) + idx * 8) >>> 0
+        if (pEntry !== 0) {
+          const negVal = -(m.u32((pEntry + 4) >>> 0) | 0) | 0
+          if (negVal !== 0) {
+            m.u32(pStatList)
+            removeStatSlot(m, pBaseHdr, idx)
+            propagateDeltaMem113c(m, pStatList, statKey, negVal, 0)
+            if ((m.u32((pStatList + 0x10) >>> 0) | 0) < 0 && m.u32((pStatList + 0x08) >>> 0) === 0) {
+              recordModStatMem113c(m, pStatList, statKey)
+            }
+            if (m.u32(u) === 0) {
+              recordModStatMem113c(m, m.u32((u + 0x5c) >>> 0), statKey)
+            }
+          }
+        }
+      }
+    }
+  }
+  return 1
+}
+
+/**
+ * `@va D2Common:0x6FDA4A00` (`D2Common.#11089` `DATATBLS_CalculateMonsterStatsByLevel`,
+ * stdcall `(nMonsterId, nGameType, nDifficulty, nLevel, nFlags, pOutStats) -> BOOL`, `ret 0x18`).
+ */
+export function DATATBLS_CalculateMonsterStatsByLevel113c(
+  m: Memory113c,
+  nMonsterId: number,
+  nGameType: number,
+  nDifficulty: number,
+  nLevel: number,
+  nFlags: number,
+  pOutStats: number,
+): number {
+  const monId = nMonsterId | 0
+  if (monId < 0) return 0
+  const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+  if (monId >= (m.u32((sgpt + 0xa80) >>> 0) | 0)) return 0
+  const pMonStatsTxt = (m.u32((sgpt + 0xa78) >>> 0) + imul32(monId, 0x1a8)) >>> 0
+  if (pMonStatsTxt === 0) return 0
+
+  const monLvlCount = m.u32((sgpt + 0xb74) >>> 0) | 0
+  const maxLvlIdx = (monLvlCount - 1) | 0
+  let lvl = nLevel | 0
+  if (lvl >= maxLvlIdx) lvl = maxLvlIdx
+  if (lvl < 0 || lvl >= monLvlCount) return 0
+  const pMonLvlTxt = (m.u32((sgpt + 0xb70) >>> 0) + imul32(lvl, 0x78)) >>> 0
+  if (pMonLvlTxt === 0) return 0
+
+  let diff = nDifficulty | 0
+  if (diff <= 0) diff = 0
+  else if (diff >= 2) diff = 2
+
+  const bExp = (nGameType | 0) !== 0 ? 1 : 0
+  const pBitMasks = m.u32(D2COMMON_GDWBITMASKS_IAT_VA_113C)
+  const bNoRatio = (m.u8((pMonStatsTxt + 0x0c) >>> 0) & m.u8((pBitMasks + 8) >>> 0)) !== 0
+  const flags = nFlags | 0
+  const out = pOutStats >>> 0
+
+  if ((flags & 0x01) !== 0) {
+    let minHp = (m.u16((pMonStatsTxt + 0xb0 + diff * 2) >>> 0) << 16) >> 16
+    let maxHp = (m.u16((pMonStatsTxt + 0xb6 + diff * 2) >>> 0) << 16) >> 16
+    if (!bNoRatio) {
+      const ratio = m.u32((pMonLvlTxt + (diff + (bExp + 4) * 3) * 4) >>> 0) | 0
+      minHp = mulDiv113c(minHp, ratio, 100)
+      maxHp = mulDiv113c(maxHp, ratio, 100)
+    }
+    m.setU32(out, minHp >>> 0)
+    m.setU32((out + 0x04) >>> 0, maxHp >>> 0)
+  }
+
+  if ((flags & 0x02) !== 0) {
+    let ac = (m.u16((pMonStatsTxt + 0xbc + diff * 2) >>> 0) << 16) >> 16
+    if (!bNoRatio) {
+      const ratio = m.u32((pMonLvlTxt + (diff + bExp * 3) * 4) >>> 0) | 0
+      ac = mulDiv113c(ac, ratio, 100)
+    }
+    m.setU32((out + 0x08) >>> 0, ac >>> 0)
+  }
+
+  if ((flags & 0x04) !== 0) {
+    let exp = (m.u16((pMonStatsTxt + 0xd4 + diff * 2) >>> 0) << 16) >> 16
+    if (!bNoRatio) {
+      const ratio = m.u32((pMonLvlTxt + (diff + (bExp + 8) * 3) * 4) >>> 0) | 0
+      exp = mulDiv113c(exp, ratio, 100)
+    }
+    m.setU32((out + 0x10) >>> 0, exp >>> 0)
+  }
+
+  if ((flags & 0x08) !== 0) {
+    let th = (m.u16((pMonStatsTxt + 0xc2 + diff * 2) >>> 0) << 16) >> 16
+    let minD = (m.u16((pMonStatsTxt + 0xda + diff * 2) >>> 0) << 16) >> 16
+    let maxD = (m.u16((pMonStatsTxt + 0xe0 + diff * 2) >>> 0) << 16) >> 16
+    if (!bNoRatio) {
+      const thRatio = m.u32((pMonLvlTxt + (diff + (bExp + 2) * 3) * 4) >>> 0) | 0
+      const dmRatio = m.u32((pMonLvlTxt + (diff + (bExp + 6) * 3) * 4) >>> 0) | 0
+      th = mulDiv113c(th, thRatio, 100)
+      minD = mulDiv113c(minD, dmRatio, 100)
+      maxD = mulDiv113c(maxD, dmRatio, 100)
+    }
+    m.setU32((out + 0x0c) >>> 0, th >>> 0)
+    m.setU32((out + 0x14) >>> 0, minD >>> 0)
+    m.setU32((out + 0x18) >>> 0, maxD >>> 0)
+  }
+
+  if ((flags & 0x10) !== 0) {
+    let th = (m.u16((pMonStatsTxt + 0xc8 + diff * 2) >>> 0) << 16) >> 16
+    let minD = (m.u16((pMonStatsTxt + 0xe6 + diff * 2) >>> 0) << 16) >> 16
+    let maxD = (m.u16((pMonStatsTxt + 0xec + diff * 2) >>> 0) << 16) >> 16
+    if (!bNoRatio) {
+      const thRatio = m.u32((pMonLvlTxt + (diff + (bExp + 2) * 3) * 4) >>> 0) | 0
+      const dmRatio = m.u32((pMonLvlTxt + (diff + (bExp + 6) * 3) * 4) >>> 0) | 0
+      th = mulDiv113c(th, thRatio, 100)
+      minD = mulDiv113c(minD, dmRatio, 100)
+      maxD = mulDiv113c(maxD, dmRatio, 100)
+    }
+    m.setU32((out + 0x0c) >>> 0, th >>> 0)
+    m.setU32((out + 0x1c) >>> 0, minD >>> 0)
+    m.setU32((out + 0x20) >>> 0, maxD >>> 0)
+  }
+
+  if ((flags & 0x20) !== 0) {
+    let th = (m.u16((pMonStatsTxt + 0xce + diff * 2) >>> 0) << 16) >> 16
+    let minD = (m.u16((pMonStatsTxt + 0xf2 + diff * 2) >>> 0) << 16) >> 16
+    let maxD = (m.u16((pMonStatsTxt + 0xf8 + diff * 2) >>> 0) << 16) >> 16
+    if (!bNoRatio) {
+      const thRatio = m.u32((pMonLvlTxt + (diff + (bExp + 2) * 3) * 4) >>> 0) | 0
+      const dmRatio = m.u32((pMonLvlTxt + (diff + (bExp + 6) * 3) * 4) >>> 0) | 0
+      th = mulDiv113c(th, thRatio, 100)
+      minD = mulDiv113c(minD, dmRatio, 100)
+      maxD = mulDiv113c(maxD, dmRatio, 100)
+    }
+    m.setU32((out + 0x0c) >>> 0, th >>> 0)
+    m.setU32((out + 0x24) >>> 0, minD >>> 0)
+    m.setU32((out + 0x28) >>> 0, maxD >>> 0)
+  }
+
+  const elSlots: Array<readonly [number, number, number, number]> = [
+    [0x40, 0x10e, 0x120, 0x132],
+    [0x80, 0x114, 0x126, 0x138],
+    [0x100, 0x11a, 0x12c, 0x13e],
+  ]
+  for (const [bit, minOff, maxOff, lenOff] of elSlots) {
+    if ((flags & bit) !== 0) {
+      const minEl = (m.u16((pMonStatsTxt + minOff + diff * 2) >>> 0) << 16) >> 16
+      const maxEl = (m.u16((pMonStatsTxt + maxOff + diff * 2) >>> 0) << 16) >> 16
+      if (bNoRatio) {
+        m.setU32((out + 0x24) >>> 0, minEl >>> 0)
+        m.setU32((out + 0x28) >>> 0, maxEl >>> 0)
+      } else {
+        const elRatio = m.u32((pMonLvlTxt + (diff + (bExp + 6) * 3) * 4) >>> 0) | 0
+        m.setU32((out + 0x2c) >>> 0, mulDiv113c(minEl, elRatio, 100) >>> 0)
+        m.setU32((out + 0x30) >>> 0, mulDiv113c(maxEl, elRatio, 100) >>> 0)
+      }
+      const lenEl = (m.u16((pMonStatsTxt + lenOff + diff * 2) >>> 0) << 16) >> 16
+      m.setU32((out + 0x34) >>> 0, lenEl >>> 0)
+    }
+  }
+
+  return 1
+}
+
+/**
+ * `@va D2Common:0x6FDBAB20` (`MISSILE_CalculateMasteryBonus`,
+ * custom LTCG `eax = pUnit`, `ecx = nElemType`, `esi = nDamage`, plain `ret`).
+ */
+export function MISSILE_CalculateMasteryBonus113c(
+  m: Memory113c,
+  pUnit: number,
+  nElemType: number,
+  nDamage: number,
+): number {
+  const u = pUnit >>> 0
+  const dmg = nDamage | 0
+  if (u === 0 || dmg === 0) return 0
+  let statId = -1
+  switch (nElemType | 0) {
+    case 1:
+      statId = 0x149
+      break
+    case 2:
+      statId = 0x14a
+      break
+    case 4:
+    case 12:
+      statId = 0x14b
+      break
+    case 5:
+      statId = 0x14c
+      break
+    default:
+      return 0
+  }
+  const pct = STATLIST_GetUnitStatWithLayer113c(m, u, statId, 0) | 0
+  if (pct === 0) return 0
+  return mulDiv113c(pct, dmg, 100) >>> 0
+}
+
+const ITEMMODS_ASSERT_FILE_113C = '..\\Source\\D2Common\\ITEMS\\ItemMods.cpp'
+
+/**
+ * `@va D2Common:0x6FD97020` (`ITEMMODS_GetOrCreateStatList`,
+ * custom LTCG `ecx = pItem`, `eax = pUnit`, `[esp+4] = nStateId`, `[esp+8] = nFlags`, `ret 8` -> `D2StatListStrc*`).
+ *
+ * Selects `pTarget = pItem != 0 ? pItem : pUnit`. If `pTarget->pStatListEx (+0x5C)` is non-null and
+ * extended (`dwFlags < 0`), searches via `0x6FD87F80` (`findSubListByStateAndFlags113c`) when `nStateId != 0`
+ * or `0x6FD87F40` (`STATLIST_GetStatListFromFlag113c`) when `nStateId == 0`, returning any existing match.
+ * Otherwise allocates a new `0x3C`-byte `D2StatListStrc` via `D2Common.#11013` (`0x6FD88100`) with
+ * `(pMemPool = pTarget->pMemPool (+0x08), fFlags = nFlags, dwExpireFrame = 0, nUnitType = 4, dwUnitGuid = pTarget->dwUnitId (+0x0C))`,
+ * merges it onto `pTarget` with `bType = 1` via `D2Common.#10807` (`0x6FD8A7D0`), asserts `pStatList != NULL`
+ * at `ItemMods.cpp:0x201` (`513`), writes `pStatList->dwStateNo (+0x14) = nStateId`, and returns `pStatList`.
+ */
+export function ITEMMODS_GetOrCreateStatList113c(
+  m: Memory113c,
+  pItem: number,
+  pUnit: number,
+  nStateId: number,
+  nFlags: number,
+): number {
+  const pTarget = (pItem >>> 0) !== 0 ? pItem >>> 0 : pUnit >>> 0
+  const pStatListEx = m.u32((pTarget + D2UnitStrc.pStatListEx.off) >>> 0)
+  if (pStatListEx !== 0 && (m.u32((pStatListEx + D2StatListStrc.dwFlags.off) >>> 0) | 0) < 0) {
+    const pExisting =
+      (nStateId | 0) !== 0
+        ? findSubListByStateAndFlags113c(m, pStatListEx, nStateId)
+        : STATLIST_GetStatListFromFlag113c(m, pStatListEx, nFlags)
+    if (pExisting !== 0) {
+      return pExisting >>> 0
+    }
+  }
+  const dwUnitId = m.u32((pTarget + D2UnitStrc.dwUnitId.off) >>> 0)
+  const pMemPool = m.u32((pTarget + D2UnitStrc.pMemPool.off) >>> 0)
+  const pStatList = m.alloc(D2StatListStrc_SIZE)
+  if (pStatList !== 0) {
+    m.set(pStatList, D2StatListStrc.pMemPool, pMemPool)
+    m.set(pStatList, D2StatListStrc.eOwnerType, 4)
+    m.set(pStatList, D2StatListStrc.dwOwnerId, dwUnitId)
+    m.set(pStatList, D2StatListStrc.dwFlags, nFlags >>> 0)
+    m.set(pStatList, D2StatListStrc.dwExpireFrame, 0)
+  }
+  mergeSubListMem113c(m, pTarget, pStatList, 1)
+  if (pStatList === 0) {
+    throw new D2CommonAssertError(ITEMMODS_ASSERT_FILE_113C, 0x201)
+  }
+  m.set(pStatList, D2StatListStrc.dwStateNo, nStateId >>> 0)
+  return pStatList >>> 0
+}
 

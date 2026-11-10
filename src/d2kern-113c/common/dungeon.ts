@@ -13,6 +13,7 @@
 import type { Memory113c } from '../mem/sparse-memory.ts'
 import { D2ActStrc, D2ActiveRoomStrc, D2DrlgLevelStrc, D2RoomExStrc } from '../mem/layout.generated.ts'
 import { DRLGROOM_PackAdjacentRooms113c } from './drlg/drlg-room.ts'
+import { D2CommonAssertError } from './inline-helpers.ts'
 import { UNITROOM_RemoveUnitFromRoom113c } from './unit.ts'
 
 /**
@@ -238,11 +239,11 @@ export function DRLG_GetRoomExFromCoordinates113c(
   esi: number,
 ): number {
   if (eax === 0) {
-    throw new Error('DRLG_GetRoomExFromCoordinates113c: pDrlg == 0 (line 765)')
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DRLG\\Drlg.cpp', 765)
   }
   let pRoomEx = m.u32((eax + 0x10) >>> 0)
   if (pRoomEx === 0) {
-    throw new Error('DRLG_GetRoomExFromCoordinates113c: pDrlg->pRoomEx == 0 (line 766)')
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DRLG\\Drlg.cpp', 766)
   }
   const x = edi | 0
   const y = esi | 0
@@ -273,7 +274,7 @@ export function DRLG_GetRoomExFromCoordinates113c(
  */
 export function DUNGEON_UpdateRoomIdleCounter113c(m: Memory113c, pRoom: number): number {
   if (pRoom === 0) {
-    throw new Error('DUNGEON_UpdateRoomIdleCounter113c: pRoom == 0 (line 1198)')
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DUNGEON\\Dungeon.cpp', 1198)
   }
   const nClients = m.u32((pRoom + 0x78) >>> 0)
   if (nClients !== 0) {
@@ -297,7 +298,7 @@ export function DUNGEON_VerifyRoomClientsNonNull113c(m: Memory113c, ecx: number)
     let pList = m.u32((ecx + 0x48) >>> 0)
     for (let i = 0; i < nClients; i++, pList = (pList + 4) >>> 0) {
       if (m.u32(pList) === 0) {
-        throw new Error('DUNGEON_VerifyRoomClientsNonNull113c: null client (line 1107)')
+        throw new D2CommonAssertError('..\\Source\\D2Common\\DUNGEON\\Dungeon.cpp', 1107)
       }
     }
   }
@@ -311,7 +312,7 @@ export function DUNGEON_VerifyRoomClientsNonNull113c(m: Memory113c, ecx: number)
  */
 export function DUNGEON_SetRoomFlag2_113c(m: Memory113c, pRoom: number, bSet: number): void {
   if (pRoom === 0) {
-    throw new Error('DUNGEON_SetRoomFlag2_113c: pRoom == 0 (line 1080)')
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DUNGEON\\Dungeon.cpp', 1080)
   }
   const flags = m.u32((pRoom + 0x34) >>> 0)
   if (bSet !== 0) {
@@ -328,7 +329,7 @@ export function DUNGEON_SetRoomFlag2_113c(m: Memory113c, pRoom: number, bSet: nu
  */
 export function DUNGEON_CheckRoomFlag2_113c(m: Memory113c, pRoom: number): number {
   if (pRoom === 0) {
-    throw new Error('DUNGEON_CheckRoomFlag2_113c: pRoom == 0 (line 1071)')
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DUNGEON\\Dungeon.cpp', 1071)
   }
   return (m.u32((pRoom + 0x34) >>> 0) & 0x02) >>> 0
 }
@@ -340,7 +341,7 @@ export function DUNGEON_CheckRoomFlag2_113c(m: Memory113c, pRoom: number): numbe
  */
 export function DUNGEON_GetRoomPortalList113c(m: Memory113c, pRoom: number): number {
   if (pRoom === 0) {
-    throw new Error('DUNGEON_GetRoomPortalList113c: pRoom == 0 (line 934)')
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DUNGEON\\Dungeon.cpp', 934)
   }
   return m.u32((pRoom + 0x18) >>> 0)
 }
@@ -353,7 +354,7 @@ export function DUNGEON_GetRoomPortalList113c(m: Memory113c, pRoom: number): num
  */
 export function DUNGEON_FreeRoomPortalList113c(m: Memory113c, pRoom: number): void {
   if (pRoom === 0) {
-    throw new Error('DUNGEON_FreeRoomPortalList113c: pRoom == 0 (line 912)')
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DUNGEON\\Dungeon.cpp', 912)
   }
   const pAct = m.u32((pRoom + 0x2c) >>> 0)
   let pNode = m.u32((pRoom + 0x18) >>> 0)
@@ -401,7 +402,7 @@ export function DUNGEON_AddRoomPortalNode113c(
  */
 export function DUNGEON_GetRoomExFromRoom113c(m: Memory113c, pRoom: number): number {
   if (pRoom === 0) {
-    throw new Error('DUNGEON_GetRoomExFromRoom113c: pRoom == 0 (line 798)')
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DUNGEON\\Dungeon.cpp', 798)
   }
   return m.u32((pRoom + 0x10) >>> 0)
 }
@@ -413,7 +414,7 @@ export function DUNGEON_GetRoomExFromRoom113c(m: Memory113c, pRoom: number): num
  */
 export function DUNGEON_GetCollisionGridFromRoomFast113c(m: Memory113c, eax: number): number {
   if (eax === 0) {
-    throw new Error('DUNGEON_GetCollisionGridFromRoomFast113c: pRoom == 0 (line 709)')
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DUNGEON\\Dungeon.cpp', 709)
   }
   return m.u32((eax + 0x20) >>> 0)
 }
@@ -430,7 +431,7 @@ export function DUNGEON_GetAdjacentRoomsListFromRoom113c(
   pnRoomsNear: number,
 ): void {
   if (pRoom === 0) {
-    throw new Error('DUNGEON_GetAdjacentRoomsListFromRoom113c: pRoom == 0 (line 236)')
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DUNGEON\\Dungeon.cpp', 236)
   }
   const nNear = m.u32((pRoom + 0x24) >>> 0)
   m.setU32(pnRoomsNear, nNear)
@@ -450,7 +451,7 @@ export function DUNGEON_GetRoomCoordinates113c(
   pOutCoords: number,
 ): void {
   if (pOutCoords === 0) {
-    throw new Error('DUNGEON_GetRoomCoordinates113c: pOutCoords == 0 (line 209)')
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DUNGEON\\Dungeon.cpp', 209)
   }
   if (pRoom === 0) {
     for (let i = 0; i < 8; i++) {
@@ -473,7 +474,7 @@ export function DUNGEON_GetLogicalRoomField30_113c(m: Memory113c, pRoom: number)
   const pRoomEx = m.u32((pRoom + 0x10) >>> 0)
   const pLogical = m.u32((pRoomEx + 0x64) >>> 0)
   if (pLogical === 0) {
-    throw new Error('DUNGEON_GetLogicalRoomField30_113c: pLogical == 0 (line 717)')
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DUNGEON\\Dungeon.cpp', 717)
   }
   return m.u32((pLogical + 0x30) >>> 0) | 0
 }
@@ -488,7 +489,7 @@ export function DUNGEON_GetLogicalRoomField30_113c(m: Memory113c, pRoom: number)
 export function DUNGEON_SortRoomClientArray113c(m: Memory113c, pRoom: number): void {
   const room = pRoom >>> 0
   if (DUNGEON_VerifyRoomClientsNonNull113c(m, room) === 0) {
-    throw new Error('DUNGEON_SortRoomClientArray113c: VerifyRoomClientsNonNull failed (line 1115)')
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DUNGEON\\Dungeon.cpp', 1115)
   }
   let edi = ((m.u32((room + 0x78) >>> 0) | 0) - 1) | 0
   if (edi > 0) {
@@ -519,7 +520,7 @@ export function DUNGEON_SortRoomClientArray113c(m: Memory113c, pRoom: number): v
     const pArr = m.u32((room + 0x48) >>> 0)
     for (let i = 0; i < nCount; i++) {
       if (m.u32((pArr + i * 4) >>> 0) === 0) {
-        throw new Error('DUNGEON_SortRoomClientArray113c: null client after sort (line 1107)')
+        throw new D2CommonAssertError('..\\Source\\D2Common\\DUNGEON\\Dungeon.cpp', 1107)
       }
     }
   }
@@ -533,7 +534,7 @@ export function DUNGEON_SortRoomClientArray113c(m: Memory113c, pRoom: number): v
  */
 export function DUNGEON_AreAllAdjacentRoomsActive113c(m: Memory113c, pRoom: number): number {
   if (pRoom === 0) {
-    throw new Error('DUNGEON_AreAllAdjacentRoomsActive113c: pRoom == 0 (line 1007)')
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DUNGEON\\Dungeon.cpp', 1007)
   }
   const pRoomEx = m.u32((pRoom + 0x10) >>> 0)
   const nExNear = m.u32((pRoomEx + 0x2c) >>> 0)
@@ -558,11 +559,11 @@ export function DUNGEON_AreAllAdjacentRoomsActive113c(m: Memory113c, pRoom: numb
  */
 export function DUNGEON_HasRoomExWaypointFlags113c(m: Memory113c, pRoom: number): number {
   if (pRoom === 0) {
-    throw new Error('DUNGEON_HasRoomExWaypointFlags113c: pRoom == 0 (line 867)')
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DUNGEON\\Dungeon.cpp', 867)
   }
   const pRoomEx = m.u32((pRoom + 0x10) >>> 0)
   if (pRoomEx === 0) {
-    throw new Error('DUNGEON_HasRoomExWaypointFlags113c: pRoomEx == 0 (line 630)')
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DUNGEON\\Dungeon.cpp', 630)
   }
   return (m.u32((pRoomEx + 0x28) >>> 0) & 0x30000) !== 0 ? 1 : 0
 }
@@ -577,7 +578,7 @@ export function DUNGEON_GetLevelIdIfNotHidden113c(m: Memory113c, pRoom: number):
   if (pRoom === 0) return 0
   const pRoomEx = m.u32((pRoom + 0x10) >>> 0)
   if (pRoomEx === 0) {
-    throw new Error('DUNGEON_GetLevelIdIfNotHidden113c: pRoomEx == 0 (line 619)')
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DUNGEON\\Dungeon.cpp', 619)
   }
   if ((m.u32((pRoomEx + 0x28) >>> 0) & 0x800000) !== 0) {
     return 0
@@ -595,7 +596,7 @@ export function DUNGEON_GetLevelIdIfNotHidden113c(m: Memory113c, pRoom: number):
  */
 export function DUNGEON_AcquireRoomExDT1Mask113c(m: Memory113c, pRoom: number): number {
   if (pRoom === 0) {
-    throw new Error('DUNGEON_AcquireRoomExDT1Mask113c: pRoom == 0 (line 699)')
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DUNGEON\\Dungeon.cpp', 699)
   }
   const pRoomEx = m.u32((pRoom + 0x10) >>> 0)
   const flags = m.u32((pRoomEx + 0x28) >>> 0)
@@ -633,7 +634,7 @@ export function DUNGEON_AllocAndBuildRoomNeighborList113c(
     const pArr = m.u32(room)
     const pNeighbor = m.u32((pArr + i * 4) >>> 0)
     if (pNeighbor === 0) {
-      throw new Error('DUNGEON_AllocAndBuildRoomNeighborList113c: null neighbor (line 264)')
+      throw new D2CommonAssertError('..\\Source\\D2Common\\DUNGEON\\Dungeon.cpp', 264)
     }
     if (pNeighbor !== room) {
       const nSubCount = DRLGROOM_PackAdjacentRooms113c(
@@ -654,7 +655,7 @@ export function DUNGEON_AllocAndBuildRoomNeighborList113c(
  */
 export function DUNGEON_CheckPresetRoomFlag80_113c(m: Memory113c, pRoom: number): number {
   if (pRoom === 0) {
-    throw new Error('DUNGEON_CheckPresetRoomFlag80_113c: pRoom == 0 (line 1445)')
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DUNGEON\\Dungeon.cpp', 1445)
   }
   const pRoomEx = m.u32((pRoom + 0x10) >>> 0)
   const nType = m.u32((pRoomEx + 0x48) >>> 0) | 0
@@ -745,14 +746,14 @@ export function DUNGEON_ShouldDeactivateRoomEx113c(m: Memory113c, pRoomEx: numbe
   }
   const pLevel = m.u32((roomEx + 0x58) >>> 0)
   if (pLevel === 0) {
-    throw new Error('DUNGEON_ShouldDeactivateRoomEx113c: pLevel == 0 (line 1068)')
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DATATBLS\\MissileTbls.cpp', 1068)
   }
   const pDrlg = m.u32((pLevel + 0x1b4) >>> 0)
   if (pDrlg === 0) {
-    throw new Error('DUNGEON_ShouldDeactivateRoomEx113c: pDrlg == 0 (line 1069)')
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DATATBLS\\MissileTbls.cpp', 1069)
   }
   if ((m.u8((pDrlg + 0x8c) >>> 0) & 0x01) !== 0) {
-    throw new Error('DUNGEON_ShouldDeactivateRoomEx113c: invalid drlg flag (line 743)')
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DATATBLS\\MissileTbls.cpp', 743)
   }
   if (m.u8((roomEx + 0x44) >>> 0) <= 1) {
     return 0

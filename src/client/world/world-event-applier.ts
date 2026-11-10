@@ -1923,11 +1923,32 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         break
       }
       const wasDead = unit.dead
-      if (typeof evAny.lifePct === 'number' && evAny.lifePct > 0) {
-        unit.lifePct = evAny.lifePct
-      }
       const now = this.resolveEventNowMs(nowMs)
       const moveMode = ev.mode ?? evAny.moveMode ?? 'walk'
+      if (unit.unitType === 'monster' && wasDead) {
+        const stopLife =
+          typeof evAny.lifePct === 'number'
+            ? evAny.lifePct
+            : ev.npc?.opcode === 0x6d && typeof ev.npc.s[2] === 'number'
+              ? ev.npc.s[2]
+              : undefined
+        const isExplicitStopResurrect =
+          (moveMode === 'stop' || ev.npc?.cmd === 0x07) &&
+          (unit.mode === 12 || unit.states.has(96)) &&
+          stopLife !== undefined &&
+          stopLife > 0
+        if (!isExplicitStopResurrect) {
+          break
+        }
+        unit.reviveMonster(stopLife, 1)
+        this.npcMotion.reviveMonster(uId, stopLife, 1)
+        unit.diedAtMs = undefined
+        this._deadSoundUnitIds.delete(unit.id)
+        clearRevivedCorpseMarks113c(unit)
+      }
+      if (!unit.dead && typeof evAny.lifePct === 'number' && evAny.lifePct > 0) {
+        unit.lifePct = evAny.lifePct
+      }
       const preserveActiveCast =
         moveMode === 'stop' &&
         unit.castState !== undefined &&
@@ -2092,9 +2113,9 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         const prevMode = unit.mode
         this.npcMotion.applyCommandForUnit(uId, npcPayload)
         const moveLifeByte =
-          typeof evAny.lifePct === 'number' && evAny.lifePct >= 0
+          typeof evAny.lifePct === 'number' && evAny.lifePct > 0
             ? evAny.lifePct
-            : npcPayload.opcode === 0x6d && typeof npcPayload.s[2] === 'number' && npcPayload.s[2] >= 0
+            : npcPayload.opcode === 0x6d && typeof npcPayload.s[2] === 'number' && npcPayload.s[2] > 0
               ? npcPayload.s[2]
               : undefined
         if (moveLifeByte !== undefined && !unit.dead) {
@@ -3212,25 +3233,12 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         // so any corpse-consumption marks left on it must not keep the living unit hidden.
         if (entry.state === 96 && unit.unitType === 'monster') {
           clearRevivedCorpseMarks113c(unit)
-          unit.dead = false
-          if (unit.mode === 0 || unit.mode === 12) {
-            unit.mode = 1
-          }
-          if (unit.lifePct <= 0) {
-            unit.lifePct = 128
-          }
-          unit.deathFxTriggered = false
+          const reviveLife = unit.lifePct > 0 ? unit.lifePct : 128
+          const reviveMode = unit.mode === 0 || unit.mode === 12 ? 1 : unit.mode
+          unit.reviveMonster(reviveLife, reviveMode)
+          this.npcMotion.reviveMonster(unit.id, reviveLife, reviveMode)
+          unit.diedAtMs = undefined
           this._deadSoundUnitIds.delete(unit.id)
-          const npcUnit = this.npcMotion.getUnit(unit.id)
-          if (npcUnit) {
-            npcUnit.dwFlags = (npcUnit.dwFlags & ~0x10000) >>> 0
-            if (npcUnit.dwAnimMode === 0 || npcUnit.dwAnimMode === 12) {
-              npcUnit.dwAnimMode = 1
-            }
-            if (npcUnit.lifeByte <= 0) {
-              npcUnit.lifeByte = 128
-            }
-          }
           const existingPet = this._pets.get(unit.id)
           if (existingPet) {
             existingPet.isDead = false
@@ -5234,6 +5242,27 @@ export function applyUnitModeImmediateImpl(
     ) {
       this.npcMotion.reassignMonster(uId, unit.x, unit.y)
     }
+    const isDeathOrCorpseCmd =
+      ev.mode === 0 || ev.mode === 12 || ev.npc?.cmd === 0x08 || ev.npc?.cmd === 0x09
+    const isSettledCorpseOrRevived = unit.mode === 12 || unit.states.has(96)
+    const rawCmd = ev.npc?.cmd
+    const isResurrectMode =
+      ev.mode === 14 ||
+      ((ev.mode === 1 || ev.mode === 8) &&
+        (rawCmd === undefined ||
+          rawCmd === 0x07 ||
+          rawCmd === 0x0c ||
+          rawCmd === 0x0d ||
+          rawCmd === 0x15 ||
+          rawCmd === 0x16))
+    const isExplicitResurrect =
+      !isDeathOrCorpseCmd &&
+      isSettledCorpseOrRevived &&
+      isResurrectMode &&
+      (ev.lifePct === undefined || ev.lifePct > 0)
+    if (wasDead && !isDeathOrCorpseCmd && !isExplicitResurrect) {
+      return
+    }
     const now = this.resolveEventNowMs(nowMs)
     const preserveActiveCast =
       ev.mode === 1 &&
@@ -5246,30 +5275,29 @@ export function applyUnitModeImmediateImpl(
     if (ev.hitClass !== undefined) {
       unit.hitClass = ev.hitClass
     }
-    if (ev.lifePct !== undefined) {
-      unit.lifePct = ev.lifePct
-      npcUnit.lifeByte = ev.lifePct
-    } else if (
-      ev.mode !== undefined &&
-      ev.mode !== 0 &&
-      ev.mode !== 12 &&
-      unit.lifePct <= 0
-    ) {
-      unit.lifePct = 128
-      npcUnit.lifeByte = 128
-    }
-    if (
-      wasDead &&
-      ev.mode !== undefined &&
-      ev.mode !== 0 &&
-      ev.mode !== 12 &&
-      (ev.lifePct === undefined || ev.lifePct > 0)
-    ) {
-      npcUnit.dwFlags = (npcUnit.dwFlags & ~0x10000) >>> 0
-      unit.deathFxTriggered = false
+    if (wasDead && isExplicitResurrect) {
+      const reviveLife = ev.lifePct !== undefined && ev.lifePct > 0 ? ev.lifePct : 128
+      unit.reviveMonster(reviveLife, ev.mode!)
+      this.npcMotion.reviveMonster(uId, reviveLife, ev.mode!)
+      unit.diedAtMs = undefined
       this._deadSoundUnitIds.delete(unit.id)
       clearRevivedCorpseMarks113c(unit)
       applyClientMonsterInitOverlays113c(unit, () => this._nextOverlayId++)
+    } else if (isDeathOrCorpseCmd) {
+      unit.lifePct = 0
+      npcUnit.lifeByte = 0
+    } else if (ev.npc !== undefined) {
+      if (
+        (ev.npc.cmd === 0x06 || ev.npc.cmd === 0x07) &&
+        ev.lifePct !== undefined &&
+        ev.lifePct > 0
+      ) {
+        unit.lifePct = ev.lifePct
+        npcUnit.lifeByte = ev.lifePct
+      }
+    } else if (ev.lifePct !== undefined && ev.lifePct > 0) {
+      unit.lifePct = ev.lifePct
+      npcUnit.lifeByte = ev.lifePct
     }
     if (ev.npc !== undefined) {
       this.npcMotion.applyCommandForUnit(uId, ev.npc)

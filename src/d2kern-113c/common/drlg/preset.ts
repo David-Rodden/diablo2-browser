@@ -6,8 +6,10 @@
  */
 import type { Memory113c } from '../../mem/sparse-memory.ts'
 import { D2DrlgCoordStrc, D2DrlgCoordStrc_SIZE, D2DrlgMapStrc } from '../../mem/layout.generated.ts'
+import { D2CommonAssertError } from '../inline-helpers.ts'
 import { sdiv32 } from '../int-math.ts'
 import { STATLIST_FindStatIndex113c } from '../statlist.ts'
+import { DRLGPRESET_FreePresetRoomGrids113c } from './drlg-grid.ts'
 
 /**
  * `@va D2Common:0x6FD59C60` (`DRLGPRESET_FinalizePopsLocations`, not exported; LTCG `esi = pDrlgMap` + 1 stack arg `nPops`, `ret 4`).
@@ -86,13 +88,13 @@ export function DRLGPRESET_ReadFileData113c(
   pBuffer: number,
 ): void {
   if (hFile === 0) {
-    throw new Error('DRLGPRESET_ReadFileData113c: hFile == 0 (line 135)')
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DRLG\\Preset.cpp', 135)
   }
   if (pBuffer === 0) {
-    throw new Error('DRLGPRESET_ReadFileData113c: Fog.#10104 failed (line 143)')
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DRLG\\Preset.cpp', 143)
   }
   if ((nSize | 0) < 0) {
-    throw new Error('DRLGPRESET_ReadFileData113c: short read (line 146)')
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DRLG\\Preset.cpp', 146)
   }
   const len = nSize >>> 0
   for (let i = 0; i < len; i++) {
@@ -115,7 +117,7 @@ export function DRLGPRESET_GetFileSize113c(
   lpFileSizeHigh: number,
 ): number {
   if (hFile === 0) {
-    throw new Error('DRLGPRESET_GetFileSize113c: hFile == 0 (line 89)')
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DRLG\\Preset.cpp', 89)
   }
   const sizeLow = m.u32(hFile >>> 0)
   if (lpFileSizeHigh !== 0) {
@@ -123,7 +125,7 @@ export function DRLGPRESET_GetFileSize113c(
     m.setU32(lpFileSizeHigh >>> 0, sizeHigh)
   }
   if (sizeLow === 0) {
-    throw new Error('DRLGPRESET_GetFileSize113c: file size == 0 (line 95)')
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DRLG\\Preset.cpp', 95)
   }
   return sizeLow | 0
 }
@@ -413,6 +415,192 @@ export function STATLIST_EnumerateCopyListStats113c(
 
     i = (i + 1) | 0
   } while (i < ((m.u16((pStatListEx + 0x54) >>> 0) << 16) >> 16))
+}
+
+/**
+ * `D2Common.dll` `.bss` `gpCachedPresetFileListHead` (`D2PresetFileCacheNodeStrc*`).
+ *
+ * `@va D2Common:0x6FDF147C`
+ */
+export const GP_CACHED_PRESET_FILE_LIST_HEAD_VA_6FDF147C = 0x6fdf147c
+
+/**
+ * `@va D2Common:0x6FD59900` (`DRLGPRESET_LoadFileFromArchive113c`, not exported;
+ * custom LTCG `eax = szFileName`, stack `[esp+4] = pMemPool`, `[esp+8] = pdwSize`, `ret 8`).
+ *
+ * Opens `szFileName` via `Fog.#10102` (`FOG_MPQOpenFile(ecx=szFileName, edx=&hFile)`),
+ * queries file size via `DRLGPRESET_GetFileSize113c(hFile, &dwSizeHigh)` (`0x6FD59700`),
+ * allocates `dwSize + 0x320` (`dwSize + 800`) bytes via `Fog.#10042`, reads `dwSize` bytes
+ * via `DRLGPRESET_ReadFileData113c(hFile, dwSize, pBuf)` (`0x6FD59610`), asserts `hFile != 0`
+ * (`line 73`, `0x49`), closes `hFile` via `Fog.#10103`, writes `*pdwSize = dwSize` when `pdwSize != 0`,
+ * and returns `pBuf`.
+ */
+export function DRLGPRESET_LoadFileFromArchive113c(
+  m: Memory113c,
+  szFileName: number,
+  _pMemPool: number,
+  pdwSize: number,
+): number {
+  const fileNamePtr = szFileName >>> 0
+  if (fileNamePtr === 0) {
+    return 0
+  }
+  const hFile = m.u32((fileNamePtr + 0x10) >>> 0)
+  if (hFile === 0) {
+    return 0
+  }
+  const dwSize = DRLGPRESET_GetFileSize113c(m, hFile, 0)
+  const allocSize = ((dwSize | 0) + 0x320) >>> 0
+  if (allocSize === 0) {
+    return 0
+  }
+  const pBuf = m.alloc(allocSize)
+  if (pBuf === 0) {
+    return 0
+  }
+  DRLGPRESET_ReadFileData113c(m, hFile, dwSize, pBuf)
+  if (pdwSize !== 0) {
+    m.setU32(pdwSize >>> 0, dwSize >>> 0)
+  }
+  return pBuf >>> 0
+}
+
+/**
+ * `@va D2Common:0x6FD59EA0` (`DRLGPRESET_CopyMapPresetUnitNode113c`, not exported;
+ * custom LTCG `eax = pSrcNode`, `ebx = nOffsetY`, stack `[esp+4] = pMemPool`, `[esp+8] = nOffsetX`, `ret 8`).
+ *
+ * Allocates and zeroes a `0x20`-byte `D2PresetUnitStrc` via `Fog.#10045`, copies fields from `pSrcNode`
+ * translating `nXPos (+0x08) += nOffsetX` and `nYPos (+0x18) += nOffsetY`, and when `pSrcNode->pSaveHdr (+0x10) != 0`,
+ * clones it via `DRLGPRESET_CloneSaveHeaderBlock113c` (`0x6FD59DE0`) and offsets each 12-byte entry's
+ * `(+0x04, +0x08)` coordinates by `(nOffsetX, nOffsetY)`.
+ */
+export function DRLGPRESET_CopyMapPresetUnitNode113c(
+  m: Memory113c,
+  pSrcNode: number,
+  nOffsetY: number,
+  pMemPool: number,
+  nOffsetX: number,
+): number {
+  const src = pSrcNode >>> 0
+  const offX = nOffsetX | 0
+  const offY = nOffsetY | 0
+  const pNew = m.alloc(0x20)
+  m.fill(pNew, 0x20, 0)
+
+  m.setU32((pNew + 0x14) >>> 0, m.u32((src + 0x14) >>> 0))
+  m.setU32((pNew + 0x04) >>> 0, m.u32((src + 0x04) >>> 0))
+  m.setU32(pNew, m.u32(src))
+  m.setU32((pNew + 0x08) >>> 0, ((m.u32((src + 0x08) >>> 0) | 0) + offX) >>> 0)
+  m.setU32((pNew + 0x18) >>> 0, ((m.u32((src + 0x18) >>> 0) | 0) + offY) >>> 0)
+  m.setU32((pNew + 0x1c) >>> 0, m.u32((src + 0x1c) >>> 0))
+
+  const pSrcSaveHdr = m.u32((src + 0x10) >>> 0)
+  if (pSrcSaveHdr !== 0) {
+    const pCloned = DRLGPRESET_CloneSaveHeaderBlock113c(m, pMemPool, pSrcSaveHdr) >>> 0
+    m.setU32((pNew + 0x10) >>> 0, pCloned)
+    const count0 = m.u32(pCloned) >>> 0
+    if (count0 > 0) {
+      let idx = 0
+      let byteOff = 0
+      do {
+        const pHdr1 = m.u32((pNew + 0x10) >>> 0)
+        const pArr1 = m.u32((pHdr1 + 0x04) >>> 0)
+        const pX = (pArr1 + byteOff + 0x04) >>> 0
+        m.setU32(pX, ((m.u32(pX) | 0) + offX) >>> 0)
+
+        const pHdr2 = m.u32((pNew + 0x10) >>> 0)
+        const pArr2 = m.u32((pHdr2 + 0x04) >>> 0)
+        const pY = (pArr2 + byteOff + 0x08) >>> 0
+        m.setU32(pY, ((m.u32(pY) | 0) + offY) >>> 0)
+
+        const pHdr3 = m.u32((pNew + 0x10) >>> 0)
+        const curCount = m.u32(pHdr3) >>> 0
+        idx = (idx + 1) >>> 0
+        byteOff = (byteOff + 0x0c) >>> 0
+        if (idx >= curCount) {
+          break
+        }
+      } while (true)
+    }
+  }
+  return pNew >>> 0
+}
+
+/**
+ * `@va D2Common:0x6FD5A5B0` (`DRLGPRESET_ReleaseCachedPresetFile113c`, not exported;
+ * `__stdcall(ppFileData)`, `ret 4`).
+ *
+ * Searches `gpCachedPresetFileListHead` (`0x6FDF147C`) for the cache node whose `pDrlgFile (+0x108)`
+ * matches `*ppFileData`, decrements `nRefCount (+0x104)`, and when `nRefCount <= 0`, unlinks the node,
+ * frees `*ppFileData` via `DRLGPRESET_FreeDrlgFile113c` (`0x6FD59FA0`), frees the cache node via `Fog.#10046`,
+ * and zeroes `*ppFileData`.
+ */
+export function DRLGPRESET_ReleaseCachedPresetFile113c(
+  m: Memory113c,
+  ppFileData: number,
+): void {
+  const ppFile = ppFileData >>> 0
+  const pTarget = m.u32(ppFile)
+  if (pTarget === 0) {
+    return
+  }
+
+  let pCurr = m.u32(GP_CACHED_PRESET_FILE_LIST_HEAD_VA_6FDF147C)
+  let pPrev = 0
+  while (pCurr !== 0) {
+    if (m.u32((pCurr + 0x108) >>> 0) === pTarget) {
+      break
+    }
+    pPrev = pCurr
+    pCurr = m.u32((pCurr + 0x10c) >>> 0)
+  }
+
+  const nextRef = ((m.u32((pCurr + 0x104) >>> 0) | 0) - 1) | 0
+  m.setU32((pCurr + 0x104) >>> 0, nextRef >>> 0)
+  if (pCurr === 0 || nextRef > 0) {
+    return
+  }
+
+  const pNext = m.u32((pCurr + 0x10c) >>> 0)
+  if (pPrev !== 0) {
+    m.setU32((pPrev + 0x10c) >>> 0, pNext)
+  } else {
+    m.setU32(GP_CACHED_PRESET_FILE_LIST_HEAD_VA_6FDF147C, pNext)
+  }
+
+  DRLGPRESET_FreeDrlgFile113c(m, m.u32(ppFile))
+  const freeFn = (m as { free?: (p: number) => void }).free
+  freeFn?.call(m, pCurr)
+  m.setU32(ppFile, 0)
+}
+
+/**
+ * `@va D2Common:0x6FD5AEC0` (`DRLGPRESET_FreePresetRoomData113c`, not exported;
+ * custom LTCG `esi = pRoomEx`, plain `ret`).
+ *
+ * Reads `pMemPool = pRoomEx->pLevel (+0x58)->pDrlg (+0x1B4)->pMemPool (+0x478)` and `pPreset = pRoomEx->pTypeData (+0x20)`.
+ * When `pPreset != 0`, calls `DRLGPRESET_FreePresetRoomGrids113c(pRoomEx, pMemPool)` (`0x6FD5A440`), frees non-NULL
+ * `pPreset->pMazeData (+0xF0)` and `pPreset` via `Fog.#10046`, and zeroes `pRoomEx->pTypeData (+0x20)`.
+ */
+export function DRLGPRESET_FreePresetRoomData113c(
+  m: Memory113c,
+  pRoomEx: number,
+): void {
+  const roomEx = pRoomEx >>> 0
+  const pLevel = m.u32((roomEx + 0x58) >>> 0)
+  const pDrlg = m.u32((pLevel + 0x1b4) >>> 0)
+  const pMemPool = m.u32((pDrlg + 0x478) >>> 0)
+  const pPreset = m.u32((roomEx + 0x20) >>> 0)
+  if (pPreset !== 0) {
+    DRLGPRESET_FreePresetRoomGrids113c(m, roomEx, pMemPool)
+    const freeFn = (m as { free?: (p: number) => void }).free
+    const pMazeData = m.u32((pPreset + 0xf0) >>> 0)
+    if (pMazeData !== 0) {
+      freeFn?.call(m, pMazeData)
+    }
+    freeFn?.call(m, pPreset)
+    m.setU32((roomEx + 0x20) >>> 0, 0)
+  }
 }
 
 

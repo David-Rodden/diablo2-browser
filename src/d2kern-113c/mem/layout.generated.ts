@@ -276,7 +276,8 @@ export const D2DynamicPathStrc = {
   nIDAStarInitFScore: { off: 0x92, type: 'u8', count: 1 },
   nStepNum: { off: 0x93, type: 'u8', count: 1 },
   nDistance: { off: 0x94, type: 'u8', count: 1 },
-  pfnPathfind: { off: 0x98, type: 'ptr', count: 1 },
+  nPathTypeDirOffset: { off: 0x98, type: 'u32', count: 1 },
+  pfnPathfind: { off: 0x98, type: 'u32', count: 1 },
   wPathPoints: { off: 0x9C, type: 'u16', count: 156 },
   nSavedStepsCount: { off: 0x1D4, type: 'u32', count: 1 },
   wSavedSteps: { off: 0x1D8, type: 'u16', count: 20 },
@@ -418,8 +419,14 @@ export const D2RoomCollisionGridStrc = {
 export const D2InventoryStrc_SIZE = 64
 export const D2InventoryStrc = {
   dwSignature: { off: 0x0, type: 'u32', count: 1 },
+  pMemPool: { off: 0x4, type: 'ptr', count: 1 },
+  pOwner: { off: 0x8, type: 'ptr', count: 1 },
   pFirstItem: { off: 0xC, type: 'ptr', count: 1 },
   pLastItem: { off: 0x10, type: 'ptr', count: 1 },
+  pGrids: { off: 0x14, type: 'ptr', count: 1 },
+  nGridCount: { off: 0x18, type: 'u32', count: 1 },
+  dwWeaponGuid: { off: 0x1C, type: 'u32', count: 1 },
+  dwWeaponId: { off: 0x1C, type: 'u32', count: 1 },
   pCursorItem: { off: 0x20, type: 'ptr', count: 1 },
   dwLeftItemGuid: { off: 0x24, type: 'u32', count: 1 },
   dwItemCount: { off: 0x28, type: 'u32', count: 1 },
@@ -530,6 +537,8 @@ export const D2MonStatsTxt = {
 export const D2MonStats2Txt_SIZE = 308
 export const D2MonStats2Txt = {
   dwFlags: { off: 0x4, type: 'u32', count: 1 },
+  nSizeX: { off: 0x8, type: 'u8', count: 1 },
+  nSizeY: { off: 0x9, type: 'u8', count: 1 },
   dwModeFlags: { off: 0xF0, type: 'u32', count: 1 },
 } as const satisfies Record<string, FieldLayout113c>
 
@@ -537,8 +546,12 @@ export const D2MonStats2Txt = {
 export const D2SkillsTxt_SIZE = 572
 export const D2SkillsTxt = {
   wSkillId: { off: 0x0, type: 'u16', count: 1 },
+  nFlags2: { off: 0x6, type: 'u8', count: 1 },
   nCharClass: { off: 0xC, type: 'u8', count: 1 },
+  nAnim: { off: 0x12, type: 'u8', count: 1 },
   wPassiveState: { off: 0x94, type: 'u16', count: 1 },
+  wSummon: { off: 0xBC, type: 'u16', count: 1 },
+  nSummode: { off: 0xBF, type: 'u8', count: 1 },
   wMaxLvl: { off: 0x12C, type: 'u16', count: 1 },
   dwParam1: { off: 0x148, type: 'u32', count: 1 },
   dwParam2: { off: 0x14C, type: 'u32', count: 1 },
@@ -567,6 +580,7 @@ export const D2MissilesTxt = {
   dwELevLen1: { off: 0x120, type: 'u32', count: 1 },
   dwELevLen2: { off: 0x124, type: 'u32', count: 1 },
   dwELevLen3: { off: 0x128, type: 'u32', count: 1 },
+  nSize: { off: 0x18A, type: 'u8', count: 1 },
 } as const satisfies Record<string, FieldLayout113c>
 
 /** D2Common 0x6FD512E8 imul eax, eax, 0xC4 (record stride in the CharStats lookup 0x6FD512D0) */
@@ -580,9 +594,27 @@ export const D2CharStatsTxt = {
 /** D2Common 0x6FD51318 imul eax, eax, 0xE4 (record stride in the ItemTypes lookup 0x6FD51300); itemtypes.bin is 4 + 103 * 0xE4 bytes */
 export const D2ItemTypesTxt_SIZE = 228
 export const D2ItemTypesTxt = {
+  nBody: { off: 0x9, type: 'u8', count: 1 },
+  nBodyLoc1: { off: 0xA, type: 'u8', count: 1 },
+  nBodyLoc2: { off: 0xB, type: 'u8', count: 1 },
+  wQuiver: { off: 0xC, type: 'u16', count: 1 },
   wShoots: { off: 0xE, type: 'u16', count: 1 },
   nNormal: { off: 0x10, type: 'u8', count: 1 },
+  nReload: { off: 0x11, type: 'u8', count: 1 },
+  nReEquip: { off: 0x12, type: 'u8', count: 1 },
+  nAutoStack: { off: 0x13, type: 'u8', count: 1 },
+  nMagic: { off: 0x14, type: 'u8', count: 1 },
+  nRare: { off: 0x15, type: 'u8', count: 1 },
+  nNormalAllowed: { off: 0x16, type: 'u8', count: 1 },
+  nBeltable: { off: 0x19, type: 'u8', count: 1 },
+  nMaxSock1: { off: 0x1A, type: 'u8', count: 1 },
+  nMaxSock25: { off: 0x1B, type: 'u8', count: 1 },
+  nMaxSock40: { off: 0x1C, type: 'u8', count: 1 },
+  nStaffMods: { off: 0x1F, type: 'u8', count: 1 },
   nRarity: { off: 0x21, type: 'u8', count: 1 },
+  nClass: { off: 0x21, type: 'u8', count: 1 },
+  nStorePage: { off: 0x22, type: 'u8', count: 1 },
+  nVarInvGfx: { off: 0x23, type: 'u8', count: 1 },
 } as const satisfies Record<string, FieldLayout113c>
 
 /** D2Common 0x6FD7D9CA mov edx, 0x230 */
@@ -746,6 +778,7 @@ export const D2DrlgTileDataStrc = {
 /** D2Common 0x6FDC0773 imul eax, eax, 0x1C */
 export const D2IdaStarNodeStrc_SIZE = 28
 export const D2IdaStarNodeStrc = {
+  nVisitCount: { off: 0x6, type: 'u16', count: 1 },
   wPosX: { off: 0x8, type: 'u16', count: 1 },
   wPosY: { off: 0xA, type: 'u16', count: 1 },
   pBestDirection: { off: 0xC, type: 'ptr', count: 1 },
@@ -816,6 +849,8 @@ export const D2ObjectDataStrc = {
 /** D2Common 0x6FD8E9BC imul eax, eax, 0x1C0 (record stride in DATATBLS_GetObjectsTxtRecord) */
 export const D2ObjectsTxt_SIZE = 448
 export const D2ObjectsTxt = {
+  dwSizeX: { off: 0xD0, type: 'u32', count: 1 },
+  dwSizeY: { off: 0xD4, type: 'u32', count: 1 },
   dwFrameCnt: { off: 0xD8, type: 'u32', count: 8 },
   nOperateFn: { off: 0x13A, type: 'u8', count: 1 },
   bIsDoor: { off: 0x13A, type: 'u8', count: 1 },
@@ -887,6 +922,8 @@ export const D2HirelingTxt = {
   wVersion: { off: 0x0, type: 'u16', count: 1 },
   dwSubTypeId: { off: 0x4, type: 'u32', count: 1 },
   dwClass: { off: 0x8, type: 'u32', count: 1 },
+  dwAct: { off: 0xC, type: 'u32', count: 1 },
+  nAct: { off: 0xC, type: 'u32', count: 1 },
   dwDifficulty: { off: 0x10, type: 'u32', count: 1 },
   dwHirelingLevel: { off: 0x1C, type: 'u32', count: 1 },
   wNameFirst: { off: 0x114, type: 'u16', count: 1 },
@@ -949,6 +986,8 @@ export const D2RoomLogicalInfoStrc = {
 /** D2Common 0x6FD51788 imul eax, eax, 0x3C (record stride in DATATBLS_GetStatesTxtRecordInline) */
 export const D2StatesTxt_SIZE = 60
 export const D2StatesTxt = {
+  nGfxType: { off: 0x2D, type: 'u8', count: 1 },
+  wGfxClass: { off: 0x2E, type: 'u16', count: 1 },
 } as const satisfies Record<string, FieldLayout113c>
 
 /** D2Common 0x6FD517B8 imul eax, eax, 0x144 (record stride in DATATBLS_GetItemStatCostTxtRecordInline) */
@@ -1109,4 +1148,33 @@ export const D2MonLvlTxt = {
 /** D2Common 0x6FD6B8CC imul eax, eax, 0x148 (record stride in DATATBLS_GetCubemainTxtRecord) */
 export const D2CubemainTxt_SIZE = 328
 export const D2CubemainTxt = {
+} as const satisfies Record<string, FieldLayout113c>
+
+/** D2Common 0x6FD91E2D add edi, 0xA0 (AnimData.d2 record stride in ANIMDATA_FindRecordByCode 0x6FD91DD0); +0x00 char szCode[8] compared by 0x6FD91D00 */
+export const D2AnimDataRecordStrc_SIZE = 160
+export const D2AnimDataRecordStrc = {
+  dwFramesPerDirection: { off: 0x8, type: 'u32', count: 1 },
+  dwAnimSpeed: { off: 0xC, type: 'u32', count: 1 },
+  bFrameEvents: { off: 0x10, type: 'u8', count: 144 },
+} as const satisfies Record<string, FieldLayout113c>
+
+/** D2Common 0x6FD91E64 mov edx, 0x4A4 (FOG alloc in ANIMDATA_Load 0x6FD91E50, pointer stored to 0x6FDF0B4C at 0x6FDB623F); +0x404 embedded default D2AnimDataRecordStrc */
+export const D2AnimDataTableStrc_SIZE = 1188
+export const D2AnimDataTableStrc = {
+  pAnimDataFile: { off: 0x0, type: 'ptr', count: 1 },
+  pHashBuckets: { off: 0x4, type: 'ptr', count: 256 },
+  dwDefaultFramesPerDirection: { off: 0x40C, type: 'u32', count: 1 },
+  dwDefaultAnimSpeed: { off: 0x410, type: 'u32', count: 1 },
+} as const satisfies Record<string, FieldLayout113c>
+
+/** D2Common 0x6FD86230 sub esp, 0x34 (stack frame of PATH_Recalculate 0x6FD86230 passed at [esp+0x10]..[esp+0x44] to 0x6FD85470 / 0x6FD856E0) */
+export const D2PathInfoStrc_SIZE = 52
+export const D2PathInfoStrc = {
+  startX: { off: 0x0, type: 'u16', count: 1 },
+  startY: { off: 0x2, type: 'u16', count: 1 },
+  targetX: { off: 0x4, type: 'u16', count: 1 },
+  targetY: { off: 0x6, type: 'u16', count: 1 },
+  pStartRoom: { off: 0x8, type: 'ptr', count: 1 },
+  pTargetRoom: { off: 0xC, type: 'ptr', count: 1 },
+  pDynamicPath: { off: 0x30, type: 'ptr', count: 1 },
 } as const satisfies Record<string, FieldLayout113c>

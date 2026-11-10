@@ -118,3 +118,58 @@ export function DATATBLS_CalcMissileSubLoopFrames113c(
   const nSubLoop = m.get(pRec, D2MissilesTxt.nSubLoop)
   return (sdiv32(prod, 8) + nSubLoop) >>> 0
 }
+
+// ============================================================================
+// K1r3 Iteration 9 Lane B — Batch I9B-B (missile-tbls-113c.ts): RoomEx status refresh helpers
+// ============================================================================
+
+/**
+ * Shared body of the four byte-identical `DRLGROOM_RefreshStatusFromCounts*` clones
+ * (0x6FDCBC20 / 0x6FDCBE10 / 0x6FDCBE50 / 0x6FDCBE90).
+ *
+ * - `s = pRoomEx->nRoomStatus (+0x44)`; if `s <u 4` (`cmp cl, 4; jae`) and `pRoomEx->wStatusCount[s] (+0xC + 2*s) != 0`,
+ *   returns `pRoomEx` without writing.
+ * - Otherwise `b` = first index in `0..3` whose `wStatusCount[b] != 0` (`inc bl; cmp bl, 4; jb`), or `4` when all are 0.
+ * - `r = DRLGROOM_SetStatusLink113c(pRoomEx, b)` (`call 0x6FDCBB70`, returns `pRoomEx` in `eax`), then
+ *   `r->nRoomStatus = b` (`mov [eax+0x44], bl`) and returns `r`.
+ */
+function drlgRoomRefreshStatusFromCounts(m: Memory113c, pRoomEx: number): number {
+  const room = pRoomEx >>> 0
+  const s = m.get(room, D2RoomExStrc.nRoomStatus)
+  if (s < 4 && m.get(room, D2RoomExStrc.wStatusCount, s) !== 0) {
+    return room
+  }
+  let b = 0
+  do {
+    if (m.get(room, D2RoomExStrc.wStatusCount, b) !== 0) break
+    b = (b + 1) & 0xff
+  } while (b < 4)
+  const r = DRLGROOM_SetStatusLink113c(m, room, b)
+  m.set(r, D2RoomExStrc.nRoomStatus, b)
+  return r
+}
+
+/** `@va D2Common:0x6FDCBC20` (internal, custom reg `eax = pRoomEx` -> `eax = pRoomEx`, `ebx` preserved). */
+export function DRLGROOM_RefreshStatusFromCountsEax113c(m: Memory113c, pRoomEx: number): number {
+  return drlgRoomRefreshStatusFromCounts(m, pRoomEx)
+}
+
+/** `@va D2Common:0x6FDCBE10` (internal, `__fastcall(ecx = pRoomEx)` -> `eax = pRoomEx`; `mov eax, ecx` then the 0x6FDCBC20 body). */
+export function DRLGROOM_RefreshStatusFromCountsA113c(m: Memory113c, pRoomEx: number): number {
+  return drlgRoomRefreshStatusFromCounts(m, pRoomEx)
+}
+
+/** `@va D2Common:0x6FDCBE50` (internal, `__fastcall(ecx = pRoomEx)` -> `eax = pRoomEx`; byte-identical to 0x6FDCBE10). */
+export function DRLGROOM_RefreshStatusFromCountsB113c(m: Memory113c, pRoomEx: number): number {
+  return drlgRoomRefreshStatusFromCounts(m, pRoomEx)
+}
+
+/** `@va D2Common:0x6FDCBE90` (internal, `__fastcall(ecx = pRoomEx)` -> `eax = pRoomEx`; byte-identical to 0x6FDCBE10). */
+export function DRLGROOM_RefreshStatusFromCounts113c(m: Memory113c, pRoomEx: number): number {
+  return drlgRoomRefreshStatusFromCounts(m, pRoomEx)
+}
+
+/** `@va D2Common:0x6FDCBED0` (internal, `__fastcall(ecx = pRoomEx)` -> void; `mov eax, ecx; jmp 0x6FDCBD40`). */
+export function DRLGROOM_SetStatusLink0Fastcall113c(m: Memory113c, pRoomEx: number): void {
+  DRLGROOM_SetStatusLink0_113c(m, pRoomEx)
+}

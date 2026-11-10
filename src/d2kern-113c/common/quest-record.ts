@@ -7,7 +7,17 @@
  * - `0x6FD7D210`: `DRLG_SetWarpId` (LTCG `eax = pWarp`, `ebx = nVis`, `ecx = nIndex`, `[esp+4] = nWarpId`, `ret 0x4`)
  */
 import type { Memory113c } from '../mem/sparse-memory.ts'
-import { D2DrlgWarpStrc, D2SkillListStrc, D2UnitStrc } from '../mem/layout.generated.ts'
+import {
+  D2DrlgWarpStrc,
+  D2HirelingTxt,
+  D2SkillListStrc,
+  D2UnitStrc,
+} from '../mem/layout.generated.ts'
+import {
+  DATATBLS_GetHirelingTxtRecordFromClassId113c,
+  DATATBLS_GetHirelingTxtRecordFromNameId113c,
+} from '../tables/monster-tbls-113c.ts'
+import { D2CommonAssertError } from './inline-helpers.ts'
 import { imul32 } from './int-math.ts'
 
 /** `.data` `sgDefaultWaypointWordIdx` (`i16`) at `0x6FDE9C58` (`0x6FD80A49 movsx eax, word ptr ds:0x6fde9c58`). */
@@ -19,9 +29,10 @@ export const G_INTRO_DATA_TABLE_VA_113C = 0x6fdf1420
 /** `.bss` `gnIntroDataTableCount` (`i32`) at `0x6FDF1424` (`0x6FD80A61 mov edx, ds:0x6fdf1424`). */
 export const G_INTRO_DATA_COUNT_VA_113C = 0x6fdf1424
 
-function fogAssert113c(line: number, expr: string): never {
-  throw new Error(`Fog.#10024/10265 assert at line ${line}: ${expr}`)
-}
+const QUESTRECORD_ASSERT_FILE_113C = '..\\Source\\D2Common\\QuestRecord\\QuestRecord.cpp'
+const UNITS_ASSERT_FILE_113C = '..\\Source\\D2Common\\Units\\Units.cpp'
+const SKILLS_ASSERT_FILE_113C = '..\\Source\\D2Common\\Skills\\Skills.cpp'
+const WAYPOINT_ASSERT_FILE_113C = '..\\Source\\D2Common\\WayPoint\\Waypoint.cpp'
 
 /**
  * `@va D2Common:0x6FD7C990` (`HIRELING_GetExpForLevel`,
@@ -99,7 +110,7 @@ export function QUESTRECORD_CopyRecordToBuffer113c(
   _bUnused: number,
 ): void {
   if ((wSize & 0xffff) !== 0x60) {
-    fogAssert113c(0x84, 'wSize == (MAX_QUEST_STATUS / 8)')
+    throw new D2CommonAssertError(QUESTRECORD_ASSERT_FILE_113C, 0x84)
   }
   const qd = pQuestData >>> 0
   const dst = pBuffer >>> 0
@@ -145,7 +156,7 @@ export function QUESTRECORD_ClearQuestStateBits2To11_113c(
 ): void {
   const qd = pQuestData >>> 0
   if (qd === 0) {
-    fogAssert113c(0x3e, 'ptQuestData')
+    throw new D2CommonAssertError(QUESTRECORD_ASSERT_FILE_113C, 0x3e)
   }
   const questBase = (nQuest << 4) | 0
   for (let state = 2; state < 12; state++) {
@@ -172,7 +183,7 @@ export function QUESTRECORD_ClearQuestState113c(
 ): void {
   const qd = pQuestData >>> 0
   if (qd === 0) {
-    fogAssert113c(0x34, 'ptQuestData')
+    throw new D2CommonAssertError(QUESTRECORD_ASSERT_FILE_113C, 0x34)
   }
   const pBuf = m.u32(qd)
   const bitIdx = ((nQuest << 4) + nState) | 0
@@ -196,7 +207,7 @@ export function QUESTRECORD_SetQuestState113c(
 ): void {
   const qd = pQuestData >>> 0
   if (qd === 0) {
-    fogAssert113c(0x29, 'ptQuestData')
+    throw new D2CommonAssertError(QUESTRECORD_ASSERT_FILE_113C, 0x29)
   }
   const pBuf = m.u32(qd)
   const bitIdx = ((nQuest << 4) + nState) | 0
@@ -226,7 +237,7 @@ export function UNITS_InitStaticPathCoords113c(
 ): void {
   const u = pUnit >>> 0
   if (u === 0) {
-    fogAssert113c(0x866, 'hUnit')
+    throw new D2CommonAssertError(UNITS_ASSERT_FILE_113C, 0x866)
   }
   const pStaticPath = m.get(u, D2UnitStrc.pPath)
   const x = nX | 0
@@ -249,11 +260,11 @@ export function UNITS_InitStaticPathCoords113c(
 export function UNITS_GetRightSkill113c(m: Memory113c, pUnit: number): number {
   const u = pUnit >>> 0
   if (u === 0) {
-    fogAssert113c(0x64a, 'hUnit')
+    throw new D2CommonAssertError(UNITS_ASSERT_FILE_113C, 0x64a)
   }
   const pSkills = m.get(u, D2UnitStrc.pSkills)
   if (pSkills === 0) {
-    fogAssert113c(0x40f, 'hSkillList')
+    throw new D2CommonAssertError(SKILLS_ASSERT_FILE_113C, 0x40f)
   }
   return m.get(pSkills, D2SkillListStrc.pRightSkill)
 }
@@ -268,11 +279,11 @@ export function UNITS_GetRightSkill113c(m: Memory113c, pUnit: number): number {
 export function UNITS_GetLeftSkill113c(m: Memory113c, pUnit: number): number {
   const u = pUnit >>> 0
   if (u === 0) {
-    fogAssert113c(0x641, 'hUnit')
+    throw new D2CommonAssertError(UNITS_ASSERT_FILE_113C, 0x641)
   }
   const pSkills = m.get(u, D2UnitStrc.pSkills)
   if (pSkills === 0) {
-    fogAssert113c(0x3ea, 'hSkillList')
+    throw new D2CommonAssertError(SKILLS_ASSERT_FILE_113C, 0x3ea)
   }
   return m.get(pSkills, D2SkillListStrc.pLeftSkill)
 }
@@ -293,11 +304,11 @@ export function UNITS_FreePlayerData113c(
 ): void {
   const u = pPlayerUnit >>> 0
   if (u === 0) {
-    fogAssert113c(0xf6b, 'hPlayer')
+    throw new D2CommonAssertError(UNITS_ASSERT_FILE_113C, 0xf6b)
   }
   const pPlayerDataInit = m.get(u, D2UnitStrc.pUnitData)
   if (pPlayerDataInit === 0) {
-    fogAssert113c(0xf6d, 'hPlayer->pPlayerData')
+    throw new D2CommonAssertError(UNITS_ASSERT_FILE_113C, 0xf6d)
   }
   for (let edi = 0x1c; edi < 0x28; edi += 4) {
     const pPlayerData1 = m.get(u, D2UnitStrc.pUnitData)
@@ -310,7 +321,7 @@ export function UNITS_FreePlayerData113c(
     const wMagic = m.u16(pWaypoint)
     if (wMagic !== 0x0102) {
       if (wMagic !== 0 && wMagic !== 0x0101) {
-        fogAssert113c(0x113, '0')
+        throw new D2CommonAssertError(WAYPOINT_ASSERT_FILE_113C, 0x113)
       }
       m.setU16(pWaypoint, 0x0102)
     }
@@ -332,10 +343,10 @@ export function UNITS_FreePlayerData113c(
 export function UNITS_InitPlayerData113c(m: Memory113c, pPlayerUnit: number): void {
   const u = pPlayerUnit >>> 0
   if (u === 0) {
-    fogAssert113c(0xf4f, 'hPlayer')
+    throw new D2CommonAssertError(UNITS_ASSERT_FILE_113C, 0xf4f)
   }
   if (m.get(u, D2UnitStrc.pUnitData) !== 0) {
-    fogAssert113c(0xf51, 'hPlayer->pPlayerData == NULL')
+    throw new D2CommonAssertError(UNITS_ASSERT_FILE_113C, 0xf51)
   }
   m.get(u, D2UnitStrc.pMemPool)
   const pPlayerData = m.alloc(0x16c)
@@ -384,5 +395,126 @@ export function UNITS_InitPlayerData113c(m: Memory113c, pPlayerUnit: number): vo
   const flagVal = ecx < count ? (1 << (ecx & 31)) >>> 0 : 0
   m.setU32((m.get(u, D2UnitStrc.pUnitData) + 0x2c) >>> 0, flagVal)
   m.setU32((m.get(u, D2UnitStrc.pUnitData) + 0x4c) >>> 0, 0)
+}
+
+/**
+ * `@va D2Common:0x6FD7C9E0` (`D2Common.#10988` `HIRELING_GetActIndex`,
+ * fastcall `ecx = bExpansion`, `edx = nClassId`, `[esp+4] = nNameId`, `ret 4` -> `pRecord->dwAct - 1` or `0`).
+ *
+ * Looks up `D2HirelingTxt` by `(bExpansion, nClassId, 0)` (`0x6FDA3190`), falling back to
+ * `(bExpansion, nNameId, 0)` (`0x6FDA3220`) when null, and returns `pRec->dwAct (+0x0C) - 1` (`0` if neither matched).
+ */
+export function HIRELING_GetActIndex113c(
+  m: Memory113c,
+  bExpansion: number,
+  nClassId: number,
+  nNameId: number,
+): number {
+  let pRec = DATATBLS_GetHirelingTxtRecordFromClassId113c(m, bExpansion, nClassId, 0)
+  if (pRec === 0) {
+    pRec = DATATBLS_GetHirelingTxtRecordFromNameId113c(m, bExpansion, nNameId, 0)
+    if (pRec === 0) return 0
+  }
+  return ((m.get(pRec, D2HirelingTxt.dwAct) | 0) - 1) >>> 0
+}
+
+/**
+ * `@va D2Common:0x6FD80590` (`D2Common.#10859` `PLAYER_StoreSwitchLeftSkill`,
+ * stdcall `[esp+4] = pUnit`, `ret 4`, void).
+ *
+ * No-op unless `pUnit != NULL && pUnit->dwUnitType == 0`. Asserts `pUnit->pPlayerData (+0x14) != NULL`
+ * (`Units.cpp:0x1424`), queries `pSkill = UNITS_GetLeftSkill(pUnit)` (`0x6FD80460`), writes
+ * `pPlayerData + 0x84 = pSkill ? s16(u16(*pSkill)) : 0` before asserting `pSkill != NULL` (`Skills.cpp:0x638`),
+ * then writes `pPlayerData + 0x8C = pSkill->dwOwnerGuid (+0x34)`.
+ */
+export function PLAYER_StoreSwitchLeftSkill113c(m: Memory113c, pUnit: number): void {
+  const u = pUnit >>> 0
+  if (u === 0 || m.get(u, D2UnitStrc.dwUnitType) !== 0) return
+  const pPlayerData = m.get(u, D2UnitStrc.pUnitData)
+  if (pPlayerData === 0) {
+    throw new D2CommonAssertError(UNITS_ASSERT_FILE_113C, 0x1424)
+  }
+  const pSkill = UNITS_GetLeftSkill113c(m, u)
+  const skillId = pSkill !== 0 ? (m.u16(m.u32(pSkill)) << 16) >> 16 : 0
+  m.setU32((pPlayerData + 0x84) >>> 0, skillId >>> 0)
+  if (pSkill === 0) {
+    throw new D2CommonAssertError(SKILLS_ASSERT_FILE_113C, 0x638)
+  }
+  m.setU32((pPlayerData + 0x8c) >>> 0, m.u32((pSkill + 0x34) >>> 0))
+}
+
+/**
+ * `@va D2Common:0x6FD80600` (`D2Common.#10645` `PLAYER_StoreSwitchRightSkill`,
+ * stdcall `[esp+4] = pUnit`, `ret 4`, void).
+ *
+ * No-op unless `pUnit != NULL && pUnit->dwUnitType == 0`. Asserts `pUnit->pPlayerData (+0x14) != NULL`
+ * (`Units.cpp:0x1414`), queries `pSkill = UNITS_GetRightSkill(pUnit)` (`0x6FD80420`), writes
+ * `pPlayerData + 0x80 = pSkill ? s16(u16(*pSkill)) : 0` before asserting `pSkill != NULL` (`Skills.cpp:0x638`),
+ * then writes `pPlayerData + 0x88 = pSkill->dwOwnerGuid (+0x34)`.
+ */
+export function PLAYER_StoreSwitchRightSkill113c(m: Memory113c, pUnit: number): void {
+  const u = pUnit >>> 0
+  if (u === 0 || m.get(u, D2UnitStrc.dwUnitType) !== 0) return
+  const pPlayerData = m.get(u, D2UnitStrc.pUnitData)
+  if (pPlayerData === 0) {
+    throw new D2CommonAssertError(UNITS_ASSERT_FILE_113C, 0x1414)
+  }
+  const pSkill = UNITS_GetRightSkill113c(m, u)
+  const skillId = pSkill !== 0 ? (m.u16(m.u32(pSkill)) << 16) >> 16 : 0
+  m.setU32((pPlayerData + 0x80) >>> 0, skillId >>> 0)
+  if (pSkill === 0) {
+    throw new D2CommonAssertError(SKILLS_ASSERT_FILE_113C, 0x638)
+  }
+  m.setU32((pPlayerData + 0x88) >>> 0, m.u32((pSkill + 0x34) >>> 0))
+}
+
+/**
+ * `@va D2Common:0x6FD80670` (`D2Common.#10088` `PLAYER_StoreLeftSkill`,
+ * stdcall `[esp+4] = pUnit`, `ret 4`, void).
+ *
+ * No-op unless `pUnit != NULL && pUnit->dwUnitType == 0`. Asserts `pUnit->pPlayerData (+0x14) != NULL`
+ * (`Units.cpp:0x1405`), queries `pSkill = UNITS_GetLeftSkill(pUnit)` (`0x6FD80460`), writes
+ * `pPlayerData + 0x74 = pSkill ? s16(u16(*pSkill)) : 0` before asserting `pSkill != NULL` (`Skills.cpp:0x638`),
+ * then writes `pPlayerData + 0x7C = pSkill->dwOwnerGuid (+0x34)`.
+ */
+export function PLAYER_StoreLeftSkill113c(m: Memory113c, pUnit: number): void {
+  const u = pUnit >>> 0
+  if (u === 0 || m.get(u, D2UnitStrc.dwUnitType) !== 0) return
+  const pPlayerData = m.get(u, D2UnitStrc.pUnitData)
+  if (pPlayerData === 0) {
+    throw new D2CommonAssertError(UNITS_ASSERT_FILE_113C, 0x1405)
+  }
+  const pSkill = UNITS_GetLeftSkill113c(m, u)
+  const skillId = pSkill !== 0 ? (m.u16(m.u32(pSkill)) << 16) >> 16 : 0
+  m.setU32((pPlayerData + 0x74) >>> 0, skillId >>> 0)
+  if (pSkill === 0) {
+    throw new D2CommonAssertError(SKILLS_ASSERT_FILE_113C, 0x638)
+  }
+  m.setU32((pPlayerData + 0x7c) >>> 0, m.u32((pSkill + 0x34) >>> 0))
+}
+
+/**
+ * `@va D2Common:0x6FD806D0` (`D2Common.#10374` `PLAYER_StoreRightSkill`,
+ * stdcall `[esp+4] = pUnit`, `ret 4`, void).
+ *
+ * No-op unless `pUnit != NULL && pUnit->dwUnitType == 0`. Asserts `pUnit->pPlayerData (+0x14) != NULL`
+ * (`Units.cpp:0x13F6`), queries `pSkill = UNITS_GetRightSkill(pUnit)` (`0x6FD80420`), writes
+ * `pPlayerData + 0x70 = pSkill ? s16(u16(*pSkill)) : 0` before asserting `pSkill != NULL` (`Skills.cpp:0x638`),
+ * then writes `pPlayerData + 0x78 = pSkill->dwOwnerGuid (+0x34)`.
+ */
+export function PLAYER_StoreRightSkill113c(m: Memory113c, pUnit: number): void {
+  const u = pUnit >>> 0
+  if (u === 0 || m.get(u, D2UnitStrc.dwUnitType) !== 0) return
+  const pPlayerData = m.get(u, D2UnitStrc.pUnitData)
+  if (pPlayerData === 0) {
+    throw new D2CommonAssertError(UNITS_ASSERT_FILE_113C, 0x13f6)
+  }
+  const pSkill = UNITS_GetRightSkill113c(m, u)
+  const skillId = pSkill !== 0 ? (m.u16(m.u32(pSkill)) << 16) >> 16 : 0
+  m.setU32((pPlayerData + 0x70) >>> 0, skillId >>> 0)
+  if (pSkill === 0) {
+    throw new D2CommonAssertError(SKILLS_ASSERT_FILE_113C, 0x638)
+  }
+  m.setU32((pPlayerData + 0x78) >>> 0, m.u32((pSkill + 0x34) >>> 0))
 }
 

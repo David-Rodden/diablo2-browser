@@ -21,9 +21,19 @@ import {
 } from '../mem/layout.generated.ts'
 import {
   D2COMMON_GDWBITMASKS_IAT_VA_113C,
+  D2COMMON_SGPT_DATATABLES_VA_113C,
+  D2CommonAssertError,
   DATATBLS_GetMissilesTxtRecordInline113c,
+  SEED_RollLimitedRandomNumberInline113c,
 } from './inline-helpers.ts'
 import { imul32, sar32 } from './int-math.ts'
+import { INVENTORY_GetActiveWeaponMem113c } from './inventory.ts'
+import { ITEMS_CheckItemTypeIdMem113c, ITEMS_IsTome113c } from './items.ts'
+import { ITEMS_CheckItemTypeIdEquivalent113c } from './skills.ts'
+import {
+  STATLIST_FindStatFirstIndexOrLowerBound113c,
+  STATLIST_GetUnitStatWithLayer113c,
+} from './statlist.ts'
 
 const UNIT_MONSTER = 1
 const UNIT_MISSILE = 3
@@ -415,3 +425,276 @@ export function MISSILE_AllocMissileData113c(m: Memory113c, pMissile: number): v
   m.set(pData, D2MissileDataStrc.dwOwnerId, 0xffffffff)
   m.set(pMissile, D2UnitStrc.pUnitData, pData >>> 0)
 }
+
+/**
+ * `@va D2Common:0x6FD803A0` (`#10511` `SKILLS_GetUsedSkill`): asserts `0x65C` on a null unit
+ * (0x6FD803A8), else `pUnit->pSkills (+0xA8) ? pSkills->pUsedSkill (+0x10) : 0`.
+ */
+function getUsedSkillMem113c(m: Memory113c, pUnit: number): number {
+  const u = pUnit >>> 0
+  if (u === 0) {
+    throw new D2CommonAssertError('Skills.cpp', 0x65c)
+  }
+  const pSkills = m.u32((u + 0xa8) >>> 0)
+  if (pSkills === 0) return 0
+  return m.u32((pSkills + 0x10) >>> 0)
+}
+
+/**
+ * `@va D2Common:0x6FD730F0` (`ITEMS_GetItemTypeFromItem`, stdcall `[esp+4] = pItem`, `ret 4` -> signed
+ * `wType[0]`): asserts `0x67E` on a null item (0x6FD730F8), `0` for non-items, else tail-jumps to
+ * `0x6FD730A0` (`ITEMS_IsTome113c`).
+ */
+export function ITEMS_GetItemTypeFromItemMem113c(m: Memory113c, pItem: number): number {
+  const itm = pItem >>> 0
+  if (itm === 0) {
+    throw new D2CommonAssertError('Items.cpp', 0x67e)
+  }
+  if (m.u32(itm) !== 4) return 0
+  return ITEMS_IsTome113c(m, m.u32((itm + 4) >>> 0)) | 0
+}
+
+/**
+ * `@va D2Common:0x6FD882F0` (`STATLIST_GetStatsByIdFromList`, custom `eax = pStatList`, `ecx = pOut`,
+ * stdcall `(nStatId, nMax)`, `ret 8` -> copied count): picks `pFullStat (+0x48)` when `dwFlags (+0x10)` is
+ * negative else `pStat (+0x24)`, finds the first entry with `dwKey >= nStatId << 16` via `0x6FD88220`,
+ * then copies consecutive entries whose high word equals `nStatId` while fewer than `nMax` were copied.
+ * The DLL's only callers pass a stack buffer, so this port returns the copied `[dwKey, dwValue]` pairs
+ * (array length = the DLL's return value) instead of writing them to emulated memory.
+ */
+export function STATLIST_GetStatsByIdFromList113c(
+  m: Memory113c,
+  pStatList: number,
+  nStatId: number,
+  nMax: number,
+): Array<readonly [number, number]> {
+  const out: Array<readonly [number, number]> = []
+  const list = pStatList >>> 0
+  if (list === 0) return out
+  const pHdr = (m.u32((list + 0x10) >>> 0) | 0) < 0 ? (list + 0x48) >>> 0 : (list + 0x24) >>> 0
+  let idx = STATLIST_FindStatFirstIndexOrLowerBound113c(m, pHdr, (nStatId << 16) >>> 0) | 0
+  if (idx < 0) return out
+  let pEntry = (m.u32(pHdr) + imul32(idx, 8)) >>> 0
+  while (idx < s16(m.u16((pHdr + 4) >>> 0))) {
+    const dwKey = m.u32(pEntry)
+    if (((dwKey >> 16) & 0xffff) !== (nStatId | 0)) break
+    if (out.length >= (nMax | 0)) break
+    out.push([dwKey, m.u32((pEntry + 4) >>> 0)])
+    idx++
+    pEntry = (pEntry + 8) >>> 0
+  }
+  return out
+}
+
+/** Max `dwValue` (signed, floor `0`) over entries whose `wParam` item type matches `pWeapon` (`0x6FD74430`). */
+function maxMasteryValueMem113c(
+  m: Memory113c,
+  pWeapon: number,
+  entries: ReadonlyArray<readonly [number, number]>,
+): number {
+  let best = 0
+  for (const [dwKey, dwValue] of entries) {
+    if (ITEMS_CheckItemTypeIdMem113c(m, pWeapon, dwKey & 0xffff) !== 0 && (dwValue | 0) > best) {
+      best = dwValue | 0
+    }
+  }
+  return best
+}
+
+/**
+ * `@va D2Common:0x6FD9F200` (`SKILLS_GetThrowingWeaponMasteryBonus`, stdcall
+ * `(pUnit, pWeapon, pSkill, nBonusType, pbThrowing)`, `ret 0x14`). Returns `null` where the DLL returns `0`
+ * with `*pbThrowing == 0`, else the max bonus (`*pbThrowing = 1`, 0x6FD9F36B); the `pbThrowing` slot is a
+ * caller stack local in every DLL call site.
+ */
+export function SKILLS_GetThrowingWeaponMasteryBonus113c(
+  m: Memory113c,
+  pUnit: number,
+  pWeapon: number,
+  pSkillIn: number,
+  nBonusType: number,
+): number | null {
+  let pSkill = pSkillIn >>> 0
+  if (pSkill === 0) {
+    pSkill = getUsedSkillMem113c(m, pUnit)
+    if (pSkill === 0) return null
+  }
+  const w = pWeapon >>> 0
+  if (w === 0 || m.u32(w) !== 4) return null
+  const nType = ITEMS_GetItemTypeFromItemMem113c(m, w)
+  if (nType < 0) return null
+  const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+  if (nType >= (m.u32((sgpt + 0xbfc) >>> 0) | 0)) return null
+  const pItemTypesTxt = (m.u32((sgpt + 0xbf8) >>> 0) + imul32(nType, 0xe4)) >>> 0
+  if (pItemTypesTxt === 0) return null
+  if (m.u8((pItemTypesTxt + 0x10) >>> 0) === 0) return null
+  const pSkillsTxt = m.u32(pSkill)
+  if (pSkillsTxt === 0) return null
+  const nIType = s16(m.u16((pSkillsTxt + 0x18) >>> 0))
+  if (nIType <= 0) return null
+  if (ITEMS_CheckItemTypeIdEquivalent113c(m, nIType, 0x30) === 0) return null
+  if (m.u8((pSkillsTxt + 0x14) >>> 0) !== 2) return null
+  let nStatId: number
+  if (nBonusType === 0) nStatId = 0x159
+  else if (nBonusType === 1) nStatId = 0x15a
+  else if (nBonusType === 2) nStatId = 0x15b
+  else return null
+  // 0x6FD886E0: `pUnit->pStatListEx (+0x5C)` must be non-null with a negative `dwFlags`, else 0 entries.
+  const pStatList = m.u32(((pUnit >>> 0) + 0x5c) >>> 0)
+  const entries =
+    pStatList !== 0 && (m.u32((pStatList + 0x10) >>> 0) | 0) < 0
+      ? STATLIST_GetStatsByIdFromList113c(m, pStatList, nStatId, 0x20)
+      : []
+  return maxMasteryValueMem113c(m, w, entries)
+}
+
+/**
+ * `@va D2Common:0x6FD9F640` (`#10804` `SKILLS_GetWeaponMasteryBonus`, stdcall
+ * `(pUnit, pWeapon, pSkill, nBonusType)`, `ret 0x10`): `0` for a null unit/weapon; resolves `pSkill` via
+ * `0x6FD803A0` when null; returns the `0x6FD9F200` ranged bonus when it applies, else the max melee mastery
+ * `0x156/0x157/0x158` value (via `0x6FD882F0`, at most `0x20` entries) whose item type matches the weapon.
+ */
+function SKILLS_GetWeaponMasteryBonusMem113c(
+  m: Memory113c,
+  pUnit: number,
+  pWeapon: number,
+  pSkill: number,
+  nBonusType: number,
+): number {
+  const u = pUnit >>> 0
+  const w = pWeapon >>> 0
+  if (u === 0 || w === 0) return 0
+  const pEffSkill = pSkill !== 0 ? pSkill >>> 0 : getUsedSkillMem113c(m, u)
+  const rangedBonus = SKILLS_GetThrowingWeaponMasteryBonus113c(m, u, w, pEffSkill, nBonusType)
+  if (rangedBonus !== null) return rangedBonus >>> 0
+  let nStatId: number
+  if (nBonusType === 0) nStatId = 0x156
+  else if (nBonusType === 1) nStatId = 0x157
+  else if (nBonusType === 2) nStatId = 0x158
+  else return 0
+  const pStatList = m.u32((u + 0x5c) >>> 0)
+  const entries =
+    pStatList !== 0 && (m.u32((pStatList + 0x10) >>> 0) | 0) < 0
+      ? STATLIST_GetStatsByIdFromList113c(m, pStatList, nStatId, 0x20)
+      : []
+  return maxMasteryValueMem113c(m, w, entries) >>> 0
+}
+
+/**
+ * `@va D2Common:0x6FD81B40` (`D2Common.#11100` `UNITS_GetMonsterActiveWeapon`, 67 bytes,
+ * stdcall `[esp+4] = pUnit`, `ret 0x4` -> `D2UnitStrc*` weapon or `0`).
+ */
+export function UNITS_GetMonsterActiveWeapon113c(m: Memory113c, pUnit: number): number {
+  const u = pUnit >>> 0
+  if (u === 0 || m.u32(u) !== UNIT_MONSTER) return 0
+  const pInventory = m.u32((u + 0x60) >>> 0)
+  if (pInventory === 0) return 0
+  return INVENTORY_GetActiveWeaponMem113c(m, pInventory)
+}
+
+/**
+ * `@va D2Common:0x6FDBABE0` (`MISSILE_AddStatsToDamage`, 1365 bytes,
+ * custom LTCG `esi = pDmgData`, `[esp+4] = pUnit`, `[esp+8] = nShift`, `ret 0x8`, void).
+ */
+export function MISSILE_AddStatsToDamage113c(
+  m: Memory113c,
+  pDmgData: number,
+  pUnit: number,
+  nShift: number,
+): void {
+  const dmg = pDmgData >>> 0
+  const u = pUnit >>> 0
+  const sh = nShift & 0x1f
+  const q = (statId: number): number =>
+    u !== 0 ? STATLIST_GetUnitStatWithLayer113c(m, u, statId, 0) | 0 : 0
+  const addDword = (off: number, delta: number): void => {
+    const addr = (dmg + off) >>> 0
+    m.setU32(addr, ((m.u32(addr) | 0) + (delta | 0)) >>> 0)
+  }
+  addDword(0x0c, q(0x30) << sh)
+  addDword(0x10, q(0x31) << sh)
+  addDword(0x18, q(0x32) << sh)
+  addDword(0x1c, q(0x33) << sh)
+  addDword(0x20, q(0x34) << sh)
+  addDword(0x24, q(0x35) << sh)
+  addDword(0x28, q(0x36) << sh)
+  addDword(0x2c, q(0x37) << sh)
+  addDword(0x30, q(0x38))
+  addDword(0x34, q(0x39))
+  addDword(0x38, q(0x3a))
+  const overridePoisLen = q(0x65)
+  if (overridePoisLen > 0) {
+    addDword(0x3c, overridePoisLen)
+  } else {
+    addDword(0x3c, q(0x3b))
+    addDword(0x40, q(0x146))
+  }
+  addDword(0x44, q(0x3c))
+  addDword(0x4c, q(0x3e))
+  addDword(0x60, q(0x13c))
+  addDword(0x64, q(0x13d))
+  addDword(0x68, q(0x13b))
+}
+
+function rollUnitSeedMod100Mem113c(m: Memory113c, pUnit: number): number {
+  const u = pUnit >>> 0
+  const lo = BigInt(m.u32((u + 0x20) >>> 0))
+  const hi = BigInt(m.u32((u + 0x24) >>> 0))
+  const next = lo * 0x6ac690c5n + hi
+  const nextLo = Number(next & 0xffffffffn) >>> 0
+  const nextHi = Number((next >> 32n) & 0xffffffffn) >>> 0
+  m.setU32((u + 0x20) >>> 0, nextLo)
+  m.setU32((u + 0x24) >>> 0, nextHi)
+  return (nextLo % 100) | 0
+}
+
+/**
+ * `@va D2Common:0x6FDBB180` (`MISSILE_RollCriticalStrike`, 290 bytes,
+ * custom LTCG `eax = pUnit`, `[esp+4] = pWeapon`, `ret 0x4` -> `1` or `0`).
+ */
+export function MISSILE_RollCriticalStrike113c(
+  m: Memory113c,
+  pUnit: number,
+  pWeapon: number,
+): number {
+  const u = pUnit >>> 0
+  const w = pWeapon >>> 0
+  const critPct = u !== 0 ? STATLIST_GetUnitStatWithLayer113c(m, u, 0x151, 0) | 0 : 0
+  const r1 = rollUnitSeedMod100Mem113c(m, u)
+  if (r1 < critPct) return 1
+  if (m.u32((u + 0x5c) >>> 0) !== 0) {
+    const deadlyPct = STATLIST_GetUnitStatWithLayer113c(m, u, 0x8d, 0) | 0
+    if (deadlyPct !== 0) {
+      const r2 = rollUnitSeedMod100Mem113c(m, u)
+      if (r2 < deadlyPct) return 1
+    }
+  }
+  if (w !== 0) {
+    const masteryCritPct = SKILLS_GetWeaponMasteryBonusMem113c(m, u, w, 0, 2) | 0
+    if (masteryCritPct !== 0) {
+      const r3 = rollUnitSeedMod100Mem113c(m, u)
+      if (r3 < masteryCritPct) return 1
+    }
+  }
+  return 0
+}
+
+/**
+ * `@va D2Common:0x6FDBB140` (`MISSILE_RollLimitedFromUnitSeed`,
+ * custom LTCG `ecx = nMin`, `edx = nMax`, `[esp+4] = _unused`, `[esp+8] = pUnit`, `ret 8` -> `number`).
+ *
+ * Returns `0` if `pUnit == NULL`; otherwise delegates `(&pUnit->seed (+0x20), nMin, nMax)` to
+ * `0x6FD51180` (`SEED_RollLimitedRandomNumberInline113c`).
+ */
+export function MISSILE_RollLimitedFromUnitSeed113c(
+  m: Memory113c,
+  nMin: number,
+  nMax: number,
+  _unused: number,
+  pUnit: number,
+): number {
+  const u = pUnit >>> 0
+  if (u === 0) return 0
+  return SEED_RollLimitedRandomNumberInline113c(m, (u + 0x20) >>> 0, nMin, nMax) >>> 0
+}
+

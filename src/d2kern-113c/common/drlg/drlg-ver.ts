@@ -18,7 +18,7 @@ import {
   D2UnitStrc,
 } from '../../mem/layout.generated.ts';
 import type { Memory113c } from '../../mem/sparse-memory.ts';
-import { SEED_RollRandomNumberInline113c } from '../inline-helpers.ts';
+import { D2CommonAssertError, SEED_RollRandomNumberInline113c } from '../inline-helpers.ts';
 
 /**
  * `D2Common.dll` `.data` pointer to `gdwBitMasks[32]` (`1 << i` for `i = 0..31`).
@@ -567,7 +567,7 @@ export function DRLGVER_CreateVerticesForRoom113c(
     }
     const dir = m.u32((pOrth + D2DrlgOrthStrc.nDirection.off) >>> 0);
     if (dir > 3) {
-      throw new Error('Fog.#10265: dir <= 3 (line 109)');
+      throw new D2CommonAssertError('..\\Source\\D2Common\\DRLG\\DrlgVer.cpp', 109);
     }
 
     let ebp: number;
@@ -685,12 +685,12 @@ export function DRLGVER_CreateVerticesForRoom113c(
 export function DATATBLS_GetCubemainTxtRecord113c(m: Memory113c, nIndex: number): number {
   const pBase = m.u32(SGPT_CUBEMAIN_TXT_VA);
   if (pBase === 0) {
-    throw new Error('Fog.#10265: pCubemainTxt != NULL (line 846)');
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DRLG\\DrlgVer.cpp', 846);
   }
   const idx = nIndex | 0;
   const nCount = m.u32(SGPT_CUBEMAIN_RECS_VA) | 0;
   if (idx >= nCount) {
-    throw new Error('Fog.#10265: nIndex < dwCubemainRecs (line 847)');
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DRLG\\DrlgVer.cpp', 847);
   }
   return (pBase + Math.imul(idx, D2CubemainTxt_SIZE)) >>> 0;
 }
@@ -779,4 +779,112 @@ export function DRLGVER_ScaleOutdoorsVertices113c(
     edi = nextV;
   }
 }
+
+/**
+ * `@va D2Common:0x6FD6B6E0` (`DRLGVER_BuildAndLocalizeRoomVertices113c`, not exported;
+ * custom register ABI `eax = nFlag`, `ecx = pDrlgCoord`, `[esp+4] = pMemPool`,
+ * `[esp+8] = ppVertices`, `[esp+0xC] = pRoomCoordNode`, `ret 0xC`).
+ */
+export function DRLGVER_BuildAndLocalizeRoomVertices113c(
+  m: Memory113c,
+  nFlag: number,
+  pDrlgCoord: number,
+  pMemPool: number,
+  ppVertices: number,
+  pRoomCoordNode: number,
+): void {
+  const coord = pDrlgCoord >>> 0;
+  const ppVerts = ppVertices >>> 0;
+  const flagByte = nFlag & 0xff;
+
+  m.setU32((coord + 0x08) >>> 0, ((m.u32((coord + 0x08) >>> 0) | 0) - 1) >>> 0);
+  m.setU32((coord + 0x0c) >>> 0, ((m.u32((coord + 0x0c) >>> 0) | 0) - 1) >>> 0);
+
+  let pOrth = pRoomCoordNode >>> 0;
+  while (pOrth !== 0) {
+    const pBox = m.u32((pOrth + 0x10) >>> 0);
+    m.setU32((pBox + 0x08) >>> 0, ((m.u32((pBox + 0x08) >>> 0) | 0) - 1) >>> 0);
+    m.setU32((pBox + 0x0c) >>> 0, ((m.u32((pBox + 0x0c) >>> 0) | 0) - 1) >>> 0);
+    pOrth = m.u32((pOrth + 0x14) >>> 0);
+  }
+
+  const v0 = m.alloc(0x14);
+  m.setU32(v0, 0);
+  m.setU32((v0 + 0x04) >>> 0, 0);
+  m.setU32((v0 + 0x08) >>> 0, 0);
+  m.setU32((v0 + 0x0c) >>> 0, 0);
+  m.setU32((v0 + 0x10) >>> 0, 0);
+  m.setU8((v0 + 0x08) >>> 0, flagByte);
+  m.setU32(ppVerts, v0);
+
+  const v1 = m.alloc(0x14);
+  m.setU32(v1, 0);
+  m.setU32((v1 + 0x04) >>> 0, 0);
+  m.setU32((v1 + 0x08) >>> 0, 0);
+  m.setU32((v1 + 0x0c) >>> 0, 0);
+  m.setU32((v1 + 0x10) >>> 0, 0);
+  m.setU8((v1 + 0x08) >>> 0, flagByte);
+  m.setU32((v0 + 0x10) >>> 0, v1);
+
+  const v2 = m.alloc(0x14);
+  m.setU32(v2, 0);
+  m.setU32((v2 + 0x04) >>> 0, 0);
+  m.setU32((v2 + 0x08) >>> 0, 0);
+  m.setU32((v2 + 0x0c) >>> 0, 0);
+  m.setU32((v2 + 0x10) >>> 0, 0);
+  m.setU8((v2 + 0x08) >>> 0, flagByte);
+  m.setU32((v1 + 0x10) >>> 0, v2);
+
+  const v3 = m.alloc(0x14);
+  m.setU32(v3, 0);
+  m.setU32((v3 + 0x04) >>> 0, 0);
+  m.setU32((v3 + 0x08) >>> 0, 0);
+  m.setU32((v3 + 0x0c) >>> 0, 0);
+  m.setU32((v3 + 0x10) >>> 0, 0);
+  m.setU8((v3 + 0x08) >>> 0, flagByte);
+  m.setU32((v2 + 0x10) >>> 0, v3);
+  m.setU32((v3 + 0x10) >>> 0, v0);
+
+  m.setU32(v0, m.u32(coord));
+  const y0 = m.u32((coord + 0x04) >>> 0) | 0;
+  const h0 = m.u32((coord + 0x0c) >>> 0) | 0;
+  m.setU32((v0 + 0x04) >>> 0, ((y0 + h0) | 0) >>> 0);
+
+  m.setU32(v1, m.u32(coord));
+  m.setU32((v1 + 0x04) >>> 0, m.u32((coord + 0x04) >>> 0));
+
+  const x0 = m.u32(coord) | 0;
+  const w0 = m.u32((coord + 0x08) >>> 0) | 0;
+  m.setU32(v2, ((x0 + w0) | 0) >>> 0);
+  m.setU32((v2 + 0x04) >>> 0, m.u32((coord + 0x04) >>> 0));
+
+  const x1 = m.u32(coord) | 0;
+  const w1 = m.u32((coord + 0x08) >>> 0) | 0;
+  m.setU32(v3, ((x1 + w1) | 0) >>> 0);
+  const y1 = m.u32((coord + 0x04) >>> 0) | 0;
+  const h1 = m.u32((coord + 0x0c) >>> 0) | 0;
+  m.setU32((v3 + 0x04) >>> 0, ((y1 + h1) | 0) >>> 0);
+
+  DRLGVER_CreateVerticesForRoom113c(m, pMemPool, m.u32(ppVerts), coord, flagByte, pRoomCoordNode);
+
+  const head = m.u32(ppVerts);
+  let cur = head;
+  do {
+    m.setU32(cur, ((m.u32(cur) | 0) - (m.u32(coord) | 0)) >>> 0);
+    m.setU32((cur + 0x04) >>> 0, ((m.u32((cur + 0x04) >>> 0) | 0) - (m.u32((coord + 0x04) >>> 0) | 0)) >>> 0);
+    cur = m.u32((cur + 0x10) >>> 0);
+  } while (cur !== head);
+
+  m.setU32((coord + 0x08) >>> 0, ((m.u32((coord + 0x08) >>> 0) | 0) + 1) >>> 0);
+  m.setU32((coord + 0x0c) >>> 0, ((m.u32((coord + 0x0c) >>> 0) | 0) + 1) >>> 0);
+
+  pOrth = pRoomCoordNode >>> 0;
+  while (pOrth !== 0) {
+    const pBox = m.u32((pOrth + 0x10) >>> 0);
+    m.setU32((pBox + 0x08) >>> 0, ((m.u32((pBox + 0x08) >>> 0) | 0) + 1) >>> 0);
+    m.setU32((pBox + 0x0c) >>> 0, ((m.u32((pBox + 0x0c) >>> 0) | 0) + 1) >>> 0);
+    pOrth = m.u32((pOrth + 0x14) >>> 0);
+  }
+}
+
 

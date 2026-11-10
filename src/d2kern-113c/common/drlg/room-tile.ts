@@ -12,7 +12,7 @@ import {
   D2DynamicPathStrc,
   D2RoomExStrc,
 } from '../../mem/layout.generated.ts';
-import { SEED_RollRandomNumberInline113c } from '../inline-helpers.ts';
+import { D2CommonAssertError, SEED_RollRandomNumberInline113c } from '../inline-helpers.ts';
 
 /**
  * `.rdata` table at `0x6FDDBD68` (`0x6FDDBD68..0x6FDDBF24`, 37 entries of 3 `int32_t`: `[nLevelId, nStartIdx, nEndIdx]`).
@@ -607,7 +607,7 @@ export function DRLGROOMTILE_GetWarpLevelsArray113c(
   while (pNode !== 0) {
     const ecx = m.u32(pNode) | 0;
     if (ecx === 0) {
-      throw new Error('DRLGROOMTILE_GetWarpLevelsArray113c: [pNode] == 0 (line 418)');
+      throw new D2CommonAssertError('..\\Source\\D2Common\\DATATBLS\\DataTbls.cpp', 418);
     }
     if (lvl === ecx) {
       return (pNode + 0x24) >>> 0;
@@ -767,7 +767,7 @@ export function DRLGROOMTILE_GetTileCache113c(
   if (ebp === 0) {
     const fallback = D2CMP_10059_FindTiles113c(m, ppHash, 10, 0, 0, localTiles, 40);
     if (fallback === 0) {
-      throw new Error('DRLGROOMTILE_GetTileCache113c: fallback (10,0,0) empty (line 115)');
+      throw new D2CommonAssertError('..\\Source\\D2Common\\DRLG\\RoomTile.cpp', 115);
     }
     return localTiles[0]!;
   }
@@ -776,7 +776,7 @@ export function DRLGROOMTILE_GetTileCache113c(
   for (let i = 0; (i >>> 0) < (ebp >>> 0); i++) {
     const pEntry = localTiles[i]!;
     if (pEntry === 0) {
-      throw new Error('DRLGROOMTILE_GetTileCache113c: null tile entry (line 124)');
+      throw new D2CommonAssertError('..\\Source\\D2Common\\DRLG\\RoomTile.cpp', 124);
     }
     totalRarity = (totalRarity + D2CMP_10027_GetTileRarity113c(m, pEntry)) | 0;
   }
@@ -983,8 +983,9 @@ export function DATATBLS_FindFloorWindowTileCacheEntry113c(
 ): number {
   let pCur = m.u32(0x6fdf142c);
   if (pCur === 0) {
-    throw new Error(
-      'DATATBLS_FindFloorWindowTileCacheEntry113c: gpFloorWindowTileCache == 0 (line 811)',
+    throw new D2CommonAssertError(
+      '..\\Source\\D2Common\\DATATBLS\\DataTbls.cpp',
+      811,
     );
   }
   const nCount = m.u32(0x6fdf1430) | 0;
@@ -1002,8 +1003,9 @@ export function DATATBLS_FindFloorWindowTileCacheEntry113c(
     }
     pCur = (pCur + 0x30) >>> 0;
   }
-  throw new Error(
-    'DATATBLS_FindFloorWindowTileCacheEntry113c: entry not found (line 826)',
+  throw new D2CommonAssertError(
+    '..\\Source\\D2Common\\DATATBLS\\DataTbls.cpp',
+    826,
   );
 }
 
@@ -1063,15 +1065,17 @@ export function DRLGROOMTILE_UpdateWindowTileCacheEntry113c(
   nOrientation: number,
 ): void {
   if (pWindowNode === 0) {
-    throw new Error(
-      'DRLGROOMTILE_UpdateWindowTileCacheEntry113c: pWindowNode == 0 (line 627)',
+    throw new D2CommonAssertError(
+      '..\\Source\\D2Common\\DRLG\\RoomTile.cpp',
+      627,
     );
   }
   const node = pWindowNode >>> 0;
   const pCacheEntry = m.u32((node + 0x10) >>> 0);
   if (pCacheEntry === 0) {
-    throw new Error(
-      'DRLGROOMTILE_UpdateWindowTileCacheEntry113c: pCacheEntry == 0 (line 628)',
+    throw new D2CommonAssertError(
+      '..\\Source\\D2Common\\DRLG\\RoomTile.cpp',
+      628,
     );
   }
   const cl = m.u8((pCacheEntry + 0x2c) >>> 0);

@@ -1022,7 +1022,7 @@ KERN_BINDINGS_113C = [
         "module": "D2Common",
         "va": 0x6FD803A0,
         "name": "SKILLS_GetUsedSkill",
-        "kernFile": "src/d2kern-113c/game/fallen-ai-113c.ts",
+        "kernFile": "src/d2kern-113c/common/skills.ts",
         "tsSymbol": "SKILLS_GetUsedSkill113c",
         "status": "ported",
         "diffEvidence": "tests/oracle/kern-fallen-f790-f821.test.ts (D2Common.#10511 pSkills->pUsedSkill lookup)",

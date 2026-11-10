@@ -35,18 +35,29 @@ import {
   D2StatListStrc,
   D2UnitStrc,
 } from '../mem/layout.generated.ts'
-import { SKILLS_GetUsedSkill113c } from '../game/fallen-ai-113c.ts'
+import {
+  SKILLS_FreeSkillList113c,
+  SKILLS_GetUsedSkill113c,
+  SKILLS_MapPlayerAnimModeToMonsterMode113c,
+} from './skills.ts'
 import {
   D2COMMON_GDWBITMASKS_IAT_VA_113C,
   D2COMMON_SGPT_DATATABLES_VA_113C,
   D2CommonAssertError,
   DATATABLES_OFF_113C,
+  DATATBLS_GetMissilesTxtRecordInline113c,
+  DATATBLS_GetMonStats2TxtRecordFromMonStatsIdInline113c,
+  DATATBLS_GetSkillsTxtRecordInline113c,
 } from './inline-helpers.ts'
-import { imul32, sar32 } from './int-math.ts'
+import { imul32, sar32, sdiv32 } from './int-math.ts'
 import {
   STATES_CheckState113c,
   STATLIST_FLAG_EXTENDED,
+  STATLIST_FreeStatListImpl113c,
+  STATLIST_GetStatListFromUnitAndState113c,
+  STATLIST_GetTotalStatValueLayer0_113c,
   STATLIST_GetUnitStat113c,
+  STATLIST_GetUnitStatWithLayer113c,
 } from './statlist.ts'
 
 export const UNIT_PLAYER = 0
@@ -143,21 +154,30 @@ export function UNITS_GetX113c(m: Memory113c, pUnit: number): number {
   return m.u16(pPath + 0x02)
 }
 
-/** `D2Common 0x6FD51080` (`UNITS_GetY`, `ecx = pUnit`). */
+/**
+ * `D2Common 0x6FD51080` (`UNITS_GetY`, `ecx = pUnit`): mirrors 0x6FD51050 exactly - no unit null test
+ * (0x6FD51080 `mov eax, [ecx]`) and no path null test for static paths (0x6FD510A0..0x6FD510A3).
+ */
 export function UNITS_GetY113c(m: Memory113c, pUnit: number): number {
-  if (pUnit === 0) return 0
   const unitType = m.get(pUnit, D2UnitStrc.dwUnitType)
   const pPath = m.get(pUnit, D2UnitStrc.pPath)
-  if (pPath === 0) return 0
   if (unitType === UNIT_OBJECT || unitType === UNIT_ITEM || unitType === UNIT_TILE) {
     return m.u32(pPath + 0x10) | 0
   }
+  if (pPath === 0) return 0
   return m.u16(pPath + 0x06)
 }
 
-/** `D2Common.#10158` (`0x6FDB65C0` `UNITROOM_RefreshUnit`). */
+/**
+ * `@va D2Common:0x6FDB65C0` (`D2Common.#10158` `UNITROOM_RefreshUnit`).
+ * 0x6FDB65C5 `test esi, esi; jne` else `push 0x75` -> assert thunk 0x6FD5921C + exit(-1).
+ * 0x6FDB65F7..0x6FDB65FA: `mov ecx, [room+0x2C]; mov dword [ecx], 1` (no null test on pActUpdateFlag).
+ * 0x6FDB65EE `add eax, 0x1C` + 0x6FDB6600 `jne` else `push 0x88` (address of `pUpdateList` is null).
+ */
 export function UNITROOM_RefreshUnit113c(m: Memory113c, pUnit: number): void {
-  if (pUnit === 0) return
+  if (pUnit >>> 0 === 0) {
+    throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x75)
+  }
   const pRoom = UNITS_GetRoom113c(m, pUnit)
   if (pRoom === 0) return
   if ((m.get(pRoom, D2ActiveRoomStrc.dwFlags) & 0x04) !== 0) return
@@ -166,8 +186,9 @@ export function UNITROOM_RefreshUnit113c(m: Memory113c, pUnit: number): void {
 
   m.set(pUnit, D2UnitStrc.dwFlags, (flags | UNITFLAG_ISUPDATE) >>> 0)
   const pActFlag = m.get(pRoom, D2ActiveRoomStrc.pActUpdateFlag)
-  if (pActFlag !== 0) {
-    m.setU32(pActFlag, 1)
+  m.setU32(pActFlag, 1)
+  if (((pRoom + 0x1c) >>> 0) === 0) {
+    throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x88)
   }
   const prevHead = m.get(pRoom, D2ActiveRoomStrc.pUpdateList)
   m.set(pUnit, D2UnitStrc.pRoomUpdateNext, prevHead)
@@ -225,48 +246,91 @@ export function UNITROOM_AddUnitToRoom113c(m: Memory113c, pUnit: number, pRoom: 
   }
 }
 
-/** `D2Common.#11016` (`0x6FDB6700` `UNITROOM_RemoveUnitFromRoom`). */
+/**
+ * `@va D2Common:0x6FDB6700` (`D2Common.#11016` `UNITROOM_RemoveUnitFromRoom`):
+ * - `pUnit == 0` asserts `0xEF` (0x6FDB670C); no room: asserts `0xF7` if `pRoomUnitNext (+0xE8) != 0`
+ *   (0x6FDB6746), else returns.
+ * - Unlinks from `room.pUnitFirst (+0x74)`; for players or `0x6FD891F0 == 2` monsters calls `0x6FD8B650`
+ *   (`room.nAlliedCount (+0x28)`: asserts `0x27C` unless `> 0`, then decrements).
+ * - Always calls `0x6FDB6410` (update-list unlink), clears `UNITFLAG_ISUPDATE` (0x6FDB67D7), and clears the
+ *   path room via `0x6FD7FE70` only when the unit was found in the room list.
+ */
 export function UNITROOM_RemoveUnitFromRoom113c(m: Memory113c, pUnit: number): void {
-  if (pUnit === 0) return
+  if (pUnit >>> 0 === 0) {
+    throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0xef)
+  }
   const pRoom = UNITS_GetRoom113c(m, pUnit)
-  if (pRoom === 0) return
-
+  if (pRoom === 0) {
+    if (m.get(pUnit, D2UnitStrc.pRoomUnitNext) !== 0) {
+      throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0xf7)
+    }
+    return
+  }
+  let bFound = false
   let prev = 0
   let cur = m.get(pRoom, D2ActiveRoomStrc.pUnitFirst)
-  while (cur !== 0 && cur !== pUnit) {
+  while (cur !== 0 && cur !== pUnit >>> 0) {
     prev = cur
     cur = m.get(cur, D2UnitStrc.pRoomUnitNext)
   }
-  if (cur === pUnit) {
-    const next = m.get(pUnit, D2UnitStrc.pRoomUnitNext)
-    if (prev === 0) m.set(pRoom, D2ActiveRoomStrc.pUnitFirst, next)
-    else m.set(prev, D2UnitStrc.pRoomUnitNext, next)
-    m.set(pUnit, D2UnitStrc.pRoomUnitNext, 0)
+  if (cur !== 0) {
+    bFound = true
+    if (prev === 0) m.set(pRoom, D2ActiveRoomStrc.pUnitFirst, m.get(cur, D2UnitStrc.pRoomUnitNext))
+    else m.set(prev, D2UnitStrc.pRoomUnitNext, m.get(cur, D2UnitStrc.pRoomUnitNext))
+    m.set(cur, D2UnitStrc.pRoomUnitNext, 0)
     const uType = m.get(pUnit, D2UnitStrc.dwUnitType)
+    // 0x6FDB67BA calls 0x6FD891F0; kept on the same alignment helper as UNITROOM_AddUnitToRoom113c so the
+    // add/remove allied-count pair stays symmetric (see handoff caveat on UNIT_GetAlignment113c vs 0x6FD891F0).
     if (uType === UNIT_PLAYER || (uType === UNIT_MONSTER && UNIT_GetAlignment113c(m, pUnit) === 2)) {
-      m.setU32(pRoom + 0x28, (m.u32(pRoom + 0x28) - 1) >>> 0)
+      // 0x6FD8B650: `cmp [room+0x28], 0; jg` else `push 0x27c` -> assert.
+      const nAllied = m.u32(pRoom + 0x28) | 0
+      if (nAllied <= 0) {
+        throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x27c)
+      }
+      m.setU32(pRoom + 0x28, (nAllied - 1) >>> 0)
     }
   }
-  // Unlink from room update list if present (`0x6FDB6410`)
-  const flags = m.get(pUnit, D2UnitStrc.dwFlags)
-  if ((flags & UNITFLAG_ISUPDATE) !== 0) {
-    let uPrev = 0
-    let uCur = m.get(pRoom, D2ActiveRoomStrc.pUpdateList)
-    while (uCur !== 0 && uCur !== pUnit) {
-      uPrev = uCur
-      uCur = m.get(uCur, D2UnitStrc.pRoomUpdateNext)
+  UNITROOM_UnlinkUnitFromUpdateList113c(m, pUnit)
+  m.set(pUnit, D2UnitStrc.dwFlags, (m.get(pUnit, D2UnitStrc.dwFlags) & ~UNITFLAG_ISUPDATE) >>> 0)
+  if (bFound) {
+    // 0x6FD7FE70 (`pUnit != 0` here): static paths `[pPath+0x00] = 0` with no path null test, dynamic
+    // paths `[pPath+0x1C] = 0` only when `pPath != 0`.
+    const pPath = m.get(pUnit, D2UnitStrc.pPath)
+    const unitType = m.get(pUnit, D2UnitStrc.dwUnitType)
+    if (unitType === UNIT_OBJECT || unitType === UNIT_ITEM || unitType === UNIT_TILE) {
+      m.setU32(pPath, 0)
+    } else if (pPath !== 0) {
+      m.setU32(pPath + 0x1c, 0)
     }
-    if (uCur === pUnit) {
-      const uNext = m.get(pUnit, D2UnitStrc.pRoomUpdateNext)
-      if (uPrev === 0) m.set(pRoom, D2ActiveRoomStrc.pUpdateList, uNext)
-      else m.set(uPrev, D2UnitStrc.pRoomUpdateNext, uNext)
+  }
+}
+
+/**
+ * `@va D2Common:0x6FDB6410` (`UNITROOM_UnlinkUnitFromUpdateList`, stdcall `[esp+4] = pUnit`, `ret 4`): asserts `0x127` on a null unit; with no room asserts `0x132`
+ * if `pRoomUpdateNext (+0xE0) != 0`, else returns; otherwise unlinks the unit from `room.pUpdateList (+0x1C)`
+ * (no-op when absent) and zeroes its `pRoomUpdateNext`.
+ */
+export function UNITROOM_UnlinkUnitFromUpdateList113c(m: Memory113c, pUnit: number): void {
+  if (pUnit >>> 0 === 0) {
+    throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x127)
+  }
+  const pRoom = UNITS_GetRoom113c(m, pUnit)
+  if (pRoom === 0) {
+    if (m.get(pUnit, D2UnitStrc.pRoomUpdateNext) !== 0) {
+      throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x132)
     }
-    m.set(pUnit, D2UnitStrc.pRoomUpdateNext, 0)
-    m.set(pUnit, D2UnitStrc.dwFlags, (flags & ~UNITFLAG_ISUPDATE) >>> 0)
+    return
   }
-  if (cur === pUnit) {
-    UNITS_SetRoom113c(m, pUnit, 0)
+  let prev = 0
+  let cur = m.get(pRoom, D2ActiveRoomStrc.pUpdateList)
+  while (cur !== 0 && cur !== pUnit >>> 0) {
+    prev = cur
+    cur = m.get(cur, D2UnitStrc.pRoomUpdateNext)
   }
+  if (cur === 0) return
+  if (prev === 0) m.set(pRoom, D2ActiveRoomStrc.pUpdateList, m.get(cur, D2UnitStrc.pRoomUpdateNext))
+  else m.set(prev, D2UnitStrc.pRoomUpdateNext, m.get(cur, D2UnitStrc.pRoomUpdateNext))
+  m.set(cur, D2UnitStrc.pRoomUpdateNext, 0)
 }
 
 /** Read `pUnit->sSeed` (`+0x20` `lo`, `+0x24` `hi`). */
@@ -1182,3 +1246,705 @@ export function DATATBLS_GetObjectsTxtRecord113c(m: Memory113c, nObjectId: numbe
   const pObjectsTxt = m.u32(SGPT_OBJECTS_TXT_PTR_VA_113C)
   return (pObjectsTxt + imul32(id, 0x1c0)) >>> 0
 }
+
+/**
+ * `@va D2Common:0x6FD5D540` (`PATH_ResetDynamicPathRoomAndCoordsInline`, 53 bytes,
+ * usercall `esi = pDynamicPath`, `ret` -> `void`).
+ */
+export function PATH_ResetDynamicPathRoomAndCoordsInline113c(
+  m: Memory113c,
+  pDynamicPath: number,
+): void {
+  const d0 = m.u32(0x6fddd458)
+  const d1 = m.u32(0x6fddd45c)
+  m.setU32((pDynamicPath + 0x00) >>> 0, d0)
+  m.setU32((pDynamicPath + 0x08) >>> 0, d0)
+  const pRoom = m.u32((pDynamicPath + 0x1c) >>> 0)
+  m.setU32((pDynamicPath + 0x04) >>> 0, d1)
+  m.setU32((pDynamicPath + 0x0c) >>> 0, d1)
+  m.setU32((pDynamicPath + 0x28) >>> 0, 0)
+  if (pRoom !== 0) {
+    m.setU32((pDynamicPath + 0x20) >>> 0, pRoom)
+    const pUnit = m.u32((pDynamicPath + 0x30) >>> 0)
+    UNITROOM_RemoveUnitFromRoom113c(m, pUnit)
+    m.setU32((pDynamicPath + 0x34) >>> 0, (m.u32((pDynamicPath + 0x34) >>> 0) | 2) >>> 0)
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD6A3D0` (`D2Common.#11086` `UNITS_GetSpawnedMonsterOrSkillSummonInfo`, 333 bytes,
+ * stdcall `[esp+4] = pUnit, [esp+8] = bIsMonsterSpawn, [esp+0xC] = nSkillId, [esp+0x10] = a4, [esp+0x14] = pOutMode, [esp+0x18] = pOutX, [esp+0x1C] = pOutY`,
+ * `ret 0x1C` -> `number`).
+ */
+export function UNITS_GetSpawnedMonsterOrSkillSummonInfo113c(
+  m: Memory113c,
+  pUnit: number,
+  bIsMonsterSpawn: number,
+  nSkillId: number,
+  _a4: number,
+  pOutMode: number,
+  pOutX: number,
+  pOutY: number,
+): number {
+  const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+  if (bIsMonsterSpawn !== 0 && pUnit !== 0 && m.u32(pUnit) === UNIT_MONSTER) {
+    const classId = m.u32((pUnit + 0x04) >>> 0) | 0
+    if (classId < 0 || classId >= (m.u32((sgpt + 0xa80) >>> 0) | 0)) {
+      return -1
+    }
+    const pMonStats = (m.u32((sgpt + 0xa78) >>> 0) + imul32(classId, 0x1a8)) >>> 0
+    if (pMonStats === 0) {
+      return -1
+    }
+    const wSpawnId = (m.u16((pMonStats + 0x20) >>> 0) << 16) >> 16
+    if (pOutX !== 0) {
+      const uX = UNITS_GetX113c(m, pUnit)
+      m.setU32(pOutX, (uX + ((m.u8((pMonStats + 0x22) >>> 0) << 24) >> 24)) >>> 0)
+    }
+    if (pOutY !== 0) {
+      const uY = UNITS_GetY113c(m, pUnit)
+      m.setU32(pOutY, (uY + ((m.u8((pMonStats + 0x23) >>> 0) << 24) >> 24)) >>> 0)
+    }
+    if (pOutMode !== 0) {
+      const mode = (m.u8((pMonStats + 0x24) >>> 0) << 24) >> 24
+      m.setU32(pOutMode, mode < 0 || mode >= 16 ? 1 : mode >>> 0)
+    }
+    return wSpawnId | 0
+  }
+  const skillId = nSkillId | 0
+  if (skillId < 0 || skillId >= (m.u32((sgpt + 0xba0) >>> 0) | 0)) {
+    return -1
+  }
+  const pSkillsTxt = (m.u32((sgpt + 0xb98) >>> 0) + imul32(skillId, 0x23c)) >>> 0
+  if (pSkillsTxt === 0) {
+    return -1
+  }
+  const wSummon = (m.u16((pSkillsTxt + 0xbc) >>> 0) << 16) >> 16
+  if (wSummon < 0 || wSummon >= (m.u32((sgpt + 0xa80) >>> 0) | 0)) {
+    return -1
+  }
+  if (pOutX !== 0) {
+    m.setU32(pOutX, UNITS_GetX113c(m, pUnit) >>> 0)
+  }
+  if (pOutY !== 0) {
+    m.setU32(pOutY, UNITS_GetY113c(m, pUnit) >>> 0)
+  }
+  if (pOutMode !== 0) {
+    const mode = (m.u8((pSkillsTxt + 0xbf) >>> 0) << 24) >> 24
+    m.setU32(pOutMode, mode < 0 || mode >= 16 ? 1 : mode >>> 0)
+  }
+  return wSummon | 0
+}
+
+/**
+ * `@va D2Common:0x6FD80DC0` (`D2Common.#10862` `UNITS_SetUnitUpdateFlags`, 82 bytes,
+ * stdcall `[esp+4] = pUnit, [esp+8] = bSet`, `ret 0x8` -> `void`).
+ */
+export function UNITS_SetUnitUpdateFlags113c(m: Memory113c, pUnit: number, bSet: number): void {
+  // 0x6FD80DCA: `test edi, edi; je` -> refresh only when bSet (callee asserts on pUnit == 0).
+  if (bSet !== 0) {
+    UNITROOM_RefreshUnit113c(m, pUnit)
+  }
+  // 0x6FD80DD4/0x6FD80DEF: `test esi, esi; je` -> no flag write, `ret 8` (no assert in this function).
+  if (pUnit >>> 0 === 0) return
+  const flags2 = m.u32((pUnit + 0xc8) >>> 0)
+  if (bSet === 0) {
+    m.setU32((pUnit + 0xc8) >>> 0, (flags2 & ~1) >>> 0)
+    return
+  }
+  if (m.u32(pUnit) !== UNIT_PLAYER) {
+    m.setU32((pUnit + 0xc8) >>> 0, (flags2 | 1) >>> 0)
+    return
+  }
+  m.setU32((pUnit + 0xc8) >>> 0, (flags2 | 3) >>> 0)
+}
+
+/**
+ * `@va D2Common:0x6FD823E0` (`UNITS_GetDiminishingStatBonusInline`, 124 bytes,
+ * usercall `eax = nTableIdx`, `[esp+4] = pUnit`, `ret 0x4` -> `number`).
+ */
+export function UNITS_GetDiminishingStatBonusInline113c(
+  m: Memory113c,
+  nTableIdx: number,
+  pUnit: number,
+): number {
+  const entryAddr = (0x6fde4608 + imul32(nTableIdx | 0, 12)) >>> 0
+  const statId = m.u32((entryAddr + 8) >>> 0) | 0
+  const val = STATLIST_GetUnitStatWithLayer113c(m, pUnit, statId, 0) | 0
+  if ((m.u32(entryAddr) | 0) === 1 && val !== 0) {
+    const cap = m.u32((entryAddr + 4) >>> 0) | 0
+    // 0x6FD82446..0x6FD8244D: `imul eax, ecx; add esi, ecx; cdq; idiv esi` -> #DE when `cap + val == 0`.
+    return sdiv32(imul32(cap, val), (cap + val) | 0) >>> 0
+  }
+  return val >>> 0
+}
+
+/**
+ * `nStatesTxtRecordCount (+0xC4)` rounded up to dwords exactly as 0x6FD840AF..0x6FD840C1 /
+ * 0x6FD8417B..0x6FD8418D: `add eax, 0x1F; cdq; and edx, 0x1F; add eax, edx; sar eax, 5` (32-bit wrap,
+ * signed division truncating toward zero).
+ */
+function stateMaskDwordCount113c(m: Memory113c, sgpt: number): number {
+  const biased = (m.u32((sgpt + 0xc4) >>> 0) + 0x1f) | 0
+  return (biased + ((biased >> 31) & 0x1f)) >> 5
+}
+
+/**
+ * `@va D2Common:0x6FD84080` (`UNITS_TransferStateMaskToRemoved`, 202 bytes,
+ * usercall `ecx = pMaskArray`, `[esp+4] = pUnit`, `ret 0x4` -> `void`).
+ */
+export function UNITS_TransferStateMaskToRemoved113c(
+  m: Memory113c,
+  pMaskArray: number,
+  pUnit: number,
+): void {
+  if (pUnit >>> 0 === 0) return
+  const pStatList = m.u32((pUnit + 0x5c) >>> 0)
+  if (pStatList === 0 || (m.u32((pStatList + 0x10) >>> 0) & 0x80000000) === 0) return
+
+  const pActive = m.u32((pStatList + 0x58) >>> 0)
+  const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+  const nDwords = stateMaskDwordCount113c(m, sgpt)
+  const pRemoved = (pActive + imul32(nDwords, 4)) >>> 0
+  if (pActive === 0 || pRemoved === 0) return
+
+  for (let i = 0; i < nDwords; i++) {
+    const mask = m.u32((pMaskArray + i * 4) >>> 0)
+    const activeVal = m.u32((pActive + i * 4) >>> 0)
+    const removedVal = m.u32((pRemoved + i * 4) >>> 0)
+    m.setU32((pRemoved + i * 4) >>> 0, (removedVal | (activeVal & mask)) >>> 0)
+    m.setU32((pActive + i * 4) >>> 0, (activeVal & ~mask) >>> 0)
+  }
+  UNITROOM_RefreshUnit113c(m, pUnit)
+}
+
+/**
+ * `@va D2Common:0x6FD84150` (`D2Common.#10735` `STATES_UpdateGfxStateFlagsByMask`, 376 bytes,
+ * stdcall `[esp+4] = pUnit, [esp+8] = bIsBossOrTown`, `ret 0x8` -> `void`).
+ */
+export function STATES_UpdateGfxStateFlagsByMask113c(
+  m: Memory113c,
+  pUnit: number,
+  bIsBossOrTown: number,
+): void {
+  // 0x6FD84155: `test ebp, ebp; je 0x6FD842C4` -> `pop ebp; ret 8` (no assert).
+  if (pUnit >>> 0 === 0) return
+  const pStatList = m.u32((pUnit + 0x5c) >>> 0)
+  if (pStatList === 0 || (m.u32((pStatList + 0x10) >>> 0) & 0x80000000) === 0) return
+
+  const pActive = m.u32((pStatList + 0x58) >>> 0)
+  const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+  const nDwords = stateMaskDwordCount113c(m, sgpt)
+  const pRemoved = (pActive + imul32(nDwords, 4)) >>> 0
+  if (pActive === 0 || pRemoved === 0) return
+
+  let maskOff: number
+  if (bIsBossOrTown !== 0) {
+    maskOff = 0x108
+  } else if (m.u32(pUnit) === UNIT_PLAYER) {
+    maskOff = 0x100
+  } else {
+    maskOff = 0x104
+  }
+  const pMaskArray = m.u32((sgpt + maskOff) >>> 0)
+
+  for (let i = 0; i < nDwords; i++) {
+    const mask = m.u32((pMaskArray + i * 4) >>> 0)
+    const activeVal = m.u32((pActive + i * 4) >>> 0)
+    const removedVal = m.u32((pRemoved + i * 4) >>> 0)
+    m.setU32((pRemoved + i * 4) >>> 0, (removedVal | (activeVal & ~mask)) >>> 0)
+    m.setU32((pActive + i * 4) >>> 0, (activeVal & mask) >>> 0)
+  }
+  UNITROOM_RefreshUnit113c(m, pUnit)
+}
+
+function getStatListUnitAlignment113c(m: Memory113c, pUnit: number): number {
+  if (pUnit === 0 || m.u32((pUnit + 0x5c) >>> 0) === 0) {
+    return 0
+  }
+  const uType = m.u32(pUnit) | 0
+  if (uType < 0 || uType > 1) {
+    return 2
+  }
+  const pSubList = STATLIST_GetStatListFromUnitAndState113c(m, pUnit, 0x69)
+  if (pSubList === 0) {
+    return 0
+  }
+  // 0x6FD89218..0x6FD89225: `[esp+4] = 0; eax = 0xAC; jmp 0x6FD88BD0` -> total stat (0x6FD88A80, full stats
+  // when extended) with layer 0, i.e. exactly 0x6FD891A0 (`STATLIST_GetTotalStatValueLayer0`), not the
+  // base-stat getter 0x6FD89140.
+  return STATLIST_GetTotalStatValueLayer0_113c(m, pSubList, 0xac) | 0
+}
+
+/**
+ * `@va D2Common:0x6FDB6900` (`D2Common.#10457` `UNITROOM_SortUnitListByY`, 20 bytes,
+ * stdcall `[esp+4] = pUnit, [esp+8] = pRoom`, `ret 0x8` -> `number`).
+ */
+export function UNITROOM_SortUnitListByY113c(m: Memory113c, pUnit: number, pRoom: number): number {
+  // 0x6FDB6800 (callee, `push 1` = bAssertIfPresent): 0x6FDB6805 `test edi, edi; jne` else `push 0x42`;
+  // 0x6FDB682A `test esi, esi; jne` else `push 0x43`; both -> assert thunk 0x6FD5921C + exit(-1).
+  if (pUnit >>> 0 === 0) {
+    throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x42)
+  }
+  if (pRoom >>> 0 === 0) {
+    throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x43)
+  }
+  const x = UNITS_GetX113c(m, pUnit) | 0
+  const y = UNITS_GetY113c(m, pUnit) | 0
+  const roomX = m.u32((pRoom + 0x4c) >>> 0) | 0
+  const roomW = m.u32((pRoom + 0x54) >>> 0) | 0
+  const roomY = m.u32((pRoom + 0x50) >>> 0) | 0
+  const roomH = m.u32((pRoom + 0x58) >>> 0) | 0
+  if (x < roomX || x >= roomX + roomW || y < roomY || y >= roomY + roomH) {
+    throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x2e)
+  }
+  let cur = m.u32((pRoom + 0x74) >>> 0)
+  while (cur !== 0) {
+    if (cur === pUnit >>> 0) {
+      throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x36)
+    }
+    cur = m.u32((cur + 0xe8) >>> 0)
+  }
+  const prevFirst = m.u32((pRoom + 0x74) >>> 0)
+  m.setU32((pUnit + 0xe8) >>> 0, prevFirst)
+  m.setU32((pRoom + 0x74) >>> 0, pUnit >>> 0)
+  UNITROOM_RefreshUnit113c(m, pUnit)
+  const uType = m.u32(pUnit) | 0
+  if (
+    uType === UNIT_PLAYER ||
+    (uType === UNIT_MONSTER && getStatListUnitAlignment113c(m, pUnit) === 2)
+  ) {
+    m.setU32((pRoom + 0x28) >>> 0, (m.u32((pRoom + 0x28) >>> 0) + 1) >>> 0)
+  }
+  return 1
+}
+
+/**
+ * `@va D2Common:0x6FDD4D30` (`D2Common.#10665` `UNITS_AreUnitsAligned`, 98 bytes,
+ * stdcall `[esp+4] = pUnit1, [esp+8] = pUnit2`, `ret 0x8` -> `number`).
+ */
+export function UNITS_AreUnitsAligned113c(m: Memory113c, pUnit1: number, pUnit2: number): number {
+  if (pUnit1 >>> 0 === 0 || pUnit2 >>> 0 === 0) {
+    return 0
+  }
+  if (pUnit1 >>> 0 === pUnit2 >>> 0) {
+    return 1
+  }
+  const a2 = getStatListUnitAlignment113c(m, pUnit2)
+  const a1 = getStatListUnitAlignment113c(m, pUnit1)
+  if ((a1 === 0 && a2 === 0) || (a1 === 2 && a2 === 2)) {
+    return 1
+  }
+  return 0
+}
+
+const COLSN_CPP_FILE_113C = '..\\Source\\D2Common\\COLLISION\\Colsn.cpp'
+const MON_TO_PLR_MODE_TABLE_VA_113C = 0x6fde30d8
+
+/**
+ * `@va D2Common:0x6FD7F100` (`UNITS_StepAnimSeqFrame`, 85 bytes,
+ * custom LTCG `esi = pUnit`, `[esp+4] = dwPrevFrameFp8`, `ret 0x4` -> `BOOL`).
+ */
+export function UNITS_StepAnimSeqFrame113c(
+  m: Memory113c,
+  pUnit: number,
+  dwPrevFrameFp8: number,
+): number {
+  const u = pUnit >>> 0
+  const oldSeqMode = m.u32((u + 0x40) >>> 0)
+  const pSeq = m.u32((u + 0x30) >>> 0)
+  const currFp8 = m.u32((u + 0x38) >>> 0) | 0
+  const prevFp8 = dwPrevFrameFp8 | 0
+
+  let modeOut = 0
+  let frameOut = 0
+  let eventOut = 0
+  if (pSeq !== 0) {
+    const currIdx = currFp8 >> 8
+    const recAddr = (pSeq + imul32(currIdx, 6)) >>> 0
+    modeOut = m.u8((recAddr + 2) >>> 0)
+    frameOut = m.u8((recAddr + 3) >>> 0)
+    m.u8((recAddr + 4) >>> 0)
+    if (currFp8 === prevFp8) {
+      eventOut = m.u8((recAddr + 5) >>> 0)
+    } else {
+      const startIdx = ((prevFp8 >> 8) + 1) | 0
+      if (startIdx <= currIdx) {
+        let pEv = (pSeq + imul32(startIdx, 6) + 5) >>> 0
+        for (let rem = (currIdx - startIdx + 1) | 0; rem !== 0; rem = (rem - 1) | 0) {
+          const ev = m.u8(pEv)
+          if (ev !== 0) {
+            eventOut = ev
+          }
+          pEv = (pEv + 6) >>> 0
+        }
+      }
+    }
+  }
+
+  m.setU32((u + 0x44) >>> 0, (frameOut << 8) >>> 0)
+  const changed = modeOut !== oldSeqMode ? 1 : 0
+  m.setU32((u + 0x40) >>> 0, modeOut >>> 0)
+  m.setU8((u + 0x4e) >>> 0, eventOut & 0xff)
+  return changed
+}
+
+/**
+ * `@va D2Common:0x6FD80B80` (`UNITS_IsCastAnimMode`, 72 bytes,
+ * custom LTCG `eax = dwUnitType`, `ecx = nMode`, `edx = pUnit`, plain `ret` -> `BOOL`).
+ */
+export function UNITS_IsCastAnimMode113c(
+  m: Memory113c,
+  dwUnitType: number,
+  nMode: number,
+  pUnit: number,
+): number {
+  const uType = dwUnitType | 0
+  const mode = nMode | 0
+  if (uType === 0) {
+    if (mode === 0x0a) return 1
+    if (mode !== 0x12) return 0
+    const u = pUnit >>> 0
+    if (u === 0) return 0
+    const pSkill = SKILLS_GetUsedSkill113c(m, u)
+    if (pSkill === 0) return 0
+    const pSkillTxtPtr = m.u32(pSkill)
+    const wSkillId = (m.u16(pSkillTxtPtr) << 16) >> 16
+    const pSkillRec = DATATBLS_GetSkillsTxtRecordInline113c(m, wSkillId)
+    if (pSkillRec === 0) return 0
+    return m.u8((pSkillRec + 0x12) >>> 0) === 0x0a ? 1 : 0
+  }
+  if (uType === 1) {
+    return mode === 7 ? 1 : 0
+  }
+  return 0
+}
+
+/**
+ * `@va D2Common:0x6FD80F80` (`D2Common.#10589` `UNITS_GetUnitSizeX`, 98 bytes,
+ * stdcall `[esp+4] = pUnit`, `ret 0x4` -> `number`).
+ */
+export function UNITS_GetUnitSizeX113c(m: Memory113c, pUnit: number): number {
+  const u = pUnit >>> 0
+  if (u === 0) return 0
+  const uType = m.u32(u) >>> 0
+  switch (uType) {
+    case 0:
+      return 2
+    case 1: {
+      const pMonStats2 = DATATBLS_GetMonStats2TxtRecordFromMonStatsIdInline113c(
+        m,
+        m.u32((u + 0x04) >>> 0),
+      )
+      if (pMonStats2 === 0) return 0
+      return (m.u8((pMonStats2 + 0x08) >>> 0) << 24) >> 24
+    }
+    case 2: {
+      const pObjData = m.u32((u + 0x14) >>> 0)
+      const pObjTxt = m.u32(pObjData)
+      return m.u32((pObjTxt + 0xd0) >>> 0) | 0
+    }
+    case 3: {
+      const pMisTxt = DATATBLS_GetMissilesTxtRecordInline113c(m, m.u32((u + 0x04) >>> 0))
+      if (pMisTxt === 0) return 0
+      return m.u8((pMisTxt + 0x18a) >>> 0)
+    }
+    case 4:
+      return 1
+    default:
+      return 0
+  }
+}
+
+/**
+ * `@va D2Common:0x6FDA01E0` (`D2Common.#10350` `UNITS_GetTransformGfx`, 374 bytes,
+ * stdcall `[esp+4] = pUnit`, `[esp+8] = pOutIsPlayerTransform`, `[esp+0xC] = pOutClassId`,
+ * `[esp+0x10] = pInOutMode`, `[esp+0x14] = a5`, `[esp+0x18] = a6`, `ret 0x18`, void).
+ */
+export function UNITS_GetTransformGfx113c(
+  m: Memory113c,
+  pUnit: number,
+  pOutIsPlayerTransform: number,
+  pOutClassId: number,
+  pInOutMode: number,
+  _a5 = 0,
+  _a6 = 0,
+): void {
+  const u = pUnit >>> 0
+  if (u === 0) return
+  if (((m.u32((u + 0xc8) >>> 0) >>> 3) & 1) === 0) return
+  let sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+  const nTransformStates = (m.u16((sgpt + 0x180) >>> 0) << 16) >> 16
+  if (nTransformStates <= 0) return
+  const pTransformStates = m.u32((sgpt + 0x17c) >>> 0)
+  const uType = m.u32(u) | 0
+
+  for (let i = 0; i < nTransformStates; i++) {
+    sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+    const nState = (m.u16((pTransformStates + i * 2) >>> 0) << 16) >> 16
+    if (uType < 0 || (uType > 1 && uType !== 3)) continue
+    const nStatesCount = m.u32((sgpt + 0xc4) >>> 0) | 0
+    if (nState < 0 || nState >= nStatesCount) continue
+    const pStatListEx = m.u32((u + 0x5c) >>> 0)
+    if (pStatListEx === 0 || (m.u32((pStatListEx + 0x10) >>> 0) | 0) >= 0) continue
+    const pStateFlags = m.u32((pStatListEx + 0x58) >>> 0)
+    const wordVal = m.u32((pStateFlags + ((nState >> 5) << 2)) >>> 0)
+    const pBitMasks = m.u32(D2COMMON_GDWBITMASKS_IAT_VA_113C)
+    const bitMask = m.u32((pBitMasks + ((nState & 0x1f) << 2)) >>> 0)
+    if ((wordVal & bitMask) === 0) continue
+    const pStatesTxt = m.u32((sgpt + 0xbc) >>> 0)
+    const pStateRec = (pStatesTxt + imul32(nState, 0x3c)) >>> 0
+    if (pStateRec === 0) continue
+    const nGfxType = m.u8((pStateRec + 0x2d) >>> 0)
+    if (nGfxType === 1) {
+      m.setU32(pOutIsPlayerTransform >>> 0, 1)
+      const nGfxClass = (m.u16((pStateRec + 0x2e) >>> 0) << 16) >> 16
+      m.setU32(pOutClassId >>> 0, nGfxClass >>> 0)
+      if (m.u32(u) === 0) {
+        const curMode = m.u32(pInOutMode >>> 0) | 0
+        const mappedMode = SKILLS_MapPlayerAnimModeToMonsterMode113c(m, curMode, nGfxClass)
+        m.setU32(pInOutMode >>> 0, mappedMode >>> 0)
+      }
+      return
+    }
+    if (nGfxType === 2) {
+      m.setU32(pOutIsPlayerTransform >>> 0, 0)
+      const nGfxClass = (m.u16((pStateRec + 0x2e) >>> 0) << 16) >> 16
+      m.setU32(pOutClassId >>> 0, nGfxClass >>> 0)
+      if (m.u32(u) === 1) {
+        const curMode = m.u32(pInOutMode >>> 0) >>> 0
+        if (nGfxClass === 6 && curMode === 4) {
+          m.setU32(pInOutMode >>> 0, 0x0c)
+          return
+        }
+        const mappedMode = m.u32((MON_TO_PLR_MODE_TABLE_VA_113C + (curMode << 2)) >>> 0)
+        m.setU32(pInOutMode >>> 0, mappedMode)
+      }
+      return
+    }
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD62450` (`D2Common.#10933` `UNITS_AreInAdjacentRooms`, 131 bytes,
+ * stdcall `[esp+4] = pUnit1`, `[esp+8] = pUnit2`, `ret 0x8` -> `BOOL`).
+ */
+export function UNITS_AreInAdjacentRooms113c(m: Memory113c, pUnit1: number, pUnit2: number): number {
+  const u1 = pUnit1 >>> 0
+  if (u1 === 0) {
+    throw new D2CommonAssertError(COLSN_CPP_FILE_113C, 0x18)
+  }
+  const u2 = pUnit2 >>> 0
+  if (u2 === 0) {
+    throw new D2CommonAssertError(COLSN_CPP_FILE_113C, 0x19)
+  }
+  const pRoom2 = UNITS_GetRoom113c(m, u2)
+  if (pRoom2 === 0) return 0
+  const pRoom1 = UNITS_GetRoom113c(m, u1)
+  if (pRoom1 === 0) return 0
+  const nRoomsNear = m.u32((pRoom2 + 0x24) >>> 0) | 0
+  const ppRoomsNear = m.u32(pRoom2)
+  if (nRoomsNear <= 0) return 0
+  for (let i = 0; i < nRoomsNear; i++) {
+    if (m.u32((ppRoomsNear + i * 4) >>> 0) === pRoom1) {
+      return 1
+    }
+  }
+  return 0
+}
+
+/**
+ * `@va D2Common:0x6FD80BD0` (`UNITS_IsAttackAnimMode`, 158 bytes,
+ * custom LTCG `edx = dwUnitType`, `ecx = nMode`, `[esp+4] = pUnit`, `[esp+8] = dwClassId`, `ret 0x8` -> `number`).
+ */
+export function UNITS_IsAttackAnimMode113c(
+  m: Memory113c,
+  dwUnitType: number,
+  nMode: number,
+  pUnit: number,
+  dwClassId: number,
+): number {
+  const uType = dwUnitType | 0
+  const mode = nMode | 0
+  let pEntry = 0
+  if (uType === 0) {
+    pEntry = (PLAYER_MODE_SWITCH_TABLE_VA_113C + imul32(mode, 20)) >>> 0
+  } else if (uType === 1) {
+    const tableBase =
+      (dwClassId | 0) < 0x19a
+        ? MONSTER_MODE_SWITCH_TABLE_LOW_VA_113C
+        : MONSTER_MODE_SWITCH_TABLE_HIGH_VA_113C
+    pEntry = (tableBase + imul32(mode, 20)) >>> 0
+  } else {
+    throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0xbef)
+  }
+
+  if (m.u32((pEntry + 0x0c) >>> 0) !== 0) {
+    return 1
+  }
+  if (m.u32((pEntry + 0x08) >>> 0) === 0) {
+    return 0
+  }
+  const pSkill = SKILLS_GetUsedSkill113c(m, pUnit)
+  if (pSkill === 0) {
+    return 0
+  }
+  const pSkillTxtPtr = m.u32(pSkill)
+  const wSkillId = (m.u16(pSkillTxtPtr) << 16) >> 16
+  const pSkillRec = DATATBLS_GetSkillsTxtRecordInline113c(m, wSkillId)
+  const flagsByte = m.u8((pSkillRec + 0x06) >>> 0)
+  const pBitMasks = m.u32(D2COMMON_GDWBITMASKS_IAT_VA_113C)
+  return (flagsByte & m.u32((pBitMasks + 0x0c) >>> 0)) >>> 0
+}
+
+/**
+ * `@va D2Common:0x6FD80EE0` (`D2Common.#10904` `UNITS_GetUnitSizeY`, 129 bytes,
+ * stdcall `[esp+4] = pUnit`, `ret 0x4` -> `number`).
+ */
+export function UNITS_GetUnitSizeY113c(m: Memory113c, pUnit: number): number {
+  const u = pUnit >>> 0
+  if (u === 0) {
+    throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x74b)
+  }
+  const uType = m.u32(u) >>> 0
+  switch (uType) {
+    case 0:
+      return 2
+    case 1: {
+      const pMonStats2 = DATATBLS_GetMonStats2TxtRecordFromMonStatsIdInline113c(
+        m,
+        m.u32((u + 0x04) >>> 0),
+      )
+      if (pMonStats2 === 0) return 0
+      return (m.u8((pMonStats2 + 0x09) >>> 0) << 24) >> 24
+    }
+    case 2: {
+      const pObjData = m.u32((u + 0x14) >>> 0)
+      const pObjTxt = m.u32(pObjData)
+      return m.u32((pObjTxt + 0xd4) >>> 0) | 0
+    }
+    case 3: {
+      const pMisTxt = DATATBLS_GetMissilesTxtRecordInline113c(m, m.u32((u + 0x04) >>> 0))
+      if (pMisTxt === 0) return 0
+      return m.u8((pMisTxt + 0x18a) >>> 0)
+    }
+    case 4:
+      return 1
+    default:
+      return 0
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD83990` (`D2Common.#10124` `UNITS_FreeUnit`, 108 bytes,
+ * stdcall `[esp+4] = pUnit`, `ret 0x4`, void).
+ */
+export function UNITS_FreeUnit113c(m: Memory113c, pUnit: number): void {
+  const u = pUnit >>> 0
+  if (u === 0) return
+  const pStatListEx = m.u32((u + 0x5c) >>> 0)
+  if (pStatListEx !== 0) {
+    if ((m.u32((pStatListEx + 0x10) >>> 0) | 0) < 0) {
+      STATLIST_FreeStatListImpl113c(m, pStatListEx)
+    }
+    m.setU32((u + 0x5c) >>> 0, 0)
+  }
+  SKILLS_FreeSkillList113c(m, u)
+  if (m.u32(u) === 1) {
+    m.u32((u + 0x08) >>> 0)
+    const pMonsterData = m.u32((u + 0x14) >>> 0)
+    ;(m as { free?: (p: number) => void }).free?.(pMonsterData)
+  }
+  m.u32((u + 0x08) >>> 0)
+  m.setU32(u, 6)
+  m.setU32((u + 0x0c) >>> 0, 0xffffffff)
+  ;(m as { free?: (p: number) => void }).free?.(u)
+}
+
+/**
+ * `@va D2Common:0x6FDB6630` (`UNITROOM_ValidateUnitInRoom`, 204 bytes,
+ * custom LTCG `esi = pRoom`, `edi = pUnit`, `[esp+4] = bAssertIfPresent`, `ret 0x4` -> `BOOL`).
+ */
+export function UNITROOM_ValidateUnitInRoom113c(
+  m: Memory113c,
+  pRoom: number,
+  pUnit: number,
+  bAssertIfPresent: number,
+): number {
+  const room = pRoom >>> 0
+  const u = pUnit >>> 0
+  if (room !== 0) {
+    for (let i = 0; i < 8; i++) {
+      m.u32((room + 0x4c + i * 4) >>> 0)
+    }
+  }
+  const uType = m.u32(u) | 0
+  const pPath = m.u32((u + 0x2c) >>> 0)
+  let x: number
+  if (uType === 2 || (uType > 3 && uType <= 5)) {
+    x = m.u32((pPath + 0x0c) >>> 0) | 0
+  } else {
+    x = pPath !== 0 ? m.u16((pPath + 0x02) >>> 0) : 0
+  }
+  let y: number
+  if (uType === 2 || (uType > 3 && uType <= 5)) {
+    y = m.u32((pPath + 0x10) >>> 0) | 0
+  } else {
+    y = pPath !== 0 ? m.u16((pPath + 0x06) >>> 0) : 0
+  }
+
+  if (room === 0) {
+    throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x2e)
+  }
+  const roomX = m.u32((room + 0x4c) >>> 0) | 0
+  if (x < roomX) {
+    throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x2e)
+  }
+  const roomW = m.u32((room + 0x54) >>> 0) | 0
+  if (x >= ((roomX + roomW) | 0)) {
+    throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x2e)
+  }
+  const roomY = m.u32((room + 0x50) >>> 0) | 0
+  if (y < roomY) {
+    throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x2e)
+  }
+  const roomH = m.u32((room + 0x58) >>> 0) | 0
+  if (y >= ((roomY + roomH) | 0)) {
+    throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x2e)
+  }
+
+  let cur = m.u32((room + 0x74) >>> 0)
+  while (cur !== 0) {
+    if (cur === u) {
+      if ((bAssertIfPresent | 0) !== 0) {
+        throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x36)
+      }
+      return 0
+    }
+    cur = m.u32((cur + 0xe8) >>> 0)
+  }
+  return 1
+}
+
+/**
+ * `@va D2Common:0x6FDB68A0` (`D2Common.#10650` `UNITROOM_ClearUnitRoom`, 93 bytes,
+ * stdcall `[esp+4] = pUnit`, `ret 0x4`, void).
+ */
+export function UNITROOM_ClearUnitRoom113c(m: Memory113c, pUnit: number): void {
+  const u = pUnit >>> 0
+  if (u === 0) {
+    throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0xcc)
+  }
+  const uType = m.u32(u) | 0
+  const pPath = m.u32((u + 0x2c) >>> 0)
+  if (uType === 2 || (uType > 3 && uType <= 5)) {
+    if (m.u32(pPath) !== 0) {
+      UNITROOM_RemoveUnitFromRoom113c(m, u)
+    }
+    m.setU32(pPath, 0)
+    return
+  }
+  PATH_ResetDynamicPathRoomAndCoordsInline113c(m, pPath)
+}
+
+

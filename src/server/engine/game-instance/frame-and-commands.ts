@@ -2629,6 +2629,7 @@ export const frameAndCommandsMethods: Record<keyof FrameAndCommandsMethods, unkn
 
 /** AI step of one monster plus the pending action resolution that follows it in the monster loop. */
 function stepMonsterAiAndPending113c(host: GameInstanceHost, monster: InternalMonsterRecord): void {
+  if (monster.dead) return
   if (
     !monster.aiDisabled &&
     !monster.isNpc &&

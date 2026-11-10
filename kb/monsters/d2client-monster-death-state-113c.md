@@ -32,24 +32,43 @@ targetable"). All addresses are from the 1.13c `D2Client.dll` (base `0x6FAA0000`
 - The port decoded 0x76 as `UnitMode mode=1`, which cleared ISDEAD and stood dead units up in NU. Fixed in
   the Refs #916 change: `decode0x76HoverTextClear` → `UnitHoverTextClear` → clears `overheadText` only.
 
-## 3. Open parity gaps (NOT changed yet — recorded for follow-up)
+## 3. Hover / Target Validation (`0x6FB01650`, `0x6FB01AE0`, `0x6FB01E80`, `#10648`, `#10787`) & Revival Paths
 
-### 3.1 `UNITFLAG_ISDEAD` (0x10000) is never cleared by the 1.13c client
+### 3.1 `UNITFLAG_ISDEAD` (`0x10000`) & `0x6FB56210` (`UNIT_RestoreAliveFlags`)
 
-- Exhaustive scan of `D2Client.dll` and `D2Common.dll` disassembly: no `and …,0xfffeffff`, no byte/word clear
-  of `unit+0xC6`, no `btr`. ISDEAD is only ever *set* (e.g. `0x6FAFE819`, `0x6FB54BE4`, `0x6FB611BA`).
+- In `D2Client.dll`, `0x6FB55440` (`UNIT_IsDead(pUnit)`) returns `1` when `(pUnit->dwFlags & 0x10000) != 0`; otherwise for `dwUnitType == 1` (`UNIT_MONSTER`) it returns `dwAnimMode == 0 (MONMODE_DEATH) || dwAnimMode == 12 (MONMODE_DEAD)`. It never inspects `STAT_HITPOINTS`.
 - Monster command handler `0x6FAFDC70` prologue (`0x6FAFDC98..0x6FAFDCE7`):
   - if `ISDEAD` or (`type==1` and mode `0`/`12`) [or player mode `0`/`0x11`] and `cmd ∉ {8, 9}`:
-    `#10938` (PATH_SetUnitAliveCollision, via thunk `0x6FABCD48`), `0x6FAFC150`, clear `dwFlagEx & 0x40000`;
+    calls `0x6FB56210` (`UNIT_RestoreAliveFlags`), which executes `and ecx, 0xfffeffff` (`0x6FB56224`, clearing `UNITFLAG_ISDEAD 0x10000`), `#10938` (`PATH_SetUnitAliveCollision`), `0x6FAFC150`, and clears `dwFlagEx & 0x40000`;
   - else (alive): `#11011` (`D2Common_10214` living footprint refresh, thunk `0x6FABCD90`).
-  - ISDEAD itself is left set.
-- Port difference: `NpcMotion.executeCmd0x6FAFDC70` clears ISDEAD for every `cmd ∉ {8,9}` and runs the
-  alive-restore block regardless of dead state; `ClientWorld.applyUnitModeImmediate` also clears 0x10000 when
-  a non-death mode arrives for a dead monster. Not changed in #916 because resurrection
-  (`SKILLS_SrvDo097_Resurrect`, same GUID, mode change only) needs the 1.13c hover/target rule for monsters
-  (`0x6FB01650`, `0x6FB01AE0`, `#10648`) decoded first.
+  - Within the 30-entry command jump table (`0x6FAFEBAC`), only `cmd 0x07` (`MONMODE_NEUTRAL` at `0x6FAFE8E6`, driven by `S2C 0x6D NPCStop` or `S2C 0x69 cmd 0x07`) also calls `0x6FB56210` at `0x6FAFE964`.
+- `cmd 0x06` (`0x69` `MONMODE_GETHIT` at `0x6FAFE095`) and `cmd 0x13` (`0x0C` `NPCGetHit` at `0x6FAFE14D`) compute `edx = s[2] & 0x7f` and only call `D2Common.#10590(pUnit, STAT_HITPOINTS=6, edx << 8, 0)` when `edx != 0` (`test edx, edx; jz`). When `s[2] == 0x80` (`edx == 0`, sent on a killing blow), they leave `STAT_HITPOINTS = 0` untouched.
 
-### 3.2 0xAC initial-mode normalisation by life percent is invented
+### 3.2 `D2Common.#10648` (`0x6FD6A520`), `0x6FB01E80` (Hover Priority), `0x6FB01AE0` & `0x6FB01650` (Action Target Validation)
+
+- `D2Common.#10648` (`0x6FD6A520`, `UNITS_IsMonsterInDeathOrDeadMode(pUnit)`):
+  returns `1` iff `pUnit != NULL && pUnit->dwUnitType == 1 && (pUnit->dwAnimMode == 0 || pUnit->dwAnimMode == 12)`.
+- `0x6FB01E80..0x6FB02170` (Mouse Hover Candidate Scorer):
+  - Calls `0x6FB568E0` (`UNIT_IsSelectableTarget`, which gates dead monsters via `D2Common.#10817` `UNITS_IsCorpseUseable`: `mCorpseSel` + `dwAnimMode == 12` + `!STATE_RED` + `!STATE_CORPSE_NODRAW`).
+  - At `0x6FB0208B` and `0x6FB020B6`, calls `D2Common.#10648(pCandidate)`: if the monster is in `DT (0)` or `DD (12)`, its hover priority score is demoted to `-8` (`0xFFFFFFF8`), whereas living monsters receive `+4` (`0x6FB020CF`) or `+2` (`0x6FB020BC`), so any overlapping living unit or ground item always wins hover priority over a corpse.
+- `0x6FB01AE0` (Mouse Action Target Validator) & `0x6FB01650` (Corpse Target Validator):
+  - At `0x6FB01B50`, calls `0x6FB55440(pTarget)` (`UNIT_IsDead`).
+  - When `UNIT_IsDead(pTarget) != 0` and the skill is not a corpse-targeting skill, `0x6FB01BD0..0x6FB01BEA` extracts the corpse's `(x, y)` coordinates and sets `pTarget = NULL` (`xor edi, edi`), converting bare left/right clicks on a corpse into ground `(x, y)` casts/moves (`SkillAt` / `Move`) instead of `SkillOn`.
+  - At `0x6FB01C9C`, calls `D2Common.#10787(pSkill, pPlayer)` (`0x6FDA2340`, `SKILLS_CheckSkillCorpseTargetable`, which checks `(pSkillsTxt->dwFlags & 0x200) != 0` i.e. `Skills.txt` `TargetCorpse == 1`). Only when `#10787` returns `0` (`TargetCorpse == 1`) does `0x6FB01CB9` invoke `0x6FB01650` (`#10817` `UNITS_IsCorpseUseable` + `SelectProc` callback) to lock onto the corpse.
+
+### 3.3 Post-Death Server Packets (`D2GAME_SyncMonsterToClient` `0x6FD13A40`) & Same-GUID Resurrection (`SKILLS_SrvDo097_Resurrect` `0x6FCD5BD0`)
+
+- **Why the server sends `0x0C` after `0x69 cmd 0x08` in the same frame**:
+  - In `D2Game.dll` `SUNITDMG_ExecuteEvents` (`0x6FCFD100`), a non-killing hit that skips `MONMODE_GETHIT` (`0x6FCFD159`) or changes HP by `> 4/128` without `HITFLAG_GETHIT` (`0x6FCFD438`) sets `pMonster->dwFlags |= 0x8000` (`UNITFLAG_UPGRLIFENHITCLASS`).
+  - If a subsequent hit in the same 25Hz server frame kills the monster, `MONSTER_EnterDeathMode` (`0x6FC96270`) sets `dwAnimMode = 0 (DT)` and `dwFlags |= 0x0001` (`UNITFLAG_DOUPDATE`) without clearing `0x8000`.
+  - In `D2GAME_SyncMonsterToClient` (`0x6FD13A40`), `dwFlags & 0x0001` (`0x6FD13B1F` -> `0x6FD135C0`) sends **`S2C 0x69` `cmd = 0x08` (`MONMODE_DEATH`)** first, and immediately afterward `dwFlags & 0x8000` (`0x6FD13BF1` -> `0x6FD13360`) sends **`S2C 0x0C` (`NPCGetHit`, `cmd = 0x13`)** with `pkt[8] = 0x80` (`curHp == 0` -> `0x00 | 0x80`).
+- **Explicit Resurrection Signals**:
+  1. **Necromancer `Revive` (`skillId = 95`)**: sets `STATE_REVIVE` (`96`) via `S2C 0xA8`.
+  2. **Monster / Shaman Resurrection (`SKILLS_SrvDo097_Resurrect` `0x6FCD5BD0` -> `D2GAME_ResurrectUnit` `0x6FCD33B0`)** and **Self-Resurrect (`Reanimated Horde` `AI_SelfResurrect`)**:
+     - Operates on an existing settled corpse (`MONMODE_DEAD = 12`) with the **same `unitId` (GUID)**.
+     - Restores `STAT_HITPOINTS = STAT_MAXHP` (`lifeByte = 0x80`), clears `UNITFLAG_ISDEAD`, and calls `D2GAME_ChangeMonsterMode` (`0x6FC95E10`) with the mode from `MONSTER_GetResurrectMode` (`0x6FD13CB0`: `MONMODE_SEQUENCE = 14` if `MonStats2.txt` `mSQ` is set, else `MONMODE_SKILL1 = 8` if `ResurrectMode == 8`, else `MONMODE_NEUTRAL = 1`), emitting `S2C 0x69`/`0x6A` (`cmd = 14`, `8`, or `7`) or `S2C 0x6D` (`NPCStop`, `cmd = 7`, `life > 0`) on the `mode 12` corpse.
+
+### 3.4 0xAC initial-mode normalisation by life percent is invented
 
 - `D2Client 0x6FB5E420`: 4-bit mode read at `0x6FB5E462..0x6FB5E477` is passed as-is to unit creation
   (`0x6FB57780`); life is only written as stats: `STAT_MAXHP(7) = 0x8000` and `STAT_HITPOINTS(6) = pkt[11]<<8`

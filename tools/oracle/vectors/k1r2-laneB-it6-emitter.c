@@ -1398,15 +1398,18 @@ static void emit_b030(FILE *fp) {
       RangeSpec pre[] = {
         { VA_ITEMS_TXT_COUNT, 8 },
         { VA_SGPT_DATATABLES, 4 },
+        { VA_GDWBITMASKS_IAT, 4 },
+        { ADDR_BITMASKS, 128 },
         { ADDR_DT_SLICE, 80 },
         { ADDR_ITEMS_TXT, 4 * 424 },
+        { ADDR_EQUIV_MATRIX - 8, 520 },
         { ADDR_UNIT, 244 },
         { ADDR_ITEM_DATA, 116 }
       };
       uint32_t args[1] = { ADDR_UNIT };
-      capture_pre(pre, 6, pre_bufs);
+      capture_pre(pre, 9, pre_bufs);
       call_stdcall1(va, ADDR_UNIT);
-      emit_ndjson_line(fp, va, nm, "non_weapon_non_armor_sets_flag_only", args, 1, 0u, 0u, pre, 6, pre_bufs, pre, 6);
+      emit_ndjson_line(fp, va, nm, "non_weapon_non_armor_sets_flag_only", args, 1, 0u, 0u, pre, 9, pre_bufs, pre, 9);
     }
   }
 

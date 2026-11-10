@@ -1055,15 +1055,43 @@ export class NpcMotion {
     return unit
   }
 
+  /**
+   * Explicitly revive a dead monster (`0x6FB56210` `UNIT_RestoreAliveFlags`):
+   * clears `UNITFLAG_ISDEAD` (`0x10000`), restores living collision (`PATH_SetUnitAliveCollision`),
+   * updates `lifeByte`, and transitions to `mode`.
+   */
+  reviveMonster(unitId: number, lifeByte = 128, mode = MONMODE_NEUTRAL): NpcMotionUnit | null {
+    const unit = this.units.get(unitId >>> 0)
+    if (!unit) return null
+    unit.dwFlags = u32(unit.dwFlags & ~UNITFLAG_ISDEAD)
+    unit.dwFlagEx = u32(unit.dwFlagEx & ~0x40000)
+    PATH_SetUnitAliveCollision(unit, 0)
+    unit.lifeByte = Math.max(1, Math.min(128, Math.round(lifeByte)))
+    this.changeAnimMode0x6FADA6C0(unit, mode, true)
+    return unit
+  }
+
   private applyGetHit0x0C(
     unit: NpcMotionUnit,
     mode: number,
     lifePct: number,
     hitClass?: number,
   ): void {
+    const isDeadOrDying =
+      (unit.dwFlags & UNITFLAG_ISDEAD) !== 0 ||
+      unit.dwAnimMode === MONMODE_DEATH ||
+      unit.dwAnimMode === MONMODE_DEAD
+    if (isDeadOrDying && mode !== MONMODE_DEATH && mode !== MONMODE_DEAD) {
+      return
+    }
     const prevMode = unit.dwAnimMode
     unit.lastAnimRestarted = false
-    unit.lifeByte = lifePct & 0x7f
+    const maskedLife = lifePct & 0x7f
+    if (mode === MONMODE_DEATH || mode === MONMODE_DEAD) {
+      unit.lifeByte = 0
+    } else if (maskedLife > 0) {
+      unit.lifeByte = maskedLife
+    }
     unit.hitClass = hitClass !== undefined ? hitClass & 0xff : 0
     if (mode === MONMODE_DEATH || mode === MONMODE_DEAD) {
       unit.dwFlags = u32(unit.dwFlags | UNITFLAG_ISDEAD)
@@ -1201,17 +1229,17 @@ export class NpcMotion {
       }
     }
 
-    // Living footprint refresh (#11011 = D2Common_10214) & corpse-to-alive restore (#10938)
+    // Living footprint refresh (#11011 = D2Common_10214); dead monsters ignore non-death commands
+    // unless explicitly resurrected first via `reviveMonster`.
     const isDeadOrDying =
       (unit.dwFlags & UNITFLAG_ISDEAD) !== 0 ||
       unit.dwAnimMode === MONMODE_DEATH ||
       unit.dwAnimMode === MONMODE_DEAD
+    if (isDeadOrDying && cmd !== 0x08 && cmd !== 0x09) {
+      return
+    }
     if (!isDeadOrDying) {
       D2Common_10214(unit)
-    }
-    if (cmd !== 0x08 && cmd !== 0x09) {
-      unit.dwFlags = u32(unit.dwFlags & ~UNITFLAG_ISDEAD)
-      PATH_SetUnitAliveCollision(unit, 0)
     }
 
     // Town NPC fixed-direction overrides in KB/RN (0x6FAFDF43..0x6FAFDFC6)
@@ -1272,7 +1300,7 @@ export class NpcMotion {
       case 0x07: {
         D2COMMON_10212_PATH_SetMoveFlags(unit, 0)
         if (s2 !== 0) {
-          unit.lifeByte = s2 & 0x7f
+          unit.lifeByte = Math.min(128, s2 & 0xff)
         }
         this.runDriftCheck0x6FADA1B0(unit, s0, s1)
         const dx = Math.abs(PATH_GetXPosition(path) - s0)
@@ -1321,8 +1349,10 @@ export class NpcMotion {
       // cmd 6 (GH / get-hit) — 0x6FAFE095: ignores s0/s1; reads s2 (life) and s6 (hitClass)
       case 0x06: {
         let life = s2 & 0x7f
-        if (life > 1) life = (life + 1) | 0
-        unit.lifeByte = life
+        if (life > 0) {
+          if (life > 1) life = (life + 1) | 0
+          unit.lifeByte = life
+        }
         unit.hitClass = s6 & 0xff
         D2COMMON_10212_PATH_SetMoveFlags(unit, 0)
         PATH_RecacheRoomIfNeeded(path)
@@ -1404,8 +1434,10 @@ export class NpcMotion {
       // cmd 0x13 (KB overlay without path) — 0x6FAFE14D
       case 0x13: {
         let life = s2 & 0x7f
-        if (life > 1) life = (life + 1) | 0
-        unit.lifeByte = life
+        if (life > 0) {
+          if (life > 1) life = (life + 1) | 0
+          unit.lifeByte = life
+        }
         unit.hitClass = s6 & 0xff
         break
       }
@@ -1413,8 +1445,10 @@ export class NpcMotion {
       // cmd 0x14 (KB / knockback path) — 0x6FAFE1D8
       case 0x14: {
         let life = s5 & 0x7f
-        if (life > 1) life = (life + 1) | 0
-        unit.lifeByte = life
+        if (life > 0) {
+          if (life > 1) life = (life + 1) | 0
+          unit.lifeByte = life
+        }
         unit.hitClass = s6 & 0xff
         D2COMMON_10212_PATH_SetMoveFlags(unit, 0)
         PATH_RecacheRoomIfNeeded(path)

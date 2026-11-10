@@ -144,14 +144,26 @@ export interface CharacterSheetAttributes extends CharacterAttributes {
   lastMonsterDefense?: number | undefined
   leftAR?: number | undefined
   leftARColor?: D2ColorCode | undefined
+  leftARTop?: number | undefined
+  leftARBottom?: number | undefined
   rightAR?: number | undefined
   rightARColor?: D2ColorCode | undefined
+  rightARTop?: number | undefined
+  rightARBottom?: number | undefined
   leftSkillName?: string | undefined
   rightSkillName?: string | undefined
   leftSkillDmg?: string | undefined
   rightSkillDmg?: string | undefined
   leftSkillDmgColor?: D2ColorCode | undefined
   rightSkillDmgColor?: D2ColorCode | undefined
+  leftSkillDmgTop?: string | undefined
+  leftSkillDmgBottom?: string | undefined
+  leftSkillDmgTopColor?: D2ColorCode | undefined
+  leftSkillDmgBottomColor?: D2ColorCode | undefined
+  rightSkillDmgTop?: string | undefined
+  rightSkillDmgBottom?: string | undefined
+  rightSkillDmgTopColor?: D2ColorCode | undefined
+  rightSkillDmgBottomColor?: D2ColorCode | undefined
   /** The skill's descdam/descatt handlers draw nothing because the item it uses is missing (0x6FADFD30). */
   leftSkillBlockEmpty?: boolean | undefined
   rightSkillBlockEmpty?: boolean | undefined
@@ -785,79 +797,245 @@ export function formatCharacterDamageTooltipLines(
     return lines
   }
 
-  const hasFlat = formula.offWeaponFlatMin !== 0 || formula.offWeaponFlatMax !== 0
-  if (hasFlat) {
-    const flatSignMin = formula.offWeaponFlatMin >= 0 ? `+${formula.offWeaponFlatMin}` : `${formula.offWeaponFlatMin}`
+  const appendWeaponBreakdownLines = (
+    targetFormula: CombatDamageFormulaBreakdown,
+    formulaLabelEn = 'Formula',
+    formulaLabelZh = '公式',
+    includeSkillElem = true,
+  ): void => {
+    const hasFlat = targetFormula.offWeaponFlatMin !== 0 || targetFormula.offWeaponFlatMax !== 0
+    if (hasFlat) {
+      const flatSignMin =
+        targetFormula.offWeaponFlatMin >= 0
+          ? `+${targetFormula.offWeaponFlatMin}`
+          : `${targetFormula.offWeaponFlatMin}`
+      lines.push({
+        text: isEn
+          ? `Weapon Base: ${targetFormula.weaponMin}~${targetFormula.weaponMax} | Off-Weapon Flat: ${flatSignMin}~${targetFormula.offWeaponFlatMax} (Phys Base ${targetFormula.physBaseMin}~${targetFormula.physBaseMax})`
+          : `武器伤害基底: ${targetFormula.weaponMin}~${targetFormula.weaponMax} | 装备点伤: ${flatSignMin}~${targetFormula.offWeaponFlatMax} (物理基底 ${targetFormula.physBaseMin}~${targetFormula.physBaseMax})`,
+        color: 'white',
+        font: 'font8',
+        align: 'center',
+      })
+    } else {
+      lines.push({
+        text: isEn
+          ? `Weapon Base: ${targetFormula.weaponMin}~${targetFormula.weaponMax}`
+          : `武器伤害基底: ${targetFormula.weaponMin}~${targetFormula.weaponMax}`,
+        color: 'white',
+        font: 'font8',
+        align: 'center',
+      })
+    }
+
+    const edParts: string[] = []
+    if (targetFormula.strEdPct !== 0)
+      edParts.push(isEn ? `Str ${fmtSignedPct(targetFormula.strEdPct)}` : `力量 ${fmtSignedPct(targetFormula.strEdPct)}`)
+    if (targetFormula.dexEdPct !== 0)
+      edParts.push(isEn ? `Dex ${fmtSignedPct(targetFormula.dexEdPct)}` : `敏捷 ${fmtSignedPct(targetFormula.dexEdPct)}`)
+    if (targetFormula.masteryEdPct !== 0)
+      edParts.push(isEn ? `Mastery ${fmtSignedPct(targetFormula.masteryEdPct)}` : `支配 ${fmtSignedPct(targetFormula.masteryEdPct)}`)
+    if (targetFormula.skillEdPct !== 0)
+      edParts.push(isEn ? `Skill ${fmtSignedPct(targetFormula.skillEdPct)}` : `技能 ${fmtSignedPct(targetFormula.skillEdPct)}`)
+    if (targetFormula.gearEdPct !== 0)
+      edParts.push(isEn ? `Gear ${fmtSignedPct(targetFormula.gearEdPct)}` : `防具 ${fmtSignedPct(targetFormula.gearEdPct)}`)
+    if (targetFormula.auraEdPct !== 0)
+      edParts.push(isEn ? `Aura ${fmtSignedPct(targetFormula.auraEdPct)}` : `光环 ${fmtSignedPct(targetFormula.auraEdPct)}`)
+
+    const totalEdLabel =
+      targetFormula.totalMinEdPct === targetFormula.totalMaxEdPct
+        ? fmtSignedPct(targetFormula.totalMaxEdPct)
+        : `${fmtSignedPct(targetFormula.totalMinEdPct)}~${fmtSignedPct(targetFormula.totalMaxEdPct)}`
+    const edDetail = edParts.length > 0 ? edParts.join(' + ') : '+0%'
+
     lines.push({
-      text: isEn
-        ? `Weapon Base: ${formula.weaponMin}~${formula.weaponMax} | Off-Weapon Flat: ${flatSignMin}~${formula.offWeaponFlatMax} (Phys Base ${formula.physBaseMin}~${formula.physBaseMax})`
-        : `武器伤害基底: ${formula.weaponMin}~${formula.weaponMax} | 装备点伤: ${flatSignMin}~${formula.offWeaponFlatMax} (物理基底 ${formula.physBaseMin}~${formula.physBaseMax})`,
-      color: 'white',
-      font: 'font8',
-      align: 'center',
-    })
-  } else {
-    lines.push({
-      text: isEn
-        ? `Weapon Base: ${formula.weaponMin}~${formula.weaponMax}`
-        : `武器伤害基底: ${formula.weaponMin}~${formula.weaponMax}`,
-      color: 'white',
-      font: 'font8',
-      align: 'center',
-    })
-  }
-
-  const edParts: string[] = []
-  if (formula.strEdPct !== 0) edParts.push(isEn ? `Str ${fmtSignedPct(formula.strEdPct)}` : `力量 ${fmtSignedPct(formula.strEdPct)}`)
-  if (formula.dexEdPct !== 0) edParts.push(isEn ? `Dex ${fmtSignedPct(formula.dexEdPct)}` : `敏捷 ${fmtSignedPct(formula.dexEdPct)}`)
-  if (formula.masteryEdPct !== 0) edParts.push(isEn ? `Mastery ${fmtSignedPct(formula.masteryEdPct)}` : `支配 ${fmtSignedPct(formula.masteryEdPct)}`)
-  if (formula.skillEdPct !== 0) edParts.push(isEn ? `Skill ${fmtSignedPct(formula.skillEdPct)}` : `技能 ${fmtSignedPct(formula.skillEdPct)}`)
-  if (formula.gearEdPct !== 0) edParts.push(isEn ? `Gear ${fmtSignedPct(formula.gearEdPct)}` : `防具 ${fmtSignedPct(formula.gearEdPct)}`)
-  if (formula.auraEdPct !== 0) edParts.push(isEn ? `Aura ${fmtSignedPct(formula.auraEdPct)}` : `光环 ${fmtSignedPct(formula.auraEdPct)}`)
-
-  const totalEdLabel =
-    formula.totalMinEdPct === formula.totalMaxEdPct
-      ? fmtSignedPct(formula.totalMaxEdPct)
-      : `${fmtSignedPct(formula.totalMinEdPct)}~${fmtSignedPct(formula.totalMaxEdPct)}`
-  const edDetail = edParts.length > 0 ? edParts.join(' + ') : '+0%'
-
-  lines.push({
-    text: isEn ? `Phys %ED (${totalEdLabel}): ${edDetail}` : `物理增伤 (${totalEdLabel}): ${edDetail}`,
-    color: 'blue',
-    font: 'font8',
-    align: 'center',
-  })
-
-  if (formula.skillPhysMin > 0 || formula.skillPhysMax > 0) {
-    lines.push({
-      text: isEn
-        ? `Skill Flat Phys: +${formula.skillPhysMin}~${formula.skillPhysMax}`
-        : `技能附加物理: +${formula.skillPhysMin}~${formula.skillPhysMax}`,
+      text: isEn ? `Phys %ED (${totalEdLabel}): ${edDetail}` : `物理增伤 (${totalEdLabel}): ${edDetail}`,
       color: 'blue',
       font: 'font8',
       align: 'center',
     })
-  }
 
-  const elemParts: string[] = []
-  if (formula.fireMax > 0) elemParts.push(isEn ? `Fire ${formula.fireMin}~${formula.fireMax}` : `火焰 ${formula.fireMin}~${formula.fireMax}`)
-  if (formula.lightMax > 0) elemParts.push(isEn ? `Ltng ${formula.lightMin}~${formula.lightMax}` : `闪电 ${formula.lightMin}~${formula.lightMax}`)
-  if (formula.coldMax > 0) elemParts.push(isEn ? `Cold ${formula.coldMin}~${formula.coldMax}` : `冰冷 ${formula.coldMin}~${formula.coldMax}`)
-  if (formula.magicMax > 0) elemParts.push(isEn ? `Magic ${formula.magicMin}~${formula.magicMax}` : `魔法 ${formula.magicMin}~${formula.magicMax}`)
-  if (formula.poisonMax > 0) elemParts.push(isEn ? `Pois ${formula.poisonMin}~${formula.poisonMax}` : `毒素 ${formula.poisonMin}~${formula.poisonMax}`)
+    if (targetFormula.skillPhysMin > 0 || targetFormula.skillPhysMax > 0) {
+      lines.push({
+        text: isEn
+          ? `Skill Flat Phys: +${targetFormula.skillPhysMin}~${targetFormula.skillPhysMax}`
+          : `技能附加物理: +${targetFormula.skillPhysMin}~${targetFormula.skillPhysMax}`,
+        color: 'blue',
+        font: 'font8',
+        align: 'center',
+      })
+    }
 
-  if (elemParts.length > 0) {
+    const elemParts: string[] = []
+    if (targetFormula.fireMax > 0)
+      elemParts.push(isEn ? `Fire ${targetFormula.fireMin}~${targetFormula.fireMax}` : `火焰 ${targetFormula.fireMin}~${targetFormula.fireMax}`)
+    if (targetFormula.lightMax > 0)
+      elemParts.push(isEn ? `Ltng ${targetFormula.lightMin}~${targetFormula.lightMax}` : `闪电 ${targetFormula.lightMin}~${targetFormula.lightMax}`)
+    if (targetFormula.coldMax > 0)
+      elemParts.push(isEn ? `Cold ${targetFormula.coldMin}~${targetFormula.coldMax}` : `冰冷 ${targetFormula.coldMin}~${targetFormula.coldMax}`)
+    if (targetFormula.magicMax > 0)
+      elemParts.push(isEn ? `Magic ${targetFormula.magicMin}~${targetFormula.magicMax}` : `魔法 ${targetFormula.magicMin}~${targetFormula.magicMax}`)
+    if (targetFormula.poisonMax > 0)
+      elemParts.push(isEn ? `Pois ${targetFormula.poisonMin}~${targetFormula.poisonMax}` : `毒素 ${targetFormula.poisonMin}~${targetFormula.poisonMax}`)
+
+    if (elemParts.length > 0) {
+      lines.push({
+        text: isEn ? `Elemental/Magic: ${elemParts.join(' + ')}` : `元素/魔法附加: ${elemParts.join(' + ')}`,
+        color: 'blue',
+        font: 'font8',
+        align: 'center',
+      })
+    }
+
+    const skillElemMin = includeSkillElem ? (targetFormula.skillElemMin ?? 0) : 0
+    const skillElemMax = includeSkillElem ? (targetFormula.skillElemMax ?? 0) : 0
+    if (skillElemMax > 0) {
+      lines.push({
+        text: isEn
+          ? `Skill Elemental: +${skillElemMin}-${skillElemMax}`
+          : `技能元素附加: +${skillElemMin}-${skillElemMax}`,
+        color: 'blue',
+        font: 'font8',
+        align: 'center',
+      })
+    }
+
+    const baseTerm = hasFlat
+      ? `(${targetFormula.weaponMin}~${targetFormula.weaponMax} + ${targetFormula.offWeaponFlatMin}~${targetFormula.offWeaponFlatMax})`
+      : `${targetFormula.weaponMin}~${targetFormula.weaponMax}`
+    const edTerm =
+      targetFormula.totalMinEdPct === targetFormula.totalMaxEdPct
+        ? targetFormula.totalMaxEdPct >= 0
+          ? ` × (1+${targetFormula.totalMaxEdPct}%)`
+          : ` × (1-${Math.abs(targetFormula.totalMaxEdPct)}%)`
+        : ` × (1+${targetFormula.totalMinEdPct}%~${targetFormula.totalMaxEdPct}%)`
+    let expr = `${baseTerm}${edTerm}`
+    if (targetFormula.skillPhysMin > 0 || targetFormula.skillPhysMax > 0) {
+      expr = `(${expr} + ${targetFormula.skillPhysMin}~${targetFormula.skillPhysMax})`
+    }
+    if (targetFormula.srcDam !== 128) {
+      const srcPct = Math.round((targetFormula.srcDam * 100) / 128)
+      expr = `⌊${expr}⌋ × ${srcPct}%`
+    }
+    if (targetFormula.magicConversionPct === 100) {
+      expr += isEn ? ' (100% Magic)' : ' (100%转魔法)'
+    }
+    const extraElemMin =
+      targetFormula.fireMin +
+      targetFormula.lightMin +
+      targetFormula.coldMin +
+      targetFormula.poisonMin +
+      (targetFormula.magicConversionPct > 0 ? 0 : targetFormula.magicMin)
+    const extraElemMax =
+      targetFormula.fireMax +
+      targetFormula.lightMax +
+      targetFormula.coldMax +
+      targetFormula.poisonMax +
+      (targetFormula.magicConversionPct > 0 ? 0 : targetFormula.magicMax)
+    if (extraElemMax > 0) {
+      expr = `${expr} + (${extraElemMin}~${extraElemMax})`
+    }
+    if (skillElemMax > 0) {
+      expr = `${expr} + (${skillElemMin}-${skillElemMax})`
+    }
+
+    const displayedMin = includeSkillElem
+      ? targetFormula.finalMin
+      : (targetFormula.weaponHitMin ?? Math.max(0, targetFormula.finalMin - (targetFormula.skillElemMin ?? 0)))
+    const displayedMax = includeSkillElem
+      ? targetFormula.finalMax
+      : (targetFormula.weaponHitMax ?? Math.max(0, targetFormula.finalMax - (targetFormula.skillElemMax ?? 0)))
+
     lines.push({
-      text: isEn ? `Elemental/Magic: ${elemParts.join(' + ')}` : `元素/魔法附加: ${elemParts.join(' + ')}`,
-      color: 'blue',
+      text: isEn
+        ? `${formulaLabelEn}: ${expr} = ${displayedMin}~${displayedMax}`
+        : `${formulaLabelZh}: ${expr} = ${displayedMin}~${displayedMax}`,
+      color: 'gold',
       font: 'font8',
       align: 'center',
     })
   }
 
-  const skillElemMin = formula.skillElemMin ?? 0
-  const skillElemMax = formula.skillElemMax ?? 0
-  if (skillElemMax > 0) {
+  if (formula.secondaryWeaponBreakdown) {
+    const sec = formula.secondaryWeaponBreakdown
+    lines.push({
+      text: isEn
+        ? `Primary Weapon Damage: ${formula.finalMin}~${formula.finalMax}`
+        : `主手武器伤害: ${formula.finalMin}~${formula.finalMax}`,
+      color: 'gold',
+      font: 'font8',
+      align: 'center',
+    })
+    appendWeaponBreakdownLines(formula, 'Primary Formula', '主手公式', true)
+
+    lines.push({
+      text: isEn
+        ? `Secondary Weapon Damage: ${sec.finalMin}~${sec.finalMax}`
+        : `副手武器伤害: ${sec.finalMin}~${sec.finalMax}`,
+      color: 'gold',
+      font: 'font8',
+      align: 'center',
+    })
+    appendWeaponBreakdownLines(sec, 'Secondary Formula', '副手公式', true)
+    return lines
+  }
+
+  if (formula.isMultiComponent && (formula.skillElemMax ?? 0) > 0) {
+    const weaponHitMin = formula.weaponHitMin ?? Math.max(0, formula.finalMin - (formula.skillElemMin ?? 0))
+    const weaponHitMax = formula.weaponHitMax ?? Math.max(0, formula.finalMax - (formula.skillElemMax ?? 0))
+    const skillElemMin = formula.skillElemMin ?? 0
+    const skillElemMax = formula.skillElemMax ?? 0
+
+    lines.push({
+      text: isEn
+        ? `Weapon Hit Damage: ${weaponHitMin}~${weaponHitMax}`
+        : `武器命中伤害: ${weaponHitMin}~${weaponHitMax}`,
+      color: 'gold',
+      font: 'font8',
+      align: 'center',
+    })
+    appendWeaponBreakdownLines(formula, 'Weapon Hit Formula', '武器命中公式', false)
+
+    lines.push({
+      text: isEn
+        ? `Attached Skill Damage: ${skillElemMin}~${skillElemMax}`
+        : `附带技能伤害: ${skillElemMin}~${skillElemMax}`,
+      color: 'gold',
+      font: 'font8',
+      align: 'center',
+    })
+    const ab = formula.attachedSkillBreakdown
+    if (ab) {
+      lines.push({
+        text: isEn
+          ? `Skill Base Damage: ${ab.baseMin}~${ab.baseMax}`
+          : `技能基础伤害: ${ab.baseMin}~${ab.baseMax}`,
+        color: 'white',
+        font: 'font8',
+        align: 'center',
+      })
+      if (ab.synergyBonusPct > 0) {
+        lines.push({
+          text: isEn
+            ? `Synergy Bonus: +${ab.synergyBonusPct}% (→ ${ab.withSynergyMin}~${ab.withSynergyMax})`
+            : `技能协同增伤: +${ab.synergyBonusPct}% (→ ${ab.withSynergyMin}~${ab.withSynergyMax})`,
+          color: 'blue',
+          font: 'font8',
+          align: 'center',
+        })
+      }
+      const totalElemPct = ab.masteryBonusPct + ab.equipSpellDamagePct + ab.auraBonusPct
+      if (totalElemPct !== 0) {
+        lines.push({
+          text: isEn
+            ? `Elemental Bonus (+${totalElemPct}%): Mastery +${ab.masteryBonusPct}% + Equip +${ab.equipSpellDamagePct}%`
+            : `元素增伤 (+${totalElemPct}%): 精通 +${ab.masteryBonusPct}% + 装备 +${ab.equipSpellDamagePct}%`,
+          color: 'blue',
+          font: 'font8',
+          align: 'center',
+        })
+      }
+    }
     lines.push({
       text: isEn
         ? `Skill Elemental: +${skillElemMin}-${skillElemMax}`
@@ -866,53 +1044,18 @@ export function formatCharacterDamageTooltipLines(
       font: 'font8',
       align: 'center',
     })
+    lines.push({
+      text: isEn
+        ? `Formula: (${weaponHitMin}~${weaponHitMax}) + (${skillElemMin}-${skillElemMax}) = ${formula.finalMin}~${formula.finalMax}`
+        : `公式: (${weaponHitMin}~${weaponHitMax}) + (${skillElemMin}-${skillElemMax}) = ${formula.finalMin}~${formula.finalMax}`,
+      color: 'gold',
+      font: 'font8',
+      align: 'center',
+    })
+    return lines
   }
 
-  const baseTerm = hasFlat
-    ? `(${formula.weaponMin}~${formula.weaponMax} + ${formula.offWeaponFlatMin}~${formula.offWeaponFlatMax})`
-    : `${formula.weaponMin}~${formula.weaponMax}`
-  const edTerm =
-    formula.totalMinEdPct === formula.totalMaxEdPct
-      ? formula.totalMaxEdPct >= 0
-        ? ` × (1+${formula.totalMaxEdPct}%)`
-        : ` × (1-${Math.abs(formula.totalMaxEdPct)}%)`
-      : ` × (1+${formula.totalMinEdPct}%~${formula.totalMaxEdPct}%)`
-  let expr = `${baseTerm}${edTerm}`
-  if (formula.skillPhysMin > 0 || formula.skillPhysMax > 0) {
-    expr = `(${expr} + ${formula.skillPhysMin}~${formula.skillPhysMax})`
-  }
-  if (formula.srcDam !== 128) {
-    const srcPct = Math.round((formula.srcDam * 100) / 128)
-    expr = `⌊${expr}⌋ × ${srcPct}%`
-  }
-  if (formula.magicConversionPct === 100) {
-    expr += isEn ? ' (100% Magic)' : ' (100%转魔法)'
-  }
-  const extraElemMin =
-    formula.fireMin +
-    formula.lightMin +
-    formula.coldMin +
-    formula.poisonMin +
-    (formula.magicConversionPct > 0 ? 0 : formula.magicMin)
-  const extraElemMax =
-    formula.fireMax +
-    formula.lightMax +
-    formula.coldMax +
-    formula.poisonMax +
-    (formula.magicConversionPct > 0 ? 0 : formula.magicMax)
-  if (extraElemMax > 0) {
-    expr = `${expr} + (${extraElemMin}~${extraElemMax})`
-  }
-  if (skillElemMax > 0) {
-    expr = `${expr} + (${skillElemMin}-${skillElemMax})`
-  }
-
-  lines.push({
-    text: isEn ? `Formula: ${expr} = ${formula.finalMin}~${formula.finalMax}` : `公式: ${expr} = ${formula.finalMin}~${formula.finalMax}`,
-    color: 'gold',
-    font: 'font8',
-    align: 'center',
-  })
+  appendWeaponBreakdownLines(formula, 'Formula', '公式', true)
 
   return lines
 }
@@ -1535,11 +1678,27 @@ export class CharacterSheetPanel {
         color: 'tan',
         align: 'center',
       })
-      font.drawText(ctx, leftDmgStr, ox + 288, oy + 94, {
-        font: 'font6',
-        color: this.attrs.leftSkillDmgColor ?? 'white',
-        align: 'center',
-      })
+      if (this.attrs.leftSkillDmgTop && this.attrs.leftSkillDmgBottom) {
+        // D2Client.dll 0x6FADD3C0: 2-line stacked centered readout in font6 for
+        // dual-wield weapons (descdam = 1, 13, 19, 20) and weapon + attached
+        // bolt/chain/explosion/poison cloud skills (descdam = 6, 17, 22, 23).
+        font.drawText(ctx, this.attrs.leftSkillDmgTop, ox + 288, oy + 90, {
+          font: 'font6',
+          color: this.attrs.leftSkillDmgTopColor ?? this.attrs.leftSkillDmgColor ?? 'white',
+          align: 'center',
+        })
+        font.drawText(ctx, this.attrs.leftSkillDmgBottom, ox + 288, oy + 100, {
+          font: 'font6',
+          color: this.attrs.leftSkillDmgBottomColor ?? this.attrs.leftSkillDmgColor ?? 'white',
+          align: 'center',
+        })
+      } else {
+        font.drawText(ctx, leftDmgStr, ox + 288, oy + 94, {
+          font: 'font6',
+          color: this.attrs.leftSkillDmgColor ?? 'white',
+          align: 'center',
+        })
+      }
     }
 
     font.drawText(ctx, rightSkillLabel, ox + 214, oy + 113, {
@@ -1553,11 +1712,24 @@ export class CharacterSheetPanel {
         color: 'tan',
         align: 'center',
       })
-      font.drawText(ctx, rightDmgStr, ox + 288, oy + 118, {
-        font: 'font6',
-        color: this.attrs.rightSkillDmgColor ?? 'white',
-        align: 'center',
-      })
+      if (this.attrs.rightSkillDmgTop && this.attrs.rightSkillDmgBottom) {
+        font.drawText(ctx, this.attrs.rightSkillDmgTop, ox + 288, oy + 114, {
+          font: 'font6',
+          color: this.attrs.rightSkillDmgTopColor ?? this.attrs.rightSkillDmgColor ?? 'white',
+          align: 'center',
+        })
+        font.drawText(ctx, this.attrs.rightSkillDmgBottom, ox + 288, oy + 124, {
+          font: 'font6',
+          color: this.attrs.rightSkillDmgBottomColor ?? this.attrs.rightSkillDmgColor ?? 'white',
+          align: 'center',
+        })
+      } else {
+        font.drawText(ctx, rightDmgStr, ox + 288, oy + 118, {
+          font: 'font6',
+          color: this.attrs.rightSkillDmgColor ?? 'white',
+          align: 'center',
+        })
+      }
     }
 
     // Three boxes next to Dexterity (y=138..159 Left AR, y=164..185 Right AR, y=192..213 Defense)
@@ -1571,22 +1743,48 @@ export class CharacterSheetPanel {
     // Box 1: Left-hand Attack Rating (y=138..159, baseline oy + 153) — gated by doesSkillUseAttackRating (0x6FADE350)
     const leftSkillUsesAr = doesSkillUseAttackRating(leftId) && this.attrs.leftSkillBlockEmpty !== true
     if (leftSkillUsesAr) {
-      const leftAr = this.attrs.leftAttackRating ?? this.attrs.leftAR ?? this.attrs.attackRating
-      font.drawText(ctx, String(leftAr), ox + 290, oy + 153, {
-        font: 'font8',
-        color: this.attrs.leftARColor || 'white',
-        align: 'center',
-      })
+      if (this.attrs.leftARTop !== undefined && this.attrs.leftARBottom !== undefined) {
+        font.drawText(ctx, String(this.attrs.leftARTop), ox + 290, oy + 148, {
+          font: 'font6',
+          color: this.attrs.leftARColor || 'white',
+          align: 'center',
+        })
+        font.drawText(ctx, String(this.attrs.leftARBottom), ox + 290, oy + 158, {
+          font: 'font6',
+          color: this.attrs.leftARColor || 'white',
+          align: 'center',
+        })
+      } else {
+        const leftAr = this.attrs.leftAttackRating ?? this.attrs.leftAR ?? this.attrs.attackRating
+        font.drawText(ctx, String(leftAr), ox + 290, oy + 153, {
+          font: 'font8',
+          color: this.attrs.leftARColor || 'white',
+          align: 'center',
+        })
+      }
     }
     // Box 2: Right-hand Attack Rating (y=164..185, baseline oy + 178) — gated by doesSkillUseAttackRating (0x6FADE350)
     const rightSkillUsesAr = doesSkillUseAttackRating(rightId) && this.attrs.rightSkillBlockEmpty !== true
     if (rightSkillUsesAr) {
-      const rightAr = this.attrs.rightAttackRating ?? this.attrs.rightAR ?? this.attrs.attackRating
-      font.drawText(ctx, String(rightAr), ox + 290, oy + 178, {
-        font: 'font8',
-        color: this.attrs.rightARColor || 'white',
-        align: 'center',
-      })
+      if (this.attrs.rightARTop !== undefined && this.attrs.rightARBottom !== undefined) {
+        font.drawText(ctx, String(this.attrs.rightARTop), ox + 290, oy + 173, {
+          font: 'font6',
+          color: this.attrs.rightARColor || 'white',
+          align: 'center',
+        })
+        font.drawText(ctx, String(this.attrs.rightARBottom), ox + 290, oy + 183, {
+          font: 'font6',
+          color: this.attrs.rightARColor || 'white',
+          align: 'center',
+        })
+      } else {
+        const rightAr = this.attrs.rightAttackRating ?? this.attrs.rightAR ?? this.attrs.attackRating
+        font.drawText(ctx, String(rightAr), ox + 290, oy + 178, {
+          font: 'font8',
+          color: this.attrs.rightARColor || 'white',
+          align: 'center',
+        })
+      }
     }
     // Box 3: Defense (y=192..213, baseline oy + 204)
     font.drawText(ctx, requireTbl('strchrdef', this.lang), ox + 166, oy + 204, {

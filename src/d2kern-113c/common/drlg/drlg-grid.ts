@@ -13,7 +13,7 @@ import {
   D2RoomExStrc,
 } from '../../mem/layout.generated.ts';
 import type { Memory113c } from '../../mem/sparse-memory.ts';
-import { SEED_RollRandomNumberInline113c } from '../inline-helpers.ts';
+import { D2CommonAssertError, SEED_RollRandomNumberInline113c } from '../inline-helpers.ts';
 import { imul32, sdiv32, smod32 } from '../int-math.ts';
 import {
   DRLGOUTDOORS_ClearOutdoorCellFlag200_113c,
@@ -21,6 +21,8 @@ import {
   DRLGOUTDOORS_SetOutdoorCellFlag200_113c,
   DRLGOUTDOORS_SpawnOutdoorRoomEx113c,
 } from './outdoors.ts';
+import { DATATBLS_GetLvlSubTxtRecordBySubType113c } from '../../tables/datatbls-113c.ts';
+import { DRLGVER_FreeVertices113c } from './drlg-ver.ts';
 
 /**
  * Function pointer table `gafGridCellOps` at `0x6FDEB244` (`uint32[6]`, 24 bytes: `0x6FDEB244 .. 0x6FDEB25B`).
@@ -680,9 +682,7 @@ export function DRLGOUTROOM_MapAct5PresetId113c(
   const style = nStyle | 0;
   const seq = nSeq | 0;
   if (style !== 0x30 && style !== 0x31) {
-    throw new Error(
-      `DRLGOUTROOM_MapAct5PresetId113c: Fog_10024 assert at 0x6FD90C3A (nStyle=${style})`,
-    );
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DATATBLS\\AnimTbls.cpp', 388);
   }
   const bIsTundra = (m.u32((lvl + 0x1d0) >>> 0) | 0) === 0x75 ? 1 : 0;
   for (let row = 0; row < 10; row++) {
@@ -697,9 +697,7 @@ export function DRLGOUTROOM_MapAct5PresetId113c(
       return (presetBase - ACT5_SUB_PRESET_TABLE_6FDE36A8[base + 1]! + seq) | 0;
     }
   }
-  throw new Error(
-    `DRLGOUTROOM_MapAct5PresetId113c: Fog_10024 assert at 0x6FD90C8A (nStyle=${style}, nSeq=${seq})`,
-  );
+  throw new D2CommonAssertError('..\\Source\\D2Common\\DATATBLS\\AnimTbls.cpp', 421);
 }
 
 /**
@@ -1282,5 +1280,415 @@ export function DRLGLOGIC_FreeRoomLogicalInfo113c(
   }
   freeFn?.call(m, pLogic);
   m.setU32((roomEx + 0x64) >>> 0, 0);
+}
+
+function allocGridWindowRowOffsetsFromCoords(
+  m: Memory113c,
+  pOutGrid: number,
+  boxX: number,
+  boxY: number,
+  boxW: number,
+  boxH: number,
+  nRowStride: number,
+  pBaseCells: number,
+): void {
+  const grid = pOutGrid >>> 0;
+  const stride = nRowStride | 0;
+  const w = boxW | 0;
+  const h = boxH | 0;
+  m.set(grid, D2DrlgGridStrc.nWidth, w >>> 0);
+  m.set(grid, D2DrlgGridStrc.nHeight, h >>> 0);
+  const startIdx = (imul32(boxY | 0, stride) + (boxX | 0)) | 0;
+  m.set(grid, D2DrlgGridStrc.pCells, (pBaseCells + (startIdx << 2)) >>> 0);
+  const pRowOffsets = m.alloc((h << 2) >>> 0);
+  m.set(grid, D2DrlgGridStrc.pRowOffsets, pRowOffsets);
+  if (h > 0) {
+    let curOff = 0;
+    for (let i = 0; i < h; i++) {
+      const pRow = m.get(grid, D2DrlgGridStrc.pRowOffsets);
+      m.setU32((pRow + i * 4) >>> 0, curOff >>> 0);
+      curOff = (curOff + stride) | 0;
+    }
+  }
+  m.set(grid, D2DrlgGridStrc.bInitialized, 1);
+}
+
+/**
+ * `@va D2Common:0x6FD5AB50` (`DRLGPRESET_BuildPresetRoomGridsFromFile113c`, not exported;
+ * `__stdcall(pRoomEx)`, `ret 4`).
+ *
+ * Initializes `pPreset = pRoomEx->pTypeData (+0x20)` wall (`+0x10`), orientation (`+0x60`), floor (`+0xB0`),
+ * and shadow (`+0xD8`) `D2DrlgGridStrc` windows from `pPreset->pMap (+0x08)->pFile (+0x0C)`, applies border (`0x84`)
+ * and layer-index (`i << 18`) flags via `0x6FD86A60` / `0x6FD86B10`, and calls
+ * `DRLGPRESET_RelinkMapPresetUnitsToRoomEx113c(pRoomEx)` (`0x6FD5A360`).
+ */
+export function DRLGPRESET_BuildPresetRoomGridsFromFile113c(
+  m: Memory113c,
+  pRoomEx: number,
+): void {
+  const roomEx = pRoomEx >>> 0;
+  const pPreset = m.u32((roomEx + 0x20) >>> 0);
+  const pMap = m.u32((pPreset + 0x08) >>> 0);
+  const mapX = m.u32((pMap + 0x10) >>> 0) | 0;
+  const mapY = m.u32((pMap + 0x14) >>> 0) | 0;
+  const pFile = m.u32((pMap + 0x0c) >>> 0);
+  const pLevel = m.u32((roomEx + 0x58) >>> 0);
+  const pDrlg = m.u32((pLevel + 0x1b4) >>> 0);
+  void m.u32((pDrlg + 0x478) >>> 0);
+
+  const relX = ((m.u32((roomEx + 0x34) >>> 0) | 0) - mapX) | 0;
+  const relY = ((m.u32((roomEx + 0x38) >>> 0) | 0) - mapY) | 0;
+  const wPlus1 = ((m.u32((roomEx + 0x3c) >>> 0) | 0) + 1) | 0;
+  const hPlus1 = ((m.u32((roomEx + 0x40) >>> 0) | 0) + 1) | 0;
+  const fileStride = ((m.u32((pMap + 0x18) >>> 0) | 0) + 1) | 0;
+
+  const nWalls0 = m.u32((pFile + 0x14) >>> 0) | 0;
+  if (nWalls0 > 0) {
+    let i = 0;
+    let pOrientGrid = (pPreset + 0x60) >>> 0;
+    let pLayerPtr = (pFile + 0x1c) >>> 0;
+    do {
+      const pWallCells = m.u32((pLayerPtr + 0x10) >>> 0);
+      allocGridWindowRowOffsetsFromCoords(
+        m,
+        (pOrientGrid - 0x50) >>> 0,
+        relX,
+        relY,
+        wPlus1,
+        hPlus1,
+        fileStride,
+        pWallCells,
+      );
+      const pOrientCells = m.u32(pLayerPtr);
+      allocGridWindowRowOffsetsFromCoords(
+        m,
+        pOrientGrid,
+        relX,
+        relY,
+        wPlus1,
+        hPlus1,
+        fileStride,
+        pOrientCells,
+      );
+      i = (i + 1) | 0;
+      pLayerPtr = (pLayerPtr + 0x04) >>> 0;
+      pOrientGrid = (pOrientGrid + 0x14) >>> 0;
+    } while (i < (m.u32((pFile + 0x14) >>> 0) | 0));
+  }
+
+  if ((m.u32((pFile + 0x14) >>> 0) | 0) !== 0) {
+    DRLGGRID_ApplyBorderCellFlags113c(m, (pPreset + 0x10) >>> 0, 0x84, 0);
+  }
+
+  if ((m.u32((pFile + 0x14) >>> 0) | 0) > 1) {
+    let i = 1;
+    let pWallGrid = (pPreset + 0x24) >>> 0;
+    do {
+      DRLGGRID_ApplyAllCellFlags113c(m, pWallGrid, (i << 18) >>> 0, 0);
+      i = (i + 1) | 0;
+      pWallGrid = (pWallGrid + 0x14) >>> 0;
+    } while (i < (m.u32((pFile + 0x14) >>> 0) | 0));
+  }
+
+  if ((m.u32((pFile + 0x18) >>> 0) | 0) > 0) {
+    let i = 0;
+    let pFloorLayerPtr = (pFile + 0x3c) >>> 0;
+    let pFloorGrid = (pPreset + 0xb0) >>> 0;
+    do {
+      const pBase = m.u32(pFloorLayerPtr);
+      allocGridWindowRowOffsetsFromCoords(
+        m,
+        pFloorGrid,
+        relX,
+        relY,
+        wPlus1,
+        hPlus1,
+        fileStride,
+        pBase,
+      );
+      DRLGGRID_ApplyAllCellFlags113c(m, pFloorGrid, (i << 18) >>> 0, 0);
+      i = (i + 1) | 0;
+      pFloorLayerPtr = (pFloorLayerPtr + 0x04) >>> 0;
+      pFloorGrid = (pFloorGrid + 0x14) >>> 0;
+    } while (i < (m.u32((pFile + 0x18) >>> 0) | 0));
+  }
+
+  const pShadowGrid = (pPreset + 0xd8) >>> 0;
+  const pShadowBase = m.u32((pFile + 0x44) >>> 0);
+  allocGridWindowRowOffsetsFromCoords(
+    m,
+    pShadowGrid,
+    relX,
+    relY,
+    wPlus1,
+    hPlus1,
+    fileStride,
+    pShadowBase,
+  );
+
+  if ((m.u32((pFile + 0x18) >>> 0) | 0) > 0) {
+    let i = 0;
+    let pFloorGrid = (pPreset + 0xb0) >>> 0;
+    do {
+      DRLGGRID_ApplyBorderCellFlags113c(m, pFloorGrid, 0x84, 0);
+      i = (i + 1) | 0;
+      pFloorGrid = (pFloorGrid + 0x14) >>> 0;
+    } while (i < (m.u32((pFile + 0x18) >>> 0) | 0));
+  }
+
+  DRLGGRID_ApplyBorderCellFlags113c(m, pShadowGrid, 0x84, 0);
+  DRLGPRESET_RelinkMapPresetUnitsToRoomEx113c(m, roomEx);
+}
+
+/**
+ * `@va D2Common:0x6FD920E0` (`DRLGOUTDOORS_FreeOutdoorLevelData113c`, not exported;
+ * `__stdcall(pLevel, bKeepAllocated)`, `ret 8`).
+ *
+ * Clears bits `0x20 | 0x40` on `pOutdoors->dwFlags (+0x00)`, frees the 4 outdoor `D2DrlgGridStrc` row-offset buffers
+ * at `+0x04, +0x18, +0x2C, +0x40`, frees the 7 vertex lists at `+0x64 .. +0x7C` via `DRLGVER_FreeVertices113c` (`0x6FD6B3D0`),
+ * zeroes `0x1E0` bytes at `+0x80 .. +0x25F` and `nRooms (+0x260)`, and when `bKeepAllocated == 0`, frees the linked list
+ * at `pOutdoors + 0x264` (`pNext` at `+0x14`), frees `pOutdoors`, and zeroes `pLevel->pOutdoors (+0x14)`.
+ */
+export function DRLGOUTDOORS_FreeOutdoorLevelData113c(
+  m: Memory113c,
+  pLevel: number,
+  bKeepAllocated: number,
+): void {
+  const level = pLevel >>> 0;
+  const pDrlg = m.u32((level + 0x1b4) >>> 0);
+  const pMemPool = m.u32((pDrlg + 0x478) >>> 0);
+  const pOutdoors = m.u32((level + 0x14) >>> 0);
+  const freeFn = (m as { free?: (p: number) => void }).free;
+
+  const flags0 = m.u32(pOutdoors);
+  if ((flags0 & 0x20) !== 0) {
+    m.setU32(pOutdoors, (flags0 ^ 0x20) >>> 0);
+  }
+  const flags1 = m.u32(pOutdoors);
+  if ((flags1 & 0x40) !== 0) {
+    m.setU32(pOutdoors, (flags1 ^ 0x40) >>> 0);
+  }
+
+  for (const gridOff of [0x04, 0x18, 0x2c, 0x40] as const) {
+    const pRowOffsets = m.u32((pOutdoors + gridOff + 0x04) >>> 0);
+    if (pRowOffsets !== 0) {
+      freeFn?.call(m, pRowOffsets);
+    }
+    m.setU32((pOutdoors + gridOff) >>> 0, 0);
+    m.setU32((pOutdoors + gridOff + 0x04) >>> 0, 0);
+  }
+
+  DRLGVER_FreeVertices113c(m, pMemPool, (pOutdoors + 0x64) >>> 0);
+  for (let i = 0; i < 6; i++) {
+    DRLGVER_FreeVertices113c(m, pMemPool, (pOutdoors + 0x68 + i * 4) >>> 0);
+  }
+
+  m.fill((pOutdoors + 0x80) >>> 0, 0x1e0, 0);
+  m.setU32((pOutdoors + 0x260) >>> 0, 0);
+
+  if ((bKeepAllocated | 0) === 0) {
+    let pNode = m.u32((pOutdoors + 0x264) >>> 0);
+    while (pNode !== 0) {
+      const pNext = m.u32((pNode + 0x14) >>> 0);
+      freeFn?.call(m, pNode);
+      pNode = pNext;
+    }
+    const pOutdoorsCur = m.u32((level + 0x14) >>> 0);
+    freeFn?.call(m, pOutdoorsCur);
+    m.setU32((level + 0x14) >>> 0, 0);
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD9A4D0` (`DRLGOUTROOM_FreeOutdoorRoomData113c`, not exported;
+ * custom LTCG `eax = pMemPool`, `esi = pOutdoorRoom`, plain `ret`).
+ *
+ * Frees the 4 `D2DrlgGridStrc` row-offset buffers at `pOutdoorRoom + 0x00, +0x14, +0x28, +0x3C`,
+ * zeroes their `pCells` and `pRowOffsets` fields, and frees the vertex list at `pOutdoorRoom + 0x50`
+ * via `DRLGVER_FreeVertices113c` (`0x6FD6B3D0`).
+ */
+export function DRLGOUTROOM_FreeOutdoorRoomData113c(
+  m: Memory113c,
+  pMemPool: number,
+  pOutdoorRoom: number,
+): void {
+  const room = pOutdoorRoom >>> 0;
+  const freeFn = (m as { free?: (p: number) => void }).free;
+  for (const gridOff of [0x00, 0x14, 0x28, 0x3c] as const) {
+    const pRowOffsets = m.u32((room + gridOff + 0x04) >>> 0);
+    if (pRowOffsets !== 0) {
+      freeFn?.call(m, pRowOffsets);
+    }
+    m.setU32((room + gridOff) >>> 0, 0);
+    m.setU32((room + gridOff + 0x04) >>> 0, 0);
+  }
+  DRLGVER_FreeVertices113c(m, pMemPool >>> 0, (room + 0x50) >>> 0);
+}
+
+/**
+ * `@va D2Common:0x6FDD3740` (`DRLGTILESUB_RollSubThemeMask113c`, not exported;
+ * custom LTCG `esi = pLevel`, stack `[esp+4] = nSubType`, `[esp+8] = nSubTheme`, `ret 8`).
+ *
+ * Returns `0` when `nSubType == -1` or `nSubTheme == -1`. Otherwise walks consecutive `D2LvlSubTxt`
+ * records (`stride = 0x15C`) starting from `DATATBLS_GetLvlSubTxtRecordBySubType113c(nSubType)` (`0x6FDBC4D0`)
+ * while `pLvlSubTxt->dwType (+0x00) == nSubType`, rolling `pLevel->pOutdoors (+0x14)` as a 64-bit LCG mod `100`
+ * against `pLvlSubTxt->nProb[nSubTheme]` (`+0x11C + nSubTheme * 4`), setting bit `bitIdx` in the returned mask
+ * and ORing `pLvlSubTxt->dwDt1Mask (+0x48)` into `*(u32*)(pLevel + 0x50)`.
+ */
+export function DRLGTILESUB_RollSubThemeMask113c(
+  m: Memory113c,
+  pLevel: number,
+  nSubType: number,
+  nSubTheme: number,
+): number {
+  const subType = nSubType | 0;
+  const subTheme = nSubTheme | 0;
+  if (subType === -1 || subTheme === -1) {
+    return 0;
+  }
+
+  const level = pLevel >>> 0;
+  let pLvlSubTxt = DATATBLS_GetLvlSubTxtRecordBySubType113c(m, subType) >>> 0;
+  let resultMask = 0;
+  let bitIdx = 0;
+
+  if ((m.u32(pLvlSubTxt) | 0) === subType) {
+    while (true) {
+      const lLow = m.u32((level + 0x14) >>> 0) >>> 0;
+      const lHigh = m.u32((level + 0x18) >>> 0) >>> 0;
+      const prod = BigInt(lLow) * 0x6ac690c5n + BigInt(lHigh);
+      const newLow = Number(prod & 0xffffffffn) >>> 0;
+      const newHigh = Number((prod >> 32n) & 0xffffffffn) >>> 0;
+      m.setU32((level + 0x18) >>> 0, newHigh);
+      m.setU32((level + 0x14) >>> 0, newLow);
+
+      const rem = (newLow >>> 0) % 100;
+      const prob = m.u32((pLvlSubTxt + 0x11c + subTheme * 4) >>> 0) | 0;
+      if ((rem | 0) < prob) {
+        resultMask = (resultMask | (1 << (bitIdx & 31))) >>> 0;
+        const dt1Mask = m.u32((pLvlSubTxt + 0x48) >>> 0);
+        m.setU32(
+          (level + 0x50) >>> 0,
+          (m.u32((level + 0x50) >>> 0) | dt1Mask) >>> 0,
+        );
+      }
+
+      const nextType = m.u32((pLvlSubTxt + 0x15c) >>> 0) | 0;
+      pLvlSubTxt = (pLvlSubTxt + 0x15c) >>> 0;
+      bitIdx = (bitIdx + 1) | 0;
+      if (nextType !== subType) {
+        break;
+      }
+    }
+  }
+
+  return resultMask >>> 0;
+}
+
+/**
+ * `@va D2Common:0x6FDD3E20` (`DRLGTILESUB_ApplyNonPresetSubTheme113c`, not exported;
+ * `__stdcall(pSubstCtx, pLvlSub, pSubGroup) -> BOOL`, `ret 0xC`).
+ *
+ * Builds the `spanX * spanY` candidate grid of `(px, py)` positions for `pSubGroup` within `pSubstCtx`,
+ * shuffles it via `pLevel->sSeed (+0x1C4)` (`SEED_RollRandomNumberInline113c`), tests each candidate
+ * with `DRLGTILESUB_CheckRoomTemplateCallbacks113c` (`0x6FDD3B30`) (skipping `(2, 2)` when `bSkipCenter2x2 != 0`),
+ * applies matching templates with `DRLGTILESUB_ApplyRoomTemplateCallbacks113c` (`0x6FDD3990`), and returns `1`
+ * immediately when `pLvlSub->nTrials (+0x44)` is `0` or `1`.
+ */
+export function DRLGTILESUB_ApplyNonPresetSubTheme113c(
+  m: Memory113c,
+  pSubstCtx: number,
+  pLvlSub: number,
+  pSubGroup: number,
+): number {
+  const ctx = pSubstCtx >>> 0;
+  const lvlSub = pLvlSub >>> 0;
+  const subGroup = pSubGroup >>> 0;
+
+  const pCoord = m.u32((ctx + 0x04) >>> 0);
+  const nMode = m.u32((ctx + 0x18) >>> 0) | 0;
+  const isMode1 = nMode === 1 ? 1 : 0;
+  const pLevel = m.u32(ctx);
+  const pOutdoors = m.u32((pLevel + 0x14) >>> 0);
+  const outdoorFlags = m.u32(pOutdoors) & 0x0c;
+  const nLevelId = m.u32((pLevel + 0x1d0) >>> 0) | 0;
+  const isAct1Outdoors = nLevelId >= 2 && nLevelId <= 7 ? 1 : 0;
+  const xBias = isMode1 !== 0 && outdoorFlags !== 0 ? -1 : 1;
+
+  const gridSize = m.u32((lvlSub + 0x4c) >>> 0) | 0;
+  const subW = imul32(m.u32((subGroup + 0x08) >>> 0) | 0, gridSize);
+  const subH = imul32(m.u32((subGroup + 0x0c) >>> 0) | 0, gridSize);
+  const spanX = ((m.u32((pCoord + 0x08) >>> 0) | 0) - subW + xBias) | 0;
+  const spanY = ((m.u32((pCoord + 0x0c) >>> 0) | 0) - subH + 1) | 0;
+  const totalCells = imul32(spanY, spanX);
+  if (totalCells === 0) {
+    return 0;
+  }
+
+  const bSkipCenter2x2 =
+    isMode1 !== 0 && isAct1Outdoors !== 0 && spanX < 6 && spanY < 6 ? 1 : 0;
+
+  if (totalCells <= 0) {
+    return 0;
+  }
+
+  const pairsX = new Int32Array(totalCells);
+  const pairsY = new Int32Array(totalCells);
+  for (let i = 0; i < totalCells; i++) {
+    pairsX[i] = smod32(i, spanX);
+    pairsY[i] = sdiv32(i, spanX);
+  }
+
+  const pSeed = (pLevel + 0x1c4) >>> 0;
+  for (let i = 0; i < totalCells; i++) {
+    const idx1 = SEED_RollRandomNumberInline113c(m, pSeed, totalCells);
+    const idx2 = SEED_RollRandomNumberInline113c(m, pSeed, totalCells);
+    const tmpX = pairsX[idx1]!;
+    const tmpY = pairsY[idx1]!;
+    pairsX[idx1] = pairsX[idx2]!;
+    pairsY[idx1] = pairsY[idx2]!;
+    pairsX[idx2] = tmpX;
+    pairsY[idx2] = tmpY;
+  }
+
+  for (let i = 0; i < totalCells; i++) {
+    const px = pairsX[i]!;
+    const py = pairsY[i]!;
+    if (bSkipCenter2x2 !== 0 && px === 2 && py === 2) {
+      continue;
+    }
+    const ok = DRLGTILESUB_CheckRoomTemplateCallbacks113c(
+      m,
+      ctx,
+      px,
+      py,
+      subGroup,
+      lvlSub,
+    );
+    if (ok === 0) {
+      continue;
+    }
+    const nMax = m.u32((subGroup + 0x14) >>> 0) | 0;
+    const rndPick = SEED_RollRandomNumberInline113c(m, pSeed, nMax);
+    const nOffset = imul32(
+      ((m.u32((subGroup + 0x08) >>> 0) | 0) + 1) | 0,
+      (rndPick + 1) | 0,
+    );
+    DRLGTILESUB_ApplyRoomTemplateCallbacks113c(
+      m,
+      nOffset,
+      px,
+      py,
+      subGroup,
+      ctx,
+      lvlSub,
+    );
+    const nTrials = m.u32((lvlSub + 0x44) >>> 0) | 0;
+    if (nTrials === 0 || nTrials === 1) {
+      return 1;
+    }
+  }
+
+  return 0;
 }
 

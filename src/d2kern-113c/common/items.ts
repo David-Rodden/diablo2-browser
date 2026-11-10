@@ -30,6 +30,7 @@
  */
 import type { Memory113c } from '../mem/sparse-memory.ts'
 import {
+  D2InventoryGridStrc,
   D2InventoryStrc,
   D2ItemDataStrc,
   D2ItemDataStrc_SIZE,
@@ -39,15 +40,37 @@ import {
   D2ItemsTxt_SIZE,
   D2ItemTypesTxt,
   D2ItemTypesTxt_SIZE,
+  D2SetItemsTxt_SIZE,
+  D2SkillsTxt_SIZE,
+  D2StatListExStrc,
+  D2StatListStrc,
   D2UnitStrc,
 } from '../mem/layout.generated.ts'
+import {
+  DATATBLS_GetItemsTxtRecordByCode113c,
+  DATATBLS_GetQualityItemsTxtRecord113c,
+} from '../tables/datatbls-113c.ts'
 import {
   D2COMMON_GDWBITMASKS_IAT_VA_113C,
   D2CommonAssertError,
   DATATABLES_OFF_113C,
+  DATATBLS_GetMonStats2TxtRecordFromMonStatsIdInline113c,
+  DATATBLS_GetSetItemsTxtRecordInline113c,
+  DATATBLS_GetSetsTxtRecordInline113c,
+  SEED_RollLimitedRandomNumberInline113c,
 } from './inline-helpers.ts'
 import { imul32, sar32 } from './int-math.ts'
 import {
+  INVENTORY_GetFirstItem113c,
+  INVENTORY_GetItemNodePositionOther113c,
+  INVENTORY_GetNextItem113c,
+  INVENTORY_UnitIsItem113c,
+  ITEMS_GetComponentFromItem113c,
+  ITEMS_GetInvWidthFromId113c,
+  ITEMS_GetWeaponClassCodeIdx113c,
+} from './inventory.ts'
+import {
+  STATLIST_FindStatIndex113c,
   STATLIST_GetUnitBaseStat113c,
   STATLIST_GetUnitStat113c,
   STATLIST_RecordModStat113c,
@@ -55,7 +78,7 @@ import {
   STATLIST_SetUnitStat113c,
   statKey113c,
 } from './statlist.ts'
-import { UNIT_ITEM, UNIT_PLAYER } from './unit.ts'
+import { UNIT_ITEM, UNIT_PLAYER, UNITS_GetPlayerBaseToHit113c } from './unit.ts'
 
 /** `.data` `D2DataTablesStrc* sgptDataTables` at `0x6FDE9E1C` (`0x6FD72F88`, `0x6FD735D8`). */
 const ITEMS_SGPT_DATATABLES_VA_113C = 0x6fde9e1c
@@ -847,6 +870,9 @@ function lookupItemsTxtRecord113c(m: Memory113c, nItemId: number): number {
   return (base + imul32(nItemId, D2ItemsTxt_SIZE)) >>> 0
 }
 
+/**
+ * Inlined `0x6FDC19A0` (`DATATBLS_GetItemsTxtRecord`, `DataTbls.cpp:0x1EF`) + caller null-record assert.
+ */
 function lookupItemsTxtInlineOrAssert113c(m: Memory113c, nItemId: number, assertLine: number): number {
   if (nItemId >>> 0 >= m.u32(ITEMS_TXT_COUNT_VA_113C)) {
     throw new D2CommonAssertError('Items.cpp', assertLine)
@@ -1171,44 +1197,40 @@ function fogGetLinkIndex113c(m: Memory113c, pLink: number, dwCode: number): numb
   return -1
 }
 
-function checkItemTypeEquivMem113c(m: Memory113c, pItem: number, nItemType: number): number {
-  const targetType = nItemType | 0
-  if (targetType === 0) return 1
-  if (pItem === 0 || m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0
-  const pRec = lookupItemsTxtRecord113c(m, m.get(pItem, D2UnitStrc.dwClassId))
-  if (pRec === 0) {
-    throw new D2CommonAssertError('Items.cpp', 0x670)
-  }
-  const wType1 = (m.get(pRec, D2ItemsTxt.wType1) << 16) >> 16
+/**
+ * Memory port of `D2Common 0x6FD74430` (`#10744` `ITEMS_CheckItemTypeId`, stdcall `(pItem, nItemType)`,
+ * `ret 8`). No unit-type and no broken check:
+ * - `pItem == 0` -> `0` (0x6FD74437); `nItemType < 0` or `>= nItemTypesTxtRecordCount (+0xBFC)` (signed) -> `0`.
+ * - `wType[0]` via `0x6FD730A0` (`ITEMS_IsTome113c`: asserts `0x68E` for `classId >= count`, `0x1EF` for a
+ *   null table); if the ItemTypes equivalence bit-matrix row (`+0xC00` dwords, base `+0xC04`) has the
+ *   `nItemType` bit (`gdwBitMasks` at `0x6FDD90B0`) -> `1` (0x6FD74499).
+ * - Otherwise re-looks the record up via `0x6FDC19A0` (null -> `0`), reads signed `wType[1] (+0x120)`;
+ *   `<= 0` or `>= count` -> `0`; else returns the raw `row & mask` dword (0x6FD744F2, not normalised).
+ */
+export function ITEMS_CheckItemTypeIdMem113c(m: Memory113c, pItem: number, nItemType: number): number {
+  const itm = pItem >>> 0
+  if (itm === 0) return 0
+  const t = nItemType | 0
+  if (t < 0) return 0
+  const sgpt0 = m.u32(ITEMS_SGPT_DATATABLES_VA_113C)
+  if (t >= (m.u32((sgpt0 + DATATABLES_OFF_113C.nItemTypesTxtRecordCount) >>> 0) | 0)) return 0
+  const wType0 = ITEMS_IsTome113c(m, m.get(itm, D2UnitStrc.dwClassId)) | 0
+  const col = t >> 5
   const sgpt = m.u32(ITEMS_SGPT_DATATABLES_VA_113C)
-  let matched = 0
-  if (wType1 > 0 && targetType > 0) {
-    const typeCount = m.u32((sgpt + DATATABLES_OFF_113C.nItemTypesTxtRecordCount) >>> 0) | 0
-    if (wType1 < typeCount && targetType < typeCount) {
-      const equivDwords = m.u32((sgpt + DATATABLES_OFF_113C.nItemTypesEquivDwords) >>> 0)
-      const pEquiv = m.u32((sgpt + DATATABLES_OFF_113C.pItemTypesEquiv) >>> 0)
-      const pBitMasks = m.u32(D2COMMON_GDWBITMASKS_IAT_VA_113C)
-      const mask = m.u32((pBitMasks + ((targetType & 0x1f) << 2)) >>> 0)
-      const wordIdx = (imul32(wType1, equivDwords) + (targetType >> 5)) >>> 0
-      matched = (m.u32((pEquiv + (wordIdx << 2)) >>> 0) & mask) !== 0 ? 1 : 0
-    }
-  }
-  if (matched !== 0) return 1
-  const pRec2 = lookupItemsTxtRecord113c(m, m.get(pItem, D2UnitStrc.dwClassId))
-  if (pRec2 === 0) {
-    throw new D2CommonAssertError('Items.cpp', 0x680)
-  }
-  const wType2 = (m.get(pRec2, D2ItemsTxt.wType2) << 16) >> 16
-  if (wType2 <= 0 || targetType <= 0) return 0
-  const sgpt2 = m.u32(ITEMS_SGPT_DATATABLES_VA_113C)
-  const typeCount2 = m.u32((sgpt2 + DATATABLES_OFF_113C.nItemTypesTxtRecordCount) >>> 0) | 0
-  if (wType2 >= typeCount2 || targetType >= typeCount2) return 0
-  const equivDwords2 = m.u32((sgpt2 + DATATABLES_OFF_113C.nItemTypesEquivDwords) >>> 0)
-  const pEquiv2 = m.u32((sgpt2 + DATATABLES_OFF_113C.pItemTypesEquiv) >>> 0)
-  const pBitMasks2 = m.u32(D2COMMON_GDWBITMASKS_IAT_VA_113C)
-  const mask2 = m.u32((pBitMasks2 + ((targetType & 0x1f) << 2)) >>> 0)
-  const wordIdx2 = (imul32(wType2, equivDwords2) + (targetType >> 5)) >>> 0
-  return (m.u32((pEquiv2 + (wordIdx2 << 2)) >>> 0) & mask2) !== 0 ? 1 : 0
+  const row0 = (imul32(m.u32((sgpt + DATATABLES_OFF_113C.nItemTypesEquivDwords) >>> 0) | 0, wType0) + col) | 0
+  const word0 = m.u32((m.u32((sgpt + DATATABLES_OFF_113C.pItemTypesEquiv) >>> 0) + imul32(row0, 4)) >>> 0)
+  const mask0 = m.u32((m.u32(D2COMMON_GDWBITMASKS_IAT_VA_113C) + (t & 0x1f) * 4) >>> 0)
+  if ((word0 & mask0) !== 0) return 1
+  const pRec = lookupItemsTxtRecord113c(m, m.get(itm, D2UnitStrc.dwClassId))
+  if (pRec === 0) return 0
+  const wType1 = (m.get(pRec, D2ItemsTxt.wType2) << 16) >> 16
+  if (wType1 <= 0) return 0
+  const sgpt1 = m.u32(ITEMS_SGPT_DATATABLES_VA_113C)
+  if (wType1 >= (m.u32((sgpt1 + DATATABLES_OFF_113C.nItemTypesTxtRecordCount) >>> 0) | 0)) return 0
+  const row1 = (imul32(m.u32((sgpt1 + DATATABLES_OFF_113C.nItemTypesEquivDwords) >>> 0) | 0, wType1) + col) | 0
+  const word1 = m.u32((m.u32((sgpt1 + DATATABLES_OFF_113C.pItemTypesEquiv) >>> 0) + imul32(row1, 4)) >>> 0)
+  const mask1 = m.u32((m.u32(D2COMMON_GDWBITMASKS_IAT_VA_113C) + (t & 0x1f) * 4) >>> 0)
+  return (word1 & mask1) >>> 0
 }
 
 function checkIfThrowItemMem113c(m: Memory113c, pItem: number): number {
@@ -1523,7 +1545,7 @@ export function ITEMS_EnsureMinimumBaseDamageAndACStats113c(
   switch (nStatId | 0) {
     case 0x10:
     case 0x1f: {
-      if (checkItemTypeEquivMem113c(m, pItem, 0x32) === 0) return
+      if (ITEMS_CheckItemTypeIdMem113c(m, pItem, 0x32) === 0) return
       const minAc = m.get(pBaseRec, D2ItemsTxt.nMinAc) | 0
       if (minAc === 0) return
       let val = (getUnitBaseStatWithIscCheck113c(m, pItem, 0x1f, 0) + 1) | 0
@@ -1535,7 +1557,7 @@ export function ITEMS_EnsureMinimumBaseDamageAndACStats113c(
     }
     case 0x11:
     case 0x16: {
-      if (checkItemTypeEquivMem113c(m, pItem, 0x2d) === 0) return
+      if (ITEMS_CheckItemTypeIdMem113c(m, pItem, 0x2d) === 0) return
       const maxDam = m.get(pBaseRec, D2ItemsTxt.nMaxDam)
       if (maxDam !== 0) {
         const cur16 = getUnitBaseStatWithIscCheck113c(m, pItem, 0x16, 0) | 0
@@ -1559,7 +1581,7 @@ export function ITEMS_EnsureMinimumBaseDamageAndACStats113c(
     }
     case 0x12:
     case 0x15: {
-      if (checkItemTypeEquivMem113c(m, pItem, 0x2d) === 0) return
+      if (ITEMS_CheckItemTypeIdMem113c(m, pItem, 0x2d) === 0) return
       const minDam = m.get(pBaseRec, D2ItemsTxt.nMinDam)
       if (minDam !== 0) {
         const cur15 = getUnitBaseStatWithIscCheck113c(m, pItem, 0x15, 0) | 0
@@ -1659,7 +1681,7 @@ export function ITEMS_ApplyEtherealBonusStats113c(m: Memory113c, pItem: number):
       )
     }
   }
-  if (checkItemTypeEquivMem113c(m, pItem, 0x2d) !== 0) {
+  if (ITEMS_CheckItemTypeIdMem113c(m, pItem, 0x2d) !== 0) {
     scaleItemBaseStatEthereal113c(m, pItem, 0x15)
     scaleItemBaseStatEthereal113c(m, pItem, 0x16)
     scaleItemBaseStatEthereal113c(m, pItem, 0x17)
@@ -1699,7 +1721,7 @@ export function ITEMS_ResetBaseDamageOrACStatFromTxt113c(
   switch (nStatId | 0) {
     case 0x10:
     case 0x1f: {
-      if (checkItemTypeEquivMem113c(m, pItem, 0x32) === 0) return
+      if (ITEMS_CheckItemTypeIdMem113c(m, pItem, 0x32) === 0) return
       const minAc = m.get(pBaseRec, D2ItemsTxt.nMinAc) | 0
       if (minAc === 0) return
       let val = (getUnitBaseStatWithIscCheck113c(m, pItem, 0x1f, 0) + 1) | 0
@@ -1711,7 +1733,7 @@ export function ITEMS_ResetBaseDamageOrACStatFromTxt113c(
     }
     case 0x11:
     case 0x16: {
-      if (checkItemTypeEquivMem113c(m, pItem, 0x2d) === 0) return
+      if (ITEMS_CheckItemTypeIdMem113c(m, pItem, 0x2d) === 0) return
       const maxDam = m.get(pBaseRec, D2ItemsTxt.nMaxDam)
       if (maxDam !== 0) {
         STATLIST_SetUnitStat113c(m, pItem, 0x16, maxDam, 0)
@@ -1728,7 +1750,7 @@ export function ITEMS_ResetBaseDamageOrACStatFromTxt113c(
     }
     case 0x12:
     case 0x15: {
-      if (checkItemTypeEquivMem113c(m, pItem, 0x2d) === 0) return
+      if (ITEMS_CheckItemTypeIdMem113c(m, pItem, 0x2d) === 0) return
       const minDam = m.get(pBaseRec, D2ItemsTxt.nMinDam)
       if (minDam !== 0) {
         STATLIST_SetUnitStat113c(m, pItem, 0x15, minDam, 0)
@@ -1747,3 +1769,2216 @@ export function ITEMS_ResetBaseDamageOrACStatFromTxt113c(
       return
   }
 }
+
+// ============================================================================
+// Iteration 8 Lane B — B039, B049, B052 & Cross-Lane B043 Helpers
+// ============================================================================
+
+/** `.data` `gItemCalcCallbackTable` (`4 x 8B`) at `0x6FDED354` and count at `0x6FDED374`. */
+const ITEM_CALC_FN_TABLE_VA_113C = 0x6fded354
+const ITEM_CALC_FN_COUNT_VA_113C = 0x6fded374
+/** `.data` `D2InventoryGridInfoStrc` body grid definition at `0x6FDED378`. */
+const ITEM_BODY_GRID_DEF_VA_113C = 0x6fded378
+/** `.bss` `nRunesTxtRecordCount` at `0x6FDEFBD4` and `pRunesTxt` at `0x6FDEFBD8` (stride `0x120`). */
+const RUNES_TXT_COUNT_VA_113C = 0x6fdefbd4
+const RUNES_TXT_PTR_VA_113C = 0x6fdefbd8
+const D2RUNESTXT_SIZE_113C = 0x120
+
+/** Additional `sgptDataTables` field offsets used by `B039`/`B049`/`B052`. */
+const DATATABLES_ITEMS_CODE_BUF_OFF_113C = 0x98
+const DATATABLES_ITEMS_CODE_SIZE_OFF_113C = 0x9c
+const DATATABLES_MONSTATS_COUNT_OFF_113C = 0xa80
+const DATATABLES_SKILLS_TXT_OFF_113C = 0xb98
+const DATATABLES_SKILLS_COUNT_OFF_113C = 0xba0
+const DATATABLES_SETITEMS_TXT_OFF_113C = 0xc18
+const DATATABLES_SETITEMS_COUNT_OFF_113C = 0xc1c
+const DATATABLES_SKILL_PARAM_SHIFT_OFF_113C = 0xc6c
+const DATATABLES_SKILL_PARAM_MASK_OFF_113C = 0xc70
+
+const INV_OFF_PGRIDS_113C = 0x14
+const INV_OFF_NGRIDS_113C = 0x18
+const INV_OFF_DWLEFTITEMGUID_113C = 0x1c
+
+/**
+ * Exact 1:1 `Memory113c`-backed `0x6FD88A80` (`STATLIST_GetTotalStatWithMin`).
+ */
+function statListGetTotalStatWithMinMem113c(
+  m: Memory113c,
+  pStatList: number,
+  dwKey: number,
+  pIsc: number,
+): number {
+  const ebx = pStatList >>> 0
+  const ebp = (m.u32((ebx + 0x10) >>> 0) & 0x80000000) >>> 0
+  const pHdr = ebp !== 0 ? (ebx + 0x48) >>> 0 : (ebx + 0x24) >>> 0
+  const idx = STATLIST_FindStatIndex113c(m, pHdr, dwKey >>> 0)
+  if (idx < 0) return 0
+  const pEntry = (m.u32(pHdr) + idx * 8) >>> 0
+  if (pEntry === 0) return 0
+  let val = m.u32((pEntry + 4) >>> 0) | 0
+  const esi = pIsc >>> 0
+  if (esi !== 0) {
+    const dl = m.u8((esi + 0x05) >>> 0)
+    const pBitMasks = m.u32(D2COMMON_GDWBITMASKS_IAT_VA_113C)
+    if ((m.u8((pBitMasks + 0x08) >>> 0) & dl) !== 0 && ebp !== 0) {
+      const pUnit = m.u32((ebx + 0x44) >>> 0)
+      if (pUnit !== 0) {
+        const uType = m.u32(pUnit)
+        if (uType === 0 || uType === 1) {
+          const minAccr = m.u32((esi + 0x2c) >>> 0) | 0
+          if (val < minAccr) {
+            const shift = m.u8((esi + 0x18) >>> 0) & 31
+            val = (minAccr << shift) | 0
+          }
+        }
+      }
+    }
+  }
+  return val | 0
+}
+
+/**
+ * Exact 1:1 `Memory113c`-backed `0x6FD88B00` (`STATLIST_GetBaseStatWithMin`).
+ */
+function statListGetBaseStatWithMinMem113c(
+  m: Memory113c,
+  pStatList: number,
+  dwKey: number,
+  pIsc: number,
+): number {
+  const ebx = pStatList >>> 0
+  const pHdr = (ebx + 0x24) >>> 0
+  const idx = STATLIST_FindStatIndex113c(m, pHdr, dwKey >>> 0)
+  if (idx < 0) return 0
+  const pEntry = (m.u32(pHdr) + idx * 8) >>> 0
+  if (pEntry === 0) return 0
+  let val = m.u32((pEntry + 4) >>> 0) | 0
+  const ebp = pIsc >>> 0
+  if (ebp !== 0) {
+    const dl = m.u8((ebp + 0x05) >>> 0)
+    const pBitMasks = m.u32(D2COMMON_GDWBITMASKS_IAT_VA_113C)
+    if ((m.u8((pBitMasks + 0x08) >>> 0) & dl) !== 0 && (m.u32((ebx + 0x10) >>> 0) | 0) < 0) {
+      const pUnit = m.u32((ebx + 0x44) >>> 0)
+      if (pUnit !== 0) {
+        const uType = m.u32(pUnit)
+        if (uType === 0 || uType === 1) {
+          const minAccr = m.u32((ebp + 0x2c) >>> 0) | 0
+          if (val < minAccr) {
+            const shift = m.u8((ebp + 0x18) >>> 0) & 31
+            val = (minAccr << shift) | 0
+          }
+        }
+      }
+    }
+  }
+  return val | 0
+}
+
+function statListGetUnitStatMem113c(
+  m: Memory113c,
+  pUnit: number,
+  nStatId: number,
+  wLayer: number,
+): number {
+  const unitPtr = pUnit >>> 0
+  if (unitPtr === 0) return 0
+  const pStatList = m.get(unitPtr, D2UnitStrc.pStatListEx)
+  if (pStatList === 0) return 0
+  const statId = nStatId | 0
+  if (statId < 0) return 0
+  const sgpt = m.u32(ITEMS_SGPT_DATATABLES_VA_113C)
+  if (statId >= (m.u32((sgpt + DATATABLES_OFF_113C.nItemStatCostTxtRecordCount) >>> 0) | 0)) return 0
+  const pIsc = (m.u32((sgpt + DATATABLES_OFF_113C.pItemStatCostTxt) >>> 0) + imul32(statId, D2ItemStatCostTxt_SIZE)) >>> 0
+  if (pIsc === 0) return 0
+  const dwKey = ((statId << 16) + (wLayer & 0xffff)) >>> 0
+  return statListGetTotalStatWithMinMem113c(m, pStatList, dwKey, pIsc)
+}
+
+function statListGetUnitBaseStatMem113c(
+  m: Memory113c,
+  pUnit: number,
+  nStatId: number,
+  wLayer: number,
+): number {
+  const unitPtr = pUnit >>> 0
+  if (unitPtr === 0) return 0
+  const statId = nStatId | 0
+  if (statId < 0) return 0
+  const sgpt = m.u32(ITEMS_SGPT_DATATABLES_VA_113C)
+  if (statId >= (m.u32((sgpt + DATATABLES_OFF_113C.nItemStatCostTxtRecordCount) >>> 0) | 0)) return 0
+  const pIsc = (m.u32((sgpt + DATATABLES_OFF_113C.pItemStatCostTxt) >>> 0) + imul32(statId, D2ItemStatCostTxt_SIZE)) >>> 0
+  if (pIsc === 0) return 0
+  const pStatList = m.get(unitPtr, D2UnitStrc.pStatListEx)
+  if (pStatList === 0) return 0
+  const dwKey = ((statId << 16) + (wLayer & 0xffff)) >>> 0
+  return statListGetBaseStatWithMinMem113c(m, pStatList, dwKey, pIsc)
+}
+
+/**
+ * `@va D2Common:0x6FD88FF0` (Cross-lane `B043` helper `STATLIST_GetMaxDurabilityFromUnit`,
+ * `__stdcall(pUnit) -> i32`, `ret 4`).
+ */
+export function ITEMS_B043_GetMaxDurabilityFromUnit113c(m: Memory113c, pUnit: number): number {
+  const unitPtr = pUnit >>> 0
+  if (unitPtr === 0) return 0
+  const sgpt = m.u32(ITEMS_SGPT_DATATABLES_VA_113C)
+  if ((m.u32((sgpt + DATATABLES_OFF_113C.nItemStatCostTxtRecordCount) >>> 0) | 0) <= 0x49) return 0
+  const pIsc = (m.u32((sgpt + DATATABLES_OFF_113C.pItemStatCostTxt) >>> 0) + 0x5c64) >>> 0
+  if (pIsc === 0) return 0
+  const pStatList = m.get(unitPtr, D2UnitStrc.pStatListEx)
+  if (pStatList === 0) return 0
+  const baseDur = statListGetBaseStatWithMinMem113c(m, pStatList, 0x490000, pIsc)
+  if (baseDur === 0) return 0
+  return statListGetTotalStatWithMinMem113c(m, pStatList, 0x490000, pIsc) >>> 0
+}
+
+/**
+ * `@va D2Common:0x6FD89380` (Cross-lane `B043` helper `STATLIST_GetStatDiffAfterClear`,
+ * custom reg `eax = pStatList`, `esi = nStatId`, stack `[esp+4] = wLayer` -> `i32`, `ret 4`).
+ */
+export function ITEMS_B043_GetStatDiffAfterClear113c(
+  m: Memory113c,
+  pStatList: number,
+  nStatId: number,
+  wLayer: number,
+): number {
+  const ebx = pStatList >>> 0
+  if (ebx === 0) return 0
+  const statId = nStatId | 0
+  const sgpt = m.u32(ITEMS_SGPT_DATATABLES_VA_113C)
+  const iscCount = m.u32((sgpt + DATATABLES_OFF_113C.nItemStatCostTxtRecordCount) >>> 0) | 0
+  const iscBase = m.u32((sgpt + DATATABLES_OFF_113C.pItemStatCostTxt) >>> 0)
+  const dwKey = ((statId << 16) + (wLayer & 0xffff)) >>> 0
+  let totalVal = 0
+  if (statId >= 0 && statId < iscCount) {
+    const pIsc = (iscBase + imul32(statId, D2ItemStatCostTxt_SIZE)) >>> 0
+    if (pIsc !== 0) {
+      totalVal = statListGetTotalStatWithMinMem113c(m, ebx, dwKey, pIsc)
+    }
+  }
+  let baseVal = 0
+  if (statId >= 0 && statId < iscCount) {
+    const pIsc = (iscBase + imul32(statId, D2ItemStatCostTxt_SIZE)) >>> 0
+    if (pIsc !== 0) {
+      baseVal = statListGetBaseStatWithMinMem113c(m, ebx, dwKey, pIsc)
+    }
+  }
+  return ((totalVal - baseVal) | 0) >>> 0
+}
+
+/**
+ * `@va D2Common:0x6FD89430` (Cross-lane `B043` helper `STATLIST_GetTotalStatFromUnitFast`,
+ * `__stdcall(pUnit, nStatId, wLayer) -> i32`, `ret 0xC`).
+ */
+export function ITEMS_B043_GetTotalStatFromUnitFast113c(
+  m: Memory113c,
+  pUnit: number,
+  nStatId: number,
+  wLayer: number,
+): number {
+  const unitPtr = pUnit >>> 0
+  const pStatList = m.get(unitPtr, D2UnitStrc.pStatListEx)
+  if (pStatList === 0) return 0
+  const statId = nStatId | 0
+  if (statId < 0) return 0
+  const sgpt = m.u32(ITEMS_SGPT_DATATABLES_VA_113C)
+  if (statId >= (m.u32((sgpt + DATATABLES_OFF_113C.nItemStatCostTxtRecordCount) >>> 0) | 0)) return 0
+  const pIsc = (m.u32((sgpt + DATATABLES_OFF_113C.pItemStatCostTxt) >>> 0) + imul32(statId, D2ItemStatCostTxt_SIZE)) >>> 0
+  if (pIsc === 0) return 0
+  const dwKey = ((statId << 16) + (wLayer & 0xffff)) >>> 0
+  return statListGetTotalStatWithMinMem113c(m, pStatList, dwKey, pIsc) >>> 0
+}
+
+/**
+ * Exact 1:1 `Memory113c`-backed `0x6FD6E1B0` (`INVENTORY_GetOrInitGrid`).
+ */
+function inventoryGetOrInitGridItemsMem113c(
+  m: Memory113c,
+  gridIdx: number,
+  pInventory: number,
+  pGridDef: number,
+): number {
+  const idx = gridIdx | 0
+  const inv = pInventory >>> 0
+  const def = pGridDef >>> 0
+  const nGrids = m.u32((inv + INV_OFF_NGRIDS_113C) >>> 0) | 0
+  if (nGrids > idx) {
+    const pGrids = m.u32((inv + INV_OFF_PGRIDS_113C) >>> 0)
+    const pGrid = (pGrids + ((idx << 4) >>> 0)) >>> 0
+    const ppItems = m.get(pGrid, D2InventoryGridStrc.ppItems)
+    if (def === 0) {
+      return ppItems !== 0 ? pGrid : 0
+    }
+    if (ppItems === 0) {
+      const gx = m.u8(def)
+      m.set(pGrid, D2InventoryGridStrc.nGridWidth, gx)
+      const gy = m.u8((def + 1) >>> 0)
+      const countBytes = (imul32(m.get(pGrid, D2InventoryGridStrc.nGridWidth), gy) << 2) >>> 0
+      m.set(pGrid, D2InventoryGridStrc.nGridHeight, gy)
+      const newItems = m.alloc(countBytes) >>> 0
+      const zeroCount = (imul32(m.get(pGrid, D2InventoryGridStrc.nGridWidth), m.get(pGrid, D2InventoryGridStrc.nGridHeight)) << 2) >>> 0
+      m.set(pGrid, D2InventoryGridStrc.ppItems, newItems)
+      m.fill(newItems, zeroCount, 0)
+    }
+    if (m.get(pGrid, D2InventoryGridStrc.nGridWidth) !== m.u8(def)) return 0
+    if (m.get(pGrid, D2InventoryGridStrc.nGridHeight) !== m.u8((def + 1) >>> 0)) return 0
+    return pGrid
+  }
+  if (def === 0) return 0
+  const oldGrids = m.u32((inv + INV_OFF_PGRIDS_113C) >>> 0)
+  const newCount = (idx + 1) | 0
+  const newByteSize = (newCount << 4) >>> 0
+  const newGrids = m.alloc(newByteSize) >>> 0
+  if (oldGrids !== 0 && nGrids > 0) {
+    const copyBytes = (nGrids << 4) >>> 0
+    for (let i = 0; i < copyBytes; i++) {
+      m.setU8((newGrids + i) >>> 0, m.u8((oldGrids + i) >>> 0))
+    }
+  }
+  const oldCount = m.u32((inv + INV_OFF_NGRIDS_113C) >>> 0) | 0
+  m.setU32((inv + INV_OFF_PGRIDS_113C) >>> 0, newGrids)
+  const clearBytes = (((idx - oldCount + 1) | 0) << 4) >>> 0
+  m.fill((newGrids + ((oldCount << 4) >>> 0)) >>> 0, clearBytes, 0)
+  m.setU32((inv + INV_OFF_NGRIDS_113C) >>> 0, newCount >>> 0)
+  const gx = m.u8(def)
+  const pGrid = (m.u32((inv + INV_OFF_PGRIDS_113C) >>> 0) + ((idx << 4) >>> 0)) >>> 0
+  m.set(pGrid, D2InventoryGridStrc.nGridWidth, gx)
+  const gy = m.u8((def + 1) >>> 0)
+  m.set(pGrid, D2InventoryGridStrc.nGridHeight, gy)
+  const allocBytes = (imul32(gx, gy) << 2) >>> 0
+  const newItems = m.alloc(allocBytes) >>> 0
+  const zeroBytes = (imul32(m.get(pGrid, D2InventoryGridStrc.nGridWidth), m.get(pGrid, D2InventoryGridStrc.nGridHeight)) << 2) >>> 0
+  m.set(pGrid, D2InventoryGridStrc.ppItems, newItems)
+  m.fill(newItems, zeroBytes, 0)
+  return pGrid
+}
+
+/**
+ * Exact 1:1 `Memory113c`-backed `0x6FD73EF0` (`ITEMS_CheckNotBrokenOrUnequipping`).
+ */
+function checkNotBrokenOrUnequippingMem113c(m: Memory113c, pItem: number): number {
+  const ptr = pItem >>> 0
+  if (ptr === 0) return 0
+  if (m.get(ptr, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 1
+  const pData = m.get(ptr, D2UnitStrc.pUnitData)
+  if (pData !== 0 && (m.get(pData, D2ItemDataStrc.dwCommandFlags) & 0x100) !== 0) return 0
+  if (m.get(ptr, D2UnitStrc.dwUnitType) === UNIT_ITEM) {
+    const pData2 = m.get(ptr, D2UnitStrc.pUnitData)
+    if (pData2 !== 0 && (m.get(pData2, D2ItemDataStrc.dwCommandFlags) & 0x4000) !== 0) return 0
+  }
+  return 1
+}
+
+/**
+ * Exact 1:1 `Memory113c`-backed `0x6FD70320` (`INVENTORY_GetCompositWeapon`).
+ */
+function inventoryGetCompositWeaponMem113c(m: Memory113c, pInventory: number): number {
+  const inv = pInventory >>> 0
+  if (inv === 0 || m.get(inv, D2InventoryStrc.dwSignature) !== INVENTORY_SIGNATURE_113C) return 0
+  if (m.u32((inv + INV_OFF_DWLEFTITEMGUID_113C) >>> 0) === 0xffffffff) return 0
+  const pGrid1 = inventoryGetOrInitGridItemsMem113c(m, 0, inv, ITEM_BODY_GRID_DEF_VA_113C)
+  if (pGrid1 !== 0) {
+    const ppItems = m.get(pGrid1, D2InventoryGridStrc.ppItems)
+    const pLeft = m.u32((ppItems + 0x14) >>> 0)
+    if (
+      pLeft !== 0 &&
+      ITEMS_CheckItemTypeIdMem113c(m, pLeft, 0x2d) !== 0 &&
+      m.get(pLeft, D2UnitStrc.dwUnitId) === m.u32((inv + INV_OFF_DWLEFTITEMGUID_113C) >>> 0)
+    ) {
+      return pLeft
+    }
+  }
+  if (m.get(inv, D2InventoryStrc.dwSignature) !== INVENTORY_SIGNATURE_113C) return 0
+  const pGrid2 = inventoryGetOrInitGridItemsMem113c(m, 0, inv, ITEM_BODY_GRID_DEF_VA_113C)
+  if (pGrid2 !== 0) {
+    const ppItems = m.get(pGrid2, D2InventoryGridStrc.ppItems)
+    const pRight = m.u32((ppItems + 0x10) >>> 0)
+    if (
+      pRight !== 0 &&
+      ITEMS_CheckItemTypeIdMem113c(m, pRight, 0x2d) !== 0 &&
+      m.get(pRight, D2UnitStrc.dwUnitId) === m.u32((inv + INV_OFF_DWLEFTITEMGUID_113C) >>> 0)
+    ) {
+      return pRight
+    }
+  }
+  return 0
+}
+
+/**
+ * Exact 1:1 `Memory113c`-backed `0x6FD70700` (`INVENTORY_GetActiveWeapon`,
+ * returns active weapon `pItem` without writing to stack output pointers).
+ */
+function inventoryGetActiveWeaponPtrMem113c(m: Memory113c, pInventory: number): number {
+  const inv = pInventory >>> 0
+  if (inv === 0) return 0
+  inventoryGetCompositWeaponMem113c(m, inv)
+  if (m.get(inv, D2InventoryStrc.dwSignature) === INVENTORY_SIGNATURE_113C) {
+    const pGrid = inventoryGetOrInitGridItemsMem113c(m, 0, inv, ITEM_BODY_GRID_DEF_VA_113C)
+    if (pGrid !== 0) {
+      const ppItems = m.get(pGrid, D2InventoryGridStrc.ppItems)
+      const pRight = m.u32((ppItems + 0x10) >>> 0)
+      if (pRight !== 0) {
+        if (
+          checkNotBrokenOrUnequippingMem113c(m, pRight) !== 0 &&
+          ITEMS_CheckItemTypeIdMem113c(m, pRight, 0x2d) !== 0
+        ) {
+          return pRight
+        }
+      }
+    }
+  }
+  let pLeft = 0
+  if (m.get(inv, D2InventoryStrc.dwSignature) === INVENTORY_SIGNATURE_113C) {
+    const pGrid = inventoryGetOrInitGridItemsMem113c(m, 0, inv, ITEM_BODY_GRID_DEF_VA_113C)
+    if (pGrid !== 0) {
+      const ppItems = m.get(pGrid, D2InventoryGridStrc.ppItems)
+      pLeft = m.u32((ppItems + 0x14) >>> 0)
+    }
+  }
+  if (
+    checkNotBrokenOrUnequippingMem113c(m, pLeft) !== 0 &&
+    ITEMS_CheckItemTypeIdMem113c(m, pLeft, 0x2d) !== 0
+  ) {
+    return pLeft
+  }
+  return 0
+}
+
+/**
+ * Exact 1:1 `Memory113c`-backed `0x6FD70830` (`INVENTORY_GetWeaponByHandSlot`).
+ */
+function inventoryGetWeaponByHandSlotMem113c(
+  m: Memory113c,
+  pInventory: number,
+  nHandSlot: number,
+): number {
+  const inv = pInventory >>> 0
+  if (inv === 0 || m.get(inv, D2InventoryStrc.dwSignature) !== INVENTORY_SIGNATURE_113C) return 0
+  const pGrid = inventoryGetOrInitGridItemsMem113c(m, 0, inv, ITEM_BODY_GRID_DEF_VA_113C)
+  if (pGrid === 0) return 0
+  const pComp = inventoryGetCompositWeaponMem113c(m, inv)
+  const slot = nHandSlot | 0
+  for (let off = 0; off < 0x2c; off += 4) {
+    const ppItems = m.get(pGrid, D2InventoryGridStrc.ppItems)
+    const pItem = m.u32((ppItems + off) >>> 0)
+    if (pItem === 0) continue
+    const wClassIdx = ITEMS_GetWeaponClassCodeIdx113c(m, pItem) & 0xffff
+    if (wClassIdx === 2 || wClassIdx === 3 || wClassIdx === 0x0c) {
+      if (slot === 6) {
+        if (pItem !== pComp) return pItem
+      } else if (slot === 5) {
+        if (pItem === pComp) return pItem
+      }
+    } else {
+      const compByte = ITEMS_GetComponentFromItem113c(m, pItem) & 0xff
+      if (compByte === slot) return pItem
+    }
+  }
+  return 0
+}
+
+/**
+ * Exact 1:1 `Memory113c`-backed `0x6FD80530` (`UNITS_CanDualWield`).
+ */
+function unitsCanDualWieldMem113c(m: Memory113c, pUnit: number): number {
+  const ptr = pUnit >>> 0
+  const uType = ptr !== 0 ? m.get(ptr, D2UnitStrc.dwUnitType) : 6
+  const classId = ptr !== 0 ? (m.get(ptr, D2UnitStrc.dwClassId) | 0) : -1
+  if (uType === 0) {
+    return classId === 4 || classId === 6 ? 1 : 0
+  }
+  if (uType === 1) {
+    if (classId < 0) return 0
+    const sgpt = m.u32(ITEMS_SGPT_DATATABLES_VA_113C)
+    if (classId >= (m.u32((sgpt + DATATABLES_MONSTATS_COUNT_OFF_113C) >>> 0) | 0)) return 0
+    return classId >= 0x1a1 && classId <= 0x1a2 ? 1 : 0
+  }
+  return 0
+}
+
+/**
+ * Exact 1:1 `Memory113c`-backed `Fog.#10253` (`Fog:0x6FF69E90` `FOG_EvalPostFixExpression`)
+ * specialized for `0x6FD73CE0` (`ITEMS_EvalItemCalc113c`).
+ */
+function fogEvalItemPostFixExpression113c(
+  m: Memory113c,
+  pBuf: number,
+  nBufSize: number,
+  pFnTable: number,
+  nFnTableSize: number,
+  pItem: number,
+  _pOwner: number,
+): number {
+  const size = nBufSize | 0
+  if (size <= 0) return 0
+  const stack = new Int32Array(64)
+  let sp = 0
+  const pop = (): number => (sp > 0 ? stack[--sp]! : 0)
+  const push = (v: number): void => {
+    if (sp < 64) stack[sp++] = v | 0
+  }
+  const base = pBuf >>> 0
+  let cur = base
+  while (((cur - base) | 0) < size) {
+    const op = m.u8(cur)
+    cur = (cur + 1) >>> 0
+    if (op === 0 || op > 22 || op === 2 || op === 3) {
+      return sp > 0 ? stack[sp - 1]! >>> 0 : 0
+    }
+    switch (op) {
+      case 1: {
+        const fnIdx = m.u8(cur)
+        cur = (cur + 1) >>> 0
+        if ((fnIdx | 0) >= (nFnTableSize | 0)) {
+          push(0)
+          break
+        }
+        const arity = m.u32((pFnTable + fnIdx * 8 + 4) >>> 0) | 0
+        const fnVa = m.u32((pFnTable + fnIdx * 8) >>> 0)
+        let a1 = 0
+        let a2 = 0
+        if (arity === 3) {
+          pop()
+          a2 = pop()
+          a1 = pop()
+        } else if (arity === 2) {
+          a2 = pop()
+          a1 = pop()
+        } else if (arity === 1) {
+          a1 = pop()
+        } else if (arity !== 0) {
+          push(0)
+          break
+        }
+        let res = 0
+        if (fnVa === 0x6fd73d60) {
+          res = ITEMS_MinIntFastcall113c(m, a1, a2) | 0
+        } else if (fnVa === 0x6fd73d50) {
+          res = ITEMS_MaxIntFastcall113c(m, a1, a2) | 0
+        } else if (fnVa === 0x6fd767c0) {
+          res = pItem !== 0 ? (SEED_RollLimitedRandomNumberInline113c(m, (pItem + 0x20) >>> 0, a1, a2) | 0) : 0
+        } else if (fnVa === 0x6fd77120) {
+          res = evalItemStatDirect113c(m, a1, a2, pItem) | 0
+        }
+        push(res)
+        break
+      }
+      case 4: {
+        if (((cur - base) | 0) >= size) return 0
+        cur = (cur + 1) >>> 0
+        push(0)
+        break
+      }
+      case 5: {
+        if (((cur - base) | 0) >= size) return 0
+        cur = (cur + 2) >>> 0
+        push(0)
+        break
+      }
+      case 6: {
+        if (((cur - base) | 0) >= size) return 0
+        cur = (cur + 4) >>> 0
+        push(0)
+        break
+      }
+      case 7: {
+        if (((cur - base) | 0) >= size) return 0
+        const v = (m.u8(cur) << 24) >> 24
+        cur = (cur + 1) >>> 0
+        push(v)
+        break
+      }
+      case 8: {
+        if (((cur - base) | 0) >= size) return 0
+        const v = (m.u16(cur) << 16) >> 16
+        cur = (cur + 2) >>> 0
+        push(v)
+        break
+      }
+      case 9: {
+        if (((cur - base) | 0) >= size) return 0
+        const v = m.u32(cur) | 0
+        cur = (cur + 4) >>> 0
+        push(v)
+        break
+      }
+      case 10: {
+        const rhs = pop()
+        const lhs = pop()
+        push(lhs < rhs ? 1 : 0)
+        break
+      }
+      case 11: {
+        const rhs = pop()
+        const lhs = pop()
+        push(lhs > rhs ? 1 : 0)
+        break
+      }
+      case 12: {
+        const rhs = pop()
+        const lhs = pop()
+        push(lhs <= rhs ? 1 : 0)
+        break
+      }
+      case 13: {
+        const rhs = pop()
+        const lhs = pop()
+        push(lhs >= rhs ? 1 : 0)
+        break
+      }
+      case 14: {
+        const rhs = pop()
+        const lhs = pop()
+        push(lhs === rhs ? 1 : 0)
+        break
+      }
+      case 15: {
+        const rhs = pop()
+        const lhs = pop()
+        push(lhs !== rhs ? 1 : 0)
+        break
+      }
+      case 16: {
+        const rhs = pop()
+        const lhs = pop()
+        push((lhs + rhs) | 0)
+        break
+      }
+      case 17: {
+        const rhs = pop()
+        const lhs = pop()
+        push((lhs - rhs) | 0)
+        break
+      }
+      case 18: {
+        const rhs = pop()
+        const lhs = pop()
+        push(imul32(lhs, rhs))
+        break
+      }
+      case 19: {
+        const rhs = pop()
+        const lhs = pop()
+        push(rhs === 0 ? 0 : (Math.trunc(lhs / rhs) | 0))
+        break
+      }
+      case 20: {
+        const exp = pop()
+        const baseVal = pop()
+        if (exp <= 0) {
+          push(1)
+        } else {
+          let acc = baseVal
+          for (let k = exp - 1; k > 0; k--) {
+            acc = imul32(acc, baseVal)
+          }
+          push(acc)
+        }
+        break
+      }
+      case 21: {
+        const v = pop()
+        push((-v) | 0)
+        break
+      }
+      case 22: {
+        const fVal = pop()
+        const tVal = pop()
+        const cond = pop()
+        push(cond !== 0 ? tVal : fVal)
+        break
+      }
+      default:
+        break
+    }
+  }
+  return 0
+}
+
+function evalItemStatDirect113c(m: Memory113c, nStatId: number, nMode: number, pUnit: number): number {
+  const unitPtr = pUnit >>> 0
+  if (unitPtr === 0) return 0
+  const statId = nStatId | 0
+  if (statId < 0) return 0
+  const sgpt = m.u32(ITEMS_SGPT_DATATABLES_VA_113C)
+  if (statId >= (m.u32((sgpt + DATATABLES_OFF_113C.nItemStatCostTxtRecordCount) >>> 0) | 0)) return 0
+  if (statId === 0x13) {
+    return UNITS_GetPlayerBaseToHit113c(m, unitPtr) >>> 0
+  }
+  const mode = nMode | 0
+  if (mode === 1) {
+    return statListGetUnitBaseStatMem113c(m, unitPtr, statId, 0) >>> 0
+  }
+  if (mode === 2) {
+    return ITEMS_B043_GetTotalStatFromUnitFast113c(m, unitPtr, statId, 0) >>> 0
+  }
+  return statListGetUnitStatMem113c(m, unitPtr, statId, 0) >>> 0
+}
+
+// ============================================================================
+// Batch B039 — items.ts functions (B039-02, B039-04, B039-05)
+// ============================================================================
+
+/**
+ * `@va D2Common:0x6FD72F50` (`D2Common.#10321` `ITEMS_GetMissileType`,
+ * `__stdcall(pItem) -> i32`, `ret 4`).
+ */
+export function ITEMS_GetMissileType113c(m: Memory113c, pItem: number): number {
+  const ptr = pItem >>> 0
+  if (ptr === 0 || m.get(ptr, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0xffffffff
+  const pRec = lookupItemsTxtRecord113c(m, m.get(ptr, D2UnitStrc.dwClassId))
+  return m.u16((pRec + 0xfa) >>> 0)
+}
+
+/**
+ * `@va D2Common:0x6FD745C0` (`D2Common.#10439` `ITEMS_CheckIfSocketFiller`,
+ * `__stdcall(pItem) -> BOOL`, `ret 4`).
+ */
+export function ITEMS_CheckIfSocketFiller113c(m: Memory113c, pItem: number): number {
+  return ITEMS_CheckItemTypeIdMem113c(m, pItem >>> 0, 0x35)
+}
+
+/**
+ * `@va D2Common:0x6FD81B90` (`D2Common.#10641` `ITEMS_GetActiveWeaponForAttack`,
+ * `__stdcall(pUnit, bCheckSkill) -> pItem`, `ret 8`).
+ */
+export function ITEMS_GetActiveWeaponForAttack113c(
+  m: Memory113c,
+  pUnit: number,
+  bCheckSkill: number,
+): number {
+  const unitPtr = pUnit >>> 0
+  const pInventory = m.get(unitPtr, D2UnitStrc.pInventory)
+  if (pInventory === 0) return 0
+  let pActiveWeap = inventoryGetActiveWeaponPtrMem113c(m, pInventory)
+  if (unitsCanDualWieldMem113c(m, unitPtr) === 0) return pActiveWeap
+  const pSkills = m.get(unitPtr, D2UnitStrc.pSkills)
+  if (pSkills === 0) return pActiveWeap
+  const pUsedSkill = m.u32((pSkills + 0x10) >>> 0)
+  if (pUsedSkill === 0) return pActiveWeap
+  const pSkillsTxt = m.u32(pUsedSkill)
+  if (pSkillsTxt === 0) return pActiveWeap
+  const bWeapSel = m.u8((pSkillsTxt + 0x168) >>> 0)
+  let esi = 0
+  switch ((bWeapSel - 1) >>> 0) {
+    case 0: {
+      esi = inventoryGetWeaponByHandSlotMem113c(m, pInventory, 6)
+      break
+    }
+    case 1: {
+      const skillFlags = (m.u32((pUsedSkill + 0x0c) >>> 0) & 0x2000) >>> 0
+      esi = inventoryGetWeaponByHandSlotMem113c(m, pInventory, 5)
+      const edi = inventoryGetWeaponByHandSlotMem113c(m, pInventory, 6)
+      if (esi === 0 || ITEMS_CheckItemTypeIdMem113c(m, esi, 0x2d) === 0) {
+        esi = edi
+      } else if (edi !== 0 && ITEMS_CheckItemTypeIdMem113c(m, edi, 0x2d) !== 0 && skillFlags !== 0) {
+        esi = edi
+      }
+      break
+    }
+    case 2: {
+      const flag26 = (m.get(unitPtr, D2UnitStrc.dwFlags2) >>> 26) & 1
+      const seqFrame = sar32(m.u32((unitPtr + 0x38) >>> 0) | 0, 8)
+      let ecx = 0
+      if (flag26 !== 0) {
+        ecx = seqFrame % 2
+      } else {
+        ecx = seqFrame > 5 ? 1 : 0
+      }
+      if (seqFrame !== 0 && ((bCheckSkill | 0) === 0 || ecx !== 0)) {
+        esi = inventoryGetWeaponByHandSlotMem113c(m, pInventory, 6)
+      } else {
+        esi = inventoryGetWeaponByHandSlotMem113c(m, pInventory, 5)
+      }
+      break
+    }
+    case 3: {
+      pActiveWeap = 0
+      esi = 0
+      break
+    }
+    default: {
+      esi = inventoryGetWeaponByHandSlotMem113c(m, pInventory, 5)
+      if (esi === 0 || ITEMS_CheckItemTypeIdMem113c(m, esi, 0x2d) === 0) {
+        esi = inventoryGetWeaponByHandSlotMem113c(m, pInventory, 6)
+      }
+      break
+    }
+  }
+  if (
+    ITEMS_CheckItemTypeIdMem113c(m, esi, 0x2d) !== 0 &&
+    checkNotBrokenOrUnequippingMem113c(m, esi) !== 0
+  ) {
+    return esi >>> 0
+  }
+  return pActiveWeap >>> 0
+}
+
+// ============================================================================
+// Batch B049 — items.ts functions (B049-01..12, B049-14..15)
+// ============================================================================
+
+/**
+ * `@va D2Common:0x6FD730F0` (`D2Common.#11088` `ITEMS_GetItemTypeFromItem`,
+ * `__stdcall(pItem) -> i32`, `ret 4`).
+ */
+export function ITEMS_GetItemTypeFromItem113c(m: Memory113c, pItem: number): number {
+  const ptr = pItem >>> 0
+  if (ptr === 0) {
+    throw new D2CommonAssertError('Items.cpp', 0x67e)
+  }
+  if (m.get(ptr, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0
+  return ITEMS_IsTome113c(m, m.get(ptr, D2UnitStrc.dwClassId))
+}
+
+/**
+ * `@va D2Common:0x6FD73CE0` (`D2Common.#10428` `ITEMS_EvalItemCalc`,
+ * `__stdcall(pItem, pOwner, dwCalcOffset) -> i32`, `ret 0xC`).
+ */
+export function ITEMS_EvalItemCalc113c(
+  m: Memory113c,
+  pItem: number,
+  pOwner: number,
+  dwCalcOffset: number,
+): number {
+  const sgpt = m.u32(ITEMS_SGPT_DATATABLES_VA_113C)
+  const pCodeBuf = m.u32((sgpt + DATATABLES_ITEMS_CODE_BUF_OFF_113C) >>> 0)
+  if (pCodeBuf === 0) return 0
+  const nCodeSize = m.u32((sgpt + DATATABLES_ITEMS_CODE_SIZE_OFF_113C) >>> 0)
+  const off = dwCalcOffset >>> 0
+  if (off >= nCodeSize) return 0
+  const fnCount = m.u32(ITEM_CALC_FN_COUNT_VA_113C) | 0
+  return fogEvalItemPostFixExpression113c(
+    m,
+    (pCodeBuf + off) >>> 0,
+    (nCodeSize - off) | 0,
+    ITEM_CALC_FN_TABLE_VA_113C,
+    fnCount,
+    pItem >>> 0,
+    pOwner >>> 0,
+  )
+}
+
+/**
+ * `@va D2Common:0x6FD745D0` (`D2Common.#10519` `ITEMS_GetGemApplyTypeFromItem`,
+ * `__stdcall(pItem) -> u8`, `ret 4`).
+ */
+export function ITEMS_GetGemApplyTypeFromItem113c(m: Memory113c, pItem: number): number {
+  const ptr = pItem >>> 0
+  if (ptr === 0) {
+    throw new D2CommonAssertError('Items.cpp', 0xf3e)
+  }
+  if (m.get(ptr, D2UnitStrc.dwUnitType) !== UNIT_ITEM) {
+    throw new D2CommonAssertError('Items.cpp', 0xf3f)
+  }
+  return ITEMS_GetGemApplyType113c(m, m.get(ptr, D2UnitStrc.dwClassId))
+}
+
+/**
+ * `@va D2Common:0x6FD74710` (`D2Common.#11000` `ITEMS_GetMagicLevelFromItem`,
+ * `__stdcall(pItem) -> i32`, `ret 4`).
+ */
+export function ITEMS_GetMagicLevelFromItem113c(m: Memory113c, pItem: number): number {
+  const ptr = pItem >>> 0
+  if (ptr === 0) {
+    throw new D2CommonAssertError('Items.cpp', 0xdad)
+  }
+  if (m.get(ptr, D2UnitStrc.dwUnitType) !== UNIT_ITEM) {
+    throw new D2CommonAssertError('Items.cpp', 0xdae)
+  }
+  if (
+    ITEMS_CheckItemTypeIdMem113c(m, ptr, 0x16) !== 0 ||
+    ITEMS_CheckItemTypeIdMem113c(m, ptr, 0x12) !== 0
+  ) {
+    let wIdx = 0
+    if (m.get(ptr, D2UnitStrc.dwUnitType) === UNIT_ITEM) {
+      const pData = m.get(ptr, D2UnitStrc.pUnitData)
+      if (pData !== 0) {
+        wIdx = m.u16((pData + 0x3e) >>> 0)
+      }
+    }
+    const pQual = DATATBLS_GetQualityItemsTxtRecord113c(m, wIdx)
+    if (pQual === 0) return 0xffffffff
+    return m.u8((pQual + 0x02) >>> 0)
+  }
+  const pRec = lookupItemsTxtRecord113c(m, m.get(ptr, D2UnitStrc.dwClassId))
+  if (pRec === 0) {
+    throw new D2CommonAssertError('Items.cpp', 0xdb9)
+  }
+  return m.u8((pRec + 0x134) >>> 0)
+}
+
+/**
+ * `@va D2Common:0x6FD747C0` (`D2Common.#10432` `ITEMS_GetGambleCostFromItem`,
+ * `__stdcall(pItem) -> u32`, `ret 4`).
+ */
+export function ITEMS_GetGambleCostFromItem113c(m: Memory113c, pItem: number): number {
+  const ptr = pItem >>> 0
+  if (ptr === 0) {
+    throw new D2CommonAssertError('Items.cpp', 0xd94)
+  }
+  if (m.get(ptr, D2UnitStrc.dwUnitType) !== UNIT_ITEM) {
+    throw new D2CommonAssertError('Items.cpp', 0xd95)
+  }
+  return ITEMS_GetGambleCost113c(m, m.get(ptr, D2UnitStrc.dwClassId))
+}
+
+/**
+ * `@va D2Common:0x6FD74800` (`D2Common.#11079` `ITEMS_GetBitField2FromItem`,
+ * `__stdcall(pItem) -> u32`, `ret 4`).
+ */
+export function ITEMS_GetBitField2FromItem113c(m: Memory113c, pItem: number): number {
+  const ptr = pItem >>> 0
+  if (ptr === 0) {
+    throw new D2CommonAssertError('Items.cpp', 0xd7c)
+  }
+  if (m.get(ptr, D2UnitStrc.dwUnitType) !== UNIT_ITEM) {
+    throw new D2CommonAssertError('Items.cpp', 0xd7d)
+  }
+  return ITEMS_GetBitField2113c(m, m.get(ptr, D2UnitStrc.dwClassId))
+}
+
+function lookupItemsTxtByCodeNoOut113c(m: Memory113c, dwCode: number): number {
+  const idx = fogGetLinkIndex113c(m, m.u32(ITEMS_LINK_PTR_VA_113C), dwCode >>> 0)
+  if ((idx >>> 0) >= m.u32(ITEMS_TXT_COUNT_VA_113C)) return 0
+  const base = m.u32(ITEMS_TXT_PTR_VA_113C)
+  if (base === 0) {
+    throw new D2CommonAssertError('Items.cpp', 0x1ef)
+  }
+  return (base + imul32(idx, D2ItemsTxt_SIZE)) >>> 0
+}
+
+/**
+ * `@va D2Common:0x6FD74840` (internal `ITEMS_ComputeGambleBaseCost`,
+ * custom reg `eax = pItem`, stack `[esp+4] = nUnitLevel` -> `i32`, `ret 4`).
+ */
+export function ITEMS_ComputeGambleBaseCost113c(
+  m: Memory113c,
+  pItem: number,
+  nUnitLevel: number,
+): number {
+  const dwCode = ITEMS_GetAltGfxOrBaseCode113c(m, pItem >>> 0)
+  const idx = fogGetLinkIndex113c(m, m.u32(ITEMS_LINK_PTR_VA_113C), dwCode)
+  if ((idx >>> 0) >= m.u32(ITEMS_TXT_COUNT_VA_113C)) {
+    throw new D2CommonAssertError('Items.cpp', 0xb1b)
+  }
+  const base = m.u32(ITEMS_TXT_PTR_VA_113C)
+  if (base === 0) {
+    throw new D2CommonAssertError('Items.cpp', 0x1ef)
+  }
+  const esi = (base + imul32(idx, D2ItemsTxt_SIZE)) >>> 0
+  if (esi === 0) {
+    throw new D2CommonAssertError('Items.cpp', 0xb1b)
+  }
+  const code = m.get(esi, D2ItemsTxt.dwCode)
+  const ultraCode = m.u32((esi + 0x8c) >>> 0)
+  const uberCode = m.u32((esi + 0x88) >>> 0)
+  if (code === 0x206e6972 || code === 0x20756d61) {
+    return m.u32((esi + 0xd4) >>> 0)
+  }
+  const sumStack = ((m.u32((esi + 0xe8) >>> 0) | 0) + (m.u32((esi + 0xe4) >>> 0) | 0)) | 0
+  let avgStack = sar32((sumStack - (sumStack >> 31)) | 0, 1)
+  if (avgStack < 1) avgStack = 1
+  const baseVal = imul32(m.u32((esi + 0xe0) >>> 0) | 0, avgStack)
+  const baseLvl = m.u8((esi + 0xfd) >>> 0)
+  let ebx = 0
+  let uberCost = 0
+  let edi = 0
+  let ultraCost = 0
+  if (uberCode !== 0 && uberCode !== 0x20202030) {
+    const pUber = lookupItemsTxtByCodeNoOut113c(m, uberCode)
+    if (pUber !== 0) {
+      const uberLvl = m.u8((pUber + 0xfd) >>> 0)
+      const t = imul32(((nUnitLevel | 0) - uberLvl) | 0, 100)
+      ebx = (sar32((t - (t >> 31)) | 0, 1) + 1) | 0
+      if (ebx < 0) ebx = 0
+      uberCost = m.u32((pUber + 0xe0) >>> 0) | 0
+    }
+  }
+  if (ultraCode !== 0 && m.u32((esi + 0x8c) >>> 0) !== 0x20202030) {
+    const pUltra = lookupItemsTxtByCodeNoOut113c(m, ultraCode)
+    if (pUltra !== 0) {
+      const ultraLvl = m.u8((pUltra + 0xfd) >>> 0)
+      const t = imul32(((nUnitLevel | 0) - ultraLvl) | 0, 100)
+      edi = (sar32((t + ((t >> 31) & 3)) | 0, 2) + 1) | 0
+      if (edi < 0) edi = 0
+      ultraCost = m.u32((pUltra + 0xe0) >>> 0) | 0
+    }
+  }
+  const weighted = (imul32((10000 - edi - ebx) | 0, baseVal) + imul32(ultraCost, edi) + imul32(uberCost, ebx)) | 0
+  const esiCost = Math.trunc(weighted / 10000) | 0
+  const uLvl = (nUnitLevel | 0) <= 5 ? 5 : (nUnitLevel | 0)
+  const diff2d = (baseLvl - 0x2d) | 0
+  const clampedDiff2d = diff2d < 0 ? 0 : diff2d
+  const halfBaseLvl = sar32((baseLvl - (baseLvl >> 31)) | 0, 1)
+  const term1 = Math.trunc(imul32((clampedDiff2d - halfBaseLvl + uLvl) | 0, 250) / 3) | 0
+  const term2 = (Math.trunc(((uLvl * 2 + 1) | 0) / 3) + 20) | 0
+  const prod = imul32((term1 + esiCost) | 0, term2)
+  return (Math.trunc(prod / 15) | 0) >>> 0
+}
+
+/**
+ * `@va D2Common:0x6FD74F00` (internal `ITEMS_CanItemBePersonalizedOrRepaired`,
+ * custom reg `esi = pItem` -> `BOOL`, `ret`).
+ */
+export function ITEMS_CanItemBePersonalizedOrRepaired113c(m: Memory113c, pItem: number): number {
+  const ptr = pItem >>> 0
+  if (ptr === 0) {
+    throw new D2CommonAssertError('Items.cpp', 0x67e)
+  }
+  let wType1 = 0
+  if (m.get(ptr, D2UnitStrc.dwUnitType) === UNIT_ITEM) {
+    wType1 = ITEMS_IsTome113c(m, m.get(ptr, D2UnitStrc.dwClassId)) | 0
+    if (wType1 < 0) return 0
+  }
+  const sgpt = m.u32(ITEMS_SGPT_DATATABLES_VA_113C)
+  if (wType1 >= (m.u32((sgpt + DATATABLES_ITEMTYPES_COUNT_OFF_113C) >>> 0) | 0)) return 0
+  const pTypeRec = (m.u32((sgpt + DATATABLES_ITEMTYPES_TXT_OFF_113C) >>> 0) + imul32(wType1, D2ItemTypesTxt_SIZE)) >>> 0
+  if (pTypeRec === 0) return 0
+  if (m.u8((pTypeRec + 0x08) >>> 0) === 0) return 0
+  if (checkIfThrowItemMem113c(m, ptr) === 0) return 0
+  if (ITEMS_GetTwoHandedFlag113c(m, ptr) === 0) return 0
+  if (ITEMS_CheckEtherealFlag113c(m, ptr) !== 0) return 0
+  return 1
+}
+
+/**
+ * `@va D2Common:0x6FD750B0` (`D2Common.#10185` `ITEMS_CheckIfImbueable`,
+ * `__stdcall(pItem) -> BOOL`, `ret 4`).
+ */
+export function ITEMS_CheckIfImbueable113c(m: Memory113c, pItem: number): number {
+  const ptr = pItem >>> 0
+  if (ptr === 0) {
+    throw new D2CommonAssertError('Items.cpp', 0x67e)
+  }
+  if (m.get(ptr, D2UnitStrc.dwUnitType) === UNIT_ITEM) {
+    if ((ITEMS_IsTome113c(m, m.get(ptr, D2UnitStrc.dwClassId)) | 0) === 4) return 0
+  }
+  if (m.get(ptr, D2UnitStrc.dwUnitType) === UNIT_ITEM) {
+    const pData = m.get(ptr, D2UnitStrc.pUnitData)
+    if (pData !== 0 && (m.get(pData, D2ItemDataStrc.dwCommandFlags) & 0x1000) !== 0) return 0
+  }
+  const classId = m.get(ptr, D2UnitStrc.dwClassId)
+  if (ITEMS_IsThrowableBit113c(m, classId) === 0) return 0
+  if (((m.get(ptr, D2UnitStrc.dwFlags2) >>> 25) & 1) === 0) {
+    if (checkIfThrowItemMem113c(m, ptr) !== 0) return 0
+  }
+  const pRec = lookupItemsTxtRecord113c(m, classId)
+  if (m.get(pRec, D2ItemsTxt.nComponent) !== 0) {
+    if (ITEMS_GetBaseCode113c(m, ptr) !== 0x2067656c) return 0
+  }
+  if (ITEMS_HasSocketedItems113c(m, ptr) !== 0) return 0
+  if (ITEMS_CheckCommandFlags113c(m, ptr, 0x800, 0x12c8, 0x6fde4848) !== 0) return 0
+  const qual = ITEMS_GetItemQuality113c(m, ptr) | 0
+  if (qual === 5 || qual === 4 || qual === 6 || qual === 8 || qual === 7 || qual === 9) return 0
+  return 1
+}
+
+/**
+ * `@va D2Common:0x6FD75C10` (internal `ITEMS_EncodeCompactAndBasicItemStream`,
+ * custom reg `ebx = pBitStream`, stack `[esp+4] = pItem`, `[esp+8] = bWriteAutoAffix`, `ret 8`, void).
+ */
+export function ITEMS_EncodeCompactAndBasicItemStream113c(
+  m: Memory113c,
+  pBitStream: number,
+  pItem: number,
+  bWriteAutoAffix: number,
+): void {
+  const bs = pBitStream >>> 0
+  const ptr = pItem >>> 0
+  const nItemId = ptr !== 0 ? m.get(ptr, D2UnitStrc.dwClassId) : 0xffffffff
+  if ((nItemId >>> 0) >= m.u32(ITEMS_TXT_COUNT_VA_113C)) {
+    throw new D2CommonAssertError('Items.cpp', 0x1c4d)
+  }
+  const base = m.u32(ITEMS_TXT_PTR_VA_113C)
+  if (base === 0) {
+    throw new D2CommonAssertError('Items.cpp', 0x1ef)
+  }
+  const pRec = (base + imul32(nItemId, D2ItemsTxt_SIZE)) >>> 0
+  if (pRec === 0) {
+    throw new D2CommonAssertError('Items.cpp', 0x1c4d)
+  }
+  if (ptr === 0) {
+    throw new D2CommonAssertError('Items.cpp', 0x1505)
+  }
+  if (m.get(ptr, D2UnitStrc.dwUnitType) !== UNIT_ITEM) {
+    throw new D2CommonAssertError('Items.cpp', 0x1506)
+  }
+  const pItemData = m.get(ptr, D2UnitStrc.pUnitData)
+  if (pItemData === 0) {
+    throw new D2CommonAssertError('Items.cpp', 0x1508)
+  }
+  let fmt = m.get(pItemData, D2ItemDataStrc.wItemFormat) | 0
+  if (fmt <= 0) fmt = 0
+  else if (fmt >= 0x3ff) fmt = 0x3ff
+  fogWriteBits113c(m, bs, fmt, 0x0a)
+
+  const animMode = m.get(ptr, D2UnitStrc.dwAnimMode) | 0
+  let clampedMode = animMode
+  if (clampedMode <= 0) clampedMode = 0
+  else if (clampedMode >= 7) clampedMode = 7
+  fogWriteBits113c(m, bs, clampedMode, 3)
+
+  const curMode = m.get(ptr, D2UnitStrc.dwAnimMode) | 0
+  if (curMode === 3 || curMode === 5) {
+    const uType1 = m.get(ptr, D2UnitStrc.dwUnitType) | 0
+    const pPath1 = m.get(ptr, D2UnitStrc.pPath)
+    let posX = 0
+    if (uType1 === 2 || (uType1 > 3 && uType1 <= 5)) {
+      posX = m.u32((pPath1 + 0x0c) >>> 0) | 0
+    } else if (pPath1 !== 0) {
+      posX = m.u16((pPath1 + 0x02) >>> 0)
+    }
+    if (posX <= 0) posX = 0
+    else if (posX >= 0xffff) posX = 0xffff
+    fogWriteBits113c(m, bs, posX, 0x10)
+
+    const uType2 = m.get(ptr, D2UnitStrc.dwUnitType) | 0
+    const pPath2 = m.get(ptr, D2UnitStrc.pPath)
+    let posY = 0
+    if (uType2 === 2 || (uType2 > 3 && uType2 <= 5)) {
+      posY = m.u32((pPath2 + 0x10) >>> 0) | 0
+    } else if (pPath2 !== 0) {
+      posY = m.u16((pPath2 + 0x06) >>> 0)
+    }
+    if (posY <= 0) posY = 0
+    else if (posY >= 0xffff) posY = 0xffff
+    fogWriteBits113c(m, bs, posY, 0x10)
+  } else {
+    let bodyLoc = 0
+    if (m.get(ptr, D2UnitStrc.dwUnitType) === UNIT_ITEM) {
+      const pData = m.get(ptr, D2UnitStrc.pUnitData)
+      if (pData !== 0) bodyLoc = m.get(pData, D2ItemDataStrc.nBodyLoc)
+    }
+    if (bodyLoc <= 0) bodyLoc = 0
+    else if (bodyLoc >= 0x0f) bodyLoc = 0x0f
+    fogWriteBits113c(m, bs, bodyLoc, 4)
+
+    const uType1 = m.get(ptr, D2UnitStrc.dwUnitType) | 0
+    const pPath1 = m.get(ptr, D2UnitStrc.pPath)
+    let posX = 0
+    if (uType1 === 2 || (uType1 > 3 && uType1 <= 5)) {
+      posX = m.u32((pPath1 + 0x0c) >>> 0) | 0
+    } else if (pPath1 !== 0) {
+      posX = m.u16((pPath1 + 0x02) >>> 0)
+    }
+    if (posX <= 0) posX = 0
+    else if (posX >= 0x0f) posX = 0x0f
+    fogWriteBits113c(m, bs, posX, 4)
+
+    const uType2 = m.get(ptr, D2UnitStrc.dwUnitType) | 0
+    const pPath2 = m.get(ptr, D2UnitStrc.pPath)
+    let posY = 0
+    if (uType2 === 2 || (uType2 > 3 && uType2 <= 5)) {
+      posY = m.u32((pPath2 + 0x10) >>> 0) | 0
+    } else if (pPath2 !== 0) {
+      posY = m.u16((pPath2 + 0x06) >>> 0)
+    }
+    if (posY <= 0) posY = 0
+    else if (posY >= 0x0f) posY = 0x0f
+    fogWriteBits113c(m, bs, posY, 4)
+
+    let rawPage = 0xff
+    if (m.get(ptr, D2UnitStrc.dwUnitType) === UNIT_ITEM) {
+      const pData = m.get(ptr, D2UnitStrc.pUnitData)
+      if (pData !== 0) rawPage = m.get(pData, D2ItemDataStrc.nInvPage)
+    }
+    let page = (((rawPage + 1) & 0xff) << 24) >> 24
+    if (page <= 0) page = 0
+    else if (page >= 7) page = 7
+    fogWriteBits113c(m, bs, page, 3)
+  }
+
+  let cmdFlags = 0
+  if (m.get(ptr, D2UnitStrc.dwUnitType) === UNIT_ITEM) {
+    const pData = m.get(ptr, D2UnitStrc.pUnitData)
+    if (pData !== 0) cmdFlags = m.get(pData, D2ItemDataStrc.dwCommandFlags)
+  }
+  if ((cmdFlags & 0x10000) !== 0) {
+    let namePtr = 0
+    if (m.get(ptr, D2UnitStrc.dwUnitType) === UNIT_ITEM) {
+      const pData = m.get(ptr, D2UnitStrc.pUnitData)
+      if (pData !== 0) namePtr = (pData + D2ItemDataStrc.szPlayerName.off) >>> 0
+    }
+    let cell = ITEMS_GetItemCell113c(m, ptr) | 0
+    if (cell <= 0) cell = 0
+    else if (cell >= 7) cell = 7
+    fogWriteBits113c(m, bs, cell, 3)
+
+    let earLvl = 1
+    if (m.get(ptr, D2UnitStrc.dwUnitType) === UNIT_ITEM) {
+      const pData = m.get(ptr, D2UnitStrc.pUnitData)
+      if (pData !== 0) earLvl = m.get(pData, D2ItemDataStrc.bEarLevel)
+    }
+    if (earLvl <= 0) earLvl = 0
+    else if (earLvl >= 0x7f) earLvl = 0x7f
+    fogWriteBits113c(m, bs, earLvl, 7)
+
+    let curName = namePtr
+    while (true) {
+      let ch = (m.u8(curName) << 24) >> 24
+      if (ch <= 0) ch = 0
+      else if (ch >= 0x7f) ch = 0x7f
+      fogWriteBits113c(m, bs, ch, 7)
+      const rawCh = m.u8(curName)
+      curName = (curName + 1) >>> 0
+      if (rawCh === 0) break
+    }
+  } else {
+    const code = ITEMS_GetBaseCode113c(m, ptr)
+    fogWriteBits113c(m, bs, code, 0x20)
+    if (ITEMS_CheckItemTypeIdMem113c(m, ptr, 4) !== 0) {
+      const gold = statListGetUnitStatMem113c(m, ptr, 0x0e, 0) | 0
+      const isBig = gold >= 0x1000 ? 1 : 0
+      fogWriteBits113c(m, bs, isBig, 1)
+      const goldBits = gold < 0x1000 ? 0x0c : 0x20
+      let clampedGold = gold
+      if (goldBits !== 0x20) {
+        const maxGold = ((1 << goldBits) - 1) | 0
+        const mask = gold <= 0 ? 0 : -1
+        const masked = gold & mask
+        clampedGold = masked >= maxGold ? maxGold : masked
+      }
+      fogWriteBits113c(m, bs, clampedGold, goldBits)
+    }
+  }
+
+  if (m.get(pRec, D2ItemsTxt.nComponent) !== 0 && m.u8((pRec + 0x12b) >>> 0) !== 0) {
+    const sgpt = m.u32(ITEMS_SGPT_DATATABLES_VA_113C)
+    if ((m.u32((sgpt + DATATABLES_OFF_113C.nItemStatCostTxtRecordCount) >>> 0) | 0) <= 0x164) {
+      throw new D2CommonAssertError('Items.cpp', 0x1c7b)
+    }
+    const pIsc = (m.u32((sgpt + DATATABLES_OFF_113C.pItemStatCostTxt) >>> 0) + 0x1c290) >>> 0
+    if (pIsc === 0) {
+      throw new D2CommonAssertError('Items.cpp', 0x1c7b)
+    }
+    const saveBits = m.u8((pIsc + 0x19) >>> 0)
+    const qVal = statListGetUnitStatMem113c(m, ptr, 0x164, 0) | 0
+    const shift = m.u8((pIsc + 0x18) >>> 0) & 31
+    const saveAdd = m.u32((pIsc + 0x1c) >>> 0) | 0
+    ITEMS_WriteBitsClamped113c(m, saveBits, (sar32(qVal, shift) + saveAdd) | 0, bs)
+  }
+
+  if ((bWriteAutoAffix | 0) !== 0) {
+    let dwParam0 = 0
+    let dwParam1 = 0
+    if (m.get(ptr, D2UnitStrc.dwUnitType) === UNIT_ITEM) {
+      const pData = m.get(ptr, D2UnitStrc.pUnitData)
+      if (pData !== 0) {
+        dwParam0 = m.get(pData, D2ItemDataStrc.dwActionStamp)
+        dwParam1 = m.get(pData, D2ItemDataStrc.dwFileIndex)
+      }
+    }
+    if (dwParam1 !== 0) {
+      fogWriteBits113c(m, bs, 1, 1)
+      fogWriteBits113c(m, bs, dwParam0, 0x20)
+      fogWriteBits113c(m, bs, dwParam1, 0x20)
+      fogWriteBits113c(m, bs, 0, 0x20)
+    } else {
+      fogWriteBits113c(m, bs, 0, 1)
+    }
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD760F0` (`D2Common.#10463` `ITEMS_GetTotalMaxStack`,
+ * `__stdcall(pItem) -> i32`, `ret 4`).
+ */
+export function ITEMS_GetTotalMaxStack113c(m: Memory113c, pItem: number): number {
+  const ptr = pItem >>> 0
+  if (ptr === 0) {
+    throw new D2CommonAssertError('Items.cpp', 0xd5b)
+  }
+  if (m.get(ptr, D2UnitStrc.dwUnitType) !== UNIT_ITEM) {
+    throw new D2CommonAssertError('Items.cpp', 0xd5c)
+  }
+  const baseStack = ITEMS_GetBaseSpeed113c(m, m.get(ptr, D2UnitStrc.dwClassId)) | 0
+  const pStatList = m.get(ptr, D2UnitStrc.pStatListEx)
+  let extraStack = 0
+  if (pStatList !== 0) {
+    const sgpt = m.u32(ITEMS_SGPT_DATATABLES_VA_113C)
+    if ((m.u32((sgpt + DATATABLES_OFF_113C.nItemStatCostTxtRecordCount) >>> 0) | 0) > 0xfe) {
+      const pIsc = (m.u32((sgpt + DATATABLES_OFF_113C.pItemStatCostTxt) >>> 0) + 0x14178) >>> 0
+      if (pIsc !== 0) {
+        extraStack = statListGetTotalStatWithMinMem113c(m, pStatList, 0xfe0000, pIsc)
+      }
+    }
+  }
+  let total = (baseStack + extraStack) | 0
+  if (total >= 0x1ff) total = 0x1ff
+  return total >>> 0
+}
+
+/**
+ * Read-only form of `D2Common 0x6FD88410` (`STATLIST_CopyUnitFullStatsToBuffer113c`, statlist.ts) for callers
+ * whose destination is a DLL stack buffer (no observable memory writes): `0` unless `pUnit != 0`,
+ * `pUnit->pStatListEx (+0x5C) != 0` and its `dwFlags (+0x10)` is negative (0x6FD88410..0x6FD88424); otherwise
+ * `count = min_signed(movsx(wFullStatCount (+0x4C)), nMax)` (0x6FD8842B..0x6FD88437) and the keys of the first
+ * `count` `pFullStat (+0x48)` entries (none when `count <= 0`, 0x6FD88440 `jae`).
+ */
+function readUnitFullStatsMem113c(
+  m: Memory113c,
+  pUnit: number,
+  nMax: number,
+): { count: number; keys: number[] } {
+  const u = pUnit >>> 0
+  if (u === 0) return { count: 0, keys: [] }
+  const pListEx = m.get(u, D2UnitStrc.pStatListEx)
+  if (pListEx === 0) return { count: 0, keys: [] }
+  if ((m.get(pListEx, D2StatListStrc.dwFlags) | 0) >= 0) return { count: 0, keys: [] }
+  let count = (m.get(pListEx, D2StatListExStrc.wFullStatCount) << 16) >> 16
+  if (count >= (nMax | 0)) count = nMax | 0
+  const keys: number[] = []
+  const pArr = m.get(pListEx, D2StatListExStrc.pFullStat) >>> 0
+  for (let i = 0; i < count; i++) {
+    keys.push(m.u32((pArr + i * 8) >>> 0))
+  }
+  return { count, keys }
+}
+
+/**
+ * `@va D2Common:0x6FD78850` (internal `ITEMS_CalculateAdditionalCostsForBonusStats`,
+ * custom reg `ecx = pItem`, stack `[esp+4] = pCost0`, `[esp+8] = pCost1`,
+ * `[esp+0xC] = pCost2`, `[esp+0x10] = nDivisor`, `ret 0x10`, void).
+ */
+export function ITEMS_CalculateAdditionalCostsForBonusStats113c(
+  m: Memory113c,
+  pItem: number,
+  pCost0: number,
+  pCost1: number,
+  pCost2: number,
+  nDivisor: number,
+): void {
+  const ptr = pItem >>> 0
+  // 0x6FD7885E..0x6FD78873: `0x6FD88410(pItem, stackBuf, 0x1FF)` (`STATLIST_CopyUnitFullStatsToBuffer`); the
+  // returned count is tested with a signed `jle` (0x6FD78884), so `<= 0` (incl. a negative clamped count)
+  // skips the loop.
+  const fullStats = readUnitFullStatsMem113c(m, ptr, 0x1ff)
+  const count = fullStats.count
+  const statPairs: Array<{ wLayer: number; wStatId: number }> = fullStats.keys.map((key) => ({
+    wLayer: key & 0xffff,
+    wStatId: (key >>> 16) & 0xffff,
+  }))
+
+  let acc0 = 0
+  let acc1 = 0
+  let acc2 = 0
+
+  if (count > 0) {
+    const pStatList = m.get(ptr, D2UnitStrc.pStatListEx)
+    for (let i = 0; i < count; i++) {
+      const { wLayer, wStatId } = statPairs[i]!
+      let diff = ITEMS_B043_GetStatDiffAfterClear113c(m, pStatList, wStatId, wLayer) | 0
+      if (diff === 0 || wStatId < 0) continue
+      const sgpt = m.u32(ITEMS_SGPT_DATATABLES_VA_113C)
+      if (wStatId >= (m.u32((sgpt + DATATABLES_OFF_113C.nItemStatCostTxtRecordCount) >>> 0) | 0)) continue
+      const pIsc = (m.u32((sgpt + DATATABLES_OFF_113C.pItemStatCostTxt) >>> 0) + imul32(wStatId, D2ItemStatCostTxt_SIZE)) >>> 0
+      if (pIsc === 0) continue
+      const shift = m.u8((pIsc + 0x18) >>> 0)
+      if (shift !== 0) {
+        diff = sar32(diff, shift & 31)
+      }
+      const bEncode = m.u8((pIsc + 0x30) >>> 0)
+      switch ((bEncode - 1) >>> 0) {
+        case 0: {
+          if (wLayer < 0 || wLayer >= (m.u32((sgpt + DATATABLES_SKILLS_COUNT_OFF_113C) >>> 0) | 0)) continue
+          const pSkillTxt = (m.u32((sgpt + DATATABLES_SKILLS_TXT_OFF_113C) >>> 0) + imul32(wLayer, D2SkillsTxt_SIZE)) >>> 0
+          if (pSkillTxt === 0) continue
+          const c0 = m.u32(pCost0 >>> 0) | 0
+          const c1 = m.u32(pCost1 >>> 0) | 0
+          const c2 = m.u32(pCost2 >>> 0) | 0
+          const mult = m.u32((pSkillTxt + 0x234) >>> 0) | 0
+          const add = m.u32((pSkillTxt + 0x238) >>> 0) | 0
+          const prod0 = imul32(c0, diff)
+          if (prod0 > 0xffff && mult !== 0) {
+            acc0 = (acc0 + imul32(Math.trunc(prod0 / 1024) | 0, mult) + add) | 0
+            acc1 = (acc1 + imul32(Math.trunc(imul32(c1, diff) / 4096) | 0, mult) + add) | 0
+            acc2 = (acc2 + imul32(Math.trunc(imul32(c2, diff) / 1024) | 0, mult) + add) | 0
+          } else {
+            acc0 = (acc0 + (Math.trunc(imul32(imul32(mult, c0), diff) / 1024) | 0) + add) | 0
+            acc1 = (acc1 + (Math.trunc(imul32(imul32(c1, mult), diff) / 4096) | 0) + add) | 0
+            acc2 = (acc2 + (Math.trunc(imul32(imul32(c2, mult), diff) / 1024) | 0) + add) | 0
+          }
+          break
+        }
+        case 1:
+        case 2: {
+          const paramShift = m.u8((sgpt + DATATABLES_SKILL_PARAM_SHIFT_OFF_113C) >>> 0) & 31
+          const skillId = sar32(wLayer, paramShift)
+          const skLvl = (wLayer & m.u32((sgpt + DATATABLES_SKILL_PARAM_MASK_OFF_113C) >>> 0)) | 0
+          let pSkillTxt = 0
+          if (skillId >= 0 && skillId < (m.u32((sgpt + DATATABLES_SKILLS_COUNT_OFF_113C) >>> 0) | 0)) {
+            pSkillTxt = (m.u32((sgpt + DATATABLES_SKILLS_TXT_OFF_113C) >>> 0) + imul32(skillId, D2SkillsTxt_SIZE)) >>> 0
+          }
+          const c0 = m.u32(pCost0 >>> 0) | 0
+          const c1 = m.u32(pCost1 >>> 0) | 0
+          const c2 = m.u32(pCost2 >>> 0) | 0
+          const mult = m.u32((pSkillTxt + 0x234) >>> 0) | 0
+          const add = m.u32((pSkillTxt + 0x238) >>> 0) | 0
+          const prod0 = imul32(c0, skLvl)
+          if (prod0 > 0xffff && mult !== 0) {
+            acc0 = (acc0 + imul32(Math.trunc(prod0 / 1024) | 0, mult) + add) | 0
+            acc1 = (acc1 + imul32(Math.trunc(imul32(c1, skLvl) / 4096) | 0, mult) + add) | 0
+            acc2 = (acc2 + imul32(Math.trunc(imul32(c2, skLvl) / 1024) | 0, mult) + add) | 0
+          } else {
+            acc0 = (acc0 + (Math.trunc(imul32(imul32(mult, c0), skLvl) / 1024) | 0) + add) | 0
+            acc1 = (acc1 + (Math.trunc(imul32(imul32(c1, mult), skLvl) / 4096) | 0) + add) | 0
+            acc2 = (acc2 + (Math.trunc(imul32(imul32(c2, mult), skLvl) / 1024) | 0) + add) | 0
+          }
+          break
+        }
+        case 3: {
+          const minVal = (((diff >> 2) & 0x3ff) - 0x100) | 0
+          const maxVal = (((diff >> 12) & 0x3ff) - 0x100) | 0
+          const avg = Math.trunc(((minVal + maxVal) | 0) / 2) | 0
+          const c0 = m.u32(pCost0 >>> 0) | 0
+          const c1 = m.u32(pCost1 >>> 0) | 0
+          const c2 = m.u32(pCost2 >>> 0) | 0
+          const mult = m.u32((pIsc + 0x10) >>> 0) | 0
+          const add = m.u32((pIsc + 0x14) >>> 0) | 0
+          const prod0 = imul32(c0, avg)
+          if (prod0 > 0xffff && mult !== 0) {
+            acc0 = (acc0 + imul32(Math.trunc(prod0 / 1024) | 0, mult) + add) | 0
+            acc1 = (acc1 + imul32(Math.trunc(imul32(c1, avg) / 1024) | 0, mult) + add) | 0
+            acc2 = (acc2 + imul32(Math.trunc(imul32(c2, avg) / 1024) | 0, mult) + add) | 0
+          } else {
+            acc0 = (acc0 + (Math.trunc(imul32(imul32(mult, c0), avg) / 1024) | 0) + add) | 0
+            acc1 = (acc1 + (Math.trunc(imul32(imul32(c1, mult), avg) / 1024) | 0) + add) | 0
+            acc2 = (acc2 + (Math.trunc(imul32(imul32(c2, mult), avg) / 1024) | 0) + add) | 0
+          }
+          break
+        }
+        default: {
+          const c0 = m.u32(pCost0 >>> 0) | 0
+          const c1 = m.u32(pCost1 >>> 0) | 0
+          const c2 = m.u32(pCost2 >>> 0) | 0
+          const mult = m.u32((pIsc + 0x10) >>> 0) | 0
+          const add = m.u32((pIsc + 0x14) >>> 0) | 0
+          const prod0 = imul32(c0, diff)
+          if (prod0 > 0xffff && mult !== 0) {
+            acc0 = (acc0 + imul32(Math.trunc(prod0 / 1024) | 0, mult) + add) | 0
+            acc1 = (acc1 + imul32(Math.trunc(imul32(c1, diff) / 1024) | 0, mult) + add) | 0
+            acc2 = (acc2 + imul32(Math.trunc(imul32(c2, diff) / 1024) | 0, mult) + add) | 0
+          } else {
+            acc0 = (acc0 + (Math.trunc(imul32(imul32(mult, c0), diff) / 1024) | 0) + add) | 0
+            acc1 = (acc1 + (Math.trunc(imul32(imul32(c1, mult), diff) / 1024) | 0) + add) | 0
+            acc2 = (acc2 + (Math.trunc(imul32(imul32(c2, mult), diff) / 1024) | 0) + add) | 0
+          }
+          break
+        }
+      }
+    }
+  }
+
+  const div = nDivisor >>> 0
+  const q0 = Math.floor((acc0 >>> 0) / div) >>> 0
+  m.setU32(pCost0 >>> 0, (m.u32(pCost0 >>> 0) + q0) >>> 0)
+  const q1 = Math.floor((acc1 >>> 0) / div) >>> 0
+  m.setU32(pCost1 >>> 0, (m.u32(pCost1 >>> 0) + q1) >>> 0)
+  const q2 = Math.floor((acc2 >>> 0) / div) >>> 0
+  m.setU32(pCost2 >>> 0, (m.u32(pCost2 >>> 0) + q2) >>> 0)
+}
+
+/**
+ * `@va D2Common:0x6FD95BE0` (`D2Common.#11094` `ITEMS_CheckQualityItemMatch`,
+ * `__stdcall(pItem, pQualityItemTxt) -> BOOL`, `ret 8`).
+ */
+export function ITEMS_CheckQualityItemMatch113c(
+  m: Memory113c,
+  pItem: number,
+  pQualityItemTxt: number,
+): number {
+  const ptr = pItem >>> 0
+  const qPtr = pQualityItemTxt >>> 0
+  const f0 = m.u8((qPtr + 2) >>> 0)
+  const f1 = m.u8((qPtr + 3) >>> 0)
+  const f2 = m.u8((qPtr + 4) >>> 0)
+  const f3 = m.u8((qPtr + 5) >>> 0)
+  const f4 = m.u8((qPtr + 6) >>> 0)
+  const f6 = m.u8((qPtr + 7) >>> 0)
+  const f7 = m.u8((qPtr + 8) >>> 0)
+  const f8 = m.u8((qPtr + 9) >>> 0)
+  if (ptr === 0) {
+    throw new D2CommonAssertError('Items.cpp', 0x67e)
+  }
+  const wType1 =
+    m.get(ptr, D2UnitStrc.dwUnitType) === UNIT_ITEM
+      ? (ITEMS_IsTome113c(m, m.get(ptr, D2UnitStrc.dwClassId)) | 0)
+      : 0
+  if (m.u8((qPtr + 1) >>> 0) !== 0) {
+    if (ITEMS_CheckItemTypeIdMem113c(m, ptr, 0x2d) !== 0) {
+      if (
+        wType1 !== 0x1a &&
+        wType1 !== 0x1b &&
+        wType1 !== 0x23 &&
+        wType1 !== 0x18 &&
+        wType1 !== 0x19
+      ) {
+        return 1
+      }
+    }
+  }
+  if (m.u8(qPtr) !== 0) {
+    if (ITEMS_CheckItemTypeIdMem113c(m, ptr, 0x32) !== 0) {
+      if (wType1 !== 0x02 && wType1 !== 0x0f && wType1 !== 0x10 && wType1 !== 0x13) {
+        return 1
+      }
+    }
+  }
+  const table: ReadonlyArray<readonly [number, number]> = [
+    [f0, 0x02],
+    [f1, 0x18],
+    [f2, 0x19],
+    [f3, 0x1a],
+    [f4, 0x1b],
+    [f4, 0x23],
+    [f6, 0x0f],
+    [f7, 0x10],
+    [f8, 0x13],
+  ]
+  for (let i = 0; i < 9; i++) {
+    const [flag, tId] = table[i]!
+    if (wType1 === tId && flag !== 0) return 1
+  }
+  return 0
+}
+
+/**
+ * `@va D2Common:0x6FD95D30` (`D2Common.#10110` `ITEMS_CheckAffixAssignableToItem`,
+ * `__stdcall(pItem, pMagicAffixTxt) -> BOOL`, `ret 8`).
+ */
+export function ITEMS_CheckAffixAssignableToItem113c(
+  m: Memory113c,
+  pItem: number,
+  pMagicAffixTxt: number,
+): number {
+  const ptr = pItem >>> 0
+  if (ptr === 0) {
+    throw new D2CommonAssertError('Items.cpp', 0x1505)
+  }
+  if (m.get(ptr, D2UnitStrc.dwUnitType) !== UNIT_ITEM) {
+    throw new D2CommonAssertError('Items.cpp', 0x1506)
+  }
+  const pItemData = m.get(ptr, D2UnitStrc.pUnitData)
+  if (pItemData === 0) {
+    throw new D2CommonAssertError('Items.cpp', 0x1508)
+  }
+  if (m.get(pItemData, D2ItemDataStrc.wItemFormat) < 0x64) {
+    const pRec = lookupItemsTxtRecord113c(m, m.get(ptr, D2UnitStrc.dwClassId))
+    if (pRec === 0) {
+      throw new D2CommonAssertError('Items.cpp', 0x923)
+    }
+    if (m.get(pRec, D2ItemsTxt.nTwoHanded) !== 0) return 0
+    if (checkIfThrowItemMem113c(m, ptr) !== 0) return 0
+  }
+  const affix = pMagicAffixTxt >>> 0
+  if (m.u16((affix + 0x0e) >>> 0) >= 0x64) {
+    if ((ITEMS_GetItemFormat113c(m, ptr) & 0xffff) < 0x64) return 0
+  }
+  for (let i = 0; i < 4; i++) {
+    const eType = (m.u16((affix + 0x1e + i * 2) >>> 0) << 16) >> 16
+    if (eType <= 0) break
+    if (ITEMS_CheckItemTypeIdMem113c(m, ptr, eType) !== 0) return 0
+  }
+  for (let i = 0; i < 7; i++) {
+    const iType = (m.u16((affix + 0x10 + i * 2) >>> 0) << 16) >> 16
+    if (iType <= 0) return 0
+    if (ITEMS_CheckItemTypeIdMem113c(m, ptr, iType) !== 0) return 1
+  }
+  return 0
+}
+
+// ============================================================================
+// Batch B052 — items.ts functions (B052-01..17)
+// ============================================================================
+
+/**
+ * `@va D2Common:0x6FD73D70` (`D2Common.#10550` `ITEMS_GetSetItemsSetId`,
+ * `__stdcall(pItem) -> i32`, `ret 4`).
+ */
+export function ITEMS_GetSetItemsSetId113c(m: Memory113c, pItem: number): number {
+  const ptr = pItem >>> 0
+  if (ptr === 0 || m.get(ptr, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0xffffffff
+  const pItemData = m.get(ptr, D2UnitStrc.pUnitData)
+  if (pItemData === 0 || m.get(pItemData, D2ItemDataStrc.dwQuality) !== 5) return 0xffffffff
+  const idx = ITEMS_GetItemCell113c(m, ptr) | 0
+  if (idx < 0) return 0xffffffff
+  const sgpt = m.u32(ITEMS_SGPT_DATATABLES_VA_113C)
+  if (idx >= (m.u32((sgpt + DATATABLES_SETITEMS_COUNT_OFF_113C) >>> 0) | 0)) return 0xffffffff
+  const pSetItem = (m.u32((sgpt + DATATABLES_SETITEMS_TXT_OFF_113C) >>> 0) + imul32(idx, D2SetItemsTxt_SIZE)) >>> 0
+  if (pSetItem === 0) return 0xffffffff
+  return ((m.u16((pSetItem + 0x2e) >>> 0) << 16) >> 16) >>> 0
+}
+
+/**
+ * `@va D2Common:0x6FD73F40` (`D2Common.#10218` `ITEMS_GetSetItemsTxtRecordFromItem`,
+ * `__stdcall(pItem) -> ptr`, `ret 4`).
+ */
+export function ITEMS_GetSetItemsTxtRecordFromItem113c(m: Memory113c, pItem: number): number {
+  const ptr = pItem >>> 0
+  if (ptr === 0 || m.get(ptr, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0
+  const pItemData = m.get(ptr, D2UnitStrc.pUnitData)
+  if (pItemData === 0 || m.get(pItemData, D2ItemDataStrc.dwQuality) !== 5) return 0
+  const idx = ITEMS_GetItemCell113c(m, ptr) | 0
+  if (idx < 0) return 0
+  const sgpt = m.u32(ITEMS_SGPT_DATATABLES_VA_113C)
+  if (idx >= (m.u32((sgpt + DATATABLES_SETITEMS_COUNT_OFF_113C) >>> 0) | 0)) return 0
+  return (m.u32((sgpt + DATATABLES_SETITEMS_TXT_OFF_113C) >>> 0) + imul32(idx, D2SetItemsTxt_SIZE)) >>> 0
+}
+
+/**
+ * `@va D2Common:0x6FD73F90` (`D2Common.#11161` `ITEMS_GetEquippedSetItemsMask`,
+ * `__stdcall(pPlayer, pSetItem, bIncludeSelf) -> u32`, `ret 0xC`).
+ */
+export function ITEMS_GetEquippedSetItemsMask113c(
+  m: Memory113c,
+  pPlayer: number,
+  pSetItem: number,
+  bIncludeSelf: number,
+): number {
+  const plr = pPlayer >>> 0
+  if (plr === 0) return 0
+  const item = pSetItem >>> 0
+  if (item === 0 || m.get(item, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0
+  const pItemData = m.get(item, D2UnitStrc.pUnitData)
+  if (pItemData === 0 || m.get(pItemData, D2ItemDataStrc.dwQuality) !== 5) return 0
+  const pInv = m.get(plr, D2UnitStrc.pInventory)
+  if (pInv === 0) return 0
+  const setItemIdx = ITEMS_GetItemCell113c(m, item) | 0
+  const pSetItemRec = DATATBLS_GetSetItemsTxtRecordInline113c(m, setItemIdx)
+  if (pSetItemRec === 0) return 0
+  const wSetId = (m.u16((pSetItemRec + 0x2c) >>> 0) << 16) >> 16
+  if (DATATBLS_GetSetsTxtRecordInline113c(m, wSetId) === 0) return 0
+  let mask = 0
+  for (let pNode = INVENTORY_GetFirstItem113c(m, pInv); pNode !== 0; pNode = INVENTORY_GetNextItem113c(m, pNode)) {
+    if (INVENTORY_GetItemNodePositionOther113c(m, pNode) !== 3) continue
+    const pCur = INVENTORY_UnitIsItem113c(m, pNode)
+    if (pCur === 0 || m.get(pCur, D2UnitStrc.dwUnitType) !== UNIT_ITEM) continue
+    if ((bIncludeSelf | 0) === 0 && pCur === item) continue
+    if (ITEMS_GetItemQuality113c(m, pCur) !== 5) continue
+    if (ITEMS_CheckCommandFlags113c(m, pCur, 0x4000, 0x144f, 0x6fde4848) !== 0) continue
+    if (ITEMS_CheckCommandFlags113c(m, pCur, 0x100, 0x1450, 0x6fde4848) !== 0) continue
+    const curRec = DATATBLS_GetSetItemsTxtRecordInline113c(m, ITEMS_GetItemCell113c(m, pCur) | 0)
+    if (curRec === 0) continue
+    if (m.u16((curRec + 0x2c) >>> 0) !== m.u16((pSetItemRec + 0x2c) >>> 0)) continue
+    const bitIdx = m.u8((curRec + 0x2e) >>> 0) & 31
+    mask = (mask | (1 << bitIdx)) >>> 0
+  }
+  return mask >>> 0
+}
+
+/**
+ * `@va D2Common:0x6FD741D0` (`D2Common.#10705` `ITEMS_CanItemBeShownInTradeOrStash`,
+ * `__stdcall(pItem) -> BOOL`, `ret 4`).
+ */
+export function ITEMS_CanItemBeShownInTradeOrStash113c(m: Memory113c, pItem: number): number {
+  const ptr = pItem >>> 0
+  let nItemId = 0xffffffff
+  if (ptr !== 0) {
+    if (m.get(ptr, D2UnitStrc.dwUnitType) === UNIT_ITEM) {
+      const pData = m.get(ptr, D2UnitStrc.pUnitData)
+      if (pData !== 0 && (m.get(pData, D2ItemDataStrc.dwCommandFlags) & 0x1000) !== 0) {
+        return 0
+      }
+    }
+    nItemId = m.get(ptr, D2UnitStrc.dwClassId)
+  }
+  return ITEMS_IsScrollOrTome113c(m, nItemId) !== 0 ? 1 : 0
+}
+
+/**
+ * `@va D2Common:0x6FD74500` (`D2Common.#10517` `ITEMS_CheckItemIdMatchesItemType`,
+ * `__stdcall(nItemId, nItemType) -> u32`, `ret 8`).
+ */
+export function ITEMS_CheckItemIdMatchesItemType113c(
+  m: Memory113c,
+  nItemId: number,
+  nItemType: number,
+): number {
+  const t = nItemType | 0
+  if (t < 0) return 0
+  const sgpt = m.u32(ITEMS_SGPT_DATATABLES_VA_113C)
+  if (t >= (m.u32((sgpt + DATATABLES_ITEMTYPES_COUNT_OFF_113C) >>> 0) | 0)) return 0
+  const pRec = lookupItemsTxtRecord113c(m, nItemId)
+  if (pRec === 0) return 0
+  const wType1 = ITEMS_IsTome113c(m, nItemId) | 0
+  if (wType1 < 0) return 0
+  const sgpt2 = m.u32(ITEMS_SGPT_DATATABLES_VA_113C)
+  const typeCount = m.u32((sgpt2 + DATATABLES_ITEMTYPES_COUNT_OFF_113C) >>> 0) | 0
+  if (wType1 >= typeCount) return 0
+  const stride = m.u32((sgpt2 + DATATABLES_OFF_113C.nItemTypesEquivDwords) >>> 0) | 0
+  const pEquiv = m.u32((sgpt2 + DATATABLES_OFF_113C.pItemTypesEquiv) >>> 0)
+  const pBitMasks = m.u32(D2COMMON_GDWBITMASKS_IAT_VA_113C)
+  const bitMask = m.u32((pBitMasks + ((t & 0x1f) << 2)) >>> 0)
+  const wordOff = t >> 5
+  const wordIdx1 = (imul32(stride, wType1) + wordOff) | 0
+  if ((m.u32((pEquiv + ((wordIdx1 << 2) >>> 0)) >>> 0) & bitMask) !== 0) {
+    return 1
+  }
+  const wType2 = (m.get(pRec, D2ItemsTxt.wType2) << 16) >> 16
+  if (wType2 === 0 || wType2 >= typeCount) return 0
+  const wordIdx2 = (imul32(stride, wType2) + wordOff) | 0
+  return (m.u32((pEquiv + ((wordIdx2 << 2) >>> 0)) >>> 0) & bitMask) >>> 0
+}
+
+/**
+ * `@va D2Common:0x6FD746F0` (`D2Common.#10757` `ITEMS_GetSubTypeFromItem`,
+ * `__stdcall(pItem) -> u8`, `ret 4`).
+ */
+export function ITEMS_GetSubTypeFromItem113c(m: Memory113c, pItem: number): number {
+  const ptr = pItem >>> 0
+  if (ptr === 0 || m.get(ptr, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0
+  return ITEMS_GetSubTypeByte113c(m, m.get(ptr, D2UnitStrc.dwClassId))
+}
+
+/**
+ * `@va D2Common:0x6FD74BF0` (`D2Common.#10326` `ITEMS_GetInvWidthFromItem`,
+ * `__stdcall(pItem) -> u8`, `ret 4`).
+ */
+export function ITEMS_GetInvWidthFromItem113c(m: Memory113c, pItem: number): number {
+  const ptr = pItem >>> 0
+  if (ptr === 0 || m.get(ptr, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0
+  return ITEMS_GetInvWidthFromId113c(m, m.get(ptr, D2UnitStrc.dwClassId))
+}
+
+/**
+ * `@va D2Common:0x6FD74F90` (internal `ITEMS_CountSocketedItemsInGemSocketable`,
+ * custom reg `eax = pItem` -> `i32`, `ret`).
+ */
+export function ITEMS_CountSocketedItemsInGemSocketable113c(m: Memory113c, pItem: number): number {
+  const ptr = pItem >>> 0
+  if (ptr === 0 || m.get(ptr, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0
+  if (ITEMS_GetSubTypeByte113c(m, m.get(ptr, D2UnitStrc.dwClassId)) === 0) return 0
+  const pInv = m.get(ptr, D2UnitStrc.pInventory)
+  if (pInv === 0 || m.get(pInv, D2InventoryStrc.dwSignature) !== INVENTORY_SIGNATURE_113C) return 0
+  let cur = m.get(pInv, D2InventoryStrc.pFirstItem)
+  if (cur === 0) return 0
+  let count = 0
+  while (cur !== 0) {
+    const uType = m.get(cur, D2UnitStrc.dwUnitType)
+    count = (count + 1) | 0
+    if (uType !== UNIT_ITEM) break
+    const pData = m.get(cur, D2UnitStrc.pUnitData)
+    if (pData === 0) break
+    const pExtra = (pData + D2ItemDataStrc.pExtraOwnerInventory.off) >>> 0
+    if (pExtra === 0) break
+    cur = m.u32((pExtra + ITEM_EXTRA_NEXT_ITEM_OFF_113C) >>> 0)
+  }
+  return count >>> 0
+}
+
+/**
+ * `@va D2Common:0x6FD766E0` (internal `ITEMS_SumStatAcrossSocketedItems`,
+ * `__stdcall(pItem, nStatId, pOutSum) -> void`, `ret 0xC`).
+ */
+export function ITEMS_SumStatAcrossSocketedItems113c(
+  m: Memory113c,
+  pItem: number,
+  nStatId: number,
+  pOutSum: number,
+): void {
+  const outPtr = pOutSum >>> 0
+  m.setU32(outPtr, 0)
+  const ptr = pItem >>> 0
+  if (ptr === 0 || m.get(ptr, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return
+  if (ITEMS_GetSubTypeByte113c(m, m.get(ptr, D2UnitStrc.dwClassId)) === 0) return
+  const pInv = m.get(ptr, D2UnitStrc.pInventory)
+  if (pInv === 0 || m.get(pInv, D2InventoryStrc.dwSignature) !== INVENTORY_SIGNATURE_113C) return
+  let cur = m.get(pInv, D2InventoryStrc.pFirstItem)
+  const statId = nStatId | 0
+  while (cur !== 0) {
+    const curUnit = m.get(cur, D2UnitStrc.dwUnitType) === UNIT_ITEM ? cur : 0
+    if (m.get(ptr, D2UnitStrc.dwAnimMode) === 1) {
+      let val = 0
+      if (curUnit !== 0) {
+        const pStatList = m.get(curUnit, D2UnitStrc.pStatListEx)
+        if (pStatList !== 0 && statId >= 0) {
+          const sgpt = m.u32(ITEMS_SGPT_DATATABLES_VA_113C)
+          if (statId < (m.u32((sgpt + DATATABLES_OFF_113C.nItemStatCostTxtRecordCount) >>> 0) | 0)) {
+            const pIsc = (m.u32((sgpt + DATATABLES_OFF_113C.pItemStatCostTxt) >>> 0) + imul32(statId, D2ItemStatCostTxt_SIZE)) >>> 0
+            if (pIsc !== 0) {
+              val = statListGetTotalStatWithMinMem113c(m, pStatList, (statId << 16) >>> 0, pIsc)
+            }
+          }
+        }
+      }
+      m.setU32(outPtr, (m.u32(outPtr) + val) >>> 0)
+    }
+    if (m.get(cur, D2UnitStrc.dwUnitType) !== UNIT_ITEM) break
+    const pData = m.get(cur, D2UnitStrc.pUnitData)
+    if (pData === 0) break
+    const pExtra = (pData + D2ItemDataStrc.pExtraOwnerInventory.off) >>> 0
+    if (pExtra === 0) break
+    cur = m.u32((pExtra + ITEM_EXTRA_NEXT_ITEM_OFF_113C) >>> 0)
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD767C0` (internal `ITEMS_RollRandomInRangeCallback`,
+ * `__fastcall(ecx = nMin, edx = nMax, [esp+4] = _u0, [esp+8] = ppItemCtx) -> i32`, `ret 8`).
+ */
+export function ITEMS_RollRandomInRangeCallback113c(
+  m: Memory113c,
+  nMin: number,
+  nMax: number,
+  _u0: number,
+  ppItemCtx: number,
+): number {
+  const ctx = ppItemCtx >>> 0
+  if (ctx === 0) return 0
+  const pItem = m.u32(ctx)
+  return SEED_RollLimitedRandomNumberInline113c(m, (pItem + 0x20) >>> 0, nMin, nMax)
+}
+
+/**
+ * `@va D2Common:0x6FD76930` (`D2Common.#11102` `ITEMS_AreStackableWeaponsCompatible`,
+ * `__stdcall(pItem1, pItem2) -> BOOL`, `ret 8`).
+ */
+export function ITEMS_AreStackableWeaponsCompatible113c(
+  m: Memory113c,
+  pItem1: number,
+  pItem2: number,
+): number {
+  const p1 = pItem1 >>> 0
+  const p2 = pItem2 >>> 0
+  const id1 = p1 !== 0 ? m.get(p1, D2UnitStrc.dwClassId) : 0xffffffff
+  const id2 = p2 !== 0 ? m.get(p2, D2UnitStrc.dwClassId) : 0xffffffff
+  if (id1 !== id2) return 0
+
+  let q1 = 2
+  if (p1 !== 0 && m.get(p1, D2UnitStrc.dwUnitType) === UNIT_ITEM) {
+    const d1 = m.get(p1, D2UnitStrc.pUnitData)
+    if (d1 !== 0) q1 = m.get(d1, D2ItemDataStrc.dwQuality)
+  }
+  let q2 = 2
+  if (p2 !== 0 && m.get(p2, D2UnitStrc.dwUnitType) === UNIT_ITEM) {
+    const d2 = m.get(p2, D2UnitStrc.pUnitData)
+    if (d2 !== 0) q2 = m.get(d2, D2ItemDataStrc.dwQuality)
+  }
+  if (q1 !== q2) return 0
+
+  if (ITEMS_GetItemCell113c(m, p1) !== ITEMS_GetItemCell113c(m, p2)) return 0
+  if (ITEMS_GetTwoHandedFlag113c(m, p1) === 0) return 0
+  if (ITEMS_CheckEtherealFlag113c(m, p1) !== ITEMS_CheckEtherealFlag113c(m, p2)) return 0
+  if (ITEMS_CheckQualityTradable113c(m, ITEMS_GetItemQuality113c(m, p1)) === 0) return 0
+  if (ITEMS_CheckQualityTradable113c(m, ITEMS_GetItemQuality113c(m, p2)) === 0) return 0
+
+  const dmgStats = [0x15, 0x16, 0x17, 0x18, 0x9f, 0xa0] as const
+  for (let i = 0; i < dmgStats.length; i++) {
+    const st = dmgStats[i]!
+    if (statListGetUnitStatMem113c(m, p1, st, 0) !== statListGetUnitStatMem113c(m, p2, st, 0)) {
+      return 0
+    }
+  }
+  if ((ITEMS_GetMaxSockets113c(m, p1) & 0xff) > 0) return 0
+  if ((ITEMS_GetMaxSockets113c(m, p2) & 0xff) > 0) return 0
+  return 1
+}
+
+/**
+ * `@va D2Common:0x6FD76BA0` (`D2Common.#10918` `ITEMS_FindMatchingRunesTxtRecord`,
+ * `__stdcall(pItem) -> ptr`, `ret 4`).
+ */
+export function ITEMS_FindMatchingRunesTxtRecord113c(m: Memory113c, pItem: number): number {
+  const ptr = pItem >>> 0
+  if (ptr === 0) return 0
+  if (m.get(ptr, D2UnitStrc.dwUnitType) === UNIT_ITEM) {
+    const pData = m.get(ptr, D2UnitStrc.pUnitData)
+    if (pData !== 0) {
+      const qual = m.get(pData, D2ItemDataStrc.dwQuality) | 0
+      if (qual >= 4 && qual <= 9) return 0
+    }
+  }
+  const pRec = lookupItemsTxtRecord113c(m, m.get(ptr, D2UnitStrc.dwClassId))
+  if (m.get(pRec, D2ItemsTxt.nComponent) !== 0) return 0
+  const pInv = m.get(ptr, D2UnitStrc.pInventory)
+  if (pInv === 0 || m.get(pInv, D2InventoryStrc.dwSignature) !== INVENTORY_SIGNATURE_113C) return 0
+  let cur = m.get(pInv, D2InventoryStrc.pFirstItem)
+  if (cur === 0) return 0
+
+  const socketClassIds: number[] = []
+  while (cur !== 0) {
+    if (m.get(cur, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0
+    socketClassIds.push(m.get(cur, D2UnitStrc.dwClassId) | 0)
+    const pData = m.get(cur, D2UnitStrc.pUnitData)
+    if (pData === 0) break
+    const pExtra = (pData + D2ItemDataStrc.pExtraOwnerInventory.off) >>> 0
+    if (pExtra === 0) break
+    cur = m.u32((pExtra + ITEM_EXTRA_NEXT_ITEM_OFF_113C) >>> 0)
+  }
+
+  const maxSockets = ITEMS_GetMaxSockets113c(m, ptr) & 0xff
+  const socketCount = socketClassIds.length
+  if (maxSockets !== socketCount) return 0
+
+  const runesCount = m.u32(RUNES_TXT_COUNT_VA_113C) | 0
+  if (runesCount <= 0) return 0
+
+  for (let row = 0; row < runesCount; row++) {
+    const pRune = (m.u32(RUNES_TXT_PTR_VA_113C) + imul32(row, D2RUNESTXT_SIZE_113C)) >>> 0
+    if (m.u8((pRune + 0x80) >>> 0) === 0) continue
+    let k = 0
+    let runesMatch = true
+    for (; k < 6; k++) {
+      const reqRuneId = m.u32((pRune + 0x98 + k * 4) >>> 0) | 0
+      if (reqRuneId <= 0) break
+      if (socketCount < k || socketClassIds[k] !== reqRuneId) {
+        runesMatch = false
+        break
+      }
+    }
+    if (!runesMatch || k < maxSockets) continue
+
+    let excluded = false
+    for (let t = 0; t < 3; t++) {
+      const eType = (m.u16((pRune + 0x92 + t * 2) >>> 0) << 16) >> 16
+      if (eType === 0) break
+      if (ITEMS_CheckItemTypeIdMem113c(m, ptr, eType) !== 0) {
+        excluded = true
+        break
+      }
+    }
+    if (excluded) continue
+
+    for (let t = 0; t < 6; t++) {
+      const iType = (m.u16((pRune + 0x86 + t * 2) >>> 0) << 16) >> 16
+      if (iType === 0) break
+      if (ITEMS_CheckItemTypeIdMem113c(m, ptr, iType) !== 0) {
+        return pRune >>> 0
+      }
+    }
+  }
+  return 0
+}
+
+/**
+ * `@va D2Common:0x6FD76D40` (`D2Common.#10865` `ITEMS_CanItemLoseDurability`,
+ * `__stdcall(pItem) -> BOOL`, `ret 4`).
+ */
+export function ITEMS_CanItemLoseDurability113c(m: Memory113c, pItem: number): number {
+  const ptr = pItem >>> 0
+  if (ptr === 0 || m.get(ptr, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0
+  const pRec = lookupItemsTxtRecord113c(m, m.get(ptr, D2UnitStrc.dwClassId))
+  if (pRec === 0) return 0
+  if (m.u8((pRec + 0x113) >>> 0) !== 0) return 0
+  if (m.u8((pRec + 0x112) >>> 0) === 0) return 0
+  if (ITEMS_B043_GetMaxDurabilityFromUnit113c(m, ptr) === 0) return 0
+  const indestruct = statListGetUnitStatMem113c(m, ptr, 0x98, 0) | 0
+  return indestruct <= 0 ? 1 : 0
+}
+
+/**
+ * `@va D2Common:0x6FD77120` (internal `ITEMS_EvalItemStatCallback`,
+ * `__fastcall(ecx = nStatId, edx = nMode, [esp+4] = _u0, [esp+8] = ppItemCtx) -> i32`, `ret 8`).
+ */
+export function ITEMS_EvalItemStatCallback113c(
+  m: Memory113c,
+  nStatId: number,
+  nMode: number,
+  _u0: number,
+  ppItemCtx: number,
+): number {
+  const ctx = ppItemCtx >>> 0
+  if (ctx === 0) return 0
+  const pUnit = m.u32(ctx)
+  return evalItemStatDirect113c(m, nStatId, nMode, pUnit)
+}
+
+/**
+ * `@va D2Common:0x6FD821C0` (`D2Common.#10076` `ITEMS_GetActiveWeaponClassCodeIdx`,
+ * `__fastcall(ecx = pUnit) -> u16`, `ret`).
+ */
+export function ITEMS_GetActiveWeaponClassCodeIdx113c(m: Memory113c, pUnit: number): number {
+  const pWeap = ITEMS_GetActiveWeaponForAttack113c(m, pUnit >>> 0, 1)
+  if (pWeap === 0) return 0
+  return ITEMS_GetWeaponClassCodeIdx113c(m, pWeap) & 0xffff
+}
+
+/**
+ * `@va D2Common:0x6FD821E0` (`D2Common.#10862` `ITEMS_GetUnitHitClass`,
+ * `__fastcall(ecx = pUnit) -> u8`, `ret`).
+ */
+export function ITEMS_GetUnitHitClass113c(m: Memory113c, pUnit: number): number {
+  const ptr = pUnit >>> 0
+  if (ptr === 0) return 0
+  const uType = m.get(ptr, D2UnitStrc.dwUnitType)
+  if (uType === 0) {
+    const pWeap = ITEMS_GetActiveWeaponForAttack113c(m, ptr, 0)
+    if (pWeap === 0) return 1
+    return ITEMS_GetQuestItemByte113c(m, pWeap) & 0xff
+  }
+  if (uType === 1) {
+    const pMonStats2 = DATATBLS_GetMonStats2TxtRecordFromMonStatsIdInline113c(
+      m,
+      m.get(ptr, D2UnitStrc.dwClassId) | 0,
+    )
+    if (pMonStats2 === 0) return 0
+    return m.u8((pMonStats2 + 0x14) >>> 0)
+  }
+  return 0
+}
+
+/**
+ * `@va D2Common:0x6FD965B0` (internal `ITEMS_RollItemOrUnitSeedRange`,
+ * custom reg `eax = nMax`, `ecx = nMin`, `edx = pUnit` -> `i32`, `ret`).
+ */
+export function ITEMS_RollItemOrUnitSeedRange113c(
+  m: Memory113c,
+  nMax: number,
+  nMin: number,
+  pUnit: number,
+): number {
+  let maxVal = nMax | 0
+  let minVal = nMin | 0
+  if (maxVal === minVal) return minVal >>> 0
+  if (maxVal < minVal) {
+    const tmp = maxVal
+    maxVal = minVal
+    minVal = tmp
+  }
+  const ptr = pUnit >>> 0
+  if (ptr !== 0 && m.get(ptr, D2UnitStrc.dwUnitType) === UNIT_ITEM) {
+    const pData = m.get(ptr, D2UnitStrc.pUnitData)
+    if (pData !== 0) {
+      return SEED_RollLimitedRandomNumberInline113c(m, (pData + 0x04) >>> 0, minVal, maxVal)
+    }
+    return SEED_RollLimitedRandomNumberInline113c(m, 0, minVal, maxVal)
+  }
+  return SEED_RollLimitedRandomNumberInline113c(m, (ptr + 0x20) >>> 0, minVal, maxVal)
+}
+
+// ============================================================================
+// Batch I9B-A — ItemTypes getters & body-location validators (A01..A18)
+// ============================================================================
+
+function lookupItemTypesTxtRecordFromItem113c(m: Memory113c, pItem: number): number {
+  const ptr = pItem >>> 0
+  if (ptr === 0 || m.get(ptr, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0
+  const t = ITEMS_GetItemTypeFromItem113c(m, ptr) | 0
+  if (t < 0) return 0
+  const sgpt = m.u32(ITEMS_SGPT_DATATABLES_VA_113C)
+  const count = m.u32((sgpt + DATATABLES_ITEMTYPES_COUNT_OFF_113C) >>> 0) | 0
+  if (t >= count) return 0
+  const base = m.u32((sgpt + DATATABLES_ITEMTYPES_TXT_OFF_113C) >>> 0)
+  return (base + imul32(t, D2ItemTypesTxt_SIZE)) >>> 0
+}
+
+/**
+ * `@va D2Common:0x6FD73130` (`D2Common.#10700` `ITEMS_GetAllowedBodyLocations`,
+ * `__stdcall(pItem, pLoc1, pLoc2) -> void`, `ret 0xC`).
+ */
+export function ITEMS_GetAllowedBodyLocations113c(
+  m: Memory113c,
+  pItem: number,
+  pLoc1: number,
+  pLoc2: number,
+): void {
+  const rec = lookupItemTypesTxtRecordFromItem113c(m, pItem)
+  if (rec === 0) {
+    m.setU8(pLoc1 >>> 0, 0)
+    m.setU8(pLoc2 >>> 0, 0)
+    return
+  }
+  const dl1 = m.get(rec, D2ItemTypesTxt.nBodyLoc1)
+  m.setU8(pLoc1 >>> 0, dl1)
+  const dl2 = m.get(rec, D2ItemTypesTxt.nBodyLoc2)
+  m.setU8(pLoc2 >>> 0, dl2)
+}
+
+/**
+ * `@va D2Common:0x6FD73360` (`D2Common.#10556` `ITEMS_IsNormalQualityAllowed`,
+ * `__stdcall(pItem) -> u32`, `ret 4`).
+ */
+export function ITEMS_IsNormalQualityAllowed113c(m: Memory113c, pItem: number): number {
+  const rec = lookupItemTypesTxtRecordFromItem113c(m, pItem)
+  if (rec === 0) return 1
+  return m.get(rec, D2ItemTypesTxt.nNormalAllowed)
+}
+
+/**
+ * `@va D2Common:0x6FD733B0` (`D2Common.#10710` `ITEMS_IsMagicQualityAllowed`,
+ * `__stdcall(pItem) -> u32`, `ret 4`).
+ */
+export function ITEMS_IsMagicQualityAllowed113c(m: Memory113c, pItem: number): number {
+  const rec = lookupItemTypesTxtRecordFromItem113c(m, pItem)
+  if (rec === 0) return 0
+  return m.get(rec, D2ItemTypesTxt.nMagic)
+}
+
+/**
+ * `@va D2Common:0x6FD73400` (`D2Common.#11036` `ITEMS_IsRareQualityAllowed`,
+ * `__stdcall(pItem) -> u32`, `ret 4`).
+ */
+export function ITEMS_IsRareQualityAllowed113c(m: Memory113c, pItem: number): number {
+  const rec = lookupItemTypesTxtRecordFromItem113c(m, pItem)
+  if (rec === 0) return 0
+  return m.get(rec, D2ItemTypesTxt.nRare)
+}
+
+/**
+ * `@va D2Common:0x6FD73450` (`D2Common.#10208` `ITEMS_GetVarInvGfxCount`,
+ * `__stdcall(pItem) -> u8`, `ret 4`).
+ */
+export function ITEMS_GetVarInvGfxCount113c(m: Memory113c, pItem: number): number {
+  const rec = lookupItemTypesTxtRecordFromItem113c(m, pItem)
+  if (rec === 0) return 0
+  return m.get(rec, D2ItemTypesTxt.nVarInvGfx)
+}
+
+/**
+ * `@va D2Common:0x6FD734A0` (`D2Common.#11075` `ITEMS_GetStorePage`,
+ * `__stdcall(pItem) -> u8`, `ret 4`).
+ */
+export function ITEMS_GetStorePage113c(m: Memory113c, pItem: number): number {
+  const rec = lookupItemTypesTxtRecordFromItem113c(m, pItem)
+  if (rec === 0) return 0xff
+  return m.get(rec, D2ItemTypesTxt.nStorePage)
+}
+
+/**
+ * `@va D2Common:0x6FD734F0` (`D2Common.#11054` `ITEMS_IsReEquip`,
+ * `__stdcall(pItem) -> u32`, `ret 4`).
+ */
+export function ITEMS_IsReEquip113c(m: Memory113c, pItem: number): number {
+  const rec = lookupItemTypesTxtRecordFromItem113c(m, pItem)
+  if (rec === 0) return 0
+  return m.get(rec, D2ItemTypesTxt.nReEquip)
+}
+
+/**
+ * `@va D2Common:0x6FD73540` (`D2Common.#10905` `ITEMS_IsReload`,
+ * `__stdcall(pItem) -> u32`, `ret 4`).
+ */
+export function ITEMS_IsReload113c(m: Memory113c, pItem: number): number {
+  const rec = lookupItemTypesTxtRecordFromItem113c(m, pItem)
+  if (rec === 0) return 0
+  return m.get(rec, D2ItemTypesTxt.nReload)
+}
+
+/**
+ * `@va D2Common:0x6FD74280` (`D2Common.#10822` `ITEMS_GetClassOfClassSpecificItem`,
+ * `__stdcall(pItem) -> u32`, `ret 4`).
+ */
+export function ITEMS_GetClassOfClassSpecificItem113c(m: Memory113c, pItem: number): number {
+  const rec = lookupItemTypesTxtRecordFromItem113c(m, pItem)
+  if (rec === 0) return 7
+  return Math.min(m.get(rec, D2ItemTypesTxt.nRarity), 7)
+}
+
+/**
+ * `@va D2Common:0x6FD742D0` (`D2Common.#10089` `ITEMS_IsClassSpecific`,
+ * `__stdcall(pItem) -> u32`, `ret 4`).
+ */
+export function ITEMS_IsClassSpecific113c(m: Memory113c, pItem: number): number {
+  const rec = lookupItemTypesTxtRecordFromItem113c(m, pItem)
+  if (rec === 0) return 0
+  return m.get(rec, D2ItemTypesTxt.nRarity) < 7 ? 1 : 0
+}
+
+/**
+ * `@va D2Common:0x6FD74610` (`D2Common.#11151` `ITEMS_GetMaxSocketsFromItemType`,
+ * `__stdcall(pItem) -> u8`, `ret 4`).
+ */
+export function ITEMS_GetMaxSocketsFromItemType113c(m: Memory113c, pItem: number): number {
+  const ptr = pItem >>> 0
+  const rec = lookupItemTypesTxtRecordFromItem113c(m, ptr)
+  if (rec === 0) return 0
+  const s = ITEMS_GetBeltTypeIndex113c(m, m.get(ptr, D2UnitStrc.dwClassId))
+  const lvl = ITEMS_GetItemLevel113c(m, ptr) | 0
+  const cap =
+    lvl <= 25
+      ? m.get(rec, D2ItemTypesTxt.nMaxSock1)
+      : lvl <= 40
+        ? m.get(rec, D2ItemTypesTxt.nMaxSock25)
+        : m.get(rec, D2ItemTypesTxt.nMaxSock40)
+  return Math.min(s, cap)
+}
+
+/**
+ * `@va D2Common:0x6FD746A0` (`D2Common.#10957` `ITEMS_GetStaffModsClass`,
+ * `__stdcall(pItem) -> u32`, `ret 4`).
+ */
+export function ITEMS_GetStaffModsClass113c(m: Memory113c, pItem: number): number {
+  const rec = lookupItemTypesTxtRecordFromItem113c(m, pItem)
+  if (rec === 0) return 7
+  return m.get(rec, D2ItemTypesTxt.nStaffMods)
+}
+
+/**
+ * `@va D2Common:0x6FD74BA0` (`D2Common.#10792` `ITEMS_IsBeltable`,
+ * `__stdcall(pItem) -> u32`, `ret 4`).
+ */
+export function ITEMS_IsBeltable113c(m: Memory113c, pItem: number): number {
+  const rec = lookupItemTypesTxtRecordFromItem113c(m, pItem)
+  if (rec === 0) return 0
+  return m.get(rec, D2ItemTypesTxt.nBeltable)
+}
+
+/**
+ * `@va D2Common:0x6FD74E10` (`D2Common.#10955` `ITEMS_IsAutoStack`,
+ * `__stdcall(pItem) -> u32`, `ret 4`).
+ */
+export function ITEMS_IsAutoStack113c(m: Memory113c, pItem: number): number {
+  const rec = lookupItemTypesTxtRecordFromItem113c(m, pItem)
+  if (rec === 0) return 0
+  return m.get(rec, D2ItemTypesTxt.nAutoStack)
+}
+
+/**
+ * `@va D2Common:0x6FD74E60` (`D2Common.#11144` `ITEMS_GetItemTypeShootsFromItem`,
+ * `__stdcall(pItem) -> i32`, `ret 4`).
+ */
+export function ITEMS_GetItemTypeShootsFromItem113c(m: Memory113c, pItem: number): number {
+  const rec = lookupItemTypesTxtRecordFromItem113c(m, pItem)
+  if (rec === 0) return 0
+  return ((m.get(rec, D2ItemTypesTxt.wShoots) << 16) >> 16) >>> 0
+}
+
+/**
+ * `@va D2Common:0x6FD74EB0` (`D2Common.#10543` `ITEMS_GetItemTypeQuiverFromItem`,
+ * `__stdcall(pItem) -> i32`, `ret 4`).
+ */
+export function ITEMS_GetItemTypeQuiverFromItem113c(m: Memory113c, pItem: number): number {
+  const rec = lookupItemTypesTxtRecordFromItem113c(m, pItem)
+  if (rec === 0) return 0
+  return ((m.get(rec, D2ItemTypesTxt.wQuiver) << 16) >> 16) >>> 0
+}
+
+/**
+ * `@va D2Common:0x6FD743B0` (`D2Common.#10523` `ITEMS_CanBeEquipped`,
+ * `__stdcall(pItem) -> u32`, `ret 4`).
+ */
+export function ITEMS_CanBeEquipped113c(m: Memory113c, pItem: number): number {
+  const rec = lookupItemTypesTxtRecordFromItem113c(m, pItem)
+  if (rec === 0) return 0
+  const b1 = m.get(rec, D2ItemTypesTxt.nBodyLoc1)
+  const b2 = m.get(rec, D2ItemTypesTxt.nBodyLoc2)
+  if (b1 === 0 && b2 === 0) {
+    return 0
+  }
+  return m.get(rec, D2ItemTypesTxt.nBody)
+}
+
+/**
+ * `@va D2Common:0x6FD74C80` (`D2Common.#10217` `ITEMS_CheckBodyLocation`,
+ * `__stdcall(pItem, nBodyLoc) -> u32`, `ret 8`).
+ */
+export function ITEMS_CheckBodyLocation113c(
+  m: Memory113c,
+  pItem: number,
+  nBodyLoc: number,
+): number {
+  const ptr = pItem >>> 0
+  if (ptr === 0 || m.get(ptr, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0
+  const loc = nBodyLoc >>> 0
+  const rec = lookupItemTypesTxtRecordFromItem113c(m, ptr)
+  if (rec === 0) return loc === 0 ? 1 : 0
+  const b1 = m.get(rec, D2ItemTypesTxt.nBodyLoc1)
+  const b2 = m.get(rec, D2ItemTypesTxt.nBodyLoc2)
+  if (b1 === loc || b2 === loc) return 1
+  if (loc === 0x0b || loc === 0x0c) {
+    if (b1 === 4 || b2 === 4 || b1 === 5 || b2 === 5) return 1
+  }
+  return 0
+}
+

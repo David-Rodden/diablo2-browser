@@ -15,6 +15,7 @@
  */
 
 import type { Memory113c } from './mem/sparse-memory.ts'
+import { D2CommonAssertError, SEED_RollRandomNumberInline113c } from './common/inline-helpers.ts'
 
 export interface D2SeedStrc {
   lo: number // uint32
@@ -76,3 +77,33 @@ export function SEED_InitSeed113c(m: Memory113c, pSeed: number): void {
   m.setU32(s, 1)
   m.setU32((s + 4) >>> 0, 0x29a)
 }
+
+const PATH_WF_ASSERT_FILE_113C = '..\\Source\\D2Common\\PATH\\PathWF.cpp'
+
+/**
+ * `@va D2Common:0x6FD69A50` (`SEED_PickRandomListNode`,
+ * custom LTCG `eax = pOwner`, plain `ret` -> `pNode`).
+ *
+ * Asserts `pOwner != NULL` (`PathWF.cpp:0x13E`) and `pOwner->pFirst (+0x10) != NULL` (`PathWF.cpp:0x13F`),
+ * rolls `k = SEED_RollRandomNumberInline(&pOwner->seed (+0x1C4), pOwner->nCount (+0x08))`,
+ * and advances `pNode = pOwner->pFirst (+0x10)` via `pNode = pNode->pNext (+0x24)` `k` times
+ * (`while (k != 0) { pNode = [pNode + 0x24]; k--; }`).
+ */
+export function SEED_PickRandomListNode113c(m: Memory113c, pOwner: number): number {
+  const owner = pOwner >>> 0
+  if (owner === 0) {
+    throw new D2CommonAssertError(PATH_WF_ASSERT_FILE_113C, 0x13e)
+  }
+  if (m.u32((owner + 0x10) >>> 0) === 0) {
+    throw new D2CommonAssertError(PATH_WF_ASSERT_FILE_113C, 0x13f)
+  }
+  const nMax = m.u32((owner + 0x08) >>> 0) | 0
+  let k = SEED_RollRandomNumberInline113c(m, (owner + 0x1c4) >>> 0, nMax) | 0
+  let pNode = m.u32((owner + 0x10) >>> 0)
+  while (k !== 0) {
+    pNode = m.u32((pNode + 0x24) >>> 0)
+    k = (k - 1) | 0
+  }
+  return pNode >>> 0
+}
+

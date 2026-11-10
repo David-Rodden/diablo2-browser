@@ -215,63 +215,63 @@ describe('Lane C B042 real-DLL differential vectors (path.ts, 12 functions)', ()
     const m = new SparseMemory113c();
 
     // 0x6FD84630: nDistance < 0 or > 255
-    expect(() => PATH_SetStepDistance113c(m, 0x100, -1)).toThrow(/line 2405/);
-    expect(() => PATH_SetStepDistance113c(m, 0x100, 256)).toThrow(/line 2405/);
+    expect(() => PATH_SetStepDistance113c(m, 0x100, -1)).toThrow(/^D2Common assertion failed at .*:2405$/);
+    expect(() => PATH_SetStepDistance113c(m, 0x100, 256)).toThrow(/^D2Common assertion failed at .*:2405$/);
 
     // 0x6FD847C0: missing flag 0x20000
     m.setU32(0x100 + 0x34, 0);
-    expect(() => PATH_GetSavedSteps113c(m, 0x100, 0x200)).toThrow(/line 2292/);
+    expect(() => PATH_GetSavedSteps113c(m, 0x100, 0x200)).toThrow(/^D2Common assertion failed at .*:2292$/);
 
     // 0x6FD84910: pTargetUnit == 0
     m.setU32(0x100 + 0x58, 0);
-    expect(() => PATH_GetTargetTypeAndId113c(m, 0x100, 0x200, 0x204)).toThrow(/line 1984/);
+    expect(() => PATH_GetTargetTypeAndId113c(m, 0x100, 0x200, 0x204)).toThrow(/^D2Common assertion failed at .*:1984$/);
 
     // 0x6FD84B80 / 0x6FD84BB0: pPath == 0
-    expect(() => PATH_GetPosY113c(m, 0)).toThrow(/line 1693/);
-    expect(() => PATH_GetPosX113c(m, 0)).toThrow(/line 1682/);
+    expect(() => PATH_GetPosY113c(m, 0)).toThrow(/^D2Common assertion failed at .*:1693$/);
+    expect(() => PATH_GetPosX113c(m, 0)).toThrow(/^D2Common assertion failed at .*:1682$/);
 
     // 0x6FD84F80: player pathType 2, prevType == 11, prevType == 8, type 4 && nDistMax >= 78
     m.setU32(0x100 + 0x30, 0x300);
     m.setU32(0x300, 0);
-    expect(() => PATH_SetType113c(m, 0x100, 2)).toThrow(/line 2145/);
+    expect(() => PATH_SetType113c(m, 0x100, 2)).toThrow(/^D2Common assertion failed at .*:2145$/);
 
     m.setU32(0x100 + 0x30, 0);
     m.setU32(0x100 + 0x34, 0);
     m.setU32(0x100 + 0x40, 11);
     m.setU32(PATH_TYPE_FLAGS_VA_6FDE4180, 0x201);
     m.setU32(PATH_TYPE_STEP_NUMS_VA_6FDE4138, 1);
-    expect(() => PATH_SetType113c(m, 0x100, 0)).toThrow(/line 2161/);
+    expect(() => PATH_SetType113c(m, 0x100, 0)).toThrow(/^D2Common assertion failed at .*:2161$/);
 
     m.setU32(0x100 + 0x40, 8);
-    expect(() => PATH_SetType113c(m, 0x100, 0)).toThrow(/line 2162/);
+    expect(() => PATH_SetType113c(m, 0x100, 0)).toThrow(/^D2Common assertion failed at .*:2162$/);
 
     m.setU32(0x100 + 0x40, 1);
     m.setU32(0x100 + 0x3c, 1);
     m.setU8(0x100 + 0x91, 78);
     m.setU32(PATH_TYPE_FLAGS_VA_6FDE4180 + 4 * 4, 0x6224);
     m.setU32(PATH_TYPE_STEP_NUMS_VA_6FDE4138 + 4 * 4, 15);
-    expect(() => PATH_SetType113c(m, 0x100, 4)).toThrow(/line 2163/);
+    expect(() => PATH_SetType113c(m, 0x100, 4)).toThrow(/^D2Common assertion failed at .*:2163$/);
 
     // 0x6FD85160: pTargetUnit == 0, unitType != 2, nSubClass == 0
     m.setU32(0x400 + 0x30, 0x500);
     m.setU32(0x500 + 0x58, 0);
-    expect(() => PATH_AdjustTargetForDoorObject113c(m, 0x400)).toThrow(/line 3600/);
+    expect(() => PATH_AdjustTargetForDoorObject113c(m, 0x400)).toThrow(/^D2Common assertion failed at .*:3600$/);
     m.setU32(0x500 + 0x58, 0x600);
     m.setU32(0x600, 1);
-    expect(() => PATH_AdjustTargetForDoorObject113c(m, 0x400)).toThrow(/line 533/);
+    expect(() => PATH_AdjustTargetForDoorObject113c(m, 0x400)).toThrow(/^D2Common assertion failed at .*:533$/);
     m.setU32(0x600, 2);
     m.setU32(0x600 + 0x14, 0x700);
     m.setU32(0x700, 0x800);
     m.setU8(0x800 + 0x13a, 0);
-    expect(() => PATH_AdjustTargetForDoorObject113c(m, 0x400)).toThrow(/line 533/);
+    expect(() => PATH_AdjustTargetForDoorObject113c(m, 0x400)).toThrow(/^D2Common assertion failed at .*:533$/);
 
     // 0x6FD85270: nNewDir >= 64
-    expect(() => PATH_SetNewDirection113c(m, 0x100, 64)).toThrow(/line 1650/);
+    expect(() => PATH_SetNewDirection113c(m, 0x100, 64)).toThrow(/^D2Common assertion failed at .*:1650$/);
 
     // 0x6FD8E080: pPath == 0, pTargetUnit == 0
-    expect(() => PATH_OffsetTargetByUnitRadius113c(m, 0)).toThrow(/line 490/);
+    expect(() => PATH_OffsetTargetByUnitRadius113c(m, 0)).toThrow(/^D2Common assertion failed at .*:490$/);
     m.setU32(0x900 + 0x58, 0);
-    expect(() => PATH_OffsetTargetByUnitRadius113c(m, 0x900)).toThrow(/line 491/);
+    expect(() => PATH_OffsetTargetByUnitRadius113c(m, 0x900)).toThrow(/^D2Common assertion failed at .*:491$/);
   });
 
   it('kills >= 12/12 single-site mutations across B042 functions (>= 90% kill rate)', () => {

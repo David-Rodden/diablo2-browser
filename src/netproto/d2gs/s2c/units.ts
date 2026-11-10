@@ -237,7 +237,7 @@ function resolveMonsterCmdLifePct(rawCmd: number, paramByte: number): number | u
   if (rawCmd === 0x06) {
     if (paramByte === 0) return undefined
     const masked = paramByte & 0x7f
-    return masked > 0 ? masked : 128
+    return masked > 0 ? masked : undefined
   }
   return paramByte > 0 && paramByte <= 0x80 ? paramByte : undefined
 }
