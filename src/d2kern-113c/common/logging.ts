@@ -10,6 +10,7 @@
  */
 import type { Memory113c } from '../mem/sparse-memory.ts'
 
+export const D2COMMON_LOG_LOCK_VA_113C = 0x6fdf1470
 export const D2COMMON_LOG_ENABLED_VA_113C = 0x6fdf1474
 
 /**
@@ -52,3 +53,28 @@ export function LOGGING_WriteFormattedEntry113c(
     }
   }
 }
+
+/**
+ * `@va D2Common:0x6FD62C00` (`D2Common.#10570` `LOGGING_WriteLockedEntry`,
+ * cdecl `[esp+4..0x20] = (a0, a1, a2, a3, szFile, nLine, szFormat, ...vaArgs)`, plain `ret`, void).
+ *
+ * Checks `ds:[0x6FDF1470] != 0` (`bLogLockEnabled`), acquires/releases critical section `0x6FDF13E0`
+ * (`Fog.#10050` / `LeaveCriticalSection`), and forwards `(a0, a1, a2, a3, szFile, nLine, szFormat, pVaList)`
+ * to `0x6FD62AF0` (`LOGGING_WriteFormattedEntry113c`).
+ */
+export function LOGGING_WriteLockedEntry113c(
+  m: Memory113c,
+  a0: number,
+  a1: number,
+  a2: number,
+  a3: number,
+  szFile: number,
+  nLine: number,
+  szFormat: number,
+  pVaList = 0,
+): void {
+  if (m.u32(D2COMMON_LOG_LOCK_VA_113C) === 0) return
+  m.u32(D2COMMON_LOG_LOCK_VA_113C)
+  LOGGING_WriteFormattedEntry113c(m, a0, a1, a2, a3, szFile, nLine, szFormat, pVaList)
+}
+

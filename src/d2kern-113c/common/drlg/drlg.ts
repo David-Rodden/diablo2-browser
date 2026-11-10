@@ -16,6 +16,7 @@ import {
   ENV_TICK_RATES_6FDEB238,
   ENV_UpdateIntensityAndSunAngle113c,
 } from '../env.ts';
+import { D2CommonAssertError } from '../inline-helpers.ts';
 import { imul32 } from '../int-math.ts';
 import {
   D2CMP_10051_GetTileFlags113c,
@@ -345,12 +346,10 @@ export function DRLG_InitActTownFloorTileData113c(
   pTileData: number,
 ): void {
   if (pDrlg === 0) {
-    throw new Error('DRLG_InitActTownFloorTileData113c: pDrlg == 0 (line 1079)');
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DRLG\\Drlg.cpp', 1079);
   }
   if (pTileData === 0) {
-    throw new Error(
-      'DRLG_InitActTownFloorTileData113c: pTileData == 0 (line 1080)',
-    );
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DRLG\\Drlg.cpp', 1080);
   }
   const drlg = pDrlg >>> 0;
   const tileData = pTileData >>> 0;
@@ -385,9 +384,7 @@ export function DRLG_InitActTownFloorTileData113c(
     0x28,
   );
   if (nFound === 0) {
-    throw new Error(
-      'DRLG_InitActTownFloorTileData113c: FindTiles returned 0 (line 1100)',
-    );
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DRLG\\Drlg.cpp', 1100);
   }
   const pTile = aTiles[0]!;
   m.setU32((tileData + 0x18) >>> 0, pTile);
@@ -424,7 +421,7 @@ export function ENV_ResetDefaultEnvironment113c(
   pAct: number,
 ): void {
   if (pAct === 0) {
-    throw new Error('ENV_ResetDefaultEnvironment113c: pAct == 0 (line 1351)');
+    throw new D2CommonAssertError('..\\Source\\D2Common\\ENVIRONMENT\\Env.cpp', 1351);
   }
   const pEnv0 = m.u32((pAct + 0x04) >>> 0);
   m.setU32((pEnv0 + 0x2c) >>> 0, 0);
@@ -450,9 +447,7 @@ export function DATATBLS_FindWallTileCacheEntry113c(
 ): number {
   const pTable = m.u32(GP_WALL_TILE_CACHE_VA_6FDF1434);
   if (pTable === 0) {
-    throw new Error(
-      'DATATBLS_FindWallTileCacheEntry113c: gpWallTileCache == 0 (line 867)',
-    );
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DATATBLS\\DataTbls.cpp', 867);
   }
   const nCount = m.u32(GN_WALL_TILE_CACHE_COUNT_VA_6FDF1438) | 0;
   const target = nPackedTileId | 0;
@@ -462,9 +457,7 @@ export function DATATBLS_FindWallTileCacheEntry113c(
       return pEntry;
     }
   }
-  throw new Error(
-    'DATATBLS_FindWallTileCacheEntry113c: entry not found (line 876)',
-  );
+  throw new D2CommonAssertError('..\\Source\\D2Common\\DATATBLS\\DataTbls.cpp', 876);
 }
 
 /**

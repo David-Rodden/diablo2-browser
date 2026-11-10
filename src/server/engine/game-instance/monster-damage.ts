@@ -646,7 +646,12 @@ function applyDamageToMonster(this: GameInstanceHost,
       hitContext.outHitResult.landedHitRoll = dmgOut.hit
     }
     if (!dmgOut.hit) {
-      if (dmgOut.avoidedReason === 'block' && !hitContext?.suppressBlockAnim) {
+      if (
+        dmgOut.avoidedReason === 'block' &&
+        !hitContext?.suppressBlockAnim &&
+        !wasAlreadyDead113c &&
+        !monster.dead
+      ) {
         monster.mode = MONMODE_BLOCK
         this.broadcastToArea(monster.areaId, {
           type: 'UnitMode',
@@ -833,7 +838,12 @@ function applyDamageToMonster(this: GameInstanceHost,
         unblockable: hitUnblockable,
       }, this.rng)
       if (!hitOut.hit) {
-        if (hitOut.avoidedReason === 'block' && !hitContext?.suppressBlockAnim) {
+        if (
+          hitOut.avoidedReason === 'block' &&
+          !hitContext?.suppressBlockAnim &&
+          !wasAlreadyDead113c &&
+          !monster.dead
+        ) {
           monster.mode = MONMODE_BLOCK
           this.broadcastToArea(monster.areaId, {
             type: 'UnitMode',
@@ -900,7 +910,12 @@ function applyDamageToMonster(this: GameInstanceHost,
       hitContext.outHitResult.landedHitRoll = dmgOut.hit
     }
     if (!dmgOut.hit) {
-      if (dmgOut.avoidedReason === 'block' && !hitContext?.suppressBlockAnim) {
+      if (
+        dmgOut.avoidedReason === 'block' &&
+        !hitContext?.suppressBlockAnim &&
+        !wasAlreadyDead113c &&
+        !monster.dead
+      ) {
         monster.mode = MONMODE_BLOCK
         this.broadcastToArea(monster.areaId, {
           type: 'UnitMode',
@@ -1591,6 +1606,7 @@ function applyMonsterDeath(this: GameInstanceHost,
     return
   }
   monster.submerged = false
+  monster.actionAnimEndFrame = 0
   monster.pendingAttack = undefined
   monster.pendingAllyAttack = undefined
   monster.pendingResurrection = undefined

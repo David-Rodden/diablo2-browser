@@ -347,10 +347,10 @@ describe('Lane C B013 — Real D2Common.dll Differential Replay & Negative Contr
     const recMap = vectors.find(v => v.va === '0x6FD90C20')!;
     const { mem: memMap } = createGuardedMemory(recMap.pre);
     expect(() => DRLGOUTROOM_MapAct5PresetId113c(memMap, recMap.args[0]!, 47, 1)).toThrow(
-      /Fog_10024 assert at 0x6FD90C3A/,
+      /^D2Common assertion failed at .*:388$/,
     );
     expect(() => DRLGOUTROOM_MapAct5PresetId113c(memMap, recMap.args[0]!, 48, 25)).toThrow(
-      /Fog_10024 assert at 0x6FD90C8A/,
+      /^D2Common assertion failed at .*:421$/,
     );
 
     const recApply = vectors.find(

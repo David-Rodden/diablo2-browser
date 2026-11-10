@@ -13,8 +13,16 @@ import {
   D2LevelsTxt_SIZE,
   D2UnitStrc,
 } from '../mem/layout.generated.ts'
-import { D2COMMON_SGPT_DATATABLES_VA_113C, D2CommonAssertError } from './inline-helpers.ts'
+import {
+  D2COMMON_GDWBITMASKS_IAT_VA_113C,
+  D2COMMON_SGPT_DATATABLES_VA_113C,
+  D2CommonAssertError,
+  DATATBLS_GetMonStats2TxtRecordFromMonStatsIdInline113c,
+  DATATBLS_ValidateMonStatsIdInline113c,
+  MONSTERS_GetBaseIdFromMonsterUnitInline113c,
+} from './inline-helpers.ts'
 import { imul32 } from './int-math.ts'
+import { STATES_CheckStateMask33OnUnit113c } from './statlist.ts'
 
 /** Byte offsets of `pLevelsTxt` and `nLevelsTxtRecordCount` in `sgptDataTables` (`0x6FDB7E64..0x6FDB7E70`). */
 export const DATATABLES_LEVELS_TXT_PTR_OFF_113C = 0xc58
@@ -178,3 +186,78 @@ export function WAYPOINT_CopyAndValidateWaypointData113c(
     m.setU32((pDst + i) >>> 0, m.u32((pSrc + i) >>> 0))
   }
 }
+
+const UNITS_ASSERT_FILE_113C = '..\\Source\\D2Common\\Units\\Units.cpp'
+
+/** `UNITS_IsInMovingMode` monster mode (`mode - 2` in `0..13`) case index byte table at `0x6FD81490`. */
+const MON_MOVING_MODE_INDEX_6FD81490 = Uint8Array.from([
+  0, 2, 2, 2, 2, 2, 1, 1, 2, 2, 2, 2, 2, 0,
+])
+
+/**
+ * `@va D2Common:0x6FD811B0` (`D2Common.#10965` `UNITS_IsCorpseUseable`,
+ * stdcall `[esp+4] = pUnit`, `ret 4` -> `0` or `1`).
+ *
+ * Returns `0` unless `pUnit != NULL && pUnit->dwUnitType == 1 && pUnit->dwAnimMode (+0x10) == 12`.
+ * Resolves `pMonStats2 = DATATBLS_GetMonStats2TxtRecordFromMonStatsIdInline(pUnit->dwClassId)` (`0x6FD513B0`);
+ * returns `0` if null, if `(pMonStats2[+0x06] & gdwBitMasks[3]) != 0`, or if
+ * `(pMonStats2[+0x04] & gdwBitMasks[7]) == 0`; otherwise returns `STATES_CheckStateMask33OnUnit(pUnit) == 0 ? 1 : 0`.
+ */
+export function UNITS_IsCorpseUseable113c(m: Memory113c, pUnit: number): number {
+  const u = pUnit >>> 0
+  if (u === 0 || m.get(u, D2UnitStrc.dwUnitType) !== 1) return 0
+  if (m.get(u, D2UnitStrc.dwAnimMode) !== 0x0c) return 0
+  const pMonStats2 = DATATBLS_GetMonStats2TxtRecordFromMonStatsIdInline113c(
+    m,
+    m.get(u, D2UnitStrc.dwClassId),
+  )
+  if (pMonStats2 === 0) return 0
+  const pBitMasks = m.u32(D2COMMON_GDWBITMASKS_IAT_VA_113C)
+  if ((m.u8((pBitMasks + 0x0c) >>> 0) & m.u8((pMonStats2 + 0x06) >>> 0)) !== 0) return 0
+  if ((m.u8((pBitMasks + 0x1c) >>> 0) & m.u8((pMonStats2 + 0x04) >>> 0)) === 0) return 0
+  return STATES_CheckStateMask33OnUnit113c(m, u) === 0 ? 1 : 0
+}
+
+/**
+ * `@va D2Common:0x6FD813F0` (`D2Common.#10143` `UNITS_IsInMovingMode`,
+ * stdcall `[esp+4] = pUnit`, `ret 4` -> `0` or `1`).
+ *
+ * Returns `0` if `pUnit == NULL`.
+ * - Player (`dwUnitType == 0`): reads `mode = pAnimSeq (+0x30) != 0 ? dwSeqMode (+0x40) : dwAnimMode (+0x10)`
+ *   and returns `1` iff `mode` is `2`, `3`, or `6` (unsigned compares).
+ * - Monster (`dwUnitType == 1`): indexes `MON_MOVING_MODE_INDEX_6FD81490[dwAnimMode - 2]` (`0..13`):
+ *   case `0` (`mode` `2` or `15`) -> `1`; case `1` (`mode` `8` or `9`) -> `1` iff validated base monster ID is `0x6E` (`110`);
+ *   otherwise `0`.
+ * - Missile (`dwUnitType == 3`): asserts at `Units.cpp:0x1325` (`4901`).
+ * - All other unit types return `0`.
+ */
+export function UNITS_IsInMovingMode113c(m: Memory113c, pUnit: number): number {
+  const u = pUnit >>> 0
+  if (u === 0) return 0
+  const dwUnitType = m.get(u, D2UnitStrc.dwUnitType) | 0
+  if (dwUnitType === 0) {
+    const mode =
+      m.get(u, D2UnitStrc.pAnimSeq) !== 0
+        ? m.get(u, D2UnitStrc.dwSeqMode) >>> 0
+        : m.get(u, D2UnitStrc.dwAnimMode) >>> 0
+    if (mode < 2) return 0
+    if (mode <= 3) return 1
+    return mode === 6 ? 1 : 0
+  }
+  if (dwUnitType === 1) {
+    const idx = (m.get(u, D2UnitStrc.dwAnimMode) - 2) >>> 0
+    if (idx > 0x0d) return 0
+    const cls = MON_MOVING_MODE_INDEX_6FD81490[idx]!
+    if (cls === 0) return 1
+    if (cls === 1) {
+      const baseId = MONSTERS_GetBaseIdFromMonsterUnitInline113c(m, u)
+      return DATATBLS_ValidateMonStatsIdInline113c(m, baseId) === 0x6e ? 1 : 0
+    }
+    return 0
+  }
+  if (dwUnitType === 3) {
+    throw new D2CommonAssertError(UNITS_ASSERT_FILE_113C, 0x1325)
+  }
+  return 0
+}
+

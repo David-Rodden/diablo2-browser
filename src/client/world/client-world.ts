@@ -711,12 +711,17 @@ export class ClientWorld {
     const prevClientMode = unit.mode
     unit.x = npcUnit.preciseX
     unit.y = npcUnit.preciseY
-    unit.mode = npcUnit.dwAnimMode
     unit.hitClass = npcUnit.hitClass
-    unit.dead =
+    const npcDead =
       (npcUnit.dwFlags & 0x10000) !== 0 ||
       npcUnit.dwAnimMode === MONMODE_DEATH ||
       npcUnit.dwAnimMode === MONMODE_DEAD
+    if (npcDead) {
+      unit.mode = npcUnit.dwAnimMode
+      unit.dead = true
+    } else if (!wasDead) {
+      unit.mode = npcUnit.dwAnimMode
+    }
     if (!wasDead && unit.dead) {
       unit.diedAtMs = this._timeMs
     }

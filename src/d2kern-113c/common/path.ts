@@ -17,15 +17,75 @@ import {
   D2IdaStarNodeStrc,
   D2MonStatsTxt,
   D2MonStatsTxt_SIZE,
+  D2PathInfoStrc,
   D2UnitStrc,
 } from '../mem/layout.generated.ts'
 import {
+  PATH_AStar_FindPointInVisitedCache113c,
+  PATH_AStar_GetNodeFromPendingCache113c,
+  PATH_AStar_PropagateNewFScoreToChildren113c,
+} from '../tables/item-tbls-113c.ts'
+import { DRLG_IsTownLevel113c, DUNGEON_GetRoomAtPosition113c } from './dungeon.ts'
+import {
   D2COMMON_GDWBITMASKS_IAT_VA_113C,
   D2COMMON_SGPT_DATATABLES_VA_113C,
+  D2CommonAssertError,
   DATATABLES_OFF_113C,
+  DATATBLS_CheckMonStatsFlagInline113c,
 } from './inline-helpers.ts'
 import { imul32, sar32, sdiv32 } from './int-math.ts'
+import { MONSTERS_IsTownOrFriendlyUnit113c } from './monsters.ts'
+import {
+  UNITROOM_AddUnitToRoom113c,
+  UNITROOM_RefreshUnit113c,
+  UNITROOM_RemoveUnitFromRoom113c,
+  UNITS_GetX113c,
+  UNITS_GetY113c,
+  UNITS_IsDoor113c,
+  UNITS_TransferStateMaskToRemoved113c,
+} from './unit.ts'
 import { seedNext, type D2SeedStrc } from '../prng.ts'
+
+const PATH_STACK_SCRATCH_BASE = 0x7fff2000
+const PATH_STACK_SCRATCH_SIZE = 0x100
+const _pathStackBuf = new ArrayBuffer(PATH_STACK_SCRATCH_SIZE)
+const _pathStackU8 = new Uint8Array(_pathStackBuf)
+const _pathStackDV = new DataView(_pathStackBuf)
+
+function withPathStackScratch113c(m: Memory113c): Memory113c {
+  const isStack = (p: number): boolean => {
+    const u = p >>> 0
+    return u >= PATH_STACK_SCRATCH_BASE && u < PATH_STACK_SCRATCH_BASE + PATH_STACK_SCRATCH_SIZE
+  }
+  return {
+    alloc: size => m.alloc(size),
+    u8: p => (isStack(p) ? _pathStackU8[(p >>> 0) - PATH_STACK_SCRATCH_BASE]! : m.u8(p)),
+    u16: p => (isStack(p) ? _pathStackDV.getUint16((p >>> 0) - PATH_STACK_SCRATCH_BASE, true) : m.u16(p)),
+    u32: p => (isStack(p) ? _pathStackDV.getUint32((p >>> 0) - PATH_STACK_SCRATCH_BASE, true) : m.u32(p)),
+    setU8: (p, v) => {
+      if (isStack(p)) _pathStackU8[(p >>> 0) - PATH_STACK_SCRATCH_BASE] = v & 0xff
+      else m.setU8(p, v)
+    },
+    setU16: (p, v) => {
+      if (isStack(p)) _pathStackDV.setUint16((p >>> 0) - PATH_STACK_SCRATCH_BASE, v & 0xffff, true)
+      else m.setU16(p, v)
+    },
+    setU32: (p, v) => {
+      if (isStack(p)) _pathStackDV.setUint32((p >>> 0) - PATH_STACK_SCRATCH_BASE, v >>> 0, true)
+      else m.setU32(p, v)
+    },
+    get: (base, f, idx = 0) => m.get(base, f, idx),
+    set: (base, f, v, idx = 0) => m.set(base, f, v, idx),
+    fill: (p, len, v) => {
+      if (isStack(p)) {
+        const off = (p >>> 0) - PATH_STACK_SCRATCH_BASE
+        _pathStackU8.fill(v & 0xff, off, off + len)
+      } else {
+        m.fill(p, len, v)
+      }
+    },
+  }
+}
 
 /**
  * `PATH_GetDirectionVector` `.rdata` lookup table at `0x6FDDD470` (128 rows × 3 `int32_t` `{a, b, ang}`, stride 12,
@@ -1351,9 +1411,7 @@ export function PATH_SetStepDistance113c(
 ): void {
   const dist = nDistance | 0
   if (dist < 0 || dist > 0xff) {
-    throw new Error(
-      'PATH_SetStepDistance113c: nDistance out of [0, 255] (line 2405)',
-    )
+    throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\Path.cpp', 2405)
   }
   m.setU8((pPath + 0x94) >>> 0, dist & 0xff)
 }
@@ -1372,7 +1430,7 @@ export function PATH_GetSavedSteps113c(
 ): number {
   const path = pPath >>> 0
   if ((m.u32((path + 0x34) >>> 0) & 0x20000) === 0) {
-    throw new Error('PATH_GetSavedSteps113c: missing flag 0x20000 (line 2292)')
+    throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\Path.cpp', 2292)
   }
   m.setU32(ppOutSavedSteps >>> 0, (path + 0x1d8) >>> 0)
   return m.u32((path + 0x1d4) >>> 0) | 0
@@ -1393,7 +1451,7 @@ export function PATH_GetTargetTypeAndId113c(
 ): void {
   const path = pPath >>> 0
   if (m.u32((path + 0x58) >>> 0) === 0) {
-    throw new Error('PATH_GetTargetTypeAndId113c: pTargetUnit == 0 (line 1984)')
+    throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\Path.cpp', 1984)
   }
   m.setU32(pOutTargetType >>> 0, m.u32((path + 0x5c) >>> 0))
   m.setU32(pOutTargetId >>> 0, m.u32((path + 0x60) >>> 0))
@@ -1407,7 +1465,7 @@ export function PATH_GetTargetTypeAndId113c(
  */
 export function PATH_GetPosY113c(m: Memory113c, pPath: number): number {
   if (pPath === 0) {
-    throw new Error('PATH_GetPosY113c: pPath == 0 (line 1693)')
+    throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\Path.cpp', 1693)
   }
   return m.u16((pPath + 0x06) >>> 0)
 }
@@ -1420,7 +1478,7 @@ export function PATH_GetPosY113c(m: Memory113c, pPath: number): number {
  */
 export function PATH_GetPosX113c(m: Memory113c, pPath: number): number {
   if (pPath === 0) {
-    throw new Error('PATH_GetPosX113c: pPath == 0 (line 1682)')
+    throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\Path.cpp', 1682)
   }
   return m.u16((pPath + 0x02) >>> 0)
 }
@@ -1464,9 +1522,7 @@ export function PATH_SetType113c(
   const type = nPathType | 0
   const pUnit = m.u32((path + 0x30) >>> 0)
   if (pUnit !== 0 && m.u32(pUnit) === 0 && type === 2) {
-    throw new Error(
-      'PATH_SetType113c: player path type 2 forbidden (line 2145)',
-    )
+    throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\Path.cpp', 2145)
   }
 
   const flagMask = m.u32((PATH_TYPE_FLAGS_VA_6FDE4180 + type * 4) >>> 0)
@@ -1488,15 +1544,13 @@ export function PATH_SetType113c(
 
   const prevType = m.u32((path + 0x40) >>> 0) | 0
   if (prevType === 0x0b) {
-    throw new Error('PATH_SetType113c: dwPrevPathType == 11 (line 2161)')
+    throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\Path.cpp', 2161)
   }
   if (prevType === 0x08) {
-    throw new Error('PATH_SetType113c: dwPrevPathType == 8 (line 2162)')
+    throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\Path.cpp', 2162)
   }
   if (type === 4 && m.u8((path + 0x91) >>> 0) >= 0x4e) {
-    throw new Error(
-      'PATH_SetType113c: nDistMax >= 78 for type 4 (line 2163)',
-    )
+    throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\Path.cpp', 2163)
   }
 }
 
@@ -1518,21 +1572,15 @@ export function PATH_AdjustTargetForDoorObject113c(
   const pPath = m.u32((pContext + 0x30) >>> 0)
   const pTargetUnit = m.u32((pPath + 0x58) >>> 0)
   if (pTargetUnit === 0) {
-    throw new Error(
-      'PATH_AdjustTargetForDoorObject113c: pTargetUnit == 0 (line 3600)',
-    )
+    throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\Path.cpp', 3600)
   }
   if ((m.u32(pTargetUnit) | 0) !== 2) {
-    throw new Error(
-      'PATH_AdjustTargetForDoorObject113c: unitType != 2 (line 533)',
-    )
+    throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\Path.cpp', 533)
   }
   const pObjectData = m.u32((pTargetUnit + 0x14) >>> 0)
   const pObjectTxt = m.u32(pObjectData)
   if (m.u8((pObjectTxt + 0x13a) >>> 0) === 0) {
-    throw new Error(
-      'PATH_AdjustTargetForDoorObject113c: not a door object (line 533)',
-    )
+    throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\Path.cpp', 533)
   }
 
   const pStaticPath = m.u32((pTargetUnit + 0x2c) >>> 0)
@@ -1567,7 +1615,7 @@ export function PATH_SetNewDirection113c(
 ): void {
   const rawByte = nNewDir & 0xff
   if (rawByte >= 0x40) {
-    throw new Error('PATH_SetNewDirection113c: nNewDir >= 64 (line 1650)')
+    throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\Path.cpp', 1650)
   }
   const path = pPath >>> 0
   const pUnit = m.u32((path + 0x30) >>> 0)
@@ -1607,14 +1655,12 @@ export function PATH_OffsetTargetByUnitRadius113c(
   pPath: number,
 ): void {
   if (pPath === 0) {
-    throw new Error('PATH_OffsetTargetByUnitRadius113c: pPath == 0 (line 490)')
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DRLG\\DrlgVer.cpp', 490)
   }
   const path = pPath >>> 0
   const pTargetUnit = m.u32((path + 0x58) >>> 0)
   if (pTargetUnit === 0) {
-    throw new Error(
-      'PATH_OffsetTargetByUnitRadius113c: pTargetUnit == 0 (line 491)',
-    )
+    throw new D2CommonAssertError('..\\Source\\D2Common\\DRLG\\DrlgVer.cpp', 491)
   }
   const pTargetPath = m.u32((pTargetUnit + 0x2c) >>> 0)
   const targetDir = pTargetPath === 0 ? 0 : m.u8((pTargetPath + 0x64) >>> 0)
@@ -1690,3 +1736,543 @@ export function PATH_BuildSpiralPath77Points113c(
   m.setU32((path + 0x28) >>> 0, count >>> 0)
 }
 
+/**
+ * `@va D2Common:0x6FD80050` (`D2Common.#10141` `PATH_GetTargetTypeAndPosition113c`,
+ * stdcall `(pUnit, pOutCoords)`, `ret 8`).
+ *
+ * - Asserts `pUnit != 0` (`line 1994`, `0x7CA`).
+ * - For static-path units (`dwUnitType == 2` or `4..5`), copies `(pStaticPath->nXPos (+0x0C), pStaticPath->nYPos (+0x10))`
+ *   to `pOutCoords[0..1]`.
+ * - For dynamic-path units, writes `PATH_GetPosX(pDynPath)` and `PATH_GetPosY(pDynPath)` if `pDynPath != 0`, else `0, 0`.
+ */
+export function PATH_GetTargetTypeAndPosition113c(
+  m: Memory113c,
+  pUnit: number,
+  pOutCoords: number,
+): void {
+  const unit = pUnit >>> 0
+  if (unit === 0) {
+    throw new D2CommonAssertError('Path.cpp', 0x7ca) // pUnit == 0 (line 1994)
+  }
+  const out = pOutCoords >>> 0
+  const uType = m.u32(unit) | 0
+  if (uType === 2 || (uType > 3 && uType <= 5)) {
+    const pStaticPath = m.u32((unit + 0x2c) >>> 0)
+    m.setU32(out, m.u32((pStaticPath + 0x0c) >>> 0))
+    m.setU32((out + 0x04) >>> 0, m.u32((pStaticPath + 0x10) >>> 0))
+    return
+  }
+
+  const pDynPath = m.u32((unit + 0x2c) >>> 0)
+  let x = 0
+  if (pDynPath !== 0) {
+    x = PATH_GetPosX113c(m, pDynPath) >>> 0
+  }
+  m.setU32(out, x)
+
+  const pDynPath2 = m.u32((unit + 0x2c) >>> 0)
+  if (pDynPath2 !== 0) {
+    const y = PATH_GetPosY113c(m, pDynPath2) >>> 0
+    m.setU32((out + 0x04) >>> 0, y)
+    return
+  }
+  m.setU32((out + 0x04) >>> 0, 0)
+}
+
+/**
+ * `@va D2Common:0x6FD85210` (`D2Common.#10498` `PATH_ResetToDefaultType113c`,
+ * stdcall `(pDynamicPath)`, `ret 4`).
+ *
+ * - Reads `pUnit = pDynamicPath->pUnit (+0x30)` and asserts `pUnit != 0` (`line 2174`, `0x87E`).
+ * - If `(dwFlags (+0x34) & 0x8000) != 0`, restores `dwVelocity (+0x7C) = *(u32*)(pDynamicPath + 0x80)`.
+ * - If `pUnit->dwUnitType == 0`, calls `PATH_SetType(pDynamicPath, 7)`.
+ * - Otherwise, if `(dwFlags & 0x2000) != 0`, calls `PATH_SetType(pDynamicPath, pDynamicPath->dwPrevPathType (+0x40))`.
+ */
+export function PATH_ResetToDefaultType113c(
+  m: Memory113c,
+  pDynamicPath: number,
+): void {
+  const path = pDynamicPath >>> 0
+  const pUnit = m.u32((path + 0x30) >>> 0)
+  if (pUnit === 0) {
+    throw new D2CommonAssertError('Path.cpp', 0x87e) // pUnit == 0 (line 2174)
+  }
+  const dwFlags = m.u32((path + 0x34) >>> 0)
+  if ((dwFlags & 0x8000) !== 0) {
+    m.setU32((path + 0x7c) >>> 0, m.u32((path + 0x80) >>> 0))
+  }
+  if (m.u32(pUnit) === 0) {
+    PATH_SetType113c(m, path, 7)
+    return
+  }
+  if ((dwFlags & 0x2000) !== 0) {
+    PATH_SetType113c(m, path, m.u32((path + 0x40) >>> 0) | 0)
+  }
+}
+
+// ============================================================================
+// Iteration 9 Lane C — Batch B061 (12 PATH functions)
+// ============================================================================
+
+/** `.rdata` size-to-collision-pattern table at `0x6FDDC5E4` (`4` `int32_t` entries). */
+export const PATH_SIZE_COLLISION_PATTERN_6FDDC5E4 = Int32Array.from([0, 1, 1, 2])
+
+/** `.rdata` Charged Bolt base octant direction col 0 of `int32[25][3]` at `0x6FDDC320`. */
+export const PATH_CHARGED_BOLT_BASE_DIR_6FDDC320 = Int32Array.from([
+  5, 4, 4, 4, 3, 6, 5, 4, 3, 2, 6, 6, 6, 2, 2, 6, 7, 0, 1, 2, 7, 0, 0, 0, 1,
+])
+
+/** `.rdata` 8-way X step table at `0x6FDDC2E0` (`int32[8][2]` col 0). */
+export const PATH_DIR8_DX_6FDDC2E0 = Int32Array.from([1, 1, 0, -1, -1, -1, 0, 1])
+
+/** `.rdata` 8-way Y step table at `0x6FDDC2E4` (`int32[8][2]` col 1). */
+export const PATH_DIR8_DY_6FDDC2E0 = Int32Array.from([0, 1, 1, 1, 0, -1, -1, -1])
+
+const PATH_CHARGED_BOLT_JITTER_32 = Int32Array.from([
+  -1, 0, 1, -1, 0, 1, -1, 0, 1, -1, 0, 1, -1, 0, 1, -1,
+  0, 1, -1, 0, 1, -1, 0, 1, -1, 0, 1, -1, 0, 1, -1, 1,
+])
+
+function toFixedSubtileCenter(coord: number): number {
+  return (((coord | 0) << 16) + 0x8000) >>> 0
+}
+
+function attachAStarChild(m: Memory113c, parent: number, child: number): void {
+  for (let k = 0; k < 8; k++) {
+    const slot = (parent + 0x10 + (k << 2)) >>> 0
+    if (m.u32(slot) === 0) {
+      m.setU32(slot, child >>> 0)
+      return
+    }
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD5D180` (`D2Common.#10493` `PATH_ComputeDirection113c`,
+ * `__stdcall(nX1, nY1, nX2, nY2) -> int32`, `ret 0x10`).
+ */
+export function PATH_ComputeDirection113c(
+  m: Memory113c,
+  nX1: number,
+  nY1: number,
+  nX2: number,
+  nY2: number,
+): number {
+  const sm = withPathStackScratch113c(m)
+  const pVec = PATH_STACK_SCRATCH_BASE
+  const pDir = PATH_STACK_SCRATCH_BASE + 0x08
+  PATH_GetDirectionVector113c(
+    sm,
+    toFixedSubtileCenter(nX1),
+    toFixedSubtileCenter(nY1),
+    toFixedSubtileCenter(nX2),
+    toFixedSubtileCenter(nY2),
+    pVec,
+    pDir,
+  )
+  return sm.u32(pDir) >>> 0
+}
+
+/**
+ * `@va D2Common:0x6FD5D240` (`PATH_ComputeVelocityToNextPoint113c`, not exported;
+ * custom LTCG `esi = pPath`, `[esp+4] = bDirOnArrive`, `[esp+8] = bAlwaysDir`, `ret 8 -> BOOL`).
+ */
+export function PATH_ComputeVelocityToNextPoint113c(
+  m: Memory113c,
+  pPath: number,
+  bDirOnArrive: number,
+  bAlwaysDir: number,
+): number {
+  const path = pPath >>> 0
+  let idx = m.u32((path + 0x24) >>> 0) | 0
+  let tx = toFixedSubtileCenter(m.u16((path + 0x9c + idx * 4) >>> 0))
+  let ty = toFixedSubtileCenter(m.u16((path + 0x9e + idx * 4) >>> 0))
+  if (tx === m.u32(path)) {
+    const posY0 = m.u32((path + 0x04) >>> 0)
+    while (ty === posY0) {
+      const nPts = m.u32((path + 0x28) >>> 0) | 0
+      idx = m.u32((path + 0x24) >>> 0) | 0
+      if (idx >= ((nPts - 1) | 0)) {
+        m.setU32((path + 0x6a) >>> 0, 0)
+        m.setU32((path + 0x72) >>> 0, 0)
+        m.setU32((path + 0x24) >>> 0, nPts >>> 0)
+        m.setU32((path + 0x6e) >>> 0, 0)
+        m.setU32((path + 0x76) >>> 0, 0)
+        m.setU32((path + 0x7c) >>> 0, 0)
+        return 1
+      }
+      idx = (idx + 1) | 0
+      m.setU32((path + 0x24) >>> 0, idx >>> 0)
+      tx = toFixedSubtileCenter(m.u16((path + 0x9c + idx * 4) >>> 0))
+      ty = toFixedSubtileCenter(m.u16((path + 0x9e + idx * 4) >>> 0))
+      if (tx !== m.u32(path)) break
+    }
+  }
+  const sm = withPathStackScratch113c(m)
+  const pVec = PATH_STACK_SCRATCH_BASE + 0x10
+  const pDir = PATH_STACK_SCRATCH_BASE + 0x18
+  PATH_GetDirectionVector113c(sm, m.u32(path), m.u32((path + 0x04) >>> 0), tx, ty, pVec, pDir)
+  const vecX = sm.u32(pVec) | 0
+  const vecY = sm.u32((pVec + 0x04) >>> 0) | 0
+  let dir = sm.u32(pDir) >>> 0
+  m.setU32((path + 0x6e) >>> 0, vecY >>> 0)
+  m.setU32((path + 0x6a) >>> 0, vecX >>> 0)
+  if ((m.u32((path + 0x34) >>> 0) & 0x200) !== 0) {
+    dir = ((dir - 0x20) & 0x3f) >>> 0
+  }
+  const vel = m.u32((path + 0x7c) >>> 0) | 0
+  const vx = sar32(imul32(vel, vecX), 8)
+  const vy = sar32(imul32(vel, vecY), 8)
+  m.setU32((path + 0x72) >>> 0, vx >>> 0)
+  m.setU32((path + 0x76) >>> 0, vy >>> 0)
+  const arr =
+    tx >>> 16 === ((m.u32(path) + vx) >>> 0) >>> 16 &&
+    ty >>> 16 === ((m.u32((path + 0x04) >>> 0) + vy) >>> 0) >>> 16
+      ? 1
+      : 0
+  if ((bAlwaysDir | 0) !== 0 || (arr !== 0 && (bDirOnArrive | 0) !== 0)) {
+    PATH_SetDirection113c(m, path, dir)
+  }
+  return arr
+}
+
+/**
+ * `@va D2Common:0x6FD5D760` (`PATH_RecacheRoom113c`, not exported;
+ * `__stdcall(pPath, pHintRoom)`, `ret 8`).
+ */
+export function PATH_RecacheRoom113c(
+  m: Memory113c,
+  pPath: number,
+  pHintRoom: number,
+): void {
+  const path = pPath >>> 0
+  const r0 = m.u32((path + 0x1c) >>> 0)
+  const x = m.u16((path + 0x02) >>> 0)
+  const y = m.u16((path + 0x06) >>> 0)
+  if (r0 !== 0) {
+    const rx = m.u32((r0 + 0x4c) >>> 0) | 0
+    const rw = m.u32((r0 + 0x54) >>> 0) | 0
+    const ry = m.u32((r0 + 0x50) >>> 0) | 0
+    const rh = m.u32((r0 + 0x58) >>> 0) | 0
+    if (x >= rx && x < ((rx + rw) | 0) && y >= ry && y < ((ry + rh) | 0)) {
+      return
+    }
+  }
+  let n = DUNGEON_GetRoomAtPosition113c(m, r0, x, y)
+  if (n === 0 && (pHintRoom >>> 0) !== 0) {
+    n = DUNGEON_GetRoomAtPosition113c(m, pHintRoom >>> 0, x, y)
+  }
+  if (n === 0 && (m.u32((path + 0x34) >>> 0) & 0x40000) !== 0) {
+    m.setU32((path + 0x28) >>> 0, 0)
+    return
+  }
+  const rPrev = m.u32((path + 0x1c) >>> 0)
+  const pUnit = m.u32((path + 0x30) >>> 0)
+  m.setU32((path + 0x20) >>> 0, rPrev)
+  if (rPrev !== 0) {
+    UNITROOM_RemoveUnitFromRoom113c(m, pUnit)
+  }
+  const newFlags = (m.u32((path + 0x34) >>> 0) | 0x02) >>> 0
+  m.setU32((path + 0x1c) >>> 0, n >>> 0)
+  m.setU32((path + 0x34) >>> 0, newFlags)
+  if (n !== 0) {
+    UNITROOM_AddUnitToRoom113c(m, pUnit, n)
+    UNITROOM_RefreshUnit113c(m, pUnit)
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD7F910` (`D2Common.#10192` `UNITS_GetDirectionToCoords113c`,
+ * `__stdcall(pUnit, nX, nY) -> uint8`, `ret 0xC`, `retMask 0xFF`).
+ */
+export function UNITS_GetDirectionToCoords113c(
+  m: Memory113c,
+  pUnit: number,
+  nX: number,
+  nY: number,
+): number {
+  const unit = pUnit >>> 0
+  const ux = UNITS_GetX113c(m, unit)
+  const uy = UNITS_GetY113c(m, unit)
+  const sm = withPathStackScratch113c(m)
+  const pVec = PATH_STACK_SCRATCH_BASE + 0x20
+  const pDir = PATH_STACK_SCRATCH_BASE + 0x28
+  PATH_GetDirectionVector113c(
+    sm,
+    toFixedSubtileCenter(ux),
+    toFixedSubtileCenter(uy),
+    toFixedSubtileCenter(nX),
+    toFixedSubtileCenter(nY),
+    pVec,
+    pDir,
+  )
+  return sm.u8(pDir)
+}
+
+/**
+ * `@va D2Common:0x6FD844F0` (`D2Common.#10993` `UNITS_TransferStateMaskDCToRemoved113c`,
+ * `__stdcall(pUnit)`, `ret 4`).
+ */
+export function UNITS_TransferStateMaskDCToRemoved113c(
+  m: Memory113c,
+  pUnit: number,
+): void {
+  const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+  const pMaskArray = m.u32((sgpt + DATATABLES_OFF_113C.fStateMasksDC) >>> 0)
+  UNITS_TransferStateMaskToRemoved113c(m, pMaskArray, pUnit)
+}
+
+/**
+ * `@va D2Common:0x6FD852F0` (`D2Common.#10739` `PATH_FaceTowardsCoords113c`,
+ * `__stdcall(pPath, nX, nY, bSetBoth)`, `ret 0x10`).
+ */
+export function PATH_FaceTowardsCoords113c(
+  m: Memory113c,
+  pPath: number,
+  nX: number,
+  nY: number,
+  bSetBoth: number,
+): void {
+  const path = pPath >>> 0
+  if (path === 0) return
+  const sm = withPathStackScratch113c(m)
+  const pVec = PATH_STACK_SCRATCH_BASE + 0x30
+  const pDir = PATH_STACK_SCRATCH_BASE + 0x38
+  PATH_GetDirectionVector113c(
+    sm,
+    m.u32(path),
+    m.u32((path + 0x04) >>> 0),
+    toFixedSubtileCenter(nX),
+    toFixedSubtileCenter(nY),
+    pVec,
+    pDir,
+  )
+  const d = sm.u8(pDir)
+  if ((bSetBoth | 0) !== 0) {
+    const dm = d & 0x3f
+    m.setU8((path + 0x64) >>> 0, dm)
+    m.setU8((path + 0x65) >>> 0, dm)
+    return
+  }
+  PATH_SetDirection113c(m, path, d)
+}
+
+/**
+ * `@va D2Common:0x6FD85360` (`D2Common.#10122` `PATH_GetCollisionPatternForSize113c`,
+ * `__stdcall(pUnit, nSize) -> int32`, `ret 8`).
+ */
+export function PATH_GetCollisionPatternForSize113c(
+  m: Memory113c,
+  pUnit: number,
+  nSize: number,
+): number {
+  const sz = nSize | 0
+  if (sz < 0 || sz >= 4) return 1
+  let v = PATH_SIZE_COLLISION_PATTERN_6FDDC5E4[sz]! | 0
+  const unit = pUnit >>> 0
+  if (unit !== 0 && (m.u32(unit) | 0) === 1) {
+    if (MONSTERS_IsTownOrFriendlyUnit113c(m, unit) !== 0) {
+      const classId = m.u32((unit + 0x04) >>> 0) | 0
+      if (DATATBLS_CheckMonStatsFlagInline113c(m, classId, 9) === 0) {
+        if (v === 1) v = 3
+        else if (v === 2) v = 4
+      }
+    }
+  }
+  return v
+}
+
+/**
+ * `@va D2Common:0x6FD85470` (`PATH_ResolveTargetUnitPosition113c`, not exported;
+ * custom LTCG `edi = pPathInfo`, plain `ret -> uint8`, `retMask 0xFF`).
+ */
+export function PATH_ResolveTargetUnitPosition113c(
+  m: Memory113c,
+  pPathInfo: number,
+): number {
+  const info = pPathInfo >>> 0
+  const pPath = m.get(info, D2PathInfoStrc.pDynamicPath)
+  const pTarget = m.u32((pPath + 0x58) >>> 0)
+  if (pTarget === 0) return 1
+  const tx = UNITS_GetX113c(m, pTarget) & 0xffff
+  m.setU16((pPath + 0x10) >>> 0, tx)
+  const ty = UNITS_GetY113c(m, pTarget) & 0xffff
+  m.setU16((pPath + 0x12) >>> 0, ty)
+  if (tx === 0 && ty === 0) return 0
+  const uType = m.u32(pTarget) >>> 0
+  switch (uType) {
+    case 0:
+    case 1:
+      if (m.u8((pPath + 0x68) >>> 0) !== 0) {
+        PATH_OffsetTargetByUnitRadius113c(m, pPath)
+      }
+      return 1
+    case 2:
+      if (UNITS_IsDoor113c(m, pTarget) !== 0) {
+        PATH_AdjustTargetForDoorObject113c(m, info)
+      }
+      return 2
+    case 4:
+      return 2
+    default:
+      return 1
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD856E0` (`PATH_IsMonsterDestinationAllowed113c`, not exported;
+ * custom LTCG `edx = pUnit`, `esi = pPathInfo`, `ret -> BOOL`).
+ */
+export function PATH_IsMonsterDestinationAllowed113c(
+  m: Memory113c,
+  pUnit: number,
+  pPathInfo: number,
+): number {
+  const unit = pUnit >>> 0
+  if (unit === 0) return 1
+  if ((m.u32(unit) | 0) !== 1) return 1
+  if (MONSTERS_IsTownOrFriendlyUnit113c(m, unit) !== 0) return 1
+  const info = pPathInfo >>> 0
+  let r = m.get(info, D2PathInfoStrc.pTargetRoom)
+  if (r === 0) {
+    const sX = m.get(info, D2PathInfoStrc.startX)
+    const sY = m.get(info, D2PathInfoStrc.startY)
+    const tX = m.get(info, D2PathInfoStrc.targetX)
+    const tY = m.get(info, D2PathInfoStrc.targetY)
+    const mx = (sdiv32((tX - sX) | 0, 2) + sX) | 0
+    const my = (sdiv32((tY - sY) | 0, 2) + sY) | 0
+    const rMid = DUNGEON_GetRoomAtPosition113c(m, m.get(info, D2PathInfoStrc.pStartRoom), mx, my)
+    r = DUNGEON_GetRoomAtPosition113c(m, rMid, tX, tY)
+    if (r === 0) return 1
+  }
+  const pRoomEx = m.u32((r + 0x10) >>> 0)
+  const pLevel = m.u32((pRoomEx + 0x58) >>> 0)
+  const nLevelId = m.u32((pLevel + 0x1d0) >>> 0) | 0
+  return DRLG_IsTownLevel113c(nLevelId) !== 0 ? 0 : 1
+}
+
+/**
+ * `@va D2Common:0x6FDB6AA0` (`PATH_ComputePathChargedBolt113c`, not exported;
+ * custom LTCG `esi = pSeed`, `[esp+4] = pPath`, `ret 4`).
+ */
+export function PATH_ComputePathChargedBolt113c(
+  m: Memory113c,
+  pSeed: number,
+  pPath: number,
+): void {
+  const seedPtr = pSeed >>> 0
+  const path = pPath >>> 0
+  let curX = m.u16((path + 0x02) >>> 0)
+  let curY = m.u16((path + 0x06) >>> 0)
+  const startXY = (curX | (curY << 16)) >>> 0
+  const targetXY = m.u32((path + 0x10) >>> 0)
+  const qIdx = PATH_QuantizeDirectionIndex25_113c(startXY, targetXY)
+  const baseDir = PATH_CHARGED_BOLT_BASE_DIR_6FDDC320[qIdx]! | 0
+  const n = m.u8((path + 0x91) >>> 0) >>> 1
+  const seed: D2SeedStrc = { lo: m.u32(seedPtr), hi: m.u32((seedPtr + 0x04) >>> 0) }
+  for (let k = 0; k < n; k++) {
+    seedNext(seed)
+    m.setU32(seedPtr, seed.lo)
+    m.setU32((seedPtr + 0x04) >>> 0, seed.hi)
+    const d = (PATH_CHARGED_BOLT_JITTER_32[seed.lo & 0x1f]! + baseDir) & 7
+    m.setU32((path + 0x9c + (k << 2)) >>> 0, ((curX & 0xffff) | ((curY & 0xffff) << 16)) >>> 0)
+    curX = (curX + (PATH_DIR8_DX_6FDDC2E0[d]! << 1)) & 0xffff
+    curY = (curY + (PATH_DIR8_DY_6FDDC2E0[d]! << 1)) & 0xffff
+  }
+  m.setU32((path + 0x9c + (n << 2)) >>> 0, ((curX & 0xffff) | ((curY & 0xffff) << 16)) >>> 0)
+  m.setU32((path + 0x28) >>> 0, (n + 1) >>> 0)
+}
+
+/**
+ * `@va D2Common:0x6FDC0840` (`PATH_IdaStar_AdvanceToNextCandidate113c`, not exported;
+ * custom LTCG `eax = pNode`, `edi = pContext`, `ret -> D2IdaStarNodeStrc*`).
+ */
+export function PATH_IdaStar_AdvanceToNextCandidate113c(
+  m: Memory113c,
+  pNode: number,
+  pContext: number,
+): number {
+  let node = pNode >>> 0
+  const ctx = pContext >>> 0
+  const visit0 = (m.get(node, D2IdaStarNodeStrc.nVisitCount) << 16) >> 16
+  if (visit0 < 4) {
+    m.set(node, D2IdaStarNodeStrc.pBestDirection, (m.get(node, D2IdaStarNodeStrc.pBestDirection) + 4) >>> 0)
+    PATH_IdaStar_AdvanceNeighborIndex113c(m, ctx, node)
+  }
+  m.set(node, D2IdaStarNodeStrc.nVisitCount, (m.get(node, D2IdaStarNodeStrc.nVisitCount) + 1) & 0xffff)
+  while (m.get(node, D2IdaStarNodeStrc.nVisitCount) === 5) {
+    if (node === m.u32(ctx)) return 0
+    node = m.get(node, D2IdaStarNodeStrc.pParent)
+    m.set(node, D2IdaStarNodeStrc.pBestDirection, (m.get(node, D2IdaStarNodeStrc.pBestDirection) + 4) >>> 0)
+    PATH_IdaStar_AdvanceNeighborIndex113c(m, ctx, node)
+    m.set(node, D2IdaStarNodeStrc.nVisitCount, (m.get(node, D2IdaStarNodeStrc.nVisitCount) + 1) & 0xffff)
+  }
+  return node >>> 0
+}
+
+/**
+ * `@va D2Common:0x6FDCAFB0` (`PATH_AStar_ProcessNeighbor113c`, not exported;
+ * custom LTCG `ebx = pParent`, `[esp+4] = unused`, `[esp+8] = pContext`, `[esp+0xC] = dwPointXY`, `[esp+0x10] = dwTargetXY`,
+ * `ret 0x10 -> BOOL`).
+ */
+export function PATH_AStar_ProcessNeighbor113c(
+  m: Memory113c,
+  pParent: number,
+  _unused: number,
+  pContext: number,
+  dwPointXY: number,
+  dwTargetXY: number,
+): number {
+  const parent = pParent >>> 0
+  const ctx = pContext >>> 0
+  const xy = dwPointXY >>> 0
+  const ptX = xy & 0xffff
+  const ptY = (xy >>> 16) & 0xffff
+  const cost = m.u16(parent) === ptX || m.u16((parent + 0x02) >>> 0) === ptY ? 2 : 3
+  const g16 = (m.u16((parent + 0x08) >>> 0) + cost) & 0xffff
+  const gSigned = (g16 << 16) >> 16
+
+  const pending = PATH_AStar_GetNodeFromPendingCache113c(m, ctx, xy)
+  if (pending !== 0) {
+    attachAStarChild(m, parent, pending)
+    const oldG = (m.u16((pending + 0x08) >>> 0) << 16) >> 16
+    if (gSigned < oldG) {
+      const h = m.u16((pending + 0x06) >>> 0)
+      m.setU16((pending + 0x08) >>> 0, g16)
+      m.setU32((pending + 0x0c) >>> 0, parent)
+      m.setU16((pending + 0x04) >>> 0, (h + g16) & 0xffff)
+    }
+    return 1
+  }
+
+  const visited = PATH_AStar_FindPointInVisitedCache113c(m, ctx, xy)
+  if (visited !== 0) {
+    attachAStarChild(m, parent, visited)
+    const oldG = (m.u16((visited + 0x08) >>> 0) << 16) >> 16
+    if (gSigned < oldG) {
+      const h = m.u16((visited + 0x06) >>> 0)
+      m.setU16((visited + 0x04) >>> 0, (h + g16) & 0xffff)
+      m.setU32((visited + 0x0c) >>> 0, parent)
+      m.setU16((visited + 0x08) >>> 0, g16)
+      PATH_AStar_PropagateNewFScoreToChildren113c(m, ctx, visited)
+    }
+    return 1
+  }
+
+  const used = m.u32((ctx + 0x2fc4) >>> 0) >>> 0
+  if (used === 200) return 0
+  const node = (ctx + 0x404 + imul32(used, 0x38)) >>> 0
+  m.setU32((ctx + 0x2fc4) >>> 0, (used + 1) >>> 0)
+  for (let d = 0; d < 14; d++) {
+    m.setU32((node + (d << 2)) >>> 0, 0)
+  }
+  m.setU32((node + 0x0c) >>> 0, parent)
+  m.setU16((node + 0x08) >>> 0, g16)
+  const h = PATH_AStar_EvaluateHeuristic113c(xy, dwTargetXY >>> 0) & 0xffff
+  m.setU16((node + 0x06) >>> 0, h)
+  m.setU32(node, xy)
+  m.setU16((node + 0x04) >>> 0, (h + g16) & 0xffff)
+  PATH_AStar_PushToOpenAndHash113c(m, ctx, node)
+  attachAStarChild(m, parent, node)
+  return 1
+}

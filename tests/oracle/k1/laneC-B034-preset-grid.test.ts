@@ -210,13 +210,13 @@ describe('Lane C B034 real-DLL differential vectors (preset.ts, drlg-grid.ts, 12
 
   it('verifies assertion and null-guard branches in B034 functions', () => {
     const m = new SparseMemory113c();
-    expect(() => DRLGPRESET_ReadFileData113c(m, 0, 4, 0x2000)).toThrow(/line 135/);
-    expect(() => DRLGPRESET_ReadFileData113c(m, 0x1000, 4, 0)).toThrow(/line 143/);
-    expect(() => DRLGPRESET_ReadFileData113c(m, 0x1000, -1, 0x2000)).toThrow(/line 146/);
+    expect(() => DRLGPRESET_ReadFileData113c(m, 0, 4, 0x2000)).toThrow(/^D2Common assertion failed at .*:135$/);
+    expect(() => DRLGPRESET_ReadFileData113c(m, 0x1000, 4, 0)).toThrow(/^D2Common assertion failed at .*:143$/);
+    expect(() => DRLGPRESET_ReadFileData113c(m, 0x1000, -1, 0x2000)).toThrow(/^D2Common assertion failed at .*:146$/);
 
-    expect(() => DRLGPRESET_GetFileSize113c(m, 0, 0)).toThrow(/line 89/);
+    expect(() => DRLGPRESET_GetFileSize113c(m, 0, 0)).toThrow(/^D2Common assertion failed at .*:89$/);
     m.setU32(0x1000, 0);
-    expect(() => DRLGPRESET_GetFileSize113c(m, 0x1000, 0)).toThrow(/line 95/);
+    expect(() => DRLGPRESET_GetFileSize113c(m, 0x1000, 0)).toThrow(/^D2Common assertion failed at .*:95$/);
 
     // DRLGPRESET_FreePresetRoomGrids113c null chain guards
     m.setU32(0x3000 + 0x20, 0);

@@ -252,14 +252,14 @@ describe('Lane C B028 real-DLL differential vectors (maze.ts, drlg-ver.ts, room-
     const m = new SparseMemory113c();
 
     // 1. 0x6FD5E3E0: pLevel == 0 and pMaze == 0
-    expect(() => DRLGMAZE_HasMapDS1113c(m, 0)).toThrow(/line 28/);
+    expect(() => DRLGMAZE_HasMapDS1113c(m, 0)).toThrow(/^D2Common assertion failed at .*:28$/);
     m.setU32(0x100 + 0x14, 0);
-    expect(() => DRLGMAZE_HasMapDS1113c(m, 0x100)).toThrow(/line 30/);
+    expect(() => DRLGMAZE_HasMapDS1113c(m, 0x100)).toThrow(/^D2Common assertion failed at .*:30$/);
 
     // 2. 0x6FD69950: [pNode] == 0
     m.setU32(0x500 + 0x90, 0x600);
     m.setU32(0x600 + 0x00, 0);
-    expect(() => DRLGROOMTILE_GetWarpLevelsArray113c(m, 0x500, 1)).toThrow(/line 418/);
+    expect(() => DRLGROOMTILE_GetWarpLevelsArray113c(m, 0x500, 1)).toThrow(/^D2Common assertion failed at .*:418$/);
 
     // 3. 0x6FD6B4B0: dir > 3
     m.setU32(0x700 + 0x10, 0x720);
@@ -267,20 +267,20 @@ describe('Lane C B028 real-DLL differential vectors (maze.ts, drlg-ver.ts, room-
     m.setU32(0x740 + 0x10, 0x760);
     m.setU32(0x800 + 0x10, 0x780);
     m.setU32(0x800 + 0x04, 4);
-    expect(() => DRLGVER_CreateVerticesForRoom113c(m, 0, 0x700, 0x780, 1, 0x800)).toThrow(/line 109/);
+    expect(() => DRLGVER_CreateVerticesForRoom113c(m, 0, 0x700, 0x780, 1, 0x800)).toThrow(/^D2Common assertion failed at .*:109$/);
 
     // 4. 0x6FD6B890: pCubemain == 0, nIndex >= count
     m.setU32(SGPT_CUBEMAIN_TXT_VA, 0);
-    expect(() => DATATBLS_GetCubemainTxtRecord113c(m, 0)).toThrow(/line 846/);
+    expect(() => DATATBLS_GetCubemainTxtRecord113c(m, 0)).toThrow(/^D2Common assertion failed at .*:846$/);
     m.setU32(SGPT_CUBEMAIN_TXT_VA, 0x9000);
     m.setU32(SGPT_CUBEMAIN_RECS_VA, 4);
-    expect(() => DATATBLS_GetCubemainTxtRecord113c(m, 4)).toThrow(/line 847/);
+    expect(() => DATATBLS_GetCubemainTxtRecord113c(m, 4)).toThrow(/^D2Common assertion failed at .*:847$/);
 
     // 5. 0x6FDB8B90: fallback miss (line 115)
     for (let i = 0; i < 32; i++) {
       m.setU32(0x1000 + 0x68 + i * 4, 0);
     }
-    expect(() => DRLGROOMTILE_GetTileCache113c(m, 0x1000, 0, 0)).toThrow(/line 115/);
+    expect(() => DRLGROOMTILE_GetTileCache113c(m, 0x1000, 0, 0)).toThrow(/^D2Common assertion failed at .*:115$/);
   });
 
   it('kills >= 10/10 single-site mutations across B028 functions (>= 90% kill rate)', () => {

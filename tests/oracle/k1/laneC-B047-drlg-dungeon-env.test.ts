@@ -264,13 +264,13 @@ describe('Lane C B047 real-DLL differential vectors (drlg, dungeon, env, 16 func
   it('verifies Fog.#10023 assertion branches across B047 functions', () => {
     const m = new SparseMemory113c();
     expect(() => ENV_StepCycle113c(m, 0, 0)).toThrow(/line 1351/);
-    expect(() => ENV_ResetDefaultEnvironment113c(m, 0)).toThrow(/line 1351/);
+    expect(() => ENV_ResetDefaultEnvironment113c(m, 0)).toThrow(/^D2Common assertion failed at .*:1351$/);
     expect(() => ENV_InitEclipseEnvironment113c(m, 0)).toThrow(/line 1351/);
 
     m.setU32(0x1000 + 0x48, 0x1100);
     m.setU32(0x1000 + 0x78, 1);
     m.setU32(0x1100 + 0x00, 0);
-    expect(() => DUNGEON_SortRoomClientArray113c(m, 0x1000)).toThrow(/line 1107/);
+    expect(() => DUNGEON_SortRoomClientArray113c(m, 0x1000)).toThrow(/^D2Common assertion failed at .*:1107$/);
 
     m.setU32(0x2000 + 0x08, 0);
     m.setU32(0x2000 + 0x0c, 0);
@@ -278,27 +278,27 @@ describe('Lane C B047 real-DLL differential vectors (drlg, dungeon, env, 16 func
     m.setU32(0x2100 + 0x14, 0);
     expect(() =>
       COLLISION_StampRoomTileGridToCollGrid113c(m, 0x2000, 0, 0x2100, 1, 1),
-    ).toThrow(/line 530/);
+    ).toThrow(/^D2Common assertion failed at .*:530$/);
 
-    expect(() => DRLGROOMTILE_UpdateWindowTileCacheEntry113c(m, 0, 5)).toThrow(/line 627/);
+    expect(() => DRLGROOMTILE_UpdateWindowTileCacheEntry113c(m, 0, 5)).toThrow(/^D2Common assertion failed at .*:627$/);
     m.setU32(0x3000 + 0x10, 0);
-    expect(() => DRLGROOMTILE_UpdateWindowTileCacheEntry113c(m, 0x3000, 5)).toThrow(/line 628/);
+    expect(() => DRLGROOMTILE_UpdateWindowTileCacheEntry113c(m, 0x3000, 5)).toThrow(/^D2Common assertion failed at .*:628$/);
 
     m.setU32(0x6fdf142c, 0);
-    expect(() => DATATBLS_FindFloorWindowTileCacheEntry113c(m, 10, 0x62)).toThrow(/line 811/);
+    expect(() => DATATBLS_FindFloorWindowTileCacheEntry113c(m, 10, 0x62)).toThrow(/^D2Common assertion failed at .*:811$/);
     m.setU32(0x6fdf142c, 0x4000);
     m.setU32(0x6fdf1430, 1);
     m.setU32(0x4000, 99);
-    expect(() => DATATBLS_FindFloorWindowTileCacheEntry113c(m, 10, 0x62)).toThrow(/line 826/);
+    expect(() => DATATBLS_FindFloorWindowTileCacheEntry113c(m, 10, 0x62)).toThrow(/^D2Common assertion failed at .*:826$/);
 
     m.setU32(0x5000 + 0x28, 0);
     m.setU32(0x5000 + 0x58, 0);
-    expect(() => DUNGEON_ShouldDeactivateRoomEx113c(m, 0x5000)).toThrow(/line 1068/);
+    expect(() => DUNGEON_ShouldDeactivateRoomEx113c(m, 0x5000)).toThrow(/^D2Common assertion failed at .*:1068$/);
     m.setU32(0x5000 + 0x58, 0x5100);
     m.setU32(0x5100 + 0x1b4, 0);
-    expect(() => DUNGEON_ShouldDeactivateRoomEx113c(m, 0x5000)).toThrow(/line 1069/);
+    expect(() => DUNGEON_ShouldDeactivateRoomEx113c(m, 0x5000)).toThrow(/^D2Common assertion failed at .*:1069$/);
     m.setU32(0x5100 + 0x1b4, 0x5200);
     m.setU8(0x5200 + 0x8c, 1);
-    expect(() => DUNGEON_ShouldDeactivateRoomEx113c(m, 0x5000)).toThrow(/line 743/);
+    expect(() => DUNGEON_ShouldDeactivateRoomEx113c(m, 0x5000)).toThrow(/^D2Common assertion failed at .*:743$/);
   });
 });

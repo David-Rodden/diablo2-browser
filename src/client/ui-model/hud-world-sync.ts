@@ -894,6 +894,7 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
       let skillElemMin = 0
       let skillElemMax = 0
       let skillElemType: string | undefined = undefined
+      let skillElemBreakdown: CombatSpellDamageBreakdown | null = null
       let magicConversionPct = 0
 
       if (lvl > 0) {
@@ -1128,13 +1129,24 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
           const rawMin = evaluateLevelBand(20, [10, 19, 29, 38, 46], lvl)
           const rawMax = evaluateLevelBand(40, [10, 21, 33, 42, 50], lvl)
           const equipFirePct = playerAgg.flatSum(329, 0, ['item', 'charm', 'state'])
-          skillElemMin = Math.floor(
-            (Math.floor((rawMin * (100 + fofSyn)) / 100) * (100 + equipFirePct)) / 100,
-          )
-          skillElemMax = Math.floor(
-            (Math.floor((rawMax * (100 + fofSyn)) / 100) * (100 + equipFirePct)) / 100,
-          )
+          const withSynMin = Math.floor((rawMin * (100 + fofSyn)) / 100)
+          const withSynMax = Math.floor((rawMax * (100 + fofSyn)) / 100)
+          skillElemMin = Math.floor((withSynMin * (100 + equipFirePct)) / 100)
+          skillElemMax = Math.floor((withSynMax * (100 + equipFirePct)) / 100)
           skillElemType = 'fire'
+          skillElemBreakdown = {
+            spellType: 'fire',
+            baseMin: rawMin,
+            baseMax: rawMax,
+            synergyBonusPct: fofSyn,
+            withSynergyMin: withSynMin,
+            withSynergyMax: withSynMax,
+            masteryBonusPct: 0,
+            equipSpellDamagePct: equipFirePct,
+            auraBonusPct: 0,
+            finalMin: skillElemMin,
+            finalMax: skillElemMax,
+          }
         } else if (def.eType && def.eType !== '') {
           const calcState = createInitialState(
             (resolveClassCode(self.charClass) ?? def.classCode ?? 'ama') as any,
@@ -1171,6 +1183,19 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
                 ? Math.floor((dmg.withSynergyMax256 + Math.trunc((dmg.withSynergyMax256 * totalElemPct) / 100)) / 256)
                 : Math.floor((dmg.withSynergyMax * (100 + totalElemPct)) / 100)
             skillElemType = def.eType
+            skillElemBreakdown = {
+              spellType: dmg.type,
+              baseMin: dmg.baseMin,
+              baseMax: dmg.baseMax,
+              synergyBonusPct: dmg.synergyBonusPct,
+              withSynergyMin: dmg.withSynergyMin,
+              withSynergyMax: dmg.withSynergyMax,
+              masteryBonusPct,
+              equipSpellDamagePct,
+              auraBonusPct: 0,
+              finalMin: skillElemMin,
+              finalMax: skillElemMax,
+            }
           }
         }
       }
@@ -1275,22 +1300,43 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
         }
       }
 
+      const isThrownSkill =
+        skillId === 2 ||
+        skillId === 4 ||
+        skillId === 15 ||
+        skillId === 20 ||
+        skillId === 25 ||
+        skillId === 35 ||
+        skillId === 140 ||
+        (meta ? meta.itypea1 === 'thro' : false)
       const defaultRange =
-        skillId === 2 || skillId === 4
+        isThrownSkill
           ? 'rng'
           : isGenericAttackSkill(skillId)
             ? 'both'
             : 'none'
+      const isMultiComponentSkill =
+        skillId === 15 ||
+        skillId === 16 ||
+        skillId === 24 ||
+        skillId === 25 ||
+        skillId === 27 ||
+        skillId === 31 ||
+        skillId === 34 ||
+        skillId === 35 ||
+        skillId === 238
+      const multiComponentOrder: 'elem-first' | 'weapon-first' =
+        skillId === 24 || skillId === 34 ? 'elem-first' : 'weapon-first'
 
       return {
         id: skillId,
         level: lvl,
-        weapSel: meta ? meta.weapsel || 0 : 0,
+        weapSel: skillId === 4 || skillId === 5 ? 1 : meta ? meta.weapsel || 0 : 0,
         kick: isKick,
         srcDam,
         itypeA1,
-        itypeA1IsThrown: skillId === 2 || skillId === 4 || (meta ? meta.itypea1 === 'thro' : false),
-        range: def && def.range ? def.range : defaultRange,
+        itypeA1IsThrown: isThrownSkill,
+        range: isThrownSkill ? 'rng' : def && def.range ? def.range : defaultRange,
         toHitPercent,
         damagePercent,
         skillPhysical256,
@@ -1299,6 +1345,11 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
         skillElemMin,
         skillElemMax,
         skillElemType,
+        skillElemBreakdown,
+        isMultiComponentSkill,
+        multiComponentOrder,
+        physToElemConvertPct: skillId === 20 ? 100 : 0,
+        physToElemConvertType: skillId === 20 ? 'ltng' : undefined,
         spellDamage,
         spellBreakdown,
         magicConversionPct,
@@ -1449,15 +1500,27 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
 
     attrs.leftSkillDmg = cStats.left.damageText
     attrs.leftSkillDmgColor = cStats.left.damageColor
+    attrs.leftSkillDmgTop = cStats.left.damageTopText
+    attrs.leftSkillDmgBottom = cStats.left.damageBottomText
+    attrs.leftSkillDmgTopColor = cStats.left.damageTopColor
+    attrs.leftSkillDmgBottomColor = cStats.left.damageBottomColor
     attrs.leftDamageFormula = cStats.left.formulaBreakdown
     attrs.leftAR = cStats.left.attackRating
     attrs.leftARColor = cStats.left.attackRatingColor
+    attrs.leftARTop = cStats.left.attackRatingTop
+    attrs.leftARBottom = cStats.left.attackRatingBottom
 
     attrs.rightSkillDmg = cStats.right.damageText
     attrs.rightSkillDmgColor = cStats.right.damageColor
+    attrs.rightSkillDmgTop = cStats.right.damageTopText
+    attrs.rightSkillDmgBottom = cStats.right.damageBottomText
+    attrs.rightSkillDmgTopColor = cStats.right.damageTopColor
+    attrs.rightSkillDmgBottomColor = cStats.right.damageBottomColor
     attrs.rightDamageFormula = cStats.right.formulaBreakdown
     attrs.rightAR = cStats.right.attackRating
     attrs.rightARColor = cStats.right.attackRatingColor
+    attrs.rightARTop = cStats.right.attackRatingTop
+    attrs.rightARBottom = cStats.right.attackRatingBottom
 
     attrs.leftSkillId = self.leftSkill
     attrs.rightSkillId = self.rightSkill

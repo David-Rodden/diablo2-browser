@@ -54,6 +54,7 @@ export const D2COMMON_GDWBITMASKS_IAT_VA_113C = 0x6fdd90b0
 export const DATATABLES_OFF_113C = {
   pStatesTxt: 0xbc,
   nStatesTxtRecordCount: 0xc4,
+  fStateMasksDC: 0xdc,
   fStateMasksAura: 0xf8,
   fStateMasksExp: 0xfc,
   fStateMasksOnCurse: 0x144,

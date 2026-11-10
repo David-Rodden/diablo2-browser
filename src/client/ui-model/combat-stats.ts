@@ -304,6 +304,28 @@ export interface CombatSkillInput {
   readonly skillElemMin?: number | undefined
   readonly skillElemMax?: number | undefined
   readonly skillElemType?: string | undefined
+  /**
+   * Detailed breakdown for the skill's attached elemental/bolt/explosion/poison damage
+   * (base range, synergy %, mastery %, equip +% skill damage).
+   */
+  readonly skillElemBreakdown?: CombatSpellDamageBreakdown | null | undefined
+  /**
+   * True when `D2Client.dll` (`descdam = 6, 17, 22, 23`) renders the weapon hit damage and
+   * the attached skill elemental/bolt/explosion/poison damage on two stacked lines (`0x6FADD3C0`).
+   */
+  readonly isMultiComponentSkill?: boolean | undefined
+  /**
+   * Line order for 2-line multi-component skills (`0x6FADD3C0`):
+   * - `'elem-first'`: `descdam = 17` (#24 Charged Strike, #34 Lightning Strike) — top line is Skill Lightning, bottom line is Weapon Melee.
+   * - `'weapon-first'`: `descdam = 6, 22, 23` (#15/#25 Poison/Plague Jav, #35 Lightning Fury, #16/#27/#31 Bow Arrows, #238 Rabies) — top line is Weapon Hit, bottom line is Skill Elemental/Poison.
+   */
+  readonly multiComponentOrder?: 'elem-first' | 'weapon-first' | undefined
+  /**
+   * Percentage (0..100) of physical weapon damage converted to elemental damage
+   * (e.g. #20 Lightning Bolt `descdam = 21` @ `0x6FAE08C0`: 100% physical throw damage converted to lightning).
+   */
+  readonly physToElemConvertPct?: number | undefined
+  readonly physToElemConvertType?: string | undefined
 }
 
 export interface CombatShield {
@@ -437,6 +459,14 @@ export interface CombatDamageFormulaBreakdown {
   readonly skillElemMin?: number | undefined
   readonly skillElemMax?: number | undefined
   readonly skillElemType?: string | undefined
+  /** True when the skill displays weapon hit damage and attached skill damage separately (`descdam = 6, 17, 22, 23`). */
+  readonly isMultiComponent?: boolean | undefined
+  readonly multiComponentOrder?: 'elem-first' | 'weapon-first' | undefined
+  readonly weaponHitMin?: number | undefined
+  readonly weaponHitMax?: number | undefined
+  readonly attachedSkillBreakdown?: CombatSpellDamageBreakdown | undefined
+  /** Secondary weapon formula breakdown when dual-wielding two weapons (`descdam = 1, 13, 19, 20`). */
+  readonly secondaryWeaponBreakdown?: CombatDamageFormulaBreakdown | undefined
   /** Optional spell damage breakdown when kind === 'spell'. */
   readonly spellBreakdown?: CombatSpellDamageBreakdown | undefined
   /** Total displayed damage on character sheet. */
@@ -453,6 +483,17 @@ export interface CombatHandStats {
   readonly damage: CombatDamageComponents
   readonly damageText: string
   readonly damageColor: CombatColor
+  /** Top / bottom stacked damage strings for 2-line skills (`0x6FADD3C0`). */
+  readonly damageTopText?: string | undefined
+  readonly damageBottomText?: string | undefined
+  readonly damageTopColor?: CombatColor | undefined
+  readonly damageBottomColor?: CombatColor | undefined
+  /** Secondary weapon damage / AR when dual-wielding (`0x6FAE0B40` & `0x6FADD500`). */
+  readonly secondaryDamage?: CombatDamageComponents | undefined
+  readonly secondaryDamageText?: string | undefined
+  readonly secondaryAttackRating?: number | undefined
+  readonly attackRatingTop?: number | undefined
+  readonly attackRatingBottom?: number | undefined
   /** Arm whose weapon the skill uses (sub_6FC7C7B0), null = unarmed / kick. */
   readonly weaponArm: 'right' | 'left' | null
   /** Detailed 1.13c damage formula breakdown for character-sheet hover tooltip. */
@@ -472,6 +513,14 @@ export interface CombatStats {
   readonly rightSkillDmg: string
   readonly leftSkillDmgColor: CombatColor
   readonly rightSkillDmgColor: CombatColor
+  readonly leftSkillDmgTop?: string | undefined
+  readonly leftSkillDmgBottom?: string | undefined
+  readonly rightSkillDmgTop?: string | undefined
+  readonly rightSkillDmgBottom?: string | undefined
+  readonly leftARTop?: number | undefined
+  readonly leftARBottom?: number | undefined
+  readonly rightARTop?: number | undefined
+  readonly rightARBottom?: number | undefined
   readonly left: CombatHandStats
   readonly right: CombatHandStats
 }
@@ -611,9 +660,54 @@ export function selectSkillWeapon(input: CombatInput, skill: CombatSkillInput): 
   }
   if (candidate !== null) {
     const item = arm(input, candidate)
-    if (isWeaponItem(item) && item.canBeEquipped) return candidate
+    if (isWeaponItem(item) && item.canBeEquipped) {
+      if (skill.itypeA1IsThrown && skill.weapSel !== 1 && !item.weapon.throwable) {
+        const other: Side = candidate === 'right' ? 'left' : 'right'
+        const otherItem = arm(input, other)
+        if (isWeaponItem(otherItem) && otherItem.canBeEquipped && otherItem.weapon.throwable) {
+          return other
+        }
+      }
+      return candidate
+    }
   }
   return equipped
+}
+
+/**
+ * Ground Truth (`D2Client.dll 0x6FAE0B40` & `0x6FADD500`, `descdam = 1, 13, 19, 20`):
+ * Returns `[primarySide, secondarySide]` when the player is dual-wielding two valid weapons
+ * for a skill that evaluates and displays both weapons separately (`#0 Attack`, `#133 Double Swing`,
+ * `#140 Double Throw`, `#147 Frenzy`, `#151 Whirlwind`, `#233 Maul`, `#259 Fists of Fire`,
+ * `#260 Dragon Claw`, `#269 Claws of Thunder`, `#274 Blades of Ice`).
+ */
+function resolveDualWieldArms(input: CombatInput, skill: CombatSkillInput): readonly [Side, Side] | null {
+  if (!canDualWield(input.charClass)) return null
+  const r = input.rightArm
+  const l = input.leftArm
+  if (!isWeaponItem(r) || !r.canBeEquipped || !isWeaponItem(l) || !l.canBeEquipped) return null
+  const id = skill.id
+  const isDualSkill =
+    id === 0 ||
+    id === 133 ||
+    id === 140 ||
+    id === 147 ||
+    id === 151 ||
+    id === 233 ||
+    id === 259 ||
+    id === 260 ||
+    id === 269 ||
+    id === 274
+  if (!isDualSkill) return null
+  if (id === 140) {
+    if (!r.weapon.throwable || !l.weapon.throwable) return null
+  }
+  if (input.charClass === 'ass' || (input.charClass as unknown) === 6 || id === 259 || id === 260 || id === 269 || id === 274) {
+    if (!isClawItem(r) || !isClawItem(l)) return null
+  }
+  const primary = primaryWeaponSide(input) ?? 'right'
+  const secondary: Side = primary === 'right' ? 'left' : 'right'
+  return [primary, secondary]
 }
 
 /**
@@ -1164,6 +1258,35 @@ function damageFor(input: CombatInput, skill: CombatSkillInput, selected: Side |
     convMagicMin = convMin256 >> 8
     convMagicMax = convMax256 >> 8
   }
+  const elemConvPct = Math.max(0, Math.min(100, skill.physToElemConvertPct ?? 0))
+  let convFireMin = 0
+  let convFireMax = 0
+  let convColdMin = 0
+  let convColdMax = 0
+  let convLightMin = 0
+  let convLightMax = 0
+  if (elemConvPct > 0) {
+    const convElemMin256 = calculatePercentage(phys.min, elemConvPct, 100)
+    const convElemMax256 = calculatePercentage(phys.max, elemConvPct, 100)
+    phys = {
+      min: Math.max(0, phys.min - convElemMin256),
+      max: Math.max(0, phys.max - convElemMax256),
+    }
+    const convCh = resolveSkillElemChannel(skill.physToElemConvertType ?? skill.skillElemType)
+    if (convCh === 'fire') {
+      convFireMin = convElemMin256 >> 8
+      convFireMax = convElemMax256 >> 8
+    } else if (convCh === 'cold') {
+      convColdMin = convElemMin256 >> 8
+      convColdMax = convElemMax256 >> 8
+    } else if (convCh === 'magic') {
+      convMagicMin += convElemMin256 >> 8
+      convMagicMax += convElemMax256 >> 8
+    } else {
+      convLightMin = convElemMin256 >> 8
+      convLightMax = convElemMax256 >> 8
+    }
+  }
   const elemSrcDam = skill.kick ? 128 : srcDam
   const fire = elementRange(unit, S.FIREMINDAM, S.FIREMAXDAM, S.PASSIVE_FIRE_MASTERY, elemSrcDam)
   const light = elementRange(unit, S.LIGHTMINDAM, S.LIGHTMAXDAM, S.PASSIVE_LTNG_MASTERY, elemSrcDam)
@@ -1177,12 +1300,12 @@ function damageFor(input: CombatInput, skill: CombatSkillInput, selected: Side |
     kind: 'weapon',
     physMin: phys.min >> 8,
     physMax: phys.max >> 8,
-    fireMin: fire.min + (skillElemMax > 0 && elemChannel === 'fire' ? skillElemMin : 0),
-    fireMax: fire.max + (skillElemMax > 0 && elemChannel === 'fire' ? skillElemMax : 0),
-    coldMin: cold.min + (skillElemMax > 0 && elemChannel === 'cold' ? skillElemMin : 0),
-    coldMax: cold.max + (skillElemMax > 0 && elemChannel === 'cold' ? skillElemMax : 0),
-    lightMin: light.min + (skillElemMax > 0 && elemChannel === 'light' ? skillElemMin : 0),
-    lightMax: light.max + (skillElemMax > 0 && elemChannel === 'light' ? skillElemMax : 0),
+    fireMin: fire.min + convFireMin + (skillElemMax > 0 && elemChannel === 'fire' ? skillElemMin : 0),
+    fireMax: fire.max + convFireMax + (skillElemMax > 0 && elemChannel === 'fire' ? skillElemMax : 0),
+    coldMin: cold.min + convColdMin + (skillElemMax > 0 && elemChannel === 'cold' ? skillElemMin : 0),
+    coldMax: cold.max + convColdMax + (skillElemMax > 0 && elemChannel === 'cold' ? skillElemMax : 0),
+    lightMin: light.min + convLightMin + (skillElemMax > 0 && elemChannel === 'light' ? skillElemMin : 0),
+    lightMax: light.max + convLightMax + (skillElemMax > 0 && elemChannel === 'light' ? skillElemMax : 0),
     magicMin: magic.min + convMagicMin + (skillElemMax > 0 && elemChannel === 'magic' ? skillElemMin : 0),
     magicMax: magic.max + convMagicMax + (skillElemMax > 0 && elemChannel === 'magic' ? skillElemMax : 0),
     poisonMin: poison.min + (skillElemMax > 0 && elemChannel === 'poison' ? skillElemMin : 0),
@@ -1565,25 +1688,111 @@ function buildFormulaBreakdown(
     skillElemMin,
     skillElemMax,
     skillElemType,
+    isMultiComponent: skill.isMultiComponentSkill === true && skillElemMax > 0 ? true : undefined,
+    multiComponentOrder:
+      skill.isMultiComponentSkill === true && skillElemMax > 0
+        ? (skill.multiComponentOrder ?? 'weapon-first')
+        : undefined,
+    weaponHitMin:
+      skill.isMultiComponentSkill === true && skillElemMax > 0
+        ? Math.max(0, finalMin - skillElemMin)
+        : undefined,
+    weaponHitMax:
+      skill.isMultiComponentSkill === true && skillElemMax > 0
+        ? Math.max(0, finalMax - skillElemMax)
+        : undefined,
+    attachedSkillBreakdown: skill.skillElemBreakdown ?? undefined,
     finalMin,
     finalMax,
   }
 }
 
 function handStats(input: CombatInput, skill: CombatSkillInput): CombatHandStats {
-  const selected = isWeaponSkill(skill) && skill.kick ? null : selectSkillWeapon(input, skill)
+  const dualArms = isWeaponSkill(skill) && !skill.kick ? resolveDualWieldArms(input, skill) : null
+  const selected = dualArms
+    ? dualArms[0]
+    : isWeaponSkill(skill) && skill.kick
+      ? null
+      : selectSkillWeapon(input, skill)
   const merged = mergedArms(input, skill, skill.kick ? null : selected)
   const unit = makeUnitView(input, merged, true)
   const unitWithoutStates = makeUnitView(input, merged, false)
   const damage = damageFor(input, skill, selected, unit)
-  const formulaBreakdown = buildFormulaBreakdown(input, skill, selected, unit, unitWithoutStates, damage)
+  const primaryText = composeDamageText(damage)
+  const primaryAr = attackRatingFor(input, skill, selected, unit, input.dexterity)
+  const primaryBaseAr = attackRatingFor(input, skill, selected, unitWithoutStates, input.dexterityWithoutStates)
+  const arColor = flagColor(input, 'attred', 'attblue')
+  const dmgColor = flagColor(input, 'damred', 'damblue')
+  let formulaBreakdown = buildFormulaBreakdown(input, skill, selected, unit, unitWithoutStates, damage)
+
+  if (dualArms && damage.kind !== 'none') {
+    const secSide = dualArms[1]
+    const secMerged = mergedArms(input, skill, secSide)
+    const secUnit = makeUnitView(input, secMerged, true)
+    const secUnitWithoutStates = makeUnitView(input, secMerged, false)
+    const secDamage = damageFor(input, skill, secSide, secUnit)
+    const secText = composeDamageText(secDamage)
+    const secAr = attackRatingFor(input, skill, secSide, secUnit, input.dexterity)
+    const secBreakdown = buildFormulaBreakdown(input, skill, secSide, secUnit, secUnitWithoutStates, secDamage)
+    formulaBreakdown = {
+      ...formulaBreakdown,
+      secondaryWeaponBreakdown: secBreakdown,
+    }
+    const usesDualArBox = skill.id !== 151 && skill.id !== 233
+    return {
+      attackRating: primaryAr,
+      baseAttackRating: primaryBaseAr,
+      attackRatingColor: arColor,
+      damage,
+      damageText: primaryText,
+      damageColor: dmgColor,
+      damageTopText: primaryText,
+      damageBottomText: secText,
+      damageTopColor: dmgColor,
+      damageBottomColor: dmgColor,
+      secondaryDamage: secDamage,
+      secondaryDamageText: secText,
+      secondaryAttackRating: secAr,
+      attackRatingTop: usesDualArBox ? primaryAr : undefined,
+      attackRatingBottom: usesDualArBox ? secAr : undefined,
+      weaponArm: selected,
+      formulaBreakdown,
+    }
+  }
+
+  const skillElemMin = Math.max(0, Math.trunc(skill.skillElemMin ?? 0))
+  const skillElemMax = Math.max(0, Math.trunc(skill.skillElemMax ?? 0))
+  if (skill.isMultiComponentSkill && skillElemMax > 0 && damage.kind === 'weapon') {
+    const totalMin = damage.physMin + damage.fireMin + damage.coldMin + damage.lightMin + damage.magicMin + damage.poisonMin
+    const totalMax = damage.physMax + damage.fireMax + damage.coldMax + damage.lightMax + damage.magicMax + damage.poisonMax
+    const weaponHitMin = Math.max(0, totalMin - skillElemMin)
+    const weaponHitMax = Math.max(0, totalMax - skillElemMax)
+    const weaponHitText = `${weaponHitMin}-${weaponHitMax}`
+    const skillElemText = `${skillElemMin}-${skillElemMax}`
+    const order = skill.multiComponentOrder ?? 'weapon-first'
+    return {
+      attackRating: primaryAr,
+      baseAttackRating: primaryBaseAr,
+      attackRatingColor: arColor,
+      damage,
+      damageText: primaryText,
+      damageColor: dmgColor,
+      damageTopText: order === 'elem-first' ? skillElemText : weaponHitText,
+      damageBottomText: order === 'elem-first' ? weaponHitText : skillElemText,
+      damageTopColor: dmgColor,
+      damageBottomColor: dmgColor,
+      weaponArm: selected,
+      formulaBreakdown,
+    }
+  }
+
   return {
-    attackRating: attackRatingFor(input, skill, selected, unit, input.dexterity),
-    baseAttackRating: attackRatingFor(input, skill, selected, unitWithoutStates, input.dexterityWithoutStates),
-    attackRatingColor: flagColor(input, 'attred', 'attblue'),
+    attackRating: primaryAr,
+    baseAttackRating: primaryBaseAr,
+    attackRatingColor: arColor,
     damage,
-    damageText: composeDamageText(damage),
-    damageColor: flagColor(input, 'damred', 'damblue'),
+    damageText: primaryText,
+    damageColor: dmgColor,
     weaponArm: selected,
     formulaBreakdown,
   }
@@ -1629,6 +1838,14 @@ export function computeCombatStats(input: CombatInput): CombatStats {
     rightSkillDmg: right.damageText,
     leftSkillDmgColor: left.damageColor,
     rightSkillDmgColor: right.damageColor,
+    leftSkillDmgTop: left.damageTopText,
+    leftSkillDmgBottom: left.damageBottomText,
+    rightSkillDmgTop: right.damageTopText,
+    rightSkillDmgBottom: right.damageBottomText,
+    leftARTop: left.attackRatingTop,
+    leftARBottom: left.attackRatingBottom,
+    rightARTop: right.attackRatingTop,
+    rightARBottom: right.attackRatingBottom,
     left,
     right,
   }

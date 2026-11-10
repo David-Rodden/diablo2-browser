@@ -35,6 +35,7 @@ import {
 } from '../mem/layout.generated.ts'
 import { seedNext, seedRoll, type D2SeedStrc } from '../prng.ts'
 import { mulDiv113c } from '../common/int-math.ts'
+import { SKILLS_GetUsedSkill113c } from '../common/skills.ts'
 import { D2COMMON_SGPT_DATATABLES_VA_113C } from '../common/inline-helpers.ts'
 import {
   STATLIST_AddUnitStat113c,
@@ -699,16 +700,6 @@ export function UNITS_CanDualWield113c(m: Memory113c, pUnit: number): number {
     return classId >= 417 && classId <= 418 ? 1 : 0
   }
   return 0
-}
-
-/**
- * `@va D2Common:0x6FD803A0` (`D2Common.#10511` `SKILLS_GetUsedSkill`):
- * Returns `pUnit->pSkills (+0xA8)->pUsedSkill (+0x10)`.
- */
-export function SKILLS_GetUsedSkill113c(m: Memory113c, pUnit: number): number {
-  if (pUnit === 0) return 0
-  const pSkills = m.get(pUnit, D2UnitStrc.pSkills)
-  return pSkills !== 0 ? m.u32(pSkills + 0x10) : 0
 }
 
 /**

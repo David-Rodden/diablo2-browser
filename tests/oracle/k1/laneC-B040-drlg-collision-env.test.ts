@@ -265,11 +265,11 @@ describe('Lane C B040 real-DLL differential vectors (drlg, collision, env, 17 fu
 
   it('verifies Fog.#10023 assertion branches across B040 functions', () => {
     const m = new SparseMemory113c();
-    expect(() => DRLG_InitActTownFloorTileData113c(m, 0, 0x2000)).toThrow(/line 1079/);
-    expect(() => DRLG_InitActTownFloorTileData113c(m, 0x1000, 0)).toThrow(/line 1080/);
+    expect(() => DRLG_InitActTownFloorTileData113c(m, 0, 0x2000)).toThrow(/^D2Common assertion failed at .*:1079$/);
+    expect(() => DRLG_InitActTownFloorTileData113c(m, 0x1000, 0)).toThrow(/^D2Common assertion failed at .*:1080$/);
     m.setU8(0x1000 + 0x480, 0);
     m.setU32(0x1000 + 0x0c, 0);
-    expect(() => DRLG_InitActTownFloorTileData113c(m, 0x1000, 0x2000)).toThrow(/line 1100/);
+    expect(() => DRLG_InitActTownFloorTileData113c(m, 0x1000, 0x2000)).toThrow(/^D2Common assertion failed at .*:1100$/);
 
     expect(() => ENV_GetCycleState113c(m, 0, 0x2000, 0x2004, 0x2008)).toThrow(/line 1351/);
 
@@ -277,20 +277,20 @@ describe('Lane C B040 real-DLL differential vectors (drlg, collision, env, 17 fu
     m.setU32(0x3000 + 0x04, 10);
     m.setU32(0x3000 + 0x08, 20);
     m.setU32(0x3000 + 0x0c, 20);
-    expect(() => COLLISION_SplitClipRectByRoomBounds113c(m, 0, 0x3000, 0x3100)).toThrow(/line 709/);
+    expect(() => COLLISION_SplitClipRectByRoomBounds113c(m, 0, 0x3000, 0x3100)).toThrow(/^D2Common assertion failed at .*:709$/);
     expect(() => D2CMP_10011_GetTileSubtileFlagsPtr113c(m, 0)).toThrow(/line 129/);
-    expect(() => COLLISION_InitBoundingBox113c(m, 0, 1, 2)).toThrow(/line 161/);
+    expect(() => COLLISION_InitBoundingBox113c(m, 0, 1, 2)).toThrow(/^D2Common assertion failed at .*:161$/);
 
     m.setU32(0x6fdf1434, 0);
-    expect(() => DATATBLS_FindWallTileCacheEntry113c(m, 10)).toThrow(/line 867/);
+    expect(() => DATATBLS_FindWallTileCacheEntry113c(m, 10)).toThrow(/^D2Common assertion failed at .*:867$/);
     m.setU32(0x6fdf1434, 0x4000);
     m.setU32(0x6fdf1438, 1);
     m.setU32(0x4000, 99);
-    expect(() => DATATBLS_FindWallTileCacheEntry113c(m, 10)).toThrow(/line 876/);
+    expect(() => DATATBLS_FindWallTileCacheEntry113c(m, 10)).toThrow(/^D2Common assertion failed at .*:876$/);
 
     m.setU32(0x5000 + 0x64, 0);
-    expect(() => DRLGLOGIC_GetRoomCoordListAtSubtile113c(m, 0x5000, 0, 0)).toThrow(/line 668/);
-    expect(() => DRLGLOGIC_GetRoomCoordListFromWorldSubtile113c(m, 0x5000, 0, 0)).toThrow(/line 668/);
-    expect(() => DRLGLOGIC_GetRoomCoordListIndexAtSubtile113c(m, 0x5000, 0, 0)).toThrow(/line 668/);
+    expect(() => DRLGLOGIC_GetRoomCoordListAtSubtile113c(m, 0x5000, 0, 0)).toThrow(/^D2Common assertion failed at .*:668$/);
+    expect(() => DRLGLOGIC_GetRoomCoordListFromWorldSubtile113c(m, 0x5000, 0, 0)).toThrow(/^D2Common assertion failed at .*:668$/);
+    expect(() => DRLGLOGIC_GetRoomCoordListIndexAtSubtile113c(m, 0x5000, 0, 0)).toThrow(/^D2Common assertion failed at .*:668$/);
   });
 });

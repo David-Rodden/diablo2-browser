@@ -211,40 +211,40 @@ describe('Lane C B031 real-DLL differential vectors (dungeon.ts, 18 functions)',
     const m = new SparseMemory113c();
 
     // 1. 0x6FD7D600: pDrlg == 0 and pDrlg->pRoomEx == 0
-    expect(() => DRLG_GetRoomExFromCoordinates113c(m, 0, 100, 100)).toThrow(/line 765/);
+    expect(() => DRLG_GetRoomExFromCoordinates113c(m, 0, 100, 100)).toThrow(/^D2Common assertion failed at .*:765$/);
     m.setU32(0x100 + 0x10, 0);
-    expect(() => DRLG_GetRoomExFromCoordinates113c(m, 0x100, 100, 100)).toThrow(/line 766/);
+    expect(() => DRLG_GetRoomExFromCoordinates113c(m, 0x100, 100, 100)).toThrow(/^D2Common assertion failed at .*:766$/);
 
     // 2. 0x6FD8B350: pRoom == 0
-    expect(() => DUNGEON_UpdateRoomIdleCounter113c(m, 0)).toThrow(/line 1198/);
+    expect(() => DUNGEON_UpdateRoomIdleCounter113c(m, 0)).toThrow(/^D2Common assertion failed at .*:1198$/);
 
     // 3. 0x6FD8B3A0: null entry in pClientList
     m.setU32(0x200 + 0x78, 1);
     m.setU32(0x200 + 0x48, 0x250);
     m.setU32(0x250, 0);
-    expect(() => DUNGEON_VerifyRoomClientsNonNull113c(m, 0x200)).toThrow(/line 1107/);
+    expect(() => DUNGEON_VerifyRoomClientsNonNull113c(m, 0x200)).toThrow(/^D2Common assertion failed at .*:1107$/);
 
     // 4. 0x6FD8B3F0, 0x6FD8B440, 0x6FD8B470, 0x6FD8B4A0, 0x6FD8B550, 0x6FD8B5B0
-    expect(() => DUNGEON_SetRoomFlag2_113c(m, 0, 1)).toThrow(/line 1080/);
-    expect(() => DUNGEON_CheckRoomFlag2_113c(m, 0)).toThrow(/line 1071/);
-    expect(() => DUNGEON_GetRoomPortalList113c(m, 0)).toThrow(/line 934/);
-    expect(() => DUNGEON_FreeRoomPortalList113c(m, 0)).toThrow(/line 912/);
-    expect(() => DUNGEON_GetRoomExFromRoom113c(m, 0)).toThrow(/line 798/);
-    expect(() => DUNGEON_GetCollisionGridFromRoomFast113c(m, 0)).toThrow(/line 709/);
+    expect(() => DUNGEON_SetRoomFlag2_113c(m, 0, 1)).toThrow(/^D2Common assertion failed at .*:1080$/);
+    expect(() => DUNGEON_CheckRoomFlag2_113c(m, 0)).toThrow(/^D2Common assertion failed at .*:1071$/);
+    expect(() => DUNGEON_GetRoomPortalList113c(m, 0)).toThrow(/^D2Common assertion failed at .*:934$/);
+    expect(() => DUNGEON_FreeRoomPortalList113c(m, 0)).toThrow(/^D2Common assertion failed at .*:912$/);
+    expect(() => DUNGEON_GetRoomExFromRoom113c(m, 0)).toThrow(/^D2Common assertion failed at .*:798$/);
+    expect(() => DUNGEON_GetCollisionGridFromRoomFast113c(m, 0)).toThrow(/^D2Common assertion failed at .*:709$/);
 
     // 5. 0x6FD8BA20, 0x6FD8BA60, 0x6FD8BD60, 0x6FD8BE90, 0x6FD8BF60, 0x6FD8BFB0, 0x6FD8C020, 0x6FD8C330
-    expect(() => DUNGEON_GetAdjacentRoomsListFromRoom113c(m, 0, 0x300, 0x304)).toThrow(/line 236/);
-    expect(() => DUNGEON_GetRoomCoordinates113c(m, 0x100, 0)).toThrow(/line 209/);
+    expect(() => DUNGEON_GetAdjacentRoomsListFromRoom113c(m, 0, 0x300, 0x304)).toThrow(/^D2Common assertion failed at .*:236$/);
+    expect(() => DUNGEON_GetRoomCoordinates113c(m, 0x100, 0)).toThrow(/^D2Common assertion failed at .*:209$/);
     m.setU32(0x400 + 0x10, 0x450);
     m.setU32(0x450 + 0x64, 0);
-    expect(() => DUNGEON_GetLogicalRoomField30_113c(m, 0x400)).toThrow(/line 717/);
-    expect(() => DUNGEON_AreAllAdjacentRoomsActive113c(m, 0)).toThrow(/line 1007/);
-    expect(() => DUNGEON_HasRoomExWaypointFlags113c(m, 0)).toThrow(/line 867/);
+    expect(() => DUNGEON_GetLogicalRoomField30_113c(m, 0x400)).toThrow(/^D2Common assertion failed at .*:717$/);
+    expect(() => DUNGEON_AreAllAdjacentRoomsActive113c(m, 0)).toThrow(/^D2Common assertion failed at .*:1007$/);
+    expect(() => DUNGEON_HasRoomExWaypointFlags113c(m, 0)).toThrow(/^D2Common assertion failed at .*:867$/);
     m.setU32(0x500 + 0x10, 0);
-    expect(() => DUNGEON_HasRoomExWaypointFlags113c(m, 0x500)).toThrow(/line 630/);
-    expect(() => DUNGEON_GetLevelIdIfNotHidden113c(m, 0x500)).toThrow(/line 619/);
-    expect(() => DUNGEON_AcquireRoomExDT1Mask113c(m, 0)).toThrow(/line 699/);
-    expect(() => DUNGEON_CheckPresetRoomFlag80_113c(m, 0)).toThrow(/line 1445/);
+    expect(() => DUNGEON_HasRoomExWaypointFlags113c(m, 0x500)).toThrow(/^D2Common assertion failed at .*:630$/);
+    expect(() => DUNGEON_GetLevelIdIfNotHidden113c(m, 0x500)).toThrow(/^D2Common assertion failed at .*:619$/);
+    expect(() => DUNGEON_AcquireRoomExDT1Mask113c(m, 0)).toThrow(/^D2Common assertion failed at .*:699$/);
+    expect(() => DUNGEON_CheckPresetRoomFlag80_113c(m, 0)).toThrow(/^D2Common assertion failed at .*:1445$/);
   });
 
   it('kills >= 10/10 single-site mutations across B031 functions (>= 90% kill rate)', () => {

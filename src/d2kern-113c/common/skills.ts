@@ -34,10 +34,14 @@
  * - `0x6FDCF5E0` `UNITS_GetUnitDistanceToCoordinates113c` (`#10080`)
  */
 import type { Memory113c } from '../mem/sparse-memory.ts'
-import { D2CommonAssertError } from './inline-helpers.ts'
-import { imul32, sar32, sdiv32 } from './int-math.ts'
+import { D2CommonAssertError, DATATBLS_CheckMonStats2FlagInline113c } from './inline-helpers.ts'
+import { imul32, mulDiv113c, sar32, sdiv32 } from './int-math.ts'
+import { STATE_DWORDS_113C, STATES_CheckStateMaskOnUnit113c, STATLIST_FindStatIndex113c } from './statlist.ts'
 import {
   D2DynamicPathStrc,
+  D2InventoryGridStrc,
+  D2InventoryStrc,
+  D2ItemStatCostTxt_SIZE,
   D2MissilesTxt,
   D2MissilesTxt_SIZE,
   D2MonStats2Txt_SIZE,
@@ -51,7 +55,18 @@ import {
   D2StaticPathStrc,
   D2StatListExStrc,
   D2UnitStrc,
+  type FieldLayout113c,
 } from '../mem/layout.generated.ts'
+
+/**
+ * `@va D2Common:0x6FD803A0` (`D2Common.#10511` `SKILLS_GetUsedSkill`):
+ * Returns `pUnit->pSkills (+0xA8)->pUsedSkill (+0x10)`.
+ */
+export function SKILLS_GetUsedSkill113c(m: Memory113c, pUnit: number): number {
+  if (pUnit === 0) return 0
+  const pSkills = m.get(pUnit, D2UnitStrc.pSkills)
+  return pSkills !== 0 ? m.u32(pSkills + 0x10) : 0
+}
 
 /** `.data` `D2DataTablesStrc* sgptDataTables` at `0x6FDE9E1C`. */
 export const SGPT_DATATABLES_VA_113C = 0x6fde9e1c
@@ -1074,3 +1089,608 @@ export function SKILLS_FreeSkillList113c(m: Memory113c, pUnit: number): void {
   m.set(unitPtr, D2UnitStrc.pSkills, 0)
 }
 
+// ============================================================================
+// Batch B039 & B049 — skills.ts functions (B039-06..10, B049-16)
+// ============================================================================
+
+/** `.data` `D2InventoryGridInfoStrc` body grid definition at `0x6FDED378` (`bGridX = 13, bGridY = 1`). */
+export const BODY_GRID_DEF_VA_113C = 0x6fded378
+/** `.bss` `D2ExperienceTxt*` at `0x6FDF0B50` (`+0x00` = `nMaxLevel`). */
+export const SGPT_EXPERIENCE_TXT_PTR_VA_113C = 0x6fdf0b50
+/** `sgptDataTables` offsets used by `B039` / `B049` skills functions. */
+export const DATATABLES_STATES_COUNT_OFF_113C = 0xc4
+export const DATATABLES_FSTATEMASKS_PTR_OFF_113C = 0x110
+export const DATATABLES_ISC_TXT_OFF_113C = 0xbcc
+export const DATATABLES_ISC_COUNT_OFF_113C = 0xbd4
+
+const INV_SIGNATURE_113C = 0x01020304
+const INV_OFF_PGRIDS_113C = 0x14
+const INV_OFF_NGRIDS_113C = 0x18
+
+/**
+ * Exact 1:1 `Memory113c`-backed `0x6FD6E1B0` (`INVENTORY_GetOrInitGrid`,
+ * custom reg `eax = gridIdx`, `ebx = pInventory`, stack `[esp+4] = pGridDef`, `ret 4`).
+ */
+function inventoryGetOrInitGridMem113c(
+  m: Memory113c,
+  gridIdx: number,
+  pInventory: number,
+  pGridDef: number,
+): number {
+  const idx = gridIdx | 0
+  const inv = pInventory >>> 0
+  const def = pGridDef >>> 0
+  const nGrids = m.u32((inv + INV_OFF_NGRIDS_113C) >>> 0) | 0
+  if (nGrids > idx) {
+    const pGrids = m.u32((inv + INV_OFF_PGRIDS_113C) >>> 0)
+    const pGrid = (pGrids + ((idx << 4) >>> 0)) >>> 0
+    const ppItems = m.u32((pGrid + D2InventoryGridStrc.ppItems.off) >>> 0)
+    if (def === 0) {
+      return ppItems !== 0 ? pGrid : 0
+    }
+    if (ppItems === 0) {
+      const gx = m.u8(def)
+      m.set(pGrid, D2InventoryGridStrc.nGridWidth, gx)
+      const gy = m.u8((def + 1) >>> 0)
+      const countBytes = (imul32(m.get(pGrid, D2InventoryGridStrc.nGridWidth), gy) << 2) >>> 0
+      m.set(pGrid, D2InventoryGridStrc.nGridHeight, gy)
+      const newItems = m.alloc(countBytes) >>> 0
+      const zeroCount = (imul32(m.get(pGrid, D2InventoryGridStrc.nGridWidth), m.get(pGrid, D2InventoryGridStrc.nGridHeight)) << 2) >>> 0
+      m.set(pGrid, D2InventoryGridStrc.ppItems, newItems)
+      m.fill(newItems, zeroCount, 0)
+    }
+    if (m.get(pGrid, D2InventoryGridStrc.nGridWidth) !== m.u8(def)) return 0
+    if (m.get(pGrid, D2InventoryGridStrc.nGridHeight) !== m.u8((def + 1) >>> 0)) return 0
+    return pGrid
+  }
+  if (def === 0) return 0
+  const oldGrids = m.u32((inv + INV_OFF_PGRIDS_113C) >>> 0)
+  const newCount = (idx + 1) | 0
+  const newByteSize = (newCount << 4) >>> 0
+  const newGrids = m.alloc(newByteSize) >>> 0
+  if (oldGrids !== 0 && nGrids > 0) {
+    const copyBytes = (nGrids << 4) >>> 0
+    for (let i = 0; i < copyBytes; i++) {
+      m.setU8((newGrids + i) >>> 0, m.u8((oldGrids + i) >>> 0))
+    }
+  }
+  const oldCount = m.u32((inv + INV_OFF_NGRIDS_113C) >>> 0) | 0
+  m.setU32((inv + INV_OFF_PGRIDS_113C) >>> 0, newGrids)
+  const clearBytes = (((idx - oldCount + 1) | 0) << 4) >>> 0
+  m.fill((newGrids + ((oldCount << 4) >>> 0)) >>> 0, clearBytes, 0)
+  m.setU32((inv + INV_OFF_NGRIDS_113C) >>> 0, newCount >>> 0)
+  const gx = m.u8(def)
+  const pGrid = (m.u32((inv + INV_OFF_PGRIDS_113C) >>> 0) + ((idx << 4) >>> 0)) >>> 0
+  m.set(pGrid, D2InventoryGridStrc.nGridWidth, gx)
+  const gy = m.u8((def + 1) >>> 0)
+  m.set(pGrid, D2InventoryGridStrc.nGridHeight, gy)
+  const allocBytes = (imul32(gx, gy) << 2) >>> 0
+  const newItems = m.alloc(allocBytes) >>> 0
+  const zeroBytes = (imul32(m.get(pGrid, D2InventoryGridStrc.nGridWidth), m.get(pGrid, D2InventoryGridStrc.nGridHeight)) << 2) >>> 0
+  m.set(pGrid, D2InventoryGridStrc.ppItems, newItems)
+  m.fill(newItems, zeroBytes, 0)
+  return pGrid
+}
+
+/**
+ * Exact 1:1 `Memory113c`-backed `0x6FD88A80` (`STATLIST_GetTotalStatWithMin`,
+ * custom reg `ebx = pStatList`, `edi = dwKey`, stack `[esp+4] = pIsc` -> `i32`).
+ */
+function statListGetTotalStatWithMinMem113c(
+  m: Memory113c,
+  pStatList: number,
+  dwKey: number,
+  pIsc: number,
+): number {
+  const ebx = pStatList >>> 0
+  const ebp = (m.u32((ebx + 0x10) >>> 0) & 0x80000000) >>> 0
+  const pHdr = ebp !== 0 ? (ebx + 0x48) >>> 0 : (ebx + 0x24) >>> 0
+  const idx = STATLIST_FindStatIndex113c(m, pHdr, dwKey >>> 0)
+  if (idx < 0) return 0
+  const pEntry = (m.u32(pHdr) + idx * 8) >>> 0
+  if (pEntry === 0) return 0
+  let val = m.u32((pEntry + 4) >>> 0) | 0
+  const esi = pIsc >>> 0
+  if (esi !== 0) {
+    const dl = m.u8((esi + 0x05) >>> 0)
+    const pBitMasks = m.u32(GDW_BITMASKS_IAT_VA_113C)
+    if ((m.u8((pBitMasks + 0x08) >>> 0) & dl) !== 0 && ebp !== 0) {
+      const pUnit = m.u32((ebx + 0x44) >>> 0)
+      if (pUnit !== 0) {
+        const uType = m.u32(pUnit)
+        if (uType === 0 || uType === 1) {
+          const minAccr = m.u32((esi + 0x2c) >>> 0) | 0
+          if (val < minAccr) {
+            const shift = m.u8((esi + 0x18) >>> 0) & 31
+            val = (minAccr << shift) | 0
+          }
+        }
+      }
+    }
+  }
+  return val | 0
+}
+
+/**
+ * Exact 1:1 `Memory113c`-backed `0x6FD88B70` (`STATLIST_GetUnitStat`,
+ * `__stdcall(pUnit, nStatId, wLayer) -> i32`, `ret 0xC`).
+ */
+function statListGetUnitStatMem113c(
+  m: Memory113c,
+  pUnit: number,
+  nStatId: number,
+  wLayer: number,
+): number {
+  const unitPtr = pUnit >>> 0
+  if (unitPtr === 0) return 0
+  const pStatList = m.get(unitPtr, D2UnitStrc.pStatListEx)
+  if (pStatList === 0) return 0
+  const statId = nStatId | 0
+  if (statId < 0) return 0
+  const sgpt = m.u32(SGPT_DATATABLES_VA_113C)
+  if (statId >= (m.u32((sgpt + DATATABLES_ISC_COUNT_OFF_113C) >>> 0) | 0)) return 0
+  const pIsc = (m.u32((sgpt + DATATABLES_ISC_TXT_OFF_113C) >>> 0) + imul32(statId, D2ItemStatCostTxt_SIZE)) >>> 0
+  if (pIsc === 0) return 0
+  const dwKey = ((statId << 16) + (wLayer & 0xffff)) >>> 0
+  return statListGetTotalStatWithMinMem113c(m, pStatList, dwKey, pIsc)
+}
+
+/**
+ * `@va D2Common:0x6FD83F40` (internal `STATES_CheckUnitAnyActiveStateMask`,
+ * `__stdcall(pUnit) -> BOOL`, `ret 4`).
+ */
+export function STATES_CheckUnitAnyActiveStateMask113c(m: Memory113c, pUnit: number): number {
+  const sgpt = m.u32(SGPT_DATATABLES_VA_113C)
+  const pMask = m.u32((sgpt + DATATABLES_FSTATEMASKS_PTR_OFF_113C) >>> 0)
+  const unitPtr = pUnit >>> 0
+  if (unitPtr === 0) return 0
+  const pListEx = m.get(unitPtr, D2UnitStrc.pStatListEx)
+  if (pListEx === 0) return 0
+  if ((m.get(pListEx, D2StatListExStrc.dwFlags) | 0) >= 0) return 0
+  const pStateFlags = m.get(pListEx, D2StatListExStrc.pStateFlags)
+  if (pStateFlags === 0) return 0
+  const nStates = m.u32((sgpt + DATATABLES_STATES_COUNT_OFF_113C) >>> 0) | 0
+  const plus31 = (nStates + 31) | 0
+  const nDwords = sar32((plus31 + ((plus31 >> 31) & 31)) | 0, 5)
+  for (let i = 0; i < nDwords; i++) {
+    const maskWord = m.u32((pMask + i * 4) >>> 0)
+    if (maskWord !== 0 && (m.u32((pStateFlags + i * 4) >>> 0) & maskWord) !== 0) {
+      return 1
+    }
+  }
+  return 0
+}
+
+/**
+ * `@va D2Common:0x6FD9EBF0` (internal `SKILLS_GetWeaponFromArmSlot`,
+ * custom reg `eax = nArmCode`, `ecx = pInventory` -> `pItem`, `ret`).
+ */
+export function SKILLS_GetWeaponFromArmSlot113c(
+  m: Memory113c,
+  nArmCode: number,
+  pInventory: number,
+): number {
+  const inv = pInventory >>> 0
+  if ((nArmCode | 0) === 5) {
+    if (inv === 0 || m.get(inv, D2InventoryStrc.dwSignature) !== INV_SIGNATURE_113C) return 0
+    const pGrid = inventoryGetOrInitGridMem113c(m, 0, inv, BODY_GRID_DEF_VA_113C)
+    if (pGrid === 0) return 0
+    const ppItems = m.get(pGrid, D2InventoryGridStrc.ppItems)
+    return m.u32((ppItems + 0x10) >>> 0)
+  }
+  if (inv === 0 || m.get(inv, D2InventoryStrc.dwSignature) !== INV_SIGNATURE_113C) return 0
+  const pGrid = inventoryGetOrInitGridMem113c(m, 0, inv, BODY_GRID_DEF_VA_113C)
+  if (pGrid === 0) return 0
+  const ppItems = m.get(pGrid, D2InventoryGridStrc.ppItems)
+  return m.u32((ppItems + 0x14) >>> 0)
+}
+
+/**
+ * `@va D2Common:0x6FD9F870` (internal `SKILLS_ApplyElementalMasteryBonus`,
+ * custom reg `eax = pUnit`, `ecx = nElemType`, `esi = nDamage` -> `i32`, `ret`).
+ */
+export function SKILLS_ApplyElementalMasteryBonus113c(
+  m: Memory113c,
+  pUnit: number,
+  nElemType: number,
+  nDamage: number,
+): number {
+  const elemIdx = ((nElemType | 0) - 1) >>> 0
+  if (elemIdx > 11) return 0
+  switch (elemIdx) {
+    case 0: {
+      const bonus = statListGetUnitStatMem113c(m, pUnit, 0x149, 0)
+      return bonus !== 0 ? mulDiv113c(bonus, nDamage | 0, 100) >>> 0 : 0
+    }
+    case 1: {
+      const bonus = statListGetUnitStatMem113c(m, pUnit, 0x14a, 0)
+      return bonus !== 0 ? mulDiv113c(bonus, nDamage | 0, 100) >>> 0 : 0
+    }
+    case 3:
+    case 11: {
+      const unitPtr = pUnit >>> 0
+      if (unitPtr === 0) return 0
+      const pStatList = m.get(unitPtr, D2UnitStrc.pStatListEx)
+      if (pStatList === 0) return 0
+      const sgpt = m.u32(SGPT_DATATABLES_VA_113C)
+      if ((m.u32((sgpt + DATATABLES_ISC_COUNT_OFF_113C) >>> 0) | 0) <= 0x14b) return 0
+      const pIsc = (m.u32((sgpt + DATATABLES_ISC_TXT_OFF_113C) >>> 0) + 0x1a2ec) >>> 0
+      if (pIsc === 0) return 0
+      const bonus = statListGetTotalStatWithMinMem113c(m, pStatList, 0x14b0000, pIsc)
+      return bonus !== 0 ? mulDiv113c(bonus, nDamage | 0, 100) >>> 0 : 0
+    }
+    case 4: {
+      const bonus = statListGetUnitStatMem113c(m, pUnit, 0x14c, 0)
+      return bonus !== 0 ? mulDiv113c(bonus, nDamage | 0, 100) >>> 0 : 0
+    }
+    default:
+      return 0
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD9F930` (internal `SKILLS_GetBasePhysDamageMinOrMax`,
+ * custom reg `eax = pUnit`, stack `[esp+4] = bIsMin` -> `i32`, `ret 4`).
+ */
+export function SKILLS_GetBasePhysDamageMinOrMax113c(
+  m: Memory113c,
+  pUnit: number,
+  bIsMin: number,
+): number {
+  const unitPtr = pUnit >>> 0
+  let ecx = 0
+  if (unitPtr !== 0) {
+    if (m.get(unitPtr, D2UnitStrc.dwUnitType) === 0) {
+      const pStatList = m.get(unitPtr, D2UnitStrc.pStatListEx)
+      const sgpt = m.u32(SGPT_DATATABLES_VA_113C)
+      let str = 0
+      if (pStatList !== 0 && (m.u32((sgpt + DATATABLES_ISC_COUNT_OFF_113C) >>> 0) | 0) > 0) {
+        const pIsc0 = m.u32((sgpt + DATATABLES_ISC_TXT_OFF_113C) >>> 0)
+        if (pIsc0 !== 0) {
+          str = statListGetTotalStatWithMinMem113c(m, pStatList, 0, pIsc0)
+        }
+      }
+      let dex = 0
+      if (pStatList !== 0 && (m.u32((sgpt + DATATABLES_ISC_COUNT_OFF_113C) >>> 0) | 0) > 2) {
+        const pIsc2 = (m.u32((sgpt + DATATABLES_ISC_TXT_OFF_113C) >>> 0) + 0x288) >>> 0
+        if (pIsc2 !== 0) {
+          dex = statListGetTotalStatWithMinMem113c(m, pStatList, 0x20000, pIsc2)
+        }
+      }
+      ecx = (dex + str - 0x14) | 0
+    } else {
+      const pStatList = m.get(unitPtr, D2UnitStrc.pStatListEx)
+      let lvl = 0
+      if (pStatList !== 0) {
+        const sgpt = m.u32(SGPT_DATATABLES_VA_113C)
+        if ((m.u32((sgpt + DATATABLES_ISC_COUNT_OFF_113C) >>> 0) | 0) > 0x0c) {
+          const pIsc12 = (m.u32((sgpt + DATATABLES_ISC_TXT_OFF_113C) >>> 0) + 0xf30) >>> 0
+          if (pIsc12 !== 0) {
+            lvl = statListGetTotalStatWithMinMem113c(m, pStatList, 0xc0000, pIsc12)
+          }
+        }
+      }
+      ecx = (lvl * 3) | 0
+    }
+  }
+  if (ecx < 1) ecx = 1
+  if ((bIsMin | 0) !== 0) {
+    const q4 = sar32((ecx + ((ecx >> 31) & 3)) | 0, 2)
+    return (q4 << 8) >>> 0
+  }
+  const q3 = Math.trunc(ecx / 3) | 0
+  return (q3 << 8) >>> 0
+}
+
+/**
+ * `@va D2Common:0x6FDA0870` (internal `SKILLS_CheckItemChargedSkillHasCharges`,
+ * custom reg `ecx = pUnit`, `eax = pSkill` -> `BOOL`, `ret`).
+ */
+export function SKILLS_CheckItemChargedSkillHasCharges113c(
+  m: Memory113c,
+  pUnit: number,
+  pSkill: number,
+): number {
+  const unitPtr = pUnit >>> 0
+  const skillPtr = pSkill >>> 0
+  if (unitPtr === 0 || skillPtr === 0) return 0
+  const pInv = m.get(unitPtr, D2UnitStrc.pInventory)
+  if (pInv === 0) return 1
+  const ownerGuid = m.get(skillPtr, D2SkillStrc.nOwnerItemGuid)
+  if (ownerGuid === 0xffffffff) return 1
+  const pSkillsTxt = m.get(skillPtr, D2SkillStrc.pSkillsTxt)
+  const wSkillId = (m.get(pSkillsTxt, D2SkillsTxt.wSkillId) << 16) >> 16
+  const rawLvl = m.get(skillPtr, D2SkillStrc.nSkillLevel) | 0
+  const pExp = m.u32(SGPT_EXPERIENCE_TXT_PTR_VA_113C)
+  const maxLvl = m.u32(pExp) | 0
+  let lvl = rawLvl <= 0 ? 0 : rawLvl
+  if (lvl >= maxLvl) lvl = maxLvl
+  const wLayer = ((lvl & 0x3f) + (wSkillId << 6)) | 0
+  if (m.get(pInv, D2InventoryStrc.dwSignature) !== INV_SIGNATURE_113C) return 1
+  let pItem = m.get(pInv, D2InventoryStrc.pFirstItem)
+  while (pItem !== 0) {
+    if (m.get(pItem, D2UnitStrc.dwUnitType) !== 4) return 1
+    if (m.get(pItem, D2UnitStrc.dwUnitId) === ownerGuid) {
+      const val = statListGetUnitStatMem113c(m, pItem, 0xcc, wLayer)
+      return (val & 0xff) > 0 ? 1 : 0
+    }
+    const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
+    if (pItemData === 0) return 1
+    const pExtra = (pItemData + 0x5c) >>> 0
+    if (pExtra === 0) return 1
+    pItem = m.u32((pExtra + 0x08) >>> 0)
+  }
+  return 1
+}
+
+/**
+ * `@va D2Common:0x6FD9EE00` (internal `SKILLS_AddOrRemoveItemChargedSkill`,
+ * custom reg `eax = nSkillId`, stack `[esp+4] = pUnit`, `[esp+8] = dwItemGuid`,
+ * `[esp+0xC] = nLevel`, `[esp+0x10] = nCharges`, `[esp+0x14] = bRemove`, `ret 0x14`, void).
+ */
+export function SKILLS_AddOrRemoveItemChargedSkill113c(
+  m: Memory113c,
+  nSkillId: number,
+  pUnit: number,
+  dwItemGuid: number,
+  nLevel: number,
+  nCharges: number,
+  bRemove: number,
+): void {
+  const unitPtr = pUnit >>> 0
+  if (unitPtr === 0) return
+  if (m.get(unitPtr, D2UnitStrc.dwUnitType) !== 0) return
+  const lvl = nLevel | 0
+  if (lvl <= 0) return
+  const skillId = nSkillId | 0
+  if (skillId < 0) return
+  const sgpt = m.u32(SGPT_DATATABLES_VA_113C)
+  if (skillId >= (m.u32((sgpt + DATATABLES_SKILLS_COUNT_OFF_113C) >>> 0) | 0)) return
+  const pSkillsTxt =
+    (m.u32((sgpt + DATATABLES_SKILLS_TXT_OFF_113C) >>> 0) + imul32(skillId, D2SkillsTxt_SIZE)) >>> 0
+  if (pSkillsTxt === 0) return
+  const pSkills = m.get(unitPtr, D2UnitStrc.pSkills)
+  if (pSkills === 0) return
+  const itemGuid = dwItemGuid >>> 0
+
+  if ((bRemove | 0) !== 0) {
+    const pRight = m.get(pSkills, D2SkillListStrc.pRightSkill)
+    const rightSkillId = (m.get(m.get(pRight, D2SkillStrc.pSkillsTxt), D2SkillsTxt.wSkillId) << 16) >> 16
+    const pLeft = m.get(pSkills, D2SkillListStrc.pLeftSkill)
+    const leftSkillId = (m.get(m.get(pLeft, D2SkillStrc.pSkillsTxt), D2SkillsTxt.wSkillId) << 16) >> 16
+    if (skillId === leftSkillId && m.get(pLeft, D2SkillStrc.nOwnerItemGuid) === itemGuid) {
+      SKILLS_SetLeftSkill113c(m, unitPtr, 0, 0xffffffff)
+    }
+    if (skillId === rightSkillId && m.get(pRight, D2SkillStrc.nOwnerItemGuid) === itemGuid) {
+      SKILLS_SetRightSkill113c(m, unitPtr, 0, 0xffffffff)
+    }
+    const pUsed = m.get(pSkills, D2SkillListStrc.pUsedSkill)
+    if (pUsed !== 0) {
+      const usedSkillId = (m.get(m.get(pUsed, D2SkillStrc.pSkillsTxt), D2SkillsTxt.wSkillId) << 16) >> 16
+      if (skillId === usedSkillId) {
+        m.set(pSkills, D2SkillListStrc.pUsedSkill, 0)
+      }
+    }
+    let prev = 0
+    let curr = m.get(pSkills, D2SkillListStrc.pFirstSkill)
+    while (curr !== 0) {
+      if (
+        m.get(curr, D2SkillStrc.nOwnerItemGuid) === itemGuid &&
+        m.get(curr, D2SkillStrc.pSkillsTxt) === pSkillsTxt
+      ) {
+        const next = m.get(curr, D2SkillStrc.pNextSkill)
+        if (prev !== 0) {
+          m.set(prev, D2SkillStrc.pNextSkill, next)
+        } else {
+          m.set(pSkills, D2SkillListStrc.pFirstSkill, next)
+        }
+        m.get(unitPtr, D2UnitStrc.pMemPool)
+        ;(m as { free?: (p: number) => void }).free?.(curr)
+        return
+      }
+      prev = curr
+      curr = m.get(curr, D2SkillStrc.pNextSkill)
+    }
+    return
+  }
+
+  let last = 0
+  let curr = m.get(pSkills, D2SkillListStrc.pFirstSkill)
+  while (curr !== 0) {
+    if (
+      m.get(curr, D2SkillStrc.nOwnerItemGuid) === itemGuid &&
+      m.get(curr, D2SkillStrc.pSkillsTxt) === pSkillsTxt
+    ) {
+      m.set(curr, D2SkillStrc.nSkillLevel, lvl >>> 0)
+      m.set(curr, D2SkillStrc.dwFlags, 1)
+      m.setU32((curr + 0x38) >>> 0, nCharges >>> 0)
+      return
+    }
+    last = curr
+    curr = m.get(curr, D2SkillStrc.pNextSkill)
+  }
+
+  m.get(pSkills, D2SkillListStrc.pMemPool)
+  const pNew = m.alloc(0x40) >>> 0
+  m.fill(pNew, 0x40, 0)
+  m.set(pNew, D2SkillStrc.pSkillsTxt, pSkillsTxt)
+  const nAnim = (m.u8((pSkillsTxt + 0x10) >>> 0) << 24) >> 24
+  if (nAnim === 7 || nAnim === 8 || nAnim === 10 || nAnim === 11 || nAnim === 18) {
+    m.set(pNew, D2SkillStrc.nSlotIndex, nAnim >>> 0)
+  } else {
+    m.set(pNew, D2SkillStrc.nSlotIndex, 0x0a)
+  }
+  m.set(pNew, D2SkillStrc.nSkillLevel, lvl >>> 0)
+  m.set(pNew, D2SkillStrc.dwFlags, 1)
+  m.setU32((pNew + 0x38) >>> 0, nCharges >>> 0)
+  m.set(pNew, D2SkillStrc.nOwnerItemGuid, itemGuid)
+  m.set(pNew, D2SkillStrc.pNextSkill, 0)
+  if (last !== 0) {
+    m.set(last, D2SkillStrc.pNextSkill, pNew)
+  } else {
+    m.set(pSkills, D2SkillListStrc.pFirstSkill, pNew)
+  }
+}
+
+// ============================================================================
+// K1r3 Iteration 9 Lane B — Batch I9B-B (skills.ts)
+// ============================================================================
+
+/** `sgptDataTables` `+0x150`: state-mask word array read by the corpse-selection predicates (`mov ecx, [eax+0x150]` at 0x6FD9FF9B). */
+export const DATATABLES_CORPSE_STATE_MASK_OFF_113C = 0x150
+/** `D2UnitStrc.dwUnitType` value tested by 0x6FD9FF80..0x6FDA0150 (`cmp eax, 1`): monsters. */
+const UNIT_MONSTER_113C = 1
+/** `D2UnitStrc.dwAnimMode` tested by 0x6FD9FF80..0x6FDA0150 (`cmp dword [esi+0x10], 0xc`): monster mode 12 (dead). */
+const MONMODE_DEAD_113C = 0xc
+/** MonStats2 `dwFlags` bit indices passed in `edx` to 0x6FD51470 by the corpse predicates (`mov edx, 7` / `mov edx, 0xc`). */
+const MONSTATS2_FLAG_BIT7_113C = 7
+const MONSTATS2_FLAG_BIT12_113C = 0xc
+
+/**
+ * Lazily-dereferenced view of the `ecx = pMaskWords` pointer handed to 0x6FD83C20: element `i` is read from
+ * `pMaskWords + 4*i` only when the callee consumes it (the DLL passes a raw pointer, never a copy).
+ */
+function stateMaskWordsAt(m: Memory113c, pMaskWords: number): ArrayLike<number> {
+  const view: { length: number; [i: number]: number } = { length: STATE_DWORDS_113C }
+  for (let i = 0; i < STATE_DWORDS_113C; i++) {
+    Object.defineProperty(view, i, { get: () => m.u32((pMaskWords + i * 4) >>> 0) })
+  }
+  return view
+}
+
+/**
+ * Shared body of 0x6FD9E5E0 / 0x6FD9E630 / 0x6FD9E680 (`__stdcall(nLevel, nSkillId) -> int`, `ret 8`):
+ * signed bounds check of `nSkillId` against `nSkillsTxtRecordCount (+0xBA0)`, `rec = pSkillsTxt (+0xB98) + id*0x23C`,
+ * `rec == 0 -> 0`, then `nLevel > 0` (signed `jg`) else `0`; returns
+ * `SKILLS_CalcDiminishingReturns113c(nLevel, rec[offLo], rec[offHi])` (`push hi; push lo; push nLevel`).
+ */
+function skillsEvalParamPairDimReturns(
+  m: Memory113c,
+  nLevel: number,
+  nSkillId: number,
+  fLo: FieldLayout113c,
+  fHi: FieldLayout113c,
+): number {
+  const rec = getSkillsTxtRecord(m, nSkillId)
+  if (rec === 0) return 0
+  const lvl = nLevel | 0
+  if (!(lvl > 0)) return 0
+  const pHi = m.get(rec, fHi)
+  const pLo = m.get(rec, fLo)
+  return SKILLS_CalcDiminishingReturns113c(m, lvl, pLo, pHi)
+}
+
+/** `@va D2Common:0x6FD9E5E0` (`D2Common.#10832`, `__stdcall(nLevel, nSkillId) -> int`, `ret 8`): Param5/Param6 (`+0x158/+0x15C`). */
+export function SKILLS_EvalParam56DimReturns113c(m: Memory113c, nLevel: number, nSkillId: number): number {
+  return skillsEvalParamPairDimReturns(m, nLevel, nSkillId, D2SkillsTxt.dwParam5, D2SkillsTxt.dwParam6)
+}
+
+/** `@va D2Common:0x6FD9E630` (`D2Common.#10400`, `__stdcall(nLevel, nSkillId) -> int`, `ret 8`): Param3/Param4 (`+0x150/+0x154`). */
+export function SKILLS_EvalParam34DimReturns113c(m: Memory113c, nLevel: number, nSkillId: number): number {
+  return skillsEvalParamPairDimReturns(m, nLevel, nSkillId, D2SkillsTxt.dwParam3, D2SkillsTxt.dwParam4)
+}
+
+/** `@va D2Common:0x6FD9E680` (`D2Common.#10703`, `__stdcall(nLevel, nSkillId) -> int`, `ret 8`): Param1/Param2 (`+0x148/+0x14C`). */
+export function SKILLS_EvalParam12DimReturns113c(m: Memory113c, nLevel: number, nSkillId: number): number {
+  return skillsEvalParamPairDimReturns(m, nLevel, nSkillId, D2SkillsTxt.dwParam1, D2SkillsTxt.dwParam2)
+}
+
+/**
+ * `@va D2Common:0x6FD9F070` (`D2Common.#10630`, `__fastcall(ecx = pUnit, edx = nSkillId) -> D2SkillStrc*`, `ret`):
+ * `push esi; mov eax, ecx; mov esi, edx; call 0x6FD9E480; pop esi`.
+ */
+export function SKILLS_GetHighestLevelSkillFromUnitAndIdFastcall113c(
+  m: Memory113c,
+  pUnit: number,
+  nSkillId: number,
+): number {
+  return SKILLS_GetHighestLevelSkillFromUnitAndId113c(m, pUnit, nSkillId)
+}
+
+/**
+ * Common prefix of the corpse predicates after the unit/mode gate: `STATES_CheckStateMaskOnUnit113c(pUnit,
+ * sgptDataTables->[+0x150]) == 0` then `DATATBLS_CheckMonStats2FlagInline113c(pUnit->dwClassId, 7) != 0`.
+ */
+function corpseStateAndFlag7Pass(m: Memory113c, pUnit: number): boolean {
+  const dt = m.u32(SGPT_DATATABLES_VA_113C)
+  const pMask = m.u32((dt + DATATABLES_CORPSE_STATE_MASK_OFF_113C) >>> 0)
+  if (STATES_CheckStateMaskOnUnit113c(m, pUnit, stateMaskWordsAt(m, pMask)) !== 0) return false
+  return DATATBLS_CheckMonStats2FlagInline113c(m, m.get(pUnit, D2UnitStrc.dwClassId), MONSTATS2_FLAG_BIT7_113C) !== 0
+}
+
+/**
+ * Body of the byte-identical 0x6FD9FF80 / 0x6FD9FFD0 / 0x6FDA0090 (`__stdcall(pUnit) -> BOOL`, `ret 4`): returns `1`
+ * only if `pUnit != 0`, `pUnit->dwUnitType == 1`, `pUnit->dwAnimMode (+0x10) == 0xC`, the `[sgpt+0x150]` state mask
+ * misses the unit, and MonStats2 flag bit 7 is set for `pUnit->dwClassId`; else `0`.
+ */
+function skillsIsSelectableCorpse(m: Memory113c, pUnit: number): number {
+  const u = pUnit >>> 0
+  if (u === 0) return 0
+  if (m.get(u, D2UnitStrc.dwUnitType) !== UNIT_MONSTER_113C) return 0
+  if (m.get(u, D2UnitStrc.dwAnimMode) !== MONMODE_DEAD_113C) return 0
+  return corpseStateAndFlag7Pass(m, u) ? 1 : 0
+}
+
+/** `@va D2Common:0x6FD9FF80` (`D2Common.#10501`, `__stdcall(pUnit) -> BOOL`, `ret 4`). */
+export function SKILLS_IsSelectableCorpse10501_113c(m: Memory113c, pUnit: number): number {
+  return skillsIsSelectableCorpse(m, pUnit)
+}
+
+/** `@va D2Common:0x6FD9FFD0` (`D2Common.#11157`, `__stdcall(pUnit) -> BOOL`, `ret 4`; byte-identical to 0x6FD9FF80). */
+export function SKILLS_IsSelectableCorpse11157_113c(m: Memory113c, pUnit: number): number {
+  return skillsIsSelectableCorpse(m, pUnit)
+}
+
+/** `@va D2Common:0x6FDA0090` (`D2Common.#10678`, `__stdcall(pUnit) -> BOOL`, `ret 4`; byte-identical to 0x6FD9FF80). */
+export function SKILLS_IsSelectableCorpse10678_113c(m: Memory113c, pUnit: number): number {
+  return skillsIsSelectableCorpse(m, pUnit)
+}
+
+/**
+ * `@va D2Common:0x6FDA00E0` (`D2Common.#10096`, `__stdcall(pUnit) -> BOOL`, `ret 4`): the 0x6FD9FF80 predicate plus
+ * `DATATBLS_CheckMonStats2FlagInline113c(classId, 0xC) != 0`. The `cmp edi, edi; jne` at 0x6FDA0122 compares a
+ * register with itself and never branches, so it has no TS counterpart.
+ */
+export function SKILLS_IsSelectableCorpseWithFlag12_113c(m: Memory113c, pUnit: number): number {
+  const u = pUnit >>> 0
+  if (u === 0) return 0
+  if (m.get(u, D2UnitStrc.dwUnitType) !== UNIT_MONSTER_113C) return 0
+  if (m.get(u, D2UnitStrc.dwAnimMode) !== MONMODE_DEAD_113C) return 0
+  if (!corpseStateAndFlag7Pass(m, u)) return 0
+  const classId = m.get(u, D2UnitStrc.dwClassId)
+  return DATATBLS_CheckMonStats2FlagInline113c(m, classId, MONSTATS2_FLAG_BIT12_113C) !== 0 ? 1 : 0
+}
+
+/**
+ * `@va D2Common:0x6FDA0150` (`D2Common.#10444`, `__stdcall(pUnit, bAllowMode0) -> BOOL`, `ret 8`).
+ *
+ * - `pUnit == 0` or `dwUnitType != 1` -> `0`.
+ * - Mode gate: `dwAnimMode == 0xC` passes; otherwise passes only if `bAllowMode0 != 0 && dwAnimMode == 0`.
+ * - State mask / MonStats2 flag 7 as 0x6FD9FF80 (`sgptDataTables` cached in `edi` at 0x6FDA0173).
+ * - `id = dwClassId`; `rec = (id >= 0 && id < nMonStatsTxtRecordCount (+0xA80)) ? pMonStatsTxt (+0xA78) + id*0x1A8 : 0`
+ *   (0x6FDA01CC `xor esi, esi` on the out-of-range path, no NULL test); returns `rec->wVelocity (+0x32) != 0`.
+ */
+export function SKILLS_IsSelectableCorpseWithVelocity113c(
+  m: Memory113c,
+  pUnit: number,
+  bAllowMode0: number,
+): number {
+  const u = pUnit >>> 0
+  if (u === 0) return 0
+  if (m.get(u, D2UnitStrc.dwUnitType) !== UNIT_MONSTER_113C) return 0
+  const mode = m.get(u, D2UnitStrc.dwAnimMode)
+  if (mode !== MONMODE_DEAD_113C) {
+    if ((bAllowMode0 >>> 0) === 0) return 0
+    if (mode !== 0) return 0
+  }
+  const dt = m.u32(SGPT_DATATABLES_VA_113C)
+  const pMask = m.u32((dt + DATATABLES_CORPSE_STATE_MASK_OFF_113C) >>> 0)
+  if (STATES_CheckStateMaskOnUnit113c(m, u, stateMaskWordsAt(m, pMask)) !== 0) return 0
+  const id = m.get(u, D2UnitStrc.dwClassId) | 0
+  if (DATATBLS_CheckMonStats2FlagInline113c(m, id >>> 0, MONSTATS2_FLAG_BIT7_113C) === 0) return 0
+  let rec = 0
+  if (id >= 0 && id < (m.u32((dt + DATATABLES_MONSTATS_COUNT_OFF_113C) >>> 0) | 0)) {
+    rec = (m.u32((dt + DATATABLES_MONSTATS_TXT_OFF_113C) >>> 0) + imul32(id, D2MonStatsTxt_SIZE)) >>> 0
+  }
+  return m.get(rec, D2MonStatsTxt.wVelocity) !== 0 ? 1 : 0
+}

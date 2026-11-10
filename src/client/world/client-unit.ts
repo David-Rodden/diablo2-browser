@@ -200,6 +200,7 @@ export class ClientUnit {
   velocityPercent?: number | undefined
   pathType?: number | undefined
   mode: number
+  private _monsterDead = false
   private readonly _turnState: UnitTurnState
 
   get direction(): number {
@@ -433,6 +434,9 @@ export class ClientUnit {
           ? 1
           : 0
     this.mode = snapshot.mode ?? defaultMode
+    if (this.unitType === 'monster' && (this.mode === 0 || this.mode === 12 || this.lifePct <= 0)) {
+      this._monsterDead = true
+    }
     const initialDir = snapshot.direction ?? 0
     this._turnState = createUnitTurnState(initialDir)
     this.flags = snapshot.flags ?? 0
@@ -805,7 +809,7 @@ export class ClientUnit {
 
   get dead(): boolean {
     if (this.unitType === 'monster') {
-      return this.lifePct <= 0 || this.mode === 0 || this.mode === 12
+      return this._monsterDead || this.lifePct <= 0 || this.mode === 0 || this.mode === 12
     }
     if (this.unitType === 'player') {
       // D2Client.dll 0x6fb55440 (UNIT_IsDead): UNIT_PLAYER (0) is dead only in PLRMODE_DEATH (0) or PLRMODE_DEAD (17)
@@ -817,6 +821,9 @@ export class ClientUnit {
 
   set dead(v: boolean) {
     if (v) {
+      if (this.unitType === 'monster') {
+        this._monsterDead = true
+      }
       this.lifePct = 0
       if (this.unitType === 'monster' && this.mode !== 0 && this.mode !== 12) {
         this.mode = 12
@@ -828,6 +835,9 @@ export class ClientUnit {
       this.targetY = this.y
       this.setDirection(this.direction)
     } else {
+      if (this.unitType === 'monster') {
+        this._monsterDead = false
+      }
       if (this.lifePct <= 0) {
         this.lifePct = 128
       }
@@ -837,6 +847,17 @@ export class ClientUnit {
         this.mode = 1
       }
     }
+  }
+
+  /**
+   * Explicitly revive a dead monster (only called on authoritative resurrection signals:
+   * `STATE_REVIVE = 96` or `SKILLS_SrvDo097_Resurrect` / self-resurrect on a corpse).
+   */
+  reviveMonster(lifePct = 128, mode = 1): void {
+    this._monsterDead = false
+    this.lifePct = Math.max(1, Math.min(128, Math.round(lifePct)))
+    this.mode = mode === 0 || mode === 12 ? 1 : mode
+    this.deathFxTriggered = false
   }
 
   get moving(): boolean {

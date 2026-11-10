@@ -21,7 +21,7 @@
  * - `0x6FD6A5B0` `MONSTERS_IsDemonOrUndead113c` (`#10239`)
  */
 import type { Memory113c } from '../mem/sparse-memory.ts'
-import { D2CommonAssertError } from '../common/inline-helpers.ts'
+import { D2CommonAssertError, PLAYER_SetPlayerData150Params113c } from '../common/inline-helpers.ts'
 import { imul32, sar32, sdiv32 } from '../common/int-math.ts'
 import {
   D2DrlgCoordStrc,
@@ -38,6 +38,7 @@ import {
   D2MonLvlTxt_SIZE,
   D2MonStatsTxt,
   D2MonStatsTxt_SIZE,
+  D2PlayerDataStrc,
   D2RoomExStrc,
   D2ShrinesTxt_SIZE,
   D2StaticPathStrc,
@@ -1294,3 +1295,112 @@ export function DATATBLS_GetInventoryGridInfo113c(
   m.setU32((out + 0x14) >>> 0, m.u32((src + 0x14) >>> 0))
 }
 
+// ============================================================================
+// Batch B039 & B049 — datatbls-113c.ts functions (B039-01, B039-03, B049-13)
+// ============================================================================
+
+/**
+ * `@va D2Common:0x6FD72F20` (`D2Common.#10696` `ITEMS_GetQuiverType`,
+ * stdcall `[esp+4] = pItem`, `ret 4`, `retMask: 0xFF` -> `AL` = `D2ItemsTxt + 0x104` or `0`).
+ * Note: binary has no `pRec == 0` guard after `0x6FDC19A0` and reads `BYTE PTR [eax+0x104]` directly.
+ */
+export function ITEMS_GetQuiverType113c(m: Memory113c, pItem: number): number {
+  const ptr = pItem >>> 0
+  if (ptr === 0) return 0
+  if (m.get(ptr, D2UnitStrc.dwUnitType) !== 4) return 0
+  const pRec = lookupItemsTxtById113c(m, m.get(ptr, D2UnitStrc.dwClassId))
+  return m.u8((pRec + 0x104) >>> 0)
+}
+
+/**
+ * `@va D2Common:0x6FD73330` (`D2Common.#10238` `ITEMS_GetWeaponClassCode`,
+ * stdcall `[esp+4] = pItem`, `ret 4` -> `D2ItemsTxt.dwWClass (+0xC0)` or `0`).
+ */
+export function ITEMS_GetWeaponClassCode113c(m: Memory113c, pItem: number): number {
+  const ptr = pItem >>> 0
+  if (ptr === 0) return 0
+  if (m.get(ptr, D2UnitStrc.dwUnitType) !== 4) return 0
+  const pRec = lookupItemsTxtById113c(m, m.get(ptr, D2UnitStrc.dwClassId))
+  if (pRec === 0) return 0
+  return m.u32((pRec + 0xc0) >>> 0)
+}
+
+/**
+ * `@va D2Common:0x6FD7D660` (internal helper `DRLG_ValidateAndRebaseLevelRooms`,
+ * stdcall `[esp+4] = pLevel`, `ret 4`, void).
+ * Note: uses stack-free bbox computation identical to `0x6FD7D3C0` so no scratch heap writes
+ * pollute `StrictMem` diff verification.
+ */
+export function DRLG_ValidateAndRebaseLevelRooms113c(m: Memory113c, pLevel: number): void {
+  const lvl = pLevel >>> 0
+  if (lvl === 0) {
+    throw new D2CommonAssertError('Drlg.cpp', 0x2e3)
+  }
+  const firstRoom = m.get(lvl, D2DrlgLevelStrc.pFirstRoomEx)
+  if (firstRoom === 0) {
+    throw new D2CommonAssertError('Drlg.cpp', 0x2e4)
+  }
+  // 0x6FD7D3C0 seeds the box from the first room (0x6FD7D3C7..0x6FD7D3E2: min = pos, max = pos + size)
+  // before widening it over every room (signed `jle`/`jge`).
+  const seedX = m.get(firstRoom, D2RoomExStrc.nTileXPos) | 0
+  const seedY = m.get(firstRoom, D2RoomExStrc.nTileYPos) | 0
+  let minX = seedX
+  let minY = seedY
+  let maxX = (seedX + (m.get(firstRoom, D2RoomExStrc.nTileWidth) | 0)) | 0
+  let maxY = (seedY + (m.get(firstRoom, D2RoomExStrc.nTileHeight) | 0)) | 0
+  for (let r = firstRoom; r !== 0; r = m.get(r, D2RoomExStrc.pRoomNext)) {
+    const rx = m.get(r, D2RoomExStrc.nTileXPos) | 0
+    if (rx < minX) minX = rx
+    const ry = m.get(r, D2RoomExStrc.nTileYPos) | 0
+    if (ry < minY) minY = ry
+    const rxEnd = (rx + (m.get(r, D2RoomExStrc.nTileWidth) | 0)) | 0
+    if (rxEnd > maxX) maxX = rxEnd
+    const ryEnd = (ry + (m.get(r, D2RoomExStrc.nTileHeight) | 0)) | 0
+    if (ryEnd > maxY) maxY = ryEnd
+  }
+  const spanX = (maxX - minX) | 0
+  if ((m.get(lvl, D2DrlgLevelStrc.nWidth) | 0) < spanX) {
+    throw new D2CommonAssertError('Drlg.cpp', 0x2eb)
+  }
+  const spanY = (maxY - minY) | 0
+  if ((m.get(lvl, D2DrlgLevelStrc.nHeight) | 0) < spanY) {
+    throw new D2CommonAssertError('Drlg.cpp', 0x2ec)
+  }
+  for (let r = m.get(lvl, D2DrlgLevelStrc.pFirstRoomEx); r !== 0; r = m.get(r, D2RoomExStrc.pRoomNext)) {
+    const newX = ((m.get(r, D2RoomExStrc.nTileXPos) | 0) + ((m.get(lvl, D2DrlgLevelStrc.nPosX) | 0) - minX)) >>> 0
+    m.set(r, D2RoomExStrc.nTileXPos, newX)
+    const newY = ((m.get(r, D2RoomExStrc.nTileYPos) | 0) + ((m.get(lvl, D2DrlgLevelStrc.nPosY) | 0) - minY)) >>> 0
+    m.set(r, D2RoomExStrc.nTileYPos, newY)
+  }
+}
+
+// ============================================================================
+// K1r3 Iteration 9 Lane B — Batch I9B-B (datatbls-113c.ts)
+// ============================================================================
+
+/**
+ * `@va D2Common:0x6FDCF670` (`D2Common.#10329`, `__fastcall(ecx = pUnit, edx = nArg0, [esp+4] = nArg1,
+ * [esp+8] = nArg2) -> void`, `ret 8`).
+ *
+ * - Returns if `pUnit == 0` or `pUnit->dwUnitType != 0` (`mov ecx, [eax]; test ecx, ecx; jne`).
+ * - `pPlayerData = pUnit->pUnitData (+0x14)`; if non-zero stores `pPlayerData->dwField150 = 1`
+ *   (`mov dword [ecx+0x150], 1` at 0x6FDCF683) before the callee repeats the same store.
+ * - Calls `PLAYER_SetPlayerData150Params113c(pUnit, nArg0, nArg1, nArg2)` (`push [a2]; push [a1]; push edx;
+ *   call 0x6FD51000` at 0x6FDCF68D..0x6FDCF698, `eax = pUnit`).
+ */
+export function PLAYER_SetPlayerData150ParamsExport113c(
+  m: Memory113c,
+  pUnit: number,
+  nArg0: number,
+  nArg1: number,
+  nArg2: number,
+): void {
+  const u = pUnit >>> 0
+  if (u === 0) return
+  if (m.get(u, D2UnitStrc.dwUnitType) !== 0) return
+  const pPlayerData = m.get(u, D2UnitStrc.pUnitData)
+  if (pPlayerData !== 0) {
+    m.set(pPlayerData, D2PlayerDataStrc.dwField150, 1)
+  }
+  PLAYER_SetPlayerData150Params113c(m, u, nArg0, nArg1, nArg2)
+}

@@ -322,6 +322,38 @@ static uint32_t g_tm_from = 0xFFFFFFFFu, g_tm_to;
 void *g_timers_fn; /* referenced from asm */
 static char g_inlog[8192];
 static int g_inlog_len;
+/* K1 longitudinal replay recording (docs/oracle/k1-replay/README.md):
+ * "snapshot FRAME": at the end of FRAME write out\snap_<FRAME>.ndjson with raw blocks for pGame
+ * (0x1DF4), the timer (0xA20) and every timer pool chunk (0x7088), every unit of every hash list
+ * (same per-unit blocks as memdump, without the room walk), every act (0x60) + environment (0x38)
+ * and every active room of every act (act+0x10 pRoom1 -> room+0x7C pRoomNext): D2ActiveRoomStrc
+ * 0x80, D2RoomExStrc 0xEC, ppRoomsNear, D2RoomCollisionGridStrc 0x24 and its u16 mask array
+ * (w*h*2), and the D2DrlgLevelStrc (0x230) once per level.
+ * "cover FROM TO" + "cva <g|c> <hexva>" lines: function-entry coverage. One-shot INT3 on every
+ * listed entry, armed only while the server frame [on_pre_frame .. GAME_UpdateGameFrame return]
+ * of frames FROM..TO runs; a hit on the frame thread records the first frame and disarms the
+ * entry, a hit on any other thread is single-stepped and re-armed. Written to out\cover.ndjson. */
+static uint32_t g_snap_frames[8];
+static int g_nsnap;
+static FILE *g_mem_out; /* destination of mem_block()/mem_block_at() */
+typedef struct {
+  uintptr_t addr; /* rebased entry */
+  uint32_t va;    /* preferred-base VA */
+  char mod;       /* 'g' D2Game, 'c' D2Common */
+  uint8_t orig;
+  uint8_t done;
+  uint32_t first_frame;
+} CoverEnt;
+static CoverEnt *g_cov;
+static int g_ncov, g_cov_cap;
+static uint32_t g_cov_from = 0xFFFFFFFFu, g_cov_to;
+static volatile LONG g_cov_active;
+static volatile DWORD g_cov_tid;
+static uint32_t g_cov_frame;
+static DWORD g_cov_tls = TLS_OUT_OF_INDEXES;
+static volatile LONG g_cov_other_hits, g_cov_hits;
+static int g_cov_written;
+static void cover_arm(uint32_t frame);
 
 /* Arguments are staged in globals so the asm never depends on how the
  * compiler allocated registers or esp-relative locals. */
@@ -399,6 +431,26 @@ static void load_scenario(void) {
     } else if (sscanf(line, "animdump %u %u %u", &g_anim_class, &g_anim_from,
                       &g_anim_to) == 3) {
       g_anim = fopen(ORACLE_DIR "out\\anim.txt", "w");
+    } else if (sscanf(line, "snapshot %u", &fr) == 1) {
+      if (g_nsnap < 8) g_snap_frames[g_nsnap++] = fr;
+    } else if (sscanf(line, "cover %u %u", &g_cov_from, &g_cov_to) == 2) {
+      logf_("cover %u..%u", g_cov_from, g_cov_to);
+    } else if (!strncmp(line, "cva ", 4)) {
+      char mod = 0;
+      unsigned va = 0;
+      if (sscanf(line, "cva %c %x", &mod, &va) == 2 && (mod == 'g' || mod == 'c')) {
+        if (g_ncov == g_cov_cap) {
+          int cap = g_cov_cap ? g_cov_cap * 2 : 1024;
+          CoverEnt *n = realloc(g_cov, (size_t)cap * sizeof *n);
+          if (!n) continue;
+          g_cov = n;
+          g_cov_cap = cap;
+        }
+        memset(&g_cov[g_ncov], 0, sizeof g_cov[g_ncov]);
+        g_cov[g_ncov].va = va;
+        g_cov[g_ncov].mod = mod;
+        g_ncov++;
+      }
     } else if (sscanf(line, "states %u", &fr) == 1) {
       g_nstates = (int)fr;
     } else if (sscanf(line, "frames %u", &fr) == 1) {
@@ -493,6 +545,7 @@ static void author_equip_item(uint8_t *game, uint8_t *pl, const Equip *eq) {
 
 void __cdecl on_pre_frame(uint8_t *game) {
   uint32_t next = RD32(game, G_FRAME) + 1;
+  if (g_cov_tls != TLS_OUT_OF_INDEXES && next >= g_cov_from && next <= g_cov_to) cover_arm(next);
   g_inlog_len = 0;
   if (g_setexp_frame && next == g_setexp_frame && p_SetUnitStat) {
     uint8_t *pl = first_player(game);
@@ -637,27 +690,142 @@ static int __stdcall dot_setstat_hook(uint8_t *u, int stat, int val,
 
 static void mem_block(const char *name, const void *p, uint32_t len, int *first) {
   if (!p || IsBadReadPtr(p, len)) {
-    fprintf(g_trace, "%s{\"n\":\"%s\",\"a\":%u,\"h\":null}", *first ? "" : ",", name,
+    fprintf(g_mem_out, "%s{\"n\":\"%s\",\"a\":%u,\"h\":null}", *first ? "" : ",", name,
             (uint32_t)(uintptr_t)p);
     *first = 0;
     return;
   }
-  fprintf(g_trace, "%s{\"n\":\"%s\",\"a\":%u,\"h\":\"", *first ? "" : ",", name,
+  fprintf(g_mem_out, "%s{\"n\":\"%s\",\"a\":%u,\"h\":\"", *first ? "" : ",", name,
           (uint32_t)(uintptr_t)p);
-  for (uint32_t i = 0; i < len; i++) fprintf(g_trace, "%02x", ((const uint8_t *)p)[i]);
-  fputs("\"}", g_trace);
+  for (uint32_t i = 0; i < len; i++) fprintf(g_mem_out, "%02x", ((const uint8_t *)p)[i]);
+  fputs("\"}", g_mem_out);
   *first = 0;
 }
 
 static void mem_block_at(const char *name, uint32_t addr, const uint8_t *bytes, uint32_t len, int *first) {
-  fprintf(g_trace, "%s{\"n\":\"%s\",\"a\":%u,\"h\":\"", *first ? "" : ",", name, addr);
-  for (uint32_t i = 0; i < len; i++) fprintf(g_trace, "%02x", bytes[i]);
-  fputs("\"}", g_trace);
+  fprintf(g_mem_out, "%s{\"n\":\"%s\",\"a\":%u,\"h\":\"", *first ? "" : ",", name, addr);
+  for (uint32_t i = 0; i < len; i++) fprintf(g_mem_out, "%02x", bytes[i]);
+  fputs("\"}", g_mem_out);
   *first = 0;
+}
+
+/* Raw blocks of one unit (memdump and snapshot): unit, data, path, stat lists, player client/
+ * inventory/skills, monster AI blocks and its event nodes. */
+static void dump_unit_blocks(uint8_t *u, int *pfirst) {
+  int first = *pfirst;
+  mem_block("unit", u, 0x100, &first);
+  uint8_t *data = (uint8_t *)(uintptr_t)RD32(u, 0x14);
+  mem_block("data", data, 0x100, &first);
+  uint32_t ut = RD32(u, U_TYPE);
+  uint8_t *path = (uint8_t *)(uintptr_t)RD32(u, 0x2C);
+  if (path) {
+    mem_block("path", path, (ut == 0 || ut == 1 || ut == 3) ? 0x200 : 0x20, &first);
+  }
+  uint8_t *slex = (uint8_t *)(uintptr_t)RD32(u, 0x5C);
+  if (slex && !IsBadReadPtr(slex, 0x3C)) {
+    if ((RD32(slex, 0x10) & 0x80000000u) && !IsBadReadPtr(slex, 0x64)) {
+      mem_block("statlistex", slex, 0x64, &first);
+      uint16_t myCnt = *(uint16_t *)(slex + 0x28);
+      if (myCnt > 0 && myCnt <= 256)
+        mem_block("mystats", (void *)(uintptr_t)RD32(slex, 0x24), (uint32_t)myCnt * 8u, &first);
+      uint16_t fullCnt = *(uint16_t *)(slex + 0x4C);
+      if (fullCnt > 0 && fullCnt <= 256)
+        mem_block("fullstats", (void *)(uintptr_t)RD32(slex, 0x48), (uint32_t)fullCnt * 8u, &first);
+      mem_block("stateflags", (void *)(uintptr_t)RD32(slex, 0x58), 0x30, &first);
+      uint8_t *cl = (uint8_t *)(uintptr_t)RD32(slex, 0x3C);
+      for (int ck = 0; cl && ck < 8 && !IsBadReadPtr(cl, 0x3C); ck++) {
+        uint32_t clSz = ((RD32(cl, 0x10) & 0x80000000u) && !IsBadReadPtr(cl, 0x64)) ? 0x64u : 0x3Cu;
+        mem_block("childstatlist", cl, clSz, &first);
+        uint16_t clCnt = *(uint16_t *)(cl + 0x28);
+        if (clCnt > 0 && clCnt <= 256)
+          mem_block("childstats", (void *)(uintptr_t)RD32(cl, 0x24), (uint32_t)clCnt * 8u, &first);
+        if (clSz == 0x64u) {
+          uint16_t cfCnt = *(uint16_t *)(cl + 0x4C);
+          if (cfCnt > 0 && cfCnt <= 256)
+            mem_block("childfullstats", (void *)(uintptr_t)RD32(cl, 0x48), (uint32_t)cfCnt * 8u, &first);
+        }
+        cl = (uint8_t *)(uintptr_t)RD32(cl, 0x2C);
+      }
+    } else {
+      mem_block("statlist", slex, 0x3C, &first);
+      uint16_t stCnt = *(uint16_t *)(slex + 0x28);
+      if (stCnt > 0 && stCnt <= 256)
+        mem_block("mystats", (void *)(uintptr_t)RD32(slex, 0x24), (uint32_t)stCnt * 8u, &first);
+    }
+  }
+  if (ut == 0) {
+    if (data && !IsBadReadPtr(data, 0xA0)) {
+      uint8_t *cl = (uint8_t *)(uintptr_t)RD32(data, 0x9C);
+      if (cl && !IsBadReadPtr(cl, 0x200))
+        mem_block("client", cl, 0x200, &first);
+    }
+    uint8_t *inv = (uint8_t *)(uintptr_t)RD32(u, 0x60);
+    if (inv && !IsBadReadPtr(inv, 0x40)) {
+      mem_block("inventory", inv, 0x40, &first);
+      int32_t nGrids = (int32_t)RD32(inv, 0x18);
+      uint8_t *grids = (uint8_t *)(uintptr_t)RD32(inv, 0x14);
+      if (grids && nGrids > 0 && nGrids <= 8 && !IsBadReadPtr(grids, (uint32_t)nGrids * 0x10u)) {
+        mem_block("invgrids", grids, (uint32_t)nGrids * 0x10u, &first);
+        uint8_t **ppItems = (uint8_t **)(uintptr_t)RD32(grids, 0x0C);
+        if (ppItems && !IsBadReadPtr(ppItems, 13 * 4u)) {
+          mem_block("bodyitems", ppItems, 13 * 4u, &first);
+          for (int loc = 0; loc < 13; loc++) {
+            uint8_t *it = ppItems[loc];
+            if (it && !IsBadReadPtr(it, 0x100)) {
+              mem_block("itemunit", it, 0x100, &first);
+              uint8_t *itdata = (uint8_t *)(uintptr_t)RD32(it, 0x14);
+              if (itdata && !IsBadReadPtr(itdata, 0x74))
+                mem_block("itemdata", itdata, 0x74, &first);
+            }
+          }
+        }
+      }
+    }
+    uint8_t *pskills = (uint8_t *)(uintptr_t)RD32(u, 0xA8);
+    if (pskills && !IsBadReadPtr(pskills, 0x20)) {
+      mem_block("pskills", pskills, 0x20, &first);
+      uint8_t *leftSkill = (uint8_t *)(uintptr_t)RD32(pskills, 0x04);
+      if (leftSkill && !IsBadReadPtr(leftSkill, 0x40)) {
+        mem_block("leftskill", leftSkill, 0x40, &first);
+        uint8_t *stxt = (uint8_t *)(uintptr_t)RD32(leftSkill, 0x00);
+        if (stxt && !IsBadReadPtr(stxt, 0x23C))
+          mem_block("skillstxt", stxt, 0x23C, &first);
+      }
+      uint8_t *usedSkill = (uint8_t *)(uintptr_t)RD32(pskills, 0x10);
+      if (usedSkill && usedSkill != leftSkill && !IsBadReadPtr(usedSkill, 0x40))
+        mem_block("usedskill", usedSkill, 0x40, &first);
+    }
+  }
+  if (ut == 1 && data && !IsBadReadPtr(data, 0x30)) {
+    uint8_t *aig = (uint8_t *)(uintptr_t)RD32(data, 0x28);
+    mem_block("aigeneral", aig, 0x40, &first);
+    mem_block("aicontrol", (void *)(uintptr_t)RD32(data, 0x2C), 0x40, &first);
+    if (aig && !IsBadReadPtr(aig, 0x40)) {
+      uint8_t *cmdHead = (uint8_t *)(uintptr_t)RD32(aig, 0x20);
+      uint8_t *cmd = cmdHead;
+      for (int ck = 0; cmd && ck < 8 && !IsBadReadPtr(cmd, 0x1C); ck++) {
+        mem_block("aicmd", cmd, 0x1C, &first);
+        cmd = (uint8_t *)(uintptr_t)RD32(cmd, 0x00);
+        if (cmd == cmdHead) break;
+      }
+      uint8_t *mn = (uint8_t *)(uintptr_t)RD32(aig, 0x34);
+      for (int mk = 0; mn && mk < 16 && !IsBadReadPtr(mn, 0x08); mk++) {
+        mem_block("aiminion", mn, 0x08, &first);
+        mn = (uint8_t *)(uintptr_t)RD32(mn, 0x04);
+      }
+    }
+  }
+  uint8_t *ev = (uint8_t *)(uintptr_t)RD32(u, 0xDC);
+  for (int k = 0; ev && k < 16 && !IsBadReadPtr(ev, 0x30); k++) {
+    mem_block("event", ev, 0x30, &first);
+    ev = (uint8_t *)(uintptr_t)RD32(ev, 0x24);
+  }
+  *pfirst = first;
 }
 
 static void dump_memory(uint8_t *game, uint32_t fr) {
   int any = 0;
+  g_mem_out = g_trace;
   for (int i = 0; i < g_nmemdump; i++) {
     if (g_memdump[i].frame != fr || g_memdump[i].type > 4) continue;
     uint8_t *u = NULL;
@@ -678,113 +846,7 @@ static void dump_memory(uint8_t *game, uint32_t fr) {
     mem_block("game", game, 0x100, &first);
     mem_block("timer", (void *)(uintptr_t)RD32(game, 0xB8), 0xA20, &first);
     if (u) {
-      mem_block("unit", u, 0x100, &first);
-      uint8_t *data = (uint8_t *)(uintptr_t)RD32(u, 0x14);
-      mem_block("data", data, 0x100, &first);
-      uint32_t ut = RD32(u, U_TYPE);
-      uint8_t *path = (uint8_t *)(uintptr_t)RD32(u, 0x2C);
-      if (path) {
-        mem_block("path", path, (ut == 0 || ut == 1 || ut == 3) ? 0x200 : 0x20, &first);
-      }
-      uint8_t *slex = (uint8_t *)(uintptr_t)RD32(u, 0x5C);
-      if (slex && !IsBadReadPtr(slex, 0x3C)) {
-        if ((RD32(slex, 0x10) & 0x80000000u) && !IsBadReadPtr(slex, 0x64)) {
-          mem_block("statlistex", slex, 0x64, &first);
-          uint16_t myCnt = *(uint16_t *)(slex + 0x28);
-          if (myCnt > 0 && myCnt <= 256)
-            mem_block("mystats", (void *)(uintptr_t)RD32(slex, 0x24), (uint32_t)myCnt * 8u, &first);
-          uint16_t fullCnt = *(uint16_t *)(slex + 0x4C);
-          if (fullCnt > 0 && fullCnt <= 256)
-            mem_block("fullstats", (void *)(uintptr_t)RD32(slex, 0x48), (uint32_t)fullCnt * 8u, &first);
-          mem_block("stateflags", (void *)(uintptr_t)RD32(slex, 0x58), 0x30, &first);
-          uint8_t *cl = (uint8_t *)(uintptr_t)RD32(slex, 0x3C);
-          for (int ck = 0; cl && ck < 8 && !IsBadReadPtr(cl, 0x3C); ck++) {
-            uint32_t clSz = ((RD32(cl, 0x10) & 0x80000000u) && !IsBadReadPtr(cl, 0x64)) ? 0x64u : 0x3Cu;
-            mem_block("childstatlist", cl, clSz, &first);
-            uint16_t clCnt = *(uint16_t *)(cl + 0x28);
-            if (clCnt > 0 && clCnt <= 256)
-              mem_block("childstats", (void *)(uintptr_t)RD32(cl, 0x24), (uint32_t)clCnt * 8u, &first);
-            if (clSz == 0x64u) {
-              uint16_t cfCnt = *(uint16_t *)(cl + 0x4C);
-              if (cfCnt > 0 && cfCnt <= 256)
-                mem_block("childfullstats", (void *)(uintptr_t)RD32(cl, 0x48), (uint32_t)cfCnt * 8u, &first);
-            }
-            cl = (uint8_t *)(uintptr_t)RD32(cl, 0x2C);
-          }
-        } else {
-          mem_block("statlist", slex, 0x3C, &first);
-          uint16_t stCnt = *(uint16_t *)(slex + 0x28);
-          if (stCnt > 0 && stCnt <= 256)
-            mem_block("mystats", (void *)(uintptr_t)RD32(slex, 0x24), (uint32_t)stCnt * 8u, &first);
-        }
-      }
-      if (ut == 0) {
-        if (data && !IsBadReadPtr(data, 0xA0)) {
-          uint8_t *cl = (uint8_t *)(uintptr_t)RD32(data, 0x9C);
-          if (cl && !IsBadReadPtr(cl, 0x200))
-            mem_block("client", cl, 0x200, &first);
-        }
-        uint8_t *inv = (uint8_t *)(uintptr_t)RD32(u, 0x60);
-        if (inv && !IsBadReadPtr(inv, 0x40)) {
-          mem_block("inventory", inv, 0x40, &first);
-          int32_t nGrids = (int32_t)RD32(inv, 0x18);
-          uint8_t *grids = (uint8_t *)(uintptr_t)RD32(inv, 0x14);
-          if (grids && nGrids > 0 && nGrids <= 8 && !IsBadReadPtr(grids, (uint32_t)nGrids * 0x10u)) {
-            mem_block("invgrids", grids, (uint32_t)nGrids * 0x10u, &first);
-            uint8_t **ppItems = (uint8_t **)(uintptr_t)RD32(grids, 0x0C);
-            if (ppItems && !IsBadReadPtr(ppItems, 13 * 4u)) {
-              mem_block("bodyitems", ppItems, 13 * 4u, &first);
-              for (int loc = 0; loc < 13; loc++) {
-                uint8_t *it = ppItems[loc];
-                if (it && !IsBadReadPtr(it, 0x100)) {
-                  mem_block("itemunit", it, 0x100, &first);
-                  uint8_t *itdata = (uint8_t *)(uintptr_t)RD32(it, 0x14);
-                  if (itdata && !IsBadReadPtr(itdata, 0x74))
-                    mem_block("itemdata", itdata, 0x74, &first);
-                }
-              }
-            }
-          }
-        }
-        uint8_t *pskills = (uint8_t *)(uintptr_t)RD32(u, 0xA8);
-        if (pskills && !IsBadReadPtr(pskills, 0x20)) {
-          mem_block("pskills", pskills, 0x20, &first);
-          uint8_t *leftSkill = (uint8_t *)(uintptr_t)RD32(pskills, 0x04);
-          if (leftSkill && !IsBadReadPtr(leftSkill, 0x40)) {
-            mem_block("leftskill", leftSkill, 0x40, &first);
-            uint8_t *stxt = (uint8_t *)(uintptr_t)RD32(leftSkill, 0x00);
-            if (stxt && !IsBadReadPtr(stxt, 0x23C))
-              mem_block("skillstxt", stxt, 0x23C, &first);
-          }
-          uint8_t *usedSkill = (uint8_t *)(uintptr_t)RD32(pskills, 0x10);
-          if (usedSkill && usedSkill != leftSkill && !IsBadReadPtr(usedSkill, 0x40))
-            mem_block("usedskill", usedSkill, 0x40, &first);
-        }
-      }
-      if (ut == 1 && data && !IsBadReadPtr(data, 0x30)) {
-        uint8_t *aig = (uint8_t *)(uintptr_t)RD32(data, 0x28);
-        mem_block("aigeneral", aig, 0x40, &first);
-        mem_block("aicontrol", (void *)(uintptr_t)RD32(data, 0x2C), 0x40, &first);
-        if (aig && !IsBadReadPtr(aig, 0x40)) {
-          uint8_t *cmdHead = (uint8_t *)(uintptr_t)RD32(aig, 0x20);
-          uint8_t *cmd = cmdHead;
-          for (int ck = 0; cmd && ck < 8 && !IsBadReadPtr(cmd, 0x1C); ck++) {
-            mem_block("aicmd", cmd, 0x1C, &first);
-            cmd = (uint8_t *)(uintptr_t)RD32(cmd, 0x00);
-            if (cmd == cmdHead) break;
-          }
-          uint8_t *mn = (uint8_t *)(uintptr_t)RD32(aig, 0x34);
-          for (int mk = 0; mn && mk < 16 && !IsBadReadPtr(mn, 0x08); mk++) {
-            mem_block("aiminion", mn, 0x08, &first);
-            mn = (uint8_t *)(uintptr_t)RD32(mn, 0x04);
-          }
-        }
-      }
-      uint8_t *ev = (uint8_t *)(uintptr_t)RD32(u, 0xDC);
-      for (int k = 0; ev && k < 16 && !IsBadReadPtr(ev, 0x30); k++) {
-        mem_block("event", ev, 0x30, &first);
-        ev = (uint8_t *)(uintptr_t)RD32(ev, 0x24);
-      }
+      dump_unit_blocks(u, &first);
       if (p_GetRoom) {
         uint8_t *rm = (uint8_t *)p_GetRoom(u);
         if (rm && !IsBadReadPtr(rm, 0x80)) {
@@ -841,8 +903,219 @@ static void dump_memory(uint8_t *game, uint32_t fr) {
   if (any) fputc(']', g_trace);
 }
 
+/* ------------------------------------------------- K1 replay: snapshot */
+
+static void snap_line_begin(FILE *f, const char *kind) { fprintf(f, "{\"k\":\"%s\"", kind); }
+
+static void write_snapshot(uint8_t *game, uint32_t fr) {
+  char path[MAX_PATH];
+  snprintf(path, sizeof path, ORACLE_DIR "out\\snap_%u.ndjson", fr);
+  FILE *f = fopen(path, "wb");
+  if (!f) return;
+  FILE *saved = g_mem_out;
+  g_mem_out = f;
+  int first;
+  fprintf(f, "{\"k\":\"hdr\",\"frame\":%u,\"game\":%u,\"d2game\":%u,\"d2common\":%u}\n", fr,
+          (uint32_t)(uintptr_t)game, (uint32_t)(uintptr_t)g_d2game,
+          (uint32_t)(uintptr_t)g_d2common_mod);
+  /* pGame, timer and its node pool chunks (pTimer+0xA1C -> chunk+0x7084 next). */
+  snap_line_begin(f, "game");
+  fputs(",\"blocks\":[", f);
+  first = 1;
+  mem_block("game", game, 0x1DF4, &first);
+  uint8_t *timer = (uint8_t *)(uintptr_t)RD32(game, 0xB8);
+  mem_block("timer", timer, 0xA20, &first);
+  if (timer && !IsBadReadPtr(timer, 0xA20)) {
+    uint8_t *chunk = (uint8_t *)(uintptr_t)RD32(timer, 0xA1C);
+    for (int k = 0; chunk && k < 64 && !IsBadReadPtr(chunk, 0x7088); k++) {
+      mem_block("timerchunk", chunk, 0x7088, &first);
+      chunk = (uint8_t *)(uintptr_t)RD32(chunk, 0x7084);
+    }
+  }
+  fputs("]}\n", f);
+  /* Every unit in every hash list, in hook iteration order (list, bucket, chain). */
+  int nunits = 0;
+  for (int list = 0; list < 5; list++)
+    for (int b = 0; b < 128; b++)
+      for (uint8_t *u = (uint8_t *)(uintptr_t)RD32(game, G_UNITS + list * 0x200 + b * 4); u;
+           u = (uint8_t *)(uintptr_t)RD32(u, U_GAME_NEXT)) {
+        fprintf(f, "{\"k\":\"unit\",\"list\":%d,\"bucket\":%d,\"type\":%u,\"id\":%u,\"blocks\":[", list,
+                b, RD32(u, U_TYPE), RD32(u, U_ID));
+        first = 1;
+        dump_unit_blocks(u, &first);
+        fputs("]}\n", f);
+        nunits++;
+      }
+  /* Acts (pGame+0xBC[5]) and their active rooms. */
+  int nrooms = 0;
+  uint8_t *levels[256];
+  int nlevels = 0;
+  for (int a = 0; a < 5; a++) {
+    uint8_t *act = (uint8_t *)(uintptr_t)RD32(game, 0xBC + a * 4);
+    if (!act || IsBadReadPtr(act, 0x60)) continue;
+    fprintf(f, "{\"k\":\"act\",\"act\":%d,\"blocks\":[", a);
+    first = 1;
+    mem_block("act", act, 0x60, &first);
+    mem_block("env", (void *)(uintptr_t)RD32(act, 0x04), 0x38, &first);
+    fputs("]}\n", f);
+    uint8_t *room = (uint8_t *)(uintptr_t)RD32(act, 0x10);
+    for (int k = 0; room && k < 4096 && !IsBadReadPtr(room, 0x80); k++) {
+      fprintf(f, "{\"k\":\"room\",\"act\":%d,\"blocks\":[", a);
+      first = 1;
+      mem_block("room", room, 0x80, &first);
+      uint8_t *rex = (uint8_t *)(uintptr_t)RD32(room, 0x10);
+      if (rex && !IsBadReadPtr(rex, 0xEC)) {
+        mem_block("roomex", rex, 0xEC, &first);
+        uint8_t *lvl = (uint8_t *)(uintptr_t)RD32(rex, 0x58);
+        int seen = 0;
+        for (int i = 0; i < nlevels; i++)
+          if (levels[i] == lvl) seen = 1;
+        if (lvl && !seen && nlevels < 256 && !IsBadReadPtr(lvl, 0x230)) {
+          levels[nlevels++] = lvl;
+          mem_block("level", lvl, 0x230, &first);
+        }
+      }
+      uint32_t nnear = RD32(room, 0x24);
+      uint8_t *pnear = (uint8_t *)(uintptr_t)RD32(room, 0x00);
+      if (pnear && nnear > 0 && nnear <= 64) mem_block("roomsnear", pnear, nnear * 4u, &first);
+      uint8_t *grid = (uint8_t *)(uintptr_t)RD32(room, 0x20);
+      if (grid && !IsBadReadPtr(grid, 0x24)) {
+        mem_block("coll", grid, 0x24, &first);
+        uint32_t w = RD32(grid, 0x08), h = RD32(grid, 0x0C);
+        uint8_t *mask = (uint8_t *)(uintptr_t)RD32(grid, 0x20);
+        if (mask && w > 0 && h > 0 && w * h <= 0x40000)
+          mem_block("collmask", mask, w * h * 2u, &first);
+      }
+      fputs("]}\n", f);
+      nrooms++;
+      room = (uint8_t *)(uintptr_t)RD32(room, 0x7C);
+    }
+  }
+  fclose(f);
+  g_mem_out = saved;
+  logf_("snapshot %s: %d units, %d rooms, %d levels", path, nunits, nrooms, nlevels);
+}
+
+/* ------------------------------------------------- K1 replay: coverage */
+
+static int cover_find(uintptr_t a) {
+  int lo = 0, hi = g_ncov - 1;
+  while (lo <= hi) {
+    int mid = (lo + hi) / 2;
+    if (g_cov[mid].addr == a) return mid;
+    if (g_cov[mid].addr < a) lo = mid + 1;
+    else hi = mid - 1;
+  }
+  return -1;
+}
+
+static LONG CALLBACK cover_veh(EXCEPTION_POINTERS *ep) {
+  DWORD code = ep->ExceptionRecord->ExceptionCode;
+  if (code == EXCEPTION_BREAKPOINT) {
+    uintptr_t a = (uintptr_t)ep->ExceptionRecord->ExceptionAddress;
+    int i = cover_find(a);
+    if (i < 0) {
+      a -= 1;
+      i = cover_find(a);
+    }
+    if (i < 0) return EXCEPTION_CONTINUE_SEARCH;
+    *(volatile uint8_t *)a = g_cov[i].orig;
+    if (g_cov_active && GetCurrentThreadId() == g_cov_tid) {
+      if (!g_cov[i].done) {
+        g_cov[i].done = 1;
+        g_cov[i].first_frame = g_cov_frame;
+        InterlockedIncrement(&g_cov_hits);
+      }
+    } else {
+      InterlockedIncrement(&g_cov_other_hits);
+      TlsSetValue(g_cov_tls, (void *)(intptr_t)(i + 1));
+      ep->ContextRecord->EFlags |= 0x100; /* TF: re-arm after this instruction */
+    }
+    ep->ContextRecord->Eip = (DWORD)a;
+    return EXCEPTION_CONTINUE_EXECUTION;
+  }
+  if (code == EXCEPTION_SINGLE_STEP) {
+    int i = (int)(intptr_t)TlsGetValue(g_cov_tls) - 1;
+    if (i < 0) return EXCEPTION_CONTINUE_SEARCH;
+    TlsSetValue(g_cov_tls, NULL);
+    if (g_cov_active && !g_cov[i].done) *(volatile uint8_t *)g_cov[i].addr = 0xCC;
+    return EXCEPTION_CONTINUE_EXECUTION;
+  }
+  return EXCEPTION_CONTINUE_SEARCH;
+}
+
+static int cover_cmp(const void *a, const void *b) {
+  uintptr_t x = ((const CoverEnt *)a)->addr, y = ((const CoverEnt *)b)->addr;
+  return x < y ? -1 : x > y;
+}
+
+static void cover_install(void) {
+  if (g_cov_from == 0xFFFFFFFFu || !g_ncov) return;
+  int bad = 0;
+  for (int i = 0; i < g_ncov; i++) {
+    if (g_cov[i].mod == 'c' && !g_d2common_mod) {
+      g_cov[i].addr = 0;
+      bad++;
+      continue;
+    }
+    g_cov[i].addr = g_cov[i].mod == 'g' ? G(g_cov[i].va) : C(g_cov[i].va);
+  }
+  qsort(g_cov, (size_t)g_ncov, sizeof *g_cov, cover_cmp);
+  for (int i = 0; i < g_ncov; i++) {
+    if (!g_cov[i].addr) continue;
+    DWORD old;
+    VirtualProtect((void *)g_cov[i].addr, 1, PAGE_EXECUTE_READWRITE, &old);
+    g_cov[i].orig = *(uint8_t *)g_cov[i].addr;
+    if (g_cov[i].orig == 0xCC) bad++;
+  }
+  g_cov_tls = TlsAlloc();
+  AddVectoredExceptionHandler(1, cover_veh);
+  logf_("cover: %d entries (%d unusable), frames %u..%u", g_ncov, bad, g_cov_from, g_cov_to);
+}
+
+static void cover_arm(uint32_t frame) {
+  g_cov_frame = frame;
+  g_cov_tid = GetCurrentThreadId();
+  InterlockedExchange(&g_cov_active, 1);
+  for (int i = 0; i < g_ncov; i++)
+    if (g_cov[i].addr && !g_cov[i].done && g_cov[i].orig != 0xCC)
+      *(volatile uint8_t *)g_cov[i].addr = 0xCC;
+  FlushInstructionCache(GetCurrentProcess(), NULL, 0);
+}
+
+static void cover_disarm(void) {
+  InterlockedExchange(&g_cov_active, 0);
+  for (int i = 0; i < g_ncov; i++)
+    if (g_cov[i].addr && !g_cov[i].done && g_cov[i].orig != 0xCC)
+      *(volatile uint8_t *)g_cov[i].addr = g_cov[i].orig;
+  FlushInstructionCache(GetCurrentProcess(), NULL, 0);
+}
+
+static void cover_write(void) {
+  FILE *f = fopen(ORACLE_DIR "out\\cover.ndjson", "wb");
+  if (!f) return;
+  fprintf(f,
+          "{\"k\":\"hdr\",\"from\":%u,\"to\":%u,\"entries\":%d,\"hit\":%ld,\"otherThreadHits\":%ld,"
+          "\"d2game\":%u,\"d2common\":%u}\n",
+          g_cov_from, g_cov_to, g_ncov, g_cov_hits, g_cov_other_hits,
+          (uint32_t)(uintptr_t)g_d2game, (uint32_t)(uintptr_t)g_d2common_mod);
+  for (int i = 0; i < g_ncov; i++)
+    if (g_cov[i].done)
+      fprintf(f, "{\"m\":\"%s\",\"va\":\"0x%08X\",\"f\":%u}\n",
+              g_cov[i].mod == 'g' ? "D2Game" : "D2Common", g_cov[i].va, g_cov[i].first_frame);
+  fclose(f);
+  logf_("cover written: %ld hit, %ld other-thread traps", g_cov_hits, g_cov_other_hits);
+}
+
 void __cdecl on_frame(uint8_t *game) {
   LONG n = InterlockedIncrement(&g_frames);
+  if (g_cov_active) cover_disarm();
+  if (g_ncov && !g_cov_written && g_cov_from != 0xFFFFFFFFu && RD32(game, G_FRAME) >= g_cov_to) {
+    cover_write();
+    g_cov_written = 1;
+  }
+  for (int i = 0; i < g_nsnap; i++)
+    if (RD32(game, G_FRAME) == g_snap_frames[i]) write_snapshot(game, g_snap_frames[i]);
   if (g_coll_frame && RD32(game, G_FRAME) == g_coll_frame)
     dump_collision(game, g_coll_frame);
   if (g_anim) {
@@ -1578,6 +1851,7 @@ static void install_d2game_hooks(void) {
                patch_call(G(0x6FCC02B1), (void *)step_stub, (uintptr_t)g_step_fn);
     logf_("%d/3 orderlog hooks", ordk);
   }
+  cover_install();
 }
 
 /* ----------------------------------------------------------------- menu */
