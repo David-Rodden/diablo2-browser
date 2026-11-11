@@ -188,6 +188,20 @@ export function findWorldItemImpl(model: any, itemId: number): ItemData | undefi
   )
 }
 
+/**
+ * Minimum spacing (ms) between consecutive `AddSkillPoint (0x3B)` packets in a `Shift+Click` +5 batch.
+ * Must exceed `C2S_IDENTICAL_DEDUPE_DEFAULT_WINDOW_MS_113C` (`0xc8 = 200 ms`) because `0x3B` carries no
+ * wire count byte and identical repeats inside 200 ms are dropped at `D2Client 0x6fac4446`.
+ */
+export const SKILL_BATCH_INTERVAL_MS = 205
+
+export interface PendingSkillBatch {
+  skillId: number
+  remaining: number
+  lastSentAtMs: number
+  nextSendAtMs: number
+}
+
 export function allocateStatImpl(model: any, key: BaseStatKey, count?: number): boolean {
   const statId = STAT_KEY_TO_D2_STAT_ID[key]
   if (count !== undefined && count > 1) {
@@ -198,9 +212,67 @@ export function allocateStatImpl(model: any, key: BaseStatKey, count?: number): 
   return true
 }
 
-export function allocateSkillImpl(model: any, skillId: number): boolean {
-  model.emitCommand({ type: 'AddSkillPoint', skillId })
+export function allocateSkillImpl(model: any, skillId: number, count?: number): boolean {
+  const safeCount = count !== undefined && Number.isFinite(count) ? Math.max(1, Math.trunc(count)) : 1
+  const pending = model.pendingSkillBatch as PendingSkillBatch | null | undefined
+  if (pending && pending.remaining > 0) {
+    if (safeCount > 1 || pending.skillId === skillId) {
+      return false
+    }
+    const unspent = model.world?.self?.skillPoints
+    if (typeof unspent === 'number' && unspent - pending.remaining <= 0) {
+      return false
+    }
+  }
+  const nowMs =
+    typeof model.lastTickNowMs === 'number'
+      ? model.lastTickNowMs
+      : typeof model.now === 'function'
+        ? model.now()
+        : performance.now()
+  model.emitCommand({ type: 'AddSkillPoint', skillId }, nowMs)
+  if (safeCount > 1) {
+    model.pendingSkillBatch = {
+      skillId,
+      remaining: safeCount - 1,
+      lastSentAtMs: nowMs,
+      nextSendAtMs: nowMs + SKILL_BATCH_INTERVAL_MS,
+    } satisfies PendingSkillBatch
+  }
   return true
+}
+
+export function tickSkillBatchAllocationImpl(model: any, nowMs: number): void {
+  model.lastTickNowMs = nowMs
+  const batch = model.pendingSkillBatch as PendingSkillBatch | null | undefined
+  if (!batch || batch.remaining <= 0) {
+    model.pendingSkillBatch = null
+    return
+  }
+  if (nowMs < batch.lastSentAtMs) {
+    // Clock jumped backwards (e.g. deterministic test clock starting below performance.now()): rebase.
+    batch.lastSentAtMs = nowMs
+    batch.nextSendAtMs = nowMs + SKILL_BATCH_INTERVAL_MS
+    return
+  }
+  if (nowMs < batch.nextSendAtMs) return
+  const unspent = model.world?.self?.skillPoints
+  if (typeof unspent === 'number' && unspent <= 0) {
+    model.pendingSkillBatch = null
+    return
+  }
+  const tree = model.hudManager?.skillTree
+  if (tree && typeof tree.canAllocate === 'function' && !tree.canAllocate(batch.skillId)) {
+    model.pendingSkillBatch = null
+    return
+  }
+  model.emitCommand({ type: 'AddSkillPoint', skillId: batch.skillId }, nowMs)
+  batch.remaining -= 1
+  batch.lastSentAtMs = nowMs
+  batch.nextSendAtMs = nowMs + SKILL_BATCH_INTERVAL_MS
+  if (batch.remaining <= 0) {
+    model.pendingSkillBatch = null
+  }
 }
 
 function resolveChargedItemIdForSkill(model: any, skillId: number, itemId = 0xffffffff): number {

@@ -8,6 +8,7 @@ import { D2DrlgLevelStrc } from '../../mem/layout.generated.ts';
 import type { Memory113c } from '../../mem/sparse-memory.ts';
 import { SEED_RollRandomNumberInline113c } from '../inline-helpers.ts';
 import { imul32, sdiv32, smod32 } from '../int-math.ts';
+import { DRLGWARP_GetWarpDstAdjustData113c } from './drlg-room.ts';
 
 /**
  * Outdoor theme bitmask table at `0x6FDE345C` (`uint32[4] = [0x1000, 0x2000, 0x4000, 0x8000]`).
@@ -305,3 +306,28 @@ export function DRLGOUTDOORS_ScaleAndCompactVertices113c(
   } while (pCur !== m.u32(ppHead));
 }
 
+/**
+ * `@va D2Common:0x6FD92A20` (`DRLGOUTDOORS_GetLevelLinkVisBit113c`, not exported;
+ * custom LTCG `eax = pLevel`, stack `[esp+4] = pAdjLevel`, `ret 4`).
+ *
+ * Resolves `pVisArr = DRLGWARP_GetWarpDstAdjustData113c(m, pLevel->pDrlg (+0x1B4), pLevel->nLevelId (+0x1D0))`,
+ * scans `i = 0..7` for `pVisArr[i] == pAdjLevel->nLevelId (+0x1D0)`, and returns `1 << (i + 4)` on match (or `0` if not found).
+ */
+export function DRLGOUTDOORS_GetLevelLinkVisBit113c(
+  m: Memory113c,
+  pLevel: number,
+  pAdjLevel: number,
+): number {
+  const lvl = pLevel >>> 0;
+  const adj = pAdjLevel >>> 0;
+  const nLevelId = m.get(lvl, D2DrlgLevelStrc.nLevelId) | 0;
+  const pDrlg = m.get(lvl, D2DrlgLevelStrc.pDrlg);
+  const pVisArr = DRLGWARP_GetWarpDstAdjustData113c(m, pDrlg, nLevelId) >>> 0;
+  const adjId = m.get(adj, D2DrlgLevelStrc.nLevelId) | 0;
+  for (let i = 0; i < 8; i++) {
+    if ((m.u32((pVisArr + i * 4) >>> 0) | 0) === adjId) {
+      return (1 << (i + 4)) >>> 0;
+    }
+  }
+  return 0;
+}

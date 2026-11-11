@@ -173,6 +173,7 @@ export function tickSessionFrame(
   const safeDt = Math.max(0, dtMs)
   const clampedDt = Math.min(200, safeDt)
   host.tickCounter++
+  host.hudModel?.tick?.(nowMs)
   host.commandMapper.tick(nowMs)
   host.commandMapper.assists.tick(nowMs)
 

@@ -25,6 +25,15 @@ import {
   PATH_AStar_GetNodeFromPendingCache113c,
   PATH_AStar_PropagateNewFScoreToChildren113c,
 } from '../tables/item-tbls-113c.ts'
+import {
+  COLLISION_CheckMaskWithPattern2_113c,
+  COLLISION_ResetMaskWithPattern113c,
+  COLLISION_ResetMaskWithPatternSimple113c,
+  COLLISION_ResetMaskWithSizeXY113c,
+  COLLISION_SetMaskWithPattern113c,
+  COLLISION_SetMaskWithSizeXY113c,
+  COLLISION_SetUnitCollisionMaskWithPattern113c,
+} from './collision.ts'
 import { DRLG_IsTownLevel113c, DUNGEON_GetRoomAtPosition113c } from './dungeon.ts'
 import {
   D2COMMON_GDWBITMASKS_IAT_VA_113C,
@@ -39,6 +48,10 @@ import {
   UNITROOM_AddUnitToRoom113c,
   UNITROOM_RefreshUnit113c,
   UNITROOM_RemoveUnitFromRoom113c,
+  UNITS_GetCollisionMask113c,
+  UNITS_GetRoom113c,
+  UNITS_GetUnitSizeX113c,
+  UNITS_GetUnitSizeY113c,
   UNITS_GetX113c,
   UNITS_GetY113c,
   UNITS_IsDoor113c,
@@ -2276,3 +2289,786 @@ export function PATH_AStar_ProcessNeighbor113c(
   attachAStarChild(m, parent, node)
   return 1
 }
+
+// ============================================================================
+// Iteration 10 Lane C — I10C-1 (F07..F08) & I10C-2 (F17..F27) PATH functions
+// ============================================================================
+
+/** `.rdata` 8-way wall-follower X step table at `0x6FDDCA38` (`int32[8][2]` col 0, North=0 clockwise). */
+export const PATH_WF_DIR8_DX_6FDDCA38 = Int32Array.from([0, 1, 1, 1, 0, -1, -1, -1])
+
+/** `.rdata` 8-way wall-follower Y step table at `0x6FDDCA3C` (`int32[8][2]` col 1, North=0 clockwise). */
+export const PATH_WF_DIR8_DY_6FDDCA38 = Int32Array.from([-1, -1, 0, 1, 1, 1, 0, -1])
+
+/**
+ * `.rdata` 9×9 signed step nudge table at `0x6FDE4338..0x6FDE447C`, centered at `0x6FDE43D8` (`index 40 = (0, 0)`).
+ * Copied verbatim from `D2Common.dll` v1.13c.
+ */
+export const PATH_NUDGE_GRID_81_6FDE4338 = Int32Array.from([
+  -1, 0, 0, 0, 0, 0, 0, 0, 1,
+  -1, -1, 0, 0, 0, 0, 0, 1, 1,
+  -1, -1, -1, 0, 0, 0, 1, 1, 1,
+  -1, -1, -1, -1, 0, 1, 1, 1, 1,
+  -1, -1, -1, -1, 0, 1, 1, 1, 1,
+  -1, -1, -1, -1, 0, 1, 1, 1, 1,
+  -1, -1, -1, 0, 0, 0, 1, 1, 1,
+  -1, -1, 0, 0, 0, 0, 0, 1, 1,
+  -1, 0, 0, 0, 0, 0, 0, 0, 1,
+])
+
+/**
+ * `@va D2Common:0x6FD5DA40` (`PATH_SetPrecisionPosAndRecacheRoom113c`, not exported;
+ * custom LTCG `esi = pPath`, stack `[esp+4] = dwPrecisionX`, `[esp+8] = dwPrecisionY`, `[esp+0xC] = pHintRoom`, `ret 0xC`).
+ */
+export function PATH_SetPrecisionPosAndRecacheRoom113c(
+  m: Memory113c,
+  pPath: number,
+  dwPrecisionX: number,
+  dwPrecisionY: number,
+  pHintRoom: number,
+): void {
+  const path = pPath >>> 0
+  const px = dwPrecisionX >>> 0
+  const py = dwPrecisionY >>> 0
+  if ((m.get(path, D2DynamicPathStrc.dwFlags) & 0x40000) !== 0) {
+    const r = DUNGEON_GetRoomAtPosition113c(
+      m,
+      m.get(path, D2DynamicPathStrc.pRoom),
+      px >>> 16,
+      py >>> 16,
+    )
+    if (r === 0) {
+      m.set(path, D2DynamicPathStrc.dwPathPoints, 0)
+      return
+    }
+  }
+  m.setU32((path + 0x04) >>> 0, py)
+  m.setU32(path, px)
+  const py11 = py >>> 11
+  const px11 = px >>> 11
+  m.set(path, D2DynamicPathStrc.dwClientCoordY, sar32((py11 + px11) | 0, 2) >>> 0)
+  m.set(path, D2DynamicPathStrc.dwClientCoordX, sar32((px11 - py11) | 0, 1) >>> 0)
+  if (
+    m.get(path, D2DynamicPathStrc.pUnit) !== 0 &&
+    (m.u8((path + 0x34) >>> 0) & 0x01) !== 0
+  ) {
+    PATH_RecacheRoom113c(m, path, pHintRoom >>> 0)
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD85530` (`PATH_ComputeDirectSinglePointPath113c`, not exported;
+ * custom LTCG `eax = pDynamicPath`, plain `ret -> int32`).
+ */
+export function PATH_ComputeDirectSinglePointPath113c(
+  m: Memory113c,
+  pDynamicPath: number,
+): number {
+  const path = pDynamicPath >>> 0
+  const posY = m.u16((path + 0x06) >>> 0)
+  const posX = m.u16((path + 0x02) >>> 0)
+  m.set(path, D2DynamicPathStrc.dwCurrentPointIdx, 0)
+  const pTarget = m.get(path, D2DynamicPathStrc.pTargetUnit)
+  if (pTarget !== 0) {
+    const t1 = m.u32(pTarget) | 0
+    const ptp1 = m.u32((pTarget + 0x2c) >>> 0)
+    const tx1 =
+      t1 === 2 || (t1 > 3 && t1 <= 5)
+        ? m.u32((ptp1 + 0x0c) >>> 0) & 0xffff
+        : ptp1 !== 0
+          ? m.u16((ptp1 + 0x02) >>> 0)
+          : 0
+    m.setU16((path + 0x10) >>> 0, tx1)
+
+    const t2 = m.u32(pTarget) | 0
+    const ptp2 = m.u32((pTarget + 0x2c) >>> 0)
+    const ty1 =
+      t2 === 2 || (t2 > 3 && t2 <= 5)
+        ? m.u32((ptp2 + 0x10) >>> 0) & 0xffff
+        : ptp2 !== 0
+          ? m.u16((ptp2 + 0x06) >>> 0)
+          : 0
+    m.setU16((path + 0x12) >>> 0, ty1)
+  }
+
+  const tx = m.u16((path + 0x10) >>> 0)
+  const ty = m.u16((path + 0x12) >>> 0)
+  const dx = (posX - tx) | 0
+  const absDx = dx < 0 ? (-dx) | 0 : dx
+  const dy = (posY - ty) | 0
+  const absDy = dy < 0 ? (-dy) | 0 : dy
+  if (absDx >= 100 || absDy >= 100 || tx === 0 || ty === 0) {
+    return 0
+  }
+
+  m.set(path, D2DynamicPathStrc.dwPathPoints, 1)
+  m.setU32((path + 0x9c) >>> 0, m.u32((path + 0x10) >>> 0))
+  m.set(path, D2DynamicPathStrc.dwCurrentPointIdx, 0)
+  PATH_ComputeVelocityToNextPoint113c(m, path, 1, 1)
+
+  const pRoom = m.get(path, D2DynamicPathStrc.pRoom)
+  const tx2 = m.u16((path + 0x10) >>> 0)
+  const ty2 = m.u16((path + 0x12) >>> 0)
+  const rx = pRoom !== 0 ? m.get(pRoom, D2ActiveRoomStrc.nSubtileX) | 0 : 0
+  const rw = pRoom !== 0 ? m.get(pRoom, D2ActiveRoomStrc.nSubtileWidth) | 0 : 0
+  const ry = pRoom !== 0 ? m.get(pRoom, D2ActiveRoomStrc.nSubtileY) | 0 : 0
+  const rh = pRoom !== 0 ? m.get(pRoom, D2ActiveRoomStrc.nSubtileHeight) | 0 : 0
+  if (
+    pRoom === 0 ||
+    tx2 < rx ||
+    tx2 >= ((rx + rw) | 0) ||
+    ty2 < ry ||
+    ty2 >= ((ry + rh) | 0)
+  ) {
+    m.set(path, D2DynamicPathStrc.dwFlags, (m.get(path, D2DynamicPathStrc.dwFlags) | 1) >>> 0)
+  }
+  return m.get(path, D2DynamicPathStrc.dwPathPoints)
+}
+
+/**
+ * `@va D2Common:0x6FD5DC80` (`PATH_StopMovementAndSnapToTileCenter113c`, not exported;
+ * custom LTCG `eax = pDynamicPath`, plain `ret`).
+ */
+export function PATH_StopMovementAndSnapToTileCenter113c(
+  m: Memory113c,
+  pDynamicPath: number,
+): void {
+  const path = pDynamicPath >>> 0
+  const precY = ((m.u32((path + 0x04) >>> 0) & 0xffff0000) + 0x8000) >>> 0
+  const precX = ((m.u32(path) & 0xffff0000) + 0x8000) >>> 0
+  PATH_SetPrecisionPosAndRecacheRoom113c(m, path, precX, precY, 0)
+  m.set(path, D2DynamicPathStrc.dwFlags, (m.get(path, D2DynamicPathStrc.dwFlags) & ~0x20) >>> 0)
+  m.set(path, D2DynamicPathStrc.dwPathPoints, 0)
+  m.set(path, D2DynamicPathStrc.dwCurrentPointIdx, 0)
+  m.set(path, D2DynamicPathStrc.tVelocityVectorX, 0)
+  m.set(path, D2DynamicPathStrc.tVelocityVectorY, 0)
+}
+
+function probeWfDirection113c(
+  m: Memory113c,
+  pRoom: number,
+  pPathMov: number,
+  dir: number,
+  nPattern: number,
+  wMask: number,
+): number {
+  const tx = (m.u16((pPathMov + 0x08) >>> 0) + PATH_WF_DIR8_DX_6FDDCA38[dir]!) & 0xffff
+  m.setU16((pPathMov + 0x0c) >>> 0, tx)
+  const ty = (m.u16((pPathMov + 0x0a) >>> 0) + PATH_WF_DIR8_DY_6FDDCA38[dir]!) & 0xffff
+  m.setU16((pPathMov + 0x0e) >>> 0, ty)
+  return COLLISION_CheckMaskWithPattern2_113c(m, pRoom, tx, ty, nPattern, wMask)
+}
+
+/**
+ * `@va D2Common:0x6FD686D0` (`PATH_FindNonCollidingTargetPoint113c`, not exported;
+ * custom LTCG `eax = pPathInfo`, `esi = pPathMov`, plain `ret -> BOOL`).
+ */
+export function PATH_FindNonCollidingTargetPoint113c(
+  m: Memory113c,
+  pPathInfo: number,
+  pPathMov: number,
+): number {
+  const info = pPathInfo >>> 0
+  const mov = pPathMov >>> 0
+  const nPattern = m.get(info, D2PathInfoStrc.dwCollisionPattern)
+  const wMask = m.get(info, D2PathInfoStrc.nMoveTestCollisionMask)
+  const pRoom = m.get(info, D2PathInfoStrc.pStartRoom)
+  const pDynPath = m.get(info, D2PathInfoStrc.pDynamicPath)
+  const pUnit = m.get(pDynPath, D2DynamicPathStrc.pUnit)
+  if (pUnit === 0 || ((m.u32(pUnit) | 0) !== 0 && (m.u32(pUnit) | 0) !== 1)) {
+    throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\PathWF.cpp', 0x122)
+  }
+
+  let dir = m.u32(mov) | 0
+  m.setU32((mov + 0x10) >>> 0, 0)
+  if (probeWfDirection113c(m, pRoom, mov, dir, nPattern, wMask) === 0) {
+    return 1
+  }
+
+  dir = m.u32((m.u32((mov + 0x18) >>> 0) + dir * 4) >>> 0) | 0
+  m.setU32(mov, dir >>> 0)
+  if (probeWfDirection113c(m, pRoom, mov, dir, nPattern, wMask) === 0) {
+    return 1
+  }
+
+  dir = m.u32((m.u32((mov + 0x18) >>> 0) + dir * 4) >>> 0) | 0
+  m.setU32(mov, dir >>> 0)
+  if (probeWfDirection113c(m, pRoom, mov, dir, nPattern, wMask) === 0) {
+    return 1
+  }
+
+  const curDir = m.u32(mov) | 0
+  const pNextDirTable = m.u32((mov + 0x18) >>> 0)
+  m.setU32((mov + 0x10) >>> 0, 1)
+  dir = m.u32((pNextDirTable + curDir * 4) >>> 0) | 0
+  m.setU32(mov, dir >>> 0)
+  return probeWfDirection113c(m, pRoom, mov, dir, nPattern, wMask) === 0 ? 1 : 0
+}
+
+/**
+ * `@va D2Common:0x6FD85780` (`PATH_ComputeSpecialFlag40000Path113c`, not exported;
+ * custom LTCG `edi = pDynamicPath`, stack `[esp+4] = pUnit`, `ret 4 -> int32`).
+ */
+export function PATH_ComputeSpecialFlag40000Path113c(
+  m: Memory113c,
+  pDynamicPath: number,
+  pUnit: number,
+): number {
+  const path = pDynamicPath >>> 0
+  const unit = pUnit >>> 0
+  const t = m.get(path, D2DynamicPathStrc.dwPathType) | 0
+  if (t === 4) {
+    const ok = PATH_ComputeDirectSinglePointPath113c(m, path)
+    const flags = m.get(path, D2DynamicPathStrc.dwFlags)
+    if (ok !== 0) {
+      m.set(path, D2DynamicPathStrc.dwFlags, (flags | 0x20) >>> 0)
+      return m.get(path, D2DynamicPathStrc.dwPathPoints)
+    }
+    m.set(path, D2DynamicPathStrc.dwFlags, (flags & ~0x20) >>> 0)
+    return 0
+  }
+  if (t === 10) {
+    PATH_ComputePathChargedBolt113c(m, (unit + 0x20) >>> 0, path)
+    m.set(path, D2DynamicPathStrc.dwFlags, (m.get(path, D2DynamicPathStrc.dwFlags) | 0x20) >>> 0)
+    return m.get(path, D2DynamicPathStrc.dwPathPoints)
+  }
+  if (t === 14) {
+    PATH_BuildSpiralPath77Points113c(m, path)
+    m.set(path, D2DynamicPathStrc.dwFlags, (m.get(path, D2DynamicPathStrc.dwFlags) | 0x20) >>> 0)
+    return m.get(path, D2DynamicPathStrc.dwPathPoints)
+  }
+  throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\Path.cpp', 0x207)
+}
+
+/**
+ * `@va D2Common:0x6FD85800` (`D2Common.#10775` `PATH_RemoveUnitCollisionFootprint113c`,
+ * `__stdcall(pUnit, bForce) -> BOOL`, `ret 8`).
+ */
+export function PATH_RemoveUnitCollisionFootprint113c(
+  m: Memory113c,
+  pUnit: number,
+  bForce: number,
+): number {
+  const unit = pUnit >>> 0
+  const uType = m.u32(unit) | 0
+  if (uType === 0 || uType === 1) {
+    const mode = m.get(unit, D2UnitStrc.dwAnimMode) | 0
+    const isDead = (uType === 0 ? mode === 17 : mode === 12) || mode === 0
+    if (isDead && (bForce | 0) === 0) {
+      return 0
+    }
+    const pPath = m.get(unit, D2UnitStrc.pPath)
+    const nPattern = m.get(pPath, D2DynamicPathStrc.dwCollisionPattern)
+    const y = pPath !== 0 ? m.u16((pPath + 0x06) >>> 0) : 0
+    const x = pPath !== 0 ? m.u16((pPath + 0x02) >>> 0) : 0
+    const wMask = UNITS_GetCollisionMask113c(m, unit)
+    const pRoom = UNITS_GetRoom113c(m, unit)
+    COLLISION_ResetMaskWithPattern113c(m, pRoom, x, y, nPattern, wMask)
+    return 1
+  }
+
+  if (uType === 2) {
+    const pObjData = m.u32((unit + 0x14) >>> 0)
+    const pObjTxt = m.u32(pObjData)
+    const mode = m.get(unit, D2UnitStrc.dwAnimMode) >>> 0
+    // +0x120 of D2ObjectsTxt is bHasCollision[8] (`movzx eax, byte [edx+eax+0x120]` at 0x6FD858A4)
+    const bHasColl = m.u8((pObjTxt + mode + 0x120) >>> 0)
+    if (bHasColl === 0 && (bForce | 0) === 0) {
+      return 0
+    }
+    const pSP = m.u32((unit + 0x2c) >>> 0)
+    const y = m.u32((pSP + 0x10) >>> 0) | 0
+    const x = m.u32((pSP + 0x0c) >>> 0) | 0
+    const wMask = UNITS_GetCollisionMask113c(m, unit)
+    const sy = UNITS_GetUnitSizeY113c(m, unit)
+    const sx = UNITS_GetUnitSizeX113c(m, unit)
+    const pRoom = UNITS_GetRoom113c(m, unit)
+    COLLISION_ResetMaskWithSizeXY113c(m, pRoom, x, y, sx, sy, wMask)
+    return 1
+  }
+
+  const pPath = m.u32((unit + 0x2c) >>> 0)
+  const isStatic = uType > 3 && uType <= 5
+  const y = isStatic ? m.u32((pPath + 0x10) >>> 0) | 0 : pPath !== 0 ? m.u16((pPath + 0x06) >>> 0) : 0
+  const x = isStatic ? m.u32((pPath + 0x0c) >>> 0) | 0 : pPath !== 0 ? m.u16((pPath + 0x02) >>> 0) : 0
+  const wMask = UNITS_GetCollisionMask113c(m, unit)
+  const nPattern = UNITS_GetUnitSizeX113c(m, unit)
+  const pRoom = UNITS_GetRoom113c(m, unit)
+  COLLISION_ResetMaskWithPatternSimple113c(m, pRoom, x, y, nPattern, wMask)
+  return 1
+}
+
+/**
+ * `@va D2Common:0x6FD859D0` (`D2Common.#10713` `PATH_AddUnitCollisionFootprint113c`,
+ * `__stdcall(pUnit)`, `ret 4`).
+ */
+export function PATH_AddUnitCollisionFootprint113c(
+  m: Memory113c,
+  pUnit: number,
+): void {
+  const unit = pUnit >>> 0
+  const uType = m.u32(unit) | 0
+  if (uType >= 0 && uType <= 1) {
+    const pPath = m.get(unit, D2UnitStrc.pPath)
+    const nPattern = m.get(pPath, D2DynamicPathStrc.dwCollisionPattern)
+    const y = pPath !== 0 ? m.u16((pPath + 0x06) >>> 0) : 0
+    const x = pPath !== 0 ? m.u16((pPath + 0x02) >>> 0) : 0
+    const wMask = UNITS_GetCollisionMask113c(m, unit)
+    const pRoom = UNITS_GetRoom113c(m, unit)
+    COLLISION_SetUnitCollisionMaskWithPattern113c(m, pRoom, x, y, nPattern, wMask)
+    return
+  }
+
+  if (uType === 2) {
+    const pSP = m.u32((unit + 0x2c) >>> 0)
+    const y = m.u32((pSP + 0x10) >>> 0) | 0
+    const x = m.u32((pSP + 0x0c) >>> 0) | 0
+    const wMask = UNITS_GetCollisionMask113c(m, unit)
+    const sy = UNITS_GetUnitSizeY113c(m, unit)
+    const sx = UNITS_GetUnitSizeX113c(m, unit)
+    const pRoom = UNITS_GetRoom113c(m, unit)
+    COLLISION_SetMaskWithSizeXY113c(m, pRoom, x, y, sx, sy, wMask)
+    return
+  }
+
+  const pPath = m.u32((unit + 0x2c) >>> 0)
+  const isStatic = uType > 3 && uType <= 5
+  const y = isStatic ? m.u32((pPath + 0x10) >>> 0) | 0 : pPath !== 0 ? m.u16((pPath + 0x06) >>> 0) : 0
+  const x = isStatic ? m.u32((pPath + 0x0c) >>> 0) | 0 : pPath !== 0 ? m.u16((pPath + 0x02) >>> 0) : 0
+  const wMask = UNITS_GetCollisionMask113c(m, unit)
+  const nPattern = UNITS_GetUnitSizeX113c(m, unit)
+  const pRoom = UNITS_GetRoom113c(m, unit)
+  COLLISION_SetMaskWithPattern113c(m, pRoom, x, y, nPattern, wMask)
+}
+
+/**
+ * `@va D2Common:0x6FD85D40` (`PATH_NudgeTargetOutOfImmediateCollision113c`, not exported;
+ * custom LTCG `esi = pPathInfo`, plain `ret`).
+ */
+export function PATH_NudgeTargetOutOfImmediateCollision113c(
+  m: Memory113c,
+  pPathInfo: number,
+): void {
+  const info = pPathInfo >>> 0
+  const sx = m.get(info, D2PathInfoStrc.startX)
+  const sy = m.get(info, D2PathInfoStrc.startY)
+  let tx = m.get(info, D2PathInfoStrc.targetX)
+  let ty = m.get(info, D2PathInfoStrc.targetY)
+  const dx = (tx - sx) | 0
+  const dy = (ty - sy) | 0
+  const adx = Math.abs(dx)
+  const ady = Math.abs(dy)
+  if (adx >= 5 || ady >= 5 || (adx === 0 && ady === 0)) {
+    return
+  }
+  const nPattern = m.get(info, D2PathInfoStrc.dwCollisionPattern)
+  const wMask = m.get(info, D2PathInfoStrc.nMoveTestCollisionMask)
+  const stepX = PATH_NUDGE_GRID_81_6FDE4338[dx + dy * 9 + 40]! | 0
+  const stepY = PATH_NUDGE_GRID_81_6FDE4338[dy + dx * 9 + 40]! | 0
+  let cnt = adx > ady ? adx : ady
+  do {
+    tx = (tx + stepX) | 0
+    ty = (ty + stepY) | 0
+    const pRoom = m.get(info, D2PathInfoStrc.pStartRoom)
+    if (COLLISION_CheckMaskWithPattern2_113c(m, pRoom, tx, ty, nPattern, wMask) !== 0) {
+      break
+    }
+    cnt = (cnt + 1) | 0
+    m.set(info, D2PathInfoStrc.targetX, tx & 0xffff)
+    m.set(info, D2PathInfoStrc.targetY, ty & 0xffff)
+  } while (cnt < 5)
+}
+
+/**
+ * `@va D2Common:0x6FDB6C20` (`PATH_RaycastGridLineCollision113c`, not exported;
+ * custom LTCG `eax = pDynamicPath`, stack `[esp+4] = dwStartPoint`, `[esp+8] = pInOutTargetPoint`, `ret 8 -> BOOL`).
+ */
+export function PATH_RaycastGridLineCollision113c(
+  m: Memory113c,
+  pDynamicPath: number,
+  dwStartPoint: number,
+  pInOutTargetPoint: number,
+): number {
+  const path = pDynamicPath >>> 0
+  const pTargetPtr = pInOutTargetPoint >>> 0
+  const nPattern = m.get(path, D2DynamicPathStrc.dwCollisionPattern)
+  const pRoom = m.get(path, D2DynamicPathStrc.pRoom)
+  const wMask = m.get(path, D2DynamicPathStrc.nMoveTestCollisionMask)
+
+  const dwTarget = m.u32(pTargetPtr)
+  const sx = dwStartPoint & 0xffff
+  const sy = dwStartPoint >>> 16
+  const tx = dwTarget & 0xffff
+  const ty = dwTarget >>> 16
+  const dx = (tx - sx) | 0
+  const dy = (ty - sy) | 0
+  const absDx = dx < 0 ? (-dx) | 0 : dx
+  const absDy = dy < 0 ? (-dy) | 0 : dy
+  const nx = (absDx + 1) | 0
+  const ny = (absDy + 1) | 0
+
+  let lastFree = dwStartPoint >>> 0
+  let curX = sx
+  let curY = sy
+  const stepX = dx >= 0 ? 1 : -1
+  const stepY = dy >= 0 ? 1 : -1
+
+  if (nx > ny) {
+    let err = ny
+    do {
+      curX = (curX + stepX) & 0xffff
+      if (COLLISION_CheckMaskWithPattern2_113c(m, pRoom, curX, curY, nPattern, wMask) !== 0) {
+        m.setU32(pTargetPtr, lastFree)
+        return 0
+      }
+      err = (err + ny) | 0
+      if (err >= nx) {
+        curY = (curY + stepY) & 0xffff
+        err = (err - nx) | 0
+        if (err > 0) {
+          if (COLLISION_CheckMaskWithPattern2_113c(m, pRoom, curX, curY, nPattern, wMask) !== 0) {
+            m.setU32(pTargetPtr, lastFree)
+            return 0
+          }
+        }
+      }
+      lastFree = (curX | (curY << 16)) >>> 0
+    } while (curX !== tx)
+    return 1
+  }
+
+  if (nx < ny) {
+    let err = nx
+    do {
+      curY = (curY + stepY) & 0xffff
+      if (COLLISION_CheckMaskWithPattern2_113c(m, pRoom, curX, curY, nPattern, wMask) !== 0) {
+        m.setU32(pTargetPtr, lastFree)
+        return 0
+      }
+      err = (err + nx) | 0
+      if (err >= ny) {
+        curX = (curX + stepX) & 0xffff
+        err = (err - ny) | 0
+        if (err > 0) {
+          if (COLLISION_CheckMaskWithPattern2_113c(m, pRoom, curX, curY, nPattern, wMask) !== 0) {
+            m.setU32(pTargetPtr, lastFree)
+            return 0
+          }
+        }
+      }
+      lastFree = (curX | (curY << 16)) >>> 0
+    } while (curY !== ty)
+    return 1
+  }
+
+  if (sx === tx) {
+    return 1
+  }
+  do {
+    curX = (curX + stepX) & 0xffff
+    curY = (curY + stepY) & 0xffff
+    if (COLLISION_CheckMaskWithPattern2_113c(m, pRoom, curX, curY, nPattern, wMask) !== 0) {
+      m.setU32(pTargetPtr, lastFree)
+      return 0
+    }
+    lastFree = (curX | (curY << 16)) >>> 0
+  } while (curX !== tx)
+  return 1
+}
+
+/**
+ * `@va D2Common:0x6FDB71B0` (`PATH_PickStepDirectionCandidate3_113c`, not exported;
+ * custom LTCG `eax = pPathInfo`, stack `[esp+4] = dwCurPoint`, `[esp+8] = pCandidateDirs`, `[esp+0xC] = pOutDir`, `ret 0xC -> BOOL`).
+ */
+export function PATH_PickStepDirectionCandidate3_113c(
+  m: Memory113c,
+  pPathInfo: number,
+  dwCurPoint: number,
+  pCandidateDirs: number,
+  pOutDir: number,
+): number {
+  const info = pPathInfo >>> 0
+  const cand = pCandidateDirs >>> 0
+  const outDir = pOutDir >>> 0
+  const pDynPath = m.get(info, D2PathInfoStrc.pDynamicPath)
+  const pUnit = m.get(pDynPath, D2DynamicPathStrc.pUnit)
+  if (pUnit === 0 || ((m.u32(pUnit) | 0) !== 0 && (m.u32(pUnit) | 0) !== 1)) {
+    throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\PathMisc.cpp', 0x34)
+  }
+
+  const wMask = m.get(info, D2PathInfoStrc.nMoveTestCollisionMask)
+  const pRoom = m.get(info, D2PathInfoStrc.pStartRoom)
+  const nPattern = m.get(info, D2PathInfoStrc.dwCollisionPattern)
+  const cx = dwCurPoint & 0xffff
+  const cy = dwCurPoint >>> 16
+
+  for (let k = 0; k < 3; k++) {
+    const d = m.u32((cand + k * 4) >>> 0) | 0
+    if (k === 2 && d === 0xff) {
+      throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\PathMisc.cpp', 0x4c)
+    }
+    const nx = (cx + PATH_DIR8_DX_6FDDC2E0[d]!) & 0xffff
+    const ny = (cy + PATH_DIR8_DY_6FDDC2E0[d]!) & 0xffff
+    if (COLLISION_CheckMaskWithPattern2_113c(m, pRoom, nx, ny, nPattern, wMask) === 0) {
+      m.setU32(outDir, d >>> 0)
+      return 1
+    }
+  }
+  return 0
+}
+
+/** `.rdata` IDA* best-direction table VA at `0x6FDDB860` (`int32[8][8]`, `256` bytes). */
+export const PATH_IDASTAR_BEST_DIR_VA_6FDDB860 = 0x6fddb860
+
+/** `.rdata` IDA* best-direction table `int32[8][8]` at `0x6FDDB860..0x6FDDB95F`. */
+export const PATH_IDASTAR_BEST_DIR_TABLE_6FDDB860 = Int32Array.from([
+  0, 1, 6, 3, 4, 5, 2, 7,
+  0, 1, 6, 3, 1, 3, 6, 1,
+  0, 1, 1, 1, 1, 1, 2, 7,
+  1, 1, 1, 1, 1, 3, 6, 1,
+  6, 4, 3, 6, 1, 3, 2, 7,
+  7, 7, 7, 7, 7, 5, 2, 7,
+  0, 7, 7, 7, 7, 5, 2, 7,
+  0, 7, 2, 5, 7, 5, 2, 7,
+])
+
+/**
+ * `@va D2Common:0x6FDC08F0` (`PATH_IdaStar_SearchLoop113c`, not exported;
+ * custom LTCG `eax = pContext`, stack `[esp+4] = nFScoreCutoff`, `[esp+8] = pPathInfo`, `ret 8 -> D2IdaStarNodeStrc*`).
+ */
+export function PATH_IdaStar_SearchLoop113c(
+  m: Memory113c,
+  pContext: number,
+  nFScoreCutoff: number,
+  pPathInfo: number,
+): number {
+  const ctx = pContext >>> 0
+  const info = pPathInfo >>> 0
+  const cutoff = nFScoreCutoff | 0
+  const dwTarget = m.u32((info + 0x04) >>> 0)
+  const tx = dwTarget & 0xffff
+  const ty = dwTarget >>> 16
+  let esi = m.u32(ctx)
+  let iters = 0
+
+  while (true) {
+    const cx = m.get(esi, D2IdaStarNodeStrc.wPosX)
+    const cy = m.get(esi, D2IdaStarNodeStrc.wPosY)
+    if (cx === tx && cy === ty) {
+      return esi >>> 0
+    }
+    iters = (iters + 1) | 0
+    if (iters > 10000) {
+      return 0
+    }
+    if (
+      cx < m.u16((ctx + 0x6278) >>> 0) ||
+      cx > m.u16((ctx + 0x627c) >>> 0) ||
+      cy < m.u16((ctx + 0x627a) >>> 0) ||
+      cy > m.u16((ctx + 0x627e) >>> 0)
+    ) {
+      return esi >>> 0
+    }
+
+    const dir = m.get(esi, D2IdaStarNodeStrc.nNextNeighborIndex) | 0
+    const nx = (cx + PATH_DIR8_DX_6FDDC2E0[dir]!) & 0xffff
+    const ny = (cy + PATH_DIR8_DY_6FDDC2E0[dir]!) & 0xffff
+    const gIdx =
+      (imul32(
+        ((m.u32((ctx + 0x628c) >>> 0) | 0) + ny) | 0,
+        m.u32((ctx + 0x6284) >>> 0) | 0,
+      ) +
+        (m.u32((ctx + 0x6288) >>> 0) | 0) +
+        nx) |
+      0
+    const pCell = (ctx + 0x6290 + gIdx * 4) >>> 0
+
+    if (m.u32(pCell) === 0) {
+      const hit = COLLISION_CheckMaskWithPattern2_113c(
+        m,
+        m.get(info, D2PathInfoStrc.pStartRoom),
+        nx,
+        ny,
+        m.get(info, D2PathInfoStrc.dwCollisionPattern),
+        m.get(info, D2PathInfoStrc.nMoveTestCollisionMask),
+      )
+      if (hit !== 0) {
+        m.setU32(pCell, 1)
+        esi = PATH_IdaStar_AdvanceToNextCandidate113c(m, esi, ctx)
+        if (esi === 0) return 0
+        continue
+      }
+    }
+
+    const cost = cx === nx || cy === ny ? 2 : 3
+    const newG16 = (m.get(esi, D2IdaStarNodeStrc.wGScore) + cost) & 0xffff
+    const newGSigned = (newG16 << 16) >> 16
+    const prev = m.u32(pCell)
+    if (prev !== 0 && (prev >>> 0) < (newGSigned >>> 0)) {
+      esi = PATH_IdaStar_AdvanceToNextCandidate113c(m, esi, ctx)
+      if (esi === 0) return 0
+      continue
+    }
+    m.setU32(pCell, newGSigned >>> 0)
+
+    const adx = Math.abs((tx - nx) | 0)
+    const ady = Math.abs((ty - ny) | 0)
+    const minD = adx < ady ? adx : ady
+    const maxD = adx < ady ? ady : adx
+    const h = (minD + maxD * 2) | 0
+    const f16 = (h + newG16) & 0xffff
+    const fSigned = (f16 << 16) >> 16
+    if (fSigned > cutoff) {
+      esi = PATH_IdaStar_AdvanceToNextCandidate113c(m, esi, ctx)
+      if (esi === 0) return 0
+      continue
+    }
+
+    let pChild = m.get(esi, D2IdaStarNodeStrc.pChild)
+    if (pChild === 0) {
+      const used = m.u32((ctx + 0x6274) >>> 0)
+      if (used === 0x384) {
+        m.set(esi, D2IdaStarNodeStrc.pChild, 0)
+        return 0
+      }
+      pChild = (ctx + 0x04 + imul32(used, 0x1c)) >>> 0
+      m.setU32((ctx + 0x6274) >>> 0, (used + 1) >>> 0)
+      m.fill(pChild, 0x1c, 0)
+      m.set(esi, D2IdaStarNodeStrc.pChild, pChild)
+      m.set(pChild, D2IdaStarNodeStrc.pParent, esi)
+    }
+
+    esi = pChild
+    const parent = m.get(esi, D2IdaStarNodeStrc.pParent)
+    m.set(esi, D2IdaStarNodeStrc.wGScore, newG16)
+    m.set(esi, D2IdaStarNodeStrc.wFScore, f16)
+    m.set(esi, D2IdaStarNodeStrc.wHScore, h & 0xffff)
+    m.set(esi, D2IdaStarNodeStrc.nVisitCount, 0)
+
+    const dwNewXY = (nx | (ny << 16)) >>> 0
+    const qIdx = PATH_QuantizeDirectionIndex25_113c(dwNewXY, dwTarget)
+    const relDir =
+      (PATH_CHARGED_BOLT_BASE_DIR_6FDDC320[qIdx]! -
+        m.get(parent, D2IdaStarNodeStrc.nNextNeighborIndex)) &
+      7
+    const pBestDir = (PATH_IDASTAR_BEST_DIR_VA_6FDDB860 + relDir * 32) >>> 0
+    m.set(esi, D2IdaStarNodeStrc.pBestDirection, pBestDir)
+
+    if (m.u32((ctx + 0x36fd0) >>> 0) !== 0) {
+      const pSeed = m.u32((ctx + 0x36fd4) >>> 0)
+      const seed: D2SeedStrc = { lo: m.u32(pSeed), hi: m.u32((pSeed + 4) >>> 0) }
+      seedNext(seed)
+      m.setU32((pSeed + 4) >>> 0, seed.hi)
+      m.setU32(pSeed, seed.lo)
+      const pPar = m.get(esi, D2IdaStarNodeStrc.pParent)
+      const parIdx = m.get(pPar, D2IdaStarNodeStrc.nNextNeighborIndex)
+      const jitter = PATH_IDASTAR_JITTER_TABLE_6FDDB960[seed.lo & 0x1f]! | 0
+      const best0 = m.u32(m.get(esi, D2IdaStarNodeStrc.pBestDirection)) | 0
+      m.set(esi, D2IdaStarNodeStrc.nNextNeighborIndex, ((jitter + parIdx + best0) & 7) >>> 0)
+    } else {
+      const parIdx = m.get(parent, D2IdaStarNodeStrc.nNextNeighborIndex)
+      const best0 = m.u32(pBestDir) | 0
+      m.set(esi, D2IdaStarNodeStrc.nNextNeighborIndex, ((parIdx + best0) & 7) >>> 0)
+    }
+
+    m.setU32((esi + 0x08) >>> 0, dwNewXY)
+    const hSigned = (m.get(esi, D2IdaStarNodeStrc.wHScore) << 16) >> 16
+    if (hSigned < m.get(info, D2PathInfoStrc.nTargetTypeStatus)) {
+      return esi >>> 0
+    }
+  }
+}
+
+const ASTAR_REACHABLE_OFFSETS: readonly (readonly [number, number])[] = [
+  [-2, -2],
+  [-2, 2],
+  [2, -2],
+  [2, 2],
+  [-2, 0],
+  [0, -2],
+  [2, 0],
+  [0, 2],
+]
+
+/**
+ * `@va D2Common:0x6FDCB2C0` (`PATH_AStar_IsTargetReachableOrHasNoTargetUnit113c`, not exported;
+ * custom LTCG `eax = pPathInfo`, plain `ret -> BOOL`).
+ */
+export function PATH_AStar_IsTargetReachableOrHasNoTargetUnit113c(
+  m: Memory113c,
+  pPathInfo: number,
+): number {
+  const info = pPathInfo >>> 0
+  const pDynPath = m.get(info, D2PathInfoStrc.pDynamicPath)
+  if (m.get(pDynPath, D2DynamicPathStrc.pTargetUnit) === 0) {
+    return 1
+  }
+  const tx = m.get(info, D2PathInfoStrc.targetX)
+  const ty = m.get(info, D2PathInfoStrc.targetY)
+  const pRoom = m.get(info, D2PathInfoStrc.pStartRoom)
+  const nPattern = m.get(info, D2PathInfoStrc.dwCollisionPattern)
+  const wMask = m.get(info, D2PathInfoStrc.nMoveTestCollisionMask)
+  for (let i = 0; i < 8; i++) {
+    const [ox, oy] = ASTAR_REACHABLE_OFFSETS[i]!
+    if (
+      COLLISION_CheckMaskWithPattern2_113c(
+        m,
+        pRoom,
+        (tx + ox) | 0,
+        (ty + oy) | 0,
+        nPattern,
+        wMask,
+      ) === 0
+    ) {
+      return 1
+    }
+  }
+  return 0
+}
+
+const ASTAR_EXPAND_NEIGHBOR_OFFSETS: readonly (readonly [number, number])[] = [
+  [-1, -1],
+  [-1, 1],
+  [1, -1],
+  [1, 1],
+  [-1, 0],
+  [0, -1],
+  [1, 0],
+  [0, 1],
+]
+
+/**
+ * `@va D2Common:0x6FDCB3C0` (`PATH_AStar_ExpandNodeNeighbors113c`, not exported;
+ * custom LTCG `eax = pNode`, stack `[esp+4] = pPathInfo`, `[esp+8] = pContext`, `[esp+0xC] = dwTargetXY`, `ret 0xC -> BOOL`).
+ */
+export function PATH_AStar_ExpandNodeNeighbors113c(
+  m: Memory113c,
+  pNode: number,
+  pPathInfo: number,
+  pContext: number,
+  dwTargetXY: number,
+): number {
+  const node = pNode >>> 0
+  const info = pPathInfo >>> 0
+  const ctx = pContext >>> 0
+  const tgt = dwTargetXY >>> 0
+  const pRoom = m.get(info, D2PathInfoStrc.pStartRoom)
+  const nPattern = m.get(info, D2PathInfoStrc.dwCollisionPattern)
+  const wMask = m.get(info, D2PathInfoStrc.nMoveTestCollisionMask)
+  const x0 = m.get(node, D2AStarNodeStrc.wPosX)
+  const y0 = m.get(node, D2AStarNodeStrc.wPosY)
+
+  for (let i = 0; i < 8; i++) {
+    const [ox, oy] = ASTAR_EXPAND_NEIGHBOR_OFFSETS[i]!
+    const nx = (x0 + ox) & 0xffff
+    const ny = (y0 + oy) & 0xffff
+    if (COLLISION_CheckMaskWithPattern2_113c(m, pRoom, nx, ny, nPattern, wMask) === 0) {
+      const xy = (nx | (ny << 16)) >>> 0
+      if (PATH_AStar_ProcessNeighbor113c(m, node, info, ctx, xy, tgt) === 0) {
+        return 0
+      }
+    }
+  }
+  return 1
+}
+

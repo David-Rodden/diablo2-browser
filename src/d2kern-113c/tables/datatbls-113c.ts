@@ -24,6 +24,10 @@ import type { Memory113c } from '../mem/sparse-memory.ts'
 import { D2CommonAssertError, PLAYER_SetPlayerData150Params113c } from '../common/inline-helpers.ts'
 import { imul32, sar32, sdiv32 } from '../common/int-math.ts'
 import {
+  ITEMS_CheckItemTypeRarityUnder7113c,
+  ITEMS_IsUberOrUltraArmorOrWeapon113c,
+} from '../common/items.ts'
+import {
   D2DrlgCoordStrc,
   D2DrlgCoordStrc_SIZE,
   D2DrlgLevelLinkDataStrc,
@@ -1404,3 +1408,55 @@ export function PLAYER_SetPlayerData150ParamsExport113c(
   }
   PLAYER_SetPlayerData150Params113c(m, u, nArg0, nArg1, nArg2)
 }
+
+// ============================================================================
+// K1r7 Iteration 10 Lane B — Batch I10B-2 (datatbls-113c.ts)
+// ============================================================================
+
+const ITEMRATIO_TXT_COUNT_VA_113C = 0x6fdefd88
+const ITEMRATIO_TXT_PTR_VA_113C = 0x6fdefd8c
+const ITEMRATIO_RECORD_STRIDE_113C = 0x44
+const ITEMRATIO_OFF_VERSION_113C = 0x40
+const ITEMRATIO_REL_UBER_113C = 2
+const ITEMRATIO_REL_CLASSSPEC_113C = 3
+const ASSERT_LINE_ITEMRATIO_VER_113C = 0x61d
+
+/**
+ * `@va D2Common:0x6FDC4000` (`D2Common.#10560` `DATATBLS_GetItemRatioTxtRecord113c`,
+ * `__stdcall(nItemId, _unused, wVersion) -> D2ItemRatioTxt*`, `ret 0xC`).
+ */
+export function DATATBLS_GetItemRatioTxtRecord113c(
+  m: Memory113c,
+  nItemId: number,
+  _unused: number,
+  wVersion: number,
+): number {
+  const bClassSpec = ITEMS_CheckItemTypeRarityUnder7113c(m, nItemId) | 0
+  const bUber = ITEMS_IsUberOrUltraArmorOrWeapon113c(m, nItemId) | 0
+  const ver16 = wVersion & 0xffff
+  if (ver16 !== 0 && ver16 !== 0x64) {
+    throw new D2CommonAssertError('ItemTbls.cpp', ASSERT_LINE_ITEMRATIO_VER_113C)
+  }
+  let count = m.u32(ITEMRATIO_TXT_COUNT_VA_113C) | 0
+  if (count <= 0) return 0
+  let recPtr = (m.u32(ITEMRATIO_TXT_PTR_VA_113C) + ITEMRATIO_OFF_VERSION_113C) >>> 0
+  let bestVer = -1
+  let bestIdx = -1
+  for (let i = 0; i < count; i++) {
+    if (
+      m.u8((recPtr + ITEMRATIO_REL_CLASSSPEC_113C) >>> 0) === bClassSpec &&
+      m.u8((recPtr + ITEMRATIO_REL_UBER_113C) >>> 0) === bUber
+    ) {
+      const recVer = m.u16(recPtr)
+      if (recVer <= ver16 && recVer >= bestVer) {
+        bestVer = recVer
+        bestIdx = i
+      }
+    }
+    count = m.u32(ITEMRATIO_TXT_COUNT_VA_113C) | 0
+    recPtr = (recPtr + ITEMRATIO_RECORD_STRIDE_113C) >>> 0
+  }
+  if (bestIdx < 0) return 0
+  return (m.u32(ITEMRATIO_TXT_PTR_VA_113C) + imul32(bestIdx, ITEMRATIO_RECORD_STRIDE_113C)) >>> 0
+}
+

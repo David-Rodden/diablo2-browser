@@ -475,9 +475,9 @@ describe('[K1-6] PATH Real-DLL D2TV Vector Suite, World Image & Closure Ratchet'
 
     const pathClosure = computeManifestClosure(byVa, PATH_ENTRY_VAS)
     expect(pathClosure.totalFunctions).toBe(104)
-    expect(pathClosure.portedFunctions).toBe(71)
-    expect(pathClosure.unportedFunctions).toBe(33)
-    expect(pathClosure.unportedBytes).toBe(11637)
+    expect(pathClosure.portedFunctions).toBe(87)
+    expect(pathClosure.unportedFunctions).toBe(17)
+    expect(pathClosure.unportedBytes).toBe(6321)
 
     // Dynamically resolve all 68 ported / diff-verified symbols in the PATH closure from src/d2kern-113c/index.ts
     const kernExports = d2kern as Record<string, unknown>

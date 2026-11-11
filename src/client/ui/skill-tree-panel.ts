@@ -551,17 +551,32 @@ export class SkillTreePanel {
   }
 
   /**
+   * Maximum number of hard points that can be added to `skillId` right now without
+   * exceeding unspent skill points, `Skills.txt maxlvl` (20), or `reqlevel + cur` vs `charLevel`.
+   */
+  getMaxAllocatableCount(
+    skillId: number,
+    charLevel: number = this.characterLevel,
+    maxlvlOverride?: number,
+  ): number {
+    if (this.unspentSkillPoints <= 0) return 0
+    const node = this.getSkillTree().find(n => n.skillId === skillId)
+    if (!node) return 0
+    if (!node.prereqs.every(p => this.getHardPoints(p) > 0)) return 0
+    const cur = this.getHardPoints(skillId)
+    const maxLvl = getSkillMaxLevel(skillId, maxlvlOverride)
+    if (cur >= maxLvl) return 0
+    const levelCap = Math.floor(charLevel) - (node.reqLevel + cur) + 1
+    if (levelCap <= 0) return 0
+    return Math.max(0, Math.min(Math.floor(this.unspentSkillPoints), maxLvl - cur, levelCap))
+  }
+
+  /**
    * Whether the 1.13c client would send `AddSkillPoint (0x3B)` for `skillId`: unspent points, class tree
    * membership, `Skills.txt reqlevel` (+1 per hard point) against the real character level, and prerequisites.
    */
   canAllocate(skillId: number, charLevel: number = this.characterLevel, maxlvlOverride?: number): boolean {
-    if (this.unspentSkillPoints <= 0) return false
-    const node = this.getSkillTree().find(n => n.skillId === skillId)
-    if (!node) return false
-    const cur = this.getHardPoints(skillId)
-    if (cur >= getSkillMaxLevel(skillId, maxlvlOverride)) return false
-    if (charLevel < node.reqLevel + cur) return false
-    return node.prereqs.every(p => this.getHardPoints(p) > 0)
+    return this.getMaxAllocatableCount(skillId, charLevel, maxlvlOverride) > 0
   }
 
   static nodeScreenPos(node: SkillNodeDef): { x: number; y: number; w: number; h: number } {
@@ -598,7 +613,12 @@ export class SkillTreePanel {
     }
   }
 
-  handleClick(logicalX: number, logicalY: number, onSkillAllocated?: (skillId: number) => void): boolean {
+  handleClick(
+    logicalX: number,
+    logicalY: number,
+    onSkillAllocated?: (skillId: number, count?: number) => void,
+    shiftKey = false,
+  ): boolean {
     if (!this.visible) return false
     if (logicalX < 400) return false
 
@@ -633,8 +653,14 @@ export class SkillTreePanel {
       const r = SkillTreePanel.nodeScreenPos(node)
       if (logicalX >= r.x && logicalX <= r.x + r.w && logicalY >= r.y && logicalY <= r.y + r.h) {
         // Server-authoritative: request `AddSkillPoint (0x3B)` only; levels arrive via 0x21/0x94.
-        if (this.canAllocate(node.skillId)) {
-          onSkillAllocated?.(node.skillId)
+        const maxAlloc = this.getMaxAllocatableCount(node.skillId)
+        if (maxAlloc > 0) {
+          const count = shiftKey ? Math.min(5, maxAlloc) : 1
+          if (count > 1) {
+            onSkillAllocated?.(node.skillId, count)
+          } else {
+            onSkillAllocated?.(node.skillId)
+          }
         }
         return true
       }

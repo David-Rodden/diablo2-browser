@@ -112,6 +112,7 @@ import {
   swapWeaponsImpl,
   teleportToLevelImpl,
   teleportWaypointImpl,
+  tickSkillBatchAllocationImpl,
   toggleRunWalkImpl,
   transmuteCubeImpl,
   tryNpcDescriptorImpl,
@@ -123,6 +124,7 @@ import {
   vendorRepairItemImpl,
   vendorSellImpl,
   withdrawGoldImpl,
+  type PendingSkillBatch,
 } from './hud-command-actions.ts'
 import {
   computeEquippedDigestForWorld,
@@ -163,7 +165,7 @@ export interface HudModelOptions {
   readonly hudManager?: HudManager | null | undefined
   readonly predictor?: LocalMovementPredictor | null | undefined
   readonly automap?: AutomapView | null | undefined
-  readonly onCommand?: ((cmd: ClientCommand) => void) | undefined
+  readonly onCommand?: ((cmd: ClientCommand, nowMs?: number) => void) | undefined
   /** Store price provider (D2Common #10107); required before a store opens. Production: `vendorPrice113c`. */
   readonly vendorPrice?: VendorPriceFn | undefined
   /** Repair-all cost provider (D2Common #10071); required before a store opens. Production: `vendorRepairAll113c`. */
@@ -218,7 +220,7 @@ export class HudModel implements HudCommandSink {
   hudManager: HudManager | null
   predictor: LocalMovementPredictor | null
   automap: AutomapView | null
-  onCommand?: ((cmd: ClientCommand) => void) | undefined
+  onCommand?: ((cmd: ClientCommand, nowMs?: number) => void) | undefined
 
   private unsubWorld: (() => void) | null = null
   private hoveredMonsterId: number | null = null
@@ -301,6 +303,8 @@ export class HudModel implements HudCommandSink {
   private cachedSelfTradeItems: UiInventoryItem[] = []
   private cachedPartnerTradeItems: UiInventoryItem[] = []
   private pendingArtisanConfirmNpcId: number | null = null
+  private pendingSkillBatch: PendingSkillBatch | null = null
+  private lastTickNowMs: number | null = null
 
   constructor(options: HudModelOptions) {
     this.world = options.world
@@ -579,6 +583,8 @@ export class HudModel implements HudCommandSink {
     this.lastSyncedHudRef = null
     this.cachedMercEquipped = null
     this.cachedMercEquipment = null
+    this.pendingSkillBatch = null
+    this.lastTickNowMs = null
     this.uiItemCacheById.clear()
     if (this.unsubWorld) {
       this.unsubWorld()
@@ -997,8 +1003,13 @@ export class HudModel implements HudCommandSink {
     syncHoveredMonsterTargetImpl(this)
   }
 
-  private emitCommand(cmd: ClientCommand): void {
-    this.onCommand?.(cmd)
+  private emitCommand(cmd: ClientCommand, nowMs?: number): void {
+    this.onCommand?.(cmd, nowMs)
+  }
+
+  /** Advance paced HUD command queues (e.g. `Shift+Click` +5 skill point batching). */
+  tick(nowMs: number = this.now()): void {
+    tickSkillBatchAllocationImpl(this, nowMs)
   }
 
   // ---------------------------------------------------------------------------
@@ -1015,8 +1026,8 @@ export class HudModel implements HudCommandSink {
   /**
    * Request a skill point allocation (`AddSkillPoint 0x3B`). The tree updates when the server answers (0x21).
    */
-  allocateSkill(skillId: number): boolean {
-    return allocateSkillImpl(this, skillId)
+  allocateSkill(skillId: number, count?: number): boolean {
+    return allocateSkillImpl(this, skillId, count)
   }
 
   /**

@@ -33,6 +33,8 @@ export const D2UnitStrc = {
   pInventory: { off: 0x60, type: 'ptr', count: 1 },
   dwField7C: { off: 0x7C, type: 'u32', count: 1 },
   pGame: { off: 0x80, type: 'ptr', count: 1 },
+  dwSourceUnitType: { off: 0x94, type: 'u32', count: 1 },
+  dwSourceUnitId: { off: 0x98, type: 'u32', count: 1 },
   dwOwnerType: { off: 0x9C, type: 'u32', count: 1 },
   dwOwnerId: { off: 0xA0, type: 'u32', count: 1 },
   pSkills: { off: 0xA8, type: 'ptr', count: 1 },
@@ -524,13 +526,17 @@ export const D2MonStatsTxt = {
   dwMonStatsFlags: { off: 0xC, type: 'u8', count: 1 },
   nBitField2: { off: 0xD, type: 'u8', count: 1 },
   nMonStatsFlags: { off: 0xD, type: 'u8', count: 1 },
+  nBitField3: { off: 0xE, type: 'u8', count: 1 },
   wMonStatsEx: { off: 0x18, type: 'u16', count: 1 },
   wVelocity: { off: 0x32, type: 'u16', count: 1 },
   wSeqVelocity: { off: 0x36, type: 'u16', count: 1 },
   wRun: { off: 0x38, type: 'u16', count: 1 },
   nSubClassCount: { off: 0x4A, type: 'u8', count: 1 },
   nSubClassIndex: { off: 0x4B, type: 'u8', count: 1 },
+  bAlign: { off: 0x4C, type: 'u8', count: 1 },
   wLevel: { off: 0xAA, type: 'u16', count: 1 },
+  wSkill: { off: 0x170, type: 'u16', count: 8 },
+  wSkMode: { off: 0x188, type: 'u16', count: 8 },
 } as const satisfies Record<string, FieldLayout113c>
 
 /** D2Common 0x6FD513E5 imul eax, eax, 0x134 (record stride in the MonStats2 lookup 0x6FD513B0) */
@@ -547,8 +553,14 @@ export const D2SkillsTxt_SIZE = 572
 export const D2SkillsTxt = {
   wSkillId: { off: 0x0, type: 'u16', count: 1 },
   nFlags2: { off: 0x6, type: 'u8', count: 1 },
+  bFlags4: { off: 0x8, type: 'u8', count: 1 },
   nCharClass: { off: 0xC, type: 'u8', count: 1 },
   nAnim: { off: 0x12, type: 'u8', count: 1 },
+  nSeqNum: { off: 0x13, type: 'u8', count: 1 },
+  wITypeA: { off: 0x18, type: 'u16', count: 3 },
+  wITypeB: { off: 0x1E, type: 'u16', count: 3 },
+  wETypeA: { off: 0x24, type: 'u16', count: 2 },
+  wSrvDoFunc: { off: 0x2E, type: 'u16', count: 1 },
   wPassiveState: { off: 0x94, type: 'u16', count: 1 },
   wSummon: { off: 0xBC, type: 'u16', count: 1 },
   nSummode: { off: 0xBF, type: 'u8', count: 1 },
@@ -562,10 +574,14 @@ export const D2SkillsTxt = {
   dwParam7: { off: 0x160, type: 'u32', count: 1 },
   dwParam8: { off: 0x164, type: 'u32', count: 1 },
   wReqLevel: { off: 0x174, type: 'u16', count: 1 },
+  wStartMana: { off: 0x184, type: 'u16', count: 1 },
   nManaShift: { off: 0x188, type: 'u8', count: 1 },
   wMana: { off: 0x18A, type: 'u16', count: 1 },
   wLvlMana: { off: 0x18C, type: 'u16', count: 1 },
   wSkillDesc: { off: 0x194, type: 'u16', count: 1 },
+  nEType: { off: 0x1DC, type: 'u8', count: 1 },
+  nRestrict: { off: 0x228, type: 'u8', count: 1 },
+  wState: { off: 0x22A, type: 'u16', count: 3 },
 } as const satisfies Record<string, FieldLayout113c>
 
 /** D2Common 0x6FD51168 imul eax, eax, 0x1A4 (record stride in the Missiles lookup 0x6FD51150) */
@@ -633,6 +649,8 @@ export const D2DrlgLevelStrc = {
   pNextLevel: { off: 0x1AC, type: 'ptr', count: 1 },
   pCurrentMap: { off: 0x1B0, type: 'ptr', count: 1 },
   pDrlg: { off: 0x1B4, type: 'ptr', count: 1 },
+  nJungleInterlink: { off: 0x1B8, type: 'u32', count: 1 },
+  pJungleDefs: { off: 0x1BC, type: 'ptr', count: 1 },
   nLevelType: { off: 0x1C0, type: 'u32', count: 1 },
   sSeed: { off: 0x1C4, type: 'u32', count: 2 },
   nLevelId: { off: 0x1D0, type: 'u32', count: 1 },
@@ -700,6 +718,7 @@ export const D2SkillStrc = {
   dwParam3: { off: 0x20, type: 'u32', count: 1 },
   dwParam4: { off: 0x24, type: 'u32', count: 1 },
   nSkillLevel: { off: 0x28, type: 'u32', count: 1 },
+  nSkillPoints: { off: 0x2C, type: 'u32', count: 1 },
   nQuantity: { off: 0x30, type: 'u32', count: 1 },
   nOwnerItemGuid: { off: 0x34, type: 'u32', count: 1 },
   nCharges: { off: 0x38, type: 'u32', count: 1 },
@@ -714,6 +733,12 @@ export const D2LvlTypesTxt = {
 /** D2Common 0x6FDBCB3A imul eax, eax, 0x9C (record stride in DATATBLS_GetLevelDefRecord) */
 export const D2LevelDefBin_SIZE = 156
 export const D2LevelDefBin = {
+  dwSizeX0: { off: 0xC, type: 'u32', count: 1 },
+  dwSizeX1: { off: 0x10, type: 'u32', count: 1 },
+  dwSizeX2: { off: 0x14, type: 'u32', count: 1 },
+  dwSizeY0: { off: 0x18, type: 'u32', count: 1 },
+  dwSizeY1: { off: 0x1C, type: 'u32', count: 1 },
+  dwSizeY2: { off: 0x20, type: 'u32', count: 1 },
   dwOffsetX: { off: 0x24, type: 'u32', count: 1 },
   dwOffsetY: { off: 0x28, type: 'u32', count: 1 },
   dwLayer: { off: 0x8C, type: 'u32', count: 1 },
@@ -746,10 +771,12 @@ export const D2DrlgOrthStrc = {
 export const D2DrlgTileGridStrc_SIZE = 44
 export const D2DrlgTileGridStrc = {
   pMapLinks: { off: 0x0, type: 'ptr', count: 1 },
+  nFloorCount: { off: 0xC, type: 'u32', count: 1 },
   nRoofs: { off: 0x10, type: 'u32', count: 1 },
   pWalls: { off: 0x14, type: 'ptr', count: 1 },
   nWallCapacity: { off: 0x18, type: 'u32', count: 1 },
   nWalls: { off: 0x18, type: 'u32', count: 1 },
+  pFloors: { off: 0x1C, type: 'ptr', count: 1 },
   nFloorCapacity: { off: 0x20, type: 'u32', count: 1 },
   nFloors: { off: 0x20, type: 'u32', count: 1 },
   pRoofs: { off: 0x24, type: 'ptr', count: 1 },
@@ -778,12 +805,16 @@ export const D2DrlgTileDataStrc = {
 /** D2Common 0x6FDC0773 imul eax, eax, 0x1C */
 export const D2IdaStarNodeStrc_SIZE = 28
 export const D2IdaStarNodeStrc = {
+  wFScore: { off: 0x0, type: 'u16', count: 1 },
+  wHScore: { off: 0x2, type: 'u16', count: 1 },
+  wGScore: { off: 0x4, type: 'u16', count: 1 },
   nVisitCount: { off: 0x6, type: 'u16', count: 1 },
   wPosX: { off: 0x8, type: 'u16', count: 1 },
   wPosY: { off: 0xA, type: 'u16', count: 1 },
   pBestDirection: { off: 0xC, type: 'ptr', count: 1 },
   nNextNeighborIndex: { off: 0x10, type: 'u32', count: 1 },
   pParent: { off: 0x14, type: 'ptr', count: 1 },
+  pChild: { off: 0x18, type: 'ptr', count: 1 },
 } as const satisfies Record<string, FieldLayout113c>
 
 /** D2Common 0x6FDCAC22 imul edx, edx, 0x38 */
@@ -986,6 +1017,7 @@ export const D2RoomLogicalInfoStrc = {
 /** D2Common 0x6FD51788 imul eax, eax, 0x3C (record stride in DATATBLS_GetStatesTxtRecordInline) */
 export const D2StatesTxt_SIZE = 60
 export const D2StatesTxt = {
+  nStateFlags2: { off: 0x12, type: 'u8', count: 1 },
   nGfxType: { off: 0x2D, type: 'u8', count: 1 },
   wGfxClass: { off: 0x2E, type: 'u16', count: 1 },
 } as const satisfies Record<string, FieldLayout113c>
@@ -993,10 +1025,20 @@ export const D2StatesTxt = {
 /** D2Common 0x6FD517B8 imul eax, eax, 0x144 (record stride in DATATBLS_GetItemStatCostTxtRecordInline) */
 export const D2ItemStatCostTxt_SIZE = 324
 export const D2ItemStatCostTxt = {
+  dwFlags: { off: 0x4, type: 'u32', count: 1 },
   bValShift: { off: 0x18, type: 'u8', count: 1 },
   nSaveBits: { off: 0x19, type: 'u8', count: 2 },
   dwSaveAdd: { off: 0x1C, type: 'u32', count: 2 },
   dwSaveParamBits: { off: 0x24, type: 'u32', count: 2 },
+  dwMinAccr: { off: 0x2C, type: 'u32', count: 1 },
+  bKeepZero: { off: 0x50, type: 'u8', count: 1 },
+  bIsBaseOfOtherStat: { off: 0x51, type: 'u8', count: 1 },
+  bHasOpApplyingToThis: { off: 0x52, type: 'u8', count: 1 },
+  bHasDynamicOp: { off: 0x53, type: 'u8', count: 1 },
+  bOp: { off: 0x54, type: 'u8', count: 1 },
+  wOpStat1: { off: 0x58, type: 'u16', count: 1 },
+  wOpStat2: { off: 0x5A, type: 'u16', count: 1 },
+  wOpStat3: { off: 0x5C, type: 'u16', count: 1 },
 } as const satisfies Record<string, FieldLayout113c>
 
 /** D2Common 0x6FD517E8 imul eax, eax, 0x128 (record stride in DATATBLS_GetSetsTxtRecordInline) */
@@ -1007,11 +1049,13 @@ export const D2SetsTxt = {
 /** D2Common 0x6FD51818 imul eax, eax, 0x1B8 (record stride in DATATBLS_GetSetItemsTxtRecordInline) */
 export const D2SetItemsTxt_SIZE = 440
 export const D2SetItemsTxt = {
+  wLvlReq: { off: 0x32, type: 'u16', count: 1 },
 } as const satisfies Record<string, FieldLayout113c>
 
 /** D2Common 0x6FD51848 imul eax, eax, 0x14C (record stride in DATATBLS_GetUniqueItemsTxtRecordInline) */
 export const D2UniqueItemsTxt_SIZE = 332
 export const D2UniqueItemsTxt = {
+  wLvlReq: { off: 0x36, type: 'u16', count: 1 },
 } as const satisfies Record<string, FieldLayout113c>
 
 /** D2Common 0x6FDBA3B2 mov edx, 0x34 (Fog alloc in MISSILE_AllocMissileData) */
@@ -1061,6 +1105,8 @@ export const D2ItemsTxt = {
   nClassLevelReq: { off: 0x68, type: 'u8', count: 1 },
   dwCode: { off: 0x80, type: 'u32', count: 1 },
   dwAlternateGfx: { off: 0x84, type: 'u32', count: 1 },
+  dwUberCode: { off: 0x88, type: 'u32', count: 1 },
+  dwUltraCode: { off: 0x8C, type: 'u32', count: 1 },
   dw2HandedWClass: { off: 0xC4, type: 'u32', count: 1 },
   nMinAc: { off: 0xD0, type: 'u32', count: 1 },
   dwBitField1: { off: 0xDC, type: 'u32', count: 1 },
@@ -1075,16 +1121,22 @@ export const D2ItemsTxt = {
   nMaxMisDam: { off: 0x101, type: 'u8', count: 1 },
   n2HandMinDam: { off: 0x102, type: 'u8', count: 1 },
   n2HandMaxDam: { off: 0x103, type: 'u8', count: 1 },
+  wReqStr: { off: 0x10A, type: 'u16', count: 1 },
+  wReqDex: { off: 0x10C, type: 'u16', count: 1 },
+  nInvWidth: { off: 0x10F, type: 'u8', count: 1 },
+  nInvHeight: { off: 0x110, type: 'u8', count: 1 },
   nUseable: { off: 0x11D, type: 'u8', count: 1 },
   wType1: { off: 0x11E, type: 'u16', count: 1 },
   wType2: { off: 0x120, type: 'u16', count: 1 },
   nUnique: { off: 0x129, type: 'u8', count: 1 },
   nComponent: { off: 0x12A, type: 'u8', count: 1 },
+  bStackable: { off: 0x131, type: 'u8', count: 1 },
   nTwoHanded: { off: 0x132, type: 'u8', count: 1 },
   nSubType: { off: 0x137, type: 'u8', count: 1 },
   bBelt: { off: 0x138, type: 'u8', count: 1 },
   bQuest: { off: 0x13C, type: 'u8', count: 1 },
   nGemApplyType: { off: 0x13E, type: 'u8', count: 1 },
+  nItemLevelReq: { off: 0x13F, type: 'u8', count: 1 },
   nDropSound: { off: 0x143, type: 'u8', count: 1 },
 } as const satisfies Record<string, FieldLayout113c>
 
@@ -1099,6 +1151,7 @@ export const D2DrlgPresetRoomStrc = {
   pWall0RowOffsets: { off: 0x14, type: 'ptr', count: 1 },
   pCellGridCells: { off: 0xD8, type: 'ptr', count: 1 },
   pCellGridRowOffsets: { off: 0xDC, type: 'ptr', count: 1 },
+  pMazeGrid: { off: 0xEC, type: 'ptr', count: 1 },
   pTombCoords: { off: 0xF0, type: 'ptr', count: 1 },
   nTombCoords: { off: 0xF4, type: 'u32', count: 1 },
 } as const satisfies Record<string, FieldLayout113c>
@@ -1176,5 +1229,8 @@ export const D2PathInfoStrc = {
   targetY: { off: 0x6, type: 'u16', count: 1 },
   pStartRoom: { off: 0x8, type: 'ptr', count: 1 },
   pTargetRoom: { off: 0xC, type: 'ptr', count: 1 },
+  nTargetTypeStatus: { off: 0x14, type: 'u8', count: 1 },
+  dwCollisionPattern: { off: 0x28, type: 'u32', count: 1 },
+  nMoveTestCollisionMask: { off: 0x2C, type: 'u32', count: 1 },
   pDynamicPath: { off: 0x30, type: 'ptr', count: 1 },
 } as const satisfies Record<string, FieldLayout113c>

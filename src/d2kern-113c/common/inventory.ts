@@ -42,7 +42,7 @@ import {
   SGPT_INVENTORY_TXT_PTR_VA,
 } from '../tables/datatbls-113c.ts'
 import { imul32 } from './int-math.ts'
-import { ITEMS_GetBodyLocation113c, ITEMS_IsTome113c } from './items.ts'
+import { ITEMS_GetBodyLocation113c, ITEMS_GetInvWidthFromItem113c, ITEMS_IsTome113c } from './items.ts'
 import { STATLIST_UnlinkUnitStatList113c } from './statlist.ts'
 import { UNIT_ITEM, UNITS_GetX113c, UNITS_GetY113c } from './unit.ts'
 
@@ -2460,6 +2460,49 @@ export function INVENTORY_AppendItemGuidNode113c(
   m.setU32((inv + 0x30) >>> 0, pNode)
 }
 
-
-
-
+/**
+ * `@va D2Common:0x6FD6FB80` (`D2Common.#10051` `INVENTORY_GetEquippedWeaponHandClass`,
+ * stdcall `[esp+4] = pPlayer`, `[esp+8] = pInventory`, `ret 8` -> `int32` `-1 | 1 | 2`).
+ */
+export function INVENTORY_GetEquippedWeaponHandClass113c(
+  m: Memory113c,
+  pPlayer: number,
+  pInventory: number,
+): number {
+  const ebx = pInventory >>> 0
+  if (ebx === 0) return 0xffffffff
+  let edi = 0
+  if (m.u32(ebx) === INVENTORY_SIGNATURE_113C) {
+    const g0 = INVENTORY_GetOrInitGridMem113c(m, ebx, 0, D2COMMON_GRID0_INFO_VA_113C)
+    if (g0 !== 0) {
+      edi = m.u32((m.u32((g0 + 0x0c) >>> 0) + 0x14) >>> 0)
+    }
+  }
+  let esi = 0
+  if (m.u32(ebx) === INVENTORY_SIGNATURE_113C) {
+    const g0b = INVENTORY_GetOrInitGridMem113c(m, ebx, 0, D2COMMON_GRID0_INFO_VA_113C)
+    if (g0b !== 0) {
+      esi = m.u32((m.u32((g0b + 0x0c) >>> 0) + 0x10) >>> 0)
+    }
+  }
+  const plr = pPlayer >>> 0
+  if (edi !== 0) {
+    if (esi !== 0) {
+      if (ITEMS_CanPlayerClassUseItem113c(m, plr, edi) !== 0) return 1
+      if (ITEMS_CanPlayerClassUseItem113c(m, plr, esi) !== 0) return 1
+      if (ITEMS_GetInvWidthFromItem113c(m, edi) !== 0) return 2
+      return ITEMS_GetInvWidthFromItem113c(m, esi) !== 0 ? 2 : 0xffffffff
+    }
+    if (m.u32(edi) === UNIT_ITEM) {
+      if (ITEMS_GetInvWidthFromId113c(m, m.u32((edi + 0x04) >>> 0)) !== 0) return 2
+    }
+    return ITEMS_CanPlayerClassUseItem113c(m, plr, edi) !== 0 ? 2 : 0xffffffff
+  }
+  if (esi !== 0) {
+    if (m.u32(esi) === UNIT_ITEM) {
+      if (ITEMS_GetInvWidthFromId113c(m, m.u32((esi + 0x04) >>> 0)) !== 0) return 2
+    }
+    return ITEMS_CanPlayerClassUseItem113c(m, plr, esi) !== 0 ? 2 : 0xffffffff
+  }
+  return 0xffffffff
+}

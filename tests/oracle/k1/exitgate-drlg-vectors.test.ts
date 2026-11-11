@@ -382,14 +382,14 @@ describe('[K1-5] DRLG Real-DLL D2TV Vector Suite & Closure Ratchet', () => {
     const collClosure = computeManifestClosure(byVa, DRLG_COLL_ENTRY_VAS)
 
     expect(layoutClosure.totalFunctions).toBe(305)
-    expect(layoutClosure.portedFunctions).toBe(143)
-    expect(layoutClosure.unportedFunctions).toBe(162)
-    expect(layoutClosure.unportedBytes).toBe(57261)
+    expect(layoutClosure.portedFunctions).toBe(159)
+    expect(layoutClosure.unportedFunctions).toBe(146)
+    expect(layoutClosure.unportedBytes).toBe(54348)
 
     expect(collClosure.totalFunctions).toBe(306)
-    expect(collClosure.portedFunctions).toBe(143)
-    expect(collClosure.unportedFunctions).toBe(163)
-    expect(collClosure.unportedBytes).toBe(57335)
+    expect(collClosure.portedFunctions).toBe(159)
+    expect(collClosure.unportedFunctions).toBe(147)
+    expect(collClosure.unportedBytes).toBe(54422)
 
     // Every ported / diff-verified function in the DRLG closure must resolve dynamically from src/d2kern-113c/index.ts
     const kernExports = d2kern as Record<string, unknown>

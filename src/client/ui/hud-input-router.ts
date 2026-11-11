@@ -1560,7 +1560,7 @@ export function bindHudWindowEvents(hud: HudManager): void {
     const pt = hud.clientToLogical((e as MouseEvent).clientX, (e as MouseEvent).clientY)
     // `handleHudMouseUp` first: a latched panel close `X` must fire on this release
     // before `releaseMomentaryVendorButton` pops the vendor/cube pressed cells.
-    hud.handleHudMouseUp(pt.x, pt.y, (e as MouseEvent).button)
+    hud.handleHudMouseUp(pt.x, pt.y, (e as MouseEvent).button, Boolean((e as MouseEvent).shiftKey))
     hud.worldPanels.releaseMomentaryVendorButton()
   })
 
@@ -1618,7 +1618,18 @@ export function disposeHudWindowEvents(hud: HudManager): void {
   hud.setCursorLayerActive(false)
 }
 
-export function handleHudMouseUp(hud: HudManager, logicalX: number, logicalY: number, button = 0): void {
+const hudMouseDownShiftMap = new WeakMap<HudManager, boolean>()
+
+export function handleHudMouseUp(
+  hud: HudManager,
+  logicalX: number,
+  logicalY: number,
+  button = 0,
+  shiftKey?: boolean,
+): void {
+  const mousedownShift = hudMouseDownShiftMap.get(hud) ?? false
+  hudMouseDownShiftMap.delete(hud)
+  const effectiveShiftKey = shiftKey ?? mousedownShift
   if (
     button === 0 &&
     hud.touchControls.enabled &&
@@ -1683,10 +1694,18 @@ export function handleHudMouseUp(hud: HudManager, logicalX: number, logicalY: nu
   if (hud.leftPanel === 'char') {
     const leftPt = toLeftDockLocal(logicalX, logicalY, docking)
     if (
-      hud.charSheet.handleMouseUp(leftPt.x, leftPt.y, (key: BaseStatKey, count = 1) => {
-        // `[+5]` touch batch: one `AddStatPoint (0x3A)` per point, exactly like the 1.13c client loop.
-        for (let i = 0; i < count; i++) hud.commandSink?.allocateStat(key)
-      })
+      hud.charSheet.handleMouseUp(
+        leftPt.x,
+        leftPt.y,
+        (key: BaseStatKey, count = 1) => {
+          if (count > 1) {
+            hud.commandSink?.allocateStat(key, count)
+          } else {
+            hud.commandSink?.allocateStat(key)
+          }
+        },
+        effectiveShiftKey,
+      )
     ) {
       hud.onPlayUiSound?.(4)
       if (!hud.charSheet.visible) hud.leftPanel = 'none'
@@ -1752,6 +1771,9 @@ export function handleHudMouseDown(
   const e = eOrX as MouseEvent & { _logicalX?: number; _logicalY?: number }
   if (e.defaultPrevented) return
   if (e.button !== 0 && e.button !== 2) return
+  if (e.button === 0) {
+    hudMouseDownShiftMap.set(hud, Boolean(e.shiftKey))
+  }
   const pt =
     typeof e._logicalX === 'number' && typeof e._logicalY === 'number'
       ? { x: e._logicalX, y: e._logicalY }
@@ -2143,9 +2165,11 @@ export function handleHudMouseDown(
     (leftPt.x >= 0 && leftPt.x <= 400 && leftPt.y >= 0 && leftPt.y <= 553)
   ) {
     if (hud.leftPanel === 'char') {
-      hud.charSheet.handleMouseDown(leftPt.x, leftPt.y)
-      if (!hud.charSheet.visible) hud.leftPanel = 'none'
-      hud.syncPublishedState()
+      if (e.button === 0) {
+        hud.charSheet.handleMouseDown(leftPt.x, leftPt.y)
+        if (!hud.charSheet.visible) hud.leftPanel = 'none'
+        hud.syncPublishedState()
+      }
       return
     } else if (hud.leftPanel !== 'none') {
       const dockKind = hud.leftPanel
@@ -2560,9 +2584,16 @@ export function handleHudMouseDown(
       hud.syncPublishedState()
       return
     } else if (hud.rightPanel === 'skill') {
-      hud.skillTree.handleClick(rightPt.x, rightPt.y, (skillId) => (hud as any).handleSkillAllocated(skillId))
-      if (!hud.skillTree.visible) hud.rightPanel = 'none'
-      hud.syncPublishedState()
+      if (e.button === 0) {
+        hud.skillTree.handleClick(
+          rightPt.x,
+          rightPt.y,
+          (skillId, count) => (hud as any).handleSkillAllocated(skillId, count),
+          Boolean(e.shiftKey),
+        )
+        if (!hud.skillTree.visible) hud.rightPanel = 'none'
+        hud.syncPublishedState()
+      }
       return
     }
   }
@@ -3087,10 +3118,14 @@ export function forwardGridClick(
   }
 }
 
-export function handleSkillAllocated(hud: HudManager, skillId: number): void {
+export function handleSkillAllocated(hud: HudManager, skillId: number, count = 1): void {
   // Server authority: request `AddSkillPoint`; the tree and quickbar update from the server skill list.
   if (hud.commandSink) {
-    hud.commandSink.allocateSkill(skillId)
+    if (count > 1) {
+      hud.commandSink.allocateSkill(skillId, count)
+    } else {
+      hud.commandSink.allocateSkill(skillId)
+    }
     return
   }
   if (isPassiveSkill(skillId)) return

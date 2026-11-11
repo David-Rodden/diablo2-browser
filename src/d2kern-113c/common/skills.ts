@@ -34,9 +34,34 @@
  * - `0x6FDCF5E0` `UNITS_GetUnitDistanceToCoordinates113c` (`#10080`)
  */
 import type { Memory113c } from '../mem/sparse-memory.ts'
-import { D2CommonAssertError, DATATBLS_CheckMonStats2FlagInline113c } from './inline-helpers.ts'
+import { COLLISION_RayTrace113c } from './collision.ts'
+import { DRLG_IsTownLevel113c, DUNGEON_GetRoomAtPosition113c } from './dungeon.ts'
+import {
+  D2CommonAssertError,
+  DATATBLS_CheckMonStats2FlagInline113c,
+  DATATBLS_CheckMonStats2ModeFlagInline113c,
+  DATATBLS_GetMonStatsTxtRecordInline113c,
+  DATATBLS_GetSkillDescTxtRecordFromSkillIdInline113c,
+  SEED_RollLimitedRandomNumberInline113c,
+} from './inline-helpers.ts'
 import { imul32, mulDiv113c, sar32, sdiv32 } from './int-math.ts'
-import { STATE_DWORDS_113C, STATES_CheckStateMaskOnUnit113c, STATLIST_FindStatIndex113c } from './statlist.ts'
+import { INVENTORY_GetCompositWeaponMem113c, INVENTORY_GetOrInitGridMem113c } from './inventory.ts'
+import {
+  ITEMS_CheckItemTypeIdMem113c,
+  ITEMS_GetItemTypeQuiverFromItem113c,
+  ITEMS_GetTotalMaxStack113c,
+  ITEMS_IsTome113c,
+  checkIfThrowItemMem113c,
+  statListGetUnitBaseStatMem113c,
+  unitsCanDualWieldMem113c,
+} from './items.ts'
+import {
+  STATE_DWORDS_113C,
+  STATES_CheckState113c,
+  STATES_CheckStateMaskOnUnit113c,
+  STATLIST_FindStatIndex113c,
+} from './statlist.ts'
+import { UNITS_GetPlayerBaseToHit113c, UNITS_GetRoom113c } from './unit.ts'
 import {
   D2DynamicPathStrc,
   D2InventoryGridStrc,
@@ -1693,4 +1718,649 @@ export function SKILLS_IsSelectableCorpseWithVelocity113c(
     rec = (m.u32((dt + DATATABLES_MONSTATS_TXT_OFF_113C) >>> 0) + imul32(id, D2MonStatsTxt_SIZE)) >>> 0
   }
   return m.get(rec, D2MonStatsTxt.wVelocity) !== 0 ? 1 : 0
+}
+
+// ============================================================================
+// K1r7 Iteration 10 Lane B — Sub-Batches I10B-1 & I10B-2 (skills.ts)
+// ============================================================================
+
+const LOS_SCRATCH_PT1_VA_113C = 0x6fdf1f00
+const LOS_SCRATCH_PT2_VA_113C = 0x6fdf1f08
+const DATATABLES_ITEMTYPES_TXT_OFF_113C = 0xbf8
+const ITEMTYPES_TXT_STRIDE_113C = 0xe4
+
+function isWeaponActiveEligible113c(m: Memory113c, pItem: number): boolean {
+  const item = pItem >>> 0
+  if (item === 0) return false
+  if (m.u32(item) === 4) {
+    const pData = m.u32((item + 0x14) >>> 0) >>> 0
+    if (pData !== 0) {
+      const flags = m.u32((pData + 0x18) >>> 0) >>> 0
+      if ((flags & 0x4000) !== 0 || (flags & 0x100) !== 0) return false
+    }
+  }
+  return ITEMS_CheckItemTypeIdMem113c(m, item, 0x2d) !== 0
+}
+
+/**
+ * 4-output `Memory113c` port of `D2Common:0x6FD70700` (`#10101` `INVENTORY_GetActiveWeapon`)
+ * returning `{ found, pItem, nBodyLoc, bIsComposit }` for `0x6FDA0930` (`B1-15`).
+ */
+export function inventoryGetActiveWeaponFullMem113c(
+  m: Memory113c,
+  pInventory: number,
+): { found: number; pItem: number; nBodyLoc: number; bIsComposit: number } {
+  const inv = pInventory >>> 0
+  if (inv === 0) return { found: 0, pItem: 0, nBodyLoc: 0, bIsComposit: 0 }
+  const pComp = INVENTORY_GetCompositWeaponMem113c(m, inv) >>> 0
+  if (m.u32(inv) === INV_SIGNATURE_113C) {
+    const pGridA = INVENTORY_GetOrInitGridMem113c(m, inv, 0, BODY_GRID_DEF_VA_113C) >>> 0
+    if (pGridA !== 0) {
+      const pRight = m.u32((m.u32((pGridA + 0x0c) >>> 0) + 0x10) >>> 0) >>> 0
+      if (isWeaponActiveEligible113c(m, pRight)) {
+        return { found: 1, pItem: pRight, nBodyLoc: 4, bIsComposit: pRight === pComp ? 1 : 0 }
+      }
+    }
+  }
+  let pLeft = 0
+  if (m.u32(inv) === INV_SIGNATURE_113C) {
+    const pGridB = INVENTORY_GetOrInitGridMem113c(m, inv, 0, BODY_GRID_DEF_VA_113C) >>> 0
+    if (pGridB !== 0) {
+      pLeft = m.u32((m.u32((pGridB + 0x0c) >>> 0) + 0x14) >>> 0) >>> 0
+    }
+  }
+  if (isWeaponActiveEligible113c(m, pLeft)) {
+    return { found: 1, pItem: pLeft, nBodyLoc: 5, bIsComposit: pLeft === pComp ? 1 : 0 }
+  }
+  return { found: 0, pItem: 0, nBodyLoc: 0, bIsComposit: 0 }
+}
+
+/**
+ * `@va D2Common:0x6FD81200` (`D2Common.#11085` `SKILLS_CanMonsterReviveInMode2_113c`,
+ * fastcall `ecx = nMonsterId`, `ret` -> `BOOL`).
+ */
+export function SKILLS_CanMonsterReviveInMode2_113c(m: Memory113c, nMonsterId: number): number {
+  const id = nMonsterId | 0
+  if (id < 0) return 0
+  const sgpt = m.u32(SGPT_DATATABLES_VA_113C) >>> 0
+  if (id >= (m.u32((sgpt + DATATABLES_MONSTATS_COUNT_OFF_113C) >>> 0) | 0)) return 0
+  const pMonTxt = (m.u32((sgpt + DATATABLES_MONSTATS_TXT_OFF_113C) >>> 0) + imul32(id, D2MonStatsTxt_SIZE)) >>> 0
+  if (DATATBLS_CheckMonStats2ModeFlagInline113c(m, id, 2) === 0) return 0
+  const pMasks = m.u32(GDW_BITMASKS_IAT_VA_113C) >>> 0
+  if ((m.u8((pMonTxt + 0x0c) >>> 0) & m.u8((pMasks + 0x18) >>> 0)) !== 0) return 0
+  return (m.u8((pMonTxt + 0x0e) >>> 0) & m.u8(pMasks)) !== 0 ? 1 : 0
+}
+
+/**
+ * `@va D2Common:0x6FD9E750` (`D2Common.#10864` `SKILLS_CheckLineOfSight113c`,
+ * stdcall `x1, y1, x2, y2, pRoom, dwMask`, `ret 0x18` -> `BOOL`).
+ */
+export function SKILLS_CheckLineOfSight113c(
+  m: Memory113c,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  pRoom: number,
+  dwMask: number,
+): number {
+  const s0 = m.u32(LOS_SCRATCH_PT1_VA_113C)
+  const s1 = m.u32((LOS_SCRATCH_PT1_VA_113C + 4) >>> 0)
+  const s2 = m.u32(LOS_SCRATCH_PT2_VA_113C)
+  const s3 = m.u32((LOS_SCRATCH_PT2_VA_113C + 4) >>> 0)
+  m.setU32(LOS_SCRATCH_PT1_VA_113C, x1 >>> 0)
+  m.setU32((LOS_SCRATCH_PT1_VA_113C + 4) >>> 0, y1 >>> 0)
+  m.setU32(LOS_SCRATCH_PT2_VA_113C, x2 >>> 0)
+  m.setU32((LOS_SCRATCH_PT2_VA_113C + 4) >>> 0, y2 >>> 0)
+  const hit = COLLISION_RayTrace113c(
+    m,
+    pRoom >>> 0,
+    LOS_SCRATCH_PT1_VA_113C,
+    LOS_SCRATCH_PT2_VA_113C,
+    dwMask >>> 0,
+  )
+  m.setU32(LOS_SCRATCH_PT1_VA_113C, s0)
+  m.setU32((LOS_SCRATCH_PT1_VA_113C + 4) >>> 0, s1)
+  m.setU32(LOS_SCRATCH_PT2_VA_113C, s2)
+  m.setU32((LOS_SCRATCH_PT2_VA_113C + 4) >>> 0, s3)
+  return hit === 0 ? 1 : 0
+}
+
+/**
+ * `@va D2Common:0x6FD9EBA0` (`D2Common.#10497` `SKILLS_GetShrineSkillBonus113c`,
+ * stdcall `pUnit`, `ret 4` -> `0` or `2`).
+ */
+export function SKILLS_GetShrineSkillBonus113c(m: Memory113c, pUnit: number): number {
+  const u = pUnit >>> 0
+  if (u === 0) return 0
+  const uType = m.u32(u) | 0
+  if (!((uType >= 0 && uType <= 1) || uType === 3)) return 0
+  const sgpt = m.u32(SGPT_DATATABLES_VA_113C) >>> 0
+  if ((m.u32((sgpt + DATATABLES_STATES_COUNT_OFF_113C) >>> 0) | 0) <= 0x86) return 0
+  return STATES_CheckStateMaskOnUnitFast113c(m, u, 0x86) !== 0 ? 2 : 0
+}
+
+/**
+ * `@va D2Common:0x6FD9EC50` (`D2Common.#10030` `SKILLS_GetUnitSkillRequiredOrMonLevel113c`,
+ * fastcall `ecx = pUnit, edx = pSkill`, `ret` -> `i32`).
+ */
+export function SKILLS_GetUnitSkillRequiredOrMonLevel113c(
+  m: Memory113c,
+  pUnit: number,
+  pSkill: number,
+): number {
+  const u = pUnit >>> 0
+  const sk = pSkill >>> 0
+  if (u === 0 || sk === 0) return 0
+  const uType = m.u32(u) >>> 0
+  const clsId = m.u32((u + 4) >>> 0) >>> 0
+  const pSkTxt = m.u32(sk) >>> 0
+  if (uType === 0) {
+    return m.u8((pSkTxt + 0x13) >>> 0)
+  }
+  const skId = i16(m.u16(pSkTxt))
+  if (skId === 0xc7) return 0
+  const pMonTxt = DATATBLS_GetMonStatsTxtRecordInline113c(m, clsId) >>> 0
+  for (let i = 0; i < 8; i++) {
+    if (i16(m.u16((pMonTxt + 0x170 + i * 2) >>> 0)) === skId) {
+      return i16(m.u16((pMonTxt + 0x188 + i * 2) >>> 0))
+    }
+  }
+  return 0
+}
+
+/**
+ * `@va D2Common:0x6FD9F120` (internal `SKILLS_IsUnitPosNotInTown113c`,
+ * custom `eax = pUnit, edi = nX, esi = nY`, `ret` -> `BOOL`).
+ */
+export function SKILLS_IsUnitPosNotInTown113c(
+  m: Memory113c,
+  pUnit: number,
+  nX: number,
+  nY: number,
+): number {
+  const pRoom = UNITS_GetRoom113c(m, pUnit >>> 0) >>> 0
+  if (pRoom === 0) return 0
+  const pTargetRoom = DUNGEON_GetRoomAtPosition113c(m, pRoom, nX | 0, nY | 0) >>> 0
+  if (pTargetRoom === 0) return 0
+  const pRoomEx = m.u32((pTargetRoom + 0x10) >>> 0) >>> 0
+  const pLevel = m.u32((pRoomEx + 0x58) >>> 0) >>> 0
+  const nLevelId = m.u32((pLevel + 0x1d0) >>> 0) | 0
+  return DRLG_IsTownLevel113c(nLevelId) === 0 ? 1 : 0
+}
+
+/**
+ * `@va D2Common:0x6FD9F590` (internal `SKILLS_CheckSkillStateRestriction113c`,
+ * custom `eax = pSkill, ebx = pUnit`, `ret` -> `BOOL`).
+ */
+export function SKILLS_CheckSkillStateRestriction113c(
+  m: Memory113c,
+  pSkill: number,
+  pUnit: number,
+): number {
+  const u = pUnit >>> 0
+  const sk = pSkill >>> 0
+  if (u === 0 || sk === 0) return 0
+  const pSkTxt = m.u32(sk) >>> 0
+  if (pSkTxt === 0) return 0
+  const restrict = m.u8((pSkTxt + 0x228) >>> 0)
+  if (restrict === 0) {
+    return STATES_CheckUnitAnyActiveStateMask113c(m, u) === 0 ? 1 : 0
+  }
+  if (restrict === 2) {
+    if (STATES_CheckUnitAnyActiveStateMask113c(m, u) === 0) return 0
+    for (let i = 0; i < 3; i++) {
+      const st = i16(m.u16((pSkTxt + 0x22a + i * 2) >>> 0))
+      if (st < 0) return 0
+      if (STATES_CheckState113c(m, u, st) !== 0) return 1
+    }
+    return 0
+  }
+  return 1
+}
+
+/**
+ * `@va D2Common:0x6FD9F610` (`D2Common.#10029` `SKILLS_AssignItemChargedSkillStdcall113c`,
+ * stdcall `pUnit, dwItemGuid, nSkillId, nLevel, nCharges, bRemove`, `ret 0x18`, void).
+ */
+export function SKILLS_AssignItemChargedSkillStdcall113c(
+  m: Memory113c,
+  pUnit: number,
+  dwItemGuid: number,
+  nSkillId: number,
+  nLevel: number,
+  nCharges: number,
+  bRemove: number,
+): void {
+  SKILLS_AddOrRemoveItemChargedSkill113c(m, nSkillId, pUnit, dwItemGuid, nLevel, nCharges, bRemove)
+}
+
+/**
+ * `@va D2Common:0x6FD9FDC0` (internal `SKILLS_CheckSkillStartMana113c`,
+ * stdcall `pUnit, pSkill`, `ret 8` -> `BOOL`).
+ */
+export function SKILLS_CheckSkillStartMana113c(m: Memory113c, pUnit: number, pSkill: number): number {
+  const u = pUnit >>> 0
+  if (u === 0 || m.u32(u) !== 0) return 1
+  const pSkTxt = m.u32(pSkill >>> 0) >>> 0
+  const wStartMana = i16(m.u16((pSkTxt + 0x184) >>> 0))
+  if (wStartMana <= 0) return 1
+  let curMana = 0
+  const pStatList = m.u32((u + 0x5c) >>> 0) >>> 0
+  const sgpt = m.u32(SGPT_DATATABLES_VA_113C) >>> 0
+  if (pStatList !== 0 && (m.u32((sgpt + DATATABLES_ISC_COUNT_OFF_113C) >>> 0) | 0) > 8) {
+    const pIsc = (m.u32((sgpt + DATATABLES_ISC_TXT_OFF_113C) >>> 0) + 0xa20) >>> 0
+    curMana = statListGetTotalStatWithMinMem113c(m, pStatList, 0x00080000, pIsc) | 0
+  }
+  if (curMana >= (wStartMana << 8)) return 1
+  const sgpt2 = m.u32(SGPT_DATATABLES_VA_113C) >>> 0
+  if (
+    (m.u32((sgpt2 + DATATABLES_STATES_COUNT_OFF_113C) >>> 0) | 0) > 0x0c &&
+    STATES_CheckStateMaskOnUnitFast113c(m, u, 0x0c) !== 0
+  ) {
+    return 1
+  }
+  return 0
+}
+
+/**
+ * `@va D2Common:0x6FDA0610` (internal `SKILLS_CheckWeaponPairMatchesSkill113c`,
+ * custom `eax = nSlotIdx`, stack `[esp+4] = pPrimaryItem, [esp+8] = pSecondaryItem, [esp+0xC] = pSkillsTxt`,
+ * `ret 0xC` -> `BOOL`).
+ */
+export function SKILLS_CheckWeaponPairMatchesSkill113c(
+  m: Memory113c,
+  nSlotIdx: number,
+  pPrimaryItem: number,
+  pSecondaryItem: number,
+  pSkillsTxt: number,
+): number {
+  const idx = nSlotIdx | 0
+  const prim = pPrimaryItem >>> 0
+  const sec = pSecondaryItem >>> 0
+  const skTxt = pSkillsTxt >>> 0
+  if (prim === 0) {
+    if (
+      i16(m.u16((skTxt + 0x24 + idx * 4) >>> 0)) <= 0 &&
+      i16(m.u16((skTxt + 0x18 + idx * 6) >>> 0)) <= 0
+    ) {
+      return 1
+    }
+    const itypeA1 = i16(m.u16((skTxt + 0x18) >>> 0))
+    const itypeB1 = i16(m.u16((skTxt + 0x1e) >>> 0))
+    return (itypeA1 === 0x2d || itypeA1 === 0x2e || itypeA1 === 0x43) &&
+      itypeB1 <= 0 &&
+      ITEMS_CheckItemTypeIdMem113c(m, sec, 0x2d) === 0
+      ? 1
+      : 0
+  }
+  for (let k = 0; k < 2; k++) {
+    const et = i16(m.u16((skTxt + 0x24 + idx * 4 + k * 2) >>> 0))
+    if (et <= 0) break
+    if (ITEMS_CheckItemTypeIdMem113c(m, prim, et) !== 0) return 0
+  }
+  let matched = false
+  for (let k = 0; k < 3; k++) {
+    const it = i16(m.u16((skTxt + 0x18 + idx * 6 + k * 2) >>> 0))
+    if (it <= 0) return k === 0 ? 1 : 0
+    if (ITEMS_CheckItemTypeIdMem113c(m, prim, it) !== 0) {
+      matched = true
+      break
+    }
+  }
+  if (!matched) return 0
+  const pData = m.u32((prim + 0x14) >>> 0) >>> 0
+  if (pData !== 0) {
+    const flags = m.u32((pData + 0x18) >>> 0) >>> 0
+    if ((flags & 0x4000) !== 0 || (flags & 0x100) !== 0) {
+      return m.u16(skTxt) === 0 ? 1 : 0
+    }
+  }
+  const wType1 = ITEMS_IsTome113c(m, m.u32((prim + 4) >>> 0)) | 0
+  const sgpt = m.u32(SGPT_DATATABLES_VA_113C) >>> 0
+  if (wType1 < 0 || wType1 >= (m.u32((sgpt + DATATABLES_ITEMTYPES_COUNT_OFF_113C) >>> 0) | 0)) {
+    return 1
+  }
+  const pTypeRec =
+    (m.u32((sgpt + DATATABLES_ITEMTYPES_TXT_OFF_113C) >>> 0) +
+      imul32(wType1, ITEMTYPES_TXT_STRIDE_113C)) >>>
+    0
+  if (i16(m.u16((pTypeRec + 0x0c) >>> 0)) === 0) return 1
+  const pMasks = m.u32(GDW_BITMASKS_IAT_VA_113C) >>> 0
+  if ((m.u8((skTxt + 0x06) >>> 0) & m.u8(pMasks)) !== 0) return 1
+  if (m.u16(skTxt) === 0) {
+    const pStatList = m.u32((prim + 0x5c) >>> 0) >>> 0
+    if (pStatList !== 0 && (m.u32((sgpt + DATATABLES_ISC_COUNT_OFF_113C) >>> 0) | 0) > 0x9d) {
+      const pIsc = (m.u32((sgpt + DATATABLES_ISC_TXT_OFF_113C) >>> 0) + 0xc6b4) >>> 0
+      if (statListGetTotalStatWithMinMem113c(m, pStatList, 0x009d0000, pIsc) !== 0) {
+        return 1
+      }
+    }
+  }
+  if (sec === 0) return 0
+  const quivType = ITEMS_GetItemTypeQuiverFromItem113c(m, prim)
+  if (ITEMS_CheckItemTypeIdMem113c(m, sec, quivType) === 0) return 0
+  if (m.u16(skTxt) === 0 && statListGetUnitStatMem113c(m, sec, 0x9d, 0) !== 0) return 1
+  if (ITEMS_GetTotalMaxStack113c(m, sec) === 0) return 1
+  return (statListGetUnitStatMem113c(m, sec, 0x46, 0) | 0) > 0 ? 1 : 0
+}
+
+/**
+ * `@va D2Common:0x6FDA0930` (internal `SKILLS_CheckSkillWeaponAndQuantity113c`,
+ * custom `ecx = pSkill`, stack `[esp+4] = pUnit`, `ret 4` -> `BOOL`).
+ */
+export function SKILLS_CheckSkillWeaponAndQuantity113c(
+  m: Memory113c,
+  pSkill: number,
+  pUnit: number,
+): number {
+  const u = pUnit >>> 0
+  const sk = pSkill >>> 0
+  if (u === 0 || sk === 0) return 0
+  const pSkTxt = m.u32(sk) >>> 0
+  const pInv = m.u32((u + 0x60) >>> 0) >>> 0
+  if (pSkTxt !== 0) {
+    const pMasks = m.u32(GDW_BITMASKS_IAT_VA_113C) >>> 0
+    if ((m.u8((pSkTxt + 0x08) >>> 0) & m.u8((pMasks + 0x10) >>> 0)) !== 0) {
+      if (pInv === 0) return 0
+      return (m.u32((sk + 0x30) >>> 0) | 0) > 0 ? 1 : 0
+    }
+  }
+  const skId = i16(m.u16(pSkTxt))
+  let pWeap = 0
+  if (skId === 2) {
+    if (pInv === 0) return 0
+    const canDW = unitsCanDualWieldMem113c(m, u)
+    const act = inventoryGetActiveWeaponFullMem113c(m, pInv)
+    if (act.found === 0) return 0
+    if (canDW !== 0) {
+      pWeap =
+        act.bIsComposit !== 0 ? act.pItem : SKILLS_GetWeaponFromArmSlot113c(m, act.nBodyLoc, pInv)
+      if (pWeap === 0) return 0
+    } else {
+      if (act.bIsComposit === 0) return 0
+      pWeap = act.pItem
+    }
+  } else if (skId === 4) {
+    if (pInv === 0) return 0
+    const act = inventoryGetActiveWeaponFullMem113c(m, pInv)
+    if (act.found === 0) return 0
+    pWeap =
+      act.bIsComposit === 0 ? act.pItem : SKILLS_GetWeaponFromArmSlot113c(m, act.nBodyLoc, pInv)
+    if (pWeap === 0) return 0
+  } else if (skId === 5) {
+    if (pInv === 0 || unitsCanDualWieldMem113c(m, u) === 0) return 0
+    const act = inventoryGetActiveWeaponFullMem113c(m, pInv)
+    if (act.found === 0) return 0
+    pWeap =
+      act.bIsComposit !== 0 ? SKILLS_GetWeaponFromArmSlot113c(m, act.nBodyLoc, pInv) : act.pItem
+    if (pWeap === 0) return 0
+    return ITEMS_CheckItemTypeIdMem113c(m, pWeap, 0x2d)
+  } else {
+    return 1
+  }
+  const isThrow = checkIfThrowItemMem113c(m, pWeap)
+  if (isThrow !== 0) return isThrow
+  return statListGetUnitStatMem113c(m, pWeap, 0x7d, 0)
+}
+
+/**
+ * `@va D2Common:0x6FDA0C30` (internal `SKILLS_EvalUnitStatFormulaHelper113c`,
+ * custom `ecx = nStatId, edx = nMode`, stack `[esp+4] = _unused, [esp+8] = ppUnit`, `ret 8` -> `i32`).
+ */
+export function SKILLS_EvalUnitStatFormulaHelper113c(
+  m: Memory113c,
+  nStatId: number,
+  nMode: number,
+  _unused: number,
+  ppUnit: number,
+): number {
+  const pp = ppUnit >>> 0
+  if (pp === 0) return 0
+  const pUnit = m.u32(pp) >>> 0
+  if (pUnit === 0) return 0
+  const statId = nStatId | 0
+  if (statId < 0) return 0
+  const sgpt = m.u32(SGPT_DATATABLES_VA_113C) >>> 0
+  if (statId >= (m.u32((sgpt + DATATABLES_ISC_COUNT_OFF_113C) >>> 0) | 0)) return 0
+  if (statId === 0x13) return UNITS_GetPlayerBaseToHit113c(m, pUnit) | 0
+  if ((nMode | 0) === 1) return statListGetUnitBaseStatMem113c(m, pUnit, statId, 0) | 0
+  return statListGetUnitStatMem113c(m, pUnit, statId, 0) | 0
+}
+
+/**
+ * `@va D2Common:0x6FDA0CB0` (internal `SKILLS_EvalUnitRandFormulaHelper113c`,
+ * custom `ecx = nMin, edx = nMax`, stack `[esp+4] = _unused, [esp+8] = ppUnit`, `ret 8` -> `i32`).
+ */
+export function SKILLS_EvalUnitRandFormulaHelper113c(
+  m: Memory113c,
+  nMin: number,
+  nMax: number,
+  _unused: number,
+  ppUnit: number,
+): number {
+  const pp = ppUnit >>> 0
+  if (pp === 0) return 0
+  const pUnit = m.u32(pp) >>> 0
+  return SEED_RollLimitedRandomNumberInline113c(m, (pUnit + 0x20) >>> 0, nMin | 0, nMax | 0) | 0
+}
+
+/**
+ * `@va D2Common:0x6FD9FCB0` (internal `SKILLS_GetSkillBonusLevel113c`,
+ * custom `eax = pSkill, esi = pUnit`, `ret` -> `i32`).
+ */
+export function SKILLS_GetSkillBonusLevel113c(m: Memory113c, pSkill: number, pUnit: number): number {
+  const sk = pSkill >>> 0
+  if (sk === 0) return 0
+  const pSkTxt = m.u32(sk) >>> 0
+  if (pSkTxt === 0) return 0
+  const skId = i16(m.u16(pSkTxt))
+  if (skId < 0) return 0
+  const sgpt = m.u32(SGPT_DATATABLES_VA_113C) >>> 0
+  if (skId >= (m.u32((sgpt + DATATABLES_SKILLS_COUNT_OFF_113C) >>> 0) | 0)) return 0
+  const u = pUnit >>> 0
+  let total =
+    (statListGetUnitStatMem113c(m, u, 0x7f, 0) +
+      SKILLS_GetShrineSkillBonus113c(m, u) +
+      (m.u32((sk + 0x2c) >>> 0) | 0)) |
+    0
+  if (u !== 0 && m.u32(u) === 0) {
+    const skCharClass = (m.u8((pSkTxt + 0x0c) >>> 0) << 24) >> 24
+    const unitClass = m.u32((u + 4) >>> 0) | 0
+    if (skCharClass === unitClass) {
+      total = (total + statListGetUnitStatMem113c(m, u, 0x53, unitClass)) | 0
+      const pDesc = DATATBLS_GetSkillDescTxtRecordFromSkillIdInline113c(m, skId) >>> 0
+      const skillPage = (m.u8((pDesc + 2) >>> 0) << 24) >> 24
+      if (skillPage !== 0) {
+        const tabLayer = (skillPage + unitClass * 8 - 1) | 0
+        total = (total + statListGetUnitStatMem113c(m, u, 0xbc, tabLayer)) | 0
+      }
+      let oskill = statListGetUnitStatMem113c(m, u, 0x61, skId) | 0
+      if (oskill > 3) oskill = 3
+      total = (total + oskill) | 0
+    } else {
+      total = (total + statListGetUnitStatMem113c(m, u, 0x61, skId)) | 0
+    }
+  } else {
+    const baseLvl = m.u32((sk + 0x28) >>> 0) | 0
+    let oskill = statListGetUnitStatMem113c(m, u, 0x61, skId) | 0
+    if (baseLvl > 0 && oskill > 3) {
+      oskill = 3
+    }
+    total = (total + oskill) | 0
+  }
+  const eType = m.u8((pSkTxt + 0x1dc) >>> 0)
+  if (eType > 0) {
+    total = (total + statListGetUnitStatMem113c(m, u, 0x7e, eType)) | 0
+  }
+  return (total + statListGetUnitStatMem113c(m, u, 0x6b, skId)) | 0
+}
+
+/**
+ * `@va D2Common:0x6FDA0560` (`D2Common.#11146` `SKILLS_GetUnitSkillBonusBySkillId113c`,
+ * stdcall `pUnit, nSkillId`, `ret 8` -> `i32`).
+ */
+export function SKILLS_GetUnitSkillBonusBySkillId113c(
+  m: Memory113c,
+  pUnit: number,
+  nSkillId: number,
+): number {
+  const u = pUnit >>> 0
+  if (u === 0) return 0
+  const pSkillList = m.u32((u + 0xa8) >>> 0) >>> 0
+  if (pSkillList === 0) return 0
+  const targetId = nSkillId | 0
+  let pSkill = m.u32((pSkillList + 4) >>> 0) >>> 0
+  while (pSkill !== 0) {
+    const skId = i16(m.u16(m.u32(pSkill) >>> 0))
+    if (skId === targetId && m.u32((pSkill + 0x34) >>> 0) === 0xffffffff) {
+      return SKILLS_GetSkillBonusLevel113c(m, pSkill, u)
+    }
+    pSkill = m.u32((pSkill + 4) >>> 0) >>> 0
+  }
+  return 0
+}
+
+/**
+ * `@va D2Common:0x6FDA05C0` (`D2Common.#10306` `SKILLS_EvaluateSkillLevel113c`,
+ * stdcall `pUnit, pSkill, bBonus`, `ret 0xC` -> `i32`).
+ */
+export function SKILLS_EvaluateSkillLevel113c(
+  m: Memory113c,
+  pUnit: number,
+  pSkill: number,
+  bBonus: number,
+): number {
+  const u = pUnit >>> 0
+  const sk = pSkill >>> 0
+  if (u === 0 || sk === 0) return 0
+  let lvl = m.u32((sk + 0x28) >>> 0) | 0
+  if ((bBonus | 0) !== 0 && m.u32((sk + 0x34) >>> 0) === 0xffffffff) {
+    lvl = (lvl + SKILLS_GetSkillBonusLevel113c(m, sk, u)) | 0
+  }
+  const maxLvl = m.u32(m.u32(SGPT_EXPERIENCE_TXT_PTR_VA_113C) >>> 0) | 0
+  return Math.min(Math.max(lvl, 0), maxLvl)
+}
+
+/**
+ * `@va D2Common:0x6FDA0AF0` (internal `SKILLS_CheckSkillManaOrCharges113c`,
+ * custom `eax = pSkill, ecx = pUnit`, `ret` -> `BOOL`).
+ */
+export function SKILLS_CheckSkillManaOrCharges113c(
+  m: Memory113c,
+  pSkill: number,
+  pUnit: number,
+): number {
+  const sk = pSkill >>> 0
+  if (sk === 0) {
+    throw new D2CommonAssertError('Skills.cpp', 0x638)
+  }
+  if (m.u32((sk + 0x34) >>> 0) !== 0xffffffff) {
+    return (m.u32((sk + 0x38) >>> 0) | 0) > 0 ? 1 : 0
+  }
+  const pSkTxt = m.u32(sk) >>> 0
+  const u = pUnit >>> 0
+  let effLvl = 0
+  if (u !== 0) {
+    const lvl = (m.u32((sk + 0x28) >>> 0) + SKILLS_GetSkillBonusLevel113c(m, sk, u)) | 0
+    const maxLvl = m.u32(m.u32(SGPT_EXPERIENCE_TXT_PTR_VA_113C) >>> 0) | 0
+    effLvl = Math.min(Math.max(lvl, 0), maxLvl)
+  }
+  effLvl = (effLvl - 1) | 0
+  if (pSkTxt === 0) {
+    throw new D2CommonAssertError('Skills.cpp', 0x6ef)
+  }
+  effLvl = Math.max(effLvl, 0)
+  const wLvlMana = i16(m.u16((pSkTxt + 0x18c) >>> 0))
+  const wMana = i16(m.u16((pSkTxt + 0x18a) >>> 0))
+  const shift = m.u8((pSkTxt + 0x188) >>> 0) & 31
+  const manaCost = ((imul32(wLvlMana, effLvl) + wMana) << shift) | 0
+  if (u !== 0) {
+    const uType = m.u32(u) | 0
+    if (
+      ((uType >= 0 && uType <= 1) || uType === 3) &&
+      (m.u32((m.u32(SGPT_DATATABLES_VA_113C) + DATATABLES_STATES_COUNT_OFF_113C) >>> 0) | 0) >
+        0x72 &&
+      STATES_CheckStateMaskOnUnitFast113c(m, u, 0x72) !== 0
+    ) {
+      return (statListGetUnitStatMem113c(m, u, 6, 0) | 0) >= manaCost ? 1 : 0
+    }
+  }
+  if (
+    i16(m.u16((pSkTxt + 0x2e) >>> 0)) === 0x74 &&
+    u !== 0 &&
+    ((m.u32((u + 0xc8) >>> 0) >>> 3) & 1) !== 0
+  ) {
+    return 1
+  }
+  return (statListGetUnitStatMem113c(m, u, 8, 0) | 0) >= manaCost ? 1 : 0
+}
+
+/**
+ * `@va D2Common:0x6FDA0EA0` (`D2Common.#11008` `SKILLS_GetSkillLevelByIdWithBonus113c`,
+ * stdcall `pUnit, nSkillId`, `ret 8` -> `i32`).
+ */
+export function SKILLS_GetSkillLevelByIdWithBonus113c(
+  m: Memory113c,
+  pUnit: number,
+  nSkillId: number,
+): number {
+  const u = pUnit >>> 0
+  if (u === 0) return 0
+  const pSkill = SKILLS_GetHighestLevelSkillFromUnitAndId113c(m, u, nSkillId | 0) >>> 0
+  if (pSkill === 0) return 0
+  let lvl = m.u32((pSkill + 0x28) >>> 0) | 0
+  if (m.u32((pSkill + 0x34) >>> 0) === 0xffffffff) {
+    lvl = (lvl + SKILLS_GetSkillBonusLevel113c(m, pSkill, u)) | 0
+  }
+  const maxLvl = m.u32(m.u32(SGPT_EXPERIENCE_TXT_PTR_VA_113C) >>> 0) | 0
+  return Math.min(Math.max(lvl, 0), maxLvl)
+}
+
+/**
+ * `@va D2Common:0x6FDA0F00` (internal `SKILLS_CheckUnitEquippedWeaponsMatchSkill113c`,
+ * custom `eax = pSkill`, stack `[esp+4] = pUnit`, `ret 4` -> `BOOL`).
+ */
+export function SKILLS_CheckUnitEquippedWeaponsMatchSkill113c(
+  m: Memory113c,
+  pSkill: number,
+  pUnit: number,
+): number {
+  const sk = pSkill >>> 0
+  if (sk === 0) return 0
+  const pSkTxt = m.u32(sk) >>> 0
+  if (pSkTxt === 0) return 0
+  if (i16(m.u16((pSkTxt + 0x24) >>> 0)) <= 0 && i16(m.u16((pSkTxt + 0x18) >>> 0)) <= 0) {
+    return 1
+  }
+  const pInv = m.u32(((pUnit >>> 0) + 0x60) >>> 0) >>> 0
+  if (pInv === 0) return 0
+  let pRight = 0
+  let pLeft = 0
+  if (m.u32(pInv) === INV_SIGNATURE_113C) {
+    const pGridA = INVENTORY_GetOrInitGridMem113c(m, pInv, 0, BODY_GRID_DEF_VA_113C) >>> 0
+    if (pGridA !== 0) {
+      pRight = m.u32((m.u32((pGridA + 0x0c) >>> 0) + 0x10) >>> 0) >>> 0
+    }
+    const pGridB = INVENTORY_GetOrInitGridMem113c(m, pInv, 0, BODY_GRID_DEF_VA_113C) >>> 0
+    if (pGridB !== 0) {
+      pLeft = m.u32((m.u32((pGridB + 0x0c) >>> 0) + 0x14) >>> 0) >>> 0
+    }
+  }
+  const skId = m.u16(pSkTxt)
+  if (skId === 4 || skId === 5) {
+    const pComp = INVENTORY_GetCompositWeaponMem113c(m, pInv) >>> 0
+    if (pComp === pRight) {
+      pRight = 0
+    } else if (pComp === pLeft) {
+      pLeft = 0
+    }
+  }
+  if (SKILLS_CheckWeaponPairMatchesSkill113c(m, 0, pRight, pLeft, pSkTxt) !== 0) {
+    return SKILLS_CheckWeaponPairMatchesSkill113c(m, 1, pLeft, pRight, pSkTxt)
+  }
+  if (SKILLS_CheckWeaponPairMatchesSkill113c(m, 1, pRight, pLeft, pSkTxt) !== 0) {
+    return SKILLS_CheckWeaponPairMatchesSkill113c(m, 0, pLeft, pRight, pSkTxt)
+  }
+  return 0
 }

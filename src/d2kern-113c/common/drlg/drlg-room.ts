@@ -9,8 +9,10 @@ import {
   D2DrlgCoordStrc,
   D2DrlgLevelStrc,
   D2DrlgOrthStrc,
+  D2DrlgPresetRoomStrc,
   D2RoomExStrc,
 } from '../../mem/layout.generated.ts';
+import { DRLG_IsTownLevel113c } from '../dungeon.ts';
 import { D2CommonAssertError } from '../inline-helpers.ts';
 import { imul32, sdiv32 } from '../int-math.ts';
 import {
@@ -1006,4 +1008,234 @@ export function DRLGROOM_LoadDt1Files113c(
   );
 }
 
+/**
+ * `@va D2Common:0x6FD5AE10` (`DRLGPRESET_InitPresetRoomEx113c`, not exported;
+ * custom LTCG `eax = pLevel`, `esi = pBox`, `edi = pMazeGrid`,
+ * stack `[esp+4] = pMap`, `[esp+8] = dwDT1Mask`, `[esp+0xC] = dwFlags`, `[esp+0x10] = dwPresetFlags`, `ret 0x10`).
+ *
+ * Allocates a preset `D2RoomExStrc` (`nType = 2`) via `0x6FD94BD0` (`DRLGROOM_AllocRoomEx113c`),
+ * sets `dwDT1Mask`, ORs `dwFlags`, copies 4 tile box dwords from `pBox` into `pRoomEx + 0x34..0x40`,
+ * populates `pPreset = pRoomEx->pPreset (+0x20)` (`pMap`, `nLevelPrest = pMap->pLvlPrestTxt->dwDef`,
+ * `dwFlags = dwPresetFlags`, `pMazeGrid`), sets `pMazeGrid->dwFlags |= 1` when `pMazeGrid != 0`,
+ * sets `pRoomEx->dwFlags |= 0x800000` when `pMap->pLvlPrestTxt->bPopulate (+0x08) == 0`,
+ * prepends `pRoomEx` to `pLevel->pFirstRoomEx (+0x10)`, increments `pLevel->nRooms (+0x08)`, and returns `pRoomEx`.
+ */
+export function DRLGPRESET_InitPresetRoomEx113c(
+  m: Memory113c,
+  pLevel: number,
+  pBox: number,
+  pMazeGrid: number,
+  pMap: number,
+  dwDT1Mask: number,
+  dwFlags: number,
+  dwPresetFlags: number,
+): number {
+  const lvl = pLevel >>> 0;
+  const box = pBox >>> 0;
+  const maze = pMazeGrid >>> 0;
+  const map = pMap >>> 0;
 
+  const pRoomEx = DRLGROOM_AllocRoomEx113c(m, lvl, 2) >>> 0;
+  m.set(pRoomEx, D2RoomExStrc.dwDT1Mask, dwDT1Mask >>> 0);
+  m.set(
+    pRoomEx,
+    D2RoomExStrc.dwFlags,
+    (m.get(pRoomEx, D2RoomExStrc.dwFlags) | (dwFlags >>> 0)) >>> 0,
+  );
+
+  m.set(pRoomEx, D2RoomExStrc.nTileXPos, m.u32(box) | 0);
+  m.set(pRoomEx, D2RoomExStrc.nTileYPos, m.u32((box + 0x04) >>> 0) | 0);
+  m.set(pRoomEx, D2RoomExStrc.nTileWidth, m.u32((box + 0x08) >>> 0) | 0);
+  m.set(pRoomEx, D2RoomExStrc.nTileHeight, m.u32((box + 0x0c) >>> 0) | 0);
+
+  const pPreset = m.get(pRoomEx, D2RoomExStrc.pTypeData);
+  m.set(pPreset, D2DrlgPresetRoomStrc.pMap, map);
+  const pLvlPrestTxt = m.u32((map + 0x08) >>> 0);
+  // +0x00 of D2LvlPrestTxt is dwDef (`mov edx, [edx]; mov [ecx], edx` at 0x6FD5AE56..0x6FD5AE58)
+  m.set(pPreset, D2DrlgPresetRoomStrc.nLevelPrest, m.u32(pLvlPrestTxt) | 0);
+  m.set(pPreset, D2DrlgPresetRoomStrc.dwFlags, dwPresetFlags >>> 0);
+  m.set(pPreset, D2DrlgPresetRoomStrc.pMazeGrid, maze);
+
+  if (maze !== 0) {
+    m.setU32((maze + 0x0c) >>> 0, (m.u32((maze + 0x0c) >>> 0) | 1) >>> 0);
+  }
+
+  const pMapReload = m.get(pPreset, D2DrlgPresetRoomStrc.pMap);
+  const pPrestTxtReload = m.u32((pMapReload + 0x08) >>> 0);
+  // +0x08 of D2LvlPrestTxt is bPopulate (`mov ecx, [edx+0x8]; test ecx, ecx` at 0x6FD5AE73..0x6FD5AE76)
+  const bPopulate = m.u32((pPrestTxtReload + 0x08) >>> 0);
+  if (bPopulate === 0) {
+    m.set(
+      pRoomEx,
+      D2RoomExStrc.dwFlags,
+      (m.get(pRoomEx, D2RoomExStrc.dwFlags) | 0x800000) >>> 0,
+    );
+  }
+
+  m.set(pRoomEx, D2RoomExStrc.pRoomNext, m.get(lvl, D2DrlgLevelStrc.pFirstRoomEx));
+  const nextCount = ((m.get(lvl, D2DrlgLevelStrc.nRooms) | 0) + 1) | 0;
+  m.set(lvl, D2DrlgLevelStrc.pFirstRoomEx, pRoomEx);
+  m.set(lvl, D2DrlgLevelStrc.nRooms, nextCount);
+  return pRoomEx >>> 0;
+}
+
+/**
+ * `@va D2Common:0x6FD944F0` (`DRLGROOM_FlagIfAdjacentToTown113c`, not exported;
+ * custom LTCG `edx = pRoomEx`, plain `ret`).
+ *
+ * If `pRoomEx->pLevel (+0x58)->nLevelId (+0x1D0)` is not a town level (`0x6FD7D320`) and
+ * `pRoomEx->nRoomsNear (+0x2C) > 0`, scans `pRoomEx->ppRoomsNear[0..nRoomsNear-1]`; on the first
+ * neighbor in a town level, sets `pRoomEx->dwFlags (+0x28) |= 0x800000` and returns.
+ */
+export function DRLGROOM_FlagIfAdjacentToTown113c(
+  m: Memory113c,
+  pRoomEx: number,
+): void {
+  const roomEx = pRoomEx >>> 0;
+  const pLevel = m.get(roomEx, D2RoomExStrc.pLevel);
+  if (DRLG_IsTownLevel113c(m.get(pLevel, D2DrlgLevelStrc.nLevelId) | 0) !== 0) {
+    return;
+  }
+  if ((m.get(roomEx, D2RoomExStrc.nRoomsNear) | 0) <= 0) {
+    return;
+  }
+  const ppNear = m.get(roomEx, D2RoomExStrc.ppRoomsNear);
+  let i = 0;
+  while (true) {
+    const pAdj = m.u32((ppNear + i * 4) >>> 0);
+    const pAdjLevel = m.get(pAdj, D2RoomExStrc.pLevel);
+    if (DRLG_IsTownLevel113c(m.get(pAdjLevel, D2DrlgLevelStrc.nLevelId) | 0) !== 0) {
+      m.set(
+        roomEx,
+        D2RoomExStrc.dwFlags,
+        (m.get(roomEx, D2RoomExStrc.dwFlags) | 0x800000) >>> 0,
+      );
+      return;
+    }
+    i = (i + 1) | 0;
+    if (i >= (m.get(roomEx, D2RoomExStrc.nRoomsNear) | 0)) {
+      break;
+    }
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD94B20` (`DRLGROOM_InsertOrthSorted113c`, not exported;
+ * custom LTCG `ebx = pNew`, stack `[esp+4] = ppHead`, `ret 4`).
+ *
+ * Inserts `pNew` (`D2DrlgOrthStrc*`) into `*ppHead` using `0x6FD94870` (`DRLGROOM_CompareOrthoNodes113c`):
+ * - `*ppHead == 0`: sets `*ppHead = pNew` (without modifying `pNew->pNext`).
+ * - `(*ppHead)->pNext == 0`: compares `(pNew, *ppHead)`; if non-zero prepends `pNew` before `*ppHead`, else appends `pNew` after `*ppHead`.
+ * - `(*ppHead)->pNext != 0`: walks starting at `cur = (*ppHead)->pNext` (head is not re-compared) until `cur == 0`
+ *   or `CompareOrthoNodes(pNew, cur) != 0`, and splices `pNew` between `prev` and `cur`.
+ */
+export function DRLGROOM_InsertOrthSorted113c(
+  m: Memory113c,
+  pNew: number,
+  ppHead: number,
+): void {
+  const newNode = pNew >>> 0;
+  const pp = ppHead >>> 0;
+  const h = m.u32(pp);
+  if (h === 0) {
+    m.setU32(pp, newNode);
+    return;
+  }
+  let cur = m.get(h, D2DrlgOrthStrc.pNext);
+  if (cur === 0) {
+    if (DRLGROOM_CompareOrthoNodes113c(m, newNode, h) !== 0) {
+      m.set(newNode, D2DrlgOrthStrc.pNext, h);
+      m.setU32(pp, newNode);
+      return;
+    }
+    m.set(newNode, D2DrlgOrthStrc.pNext, 0);
+    m.set(h, D2DrlgOrthStrc.pNext, newNode);
+    return;
+  }
+  let prev = h;
+  while (cur !== 0) {
+    if (DRLGROOM_CompareOrthoNodes113c(m, newNode, cur) !== 0) {
+      break;
+    }
+    prev = cur;
+    cur = m.get(cur, D2DrlgOrthStrc.pNext);
+  }
+  m.set(newNode, D2DrlgOrthStrc.pNext, cur);
+  m.set(prev, D2DrlgOrthStrc.pNext, newNode);
+}
+
+/**
+ * `@va D2Common:0x6FD94BA0` (`DRLGROOM_LinkRoomsBidirectional113c`, not exported;
+ * custom LTCG `eax = nDir`, `ecx = pRoomExB`, `ebx = pRoomExA`, plain `ret`).
+ *
+ * Calls `0x6FD94950` (`DRLGROOM_AddOrthRoomData113c`) in both directions:
+ * `(pRoomExA, pRoomExB, nDir)` and `(pRoomExB, pRoomExA, (nDir - 2) & 3)`.
+ */
+export function DRLGROOM_LinkRoomsBidirectional113c(
+  m: Memory113c,
+  nDir: number,
+  pRoomExB: number,
+  pRoomExA: number,
+): void {
+  DRLGROOM_AddOrthRoomData113c(m, pRoomExA, pRoomExB, nDir);
+  DRLGROOM_AddOrthRoomData113c(m, pRoomExB, pRoomExA, ((nDir | 0) - 2) & 3);
+}
+
+/**
+ * `@va D2Common:0x6FDD3630` (`DRLGROOM_CopyPresetUnitsInTileBox113c`, not exported;
+ * custom LTCG `eax = pTileBox`, `ecx = nDstTileY`, `edx = nDstTileX`,
+ * stack `[esp+4] = ppRoomEx`, `[esp+8] = pMemPool`, `[esp+0xC] = pSrc`, `ret 0xC`).
+ *
+ * Scales `nDstTileX/Y` and `pTileBox` (`{x, y, w, h}`) by `5` into subtile coordinates, walks
+ * `u = *(*(pSrc + 0x50) + 0x54)` via `u = *(u + 0x0C)`, and for every unit strictly inside
+ * `boxX < ux < boxX + boxW && boxY < uy < boxY + boxH` (`jle` / `jge` signed), clones it via
+ * `0x6FD94480` (`DRLGROOM_AllocPresetUnit113c`) into `*ppRoomEx` at `(ux - boxX + dstX, uy - boxY + dstY)`.
+ */
+export function DRLGROOM_CopyPresetUnitsInTileBox113c(
+  m: Memory113c,
+  pTileBox: number,
+  nDstTileY: number,
+  nDstTileX: number,
+  ppRoomEx: number,
+  pMemPool: number,
+  pSrc: number,
+): void {
+  const box = pTileBox >>> 0;
+  const dstY = imul32(nDstTileY | 0, 5);
+  const boxX = imul32(m.u32(box) | 0, 5);
+  const dstX = imul32(nDstTileX | 0, 5);
+  const boxY = imul32(m.u32((box + 0x04) >>> 0) | 0, 5);
+  const boxW = imul32(m.u32((box + 0x08) >>> 0) | 0, 5);
+  const boxH = imul32(m.u32((box + 0x0c) >>> 0) | 0, 5);
+
+  const pSrcInner = m.u32(((pSrc >>> 0) + 0x50) >>> 0);
+  let u = m.u32((pSrcInner + 0x54) >>> 0);
+  const endX = (boxX + boxW) | 0;
+  const endY = (boxY + boxH) | 0;
+
+  while (u !== 0) {
+    const ux = m.u32((u + 0x08) >>> 0) | 0;
+    if (ux > boxX) {
+      const uy = m.u32((u + 0x18) >>> 0) | 0;
+      if (uy > boxY && ux < endX && uy < endY) {
+        const newY = ((uy - boxY) + dstY) | 0;
+        const nMode = m.u32(u);
+        const newX = ((ux - boxX) + dstX) | 0;
+        const nUnitType = m.u32((u + 0x14) >>> 0);
+        const nTxtFileNo = m.u32((u + 0x04) >>> 0);
+        const pDestRoomEx = m.u32(ppRoomEx >>> 0);
+        DRLGROOM_AllocPresetUnit113c(
+          m,
+          pMemPool,
+          pDestRoomEx,
+          nUnitType,
+          nTxtFileNo,
+          nMode,
+          newX,
+          newY,
+        );
+      }
+    }
+    u = m.u32((u + 0x0c) >>> 0);
+  }
+}

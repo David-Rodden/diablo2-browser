@@ -271,7 +271,7 @@ describe('Lane C B040 real-DLL differential vectors (drlg, collision, env, 17 fu
     m.setU32(0x1000 + 0x0c, 0);
     expect(() => DRLG_InitActTownFloorTileData113c(m, 0x1000, 0x2000)).toThrow(/^D2Common assertion failed at .*:1100$/);
 
-    expect(() => ENV_GetCycleState113c(m, 0, 0x2000, 0x2004, 0x2008)).toThrow(/line 1351/);
+    expect(() => ENV_GetCycleState113c(m, 0, 0x2000, 0x2004, 0x2008)).toThrow(/^D2Common assertion failed at .*:1351$/);
 
     m.setU32(0x3000 + 0x00, 10);
     m.setU32(0x3000 + 0x04, 10);
