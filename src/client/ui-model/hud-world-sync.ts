@@ -62,6 +62,7 @@ import {
   isAuraSkill,
   isLeftUsableSkill,
   isPassiveSkill,
+  type GrantedSkillEntry,
 } from '../ui/hotkeys.ts'
 import type { HudManager } from '../ui/hud-manager.ts'
 import type { EquipSlotId, GridPlacement, UiInventoryItem } from '../ui/inventory.ts'
@@ -1841,6 +1842,13 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
     }
   }
 
+  // Enhancement row (display only): equipment-granted non-class passives (oskill, stat 97) and item auras
+  // (stat 151) that the 1.13c Speedbar never lists. See `GrantedSkillEntry` in ui/hotkeys.ts.
+  // State +All Skills not mirrored in the stat list: Skill Shrine (+2) and Battle Command (+1), as for default skills.
+  const grantedStateAllSkills =
+    (self.states.has(134) ? 2 : 0) +
+    (self.states.has(51) && !(self.stats.getStateStats(51)?.some((s: any) => s.statId === 127)) ? 1 : 0)
+  const grantedPassives: GrantedSkillEntry[] = []
   for (const [skillId, sl] of mergedSkillEntries.entries()) {
     const tableMeta = getSkillTableMeta(skillId)
     if (!tableMeta || !tableMeta.skilldesc) {
@@ -1873,14 +1881,36 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
         : 0
     if (hard > 0) hud.skillTree.hardPoints.set(skillId, hard)
     if (bonus > 0) hud.skillTree.bonusLevels.set(skillId, bonus)
-    if (isPassiveSkill(skillId) || tableMeta.listRow < 0) continue
+    if (isPassiveSkill(skillId)) {
+      // Non-class passive granted by equipment (`item_nonclassskill`): level = hard + all equipment / state
+      // bonuses (`+All Skills`, tab, elemental, oskill) exactly as SKILLS_GetSkillLevel resolves oskills.
+      const oskillGrant = (preaggSkillBonuses?.oskills.get(skillId) ?? 0) + Math.max(0, stats?.get(97, skillId) ?? 0)
+      const grantedLevel = hard + bonus + (oskillGrant > 0 ? grantedStateAllSkills : 0)
+      if (grantedLevel > 0 && oskillGrant > 0 && SKILLS_BY_ID[skillId]?.classCode !== classCode) {
+        grantedPassives.push({
+          skillId,
+          level: grantedLevel,
+          kind: 'item-passive',
+          name: getSkillName(skillId, 'ENG'),
+          nameZh: getSkillName(skillId, 'CHI'),
+        })
+      }
+      continue
+    }
+    if (tableMeta.listRow < 0) continue
     const weaponOnlyUsable = canUseSkillWithWeapon(skillId, weaponState)
     const weaponUsable = canUseSkillWithWeapon(skillId, weaponState, self.states)
     hud.hotkeys.setSkillWeaponUsable?.(skillId, weaponUsable)
     if ((skillId === 2 || skillId === 4) && !weaponOnlyUsable) continue
     const effSkillLevel = hard + bonus
     if (effSkillLevel <= 0 && activeChargedBySkill.has(skillId)) continue
-    const charges = self.skillCharges?.get(skillId) ?? scrollCounts.get(skillId)
+    // Equipment charges (`stat 204`) belong to the item's own skill node, never to the player's learned skill:
+    // the native entry only carries scroll/tome counts, the charged copy is emitted separately below (issue #289).
+    const isEquipmentChargedSkill =
+      activeChargedBySkill.has(skillId) ||
+      depletedChargedSkillIds.has(skillId) ||
+      prevEquipmentChargedSkills.has(skillId)
+    const charges = (isEquipmentChargedSkill ? undefined : self.skillCharges?.get(skillId)) ?? scrollCounts.get(skillId)
     if (effSkillLevel <= 0 && (charges === undefined || charges <= 0)) continue
     const genericEntry = createCanonicalGenericSkillEntry(skillId, charges)
     if (genericEntry) {
@@ -1935,25 +1965,18 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
     }
   }
 
+  // 1.13c keeps an item's charged skill as its own `D2SkillStrc` node (`dwOwnerGUID` = item GUID), separate from
+  // the player's learned skill of the same id. The Speedbar shows both icons, and hotkeys bind `(skillId, owner)`;
+  // never fold the item GUID / charges into the native entry (issue #289).
   for (const cs of activeChargedBySkill.values()) {
     if (cs.charges <= 0 || isPassiveSkill(cs.skillId)) continue
     const tableMeta = getSkillTableMeta(cs.skillId)
     if (tableMeta && tableMeta.listRow < 0) continue
     const weaponUsable = canUseSkillWithWeapon(cs.skillId, weaponState, self.states)
     hud.hotkeys.setSkillWeaponUsable?.(cs.skillId, weaponUsable)
-    hud.hotkeys.setSkillCharges(cs.skillId, cs.charges, cs.maxCharges)
-    const existingNative = hud.hotkeys.availableSkills.find(
-      (s) => s.skillId === cs.skillId && !s.isItemSkill && (s.level ?? 0) > 0,
-    )
-    if (existingNative) {
-      hud.hotkeys.addOrUpdateSkill({
-        ...existingNative,
-        charges: cs.charges,
-        maxCharges: cs.maxCharges,
-        itemId: cs.itemId,
-      })
-      continue
-    }
+    hud.hotkeys.deleteSkillCharges?.(cs.skillId)
+    // A charged copy without a real owner GUID would alias the native `(skillId, 0xFFFFFFFF)` key.
+    if (((cs.itemId ?? 0xffffffff) >>> 0) === 0xffffffff && hud.hotkeys.findNativeSkillEntry?.(cs.skillId)) continue
     const catalogEntry = SKILLS_BY_ID[cs.skillId]
     if (!catalogEntry) continue
     hud.hotkeys.addOrUpdateSkill({
@@ -1973,6 +1996,23 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
       itemId: cs.itemId,
     })
   }
+
+  // Item auras (`item_aura`, stat 151): same-aura grants from several items stack, and the level is the item
+  // level only — never raised by +All Skills / +Class Skills / oskill bonuses.
+  const grantedAuras: GrantedSkillEntry[] = []
+  for (const [auraSkillId, auraLevel] of preaggSkillBonuses?.itemAuras ?? new Map<number, number>()) {
+    if (auraLevel <= 0) continue
+    grantedAuras.push({
+      skillId: auraSkillId,
+      level: auraLevel,
+      kind: 'item-aura',
+      name: getSkillName(auraSkillId, 'ENG'),
+      nameZh: getSkillName(auraSkillId, 'CHI'),
+    })
+  }
+  grantedAuras.sort((a, b) => a.skillId - b.skillId)
+  grantedPassives.sort((a, b) => a.skillId - b.skillId)
+  hud.hotkeys.setGrantedSkills?.([...grantedAuras, ...grantedPassives])
 
   const hasEquippedThrowing =
     Boolean(weaponState.rightHandCode || weaponState.leftHandCode) &&
@@ -2060,6 +2100,18 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
     }
   }
   if (availableIds) {
+    // Issue #289: a hand still pointing at an item's charged copy that ran dry / was unequipped falls back to the
+    // player's own learned skill of the same id (`0xFFFFFFFF` owner) instead of going dead.
+    for (const hand of ['left', 'right'] as const) {
+      const handSkill = hand === 'left' ? self.leftSkill : self.rightSkill
+      const handItemId = hand === 'left' ? self.leftSkillItemId : self.rightSkillItemId
+      if (handSkill <= 0 || handItemId === undefined || (handItemId >>> 0) === 0xffffffff) continue
+      if (hud.hotkeys.findChargedSkillEntry?.(handSkill, handItemId)) continue
+      if (!hud.hotkeys.findNativeSkillEntry?.(handSkill)) continue
+      if (hand === 'left') self.leftSkillItemId = undefined
+      else self.rightSkillItemId = undefined
+      model.emitCommand?.({ type: 'SelectSkill', hand, skill: handSkill, itemId: 0xffffffff })
+    }
     if (
       self.leftSkill > 0 &&
       isTrackedSkillForAvailability(self.leftSkill) &&
@@ -2079,6 +2131,8 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
   }
   hud.hotkeys.leftSkillId = self.leftSkill
   hud.hotkeys.rightSkillId = self.rightSkill
+  hud.hotkeys.leftSkillItemId = self.leftSkillItemId
+  hud.hotkeys.rightSkillItemId = self.rightSkillItemId
   hud.hotkeys.setSkillWeaponUsable?.(0, canUseSkillWithWeapon(0, weaponState, self.states))
   hud.hotkeys.setSkillWeaponUsable?.(self.leftSkill, canUseSkillWithWeapon(self.leftSkill, weaponState, self.states))
   hud.hotkeys.setSkillWeaponUsable?.(self.rightSkill, canUseSkillWithWeapon(self.rightSkill, weaponState, self.states))

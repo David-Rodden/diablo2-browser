@@ -30,6 +30,7 @@ import { SkillHotkeysHud } from './hotkeys.ts'
 import { ControlBarHud, type MiniPanelAction } from './control-bar.ts'
 import { TouchControlsHud } from './touch-controls.ts'
 import { BAKED_UI_MANIFEST } from '../../common/items/baked-ui-meta.ts'
+import { prepareDynamicItemsAtlas } from '../../common/items/item-palette-dyer.ts'
 import { resolveHirelingName } from '../../common/units/hireling-table.ts'
 import {
   InventoryPanel,
@@ -1352,7 +1353,17 @@ export class HudManager {
       Object.entries(imageFiles).map(async ([key, src]) => {
         const img = await pool.loadImage(src)
         if (img) {
-          this.images.set(key, img)
+          this.images.set(
+            key,
+            key === 'itemsAtlas'
+              ? (prepareDynamicItemsAtlas(
+                  img,
+                  BAKED_UI_MANIFEST.itemRects,
+                  BAKED_UI_MANIFEST.atlasWidth,
+                  BAKED_UI_MANIFEST.atlasHeight,
+                ) as unknown as HTMLImageElement)
+              : img,
+          )
         }
       }),
     )

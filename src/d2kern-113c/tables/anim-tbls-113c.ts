@@ -7,7 +7,11 @@
  * - `0x6FD90FC0` `DRLGOUTROOM_LinkLevelsByLevelCoords113c` (internal, `__fastcall(ecx=pLinkData)`)
  */
 import type { Memory113c } from '../mem/sparse-memory.ts'
-import { DRLGOUTDOORS_SpawnPresetInGrid113c } from '../common/drlg/drlg-grid.ts'
+import {
+  DRLGGRID_OpOr113c,
+  DRLGOUTDOORS_SpawnPresetInGrid113c,
+} from '../common/drlg/drlg-grid.ts'
+import { DRLGOUTDOORS_PlaceRandomOutdoorPresetRoom113c } from '../common/drlg/outdoors.ts'
 import { D2CommonAssertError } from '../common/inline-helpers.ts'
 import {
   D2AnimDataRecordStrc,
@@ -589,4 +593,327 @@ export function DRLGOUTROOM_SpawnAct5EdgeTransitions113c(
     }
   }
 }
+
+// ============================================================================
+// K1r8 Iteration 11 Lane B — Batch I11B-2 (B2-14 & B2-15: 0x6FD91730, 0x6FD91340)
+// ============================================================================
+
+/** `.rdata` `int32[9]` direction-to-wall-type lookup at `0x6FDE5724..0x6FDE5747` (centered at `0x6FDE5734` = index 4). */
+const DIR_TO_WALL_IDX_113C: readonly number[] = [-1, 1, -1, 0, -1, 2, -1, 3, -1]
+
+/** `.data` `int32[24]` Act 5 border/corner preset IDs at `0x6FDDCB88..0x6FDDCBE7`. */
+const ACT5_BORDER_PRESETS_113C: readonly number[] = [
+  0x371, 0x3bd, 0x372, 0x3be, 0x373, 0x3bf, 0x374, 0x3c0,
+  0x375, 0x3c1, 0x376, 0x3c2, 0x377, 0x3c3, 0x378, 0x3c4,
+  0x379, 0x3c5, 0x37a, 0x3c6, 0x37b, 0x3c7, 0x37c, 0x3c8,
+]
+
+/** `.rdata` `int32[81]` corner lookup table at `0x6FDE55E0..0x6FDE5723` (centered at `0x6FDE5680` = index 40). */
+const CORNER_LOOKUP_81_113C: readonly number[] = [
+  1, 9, 9, -1, -1, 1, 8, -1, -1,
+  12, -1, -1, -1, -1, 12, 4, -1, -1,
+  5, 2, 2, 10, -1, -1, -1, -1, 10,
+  1, 9, 9, -1, -1, -1, -1, -1, -1,
+  -1, -1, -1, -1, -1, -1, -1, -1, -1,
+  -1, -1, -1, -1, -1, -1, 11, 11, 3,
+  12, -1, -1, -1, -1, 12, 4, 4, 7,
+  -1, -1, 2, 10, -1, -1, -1, -1, 10,
+  -1, -1, 6, 3, -1, -1, 11, 11, 3,
+]
+
+function rollLevelSeedMod113c(m: Memory113c, lvl: number, span: number): number {
+  if (span <= 0) return 0
+  const prod =
+    BigInt(m.u32((lvl + 0x1c4) >>> 0)) * 0x6ac690c5n + BigInt(m.u32((lvl + 0x1c8) >>> 0))
+  const newLo = Number(prod & 0xffffffffn) >>> 0
+  const newHi = Number((prod >> 32n) & 0xffffffffn) >>> 0
+  m.setU32((lvl + 0x1c8) >>> 0, newHi)
+  m.setU32((lvl + 0x1c4) >>> 0, newLo)
+  return (span & (span - 1)) === 0
+    ? (newLo & (span - 1)) | 0
+    : ((newLo >>> 0) % (span >>> 0)) | 0
+}
+
+/**
+ * `@va D2Common:0x6FD91730` (`DRLGOUTPLACE_SpawnAct5Barricade421Preset113c`,
+ * custom `edi = pLevel` -> `void`, `ret`).
+ */
+export function DRLGOUTPLACE_SpawnAct5Barricade421Preset113c(
+  m: Memory113c,
+  pLevel: number,
+): void {
+  const lvl = pLevel >>> 0
+  if ((m.u32((lvl + 0x1d0) >>> 0) | 0) !== 0x6f) return
+
+  let pOutdoors = m.u32((lvl + 0x14) >>> 0)
+  const pOutdoorsInit = pOutdoors
+  if (pOutdoors === 0) {
+    throw new D2CommonAssertError('OutRoom.cpp', 0x234)
+  }
+
+  let placedCount = 0
+  for (let attempt = 0; attempt < 90; attempt++) {
+    if (placedCount >= 3) break
+    const halfW = Math.trunc((m.u32((pOutdoors + 0x5c) >>> 0) | 0) / 2) | 0
+    const rx = rollLevelSeedMod113c(m, lvl, halfW)
+    const gx = (rx << 1) | 0
+    const halfH = Math.trunc((m.u32((pOutdoors + 0x60) >>> 0) | 0) / 2) | 0
+    const ry = rollLevelSeedMod113c(m, lvl, halfH)
+    const gy = (ry << 1) | 0
+    if (DRLGOUTROOM_TryUpgradeBorderPreset113c(m, lvl, gx, gy) !== 0) {
+      placedCount = (placedCount + 1) | 0
+    }
+  }
+
+  const halfW2 = Math.trunc((m.u32((pOutdoors + 0x5c) >>> 0) | 0) / 2) | 0
+  const startRx = rollLevelSeedMod113c(m, lvl, halfW2)
+  const halfH2 = Math.trunc((m.u32((pOutdoors + 0x60) >>> 0) | 0) / 2) | 0
+  const startRy = rollLevelSeedMod113c(m, lvl, halfH2)
+
+  const h0 = m.u32((pOutdoors + 0x60) >>> 0) | 0
+  if (h0 > 0) {
+    for (let iy = 0; iy < (m.u32((pOutdoors + 0x60) >>> 0) | 0); iy++) {
+      if (placedCount >= 3) return
+      let w0 = m.u32((pOutdoors + 0x5c) >>> 0) | 0
+      for (let ix = 0; ix < w0 && placedCount < 3; ix++) {
+        const gx = Math.trunc(((ix + (startRx << 1)) | 0) % w0) | 0
+        const curH = m.u32((pOutdoors + 0x60) >>> 0) | 0
+        const gy = Math.trunc(((iy + (startRy << 1)) | 0) % curH) | 0
+        const pOut = m.u32((lvl + 0x14) >>> 0)
+        const pRows2 = m.u32((pOut + 0x30) >>> 0)
+        const pCells2 = m.u32((pOut + 0x2c) >>> 0)
+        const row2 = m.u32((pRows2 + (gy << 2)) >>> 0) | 0
+        if ((m.u8((pCells2 + ((row2 + gx) << 2) + 1) >>> 0) & 0x02) !== 0) {
+          const pRows0 = m.u32((pOut + 0x08) >>> 0)
+          const row0 = m.u32((pRows0 + (gy << 2)) >>> 0) | 0
+          const pCells0 = m.u32((pOut + 0x04) >>> 0)
+          const presetId = m.u32((pCells0 + ((row0 + gx) << 2)) >>> 0) | 0
+          if (presetId >= 0x393 && presetId <= 0x39a) {
+            DRLGOUTDOORS_SpawnPresetInGrid113c(
+              m,
+              lvl,
+              gx,
+              gy,
+              (presetId + 0x10) | 0,
+              PICK_RANDOM_113C,
+              NO_BORDER_113C,
+            )
+            placedCount = (placedCount + 1) | 0
+          }
+        }
+        pOutdoors = pOutdoorsInit
+        w0 = m.u32((pOutdoors + 0x5c) >>> 0) | 0
+      }
+    }
+  }
+
+  if (placedCount < 3) {
+    throw new D2CommonAssertError('OutRoom.cpp', 0x259)
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD91340` (`DRLGOUTPLACE_ConnectOutdoorsRoomsAndPlaceWalls113c`,
+ * `__stdcall(pLevel) -> void`, `ret 4`).
+ */
+export function DRLGOUTPLACE_ConnectOutdoorsRoomsAndPlaceWalls113c(
+  m: Memory113c,
+  pLevel: number,
+): void {
+  const lvl = pLevel >>> 0
+  const pOutdoors = m.u32((lvl + 0x14) >>> 0)
+  const lvlId0 = m.u32((lvl + 0x1d0) >>> 0) | 0
+  const actIdx = ((lvlId0 === 0x75 ? 1 : 0) + 4) | 0
+
+  let v = m.u32((pOutdoors + 0x64) >>> 0)
+  let vNext = m.u32((v + 0x10) >>> 0)
+
+  do {
+    const edx0 = m.u32((v + 0x10) >>> 0)
+    const vX = m.u32(v) | 0
+    const nextX0 = m.u32(edx0) | 0
+    const vY = m.u32((v + 0x04) >>> 0) | 0
+    const nextY0 = m.u32((edx0 + 0x04) >>> 0) | 0
+
+    const diffX1 = (nextX0 - vX) | 0
+    const dx1 = diffX1 < 0 ? -1 : diffX1 > 0 ? 1 : 0
+    const diffY1 = (nextY0 - vY) | 0
+    const dy1 = diffY1 < 0 ? -1 : diffY1 > 0 ? 1 : 0
+
+    const vNextNext = m.u32((vNext + 0x10) >>> 0)
+    const nextX = m.u32(vNext) | 0
+    const nnX = m.u32(vNextNext) | 0
+    const nnY = m.u32((vNextNext + 0x04) >>> 0) | 0
+    const nextY = m.u32((vNext + 0x04) >>> 0) | 0
+
+    const diffX2 = (nnX - nextX) | 0
+    const dx2 = diffX2 < 0 ? -1 : diffX2 > 0 ? 1 : 0
+    const diffY2 = (nnY - nextY) | 0
+    const dy2 = diffY2 < 0 ? -1 : diffY2 > 0 ? 1 : 0
+
+    const absDx1 = dx1 < 0 ? (-dx1) | 0 : dx1
+    const absDy1 = dy1 < 0 ? (-dy1) | 0 : dy1
+
+    const endY = nextY & ~1
+    const endX = nextX & ~1
+    let curX = vX & ~1
+    let curY = vY & ~1
+
+    const dirIdx = (dx1 + dy1 * 3) | 0
+    const wallType = DIR_TO_WALL_IDX_113C[dirIdx + 4]!
+    const wallPresetId = ACT5_BORDER_PRESETS_113C[(actIdx - 4 + wallType * 2) | 0]!
+
+    if ((m.u8((v + 0x0c) >>> 0) & 0x02) === 0) {
+      while (curX !== endX || curY !== endY) {
+        curX = (curX + dx1 * 2) | 0
+        curY = (curY + dy1 * 2) | 0
+        DRLGOUTDOORS_SpawnPresetInGrid113c(
+          m,
+          lvl,
+          curX,
+          curY,
+          wallPresetId,
+          PICK_RANDOM_113C,
+          NO_BORDER_113C,
+        )
+        const pRows2 = m.u32((pOutdoors + 0x30) >>> 0)
+        const row2 = m.u32((pRows2 + (curY << 2)) >>> 0) | 0
+        const pCells2 = m.u32((pOutdoors + 0x2c) >>> 0)
+        DRLGGRID_OpOr113c(m, (pCells2 + ((row2 + curX) << 2)) >>> 0, 1)
+      }
+    }
+
+    if ((m.u8((v + 0x0c) >>> 0) & 0x01) !== 0) {
+      const vx0 = m.u32(v) | 0
+      const nx0 = m.u32(vNext) | 0
+      const maxX = vx0 > nx0 ? vx0 : nx0
+      const gx1 = ((maxX - (absDx1 << 2)) | 0) & ~1
+
+      const vy0 = m.u32((v + 0x04) >>> 0) | 0
+      const ny0 = m.u32((vNext + 0x04) >>> 0) | 0
+      const maxY = vy0 > ny0 ? vy0 : ny0
+      const gy1 = ((maxY - (absDy1 << 2)) | 0) & ~1
+
+      const pRowsA = m.u32((pOutdoors + 0x30) >>> 0)
+      const rowA = m.u32((pRowsA + (gy1 << 2)) >>> 0) | 0
+      const pCellsA = m.u32((pOutdoors + 0x2c) >>> 0)
+      DRLGGRID_OpOr113c(m, (pCellsA + ((rowA + gx1) << 2)) >>> 0, 0x400)
+
+      const gy2 = (gy1 + absDy1 * 2) | 0
+      const pRowsB = m.u32((pOutdoors + 0x30) >>> 0)
+      const rowB = m.u32((pRowsB + (gy2 << 2)) >>> 0) | 0
+      const pCellsB = m.u32((pOutdoors + 0x2c) >>> 0)
+      const gx2 = (gx1 + absDx1 * 2) | 0
+      DRLGGRID_OpOr113c(m, (pCellsB + ((rowB + gx2) << 2)) >>> 0, 0x400)
+    }
+
+    const sDx1 = dx1 < 0 ? -4 : dx1 > 0 ? 4 : 0
+    const sDx2 = dx2 < 0 ? -4 : dx2 > 0 ? 4 : 0
+    const sum2 = (sDx2 + dy2 * 2) | 0
+    const cIdx = (sum2 * 9 + sDx1 + dy1 * 2) | 0
+    const cornerType = CORNER_LOOKUP_81_113C[cIdx + 40]!
+    if (cornerType !== -1) {
+      const cornerPresetId = ACT5_BORDER_PRESETS_113C[(actIdx - 6 + cornerType * 2) | 0]!
+      if (cornerPresetId !== 0) {
+        DRLGOUTDOORS_SpawnPresetInGrid113c(
+          m,
+          lvl,
+          endX,
+          endY,
+          cornerPresetId,
+          PICK_RANDOM_113C,
+          NO_BORDER_113C,
+        )
+        const pRowsC = m.u32((pOutdoors + 0x30) >>> 0)
+        const rowC = m.u32((pRowsC + (endY << 2)) >>> 0) | 0
+        const pCellsC = m.u32((pOutdoors + 0x2c) >>> 0)
+        DRLGGRID_OpOr113c(m, (pCellsC + ((rowC + endX) << 2)) >>> 0, 1)
+      }
+    }
+
+    v = vNext
+    vNext = m.u32((v + 0x10) >>> 0)
+  } while (v !== m.u32((pOutdoors + 0x64) >>> 0))
+
+  if ((m.u32((lvl + 0x1d0) >>> 0) | 0) === 0x6f) {
+    const pOut = m.u32((lvl + 0x14) >>> 0)
+    const pRows1 = m.u32((pOut + 0x30) >>> 0)
+    const w = m.u32((pOut + 0x5c) >>> 0) | 0
+    const h = m.u32((pOut + 0x60) >>> 0) | 0
+    const rowHm4 = m.u32((pRows1 + ((h - 4) << 2)) >>> 0) | 0
+    const wm2 = (w - 2) | 0
+    const pCells1 = m.u32((pOut + 0x2c) >>> 0)
+    DRLGGRID_OpOr113c(m, (pCells1 + ((rowHm4 + wm2) << 2)) >>> 0, 0x400)
+
+    const pRows2 = m.u32((pOut + 0x30) >>> 0)
+    const rowHm3 = m.u32((pRows2 + ((h - 3) << 2)) >>> 0) | 0
+    const pCells2 = m.u32((pOut + 0x2c) >>> 0)
+    DRLGGRID_OpOr113c(m, (pCells2 + ((rowHm3 + wm2) << 2)) >>> 0, 0x400)
+  }
+}
+
+// ============================================================================
+// K1r11 Iteration 13 Lane B — Batch I13B-1 (B1-05: OutRoom.cpp 0x6FD91A20)
+// ============================================================================
+
+/** `.rdata` 15 x 28-byte Act 5 outdoor preset records at `0x6FDE3500..0x6FDE36A7`. */
+const ACT5_OUTDOOR_LEVEL_PRESETS_113C: readonly {
+  readonly nLevelId: number
+  readonly nPrestA: number
+  readonly nPrestB: number
+  readonly nPickedFile: number
+  readonly nCount: number
+  readonly bRequired: number
+}[] = [
+  { nLevelId: 111, nPrestA: 955, nPrestB: 956, nPickedFile: 0, nCount: 1, bRequired: 1 },
+  { nLevelId: 112, nPrestA: 955, nPrestB: 956, nPickedFile: 0, nCount: 1, bRequired: 1 },
+  { nLevelId: 117, nPrestA: 955, nPrestB: 956, nPickedFile: 1, nCount: 1, bRequired: 1 },
+  { nLevelId: 112, nPrestA: 953, nPrestB: 953, nPickedFile: -1, nCount: 1, bRequired: 1 },
+  { nLevelId: 117, nPrestA: 954, nPrestB: 954, nPickedFile: -1, nCount: 1, bRequired: 1 },
+  { nLevelId: 111, nPrestA: 944, nPrestB: 947, nPickedFile: -1, nCount: 1, bRequired: 0 },
+  { nLevelId: 111, nPrestA: 942, nPrestB: 945, nPickedFile: -1, nCount: 4, bRequired: 0 },
+  { nLevelId: 111, nPrestA: 943, nPrestB: 946, nPickedFile: -1, nCount: 4, bRequired: 0 },
+  { nLevelId: 112, nPrestA: 941, nPrestB: 941, nPickedFile: -1, nCount: 1, bRequired: 0 },
+  { nLevelId: 112, nPrestA: 939, nPrestB: 939, nPickedFile: -1, nCount: 1, bRequired: 0 },
+  { nLevelId: 112, nPrestA: 940, nPrestB: 940, nPickedFile: -1, nCount: 5, bRequired: 0 },
+  { nLevelId: 117, nPrestA: 948, nPrestB: 948, nPickedFile: -1, nCount: 4, bRequired: 0 },
+  { nLevelId: 117, nPrestA: 949, nPrestB: 949, nPickedFile: -1, nCount: 4, bRequired: 0 },
+  { nLevelId: 117, nPrestA: 950, nPrestB: 950, nPickedFile: -1, nCount: 4, bRequired: 0 },
+  { nLevelId: 117, nPrestA: 951, nPrestB: 951, nPickedFile: -1, nCount: 3, bRequired: 0 },
+]
+
+/**
+ * `@va D2Common:0x6FD91A20` (`DRLGOUTANIM_PlaceLevelPresets113c`, internal,
+ * custom `eax = pLevel` -> `void`, `ret`).
+ */
+export function DRLGOUTANIM_PlaceLevelPresets113c(
+  m: Memory113c,
+  pLevel: number,
+): void {
+  const lvl = pLevel >>> 0
+  const bNarrow = (m.u32((lvl + 0x24) >>> 0) | 0) < (m.u32((lvl + 0x28) >>> 0) | 0) ? 1 : 0
+  for (let idx = 0; idx < ACT5_OUTDOOR_LEVEL_PRESETS_113C.length; idx++) {
+    const rec = ACT5_OUTDOOR_LEVEL_PRESETS_113C[idx]!
+    if ((m.u32((lvl + 0x1d0) >>> 0) | 0) !== rec.nLevelId) continue
+    const nLvlPrestId = bNarrow !== 0 ? rec.nPrestA : rec.nPrestB
+    let ok = 0
+    if (rec.nCount > 0) {
+      for (let i = 0; i < rec.nCount; i++) {
+        ok = DRLGOUTDOORS_PlaceRandomOutdoorPresetRoom113c(
+          m,
+          lvl,
+          nLvlPrestId,
+          rec.nPickedFile,
+          0,
+          0x0f,
+        )
+      }
+      if (ok !== 0) continue
+    }
+    if (rec.bRequired !== 0) {
+      throw new D2CommonAssertError('OutRoom.cpp', 0x219)
+    }
+  }
+}
+
 

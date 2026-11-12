@@ -13,6 +13,8 @@
 
 import type { D2ColorCode, D2FontRenderer } from './font.ts'
 import { BAKED_UI_MANIFEST, type SpriteRect } from '../../common/items/baked-ui-meta.ts'
+import { RARE_NAME_COLLISION_UNIQUE_CODES } from '../../common/items/item-inv-trans-data.ts'
+import { ensureDyedItemSpriteRect } from '../../common/items/item-palette-dyer.ts'
 import type { Item } from '../../common/items/items.ts'
 import type { CharacterClassCode } from '../../common/units/classes.ts'
 import {
@@ -514,9 +516,47 @@ export interface ResolvableItem {
 }
 
 function allowsUniqueSetNameSpriteLookup(item: ResolvableItem): boolean {
-  const q = item.quality ?? item.rawItem?.quality
-  if (q === undefined) return true
+  const code = normalizeItemCode(item)?.toLowerCase()
+  if (typeof item.name === 'string' && code) {
+    const validCodes = RARE_NAME_COLLISION_UNIQUE_CODES[item.name.trim().toLowerCase()]
+    if (validCodes && !validCodes.includes(code)) {
+      return false
+    }
+  }
+  const q =
+    item.quality ??
+    item.rawItem?.quality ??
+    (item as { rarity?: unknown }).rarity ??
+    (item.rawItem as { rarity?: unknown } | undefined)?.rarity
+  if (q === undefined) {
+    if ((item as { rolledRareAffixes?: unknown }).rolledRareAffixes || item.rawItem?.rolledRareAffixes) return false
+    if ((item as { rolledMagicAffixes?: unknown }).rolledMagicAffixes || item.rawItem?.rolledMagicAffixes) return false
+    return true
+  }
   return q === 'unique' || q === 'set' || q === 7 || q === 5
+}
+
+function inferAffixInvTransform(item: ResolvableItem): string | undefined {
+  if (item.invtransform) return item.invtransform
+  const rawInvTrans = (item.rawItem as { invtransform?: string } | undefined)?.invtransform
+  if (rawInvTrans) return rawInvTrans
+  const magic = (item as { rolledMagicAffixes?: any }).rolledMagicAffixes ?? item.rawItem?.rolledMagicAffixes
+  const rare = (item as { rolledRareAffixes?: any }).rolledRareAffixes ?? item.rawItem?.rolledRareAffixes
+  const suffixes = magic?.suffixes ?? rare?.suffixes ?? (magic?.suffix ? [magic.suffix] : [])
+  for (const suf of suffixes) {
+    const def = suf?.affix ?? suf
+    if (def?.transform && def.transformColor) {
+      return String(def.transformColor).trim().toLowerCase()
+    }
+  }
+  const prefixes = magic?.prefixes ?? rare?.prefixes ?? (magic?.prefix ? [magic.prefix] : [])
+  for (const pre of prefixes) {
+    const def = pre?.affix ?? pre
+    if (def?.transform && def.transformColor) {
+      return String(def.transformColor).trim().toLowerCase()
+    }
+  }
+  return undefined
 }
 
 /**
@@ -548,6 +588,7 @@ export function resolveItemSpriteRect(
       (normalizedItem.rawItem?.flags !== undefined && normalizedItem.rawItem.flags.identified === false),
   )
   // Per D2Client.dll, unidentified items render their base item graphic without unique/set invfile or dye transform
+  const inferredInvTransform = !isUnid ? inferAffixInvTransform(normalizedItem) : undefined
   const item: ResolvableItem = isUnid
     ? {
         ...normalizedItem,
@@ -559,7 +600,9 @@ export function resolveItemSpriteRect(
         invtransform: undefined,
         name: normalizedItem.rawItem?.base?.name ?? undefined,
       }
-    : normalizedItem
+    : inferredInvTransform !== normalizedItem.invtransform
+      ? { ...normalizedItem, invtransform: inferredInvTransform }
+      : normalizedItem
   const canUseUniqueSetName = allowsUniqueSetNameSpriteLookup(item)
   // Tier 0: Transformed dyed item lookup: `${invFile}_${invtransform}`
   const targetInv =
@@ -577,6 +620,14 @@ export function resolveItemSpriteRect(
     if (targetLower.endsWith(`_${item.invtransform.toLowerCase()}`) && itemRects[targetLower]) {
       return itemRects[targetLower]
     }
+    const baseInv = targetLower.replace(/_[a-z0-9]{4}$/, '')
+    const dynamicRect = ensureDyedItemSpriteRect(
+      baseInv,
+      item.invtransform,
+      itemRects,
+      item.code,
+    )
+    if (dynamicRect) return dynamicRect
   }
 
   // Tier 0.5: Authentic Diablo II 1.13c ItemTypes.txt VarInvGfx (Charms, Rings, Amulets, Jewels)

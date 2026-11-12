@@ -52,6 +52,22 @@ export {
   type HotkeySkillEntry,
 }
 
+/**
+ * Enhancement (not in 1.13c): skills the equipment grants that the vanilla Speedbar never lists —
+ * - `item-aura`: `item_aura` (stat 151) auras. Same-aura grants from several items stack; the level is the item
+ *   level only (never raised by `+All Skills` / `+Class Skills` / oskills).
+ * - `item-passive`: non-class passive skills from `item_nonclassskill` (stat 97, oskill); the level includes the
+ *   equipment / state `+All Skills` (and tab / elemental) bonuses that `SKILLS_GetSkillLevel` applies to oskills.
+ * They are shown in a dedicated, display-only Speedbar row: no selection, no F-key binding.
+ */
+export interface GrantedSkillEntry {
+  readonly skillId: number
+  readonly level: number
+  readonly kind: 'item-aura' | 'item-passive'
+  readonly name: string
+  readonly nameZh: string
+}
+
 export interface SkillIconMapping {
   readonly skillId: number
   readonly name: string
@@ -221,16 +237,41 @@ export const RIGHT_SKILL_BOUNDS = { x: 635, y: 552, width: 48, height: 48 } as c
 export const LEFT_SKILL_BOUNDS_640 = { x: 117, y: 432, width: 48, height: 48 } as const
 export const RIGHT_SKILL_BOUNDS_640 = { x: 475, y: 432, width: 48, height: 48 } as const
 
+/**
+ * Normalize a skill owner GUID: `undefined` / `0xFFFFFFFF` (1.13c `dwOwnerGUID == -1`) = the player's own skill.
+ */
+export function normalizeSkillItemId(itemId: number | undefined | null): number | undefined {
+  if (itemId === undefined || itemId === null) return undefined
+  const v = itemId >>> 0
+  return v === 0xffffffff ? undefined : v
+}
+
+/** Owner argument for an entry: explicit GUID for charged copies, `0xFFFFFFFF` for the player's own skill. */
+function skillOwnerArg(entry: HotkeySkillEntry): number | undefined {
+  if (entry.itemId !== undefined) return entry.itemId
+  return entry.isItemSkill ? undefined : 0xffffffff
+}
+
 export class SkillHotkeysHud {
   lang: TblLang = 'CHI'
   is640 = false
   /** Active left/right skill; mirrors server `0x23 AssignSkill` (0 = Attack until the server says otherwise). */
   leftSkillId = 0
   rightSkillId = 0
+  /**
+   * Owning item GUID of the active left/right skill (`0x23 AssignSkill` @+7). `undefined` = the player's own
+   * (native) skill (`pSkill->dwOwnerGUID == -1`); a GUID = an item-granted charged skill node.
+   */
+  leftSkillItemId: number | undefined = undefined
+  rightSkillItemId: number | undefined = undefined
   /** Which Speedbar popup is currently expanded ('left', 'right', or null). */
   openPopup: 'left' | 'right' | null = null
   /** Hovered skill inside the Speedbar popup. */
   hoveredPopupSkill: { side: 'left' | 'right'; skillId: number; itemId?: number | undefined } | null = null
+  /** Equipment-granted item auras / non-class passives (display-only Speedbar row, see {@link GrantedSkillEntry}). */
+  grantedSkills: readonly GrantedSkillEntry[] = []
+  /** Hovered cell of the granted row (never bindable, never selectable). */
+  hoveredGrantedSkill: { side: 'left' | 'right'; skillId: number; kind: GrantedSkillEntry['kind'] } | null = null
   /** Currently hovered skill ID in left or right slot. */
   hoverSkillId: number | null = null
   /** Currently hovered skill ID inside speedbar. */
@@ -279,7 +320,68 @@ export class SkillHotkeysHud {
   private globalSkillDelayUntilMs = 0
   private skillCharges = new Map<number, { charges: number; maxCharges?: number | undefined }>()
 
-  hasEnoughMana(skillId: number): boolean {
+  /**
+   * Exact `(skillId, owner)` lookup. 1.13c keeps the player's own skill (`dwOwnerGUID == -1`) and every
+   * item-granted charged copy as separate `D2SkillStrc` nodes (`D2Common.#10952` `SKILLS_GetSkillById(pUnit, id, guid)`),
+   * so a native entry and a charged entry of the same skillId never alias.
+   */
+  findSkillEntry(skillId: number, itemId?: number): HotkeySkillEntry | undefined {
+    const owner = normalizeSkillItemId(itemId)
+    return this.availableSkills.find(s => s.skillId === skillId && normalizeSkillItemId(s.itemId) === owner)
+  }
+
+  /** The player's own (non item-granted) entry for `skillId`, if learned / granted by +skills. */
+  findNativeSkillEntry(skillId: number): HotkeySkillEntry | undefined {
+    return this.availableSkills.find(
+      s => s.skillId === skillId && normalizeSkillItemId(s.itemId) === undefined && !s.isItemSkill && (s.level ?? 0) > 0,
+    )
+  }
+
+  /** A live (charges > 0) item-granted charged entry for `skillId`; `itemId` restricts it to that owner. */
+  findChargedSkillEntry(skillId: number, itemId?: number): HotkeySkillEntry | undefined {
+    const owner = normalizeSkillItemId(itemId)
+    return this.availableSkills.find(
+      s =>
+        s.skillId === skillId &&
+        normalizeSkillItemId(s.itemId) !== undefined &&
+        (owner === undefined || normalizeSkillItemId(s.itemId) === owner) &&
+        (s.charges ?? 0) > 0,
+    )
+  }
+
+  /**
+   * Resolve the owner GUID a selection/hotkey of `skillId` must carry.
+   * - `itemId` names a live charged entry -> that item;
+   * - otherwise the player's own skill wins (`undefined` = `0xFFFFFFFF`), including when the bound charged item
+   *   has been depleted / unequipped (the hotkey falls back to the native skill instead of going dead);
+   * - only when the skill is not natively available and no explicit native owner (`0xFFFFFFFF`, #1975) was
+   *   requested do we fall back to any live charged copy.
+   */
+  resolveSkillOwnerItemId(skillId: number, itemId?: number): number | undefined {
+    const owner = normalizeSkillItemId(itemId)
+    if (owner !== undefined && this.findChargedSkillEntry(skillId, owner)) return owner
+    if (this.findNativeSkillEntry(skillId)) return undefined
+    if (owner !== undefined) {
+      // Bound item no longer carries this skill; keep the owner only if no other copy exists.
+      return this.findChargedSkillEntry(skillId)?.itemId ?? owner
+    }
+    if (itemId !== undefined && itemId >>> 0 === 0xffffffff) return undefined
+    return this.findChargedSkillEntry(skillId)?.itemId
+  }
+
+  private findOwnedSkillEntry(skillId: number, itemId?: number): HotkeySkillEntry | undefined {
+    const owner = itemId === undefined ? this.resolveSkillOwnerItemId(skillId) : normalizeSkillItemId(itemId)
+    return (
+      this.findSkillEntry(skillId, owner) ??
+      (owner === undefined ? this.availableSkills.find(s => s.skillId === skillId && s.itemId === undefined) : undefined)
+    )
+  }
+
+  /**
+   * `itemId`: owner of the skill being checked (`0xFFFFFFFF` = the player's own skill). When omitted the owner is
+   * resolved with {@link resolveSkillOwnerItemId}.
+   */
+  hasEnoughMana(skillId: number, itemId?: number): boolean {
     if (this.currentMana === null) return true
     if (skillId <= 0 || isPassiveSkill(skillId) || isAuraSkill(skillId)) return true
     if (
@@ -287,7 +389,7 @@ export class SkillHotkeysHud {
       skillId === 218 ||
       skillId === 219 ||
       skillId === 220 ||
-      this.getSkillCharges(skillId) !== undefined
+      this.getSkillCharges(skillId, itemId) !== undefined
     ) {
       return true
     }
@@ -299,7 +401,8 @@ export class SkillHotkeysHud {
     ) {
       return true
     }
-    const entry = this.availableSkills.find(s => s.skillId === skillId)
+    const entry = this.findOwnedSkillEntry(skillId, itemId)
+    // 1.13c 0x6fda0b17: only item-owned skill nodes (`pSkill->dwItemId != -1`) bypass the mana check.
     if (entry?.isItemSkill || entry?.charges !== undefined) return true
     let manaCost: number = entry?.manaCost ?? 0
     if (entry === undefined) {
@@ -388,18 +491,24 @@ export class SkillHotkeysHud {
     this.skillCharges.clear()
   }
 
-  getSkillCharges(skillId: number): number | undefined {
+  /**
+   * Remaining charges of the `(skillId, itemId)` node (`itemId` omitted = resolved owner, see
+   * {@link resolveSkillOwnerItemId}). The player's own skill has no charges unless it is a scroll/tome count.
+   */
+  getSkillCharges(skillId: number, itemId?: number): number | undefined {
+    const owner = itemId === undefined ? this.resolveSkillOwnerItemId(skillId) : normalizeSkillItemId(itemId)
+    if (owner !== undefined) return this.findSkillEntry(skillId, owner)?.charges
     const explicit = this.skillCharges.get(skillId)
     if (explicit !== undefined) return explicit.charges
-    const found = this.availableSkills.find(s => s.skillId === skillId)
-    return found?.charges
+    return this.findOwnedSkillEntry(skillId, 0xffffffff)?.charges
   }
 
-  getSkillMaxCharges(skillId: number): number | undefined {
+  getSkillMaxCharges(skillId: number, itemId?: number): number | undefined {
+    const owner = itemId === undefined ? this.resolveSkillOwnerItemId(skillId) : normalizeSkillItemId(itemId)
+    if (owner !== undefined) return this.findSkillEntry(skillId, owner)?.maxCharges
     const explicit = this.skillCharges.get(skillId)
     if (explicit !== undefined) return explicit.maxCharges
-    const found = this.availableSkills.find(s => s.skillId === skillId)
-    return found?.maxCharges
+    return this.findOwnedSkillEntry(skillId, 0xffffffff)?.maxCharges
   }
 
   private ensureSkillIcon(skillId: number): HTMLImageElement | undefined {
@@ -523,12 +632,9 @@ export class SkillHotkeysHud {
   addOrUpdateSkill(entry: HotkeySkillEntry): void {
     if (isPassiveSkill(entry.skillId) || entry.isPassive) return
     if (getSkillListRow(entry) < 0) return
+    const owner = normalizeSkillItemId(entry.itemId)
     const idx = this.availableSkills.findIndex(
-      s =>
-        s.skillId === entry.skillId &&
-        (entry.itemId === undefined ||
-          s.itemId === undefined ||
-          s.itemId === entry.itemId),
+      s => s.skillId === entry.skillId && normalizeSkillItemId(s.itemId) === owner,
     )
     if (idx >= 0) {
       this.availableSkills[idx] = entry
@@ -545,20 +651,34 @@ export class SkillHotkeysHud {
   requestSelect(side: 'left' | 'right', skillId: number, itemId?: number): void {
     if (isPassiveSkill(skillId)) return
     if (side === 'left' && (!isLeftUsableSkill(skillId) || isAuraSkill(skillId))) return
-    const resolvedItemId =
-      itemId ??
-      this.availableSkills.find(s => s.skillId === skillId && s.itemId !== undefined)?.itemId
+    const resolvedItemId = this.resolveSkillOwnerItemId(skillId, itemId)
     if (this.onSelectSkill) {
       this.onSelectSkill(side, skillId, resolvedItemId)
       return
     }
-    if (side === 'left') this.leftSkillId = skillId
-    else this.rightSkillId = skillId
+    if (side === 'left') {
+      this.leftSkillId = skillId
+      this.leftSkillItemId = resolvedItemId
+    } else {
+      this.rightSkillId = skillId
+      this.rightSkillItemId = resolvedItemId
+    }
   }
 
   getHotkeyLabelForSkill(side: 'left' | 'right', skillId: number): string | null {
     for (const [key, binding] of this.bindings.entries()) {
       if (binding.side === side && binding.skillId === skillId) return key
+    }
+    return null
+  }
+
+  /** Hotkey bound to exactly the `(side, skillId, owner)` node (native and charged copies are labelled separately). */
+  getHotkeyLabelForSkillOwner(side: 'left' | 'right', skillId: number, itemId?: number): string | null {
+    const owner = normalizeSkillItemId(itemId)
+    for (const [key, binding] of this.bindings.entries()) {
+      if (binding.side === side && binding.skillId === skillId && normalizeSkillItemId(binding.itemId) === owner) {
+        return key
+      }
     }
     return null
   }
@@ -584,10 +704,8 @@ export class SkillHotkeysHud {
     const normKey = fKey.trim().toUpperCase()
     // 0xffffffff is the 1.13c "no item" sentinel (explicitly a non-item binding): never store it as
     // a concrete itemId and never re-resolve it to a charged item (#1975 regression from fa7180ed).
-    const resolvedItemId =
-      itemId !== undefined && itemId >>> 0 === 0xffffffff
-        ? undefined
-        : (itemId ?? this.availableSkills.find(s => s.skillId === skillId && s.itemId !== undefined)?.itemId)
+    // Issue #289: an omitted owner prefers the player's own skill over an item's charged copy of the same id.
+    const resolvedItemId = this.resolveSkillOwnerItemId(skillId, itemId)
     // 1.13c D2Client.dll 0x6faed280..0x6faed2e5: deduplicate any other slot bound to the same (side, skillId, itemId).
     for (const [existingKey, existing] of Array.from(this.bindings.entries())) {
       if (
@@ -652,6 +770,9 @@ export class SkillHotkeysHud {
   triggerFunctionKey(fKey: string): { side: 'left' | 'right'; skillId: number; itemId?: number | undefined } | null {
     const key = fKey.trim().toUpperCase()
     const slotIndex = SkillHotkeysHud.slotIndexFromKey(key)
+    if (this.openPopup !== null && this.hoveredGrantedSkill !== null) {
+      return null
+    }
     if (this.openPopup !== null && this.hoveredPopupSkill !== null) {
       const hovered = this.hoveredPopupSkill
       this.bindHotkey(key, hovered.side, hovered.skillId, hovered.itemId)
@@ -666,11 +787,41 @@ export class SkillHotkeysHud {
       this.bindings.delete(key)
       return null
     }
+    const owned = this.refreshBindingOwner(key, slotIndex)
+    if (!owned) return null
     if (slotIndex !== null) {
       this.lastSelectedSlot = slotIndex
     }
-    this.requestSelect(bound.side, bound.skillId, bound.itemId)
-    return bound
+    this.requestSelect(owned.side, owned.skillId, owned.itemId)
+    return owned
+  }
+
+  /**
+   * Re-resolve the owner of a bound hotkey. A slot bound to an item's charged copy whose charges ran out (or whose
+   * item was unequipped) falls back to the player's own skill when it is learned, so the F-key keeps working; a
+   * charged-only binding with no live copy left is dropped.
+   */
+  private refreshBindingOwner(
+    key: string,
+    slotIndex: number | null,
+  ): { side: 'left' | 'right'; skillId: number; itemId?: number | undefined } | null {
+    const bound = this.bindings.get(key)
+    if (!bound) return null
+    if (bound.skillId <= 0) return bound
+    const prevOwner = normalizeSkillItemId(bound.itemId)
+    if (prevOwner === undefined) return bound
+    if (this.findChargedSkillEntry(bound.skillId, prevOwner)) return bound
+    const nextOwner = this.resolveSkillOwnerItemId(bound.skillId, prevOwner)
+    if (nextOwner !== undefined && !this.findChargedSkillEntry(bound.skillId, nextOwner)) {
+      this.bindings.delete(key)
+      return null
+    }
+    const next = { side: bound.side, skillId: bound.skillId, ...(nextOwner !== undefined ? { itemId: nextOwner } : {}) }
+    this.bindings.set(key, next)
+    if (slotIndex !== null) {
+      this.onAssignHotkey?.(slotIndex, next.side, next.skillId, nextOwner ?? 0xffffffff)
+    }
+    return next
   }
 
   /**
@@ -706,12 +857,13 @@ export class SkillHotkeysHud {
       const key = SkillHotkeysHud.keyFromSlotIndex(edi)
       const b = key ? this.bindings.get(key) : undefined
       if (b && b.skillId >= 0 && b.skillId !== 0xffff && b.side === 'right') {
-        if (!this.isSkillAvailable(b.skillId)) {
+        const owned = key && this.isSkillAvailable(b.skillId) ? this.refreshBindingOwner(key, edi) : null
+        if (!owned) {
           if (key) this.bindings.delete(key)
         } else {
           matchedSlot = edi
-          matchedSkillId = b.skillId
-          matchedItemId = b.itemId
+          matchedSkillId = owned.skillId
+          matchedItemId = owned.itemId
           count -= 1
           if (count === 0) break
         }
@@ -745,7 +897,7 @@ export class SkillHotkeysHud {
     // 1. Group available skills by authentic ListRow (0..4)
     const rowMap = new Map<number, HotkeySkillEntry[]>()
     for (const skill of list) {
-      const explicitCharges = this.getSkillCharges(skill.skillId)
+      const explicitCharges = this.getSkillCharges(skill.skillId, skillOwnerArg(skill))
       const effectiveSkill = (explicitCharges !== undefined && skill.charges === undefined)
         ? { ...skill, charges: explicitCharges }
         : skill
@@ -816,7 +968,77 @@ export class SkillHotkeysHud {
     return this.getPopupCells(side)
   }
 
+  /** Replace the display-only granted row (item auras first, then non-class passives). */
+  setGrantedSkills(entries: readonly GrantedSkillEntry[]): void {
+    this.grantedSkills = entries.filter(e => e.skillId > 0 && e.level > 0)
+    if (typeof Image === 'undefined') return
+    for (const e of this.grantedSkills) this.ensureSkillIcon(e.skillId)
+  }
+
+  /** Stable signature of the granted row for HUD redraw caching. */
+  getGrantedSkillsKey(): string {
+    return this.grantedSkills.map(e => `${e.kind === 'item-aura' ? 'a' : 'p'}${e.skillId}:${e.level}`).join(',')
+  }
+
+  /**
+   * Cells of the display-only granted row: one extra row stacked above the topmost selectable Speedbar row,
+   * laid out like the other rows (towards the screen centre from the hand button).
+   */
+  getGrantedPopupCells(side: 'left' | 'right'): {
+    granted: GrantedSkillEntry
+    x: number
+    y: number
+    w: number
+    h: number
+    visualRow: number
+    col: number
+  }[] {
+    if (this.grantedSkills.length === 0) return []
+    const cellW = 48
+    const cellH = 48
+    const base = side === 'left' ? this.leftSkillBounds : this.rightSkillBounds
+    const maxW = this.is640 ? 640 : 800
+    const maxH = this.is640 ? 480 : 600
+    let visualRow = 0
+    for (const c of this.getPopupCells(side)) visualRow = Math.max(visualRow, c.visualRow + 1)
+    return this.grantedSkills.map((granted, col) => {
+      const rawX = side === 'left' ? base.x + col * cellW : base.x - col * cellW
+      const rawY = base.y - (visualRow + 1) * cellH - 6
+      const x = Math.max(0, Math.min(maxW - cellW, rawX))
+      const y = Math.max(0, Math.min(maxH - cellH, rawY))
+      return { granted, x, y, w: cellW, h: cellH, visualRow, col }
+    })
+  }
+
+  private drawGrantedSkillButton(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    side: 'left' | 'right',
+    granted: GrantedSkillEntry,
+    font: D2FontRenderer,
+    highlighted: boolean,
+  ): void {
+    ctx.fillStyle = '#14110d'
+    ctx.fillRect(x, y, 48, 48)
+    const icon = this.ensureSkillIcon(granted.skillId)
+    if (icon && icon.complete && icon.naturalWidth > 0) {
+      ctx.drawImage(icon, x, y, 48, 48)
+    } else if (!icon || icon.complete) {
+      reportMissingArt('skill-icon', `icon_${granted.skillId}`, `Missing granted skill icon for skillId=${granted.skillId} (${side})`)
+    }
+    // Display-only row: blue frame (item-granted colour, `levelColor: 'blue'` like the merc item-aura list).
+    ctx.strokeStyle = highlighted ? '#e8c26b' : '#4f6fb0'
+    ctx.lineWidth = highlighted ? 2 : 1
+    ctx.strokeRect(x + 0.5, y + 0.5, 47, 47)
+    font.drawText(ctx, String(granted.level), x + 4, y + 44, {
+      font: 'font8',
+      color: granted.kind === 'item-aura' ? 'gold' : 'blue',
+    })
+  }
+
   handleMouseMove(logicalX: number, logicalY: number): void {
+    this.hoveredGrantedSkill = null
     this.hoverSkillId = null
     this.hoverSpeedbarSkillId = null
     this.hoveredPopupSkill = null
@@ -860,6 +1082,13 @@ export class SkillHotkeysHud {
         return
       }
     }
+    for (const g of this.getGrantedPopupCells(this.openPopup)) {
+      if (logicalX >= g.x && logicalX <= g.x + g.w && logicalY >= g.y && logicalY <= g.y + g.h) {
+        this.hoveredGrantedSkill = { side: this.openPopup, skillId: g.granted.skillId, kind: g.granted.kind }
+        this.hoverSpeedbarSkillId = g.granted.skillId
+        return
+      }
+    }
   }
 
   handleClick(logicalX: number, logicalY: number): boolean {
@@ -870,6 +1099,11 @@ export class SkillHotkeysHud {
         if (logicalX >= c.x && logicalX <= c.x + c.w && logicalY >= c.y && logicalY <= c.y + c.h) {
           this.requestSelect(this.openPopup, c.skill.skillId, c.skill.itemId)
           this.openPopup = null
+          return true
+        }
+      }
+      for (const g of this.getGrantedPopupCells(this.openPopup)) {
+        if (logicalX >= g.x && logicalX <= g.x + g.w && logicalY >= g.y && logicalY <= g.y + g.h) {
           return true
         }
       }
@@ -917,8 +1151,30 @@ export class SkillHotkeysHud {
     this.hasEquippedWeapon = hasEquippedWeapon
     const leftBounds = this.leftSkillBounds
     const rightBounds = this.rightSkillBounds
-    this.drawSkillButton(ctx, leftBounds.x, leftBounds.y, 'left', this.leftSkillId, genericSkillsImg, font, false, nowMs)
-    this.drawSkillButton(ctx, rightBounds.x, rightBounds.y, 'right', this.rightSkillId, genericSkillsImg, font, false, nowMs)
+    this.drawSkillButton(
+      ctx,
+      leftBounds.x,
+      leftBounds.y,
+      'left',
+      this.leftSkillId,
+      genericSkillsImg,
+      font,
+      false,
+      nowMs,
+      this.findOwnedSkillEntry(this.leftSkillId, this.leftSkillItemId ?? 0xffffffff),
+    )
+    this.drawSkillButton(
+      ctx,
+      rightBounds.x,
+      rightBounds.y,
+      'right',
+      this.rightSkillId,
+      genericSkillsImg,
+      font,
+      false,
+      nowMs,
+      this.findOwnedSkillEntry(this.rightSkillId, this.rightSkillItemId ?? 0xffffffff),
+    )
 
     if (this.openPopup) {
       const cells = this.getPopupCells(this.openPopup)
@@ -931,9 +1187,21 @@ export class SkillHotkeysHud {
           c.skill.skillId,
           genericSkillsImg,
           font,
-          this.hoveredPopupSkill?.skillId === c.skill.skillId,
+          this.hoveredPopupSkill?.skillId === c.skill.skillId &&
+            normalizeSkillItemId(this.hoveredPopupSkill?.itemId) === normalizeSkillItemId(c.skill.itemId),
           nowMs,
           c.skill,
+        )
+      }
+      for (const g of this.getGrantedPopupCells(this.openPopup)) {
+        this.drawGrantedSkillButton(
+          ctx,
+          g.x,
+          g.y,
+          this.openPopup,
+          g.granted,
+          font,
+          this.hoveredGrantedSkill?.skillId === g.granted.skillId && this.hoveredGrantedSkill?.kind === g.granted.kind,
         )
       }
     }
@@ -992,11 +1260,12 @@ export class SkillHotkeysHud {
     // Calls D2Common.#10787(pPlayer, pSkill). Any non-zero status other than 6 (passive) — including
     // 1 (insufficient mana), 2 (unusable weapon/state/town), 4 (0 charges), 8 (skilldelay cooldown) —
     // sets nPalette = 1 (red icon tint).
-    const charges = skillEntry?.charges ?? this.getSkillCharges(skillId)
+    const ownerArg = skillEntry ? skillOwnerArg(skillEntry) : undefined
+    const charges = skillEntry?.charges ?? this.getSkillCharges(skillId, ownerArg)
     if (
       this.isSkillOnCooldown(skillId, _nowMs) ||
       !this.isSkillWeaponUsable(skillId) ||
-      !this.hasEnoughMana(skillId) ||
+      !this.hasEnoughMana(skillId, ownerArg) ||
       (charges !== undefined && charges <= 0)
     ) {
       ctx.fillStyle = 'rgba(180, 20, 20, 0.55)'
@@ -1009,7 +1278,10 @@ export class SkillHotkeysHud {
     ctx.strokeRect(x + 0.5, y + 0.5, 47, 47)
 
     // 3. Hotkey label (F1..F8) at bottom-right
-    const fKey = this.getHotkeyLabelForSkill(side, skillId)
+    // Per owner: the native and charged copies carry their own F-key.
+    const fKey = skillEntry
+      ? this.getHotkeyLabelForSkillOwner(side, skillId, skillEntry.itemId)
+      : this.getHotkeyLabelForSkill(side, skillId)
     if (fKey) {
       font.drawText(ctx, fKey, x + 44, y + 44, {
         font: 'font8',
@@ -1037,13 +1309,41 @@ export class SkillHotkeysHud {
     side: 'left' | 'right',
     isSpeedbar: boolean,
     lang: TblLang = this.lang,
+    ownerItemId?: number,
+    granted?: GrantedSkillEntry,
   ): FormattedTooltipLine[] {
     const lines: FormattedTooltipLine[] = []
     const isEn = lang === 'ENG'
     const tbl = SKILL_TBL_STRINGS[lang]
 
     const pushHotkeyLine = () => {
-      const boundKey = this.getHotkeyLabelForSkill(side, skillId)
+      if (granted) {
+        // Display-only granted row: source line + "no hotkey" instead of the F-key hint.
+        lines.push({
+          text:
+            granted.kind === 'item-aura'
+              ? isEn
+                ? `Item Aura (Level ${granted.level}, not raised by +Skills)`
+                : `装备赋予光环（等级 ${granted.level}，不受 +技能 加成）`
+              : isEn
+                ? `Item-Granted Passive (Level ${granted.level})`
+                : `装备赋予被动技能（等级 ${granted.level}）`,
+          color: 'blue',
+          font: 'font8',
+          align: 'center',
+        })
+        lines.push({
+          text: isEn ? 'Cannot be assigned to a hotkey' : '不可设置快捷键',
+          color: 'tan',
+          font: 'font8',
+          align: 'center',
+        })
+        return
+      }
+      const boundKey =
+        ownerItemId !== undefined
+          ? this.getHotkeyLabelForSkillOwner(side, skillId, ownerItemId)
+          : this.getHotkeyLabelForSkill(side, skillId)
       if (isSpeedbar) {
         lines.push({
           text: isEn
@@ -1088,7 +1388,7 @@ export class SkillHotkeysHud {
       }
       const meta = SKILLS_TABLE_META[skillId]
       if (meta?.descline1 && meta.descline1 >= 53 && meta.descline1 <= 56) {
-        const charges = this.getSkillCharges(skillId)
+        const charges = this.getSkillCharges(skillId, ownerItemId)
         if (charges !== undefined) {
           lines.push({
             text: `${tbl.skilldesc4}${charges}`,
@@ -1102,10 +1402,19 @@ export class SkillHotkeysHud {
     }
 
     // 2. Class Skills
-    const entry = this.availableSkills.find(s => s.skillId === skillId)
+    const entry = granted
+      ? { skillId, level: granted.level, manaCost: 0, name: granted.name, nameZh: granted.nameZh, itemId: undefined }
+      : (this.findOwnedSkillEntry(skillId, ownerItemId) ?? this.availableSkills.find(s => s.skillId === skillId))
+    const isChargedCopy = normalizeSkillItemId(entry?.itemId) !== undefined
     const catalogEntry = SKILLS_BY_ID[skillId]
     const fallbackLevel = Math.max(1, entry?.level ?? 1)
-    const rawVm = this.tooltipResolver ? this.tooltipResolver(skillId) : null
+    // An item's charged copy is cast at the item's own level (`stat 204` param low 6 bits), never the player's
+    // hard points + bonuses, so its tooltip is built from the entry level instead of the native tooltip resolver.
+    // Item auras are fixed-level grants (no +skills, no hard points), so they never use the native resolver;
+    // granted passives use it only when it agrees on the granted level.
+    const resolvedVm =
+      this.tooltipResolver && !isChargedCopy && granted?.kind !== 'item-aura' ? this.tooltipResolver(skillId) : null
+    const rawVm = granted && resolvedVm && resolvedVm.effectiveLevel !== granted.level ? null : resolvedVm
     const vm =
       rawVm && rawVm.effectiveLevel > 0
         ? rawVm
@@ -1132,8 +1441,8 @@ export class SkillHotkeysHud {
     pushHotkeyLine()
 
     // Charges Tag (for item-granted charged skills)
-    const charges = this.getSkillCharges(skillId)
-    const maxCharges = this.getSkillMaxCharges(skillId)
+    const charges = granted ? undefined : this.getSkillCharges(skillId, ownerItemId)
+    const maxCharges = granted ? undefined : this.getSkillMaxCharges(skillId, ownerItemId)
     if (charges !== undefined) {
       lines.push({
         text: isEn
@@ -1311,26 +1620,45 @@ export class SkillHotkeysHud {
     let side: 'left' | 'right' = 'left'
     let anchor: { x: number; y: number; w?: number; h?: number; width?: number; height?: number } | null = null
     let isSpeedbar = false
+    let ownerItemId: number | undefined
 
-    if (this.openPopup && this.hoveredPopupSkill) {
+    let granted: GrantedSkillEntry | undefined
+    if (this.openPopup && this.hoveredGrantedSkill) {
+      const hg = this.hoveredGrantedSkill
+      const cell = this.getGrantedPopupCells(this.openPopup).find(
+        g => g.granted.skillId === hg.skillId && g.granted.kind === hg.kind,
+      )
+      if (cell) {
+        skillId = cell.granted.skillId
+        side = hg.side
+        anchor = cell
+        isSpeedbar = true
+        granted = cell.granted
+      }
+    } else if (this.openPopup && this.hoveredPopupSkill) {
       skillId = this.hoveredPopupSkill.skillId
       side = this.hoveredPopupSkill.side
       const cells = this.getPopupCells(this.openPopup)
-      const cell = cells.find(c => c.skill.skillId === skillId)
+      const hoveredOwner = normalizeSkillItemId(this.hoveredPopupSkill.itemId)
+      const cell = cells.find(
+        c => c.skill.skillId === skillId && normalizeSkillItemId(c.skill.itemId) === hoveredOwner,
+      )
       if (cell) {
         anchor = cell
+        ownerItemId = skillOwnerArg(cell.skill)
         isSpeedbar = true
       }
     } else if (this.hoverSkillId !== null && this.hoveredSlot !== null) {
       skillId = this.hoverSkillId
       side = this.hoveredSlot
       anchor = side === 'left' ? this.leftSkillBounds : this.rightSkillBounds
+      ownerItemId = (side === 'left' ? this.leftSkillItemId : this.rightSkillItemId) ?? 0xffffffff
       isSpeedbar = false
     }
 
     if (skillId === null || !anchor) return
 
-    const lines = this.formatTooltipLines(skillId, side, isSpeedbar)
+    const lines = this.formatTooltipLines(skillId, side, isSpeedbar, this.lang, ownerItemId, granted)
     if (lines.length === 0) return
 
     const placement = SkillHotkeysHud.computeTooltipPlacement(

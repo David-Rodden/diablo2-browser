@@ -8,7 +8,21 @@ import { D2DrlgLevelStrc } from '../../mem/layout.generated.ts';
 import type { Memory113c } from '../../mem/sparse-memory.ts';
 import { SEED_RollRandomNumberInline113c } from '../inline-helpers.ts';
 import { imul32, sdiv32, smod32 } from '../int-math.ts';
+import { DRLGOUTDOORS_SpawnPresetInGrid113c } from './drlg-grid.ts';
 import { DRLGWARP_GetWarpDstAdjustData113c } from './drlg-room.ts';
+
+/**
+ * `D2Common.dll` `.rdata` table at `0x6FDE34A4` (4 `{ dX, dY }` `int32_t` pairs = 32 bytes).
+ * Indexed by outdoor border direction `eDir = 0..3` (`ebp * 8` in `0x6FD92C00`).
+ *
+ * `@va D2Common:0x6FDE34A4`
+ */
+export const OUTDOOR_BORDER_DIR_OFFSETS_6FDE34A4 = Int32Array.from([
+  -4, 4,
+  4, -4,
+  12, 4,
+  4, 12,
+]);
 
 /**
  * Outdoor theme bitmask table at `0x6FDE345C` (`uint32[4] = [0x1000, 0x2000, 0x4000, 0x8000]`).
@@ -328,6 +342,139 @@ export function DRLGOUTDOORS_GetLevelLinkVisBit113c(
     if ((m.u32((pVisArr + i * 4) >>> 0) | 0) === adjId) {
       return (1 << (i + 4)) >>> 0;
     }
+  }
+  return 0;
+}
+
+/**
+ * `@va D2Common:0x6FD92CE0` (`DRLGOUTDOORS_PlaceRandomOutdoorPresetRoom113c`, not exported;
+ * custom LTCG `esi = pLevel`, `[esp+4] = nLvlPrestId`, `[esp+8] = nPickedFile`, `[esp+0xC] = nBorder`, `[esp+0x10] = uFlags`, `ret 0x10`).
+ */
+export function DRLGOUTDOORS_PlaceRandomOutdoorPresetRoom113c(
+  m: Memory113c,
+  pLevel: number,
+  nLvlPrestId: number,
+  nPickedFile: number,
+  nBorder: number,
+  uFlags: number,
+): number {
+  const lvl = pLevel >>> 0;
+  const pOutdoors = m.u32((lvl + 0x14) >>> 0);
+  const innerW = ((m.u32((pOutdoors + 0x5c) >>> 0) | 0) - 2) | 0;
+  const innerH = ((m.u32((pOutdoors + 0x60) >>> 0) | 0) - 2) | 0;
+  const nCount = imul32(innerH, innerW);
+  if (nCount === 0) {
+    return 0;
+  }
+
+  const xs = new Int32Array(nCount > 0 ? nCount : 0);
+  const ys = new Int32Array(nCount > 0 ? nCount : 0);
+  if (nCount > 0) {
+    for (let i = 0; i < nCount; i++) {
+      xs[i] = smod32(i, innerW);
+      ys[i] = sdiv32(i, innerW);
+    }
+    const pSeed = (lvl + 0x1c4) >>> 0;
+    for (let step = nCount; step !== 0; step--) {
+      const idxA = SEED_RollRandomNumberInline113c(m, pSeed, nCount);
+      const idxB = SEED_RollRandomNumberInline113c(m, pSeed, nCount);
+      const tmpX = xs[idxA]!;
+      const tmpY = ys[idxA]!;
+      xs[idxA] = xs[idxB]!;
+      ys[idxA] = ys[idxB]!;
+      xs[idxB] = tmpX;
+      ys[idxB] = tmpY;
+    }
+  }
+
+  for (let i = 0; i < nCount; i++) {
+    const candX = (xs[i]! + 1) | 0;
+    const candY = (ys[i]! + 1) | 0;
+    if (
+      DRLGOUTDOORS_SpawnOutdoorRoomEx113c(
+        m,
+        lvl,
+        candX,
+        candY,
+        nLvlPrestId | 0,
+        nBorder | 0,
+        uFlags >>> 0,
+      ) !== 0
+    ) {
+      DRLGOUTDOORS_SpawnPresetInGrid113c(
+        m,
+        lvl,
+        candX,
+        candY,
+        nLvlPrestId | 0,
+        nPickedFile | 0,
+        0,
+      );
+      return 1;
+    }
+  }
+  return 0;
+}
+
+/**
+ * `@va D2Common:0x6FD92C00` (`DRLGOUTDOORS_ComputeVertexLevelLinkVisBit113c`, not exported;
+ * custom LTCG `ecx = pVertex`, `[esp+4] = pLevel`, `ret 4`).
+ */
+export function DRLGOUTDOORS_ComputeVertexLevelLinkVisBit113c(
+  m: Memory113c,
+  pVertex: number,
+  pLevel: number,
+): number {
+  const vertex = pVertex >>> 0;
+  const lvl = pLevel >>> 0;
+  const pOutdoors = m.u32((lvl + 0x14) >>> 0);
+  const vx = m.u32(vertex) | 0;
+  const vy = m.u32((vertex + 0x04) >>> 0) | 0;
+
+  let eDir: number;
+  if (vx === 0) {
+    eDir = vy === 0 ? 1 : 0;
+  } else {
+    const maxW = ((m.u32((pOutdoors + 0x5c) >>> 0) | 0) - 1) | 0;
+    if (vy === 0) {
+      eDir = vx === maxW ? 2 : 1;
+    } else {
+      const maxH = ((m.u32((pOutdoors + 0x60) >>> 0) | 0) - 1) | 0;
+      if (vx === maxW) {
+        eDir = vy === maxH ? 3 : 2;
+      } else if (vy === maxH) {
+        eDir = 3;
+      } else {
+        return 0;
+      }
+    }
+  }
+
+  const worldX =
+    (OUTDOOR_BORDER_DIR_OFFSETS_6FDE34A4[eDir * 2]! + (vx << 3) + (m.u32((lvl + 0x1c) >>> 0) | 0)) |
+    0;
+  const worldY =
+    (OUTDOOR_BORDER_DIR_OFFSETS_6FDE34A4[eDir * 2 + 1]! +
+      (vy << 3) +
+      (m.u32((lvl + 0x20) >>> 0) | 0)) |
+    0;
+
+  let pOrth = m.u32((pOutdoors + 0x264) >>> 0);
+  while (pOrth !== 0) {
+    if ((m.u32((pOrth + 0x04) >>> 0) | 0) === eDir) {
+      const pBox = m.u32((pOrth + 0x10) >>> 0);
+      const bx = m.u32(pBox) | 0;
+      const by = m.u32((pBox + 0x04) >>> 0) | 0;
+      const bw = m.u32((pBox + 0x08) >>> 0) | 0;
+      const bh = m.u32((pBox + 0x0c) >>> 0) | 0;
+      if (worldX >= bx && worldY >= by && worldX < ((bx + bw) | 0) && worldY < ((by + bh) | 0)) {
+        if (m.u32((pOrth + 0x0c) >>> 0) !== 0) {
+          return 0;
+        }
+        return DRLGOUTDOORS_GetLevelLinkVisBit113c(m, lvl, m.u32(pOrth));
+      }
+    }
+    pOrth = m.u32((pOrth + 0x14) >>> 0);
   }
   return 0;
 }

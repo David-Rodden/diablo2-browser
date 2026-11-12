@@ -19,6 +19,59 @@ import {
 } from '../../mem/layout.generated.ts';
 import type { Memory113c } from '../../mem/sparse-memory.ts';
 import { D2CommonAssertError, SEED_RollRandomNumberInline113c } from '../inline-helpers.ts';
+import { UNITS_GetAnimOrSeqEventAtFrame113c, UNITS_GetFrameAndFrameCount113c } from '../unit.ts';
+
+const DRLGVER_STACK_BASE = 0x7ff80000;
+const DRLGVER_STACK_SIZE = 0x1000;
+const _drlgVerStackBuf = new ArrayBuffer(DRLGVER_STACK_SIZE);
+const _drlgVerStackU8 = new Uint8Array(_drlgVerStackBuf);
+const _drlgVerStackDV = new DataView(_drlgVerStackBuf);
+
+function withDrlgVerStackScratch113c(m: Memory113c): Memory113c {
+  const isStack = (p: number): boolean => {
+    const u = p >>> 0;
+    return u >= DRLGVER_STACK_BASE && u < DRLGVER_STACK_BASE + DRLGVER_STACK_SIZE;
+  };
+  return {
+    alloc: size => m.alloc(size),
+    u8: p => (isStack(p) ? _drlgVerStackU8[(p >>> 0) - DRLGVER_STACK_BASE]! : m.u8(p)),
+    u16: p => (isStack(p) ? _drlgVerStackDV.getUint16((p >>> 0) - DRLGVER_STACK_BASE, true) : m.u16(p)),
+    u32: p => (isStack(p) ? _drlgVerStackDV.getUint32((p >>> 0) - DRLGVER_STACK_BASE, true) : m.u32(p)),
+    setU8: (p, v) => {
+      if (isStack(p)) _drlgVerStackU8[(p >>> 0) - DRLGVER_STACK_BASE] = v & 0xff;
+      else m.setU8(p, v);
+    },
+    setU16: (p, v) => {
+      if (isStack(p)) _drlgVerStackDV.setUint16((p >>> 0) - DRLGVER_STACK_BASE, v & 0xffff, true);
+      else m.setU16(p, v);
+    },
+    setU32: (p, v) => {
+      if (isStack(p)) _drlgVerStackDV.setUint32((p >>> 0) - DRLGVER_STACK_BASE, v >>> 0, true);
+      else m.setU32(p, v);
+    },
+    get: (base, f, idx = 0) => m.get(base, f, idx),
+    set: (base, f, v, idx = 0) => m.set(base, f, v, idx),
+    fill: (p, len, v) => {
+      if (isStack(p)) {
+        const off = (p >>> 0) - DRLGVER_STACK_BASE;
+        _drlgVerStackU8.fill(v & 0xff, off, off + len);
+      } else {
+        m.fill(p, len, v);
+      }
+    },
+  };
+}
+
+/**
+ * `D2Common.dll` `.data` table at `0x6FDE4F08` (16 `uint32_t` entries indexed by `eMonMode = 0..15`).
+ * Maps monster animation mode to byte offset in `D2MonStatsTxt` (`wMissA1`..`wMissSQ`), or `0` if none.
+ *
+ * `@va D2Common:0x6FDE4F08`
+ */
+export const MONSTATS_MISSILE_OFFSET_BY_MODE_6FDE4F08 = Uint32Array.from([
+  0x00, 0x00, 0x00, 0x00, 0x3a, 0x3c, 0x00, 0x46,
+  0x3e, 0x40, 0x42, 0x44, 0x00, 0x00, 0x48, 0x00,
+]);
 
 /**
  * `D2Common.dll` `.data` pointer to `gdwBitMasks[32]` (`1 << i` for `i = 0..31`).
@@ -885,6 +938,73 @@ export function DRLGVER_BuildAndLocalizeRoomVertices113c(
     m.setU32((pBox + 0x0c) >>> 0, ((m.u32((pBox + 0x0c) >>> 0) | 0) + 1) >>> 0);
     pOrth = m.u32((pOrth + 0x14) >>> 0);
   }
+}
+
+/**
+ * `@va D2Common:0x6FD6B280` (`D2Common.#10362` `MONSTER_GetMissileIdForAnimMode113c`,
+ * `__stdcall(pUnit, bCheckAnimEvent) -> int32`, `ret 8`).
+ */
+export function MONSTER_GetMissileIdForAnimMode113c(
+  m: Memory113c,
+  pUnit: number,
+  bCheckAnimEvent: number,
+): number {
+  const unit = pUnit >>> 0;
+  if ((bCheckAnimEvent | 0) !== 0) {
+    if (m.u8((unit + 0x4e) >>> 0) === 0) {
+      return -1;
+    }
+    const sm = withDrlgVerStackScratch113c(m);
+    const pFrame = DRLGVER_STACK_BASE;
+    const pFrameCount = (DRLGVER_STACK_BASE + 4) >>> 0;
+    sm.setU32(pFrame, 0);
+    sm.setU32(pFrameCount, 0);
+    UNITS_GetFrameAndFrameCount113c(sm, unit, pFrame, pFrameCount);
+    const rawFrame = sm.u32(pFrame) | 0;
+    const wAnimSpeed = (m.u16((unit + 0x4c) >>> 0) << 16) >> 16;
+    const startFrame = (rawFrame - wAnimSpeed) >> 8;
+    const endFrame = rawFrame >> 8;
+    if (startFrame >= endFrame) {
+      return -1;
+    }
+    let f = startFrame;
+    let matched = false;
+    while (f <= endFrame) {
+      if (UNITS_GetAnimOrSeqEventAtFrame113c(m, unit, f) === 2) {
+        matched = true;
+        break;
+      }
+      if (UNITS_GetAnimOrSeqEventAtFrame113c(m, unit, f) === 1) {
+        matched = true;
+        break;
+      }
+      f = (f + 1) | 0;
+    }
+    if (!matched || f > endFrame || f <= startFrame) {
+      return -1;
+    }
+  }
+
+  const dwAnimMode = unit !== 0 ? (m.u32((unit + 0x10) >>> 0) >>> 0) : 0;
+  const fieldOffset =
+    dwAnimMode < 16
+      ? MONSTATS_MISSILE_OFFSET_BY_MODE_6FDE4F08[dwAnimMode]!
+      : m.u32((0x6fde4f08 + dwAnimMode * 4) >>> 0);
+  if (fieldOffset === 0) {
+    return -1;
+  }
+
+  let pMonStats = 0;
+  if (unit !== 0) {
+    const nClassId = m.u32((unit + 0x04) >>> 0) | 0;
+    if (nClassId >= 0) {
+      const gpDataTables = m.u32(SGPT_DATA_TABLES_PTR_VA);
+      if (nClassId < (m.u32((gpDataTables + 0xa80) >>> 0) | 0)) {
+        pMonStats = (m.u32((gpDataTables + 0xa78) >>> 0) + Math.imul(nClassId, D2MonStatsTxt_SIZE)) >>> 0;
+      }
+    }
+  }
+  return (m.u16((pMonStats + fieldOffset) >>> 0) << 16) >> 16;
 }
 
 

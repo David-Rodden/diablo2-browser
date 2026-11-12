@@ -23,17 +23,43 @@ import {
   D2COMMON_GDWBITMASKS_IAT_VA_113C,
   D2COMMON_SGPT_DATATABLES_VA_113C,
   D2CommonAssertError,
+  DATATABLES_OFF_113C,
   DATATBLS_GetMissilesTxtRecordInline113c,
+  DATATBLS_GetSkillsTxtRecordInline113c,
   SEED_RollLimitedRandomNumberInline113c,
 } from './inline-helpers.ts'
-import { imul32, sar32 } from './int-math.ts'
-import { INVENTORY_GetActiveWeaponMem113c } from './inventory.ts'
-import { ITEMS_CheckItemTypeIdMem113c, ITEMS_IsTome113c } from './items.ts'
-import { ITEMS_CheckItemTypeIdEquivalent113c } from './skills.ts'
+import { imul32, sar32, sdiv32 } from './int-math.ts'
 import {
+  INVENTORY_GetActiveWeaponMem113c,
+  INVENTORY_GetEquippedWeaponHandClass113c,
+  getItemsTxtRecordInvMem113c,
+} from './inventory.ts'
+import {
+  ITEMS_CheckItemTypeIdMem113c,
+  ITEMS_GetActiveWeaponForAttack113c,
+  ITEMS_GetInvWidthFromItem113c,
+  ITEMS_GetItemTypeFromItem113c,
+  ITEMS_IsTome113c,
+} from './items.ts'
+import {
+  ITEMS_CheckItemTypeIdEquivalent113c,
+  MISSILE_EvaluateElementalLength113c,
+  MISSILE_EvaluateElementalMaxDamage113c,
+  MISSILE_EvaluateElementalMinDamage113c,
+  MISSILE_EvaluatePhysMaxDamage113c,
+  MISSILE_EvaluatePhysMinDamage113c,
+  SKILLS_GetSkillElemMaxDamage113c,
+  SKILLS_GetSkillElemMinDamage113c,
+  SKILLS_GetSkillPeriodicDelayOrLength113c,
+  SKILLS_GetSkillPhysMaxDamage113c,
+  SKILLS_GetSkillPhysMinDamage113c,
+} from './skills.ts'
+import {
+  MISSILE_CalculateMasteryBonus113c,
   STATLIST_FindStatFirstIndexOrLowerBound113c,
   STATLIST_GetUnitStatWithLayer113c,
 } from './statlist.ts'
+import { UNITS_SyncDualWieldWeaponStatLists113c } from './unit.ts'
 
 const UNIT_MONSTER = 1
 const UNIT_MISSILE = 3
@@ -697,4 +723,275 @@ export function MISSILE_RollLimitedFromUnitSeed113c(
   if (u === 0) return 0
   return SEED_RollLimitedRandomNumberInline113c(m, (u + 0x20) >>> 0, nMin, nMax) >>> 0
 }
+
+// ============================================================================
+// Iteration 13 Lane A — I13A-2 (#11) Missile Damage Calculation Port
+// ============================================================================
+
+function itemsCheckIfThrowItemMem113c(m: Memory113c, pItem: number): number {
+  const itm = pItem >>> 0
+  if (itm === 0 || m.u32(itm) !== 4) return 0
+  const typeId = ITEMS_GetItemTypeFromItem113c(m, itm) | 0
+  if (typeId < 0) return 0
+  const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+  if (typeId >= (m.u32((sgpt + DATATABLES_OFF_113C.nItemTypesTxtRecordCount) >>> 0) | 0)) return 0
+  const pRec = (m.u32((sgpt + DATATABLES_OFF_113C.pItemTypesTxt) >>> 0) + typeId * 0xe4) >>> 0
+  if (pRec === 0) return 0
+  return m.u8((pRec + 0x10) >>> 0)
+}
+
+function itemsGetStrOrDexBonusMem113c(m: Memory113c, pItem: number, fieldOff: number): number {
+  const itm = pItem >>> 0
+  if (itm === 0 || m.u32(itm) !== 4) return 100
+  const pTxt = getItemsTxtRecordInvMem113c(m, m.u32((itm + 4) >>> 0))
+  if (pTxt === 0) return 100
+  const w = m.u16((pTxt + fieldOff) >>> 0)
+  return w === 1 ? 100 : s16(w)
+}
+
+function mulRecip100MisMem113c(val: number): number {
+  const prod = BigInt(val | 0) * 0x51eb851fn
+  const hi = Number(BigInt.asIntN(32, prod >> 32n))
+  const s = sar32(hi, 5)
+  return (s + ((s >>> 31) & 1)) | 0
+}
+
+/**
+ * `@va D2Common:0x6FDBBAA0` (`D2Common.#10413` `MISSILE_CalculateDamageData`,
+ * stdcall `[esp+4] = pDmgData`, `[esp+8] = pOwner`, `[esp+0xC] = pAltUnit`,
+ * `[esp+0x10] = pMissile`, `[esp+0x14] = nSkillLevel`, `ret 0x14`, void).
+ */
+export function MISSILE_CalculateDamageData113c(
+  m: Memory113c,
+  pDmgData: number,
+  pOwner: number,
+  pAltUnit: number,
+  pMissile: number,
+  nSkillLevel: number,
+): void {
+  const dmg = pDmgData >>> 0
+  for (let off = 0; off < 0x7c; off += 4) {
+    m.setU32((dmg + off) >>> 0, 0)
+  }
+
+  const owner = pOwner >>> 0
+  const altUnit = pAltUnit >>> 0
+  const missile = pMissile >>> 0
+  const level = nSkillLevel | 0
+  if (owner === 0 || missile === 0 || m.u32(missile) !== UNIT_MISSILE) return
+
+  const missileId = m.u32((missile + 4) >>> 0) | 0
+  const pMisTxt = DATATBLS_GetMissilesTxtRecordInline113c(m, missileId)
+  if (pMisTxt === 0) return
+
+  const pBitMasks = m.u32(D2COMMON_GDWBITMASKS_IAT_VA_113C)
+  let srcDmg = 0
+  let scale128 = 0
+  let elemType = 0
+  let physMin = 0
+  let physMax = 0
+  let elemMin = 0
+  let elemMax = 0
+  let elemLen = 0
+
+  const wSkill = s16(m.u16((pMisTxt + 0x194) >>> 0))
+  const hasSkillBit = (m.u8((pMisTxt + 5) >>> 0) & m.u8((pBitMasks + 0x1c) >>> 0)) !== 0
+
+  if (wSkill > 0 || hasSkillBit) {
+    let effSkill = wSkill
+    if (hasSkillBit) {
+      const mSkill = MISSILE_GetSkill113c(m, missile) | 0
+      if (mSkill > 0) effSkill = mSkill
+    }
+    const pSkTxt = DATATBLS_GetSkillsTxtRecordInline113c(m, effSkill)
+    if (pSkTxt === 0) return
+    srcDmg = m.u8((pSkTxt + 0x1a5) >>> 0)
+    scale128 = 0
+    if (m.u8((pMisTxt + 0x12d) >>> 0) === 0xff) {
+      srcDmg = 0
+    }
+    physMin = SKILLS_GetSkillPhysMinDamage113c(m, owner, effSkill, level, 0) | 0
+    physMax = SKILLS_GetSkillPhysMaxDamage113c(m, owner, effSkill, level, 0) | 0
+    elemType = m.u8((pSkTxt + 0x1dc) >>> 0)
+    elemMin = SKILLS_GetSkillElemMinDamage113c(m, owner, effSkill, level, 1) | 0
+    elemMax = SKILLS_GetSkillElemMaxDamage113c(m, owner, effSkill, level, 1) | 0
+    elemLen = SKILLS_GetSkillPeriodicDelayOrLength113c(m, owner, effSkill, level, 1) | 0
+  } else {
+    srcDmg = m.u8((pMisTxt + 0x12d) >>> 0)
+    scale128 = m.u8((pMisTxt + 0x12e) >>> 0)
+    physMin = MISSILE_EvaluatePhysMinDamage113c(m, missile, owner, missileId, level) | 0
+    physMax = MISSILE_EvaluatePhysMaxDamage113c(m, missile, owner, missileId, level) | 0
+    elemType = m.u8((pMisTxt + 0xe4) >>> 0)
+    elemMin = MISSILE_EvaluateElementalMinDamage113c(m, missile, owner, missileId, level) | 0
+    elemMax = MISSILE_EvaluateElementalMaxDamage113c(m, missile, owner, missileId, level) | 0
+    elemLen = MISSILE_EvaluateElementalLength113c(m, owner, missile, missileId, level) | 0
+    if ((m.u8((pMisTxt + 5) >>> 0) & m.u8(pBitMasks)) !== 0) {
+      elemMin = (elemMin + (MISSILE_CalculateMasteryBonus113c(m, owner, elemType, elemMin) | 0)) | 0
+      elemMax = (elemMax + (MISSILE_CalculateMasteryBonus113c(m, owner, elemType, elemMax) | 0)) | 0
+    }
+  }
+
+  const pFlags = m.u8((pMisTxt + 0x12f) >>> 0)
+  if ((pFlags & 1) !== 0) m.setU32(dmg, (m.u32(dmg) | 0x100) >>> 0)
+  if ((pFlags & 2) !== 0) m.setU32(dmg, (m.u32(dmg) | 0x200) >>> 0)
+  if ((pFlags & 4) !== 0) m.setU32(dmg, (m.u32(dmg) | 0x400) >>> 0)
+
+  let slot14 = 0
+  let slot28 = 0
+  let slot40 = 0
+  let pWeapon = 0
+  let basePhysMin = 0
+  let basePhysMax = 0
+
+  if (srcDmg !== 0) {
+    m.setU32(dmg, (m.u32(dmg) | 1) >>> 0)
+    const ownerType = m.u32(owner) | 0
+    if (ownerType === 0) {
+      pWeapon = ITEMS_GetActiveWeaponForAttack113c(m, owner, 1) >>> 0
+    } else if (ownerType === 1 && m.u32((owner + 0x60) >>> 0) !== 0) {
+      pWeapon = UNITS_GetMonsterActiveWeapon113c(m, owner) >>> 0
+    }
+    if (MISSILE_RollCriticalStrike113c(m, owner, pWeapon) !== 0) {
+      m.setU32(dmg, (m.u32(dmg) | 2) >>> 0)
+    }
+
+    if (pWeapon !== 0 && m.u32(pWeapon) === 4) {
+      const bitMasksNow = m.u32(D2COMMON_GDWBITMASKS_IAT_VA_113C)
+      if ((m.u8((pMisTxt + 5) >>> 0) & m.u8((bitMasksNow + 0x18) >>> 0)) !== 0) {
+        if (ITEMS_GetInvWidthFromItem113c(m, pWeapon) !== 0) {
+          srcDmg = sdiv32(srcDmg, 2)
+        }
+      }
+      slot14 = SKILLS_GetWeaponMasteryBonusMem113c(m, owner, pWeapon, 0, 1) | 0
+      const strPct = itemsGetStrOrDexBonusMem113c(m, pWeapon, 0x106)
+      if (strPct !== 0) {
+        const strVal = STATLIST_GetUnitStatWithLayer113c(m, owner, 0x00, 0) | 0
+        slot14 = (slot14 + mulRecip100MisMem113c(imul32(strVal, strPct))) | 0
+      }
+      const dexPct = itemsGetStrOrDexBonusMem113c(m, pWeapon, 0x108)
+      if (dexPct !== 0) {
+        const dexVal = STATLIST_GetUnitStatWithLayer113c(m, owner, 0x02, 0) | 0
+        slot14 = (slot14 + mulRecip100MisMem113c(imul32(dexVal, dexPct))) | 0
+      }
+      if (itemsCheckIfThrowItemMem113c(m, pWeapon) !== 0) {
+        basePhysMin = (STATLIST_GetUnitStatWithLayer113c(m, owner, 0x9f, 0) | 0) << 8
+        basePhysMax = (STATLIST_GetUnitStatWithLayer113c(m, owner, 0xa0, 0) | 0) << 8
+      } else {
+        const pInv = m.u32((owner + 0x60) >>> 0)
+        if (pInv !== 0 && INVENTORY_GetEquippedWeaponHandClass113c(m, owner, pInv) === 2) {
+          basePhysMin = (STATLIST_GetUnitStatWithLayer113c(m, owner, 0x17, 0) | 0) << 8
+          basePhysMax = (STATLIST_GetUnitStatWithLayer113c(m, owner, 0x18, 0) | 0) << 8
+        } else {
+          basePhysMin = (STATLIST_GetUnitStatWithLayer113c(m, owner, 0x15, 0) | 0) << 8
+          basePhysMax = (STATLIST_GetUnitStatWithLayer113c(m, owner, 0x16, 0) | 0) << 8
+        }
+      }
+      if (ITEMS_CheckItemTypeIdMem113c(m, pWeapon, 0x39) !== 0) {
+        m.setU32((dmg + 0x70) >>> 0, ((m.u32((dmg + 0x70) >>> 0) | 0) + 0x32) >>> 0)
+      }
+    } else {
+      if ((m.u32(owner) | 0) === 1 && MONSTERS_GetHirelingTypeId113c(m, owner) !== 0) {
+        slot40 = STATLIST_GetUnitStatWithLayer113c(m, owner, 0x02, 0) | 0
+      }
+      basePhysMin = (STATLIST_GetUnitStatWithLayer113c(m, owner, 0x15, 0) | 0) << 8
+      basePhysMax = (STATLIST_GetUnitStatWithLayer113c(m, owner, 0x16, 0) | 0) << 8
+    }
+
+    const q = (sId: number): number => STATLIST_GetUnitStatWithLayer113c(m, owner, sId, 0) | 0
+    basePhysMin = sar32(imul32(basePhysMin, srcDmg) + ((imul32(basePhysMin, srcDmg) >> 31) & 0x7f), 7)
+    basePhysMax = sar32(imul32(basePhysMax, srcDmg) + ((imul32(basePhysMax, srcDmg) >> 31) & 0x7f), 7)
+    slot40 = (slot40 + q(0x19) + slot14) | 0
+    slot14 = q(0x12)
+    slot28 = q(0x11)
+    m.setU32((dmg + 0x6c) >>> 0, ((m.u32((dmg + 0x6c) >>> 0) | 0) + q(0x79)) >>> 0)
+    m.setU32((dmg + 0x70) >>> 0, ((m.u32((dmg + 0x70) >>> 0) | 0) + q(0x7a)) >>> 0)
+    m.setU32((dmg + 0x74) >>> 0, ((m.u32((dmg + 0x74) >>> 0) | 0) + q(0x78)) >>> 0)
+    if (q(0x67) !== 0) m.setU32(dmg, (m.u32(dmg) | 0x100) >>> 0)
+    if (q(0x68) !== 0) m.setU32(dmg, (m.u32(dmg) | 0x200) >>> 0)
+    if (q(0x6a) !== 0) m.setU32(dmg, (m.u32(dmg) | 0x400) >>> 0)
+  } else if (scale128 !== 0 && altUnit !== 0) {
+    if (MISSILE_RollCriticalStrike113c(m, altUnit, 0) !== 0) {
+      m.setU32(dmg, (m.u32(dmg) | 2) >>> 0)
+    }
+    const qAlt = (sId: number): number => STATLIST_GetUnitStatWithLayer113c(m, altUnit, sId, 0) | 0
+    const s21 = qAlt(0x15)
+    basePhysMin = sar32(imul32(s21, scale128) + ((imul32(s21, scale128) >> 31) & 0x7f), 7)
+    const s22 = qAlt(0x16)
+    basePhysMax = sar32(imul32(s22, scale128) + ((imul32(s22, scale128) >> 31) & 0x7f), 7)
+    slot40 = qAlt(0x19)
+    slot14 = qAlt(0x12)
+    slot28 = qAlt(0x11)
+    m.setU32((dmg + 0x6c) >>> 0, ((m.u32((dmg + 0x6c) >>> 0) | 0) + qAlt(0x79)) >>> 0)
+    m.setU32((dmg + 0x70) >>> 0, ((m.u32((dmg + 0x70) >>> 0) | 0) + qAlt(0x7a)) >>> 0)
+    m.setU32((dmg + 0x74) >>> 0, ((m.u32((dmg + 0x74) >>> 0) | 0) + qAlt(0x78)) >>> 0)
+  }
+
+  let pctFinal = (slot40 + (STATLIST_GetUnitStatWithLayer113c(m, missile, 0x19, 0) | 0)) | 0
+  pctFinal = (pctFinal + (slot14 > slot28 ? slot14 : slot28)) | 0
+  if (pctFinal <= -90) pctFinal = -90
+  m.setU32((dmg + 0x78) >>> 0, pctFinal >>> 0)
+  m.setU32((dmg + 0x04) >>> 0, (basePhysMin + physMin) >>> 0)
+  m.setU32((dmg + 0x08) >>> 0, (basePhysMax + physMax) >>> 0)
+
+  switch (elemType) {
+    case 1:
+      m.setU32((dmg + 0x0c) >>> 0, elemMin >>> 0)
+      m.setU32((dmg + 0x10) >>> 0, elemMax >>> 0)
+      m.setU32((dmg + 0x14) >>> 0, elemLen >>> 0)
+      break
+    case 2:
+      m.setU32((dmg + 0x18) >>> 0, elemMin >>> 0)
+      m.setU32((dmg + 0x1c) >>> 0, elemMax >>> 0)
+      break
+    case 3:
+      m.setU32((dmg + 0x20) >>> 0, elemMin >>> 0)
+      m.setU32((dmg + 0x24) >>> 0, elemMax >>> 0)
+      break
+    case 4:
+    case 12:
+      m.setU32((dmg + 0x28) >>> 0, elemMin >>> 0)
+      m.setU32((dmg + 0x2c) >>> 0, elemMax >>> 0)
+      m.setU32((dmg + 0x30) >>> 0, elemLen >>> 0)
+      break
+    case 5:
+      m.setU32((dmg + 0x34) >>> 0, elemMin >>> 0)
+      m.setU32((dmg + 0x38) >>> 0, elemMax >>> 0)
+      m.setU32((dmg + 0x3c) >>> 0, elemLen >>> 0)
+      break
+    case 6:
+      m.setU32((dmg + 0x44) >>> 0, elemMin >>> 0)
+      m.setU32((dmg + 0x48) >>> 0, elemMax >>> 0)
+      break
+    case 7:
+      m.setU32((dmg + 0x4c) >>> 0, elemMin >>> 0)
+      m.setU32((dmg + 0x50) >>> 0, elemMax >>> 0)
+      break
+    case 8:
+      m.setU32((dmg + 0x54) >>> 0, elemMin >>> 0)
+      m.setU32((dmg + 0x58) >>> 0, elemMax >>> 0)
+      break
+    case 9:
+      m.setU32((dmg + 0x5c) >>> 0, elemLen >>> 0)
+      break
+    case 11:
+      m.setU32((dmg + 0x60) >>> 0, elemMin >>> 0)
+      m.setU32((dmg + 0x64) >>> 0, elemMax >>> 0)
+      m.setU32((dmg + 0x68) >>> 0, elemLen >>> 0)
+      break
+    default:
+      break
+  }
+
+  if (srcDmg !== 0) {
+    UNITS_SyncDualWieldWeaponStatLists113c(m, owner, 1)
+    MISSILE_AddStatsToDamage113c(m, dmg, owner, 8)
+    MISSILE_ScaleDamageDataBy128thsInline113c(m, dmg, srcDmg)
+    return
+  }
+  if (scale128 !== 0 && altUnit !== 0) {
+    MISSILE_AddStatsToDamage113c(m, dmg, altUnit, 0)
+    MISSILE_ScaleDamageDataBy128thsInline113c(m, dmg, scale128)
+  }
+}
+
 
