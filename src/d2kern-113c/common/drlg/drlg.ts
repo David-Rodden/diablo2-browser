@@ -21,6 +21,7 @@ import { imul32 } from '../int-math.ts';
 import {
   D2CMP_10051_GetTileFlags113c,
   D2CMP_10059_FindTiles113c,
+  DRLGROOMTILE_GetWarpLevelsArray113c,
 } from './room-tile.ts';
 
 /**
@@ -483,5 +484,66 @@ export function DRLG_InitActWarpLists113c(m: Memory113c, pDrlg: number): void {
   m.setU32((base + 0x380) >>> 0, c3);
   m.setU32((base + 0x44c) >>> 0, c3);
   m.setU8((base + 0x3a8) >>> 0, 3);
+}
+
+/**
+ * `@va D2Common:0x6FD7DC90` (`DRLG_CollectWarpAndSpecialRoomCenters113c`, not exported;
+ * custom LTCG `esi = pLevel`, `ret`).
+ */
+export function DRLG_CollectWarpAndSpecialRoomCenters113c(
+  m: Memory113c,
+  pLevel: number,
+): void {
+  const level = pLevel >>> 0;
+  let pRoomEx = m.u32((level + 0x10) >>> 0);
+  let bSpecial = 0;
+
+  while (pRoomEx !== 0) {
+    const dwFlags = m.u32((pRoomEx + 0x28) >>> 0) >>> 0;
+    if ((dwFlags & 0x30000) !== 0) {
+      bSpecial = 1;
+    }
+
+    let keep = false;
+    if ((dwFlags & 0xff0) !== 0) {
+      if (bSpecial !== 0) {
+        keep = true;
+      } else {
+        for (let bit = 0; bit < 8; bit++) {
+          if ((m.u32((pRoomEx + 0x28) >>> 0) & ((0x10 << bit) >>> 0)) !== 0) {
+            const pWarpLevels = DRLGROOMTILE_GetWarpLevelsArray113c(
+              m,
+              m.u32((level + 0x1b4) >>> 0),
+              m.u32((level + 0x1d0) >>> 0) | 0,
+            ) >>> 0;
+            if ((m.u32((pWarpLevels + bit * 4) >>> 0) | 0) !== -1) {
+              keep = true;
+              break;
+            }
+          }
+        }
+      }
+    } else if (bSpecial !== 0) {
+      keep = true;
+    }
+
+    if (keep) {
+      const idx = m.u32((level + 0x228) >>> 0) | 0;
+      const cx =
+        ((m.u32((pRoomEx + 0x34) >>> 0) | 0) +
+          (((m.u32((pRoomEx + 0x3c) >>> 0) | 0) / 2) | 0)) |
+        0;
+      const cy =
+        ((m.u32((pRoomEx + 0x38) >>> 0) | 0) +
+          (((m.u32((pRoomEx + 0x40) >>> 0) | 0) / 2) | 0)) |
+        0;
+      m.setU32((level + 0x1e0 + idx * 4) >>> 0, imul32(cx, 5) >>> 0);
+      m.setU32((level + 0x204 + idx * 4) >>> 0, imul32(cy, 5) >>> 0);
+      m.setU32((level + 0x228) >>> 0, (idx + 1) >>> 0);
+      bSpecial = 0;
+    }
+
+    pRoomEx = m.u32((pRoomEx + 0x24) >>> 0);
+  }
 }
 

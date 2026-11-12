@@ -1692,3 +1692,37 @@ export function DRLGTILESUB_ApplyNonPresetSubTheme113c(
   return 0;
 }
 
+/**
+ * `@va D2Common:0x6FDD4110` (`DRLGTILESUB_ApplySubThemesToRoom113c`, not exported;
+ * custom LTCG `ebx = pLvlSub`, `[esp+4] = pSubstCtx`, `ret 4`).
+ */
+export function DRLGTILESUB_ApplySubThemesToRoom113c(
+  m: Memory113c,
+  pLvlSub: number,
+  pSubstCtx: number,
+): void {
+  const lvlSub = pLvlSub >>> 0;
+  const ctx = pSubstCtx >>> 0;
+  const pLevel = m.u32(ctx);
+  const pSubData = m.u32((lvlSub + 0x50) >>> 0);
+  const nCount = m.u32((pSubData + 0x4c) >>> 0) | 0;
+  if (nCount === 0) {
+    return;
+  }
+  if ((m.u32((ctx + 0x14) >>> 0) | 0) === -1) {
+    m.setU32((ctx + 0x14) >>> 0, 0x3e);
+  }
+  let startOffset = 0;
+  if (m.u32((lvlSub + 0x44) >>> 0) === 0) {
+    startOffset = SEED_RollRandomNumberInline113c(m, (pLevel + 0x1c4) >>> 0, nCount);
+  }
+  for (let i = 0; i < nCount; i++) {
+    const idx = smod32((startOffset + i) | 0, nCount);
+    const pSubGroup = (m.u32((pSubData + 0x50) >>> 0) + Math.imul(idx, 24)) >>> 0;
+    const res = DRLGTILESUB_ApplyNonPresetSubTheme113c(m, ctx, lvlSub, pSubGroup);
+    if (res !== 0 && m.u32((lvlSub + 0x44) >>> 0) === 0) {
+      return;
+    }
+  }
+}
+

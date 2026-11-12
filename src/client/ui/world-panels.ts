@@ -16,6 +16,7 @@ import type { Item } from '../../common/items/items.ts'
 import { getTblLang, lookupTbl, type TblLang } from '../i18n/lang.ts'
 import { STASH_GOLD_CAP, getInventoryGoldLimit, getStashGoldLimit } from '../../common/items/inventory-model.ts'
 import { BAKED_UI_MANIFEST } from '../../common/items/baked-ui-meta.ts'
+import { prepareDynamicItemsAtlas } from '../../common/items/item-palette-dyer.ts'
 import { type TownNpcServiceDescriptor, getLocalizedNpcName } from '../../common/units/npc-table.ts'
 import type { VendorTabId } from '../../common/items/vendor-generator.ts'
 import { DRLG_GetActNoFromLevelId } from '../../common/drlg/drlg-drlg.ts'
@@ -948,8 +949,47 @@ export class WorldPanelsHud {
   }
 
   getItemsAtlasImage(): HTMLImageElement {
-    if (this.cachedItemsAtlasImg) return this.cachedItemsAtlasImg
+    if (this.cachedItemsAtlasImg) {
+      if (
+        !(this.cachedItemsAtlasImg as unknown as { __dynamicItemsAtlas?: boolean }).__dynamicItemsAtlas &&
+        this.cachedItemsAtlasImg.complete &&
+        this.cachedItemsAtlasImg.naturalWidth > 0 &&
+        typeof HTMLImageElement !== 'undefined' &&
+        this.cachedItemsAtlasImg instanceof HTMLImageElement
+      ) {
+        this.cachedItemsAtlasImg = prepareDynamicItemsAtlas(
+          this.cachedItemsAtlasImg,
+          BAKED_UI_MANIFEST.itemRects,
+          BAKED_UI_MANIFEST.atlasWidth,
+          BAKED_UI_MANIFEST.atlasHeight,
+        ) as unknown as HTMLImageElement
+      }
+      return this.cachedItemsAtlasImg
+    }
     const img = this.createOrLoadUiImage(BAKED_UI_MANIFEST.images.itemsAtlas, 'itemsAtlas')
+    if (typeof HTMLImageElement !== 'undefined' && img instanceof HTMLImageElement) {
+      if (img.complete && img.naturalWidth > 0) {
+        this.cachedItemsAtlasImg = prepareDynamicItemsAtlas(
+          img,
+          BAKED_UI_MANIFEST.itemRects,
+          BAKED_UI_MANIFEST.atlasWidth,
+          BAKED_UI_MANIFEST.atlasHeight,
+        ) as unknown as HTMLImageElement
+        return this.cachedItemsAtlasImg
+      }
+      img.addEventListener(
+        'load',
+        () => {
+          this.cachedItemsAtlasImg = prepareDynamicItemsAtlas(
+            img,
+            BAKED_UI_MANIFEST.itemRects,
+            BAKED_UI_MANIFEST.atlasWidth,
+            BAKED_UI_MANIFEST.atlasHeight,
+          ) as unknown as HTMLImageElement
+        },
+        { once: true },
+      )
+    }
     this.cachedItemsAtlasImg = img
     return img
   }

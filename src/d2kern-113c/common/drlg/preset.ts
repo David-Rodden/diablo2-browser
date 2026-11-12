@@ -9,7 +9,63 @@ import { D2DrlgCoordStrc, D2DrlgCoordStrc_SIZE, D2DrlgMapStrc } from '../../mem/
 import { D2CommonAssertError } from '../inline-helpers.ts'
 import { sdiv32 } from '../int-math.ts'
 import { STATLIST_FindStatIndex113c } from '../statlist.ts'
-import { DRLGPRESET_FreePresetRoomGrids113c } from './drlg-grid.ts'
+import { DRLGGRID_InitializeGridWindow113c, DRLGPRESET_FreePresetRoomGrids113c } from './drlg-grid.ts'
+import {
+  DRLGPRESET_SpawnFortressWall2Presets113c,
+  DRLGPRESET_SpawnMapAIPathPresets113c,
+} from './drlg-room.ts'
+
+const PRESET_STACK_BASE = 0x7ff90000
+const PRESET_STACK_SIZE = 0x2000
+const _presetStackBuf = new ArrayBuffer(PRESET_STACK_SIZE)
+const _presetStackU8 = new Uint8Array(_presetStackBuf)
+const _presetStackDV = new DataView(_presetStackBuf)
+
+function withPresetStackScratch113c(m: Memory113c): Memory113c {
+  const isStack = (p: number): boolean => {
+    const u = p >>> 0
+    return u >= PRESET_STACK_BASE && u < PRESET_STACK_BASE + PRESET_STACK_SIZE
+  }
+  const self: Memory113c = {
+    alloc: size => m.alloc(size),
+    u8: p => (isStack(p) ? _presetStackU8[(p >>> 0) - PRESET_STACK_BASE]! : m.u8(p)),
+    u16: p => (isStack(p) ? _presetStackDV.getUint16((p >>> 0) - PRESET_STACK_BASE, true) : m.u16(p)),
+    u32: p => (isStack(p) ? _presetStackDV.getUint32((p >>> 0) - PRESET_STACK_BASE, true) : m.u32(p)),
+    setU8: (p, v) => {
+      if (isStack(p)) _presetStackU8[(p >>> 0) - PRESET_STACK_BASE] = v & 0xff
+      else m.setU8(p, v)
+    },
+    setU16: (p, v) => {
+      if (isStack(p)) _presetStackDV.setUint16((p >>> 0) - PRESET_STACK_BASE, v & 0xffff, true)
+      else m.setU16(p, v)
+    },
+    setU32: (p, v) => {
+      if (isStack(p)) _presetStackDV.setUint32((p >>> 0) - PRESET_STACK_BASE, v >>> 0, true)
+      else m.setU32(p, v)
+    },
+    get: (base, f, idx = 0) => {
+      const width = f.type === 'u8' ? 1 : f.type === 'u16' ? 2 : 4
+      const p = ((base >>> 0) + f.off + idx * width) >>> 0
+      return width === 1 ? self.u8(p) : width === 2 ? self.u16(p) : self.u32(p)
+    },
+    set: (base, f, v, idx = 0) => {
+      const width = f.type === 'u8' ? 1 : f.type === 'u16' ? 2 : 4
+      const p = ((base >>> 0) + f.off + idx * width) >>> 0
+      if (width === 1) self.setU8(p, v)
+      else if (width === 2) self.setU16(p, v)
+      else self.setU32(p, v)
+    },
+    fill: (p, len, v) => {
+      if (isStack(p)) {
+        const off = (p >>> 0) - PRESET_STACK_BASE
+        _presetStackU8.fill(v & 0xff, off, off + len)
+      } else {
+        m.fill(p, len, v)
+      }
+    },
+  }
+  return self
+}
 
 /**
  * `@va D2Common:0x6FD59C60` (`DRLGPRESET_FinalizePopsLocations`, not exported; LTCG `esi = pDrlgMap` + 1 stack arg `nPops`, `ret 4`).
@@ -600,6 +656,64 @@ export function DRLGPRESET_FreePresetRoomData113c(
     }
     freeFn?.call(m, pPreset)
     m.setU32((roomEx + 0x20) >>> 0, 0)
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD5BD60` (`DRLGPRESET_BuildFortressAndMapAIPaths113c`, not exported;
+ * custom LTCG `eax = pDrlgMap`, `[esp+4] = pMemPool`, `ret 4`).
+ */
+export function DRLGPRESET_BuildFortressAndMapAIPaths113c(
+  m: Memory113c,
+  pDrlgMap: number,
+  pMemPool: number,
+): void {
+  const map = pDrlgMap >>> 0
+  const memPool = pMemPool >>> 0
+  const nWidth = m.u32((map + 0x18) >>> 0) | 0
+  const nHeight = m.u32((map + 0x1c) >>> 0) | 0
+  const nRowStride = (nWidth + 1) | 0
+  const pFile = m.u32((map + 0x0c) >>> 0)
+  const pBaseCells = m.u32((pFile + 0x3c) >>> 0)
+
+  const sm = withPresetStackScratch113c(m)
+  const pWindowBox = PRESET_STACK_BASE
+  const pOutGrid = (PRESET_STACK_BASE + 0x20) >>> 0
+  const pRowOffsetsBuf = (PRESET_STACK_BASE + 0x40) >>> 0
+
+  sm.setU32(pWindowBox, 0)
+  sm.setU32((pWindowBox + 0x04) >>> 0, 0)
+  sm.setU32((pWindowBox + 0x08) >>> 0, nWidth >>> 0)
+  sm.setU32((pWindowBox + 0x0c) >>> 0, nHeight >>> 0)
+  sm.fill(pOutGrid, 0x14, 0)
+
+  DRLGGRID_InitializeGridWindow113c(sm, pOutGrid, pWindowBox, nRowStride, pBaseCells, pRowOffsetsBuf)
+
+  const pLvlPrestTxt = m.u32((map + 0x08) >>> 0)
+  const nPosX = m.u32((map + 0x10) >>> 0) | 0
+  const nPosY = m.u32((map + 0x14) >>> 0) | 0
+  sm.setU32(pWindowBox, nPosX >>> 0)
+  sm.setU32((pWindowBox + 0x04) >>> 0, nPosY >>> 0)
+
+  if (m.u32(pLvlPrestTxt) === 0x1b) {
+    DRLGPRESET_SpawnFortressWall2Presets113c(sm, nPosX, nPosY, map, memPool)
+    DRLGPRESET_SpawnMapAIPathPresets113c(sm, map, memPool, -1, pOutGrid)
+    return
+  }
+
+  let x = 0
+  while (x < (sm.u32((pWindowBox + 0x08) >>> 0) | 0)) {
+    const rowOff0 = sm.u32(sm.u32((pOutGrid + 0x04) >>> 0)) | 0
+    const pCells = sm.u32(pOutGrid)
+    const cell = sm.u32((pCells + (((rowOff0 + x) | 0) << 2)) >>> 0)
+    const style = (cell >>> 20) & 0x3f
+    const seq = (cell >>> 8) & 0xff
+    if (style === 2 && seq === 0x18) {
+      DRLGPRESET_SpawnFortressWall2Presets113c(sm, (x + nPosX + 1) | 0, nPosY, map, memPool)
+      DRLGPRESET_SpawnMapAIPathPresets113c(sm, map, memPool, x, pOutGrid)
+      x = (x + 4) | 0
+    }
+    x = (x + 1) | 0
   }
 }
 

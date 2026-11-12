@@ -12,8 +12,67 @@ import {
   D2DynamicPathStrc,
   D2RoomExStrc,
 } from '../../mem/layout.generated.ts';
-import { D2CommonAssertError, SEED_RollRandomNumberInline113c } from '../inline-helpers.ts';
+import { DATATBLS_GetLvlWarpTxtRecordByIdAndDir113c } from '../../tables/datatbls-113c.ts';
+import {
+  D2CommonAssertError,
+  DATATBLS_ValidateMonStatsIdInline113c,
+  SEED_RollRandomNumberInline113c,
+} from '../inline-helpers.ts';
 import { imul32 } from '../int-math.ts';
+import { DRLGGRID_RasterizeThickLine113c } from './drlg-grid.ts';
+import { DRLGROOM_AllocPresetUnit113c } from './drlg-room.ts';
+
+const ROOMTILE_STACK_BASE = 0x7ff90000;
+const ROOMTILE_STACK_SIZE = 0x100;
+const _roomTileStackBuf = new ArrayBuffer(ROOMTILE_STACK_SIZE);
+const _roomTileStackU8 = new Uint8Array(_roomTileStackBuf);
+const _roomTileStackDV = new DataView(_roomTileStackBuf);
+
+function withRoomTileStackScratch113c(m: Memory113c): Memory113c {
+  const isStack = (p: number): boolean => {
+    const u = p >>> 0;
+    return u >= ROOMTILE_STACK_BASE && u < ROOMTILE_STACK_BASE + ROOMTILE_STACK_SIZE;
+  };
+  const self: Memory113c = {
+    alloc: size => m.alloc(size),
+    u8: p => (isStack(p) ? _roomTileStackU8[(p >>> 0) - ROOMTILE_STACK_BASE]! : m.u8(p)),
+    u16: p => (isStack(p) ? _roomTileStackDV.getUint16((p >>> 0) - ROOMTILE_STACK_BASE, true) : m.u16(p)),
+    u32: p => (isStack(p) ? _roomTileStackDV.getUint32((p >>> 0) - ROOMTILE_STACK_BASE, true) : m.u32(p)),
+    setU8: (p, v) => {
+      if (isStack(p)) _roomTileStackU8[(p >>> 0) - ROOMTILE_STACK_BASE] = v & 0xff;
+      else m.setU8(p, v);
+    },
+    setU16: (p, v) => {
+      if (isStack(p)) _roomTileStackDV.setUint16((p >>> 0) - ROOMTILE_STACK_BASE, v & 0xffff, true);
+      else m.setU16(p, v);
+    },
+    setU32: (p, v) => {
+      if (isStack(p)) _roomTileStackDV.setUint32((p >>> 0) - ROOMTILE_STACK_BASE, v >>> 0, true);
+      else m.setU32(p, v);
+    },
+    get: (base, f, idx = 0) => {
+      const width = f.type === 'u8' ? 1 : f.type === 'u16' ? 2 : 4;
+      const addr = ((base >>> 0) + f.off + idx * width) >>> 0;
+      return width === 1 ? self.u8(addr) : width === 2 ? self.u16(addr) : self.u32(addr);
+    },
+    set: (base, f, v, idx = 0) => {
+      const width = f.type === 'u8' ? 1 : f.type === 'u16' ? 2 : 4;
+      const addr = ((base >>> 0) + f.off + idx * width) >>> 0;
+      if (width === 1) self.setU8(addr, v);
+      else if (width === 2) self.setU16(addr, v);
+      else self.setU32(addr, v);
+    },
+    fill: (p, len, v) => {
+      if (isStack(p)) {
+        const off = (p >>> 0) - ROOMTILE_STACK_BASE;
+        _roomTileStackU8.fill(v & 0xff, off, off + len);
+      } else {
+        m.fill(p, len, v);
+      }
+    },
+  };
+  return self;
+}
 
 /**
  * `.rdata` table at `0x6FDDBD68` (`0x6FDDBD68..0x6FDDBF24`, 37 entries of 3 `int32_t`: `[nLevelId, nStartIdx, nEndIdx]`).
@@ -1136,3 +1195,308 @@ export function DRLGROOMTILE_InitFloorTileData113c(
   );
   return pTileData >>> 0;
 }
+
+/**
+ * `@va D2Common:0x6FDB8780` (`DRLGROOMTILE_FindAdjacentRoomTileGrid113c`, custom `eax = dwPresetFlags`,
+ * stack `[esp+4] = pRoomEx`, `[esp+8] = bFloor`, `[esp+0xC] = nX`, `[esp+0x10] = nY`, `[esp+0x14] = ppOutRoomEx`, `ret 0x14 -> D2DrlgTileDataStrc*`).
+ *
+ * Iterates `i = 0 .. pRoomEx->nRoomsNear (+0x2C) - 1`, skipping `pNear == pRoomEx`, and calls
+ * `0x6FDB81A0` (`DRLGROOMTILE_FindPresetRoomTile113c`) on each neighbor `pNear = pRoomEx->ppRoomsNear (+0x08)[i]`.
+ * On the first non-zero hit `pTile`, writes `*ppOutRoomEx = pRoomEx->ppRoomsNear[i]` and returns `pTile`;
+ * otherwise writes `*ppOutRoomEx = 0` and returns `0`.
+ */
+export function DRLGROOMTILE_FindAdjacentRoomTileGrid113c(
+  m: Memory113c,
+  dwPresetFlags: number,
+  pRoomEx: number,
+  bFloor: number,
+  nX: number,
+  nY: number,
+  ppOutRoomEx: number,
+): number {
+  const roomEx = pRoomEx >>> 0;
+  const flags = dwPresetFlags >>> 0;
+  const ppOut = ppOutRoomEx >>> 0;
+  const nNear = m.get(roomEx, D2RoomExStrc.nRoomsNear) | 0;
+  if (nNear > 0) {
+    const ppNear = m.get(roomEx, D2RoomExStrc.ppRoomsNear);
+    for (let i = 0; i < nNear; i++) {
+      const pNear = m.u32((ppNear + i * 4) >>> 0);
+      if (pNear !== roomEx) {
+        const pTile = DRLGROOMTILE_FindPresetRoomTile113c(
+          m,
+          pNear,
+          flags,
+          bFloor | 0,
+          nX | 0,
+          nY | 0,
+        );
+        if (pTile !== 0) {
+          m.setU32(ppOut, m.u32((ppNear + i * 4) >>> 0));
+          return pTile >>> 0;
+        }
+      }
+    }
+  }
+  m.setU32(ppOut, 0);
+  return 0;
+}
+
+/**
+ * `.rdata` extended warp tile preset unit descriptor fields at `0x6FDDBF34..0x6FDDC2DF`
+ * (`34` rows × `[nClassId, nUnitType, nOffsetX, nOffsetY]` at `+0x0C, +0x10, +0x14, +0x18`
+ * within each 28-byte `0x6FDDBF28` entry).
+ */
+export const WARP_TILE_PRESET_UNIT_6FDDBF34: ReadonlyArray<readonly [number, number, number, number]> = [
+  [14, 2, 5, 0],
+  [13, 2, 0, 5],
+  [16, 2, 0, 0],
+  [15, 2, 0, 0],
+  [27, 2, 5, -2],
+  [24, 2, 1, 2],
+  [23, 2, 0, 0],
+  [25, 2, 1, 0],
+  [62, 2, 0, 3],
+  [63, 2, 3, 0],
+  [16, 2, 0, 0],
+  [64, 2, 0, 0],
+  [47, 2, 5, 0],
+  [291, 2, 2, 0],
+  [290, 2, 0, 2],
+  [293, 2, 2, 0],
+  [292, 2, 0, 2],
+  [295, 2, 2, 0],
+  [294, 2, 0, 2],
+  [92, 2, 1, 0],
+  [91, 2, 0, 2],
+  [229, 2, 0, 0],
+  [230, 2, 0, 0],
+  [449, 2, -2, 4],
+  [435, 1, 1, 2],
+  [435, 1, 2, 1],
+  [435, 1, 1, 1],
+  [433, 1, 0, 1],
+  [432, 1, 1, 0],
+  [434, 1, 0, 1],
+  [524, 1, 0, 0],
+  [525, 1, 0, 0],
+  [60, 2, 2, 0],
+  [60, 2, 0, 2],
+];
+
+/**
+ * `@va D2Common:0x6FD8DC90` (`DRLGROOMTILE_RasterizeOutdoorRoadsToPreset113c`, not exported;
+ * custom LTCG `eax = pRoomEx`, `ecx = pLevel`, `ret`).
+ */
+export function DRLGROOMTILE_RasterizeOutdoorRoadsToPreset113c(
+  m: Memory113c,
+  pRoomEx: number,
+  pLevel: number,
+): void {
+  const roomEx = pRoomEx >>> 0;
+  const level = pLevel >>> 0;
+  const pPreset = m.u32((roomEx + 0x20) >>> 0);
+  const pOutdoors = m.u32((level + 0x14) >>> 0);
+  const sm = withRoomTileStackScratch113c(m);
+  const clipRect = ROOMTILE_STACK_BASE;
+  sm.setU32(clipRect, (((sm.u32((roomEx + 0x34) >>> 0) | 0) - 1) | 0) >>> 0);
+  sm.setU32((clipRect + 0x04) >>> 0, (((sm.u32((roomEx + 0x38) >>> 0) | 0) - 1) | 0) >>> 0);
+  sm.setU32((clipRect + 0x08) >>> 0, (((sm.u32((roomEx + 0x3c) >>> 0) | 0) + 3) | 0) >>> 0);
+  sm.setU32((clipRect + 0x0c) >>> 0, (((sm.u32((roomEx + 0x40) >>> 0) | 0) + 3) | 0) >>> 0);
+
+  const nLists = sm.u32((pOutdoors + 0x260) >>> 0) | 0;
+  for (let i = 0; i < nLists; i++) {
+    let pSeg = sm.u32((pOutdoors + 0x68 + i * 4) >>> 0);
+    while (pSeg !== 0) {
+      const pNext = sm.u32((pSeg + 0x10) >>> 0);
+      if (pNext !== 0) {
+        DRLGGRID_RasterizeThickLine113c(sm, pSeg, clipRect, (pPreset + 0x3c) >>> 0, 1, 0, 2);
+      }
+      pSeg = pNext;
+    }
+  }
+}
+
+/**
+ * `@va D2Common:0x6FDB8970` (`DRLGROOMTILE_SpawnWarpPresetUnit113c`, not exported;
+ * custom LTCG `eax = nTileX`, `ecx = pRoomEx`, `[esp+4] = pTileData`, `[esp+8] = dwTileFlags`,
+ * `[esp+0xC] = nTileY`, `[esp+0x10] = nTileType`, `ret 0x10`).
+ */
+export function DRLGROOMTILE_SpawnWarpPresetUnit113c(
+  m: Memory113c,
+  nTileX: number,
+  pRoomEx: number,
+  pTileData: number,
+  dwTileFlags: number,
+  nTileY: number,
+  nTileType: number,
+): void {
+  const tileData = pTileData >>> 0;
+  const roomEx = pRoomEx >>> 0;
+  let bIsType9 = 0;
+  if (tileData !== 0) {
+    if ((m.u32((tileData + 0x14) >>> 0) & 0x20) !== 0) {
+      return;
+    }
+    bIsType9 = (m.u32((tileData + 0x1c) >>> 0) | 0) === 9 ? 1 : 0;
+  } else {
+    bIsType9 = (nTileType | 0) === 9 ? 1 : 0;
+  }
+
+  const pLevel = m.u32((roomEx + 0x58) >>> 0);
+  const nLevelId = m.u32((pLevel + 0x1d0) >>> 0) | 0;
+  const idx = DRLGROOMTILE_LookupWarpTileEntryIndex113c(bIsType9, nLevelId, dwTileFlags >>> 0) | 0;
+  if (idx === -1) {
+    return;
+  }
+
+  const desc = WARP_TILE_PRESET_UNIT_6FDDBF34[idx]!;
+  let nClassId = desc[0];
+  const nUnitType = desc[1];
+  const subtileX = (imul32(((nTileX | 0) - (m.u32((roomEx + 0x34) >>> 0) | 0)) | 0, 5) + desc[2]) | 0;
+  const subtileY = (imul32(((nTileY | 0) - (m.u32((roomEx + 0x38) >>> 0) | 0)) | 0, 5) + desc[3]) | 0;
+  const maxX = imul32(m.u32((roomEx + 0x3c) >>> 0) | 0, 5);
+  const maxY = imul32(m.u32((roomEx + 0x40) >>> 0) | 0, 5);
+  if (subtileX < 0 || subtileY < 0 || subtileX >= maxX || subtileY >= maxY) {
+    return;
+  }
+
+  let nMode = 0;
+  let doSpawn = true;
+  if (nUnitType === 1) {
+    nClassId = DATATBLS_ValidateMonStatsIdInline113c(m, nClassId) | 0;
+    nMode = 1;
+  } else if (nUnitType === 2 && nClassId >= 0x5b && nClassId <= 0x5c) {
+    if (SEED_RollRandomNumberInline113c(m, (roomEx + 0x14) >>> 0, 3) === 0) {
+      doSpawn = false;
+    }
+  }
+
+  if (doSpawn) {
+    const pDrlg = m.u32((pLevel + 0x1b4) >>> 0);
+    const pMemPool = m.u32((pDrlg + 0x478) >>> 0);
+    DRLGROOM_AllocPresetUnit113c(m, pMemPool, roomEx, nUnitType, nClassId, nMode, subtileX, subtileY);
+  }
+  if (tileData !== 0) {
+    m.setU32((tileData + 0x14) >>> 0, (m.u32((tileData + 0x14) >>> 0) | 0x20) >>> 0);
+  }
+}
+
+/**
+ * `@va D2Common:0x6FDB9090` (`DRLGROOMTILE_AllocLevelWarpPresetUnit113c`, not exported;
+ * custom LTCG `eax = dwTileFlags`, `ecx = pRoomEx`, `[esp+4] = nTileX`, `[esp+8] = nTileY`,
+ * `[esp+0xC] = nTileType`, `ret 0xC -> BOOL`).
+ */
+export function DRLGROOMTILE_AllocLevelWarpPresetUnit113c(
+  m: Memory113c,
+  dwTileFlags: number,
+  pRoomEx: number,
+  nTileX: number,
+  nTileY: number,
+  nTileType: number,
+): number {
+  const roomEx = pRoomEx >>> 0;
+  const flags = dwTileFlags >>> 0;
+  const pLevel = m.u32((roomEx + 0x58) >>> 0);
+  const pDrlg = m.u32((pLevel + 0x1b4) >>> 0);
+  const pWarpLevels = DRLGROOMTILE_GetWarpLevelsArray113c(
+    m,
+    pDrlg,
+    m.u32((pLevel + 0x1d0) >>> 0) | 0,
+  ) >>> 0;
+  const nTargetLevel = m.u32((pWarpLevels + (((flags >>> 20) & 0x3f) << 2)) >>> 0) | 0;
+  const nDir = (nTileType | 0) === 11 ? 0x72 : 0x6c;
+  const pLvlWarp = DATATBLS_GetLvlWarpTxtRecordByIdAndDir113c(m, nTargetLevel, nDir) >>> 0;
+  if (pLvlWarp === 0) {
+    return 0;
+  }
+
+  const relX = ((nTileX | 0) - (m.u32((roomEx + 0x34) >>> 0) | 0)) | 0;
+  const relY = ((nTileY | 0) - (m.u32((roomEx + 0x38) >>> 0) | 0)) | 0;
+  if (
+    relX === (m.u32((roomEx + 0x3c) >>> 0) | 0) ||
+    relY === (m.u32((roomEx + 0x40) >>> 0) | 0)
+  ) {
+    return 0;
+  }
+
+  const subtileX = (imul32(relX, 5) + (m.u32((pLvlWarp + 0x1c) >>> 0) | 0)) | 0;
+  const subtileY = (imul32(relY, 5) + (m.u32((pLvlWarp + 0x20) >>> 0) | 0)) | 0;
+  const pMemPool = m.u32((pDrlg + 0x478) >>> 0);
+  DRLGROOM_AllocPresetUnit113c(m, pMemPool, roomEx, 5, m.u32(pLvlWarp) | 0, 0, subtileX, subtileY);
+  return 1;
+}
+
+/**
+ * `@va D2Common:0x6FDB8A90` (`DRLGROOMTILE_ApplyTileFlagsAndSpawnWarp113c`, not exported;
+ * custom LTCG `eax = nTileX`, `ebx = dwTileFlags`, `ecx = pRoomEx`, `esi = pTileData`,
+ * `[esp+4] = nTileType`, `[esp+8] = nTileY`, `ret 8`).
+ */
+export function DRLGROOMTILE_ApplyTileFlagsAndSpawnWarp113c(
+  m: Memory113c,
+  nTileX: number,
+  dwTileFlags: number,
+  pRoomEx: number,
+  pTileData: number,
+  nTileType: number,
+  nTileY: number,
+): void {
+  const roomEx = pRoomEx >>> 0;
+  const tileData = pTileData >>> 0;
+  const flags = dwTileFlags >>> 0;
+  const tileType = nTileType | 0;
+
+  if (roomEx !== 0 && (tileType === 9 || tileType === 8)) {
+    DRLGROOMTILE_SpawnWarpPresetUnit113c(m, nTileX, roomEx, tileData, flags, nTileY, 0);
+  }
+
+  let outFlags = m.u32((tileData + 0x14) >>> 0);
+  if (tileType !== 13) {
+    outFlags = (outFlags | (((((flags >>> 18) & 3) << 14) + 0x4000) >>> 0)) >>> 0;
+  }
+  if (tileType === 14) {
+    outFlags = (outFlags | 0x04) >>> 0;
+  } else if (tileType === 11 || tileType === 10 || tileType === 9 || tileType === 8) {
+    outFlags = (outFlags | 0x02) >>> 0;
+  }
+
+  if ((flags & 0x80) !== 0) {
+    outFlags = (outFlags | 0x01) >>> 0;
+  }
+  if ((flags & 0x10000000) !== 0) {
+    outFlags = (outFlags | 0x102) >>> 0;
+  }
+  if ((flags & 0x20000) !== 0) {
+    outFlags = (outFlags | 0x40) >>> 0;
+  }
+  if ((flags & 0x10000) !== 0) {
+    outFlags = (outFlags | 0x80) >>> 0;
+  }
+  if ((flags & 0x08) !== 0) {
+    outFlags = (outFlags | 0x04) >>> 0;
+  }
+  if ((flags | 0) < 0) {
+    outFlags = (outFlags | 0x08) >>> 0;
+  } else {
+    outFlags = (outFlags & ~0x08) >>> 0;
+  }
+  if ((flags & 0x4000000) !== 0) {
+    outFlags = (outFlags | 0x20c) >>> 0;
+  }
+  if ((flags & 0x20000000) !== 0) {
+    outFlags = (outFlags | 0x800) >>> 0;
+  }
+  if ((flags & 0x04) !== 0) {
+    outFlags = (outFlags | 0x2000) >>> 0;
+  }
+
+  m.setU32((tileData + 0x14) >>> 0, outFlags);
+  const cmpFlags = D2CMP_10051_GetTileFlags113c(m, m.u32((tileData + 0x18) >>> 0));
+  if ((cmpFlags & 0x01) !== 0) {
+    m.setU32((tileData + 0x14) >>> 0, (m.u32((tileData + 0x14) >>> 0) | 0x04) >>> 0);
+  }
+  if ((cmpFlags & 0x04) !== 0) {
+    m.setU32((tileData + 0x14) >>> 0, (m.u32((tileData + 0x14) >>> 0) | 0x800) >>> 0);
+  }
+}
+
