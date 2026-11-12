@@ -532,8 +532,8 @@ export class OnlineSession {
       hudManager: this.hudManager,
       predictor: this.predictor,
       automap: this.automapView,
-      onCommand: (cmd) => {
-        this.dispatchCommand(cmd)
+      onCommand: (cmd, nowMs) => {
+        this.dispatchCommand(cmd, nowMs)
       },
       vendorPrice: vendorPrice113c,
       vendorRepairAll: vendorRepairAll113c,

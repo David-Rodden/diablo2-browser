@@ -263,9 +263,9 @@ describe('Lane C B047 real-DLL differential vectors (drlg, dungeon, env, 16 func
 
   it('verifies Fog.#10023 assertion branches across B047 functions', () => {
     const m = new SparseMemory113c();
-    expect(() => ENV_StepCycle113c(m, 0, 0)).toThrow(/line 1351/);
+    expect(() => ENV_StepCycle113c(m, 0, 0)).toThrow(/^D2Common assertion failed at .*:1351$/);
     expect(() => ENV_ResetDefaultEnvironment113c(m, 0)).toThrow(/^D2Common assertion failed at .*:1351$/);
-    expect(() => ENV_InitEclipseEnvironment113c(m, 0)).toThrow(/line 1351/);
+    expect(() => ENV_InitEclipseEnvironment113c(m, 0)).toThrow(/^D2Common assertion failed at .*:1351$/);
 
     m.setU32(0x1000 + 0x48, 0x1100);
     m.setU32(0x1000 + 0x78, 1);

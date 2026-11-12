@@ -58,7 +58,19 @@ import {
   STATLIST_GetTotalStatValueLayer0_113c,
   STATLIST_GetUnitStat113c,
   STATLIST_GetUnitStatWithLayer113c,
+  STATLIST_SetWeaponStatListActive113c,
 } from './statlist.ts'
+import { ITEMS_GetActiveWeaponForAttack113c } from './items.ts'
+import {
+  INVENTORY_GetCompositWeaponMem113c,
+  INVENTORY_GetSecondaryWeapon113c,
+  ITEMS_GetWeaponClassCodeIdx113c,
+} from './inventory.ts'
+import {
+  COLLISION_RayTraceBetweenSizedPoints113c,
+  COLLISION_SetMaskWithSizeXY113c,
+} from './collision.ts'
+import { UNITS_IsInMovingMode113c } from './waypoint.ts'
 
 export const UNIT_PLAYER = 0
 export const UNIT_MONSTER = 1
@@ -1947,4 +1959,355 @@ export function UNITROOM_ClearUnitRoom113c(m: Memory113c, pUnit: number): void {
   PATH_ResetDynamicPathRoomAndCoordsInline113c(m, pPath)
 }
 
+function unitsCanDualWieldMem113c(m: Memory113c, pUnit: number): number {
+  const ptr = pUnit >>> 0
+  const uType = ptr !== 0 ? m.u32(ptr) : 6
+  const classId = ptr !== 0 ? m.u32((ptr + 0x04) >>> 0) | 0 : -1
+  if (uType === 0) {
+    return classId === 4 || classId === 6 ? 1 : 0
+  }
+  if (uType === 1) {
+    if (classId < 0) return 0
+    const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+    if (classId >= (m.u32((sgpt + 0xa80) >>> 0) | 0)) return 0
+    return classId >= 0x1a1 && classId <= 0x1a2 ? 1 : 0
+  }
+  return 0
+}
 
+function hasAttachedItemExMem113c(m: Memory113c, pItem: number): boolean {
+  const item = pItem >>> 0
+  if (item === 0) return false
+  const ex = m.u32((item + 0x5c) >>> 0)
+  if (ex === 0) return false
+  const parent = m.u32((ex + 0x34) >>> 0)
+  if (parent === 0) return false
+  if ((m.u32((parent + 0x10) >>> 0) | 0) >= 0) return false
+  return m.u32((parent + 0x44) >>> 0) !== 0
+}
+
+/**
+ * `@va D2Common:0x6FD82EF0` (`D2Common.#10932` `UNITS_SyncDualWieldWeaponStatLists`, 303 bytes,
+ * stdcall `[esp+4] = pUnit`, `[esp+8] = bCheckSkill`, `ret 0x8`, void).
+ */
+export function UNITS_SyncDualWieldWeaponStatLists113c(
+  m: Memory113c,
+  pUnit: number,
+  bCheckSkill: number,
+): void {
+  const ebx = pUnit >>> 0
+  if (unitsCanDualWieldMem113c(m, ebx) === 0) return
+  const edi = ITEMS_GetActiveWeaponForAttack113c(m, ebx, bCheckSkill)
+  const esi = INVENTORY_GetCompositWeaponMem113c(m, m.u32((ebx + 0x60) >>> 0))
+  if (edi === 0) {
+    if (hasAttachedItemExMem113c(m, esi)) {
+      STATLIST_SetWeaponStatListActive113c(m, ebx, esi, 1)
+    }
+    return
+  }
+  if (edi === esi) {
+    const other = INVENTORY_GetSecondaryWeapon113c(m, m.u32((ebx + 0x60) >>> 0))
+    if (hasAttachedItemExMem113c(m, esi)) {
+      STATLIST_SetWeaponStatListActive113c(m, ebx, esi, 1)
+    }
+    if (hasAttachedItemExMem113c(m, other)) {
+      STATLIST_SetWeaponStatListActive113c(m, ebx, other, 0)
+    }
+    return
+  }
+  if (hasAttachedItemExMem113c(m, edi)) {
+    STATLIST_SetWeaponStatListActive113c(m, ebx, edi, 1)
+  }
+  if (hasAttachedItemExMem113c(m, esi)) {
+    STATLIST_SetWeaponStatListActive113c(m, ebx, esi, 0)
+  }
+}
+
+const DIST_TABLE_6FDDABC0: ReadonlyArray<number> = [
+  -1, -1, -1, 0, 2, 4, 6, 8,
+  -1, -1, 0, 1, 2, 4, 6, 8,
+  -1, 0, 0, 2, 3, 5, 7, 8,
+  0, 1, 2, 2, 4, 5, 7, 8,
+  2, 2, 3, 4, 5, 6, 7, 9,
+  4, 4, 5, 5, 6, 7, 8, 9,
+  6, 6, 7, 7, 7, 8, 10, 10,
+  8, 8, 8, 8, 9, 9, 10, 11,
+]
+
+/**
+ * `@va D2Common:0x6FDCFCD0` (`D2Common.#10407` `UNITS_GetDistanceToOtherUnit`, 361 bytes,
+ * stdcall `[esp+4] = pUnit1`, `[esp+8] = pUnit2`, `ret 0x8` -> `number`).
+ */
+export function UNITS_GetDistanceToOtherUnit113c(
+  m: Memory113c,
+  pUnit1: number,
+  pUnit2: number,
+): number {
+  const u1 = pUnit1 >>> 0
+  const u2 = pUnit2 >>> 0
+  const esi = m.u32(u1) | 0
+  const ediPath = m.u32((u1 + 0x2c) >>> 0)
+  const x1 =
+    esi === 2 || (esi > 3 && esi <= 5)
+      ? m.u32((ediPath + 0x0c) >>> 0) | 0
+      : ediPath !== 0
+        ? m.u16((ediPath + 0x02) >>> 0)
+        : 0
+
+  const ebp = m.u32(u2) | 0
+  const edxPath = m.u32((u2 + 0x2c) >>> 0)
+  const x2 =
+    ebp === 2 || (ebp > 3 && ebp <= 5)
+      ? m.u32((edxPath + 0x0c) >>> 0) | 0
+      : edxPath !== 0
+        ? m.u16((edxPath + 0x02) >>> 0)
+        : 0
+
+  let dx = (x1 - x2) | 0
+  if (dx < 0) dx = -dx | 0
+
+  const y1 =
+    esi === 2 || (esi > 3 && esi <= 5)
+      ? m.u32((ediPath + 0x10) >>> 0) | 0
+      : ediPath !== 0
+        ? m.u16((ediPath + 0x06) >>> 0)
+        : 0
+
+  const y2 =
+    ebp === 2 || (ebp > 3 && ebp <= 5)
+      ? m.u32((edxPath + 0x10) >>> 0) | 0
+      : edxPath !== 0
+        ? m.u16((edxPath + 0x06) >>> 0)
+        : 0
+
+  let dy = (y1 - y2) | 0
+  if (dy < 0) dy = -dy | 0
+
+  const sz1 = UNITS_GetUnitSizeX113c(m, u1) | 0
+  const sz2 = UNITS_GetUnitSizeX113c(m, u2) | 0
+  if (dx < 8 && dy < 8 && sz1 < 4 && sz2 < 4) {
+    let d = DIST_TABLE_6FDDABC0[dy * 8 + dx]!
+    if (d < 0) return 0
+    if (sz1 === 3 || sz2 === 3) {
+      d = (d - 1) | 0
+    }
+    if (d < 0) {
+      d = 0
+    }
+    if (sz1 <= 1 || sz2 <= 1) {
+      return ((d + 1) | 0) >>> 0
+    }
+    return d >>> 0
+  }
+
+  const sx1a = UNITS_GetUnitSizeX113c(m, u1) >>> 0
+  const sx2a = UNITS_GetUnitSizeX113c(m, u2) >>> 0
+  let halfX = ((sx1a >>> 1) + (sx2a >>> 1)) | 0
+  if (halfX < 0) halfX = -halfX | 0
+  dx = (dx - halfX) | 0
+
+  const sx1b = UNITS_GetUnitSizeX113c(m, u1) >>> 0
+  const sx2b = UNITS_GetUnitSizeX113c(m, u2) >>> 0
+  let halfY = ((sx1b >>> 1) + (sx2b >>> 1)) | 0
+  if (halfY < 0) halfY = -halfY | 0
+  dy = (dy - halfY) | 0
+
+  if (dx < 0) dx = 0
+  if (dy < 0) dy = 0
+  return (dx > dy ? (dy + dx * 2) | 0 : (dx + dy * 2) | 0) >>> 0
+}
+
+const START_FRAME_TABLE_6FDE4480: ReadonlyArray<number> = [
+  1, 1, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0,
+  2, 2, 0, 0, 0, 0, 0,
+  2, 2, 0, 0, 0, 0, 0,
+  2, 2, 0, 0, 0, 0, 0,
+  2, 2, 0, 0, 0, 0, 0,
+  2, 2, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0,
+]
+
+function resolveTransformGfxMem113c(
+  m: Memory113c,
+  pUnit: number,
+  bIsMonGfx: number,
+  classId: number,
+  mode: number,
+): { bIsMonGfx: number; classId: number; mode: number } {
+  const u = pUnit >>> 0
+  if (u === 0) return { bIsMonGfx, classId, mode }
+  if (((m.u32((u + 0xc8) >>> 0) >>> 3) & 1) === 0) return { bIsMonGfx, classId, mode }
+  let sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+  const nTransformStates = (m.u16((sgpt + 0x180) >>> 0) << 16) >> 16
+  if (nTransformStates <= 0) return { bIsMonGfx, classId, mode }
+  const pTransformStates = m.u32((sgpt + 0x17c) >>> 0)
+  const uType = m.u32(u) | 0
+
+  for (let i = 0; i < nTransformStates; i++) {
+    sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+    const nState = (m.u16((pTransformStates + i * 2) >>> 0) << 16) >> 16
+    if (uType < 0 || (uType > 1 && uType !== 3)) continue
+    const nStatesCount = m.u32((sgpt + 0xc4) >>> 0) | 0
+    if (nState < 0 || nState >= nStatesCount) continue
+    const pStatListEx = m.u32((u + 0x5c) >>> 0)
+    if (pStatListEx === 0 || (m.u32((pStatListEx + 0x10) >>> 0) | 0) >= 0) continue
+    const pStateFlags = m.u32((pStatListEx + 0x58) >>> 0)
+    const wordVal = m.u32((pStateFlags + ((nState >> 5) << 2)) >>> 0)
+    const pBitMasks = m.u32(D2COMMON_GDWBITMASKS_IAT_VA_113C)
+    const bitMask = m.u32((pBitMasks + ((nState & 0x1f) << 2)) >>> 0)
+    if ((wordVal & bitMask) === 0) continue
+    const pStatesTxt = m.u32((sgpt + 0xbc) >>> 0)
+    const pStateRec = (pStatesTxt + imul32(nState, 0x3c)) >>> 0
+    if (pStateRec === 0) continue
+    const nGfxType = m.u8((pStateRec + 0x2d) >>> 0)
+    if (nGfxType === 1) {
+      bIsMonGfx = 1
+      classId = (m.u16((pStateRec + 0x2e) >>> 0) << 16) >> 16
+      if (m.u32(u) === 0) {
+        mode = SKILLS_MapPlayerAnimModeToMonsterMode113c(m, mode, classId) | 0
+      }
+      return { bIsMonGfx, classId, mode }
+    }
+    if (nGfxType === 2) {
+      bIsMonGfx = 0
+      classId = (m.u16((pStateRec + 0x2e) >>> 0) << 16) >> 16
+      if (m.u32(u) === 1) {
+        const curMode = mode >>> 0
+        if (classId === 6 && curMode === 4) {
+          mode = 0x0c
+          return { bIsMonGfx, classId, mode }
+        }
+        mode = m.u32((MON_TO_PLR_MODE_TABLE_VA_113C + (curMode << 2)) >>> 0) | 0
+      }
+      return { bIsMonGfx, classId, mode }
+    }
+  }
+  return { bIsMonGfx, classId, mode }
+}
+
+/**
+ * `@va D2Common:0x6FD82220` (`D2Common.#10031` `UNITS_GetAnimStartFrame`, 238 bytes,
+ * stdcall `[esp+4] = pUnit`, `ret 0x4` -> `number`).
+ */
+export function UNITS_GetAnimStartFrame113c(m: Memory113c, pUnit: number): number {
+  const esi = pUnit >>> 0
+  const initMonGfx = esi !== 0 ? m.u32(esi) : 6
+  const initClassId = esi !== 0 ? m.u32((esi + 0x04) >>> 0) | 0 : -1
+  const initMode = esi !== 0 ? m.u32((esi + 0x10) >>> 0) | 0 : 0
+  const { bIsMonGfx, classId, mode } = resolveTransformGfxMem113c(
+    m,
+    esi,
+    initMonGfx,
+    initClassId,
+    initMode,
+  )
+  if (bIsMonGfx !== 0) return 0
+  const rel = (mode - 7) >>> 0
+  if (rel > 9) return 0
+  if (mode === 15 || mode === 16) {
+    if (unitsCanDualWieldMem113c(m, esi) === 0) return 0
+    const w = ITEMS_GetActiveWeaponForAttack113c(m, esi, 1)
+    const wclass = w !== 0 ? ITEMS_GetWeaponClassCodeIdx113c(m, w) & 0xffff : 0
+    return START_FRAME_TABLE_6FDE4480[imul32(wclass, 7) + (classId | 0)]! >>> 0
+  }
+  if (mode === 7 || mode === 8) {
+    const w = ITEMS_GetActiveWeaponForAttack113c(m, esi, 1)
+    const wclass = w !== 0 ? ITEMS_GetWeaponClassCodeIdx113c(m, w) & 0xffff : 0
+    return START_FRAME_TABLE_6FDE4480[imul32(wclass, 7) + (classId | 0)]! >>> 0
+  }
+  return 0
+}
+
+/**
+ * `@va D2Common:0x6FD814A0` (`D2Common.#10839` `UNITS_HasCollisionBetweenUnits`, 306 bytes,
+ * stdcall `[esp+4] = pUnit1`, `[esp+8] = pUnit2`, `[esp+0xC] = wMask`, `ret 0xC` -> `BOOL`).
+ */
+export function UNITS_HasCollisionBetweenUnits113c(
+  m: Memory113c,
+  pUnit1: number,
+  pUnit2: number,
+  wMask: number,
+): number {
+  const esi = pUnit1 >>> 0
+  if (esi === 0) {
+    throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x1290)
+  }
+  const edi = pUnit2 >>> 0
+  if (edi === 0) {
+    throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x1291)
+  }
+  const pRoom = UNITS_GetRoom113c(m, esi)
+  if (pRoom === 0) return 0
+
+  const t1 = m.u32(esi) | 0
+  const p1 = m.u32((esi + 0x2c) >>> 0)
+  const x1 =
+    t1 === 2 || (t1 > 3 && t1 <= 5)
+      ? m.u32((p1 + 0x0c) >>> 0) | 0
+      : p1 !== 0
+        ? m.u16((p1 + 0x02) >>> 0)
+        : 0
+  const y1 =
+    t1 === 2 || (t1 > 3 && t1 <= 5)
+      ? m.u32((p1 + 0x10) >>> 0) | 0
+      : p1 !== 0
+        ? m.u16((p1 + 0x06) >>> 0)
+        : 0
+  const sz1 = UNITS_GetUnitSizeX113c(m, esi)
+
+  const t2 = m.u32(edi) | 0
+  const p2 = m.u32((edi + 0x2c) >>> 0)
+  const x2 =
+    t2 === 2 || (t2 > 3 && t2 <= 5)
+      ? m.u32((p2 + 0x0c) >>> 0) | 0
+      : p2 !== 0
+        ? m.u16((p2 + 0x02) >>> 0)
+        : 0
+  const y2 =
+    t2 === 2 || (t2 > 3 && t2 <= 5)
+      ? m.u32((p2 + 0x10) >>> 0) | 0
+      : p2 !== 0
+        ? m.u16((p2 + 0x06) >>> 0)
+        : 0
+  const sz2 = UNITS_GetUnitSizeX113c(m, edi)
+
+  return COLLISION_RayTraceBetweenSizedPoints113c(m, x2, x1, sz2, y1, sz1, y2, pRoom, wMask)
+}
+
+/**
+ * `@va D2Common:0x6FD81850` (`D2Common.#10032` `UNITS_SetCollisionMaskAtCoords`, 102 bytes,
+ * stdcall `[esp+4] = pUnit`, `[esp+8] = pRoom`, `[esp+0xC] = nX`, `[esp+0x10] = nY`, `ret 0x10`, void).
+ */
+export function UNITS_SetCollisionMaskAtCoords113c(
+  m: Memory113c,
+  pUnit: number,
+  pRoom: number,
+  nX: number,
+  nY: number,
+): void {
+  const esi = pUnit >>> 0
+  if (esi === 0) {
+    throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x851)
+  }
+  const szX = UNITS_GetUnitSizeX113c(m, esi)
+  const szY = UNITS_GetUnitSizeY113c(m, esi)
+  if (szX !== 0 && szY !== 0) {
+    const mask = UNITS_GetCollisionMask113c(m, esi)
+    COLLISION_SetMaskWithSizeXY113c(m, pRoom, nX, nY, szX, szY, mask)
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD819A0` (`D2Common.#10793` `UNITS_IsUnitMovingBool`, 19 bytes,
+ * stdcall `[esp+4] = pUnit`, `ret 0x4` -> `0 | 1`).
+ */
+export function UNITS_IsUnitMovingBool113c(m: Memory113c, pUnit: number): number {
+  return UNITS_IsInMovingMode113c(m, pUnit) !== 0 ? 1 : 0
+}

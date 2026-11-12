@@ -302,8 +302,8 @@ export interface PublishedHudState {
  * the HUD never mutates gameplay state locally while a sink is attached.
  */
 export interface HudCommandSink {
-  allocateStat(key: BaseStatKey): boolean
-  allocateSkill(skillId: number): boolean
+  allocateStat(key: BaseStatKey, count?: number): boolean
+  allocateSkill(skillId: number, count?: number): boolean
   selectSkill(hand: 'left' | 'right', skillId: number, itemId?: number): void
   assignSkillHotkey?(slot: number, hand: 'left' | 'right', skillId: number, itemId?: number): void
   activateSkillHotkey?(slot: number): boolean
@@ -1031,7 +1031,7 @@ export class HudManager {
   }
 
   /** Server authority: only requests `AddStatPoint`; attributes/vitals change when the server answers. */
-  allocateStat(attr: 'strength' | 'dexterity' | 'vitality' | 'energy' | BaseStatKey): boolean {
+  allocateStat(attr: 'strength' | 'dexterity' | 'vitality' | 'energy' | BaseStatKey, count?: number): boolean {
     const shortKey: BaseStatKey =
       attr === 'strength'
         ? 'str'
@@ -1042,7 +1042,7 @@ export class HudManager {
         : attr === 'energy'
         ? 'ene'
         : attr
-    if (this._commandSink) return this._commandSink.allocateStat(shortKey)
+    if (this._commandSink) return this._commandSink.allocateStat(shortKey, count)
     return false
   }
 
@@ -2199,8 +2199,8 @@ export class HudManager {
     disposeHudWindowEvents(this)
   }
 
-  handleHudMouseUp(logicalX: number, logicalY: number, button = 0): void {
-    handleHudMouseUp(this, logicalX, logicalY, button)
+  handleHudMouseUp(logicalX: number, logicalY: number, button = 0, shiftKey?: boolean): void {
+    handleHudMouseUp(this, logicalX, logicalY, button, shiftKey)
   }
 
   private controlBarReleaseCallbacks(): {
@@ -2243,8 +2243,8 @@ export class HudManager {
     forwardGridClick(this, buffer, col, row, hitItem, isRightClick, isShiftClick)
   }
 
-  private handleSkillAllocated(skillId: number): void {
-    handleSkillAllocated(this, skillId)
+  private handleSkillAllocated(skillId: number, count?: number): void {
+    handleSkillAllocated(this, skillId, count)
   }
 
   private computeActiveSkillDmgString(skillId: number): string {

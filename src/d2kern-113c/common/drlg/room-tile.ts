@@ -13,6 +13,7 @@ import {
   D2RoomExStrc,
 } from '../../mem/layout.generated.ts';
 import { D2CommonAssertError, SEED_RollRandomNumberInline113c } from '../inline-helpers.ts';
+import { imul32 } from '../int-math.ts';
 
 /**
  * `.rdata` table at `0x6FDDBD68` (`0x6FDDBD68..0x6FDDBF24`, 37 entries of 3 `int32_t`: `[nLevelId, nStartIdx, nEndIdx]`).
@@ -1090,4 +1091,48 @@ export function DRLGROOMTILE_UpdateWindowTileCacheEntry113c(
   }
 }
 
-
+/**
+ * `@va D2Common:0x6FDB9170` (`DRLGROOMTILE_InitFloorTileData113c`, not exported;
+ * custom LTCG `eax = pRoomEx`, `ecx = ppTileList`,
+ * stack `[esp+4] = nX`, `[esp+8] = nY`, `[esp+0xC] = dwTileFlags`, `[esp+0x10] = pTileCache`, `ret 0x10`).
+ *
+ * Indexes `pTileData = &pRoomEx->pTileGrid (+0x54)->pFloors (+0x1C)[nFloorCount (+0x0C)]` (stride `0x30`),
+ * optionally prepends `pTileData` to `*ppTileList` via `pTileData->pNext (+0x20)` (or zeroes `pNext` when `ppTileList == 0`),
+ * increments `pTileGrid->nFloorCount (+0x0C)`, calls `0x6FDB8DF0` (`DRLGROOMTILE_InitTileData113c`), and returns `pTileData`.
+ */
+export function DRLGROOMTILE_InitFloorTileData113c(
+  m: Memory113c,
+  pRoomEx: number,
+  ppTileList: number,
+  nX: number,
+  nY: number,
+  dwTileFlags: number,
+  pTileCache: number,
+): number {
+  const roomEx = pRoomEx >>> 0;
+  const ppList = ppTileList >>> 0;
+  const pTileGrid = m.get(roomEx, D2RoomExStrc.pTileGrid);
+  const idx = m.get(pTileGrid, D2DrlgTileGridStrc.nFloorCount) | 0;
+  const pTileData = (m.get(pTileGrid, D2DrlgTileGridStrc.pFloors) + imul32(idx, 0x30)) >>> 0;
+  if (ppList !== 0) {
+    m.set(pTileData, D2DrlgTileDataStrc.pNext, m.u32(ppList));
+    m.setU32(ppList, pTileData);
+  } else {
+    m.set(pTileData, D2DrlgTileDataStrc.pNext, 0);
+  }
+  m.set(
+    pTileGrid,
+    D2DrlgTileGridStrc.nFloorCount,
+    ((m.get(pTileGrid, D2DrlgTileGridStrc.nFloorCount) | 0) + 1) >>> 0,
+  );
+  DRLGROOMTILE_InitTileData113c(
+    m,
+    roomEx,
+    pTileData,
+    nX | 0,
+    nY | 0,
+    dwTileFlags >>> 0,
+    pTileCache >>> 0,
+  );
+  return pTileData >>> 0;
+}

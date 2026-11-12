@@ -2578,7 +2578,22 @@ export class GameEngine {
    * Incremental gain only (never full-heals current HP/Mana), sharing the 1/256 fixed-point accumulator
    * with per-level gains (`D2Game.dll` `0x6FD0B090` / `0x6FC97340`, #1673).
    */
-  allocateStat(stat: 'str' | 'dex' | 'vit' | 'ene' | 'strength' | 'dexterity' | 'vitality' | 'energy'): boolean {
+  allocateStat(
+    stat: 'str' | 'dex' | 'vit' | 'ene' | 'strength' | 'dexterity' | 'vitality' | 'energy',
+    count = 1,
+  ): boolean {
+    const targetCount = Number.isFinite(count) ? Math.max(1, Math.trunc(count)) : 1
+    let allocated = 0
+    for (let i = 0; i < targetCount; i++) {
+      if (!this.allocateSingleStat(stat)) break
+      allocated += 1
+    }
+    if (allocated <= 0) return false
+    this.notifyStateChange()
+    return true
+  }
+
+  private allocateSingleStat(stat: 'str' | 'dex' | 'vit' | 'ene' | 'strength' | 'dexterity' | 'vitality' | 'energy'): boolean {
     const player = this.world.player
     const pts = player.statPoints ?? 0
     if (pts <= 0) return false
@@ -2635,7 +2650,6 @@ export class GameEngine {
       player.maxMana += manaGain
       player.mana = Math.min(player.maxMana, player.mana + manaGain)
     }
-    this.notifyStateChange()
     return true
   }
 
@@ -2974,7 +2988,7 @@ export class GameEngine {
     if (!cmd || typeof cmd !== 'object') return undefined
     switch (cmd.type ?? cmd.kind) {
       case 'allocateStat':
-        return this.allocateStat(cmd.stat)
+        return this.allocateStat(cmd.stat, cmd.count)
       case 'drinkPotion':
         return this.drinkPotion(cmd.code ?? cmd.potion ?? cmd.item)
       case 'drinkBelt':

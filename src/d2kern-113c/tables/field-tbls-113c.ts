@@ -9,6 +9,7 @@
  * - `0x6FDCEA40` `DRLGOUTWILD_GetBridgeCoords113c` (internal, `eax=pLevel, edi=nX, [esp+4]=pOutX, [esp+8]=pOutY`)
  */
 import type { Memory113c } from '../mem/sparse-memory.ts'
+import { DRLGOUTDOORS_SpawnPresetInGrid113c } from '../common/drlg/drlg-grid.ts'
 import { D2CommonAssertError } from '../common/inline-helpers.ts'
 import {
   D2DrlgLevelStrc,
@@ -280,5 +281,142 @@ export function FIELD_AllocField113c(m: Memory113c): number {
   m.setU32(ptr, 0)
   m.setU32((ptr + 0x04) >>> 0, 0)
   return ptr
+}
+
+// ============================================================================
+// K1r7 Iteration 10 Lane B — I10B-1 (B1-18) & I10B-2 (B2-16)
+// ============================================================================
+
+/** `.rdata` `int32[16][2]` river preset pick pair table at `0x6FDDACA0..0x6FDDAD1F`. */
+const RIVER_PICK_PAIRS_113C: readonly [number, number][] = [
+  [8, 8],
+  [8, 8],
+  [9, 9],
+  [10, 11],
+  [2, 2],
+  [0, 3],
+  [1, 1],
+  [3, 0],
+  [0, 2],
+  [0, 1],
+  [1, 0],
+  [2, 0],
+  [2, 3],
+  [1, 3],
+  [3, 1],
+  [3, 2],
+]
+
+/**
+ * `@va D2Common:0x6FDCEB40` (`DRLGOUTWILD_PlaceRandomRiverBridge113c`,
+ * custom `ebx = nGridX`, `edi = pLevel` -> `void`, `ret`).
+ */
+export function DRLGOUTWILD_PlaceRandomRiverBridge113c(
+  m: Memory113c,
+  nGridX: number,
+  pLevel: number,
+): void {
+  const lvl = pLevel >>> 0
+  const gx = nGridX | 0
+  const pOutdoors = m.u32((lvl + 0x14) >>> 0)
+  const span = ((m.u32((pOutdoors + 0x60) >>> 0) | 0) - 2) | 0
+  const flag04 = m.u32(pOutdoors) & 4
+  if (span <= 0) return
+
+  const prod =
+    BigInt(m.u32((lvl + 0x1c4) >>> 0)) * 0x6ac690c5n + BigInt(m.u32((lvl + 0x1c8) >>> 0))
+  const newLo = Number(prod & 0xffffffffn) >>> 0
+  const newHi = Number((prod >> 32n) & 0xffffffffn) >>> 0
+  m.setU32((lvl + 0x1c8) >>> 0, newHi)
+  m.setU32((lvl + 0x1c4) >>> 0, newLo)
+  const startOff =
+    (span & (span - 1)) === 0
+      ? (newLo & (span - 1)) | 0
+      : ((newLo >>> 0) % (span >>> 0)) | 0
+
+  for (let i = 0; i < span; i++) {
+    const y = ((((startOff + i) | 0) % span) + 1) | 0
+    const pOut = m.u32((lvl + 0x14) >>> 0)
+    const pGrid2Rows = m.u32((pOut + 0x30) >>> 0)
+    const pGrid2Cells = m.u32((pOut + 0x2c) >>> 0)
+    const row2 = m.u32((pGrid2Rows + (y << 2)) >>> 0) | 0
+    if ((m.u32((pGrid2Cells + ((row2 + gx - 1) << 2)) >>> 0) & 0x1b81) !== 0) continue
+    if (flag04 === 0 && (m.u32((pGrid2Cells + ((row2 + gx + 2) << 2)) >>> 0) & 0x1b81) !== 0) {
+      continue
+    }
+    if ((m.u8((pGrid2Cells + ((row2 + gx) << 2) + 2) >>> 0) & 0x0f) !== 3) continue
+    if ((m.u8((pGrid2Cells + ((row2 + gx) << 2) + 6) >>> 0) & 0x0f) !== 3) continue
+
+    DRLGOUTDOORS_SpawnPresetInGrid113c(m, lvl, gx, y, 0x1c, 1, 0)
+    DRLGOUTDOORS_SpawnPresetInGrid113c(
+      m,
+      lvl,
+      (gx + 1) | 0,
+      y,
+      0x1c,
+      flag04 !== 0 ? 3 : 2,
+      0,
+    )
+    return
+  }
+}
+
+/**
+ * `@va D2Common:0x6FDCECC0` (`DRLGOUTWILD_SpawnRiverColumnAndBridge113c`,
+ * custom `eax = nGridX`, `ecx = pLevel` -> `void`, `ret`).
+ */
+export function DRLGOUTWILD_SpawnRiverColumnAndBridge113c(
+  m: Memory113c,
+  nGridX: number,
+  pLevel: number,
+): void {
+  const lvl = pLevel >>> 0
+  const gx = nGridX | 0
+  const pOutdoors = m.u32((lvl + 0x14) >>> 0)
+  for (let y = 0; y < (m.u32((pOutdoors + 0x60) >>> 0) | 0); y++) {
+    let pGrid2Rows = m.u32((pOutdoors + 0x30) >>> 0)
+    let pGrid2Cells = m.u32((pOutdoors + 0x2c) >>> 0)
+    let pGrid0Rows = m.u32((pOutdoors + 0x08) >>> 0)
+    let pGrid0Cells = m.u32((pOutdoors + 0x04) >>> 0)
+
+    const row2L = m.u32((pGrid2Rows + (y << 2)) >>> 0) | 0
+    const val2L = m.u32((pGrid2Cells + ((row2L + gx) << 2)) >>> 0)
+    const row0L = m.u32((pGrid0Rows + (y << 2)) >>> 0) | 0
+    const val0L = m.u32((pGrid0Cells + ((row0L + gx) << 2)) >>> 0)
+
+    const pickL =
+      val0L === 0
+        ? (val2L & 0x100) !== 0
+          ? 0
+          : 3
+        : val0L === 7 && (val2L & 0xf0000) === 0x30000
+          ? 3
+          : RIVER_PICK_PAIRS_113C[val0L]![0]
+    DRLGOUTDOORS_SpawnPresetInGrid113c(m, lvl, gx, y, 0x1a, pickL, 0)
+
+    pGrid2Rows = m.u32((pOutdoors + 0x30) >>> 0)
+    pGrid2Cells = m.u32((pOutdoors + 0x2c) >>> 0)
+    pGrid0Rows = m.u32((pOutdoors + 0x08) >>> 0)
+    pGrid0Cells = m.u32((pOutdoors + 0x04) >>> 0)
+
+    const row2R = m.u32((pGrid2Rows + (y << 2)) >>> 0) | 0
+    const val2R = m.u32((pGrid2Cells + ((row2R + gx) << 2) + 4) >>> 0)
+    const row0R = m.u32((pGrid0Rows + (y << 2)) >>> 0) | 0
+    const val0R = m.u32((pGrid0Cells + ((row0R + gx) << 2) + 4) >>> 0)
+
+    const pickR =
+      val0R === 0
+        ? (val2R & 0x100) !== 0
+          ? 0
+          : 3
+        : val0R === 7 && (val2R & 0xf0000) === 0x30000
+          ? 3
+          : RIVER_PICK_PAIRS_113C[val0R]![1]
+    DRLGOUTDOORS_SpawnPresetInGrid113c(m, lvl, (gx + 1) | 0, y, 0x1b, pickR, 0)
+  }
+
+  if ((m.u8(pOutdoors) & 0x14) !== 0) {
+    DRLGOUTWILD_PlaceRandomRiverBridge113c(m, gx, lvl)
+  }
 }
 

@@ -599,6 +599,12 @@ export function computeIasBreakpoints(
   return { isAttack: true, entries, activeIndex }
 }
 
+/** Clamp a batch-5 stat allocation request (`Shift+Click` or touch `[+5]`) to `0..5`. */
+export function clampBatch5StatCount(statPoints: number): number {
+  if (!Number.isFinite(statPoints) || statPoints <= 0) return 0
+  return Math.max(0, Math.min(5, Math.floor(statPoints)))
+}
+
 /**
  * Stat allocation `+` button cells: the same native 30x30 `Panel\Level.dc6` cells as the
  * control-bar buttons, vertically centered on the attribute text row — the `font8` label
@@ -1404,6 +1410,7 @@ export class CharacterSheetPanel {
     logicalX: number,
     logicalY: number,
     onStatAllocated?: (key: BaseStatKey, count?: number) => void,
+    shiftKey = false,
   ): boolean {
     let fired = false
     if (this.closeButton.release(logicalX, logicalY) && this.visible) {
@@ -1437,8 +1444,17 @@ export class CharacterSheetPanel {
     for (const [key, button] of this.plusButtonEntries) {
       if (button.release(logicalX, logicalY)) {
         // Server-authoritative: only request `AddStatPoint (0x3A)`; the new values arrive via 0x1D..0x1F.
-        onStatAllocated?.(key)
-        fired = true
+        // Desktop `Shift+Click` allocates up to 5 points (`min(5, statPoints)`), sharing the batch helper with touch `[+5]`.
+        const count = shiftKey
+          ? clampBatch5StatCount(this.attrs.statPoints)
+          : (this.attrs.statPoints > 0 ? 1 : 0)
+        if (count > 1) {
+          onStatAllocated?.(key, count)
+          fired = true
+        } else if (count === 1) {
+          onStatAllocated?.(key)
+          fired = true
+        }
       }
     }
     if (this.pressedBatch5Stat !== null) {
@@ -1452,9 +1468,11 @@ export class CharacterSheetPanel {
           logicalY >= b5.y &&
           logicalY <= b5.y + b5.h
         ) {
-          const count = Math.min(5, Math.floor(this.attrs.statPoints))
-          onStatAllocated?.(batchKey, count)
-          fired = true
+          const count = clampBatch5StatCount(this.attrs.statPoints)
+          if (count > 0) {
+            onStatAllocated?.(batchKey, count)
+            fired = true
+          }
         }
       }
     }

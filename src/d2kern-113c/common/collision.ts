@@ -1916,3 +1916,257 @@ export function COLLISION_FindFreeCoordsNear113c(
 
   sm.setU32(roomOut, 0);
 }
+
+/**
+ * `@va D2Common:0x6FD9BCF0` (`D2Common.#11073` `COLLISION_ResetMaskWithPattern113c`,
+ * `__stdcall(pRoom, nX, nY, nCollisionPattern, wMask)`, `ret 0x14`).
+ */
+export function COLLISION_ResetMaskWithPattern113c(
+  m: Memory113c,
+  pRoom: number,
+  nX: number,
+  nY: number,
+  nCollisionPattern: number,
+  wMask: number,
+): void {
+  const room = pRoom >>> 0;
+  if (room === 0) return;
+  const pat = nCollisionPattern >>> 0;
+  if (pat > 5) return;
+  switch (pat) {
+    case 0:
+      return;
+    case 1:
+      COLLISION_ClearCrossPatternMask113c(m, nY, room, nX, wMask);
+      if ((wMask | 0) !== 0) {
+        COLLISION_ClearSubtileMaskInRoom_6FD9BB70_113c(m, room, 0x1000, nY, nX);
+      }
+      return;
+    case 2:
+      COLLISION_ResetMask3x3_113c(m, room, nX, nY, wMask);
+      if ((wMask | 0) !== 0) {
+        COLLISION_ClearCrossPatternMask113c(m, nY, room, nX, 0x1000);
+      }
+      return;
+    case 3:
+      COLLISION_ClearCrossPatternMask113c(m, nY, room, nX, wMask);
+      if ((wMask | 0) !== 0) {
+        COLLISION_ClearSubtileMaskInRoom_6FD9BB70_113c(m, room, 0x2000, nY, nX);
+      }
+      return;
+    case 4:
+      COLLISION_ResetMask3x3_113c(m, room, nX, nY, wMask);
+      if ((wMask | 0) !== 0) {
+        COLLISION_ClearCrossPatternMask113c(m, nY, room, nX, 0x2000);
+      }
+      return;
+    default:
+      COLLISION_ClearCrossPatternMask113c(m, nY, room, nX, wMask);
+      return;
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD9BE10` (`D2Common.#10232` `COLLISION_ResetMaskWithPatternSimple113c`,
+ * `__stdcall(pRoom, nX, nY, nCollisionPattern, wMask)`, `ret 0x14`).
+ */
+export function COLLISION_ResetMaskWithPatternSimple113c(
+  m: Memory113c,
+  pRoom: number,
+  nX: number,
+  nY: number,
+  nCollisionPattern: number,
+  wMask: number,
+): void {
+  const room = pRoom >>> 0;
+  if (room === 0) return;
+  const pat = nCollisionPattern >>> 0;
+  if (pat > 3) return;
+  if (pat === 1) {
+    COLLISION_ClearSubtileMaskInRoom_6FD9BB70_113c(m, room, wMask, nY, nX);
+  } else if (pat === 2) {
+    COLLISION_ClearCrossPatternMask113c(m, nY, room, nX, wMask);
+  } else if (pat === 3) {
+    COLLISION_ResetMask3x3_113c(m, room, nX, nY, wMask);
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD9BE90` (`D2Common.#10565` `COLLISION_SetUnitCollisionMaskWithPattern113c`,
+ * `__stdcall(pRoom, nX, nY, nCollisionPattern, wMask)`, `ret 0x14`).
+ */
+export function COLLISION_SetUnitCollisionMaskWithPattern113c(
+  m: Memory113c,
+  pRoom: number,
+  nX: number,
+  nY: number,
+  nCollisionPattern: number,
+  wMask: number,
+): void {
+  const pat = nCollisionPattern >>> 0;
+  if (pat > 5) return;
+  switch (pat) {
+    case 0:
+      return;
+    case 1:
+      COLLISION_SetCrossPatternMask113c(m, nY, pRoom, nX, wMask);
+      if ((wMask | 0) !== 0) {
+        COLLISION_SetSubtileMaskInRoom113c(m, pRoom, nY, nX, 0x1000);
+      }
+      return;
+    case 2:
+      COLLISION_SetMask3x3_113c(m, pRoom, nX, nY, wMask);
+      if ((wMask | 0) !== 0) {
+        COLLISION_SetCrossPatternMask113c(m, nY, pRoom, nX, 0x1000);
+      }
+      return;
+    case 3:
+      COLLISION_SetCrossPatternMask113c(m, nY, pRoom, nX, wMask);
+      if ((wMask | 0) !== 0) {
+        COLLISION_SetSubtileMaskInRoom113c(m, pRoom, nY, nX, 0x2000);
+      }
+      return;
+    case 4:
+      COLLISION_SetMask3x3_113c(m, pRoom, nX, nY, wMask);
+      if ((wMask | 0) !== 0) {
+        COLLISION_SetCrossPatternMask113c(m, nY, pRoom, nX, 0x2000);
+      }
+      return;
+    default:
+      COLLISION_SetCrossPatternMask113c(m, nY, pRoom, nX, wMask);
+      return;
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD9CE00` (`D2Common.#10573` `COLLISION_CheckMaskWithPattern1_113c`,
+ * `__stdcall(pRoom, nX, nY, nCollisionPattern, wMask) -> uint16`, `ret 0x14`).
+ */
+export function COLLISION_CheckMaskWithPattern1_113c(
+  m: Memory113c,
+  pRoom: number,
+  nX: number,
+  nY: number,
+  nCollisionPattern: number,
+  wMask: number,
+): number {
+  const pat = nCollisionPattern >>> 0;
+  if (pat === 0 || pat === 1) {
+    return COLLISION_CheckSubtileMaskInRoomFast113c(m, pRoom, nY, nX, wMask) & 0xffff;
+  }
+  if (pat === 2) {
+    return COLLISION_GetCrossPatternMask113c(m, pRoom, nX, nY, wMask) & 0xffff;
+  }
+  if (pat === 3) {
+    return COLLISION_GetMask3x3_113c(m, pRoom, nX, nY, wMask) & 0xffff;
+  }
+  return 0xffff;
+}
+
+/**
+ * `@va D2Common:0x6FD9CE90` (`D2Common.#10851` `COLLISION_CheckMaskWithPattern2_113c`,
+ * `__stdcall(pRoom, nX, nY, nCollisionPattern, wMask) -> uint32`, `ret 0x14`).
+ */
+export function COLLISION_CheckMaskWithPattern2_113c(
+  m: Memory113c,
+  pRoom: number,
+  nX: number,
+  nY: number,
+  nCollisionPattern: number,
+  wMask: number,
+): number {
+  const pat = nCollisionPattern >>> 0;
+  if (pat === 0) {
+    return COLLISION_CheckSubtileMaskInRoomFast113c(m, pRoom, nY, nX, wMask) & 0xffff;
+  }
+  if (pat === 1 || pat === 3 || pat === 5) {
+    return COLLISION_CheckCrossPatternCollision113c(m, nX, wMask, pRoom, nY) >>> 0;
+  }
+  if (pat === 2 || pat === 4) {
+    const sm = withStackScratch113c(m);
+    const x = nX | 0;
+    const y = nY | 0;
+    const box = STACK_SCRATCH_BASE + 0xac0;
+    sm.setU32(box, ((x - 1) | 0) >>> 0);
+    sm.setU32((box + 0x04) >>> 0, ((y - 1) | 0) >>> 0);
+    sm.setU32((box + 0x08) >>> 0, ((x + 1) | 0) >>> 0);
+    sm.setU32((box + 0x0c) >>> 0, ((y + 1) | 0) >>> 0);
+    return COLLISION_CheckAnyCollisionWithBoxRecursively113c(sm, pRoom, box, wMask) >>> 0;
+  }
+  return 1;
+}
+
+/**
+ * `@va D2Common:0x6FD9CF40` (`D2Common.#10001` `COLLISION_GetMaskWithPattern2_113c`,
+ * `__stdcall(pRoom, nX, nY, nCollisionPattern, wMask) -> uint16`, `ret 0x14`).
+ */
+export function COLLISION_GetMaskWithPattern2_113c(
+  m: Memory113c,
+  pRoom: number,
+  nX: number,
+  nY: number,
+  nCollisionPattern: number,
+  wMask: number,
+): number {
+  const pat = nCollisionPattern >>> 0;
+  if (pat === 0) {
+    return COLLISION_CheckSubtileMaskInRoomFast113c(m, pRoom, nY, nX, wMask) & 0xffff;
+  }
+  if (pat === 1 || pat === 3 || pat === 5) {
+    return COLLISION_GetCrossPatternMask113c(m, pRoom, nX, nY, wMask) & 0xffff;
+  }
+  if (pat === 2 || pat === 4) {
+    const sm = withStackScratch113c(m);
+    const x = nX | 0;
+    const y = nY | 0;
+    const box = STACK_SCRATCH_BASE + 0xad0;
+    sm.setU32(box, ((x - 1) | 0) >>> 0);
+    sm.setU32((box + 0x04) >>> 0, ((y - 1) | 0) >>> 0);
+    sm.setU32((box + 0x08) >>> 0, ((x + 1) | 0) >>> 0);
+    sm.setU32((box + 0x0c) >>> 0, ((y + 1) | 0) >>> 0);
+    return COLLISION_GetCombinedMaskForBoxRecursively113c(sm, pRoom, box, wMask) & 0xffff;
+  }
+  return 0xffff;
+}
+
+/**
+ * `@va D2Common:0x6FD9D6E0` (`D2Common.#10166` `COLLISION_MoveUnitCollisionMask113c`,
+ * `__fastcall(ecx=pRoom, edx=nOldX, [esp+4]=nOldY, [esp+8]=nNewX, [esp+0xC]=nNewY, [esp+0x10]=nCollisionPattern, [esp+0x14]=wFootprintMask, [esp+0x18]=wMoveTestMask) -> uint16`, `ret 0x18`).
+ */
+export function COLLISION_MoveUnitCollisionMask113c(
+  m: Memory113c,
+  pRoom: number,
+  nOldX: number,
+  nOldY: number,
+  nNewX: number,
+  nNewY: number,
+  nCollisionPattern: number,
+  wFootprintMask: number,
+  wMoveTestMask: number,
+): number {
+  COLLISION_ResetMaskWithPattern113c(m, pRoom, nOldX, nOldY, nCollisionPattern, wFootprintMask);
+  const hit =
+    COLLISION_GetMaskWithPattern2_113c(m, pRoom, nNewX, nNewY, nCollisionPattern, wMoveTestMask) &
+    0xffff;
+  if (hit === 0) {
+    COLLISION_SetUnitCollisionMaskWithPattern113c(
+      m,
+      pRoom,
+      nNewX,
+      nNewY,
+      nCollisionPattern,
+      wFootprintMask,
+    );
+  } else {
+    COLLISION_SetUnitCollisionMaskWithPattern113c(
+      m,
+      pRoom,
+      nOldX,
+      nOldY,
+      nCollisionPattern,
+      wFootprintMask,
+    );
+  }
+  return hit;
+}
+

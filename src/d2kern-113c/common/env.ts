@@ -10,7 +10,10 @@ import {
 } from '../mem/layout.generated.ts';
 import type { Memory113c } from '../mem/sparse-memory.ts';
 import { DRLG_GetActNoFromLevelId113c } from './drlg/drlg.ts';
+import { D2CommonAssertError } from './inline-helpers.ts';
 import { imul32, sdiv32 } from './int-math.ts';
+
+const ENV_CPP_FILE_113C = '..\\Source\\D2Common\\ENVIRONMENT\\Env.cpp';
 
 /**
  * Environment cycle tables at `0x6FDEB160` (normal), `0x6FDEB1A8` (Act 3 eclipse), and `0x6FDEB1F0` (default eclipse).
@@ -323,7 +326,7 @@ export function ENV_GetCycleState113c(
   pEclipse: number,
 ): void {
   if (pAct === 0) {
-    throw new Error('ENV_GetCycleState113c: pAct == 0 (line 1351)');
+    throw new D2CommonAssertError(ENV_CPP_FILE_113C, 0x547);
   }
   const pEnv = m.u32((pAct + 0x04) >>> 0);
   m.setU32(pCycleIndex >>> 0, m.u32(pEnv));
@@ -417,7 +420,7 @@ export function ENV_StepCycle113c(
   nActNo: number,
 ): number {
   if (pAct === 0) {
-    throw new Error('ENV_StepCycle113c: pAct == 0 (line 1351)');
+    throw new D2CommonAssertError(ENV_CPP_FILE_113C, 0x547);
   }
   const pEnv = m.u32((pAct + 0x04) >>> 0);
   if (pEnv === 0) {
@@ -581,7 +584,7 @@ export function ENV_InitEclipseEnvironment113c(
   pAct: number,
 ): void {
   if (pAct === 0) {
-    throw new Error('ENV_InitEclipseEnvironment113c: pAct == 0 (line 1351)');
+    throw new D2CommonAssertError(ENV_CPP_FILE_113C, 0x547);
   }
   const pEnv0 = m.u32((pAct + 0x04) >>> 0);
   m.setU32((pEnv0 + 0x2c) >>> 0, 1);
