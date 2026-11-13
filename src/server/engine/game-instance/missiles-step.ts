@@ -3,7 +3,6 @@
  */
 
 import type { MissileRecord } from '../../../common/data/data-registry.ts'
-import { MONMODE_BLOCK } from '../../../common/path/types.ts'
 import { getMonsterPathRecord } from '../../../common/path/units.ts'
 import { resolveArmorBlock113c, resolveWeaponBase113c } from '../../../common/units/char-anim-speed.ts'
 import { calcColdEnchantedDeathNova } from '../../../common/units/monster-death-fx.ts'
@@ -2239,17 +2238,7 @@ function stepMissiles(this: GameInstanceHost): void {
             dmgOut.avoidedReason === 'block' &&
             !(monMissileRow !== undefined && !monMissileRow.getHit && monMissileRow.knockBack <= 0)
           ) {
-            target.mode = MONMODE_BLOCK
-            this.broadcastToArea(target.areaId, {
-              type: 'UnitMode',
-              unitType: 1,
-              id: target.unitId,
-              mode: MONMODE_BLOCK,
-              lifePct:
-                target.maxHp > 0
-                  ? Math.max(0, Math.round((target.hp / target.maxHp) * 128))
-                  : 0,
-            })
+            this.enterMonsterBlockMode113c(target)
           }
           if (!target.dead) {
             armUnitJustHit('monster', target.unitId, target.areaId, target.states, target.stateTimers)

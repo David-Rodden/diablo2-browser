@@ -1824,6 +1824,35 @@ export function shouldEnterGetHit113c(
 }
 
 /**
+ * 1.13c MonStats `hcIdx` rows whose blocked hits never switch to `MONMODE_BLOCK` even though
+ * `MonStats2.mBL = 1`: `diablo` (`243` = `0xF3`), `diabloclone` (`333` = `0x14D`) and
+ * `uberdiablo` (`705` = `0x2C1`). See `D2Game.dll` `SUNITDMG_ExecuteEvents` `0x6FCFD0AE..0x6FCFD0BD`.
+ */
+export const MONSTER_BLOCK_NO_MODE_CHANGE_HCIDX_113C: ReadonlySet<number> = new Set([243, 333, 705])
+
+/**
+ * Decide whether a monster whose hit was blocked (`wResultFlags & 0x10`) enters `MONMODE_BLOCK (6)`,
+ * per `D2Game.dll` `SUNITDMG_ExecuteEvents` (`0x6FCFD092..0x6FCFD0E9`, kb/combat/d2game-gethit-recovery-113c.md §5):
+ * 1. `wResultFlags & 0x4000` (`0x6FCFD096`): no mode change.
+ * 2. `dwClassId` is `243`, `333` or `705` (Diablo, `0x6FCFD0AE..0x6FCFD0BD`): no mode change.
+ * 3. `MonStats2.mBL` is `0` (`0x6FC21560(dwClassId, 6)`, `0x6FCFD0C6..0x6FCFD0D2`): no mode change. This
+ *    covers Baal (`544`, `570`, `709`): `NoShldBlock = 1` lets it roll a block, but it has no `BL` mode.
+ * 4. Otherwise: `MODECHANGE_Init(6)` + `MONSTER_StartMode` (`0x6FC95070` / `0x6FC95E10`).
+ *
+ * The no-mode-change branch (`0x6FCFD09B`) only writes `pMonsterData+0x54 = 0x13` (`0x6FCCF710`), so the
+ * blocked hit must leave the current mode (for example a boss skill animation) untouched.
+ */
+export function shouldMonsterEnterBlockMode113c(
+  hcIdx: number,
+  hasModeBL: boolean,
+  resultFlags = 0,
+): boolean {
+  if ((resultFlags & 0x4000) !== 0) return false
+  if (MONSTER_BLOCK_NO_MODE_CHANGE_HCIDX_113C.has(hcIdx)) return false
+  return hasModeBL
+}
+
+/**
  * Execute the complete 1.13c `SUnitDmg` damage pipeline from `attacker` onto `defender`
  * (`D2Game.dll` `0x6FCFE011`, `0x6FCFB790`, `0x6FCFB030`, `0x6FCFC530`, `0x6FCFD51A`, `0x6FCFCD80`).
  *

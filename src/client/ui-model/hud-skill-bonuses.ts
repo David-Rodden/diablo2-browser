@@ -97,6 +97,12 @@ export interface PreaggregatedEquipmentSkillBonuses {
   readonly singleSkills: ReadonlyMap<number, number>
   readonly elemSkills: ReadonlyMap<string, number>
   readonly oskills: ReadonlyMap<number, number>
+  /**
+   * `item_aura` (stat 151, `param` = aura skill id, `value` = aura level) summed per aura over the active
+   * equipment, sockets, set bonuses and charms. Item auras are fixed-level grants: they stack across items
+   * and are never raised by `+All Skills` / `+Class Skills` / oskill bonuses.
+   */
+  readonly itemAuras?: ReadonlyMap<number, number>
 }
 
 /**
@@ -126,6 +132,7 @@ export function preaggregateEquipmentSkillBonuses(
   const singleSkills = new Map<number, number>()
   const elemSkills = new Map<string, number>()
   const oskills = new Map<number, number>()
+  const itemAuras = new Map<number, number>()
 
   const statLvl = selfStats
     ? typeof selfStats.getBase === 'function' && selfStats.getBase(D2StatId.Level) > 0
@@ -165,6 +172,9 @@ export function preaggregateEquipmentSkillBonuses(
         }
         case 97: // item_nonclassskill (oskill)
           oskills.set(param, (oskills.get(param) ?? 0) + val)
+          break
+        case 151: // item_aura
+          if (param > 0) itemAuras.set(param, (itemAuras.get(param) ?? 0) + val)
           break
       }
     }
@@ -292,6 +302,7 @@ export function preaggregateEquipmentSkillBonuses(
     singleSkills,
     elemSkills,
     oskills,
+    itemAuras,
   }
 }
 

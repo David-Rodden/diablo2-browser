@@ -1848,6 +1848,7 @@ export function drawSceneUnitDrawable(
       isGold,
       amount: goldAmt,
       code: rawCode,
+      ...(unit.itemQuality !== undefined ? { quality: unit.itemQuality } : {}),
       ...(unit.name ? { name: unit.name } : {}),
       ...(unit.flippyFile ? { flippyFile: unit.flippyFile } : {}),
       ...(unit.invFile ? { invFile: unit.invFile } : {}),
