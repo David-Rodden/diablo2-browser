@@ -40,6 +40,8 @@ export interface RolledAffix {
   readonly classspecific?: string | undefined
   readonly class?: string | undefined
   readonly classlevelreq?: number | undefined
+  readonly transform?: boolean | undefined
+  readonly transformColor?: string | undefined
   readonly mods: readonly RolledMod[]
   readonly id?: number | undefined
 }
@@ -330,6 +332,8 @@ export function createRolledAffix(affix: MagicAffix, rng: D2Rng, ilvl?: number):
     ...(affix.classspecific !== undefined ? { classspecific: affix.classspecific } : {}),
     ...(affix.class !== undefined ? { class: affix.class } : {}),
     ...(affix.classlevelreq !== undefined ? { classlevelreq: affix.classlevelreq } : {}),
+    ...(affix.transform !== undefined ? { transform: affix.transform } : {}),
+    ...(affix.transformColor !== undefined ? { transformColor: affix.transformColor } : {}),
     mods,
     id: (affix as any).id,
   }

@@ -29,7 +29,7 @@ import {
   EVENT_SetPersistentEventFull113c,
   type EventDispatchCallback113c,
 } from './timer-wheel.ts'
-import { MONSTATS_113C_ROWS } from '../../common/units/monstats-113c-data.ts'
+import { getMonStatsRowByClassId113c } from './tables-bootstrap-113c.ts'
 
 export const MON_EVENT_MODE_STEP = 0
 export const MON_EVENT_MODE_END = 1
@@ -445,7 +445,7 @@ export function MONSTER_StartNeutral113c(m: Memory113c, pGame: number, pUnit: nu
   }
   if (m.get(pUnit, D2UnitStrc.dwUnitType) === UNIT_MONSTER) {
     const classId = m.get(pUnit, D2UnitStrc.dwClassId) >>> 0
-    const row = MONSTATS_113C_ROWS[classId]
+    const row = getMonStatsRowByClassId113c(classId)
     if (row !== undefined) {
       // 0x6FC94ED3..0x6FC94EDF: `cmp byte ptr [ebx+0x6A], 0; jnz exp; cmp dword ptr [ebx+0x74], 0; jz classic`
       const isExp =

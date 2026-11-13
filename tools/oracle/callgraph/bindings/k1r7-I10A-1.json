@@ -104,8 +104,8 @@
     "name": "STATLIST_NotifyIfStatModified",
     "kernFile": "src/d2kern-113c/common/statlist.ts",
     "tsSymbol": "STATLIST_NotifyIfStatModified113c",
-    "status": "ported",
-    "diffEvidence": "tests/oracle/k1/laneA-I10A-1.test.ts (6 real-DLL vectors in tests/fixtures/oracle/k1/i10a-1-vectors.ndjson via k1r7-laneA-it10-emitter.c; status ported per sync-gates.py:241 indirectUnknown caller callback)"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k1/laneD-ported29.test.ts (real-DLL vectors via k1r13-laneD-ported29-emitter.c -> k1r13-i14d-1.ndjson); tests/oracle/k1/laneA-I10A-1.test.ts (6 real-DLL vectors in tests/fixtures/oracle/k1/i10a-1-vectors.ndjson via k1r7-laneA-it10-emitter.c; status ported per sync-gates.py:241 indirectUnknown caller callback)"
   },
   {
     "module": "D2Common",
@@ -113,8 +113,8 @@
     "name": "STATLIST_SetFullStatEntry",
     "kernFile": "src/d2kern-113c/common/statlist.ts",
     "tsSymbol": "STATLIST_SetFullStatEntry113c",
-    "status": "ported",
-    "diffEvidence": "tests/oracle/k1/laneA-I10A-1.test.ts (7 real-DLL vectors in tests/fixtures/oracle/k1/i10a-1-vectors.ndjson via k1r7-laneA-it10-emitter.c; status ported per sync-gates.py:241 indirectUnknown caller callback)"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k1/laneD-ported29.test.ts (real-DLL vectors via k1r13-laneD-ported29-emitter.c -> k1r13-i14d-1.ndjson); tests/oracle/k1/laneA-I10A-1.test.ts (7 real-DLL vectors in tests/fixtures/oracle/k1/i10a-1-vectors.ndjson via k1r7-laneA-it10-emitter.c; status ported per sync-gates.py:241 indirectUnknown caller callback)"
   },
   {
     "module": "D2Common",

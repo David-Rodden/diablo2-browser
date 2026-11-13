@@ -12,11 +12,130 @@ import {
   D2DrlgPresetRoomStrc,
   D2RoomExStrc,
 } from '../../mem/layout.generated.ts';
-import { DRLG_IsTownLevel113c } from '../dungeon.ts';
+import {
+  DRLGROOM_RefreshStatusFromCounts113c,
+  DRLGROOM_RefreshStatusFromCountsA113c,
+  DRLGROOM_RefreshStatusFromCountsB113c,
+  DRLGROOM_RefreshStatusFromCountsEax113c,
+  DRLGROOM_SetStatusLink0Fastcall113c,
+  DRLGROOM_SetStatusLink1_113c,
+  DRLGROOM_SetStatusLink3_113c,
+} from '../../tables/missile-tbls-113c.ts';
+import { DRLG_IsTownLevel113c, DUNGEON_AllocActiveRoom113c } from '../dungeon.ts';
+import { ENVIRONMENT_Alloc113c } from '../env.ts';
 import { D2CommonAssertError } from '../inline-helpers.ts';
 import { imul32, sdiv32 } from '../int-math.ts';
+import { SG_LEVEL_DEF_BIN_PTR_VA_6FDF0B38 } from './drlg.ts';
+import {
+  DRLGLOGIC_FreeRoomLogicalInfo113c,
+  DRLGOUTROOM_FreeOutdoorRoomData113c,
+  DRLGPRESET_BuildPresetRoomGridsFromFile113c,
+  DRLGTILESUB_RollSubThemeMask113c,
+} from './drlg-grid.ts';
+import {
+  DRLGMAZE_AssignMazeRoomPrestId113c,
+  DRLGMAZE_LinkTouchingMazeRooms113c,
+  DRLGMAZE_PositionAdjacentRoomAndCheckSeparation113c,
+} from './maze.ts';
+import {
+  DRLGROOMTILE_BuildOutdoorRoomTileData113c,
+  DRLGROOMTILE_FreeRoomResources113c,
+  DRLGROOMTILE_InitOutdoorRoomTilesAndWallGrids113c,
+} from './room-tile.ts';
+import { DRLG_GetRoomExFromCoordinates113c } from '../dungeon.ts';
+import {
+  DRLG_AllocAndInitLevel113c,
+  DRLG_CollectWarpAndSpecialRoomCenters113c,
+  DRLG_FindLevelIdAtCoord113c,
+  DRLG_GetLevel113c,
+  DRLG_InitActWarpLists113c,
+  DRLG_LoadActTownTileLibrary113c,
+  DRLG_MarkLevelRoomsWithWarpFlag113c,
+} from './drlg.ts';
+import {
+  DRLGGRID_OpAndNegated113c,
+  DRLGGRID_OpOr113c,
+  DRLGOUTDOORS_SpawnPresetInGrid113c,
+} from './drlg-grid.ts';
+import { DRLGOUTDOORS_InitOutdoorLevel113c } from './outdoors.ts';
+import {
+  DRLG_ApplyOutdoorVertexFlags113c,
+  DRLG_CheckAct1LinkOverlap113c,
+  DRLG_CheckAct1WildLinkOverlap113c,
+  DRLG_CheckAct2LinkOverlap113c,
+  DRLG_CheckAct4LinkOverlap113c,
+  DRLG_CheckMonasteryLinkOverlap113c,
+  DRLG_GetLevelBorderStyle113c,
+} from '../../tables/datatbls-113c.ts';
+import {
+  DRLGOUTPLACE_CheckAct1LinkOverlap113c,
+  DRLGOUTPLACE_CheckAct2LinkOverlap113c,
+  DRLGOUTPLACE_LinkAct5OutdoorLevels113c,
+  DRLGOUTPLACE_MarkBorderGridCells113c,
+  DRLGOUTPLACE_PlaceAct4Levels113c,
+  DRLGOUTPLACE_PlaceAct5OutdoorLevels113c,
+  DRLGOUTPLACE_PlaceActLevelsByList113c,
+} from './out-place.ts';
+import { DRLGMAZE_GenerateMazeLevel113c } from './maze.ts';
+import { DRLGPRESET_InitLevelPresetRooms113c, DRLGPRESET_LoadPresetRoomMap113c } from './preset.ts';
+import { DRLGROOMTILE_BuildPresetRoomTiles113c } from './room-tile.ts';
+
+const DRLGROOM_STACK_BASE = 0x7ff80000;
+const DRLGROOM_STACK_SIZE = 0x100;
+const _drlgRoomStackBuf = new ArrayBuffer(DRLGROOM_STACK_SIZE);
+const _drlgRoomStackU8 = new Uint8Array(_drlgRoomStackBuf);
+const _drlgRoomStackDV = new DataView(_drlgRoomStackBuf);
+
+function withDrlgRoomStackScratch113c(m: Memory113c): Memory113c {
+  const isStack = (p: number): boolean => {
+    const u = p >>> 0;
+    return u >= DRLGROOM_STACK_BASE && u < DRLGROOM_STACK_BASE + DRLGROOM_STACK_SIZE;
+  };
+  const self: Memory113c = {
+    alloc: size => m.alloc(size),
+    u8: p => (isStack(p) ? _drlgRoomStackU8[(p >>> 0) - DRLGROOM_STACK_BASE]! : m.u8(p)),
+    u16: p => (isStack(p) ? _drlgRoomStackDV.getUint16((p >>> 0) - DRLGROOM_STACK_BASE, true) : m.u16(p)),
+    u32: p => (isStack(p) ? _drlgRoomStackDV.getUint32((p >>> 0) - DRLGROOM_STACK_BASE, true) : m.u32(p)),
+    setU8: (p, v) => {
+      if (isStack(p)) _drlgRoomStackU8[(p >>> 0) - DRLGROOM_STACK_BASE] = v & 0xff;
+      else m.setU8(p, v);
+    },
+    setU16: (p, v) => {
+      if (isStack(p)) _drlgRoomStackDV.setUint16((p >>> 0) - DRLGROOM_STACK_BASE, v & 0xffff, true);
+      else m.setU16(p, v);
+    },
+    setU32: (p, v) => {
+      if (isStack(p)) _drlgRoomStackDV.setUint32((p >>> 0) - DRLGROOM_STACK_BASE, v >>> 0, true);
+      else m.setU32(p, v);
+    },
+    get: (base, f, idx = 0) => {
+      const width = f.type === 'u8' ? 1 : f.type === 'u16' ? 2 : 4;
+      const addr = ((base >>> 0) + f.off + idx * width) >>> 0;
+      return width === 1 ? self.u8(addr) : width === 2 ? self.u16(addr) : self.u32(addr);
+    },
+    set: (base, f, v, idx = 0) => {
+      const width = f.type === 'u8' ? 1 : f.type === 'u16' ? 2 : 4;
+      const addr = ((base >>> 0) + f.off + idx * width) >>> 0;
+      if (width === 1) self.setU8(addr, v);
+      else if (width === 2) self.setU16(addr, v);
+      else self.setU32(addr, v);
+    },
+    fill: (p, len, v) => {
+      if (isStack(p)) {
+        const off = (p >>> 0) - DRLGROOM_STACK_BASE;
+        _drlgRoomStackU8.fill(v & 0xff, off, off + len);
+      } else {
+        m.fill(p, len, v);
+      }
+    },
+  };
+  return self;
+}
+import { DRLGOUTDOORS_ComputeVertexLevelLinkVisBit113c } from './outdoors.ts';
+import { DRLGPRESET_FreePresetRoomData113c } from './preset.ts';
 import {
   DATATBLS_FindFloorWindowTileCacheEntry113c,
+  DRLGROOMTILE_FreeRoomTileGridAndAnimList113c,
   DRLGROOMTILE_GetWarpLevelsArray113c,
 } from './room-tile.ts';
 
@@ -945,6 +1064,32 @@ function hashDt1PathIntoTiles113c(
   ppTiles: number,
   path: string,
 ): void {
+  const g = globalThis as unknown as {
+    __d2LoadMpqDt1Hash?: (m: Memory113c, path: string) => number;
+  };
+  const hook = g.__d2LoadMpqDt1Hash;
+  if (typeof hook === 'function') {
+    const trimmed = path.trim();
+    if (trimmed.length === 0 || trimmed === '0' || trimmed.toLowerCase() === 'none') {
+      return;
+    }
+    const pHash = hook(m, trimmed) >>> 0;
+    if (pHash === 0) {
+      return;
+    }
+    const base = ppTiles >>> 0;
+    for (let slot = 0; slot < 32; slot++) {
+      const cur = m.u32((base + slot * 4) >>> 0);
+      if (cur === pHash) {
+        return;
+      }
+      if (cur === 0) {
+        m.setU32((base + slot * 4) >>> 0, pHash);
+        return;
+      }
+    }
+    return;
+  }
   let h = m.u32(ppTiles >>> 0);
   for (let i = 0; i < path.length; i++) {
     h = (imul32(h, 33) + (path.charCodeAt(i) & 0xff)) >>> 0;
@@ -1239,3 +1384,1478 @@ export function DRLGROOM_CopyPresetUnitsInTileBox113c(
     u = m.u32((u + 0x0c) >>> 0);
   }
 }
+
+/**
+ * `@va D2Common:0x6FD94F20` (`DRLGROOM_AllocAndInsertOrthNode113c`, custom `eax = pLevel`,
+ * stack `[esp+4] = ppOrthListHead`, `[esp+8] = nDirection`, `[esp+0xC] = bPreset`, `ret 0xC`).
+ *
+ * Reads `pLevel->pDrlg (+0x1B4) -> pMemPool (+0x478)`, allocates a 24-byte `D2DrlgOrthStrc` node
+ * via `Fog.#10045` (`0x6FD59222`), zeroes it, initializes `pRoomEx/pLevel (+0x00) = pLevel`,
+ * `nDirection (+0x04) = nDirection`, `bPreset (+0x08) = bPreset`, `bInit (+0x0C) = 0`,
+ * `pBox (+0x10) = pLevel + 0x1C`, and calls `0x6FD94B20` (`DRLGROOM_InsertOrthSorted113c`).
+ */
+export function DRLGROOM_AllocAndInsertOrthNode113c(
+  m: Memory113c,
+  pLevel: number,
+  ppOrthListHead: number,
+  nDirection: number,
+  bPreset: number,
+): void {
+  const lvl = pLevel >>> 0;
+  const pDrlg = m.u32((lvl + 0x1b4) >>> 0);
+  void m.u32((pDrlg + 0x478) >>> 0);
+  const pNode = m.alloc(0x18);
+  m.fill(pNode, 0x18, 0);
+  m.setU32((pNode + 0x04) >>> 0, nDirection >>> 0);
+  m.setU32(pNode, lvl);
+  m.setU32((pNode + 0x08) >>> 0, bPreset >>> 0);
+  m.setU32((pNode + 0x0c) >>> 0, 0);
+  m.setU32((pNode + 0x10) >>> 0, (lvl + 0x1c) >>> 0);
+  DRLGROOM_InsertOrthSorted113c(m, pNode, ppOrthListHead >>> 0);
+}
+
+/**
+ * `@va D2Common:0x6FD94F90` (`DRLGROOM_FreeRoomEx113c`, not exported;
+ * `__stdcall(pRoomEx) -> void`, `ret 4`).
+ */
+export function DRLGROOM_FreeRoomEx113c(m: Memory113c, pRoomEx: number): void {
+  const roomEx = pRoomEx >>> 0;
+  const freeFn = (m as { free?: (p: number) => void }).free;
+  const pLevelInit = m.u32((roomEx + 0x58) >>> 0);
+  const pDrlgInit = m.u32((pLevelInit + 0x1b4) >>> 0);
+  void m.u32((pDrlgInit + 0x478) >>> 0);
+
+  let pStatus = m.u32((roomEx + 0x4c) >>> 0);
+  while (pStatus !== 0) {
+    const pNextStatus = m.u32((pStatus + 0x04) >>> 0);
+    freeFn?.call(m, pStatus);
+    pStatus = pNextStatus;
+  }
+  m.setU32((roomEx + 0x4c) >>> 0, 0);
+
+  const ppRoomsNear = m.u32((roomEx + 0x08) >>> 0);
+  if (ppRoomsNear !== 0) {
+    freeFn?.call(m, ppRoomsNear);
+    m.setU32((roomEx + 0x2c) >>> 0, 0);
+    m.setU32((roomEx + 0x08) >>> 0, 0);
+  }
+
+  const nType = m.u32((roomEx + 0x48) >>> 0) | 0;
+  if (nType === 2) {
+    DRLGPRESET_FreePresetRoomData113c(m, roomEx);
+  } else if (nType === 1) {
+    const pOutdoor = m.u32((roomEx + 0x20) >>> 0);
+    const pLevelOut = m.u32((roomEx + 0x58) >>> 0);
+    const pDrlgOut = m.u32((pLevelOut + 0x1b4) >>> 0);
+    const pMemPoolOut = m.u32((pDrlgOut + 0x478) >>> 0);
+    if (pOutdoor !== 0) {
+      DRLGOUTROOM_FreeOutdoorRoomData113c(m, pMemPoolOut, pOutdoor);
+      freeFn?.call(m, pOutdoor);
+      m.setU32((roomEx + 0x20) >>> 0, 0);
+    }
+  }
+
+  let pPresetUnit = m.u32((roomEx + 0x5c) >>> 0);
+  while (pPresetUnit !== 0) {
+    const pNextUnit = m.u32((pPresetUnit + 0x0c) >>> 0);
+    const pSub = m.u32((pPresetUnit + 0x10) >>> 0);
+    if (pSub !== 0) {
+      freeFn?.call(m, m.u32((pSub + 0x04) >>> 0));
+      freeFn?.call(m, pSub);
+    }
+    freeFn?.call(m, pPresetUnit);
+    pPresetUnit = pNextUnit;
+  }
+
+  let pOrthWalk = m.u32(roomEx);
+  while (pOrthWalk !== 0) {
+    const pNextOrthWalk = m.u32((pOrthWalk + 0x14) >>> 0);
+    if (m.u32((pOrthWalk + 0x0c) >>> 0) === 1) {
+      const pNeighbor = m.u32(pOrthWalk);
+
+      let pSelfNode = m.u32(roomEx);
+      if (m.u32((pSelfNode + 0x0c) >>> 0) === 1 && m.u32(pSelfNode) === pNeighbor) {
+        m.setU32(roomEx, m.u32((pSelfNode + 0x14) >>> 0));
+        freeFn?.call(m, pSelfNode);
+      } else {
+        let pPrev = pSelfNode;
+        let pCur = m.u32((pSelfNode + 0x14) >>> 0);
+        while (pCur !== 0) {
+          if (m.u32((pCur + 0x0c) >>> 0) === 1 && m.u32(pCur) === pNeighbor) {
+            m.setU32((pPrev + 0x14) >>> 0, m.u32((pCur + 0x14) >>> 0));
+            freeFn?.call(m, pCur);
+            break;
+          }
+          pPrev = pCur;
+          pCur = m.u32((pCur + 0x14) >>> 0);
+        }
+      }
+
+      let pNeighHead = m.u32(pNeighbor);
+      if (m.u32((pNeighHead + 0x0c) >>> 0) === 1 && m.u32(pNeighHead) === roomEx) {
+        m.setU32(pNeighbor, m.u32((pNeighHead + 0x14) >>> 0));
+        freeFn?.call(m, pNeighHead);
+      } else {
+        let pPrev = pNeighHead;
+        let pCur = m.u32((pNeighHead + 0x14) >>> 0);
+        while (pCur !== 0) {
+          if (m.u32((pCur + 0x0c) >>> 0) === 1 && m.u32(pCur) === roomEx) {
+            m.setU32((pPrev + 0x14) >>> 0, m.u32((pCur + 0x14) >>> 0));
+            freeFn?.call(m, pCur);
+            break;
+          }
+          pPrev = pCur;
+          pCur = m.u32((pCur + 0x14) >>> 0);
+        }
+      }
+    }
+    pOrthWalk = pNextOrthWalk;
+  }
+
+  let pRemOrth = m.u32(roomEx);
+  while (pRemOrth !== 0) {
+    const pNextRem = m.u32((pRemOrth + 0x14) >>> 0);
+    freeFn?.call(m, pRemOrth);
+    pRemOrth = pNextRem;
+  }
+
+  const pLevel = m.u32((roomEx + 0x58) >>> 0);
+  const pFirst = m.u32((pLevel + 0x10) >>> 0);
+  if (pFirst === roomEx) {
+    m.setU32((pLevel + 0x10) >>> 0, m.u32((roomEx + 0x24) >>> 0));
+    m.setU32((pLevel + 0x08) >>> 0, ((m.u32((pLevel + 0x08) >>> 0) | 0) - 1) >>> 0);
+  } else {
+    let pPrevRoom = pFirst;
+    while (pPrevRoom !== 0) {
+      const pNextRoom = m.u32((pPrevRoom + 0x24) >>> 0);
+      if (pNextRoom === 0) {
+        break;
+      }
+      if (pNextRoom === roomEx) {
+        m.setU32((pPrevRoom + 0x24) >>> 0, m.u32((roomEx + 0x24) >>> 0));
+        m.setU32((pLevel + 0x08) >>> 0, ((m.u32((pLevel + 0x08) >>> 0) | 0) - 1) >>> 0);
+        break;
+      }
+      pPrevRoom = pNextRoom;
+    }
+  }
+
+  DRLGROOMTILE_FreeRoomTileGridAndAnimList113c(m, roomEx);
+  DRLGLOGIC_FreeRoomLogicalInfo113c(m, roomEx);
+  freeFn?.call(m, roomEx);
+}
+
+/**
+ * `@va D2Common:0x6FD676F0` (`DRLGOUTPLACE_ApplyOutdoorVerticesToGrids113c`, not exported;
+ * `__stdcall(pLevel) -> void`, `ret 4`).
+ */
+export function DRLGOUTPLACE_ApplyOutdoorVerticesToGrids113c(
+  m: Memory113c,
+  pLevel: number,
+): void {
+  const lvl = pLevel >>> 0;
+  const pOutdoors = m.u32((lvl + 0x14) >>> 0);
+  const pHead = m.u32((pOutdoors + 0x64) >>> 0);
+  let pVertex = pHead;
+  do {
+    const pNext = m.u32((pVertex + 0x10) >>> 0);
+    if ((m.u8((pVertex + 0x0c) >>> 0) & 0x01) !== 0) {
+      const visFlags = DRLGOUTDOORS_ComputeVertexLevelLinkVisBit113c(m, pVertex, lvl);
+      const wallFlags = m.u8((pVertex + 0x08) >>> 0) !== 0 ? 3 : 1;
+      ENVIRONMENT_Alloc113c(m, (pOutdoors + 0x18) >>> 0, pVertex, visFlags, 0, 1);
+      ENVIRONMENT_Alloc113c(m, (pOutdoors + 0x2c) >>> 0, pVertex, wallFlags, 0, 1);
+    }
+    pVertex = pNext;
+  } while (pVertex !== pHead);
+}
+
+/**
+ * `@va D2Common:0x6FD605C0` (`DRLGMAZE_SpawnAdjacentSpecialPresetRoom113c`, not exported;
+ * custom LTCG `eax = pLevel`, `[esp+4] = nDir`, `[esp+8] = nLvlPrestId`, `[esp+0xC] = nPickedFile`, `ret 0xC`).
+ */
+export function DRLGMAZE_SpawnAdjacentSpecialPresetRoom113c(
+  m: Memory113c,
+  pLevel: number,
+  nDir: number,
+  nLvlPrestId: number,
+  nPickedFile: number,
+): number {
+  const lvl = pLevel >>> 0;
+  let pBaseRoomEx = m.u32((lvl + 0x10) >>> 0);
+  while (pBaseRoomEx !== 0) {
+    const pBasePreset = m.u32((pBaseRoomEx + 0x20) >>> 0);
+    if ((m.u32((pBasePreset + 0x0c) >>> 0) & 0x02) === 0) {
+      const pNewRoomEx = DRLGROOM_AllocRoomEx113c(m, m.u32((pBaseRoomEx + 0x58) >>> 0), 2);
+      const pLevelNew = m.u32((pNewRoomEx + 0x58) >>> 0);
+      const pMazeInfo = m.u32((pLevelNew + 0x14) >>> 0);
+      m.setU32((pNewRoomEx + 0x3c) >>> 0, m.u32((pMazeInfo + 0x10) >>> 0));
+      m.setU32((pNewRoomEx + 0x40) >>> 0, m.u32((pMazeInfo + 0x14) >>> 0));
+      if (DRLGMAZE_PositionAdjacentRoomAndCheckSeparation113c(m, nDir, pBaseRoomEx, pNewRoomEx) === 0) {
+        DRLGROOM_FreeRoomEx113c(m, pNewRoomEx);
+      } else {
+        DRLGROOM_AddOrthRoomData113c(m, pNewRoomEx, pBaseRoomEx, nDir);
+        DRLGROOM_AddOrthRoomData113c(m, pBaseRoomEx, pNewRoomEx, ((nDir | 0) - 2) & 3);
+        const pLevelBase = m.u32((pBaseRoomEx + 0x58) >>> 0);
+        m.setU32((pNewRoomEx + 0x24) >>> 0, m.u32((pLevelBase + 0x10) >>> 0));
+        m.setU32((pLevelBase + 0x10) >>> 0, pNewRoomEx);
+        m.setU32((pLevelBase + 0x08) >>> 0, (m.u32((pLevelBase + 0x08) >>> 0) + 1) >>> 0);
+        DRLGMAZE_AssignMazeRoomPrestId113c(m, pBaseRoomEx, 1);
+        const pNewPreset = m.u32((pNewRoomEx + 0x20) >>> 0);
+        m.setU32((pNewPreset + 0x04) >>> 0, nPickedFile >>> 0);
+        m.setU32(pNewPreset, nLvlPrestId >>> 0);
+        m.setU32((pNewPreset + 0x0c) >>> 0, (m.u32((pNewPreset + 0x0c) >>> 0) | 0x02) >>> 0);
+        return pNewRoomEx >>> 0;
+      }
+    }
+    pBaseRoomEx = m.u32((pBaseRoomEx + 0x24) >>> 0);
+  }
+  return 0;
+}
+
+/**
+ * `@va D2Common:0x6FD60160` (`DRLGMAZE_ExpandRoomsToTargetCount113c`, not exported;
+ * `__stdcall(pLevel) -> void`, `ret 4`).
+ */
+export function DRLGMAZE_ExpandRoomsToTargetCount113c(
+  m: Memory113c,
+  pLevel: number,
+): void {
+  const level = pLevel >>> 0;
+  const pDrlg0 = m.u32((level + 0x1b4) >>> 0);
+  const nDiff = m.u8((pDrlg0 + 0x450) >>> 0);
+  const pMazeInfo0 = m.u32((level + 0x14) >>> 0);
+  let nTarget = m.u32((pMazeInfo0 + 0x04 + nDiff * 4) >>> 0) | 0;
+  const nLevelId = m.u32((level + 0x1d0) >>> 0) | 0;
+  if (nLevelId === (m.u32((pDrlg0 + 0x94) >>> 0) | 0)) {
+    nTarget = imul32(nTarget, 3);
+  }
+  const pDrlg1 = m.u32((level + 0x1b4) >>> 0);
+  if (nLevelId === (m.u32((pDrlg1 + 0x484) >>> 0) | 0)) {
+    nTarget = (nTarget + nTarget) | 0;
+  }
+
+  while ((m.u32((level + 0x08) >>> 0) | 0) < nTarget) {
+    const nRooms = m.u32((level + 0x08) >>> 0) | 0;
+    let idx = 0;
+    if (nRooms > 0) {
+      const lo = BigInt(m.u32((level + 0x1c4) >>> 0));
+      const hi = BigInt(m.u32((level + 0x1c8) >>> 0));
+      const next = lo * 0x6ac690c5n + hi;
+      const newLo = Number(next & 0xffffffffn) >>> 0;
+      const newHi = Number((next >> 32n) & 0xffffffffn) >>> 0;
+      m.setU32((level + 0x1c4) >>> 0, newLo);
+      m.setU32((level + 0x1c8) >>> 0, newHi);
+      idx = (newLo % (nRooms >>> 0)) >>> 0;
+    }
+
+    let pRoomEx = m.u32((level + 0x10) >>> 0);
+    for (let k = 0; k < idx; k++) {
+      pRoomEx = m.u32((pRoomEx + 0x24) >>> 0);
+    }
+
+    const rLo = BigInt(m.u32((pRoomEx + 0x14) >>> 0));
+    const rHi = BigInt(m.u32((pRoomEx + 0x18) >>> 0));
+    const rNext = rLo * 0x6ac690c5n + rHi;
+    const rNewLo = Number(rNext & 0xffffffffn) >>> 0;
+    const rNewHi = Number((rNext >> 32n) & 0xffffffffn) >>> 0;
+    m.setU32((pRoomEx + 0x14) >>> 0, rNewLo);
+    m.setU32((pRoomEx + 0x18) >>> 0, rNewHi);
+    const dir = rNewLo & 3;
+
+    const pPreset = m.u32((pRoomEx + 0x20) >>> 0);
+    if ((m.u32((pPreset + 0x0c) >>> 0) & 0x02) === 0) {
+      const pNew = DRLGROOM_AllocRoomEx113c(m, m.u32((pRoomEx + 0x58) >>> 0), 2) >>> 0;
+      const pNewLvl = m.u32((pNew + 0x58) >>> 0);
+      const pMaze = m.u32((pNewLvl + 0x14) >>> 0);
+      m.setU32((pNew + 0x3c) >>> 0, m.u32((pMaze + 0x10) >>> 0));
+      m.setU32((pNew + 0x40) >>> 0, m.u32((pMaze + 0x14) >>> 0));
+      if (DRLGMAZE_PositionAdjacentRoomAndCheckSeparation113c(m, dir, pRoomEx, pNew) === 0) {
+        DRLGROOM_FreeRoomEx113c(m, pNew);
+      } else {
+        DRLGROOM_AddOrthRoomData113c(m, pNew, pRoomEx, dir);
+        DRLGROOM_AddOrthRoomData113c(m, pRoomEx, pNew, (dir - 2) & 3);
+        DRLGMAZE_LinkTouchingMazeRooms113c(m, pNew);
+        const pRoomLvl = m.u32((pRoomEx + 0x58) >>> 0);
+        m.setU32((pNew + 0x24) >>> 0, m.u32((pRoomLvl + 0x10) >>> 0));
+        m.setU32((pRoomLvl + 0x10) >>> 0, pNew);
+        m.setU32((pRoomLvl + 0x08) >>> 0, (m.u32((pRoomLvl + 0x08) >>> 0) + 1) >>> 0);
+        DRLGMAZE_AssignMazeRoomPrestId113c(m, pRoomEx, 1);
+        DRLGMAZE_AssignMazeRoomPrestId113c(m, pNew, 1);
+      }
+    }
+  }
+}
+
+function findExpandableRoomInDir113c(
+  m: Memory113c,
+  pLevel: number,
+  dir: number,
+  coordOff: number,
+  pickGreater: boolean,
+): number {
+  const level = pLevel >>> 0;
+  let pRoomEx = m.u32((level + 0x10) >>> 0);
+  let best = 0;
+
+  while (pRoomEx !== 0) {
+    let skip = false;
+    if (best !== 0) {
+      const curVal = m.u32((pRoomEx + coordOff) >>> 0) | 0;
+      const bestVal = m.u32((best + coordOff) >>> 0) | 0;
+      if (pickGreater ? curVal <= bestVal : curVal >= bestVal) {
+        skip = true;
+      }
+    }
+
+    if (!skip) {
+      const pPreset = m.u32((pRoomEx + 0x20) >>> 0);
+      if ((m.u32((pPreset + 0x0c) >>> 0) & 0x02) !== 0) {
+        skip = true;
+      }
+    }
+
+    if (!skip) {
+      let pOrth = m.u32(pRoomEx);
+      while (pOrth !== 0) {
+        if (m.u32((pOrth + 0x04) >>> 0) === (dir >>> 0)) {
+          skip = true;
+          break;
+        }
+        pOrth = m.u32((pOrth + 0x14) >>> 0);
+      }
+    }
+
+    if (!skip) {
+      const pNew = DRLGROOM_AllocRoomEx113c(m, m.u32((pRoomEx + 0x58) >>> 0), 2) >>> 0;
+      const pNewLvl = m.u32((pNew + 0x58) >>> 0);
+      const pMaze = m.u32((pNewLvl + 0x14) >>> 0);
+      m.setU32((pNew + 0x3c) >>> 0, m.u32((pMaze + 0x10) >>> 0));
+      m.setU32((pNew + 0x40) >>> 0, m.u32((pMaze + 0x14) >>> 0));
+      let pTrial = 0;
+      if (DRLGMAZE_PositionAdjacentRoomAndCheckSeparation113c(m, dir, pRoomEx, pNew) === 0) {
+        DRLGROOM_FreeRoomEx113c(m, pNew);
+      } else {
+        pTrial = pNew;
+        DRLGROOM_AddOrthRoomData113c(m, pNew, pRoomEx, dir);
+        DRLGROOM_AddOrthRoomData113c(m, pRoomEx, pNew, (dir - 2) & 3);
+        const pRoomLvl = m.u32((pRoomEx + 0x58) >>> 0);
+        m.setU32((pNew + 0x24) >>> 0, m.u32((pRoomLvl + 0x10) >>> 0));
+        m.setU32((pRoomLvl + 0x10) >>> 0, pNew);
+        m.setU32((pRoomLvl + 0x08) >>> 0, (m.u32((pRoomLvl + 0x08) >>> 0) + 1) >>> 0);
+        DRLGMAZE_AssignMazeRoomPrestId113c(m, pNew, 1);
+      }
+      if (pTrial !== 0) {
+        DRLGROOM_FreeRoomEx113c(m, pTrial);
+        best = pRoomEx;
+      }
+    }
+
+    pRoomEx = m.u32((pRoomEx + 0x24) >>> 0);
+  }
+
+  return best >>> 0;
+}
+
+/**
+ * `@va D2Common:0x6FD60730` (`DRLGMAZE_FindSouthmostExpandableRoom113c`, not exported;
+ * custom LTCG `ecx = pLevel`, `ret -> pRoomEx`).
+ */
+export function DRLGMAZE_FindSouthmostExpandableRoom113c(
+  m: Memory113c,
+  pLevel: number,
+): number {
+  return findExpandableRoomInDir113c(m, pLevel, 3, 0x38, true);
+}
+
+/**
+ * `@va D2Common:0x6FD60820` (`DRLGMAZE_FindEastmostExpandableRoom113c`, not exported;
+ * custom LTCG `ecx = pLevel`, `ret -> pRoomEx`).
+ */
+export function DRLGMAZE_FindEastmostExpandableRoom113c(
+  m: Memory113c,
+  pLevel: number,
+): number {
+  return findExpandableRoomInDir113c(m, pLevel, 2, 0x34, true);
+}
+
+/**
+ * `@va D2Common:0x6FD60910` (`DRLGMAZE_FindWestmostExpandableRoom113c`, not exported;
+ * custom LTCG `ecx = pLevel`, `ret -> pRoomEx`).
+ */
+export function DRLGMAZE_FindWestmostExpandableRoom113c(
+  m: Memory113c,
+  pLevel: number,
+): number {
+  return findExpandableRoomInDir113c(m, pLevel, 0, 0x34, false);
+}
+
+/**
+ * `@va D2Common:0x6FD60A00` (`DRLGMAZE_FindNorthmostExpandableRoom113c`, not exported;
+ * custom LTCG `eax = pLevel`, `ret -> pRoomEx`).
+ */
+export function DRLGMAZE_FindNorthmostExpandableRoom113c(
+  m: Memory113c,
+  pLevel: number,
+): number {
+  return findExpandableRoomInDir113c(m, pLevel, 1, 0x38, false);
+}
+
+/**
+ * `@va D2Common:0x6FD9A5C0` (`DRLGPRESET_CreatePresetRoomEx113c`, not exported;
+ * custom LTCG `eax = dwFlags`, `ecx = pLevel`, `[esp+4..0x1C] = (nTileX, nTileY, nTileW, nTileH, nLvlPrestId, nPickedFile, dwDT1Mask)`, `ret 0x1C -> pRoomEx`).
+ */
+export function DRLGPRESET_CreatePresetRoomEx113c(
+  m: Memory113c,
+  dwFlags: number,
+  pLevel: number,
+  nTileX: number,
+  nTileY: number,
+  nTileW: number,
+  nTileH: number,
+  nLvlPrestId: number,
+  nPickedFile: number,
+  dwDT1Mask: number,
+): number {
+  const level = pLevel >>> 0;
+  const pRoomEx = DRLGROOM_AllocRoomEx113c(m, level, 1) >>> 0;
+  m.setU32((pRoomEx + 0x34) >>> 0, nTileX >>> 0);
+  m.setU32((pRoomEx + 0x38) >>> 0, nTileY >>> 0);
+  m.setU32((pRoomEx + 0x3c) >>> 0, nTileW >>> 0);
+  m.setU32((pRoomEx + 0x40) >>> 0, nTileH >>> 0);
+  m.setU32((pRoomEx + 0x24) >>> 0, m.u32((level + 0x10) >>> 0));
+  m.setU32((level + 0x10) >>> 0, pRoomEx);
+  m.setU32((level + 0x08) >>> 0, (m.u32((level + 0x08) >>> 0) + 1) >>> 0);
+  m.setU32(
+    (pRoomEx + 0x28) >>> 0,
+    (m.u32((pRoomEx + 0x28) >>> 0) | ((dwFlags | 0x80000) >>> 0)) >>> 0,
+  );
+  m.setU32((pRoomEx + 0x50) >>> 0, dwDT1Mask >>> 0);
+
+  const pPreset = m.u32((pRoomEx + 0x20) >>> 0);
+  m.setU32((pPreset + 0x54) >>> 0, nLvlPrestId >>> 0);
+  m.setU32((pPreset + 0x58) >>> 0, nPickedFile >>> 0);
+
+  const nLevelId = m.u32((level + 0x1d0) >>> 0) | 0;
+  let pLevelDef = 0;
+  if (nLevelId >= 0) {
+    const sgptDataTables = m.u32(SGPT_DATA_TABLES_PTR_VA_6FDE9E1C);
+    if (nLevelId < (m.u32((sgptDataTables + 0xc5c) >>> 0) | 0)) {
+      pLevelDef = (m.u32(SG_LEVEL_DEF_BIN_PTR_VA_6FDF0B38) + imul32(nLevelId, 0x9c)) >>> 0;
+    }
+  }
+  const nSubType = m.u32((pLevelDef + 0x38) >>> 0) | 0;
+  const nSubTheme = m.u32((pLevelDef + 0x3c) >>> 0) | 0;
+  m.setU32((pPreset + 0x64) >>> 0, nSubType >>> 0);
+  m.setU32((pPreset + 0x68) >>> 0, nSubTheme >>> 0);
+  m.setU32(
+    (pPreset + 0x6c) >>> 0,
+    DRLGTILESUB_RollSubThemeMask113c(m, pRoomEx, nSubType, nSubTheme) >>> 0,
+  );
+  return pRoomEx;
+}
+
+/**
+ * `@va D2Common:0x6FD7E1F0` (`DRLG_ActivateRoomEx113c`, not exported;
+ * custom LTCG `esi = pRoomEx`, `[esp+4] = pDrlg`, `ret 4`).
+ */
+export function DRLG_ActivateRoomEx113c(
+  m: Memory113c,
+  pRoomEx: number,
+  pDrlg: number,
+): void {
+  const roomEx = pRoomEx >>> 0;
+  const drlg = pDrlg >>> 0;
+  const x = m.u32((roomEx + 0x34) >>> 0) | 0;
+  const y = m.u32((roomEx + 0x38) >>> 0) | 0;
+  const w = m.u32((roomEx + 0x3c) >>> 0) | 0;
+  const h = m.u32((roomEx + 0x40) >>> 0) | 0;
+
+  const pTileGrid = m.u32((roomEx + 0x54) >>> 0);
+  const pRoomTiles = (pTileGrid + 0x14) >>> 0;
+  if (
+    m.u32((pRoomTiles + 0x04) >>> 0) === 0 &&
+    m.u32((pRoomTiles + 0x0c) >>> 0) === 0
+  ) {
+    return;
+  }
+
+  const sm = withDrlgRoomStackScratch113c(m);
+  const coords = DRLGROOM_STACK_BASE;
+  sm.setU32(coords, imul32(x, 5) >>> 0);
+  sm.setU32((coords + 0x04) >>> 0, imul32(y, 5) >>> 0);
+  sm.setU32((coords + 0x08) >>> 0, imul32(w, 5) >>> 0);
+  sm.setU32((coords + 0x0c) >>> 0, imul32(h, 5) >>> 0);
+  sm.setU32((coords + 0x10) >>> 0, x >>> 0);
+  sm.setU32((coords + 0x14) >>> 0, y >>> 0);
+  sm.setU32((coords + 0x18) >>> 0, w >>> 0);
+  sm.setU32((coords + 0x1c) >>> 0, h >>> 0);
+
+  let dwFlags = 0;
+  if ((sm.u32((roomEx + 0x28) >>> 0) & 0x40000) !== 0) {
+    dwFlags = 4;
+  } else if ((sm.u8((roomEx + 0x60) >>> 0) & 0x01) !== 0) {
+    dwFlags = 1;
+  }
+
+  const lo = BigInt(sm.u32((roomEx + 0x14) >>> 0));
+  const hi = BigInt(sm.u32((roomEx + 0x18) >>> 0));
+  const next = lo * 0x6ac690c5n + hi;
+  const newLo = Number(next & 0xffffffffn) >>> 0;
+  const newHi = Number((next >> 32n) & 0xffffffffn) >>> 0;
+  sm.setU32((roomEx + 0x14) >>> 0, newLo);
+  sm.setU32((roomEx + 0x18) >>> 0, newHi);
+
+  const pRoom1 = DUNGEON_AllocActiveRoom113c(
+    sm,
+    sm.u32((drlg + 0x46c) >>> 0),
+    roomEx,
+    coords,
+    pRoomTiles,
+    newLo,
+    dwFlags,
+  );
+  sm.setU32((roomEx + 0x30) >>> 0, pRoom1 >>> 0);
+}
+
+/**
+ * `@va D2Common:0x6FD953D0` (`DRLGWARP_LinkWarpRoomExByDir113c`,
+ * `__stdcall(pActOrUnk, pRoomEx, nDirIdx) -> bLinked`, `ret 0xc`).
+ */
+export function DRLGWARP_LinkWarpRoomExByDir113c(
+  m: Memory113c,
+  pActOrUnk: number,
+  pRoomEx: number,
+  nDirIdx: number,
+): number {
+  const roomEx = pRoomEx >>> 0;
+  const dir = nDirIdx & 0xff;
+  if (roomEx === 0 || dir >= 8) {
+    throw new D2CommonAssertError('', 848);
+  }
+  const pLevel = m.u32((roomEx + 0x58) >>> 0) >>> 0;
+  const nSrcLevelId = m.u32((pLevel + 0x1d0) >>> 0) >>> 0;
+  const pDrlg = m.u32((pLevel + 0x1b4) >>> 0) >>> 0;
+  const pVisArr = DRLGWARP_GetWarpDstAdjustData113c(m, pDrlg, nSrcLevelId) >>> 0;
+  const nDstLevelId = m.u32((pVisArr + dir * 4) >>> 0) >>> 0;
+
+  let pTargetLevel = m.u32((pDrlg + 0x47c) >>> 0) >>> 0;
+  while (pTargetLevel !== 0) {
+    if ((m.u32((pTargetLevel + 0x1d0) >>> 0) >>> 0) === nDstLevelId) {
+      break;
+    }
+    pTargetLevel = m.u32((pTargetLevel + 0x1ac) >>> 0) >>> 0;
+  }
+  if (pTargetLevel === 0) {
+    pTargetLevel = DRLG_AllocAndInitLevel113c(m, pDrlg, nDstLevelId) >>> 0;
+  }
+
+  const pDstVisArr = DRLGWARP_GetWarpDstAdjustData113c(m, pDrlg, nDstLevelId) >>> 0;
+  const pWarpArr = DRLGROOMTILE_GetWarpLevelsArray113c(m, pDrlg, nSrcLevelId) >>> 0;
+  const nWarpId = m.u32((pWarpArr + dir * 4) >>> 0) | 0;
+
+  if ((m.u32((pTargetLevel + 0x10) >>> 0) >>> 0) === 0) {
+    DRLG_InitLevelRooms113c(m, pTargetLevel);
+  }
+
+  if (nWarpId !== -1) {
+    let nMatchBefore = 0;
+    for (let j = 0; j < dir; j++) {
+      if ((m.u32((pVisArr + j * 4) >>> 0) >>> 0) === nDstLevelId) {
+        nMatchBefore = (nMatchBefore + 1) | 0;
+      }
+    }
+    let nSeen = 0;
+    for (let cl = 0; cl < 8; cl++) {
+      if ((m.u32((pDstVisArr + cl * 4) >>> 0) >>> 0) === nSrcLevelId) {
+        if (nSeen === nMatchBefore) {
+          const res = DRLGROOM_LinkAdjacentWarpRooms113c(
+            m,
+            m.u32((pTargetLevel + 0x10) >>> 0) >>> 0,
+            cl,
+            roomEx,
+            pActOrUnk >>> 0,
+            dir,
+            nWarpId,
+          );
+          if (res !== 0) return res;
+          break;
+        }
+        nSeen = (nSeen + 1) | 0;
+      }
+    }
+  }
+
+  let eax = 0;
+  for (let bl = 0; bl < 8; bl++) {
+    eax = bl;
+    if ((m.u32((pDstVisArr + bl * 4) >>> 0) >>> 0) === nSrcLevelId) {
+      eax = DRLGROOM_LinkAdjacentWarpRooms113c(
+        m,
+        m.u32((pTargetLevel + 0x10) >>> 0) >>> 0,
+        bl,
+        roomEx,
+        pActOrUnk >>> 0,
+        dir,
+        nWarpId,
+      );
+      if (eax !== 0) return eax;
+    }
+  }
+  return eax;
+}
+
+/**
+ * `@va D2Common:0x6FD95550` (`DRLGROOM_LinkRoomAndWarps113c`,
+ * `__usercall(pRoomEx@<eax>, pMemPool@<ebx>) -> void`, tail-jmp `0x6FD944F0`).
+ */
+export function DRLGROOM_LinkRoomAndWarps113c(
+  m: Memory113c,
+  pRoomEx: number,
+  pMemPool: number,
+): void {
+  const roomEx = pRoomEx >>> 0;
+  DRLGROOM_BuildRoomExNearList113c(m, roomEx, pMemPool >>> 0);
+  if ((m.u32((roomEx + 0x28) >>> 0) & 0xff0) !== 0) {
+    let mask = 0x10;
+    let dir = 0;
+    while ((mask & 0xff0) !== 0) {
+      if ((m.u32((roomEx + 0x28) >>> 0) & mask) !== 0) {
+        const pLevel = m.u32((roomEx + 0x58) >>> 0) >>> 0;
+        if ((m.u32((pLevel + 0x1d0) >>> 0) >>> 0) !== 0x85) {
+          DRLGWARP_LinkWarpRoomExByDir113c(m, pMemPool >>> 0, roomEx, dir);
+        }
+      }
+      mask = (mask << 1) >>> 0;
+      dir = (dir + 1) & 0xff;
+    }
+  }
+  DRLGROOM_FlagIfAdjacentToTown113c(m, roomEx);
+}
+
+/**
+ * `@va D2Common:0x6FDCBB20` (`DRLGROOM_DecrementNearRoomsStatus113c`,
+ * `__usercall(pRoomEx@<ecx>, nStatus@<dl>) -> void`).
+ */
+export function DRLGROOM_DecrementNearRoomsStatus113c(
+  m: Memory113c,
+  pRoomEx: number,
+  nStatus: number,
+): void {
+  const roomEx = pRoomEx >>> 0;
+  const st = nStatus & 0xff;
+  const nNear = m.u32((roomEx + 0x2c) >>> 0) | 0;
+  const ppNear = m.u32((roomEx + 0x08) >>> 0) >>> 0;
+  for (let i = 0; i < nNear; i++) {
+    const pAdj = m.u32((ppNear + i * 4) >>> 0) >>> 0;
+    if (pAdj === 0) continue;
+    const cntOff = (pAdj + 0x0c + st * 2) >>> 0;
+    m.setU16(cntOff, (m.u16(cntOff) - 1) & 0xffff);
+    if (st === 0) DRLGROOM_RefreshStatusFromCounts113c(m, pAdj);
+    else if (st === 1) DRLGROOM_RefreshStatusFromCountsB113c(m, pAdj);
+    else if (st === 2) DRLGROOM_RefreshStatusFromCountsA113c(m, pAdj);
+    else if (st === 3) DRLGROOM_FreeOrUnloadRoomIfStatus4_113c(m, pAdj);
+    if (st < 3) {
+      DRLGROOM_DecrementNearRoomsStatus113c(m, pAdj, (st + 1) & 0xff);
+    }
+  }
+}
+
+/**
+ * `@va D2Common:0x6FDCBDB0` (`DRLGROOM_FreeOrUnloadRoomIfStatus4_113c`,
+ * `__fastcall(pRoomEx@<ecx>) -> void`).
+ */
+export function DRLGROOM_FreeOrUnloadRoomIfStatus4_113c(
+  m: Memory113c,
+  pRoomEx: number,
+): void {
+  let roomEx = pRoomEx >>> 0;
+  if (m.u8((roomEx + 0x44) >>> 0) === 4) return;
+  roomEx = DRLGROOM_RefreshStatusFromCountsEax113c(m, roomEx) >>> 0;
+  if (m.u8((roomEx + 0x44) >>> 0) !== 4) return;
+  const pLevel = m.u32((roomEx + 0x58) >>> 0) >>> 0;
+  const pDrlg = m.u32((pLevel + 0x1b4) >>> 0) >>> 0;
+  if (pDrlg === 0) {
+    throw new D2CommonAssertError('', 0x42e);
+  }
+  if ((m.u8((pDrlg + 0x8c) >>> 0) & 0x01) !== 0) {
+    DRLGROOMTILE_FreeRoomResources113c(m, roomEx, 0);
+  }
+}
+
+/**
+ * `@va D2Common:0x6FDCBEE0` (`DRLGROOM_EnsureRoomStatus3_113c`,
+ * `__fastcall(pRoomEx@<ecx>) -> void`, tail-jmp `0x6FDCBC60`).
+ */
+export function DRLGROOM_EnsureRoomStatus3_113c(
+  m: Memory113c,
+  pRoomEx: number,
+): void {
+  const roomEx = pRoomEx >>> 0;
+  if ((m.u32((roomEx + 0x28) >>> 0) & 0x01000000) === 0) {
+    DRLGROOM_LoadDt1Files113c(m, roomEx);
+  }
+  if ((m.u32((roomEx + 0x48) >>> 0) | 0) === 2 && (m.u32((roomEx + 0x28) >>> 0) & 0x02000000) === 0) {
+    DRLGPRESET_LoadPresetRoomMap113c(m, roomEx);
+  }
+  if (m.u8((roomEx + 0x44) >>> 0) > 3) {
+    DRLGROOM_SetStatusLink3_113c(m, roomEx);
+  }
+}
+
+/**
+ * `@va D2Common:0x6FDCBFA0` (`DRLGROOM_PropagateRoomStatusIncrement113c`,
+ * `__usercall(pMemPool@<ecx>, pRoomEx@<edx>, nStatus@<stack+4>) -> void`, `ret 0x4`).
+ */
+export function DRLGROOM_PropagateRoomStatusIncrement113c(
+  m: Memory113c,
+  pMemPool: number,
+  pRoomEx: number,
+  nStatus: number,
+): void {
+  const roomEx = pRoomEx >>> 0;
+  const memPool = pMemPool >>> 0;
+  if ((m.u32((roomEx + 0x2c) >>> 0) | 0) === 0) {
+    DRLGROOM_LinkRoomAndWarps113c(m, roomEx, memPool);
+  }
+  const st = nStatus & 0xff;
+  const nNear = m.u32((roomEx + 0x2c) >>> 0) | 0;
+  if (nNear <= 0) return;
+
+  const ppNear = m.u32((roomEx + 0x08) >>> 0) >>> 0;
+  for (let i = 0; i < nNear; i++) {
+    const pAdj = m.u32((ppNear + i * 4) >>> 0) >>> 0;
+    if (st < 3) {
+      DRLGROOM_PropagateRoomStatusIncrement113c(m, memPool, pAdj, (st + 1) & 0xff);
+    }
+    if ((m.u8((pAdj + 0x44) >>> 0) | 0) >= st) {
+      let allZero = true;
+      for (let j = 0; j <= st; j++) {
+        if (m.u16((pAdj + 0x0c + j * 2) >>> 0) !== 0) {
+          allZero = false;
+          break;
+        }
+      }
+      if (allZero) {
+        if (st === 0) DRLGROOM_SetStatusLink0Fastcall113c(m, pAdj);
+        else if (st === 1) DRLGROOM_InitAndLinkRoomStatus1_113c(m, pAdj);
+        else if (st === 2) DRLGROOM_SetRoomStatus2IfReady_113c(m, pAdj);
+        else if (st === 3) DRLGROOM_EnsureRoomStatus3_113c(m, pAdj);
+      }
+    }
+    const cntOff = (pAdj + 0x0c + st * 2) >>> 0;
+    m.setU16(cntOff, (m.u16(cntOff) + 1) & 0xffff);
+  }
+}
+
+/**
+ * `@va D2Common:0x6FDCC090` (`DRLGROOM_IncrementRoomAndNeighborsStatus113c`,
+ * `__usercall(pRoomEx@<edi>, nStatus@<bl>) -> void`).
+ */
+export function DRLGROOM_IncrementRoomAndNeighborsStatus113c(
+  m: Memory113c,
+  pRoomEx: number,
+  nStatus: number,
+): void {
+  const roomEx = pRoomEx >>> 0;
+  const st = nStatus & 0xff;
+  const pLevel = m.u32((roomEx + 0x58) >>> 0) >>> 0;
+  const pDrlg = m.u32((pLevel + 0x1b4) >>> 0) >>> 0;
+  const pMemPool = m.u32((pDrlg + 0x478) >>> 0) >>> 0;
+  DRLGROOM_PropagateRoomStatusIncrement113c(m, pMemPool, roomEx, (st + 1) & 0xff);
+
+  if ((m.u8((roomEx + 0x44) >>> 0) | 0) >= st) {
+    let allZero = true;
+    for (let j = 0; j <= st; j++) {
+      if (m.u16((roomEx + 0x0c + j * 2) >>> 0) !== 0) {
+        allZero = false;
+        break;
+      }
+    }
+    if (allZero) {
+      if (st === 0) DRLGROOM_SetStatusLink0Fastcall113c(m, roomEx);
+      else if (st === 1) DRLGROOM_InitAndLinkRoomStatus1_113c(m, roomEx);
+      else if (st === 2) DRLGROOM_SetRoomStatus2IfReady_113c(m, roomEx);
+      else if (st === 3) DRLGROOM_EnsureRoomStatus3_113c(m, roomEx);
+    }
+  }
+  const cntOff = (roomEx + 0x0c + st * 2) >>> 0;
+  m.setU16(cntOff, (m.u16(cntOff) + 1) & 0xffff);
+}
+
+/**
+ * `@va D2Common:0x6FDCC0E0` (`DRLGROOM_BuildRoomGridsAndTiles113c`,
+ * `__usercall(pRoomEx@<eax>, pMemPool@<ecx>) -> void`).
+ */
+export function DRLGROOM_BuildRoomGridsAndTiles113c(
+  m: Memory113c,
+  pRoomEx: number,
+  pMemPool: number,
+): void {
+  const roomEx = pRoomEx >>> 0;
+  const pLevel = m.u32((roomEx + 0x58) >>> 0) >>> 0;
+  const pDrlg = m.u32((pLevel + 0x1b4) >>> 0) >>> 0;
+  if ((m.u32((roomEx + 0x2c) >>> 0) | 0) === 0) {
+    DRLGROOM_LinkRoomAndWarps113c(m, roomEx, pMemPool >>> 0);
+  }
+  m.setU32((roomEx + 0x14) >>> 0, m.u32((roomEx + 0x04) >>> 0));
+  m.setU32((roomEx + 0x18) >>> 0, 0x29a);
+
+  const nType = m.u32((roomEx + 0x48) >>> 0) | 0;
+  if (nType === 1) {
+    DRLGROOMTILE_InitOutdoorRoomTilesAndWallGrids113c(m, roomEx);
+  } else if (nType === 2) {
+    DRLGPRESET_BuildPresetRoomGridsFromFile113c(m, roomEx);
+  }
+
+  const nType2 = m.u32((roomEx + 0x48) >>> 0) | 0;
+  if (nType2 === 1) {
+    DRLGROOMTILE_BuildOutdoorRoomTileData113c(m, roomEx);
+  } else if (nType2 === 2) {
+    DRLGROOMTILE_BuildPresetRoomTiles113c(m, roomEx);
+  }
+
+  m.setU32((roomEx + 0x28) >>> 0, (m.u32((roomEx + 0x28) >>> 0) | 0x100000) >>> 0);
+  DRLG_ActivateRoomEx113c(m, roomEx, pDrlg);
+  m.setU8((pDrlg + 0x98) >>> 0, (m.u8((pDrlg + 0x98) >>> 0) + 1) & 0xff);
+  m.setU32((pDrlg + 0x08) >>> 0, (m.u32((pDrlg + 0x08) >>> 0) + 1) >>> 0);
+}
+
+/**
+ * `@va D2Common:0x6FDCC270` (`DRLGROOM_EnsureRoomAndGetRoom1_113c`,
+ * `__usercall(pRoomEx@<eax>) -> pRoom1`).
+ */
+export function DRLGROOM_EnsureRoomAndGetRoom1_113c(
+  m: Memory113c,
+  pRoomEx: number,
+): number {
+  const roomEx = pRoomEx >>> 0;
+  if ((m.u32((roomEx + 0x28) >>> 0) & 0x01000000) === 0) {
+    DRLGROOM_LoadDt1Files113c(m, roomEx);
+  }
+  if ((m.u32((roomEx + 0x28) >>> 0) & 0x02000000) === 0 && (m.u32((roomEx + 0x48) >>> 0) | 0) === 2) {
+    DRLGPRESET_LoadPresetRoomMap113c(m, roomEx);
+  }
+  if ((m.u32((roomEx + 0x28) >>> 0) & 0x100000) === 0) {
+    const pLevel = m.u32((roomEx + 0x58) >>> 0) >>> 0;
+    const pDrlg = m.u32((pLevel + 0x1b4) >>> 0) >>> 0;
+    DRLGROOM_BuildRoomGridsAndTiles113c(m, roomEx, m.u32((pDrlg + 0x478) >>> 0));
+  }
+  return m.u32((roomEx + 0x30) >>> 0) >>> 0;
+}
+
+/**
+ * `@va D2Common:0x6FDCC370` (`DRLGROOM_InitAndLinkRoomStatus1_113c`,
+ * `__fastcall(pRoomEx@<ecx>) -> void`, tail-jmp `0x6FDCBCD0`).
+ */
+export function DRLGROOM_InitAndLinkRoomStatus1_113c(
+  m: Memory113c,
+  pRoomEx: number,
+): void {
+  const roomEx = pRoomEx >>> 0;
+  if ((m.u32((roomEx + 0x30) >>> 0) >>> 0) === 0 && (m.u32((roomEx + 0x28) >>> 0) & 0x100000) === 0) {
+    const pLevel = m.u32((roomEx + 0x58) >>> 0) >>> 0;
+    const pDrlg = m.u32((pLevel + 0x1b4) >>> 0) >>> 0;
+    DRLGROOM_BuildRoomGridsAndTiles113c(m, roomEx, m.u32((pDrlg + 0x478) >>> 0));
+    const flag = (~((m.u8((pDrlg + 0x8c) >>> 0) << 1) & 0xff) & 0x02) | 0x05;
+    m.setU8((pDrlg + 0x45c) >>> 0, flag & 0xff);
+  }
+  if (m.u8((roomEx + 0x44) >>> 0) > 1) {
+    DRLGROOM_SetStatusLink1_113c(m, roomEx);
+  }
+}
+
+/**
+ * `@va D2Common:0x6FDCC3D0` (`DRLGROOM_SetRoomStatus2AndInitIfNear_113c`,
+ * `__fastcall(pRoomEx@<ecx>) -> void`, tail-jmp `0x6FDCC370`).
+ */
+export function DRLGROOM_SetRoomStatus2AndInitIfNear_113c(
+  m: Memory113c,
+  pRoomEx: number,
+): void {
+  const roomEx = pRoomEx >>> 0;
+  if (m.u8((roomEx + 0x44) >>> 0) !== 2) {
+    const next = m.u32((roomEx + 0xe8) >>> 0) >>> 0;
+    if (next !== 0) {
+      const prev = m.u32((roomEx + 0x1c) >>> 0) >>> 0;
+      if (prev !== 0) {
+        m.setU32((next + 0x1c) >>> 0, prev);
+        m.setU32((prev + 0xe8) >>> 0, next);
+        m.setU32((roomEx + 0xe8) >>> 0, 0);
+        m.setU32((roomEx + 0x1c) >>> 0, 0);
+      }
+    }
+    const pLevel = m.u32((roomEx + 0x58) >>> 0) >>> 0;
+    const pDrlg = m.u32((pLevel + 0x1b4) >>> 0) >>> 0;
+    const head = (pDrlg + 0x278) >>> 0;
+    const headNext = m.u32((head + 0xe8) >>> 0) >>> 0;
+    m.setU32((roomEx + 0x1c) >>> 0, head);
+    m.setU32((roomEx + 0xe8) >>> 0, headNext);
+    m.setU32((headNext + 0x1c) >>> 0, roomEx);
+    m.setU32((head + 0xe8) >>> 0, roomEx);
+    m.setU8((roomEx + 0x44) >>> 0, 2);
+  }
+  if (m.u16((roomEx + 0x0e) >>> 0) !== 0) {
+    DRLGROOM_InitAndLinkRoomStatus1_113c(m, roomEx);
+  }
+}
+
+/**
+ * `@va D2Common:0x6FDCC470` (`DRLGROOM_SetRoomStatus2IfReady_113c`,
+ * `__fastcall(pRoomEx@<ecx>) -> void`, tail-jmp `0x6FDCC3D0`).
+ */
+export function DRLGROOM_SetRoomStatus2IfReady_113c(
+  m: Memory113c,
+  pRoomEx: number,
+): void {
+  const roomEx = pRoomEx >>> 0;
+  const dwFlags = m.u32((roomEx + 0x28) >>> 0) >>> 0;
+  if ((dwFlags & 0x01000000) === 0) return;
+  if ((m.u32((roomEx + 0x48) >>> 0) | 0) === 2 && (dwFlags & 0x02000000) === 0) return;
+  if (m.u8((roomEx + 0x44) >>> 0) > 2) {
+    DRLGROOM_SetRoomStatus2AndInitIfNear_113c(m, roomEx);
+  }
+}
+
+const ACT_START_LEVELS_6FDE4668 = [1, 40, 75, 103, 109, 1024] as const;
+/* D2Common.dll .rdata 0x6FDDCAB8..0x6FDDCB87 (52 int32s; edge base 0x6FDDCAC8 = +4) */
+const BORDER_PRESET_LOW_6FDDCAB8 = [
+  50462976, 16843008, 33620483, 16909056,
+  0, 4, 364, 799,
+  16, 5, 365, 800,
+  17, 6, 366, 801,
+  0, 7, 367, 802,
+  18, 8, 368, 803,
+  19, 9, 369, 804,
+  22, 10, 370, 805,
+  0, 11, 371, 806,
+  0, 12, 372, 807,
+  23, 13, 373, 808,
+  0, 14, 374, 809,
+  0, 15, 375, 810,
+] as const;
+/* D2Common.dll .rdata 0x6FDDCB88..0x6FDDCBE7 (24 int32s) */
+const BORDER_PRESET_HIGH_6FDDCB88 = [
+  881, 957, 882, 958, 883, 959, 884, 960, 885, 961,
+  886, 962, 887, 963, 888, 964, 889, 965, 890, 966,
+  891, 967, 892, 968,
+] as const;
+const BORDER_PRESET_ACT3_6FDE55B8 = [
+  373, 372, 372, 375, 0, 0, 373, 374, 374, 375,
+] as const;
+/* D2Common.dll .rdata 0x6FDE5724..0x6FDE5744 (9 int32s, center 0x6FDE5734 = +4) */
+const BORDER_DIR_TO_IDX_6FDE5724 = [-1, 1, -1, 0, -1, 2, -1, 3, -1] as const;
+/* D2Common.dll .rdata 0x6FDE55E0..0x6FDE5720 (81 int32s 9x9, center 0x6FDE5680 = +40) */
+const BORDER_CORNER_IDX_6FDE55E0 = [
+  1, 9, 9, -1, -1, 1, 8, -1, -1,
+  12, -1, -1, -1, -1, 12, 4, -1, -1,
+  5, 2, 2, 10, -1, -1, -1, -1, 10,
+  1, 9, 9, -1, -1, -1, -1, -1, -1,
+  -1, -1, -1, -1, -1, -1, -1, -1, -1,
+  -1, -1, -1, -1, -1, -1, 11, 11, 3,
+  12, -1, -1, -1, -1, 12, 4, 4, 7,
+  -1, -1, 2, 10, -1, -1, -1, -1, 10,
+  -1, -1, 6, 3, -1, -1, 11, 11, 3,
+] as const;
+
+function signum32(v: number): number {
+  const s = v | 0;
+  return s < 0 ? -1 : s > 0 ? 1 : 0;
+}
+
+function stepDir2(v: number): number {
+  const s = v | 0;
+  return s < 0 ? (s - 2) | 0 : s > 0 ? (s + 2) | 0 : 0;
+}
+
+function stepCorner2(v: number): number {
+  const s = (v | 0) << 1;
+  return s < 0 ? (s - 2) | 0 : s > 0 ? (s + 2) | 0 : 0;
+}
+
+/**
+ * `D2Common.dll` `0x6FD67180` (internal `__stdcall(pLevel)`).
+ * Spawns outdoor border and corner presets along vertex edges and marks border grid cells.
+ */
+export function DRLGROOM_SpawnOutdoorBorderPresets113c(
+  m: Memory113c,
+  pLevel: number,
+): void {
+  const level = pLevel >>> 0;
+  const nLevelId = m.u32((level + 0x1d0) >>> 0) | 0;
+  let actIdx = 0;
+  for (let i = 1; i <= 5; i++) {
+    if (nLevelId < ACT_START_LEVELS_6FDE4668[i]!) {
+      actIdx = (i - 1) & 0xff;
+      break;
+    }
+  }
+  const pOutdoors = m.u32((level + 0x14) >>> 0);
+  const pFirstVertex = m.u32((pOutdoors + 0x64) >>> 0);
+  let pV1 = pFirstVertex;
+  let pV2 = m.u32((pV1 + 0x10) >>> 0);
+
+  do {
+    const pV3 = m.u32((pV2 + 0x10) >>> 0);
+    let curX = m.u32(pV1) | 0;
+    let curY = m.u32((pV1 + 0x04) >>> 0) | 0;
+    const v2X = m.u32(pV2) | 0;
+    const v2Y = m.u32((pV2 + 0x04) >>> 0) | 0;
+    const d1X = signum32((v2X - curX) | 0);
+    const d1Y = signum32((v2Y - curY) | 0);
+
+    const endX = m.u32(pV2) | 0;
+    const endY = m.u32((pV2 + 0x04) >>> 0) | 0;
+    const v3X = m.u32(pV3) | 0;
+    const v3Y = m.u32((pV3 + 0x04) >>> 0) | 0;
+    const d2X = signum32((v3X - endX) | 0);
+    const d2Y = signum32((v3Y - endY) | 0);
+
+    const absX = d1X < 0 ? (-d1X | 0) : d1X;
+    const absY = d1Y < 0 ? (-d1Y | 0) : d1Y;
+    let span = absX !== 0 ? (curX - endX) | 0 : (curY - endY) | 0;
+    if (span < 0) span = -span | 0;
+
+    let bFlag = m.u8((pV1 + 0x08) >>> 0);
+    let orMask = bFlag !== 0 ? 3 : 1;
+    const style1 = DRLG_GetLevelBorderStyle113c(m, level, bFlag);
+    const dirIdx = BORDER_DIR_TO_IDX_6FDE5724[(d1X + d1Y * 3 + 4) | 0]!;
+    const preset1 =
+      style1 >= 4
+        ? BORDER_PRESET_HIGH_6FDDCB88[(style1 + dirIdx * 2 - 4) | 0]!
+        : BORDER_PRESET_LOW_6FDDCAB8[(style1 + dirIdx * 4 + 4) | 0]!;
+
+    if ((m.u32((pV1 + 0x0c) >>> 0) & 0x02) === 0) {
+      while (curX !== endX || curY !== endY) {
+        curX = (curX + d1X) | 0;
+        curY = (curY + d1Y) | 0;
+        DRLGOUTDOORS_SpawnPresetInGrid113c(m, level, curX, curY, preset1, -1, 0);
+        const rowOff = m.u32((m.u32((pOutdoors + 0x30) >>> 0) + curY * 4) >>> 0) | 0;
+        const cellPtr = (m.u32((pOutdoors + 0x2c) >>> 0) + ((rowOff + curX) | 0) * 4) >>> 0;
+        DRLGGRID_OpOr113c(m, cellPtr, orMask);
+      }
+    }
+
+    const v1Flags = m.u32((pV1 + 0x0c) >>> 0);
+    if ((v1Flags & 0x01) !== 0 && (v1Flags & 0x02) === 0) {
+      const minX = (m.u32(pV1) | 0) < (m.u32(pV2) | 0) ? (m.u32(pV1) | 0) : (m.u32(pV2) | 0);
+      const minY = (m.u32((pV1 + 0x04) >>> 0) | 0) < (m.u32((pV2 + 0x04) >>> 0) | 0) ? (m.u32((pV1 + 0x04) >>> 0) | 0) : (m.u32((pV2 + 0x04) >>> 0) | 0);
+      const midX = (minX + ((imul32(span, absX) >> 1) | 0)) | 0;
+      const midY = (minY + ((imul32(span, absY) >> 1) | 0)) | 0;
+      if (actIdx === 0 || actIdx === 3 || actIdx === 4) {
+        const rowOff = m.u32((m.u32((pOutdoors + 0x30) >>> 0) + midY * 4) >>> 0) | 0;
+        const cellPtr = (m.u32((pOutdoors + 0x2c) >>> 0) + ((rowOff + midX) | 0) * 4) >>> 0;
+        DRLGGRID_OpAndNegated113c(m, cellPtr, 0xf0000);
+        const maskVal = actIdx !== 3 && (m.u32((level + 0x1d0) >>> 0) | 0) === 0x11 ? 0x40400 : 0x30400;
+        const rowOff2 = m.u32((m.u32((pOutdoors + 0x30) >>> 0) + midY * 4) >>> 0) | 0;
+        const cellPtr2 = (m.u32((pOutdoors + 0x2c) >>> 0) + ((rowOff2 + midX) | 0) * 4) >>> 0;
+        DRLGGRID_OpOr113c(m, cellPtr2, maskVal);
+      } else if (actIdx === 1) {
+        const pairIdx = (d1X + d1Y * 2 + 2) | 0;
+        DRLGOUTDOORS_SpawnPresetInGrid113c(m, level, midX, midY, BORDER_PRESET_ACT3_6FDE55B8[pairIdx * 2]!, -1, 0);
+        DRLGOUTDOORS_SpawnPresetInGrid113c(m, level, (midX + absX) | 0, (midY + absY) | 0, BORDER_PRESET_ACT3_6FDE55B8[pairIdx * 2 + 1]!, -1, 0);
+      }
+    }
+
+    if (bFlag !== 0 || m.u8((pV2 + 0x08) >>> 0) !== 0) {
+      if (bFlag === 0) bFlag = m.u8((pV2 + 0x08) >>> 0);
+      orMask |= 2;
+    }
+    const style2 = DRLG_GetLevelBorderStyle113c(m, level, bFlag);
+
+    const v1Has2 = (m.u32((pV1 + 0x0c) >>> 0) & 0x02) !== 0;
+    const v2Has2 = (m.u32((pV2 + 0x0c) >>> 0) & 0x02) !== 0;
+    const col1 = v1Has2 ? (stepDir2(d1X) + d1Y) | 0 : (stepCorner2(d1X) + d1Y * 2) | 0;
+    const row2 = v2Has2 ? (stepDir2(d2X) + d2Y) | 0 : (stepCorner2(d2X) + d2Y * 2) | 0;
+    const cIdx = BORDER_CORNER_IDX_6FDE55E0[(40 + col1 + row2 * 9) | 0]!;
+
+    if (cIdx !== -1) {
+      let cornerPreset: number =
+        style2 >= 4
+          ? BORDER_PRESET_HIGH_6FDDCB88[(style2 + cIdx * 2 - 6) | 0]!
+          : BORDER_PRESET_LOW_6FDDCAB8[(style2 + cIdx * 4) | 0]!;
+      if (cornerPreset === 0x13) {
+        if (m.u8((pV1 + 0x08) >>> 0) === 1) {
+          cornerPreset = m.u8((pV2 + 0x08) >>> 0) === 1 ? 0x13 : 0x14;
+        } else {
+          cornerPreset = 0x15;
+        }
+      }
+      if (cornerPreset !== 0) {
+        DRLGOUTDOORS_SpawnPresetInGrid113c(m, level, endX, endY, cornerPreset, -1, 0);
+        const rowOff = m.u32((m.u32((pOutdoors + 0x30) >>> 0) + endY * 4) >>> 0) | 0;
+        const cellPtr = (m.u32((pOutdoors + 0x2c) >>> 0) + ((rowOff + endX) | 0) * 4) >>> 0;
+        DRLGGRID_OpOr113c(m, cellPtr, orMask);
+      }
+    }
+
+    pV1 = pV2;
+    pV2 = pV3;
+  } while (pV1 !== pFirstVertex);
+
+  DRLGOUTPLACE_MarkBorderGridCells113c(m, level);
+}
+
+/**
+ * `D2Common.dll` `0x6FD67760` (internal `__stdcall(pDrlg, nStartDir, nEndDir)`).
+ * Connects outdoor levels in `[nStartDir..nEndDir]` by inserting sorted `D2DrlgOrthStrc` link nodes.
+ */
+export function DRLGROOM_ConnectOutdoorLevelOrthNodes113c(
+  m: Memory113c,
+  pDrlg: number,
+  nStartDir: number,
+  nEndDir: number,
+): void {
+  const drlg = pDrlg >>> 0;
+  const endLvl = nEndDir | 0;
+  for (let lvlId = nStartDir | 0; lvlId <= endLvl; lvlId++) {
+    const pLevel = DRLG_GetLevel113c(m, drlg, lvlId);
+    if ((m.u32(pLevel) >>> 0) !== 3) continue;
+    const pWarpDst = DRLGWARP_GetWarpDstAdjustData113c(m, drlg, lvlId) >>> 0;
+    const pWarpLevels = DRLGROOMTILE_GetWarpLevelsArray113c(m, drlg, lvlId) >>> 0;
+    const pOutdoors = m.u32((pLevel + 0x14) >>> 0);
+
+    for (let i = 0; i < 8; i++) {
+      const dstId = m.u32((pWarpDst + i * 4) >>> 0) | 0;
+      if (dstId === 0) continue;
+      if ((m.u32((pWarpLevels + i * 4) >>> 0) | 0) !== -1) continue;
+
+      const pDstLevel = DRLG_GetLevel113c(m, m.u32((pLevel + 0x1b4) >>> 0), dstId);
+      const x1 = m.u32((pLevel + 0x1c) >>> 0) | 0;
+      const y1 = m.u32((pLevel + 0x20) >>> 0) | 0;
+      const w1 = m.u32((pLevel + 0x24) >>> 0) | 0;
+      const h1 = m.u32((pLevel + 0x28) >>> 0) | 0;
+      const x2 = m.u32((pDstLevel + 0x1c) >>> 0) | 0;
+      const y2 = m.u32((pDstLevel + 0x20) >>> 0) | 0;
+      const w2 = m.u32((pDstLevel + 0x24) >>> 0) | 0;
+      const h2 = m.u32((pDstLevel + 0x28) >>> 0) | 0;
+
+      let dir = -1;
+      if (x1 > x2) {
+        if (x1 === ((x2 + w2) | 0)) dir = 0;
+      } else if (x2 === ((x1 + w1) | 0)) {
+        dir = 2;
+      }
+      if (dir === -1) {
+        if (y1 > y2) {
+          if (y1 === ((y2 + h2) | 0)) dir = 1;
+        } else if (y2 === ((y1 + h1) | 0)) {
+          dir = 3;
+        }
+      }
+
+      const pOrth = m.alloc(0x18) >>> 0;
+      m.fill(pOrth, 0x18, 0);
+      m.setU32(pOrth, pDstLevel);
+      m.setU32((pOrth + 0x04) >>> 0, dir >>> 0);
+      m.setU32((pOrth + 0x08) >>> 0, (m.u32(pDstLevel) >>> 0) === 2 ? 1 : 0);
+      m.setU32((pOrth + 0x10) >>> 0, (pDstLevel + 0x1c) >>> 0);
+      DRLGROOM_InsertOrthSorted113c(m, pOrth, (pOutdoors + 0x264) >>> 0);
+    }
+  }
+}
+
+/**
+ * `D2Common.dll` `0x6FD67930` (internal `__usercall(pDrlg@<eax>)`).
+ */
+export function DRLGROOM_SetupAct2OutdoorLinks113c(m: Memory113c, pDrlg: number): void {
+  const drlg = pDrlg >>> 0;
+  DRLGOUTPLACE_PlaceActLevelsByList113c(m, drlg, 0x6fddd278, undefined, 0, 0);
+  DRLGOUTPLACE_PlaceActLevelsByList113c(m, drlg, 0x6fddd368, undefined, 0, 0);
+  DRLGOUTPLACE_LinkAct5OutdoorLevels113c(m, drlg, 0x6f, 0x70);
+  DRLGROOM_ConnectOutdoorLevelOrthNodes113c(m, drlg, 0x6f, 0x70);
+  DRLGOUTPLACE_LinkAct5OutdoorLevels113c(m, drlg, 0x6e, 0x6f);
+  DRLGOUTPLACE_LinkAct5OutdoorLevels113c(m, drlg, 0x6d, 0x6e);
+  DRLGOUTPLACE_PlaceActLevelsByList113c(m, drlg, 0x6fddcfa8, undefined, 0x6fd64750, 0);
+  void DRLG_CheckAct2LinkOverlap113c;
+}
+
+/**
+ * `D2Common.dll` `0x6FD67990` (internal `__usercall(pDrlg@<eax>)`).
+ */
+export function DRLGROOM_SetupAct1OutdoorLinks113c(m: Memory113c, pDrlg: number): void {
+  const drlg = pDrlg >>> 0;
+  DRLGOUTPLACE_PlaceActLevelsByList113c(m, drlg, 0x6fddd098, undefined, 0x6fd646c0, 0);
+  DRLGOUTPLACE_PlaceActLevelsByList113c(m, drlg, 0x6fddd188, undefined, 0x6fd64630, 0);
+  const pLevel = DRLG_GetLevel113c(m, drlg, 0x68);
+  const pOutdoors = m.u32((pLevel + 0x14) >>> 0);
+  const flag6fdf146c = m.u32(0x6fdf146c);
+  m.setU32(pOutdoors, (m.u32(pOutdoors) | flag6fdf146c) >>> 0);
+  DRLGROOM_ConnectOutdoorLevelOrthNodes113c(m, drlg, 0x67, 0x6a);
+  void DRLG_CheckAct1WildLinkOverlap113c;
+  void DRLG_CheckAct1LinkOverlap113c;
+}
+
+/**
+ * `D2Common.dll` `0x6FD67A00` (internal `__usercall(pDrlg@<esi>)`).
+ */
+export function DRLGROOM_SetupAct3OutdoorLinks113c(m: Memory113c, pDrlg: number): void {
+  const drlg = pDrlg >>> 0;
+  const pLevel = DRLG_GetLevel113c(m, drlg, 0x4b);
+  const sgptDataTables = m.u32(SGPT_DATA_TABLES_PTR_VA_6FDE9E1C);
+  let pLvlTxt = 0;
+  if ((m.u32((sgptDataTables + 0xc5c) >>> 0) | 0) > 0x4b) {
+    pLvlTxt = (m.u32(SG_LEVEL_DEF_BIN_PTR_VA_6FDF0B38) + 0x2db4) >>> 0;
+  }
+  const bDiff = m.u8((drlg + 0x450) >>> 0);
+  m.setU32((pLevel + 0x1c) >>> 0, m.u32((pLvlTxt + 0x24) >>> 0));
+  m.setU32((pLevel + 0x20) >>> 0, m.u32((pLvlTxt + 0x28) >>> 0));
+  m.setU32((pLevel + 0x24) >>> 0, m.u32((pLvlTxt + bDiff * 4 + 0x0c) >>> 0));
+  m.setU32((pLevel + 0x28) >>> 0, m.u32((pLvlTxt + bDiff * 4 + 0x18) >>> 0));
+  const pRoomEx = DRLGOUTPLACE_PlaceAct5OutdoorLevels113c(m, pLevel);
+  DRLGOUTPLACE_PlaceAct4Levels113c(m, pRoomEx);
+  DRLGOUTPLACE_LinkAct5OutdoorLevels113c(m, drlg, 0x4b, 0x53);
+  DRLGROOM_ConnectOutdoorLevelOrthNodes113c(m, drlg, 0x4b, 0x53);
+}
+
+/**
+ * `D2Common.dll` `0x6FD67AA0` (internal `__usercall(pDrlg@<eax>)`).
+ */
+export function DRLGROOM_SetupAct4OutdoorLinks113c(m: Memory113c, pDrlg: number): void {
+  const drlg = pDrlg >>> 0;
+  DRLGOUTPLACE_PlaceActLevelsByList113c(m, drlg, 0x6fddcdc8, undefined, 0x6fd64870, 0);
+  DRLGOUTPLACE_PlaceActLevelsByList113c(m, drlg, 0x6fddceb8, undefined, 0x6fd647e0, 0);
+  DRLGROOM_ConnectOutdoorLevelOrthNodes113c(m, drlg, 0x28, 0x2e);
+  void DRLG_CheckMonasteryLinkOverlap113c;
+  void DRLG_CheckAct4LinkOverlap113c;
+}
+
+/**
+ * `D2Common.dll` `0x6FD67AE0` (internal `__usercall(pDrlg@<eax>)`).
+ */
+export function DRLGROOM_SetupAct5OutdoorLinks113c(m: Memory113c, pDrlg: number): void {
+  const drlg = pDrlg >>> 0;
+  DRLGOUTPLACE_PlaceActLevelsByList113c(m, drlg, 0x6fddcbe8, undefined, 0x6fd64a00, 0x6fd63fd0);
+  DRLGOUTPLACE_PlaceActLevelsByList113c(m, drlg, 0x6fddccd8, undefined, 0x6fd64900, 0x6fd63fd0);
+  DRLGROOM_ConnectOutdoorLevelOrthNodes113c(m, drlg, 0x01, 0x11);
+  void DRLG_ApplyOutdoorVertexFlags113c;
+  void DRLGOUTPLACE_CheckAct1LinkOverlap113c;
+  void DRLGOUTPLACE_CheckAct2LinkOverlap113c;
+}
+
+/**
+ * `D2Common.dll` `0x6FD7E360` (Ord `10322`, `__stdcall(pLevel)`).
+ * Generates all rooms for `pLevel` according to its DRLG type (1=Maze, 2=Preset, 3=Outdoors).
+ */
+export function DRLG_InitLevelRooms113c(m: Memory113c, pLevel: number): void {
+  const level = pLevel >>> 0;
+  const pDrlg = m.u32((level + 0x1b4) >>> 0);
+  const seedLo = ((m.u32((pDrlg + 0x470) >>> 0) | 0) + (m.u32((level + 0x1d0) >>> 0) | 0)) >>> 0;
+  m.setU32((level + 0x1c4) >>> 0, seedLo);
+  m.setU32((level + 0x1c8) >>> 0, 0x29a);
+
+  const dwDrlgType = m.u32(level) >>> 0;
+  if (dwDrlgType === 1) {
+    DRLGMAZE_GenerateMazeLevel113c(m, level);
+  } else if (dwDrlgType === 2) {
+    DRLGPRESET_InitLevelPresetRooms113c(m, level);
+  } else if (dwDrlgType === 3) {
+    DRLGOUTDOORS_InitOutdoorLevel113c(m, level);
+  }
+
+  DRLG_MarkLevelRoomsWithWarpFlag113c(m, level);
+  DRLG_CollectWarpAndSpecialRoomCenters113c(m, level);
+}
+
+/**
+ * `D2Common.dll` `0x6FD7E3E0` (Ord `10316`, `__fastcall(pAct@<ecx>, nAct@<dl>, ...8 stack args)`).
+ * Allocates and initializes `D2DrlgStrc` (`0x48C` B), loads town tiles/warps, sets up act links,
+ * and optionally initializes `nStartLevelId`.
+ */
+export function DRLG_AllocAndInitDrlg113c(
+  m: Memory113c,
+  pAct: number,
+  nAct: number,
+  nUnknown0: number,
+  nSeed: number,
+  nStartLevelId: number,
+  dwFlags: number,
+  pGame: number,
+  bDifficulty: number,
+  pfnAutomapInit: number,
+  pfnErrorCallback: number,
+): number {
+  const act = pAct >>> 0;
+  const actNo = nAct & 0xff;
+  const pMemPool = m.u32((act + 0x5c) >>> 0);
+  const pDrlg = m.alloc(0x48c) >>> 0;
+  m.fill(pDrlg, 0x48c, 0);
+
+  m.setU32((pDrlg + 0x478) >>> 0, pMemPool);
+  m.setU32((pDrlg + 0x464) >>> 0, nUnknown0 >>> 0);
+  m.setU32((pDrlg + 0x8c) >>> 0, dwFlags >>> 0);
+  m.setU32((pDrlg + 0x9c) >>> 0, pGame >>> 0);
+  m.setU8((pDrlg + 0x450) >>> 0, bDifficulty & 0xff);
+  m.setU32((pDrlg + 0x454) >>> 0, pfnAutomapInit >>> 0);
+  m.setU8((pDrlg + 0x480) >>> 0, actNo);
+  m.setU32((pDrlg + 0x46c) >>> 0, act);
+  m.setU32((pDrlg + 0x458) >>> 0, nSeed >>> 0);
+  m.setU32((pDrlg + 0x488) >>> 0, pfnErrorCallback >>> 0);
+
+  const mul0 = BigInt(nSeed >>> 0) * 0x6ac690c5n + 0x29an;
+  let lo = Number(mul0 & 0xffffffffn) >>> 0;
+  let hi = Number((mul0 >> 32n) & 0xffffffffn) >>> 0;
+  m.setU32(pDrlg, lo);
+  m.setU32((pDrlg + 0x04) >>> 0, hi);
+  m.setU32((pDrlg + 0x470) >>> 0, lo);
+
+  if (actNo === 1) {
+    let ebp = hi;
+    let eax = lo;
+    let tomb1 = 0;
+    let tomb2 = 0;
+    do {
+      const m1 = BigInt(eax >>> 0) * 0x6ac690c5n + BigInt(ebp >>> 0);
+      const ecx1 = Number(m1 & 0xffffffffn) >>> 0;
+      const edi1 = Number((m1 >> 32n) & 0xffffffffn) >>> 0;
+      tomb1 = ecx1 % 7;
+      const m2 = BigInt(ecx1) * 0x6ac690c5n + BigInt(edi1);
+      eax = Number(m2 & 0xffffffffn) >>> 0;
+      ebp = Number((m2 >> 32n) & 0xffffffffn) >>> 0;
+      tomb2 = eax % 7;
+    } while (tomb1 === tomb2);
+    m.setU32(pDrlg, eax);
+    m.setU32((pDrlg + 0x04) >>> 0, ebp);
+    m.setU32((pDrlg + 0x94) >>> 0, (tomb1 + 0x42) >>> 0);
+    m.setU32((pDrlg + 0x484) >>> 0, (tomb2 + 0x42) >>> 0);
+  } else if (actNo === 2) {
+    const m1 = BigInt(lo >>> 0) * 0x6ac690c5n + BigInt(hi >>> 0);
+    const eax = Number(m1 & 0xffffffffn) >>> 0;
+    const edx = Number((m1 >> 32n) & 0xffffffffn) >>> 0;
+    m.setU32(pDrlg, eax);
+    m.setU32((pDrlg + 0x04) >>> 0, edx);
+    m.setU32((pDrlg + 0x474) >>> 0, eax & 0x01);
+  }
+
+  DRLG_LoadActTownTileLibrary113c(m, pDrlg);
+  DRLG_InitActWarpLists113c(m, pDrlg);
+
+  if (actNo === 0) {
+    DRLGROOM_SetupAct5OutdoorLinks113c(m, pDrlg);
+  } else if (actNo === 1) {
+    DRLGROOM_SetupAct4OutdoorLinks113c(m, pDrlg);
+  } else if (actNo === 2) {
+    DRLGROOM_SetupAct3OutdoorLinks113c(m, pDrlg);
+  } else if (actNo === 3) {
+    DRLGROOM_SetupAct1OutdoorLinks113c(m, pDrlg);
+  } else if (actNo === 4) {
+    DRLGROOM_SetupAct2OutdoorLinks113c(m, pDrlg);
+  }
+
+  const startLvl = nStartLevelId | 0;
+  if (startLvl !== 0) {
+    const pLevel = DRLG_GetLevel113c(m, pDrlg, startLvl);
+    DRLG_InitLevelRooms113c(m, pLevel);
+  }
+  return pDrlg;
+}
+
+/**
+ * `D2Common.dll` `0x6FD7E5C0` (internal `__usercall(pRoomEx@<eax>, nX, nY, pDrlg, pLevel)`).
+ * Finds the `D2RoomExStrc` containing `(nX, nY)`, checking `pRoomEx`, its neighbors, or `pDrlg`.
+ */
+export function DRLG_FindRoomExAtCoords113c(
+  m: Memory113c,
+  pRoomEx: number,
+  nX: number,
+  nY: number,
+  pDrlg: number,
+  pLevel: number,
+): number {
+  const rx = pRoomEx >>> 0;
+  const x = nX | 0;
+  const y = nY | 0;
+  if (rx !== 0) {
+    const x0 = m.u32((rx + 0x34) >>> 0) | 0;
+    const y0 = m.u32((rx + 0x38) >>> 0) | 0;
+    const w0 = m.u32((rx + 0x3c) >>> 0) | 0;
+    const h0 = m.u32((rx + 0x40) >>> 0) | 0;
+    if (x >= x0 && y >= y0 && x < ((x0 + w0) | 0) && y < ((y0 + h0) | 0)) {
+      return rx;
+    }
+    const nNear = m.u32((rx + 0x2c) >>> 0) | 0;
+    const ppNear = m.u32((rx + 0x08) >>> 0);
+    for (let i = 0; i < nNear; i++) {
+      const pNear = m.u32((ppNear + i * 4) >>> 0);
+      if (pNear === rx) continue;
+      const nx = m.u32((pNear + 0x34) >>> 0) | 0;
+      const ny = m.u32((pNear + 0x38) >>> 0) | 0;
+      const nw = m.u32((pNear + 0x3c) >>> 0) | 0;
+      const nh = m.u32((pNear + 0x40) >>> 0) | 0;
+      if (x >= nx && y >= ny && x < ((nx + nw) | 0) && y < ((ny + nh) | 0)) {
+        return pNear;
+      }
+    }
+  }
+
+  let lvl = pLevel >>> 0;
+  if (lvl === 0) {
+    const drlg = pDrlg >>> 0;
+    const lvlId = DRLG_FindLevelIdAtCoord113c(m, drlg, x, y);
+    lvl = DRLG_GetLevel113c(m, drlg, lvlId);
+  }
+  if (m.u32((lvl + 0x10) >>> 0) === 0) {
+    DRLG_InitLevelRooms113c(m, lvl);
+  }
+  return DRLG_GetRoomExFromCoordinates113c(m, lvl, x, y);
+}
+
+/**
+ * `D2Common.dll` `0x6FD952C0` (internal `__usercall(pRoomExList@<eax>, nWarpBit@<ecx>, pTargetRoomEx@<edx>, pMemPool, pWarp, nSubMode)`).
+ * Links adjacent or warp-connected `D2RoomExStrc` entries.
+ */
+export function DRLGROOM_LinkAdjacentWarpRooms113c(
+  m: Memory113c,
+  pRoomExList: number,
+  nWarpBit: number,
+  pTargetRoomEx: number,
+  pMemPool: number,
+  pWarp: number,
+  nSubMode: number,
+): number {
+  let cur = pRoomExList >>> 0;
+  const target = pTargetRoomEx >>> 0;
+  const mask = (1 << ((nWarpBit + 4) & 31)) >>> 0;
+  const subMode = nSubMode | 0;
+  let result = 0;
+
+  while (cur !== 0) {
+    if ((m.u32((cur + 0x28) >>> 0) & mask) !== 0) {
+      if (subMode === -1) {
+        const tx = m.u32((target + 0x34) >>> 0) | 0;
+        const cx = m.u32((cur + 0x34) >>> 0) | 0;
+        const dx = tx < cx ? ((cx - (m.u32((target + 0x3c) >>> 0) | 0) - tx) | 0) : ((tx - (m.u32((cur + 0x3c) >>> 0) | 0) - cx) | 0);
+        const ty = m.u32((target + 0x38) >>> 0) | 0;
+        const cy = m.u32((cur + 0x38) >>> 0) | 0;
+        const dy = ty < cy ? ((cy - (m.u32((target + 0x40) >>> 0) | 0) - ty) | 0) : ((ty - (m.u32((cur + 0x40) >>> 0) | 0) - cy) | 0);
+        if (dx < 6 && dy < 6) {
+          const nNear = ((m.u32((target + 0x2c) >>> 0) | 0) + 1) | 0;
+          const oldPtr = m.u32((target + 0x08) >>> 0);
+          m.setU32((target + 0x2c) >>> 0, nNear >>> 0);
+          const newPtr = m.alloc(nNear * 4) >>> 0;
+          if (newPtr !== oldPtr && oldPtr !== 0) {
+            const copyBytes = ((nNear - 1) * 4) | 0;
+            for (let i = 0; i < copyBytes; i += 4) {
+              m.setU32((newPtr + i) >>> 0, m.u32((oldPtr + i) >>> 0));
+            }
+          }
+          m.setU32((target + 0x08) >>> 0, newPtr);
+          if (newPtr === 0) {
+            throw new D2CommonAssertError('..\\Source\\D2Common\\DRLG\\DrlgRoom.cpp', 0x315);
+          }
+          m.setU32((newPtr + (nNear - 1) * 4) >>> 0, cur);
+          DRLGROOM_SortRoomExArrayByBounds113c(m, nNear, newPtr);
+          result = 1;
+        }
+      } else {
+        DRLGROOM_AppendAndSortAdjacentRoom113c(m, target, pMemPool >>> 0, cur);
+        DRLGROOM_AllocRoomTileWindowNode113c(m, target, cur, pWarp);
+        result = 1;
+      }
+    }
+    cur = m.u32((cur + 0x24) >>> 0);
+  }
+
+  return result;
+}
+
+

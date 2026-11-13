@@ -546,6 +546,8 @@ export const D2MonStats2Txt = {
   nSizeX: { off: 0x8, type: 'u8', count: 1 },
   nSizeY: { off: 0x9, type: 'u8', count: 1 },
   dwModeFlags: { off: 0xF0, type: 'u32', count: 1 },
+  nComponentCounts: { off: 0x15, type: 'u8', count: 16 },
+  nComponentVariants: { off: 0x26, type: 'u8', count: 192 },
 } as const satisfies Record<string, FieldLayout113c>
 
 /** D2Common 0x6FD51268 imul eax, eax, 0x23C (record stride in the Skills lookup 0x6FD51250); skills.bin is 4 + 357 * 0x23C bytes */
@@ -605,6 +607,7 @@ export const D2CharStatsTxt = {
   nToHitFactor: { off: 0x3C, type: 'u32', count: 1 },
   nWalkSpeed: { off: 0x40, type: 'u8', count: 1 },
   nRunSpeed: { off: 0x41, type: 'u8', count: 1 },
+  wStartSkill: { off: 0xAE, type: 'u16', count: 10 },
 } as const satisfies Record<string, FieldLayout113c>
 
 /** D2Common 0x6FD51318 imul eax, eax, 0xE4 (record stride in the ItemTypes lookup 0x6FD51300); itemtypes.bin is 4 + 103 * 0xE4 bytes */
@@ -910,8 +913,12 @@ export const D2DrlgStrc = {
   nWarpAct0: { off: 0xE4, type: 'u8', count: 1 },
   pWarpList0Next: { off: 0x188, type: 'ptr', count: 1 },
   nDifficulty: { off: 0x450, type: 'u8', count: 1 },
+  pfnAutomapInit: { off: 0x454, type: 'ptr', count: 1 },
   pMemPool: { off: 0x478, type: 'ptr', count: 1 },
   pLevel: { off: 0x47C, type: 'ptr', count: 1 },
+  nAct: { off: 0x480, type: 'u8', count: 1 },
+  pfnErrorCallback: { off: 0x488, type: 'ptr', count: 1 },
+  bRoomStatusFlag: { off: 0x45C, type: 'u8', count: 1 },
 } as const satisfies Record<string, FieldLayout113c>
 
 /** D2Common 0x6FD62895 sub esp, 0x1F4 (stack frame of DRLG_CreateLevelConnections) */
@@ -945,6 +952,10 @@ export const D2DrlgOutdoorInfoStrc = {
   nGridWidth: { off: 0x5C, type: 'u32', count: 1 },
   nGridHeight: { off: 0x60, type: 'u32', count: 1 },
   pVertex: { off: 0x64, type: 'ptr', count: 1 },
+  dwOutdoorFlags: { off: 0x68, type: 'u32', count: 1 },
+  aOutdoorRooms: { off: 0x80, type: 'u8', count: 480 },
+  nOutdoorRooms: { off: 0x260, type: 'u32', count: 1 },
+  pOutdoorLevelLinks: { off: 0x264, type: 'ptr', count: 1 },
 } as const satisfies Record<string, FieldLayout113c>
 
 /** D2Common 0x6FDA30AB imul eax, eax, 0x118 (record stride in Hireling lookups) */
@@ -1044,18 +1055,26 @@ export const D2ItemStatCostTxt = {
 /** D2Common 0x6FD517E8 imul eax, eax, 0x128 (record stride in DATATBLS_GetSetsTxtRecordInline) */
 export const D2SetsTxt_SIZE = 296
 export const D2SetsTxt = {
+  nItems: { off: 0xC, type: 'u32', count: 1 },
+  pCode: { off: 0x10, type: 'u32', count: 32 },
+  fCode: { off: 0x90, type: 'u32', count: 32 },
 } as const satisfies Record<string, FieldLayout113c>
 
 /** D2Common 0x6FD51818 imul eax, eax, 0x1B8 (record stride in DATATBLS_GetSetItemsTxtRecordInline) */
 export const D2SetItemsTxt_SIZE = 440
 export const D2SetItemsTxt = {
   wLvlReq: { off: 0x32, type: 'u16', count: 1 },
+  wSetId: { off: 0x2C, type: 'u16', count: 1 },
+  nAddFunc: { off: 0x87, type: 'u8', count: 1 },
+  baseProps: { off: 0x88, type: 'u32', count: 36 },
+  addProps: { off: 0x118, type: 'u32', count: 20 },
 } as const satisfies Record<string, FieldLayout113c>
 
 /** D2Common 0x6FD51848 imul eax, eax, 0x14C (record stride in DATATBLS_GetUniqueItemsTxtRecordInline) */
 export const D2UniqueItemsTxt_SIZE = 332
 export const D2UniqueItemsTxt = {
   wLvlReq: { off: 0x36, type: 'u16', count: 1 },
+  props: { off: 0x8C, type: 'u32', count: 48 },
 } as const satisfies Record<string, FieldLayout113c>
 
 /** D2Common 0x6FDBA3B2 mov edx, 0x34 (Fog alloc in MISSILE_AllocMissileData) */
@@ -1162,13 +1181,13 @@ export const D2UnitFindDataStrc = {
   pMemPool: { off: 0x0, type: 'ptr', count: 1 },
   pUnitsArray: { off: 0x4, type: 'ptr', count: 1 },
   pRoom: { off: 0x8, type: 'ptr', count: 1 },
-  nX: { off: 0xC, type: 'u32', count: 1 },
-  nY: { off: 0x10, type: 'u32', count: 1 },
+  pfnCallback: { off: 0xC, type: 'ptr', count: 1 },
+  pFilterUnit: { off: 0x10, type: 'ptr', count: 1 },
   dwFlags: { off: 0x14, type: 'u32', count: 1 },
   nIndex: { off: 0x18, type: 'u32', count: 1 },
   nMaxCount: { off: 0x1C, type: 'u32', count: 1 },
-  pFilterUnit: { off: 0x20, type: 'ptr', count: 1 },
-  pfnCallback: { off: 0x24, type: 'ptr', count: 1 },
+  nX: { off: 0x20, type: 'u32', count: 1 },
+  nY: { off: 0x24, type: 'u32', count: 1 },
   dwSize: { off: 0x28, type: 'u32', count: 1 },
 } as const satisfies Record<string, FieldLayout113c>
 
@@ -1233,4 +1252,10 @@ export const D2PathInfoStrc = {
   dwCollisionPattern: { off: 0x28, type: 'u32', count: 1 },
   nMoveTestCollisionMask: { off: 0x2C, type: 'u32', count: 1 },
   pDynamicPath: { off: 0x30, type: 'ptr', count: 1 },
+} as const satisfies Record<string, FieldLayout113c>
+
+/** D2Common 0x6FD76D12 add ebp, 0x120 (record stride in ITEMS_FindMatchingRunesTxtRecord) */
+export const D2RunesTxt_SIZE = 288
+export const D2RunesTxt = {
+  props: { off: 0xB0, type: 'u32', count: 28 },
 } as const satisfies Record<string, FieldLayout113c>

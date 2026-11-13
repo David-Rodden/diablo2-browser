@@ -4,7 +4,6 @@
 
 import type { MissileRecord, SkillRecord } from '../../../common/data/data-registry.ts'
 import { getEmbeddedDropTables } from '../../../common/items/embedded-drop-tables.ts'
-import { MONMODE_BLOCK } from '../../../common/path/types.ts'
 import { resolveArmorSpeed113c, resolveWeaponBase113c } from '../../../common/units/char-anim-speed.ts'
 import { scaleLowQualityWeaponBand113c } from '../../../common/items/drop-tables.ts'
 import { FRIENDLY_AURA_TARGET_STATE_IDS_113C, calculateHolyFreezeStats } from '../../../common/skills/paladin-auras.ts'
@@ -2165,15 +2164,7 @@ function executeWhirlwindHandStrike113c(this: GameInstanceHost,
   )
   if (!dmgOut.hit) {
     if (dmgOut.avoidedReason === 'block') {
-      monster.mode = MONMODE_BLOCK
-      this.broadcastToArea(monster.areaId, {
-        type: 'UnitMode',
-        unitType: 1,
-        id: monster.unitId,
-        mode: MONMODE_BLOCK,
-        lifePct:
-          monster.maxHp > 0 ? Math.max(0, Math.round((monster.hp / monster.maxHp) * 128)) : 0,
-      })
+      this.enterMonsterBlockMode113c(monster)
     }
     return
   }

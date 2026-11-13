@@ -13,7 +13,7 @@
  * 3. Sample: walk the `pGame` unit hash lists exactly like the hook's `dump_units` and compare every
  *    golden field (strict: all unit fields incl. seeds and level, all stats, `gs`; pos: id/class/mode/x/y).
  */
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { gunzipSync } from 'node:zlib'
@@ -22,6 +22,11 @@ import { D2DynamicPathStrc, D2GameStrc, D2StaticPathStrc, D2UnitStrc } from '../
 import { STATLIST_GetUnitStat113c } from '../../../src/d2kern-113c/common/statlist.ts'
 import { UNITS_GetRoom113c } from '../../../src/d2kern-113c/common/unit.ts'
 import { DUNGEON_GetLevelIdFromRoom113c } from '../../../src/d2kern-113c/common/dungeon.ts'
+import {
+  C2S_DispatchFromMem113c,
+  GAME_UpdateGameFrame113c,
+  hydrateSnapshotKernelTables113c,
+} from '../../../src/d2kern-113c/game/replay-kernel-113c.ts'
 import { parseTrace, type Trace, type TraceFrame, type TraceHeader, type UnitRow } from '../lib/trace-diff.ts'
 import { collectImportGraph, legacyReachable } from './import-graph.ts'
 
@@ -36,7 +41,7 @@ export interface SnapshotBlock113c {
 }
 
 export interface SnapshotRecord113c {
-  readonly k: 'game' | 'unit' | 'act' | 'room'
+  readonly k: 'game' | 'unit' | 'act' | 'room' | 'gamestate' | 'drlg'
   readonly type?: number
   readonly id?: number
   readonly list?: number
@@ -62,7 +67,14 @@ export function parseSnapshot113c(text: string): Snapshot113c {
     if (line.length === 0) continue
     const obj = JSON.parse(line) as { k: string } & Record<string, unknown>
     if (obj.k === 'hdr') hdr = obj as unknown as Hdr
-    else if (obj.k === 'game' || obj.k === 'unit' || obj.k === 'act' || obj.k === 'room')
+    else if (
+      obj.k === 'game' ||
+      obj.k === 'unit' ||
+      obj.k === 'act' ||
+      obj.k === 'room' ||
+      obj.k === 'gamestate' ||
+      obj.k === 'drlg'
+    )
       records.push(obj as unknown as SnapshotRecord113c)
     else throw new Error(`snapshot: unknown record kind '${obj.k}'`)
   }
@@ -100,6 +112,7 @@ export function bootFromSnapshot113c(snap: Snapshot113c): KernWorld113c {
   if (frame !== snap.frame) {
     throw new Error(`snapshot pGame->dwGameFrame ${frame} != recorded frame ${snap.frame}`)
   }
+  hydrateSnapshotKernelTables113c(m, pGame, snap.d2game >>> 0)
   return { m, pGame, bootFrame: frame }
 }
 
@@ -131,6 +144,31 @@ export function loadManifest113c(): Map<string, ManifestFn> {
   ) as { functions: ManifestFn[] }
   const map = new Map<string, ManifestFn>()
   for (const f of raw.functions) map.set(manifestKey113c(f.module, parseInt(f.va, 16)), f)
+  const bDir = join(REPO_ROOT_113C, 'tools/oracle/callgraph/bindings')
+  for (const fn of readdirSync(bDir)) {
+    if (!fn.endsWith('.json')) continue
+    const entries = JSON.parse(readFileSync(join(bDir, fn), 'utf8')) as Array<{
+      module: string
+      va: string
+      name: string
+      kernFile: string
+      tsSymbol: string
+      status: string
+    }>
+    for (const e of entries) {
+      const k = manifestKey113c(e.module, parseInt(e.va, 16))
+      const prev = map.get(k)
+      map.set(k, {
+        module: e.module,
+        va: e.va,
+        name: e.name,
+        status: e.status,
+        size: prev !== undefined ? prev.size : 0,
+        kernFile: e.kernFile,
+        tsSymbol: e.tsSymbol,
+      })
+    }
+  }
   manifestCache = map
   return map
 }
@@ -144,7 +182,10 @@ export function loadManifest113c(): Map<string, ManifestFn> {
  * Fallen slice driver (`stepFallenSliceFrame113c`), whose module imports the legacy `src/common`
  * path/monstats/treasure code, and the C2S dispatcher `0x6FCEC550` is unported.
  */
-export const KERNEL_REGISTRY_113C: ReadonlyMap<string, KernelEntry113c> = new Map<string, KernelEntry113c>()
+export const KERNEL_REGISTRY_113C: ReadonlyMap<string, KernelEntry113c> = new Map<string, KernelEntry113c>([
+  ['D2Game:0x6FC4E050', (world, args) => GAME_UpdateGameFrame113c(world.m, args[0]!)],
+  ['D2Game:0x6FCEC550', (world, args) => C2S_DispatchFromMem113c(world.m, args[0]!, args[1]!, args[2]!)],
+])
 
 export class UnportedFunction113c extends Error {
   constructor(

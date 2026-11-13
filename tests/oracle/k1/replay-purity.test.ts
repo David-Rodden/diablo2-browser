@@ -43,8 +43,14 @@ describe('K1 kernel replay purity', () => {
     expect(graph.files.has('src/d2kern-113c/game/fallen-ai-113c.ts')).toBe(false)
   })
 
-  it('walker detects a legacy import (negative control: K0 slice driver)', () => {
+  it('K0 Fallen slice driver in src/d2kern-113c/game is now pure too', () => {
     const entry = 'src/d2kern-113c/game/fallen-ai-113c.ts'
+    const slice = collectImportGraph(REPO_ROOT_113C, [entry])
+    expect(legacyReachable(slice, [entry])).toEqual([])
+  })
+
+  it('walker detects a legacy import (negative control: server town NPC driver)', () => {
+    const entry = 'src/server/ai/town-npc-ai-113c.ts'
     const slice = collectImportGraph(REPO_ROOT_113C, [entry])
     const legacy = legacyReachable(slice, [entry])
     expect(legacy.length).toBeGreaterThan(0)

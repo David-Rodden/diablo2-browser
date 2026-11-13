@@ -2930,21 +2930,23 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
               if (skillId > 0) {
                 this._self.skillCharges.set(skillId, curCharges)
                 if (curCharges <= 0) {
-                  if (
-                    this._self.leftSkill === skillId &&
-                    (this._self.leftSkillItemId === undefined ||
-                      this._self.leftSkillItemId === 0xffffffff ||
-                      this._self.leftSkillItemId === itemId)
-                  ) {
+                  // Issue #289: depleting an item's charged copy must not take the player's own learned skill with
+                  // it. A hand on the native node (`0xFFFFFFFF` owner) of a learned skill is left untouched; a hand
+                  // on the depleted item node of a learned skill is re-selected to the native node by the HUD sync
+                  // (`SelectSkill` round-trip in `syncFromWorldImpl`). Only unlearned skills clear the hand.
+                  const nativeEntry = this._self.skillEntries.get(skillId)
+                  const nativeLevel = nativeEntry
+                    ? (nativeEntry.baseLevel ?? nativeEntry.level ?? 0) + (nativeEntry.bonus ?? 0)
+                    : 0
+                  const shouldClearHand = (handItemId: number | undefined): boolean => {
+                    if (nativeLevel > 0) return false
+                    return handItemId === undefined || handItemId === 0xffffffff || handItemId === itemId
+                  }
+                  if (this._self.leftSkill === skillId && shouldClearHand(this._self.leftSkillItemId)) {
                     this._self.leftSkill = 0
                     this._self.leftSkillItemId = undefined
                   }
-                  if (
-                    this._self.rightSkill === skillId &&
-                    (this._self.rightSkillItemId === undefined ||
-                      this._self.rightSkillItemId === 0xffffffff ||
-                      this._self.rightSkillItemId === itemId)
-                  ) {
+                  if (this._self.rightSkill === skillId && shouldClearHand(this._self.rightSkillItemId)) {
                     this._self.rightSkill = 0
                     this._self.rightSkillItemId = undefined
                   }
@@ -3584,6 +3586,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
               isGold: trimmedCode === 'gld',
               amount: goldAmt ?? 1,
               code: trimmedCode,
+              ...(uiItem.quality ? { quality: uiItem.quality } : {}),
               ...(itemUnit.name ? { name: itemUnit.name } : {}),
               ...(uiItem.flippyFile ? { flippyFile: uiItem.flippyFile } : {}),
               ...(uiItem.invFile ? { invFile: uiItem.invFile } : {}),
@@ -5264,11 +5267,16 @@ export function applyUnitModeImmediateImpl(
       return
     }
     const now = this.resolveEventNowMs(nowMs)
+    // S2C 0x0C NPCGetHit (D2Client 0x6FB5F5F0 -> 0x6FADA750 cmd 0x13 @ 0x6FAFE14D) only refreshes the life byte
+    // and hit class: it never changes the anim mode, restarts the frame, or ends the running skill. Channeled
+    // monster skills (#193 DiabLight, #317 Baal Inferno / Mana Rift, ...) must keep their castState across hits.
+    const isDamageOnlyHit = ev.npc === undefined && ev.mode === undefined && ev.hitClass !== undefined
     const preserveActiveCast =
-      ev.mode === 1 &&
-      unit.castState !== undefined &&
-      now < unit.castState.untilMs &&
-      now - unit.castState.startedAtMs <= 150
+      isDamageOnlyHit ||
+      (ev.mode === 1 &&
+        unit.castState !== undefined &&
+        now < unit.castState.untilMs &&
+        now - unit.castState.startedAtMs <= 150)
     if (!preserveActiveCast) {
       this.clearUnitCastState(unit)
     }

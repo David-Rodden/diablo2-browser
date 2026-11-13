@@ -5314,6 +5314,12 @@ export function spawnMissilesForSkillImpl(
     for (const m of this._monsters.values()) {
       if (m.id === caster.id) continue
       if (!m.dead && m.mode !== 0 && m.mode !== 12 && m.lifePct > 0) continue
+      // A corpse this client already blew up is gone: D2Client 0x6FB745C0 finds corpses with D2Common #10591/#10052
+      // (flags 0x3002 = monsters in MONMODE_DEAD), and the throne AI purges the previous wave's corpses on the server
+      // (sub_6FCC6470), so the original client never finds the same corpse twice. Without this check, each of
+      // the 5 wave casts re-exploded every earlier corpse and restarted its 443-frame looping
+      // 'baalcorpseexplodefade', so the gore animation never stopped.
+      if (m.corpseSuppressed) continue
       if (
         m.states.has(99) ||
         m.states.has(107) ||
@@ -5324,6 +5330,7 @@ export function spawnMissilesForSkillImpl(
       }
       if (Math.hypot(m.x - startX, m.y - startY) > 40) continue
       m.states.add(104)
+      m.corpseSuppressed = true
       const delayTicks = 1 + SEED_RollLimitedRandomNumber(caster.seed, 19)
       const delayM = this.spawnMissileByKey(
         'baalcorpseexplodedelay',

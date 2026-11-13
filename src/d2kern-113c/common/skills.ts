@@ -34,34 +34,80 @@
  * - `0x6FDCF5E0` `UNITS_GetUnitDistanceToCoordinates113c` (`#10080`)
  */
 import type { Memory113c } from '../mem/sparse-memory.ts'
-import { COLLISION_RayTrace113c } from './collision.ts'
+import {
+  COLLISION_CheckMaskWithPattern2_113c,
+  COLLISION_FindFreePosition113c,
+  COLLISION_RayTrace113c,
+} from './collision.ts'
 import { DRLG_IsTownLevel113c, DUNGEON_GetRoomAtPosition113c } from './dungeon.ts'
 import {
   D2CommonAssertError,
+  DATATBLS_CalcSkillLinearParam12Inline113c,
+  DATATBLS_CalcSkillLinearParam34Inline113c,
+  DATATBLS_CalcSkillLinearParam56Inline113c,
+  DATATBLS_CalcSkillLinearParam78Inline113c,
   DATATBLS_CheckMonStats2FlagInline113c,
   DATATBLS_CheckMonStats2ModeFlagInline113c,
+  DATATBLS_GetMissilesTxtRecordInline113c,
   DATATBLS_GetMonStatsTxtRecordInline113c,
   DATATBLS_GetSkillDescTxtRecordFromSkillIdInline113c,
+  DATATBLS_GetSkillsTxtMaxLvlInline113c,
+  DATATBLS_GetSkillsTxtParam1Inline113c,
+  DATATBLS_GetSkillsTxtParam2Inline113c,
+  DATATBLS_GetSkillsTxtParam3Inline113c,
+  DATATBLS_GetSkillsTxtParam4Inline113c,
+  DATATBLS_GetSkillsTxtParam5Inline113c,
+  DATATBLS_GetSkillsTxtParam6Inline113c,
+  DATATBLS_GetSkillsTxtRecordInline113c,
+  DATATBLS_GetStatesTxtRecordInline113c,
   SEED_RollLimitedRandomNumberInline113c,
 } from './inline-helpers.ts'
+import { COMPOSIT_IsUnitUsingBowOrCrossbow113c } from './composit.ts'
 import { imul32, mulDiv113c, sar32, sdiv32 } from './int-math.ts'
-import { INVENTORY_GetCompositWeaponMem113c, INVENTORY_GetOrInitGridMem113c } from './inventory.ts'
 import {
+  INVENTORY_GetCompositWeaponMem113c,
+  INVENTORY_GetEquippedWeaponHandClass113c,
+  INVENTORY_GetOrInitGridMem113c,
+  ITEMS_GetWeaponClassCodeIdx113c,
+} from './inventory.ts'
+import {
+  ITEMS_CalcWeaponAttackSpeed113c,
   ITEMS_CheckItemTypeIdMem113c,
+  ITEMS_GetActiveWeaponForAttack113c,
   ITEMS_GetItemTypeQuiverFromItem113c,
   ITEMS_GetTotalMaxStack113c,
   ITEMS_IsTome113c,
   checkIfThrowItemMem113c,
+  checkNotBrokenOrUnequippingMem113c,
+  lookupItemsTxtRecord113c,
   statListGetUnitBaseStatMem113c,
   unitsCanDualWieldMem113c,
 } from './items.ts'
 import {
   STATE_DWORDS_113C,
+  STATES_ApplyMonSkillIconToUnit113c,
   STATES_CheckState113c,
   STATES_CheckStateMaskOnUnit113c,
+  STATES_SetUnitSourceUnit113c,
+  STATES_ToggleGfxStateFlag113c,
   STATLIST_FindStatIndex113c,
+  STATLIST_FreeStatListIfNonExtended113c,
+  STATLIST_GetBaseStatFromListInline113c,
+  STATLIST_GetStatListFromUnitAndState113c,
+  STATLIST_GetUnitMaxDamage113c,
+  STATLIST_GetUnitMinDamage113c,
+  STATLIST_GetUnitStatWithLayer113c,
+  STATLIST_MergeStatLists113c,
+  STATLIST_RemoveSubList113c,
+  STATLIST_SetWeaponStatListActive113c,
 } from './statlist.ts'
-import { UNITS_GetPlayerBaseToHit113c, UNITS_GetRoom113c } from './unit.ts'
+import {
+  UNITROOM_RefreshUnit113c,
+  UNITS_CanUnitMeleeAttackTarget113c,
+  UNITS_GetPlayerBaseToHit113c,
+  UNITS_GetRoom113c,
+  UNITS_GetUnitSizeX113c,
+} from './unit.ts'
 import {
   D2DynamicPathStrc,
   D2InventoryGridStrc,
@@ -2364,3 +2410,2117 @@ export function SKILLS_CheckUnitEquippedWeaponsMatchSkill113c(
   }
   return 0
 }
+
+// ============================================================================
+// Iteration 11 Lane B — I11B-1 (B1-06..B1-15) & I11B-2 (B2-01, B2-05..B2-07, B2-11, B2-12)
+// ============================================================================
+
+/** `.rdata` IAT slot for `Fog.dll!gdwInvBitMasks` (`uint32[32]`) at `0x6FDD9078`. */
+const GDW_INV_BITMASKS_IAT_VA_113C = 0x6fdd9078
+
+function removeAndFreeSubListIfNonExtended113c(m: Memory113c, pSub: number): void {
+  const esi = pSub >>> 0
+  if ((m.u32((esi + 0x10) >>> 0) | 0) >= 0) {
+    STATLIST_FreeStatListIfNonExtended113c(m, esi)
+  } else {
+    STATLIST_RemoveSubList113c(m, esi)
+  }
+}
+
+function statesToggleStateMem113c(m: Memory113c, nStateId: number, pUnit: number, bSet: number): void {
+  const u = pUnit >>> 0
+  if (u === 0) return
+  const edi = m.u32((u + 0x5c) >>> 0) >>> 0
+  if (edi === 0 || (m.u32((edi + 0x10) >>> 0) | 0) >= 0) return
+  const ebx = nStateId | 0
+  const ecx = (ebx & 0x1f) << 2
+  const pBitMasks = m.u32(GDW_BITMASKS_IAT_VA_113C) >>> 0
+  const edx = m.u32((pBitMasks + ecx) >>> 0)
+  const pFlags = m.u32((edi + 0x58) >>> 0) >>> 0
+  const esi = ebx >> 5
+  const wordAddr = (pFlags + esi * 4) >>> 0
+  const curWord = m.u32(wordAddr)
+  const wasSet = (curWord & edx) >>> 0
+  const setFlag = (bSet | 0) !== 0
+  if (setFlag) {
+    m.setU32(wordAddr, (curWord | edx) >>> 0)
+    if (wasSet !== 0) return
+  } else {
+    const invMask = m.u32((m.u32(GDW_INV_BITMASKS_IAT_VA_113C) + ecx) >>> 0)
+    m.setU32(wordAddr, (curWord & invMask) >>> 0)
+    if (wasSet === 0) return
+  }
+  const sgpt = m.u32(SGPT_DATATABLES_VA_113C) >>> 0
+  const nStates = m.u32((sgpt + 0xc4) >>> 0) | 0
+  const cnt = (nStates + 0x1f) | 0
+  const strideWords = (cnt + ((cnt >> 31) & 0x1f)) >> 5
+  const dirtyAddr = (m.u32((edi + 0x58) >>> 0) + ((strideWords + esi) << 2)) >>> 0
+  const bitMask = m.u32((m.u32(GDW_BITMASKS_IAT_VA_113C) + ecx) >>> 0)
+  m.setU32(dirtyAddr, (m.u32(dirtyAddr) | bitMask) >>> 0)
+  if (ebx < 0 || ebx >= nStates) return
+  const pStateTxt = (m.u32((sgpt + 0xbc) >>> 0) + imul32(ebx, 0x3c)) >>> 0
+  if (pStateTxt === 0) return
+  if ((m.u8((pStateTxt + 0x12) >>> 0) & m.u8(m.u32(GDW_BITMASKS_IAT_VA_113C))) === 0) return
+  if (setFlag) {
+    m.setU32((u + 0xc8) >>> 0, (m.u32((u + 0xc8) >>> 0) | 0x08) >>> 0)
+    return
+  }
+  const pDisguiseMask = m.u32((sgpt + 0x10c) >>> 0) >>> 0
+  let anyDisguise = 0
+  for (let i = 0; i < strideWords; i++) {
+    if ((m.u32((pFlags + i * 4) >>> 0) & m.u32((pDisguiseMask + i * 4) >>> 0)) !== 0) {
+      anyDisguise = 1
+      break
+    }
+  }
+  if (anyDisguise === 0) {
+    m.setU32((u + 0xc8) >>> 0, (m.u32((u + 0xc8) >>> 0) & 0xfffffff7) >>> 0)
+  }
+}
+
+/**
+ * `@va D2Common:0x6FDA22C0` (internal `SKILLS_GetOrCreateSkillStatList113c`,
+ * custom `edi = pUnit, ebx = nStateId, [esp+4] = bCreate`, `ret 4` -> `D2StatListStrc*`).
+ */
+export function SKILLS_GetOrCreateSkillStatList113c(
+  m: Memory113c,
+  pUnit: number,
+  nStateId: number,
+  bCreate: number,
+): number {
+  const u = pUnit >>> 0
+  const st = nStateId | 0
+  const pListEx = m.u32((u + 0x5c) >>> 0) >>> 0
+  let esi =
+    pListEx !== 0 && (m.u32((pListEx + 0x10) >>> 0) | 0) < 0
+      ? STATLIST_GetStatListFromUnitAndState113c(m, u, st) >>> 0
+      : 0
+  if ((bCreate | 0) !== 0) {
+    if (esi === 0) {
+      const dwOwnerId = m.u32((u + 0x0c) >>> 0)
+      const eOwnerType = m.u32(u)
+      const pMemPool = m.u32((u + 0x08) >>> 0)
+      esi = m.alloc(0x3c) >>> 0
+      if (esi !== 0) {
+        m.fill(esi, 0x3c, 0)
+        m.setU32(esi, pMemPool)
+        m.setU32((esi + 0x08) >>> 0, eOwnerType)
+        m.setU32((esi + 0x0c) >>> 0, dwOwnerId)
+        m.setU32((esi + 0x14) >>> 0, st >>> 0)
+      }
+      STATLIST_MergeStatLists113c(m, u, esi, 1)
+    }
+    return esi >>> 0
+  }
+  if (esi !== 0) {
+    removeAndFreeSubListIfNonExtended113c(m, esi)
+  }
+  return 0
+}
+export const SKILLS_GetOrCreateUnitStateStatList113c = SKILLS_GetOrCreateSkillStatList113c
+
+/**
+ * `@va D2Common:0x6FD9F160` (`D2Common.#10479` `SKILLS_TestLineOfSightFromUnitToTarget113c`,
+ * stdcall `nTargetX, nTargetY, pUnit, dwMask`, `ret 0x10` -> `BOOL`).
+ */
+export function SKILLS_TestLineOfSightFromUnitToTarget113c(
+  m: Memory113c,
+  nTargetX: number,
+  nTargetY: number,
+  pUnit: number,
+  dwMask: number,
+): number {
+  const u = pUnit >>> 0
+  const uType = m.u32(u) | 0
+  const pPath = m.u32((u + 0x2c) >>> 0) >>> 0
+  const isStatic = uType === 2 || (uType > 3 && uType <= 5)
+  const edi = isStatic ? m.u32((pPath + 0x10) >>> 0) : pPath !== 0 ? m.u16((pPath + 0x06) >>> 0) : 0
+  const esi = isStatic ? m.u32((pPath + 0x0c) >>> 0) : pPath !== 0 ? m.u16((pPath + 0x02) >>> 0) : 0
+  const pRoom = UNITS_GetRoom113c(m, u) >>> 0
+  return SKILLS_CheckLineOfSight113c(m, nTargetX >>> 0, nTargetY >>> 0, esi, edi, pRoom, dwMask >>> 0)
+}
+export const SKILLS_CheckLineOfSightToUnit113c = SKILLS_TestLineOfSightFromUnitToTarget113c
+
+/**
+ * `@va D2Common:0x6FD83020` (`D2Common.#10210` `STATES_UpdateOrClearState98Transform113c`,
+ * stdcall `pUnit, pOwner`, `ret 8`, void).
+ */
+export function STATES_UpdateOrClearState98Transform113c(
+  m: Memory113c,
+  pUnit: number,
+  pOwner: number,
+): void {
+  const edi = pUnit >>> 0
+  const owner = pOwner >>> 0
+  if (owner !== 0) {
+    STATES_SetUnitSourceUnit113c(m, edi, m.u32(owner), m.u32((owner + 0x0c) >>> 0))
+    return
+  }
+  if (edi === 0) return
+  const pList0 = m.u32((edi + 0x5c) >>> 0) >>> 0
+  m.setU32((edi + 0x94) >>> 0, 0)
+  m.setU32((edi + 0x98) >>> 0, 0)
+  if (pList0 !== 0) {
+    const sgpt = m.u32(SGPT_DATATABLES_VA_113C) >>> 0
+    if ((m.u32((sgpt + 0xc4) >>> 0) | 0) > 0x62) {
+      statesToggleStateMem113c(m, 0x62, edi, 0)
+      UNITROOM_RefreshUnit113c(m, edi)
+    }
+    const esi = STATLIST_GetStatListFromUnitAndState113c(m, edi, 0x62) >>> 0
+    if (esi !== 0) {
+      removeAndFreeSubListIfNonExtended113c(m, esi)
+    }
+  }
+  m.setU32((edi + 0xc8) >>> 0, (m.u32((edi + 0xc8) >>> 0) & 0xfffffbff) >>> 0)
+}
+export const STATES_UpdateOrClearUnitSourceUnit113c = STATES_UpdateOrClearState98Transform113c
+
+function missileEvalBandDamage113c(
+  m: Memory113c,
+  pMissile: number,
+  pOwner: number,
+  nMissileId: number,
+  nLevel: number,
+  bandOff: number,
+  baseOff: number,
+  symCalcOff: number,
+): number {
+  const ebp = pMissile >>> 0
+  if (ebp !== 0 && m.u32(ebp) !== 3) return 0
+  let esi = nMissileId | 0
+  if (esi < 0 && ebp !== 0) {
+    esi = m.u32((ebp + 4) >>> 0) | 0
+  }
+  let ebx = nLevel | 0
+  if (ebx <= 0 && ebp !== 0) {
+    const pData = m.u32((ebp + 0x14) >>> 0) >>> 0
+    ebx = pData !== 0 ? i16(m.u16((pData + 0x0c) >>> 0)) : 0
+  }
+  if (esi < 0) return 0
+  const sgpt = m.u32(SGPT_DATATABLES_VA_113C) >>> 0
+  if (esi >= (m.u32((sgpt + 0xb6c) >>> 0) | 0)) return 0
+  const pRec = (m.u32((sgpt + 0xb64) >>> 0) + imul32(esi, 0x1a4)) >>> 0
+  if (pRec === 0) return 0
+  let edi =
+    (SKILLS_Calc5BandLinear113c(m, ebx, (pRec + bandOff) >>> 0) +
+      (m.u32((pRec + baseOff) >>> 0) | 0)) |
+    0
+  const symCalc = m.u32((pRec + symCalcOff) >>> 0)
+  if (symCalc !== 0xffffffff) {
+    const synPct = MISSILE_ResolveSkillIdByCodeOrRef113c(m, ebp, pOwner >>> 0, symCalc, esi, ebx) | 0
+    if (synPct !== 0) {
+      edi = (edi + mulDiv113c(synPct, edi, 100)) | 0
+    }
+  }
+  const shift = m.u8((pRec + 0x196) >>> 0) & 31
+  return (edi << shift) | 0
+}
+
+/**
+ * `@va D2Common:0x6FDBA3E0` (`D2Common.#10532` `MISSILE_EvaluateElementalMaxDamage113c`,
+ * stdcall `pMissile, pOwner, nMissileId, nLevel`, `ret 0x10` -> `i32`).
+ */
+export function MISSILE_EvaluateElementalMaxDamage113c(
+  m: Memory113c,
+  pMissile: number,
+  pOwner: number,
+  nMissileId: number,
+  nLevel: number,
+): number {
+  return missileEvalBandDamage113c(m, pMissile, pOwner, nMissileId, nLevel, 0x104, 0xec, 0x118)
+}
+
+/**
+ * `@va D2Common:0x6FDBA4B0` (`D2Common.#10256` `MISSILE_EvaluatePhysMaxDamage113c`,
+ * stdcall `pMissile, pOwner, nMissileId, nLevel`, `ret 0x10` -> `i32`).
+ */
+export function MISSILE_EvaluatePhysMaxDamage113c(
+  m: Memory113c,
+  pMissile: number,
+  pOwner: number,
+  nMissileId: number,
+  nLevel: number,
+): number {
+  return missileEvalBandDamage113c(m, pMissile, pOwner, nMissileId, nLevel, 0xcc, 0xb4, 0xe0)
+}
+
+/**
+ * `@va D2Common:0x6FDBA580` (`D2Common.#10040` `MISSILE_EvaluatePhysMinDamage113c`,
+ * stdcall `pMissile, pOwner, nMissileId, nLevel`, `ret 0x10` -> `i32`).
+ */
+export function MISSILE_EvaluatePhysMinDamage113c(
+  m: Memory113c,
+  pMissile: number,
+  pOwner: number,
+  nMissileId: number,
+  nLevel: number,
+): number {
+  return missileEvalBandDamage113c(m, pMissile, pOwner, nMissileId, nLevel, 0xb8, 0xb0, 0xe0)
+}
+
+const MISSILE_PARAM_FIELD_OFFS_113C = [
+  0x38, 0x3c, 0x40, 0x44, 0x48, 0x58, 0x5c, 0x60, 0x64, 0x68, 0x4c, 0x50, 0x54, 0x6c, 0x70, 0x74,
+  0x78, 0x7c,
+] as const
+
+const MISSILE_PAIR_BASE_OFFS_113C = [0x38, 0x40, 0x58, 0x60, 0x4c, 0x6c, 0x78] as const
+
+/**
+ * `@va D2Common:0x6FDBA790` (`D2Common.#10347` `MISSILE_EvaluateMissCalcFormula113c`,
+ * stdcall `pMissile, pOwner, nParamId, nMissileId, nLevel`, `ret 0x14` -> `i32`).
+ */
+export function MISSILE_EvaluateMissCalcFormula113c(
+  m: Memory113c,
+  pMissile: number,
+  pOwner: number,
+  nParamId: number,
+  nMissileId: number,
+  nLevel: number,
+): number {
+  const edx = pMissile >>> 0
+  if (edx !== 0 && m.u32(edx) !== 3) return 0
+  const eax = nMissileId | 0
+  if (eax < 0) return 0
+  const sgpt = m.u32(SGPT_DATATABLES_VA_113C) >>> 0
+  if (eax >= (m.u32((sgpt + 0xb6c) >>> 0) | 0)) return 0
+  const ecx = (m.u32((sgpt + 0xb64) >>> 0) + imul32(eax, 0x1a4)) >>> 0
+  if (ecx === 0) return 0
+  const esi = nParamId & 0xff
+  if (esi > 0x2a) return 0
+  if (esi < 18) {
+    return m.u32((ecx + MISSILE_PARAM_FIELD_OFFS_113C[esi]!) >>> 0) | 0
+  }
+  const lvl = nLevel | 0
+  if (esi >= 29) {
+    const baseOff = MISSILE_PAIR_BASE_OFFS_113C[(esi - 29) >> 1]!
+    const parA = m.u32((ecx + baseOff) >>> 0) | 0
+    const parB = m.u32((ecx + baseOff + 4) >>> 0) | 0
+    if (((esi - 29) & 1) === 0) {
+      return (imul32((lvl - 1) | 0, parB) + parA) | 0
+    }
+    return SKILLS_CalcDiminishingReturns113c(m, lvl, parA, parB) | 0
+  }
+  if (esi === 18) return lvl
+  if (esi === 21) return MISSILE_EvaluateElementalLength113c(m, edx, pOwner, eax, lvl) | 0
+  if (esi === 28) {
+    return (imul32(i16(m.u16((ecx + 0x98) >>> 0)), lvl) + i16(m.u16((ecx + 0x96) >>> 0))) | 0
+  }
+  if (esi === 19 || esi === 22) {
+    const v = MISSILE_EvaluateElementalMinDamage113c(m, edx, pOwner, eax, lvl) | 0
+    return esi === 19 ? sar32(v, 8) : v
+  }
+  if (esi === 20 || esi === 23) {
+    const v = MISSILE_EvaluateElementalMaxDamage113c(m, edx, pOwner, eax, lvl) | 0
+    return esi === 20 ? sar32(v, 8) : v
+  }
+  if (esi === 24 || esi === 26) {
+    const v = MISSILE_EvaluatePhysMinDamage113c(m, edx, pOwner, eax, lvl) | 0
+    return esi === 24 ? sar32(v, 8) : v
+  }
+  const v = MISSILE_EvaluatePhysMaxDamage113c(m, edx, pOwner, eax, lvl) | 0
+  return esi === 25 ? sar32(v, 8) : v
+}
+export const MISSILE_EvalMissCalcParamById113c = MISSILE_EvaluateMissCalcFormula113c
+
+/**
+ * `@va D2Common:0x6FDBB160` (internal `MISSILE_EvalMissCalcParamCallback113c`,
+ * fastcall `ecx = nParamId, edx = pCtx`, `ret` -> `i32`).
+ */
+export function MISSILE_EvalMissCalcParamCallback113c(
+  m: Memory113c,
+  nParamId: number,
+  pCtx: number,
+): number {
+  const edx = pCtx >>> 0
+  if (edx === 0) return 0
+  return MISSILE_EvaluateMissCalcFormula113c(
+    m,
+    m.u32(edx),
+    m.u32((edx + 4) >>> 0),
+    nParamId | 0,
+    m.u32((edx + 8) >>> 0) | 0,
+    m.u32((edx + 0x0c) >>> 0) | 0,
+  )
+}
+
+const SKILL_CALC_FIELD_OFFS_113C = [
+  0x60, 0x138, 0x13c, 0x140, 0x144, 0x64, 0x68, 0x6c, 0x70, 0x74, 0x78, 0x7c, 0xa4, 0xa8, 0xac, 0xb0,
+  0xb4, 0xc0, 0x170,
+] as const
+
+function rollLimitedSeedPair113c(seed: [number, number], nMin: number, nMax: number): number {
+  const lo = nMin | 0
+  const hi = nMax | 0
+  if (lo >= hi) return lo
+  const range = (hi - lo + 1) | 0
+  if (range <= 0) return lo
+  const prod = BigInt(seed[0] >>> 0) * 0x6ac690c5n + BigInt(seed[1] >>> 0)
+  seed[0] = Number(prod & 0xffffffffn) >>> 0
+  seed[1] = Number((prod >> 32n) & 0xffffffffn) >>> 0
+  const rem = (range & (range - 1)) === 0 ? seed[0] & (range - 1) : seed[0] % (range >>> 0)
+  return (lo + rem) | 0
+}
+
+/**
+ * `@va D2Common:0x6FDA0460` (`D2Common.#10121` `SKILLS_GetSkillElemMinDamage`,
+ * stdcall `pOwner, nSkillId, nLevel, bApplyMastery`, `ret 0x10` -> `i32`).
+ */
+export function SKILLS_GetSkillElemMinDamage113c(
+  m: Memory113c,
+  pOwner: number,
+  nSkillId: number,
+  nLevel: number,
+  bApplyMastery: number,
+): number {
+  const pSkTxt = DATATBLS_GetSkillsTxtRecordInline113c(m, nSkillId) >>> 0
+  const lvl = nLevel | 0
+  if (pSkTxt === 0 || lvl <= 0) return 0
+  const sh = m.u8((pSkTxt + 0x1a4) >>> 0) & 31
+  let val =
+    ((SKILLS_Calc5BandLinear113c(m, lvl, (pSkTxt + 0x1e8) >>> 0) +
+      (m.u32((pSkTxt + 0x1e0) >>> 0) | 0)) <<
+      sh) |
+    0
+  const calcOff = m.u32((pSkTxt + 0x210) >>> 0) >>> 0
+  if (calcOff !== 0xffffffff && (val > 0x100 || m.u32((pSkTxt + 0x1e8) >>> 0) !== 0)) {
+    const pct = evalSkillCalcRpnMem113c(m, calcOff, pOwner, nSkillId, lvl) | 0
+    if (pct !== 0) {
+      val = (val + mulDiv113c(pct, val, 100)) | 0
+    }
+  }
+  if ((bApplyMastery | 0) !== 0 && pOwner !== 0) {
+    val = (val + SKILLS_ApplyElementalMasteryBonus113c(m, pOwner, m.u8((pSkTxt + 0x1dc) >>> 0), val)) | 0
+  }
+  return val
+}
+
+/**
+ * `@va D2Common:0x6FDA0360` (`D2Common.#11091` `SKILLS_GetSkillElemMaxDamage`,
+ * stdcall `pOwner, nSkillId, nLevel, bApplyMastery`, `ret 0x10` -> `i32`).
+ */
+export function SKILLS_GetSkillElemMaxDamage113c(
+  m: Memory113c,
+  pOwner: number,
+  nSkillId: number,
+  nLevel: number,
+  bApplyMastery: number,
+): number {
+  const pSkTxt = DATATBLS_GetSkillsTxtRecordInline113c(m, nSkillId) >>> 0
+  const lvl = nLevel | 0
+  if (pSkTxt === 0 || lvl <= 0) return 0
+  const sh = m.u8((pSkTxt + 0x1a4) >>> 0) & 31
+  let val =
+    ((SKILLS_Calc5BandLinear113c(m, lvl, (pSkTxt + 0x1fc) >>> 0) +
+      (m.u32((pSkTxt + 0x1e4) >>> 0) | 0)) <<
+      sh) |
+    0
+  const calcOff = m.u32((pSkTxt + 0x210) >>> 0) >>> 0
+  if (calcOff !== 0xffffffff) {
+    const pct = evalSkillCalcRpnMem113c(m, calcOff, pOwner, nSkillId, lvl) | 0
+    if (pct !== 0) {
+      val = (val + mulDiv113c(pct, val, 100)) | 0
+    }
+  }
+  if ((bApplyMastery | 0) !== 0 && pOwner !== 0) {
+    val = (val + SKILLS_ApplyElementalMasteryBonus113c(m, pOwner, m.u8((pSkTxt + 0x1dc) >>> 0), val)) | 0
+  }
+  return val
+}
+
+/**
+ * `@va D2Common:0x6FDA1BF0` (`D2Common.#10786` `SKILLS_EvalCalcByOffset`,
+ * stdcall `pOwner, dwCalcOffset, nSkillId, nLevel`, `ret 0x10` -> `i32`).
+ */
+export function SKILLS_EvalCalcByOffset113c(
+  m: Memory113c,
+  pOwner: number,
+  dwCalcOffset: number,
+  nSkillId: number,
+  nLevel: number,
+): number {
+  return evalSkillCalcRpnMem113c(m, dwCalcOffset, pOwner, nSkillId, nLevel)
+}
+
+function evalSkillElemMinForCalc113c(
+  m: Memory113c,
+  pOwner: number,
+  nSkillId: number,
+  nLevel: number,
+  bApplyMastery: number,
+): number {
+  return SKILLS_GetSkillElemMinDamage113c(m, pOwner, nSkillId, nLevel, bApplyMastery)
+}
+
+function evalSkillElemMaxForCalc113c(
+  m: Memory113c,
+  pOwner: number,
+  nSkillId: number,
+  nLevel: number,
+  bApplyMastery: number,
+): number {
+  return SKILLS_GetSkillElemMaxDamage113c(m, pOwner, nSkillId, nLevel, bApplyMastery)
+}
+
+function evalSkillCalcRpnMem113c(
+  m: Memory113c,
+  dwCalcOffset: number,
+  pOwner: number,
+  nSkillId: number,
+  nLevel: number,
+): number {
+  const sgpt = m.u32(SGPT_DATATABLES_VA_113C) >>> 0
+  const pCodeBase = m.u32((sgpt + 0x40) >>> 0) >>> 0
+  const codeSize = m.u32((sgpt + 0x44) >>> 0) >>> 0
+  const calcOff = dwCalcOffset >>> 0
+  if (pCodeBase === 0 || calcOff >= codeSize) return 0
+  const size = (codeSize - calcOff) | 0
+  const base = (pCodeBase + calcOff) >>> 0
+  const stack = new Int32Array(64)
+  let sp = 0
+  const pop = (): number => (sp > 0 ? stack[--sp]! : 0)
+  const push = (v: number): void => {
+    if (sp < 64) stack[sp++] = v | 0
+  }
+  let cur = base
+  while (((cur - base) | 0) < size) {
+    const op = m.u8(cur)
+    cur = (cur + 1) >>> 0
+    if (op === 0 || op > 22 || op === 2 || op === 3) {
+      return sp > 0 ? stack[sp - 1]! | 0 : 0
+    }
+    if (op === 1) {
+      const fnIdx = m.u8(cur)
+      cur = (cur + 1) >>> 0
+      if (fnIdx >= 7) {
+        push(0)
+      } else if (fnIdx === 6) {
+        const a3 = pop()
+        const a2 = pop()
+        const a1 = pop()
+        const lvl = evalSkillCalcFieldMem113c(m, pOwner, a2, nSkillId, nLevel)
+        push(evalSkillCalcFieldMem113c(m, pOwner, a3, a1, lvl))
+      } else {
+        const a2 = pop()
+        const a1 = pop()
+        if (fnIdx === 0) {
+          push(a1 < a2 ? a1 : a2)
+        } else if (fnIdx === 1) {
+          push(a1 > a2 ? a1 : a2)
+        } else if (fnIdx === 2) {
+          push(pOwner !== 0 ? SEED_RollLimitedRandomNumberInline113c(m, (pOwner + 0x20) >>> 0, a1, a2) : 0)
+        } else if (fnIdx === 3) {
+          const effLvl = pOwner !== 0 ? SKILLS_GetSkillLevelByIdWithBonus113c(m, pOwner, a1) : 0
+          push(evalSkillCalcFieldMem113c(m, pOwner, a2, a1, effLvl))
+        } else if (fnIdx === 4) {
+          push(MISSILE_EvaluateMissCalcFormula113c(m, 0, pOwner, a2, a1, nLevel))
+        } else {
+          const sc = m.u32((sgpt + DATATABLES_ISC_COUNT_OFF_113C) >>> 0) | 0
+          if (pOwner === 0 || a1 < 0 || a1 >= sc) {
+            push(0)
+          } else if (a1 === 0x13) {
+            push(UNITS_GetPlayerBaseToHit113c(m, pOwner))
+          } else if (a2 === 1) {
+            push(statListGetUnitBaseStatMem113c(m, pOwner, a1, 0) | 0)
+          } else if (a2 === 2) {
+            push(STATLIST_GetUnitStatWithLayer113c(m, pOwner, a1, 0) | 0)
+          } else {
+            push(statListGetUnitStatMem113c(m, pOwner, a1, 0) | 0)
+          }
+        }
+      }
+    } else if (op >= 4 && op <= 6) {
+      const varId = op === 4 ? m.u8(cur) : op === 5 ? i16(m.u16(cur)) : m.u32(cur) | 0
+      cur = (cur + (1 << (op - 4))) >>> 0
+      push(evalSkillCalcFieldMem113c(m, pOwner, varId, nSkillId, nLevel))
+    } else if (op >= 7 && op <= 9) {
+      const imm = op === 7 ? (m.u8(cur) << 24) >> 24 : op === 8 ? i16(m.u16(cur)) : m.u32(cur) | 0
+      cur = (cur + (1 << (op - 7))) >>> 0
+      push(imm)
+    } else if (op === 20) {
+      const exp = pop()
+      const baseVal = pop()
+      if (exp <= 0) {
+        push(1)
+      } else {
+        let acc = baseVal | 0
+        for (let k = (exp - 1) | 0; k > 0; k--) {
+          acc = imul32(acc, baseVal)
+        }
+        push(acc)
+      }
+    } else if (op === 21) {
+      push((-pop()) | 0)
+    } else if (op === 22) {
+      const fVal = pop()
+      const tVal = pop()
+      push(pop() !== 0 ? tVal : fVal)
+    } else {
+      const rhs = pop()
+      const lhs = pop()
+      const res =
+        op === 16
+          ? (lhs + rhs) | 0
+          : op === 17
+            ? (lhs - rhs) | 0
+            : op === 18
+              ? imul32(lhs, rhs)
+              : op === 19
+                ? rhs === 0
+                  ? 0
+                  : Math.trunc(lhs / rhs) | 0
+                : op === 10
+                  ? lhs < rhs
+                    ? 1
+                    : 0
+                  : op === 11
+                    ? lhs > rhs
+                      ? 1
+                      : 0
+                    : op === 12
+                      ? lhs <= rhs
+                        ? 1
+                        : 0
+                      : op === 13
+                        ? lhs >= rhs
+                          ? 1
+                          : 0
+                        : op === 14
+                          ? lhs === rhs
+                            ? 1
+                            : 0
+                          : lhs !== rhs
+                            ? 1
+                            : 0
+      push(res)
+    }
+  }
+  return 0
+}
+
+/**
+ * `@va D2Common:0x6FD9E7A0` (`D2Common.#10548` `SKILLS_EvalSkillSynergyOrMasteryCalc`,
+ * stdcall `pOwner, nSkillId, nLevel, nCalcGroup`, `ret 0x10` -> `i32`).
+ */
+export function SKILLS_EvalSkillSynergyOrMasteryCalc113c(
+  m: Memory113c,
+  pOwner: number,
+  nSkillId: number,
+  nLevel: number,
+  nCalcGroup: number,
+): number {
+  const skId = nSkillId | 0
+  const pSkTxt = DATATBLS_GetSkillsTxtRecordInline113c(m, skId) >>> 0
+  const lvl = nLevel | 0
+  if (pSkTxt === 0 || lvl <= 0) return 0
+  const grp = nCalcGroup | 0
+  if (grp !== 0 && grp !== 1 && grp !== 2) return 0
+  const s1 = grp === 0 ? 0x156 : grp === 1 ? 0x157 : 0x158
+  const s2 = grp === 0 ? 0x159 : grp === 1 ? 0x15a : 0x15b
+  for (let i = 0; i < 5; i++) {
+    const w = i16(m.u16((pSkTxt + 0x98 + i * 2) >>> 0))
+    if (w === s1 || w === s2) {
+      return SKILLS_EvalCalcByOffset113c(
+        m,
+        pOwner,
+        m.u32((pSkTxt + 0xa4 + i * 4) >>> 0),
+        skId,
+        lvl,
+      )
+    }
+  }
+  return 0
+}
+
+/**
+ * `@va D2Common:0x6FD9E900` (`D2Common.#10510` `SKILLS_GetSkillPeriodicDelayOrLength`,
+ * stdcall `pOwner, nSkillId, nLevel, _unused`, `ret 0x10` -> `i32`).
+ */
+export function SKILLS_GetSkillPeriodicDelayOrLength113c(
+  m: Memory113c,
+  pOwner: number,
+  nSkillId: number,
+  nLevel: number,
+  _unused = 0,
+): number {
+  const skId = nSkillId | 0
+  const pSkTxt = DATATBLS_GetSkillsTxtRecordInline113c(m, skId) >>> 0
+  const lvl = nLevel | 0
+  if (pSkTxt === 0 || lvl <= 0) return 0
+  const i1 = m.u32((pSkTxt + 0x218) >>> 0) | 0
+  const i2 = m.u32((pSkTxt + 0x21c) >>> 0) | 0
+  const i3 = m.u32((pSkTxt + 0x220) >>> 0) | 0
+  const add =
+    lvl > 16
+      ? (imul32(lvl - 16, i3) + (i2 << 3) + imul32(i1, 7)) | 0
+      : lvl > 8
+        ? (imul32(lvl - 8, i2) + imul32(i1, 7)) | 0
+        : imul32(lvl - 1, i1)
+  let len = (m.u32((pSkTxt + 0x214) >>> 0) + add) | 0
+  const calcOff = m.u32((pSkTxt + 0x224) >>> 0) >>> 0
+  if (calcOff !== 0xffffffff) {
+    const pct = SKILLS_EvalCalcByOffset113c(m, pOwner, calcOff, skId, lvl) | 0
+    if (pct !== 0) len = (len + mulDiv113c(pct, len, 100)) | 0
+  }
+  return len
+}
+
+/**
+ * `@va D2Common:0x6FD9EA50` (`D2Common.#10653` `SKILLS_GetSkillToHitBonus`,
+ * stdcall `pOwner, nSkillId, nLevel`, `ret 0xC` -> `i32`).
+ */
+export function SKILLS_GetSkillToHitBonus113c(
+  m: Memory113c,
+  pOwner: number,
+  nSkillId: number,
+  nLevel: number,
+): number {
+  const skId = nSkillId | 0
+  const pSkTxt = DATATBLS_GetSkillsTxtRecordInline113c(m, skId) >>> 0
+  const lvl = nLevel | 0
+  if (pSkTxt === 0 || lvl <= 0) return 0
+  const calcOff = m.u32((pSkTxt + 0x1a0) >>> 0) >>> 0
+  if (calcOff !== 0xffffffff) return SKILLS_EvalCalcByOffset113c(m, pOwner, calcOff, skId, lvl)
+  return (
+    (m.u32((pSkTxt + 0x198) >>> 0) + imul32((lvl - 1) | 0, m.u32((pSkTxt + 0x19c) >>> 0) | 0)) | 0
+  )
+}
+
+/**
+ * `@va D2Common:0x6FDA1070` (`D2Common.#10147` `SKILLS_GetSkillCalcFieldById`,
+ * stdcall `pOwner, nFieldCode, nSkillId, nLevel`, `ret 0x10` -> `i32`).
+ */
+export function SKILLS_GetSkillCalcFieldById113c(
+  m: Memory113c,
+  pOwner: number,
+  nFieldCode: number,
+  nSkillId: number,
+  nLevel: number,
+): number {
+  const skId = nSkillId | 0
+  const pSkTxt = DATATBLS_GetSkillsTxtRecordInline113c(m, skId) >>> 0
+  if (pSkTxt === 0) return 0
+  const code = nFieldCode & 0xff
+  if (code > 0x48) return 0
+  const lvl = nLevel | 0
+  const owner = pOwner >>> 0
+  switch (code) {
+    case 0:
+      return DATATBLS_CalcSkillLinearParam12Inline113c(m, skId, lvl) | 0
+    case 1:
+      return SKILLS_EvalParam12DimReturns113c(m, lvl, skId) | 0
+    case 2:
+      return DATATBLS_CalcSkillLinearParam34Inline113c(m, skId, lvl) | 0
+    case 3:
+      return SKILLS_EvalParam34DimReturns113c(m, lvl, skId) | 0
+    case 4:
+      return DATATBLS_CalcSkillLinearParam56Inline113c(m, skId, lvl) | 0
+    case 5:
+      return SKILLS_EvalParam56DimReturns113c(m, lvl, skId) | 0
+    case 6:
+      return DATATBLS_CalcSkillLinearParam78Inline113c(m, skId, lvl) | 0
+    case 7:
+      return (
+        SKILLS_CalcDiminishingReturns113c(
+          m,
+          lvl,
+          m.u32((pSkTxt + 0x160) >>> 0) | 0,
+          m.u32((pSkTxt + 0x164) >>> 0) | 0,
+        ) | 0
+      )
+    case 8:
+      return DATATBLS_GetSkillsTxtParam1Inline113c(m, skId) | 0
+    case 9:
+      return DATATBLS_GetSkillsTxtParam2Inline113c(m, skId) | 0
+    case 10:
+      return DATATBLS_GetSkillsTxtParam3Inline113c(m, skId) | 0
+    case 11:
+      return DATATBLS_GetSkillsTxtParam4Inline113c(m, skId) | 0
+    case 12:
+      return DATATBLS_GetSkillsTxtParam5Inline113c(m, skId) | 0
+    case 13:
+      return DATATBLS_GetSkillsTxtParam6Inline113c(m, skId) | 0
+    case 14:
+      return m.u32((pSkTxt + 0x160) >>> 0) | 0
+    case 15:
+      return m.u32((pSkTxt + 0x164) >>> 0) | 0
+    case 16:
+      return lvl
+    case 17:
+      return sar32(SKILLS_GetSkillElemMinDamage113c(m, owner, skId, lvl, 0), 8)
+    case 18:
+      return sar32(SKILLS_GetSkillElemMaxDamage113c(m, owner, skId, lvl, 0), 8)
+    case 19:
+    case 51:
+      return SKILLS_GetSkillPeriodicDelayOrLength113c(m, owner, skId, lvl, 0)
+    case 20:
+      return SKILLS_GetSkillToHitBonus113c(m, owner, skId, lvl)
+    case 21: {
+      if (lvl <= 0) return 0
+      const base =
+        (imul32(i16(m.u16((pSkTxt + 0x18c) >>> 0)), lvl - 1) +
+          i16(m.u16((pSkTxt + 0x18a) >>> 0))) |
+        0
+      return sar32((base << (m.u8((pSkTxt + 0x188) >>> 0) & 31)) | 0, 8)
+    }
+    case 22: {
+      if (lvl <= 0) return 0
+      const base =
+        (imul32(i16(m.u16((pSkTxt + 0x18c) >>> 0)), lvl - 1) +
+          i16(m.u16((pSkTxt + 0x18a) >>> 0))) |
+        0
+      const half = Math.trunc(imul32(base, 0x19) / 2) | 0
+      return sar32((half << (m.u8((pSkTxt + 0x188) >>> 0) & 31)) | 0, 8)
+    }
+    case 23:
+    case 24:
+    case 25:
+      return SKILLS_EvalSkillSynergyOrMasteryCalc113c(m, owner, skId, lvl, (code - 23) | 0)
+    case 26:
+    case 29:
+    case 32: {
+      if (lvl <= 0) return 0
+      const pSkDesc = DATATBLS_GetSkillDescTxtRecordFromSkillIdInline113c(m, skId) >>> 0
+      if (pSkDesc === 0) return 0
+      const idx = Math.trunc((code - 26) / 3)
+      const misId = i16(m.u16((pSkDesc + 0x3c + idx * 2) >>> 0))
+      if (DATATBLS_GetMissilesTxtRecordInline113c(m, misId) === 0) return 0
+      return sar32(MISSILE_EvaluateElementalMinDamage113c(m, 0, owner, misId, lvl), 8)
+    }
+    case 27:
+    case 30:
+    case 33: {
+      if (lvl <= 0) return 0
+      const pSkDesc = DATATBLS_GetSkillDescTxtRecordFromSkillIdInline113c(m, skId) >>> 0
+      if (pSkDesc === 0) return 0
+      const idx = Math.trunc((code - 27) / 3)
+      const misId = i16(m.u16((pSkDesc + 0x3c + idx * 2) >>> 0))
+      if (DATATBLS_GetMissilesTxtRecordInline113c(m, misId) === 0) return 0
+      return sar32(MISSILE_EvaluateElementalMaxDamage113c(m, 0, owner, misId, lvl), 8)
+    }
+    case 28:
+    case 31:
+    case 34: {
+      if (lvl <= 0) return 0
+      const pSkDesc = DATATBLS_GetSkillDescTxtRecordFromSkillIdInline113c(m, skId) >>> 0
+      if (pSkDesc === 0) return 0
+      const idx = Math.trunc((code - 28) / 3)
+      const misId = i16(m.u16((pSkDesc + 0x3c + idx * 2) >>> 0))
+      if (DATATBLS_GetMissilesTxtRecordInline113c(m, misId) === 0) return 0
+      return MISSILE_EvaluateElementalLength113c(m, 0, owner, misId, lvl) | 0
+    }
+    case 35:
+    case 36:
+    case 37: {
+      const pSkDesc = DATATBLS_GetSkillDescTxtRecordFromSkillIdInline113c(m, skId) >>> 0
+      if (pSkDesc === 0) return 0
+      const misId = i16(m.u16((pSkDesc + code * 2 - 0x0a) >>> 0))
+      const pMis = DATATBLS_GetMissilesTxtRecordInline113c(m, misId) >>> 0
+      if (pMis === 0) return 0
+      return (
+        (imul32(i16(m.u16((pMis + 0x98) >>> 0)), lvl) + i16(m.u16((pMis + 0x96) >>> 0))) | 0
+      )
+    }
+    case 38:
+      return SKILLS_GetSkillElemMinDamage113c(m, owner, skId, lvl, 0)
+    case 39:
+      return SKILLS_GetSkillElemMaxDamage113c(m, owner, skId, lvl, 0)
+    case 40:
+      return owner !== 0 ? statListGetUnitStatMem113c(m, owner, 0x0c, 0) | 0 : 0
+    case 41: {
+      if (owner === 0) return 0
+      const pSk = SKILLS_GetHighestLevelSkillFromUnitAndId113c(m, owner, skId) >>> 0
+      if (pSk === 0) return 0
+      const rawLvl = m.u32((pSk + 0x28) >>> 0) | 0
+      const maxLvl = m.u32(m.u32(SGPT_EXPERIENCE_TXT_PTR_VA_113C) >>> 0) | 0
+      return Math.min(Math.max(rawLvl, 0), maxLvl)
+    }
+    case 42: {
+      if (lvl <= 0) return 0
+      const base =
+        (imul32(i16(m.u16((pSkTxt + 0x18c) >>> 0)), lvl - 1) +
+          i16(m.u16((pSkTxt + 0x18a) >>> 0))) |
+        0
+      return (base << (m.u8((pSkTxt + 0x188) >>> 0) & 31)) | 0
+    }
+    case 43:
+    case 45:
+    case 47: {
+      if (lvl <= 0) return 0
+      const pSkDesc = DATATBLS_GetSkillDescTxtRecordFromSkillIdInline113c(m, skId) >>> 0
+      if (pSkDesc === 0) return 0
+      const idx = Math.trunc((code - 43) / 3)
+      const misId = i16(m.u16((pSkDesc + 0x3c + idx * 2) >>> 0))
+      if (DATATBLS_GetMissilesTxtRecordInline113c(m, misId) === 0) return 0
+      return MISSILE_EvaluateElementalMinDamage113c(m, 0, owner, misId, lvl) | 0
+    }
+    case 44:
+    case 46:
+    case 48: {
+      if (lvl <= 0) return 0
+      const pSkDesc = DATATBLS_GetSkillDescTxtRecordFromSkillIdInline113c(m, skId) >>> 0
+      if (pSkDesc === 0) return 0
+      const idx = Math.trunc((code - 44) / 3)
+      const misId = i16(m.u16((pSkDesc + 0x3c + idx * 2) >>> 0))
+      if (DATATBLS_GetMissilesTxtRecordInline113c(m, misId) === 0) return 0
+      return MISSILE_EvaluateElementalMaxDamage113c(m, 0, owner, misId, lvl) | 0
+    }
+    case 49:
+      return sar32(SKILLS_GetSkillElemMinDamage113c(m, owner, skId, lvl, 1), 8)
+    case 50:
+      return sar32(SKILLS_GetSkillElemMaxDamage113c(m, owner, skId, lvl, 1), 8)
+    case 52:
+      return SKILLS_GetSkillElemMinDamage113c(m, owner, skId, lvl, 1)
+    case 53:
+      return SKILLS_GetSkillElemMaxDamage113c(m, owner, skId, lvl, 1)
+    default: {
+      const off = SKILL_CALC_FIELD_OFFS_113C[code - 54]
+      if (off === undefined) return 0
+      return SKILLS_EvalCalcByOffset113c(m, owner, m.u32((pSkTxt + off) >>> 0), skId, lvl)
+    }
+  }
+}
+
+function evalSkillCalcFieldMem113c(
+  m: Memory113c,
+  pOwner: number,
+  nFieldCode: number,
+  nSkillId: number,
+  nLevel: number,
+): number {
+  return SKILLS_GetSkillCalcFieldById113c(m, pOwner, nFieldCode & 0xff, nSkillId, nLevel)
+}
+
+function fogEvalMissilePostFix113c(
+  m: Memory113c,
+  pBuf: number,
+  nBufSize: number,
+  pMissile: number,
+  pOwner: number,
+  nMissileId: number,
+  nLevel: number,
+  rawMissileIdArg: number,
+  rawLevelArg: number,
+): number {
+  const size = nBufSize | 0
+  const stack = new Int32Array(64)
+  let sp = 0
+  const pop = (): number => (sp > 0 ? stack[--sp]! : 0)
+  const push = (v: number): void => {
+    if (sp < 64) stack[sp++] = v | 0
+  }
+  const randSeed: [number, number] = [rawMissileIdArg >>> 0, rawLevelArg >>> 0]
+  const base = pBuf >>> 0
+  let cur = base
+  while (((cur - base) | 0) < size) {
+    const op = m.u8(cur)
+    cur = (cur + 1) >>> 0
+    if (op === 0 || op > 22 || op === 2 || op === 3) {
+      return sp > 0 ? stack[sp - 1]! | 0 : 0
+    }
+    if (op === 1) {
+      const fnIdx = m.u8(cur)
+      cur = (cur + 1) >>> 0
+      if (fnIdx >= 4) {
+        push(0)
+      } else {
+        const a2 = pop()
+        const a1 = pop()
+        if (fnIdx === 0) {
+          push(a1 < a2 ? a1 : a2)
+        } else if (fnIdx === 1) {
+          push(a1 > a2 ? a1 : a2)
+        } else if (fnIdx === 2) {
+          push(rollLimitedSeedPair113c(randSeed, a1, a2))
+        } else {
+          const owner = pOwner >>> 0
+          const effLvl = owner !== 0 ? SKILLS_GetSkillLevelByIdWithBonus113c(m, owner, a1) : 0
+          push(evalSkillCalcFieldMem113c(m, owner, a2, a1, effLvl))
+        }
+      }
+    } else if (op >= 4 && op <= 6) {
+      const varId =
+        op === 4 ? m.u8(cur) : op === 5 ? i16(m.u16(cur)) : m.u32(cur) | 0
+      cur = (cur + (1 << (op - 4))) >>> 0
+      push(MISSILE_EvaluateMissCalcFormula113c(m, pMissile, pOwner, varId, nMissileId, nLevel))
+    } else if (op >= 7 && op <= 9) {
+      const imm =
+        op === 7 ? (m.u8(cur) << 24) >> 24 : op === 8 ? i16(m.u16(cur)) : m.u32(cur) | 0
+      cur = (cur + (1 << (op - 7))) >>> 0
+      push(imm)
+    } else if (op === 20) {
+      const exp = pop()
+      const baseVal = pop()
+      if (exp <= 0) {
+        push(1)
+      } else {
+        let acc = baseVal | 0
+        for (let k = (exp - 1) | 0; k > 0; k--) {
+          acc = imul32(acc, baseVal)
+        }
+        push(acc)
+      }
+    } else if (op === 21) {
+      push((-pop()) | 0)
+    } else if (op === 22) {
+      const fVal = pop()
+      const tVal = pop()
+      push(pop() !== 0 ? tVal : fVal)
+    } else {
+      const rhs = pop()
+      const lhs = pop()
+      const res =
+        op === 16
+          ? (lhs + rhs) | 0
+          : op === 17
+            ? (lhs - rhs) | 0
+            : op === 18
+              ? imul32(lhs, rhs)
+              : op === 19
+                ? rhs === 0
+                  ? 0
+                  : Math.trunc(lhs / rhs) | 0
+                : op === 10
+                  ? lhs < rhs
+                    ? 1
+                    : 0
+                  : op === 11
+                    ? lhs > rhs
+                      ? 1
+                      : 0
+                    : op === 12
+                      ? lhs <= rhs
+                        ? 1
+                        : 0
+                      : op === 13
+                        ? lhs >= rhs
+                          ? 1
+                          : 0
+                        : op === 14
+                          ? lhs === rhs
+                            ? 1
+                            : 0
+                          : lhs !== rhs
+                            ? 1
+                            : 0
+      push(res)
+    }
+  }
+  return 0
+}
+
+/**
+ * `@va D2Common:0x6FDBB2B0` (`D2Common.#10231` `MISSILE_ResolveSkillIdByCodeOrRef113c`,
+ * stdcall `pMissile, pOwner, dwCalcOffset, nMissileId, nLevel`, `ret 0x14` -> `i32`).
+ */
+export function MISSILE_ResolveSkillIdByCodeOrRef113c(
+  m: Memory113c,
+  pMissile: number,
+  pOwner: number,
+  dwCalcOffset: number,
+  nMissileId: number,
+  nLevel: number,
+): number {
+  const esi = pMissile >>> 0
+  let edi = nMissileId | 0
+  let edx = nLevel | 0
+  if (esi !== 0) {
+    if (m.u32(esi) !== 3) return 0
+    if (edi < 0) {
+      edi = m.u32((esi + 4) >>> 0) | 0
+    }
+    if (edx < 0) {
+      const pData = m.u32((esi + 0x14) >>> 0) >>> 0
+      edx = pData !== 0 ? i16(m.u16((pData + 0x0c) >>> 0)) : 0
+    }
+  }
+  const sgpt = m.u32(SGPT_DATATABLES_VA_113C) >>> 0
+  const pCodeBase = m.u32((sgpt + 0x60) >>> 0) >>> 0
+  if (pCodeBase === 0) return 0
+  const calcOff = dwCalcOffset >>> 0
+  const codeSize = m.u32((sgpt + 0x64) >>> 0) >>> 0
+  if (calcOff >= codeSize) return 0
+  return fogEvalMissilePostFix113c(
+    m,
+    (pCodeBase + calcOff) >>> 0,
+    (codeSize - calcOff) >>> 0,
+    esi,
+    pOwner >>> 0,
+    edi,
+    edx,
+    nMissileId | 0,
+    nLevel | 0,
+  )
+}
+export const MISSILE_EvaluateMissCalc113c = MISSILE_ResolveSkillIdByCodeOrRef113c
+
+/**
+ * `@va D2Common:0x6FDBB360` (`D2Common.#10205` `MISSILE_EvaluateElementalMinDamage113c`,
+ * stdcall `pMissile, pOwner, nMissileId, nLevel`, `ret 0x10` -> `i32`).
+ */
+export function MISSILE_EvaluateElementalMinDamage113c(
+  m: Memory113c,
+  pMissile: number,
+  pOwner: number,
+  nMissileId: number,
+  nLevel: number,
+): number {
+  return missileEvalBandDamage113c(m, pMissile, pOwner, nMissileId, nLevel, 0xf0, 0xe8, 0x118)
+}
+
+/**
+ * `@va D2Common:0x6FDA0C90` (internal `SKILLS_EvalMissileParamCallback113c`,
+ * custom `ecx = nMissileId, edx = nParamId, [esp+4] = _unused, [esp+8] = pSkillCalcCtx`, `ret 8` -> `i32`).
+ */
+export function SKILLS_EvalMissileParamCallback113c(
+  m: Memory113c,
+  nMissileId: number,
+  nParamId: number,
+  _unused: number,
+  pSkillCalcCtx: number,
+): number {
+  const eax = pSkillCalcCtx >>> 0
+  if (eax === 0) return 0
+  return MISSILE_EvaluateMissCalcFormula113c(
+    m,
+    0,
+    m.u32(eax),
+    nParamId | 0,
+    nMissileId | 0,
+    m.u32((eax + 8) >>> 0) | 0,
+  )
+}
+
+/**
+ * `@va D2Common:0x6FD9FE80` (internal `SKILLS_ScaleValueByMasteryAndSkillParam1113c`,
+ * stdcall `pUnit, nSkillId`, `ret 8` -> `i32`).
+ */
+export function SKILLS_ScaleValueByMasteryAndSkillParam1113c(
+  m: Memory113c,
+  pUnit: number,
+  nSkillId: number,
+): number {
+  const edi = pUnit >>> 0
+  if (edi === 0) return 0
+  const uType = m.u32(edi) | 0
+  if ((uType < 0 || uType > 1) && uType !== 3) return 0
+  const sgpt = m.u32(SGPT_DATATABLES_VA_113C) >>> 0
+  if ((m.u32((sgpt + 0xc4) >>> 0) | 0) <= 0x2a) return 0
+  if (STATES_CheckStateMaskOnUnitFast113c(m, edi, 0x2a) === 0) return 0
+  const esi = STATLIST_GetStatListFromUnitAndState113c(m, edi, 0x2a) >>> 0
+  if (esi === 0) return 0
+  const baseStat = STATLIST_GetBaseStatFromListInline113c(m, esi, 0x19, 0) | 0
+  const skId = nSkillId | 0
+  let param1 = 0
+  if (skId >= 0 && skId < (m.u32((sgpt + 0xba0) >>> 0) | 0)) {
+    const pSkillsTxt = (m.u32((sgpt + 0xb98) >>> 0) + imul32(skId, D2SkillsTxt_SIZE)) >>> 0
+    if (pSkillsTxt !== 0) {
+      param1 = m.u32((pSkillsTxt + 0x148) >>> 0) | 0
+    }
+  }
+  const prod = imul32(baseStat, param1)
+  return sar32((prod + ((prod >> 31) & 7)) | 0, 3)
+}
+
+/**
+ * `@va D2Common:0x6FD9FA30` (internal `SKILLS_CanUnitAllocateSkillPoint113c`,
+ * stdcall `pUnit, nSkillId`, `ret 8` -> `BOOL`).
+ */
+export function SKILLS_CanUnitAllocateSkillPoint113c(
+  m: Memory113c,
+  pUnit: number,
+  nSkillId: number,
+): number {
+  const skId = nSkillId | 0
+  if (skId < 0) return 0
+  const sgpt = m.u32(SGPT_DATATABLES_VA_113C) >>> 0
+  if (skId >= (m.u32((sgpt + 0xba0) >>> 0) | 0)) return 0
+  const esi = (m.u32((sgpt + 0xb98) >>> 0) + imul32(skId, D2SkillsTxt_SIZE)) >>> 0
+  if (esi === 0) return 0
+  const pBitMasks = m.u32(GDW_BITMASKS_IAT_VA_113C) >>> 0
+  if ((m.u8((esi + 5) >>> 0) & m.u8((pBitMasks + 8) >>> 0)) === 0) return 0
+  const ebx = pUnit >>> 0
+  const unitLvl = statListGetUnitStatMem113c(m, ebx, 0x0c, 0) | 0
+  const reqLvl = SKILLS_GetRequiredLevelForNextRank113c(m, ebx, skId) | 0
+  if (reqLvl > unitLvl) return 0
+  if ((statListGetUnitStatMem113c(m, ebx, 0, 0) | 0) < i16(m.u16((esi + 0x176) >>> 0))) return 0
+  if ((statListGetUnitStatMem113c(m, ebx, 2, 0) | 0) < i16(m.u16((esi + 0x178) >>> 0))) return 0
+  if ((statListGetUnitStatMem113c(m, ebx, 1, 0) | 0) < i16(m.u16((esi + 0x17a) >>> 0))) return 0
+  if ((statListGetUnitStatMem113c(m, ebx, 3, 0) | 0) < i16(m.u16((esi + 0x17c) >>> 0))) return 0
+  return 1
+}
+
+/**
+ * `@va D2Common:0x6FDA1ED0` (`D2Common.#10483` `SKILLS_RemoveAllCurseAndDebuffStatesFromUnit113c`,
+ * stdcall `pUnit`, `ret 4` -> `BOOL`).
+ */
+export function SKILLS_RemoveAllCurseAndDebuffStatesFromUnit113c(
+  m: Memory113c,
+  pUnit: number,
+): number {
+  const edi = pUnit >>> 0
+  if (edi === 0) return 0
+  if (((m.u32((edi + 0xc8) >>> 0) >>> 3) & 1) === 0) return 0
+  const sgpt = m.u32(SGPT_DATATABLES_VA_113C) >>> 0
+  const count = i16(m.u16((sgpt + 0x180) >>> 0))
+  for (let i = 0; i < count; i++) {
+    const pArr = m.u32((m.u32(SGPT_DATATABLES_VA_113C) + 0x17c) >>> 0) >>> 0
+    const ebx = i16(m.u16((pArr + i * 2) >>> 0))
+    const uType = m.u32(edi) | 0
+    if ((uType < 0 || uType > 1) && uType !== 3) continue
+    const nStates = m.u32((m.u32(SGPT_DATATABLES_VA_113C) + 0xc4) >>> 0) | 0
+    if (ebx < 0 || ebx >= nStates) continue
+    if (STATES_CheckStateMaskOnUnitFast113c(m, edi, ebx) === 0) continue
+    const esi = STATLIST_GetStatListFromUnitAndState113c(m, edi, ebx) >>> 0
+    if (esi !== 0) {
+      removeAndFreeSubListIfNonExtended113c(m, esi)
+    }
+    if (ebx < (m.u32((m.u32(SGPT_DATATABLES_VA_113C) + 0xc4) >>> 0) | 0)) {
+      statesToggleStateMem113c(m, ebx, edi, 0)
+      UNITROOM_RefreshUnit113c(m, edi)
+    }
+  }
+  return 1
+}
+
+/**
+ * `@va D2Common:0x6FDA0D40` (`D2Common.#10709` `SKILLS_GetWeaponMasteryPassiveStatId113c`,
+ * stdcall `pUnit, pOutBonus`, `ret 8` -> `i32`).
+ */
+export function SKILLS_GetWeaponMasteryPassiveStatId113c(
+  m: Memory113c,
+  pUnit: number,
+  pOutBonus: number,
+): number {
+  const esi = pUnit >>> 0
+  if (esi === 0) return 0
+  const pOut = pOutBonus >>> 0
+  const tryStat = (statId: number, retId: number): number => {
+    const val = statListGetUnitStatMem113c(m, esi, statId, 0) | 0
+    if (val <= 0) return -1
+    if (pOut !== 0) m.setU32(pOut, val >>> 0)
+    return retId
+  }
+  if (m.u32(esi) !== 0) {
+    const r0 = tryStat(0x9d, 0x1b)
+    if (r0 >= 0) return r0
+    const r1 = tryStat(0x9e, 0x29)
+    return r1 >= 0 ? r1 : 0
+  }
+  const pWeap = ITEMS_GetActiveWeaponForAttack113c(m, esi, 1) >>> 0
+  if (pWeap === 0) return -1
+  const wClass = ITEMS_GetWeaponClassCodeIdx113c(m, pWeap) & 0xffff
+  if (wClass !== 1 && wClass !== 7) return -1
+  const r0 = tryStat(0x9d, 0x1b)
+  if (r0 >= 0) return r0
+  const r1 = tryStat(0x9e, 0x29)
+  if (r1 >= 0) return r1
+  return wClass === 7 ? 0x1f : 0
+}
+
+/**
+ * `@va D2Common:0x6FD9FB30` (internal `SKILLS_CheckSkillLevelAndPrereqs113c`,
+ * stdcall `pUnit, nSkillId`, `ret 8` -> `BOOL`).
+ */
+export function SKILLS_CheckSkillLevelAndPrereqs113c(
+  m: Memory113c,
+  pUnit: number,
+  nSkillId: number,
+): number {
+  const skId = nSkillId | 0
+  const ebp = DATATBLS_GetSkillsTxtRecordInline113c(m, skId) >>> 0
+  if (ebp === 0) return 0
+  const ebx = pUnit >>> 0
+  const unitLvl = statListGetUnitStatMem113c(m, ebx, 0x0c, 0) | 0
+  if ((SKILLS_GetRequiredLevelForNextRank113c(m, ebx, skId) | 0) > unitLvl) return 0
+  for (let i = 0; i < 3; i++) {
+    const reqSkId = i16(m.u16((ebp + 0x17e + i * 2) >>> 0))
+    if (reqSkId >= 0) {
+      const pReqTxt = DATATBLS_GetSkillsTxtRecordInline113c(m, reqSkId) >>> 0
+      if (pReqTxt === 0) return 0
+      if (SKILLS_HasSkillByTxtRecord113c(m, ebx, pReqTxt) === 0) return 0
+      if ((SKILLS_GetBaseSkillLevelById113c(m, ebx, reqSkId) | 0) <= 0) return 0
+    }
+  }
+  return 1
+}
+export const SKILLS_CanUnitLearnSkillWithPrereqs113c = SKILLS_CheckSkillLevelAndPrereqs113c
+
+// ============================================================================
+// K1r9 Iteration 12 Lane B — Batch I12B-1 / I12B-2 remaining skills.ts functions
+// ============================================================================
+
+/**
+ * `@va D2Common:0x6FDA0CE0` (`D2Common.#10639` `SKILLS_CalcUnitVelocityDivided`,
+ * stdcall `pUnit`, `ret 4` -> `i32`).
+ */
+export function SKILLS_CalcUnitVelocityDivided113c(m: Memory113c, pUnit: number): number {
+  const unit = pUnit >>> 0
+  if (unit === 0 || m.get(unit, D2UnitStrc.dwUnitType) !== 0) return 0
+  if (((m.u32((unit + 0xc8) >>> 0) >>> 3) & 1) === 0) return 0
+  let denom = 0x13
+  const pWeap = ITEMS_GetActiveWeaponForAttack113c(m, unit, 0) >>> 0
+  if (pWeap !== 0) {
+    denom = ITEMS_CalcWeaponAttackSpeed113c(m, unit, pWeap) | 0
+    if (denom <= 0) return 0
+  }
+  return sdiv32((m.u32((unit + 0x48) >>> 0) & 0xffffff00) | 0, denom)
+}
+
+/**
+ * `@va D2Common:0x6FDA1B60` (`SKILLS_SkillCalcVarCallback`,
+ * fastcall `ecx=nVarId, edx=pCtx`, `ret` -> `i32`).
+ */
+export function SKILLS_SkillCalcVarCallback113c(
+  m: Memory113c,
+  nVarId: number,
+  pCtx: number,
+): number {
+  const ctx = pCtx >>> 0
+  if (ctx === 0) return 0
+  return SKILLS_GetSkillCalcFieldById113c(
+    m,
+    m.u32(ctx),
+    nVarId | 0,
+    m.u32((ctx + 0x04) >>> 0) | 0,
+    m.u32((ctx + 0x08) >>> 0) | 0,
+  )
+}
+
+/**
+ * `@va D2Common:0x6FDA1AB0` (`SKILLS_EvalCalcSkillFieldPair`,
+ * fastcall `ecx=nSkillId, edx=nFieldId1`, stack `[nFieldId2, pCtx]`, `ret 8` -> `i32`).
+ */
+export function SKILLS_EvalCalcSkillFieldPair113c(
+  m: Memory113c,
+  nSkillId: number,
+  nFieldId1: number,
+  nFieldId2: number,
+  pCtx: number,
+): number {
+  const ctx = pCtx >>> 0
+  if (ctx === 0) return 0
+  const pUnit = m.u32(ctx) >>> 0
+  const lvl =
+    SKILLS_GetSkillCalcFieldById113c(
+      m,
+      pUnit,
+      nFieldId1 | 0,
+      m.u32((ctx + 0x04) >>> 0) | 0,
+      m.u32((ctx + 0x08) >>> 0) | 0,
+    ) | 0
+  return SKILLS_GetSkillCalcFieldById113c(m, pUnit, nFieldId2 | 0, nSkillId | 0, lvl)
+}
+
+function getUnitSkillEffectiveLevelClamped113c(
+  m: Memory113c,
+  pUnit: number,
+  nSkillId: number,
+): number {
+  const unit = pUnit >>> 0
+  if (unit === 0) return 0
+  const pSk = SKILLS_GetHighestLevelSkillFromUnitAndId113c(m, unit, nSkillId | 0) >>> 0
+  if (pSk === 0) return 0
+  let lvl = m.u32((pSk + 0x28) >>> 0) | 0
+  if ((m.u32((pSk + 0x34) >>> 0) | 0) === -1) {
+    lvl = (lvl + SKILLS_GetSkillBonusLevel113c(m, pSk, unit)) | 0
+  }
+  const maxLvl = m.u32(m.u32(SGPT_EXPERIENCE_TXT_PTR_VA_113C) >>> 0) | 0
+  if (lvl <= 0) lvl = 0
+  return lvl < maxLvl ? lvl : maxLvl
+}
+
+/**
+ * `@va D2Common:0x6FDA1AF0` (`SKILLS_EvalCalcUnitSkillFieldByCtx`,
+ * fastcall `ecx=nSkillId, edx=nFieldId`, stack `[_unused, pCtx]`, `ret 8` -> `i32`).
+ */
+export function SKILLS_EvalCalcUnitSkillFieldByCtx113c(
+  m: Memory113c,
+  nSkillId: number,
+  nFieldId: number,
+  _unused: number,
+  pCtx: number,
+): number {
+  const ctx = pCtx >>> 0
+  if (ctx === 0) return 0
+  const pUnit = m.u32(ctx) >>> 0
+  const lvl = getUnitSkillEffectiveLevelClamped113c(m, pUnit, nSkillId | 0)
+  return SKILLS_GetSkillCalcFieldById113c(m, pUnit, nFieldId | 0, nSkillId | 0, lvl)
+}
+
+/**
+ * `@va D2Common:0x6FDBB430` (`MISSILE_EvalCalcOwnerSkillFieldByCtx`,
+ * fastcall `ecx=nSkillId, edx=nFieldId`, stack `[_unused, pCtx]`, `ret 8` -> `i32`).
+ */
+export function MISSILE_EvalCalcOwnerSkillFieldByCtx113c(
+  m: Memory113c,
+  nSkillId: number,
+  nFieldId: number,
+  _unused: number,
+  pCtx: number,
+): number {
+  const ctx = pCtx >>> 0
+  if (ctx === 0) return 0
+  const pOwner = m.u32((ctx + 0x04) >>> 0) >>> 0
+  const lvl = getUnitSkillEffectiveLevelClamped113c(m, pOwner, nSkillId | 0)
+  return SKILLS_GetSkillCalcFieldById113c(m, pOwner, nFieldId | 0, nSkillId | 0, lvl)
+}
+
+/**
+ * `@va D2Common:0x6FDA1000` (`D2Common.#10002` `SKILLS_GetSkillNumTargetsOrShots`,
+ * stdcall `pUnit, pSkill`, `ret 8` -> `i32`).
+ */
+export function SKILLS_GetSkillNumTargetsOrShots113c(
+  m: Memory113c,
+  pUnit: number,
+  pSkill: number,
+): number {
+  const sk = pSkill >>> 0
+  if (sk === 0) return 0
+  const pSkTxt = m.u32(sk) >>> 0
+  if (pSkTxt === 0) return 0
+  const elem = (m.u8((pSkTxt + 0x14) >>> 0) << 24) >> 24
+  if (elem !== 3) return elem
+  const unit = pUnit >>> 0
+  const nShots = COMPOSIT_IsUnitUsingBowOrCrossbow113c(m, unit) !== 0 ? 2 : 1
+  if (unit !== 0 && m.get(unit, D2UnitStrc.dwUnitType) === 0 && nShots !== 1) {
+    const dt = m.u32(SGPT_DATATABLES_VA_113C) >>> 0
+    const maskWords = m.u32((dt + 0x164) >>> 0) >>> 0
+    if (STATES_CheckStateMaskOnUnit113c(m, unit, maskWords) !== 0) {
+      return 1
+    }
+  }
+  return nShots
+}
+
+function isWeaponStatListActiveOnOwner113c(m: Memory113c, pItem: number): boolean {
+  const item = pItem >>> 0
+  if (item === 0) return false
+  if (ITEMS_CheckItemTypeIdMem113c(m, item, 0x2d) === 0) return false
+  if (checkNotBrokenOrUnequippingMem113c(m, item) === 0) return false
+  const pEx = m.get(item, D2UnitStrc.pStatListEx) >>> 0
+  if (pEx === 0) return false
+  const pList = m.u32((pEx + 0x34) >>> 0) >>> 0
+  if (pList === 0) return false
+  if ((m.u32((pList + 0x10) >>> 0) & 0x80000000) === 0) return false
+  return m.u32((pList + 0x44) >>> 0) !== 0
+}
+
+function getItemStrBonusInline113c(m: Memory113c, pItem: number): number {
+  const item = pItem >>> 0
+  if (item === 0 || m.get(item, D2UnitStrc.dwUnitType) !== 4) return 100
+  const pTxt = lookupItemsTxtRecord113c(m, m.get(item, D2UnitStrc.dwClassId)) >>> 0
+  if (pTxt === 0) return 100
+  const v = i16(m.u16((pTxt + 0x106) >>> 0))
+  return v === 1 ? 100 : v
+}
+
+function getItemDexBonusInline113c(m: Memory113c, pItem: number): number {
+  const item = pItem >>> 0
+  if (item === 0 || m.get(item, D2UnitStrc.dwUnitType) !== 4) return 100
+  const pTxt = lookupItemsTxtRecord113c(m, m.get(item, D2UnitStrc.dwClassId)) >>> 0
+  if (pTxt === 0) return 100
+  const v = i16(m.u16((pTxt + 0x108) >>> 0))
+  return v === 1 ? 100 : v
+}
+
+/**
+ * `@va D2Common:0x6FDA1C60` (`D2Common.#10323` `SKILLS_CalcKickBootDamage`,
+ * stdcall `pUnit, pOutMin, pOutMax, pOutPct`, `ret 0x10`, void).
+ */
+export function SKILLS_CalcKickBootDamage113c(
+  m: Memory113c,
+  pUnit: number,
+  pOutMin: number,
+  pOutMax: number,
+  pOutPct: number,
+): void {
+  const unit = pUnit >>> 0
+  if (unit === 0) return
+  let kickPct = 0
+  const pStatListEx = m.get(unit, D2UnitStrc.pStatListEx) >>> 0
+  if (pStatListEx !== 0) {
+    const dt = m.u32(SGPT_DATATABLES_VA_113C) >>> 0
+    const iscCount = m.u32((dt + DATATABLES_ISC_COUNT_OFF_113C) >>> 0) | 0
+    const pIsc =
+      iscCount > 0x89 ? (m.u32((dt + DATATABLES_ISC_TXT_OFF_113C) >>> 0) + 0xad64) >>> 0 : 0
+    if (pIsc !== 0) {
+      kickPct = statListGetTotalStatWithMinMem113c(m, pStatListEx, 0x890000, pIsc) | 0
+    }
+  }
+  const outMin = pOutMin >>> 0
+  const outMax = pOutMax >>> 0
+  const outPct = pOutPct >>> 0
+  m.setU32(outMin, (m.u32(outMin) + kickPct) >>> 0)
+  m.setU32(outMax, (m.u32(outMax) + kickPct) >>> 0)
+
+  const inv = m.get(unit, D2UnitStrc.pInventory) >>> 0
+  if (inv === 0) return
+
+  let pMain = INVENTORY_GetCompositWeaponMem113c(m, inv) >>> 0
+  let pOther = 0
+  if (pMain !== 0) {
+    let bodyLoc = 0
+    if (m.get(pMain, D2UnitStrc.dwUnitType) === 4) {
+      const pData = m.get(pMain, D2UnitStrc.pUnitData) >>> 0
+      if (pData !== 0) bodyLoc = m.u8((pData + 0x44) >>> 0)
+    }
+    const otherSlot = bodyLoc === 4 ? 5 : 4
+    const pGrid0 = INVENTORY_GetOrInitGridMem113c(m, inv, 0, BODY_GRID_DEF_VA_113C) >>> 0
+    if (pGrid0 !== 0) {
+      const ppItems = m.u32((pGrid0 + D2InventoryGridStrc.ppItems.off) >>> 0) >>> 0
+      if (ppItems !== 0) {
+        pOther = m.u32((ppItems + otherSlot * 4) >>> 0) >>> 0
+      }
+    }
+  }
+
+  if (isWeaponStatListActiveOnOwner113c(m, pMain)) {
+    STATLIST_SetWeaponStatListActive113c(m, unit, pMain, 0)
+  } else {
+    pMain = 0
+  }
+
+  if (pOther !== 0 && pOther !== pMain && isWeaponStatListActiveOnOwner113c(m, pOther)) {
+    STATLIST_SetWeaponStatListActive113c(m, unit, pOther, 0)
+  }
+
+  if (m.get(inv, D2InventoryStrc.dwSignature) === 0x01020304) {
+    const pGrid0 = INVENTORY_GetOrInitGridMem113c(m, inv, 0, BODY_GRID_DEF_VA_113C) >>> 0
+    if (pGrid0 !== 0) {
+      const ppItems = m.u32((pGrid0 + D2InventoryGridStrc.ppItems.off) >>> 0) >>> 0
+      const pBoots = ppItems !== 0 ? m.u32((ppItems + 0x24) >>> 0) >>> 0 : 0
+      if (pBoots !== 0 && m.get(pBoots, D2UnitStrc.dwUnitType) === 4) {
+        const pBootsTxt = lookupItemsTxtRecord113c(m, m.get(pBoots, D2UnitStrc.dwClassId)) >>> 0
+        if (pBootsTxt !== 0) {
+          const kickMin = (m.u8((pBootsTxt + 0xfe) >>> 0) + kickPct) | 0
+          let kickMax = (m.u8((pBootsTxt + 0xff) >>> 0) + kickPct) | 0
+          let bonusPct = 0
+          const strBonus = getItemStrBonusInline113c(m, pBoots) | 0
+          if (strBonus !== 0) {
+            const strVal = statListGetUnitStatMem113c(m, unit, 0, 0) | 0
+            bonusPct = mulDiv113c(strBonus, strVal, 100) | 0
+          }
+          const dexBonus = getItemDexBonusInline113c(m, pBoots) | 0
+          if (dexBonus !== 0) {
+            const dexVal = statListGetUnitStatMem113c(m, unit, 2, 0) | 0
+            bonusPct = (bonusPct + mulDiv113c(dexBonus, dexVal, 100)) | 0
+          }
+          bonusPct = (bonusPct + (statListGetUnitStatMem113c(m, unit, 0x19, 0) | 0)) | 0
+          if (bonusPct <= -90) bonusPct = -90
+          const skillPct = statListGetUnitStatMem113c(m, unit, 0x11, 0) | 0
+          if (kickMin >= kickMax) kickMax = kickMin
+          m.setU32(outPct, (m.u32(outPct) + ((skillPct + bonusPct) | 0)) >>> 0)
+          m.setU32(outMin, (m.u32(outMin) + kickMin) >>> 0)
+          m.setU32(outMax, (m.u32(outMax) + kickMax) >>> 0)
+        }
+      }
+    }
+  }
+
+  if (pMain !== 0) {
+    STATLIST_SetWeaponStatListActive113c(m, unit, pMain, 1)
+  }
+}
+
+/**
+ * `@va D2Common:0x6FDA1FF0` (`D2Common.#10297` `SKILLS_GetSkillPhysMaxDamage`,
+ * stdcall `pUnit, nSkillId, nLevel, bIncludeSrcDmg`, `ret 0x10` -> `i32`).
+ */
+export function SKILLS_GetSkillPhysMaxDamage113c(
+  m: Memory113c,
+  pUnit: number,
+  nSkillId: number,
+  nLevel: number,
+  bIncludeSrcDmg: number,
+): number {
+  const skId = nSkillId | 0
+  const pSkTxt = DATATBLS_GetSkillsTxtRecordInline113c(m, skId) >>> 0
+  if (pSkTxt === 0) return 2
+  const unit = pUnit >>> 0
+  const pBitMasks = m.u32(GDW_BITMASKS_IAT_VA_113C) >>> 0
+  if ((m.u8((pSkTxt + 0x05) >>> 0) & m.u8((pBitMasks + 0x04) >>> 0)) !== 0) {
+    return SKILLS_GetBasePhysDamageMinOrMax113c(m, unit, 0) | 0
+  }
+  const lvl = nLevel | 0
+  let basePart = 0
+  const srcDmg = m.u8((pSkTxt + 0x1a5) >>> 0)
+  if (srcDmg !== 0 && (bIncludeSrcDmg | 0) !== 0) {
+    const pWeap = ITEMS_GetActiveWeaponForAttack113c(m, unit, 0) >>> 0
+    let wMax = 0
+    if (
+      pWeap !== 0 &&
+      INVENTORY_GetEquippedWeaponHandClass113c(m, unit, m.get(unit, D2UnitStrc.pInventory)) === 2
+    ) {
+      wMax = STATLIST_GetUnitMaxDamage113c(m, pWeap, 0x18) | 0
+    } else {
+      wMax = statListGetUnitStatMem113c(m, unit, 0x16, 0) | 0
+    }
+    basePart = Math.trunc(imul32(srcDmg, wMax) / 128) | 0
+  }
+  let val =
+    (basePart +
+      (SKILLS_Calc5BandLinear113c(m, lvl, (pSkTxt + 0x1c4) >>> 0) | 0) +
+      (m.u32((pSkTxt + 0x1ac) >>> 0) | 0)) |
+    0
+  const calcOff = m.u32((pSkTxt + 0x1d8) >>> 0) >>> 0
+  if (calcOff !== 0xffffffff) {
+    const pct = SKILLS_EvalCalcByOffset113c(m, unit, calcOff, skId, lvl) | 0
+    if (pct !== 0) {
+      val = (val + mulDiv113c(pct, val, 100)) | 0
+    }
+  }
+  return (val << (m.u8((pSkTxt + 0x1a4) >>> 0) & 31)) | 0
+}
+
+/**
+ * `@va D2Common:0x6FDA2100` (`D2Common.#10567` `SKILLS_GetSkillPhysMinDamage`,
+ * stdcall `pUnit, nSkillId, nLevel, bIncludeSrcDmg`, `ret 0x10` -> `i32`).
+ */
+export function SKILLS_GetSkillPhysMinDamage113c(
+  m: Memory113c,
+  pUnit: number,
+  nSkillId: number,
+  nLevel: number,
+  bIncludeSrcDmg: number,
+): number {
+  const skId = nSkillId | 0
+  const pSkTxt = DATATBLS_GetSkillsTxtRecordInline113c(m, skId) >>> 0
+  if (pSkTxt === 0) return 1
+  const unit = pUnit >>> 0
+  const pBitMasks = m.u32(GDW_BITMASKS_IAT_VA_113C) >>> 0
+  if ((m.u8((pSkTxt + 0x05) >>> 0) & m.u8((pBitMasks + 0x04) >>> 0)) !== 0) {
+    return SKILLS_GetBasePhysDamageMinOrMax113c(m, unit, 1) | 0
+  }
+  const lvl = nLevel | 0
+  let basePart = 0
+  const srcDmg = m.u8((pSkTxt + 0x1a5) >>> 0)
+  if (srcDmg !== 0 && (bIncludeSrcDmg | 0) !== 0) {
+    const pWeap = ITEMS_GetActiveWeaponForAttack113c(m, unit, 0) >>> 0
+    let wMin = 0
+    if (
+      pWeap !== 0 &&
+      INVENTORY_GetEquippedWeaponHandClass113c(m, unit, m.get(unit, D2UnitStrc.pInventory)) === 2
+    ) {
+      wMin = STATLIST_GetUnitMinDamage113c(m, pWeap, 1) | 0
+    } else {
+      wMin = statListGetUnitStatMem113c(m, unit, 0x15, 0) | 0
+    }
+    basePart = Math.trunc(imul32(srcDmg, wMin) / 128) | 0
+  }
+  let val =
+    (basePart +
+      (SKILLS_Calc5BandLinear113c(m, lvl, (pSkTxt + 0x1b0) >>> 0) | 0) +
+      (m.u32((pSkTxt + 0x1a8) >>> 0) | 0)) |
+    0
+  const calcOff = m.u32((pSkTxt + 0x1d8) >>> 0) >>> 0
+  if (calcOff !== 0xffffffff) {
+    const pct = SKILLS_EvalCalcByOffset113c(m, unit, calcOff, skId, lvl) | 0
+    if (pct !== 0) {
+      val = (val + mulDiv113c(pct, val, 100)) | 0
+    }
+  }
+  return (val << (m.u8((pSkTxt + 0x1a4) >>> 0) & 31)) | 0
+}
+
+/**
+ * `@va D2Common:0x6FDA2210` (`SKILLS_IsSkillBlockedByState`,
+ * custom reg `eax=pUnit`, stack `[pSkill]`, `ret 4` -> `0 | 1`).
+ */
+export function SKILLS_IsSkillBlockedByState113c(
+  m: Memory113c,
+  pUnit: number,
+  pSkill: number,
+): number {
+  const unit = pUnit >>> 0
+  if (unit === 0 || m.get(unit, D2UnitStrc.dwUnitType) !== 0) return 1
+  const dt = m.u32(SGPT_DATATABLES_VA_113C) >>> 0
+  if ((m.u32((dt + 0xc4) >>> 0) | 0) <= 0x79) return 1
+  if (STATES_CheckStateMaskOnUnitFast113c(m, unit, 0x79) === 0) return 1
+  const sk = pSkill >>> 0
+  if (sk === 0) return 1
+  const pSkTxt = m.u32(sk) >>> 0
+  if (pSkTxt === 0) return 1
+  let lvl = m.u32((sk + 0x28) >>> 0) | 0
+  if ((m.u32((sk + 0x34) >>> 0) | 0) === -1) {
+    lvl = (lvl + SKILLS_GetSkillBonusLevel113c(m, sk, unit)) | 0
+  }
+  const maxLvl = m.u32(m.u32(SGPT_EXPERIENCE_TXT_PTR_VA_113C) >>> 0) | 0
+  if (lvl <= 0) lvl = 0
+  if (lvl >= maxLvl) lvl = maxLvl
+  const skId = i16(m.u16(pSkTxt))
+  const calcOff = m.u32((pSkTxt + 0x190) >>> 0) >>> 0
+  const val = SKILLS_EvalCalcByOffset113c(m, unit, calcOff, skId, lvl) | 0
+  return val <= 0 ? 1 : 0
+}
+
+/**
+ * `@va D2Common:0x6FDA2340` (`D2Common.#10787` `SKILLS_GetSkillUseFailReason`,
+ * stdcall `pUnit, pSkill`, `ret 8` -> `i32`).
+ */
+export function SKILLS_GetSkillUseFailReason113c(
+  m: Memory113c,
+  pUnit: number,
+  pSkill: number,
+): number {
+  const sk = pSkill >>> 0
+  if (sk === 0) throw new D2CommonAssertError('Skills.cpp', 0x8ea)
+  const pSkTxt = m.u32(sk) >>> 0
+  const pBitMasks = m.u32(GDW_BITMASKS_IAT_VA_113C) >>> 0
+  if (pSkTxt === 0 || (m.u8((pSkTxt + 0x05) >>> 0) & m.u8((pBitMasks + 0x08) >>> 0)) === 0) {
+    return 3
+  }
+  const unit = pUnit >>> 0
+  if (unit === 0) return 7
+  let lvl = m.u32((sk + 0x28) >>> 0) | 0
+  if ((m.u32((sk + 0x34) >>> 0) | 0) === -1) {
+    lvl = (lvl + SKILLS_GetSkillBonusLevel113c(m, sk, unit)) | 0
+  }
+  const maxLvl = m.u32(m.u32(SGPT_EXPERIENCE_TXT_PTR_VA_113C) >>> 0) | 0
+  if (lvl <= 0) lvl = 0
+  if (lvl >= maxLvl) lvl = maxLvl
+  if (lvl === 0) return 7
+
+  const flagByte0 = m.u8((pSkTxt + 0x04) >>> 0)
+  if ((flagByte0 & m.u32((pBitMasks + 0x14) >>> 0)) !== 0) return 6
+  if ((flagByte0 & m.u32((pBitMasks + 0x10) >>> 0)) !== 0) return 5
+  if (SKILLS_CheckSkillWeaponAndQuantity113c(m, sk, unit) === 0) return 2
+  if (SKILLS_CheckUnitEquippedWeaponsMatchSkill113c(m, sk, unit) === 0) return 2
+  if (SKILLS_CheckSkillManaOrCharges113c(m, sk, unit) === 0) return 1
+  if (SKILLS_CheckSkillStateRestriction113c(m, sk, unit) === 0) return 4
+  if (SKILLS_CheckSkillStartMana113c(m, unit, sk) === 0) return 1
+  if (SKILLS_CheckItemChargedSkillHasCharges113c(m, unit, sk) === 0) return 2
+  return SKILLS_IsSkillBlockedByState113c(m, unit, sk) !== 0 ? 0 : 8
+}
+
+const SKILLS_STACK_BASE = 0x7ff70000
+const SKILLS_STACK_SIZE = 0x40
+const _skillsStackBuf = new ArrayBuffer(SKILLS_STACK_SIZE)
+const _skillsStackU8 = new Uint8Array(_skillsStackBuf)
+const _skillsStackDV = new DataView(_skillsStackBuf)
+
+function withSkillsStackScratch113c(m: Memory113c): Memory113c {
+  const isStack = (p: number): boolean => {
+    const u = p >>> 0
+    return u >= SKILLS_STACK_BASE && u < SKILLS_STACK_BASE + SKILLS_STACK_SIZE
+  }
+  const mExt = m as Memory113c & {
+    free?: (p: number) => void
+    realloc?: (p: number, sz: number) => number
+  }
+  const self: Memory113c & {
+    free?: ((p: number) => void) | undefined
+    realloc?: ((p: number, sz: number) => number) | undefined
+  } = {
+    alloc: size => m.alloc(size),
+    free: p => mExt.free?.(p),
+    realloc: mExt.realloc ? (p, sz) => mExt.realloc!(p, sz) : undefined,
+    u8: p => (isStack(p) ? _skillsStackU8[(p >>> 0) - SKILLS_STACK_BASE]! : m.u8(p)),
+    u16: p => (isStack(p) ? _skillsStackDV.getUint16((p >>> 0) - SKILLS_STACK_BASE, true) : m.u16(p)),
+    u32: p => (isStack(p) ? _skillsStackDV.getUint32((p >>> 0) - SKILLS_STACK_BASE, true) : m.u32(p)),
+    setU8: (p, v) => {
+      if (isStack(p)) _skillsStackU8[(p >>> 0) - SKILLS_STACK_BASE] = v & 0xff
+      else m.setU8(p, v)
+    },
+    setU16: (p, v) => {
+      if (isStack(p)) _skillsStackDV.setUint16((p >>> 0) - SKILLS_STACK_BASE, v & 0xffff, true)
+      else m.setU16(p, v)
+    },
+    setU32: (p, v) => {
+      if (isStack(p)) _skillsStackDV.setUint32((p >>> 0) - SKILLS_STACK_BASE, v >>> 0, true)
+      else m.setU32(p, v)
+    },
+    get: (base, f, idx = 0) => {
+      const width = f.type === 'u8' ? 1 : f.type === 'u16' ? 2 : 4
+      const addr = ((base >>> 0) + f.off + idx * width) >>> 0
+      return width === 1 ? self.u8(addr) : width === 2 ? self.u16(addr) : self.u32(addr)
+    },
+    set: (base, f, v, idx = 0) => {
+      const width = f.type === 'u8' ? 1 : f.type === 'u16' ? 2 : 4
+      const addr = ((base >>> 0) + f.off + idx * width) >>> 0
+      if (width === 1) self.setU8(addr, v)
+      else if (width === 2) self.setU16(addr, v)
+      else self.setU32(addr, v)
+    },
+    fill: (p, len, v) => {
+      if (isStack(p)) {
+        const off = (p >>> 0) - SKILLS_STACK_BASE
+        _skillsStackU8.fill(v & 0xff, off, off + len)
+      } else {
+        m.fill(p, len, v)
+      }
+    },
+  }
+  return self
+}
+
+function getUnitPosXY113c(m: Memory113c, u: number): [number, number] {
+  const uType = m.u32(u) >>> 0
+  const pPath = m.u32((u + 0x2c) >>> 0) >>> 0
+  if (uType === 2 || (uType > 3 && uType <= 5)) {
+    return [m.u32((pPath + 0x0c) >>> 0) | 0, m.u32((pPath + 0x10) >>> 0) | 0]
+  }
+  if (pPath === 0) return [0, 0]
+  return [m.u16((pPath + 0x02) >>> 0), m.u16((pPath + 0x06) >>> 0)]
+}
+
+/**
+ * `@va D2Common:0x6FDA1870` (`D2Common.#10566` `SKILLS_FindMeleeTargetPosition113c`,
+ * `__stdcall(pUnit, pTarget, pOutX, pOutY) -> bSuccess`, `ret 0x10`).
+ */
+export function SKILLS_FindMeleeTargetPosition113c(
+  m: Memory113c,
+  pUnit: number,
+  pTarget: number,
+  pOutX: number,
+  pOutY: number,
+): number {
+  const unit = pUnit >>> 0
+  const target = pTarget >>> 0
+  if (target !== 0 && UNITS_CanUnitMeleeAttackTarget113c(m, unit, target, 0) !== 0) {
+    return 0
+  }
+  const [unitX, unitY] = getUnitPosXY113c(m, unit)
+  let tgtX: number
+  let tgtY: number
+  if (target !== 0) {
+    ;[tgtX, tgtY] = getUnitPosXY113c(m, target)
+  } else {
+    const pPath = m.u32((unit + 0x2c) >>> 0) >>> 0
+    tgtX = m.u16((pPath + 0x10) >>> 0)
+    tgtY = m.u16((pPath + 0x12) >>> 0)
+  }
+  const dist = UNITS_GetUnitDistanceToCoordinates113c(m, unit, tgtX, tgtY) | 0
+  if (dist === 0) return 0
+
+  let outX = (tgtX + sdiv32(((tgtX - unitX) | 0) << 1, dist)) | 0
+  let outY = (tgtY + sdiv32(((tgtY - unitY) | 0) << 1, dist)) | 0
+  let pRoom = UNITS_GetRoom113c(m, unit) >>> 0
+  if (pRoom === 0) {
+    throw new D2CommonAssertError('', 4287)
+  }
+  const pPath = m.u32((unit + 0x2c) >>> 0) >>> 0
+  const nPat = m.u32((pPath + 0x48) >>> 0) >>> 0
+  if (COLLISION_CheckMaskWithPattern2_113c(m, pRoom, outX, outY, nPat, 0x1c09) !== 0) {
+    const sm = withSkillsStackScratch113c(m)
+    const pt = SKILLS_STACK_BASE
+    sm.setU32(pt, tgtX | 0)
+    sm.setU32((pt + 4) >>> 0, tgtY | 0)
+    const nSize = UNITS_GetUnitSizeX113c(m, unit) | 0
+    pRoom = COLLISION_FindFreePosition113c(
+      sm,
+      pRoom,
+      pt,
+      0,
+      nSize,
+      0x1c09,
+      0x1c09,
+      0,
+      0x32,
+      1,
+    ) >>> 0
+    if (pRoom === 0) return 0
+    outX = sm.u32(pt) | 0
+    outY = sm.u32((pt + 4) >>> 0) | 0
+  }
+  const [srcX, srcY] = getUnitPosXY113c(m, unit)
+  if (SKILLS_CheckLineOfSight113c(m, srcX, srcY, outX, outY, pRoom, 0x804) === 0) {
+    return 0
+  }
+  m.setU32(pOutX >>> 0, outX | 0)
+  m.setU32(pOutY >>> 0, outY | 0)
+  return SKILLS_IsUnitPosNotInTown113c(m, unit, outX, outY) !== 0 ? 1 : 0
+}
+
+/**
+ * `@va D2Common:0x6FDA2660` (`D2Common.#10008` `SKILLS_AddSkillToUnit113c`,
+ * `__stdcall(pUnit, nSkillId) -> pSkill`, `ret 0x8`).
+ */
+export function SKILLS_AddSkillToUnit113c(
+  m: Memory113c,
+  pUnit: number,
+  nSkillId: number,
+): number {
+  const unit = pUnit >>> 0
+  if (unit === 0) return 0
+  const skId = nSkillId | 0
+  if (skId < 0) return 0
+  const sgpt = m.u32(SGPT_DATATABLES_VA_113C) >>> 0
+  const nSkillsCount = m.u32((sgpt + DATATABLES_SKILLS_COUNT_OFF_113C) >>> 0) | 0
+  if (skId >= nSkillsCount) return 0
+  const pSkillsBase = m.u32((sgpt + DATATABLES_SKILLS_TXT_OFF_113C) >>> 0) >>> 0
+  const pSkillsTxt = (pSkillsBase + imul32(skId, D2SkillsTxt_SIZE)) >>> 0
+  if (pSkillsTxt === 0) return 0
+
+  const nPassiveState = SKILLS_GetPassiveState113c(m, skId) | 0
+  const nStatesCount = m.u32((sgpt + 0xc4) >>> 0) | 0
+  if (nPassiveState > 0 && nPassiveState < nStatesCount) {
+    const pStatListEx = m.u32((unit + 0x5c) >>> 0) >>> 0
+    if (pStatListEx !== 0 && (m.u32((pStatListEx + 0x10) >>> 0) | 0) < 0) {
+      const pStateFlags = m.u32((pStatListEx + 0x58) >>> 0) >>> 0
+      const pBitMasks = m.u32(GDW_BITMASKS_IAT_VA_113C) >>> 0
+      const wordIdx = nPassiveState >> 5
+      const bitMask = m.u32((pBitMasks + ((nPassiveState & 0x1f) << 2)) >>> 0) >>> 0
+      const curFlags = m.u32((pStateFlags + (wordIdx << 2)) >>> 0) >>> 0
+      m.setU32((pStateFlags + (wordIdx << 2)) >>> 0, (curFlags | bitMask) >>> 0)
+      if ((curFlags & bitMask) === 0) {
+        const nWords = ((nStatesCount + 0x1f) >> 5) | 0
+        const gfxOff = ((nWords + wordIdx) << 2) >>> 0
+        m.setU32((pStateFlags + gfxOff) >>> 0, (m.u32((pStateFlags + gfxOff) >>> 0) | bitMask) >>> 0)
+        const pStTxt = DATATBLS_GetStatesTxtRecordInline113c(m, nPassiveState) >>> 0
+        if (pStTxt !== 0 && (m.u8((pStTxt + 0x12) >>> 0) & m.u8(pBitMasks)) !== 0) {
+          m.setU32((unit + 0xc8) >>> 0, (m.u32((unit + 0xc8) >>> 0) | 0x08) >>> 0)
+        }
+      }
+    }
+    UNITROOM_RefreshUnit113c(m, unit)
+  }
+
+  const pSkillList = m.u32((unit + 0xa8) >>> 0) >>> 0
+  let sk = pSkillList !== 0 ? (m.u32((pSkillList + 0x04) >>> 0) >>> 0) : 0
+  while (sk !== 0) {
+    if ((m.u32(sk) >>> 0) === pSkillsTxt && (m.u32((sk + 0x34) >>> 0) | 0) === -1) {
+      let lvl = m.u32((sk + 0x28) >>> 0) | 0
+      if (lvl < DATATBLS_GetSkillsTxtMaxLvlInline113c(m, skId) || (m.u32(unit) >>> 0) === 1) {
+        lvl = (lvl + 1) | 0
+        m.setU32((sk + 0x28) >>> 0, lvl | 0)
+      }
+      STATES_ApplyMonSkillIconToUnit113c(m, unit, skId)
+      return sk
+    }
+    sk = m.u32((sk + 0x04) >>> 0) >>> 0
+  }
+
+  if (pSkillList === 0) return 0
+  const newSk = m.alloc(0x40) >>> 0
+  m.setU32(newSk, pSkillsTxt)
+  const uType = m.u32(unit) >>> 0
+  if (uType === 1) {
+    m.setU32((newSk + 0x08) >>> 0, ((m.u8((pSkillsTxt + 0x11) >>> 0) << 24) >> 24) | 0)
+  } else if (uType === 0 && (m.u32((unit + 0x04) >>> 0) >>> 0) === 6 && skId === 5) {
+    m.setU32((newSk + 0x08) >>> 0, 0x10)
+  } else {
+    m.setU32((newSk + 0x08) >>> 0, ((m.u8((pSkillsTxt + 0x10) >>> 0) << 24) >> 24) | 0)
+  }
+  m.setU32((newSk + 0x28) >>> 0, 1)
+  m.setU32((newSk + 0x34) >>> 0, 0xffffffff)
+  m.setU32((newSk + 0x04) >>> 0, 0)
+
+  let tail = m.u32((pSkillList + 0x04) >>> 0) >>> 0
+  if (tail !== 0) {
+    while ((m.u32((tail + 0x04) >>> 0) >>> 0) !== 0) {
+      tail = m.u32((tail + 0x04) >>> 0) >>> 0
+    }
+    m.setU32((tail + 0x04) >>> 0, newSk)
+  } else {
+    m.setU32((pSkillList + 0x04) >>> 0, newSk)
+  }
+  STATES_ApplyMonSkillIconToUnit113c(m, unit, skId)
+  return newSk
+}
+
+/**
+ * `@va D2Common:0x6FDA28B0` (`SKILLS_RemoveOrDecrementSkillFromUnit113c`,
+ * `__usercall(pUnit@<ebx>, nSkillId@<stack+4>, bDecrement@<stack+8>) -> void`, `ret 0x8`).
+ */
+export function SKILLS_RemoveOrDecrementSkillFromUnit113c(
+  m: Memory113c,
+  pUnit: number,
+  nSkillId: number,
+  bDecrement: number,
+): void {
+  const unit = pUnit >>> 0
+  if (unit === 0) return
+  const pSkillList = m.u32((unit + 0xa8) >>> 0) >>> 0
+  if (pSkillList === 0) return
+  let sk = m.u32((pSkillList + 0x04) >>> 0) >>> 0
+  if (sk === 0) return
+
+  const skId = nSkillId | 0
+  const nPassiveState = SKILLS_GetPassiveState113c(m, skId) | 0
+  if (nPassiveState !== 0) {
+    STATES_ToggleGfxStateFlag113c(m, unit, nPassiveState, 0)
+  }
+
+  const pLeft = m.u32((pSkillList + 0x08) >>> 0) >>> 0
+  if (pLeft !== 0) {
+    const leftId = (m.u16(m.u32(pLeft) >>> 0) << 16) >> 16
+    if (skId === leftId && (m.u32((pLeft + 0x34) >>> 0) | 0) === -1) {
+      SKILLS_SetLeftSkill113c(m, unit, 0, -1)
+    }
+  }
+  const pRight = m.u32((pSkillList + 0x0c) >>> 0) >>> 0
+  if (pRight !== 0) {
+    const rightId = (m.u16(m.u32(pRight) >>> 0) << 16) >> 16
+    if (skId === rightId && (m.u32((pRight + 0x34) >>> 0) | 0) === -1) {
+      SKILLS_SetRightSkill113c(m, unit, 0, -1)
+    }
+  }
+  const pUsed = m.u32((pSkillList + 0x10) >>> 0) >>> 0
+  if (pUsed !== 0) {
+    const usedId = (m.u16(m.u32(pUsed) >>> 0) << 16) >> 16
+    if (skId === usedId && (m.u32((pUsed + 0x34) >>> 0) | 0) === -1) {
+      m.setU32((pSkillList + 0x10) >>> 0, 0)
+    }
+  }
+
+  let prev = 0
+  while (sk !== 0) {
+    const curId = (m.u16(m.u32(sk) >>> 0) << 16) >> 16
+    if (curId === skId && (m.u32((sk + 0x34) >>> 0) | 0) === -1) {
+      if ((bDecrement | 0) !== 0) {
+        const newLvl = ((m.u32((sk + 0x28) >>> 0) | 0) - 1) | 0
+        m.setU32((sk + 0x28) >>> 0, newLvl | 0)
+        if (newLvl > 0) {
+          STATES_ApplyMonSkillIconToUnit113c(m, unit, skId)
+          return
+        }
+      }
+      const next = m.u32((sk + 0x04) >>> 0) >>> 0
+      if (prev !== 0) {
+        m.setU32((prev + 0x04) >>> 0, next)
+      } else {
+        m.setU32((pSkillList + 0x04) >>> 0, next)
+      }
+      void m.u32((unit + 0x08) >>> 0)
+      ;(m as { free?: (p: number) => void }).free?.(sk)
+      break
+    }
+    prev = sk
+    sk = m.u32((sk + 0x04) >>> 0) >>> 0
+  }
+  STATES_ApplyMonSkillIconToUnit113c(m, unit, skId)
+}
+
+/**
+ * `@va D2Common:0x6FDA29E0` (`D2Common.#10506` `SKILLS_InitCharStartSkills113c`,
+ * `__stdcall(pUnit) -> void`, `ret 0x4`).
+ */
+export function SKILLS_InitCharStartSkills113c(m: Memory113c, pUnit: number): void {
+  const unit = pUnit >>> 0
+  let pSkillList = m.u32((unit + 0xa8) >>> 0) >>> 0
+  let hasAttack = false
+  if (pSkillList !== 0) {
+    let sk = m.u32((pSkillList + 0x04) >>> 0) >>> 0
+    while (sk !== 0) {
+      if (((m.u16(m.u32(sk) >>> 0) << 16) >> 16) === 0 && (m.u32((sk + 0x34) >>> 0) | 0) === -1) {
+        hasAttack = true
+        break
+      }
+      sk = m.u32((sk + 0x04) >>> 0) >>> 0
+    }
+  }
+  if (!hasAttack) {
+    const classId = m.u32((unit + 0x04) >>> 0) | 0
+    const sgpt = m.u32(SGPT_DATATABLES_VA_113C) >>> 0
+    if (classId < 0 || classId >= (m.u32((sgpt + 0xbc8) >>> 0) | 0)) return
+    const pCharBase = m.u32((sgpt + 0xbc4) >>> 0) >>> 0
+    const pCharStats = (pCharBase + imul32(classId, 0xc4)) >>> 0
+    if (pCharStats === 0) return
+    SKILLS_AddSkillToUnit113c(m, unit, 0)
+    const nSkillsCount = m.u32((sgpt + DATATABLES_SKILLS_COUNT_OFF_113C) >>> 0) | 0
+    for (let i = 0; i < 10; i++) {
+      const startSk = (m.u16((pCharStats + 0xae + i * 2) >>> 0) << 16) >> 16
+      if (startSk >= 0 && startSk < nSkillsCount) {
+        SKILLS_AddSkillToUnit113c(m, unit, startSk)
+      }
+    }
+  }
+
+  pSkillList = m.u32((unit + 0xa8) >>> 0) >>> 0
+  if (pSkillList === 0) {
+    throw new D2CommonAssertError('', 1002)
+  }
+  if ((m.u32((pSkillList + 0x08) >>> 0) >>> 0) === 0) {
+    SKILLS_SetLeftSkill113c(m, unit, 0, -1)
+  }
+  pSkillList = m.u32((unit + 0xa8) >>> 0) >>> 0
+  if (pSkillList === 0) {
+    throw new D2CommonAssertError('', 1039)
+  }
+  if ((m.u32((pSkillList + 0x0c) >>> 0) >>> 0) === 0) {
+    SKILLS_SetRightSkill113c(m, unit, 0, -1)
+  }
+}
+
+/**
+ * `@va D2Common:0x6FDA2AE0` (`D2Common.#10418` `SKILLS_RefreshPassiveAuraSkills113c`,
+ * `__stdcall(pUnit) -> void`, `ret 0x4`).
+ */
+export function SKILLS_RefreshPassiveAuraSkills113c(m: Memory113c, pUnit: number): void {
+  const unit = pUnit >>> 0
+  const sgpt = m.u32(SGPT_DATATABLES_VA_113C) >>> 0
+  const nAuraCount = m.u32((sgpt + 0xbb0) >>> 0) | 0
+  for (let i = 0; i < nAuraCount; i++) {
+    const skId =
+      i >= 0 && i < (m.u32((sgpt + 0xbb0) >>> 0) | 0)
+        ? ((m.u16((m.u32((sgpt + 0xbb4) >>> 0) + i * 2) >>> 0) << 16) >> 16)
+        : -1
+    if (skId < 0 || skId >= (m.u32((sgpt + DATATABLES_SKILLS_COUNT_OFF_113C) >>> 0) | 0)) continue
+    const pSkTxt = (m.u32((sgpt + DATATABLES_SKILLS_TXT_OFF_113C) >>> 0) + imul32(skId, D2SkillsTxt_SIZE)) >>> 0
+    if (pSkTxt === 0) continue
+    const wAuraState = (m.u16((pSkTxt + 0x94) >>> 0) << 16) >> 16
+    if (wAuraState <= 0) continue
+    if (SKILLS_GetHighestLevelSkillFromUnitAndId113c(m, unit, skId) === 0) continue
+    if (unit !== 0) {
+      const uType = m.u32(unit) | 0
+      if ((uType >= 0 && uType <= 1) || uType === 3) {
+        if (wAuraState >= 0 && wAuraState < (m.u32((sgpt + 0xc4) >>> 0) | 0)) {
+          if (STATES_CheckStateMaskOnUnitFast113c(m, unit, wAuraState) !== 0) {
+            STATES_ApplyMonSkillIconToUnit113c(m, unit, skId)
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * `@va D2Common:0x6FDA2BC0` (`D2Common.#10302` `SKILLS_SetSkillLevelOnUnit113c`,
+ * `__stdcall(pUnit, nSkillId, nLvl, bRemZero, u5, u6) -> void`, `ret 0x18`).
+ */
+export function SKILLS_SetSkillLevelOnUnit113c(
+  m: Memory113c,
+  pUnit: number,
+  nSkillId: number,
+  nLvl: number,
+  bRemZero: number,
+  _u5: number,
+  _u6: number,
+): void {
+  const unit = pUnit >>> 0
+  const skId = nSkillId | 0
+  const lvl = nLvl | 0
+  if (lvl === 0) {
+    if ((bRemZero | 0) !== 0) {
+      SKILLS_RemoveOrDecrementSkillFromUnit113c(m, unit, skId, 0)
+      STATES_ApplyMonSkillIconToUnit113c(m, unit, skId)
+      return
+    }
+    let sk = SKILLS_GetSkillById113c(m, unit, skId, -1) >>> 0
+    if (sk === 0) {
+      SKILLS_AddSkillToUnit113c(m, unit, skId)
+      sk = SKILLS_GetSkillById113c(m, unit, skId, -1) >>> 0
+      if (sk === 0) return
+    }
+    m.setU32((sk + 0x28) >>> 0, 0)
+    STATES_ApplyMonSkillIconToUnit113c(m, unit, skId)
+    return
+  }
+
+  const pSkillList = m.u32((unit + 0xa8) >>> 0) >>> 0
+  let sk = pSkillList !== 0 ? (m.u32((pSkillList + 0x04) >>> 0) >>> 0) : 0
+  while (sk !== 0) {
+    if (((m.u16(m.u32(sk) >>> 0) << 16) >> 16) === skId && (m.u32((sk + 0x34) >>> 0) | 0) === -1) {
+      break
+    }
+    sk = m.u32((sk + 0x04) >>> 0) >>> 0
+  }
+  if (sk === 0) {
+    sk = SKILLS_AddSkillToUnit113c(m, unit, skId) >>> 0
+  }
+  if (sk !== 0) {
+    m.setU32((sk + 0x28) >>> 0, lvl | 0)
+  }
+  STATES_ApplyMonSkillIconToUnit113c(m, unit, skId)
+}
+

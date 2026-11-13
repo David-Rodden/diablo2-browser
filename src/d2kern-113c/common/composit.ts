@@ -18,8 +18,27 @@ import {
   D2PlayerDataStrc,
   D2UnitStrc,
 } from '../mem/layout.generated.ts'
-import { D2CommonAssertError } from './inline-helpers.ts'
+import {
+  D2COMMON_GDWBITMASKS_IAT_VA_113C,
+  D2COMMON_SGPT_DATATABLES_VA_113C,
+  D2CommonAssertError,
+  DATATBLS_GetMonStats2TxtRecordFromMonStatsIdInline113c,
+} from './inline-helpers.ts'
 import { imul32 } from './int-math.ts'
+import {
+  D2COMMON_GRID0_INFO_VA_113C,
+  INVENTORY_GetCompositWeaponMem113c,
+  INVENTORY_GetEquippedWeaponHandClass113c,
+  INVENTORY_GetOrInitGridMem113c,
+  INVENTORY_SIGNATURE_113C,
+  INVENTORY_UpdateWeaponGuidOnInsert113c,
+  isItemNotBrokenInvMem113c,
+  checkItemTypeIdInvMem113c as ITEMS_CheckItemTypeIdMem113c,
+  ITEMS_GetComponentFromItem113c,
+  ITEMS_GetWeaponClassCodeIdx113c,
+} from './inventory.ts'
+import { ITEMS_Get2HandedWClass113c, ITEMS_GetWeaponClassCode113c } from '../tables/datatbls-113c.ts'
+import { unitsGetTransformGfxValues113c } from './unit.ts'
 
 const UNIT_OBJECT = 2
 
@@ -389,3 +408,266 @@ export function UNITS_GetObjectTxt113c(m: Memory113c, pUnit: number): number {
   const pObjectData = m.get(pUnit, D2UnitStrc.pUnitData)
   return m.get(pObjectData, D2ObjectDataStrc.pObjectTxt)
 }
+
+/**
+ * Internal helper computing `{ code, wcid, hasWcid }` for `0x6FD93860`.
+ * When `hasWcid === false`, the `0x6FD93966` early return was taken without writing `*pOutWeaponClassId`.
+ */
+export function compositGetWeaponClassCodeAndId113c(
+  m: Memory113c,
+  pUnit: number,
+  nUnitType: number,
+  nClass: number,
+  nMode: number,
+  pInventory: number,
+): { code: number; wcid: number; hasWcid: boolean } {
+  const uType = nUnitType | 0
+  if (uType === 0) {
+    const ebx = pInventory >>> 0
+    let esi = 0
+    let bComp = 0
+    if (ebx !== 0) {
+      if (m.u32(ebx) === INVENTORY_SIGNATURE_113C) {
+        const g0 = INVENTORY_GetOrInitGridMem113c(m, ebx, 0, D2COMMON_GRID0_INFO_VA_113C)
+        if (g0 !== 0) {
+          esi = m.u32((m.u32((g0 + 0x0c) >>> 0) + 0x10) >>> 0)
+          if (esi !== 0 && isItemNotBrokenInvMem113c(m, esi) !== 0) {
+            if (m.u32(esi) !== 4) {
+              return { code: 0, wcid: 0, hasWcid: false }
+            }
+            bComp = ITEMS_GetComponentFromItem113c(m, esi) & 0xff
+          }
+        }
+      }
+      if (bComp !== 5 && bComp !== 6) {
+        if (m.u32(ebx) === INVENTORY_SIGNATURE_113C) {
+          const g0b = INVENTORY_GetOrInitGridMem113c(m, ebx, 0, D2COMMON_GRID0_INFO_VA_113C)
+          if (g0b === 0) {
+            esi = 0
+          } else {
+            esi = m.u32((m.u32((g0b + 0x0c) >>> 0) + 0x14) >>> 0)
+            if (esi !== 0) {
+              if (isItemNotBrokenInvMem113c(m, esi) === 0) {
+                esi = 0
+              } else {
+                bComp = ITEMS_GetComponentFromItem113c(m, esi) & 0xff
+              }
+            }
+          }
+        } else {
+          esi = 0
+        }
+      }
+    }
+
+    let pCharStats = 0
+    const cls = nClass | 0
+    if (cls >= 0) {
+      const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+      if (cls < (m.u32((sgpt + 0xbc8) >>> 0) | 0)) {
+        pCharStats = (m.u32((sgpt + 0xbc4) >>> 0) + imul32(cls, 0xc4)) >>> 0
+      }
+    }
+
+    const mode = nMode | 0
+    if (mode === 0 || mode === 0x11 || esi === 0 || (bComp !== 5 && bComp !== 6)) {
+      const code0 = m.u32((pCharStats + 0x4c) >>> 0)
+      const wcid = COMPOSIT_GetWeaponClassIdFromCode113c(m, code0)
+      const code1 = m.u32((pCharStats + 0x4c) >>> 0)
+      return { code: code1 >>> 0, wcid: wcid >>> 0, hasWcid: true }
+    }
+
+    let edi = 0
+    if (ebx !== 0 && m.u32(ebx) === INVENTORY_SIGNATURE_113C) {
+      const g0 = INVENTORY_GetOrInitGridMem113c(m, ebx, 0, D2COMMON_GRID0_INFO_VA_113C)
+      if (g0 !== 0) {
+        edi = m.u32((m.u32((g0 + 0x0c) >>> 0) + 0x10) >>> 0)
+      }
+    }
+    if (isItemNotBrokenInvMem113c(m, edi) === 0) {
+      edi = 0
+    }
+
+    let ebp = 0
+    if (ebx !== 0 && m.u32(ebx) === INVENTORY_SIGNATURE_113C) {
+      const g0b = INVENTORY_GetOrInitGridMem113c(m, ebx, 0, D2COMMON_GRID0_INFO_VA_113C)
+      if (g0b !== 0) {
+        ebp = m.u32((m.u32((g0b + 0x0c) >>> 0) + 0x14) >>> 0)
+      }
+    }
+    if (isItemNotBrokenInvMem113c(m, ebp) === 0) {
+      ebp = 0
+    }
+
+    if (cls === 4) {
+      if (
+        ITEMS_CheckItemTypeIdMem113c(m, edi, 0x2d) !== 0 &&
+        ITEMS_CheckItemTypeIdMem113c(m, ebp, 0x2d) !== 0
+      ) {
+        let pPrim = INVENTORY_GetCompositWeaponMem113c(m, ebx)
+        if (pPrim === 0) {
+          INVENTORY_UpdateWeaponGuidOnInsert113c(m, ebx, edi)
+          pPrim = edi
+        }
+        const w1 = ITEMS_GetWeaponClassCodeIdx113c(m, pPrim) & 0xffff
+        const w2 = ITEMS_GetWeaponClassCodeIdx113c(m, edi === pPrim ? ebp : edi) & 0xffff
+        let code = 0x20737331
+        if (w1 === 2) {
+          if (w2 === 3) {
+            code = 0x20736a31
+          }
+        } else if (w1 === 3) {
+          if (w2 === 3) {
+            code = 0x20746a31
+          } else if (w2 === 2) {
+            code = 0x20747331
+          }
+        }
+        const wcid = COMPOSIT_GetWeaponClassIdFromCode113c(m, code)
+        return { code: code >>> 0, wcid: wcid >>> 0, hasWcid: true }
+      }
+    } else if (cls === 6) {
+      if (
+        ITEMS_CheckItemTypeIdMem113c(m, edi, 0x2d) !== 0 &&
+        ITEMS_CheckItemTypeIdMem113c(m, ebp, 0x2d) !== 0
+      ) {
+        const wcid = COMPOSIT_GetWeaponClassIdFromCode113c(m, 0x20327468)
+        return { code: 0x20327468, wcid: wcid >>> 0, hasWcid: true }
+      }
+    }
+
+    const handCls = INVENTORY_GetEquippedWeaponHandClass113c(m, pUnit, ebx)
+    const code =
+      handCls === 2
+        ? ITEMS_Get2HandedWClass113c(m, esi) >>> 0
+        : ITEMS_GetWeaponClassCode113c(m, esi) >>> 0
+    const wcid = COMPOSIT_GetWeaponClassIdFromCode113c(m, code)
+    return { code: code >>> 0, wcid: wcid >>> 0, hasWcid: true }
+  }
+
+  if (uType === 1) {
+    const pMonStats2 = DATATBLS_GetMonStats2TxtRecordFromMonStatsIdInline113c(m, nClass)
+    if (pMonStats2 !== 0) {
+      const mode = nMode | 0
+      let useDefault = false
+      if (mode === 0 || mode === 12) {
+        const pMask = m.u32(D2COMMON_GDWBITMASKS_IAT_VA_113C)
+        const flagByte = m.u8((pMonStats2 + 0x06) >>> 0)
+        if ((m.u8(pMask) & flagByte) === 0) {
+          useDefault = true
+        }
+      }
+      if (!useDefault) {
+        const code0 = m.u32((pMonStats2 + 0x10) >>> 0)
+        const wcid = COMPOSIT_GetWeaponClassIdFromCode113c(m, code0)
+        const code1 = m.u32((pMonStats2 + 0x10) >>> 0)
+        return { code: code1 >>> 0, wcid: wcid >>> 0, hasWcid: true }
+      }
+    }
+    const wcid = COMPOSIT_GetWeaponClassIdFromCode113c(m, 0x20687468)
+    return { code: 0x20687468, wcid: wcid >>> 0, hasWcid: true }
+  }
+
+  if (uType === 2) {
+    for (let i = 0; i < WEAPON_CLASS_TABLE_COUNT_113C; i++) {
+      if (m.u32((D2COMMON_WEAPON_CLASS_TABLE_VA_113C + i * 8) >>> 0) === 0x20687468) {
+        const wcid = m.u32((D2COMMON_WEAPON_CLASS_TABLE_VA_113C + i * 8 + 4) >>> 0)
+        return { code: 0x20687468, wcid: wcid >>> 0, hasWcid: true }
+      }
+    }
+    return { code: 0x20687468, wcid: 0, hasWcid: true }
+  }
+
+  return { code: 0, wcid: 0, hasWcid: true }
+}
+
+/**
+ * `@va D2Common:0x6FD93860` (`D2Common.#10908` `COMPOSIT_GetWeaponClassCode`,
+ * stdcall `[esp+4] = pUnit`, `[esp+8] = nUnitType`, `[esp+0xC] = nClass`, `[esp+0x10] = nMode`,
+ * `[esp+0x14] = pInventory`, `[esp+0x18] = pOutWeaponClassId`, `ret 0x18` -> `dwWeaponClassCode`).
+ */
+export function COMPOSIT_GetWeaponClassCode113c(
+  m: Memory113c,
+  pUnit: number,
+  nUnitType: number,
+  nClass: number,
+  nMode: number,
+  pInventory: number,
+  pOutWeaponClassId: number,
+): number {
+  const { code, wcid, hasWcid } = compositGetWeaponClassCodeAndId113c(
+    m,
+    pUnit,
+    nUnitType,
+    nClass,
+    nMode,
+    pInventory,
+  )
+  if (hasWcid) {
+    m.setU32(pOutWeaponClassId >>> 0, wcid >>> 0)
+  }
+  return code >>> 0
+}
+
+/**
+ * `@va D2Common:0x6FD941E0` (`D2Common.#10431` `COMPOSIT_GetUnitWeaponClassCode`,
+ * stdcall `[esp+4] = pUnit`, `[esp+8] = pInventory`, `[esp+0xC] = pOutWeaponClassId`,
+ * `[esp+0x10] = nAnimMode`, `[esp+0x14] = bUseShiftedMode`, `ret 0x14` -> `dwWeaponClassCode`).
+ */
+export function COMPOSIT_GetUnitWeaponClassCode113c(
+  m: Memory113c,
+  pUnit: number,
+  pInventory: number,
+  pOutWeaponClassId: number,
+  nAnimMode: number,
+  bUseShiftedMode: number,
+): number {
+  const esi = pUnit >>> 0
+  if (esi === 0) {
+    return 0x20687468
+  }
+  let uClass = m.u32((esi + 0x04) >>> 0)
+  let uType = m.u32(esi)
+  let mode = nAnimMode | 0
+  if (mode === -1) {
+    if ((uType === 0 || uType === 1) && m.u32((esi + 0x30) >>> 0) !== 0) {
+      mode = m.u32((esi + 0x40) >>> 0)
+    } else {
+      mode = m.u32((esi + 0x10) >>> 0)
+    }
+  }
+  if (((m.u32((esi + 0xc8) >>> 0) >>> 3) & 1) !== 0) {
+    const [t, c, shiftedMode] = unitsGetTransformGfxValues113c(m, esi, uType, uClass, mode)
+    uType = t
+    uClass = c
+    if (bUseShiftedMode !== 0) {
+      mode = shiftedMode
+    }
+  }
+  return COMPOSIT_GetWeaponClassCode113c(m, esi, uType, uClass, mode, pInventory, pOutWeaponClassId)
+}
+
+/**
+ * `@va D2Common:0x6FD94350` (`D2Common.#10889` `COMPOSIT_IsUnitUsingBowOrCrossbow`,
+ * stdcall `[esp+4] = pUnit`, `ret 4` -> `0 | 1`).
+ */
+export function COMPOSIT_IsUnitUsingBowOrCrossbow113c(m: Memory113c, pUnit: number): number {
+  const esi = pUnit >>> 0
+  let uType = m.u32(esi)
+  let uClass = m.u32((esi + 0x04) >>> 0)
+  const pInv = m.u32((esi + 0x60) >>> 0)
+  let uMode =
+    (uType === 0 || uType === 1) && m.u32((esi + 0x30) >>> 0) !== 0
+      ? m.u32((esi + 0x40) >>> 0)
+      : m.u32((esi + 0x10) >>> 0)
+  if (((m.u32((esi + 0xc8) >>> 0) >>> 3) & 1) !== 0) {
+    const [t, c, md] = unitsGetTransformGfxValues113c(m, esi, uType, uClass, uMode)
+    uType = t
+    uClass = c
+    uMode = md
+  }
+  const { wcid } = compositGetWeaponClassCodeAndId113c(m, esi, uType, uClass, uMode, pInv)
+  return wcid === 1 || wcid === 7 ? 1 : 0
+}
+
+
