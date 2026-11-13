@@ -13,7 +13,12 @@ import {
   D2UnitFindDataStrc,
   D2UnitStrc,
 } from '../mem/layout.generated.ts'
-import { DUNGEON_IsSquareTouchingRoomBounds113c } from './dungeon.ts'
+import {
+  DRLG_IsTownLevel113c,
+  DUNGEON_GetAdjacentRoomsListFromRoom113c,
+  DUNGEON_IsSquareOutsideRoomInterior113c,
+  DUNGEON_IsSquareTouchingRoomBounds113c,
+} from './dungeon.ts'
 import {
   D2COMMON_GDWBITMASKS_IAT_VA_113C,
   D2COMMON_SGPT_DATATABLES_VA_113C,
@@ -49,19 +54,19 @@ export function UNITFINDS_FreeUnitFindData113c(m: Memory113c, pUnitFindData: num
 /**
  * `@va D2Common:0x6FD62030` (`D2Common.#10591` `UNITFINDS_InitUnitFindData`,
  * stdcall `[esp+4] = pMemPool`, `[esp+8] = pUnitFindData`, `[esp+0xC] = pRoom`,
- * `[esp+0x10] = pFilterUnit`, `[esp+0x14] = pfnCallback`, `[esp+0x18] = dwSize`,
- * `[esp+0x1C] = nX`, `[esp+0x20] = nY`, `ret 0x20`, void).
+ * `[esp+0x10] = nX`, `[esp+0x14] = nY`, `[esp+0x18] = dwSize`,
+ * `[esp+0x1C] = pfnCallback`, `[esp+0x20] = pFilterUnit`, `ret 0x20`, void).
  */
 export function UNITFINDS_InitUnitFindData113c(
   m: Memory113c,
   pMemPool: number,
   pUnitFindData: number,
   pRoom: number,
-  pFilterUnit: number,
-  pfnCallback: number,
-  dwSize: number,
   nX: number,
   nY: number,
+  dwSize: number,
+  pfnCallback: number,
+  pFilterUnit: number,
 ): void {
   const pData = pUnitFindData >>> 0
   if (pData === 0) {
@@ -78,13 +83,13 @@ export function UNITFINDS_InitUnitFindData113c(
   m.set(pData, D2UnitFindDataStrc.nIndex, 0)
   m.set(pData, D2UnitFindDataStrc.dwFlags, 0)
   m.set(pData, D2UnitFindDataStrc.pRoom, pRoom >>> 0)
-  m.set(pData, D2UnitFindDataStrc.pFilterUnit, pFilterUnit >>> 0)
-  m.set(pData, D2UnitFindDataStrc.pfnCallback, pfnCallback >>> 0)
+  m.set(pData, D2UnitFindDataStrc.nX, nX >>> 0)
+  m.set(pData, D2UnitFindDataStrc.nY, nY >>> 0)
   m.set(pData, D2UnitFindDataStrc.pMemPool, pMemPool >>> 0)
   m.set(pData, D2UnitFindDataStrc.nMaxCount, 0x0f)
   m.set(pData, D2UnitFindDataStrc.dwSize, dwSize >>> 0)
-  m.set(pData, D2UnitFindDataStrc.nX, nX >>> 0)
-  m.set(pData, D2UnitFindDataStrc.nY, nY >>> 0)
+  m.set(pData, D2UnitFindDataStrc.pfnCallback, pfnCallback >>> 0)
+  m.set(pData, D2UnitFindDataStrc.pFilterUnit, pFilterUnit >>> 0)
 }
 
 /**
@@ -391,3 +396,92 @@ export function UNITFINDS_MatchUnitCandidate113c(
   return 1
 }
 
+
+/**
+ * `@va D2Common:0x6FD62720` (`D2Common.#10052` `UNITFINDS_FindAllMatchingUnitsInAdjacentRooms`,
+ * stdcall `[esp+4] = pUnitFindData`, `ret 4` -> `nUnits`).
+ */
+export function UNITFINDS_FindAllMatchingUnitsInAdjacentRooms113c(
+  m: Memory113c,
+  pUnitFindData: number,
+  pfnCallback?: UnitFindCandidateCallback113c,
+): number {
+  const pData = pUnitFindData >>> 0
+  if (pData === 0) {
+    throw new D2CommonAssertError('..\\Source\\D2Common\\UNITFINDS\\UnitFinds.cpp', 0x10a)
+  }
+  const pRoom = m.u32((pData + D2UnitFindDataStrc.pRoom.off) >>> 0)
+  if (pRoom === 0) {
+    m.setU32((pData + D2UnitFindDataStrc.nIndex.off) >>> 0, 0)
+    return 0
+  }
+
+  const nX = m.u32((pData + D2UnitFindDataStrc.nX.off) >>> 0) | 0
+  const nY = m.u32((pData + D2UnitFindDataStrc.nY.off) >>> 0) | 0
+  const dwSize = m.u32((pData + D2UnitFindDataStrc.dwSize.off) >>> 0) | 0
+
+  let ppRoomsNear: number
+  let nRoomsNear: number
+  if (DUNGEON_IsSquareOutsideRoomInterior113c(m, nY, pRoom, nX, dwSize) === 0) {
+    ppRoomsNear = (pData + D2UnitFindDataStrc.pRoom.off) >>> 0
+    nRoomsNear = 1
+  } else {
+    const sm = withUnitFindsScratch113c(m)
+    const pRoomsPtr = (UNITFINDS_STACK_BASE + 8) >>> 0
+    const pCountPtr = (UNITFINDS_STACK_BASE + 12) >>> 0
+    DUNGEON_GetAdjacentRoomsListFromRoom113c(sm, pRoom, pRoomsPtr, pCountPtr)
+    ppRoomsNear = sm.u32(pRoomsPtr)
+    nRoomsNear = sm.u32(pCountPtr) >>> 0
+  }
+
+  let nFound = 0
+  for (let i = 0; i >>> 0 < nRoomsNear >>> 0; i = (i + 1) >>> 0) {
+    const flags = m.u32((pData + D2UnitFindDataStrc.dwFlags.off) >>> 0)
+    if ((flags & 0x2000) !== 0) {
+      const r = m.u32((ppRoomsNear + ((i << 2) >>> 0)) >>> 0)
+      if (r !== 0) {
+        const pRoomEx = m.u32((r + 0x10) >>> 0)
+        const pLevel = m.u32((pRoomEx + 0x58) >>> 0)
+        const nLevelId = m.u32((pLevel + 0x1d0) >>> 0) | 0
+        if (DRLG_IsTownLevel113c(nLevelId) !== 0) {
+          continue
+        }
+      }
+    }
+
+    const r = m.u32((ppRoomsNear + ((i << 2) >>> 0)) >>> 0)
+    if (DUNGEON_IsSquareTouchingRoomBounds113c(m, nY, r, nX, dwSize) === 0) {
+      continue
+    }
+
+    let pUnit = m.u32((r + 0x74) >>> 0)
+    while (pUnit !== 0) {
+      const pNext = m.u32((pUnit + 0xe8) >>> 0)
+      const cbPtr = m.u32((pData + D2UnitFindDataStrc.pfnCallback.off) >>> 0)
+      let matched: number
+      if (cbPtr !== 0) {
+        if (pfnCallback === undefined) {
+          throw new D2CommonAssertError('..\\Source\\D2Common\\UNITFINDS\\UnitFinds.cpp', 0x13e)
+        }
+        const pFilterUnit = m.u32((pData + D2UnitFindDataStrc.pFilterUnit.off) >>> 0)
+        matched = pfnCallback(m, pUnit, pFilterUnit) | 0
+      } else {
+        const pFilterUnit = m.u32((pData + D2UnitFindDataStrc.pFilterUnit.off) >>> 0)
+        matched = UNITFINDS_MatchUnitCandidate113c(m, pUnit, pFilterUnit, undefined) | 0
+      }
+      if (matched !== 0) {
+        const pUnitsArray = m.u32((pData + D2UnitFindDataStrc.pUnitsArray.off) >>> 0)
+        m.setU32((pUnitsArray + ((nFound << 2) >>> 0)) >>> 0, pUnit)
+        nFound = (nFound + 1) >>> 0
+        const nMaxUnits = m.u32((pData + D2UnitFindDataStrc.nMaxCount.off) >>> 0)
+        if (nFound === nMaxUnits) {
+          UNITFINDS_GrowUnitsArray113c(m, pData)
+        }
+      }
+      pUnit = pNext
+    }
+  }
+
+  m.setU32((pData + D2UnitFindDataStrc.nIndex.off) >>> 0, nFound)
+  return nFound | 0
+}

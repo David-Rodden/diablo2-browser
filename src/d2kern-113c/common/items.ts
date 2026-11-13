@@ -63,8 +63,10 @@ import { DATATBLS_GetItemIdFromItemCode113c } from '../tables/item-tbls-113c.ts'
 import { SGP_ANIMDATA_TABLE_VA_113C } from '../tables/anim-tbls-113c.ts'
 import { COMPOSIT_GetWeaponClassCode113c } from './composit.ts'
 import {
+  DRLG_GetAutomapCoordSlotPtr113c,
   DRLGROOM_RollItemCoordinate113c,
   DRLGROOM_RollItemCoordinateAlt113c,
+  ITEMMODS_StubReturnOne113c,
 } from './drlg/drlg-room.ts'
 import {
   D2COMMON_GDWBITMASKS_IAT_VA_113C,
@@ -112,8 +114,41 @@ import {
   STATLIST_SetBaseStatEx113c,
   STATLIST_SetStat113c,
   STATLIST_SetUnitStat113c,
+  STATLIST_RemoveItemDurabilityStatsModHandler113c,
+  ITEMMODS_ApplyPropertyIndestructible113c,
+  ITEMMODS_ApplyPropertyPackedDuration113c,
+  ITEMMODS_ApplyCastSkillPropStat113c,
+  ITEMMODS_ApplyClassSkillsPropStat113c,
+  ITEMMODS_ApplyAmazonSkillsPropStat113c,
+  ITEMMODS_ApplyAddSingleSkillPropStat113c,
+  ITEMMODS_ApplyAddDamageTripletPropStat113c,
+  ITEMMODS_ApplyPackedDamageRangePropStat113c,
+  ITEMMODS_ApplyCastSkillOnItemPropStat113c,
+  ITEMMODS_ApplyBaseStatOverridePropStat113c,
+  ITEMMODS_ApplyPropertyCondResetRollDurability113c,
+  ITEMS_RollAndApplySkillBonusStat113c,
+  ITEMMODS_ApplyStateSkillTripletMod113c,
+  ITEMS_ApplyElemMasteryOrPierceMinToMax113c,
+  ITEMS_ApplyElemMasteryOrPierceMaxOnly113c,
+  ITEMMODS_ApplyDmgToUndeadPropStat113c,
+  ITEMMODS_ApplyItemModProperty113c,
+  ITEMMODS_RemoveItemModProperty113c,
   statKey113c,
 } from './statlist.ts'
+import {
+  ITEMMODS_ApplyPropertySkillOnHit113c,
+  ITEMMODS_ApplyPropertyAura113c,
+  ITEMMODS_ApplyPropertyClassSkill113c,
+  ITEMMODS_ApplyPropertySingleSkill113c,
+  ITEMMODS_ApplyPropertyClassSkillTab113c,
+  ITEMMODS_ApplyPropertySimpleStat113c,
+  ITEMMODS_ApplyPropertyOskill113c,
+  ITEMMODS_ApplyPropertySimpleLayer0_113c,
+  ITEMMODS_ApplyPropertyResetAndRoll113c,
+  ITEMMODS_ApplyPropertyCondResetAndRoll113c,
+  ITEMMODS_ApplyPropertyResetAndSeedRoll113c,
+  ITEMMODS_ApplyPropertyCondResetAndSeedRoll113c,
+} from './logging.ts'
 import { UNIT_ITEM, UNIT_PLAYER, UNITS_GetPlayerBaseToHit113c } from './unit.ts'
 
 /** `.data` `D2DataTablesStrc* sgptDataTables` at `0x6FDE9E1C` (`0x6FD72F88`, `0x6FD735D8`). */
@@ -7801,4 +7836,656 @@ export function ITEMS_SerializeItemToBuffer113c(
   )
   if (m.u32((bitBuf + 0x10) >>> 0) !== 0) return 0
   return fogGetBitBufferSize113c(m, bitBuf) >>> 0
+}
+
+type ItemModFuncById113c = (
+  m: Memory113c,
+  nType: number,
+  pItem: number,
+  pUnit: number,
+  pProp: number,
+  nSet: number,
+  wStat: number,
+  wVal: number,
+  nAccum: number,
+  nStateId: number,
+  fStatListFlags: number,
+  nUnused: number,
+) => number
+
+const ITEMMODS_FUNC_TABLE_6FDEB0C8: readonly (ItemModFuncById113c | null)[] = [
+  null as unknown as ItemModFuncById113c | null,
+  ITEMMODS_ApplyPropertyCondResetAndSeedRoll113c as unknown as ItemModFuncById113c | null,
+  ITEMMODS_ApplyPropertyResetAndSeedRoll113c as unknown as ItemModFuncById113c | null,
+  ITEMMODS_ApplyPropertyCondResetAndRoll113c as unknown as ItemModFuncById113c | null,
+  ITEMMODS_ApplyPropertyResetAndRoll113c as unknown as ItemModFuncById113c | null,
+  ITEMMODS_ApplyMinDamagePercentProperty113c as unknown as ItemModFuncById113c | null,
+  ITEMMODS_ApplyMaxDamagePercentProperty113c as unknown as ItemModFuncById113c | null,
+  ITEMMODS_ApplyEnhancedDamagePercentProperty113c as unknown as ItemModFuncById113c | null,
+  ITEMMODS_ApplyPropertySimpleLayer0_113c as unknown as ItemModFuncById113c | null,
+  ITEMMODS_ApplyPropertyOskill113c as unknown as ItemModFuncById113c | null,
+  ITEMMODS_ApplyPropertyClassSkillTab113c as unknown as ItemModFuncById113c | null,
+  ITEMMODS_ApplyChargedSkillProperty113c as unknown as ItemModFuncById113c | null,
+  ITEMMODS_ApplyPropertySkillOnHit113c as unknown as ItemModFuncById113c | null,
+  ITEMMODS_ApplyPropertyCondResetRollDurability113c as unknown as ItemModFuncById113c | null,
+  ITEMS_CraftModRollSockets113c as unknown as ItemModFuncById113c | null,
+  ITEMMODS_ApplyStatMinProperty113c as unknown as ItemModFuncById113c | null,
+  ITEMMODS_ApplyStatMaxProperty113c as unknown as ItemModFuncById113c | null,
+  ITEMMODS_ApplyStatRolledProperty113c as unknown as ItemModFuncById113c | null,
+  ITEMMODS_ApplyPropertyPackedDuration113c as unknown as ItemModFuncById113c | null,
+  ITEMMODS_ApplyCastSkillPropStat113c as unknown as ItemModFuncById113c | null,
+  ITEMMODS_ApplyPropertyIndestructible113c as unknown as ItemModFuncById113c | null,
+  ITEMMODS_ApplyPropertySingleSkill113c as unknown as ItemModFuncById113c | null,
+  ITEMMODS_ApplyPropertyAura113c as unknown as ItemModFuncById113c | null,
+  ITEMS_CraftModMakeEthereal113c as unknown as ItemModFuncById113c | null,
+  ITEMMODS_ApplyPropertySimpleStat113c as unknown as ItemModFuncById113c | null,
+  null as unknown as ItemModFuncById113c | null,
+  null as unknown as ItemModFuncById113c | null,
+  null as unknown as ItemModFuncById113c | null,
+  null as unknown as ItemModFuncById113c | null,
+  null as unknown as ItemModFuncById113c | null,
+  null as unknown as ItemModFuncById113c | null,
+  null as unknown as ItemModFuncById113c | null,
+  null as unknown as ItemModFuncById113c | null,
+  null as unknown as ItemModFuncById113c | null,
+  null as unknown as ItemModFuncById113c | null,
+  null as unknown as ItemModFuncById113c | null,
+  ITEMMODS_ApplyPropertyClassSkill113c as unknown as ItemModFuncById113c | null,
+]
+
+type LegacyPropFunc113c = (
+  m: Memory113c,
+  s1: number,
+  s2: number,
+  pItem: number,
+  pProp: number,
+  nArg: number,
+  s6: number,
+  nStateId: number,
+  fStatListFlags: number,
+  s7: number,
+) => number
+
+const ITEMMODS_LEGACY_TABLE_6FDEA928: readonly [LegacyPropFunc113c | null, number][] = [
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 31],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 32],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 33],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 34],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 36],
+  [ITEMS_ApplyElemMasteryOrPierceMinToMax113c as unknown as LegacyPropFunc113c | null, 16],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 35],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 0],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 2],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 3],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 1],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 9],
+  [ITEMS_ApplyElemMasteryOrPierceMinToMax113c as unknown as LegacyPropFunc113c | null, 77],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 7],
+  [ITEMS_ApplyElemMasteryOrPierceMinToMax113c as unknown as LegacyPropFunc113c | null, 76],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 19],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 20],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 54],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 55],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 56],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 48],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 49],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 50],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 51],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 57],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 58],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 59],
+  [ITEMMODS_ApplyDmgMinProperty113c as unknown as LegacyPropFunc113c | null, 21],
+  [ITEMMODS_ApplyDmgMaxProperty113c as unknown as LegacyPropFunc113c | null, 22],
+  [ITEMMODS_ApplyEnhancedDamageProperty113c as unknown as LegacyPropFunc113c | null, 4294967295],
+  [ITEMS_ApplyElemMasteryOrPierceMinToMax113c as unknown as LegacyPropFunc113c | null, 114],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 39],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 40],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 41],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 42],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 43],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 44],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 37],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 38],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 45],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 46],
+  [ITEMMODS_RemoveItemModProperty113c as unknown as LegacyPropFunc113c | null, 4294967295],
+  [ITEMMODS_ApplyItemModProperty113c as unknown as LegacyPropFunc113c | null, 4294967295],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 142],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 143],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 144],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 145],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 146],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 147],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 148],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 149],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 73],
+  [ITEMS_ApplyElemMasteryOrPierceMinToMax113c as unknown as LegacyPropFunc113c | null, 75],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 74],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 78],
+  [ITEMS_RollAndApplySkillBonusStat113c as unknown as LegacyPropFunc113c | null, 93],
+  [ITEMS_RollAndApplySkillBonusStat113c as unknown as LegacyPropFunc113c | null, 93],
+  [ITEMS_RollAndApplySkillBonusStat113c as unknown as LegacyPropFunc113c | null, 93],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 79],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 80],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 81],
+  [ITEMS_ApplyElemMasteryOrPierceMinToMax113c as unknown as LegacyPropFunc113c | null, 28],
+  [ITEMS_ApplyElemMasteryOrPierceMinToMax113c as unknown as LegacyPropFunc113c | null, 27],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 11],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 82],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 62],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 60],
+  [ITEMMODS_ApplyClassSkillsPropStat113c as unknown as LegacyPropFunc113c | null, 83],
+  [ITEMMODS_ApplyClassSkillsPropStat113c as unknown as LegacyPropFunc113c | null, 84],
+  [ITEMMODS_ApplyClassSkillsPropStat113c as unknown as LegacyPropFunc113c | null, 85],
+  [ITEMMODS_ApplyClassSkillsPropStat113c as unknown as LegacyPropFunc113c | null, 86],
+  [ITEMMODS_ApplyClassSkillsPropStat113c as unknown as LegacyPropFunc113c | null, 87],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 88],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 89],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 90],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 91],
+  [ITEMS_RollAndApplySkillBonusStat113c as unknown as LegacyPropFunc113c | null, 96],
+  [ITEMS_RollAndApplySkillBonusStat113c as unknown as LegacyPropFunc113c | null, 96],
+  [ITEMS_RollAndApplySkillBonusStat113c as unknown as LegacyPropFunc113c | null, 96],
+  [ITEMS_RollAndApplySkillBonusStat113c as unknown as LegacyPropFunc113c | null, 99],
+  [ITEMS_RollAndApplySkillBonusStat113c as unknown as LegacyPropFunc113c | null, 99],
+  [ITEMS_RollAndApplySkillBonusStat113c as unknown as LegacyPropFunc113c | null, 99],
+  [ITEMS_RollAndApplySkillBonusStat113c as unknown as LegacyPropFunc113c | null, 102],
+  [ITEMS_RollAndApplySkillBonusStat113c as unknown as LegacyPropFunc113c | null, 102],
+  [ITEMS_RollAndApplySkillBonusStat113c as unknown as LegacyPropFunc113c | null, 102],
+  [ITEMS_RollAndApplySkillBonusStat113c as unknown as LegacyPropFunc113c | null, 105],
+  [ITEMS_RollAndApplySkillBonusStat113c as unknown as LegacyPropFunc113c | null, 105],
+  [ITEMS_RollAndApplySkillBonusStat113c as unknown as LegacyPropFunc113c | null, 105],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 110],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 111],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 112],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 113],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 115],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 116],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 117],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 118],
+  [ITEMS_ApplyElemMasteryOrPierceMinToMax113c as unknown as LegacyPropFunc113c | null, 119],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 120],
+  [ITEMS_ApplyElemMasteryOrPierceMinToMax113c as unknown as LegacyPropFunc113c | null, 121],
+  [ITEMS_ApplyElemMasteryOrPierceMinToMax113c as unknown as LegacyPropFunc113c | null, 122],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 123],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 124],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 125],
+  [ITEMMODS_ApplyAmazonSkillsPropStat113c as unknown as LegacyPropFunc113c | null, 126],
+  [ITEMMODS_ApplyDmgToUndeadPropStat113c as unknown as LegacyPropFunc113c | null, 127],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 128],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 134],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 135],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 136],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 137],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 138],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 139],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 140],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 141],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 150],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 153],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 154],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 155],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 156],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 157],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 158],
+  [ITEMMODS_ApplyClassSkillsPropStat113c as unknown as LegacyPropFunc113c | null, 179],
+  [ITEMMODS_ApplyClassSkillsPropStat113c as unknown as LegacyPropFunc113c | null, 180],
+  [ITEMMODS_ApplyAddSingleSkillPropStat113c as unknown as LegacyPropFunc113c | null, 107],
+  [ITEMMODS_StubReturnOne113c as unknown as LegacyPropFunc113c | null, 4294967295],
+  [ITEMMODS_StubReturnOne113c as unknown as LegacyPropFunc113c | null, 4294967295],
+  [ITEMMODS_StubReturnOne113c as unknown as LegacyPropFunc113c | null, 4294967295],
+  [ITEMMODS_StubReturnOne113c as unknown as LegacyPropFunc113c | null, 4294967295],
+  [ITEMMODS_StubReturnOne113c as unknown as LegacyPropFunc113c | null, 4294967295],
+  [ITEMMODS_StubReturnOne113c as unknown as LegacyPropFunc113c | null, 4294967295],
+  [ITEMMODS_StubReturnOne113c as unknown as LegacyPropFunc113c | null, 4294967295],
+  [ITEMMODS_StubReturnOne113c as unknown as LegacyPropFunc113c | null, 4294967295],
+  [ITEMMODS_StubReturnOne113c as unknown as LegacyPropFunc113c | null, 4294967295],
+  [ITEMS_CraftModAddSockets113c as unknown as LegacyPropFunc113c | null, 194],
+  [ITEMMODS_ApplyStateSkillTripletMod113c as unknown as LegacyPropFunc113c | null, 48],
+  [ITEMMODS_ApplyStateSkillTripletMod113c as unknown as LegacyPropFunc113c | null, 50],
+  [ITEMMODS_ApplyStateSkillTripletMod113c as unknown as LegacyPropFunc113c | null, 52],
+  [ITEMMODS_ApplyAddDamageTripletPropStat113c as unknown as LegacyPropFunc113c | null, 54],
+  [ITEMMODS_ApplyAddDamageTripletPropStat113c as unknown as LegacyPropFunc113c | null, 57],
+  [ITEMMODS_ApplyStateSkillTripletMod113c as unknown as LegacyPropFunc113c | null, 159],
+  [ITEMMODS_ApplyStateSkillTripletMod113c as unknown as LegacyPropFunc113c | null, 21],
+  [ITEMMODS_ApplyBaseStatOverridePropStat113c as unknown as LegacyPropFunc113c | null, 214],
+  [ITEMMODS_ApplyBaseStatOverridePropStat113c as unknown as LegacyPropFunc113c | null, 215],
+  [ITEMMODS_ApplyBaseStatOverridePropStat113c as unknown as LegacyPropFunc113c | null, 216],
+  [ITEMMODS_ApplyBaseStatOverridePropStat113c as unknown as LegacyPropFunc113c | null, 217],
+  [ITEMMODS_ApplyBaseStatOverridePropStat113c as unknown as LegacyPropFunc113c | null, 218],
+  [ITEMMODS_ApplyBaseStatOverridePropStat113c as unknown as LegacyPropFunc113c | null, 219],
+  [ITEMMODS_ApplyBaseStatOverridePropStat113c as unknown as LegacyPropFunc113c | null, 220],
+  [ITEMMODS_ApplyBaseStatOverridePropStat113c as unknown as LegacyPropFunc113c | null, 221],
+  [ITEMMODS_ApplyBaseStatOverridePropStat113c as unknown as LegacyPropFunc113c | null, 222],
+  [ITEMMODS_ApplyBaseStatOverridePropStat113c as unknown as LegacyPropFunc113c | null, 223],
+  [ITEMMODS_ApplyBaseStatOverridePropStat113c as unknown as LegacyPropFunc113c | null, 224],
+  [ITEMMODS_ApplyBaseStatOverridePropStat113c as unknown as LegacyPropFunc113c | null, 225],
+  [ITEMMODS_ApplyBaseStatOverridePropStat113c as unknown as LegacyPropFunc113c | null, 226],
+  [ITEMMODS_ApplyBaseStatOverridePropStat113c as unknown as LegacyPropFunc113c | null, 227],
+  [ITEMMODS_ApplyBaseStatOverridePropStat113c as unknown as LegacyPropFunc113c | null, 228],
+  [ITEMMODS_ApplyBaseStatOverridePropStat113c as unknown as LegacyPropFunc113c | null, 229],
+  [ITEMMODS_ApplyBaseStatOverridePropStat113c as unknown as LegacyPropFunc113c | null, 230],
+  [ITEMMODS_ApplyBaseStatOverridePropStat113c as unknown as LegacyPropFunc113c | null, 231],
+  [ITEMMODS_ApplyBaseStatOverridePropStat113c as unknown as LegacyPropFunc113c | null, 232],
+  [ITEMMODS_ApplyBaseStatOverridePropStat113c as unknown as LegacyPropFunc113c | null, 233],
+  [ITEMMODS_ApplyBaseStatOverridePropStat113c as unknown as LegacyPropFunc113c | null, 234],
+  [ITEMMODS_ApplyBaseStatOverridePropStat113c as unknown as LegacyPropFunc113c | null, 235],
+  [ITEMMODS_ApplyBaseStatOverridePropStat113c as unknown as LegacyPropFunc113c | null, 236],
+  [ITEMMODS_ApplyBaseStatOverridePropStat113c as unknown as LegacyPropFunc113c | null, 237],
+  [ITEMMODS_ApplyBaseStatOverridePropStat113c as unknown as LegacyPropFunc113c | null, 238],
+  [ITEMMODS_ApplyBaseStatOverridePropStat113c as unknown as LegacyPropFunc113c | null, 239],
+  [ITEMMODS_ApplyBaseStatOverridePropStat113c as unknown as LegacyPropFunc113c | null, 240],
+  [ITEMMODS_ApplyBaseStatOverridePropStat113c as unknown as LegacyPropFunc113c | null, 241],
+  [ITEMMODS_ApplyBaseStatOverridePropStat113c as unknown as LegacyPropFunc113c | null, 242],
+  [ITEMMODS_ApplyBaseStatOverridePropStat113c as unknown as LegacyPropFunc113c | null, 243],
+  [ITEMMODS_ApplyBaseStatOverridePropStat113c as unknown as LegacyPropFunc113c | null, 244],
+  [ITEMMODS_ApplyBaseStatOverridePropStat113c as unknown as LegacyPropFunc113c | null, 245],
+  [ITEMMODS_ApplyBaseStatOverridePropStat113c as unknown as LegacyPropFunc113c | null, 246],
+  [ITEMMODS_ApplyBaseStatOverridePropStat113c as unknown as LegacyPropFunc113c | null, 247],
+  [ITEMMODS_ApplyBaseStatOverridePropStat113c as unknown as LegacyPropFunc113c | null, 248],
+  [ITEMMODS_ApplyBaseStatOverridePropStat113c as unknown as LegacyPropFunc113c | null, 249],
+  [ITEMMODS_ApplyBaseStatOverridePropStat113c as unknown as LegacyPropFunc113c | null, 250],
+  [ITEMMODS_StubReturnOne113c as unknown as LegacyPropFunc113c | null, 4294967295],
+  [ITEMMODS_ApplyBaseStatOverridePropStat113c as unknown as LegacyPropFunc113c | null, 252],
+  [ITEMMODS_ApplyBaseStatOverridePropStat113c as unknown as LegacyPropFunc113c | null, 253],
+  [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 254],
+  [ITEMMODS_StubReturnOne113c as unknown as LegacyPropFunc113c | null, 4294967295],
+  [ITEMMODS_StubReturnOne113c as unknown as LegacyPropFunc113c | null, 4294967295],
+  [ITEMMODS_StubReturnOne113c as unknown as LegacyPropFunc113c | null, 4294967295],
+  [ITEMMODS_StubReturnOne113c as unknown as LegacyPropFunc113c | null, 4294967295],
+  [ITEMMODS_StubReturnOne113c as unknown as LegacyPropFunc113c | null, 4294967295],
+  [ITEMMODS_StubReturnOne113c as unknown as LegacyPropFunc113c | null, 4294967295],
+  [ITEMMODS_StubReturnOne113c as unknown as LegacyPropFunc113c | null, 4294967295],
+  [ITEMMODS_StubReturnOne113c as unknown as LegacyPropFunc113c | null, 4294967295],
+  [ITEMMODS_StubReturnOne113c as unknown as LegacyPropFunc113c | null, 4294967295],
+  [ITEMMODS_StubReturnOne113c as unknown as LegacyPropFunc113c | null, 4294967295],
+  [ITEMMODS_StubReturnOne113c as unknown as LegacyPropFunc113c | null, 4294967295],
+  [ITEMMODS_StubReturnOne113c as unknown as LegacyPropFunc113c | null, 4294967295],
+  [ITEMMODS_StubReturnOne113c as unknown as LegacyPropFunc113c | null, 4294967295],
+  [ITEMMODS_ApplyPackedDamageRangePropStat113c as unknown as LegacyPropFunc113c | null, 268],
+  [ITEMMODS_ApplyPackedDamageRangePropStat113c as unknown as LegacyPropFunc113c | null, 269],
+  [ITEMMODS_ApplyPackedDamageRangePropStat113c as unknown as LegacyPropFunc113c | null, 270],
+  [ITEMMODS_ApplyPackedDamageRangePropStat113c as unknown as LegacyPropFunc113c | null, 271],
+  [ITEMMODS_ApplyPackedDamageRangePropStat113c as unknown as LegacyPropFunc113c | null, 272],
+  [ITEMMODS_ApplyPackedDamageRangePropStat113c as unknown as LegacyPropFunc113c | null, 273],
+  [ITEMMODS_ApplyPackedDamageRangePropStat113c as unknown as LegacyPropFunc113c | null, 274],
+  [ITEMMODS_ApplyPackedDamageRangePropStat113c as unknown as LegacyPropFunc113c | null, 275],
+  [ITEMMODS_ApplyPackedDamageRangePropStat113c as unknown as LegacyPropFunc113c | null, 276],
+  [ITEMMODS_ApplyPackedDamageRangePropStat113c as unknown as LegacyPropFunc113c | null, 277],
+  [ITEMMODS_ApplyPackedDamageRangePropStat113c as unknown as LegacyPropFunc113c | null, 278],
+  [ITEMMODS_ApplyPackedDamageRangePropStat113c as unknown as LegacyPropFunc113c | null, 279],
+  [ITEMMODS_ApplyPackedDamageRangePropStat113c as unknown as LegacyPropFunc113c | null, 280],
+  [ITEMMODS_ApplyPackedDamageRangePropStat113c as unknown as LegacyPropFunc113c | null, 281],
+  [ITEMMODS_ApplyPackedDamageRangePropStat113c as unknown as LegacyPropFunc113c | null, 282],
+  [ITEMMODS_ApplyPackedDamageRangePropStat113c as unknown as LegacyPropFunc113c | null, 283],
+  [ITEMMODS_ApplyPackedDamageRangePropStat113c as unknown as LegacyPropFunc113c | null, 284],
+  [ITEMMODS_ApplyPackedDamageRangePropStat113c as unknown as LegacyPropFunc113c | null, 285],
+  [ITEMMODS_ApplyPackedDamageRangePropStat113c as unknown as LegacyPropFunc113c | null, 286],
+  [ITEMMODS_ApplyPackedDamageRangePropStat113c as unknown as LegacyPropFunc113c | null, 287],
+  [ITEMMODS_ApplyPackedDamageRangePropStat113c as unknown as LegacyPropFunc113c | null, 288],
+  [ITEMMODS_ApplyPackedDamageRangePropStat113c as unknown as LegacyPropFunc113c | null, 289],
+  [ITEMMODS_ApplyPackedDamageRangePropStat113c as unknown as LegacyPropFunc113c | null, 290],
+  [ITEMMODS_ApplyPackedDamageRangePropStat113c as unknown as LegacyPropFunc113c | null, 291],
+  [ITEMMODS_ApplyPackedDamageRangePropStat113c as unknown as LegacyPropFunc113c | null, 292],
+  [ITEMMODS_ApplyPackedDamageRangePropStat113c as unknown as LegacyPropFunc113c | null, 293],
+  [ITEMMODS_ApplyPackedDamageRangePropStat113c as unknown as LegacyPropFunc113c | null, 294],
+  [ITEMMODS_ApplyPackedDamageRangePropStat113c as unknown as LegacyPropFunc113c | null, 295],
+  [ITEMMODS_ApplyPackedDamageRangePropStat113c as unknown as LegacyPropFunc113c | null, 296],
+  [ITEMMODS_ApplyPackedDamageRangePropStat113c as unknown as LegacyPropFunc113c | null, 297],
+  [ITEMMODS_ApplyPackedDamageRangePropStat113c as unknown as LegacyPropFunc113c | null, 298],
+  [ITEMMODS_ApplyPackedDamageRangePropStat113c as unknown as LegacyPropFunc113c | null, 299],
+  [ITEMMODS_ApplyPackedDamageRangePropStat113c as unknown as LegacyPropFunc113c | null, 300],
+  [ITEMMODS_ApplyPackedDamageRangePropStat113c as unknown as LegacyPropFunc113c | null, 301],
+  [ITEMMODS_ApplyPackedDamageRangePropStat113c as unknown as LegacyPropFunc113c | null, 302],
+  [ITEMMODS_ApplyPackedDamageRangePropStat113c as unknown as LegacyPropFunc113c | null, 303],
+  [ITEMMODS_StubReturnOne113c as unknown as LegacyPropFunc113c | null, 4294967295],
+  [ITEMMODS_StubReturnOne113c as unknown as LegacyPropFunc113c | null, 4294967295],
+  [ITEMMODS_StubReturnOne113c as unknown as LegacyPropFunc113c | null, 4294967295],
+  [ITEMMODS_StubReturnOne113c as unknown as LegacyPropFunc113c | null, 4294967295],
+  [ITEMMODS_StubReturnOne113c as unknown as LegacyPropFunc113c | null, 4294967295],
+  [ITEMMODS_StubReturnOne113c as unknown as LegacyPropFunc113c | null, 4294967295],
+  [ITEMMODS_StubReturnOne113c as unknown as LegacyPropFunc113c | null, 4294967295],
+  [ITEMMODS_StubReturnOne113c as unknown as LegacyPropFunc113c | null, 4294967295],
+  [ITEMMODS_StubReturnOne113c as unknown as LegacyPropFunc113c | null, 4294967295],
+  [ITEMMODS_StubReturnOne113c as unknown as LegacyPropFunc113c | null, 4294967295],
+  [ITEMMODS_StubReturnOne113c as unknown as LegacyPropFunc113c | null, 4294967295],
+  [STATLIST_RemoveItemDurabilityStatsModHandler113c as unknown as LegacyPropFunc113c | null, 4294967295],
+  [ITEMMODS_ApplyCastSkillOnItemPropStat113c as unknown as LegacyPropFunc113c | null, 204],
+]
+
+const SET_MASK_ACTIVE_COUNT_6FDE3200: readonly number[] = [
+  0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4,
+  1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5,
+  1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5,
+  2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6,
+]
+const SET_ADD_STATE_6FDE3300: readonly number[] = [0, 0, 0xa5, 0xa6, 0xa7, 0xa8, 0xa9]
+const SET_ADD_FLAGS_6FDE331C: readonly number[] = [0x40, 0x40, 0x2040, 0x2040, 0x2040, 0x2040, 0x2040]
+/**
+ * `@va D2Common:0x6FD95990` (`D2Common.#10665` `ITEMMODS_ApplyPropertyById113c`,
+ * `__stdcall(nType, pItem, pUnit, nUnk4, nUnk5, nUnk6, pProp, nStateId, fStatListFlags, nUnused) -> void`, `ret 0x28`).
+ */
+export function ITEMMODS_ApplyPropertyById113c(
+  m: Memory113c,
+  nType: number,
+  pItem: number,
+  pUnit: number,
+  _nUnk4: number,
+  _nUnk5: number,
+  _nUnk6: number,
+  pProp: number,
+  nStateId: number,
+  fStatListFlags: number,
+  nUnused: number,
+): void {
+  const prop = pProp >>> 0
+  if (prop === 0) return
+  const nPropId = m.u32(prop) | 0
+  if (nPropId < 0) return
+  const dt = m.u32(ITEMS_SGPT_DATATABLES_VA_113C) >>> 0
+  const nPropCount = m.u32((dt + 0xac) >>> 0) | 0
+  if (nPropId >= nPropCount) return
+  const pPropsBase = m.u32((dt + 0xa4) >>> 0) >>> 0
+  const pPropTxt = (pPropsBase + imul32(nPropId, 0x2e)) >>> 0
+  if (pPropTxt === 0) return
+
+  let accum = 0
+  for (let i = 0; i < 7; i++) {
+    const funcIdx = m.u8((pPropTxt + 0x18 + i) >>> 0)
+    if (funcIdx >= 37) break
+    const fn = ITEMMODS_FUNC_TABLE_6FDEB0C8[funcIdx]
+    if (fn === null || fn === undefined) break
+    const wVal = m.u16((pPropTxt + 0x0a + i * 2) >>> 0)
+    const wStat = m.u16((pPropTxt + 0x20 + i * 2) >>> 0)
+    const nSet = m.u8((pPropTxt + 0x02 + i) >>> 0)
+    const res = fn(
+      m,
+      nType | 0,
+      pItem >>> 0,
+      pUnit >>> 0,
+      prop,
+      nSet,
+      wStat,
+      wVal,
+      accum,
+      nStateId | 0,
+      fStatListFlags >>> 0,
+      nUnused | 0,
+    )
+    if (i === 0) {
+      accum = res | 0
+    }
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD95AA0` (`ITEMMODS_ApplyItemProperty113c`,
+ * `__usercall(pItem@<eax>, fStatListFlags@<edx>, nStateId@<ecx>, pProp@<edi>, s1..s7) -> void`, `ret 0x1c`).
+ */
+export function ITEMMODS_ApplyItemProperty113c(
+  m: Memory113c,
+  pItem: number,
+  fStatListFlags: number,
+  nStateId: number,
+  pProp: number,
+  s1: number,
+  s2: number,
+  s3: number,
+  s4: number,
+  pUnit: number,
+  s6: number,
+  s7: number,
+): void {
+  const item = pItem >>> 0
+  if (item === 0) throw new D2CommonAssertError('', 5381)
+  if ((m.u32(item) >>> 0) !== 4) throw new D2CommonAssertError('', 5382)
+  const pItemData = m.u32((item + 0x14) >>> 0) >>> 0
+  if (pItemData === 0) throw new D2CommonAssertError('', 5384)
+
+  if (m.u16((pItemData + 0x30) >>> 0) >= 1) {
+    ITEMMODS_ApplyPropertyById113c(
+      m,
+      s1 | 0,
+      s2 >>> 0,
+      item,
+      s3 | 0,
+      s4 | 0,
+      pUnit | 0,
+      pProp >>> 0,
+      nStateId | 0,
+      fStatListFlags >>> 0,
+      s7 | 0,
+    )
+    return
+  }
+
+  const prop = pProp >>> 0
+  if (prop === 0) throw new D2CommonAssertError('', 1645)
+  const nPropId = m.u32(prop) | 0
+  if (nPropId === -1 || nPropId < 0) return
+  const dt = m.u32(ITEMS_SGPT_DATATABLES_VA_113C) >>> 0
+  const nPropCount = m.u32((dt + 0xac) >>> 0) | 0
+  if (nPropId >= nPropCount) return
+  const entry = ITEMMODS_LEGACY_TABLE_6FDEA928[nPropId]
+  if (entry === undefined) return
+  const fn = entry[0]
+  if (fn === null) return
+  fn(
+    m,
+    s1 | 0,
+    s2 | 0,
+    item,
+    prop,
+    entry[1] | 0,
+    s6 | 0,
+    nStateId | 0,
+    fStatListFlags >>> 0,
+    s7 | 0,
+  )
+}
+
+/**
+ * `@va D2Common:0x6FD95F90` (`ITEMMODS_ApplySetItemBonusProps113c`,
+ * `__usercall(pItem@<ebx>, pUnit@<stack+4>, nUnused@<stack+8>) -> void`, `ret 0x8`).
+ */
+export function ITEMMODS_ApplySetItemBonusProps113c(
+  m: Memory113c,
+  pItem: number,
+  pUnit: number,
+  nUnused: number,
+): void {
+  const item = pItem >>> 0
+  const unit = pUnit >>> 0
+  if (unit === 0 || item === 0) return
+  if ((m.u32(item) >>> 0) !== 4) return
+  const pItemData = m.u32((item + 0x14) >>> 0) >>> 0
+  if (pItemData === 0 || (m.u32(pItemData) >>> 0) !== 5) return
+  const nFileIndex = ITEMS_GetItemCell113c(m, item) | 0
+  const pSetItemTxt = DATATBLS_GetSetItemsTxtRecordInline113c(m, nFileIndex) >>> 0
+  if (pSetItemTxt === 0) return
+  const wSetId = (m.u16((pSetItemTxt + 0x2c) >>> 0) << 16) >> 16
+  const pSetTxt = DATATBLS_GetSetsTxtRecordInline113c(m, wSetId) >>> 0
+  if (pSetTxt === 0) return
+
+  const mask = ITEMS_GetEquippedSetItemsMask113c(m, unit, item, 1) >>> 0
+  const nEquipped = mask < 0x40 ? SET_MASK_ACTIVE_COUNT_6FDE3200[mask]! : 0
+  const nSetItems = m.u32((pSetTxt + 0x0c) >>> 0) | 0
+  const nMaxMinus1 = (nSetItems - 1) | 0
+  const nCount = nEquipped < nMaxMinus1 ? nEquipped : nMaxMinus1
+  const nLimit = (nCount + nCount - 2) | 0
+  if (nLimit > 0) {
+    for (let i = 0; i < nLimit; i++) {
+      const pProp = (pSetTxt + 0x10 + i * 0x10) >>> 0
+      if ((m.u32(pProp) | 0) >= 0) {
+        ITEMMODS_ApplyItemProperty113c(m, item, 0, nUnused, pProp, 4, unit, 0, i, 0, 0, 0)
+      }
+    }
+  }
+  if (nEquipped >= nSetItems) {
+    for (let i = 0; i < 8; i++) {
+      const pProp = (pSetTxt + 0x90 + i * 0x10) >>> 0
+      if ((m.u32(pProp) | 0) < 0) break
+      ITEMMODS_ApplyItemProperty113c(m, item, 0, nUnused, pProp, 4, unit, 0, i, 0, 0, 0)
+    }
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD960B0` (`D2Common.#10996` `ITEMS_ApplyItemQualityMods113c`,
+ * `__stdcall(nQuality, pItem, pMagicProps, nUnused4, pSeed, pUnit) -> void`, `ret 0x18`).
+ */
+export function ITEMS_ApplyItemQualityMods113c(
+  m: Memory113c,
+  nQuality: number,
+  _nUnused2: number,
+  pItem: number,
+  pMagicProps: number,
+  pSeed: number,
+  pUnit: number,
+): void {
+  const q = nQuality >>> 0
+  const item = pItem >>> 0
+  const unit = pUnit >>> 0
+  let nLoopCount = 0
+  if (q === 0 || q === 2 || q === 5) {
+    nLoopCount = 3
+  } else if (q === 1) {
+    nLoopCount = 2
+  } else if (q === 3) {
+    const idx = ITEMS_GetItemCell113c(m, item) | 0
+    if (idx < 0) return
+    const pUnique = DATATBLS_GetUniqueItemsTxtRecordInline113c(m, idx) >>> 0
+    if (pUnique === 0) return
+    for (let i = 0; i < 12; i++) {
+      const pProp = (pUnique + 0x8c + i * 0x10) >>> 0
+      ITEMMODS_ApplyItemProperty113c(m, item, 0x40, 0, pProp, 3, 0, 0, 0, 0, unit, 0)
+    }
+    return
+  } else if (q === 4) {
+    const idx = ITEMS_GetItemCell113c(m, item) | 0
+    const pSetItem = DATATBLS_GetSetItemsTxtRecordInline113c(m, idx) >>> 0
+    if (pSetItem === 0) return
+    const fmt = ITEMS_GetItemFormat113c(m, item) & 0xffff
+    if (fmt === 0) {
+      for (let i = 0; i < 2; i++) {
+        const pProp = (pSetItem + 0x88 + i * 0x10) >>> 0
+        ITEMMODS_ApplyItemProperty113c(m, item, 0x40, 0, pProp, 4, 0, 0, 0, 0, unit, 0)
+      }
+      return
+    }
+    for (let i = 0; i < 9; i++) {
+      const pProp = (pSetItem + 0x88 + i * 0x10) >>> 0
+      ITEMMODS_ApplyItemProperty113c(m, item, 0x40, 0, pProp, 4, 0, 0, 0, 0, unit, 0)
+    }
+    const nAddFunc = m.u8((pSetItem + 0x87) >>> 0)
+    for (let i = 0; i < 10; i++) {
+      const pProp = (pSetItem + 0x118 + i * 0x10) >>> 0
+      const grp = ((i >> 1) + 2) | 0
+      const nStateId = nAddFunc !== 0 ? SET_ADD_STATE_6FDE3300[grp]! : 0
+      const fFlags = nAddFunc !== 0 ? SET_ADD_FLAGS_6FDE331C[grp]! : 0x40
+      ITEMMODS_ApplyItemProperty113c(m, item, fFlags, nStateId, pProp, 4, 0, 0, 0, 0, unit, 0)
+    }
+    return
+  }
+
+  if (nLoopCount <= 0) return
+  const propsBase = pMagicProps >>> 0
+  let pCur = (propsBase + 0x0c) >>> 0
+  for (let i = 0; i < nLoopCount; i++) {
+    if (q > 7) throw new D2CommonAssertError('', 175)
+    let pProp = 0
+    if (q === 0 || q === 1) {
+      if (propsBase === 0) throw new D2CommonAssertError('', 121)
+      if (q === 0 && i >= 3) throw new D2CommonAssertError('', 122)
+      if (q === 1 && i >= 12) throw new D2CommonAssertError('', 129)
+      pProp = q === 0 ? ((pCur + 0x18) >>> 0) : pCur
+    } else if (q === 2 || q === 5) {
+      pProp = DRLG_GetAutomapCoordSlotPtr113c(propsBase, i, pSeed) >>> 0
+    } else if (q === 6 || q === 7) {
+      pProp = pCur
+    } else {
+      return
+    }
+    if (pProp !== 0 && (m.u32(pProp) | 0) >= 0) {
+      ITEMMODS_ApplyItemProperty113c(
+        m,
+        item,
+        0x40,
+        0,
+        pProp,
+        q | 0,
+        0,
+        propsBase,
+        i,
+        pSeed,
+        unit,
+        _nUnused2,
+      )
+    }
+    pCur = (pCur + 0x10) >>> 0
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD96770` (`D2Common.#10260` `ITEMS_ApplyRunewordProps113c`,
+ * `__stdcall(pItem, pUnit, nUnused) -> bApplied`, `ret 0xc`).
+ */
+export function ITEMS_ApplyRunewordProps113c(
+  m: Memory113c,
+  pItem: number,
+  pUnit: number,
+  _nUnused: number,
+): number {
+  const item = pItem >>> 0
+  const pRunes = ITEMS_FindMatchingRunesTxtRecord113c(m, item) >>> 0
+  if (pRunes === 0) return 0
+
+  const pStatListEx = m.u32((item + 0x5c) >>> 0) >>> 0
+  if (pStatListEx !== 0 && (m.u32((pStatListEx + 0x10) >>> 0) | 0) < 0) {
+    let node = m.u32((pStatListEx + 0x3c) >>> 0) >>> 0
+    while (node !== 0) {
+      if ((m.u32((node + 0x14) >>> 0) >>> 0) === 0xab) return 0
+      node = m.u32((node + 0x2c) >>> 0) >>> 0
+    }
+    node = m.u32((pStatListEx + 0x40) >>> 0) >>> 0
+    while (node !== 0) {
+      if ((m.u32((node + 0x14) >>> 0) >>> 0) === 0xab) return 0
+      node = m.u32((node + 0x2c) >>> 0) >>> 0
+    }
+  }
+
+  if ((m.u32(item) >>> 0) === 4) {
+    const pItemData = m.u32((item + 0x14) >>> 0) >>> 0
+    if (pItemData !== 0) {
+      m.setU32((pItemData + 0x18) >>> 0, (m.u32((pItemData + 0x18) >>> 0) | 0x04000000) >>> 0)
+    }
+  }
+
+  for (let i = 0; i < 7; i++) {
+    const pProp = (pRunes + 0xb0 + i * 0x10) >>> 0
+    if ((m.u32(pProp) | 0) < 0) break
+    ITEMMODS_ApplyPropertyById113c(m, 6, item, pUnit >>> 0, 0, i, 0, pProp, 0xab, 0x40, 0)
+  }
+  return 1
+}
+
+/**
+ * `@va D2Common:0x6FD97730` (`D2Common.#10914` `ITEMS_ApplySinglePropAndEthereal113c`,
+ * `__stdcall(pItem, pProp, nUnused) -> void`, `ret 0xc`).
+ */
+export function ITEMS_ApplySinglePropAndEthereal113c(
+  m: Memory113c,
+  pItem: number,
+  pProp: number,
+  _nUnused: number,
+): void {
+  const item = pItem >>> 0
+  if (item === 0) return
+  ITEMMODS_ApplyItemProperty113c(m, item, 0x40, 0, pProp >>> 0, 7, 0, pProp >>> 0, 0, 0, 0, 0)
+  if ((m.u32(item) >>> 0) === 4) {
+    const pItemData = m.u32((item + 0x14) >>> 0) >>> 0
+    if (pItemData !== 0 && (m.u32((pItemData + 0x18) >>> 0) & 0x400000) !== 0) {
+      ITEMS_ApplyEtherealBonusStats113c(m, item)
+    }
+  }
 }

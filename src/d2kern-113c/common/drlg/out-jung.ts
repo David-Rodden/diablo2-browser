@@ -9,12 +9,20 @@ import {
   DATATBLS_GetMonStats2TxtRecordFromMonStatsIdInline113c,
   SEED_RollRandomNumberInline113c,
 } from '../inline-helpers.ts';
-import { imul32, smod32 } from '../int-math.ts';
+import { imul32, sdiv32, smod32 } from '../int-math.ts';
 import { DRLGOUTDOORS_SpawnPresetInGrid113c } from './drlg-grid.ts';
 import {
+  DRLGOUTPLACE_ApplyOutdoorVerticesToGrids113c,
+  DRLGROOM_SpawnOutdoorBorderPresets113c,
+} from './drlg-room.ts';
+import {
   DRLGOUTDOORS_PlaceRandomOutdoorPresetRoom113c,
+  DRLGOUTDOORS_SpawnOutdoorRoomEx113c,
+  DRLGOUTDOORS_SpawnRandomOutdoorThemes113c,
   SGPT_DATA_TABLES_PTR_VA_6FDE9E1C,
   SG_LVL_PREST_TXT_PTR_VA_6FDF0B3C,
+  DRLGOUTDOORS_BuildOutdoorSubstContext113c,
+  DRLGOUTDOORS_PlaceRandomOutdoorShrineOrSpecial113c,
 } from './outdoors.ts';
 
 const OUTJUNG_STACK_BASE = 0x7ff70000;
@@ -508,6 +516,337 @@ export function DRLGOUTJUNG_SpawnAct4OutdoorPresets113c(
   DRLGOUTDOORS_PlaceRandomOutdoorPresetRoom113c(m, lvl, (baseA + 2) | 0, -1, 0, 0x0f);
   for (let i = 0; i < 4; i++) {
     DRLGOUTDOORS_PlaceRandomOutdoorPresetRoom113c(m, lvl, (baseA + 3) | 0, -1, 0, 0x0f);
+  }
+}
+
+/**
+ * `@va D2Common:0x6FDD4E40` (`DRLGOUTJUNG_SpawnRandomPresetRange113c`, not exported;
+ * custom LTCG `esi = pLevel`, `eax = nEndLvlPrestId`, `[esp+4] = nStartLvlPrestId`, `[esp+8] = nMaxSpawns`, `ret 8`).
+ */
+export function DRLGOUTJUNG_SpawnRandomPresetRange113c(
+  m: Memory113c,
+  pLevel: number,
+  nEndLvlPrestId: number,
+  nStartLvlPrestId: number,
+  nMaxSpawns: number,
+): void {
+  const lvl = pLevel >>> 0;
+  const pOutdoors = m.u32((lvl + 0x14) >>> 0);
+  const gridW = m.u32((pOutdoors + 0x5c) >>> 0) | 0;
+  const gridH = m.u32((pOutdoors + 0x60) >>> 0) | 0;
+  const nCells = imul32(gridH, gridW);
+  const rangeCount = (((nEndLvlPrestId | 0) - (nStartLvlPrestId | 0)) | 0) + 1;
+  const pDrlg = m.u32((lvl + 0x1b4) >>> 0);
+  void m.u32((pDrlg + 0x478) >>> 0);
+  if (nCells === 0) {
+    return;
+  }
+
+  const pArr = m.alloc((nCells * 8) >>> 0) >>> 0;
+  if (nCells > 0) {
+    for (let i = 0; i < nCells; i++) {
+      m.setU32((pArr + i * 8) >>> 0, smod32(i, gridW) >>> 0);
+      m.setU32((pArr + i * 8 + 4) >>> 0, sdiv32(i, gridW) >>> 0);
+    }
+    const pSeed = (lvl + 0x1c4) >>> 0;
+    for (let i = 0; i < nCells; i++) {
+      const idxA = SEED_RollRandomNumberInline113c(m, pSeed, nCells);
+      const idxB = SEED_RollRandomNumberInline113c(m, pSeed, nCells);
+      const addrA = (pArr + idxA * 8) >>> 0;
+      const addrB = (pArr + idxB * 8) >>> 0;
+      const tmpX = m.u32(addrA);
+      const tmpY = m.u32((addrA + 4) >>> 0);
+      m.setU32(addrA, m.u32(addrB));
+      m.setU32((addrA + 4) >>> 0, m.u32((addrB + 4) >>> 0));
+      m.setU32(addrB, tmpX);
+      m.setU32((addrB + 4) >>> 0, tmpY);
+    }
+
+    let placed = 0;
+    const pSeedLoop = (lvl + 0x1c4) >>> 0;
+    for (let i = 0; i < nCells; i++) {
+      const cellX = m.u32((pArr + i * 8) >>> 0) | 0;
+      const cellY = m.u32((pArr + i * 8 + 4) >>> 0) | 0;
+      const pickedOffset =
+        rangeCount > 0 ? SEED_RollRandomNumberInline113c(m, pSeedLoop, rangeCount) : 0;
+      const prestId = ((nStartLvlPrestId | 0) + pickedOffset) | 0;
+      if (DRLGOUTDOORS_SpawnOutdoorRoomEx113c(m, lvl, cellX, cellY, prestId, 0, 0x0f) !== 0) {
+        DRLGOUTDOORS_SpawnPresetInGrid113c(m, lvl, cellX, cellY, prestId, -1, 0);
+        placed = (placed + 1) | 0;
+        if ((nMaxSpawns | 0) > 0 && placed >= (nMaxSpawns | 0)) {
+          break;
+        }
+      }
+    }
+  }
+  (m as { free?: (p: number) => void }).free?.(pArr);
+}
+
+/**
+ * `@va D2Common:0x6FDD50D0` (`DRLGOUTJUNG_SpawnAct3KurastBazaarBorders113c`, not exported;
+ * custom LTCG `esi = pLevel`, `ret`).
+ */
+export function DRLGOUTJUNG_SpawnAct3KurastBazaarBorders113c(
+  m: Memory113c,
+  pLevel: number,
+): void {
+  const lvl = pLevel >>> 0;
+  const maxX = (sdiv32(m.u32((lvl + 0x24) >>> 0) | 0, 8) - 1) | 0;
+  const maxY = (sdiv32(m.u32((lvl + 0x28) >>> 0) | 0, 8) - 1) | 0;
+  const pDrlg = m.u32((lvl + 0x1b4) >>> 0);
+  const actFlag = m.u32((pDrlg + 0x474) >>> 0) | 0;
+  const specialX = actFlag !== 0 ? ((maxX - 1) | 0) : 1;
+  const midX = sdiv32(maxX, 2);
+
+  let x = 1;
+  while (x < maxX) {
+    const isMid = x === midX ? 1 : 0;
+    DRLGOUTDOORS_SpawnPresetInGrid113c(m, lvl, x, 0, (0x27c + isMid * 8) | 0, -1, 0);
+    x = (x + (x === midX ? 1 : 0) + 1) | 0;
+  }
+
+  for (let i = 1; i < maxX; i++) {
+    const isSpec = i === specialX ? 1 : 0;
+    DRLGOUTDOORS_SpawnPresetInGrid113c(m, lvl, i, maxY, (0x27d + isSpec * 8) | 0, -1, 0);
+  }
+
+  for (let y = 1; y < maxY; y++) {
+    DRLGOUTDOORS_SpawnPresetInGrid113c(m, lvl, maxX, y, 0x27e, -1, 0);
+    DRLGOUTDOORS_SpawnPresetInGrid113c(m, lvl, 0, y, 0x27f, -1, 0);
+  }
+
+  DRLGOUTDOORS_SpawnPresetInGrid113c(m, lvl, 0, 0, 0x281, -1, 0);
+  DRLGOUTDOORS_SpawnPresetInGrid113c(m, lvl, maxX, 0, 0x280, -1, 0);
+  DRLGOUTDOORS_SpawnPresetInGrid113c(m, lvl, 0, maxY, 0x283, -1, 0);
+  DRLGOUTDOORS_SpawnPresetInGrid113c(m, lvl, maxX, maxY, 0x282, -1, 0);
+}
+
+/**
+ * `@va D2Common:0x6FDD5220` (`DRLGOUTJUNG_SpawnAct3LowerKurastBorders113c`, not exported;
+ * custom LTCG `edi = pLevel`, `ret`).
+ */
+export function DRLGOUTJUNG_SpawnAct3LowerKurastBorders113c(
+  m: Memory113c,
+  pLevel: number,
+): void {
+  const lvl = pLevel >>> 0;
+  const maxX = (sdiv32(m.u32((lvl + 0x24) >>> 0) | 0, 8) - 1) | 0;
+  const maxY = (sdiv32(m.u32((lvl + 0x28) >>> 0) | 0, 8) - 1) | 0;
+  const pDrlg = m.u32((lvl + 0x1b4) >>> 0);
+  const actFlag = m.u32((pDrlg + 0x474) >>> 0) | 0;
+  const topSpecX = actFlag !== 0 ? ((maxX - 1) | 0) : 1;
+  const botSpecX = actFlag !== 0 ? 1 : ((maxX - 1) | 0);
+
+  for (let x = 1; x < maxX; x++) {
+    const isTop = x === topSpecX ? 1 : 0;
+    DRLGOUTDOORS_SpawnPresetInGrid113c(m, lvl, x, 0, (0x26b + isTop * 8) | 0, -1, 0);
+    const isBot = x === botSpecX ? 1 : 0;
+    DRLGOUTDOORS_SpawnPresetInGrid113c(m, lvl, x, maxY, (0x26c + isBot * 8) | 0, -1, 0);
+  }
+
+  for (let y = 1; y < maxY; y++) {
+    DRLGOUTDOORS_SpawnPresetInGrid113c(m, lvl, maxX, y, 0x26d, -1, 0);
+    DRLGOUTDOORS_SpawnPresetInGrid113c(m, lvl, 0, y, 0x26e, -1, 0);
+  }
+
+  DRLGOUTDOORS_SpawnPresetInGrid113c(m, lvl, 0, 0, 0x270, -1, 0);
+  DRLGOUTDOORS_SpawnPresetInGrid113c(m, lvl, maxX, 0, 0x26f, -1, 0);
+  DRLGOUTDOORS_SpawnPresetInGrid113c(m, lvl, 0, maxY, 0x272, -1, 0);
+  DRLGOUTDOORS_SpawnPresetInGrid113c(m, lvl, maxX, maxY, 0x271, -1, 0);
+}
+
+/**
+ * `@va D2Common:0x6FDD5360` (`DRLGOUTJUNG_SpawnAct3GreatMarshBorders113c`, not exported;
+ * custom LTCG `edi = pLevel`, `ret`).
+ */
+export function DRLGOUTJUNG_SpawnAct3GreatMarshBorders113c(
+  m: Memory113c,
+  pLevel: number,
+): void {
+  const lvl = pLevel >>> 0;
+  const maxX = (sdiv32(m.u32((lvl + 0x24) >>> 0) | 0, 8) - 1) | 0;
+  const maxY = (sdiv32(m.u32((lvl + 0x28) >>> 0) | 0, 8) - 1) | 0;
+  const pDrlg = m.u32((lvl + 0x1b4) >>> 0);
+  const actFlag = m.u32((pDrlg + 0x474) >>> 0) | 0;
+  const midX = sdiv32(maxX, 2);
+  const topSpecX = actFlag !== 0 ? 1 : ((maxX - 1) | 0);
+
+  for (let x = 1; x < maxX; x++) {
+    const isTop = x === topSpecX ? 1 : 0;
+    DRLGOUTDOORS_SpawnPresetInGrid113c(m, lvl, x, 0, (0x25d + isTop * 8) | 0, -1, 0);
+  }
+
+  let x = 1;
+  while (x < maxX) {
+    const isMid = x === midX ? 1 : 0;
+    DRLGOUTDOORS_SpawnPresetInGrid113c(m, lvl, x, maxY, (0x25e + isMid * 8) | 0, -1, 0);
+    x = (x + (x === midX ? 1 : 0) + 1) | 0;
+  }
+
+  for (let y = 1; y < maxY; y++) {
+    DRLGOUTDOORS_SpawnPresetInGrid113c(m, lvl, maxX, y, 0x25f, -1, 0);
+    DRLGOUTDOORS_SpawnPresetInGrid113c(m, lvl, 0, y, 0x260, -1, 0);
+  }
+
+  DRLGOUTDOORS_SpawnPresetInGrid113c(m, lvl, 0, 0, 0x262, -1, 0);
+  DRLGOUTDOORS_SpawnPresetInGrid113c(m, lvl, maxX, 0, 0x261, -1, 0);
+  DRLGOUTDOORS_SpawnPresetInGrid113c(m, lvl, 0, maxY, 0x264, -1, 0);
+  DRLGOUTDOORS_SpawnPresetInGrid113c(m, lvl, maxX, maxY, 0x263, -1, 0);
+}
+
+/**
+ * `@va D2Common:0x6FDD56C0` (`DRLGOUTJUNG_SpawnAct3CityPresetsByLevel113c`, not exported;
+ * custom LTCG `eax = pLevel`, `ret`).
+ */
+export function DRLGOUTJUNG_SpawnAct3CityPresetsByLevel113c(
+  m: Memory113c,
+  pLevel: number,
+): void {
+  const lvl = pLevel >>> 0;
+  const levelId = m.u32((lvl + 0x1d0) >>> 0) | 0;
+  if (levelId === 0x4f) {
+    DRLGOUTJUNG_SpawnAct3GreatMarshBorders113c(m, lvl);
+  } else if (levelId === 0x50) {
+    DRLGOUTJUNG_SpawnAct3LowerKurastBorders113c(m, lvl);
+  } else if (levelId === 0x51) {
+    DRLGOUTJUNG_SpawnAct3KurastBazaarBorders113c(m, lvl);
+  }
+
+  const edgeX = (sdiv32(m.u32((lvl + 0x24) >>> 0) | 0, 8) - 4) | 0;
+  const edgeY = (sdiv32(m.u32((lvl + 0x28) >>> 0) | 0, 8) - 4) | 0;
+  const sw = (m.u32((lvl + 0x1d0) >>> 0) | 0) - 0x4f;
+  if (sw === 0) {
+    DRLGOUTDOORS_PlaceRandomOutdoorPresetRoom113c(m, lvl, 0x277, 0, 0, 0x0f);
+    DRLGOUTJUNG_SpawnRandomPresetRange113c(m, lvl, 0x26a, 0x26a, 4);
+    DRLGOUTJUNG_SpawnRandomPresetRange113c(m, lvl, 0x269, 0x268, 0);
+    DRLGOUTJUNG_SpawnRandomPresetRange113c(m, lvl, 0x267, 0x267, 0);
+  } else if (sw === 1) {
+    DRLGOUTDOORS_SpawnPresetInGrid113c(m, lvl, 3, 3, 0x275, 0, 0);
+    DRLGOUTDOORS_SpawnPresetInGrid113c(m, lvl, edgeX, 3, 0x275, 1, 0);
+    DRLGOUTDOORS_PlaceRandomOutdoorPresetRoom113c(m, lvl, 0x276, 0, 0, 0x0f);
+    DRLGOUTDOORS_PlaceRandomOutdoorPresetRoom113c(m, lvl, 0x276, 1, 0, 0x0f);
+    DRLGOUTDOORS_PlaceRandomOutdoorPresetRoom113c(m, lvl, 0x277, 0, 0, 0x0f);
+    DRLGOUTJUNG_SpawnRandomPresetRange113c(m, lvl, 0x27b, 0x27b, 4);
+    DRLGOUTJUNG_SpawnRandomPresetRange113c(m, lvl, 0x27a, 0x279, 0);
+    DRLGOUTJUNG_SpawnRandomPresetRange113c(m, lvl, 0x278, 0x278, 0);
+  } else if (sw === 2) {
+    DRLGOUTDOORS_SpawnPresetInGrid113c(m, lvl, 3, edgeY, 0x286, 0, 0);
+    DRLGOUTDOORS_SpawnPresetInGrid113c(m, lvl, edgeX, edgeY, 0x286, 1, 0);
+    DRLGOUTDOORS_PlaceRandomOutdoorPresetRoom113c(m, lvl, 0x287, 0, 0, 0x0f);
+    DRLGOUTDOORS_PlaceRandomOutdoorPresetRoom113c(m, lvl, 0x287, 1, 0, 0x0f);
+    DRLGOUTDOORS_PlaceRandomOutdoorPresetRoom113c(m, lvl, 0x277, 0, 0, 0x0f);
+    DRLGOUTJUNG_SpawnRandomPresetRange113c(m, lvl, 0x28b, 0x28b, 4);
+    DRLGOUTJUNG_SpawnRandomPresetRange113c(m, lvl, 0x28a, 0x289, 0);
+    DRLGOUTJUNG_SpawnRandomPresetRange113c(m, lvl, 0x288, 0x288, 0);
+  } else if (sw === 3) {
+    DRLGOUTDOORS_SpawnPresetInGrid113c(m, lvl, 0, 0, 0x28c, 0, 0);
+  }
+}
+
+/**
+ * `@va D2Common:0x6FDD5DF0` (`DRLGOUTJUNG_SpawnAct2DryHillsBorders113c`, not exported;
+ * custom LTCG `esi = pLevel`, `ret`).
+ */
+export function DRLGOUTJUNG_SpawnAct2DryHillsBorders113c(
+  m: Memory113c,
+  pLevel: number,
+): void {
+  const lvl = pLevel >>> 0;
+  DRLGOUTDOORS_BuildOutdoorSubstContext113c(m, lvl, 2, 0x16c);
+  DRLGOUTDOORS_BuildOutdoorSubstContext113c(m, lvl, 1, 0x16c);
+  DRLGOUTDOORS_BuildOutdoorSubstContext113c(m, lvl, 3, 0x16c);
+}
+
+const ACT2_OUTDOOR_SWITCH_6FDD5F6C = Uint8Array.from([
+  0, 1, 2, 3, 4, 5, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+  7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+  7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 6,
+]);
+
+/**
+ * `@va D2Common:0x6FDD5E20` (`DRLGOUTJUNG_InitAct2OutdoorLevel113c`, not exported;
+ * custom LTCG `eax = pLevel`, `ret`).
+ */
+export function DRLGOUTJUNG_InitAct2OutdoorLevel113c(
+  m: Memory113c,
+  pLevel: number,
+): void {
+  const lvl = pLevel >>> 0;
+  DRLGOUTPLACE_ApplyOutdoorVerticesToGrids113c(m, lvl);
+  DRLGROOM_SpawnOutdoorBorderPresets113c(m, lvl);
+
+  const idx = ((m.u32((lvl + 0x1d0) >>> 0) | 0) - 0x29) >>> 0;
+  if (idx > 0x5d) {
+    return;
+  }
+  const caseId = ACT2_OUTDOOR_SWITCH_6FDD5F6C[idx]!;
+  if (caseId === 0) {
+    DRLGOUTJUNG_SpawnAct2LutGholeinBorderPreset113c(m, lvl);
+    DRLGOUTJUNG_SpawnAct2DryHillsBorders113c(m, lvl);
+    DRLGOUTJUNG_SpawnSpiderForestSpecialPreset113c(m, lvl);
+    DRLGOUTDOORS_SpawnRandomOutdoorThemes113c(m, lvl, 5);
+    DRLGOUTJUNG_SpawnPresetsSet7_113c(m, lvl);
+  } else if (caseId === 1) {
+    DRLGOUTJUNG_SpawnKurastCausewayPresets113c(m, lvl);
+    DRLGOUTJUNG_SpawnAct2DryHillsBorders113c(m, lvl);
+    DRLGOUTJUNG_SpawnSpiderForestSpecialPreset113c(m, lvl);
+    DRLGOUTDOORS_PlaceRandomOutdoorShrineOrSpecial113c(m, lvl);
+    DRLGOUTDOORS_SpawnRandomOutdoorThemes113c(m, lvl, 5);
+    DRLGOUTJUNG_SpawnPresetsSet6_113c(m, lvl);
+  } else if (caseId === 2) {
+    DRLGOUTJUNG_SpawnKurastCausewayPresets113c(m, lvl);
+    DRLGOUTJUNG_SpawnAct2DryHillsBorders113c(m, lvl);
+    DRLGOUTJUNG_SpawnSpiderForestSpecialPreset113c(m, lvl);
+    DRLGOUTJUNG_SpawnPresetsSet5_113c(m, lvl);
+    DRLGOUTDOORS_PlaceRandomOutdoorShrineOrSpecial113c(m, lvl);
+    DRLGOUTDOORS_SpawnRandomOutdoorThemes113c(m, lvl, 5);
+    DRLGOUTJUNG_SpawnPresetsSet4_113c(m, lvl);
+  } else if (caseId === 3) {
+    DRLGOUTJUNG_SpawnKurastCausewayPresets113c(m, lvl);
+    DRLGOUTJUNG_SpawnAct2DryHillsBorders113c(m, lvl);
+    DRLGOUTJUNG_SpawnSpiderForestSpecialPreset113c(m, lvl);
+    DRLGOUTJUNG_SpawnPresetsSet3_113c(m, lvl);
+    DRLGOUTDOORS_PlaceRandomOutdoorShrineOrSpecial113c(m, lvl);
+    DRLGOUTDOORS_SpawnRandomOutdoorThemes113c(m, lvl, 5);
+    DRLGOUTJUNG_SpawnPresetsSet2_113c(m, lvl);
+  } else if (caseId === 4) {
+    DRLGOUTJUNG_SpawnSpiderForestSpecialPreset113c(m, lvl);
+  } else if (caseId === 5) {
+    DRLGOUTJUNG_SpawnLowerKurastPresets113c(m, lvl);
+    DRLGOUTJUNG_SpawnAct2DryHillsBorders113c(m, lvl);
+    DRLGOUTDOORS_SpawnRandomOutdoorThemes113c(m, lvl, 5);
+    DRLGOUTJUNG_SpawnPresetsSet1_113c(m, lvl);
+  } else if (caseId === 6) {
+    DRLGOUTDOORS_SpawnPresetInGrid113c(m, lvl, 4, 4, 0x18a, -1, 0);
+    DRLGOUTJUNG_SpawnAct2DryHillsBorders113c(m, lvl);
+    DRLGOUTJUNG_SpawnPresetsSet1_113c(m, lvl);
+    DRLGOUTDOORS_SpawnRandomOutdoorThemes113c(m, lvl, 5);
+  }
+}
+
+/**
+ * `@va D2Common:0x6FDD61A0` (`DRLGOUTJUNG_InitAct4OutdoorLevel113c`, not exported;
+ * custom LTCG `eax = pLevel`, `ret`).
+ */
+export function DRLGOUTJUNG_InitAct4OutdoorLevel113c(
+  m: Memory113c,
+  pLevel: number,
+): void {
+  const lvl = pLevel >>> 0;
+  const levelId = m.u32((lvl + 0x1d0) >>> 0) | 0;
+  DRLGOUTPLACE_ApplyOutdoorVerticesToGrids113c(m, lvl);
+  if (levelId !== 0x6c) {
+    DRLGROOM_SpawnOutdoorBorderPresets113c(m, lvl);
+  }
+  const curId = m.u32((lvl + 0x1d0) >>> 0) | 0;
+  if (curId >= 0x68 && curId <= 0x6a) {
+    DRLGOUTJUNG_SpawnOuterSteppesTransitions113c(m, lvl);
+    DRLGOUTDOORS_BuildOutdoorSubstContext113c(m, lvl, 1, 0x31f);
+    DRLGOUTDOORS_BuildOutdoorSubstContext113c(m, lvl, 2, 0x31f);
+    DRLGOUTDOORS_BuildOutdoorSubstContext113c(m, lvl, 3, 0x31f);
+    DRLGOUTJUNG_SpawnAct4OutdoorPresets113c(m, lvl);
+  } else if (curId === 0x6c) {
+    DRLGOUTJUNG_SpawnPandemoniumFortressPresets113c(m, lvl);
   }
 }
 

@@ -77,8 +77,8 @@
     "name": "DUNGEON_AllocActiveRoom",
     "kernFile": "src/d2kern-113c/common/dungeon.ts",
     "tsSymbol": "DUNGEON_AllocActiveRoom113c",
-    "status": "ported",
-    "diffEvidence": "tests/oracle/k1/laneC-I13C-2.test.ts (4 real-DLL vectors in tests/fixtures/oracle/k1/i13c-2-vectors.ndjson via k1r11-laneC-it13-emitter.c; status ported per sync-gates.py:241 indirectUnknown caller callback)"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k1/laneD-ported29.test.ts (real-DLL vectors via k1r13-laneD-ported29-emitter.c -> k1r13-i14d-1.ndjson); tests/oracle/k1/laneC-I13C-2.test.ts (4 real-DLL vectors in tests/fixtures/oracle/k1/i13c-2-vectors.ndjson via k1r11-laneC-it13-emitter.c; status ported per sync-gates.py:241 indirectUnknown caller callback)"
   },
   {
     "module": "D2Common",

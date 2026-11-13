@@ -59,6 +59,8 @@ import {
   SEED_RollRandomNumberInline113c,
 } from './inline-helpers.ts'
 import { imul32, sar32, sdiv32 } from './int-math.ts'
+import { MONSTERS_GetCompCode113c } from './monsters.ts'
+import { fogGetLinkIndex113c } from './inventory.ts'
 import {
   STATES_CheckState113c,
   STATES_CheckStateMaskOnUnit113c,
@@ -3790,6 +3792,120 @@ export function UNITS_UpdateAnimFrame113c(m: Memory113c, pUnit: number): number 
   }
   return 1
 }
+
+/**
+ * `D2Common.dll` `0x6FD81680` (internal `__usercall(pUnit@<eax>)`).
+ */
+export function UNITS_IsMonsterShieldEquipped113c(m: Memory113c, pUnit: number): number {
+  const unit = pUnit >>> 0
+  let classId = -1
+  if (unit !== 0) {
+    const cid = m.u32((unit + 0x04) >>> 0) | 0
+    const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+    if (cid >= 0 && cid < (m.u32((sgpt + 0xa80) >>> 0) | 0)) {
+      classId = cid
+    }
+  }
+  const rel = (classId - 0xf3) >>> 0
+  if (rel <= 0x74) {
+    if (rel === 0 || rel === 0x43 || rel === 0x5a) return 1
+    if (rel === 0x74) return 0
+  }
+
+  let varIdx = 0
+  if (unit !== 0 && m.u32(unit) === 1) {
+    const pData = m.u32((unit + 0x14) >>> 0)
+    if (pData !== 0) {
+      varIdx = m.u8((pData + 0x0b) >>> 0)
+    }
+  }
+  const pCode = MONSTERS_GetCompCode113c(m, unit, 7, varIdx) >>> 0
+  if (pCode === 0) return 0
+  const nSkip = m.u32(0x6fdeefdc) >>> 0
+  for (let i = 0; i < nSkip; i++) {
+    if (m.u32((0x6fdeefe0 + i * 4) >>> 0) === pCode) return 0
+  }
+  const idx = fogGetLinkIndex113c(m, m.u32(0x6fdeff6c), pCode) | 0
+  if (idx < 0) return 0
+  const pItemsTxt = m.u32(0x6fdefb98)
+  if (pItemsTxt === 0) return 0
+  const pTxt = (pItemsTxt + imul32(idx, 0x1a8)) >>> 0
+  return m.u16((pTxt + 0x11e) >>> 0) === 2 ? 1 : 0
+}
+
+/**
+ * `D2Common.dll` `0x6FD81D20` (Ord `10212`, `__stdcall(pUnit, bApplyDexFormula)`).
+ */
+export function UNITS_GetBlockChance113c(
+  m: Memory113c,
+  pUnit: number,
+  bApplyDexFormula: number,
+): number {
+  const unit = pUnit >>> 0
+  const unitType = unit !== 0 ? (m.u32(unit) >>> 0) : 6
+  const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+  let block = 0
+
+  if (unitType === 0) {
+    const pInv = m.u32((unit + 0x60) >>> 0)
+    if (INVENTORY_GetEquippedShield113c(m, pInv, 0) === 0) {
+      return 0
+    }
+    const pStatListEx = m.u32((unit + 0x5c) >>> 0)
+    if (pStatListEx !== 0 && (m.u32((sgpt + 0xbd4) >>> 0) | 0) > 0x14) {
+      const pIsc = (m.u32((sgpt + 0xbcc) >>> 0) + 0x1950) >>> 0
+      if (pIsc !== 0) {
+        block = getTotalStatWithMinFromList113c(m, pStatListEx, 0x140000, pIsc) | 0
+      }
+    }
+    const cid = m.u32((unit + 0x04) >>> 0) | 0
+    let pCharStats = 0
+    if (cid >= 0 && cid < (m.u32((sgpt + 0xbc8) >>> 0) | 0)) {
+      pCharStats = (m.u32((sgpt + 0xbc4) >>> 0) + imul32(cid, 0xc4)) >>> 0
+    }
+    block = (block + m.u8((pCharStats + 0x49) >>> 0)) | 0
+    if ((bApplyDexFormula | 0) !== 0) {
+      const dex = STATLIST_GetUnitStat113c(m, unit, 2, 0) | 0
+      let lvl = STATLIST_GetUnitStat113c(m, unit, 0x0c, 0) | 0
+      if (lvl <= 1) lvl = 1
+      block = sdiv32(imul32((dex - 0x0f) | 0, block), (lvl * 2) | 0)
+    }
+    return block >= 0x4b ? 0x4b : block
+  }
+
+  if (unitType === 1) {
+    let hasMonBlock = false
+    if (unit !== 0) {
+      const cid = m.u32((unit + 0x04) >>> 0) | 0
+      if (cid >= 0 && cid < (m.u32((sgpt + 0xa80) >>> 0) | 0)) {
+        const pMon = (m.u32((sgpt + 0xa78) >>> 0) + imul32(cid, 0x1a8)) >>> 0
+        if (pMon !== 0) {
+          const bitMasks = m.u32(D2COMMON_GDWBITMASKS_IAT_VA_113C)
+          if ((m.u8((pMon + 0x0f) >>> 0) & m.u32((bitMasks + 0x08) >>> 0)) !== 0) {
+            hasMonBlock = true
+          }
+        }
+      }
+    }
+    if (!hasMonBlock && UNITS_IsMonsterShieldEquipped113c(m, unit) === 0) {
+      return 0
+    }
+    if (unit !== 0) {
+      const pStatListEx = m.u32((unit + 0x5c) >>> 0)
+      if (pStatListEx !== 0 && (m.u32((sgpt + 0xbd4) >>> 0) | 0) > 0x14) {
+        const pIsc = (m.u32((sgpt + 0xbcc) >>> 0) + 0x1950) >>> 0
+        if (pIsc !== 0) {
+          block = getTotalStatWithMinFromList113c(m, pStatListEx, 0x140000, pIsc) | 0
+          return block >= 0x4b ? 0x4b : block
+        }
+      }
+    }
+    return 0
+  }
+
+  return 0
+}
+
 
 
 

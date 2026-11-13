@@ -7,11 +7,19 @@
  * - `0x6FD90FC0` `DRLGOUTROOM_LinkLevelsByLevelCoords113c` (internal, `__fastcall(ecx=pLinkData)`)
  */
 import type { Memory113c } from '../mem/sparse-memory.ts'
+import { DRLGTILESUB_ApplySubThemeByIndex113c } from '../common/drlg/drlg-grid.ts'
 import {
   DRLGGRID_OpOr113c,
+  DRLGOUTROOM_CheckAct5Preset113c,
+  DRLGOUTROOM_MapAct5PresetId113c,
   DRLGOUTDOORS_SpawnPresetInGrid113c,
 } from '../common/drlg/drlg-grid.ts'
-import { DRLGOUTDOORS_PlaceRandomOutdoorPresetRoom113c } from '../common/drlg/outdoors.ts'
+import {
+  DRLGOUTDOORS_ClearOutdoorCellFlag200_113c,
+  DRLGOUTDOORS_PlaceRandomOutdoorPresetRoom113c,
+  DRLGOUTDOORS_SetOutdoorCellFlag200_113c,
+} from '../common/drlg/outdoors.ts'
+import { DRLGOUTPLACE_ApplyOutdoorVerticesToGrids113c } from '../common/drlg/drlg-room.ts'
 import { D2CommonAssertError } from '../common/inline-helpers.ts'
 import {
   D2AnimDataRecordStrc,
@@ -915,5 +923,100 @@ export function DRLGOUTANIM_PlaceLevelPresets113c(
     }
   }
 }
+
+const ANIMTBL_STACK_BASE = 0x7ff60000
+const ANIMTBL_STACK_SIZE = 0x100
+const _animTblStackBuf = new ArrayBuffer(ANIMTBL_STACK_SIZE)
+const _animTblStackU8 = new Uint8Array(_animTblStackBuf)
+const _animTblStackDV = new DataView(_animTblStackBuf)
+
+function withAnimTblStackScratch113c(m: Memory113c): Memory113c {
+  const isStack = (p: number): boolean => {
+    const u = p >>> 0
+    return u >= ANIMTBL_STACK_BASE && u < ANIMTBL_STACK_BASE + ANIMTBL_STACK_SIZE
+  }
+  return {
+    alloc: (size) => m.alloc(size),
+    u8: (p) => (isStack(p) ? _animTblStackU8[(p >>> 0) - ANIMTBL_STACK_BASE]! : m.u8(p)),
+    u16: (p) => (isStack(p) ? _animTblStackDV.getUint16((p >>> 0) - ANIMTBL_STACK_BASE, true) : m.u16(p)),
+    u32: (p) => (isStack(p) ? _animTblStackDV.getUint32((p >>> 0) - ANIMTBL_STACK_BASE, true) : m.u32(p)),
+    setU8: (p, v) => {
+      if (isStack(p)) _animTblStackU8[(p >>> 0) - ANIMTBL_STACK_BASE] = v & 0xff
+      else m.setU8(p, v)
+    },
+    setU16: (p, v) => {
+      if (isStack(p)) _animTblStackDV.setUint16((p >>> 0) - ANIMTBL_STACK_BASE, v & 0xffff, true)
+      else m.setU16(p, v)
+    },
+    setU32: (p, v) => {
+      if (isStack(p)) _animTblStackDV.setUint32((p >>> 0) - ANIMTBL_STACK_BASE, v >>> 0, true)
+      else m.setU32(p, v)
+    },
+    get: (base, f, idx = 0) => m.get(base, f, idx),
+    set: (base, f, v, idx = 0) => m.set(base, f, v, idx),
+    fill: (p, len, byte) => {
+      if (isStack(p)) _animTblStackU8.fill(byte & 0xff, (p >>> 0) - ANIMTBL_STACK_BASE, (p >>> 0) - ANIMTBL_STACK_BASE + len)
+      else m.fill(p, len, byte)
+    },
+  }
+}
+
+/**
+ * `D2Common.dll` `0x6FD91AD0` (internal `__usercall(pLevel@<eax>)`).
+ */
+export function DRLGOUTANIM_BuildAct5PresetContext113c(
+  m: Memory113c,
+  pLevel: number,
+): void {
+  const level = pLevel >>> 0
+  if ((m.u32((level + 0x1d0) >>> 0) | 0) === 0x6e) return
+  const sm = withAnimTblStackScratch113c(m)
+  const pOutdoors = sm.u32((level + 0x14) >>> 0)
+  const ctx = ANIMTBL_STACK_BASE
+  sm.fill(ctx, 0x38, 0)
+  sm.setU32(ctx, level)
+  sm.setU32((ctx + 0x04) >>> 0, (pOutdoors + 0x54) >>> 0)
+  sm.setU32((ctx + 0x08) >>> 0, (pOutdoors + 0x04) >>> 0)
+  sm.setU32((ctx + 0x0c) >>> 0, (pOutdoors + 0x2c) >>> 0)
+  sm.setU32((ctx + 0x14) >>> 0, 0xffffffff)
+  sm.setU32((ctx + 0x18) >>> 0, 0x0c)
+  sm.setU32((ctx + 0x24) >>> 0, 0x6fd90db0)
+  sm.setU32((ctx + 0x28) >>> 0, 0x6fd90c20)
+  sm.setU32((ctx + 0x2c) >>> 0, 0x6fd922f0)
+  sm.setU32((ctx + 0x30) >>> 0, 0x6fd922a0)
+  sm.setU32((ctx + 0x34) >>> 0, 0x6fd92a70)
+  DRLGTILESUB_ApplySubThemeByIndex113c(sm, ctx)
+  void DRLGOUTROOM_CheckAct5Preset113c
+  void DRLGOUTROOM_MapAct5PresetId113c
+  void DRLGOUTDOORS_ClearOutdoorCellFlag200_113c
+  void DRLGOUTDOORS_SetOutdoorCellFlag200_113c
+  void DRLGOUTDOORS_SpawnPresetInGrid113c
+}
+
+/**
+ * `D2Common.dll` `0x6FD91CA0` (internal `__usercall(pLevel@<eax>)`).
+ */
+export function DRLGOUTANIM_BuildAct5Outdoors113c(
+  m: Memory113c,
+  pLevel: number,
+): void {
+  const level = pLevel >>> 0
+  if ((m.u32((level + 0x1d0) >>> 0) | 0) === 0x6e) {
+    DRLGOUTROOM_SpawnAct5BarricadeWallStrip113c(m, level)
+    return
+  }
+  DRLGOUTPLACE_ApplyOutdoorVerticesToGrids113c(m, level)
+  DRLGOUTPLACE_ConnectOutdoorsRoomsAndPlaceWalls113c(m, level)
+  DRLGOUTROOM_TraceAndSpawnPlateauPerimeter113c(m, level)
+  DRLGOUTROOM_SpawnAct5EdgeTransitions113c(m, level)
+  DRLGOUTROOM_SpawnHellAct5SpecialCorners113c(m, level)
+  if ((m.u32((level + 0x1d0) >>> 0) | 0) === 0x6f) {
+    DRLGOUTROOM_SpawnFrigidHighlandsCorner113c(m, level)
+  }
+  DRLGOUTANIM_BuildAct5PresetContext113c(m, level)
+  DRLGOUTPLACE_SpawnAct5Barricade421Preset113c(m, level)
+  DRLGOUTANIM_PlaceLevelPresets113c(m, level)
+}
+
 
 

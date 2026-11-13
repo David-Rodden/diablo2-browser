@@ -1,9 +1,17 @@
+import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
+import { cpus } from 'node:os'
 import { resolve } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
 import * as d2kern from '../../../src/d2kern-113c/index.ts'
+import {
+  DRLG_DATATBLS_IMG_PATH,
+  DRLG_DATATBLS_RAW_SHA256,
+  isDrlgLiveRunnerReady,
+  parseDrlgDataTablesImage,
+} from '../../../tools/oracle/vectors/drlg-ts-runner.ts'
 import {
   DRLG_FROZEN_SEEDS,
   DRLG_SEED_LIST_FNV64,
@@ -27,6 +35,8 @@ const PINNED_SHA256 = {
   roomsRaw: 'dc625a2bf9a4ee24c117a11fde8891d97d926c6edbae56d282edfa0690f49ee9',
   collRaw: 'a7fc68ead57379c285df1e45c92a833d9a1213dc7357099a96f298939dfee120',
 } as const
+
+const EXPECTED_DRLG_SUMMARY = { matchCount: 20400, blockedCount: 0, divergeCount: 0 } as const
 
 const DRLG_LAYOUT_ENTRY_VAS = ['0x6FD8CB30', '0x6FD7D9B0', '0x6FD7E360'] as const
 const DRLG_COLL_ENTRY_VAS = ['0x6FD8CB30', '0x6FD7D9B0', '0x6FD7E360', '0x6FDCC270'] as const
@@ -203,6 +213,45 @@ export function verifyDrlgRatchet(
   return { matchCount, blockedCount, divergeCount }
 }
 
+interface DrlgSweepStatus {
+  records: number
+  layoutMatches: number
+  collMatches: number
+  roomRecMatches: number
+  roomRecTotal: number
+  townCollMatches: number
+  townCollTotal: number
+  layoutMismatchKeys: string[]
+  collMismatchKeys: string[]
+  roomMismatchKeys: string[]
+  townCollMismatchIdx: number[]
+}
+
+/**
+ * Runs `tools/oracle/vectors/drlg-ts-runner.ts --all <n> --json` (parallel child workers over all
+ * 300 seed/difficulty combos) and returns the parsed `DRLG_STATUS_JSON` summary.
+ */
+function runDrlgSweepSubprocess(): DrlgSweepStatus {
+  const runnerPath = resolve(REPO_ROOT, 'tools/oracle/vectors/drlg-ts-runner.ts')
+  const tsxBin = resolve(REPO_ROOT, 'node_modules/.bin/tsx')
+  const workers = Math.max(1, Math.min(cpus().length, 16))
+  const res = spawnSync(tsxBin, [runnerPath, '--all', String(workers), '--json'], {
+    cwd: REPO_ROOT,
+    encoding: 'utf8',
+    maxBuffer: 256 * 1024 * 1024,
+    timeout: 29 * 60 * 1000,
+  })
+  const line = (res.stdout || '')
+    .split('\n')
+    .find((l) => l.startsWith('DRLG_STATUS_JSON:'))
+  if (!line) {
+    throw new Error(
+      `drlg-ts-runner --all --json produced no status (exit=${res.status}): ${(res.stderr || '').slice(0, 2000)}`,
+    )
+  }
+  return JSON.parse(line.slice('DRLG_STATUS_JSON:'.length)) as DrlgSweepStatus
+}
+
 describe('[K1-5] DRLG Real-DLL D2TV Vector Suite & Closure Ratchet', () => {
   const digGzPath = resolve(FIXTURES_DIR, 'drlg-digest-113c.d2tv.gz')
   const roomsGzPath = resolve(FIXTURES_DIR, 'drlg-rooms-s12345.d2tv.gz')
@@ -371,94 +420,187 @@ describe('[K1-5] DRLG Real-DLL D2TV Vector Suite & Closure Ratchet', () => {
     expect(cursor).toBe(169)
   })
 
-  it('computes manifest callgraph closures, resolves ported kernel symbols, and enforces the shrink-only ratchet', () => {
-    const manifest = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8')) as ManifestFile
-    const byVa = new Map<string, ManifestFunctionEntry>()
-    for (const fn of manifest.functions) {
-      byVa.set(normalizeVa(fn.va), fn)
-    }
+  it('pins the PAGEIMG 1.13c sgptDataTables memory image header, SHA-256, and 222-page layout', () => {
+    const tblGz = readFileSync(DRLG_DATATBLS_IMG_PATH)
+    expect(tblGz.byteLength).toBeLessThanOrEqual(128 * 1024)
 
-    const layoutClosure = computeManifestClosure(byVa, DRLG_LAYOUT_ENTRY_VAS)
-    const collClosure = computeManifestClosure(byVa, DRLG_COLL_ENTRY_VAS)
+    const tblRaw = new Uint8Array(gunzipSync(tblGz))
+    const shaTbl = createHash('sha256').update(tblRaw).digest('hex')
+    expect(shaTbl).toBe(DRLG_DATATBLS_RAW_SHA256)
 
-    expect(layoutClosure.totalFunctions).toBe(305)
-    expect(layoutClosure.portedFunctions).toBe(212)
-    expect(layoutClosure.unportedFunctions).toBe(93)
-    expect(layoutClosure.unportedBytes).toBe(42036)
+    const parsedTbl = parseDrlgDataTablesImage(tblRaw)
+    expect(parsedTbl.header.magic).toBe(D2TV_MAGIC)
+    expect(parsedTbl.header.version).toBe(1)
+    expect(parsedTbl.header.flags).toBe(1)
+    expect(parsedTbl.header.kind).toBe('PAGEIMG')
+    expect(parsedTbl.header.recordSize).toBe(4100)
+    expect(parsedTbl.header.recordCount).toBe(222)
+    expect(parsedTbl.header.seed).toBe(12345n)
+    expect(parsedTbl.pages.size).toBe(222)
 
-    expect(collClosure.totalFunctions).toBe(306)
-    expect(collClosure.portedFunctions).toBe(212)
-    expect(collClosure.unportedFunctions).toBe(94)
-    expect(collClosure.unportedBytes).toBe(42110)
-
-    // Every ported / diff-verified function in the DRLG closure must resolve dynamically from src/d2kern-113c/index.ts
-    const kernExports = d2kern as Record<string, unknown>
-    for (const fn of collClosure.portedEntries) {
-      expect(fn.tsSymbol, `Missing tsSymbol on ported manifest entry ${fn.va}`).toBeTruthy()
-      expect(
-        typeof kernExports[fn.tsSymbol!],
-        `Ported symbol ${fn.tsSymbol} (${fn.va}) is missing from src/d2kern-113c/index.ts`,
-      ).toBe('function')
-    }
-
-    const unpLayoutRoots = layoutClosure.entryVas
-      .filter((va) => byVa.get(va)?.status === 'unported')
-      .sort()
-    const unpCollRoots = collClosure.entryVas
-      .filter((va) => byVa.get(va)?.status === 'unported')
-      .sort()
-
-    const townSet = new Set<number>(DRLG_TOWN_LEVEL_IDS)
-    const liveByKey = new Map<string, LiveItemStatus>()
-    for (const rec of parsedDig.records) {
-      const key = `${rec.seed}:${rec.diff}:${rec.levelId}`
-      const isColl = rec.seed === 12345 && rec.diff === 0 && townSet.has(rec.levelId)
-      const unpRoots = isColl ? unpCollRoots : unpLayoutRoots
-      liveByKey.set(key, {
-        status: unpRoots.length > 0 ? 'blocked' : 'match',
-        reason: isColl ? 'collision' : 'layout',
-        vas: unpRoots,
-      })
-    }
-
-    const expected = JSON.parse(readFileSync(expectedPath, 'utf8')) as ExpectedDivergenceFile
-    const summary = verifyDrlgRatchet(liveByKey, expected, {
-      layout: layoutClosure,
-      collision: collClosure,
-    })
-
-    expect(summary).toEqual({
-      matchCount: 0,
-      blockedCount: 20400,
-      divergeCount: 0,
-    })
-
-    // Mutation checks: prove the ratchet rejects (a) missing entry, (b) newly matched entry still in list, (c) altered VA list
-    const cloneMissing = structuredClone(expected)
-    delete cloneMissing.items['12345:0:1']
-    expect(() =>
-      verifyDrlgRatchet(liveByKey, cloneMissing, {
-        layout: layoutClosure,
-        collision: collClosure,
-      }),
-    ).toThrow(/Ratchet violation \(a\)/)
-
-    const liveWithMatch = new Map(liveByKey)
-    liveWithMatch.set('12345:0:1', { status: 'match', reason: 'collision', vas: [] })
-    expect(() =>
-      verifyDrlgRatchet(liveWithMatch, expected, {
-        layout: layoutClosure,
-        collision: collClosure,
-      }),
-    ).toThrow(/Ratchet violation \(b\)/)
-
-    const cloneBadVas = structuredClone(expected)
-    cloneBadVas.items['12345:0:1']!.vas = ['0x6FD8CB30']
-    expect(() =>
-      verifyDrlgRatchet(liveByKey, cloneBadVas, {
-        layout: layoutClosure,
-        collision: collClosure,
-      }),
-    ).toThrow(/Ratchet violation \(c\)/)
+    const dataSectionPage = parsedTbl.pages.get(0x6fde9000 >>> 12)
+    expect(dataSectionPage).toBeDefined()
+    expect(dataSectionPage!.byteLength).toBe(4096)
   })
+
+  it(
+    'computes manifest callgraph closures, resolves ported kernel symbols, runs the parallel live 20,400-vector sweep, and enforces the shrink-only ratchet',
+    () => {
+      const manifest = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8')) as ManifestFile
+      const byVa = new Map<string, ManifestFunctionEntry>()
+      for (const fn of manifest.functions) {
+        byVa.set(normalizeVa(fn.va), fn)
+      }
+
+      const layoutClosure = computeManifestClosure(byVa, DRLG_LAYOUT_ENTRY_VAS)
+      const collClosure = computeManifestClosure(byVa, DRLG_COLL_ENTRY_VAS)
+
+      // Iteration 14 closed the DRLG closure: every D2Common VA reachable from the entrypoints is ported.
+      expect(layoutClosure.totalFunctions).toBe(305)
+      expect(layoutClosure.portedFunctions).toBe(305)
+      expect(layoutClosure.unportedFunctions).toBe(0)
+      expect(layoutClosure.unportedBytes).toBe(0)
+
+      expect(collClosure.totalFunctions).toBe(306)
+      expect(collClosure.portedFunctions).toBe(306)
+      expect(collClosure.unportedFunctions).toBe(0)
+      expect(collClosure.unportedBytes).toBe(0)
+
+      // Every ported / diff-verified function in the DRLG closure must resolve dynamically from src/d2kern-113c/index.ts
+      const kernExports = d2kern as Record<string, unknown>
+      for (const fn of collClosure.portedEntries) {
+        expect(fn.tsSymbol, `Missing tsSymbol on ported manifest entry ${fn.va}`).toBeTruthy()
+        expect(
+          typeof kernExports[fn.tsSymbol!],
+          `Ported symbol ${fn.tsSymbol} (${fn.va}) is missing from src/d2kern-113c/index.ts`,
+        ).toBe('function')
+      }
+
+      const unpLayoutRoots = layoutClosure.entryVas
+        .filter((va) => byVa.get(va)?.status === 'unported')
+        .sort()
+      const unpCollRoots = collClosure.entryVas
+        .filter((va) => byVa.get(va)?.status === 'unported')
+        .sort()
+
+      // Live sweep: all 300 (seed, diff) combos run in parallel child workers via
+      // `drlg-ts-runner.ts --all <n> --json`; each key is compared on BOTH the layout digest
+      // (header + RoomEx list) and the full-level collision digest.
+      const runnerReady = isDrlgLiveRunnerReady()
+      const blocked = unpLayoutRoots.length > 0 || unpCollRoots.length > 0 || !runnerReady
+      const sweep = blocked ? null : runDrlgSweepSubprocess()
+      if (sweep) {
+        expect(sweep.records).toBe(20400)
+        expect(sweep.roomRecMatches).toBe(sweep.roomRecTotal)
+        expect(sweep.townCollMatches).toBe(sweep.townCollTotal)
+        expect(sweep.roomMismatchKeys).toEqual([])
+        expect(sweep.townCollMismatchIdx).toEqual([])
+      }
+      const layoutMis = new Set(sweep ? sweep.layoutMismatchKeys : [])
+      const collMis = new Set(sweep ? sweep.collMismatchKeys : [])
+
+      const liveByKey = new Map<string, LiveItemStatus>()
+      for (const rec of parsedDig.records) {
+        const key = `${rec.seed}:${rec.diff}:${rec.levelId}`
+        if (blocked) {
+          liveByKey.set(key, {
+            status: 'blocked',
+            reason: 'layout+collision',
+            vas: unpCollRoots.length > 0 ? unpCollRoots : [...DRLG_COLL_ENTRY_VAS],
+          })
+          continue
+        }
+        const matched = !layoutMis.has(key) && !collMis.has(key)
+        liveByKey.set(key, {
+          status: matched ? 'match' : 'diverge',
+          reason: layoutMis.has(key) ? 'layout' : 'collision',
+          vas: [],
+        })
+      }
+
+      if (process.env.DRLG_RATCHET_WRITE === '1') {
+        // Golden refresh: node-side regeneration of drlg-expected-divergence.json from the live run.
+        const items: Record<string, ExpectedDivergenceItem> = {}
+        for (const [k, v] of liveByKey) {
+          if (v.status !== 'match') items[k] = { status: v.status, reason: v.reason, vas: v.vas }
+        }
+        const closureOut = (c: ClosureInfo) => ({
+          entryVas: c.entryVas,
+          totalFunctions: c.totalFunctions,
+          portedFunctions: c.portedFunctions,
+          unportedFunctions: c.unportedFunctions,
+          unportedBytes: c.unportedBytes,
+          unportedVas: c.unportedVas,
+        })
+        writeFileSync(
+          expectedPath,
+          JSON.stringify({ schema: 1, closures: { layout: closureOut(layoutClosure), collision: closureOut(collClosure) }, items }, null, 2) + '\n',
+        )
+      }
+      const expected = JSON.parse(readFileSync(expectedPath, 'utf8')) as ExpectedDivergenceFile
+      const summary = verifyDrlgRatchet(liveByKey, expected, {
+        layout: layoutClosure,
+        collision: collClosure,
+      })
+
+      expect(summary).toEqual(EXPECTED_DRLG_SUMMARY)
+      expect(summary.blockedCount).toBe(0)
+
+      // Mutation checks on synthetic probes (independent of how many items remain listed): the ratchet
+      // must reject (a) an unlisted divergence, (b) a listed item that now matches, (c) an altered
+      // blocked-VA list, (d) a status change, and (e) a closure drift.
+      const probeKey = '12345:0:1'
+      const liveDiverge = new Map(liveByKey)
+      liveDiverge.set(probeKey, { status: 'diverge', reason: 'collision', vas: [] })
+      const cloneNoProbe = structuredClone(expected)
+      delete cloneNoProbe.items[probeKey]
+      expect(() =>
+        verifyDrlgRatchet(liveDiverge, cloneNoProbe, {
+          layout: layoutClosure,
+          collision: collClosure,
+        }),
+      ).toThrow(/Ratchet violation \(a\)/)
+
+      const liveMatch = new Map(liveByKey)
+      liveMatch.set(probeKey, { status: 'match', reason: 'collision', vas: [] })
+      const cloneStale = structuredClone(expected)
+      cloneStale.items[probeKey] = { status: 'diverge', reason: 'collision' }
+      expect(() =>
+        verifyDrlgRatchet(liveMatch, cloneStale, {
+          layout: layoutClosure,
+          collision: collClosure,
+        }),
+      ).toThrow(/Ratchet violation \(b\)/)
+
+      const liveBlocked = new Map(liveByKey)
+      liveBlocked.set(probeKey, { status: 'blocked', reason: 'collision', vas: [...DRLG_COLL_ENTRY_VAS] })
+      const cloneBadVas = structuredClone(expected)
+      cloneBadVas.items[probeKey] = { status: 'blocked', reason: 'collision', vas: ['0x6FD8CB30'] }
+      expect(() =>
+        verifyDrlgRatchet(liveBlocked, cloneBadVas, {
+          layout: layoutClosure,
+          collision: collClosure,
+        }),
+      ).toThrow(/Ratchet violation \(c\)/)
+
+      const cloneBadStatus = structuredClone(expected)
+      cloneBadStatus.items[probeKey] = { status: 'blocked', reason: 'collision', vas: ['0x6FD8CB30'] }
+      expect(() =>
+        verifyDrlgRatchet(liveDiverge, cloneBadStatus, {
+          layout: layoutClosure,
+          collision: collClosure,
+        }),
+      ).toThrow(/Ratchet violation: item '.*' expected status 'blocked', got 'diverge'/)
+
+      const cloneBadClosure = structuredClone(expected)
+      cloneBadClosure.closures['layout']!.unportedVas = ['0x6FD8CB30']
+      expect(() =>
+        verifyDrlgRatchet(liveByKey, cloneBadClosure, {
+          layout: layoutClosure,
+          collision: collClosure,
+        }),
+      ).toThrow(/unportedVas mismatch/)
+    },
+    30 * 60 * 1000,
+  )
 })

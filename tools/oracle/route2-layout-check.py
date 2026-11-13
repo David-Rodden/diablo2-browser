@@ -602,13 +602,13 @@ FIELD_PE_PROBES['D2UnitFindDataStrc'] = {
     'pMemPool': ['D2Common.dll', 0x6FD62010, 1, 0, '8b0e'],                   # mov ecx, [esi]
     'pUnitsArray': ['D2Common.dll', 0x6FD62009, 2, 1, '8b56'],                # mov edx, [esi+0x4]
     'pRoom': ['D2Common.dll', 0x6FD620B9, 2, 1, '8946'],                      # mov [esi+0x8], eax
-    'nX': ['D2Common.dll', 0x6FD620DC, 2, 1, '894e'],                         # mov [esi+0xc], ecx
-    'nY': ['D2Common.dll', 0x6FD620DF, 2, 1, '8956'],                         # mov [esi+0x10], edx
+    'pfnCallback': ['D2Common.dll', 0x6FD620DC, 2, 1, '894e'],                # mov [esi+0xc], ecx
+    'pFilterUnit': ['D2Common.dll', 0x6FD620DF, 2, 1, '8956'],                # mov [esi+0x10], edx
     'dwFlags': ['D2Common.dll', 0x6FD620B2, 2, 1, '8946'],                    # mov [esi+0x14], eax
     'nIndex': ['D2Common.dll', 0x6FD620AF, 2, 1, '8946'],                     # mov [esi+0x18], eax
     'nMaxCount': ['D2Common.dll', 0x6FD62119, 2, 1, '8b7e'],                  # mov edi, [esi+0x1c]
-    'pFilterUnit': ['D2Common.dll', 0x6FD620C0, 2, 1, '894e'],                # mov [esi+0x20], ecx
-    'pfnCallback': ['D2Common.dll', 0x6FD620C7, 2, 1, '8956'],                # mov [esi+0x24], edx
+    'nX': ['D2Common.dll', 0x6FD620C0, 2, 1, '894e'],                         # mov [esi+0x20], ecx
+    'nY': ['D2Common.dll', 0x6FD620C7, 2, 1, '8956'],                         # mov [esi+0x24], edx
     'dwSize': ['D2Common.dll', 0x6FD620D9, 2, 1, '8946'],                     # mov [esi+0x28], eax
 }
 FIELD_PE_PROBES['D2TextHeaderStrc'] = {
@@ -657,6 +657,9 @@ FIELD_PE_PROBES['D2DrlgTileGridStrc'].update({
 })
 FIELD_PE_PROBES['D2DrlgStrc'].update({
     'nDifficulty': ['D2Common.dll', 0x6FD5E411, 3, 4, '0fb691'],               # movzx edx, byte [ecx+0x450]
+    'pfnAutomapInit': ['D2Common.dll', 0x6FD5CD84, 2, 4, '8b90'],             # mov edx, [eax+0x454]
+    'nAct': ['D2Common.dll', 0x6FD60CAE, 2, 4, '80b9'],                       # cmp byte [ecx+0x480], 4
+    'pfnErrorCallback': ['D2Common.dll', 0x6FD5CE4F, 2, 4, '8baa'],           # mov ebp, [edx+0x488]
 })
 FIELD_PE_PROBES['D2CubemainTxt'] = {}
 
@@ -979,6 +982,44 @@ FIELD_PE_PROBES['D2DrlgTileGridStrc'].update({
     'nFloorCount': ['D2Common.dll', 0x6FDB9177, 2, 1, '8b51'],                   # mov edx, [ecx+0xc]
     'pFloors': ['D2Common.dll', 0x6FDB917D, 2, 1, '8b51'],                       # mov edx, [ecx+0x1c]
 })
+FIELD_PE_PROBES['D2DrlgOutdoorInfoStrc'].update({
+    'dwOutdoorFlags': ['D2Common.dll', 0x6FD8E027, 2, 1, '8d47'],                # lea eax, [edi+0x68]
+    'aOutdoorRooms': ['D2Common.dll', 0x6FD8D5E5, 3, 4, '8d8c8f'],               # lea ecx, [edi+ecx*4+0x80]
+    'nOutdoorRooms': ['D2Common.dll', 0x6FD8D5D9, 2, 4, '8b8f'],                 # mov ecx, [edi+0x260]
+    'pOutdoorLevelLinks': ['D2Common.dll', 0x6FD8D5AB, 2, 4, '8bb7'],            # mov esi, [edi+0x264]
+})
+
+# Iteration 14 (k1r13 Lane C) additions.
+STRUCT_SIZE_PE_PROBES.update({
+    'D2RunesTxt': ('D2Common.dll', 0x6FD76D12, '81c5', 2, 4, 1),                 # add ebp, 0x120
+})
+FIELD_PE_PROBES['D2RunesTxt'] = {
+    'props': ['D2Common.dll', 0x6FD967E8, 2, 4, '8db8'],                         # lea edi, [eax+0xb0]
+}
+FIELD_PE_PROBES['D2DrlgStrc'].update({
+    'bRoomStatusFlag': ['D2Common.dll', 0x6FDCC3AA, 2, 4, '888f'],               # mov [edi+0x45c], cl
+})
+FIELD_PE_PROBES['D2MonStats2Txt'].update({
+    'nComponentCounts': ['D2Common.dll', 0x6FDD4CA5, 4, 1, '0fb64c30'],          # movzx ecx, byte [eax+esi+0x15]
+    'nComponentVariants': ['D2Common.dll', 0x6FDD4CC1, 4, 1, '0fb64c18'],        # movzx ecx, byte [eax+ebx+0x26]
+})
+FIELD_PE_PROBES['D2CharStatsTxt'].update({
+    'wStartSkill': ['D2Common.dll', 0x6FDA2A48, 2, 4, '81c6'],                   # add esi, 0xae
+})
+FIELD_PE_PROBES['D2SetItemsTxt'].update({
+    'wSetId': ['D2Common.dll', 0x6FD95FDC, 3, 1, '0fbf40'],                      # movsx eax, word [eax+0x2c]
+    'nAddFunc': ['D2Common.dll', 0x6FD961F7, 2, 4, '8a89'],                      # mov cl, [ecx+0x87]
+    'baseProps': ['D2Common.dll', 0x6FD96182, 2, 4, '81c7'],                     # add edi, 0x88
+    'addProps': ['D2Common.dll', 0x6FD961E7, 2, 4, '81c7'],                      # add edi, 0x118
+})
+FIELD_PE_PROBES['D2UniqueItemsTxt'].update({
+    'props': ['D2Common.dll', 0x6FD9612B, 2, 4, '8db8'],                         # lea edi, [eax+0x8c]
+})
+FIELD_PE_PROBES['D2SetsTxt'] = {
+    'nItems': ['D2Common.dll', 0x6FD96063, 2, 1, '3b4f'],                        # cmp ecx, [edi+0xc]
+    'pCode': ['D2Common.dll', 0x6FD9602E, 2, 1, '83c7'],                         # add edi, 0x10
+    'fCode': ['D2Common.dll', 0x6FD9606B, 2, 4, '81c7'],                         # add edi, 0x90
+}
 
 
 def field(struct_name, name):

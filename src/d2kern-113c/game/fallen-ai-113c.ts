@@ -1,7 +1,7 @@
 /**
  * Diablo II v1.13c Pure Kernel Vertical Slice:
  * - `D2ActiveRoomStrc` death ring (`D2Common.#10873` `0x6FD8AFD0`)
- * - `D2DynamicPathStrc` (`0x200` bytes) memory-backed bridge to `D2Common.dll` path ordinals (`src/common/path/`)
+ * - `D2DynamicPathStrc` (`0x200` bytes) memory-native `D2Common.dll` path ordinals (`../common/path.ts`)
  * - `MONSTER_SavePrevMode` (`0x6FC95260`), `MONSTER_StartMove` (`0x6FC94F90`), `MONSTER_UpdateVelocityAndRate` (`0x6FC94CE0`)
  * - `MONSTER_StartMode` (`0x6FC95E10`), `MONSTER_StepPath` (`0x6FD01930`), `MONSTER_StepWalk` (`0x6FC97010`), `MONSTER_StepRun` (`0x6FC96FE0`)
  * - `MONSTER_EndToAiOrNeutral` (`0x6FC96BF0`), `MONSTER_StartDeath` (`0x6FC96270`), `MONSTER_EndDeath` (`0x6FC96040`)
@@ -51,11 +51,27 @@ import {
   UNIT_ITEM,
   UNIT_MONSTER,
   UNIT_PLAYER,
+  UNITROOM_ClearUpdateQueue113c,
   UNITROOM_RefreshUnit113c,
+  UNITS_GetDistanceToOtherUnit113c,
   UNITS_GetRoom113c,
   UNITS_GetSeed113c,
   UNITS_SetSeed113c,
 } from '../common/unit.ts'
+import {
+  PATH_Compute113c,
+  PATH_ComputeDirection113c,
+  PATH_ForceDirection113c,
+  PATH_MarkUnitDeadCollision113c,
+  PATH_SetDistance113c,
+  PATH_SetNewDistance113c,
+  PATH_SetStepNum113c,
+  PATH_SetTargetPos113c,
+  PATH_SetTargetUnit113c,
+  PATH_SetType113c,
+  PATH_SetVelocity113c,
+  PATH_Step113c,
+} from '../common/path.ts'
 import {
   EVENT_AllocChunk113c,
   EVENT_DeleteEventByArg14_113c,
@@ -77,59 +93,29 @@ import {
   SUNIT_IsDeadOrDying113c,
 } from './monster-events.ts'
 import {
-  COLLIDE_MASK_INVALID,
-  D2COMMON_10170_PathSetTargetPos,
-  D2Common_10142,
-  D2Common_10226,
-  D2Common_10399,
-  DynamicPath,
-  PATHTYPE_TOWARD_FINISH,
-  PATHTYPE_WALL_FOLLOW,
-  PATH_ComputeDirection,
-  PATH_SetDirection,
-  PATH_SetDistance,
-  PATH_SetNewDistance,
-  PATH_SetStepNum,
-  PATH_SetTargetUnit,
-  PATH_SetType,
-  PATH_SetUnitDeadCollision,
-  PATH_SetVelocity,
-  getMonsterModeBaseFrameCount113c,
-  getMonsterPathRecord,
-  toFP16Center,
-  type PathCollisionGrid,
-  type PathRoom,
-  type PathUnit,
-} from '../../common/path/index.ts'
-import {
-  MONLVL_113C_ROWS,
-  MONSTATS_113C_ROWS,
-  type MonStats113cRow,
-} from '../../common/units/monstats-113c-data.ts'
-import {
-  CANONICAL_CHARSTATS,
-  CHARACTER_CLASS_CODES,
-  type CharacterClassStats,
-} from '../../common/units/classes.ts'
-import {
-  computeFrwDiminishing113c,
-  computeRawPlayerAnimSpeed113c,
-  getCharAnimClip113c,
-  playerAnimStartFrame113c,
-  type CharAnimClip113c,
-} from '../../common/units/char-anim-speed.ts'
-import { calculateKillExperienceGain113c } from '../../common/progression/experience-113c.ts'
-import { D2Rng } from '../../common/rng/d2-rng.ts'
-import {
-  RAW_ARMOR,
-  RAW_ITEM_TYPES,
-  RAW_MISC,
-  RAW_TC_EX,
-  RAW_WEAPONS,
-} from '../../common/data/canonical-drop-data.ts'
-import { parseTable } from '../../common/world/acts.ts'
-import { parseTreasureClassTable, type TreasureClassTable } from '../../common/items/treasure-class.ts'
-import { rollTreasureClass } from '../../common/items/treasure-engine.ts'
+  bindRoomCollisionGrid113c,
+  calculateKillExperienceGainPure113c,
+  computeFrwDiminishingPure113c,
+  computeRawPlayerAnimSpeedPure113c,
+  ensureD2CommonPathGlobals113c,
+  getCharAnimClipPure113c,
+  getCharStatsPure113c,
+  getItemTypeClosurePure113c,
+  getItemsTxtRecordPure113c,
+  getMonLvlXpRow113c,
+  getMonStatsRowByClassId113c,
+  getMonsterModeBaseFrameCountPure113c,
+  playerAnimStartFramePure113c,
+  rollTreasureClassSeedOnly113c,
+  type CharStatsPure113c,
+  type MonStatsRow113c,
+  type PureCharAnimClip113c,
+  type PureItemTypeClosure113c,
+} from './tables-bootstrap-113c.ts'
+
+const COLLIDE_MASK_INVALID_113C = 0xffff
+const PATHTYPE_TOWARD_FINISH_113C = 13
+const PATHTYPE_WALL_FOLLOW_113C = 15
 
 export const VA_AI_FALLEN_113C = 0x6fca3130
 export const VA_AI_ZOMBIE_113C = 0x6fca38b0
@@ -249,74 +235,8 @@ export interface D2ItemsTxtRecord113c {
   readonly dwSpeed: number
 }
 
-interface ItemTypeClosure113c {
-  readonly codeToIndex: ReadonlyMap<string, number>
-  readonly ancestorsByIndex: ReadonlyArray<ReadonlySet<number>>
-  readonly throwsByIndex: readonly number[]
-}
-
-let cachedItemTypeClosure113c: ItemTypeClosure113c | null = null
-let cachedItemsTxtTable113c: readonly D2ItemsTxtRecord113c[] | null = null
-
-function getItemTypeClosure113c(): ItemTypeClosure113c {
-  if (cachedItemTypeClosure113c !== null) return cachedItemTypeClosure113c
-  const tbl = parseTable(new TextEncoder().encode(RAW_ITEM_TYPES))
-  const cName = tbl.header.indexOf('ItemType')
-  const cCode = tbl.header.indexOf('Code')
-  const cEq1 = tbl.header.indexOf('Equiv1')
-  const cEq2 = tbl.header.indexOf('Equiv2')
-  const cThrows = tbl.header.indexOf('Throwable')
-
-  const rawRows: Array<{ readonly code: string; readonly eq1: string; readonly eq2: string }> = []
-  const throwsByIndex: number[] = []
-  const codeToIndex = new Map<string, number>()
-  for (const r of tbl.rows) {
-    if (r[cName] === 'Expansion') continue
-    const idx = rawRows.length
-    const code = (r[cCode] !== undefined ? r[cCode]! : '').trim()
-    const eq1 = (r[cEq1] !== undefined ? r[cEq1]! : '').trim()
-    const eq2 = (r[cEq2] !== undefined ? r[cEq2]! : '').trim()
-    rawRows.push({ code, eq1, eq2 })
-    throwsByIndex.push((Number(r[cThrows]) | 0) & 0xff)
-    if (code.length > 0 && !codeToIndex.has(code)) {
-      codeToIndex.set(code, idx)
-    }
-  }
-
-  const ancestorsByIndex: ReadonlySet<number>[] = []
-  for (let i = 0; i < rawRows.length; i++) {
-    const set = new Set<number>()
-    const stack = [i]
-    while (stack.length > 0) {
-      const cur = stack.pop()!
-      if (set.has(cur)) continue
-      set.add(cur)
-      const row = rawRows[cur]!
-      if (row.eq1.length > 0) {
-        const p1 = codeToIndex.get(row.eq1)
-        if (p1 !== undefined && !set.has(p1)) stack.push(p1)
-      }
-      if (row.eq2.length > 0) {
-        const p2 = codeToIndex.get(row.eq2)
-        if (p2 !== undefined && !set.has(p2)) stack.push(p2)
-      }
-    }
-    ancestorsByIndex.push(set)
-  }
-
-  cachedItemTypeClosure113c = { codeToIndex, ancestorsByIndex, throwsByIndex }
-  return cachedItemTypeClosure113c
-}
-
-function resolveItemTypeIndex113c(
-  codeToIndex: ReadonlyMap<string, number>,
-  typeCode: string | undefined,
-): number {
-  if (typeCode === undefined) return 0
-  const trimmed = typeCode.trim()
-  if (trimmed.length === 0) return 0
-  const idx = codeToIndex.get(trimmed)
-  return idx !== undefined ? idx : 0
+function getItemTypeClosure113c(): PureItemTypeClosure113c {
+  return getItemTypeClosurePure113c()
 }
 
 /**
@@ -325,89 +245,7 @@ function resolveItemTypeIndex113c(
  * `306..507` from `Armor.txt`, `508..658` from `Misc.txt`).
  */
 export function DATATBLS_GetItemsTxtRecord113c(classId: number): D2ItemsTxtRecord113c | null {
-  if (cachedItemsTxtTable113c === null) {
-    const { codeToIndex } = getItemTypeClosure113c()
-    const out: D2ItemsTxtRecord113c[] = []
-    const enc = new TextEncoder()
-    const weapTbl = parseTable(enc.encode(RAW_WEAPONS))
-    const wName = weapTbl.header.indexOf('name')
-    const wCode = weapTbl.header.indexOf('code')
-    const wType1 = weapTbl.header.indexOf('type')
-    const wType2 = weapTbl.header.indexOf('type2')
-    const wClass = weapTbl.header.indexOf('wclass')
-    const wStrB = weapTbl.header.indexOf('StrBonus')
-    const wDexB = weapTbl.header.indexOf('DexBonus')
-    const wNoDur = weapTbl.header.indexOf('nodurability')
-    const wSpeed = weapTbl.header.indexOf('speed')
-    for (const r of weapTbl.rows) {
-      if (r[wName] === 'Expansion') continue
-      const idx = out.length
-      out.push({
-        classId: idx,
-        isWeapon: true,
-        code: r[wCode] !== undefined ? r[wCode]! : '',
-        wclass: r[wClass] !== undefined ? r[wClass]! : '',
-        wType1: resolveItemTypeIndex113c(codeToIndex, r[wType1]),
-        wType2: resolveItemTypeIndex113c(codeToIndex, r[wType2]),
-        strBonus: Number(r[wStrB]) | 0,
-        dexBonus: Number(r[wDexB]) | 0,
-        bNoDurability: Number(r[wNoDur]) | 0,
-        dwSpeed: Number(r[wSpeed]) | 0,
-      })
-    }
-    const armorTbl = parseTable(enc.encode(RAW_ARMOR))
-    const aName = armorTbl.header.indexOf('name')
-    const aCode = armorTbl.header.indexOf('code')
-    const aType1 = armorTbl.header.indexOf('type')
-    const aType2 = armorTbl.header.indexOf('type2')
-    const aStrB = armorTbl.header.indexOf('StrBonus')
-    const aDexB = armorTbl.header.indexOf('DexBonus')
-    const aNoDur = armorTbl.header.indexOf('nodurability')
-    const aSpeed = armorTbl.header.indexOf('speed')
-    for (const r of armorTbl.rows) {
-      if (r[aName] === 'Expansion') continue
-      const idx = out.length
-      out.push({
-        classId: idx,
-        isWeapon: false,
-        code: r[aCode] !== undefined ? r[aCode]! : '',
-        wclass: '',
-        wType1: resolveItemTypeIndex113c(codeToIndex, r[aType1]),
-        wType2: resolveItemTypeIndex113c(codeToIndex, r[aType2]),
-        strBonus: Number(r[aStrB]) | 0,
-        dexBonus: Number(r[aDexB]) | 0,
-        bNoDurability: Number(r[aNoDur]) | 0,
-        dwSpeed: Number(r[aSpeed]) | 0,
-      })
-    }
-    const miscTbl = parseTable(enc.encode(RAW_MISC))
-    const mName = miscTbl.header.indexOf('name')
-    const mCode = miscTbl.header.indexOf('code')
-    const mType1 = miscTbl.header.indexOf('type')
-    const mType2 = miscTbl.header.indexOf('type2')
-    const mNoDur = miscTbl.header.indexOf('nodurability')
-    const mSpeed = miscTbl.header.indexOf('speed')
-    for (const r of miscTbl.rows) {
-      if (r[mName] === 'Expansion') continue
-      const idx = out.length
-      out.push({
-        classId: idx,
-        isWeapon: false,
-        code: r[mCode] !== undefined ? r[mCode]! : '',
-        wclass: '',
-        wType1: resolveItemTypeIndex113c(codeToIndex, r[mType1]),
-        wType2: resolveItemTypeIndex113c(codeToIndex, r[mType2]),
-        strBonus: 0,
-        dexBonus: 0,
-        bNoDurability: Number(r[mNoDur]) | 0,
-        dwSpeed: Number(r[mSpeed]) | 0,
-      })
-    }
-    cachedItemsTxtTable113c = out
-  }
-  const idx = classId | 0
-  if (idx < 0 || idx >= cachedItemsTxtTable113c.length) return null
-  return cachedItemsTxtTable113c[idx]!
+  return getItemsTxtRecordPure113c(classId)
 }
 
 /**
@@ -885,23 +723,8 @@ export function DUNGEON_CheckRoomIsTown113c(m: Memory113c, pRoom: number): numbe
     : 0
 }
 
-let cachedCanonicalTcTable113c: TreasureClassTable | null = null
-
-function getCanonicalTcTable113c(): TreasureClassTable {
-  if (cachedCanonicalTcTable113c === null) {
-    cachedCanonicalTcTable113c = parseTreasureClassTable(
-      parseTable(new TextEncoder().encode(RAW_TC_EX)),
-    )
-  }
-  return cachedCanonicalTcTable113c
-}
-
-function getCharStatsByClassId113c(classId: number): CharacterClassStats {
-  const code = CHARACTER_CLASS_CODES[classId >>> 0]
-  if (code === undefined) {
-    throw new RangeError(`Invalid 1.13c player classId=${classId}`)
-  }
-  return CANONICAL_CHARSTATS[code]
+function getCharStatsByClassId113c(classId: number): CharStatsPure113c {
+  return getCharStatsPure113c(classId)
 }
 
 /** `[phase, evType, unitType, unitId, animMode]` record emitted in `a1c-ord-f785.ndjson.gz`. */
@@ -930,14 +753,34 @@ export interface MemdumpSnapshot113c {
   readonly mem: readonly MemdumpUnitEntry113c[]
 }
 
-interface MutablePathRoom113c extends PathRoom {
-  readonly ptr: number
-  adjacentRooms: PathRoom[]
+export interface SlicePathCollisionGrid113c {
+  get(x: number, y: number): number
+  set(x: number, y: number, value: number): void
 }
 
-interface MutablePathUnit113c extends PathUnit {
+export interface MutablePathRoom113c {
+  readonly ptr: number
+  readonly subX: number
+  readonly subY: number
+  readonly subW: number
+  readonly subH: number
+  readonly isTown: boolean
+  adjacentRooms: readonly unknown[]
+  readonly grid: SlicePathCollisionGrid113c
+}
+
+export interface MutablePathUnit113c {
   readonly pUnit: number
   readonly pPath: number
+  readonly dwUnitType: number
+  readonly dwClassId: number
+  readonly dwUnitId: number
+  dwAnimMode: number
+  dwFlags: number
+  dwFlagEx: number
+  readonly pDynamicPath?: unknown
+  readonly pStaticPath?: unknown
+  readonly objectTxt?: unknown
 }
 
 export interface FallenSliceWorld113c {
@@ -1030,87 +873,32 @@ export function ROOM_RecordMonsterDeath113c(m: Memory113c, pRoom: number, unitId
   m.set(pRoom, D2ActiveRoomStrc.bDeathRingIdx, (idx + 1) & 3)
 }
 
+function ensureSliceWorldPathMemory113c(world: FallenSliceWorld113c): void {
+  const { m } = world
+  ensureD2CommonPathGlobals113c(m)
+  for (const [rPtr, roomObj] of world.roomByPtr) {
+    if (m.u32((rPtr + 0x20) >>> 0) === 0) {
+      bindRoomCollisionGrid113c(
+        m,
+        rPtr,
+        roomObj.subX,
+        roomObj.subY,
+        roomObj.subW,
+        roomObj.subH,
+        (x, y) => roomObj.grid.get(x, y),
+      )
+    }
+  }
+}
+
 export function syncDynamicPathFromMem113c(
   world: FallenSliceWorld113c,
   pu: MutablePathUnit113c,
 ): void {
   const { m } = world
-  const p = pu.pPath
-  const dp = pu.pDynamicPath
-  if (p === 0 || !dp) return
-
   pu.dwAnimMode = m.get(pu.pUnit, D2UnitStrc.dwAnimMode)
   pu.dwFlags = m.get(pu.pUnit, D2UnitStrc.dwFlags)
   pu.dwFlagEx = m.get(pu.pUnit, D2UnitStrc.dwFlags2)
-
-  dp.dwPrecisionX = m.u32(p + 0x00)
-  dp.dwPrecisionY = m.u32(p + 0x04)
-  dp.dwClientCoordX = m.u32(p + 0x08) | 0
-  dp.dwClientCoordY = m.u32(p + 0x0c) | 0
-  dp.tTargetCoord.X = m.get(p, D2DynamicPathStrc.wTargetX)
-  dp.tTargetCoord.Y = m.get(p, D2DynamicPathStrc.wTargetY)
-  dp.tPrevTargetCoord.X = m.get(p, D2DynamicPathStrc.wPrevTargetX)
-  dp.tPrevTargetCoord.Y = m.get(p, D2DynamicPathStrc.wPrevTargetY)
-  dp.tFinalTargetCoord.X = m.get(p, D2DynamicPathStrc.wFinalTargetX)
-  dp.tFinalTargetCoord.Y = m.get(p, D2DynamicPathStrc.wFinalTargetY)
-
-  const rPtr = m.get(p, D2DynamicPathStrc.pRoom)
-  const prevRPtr = m.get(p, D2DynamicPathStrc.pPreviousRoom)
-  const resolvedRoom = rPtr !== 0 ? world.roomByPtr.get(rPtr) : undefined
-  const resolvedPrevRoom = prevRPtr !== 0 ? world.roomByPtr.get(prevRPtr) : undefined
-  dp.pRoom = resolvedRoom !== undefined ? resolvedRoom : null
-  dp.pPreviousRoom = resolvedPrevRoom !== undefined ? resolvedPrevRoom : null
-
-  dp.dwCurrentPointIdx = m.u32(p + 0x24) | 0
-  dp.dwPathPoints = m.u32(p + 0x28) | 0
-  dp.dwFlags = m.get(p, D2DynamicPathStrc.dwFlags)
-  dp.unk0x38 = m.u32(p + 0x38)
-  dp.dwPathType = m.get(p, D2DynamicPathStrc.dwPathType)
-  dp.dwPrevPathType = m.get(p, D2DynamicPathStrc.dwPrevPathType)
-  dp.dwUnitSize = m.get(p, D2DynamicPathStrc.dwUnitSize)
-  dp.dwCollisionPattern = m.get(p, D2DynamicPathStrc.dwCollisionPattern)
-  dp.nFootprintCollisionMask = m.get(p, D2DynamicPathStrc.nFootprintCollisionMask)
-  dp.nMoveTestCollisionMask = m.get(p, D2DynamicPathStrc.nMoveTestCollisionMask)
-  dp.nCollidedWithMask = m.get(p, D2DynamicPathStrc.wCollidedWithMask)
-
-  const tgtPtr = m.get(p, D2DynamicPathStrc.pTargetUnit)
-  const resolvedTgt = tgtPtr !== 0 ? world.pathUnitByPtr.get(tgtPtr) : undefined
-  dp.pTargetUnit = resolvedTgt !== undefined ? resolvedTgt : null
-  dp.dwTargetType = m.get(p, D2DynamicPathStrc.dwTargetType)
-  dp.dwTargetId = m.get(p, D2DynamicPathStrc.dwTargetId)
-
-  dp.nDirection = m.get(p, D2DynamicPathStrc.nDirection)
-  dp.nNewDirection = m.get(p, D2DynamicPathStrc.nNewDirection)
-  dp.nDiffDirection = m.get(p, D2DynamicPathStrc.nDiffDirection)
-  dp.unk0x67 = m.u8(p + 0x67)
-  dp.dwSpeed = m.u8(p + 0x68)
-  dp.tDirectionVector.nX = m.u32(p + 0x6a) | 0
-  dp.tDirectionVector.nY = m.u32(p + 0x6e) | 0
-  dp.tVelocityVector.nX = m.u32(p + 0x72) | 0
-  dp.tVelocityVector.nY = m.u32(p + 0x76) | 0
-  dp.dwVelocity = m.u32(p + 0x7c) | 0
-  dp.nPreviousVelocity = m.get(p, D2DynamicPathStrc.nPreviousVelocity)
-  dp.dwMaxVelocity = m.u32(p + 0x84) | 0
-  dp.dwAcceleration = m.u32(p + 0x88) | 0
-  dp.dwAccelerationsCounter = m.u32(p + 0x8c) | 0
-  dp.nDist = m.get(p, D2DynamicPathStrc.nDist)
-  dp.nDistMax = m.get(p, D2DynamicPathStrc.nDistMax)
-  dp.nIDAStarInitFScore = m.get(p, D2DynamicPathStrc.nIDAStarInitFScore)
-  dp.nStepNum = m.get(p, D2DynamicPathStrc.nStepNum)
-  dp.nDistance = m.get(p, D2DynamicPathStrc.nDistance)
-  dp.nDirOffset = m.u32(p + 0x98) | 0
-
-  for (let i = 0; i < 78; i++) {
-    const pt = dp.PathPoints[i]!
-    pt.X = m.get(p, D2DynamicPathStrc.wPathPoints, i * 2)
-    pt.Y = m.get(p, D2DynamicPathStrc.wPathPoints, i * 2 + 1)
-  }
-  dp.nSavedStepsCount = m.u32(p + 0x1d4) | 0
-  for (let i = 0; i < 10; i++) {
-    const sv = dp.SavedSteps[i]!
-    sv.X = m.get(p, D2DynamicPathStrc.wSavedSteps, i * 2)
-    sv.Y = m.get(p, D2DynamicPathStrc.wSavedSteps, i * 2 + 1)
-  }
 }
 
 export function syncDynamicPathToMem113c(
@@ -1118,78 +906,8 @@ export function syncDynamicPathToMem113c(
   pu: MutablePathUnit113c,
 ): void {
   const { m } = world
-  const p = pu.pPath
-  const dp = pu.pDynamicPath
-  if (p === 0 || !dp) return
-
   m.set(pu.pUnit, D2UnitStrc.dwFlags, pu.dwFlags >>> 0)
   m.set(pu.pUnit, D2UnitStrc.dwFlags2, pu.dwFlagEx >>> 0)
-
-  m.setU32(p + 0x00, dp.dwPrecisionX >>> 0)
-  m.setU32(p + 0x04, dp.dwPrecisionY >>> 0)
-  m.setU32(p + 0x08, dp.dwClientCoordX >>> 0)
-  m.setU32(p + 0x0c, dp.dwClientCoordY >>> 0)
-  m.set(p, D2DynamicPathStrc.wTargetX, dp.tTargetCoord.X & 0xffff)
-  m.set(p, D2DynamicPathStrc.wTargetY, dp.tTargetCoord.Y & 0xffff)
-  m.set(p, D2DynamicPathStrc.wPrevTargetX, dp.tPrevTargetCoord.X & 0xffff)
-  m.set(p, D2DynamicPathStrc.wPrevTargetY, dp.tPrevTargetCoord.Y & 0xffff)
-  m.set(p, D2DynamicPathStrc.wFinalTargetX, dp.tFinalTargetCoord.X & 0xffff)
-  m.set(p, D2DynamicPathStrc.wFinalTargetY, dp.tFinalTargetCoord.Y & 0xffff)
-
-  const rPtr = dp.pRoom ? (dp.pRoom as MutablePathRoom113c).ptr : 0
-  const prevRPtr = dp.pPreviousRoom ? (dp.pPreviousRoom as MutablePathRoom113c).ptr : 0
-  m.set(p, D2DynamicPathStrc.pRoom, rPtr)
-  m.set(p, D2DynamicPathStrc.pPreviousRoom, prevRPtr)
-
-  m.setU32(p + 0x24, dp.dwCurrentPointIdx >>> 0)
-  m.setU32(p + 0x28, dp.dwPathPoints >>> 0)
-  m.set(p, D2DynamicPathStrc.dwFlags, dp.dwFlags >>> 0)
-  m.setU32(p + 0x38, dp.unk0x38 >>> 0)
-  m.set(p, D2DynamicPathStrc.dwPathType, dp.dwPathType >>> 0)
-  m.set(p, D2DynamicPathStrc.dwPrevPathType, dp.dwPrevPathType >>> 0)
-  m.set(p, D2DynamicPathStrc.dwUnitSize, dp.dwUnitSize >>> 0)
-  m.set(p, D2DynamicPathStrc.dwCollisionPattern, dp.dwCollisionPattern >>> 0)
-  m.set(p, D2DynamicPathStrc.nFootprintCollisionMask, dp.nFootprintCollisionMask >>> 0)
-  m.set(p, D2DynamicPathStrc.nMoveTestCollisionMask, dp.nMoveTestCollisionMask >>> 0)
-  m.set(p, D2DynamicPathStrc.wCollidedWithMask, dp.nCollidedWithMask & 0xffff)
-
-  const tgtPtr = dp.pTargetUnit ? (dp.pTargetUnit as MutablePathUnit113c).pUnit : 0
-  m.set(p, D2DynamicPathStrc.pTargetUnit, tgtPtr)
-  m.set(p, D2DynamicPathStrc.dwTargetType, dp.dwTargetType >>> 0)
-  m.set(p, D2DynamicPathStrc.dwTargetId, dp.dwTargetId >>> 0)
-
-  m.set(p, D2DynamicPathStrc.nDirection, dp.nDirection & 0xff)
-  m.set(p, D2DynamicPathStrc.nNewDirection, dp.nNewDirection & 0xff)
-  m.set(p, D2DynamicPathStrc.nDiffDirection, dp.nDiffDirection & 0xff)
-  m.setU8(p + 0x67, dp.unk0x67 & 0xff)
-  m.setU8(p + 0x68, dp.dwSpeed & 0xff)
-  m.setU32(p + 0x6a, dp.tDirectionVector.nX >>> 0)
-  m.setU32(p + 0x6e, dp.tDirectionVector.nY >>> 0)
-  m.setU32(p + 0x72, dp.tVelocityVector.nX >>> 0)
-  m.setU32(p + 0x76, dp.tVelocityVector.nY >>> 0)
-  m.setU32(p + 0x7c, dp.dwVelocity >>> 0)
-  m.set(p, D2DynamicPathStrc.nPreviousVelocity, dp.nPreviousVelocity >>> 0)
-  m.setU32(p + 0x84, dp.dwMaxVelocity >>> 0)
-  m.setU32(p + 0x88, dp.dwAcceleration >>> 0)
-  m.setU32(p + 0x8c, dp.dwAccelerationsCounter >>> 0)
-  m.set(p, D2DynamicPathStrc.nDist, dp.nDist & 0xff)
-  m.set(p, D2DynamicPathStrc.nDistMax, dp.nDistMax & 0xff)
-  m.set(p, D2DynamicPathStrc.nIDAStarInitFScore, dp.nIDAStarInitFScore & 0xff)
-  m.set(p, D2DynamicPathStrc.nStepNum, dp.nStepNum & 0xff)
-  m.set(p, D2DynamicPathStrc.nDistance, dp.nDistance & 0xff)
-  m.setU32(p + 0x98, dp.nDirOffset >>> 0)
-
-  for (let i = 0; i < 78; i++) {
-    const pt = dp.PathPoints[i]!
-    m.set(p, D2DynamicPathStrc.wPathPoints, pt.X & 0xffff, i * 2)
-    m.set(p, D2DynamicPathStrc.wPathPoints, pt.Y & 0xffff, i * 2 + 1)
-  }
-  m.setU32(p + 0x1d4, dp.nSavedStepsCount >>> 0)
-  for (let i = 0; i < 10; i++) {
-    const sv = dp.SavedSteps[i]!
-    m.set(p, D2DynamicPathStrc.wSavedSteps, sv.X & 0xffff, i * 2)
-    m.set(p, D2DynamicPathStrc.wSavedSteps, sv.Y & 0xffff, i * 2 + 1)
-  }
 }
 
 export function getUnitPosSubtile113c(m: Memory113c, pUnit: number): { x: number; y: number } {
@@ -1201,9 +919,9 @@ export function getUnitPosSubtile113c(m: Memory113c, pUnit: number): { x: number
   }
 }
 
-function getMonStatsRow113c(m: Memory113c, pMonster: number): MonStats113cRow {
+function getMonStatsRow113c(m: Memory113c, pMonster: number): MonStatsRow113c {
   const classId = m.get(pMonster, D2UnitStrc.dwClassId) >>> 0
-  const row = MONSTATS_113C_ROWS[classId]
+  const row = getMonStatsRowByClassId113c(classId)
   if (row === undefined) {
     throw new RangeError(`Missing MonStats.bin row for classId=${classId}`)
   }
@@ -1371,9 +1089,10 @@ export function MONSTER_StartMode113c(
 ): boolean {
   const { m, pGame } = world
   const pu = world.pathUnitByPtr.get(pMonster)
-  if (!pu || !pu.pDynamicPath) return false
-  syncDynamicPathFromMem113c(world, pu)
-  const dp = pu.pDynamicPath
+  const pPath = m.get(pMonster, D2UnitStrc.pPath)
+  if (pPath === 0 || (pu !== undefined && pu.pPath === 0)) return false
+  ensureSliceWorldPathMemory113c(world)
+  if (pu !== undefined) syncDynamicPathFromMem113c(world, pu)
 
   const entry = MONSTER_GetModeEntry113c(m, pMonster, mode)
   if (entry === null) {
@@ -1385,24 +1104,17 @@ export function MONSTER_StartMode113c(
   const pMonData = m.get(pMonster, D2UnitStrc.pUnitData)
   const pAiCtrl = pMonData !== 0 ? m.get(pMonData, D2MonsterDataStrc.pAiControl) : 0
   const row = getMonStatsRow113c(m, pMonster)
-  const pathRec = getMonsterPathRecord(row.hcIdx)
-  if (pathRec === null) {
-    throw new RangeError(`MONSTER_StartMode113c: missing path record for hcIdx=${row.hcIdx}`)
-  }
   const isMoving = MONSTER_IsContinuousMode113c(m, pMonster, mode)
   let moveAnimSpeed = 256
 
   if (mode !== 3) {
-    // 0x6FC95EBE..0x6FC95EE7: `PATH_SetTargetUnit` vs `D2COMMON_10170_PathSetTargetPos`, then `PATH_SetDistance(dp, 20)`
+    // 0x6FC95EBE..0x6FC95EE7: `PATH_SetTargetUnit` vs `PATH_SetTargetPos`, then `PATH_SetDistance(pPath, 20)`
     if (pTarget !== 0) {
-      const tgtPu = world.pathUnitByPtr.get(pTarget)
-      const resolvedTgtPu = tgtPu !== undefined ? tgtPu : null
-      if (resolvedTgtPu !== null) syncDynamicPathFromMem113c(world, resolvedTgtPu)
-      PATH_SetTargetUnit(dp, resolvedTgtPu)
+      PATH_SetTargetUnit113c(m, pPath, pTarget)
     } else {
-      D2COMMON_10170_PathSetTargetPos(dp, targetX, targetY)
+      PATH_SetTargetPos113c(m, pPath, targetX, targetY)
     }
-    PATH_SetDistance(dp, 20)
+    PATH_SetDistance113c(m, pPath, 20)
 
     let ptOv = 0
     let velOverride = 0
@@ -1419,15 +1131,15 @@ export function MONSTER_StartMode113c(
     // 0x6FC95070 + 0x6FC94F98..0x6FC94FD4: `rawPathType = ptOv != 0 ? ptOv : (isMoving ? 0x65 : 0x64)`
     const rawPathType = ptOv !== 0 ? ptOv : isMoving ? 0x65 : 0x64
     if (rawPathType !== 0x64) {
-      const pathType = rawPathType === 0x65 ? PATHTYPE_TOWARD_FINISH : rawPathType
+      const pathType = rawPathType === 0x65 ? PATHTYPE_TOWARD_FINISH_113C : rawPathType
       // 0x6FC94FD6..0x6FC94FDA: when `bNewDistOverride == 0`, `MONSTER_StartMove` defaults `newDist = 5` (`nDistMax = 5`).
       const newDist = ovDist !== 0 ? ovDist : 5
-      PATH_SetNewDistance(dp, newDist)
+      PATH_SetNewDistance113c(m, pPath, newDist)
 
-      // 0x6FC94D61..0x6FC94D9C: `MONSTER_ComputeMovePath` caches `(pTargetUnit, tTargetCoord.X, tTargetCoord.Y)` BEFORE `D2Common_10142`
-      const curTargetPtr = dp.pTargetUnit !== null ? pTarget >>> 0 : 0
-      const firstX = dp.tTargetCoord.X >>> 0
-      const firstY = dp.tTargetCoord.Y >>> 0
+      // 0x6FC94D61..0x6FC94D9C: `MONSTER_ComputeMovePath` caches `(pTargetUnit, tTargetCoord.X, tTargetCoord.Y)` BEFORE `D2Common.#10334`
+      const curTargetPtr = m.get(pPath, D2DynamicPathStrc.pTargetUnit) >>> 0
+      const firstX = m.get(pPath, D2DynamicPathStrc.wTargetX) >>> 0
+      const firstY = m.get(pPath, D2DynamicPathStrc.wTargetY) >>> 0
       if (
         pAiCtrl !== 0 &&
         (curTargetPtr !== m.u32(pAiCtrl + 0x04) ||
@@ -1445,23 +1157,24 @@ export function MONSTER_StartMode113c(
       const statVelPct = STATLIST_GetUnitStat113c(m, pMonster, STAT_VELOCITYPERCENT, 0) | 0
       const frwStat = STATLIST_GetUnitStat113c(m, pMonster, STAT_FASTERMOVEVELOCITY, 0) | 0
       let totalPct =
-        (statVelPct !== 0 ? statVelPct : 100) + computeFrwDiminishing113c(frwStat) + velOverride
+        (statVelPct !== 0 ? statVelPct : 100) + computeFrwDiminishingPure113c(frwStat) + velOverride
       if (totalPct < 25) totalPct = 25
 
       const baseVel = mode === 15 ? row.run : row.velocity
       const scaledVel = Math.trunc(((baseVel << 8) * totalPct) / 100) | 0
-      PATH_SetVelocity(dp, scaledVel > 0 ? scaledVel : 0)
+      PATH_SetVelocity113c(m, pPath, scaledVel > 0 ? scaledVel : 0)
 
-      const baseAnimSpeed = mode === 15 ? pathRec.runAnimSpeed : pathRec.walkAnimSpeed
+      const baseAnimSpeed = mode === 15 ? row.runAnimSpeed : row.walkAnimSpeed
       const rawAnimSpeed = Math.trunc((baseAnimSpeed * totalPct) / 100) | 0
       moveAnimSpeed = rawAnimSpeed <= 0 ? 0 : rawAnimSpeed >= 0x7fff ? 0x7fff : rawAnimSpeed
 
-      PATH_SetType(dp, pathType)
-      let ok = D2Common_10142(dp, pu, 0)
+      PATH_SetType113c(m, pPath, pathType)
+      let ok = PATH_Compute113c(m, pPath, pMonster, 0)
       let moveStatus = pathType
       if (ok !== 0) {
-        pu.dwFlags = (pu.dwFlags | 1) >>> 0
-        m.set(pMonster, D2UnitStrc.dwFlags, pu.dwFlags)
+        const nextUFlags = (m.get(pMonster, D2UnitStrc.dwFlags) | 1) >>> 0
+        m.set(pMonster, D2UnitStrc.dwFlags, nextUFlags)
+        if (pu !== undefined) pu.dwFlags = nextUFlags
         if (pAiCtrl !== 0) {
           m.setU8(pAiCtrl + 0x00, 0)
           m.setU8(pAiCtrl + 0x01, 0)
@@ -1470,20 +1183,21 @@ export function MONSTER_StartMode113c(
         pathType === 2 ||
         pathType === 7 ||
         pathType === 9 ||
-        pathType === PATHTYPE_TOWARD_FINISH
+        pathType === PATHTYPE_TOWARD_FINISH_113C
       ) {
-        pu.dwFlags = (pu.dwFlags | 1) >>> 0
-        m.set(pMonster, D2UnitStrc.dwFlags, pu.dwFlags)
-        PATH_SetType(dp, PATHTYPE_WALL_FOLLOW)
-        ok = D2Common_10142(dp, pu, 0)
-        moveStatus = PATHTYPE_WALL_FOLLOW
+        const nextUFlags = (m.get(pMonster, D2UnitStrc.dwFlags) | 1) >>> 0
+        m.set(pMonster, D2UnitStrc.dwFlags, nextUFlags)
+        if (pu !== undefined) pu.dwFlags = nextUFlags
+        PATH_SetType113c(m, pPath, PATHTYPE_WALL_FOLLOW_113C)
+        ok = PATH_Compute113c(m, pPath, pMonster, 0)
+        moveStatus = PATHTYPE_WALL_FOLLOW_113C
       }
 
       if (pAiCtrl !== 0) {
         m.setU32(pAiCtrl + 0x10, velOverride >>> 0)
         m.setU32(
           pAiCtrl + 0x14,
-          moveStatus !== 1 && dp.pTargetUnit !== null ? 0x0a : 0xffffffff,
+          moveStatus !== 1 && m.get(pPath, D2DynamicPathStrc.pTargetUnit) !== 0 ? 0x0a : 0xffffffff,
         )
       }
 
@@ -1507,16 +1221,18 @@ export function MONSTER_StartMode113c(
       if (isMoving && ok === 0) {
         // 0x6FC95F64..0x6FC95F96: failed move resets used skill (`#11103`), forces `NU (1)`, sets `0x80000`, clears mode events
         SKILLS_SetUsedSkill113c(m, pMonster, 0)
-        pu.dwAnimMode = 1
-        pu.dwFlags = (pu.dwFlags | UNITFLAG_MODE_CHANGED_TICK) >>> 0
-        syncDynamicPathToMem113c(world, pu)
+        const failFlags = (m.get(pMonster, D2UnitStrc.dwFlags) | UNITFLAG_MODE_CHANGED_TICK) >>> 0
+        m.set(pMonster, D2UnitStrc.dwFlags, failFlags)
         m.set(pMonster, D2UnitStrc.dwAnimMode, 1)
-        const nuFrames = getMonsterModeBaseFrameCount113c(row.hcIdx, 1)
+        if (pu !== undefined) {
+          pu.dwAnimMode = 1
+          pu.dwFlags = failFlags
+        }
+        const nuFrames = getMonsterModeBaseFrameCountPure113c(row.hcIdx, 1)
         writeUnitAnimState113c(m, pMonster, 0, 0, nuFrames << 8, 256, 0)
         MONSTER_ClearModeEvents113c(m, pGame, pMonster)
         return false
       }
-      syncDynamicPathToMem113c(world, pu)
     } else {
       if (pAiCtrl !== 0) {
         m.setU32(pAiCtrl + 0x10, 0)
@@ -1530,7 +1246,6 @@ export function MONSTER_StartMode113c(
           0,
         )
       }
-      syncDynamicPathToMem113c(world, pu)
     }
   }
 
@@ -1544,12 +1259,14 @@ export function MONSTER_StartMode113c(
 
   MONSTER_ClearModeEvents113c(m, pGame, pMonster)
   m.set(pMonster, D2UnitStrc.dwAnimMode, mode >>> 0)
-  pu.dwAnimMode = mode >>> 0
   const updatedFlags = (m.get(pMonster, D2UnitStrc.dwFlags) | UNITFLAG_MODE_CHANGED_TICK) >>> 0
   m.set(pMonster, D2UnitStrc.dwFlags, updatedFlags)
-  pu.dwFlags = updatedFlags
+  if (pu !== undefined) {
+    pu.dwAnimMode = mode >>> 0
+    pu.dwFlags = updatedFlags
+  }
 
-  const frames = getMonsterModeBaseFrameCount113c(row.hcIdx, mode)
+  const frames = getMonsterModeBaseFrameCountPure113c(row.hcIdx, mode)
   writeUnitAnimState113c(
     m,
     pMonster,
@@ -1610,11 +1327,9 @@ export function AI_ApproachTarget113c(
     actualMode = 2
   }
 
-  const pu = world.pathUnitByPtr.get(pMonster)
-  if (pu !== undefined && pu.pDynamicPath !== null) {
-    syncDynamicPathFromMem113c(world, pu)
-    PATH_SetStepNum(pu.pDynamicPath, stepNum)
-    syncDynamicPathToMem113c(world, pu)
+  const pPath = m.get(pMonster, D2UnitStrc.pPath)
+  if (pPath !== 0) {
+    PATH_SetStepNum113c(m, pPath, stepNum)
   }
 
   const ok = MONSTER_StartMode113c(world, pMonster, actualMode, pTarget, targetX, targetY)
@@ -1947,15 +1662,9 @@ export function runMonsterAiDriver113c(
     return
   }
 
-  const monPu = world.pathUnitByPtr.get(pMonster)
-  const tgtPu = world.pathUnitByPtr.get(bestTarget)
-  let inMelee = false
-  if (monPu !== undefined && tgtPu !== undefined) {
-    syncDynamicPathFromMem113c(world, monPu)
-    syncDynamicPathFromMem113c(world, tgtPu)
-    const meleeThreshold = row.meleeRng > 0 ? row.meleeRng : 1
-    inMelee = D2Common_10399(tgtPu, monPu) <= meleeThreshold
-  }
+  ensureSliceWorldPathMemory113c(world)
+  const meleeThreshold = row.meleeRng > 0 ? row.meleeRng : 1
+  const inMelee = UNITS_GetDistanceToOtherUnit113c(m, bestTarget, pMonster) <= meleeThreshold
 
   if (pfnThink === VA_AI_FALLEN_113C) {
     AiFallen113c(world, pMonster, bestTarget, minDist, inMelee)
@@ -2006,12 +1715,11 @@ export function MONSTER_StepPath113c(
   world: FallenSliceWorld113c,
   pMonster: number,
 ): number {
-  const pu = world.pathUnitByPtr.get(pMonster)
-  if (pu === undefined || pu.pDynamicPath === null) return 0
-  syncDynamicPathFromMem113c(world, pu)
-  const stepped = D2Common_10226(pu, 0x400)
-  syncDynamicPathToMem113c(world, pu)
-  return stepped
+  const { m } = world
+  const pPath = m.get(pMonster, D2UnitStrc.pPath)
+  if (pPath === 0) return 0
+  ensureSliceWorldPathMemory113c(world)
+  return PATH_Step113c(m, pMonster, 0x400)
 }
 
 /**
@@ -2117,12 +1825,12 @@ function promotePackLeaderOnDeath113c(world: FallenSliceWorld113c, pMonster: num
 function rollMonsterDeathDrop113c(
   world: FallenSliceWorld113c,
   pMonster: number,
-  row: MonStats113cRow,
+  row: MonStatsRow113c,
 ): void {
   if (!row.killable) return
   const { m, pGame } = world
   const diff = getDifficultyIdx113c(m, pGame)
-  const tcName = row.tc[diff * 4].trim()
+  const tcName = row.tc[diff * 4]!.trim()
   if (tcName.length === 0) return
 
   // 0x6FC51190..0x6FC51251: count active living players in `pGame` (`gamePlayers`) and same-area/party players (`partyPlayers`)
@@ -2159,30 +1867,25 @@ function rollMonsterDeathDrop113c(
     }
   }
 
-  const tcTable = getCanonicalTcTable113c()
   const seed = UNITS_GetSeed113c(m, pMonster)
-  const rng = new D2Rng()
-  rng.setSeed(seed.lo, seed.hi)
   const monPlayerCount = STATLIST_GetUnitStat113c(m, pMonster, STAT_MONSTER_PLAYERCOUNT, 0) | 0
   const isExpansion =
     pGame !== 0 &&
     (m.u16(pGame + 0x6a) === 3 || m.get(pGame, D2GameStrc.bExpansion) !== 0)
 
-  rollTreasureClass(tcName, {
-    rng,
-    tcTable,
+  rollTreasureClassSeedOnly113c(tcName, seed, {
     gamePlayers,
     partyPlayers,
     monsterPlayerCount: monPlayerCount,
     isExpansion,
   })
-  UNITS_SetSeed113c(m, pMonster, rng.lo >>> 0, rng.hi >>> 0)
+  UNITS_SetSeed113c(m, pMonster, seed.lo >>> 0, seed.hi >>> 0)
 }
 
 /**
  * Slice helper for `D2Game:0x6FCFEA00` -> `0x6FCFE8F0` -> `0x6FCFC030` (`SUNITDMG_AddExperienceForKill`):
  * Computes base monster XP from `STAT_EXPERIENCE (13)` (or `MonStats.bin` `Exp` × `MonLvl.bin` `XP` / 100
- * when `STAT_EXPERIENCE == 0`), scales through `calculateKillExperienceGain113c` (`0x6FCFC030`:
+ * when `STAT_EXPERIENCE == 0`), scales through `calculateKillExperienceGainPure113c` (`0x6FCFC030`:
  * `0x6FCFAA40` level-diff + `0x6FCFA9E0` `ExpRatio` + `stat 85` `item_addexperience`), and adds to killer's `STAT_EXPERIENCE`.
  */
 function awardMonsterKillExperience113c(
@@ -2190,7 +1893,7 @@ function awardMonsterKillExperience113c(
   pGame: number,
   pMonster: number,
   pKiller: number,
-  row: MonStats113cRow,
+  row: MonStatsRow113c,
 ): void {
   if (pKiller === 0 || m.get(pKiller, D2UnitStrc.dwUnitType) !== UNIT_PLAYER) return
   const diff = getDifficultyIdx113c(m, pGame)
@@ -2203,12 +1906,8 @@ function awardMonsterKillExperience113c(
       if (row.noRatio) {
         rawExp = monExpFactor
       } else {
-        const lvlIdx = Math.min(mlvl, MONLVL_113C_ROWS.length - 1)
-        const lvlRow = MONLVL_113C_ROWS[lvlIdx]
-        if (lvlRow === undefined) {
-          throw new RangeError(`Missing MonLvl.bin row for mlvl=${mlvl}`)
-        }
-        rawExp = Math.trunc((lvlRow.xp[diff] * monExpFactor) / 100)
+        const xpVec = getMonLvlXpRow113c(mlvl)
+        rawExp = Math.trunc((xpVec[diff] * monExpFactor) / 100)
       }
     }
   }
@@ -2216,7 +1915,7 @@ function awardMonsterKillExperience113c(
 
   const clvl = STATLIST_GetUnitStat113c(m, pKiller, STAT_LEVEL, 0) | 0
   const addExpPct = STATLIST_GetUnitStat113c(m, pKiller, STAT_ADDEXPERIENCE, 0) | 0
-  const gain = calculateKillExperienceGain113c({
+  const gain = calculateKillExperienceGainPure113c({
     rawExp,
     clvl,
     mlvl,
@@ -2270,39 +1969,37 @@ export function MONSTER_StartDeath113c(
   m.set(pMonster, D2UnitStrc.dwFlags2, nextFlags2)
 
   const pu = world.pathUnitByPtr.get(pMonster)
-  if (pu !== undefined && pu.pDynamicPath !== null) {
-    syncDynamicPathFromMem113c(world, pu)
+  const pPath = m.get(pMonster, D2UnitStrc.pPath)
+  if (pPath !== 0) {
+    ensureSliceWorldPathMemory113c(world)
     if (pKiller !== 0) {
-      const killerPu = world.pathUnitByPtr.get(pKiller)
-      PATH_SetTargetUnit(pu.pDynamicPath, killerPu !== undefined ? killerPu : null)
+      PATH_SetTargetUnit113c(m, pPath, pKiller)
     }
-    PATH_SetDistance(pu.pDynamicPath, 20)
-    // 0x6FCFEFCD..0x6FCFEFFE: SUNITDMG_KillMonster computes hitDir via D2Common.#10192 (0x6FD7F910)
+    PATH_SetDistance113c(m, pPath, 20)
     const killerPos = pKiller !== 0 ? getUnitPosSubtile113c(m, pKiller) : null
+    const monX = m.get(pPath, D2DynamicPathStrc.wPosX)
+    const monY = m.get(pPath, D2DynamicPathStrc.wPosY)
     const hitDir =
       killerPos !== null
-        ? PATH_ComputeDirection(pu.pDynamicPath.wPosX, pu.pDynamicPath.wPosY, killerPos.x, killerPos.y)
-        : pu.pDynamicPath.nDirection
+        ? PATH_ComputeDirection113c(m, monX, monY, killerPos.x, killerPos.y)
+        : m.get(pPath, D2DynamicPathStrc.nDirection)
     m.set(pMonster, D2UnitStrc.dwAnimMode, 0)
-    pu.dwAnimMode = 0
-    pu.dwFlags = nextFlags
-    pu.dwFlagEx = nextFlags2
-    PATH_SetUnitDeadCollision(pu, true)
-    pu.pDynamicPath.dwPrecisionX = toFP16Center(pu.pDynamicPath.wPosX)
-    pu.pDynamicPath.dwPrecisionY = toFP16Center(pu.pDynamicPath.wPosY)
-    // 0x6FC95445: D2Common.#10706 (PATH_SetDirection)
-    PATH_SetDirection(pu.pDynamicPath, hitDir)
-    syncDynamicPathToMem113c(world, pu)
+    if (pu !== undefined) {
+      pu.dwAnimMode = 0
+      pu.dwFlags = nextFlags
+      pu.dwFlagEx = nextFlags2
+    }
+    PATH_MarkUnitDeadCollision113c(m, pMonster, 1)
+    PATH_ForceDirection113c(m, pPath, hitDir)
   } else {
     m.set(pMonster, D2UnitStrc.dwAnimMode, 0)
   }
 
   const row = getMonStatsRow113c(m, pMonster)
-  const dtFrames = getMonsterModeBaseFrameCount113c(row.hcIdx, 0)
+  const dtFrames = getMonsterModeBaseFrameCountPure113c(row.hcIdx, 0)
   const frame = m.get(pGame, D2GameStrc.dwGameFrame) >>> 0
   writeUnitAnimState113c(m, pMonster, 0, frame << 8, dtFrames << 8, 256, 0)
 
-  const pPath = m.get(pMonster, D2UnitStrc.pPath)
   const pRoom = pPath !== 0 ? m.get(pPath, D2DynamicPathStrc.pRoom) : 0
   ROOM_RecordMonsterDeath113c(m, pRoom, m.get(pMonster, D2UnitStrc.dwUnitId))
 
@@ -3028,7 +2725,7 @@ function transitionPlayerToNeutral113c(world: FallenSliceWorld113c, pPlayer: num
   }
   const classId = m.get(pPlayer, D2UnitStrc.dwClassId) >>> 0
   const weaponClass = resolvePlayerWeaponClass113c(world, pPlayer)
-  const nuClip = getCharAnimClip113c(classId, PLRMODE_NEUTRAL, { weaponClass })
+  const nuClip = getCharAnimClipPure113c(classId, PLRMODE_NEUTRAL, weaponClass)
   writeUnitAnimState113c(m, pPlayer, 0, 0, nuClip.frames << 8, nuClip.speed, 0)
 }
 
@@ -3044,7 +2741,7 @@ export function SUNIT_ScheduleModeAnimEvents113c(
   m: Memory113c,
   pGame: number,
   pUnit: number,
-  clip: CharAnimClip113c,
+  clip: PureCharAnimClip113c,
   startFrame: number,
   stepSpeed: number,
 ): void {
@@ -3115,15 +2812,9 @@ export function applyPlayerPacket113c(
   // D2Common.#11129 (0x6FD80E80): bind target unit into pPlayer->pPath (+0x58/+0x5C/+0x60)
   const pPath = m.get(pPlayer, D2UnitStrc.pPath)
   if (pPath !== 0) {
-    m.set(pPath, D2DynamicPathStrc.pTargetUnit, pTarget)
-    m.set(pPath, D2DynamicPathStrc.dwTargetType, targetType)
-    m.set(pPath, D2DynamicPathStrc.dwTargetId, targetId)
+    PATH_SetTargetUnit113c(m, pPath, pTarget)
   }
   const pu = world.pathUnitByPtr.get(pPlayer)
-  if (pu !== undefined && pu.pDynamicPath !== null) {
-    const targetPu = world.pathUnitByPtr.get(pTarget)
-    PATH_SetTargetUnit(pu.pDynamicPath, targetPu !== undefined ? targetPu : null)
-  }
 
   m.set(pPlayer, D2UnitStrc.dwAnimMode, PLRMODE_ATTACK1)
   const nextFlags = (m.get(pPlayer, D2UnitStrc.dwFlags) | UNITFLAG_IN_SKILL_ACTION) >>> 0
@@ -3135,11 +2826,11 @@ export function applyPlayerPacket113c(
 
   const classId = m.get(pPlayer, D2UnitStrc.dwClassId) >>> 0
   const weaponClass = resolvePlayerWeaponClass113c(world, pPlayer)
-  const clip = getCharAnimClip113c(classId, PLRMODE_ATTACK1, { weaponClass })
+  const clip = getCharAnimClipPure113c(classId, PLRMODE_ATTACK1, weaponClass)
   const stat93 = STATLIST_GetUnitStat113c(m, pPlayer, STAT_FASTERATTACKRATE, 0) | 0
   const stat68 = STATLIST_GetUnitStat113c(m, pPlayer, STAT_ATTACKRATE, 0) | 0
   const stat67 = STATLIST_GetUnitStat113c(m, pPlayer, STAT_VELOCITYPERCENT, 0) | 0
-  const stepSpeed = computeRawPlayerAnimSpeed113c({
+  const stepSpeed = computeRawPlayerAnimSpeedPure113c({
     mode: PLRMODE_ATTACK1,
     classId,
     statAcc: stat93,
@@ -3147,7 +2838,7 @@ export function applyPlayerPacket113c(
     stat67Acc: stat67,
     weaponClass,
   })
-  const startFrame = playerAnimStartFrame113c(classId, PLRMODE_ATTACK1, weaponClass)
+  const startFrame = playerAnimStartFramePure113c(classId, PLRMODE_ATTACK1, weaponClass)
 
   writeUnitAnimState113c(m, pPlayer, 0, 0, clip.frames << 8, stepSpeed, 0)
 
@@ -3158,7 +2849,7 @@ export function applyPlayerPacket113c(
 
 /**
  * Hydrate a complete `FallenSliceWorld113c` directly from `a1c-memdump-f785.ndjson.gz` and
- * `a1c-coll-f785.bin.gz` in `SparseMemory113c` (with zero legacy server dependencies).
+ * `a1c-coll-f785.bin.gz` in `SparseMemory113c` (with zero legacy dependencies).
  */
 export function hydrateFallenSliceFromMemdump113c(
   m: Memory113c,
@@ -3226,6 +2917,7 @@ export function hydrateFallenSliceFromMemdump113c(
   // Rebind `pTimer->pPool` to a live `0x7088` chunk in `SparseMemory113c`
   m.set(pTimer, D2TimerStrc.pPool, 0)
   EVENT_AllocChunk113c(m, pTimer)
+  ensureD2CommonPathGlobals113c(m)
 
   // Parse `a1c-coll-f785.bin.gz`: header `(x0, y0, w, h)` + `uint16[w * h]` at byte 16
   const collView = new DataView(collRaw.buffer, collRaw.byteOffset, collRaw.byteLength)
@@ -3238,11 +2930,11 @@ export function hydrateFallenSliceFromMemdump113c(
     maskCells[i] = collView.getUint16(16 + i * 2, true)
   }
 
-  const sharedGrid: PathCollisionGrid = {
+  const sharedGrid: SlicePathCollisionGrid113c = {
     get(x: number, y: number): number {
       const rx = (x | 0) - cx0
       const ry = (y | 0) - cy0
-      if (rx < 0 || ry < 0 || rx >= cw || ry >= ch) return COLLIDE_MASK_INVALID
+      if (rx < 0 || ry < 0 || rx >= cw || ry >= ch) return COLLIDE_MASK_INVALID_113C
       return maskCells[ry * cw + rx]!
     },
     set(x: number, y: number, value: number): void {
@@ -3253,13 +2945,14 @@ export function hydrateFallenSliceFromMemdump113c(
     },
   }
 
-  // Build `PathRoom` objects verbatim from dumped `room`, `roomex`, `level`, and `roomsnear` blocks in `SparseMemory113c`
+  // Bind native `D2RoomCollisionGridStrc` (`+0x20`) in `Memory113c` for every dumped room
   const roomByPtr = new Map<number, MutablePathRoom113c>()
   for (const rPtr of roomPtrs) {
     const subX = m.get(rPtr, D2ActiveRoomStrc.nSubtileX) | 0
     const subY = m.get(rPtr, D2ActiveRoomStrc.nSubtileY) | 0
     const subW = m.get(rPtr, D2ActiveRoomStrc.nSubtileWidth) | 0
     const subH = m.get(rPtr, D2ActiveRoomStrc.nSubtileHeight) | 0
+    bindRoomCollisionGrid113c(m, rPtr, subX, subY, subW, subH, (x, y) => sharedGrid.get(x, y))
     roomByPtr.set(rPtr, {
       ptr: rPtr,
       subX,
@@ -3315,12 +3008,10 @@ export function hydrateFallenSliceFromMemdump113c(
     }
   }
 
-  // Build `PathUnit` + `DynamicPath` wrappers for all units
   const pathUnitByPtr = new Map<number, MutablePathUnit113c>()
   for (const pUnit of unitsByKey.values()) {
     if (m.get(pUnit, D2UnitStrc.dwUnitType) === UNIT_ITEM) continue
     const pPath = m.get(pUnit, D2UnitStrc.pPath)
-    const dp = pPath !== 0 ? new DynamicPath() : null
     const pu: MutablePathUnit113c = {
       pUnit,
       pPath,
@@ -3330,11 +3021,7 @@ export function hydrateFallenSliceFromMemdump113c(
       dwAnimMode: m.get(pUnit, D2UnitStrc.dwAnimMode),
       dwFlags: m.get(pUnit, D2UnitStrc.dwFlags),
       dwFlagEx: m.get(pUnit, D2UnitStrc.dwFlags2),
-      pDynamicPath: dp,
-      pStaticPath: null,
-      objectTxt: null,
     }
-    if (dp !== null) dp.pUnit = pu
     pathUnitByPtr.set(pUnit, pu)
   }
 
@@ -3351,9 +3038,6 @@ export function hydrateFallenSliceFromMemdump113c(
     minionIdsByLeaderId,
     lastFrameOrd: [],
     lastFrameDmg: [],
-  }
-  for (const pu of pathUnitByPtr.values()) {
-    syncDynamicPathFromMem113c(world, pu)
   }
   return world
 }
@@ -3372,6 +3056,7 @@ export function stepFallenSliceFrame113c(
   const { m, pGame } = world
   world.lastFrameOrd.length = 0
   world.lastFrameDmg.length = 0
+  ensureSliceWorldPathMemory113c(world)
 
   for (const [clientId, hexPayload] of c2sPackets) {
     const pPlayer = world.clientById?.get(clientId >>> 0)
@@ -3399,14 +3084,12 @@ export function stepFallenSliceFrame113c(
           mode === 19
         ) {
           // 0x6FD279D0[mode] = 0x6FC99B90 (locomotion step)
-          const pu = world.pathUnitByPtr.get(pUnit)
-          if (pu !== undefined && pu.pDynamicPath !== null) {
-            syncDynamicPathFromMem113c(world, pu)
+          const pPath = m.get(pUnit, D2UnitStrc.pPath)
+          if (pPath !== 0) {
             if (mode === PLRMODE_RUN) {
               PLAYER_DrainRunStamina113c(m, pUnit)
             }
-            const stepped = D2Common_10226(pu, 0)
-            syncDynamicPathToMem113c(world, pu)
+            const stepped = PATH_Step113c(m, pUnit, 0)
             if (stepped === 0) {
               transitionPlayerToNeutral113c(world, pUnit)
             }
@@ -3463,7 +3146,11 @@ export function stepFallenSliceFrame113c(
     }
   })
 
-  // 0x6FC48BE0 end-of-frame room update sweep: clears per-tick mode/coord dirty bits (`0x80001`).
+  // 0x6FCBD850 + 0x6FC48BE0 end-of-frame room update sweep: clears `pRoom->pUpdateList` (`UNITFLAG_ISUPDATE` `0x2000`)
+  // via `D2Common.#10796` (`UNITROOM_ClearUpdateQueue113c`) and per-tick mode/coord dirty bits (`0x80001`).
+  for (const rPtr of world.roomByPtr.keys()) {
+    UNITROOM_ClearUpdateQueue113c(m, rPtr)
+  }
   for (const pUnit of world.unitsByKey.values()) {
     const curFlags = m.get(pUnit, D2UnitStrc.dwFlags)
     if ((curFlags & UNITFLAG_PER_TICK_SYNC_MASK) !== 0) {

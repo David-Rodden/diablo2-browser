@@ -54,8 +54,11 @@ import {
   FIXED_POINT_STAT_SWITCH_6FD95668,
   ITEMMODS_ShiftStatValueIfFixedPoint113c,
 } from './drlg/drlg-room.ts'
+import { ITEMMODS_ApplySetItemBonusProps113c } from './items.ts'
 import {
   D2COMMON_ITEMS_CODE_LINK_VA_113C,
+  INVENTORY_GetItemIfOwnedByInventory113c,
+  INVENTORY_GetItemNodePositionOther113c,
   UNITS_SetStaticPathPosX113c,
   UNITS_SetStaticPathPosY113c,
   fogGetLinkIndex113c,
@@ -70,9 +73,13 @@ import {
   ITEMS_GetBaseCode113c,
   ITEMS_GetBodyLocation113c,
   ITEMS_GetCommandFlags113c,
+  ITEMS_GetEquippedSetItemsMask113c,
+  ITEMS_GetItemCell113c,
   ITEMS_GetItemLevel113c,
+  ITEMS_GetItemQuality113c,
   ITEMS_GetItemSeed113c,
   ITEMS_GetItemTypeFromItem113c,
+  ITEMS_IsHighQualityItem113c,
   ITEMS_GetSetItemsSetId113c,
   ITEMS_GetSetItemsTxtRecordFromItem113c,
   ITEMS_GetTwoHandedFlag113c,
@@ -7434,6 +7441,117 @@ export function ITEMS_LoadStatsFromBitstream113c(
   const bytesRead = bitStreamGetBytePos113c(sm, pBitBuf)
   return bytesRead >>> 0
 }
+
+const SET_ITEM_STATES_6FDDCA08 = [0xa5, 0xa6, 0xa7, 0xa8, 0xa9, 0xaa] as const
+
+/**
+ * `D2Common.dll` `0x6FD7C630` (internal `__usercall(pUnit@<eax>, pItem, nMode)`).
+ * Allocates, updates, or removes a set-item state statlist (`0xA5..0xAA`, stat `0x47`) on `pUnit`.
+ */
+export function ITEMMODS_ToggleSetItemStateList113c(
+  m: Memory113c,
+  pUnit: number,
+  pItem: number,
+  nMode: number,
+): number {
+  const mode = nMode | 0
+  if (mode > 1) return 0
+  const unit = pUnit >>> 0
+  const item = pItem >>> 0
+  if (unit === 0 || item === 0 || m.u32(item) !== 4) return 0
+  if (ITEMS_GetItemQuality113c(m, item) !== 5) return 0
+  if (m.u32(unit) === 4 && ITEMS_IsHighQualityItem113c(m, item) !== 0) return 0
+
+  const setItemId = ITEMS_GetItemCell113c(m, item)
+  const pSetItem = DATATBLS_GetSetItemsTxtRecordInline113c(m, setItemId)
+  if (pSetItem === 0) return 0
+  const setId = (m.u16((pSetItem + 0x2c) >>> 0) << 16) >> 16
+  if (setId < 0) return 0
+  const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+  if (setId >= (m.u32((sgpt + 0xc10) >>> 0) | 0)) return 0
+
+  let freeSlot = -1
+  let pFoundList = 0
+  let foundState = 0
+  for (let i = 0; i < 6; i++) {
+    const state = SET_ITEM_STATES_6FDDCA08[i]!
+    const pList = STATLIST_GetStatListFromUnitAndState113c(m, unit, state)
+    if (pList !== 0) {
+      if (STATLIST_GetStatValue113c(m, pList, 0x47, 0) === setId) {
+        pFoundList = pList
+        foundState = state
+        if (mode === 0) {
+          STATLIST_ClearBaseStats113c(m, pList)
+        }
+        break
+      }
+    } else if (freeSlot < 0) {
+      freeSlot = i
+    }
+  }
+
+  if (pFoundList === 0) {
+    if (mode === 1 || freeSlot < 0) return 0
+    const state = SET_ITEM_STATES_6FDDCA08[freeSlot]!
+    pFoundList = STATLIST_AllocList113c(
+      m,
+      m.u32((unit + 0x08) >>> 0),
+      0,
+      0,
+      m.u32(item),
+      m.u32((item + 0x0c) >>> 0),
+    )
+    STATLIST_MergeStatLists113c(m, unit, pFoundList, 1)
+    if (pFoundList !== 0) {
+      m.setU32((pFoundList + 0x14) >>> 0, state >>> 0)
+    }
+    foundState = state
+  }
+
+  if (mode === 0) {
+    STATLIST_AddStat113c(m, pFoundList, 0x47, setId, 0)
+    ITEMMODS_ApplySetItemBonusProps113c(m, item, unit, foundState)
+    return 1
+  }
+  if (mode === 1) {
+    STATLIST_UnlinkSubList113c(m, unit, pFoundList)
+    STATLIST_FreeStatListIfNonExtended113c(m, pFoundList)
+    return 1
+  }
+  return 1
+}
+
+/**
+ * `D2Common.dll` `0x6FD7C910` (Ord `10600`, `__stdcall(pUnit, pItem, nMode, nFlag)`).
+ */
+export function ITEMMODS_UpdateSetItemEquipmentState113c(
+  m: Memory113c,
+  pUnit: number,
+  pItem: number,
+  nMode: number,
+  nFlag: number,
+): number {
+  const unit = pUnit >>> 0
+  if (unit === 0) return 0
+  const item = pItem >>> 0
+  if (item === 0 || m.u32(item) !== 4) return 0
+  const pInv = m.u32((unit + 0x60) >>> 0)
+  if (pInv === 0) return 0
+
+  let mask = 0
+  const pNode = INVENTORY_GetItemIfOwnedByInventory113c(m, pInv, item)
+  if (pNode !== 0 && INVENTORY_GetItemNodePositionOther113c(m, pNode) === 3) {
+    mask = ITEMS_GetEquippedSetItemsMask113c(m, unit, item, 1)
+  }
+
+  const mode = nMode | 0
+  if ((nFlag | 0) !== 0 || mode === 0) {
+    ITEMMODS_UpdateSetItemBonusStates113c(m, item, mask)
+  }
+  ITEMMODS_ToggleSetItemStateList113c(m, unit, item, mode)
+  return 1
+}
+
 
 
 

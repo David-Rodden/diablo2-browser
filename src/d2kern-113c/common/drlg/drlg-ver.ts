@@ -19,7 +19,11 @@ import {
 } from '../../mem/layout.generated.ts';
 import type { Memory113c } from '../../mem/sparse-memory.ts';
 import { D2CommonAssertError, SEED_RollRandomNumberInline113c } from '../inline-helpers.ts';
+import { imul32 } from '../int-math.ts';
+import { DRLGVER_SnapAndOffsetVertex113c } from '../text.ts';
 import { UNITS_GetAnimOrSeqEventAtFrame113c, UNITS_GetFrameAndFrameCount113c } from '../unit.ts';
+import { DRLGGRID_OpOverwrite113c } from './drlg-grid.ts';
+import { DRLGOUTPLACE_StepMazeLinkNode113c } from './drlg-room.ts';
 
 const DRLGVER_STACK_BASE = 0x7ff80000;
 const DRLGVER_STACK_SIZE = 0x1000;
@@ -161,19 +165,19 @@ export function DRLGOUTPLACE_CanStepMazeLinkNode113c(
   }
 
   const pOutdoors = m.u32(((pLevel >>> 0) + D2DrlgLevelStrc.pOutdoors.off) >>> 0);
-  const nMinX = m.u32((pOutdoors + D2DrlgOutdoorInfoStrc.nWidth.off) >>> 0) | 0;
+  const nMinX = m.u32((pOutdoors + 0x54) >>> 0) | 0;
   if (candX < nMinX) {
     return 0;
   }
-  const nMinY = m.u32((pOutdoors + D2DrlgOutdoorInfoStrc.nHeight.off) >>> 0) | 0;
+  const nMinY = m.u32((pOutdoors + 0x58) >>> 0) | 0;
   if (candY < nMinY) {
     return 0;
   }
-  const nMaxX = (nMinX + (m.u32((pOutdoors + D2DrlgOutdoorInfoStrc.nGridWidth.off) >>> 0) | 0)) | 0;
+  const nMaxX = (nMinX + (m.u32((pOutdoors + 0x5c) >>> 0) | 0)) | 0;
   if (candX >= nMaxX) {
     return 0;
   }
-  const nMaxY = (nMinY + (m.u32((pOutdoors + D2DrlgOutdoorInfoStrc.nGridHeight.off) >>> 0) | 0)) | 0;
+  const nMaxY = (nMinY + (m.u32((pOutdoors + 0x60) >>> 0) | 0)) | 0;
   if (candY >= nMaxY) {
     return 0;
   }
@@ -1006,5 +1010,441 @@ export function MONSTER_GetMissileIdForAnimMode113c(
   }
   return (m.u16((pMonStats + fieldOffset) >>> 0) << 16) >> 16;
 }
+
+const MAZE_LINK_DY_6FDE51E0 = [0, 1, 0, -1] as const;
+const MAZE_LINK_DX_6FDE51E4 = [1, 0, -1, 0] as const;
+const MAZE_LINK_DIR_FROM_Q_6FDDC320 = [
+  5, 4, 6, 4, 5, 6, 4, 3, 5, 4, 3, 2, 3, 4, 2,
+  6, 5, 4, 5, 4, 6, 4, 3, 5, 3, 4, 2, 2, 3, 4,
+  6, 7, 5, 6, 7, 5, 6, 7, 5, 2, 1, 3, 2, 1, 3,
+  6, 7, 0, 7, 0, 6, 0, 1, 7, 1, 0, 2, 2, 1, 0,
+  7, 0, 6, 0, 7, 6, 0, 1, 7, 0, 1, 2, 1, 0, 2,
+] as const;
+const MAZE_LINK_SEQ_OFFSETS_6FDDCAB8 = [
+  0x03020100, 0x01010100, 0x02010203, 0x01020300,
+] as const;
+
+const _mazeLinkStackBuf = new ArrayBuffer(0x9000);
+const _mazeLinkStackU8 = new Uint8Array(_mazeLinkStackBuf);
+const _mazeLinkStackDV = new DataView(_mazeLinkStackBuf);
+const MAZE_LINK_STACK_BASE = 0x7ff70000;
+
+function withMazeLinkStack113c(m: Memory113c): Memory113c {
+  const isStack = (p: number): boolean => {
+    const u = p >>> 0;
+    return u >= MAZE_LINK_STACK_BASE && u < MAZE_LINK_STACK_BASE + 0x9000;
+  };
+  return {
+    alloc: (size) => m.alloc(size),
+    u8: (p) => (isStack(p) ? _mazeLinkStackU8[(p >>> 0) - MAZE_LINK_STACK_BASE]! : m.u8(p)),
+    u16: (p) => (isStack(p) ? _mazeLinkStackDV.getUint16((p >>> 0) - MAZE_LINK_STACK_BASE, true) : m.u16(p)),
+    u32: (p) => (isStack(p) ? _mazeLinkStackDV.getUint32((p >>> 0) - MAZE_LINK_STACK_BASE, true) : m.u32(p)),
+    setU8: (p, v) => {
+      if (isStack(p)) _mazeLinkStackU8[(p >>> 0) - MAZE_LINK_STACK_BASE] = v & 0xff;
+      else m.setU8(p, v);
+    },
+    setU16: (p, v) => {
+      if (isStack(p)) _mazeLinkStackDV.setUint16((p >>> 0) - MAZE_LINK_STACK_BASE, v & 0xffff, true);
+      else m.setU16(p, v);
+    },
+    setU32: (p, v) => {
+      if (isStack(p)) _mazeLinkStackDV.setUint32((p >>> 0) - MAZE_LINK_STACK_BASE, v >>> 0, true);
+      else m.setU32(p, v);
+    },
+    get: (base, f, idx = 0) => m.get(base, f, idx),
+    set: (base, f, v, idx = 0) => m.set(base, f, v, idx),
+    fill: (p, len, byte) => {
+      if (isStack(p)) _mazeLinkStackU8.fill(byte & 0xff, (p >>> 0) - MAZE_LINK_STACK_BASE, (p >>> 0) - MAZE_LINK_STACK_BASE + len);
+      else m.fill(p, len, byte);
+    },
+  };
+}
+
+/**
+ * `D2Common.dll` `0x6FD67D00` (internal `__stdcall(pCtx, nMaxCost, pLevel, pGoal)`).
+ * Iterative IDA* expansion for outdoor maze link paths.
+ */
+export function DRLGOUTPLACE_ExpandMazeLinkPath113c(
+  m: Memory113c,
+  pCtx: number,
+  nMaxCost: number,
+  pLevel: number,
+  pGoal: number,
+): number {
+  const ctx = pCtx >>> 0;
+  const maxCost = nMaxCost | 0;
+  const level = pLevel >>> 0;
+  const goal = pGoal >>> 0;
+  const goalX = m.u32(goal) | 0;
+  const goalY = m.u32((goal + 0x04) >>> 0) | 0;
+  let node = m.u32(ctx) >>> 0;
+
+  while (true) {
+    const curX = m.u32((node + 0x0c) >>> 0) | 0;
+    const curY = m.u32((node + 0x10) >>> 0) | 0;
+    if (curX === goalX && curY === goalY) {
+      return node;
+    }
+
+    const dirSlot = m.u8((node + 0x1c) >>> 0);
+    const nx = (curX + MAZE_LINK_DX_6FDE51E4[dirSlot]!) | 0;
+    const ny = (curY + MAZE_LINK_DY_6FDE51E0[dirSlot]!) | 0;
+
+    let stepped = false;
+    if (DRLGOUTPLACE_CanStepMazeLinkNode113c(m, node, goal, nx, ny, level) !== 0) {
+      const turnCost = curX !== nx && curY !== ny ? 3 : 2;
+      const gCost = ((m.u32((node + 0x08) >>> 0) | 0) + turnCost) | 0;
+      let adx = (nx - goalX) | 0;
+      if (adx < 0) adx = -adx | 0;
+      let ady = (ny - goalY) | 0;
+      if (ady < 0) ady = -ady | 0;
+      const minD = adx < ady ? adx : ady;
+      const maxD = adx > ady ? adx : ady;
+      const hCost = (minD + maxD * 2) | 0;
+      const fCost = (hCost + gCost) | 0;
+      if (fCost <= maxCost) {
+        let child = m.u32((node + 0x24) >>> 0);
+        if (child === 0) {
+          const count = m.u32((ctx + 0x8ca4) >>> 0) | 0;
+          if (count !== 0x384) {
+            child = (ctx + count * 40 + 4) >>> 0;
+            m.setU32((ctx + 0x8ca4) >>> 0, (count + 1) >>> 0);
+            m.fill(child, 40, 0);
+          } else {
+            child = 0;
+          }
+          m.setU32((node + 0x24) >>> 0, child);
+          if (child === 0) {
+            return 0;
+          }
+          m.setU32((child + 0x20) >>> 0, node);
+        }
+        node = m.u32((node + 0x24) >>> 0);
+        m.setU32((node + 0x08) >>> 0, gCost >>> 0);
+        m.setU32((node + 0x04) >>> 0, hCost >>> 0);
+        m.setU32(node, fCost >>> 0);
+        m.setU32((node + 0x14) >>> 0, 0);
+        const q = PATH_QuantizeDeltaIndex25_113c(goalX, goalY, ny, nx);
+        const rawDir = MAZE_LINK_DIR_FROM_Q_6FDDC320[q * 3]! >> 1;
+        const parent = m.u32((node + 0x20) >>> 0);
+        const pDir = m.u8((parent + 0x1c) >>> 0);
+        const seqIdx = (pDir - rawDir) & 0x03;
+        const seqPtr = (0x6fddcab8 + seqIdx * 4) >>> 0;
+        m.setU32((node + 0x18) >>> 0, seqPtr);
+        const baseSeqByte = MAZE_LINK_SEQ_OFFSETS_6FDDCAB8[seqIdx]! & 0xff;
+        m.setU8((node + 0x1c) >>> 0, (baseSeqByte + rawDir) & 0x03);
+        m.setU32((node + 0x0c) >>> 0, nx >>> 0);
+        m.setU32((node + 0x10) >>> 0, ny >>> 0);
+        stepped = true;
+      }
+    }
+
+    if (!stepped) {
+      node = DRLGOUTPLACE_StepMazeLinkNode113c(m, node, ctx);
+      if (node === 0) {
+        return 0;
+      }
+    }
+  }
+}
+
+/**
+ * `D2Common.dll` `0x6FD67EB0` (internal `__usercall(pLevel@<stack>, nPathIdx@<ebx>)`).
+ * Builds a vertex path between outdoor room link endpoints and stores it at `pOutdoors+0x68[nPathIdx]`.
+ */
+export function DRLGOUTPLACE_BuildOutdoorMazeLinkPath113c(
+  m: Memory113c,
+  pLevel: number,
+  nPathIdx: number,
+): number {
+  const sm = withMazeLinkStack113c(m);
+  const level = pLevel >>> 0;
+  const idx = nPathIdx | 0;
+  const pDrlg = sm.u32((level + 0x1b4) >>> 0);
+  void sm.u32((pDrlg + 0x478) >>> 0);
+  const pOutdoors = sm.u32((level + 0x14) >>> 0);
+  const lx = sm.u32((level + 0x1c) >>> 0) | 0;
+  const ly = sm.u32((level + 0x20) >>> 0) | 0;
+
+  const entry = (pOutdoors + idx * 20) >>> 0;
+  const sx = (sdiv32(((sm.u32((entry + 0xf8) >>> 0) | 0) - lx) | 0, 8)) | 0;
+  const sy = (sdiv32(((sm.u32((entry + 0xfc) >>> 0) | 0) - ly) | 0, 8)) | 0;
+  const gx = (sdiv32(((sm.u32((entry + 0x170) >>> 0) | 0) - lx) | 0, 8)) | 0;
+  const gy = (sdiv32(((sm.u32((entry + 0x174) >>> 0) | 0) - ly) | 0, 8)) | 0;
+
+  const dx = (sx - gx) | 0;
+  const dy = (sy - gy) | 0;
+  let adx = dx < 0 ? (-dx | 0) : dx;
+  let ady = dy < 0 ? (-dy | 0) : dy;
+  if (((adx + ady) | 0) < 2) {
+    const v1 = sm.alloc(0x14) >>> 0;
+    sm.fill(v1, 0x14, 0);
+    sm.setU32((pOutdoors + idx * 4 + 0x68) >>> 0, v1);
+    sm.setU32(v1, sx >>> 0);
+    sm.setU32((v1 + 0x04) >>> 0, sy >>> 0);
+    const v2 = sm.alloc(0x14) >>> 0;
+    sm.fill(v2, 0x14, 0);
+    sm.setU32((v1 + 0x10) >>> 0, v2);
+    sm.setU32(v2, gx >>> 0);
+    sm.setU32((v2 + 0x04) >>> 0, gy >>> 0);
+    return 1;
+  }
+
+  const q = PATH_QuantizeDeltaIndex25_113c(gx, gy, sy, sx);
+  const startDir = (MAZE_LINK_DIR_FROM_Q_6FDDC320[q * 3]! >> 1) & 0x03;
+  const minD = adx < ady ? adx : ady;
+  const maxD = adx > ady ? adx : ady;
+  const baseH = (minD + maxD * 2) | 0;
+  let maxCost = (baseH + (baseH >> 1)) | 0;
+  const costLimit = (maxCost + 0x23) | 0;
+
+  const ctx = MAZE_LINK_STACK_BASE;
+  sm.fill(ctx, 0x8ca8, 0);
+  const root = (ctx + 4) >>> 0;
+
+  let resultNode = 0;
+  let iter = 1;
+  while (maxCost < costLimit) {
+    sm.setU32(ctx, root);
+    sm.setU32((ctx + 0x8ca4) >>> 0, 1);
+    sm.fill(root, 40, 0);
+    sm.setU32(root, baseH >>> 0);
+    sm.setU32((root + 0x04) >>> 0, baseH >>> 0);
+    sm.setU32((root + 0x0c) >>> 0, sx >>> 0);
+    sm.setU32((root + 0x10) >>> 0, sy >>> 0);
+    sm.setU32((root + 0x14) >>> 0, 0xffffffff);
+    sm.setU32((root + 0x18) >>> 0, 0x6fddcab8);
+    sm.setU8((root + 0x1c) >>> 0, startDir);
+
+    const goalBuf = (MAZE_LINK_STACK_BASE + 0x8d00) >>> 0;
+    sm.setU32(goalBuf, gx >>> 0);
+    sm.setU32((goalBuf + 0x04) >>> 0, gy >>> 0);
+
+    resultNode = DRLGOUTPLACE_ExpandMazeLinkPath113c(sm, ctx, maxCost, level, goalBuf);
+    maxCost = (maxCost + 5) | 0;
+    if (iter >= 0x384) {
+      return 0;
+    }
+    iter = 1;
+    if (resultNode !== 0) break;
+  }
+
+  if (resultNode === 0) {
+    return 0;
+  }
+
+  let pPrev = 0;
+  let curNode = resultNode;
+  while (curNode !== 0) {
+    const v = sm.alloc(0x14) >>> 0;
+    sm.fill(v, 0x14, 0);
+    if (pPrev !== 0) {
+      sm.setU32((pPrev + 0x10) >>> 0, v);
+    } else {
+      sm.setU32((pOutdoors + idx * 4 + 0x68) >>> 0, v);
+    }
+    pPrev = v;
+    sm.setU32(v, sm.u32((curNode + 0x0c) >>> 0));
+    sm.setU32((v + 0x04) >>> 0, sm.u32((curNode + 0x10) >>> 0));
+    curNode = sm.u32((curNode + 0x20) >>> 0);
+  }
+  return 1;
+}
+
+function sdiv32(a: number, b: number): number {
+  return (a / b) | 0;
+}
+
+const OUTDOOR_PRESET_EDGE_MAP_6FD8D7DC = [
+  0, 1, 2, 3, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+  9, 9, 9, 9, 4, 5, 9, 9, 6, 9, 9, 9, 9, 9, 9, 9,
+  9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 7, 8,
+] as const;
+
+/**
+ * `D2Common.dll` `0x6FD8D5A0` (internal `__stdcall(pLevel)`).
+ * Collects outdoor room link endpoints into `pOutdoors->aOutdoorRooms` (`+0x80`, stride 20)
+ * and snaps/offsets each entry via `DRLGVER_SnapAndOffsetVertex113c`.
+ */
+export function DRLGVER_CollectOutdoorRoomLinks113c(
+  m: Memory113c,
+  pLevel: number,
+): void {
+  const level = pLevel >>> 0;
+  const pOutdoors = m.u32((level + 0x14) >>> 0);
+  let pOrth = m.u32((pOutdoors + 0x264) >>> 0);
+  m.setU32((pOutdoors + 0x260) >>> 0, 0);
+
+  while (pOrth !== 0) {
+    const pDst = m.u32(pOrth) >>> 0;
+    const dstId = m.u32((pDst + 0x1d0) >>> 0) | 0;
+    if (dstId === 1) {
+      const idx = m.u32((pOutdoors + 0x260) >>> 0) | 0;
+      const ent = (pOutdoors + idx * 20 + 0x80) >>> 0;
+      const dir = m.u32((pOrth + 0x04) >>> 0) >>> 0;
+      m.setU8((ent + 0x08) >>> 0, dir & 0xff);
+      if (dir === 0) {
+        m.setU32(ent, ((m.u32((pDst + 0x1c) >>> 0) | 0) + 0x3b) >>> 0);
+        m.setU32((ent + 0x04) >>> 0, ((m.u32((pDst + 0x20) >>> 0) | 0) + 0x13) >>> 0);
+      } else if (dir === 1) {
+        m.setU32(ent, ((m.u32((pDst + 0x1c) >>> 0) | 0) + 0x1d) >>> 0);
+        m.setU32((ent + 0x04) >>> 0, ((m.u32((pDst + 0x20) >>> 0) | 0) + 0x23) >>> 0);
+      } else if (dir === 2) {
+        m.setU32(ent, ((m.u32((pDst + 0x1c) >>> 0) | 0) + 0x04) >>> 0);
+        m.setU32((ent + 0x04) >>> 0, ((m.u32((pDst + 0x20) >>> 0) | 0) + 0x16) >>> 0);
+      } else if (dir === 3) {
+        m.setU32(ent, ((m.u32((pDst + 0x1c) >>> 0) | 0) + 0x1d) >>> 0);
+        m.setU32((ent + 0x04) >>> 0, ((m.u32((pDst + 0x20) >>> 0) | 0) + 0x03) >>> 0);
+      }
+      m.setU32((pOutdoors + 0x260) >>> 0, (idx + 1) >>> 0);
+    } else if (dstId === 0x1a) {
+      const idx = m.u32((pOutdoors + 0x260) >>> 0) | 0;
+      const ent = (pOutdoors + idx * 20 + 0x80) >>> 0;
+      m.setU32(ent, ((m.u32((pDst + 0x1c) >>> 0) | 0) + 0x1b) >>> 0);
+      m.setU32((ent + 0x04) >>> 0, ((m.u32((pDst + 0x20) >>> 0) | 0) + 0x0d) >>> 0);
+      m.setU8((ent + 0x08) >>> 0, 1);
+      m.setU32((pOutdoors + 0x260) >>> 0, (idx + 1) >>> 0);
+    }
+    pOrth = m.u32((pOrth + 0x14) >>> 0);
+  }
+
+  const gw = m.u32((pOutdoors + 0x5c) >>> 0) | 0;
+  const gh = m.u32((pOutdoors + 0x60) >>> 0) | 0;
+  const lx = m.u32((level + 0x1c) >>> 0) | 0;
+  const ly = m.u32((level + 0x20) >>> 0) | 0;
+  const pGrid0Rows = m.u32((pOutdoors + 0x08) >>> 0);
+  const pGrid0Cells = m.u32((pOutdoors + 0x04) >>> 0);
+  const pGrid2Rows = m.u32((pOutdoors + 0x30) >>> 0);
+  const pGrid2Cells = m.u32((pOutdoors + 0x2c) >>> 0);
+
+  for (let x = 0; x < gw; x++) {
+    for (let y = 0; y < gh; y++) {
+      const r0 = m.u32((pGrid0Rows + y * 4) >>> 0) | 0;
+      const c0 = m.u32((pGrid0Cells + ((r0 + x) | 0) * 4) >>> 0) | 0;
+      const r2 = m.u32((pGrid2Rows + y * 4) >>> 0) | 0;
+      const c2Byte = m.u8((pGrid2Cells + ((r2 + x) | 0) * 4 + 2) >>> 0) & 0x0f;
+      const idx = m.u32((pOutdoors + 0x260) >>> 0) | 0;
+      const ent = (pOutdoors + idx * 20 + 0x80) >>> 0;
+      m.setU32(ent, (lx + x * 8 + 3) >>> 0);
+      m.setU32((ent + 0x04) >>> 0, (ly + y * 8 + 3) >>> 0);
+      let dirVal = 4;
+      const sw = (c0 - 4) >>> 0;
+      if (sw <= 0x30) {
+        const k = OUTDOOR_PRESET_EDGE_MAP_6FD8D7DC[sw]!;
+        if (k === 0 && c2Byte === 3) dirVal = 3;
+        else if (k === 1 && c2Byte === 3) dirVal = 0;
+        else if (k === 2 && c2Byte === 3) dirVal = 1;
+        else if (k === 3 && c2Byte === 3) dirVal = 2;
+        else if (k === 4) dirVal = 1;
+        else if (k === 5) dirVal = 0;
+        else if (k === 6 && c2Byte === 1 && x === ((gw - 2) | 0)) dirVal = 2;
+        else if (k === 7) dirVal = c2Byte !== 0 ? 1 : 0;
+        else if (k === 8) dirVal = c2Byte !== 0 ? 1 : 0;
+      }
+      m.setU8((ent + 0x08) >>> 0, dirVal);
+      if (dirVal !== 4) {
+        m.setU32((pOutdoors + 0x260) >>> 0, (idx + 1) >>> 0);
+      }
+    }
+  }
+
+  const total = m.u32((pOutdoors + 0x260) >>> 0) | 0;
+  for (let i = 0; i < total; i++) {
+    const ent = (pOutdoors + i * 20 + 0x80) >>> 0;
+    DRLGVER_SnapAndOffsetVertex113c(m, (ent + 0x78) >>> 0, ent, level);
+  }
+}
+
+const WALL_BORDER_BITMASK_6FDDC4A0 = [
+  0, 0, 16, 16, 0, 0, 16, 16, 14, 14, 6, 19, 14, 14, 6, 19,
+  15, 15, 5, 5, 15, 15, 21, 21, 8, 8, 10, 38, 8, 8, 40, 20,
+  0, 0, 16, 16, 0, 0, 16, 16, 14, 14, 6, 19, 14, 14, 6, 19,
+  15, 15, 5, 5, 15, 15, 21, 21, 8, 8, 10, 38, 8, 8, 40, 20,
+  13, 13, 7, 7, 13, 13, 13, 7, 4, 4, 11, 37, 4, 4, 11, 43,
+  3, 3, 12, 12, 3, 3, 39, 39, 9, 9, 2, 43, 9, 9, 44, 26,
+  13, 13, 7, 7, 13, 13, 13, 7, 23, 23, 41, 17, 23, 23, 41, 17,
+  3, 3, 12, 12, 3, 3, 39, 39, 42, 42, 46, 42, 42, 42, 33, 31,
+  0, 0, 16, 16, 0, 0, 16, 16, 14, 14, 6, 19, 14, 14, 6, 19,
+  15, 15, 5, 5, 15, 15, 21, 21, 8, 8, 10, 38, 8, 8, 35, 20,
+  0, 0, 16, 16, 0, 0, 16, 16, 14, 14, 6, 19, 14, 14, 6, 19,
+  15, 15, 5, 5, 15, 15, 21, 21, 8, 8, 10, 38, 8, 8, 40, 20,
+  13, 13, 7, 7, 13, 13, 13, 7, 4, 4, 11, 37, 4, 4, 11, 37,
+  18, 18, 35, 35, 18, 18, 22, 22, 36, 36, 45, 34, 36, 36, 28, 29,
+  13, 13, 7, 7, 13, 13, 13, 7, 23, 23, 41, 17, 23, 23, 41, 17,
+  18, 18, 35, 35, 18, 18, 22, 22, 24, 24, 25, 32, 24, 24, 30, 1,
+] as const;
+
+/**
+ * `D2Common.dll` `0x6FD8DB20` (internal `__stdcall(pRoomEx)`).
+ * Rasterizes 3x3 neighborhood wall border codes into `pRoomEx->pOutdoor`'s wall grid (`+0x28/+0x2C`)
+ * from input grid `pRoomEx->pOutdoor + 0x3C`.
+ */
+export function DRLGVER_ApplyMazeBorderTiles113c(
+  m: Memory113c,
+  pRoomEx: number,
+): void {
+  const sm = withDrlgVerStackScratch113c(m);
+  const roomEx = pRoomEx >>> 0;
+  const maxX0 = ((sm.u32((roomEx + 0x3c) >>> 0) | 0) + 1) | 0;
+  const pOutdoor = sm.u32((roomEx + 0x20) >>> 0) >>> 0;
+  if (maxX0 < 1) return;
+
+  const pGrid3 = (pOutdoor + 0x3c) >>> 0;
+  const buf = (DRLGVER_STACK_BASE + 0x80) >>> 0;
+
+  for (let x = 1; x <= ((sm.u32((roomEx + 0x3c) >>> 0) | 0) + 1); x++) {
+    const maxY = ((sm.u32((roomEx + 0x40) >>> 0) | 0) + 1) | 0;
+    DRLGGRID_Get3x3Neighborhood113c(sm, pGrid3, maxY, x, buf);
+    if (maxY < 1) continue;
+    let n0 = sm.u32(buf) | 0;
+    let n1 = sm.u32((buf + 4) >>> 0) | 0;
+    let n2 = sm.u32((buf + 8) >>> 0) | 0;
+    let n3 = sm.u32((buf + 12) >>> 0) | 0;
+    let n4 = sm.u32((buf + 16) >>> 0) | 0;
+    let n5 = sm.u32((buf + 20) >>> 0) | 0;
+    let n6 = sm.u32((buf + 24) >>> 0) | 0;
+    let n7 = sm.u32((buf + 28) >>> 0) | 0;
+    let n8 = sm.u32((buf + 32) >>> 0) | 0;
+
+    for (let y = maxY; y >= 1; y--) {
+      if (n4 !== 0) {
+        let mask = n8 !== 0 ? 1 : 0;
+        mask = (mask << 1) | (n7 !== 0 ? 1 : 0);
+        mask = (mask << 1) | (n6 !== 0 ? 1 : 0);
+        mask = (mask << 1) | (n5 !== 0 ? 1 : 0);
+        mask = (mask << 1) | (n3 !== 0 ? 1 : 0);
+        mask = (mask << 1) | (n2 !== 0 ? 1 : 0);
+        mask = (mask << 1) | (n1 !== 0 ? 1 : 0);
+        mask = (mask << 1) | (n0 !== 0 ? 1 : 0);
+        if (mask !== 0) {
+          const code = WALL_BORDER_BITMASK_6FDDC4A0[mask]!;
+          if (code !== 0) {
+            const pRowOff = sm.u32((pOutdoor + 0x2c) >>> 0);
+            const row = sm.u32((pRowOff + y * 4 - 4) >>> 0) | 0;
+            const pCells = sm.u32((pOutdoor + 0x28) >>> 0);
+            const cellPtr = (pCells + ((row + x) | 0) * 4 - 4) >>> 0;
+            DRLGGRID_OpOverwrite113c(sm, cellPtr, ((code << 8) | 0x82) >>> 0);
+          }
+        }
+      }
+      if (y > 1) {
+        const pRows = sm.u32((pOutdoor + 0x40) >>> 0);
+        const pGridCells = sm.u32(pGrid3);
+        const prevRow = sm.u32((pRows + y * 4 - 8) >>> 0) | 0;
+        const idx = (prevRow + x) | 0;
+        n0 = n1;
+        n1 = n2;
+        n2 = sm.u32((pGridCells + idx * 4 - 4) >>> 0) | 0;
+        n3 = n4;
+        n4 = n5;
+        n5 = sm.u32((pGridCells + idx * 4) >>> 0) | 0;
+        n6 = n7;
+        n7 = n8;
+        n8 = sm.u32((pGridCells + idx * 4 + 4) >>> 0) | 0;
+      }
+    }
+  }
+}
+
 
 

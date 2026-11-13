@@ -5,8 +5,8 @@
     "name": "UNITFINDS_FindNearestUnitInRange",
     "kernFile": "src/d2kern-113c/common/unit-finds.ts",
     "tsSymbol": "UNITFINDS_FindNearestUnitInRange113c",
-    "status": "ported",
-    "diffEvidence": "tests/oracle/k1/laneA-I13A-1.test.ts (real-DLL vectors via k1r11-laneA-it13-emitter.c -> i13a-1-vectors.ndjson; status ported per sync-gates.py:241 indirectUnknown caller callback)"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k1/laneD-ported29.test.ts (real-DLL vectors via k1r13-laneD-ported29-emitter.c -> k1r13-i14d-1.ndjson); tests/oracle/k1/laneA-I13A-1.test.ts (real-DLL vectors via k1r11-laneA-it13-emitter.c -> i13a-1-vectors.ndjson; status ported per sync-gates.py:241 indirectUnknown caller callback)"
   },
   {
     "module": "D2Common",
@@ -14,8 +14,8 @@
     "name": "UNITFINDS_MatchUnitCandidate",
     "kernFile": "src/d2kern-113c/common/unit-finds.ts",
     "tsSymbol": "UNITFINDS_MatchUnitCandidate113c",
-    "status": "ported",
-    "diffEvidence": "tests/oracle/k1/laneA-I13A-1.test.ts (real-DLL vectors via k1r11-laneA-it13-emitter.c -> i13a-1-vectors.ndjson; status ported per sync-gates.py:241 indirectUnknown caller callback)"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k1/laneD-ported29.test.ts (real-DLL vectors via k1r13-laneD-ported29-emitter.c -> k1r13-i14d-1.ndjson); tests/oracle/k1/laneA-I13A-1.test.ts (real-DLL vectors via k1r11-laneA-it13-emitter.c -> i13a-1-vectors.ndjson; status ported per sync-gates.py:241 indirectUnknown caller callback)"
   },
   {
     "module": "D2Common",

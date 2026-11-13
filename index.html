@@ -843,6 +843,12 @@
           copiedPrefix: "已复制：",
           fallbackUpdates: [
             {
+              date: "2026-11-14",
+              version: "v1.13c",
+              title: "内核移植持续推进：怪物刷新与房间生成对拍",
+              summary: "本轮把怪物刷新、房间填充与迷宫布局逻辑逐条对齐原版二进制，并补齐回归对拍测试；玩家侧玩法与画面本次无可见变化。"
+            },
+            {
               date: "2026-11-13",
               version: "v1.13c",
               title: "技能中断与物品图标修复",
@@ -871,12 +877,6 @@
               version: "v1.13c",
               title: "内核函数移植校正：寻路与战斗判定",
               summary: "继续按原版逐段移植并比对内核函数，本次覆盖寻路与碰撞、地牢与房间布局、技能与投射物、物品与怪物状态，减少卡墙、走位异常和战斗判定偏差，行为更贴近 1.13c。"
-            },
-            {
-              date: "2026-11-08",
-              version: "v1.13c",
-              title: "安达利尔震屏音效与传送点面板修复",
-              summary: "震屏结束时安达利尔的循环音效会正确停止，离开区域或重置时也不再残留；点击世界不会再误发传送包，关闭传送点后界面恢复可操作。"
             }
           ]
         },
@@ -908,6 +908,12 @@
           copiedPrefix: "Copied: ",
           fallbackUpdates: [
             {
+              date: "2026-11-14",
+              version: "v1.13c",
+              title: "Kernel porting continues: spawn and room parity",
+              summary: "Aligned monster respawn, room population and dungeon layout logic line by line with the original binary, with expanded regression parity tests. No visible gameplay or visual change shipped this round."
+            },
+            {
               date: "2026-11-13",
               version: "v1.13c",
               title: "Channel and item icon fixes",
@@ -936,12 +942,6 @@
               version: "v1.13c",
               title: "Deeper 1.13c Kernel Ports",
               summary: "Kernel ports for pathing, collision, dungeon layout, skills, missiles and item state, diff-verified against 1.13c."
-            },
-            {
-              date: "2026-11-08",
-              version: "v1.13c",
-              title: "Quake audio & waypoint panel fixes",
-              summary: "Andariel quake loop now stops on shake end, area exit and reset; world clicks no longer send stray waypoint packets."
             }
           ]
         }

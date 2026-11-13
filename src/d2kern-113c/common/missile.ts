@@ -493,10 +493,12 @@ export function STATLIST_GetStatsByIdFromList113c(
   pStatList: number,
   nStatId: number,
   nMax: number,
+  pOut = 0,
 ): Array<readonly [number, number]> {
   const out: Array<readonly [number, number]> = []
   const list = pStatList >>> 0
   if (list === 0) return out
+  const outBase = pOut >>> 0
   const pHdr = (m.u32((list + 0x10) >>> 0) | 0) < 0 ? (list + 0x48) >>> 0 : (list + 0x24) >>> 0
   let idx = STATLIST_FindStatFirstIndexOrLowerBound113c(m, pHdr, (nStatId << 16) >>> 0) | 0
   if (idx < 0) return out
@@ -505,7 +507,13 @@ export function STATLIST_GetStatsByIdFromList113c(
     const dwKey = m.u32(pEntry)
     if (((dwKey >> 16) & 0xffff) !== (nStatId | 0)) break
     if (out.length >= (nMax | 0)) break
-    out.push([dwKey, m.u32((pEntry + 4) >>> 0)])
+    const dwVal = m.u32((pEntry + 4) >>> 0)
+    if (outBase !== 0) {
+      const dst = (outBase + out.length * 8) >>> 0
+      m.setU32(dst, dwKey)
+      m.setU32((dst + 4) >>> 0, dwVal)
+    }
+    out.push([dwKey, dwVal])
     idx++
     pEntry = (pEntry + 8) >>> 0
   }
@@ -530,8 +538,8 @@ function maxMasteryValueMem113c(
 /**
  * `@va D2Common:0x6FD9F200` (`SKILLS_GetThrowingWeaponMasteryBonus`, stdcall
  * `(pUnit, pWeapon, pSkill, nBonusType, pbThrowing)`, `ret 0x14`). Returns `null` where the DLL returns `0`
- * with `*pbThrowing == 0`, else the max bonus (`*pbThrowing = 1`, 0x6FD9F36B); the `pbThrowing` slot is a
- * caller stack local in every DLL call site.
+ * with `*pbThrowing == 0`, else the max bonus (`*pbThrowing = 1`, 0x6FD9F36B); when `pbThrowing != 0`,
+ * also mirrors the exact `*pbThrowing` dword writes into emulated memory (`0x6FD9F20E` / `0x6FD9F36B`).
  */
 export function SKILLS_GetThrowingWeaponMasteryBonus113c(
   m: Memory113c,
@@ -539,7 +547,12 @@ export function SKILLS_GetThrowingWeaponMasteryBonus113c(
   pWeapon: number,
   pSkillIn: number,
   nBonusType: number,
+  pbThrowing = 0,
 ): number | null {
+  const outThrow = pbThrowing >>> 0
+  if (outThrow !== 0) {
+    m.setU32(outThrow, 0)
+  }
   let pSkill = pSkillIn >>> 0
   if (pSkill === 0) {
     pSkill = getUsedSkillMem113c(m, pUnit)
@@ -571,7 +584,11 @@ export function SKILLS_GetThrowingWeaponMasteryBonus113c(
     pStatList !== 0 && (m.u32((pStatList + 0x10) >>> 0) | 0) < 0
       ? STATLIST_GetStatsByIdFromList113c(m, pStatList, nStatId, 0x20)
       : []
-  return maxMasteryValueMem113c(m, w, entries)
+  const best = maxMasteryValueMem113c(m, w, entries)
+  if (outThrow !== 0) {
+    m.setU32(outThrow, 1)
+  }
+  return best
 }
 
 /**

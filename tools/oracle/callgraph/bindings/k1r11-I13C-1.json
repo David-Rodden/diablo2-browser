@@ -131,7 +131,7 @@
     "name": "COLLISION_FindAdjacentUnitWithCallback",
     "kernFile": "src/d2kern-113c/common/collision.ts",
     "tsSymbol": "COLLISION_FindAdjacentUnitWithCallback113c",
-    "status": "ported",
-    "diffEvidence": "tests/oracle/k1/laneC-I13C-1.test.ts (6 real-DLL vectors in tests/fixtures/oracle/k1/i13c-1-vectors.ndjson via k1r11-laneC-it13-emitter.c; status ported per sync-gates.py:241 indirectUnknown caller callback)"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k1/laneD-ported29.test.ts (real-DLL vectors via k1r13-laneD-ported29-emitter.c -> k1r13-i14d-1.ndjson); tests/oracle/k1/laneC-I13C-1.test.ts (6 real-DLL vectors in tests/fixtures/oracle/k1/i13c-1-vectors.ndjson via k1r11-laneC-it13-emitter.c; status ported per sync-gates.py:241 indirectUnknown caller callback)"
   }
 ]

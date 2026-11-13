@@ -16,8 +16,14 @@ import {
   ENV_TICK_RATES_6FDEB238,
   ENV_UpdateIntensityAndSunAngle113c,
 } from '../env.ts';
+import { DRLGPRESET_AllocLevelPresetInfo113c, DRLGPRESET_FreeDrlgMapList113c } from './preset.ts';
 import { D2CommonAssertError } from '../inline-helpers.ts';
 import { imul32 } from '../int-math.ts';
+import { DRLGOUTDOORS_FreeOutdoorLevelData113c } from './drlg-grid.ts';
+import {
+  DRLGROOM_FreeRoomEx113c,
+  DRLGWARP_GetWarpDstAdjustData113c,
+} from './drlg-room.ts';
 import {
   D2CMP_10051_GetTileFlags113c,
   D2CMP_10059_FindTiles113c,
@@ -59,6 +65,32 @@ function hashDt1PathIntoTiles113c(
   ppTiles: number,
   path: string,
 ): void {
+  const g = globalThis as unknown as {
+    __d2LoadMpqDt1Hash?: (m: Memory113c, path: string) => number;
+  };
+  const hook = g.__d2LoadMpqDt1Hash;
+  if (typeof hook === 'function') {
+    const trimmed = path.trim();
+    if (trimmed.length === 0 || trimmed === '0' || trimmed.toLowerCase() === 'none') {
+      return;
+    }
+    const pHash = hook(m, trimmed) >>> 0;
+    if (pHash === 0) {
+      return;
+    }
+    const base = ppTiles >>> 0;
+    for (let slot = 0; slot < 32; slot++) {
+      const cur = m.u32((base + slot * 4) >>> 0);
+      if (cur === pHash) {
+        return;
+      }
+      if (cur === 0) {
+        m.setU32((base + slot * 4) >>> 0, pHash);
+        return;
+      }
+    }
+    return;
+  }
   let h = m.u32(ppTiles >>> 0);
   for (let i = 0; i < path.length; i++) {
     h = (imul32(h, 33) + (path.charCodeAt(i) & 0xff)) >>> 0;
@@ -546,4 +578,367 @@ export function DRLG_CollectWarpAndSpecialRoomCenters113c(
     pRoomEx = m.u32((pRoomEx + 0x24) >>> 0);
   }
 }
+
+/**
+ * `D2Common.dll` `0x6FD7D890` (internal `__usercall(pLevel@<edi>)` + `pDrlg@<ebx>`).
+ * Initializes level dimensions and world position from `Levels.txt` (`+0x24`, `+0x28`, `+0x1C`, `+0x20`).
+ */
+export function DRLG_InitLevelCoordsFromLevelsTxt113c(
+  m: Memory113c,
+  pLevel: number,
+  pDrlg: number,
+): void {
+  const level = pLevel >>> 0;
+  const drlg = pDrlg >>> 0;
+  const nLevelId = m.u32((level + 0x1d0) >>> 0) | 0;
+  let pLvlTxt = 0;
+  if (nLevelId >= 0) {
+    const sgptDataTables = m.u32(SGPT_DATA_TABLES_PTR_VA_6FDE9E1C);
+    if (nLevelId < (m.u32((sgptDataTables + 0xc5c) >>> 0) | 0)) {
+      pLvlTxt = (m.u32(SG_LEVEL_DEF_BIN_PTR_VA_6FDF0B38) + imul32(nLevelId, 0x9c)) >>> 0;
+    }
+  }
+  const nDepend = m.u32((pLvlTxt + 0x2c) >>> 0) | 0;
+  const bDiff = m.u8((drlg + 0x450) >>> 0);
+  m.setU32((level + 0x24) >>> 0, m.u32((pLvlTxt + bDiff * 4 + 0x0c) >>> 0));
+  m.setU32((level + 0x28) >>> 0, m.u32((pLvlTxt + bDiff * 4 + 0x18) >>> 0));
+  let posX = 0;
+  let posY = 0;
+  if (nDepend !== 0) {
+    let pDep = m.u32((drlg + 0x47c) >>> 0);
+    while (pDep !== 0) {
+      if ((m.u32((pDep + 0x1d0) >>> 0) | 0) === nDepend) break;
+      pDep = m.u32((pDep + 0x1ac) >>> 0);
+    }
+    if (pDep === 0) {
+      pDep = DRLG_AllocAndInitLevel113c(m, drlg, nDepend);
+    }
+    posX = m.u32((pDep + 0x1c) >>> 0) | 0;
+    posY = m.u32((pDep + 0x20) >>> 0) | 0;
+  }
+  m.setU32((level + 0x1c) >>> 0, ((m.u32((pLvlTxt + 0x24) >>> 0) | 0) + posX) >>> 0);
+  m.setU32((level + 0x20) >>> 0, ((m.u32((pLvlTxt + 0x28) >>> 0) | 0) + posY) >>> 0);
+}
+
+/**
+ * `D2Common.dll` `0x6FD7D9B0` (Ord `10207`, `__fastcall(pDrlg@<ecx>, nLevelId@<edx>)`).
+ * Allocates and initializes a `D2DrlgLevelStrc` (`0x230` B) and prepends it to `pDrlg->pLevel`.
+ */
+export function DRLG_AllocAndInitLevel113c(
+  m: Memory113c,
+  pDrlg: number,
+  nLevelId: number,
+): number {
+  const drlg = pDrlg >>> 0;
+  const lvlId = nLevelId | 0;
+  const pLevel = m.alloc(0x230) >>> 0;
+  m.fill(pLevel, 0x230, 0);
+  m.setU32((pLevel + 0x1b4) >>> 0, drlg);
+  m.setU32((pLevel + 0x1d0) >>> 0, lvlId >>> 0);
+
+  let pLvlTxt = 0;
+  if (lvlId >= 0) {
+    const sgptDataTables = m.u32(SGPT_DATA_TABLES_PTR_VA_6FDE9E1C);
+    if (lvlId < (m.u32((sgptDataTables + 0xc5c) >>> 0) | 0)) {
+      pLvlTxt = (m.u32(SG_LEVEL_DEF_BIN_PTR_VA_6FDF0B38) + imul32(lvlId, 0x9c)) >>> 0;
+    }
+  }
+  m.setU32((pLevel + 0x1c0) >>> 0, m.u32((pLvlTxt + 0x34) >>> 0));
+  const dwDrlgType = m.u32((pLvlTxt + 0x30) >>> 0) >>> 0;
+  m.setU32(pLevel, dwDrlgType);
+  if ((m.u32((drlg + 0x8c) >>> 0) & 0x01) !== 0) {
+    m.setU32((pLevel + 0x04) >>> 0, (m.u32((pLevel + 0x04) >>> 0) | 0x10) >>> 0);
+  }
+  m.setU32((pLevel + 0x1c4) >>> 0, ((m.u32((drlg + 0x470) >>> 0) | 0) + lvlId) >>> 0);
+  m.setU32((pLevel + 0x1c8) >>> 0, 0x29a);
+
+  if (dwDrlgType === 1) {
+    const pMaze = DATATBLS_FindWallTileCacheEntry113c(m, lvlId);
+    m.setU32((pLevel + 0x14) >>> 0, pMaze >>> 0);
+    DRLG_InitLevelCoordsFromLevelsTxt113c(m, pLevel, drlg);
+  } else if (dwDrlgType === 2) {
+    DRLGPRESET_AllocLevelPresetInfo113c(m, pLevel);
+  } else if (dwDrlgType === 3) {
+    const pOutdoors = m.alloc(0x268) >>> 0;
+    m.fill(pOutdoors, 0x268, 0);
+    m.setU32((pLevel + 0x14) >>> 0, pOutdoors);
+  }
+
+  m.setU32((pLevel + 0x1ac) >>> 0, m.u32((drlg + 0x47c) >>> 0));
+  m.setU32((drlg + 0x47c) >>> 0, pLevel);
+  return pLevel;
+}
+
+/**
+ * `D2Common.dll` `0x6FD7DAF0` (internal `__usercall(pLevel@<esi>, pMemPool, bKeepAllocated)`).
+ * Frees all rooms, preset/outdoor data, and warp/room-coord lists for a level.
+ */
+export function DRLG_FreeLevelData113c(
+  m: Memory113c,
+  pLevel: number,
+  pMemPool: number,
+  bKeepAllocated: number,
+): void {
+  const level = pLevel >>> 0;
+  const freeFn = (m as { free?: (p: number) => void }).free;
+  const keep = bKeepAllocated | 0;
+
+  if (keep !== 0) {
+    if (m.u32((level + 0x22c) >>> 0) === 0) {
+      const nRooms = m.u32((level + 0x08) >>> 0) >>> 0;
+      if (nRooms !== 0) {
+        const arr = m.alloc(nRooms * 4) >>> 0;
+        m.setU32((level + 0x22c) >>> 0, arr);
+        m.fill(arr, nRooms * 4, 0);
+      } else {
+        m.setU32((level + 0x08) >>> 0, 0);
+      }
+    }
+  } else {
+    const pArr = m.u32((level + 0x22c) >>> 0);
+    if (pArr !== 0) {
+      freeFn?.call(m, pArr);
+      m.setU32((level + 0x22c) >>> 0, 0);
+    }
+  }
+
+  let pRoomEx = m.u32((level + 0x10) >>> 0);
+  if (pRoomEx !== 0) {
+    let idx = 0;
+    while (pRoomEx !== 0) {
+      const pNext = m.u32((pRoomEx + 0x24) >>> 0);
+      const pArr = m.u32((level + 0x22c) >>> 0);
+      if (pArr !== 0) {
+        m.setU32((pArr + idx * 4) >>> 0, m.u32((pRoomEx + 0x60) >>> 0) & 0x01);
+        idx += 4;
+      }
+      DRLGROOM_FreeRoomEx113c(m, pRoomEx);
+      pRoomEx = pNext;
+    }
+    m.setU32((level + 0x10) >>> 0, 0);
+    m.setU32((level + 0x08) >>> 0, 0);
+  }
+
+  const pPresetRoom = m.u32((level + 0x1b0) >>> 0);
+  if (pPresetRoom !== 0) {
+    DRLGPRESET_FreeDrlgMapList113c(m, pMemPool, pPresetRoom);
+    m.setU32((level + 0x1b0) >>> 0, 0);
+  }
+
+  const dwDrlgType = m.u32(level) >>> 0;
+  if (dwDrlgType === 1) {
+    if (keep === 0) {
+      m.setU32((level + 0x14) >>> 0, 0);
+    }
+  } else if (dwDrlgType === 2) {
+    const pPreset = m.u32((level + 0x14) >>> 0);
+    if (pPreset !== 0) {
+      m.setU32(pPreset, 0);
+    }
+    if (keep === 0) {
+      if (pPreset !== 0) freeFn?.call(m, pPreset);
+      m.setU32((level + 0x14) >>> 0, 0);
+    }
+  } else if (dwDrlgType === 3) {
+    DRLGOUTDOORS_FreeOutdoorLevelData113c(m, level, keep);
+  }
+
+  m.fill((level + 0x2c) >>> 0, 0x60 * 4, 0);
+  m.fill((level + 0x1e0) >>> 0, 0x13 * 4, 0);
+  m.setU32((level + 0x1d8) >>> 0, 0);
+
+  if (keep === 0) {
+    const p1bc = m.u32((level + 0x1bc) >>> 0);
+    if (p1bc !== 0) {
+      freeFn?.call(m, p1bc);
+      m.setU32((level + 0x1bc) >>> 0, 0);
+    }
+  }
+
+  let pCoordNode = m.u32((level + 0x1cc) >>> 0);
+  if (pCoordNode !== 0) {
+    while (pCoordNode !== 0) {
+      const pNext = m.u32((pCoordNode + 0x0c) >>> 0);
+      freeFn?.call(m, pCoordNode);
+      pCoordNode = pNext;
+    }
+    m.setU32((level + 0x1cc) >>> 0, 0);
+  }
+}
+
+/**
+ * `D2Common.dll` `0x6FD7DD80` (Ord `10419`, `__stdcall(pDrlg, nLevelId)`).
+ * Finds an existing `D2DrlgLevelStrc` by `nLevelId` or allocates one via `0x6FD7D9B0`.
+ */
+export function DRLG_GetLevel113c(
+  m: Memory113c,
+  pDrlg: number,
+  nLevelId: number,
+): number {
+  const drlg = pDrlg >>> 0;
+  const lvlId = nLevelId | 0;
+  let pLevel = m.u32((drlg + 0x47c) >>> 0);
+  while (pLevel !== 0) {
+    if ((m.u32((pLevel + 0x1d0) >>> 0) | 0) === lvlId) {
+      return pLevel;
+    }
+    pLevel = m.u32((pLevel + 0x1ac) >>> 0);
+  }
+  return DRLG_AllocAndInitLevel113c(m, drlg, lvlId);
+}
+
+/**
+ * `D2Common.dll` `0x6FD7DDB0` (internal `__stdcall(pLevel)`).
+ * Checks whether a level and its warp-connected rooms can be deactivated/freed.
+ */
+export function DRLG_TryDeactivateLevelRooms113c(
+  m: Memory113c,
+  pLevel: number,
+): number {
+  const level = pLevel >>> 0;
+  const freeFn = (m as { free?: (p: number) => void }).free;
+  const pDrlg = m.u32((level + 0x1b4) >>> 0);
+  void m.u32((pDrlg + 0x478) >>> 0);
+
+  let pRoomEx = m.u32((level + 0x10) >>> 0);
+  while (pRoomEx !== 0) {
+    if (m.u8((pRoomEx + 0x44) >>> 0) <= 3 || (m.u32((pRoomEx + 0x28) >>> 0) & 0x100000) !== 0) {
+      return 0;
+    }
+    pRoomEx = m.u32((pRoomEx + 0x24) >>> 0);
+  }
+
+  const nLevelId = m.u32((level + 0x1d0) >>> 0) | 0;
+  const pWarpLevels = DRLGWARP_GetWarpDstAdjustData113c(m, pDrlg, nLevelId) >>> 0;
+
+  for (let i = 0; i < 8; i++) {
+    const dstLevelId = m.u32((pWarpLevels + i * 4) >>> 0) | 0;
+    if (dstLevelId === 0) continue;
+    const pDstLevel = DRLG_GetLevel113c(m, pDrlg, dstLevelId);
+    const pDstFirst = m.u32((pDstLevel + 0x10) >>> 0);
+    if (pDstFirst === 0) continue;
+
+    const pDstWarpLevels = DRLGWARP_GetWarpDstAdjustData113c(
+      m,
+      m.u32((pDstLevel + 0x1b4) >>> 0),
+      m.u32((pDstLevel + 0x1d0) >>> 0) | 0,
+    ) >>> 0;
+    let mask = 0;
+    for (let bit = 0; bit < 8; bit++) {
+      if ((m.u32((pDstWarpLevels + bit * 4) >>> 0) | 0) === nLevelId) {
+        mask |= 0x10 << bit;
+      }
+    }
+
+    let pCur = pDstFirst;
+    while (pCur !== 0) {
+      const flags = m.u32((pCur + 0x28) >>> 0);
+      if ((flags & mask) !== 0) {
+        if (m.u8((pCur + 0x44) >>> 0) <= 3 || (flags & 0x100000) !== 0) {
+          return 0;
+        }
+      }
+      pCur = m.u32((pCur + 0x24) >>> 0);
+    }
+
+    pCur = m.u32((pDstLevel + 0x10) >>> 0);
+    while (pCur !== 0) {
+      if ((m.u32((pCur + 0x28) >>> 0) & mask) !== 0) {
+        let pStatus = m.u32((pCur + 0x4c) >>> 0);
+        while (pStatus !== 0) {
+          const pNextStatus = m.u32((pStatus + 0x04) >>> 0);
+          freeFn?.call(m, pStatus);
+          pStatus = pNextStatus;
+        }
+        m.setU32((pCur + 0x4c) >>> 0, 0);
+        const ppNear = m.u32((pCur + 0x08) >>> 0);
+        if (ppNear !== 0) {
+          freeFn?.call(m, ppNear);
+          m.setU32((pCur + 0x08) >>> 0, 0);
+          m.setU32((pCur + 0x2c) >>> 0, 0);
+        }
+      }
+      pCur = m.u32((pCur + 0x24) >>> 0);
+    }
+  }
+
+  return 1;
+}
+
+/**
+ * `D2Common.dll` `0x6FD7DF80` (internal `__usercall(pLevel@<esi>, nDelta)`).
+ * Adjusts active player count (`+0x0C`, clamped `>= 0`) and resets inactive timer (`+0x1D4 = 10`)
+ * on `pLevel` and its up-to-8 warp-connected levels.
+ */
+export function DRLG_UpdateLevelActiveCount113c(
+  m: Memory113c,
+  pLevel: number,
+  nDelta: number,
+): void {
+  const level = pLevel >>> 0;
+  const delta = nDelta | 0;
+  const nLevelId = m.u32((level + 0x1d0) >>> 0) | 0;
+  const nextCount = ((m.u32((level + 0x0c) >>> 0) | 0) + delta) | 0;
+  m.setU32((level + 0x1d4) >>> 0, 10);
+  m.setU32((level + 0x0c) >>> 0, (nextCount <= 0 ? 0 : nextCount) >>> 0);
+
+  const pDrlg = m.u32((level + 0x1b4) >>> 0);
+  const pWarpLevels = DRLGWARP_GetWarpDstAdjustData113c(m, pDrlg, nLevelId) >>> 0;
+  for (let i = 0; i < 8; i++) {
+    const dstLevelId = m.u32((pWarpLevels + i * 4) >>> 0) | 0;
+    if (dstLevelId === 0) continue;
+    const pDstLevel = DRLG_GetLevel113c(m, m.u32((level + 0x1b4) >>> 0), dstLevelId);
+    const c = ((m.u32((pDstLevel + 0x0c) >>> 0) | 0) + delta) | 0;
+    m.setU32((pDstLevel + 0x1d4) >>> 0, 10);
+    m.setU32((pDstLevel + 0x0c) >>> 0, (c <= 0 ? 0 : c) >>> 0);
+  }
+}
+
+/**
+ * `D2Common.dll` `0x6FD7E1A0` (internal `__fastcall(pDrlg@<ecx>, nLevelId@<edx>)`).
+ * Returns the count of active (non-`0x800000`) rooms in `nLevelId`.
+ */
+export function DRLG_CountNonPresetRoomsInLevel113c(
+  m: Memory113c,
+  pDrlg: number,
+  nLevelId: number,
+): number {
+  const pLevel = DRLG_GetLevel113c(m, pDrlg, nLevelId);
+  let count = 0;
+  let pRoomEx = m.u32((pLevel + 0x10) >>> 0);
+  while (pRoomEx !== 0) {
+    if ((m.u32((pRoomEx + 0x28) >>> 0) & 0x800000) === 0) {
+      count = (count + 1) | 0;
+    }
+    pRoomEx = m.u32((pRoomEx + 0x24) >>> 0);
+  }
+  return count;
+}
+
+/**
+ * `D2Common.dll` `0x6FD7E2C0` (internal `__usercall(pDrlg@<eax>)`).
+ * Ticks down inactive timers on all levels in `pDrlg` and frees expired levels.
+ */
+export function DRLG_UpdateInactiveLevels113c(m: Memory113c, pDrlg: number): void {
+  const drlg = pDrlg >>> 0;
+  let pLevel = m.u32((drlg + 0x47c) >>> 0);
+  const pMemPool = m.u32((drlg + 0x478) >>> 0);
+  while (pLevel !== 0) {
+    if (
+      m.u32((pLevel + 0x0c) >>> 0) === 0 &&
+      m.u32((pLevel + 0x10) >>> 0) !== 0
+    ) {
+      const timer = m.u32((pLevel + 0x1d4) >>> 0) | 0;
+      if (timer !== 0) {
+        m.setU32((pLevel + 0x1d4) >>> 0, (timer - 1) >>> 0);
+      } else if (DRLG_TryDeactivateLevelRooms113c(m, pLevel) !== 0) {
+        DRLG_FreeLevelData113c(m, pLevel, pMemPool, 1);
+      } else {
+        m.setU32((pLevel + 0x1d4) >>> 0, 10);
+      }
+    }
+    pLevel = m.u32((pLevel + 0x1ac) >>> 0);
+  }
+}
+
 

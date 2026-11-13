@@ -46,11 +46,13 @@ import {
 import { imul32 } from './int-math.ts'
 import { COMPOSIT_GetUnitWeaponClassCode113c } from './composit.ts'
 import { DUNGEON_AddRoomPortalNode113c } from './dungeon.ts'
+import { INVENTORY_GetWeaponByHandSlotMemPort113c } from './k0-d2common-memports.ts'
 import {
   ITEMS_AreStackableWeaponsCompatible113c,
   ITEMS_CheckBodyLocation113c,
   ITEMS_CheckRequirements113c,
   ITEMS_GetBodyLocation113c,
+  ITEMS_GetItemColorColormap113c,
   ITEMS_GetItemTypeQuiverFromItem113c,
   ITEMS_GetItemTypeShootsFromItem113c,
   ITEMS_GetInvWidthFromItem113c,
@@ -3943,6 +3945,164 @@ export function INVENTORY_FindEquippedSkillChargeItem113c(
   }
   return 0
 }
+
+/**
+ * `D2Common.dll` `0x6FD71300` (internal `__stdcall(pUnit, pOutComp, pOutColor, pItem)`).
+ */
+export function INVENTORY_UpdateItemBodyLocGfx113c(
+  m: Memory113c,
+  pUnit: number,
+  pOutComp: number,
+  pOutColor: number,
+  pItem: number,
+): void {
+  const unit = pUnit >>> 0
+  const pInv = m.u32((unit + 0x60) >>> 0)
+  if (pInv === 0) return
+  const pRight = INVENTORY_GetWeaponByHandSlotMemPort113c(m, pInv, 5)
+  const pLeft = INVENTORY_GetWeaponByHandSlotMemPort113c(m, pInv, 6)
+  const item = pItem >>> 0
+  const classId = item !== 0 ? (m.u32((item + 0x04) >>> 0) >>> 0) : 0xffffffff
+  const maxItems = m.u32(0x6fdefb94) >>> 0
+  const pItemsTxt = m.u32(0x6fdefb98)
+  if (classId >= maxItems) {
+    throw new D2CommonAssertError('', 0x140d)
+  }
+  if (pItemsTxt === 0) {
+    throw new D2CommonAssertError('', 0x1ef)
+  }
+  const pTxt = (pItemsTxt + imul32(classId | 0, 0x1a8)) >>> 0
+  let compIdx = ITEMS_GetComponentFromItem113c(m, item) & 0xff
+  const dwCode = m.u32((pTxt + 0x80) >>> 0)
+  const dwAltGfx = m.u32((pTxt + 0x90) >>> 0)
+  const gfxCode = INVENTORY_FindItemGfxCodeIndex113c(m, dwCode, dwAltGfx) & 0xff
+  const outComp = pOutComp >>> 0
+  const outColor = pOutColor >>> 0
+
+  if (gfxCode === 0) {
+    if (compIdx < 0x10) {
+      m.setU8((outComp + compIdx) >>> 0, 0xff)
+      m.setU8((outColor + compIdx) >>> 0, 0xff)
+    }
+    return
+  }
+
+  if (item === pRight) {
+    compIdx = 5
+  } else if (item === pLeft) {
+    compIdx = 6
+  } else if (compIdx >= 0x10) {
+    return
+  }
+
+  m.setU8((outComp + compIdx) >>> 0, gfxCode)
+  INVENTORY_UpdateQuiverComponentDisplay113c(m, unit, item, outComp, outColor)
+  const colorPtr = (outColor + compIdx) >>> 0
+  if (ITEMS_GetItemColorColormap113c(m, unit, item, colorPtr, 0) === 0) {
+    m.setU8(colorPtr, 0xff)
+  } else {
+    m.setU8(colorPtr, (m.u8(colorPtr) + 1) & 0xff)
+  }
+}
+
+/**
+ * `D2Common.dll` `0x6FD71420` (Ord `10457`, `__stdcall(pUnit, pOutComp, pOutColor)`).
+ */
+export function INVENTORY_UpdateEquippedGfxAndColor113c(
+  m: Memory113c,
+  pUnit: number,
+  pOutComp: number,
+  pOutColor: number,
+): void {
+  const unit = pUnit >>> 0
+  const pInv = m.u32((unit + 0x60) >>> 0)
+  if (pInv === 0 || m.u32(pInv) !== 0x01020304) return
+
+  let pItem = m.u32((pInv + 0x0c) >>> 0)
+  if (pItem === 0) return
+
+  const outComp = pOutComp >>> 0
+  const outColor = pOutColor >>> 0
+  const compDelta = ((outComp - outColor) | 0)
+
+  while (pItem !== 0) {
+    const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+    if (m.u32(pItem) === 4 && m.u32((pItem + 0x10) >>> 0) === 1) {
+      const classId = m.u32((pItem + 0x04) >>> 0) >>> 0
+      if (classId >= (m.u32(0x6fdefb94) >>> 0)) {
+        throw new D2CommonAssertError('', 0x1447)
+      }
+      const pItemsTxt = m.u32(0x6fdefb98)
+      if (pItemsTxt === 0) {
+        throw new D2CommonAssertError('', 0x1ef)
+      }
+      const pTxt = (pItemsTxt + imul32(classId | 0, 0x1a8)) >>> 0
+      const pItemData = m.u32((pItem + 0x14) >>> 0)
+      if (pItemData !== 0) {
+        const page = m.u8((pItemData + 0x44) >>> 0)
+        if (page === 3) {
+          const sm = withInvStackScratch113c(m)
+          const pLimits6 = (INV_STACK_SCRATCH_BASE + 0x20) >>> 0
+          INVENTORY_GetItemSaveGridPageLimits113c(sm, pItem, pLimits6)
+          for (let slot = 0; slot < 0x10; slot++) {
+            if (slot === 1 || slot === 2 || slot === 3 || slot === 4 || slot === 8 || slot === 9) {
+              const pageLimit = COMPOSIT_GetItemPageLimitByBodyLoc113c(sm, slot, pLimits6) | 0
+              const pComposit = (m.u32(0x6fdf13d4) + imul32(pageLimit, 0x34)) >>> 0
+              if (pComposit === 0) {
+                throw new D2CommonAssertError('', 0x150)
+              }
+              const gfxCode =
+                (m.u32((pItem + 0x04) >>> 0) | 0) > 0
+                  ? (INVENTORY_FindItemGfxCodeIndex113c(
+                      m,
+                      m.u32((pComposit + 0x20) >>> 0),
+                      m.u32((pComposit + 0x20) >>> 0),
+                    ) &
+                    0xff)
+                  : 0
+              const dstColor = (outColor + slot) >>> 0
+              const dstComp = (dstColor + compDelta) >>> 0
+              if (gfxCode !== 0) {
+                m.setU8(dstComp, gfxCode)
+                if (ITEMS_GetItemColorColormap113c(m, unit, pItem, dstColor, 0) === 0) {
+                  m.setU8(dstColor, 0xff)
+                } else {
+                  m.setU8(dstColor, (m.u8(dstColor) + 1) & 0xff)
+                }
+              } else {
+                m.setU8(dstComp, 0xff)
+                m.setU8(dstColor, 0xff)
+              }
+            }
+          }
+        } else if (page === 1 || page === 4 || page === 5) {
+          const wType = (m.u16((pTxt + 0x11e) >>> 0) << 16) >> 16
+          let isQuiver = false
+          if (wType >= 0) {
+            const nTypes = m.u32((sgpt + 0xbfc) >>> 0) | 0
+            if (wType < nTypes && nTypes > 0x4b) {
+              const stride = m.u32((sgpt + 0xc00) >>> 0) | 0
+              const pEquiv = m.u32((sgpt + 0xc04) >>> 0)
+              const eqVal = m.u32((pEquiv + imul32(wType, stride) * 4 + 0x08) >>> 0)
+              const bitMasks = m.u32(D2COMMON_GDWBITMASKS_IAT_VA_113C)
+              if ((eqVal & m.u32((bitMasks + 0x2c) >>> 0)) !== 0) {
+                isQuiver = true
+              }
+            }
+          }
+          if (!isQuiver) {
+            INVENTORY_UpdateItemBodyLocGfx113c(m, unit, outComp, outColor, pItem)
+          }
+        }
+      }
+    }
+    if (m.u32(pItem) !== 4) break
+    const pItemData = m.u32((pItem + 0x14) >>> 0)
+    if (pItemData === 0) break
+    pItem = m.u32((pItemData + 0x5c + 0x08) >>> 0)
+  }
+}
+
 
 
 
