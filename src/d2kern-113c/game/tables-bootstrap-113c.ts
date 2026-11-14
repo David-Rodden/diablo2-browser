@@ -341,6 +341,35 @@ export function getItemsTxtRecordPure113c(classId: number): PureItemsTxtRecord11
   return cachedItems113c[idx]!
 }
 
+let cachedShieldCodeSet113c: ReadonlySet<number> | null = null
+
+export function isItemCodeShieldPure113c(dwCode: number): boolean {
+  const codeU32 = dwCode >>> 0
+  if (codeU32 === 0 || codeU32 === 0x206c696e) return false
+  if (cachedShieldCodeSet113c === null) {
+    const closure = getItemTypeClosurePure113c()
+    const set = new Set<number>()
+    for (let i = 0; i < ITEMS_PACKED_113C.length; i++) {
+      const rec = getItemsTxtRecordPure113c(i)
+      if (rec === null) continue
+      const isShield =
+        (closure.ancestorsByIndex[rec.wType1]?.has(2) ?? false) ||
+        (closure.ancestorsByIndex[rec.wType2]?.has(2) ?? false)
+      if (!isShield) continue
+      const c = rec.code.padEnd(4, ' ')
+      const u32 =
+        ((c.charCodeAt(0) & 0xff) |
+          ((c.charCodeAt(1) & 0xff) << 8) |
+          ((c.charCodeAt(2) & 0xff) << 16) |
+          ((c.charCodeAt(3) & 0xff) << 24)) >>>
+        0
+      set.add(u32)
+    }
+    cachedShieldCodeSet113c = set
+  }
+  return cachedShieldCodeSet113c.has(codeU32)
+}
+
 interface PureTcNode113c {
   readonly name: string
   readonly picks: number
@@ -394,11 +423,11 @@ export function rollTreasureClassSeedOnly113c(
     readonly monsterPlayerCount: number
     readonly isExpansion: boolean
   },
-): void {
+): number {
   const map = getPureTcMap113c()
   const clean = tcName.trim()
   const root = map.get(clean) !== undefined ? map.get(clean) : map.get(clean.toLowerCase())
-  if (root === undefined) return
+  if (root === undefined) return 0
 
   const g = Math.max(1, Math.trunc(opts.gamePlayers > 0 ? opts.gamePlayers : 1))
   const p = Math.max(1, Math.min(8, g, Math.trunc(opts.partyPlayers > 0 ? opts.partyPlayers : 1)))
@@ -496,6 +525,7 @@ export function rollTreasureClassSeedOnly113c(
     drops++
     if (rem === 0) stack.pop()
   }
+  return drops
 }
 
 export interface PureCharAnimClip113c {
@@ -682,6 +712,7 @@ export function ensureD2CommonPathGlobals113c(m: Memory113c): void {
       m.setU16((rec + 0x18) >>> 0, r.monStatsEx & 0xffff)
       m.setU16((rec + 0x32) >>> 0, r.velocity & 0xffff)
       m.setU16((rec + 0x38) >>> 0, r.run & 0xffff)
+      m.setU8((rec + 0xa6) >>> 0, getMonsterCritPure113c(i) & 0xff)
       if (r.monStatsEx >= 0 && r.monStatsEx < mon2Count) {
         const rec2 = (pMonStats2 + r.monStatsEx * D2MonStats2Txt_SIZE) >>> 0
         m.setU32((rec2 + 0x04) >>> 0, isMonsterCritterPure113c(i) ? 0x2000 : 0)
@@ -806,4 +837,11 @@ export function getMonsterModeBaseAnimSpeed256Pure113c(hcIdx: number, mode: numb
   if (rec === undefined) return 256
   const sp = rec[2][mode]
   return sp !== undefined ? sp : 256
+}
+
+/** `MonStats.txt` `Crit` (`+0xA6` in `D2MonStatsTxt`) for all 734 1.13c rows. */
+const MON_CRIT_113C: readonly number[] = [5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,0,0,0,0,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,0,0,0,0,0,0,5,0,0,0,5,0,0,0,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,0,0,0,0,0,5,5,5,5,5,0,5,5,5,5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,5,5,5,5,5,5,0,0,0,0,0,0,0,0,0,0,0,0,5,0,0,0,0,5,5,5,5,5,5,5,5,5,5,0,0,0,5,5,5,5,0,0,0,0,0,5,0,5,5,5,5,5,5,0,0,0,5,0,0,5,0,5,5,5,5,5,5,5,5,5,5,5,0,5,5,5,5,5,5,5,5,5,0,0,5,0,0,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,5,0,0,0,0,0,0,0,0,0,0,0,5,5,5,0,0,0,0,0,0,5,0,5,5,5,0,5,5,5,5,5,5,0,0,0,0,0,0,0,5,5,5,5,0,0,5,5,5,5,5,5,5,5,5,5,5,5,5,0,0,5,5,5,5,5,5,5,5,5,5,5,0,0,5,0,5,0,0,0,0,0,0,0,0,0,5,5,5,0,0,0,0,5,5,5,5,5,0,0,0,0,0,5,5,5,5,5,5,5,5,5,5,5,5,5,5,0,0,0,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,0,0,0,0,5,5,5,5,5,5,5,5,5,5,0,0,0,0,0,0,0,0,0,0,0,5,5,0,0,5,0,0,5,5,5,5,5,5,5,5,0,0,0,5,5,5,5,5,0,5,5,5,5,5,5,5,5,5,5,0,5,5,0,5,5,5,5,5,5,5,0,0,0,5,5,5,5,0,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,0,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,0,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5]
+
+export function getMonsterCritPure113c(hcIdx: number): number {
+  return MON_CRIT_113C[hcIdx] ?? 0
 }

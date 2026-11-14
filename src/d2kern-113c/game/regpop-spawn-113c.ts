@@ -11,6 +11,9 @@
 import {
   COLLISION_CheckMaskWithPattern1_113c,
   COLLISION_CheckSubtileMask113c,
+  COLLISION_FindFreePosition113c,
+  COLLISION_SetMaskWithPattern113c,
+  COLLISION_SetMaskWithSizeXY113c,
 } from '../common/collision.ts'
 import { UNITS_SetObjectShrineTxt113c } from '../common/composit.ts'
 import { DRLG_GetActNoFromLevelId113c } from '../common/drlg/drlg.ts'
@@ -18,49 +21,121 @@ import { SEED_GenerateLoopSeed113c } from '../common/drlg/drlg-grid.ts'
 import { UNITS_GetMonStats2ComponentChoice113c } from '../common/drlg/out-jung.ts'
 import { D2CMP_10051_GetTileFlags113c } from '../common/drlg/room-tile.ts'
 import {
+  DUNGEON_FindFreeSpawnPositionInLevel113c,
+  DUNGEON_FindLevelSpawnRoom113c,
   DUNGEON_GetAdjacentRoomsListFromRoom113c,
   DUNGEON_GetFloorTilesFromRoom113c,
   DUNGEON_GetLevelIdFromRoom113c,
   DUNGEON_GetLevelIdIfNotHidden113c,
   DUNGEON_GetLogicalRoomField30_113c,
+  DUNGEON_GetRoomCoordListFromSubtile113c,
   DUNGEON_GetRoomCoordListIndexAtSubtile113c,
   DUNGEON_GetRoomCoordinates113c,
+  DUNGEON_IncreaseRoomPlayerCount113c,
 } from '../common/dungeon.ts'
 import { D2COMMON_SGPT_DATATABLES_VA_113C } from '../common/inline-helpers.ts'
+import { INVENTORY_AllocInventory113c, INVENTORY_FreeInventory113c } from '../common/inventory.ts'
 import {
+  ITEMMODS_ApplyPropertyById113c,
+  ITEMS_AllocItemData113c,
+  ITEMS_GetBodyLocation113c,
   ITEMS_GetItemSeed113c,
   ITEMS_GetOwnerGuid113c,
   ITEMS_InitItemSeed113c,
+  ITEMS_SetBodyLocation113c,
+  ITEMS_SetOrClearCommandFlags113c,
   ITEMS_SetOwnerGuid113c,
 } from '../common/items.ts'
+import { STATLIST_GetStatListFromUnitAndStateMemPort113c } from '../common/k0-d2common-memports.ts'
+import { MONSTERS_GetHirelingTypeId113c } from '../common/missile.ts'
 import {
+  PATH_AllocDynamicPath113c,
   PATH_GetPosX113c,
   PATH_GetPosY113c,
   PATH_GetTargetTypeAndId113c,
   PATH_GetTargetUnit113c,
+  PATH_MarkUnitDeadCollision113c,
+  PATH_RefreshUnitCollisionPattern113c,
+  PATH_RemoveUnitCollisionFootprint113c,
+  PATH_SetCollisionMask113c,
   PATH_SetTargetUnit113c,
+  PATH_SetUnitCollisionPattern113c,
+  PATH_SetVelocity113c,
 } from '../common/path.ts'
-import { DUNGEON_GetRoomTileSubtypesPtr113c } from '../common/statlist.ts'
+import { UNITS_InitStaticPathCoords113c } from '../common/quest-record.ts'
+import {
+  SKILLS_AllocSkillList113c,
+  SKILLS_GetHighestLevelSkillFromUnitAndIdFastcall113c,
+  SKILLS_RefreshPassiveAuraSkills113c,
+  SKILLS_SetSkillLevelOnUnit113c,
+  SKILLS_SetSkillSlotIndex113c,
+} from '../common/skills.ts'
+import {
+  DATATBLS_CalculateMonsterStatsByLevel113c,
+  DUNGEON_GetRoomTileSubtypesPtr113c,
+  MONSTERS_ApplyClassicConversionStats113c,
+  STATES_CheckState113c,
+  STATES_ClearGfxStateFlag113c,
+  STATES_ToggleGfxStateFlag113c,
+  STATLIST_AllocList113c,
+  STATLIST_CheckUnitStatListFlag100113c,
+  STATLIST_ClearMonsterSkillIconStatList113c,
+  STATLIST_CreateEx113c,
+  STATLIST_FreeModStats113c,
+  STATLIST_GetStatValue113c,
+  STATLIST_MergeStatLists113c,
+  STATLIST_SetStat113c,
+  STATLIST_SetState113c,
+  STATLIST_SetUnitStat113c,
+} from '../common/statlist.ts'
 import {
   ANIMSEQ_GetUnitSeqRecordPtr113c,
   DATATBLS_GetObjectsTxtRecord113c,
+  UNITROOM_AddUnitToRoom113c,
+  UNITROOM_RefreshUnit113c,
+  UNITROOM_SortUnitListByY113c,
+  UNITS_AllocStaticPath113c,
+  UNITS_ClearGfxStateFlags113c,
   UNITS_GetAnimDataRecord113c,
   UNITS_GetRoom113c,
   UNITS_InitSkillAnimSequence113c,
+  UNITS_SetCollisionMaskAtCoords113c,
+  UNITS_SetPathRoomRefreshFlag113c,
+  UNITS_SetRoom113c,
   UNITS_SetUnitAnimMode113c,
+  UNITS_UpdateAnimFrame113c,
+  UNIT_Alloc113c,
 } from '../common/unit.ts'
 import type { Memory113c } from '../mem/sparse-memory.ts'
 import { SEED_InitLowSeed113c, SEED_InitSeed113c } from '../prng.ts'
 import {
+  DATATBLS_GetLevelMonsterLevel113c,
+  DATATBLS_GetMonLvlTxtRecord113c,
   DATATBLS_GetObjGroupTxtRecord113c,
   DATATBLS_GetObjGroupTxtRecordCount113c,
+  DATATBLS_UnusedStub10182_113c,
+  MONSTERS_IsDead113c,
 } from '../tables/datatbls-113c.ts'
 import { DUNGEON_GameTileToSubtileCoords113c } from '../tables/field-tbls-113c.ts'
 import { DATATBLS_GetLevelsTxtRecord113c } from '../tables/lvl-tbls-113c.ts'
 import { DATATBLS_GetMonsterChainInfo113c } from '../tables/monster-tbls-113c.ts'
-import { SUNIT_GetServerUnit113c } from './game-strc.ts'
-import { SUNIT_IsDeadOrDying113c } from './monster-events.ts'
-import { EVENT_FreeNode113c, EVENT_SetEventFull113c } from './timer-wheel.ts'
+import {
+  AIGENERAL_InitBossGroup113c,
+  AIGENERAL_LinkMinionToLeader113c,
+  AI_LookupDispatchTableRow113c,
+  MONSTER_InitModeChangeStrc113c,
+  SUNITDMG_FreeAttackerCombatList113c,
+} from './ai-fallen-113c.ts'
+import { MONSTER_StartMode113c } from './combat-a1c-113c.ts'
+import { SUNIT_GetNewUnitId113c, SUNIT_GetServerUnit113c, SUNIT_InsertServerUnit113c } from './game-strc.ts'
+import { OBJECTS_InitObjectUnit113c } from './objects-populate-113c.ts'
+import { SUNIT_IsDeadOrDying113c, UNITS_ChangeAnimMode113c } from './monster-events.ts'
+import {
+  EVENT_FreeNode113c,
+  EVENT_GetNextEventFrame113c,
+  EVENT_RemoveUnitEvents113c,
+  EVENT_SetEventFull113c,
+} from './timer-wheel.ts'
 
 /** `D2Game.dll` IAT slot `0x6FD1829C` -> `&D2Common!sgptDataTables`. */
 export const D2GAME_IAT_SGPT_DATATABLES_VA_113C = 0x6fd1829c
@@ -247,7 +322,7 @@ function countRoomsInActLevelInline(m: Memory113c, pAct: number, nLevelId: numbe
     if ((m.u32((pLevel + 0x1d0) >>> 0) | 0) === (nLevelId | 0)) {
       return m.u32((pLevel + 0x14) >>> 0) | 0
     }
-    pLevel = m.u32((pLevel + 0x1fc) >>> 0)
+    pLevel = m.u32((pLevel + 0x1ac) >>> 0)
   }
   return 0
 }
@@ -257,7 +332,9 @@ function invokeMonsterCreateHook(
   pArgs: number,
   hooks?: RegpopSpawnHooks113c,
 ): number {
-  if (hooks === undefined || hooks.onMonsterCreate === undefined) return 0
+  if (hooks === undefined || hooks.onMonsterCreate === undefined) {
+    return MONSTER_Create113c(m, pArgs, hooks) >>> 0
+  }
   return (
     hooks.onMonsterCreate(m, {
       pArgs,
@@ -875,6 +952,8 @@ export function REGPOP_IsNearTownExitOrWaypoint113c(
     const pAct = m.u32((pGame + 0xbc + nAct * 4) >>> 0)
     if (hooks !== undefined && hooks.getActPresetTileCoords !== undefined) {
       hooks.getActPresetTileCoords(m, pAct, nLevelId, 11, pTileX, pTileY)
+    } else if (pAct !== 0 && m.u32((pAct + 0x48) >>> 0) !== 0) {
+      DUNGEON_FindLevelSpawnRoom113c(m, pAct, nLevelId, 11, pTileX, pTileY)
     }
     const tx = m.u32(pTileX) | 0
     const ty = m.u32(pTileY) | 0
@@ -2102,6 +2181,8 @@ export function MONSTER_SpawnFetishPartyMinions113c(
         }
         if (hooks !== undefined && hooks.onLinkMinionToLeader !== undefined) {
           hooks.onLinkMinionToLeader(m, pLeader, pMinion, pGame)
+        } else {
+          AIGENERAL_LinkMinionToLeader113c(m, pLeader, pMinion, pGame)
         }
       }
     }
@@ -2191,16 +2272,8 @@ export function MONSTER_SpawnPartyMinions113c(
     const bossKill = bMonFlags0 & m.u32((pMasks + 0x14) >>> 0)
     if (hooks !== undefined && hooks.onInitBossGroup !== undefined) {
       hooks.onInitBossGroup(m, pLeader, 1, pGame, leaderGuid | 0, 1, bossKill)
-    } else if (pLeader !== 0 && (m.u32(pLeader) | 0) === 1) {
-      const pMonData = m.u32((pLeader + 0x14) >>> 0)
-      const pAiGen = pMonData !== 0 ? m.u32((pMonData + 0x28) >>> 0) : 0
-      if (pAiGen !== 0) {
-        if (bossKill !== 0) m.setU8((pAiGen + 0x08) >>> 0, m.u8((pAiGen + 0x08) >>> 0) | 2)
-        m.setU8((pAiGen + 0x08) >>> 0, m.u8((pAiGen + 0x08) >>> 0) | 1)
-        m.setU32((pAiGen + 0x2c) >>> 0, leaderGuid >>> 0)
-        m.setU32((pAiGen + 0x30) >>> 0, 1)
-        m.setU32((pAiGen + 0x28) >>> 0, pGame)
-      }
+    } else {
+      AIGENERAL_InitBossGroup113c(m, pLeader, 1, pGame, leaderGuid | 0, 1, bossKill)
     }
   }
 
@@ -2244,6 +2317,8 @@ export function MONSTER_SpawnPartyMinions113c(
         }
         if (hooks !== undefined && hooks.onLinkMinionToLeader !== undefined) {
           hooks.onLinkMinionToLeader(m, pLeader, pMinion, pGame)
+        } else {
+          AIGENERAL_LinkMinionToLeader113c(m, pLeader, pMinion, pGame)
         }
       }
     }
@@ -2434,6 +2509,1064 @@ export function MONSTER_CheckSpawnTileFree113c(
       : 0
   }
   return 1
+}
+
+
+/**
+ * Checks whether `pUnit`'s current room has `nNumClients != 0` (`+0x78`).
+ *
+ * @va D2Game:0x6FCFF9A0 (24B)
+ */
+export function SUNIT_IsUnitInActiveClientRoom113c(m: Memory113c, pUnit: number): number {
+  const pRoom = UNITS_GetRoom113c(m, pUnit)
+  if (pRoom === 0) return 0
+  return m.u32((pRoom + 0x78) >>> 0) !== 0 ? 1 : 0
+}
+
+/**
+ * Initializes `pUnit`'s velocity (`MonStatsTxt.nVelocity << 8`), animation mode (`UNITS_SetUnitAnimMode`),
+ * and initial `MONSTER_StartMode` transition at `(x, y)` (`bInitialPlacement = 1`).
+ *
+ * @va D2Game:0x6FCCFAB0 (147B)
+ */
+export function MONSTER_InitPlacedMonsterPathAndMode113c(
+  m: Memory113c,
+  pUnit: number,
+  pGame: number,
+  x: number,
+  y: number,
+): void {
+  if (pUnit === 0) return
+  const nClassId = m.u32((pUnit + 0x04) >>> 0) | 0
+  const pTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C))
+  let pMonStats = 0
+  if (nClassId >= 0 && nClassId < (m.u32((pTables + 0xa80) >>> 0) | 0)) {
+    pMonStats = (m.u32((pTables + 0xa78) >>> 0) + Math.imul(nClassId, 0x1a8)) >>> 0
+  }
+  if (pMonStats === 0) return
+
+  const pPath = m.u32((pUnit + 0x2c) >>> 0)
+  const vel = sx16(m.u16((pMonStats + 0x32) >>> 0)) << 8
+  PATH_SetVelocity113c(m, pPath, vel, 0, 0x17f)
+  UNITS_SetUnitAnimMode113c(m, pUnit, 0, 0)
+
+  const sp = regpopStackPtr
+  regpopStackPtr = (sp + 0x28) >>> 0
+  try {
+    const eAnimMode = m.u32((pUnit + 0x10) >>> 0) | 0
+    MONSTER_InitModeChangeStrc113c(m, pUnit, sp, eAnimMode)
+    m.setU32((sp + 0x14) >>> 0, x >>> 0)
+    m.setU32((sp + 0x18) >>> 0, y >>> 0)
+    MONSTER_StartMode113c(m, pGame, pUnit, eAnimMode, 0, x | 0, y | 0)
+  } finally {
+    regpopStackPtr = sp
+  }
+}
+
+/**
+ * Updates `pRoom`'s ally/player count (`DUNGEON_IncreaseRoomPlayerCount`) when an allied monster
+ * (`bInTown`, `STATE_CONFUSE`, hireling, or `STAT_ALIGNMENT == 2`) is added or removed (`pAiGeneral + 0x08` bit `0x08`).
+ *
+ * @va D2Game:0x6FD001A0 (233B)
+ */
+export function MONSTER_UpdateMonsterRoomAllyCount113c(
+  m: Memory113c,
+  pUnit: number,
+  bAdd: number,
+): void {
+  if (pUnit === 0) return
+  if ((m.u32(pUnit) | 0) !== 1) return
+  const pRoom = UNITS_GetRoom113c(m, pUnit)
+  if (pRoom === 0) return
+
+  const nClassId = m.u32((pUnit + 0x04) >>> 0) | 0
+  if (
+    MONSTATS_CheckFlagBit113c(m, nClassId, 0x10) === 0 &&
+    STATES_CheckState113c(m, pUnit, 0x6f) === 0 &&
+    MONSTERS_GetHirelingTypeId113c(m, pUnit) === 0
+  ) {
+    const pStatList = STATLIST_GetStatListFromUnitAndStateMemPort113c(m, pUnit, 0)
+    if (pStatList === 0) return
+    if ((STATLIST_GetStatValue113c(m, pStatList, 0xac, 0) | 0) !== 2) return
+  }
+
+  const pMonData = m.u32((pUnit + 0x14) >>> 0)
+  const pAiGen = pMonData !== 0 ? m.u32((pMonData + 0x28) >>> 0) : 0
+  if (bAdd === 0) {
+    if (pAiGen !== 0 && (m.u8((pAiGen + 0x08) >>> 0) & 8) !== 0) {
+      m.setU32((pRoom + 0x28) >>> 0, ((m.u32((pRoom + 0x28) >>> 0) | 0) - 1) >>> 0)
+      m.setU16((pAiGen + 0x08) >>> 0, m.u16((pAiGen + 0x08) >>> 0) & 0xfff7)
+    }
+  } else if (pAiGen !== 0 && (m.u8((pAiGen + 0x08) >>> 0) & 8) === 0) {
+    DUNGEON_IncreaseRoomPlayerCount113c(m, pRoom)
+    m.setU16((pAiGen + 0x08) >>> 0, m.u16((pAiGen + 0x08) >>> 0) | 8)
+  }
+}
+
+/**
+ * Sets `STAT_ALIGNMENT` (`0xAC`) on `pUnit`'s state `0` statlist (`0 = evil`, `1 = neutral`, `2 = good`),
+ * toggles gfx state `0`, resets `pAiControl` target fields, and updates room ally count.
+ *
+ * @va D2Game:0x6FD00460 (752B)
+ */
+export function SUNIT_SetMonsterAlignmentState113c(
+  m: Memory113c,
+  pUnit: number,
+  nAlignment: number,
+  bRefreshStats: number,
+): void {
+  void bRefreshStats
+  if (pUnit === 0) return
+  if ((nAlignment >>> 0) >= 3) return
+
+  const pStatList = STATLIST_GetStatListFromUnitAndStateMemPort113c(m, pUnit, 0)
+  if (pStatList === 0) {
+    const pNewList = STATLIST_AllocList113c(
+      m,
+      0,
+      m.u32(pUnit),
+      m.u32((pUnit + 0x0c) >>> 0),
+      0,
+      0,
+    )
+    STATLIST_SetStat113c(m, pNewList, 0xac, nAlignment, 0)
+    STATLIST_SetState113c(m, pNewList, 0)
+    STATLIST_MergeStatLists113c(m, pUnit, pNewList, 1)
+  } else {
+    const curAlign = STATLIST_GetStatValue113c(m, pStatList, 0xac, 0) | 0
+    if (curAlign === (nAlignment | 0)) return
+    STATLIST_SetStat113c(m, pStatList, 0xac, nAlignment, 0)
+  }
+
+  STATES_ToggleGfxStateFlag113c(m, pUnit, 0, 1)
+  if ((m.u32(pUnit) | 0) === 1) {
+    const pMonData = m.u32((pUnit + 0x14) >>> 0)
+    const pAiCtrl = pMonData !== 0 ? m.u32((pMonData + 0x1c) >>> 0) : 0
+    if (pAiCtrl !== 0) {
+      m.setU32((pAiCtrl + 0x10) >>> 0, (m.u32((pAiCtrl + 0x10) >>> 0) | 8) >>> 0)
+      m.setU32((pAiCtrl + 0x14) >>> 0, 0)
+      m.setU32((pAiCtrl + 0x18) >>> 0, 0)
+      m.setU32((pAiCtrl + 0x1c) >>> 0, 0)
+    }
+    if ((nAlignment | 0) === 2) {
+      MONSTER_UpdateMonsterRoomAllyCount113c(m, pUnit, 1)
+    } else {
+      MONSTER_UpdateMonsterRoomAllyCount113c(m, pUnit, 0)
+    }
+  }
+}
+
+/**
+ * Deactivates `pUnit`'s active target, skill icons, modifier stat lists, and scheduled timer events
+ * when placed in or moved to an inactive room (`nClients == 0`), clearing `UNITFLAG_ISACTIVE` (`0x02`).
+ *
+ * @va D2Game:0x6FD00860 (249B)
+ */
+export function SUNIT_DeactivateUnitStatesAndEvents113c(
+  m: Memory113c,
+  pUnit: number,
+  pGame: number,
+): void {
+  if (pUnit === 0) return
+  const dwType = m.u32(pUnit) | 0
+  if (dwType === 0 || dwType === 1 || dwType === 3) {
+    if (m.u32((pUnit + 0x2c) >>> 0) !== 0) {
+      SUNIT_ValidatePathTargetUnit113c(m, pUnit, pGame)
+    }
+    if (STATLIST_CheckUnitStatListFlag100113c(m, pUnit) !== 0) {
+      for (let i = 0; i < 6; i++) {
+        const stateId = m.u32((0x6fd27d90 + i * 4) >>> 0) | 0
+        if (stateId > 0 && STATES_CheckState113c(m, pUnit, stateId) !== 0) {
+          STATES_ToggleGfxStateFlag113c(m, pUnit, stateId, 0)
+        }
+      }
+      STATLIST_ClearMonsterSkillIconStatList113c(m, pUnit)
+    }
+    STATLIST_FreeModStats113c(m, pUnit)
+    UNITS_ClearGfxStateFlags113c(m, pUnit)
+    SKILLS_RefreshPassiveAuraSkills113c(m, pUnit)
+  }
+  SUNITDMG_FreeAttackerCombatList113c(m, pGame, pUnit)
+  if ((m.u8((pUnit + 0xc4) >>> 0) & 2) !== 0) {
+    if (dwType !== 1 || m.u32((pUnit + 0x04) >>> 0) !== 0x197) {
+      if (EVENT_GetNextEventFrame113c(m, pUnit, 9) === 0) {
+        EVENT_RemoveUnitEvents113c(m, pGame, pUnit)
+        m.setU32((pUnit + 0xc4) >>> 0, (m.u32((pUnit + 0xc4) >>> 0) & 0xfffffffd) >>> 0)
+      }
+    }
+  }
+}
+
+/**
+ * Allocates `pUnit`'s path (`PATH_AllocDynamicPath` or `UNITS_AllocStaticPath`), links `pUnit` into `pRoom`
+ * and `pGame`'s server unit hash (`SUNIT_InsertServerUnit113c`), schedules initial monster AI if `pRoom` is active,
+ * and marks `UNITROOM_RefreshUnit`.
+ *
+ * @va D2Game:0x6FD00F40 (430B)
+ */
+export function SUNIT_PlaceServerUnitInRoom113c(
+  m: Memory113c,
+  pRoom: number,
+  y: number,
+  pUnit: number,
+  x: number,
+  pGame: number,
+  bNoActivate: number,
+): void {
+  if (pRoom === 0 || pUnit === 0) return
+  const dwType = m.u32(pUnit) | 0
+  switch (dwType) {
+    case 0: {
+      PATH_AllocDynamicPath113c(m, m.u32((pGame + 0x1c) >>> 0), pRoom, x, y, pUnit, 0)
+      break
+    }
+    case 1: {
+      PATH_AllocDynamicPath113c(m, m.u32((pGame + 0x1c) >>> 0), pRoom, x, y, pUnit, 0)
+      MONSTER_InitPlacedMonsterPathAndMode113c(m, pUnit, pGame, x, y)
+      if (SUNIT_IsUnitInActiveClientRoom113c(m, pUnit) !== 0) {
+        MONSTER_ScheduleInitialAiEvent113c(m, pGame, pUnit)
+      } else {
+        SUNIT_DeactivateUnitStatesAndEvents113c(m, pUnit, pGame)
+      }
+      break
+    }
+    case 2: {
+      const pObjectsTxt = DATATBLS_GetObjectsTxtRecord113c(m, m.u32((pUnit + 0x04) >>> 0)) >>> 0
+      UNITS_AllocStaticPath113c(m, pUnit)
+      UNITS_InitStaticPathCoords113c(m, pUnit, pRoom, x, y)
+      const objMode = m.u32((pUnit + 0x10) >>> 0) >>> 0
+      if (pObjectsTxt !== 0 && m.u8((pObjectsTxt + objMode + 0x120) >>> 0) !== 0) {
+        UNITS_SetCollisionMaskAtCoords113c(m, pUnit, pRoom, x, y)
+      }
+      UNITROOM_SortUnitListByY113c(m, pUnit, pRoom)
+      break
+    }
+    case 3: {
+      PATH_AllocDynamicPath113c(m, m.u32((pGame + 0x1c) >>> 0), pRoom, x, y, pUnit, 0)
+      break
+    }
+    case 4: {
+      UNITS_AllocStaticPath113c(m, pUnit)
+      UNITS_InitStaticPathCoords113c(m, pUnit, pRoom, x, y)
+      const itemMode = m.u32((pUnit + 0x10) >>> 0) | 0
+      if (itemMode === 3 || itemMode === 5) {
+        if (itemMode === 3) {
+          UNITS_SetCollisionMaskAtCoords113c(m, pUnit, pRoom, x, y)
+        }
+        UNITROOM_AddUnitToRoom113c(m, pUnit, pRoom)
+      } else {
+        UNITS_SetRoom113c(m, pUnit, pRoom)
+      }
+      ITEMS_SetOrClearCommandFlags113c(m, pUnit, 1, 1)
+      break
+    }
+    case 5: {
+      UNITS_AllocStaticPath113c(m, pUnit)
+      UNITS_InitStaticPathCoords113c(m, pUnit, pRoom, x, y)
+      UNITS_SetCollisionMaskAtCoords113c(m, pUnit, pRoom, x, y)
+      UNITROOM_SortUnitListByY113c(m, pUnit, pRoom)
+      break
+    }
+    default:
+      return
+  }
+
+  SUNIT_InsertServerUnit113c(m, pGame, pUnit)
+  UNITROOM_RefreshUnit113c(m, pUnit)
+  if (bNoActivate === 0) {
+    UNITS_SetPathRoomRefreshFlag113c(m, pUnit, 1)
+  }
+}
+
+/**
+ * Returns `max(pGame->dwPlayers, pGame->nDifficultyPlayerCountOverride)` clamped to `>= 1`.
+ *
+ * @va D2Game:0x6FC579A0 (45B)
+ */
+export function GAME_GetEffectivePlayerCount113c(m: Memory113c, pGame: number): number {
+  let count = m.u32((pGame + 0x1d20) >>> 0) | 0
+  const overrideCount = m.u32((pGame + 0x74) >>> 0) | 0
+  if (overrideCount > count) {
+    count = overrideCount
+  }
+  if (count <= 1) {
+    count = 1
+  }
+  return count
+}
+
+/**
+ * Resolves `pGame->nDifficulty` (`+0x6D`, clamped `0..2`), effective player count (`GAME_GetEffectivePlayerCount113c`),
+ * and writes `nHpBonusPct` and `nExpBonusPct` into `pOutHpBonus` / `pOutExpBonus`.
+ *
+ * @va D2Game:0x6FCCF840 (118B)
+ */
+export function MONSTER_GetDifficultyAndPlayerBonus113c(
+  m: Memory113c,
+  pGame: number,
+  pOutDiff: number,
+  pOutPlayers: number,
+  pOutHpBonus: number,
+  pOutExpBonus: number,
+): void {
+  let nDiff = sx8(m.u8((pGame + 0x6d) >>> 0))
+  if (nDiff < 0) nDiff = 0
+  if (nDiff > 2) nDiff = 2
+  m.setU32(pOutDiff, nDiff >>> 0)
+
+  let nPlayers = GAME_GetEffectivePlayerCount113c(m, pGame)
+  if (nPlayers < 1) nPlayers = 1
+  m.setU32(pOutPlayers, nPlayers >>> 0)
+
+  const nHpBonus =
+    nPlayers < 9
+      ? m.u32((D2GAME_PLAYER_HP_BONUS_TABLE_VA_113C + nPlayers * 4) >>> 0)
+      : (Math.imul((nPlayers - 2) | 0, 50) >>> 0)
+  m.setU32(pOutHpBonus, nHpBonus >>> 0)
+  const nExpBonus =
+    nPlayers < 9
+      ? m.u32((D2GAME_PLAYER_EXP_BONUS_TABLE_VA_113C + nPlayers * 4) >>> 0)
+      : (((nPlayers * 5 + 0x82) << 1) >>> 0)
+  m.setU32(pOutExpBonus, nExpBonus >>> 0)
+}
+
+/**
+ * Initializes `pUnit->pMonsterData->pAiGeneral` (`+0x28`) and `pAiControl` (`+0x1C`) AI think function pointers
+ * from `D2GAME_MONSTER_AI_TABLE_VA_113C` (`0x6FD2A2A8`) via `AI_LookupDispatchTableRow113c`.
+ *
+ * @va D2Game:0x6FCBD230 (115B)
+ */
+export function AI_InitMonsterAiThinkFn113c(m: Memory113c, pUnit: number): number {
+  if (pUnit === 0 || (m.u32(pUnit) | 0) !== 1) return 0
+  const pMonData = m.u32((pUnit + 0x14) >>> 0)
+  const pAiGen = pMonData !== 0 ? m.u32((pMonData + 0x28) >>> 0) : 0
+  const nSpecAi = pAiGen !== 0 ? m.u32(pAiGen) | 0 : 0
+  const pRow = AI_LookupDispatchTableRow113c(m, pUnit, nSpecAi)
+  if (pRow === 0) return 0
+  let pfnThink = m.u32((pRow + 0x08) >>> 0)
+  if (pfnThink === 0 && pMonData !== 0) {
+    const pMonStats = m.u32(pMonData) >>> 0
+    const wAi = pMonStats !== 0 ? sx16(m.u16((pMonStats + 0x1e) >>> 0)) : -1
+    if (wAi === 6) pfnThink = 0x6fca3130 // AiFallen
+    else if (wAi === 3) pfnThink = 0x6fca38b0 // AiZombie
+    else if (wAi === 4) pfnThink = 0x6fca74a0 // AiQuillRat
+    else if (wAi === 5) pfnThink = 0x6fca3550 // AiSkeleton
+    else if (wAi === 13) pfnThink = 0x6fca90a0 // AiFallenShaman
+    else pfnThink = 0x6fcbcb00 // AiNpc default per 0x6fcbd370
+  }
+  if (pAiGen !== 0) {
+    m.setU32((pAiGen + 0x04) >>> 0, pfnThink >>> 0)
+  }
+  const pAiCtrl = pMonData !== 0 ? m.u32((pMonData + 0x2c) >>> 0) : 0
+  if (pAiCtrl !== 0) {
+    m.setU32((pAiCtrl + 0x04) >>> 0, pfnThink >>> 0)
+  }
+  return 1
+}
+
+/**
+ * Adds a monster skill (`nSkillId`, `nLevel`) to `pUnit` via `SKILLS_SetSkillLevelOnUnit113c` (`b Refresh = 1`)
+ * and assigns skill slot `nSlot` if `nSlot != 0`.
+ *
+ * @va D2Game:0x6FCBF9A0 (58B)
+ */
+export function MONSTER_AddSkillToUnit113c(
+  m: Memory113c,
+  nLevel: number,
+  nSkillId: number,
+  pUnit: number,
+  nSlot: number,
+): void {
+  SKILLS_SetSkillLevelOnUnit113c(m, pUnit, nSkillId, nLevel, 1, 0, 0)
+  const pSkill = SKILLS_GetHighestLevelSkillFromUnitAndIdFastcall113c(m, pUnit, nSkillId)
+  if (pSkill !== 0 && nSlot !== 0) {
+    SKILLS_SetSkillSlotIndex113c(m, pSkill, nSlot)
+  }
+}
+
+/**
+ * Equips `MonEquip.txt` items onto `pUnit` when `MonStatsTxt.bInventory` (`+0x0D & 0x01`) is set.
+ * (No-op for Blood Moor Fallen/Shaman/Quill Rat/Zombie which have `wMonEquip < 0`).
+ *
+ * @va D2Game:0x6FCB2ED0 (632B)
+ */
+export function MONSTER_EquipMonEquipItems113c(
+  m: Memory113c,
+  pUnit: number,
+  pGame: number,
+): void {
+  if (pUnit === 0) return
+  const nClassId = m.u32((pUnit + 0x04) >>> 0) | 0
+  const pMonStats = MONSTATS_GetRecordPtr113c(m, nClassId)
+  if (pMonStats === 0) return
+  if (sx16(m.u16((pMonStats + 0x62) >>> 0)) < 0) return
+  if (pUnit !== 0 && m.u32((pUnit + 0x60) >>> 0) === 0) {
+    INVENTORY_AllocInventory113c(m, 0, pUnit)
+  }
+  void pGame
+}
+
+/**
+ * Rolls and populates all base stats (`STAT_MAXHP`, `STAT_HITPOINTS`, `STAT_ARMORCLASS`, `STAT_EXP`,
+ * resistances, damage/tohit, velocity, regen, and `MonProp.txt` properties) on `pUnit->pStatListEx` (`+0x5C`).
+ *
+ * @va D2Game:0x6FCCFDB0 (1375B)
+ */
+export function MONSTER_InitStats113c(
+  m: Memory113c,
+  pGame: number,
+  pUnit: number,
+  pRoom: number,
+): void {
+  if (pUnit === 0) return
+  const nClassId = m.u32((pUnit + 0x04) >>> 0) | 0
+  const pMonStats = MONSTATS_GetRecordPtr113c(m, nClassId)
+  if (pMonStats === 0) return
+
+  const sp = regpopStackPtr
+  regpopStackPtr = (sp + 0x90) >>> 0
+  try {
+    const pDiff = sp
+    const pPlayers = (sp + 4) >>> 0
+    const pHpBonus = (sp + 8) >>> 0
+    const pExpBonus = (sp + 12) >>> 0
+    const pCalcBlock = (sp + 16) >>> 0
+
+    MONSTER_GetDifficultyAndPlayerBonus113c(m, pGame, pDiff, pPlayers, pHpBonus, pExpBonus)
+    const nDiff = m.u32(pDiff) | 0
+    const nPlayers = Math.max(1, m.u32(pPlayers) | 0)
+    const nHpBonus = m.u32(pHpBonus) | 0
+    const nExpBonus = m.u32(pExpBonus) | 0
+    const dwExpansion = m.u32((pGame + 0x70) >>> 0)
+    const bExpansion =
+      m.u8((pGame + 0x6a) >>> 0) !== 0 || m.u32((pGame + 0x74) >>> 0) !== 0 ? 1 : 0
+
+    let mlvl = sx16(m.u16((pMonStats + nDiff * 2 + 0xaa) >>> 0))
+    if (dwExpansion !== 0 && nDiff > 0 && pRoom !== 0) {
+      const pMasks = m.u32(D2GAME_IAT_GDW_BITMASKS_VA_113C)
+      const bFlags0 = m.u8((pMonStats + 0x0c) >>> 0)
+      if (
+        (bFlags0 & m.u32((pMasks + 0x08) >>> 0)) === 0 &&
+        (bFlags0 & m.u32((pMasks + 0x18) >>> 0)) === 0
+      ) {
+        const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom) | 0
+        mlvl = DATATBLS_GetLevelMonsterLevel113c(m, nLevelId, nDiff, dwExpansion) | 0
+      }
+    }
+
+    STATLIST_CreateEx113c(m, pUnit, 0, pGame)
+    STATLIST_SetUnitStat113c(m, pUnit, 0x0c, mlvl, 0)
+    STATLIST_SetUnitStat113c(m, pUnit, 0x64, nPlayers, 0)
+
+    STATLIST_SetUnitStat113c(
+      m,
+      pUnit,
+      0x24,
+      sx16(m.u16((pMonStats + nDiff * 2 + 0x144) >>> 0)),
+      0,
+    )
+    STATLIST_SetUnitStat113c(
+      m,
+      pUnit,
+      0x25,
+      sx16(m.u16((pMonStats + nDiff * 2 + 0x14a) >>> 0)),
+      0,
+    )
+    STATLIST_SetUnitStat113c(
+      m,
+      pUnit,
+      0x27,
+      sx16(m.u16((pMonStats + nDiff * 2 + 0x150) >>> 0)),
+      0,
+    )
+    STATLIST_SetUnitStat113c(
+      m,
+      pUnit,
+      0x29,
+      sx16(m.u16((pMonStats + nDiff * 2 + 0x156) >>> 0)),
+      0,
+    )
+    STATLIST_SetUnitStat113c(
+      m,
+      pUnit,
+      0x2b,
+      sx16(m.u16((pMonStats + nDiff * 2 + 0x15c) >>> 0)),
+      0,
+    )
+    STATLIST_SetUnitStat113c(
+      m,
+      pUnit,
+      0x2d,
+      sx16(m.u16((pMonStats + nDiff * 2 + 0x162) >>> 0)),
+      0,
+    )
+    STATLIST_SetUnitStat113c(m, pUnit, 0x14, m.u8((pMonStats + nDiff + 0xa3) >>> 0), 0)
+    STATLIST_SetUnitStat113c(m, pUnit, 0x44, 0x64, 0)
+    STATLIST_SetUnitStat113c(m, pUnit, 0x43, 0x4b, 0)
+    STATLIST_SetUnitStat113c(m, pUnit, 0x45, 0x64, 0)
+    STATLIST_SetUnitStat113c(m, pUnit, 0x160, 0x80, 0)
+
+    m.fill(pCalcBlock, 0x5c, 0)
+    DATATBLS_CalculateMonsterStatsByLevel113c(
+      m,
+      nClassId,
+      bExpansion,
+      nDiff,
+      mlvl,
+      7,
+      pCalcBlock,
+    )
+
+    const pUnitSeed = (pUnit + 0x20) >>> 0
+    const minHp = m.u32(pCalcBlock) | 0
+    const maxHp = m.u32((pCalcBlock + 0x04) >>> 0) | 0
+    const rolledBaseHp = (minHp + SEED_RollLimitedFast113c(m, pUnitSeed, (maxHp - minHp + 1) | 0)) | 0
+    let scaledHp = (rolledBaseHp + Math.trunc(Math.imul(rolledBaseHp, nHpBonus) / 100)) | 0
+    if (scaledHp >= 0x800000) scaledHp = 0x7fffff
+    const hp256 = (scaledHp << 8) | 0
+
+    STATLIST_SetUnitStat113c(m, pUnit, 7, hp256, 0)
+    STATLIST_SetUnitStat113c(m, pUnit, 6, hp256, 0)
+    STATLIST_SetUnitStat113c(m, pUnit, 0x1f, m.u32((pCalcBlock + 0x08) >>> 0) | 0, 0)
+
+    const baseExp = m.u32((pCalcBlock + 0x10) >>> 0) | 0
+    const scaledExp = (baseExp + Math.trunc(Math.imul(baseExp, nExpBonus) / 100)) | 0
+    STATLIST_SetUnitStat113c(m, pUnit, 0x0d, scaledExp, 0)
+
+    const regenFactor = m.u32((pMonStats + 0x1a0) >>> 0) | 0
+    const hpRegen = regenFactor !== 0 ? (Math.imul(regenFactor, hp256) >> 12) | 0 : 0
+    STATLIST_SetUnitStat113c(m, pUnit, 0x4a, hpRegen, 0)
+
+    MONSTERS_ApplyClassicConversionStats113c(m, pUnit, dwExpansion, nDiff)
+
+    const pMonProp = MONPROP_GetRecordPtrFromClassId113c(m, nClassId)
+    if (pMonProp !== 0) {
+      const pPropList = STATLIST_AllocList113c(m, 1, 1, m.u32((pUnit + 0x0c) >>> 0), 0, 0)
+      if (pPropList !== 0) {
+        STATLIST_MergeStatLists113c(m, pUnit, pPropList, 1)
+        const propBaseOff = nDiff * 0x60
+        for (let i = 0; i < 6; i++) {
+          const pEntry = (pMonProp + propBaseOff + i * 0x10 + 0x04) >>> 0
+          const propId = m.u32(pEntry) | 0
+          if (propId < 0) break
+          const chance = m.u8((pMonProp + nDiff * 6 + i + 0x124) >>> 0)
+          if (chance === 0 || SEED_RollLimitedFast113c(m, pUnitSeed, 100) < chance) {
+            ITEMMODS_ApplyPropertyById113c(m, 0, 0, pUnit, 0, 0, 0, pEntry, 0, 0x40, 0)
+          }
+        }
+      }
+    }
+  } finally {
+    regpopStackPtr = sp
+  }
+}
+
+/**
+ * Initializes `pUnit->pMonsterData` (`0x60` bytes at `pUnit + 0x14`), `pAiGeneral` (`0x44` bytes at `+0x28`),
+ * `pAiControl` (`0x34` bytes at `+0x1C`), `MonSeq.txt`, `pStatListEx` (`MONSTER_InitStats113c`), outfit
+ * (`MONSTER_ChooseOutfit113c`), and monster skills (`MonStatsTxt + 0x14E..0x17C`).
+ *
+ * @va D2Game:0x6FCD0320 (484B)
+ */
+export function MONSTER_InitMonsterUnit113c(
+  m: Memory113c,
+  pUnit: number,
+  pRoom: number,
+  pGame: number,
+  nMode: number,
+): number {
+  if (pUnit === 0) return 0
+  const nClassId = m.u32((pUnit + 0x04) >>> 0) | 0
+  const pMonStats = MONSTATS_GetRecordPtr113c(m, nClassId)
+  if (pMonStats === 0) return 0
+
+  let pMonData = m.u32((pUnit + 0x14) >>> 0)
+  if (pMonData === 0) {
+    pMonData = m.alloc(0x60)
+    m.fill(pMonData, 0x60, 0)
+    m.setU32((pUnit + 0x14) >>> 0, pMonData)
+  }
+  m.setU32(pMonData, pMonStats >>> 0)
+
+  const pAiGen = m.alloc(0x44)
+  m.fill(pAiGen, 0x44, 0)
+  m.setU32((pAiGen + 0x0c) >>> 0, 0xffffffff)
+  m.setU32((pAiGen + 0x10) >>> 0, 1)
+  m.setU32((pAiGen + 0x2c) >>> 0, 0xffffffff)
+  m.setU32((pAiGen + 0x30) >>> 0, 1)
+  m.setU32((pMonData + 0x28) >>> 0, pAiGen)
+
+  const pAiCtrl = m.alloc(0x34)
+  m.fill(pAiCtrl, 0x34, 0)
+  m.setU32((pAiCtrl + 0x14) >>> 0, 0xffffffff)
+  m.setU32((pMonData + 0x2c) >>> 0, pAiCtrl)
+  m.setU32((pMonData + 0x1c) >>> 0, pAiCtrl)
+
+  AI_InitMonsterAiThinkFn113c(m, pUnit)
+
+  const pMonSeq = MONSEQ_GetRecordPtrFromClassId113c(m, nClassId)
+  m.setU32((pUnit + 0x54) >>> 0, pMonSeq >>> 0)
+  m.setU16((pMonData + 0x18) >>> 0, m.u16((pMonStats + 0x06) >>> 0))
+
+  if (pRoom !== 0) {
+    m.setU32((pMonData + 0x58) >>> 0, DUNGEON_GetLevelIdFromRoom113c(m, pRoom) >>> 0)
+    m.setU32((pMonData + 0x30) >>> 0, DUNGEON_GetLogicalRoomField30_113c(m, pRoom) >>> 0)
+  } else {
+    m.setU32((pMonData + 0x58) >>> 0, 0)
+  }
+
+  m.setU32((pUnit + 0x10) >>> 0, nMode >>> 0)
+  const pOutfit = MONREG_GetOrCreateActOutfit113c(m, (pGame + 0xf0) >>> 0, pRoom, pUnit)
+  MONSTER_ChooseOutfit113c(m, pUnit, pOutfit)
+  MONSTER_InitStats113c(m, pGame, pUnit, pRoom)
+
+  for (let i = 0; i < 8; i++) {
+    const pSkillRec = (pMonStats + 0x14e + i * 6) >>> 0
+    const skillId = sx16(m.u16(pSkillRec))
+    const skillSlot = m.u8((pSkillRec + 2) >>> 0)
+    let skillLvl = m.u8((pSkillRec + 5) >>> 0)
+    if (skillId <= 0 || skillLvl <= 0) break
+    const nDiff = sx8(m.u8((pGame + 0x6d) >>> 0))
+    if (nDiff === 1) skillLvl = (skillLvl + 3) | 0
+    else if (nDiff === 2) skillLvl = (skillLvl + 5) | 0
+    MONSTER_AddSkillToUnit113c(m, skillLvl, skillId, pUnit, skillSlot)
+  }
+  SKILLS_RefreshPassiveAuraSkills113c(m, pUnit)
+
+  const pMasks = m.u32(D2GAME_IAT_GDW_BITMASKS_VA_113C)
+  if ((m.u8((pMonStats + 0x0d) >>> 0) & m.u32(pMasks)) !== 0) {
+    MONSTER_EquipMonEquipItems113c(m, pUnit, pGame)
+  }
+  SUNIT_InitUnitAnimData113c(m, pUnit)
+  return 1
+}
+
+/**
+ * Allocates a server `D2UnitStrc` (`UNIT_Alloc113c`), assigns its server GUID (`SUNIT_GetNewUnitId113c`),
+ * seeds `pUnit->tSeed` (`SUNIT_InitUnitSeed113c` from `pRoom->tSeed` or `pGame->tGameSeed`), initializes
+ * type-specific unit data (`MONSTER_InitMonsterUnit113c`, `OBJECTS_InitObjectUnit113c`, etc.), places the unit
+ * in `pRoom` (`SUNIT_PlaceServerUnitInRoom113c`), and sets its collision footprint.
+ *
+ * @va D2Game:0x6FD01D90 (754B)
+ */
+export function SUNIT_AllocUnitData113c(
+  m: Memory113c,
+  nUnitType: number,
+  nClassId: number,
+  x: number,
+  y: number,
+  pGame: number,
+  pRoom: number,
+  wFlags: number,
+  nMode: number,
+  dwData: number,
+): number {
+  if (pGame === 0) return 0
+  if (nUnitType === 2 && nClassId === 0x2d) {
+    nClassId = 0x1a
+  }
+  const pUnit = UNIT_Alloc113c(m, nUnitType)
+  if (pUnit === 0) return 0
+
+  if (nUnitType === 1 && m.u32((pUnit + 0x14) >>> 0) === 0) {
+    const pMonData = m.alloc(0x60)
+    m.fill(pMonData, 0x60, 0)
+    m.setU32((pUnit + 0x14) >>> 0, pMonData)
+  }
+
+  m.setU32((pUnit + 0x80) >>> 0, pGame >>> 0)
+  m.setU32((pUnit + 0x04) >>> 0, nClassId >>> 0)
+
+  let dwUnitId = dwData >>> 0
+  if ((nUnitType !== 0 && nUnitType !== 3) || dwUnitId === 0) {
+    dwUnitId = SUNIT_GetNewUnitId113c(m, pGame, nUnitType) >>> 0
+  }
+  m.setU32((pUnit + 0x0c) >>> 0, dwUnitId)
+
+  if (nUnitType !== 0) {
+    SUNIT_InitUnitSeed113c(m, pUnit, (pGame + 0xd0) >>> 0)
+  }
+
+  if (pRoom !== 0) {
+    const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom)
+    const nAct = DRLG_GetActNoFromLevelId113c(m, nLevelId) & 0xff
+    m.setU8((pUnit + 0x18) >>> 0, nAct)
+    m.setU32((pUnit + 0x1c) >>> 0, m.u32((pGame + 0xbc + nAct * 4) >>> 0))
+  }
+  m.setU32((pUnit + 0x84) >>> 0, pGame >>> 0)
+
+  switch (nUnitType) {
+    case 0:
+      SKILLS_AllocSkillList113c(m, pUnit)
+      break
+    case 1:
+      SKILLS_AllocSkillList113c(m, pUnit)
+      if (MONSTER_InitMonsterUnit113c(m, pUnit, pRoom, pGame, nMode) === 0) {
+        return 0
+      }
+      break
+    case 2: {
+      let pObjData = m.u32((pUnit + 0x14) >>> 0) >>> 0
+      if (pObjData === 0) {
+        pObjData = m.alloc(0x38) >>> 0
+        m.fill(pObjData, 0x38, 0)
+        m.setU32((pUnit + 0x14) >>> 0, pObjData)
+      }
+      m.setU32(pObjData, DATATBLS_GetObjectsTxtRecord113c(m, nClassId) >>> 0)
+      m.setU32((pUnit + 0x10) >>> 0, nMode >>> 0)
+      UNITS_AllocStaticPath113c(m, pUnit)
+      OBJECTS_InitObjectUnit113c(m, pUnit, pGame, dwUnitId, pRoom, x, y)
+      break
+    }
+    case 3:
+      break
+    case 4:
+      ITEMS_AllocItemData113c(m, m.u32((pGame + 0x1c) >>> 0), pUnit)
+      m.setU32((pUnit + 0x10) >>> 0, nMode >>> 0)
+      SUNIT_InitExtraItemSeed113c(m, (pGame + 0xd0) >>> 0, pUnit)
+      break
+    case 5:
+      m.setU32((pUnit + 0xc4) >>> 0, (m.u32((pUnit + 0xc4) >>> 0) | 1) >>> 0)
+      break
+    default:
+      return 0
+  }
+
+  let dwUnitFlags = m.u32((pUnit + 0xc4) >>> 0) | 2
+  if ((wFlags & 2) !== 0) {
+    dwUnitFlags |= 0x2000
+  }
+  m.setU32((pUnit + 0xc4) >>> 0, dwUnitFlags >>> 0)
+
+  if ((wFlags & 1) !== 0) {
+    SUNIT_PlaceServerUnitInRoom113c(m, pRoom, y, pUnit, x, pGame, 1)
+    if (nUnitType === 0) {
+      const mode = m.u32((pUnit + 0x10) >>> 0) | 0
+      if (mode === 0x11 || mode === 0) {
+        PATH_RemoveUnitCollisionFootprint113c(m, pUnit, 1)
+        PATH_SetUnitCollisionPattern113c(m, pUnit, 5)
+        PATH_SetCollisionMask113c(m, m.u32((pUnit + 0x2c) >>> 0), 0x8000)
+      }
+    } else if (nUnitType === 1) {
+      if (
+        SUNIT_IsDeadOrDying113c(m, pUnit) !== 0 &&
+        MONSTATS2_CheckFlagBit113c(m, nClassId, 0x13) === 0
+      ) {
+        PATH_RemoveUnitCollisionFootprint113c(m, pUnit, 1)
+        PATH_SetUnitCollisionPattern113c(m, pUnit, 5)
+        PATH_SetCollisionMask113c(m, m.u32((pUnit + 0x2c) >>> 0), 0x8000)
+      }
+    }
+  } else if (pRoom !== 0) {
+    SUNIT_PlaceServerUnitInRoom113c(m, pRoom, y, pUnit, x, pGame, 0)
+  } else if (nUnitType === 4) {
+    SUNIT_InsertServerUnit113c(m, pGame, pUnit)
+    ITEMS_SetOrClearCommandFlags113c(m, pUnit, 1, 1)
+  }
+
+  return pUnit >>> 0
+}
+
+/**
+ * Registers special periodic/timed events for sand maggot eggs, catapults, Baal tentacles, etc.
+ *
+ * @va D2Game:0x6FD0E260 (535B)
+ */
+export function MONSTER_InitSpecialClassEvents113c(
+  m: Memory113c,
+  pGame: number,
+  pUnit: number,
+  pRoom: number,
+  pSpawnArgs: number,
+): void {
+  void pRoom
+  void pSpawnArgs
+  if (pUnit === 0) return
+  const nClassId = m.u32((pUnit + 0x04) >>> 0) | 0
+  if (nClassId === 0x199) {
+    const targetFrame = ((m.u32((pGame + 0xa8) >>> 0) | 0) + 0x4b) >>> 0
+    EVENT_SetEventFull113c(m, pGame, pUnit, 0x0b, targetFrame, 0, 0, 0)
+  }
+}
+
+/**
+ * Performs post-spawn quest notifications and special monster class setup (Blood Raven, Izual,
+ * Countess, Chaos Sanctuary seal bosses, Cow King, trapped souls, etc.).
+ *
+ * @va D2Game:0x6FD0E7B0 (1879B)
+ */
+export function MONSTER_PostSpawnQuestAndSpecialInit113c(
+  m: Memory113c,
+  pSpawnArgs: number,
+  pUnit: number,
+): void {
+  if (pUnit === 0 || pSpawnArgs === 0) return
+  const nClassId = m.u32((pUnit + 0x04) >>> 0) | 0
+  const pMonStats = MONSTATS_GetRecordPtr113c(m, nClassId)
+  if (pMonStats === 0) return
+  if (sx16(m.u16((pMonStats + 0x3c) >>> 0)) > 0) {
+    m.setU32((pUnit + 0xc4) >>> 0, (m.u32((pUnit + 0xc4) >>> 0) | 0x400) >>> 0)
+  }
+}
+
+/**
+ * Core `D2Game.dll` monster factory (`0x6FD0EF10`): searches concentric square perimeters (`r = 0` or `3, 6, ... 3 * nMaxRadius`)
+ * seeded from `pRoom->tSeed` (`+0x6C`) for a collision-free subtile, returns `1` immediately when `wFlags & 1` (probe-only),
+ * or allocates and initializes the `D2UnitStrc` via `SUNIT_AllocUnitData113c`, increments `MONREG` count, sets alignment,
+ * and spawns party minions (`MONSTER_SpawnPartyMinions113c`).
+ *
+ * @va D2Game:0x6FD0EF10 (1323B)
+ */
+export function MONSTER_Create113c(
+  m: Memory113c,
+  pSpawnArgs: number,
+  hooks?: RegpopSpawnHooks113c,
+): number {
+  const nClassId = m.u32((pSpawnArgs + 0x0c) >>> 0) | 0
+  if (nClassId < 0) return 0
+  const pTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C))
+  if (nClassId >= (m.u32((pTables + 0xa80) >>> 0) | 0)) return 0
+  const pMonStats = (m.u32((pTables + 0xa78) >>> 0) + Math.imul(nClassId, 0x1a8)) >>> 0
+  if (pMonStats === 0) return 0
+  const pMonStats2 = MONSTATS2_GetRecordPtr113c(m, nClassId)
+  if (pMonStats2 === 0) return 0
+
+  const bCollisionType = m.u8((pMonStats2 + 0x0a) >>> 0)
+  let collMask = 0x3c01
+  if (bCollisionType === 1) collMask = 0x01c0
+  else if (bCollisionType === 2) collMask = 0x3f11
+  else if (bCollisionType === 3) collMask = 0
+
+  let pRoom = m.u32((pSpawnArgs + 0x04) >>> 0)
+  if (pRoom === 0) return 0
+  const pCoordNode = m.u32((pSpawnArgs + 0x08) >>> 0)
+  const sp = regpopStackPtr
+  regpopStackPtr = (sp + 0x50) >>> 0
+  try {
+    let minX = 0
+    let minY = 0
+    let maxX = 0
+    let maxY = 0
+    let nNodeIdx = 0
+    let bHasNode = 0
+
+    if (pCoordNode === 0) {
+      DUNGEON_GetRoomCoordinates113c(m, pRoom, sp)
+      minX = m.u32(sp) | 0
+      minY = m.u32((sp + 0x04) >>> 0) | 0
+      maxX = (minX + (m.u32((sp + 0x08) >>> 0) | 0)) | 0
+      maxY = (minY + (m.u32((sp + 0x0c) >>> 0) | 0)) | 0
+    } else {
+      m.setU32(sp, m.u32((pCoordNode + 0x10) >>> 0))
+      m.setU32((sp + 0x04) >>> 0, m.u32((pCoordNode + 0x14) >>> 0))
+      m.setU32((sp + 0x08) >>> 0, m.u32((pCoordNode + 0x18) >>> 0))
+      m.setU32((sp + 0x0c) >>> 0, m.u32((pCoordNode + 0x1c) >>> 0))
+      DUNGEON_GameTileToSubtileCoords113c(m, sp, (sp + 0x04) >>> 0)
+      DUNGEON_GameTileToSubtileCoords113c(m, (sp + 0x08) >>> 0, (sp + 0x0c) >>> 0)
+      minX = m.u32(sp) | 0
+      minY = m.u32((sp + 0x04) >>> 0) | 0
+      maxX = m.u32((sp + 0x08) >>> 0) | 0
+      maxY = m.u32((sp + 0x0c) >>> 0) | 0
+      nNodeIdx = m.u32((pCoordNode + 0x28) >>> 0) | 0
+      bHasNode = 1
+    }
+
+    const nMaxRadius = m.u32((pSpawnArgs + 0x20) >>> 0) | 0
+    const rStart = nMaxRadius < 0 ? 0 : 3
+    const rMax = nMaxRadius < 0 ? 0 : Math.imul(nMaxRadius, 3) | 0
+
+    let outX = 0
+    let outY = 0
+    const wFlags = m.u16((pSpawnArgs + 0x24) >>> 0)
+
+    if (
+      bCollisionType === 1 &&
+      (nClassId < 0x102 || nClassId > 0x107) &&
+      nClassId !== 0x99
+    ) {
+      const pOutX = (sp + 0x20) >>> 0
+      const pOutY = (sp + 0x24) >>> 0
+      m.setU32(pOutX, 0)
+      m.setU32(pOutY, 0)
+      if (MONSTER_FindValidFloorSpawnCoords113c(m, pRoom, pOutX, pOutY) !== 0) {
+        outX = m.u32(pOutX) | 0
+        outY = m.u32(pOutY) | 0
+        pRoom = ROOM_FindRoomContainingSubtile113c(m, pRoom, outX, outY)
+      }
+    } else if (rStart <= rMax) {
+      const originX = m.u32((pSpawnArgs + 0x18) >>> 0) | 0
+      const originY = m.u32((pSpawnArgs + 0x1c) >>> 0) | 0
+      const pRoomSeed = (pRoom + 0x6c) >>> 0
+      const sizeX = sx8(m.u8((pMonStats2 + 0x08) >>> 0))
+
+      for (let r = rStart; r <= rMax; r = (r + 3) | 0) {
+        let offX = 0
+        let offY = 0
+        let stepX = 0
+        let stepY = 0
+
+        const rollAxis = stepSeed64Inline(m, pRoomSeed)
+        if ((rollAxis & 1) !== 0) {
+          offX = r
+          offY = SEED_RollLimitedFast113c(m, pRoomSeed, r)
+          stepX = 0
+          stepY = 1
+        } else {
+          offX = SEED_RollLimitedFast113c(m, pRoomSeed, r)
+          offY = r
+          stepX = 1
+          stepY = 0
+        }
+
+        if ((stepSeed64Inline(m, pRoomSeed) & 1) !== 0) {
+          offX = -offX | 0
+        }
+        if ((stepSeed64Inline(m, pRoomSeed) & 1) !== 0) {
+          offY = -offY | 0
+        }
+
+        let curX = (originX + offX) | 0
+        let curY = (originY + offY) | 0
+        const leftX = (originX - r) | 0
+        const topY = (originY - r) | 0
+        const rightX = (leftX + r * 2) | 0
+        const botY = (topY + r * 2) | 0
+        const nSteps = r === 0 ? 1 : (r * 8) | 0
+
+        for (let step = 0; step < nSteps; step++) {
+          if (curX === leftX && curY === topY) {
+            stepX = 1
+            stepY = 0
+          }
+          if (curX === rightX) {
+            if (curY === topY) {
+              stepX = 0
+              stepY = 1
+            }
+            if (curY === botY) {
+              stepX = -1
+              stepY = 0
+            }
+          }
+          if (curX === leftX) {
+            if (curY === botY) {
+              stepX = 0
+              stepY = -1
+            }
+            if (curY === topY && curX === rightX && curY === botY) {
+              stepX = 0
+              stepY = 0
+            }
+          }
+
+          curY = (curY + stepY) | 0
+          curX = (curX + stepX) | 0
+
+          if (curX >= minX && curX < maxX && curY >= minY && curY < maxY) {
+            if (
+              bHasNode === 0 ||
+              (DUNGEON_GetRoomCoordListIndexAtSubtile113c(m, pRoom, curX, curY) | 0) === nNodeIdx
+            ) {
+              if (MONSTER_CheckSpawnTileFree113c(m, pRoom, nClassId, curY, curX, 1) !== 0) {
+                if (
+                  (COLLISION_CheckMaskWithPattern1_113c(
+                    m,
+                    pRoom,
+                    curX,
+                    curY,
+                    sizeX,
+                    collMask,
+                  ) &
+                    0xffff) ===
+                    0 ||
+                  (wFlags & 0x80) !== 0
+                ) {
+                  outX = curX
+                  outY = curY
+                  break
+                }
+              }
+            }
+          }
+        }
+        if (outX !== 0 && outY !== 0) break
+      }
+    }
+
+    if (outX === 0 || outY === 0 || pRoom === 0) return 0
+    if ((wFlags & 1) !== 0) return 1
+
+    const pGame = m.u32(pSpawnArgs) >>> 0
+    const allocFlags = (wFlags & 0x20) !== 0 ? 3 : 1
+    const nMode = m.u32((pSpawnArgs + 0x10) >>> 0) | 0
+    const dwData = m.u32((pSpawnArgs + 0x14) >>> 0)
+    const pUnit = SUNIT_AllocUnitData113c(
+      m,
+      1,
+      nClassId,
+      outX,
+      outY,
+      pGame,
+      pRoom,
+      allocFlags,
+      nMode,
+      dwData,
+    )
+    if (pUnit === 0) return 0
+
+    MONREG_IncrementSpawnCount113c(m, pUnit, wFlags & 0x1a, (pGame + 0xf0) >>> 0, pRoom)
+
+    const pMasks = m.u32(D2GAME_IAT_GDW_BITMASKS_VA_113C)
+    if (pCoordNode !== 0) {
+      MONSTER_SetSpawnRoomCoordNode113c(m, pUnit, pCoordNode)
+    } else if ((m.u8((pMonStats + 0x0f) >>> 0) & m.u32((pMasks + 0x08) >>> 0)) === 0) {
+      const pCurRoom = UNITS_GetRoom113c(m, pUnit)
+      const pBox = (sp + 0x30) >>> 0
+      DUNGEON_GetRoomCoordinates113c(m, pCurRoom, pBox)
+      const pList = DUNGEON_GetRoomCoordListFromSubtile113c(
+        m,
+        pCurRoom,
+        m.u32(pBox) | 0,
+        m.u32((pBox + 0x04) >>> 0) | 0,
+      )
+      MONSTER_SetSpawnRoomCoordNode113c(m, pUnit, pList)
+    } else {
+      const pCurRoom = UNITS_GetRoom113c(m, pUnit)
+      const ux = UNIT_GetPosX113c(m, pUnit)
+      const uy = UNIT_GetPosY113c(m, pUnit)
+      const pList = DUNGEON_GetRoomCoordListFromSubtile113c(m, pCurRoom, ux, uy)
+      MONSTER_SetSpawnRoomCoordNode113c(m, pUnit, pList)
+    }
+
+    const nRegAct = m.u8((pUnit + 0x18) >>> 0)
+    const pMonReg = m.u32((pGame + 0x10dc + nRegAct * 4) >>> 0)
+    if (pMonReg !== 0) {
+      m.setU32((pMonReg + 0x10) >>> 0, ((m.u32((pMonReg + 0x10) >>> 0) | 0) + 1) >>> 0)
+      m.setU32((pMonReg + 0x14) >>> 0, ((m.u32((pMonReg + 0x14) >>> 0) | 0) + 1) >>> 0)
+    }
+
+    const bAlign = m.u8((pMonStats + 0x4c) >>> 0)
+    if (bAlign === 1) {
+      SUNIT_SetMonsterAlignmentState113c(m, pUnit, 2, 1)
+      m.setU32((pUnit + 0xc4) >>> 0, (m.u32((pUnit + 0xc4) >>> 0) | 0x20000) >>> 0)
+    } else if (bAlign === 2) {
+      SUNIT_SetMonsterAlignmentState113c(m, pUnit, 1, 1)
+    } else {
+      SUNIT_SetMonsterAlignmentState113c(m, pUnit, 0, 1)
+    }
+
+    if ((wFlags & 2) === 0) {
+      MONSTER_InitSpecialClassEvents113c(m, pGame, pUnit, pRoom, pSpawnArgs)
+    }
+    MONSTER_PostSpawnQuestAndSpecialInit113c(m, pSpawnArgs, pUnit)
+    if ((wFlags & 0x40) === 0) {
+      MONSTER_SpawnPartyMinions113c(m, pSpawnArgs, pUnit, hooks)
+    }
+
+    return pUnit >>> 0
+  } finally {
+    regpopStackPtr = sp
+  }
 }
 
 export { sx8 as regpopSx8_113c }

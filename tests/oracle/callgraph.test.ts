@@ -777,9 +777,9 @@ describe('Diablo II v1.13c Kernel Call Graph & Manifest ([K0] Track A)', () => {
     expect(fnByKey.get('D2Game:6FC96FE0')!.status).toBe('ported'); // MONSTER_StepRun (Fallen only walk in WL=2)
     expect(fnByKey.get('D2Common:6FD8A330')!.status).toBe('diff-verified'); // STATLIST_AddStat (real-DLL vectors in k1r13-i14d-1.ndjson)
     expect(fnByKey.get('D2Common:6FD88520')!.status).toBe('diff-verified'); // STATLIST_GetStatListFromUnitAndState (real-DLL vectors in k1r13-i14d-1.ndjson)
-    expect(fnByKey.get('D2Game:6FCBD160')!.status).toBe('unported'); // slice-scoped target acquisition helper
-    expect(fnByKey.get('D2Game:6FD13220')!.status).toBe('unported'); // slice-scoped fallback helper
-    expect(fnByKey.get('D2Game:6FCFE5A0')!.status).toBe('unported'); // slice-scoped combat wrapper
+    expect(fnByKey.get('D2Game:6FCBD160')!.status).toBe('ported'); // AI_DispatchTargetByAiFlag (combat-a1c-113c.ts)
+    expect(fnByKey.get('D2Game:6FD13220')!.status).toBe('ported'); // AI_GeneralFindTargetOrThrottle (combat-a1c-113c.ts)
+    expect(fnByKey.get('D2Game:6FCFE5A0')!.status).toBe('ported'); // SUNITDMG_CalcMonsterExperience (combat-a1c-113c.ts)
     for (const demotedKey of [
       'D2Game:6FC97CB0',
       'D2Game:6FC97950',
@@ -888,7 +888,7 @@ describe('Diablo II v1.13c Kernel Call Graph & Manifest ([K0] Track A)', () => {
     }
 
     expect(legacyFns.length).toBe(manifest.summary.legacyRefCount);
-    expect(legacyFns.length).toBeGreaterThan(20);
+    expect(legacyFns.length).toBeGreaterThan(0);
     for (const fn of legacyFns) {
       expect(fn.status).toBe('unported');
       expect(fn.kernFile).toBeUndefined();

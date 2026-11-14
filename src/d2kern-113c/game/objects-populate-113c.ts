@@ -22,14 +22,18 @@ import {
 import { DUNGEON_CheckRoomIsTownMemPort113c } from '../common/k0-d2common-memports.ts'
 import { DATATBLS_GetObjectsTxtRecord113c, UNITS_AllocStaticPath113c, UNIT_Alloc113c } from '../common/unit.ts'
 import type { Memory113c } from '../mem/sparse-memory.ts'
+import { seedRoll, type D2SeedStrc } from '../prng.ts'
 import { DATATBLS_GetShrinesTxtRecord113c } from '../tables/datatbls-113c.ts'
 import { DATATBLS_GetLevelsTxtRecord113c } from '../tables/lvl-tbls-113c.ts'
 import {
   D2GAME_IAT_SGPT_DATATABLES_VA_113C,
+  OBJECTS_InitChestLockAndSeed113c,
+  OBJECTS_InitShrineType113c,
   OBJECTS_SpawnDensityObjectsInRoom113c,
   SUNIT_InitUnitSeed113c,
   type RegpopSpawnHooks113c,
 } from './regpop-spawn-113c.ts'
+import { EVENT_RemoveUnitEvents113c } from './timer-wheel.ts'
 
 /** `pGame->pObjectControl` (`0x6FC4EEC1 mov eax, [ebp+0x10F0]`). */
 const GAME_OFF_POBJECTCONTROL = 0x10f0
@@ -316,3 +320,141 @@ export function OBJECTS_SpawnRandomObjectInRoom113c(
   callees.placeServerUnit(m, y, pUnit, pRoom, x, pGame, 1)
   return pUnit
 }
+
+/**
+ * `@va D2Game:0x6FC4E7D0` (`OBJECTS_AllocInteractStrc`, `eax = pUnit`, `edx = pObjectsTxt`, `ecx = pMemPool`).
+ */
+export function OBJECTS_AllocInteractStrc113c(
+  m: Memory113c,
+  pUnit: number,
+  pObjectsTxt: number,
+): void {
+  if (pObjectsTxt === 0) return
+  if (m.u8((pObjectsTxt + 0x168) >>> 0) !== 1) return
+  const pObjData = pUnit !== 0 ? m.u32((pUnit + 0x14) >>> 0) : 0
+  if (pObjData === 0) return
+  if (m.u32((pObjData + 0x08) >>> 0) !== 0) return
+  const pInteract = m.alloc(0x88)
+  m.fill(pInteract, 0x88, 0)
+  m.setU32((pObjData + 0x08) >>> 0, pInteract >>> 0)
+}
+
+/**
+ * `@va D2Game:0x6FC4EAD0` (`OBJECTS_CheckLevelObjectHook`, `__fastcall(pLevelObjInfo, pRoom, pGame, bFlag)`).
+ */
+export function OBJECTS_CheckLevelObjectHook113c(
+  m: Memory113c,
+  pLevelObjInfo: number,
+  _pRoom: number,
+  _pGame: number,
+  _bFlag: number,
+): number {
+  if (pLevelObjInfo === 0) return 0
+  const count0C = m.u32((pLevelObjInfo + 0x0c) >>> 0) | 0
+  const rooms08 = m.u32((pLevelObjInfo + 0x08) >>> 0) | 0
+  if (rooms08 < Math.imul(count0C, 10)) return 0
+  return 0
+}
+
+/**
+ * `@va D2Game:0x6FC4F300` (`OBJECTS_InitObjectUnit`, `esi = pUnit`, `ebx = pGame`, `__stdcall(nUnitId, pRoom, x, y)`).
+ *
+ * Sets `dwUnitId (+0x0C)`, clears `bSparkly (+0x78)`, updates `dwFlags (+0xC4)` bit `0x04` from `ObjectsTxt + 0x128`,
+ * clears `pObjectData->InteractType (+0x04)`, removes pending events on `pUnit + 0xDC`, dispatches
+ * `ObjectsTxt->nInitFn (+0x1B1)` via `0x6FD2E050[nInitFn]` (`1/3 -> 0x6FC4ECB0`, `2 -> 0x6FC4EF90`,
+ * `8/10 -> mode 1`, `9 -> mode 2`, `16 -> (ObjectsTxt+0x180)<<1`), updates `dwFlags` bit `0x02` from
+ * `ObjectsTxt->bSelectable[nMode] (+0xC4 + nMode)`, rolls 1/14 pre-operated mode 2 when `ObjectsTxt + 0x13D != 0`,
+ * and allocates interaction data via `0x6FC4E7D0`.
+ */
+export function OBJECTS_InitObjectUnit113c(
+  m: Memory113c,
+  pUnit: number,
+  pGame: number,
+  nUnitId: number,
+  pRoom: number,
+  x: number,
+  y: number,
+): void {
+  if (pUnit === 0) return
+  const nClassId = m.u32((pUnit + 0x04) >>> 0) | 0
+  const pObjectsTxt = DATATBLS_GetObjectsTxtRecord113c(m, nClassId) >>> 0
+  if (pObjectsTxt === 0) return
+
+  const savedMode = m.u32((pUnit + 0x10) >>> 0) | 0
+  m.setU32((pUnit + 0x0c) >>> 0, nUnitId >>> 0)
+  m.setU8((pUnit + 0x78) >>> 0, 0)
+  let flags = (m.u32((pUnit + 0xc4) >>> 0) & ~0x08) >>> 0
+  m.setU32((pUnit + 0xc4) >>> 0, flags)
+  m.setU32((pUnit + 0xa4) >>> 0, 0)
+
+  if (m.u8((pObjectsTxt + 0x128) >>> 0) !== 0) {
+    flags = (flags | 0x04) >>> 0
+  } else {
+    flags = (flags & ~0x04) >>> 0
+  }
+  m.setU32((pUnit + 0xc4) >>> 0, flags)
+
+  const pObjData = m.u32((pUnit + 0x14) >>> 0) >>> 0
+  if (pObjData !== 0) {
+    m.setU8((pObjData + 0x04) >>> 0, 0)
+  }
+
+  if (m.u32((pUnit + 0xdc) >>> 0) !== 0) {
+    EVENT_RemoveUnitEvents113c(m, pGame, pUnit)
+  }
+  m.setU32((pUnit + 0xdc) >>> 0, 0)
+
+  const nInitFn = m.u8((pObjectsTxt + 0x1b1) >>> 0)
+  const pObjControl = m.u32((pGame + 0x10f0) >>> 0) >>> 0
+  if (nInitFn !== 0 && nInitFn < 0x50) {
+    const sp = objSpawnStackPtr
+    objSpawnStackPtr = (sp + 0x20) >>> 0
+    try {
+      m.setU32((sp + 0x00) >>> 0, pGame >>> 0)
+      m.setU32((sp + 0x04) >>> 0, pUnit >>> 0)
+      m.setU32((sp + 0x08) >>> 0, pRoom >>> 0)
+      m.setU32((sp + 0x0c) >>> 0, pObjControl >>> 0)
+      m.setU32((sp + 0x10) >>> 0, pObjectsTxt >>> 0)
+      m.setU32((sp + 0x14) >>> 0, x >>> 0)
+      m.setU32((sp + 0x18) >>> 0, y >>> 0)
+      if (nInitFn === 1 || nInitFn === 3) {
+        OBJECTS_InitChestLockAndSeed113c(m, sp)
+      } else if (nInitFn === 2) {
+        OBJECTS_InitShrineType113c(m, sp)
+      } else if (nInitFn === 8 || nInitFn === 10) {
+        m.setU32((pUnit + 0x10) >>> 0, 1)
+      } else if (nInitFn === 9) {
+        m.setU32((pUnit + 0x10) >>> 0, 2)
+      } else if (nInitFn === 16 && pObjData !== 0) {
+        m.setU8((pObjData + 0x04) >>> 0, (m.u8((pObjectsTxt + 0x180) >>> 0) << 1) & 0xff)
+      }
+    } finally {
+      objSpawnStackPtr = sp
+    }
+  }
+
+  const bSelectable = m.u8((pObjectsTxt + 0xc4 + savedMode) >>> 0)
+  let flagsAfter = m.u32((pUnit + 0xc4) >>> 0)
+  if (bSelectable !== 0) {
+    flagsAfter = (flagsAfter | 0x02) >>> 0
+  } else {
+    flagsAfter = (flagsAfter & ~0x02) >>> 0
+  }
+  m.setU32((pUnit + 0xc4) >>> 0, flagsAfter)
+
+  if (m.u8((pObjectsTxt + 0x13d) >>> 0) !== 0 && ((flagsAfter >>> 7) & 1) === 0 && pObjControl !== 0) {
+    const seed: D2SeedStrc = {
+      lo: m.u32(pObjControl) >>> 0,
+      hi: m.u32((pObjControl + 0x04) >>> 0) >>> 0,
+    }
+    const r = seedRoll(seed, 0x0e)
+    m.setU32(pObjControl, seed.lo >>> 0)
+    m.setU32((pObjControl + 0x04) >>> 0, seed.hi >>> 0)
+    if (r === 0) {
+      m.setU32((pUnit + 0x10) >>> 0, 2)
+    }
+  }
+
+  OBJECTS_AllocInteractStrc113c(m, pUnit, pObjectsTxt)
+}
+

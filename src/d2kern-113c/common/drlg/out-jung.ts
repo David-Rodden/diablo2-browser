@@ -25,8 +25,8 @@ import {
   DRLGOUTDOORS_PlaceRandomOutdoorShrineOrSpecial113c,
 } from './outdoors.ts';
 
-const OUTJUNG_STACK_BASE = 0x7ff70000;
-const OUTJUNG_STACK_SIZE = 0x100;
+export const OUTJUNG_STACK_BASE = 0x7ff68000;
+export const OUTJUNG_STACK_SIZE = 0x100;
 const _outJungStackBuf = new ArrayBuffer(OUTJUNG_STACK_SIZE);
 const _outJungStackU8 = new Uint8Array(_outJungStackBuf);
 const _outJungStackDV = new DataView(_outJungStackBuf);

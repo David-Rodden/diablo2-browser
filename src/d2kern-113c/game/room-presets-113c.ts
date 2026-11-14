@@ -16,6 +16,7 @@
 import { DUNGEON_AcquireRoomExDT1Mask113c, DUNGEON_GetLevelIdFromRoom113c, DUNGEON_GetRoomCoordinates113c } from '../common/dungeon.ts'
 import { DRLGPRESET_MovePointerAndClear113c } from '../common/drlg/preset.ts'
 import type { Memory113c } from '../mem/sparse-memory.ts'
+import { MONSTATS2_CheckFlagBit113c } from './regpop-spawn-113c.ts'
 
 const PRESET_OFF_MODE = 0x00
 const PRESET_OFF_CLASS = 0x04
@@ -256,3 +257,71 @@ export function ROOM_SpawnPresetUnits113c(
     ROOM_SpawnPresetUnit113c(m, pGame, pRoom, pPreset, callees)
   }
 }
+
+/**
+ * Spawns a monster preset unit (`ecx = pRoom, eax = nClassId`, stack `(pGame, x, y, nMode)`, `ret 0x10`).
+ * Resolves `MonPresetTxt` (`D2Common.#11241` via `DRLG_GetActNoFromLevelId`) when `nClassId` is a preset
+ * index, and handles SuperUnique (`1`), regular monster (`2`), or special handler (`nClassId >= nMonStatsCount + nSuperUniquesCount`).
+ *
+ * @va D2Game:0x6FC67CF0 (305B)
+ */
+export function ROOM_SpawnMonsterPreset113c(
+  m: Memory113c,
+  pRoom: number,
+  nClassId: number,
+  pGame: number,
+  x: number,
+  y: number,
+  nMode: number,
+  spawnAtCoords: (
+    m: Memory113c,
+    nClassId: number,
+    nMode: number,
+    pGame: number,
+    pRoom: number,
+    x: number,
+    y: number,
+    nMaxRadius: number,
+    wFlags: number,
+  ) => number,
+  getMonPresetRecord?: (m: Memory113c, nAct: number, nPlaceId: number, pOutType: number) => number,
+  spawnSuperUnique?: (m: Memory113c, pGame: number, pRoom: number, x: number, y: number, nSuperUniqueId: number) => number,
+): number {
+  const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom) | 0
+  let resolvedId = nClassId | 0
+  let nType = 2
+  if (getMonPresetRecord !== undefined && nLevelId > 0) {
+    const pTables = m.u32(0x6fde9e1c) >>> 0
+    const pLvlRec = pTables !== 0 ? (m.u32((pTables + 0xbb8) >>> 0) + Math.imul(nLevelId, 0x220)) >>> 0 : 0
+    const nAct = pLvlRec !== 0 ? m.u8((pLvlRec + 0x05) >>> 0) : 0
+    const pScratch = 0x7ff00f00
+    m.setU8(pScratch, 2)
+    resolvedId = getMonPresetRecord(m, nAct, resolvedId, pScratch) | 0
+    nType = (m.u8(pScratch) << 24) >> 24
+  }
+  const pTables = m.u32(0x6fde9e1c) >>> 0
+  const nMonStats = pTables !== 0 ? m.u32((pTables + 0xa80) >>> 0) | 0 : 0
+  const nSuperUniques = pTables !== 0 ? m.u32((pTables + 0xa74) >>> 0) | 0 : 0
+  if (resolvedId >= nMonStats + nSuperUniques) return 0
+  if (nType === 2) {
+    if (resolvedId === 0x222 && nLevelId === 0x78) {
+      return spawnAtCoords(m, 0x222, nMode, pGame, pRoom, x, y, -1, 0x42)
+    }
+    if (MONSTATS2_CheckFlagBit113c(m, resolvedId, 0x0d) !== 0) {
+      return 0
+    }
+    const pMonStatsBase = pTables !== 0 ? m.u32((pTables + 0xa78) >>> 0) >>> 0 : 0
+    const pMonStatsRec = pMonStatsBase !== 0 ? (pMonStatsBase + Math.imul(resolvedId, 0x1a8)) >>> 0 : 0
+    const wFlags = pMonStatsRec !== 0 && (m.u8((pMonStatsRec + 0x0e) >>> 0) & 4) !== 0 ? 8 : 0
+    let pUnit = spawnAtCoords(m, resolvedId, nMode, pGame, pRoom, x, y, -1, wFlags)
+    if (pUnit === 0 && (wFlags & 8) !== 0) {
+      pUnit = spawnAtCoords(m, resolvedId, nMode, pGame, pRoom, x, y, 4, wFlags)
+    }
+    return pUnit
+  }
+  if (nType === 1 && spawnSuperUnique !== undefined) {
+    return spawnSuperUnique(m, pGame, pRoom, x, y, resolvedId)
+  }
+  return 0
+}
+

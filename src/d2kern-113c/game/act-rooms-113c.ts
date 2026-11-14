@@ -12,15 +12,27 @@
  * no silent default.
  */
 import {
+  DUNGEON_AddClientToRoom113c,
+  DUNGEON_CanFreeActiveRoom113c,
   DUNGEON_CheckRoomFlag2_113c,
+  DUNGEON_FreeActiveRoom113c,
+  DUNGEON_GetAdjacentRoomsListFromRoom113c,
   DUNGEON_GetLevelIdFromRoom113c,
   DUNGEON_GetRoomExFromRoom113c,
+  DUNGEON_IsTownLevelId113c,
+  DUNGEON_RemoveClientFromRoom113c,
   DUNGEON_SetRoomFlag2_113c,
+  DUNGEON_SyncActiveRoomStatusChange113c,
+  DUNGEON_UpdateRoomIdleCounter113c,
+  DUNGEON_UpdateRoomLevelChange113c,
 } from '../common/dungeon.ts'
+import { DATATBLS_GetObjectsTxtRecord113c, UNITS_GetRoom113c } from '../common/unit.ts'
 import type { Memory113c } from '../mem/sparse-memory.ts'
 import { seedRoll } from '../prng.ts'
 import { DATATBLS_GetLevelsTxtRecord113c } from '../tables/lvl-tbls-113c.ts'
+import { SUNIT_RemoveServerUnit113c } from './game-strc.ts'
 import {
+  MONSTER_ScheduleInitialAiEvent113c,
   MONSTER_SpawnAtCoords113c,
   REGPOP_FindPackSpawnCoords113c,
   REGPOP_PopulateRoomMonsters113c,
@@ -28,6 +40,7 @@ import {
 } from './regpop-spawn-113c.ts'
 import { OBJECTS_PopulateRoom113c, type ObjectsPopulateCallees113c } from './objects-populate-113c.ts'
 import { ROOM_SpawnPresetUnits113c, type RoomPresetCallees113c } from './room-presets-113c.ts'
+import { EVENT_DeleteEventByType113c, EVENT_RemoveUnitEvents113c } from './timer-wheel.ts'
 
 /** `pGame->pAct[5]` (`0x6FC4CC0B lea ebx, [edi+0xBC]`). */
 const GAME_OFF_PACT_113C = 0xbc
@@ -253,3 +266,275 @@ export function GAME_UpdateActRooms113c(m: Memory113c, pGame: number, callees: A
     m.setU32((m.u32(ppAct) + ACT_OFF_ROOMS_DIRTY_113C) >>> 0, 0)
   }
 }
+
+/**
+ * `@va D2Game:0x6FC400E0` (`ROOM_RefreshUnitsAndLoadSaved`, `__stdcall(pGame, pRoom)`).
+ */
+export function ROOM_RefreshUnitsAndLoadSaved113c(
+  _m: Memory113c,
+  _pGame: number,
+  _pRoom: number,
+): void {
+  // Single-player fresh rooms have no saved unit chain (`pRoomEx + 0x5C` save chain is NULL).
+}
+
+/**
+ * `@va D2Game:0x6FCBD950` (`ROOM_WakeRoomMonsters`, `eax = pRoom`, `esi = pGame`).
+ *
+ * Walks `pRoom->pUnitFirst (+0x74)` via `pRoomUnitNext (+0xE8)`; for every monster (`dwUnitType == 1`),
+ * schedules its initial AI event via `0x6FCCF920` (`MONSTER_ScheduleInitialAiEvent113c`).
+ */
+export function ROOM_WakeRoomMonsters113c(
+  m: Memory113c,
+  pRoom: number,
+  pGame: number,
+): void {
+  let pUnit = m.u32((pRoom + 0x74) >>> 0) >>> 0
+  while (pUnit !== 0) {
+    const uType = m.u32(pUnit) >>> 0
+    if (uType === 1) {
+      MONSTER_ScheduleInitialAiEvent113c(m, pGame, pUnit)
+    }
+    pUnit = m.u32((pUnit + 0xe8) >>> 0) >>> 0
+  }
+}
+
+/**
+ * `@va D2Game:0x6FCBD8E0` (`ROOM_SleepRoomMonsters`, `eax = pRoom`, `ecx = pGame`).
+ *
+ * Walks `pRoom->pUnitFirst (+0x74)` via `pRoomUnitNext (+0xE8)`; for every monster (`dwUnitType == 1`),
+ * removes event types `2` (`MON_EVENT_AI_THINK`) and `3` from `pUnit->pEventFirst (+0xDC)`.
+ */
+export function ROOM_SleepRoomMonsters113c(
+  m: Memory113c,
+  pRoom: number,
+  pGame: number,
+): void {
+  let pUnit = m.u32((pRoom + 0x74) >>> 0) >>> 0
+  while (pUnit !== 0) {
+    const uType = m.u32(pUnit) >>> 0
+    if (uType === 1) {
+      EVENT_DeleteEventByType113c(m, pGame, pUnit, 2)
+      EVENT_DeleteEventByType113c(m, pGame, pUnit, 3)
+    }
+    pUnit = m.u32((pUnit + 0xe8) >>> 0) >>> 0
+  }
+}
+
+/**
+ * `@va D2Game:0x6FCBDC10` (`ROOM_ActivateRoomForClient`, `ebx = pClient`, `eax = pRoom`, `__stdcall(pPlayer)`).
+ *
+ * Adds `pClient` to `pRoom` via `D2Common.#10879` (`DUNGEON_AddClientToRoom113c`), and if
+ * `pRoom->nNumClients (+0x78) <= 1`, wakes all monsters in `pRoom` via `0x6FCBD950`.
+ */
+export function ROOM_ActivateRoomForClient113c(
+  m: Memory113c,
+  pClient: number,
+  pRoom: number,
+  pPlayer: number,
+): void {
+  if (pRoom === 0 || pClient === 0) return
+  DUNGEON_AddClientToRoom113c(m, pRoom, pClient)
+  if ((m.u32((pRoom + 0x78) >>> 0) >>> 0) <= 1) {
+    const pGame =
+      pPlayer !== 0
+        ? ((m.u32((pPlayer + 0x80) >>> 0) || m.u32((pPlayer + 0x84) >>> 0)) >>> 0)
+        : 0
+    if (pGame !== 0) {
+      ROOM_WakeRoomMonsters113c(m, pRoom, pGame)
+    }
+  }
+}
+
+/**
+ * `@va D2Game:0x6FCBD980` (`ROOM_DeactivateRoomForClient`, `edi = pRoom`, `__stdcall(pPlayer, pClient)`).
+ *
+ * Removes `pClient` from `pRoom` via `D2Common.#10144` (`DUNGEON_RemoveClientFromRoom113c`), and if
+ * `pRoom->nNumClients (+0x78) == 0`, sleeps all monsters in `pRoom` via `0x6FCBD8E0`.
+ */
+export function ROOM_DeactivateRoomForClient113c(
+  m: Memory113c,
+  pRoom: number,
+  pPlayer: number,
+  pClient: number,
+): void {
+  if (pRoom === 0 || pClient === 0) return
+  DUNGEON_RemoveClientFromRoom113c(m, pRoom, pClient)
+  if ((m.u32((pRoom + 0x78) >>> 0) >>> 0) === 0) {
+    const pGame =
+      pPlayer !== 0
+        ? ((m.u32((pPlayer + 0x80) >>> 0) || m.u32((pPlayer + 0x84) >>> 0)) >>> 0)
+        : 0
+    if (pGame !== 0) {
+      ROOM_SleepRoomMonsters113c(m, pRoom, pGame)
+    }
+  }
+}
+
+/**
+ * `@va D2Game:0x6FC6B1D0` (`CLIENTS_SetPlayerCurrentRoom`, `esi = pClient`, `__stdcall(pNewRoom)`).
+ *
+ * 1. If `pClient == 0 || pClient->pPlayer (+0x1A8) == 0` or `pClient->pRoom (+0x1B4) == pNewRoom`, returns.
+ * 2. Calls `D2Common.#10622` (`DUNGEON_SyncActiveRoomStatusChange113c(m, pOldRoom, pNewRoom)`) and
+ *    `D2Common.#10043` (`DUNGEON_UpdateRoomLevelChange113c(m, pOldRoom, pNewRoom)`).
+ * 3. Fetches `ppNewNear[0..nNew)` and `ppOldNear[0..nOld)` via `D2Common.#10688` (`DUNGEON_GetAdjacentRoomsListFromRoom113c`).
+ * 4. For each room in `ppNewNear` not in `ppOldNear`, calls `0x6FCBDC10` (`ROOM_ActivateRoomForClient113c`).
+ * 5. For each room in `ppOldNear` not in `ppNewNear`, calls `0x6FCBD980` (`ROOM_DeactivateRoomForClient113c`).
+ * 6. Sets `pClient->pRoom (+0x1B4) = pNewRoom`.
+ */
+export function CLIENTS_SetPlayerCurrentRoom113c(
+  m: Memory113c,
+  pClient: number,
+  pNewRoom: number,
+): void {
+  if (pClient === 0) return
+  const pPlayer = (m.u32((pClient + 0x174) >>> 0) || m.u32((pClient + 0x1a8) >>> 0)) >>> 0
+  if (pPlayer === 0) return
+  const pOldRoom = m.u32((pClient + 0x1b4) >>> 0) >>> 0
+  if (pOldRoom === (pNewRoom >>> 0)) return
+
+  DUNGEON_SyncActiveRoomStatusChange113c(m, pOldRoom, pNewRoom)
+  DUNGEON_UpdateRoomLevelChange113c(m, pOldRoom, pNewRoom)
+
+  const sp = actRoomsStackPtr
+  actRoomsStackPtr = (sp + 0x20) >>> 0
+  try {
+    let ppNew = 0
+    let nNew = 0
+    if (pNewRoom !== 0) {
+      DUNGEON_GetAdjacentRoomsListFromRoom113c(m, pNewRoom, sp, (sp + 0x04) >>> 0)
+      ppNew = m.u32(sp) >>> 0
+      nNew = m.u32((sp + 0x04) >>> 0) | 0
+    }
+    let ppOld = 0
+    let nOld = 0
+    if (pOldRoom !== 0) {
+      DUNGEON_GetAdjacentRoomsListFromRoom113c(m, pOldRoom, (sp + 0x08) >>> 0, (sp + 0x0c) >>> 0)
+      ppOld = m.u32((sp + 0x08) >>> 0) >>> 0
+      nOld = m.u32((sp + 0x0c) >>> 0) | 0
+    }
+
+    for (let i = 0; i < nNew; i++) {
+      const rNew = m.u32((ppNew + i * 4) >>> 0) >>> 0
+      let inOld = false
+      for (let j = 0; j < nOld; j++) {
+        if ((m.u32((ppOld + j * 4) >>> 0) >>> 0) === rNew) {
+          inOld = true
+          break
+        }
+      }
+      if (!inOld) {
+        ROOM_ActivateRoomForClient113c(m, pClient, rNew, pPlayer)
+      }
+    }
+
+    for (let j = 0; j < nOld; j++) {
+      const rOld = m.u32((ppOld + j * 4) >>> 0) >>> 0
+      let inNew = false
+      for (let i = 0; i < nNew; i++) {
+        if ((m.u32((ppNew + i * 4) >>> 0) >>> 0) === rOld) {
+          inNew = true
+          break
+        }
+      }
+      if (!inNew) {
+        ROOM_DeactivateRoomForClient113c(m, rOld, pPlayer, pClient)
+      }
+    }
+
+    m.setU32((pClient + 0x1b4) >>> 0, pNewRoom >>> 0)
+  } finally {
+    actRoomsStackPtr = sp
+  }
+}
+
+/**
+ * `@va D2Game:0x6FC409B0` / `@va D2Game:0x6FC40760` (`ROOM_DeactivateUnitInRoom`, `esi = pUnit`, `__stdcall(pGame)`).
+ *
+ * Removes active events on `pUnit` via `EVENT_RemoveUnitEvents113c` (`0x6FCAE880`) and unlinks `pUnit` from
+ * the server unit hash table via `SUNIT_RemoveServerUnit113c` (`0x6FD002A0`).
+ */
+export function ROOM_DeactivateUnitInRoom113c(
+  m: Memory113c,
+  pGame: number,
+  pUnit: number,
+  onUnitRemoved?: (pUnit: number, dwUnitType: number, dwUnitId: number) => void,
+): void {
+  if (pUnit === 0) return
+  const uType = m.u32(pUnit) >>> 0
+  const uId = m.u32((pUnit + 0x0c) >>> 0) >>> 0
+  const pRoom = UNITS_GetRoom113c(m, pUnit) >>> 0
+  if (uType === 1) {
+    // 0x6FC40760: dead monster (dwAnimMode == 12) in non-town room rolls room seed % 3 (`0x6FC407D8..0x6FC4080C`)
+    const mode = m.u32((pUnit + 0x10) >>> 0) | 0
+    if (mode === 12 && pRoom !== 0) {
+      const seedAddr = (pRoom + 0x6c) >>> 0
+      const lo = BigInt(m.u32(seedAddr) >>> 0)
+      const hi = BigInt(m.u32((seedAddr + 4) >>> 0) >>> 0)
+      const next = lo * 0x6ac690c5n + hi
+      m.setU32(seedAddr, Number(next & 0xffffffffn) >>> 0)
+      m.setU32((seedAddr + 4) >>> 0, Number((next >> 32n) & 0xffffffffn) >>> 0)
+    }
+    EVENT_RemoveUnitEvents113c(m, pGame, pUnit)
+    SUNIT_RemoveServerUnit113c(m, pGame, pUnit)
+    onUnitRemoved?.(pUnit, uType, uId)
+    return
+  }
+  if (uType === 2) {
+    const classId = m.u32((pUnit + 0x04) >>> 0) | 0
+    if (classId === 0x3b || classId === 0x3c) return
+    const pObjectsTxt = DATATBLS_GetObjectsTxtRecord113c(m, classId)
+    void pObjectsTxt
+    EVENT_RemoveUnitEvents113c(m, pGame, pUnit)
+    SUNIT_RemoveServerUnit113c(m, pGame, pUnit)
+    onUnitRemoved?.(pUnit, uType, uId)
+    return
+  }
+  if (uType !== 0 && uType !== 4) {
+    EVENT_RemoveUnitEvents113c(m, pGame, pUnit)
+    SUNIT_RemoveServerUnit113c(m, pGame, pUnit)
+    onUnitRemoved?.(pUnit, uType, uId)
+  }
+}
+
+/**
+ * `@va D2Game:0x6FC4CF30` (`GAME_DeactivateUnusedRoomsTick`, `__stdcall(pGame)`).
+ *
+ * Called every 12 frames (`dwGameFrame % 12 == 0` at `0x6FC4E106..0x6FC4E119`):
+ * Walks `pGame->pAct[0..4]` and each active room `pRoom = DUNGEON_GetRoomExFromRoom113c(m, pAct)`:
+ * 1. Calls `D2Common.#10557` (`DUNGEON_UpdateRoomIdleCounter113c(m, pRoom)`).
+ * 2. If `idleCounter > 10` and `D2Common.#10163` (`DUNGEON_CanFreeActiveRoom113c(m, pAct, pRoom) != 0`):
+ *    - Walks `pUnit = pRoom->pUnitFirst (+0x74)` via `pRoomUnitNext (+0xE8)` and calls `0x6FC409B0`
+ *      (`ROOM_DeactivateUnitInRoom113c`).
+ *    - Calls `D2Common.#10150` (`DUNGEON_FreeActiveRoom113c(m, pAct, pRoom)`).
+ */
+export function GAME_DeactivateUnusedRoomsTick113c(
+  m: Memory113c,
+  pGame: number,
+  onRoomDeactivated?: (pRoom: number) => void,
+  onUnitRemoved?: (pUnit: number, dwUnitType: number, dwUnitId: number) => void,
+): void {
+  for (let actIdx = 0; actIdx < 5; actIdx++) {
+    const pAct = m.u32((pGame + GAME_OFF_PACT_113C + actIdx * 4) >>> 0) >>> 0
+    if (pAct === 0) continue
+    let pRoom = DUNGEON_GetRoomExFromRoom113c(m, pAct) >>> 0
+    while (pRoom !== 0) {
+      const pNext = m.u32((pRoom + ROOM_OFF_NEXT_113C) >>> 0) >>> 0
+      const idleCount = DUNGEON_UpdateRoomIdleCounter113c(m, pRoom)
+      if (idleCount > 10 && DUNGEON_CanFreeActiveRoom113c(m, pAct, pRoom) !== 0) {
+        let pUnit = m.u32((pRoom + 0x74) >>> 0) >>> 0
+        while (pUnit !== 0) {
+          const pUnitNext = m.u32((pUnit + 0xe8) >>> 0) >>> 0
+          ROOM_DeactivateUnitInRoom113c(m, pGame, pUnit, onUnitRemoved)
+          pUnit = pUnitNext
+        }
+        DUNGEON_FreeActiveRoom113c(m, pAct, pRoom)
+        onRoomDeactivated?.(pRoom)
+      }
+      pRoom = pNext
+    }
+  }
+}
+
+export { DUNGEON_IsTownLevelId113c }
+

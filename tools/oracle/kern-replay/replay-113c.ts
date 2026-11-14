@@ -24,8 +24,10 @@ import { UNITS_GetRoom113c } from '../../../src/d2kern-113c/common/unit.ts'
 import { DUNGEON_GetLevelIdFromRoom113c } from '../../../src/d2kern-113c/common/dungeon.ts'
 import {
   C2S_DispatchFromMem113c,
+  configureReplayHydrationAssets113c,
   GAME_UpdateGameFrame113c,
   hydrateSnapshotKernelTables113c,
+  type ReplayHydrationAssets113c,
 } from '../../../src/d2kern-113c/game/replay-kernel-113c.ts'
 import { parseTrace, type Trace, type TraceFrame, type TraceHeader, type UnitRow } from '../lib/trace-diff.ts'
 import { collectImportGraph, legacyReachable } from './import-graph.ts'
@@ -95,8 +97,42 @@ export interface KernWorld113c {
   readonly bootFrame: number
 }
 
+let loadedReplayHydrationAssets113c: ReplayHydrationAssets113c | null = null
+
+function ensureReplayHydrationAssetsLoaded113c(): void {
+  if (loadedReplayHydrationAssets113c !== null) return
+  const drlgDataTblsImg = new Uint8Array(
+    gunzipSync(readFileSync(join(REPO_ROOT_113C, 'tests/fixtures/oracle/vectors/drlg-datatbls-113c.img.gz'))),
+  )
+  const d2gameDataTblsImg = new Uint8Array(
+    gunzipSync(readFileSync(join(REPO_ROOT_113C, 'tests/fixtures/oracle/k1/d2game-datatbls-113c.img.gz'))),
+  )
+  const animDataBytes = new Uint8Array(
+    gunzipSync(readFileSync(join(REPO_ROOT_113C, 'tests/fixtures/oracle/k1/animdata-113c.bin.gz'))),
+  )
+  const raw = JSON.parse(
+    gunzipSync(readFileSync(join(REPO_ROOT_113C, 'tests/fixtures/oracle/k1/drlg-act1-ds1-dt1-113c.json.gz'))).toString('utf8'),
+  ) as { ds1: Record<string, string>; dt1: Record<string, string> }
+  const ds1 = new Map<string, Uint8Array>()
+  const dt1 = new Map<string, Uint8Array>()
+  for (const [k, b64] of Object.entries(raw.ds1)) {
+    ds1.set(k.replace(/\//g, '\\').toLowerCase(), new Uint8Array(Buffer.from(b64, 'base64')))
+  }
+  for (const [k, b64] of Object.entries(raw.dt1)) {
+    dt1.set(k.replace(/\//g, '\\').toLowerCase(), new Uint8Array(Buffer.from(b64, 'base64')))
+  }
+  loadedReplayHydrationAssets113c = {
+    drlgDataTblsImg,
+    d2gameDataTblsImg,
+    animDataBytes,
+    act1Ds1Dt1: { ds1, dt1 },
+  }
+  configureReplayHydrationAssets113c(loadedReplayHydrationAssets113c)
+}
+
 /** Hydrates every recorded block at its original address. Unreadable blocks (`h: null`) stay absent. */
 export function bootFromSnapshot113c(snap: Snapshot113c): KernWorld113c {
+  ensureReplayHydrationAssetsLoaded113c()
   const m = new SparseMemory113c()
   let loaded = 0
   for (const rec of snap.records) {

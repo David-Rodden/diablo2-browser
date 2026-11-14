@@ -1193,6 +1193,11 @@ export function MONSTER_StartMode113c(
         moveStatus = PATHTYPE_WALL_FOLLOW_113C
       }
 
+      if (ok !== 0) {
+        // 0x6FC95FA5..0x6FC95FB2 -> 0x6FD83330 (UNITS_UpdateAnimRateAndVelocity) -> 0x6FD84D40 (PATH_SetVelocity)
+        PATH_SetVelocity113c(m, pPath, scaledVel > 0 ? scaledVel : 0)
+      }
+
       if (pAiCtrl !== 0) {
         m.setU32(pAiCtrl + 0x10, velOverride >>> 0)
         m.setU32(

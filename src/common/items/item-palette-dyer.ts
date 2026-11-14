@@ -50,6 +50,7 @@ export interface DynamicImageSourceLike {
   readonly src?: string
   readonly complete?: boolean
   readonly __dynamicItemsAtlas?: boolean
+  readonly ownerDocument?: { createElement?: (tagName: string) => DynamicCanvasLike } | null
 }
 
 let cachedAct1PaletteRgb: Uint8Array | null = null
@@ -402,10 +403,8 @@ export function prepareDynamicItemsAtlas<T extends DynamicImageSourceLike>(
     }
     return sourceImg
   }
-  const g = globalThis as {
-    document?: { createElement?: (tagName: string) => DynamicCanvasLike }
-  }
-  if (!g.document || typeof g.document.createElement !== 'function') {
+  const ownerDoc = sourceImg.ownerDocument
+  if (!ownerDoc || typeof ownerDoc.createElement !== 'function') {
     return sourceImg
   }
 
@@ -421,7 +420,7 @@ export function prepareDynamicItemsAtlas<T extends DynamicImageSourceLike>(
   }
 
   try {
-    const canvas = g.document.createElement('canvas')
+    const canvas = ownerDoc.createElement('canvas')
     canvas.width = shelf.baseWidth
     canvas.height = shelf.baseHeight + DYNAMIC_ATLAS_SHELF_HEIGHT
     const ctx = canvas.getContext('2d', { willReadFrequently: true }) ?? canvas.getContext('2d')

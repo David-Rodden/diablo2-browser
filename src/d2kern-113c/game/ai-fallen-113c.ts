@@ -278,10 +278,11 @@ export function AIGENERAL_ReassignPackOnBossDeath113c(
     }
     const candGuid = m.u32(pWalk) >>> 0
     pNewBoss = SUNIT_GetServerUnit113c(m, pGame, 1, candGuid)
-    if (pNewBoss !== 0) {
+    if (pNewBoss !== 0 && SUNIT_IsDeadOrDying113c(m, pNewBoss) === 0) {
       newBossGuid = candGuid
       break
     }
+    pNewBoss = 0
     pWalk = m.u32((pWalk + 4) >>> 0)
   }
 
