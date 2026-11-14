@@ -16,7 +16,15 @@
  *   - Nearest-walkable fallback when the target sub-tile itself is blocked.
  */
 
-import { sub_6FDAB610 } from './path-compute.ts'
+import {
+  buildAdjacentRoomLists,
+  D2Common_10142,
+  sub_6FDAB610,
+} from './path-compute.ts'
+import {
+  D2COMMON_10170_PathSetTargetPos,
+  PATH_AllocDynamicPath,
+} from './path.ts'
 import {
   ASTAR_HEURISTIC,
   DIRECTION_TO_OFFSET_A,
@@ -24,6 +32,12 @@ import {
   SNAP_TO_CARDINAL,
   TOWARD_DIRECTIONS,
 } from './tables.ts'
+import {
+  type PathCollisionGrid,
+  type PathRoom,
+  type PathUnit,
+  UNIT_PLAYER,
+} from './types.ts'
 
 export interface SubTileWalkabilityGrid {
   readonly subWidth: number
@@ -971,5 +985,216 @@ export function findPathWorld(
     rawPath: localRes.rawPath.map(p => ({ x: p.x + ox, y: p.y + oy })),
     reachedGoal: localRes.reachedGoal,
     expandedNodes: localRes.expandedNodes,
+  }
+}
+
+export interface D2CommonPathRoomRect {
+  readonly worldSubX: number
+  readonly worldSubY: number
+  readonly subW: number
+  readonly subH: number
+  readonly areaId?: number | undefined
+}
+
+export interface D2CommonPathView extends SubTileWalkabilityGrid {
+  readonly areaId?: number | undefined
+  readonly levelId?: number | undefined
+  readonly rooms?: readonly D2CommonPathRoomRect[] | undefined
+}
+
+export interface D2CommonPlayerPathResult {
+  /** Waypoints from start (index 0) to end (last index), or `[]` when 0 steps computed. */
+  readonly path: readonly SubTilePoint[]
+  /** True when the computed path reached within 1 sub-tile of the prepared target. */
+  readonly reachedGoal: boolean
+  /** Prepared target coordinate (`pDynamicPath.tFinalTargetCoord`). */
+  readonly finalTarget: SubTilePoint
+}
+
+function isTownAreaId113c(areaId: number): boolean {
+  return areaId === 1 || areaId === 40 || areaId === 75 || areaId === 103 || areaId === 109
+}
+
+/**
+ * 1.13c `D2Common_10142` (`0x6FD86230`) + `PATH_Straight_Compute` (`0x6FDB7AD0`, `PATHTYPE_STRAIGHT = 7`)
+ * player pathfinder in world sub-tile coordinates (Issue #210):
+ * - Builds `PathRoom`s from `primaryView.rooms` (and any connected `extraViews.rooms`) and links
+ *   `adjacentRooms` via `buildAdjacentRoomLists` (`tile gap < 6`, `0x6FD60B10`).
+ * - Rejects targets outside the `3x3` room neighborhood (`DUNGEON_GetRoomAtPosition` `0x6FD90A60`).
+ * - Prepares blocked target coordinates via `PATH_PreparePathTargetForPathUpdate` (`0x6FD85E00`) +
+ *   `PATH_FindValidTargetCoordsByMovingOrthogonally` (`0x6FD85D40`).
+ * - Runs `PATH_Toward_6FDAA9F0` (`0x6FDB78B0`, stopping when `sub_6FDABA50 <= 1`), with
+ *   `PATH_AStar_ComputePath` (`0x6FDCB630`) fallback only when `distSq <= 324` (`18^2`).
+ */
+export function findPlayerPathD2Common113c(
+  primaryView: D2CommonPathView,
+  worldStartX: number,
+  worldStartY: number,
+  worldGoalX: number,
+  worldGoalY: number,
+  extraViews: readonly D2CommonPathView[] = [],
+): D2CommonPlayerPathResult {
+  const sx = Math.floor(worldStartX)
+  const sy = Math.floor(worldStartY)
+  const tx = Math.floor(worldGoalX)
+  const ty = Math.floor(worldGoalY)
+
+  if (
+    sx < 0 ||
+    sy < 0 ||
+    tx < 0 ||
+    ty < 0 ||
+    Math.abs(tx - sx) > MAX_STRAIGHT_DISTANCE_DELTA ||
+    Math.abs(ty - sy) > MAX_STRAIGHT_DISTANCE_DELTA
+  ) {
+    return { path: [], reachedGoal: false, finalTarget: { x: tx, y: ty } }
+  }
+
+  const allViews = extraViews.length > 0 ? [primaryView, ...extraViews] : [primaryView]
+  const isWorldCellWalkable = (wx: number, wy: number): boolean => {
+    for (let i = 0; i < allViews.length; i++) {
+      const v = allViews[i]!
+      const vox = v.subOriginX ?? 0
+      const voy = v.subOriginY ?? 0
+      const lx = wx - vox
+      const ly = wy - voy
+      if (lx >= 0 && ly >= 0 && lx < v.subWidth && ly < v.subHeight) {
+        if (v.walkable[ly * v.subWidth + lx] === 1) {
+          return true
+        }
+      }
+    }
+    return false
+  }
+
+  if (sx === tx && sy === ty) {
+    if (!isWorldCellWalkable(sx, sy)) {
+      return { path: [], reachedGoal: false, finalTarget: { x: tx, y: ty } }
+    }
+    const pt = { x: sx, y: sy }
+    return { path: [pt], reachedGoal: true, finalTarget: pt }
+  }
+
+  const footprintOverlay = new Map<number, number>()
+  const sharedGrid: PathCollisionGrid = {
+    get(x: number, y: number): number {
+      const key = ((x & 0xffff) << 16) | (y & 0xffff)
+      const ov = footprintOverlay.get(key)
+      if (ov !== undefined) return ov
+      return isWorldCellWalkable(x, y) ? 0 : COLLIDE_MASK_WALK
+    },
+    set(x: number, y: number, value: number): void {
+      const key = ((x & 0xffff) << 16) | (y & 0xffff)
+      footprintOverlay.set(key, value & 0xffff)
+    },
+  }
+
+  const rooms: (PathRoom & { adjacentRooms: readonly PathRoom[] })[] = []
+  const seenRoomKeys = new Set<string>()
+  const pushRoom = (subX: number, subY: number, subW: number, subH: number, isTown: boolean): void => {
+    if (subW <= 0 || subH <= 0) return
+    const key = `${subX},${subY},${subW},${subH}`
+    if (seenRoomKeys.has(key)) return
+    seenRoomKeys.add(key)
+    rooms.push({
+      subX,
+      subY,
+      subW,
+      subH,
+      isTown,
+      adjacentRooms: [],
+      grid: sharedGrid,
+    })
+  }
+
+  for (let i = 0; i < allViews.length; i++) {
+    const v = allViews[i]!
+    const vox = v.subOriginX ?? 0
+    const voy = v.subOriginY ?? 0
+    const vw = v.subWidth
+    const vh = v.subHeight
+    const viewAreaId = v.areaId ?? v.levelId ?? 0
+    const viewIsTown = isTownAreaId113c(viewAreaId)
+    const startInView = sx >= vox && sy >= voy && sx < vox + vw && sy < voy + vh
+    const hasCoveringRooms =
+      v.rooms !== undefined &&
+      v.rooms.length > 0 &&
+      (!startInView ||
+        v.rooms.some(
+          r =>
+            sx >= r.worldSubX &&
+            sy >= r.worldSubY &&
+            sx < r.worldSubX + r.subW &&
+            sy < r.worldSubY + r.subH,
+        ))
+    if (hasCoveringRooms && v.rooms) {
+      for (let j = 0; j < v.rooms.length; j++) {
+        const r = v.rooms[j]!
+        const roomAreaId = r.areaId ?? viewAreaId
+        pushRoom(r.worldSubX, r.worldSubY, r.subW, r.subH, isTownAreaId113c(roomAreaId))
+      }
+    } else {
+      pushRoom(vox, voy, vw, vh, viewIsTown)
+    }
+  }
+
+  let startRoom: PathRoom | null = null
+  for (let i = 0; i < rooms.length; i++) {
+    const r = rooms[i]!
+    if (sx >= r.subX && sy >= r.subY && sx < r.subX + r.subW && sy < r.subY + r.subH) {
+      startRoom = r
+      break
+    }
+  }
+  if (!startRoom) {
+    return { path: [], reachedGoal: false, finalTarget: { x: tx, y: ty } }
+  }
+
+  const adjMap = buildAdjacentRoomLists(rooms)
+  for (let i = 0; i < rooms.length; i++) {
+    const r = rooms[i]!
+    r.adjacentRooms = adjMap.get(r) ?? [r]
+  }
+
+  const unit: PathUnit = {
+    dwUnitType: UNIT_PLAYER,
+    dwClassId: 0,
+    dwUnitId: 1,
+    dwAnimMode: 2,
+    dwFlags: 1,
+    dwFlagEx: 0,
+    pDynamicPath: null,
+    pStaticPath: null,
+    objectTxt: null,
+  }
+  const path = PATH_AllocDynamicPath(startRoom, sx, sy, unit, 0)
+  D2COMMON_10170_PathSetTargetPos(path, tx, ty)
+  const n = D2Common_10142(path, unit, 0)
+  const finalTarget: SubTilePoint = {
+    x: path.tFinalTargetCoord.X || tx,
+    y: path.tFinalTargetCoord.Y || ty,
+  }
+  if (n <= 0) {
+    return { path: [], reachedGoal: false, finalTarget }
+  }
+
+  const points: SubTilePoint[] = [{ x: sx, y: sy }]
+  for (let i = 0; i < n; i++) {
+    const pt = path.PathPoints[i]!
+    const prev = points[points.length - 1]!
+    if (pt.X !== prev.x || pt.Y !== prev.y) {
+      points.push({ x: pt.X, y: pt.Y })
+    }
+  }
+  if (points.length <= 1) {
+    return { path: [], reachedGoal: false, finalTarget }
+  }
+  const endPt = points[points.length - 1]!
+  const reachedGoal =
+    Math.abs(endPt.x - finalTarget.x) <= 1 && Math.abs(endPt.y - finalTarget.y) <= 1
+  return {
+    path: points,
+    reachedGoal,
+    finalTarget,
   }
 }

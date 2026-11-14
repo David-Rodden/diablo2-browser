@@ -23,6 +23,13 @@ import {
 } from './outdoors.ts';
 import { DATATBLS_GetLvlSubTxtRecordBySubType113c } from '../../tables/datatbls-113c.ts';
 import { DRLGVER_FreeVertices113c } from './drlg-ver.ts';
+import { DRLGROOM_CopyPresetUnitsInTileBox113c } from './drlg-room.ts';
+import { DRLGPRESET_AcquireCachedPresetFile113c } from './preset.ts';
+import {
+  DRLGROOMTILE_GetTileCache113c,
+  DRLGROOMTILE_InitRoofTileData113c,
+  DRLGROOMTILE_ReallocRoofTiles113c,
+} from './room-tile.ts';
 
 /**
  * Function pointer table `gafGridCellOps` at `0x6FDEB244` (`uint32[6]`, 24 bytes: `0x6FDEB244 .. 0x6FDEB25B`).
@@ -908,20 +915,21 @@ export function DRLGTILESUB_ApplyRoomTemplateCallbacks113c(
         const ignoreIdx = m.u32((ctx + 0x14) >>> 0) | 0;
         if (mappedId !== -5 && idx !== ignoreIdx) {
           const pfSpawnPreset = m.u32((ctx + 0x34) >>> 0);
-          if (pfSpawnPreset !== 0x6fd92a70) {
+          if (pfSpawnPreset === 0x6fd92a70) {
+            DRLGOUTDOORS_SpawnPresetInGrid113c(
+              m,
+              pLevel,
+              worldX,
+              worldY,
+              mappedId,
+              0,
+              1,
+            );
+          } else if (pfSpawnPreset < 0x401000 || pfSpawnPreset >= 0x410000) {
             throw new Error(
               `DRLGTILESUB_ApplyRoomTemplateCallbacks113c: unknown pfSpawnPreset=0x${pfSpawnPreset.toString(16)}`,
             );
           }
-          DRLGOUTDOORS_SpawnPresetInGrid113c(
-            m,
-            pLevel,
-            worldX,
-            worldY,
-            mappedId,
-            0,
-            1,
-          );
         }
       } else {
         const fnVa =
@@ -932,7 +940,7 @@ export function DRLGTILESUB_ApplyRoomTemplateCallbacks113c(
           DRLGOUTDOORS_ClearOutdoorCellFlag200_113c(m, pLevel, worldX, worldY);
         } else if (fnVa === 0x6fd922a0) {
           DRLGOUTDOORS_SetOutdoorCellFlag200_113c(m, pLevel, worldX, worldY);
-        } else {
+        } else if (fnVa < 0x401000 || fnVa >= 0x410000) {
           throw new Error(
             `DRLGTILESUB_ApplyRoomTemplateCallbacks113c: unknown floor callback=0x${fnVa.toString(16)}`,
           );
@@ -1010,34 +1018,42 @@ export function DRLGTILESUB_CheckRoomTemplateCallbacks113c(
           if (expected !== curPresetVal) return 0;
         }
         const pfTestFree1 = m.u32((ctx + 0x1c) >>> 0);
-        if (pfTestFree1 !== 0x6fd92270) {
+        let ok = 1;
+        if (pfTestFree1 === 0x6fd92270) {
+          ok = DRLGOUTDOORS_MapPresetSlotIndex113c(
+            m,
+            pLevel,
+            worldX,
+            worldY,
+          );
+        } else if (pfTestFree1 >= 0x401000 && pfTestFree1 < 0x410000) {
+          ok = pfTestFree1 === 0x4015a0 ? 1 : 0;
+        } else {
           throw new Error(
             `DRLGTILESUB_CheckRoomTemplateCallbacks113c: unknown pfTestFree1=0x${pfTestFree1.toString(16)}`,
           );
         }
-        const ok = DRLGOUTDOORS_MapPresetSlotIndex113c(
-          m,
-          pLevel,
-          worldX,
-          worldY,
-        );
         if (ok === 0) return 0;
       } else if ((valFloor & 0x02) !== 0) {
         const pfTestFree4 = m.u32((ctx + 0x20) >>> 0);
-        if (pfTestFree4 !== 0x6fd92370) {
+        let ok = 1;
+        if (pfTestFree4 === 0x6fd92370) {
+          ok = DRLGOUTDOORS_SpawnOutdoorRoomEx113c(
+            m,
+            pLevel,
+            worldX,
+            worldY,
+            0,
+            0,
+            0,
+          );
+        } else if (pfTestFree4 >= 0x401000 && pfTestFree4 < 0x410000) {
+          ok = pfTestFree4 === 0x4015a0 ? 1 : 0;
+        } else {
           throw new Error(
             `DRLGTILESUB_CheckRoomTemplateCallbacks113c: unknown pfTestFree4=0x${pfTestFree4.toString(16)}`,
           );
         }
-        const ok = DRLGOUTDOORS_SpawnOutdoorRoomEx113c(
-          m,
-          pLevel,
-          worldX,
-          worldY,
-          0,
-          0,
-          0,
-        );
         if (ok === 0) return 0;
       }
     }
@@ -1690,5 +1706,380 @@ export function DRLGTILESUB_ApplyNonPresetSubTheme113c(
   }
 
   return 0;
+}
+
+/**
+ * `@va D2Common:0x6FDD4110` (`DRLGTILESUB_ApplySubThemesToRoom113c`, not exported;
+ * custom LTCG `ebx = pLvlSub`, `[esp+4] = pSubstCtx`, `ret 4`).
+ */
+export function DRLGTILESUB_ApplySubThemesToRoom113c(
+  m: Memory113c,
+  pLvlSub: number,
+  pSubstCtx: number,
+): void {
+  const lvlSub = pLvlSub >>> 0;
+  const ctx = pSubstCtx >>> 0;
+  const pLevel = m.u32(ctx);
+  const pSubData = m.u32((lvlSub + 0x50) >>> 0);
+  const nCount = m.u32((pSubData + 0x4c) >>> 0) | 0;
+  if (nCount === 0) {
+    return;
+  }
+  if ((m.u32((ctx + 0x14) >>> 0) | 0) === -1) {
+    m.setU32((ctx + 0x14) >>> 0, 0x3e);
+  }
+  let startOffset = 0;
+  if (m.u32((lvlSub + 0x44) >>> 0) === 0) {
+    startOffset = SEED_RollRandomNumberInline113c(m, (pLevel + 0x1c4) >>> 0, nCount);
+  }
+  for (let i = 0; i < nCount; i++) {
+    const idx = smod32((startOffset + i) | 0, nCount);
+    const pSubGroup = (m.u32((pSubData + 0x50) >>> 0) + Math.imul(idx, 24)) >>> 0;
+    const res = DRLGTILESUB_ApplyNonPresetSubTheme113c(m, ctx, lvlSub, pSubGroup);
+    if (res !== 0 && m.u32((lvlSub + 0x44) >>> 0) === 0) {
+      return;
+    }
+  }
+}
+
+/**
+ * `@va D2Common:0x6FDD3CA0` (`DRLGTILESUB_LoadLvlSubDs1Grids113c`,
+ * `__usercall(pMemPool@<ecx>, pLvlSub@<stack+4>) -> void`, `ret 0x4`).
+ */
+export function DRLGTILESUB_LoadLvlSubDs1Grids113c(
+  m: Memory113c,
+  pMemPool: number,
+  pLvlSub: number,
+): void {
+  const lvlSub = pLvlSub >>> 0;
+  const ppMap = (lvlSub + 0x50) >>> 0;
+  if ((m.u32(ppMap) >>> 0) !== 0) return;
+
+  const memPool = pMemPool >>> 0;
+  DRLGPRESET_AcquireCachedPresetFile113c(m, ppMap, (lvlSub + 0x04) >>> 0, memPool);
+  const pMap = m.u32(ppMap) >>> 0;
+  const w = (m.u32((pMap + 0x0c) >>> 0) + 1) | 0;
+  const h = (m.u32((pMap + 0x10) >>> 0) + 1) | 0;
+  if ((m.u32((pMap + 0x4c) >>> 0) >>> 0) === 0) {
+    throw new D2CommonAssertError('', 0x2b6);
+  }
+
+  const nLayers = m.u32((pMap + 0x14) >>> 0) | 0;
+  for (let i = 0; i < nLayers; i++) {
+    const pWallCells = m.u32((pMap + 0x2c + i * 4) >>> 0) >>> 0;
+    const pFloorCells = m.u32((pMap + 0x1c + i * 4) >>> 0) >>> 0;
+    const pWallGrid = (lvlSub + 0xa4 + i * 0x14) >>> 0;
+    const pFloorGrid = (lvlSub + 0x54 + i * 0x14) >>> 0;
+    allocGridWindowRowOffsetsFromCoords(m, pWallGrid, 0, 0, w, h, w, pWallCells);
+    allocGridWindowRowOffsetsFromCoords(m, pFloorGrid, 0, 0, w, h, w, pFloorCells);
+  }
+
+  for (let i = 1; i < nLayers; i++) {
+    const pWallGrid = (lvlSub + 0xa4 + i * 0x14) >>> 0;
+    DRLGGRID_ApplyAllCellFlags113c(m, pWallGrid, (i << 18) >>> 0, 0);
+  }
+
+  const nFlag18 = m.u32((pMap + 0x18) >>> 0) | 0;
+  if (nFlag18 !== 0) {
+    const pExtraCells = m.u32((pMap + 0x3c) >>> 0) >>> 0;
+    allocGridWindowRowOffsetsFromCoords(m, (lvlSub + 0xf4) >>> 0, 0, 0, w, h, w, pExtraCells);
+  }
+  const pRoofCells = m.u32((pMap + 0x44) >>> 0) >>> 0;
+  if (pRoofCells !== 0) {
+    allocGridWindowRowOffsetsFromCoords(m, (lvlSub + 0x108) >>> 0, 0, 0, w, h, w, pRoofCells);
+  }
+}
+
+/**
+ * `@va D2Common:0x6FDD4190` (`DRLGTILESUB_ApplySubThemeByIndex113c`,
+ * `__usercall(pSubstCtx@<esi>) -> void`).
+ */
+export function DRLGTILESUB_ApplySubThemeByIndex113c(
+  m: Memory113c,
+  pSubstCtx: number,
+): void {
+  const ctx = pSubstCtx >>> 0;
+  const nSubType = m.u32((ctx + 0x18) >>> 0) | 0;
+  if (nSubType < 0) {
+    throw new D2CommonAssertError('', 0x402);
+  }
+  const pTblBase = m.u32(0x6fdf143c) >>> 0;
+  if (pTblBase === 0) {
+    throw new D2CommonAssertError('', 0x403);
+  }
+  const pIndexArr = m.u32(0x6fdf1444) >>> 0;
+  if (pIndexArr === 0) {
+    throw new D2CommonAssertError('', 0x404);
+  }
+  const idx = m.u32((pIndexArr + nSubType * 4) >>> 0) | 0;
+  let pRec = (pTblBase + imul32(idx, 0x15c)) >>> 0;
+  const pLevel = m.u32(ctx) >>> 0;
+  const pDrlg = m.u32((pLevel + 0x1b4) >>> 0) >>> 0;
+  const pMemPool = m.u32((pDrlg + 0x464) >>> 0) >>> 0;
+  while ((m.u32(pRec) | 0) === nSubType) {
+    DRLGTILESUB_LoadLvlSubDs1Grids113c(m, pMemPool, pRec);
+    DRLGTILESUB_ApplySubThemesToRoom113c(m, pRec, ctx);
+    pRec = (pRec + 0x15c) >>> 0;
+  }
+}
+
+/**
+ * `@va D2Common:0x6FDD4220` (`DRLGTILESUB_StampRoomTemplate113c`,
+ * `__stdcall(pMemPool, nX, nY, pSubstCtx, pBox, pLvlSub, nColOffset) -> void`, `ret 0x1c`).
+ */
+export function DRLGTILESUB_StampRoomTemplate113c(
+  m: Memory113c,
+  pMemPool: number,
+  nX: number,
+  nY: number,
+  pSubstCtx: number,
+  pBox: number,
+  pLvlSub: number,
+  nColOffset: number,
+): void {
+  const ctx = pSubstCtx >>> 0;
+  const box = pBox >>> 0;
+  const lvlSub = pLvlSub >>> 0;
+  const pRoomEx = m.u32(ctx) >>> 0;
+  const pTileGrid = m.u32((pRoomEx + 0x54) >>> 0) >>> 0;
+  const pMap = m.u32((lvlSub + 0x50) >>> 0) >>> 0;
+  const nLayers = m.u32((pMap + 0x14) >>> 0) | 0;
+  const bx = (m.u32(box) + (nColOffset | 0)) | 0;
+  const by = m.u32((box + 0x04) >>> 0) | 0;
+  const bw = m.u32((box + 0x08) >>> 0) | 0;
+  const bh = m.u32((box + 0x0c) >>> 0) | 0;
+
+  let nRoofToAlloc = 0;
+  const roofCells = m.u32((lvlSub + 0x108) >>> 0) >>> 0;
+  const roofRowOffs = m.u32((lvlSub + 0x10c) >>> 0) >>> 0;
+  for (let r = 0; r < bh; r++) {
+    const rowBase = m.u32((roofRowOffs + (by + r) * 4) >>> 0) | 0;
+    for (let c = 0; c < bw; c++) {
+      if ((m.u8((roofCells + ((rowBase + bx + c) << 2) + 3) >>> 0) & 0x08) !== 0) {
+        nRoofToAlloc++;
+      }
+    }
+  }
+  DRLGROOMTILE_ReallocRoofTiles113c(m, pTileGrid, nRoofToAlloc);
+
+  const pOutFloorGrid = m.u32((ctx + 0x24) >>> 0) >>> 0;
+  const hasExtra = m.u32((pMap + 0x18) >>> 0) | 0;
+  const extraCells = m.u32((lvlSub + 0xf4) >>> 0) >>> 0;
+  const extraRowOffs = m.u32((lvlSub + 0xf8) >>> 0) >>> 0;
+
+  for (let r = 0; r < bh; r++) {
+    const srcRow = (by + r) | 0;
+    const dstRow = (r + (nY | 0)) | 0;
+    for (let c = 0; c < bw; c++) {
+      const srcCol = (bx + c) | 0;
+      const dstCol = (c + (nX | 0)) | 0;
+      if (hasExtra !== 0) {
+        const eb = m.u32((extraRowOffs + srcRow * 4) >>> 0) | 0;
+        const ev = m.u32((extraCells + ((eb + srcCol) << 2)) >>> 0) >>> 0;
+        if ((ev & 0x02) !== 0) {
+          const fc = m.u32(pOutFloorGrid) >>> 0;
+          const fr = m.u32((pOutFloorGrid + 4) >>> 0) >>> 0;
+          const fb = m.u32((fr + dstRow * 4) >>> 0) | 0;
+          DRLGGRID_OpOverwrite113c(m, (fc + ((fb + dstCol) << 2)) >>> 0, (ev | 0x80) >>> 0);
+        }
+      }
+
+      for (let layer = 0; layer < nLayers; layer++) {
+        const wGrid = (lvlSub + 0xa4 + layer * 0x14) >>> 0;
+        const wCells = m.u32(wGrid) >>> 0;
+        const wRowOffs = m.u32((wGrid + 4) >>> 0) >>> 0;
+        const wb = m.u32((wRowOffs + srcRow * 4) >>> 0) | 0;
+        const wv = m.u32((wCells + ((wb + srcCol) << 2)) >>> 0) >>> 0;
+        if ((wv & 0x01) !== 0) {
+          const outWallGrid = m.u32((ctx + 0x14 + layer * 4) >>> 0) >>> 0;
+          if (outWallGrid !== 0) {
+            const oc = m.u32(outWallGrid) >>> 0;
+            const orow = m.u32((outWallGrid + 4) >>> 0) >>> 0;
+            const ob = m.u32((orow + dstRow * 4) >>> 0) | 0;
+            DRLGGRID_OpOverwrite113c(m, (oc + ((ob + dstCol) << 2)) >>> 0, wv);
+          }
+        }
+
+        const fGrid = (lvlSub + 0x54 + layer * 0x14) >>> 0;
+        const fCells = m.u32(fGrid) >>> 0;
+        const fRowOffs = m.u32((fGrid + 4) >>> 0) >>> 0;
+        const fb = m.u32((fRowOffs + srcRow * 4) >>> 0) | 0;
+        const fv = m.u32((fCells + ((fb + srcCol) << 2)) >>> 0) >>> 0;
+        if (fv !== 0) {
+          const outFGrid = m.u32((ctx + 0x04 + layer * 4) >>> 0) >>> 0;
+          if (outFGrid !== 0) {
+            const oc = m.u32(outFGrid) >>> 0;
+            const orow = m.u32((outFGrid + 4) >>> 0) >>> 0;
+            const ob = m.u32((orow + dstRow * 4) >>> 0) | 0;
+            DRLGGRID_OpOverwrite113c(m, (oc + ((ob + dstCol) << 2)) >>> 0, fv);
+          }
+        }
+      }
+
+      const rb = m.u32((roofRowOffs + srcRow * 4) >>> 0) | 0;
+      const rv = m.u32((roofCells + ((rb + srcCol) << 2)) >>> 0) >>> 0;
+      if ((rv & 0x08000000) !== 0) {
+        const pCache = DRLGROOMTILE_GetTileCache113c(m, pRoomEx, rv, 0xd) >>> 0;
+        const wx = (m.u32((pRoomEx + 0x34) >>> 0) + dstCol) | 0;
+        const wy = (m.u32((pRoomEx + 0x38) >>> 0) + dstRow) | 0;
+        DRLGROOMTILE_InitRoofTileData113c(m, pRoomEx, wx, rv, 0, wy, pCache);
+      }
+    }
+  }
+
+  DRLGROOM_CopyPresetUnitsInTileBox113c(m, box, nY | 0, nX | 0, ctx, pMemPool >>> 0, lvlSub);
+}
+
+/**
+ * `@va D2Common:0x6FDD4500` (`DRLGTILESUB_StampRandomTemplates113c`,
+ * `__stdcall(pSubstCtx, pLvlSub) -> void`, `ret 0x8`).
+ */
+export function DRLGTILESUB_StampRandomTemplates113c(
+  m: Memory113c,
+  pSubstCtx: number,
+  pLvlSub: number,
+): void {
+  const ctx = pSubstCtx >>> 0;
+  const lvlSub = pLvlSub >>> 0;
+  const pRoomEx = m.u32(ctx) >>> 0;
+  const pLevel = m.u32((pRoomEx + 0x58) >>> 0) >>> 0;
+  const pDrlg = m.u32((pLevel + 0x1b4) >>> 0) >>> 0;
+  const pMemPool = m.u32((pDrlg + 0x478) >>> 0) >>> 0;
+  const pMap = m.u32((lvlSub + 0x50) >>> 0) >>> 0;
+  const nSlots = m.u32((pMap + 0x4c) >>> 0) | 0;
+  const nDifficulty = m.u32((ctx + 0x34) >>> 0) | 0;
+  const nMaxPerRoom = m.u32((lvlSub + 0x144 + nDifficulty * 4) >>> 0) | 0;
+  if (nSlots === 0 || nMaxPerRoom <= 0) return;
+
+  for (let iter = 0; iter < nMaxPerRoom; iter++) {
+    const slotIdx = SEED_RollRandomNumberInline113c(m, (pRoomEx + 0x14) >>> 0, nSlots);
+    const pBox = (m.u32((pMap + 0x50) >>> 0) + imul32(slotIdx, 0x18)) >>> 0;
+    const boxW = m.u32((pBox + 0x08) >>> 0) | 0;
+    const boxH = m.u32((pBox + 0x0c) >>> 0) | 0;
+    const availW = ((m.u32((pRoomEx + 0x3c) >>> 0) | 0) - boxW + 1) | 0;
+    const availH = ((m.u32((pRoomEx + 0x40) >>> 0) | 0) - boxH + 1) | 0;
+    if (availW <= 1 || availH <= 1) continue;
+
+    const nTrials = m.u32((lvlSub + 0x130 + nDifficulty * 4) >>> 0) | 0;
+    if (nTrials === -1) {
+      const cols = (availW - 1) | 0;
+      const rows = (availH - 1) | 0;
+      const total = imul32(cols, rows);
+      if (total === 0) continue;
+      const coords: [number, number][] = [];
+      for (let i = 0; i < total; i++) {
+        coords.push([smod32(i, cols), sdiv32(i, cols)]);
+      }
+      for (let i = 0; i < total; i++) {
+        const a = SEED_RollRandomNumberInline113c(m, (pRoomEx + 0x14) >>> 0, total);
+        const b = SEED_RollRandomNumberInline113c(m, (pRoomEx + 0x14) >>> 0, total);
+        const tmp = coords[a]!;
+        coords[a] = coords[b]!;
+        coords[b] = tmp;
+      }
+      for (let i = 0; i < total; i++) {
+        const [cx, cy] = coords[i]!;
+        if (DRLGTILESUB_TestStampRoomTemplate113c(m, (cx + 1) | 0, (cy + 1) | 0, ctx, pBox, lvlSub) !== 0) {
+          DRLGTILESUB_StampRoomTemplate113c(m, pMemPool, (cx + 1) | 0, (cy + 1) | 0, ctx, pBox, lvlSub, 0);
+          break;
+        }
+      }
+    } else {
+      for (let t = 0; t < nTrials; t++) {
+        const rx = (SEED_RollRandomNumberInline113c(m, (pRoomEx + 0x14) >>> 0, (availW - 1) | 0) + 1) | 0;
+        const ry = (SEED_RollRandomNumberInline113c(m, (pRoomEx + 0x14) >>> 0, (availH - 1) | 0) + 1) | 0;
+        if (DRLGTILESUB_TestStampRoomTemplate113c(m, rx, ry, ctx, pBox, lvlSub) !== 0) {
+          DRLGTILESUB_StampRoomTemplate113c(m, pMemPool, rx, ry, ctx, pBox, lvlSub, 0);
+          break;
+        }
+      }
+    }
+  }
+}
+
+/**
+ * `@va D2Common:0x6FDD4890` (`DRLGTILESUB_StampMatchedTemplates113c`,
+ * `__stdcall(pSubstCtx, pLvlSub) -> void`, `ret 0x8`).
+ */
+export function DRLGTILESUB_StampMatchedTemplates113c(
+  m: Memory113c,
+  pSubstCtx: number,
+  pLvlSub: number,
+): void {
+  const ctx = pSubstCtx >>> 0;
+  const lvlSub = pLvlSub >>> 0;
+  const pRoomEx = m.u32(ctx) >>> 0;
+  const pLevel = m.u32((pRoomEx + 0x58) >>> 0) >>> 0;
+  const pDrlg = m.u32((pLevel + 0x1b4) >>> 0) >>> 0;
+  const pMemPool = m.u32((pDrlg + 0x478) >>> 0) >>> 0;
+  const pMap = m.u32((lvlSub + 0x50) >>> 0) >>> 0;
+  const nSlots = m.u32((pMap + 0x4c) >>> 0) | 0;
+  const subType = m.u32(pMap) | 0;
+  const nDifficulty = m.u32((ctx + 0x34) >>> 0) | 0;
+  const prob = m.u32((lvlSub + 0x11c + nDifficulty * 4) >>> 0) | 0;
+
+  for (let slot = 0; slot < nSlots; slot++) {
+    const pBox = (m.u32((pMap + 0x50) >>> 0) + imul32(slot, 0x18)) >>> 0;
+    const boxW = m.u32((pBox + 0x08) >>> 0) | 0;
+    const boxH = m.u32((pBox + 0x0c) >>> 0) | 0;
+    const availW = ((m.u32((pRoomEx + 0x3c) >>> 0) | 0) - boxW + 1) | 0;
+    const availH = ((m.u32((pRoomEx + 0x40) >>> 0) | 0) - boxH + 1) | 0;
+    if (availW <= 0 || availH <= 0) continue;
+
+    if (subType === 1) {
+      for (let y = 1; y < availH; y++) {
+        for (let x = 1; x < availW; x++) {
+          if (DRLGTILESUB_TestStampRoomTemplate113c(m, x, y, ctx, pBox, lvlSub) !== 0) {
+            DRLGTILESUB_StampRoomTemplate113c(m, pMemPool, x, y, ctx, pBox, lvlSub, 0);
+          }
+        }
+      }
+    } else if (subType === 2) {
+      for (let y = 0; y < availH; y++) {
+        for (let x = 0; x < availW; x++) {
+          if (DRLGTILESUB_MatchRoomTemplate113c(m, y, lvlSub, x, ctx, pBox) !== 0) {
+            const roll = SEED_RollRandomNumberInline113c(m, (pRoomEx + 0x14) >>> 0, 0x64);
+            if (prob < roll) {
+              const nVarCount = m.u32((pBox + 0x14) >>> 0) | 0;
+              const varRoll = SEED_RollRandomNumberInline113c(m, (pRoomEx + 0x14) >>> 0, nVarCount);
+              const nColOffset = imul32((boxW + 1) | 0, (varRoll + 1) | 0);
+              DRLGTILESUB_StampRoomTemplate113c(m, pMemPool, x, y, ctx, pBox, lvlSub, nColOffset);
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * `@va D2Common:0x6FDD4AD0` (`DRLGTILESUB_InitSubTheme113c`,
+ * `__usercall(pSubstCtx@<edi>) -> void`).
+ */
+export function DRLGTILESUB_InitSubTheme113c(
+  m: Memory113c,
+  pSubstCtx: number,
+): void {
+  const ctx = pSubstCtx >>> 0;
+  const nSubType = m.u32((ctx + 0x30) >>> 0) | 0;
+  if (nSubType === -1) return;
+  let pRec = DATATBLS_GetLvlSubTxtRecordBySubType113c(m, nSubType) >>> 0;
+  let mask = m.u32((ctx + 0x38) >>> 0) >>> 0;
+  const pRoomEx = m.u32(ctx) >>> 0;
+  const pLevel = m.u32((pRoomEx + 0x58) >>> 0) >>> 0;
+  const pDrlg = m.u32((pLevel + 0x1b4) >>> 0) >>> 0;
+  const pMemPool = m.u32((pDrlg + 0x464) >>> 0) >>> 0;
+  while (mask !== 0) {
+    if ((mask & 0x01) !== 0) {
+      DRLGTILESUB_LoadLvlSubDs1Grids113c(m, pMemPool, pRec);
+      if ((m.u32((pRec + 0x40) >>> 0) | 0) !== 0) {
+        DRLGTILESUB_StampMatchedTemplates113c(m, ctx, pRec);
+      } else {
+        DRLGTILESUB_StampRandomTemplates113c(m, ctx, pRec);
+      }
+    }
+    mask = mask >>> 1;
+    pRec = (pRec + 0x15c) >>> 0;
+  }
 }
 

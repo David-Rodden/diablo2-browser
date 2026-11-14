@@ -14,8 +14,8 @@
     "name": "STATLIST_GetStatsByIdFromList",
     "kernFile": "src/d2kern-113c/common/missile.ts",
     "tsSymbol": "STATLIST_GetStatsByIdFromList113c",
-    "status": "ported",
-    "diffEvidence": "indirect real-DLL coverage via MISSILE_RollCriticalStrike113c vectors (b043 throwing_mastery_crit_100 / non_throwing_skill_no_melee_mastery, k1r2-laneA-it8-emitter.c); no direct vectors, so ported only"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k1/laneD-ported29.test.ts (real-DLL vectors via k1r13-laneD-ported29-emitter.c -> k1r13-i14d-1.ndjson); indirect real-DLL coverage via MISSILE_RollCriticalStrike113c vectors (b043 throwing_mastery_crit_100 / non_throwing_skill_no_melee_mastery, k1r2-laneA-it8-emitter.c); no direct vectors, so ported only"
   },
   {
     "module": "D2Common",
@@ -149,8 +149,8 @@
     "name": "SKILLS_GetThrowingWeaponMasteryBonus",
     "kernFile": "src/d2kern-113c/common/missile.ts",
     "tsSymbol": "SKILLS_GetThrowingWeaponMasteryBonus113c",
-    "status": "ported",
-    "diffEvidence": "indirect real-DLL coverage via MISSILE_RollCriticalStrike113c vectors (b043 throwing_mastery_crit_100 / non_throwing_skill_no_melee_mastery, k1r2-laneA-it8-emitter.c); no direct vectors, so ported only"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k1/laneD-ported29.test.ts (real-DLL vectors via k1r13-laneD-ported29-emitter.c -> k1r13-i14d-1.ndjson); indirect real-DLL coverage via MISSILE_RollCriticalStrike113c vectors (b043 throwing_mastery_crit_100 / non_throwing_skill_no_melee_mastery, k1r2-laneA-it8-emitter.c); no direct vectors, so ported only"
   },
   {
     "module": "D2Common",

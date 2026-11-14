@@ -275,6 +275,16 @@ export function tickSkillBatchAllocationImpl(model: any, nowMs: number): void {
 }
 
 function resolveChargedItemIdForSkill(model: any, skillId: number, itemId = 0xffffffff): number {
+  const hotkeys = model.hudManager?.hotkeys as
+    | { resolveSkillOwnerItemId?: (skillId: number, itemId?: number) => number | undefined }
+    | undefined
+  if (typeof hotkeys?.resolveSkillOwnerItemId === 'function') {
+    // Issue #289: the player's own skill and an item's charged copy are separate owners. An explicit item GUID
+    // stays on that item while it has charges; otherwise the learned skill wins (`0xFFFFFFFF`), and only a
+    // skill that is not natively available falls back to a live charged copy.
+    const requested = itemId === undefined || itemId === 0xffffffff ? undefined : itemId >>> 0
+    return (hotkeys.resolveSkillOwnerItemId(skillId, requested) ?? 0xffffffff) >>> 0
+  }
   if (itemId !== undefined && itemId !== 0xffffffff) return itemId >>> 0
   const available = model.hudManager?.hotkeys?.availableSkills as
     | readonly {

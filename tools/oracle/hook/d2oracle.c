@@ -933,6 +933,47 @@ static void write_snapshot(uint8_t *game, uint32_t fr) {
     }
   }
   fputs("]}\n", f);
+  /* D2Game per-level state read by room population (REGPOP / OBJECTS): pGame->pMonReg[0..136]
+   * (pGame+0xF0, D2Game 0x6FCEABC0 alloc 0x2E4) and pGame->pObjectControl (pGame+0x10F0, alloc 0x1114
+   * at 0x6FC2B9DD) with its per-level object info (ctrl+0x48+lvl*4, alloc 0x90 at 0x6FC2BA61). */
+  snap_line_begin(f, "gamestate");
+  fputs(",\"blocks\":[", f);
+  first = 1;
+  for (int lvl = 0; lvl < 137; lvl++) {
+    uint8_t *mr = (uint8_t *)(uintptr_t)RD32(game, 0xF0 + lvl * 4);
+    if (mr) mem_block("monreg", mr, 0x2E4, &first);
+  }
+  uint8_t *octl = (uint8_t *)(uintptr_t)RD32(game, 0x10F0);
+  if (octl && !IsBadReadPtr(octl, 0x1114)) {
+    mem_block("objctrl", octl, 0x1114, &first);
+    for (int lvl = 0; lvl < 137; lvl++) {
+      uint8_t *oi = (uint8_t *)(uintptr_t)RD32(octl, 0x48 + lvl * 4);
+      if (oi) mem_block("objlevel", oi, 0x90, &first);
+    }
+  }
+  fputs("]}\n", f);
+  /* DRLG graph of every act (pAct+0x48 -> D2DrlgStrc 0x48C; levels pDrlg+0x47C chained by +0x1AC, 0x230;
+   * RoomEx pLevel+0x10 chained by +0x24, 0xEC) for cross-checking the kernel DRLG regeneration. */
+  for (int a = 0; a < 5; a++) {
+    uint8_t *act = (uint8_t *)(uintptr_t)RD32(game, 0xBC + a * 4);
+    if (!act || IsBadReadPtr(act, 0x60)) continue;
+    uint8_t *drlg = (uint8_t *)(uintptr_t)RD32(act, 0x48);
+    if (!drlg || IsBadReadPtr(drlg, 0x48C)) continue;
+    fprintf(f, "{\"k\":\"drlg\",\"act\":%d,\"blocks\":[", a);
+    first = 1;
+    mem_block("drlg", drlg, 0x48C, &first);
+    uint8_t *lvl = (uint8_t *)(uintptr_t)RD32(drlg, 0x47C);
+    for (int k = 0; lvl && k < 256 && !IsBadReadPtr(lvl, 0x230); k++) {
+      mem_block("drlglevel", lvl, 0x230, &first);
+      uint8_t *rex = (uint8_t *)(uintptr_t)RD32(lvl, 0x10);
+      for (int r = 0; rex && r < 4096 && !IsBadReadPtr(rex, 0xEC); r++) {
+        mem_block("drlgroomex", rex, 0xEC, &first);
+        rex = (uint8_t *)(uintptr_t)RD32(rex, 0x24);
+      }
+      lvl = (uint8_t *)(uintptr_t)RD32(lvl, 0x1AC);
+    }
+    fputs("]}\n", f);
+  }
   /* Every unit in every hash list, in hook iteration order (list, bucket, chain). */
   int nunits = 0;
   for (int list = 0; list < 5; list++)

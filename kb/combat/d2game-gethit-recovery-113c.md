@@ -68,7 +68,8 @@ For the default divisor `d = 16`:
 
 ### 4. Monster `mGH` Mode Flag & `neverCount` Checks (`0x6FCFB9D5..0x6FCFB9F7`, `0x6FCFFA90`)
 - At `0x6FCFB9D5..0x6FCFB9ED`: if `pDefender->dwUnitType == UNIT_MONSTER (1)`, calls `0x6FC21560(eax = pDefender->dwClassId, edx = MONMODE_GETHIT=3)`, which checks bit 3 (`1 << 3 = 0x08`, `MonStats2.txt` column `mGH`) of `pMonStats2->dwModeFlags` (`+0xF0`).
-  - All Act bosses (Andariel `#156`, Duriel `#211`, Mephisto `#242`, Diablo `#243`, Baal `#544`) and Uber bosses have `mGH = 1` in `MonStats2.txt` and **can** enter GetHit when damage reaches their thresholds.
+  - Andariel (`#156`), Duriel (`#211`), Mephisto (`#242`) and Uber Mephisto (`#704`) have `mGH = 1` and **can** enter GetHit when damage reaches their thresholds.
+  - Diablo (`diablo #243`, `diabloclone #333`, `uberdiablo #705`; `dwModeFlags = 0xDFF7`) and Baal (`baalcrab #544`, `baalclone #570`, `uberbaal #709`; `dwModeFlags = 0x17B7`) have `mGH = 0` (`MonStats2.txt` column empty), so `SUNITDMG_CheckSkipGetHit` always returns `1` for them: they **never** enter `MONMODE_GETHIT`, even while `STATE_STUNNED`.
   - Static turrets, traps, barricades, and catapults have `mGH = 0` and are skipped.
 - In `SUNITDMG_ExecuteMissileDamage` (`0x6FCFE180`), `0x6FCFFA90(pDefender)` checks `MonStats.txt` `neverCount` (`0x10` in `+0x1A`); if set, hit reaction events are skipped.
 
@@ -79,7 +80,9 @@ For the default divisor `d = 16`:
   2. **Priority Order (`0x6FCFD087..0x6FCFD145`)**:
      - `wResultFlags & 0x02` (`DEATH`) -> `MONMODE_DEATH (12)`
      - `else if (wHitFlags & 0x08)` (`KNOCKBACK`) -> `MONMODE_KNOCKBACK (13)`
-     - `else if (wResultFlags & 0x10)` (`BLOCK`) -> `MONMODE_BLOCK (6)`
+     - `else if (wResultFlags & 0x10)` (`BLOCK`) -> `MONMODE_BLOCK (6)`, with exceptions (`0x6FCFD092..0x6FCFD0E9`):
+       - `wResultFlags & 0x4000` (`0x6FCFD096`), `dwClassId in {243, 333, 705}` (Diablo, `0x6FCFD0AE..0x6FCFD0BD`), or `MonStats2.mBL == 0` (`0x6FC21560(dwClassId, 6)` at `0x6FCFD0C6`, e.g. Baal `544/570/709`): **no mode change**. The branch at `0x6FCFD09B` only writes `pMonsterData+0x54 = 0x13` (`0x6FCCF710`), so the current mode (for example a boss skill) keeps running. Diablo and Baal still roll the block itself (`MonStats.NoShldBlock = 1`, `ToBlock = 25/40/50` and `40/45/55`), so the hit is negated without any animation change.
+       - Otherwise `MODECHANGE_Init(6)` + `MONSTER_StartMode` (`0x6FC95070` / `0x6FC95E10`). Server port: `shouldMonsterEnterBlockMode113c` / `enterMonsterBlockMode113c`.
      - `else if (wHitFlags & 0x04)` (`GETHIT`):
        Checks `D2Common_10494_CheckUnitState(pDefender, STATE_STUNNED=21)` (`0x6FCFD0FC`). If stunned (`!= 0`), **skips** `SUNITDMG_CheckSkipGetHit` and unconditionally enters `MONMODE_GETHIT (3)` (provided `pDmg->dwDmgTotal >= 256` or caller set `0x04`). Otherwise calls `SUNITDMG_CheckSkipGetHit(pDefender, pDmg, dwHitClass)` (`0x6FCFD10A`) and enters `MONMODE_GETHIT (3)` when it returns `0`.
 - **Player Defender (`0x6FCFD346..0x6FCFD426`)**:

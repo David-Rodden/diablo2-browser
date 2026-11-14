@@ -420,3 +420,116 @@ export function DRLGOUTWILD_SpawnRiverColumnAndBridge113c(
   }
 }
 
+// ============================================================================
+// K1r8 Iteration 11 Lane B — I11B-1 (B1-01: 0x6FDCEF60)
+// ============================================================================
+
+/**
+ * `@va D2Common:0x6FDCEF60` (`DRLGOUTWILD_SpawnAllRiversAndBridges113c`,
+ * custom `esi = pLevel` -> `void`, `ret`).
+ */
+export function DRLGOUTWILD_SpawnAllRiversAndBridges113c(
+  m: Memory113c,
+  pLevel: number,
+): void {
+  const lvl = pLevel >>> 0
+  if ((m.u32((lvl + 0x1d0) >>> 0) | 0) === 0x27) return
+
+  let pOutdoors = m.u32((lvl + 0x14) >>> 0)
+  const pOutdoorsInit = pOutdoors
+  if ((m.u8(pOutdoors) & 0x0c) !== 0) {
+    const gx = ((m.u32((pOutdoors + 0x5c) >>> 0) | 0) - 2) | 0
+    if (DRLGOUTWILD_TestSpawnRiver113c(m, lvl, gx) !== 0) {
+      DRLGOUTWILD_SpawnRiverColumnAndBridge113c(m, gx, lvl)
+    }
+  }
+
+  const flags1 = m.u32(pOutdoors)
+  if ((flags1 & 0x20) !== 0 && (flags1 & 0x40) === 0) {
+    const prod =
+      BigInt(m.u32((lvl + 0x1c4) >>> 0)) * 0x6ac690c5n + BigInt(m.u32((lvl + 0x1c8) >>> 0))
+    const newLo = Number(prod & 0xffffffffn) >>> 0
+    const newHi = Number((prod >> 32n) & 0xffffffffn) >>> 0
+    m.setU32((lvl + 0x1c8) >>> 0, newHi)
+    m.setU32((lvl + 0x1c4) >>> 0, newLo)
+
+    let bPlaced = 0
+    const h0 = m.u32((pOutdoors + 0x60) >>> 0) | 0
+    if ((newLo & 1) !== 0) {
+      if (h0 > 0) {
+        for (let ebp = 0; ebp < (m.u32((pOutdoors + 0x60) >>> 0) | 0); ebp++) {
+          if (bPlaced !== 0) break
+          const w0 = m.u32((pOutdoors + 0x5c) >>> 0) | 0
+          for (let ebx = 0; ebx < w0 && bPlaced === 0; ebx++) {
+            pOutdoors = m.u32((lvl + 0x14) >>> 0)
+            const pRows = m.u32((pOutdoors + 0x08) >>> 0)
+            const rowOff = m.u32((pRows + (ebx << 2)) >>> 0) | 0
+            const pCells = m.u32((pOutdoors + 0x04) >>> 0)
+            const cellVal = m.u32((pCells + ((rowOff + ebp) << 2)) >>> 0) | 0
+            if (cellVal === 0x10) {
+              DRLGOUTDOORS_SpawnPresetInGrid113c(m, lvl, ebp, ebx, 0x19, -1, 0)
+              m.setU32(pOutdoors, (m.u32(pOutdoors) | 0x40) >>> 0)
+              bPlaced = 1
+            } else if (cellVal === 0x11) {
+              DRLGOUTDOORS_SpawnPresetInGrid113c(m, lvl, ebp, ebx, 0x18, -1, 0)
+              m.setU32(pOutdoors, (m.u32(pOutdoors) | 0x40) >>> 0)
+              bPlaced = 1
+            }
+            pOutdoors = pOutdoorsInit
+          }
+        }
+      }
+    } else if (h0 > 0) {
+      for (let ebp = 0; ebp < (m.u32((pOutdoors + 0x60) >>> 0) | 0); ebp++) {
+        if (bPlaced !== 0) break
+        const w0 = m.u32((pOutdoors + 0x5c) >>> 0) | 0
+        for (let ebx = 0; ebx < w0 && bPlaced === 0; ebx++) {
+          pOutdoors = m.u32((lvl + 0x14) >>> 0)
+          const pRows = m.u32((pOutdoors + 0x08) >>> 0)
+          const rowOff = m.u32((pRows + (ebp << 2)) >>> 0) | 0
+          const pCells = m.u32((pOutdoors + 0x04) >>> 0)
+          const cellVal = m.u32((pCells + ((rowOff + ebx) << 2)) >>> 0) | 0
+          if (cellVal === 0x10) {
+            DRLGOUTDOORS_SpawnPresetInGrid113c(m, lvl, ebx, ebp, 0x19, -1, 0)
+            m.setU32(pOutdoors, (m.u32(pOutdoors) | 0x40) >>> 0)
+            bPlaced = 1
+          } else if (cellVal === 0x11) {
+            DRLGOUTDOORS_SpawnPresetInGrid113c(m, lvl, ebx, ebp, 0x18, -1, 0)
+            m.setU32(pOutdoors, (m.u32(pOutdoors) | 0x40) >>> 0)
+            bPlaced = 1
+          }
+          pOutdoors = pOutdoorsInit
+        }
+      }
+    }
+
+    if (bPlaced === 0) {
+      throw new D2CommonAssertError('DrlgOutWild.cpp', 0x194)
+    }
+  }
+
+  const flags2 = m.u32(pOutdoors)
+  if ((flags2 & 0x1c) !== 0 && (flags2 & 0x40) === 0) {
+    const subX = ((~(flags2 >>> 4) & 1) | 4) | 0
+    let gx = ((m.u32((pOutdoors + 0x5c) >>> 0) | 0) - subX) | 0
+    const maxGy = ((m.u32((pOutdoors + 0x60) >>> 0) | 0) - 4) | 0
+
+    const prod2 =
+      BigInt(m.u32((lvl + 0x1c4) >>> 0)) * 0x6ac690c5n + BigInt(m.u32((lvl + 0x1c8) >>> 0))
+    const newLo2 = Number(prod2 & 0xffffffffn) >>> 0
+    const newHi2 = Number((prod2 >> 32n) & 0xffffffffn) >>> 0
+    m.setU32((lvl + 0x1c4) >>> 0, newLo2)
+    m.setU32((lvl + 0x1c8) >>> 0, newHi2)
+
+    const r = newLo2 & 3
+    if ((r & 1) !== 0) {
+      gx = 3
+    }
+    const gy = (r >> 1) !== 0 ? 3 : maxGy
+    const presetId = (m.u32((lvl + 0x1d0) >>> 0) | 0) === 2 ? 0x34 : 0x33
+    DRLGOUTDOORS_SpawnPresetInGrid113c(m, lvl, gx, gy, presetId, -1, 0)
+    m.setU32(pOutdoors, (m.u32(pOutdoors) | 0x40) >>> 0)
+  }
+}
+
+
