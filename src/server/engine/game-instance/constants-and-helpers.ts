@@ -568,6 +568,19 @@ export const PLAYER_PATH_WINDOW_MARGIN = 20
  */
 export const UPDATE_POS_IGNORE_DISTANCE = 5
 
+/**
+ * 1.13c D2Game `0x6FCEBF50` (C2S `0x01` WalkToLocation / `0x03` RunToLocation validator):
+ * `mov ebx, 0x32 ; call 0x6FCEB690` rejects the packet when
+ * `|unitX - targetX| > 50 || |unitY - targetY| > 50` (`cmp ecx, ebx ; jg` / `cmp eax, ebx ; jg`).
+ */
+export const WALK_PACKET_MAX_AXIS_DELTA_113C = 50
+/**
+ * 1.13c D2Game `0x6FCEBFBC..0x6FCEBFC5`: a rejected walk/run packet re-sends the player position
+ * only when `gameFrame - [pPlayerData+0x168] > 0x19`; `+0x168` is the frame of the last accepted
+ * walk/run packet (`0x6FCEC00D`).
+ */
+export const WALK_PACKET_REJECT_REASSIGN_FRAMES_113C = 25
+
 export const UPDATE_POS_WARP_MIN_DISTANCE = 15
 
 export const UPDATE_POS_WARP_MAX_DISTANCE = 45

@@ -13,7 +13,7 @@
  * 3. Sample: walk the `pGame` unit hash lists exactly like the hook's `dump_units` and compare every
  *    golden field (strict: all unit fields incl. seeds and level, all stats, `gs`; pos: id/class/mode/x/y).
  */
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { gunzipSync } from 'node:zlib'
@@ -22,6 +22,13 @@ import { D2DynamicPathStrc, D2GameStrc, D2StaticPathStrc, D2UnitStrc } from '../
 import { STATLIST_GetUnitStat113c } from '../../../src/d2kern-113c/common/statlist.ts'
 import { UNITS_GetRoom113c } from '../../../src/d2kern-113c/common/unit.ts'
 import { DUNGEON_GetLevelIdFromRoom113c } from '../../../src/d2kern-113c/common/dungeon.ts'
+import {
+  C2S_DispatchFromMem113c,
+  configureReplayHydrationAssets113c,
+  GAME_UpdateGameFrame113c,
+  hydrateSnapshotKernelTables113c,
+  type ReplayHydrationAssets113c,
+} from '../../../src/d2kern-113c/game/replay-kernel-113c.ts'
 import { parseTrace, type Trace, type TraceFrame, type TraceHeader, type UnitRow } from '../lib/trace-diff.ts'
 import { collectImportGraph, legacyReachable } from './import-graph.ts'
 
@@ -36,7 +43,7 @@ export interface SnapshotBlock113c {
 }
 
 export interface SnapshotRecord113c {
-  readonly k: 'game' | 'unit' | 'act' | 'room'
+  readonly k: 'game' | 'unit' | 'act' | 'room' | 'gamestate' | 'drlg'
   readonly type?: number
   readonly id?: number
   readonly list?: number
@@ -62,7 +69,14 @@ export function parseSnapshot113c(text: string): Snapshot113c {
     if (line.length === 0) continue
     const obj = JSON.parse(line) as { k: string } & Record<string, unknown>
     if (obj.k === 'hdr') hdr = obj as unknown as Hdr
-    else if (obj.k === 'game' || obj.k === 'unit' || obj.k === 'act' || obj.k === 'room')
+    else if (
+      obj.k === 'game' ||
+      obj.k === 'unit' ||
+      obj.k === 'act' ||
+      obj.k === 'room' ||
+      obj.k === 'gamestate' ||
+      obj.k === 'drlg'
+    )
       records.push(obj as unknown as SnapshotRecord113c)
     else throw new Error(`snapshot: unknown record kind '${obj.k}'`)
   }
@@ -83,8 +97,42 @@ export interface KernWorld113c {
   readonly bootFrame: number
 }
 
+let loadedReplayHydrationAssets113c: ReplayHydrationAssets113c | null = null
+
+function ensureReplayHydrationAssetsLoaded113c(): void {
+  if (loadedReplayHydrationAssets113c !== null) return
+  const drlgDataTblsImg = new Uint8Array(
+    gunzipSync(readFileSync(join(REPO_ROOT_113C, 'tests/fixtures/oracle/vectors/drlg-datatbls-113c.img.gz'))),
+  )
+  const d2gameDataTblsImg = new Uint8Array(
+    gunzipSync(readFileSync(join(REPO_ROOT_113C, 'tests/fixtures/oracle/k1/d2game-datatbls-113c.img.gz'))),
+  )
+  const animDataBytes = new Uint8Array(
+    gunzipSync(readFileSync(join(REPO_ROOT_113C, 'tests/fixtures/oracle/k1/animdata-113c.bin.gz'))),
+  )
+  const raw = JSON.parse(
+    gunzipSync(readFileSync(join(REPO_ROOT_113C, 'tests/fixtures/oracle/k1/drlg-act1-ds1-dt1-113c.json.gz'))).toString('utf8'),
+  ) as { ds1: Record<string, string>; dt1: Record<string, string> }
+  const ds1 = new Map<string, Uint8Array>()
+  const dt1 = new Map<string, Uint8Array>()
+  for (const [k, b64] of Object.entries(raw.ds1)) {
+    ds1.set(k.replace(/\//g, '\\').toLowerCase(), new Uint8Array(Buffer.from(b64, 'base64')))
+  }
+  for (const [k, b64] of Object.entries(raw.dt1)) {
+    dt1.set(k.replace(/\//g, '\\').toLowerCase(), new Uint8Array(Buffer.from(b64, 'base64')))
+  }
+  loadedReplayHydrationAssets113c = {
+    drlgDataTblsImg,
+    d2gameDataTblsImg,
+    animDataBytes,
+    act1Ds1Dt1: { ds1, dt1 },
+  }
+  configureReplayHydrationAssets113c(loadedReplayHydrationAssets113c)
+}
+
 /** Hydrates every recorded block at its original address. Unreadable blocks (`h: null`) stay absent. */
 export function bootFromSnapshot113c(snap: Snapshot113c): KernWorld113c {
+  ensureReplayHydrationAssetsLoaded113c()
   const m = new SparseMemory113c()
   let loaded = 0
   for (const rec of snap.records) {
@@ -100,6 +148,7 @@ export function bootFromSnapshot113c(snap: Snapshot113c): KernWorld113c {
   if (frame !== snap.frame) {
     throw new Error(`snapshot pGame->dwGameFrame ${frame} != recorded frame ${snap.frame}`)
   }
+  hydrateSnapshotKernelTables113c(m, pGame, snap.d2game >>> 0)
   return { m, pGame, bootFrame: frame }
 }
 
@@ -131,6 +180,31 @@ export function loadManifest113c(): Map<string, ManifestFn> {
   ) as { functions: ManifestFn[] }
   const map = new Map<string, ManifestFn>()
   for (const f of raw.functions) map.set(manifestKey113c(f.module, parseInt(f.va, 16)), f)
+  const bDir = join(REPO_ROOT_113C, 'tools/oracle/callgraph/bindings')
+  for (const fn of readdirSync(bDir)) {
+    if (!fn.endsWith('.json')) continue
+    const entries = JSON.parse(readFileSync(join(bDir, fn), 'utf8')) as Array<{
+      module: string
+      va: string
+      name: string
+      kernFile: string
+      tsSymbol: string
+      status: string
+    }>
+    for (const e of entries) {
+      const k = manifestKey113c(e.module, parseInt(e.va, 16))
+      const prev = map.get(k)
+      map.set(k, {
+        module: e.module,
+        va: e.va,
+        name: e.name,
+        status: e.status,
+        size: prev !== undefined ? prev.size : 0,
+        kernFile: e.kernFile,
+        tsSymbol: e.tsSymbol,
+      })
+    }
+  }
   manifestCache = map
   return map
 }
@@ -144,7 +218,10 @@ export function loadManifest113c(): Map<string, ManifestFn> {
  * Fallen slice driver (`stepFallenSliceFrame113c`), whose module imports the legacy `src/common`
  * path/monstats/treasure code, and the C2S dispatcher `0x6FCEC550` is unported.
  */
-export const KERNEL_REGISTRY_113C: ReadonlyMap<string, KernelEntry113c> = new Map<string, KernelEntry113c>()
+export const KERNEL_REGISTRY_113C: ReadonlyMap<string, KernelEntry113c> = new Map<string, KernelEntry113c>([
+  ['D2Game:0x6FC4E050', (world, args) => GAME_UpdateGameFrame113c(world.m, args[0]!)],
+  ['D2Game:0x6FCEC550', (world, args) => C2S_DispatchFromMem113c(world.m, args[0]!, args[1]!, args[2]!)],
+])
 
 export class UnportedFunction113c extends Error {
   constructor(

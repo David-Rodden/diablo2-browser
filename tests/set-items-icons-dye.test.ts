@@ -12,6 +12,12 @@
 import { describe, it, expect } from 'vitest'
 import { resolveItemSpriteRect, resolveGroundItemSpriteRect } from '../src/client/ui/inventory.ts'
 import { BAKED_UI_MANIFEST } from '../src/common/items/baked-ui-meta.ts'
+import { createRolledAffix } from '../src/common/items/affix-generator.ts'
+import { getEmbeddedDropTables } from '../src/common/items/embedded-drop-tables.ts'
+import { itemToUiInventoryItem, resolveItemColorTransform, resolveItemInvFile } from '../src/common/items/item-bridge.ts'
+import { applyInvTransToRgbaPixels, ensureDyedItemSpriteRect, getAct1PaletteRgb, getInvTransRowTable, resolveItemInvTrans } from '../src/common/items/item-palette-dyer.ts'
+import { ItemQuality } from '../src/common/items/items.ts'
+import { D2Rng } from '../src/common/rng/d2-rng.ts'
 import { CLASS_EXCLUSIVE_SETS } from '../src/common/units/class-starter-profiles.ts'
 
 describe('Set Items Dedicated Icons & Color Dyeing Parity (D2 1.13c)', () => {
@@ -307,6 +313,143 @@ describe('Set Items Dedicated Icons & Color Dyeing Parity (D2 1.13c)', () => {
     it("resolves Whitstan's Guard by Blizzard index (with typo Wihtstan's) and display name", () => {
       expect(BAKED_UI_MANIFEST.codeToInvFile["Wihtstan's Guard"]).toBe('invxmlu')
       expect(BAKED_UI_MANIFEST.codeToInvFile["Whitstan's Guard"]).toBe('invxmlu')
+    })
+  })
+
+  describe('Rare Name Collisions with UniqueItems.txt & Dynamic Affix Palette Dyeing', () => {
+    const COLLISION_CASES = [
+      { name: 'Raven Claw', rareCode: 'lgl', expectedInv: 'invlgl', uniqueInv: 'invlbw_dred' },
+      { name: 'Skull Splitter', rareCode: 'lgl', expectedInv: 'invlgl', uniqueInv: 'invmpiu' },
+      { name: 'Death Cleaver', rareCode: 'cap', expectedInv: 'invcap', uniqueInv: 'invwax' },
+      { name: 'Rune Master', rareCode: 'tgl', expectedInv: 'invtgl', uniqueInv: 'inv2ax_lblu' },
+      { name: 'Stone Crusher', rareCode: 'vbt', expectedInv: 'invvbt', uniqueInv: 'invwhm' },
+      { name: 'Spirit Ward', rareCode: 'hgl', expectedInv: 'invhgl', uniqueInv: 'invgtsu' },
+    ] as const
+
+    for (const c of COLLISION_CASES) {
+      it(`prevents Rare "${c.name}" (${c.rareCode}) from hijacking Unique icon (${c.uniqueInv})`, () => {
+        const tables = getEmbeddedDropTables()
+        const base = tables.armor.get(c.rareCode) ?? tables.weapons.get(c.rareCode)!
+        const rawRareItem: any = {
+          base,
+          code: c.rareCode,
+          name: c.name,
+          quality: ItemQuality.RARE,
+          rarity: 'rare',
+          identified: true,
+          level: 25,
+          ilvl: 25,
+          invWidth: base.invWidth,
+          invHeight: base.invHeight,
+          stats: {},
+          flags: { identified: true },
+        }
+        const resolved = resolveItemInvFile(rawRareItem, 'rare', c.rareCode, tables)
+        expect(resolved.invFile).toBe(c.expectedInv)
+        expect(resolved.invtransform).toBeUndefined()
+
+        const uiItem = itemToUiInventoryItem(rawRareItem, tables)
+        expect(uiItem.invFile).toBe(c.expectedInv)
+        expect(resolveItemSpriteRect(uiItem)).toEqual(BAKED_UI_MANIFEST.itemRects[c.expectedInv])
+
+        // Even when quality is omitted on a ResolvableItem, mismatched base code blocks the Unique icon
+        expect(resolveItemSpriteRect({ code: c.rareCode, name: c.name })).toEqual(
+          BAKED_UI_MANIFEST.itemRects[c.expectedInv],
+        )
+        expect(resolveGroundItemSpriteRect({ code: c.rareCode, name: c.name })).toEqual(
+          BAKED_UI_MANIFEST.flippyRects[c.expectedInv.replace(/^inv/, 'flp')],
+        )
+      })
+    }
+
+    it('propagates transform & transformColor on RolledAffix and packet rareAffixes, and dynamically dyes unbaked icons', () => {
+      const tables = getEmbeddedDropTables()
+      const base = tables.armor.get('lgl')!
+      const rng = new D2Rng(42)
+      const colorSuffix = tables.magicAffixes.suffixes.all.find(s => s.transform && s.transformColor === 'cred')!
+      expect(colorSuffix).toBeDefined()
+
+      const rolledSuffix = createRolledAffix(colorSuffix, rng, 30)
+      expect(rolledSuffix.transform).toBe(true)
+      expect(rolledSuffix.transformColor).toBe('cred')
+
+      const rareGlovesWithRolledAffix: any = {
+        base,
+        code: 'lgl',
+        name: 'Raven Claw',
+        quality: ItemQuality.RARE,
+        rarity: 'rare',
+        identified: true,
+        level: 30,
+        ilvl: 30,
+        invWidth: base.invWidth,
+        invHeight: base.invHeight,
+        stats: {},
+        flags: { identified: true },
+        rolledRareAffixes: {
+          name: 'Raven Claw',
+          alvl: 30,
+          prefix: null,
+          suffix: rolledSuffix,
+          prefixes: [],
+          suffixes: [rolledSuffix],
+          affixes: [rolledSuffix],
+          baseName: base.name,
+        },
+      }
+
+      const uiRare = itemToUiInventoryItem(rareGlovesWithRolledAffix, tables)
+      expect(uiRare.invFile).toBe('invlgl')
+      expect(uiRare.invtransform).toBe('cred')
+
+      // Also verify online packet `rareAffixes` ([pre0, suf0, pre1, suf1, pre2, suf2])
+      const packetRareGloves: any = {
+        base,
+        code: 'lgl',
+        name: 'Raven Claw',
+        quality: ItemQuality.RARE,
+        identified: true,
+        rareAffixes: [0, colorSuffix.id ?? 1, 0, 0, 0, 0],
+      }
+      const packetColors = resolveItemColorTransform(packetRareGloves, 'rare', 'lgl', tables)
+      expect(packetColors.invtransform).toBe('cred')
+      expect(packetColors.chrtransform).toBe('cred')
+
+      // Verify dynamic sprite rect allocation & caching for `invlgl_cred` (not pre-baked in items-atlas.png)
+      expect(resolveItemInvTrans('invlgl', 'lgl')).toBe(8)
+      const dyedRect = resolveItemSpriteRect(uiRare)
+      expect(dyedRect).toBeDefined()
+      expect(dyedRect).toEqual(BAKED_UI_MANIFEST.itemRects['invlgl_cred'])
+      expect(dyedRect!.w).toBe(BAKED_UI_MANIFEST.itemRects['invlgl']!.w)
+      expect(dyedRect!.h).toBe(BAKED_UI_MANIFEST.itemRects['invlgl']!.h)
+      expect(dyedRect!.y).toBeGreaterThanOrEqual(BAKED_UI_MANIFEST.atlasHeight)
+
+      // Verify pixel-level palette remapping matches ACT1/pal.pl2 + invgreybrown.dat row 9 (cred)
+      const pal = getAct1PaletteRgb()
+      const rowTable = getInvTransRowTable(8, 'cred')!
+      expect(rowTable).toBeDefined()
+      const samplePalIdx = 20
+      const srcRgba = new Uint8ClampedArray([
+        pal[samplePalIdx * 3]!,
+        pal[samplePalIdx * 3 + 1]!,
+        pal[samplePalIdx * 3 + 2]!,
+        255,
+        0,
+        0,
+        0,
+        0,
+      ])
+      const dstRgba = applyInvTransToRgbaPixels(srcRgba, 8, 'cred')
+      const expectedDstIdx = rowTable[samplePalIdx]!
+      expect(dstRgba[0]).toBe(pal[expectedDstIdx * 3])
+      expect(dstRgba[1]).toBe(pal[expectedDstIdx * 3 + 1])
+      expect(dstRgba[2]).toBe(pal[expectedDstIdx * 3 + 2])
+      expect(dstRgba[3]).toBe(255)
+      expect(dstRgba[7]).toBe(0)
+
+      // Non-dyeable items (`InvTrans == 0`, e.g. rings `rin` -> `invrin1`) do not allocate dynamic dyed rects
+      expect(resolveItemInvTrans('invrin1', 'rin')).toBe(0)
+      expect(ensureDyedItemSpriteRect('invrin1', 'cred', BAKED_UI_MANIFEST.itemRects, 'rin')).toBeUndefined()
     })
   })
 })

@@ -8,7 +8,7 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],
-      include: ['src/**', 'plugins/**'],
+      include: ['src/**', 'plugins/**', 'showcase/**'],
       exclude: ['tools/**', 'samples/**']
     }
   }

@@ -1,19 +1,30 @@
 import { createHash } from 'node:crypto'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { resolve } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
+import { FOG_SIN_TABLE } from '../../../src/client/weather/fog-sin-table.ts'
 import * as d2kern from '../../../src/d2kern-113c/index.ts'
 import {
+  D2CommonAssertError,
+  PATH_AllocDynamicPath113c,
+  PATH_Compute113c,
   PATH_SetTargetPos113c,
   PATH_SetType113c,
   SparseMemory113c,
+  type FieldLayout113c,
+  type Memory113c,
 } from '../../../src/d2kern-113c/index.ts'
 import {
   PATH_META_MAGIC,
   PATH_PREFLAG_SET_PREV_TYPE,
+  PATH_PREFLAG_SET_TARGET_UNIT,
   PATH_PREFLAG_SET_VELOCITY,
   PATH_PREFLAG_SKIP_SET_TYPE,
+  type PageImageRecord,
+  type PathVectorRecord,
+  type PathWorldMetaHeader,
   loadPathWorldIntoMemory,
   parsePathVectors,
   parsePathWorldImage,
@@ -220,6 +231,379 @@ export function verifyPathRatchet(
   }
 
   return { matchCount, blockedCount, divergeCount }
+}
+
+class FastPageMemory113c implements Memory113c {
+  private static readonly PAGE_BITS = 12
+  private static readonly PAGE_SIZE = 1 << FastPageMemory113c.PAGE_BITS
+  private readonly basePages = new Map<number, Uint8Array>()
+  private readonly baseKnown = new Map<number, Uint8Array>()
+  private readonly pages = new Map<number, Uint8Array>()
+  private readonly known = new Map<number, Uint8Array>()
+  private readonly dirty = new Set<number>()
+  private allocTop = 0x40000000
+
+  loadBasePage(va: number, data: Uint8Array): void {
+    const page = (va >>> 0) >>> FastPageMemory113c.PAGE_BITS
+    const pCopy = data.slice()
+    const kCopy = new Uint8Array(FastPageMemory113c.PAGE_SIZE)
+    kCopy.fill(1)
+    this.basePages.set(page, pCopy)
+    this.baseKnown.set(page, kCopy)
+    this.pages.set(page, pCopy.slice())
+    this.known.set(page, kCopy.slice())
+  }
+
+  writeBaseU32(addr: number, v: number): void {
+    this.setU32(addr, v)
+    const a = addr >>> 0
+    for (let i = 0; i < 4; i++) {
+      const byteAddr = (a + i) >>> 0
+      const page = byteAddr >>> FastPageMemory113c.PAGE_BITS
+      let bp = this.basePages.get(page)
+      let bk = this.baseKnown.get(page)
+      if (!bp || !bk) {
+        bp = new Uint8Array(FastPageMemory113c.PAGE_SIZE)
+        bk = new Uint8Array(FastPageMemory113c.PAGE_SIZE)
+        this.basePages.set(page, bp)
+        this.baseKnown.set(page, bk)
+      }
+      bp[byteAddr & (FastPageMemory113c.PAGE_SIZE - 1)] = (v >>> (i * 8)) & 0xff
+      bk[byteAddr & (FastPageMemory113c.PAGE_SIZE - 1)] = 1
+    }
+    this.dirty.clear()
+  }
+
+  reset(): void {
+    for (const page of this.dirty) {
+      const bp = this.basePages.get(page)
+      const bk = this.baseKnown.get(page)
+      if (bp && bk) {
+        this.pages.get(page)!.set(bp)
+        this.known.get(page)!.set(bk)
+      } else {
+        this.pages.delete(page)
+        this.known.delete(page)
+      }
+    }
+    this.dirty.clear()
+    this.allocTop = 0x40000000
+  }
+
+  alloc(size: number): number {
+    if ((size >>> 0) === 0) return 0
+    const p = ((this.allocTop + 3) & ~3) >>> 0
+    this.fill(p, size, 0)
+    this.allocTop = (p + size) >>> 0
+    return p
+  }
+
+  private readByte(a: number): number {
+    const addr = a >>> 0
+    const page = addr >>> FastPageMemory113c.PAGE_BITS
+    const k = this.known.get(page)
+    if (k === undefined || k[addr & (FastPageMemory113c.PAGE_SIZE - 1)] === 0) {
+      throw new Error(`FastPageMemory113c: read of unloaded byte 0x${addr.toString(16)}`)
+    }
+    return this.pages.get(page)![addr & (FastPageMemory113c.PAGE_SIZE - 1)]!
+  }
+
+  private writeByte(a: number, v: number): void {
+    const addr = a >>> 0
+    const page = addr >>> FastPageMemory113c.PAGE_BITS
+    let data = this.pages.get(page)
+    let k = this.known.get(page)
+    if (data === undefined || k === undefined) {
+      data = new Uint8Array(FastPageMemory113c.PAGE_SIZE)
+      k = new Uint8Array(FastPageMemory113c.PAGE_SIZE)
+      this.pages.set(page, data)
+      this.known.set(page, k)
+    }
+    this.dirty.add(page)
+    data[addr & (FastPageMemory113c.PAGE_SIZE - 1)] = v
+    k[addr & (FastPageMemory113c.PAGE_SIZE - 1)] = 1
+  }
+
+  u8(p: number): number {
+    return this.readByte(p)
+  }
+  u16(p: number): number {
+    return this.readByte(p) | (this.readByte(p + 1) << 8)
+  }
+  u32(p: number): number {
+    return (this.u16(p) | (this.u16(p + 2) << 16)) >>> 0
+  }
+  setU8(p: number, v: number): void {
+    this.writeByte(p, v & 0xff)
+  }
+  setU16(p: number, v: number): void {
+    this.writeByte(p, v & 0xff)
+    this.writeByte(p + 1, (v >>> 8) & 0xff)
+  }
+  setU32(p: number, v: number): void {
+    this.setU16(p, v & 0xffff)
+    this.setU16(p + 2, (v >>> 16) & 0xffff)
+  }
+  fill(p: number, len: number, v: number): void {
+    for (let i = 0; i < len; i++) this.writeByte(p + i, v & 0xff)
+  }
+  get(base: number, f: FieldLayout113c, index = 0): number {
+    const { p, width } = this.addr(base, f, index)
+    return width === 1 ? this.u8(p) : width === 2 ? this.u16(p) : this.u32(p)
+  }
+  set(base: number, f: FieldLayout113c, v: number, index = 0): void {
+    const { p, width } = this.addr(base, f, index)
+    if (width === 1) this.setU8(p, v)
+    else if (width === 2) this.setU16(p, v)
+    else this.setU32(p, v)
+  }
+  private addr(base: number, f: FieldLayout113c, index: number): { p: number; width: number } {
+    if (base === 0) throw new Error('FastPageMemory113c: NULL base')
+    if (index < 0 || index >= f.count) throw new Error(`FastPageMemory113c: index ${index} out of range`)
+    const width = f.type === 'u8' ? 1 : f.type === 'u16' ? 2 : 4
+    return { p: (base + f.off + index * width) >>> 0, width }
+  }
+}
+
+function replayAllPathVectorsStage1To4(
+  records: readonly PathVectorRecord[],
+  meta: PathWorldMetaHeader,
+  pages: readonly PageImageRecord[],
+  byVa: ReadonlyMap<string, ManifestFunctionEntry>,
+): { liveByIdx: Map<string, LivePathStatus>; errors: number } {
+  const mem = new FastPageMemory113c()
+  for (const page of pages) {
+    mem.loadBasePage(page.va, page.data)
+  }
+  const pBitMasks = mem.u32(0x6fdd90b0)
+  for (let i = 0; i < 32; i++) {
+    mem.writeBaseU32((pBitMasks + i * 4) >>> 0, (1 << i) >>> 0)
+  }
+  const fogDllCandidates = [
+    ...(process.env.D2_DATA_DIR ? [resolve(process.env.D2_DATA_DIR, 'Fog.dll')] : []),
+    resolve(REPO_ROOT, 'samples/d2/Fog.dll'),
+    resolve(homedir(), 'd2-data/Fog.dll'),
+  ]
+  const fogDllPath = fogDllCandidates.find((p) => existsSync(p))
+  if (fogDllPath) {
+    const fogDll = readFileSync(fogDllPath)
+    for (let i = 0; i < 512; i++) {
+      mem.writeBaseU32((0x6ff7f470 + i * 4) >>> 0, fogDll.readUInt32LE(0x2f470 + i * 4))
+    }
+  } else {
+    const dv = new DataView(new ArrayBuffer(4))
+    for (let i = 0; i < 512; i++) {
+      dv.setFloat32(0, FOG_SIN_TABLE[i]!, true)
+      mem.writeBaseU32((0x6ff7f470 + i * 4) >>> 0, dv.getUint32(0, true))
+    }
+  }
+
+  const findRoomForPos = (x: number, y: number): number => {
+    for (const r of meta.activeRoomVas) {
+      const rx = mem.u32(r + 0x4c) | 0
+      const ry = mem.u32(r + 0x50) | 0
+      const rw = mem.u32(r + 0x54) | 0
+      const rh = mem.u32(r + 0x58) | 0
+      if (x >= rx && x < rx + rw && y >= ry && y < ry + rh) return r
+    }
+    return meta.activeRoomVas[0]!
+  }
+
+  const liveByIdx = new Map<string, LivePathStatus>()
+  let errors = 0
+
+  for (let i = 0; i < records.length; i++) {
+    const rec = records[i]!
+    const candVas =
+      rec.faultStage === 2
+        ? ['0x6FD86030', '0x6FD84F80']
+        : ['0x6FD86030', '0x6FD84F80', '0x6FD849D0', '0x6FD86230', HANDLER_BY_PATHTYPE[rec.pathType]!]
+    const unpVas = [...new Set(candVas.filter((va) => byVa.get(va)?.status === 'unported'))].sort()
+    if (unpVas.length > 0) {
+      liveByIdx.set(String(i), {
+        status: 'blocked',
+        reason: 'path',
+        vas: unpVas,
+      })
+      continue
+    }
+
+    mem.reset()
+    const startRoom = findRoomForPos(rec.startX, rec.startY)
+    const pUnit = meta.pUnitVa
+    const pTargetUnit = meta.pTargetUnitVa
+    mem.fill(pUnit, 0x100, 0)
+    mem.setU32(pUnit + 0x00, rec.unitType)
+    mem.setU32(pUnit + 0x04, rec.classId)
+    mem.setU32(pUnit + 0x0c, 1)
+    mem.setU32(pUnit + 0x10, 1)
+    mem.setU32(pUnit + 0x20, rec.unitSeedLo)
+    mem.setU32(pUnit + 0x24, 666)
+
+    mem.fill(pTargetUnit, 0x200, 0)
+    const pTgtPath = (pTargetUnit + 0x100) >>> 0
+    if (rec.preFlags & PATH_PREFLAG_SET_TARGET_UNIT) {
+      const tx = (rec.startX + rec.targetDx) & 0xffff
+      const ty = (rec.startY + rec.targetDy) & 0xffff
+      mem.setU32(pTargetUnit + 0x00, 1)
+      mem.setU32(pTargetUnit + 0x04, 1)
+      mem.setU32(pTargetUnit + 0x0c, 2)
+      mem.setU32(pTargetUnit + 0x10, 1)
+      mem.setU32(pTargetUnit + 0x2c, pTgtPath)
+      mem.setU16(pTgtPath + 0x02, tx)
+      mem.setU16(pTgtPath + 0x06, ty)
+      mem.setU32(pTgtPath + 0x1c, startRoom)
+    }
+
+    let tsRet = -1
+    let tsFaultKind = 0
+    let tsFaultStage = 0
+    let tsFaultLine = 0
+    let pPath = 0
+
+    try {
+      PATH_AllocDynamicPath113c(
+        mem,
+        0,
+        startRoom,
+        rec.startX,
+        rec.startY,
+        pUnit,
+        rec.bAllocFlag,
+      )
+      pPath = mem.u32(pUnit + 0x2c)
+      if (!pPath) {
+        tsFaultStage = 1
+        tsRet = -1
+      } else {
+        if (rec.nDistMax !== 0xff) mem.setU8(pPath + 0x91, rec.nDistMax)
+        if (rec.nStepNum !== 0) mem.setU8(pPath + 0x90, rec.nStepNum)
+        if (rec.preFlags & PATH_PREFLAG_SET_PREV_TYPE) mem.setU32(pPath + 0x3c, rec.prevPathType)
+        if (rec.preFlags & PATH_PREFLAG_SET_TARGET_UNIT) mem.setU32(pPath + 0x58, pTargetUnit)
+        if (rec.preFlags & PATH_PREFLAG_SET_VELOCITY) mem.setU32(pPath + 0x7c, rec.velOverride >>> 0)
+
+        if (!(rec.preFlags & PATH_PREFLAG_SKIP_SET_TYPE)) {
+          try {
+            PATH_SetType113c(mem, pPath, rec.pathType)
+          } catch (e) {
+            if (e instanceof D2CommonAssertError) {
+              tsFaultKind = 2
+              tsFaultStage = 2
+              tsFaultLine = e.line
+              tsRet = -1
+            } else {
+              throw e
+            }
+          }
+        }
+
+        if (tsFaultKind === 0) {
+          if (rec.nStepNum !== 0) mem.setU8(pPath + 0x90, rec.nStepNum)
+          if (rec.nDistMax !== 0xff) mem.setU8(pPath + 0x91, rec.nDistMax)
+
+          try {
+            PATH_SetTargetPos113c(mem, pPath, rec.targetX, rec.targetY)
+          } catch (e) {
+            if (e instanceof D2CommonAssertError) {
+              tsFaultKind = 2
+              tsFaultStage = 3
+              tsFaultLine = e.line
+              tsRet = -1
+            } else {
+              throw e
+            }
+          }
+        }
+
+        if (tsFaultKind === 0) {
+          try {
+            tsRet = PATH_Compute113c(mem, pPath, pUnit, rec.a2) | 0
+          } catch (e) {
+            if (e instanceof D2CommonAssertError) {
+              tsFaultKind = 2
+              tsFaultStage = 4
+              tsFaultLine = e.line
+              tsRet = -1
+            } else {
+              throw e
+            }
+          }
+        }
+      }
+    } catch (e) {
+      errors++
+      liveByIdx.set(String(i), {
+        status: 'diverge',
+        reason: `idx=${i} t=${rec.pathType} exception: ${(e as Error).message}`,
+        vas: [],
+      })
+      continue
+    }
+
+    if (
+      tsFaultKind !== rec.faultKind ||
+      tsFaultStage !== rec.faultStage ||
+      (tsFaultKind === 2 && tsFaultLine !== rec.faultLine)
+    ) {
+      liveByIdx.set(String(i), {
+        status: 'diverge',
+        reason: `idx=${i} t=${rec.pathType} fault=(${tsFaultKind},${tsFaultStage},${tsFaultLine}) expected=(${rec.faultKind},${rec.faultStage},${rec.faultLine})`,
+        vas: [],
+      })
+      continue
+    }
+
+    if (tsFaultKind === 2) {
+      liveByIdx.set(String(i), { status: 'match', reason: 'path', vas: [] })
+      continue
+    }
+
+    const tsPathPoints = mem.u32(pPath + 0x28)
+    const tsFlags = mem.u32(pPath + 0x34)
+    const tsPathType = mem.u32(pPath + 0x3c)
+    const tsPrevPathType = mem.u32(pPath + 0x40)
+    const tsOutTargetX = mem.u32(pPath + 0x10) | 0
+    const tsOutTargetY = mem.u32(pPath + 0x14) | 0
+    const tsCurIdx = mem.u32(pPath + 0x24)
+    const tsDir = mem.u8(pPath + 0x64)
+    const tsNewDir = mem.u8(pPath + 0x65)
+
+    let ptsMatch = tsPathPoints === rec.dwPathPoints
+    if (ptsMatch) {
+      for (let j = 0; j < tsPathPoints && j < 78; j++) {
+        const px = mem.u16(pPath + 0x9c + j * 4)
+        const py = mem.u16(pPath + 0x9c + j * 4 + 2)
+        if (px !== rec.pathPoints[j]!.x || py !== rec.pathPoints[j]!.y) {
+          ptsMatch = false
+          break
+        }
+      }
+    }
+
+    if (
+      tsRet !== rec.ret ||
+      !ptsMatch ||
+      tsFlags !== rec.dwFlags ||
+      tsPathType !== rec.dwPathType ||
+      tsPrevPathType !== rec.dwPrevPathType ||
+      tsOutTargetX !== rec.outTargetX ||
+      tsOutTargetY !== rec.outTargetY ||
+      tsCurIdx !== rec.dwCurrentPointIdx ||
+      tsDir !== rec.nDirection ||
+      tsNewDir !== rec.nNewDirection
+    ) {
+      liveByIdx.set(String(i), {
+        status: 'diverge',
+        reason: `idx=${i} t=${rec.pathType} ret=${tsRet}/${rec.ret} pts=${tsPathPoints}/${rec.dwPathPoints} ptsMatch=${ptsMatch}`,
+        vas: [],
+      })
+      continue
+    }
+
+    liveByIdx.set(String(i), { status: 'match', reason: 'path', vas: [] })
+  }
+
+  return { liveByIdx, errors }
 }
 
 describe('[K1-6] PATH Real-DLL D2TV Vector Suite, World Image & Closure Ratchet', () => {
@@ -466,7 +850,7 @@ describe('[K1-6] PATH Real-DLL D2TV Vector Suite, World Image & Closure Ratchet'
     expect(() => PATH_SetType113c(mem, meta.pPathVa, 9)).toThrow(/^D2Common assertion failed at .*:2162$/)
   })
 
-  it('computes manifest callgraph closure, resolves ported kernel symbols, and enforces the shrink-only ratchet', () => {
+  it('computes manifest callgraph closure, executes live Stage 1..4 D2TV replay across all 6,924 vectors, and enforces the shrink-only ratchet', () => {
     const manifest = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8')) as ManifestFile
     const byVa = new Map<string, ManifestFunctionEntry>()
     for (const fn of manifest.functions) {
@@ -475,11 +859,11 @@ describe('[K1-6] PATH Real-DLL D2TV Vector Suite, World Image & Closure Ratchet'
 
     const pathClosure = computeManifestClosure(byVa, PATH_ENTRY_VAS)
     expect(pathClosure.totalFunctions).toBe(104)
-    expect(pathClosure.portedFunctions).toBe(87)
-    expect(pathClosure.unportedFunctions).toBe(17)
-    expect(pathClosure.unportedBytes).toBe(6321)
+    expect(pathClosure.portedFunctions).toBe(104)
+    expect(pathClosure.unportedFunctions).toBe(0)
+    expect(pathClosure.unportedBytes).toBe(0)
 
-    // Dynamically resolve all 68 ported / diff-verified symbols in the PATH closure from src/d2kern-113c/index.ts
+    // Dynamically resolve all 104 ported / diff-verified symbols in the PATH closure from src/d2kern-113c/index.ts
     const kernExports = d2kern as Record<string, unknown>
     for (const fn of pathClosure.portedEntries) {
       expect(fn.tsSymbol, `Missing tsSymbol on ported manifest entry ${fn.va}`).toBeTruthy()
@@ -489,46 +873,39 @@ describe('[K1-6] PATH Real-DLL D2TV Vector Suite, World Image & Closure Ratchet'
       ).toBe('function')
     }
 
-    const liveByIdx = new Map<string, LivePathStatus>()
-    for (let i = 0; i < parsedVec.records.length; i++) {
-      const rec = parsedVec.records[i]!
-      const candVas =
-        rec.faultStage === 2
-          ? ['0x6FD86030', '0x6FD84F80']
-          : ['0x6FD86030', '0x6FD84F80', '0x6FD849D0', '0x6FD86230', HANDLER_BY_PATHTYPE[rec.pathType]!]
-      const unpVas = [...new Set(candVas.filter((va) => byVa.get(va)?.status === 'unported'))].sort()
-      liveByIdx.set(String(i), {
-        status: unpVas.length > 0 ? 'blocked' : 'match',
-        reason: 'path',
-        vas: unpVas,
-      })
-    }
+    const { liveByIdx, errors } = replayAllPathVectorsStage1To4(
+      parsedVec.records,
+      parsedImg.meta,
+      parsedImg.pages,
+      byVa,
+    )
+    expect(errors).toBe(0)
 
     const expected = JSON.parse(readFileSync(expectedPath, 'utf8')) as ExpectedDivergenceFile
     const summary = verifyPathRatchet(liveByIdx, expected, pathClosure)
 
     expect(summary).toEqual({
-      matchCount: 0,
-      blockedCount: 6924,
+      matchCount: 6924,
+      blockedCount: 0,
       divergeCount: 0,
     })
 
-    // Mutation checks: prove the ratchet rejects (a) missing entry, (b) newly matched entry still in list, (c) altered VA list
-    const cloneMissing = structuredClone(expected)
-    delete cloneMissing.items['0']
-    expect(() => verifyPathRatchet(liveByIdx, cloneMissing, pathClosure)).toThrow(
+    // Mutation checks: prove the ratchet rejects (a) unlisted blocked entry, (b) stale entry still in list, (c) altered VA list
+    const liveBlocked = new Map(liveByIdx)
+    liveBlocked.set('0', { status: 'blocked', reason: 'path', vas: ['0x6FD86030'] })
+    expect(() => verifyPathRatchet(liveBlocked, expected, pathClosure)).toThrow(
       /Ratchet violation \(a\)/,
     )
 
-    const liveWithMatch = new Map(liveByIdx)
-    liveWithMatch.set('0', { status: 'match', reason: 'path', vas: [] })
-    expect(() => verifyPathRatchet(liveWithMatch, expected, pathClosure)).toThrow(
+    const cloneStale = structuredClone(expected)
+    cloneStale.items['0'] = { status: 'blocked', reason: 'path', vas: ['0x6FD86030'] }
+    expect(() => verifyPathRatchet(liveByIdx, cloneStale, pathClosure)).toThrow(
       /Ratchet violation \(b\)/,
     )
 
     const cloneBadVas = structuredClone(expected)
-    cloneBadVas.items['0']!.vas = ['0x6FD86030']
-    expect(() => verifyPathRatchet(liveByIdx, cloneBadVas, pathClosure)).toThrow(
+    cloneBadVas.items['0'] = { status: 'blocked', reason: 'path', vas: ['0x6FD86230'] }
+    expect(() => verifyPathRatchet(liveBlocked, cloneBadVas, pathClosure)).toThrow(
       /Ratchet violation \(c\)/,
     )
   })

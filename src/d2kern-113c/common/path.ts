@@ -26,15 +26,23 @@ import {
   PATH_AStar_PropagateNewFScoreToChildren113c,
 } from '../tables/item-tbls-113c.ts'
 import {
+  COLLISION_CheckMaskWithPattern1_113c,
   COLLISION_CheckMaskWithPattern2_113c,
+  COLLISION_MoveUnitCollisionMask113c,
   COLLISION_ResetMaskWithPattern113c,
   COLLISION_ResetMaskWithPatternSimple113c,
   COLLISION_ResetMaskWithSizeXY113c,
+  COLLISION_SetMaskForBoundingBoxRecursively113c,
   COLLISION_SetMaskWithPattern113c,
   COLLISION_SetMaskWithSizeXY113c,
   COLLISION_SetUnitCollisionMaskWithPattern113c,
 } from './collision.ts'
-import { DRLG_IsTownLevel113c, DUNGEON_GetRoomAtPosition113c } from './dungeon.ts'
+import { PATH_CheckStepTargetDistance113c } from './drlg/room-tile.ts'
+import {
+  DRLG_IsTownLevel113c,
+  DUNGEON_GetRoomAtPosition113c,
+  DUNGEON_GetRoomCoordinates113c,
+} from './dungeon.ts'
 import {
   D2COMMON_GDWBITMASKS_IAT_VA_113C,
   D2COMMON_SGPT_DATATABLES_VA_113C,
@@ -49,32 +57,107 @@ import {
   UNITROOM_RefreshUnit113c,
   UNITROOM_RemoveUnitFromRoom113c,
   UNITS_GetCollisionMask113c,
+  UNITS_GetDistanceToOtherUnit113c,
   UNITS_GetRoom113c,
   UNITS_GetUnitSizeX113c,
   UNITS_GetUnitSizeY113c,
   UNITS_GetX113c,
   UNITS_GetY113c,
   UNITS_IsDoor113c,
+  UNITS_TestCollisionBetweenUnitsWithDoors113c,
   UNITS_TransferStateMaskToRemoved113c,
 } from './unit.ts'
+import { PATH_GetTargetUnitCoordsWithTrigOffset113c } from '../tables/datatbls-113c.ts'
 import { seedNext, type D2SeedStrc } from '../prng.ts'
 
-const PATH_STACK_SCRATCH_BASE = 0x7fff2000
-const PATH_STACK_SCRATCH_SIZE = 0x100
+const PATH_STACK_SCRATCH_BASE = 0x7ff00000
+const PATH_STACK_SCRATCH_SIZE = 0x80000
 const _pathStackBuf = new ArrayBuffer(PATH_STACK_SCRATCH_SIZE)
 const _pathStackU8 = new Uint8Array(_pathStackBuf)
 const _pathStackDV = new DataView(_pathStackBuf)
+
+const PATH_STACK_F26_BASE = PATH_STACK_SCRATCH_BASE + 0x00100
+const PATH_STACK_F23_BASE = PATH_STACK_SCRATCH_BASE + 0x00200
+const PATH_STACK_F19_BASE = PATH_STACK_SCRATCH_BASE + 0x00300
+const PATH_STACK_F18_BASE = PATH_STACK_SCRATCH_BASE + 0x00400
+const PATH_STACK_F01_BASE = PATH_STACK_SCRATCH_BASE + 0x00800
+const PATH_STACK_F08_BASE = PATH_STACK_SCRATCH_BASE + 0x01000
+const PATH_STACK_F07_BASE = PATH_STACK_SCRATCH_BASE + 0x05000
+const PATH_STACK_I12C_F22_BASE = PATH_STACK_SCRATCH_BASE + 0x10000
+const PATH_STACK_I12C_F23_BASE = PATH_STACK_SCRATCH_BASE + 0x11000
+const PATH_STACK_I12C_F24_BASE = PATH_STACK_SCRATCH_BASE + 0x12000
+const PATH_STACK_I12C_F25_BASE = PATH_STACK_SCRATCH_BASE + 0x13000
+const PATH_STACK_I12C_F26_BASE = PATH_STACK_SCRATCH_BASE + 0x14000
+
+/** `.rdata` 25×3 step-direction candidate table `int32[25][3]` at `0x6FDDC320..0x6FDDC44B`. */
+export const PATH_CANDIDATE_DIRS_25X3_6FDDC320 = Int32Array.from([
+  5, 4, 6, 4, 5, 6, 4, 3, 5, 4, 3, 2, 3, 4, 2,
+  6, 5, 4, 5, 4, 6, 4, 3, 5, 3, 4, 2, 2, 3, 4,
+  6, 7, 5, 6, 7, 5, 6, 7, 5, 2, 1, 3, 2, 1, 3,
+  6, 7, 0, 7, 0, 6, 0, 1, 7, 1, 0, 2, 2, 1, 0,
+  7, 0, 6, 0, 7, 6, 0, 1, 7, 0, 1, 2, 1, 0, 2,
+])
+
+/** `.rdata` `gdwPathTypeStepNums` `uint32[18]` at `0x6FDE4138..0x6FDE417F`. */
+export const PATH_TYPE_STEP_NUMS_6FDE4138 = Uint32Array.from([
+  0, 0, 0, 0, 0, 2, 0xfffffffe, 0, 0, 0, 0, 0, 0xfffffffc, 0, 0, 0, 0, 0,
+])
+
+/** `.rdata` `gdwPathTypeFlags` `uint32[18]` at `0x6FDE4180..0x6FDE41C7`. */
+export const PATH_TYPE_FLAGS_6FDE4180 = Uint32Array.from([
+  0x21900, 0x1900, 0, 0, 0x60000, 0, 0, 0x21900, 0x1e600,
+  0x1e800, 0x60000, 0x1e604, 0, 0x100, 0x60000, 0x800, 0, 0,
+])
+
+/** `.rdata` target position 3-candidate direction table `uint8[25][3]` at `0x6FDDC450..0x6FDDC49A` (`75` bytes). */
+export const PATH_VALID_TARGET_DIRS_6FDDC450 = Uint8Array.from([
+  4, 6, 255, 4, 6, 255, 4, 2, 6, 4, 2, 255, 4, 2, 255,
+  6, 4, 255, 4, 6, 255, 4, 2, 6, 4, 2, 255, 2, 4, 255,
+  6, 0, 4, 6, 0, 4, 6, 0, 4, 2, 0, 4, 2, 0, 4,
+  6, 0, 255, 0, 6, 255, 0, 2, 6, 2, 0, 255, 2, 0, 255,
+  0, 6, 255, 0, 6, 255, 0, 2, 6, 0, 2, 255, 0, 2, 255,
+])
+
+/** `.data` wall-follower probe/advance turn tables `int32[4][16]` at `0x6FDE5098..0x6FDE5197`. */
+export const PATH_WF_TURN_TABLES_6FDE5098 = Int32Array.from([
+  6, 0, 0, 2, 2, 4, 4, 6, 6, 0, 0, 2, 2, 4, 4, 6,
+  2, 2, 4, 4, 6, 6, 0, 0, 2, 2, 4, 4, 6, 6, 0, 0,
+  2, 2, 4, 4, 6, 6, 0, 0, 2, 2, 4, 4, 6, 6, 0, 0,
+  6, 6, 0, 0, 2, 2, 4, 4, 6, 6, 0, 0, 2, 2, 4, 4,
+])
+
+/** `.data` wall-follower initial direction delta table `int32[9]` at `0x6FDE5198..0x6FDE51BB`. */
+export const PATH_WF_DELTA_TO_DIR_6FDE5198 = Int32Array.from([7, 0, 1, 6, -1, 2, 5, 4, 3])
 
 function withPathStackScratch113c(m: Memory113c): Memory113c {
   const isStack = (p: number): boolean => {
     const u = p >>> 0
     return u >= PATH_STACK_SCRATCH_BASE && u < PATH_STACK_SCRATCH_BASE + PATH_STACK_SCRATCH_SIZE
   }
-  return {
+  const self: Memory113c = {
     alloc: size => m.alloc(size),
     u8: p => (isStack(p) ? _pathStackU8[(p >>> 0) - PATH_STACK_SCRATCH_BASE]! : m.u8(p)),
     u16: p => (isStack(p) ? _pathStackDV.getUint16((p >>> 0) - PATH_STACK_SCRATCH_BASE, true) : m.u16(p)),
-    u32: p => (isStack(p) ? _pathStackDV.getUint32((p >>> 0) - PATH_STACK_SCRATCH_BASE, true) : m.u32(p)),
+    u32: p => {
+      const u = p >>> 0
+      if (isStack(u)) return _pathStackDV.getUint32(u - PATH_STACK_SCRATCH_BASE, true)
+      if (u >= 0x6fddb860 && u < 0x6fddb960 && (u & 3) === 0) {
+        return PATH_IDASTAR_BEST_DIR_TABLE_6FDDB860[(u - 0x6fddb860) >>> 2]! >>> 0
+      }
+      if (u >= 0x6fddc320 && u < 0x6fddc44c && (u & 3) === 0) {
+        return PATH_CANDIDATE_DIRS_25X3_6FDDC320[(u - 0x6fddc320) >>> 2]! >>> 0
+      }
+      if (u >= 0x6fde4138 && u < 0x6fde4180 && (u & 3) === 0) {
+        return PATH_TYPE_STEP_NUMS_6FDE4138[(u - 0x6fde4138) >>> 2]! >>> 0
+      }
+      if (u >= 0x6fde4180 && u < 0x6fde41c8 && (u & 3) === 0) {
+        return PATH_TYPE_FLAGS_6FDE4180[(u - 0x6fde4180) >>> 2]! >>> 0
+      }
+      if (u >= 0x6fde5098 && u < 0x6fde5198 && (u & 3) === 0) {
+        return PATH_WF_TURN_TABLES_6FDE5098[(u - 0x6fde5098) >>> 2]! >>> 0
+      }
+      return m.u32(p)
+    },
     setU8: (p, v) => {
       if (isStack(p)) _pathStackU8[(p >>> 0) - PATH_STACK_SCRATCH_BASE] = v & 0xff
       else m.setU8(p, v)
@@ -87,8 +170,18 @@ function withPathStackScratch113c(m: Memory113c): Memory113c {
       if (isStack(p)) _pathStackDV.setUint32((p >>> 0) - PATH_STACK_SCRATCH_BASE, v >>> 0, true)
       else m.setU32(p, v)
     },
-    get: (base, f, idx = 0) => m.get(base, f, idx),
-    set: (base, f, v, idx = 0) => m.set(base, f, v, idx),
+    get: (base, f, idx = 0) => {
+      const width = f.type === 'u8' ? 1 : f.type === 'u16' ? 2 : 4
+      const p = ((base >>> 0) + f.off + idx * width) >>> 0
+      return width === 1 ? self.u8(p) : width === 2 ? self.u16(p) : self.u32(p)
+    },
+    set: (base, f, v, idx = 0) => {
+      const width = f.type === 'u8' ? 1 : f.type === 'u16' ? 2 : 4
+      const p = ((base >>> 0) + f.off + idx * width) >>> 0
+      if (width === 1) self.setU8(p, v)
+      else if (width === 2) self.setU16(p, v)
+      else self.setU32(p, v)
+    },
     fill: (p, len, v) => {
       if (isStack(p)) {
         const off = (p >>> 0) - PATH_STACK_SCRATCH_BASE
@@ -98,6 +191,7 @@ function withPathStackScratch113c(m: Memory113c): Memory113c {
       }
     },
   }
+  return self
 }
 
 /**
@@ -2294,11 +2388,15 @@ export function PATH_AStar_ProcessNeighbor113c(
 // Iteration 10 Lane C — I10C-1 (F07..F08) & I10C-2 (F17..F27) PATH functions
 // ============================================================================
 
-/** `.rdata` 8-way wall-follower X step table at `0x6FDDCA38` (`int32[8][2]` col 0, North=0 clockwise). */
-export const PATH_WF_DIR8_DX_6FDDCA38 = Int32Array.from([0, 1, 1, 1, 0, -1, -1, -1])
+/** `.rdata` 16-entry wall-follower X step table at `0x6FDDCA38` (`int32[16][2]` col 0, North=0 clockwise repeated twice). */
+export const PATH_WF_DIR8_DX_6FDDCA38 = Int32Array.from([
+  0, 1, 1, 1, 0, -1, -1, -1, 0, 1, 1, 1, 0, -1, -1, -1,
+])
 
-/** `.rdata` 8-way wall-follower Y step table at `0x6FDDCA3C` (`int32[8][2]` col 1, North=0 clockwise). */
-export const PATH_WF_DIR8_DY_6FDDCA38 = Int32Array.from([-1, -1, 0, 1, 1, 1, 0, -1])
+/** `.rdata` 16-entry wall-follower Y step table at `0x6FDDCA3C` (`int32[16][2]` col 1, North=0 clockwise repeated twice). */
+export const PATH_WF_DIR8_DY_6FDDCA38 = Int32Array.from([
+  -1, -1, 0, 1, 1, 1, 0, -1, -1, -1, 0, 1, 1, 1, 0, -1,
+])
 
 /**
  * `.rdata` 9×9 signed step nudge table at `0x6FDE4338..0x6FDE447C`, centered at `0x6FDE43D8` (`index 40 = (0, 0)`).
@@ -3072,3 +3170,1922 @@ export function PATH_AStar_ExpandNodeNeighbors113c(
   return 1
 }
 
+// ============================================================================
+// Iteration 11 Lane C — I11C-1 (F01..F08) & I11C-2 (F18..F26) PATH closure
+// ============================================================================
+
+/**
+ * `@va D2Common:0x6FD68830` (`PATH_WallFollow_StepBidirectional113c`, not exported;
+ * `__stdcall(pPathInfo, dwStartPt, pPtsBuf, pnCurIdx, pnTotalPts, nMaxStepBudget, nLineDir)`, `ret 0x1C -> int32`).
+ */
+export function PATH_WallFollow_StepBidirectional113c(
+  m: Memory113c,
+  pPathInfo: number,
+  dwStartPt: number,
+  pPtsBuf: number,
+  pnCurIdx: number,
+  pnTotalPts: number,
+  nMaxStepBudget: number,
+  nLineDir: number,
+): number {
+  const info = pPathInfo >>> 0
+  const startPt = dwStartPt >>> 0
+  const ptsBuf = pPtsBuf >>> 0
+  const pCur = pnCurIdx >>> 0
+  const pTotal = pnTotalPts >>> 0
+  const maxSteps = nMaxStepBudget | 0
+  const lineDir = nLineDir | 0
+
+  const startX = startPt & 0xffff
+  const startY = startPt >>> 16
+  const curIdx0 = m.u32(pCur) | 0
+  const curPt0 = m.u32((ptsBuf + curIdx0 * 4) >>> 0)
+  const curX0 = curPt0 & 0xffff
+  const curY0 = curPt0 >>> 16
+  const deltaIdx = ((curY0 - startY) * 3 - startX + curX0 + 4) | 0
+  const dir = PATH_WF_DELTA_TO_DIR_6FDE5198[deltaIdx]! | 0
+
+  const sm = withPathStackScratch113c(m)
+  const pMov0 = PATH_STACK_F01_BASE
+  const pMov1 = (PATH_STACK_F01_BASE + 0x348) >>> 0
+  sm.fill(pMov0, 0x348, 0)
+  sm.fill(pMov1, 0x348, 0)
+
+  sm.setU32(pMov1, (dir + 1) >>> 0)
+  sm.setU32(pMov0, (dir + 7) >>> 0)
+  sm.setU32((pMov1 + 0x08) >>> 0, startPt)
+  sm.setU32((pMov0 + 0x08) >>> 0, startPt)
+  sm.setU32((pMov1 + 0x18) >>> 0, 0x6fde50d8)
+  sm.setU32((pMov0 + 0x18) >>> 0, 0x6fde5098)
+  sm.setU32((pMov1 + 0x14) >>> 0, 0x6fde5158)
+  sm.setU32((pMov0 + 0x14) >>> 0, 0x6fde5118)
+
+  let ebx = pMov1
+  let edi = pMov0
+
+  while (true) {
+    if (sm.u32((ebx + 0x20) >>> 0) === 0) {
+      if (PATH_FindNonCollidingTargetPoint113c(sm, info, ebx) !== 0) {
+        const candPt = sm.u32((ebx + 0x0c) >>> 0)
+        const candX = candPt & 0xffff
+        const candY = candPt >>> 16
+        if ((sm.u32((ebx + 0x04) >>> 0) | 0) > 0 && (lineDir >>> 0) <= 3) {
+          const lineDelta =
+            lineDir === 0
+              ? (startY - candY) | 0
+              : lineDir === 1
+                ? (candX - startX) | 0
+                : lineDir === 2
+                  ? (candY - startY) | 0
+                  : (startX - candX) | 0
+          if (lineDelta > 0) {
+            const insIdx = (lineDelta + (sm.u32(pCur) | 0) - 1) | 0
+            if (
+              insIdx < (sm.u32(pTotal) | 0) &&
+              sm.u32((ptsBuf + insIdx * 4) >>> 0) === candPt
+            ) {
+              const cnt = sm.u32((ebx + 0x04) >>> 0) | 0
+              if (cnt >= maxSteps) {
+                throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\PathWF.cpp', 0x1bb)
+              }
+              sm.setU32((ebx + 0x24 + cnt * 4) >>> 0, candPt)
+              const cnt1 = (cnt + 1) | 0
+              sm.setU32((ebx + 0x04) >>> 0, cnt1 >>> 0)
+              sm.setU16((ebx + 0x24 + cnt1 * 4) >>> 0, 0)
+              PATH_SpliceSegmentPoints113c(sm, insIdx, ebx, pTotal, ptsBuf, pCur)
+              return sm.u32((ebx + 0x04) >>> 0) | 0
+            }
+          }
+        }
+
+        if ((sm.u32((edi + 0x04) >>> 0) | 0) > 1) {
+          const matchIdx = sm.u32((ebx + 0x1c) >>> 0) | 0
+          if (matchIdx !== 0) {
+            if (candPt === sm.u32((edi + matchIdx * 4 + 0x1c) >>> 0)) {
+              const curIdx = sm.u32(pCur) | 0
+              sm.setU16((ptsBuf + curIdx * 4) >>> 0, 0)
+              sm.setU32(pTotal, curIdx >>> 0)
+              return 0
+            }
+            sm.setU32((ebx + 0x1c) >>> 0, 0)
+          }
+          if (candPt === sm.u32((edi + 0x08) >>> 0)) {
+            sm.setU32((ebx + 0x1c) >>> 0, sm.u32((edi + 0x04) >>> 0))
+          }
+        }
+
+        const cnt = sm.u32((ebx + 0x04) >>> 0) | 0
+        sm.setU32((ebx + 0x24 + cnt * 4) >>> 0, candPt)
+        sm.setU32((ebx + 0x08) >>> 0, candPt)
+        const curDir = sm.u32(ebx) | 0
+        const pAdv = sm.u32((ebx + 0x14) >>> 0)
+        sm.setU32(ebx, sm.u32((pAdv + curDir * 4) >>> 0))
+        const nextCnt = (cnt + 1) | 0
+        sm.setU32((ebx + 0x04) >>> 0, nextCnt >>> 0)
+        const rem = (maxSteps - (sm.u32(pTotal) | 0) - 1) | 0
+        if (nextCnt >= rem) {
+          sm.setU32((ebx + 0x20) >>> 0, 1)
+        }
+      } else {
+        sm.setU32((ebx + 0x20) >>> 0, 1)
+      }
+    }
+
+    if (sm.u32((ebx + 0x1c) >>> 0) === 0) {
+      const tmp = ebx
+      ebx = edi
+      edi = tmp
+    }
+    if (sm.u32((pMov1 + 0x20) >>> 0) !== 0 || sm.u32((pMov0 + 0x20) >>> 0) !== 0) {
+      break
+    }
+  }
+
+  if (maxSteps <= 0x50) {
+    const cnt1 = sm.u32((pMov1 + 0x04) >>> 0) | 0
+    const cnt0 = sm.u32((pMov0 + 0x04) >>> 0) | 0
+    const last1 = sm.u32((pMov1 + 0x20 + cnt1 * 4) >>> 0)
+    const last0 = sm.u32((pMov0 + 0x20 + cnt0 * 4) >>> 0)
+    const tx = sm.get(info, D2PathInfoStrc.targetX)
+    const ty = sm.get(info, D2PathInfoStrc.targetY)
+    const sx = sm.get(info, D2PathInfoStrc.startX)
+    const sy = sm.get(info, D2PathInfoStrc.startY)
+
+    const dx1 = (tx - (last1 & 0xffff)) | 0
+    const dy1 = (ty - (last1 >>> 16)) | 0
+    const d1 = (imul32(dx1, dx1) + imul32(dy1, dy1)) | 0
+
+    const dx0 = (tx - (last0 & 0xffff)) | 0
+    const dy0 = (ty - (last0 >>> 16)) | 0
+    const d0 = (imul32(dx0, dx0) + imul32(dy0, dy0)) | 0
+
+    const dxs = (tx - sx) | 0
+    const dys = (ty - sy) | 0
+    const ds = (imul32(dxs, dxs) + imul32(dys, dys)) | 0
+
+    const bestMov = d0 <= d1 ? (ds < d0 ? 0 : pMov0) : ds < d1 ? 0 : pMov1
+    if (bestMov !== 0) {
+      const bestCnt = sm.u32((bestMov + 0x04) >>> 0) | 0
+      const curIdx = sm.u32(pCur) | 0
+      for (let i = 0; i < bestCnt; i++) {
+        sm.setU32((ptsBuf + (curIdx + i) * 4) >>> 0, sm.u32((bestMov + 0x24 + i * 4) >>> 0))
+      }
+      const newTotal = (curIdx + bestCnt) | 0
+      sm.setU32(pCur, newTotal >>> 0)
+      sm.setU32(pTotal, newTotal >>> 0)
+      sm.setU16((ptsBuf + newTotal * 4) >>> 0, 0)
+      return sm.u32((ebx + 0x04) >>> 0) | 0
+    }
+    return 0
+  }
+
+  const curIdx = sm.u32(pCur) | 0
+  sm.setU16((ptsBuf + curIdx * 4) >>> 0, 0)
+  sm.setU32(pTotal, curIdx >>> 0)
+  return 0
+}
+
+/**
+ * `@va D2Common:0x6FD85E00` (`PATH_FindValidTargetPosition113c`, not exported;
+ * custom LTCG `eax = pPathInfo`, plain `ret -> BOOL`).
+ */
+export function PATH_FindValidTargetPosition113c(
+  m: Memory113c,
+  pPathInfo: number,
+): number {
+  const info = pPathInfo >>> 0
+  const pDynPath = m.get(info, D2PathInfoStrc.pDynamicPath)
+  if ((m.get(pDynPath, D2DynamicPathStrc.dwFlags) & 0x40000) !== 0) {
+    throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\Path.cpp', 0xc7)
+  }
+
+  const startX = m.get(info, D2PathInfoStrc.startX)
+  const startY = m.get(info, D2PathInfoStrc.startY)
+  const pStartRoom = m.get(info, D2PathInfoStrc.pStartRoom)
+  const dwPattern = m.get(info, D2PathInfoStrc.dwCollisionPattern)
+  const nMask = m.get(info, D2PathInfoStrc.nMoveTestCollisionMask)
+  const pUnit = m.get(pDynPath, D2DynamicPathStrc.pUnit)
+  const uType = pUnit === 0 ? 6 : m.get(pUnit, D2UnitStrc.dwUnitType)
+
+  let x0 = m.get(info, D2PathInfoStrc.targetX)
+  let y0 = m.get(info, D2PathInfoStrc.targetY)
+  let x1 = x0
+  let y1 = y0
+  let x2 = x0
+  let y2 = y0
+
+  const qIdx = PATH_QuantizeDirectionIndex25_113c(
+    m.u32((info + 0x04) >>> 0),
+    m.u32(info),
+  )
+  let dir0 = PATH_VALID_TARGET_DIRS_6FDDC450[qIdx * 3]!
+  const dir1 = PATH_VALID_TARGET_DIRS_6FDDC450[qIdx * 3 + 1]!
+  const dir2 = PATH_VALID_TARGET_DIRS_6FDDC450[qIdx * 3 + 2]!
+
+  while (x0 !== startX || y0 !== startY) {
+    x0 = (x0 + PATH_DIR8_DX_6FDDC2E0[dir0]!) & 0xffff
+    y0 = (y0 + PATH_DIR8_DY_6FDDC2E0[dir0]!) & 0xffff
+    if (COLLISION_CheckMaskWithPattern2_113c(m, pStartRoom, x0, y0, dwPattern, nMask) === 0) {
+      m.set(info, D2PathInfoStrc.targetX, x0)
+      m.set(info, D2PathInfoStrc.targetY, y0)
+      if (x0 === startX && y0 === startY) return 0
+      if (uType === 0) PATH_NudgeTargetOutOfImmediateCollision113c(m, info)
+      return 1
+    }
+
+    x1 = (x1 + PATH_DIR8_DX_6FDDC2E0[dir1]!) & 0xffff
+    y1 = (y1 + PATH_DIR8_DY_6FDDC2E0[dir1]!) & 0xffff
+    if (COLLISION_CheckMaskWithPattern2_113c(m, pStartRoom, x1, y1, dwPattern, nMask) === 0) {
+      m.set(info, D2PathInfoStrc.targetX, x1)
+      m.set(info, D2PathInfoStrc.targetY, y1)
+      if (x1 === startX && y1 === startY) return 0
+      if (uType === 0) PATH_NudgeTargetOutOfImmediateCollision113c(m, info)
+      return 1
+    }
+
+    if (dir2 !== 0xff) {
+      x2 = (x2 + PATH_DIR8_DX_6FDDC2E0[dir2]!) & 0xffff
+      y2 = (y2 + PATH_DIR8_DY_6FDDC2E0[dir2]!) & 0xffff
+      if (COLLISION_CheckMaskWithPattern2_113c(m, pStartRoom, x2, y2, dwPattern, nMask) === 0) {
+        m.set(info, D2PathInfoStrc.targetX, x2)
+        m.set(info, D2PathInfoStrc.targetY, y2)
+        if (x2 === startX && y2 === startY) return 0
+        if (uType === 0) PATH_NudgeTargetOutOfImmediateCollision113c(m, info)
+        return 1
+      }
+    }
+
+    const nq = PATH_QuantizeDirectionIndex25_113c(((y0 << 16) | x0) >>> 0, m.u32(info))
+    dir0 = PATH_VALID_TARGET_DIRS_6FDDC450[nq * 3]!
+  }
+
+  return 0
+}
+
+/**
+ * `@va D2Common:0x6FD86030` (`D2Common.#11003` `PATH_AllocDynamicPath113c`,
+ * `__stdcall(pMemPool, pRoom, nX, nY, pUnit, bSetFlag10) -> int32`, `ret 0x18`).
+ */
+export function PATH_AllocDynamicPath113c(
+  m: Memory113c,
+  _pMemPool: number,
+  pRoom: number,
+  nX: number,
+  nY: number,
+  pUnit: number,
+  bSetFlag10: number,
+): number {
+  const unit = pUnit >>> 0
+  const room = pRoom >>> 0
+  const uType = m.get(unit, D2UnitStrc.dwUnitType) | 0
+
+  const pPath = m.alloc(0x200)
+  if (pPath === 0) return 0
+  m.fill(pPath, 0x200, 0)
+
+  m.set(pPath, D2DynamicPathStrc.pUnit, unit)
+  const sz = UNITS_GetUnitSizeX113c(m, unit)
+  m.set(pPath, D2DynamicPathStrc.dwUnitSize, sz >>> 0)
+  const pat = PATH_GetCollisionPatternForSize113c(m, unit, sz)
+  m.set(pPath, D2DynamicPathStrc.dwCollisionPattern, pat >>> 0)
+  m.set(pPath, D2DynamicPathStrc.pRoom, room)
+  m.set(pPath, D2DynamicPathStrc.wPosX, nX & 0xffff)
+  m.set(pPath, D2DynamicPathStrc.wOffsetX, 0x8000)
+  m.set(pPath, D2DynamicPathStrc.wPosY, nY & 0xffff)
+  m.set(pPath, D2DynamicPathStrc.wOffsetY, 0x8000)
+  m.setU16((pPath + 0x1d8) >>> 0, nX & 0xffff)
+  m.setU16((pPath + 0x1da) >>> 0, nY & 0xffff)
+  m.set(pPath, D2DynamicPathStrc.dwVelocity, 0x800)
+  m.set(pPath, D2DynamicPathStrc.nStepNum, 0)
+  m.set(pPath, D2DynamicPathStrc.nSavedStepsCount, 1)
+  m.set(unit, D2UnitStrc.pPath, pPath)
+
+  const sm = withPathStackScratch113c(m)
+  if (uType === 0) {
+    m.set(pPath, D2DynamicPathStrc.nFootprintCollisionMask, 0x80)
+    m.set(pPath, D2DynamicPathStrc.nMoveTestCollisionMask, 0x1c09)
+    PATH_SetType113c(sm, pPath, 7)
+    m.set(pPath, D2DynamicPathStrc.nDistMax, 0x49)
+    m.set(pPath, D2DynamicPathStrc.nIDAStarInitFScore, 0x46)
+  } else if (uType === 1) {
+    m.set(pPath, D2DynamicPathStrc.nFootprintCollisionMask, 0x100)
+    const pu = m.get(pPath, D2DynamicPathStrc.pUnit)
+    if (pu !== 0 && m.get(pu, D2UnitStrc.dwUnitType) === 0) {
+      throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\Path.cpp', 0x861)
+    }
+    const flagMask = sm.u32((PATH_TYPE_FLAGS_VA_6FDE4180 + 2 * 4) >>> 0)
+    if ((flagMask & 0x2000) !== 0 && (m.get(pPath, D2DynamicPathStrc.dwFlags) & 0x4000) === 0) {
+      m.set(pPath, D2DynamicPathStrc.dwPrevPathType, m.get(pPath, D2DynamicPathStrc.dwPathType))
+    }
+    if ((flagMask & 0x8000) !== 0 && (m.get(pPath, D2DynamicPathStrc.dwFlags) & 0x10000) === 0) {
+      m.set(pPath, D2DynamicPathStrc.nPreviousVelocity, m.get(pPath, D2DynamicPathStrc.dwVelocity))
+    }
+    m.set(
+      pPath,
+      D2DynamicPathStrc.dwFlags,
+      ((m.get(pPath, D2DynamicPathStrc.dwFlags) & 0xfff800ff) | flagMask) >>> 0,
+    )
+    m.set(pPath, D2DynamicPathStrc.dwPathType, 2)
+    m.setU32((pPath + 0x98) >>> 0, sm.u32((PATH_TYPE_STEP_NUMS_VA_6FDE4138 + 2 * 4) >>> 0))
+    const prevT = m.get(pPath, D2DynamicPathStrc.dwPrevPathType) | 0
+    if (prevT === 0x0b) {
+      throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\Path.cpp', 0x871)
+    }
+    if (prevT === 0x08) {
+      throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\Path.cpp', 0x872)
+    }
+
+    let baseId = -1
+    if (unit !== 0) {
+      let cid = m.get(unit, D2UnitStrc.dwClassId) | 0
+      if (cid >= 0) {
+        const dt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+        const monCnt = m.u32((dt + DATATABLES_OFF_113C.nMonStatsTxtRecordCount) >>> 0) | 0
+        if (cid < monCnt) {
+          const monTbl = m.u32((dt + DATATABLES_OFF_113C.pMonStatsTxt) >>> 0)
+          const rec = (monTbl + imul32(cid, D2MonStatsTxt_SIZE)) >>> 0
+          if (rec !== 0) {
+            cid = (m.u16((rec + 0x02) >>> 0) << 16) >> 16
+          }
+        }
+        if (cid >= 0 && cid < monCnt) {
+          baseId = cid
+        }
+      }
+    }
+    if (baseId === 0x26) {
+      m.set(pPath, D2DynamicPathStrc.dwCollisionPattern, 5)
+      m.set(pPath, D2DynamicPathStrc.nMoveTestCollisionMask, 0x804)
+      m.set(pPath, D2DynamicPathStrc.nDistMax, 0x0e)
+    } else {
+      const mask = PATH_GetMonsterMoveTestMask113c(m, unit)
+      m.set(pPath, D2DynamicPathStrc.nMoveTestCollisionMask, mask >>> 0)
+      m.set(pPath, D2DynamicPathStrc.nDistMax, 0x0e)
+    }
+  } else if (uType === 3) {
+    m.set(pPath, D2DynamicPathStrc.nFootprintCollisionMask, 0)
+    m.set(pPath, D2DynamicPathStrc.nMoveTestCollisionMask, 0)
+    PATH_SetType113c(sm, pPath, 4)
+  }
+
+  if (room !== 0) {
+    PATH_AddUnitCollisionFootprint113c(m, unit)
+    UNITROOM_AddUnitToRoom113c(m, unit, m.get(pPath, D2DynamicPathStrc.pRoom))
+  }
+
+  const py11 = m.u32((pPath + 0x04) >>> 0) >>> 11
+  const px11 = m.u32(pPath) >>> 11
+  m.set(pPath, D2DynamicPathStrc.dwClientCoordY, sar32((py11 + px11) | 0, 2) >>> 0)
+  m.set(pPath, D2DynamicPathStrc.dwClientCoordX, sar32((px11 - py11) | 0, 1) >>> 0)
+  if ((bSetFlag10 | 0) !== 0) {
+    m.set(pPath, D2DynamicPathStrc.dwFlags, (m.get(pPath, D2DynamicPathStrc.dwFlags) | 0x10) >>> 0)
+  }
+  return bSetFlag10 >>> 0
+}
+
+/**
+ * `@va D2Common:0x6FDB7390` (`PATH_ComputeKnockbackServer113c`, not exported;
+ * `__fastcall(pPathInfo) -> int32`, plain `ret`).
+ */
+export function PATH_ComputeKnockbackServer113c(
+  m: Memory113c,
+  pPathInfo: number,
+): number {
+  const info = pPathInfo >>> 0
+  const pDynPath = m.get(info, D2PathInfoStrc.pDynamicPath)
+  const pTargetUnit = m.get(pDynPath, D2DynamicPathStrc.pTargetUnit)
+  const dist = ((m.get(pDynPath, D2DynamicPathStrc.nDist) >>> 1) + 1) | 0
+
+  const sm = withPathStackScratch113c(m)
+  const pTargetScratch = PATH_STACK_F19_BASE
+  if (pTargetUnit !== 0) {
+    const tType1 = m.u32(pTargetUnit) | 0
+    const ptp1 = m.u32((pTargetUnit + 0x2c) >>> 0)
+    const tx =
+      tType1 === 2 || (tType1 > 3 && tType1 <= 5)
+        ? m.u32((ptp1 + 0x0c) >>> 0) | 0
+        : ptp1 !== 0
+          ? m.u16((ptp1 + 0x02) >>> 0)
+          : 0
+
+    const tType2 = m.u32(pTargetUnit) | 0
+    const ptp2 = m.u32((pTargetUnit + 0x2c) >>> 0)
+    const ty =
+      tType2 === 2 || (tType2 > 3 && tType2 <= 5)
+        ? m.u32((ptp2 + 0x10) >>> 0) | 0
+        : ptp2 !== 0
+          ? m.u16((ptp2 + 0x06) >>> 0)
+          : 0
+
+    const sx = m.get(info, D2PathInfoStrc.startX)
+    const sy = m.get(info, D2PathInfoStrc.startY)
+    const dx = (sx - tx) | 0
+    const dy = (sy - ty) | 0
+    const absDx = dx < 0 ? (-dx) | 0 : dx
+    const absDy = dy < 0 ? (-dy) | 0 : dy
+    const major = absDx > absDy ? absDx : absDy
+    if (major > 0) {
+      const kx = (sx + sdiv32(imul32(dx, dist), major)) & 0xffff
+      const ky = (sy + sdiv32(imul32(dy, dist), major)) & 0xffff
+      sm.setU16(pTargetScratch, kx)
+      sm.setU16((pTargetScratch + 2) >>> 0, ky)
+    } else {
+      sm.setU32(pTargetScratch, m.u32(info))
+    }
+  } else {
+    sm.setU32(pTargetScratch, m.u32((info + 0x04) >>> 0))
+  }
+
+  m.setU32((pDynPath + 0x9c) >>> 0, sm.u32(pTargetScratch))
+  PATH_RaycastGridLineCollision113c(sm, pDynPath, m.u32(info), pTargetScratch)
+  const resPt = sm.u32(pTargetScratch)
+  if (pDynPath !== 0) {
+    m.set(pDynPath, D2DynamicPathStrc.wTargetX, resPt & 0xffff)
+    m.set(pDynPath, D2DynamicPathStrc.wTargetY, resPt >>> 16)
+    m.set(pDynPath, D2DynamicPathStrc.pTargetUnit, 0)
+  }
+  if (resPt === m.u32(info)) {
+    return 0
+  }
+  m.setU32((pDynPath + 0x9c) >>> 0, resPt)
+  m.set(pDynPath, D2DynamicPathStrc.dwPathPoints, 1)
+  return 1
+}
+
+/**
+ * `@va D2Common:0x6FDB74C0` (`PATH_RebuildTurnCornersWithDirOffset113c`, not exported;
+ * custom LTCG `ebx = pPathInfo`, plain `ret -> int32`).
+ */
+export function PATH_RebuildTurnCornersWithDirOffset113c(
+  m: Memory113c,
+  pPathInfo: number,
+): number {
+  const info = pPathInfo >>> 0
+  const pDynPath = m.get(info, D2PathInfoStrc.pDynamicPath)
+  const stepBudget = m.u32((info + 0x18) >>> 0) | 0
+  let outCount = m.get(pDynPath, D2DynamicPathStrc.dwPathPoints) | 0
+  let curPt = m.u32(info)
+  const targetPt = m.u32((info + 0x04) >>> 0)
+  const dirOff = m.u32((pDynPath + 0x98) >>> 0) | 0
+  let prevDir = 0xff
+  let bWroteAny = 0
+  let brokeEarly = false
+
+  const sm = withPathStackScratch113c(m)
+  const pCand = (PATH_STACK_F19_BASE + 0x10) >>> 0
+  const pOutDir = (PATH_STACK_F19_BASE + 0x20) >>> 0
+
+  let steps = 0
+  if (stepBudget > 0) {
+    while (steps < stepBudget) {
+      if ((curPt & 0xffff) === (targetPt & 0xffff) && (curPt >>> 16) === (targetPt >>> 16)) {
+        break
+      }
+      bWroteAny = 0
+      const qIdx = PATH_QuantizeDirectionIndex25_113c(curPt, targetPt)
+      const base = qIdx * 3
+      sm.setU32(pCand, ((PATH_CANDIDATE_DIRS_25X3_6FDDC320[base]! + dirOff) & 7) >>> 0)
+      sm.setU32((pCand + 4) >>> 0, ((PATH_CANDIDATE_DIRS_25X3_6FDDC320[base + 1]! + dirOff) & 7) >>> 0)
+      sm.setU32((pCand + 8) >>> 0, ((PATH_CANDIDATE_DIRS_25X3_6FDDC320[base + 2]! + dirOff) & 7) >>> 0)
+      if (PATH_PickStepDirectionCandidate3_113c(sm, info, curPt, pCand, pOutDir) === 0) {
+        brokeEarly = true
+        break
+      }
+      const d = sm.u32(pOutDir) | 0
+      if (((d - 4) & 7) === prevDir) {
+        brokeEarly = true
+        break
+      }
+      const nx = ((curPt & 0xffff) + PATH_DIR8_DX_6FDDC2E0[d]!) & 0xffff
+      const ny = ((curPt >>> 16) + PATH_DIR8_DY_6FDDC2E0[d]!) & 0xffff
+      const nextPt = (nx | (ny << 16)) >>> 0
+      if (d !== prevDir) {
+        m.setU32((pDynPath + 0x9c + outCount * 4) >>> 0, curPt)
+        outCount = (outCount + 1) | 0
+        bWroteAny = 1
+      }
+      curPt = nextPt
+      prevDir = d
+      steps = (steps + 1) | 0
+    }
+    if ((brokeEarly || bWroteAny === 0) && steps !== 0) {
+      m.setU32((pDynPath + 0x9c + outCount * 4) >>> 0, curPt)
+      outCount = (outCount + 1) | 0
+    }
+  }
+  m.set(pDynPath, D2DynamicPathStrc.dwPathPoints, outCount >>> 0)
+  return outCount
+}
+
+/**
+ * `@va D2Common:0x6FDB7630` (`PATH_RaycastVelocityAndCollide113c`, not exported;
+ * custom LTCG `eax = pDynamicPath`, `edi = pInOutTargetPoint`, plain `ret -> BOOL`).
+ */
+export function PATH_RaycastVelocityAndCollide113c(
+  m: Memory113c,
+  pDynamicPath: number,
+  pInOutTargetPoint: number,
+): number {
+  const path = pDynamicPath >>> 0
+  const pTargetPtr = pInOutTargetPoint >>> 0
+  const pUnit = m.get(path, D2DynamicPathStrc.pUnit)
+  if (pUnit === 0 || ((m.u32(pUnit) | 0) !== 0 && (m.u32(pUnit) | 0) !== 1)) {
+    throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\PathMisc.cpp', 0x144)
+  }
+  if ((m.get(path, D2DynamicPathStrc.dwPathType) | 0) === 4) {
+    throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\PathMisc.cpp', 0x145)
+  }
+  if (m.u16(pTargetPtr) === 0) {
+    throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\PathMisc.cpp', 0x146)
+  }
+  if (m.u16((pTargetPtr + 2) >>> 0) === 0) {
+    throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\PathMisc.cpp', 0x147)
+  }
+
+  if (m.get(path, D2DynamicPathStrc.dwVelocity) === 0) {
+    m.setU32(
+      pTargetPtr,
+      (m.get(path, D2DynamicPathStrc.wPosX) | (m.get(path, D2DynamicPathStrc.wPosY) << 16)) >>> 0,
+    )
+    return 0
+  }
+
+  PATH_ComputeVelocityToNextPoint113c(m, path, 1, 1)
+  if (m.get(path, D2DynamicPathStrc.dwVelocity) === 0) {
+    m.setU32(
+      pTargetPtr,
+      (m.get(path, D2DynamicPathStrc.wPosX) | (m.get(path, D2DynamicPathStrc.wPosY) << 16)) >>> 0,
+    )
+    return 0
+  }
+
+  const dwStart =
+    (m.get(path, D2DynamicPathStrc.wPosX) | (m.get(path, D2DynamicPathStrc.wPosY) << 16)) >>> 0
+  return PATH_RaycastGridLineCollision113c(m, path, dwStart, pTargetPtr)
+}
+
+/**
+ * `@va D2Common:0x6FDC0BB0` (`PATH_IdaStar_ComputeInRoomBounds113c`, not exported;
+ * custom LTCG `edx = pRoomBoundsRect`, stack `[esp+4] = pPathInfo`, `ret 4 -> int32`).
+ */
+export function PATH_IdaStar_ComputeInRoomBounds113c(
+  m: Memory113c,
+  pRoomBoundsRect: number,
+  pPathInfo: number,
+): number {
+  const rect = pRoomBoundsRect >>> 0
+  const info = pPathInfo >>> 0
+  const sm = withPathStackScratch113c(m)
+  const ctx = PATH_STACK_F07_BASE
+
+  const w = m.u32((rect + 8) >>> 0) | 0
+  const h = m.u32((rect + 0xc) >>> 0) | 0
+  if (imul32(w, h) > 0xc350) {
+    throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\PathIdaStar.cpp', 0x171)
+  }
+
+  const clearCount = imul32((w + 6) | 0, (h + 6) | 0)
+  sm.fill((ctx + 0x6290) >>> 0, (clearCount * 4) >>> 0, 0)
+
+  const rx16 = m.u16(rect)
+  const ry16 = m.u16((rect + 4) >>> 0)
+  const rw16 = m.u16((rect + 8) >>> 0)
+  const rh16 = m.u16((rect + 0xc) >>> 0)
+  sm.setU16((ctx + 0x6278) >>> 0, rx16)
+  sm.setU16((ctx + 0x627a) >>> 0, ry16)
+  sm.setU16((ctx + 0x6280) >>> 0, rw16)
+  sm.setU16((ctx + 0x6282) >>> 0, rh16)
+  sm.setU16((ctx + 0x627c) >>> 0, (rx16 + rw16) & 0xffff)
+  sm.setU16((ctx + 0x627e) >>> 0, (ry16 + rh16) & 0xffff)
+  sm.setU32((ctx + 0x6284) >>> 0, (rw16 + 6) >>> 0)
+  sm.setU32((ctx + 0x6288) >>> 0, (3 - rx16) >>> 0)
+  sm.setU32((ctx + 0x628c) >>> 0, (3 - ry16) >>> 0)
+
+  const pathType = m.u32((info + 0x20) >>> 0) | 0
+  if (pathType === 16) {
+    sm.setU32((ctx + 0x36fd0) >>> 0, 1)
+    const pDyn = m.u32((info + 0x30) >>> 0)
+    const pUnit = m.u32((pDyn + 0x30) >>> 0)
+    sm.setU32((ctx + 0x36fd4) >>> 0, (pUnit + 0x20) >>> 0)
+  } else {
+    sm.setU32((ctx + 0x36fd0) >>> 0, 0)
+  }
+
+  const dwStart = m.u32(info)
+  const dwTarget = m.u32((info + 0x04) >>> 0)
+  const adx = Math.abs(((dwStart & 0xffff) - (dwTarget & 0xffff)) | 0)
+  const ady = Math.abs(((dwStart >>> 16) - (dwTarget >>> 16)) | 0)
+  const h0 = (adx < ady ? adx + ady * 2 : ady + adx * 2) & 0xffff
+  let ebx = (h0 << 16) >> 16
+  const dir0 =
+    PATH_CHARGED_BOLT_BASE_DIR_6FDDC320[PATH_QuantizeDirectionIndex25_113c(dwStart, dwTarget)]! & 7
+
+  const root = (ctx + 0x04) >>> 0
+  sm.setU32(ctx, root)
+  sm.setU32((ctx + 0x6274) >>> 0, 1)
+
+  let maxCutoff = ebx
+  if (pathType === 0) {
+    const initF = m.u8((info + 0x1c) >>> 0)
+    maxCutoff = ((ebx <= initF ? initF : ebx) << 16) >> 16
+  } else if (pathType === 16) {
+    const half = (Math.trunc(ebx / 2) + h0) & 0xffff
+    ebx = (half << 16) >> 16
+    const initF = m.u8((info + 0x1c) >>> 0)
+    maxCutoff = ((ebx <= initF ? initF : ebx) << 16) >> 16
+  }
+
+  let pResultNode = 0
+  do {
+    sm.set(root, D2IdaStarNodeStrc.wFScore, h0)
+    sm.set(root, D2IdaStarNodeStrc.wHScore, h0)
+    sm.set(root, D2IdaStarNodeStrc.wGScore, 0)
+    sm.set(root, D2IdaStarNodeStrc.nVisitCount, 0xfffd)
+    sm.setU32((root + 0x08) >>> 0, dwStart)
+    sm.set(root, D2IdaStarNodeStrc.pBestDirection, PATH_IDASTAR_BEST_DIR_VA_6FDDB860)
+    sm.set(root, D2IdaStarNodeStrc.nNextNeighborIndex, dir0 >>> 0)
+    sm.set(root, D2IdaStarNodeStrc.pParent, 0)
+    sm.set(root, D2IdaStarNodeStrc.pChild, 0)
+
+    pResultNode = PATH_IdaStar_SearchLoop113c(sm, ctx, ebx, info)
+    ebx = (ebx + 5) | 0
+    if (pResultNode === 0 && sm.u32((ctx + 0x6274) >>> 0) === 0x384) {
+      return 0
+    }
+    sm.setU32((ctx + 0x6274) >>> 0, 1)
+    if (pResultNode !== 0) {
+      break
+    }
+  } while (ebx < maxCutoff)
+
+  if (pResultNode === 0) {
+    return 0
+  }
+  const nPts = PATH_IdaStar_FlushNodeToDynamicPath113c(sm, info, pResultNode)
+  return (nPts | 0) >= 0x4e ? 0 : nPts
+}
+
+/**
+ * `@va D2Common:0x6FDCB630` (`PATH_AStar_ComputePath113c`, not exported;
+ * `__fastcall(pPathInfo) -> int32`, plain `ret`).
+ */
+export function PATH_AStar_ComputePath113c(
+  m: Memory113c,
+  pPathInfo: number,
+): number {
+  const info = pPathInfo >>> 0
+  if (PATH_AStar_IsTargetReachableOrHasNoTargetUnit113c(m, info) === 0) {
+    return 0
+  }
+
+  const sm = withPathStackScratch113c(m)
+  const ctx = PATH_STACK_F08_BASE
+  sm.fill(ctx, 0x400, 0)
+
+  const root = (ctx + 0x404) >>> 0
+  sm.setU32((ctx + 0x400) >>> 0, 0)
+  sm.setU32((ctx + 0x2fc4) >>> 0, 1)
+  sm.fill(root, 0x38, 0)
+
+  const dwStart = m.u32(info)
+  const dwTarget = m.u32((info + 0x04) >>> 0)
+  sm.setU32(root, dwStart)
+
+  const sx = dwStart & 0xffff
+  const sy = dwStart >>> 16
+  const tx = dwTarget & 0xffff
+  const ty = dwTarget >>> 16
+  const adx = Math.abs((sx - tx) | 0)
+  const ady = Math.abs((sy - ty) | 0)
+  const h0 = adx >= ady ? (ady + adx * 2) | 0 : (adx + ady * 2) | 0
+  sm.set(root, D2AStarNodeStrc.wGScore, 0)
+  sm.set(root, D2AStarNodeStrc.wHScore, h0 & 0xffff)
+  sm.set(root, D2AStarNodeStrc.wFScore, h0 & 0xffff)
+
+  PATH_AStar_PushToOpenAndHash113c(sm, ctx, root)
+  let cur = PATH_AStar_PopBestOpenToClosed113c(sm, ctx)
+  let best = 0
+
+  if (cur !== 0) {
+    while (cur !== 0) {
+      if (best === 0) {
+        best = cur
+      } else {
+        const curH = (sm.get(cur, D2AStarNodeStrc.wHScore) << 16) >> 16
+        const bestH = (sm.get(best, D2AStarNodeStrc.wHScore) << 16) >> 16
+        if (curH < bestH) {
+          best = cur
+        } else if (curH === bestH) {
+          const curG = (sm.get(cur, D2AStarNodeStrc.wGScore) << 16) >> 16
+          const bestG = (sm.get(best, D2AStarNodeStrc.wGScore) << 16) >> 16
+          if (curG > ((bestG + 5) | 0)) {
+            best = cur
+          }
+        }
+      }
+
+      if (sm.get(cur, D2AStarNodeStrc.wHScore) === 0) {
+        best = cur
+        break
+      }
+      if (PATH_AStar_ExpandNodeNeighbors113c(sm, cur, info, ctx, dwTarget) === 0) {
+        break
+      }
+      cur = PATH_AStar_PopBestOpenToClosed113c(sm, ctx)
+    }
+
+    if (best !== 0) {
+      return PATH_AStar_FlushNodeToDynamicPath113c(sm, info, best)
+    }
+  }
+  return 0
+}
+
+/**
+ * `@va D2Common:0x6FD68C40` (`PATH_WallFollow_ComputePath113c`, not exported;
+ * `__fastcall(pPathInfo) -> int32`, plain `ret`).
+ */
+export function PATH_WallFollow_ComputePath113c(
+  m: Memory113c,
+  pPathInfo: number,
+): number {
+  const info = pPathInfo >>> 0
+  const pDynPath = m.get(info, D2PathInfoStrc.pDynamicPath)
+  const pUnit = m.get(pDynPath, D2DynamicPathStrc.pUnit)
+  if (pUnit === 0 || ((m.u32(pUnit) | 0) !== 0 && (m.u32(pUnit) | 0) !== 1)) {
+    throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\PathWF.cpp', 0x2ad)
+  }
+
+  let nMaxStepBudget = m.u8((pDynPath + 0x91) >>> 0)
+  if (m.get(pDynPath, D2DynamicPathStrc.pTargetUnit) !== 0 && nMaxStepBudget < 0x28) {
+    nMaxStepBudget = 0x28
+  }
+
+  const sm = withPathStackScratch113c(m)
+  const pLineDir = PATH_STACK_F18_BASE
+  const pnCurIdx = (PATH_STACK_F18_BASE + 4) >>> 0
+  const pnTotalPts = (PATH_STACK_F18_BASE + 8) >>> 0
+  const pPtsBuf = (PATH_STACK_F18_BASE + 0x10) >>> 0
+
+  const total0 = PATH_BresenhamLine113c(
+    sm,
+    pPtsBuf,
+    m.u32(info),
+    m.u32((info + 0x04) >>> 0),
+    nMaxStepBudget,
+    pLineDir,
+  )
+  sm.setU32(pnTotalPts, total0 >>> 0)
+  sm.setU32(pnCurIdx, 0)
+  if ((total0 | 0) <= 2) {
+    return 0
+  }
+
+  let prevPt = m.u32(info)
+  while ((sm.u32(pnCurIdx) | 0) < (sm.u32(pnTotalPts) | 0)) {
+    let curIdx = sm.u32(pnCurIdx) | 0
+    const pt = sm.u32((pPtsBuf + curIdx * 4) >>> 0)
+    const hit = COLLISION_CheckMaskWithPattern2_113c(
+      sm,
+      m.get(info, D2PathInfoStrc.pStartRoom),
+      pt & 0xffff,
+      pt >>> 16,
+      m.get(info, D2PathInfoStrc.dwCollisionPattern),
+      m.get(info, D2PathInfoStrc.nMoveTestCollisionMask),
+    )
+    if (hit !== 0) {
+      const wfSteps = PATH_WallFollow_StepBidirectional113c(
+        sm,
+        info,
+        prevPt,
+        pPtsBuf,
+        pnCurIdx,
+        pnTotalPts,
+        (nMaxStepBudget - curIdx) | 0,
+        sm.u32(pLineDir) | 0,
+      )
+      if (wfSteps === 0) {
+        const stopIdx = sm.u32(pnCurIdx) | 0
+        return PATH_SimplifyToLines113c(sm, pPtsBuf, m.u32(info), (pDynPath + 0x9c) >>> 0, stopIdx)
+      }
+      curIdx = sm.u32(pnCurIdx) | 0
+    }
+    prevPt = sm.u32((pPtsBuf + curIdx * 4) >>> 0)
+    sm.setU32(pnCurIdx, (curIdx + 1) >>> 0)
+  }
+
+  const finalTotal = sm.u32(pnTotalPts) | 0
+  if (finalTotal === 0) {
+    return 0
+  }
+  return PATH_SimplifyToLines113c(sm, pPtsBuf, m.u32(info), (pDynPath + 0x9c) >>> 0, finalTotal)
+}
+
+/**
+ * `@va D2Common:0x6FDB77C0` (`PATH_ComputeStraightLineWalk113c`, not exported;
+ * `__fastcall(pPathInfo) -> int32`, plain `ret`).
+ */
+export function PATH_ComputeStraightLineWalk113c(
+  m: Memory113c,
+  pPathInfo: number,
+): number {
+  const info = pPathInfo >>> 0
+  const pDynPath = m.get(info, D2PathInfoStrc.pDynamicPath)
+  m.set(pDynPath, D2DynamicPathStrc.dwCurrentPointIdx, 0)
+  m.setU32((pDynPath + 0x9c) >>> 0, m.u32((info + 0x04) >>> 0))
+  PATH_RaycastVelocityAndCollide113c(m, pDynPath, (pDynPath + 0x9c) >>> 0)
+  return 1
+}
+
+/**
+ * `@va D2Common:0x6FDB77F0` (`PATH_ComputeLeapOrKnockback113c`, not exported;
+ * `__fastcall(pPathInfo) -> int32`, plain `ret`).
+ */
+export function PATH_ComputeLeapOrKnockback113c(
+  m: Memory113c,
+  pPathInfo: number,
+): number {
+  const info = pPathInfo >>> 0
+  const pDynPath = m.get(info, D2PathInfoStrc.pDynamicPath)
+  const dwTarget = m.u32((info + 0x04) >>> 0)
+  m.set(pDynPath, D2DynamicPathStrc.dwCurrentPointIdx, 0)
+  m.setU32((pDynPath + 0x9c) >>> 0, dwTarget)
+
+  const sm = withPathStackScratch113c(m)
+  const pTargetScratch = PATH_STACK_F19_BASE
+  sm.setU32(pTargetScratch, dwTarget)
+  PATH_RaycastVelocityAndCollide113c(sm, pDynPath, pTargetScratch)
+  const newTarget = sm.u32(pTargetScratch)
+  if ((newTarget & 0xffff) === m.get(info, D2PathInfoStrc.startX) && (newTarget >>> 16) === m.get(info, D2PathInfoStrc.startY)) {
+    return 0
+  }
+  m.setU32((pDynPath + 0x9c) >>> 0, newTarget)
+  m.set(pDynPath, D2DynamicPathStrc.dwPathPoints, 1)
+  return 1
+}
+
+/**
+ * `@va D2Common:0x6FDB7850` (`PATH_BuildTurnCornersWithFallbackOffset113c`, not exported;
+ * `__fastcall(pPathInfo) -> int32`, plain `ret`).
+ */
+export function PATH_BuildTurnCornersWithFallbackOffset113c(
+  m: Memory113c,
+  pPathInfo: number,
+): number {
+  const info = pPathInfo >>> 0
+  const pDynPath = m.get(info, D2PathInfoStrc.pDynamicPath)
+  m.set(pDynPath, D2DynamicPathStrc.dwCurrentPointIdx, 0)
+  m.setU32((pDynPath + 0x98) >>> 0, 0xfffffffc)
+  const basePts = PATH_RebuildTurnCornersWithDirOffset113c(m, info) | 0
+  if (basePts === 0) {
+    return 0
+  }
+  m.set(pDynPath, D2DynamicPathStrc.dwPathPoints, basePts >>> 0)
+  m.setU32((pDynPath + 0x98) >>> 0, 0xfffffffe)
+  let totalPts = PATH_RebuildTurnCornersWithDirOffset113c(m, info) | 0
+  if ((totalPts - basePts) === 0) {
+    m.setU32((pDynPath + 0x98) >>> 0, 2)
+    totalPts = PATH_RebuildTurnCornersWithDirOffset113c(m, info) | 0
+  }
+  m.setU32((pDynPath + 0x98) >>> 0, 0xfffffffc)
+  return totalPts
+}
+
+/**
+ * `@va D2Common:0x6FDB78B0` (`PATH_ComputeGuidedStepPath113c`, not exported;
+ * `__fastcall(pPathInfo) -> int32`, plain `ret`).
+ */
+export function PATH_ComputeGuidedStepPath113c(
+  m: Memory113c,
+  pPathInfo: number,
+): number {
+  const info = pPathInfo >>> 0
+  const pDynPath = m.get(info, D2PathInfoStrc.pDynamicPath)
+  m.set(pDynPath, D2DynamicPathStrc.dwCurrentPointIdx, 0)
+  m.set(pDynPath, D2DynamicPathStrc.dwPathPoints, 0)
+
+  if ((m.u32((pDynPath + 0x98) >>> 0) | 0) !== 0) {
+    return PATH_RebuildTurnCornersWithDirOffset113c(m, info)
+  }
+
+  const targetPt = m.u32((info + 0x04) >>> 0)
+  const sm = withPathStackScratch113c(m)
+  const pTargetScratch = PATH_STACK_F19_BASE
+  sm.setU32(pTargetScratch, targetPt)
+  m.setU32((pDynPath + 0x9c) >>> 0, targetPt)
+
+  if (PATH_RaycastVelocityAndCollide113c(sm, pDynPath, pTargetScratch) !== 0) {
+    const nPts = m.get(pDynPath, D2DynamicPathStrc.dwPathPoints) | 0
+    m.setU32((pDynPath + 0x9c + nPts * 4) >>> 0, sm.u32(pTargetScratch))
+    m.set(pDynPath, D2DynamicPathStrc.dwPathPoints, (nPts + 1) >>> 0)
+    return (nPts + 1) | 0
+  }
+
+  const rayPt = sm.u32(pTargetScratch)
+  if (PATH_OctileDistanceWithTable113c(rayPt, targetPt) <= m.u8((info + 0x14) >>> 0)) {
+    const nPts = m.get(pDynPath, D2DynamicPathStrc.dwPathPoints) | 0
+    m.setU32((pDynPath + 0x9c + nPts * 4) >>> 0, rayPt)
+    m.set(pDynPath, D2DynamicPathStrc.dwPathPoints, (nPts + 1) >>> 0)
+    return (nPts + 1) | 0
+  }
+
+  let curPt = m.u32(info)
+  if ((curPt & 0xffff) !== (rayPt & 0xffff) || (curPt >>> 16) !== (rayPt >>> 16)) {
+    const nPts = m.get(pDynPath, D2DynamicPathStrc.dwPathPoints) | 0
+    m.setU32((pDynPath + 0x9c + nPts * 4) >>> 0, rayPt)
+    m.set(pDynPath, D2DynamicPathStrc.dwPathPoints, (nPts + 1) >>> 0)
+    curPt = rayPt
+  }
+
+  let outCount = m.get(pDynPath, D2DynamicPathStrc.dwPathPoints) | 0
+  const stepBudget = m.u32((info + 0x18) >>> 0) | 0
+  let prevDir = 0xff
+  let bWroteAny = 0
+  let steps = 0
+  let brokeEarly = false
+  const pOutDir = (PATH_STACK_F19_BASE + 8) >>> 0
+
+  while (steps < stepBudget) {
+    if ((curPt & 0xffff) === (targetPt & 0xffff) && (curPt >>> 16) === (targetPt >>> 16)) {
+      break
+    }
+    bWroteAny = 0
+    const qIdx = PATH_QuantizeDirectionIndex25_113c(curPt, targetPt)
+    const pCand = (0x6fddc320 + qIdx * 12) >>> 0
+    if (PATH_PickStepDirectionCandidate3_113c(sm, info, curPt, pCand, pOutDir) === 0) {
+      brokeEarly = true
+      break
+    }
+    const d = sm.u32(pOutDir) | 0
+    if (((d - 4) & 7) === prevDir) {
+      brokeEarly = true
+      break
+    }
+    const nx = ((curPt & 0xffff) + PATH_DIR8_DX_6FDDC2E0[d]!) & 0xffff
+    const ny = ((curPt >>> 16) + PATH_DIR8_DY_6FDDC2E0[d]!) & 0xffff
+    const nextPt = (nx | (ny << 16)) >>> 0
+    if (d !== prevDir) {
+      if ((curPt & 0xffff) !== m.get(info, D2PathInfoStrc.startX) || (curPt >>> 16) !== m.get(info, D2PathInfoStrc.startY)) {
+        m.setU32((pDynPath + 0x9c + outCount * 4) >>> 0, curPt)
+        outCount = (outCount + 1) | 0
+      }
+      bWroteAny = 1
+    }
+    curPt = nextPt
+    prevDir = d
+    steps = (steps + 1) | 0
+  }
+  if ((brokeEarly || bWroteAny === 0) && steps !== 0) {
+    m.setU32((pDynPath + 0x9c + outCount * 4) >>> 0, curPt)
+    outCount = (outCount + 1) | 0
+  }
+
+  m.set(pDynPath, D2DynamicPathStrc.dwPathPoints, outCount >>> 0)
+  return outCount
+}
+
+/**
+ * `@va D2Common:0x6FDC0E40` (`PATH_IdaStar_ComputePathWithRooms113c`, not exported;
+ * `__fastcall(pPathInfo) -> int32`, plain `ret`).
+ */
+export function PATH_IdaStar_ComputePathWithRooms113c(
+  m: Memory113c,
+  pPathInfo: number,
+): number {
+  const info = pPathInfo >>> 0
+  const sm = withPathStackScratch113c(m)
+  const pRect = PATH_STACK_F23_BASE
+  const pCoords2 = (PATH_STACK_F23_BASE + 0x20) >>> 0
+
+  m.setU8((info + 0x14) >>> 0, (m.u8((info + 0x14) >>> 0) << 1) & 0xff)
+  const pStartRoom = m.get(info, D2PathInfoStrc.pStartRoom)
+  DUNGEON_GetRoomCoordinates113c(sm, pStartRoom, pRect)
+  let rx = sm.u32(pRect) | 0
+  let ry = sm.u32((pRect + 4) >>> 0) | 0
+  const origW = sm.u32((pRect + 8) >>> 0) | 0
+  const origH = sm.u32((pRect + 12) >>> 0) | 0
+  let rw = origW
+  let rh = origH
+
+  const pTargetRoom = m.get(info, D2PathInfoStrc.pTargetRoom)
+  if (pTargetRoom !== 0 && pTargetRoom !== pStartRoom) {
+    DUNGEON_GetRoomCoordinates113c(sm, pTargetRoom, pCoords2)
+    const r2x = sm.u32(pCoords2) | 0
+    const r2y = sm.u32((pCoords2 + 4) >>> 0) | 0
+    const r2w = sm.u32((pCoords2 + 8) >>> 0) | 0
+    const r2h = sm.u32((pCoords2 + 12) >>> 0) | 0
+    if (r2x < rx) {
+      rw = (origW - r2x + rx) | 0
+      rx = r2x
+    } else {
+      rw = (r2w - rx + r2x) | 0
+    }
+    if (r2y < ry) {
+      rh = (origH - r2y + ry) | 0
+      ry = r2y
+    } else {
+      rh = (r2h - ry + r2y) | 0
+    }
+  }
+
+  if (rw === origW) {
+    rx = (rx - 10) | 0
+    rw = (rw + 20) | 0
+  }
+  if (rh === origH) {
+    ry = (ry - 10) | 0
+    rh = (rh + 20) | 0
+  }
+
+  sm.setU32(pRect, rx >>> 0)
+  sm.setU32((pRect + 4) >>> 0, ry >>> 0)
+  sm.setU32((pRect + 8) >>> 0, rw >>> 0)
+  sm.setU32((pRect + 12) >>> 0, rh >>> 0)
+
+  return PATH_IdaStar_ComputeInRoomBounds113c(sm, pRect, info)
+}
+
+/**
+ * `@va D2Common:0x6FDB7AD0` (`PATH_ComputeMonsterSeekPath113c`, not exported;
+ * `__fastcall(pPathInfo) -> int32`, plain `ret`).
+ */
+export function PATH_ComputeMonsterSeekPath113c(
+  m: Memory113c,
+  pPathInfo: number,
+): number {
+  const info = pPathInfo >>> 0
+  const pDynPath = m.get(info, D2PathInfoStrc.pDynamicPath)
+  m.set(pDynPath, D2DynamicPathStrc.dwCurrentPointIdx, 0)
+  m.set(pDynPath, D2DynamicPathStrc.dwPathPoints, 0)
+
+  const pts = PATH_ComputeGuidedStepPath113c(m, info) | 0
+  if (pts !== 0) {
+    const lastPt = m.u32((pDynPath + 0x98 + pts * 4) >>> 0)
+    const remDist = PATH_OctileDistanceWithTable113c(lastPt, m.u32((info + 0x04) >>> 0))
+    if (remDist <= m.u8((info + 0x14) >>> 0) && lastPt !== m.u32(info)) {
+      return pts
+    }
+  }
+
+  const dx = Math.abs((m.get(info, D2PathInfoStrc.startX) - m.get(info, D2PathInfoStrc.targetX)) | 0)
+  const dy = Math.abs((m.get(info, D2PathInfoStrc.startY) - m.get(info, D2PathInfoStrc.targetY)) | 0)
+  if (((imul32(dx, dx) + imul32(dy, dy)) | 0) > 0x144) {
+    return pts
+  }
+
+  const astarPts = PATH_AStar_ComputePath113c(m, info) | 0
+  if (astarPts !== 0) {
+    return astarPts
+  }
+  if (pts !== 0) {
+    return PATH_ComputeGuidedStepPath113c(m, info)
+  }
+  return pts
+}
+
+/**
+ * `@va D2Common:0x6FDB7B70` (`PATH_ComputeChargedBoltOrGuidedPath113c`, not exported;
+ * `__fastcall(pPathInfo) -> int32`, plain `ret`).
+ */
+export function PATH_ComputeChargedBoltOrGuidedPath113c(
+  m: Memory113c,
+  pPathInfo: number,
+): number {
+  const info = pPathInfo >>> 0
+  const pDynPath = m.get(info, D2PathInfoStrc.pDynamicPath)
+  m.set(pDynPath, D2DynamicPathStrc.dwCurrentPointIdx, 0)
+  return PATH_ComputeGuidedStepPath113c(m, info)
+}
+
+/**
+ * `@va D2Common:0x6FD86230` (`D2Common.#10334` `PATH_Compute113c`,
+ * `__stdcall(pDynamicPath, pUnit, bAllowInTown) -> int32`, `ret 0xC`).
+ */
+export function PATH_Compute113c(
+  m: Memory113c,
+  pDynamicPath: number,
+  pUnit: number,
+  bAllowInTown: number,
+): number {
+  const path = pDynamicPath >>> 0
+  if (path === 0) {
+    return 0
+  }
+  const unit = pUnit >>> 0
+  if (m.get(path, D2DynamicPathStrc.pUnit) !== unit) {
+    throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\Path.cpp', 0x2e8)
+  }
+
+  const flags0 = m.get(path, D2DynamicPathStrc.dwFlags)
+  if ((flags0 & 0x40000) !== 0) {
+    return PATH_ComputeSpecialFlag40000Path113c(m, path, unit)
+  }
+
+  const pTargetUnit0 = m.get(path, D2DynamicPathStrc.pTargetUnit)
+  m.set(path, D2DynamicPathStrc.wCollidedWithMask, 0)
+  if (pTargetUnit0 !== 0) {
+    if (UNITS_GetX113c(m, pTargetUnit0) === 0 || UNITS_GetY113c(m, pTargetUnit0) === 0) {
+      return 0
+    }
+  }
+
+  const failCleanup = (): number => {
+    m.set(path, D2DynamicPathStrc.dwCurrentPointIdx, 0)
+    m.set(path, D2DynamicPathStrc.dwPathPoints, 0)
+    m.set(path, D2DynamicPathStrc.dwFlags, (m.get(path, D2DynamicPathStrc.dwFlags) & ~0x20) >>> 0)
+    return 0
+  }
+
+  const savedStartX = m.get(path, D2DynamicPathStrc.wPosX)
+  const savedStartY = m.get(path, D2DynamicPathStrc.wPosY)
+  if (savedStartX === 0 && savedStartY === 0) {
+    return failCleanup()
+  }
+
+  const sm = withPathStackScratch113c(m)
+  const info = PATH_STACK_F26_BASE
+  sm.fill(info, 0x34, 0)
+  sm.set(info, D2PathInfoStrc.startX, savedStartX)
+  sm.set(info, D2PathInfoStrc.startY, savedStartY)
+  sm.setU32((info + 0x10) >>> 0, m.get(path, D2DynamicPathStrc.dwUnitSize))
+  sm.set(info, D2PathInfoStrc.dwCollisionPattern, m.get(path, D2DynamicPathStrc.dwCollisionPattern))
+  sm.set(
+    info,
+    D2PathInfoStrc.nMoveTestCollisionMask,
+    m.get(path, D2DynamicPathStrc.nMoveTestCollisionMask),
+  )
+  sm.set(info, D2PathInfoStrc.pDynamicPath, path)
+  sm.setU32((info + 0x18) >>> 0, m.u8((path + 0x91) >>> 0))
+  sm.setU8((info + 0x1c) >>> 0, m.u8((path + 0x92) >>> 0))
+
+  const tgtStatus = PATH_ResolveTargetUnitPosition113c(sm, info) & 0xff
+  sm.set(info, D2PathInfoStrc.nTargetTypeStatus, tgtStatus)
+
+  const tx0 = m.get(path, D2DynamicPathStrc.wTargetX)
+  const ty0 = m.get(path, D2DynamicPathStrc.wTargetY)
+  if (tx0 === 0 && ty0 === 0) {
+    return failCleanup()
+  }
+
+  sm.set(info, D2PathInfoStrc.targetX, tx0)
+  sm.set(info, D2PathInfoStrc.targetY, ty0)
+  if (savedStartX === tx0 && savedStartY === ty0) {
+    return failCleanup()
+  }
+
+  const dx = (tx0 - savedStartX) | 0
+  const dy = (ty0 - savedStartY) | 0
+  if (dx > 0x64 || -dx > 0x64 || dy > 0x64 || -dy > 0x64) {
+    return failCleanup()
+  }
+
+  const pStartRoom = m.get(path, D2DynamicPathStrc.pRoom)
+  sm.set(info, D2PathInfoStrc.pStartRoom, pStartRoom)
+  const pTargetRoom = DUNGEON_GetRoomAtPosition113c(sm, pStartRoom, tx0, ty0)
+  sm.set(info, D2PathInfoStrc.pTargetRoom, pTargetRoom)
+  if (pStartRoom === 0 || pTargetRoom === 0) {
+    return failCleanup()
+  }
+
+  if (PATH_IsMonsterDestinationAllowed113c(sm, unit, info) === 0 && (bAllowInTown | 0) === 0) {
+    return failCleanup()
+  }
+
+  const curPathType = m.get(path, D2DynamicPathStrc.dwPathType) | 0
+  sm.setU32((info + 0x20) >>> 0, curPathType >>> 0)
+  const pTargetUnit = m.get(path, D2DynamicPathStrc.pTargetUnit)
+  PATH_RemoveUnitCollisionFootprint113c(sm, unit, 0)
+
+  let bRemovedTarget = 0
+  if (
+    pTargetUnit !== 0 &&
+    UNITS_GetUnitSizeX113c(sm, pTargetUnit) !== 0 &&
+    (m.get(path, D2DynamicPathStrc.dwFlags) & 0x800) !== 0
+  ) {
+    bRemovedTarget = PATH_RemoveUnitCollisionFootprint113c(sm, pTargetUnit, 0)
+  }
+
+  let targetOk = 1
+  if ((m.get(path, D2DynamicPathStrc.dwFlags) & 0x1000) !== 0) {
+    if (
+      COLLISION_CheckMaskWithPattern2_113c(
+        sm,
+        pStartRoom,
+        sm.get(info, D2PathInfoStrc.targetX),
+        sm.get(info, D2PathInfoStrc.targetY),
+        m.get(path, D2DynamicPathStrc.dwCollisionPattern),
+        m.get(path, D2DynamicPathStrc.nMoveTestCollisionMask),
+      ) !== 0
+    ) {
+      targetOk = PATH_FindValidTargetPosition113c(sm, info)
+    }
+  }
+
+  m.set(path, D2DynamicPathStrc.dwCurrentPointIdx, 0)
+  m.set(path, D2DynamicPathStrc.wFinalTargetX, sm.get(info, D2PathInfoStrc.targetX))
+  m.set(path, D2DynamicPathStrc.wFinalTargetY, sm.get(info, D2PathInfoStrc.targetY))
+  m.set(path, D2DynamicPathStrc.dwPathPoints, 0)
+
+  if (targetOk !== 0) {
+    let nPts = 0
+    switch (curPathType) {
+      case 0:
+      case 16:
+        nPts = PATH_IdaStar_ComputePathWithRooms113c(sm, info)
+        break
+      case 1:
+        nPts = PATH_AStar_ComputePath113c(sm, info)
+        break
+      case 2:
+      case 5:
+      case 6:
+      case 13:
+        nPts = PATH_ComputeGuidedStepPath113c(sm, info)
+        break
+      case 3:
+        nPts = PATH_ComputeChargedBoltOrGuidedPath113c(sm, info)
+        break
+      case 7:
+        nPts = PATH_ComputeMonsterSeekPath113c(sm, info)
+        break
+      case 8:
+        nPts = PATH_ComputeKnockbackServer113c(sm, info)
+        break
+      case 9:
+        nPts = PATH_ComputeLeapOrKnockback113c(sm, info)
+        break
+      case 11:
+        nPts = PATH_ComputeStraightLineWalk113c(sm, info)
+        break
+      case 12:
+        nPts = PATH_BuildTurnCornersWithFallbackOffset113c(sm, info)
+        break
+      case 15:
+        nPts = PATH_WallFollow_ComputePath113c(sm, info)
+        break
+      default:
+        throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\Path.cpp', 0x37e)
+    }
+    m.set(path, D2DynamicPathStrc.dwPathPoints, nPts >>> 0)
+  } else {
+    m.set(path, D2DynamicPathStrc.dwPathPoints, 0)
+  }
+
+  if (
+    sm.get(info, D2PathInfoStrc.startX) !== savedStartX ||
+    sm.get(info, D2PathInfoStrc.startY) !== savedStartY
+  ) {
+    throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\Path.cpp', 0x389)
+  }
+
+  if (bRemovedTarget !== 0) {
+    PATH_AddUnitCollisionFootprint113c(sm, m.get(path, D2DynamicPathStrc.pTargetUnit))
+  }
+  PATH_AddUnitCollisionFootprint113c(sm, unit)
+
+  if (m.get(path, D2DynamicPathStrc.dwPathPoints) === 0) {
+    m.set(path, D2DynamicPathStrc.dwFlags, (m.get(path, D2DynamicPathStrc.dwFlags) & ~0x20) >>> 0)
+    return 0
+  }
+
+  PATH_ComputeVelocityToNextPoint113c(sm, path, 1, 1)
+  if ((m.get(path, D2DynamicPathStrc.dwCurrentPointIdx) | 0) >= (m.get(path, D2DynamicPathStrc.dwPathPoints) | 0)) {
+    return failCleanup()
+  }
+
+  PATH_UpdateOutOfRoomFlag113c(sm, path)
+  let flags = m.get(path, D2DynamicPathStrc.dwFlags)
+  m.set(path, D2DynamicPathStrc.dwVelocityChangeCounter, 0)
+  m.set(path, D2DynamicPathStrc.wPrevTargetX, m.get(path, D2DynamicPathStrc.wTargetX))
+  m.set(path, D2DynamicPathStrc.wPrevTargetY, m.get(path, D2DynamicPathStrc.wTargetY))
+  if ((flags & 0x10) === 0 && m.get(path, D2DynamicPathStrc.pTargetUnit) === 0) {
+    const nPts = m.get(path, D2DynamicPathStrc.dwPathPoints) | 0
+    m.set(path, D2DynamicPathStrc.wTargetX, m.u16((path + nPts * 4 + 0x98) >>> 0))
+    m.set(path, D2DynamicPathStrc.wTargetY, m.u16((path + nPts * 4 + 0x9a) >>> 0))
+  }
+
+  const totalPts = m.get(path, D2DynamicPathStrc.dwPathPoints) | 0
+  flags = totalPts !== 0 ? (flags | 0x20) >>> 0 : (flags & ~0x20) >>> 0
+  m.set(path, D2DynamicPathStrc.dwFlags, flags)
+  return totalPts
+}
+
+/**
+ * `@va D2Common:0x6FD5D420` (`PATH_MoveOrTestSubtileStepCollision113c`, not exported;
+ * custom LTCG `eax = pDynamicPath`, `[esp+4] = packedNewCoord`, `[esp+8] = packedOldCoord`, `ret 8`).
+ */
+export function PATH_MoveOrTestSubtileStepCollision113c(
+  m: Memory113c,
+  pDynamicPath: number,
+  packedNewCoord: number,
+  packedOldCoord: number,
+): number {
+  const path = pDynamicPath >>> 0
+  const dwFlags = m.u32((path + 0x34) >>> 0) >>> 0
+  const newX = packedNewCoord & 0xffff
+  const newY = (packedNewCoord >>> 16) & 0xffff
+  const oldX = packedOldCoord & 0xffff
+  const oldY = (packedOldCoord >>> 16) & 0xffff
+
+  if ((dwFlags & 0x04) !== 0) {
+    const pUnit = m.u32((path + 0x30) >>> 0)
+    if (pUnit === 0 || (m.u32(pUnit) !== 0 && m.u32(pUnit) !== 1)) {
+      throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\Path.cpp', 0x209)
+    }
+    const wMask = m.u32((path + 0x4c) >>> 0)
+    const nPattern = m.u32((path + 0x48) >>> 0)
+    const pRoom1 = m.u32((path + 0x1c) >>> 0)
+    if (pRoom1 !== 0) {
+      COLLISION_ResetMaskWithPattern113c(m, pRoom1, oldX, oldY, nPattern, wMask)
+      COLLISION_SetUnitCollisionMaskWithPattern113c(m, pRoom1, newX, newY, nPattern, wMask)
+    }
+    return 1
+  }
+
+  const bTestOnly = (dwFlags & 0x40000) >>> 0
+  let wCheckMask = m.u32((path + 0x50) >>> 0) >>> 0
+  if (wCheckMask === 0x3401) {
+    wCheckMask = 0x3c01
+  }
+  const pRoom1 = m.u32((path + 0x1c) >>> 0)
+  const wMoveMask = m.u32((path + 0x4c) >>> 0)
+  let hitMask: number
+  if (bTestOnly !== 0) {
+    const nUnitSize = m.u32((path + 0x44) >>> 0)
+    hitMask =
+      UNITS_TestCollisionBetweenUnitsWithDoors113c(
+        m,
+        pRoom1,
+        oldX,
+        oldY,
+        newX,
+        newY,
+        nUnitSize,
+        wMoveMask,
+        wCheckMask,
+      ) & 0xffff
+  } else {
+    const nPattern = m.u32((path + 0x48) >>> 0)
+    hitMask =
+      COLLISION_MoveUnitCollisionMask113c(
+        m,
+        pRoom1,
+        oldX,
+        oldY,
+        newX,
+        newY,
+        nPattern,
+        wMoveMask,
+        wCheckMask,
+      ) & 0xffff
+  }
+
+  const wLast = (m.u16((path + 0x54) >>> 0) | hitMask) & 0xffff
+  m.setU16((path + 0x54) >>> 0, wLast)
+  if (wLast === 0) {
+    return 1
+  }
+  if (bTestOnly === 0) {
+    return 0
+  }
+  return (wLast & 0x05) !== 0 ? 0 : 1
+}
+
+/**
+ * `@va D2Common:0x6FD5D820` (`D2Common.#10831` `PATH_RecomputeDynamicPath113c`,
+ * `__stdcall(pUnit, bUsePrevTarget) -> int32`, `ret 8`).
+ */
+export function PATH_RecomputeDynamicPath113c(
+  m: Memory113c,
+  pUnit: number,
+  bUsePrevTarget: number,
+): number {
+  const unit = pUnit >>> 0
+  const path = m.u32((unit + 0x2c) >>> 0)
+  if (path === 0) {
+    return 0
+  }
+  if ((m.u8((path + 0x34) >>> 0) & 0x10) === 0) {
+    if (m.u32(unit) === 1 && m.u8((path + 0x94) >>> 0) === 0) {
+      return 0
+    }
+    UNITROOM_RefreshUnit113c(m, unit)
+    m.setU32((unit + 0xc4) >>> 0, (m.u32((unit + 0xc4) >>> 0) | 0x01) >>> 0)
+    const diff = (m.u8((path + 0x94) >>> 0) - (m.u32((path + 0x24) >>> 0) | 0)) | 0
+    if (diff < 0) {
+      m.setU8((path + 0x94) >>> 0, 0)
+    } else if (diff > 0xff) {
+      m.setU8((path + 0x94) >>> 0, 0xff)
+    } else {
+      m.setU8((path + 0x94) >>> 0, diff & 0xff)
+    }
+  }
+
+  const dwPathType = m.u32((path + 0x3c) >>> 0) | 0
+  if (dwPathType === 2 || dwPathType === 13 || dwPathType === 15) {
+    if ((bUsePrevTarget | 0) !== 0) {
+      m.setU32((path + 0x3c) >>> 0, 13)
+    } else {
+      m.setU32((path + 0x10) >>> 0, m.u32((path + 0x18) >>> 0))
+      m.setU32((path + 0x3c) >>> 0, 2)
+    }
+    const res = PATH_Compute113c(m, path, unit, 0) | 0
+    if (res !== 0) {
+      return res
+    }
+    m.setU32((path + 0x3c) >>> 0, 15)
+  }
+  return PATH_Compute113c(m, path, unit, 0) | 0
+}
+
+/**
+ * `@va D2Common:0x6FD5DAB0` (`D2Common.#11121` `PATH_CopyPositionFromUnit113c`,
+ * `__stdcall(pDstUnit, pSrcUnit) -> void`, `ret 8`).
+ */
+export function PATH_CopyPositionFromUnit113c(
+  m: Memory113c,
+  pDstUnit: number,
+  pSrcUnit: number,
+): void {
+  const dstUnit = pDstUnit >>> 0
+  const srcUnit = pSrcUnit >>> 0
+  if (dstUnit === 0) {
+    throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\Path.cpp', 0x54e)
+  }
+  if (srcUnit === 0) {
+    throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\Path.cpp', 0x54f)
+  }
+  const srcPath = m.u32((srcUnit + 0x2c) >>> 0)
+  const dstPath = m.u32((dstUnit + 0x2c) >>> 0)
+  let flags = m.u32((dstPath + 0x34) >>> 0) >>> 0
+  if (
+    m.u16((dstPath + 0x02) >>> 0) === m.u16((srcPath + 0x02) >>> 0) &&
+    m.u16((dstPath + 0x06) >>> 0) === m.u16((srcPath + 0x06) >>> 0)
+  ) {
+    flags = (flags & ~0x08) >>> 0
+  } else {
+    flags = (flags | 0x08) >>> 0
+  }
+  m.setU32((dstPath + 0x34) >>> 0, flags)
+  if (m.u32((dstPath + 0x1c) >>> 0) !== m.u32((srcPath + 0x1c) >>> 0)) {
+    m.setU32((dstPath + 0x34) >>> 0, (m.u32((dstPath + 0x34) >>> 0) | 0x01) >>> 0)
+  }
+  PATH_SetPrecisionPosAndRecacheRoom113c(
+    m,
+    dstPath,
+    m.u32(srcPath),
+    m.u32((srcPath + 0x04) >>> 0),
+    m.u32((srcPath + 0x1c) >>> 0),
+  )
+}
+
+/**
+ * `@va D2Common:0x6FD5DB40` (`D2Common.#10770` `PATH_SnapToSubtileCenter113c`,
+ * `__stdcall(pDynamicPath) -> void`, `ret 4`).
+ */
+export function PATH_SnapToSubtileCenter113c(m: Memory113c, pDynamicPath: number): void {
+  const path = pDynamicPath >>> 0
+  const newPrecY = ((m.u32((path + 0x04) >>> 0) & 0xffff0000) + 0x8000) >>> 0
+  const newPrecX = ((m.u32(path) & 0xffff0000) + 0x8000) >>> 0
+  PATH_SetPrecisionPosAndRecacheRoom113c(m, path, newPrecX, newPrecY, 0)
+}
+
+/**
+ * `@va D2Common:0x6FD85640` (`D2Common.#11056` `PATH_SetCollisionMask113c`,
+ * `__stdcall(pDynamicPath, nNewCollisionMask) -> void`, `ret 8`).
+ */
+export function PATH_SetCollisionMask113c(
+  m: Memory113c,
+  pDynamicPath: number,
+  nNewCollisionMask: number,
+): void {
+  const path = pDynamicPath >>> 0
+  const pRoom1 = m.u32((path + 0x1c) >>> 0)
+  const wPosY = m.u16((path + 0x06) >>> 0)
+  const wPosX = m.u16((path + 0x02) >>> 0)
+  if (pRoom1 !== 0) {
+    const pUnit = m.u32((path + 0x30) >>> 0)
+    if (pUnit !== 0 && m.u32(pUnit) === 3) {
+      COLLISION_ResetMaskWithPatternSimple113c(
+        m,
+        pRoom1,
+        wPosX,
+        wPosY,
+        m.u32((path + 0x44) >>> 0),
+        m.u32((path + 0x4c) >>> 0),
+      )
+    } else {
+      COLLISION_ResetMaskWithPattern113c(
+        m,
+        pRoom1,
+        wPosX,
+        wPosY,
+        m.u32((path + 0x48) >>> 0),
+        m.u32((path + 0x4c) >>> 0),
+      )
+    }
+  }
+  const pRoom1After = m.u32((path + 0x1c) >>> 0)
+  const newMask = nNewCollisionMask >>> 0
+  m.setU32((path + 0x4c) >>> 0, newMask)
+  if (pRoom1After !== 0) {
+    const pUnit = m.u32((path + 0x30) >>> 0)
+    if (pUnit !== 0 && m.u32(pUnit) === 3) {
+      COLLISION_SetMaskWithPattern113c(
+        m,
+        pRoom1After,
+        wPosX,
+        wPosY,
+        m.u32((path + 0x44) >>> 0),
+        newMask,
+      )
+    } else {
+      COLLISION_SetUnitCollisionMaskWithPattern113c(
+        m,
+        pRoom1After,
+        wPosX,
+        wPosY,
+        m.u32((path + 0x48) >>> 0),
+        newMask,
+      )
+    }
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD85BA0` (`D2Common.#11009` `PATH_GetOrCheckLastCollisionMask113c`,
+ * `__stdcall(pDynamicPath) -> uint16`, `ret 4`).
+ */
+export function PATH_GetOrCheckLastCollisionMask113c(m: Memory113c, pDynamicPath: number): number {
+  const path = pDynamicPath >>> 0
+  if (m.u32((path + 0x7c) >>> 0) === 0) {
+    const mask =
+      COLLISION_CheckMaskWithPattern1_113c(
+        m,
+        m.u32((path + 0x1c) >>> 0),
+        m.u16((path + 0x02) >>> 0),
+        m.u16((path + 0x06) >>> 0),
+        m.u32((path + 0x44) >>> 0),
+        0x7fff,
+      ) & 0xffff
+    m.setU16((path + 0x54) >>> 0, mask)
+  }
+  return m.u16((path + 0x54) >>> 0)
+}
+
+/**
+ * `@va D2Common:0x6FD85CD0` (`D2Common.#10505` `PATH_RemoveUnitCollisionIfHasPath113c`,
+ * `__stdcall(pUnit) -> void`, `ret 4`).
+ */
+export function PATH_RemoveUnitCollisionIfHasPath113c(m: Memory113c, pUnit: number): void {
+  const unit = pUnit >>> 0
+  if (m.u32((unit + 0x2c) >>> 0) !== 0) {
+    PATH_RemoveUnitCollisionFootprint113c(m, unit, 1)
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD85CF0` (`D2Common.#10704` `PATH_RefreshUnitCollisionPattern113c`,
+ * `__stdcall(pUnit) -> void`, `ret 4`).
+ */
+export function PATH_RefreshUnitCollisionPattern113c(m: Memory113c, pUnit: number): void {
+  const unit = pUnit >>> 0
+  const pPath = m.u32((unit + 0x2c) >>> 0)
+  if (pPath === 0) {
+    return
+  }
+  if (UNITS_GetRoom113c(m, unit) !== 0) {
+    PATH_RemoveUnitCollisionFootprint113c(m, unit, 1)
+    const pat = PATH_GetCollisionPatternForSize113c(m, unit, m.u32((pPath + 0x44) >>> 0)) >>> 0
+    m.setU32((m.u32((unit + 0x2c) >>> 0) + 0x48) >>> 0, pat)
+    PATH_AddUnitCollisionFootprint113c(m, unit)
+  } else {
+    const pat = PATH_GetCollisionPatternForSize113c(m, unit, m.u32((pPath + 0x44) >>> 0)) >>> 0
+    m.setU32((m.u32((unit + 0x2c) >>> 0) + 0x48) >>> 0, pat)
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD5D580` (`PATH_RaymarchSubtileSteps113c`, not exported;
+ * custom LTCG `esi = pDynamicPath`, `[esp+4] = dX`, `[esp+8] = dY`, `[esp+0xC] = pOutPos`, `[esp+0x10] = pOutSteps`, `ret 0x10`).
+ */
+export function PATH_RaymarchSubtileSteps113c(
+  m: Memory113c,
+  pDynamicPath: number,
+  dX: number,
+  dY: number,
+  pOutPos: number,
+  pOutSteps: number,
+): number {
+  const path = pDynamicPath >>> 0
+  const outPos = pOutPos >>> 0
+  const outSteps = pOutSteps >>> 0
+  const sm = withPathStackScratch113c(m)
+  const pVecX = PATH_STACK_I12C_F22_BASE
+  const pVecY = (PATH_STACK_I12C_F22_BASE + 4) >>> 0
+
+  m.setU32((path + 0x1d4) >>> 0, 0)
+  sm.setU32(pVecX, dX >>> 0)
+  sm.setU32(pVecY, dY >>> 0)
+  PATH_NormalizePrecisionVector113c(sm, pVecX, pVecY)
+  const stepVecX = sm.u32(pVecX) | 0
+  const stepVecY = sm.u32(pVecY) | 0
+
+  let curPrecX = m.u32(path) >>> 0
+  let curPrecY = m.u32((path + 0x04) >>> 0) >>> 0
+  const endPrecX = (curPrecX + (dX >>> 0)) >>> 0
+  const endPrecY = (curPrecY + (dY >>> 0)) >>> 0
+  let curTileX = (curPrecX >>> 16) & 0xffff
+  let curTileY = (curPrecY >>> 16) & 0xffff
+  const endTileX = (endPrecX >>> 16) & 0xffff
+  const endTileY = (endPrecY >>> 16) & 0xffff
+  const bSaveSteps = (m.u32((path + 0x34) >>> 0) & 0x20000) >>> 0
+
+  while (curTileX !== endTileX || curTileY !== endTileY) {
+    const nextPrecX = (curPrecX + (stepVecX >>> 0)) >>> 0
+    const nextPrecY = (curPrecY + (stepVecY >>> 0)) >>> 0
+    const nextTileX = (nextPrecX >>> 16) & 0xffff
+    const nextTileY = (nextPrecY >>> 16) & 0xffff
+    if (curTileX !== nextTileX || curTileY !== nextTileY) {
+      const packedCur = ((curTileY << 16) | curTileX) >>> 0
+      const packedNext = ((nextTileY << 16) | nextTileX) >>> 0
+      const ok = PATH_MoveOrTestSubtileStepCollision113c(m, path, packedNext, packedCur)
+      if (ok === 0) {
+        m.setU32(outPos, ((curPrecX & 0xffff0000) + 0x8000) >>> 0)
+        m.setU32((outPos + 0x04) >>> 0, ((curPrecY & 0xffff0000) + 0x8000) >>> 0)
+        m.setU32(outSteps, m.u32((path + 0x1d4) >>> 0))
+        return 1
+      }
+      if (bSaveSteps !== 0) {
+        const idx = m.u32((path + 0x1d4) >>> 0) | 0
+        m.setU32((path + 0x1d8 + idx * 4) >>> 0, packedNext)
+      }
+      const nSteps = ((m.u32((path + 0x1d4) >>> 0) | 0) + 1) | 0
+      m.setU32((path + 0x1d4) >>> 0, nSteps >>> 0)
+      if (nSteps >= 10) {
+        break
+      }
+    }
+    curPrecX = nextPrecX
+    curPrecY = nextPrecY
+    curTileX = nextTileX
+    curTileY = nextTileY
+  }
+
+  if (m.u32((path + 0x1d4) >>> 0) !== 0) {
+    m.setU32((path + 0x34) >>> 0, (m.u32((path + 0x34) >>> 0) | 0x08) >>> 0)
+  }
+  m.setU32(outPos, endPrecX)
+  m.setU32((outPos + 0x04) >>> 0, endPrecY)
+  m.setU32(outSteps, m.u32((path + 0x1d4) >>> 0))
+  return 0
+}
+
+/**
+ * `@va D2Common:0x6FD5DB70` (`PATH_CheckTargetMovedAndRecompute113c`, not exported;
+ * custom LTCG `esi = pDynamicPath -> eax`, `ret`).
+ */
+export function PATH_CheckTargetMovedAndRecompute113c(m: Memory113c, pDynamicPath: number): number {
+  const path = pDynamicPath >>> 0
+  const dwPathType = m.u32((path + 0x3c) >>> 0) | 0
+  if (
+    dwPathType >= 5 &&
+    dwPathType <= 6 &&
+    (m.u32((path + 0x24) >>> 0) | 0) >= (m.u32((path + 0x28) >>> 0) | 0)
+  ) {
+    return 1
+  }
+
+  let pTargetUnit = m.u32((path + 0x58) >>> 0)
+  const pUnit = m.u32((path + 0x30) >>> 0)
+  if (pTargetUnit === 0) {
+    if ((m.u32((path + 0x24) >>> 0) | 0) < (m.u32((path + 0x28) >>> 0) | 0)) {
+      return 1
+    }
+    if (
+      m.u16((path + 0x02) >>> 0) === m.u16((path + 0x18) >>> 0) &&
+      m.u16((path + 0x06) >>> 0) === m.u16((path + 0x1a) >>> 0)
+    ) {
+      return 1
+    }
+    return PATH_RecomputeDynamicPath113c(m, pUnit, 0) | 0
+  }
+
+  const dist = UNITS_GetDistanceToOtherUnit113c(m, pTargetUnit, pUnit) | 0
+  if (dist <= m.u8((path + 0x93) >>> 0)) {
+    return 0
+  }
+
+  const curPosX = m.u16((path + 0x02) >>> 0)
+  const curPosY = m.u16((path + 0x06) >>> 0)
+  const sm = withPathStackScratch113c(m)
+  const pOutCoords = PATH_STACK_I12C_F23_BASE
+  sm.setU32(pOutCoords, 0)
+  PATH_GetTargetUnitCoordsWithTrigOffset113c(sm, path, pOutCoords)
+
+  pTargetUnit = m.u32((path + 0x58) >>> 0)
+  if (pTargetUnit !== 0) {
+    const targetType = m.u32(pTargetUnit) | 0
+    if (targetType >= 0 && targetType <= 1) {
+      let dx = ((m.u16((path + 0x14) >>> 0) - sm.u16(pOutCoords)) | 0)
+      if (dx < 0) dx = (-dx) | 0
+      if (dx > 5) {
+        return PATH_RecomputeDynamicPath113c(m, pUnit, 1) | 0
+      }
+      let dy = ((m.u16((path + 0x16) >>> 0) - sm.u16((pOutCoords + 0x02) >>> 0)) | 0)
+      if (dy < 0) dy = (-dy) | 0
+      if (dy > 5) {
+        return PATH_RecomputeDynamicPath113c(m, pUnit, 1) | 0
+      }
+    }
+  }
+
+  if (
+    (m.u32((path + 0x24) >>> 0) | 0) >= (m.u32((path + 0x28) >>> 0) | 0) &&
+    (m.u16((path + 0x18) >>> 0) !== curPosX || m.u16((path + 0x1a) >>> 0) !== curPosY)
+  ) {
+    return PATH_RecomputeDynamicPath113c(m, pUnit, 1) | 0
+  }
+  return 1
+}
+
+/**
+ * `@va D2Common:0x6FD5D8E0` (`PATH_AdvancePrecisionStep113c`, not exported;
+ * custom LTCG `eax = pDynamicPath`, `[esp+4] = pOutPos`, `[esp+8] = pOutSteps`, `ret 8`).
+ */
+export function PATH_AdvancePrecisionStep113c(
+  m: Memory113c,
+  pDynamicPath: number,
+  pOutPos: number,
+  pOutSteps: number,
+): number {
+  const path = pDynamicPath >>> 0
+  const outPos = pOutPos >>> 0
+  const outSteps = pOutSteps >>> 0
+  const pUnit = m.u32((path + 0x30) >>> 0)
+  m.setU16((path + 0x54) >>> 0, 0)
+  m.setU32(outSteps, 0)
+
+  const bGuidedMonster =
+    pUnit !== 0 && m.u32(pUnit) === 1 && (m.u8((path + 0x34) >>> 0) & 0x10) !== 0 ? 1 : 0
+
+  if (m.u32((path + 0x72) >>> 0) === 0 && m.u32((path + 0x76) >>> 0) === 0) {
+    m.setU32((path + 0x28) >>> 0, 0)
+    m.setU32((path + 0x24) >>> 0, 0)
+    m.setU32(outPos, ((m.u32(path) & 0xffff0000) + 0x8000) >>> 0)
+    m.setU32((outPos + 0x04) >>> 0, ((m.u32((path + 0x04) >>> 0) & 0xffff0000) + 0x8000) >>> 0)
+    return 0
+  }
+
+  const sm = withPathStackScratch113c(m)
+  const pStepVel = PATH_STACK_I12C_F24_BASE
+  const bReachedWaypoint = PATH_CheckStepTargetDistance113c(sm, path, pStepVel)
+  const dX = sm.u32(pStepVel) | 0
+  const dY = sm.u32((pStepVel + 0x04) >>> 0) | 0
+  const curPrecX = m.u32(path) >>> 0
+  const curPrecY = m.u32((path + 0x04) >>> 0) >>> 0
+  const endPrecX = (curPrecX + (dX >>> 0)) >>> 0
+  const endPrecY = (curPrecY + (dY >>> 0)) >>> 0
+
+  if ((curPrecX >>> 16) !== (endPrecX >>> 16) || (curPrecY >>> 16) !== (endPrecY >>> 16)) {
+    const nDirChange = m.u8((path + 0x90) >>> 0)
+    if (nDirChange !== 0) {
+      const pt = m.u32((path + 0x3c) >>> 0)
+      if (pt !== 8 && pt !== 11) {
+        m.setU8((path + 0x90) >>> 0, (nDirChange - 1) & 0xff)
+      }
+    }
+    const bBlocked = PATH_RaymarchSubtileSteps113c(m, path, dX, dY, outPos, outSteps)
+    if (bBlocked !== 0) {
+      if (bGuidedMonster !== 0) {
+        const bHasTarget = m.u32((path + 0x58) >>> 0) !== 0 ? 1 : 0
+        const recomp = PATH_RecomputeDynamicPath113c(m, pUnit, bHasTarget)
+        return recomp !== 0 ? 0 : 1
+      }
+      m.setU32((path + 0x24) >>> 0, m.u32((path + 0x28) >>> 0))
+      return 0
+    }
+  }
+
+  m.setU32(outPos, endPrecX)
+  m.setU32((outPos + 0x04) >>> 0, endPrecY)
+  if (bReachedWaypoint === 0) {
+    return 0
+  }
+  m.setU32((path + 0x24) >>> 0, (m.u32((path + 0x24) >>> 0) + 1) >>> 0)
+  return 1
+}
+
+/**
+ * `@va D2Common:0x6FD5E230` (`D2Common.#10342` `PATH_Step113c`,
+ * `__stdcall(pUnit, nRate) -> BOOL`, `ret 8`).
+ */
+export function PATH_Step113c(m: Memory113c, pUnit: number, nRate: number): number {
+  const unit = pUnit >>> 0
+  const pPath = m.u32((unit + 0x2c) >>> 0)
+  if (pPath === 0) {
+    return 0
+  }
+
+  const dwFlags = (m.u32((pPath + 0x34) >>> 0) & ~0x08) >>> 0
+  m.setU32((pPath + 0x34) >>> 0, dwFlags)
+  if ((dwFlags & 0x40000) !== 0) {
+    m.setU16((pPath + 0x54) >>> 0, 0)
+  }
+
+  if (
+    (dwFlags & 0x20) === 0 ||
+    (m.u32((pPath + 0x28) >>> 0) | 0) <= 0 ||
+    m.u32((pPath + 0x7c) >>> 0) === 0
+  ) {
+    PATH_StopMovementAndSnapToTileCenter113c(m, pPath)
+    return 0
+  }
+
+  if ((m.u32((pPath + 0x34) >>> 0) & 0x40000) === 0) {
+    if (PATH_CheckTargetMovedAndRecompute113c(m, pPath) === 0) {
+      PATH_StopMovementAndSnapToTileCenter113c(m, pPath)
+      return 0
+    }
+  }
+
+  if ((m.u32((pPath + 0x24) >>> 0) | 0) >= (m.u32((pPath + 0x28) >>> 0) | 0)) {
+    PATH_StopMovementAndSnapToTileCenter113c(m, pPath)
+    return 0
+  }
+
+  PATH_StepVelocity113c(m, pPath, nRate | 0)
+  if (m.u32((pPath + 0x72) >>> 0) === 0 && m.u32((pPath + 0x76) >>> 0) === 0) {
+    PATH_StopMovementAndSnapToTileCenter113c(m, pPath)
+    return 0
+  }
+
+  const sm = withPathStackScratch113c(m)
+  const pOutPos = PATH_STACK_I12C_F25_BASE
+  const pOutSteps = (PATH_STACK_I12C_F25_BASE + 0x08) >>> 0
+  PATH_AdvancePrecisionStep113c(sm, pPath, pOutPos, pOutSteps)
+  PATH_SetPrecisionPosAndRecacheRoom113c(
+    sm,
+    pPath,
+    sm.u32(pOutPos),
+    sm.u32((pOutPos + 0x04) >>> 0),
+    0,
+  )
+
+  if (
+    m.u32((pPath + 0x3c) >>> 0) !== 4 &&
+    (m.u32((pPath + 0x24) >>> 0) | 0) < (m.u32((pPath + 0x28) >>> 0) | 0)
+  ) {
+    PATH_ComputeVelocityToNextPoint113c(m, pPath, 1, 1)
+  }
+
+  if ((m.u32((pPath + 0x24) >>> 0) | 0) < (m.u32((pPath + 0x28) >>> 0) | 0)) {
+    return 1
+  }
+  PATH_StopMovementAndSnapToTileCenter113c(m, pPath)
+  return 0
+}
+
+/**
+ * `@va D2Common:0x6FD865A0` (`D2Common.#10084` `PATH_MarkUnitDeadCollision113c`,
+ * `__stdcall(pUnit, bIsCorpse) -> void`, `ret 8`).
+ */
+export function PATH_MarkUnitDeadCollision113c(
+  m: Memory113c,
+  pUnit: number,
+  bIsCorpse: number,
+): void {
+  const unit = pUnit >>> 0
+  const pPath = m.u32((unit + 0x2c) >>> 0)
+  if ((bIsCorpse | 0) === 0 && m.u32(unit) === 1) {
+    PATH_RemoveUnitCollisionFootprint113c(m, unit, 1)
+    m.setU32((m.u32((unit + 0x2c) >>> 0) + 0x48) >>> 0, 5)
+    PATH_SetCollisionMask113c(m, pPath, 0x8000)
+    PATH_AddUnitCollisionFootprint113c(m, unit)
+  } else {
+    if (pPath !== 0) {
+      PATH_RemoveUnitCollisionFootprint113c(m, unit, 1)
+    }
+    const sm = withPathStackScratch113c(m)
+    const pBox = PATH_STACK_I12C_F26_BASE
+    const x = m.u16((pPath + 0x02) >>> 0)
+    const y = m.u16((pPath + 0x06) >>> 0)
+    sm.setU32(pBox, ((x - 1) | 0) >>> 0)
+    sm.setU32((pBox + 0x04) >>> 0, ((y - 1) | 0) >>> 0)
+    sm.setU32((pBox + 0x08) >>> 0, ((x + 1) | 0) >>> 0)
+    sm.setU32((pBox + 0x0c) >>> 0, ((y + 1) | 0) >>> 0)
+    COLLISION_SetMaskForBoundingBoxRecursively113c(
+      sm,
+      m.u32((pPath + 0x1c) >>> 0),
+      pBox,
+      0x8000,
+    )
+  }
+  PATH_SetPrecisionPosAndRecacheRoom113c(
+    m,
+    pPath,
+    ((m.u32(pPath) & 0xffff0000) + 0x8000) >>> 0,
+    ((m.u32((pPath + 0x04) >>> 0) & 0xffff0000) + 0x8000) >>> 0,
+    0,
+  )
+}

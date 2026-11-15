@@ -136,6 +136,23 @@ function createGuardedMemory(
   return { mem, rogueWrites, frees };
 }
 
+/**
+ * `0x6FDB7FD0` grows `pTileGrid->pRoofs` through the Fog realloc thunk `0x6FD59252` (`edx` = old block),
+ * which copies the old `nRoofCapacity * 0x30` bytes into the new block. The B028 vectors record the
+ * realloc result but not the (zero-initialised) source block, so seed it here before replaying.
+ */
+function seedRoofReallocSource(raw: SparseMemory113c, v: VectorRecord): void {
+  if (v.va !== '0x6fdb7fd0') return;
+  const esi = v.in.args[0]! >>> 0;
+  const pRoofs = (v.in.mem[hexKey((esi + 0x24) >>> 0)] ?? 0) >>> 0;
+  const cap = (v.in.mem[hexKey((esi + 0x28) >>> 0)] ?? 0) >>> 0;
+  if (pRoofs === 0) return;
+  for (let off = 0; off < cap * 0x30; off += 4) {
+    const key = hexKey((pRoofs + off) >>> 0);
+    if (!(key in v.in.mem)) raw.setU32((pRoofs + off) >>> 0, 0);
+  }
+}
+
 function assertPostMemory(raw: SparseMemory113c, postMem: Record<string, number>): void {
   for (const [k, expected] of Object.entries(postMem)) {
     const addr = Number(k) >>> 0;
@@ -206,6 +223,7 @@ describe('Lane C B028 real-DLL differential vectors (maze.ts, drlg-ver.ts, room-
       const runner = B028_RUNNERS[v.va];
       expect(runner, `missing runner for ${v.va}`).toBeDefined();
       const raw = new SparseMemory113c();
+      seedRoofReallocSource(raw, v);
       const { mem, rogueWrites, frees } = createGuardedMemory(raw, v.in.mem, v.out.mem);
       const eax = runner!(mem, v.in.args);
       expect(eax >>> 0).toBe(v.out.eax >>> 0);
@@ -377,6 +395,7 @@ describe('Lane C B028 real-DLL differential vectors (maze.ts, drlg-ver.ts, room-
       () => {
         const v = vectors.find(x => x.va === '0x6fdb7fd0' && x.case === 3)!;
         const raw = new SparseMemory113c();
+        seedRoofReallocSource(raw, v);
         const { mem } = createGuardedMemory(raw, v.in.mem, v.out.mem);
         DRLGROOMTILE_ReallocRoofTiles113c(mem, v.in.args[0]!, v.in.args[1]!);
         return raw.u32(0x40000020) === 0x40000030 && raw.u32(0x10000128) === 6;

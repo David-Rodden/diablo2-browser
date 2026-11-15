@@ -2325,6 +2325,20 @@
           "off": 240,
           "type": "u32",
           "$comment": "bit array: 0x6FD5144B movzx edx, byte [edx+eax+0xF0]"
+        },
+        {
+          "name": "nComponentCounts",
+          "off": 21,
+          "type": "u8",
+          "count": 16,
+          "$comment": "0x6FDD4CA5 movzx ecx, byte [eax+esi+0x15]"
+        },
+        {
+          "name": "nComponentVariants",
+          "off": 38,
+          "type": "u8",
+          "count": 192,
+          "$comment": "0x6FDD4CC1 movzx ecx, byte [eax+ebx+0x26]"
         }
       ]
     },
@@ -2611,6 +2625,13 @@
           "off": 65,
           "type": "u8",
           "$comment": "0x6FD82EB4 movzx eax, byte [ebx+0x41]"
+        },
+        {
+          "name": "wStartSkill",
+          "off": 174,
+          "type": "u16",
+          "count": 10,
+          "$comment": "0x6FDA2A48 add esi, 0xae"
         }
       ]
     },
@@ -3860,6 +3881,12 @@
           "$comment": "0x6FD5E411 movzx edx, byte [ecx+0x450]"
         },
         {
+          "name": "pfnAutomapInit",
+          "off": 1108,
+          "type": "ptr",
+          "$comment": "0x6FD5CD84 mov edx, [eax+0x454]"
+        },
+        {
           "name": "pMemPool",
           "off": 1144,
           "type": "ptr",
@@ -3870,6 +3897,24 @@
           "off": 1148,
           "type": "ptr",
           "$comment": "0x6FD7D5B0 mov eax, [eax+0x47c]"
+        },
+        {
+          "name": "nAct",
+          "off": 1152,
+          "type": "u8",
+          "$comment": "0x6FD60CAE cmp byte [ecx+0x480], 4"
+        },
+        {
+          "name": "pfnErrorCallback",
+          "off": 1160,
+          "type": "ptr",
+          "$comment": "0x6FD5CE4F mov ebp, [edx+0x488]"
+        },
+        {
+          "name": "bRoomStatusFlag",
+          "off": 1116,
+          "type": "u8",
+          "$comment": "0x6FDCC3AA mov [edi+0x45c], cl"
         }
       ]
     },
@@ -4024,6 +4069,31 @@
           "off": 100,
           "type": "ptr",
           "$comment": "0x6FDCE8CA mov eax, [edi+0x64]"
+        },
+        {
+          "name": "dwOutdoorFlags",
+          "off": 104,
+          "type": "u32",
+          "$comment": "0x6FD67EB0/0x6FD8DD40/0x6FD93580 [pOutdoors+0x68]"
+        },
+        {
+          "name": "aOutdoorRooms",
+          "off": 128,
+          "type": "u8",
+          "count": 480,
+          "$comment": "0x6FD67EB0/0x6FD8D5A0/0x6FD8DD40 24x20B array at [pOutdoors+0x80]"
+        },
+        {
+          "name": "nOutdoorRooms",
+          "off": 608,
+          "type": "u32",
+          "$comment": "0x6FD8D5A0/0x6FD8DD40/0x6FD8E000 [pOutdoors+0x260]"
+        },
+        {
+          "name": "pOutdoorLevelLinks",
+          "off": 612,
+          "type": "ptr",
+          "$comment": "0x6FD8D5A0/0x6FD93580 [pOutdoors+0x264]"
         }
       ]
     },
@@ -4377,7 +4447,28 @@
     "D2SetsTxt": {
       "size": 296,
       "allocEvidence": "D2Common 0x6FD517E8 imul eax, eax, 0x128 (record stride in DATATBLS_GetSetsTxtRecordInline)",
-      "fields": []
+      "fields": [
+        {
+          "name": "nItems",
+          "off": 12,
+          "type": "u32",
+          "$comment": "0x6FD96063 cmp [edi+0xc], ecx"
+        },
+        {
+          "name": "pCode",
+          "off": 16,
+          "type": "u32",
+          "count": 32,
+          "$comment": "0x6FD9602E add edi, 0x10 (8 props * 0x10 bytes)"
+        },
+        {
+          "name": "fCode",
+          "off": 144,
+          "type": "u32",
+          "count": 32,
+          "$comment": "0x6FD9606B add edi, 0x90 (8 props * 0x10 bytes)"
+        }
+      ]
     },
     "D2SetItemsTxt": {
       "size": 440,
@@ -4388,6 +4479,32 @@
           "off": 50,
           "type": "u16",
           "$comment": "0x6FD764D8 movsx eax, word [eax+0x32]"
+        },
+        {
+          "name": "wSetId",
+          "off": 44,
+          "type": "u16",
+          "$comment": "0x6FD95FDC movsx eax, word [eax+0x2c]"
+        },
+        {
+          "name": "nAddFunc",
+          "off": 135,
+          "type": "u8",
+          "$comment": "0x6FD961F7 mov cl, [ecx+0x87]"
+        },
+        {
+          "name": "baseProps",
+          "off": 136,
+          "type": "u32",
+          "count": 36,
+          "$comment": "0x6FD96182 add edi, 0x88 (9 props * 0x10 bytes)"
+        },
+        {
+          "name": "addProps",
+          "off": 280,
+          "type": "u32",
+          "count": 20,
+          "$comment": "0x6FD961E7 add edi, 0x118 (5 props * 0x10 bytes)"
         }
       ]
     },
@@ -4400,6 +4517,13 @@
           "off": 54,
           "type": "u16",
           "$comment": "0x6FD7649F movsx eax, word [esi+0x36]"
+        },
+        {
+          "name": "props",
+          "off": 140,
+          "type": "u32",
+          "count": 48,
+          "$comment": "0x6FD9612B lea edi, [eax+0x8c] (12 props * 0x10 bytes)"
         }
       ]
     },
@@ -4918,16 +5042,16 @@
           "$comment": "0x6FD620B9 mov [esi+0x8], eax"
         },
         {
-          "name": "nX",
+          "name": "pfnCallback",
           "off": 12,
-          "type": "u32",
-          "$comment": "0x6FD620DC mov [esi+0xc], ecx"
+          "type": "ptr",
+          "$comment": "0x6FD620DC mov [esi+0xc], ecx; 0x6FD6281D call [ebx+0xc]"
         },
         {
-          "name": "nY",
+          "name": "pFilterUnit",
           "off": 16,
-          "type": "u32",
-          "$comment": "0x6FD620DF mov [esi+0x10], edx"
+          "type": "ptr",
+          "$comment": "0x6FD620DF mov [esi+0x10], edx; 0x6FD62818 mov edx, [ebx+0x10]"
         },
         {
           "name": "dwFlags",
@@ -4948,16 +5072,16 @@
           "$comment": "0x6FD62119 mov edi, [esi+0x1c]"
         },
         {
-          "name": "pFilterUnit",
+          "name": "nX",
           "off": 32,
-          "type": "ptr",
-          "$comment": "0x6FD620C0 mov [esi+0x20], ecx"
+          "type": "u32",
+          "$comment": "0x6FD620C0 mov [esi+0x20], ecx; 0x6FD6276A mov edx, [ebx+0x20]"
         },
         {
-          "name": "pfnCallback",
+          "name": "nY",
           "off": 36,
-          "type": "ptr",
-          "$comment": "0x6FD620C7 mov [esi+0x24], edx"
+          "type": "u32",
+          "$comment": "0x6FD620C7 mov [esi+0x24], edx; 0x6FD62767 mov eax, [ebx+0x24]"
         },
         {
           "name": "dwSize",
@@ -5149,6 +5273,19 @@
           "off": 48,
           "type": "ptr",
           "$comment": "0x6FD85471 mov esi, [edi+0x30]"
+        }
+      ]
+    },
+    "D2RunesTxt": {
+      "size": 288,
+      "allocEvidence": "D2Common 0x6FD76D12 add ebp, 0x120 (record stride in ITEMS_FindMatchingRunesTxtRecord)",
+      "fields": [
+        {
+          "name": "props",
+          "off": 176,
+          "type": "u32",
+          "count": 28,
+          "$comment": "0x6FD967E8 lea edi, [eax+0xb0] (7 props * 0x10 bytes)"
         }
       ]
     }

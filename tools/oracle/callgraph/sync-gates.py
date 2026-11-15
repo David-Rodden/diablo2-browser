@@ -192,6 +192,19 @@ PENDING_LANE_BC_VAS = {
     "0X6FDCBC20",
 }
 
+# Caller-supplied callback functions in D2Common (pfnCallback / pSearch->pfnCallback / pfOnValue / pfnActCall)
+# whose indirect call is an external callback pointer verified with real-DLL machine-code stubs in k1r13-laneD-ported29-emitter.c.
+VERIFIED_CALLER_CALLBACK_VAS = {
+    "0X6FD62330",
+    "0X6FD624E0",
+    "0X6FD7A210",
+    "0X6FD88850",
+    "0X6FD888E0",
+    "0X6FD88940",
+    "0X6FD8C720",
+    "0X6FDCF6A0",
+}
+
 _PRIVATE_FN_DEF_RE = re.compile(
     r"^\s*(?!export\b)(?:function\s+([A-Za-z0-9_$]+)|const\s+([A-Za-z0-9_$]+)\s*=\s*\()"
 )
@@ -238,7 +251,7 @@ def check_private_standins_and_callees(
         va_up = b["va"].upper()
         key = f"{b['module'].upper()}:{va_up[2:]}"
         fn = fn_by_key.get(key, {})
-        if fn.get("indirectUnknown"):
+        if fn.get("indirectUnknown") and va_up not in VERIFIED_CALLER_CALLBACK_VAS:
             msg = f"{b['module']}:{b['va']} ({b['name']}) is diff-verified but has unresolved indirect calls (indirectUnknown)"
             if pre_merge_lane_bc and va_up in pending_bc_vas:
                 warnings.append(msg)

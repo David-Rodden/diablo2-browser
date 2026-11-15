@@ -843,6 +843,30 @@
           copiedPrefix: "已复制：",
           fallbackUpdates: [
             {
+              date: "2026-11-16",
+              version: "v1.13c",
+              title: "内核对齐波浪 5 完成，怪物暴击修复",
+              summary: "战斗、技能、掉落与任务流程继续逐条对齐原版，累计覆盖 3939/4810 个 D2Game 函数；修正怪物暴击数值越界，近战对拍全部通过。"
+            },
+            {
+              date: "2026-11-15",
+              version: "v1.13c",
+              title: "同构内核成果展厅上线",
+              summary: "新增可交互展厅页，可视化浏览 D2Common 1479 个函数与调用路径；同时批量还原战斗、怪物 AI 与掉落结算逻辑，行为更贴近原版。"
+            },
+            {
+              date: "2026-11-14",
+              version: "v1.13c",
+              title: "内核移植持续推进：怪物刷新与房间生成对拍",
+              summary: "本轮把怪物刷新、房间填充与迷宫布局逻辑逐条对齐原版二进制，并补齐回归对拍测试；玩家侧玩法与画面本次无可见变化。"
+            },
+            {
+              date: "2026-11-13",
+              version: "v1.13c",
+              title: "技能中断与物品图标修复",
+              summary: "在线被击中不再打断蓄力类技能（迪亚波罗闪电、巴尔地狱火）；装备赋予的光环与非职业技能在技能栏单独显示；巴尔尸体爆炸不再重复引爆；修复稀有魔法名称抢占暗金图标与玩家走跑寻路偏差。"
+            },
+            {
               date: "2026-11-12",
               version: "v1.13c",
               title: "属性点与技能点支持 Shift+左键一次加 5 点",
@@ -853,30 +877,6 @@
               version: "v1.13c",
               title: "角色面板伤害分项与怪物死亡修复",
               summary: "角色面板分别显示双持两把武器的伤害，多元素技能伤害按元素拆分；修正怪物死亡状态与复活处理，避免尸体与死亡表现异常。"
-            },
-            {
-              date: "2026-11-10",
-              version: "v1.13c",
-              title: "角色选择与左键施法修复",
-              summary: "角色列表超过 8 个时可滚动，头像缺失时回退显示不再空白；左键点击地面或物品不再误触发原地施法；底层战斗与地图逻辑同步原版修正。"
-            },
-            {
-              date: "2026-11-09",
-              version: "v1.13c",
-              title: "内核函数移植校正：寻路与战斗判定",
-              summary: "继续按原版逐段移植并比对内核函数，本次覆盖寻路与碰撞、地牢与房间布局、技能与投射物、物品与怪物状态，减少卡墙、走位异常和战斗判定偏差，行为更贴近 1.13c。"
-            },
-            {
-              date: "2026-11-08",
-              version: "v1.13c",
-              title: "安达利尔震屏音效与传送点面板修复",
-              summary: "震屏结束时安达利尔的循环音效会正确停止，离开区域或重置时也不再残留；点击世界不会再误发传送包，关闭传送点后界面恢复可操作。"
-            },
-            {
-              date: "2026-11-07",
-              version: "v1.13c",
-              title: "移动端操作与界面修复",
-              summary: "手机端可长按或点按空白处快速选择技能，左右手技能轮盘新增圣骑士光环激活与页面切换；背包等面板改用原版石纹底板，修复 800x600 分辨率下的界面重叠，投射物撞墙判定与动作帧目标同步更贴近 1.13c。"
             }
           ]
         },
@@ -908,6 +908,30 @@
           copiedPrefix: "Copied: ",
           fallbackUpdates: [
             {
+              date: "2026-11-16",
+              version: "v1.13c",
+              title: "Kernel wave 5 done, crit fix",
+              summary: "Combat, skill, drop and quest logic now matches the original binary across 3939 of 4810 D2Game functions; out-of-range monster crit lookups are fixed and melee replays pass."
+            },
+            {
+              date: "2026-11-15",
+              version: "v1.13c",
+              title: "Kernel Showcase Page",
+              summary: "New interactive showcase page lets you explore 1,479 D2Common functions and call paths. Combat, monster AI and loot resolution now behave closer to the original build."
+            },
+            {
+              date: "2026-11-14",
+              version: "v1.13c",
+              title: "Kernel porting continues: spawn and room parity",
+              summary: "Aligned monster respawn, room population and dungeon layout logic line by line with the original binary, with expanded regression parity tests. No visible gameplay or visual change shipped this round."
+            },
+            {
+              date: "2026-11-13",
+              version: "v1.13c",
+              title: "Channel and item icon fixes",
+              summary: "Channeled Diablo/Baal skills survive online hits; granted auras get a speedbar row; corpse explode and icon fixes."
+            },
+            {
               date: "2026-11-12",
               version: "v1.13c",
               title: "Shift+Click adds 5 points at once",
@@ -918,30 +942,6 @@
               version: "v1.13c",
               title: "Damage breakdown & death fix",
               summary: "Panel lists per-weapon damage for dual wield and splits multi-element skill damage; monster death and revival fixed."
-            },
-            {
-              date: "2026-11-10",
-              version: "v1.13c",
-              title: "Char select and click fixes",
-              summary: "Character list now scrolls past eight slots and missing avatars fall back instead of going blank; left-clicking ground or items no longer casts in place; underlying combat and map logic synced with the original."
-            },
-            {
-              date: "2026-11-09",
-              version: "v1.13c",
-              title: "Deeper 1.13c Kernel Ports",
-              summary: "Kernel ports for pathing, collision, dungeon layout, skills, missiles and item state, diff-verified against 1.13c."
-            },
-            {
-              date: "2026-11-08",
-              version: "v1.13c",
-              title: "Quake audio & waypoint panel fixes",
-              summary: "Andariel quake loop now stops on shake end, area exit and reset; world clicks no longer send stray waypoint packets."
-            },
-            {
-              date: "2026-11-07",
-              version: "v1.13c",
-              title: "Mobile UI and control fixes",
-              summary: "On phones, long-press or tap empty space to pick skills; left and right skill wheels now support Paladin aura activation and page switching; panels use authentic stone-slab art, 800x600 overlap is fixed, and missile wall hits plus action-frame target sync now match 1.13c more closely."
             }
           ]
         }
