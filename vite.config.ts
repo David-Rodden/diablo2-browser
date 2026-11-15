@@ -32,7 +32,8 @@ function discoverPluginHtmlEntries(rootDir: string): Record<string, string> {
 }
 
 /**
- * Vite configuration for the Diablo II web client (`play.html` and `plugins/<id>/index.html`).
+ * Vite configuration for the Diablo II web client (`play.html`, `plugins/<id>/index.html`) and the
+ * standalone kernel showcase page (`showcase/k1/index.html`, which is not a game plugin).
  */
 export default defineConfig({
   plugins: [
@@ -150,7 +151,7 @@ export default defineConfig({
           } else if (req.url === '/trade.html' || req.url?.startsWith('/trade.html?')) {
             req.url = `/plugins/trade-hall/index.html${req.url.slice('/trade.html'.length)}`
           } else if (req.url === '/k1-showcase.html' || req.url?.startsWith('/k1-showcase.html?')) {
-            req.url = `/plugins/k1-showcase/index.html${req.url.slice('/k1-showcase.html'.length)}`
+            req.url = `/showcase/k1/index.html${req.url.slice('/k1-showcase.html'.length)}`
           } else if (req.url === '/ui/fonts/D2Exocet.ttf' || req.url?.startsWith('/ui/fonts/D2Exocet.ttf?')) {
             req.url = '/ui/fonts/ExocetBlizzardMedium.otf'
           } else if (req.url === '/ui/fonts/D2Formal436.ttf' || req.url?.startsWith('/ui/fonts/D2Formal436.ttf?')) {
@@ -169,7 +170,7 @@ export default defineConfig({
           } else if (req.url === '/trade.html' || req.url?.startsWith('/trade.html?')) {
             req.url = `/plugins/trade-hall/index.html${req.url.slice('/trade.html'.length)}`
           } else if (req.url === '/k1-showcase.html' || req.url?.startsWith('/k1-showcase.html?')) {
-            req.url = `/plugins/k1-showcase/index.html${req.url.slice('/k1-showcase.html'.length)}`
+            req.url = `/showcase/k1/index.html${req.url.slice('/k1-showcase.html'.length)}`
           } else if (req.url === '/ui/fonts/D2Exocet.ttf' || req.url?.startsWith('/ui/fonts/D2Exocet.ttf?')) {
             req.url = '/ui/fonts/ExocetBlizzardMedium.otf'
           } else if (req.url === '/ui/fonts/D2Formal436.ttf' || req.url?.startsWith('/ui/fonts/D2Formal436.ttf?')) {
@@ -199,7 +200,7 @@ export default defineConfig({
             source: tradeHtmlAsset.source,
           })
         }
-        const k1ShowcaseHtmlAsset = bundle['plugins/k1-showcase/index.html']
+        const k1ShowcaseHtmlAsset = bundle['showcase/k1/index.html']
         if (k1ShowcaseHtmlAsset && k1ShowcaseHtmlAsset.type === 'asset') {
           this.emitFile({
             type: 'asset',
@@ -250,6 +251,7 @@ export default defineConfig({
         index: resolve(__dirname, 'index.html'),
         play: resolve(__dirname, 'play.html'),
         ...discoverPluginHtmlEntries(__dirname),
+        'showcase-k1': resolve(__dirname, 'showcase/k1/index.html'),
         sw: resolve(__dirname, 'src/client/sw/sw.ts'),
       },
       output: {

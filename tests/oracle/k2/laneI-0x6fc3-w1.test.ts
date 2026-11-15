@@ -671,7 +671,8 @@ describe('Milestone 33 [K2] Lane K2-I: 45 D2Game SKILLS / ITEMS / AI / MONREG / 
         onCreateItemEx: (mem, game, pDrop) => {
           capturedIlvl = mem.u32(pDrop + 0x0c)
           capturedFlags2 = mem.u32(pDrop + 0x80)
-          const { pItem } = allocItemUnit(mem, game, mem.u32(pDrop + 0x14), 501, mem.u32(pDrop + 0x30))
+          expect(mem).toBe(m)
+          const { pItem } = allocItemUnit(m, game, mem.u32(pDrop + 0x14), 501, mem.u32(pDrop + 0x30))
           return pItem
         },
       },

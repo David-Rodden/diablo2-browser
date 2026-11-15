@@ -13,27 +13,17 @@ first seen there may also run again later (coverage is one-shot).
 | Module | executed | ported/dv | gap | gap bytes |
 |---|---:|---:|---:|---:|
 | D2Common | 572 | 572 | 0 | 0 |
-| D2Game | 473 | 463 | 10 | 1664 |
+| D2Game | 473 | 473 | 0 | 0 |
 
 ## D2Common (0)
 
 | first | VA | size | status | name |
 |---:|---|---:|---|---|
 
-## D2Game (10)
+## D2Game (0)
 
 | first | VA | size | status | name |
 |---:|---|---:|---|---|
-| F1086 | `0x6FC95210` | 65 | unported | D2Game_6FC95210 |
-| F1086 | `0x6FCB0F30` | 262 | unported | D2Game_6FCB0F30 |
-| F1087 | `0x6FC96740` | 593 | unported | D2Game_6FC96740 |
-| F1087 | `0x6FC9A260` | 134 | unported | D2Game_6FC9A260 |
-| F1087 | `0x6FCABA50` | 60 | unported | D2Game_6FCABA50 |
-| F1106 | `0x6FC21480` | 73 | unported | D2Game_6FC21480 |
-| F1106 | `0x6FC2F2F0` | 58 | unported | D2Game_6FC2F2F0 |
-| F1106 | `0x6FC2F700` | 115 | unported | D2Game_6FC2F700 |
-| F1533 | `0x6FC21CD0` | 82 | unported | D2Game_6FC21CD0 |
-| F1533 | `0x6FCAB010` | 222 | unported | D2Game_6FCAB010 |
 
 ## Executed ported/diff-verified functions on an impure kernFile (0)
 

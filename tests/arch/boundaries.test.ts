@@ -334,7 +334,7 @@ describe('Architectural Boundaries & 5-Module + Plugin Isolation (Rules 1â€“12 â
       }
     }
 
-    // 2. plugins/<id>/** may only import within plugins/<id>/**, src/common/**, src/d2kern-113c/**, src/netproto/index.ts, and src/client/plugin-host/api.ts
+    // 2. plugins/<id>/** may only import within plugins/<id>/**, src/common/**, src/netproto/index.ts, and src/client/plugin-host/api.ts
     for (const pluginId of pluginIds) {
       const pluginDir = resolve(PLUGINS_DIR, pluginId)
       const pluginTsFiles = collectTsFiles(pluginDir)
@@ -353,11 +353,10 @@ describe('Architectural Boundaries & 5-Module + Plugin Isolation (Rules 1â€“12 â
 
           const isSamePlugin = resolvedRel.startsWith(`plugins/${pluginId}/`)
           const isCommon = resolvedRel.startsWith('src/common/')
-          const isD2Kern = resolvedRel.startsWith('src/d2kern-113c/')
           const isNetprotoIndex = resolvedRel === 'src/netproto/index.ts'
           const isPluginHostApi = resolvedRel === 'src/client/plugin-host/api.ts'
 
-          if (!isSamePlugin && !isCommon && !isD2Kern && !isNetprotoIndex && !isPluginHostApi) {
+          if (!isSamePlugin && !isCommon && !isNetprotoIndex && !isPluginHostApi) {
             importViolations.push(`${relFile}: forbidden import '${spec}' -> '${resolvedRel}'`)
           }
         }

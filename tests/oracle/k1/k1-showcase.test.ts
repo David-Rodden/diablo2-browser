@@ -3,7 +3,7 @@ import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { BrowserPathSandboxEngine } from '../../../plugins/k1-showcase/path-browser-engine.ts'
+import { BrowserPathSandboxEngine } from '../../../showcase/k1/path-browser-engine.ts'
 import {
   parsePathVectorsBinaryInBrowser,
   type ShowcaseCallgraphResponse,
@@ -14,7 +14,7 @@ import {
   type ShowcasePathVectorsJsonResponse,
   type ShowcasePathWorldResponse,
   type ShowcaseReplayPayload,
-} from '../../../plugins/k1-showcase/types.ts'
+} from '../../../showcase/k1/types.ts'
 import { shouldRedirectUnknownPageToHome } from '../../../src/baker/io/server-status-probe.ts'
 import { createK1ShowcaseHttpMiddleware } from '../../../tools/oracle/k1-showcase-server.ts'
 import viteConfig from '../../../vite.config.ts'
@@ -46,13 +46,13 @@ describe('[K1] Interactive Visual Showcase Backend, Browser PATH Engine & Route 
     })
   })
 
-  it('wires /k1-showcase.html, plugins/k1-showcase/index.html, and Vite build inputs without redirecting to /', () => {
-    const pluginHtml = resolve(REPO_ROOT, 'plugins/k1-showcase/index.html')
+  it('wires /k1-showcase.html, showcase/k1/index.html, and Vite build inputs without redirecting to /', () => {
+    const showcaseHtml = resolve(REPO_ROOT, 'showcase/k1/index.html')
     const publicHtml = resolve(REPO_ROOT, 'public/k1-showcase.html')
-    expect(existsSync(pluginHtml)).toBe(true)
+    expect(existsSync(showcaseHtml)).toBe(true)
     expect(existsSync(publicHtml)).toBe(true)
 
-    const html = readFileSync(pluginHtml, 'utf8')
+    const html = readFileSync(showcaseHtml, 'utf8')
     expect(html).toContain('/ui/fonts/D2Exocet.ttf')
     expect(html).toContain('/ui/fonts/D2Formal436.ttf')
     expect(html).toContain('/ui/fonts/Chi.ttf')
@@ -63,7 +63,7 @@ describe('[K1] Interactive Visual Showcase Backend, Browser PATH Engine & Route 
     expect(html).toContain('overflow-y: auto')
 
     const inputs = (viteConfig.build?.rollupOptions?.input ?? {}) as Record<string, string>
-    expect(inputs['plugin-k1-showcase']).toBe(pluginHtml)
+    expect(inputs['showcase-k1']).toBe(showcaseHtml)
     expect(shouldRedirectUnknownPageToHome('/k1-showcase.html', { rootDir: REPO_ROOT })).toBe(false)
   })
 

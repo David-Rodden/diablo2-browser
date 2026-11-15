@@ -13,25 +13,17 @@ first seen there may also run again later (coverage is one-shot).
 | Module | executed | ported/dv | gap | gap bytes |
 |---|---:|---:|---:|---:|
 | D2Common | 571 | 571 | 0 | 0 |
-| D2Game | 468 | 460 | 8 | 1988 |
+| D2Game | 468 | 468 | 0 | 0 |
 
 ## D2Common (0)
 
 | first | VA | size | status | name |
 |---:|---|---:|---|---|
 
-## D2Game (8)
+## D2Game (0)
 
 | first | VA | size | status | name |
 |---:|---|---:|---|---|
-| F2 | `0x6FC57110` | 120 | unported | D2Game_6FC57110 |
-| F719 | `0x6FCB0F30` | 262 | unported | D2Game_6FCB0F30 |
-| F719 | `0x6FD13360` | 170 | unported | D2Game_6FD13360 |
-| F720 | `0x6FC96740` | 593 | unported | D2Game_6FC96740 |
-| F837 | `0x6FC21CD0` | 82 | unported | D2Game_6FC21CD0 |
-| F837 | `0x6FCAB010` | 222 | unported | D2Game_6FCAB010 |
-| F1099 | `0x6FCAB710` | 64 | unported | D2Game_6FCAB710 |
-| F1099 | `0x6FCC2100` | 475 | unported | D2Game_6FCC2100 |
 
 ## Executed ported/diff-verified functions on an impure kernFile (0)
 

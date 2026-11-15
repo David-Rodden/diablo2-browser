@@ -2,7 +2,7 @@
  * Diablo II v1.13c Pure Kernel Final 11 D2Game.dll Functions for `a1-town-walk` and `a1c-bloodmoor-fallen`.
  *
  * Implements the remaining 11 executed `D2Game.dll` functions (2,308 bytes total) 1:1 on `Memory113c`
- * (`SparseMemory113c`) with zero legacy module imports, zero array sorting, and zero `??`.
+ * (`SparseMemory113c`) with zero legacy module imports, zero array sorting, and zero nullish coalescing.
  */
 import type { Memory113c, SparseMemory113c } from '../mem/sparse-memory.ts'
 import { UNITS_GetPlayerData113c } from '../common/composit.ts'
@@ -40,6 +40,7 @@ import {
   UNITROOM_ClearUnitRoom113c,
   UNITROOM_ClearUpdateQueue113c,
   UNITROOM_RefreshUnit113c,
+  UNITS_AllocStaticPath113c,
   UNITS_FreeStaticPath113c,
   UNITS_FreeUnit113c,
   UNITS_GetPathRoomRefreshFlag113c,
@@ -77,7 +78,11 @@ import {
 import { PLAYER_StartModeAttack113c } from './combat-a1c-113c.ts'
 import { SUNIT_GetServerUnit113c } from './game-strc.ts'
 import { MONSTER_ClearModeEvents113c, UNITS_ChangeAnimMode113c } from './monster-events.ts'
-import { OBJECTS_InitObjectUnit113c } from './objects-populate-113c.ts'
+import {
+  OBJECTS_InitObjectUnit113c,
+  OBJECTS_SpawnRandomObjectInRoom113c,
+  type ObjectSpawnCallees113c,
+} from './objects-populate-113c.ts'
 import {
   OBJECTS_SpawnDensityObjectsInRoom113c,
   PLAYER_GetParam158_113c,
@@ -87,6 +92,7 @@ import {
   SUNIT_InitUnitSeed113c,
   SUNIT_PlaceServerUnitInRoom113c,
   SUNIT_ValidatePathTargetUnit113c,
+  type RegpopSpawnHooks113c,
 } from './regpop-spawn-113c.ts'
 import { PLAYER_DrainRunStamina113c } from './replay-kernel-113c.ts'
 import { EVENT_FreeNode113c, EVENT_RemoveUnitEvents113c } from './timer-wheel.ts'
@@ -239,6 +245,29 @@ export function ROOM_DeactivateAnyUnitInRoom113c(
  *
  * @va D2Game:0x6FC53260
  */
+const SECONDARY_TORCH_SPAWN_CALLEES_113C: ObjectSpawnCallees113c = {
+  initObject(mem, pUnit, pg, nUnitId, pr, x, y) {
+    OBJECTS_InitObjectUnit113c(mem, pUnit, pg, nUnitId, pr, x, y)
+  },
+  placeServerUnit(mem, y, pUnit, pr, x, pg, a2) {
+    SUNIT_PlaceServerUnitInRoom113c(mem, pr, y, pUnit, x, pg, a2)
+  },
+}
+
+const SECONDARY_TORCH_DENSITY_HOOKS_113C: RegpopSpawnHooks113c = {
+  onSpawnRandomObjectInRoom(mem, nSizeX, nSizeY, nObjectId, pg, _nSubType, pr) {
+    return OBJECTS_SpawnRandomObjectInRoom113c(
+      mem,
+      pg,
+      nObjectId,
+      nSizeX,
+      nSizeY,
+      pr,
+      SECONDARY_TORCH_SPAWN_CALLEES_113C,
+    )
+  },
+}
+
 export function OBJECTS_SpawnDensityWithSecondaryTorch113c(
   m: Memory113c,
   pGame: number,
@@ -246,7 +275,9 @@ export function OBJECTS_SpawnDensityWithSecondaryTorch113c(
   nDensity: number,
   nObjectId: number,
   nProb: number,
+  hooks?: RegpopSpawnHooks113c,
 ): number {
+  const activeHooks = hooks !== undefined ? hooks : SECONDARY_TORCH_DENSITY_HOOKS_113C
   const pObj = OBJECTS_SpawnDensityObjectsInRoom113c(
     m,
     pGame,
@@ -254,6 +285,7 @@ export function OBJECTS_SpawnDensityWithSecondaryTorch113c(
     nDensity,
     nObjectId,
     nProb,
+    activeHooks,
   ) >>> 0
   if (pObj !== 0) {
     const pObjRoom = UNITS_GetRoom113c(m, pObj) >>> 0
@@ -272,14 +304,16 @@ export function OBJECTS_SpawnDensityWithSecondaryTorch113c(
         const y = pPath !== 0 ? m.u32((pPath + 0x10) >>> 0) | 0 : 0
         const pSecondary = UNIT_Alloc113c(m, 2) >>> 0
         if (pSecondary !== 0) {
+          m.setU32(pSecondary, 2)
           m.setU32((pSecondary + 0x04) >>> 0, 0x67)
-          m.setU32((pSecondary + 0x80) >>> 0, m.u32((pGame + 0x1c) >>> 0))
-          m.setU32((pSecondary + 0x84) >>> 0, pGame >>> 0)
+          m.setU32((pSecondary + 0x08) >>> 0, m.u32((pGame + 0x1c) >>> 0))
+          m.setU32((pSecondary + 0x80) >>> 0, pGame >>> 0)
           let flagsEx = m.u32((pSecondary + 0xc8) >>> 0) >>> 0
           flagsEx =
-            m.u16((pGame + 0x68) >>> 0) !== 0
+            m.u32((pGame + 0x70) >>> 0) !== 0
               ? (flagsEx | 0x02000000) >>> 0
               : (flagsEx & 0xfdffffff) >>> 0
+          m.setU32((pSecondary + 0xc8) >>> 0, flagsEx)
           m.setU32((pSecondary + 0xc8) >>> 0, (flagsEx | 0x04000000) >>> 0)
           const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pObjRoom)
           const nAct = DRLG_GetActNoFromLevelId113c(m, nLevelId) & 0xff
@@ -289,16 +323,16 @@ export function OBJECTS_SpawnDensityWithSecondaryTorch113c(
           SUNIT_InitUnitSeed113c(m, pSecondary, (pGame + 0xd0) >>> 0)
           m.setU32((pSecondary + 0xc4) >>> 0, (m.u32((pSecondary + 0xc4) >>> 0) | 0x10) >>> 0)
           m.setU32((pSecondary + 0xd0) >>> 0, 0x0b)
-          let nextId = (m.u32((pGame + 0x98) >>> 0) + 1) >>> 0
-          if (nextId === 0xffffffff) nextId = 1
-          m.setU32((pGame + 0x98) >>> 0, nextId)
-          m.setU32((pSecondary + 0x0c) >>> 0, nextId)
+          let nextId = ((m.u32((pGame + 0x98) >>> 0) | 0) + 1) | 0
+          if (nextId === -1) nextId = 1
+          m.setU32((pGame + 0x98) >>> 0, nextId >>> 0)
           const pObjData = m.alloc(0x38) >>> 0
-          m.fill(pObjData, 0x38, 0)
           m.setU32((pSecondary + 0x14) >>> 0, pObjData)
+          m.fill(pObjData, 0x38, 0)
           m.setU32(pObjData, DATATBLS_GetObjectsTxtRecord113c(m, 0x67) >>> 0)
           m.setU32((pSecondary + 0x10) >>> 0, 0)
-          OBJECTS_InitObjectUnit113c(m, pSecondary, pGame, nextId, pObjRoom, x, y)
+          UNITS_AllocStaticPath113c(m, pSecondary)
+          OBJECTS_InitObjectUnit113c(m, pSecondary, pGame, nextId >>> 0, pObjRoom, x, y)
           SUNIT_PlaceServerUnitInRoom113c(m, pObjRoom, y, pSecondary, x, pGame, 1)
         }
       }

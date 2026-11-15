@@ -658,7 +658,7 @@ describe('Milestone 33 [K2] Lane K2-H: 45 D2Game 0x6FC21020..0x6FC2C310 Function
       const sub = STATLIST_AllocList113c(m, 0, 0, 0, 1)
       STATLIST_SetState113c(m, sub, 0x72)
       STATLIST_SetSkillId113c(m, sub, skillId)
-      STATLIST_MergeStatLists113c(m, pPlayer, sub, true)
+      STATLIST_MergeStatLists113c(m, pPlayer, sub, 1)
       return sub
     }
 
@@ -819,7 +819,7 @@ describe('Milestone 33 [K2] Lane K2-H: 45 D2Game 0x6FC21020..0x6FC2C310 Function
     const pPlrAlignSub = STATLIST_AllocList113c(m, 0, 0, 0, 1)
     STATLIST_SetState113c(m, pPlrAlignSub, 0x69)
     STATLIST_SetStat113c(m, pPlrAlignSub, 0xac, 2, 0)
-    STATLIST_MergeStatLists113c(m, pPlayer, pPlrAlignSub, true)
+    STATLIST_MergeStatLists113c(m, pPlayer, pPlrAlignSub, 1)
     const { pRoom } = attachActiveRoom(m, pPlayer, 2, 100, 100)
     // Configure room interior bounds (+0x4C..+0x58: nSubtileX, nSubtileY, nSubtileWidth, nSubtileHeight)
     m.setU32(pRoom + 0x4c, 50)
