@@ -19,7 +19,13 @@ import {
   type ReplayResult113c,
 } from './replay-113c.ts'
 
-export const REPLAY_SCENARIOS_113C = ['a1-town-walk', 'a1c-bloodmoor-fallen'] as const
+export const REPLAY_SCENARIOS_113C = [
+  'a1-town-walk',
+  'a1c-bloodmoor-fallen',
+  'a1-bloodmoor-melee',
+  'p52-dot-ticks',
+  'p52-item-defense',
+] as const
 
 export interface Horizon113c {
   readonly bootFrame: number

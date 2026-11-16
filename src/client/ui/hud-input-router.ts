@@ -1726,7 +1726,20 @@ export function handleHudMouseUp(
         hud.inventory.visible = true
         hud.rightPanel = 'inv'
       } else {
-        if (!hud.inventory.visible && hud.rightPanel === 'inv') hud.rightPanel = 'none'
+        if (!hud.inventory.visible && hud.rightPanel === 'inv') {
+          hud.rightPanel = 'none'
+          if (
+            hud.leftPanel === 'orifice' ||
+            hud.leftPanel === 'imbue' ||
+            hud.leftPanel === 'add_sockets' ||
+            hud.leftPanel === 'personalize'
+          ) {
+            const prevLeft = hud.leftPanel
+            hud.leftPanel = 'none'
+            ;(hud.worldPanels as any).activePanel = 'none'
+            hud.leaveLeftPanel(prevLeft)
+          }
+        }
         if (!hud.skillTree.visible && hud.rightPanel === 'skill') hud.rightPanel = 'none'
       }
       hud.syncPublishedState()
@@ -1852,9 +1865,16 @@ export function handleHudMouseDown(
     if (hud.inventory.cursorItem !== null) {
       e.preventDefault()
       e.stopPropagation()
-      if (hud.tradeHallMode) {
-        // Trade Hall safety guard: never drop a held cursor item onto the unrendered town ground
-        hud.onPlayUiSound?.(3)
+      if (
+        hud.tradeHallMode ||
+        hud.leftPanel === 'orifice' ||
+        hud.leftPanel === 'imbue' ||
+        hud.leftPanel === 'add_sockets' ||
+        hud.leftPanel === 'personalize'
+      ) {
+        // Trade Hall & 1.13c useitem.cpp (0x6fb50320) safety guard: never drop a held cursor item
+        // onto the ground when clicking outside the 1-slot useitem / inventory panels (e.g. widescreen gap).
+        if (hud.tradeHallMode) hud.onPlayUiSound?.(3)
         hud.syncPublishedState()
         return
       }
@@ -2179,6 +2199,8 @@ export function handleHudMouseDown(
       }
       if (typeof (hud.worldPanels as any).handleActiveLeftPanelClick === 'function') {
         const priorSlotItem = hud.worldPanels.questRewardItem
+        const priorCursorItem = hud.inventory.cursorItem
+        let confirmedUseItem = false
         const handled = (hud.worldPanels as any).handleActiveLeftPanelClick(
           dockKind,
           clickX,
@@ -2279,6 +2301,7 @@ export function handleHudMouseDown(
               }
             },
             onConfirmQuestReward: (itemId: number, npcId = 0) => {
+              confirmedUseItem = true
               if (typeof (hud.worldPanels as any).onConfirmQuestRewardClick === 'function') {
                 ;(hud.worldPanels as any).onConfirmQuestRewardClick(itemId, npcId)
               } else if (typeof hud.onConfirmQuestRewardClick === 'function') {
@@ -2294,7 +2317,10 @@ export function handleHudMouseDown(
               }
               hud.leftPanel = 'none'
               ;(hud.worldPanels as any).activePanel = 'none'
-              if (
+              if (dockKind === 'orifice') {
+                hud.rightPanel = 'none'
+                hud.inventory.visible = false
+              } else if (
                 dockKind === 'imbue' ||
                 dockKind === 'add_sockets' ||
                 dockKind === 'personalize' ||
@@ -2311,6 +2337,24 @@ export function handleHudMouseDown(
           hud.viewportProfile.height,
         )
         if (handled) {
+          if (
+            !confirmedUseItem &&
+            (dockKind === 'orifice' ||
+              dockKind === 'imbue' ||
+              dockKind === 'add_sockets' ||
+              dockKind === 'personalize')
+          ) {
+            if (priorCursorItem !== null && hud.worldPanels.questRewardItem === priorCursorItem) {
+              ;(hud as any).playItemDropUiSound?.(priorCursorItem)
+            } else if (
+              priorCursorItem === null &&
+              priorSlotItem !== null &&
+              hud.inventory.cursorItem === priorSlotItem &&
+              hud.worldPanels.questRewardItem === null
+            ) {
+              hud.onPlayUiSound?.(4)
+            }
+          }
           hud.syncPublishedState()
           return
         }
@@ -2573,6 +2617,17 @@ export function handleHudMouseDown(
         hud.rightPanel = 'inv'
       } else if (!hud.inventory.visible) {
         hud.rightPanel = 'none'
+        if (
+          hud.leftPanel === 'orifice' ||
+          hud.leftPanel === 'imbue' ||
+          hud.leftPanel === 'add_sockets' ||
+          hud.leftPanel === 'personalize'
+        ) {
+          const prevLeft = hud.leftPanel
+          hud.leftPanel = 'none'
+          ;(hud.worldPanels as any).activePanel = 'none'
+          hud.leaveLeftPanel(prevLeft)
+        }
       }
       hud.syncPublishedState()
       return

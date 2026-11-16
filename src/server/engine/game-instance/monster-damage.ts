@@ -17,7 +17,7 @@ import type { ServerEvent } from '../../../netproto/index.ts'
 import { computeEquippedArmorPieceDefense113c } from '../../items/server-item-data.ts'
 import { scaleMercenaryBossDamage113c } from '../../ai/mercenary-ai.ts'
 import type { SummonedPetUnit } from '../../ai/summon-manager.ts'
-import { calculateCrushingBlow113c, computeKnockbackStep113c, executeSUnitDmg, resolveHitClassCode113c, rollItemKnockback113c, shouldEnterGetHit113c, type SUnitDmgPacket, type CombatUnitContext } from '../combat-pipeline.ts'
+import { calculateCrushingBlow113c, computeKnockbackStep113c, executeSUnitDmg, resolveHitClassCode113c, rollItemKnockback113c, shouldEnterGetHit113c, shouldMonsterEnterBlockMode113c, type SUnitDmgPacket, type CombatUnitContext } from '../combat-pipeline.ts'
 import { createDefaultNpcIntroData } from '../../save/d2s-writer.ts'
 import { FIXED_ONE, UnitStatList } from '../stat-list.ts'
 import { allocateEvent3Seq113c, computeMonsterBaseDamageRegen113c } from '../statregen-dot-113c.ts'
@@ -652,17 +652,7 @@ function applyDamageToMonster(this: GameInstanceHost,
         !wasAlreadyDead113c &&
         !monster.dead
       ) {
-        monster.mode = MONMODE_BLOCK
-        this.broadcastToArea(monster.areaId, {
-          type: 'UnitMode',
-          unitType: 1,
-          id: monster.unitId,
-          mode: MONMODE_BLOCK,
-          lifePct:
-            monster.maxHp > 0
-              ? Math.max(0, Math.round((monster.hp / monster.maxHp) * 128))
-              : 0,
-        })
+        this.enterMonsterBlockMode113c(monster)
       }
       return false
     }
@@ -844,17 +834,7 @@ function applyDamageToMonster(this: GameInstanceHost,
           !wasAlreadyDead113c &&
           !monster.dead
         ) {
-          monster.mode = MONMODE_BLOCK
-          this.broadcastToArea(monster.areaId, {
-            type: 'UnitMode',
-            unitType: 1,
-            id: monster.unitId,
-            mode: MONMODE_BLOCK,
-            lifePct:
-              monster.maxHp > 0
-                ? Math.max(0, Math.round((monster.hp / monster.maxHp) * 128))
-                : 0,
-          })
+          this.enterMonsterBlockMode113c(monster)
         }
         return false
       }
@@ -916,17 +896,7 @@ function applyDamageToMonster(this: GameInstanceHost,
         !wasAlreadyDead113c &&
         !monster.dead
       ) {
-        monster.mode = MONMODE_BLOCK
-        this.broadcastToArea(monster.areaId, {
-          type: 'UnitMode',
-          unitType: 1,
-          id: monster.unitId,
-          mode: MONMODE_BLOCK,
-          lifePct:
-            monster.maxHp > 0
-              ? Math.max(0, Math.round((monster.hp / monster.maxHp) * 128))
-              : 0,
-        })
+        this.enterMonsterBlockMode113c(monster)
       }
       return false
     }
@@ -2290,6 +2260,35 @@ function maybeEnterMonsterHitRecovery(this: GameInstanceHost,
 }
 
 
+/**
+ * 1.13c blocked hit on a monster (`D2Game.dll` `SUNITDMG_ExecuteEvents` `0x6FCFD092..0x6FCFD0E9`): switch to
+ * `MONMODE_BLOCK (6)` and broadcast it only when {@link shouldMonsterEnterBlockMode113c} allows it. Diablo
+ * (`243/333/705`) and monsters without `MonStats2.mBL` (Baal `544/570/709`) keep their current mode, so a block
+ * never cuts a boss skill animation. Returns `true` when the mode changed.
+ */
+function enterMonsterBlockMode113c(this: GameInstanceHost, monster: InternalMonsterRecord): boolean {
+  if (monster.dead) return false
+  const base = monster.hcIdx * MONSTER_PATH_DATA_STRIDE + 12
+  const hasModeBL =
+    monster.hcIdx >= 0 && base < MONSTER_PATH_DATA.length
+      ? (MONSTER_PATH_DATA[base]! & (1 << MONMODE_BLOCK)) !== 0
+      : true
+  if (!shouldMonsterEnterBlockMode113c(monster.hcIdx, hasModeBL)) return false
+  monster.mode = MONMODE_BLOCK
+  this.broadcastToArea(monster.areaId, {
+    type: 'UnitMode',
+    unitType: 1,
+    id: monster.unitId,
+    mode: MONMODE_BLOCK,
+    lifePct:
+      monster.maxHp > 0
+        ? Math.max(0, Math.round((monster.hp / monster.maxHp) * 128))
+        : 0,
+  })
+  return true
+}
+
+
 
 /**
  * Confusion (59) / Attract (57) / Conversion (53) monster-vs-monster attack. Runs the
@@ -2424,17 +2423,7 @@ function attackMonsterTarget(this: GameInstanceHost,
   }, this.rng)
   if (!dmgOut.hit) {
     if (dmgOut.avoidedReason === 'block') {
-      target.mode = MONMODE_BLOCK
-      this.broadcastToArea(target.areaId, {
-        type: 'UnitMode',
-        unitType: 1,
-        id: target.unitId,
-        mode: MONMODE_BLOCK,
-        lifePct:
-          target.maxHp > 0
-            ? Math.max(0, Math.round((target.hp / target.maxHp) * 128))
-            : 0,
-      })
+      this.enterMonsterBlockMode113c(target)
     }
     return
   }
@@ -2814,6 +2803,7 @@ export interface MonsterDamageMethods {
   directCreditedPlayerForMonster(monster: InternalMonsterRecord): InternalPlayerRecord | undefined
   creditedPlayerForMonsterKill(attacker: InternalMonsterRecord, target?: InternalMonsterRecord): InternalPlayerRecord | undefined
   knockbackMonster(monster: InternalMonsterRecord, fromX: number, fromY: number): boolean
+  enterMonsterBlockMode113c(monster: InternalMonsterRecord): boolean
   broadcastExplosionMissile(monster: InternalMonsterRecord, missileClassId: number): void
   emitLightningEnchantedBoltsOnStruck113c(monster: InternalMonsterRecord): void
   emitScarabBugLightningBurst113c(monster: InternalMonsterRecord): void
@@ -2839,6 +2829,7 @@ export const monsterDamageMethods: Record<keyof MonsterDamageMethods, unknown> =
   directCreditedPlayerForMonster,
   creditedPlayerForMonsterKill,
   knockbackMonster,
+  enterMonsterBlockMode113c,
   broadcastExplosionMissile,
   emitLightningEnchantedBoltsOnStruck113c,
   emitScarabBugLightningBurst113c,

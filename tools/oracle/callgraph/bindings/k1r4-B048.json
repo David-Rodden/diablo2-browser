@@ -14,8 +14,8 @@
     "name": "LOGGING_WriteLockedEntry",
     "kernFile": "src/d2kern-113c/common/logging.ts",
     "tsSymbol": "LOGGING_WriteLockedEntry113c",
-    "status": "ported",
-    "diffEvidence": "tests/oracle/k1/laneA-B048-unit-statlist.test.ts (host-I/O void function calling MSVCRT fwrite/fflush + Fog.#10050/LeaveCriticalSection; verified via direct memory-probe unit tests)"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k1/laneD-ported29.test.ts (real-DLL vectors via k1r13-laneD-ported29-emitter.c -> k1r13-i14d-1.ndjson); tests/oracle/k1/laneA-B048-unit-statlist.test.ts (host-I/O void function calling MSVCRT fwrite/fflush + Fog.#10050/LeaveCriticalSection; verified via direct memory-probe unit tests)"
   },
   {
     "module": "D2Common",

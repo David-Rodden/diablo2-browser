@@ -412,7 +412,7 @@ async function runWalkSubcommand(
   let serverCorrections = 0
 
   adapter.onEvent((ev) => {
-    if (ev.type === 'UnitReassign' && ev.unitType === 'player' && ev.id === world.selfId) {
+    if (ev.type === 'UnitReassign' && unitTypeToId(ev.unitType) === 0 && ev.id === world.selfId) {
       serverCorrections++
       const before = predictor.getSnapshot()
       const drift = Math.hypot(ev.at.x - before.logicalX, ev.at.y - before.logicalY)

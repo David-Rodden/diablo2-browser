@@ -154,7 +154,10 @@ export function gapMarkdown113c(s: GapSummary113c): string {
 }
 
 function main(argv: readonly string[]): void {
-  const names = argv.length > 0 ? argv : ['a1-town-walk', 'a1c-bloodmoor-fallen']
+  const names =
+    argv.length > 0
+      ? argv
+      : ['a1-town-walk', 'a1c-bloodmoor-fallen', 'a1-bloodmoor-melee', 'p52-dot-ticks', 'p52-item-defense']
   const dir = join(REPO_ROOT_113C, 'docs/oracle/k1-replay')
   mkdirSync(dir, { recursive: true })
   for (const n of names) {

@@ -19,6 +19,7 @@
  */
 
 export const D2TV_MAGIC = 0x56543244 // 'D2TV'
+export const D2TV_KIND_SKILLCALC = 'SKLCALC'
 
 export interface VectorHeader {
   magic: number

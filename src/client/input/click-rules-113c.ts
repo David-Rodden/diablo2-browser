@@ -363,6 +363,13 @@ export function approxDistance113c(dx: number, dy: number): number {
 /** Hold-walk repeat window in game frames: `cmp eax,0x7 ; jae` @0x6fac884c. */
 export const HOLD_WALK_FRAME_WINDOW_113C = 7
 
+/**
+ * 1.13c D2Game `0x6FCEBF50` (`C2S 0x01 WalkToLocation` / `C2S 0x03 RunToLocation`) →
+ * `0x6FCEB690`: `mov ebx, 0x32` (`50` sub-tiles); rejects any walk/run location packet where
+ * `|unitX - targetX| > 50 || |unitY - targetY| > 50` (`cmp eax, ebx ; jg`).
+ */
+export const MAX_WALK_PACKET_AXIS_DELTA_113C = 50
+
 export interface WalkAdjustInput113c {
   readonly phase: 'down' | 'hold'
   /** ClickInfo flag 0x40 (run key / always-run with stamina). */
@@ -388,9 +395,10 @@ export type WalkAdjustResult113c =
   | { readonly accepted: true; readonly x: number; readonly y: number; readonly lastWalkFrame: number }
 
 /**
- * 1.13c D2Client 0x6fac86a0 walk-click adjust + hold throttle (called before every walk/run send):
- * - reject when `|dx| >= 0x100 || |dy| >= 0x100` (0x6fac873c / 0x6fac874f) or `dx == dy == 0`
- *   (0x6fac8762..0x6fac8772);
+ * 1.13c D2Client 0x6fac86a0 walk-click adjust + hold throttle (called before every walk/run send),
+ * combined with 1.13c D2Game 0x6fceb690 (`ebx = 0x32` = 50 sub-tiles per-axis server walk/run gate):
+ * - reject when `|dx| >= 0x100 || |dy| >= 0x100` (0x6fac873c / 0x6fac874f),
+ *   `|dx| > 50 || |dy| > 50` (D2Game 0x6fceb690), or `dx == dy == 0` (0x6fac8762..0x6fac8772);
  * - `dist = max(1, approxDistance(dx, dy))` (0x6fac877b..0x6fac878e);
  * - minimum step `N`: down → run ? 5 : 3, hold → run ? 5 : 4 (0x6fac8796..0x6fac87ca);
  * - `dist < N` → `dx = trunc(dx * (N / dist))`, `dy = trunc(dy * (N / dist))` (x87 `fidiv`/`fmul`,
@@ -413,7 +421,12 @@ export function walkAdjust113c(input: WalkAdjustInput113c): WalkAdjustResult113c
   }
   let dx = input.clickX - input.playerX
   let dy = input.clickY - input.playerY
-  if (Math.abs(dx) >= 0x100 || Math.abs(dy) >= 0x100) {
+  if (
+    Math.abs(dx) >= 0x100 ||
+    Math.abs(dy) >= 0x100 ||
+    Math.abs(dx) > MAX_WALK_PACKET_AXIS_DELTA_113C ||
+    Math.abs(dy) > MAX_WALK_PACKET_AXIS_DELTA_113C
+  ) {
     return { accepted: false, lastWalkFrame: input.lastWalkFrame }
   }
   if (Math.abs(dx) < 1 && Math.abs(dy) < 1) {

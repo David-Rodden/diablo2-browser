@@ -387,14 +387,17 @@ describe('Issue #1367 — Arcane Sanctuary curved staircase & unitSize=2 diagona
     })
 
     // Click 3: Walk off the stairs from (25435, 5441) to Waypoint (25449, 5449)
+    // Matches 1.13c D2Common_10142 PATH_Toward_6FDAA9F0 (0x6FDB78B0), which stops at (448, 448)
+    // once sub_6FDABA50((448, 448), (449, 449)) == 1 <= field_14 (1).
+    const downWpSrv = runServer113cStraightPath(room, 435, 441, 449, 449)
+    expect(downWpSrv.endPos).toEqual({ x: 448, y: 448 })
     const downWpRec = mapper.triggerPrimaryWorldAction(ox + 449, oy + 449, null, 9000)
     expect(downWpRec).not.toBeNull()
     predictor.update(4000)
     const atWaypoint = predictor.getSnapshot()
-    expect({ x: Math.round(atWaypoint.x) - ox, y: Math.round(atWaypoint.y) - oy }).toEqual({
-      x: 449,
-      y: 449,
-    })
+    expect({ x: Math.round(atWaypoint.x) - ox, y: Math.round(atWaypoint.y) - oy }).toEqual(
+      downWpSrv.endPos,
+    )
 
     // Verify traceTowardLocal and findPathWorld export parity
     const worldRes = findPathWorld(view, ox + 439, oy + 443, ox + 427, oy + 426, { unitSize: 2 })
