@@ -225,6 +225,15 @@ static void hook_module_iat_ptr(HMODULE m, void *origFn, void *hookFn) {
 static uint8_t g_captured_wire[2048];
 static int g_captured_wire_len = 0;
 
+/* Deterministic 25 fps (40 ms/frame) virtual clock for D2Game.dll GetTickCount
+ * (IAT 0x6FD18D10), ensuring PLAYER_StepModeWalkOrRun (0x6FC99BE7: +25 ms gate
+ * on pPlayerData+0xA4) records the 20-entry breadcrumb ring (pPlayerData+0xA8)
+ * identically to 25 fps Game.exe regardless of unthrottled host CPU speed. */
+static volatile DWORD g_virtual_tick_ms = 0x00100000u;
+static DWORD __stdcall hook_D2Game_GetTickCount(void) {
+  return g_virtual_tick_ms;
+}
+
 static int __stdcall hook_qserver_send(void *pServer,
                                        int nClientId,
                                        const uint8_t *pWire,
@@ -768,6 +777,11 @@ int main(int argc, char **argv) {
   /* Force deterministic 0x400 (1.0x 40ms) frame delta in D2Game.#10008 (0x6FC4E26F). */
   *(uint32_t *)(0x6FD2E35Cu + d2gameRebase) = 1u;
   volatile uint32_t *pLastTickMs = (volatile uint32_t *)(0x6FD31C44u + d2gameRebase);
+  HMODULE hKernel32 = GetModuleHandleA("kernel32.dll");
+  if (hKernel32) {
+    hook_module_iat_ptr(hD2Game, (void *)GetProcAddress(hKernel32, "GetTickCount"),
+                        (void *)hook_D2Game_GetTickCount);
+  }
 
   /* Accept client 1 into D2Game (0x6FC4E4AF) and drain S2C 0xAF BEFORE sending 0x67! */
   uint8_t s2cDrain[1024];
@@ -856,6 +870,7 @@ int main(int argc, char **argv) {
   }
 
   /* 10. Execute Frame 1 BEFORE C2S 0x6B (matches Game.exe SP logon order!). */
+  g_virtual_tick_ms += 40u;
   *pLastTickMs = ((GetTickCount() & 0x7FFFFFFFu) - 40u);
   p_UpdateGames(1);
   if (p_SendUpdates) p_SendUpdates(1, 0);
@@ -898,6 +913,7 @@ int main(int argc, char **argv) {
     if (p_OracleIsDone && p_OracleIsDone()) break;
     if (maxFrames > 0 && executedFrames >= maxFrames) break;
     p_RecvPackets();
+    g_virtual_tick_ms += 40u;
     *pLastTickMs = ((GetTickCount() & 0x7FFFFFFFu) - 40u);
     if (p_UpdateGames(1)) {
       executedFrames++;

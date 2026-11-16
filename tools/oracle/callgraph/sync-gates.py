@@ -115,7 +115,7 @@ def render_ported_row(manifest: dict) -> str:
         by_file.setdefault(f["kernFile"], []).append(f"`{f['tsSymbol']}`")
     ts_groups = [f"{', '.join(syms)} `{kf}`" for kf, syms in by_file.items()]
     status = (
-        f"**ported** (`{len(ported)}` closure functions implemented in `src/d2kern-113c/`, not yet "
+        f"**ported** ({_fmt(len(ported))} closure functions implemented in `src/d2kern-113c/`, not yet "
         f"function-level diff-verified against the real DLL; per-function evidence in `manifest-113c.json`)"
     )
     cells = [", ".join(vas), ", ".join(names), ", ".join(ts_groups), status]

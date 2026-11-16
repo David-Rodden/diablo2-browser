@@ -1260,10 +1260,29 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           window: 'orifice',
           activeWindow: 'orifice',
         }
-      } else if (ev.uiId === 1 || ev.uiId === 5) {
+      } else if (ev.uiId === 1) {
         this._awaitingArtisanConfirmNpcId = null
         this._npcInteraction = {
           ...this._npcInteraction,
+          npcId: null,
+          infoNpcId: null,
+          window: 'none',
+          activeWindow: 'none',
+        }
+      } else if (ev.uiId === 4) {
+        this._awaitingArtisanConfirmNpcId = null
+      } else if (ev.uiId === 5) {
+        // D2Client.dll 0x6fb5029e..0x6fb502cf + D2Game.dll 0x6fc565e0 -> 0x6fcf2c70:
+        // D2Game deletes the cursor-held Horadric Staff without emitting S2C 0x0A RemoveUnit,
+        // and D2Client calls D2Common_10305(pInventory, NULL) to clear the cursor item.
+        if (ev.extra !== 0 || this._containers.cursor?.code?.trim().toLowerCase() === 'hst') {
+          this._containers.clearCursor()
+        }
+        this._awaitingArtisanConfirmNpcId = null
+        this._npcInteraction = {
+          ...this._npcInteraction,
+          npcId: null,
+          infoNpcId: null,
           window: 'none',
           activeWindow: 'none',
         }

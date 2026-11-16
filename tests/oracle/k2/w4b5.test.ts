@@ -312,7 +312,7 @@ describe('K2 Wave 4 Batch 5 (w4b5: 45 D2Game.dll 1.13c VAs 0x6FCAD040..0x6FCBC27
       SKILLS_RollUnitWeaponBasePhysicalDamage256ths_6FCB87D0_113c(m, pOwner),
     ).toBeGreaterThanOrEqual(256)
     SKILLS_RestoreMindBlastConvertedMonster_6FCB8950_113c(m, 0, -1, 0)
-    expect(SKILLS_FindClosestTargetInRadius3_6FCB8E30_113c(m, pGame, pOwner, 0, 0, 3, 0, 0)).toBe(0)
+    expect(SKILLS_FindClosestTargetInRadius3_6FCB8E30_113c(m, pGame, 0, pOwner)).toBe(0)
     expect(SKILLS_SrvDo_ApplySacrificeSelfDamage_6FCB9290_113c(m, pGame, pOwner, 1, 1)).toBe(0)
     expect(
       SKILLS_SrvDo_SpawnChargedMissileAtTargetUnit_6FCB93A0_113c(m, pGame, pOwner, 1, 1),

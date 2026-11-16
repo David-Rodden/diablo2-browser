@@ -888,7 +888,11 @@ describe('Diablo II v1.13c Kernel Call Graph & Manifest ([K0] Track A)', () => {
     }
 
     expect(legacyFns.length).toBe(manifest.summary.legacyRefCount);
-    expect(legacyFns.length).toBeGreaterThan(0);
+    if (manifest.summary.statusBreakdown.unported === 0) {
+      expect(legacyFns.length).toBe(0);
+    } else {
+      expect(legacyFns.length).toBeGreaterThan(0);
+    }
     for (const fn of legacyFns) {
       expect(fn.status).toBe('unported');
       expect(fn.kernFile).toBeUndefined();

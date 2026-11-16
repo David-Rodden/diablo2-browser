@@ -848,8 +848,8 @@ describe('Milestone 33 [K2] Lane E — 39 D2Game Dynamic-Gap Ports (a1-bloodmoor
     // Necromancer at (130, 130); Fallen directly on ray 0 (+dx path: (132, 130))
     const pNecro = spawnTestActor(w, 0, 2, 1, 130, 130)
     const pFallen = spawnTestActor(w, 1, 1, 40, 132, 130)
-    STATLIST_SetUnitStat113c(m, pFallen, 0x06, 60 << 8, 0) // 60 HP
-    STATLIST_SetUnitStat113c(m, pFallen, 0x07, 60 << 8, 0) // 60 MaxHP
+    STATLIST_SetUnitStat113c(m, pFallen, 0x06, 95 << 8, 0) // 95 HP (60 HP after initial 35 HP poison hit)
+    STATLIST_SetUnitStat113c(m, pFallen, 0x07, 95 << 8, 0) // 95 MaxHP
 
     // Configure Poison Nova skill (92) & missile (8)
     const novaSkillId = 92
@@ -868,9 +868,7 @@ describe('Milestone 33 [K2] Lane E — 39 D2Game Dynamic-Gap Ports (a1-bloodmoor
     m.setU8((pNovaMisTxt + 0x189) >>> 0, 4) // nNextDelay = 4 frames
 
     // 1. Cast Poison Nova via SKILLS_SrvDo_NovaRing113c -> spawns 64 missiles in pRoom!
-    const castOk = SKILLS_SrvDo_NovaRing113c(m, pGame, pNecro, novaSkillId, 1, {
-      missileInitCallback: undefined,
-    })
+    const castOk = SKILLS_SrvDo_NovaRing113c(m, pGame, pNecro, novaSkillId, 1, {})
     expect(castOk).toBe(1)
 
     // Collect all spawned missiles in pRoom and seed poison stats (35 HP/frame for 10 frames)

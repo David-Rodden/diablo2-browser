@@ -179,7 +179,7 @@ describe('K2 Wave 4 Batch 3 (w4b3): 45 D2Game.dll VAs', () => {
     expect(spectralCalled).toBe(1)
 
     MONUMOD_PropagatePackDeathToBoss_6FC43BF0_113c(m, pGame, pBoss)
-    MONUMOD_RollChampionOrUniqueUMods_6FC43CA0_113c(m, pBoss, pGame, 0, 1)
+    MONUMOD_RollChampionOrUniqueUMods_6FC43CA0_113c(m, pGame, pBoss, 1)
     MONUMOD_PromoteToBossWithSingleUMod_6FC44BF0_113c(m, pBoss, pGame, 8)
 
     const szBase = m.alloc(0x20)
@@ -236,7 +236,7 @@ describe('K2 Wave 4 Batch 3 (w4b3): 45 D2Game.dll VAs', () => {
     m.setU32(pOp + 0x00, pGame)
     m.setU32(pOp + 0x04, pObj)
     ACT5Q3_SpawnMonster202AndAttachQuestData_6FC7C5C0_113c(m, pOp)
-    ACT5Q3_SpawnFrozenAnyaAndObject189_6FC7C690_113c(m, pGame, pRoom, 100, 100)
+    ACT5Q3_SpawnFrozenAnyaAndObject189_6FC7C690_113c(m, pQuest, pQuestData)
     ACT5Q5_OnArreatSummitPortalResetAncients_6FC7E3C0_113c(m, pQuest, pObj)
     ACT5Q5_ActivateAncientStatueAndSpawnMonster_6FC7E420_113c(m, pQuest, pObj)
     ACT5Q3_RegisterAnyaObjectAndSpawnMonster200_6FC7EB30_113c(m, pOp)
@@ -285,7 +285,7 @@ describe('K2 Wave 4 Batch 3 (w4b3): 45 D2Game.dll VAs', () => {
     const pTristRoom = allocRoomWithLevel(m, 38)
     const pQData = m.alloc(0x100)
     m.setU32(pQuest + 0x18, pQData)
-    ACT1Q4_SpawnGriswoldInTristram_6FC860D0_113c(m, pGame, pTristRoom, pQuest, 100, 100)
+    ACT1Q4_SpawnGriswoldInTristram_6FC860D0_113c(m, pGame, pTristRoom, 100, 100)
 
     expect(OBJ_CalcShrineStatBonusValue_6FC89EE0_113c(m, pPlayer, 0, 50)).toBe(0)
 

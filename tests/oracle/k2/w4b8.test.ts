@@ -127,14 +127,14 @@ describe('K2 Wave 4 Batch 8 (w4b8): 45 D2Game.dll functions (0x6FCD3770..0x6FCDB
     setupSgptDataTables(m)
 
     // [6/45] 0x6FCD4D30
-    expect(SKILLS_SrvDo132_SpawnNovaWithCalcSubLoopFrames_6FCD4D30_113c(m, 0x3000, 0x4000, -1)).toBe(
-      0,
-    )
+    expect(
+      SKILLS_SrvDo132_SpawnNovaWithCalcSubLoopFrames_6FCD4D30_113c(m, 0x3000, 0x4000, -1, 1),
+    ).toBe(0)
     const pSkillTxt10 = 0x10000 + 10 * 0x23c
     m.setU16(pSkillTxt10 + 0x48, 0xffff)
-    expect(SKILLS_SrvDo132_SpawnNovaWithCalcSubLoopFrames_6FCD4D30_113c(m, 0x3000, 0x4000, 10)).toBe(
-      0,
-    )
+    expect(
+      SKILLS_SrvDo132_SpawnNovaWithCalcSubLoopFrames_6FCD4D30_113c(m, 0x3000, 0x4000, 10, 1),
+    ).toBe(0)
 
     // [7/45] 0x6FCD5110
     expect(
@@ -179,8 +179,8 @@ describe('K2 Wave 4 Batch 8 (w4b8): 45 D2Game.dll functions (0x6FCD3770..0x6FCDB
     // [14/45] 0x6FCD6720
     m.setU32(0x3000 + 0xa8, 50)
     EVENT_InitTimerQueue113c(m, 0x3000)
-    expect(SKILLS_ScheduleUnitTimerEventType1_6FCD6720_113c(m, 0x3000, 0, -1)).toBe(1)
-    expect(SKILLS_ScheduleUnitTimerEventType1_6FCD6720_113c(m, 0x3000, 0x4000, 10)).toBe(1)
+    expect(SKILLS_ScheduleUnitTimerEventType1_6FCD6720_113c(m, 0x3000, 0)).toBe(1)
+    expect(SKILLS_ScheduleUnitTimerEventType1_6FCD6720_113c(m, 0x3000, 0x4000)).toBe(1)
 
     // [15/45] 0x6FCD7380
     const pBaal = allocZero(m, 0x100)

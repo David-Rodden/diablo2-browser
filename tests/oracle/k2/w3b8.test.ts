@@ -77,11 +77,11 @@ import {
 import { SparseMemory113c } from '../../../src/d2kern-113c/mem/sparse-memory.ts'
 
 function createW3B8World() {
-  const m = new SparseMemory113c(0x02000000)
+  const m = new SparseMemory113c()
   const pGame = m.alloc(0x2000)
   const pDataTables = m.alloc(0x1000)
   const pSgptHolder = m.alloc(4)
-  initD2GameGlobalsInMem113c(m)
+  initD2GameGlobalsInMem113c(m, pDataTables)
   m.setU32(pSgptHolder, pDataTables)
   m.setU32(D2COMMON_SGPT_DATATABLES_VA_113C, pDataTables)
   m.setU32(D2GAME_IAT_SGPT_DATATABLES_VA_113C, pSgptHolder)
@@ -169,7 +169,7 @@ function allocMonsterWithAi(
   const pMonStats2Record = pMonStats2Txt + classId * D2MonStats2Txt_SIZE
   m.setU32(pMonData + 0x00, pMonRecord)
   m.setU32(pMonData + 0x2c, pAiControl)
-  const pStatList = STATLIST_CreateEx113c(m, pUnit, 0, 0, 1, guid)
+  const pStatList = STATLIST_CreateEx113c(m, pUnit, 0, 0)
   m.setU32(pUnit + 0x5c, pStatList)
   STATLIST_SetUnitStat113c(m, pUnit, 6, 100 << 8, 0)
   STATLIST_SetUnitStat113c(m, pUnit, 7, 100 << 8, 0)
@@ -202,7 +202,7 @@ describe('k2 w3b8 1.13c oracle', () => {
     m.setU32(pPlayerData + 0x9c, pClient)
     const pInv = INVENTORY_AllocInventory113c(m, 0, pPlayer)
     m.setU32(pPlayer + 0x60, pInv)
-    const pStatList = STATLIST_CreateEx113c(m, pPlayer, 0, 0, 0, 10)
+    const pStatList = STATLIST_CreateEx113c(m, pPlayer, 0, 0)
     m.setU32(pPlayer + 0x5c, pStatList)
     SUNIT_InsertServerUnit113c(m, pGame, pPlayer)
 

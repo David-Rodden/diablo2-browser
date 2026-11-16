@@ -64,10 +64,10 @@ import { EVENT_InitTimerQueue113c } from '../../../src/d2kern-113c/game/timer-wh
 import { SparseMemory113c } from '../../../src/d2kern-113c/mem/sparse-memory'
 
 function createW4B4World() {
-  const m = new SparseMemory113c(0x02000000)
-  initD2GameGlobalsInMem113c(m)
+  const m = new SparseMemory113c()
   const pGame = m.alloc(0x2000)
   const pDataTables = m.alloc(0x1000)
+  initD2GameGlobalsInMem113c(m, pDataTables)
   const pSgptHolder = m.alloc(4)
   m.setU32(pSgptHolder, pDataTables)
   m.setU32(D2COMMON_SGPT_DATATABLES_VA_113C, pDataTables)
@@ -200,7 +200,7 @@ describe('K2 Wave 4 Batch 4 (w4b4): 45 D2Game.dll functions', () => {
     m.setU32(pPlayer, 0)
     m.setU32((pPlayer + 0x0c) >>> 0, 11)
     m.setU32((pPlayer + 0x80) >>> 0, pGame)
-    const pStatList = STATLIST_CreateEx113c(m, pPlayer, 0x80000000, 0, 0)
+    const pStatList = STATLIST_CreateEx113c(m, pPlayer, 0, 0)
     m.setU32((pPlayer + 0x5c) >>> 0, pStatList)
     STATLIST_SetUnitStat113c(m, pPlayer, 0x0c, 15, 0)
     STATLIST_SetUnitStat113c(m, pPlayer, 0x0e, 500, 0)
@@ -292,7 +292,7 @@ describe('K2 Wave 4 Batch 4 (w4b4): 45 D2Game.dll functions', () => {
     m.setU32((pPlrPath + 0x1c) >>> 0, pRoom)
     m.setU32((pPlrPath + 0x30) >>> 0, pPlayer)
     m.setU32((pPlayerData + 0x9c) >>> 0, pClient)
-    const pPlrStats = STATLIST_CreateEx113c(m, pPlayer, 0x80000000, 0, 0)
+    const pPlrStats = STATLIST_CreateEx113c(m, pPlayer, 0, 0)
     m.setU32((pPlayer + 0x5c) >>> 0, pPlrStats)
     STATLIST_SetUnitStat113c(m, pPlayer, 0x0a, 50 << 8, 0)
     STATLIST_SetUnitStat113c(m, pPlayer, 0x0b, 100 << 8, 0)

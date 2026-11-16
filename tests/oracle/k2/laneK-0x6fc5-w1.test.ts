@@ -216,9 +216,7 @@ function allocGameWithTimer(m: SparseMemory113c, frame = 100, difficulty = 0): n
 }
 
 function attachStatListEx(m: SparseMemory113c, pUnit: number): number {
-  const dwUnitType = m.u32(pUnit)
-  const dwUnitId = m.u32(pUnit + 0x0c)
-  const pStatListEx = STATLIST_CreateEx113c(m, pUnit, 0x80000000, 0, 0, dwUnitType, dwUnitId)
+  const pStatListEx = STATLIST_CreateEx113c(m, pUnit, 0, 0)
   m.setU32(pUnit + 0x5c, pStatListEx)
   return pStatListEx
 }

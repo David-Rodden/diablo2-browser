@@ -20,9 +20,15 @@ import {
   UNITS_SetTargetUnitForDynamicUnit113c,
 } from '../common/waypoint.ts';
 import {
+  STATLIST_AllocList113c,
+  STATLIST_MergeStatLists113c,
+  STATLIST_SetExpireFrameEx113c,
+  STATLIST_SetStatRemoveProc113c,
+  STATLIST_SetState113c,
   STATLIST_SetWeaponStatListActive113c,
   STATLIST_SetStat113c,
   STATES_CheckState113c,
+  STATES_ToggleGfxStateFlag113c,
   STATLIST_GetStatValue113c,
   STATES_CheckStateMaskByIndexOnUnit113c,
   STATLIST_GetUnitStat113c,
@@ -123,6 +129,10 @@ import {
   UNIT_GetPosY113c,
   SKILLS_GetRecordPtrFast113c,
 } from './regpop-spawn-113c.ts';
+import {
+  SrvDoFunc_020_StaticField113c,
+  SrvDoFunc_065_AuraRadialStatBuff113c,
+} from './k2-gap-itemdef-113c.ts';
 
 // ---------------------------------------------------------------------------
 // Internal D2Game helper procedures (non-exported, used by F786..F1040 VAs)
@@ -464,7 +474,7 @@ export function SKILLS_CheckSkillManaAndCharges113c(
   if (pSkill === 0) {
     return 0;
   }
-  const ownerItemGuid = SKILLS_GetOwnerItemGuid113c(m, pSkill);
+  const ownerItemGuid = SKILLS_GetOwnerItemGuid113c(m, pSkill) | 0;
   if (ownerItemGuid !== -1) {
     const nCharges = (m.u32(pSkill + 0x38) | 0);
     return nCharges > 0 ? 1 : 0;
@@ -503,7 +513,7 @@ export function SKILLS_ConsumeSkillManaOrCharge113c(
   const pUsedSkill = SKILLS_GetUsedSkillMemPort113c(m, pUnit);
   if (pUsedSkill !== 0) {
     const usedSkillId = SKILLS_GetSkillIdFromSkill113c(m, pUsedSkill, 0, 0);
-    if (usedSkillId === nSkillId && SKILLS_GetOwnerItemGuid113c(m, pUsedSkill) !== -1) {
+    if (usedSkillId === nSkillId && (SKILLS_GetOwnerItemGuid113c(m, pUsedSkill) | 0) !== -1) {
       const charges = (m.u32(pUsedSkill + 0x38) | 0);
       if (charges <= 0) {
         return 0;
@@ -679,9 +689,9 @@ export function SKILLS_ExecuteSkillStart113c(
       }
     }
   }
-  const wSrvStFunc = (m.u16(pSkillsTxt + 0x08) << 16) >> 16;
+  const wSrvStFunc = (m.u16(pSkillsTxt + 0x2c) << 16) >> 16;
   let stResult = 1;
-  if (wSrvStFunc > 0 && wSrvStFunc < 0x74) {
+  if (wSrvStFunc > 0 && wSrvStFunc < 0x5b) {
     if (wSrvStFunc === 1) {
       stResult = SKILLS_StartPlayerSkillAnimOrCast113c(m, pGame, pUnit, nSkillId, nSkillLevel);
     }
@@ -689,7 +699,7 @@ export function SKILLS_ExecuteSkillStart113c(
   if (stResult === 0) {
     return 0;
   }
-  if (stResult !== 2 && (m.u8(pSkillsTxt + 0x04) & 0x08) !== 0 && bNoManaCost === 0) {
+  if (stResult !== 2 && wSrvStFunc > 0 && (m.u8(pSkillsTxt + 0x08) & 0x20) === 0 && bNoManaCost === 0) {
     if (SKILLS_ConsumeSkillManaOrCharge113c(m, pUnit, nSkillId, pGame, nSkillLevel) === 0) {
       return 0;
     }
@@ -1549,17 +1559,27 @@ export function SKILLS_SetSkillDelayTimer113c(
   } else if ((m.u8(pSkillsTxt + 0x04) & 0x20) === 0) {
     return 0;
   }
-  const delayFrames = SKILLS_EvalCalcByOffset113c(m, pUnit, 0x160, nSkillId, nSkillLevel);
-  if (delayFrames < 5) {
-    return 0;
+  const delayCalc = m.u32((pSkillsTxt + 0x128) >>> 0);
+  let delayFrames = SKILLS_EvalCalcByOffset113c(m, pUnit, delayCalc, nSkillId, nSkillLevel);
+  if (delayFrames <= 5) {
+    delayFrames = 5;
   }
-  const expireFrame = ((m.u32(pGame + 0xa8) | 0) + delayFrames) | 0;
-  const pStatList = STATLIST_GetStatListFromUnitAndStateMemPort113c(m, pUnit, 0x79);
-  if (pStatList !== 0) {
-    STATLIST_SetStat113c(m, pStatList, 0, expireFrame, 0);
+  const curFrame = m.u32(pGame + 0xa8) | 0;
+  const expireFrame =
+    (Math.imul(Math.trunc(((curFrame + delayFrames - 1) | 0) / delayFrames) | 0, delayFrames) + 1) |
+    0;
+  if (bResetExisting === 0) {
+    EVENT_SetEventFull113c(m, pGame, pUnit, 8, expireFrame, 0, nSkillId, nSkillLevel);
+    return 1;
   }
-  EVENT_DeleteEventByArg14_113c(m, pGame, pUnit, 8, 0);
-  EVENT_SetEventFull113c(m, pGame, pUnit, 8, expireFrame, 0, 0, 0);
+  for (let cur = m.u32((pUnit + 0xdc) >>> 0); cur !== 0; ) {
+    const next = m.u32((cur + 0x24) >>> 0);
+    if (m.u8((cur + 0x04) >>> 0) === 8 && (m.u32((cur + 0x14) >>> 0) | 0) === -1) {
+      EVENT_FreeNode113c(m, pGame, cur);
+    }
+    cur = next;
+  }
+  EVENT_SetEventFull113c(m, pGame, pUnit, 8, expireFrame, 0, -1, 0);
   return 1;
 }
 
@@ -1573,6 +1593,7 @@ export function SKILLS_ExecuteSkillDoFunc113c(
   bConsumeMana: number,
   bCheckItem: number,
   bUseAltFunc: number,
+  onSrvDoFunc?: (wDoFuncIdx: number, nSkillId: number, effLevel: number) => number,
 ): number {
   if (pGame === 0 || pUnit === 0) {
     return 0;
@@ -1593,7 +1614,7 @@ export function SKILLS_ExecuteSkillDoFunc113c(
   const pUsedSkill = SKILLS_GetUsedSkillMemPort113c(m, pUnit);
   let effLevel = nSkillLevel;
   let bNoMana = bConsumeMana === 0 ? 1 : 0;
-  if (bCheckItem !== 0 && pUsedSkill !== 0) {
+  if (bCheckItem !== 0 && bUseAltFunc === 0 && pUsedSkill !== 0) {
     const scratchBase = 0x004ff040;
     if (
       SKILLS_GetItemSkillInfo113c(
@@ -1614,32 +1635,67 @@ export function SKILLS_ExecuteSkillDoFunc113c(
   }
   if (
     bNoMana === 0 &&
-    (m.u8(pSkillsTxt + 0x04) & 0x08) === 0 &&
+    (m.u8(pSkillsTxt + 0x08) & 0x20) !== 0 &&
     SKILLS_CheckSkillManaAndCharges113c(m, pUnit) === 0
   ) {
     return 0;
   }
-  const wDoFuncIdx =
-    bUseAltFunc !== 0
-      ? (m.u16(pSkillsTxt + 0x0c) << 16) >> 16
-      : (m.u16(pSkillsTxt + 0x0a) << 16) >> 16;
+  const srvDoFunc2e = (m.u16(pSkillsTxt + 0x2e) << 16) >> 16;
+  let wDoFuncIdx =
+    srvDoFunc2e !== 0
+      ? srvDoFunc2e
+      : bUseAltFunc !== 0
+        ? (m.u16(pSkillsTxt + 0x0c) << 16) >> 16
+        : (m.u16(pSkillsTxt + 0x0a) << 16) >> 16;
+  if (srvDoFunc2e !== 0 && bUseAltFunc !== 0 && bCheckItem !== 0) {
+    const itemEffect = (m.u16(pSkillsTxt + 0x16a) << 16) >> 16;
+    if (itemEffect > 1) {
+      wDoFuncIdx = itemEffect;
+    }
+  }
   let doResult = 1;
-  if (wDoFuncIdx > 0 && wDoFuncIdx < 0x9b) {
+  if (wDoFuncIdx > 0 && wDoFuncIdx < 0xbf) {
     if (wDoFuncIdx === 1) {
       doResult = SrvDoFunc_001_Attack113c(m, pGame, pUnit, nSkillId, effLevel);
+    } else if (wDoFuncIdx === 20) {
+      doResult = SrvDoFunc_020_StaticField113c(m, pGame, pUnit, nSkillId, effLevel);
+    } else if (wDoFuncIdx === 65) {
+      doResult = SrvDoFunc_065_AuraRadialStatBuff113c(m, pGame, pUnit, nSkillId, effLevel);
+    } else if (onSrvDoFunc !== undefined) {
+      doResult = onSrvDoFunc(wDoFuncIdx, nSkillId, effLevel);
     }
   }
   if (doResult === 0) {
     return 0;
   }
-  if (bNoMana === 0 && (m.u8(pSkillsTxt + 0x04) & 0x08) === 0) {
+  const wSrvStFunc = (m.u16(pSkillsTxt + 0x2c) << 16) >> 16;
+  if (bNoMana === 0 && (wSrvStFunc === 0 || (m.u8(pSkillsTxt + 0x08) & 0x20) !== 0)) {
     SKILLS_ConsumeSkillManaOrCharge113c(m, pUnit, nSkillId, pGame, effLevel);
   }
-  if ((m.u8(pSkillsTxt + 0x05) & 0x02) !== 0) {
-    const perDelay = SKILLS_EvalCalcByOffset113c(m, pUnit, 0x164, nSkillId, effLevel);
-    if (perDelay > 0) {
-      const nextFrame = ((m.u32(pGame + 0xa8) | 0) + perDelay) | 0;
-      EVENT_SetEventFull113c(m, pGame, pUnit, 0x0c, nextFrame, 0, nSkillId, effLevel);
+  const delayCalc = m.u32((pSkillsTxt + 0x190) >>> 0);
+  const delay = SKILLS_EvalCalcByOffset113c(m, pUnit, delayCalc, nSkillId, effLevel);
+  if (delay > 0 && (m.u32(pUnit >>> 0) | 0) === 0) {
+    if (
+      m.u8((pSkillsTxt + 0x10) >>> 0) !== 0x12 ||
+      (m.u32((pUnit + 0x38) >>> 0) & 0xffffff00) === 0
+    ) {
+      const expireFrame = ((m.u32((pGame + 0xa8) >>> 0) | 0) + (delay | 0)) >>> 0;
+      let pStatList = STATLIST_GetStatListFromUnitAndStateMemPort113c(m, pUnit >>> 0, 0x79) >>> 0;
+      if (pStatList === 0) {
+        const dwOwnerId = m.u32((pUnit + 0x0c) >>> 0) >>> 0;
+        const dwOwnerType = m.u32(pUnit >>> 0) >>> 0;
+        pStatList = STATLIST_AllocList113c(m, 2, dwOwnerType, dwOwnerId, 0, expireFrame) >>> 0;
+        if (pStatList !== 0) {
+          STATLIST_SetState113c(m, pStatList, 0x79);
+          STATLIST_SetStatRemoveProc113c(m, pStatList, 0x6fcbf7a0);
+          STATLIST_MergeStatLists113c(m, pUnit >>> 0, pStatList, 1);
+          STATES_ToggleGfxStateFlag113c(m, pUnit >>> 0, 0x79, 1);
+        }
+      }
+      if (pStatList !== 0) {
+        STATLIST_SetExpireFrameEx113c(m, pStatList, expireFrame);
+        EVENT_SetEventFull113c(m, pGame >>> 0, pUnit >>> 0, 0x0c, expireFrame, 0, 0, 0);
+      }
     }
   }
   return doResult;
@@ -1650,6 +1706,7 @@ export function SKILLS_DoUsedSkillAction113c(
   m: Memory113c,
   pUnit: number,
   pGame: number,
+  onSrvDoFunc?: (wDoFuncIdx: number, nSkillId: number, effLevel: number) => number,
 ): number {
   const pSkill = SKILLS_GetUsedSkillMemPort113c(m, pUnit);
   if (pSkill === 0) {
@@ -1660,7 +1717,7 @@ export function SKILLS_DoUsedSkillAction113c(
     return 0;
   }
   const nSkillLevel = SKILLS_EvaluateSkillLevel113c(m, pUnit, pSkill, 1);
-  const res = SKILLS_ExecuteSkillDoFunc113c(m, pUnit, pGame, nSkillId, nSkillLevel, 1, 1, 0);
+  const res = SKILLS_ExecuteSkillDoFunc113c(m, pUnit, pGame, nSkillId, nSkillLevel, 1, 1, 0, onSrvDoFunc);
   SKILLS_SetSkillDelayTimer113c(m, nSkillId, pGame, pUnit, nSkillLevel, 0);
   return res;
 }
@@ -1937,19 +1994,34 @@ export function ITEMS_SyncSocketedSubItemsToClient113c(
     const pVerified = INVENTORY_UnitIsItem113c(m, pSubItem);
     m.setU32(scratchFlagsPtr, nCmdFlags >>> 0);
     ITEMS_SetOrClearFlagMask113c(m, scratchFlagsPtr, 0x08, 1);
-    const updatedFlags = m.u32(scratchFlagsPtr);
-    const pktLen = buildItemActionPacketBuffer113c(
+    const updatedFlags = m.u32(scratchFlagsPtr) >>> 0;
+
+    m.fill(scratchPktBuf, 0x100, 0);
+    m.setU8(scratchPktBuf + 0x00, 0x9d);
+    m.setU8(scratchPktBuf + 0x01, 0x13);
+    const equipLoc = INVENTORY_GetItemEquipLocation113c(m, pItem, pVerified) & 0xff;
+    m.setU8(scratchPktBuf + 0x03, equipLoc);
+    m.setU32(scratchPktBuf + 0x04, pVerified !== 0 ? m.u32(pVerified + 0x0c) : 0xffffffff);
+    m.setU8(scratchPktBuf + 0x08, m.u32(pItem) & 0xff);
+    m.setU32(scratchPktBuf + 0x09, m.u32(pItem + 0x0c));
+
+    const savedSubFlags = ITEMS_GetCommandFlags113c(m, pVerified) >>> 0;
+    ITEMS_SetOrClearCommandFlags113c(m, pVerified, updatedFlags, 1);
+    const nSer = ITEMS_SerializeItemToBuffer113c(
       m,
       pVerified,
-      pItem,
-      0x9d,
-      0x0b,
-      1,
-      updatedFlags,
+      (scratchPktBuf + 0x0d) >>> 0,
+      0xf4,
       0,
-      scratchPktBuf,
-    );
-    if (pktLen > 0) {
+      0,
+      0,
+    ) | 0;
+    ITEMS_SetOrClearCommandFlags113c(m, pVerified, 0xffffffff, 0);
+    ITEMS_SetOrClearCommandFlags113c(m, pVerified, savedSubFlags, 1);
+
+    if (nSer > 0) {
+      const pktLen = (nSer + 0x0d) & 0xff;
+      m.setU8(scratchPktBuf + 0x02, pktLen);
       const pktBytes = new Uint8Array(pktLen);
       for (let i = 0; i < pktLen; i = (i + 1) | 0) {
         pktBytes[i] = m.u8(scratchPktBuf + i);
@@ -1970,46 +2042,59 @@ export function S2C_SendPacket9C_ItemActionWorld113c(
   nCmdFlags: number,
   bFlag: number,
 ): void {
-  void bFlag;
   if (pClient === 0 || pItem === 0) {
     return;
   }
   const pGame = m.u32(pClient + 0x1a8);
-  let pClientPlayer = m.u32(pClient + 0x174);
-  if (pClientPlayer === 0 && pGame !== 0) {
-    const clientUnitType = m.u32(pClient + 0x16c);
-    const clientUnitId = m.u32(pClient + 0x170);
-    pClientPlayer = SUNIT_GetServerUnit113c(m, pGame, clientUnitType, clientUnitId);
-  }
-  let effectiveFlags = nCmdFlags;
-  if (pClientPlayer !== 0) {
-    const equipLoc = INVENTORY_GetItemEquipLocation113c(m, pClientPlayer, pItem);
-    if (equipLoc === 2 || equipLoc === 1) {
-      effectiveFlags = (effectiveFlags | 0x01) >>> 0;
-    } else if (equipLoc !== 3 && equipLoc !== 4) {
-      ITEMS_SetOrClearCommandFlags113c(m, pItem, 0x01, 0);
+  let pClientPlayer = 0;
+  if ((m.u8(pClient + 0x3d4) & 0x01) !== 0) {
+    pClientPlayer = m.u32(pClient + 0x174);
+  } else {
+    pClientPlayer = m.u32(pClient + 0x174);
+    if (pClientPlayer !== 0 && pGame !== 0) {
+      const clientUnitType = m.u32(pClient + 0x16c);
+      const clientUnitId = m.u32(pClient + 0x170);
+      pClientPlayer = SUNIT_GetServerUnit113c(m, pGame, clientUnitType, clientUnitId);
+      if (pClientPlayer === 0) {
+        m.setU32(pClient + 0x174, 0);
+      }
     }
   }
+
   const scratchPktBuf = 0x004ff410;
-  const pktLen = buildItemActionPacketBuffer113c(
-    m,
-    pItem,
-    0,
-    0x9c,
-    bAction,
-    1,
-    effectiveFlags,
-    0,
-    scratchPktBuf,
-  );
-  if (pktLen > 0) {
+  m.fill(scratchPktBuf, 0x100, 0);
+  m.setU8(scratchPktBuf + 0x00, 0x9c);
+  m.setU8(scratchPktBuf + 0x01, bAction & 0xff);
+  const equipLoc =
+    pClientPlayer !== 0 ? INVENTORY_GetItemEquipLocation113c(m, pClientPlayer, pItem) & 0xff : 0;
+  m.setU8(scratchPktBuf + 0x03, equipLoc);
+  m.setU32(scratchPktBuf + 0x04, m.u32(pItem + 0x0c));
+
+  const savedFlags = ITEMS_GetCommandFlags113c(m, pItem) >>> 0;
+  ITEMS_SetOrClearCommandFlags113c(m, pItem, nCmdFlags >>> 0, 1);
+  const nSerialized =
+    ITEMS_SerializeItemToBuffer113c(
+      m,
+      pItem,
+      (scratchPktBuf + 0x08) >>> 0,
+      0xf4,
+      0,
+      0,
+      bFlag | 0,
+    ) | 0;
+  ITEMS_SetOrClearCommandFlags113c(m, pItem, 0xffffffff, 0);
+  ITEMS_SetOrClearCommandFlags113c(m, pItem, savedFlags, 1);
+
+  if (nSerialized > 0) {
+    const pktLen = (nSerialized + 8) & 0xff;
+    m.setU8(scratchPktBuf + 0x02, pktLen);
     const pktBytes = new Uint8Array(pktLen);
     for (let i = 0; i < pktLen; i = (i + 1) | 0) {
       pktBytes[i] = m.u8(scratchPktBuf + i);
     }
     enqueueClientPacketBytes113c(m, pClient, pktBytes, pktLen);
   }
-  ITEMS_SyncSocketedSubItemsToClient113c(m, pClient, pItem, effectiveFlags);
+  ITEMS_SyncSocketedSubItemsToClient113c(m, pClient, pItem, nCmdFlags >>> 0);
 }
 
 // @va D2Game:0x6FCF40F0

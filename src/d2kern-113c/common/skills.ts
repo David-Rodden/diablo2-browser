@@ -2288,6 +2288,8 @@ export function SKILLS_EvaluateSkillLevel113c(
   return Math.min(Math.max(lvl, 0), maxLvl)
 }
 
+export const SKILLS_GetSkillLevel113c = SKILLS_EvaluateSkillLevel113c
+
 /**
  * `@va D2Common:0x6FDA0AF0` (internal `SKILLS_CheckSkillManaOrCharges113c`,
  * custom `eax = pSkill, ecx = pUnit`, `ret` -> `BOOL`).
@@ -2840,6 +2842,8 @@ export function SKILLS_EvalCalcByOffset113c(
 ): number {
   return evalSkillCalcRpnMem113c(m, dwCalcOffset, pOwner, nSkillId, nLevel)
 }
+
+export const SKILLS_EvaluateSkillFormula113c = SKILLS_EvalCalcByOffset113c
 
 function evalSkillElemMinForCalc113c(
   m: Memory113c,

@@ -435,10 +435,10 @@ export function NET_SendPacketMonsterMoveCoord_6FCAD860_113c(
   if (bPathType >= 5) {
     if (bPathType <= 6) {
       m.setU8((pPkt + 0x0c) >>> 0, 1)
-      const wLastY = PATH_GetLastPointY113c(m, pPath) & 0xffff
-      m.setU16((pPkt + 0x06) >>> 0, wLastY)
       const wLastX = PATH_GetLastPointX113c(m, pPath) & 0xffff
-      m.setU16((pPkt + 0x08) >>> 0, wLastX)
+      m.setU16((pPkt + 0x06) >>> 0, wLastX)
+      const wLastY = PATH_GetLastPointY113c(m, pPath) & 0xffff
+      m.setU16((pPkt + 0x08) >>> 0, wLastY)
     } else if (bPathType === 8) {
       m.setU8((pPkt + 0x0c) >>> 0, 0x0b)
     }

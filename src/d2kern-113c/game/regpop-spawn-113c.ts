@@ -3039,6 +3039,14 @@ export function MONSTER_InitStats113c(
 
     MONSTERS_ApplyClassicConversionStats113c(m, pUnit, dwExpansion, nDiff)
 
+    const pMonStats2 = MONSTATS2_GetRecordPtr113c(m, nClassId)
+    if (pMonStats2 !== 0 && (m.u8((pMonStats2 + 0x05) >>> 0) & 0x02) !== 0) {
+      m.setU32((pUnit + 0xc4) >>> 0, (m.u32((pUnit + 0xc4) >>> 0) | 0x04) >>> 0)
+    }
+    if ((m.u8((pMonStats + 0x0e) >>> 0) & 0x08) !== 0) {
+      m.setU32((pUnit + 0xc4) >>> 0, (m.u32((pUnit + 0xc4) >>> 0) | 0x40000000) >>> 0)
+    }
+
     const pMonProp = MONPROP_GetRecordPtrFromClassId113c(m, nClassId)
     if (pMonProp !== 0) {
       const pPropList = STATLIST_AllocList113c(m, 1, 1, m.u32((pUnit + 0x0c) >>> 0), 0, 0)
@@ -3079,6 +3087,8 @@ export function MONSTER_InitMonsterUnit113c(
   const nClassId = m.u32((pUnit + 0x04) >>> 0) | 0
   const pMonStats = MONSTATS_GetRecordPtr113c(m, nClassId)
   if (pMonStats === 0) return 0
+
+  m.setU32((pUnit + 0xc4) >>> 0, (m.u32((pUnit + 0xc4) >>> 0) | 0x0a) >>> 0)
 
   let pMonData = m.u32((pUnit + 0x14) >>> 0)
   if (pMonData === 0) {

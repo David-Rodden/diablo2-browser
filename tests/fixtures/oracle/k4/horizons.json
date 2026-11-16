@@ -1,0 +1,27 @@
+{
+  "k4-act1-quest": {
+    "bootFrame": 2,
+    "strict": 23,
+    "pos": 27
+  },
+  "k4-act2-quest": {
+    "bootFrame": 2,
+    "strict": 16,
+    "pos": 16
+  },
+  "k4-act3-quest": {
+    "bootFrame": 2,
+    "strict": 23,
+    "pos": 23
+  },
+  "k4-act4-quest": {
+    "bootFrame": 2,
+    "strict": 18,
+    "pos": 18
+  },
+  "k4-act5-quest": {
+    "bootFrame": 2,
+    "strict": 23,
+    "pos": 23
+  }
+}

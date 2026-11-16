@@ -91,7 +91,7 @@ import {
   D2LevelsTxt_SIZE,
   D2MonStats2Txt_SIZE,
 } from '../../../src/d2kern-113c/mem/layout.generated.ts'
-import { SparseMemory113c } from '../../../src/d2kern-113c/mem/sparse-memory.ts'
+import { type Memory113c, SparseMemory113c } from '../../../src/d2kern-113c/mem/sparse-memory.ts'
 import { SG_ITEM_DATATABLES_VA_113C } from '../../../src/d2kern-113c/tables/item-tbls-113c.ts'
 
 interface W2B8TestWorld {
@@ -864,7 +864,7 @@ describe('D2Game.dll [K2] Wave 2 Batch 8 (w2b8: 0x6FCEB590..0x6FD13CB0)', () => 
 
     let lastModeArgs = { mode: -1, unit: 0, target: 0, x: 0, y: 0, step: -1 }
     const hooks = {
-      onMonsterStartMode: (mem: SparseMemory113c, _g: number, pArgs: number) => {
+      onMonsterStartMode: (mem: Memory113c, _g: number, pArgs: number) => {
         lastModeArgs = {
           mode: mem.u32(pArgs) | 0,
           unit: mem.u32(pArgs + 4) >>> 0,

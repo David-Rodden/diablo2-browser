@@ -1164,7 +1164,7 @@ function applyDamage0x6FCFE0C0(
     phys = curHp
     m.setU32((dmg + 0x08) >>> 0, phys >>> 0)
   }
-  const dwDmgTotal = (phys + fire + burn + ltng + mag + cold) | 0
+  const dwDmgTotal = (phys + fire + ltng + mag + cold + pois) | 0
   m.setU32((dmg + 0x4c) >>> 0, dwDmgTotal >>> 0)
 
   if (att !== 0 && m.u32(att) === 1 && (m.u8((dmg + 0x04) >>> 0) & 0x01) !== 0) {

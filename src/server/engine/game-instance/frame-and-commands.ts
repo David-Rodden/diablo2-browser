@@ -1376,6 +1376,69 @@ function processPlayerCommand(this: GameInstanceHost, player: InternalPlayerReco
       this.handleRequestEntityUpdate(player, cmd.unitType, cmd.unitId)
       break
     }
+    case 'StaffInOrifice': {
+      if (player.dead) return
+      const obj =
+        this.objects.get(cmd.orificeObjectId) ??
+        [...this.objects.values()].find(
+          (candidate) => candidate.areaId === player.areaId && candidate.classId === 152,
+        )
+      if (cmd.state === 2) {
+        if (obj !== undefined && obj.classId === 152 && obj.mode === 1) {
+          this.setObjectMode(obj, 0)
+        }
+        this.emitToPlayer(player.unitId, {
+          type: 'OpenUi',
+          unitType: 2,
+          unitId: obj?.unitId ?? cmd.orificeObjectId,
+          uiId: 1,
+          extra: 0,
+        })
+        break
+      }
+      if (cmd.state === 3) {
+        const staff =
+          player.items.find(
+            (item) =>
+              item.unitId === cmd.staffItemId && item.code.toLowerCase().trim() === 'hst',
+          ) ??
+          player.items.find(
+            (item) => item.location === 'cursor' && item.code.toLowerCase().trim() === 'hst',
+          ) ??
+          player.items.find((item) => item.code.toLowerCase().trim() === 'hst')
+        if (staff === undefined) {
+          this.emitToPlayer(player.unitId, {
+            type: 'OpenUi',
+            unitType: 2,
+            unitId: obj?.unitId ?? cmd.orificeObjectId,
+            uiId: 4,
+            extra: 0,
+          })
+          break
+        }
+        if (obj !== undefined && obj.classId === 152) {
+          if (obj.mode === 0) {
+            this.setObjectMode(obj, 1)
+          }
+          if (obj.mode !== 2) {
+            this.setObjectMode(obj, 2)
+            this.advanceQuestObject(player, obj)
+          } else {
+            this.removePlayerQuestItem(player, staff)
+          }
+        } else {
+          this.removePlayerQuestItem(player, staff)
+        }
+        this.emitToPlayer(player.unitId, {
+          type: 'OpenUi',
+          unitType: 2,
+          unitId: obj?.unitId ?? cmd.orificeObjectId,
+          uiId: 5,
+          extra: 1,
+        })
+      }
+      break
+    }
     case 'MakeEntityMove':
       // Silently accepted to prevent drop
       break

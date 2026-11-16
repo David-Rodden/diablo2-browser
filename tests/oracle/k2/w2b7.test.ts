@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { D2CommonAssertError } from '../../../src/d2kern-113c/common/inline-helpers.ts'
 import { DRLGWARP_TestRoomTileBit113c } from '../../../src/d2kern-113c/common/items.ts'
-import { SG_ITEM_DATATABLES_VA_113C } from '../../../src/d2kern-113c/common/k0-d2common-memports.ts'
+import { SG_ITEM_DATATABLES_VA_113C } from '../../../src/d2kern-113c/tables/item-tbls-113c.ts'
 import {
   QUESTRECORD_AllocRecord113c,
   QUESTRECORD_SetQuestState113c,

@@ -1795,8 +1795,48 @@ export function UNIT_FreeEventNotifyList113c(m: Memory113c, pUnit: number): void
   m.setU32((pUnit + 0xe8) >>> 0, 0)
 }
 
+function writeUnitStateStatsBitstream113c(
+  m: Memory113c,
+  pDataTables: number,
+  pBitStream: number,
+  pStatsBuf: number,
+  nStats: number,
+): void {
+  const nIscCount = m.u32((pDataTables + 0xbd4) >>> 0) | 0
+  const pIscBase = m.u32((pDataTables + 0xbcc) >>> 0) >>> 0
+  for (let i = 0; i < nStats; i++) {
+    const pStat = (pStatsBuf + i * 8) >>> 0
+    const wParam = m.u16(pStat)
+    const wStatId = m.u16((pStat + 2) >>> 0)
+    let nVal = m.u32((pStat + 4) >>> 0) | 0
+    if ((wStatId | 0) < 0 || (wStatId | 0) >= nIscCount || pIscBase === 0) continue
+    const pIsc = (pIscBase + imul32(wStatId, 0x144)) >>> 0
+    const bSendBits = m.u8((pIsc + 0x08) >>> 0)
+    if (bSendBits === 0) continue
+    if (bSendBits < 0x20) {
+      const fSigned = (m.u8((pIsc + 0x04) >>> 0) & 0x02) !== 0
+      if (fSigned) {
+        const maxPos = ((1 << (bSendBits - 1)) - 1) | 0
+        const minNeg = -(1 << (bSendBits - 1)) | 0
+        if (nVal < minNeg) nVal = minNeg
+        if (nVal > maxPos) nVal = maxPos
+      } else {
+        const maxUnsigned = (((1 << bSendBits) >>> 0) - 1) | 0
+        if (nVal <= 0) nVal = 0
+        else if (nVal > maxUnsigned) nVal = maxUnsigned
+      }
+    }
+    fogWriteBits113c(m, pBitStream, wStatId, 9)
+    const bSendParamBits = m.u8((pIsc + 0x09) >>> 0)
+    if (bSendParamBits !== 0) {
+      fogWriteBits113c(m, pBitStream, wParam, bSendParamBits)
+    }
+    fogWriteBits113c(m, pBitStream, nVal, bSendBits)
+  }
+}
+
 /**
- * Serializes modified gfx states on `pUnit` (`D2Common.#10315`) as `0xA8` (bitstream) or `0xA9` (clear) packets to `pClient`.
+ * Serializes modified gfx states on `pUnit` (`D2Common.#10315`) as `0xA8` (bitstream), `0xA7` (flag), or `0xA9` (clear) packets to `pClient`.
  *
  * @va D2Game:0x6FC9A5E0
  */
@@ -1805,11 +1845,18 @@ export function UNIT_SendGfxStatesBitstreamToClient113c(
   pUnit: number,
   pClient: number,
 ): void {
-  if (pUnit === 0) {
-    throw new Error('UNIT_SendGfxStatesBitstreamToClient113c: pUnit == NULL (line 2463)')
-  }
+  if (pUnit === 0 || pClient === 0) return
   const pGfxFlags = UNITS_GetGfxStateFlagsPtr113c(m, pUnit) >>> 0
   if (pGfxFlags === 0) return
+
+  const pSgptHolder = m.u32(0x6fd1829c) >>> 0
+  const pDataTables = (pSgptHolder !== 0 ? m.u32(pSgptHolder) : m.u32(0x6fde9e1c)) >>> 0
+  if (pDataTables === 0) return
+  const nStatesCount = m.u32((pDataTables + 0xc4) >>> 0) | 0
+  const plus31 = (nStatesCount + 0x1f) | 0
+  const nDwords = sar32(plus31 + ((plus31 >> 31) & 0x1f), 5)
+  if (nDwords <= 0) return
+  const pStatesTxtBase = m.u32((pDataTables + 0xbc) >>> 0) >>> 0
 
   const sp = bootInitGapStackPtr
   bootInitGapStackPtr = (sp + 0x1140) >>> 0
@@ -1817,55 +1864,59 @@ export function UNIT_SendGfxStatesBitstreamToClient113c(
   const pPkt = (sp + 0x20) >>> 0
   const pStatsBuf = (sp + 0x120) >>> 0
   try {
-    for (let dwordIdx = 0; dwordIdx < 6; dwordIdx++) {
+    const uType = m.u8(pUnit >>> 0)
+    const uGuid = m.u32((pUnit + 0x0c) >>> 0) >>> 0
+    for (let dwordIdx = 0; dwordIdx < nDwords; dwordIdx++) {
       let mask = m.u32((pGfxFlags + dwordIdx * 4) >>> 0) >>> 0
       while (mask !== 0) {
         const bitIdx = fogBitScanForward113c(mask)
         if (bitIdx < 0) break
         const nState = ((dwordIdx << 5) + bitIdx) | 0
         mask = (mask & ~((1 << (bitIdx & 31)) >>> 0)) >>> 0
+        if (nState < 0 || nState >= nStatesCount || pStatesTxtBase === 0) continue
+        const pStateRec = (pStatesTxtBase + imul32(nState, 0x3c)) >>> 0
+        if ((m.u8((pStateRec + 0x10) >>> 0) & 0x01) !== 0) continue
 
-        if (STATES_CheckState113c(m, pUnit, nState) !== 0) {
-          m.fill(pPkt, 0x100, 0)
-          m.setU8(pPkt, 0xa8)
-          m.setU8((pPkt + 1) >>> 0, m.u8(pUnit >>> 0))
-          m.setU32((pPkt + 2) >>> 0, m.u32((pUnit + 0x0c) >>> 0))
-          fogInitBitBuffer113c(m, pBitStream, (pPkt + 7) >>> 0, 0xf8)
-          fogWriteBits113c(m, pBitStream, nState, 8)
-
-          const pStatList = STATLIST_GetStatListFromUnitAndStateMemPort113c(m, pUnit, nState) >>> 0
-          if (pStatList !== 0) {
-            const nStats = STATLIST_CopyBaseStatsToBuffer113c(m, pStatList, pStatsBuf, 0x200) | 0
-            for (let i = 0; i < nStats; i++) {
-              const pStat = (pStatsBuf + i * 8) >>> 0
-              const wParam = m.u16(pStat)
-              const wStatId = m.u16((pStat + 2) >>> 0)
-              const nVal = m.u32((pStat + 4) >>> 0) | 0
-              if (m.u32((pBitStream + 0x08) >>> 0) >= 0xf2) break
-              fogWriteBits113c(m, pBitStream, wStatId, 9)
-              if (wParam !== 0) {
-                fogWriteBits113c(m, pBitStream, 1, 1)
-                fogWriteBits113c(m, pBitStream, wParam, 16)
-              } else {
-                fogWriteBits113c(m, pBitStream, 0, 1)
-              }
-              fogWriteBits113c(m, pBitStream, nVal, 32)
-              if (wStatId <= 0x0b) {
-                fogWriteBits113c(m, pBitStream, nVal & 1, 1)
-              }
-            }
-          }
-          fogWriteBits113c(m, pBitStream, 0x1ff, 9)
-          const totalLen = (fogGetBitBufferSize113c(m, pBitStream) + 7) & 0xff
-          m.setU8((pPkt + 6) >>> 0, totalLen)
-          NET_QueuePacketToClientBuffer113c(m, pClient, 1, pPkt, totalLen)
-        } else {
+        if (STATES_CheckState113c(m, pUnit, nState) === 0) {
           m.setU8(pPkt, 0xa9)
-          m.setU8((pPkt + 1) >>> 0, m.u8(pUnit >>> 0))
-          m.setU32((pPkt + 2) >>> 0, m.u32((pUnit + 0x0c) >>> 0))
+          m.setU8((pPkt + 1) >>> 0, uType)
+          m.setU32((pPkt + 2) >>> 0, uGuid)
           m.setU8((pPkt + 6) >>> 0, nState & 0xff)
           NET_QueuePacketToClientBuffer113c(m, pClient, 1, pPkt, 7)
+          continue
         }
+
+        const pStatList = STATLIST_GetStatListFromUnitAndStateMemPort113c(m, pUnit, nState) >>> 0
+        if (pStatList === 0) {
+          m.setU8(pPkt, 0xa7)
+          m.setU8((pPkt + 1) >>> 0, uType)
+          m.setU32((pPkt + 2) >>> 0, uGuid)
+          m.setU8((pPkt + 6) >>> 0, nState & 0xff)
+          NET_QueuePacketToClientBuffer113c(m, pClient, 1, pPkt, 7)
+          continue
+        }
+
+        const nStats = STATLIST_CopyBaseStatsToBuffer113c(m, pStatList, pStatsBuf, 0x10) | 0
+        if (nStats <= 0) {
+          m.setU8(pPkt, 0xa7)
+          m.setU8((pPkt + 1) >>> 0, uType)
+          m.setU32((pPkt + 2) >>> 0, uGuid)
+          m.setU8((pPkt + 6) >>> 0, nState & 0xff)
+          NET_QueuePacketToClientBuffer113c(m, pClient, 1, pPkt, 7)
+          continue
+        }
+
+        m.fill(pPkt, 0x100, 0)
+        m.setU8(pPkt, 0xa8)
+        m.setU8((pPkt + 1) >>> 0, uType)
+        m.setU32((pPkt + 2) >>> 0, uGuid)
+        m.setU8((pPkt + 7) >>> 0, nState & 0xff)
+        fogInitBitBuffer113c(m, pBitStream, (pPkt + 8) >>> 0, 0xf4)
+        writeUnitStateStatsBitstream113c(m, pDataTables, pBitStream, pStatsBuf, nStats)
+        fogWriteBits113c(m, pBitStream, 0x1ff, 9)
+        const totalLen = (fogGetBitBufferSize113c(m, pBitStream) + 8) & 0xff
+        m.setU8((pPkt + 6) >>> 0, totalLen)
+        NET_QueuePacketToClientBuffer113c(m, pClient, 1, pPkt, totalLen)
       }
     }
   } finally {
@@ -1874,7 +1925,8 @@ export function UNIT_SendGfxStatesBitstreamToClient113c(
 }
 
 /**
- * Serializes all active states on `pUnit` (`D2Common.#11150`) as `0xA8` (with stats) or `0xA7` (flag only) packets to `pClient`.
+ * Serializes all active states on `pUnit` (`D2Common.#11150`) into a single `0xAA` multi-state
+ * bitstream packet (`ItemStatCost.txt` bit widths + `0xFF` 8-bit state terminator) to `pClient`.
  *
  * @va D2Game:0x6FC9A940
  */
@@ -1883,11 +1935,17 @@ export function UNIT_SendAllStatesBitstreamToClient113c(
   pUnit: number,
   pClient: number,
 ): void {
-  if (pUnit === 0) {
-    throw new Error('UNIT_SendAllStatesBitstreamToClient113c: pUnit == NULL (line 2544)')
-  }
+  if (pUnit === 0 || pClient === 0) return
   const pStateFlags = UNITS_GetStateFlagsPtr113c(m, pUnit) >>> 0
   if (pStateFlags === 0) return
+
+  const pSgptHolder = m.u32(0x6fd1829c) >>> 0
+  const pDataTables = (pSgptHolder !== 0 ? m.u32(pSgptHolder) : m.u32(0x6fde9e1c)) >>> 0
+  if (pDataTables === 0) return
+  const nStatesCount = m.u32((pDataTables + 0xc4) >>> 0) | 0
+  const plus31 = (nStatesCount + 0x1f) | 0
+  const nDwords = sar32(plus31 + ((plus31 >> 31) & 0x1f), 5)
+  const pStatesTxtBase = m.u32((pDataTables + 0xbc) >>> 0) >>> 0
 
   const sp = bootInitGapStackPtr
   bootInitGapStackPtr = (sp + 0x1140) >>> 0
@@ -1895,55 +1953,45 @@ export function UNIT_SendAllStatesBitstreamToClient113c(
   const pPkt = (sp + 0x20) >>> 0
   const pStatsBuf = (sp + 0x120) >>> 0
   try {
-    for (let dwordIdx = 0; dwordIdx < 6; dwordIdx++) {
+    m.fill(pPkt, 0x100, 0)
+    m.setU8(pPkt, 0xaa)
+    m.setU8((pPkt + 1) >>> 0, m.u8(pUnit >>> 0))
+    m.setU32((pPkt + 2) >>> 0, m.u32((pUnit + 0x0c) >>> 0))
+    fogInitBitBuffer113c(m, pBitStream, (pPkt + 7) >>> 0, 0xf4)
+
+    for (let dwordIdx = 0; dwordIdx < nDwords; dwordIdx++) {
       let mask = m.u32((pStateFlags + dwordIdx * 4) >>> 0) >>> 0
       while (mask !== 0) {
         const bitIdx = fogBitScanForward113c(mask)
         if (bitIdx < 0) break
         const nState = ((dwordIdx << 5) + bitIdx) | 0
         mask = (mask & ~((1 << (bitIdx & 31)) >>> 0)) >>> 0
+        if (nState < 0 || nState >= nStatesCount || pStatesTxtBase === 0) continue
+        const pStateRec = (pStatesTxtBase + imul32(nState, 0x3c)) >>> 0
+        if ((m.u8((pStateRec + 0x10) >>> 0) & 0x01) !== 0) continue
+        if (((fogGetBitBufferSize113c(m, pBitStream) + 7) | 0) >= 0xdb) break
 
+        fogWriteBits113c(m, pBitStream, nState, 8)
         const pStatList = STATLIST_GetStatListFromUnitAndStateMemPort113c(m, pUnit, nState) >>> 0
-        if (pStatList !== 0) {
-          m.fill(pPkt, 0x100, 0)
-          m.setU8(pPkt, 0xa8)
-          m.setU8((pPkt + 1) >>> 0, m.u8(pUnit >>> 0))
-          m.setU32((pPkt + 2) >>> 0, m.u32((pUnit + 0x0c) >>> 0))
-          fogInitBitBuffer113c(m, pBitStream, (pPkt + 7) >>> 0, 0xf8)
-          fogWriteBits113c(m, pBitStream, nState, 8)
-
-          const nStats = STATLIST_CopyBaseStatsToBuffer113c(m, pStatList, pStatsBuf, 0x200) | 0
-          for (let i = 0; i < nStats; i++) {
-            const pStat = (pStatsBuf + i * 8) >>> 0
-            const wParam = m.u16(pStat)
-            const wStatId = m.u16((pStat + 2) >>> 0)
-            const nVal = m.u32((pStat + 4) >>> 0) | 0
-            if (m.u32((pBitStream + 0x08) >>> 0) >= 0xf2) break
-            fogWriteBits113c(m, pBitStream, wStatId, 9)
-            if (wParam !== 0) {
-              fogWriteBits113c(m, pBitStream, 1, 1)
-              fogWriteBits113c(m, pBitStream, wParam, 16)
-            } else {
-              fogWriteBits113c(m, pBitStream, 0, 1)
-            }
-            fogWriteBits113c(m, pBitStream, nVal, 32)
-            if (wStatId <= 0x0b) {
-              fogWriteBits113c(m, pBitStream, nVal & 1, 1)
-            }
-          }
-          fogWriteBits113c(m, pBitStream, 0x1ff, 9)
-          const totalLen = (fogGetBitBufferSize113c(m, pBitStream) + 7) & 0xff
-          m.setU8((pPkt + 6) >>> 0, totalLen)
-          NET_QueuePacketToClientBuffer113c(m, pClient, 1, pPkt, totalLen)
-        } else {
-          m.setU8(pPkt, 0xa7)
-          m.setU8((pPkt + 1) >>> 0, m.u8(pUnit >>> 0))
-          m.setU32((pPkt + 2) >>> 0, m.u32((pUnit + 0x0c) >>> 0))
-          m.setU8((pPkt + 6) >>> 0, nState & 0xff)
-          NET_QueuePacketToClientBuffer113c(m, pClient, 1, pPkt, 7)
+        if (pStatList === 0) {
+          fogWriteBits113c(m, pBitStream, 0, 1)
+          continue
         }
+        const nStats = STATLIST_CopyBaseStatsToBuffer113c(m, pStatList, pStatsBuf, 0x10) | 0
+        if (nStats <= 0) {
+          fogWriteBits113c(m, pBitStream, 0, 1)
+          continue
+        }
+        fogWriteBits113c(m, pBitStream, 1, 1)
+        writeUnitStateStatsBitstream113c(m, pDataTables, pBitStream, pStatsBuf, nStats)
+        fogWriteBits113c(m, pBitStream, 0x1ff, 9)
       }
     }
+
+    fogWriteBits113c(m, pBitStream, 0xff, 8)
+    const totalLen = (fogGetBitBufferSize113c(m, pBitStream) + 7) & 0xff
+    m.setU8((pPkt + 6) >>> 0, totalLen)
+    NET_QueuePacketToClientBuffer113c(m, pClient, 1, pPkt, totalLen)
   } finally {
     bootInitGapStackPtr = sp
   }

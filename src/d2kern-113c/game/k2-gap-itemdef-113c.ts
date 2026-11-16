@@ -270,6 +270,19 @@ function scaleSignedPercent64(aRaw: number, bRaw: number): number {
   return cSignedDiv100(Math.imul(b, a))
 }
 
+let itemdefGapMonsterKillHook: ((
+  m: Memory113c,
+  pGame: number,
+  pMonster: number,
+  pKiller: number,
+) => void) | null = null
+
+export function setItemdefGapMonsterKillHook113c(
+  fn: ((m: Memory113c, pGame: number, pMonster: number, pKiller: number) => void) | null,
+): void {
+  itemdefGapMonsterKillHook = fn
+}
+
 /**
  * Exact post-damage reaction step following `SUNITDMG_ApplyDamage113c` for callers
  * that invoke both `SUNITDMG_ExecuteDamage` and `SUNITDMG_ExecuteMissileDamage`
@@ -293,8 +306,12 @@ function applyPostDamageHitReaction(
       STATES_ToggleGfxStateFlag113c(m, pDefender, 0x5c, 1)
       return
     }
-    SUNITDMG_DistributeExperience113c(m, pGame, pAttacker, pDefender)
-    MONSTER_StartDeath113c(m, pGame, pDefender, pAttacker, false)
+    if (itemdefGapMonsterKillHook !== null) {
+      itemdefGapMonsterKillHook(m, pGame, pDefender, pAttacker)
+    } else {
+      SUNITDMG_DistributeExperience113c(m, pGame, pAttacker, pDefender)
+      MONSTER_StartDeath113c(m, pGame, pDefender, pAttacker, false)
+    }
   }
 }
 
@@ -641,7 +658,17 @@ function learnSkillFromPointsOrScroll(
   return 1
 }
 
-/** Assigns left (`bLeft != 0`) or right (`bLeft == 0`) skill slot on `pUnit` and syncs auras. */
+/** Assigns left (`bLeft != 0`) or right (`bLeft == 0`) skill slot on `pUnit` and syncs auras (`@va D2Game:0x6FCC2110`). */
+export function SKILLS_AssignHandSkillAndSyncAuraItemdef113c(
+  m: Memory113c,
+  pUnit: number,
+  bLeft: number,
+  nSkillId: number,
+  dwOwnerGuid: number,
+): void {
+  return assignUnitHandSkillSlot(m, pUnit, bLeft, nSkillId, dwOwnerGuid)
+}
+
 function assignUnitHandSkillSlot(
   m: Memory113c,
   pUnit: number,
@@ -3031,6 +3058,43 @@ export function SKILLS_TriggerSkillOnTarget113c(
       notifyId,
       bConsumeMana,
     )
+    return 1
+  } finally {
+    itemdefGapStackPtr = sp
+  }
+}
+
+/**
+ * `@va D2Game:0x6FCB8A70` (`SKILLS_ItemEventThorns`, `auraeventfunc = 6`)
+ * Reflects `STAT_ITEM_THORNS_PERCENT (131)` % of `pDmg->dwPhysDamage` back onto `pAttacker`
+ * when `pDefender` takes melee physical damage.
+ */
+export function SKILLS_ItemEventThorns113c(
+  m: Memory113c,
+  pGame: number,
+  pDefender: number,
+  pAttacker: number,
+  pDmg: number,
+): number {
+  if (pDefender === 0 || pAttacker === 0 || pDmg === 0) return 0
+  let thornsPct = STATLIST_GetUnitStat113c(m, pDefender, 0x83, 0) | 0
+  if (thornsPct <= 0) return 0
+  const attType = m.u32(pAttacker >>> 0) >>> 0
+  if (attType === 0 || MONSTERS_CheckMonStatsFlagBit6_113c(m, 0, pAttacker) !== 0) {
+    thornsPct = (thornsPct + 4) >> 3
+  }
+  if (thornsPct <= 0) return 0
+  const physDmg = m.u32((pDmg + 0x08) >>> 0) | 0
+  const sp = itemdefGapStackPtr
+  itemdefGapStackPtr = (sp + 0x70) >>> 0
+  try {
+    m.fill(sp, 0x70, 0)
+    const reflPhys = scaleSignedPercent64(physDmg, thornsPct)
+    m.setU16((sp + 0x04) >>> 0, 0x4021)
+    m.setU32((sp + 0x08) >>> 0, reflPhys >>> 0)
+    m.setU32((sp + 0x60) >>> 0, 0x8d)
+    SUNITDMG_ApplyDamage113c(m, pGame, pDefender, pAttacker, sp)
+    applyPostDamageHitReaction(m, pGame, pDefender, pAttacker, sp)
     return 1
   } finally {
     itemdefGapStackPtr = sp

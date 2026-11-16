@@ -1154,7 +1154,27 @@ export function DUNGEON_AllocActiveRoom113c(
   return pRoom
 }
 
-const WAYPOINT_PAIR_GROUP_6FDE4F48 = [1, 0, 0, 0, 0, 0, 0, 0] as const
+/**
+ * `.rdata` `int32_t[14][2]` (`[bIsGroupHead, nGroupId]`) at `0x6FDE4F48..0x6FDE4FB8` in `D2Common.dll` v1.13c,
+ * indexed by special tile / portal spawn type `0..13` (`0` = town entry group `0..4`, `5` = palace/harem group `5..9`,
+ * `10` = town portal, `11` = town spawn, `12` = portal, `13` = waypoint).
+ */
+export const WAYPOINT_PAIR_GROUP_6FDE4F48 = [
+  1, 0,
+  0, 0,
+  0, 0,
+  0, 0,
+  0, 0,
+  1, 1,
+  0, 1,
+  0, 1,
+  0, 1,
+  0, 1,
+  0, 2,
+  0, 3,
+  0, 4,
+  0, 5,
+] as const
 
 /**
  * `D2Common.dll` `0x6FD69B60` (internal `__usercall(pLevel@<ecx>, nPortalType@<ebx>, pOutX, pOutY)`).
@@ -1176,7 +1196,11 @@ export function DRLG_FindPortalTargetRoomEx113c(
       const eType = m.u32(pEntry) | 0
       if (
         eType === targetType ||
-        ((WAYPOINT_PAIR_GROUP_6FDE4F48[targetType * 2]! | 0) !== 0 &&
+        (targetType >= 0 &&
+          targetType < 14 &&
+          eType >= 0 &&
+          eType < 14 &&
+          (WAYPOINT_PAIR_GROUP_6FDE4F48[targetType * 2]! | 0) !== 0 &&
           WAYPOINT_PAIR_GROUP_6FDE4F48[targetType * 2 + 1] === WAYPOINT_PAIR_GROUP_6FDE4F48[eType * 2 + 1])
       ) {
         count = (count + 1) | 0
@@ -1208,7 +1232,11 @@ export function DRLG_FindPortalTargetRoomEx113c(
       const eType = m.u32(pEntry) | 0
       if (
         eType === targetType ||
-        ((WAYPOINT_PAIR_GROUP_6FDE4F48[targetType * 2]! | 0) !== 0 &&
+        (targetType >= 0 &&
+          targetType < 14 &&
+          eType >= 0 &&
+          eType < 14 &&
+          (WAYPOINT_PAIR_GROUP_6FDE4F48[targetType * 2]! | 0) !== 0 &&
           WAYPOINT_PAIR_GROUP_6FDE4F48[targetType * 2 + 1] === WAYPOINT_PAIR_GROUP_6FDE4F48[eType * 2 + 1])
       ) {
         pick = (pick - 1) | 0

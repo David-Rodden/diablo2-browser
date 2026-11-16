@@ -38,9 +38,12 @@ import {
   UNIT_PLAYER,
   UNITROOM_ClearUpdateQueue113c,
   UNITROOM_RefreshUnit113c,
+  UNITS_GetBlockChance113c,
   UNITS_GetDistanceToOtherUnit113c,
   UNITS_GetRoom113c,
 } from '../common/unit.ts'
+import { MONSTERS_GetCompCode113c } from '../common/monsters.ts'
+import { UNITS_IsInMovingMode113c } from '../common/waypoint.ts'
 import {
   PATH_Compute113c,
   PATH_ComputeDirection113c,
@@ -79,9 +82,11 @@ import {
   getCharStatsPure113c,
   getMonLvlXpRow113c,
   getMonStatsRowByClassId113c,
+  getMonStatsTxtPtrPure113c,
   getMonsterModeBaseAnimSpeed256Pure113c,
   getMonsterModeBaseFrameCountPure113c,
   getMonsterModeFlagsPure113c,
+  isItemCodeShieldPure113c,
   isMonsterCritterPure113c,
   playerAnimStartFramePure113c,
   rollTreasureClassSeedOnly113c,
@@ -2422,17 +2427,55 @@ export function SUNITDMG_AllocCombat113c(
 
 /**
  * `@va D2Game:0x6FCFB790` (`SUNITDMG_RollPassiveWeaponBlockOrShieldBlock`):
- * Computes effective shield block chance for `pDefender`:
- * - For `UNIT_PLAYER`: `CharStats.baseBlock + shieldBlock` (adjusted by `(block * (dex - 15)) / (clvl * 2)`, clamped to `[0, 75]`;
- *   for level-1 Barbarian with Buckler (`20%`) and `dex = 20`: `baseBlock (30) + 20 = 50%` or `STAT_TOBLOCK (20)`).
+ * Computes effective shield block chance for `pDefender` via `D2Common.#10212` (`0x6FD81D20` `UNITS_GetBlockChance`):
+ * - For `UNIT_MONSTER`: requires `MonStatsTxt[+0x0F] & 0x04` (`NoShldBlock`) or an equipped shield component (`comp = 7`)
+ *   before reading `STAT_TOBLOCK (20)`, clamped to `[0, 75]`.
+ * - For `UNIT_PLAYER`: applies `1/3` running block penalty (`0x6FCFB7D0..0x6FCFB7F3`) when moving and `dwAnimMode != 2`.
  * - Rolls `SEED_RollLimitedRandomNumber(pDefender->tSeed, 100) < blockChance`.
  */
 export function SUNITDMG_RollPassiveWeaponBlockOrShieldBlock113c(
   m: Memory113c,
   pDefender: number,
+  pGame = 0,
 ): number {
   if (pDefender === 0) return 0
-  let blockChance = STATLIST_GetUnitStat113c(m, pDefender, STAT_TOBLOCK_113C, 0) | 0
+  const defType = m.get(pDefender, D2UnitStrc.dwUnitType)
+  let blockChance = 0
+  if (defType === UNIT_MONSTER) {
+    const sgpt = m.u32(0x6fde9e1c)
+    if (sgpt !== 0 && (m.u32((sgpt + 0xbd4) >>> 0) | 0) > 0x14) {
+      blockChance = UNITS_GetBlockChance113c(m, pDefender, 0) | 0
+    } else {
+      const pTxt = getMonStatsTxtPtrPure113c(m, m.get(pDefender, D2UnitStrc.dwClassId) | 0)
+      const hasMonBlock = pTxt !== 0 && (m.u8((pTxt + 0x0f) >>> 0) & 0x04) !== 0
+      if (!hasMonBlock) {
+        const pMonData = m.get(pDefender, D2UnitStrc.pUnitData)
+        if (pMonData === 0) return 0
+        const varIdx = m.u8((pMonData + 0x0b) >>> 0)
+        const compCode = MONSTERS_GetCompCode113c(m, pDefender, 7, varIdx) >>> 0
+        if (!isItemCodeShieldPure113c(compCode)) return 0
+      }
+      blockChance = STATLIST_GetUnitStat113c(m, pDefender, STAT_TOBLOCK_113C, 0) | 0
+    }
+  } else if (defType === UNIT_PLAYER) {
+    const sgpt = m.u32(0x6fde9e1c)
+    if (pGame !== 0 && sgpt !== 0 && (m.u32((sgpt + 0xbd4) >>> 0) | 0) > 0x14) {
+      const bExp =
+        m.u32((pGame + 0x70) >>> 0) !== 0 || m.u8((pGame + 0x6a) >>> 0) !== 0 ? 1 : 0
+      blockChance = UNITS_GetBlockChance113c(m, pDefender, bExp) | 0
+    } else {
+      blockChance = STATLIST_GetUnitStat113c(m, pDefender, STAT_TOBLOCK_113C, 0) | 0
+    }
+    if (
+      blockChance > 0 &&
+      UNITS_IsInMovingMode113c(m, pDefender) !== 0 &&
+      m.get(pDefender, D2UnitStrc.dwAnimMode) !== 2
+    ) {
+      blockChance = Math.trunc(blockChance / 3) | 0
+    }
+  } else {
+    return 0
+  }
   if (blockChance <= 0) {
     return 0
   }
@@ -2555,9 +2598,8 @@ export function SUNITDMG_GetColdEffectLengthBonus113c(
 
 /**
  * `@va D2Game:0x6FCFC0B0` (`SUNITDMG_ApplyResistancesAndAbsorb`):
- * Checks dodge/avoid/evade/block (`0x6FCFB030`); if blocked, zeroes all damage channels (`dwDmgTotal = 0`).
- * Otherwise applies physical/magic/fire/lightning/cold/poison resistances (`0x6FCFBD00`) and elemental absorb (`0x6FCFAD00`),
- * and updates `pDmg->dwDmgTotal`.
+ * Applies physical/magic/fire/lightning/cold/poison resistances (`0x6FCFBD00`) and elemental absorb (`0x6FCFAD00`),
+ * and updates `pDmg->dwDmgTotal`. Block/dodge/avoid/evade rolls occur upstream (`0x6FCFB790` / `0x6FCFB030`), never in `0x6FCFC0B0`.
  */
 export function SUNITDMG_ApplyResistancesAndAbsorb113c(
   m: Memory113c,
@@ -2565,18 +2607,8 @@ export function SUNITDMG_ApplyResistancesAndAbsorb113c(
   pDefender: number,
   pDmg: number,
 ): number {
+  void pAttacker
   if (pDefender === 0 || pDmg === 0) return 0
-  const hitFlags = m.get(pDmg, D2DamageStrc.dwHitFlags)
-  if ((hitFlags & 0x8000) === 0 && SUNITDMG_RollDodgeAvoidEvadeBlock113c(m, pAttacker, pDefender, pDmg) !== 0) {
-    m.set(pDmg, D2DamageStrc.dwPhysDamage, 0)
-    m.set(pDmg, D2DamageStrc.dwFireDamage, 0)
-    m.set(pDmg, D2DamageStrc.dwLtngDamage, 0)
-    m.set(pDmg, D2DamageStrc.dwMagDamage, 0)
-    m.set(pDmg, D2DamageStrc.dwColdDamage, 0)
-    m.set(pDmg, D2DamageStrc.dwPoisDamage, 0)
-    m.set(pDmg, D2DamageStrc.dwDmgTotal, 0)
-    return 0
-  }
 
   const phys = SUNITDMG_ApplySingleChannelResistance113c(
     m,
@@ -2999,8 +3031,31 @@ export function SUNITDMG_ApplySideEffectsAndKill113c(
   if (dmgTotal <= 0) return 0
 
   const curHp = STATLIST_GetUnitStat113c(m, pDefender, STAT_HITPOINTS_113C, 0) | 0
-  const newHp = Math.max(0, curHp - dmgTotal)
+  let newHp = (curHp - dmgTotal) | 0
+  if (newHp < 0x100) newHp = 0
   STATLIST_SetUnitStat113c(m, pDefender, STAT_HITPOINTS_113C, newHp, 0)
+  if (newHp > 0) {
+    m.set(pDmg, D2DamageStrc.wResultFlags, m.get(pDmg, D2DamageStrc.wResultFlags) & ~0x02)
+    if (
+      pGame !== 0 &&
+      m.get(pDefender, D2UnitStrc.dwUnitType) === UNIT_MONSTER &&
+      (STATLIST_GetUnitStat113c(m, pDefender, 74, 0) | 0) !== 0
+    ) {
+      EVENT_DeleteEventByArg14_113c(m, pGame, pDefender, 3, 0)
+      EVENT_SetEventFull113c(
+        m,
+        pGame,
+        pDefender,
+        3,
+        ((m.get(pGame, D2GameStrc.dwGameFrame) | 0) + 1) >>> 0,
+        0,
+        0,
+        0,
+      )
+    }
+  } else {
+    m.set(pDmg, D2DamageStrc.wResultFlags, m.get(pDmg, D2DamageStrc.wResultFlags) | 0x02)
+  }
 
   SUNITDMG_ApplyLifeManaSteal113c(m, pAttacker, pDefender, pDmg)
   SUNITDMG_ApplyColdOrFreezeState113c(m, pGame, pAttacker, pDefender, pDmg)

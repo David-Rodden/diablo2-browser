@@ -851,23 +851,49 @@ export function confirmQuestRewardImpl(model: any, itemId: number, explicitNpcId
     ;(model.world.npcInteraction as any).window = 'none'
     ;(model.world.npcInteraction as any).activeWindow = 'none'
     ;(model.world.npcInteraction as any).npcId = null
+    ;(model.world.npcInteraction as any).infoNpcId = null
+    // D2Game.dll 0x6fc565e0 -> 0x6fcf2c70 + D2Client.dll 0x6fb4f9e0 / 0x6fb5029e:
+    // confirming the Orifice consumes the cursor-held Horadric Staff ('hst') and closes
+    // both the Orifice panel (0x0E) and the composite Inventory panel (0x01).
+    const cursorData = model.world.containers?.cursor
+    if (
+      cursorData &&
+      (cursorData.id === itemId || cursorData.code?.trim().toLowerCase() === 'hst')
+    ) {
+      model.world.containers.clearCursor?.()
+    } else if (itemId > 0) {
+      model.world.containers?.remove?.(itemId)
+    }
+    model.lastSyncedCursorItemRef = null
     if (model.hudManager) {
       ;(model.hudManager.worldPanels as any).questRewardItem = null
+      ;(model.hudManager.worldPanels as any).hoveredQuestRewardItem = null
       ;(model.hudManager.worldPanels as any).activeNpcId = null
+      if (model.hudManager.inventory) {
+        model.hudManager.inventory.cursorItem = null
+        model.hudManager.inventory.visible = false
+      }
       if (model.hudManager.leftPanel === 'orifice') {
         model.hudManager.leftPanel = 'none'
+      }
+      if (model.hudManager.rightPanel === 'inv') {
+        model.hudManager.rightPanel = 'none'
       }
       if ((model.hudManager.worldPanels as any).activePanel === 'orifice') {
         ;(model.hudManager.worldPanels as any).activePanel = 'none'
       }
     }
-    model.emitCommand({
+    const cmd: ClientCommand = {
       type: 'StaffInOrifice',
       orificeObjectId: npcId >>> 0,
       staffItemId: itemId >>> 0,
       state: 3,
       playerUnitId: (model.world.selfId || 0xffffffff) >>> 0,
-    })
+    }
+    model.world.noteOutgoingCommand?.(cmd)
+    model.emitCommand(cmd)
+    model.syncFromWorld?.()
+    model.hudManager?.syncPublishedState?.()
     return
   }
   const slotUiItem = (model.hudManager?.worldPanels as any)?.questRewardItem ?? null
@@ -1087,22 +1113,96 @@ export function closeActiveNpcPanelImpl(model: any): void {
   model.hudManager?.closeAllPanels()
 }
 
+export function cancelOrificeUiFromServerImpl(model: any): void {
+  const returnedSlotItem = (model.hudManager?.worldPanels as any)?.questRewardItem ?? null
+  if (model.hudManager) {
+    if (returnedSlotItem) {
+      if (!model.hudManager.inventory.cursorItem) {
+        model.hudManager.inventory.cursorItem = returnedSlotItem
+      } else {
+        model.hudManager.inventory.autoPlaceInGrid?.(returnedSlotItem)
+      }
+      ;(model.hudManager.worldPanels as any).questRewardItem = null
+    }
+    ;(model.hudManager.worldPanels as any).hoveredQuestRewardItem = null
+  }
+  model.pendingArtisanConfirmNpcId = null
+  ;(model.world.npcInteraction as any).window = 'none'
+  ;(model.world.npcInteraction as any).activeWindow = 'none'
+  ;(model.world.npcInteraction as any).npcId = null
+  ;(model.world.npcInteraction as any).infoNpcId = null
+  if (model.hudManager) {
+    ;(model.hudManager.worldPanels as any).activeNpcId = null
+    const wasOrificeOpen =
+      model.hudManager.leftPanel === 'orifice' ||
+      (model.hudManager.worldPanels as any).activePanel === 'orifice'
+    if (wasOrificeOpen) {
+      if (typeof model.hudManager.hideLeftPanelFromWorld === 'function') {
+        model.hudManager.hideLeftPanelFromWorld('orifice')
+      }
+      if (model.hudManager.leftPanel === 'orifice') {
+        model.hudManager.leftPanel = 'none'
+      }
+      if ((model.hudManager.worldPanels as any).activePanel === 'orifice') {
+        ;(model.hudManager.worldPanels as any).activePanel = 'none'
+      }
+      if (model.hudManager.rightPanel === 'inv') {
+        model.hudManager.rightPanel = 'none'
+        if (model.hudManager.inventory) {
+          model.hudManager.inventory.visible = false
+        }
+      }
+    }
+  }
+  model.syncFromWorld?.()
+  if (
+    returnedSlotItem &&
+    model.hudManager &&
+    !model.hudManager.inventory.cursorItem &&
+    !model.world.containers?.cursor
+  ) {
+    model.hudManager.inventory.cursorItem = returnedSlotItem
+    model.lastSyncedCursorItemRef = returnedSlotItem
+    model.hudManager.syncPublishedState?.()
+  }
+}
+
 export function completeOrificeUiImpl(model: any, extra = 0): void {
   model.uiSound?.(extra !== 0 ? 5 : 3)
   model.pendingArtisanConfirmNpcId = null
   ;(model.world.npcInteraction as any).window = 'none'
   ;(model.world.npcInteraction as any).activeWindow = 'none'
   ;(model.world.npcInteraction as any).npcId = null
+  ;(model.world.npcInteraction as any).infoNpcId = null
+  if (
+    extra !== 0 ||
+    model.world.containers?.cursor?.code?.trim().toLowerCase() === 'hst'
+  ) {
+    model.world.containers?.clearCursor?.()
+  }
+  model.lastSyncedCursorItemRef = null
   if (model.hudManager) {
     ;(model.hudManager.worldPanels as any).questRewardItem = null
+    ;(model.hudManager.worldPanels as any).hoveredQuestRewardItem = null
     ;(model.hudManager.worldPanels as any).activeNpcId = null
+    if (model.hudManager.inventory) {
+      model.hudManager.inventory.cursorItem = null
+      if (model.hudManager.rightPanel === 'inv') {
+        model.hudManager.inventory.visible = false
+      }
+    }
     if (model.hudManager.leftPanel === 'orifice') {
       model.hudManager.leftPanel = 'none'
+    }
+    if (model.hudManager.rightPanel === 'inv') {
+      model.hudManager.rightPanel = 'none'
     }
     if ((model.hudManager.worldPanels as any).activePanel === 'orifice') {
       ;(model.hudManager.worldPanels as any).activePanel = 'none'
     }
   }
+  model.syncFromWorld?.()
+  model.hudManager?.syncPublishedState?.()
 }
 
 export function completeArtisanUiImpl(model: any, _uiId: 6 | 7, explicitNpcId?: number): void {

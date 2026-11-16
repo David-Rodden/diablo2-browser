@@ -16,12 +16,12 @@
   },
   "p52-dot-ticks": {
     "bootFrame": 2,
-    "strict": 787,
-    "pos": 807
+    "strict": 1200,
+    "pos": 1200
   },
   "p52-item-defense": {
     "bootFrame": 2,
-    "strict": 718,
-    "pos": 760
+    "strict": 1600,
+    "pos": 1600
   }
 }

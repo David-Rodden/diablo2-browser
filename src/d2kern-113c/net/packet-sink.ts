@@ -94,6 +94,177 @@ export function buildFogHuffmanCodes113c(bitLens: Uint8Array = FOG_HUFFMAN_BIT_L
 export const FOG_HUFFMAN_CODES_113C = buildFogHuffmanCodes113c(FOG_HUFFMAN_BIT_LENS_113C)
 
 /**
+ * 2048-entry (`1 << 11`) flat MSB canonical Huffman decode table matching `Fog.#10219` (`0x6FF6EFD0`)
+ * -> `Fog.#10224` (`0x6FF6EDA0`) over `0x6FF7F210` (`max(bitLen) == 11`, Kraft sum `== 2048`).
+ */
+export function buildFogHuffmanDec11Table113c(
+  bitLens: Uint8Array = FOG_HUFFMAN_BIT_LENS_113C,
+  codes: Uint8Array = FOG_HUFFMAN_CODES_113C,
+): Uint8Array {
+  const dec = new Uint8Array(2048)
+  for (let sym = 0; sym < 256; sym++) {
+    const len = bitLens[sym]!
+    if (len === 0 || len > 11) {
+      throw new RangeError(`Unsupported Fog Huffman bit length ${len} at symbol ${sym}`)
+    }
+    const shift = 11 - len
+    const base = (codes[sym]! & ((1 << len) - 1)) << shift
+    const span = 1 << shift
+    for (let k = 0; k < span; k++) {
+      dec[base + k] = sym
+    }
+  }
+  return dec
+}
+
+export const FOG_HUFFMAN_DEC11_SYM_113C = buildFogHuffmanDec11Table113c(
+  FOG_HUFFMAN_BIT_LENS_113C,
+  FOG_HUFFMAN_CODES_113C,
+)
+
+/**
+ * Exact `Fog.#10224` (`0x6FF6EDA0..0x6FF6EE53`) S2C packet Huffman decompressor:
+ * `int __fastcall Fog_DecompressPacket(uint8_t* dst, int dstCap, const uint8_t* src, int srcLen)`
+ * Returns `0` when `dstCap` is exhausted before `emptyBits + bitLen > 32`, otherwise returns decompressed byte count.
+ */
+export function fogDecompressPacket113c(
+  src: Uint8Array,
+  dstCap: number,
+  dst: Uint8Array = new Uint8Array(Math.max(0, dstCap | 0)),
+): number {
+  let remCap = Math.min(dstCap >>> 0, dst.byteLength >>> 0)
+  let srcPos = 0
+  const srcLen = src.byteLength
+  let outPos = 0
+  let edi = 0
+  let emptyBits = 32 // `esi` in `0x6FF6EDB9`
+
+  while (true) {
+    while (emptyBits >= 8 && srcPos < srcLen) {
+      const b = src[srcPos++]!
+      emptyBits -= 8
+      edi = (edi | ((b << emptyBits) >>> 0)) >>> 0
+    }
+
+    const sym = FOG_HUFFMAN_DEC11_SYM_113C[(edi >>> 21) & 0x7ff]!
+    const bitLen = FOG_HUFFMAN_BIT_LENS_113C[sym]!
+    emptyBits += bitLen
+    if (emptyBits > 32) {
+      return outPos
+    }
+    if (remCap === 0) {
+      return 0
+    }
+    remCap--
+    dst[outPos++] = sym
+    edi = (edi << bitLen) >>> 0
+  }
+}
+
+/**
+ * Authoritative 181-entry (`0x00..0xB4`) S2C packet size table from `D2Net.dll` `.data` at `0x6FBFA900`
+ * (`> 0` fixed size, `-1` variable-length resolved by `D2Net.#10033` `0x6FBF6750`, `0` invalid).
+ */
+export const D2NET_S2C_PACKET_SIZES_113C = new Int16Array([
+  1, 8, 1, 12, 1, 1, 1, 6, 6, 11, 6, 6, 9, 13, 12, 16,
+  16, 8, 26, 14, 18, 11, -1, 0, 15, 2, 2, 3, 5, 3, 4, 6,
+  10, 12, 12, 13, 90, 90, -1, 40, 103, 97, 15, 0, 8, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 8,
+  13, 0, 6, 0, 0, 13, 0, 11, 11, 0, 0, 0, 16, 17, 7, 1,
+  15, 14, 42, 10, 3, 0, 0, 14, 7, 26, 40, -1, 5, 6, 38, 5,
+  7, 2, 7, 21, 0, 7, 7, 16, 21, 12, 12, 16, 16, 10, 1, 1,
+  1, 1, 1, 32, 10, 13, 6, 2, 21, 6, 13, 8, 6, 18, 5, 10,
+  0, 20, 29, 0, 0, 0, 0, 0, 0, 2, 6, 6, 11, 7, 10, 33,
+  13, 26, 6, 8, -1, 13, 9, 1, 7, 16, 17, 7, -1, -1, 7, 8,
+  10, 7, 8, 24, 3, 8, -1, 7, -1, 7, -1, 7, -1, 0, -1, -1,
+  1, 0, 53, -1, 5,
+])
+
+/**
+ * Exact `D2Net.#10033` (`0x6FBF6750..0x6FBF692E`) S2C packet size resolver over `pkt[0..pkt.byteLength-1]`.
+ * Returns `0` if `pkt` is empty, opcode `>= 0xB5`, invalid (`0`), or shorter than the required header bytes.
+ */
+export function getS2CPacketSize113c(pkt: Uint8Array): number {
+  const n = pkt.byteLength
+  if (n < 1) return 0
+  const op = pkt[0]!
+  if (op >= 0xb5) return 0
+  const fixed = D2NET_S2C_PACKET_SIZES_113C[op]!
+  if (fixed >= 0) return fixed
+
+  switch (op) {
+    case 0x16:
+      return n >= 0x0d ? pkt[1]! | (pkt[2]! << 8) : 0
+    case 0x26: {
+      if (n < 0x0a) return 0
+      let nameLen = 0
+      while (0x0a + nameLen < n && pkt[0x0a + nameLen] !== 0) nameLen++
+      const textStart = 0x0b + nameLen
+      if (n < textStart) return 0
+      let textLen = 0
+      while (textStart + textLen < n && pkt[textStart + textLen] !== 0) textLen++
+      const total = textStart + textLen + 1
+      return n >= total ? total : 0
+    }
+    case 0x3e:
+      return n >= 2 ? pkt[1]! : 0
+    case 0x5b:
+      return n >= 0x22 ? pkt[1]! | (pkt[2]! << 8) : 0
+    case 0x94:
+      return n >= 9 ? (pkt[1]! + 2) * 3 : 0
+    case 0x9c:
+    case 0x9d:
+      return n >= 3 ? pkt[2]! : 0
+    case 0xa6:
+      return n >= 4 ? pkt[2]! | (pkt[3]! << 8) : 0
+    case 0xa8:
+    case 0xaa:
+      return n >= 7 ? pkt[6]! : 0
+    case 0xac:
+      return n >= 0x0d ? pkt[0x0c]! : 0
+    case 0xae: {
+      if (n < 3) return 0
+      const w = pkt[1]! | (pkt[2]! << 8)
+      return (w <= 0x1fd ? w : 0) + 3
+    }
+    case 0xaf:
+      if (n < 2) return 0
+      return pkt[1]! === 0 ? 2 : pkt[1]! + 1
+    case 0xb3:
+      return n >= 8 ? pkt[1]! + 7 : 0
+    default:
+      return 0
+  }
+}
+
+/**
+ * Inverse of `frameServerPacket113c` (`D2Net.#10002` + `Fog.#10224` `0x6FF6EDA0`):
+ * unframes 1-byte (`< 0xF0`) or 2-byte (`>= 0xF0`) wire header and decompresses Huffman payload.
+ */
+export function unframeServerPacket113c(
+  nQueue: number,
+  wire: Uint8Array,
+  expectedRawCap: number = D2NET_MAX_PACKET_LEN_113C,
+): Uint8Array {
+  const bl = nQueue & 0xff
+  if ((bl === 0 && wire.byteLength > 0 && wire[0] === 0xaf) || bl === 2) {
+    return wire.slice()
+  }
+  if (wire.byteLength < 2) {
+    return new Uint8Array(0)
+  }
+  const b0 = wire[0]!
+  const hdrLen = b0 < 0xf0 ? 1 : 2
+  const totalLen = b0 < 0xf0 ? b0 : ((b0 & 0x0f) << 8) | wire[1]!
+  if (totalLen !== wire.byteLength || totalLen <= hdrLen) {
+    return new Uint8Array(0)
+  }
+  const out = new Uint8Array(expectedRawCap)
+  const decLen = fogDecompressPacket113c(wire.subarray(hdrLen, totalLen), expectedRawCap, out)
+  return out.subarray(0, decLen)
+}
+
+/**
  * Exact `Fog.#10223` (`0x6FF6EE60..0x6FF6EF04`) S2C packet Huffman compressor:
  * `int __fastcall Fog_CompressPacket(uint8_t* dst, int dstMax, const uint8_t* src, int srcLen)`
  */

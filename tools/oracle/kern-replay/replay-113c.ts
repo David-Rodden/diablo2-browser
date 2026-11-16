@@ -131,7 +131,7 @@ function ensureReplayHydrationAssetsLoaded113c(): void {
 }
 
 /** Hydrates every recorded block at its original address. Unreadable blocks (`h: null`) stay absent. */
-export function bootFromSnapshot113c(snap: Snapshot113c): KernWorld113c {
+export function bootFromSnapshot113c(snap: Snapshot113c, saveBytes?: Uint8Array): KernWorld113c {
   ensureReplayHydrationAssetsLoaded113c()
   const m = new SparseMemory113c()
   let loaded = 0
@@ -148,7 +148,7 @@ export function bootFromSnapshot113c(snap: Snapshot113c): KernWorld113c {
   if (frame !== snap.frame) {
     throw new Error(`snapshot pGame->dwGameFrame ${frame} != recorded frame ${snap.frame}`)
   }
-  hydrateSnapshotKernelTables113c(m, pGame, snap.d2game >>> 0)
+  hydrateSnapshotKernelTables113c(m, pGame, snap.d2game >>> 0, saveBytes)
   return { m, pGame, bootFrame: frame }
 }
 
@@ -428,6 +428,7 @@ export function diffFrame113c(
 
 export interface ReplayScenario113c {
   readonly name: string
+  readonly save?: string
   readonly frames: number
   readonly inputs: ReadonlyArray<{ readonly frame: number; readonly c2s: string }>
 }
@@ -475,7 +476,11 @@ function hexBytes(hex: string): Uint8Array {
 export function runReplay113c(name: string, bootFrame = 2): ReplayResult113c {
   const golden = loadGolden113c(name)
   const scenario = loadScenario113c(name)
-  const world = bootFromSnapshot113c(loadSnapshotFile113c(snapshotPath113c(name, bootFrame)))
+  const saveBytes =
+    scenario.save !== undefined
+      ? new Uint8Array(readFileSync(join(REPO_ROOT_113C, scenario.save)))
+      : undefined
+  const world = bootFromSnapshot113c(loadSnapshotFile113c(snapshotPath113c(name, bootFrame)), saveBytes)
   if (world.bootFrame !== bootFrame) throw new Error(`snapshot boots at F${world.bootFrame}, expected F${bootFrame}`)
   const header = golden.header
   let lastGoldenFrame = 0

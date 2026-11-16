@@ -170,7 +170,7 @@ function allocPlayerWithQuests(
 } {
   const pPlayer = m.alloc(0x100)
   const pPlayerData = m.alloc(0x100)
-  const pQuestFlags = QUESTRECORD_AllocRecord113c(m)
+  const pQuestFlags = QUESTRECORD_AllocRecord113c(m, 0)
   const pClient = m.alloc(0x240)
   const pDynPath = m.alloc(0x40)
   const pRoom = m.alloc(D2ActiveRoomStrc_SIZE)

@@ -24,7 +24,6 @@ import {
   STATLIST_SetUnitStat113c,
 } from '../../../src/d2kern-113c/common/statlist.ts'
 import { SUNIT_InsertServerUnit113c } from '../../../src/d2kern-113c/game/game-strc.ts'
-import { D2GAME_MONUMOD_CONSTANTS_VA_113C } from '../../../src/d2kern-113c/game/k2-items-tc-w1-113c.ts'
 import * as w3b2Exports from '../../../src/d2kern-113c/game/k2-w3b2-113c.ts'
 import {
   AI_SelectAndCastHirelingSkill_6FC3C4E0_113c,
@@ -374,7 +373,6 @@ describe('Milestone 33 [K2] Wave 3 Batch 2 (w3b2): 45 D2Game 0x6FC3BCA0..0x6FC52
     m.setU32(pMonLvlTxt + nMlvl * 0x48 + 0x24 + 3 * 4, 100)
     for (let i = 0; i < 36; i++) {
       m.setU32(pMonUModTxt + i * 0x20 + 0x1c, 50)
-      m.setU32(D2GAME_MONUMOD_CONSTANTS_VA_113C + i * 4, 50)
     }
     MONUMOD_ApplyElementalDamageBonus_6FC41FE0_113c(m, pChamp, 0, 1)
     expect(STATLIST_GetUnitStat113c(m, pChamp, 0x30, 0)).toBeGreaterThan(0)
