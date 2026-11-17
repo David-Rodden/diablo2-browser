@@ -342,9 +342,9 @@ describe('[K2] w5b5 — 45 D2Game.dll functions (0x6FCE3E10..0x6FCEC9D0)', () =>
     m.set(pDrlg, D2DrlgStrc.nBossTombLevel, 0x45)
     ACT2Q6_SendBossTombSymbolPacket50_6FCE4B10_113c(m, pPlayer, pGame)
     expect(m.u32(q6.pQuestDataEx + 0x34)).toBe(0x45)
-    expect(m.u32(pPacketQueue + 0x04)).toBe(0x0f)
-    expect(m.u8(pPacketQueue + 0x08)).toBe(0x50)
-    expect(m.u16(pPacketQueue + 0x0b)).toBe(3)
+    expect(m.u32(pPacketQueue + 0x00)).toBe(0x0f)
+    expect(m.u8(pPacketQueue + 0x04)).toBe(0x50)
+    expect(m.u16(pPacketQueue + 0x07)).toBe(3)
   })
 
   it('ports [16..32] Duriel progression, eclipse packets 0x53, Radament/staff callbacks, Orifice, and portal/Jerhyn helpers', () => {
@@ -392,18 +392,18 @@ describe('[K2] w5b5 — 45 D2Game.dll functions (0x6FCE3E10..0x6FCEC9D0)', () =>
     expect(m.u16(pPlayer + 0x6e)).toBe(0x34)
 
     // [23/45] 0x6FCE5100 & [24/45] 0x6FCE5190
-    m.setU32(pPacketQueue + 0x04, 0)
+    m.setU32(pPacketQueue + 0x00, 0)
     ACT2Q3_SendEclipseStartPacket53Callback_6FCE5100_113c(m, pGame, pPlayer)
-    expect(m.u32(pPacketQueue + 0x04)).toBe(0x0a)
-    expect(m.u8(pPacketQueue + 0x08)).toBe(0x53)
-    expect(m.u32(pPacketQueue + 0x09)).toBe(2)
+    expect(m.u32(pPacketQueue + 0x00)).toBe(0x0a)
+    expect(m.u8(pPacketQueue + 0x04)).toBe(0x53)
+    expect(m.u32(pPacketQueue + 0x05)).toBe(2)
 
     ACT2Q3_SendEclipseEndPacket53AndAlert5DCallback_6FCE5190_113c(m, pGame, pPlayer)
-    expect(m.u32(pPacketQueue + 0x04)).toBe(0x1a)
-    expect(m.u8(pPacketQueue + 0x12)).toBe(0x53)
-    expect(m.u32(pPacketQueue + 0x13)).toBe(5)
-    expect(m.u8(pPacketQueue + 0x1b)).toBe(1)
-    expect(m.u8(pPacketQueue + 0x1c)).toBe(0x5d)
+    expect(m.u32(pPacketQueue + 0x00)).toBe(0x1a)
+    expect(m.u8(pPacketQueue + 0x0e)).toBe(0x53)
+    expect(m.u32(pPacketQueue + 0x0f)).toBe(5)
+    expect(m.u8(pPacketQueue + 0x17)).toBe(1)
+    expect(m.u8(pPacketQueue + 0x18)).toBe(0x5d)
 
     // [26/45] 0x6FCE54A0 & [27/45] 0x6FCE55B0
     const q8 = linkQuestNode(m, pGame, pQuestControl, 8, 9)
@@ -517,9 +517,9 @@ describe('[K2] w5b5 — 45 D2Game.dll functions (0x6FCE3E10..0x6FCEC9D0)', () =>
     m.setU8(pChat + 0x01, 1)
     m.setU8(pChat + 0x0a, 0x41) // 'A'
     m.setU8(pChat + 0x1b, 0x42) // 'B'
-    m.setU32(pPacketQueue + 0x04, 0)
+    m.setU32(pPacketQueue + 0x00, 0)
     NET_SendChatMessagePacket26Wrapper_6FCEB580_113c(m, pClient, pChat)
-    expect(m.u32(pPacketQueue + 0x04)).toBeGreaterThan(0)
+    expect(m.u32(pPacketQueue + 0x00)).toBeGreaterThan(0)
 
     // [38/45] 0x6FCEB610: SKILLS_ValidateSkillAllocationEligibility
     expect(SKILLS_ValidateSkillAllocationEligibility_6FCEB610_113c(m, -1, pPlayer)).toBe(2)

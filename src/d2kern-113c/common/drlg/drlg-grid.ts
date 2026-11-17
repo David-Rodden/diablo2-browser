@@ -30,6 +30,7 @@ import {
   DRLGROOMTILE_InitRoofTileData113c,
   DRLGROOMTILE_ReallocRoofTiles113c,
 } from './room-tile.ts';
+import { hitD2CommonVa113c } from '../../va-trace-113c.ts';
 
 /**
  * Function pointer table `gafGridCellOps` at `0x6FDEB244` (`uint32[6]`, 24 bytes: `0x6FDEB244 .. 0x6FDEB25B`).
@@ -95,6 +96,7 @@ export function DRLGPRESET_RelinkMapPresetUnitsToRoomEx113c(
   m: Memory113c,
   pRoomEx: number,
 ): void {
+  hitD2CommonVa113c(0x6FD5A360);
   const roomEx = pRoomEx >>> 0;
   const pPresetRoom = m.get(roomEx, D2RoomExStrc.pTypeData);
   const pDrlgMap = m.u32((pPresetRoom + 0x08) >>> 0);
@@ -148,6 +150,7 @@ export function SEED_GetSeeds113c(
   pLowSeed: number,
   pHighSeed: number,
 ): void {
+  hitD2CommonVa113c(0x6FD86710);
   const addr = pSeed >>> 0;
   m.setU32(pLowSeed >>> 0, m.u32(addr));
   m.setU32(pHighSeed >>> 0, m.u32((addr + 4) >>> 0));
@@ -162,6 +165,7 @@ export function SEED_SetSeeds113c(
   nLowSeed: number,
   nHighSeed: number,
 ): void {
+  hitD2CommonVa113c(0x6FD86720);
   const addr = pSeed >>> 0;
   m.setU32(addr, nLowSeed >>> 0);
   m.setU32((addr + 4) >>> 0, nHighSeed >>> 0);
@@ -171,6 +175,7 @@ export function SEED_SetSeeds113c(
  * `@va D2Common:0x6FD86730` (`SEED_GetLowSeed113c`, Ordinal `#10513`, `__fastcall(ecx=pSeed) -> int32`, `ret`).
  */
 export function SEED_GetLowSeed113c(m: Memory113c, pSeed: number): number {
+  hitD2CommonVa113c(0x6FD86730);
   return m.u32(pSeed >>> 0) | 0;
 }
 
@@ -185,6 +190,7 @@ export function DRLGGRID_InitializeGridWindow113c(
   pBaseCells: number,
   pRowOffsets: number,
 ): void {
+  hitD2CommonVa113c(0x6FD867F0);
   const grid = pOutGrid >>> 0;
   const box = pWindowBox >>> 0;
   const stride = nRowStride | 0;
@@ -217,6 +223,7 @@ export function DRLGGRID_InitializeGridCells113c(
   nHeight: number,
   pRowOffsetsBuf: number,
 ): void {
+  hitD2CommonVa113c(0x6FD86900);
   const grid = pOutGrid >>> 0;
   const cells = pCellsBuf >>> 0;
   const w = nWidth | 0;
@@ -245,6 +252,7 @@ export function DRLGGRID_ApplyBorderCellFlags113c(
   nValue: number,
   eFlagOp: number,
 ): void {
+  hitD2CommonVa113c(0x6FD86A60);
   const grid = pGrid >>> 0;
   const w = m.get(grid, D2DrlgGridStrc.nWidth) | 0;
   if (w > 0) {
@@ -302,6 +310,7 @@ export function DRLGGRID_ApplyAllCellFlags113c(
   nValue: number,
   eFlagOp: number,
 ): void {
+  hitD2CommonVa113c(0x6FD86B10);
   const grid = pGrid >>> 0;
   const h = m.get(grid, D2DrlgGridStrc.nHeight) | 0;
   if (h <= 0) return;
@@ -333,6 +342,7 @@ export function DRLGGRID_OpAndNegated113c(
   pCell: number,
   nValue: number,
 ): number {
+  hitD2CommonVa113c(0x6FD86BD0);
   const addr = pCell >>> 0;
   const res = (m.u32(addr) & (~nValue >>> 0)) >>> 0;
   m.setU32(addr, res);
@@ -349,6 +359,7 @@ export function DRLGGRID_OpOverwriteIfZero113c(
   pCell: number,
   nValue: number,
 ): number {
+  hitD2CommonVa113c(0x6FD86BE0);
   const addr = pCell >>> 0;
   const old = m.u32(addr);
   if (old === 0) {
@@ -369,6 +380,7 @@ export function DRLGGRID_OpXor113c(
   pCell: number,
   nValue: number,
 ): void {
+  hitD2CommonVa113c(0x6FD86BF0);
   const addr = pCell >>> 0;
   m.setU32(addr, (m.u32(addr) ^ nValue) >>> 0);
 }
@@ -383,6 +395,7 @@ export function DRLGGRID_OpAnd113c(
   pCell: number,
   nValue: number,
 ): void {
+  hitD2CommonVa113c(0x6FD86C00);
   const addr = pCell >>> 0;
   m.setU32(addr, (m.u32(addr) & nValue) >>> 0);
 }
@@ -397,6 +410,7 @@ export function DRLGGRID_OpOr113c(
   pCell: number,
   nValue: number,
 ): void {
+  hitD2CommonVa113c(0x6FD86C10);
   const addr = pCell >>> 0;
   m.setU32(addr, (m.u32(addr) | nValue) >>> 0);
 }
@@ -411,6 +425,7 @@ export function DRLGGRID_OpOverwrite113c(
   pCell: number,
   nValue: number,
 ): void {
+  hitD2CommonVa113c(0x6FD86C20);
   m.setU32(pCell >>> 0, nValue >>> 0);
 }
 
@@ -426,6 +441,7 @@ export function DRLGGRID_RasterizeThickLine113c(
   eFlagOp: number,
   nThickness: number,
 ): void {
+  hitD2CommonVa113c(0x6FD86CD0);
   const seg = pSegNode >>> 0;
   const clip = pClipRect >>> 0;
   const grid = pGrid >>> 0;
@@ -535,6 +551,7 @@ export function DRLGTILESUB_TestStampRoomTemplate113c(
   pBox: number,
   pLvlSub: number,
 ): number {
+  hitD2CommonVa113c(0x6FDD34D0);
   const ctx = pSubstCtx >>> 0;
   const box = pBox >>> 0;
   const lvlSub = pLvlSub >>> 0;
@@ -598,6 +615,7 @@ export function DRLGTILESUB_MatchRoomTemplate113c(
   pSubstCtx: number,
   pBox: number,
 ): number {
+  hitD2CommonVa113c(0x6FDD37F0);
   const lvlSub = pLvlSub >>> 0;
   const ctx = pSubstCtx >>> 0;
   const box = pBox >>> 0;
@@ -685,6 +703,7 @@ export function DRLGOUTROOM_MapAct5PresetId113c(
   nStyle: number,
   nSeq: number,
 ): number {
+  hitD2CommonVa113c(0x6FD90C20);
   const lvl = pLevel >>> 0;
   const style = nStyle | 0;
   const seq = nSeq | 0;
@@ -720,6 +739,7 @@ export function DRLGOUTROOM_CheckAct5Preset113c(
   _valFloor: number,
   valType: number,
 ): number {
+  hitD2CommonVa113c(0x6FD90DB0);
   const lvl = pLevel >>> 0;
   const nSeq = (valType >>> 8) & 0xff;
   const nStyle = (valType >>> 20) & 0x3f;
@@ -745,6 +765,7 @@ export function DRLGOUTDOORS_PickPresetFileIndex113c(
   nLvlPrestId: number,
   pLevel: number,
 ): number {
+  hitD2CommonVa113c(0x6FD92920);
   const lvl = pLevel >>> 0;
   const prestId = nLvlPrestId | 0;
   let pNode = m.u32((lvl + 0x1cc) >>> 0);
@@ -806,6 +827,7 @@ export function DRLGOUTDOORS_SpawnPresetInGrid113c(
   nPickedFile: number,
   bBorder: number,
 ): void {
+  hitD2CommonVa113c(0x6FD92A70);
   const lvl = pLevel >>> 0;
   const pOutdoors = m.u32((lvl + 0x14) >>> 0);
   const prestId = nLvlPrestId | 0;
@@ -865,6 +887,7 @@ export function DRLGTILESUB_ApplyRoomTemplateCallbacks113c(
   pSubstCtx: number,
   pLvlSub: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD3990);
   const ctx = pSubstCtx >>> 0;
   const box = pBox >>> 0;
   const lvlSub = pLvlSub >>> 0;
@@ -961,6 +984,7 @@ export function DRLGTILESUB_CheckRoomTemplateCallbacks113c(
   pBox: number,
   pLvlSub: number,
 ): number {
+  hitD2CommonVa113c(0x6FDD3B30);
   const ctx = pSubstCtx >>> 0;
   const box = pBox >>> 0;
   const lvlSub = pLvlSub >>> 0;
@@ -1094,6 +1118,7 @@ export function DRLGPRESET_FreePresetRoomGrids113c(
   pRoomEx: number,
   _pMemPool: number,
 ): void {
+  hitD2CommonVa113c(0x6FD5A440);
   const roomEx = pRoomEx >>> 0;
   const pPresetRoom = m.u32((roomEx + 0x20) >>> 0);
   if (pPresetRoom === 0) return;
@@ -1156,6 +1181,7 @@ export function SEED_GenerateLoopSeed113c(
   m: Memory113c,
   nSalt: number,
 ): number {
+  hitD2CommonVa113c(0x6FD86760);
   const t = m.u32(KERNEL32_TIME_IAT_VA_6FDD91D4);
   const ticks = m.u32(KERNEL32_GET_TICK_COUNT_IAT_VA_6FDD91FC);
   let eax = (((t + (nSalt | 0)) | 0) + ticks) | 0;
@@ -1182,6 +1208,7 @@ export function DRLGGRID_AllocGridWindowRowOffsets113c(
   _pMemPool: number,
   pBaseCells: number,
 ): void {
+  hitD2CommonVa113c(0x6FD86840);
   const grid = pOutGrid >>> 0;
   const box = pWindowBox >>> 0;
   const stride = nRowStride | 0;
@@ -1225,6 +1252,7 @@ export function DRLGGRID_AllocAndInitGridCells113c(
   nWidth: number,
   nHeight: number,
 ): void {
+  hitD2CommonVa113c(0x6FD86950);
   const grid = pOutGrid >>> 0;
   const w = nWidth | 0;
   const h = nHeight | 0;
@@ -1263,6 +1291,7 @@ export function DRLGLOGIC_FreeRoomLogicalInfo113c(
   m: Memory113c,
   pRoomEx: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD0F70);
   const roomEx = pRoomEx >>> 0;
   const pLevel = m.get(roomEx, D2RoomExStrc.pLevel);
   const pDrlg = m.u32((pLevel + 0x1b4) >>> 0);
@@ -1342,6 +1371,7 @@ export function DRLGPRESET_BuildPresetRoomGridsFromFile113c(
   m: Memory113c,
   pRoomEx: number,
 ): void {
+  hitD2CommonVa113c(0x6FD5AB50);
   const roomEx = pRoomEx >>> 0;
   const pPreset = m.u32((roomEx + 0x20) >>> 0);
   const pMap = m.u32((pPreset + 0x08) >>> 0);
@@ -1470,6 +1500,7 @@ export function DRLGOUTDOORS_FreeOutdoorLevelData113c(
   pLevel: number,
   bKeepAllocated: number,
 ): void {
+  hitD2CommonVa113c(0x6FD920E0);
   const level = pLevel >>> 0;
   const pDrlg = m.u32((level + 0x1b4) >>> 0);
   const pMemPool = m.u32((pDrlg + 0x478) >>> 0);
@@ -1528,6 +1559,7 @@ export function DRLGOUTROOM_FreeOutdoorRoomData113c(
   pMemPool: number,
   pOutdoorRoom: number,
 ): void {
+  hitD2CommonVa113c(0x6FD9A4D0);
   const room = pOutdoorRoom >>> 0;
   const freeFn = (m as { free?: (p: number) => void }).free;
   for (const gridOff of [0x00, 0x14, 0x28, 0x3c] as const) {
@@ -1557,6 +1589,7 @@ export function DRLGTILESUB_RollSubThemeMask113c(
   nSubType: number,
   nSubTheme: number,
 ): number {
+  hitD2CommonVa113c(0x6FDD3740);
   const subType = nSubType | 0;
   const subTheme = nSubTheme | 0;
   if (subType === -1 || subTheme === -1) {
@@ -1617,6 +1650,7 @@ export function DRLGTILESUB_ApplyNonPresetSubTheme113c(
   pLvlSub: number,
   pSubGroup: number,
 ): number {
+  hitD2CommonVa113c(0x6FDD3E20);
   const ctx = pSubstCtx >>> 0;
   const lvlSub = pLvlSub >>> 0;
   const subGroup = pSubGroup >>> 0;
@@ -1717,6 +1751,7 @@ export function DRLGTILESUB_ApplySubThemesToRoom113c(
   pLvlSub: number,
   pSubstCtx: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD4110);
   const lvlSub = pLvlSub >>> 0;
   const ctx = pSubstCtx >>> 0;
   const pLevel = m.u32(ctx);
@@ -1751,6 +1786,7 @@ export function DRLGTILESUB_LoadLvlSubDs1Grids113c(
   pMemPool: number,
   pLvlSub: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD3CA0);
   const lvlSub = pLvlSub >>> 0;
   const ppMap = (lvlSub + 0x50) >>> 0;
   if ((m.u32(ppMap) >>> 0) !== 0) return;
@@ -1798,6 +1834,7 @@ export function DRLGTILESUB_ApplySubThemeByIndex113c(
   m: Memory113c,
   pSubstCtx: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD4190);
   const ctx = pSubstCtx >>> 0;
   const nSubType = m.u32((ctx + 0x18) >>> 0) | 0;
   if (nSubType < 0) {
@@ -1837,6 +1874,7 @@ export function DRLGTILESUB_StampRoomTemplate113c(
   pLvlSub: number,
   nColOffset: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD4220);
   const ctx = pSubstCtx >>> 0;
   const box = pBox >>> 0;
   const lvlSub = pLvlSub >>> 0;
@@ -1939,6 +1977,7 @@ export function DRLGTILESUB_StampRandomTemplates113c(
   pSubstCtx: number,
   pLvlSub: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD4500);
   const ctx = pSubstCtx >>> 0;
   const lvlSub = pLvlSub >>> 0;
   const pRoomEx = m.u32(ctx) >>> 0;
@@ -2006,6 +2045,7 @@ export function DRLGTILESUB_StampMatchedTemplates113c(
   pSubstCtx: number,
   pLvlSub: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD4890);
   const ctx = pSubstCtx >>> 0;
   const lvlSub = pLvlSub >>> 0;
   const pRoomEx = m.u32(ctx) >>> 0;
@@ -2060,6 +2100,7 @@ export function DRLGTILESUB_InitSubTheme113c(
   m: Memory113c,
   pSubstCtx: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD4AD0);
   const ctx = pSubstCtx >>> 0;
   const nSubType = m.u32((ctx + 0x30) >>> 0) | 0;
   if (nSubType === -1) return;

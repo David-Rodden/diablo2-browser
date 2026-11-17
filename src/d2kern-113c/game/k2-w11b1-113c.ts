@@ -141,7 +141,7 @@ import {
   SUNITDMG_FindCombatDamageData113c,
   SUNITDMG_GetPlayerClientClassId113c,
 } from './combat-a1c-113c'
-import { AI_ApproachTarget113c, type FallenSliceWorld113c } from './fallen-ai-113c'
+import { AI_ApproachTarget113c, type FallenSliceWorld113c } from './replay-kernel-113c'
 import { SUNIT_GetServerUnit113c } from './game-strc'
 import {
   ITEMS_RegisterItemEventCallback113c,
@@ -281,6 +281,7 @@ import {
 } from './timer-wheel'
 import { UNITS_GetOctileDistanceToCoordinates113c } from './town-npc-ai-113c'
 import { SUNIT_UpdateUnitPositionAndRoom113c } from './town-runtime-gap-113c'
+import { hitD2GameVa113c } from '../va-trace-113c'
 
 const u8 = (m: SparseMemory113c, a: number): number => m.u8(a >>> 0) & 0xff
 const u16 = (m: SparseMemory113c, a: number): number => m.u16(a >>> 0) & 0xffff
@@ -404,6 +405,7 @@ export function AI_PetMoveActionDispatch_6FC3CAE0_113c(
   nDistOrDelay: number,
   nDirOrParam: number,
 ): number {
+  hitD2GameVa113c(0x6FC3CAE0)
   if (pOwnerUnit === 0 || pPetUnit === 0) return 0
   const pMonData = u32(m, pPetUnit) === 1 ? u32(m, pPetUnit + 0x14) : 0
   const pAiCtrl = pMonData !== 0 ? u32(m, pMonData + 0x28) : 0
@@ -707,6 +709,7 @@ export function AI_MercMoveActionDispatch_6FC3D3C0_113c(
   nDistOrDelay: number,
   nDirOrParam: number,
 ): number {
+  hitD2GameVa113c(0x6FC3D3C0)
   if (pOwnerUnit === 0 || pPetUnit === 0) return 0
   const pMonData = u32(m, pPetUnit) === 1 ? u32(m, pPetUnit + 0x14) : 0
   const pAiCtrl = pMonData !== 0 ? u32(m, pMonData + 0x28) : 0
@@ -975,6 +978,7 @@ export function MONUMOD_SpawnMinionOrUniqueMonster_6FC44950_113c(
   nY: number,
   nMaxSearchSteps: number,
 ): number {
+  hitD2GameVa113c(0x6FC44950)
   let pMonster = 0
   if (nAnimMode !== 0) {
     const pSpawnArgs = K2_W11B1_SCRATCH_BASE + 0x40
@@ -1066,6 +1070,7 @@ export function SKILLS_SrvDo037_LeapAttackAndChargeInit_6FC48290_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC48290)
   if (pUnit === 0) return 0
   const sgpt = readSgptDataTablesPtr(m)
   if (sgpt === 0 || nSkillId < 0 || nSkillId >= i32(m, sgpt + 0xba0)) return 0
@@ -1277,6 +1282,7 @@ export function SKILLS_SrvDo045_NovaAndTimedAura_6FC49720_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC49720)
   if (pUnit !== 0) {
     w32(m, pUnit + 0xc4, (u32(m, pUnit + 0xc4) | 0x20) >>> 0)
   }
@@ -1313,6 +1319,7 @@ export function PLAYER_InitPlayerUnitSubsystems_6FC58620_113c(
   pPlayerUnit: number,
   dwUnitId: number,
 ): void {
+  hitD2GameVa113c(0x6FC58620)
   if (pPlayerUnit === 0) return
   w32(m, pPlayerUnit + 0x0c, dwUnitId)
   UNITS_InitPlayerData113c(m, pPlayerUnit)
@@ -1349,6 +1356,7 @@ export function MISSILE_ApplyFriendlyOwnerTimedSkillAura_6FC5EA60_113c(
   pMissile: number,
   pTargetUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC5EA60)
   if (pMissile === 0 || pTargetUnit === 0) return 0
   if (u32(m, pMissile) !== 3) return 0
   if (((u32(m, pMissile + 0xc8) >>> 10) & 1) === 0) return 0
@@ -1384,6 +1392,7 @@ export function SKILLS_SrvDo067_ApplyBuffStateAndItemEvents_6FC628F0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC628F0)
   if (pUnit === 0) return 0
   const sgpt = readSgptDataTablesPtr(m)
   if (sgpt === 0 || nSkillId < 0 || nSkillId >= i32(m, sgpt + 0xba0)) return 0
@@ -1477,6 +1486,7 @@ export function SKILLS_SrvDo029_Teleport_6FC63450_113c(
   _nSkillId: number,
   _nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC63450)
   const pTargetX = K2_W11B1_SCRATCH_BASE + 0x140
   const pTargetY = K2_W11B1_SCRATCH_BASE + 0x144
   w32(m, pTargetX, 0)
@@ -1521,6 +1531,7 @@ export function SKILLS_PostInitSummonedPetStatsAndAi_6FC70070_113c(
   pGame: number,
   nSkillId: number,
 ): void {
+  hitD2GameVa113c(0x6FC70070)
   SKILLS_ApplySummonLevelAcAndToHit_6FC6E2A0_113c(m, pOwnerUnit, 0, pGame, pPetUnit, nSkillLevel)
   SKILLS_ApplySummonStatsPassivesAndEquip_6FC6F970_113c(
     m,
@@ -1548,6 +1559,7 @@ export function SKILLS_ReleaseTrappedOrConvertedMonster_6FC70800_113c(
   pMonsterUnit: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC70800)
   if (pMonsterUnit === 0 || u32(m, pMonsterUnit) !== 1) return
   const pRoom = UNITS_GetRoom113c(m, pMonsterUnit)
   if (pRoom === 0) return
@@ -1602,6 +1614,7 @@ export function ACT5Q5_InitQuestData_6FC7FB50_113c(
   pQuest: number,
   pPreallocatedState = 0,
 ): void {
+  hitD2GameVa113c(0x6FC7FB50)
   if (pQuest === 0) return
   for (let i = 0; i < 15; i += 1) {
     w32(m, pQuest + 0xa0 + i * 4, 0)
@@ -1644,6 +1657,7 @@ export function OBJ_OperateFn_SkillShrine_6FC8AB60_113c(
   pOperateArgs: number,
   pShrineRecord: number,
 ): number {
+  hitD2GameVa113c(0x6FC8AB60)
   const nCode = u8(m, pShrineRecord)
   const dwDuration = i32(m, pShrineRecord + 0x0c)
   const nStateId =
@@ -1682,6 +1696,7 @@ export function OBJ_OperateFn_CowAndSpecialPortal_6FC8BB60_113c(
   m: SparseMemory113c,
   pOperateArgs: number,
 ): number {
+  hitD2GameVa113c(0x6FC8BB60)
   if (pOperateArgs === 0) {
     throw new D2CommonAssertError('..\\Source\\D2Game\\Objects\\ObjEval.cpp', 0x5d8)
   }
@@ -1765,6 +1780,7 @@ export function OBJ_TeleportPlayerToRoomPad_6FC8BD60_113c(
   pPlayerUnit: number,
   pTargetRoom: number,
 ): number {
+  hitD2GameVa113c(0x6FC8BD60)
   if (pTargetRoom === 0) return 0
   const pPlayerRoom = UNITS_GetRoom113c(m, pPlayerUnit)
   if (pPlayerRoom === 0) return 0
@@ -1829,6 +1845,7 @@ export function OBJ_OperateFn_TownAndPermanentPortal_6FC8D0F0_113c(
   pOperateArgs: number,
   nCurrentTick = 0,
 ): number {
+  hitD2GameVa113c(0x6FC8D0F0)
   const pGame = u32(m, pOperateArgs)
   const pPortalObj = u32(m, pOperateArgs + 0x04)
   const pPlayerUnit = u32(m, pOperateArgs + 0x08)
@@ -2047,27 +2064,59 @@ export function MONSTER_UnburrowOrResurrectCollisionInit_6FCA9730_113c(
   m: SparseMemory113c,
   pMonsterUnit: number,
   pGame: number,
-): void {
-  if (pMonsterUnit === 0) return
-  if (PATH_GetUnitCollisionPattern113c(m, pMonsterUnit) === 1) return
+): number {
+  hitD2GameVa113c(0x6FCA9730)
+  if (pMonsterUnit !== 0) {
+    w32(m, pMonsterUnit + 0xc4, (u32(m, pMonsterUnit + 0xc4) | 0x0e) >>> 0)
+  }
+  if (pMonsterUnit === 0 || PATH_GetUnitCollisionPattern113c(m, pMonsterUnit) === 1) return 0
 
+  const dwType = u32(m, pMonsterUnit)
   const pPath = u32(m, pMonsterUnit + 0x2c)
-  const posY = pPath !== 0 ? PATH_GetPosY113c(m, pPath) : 0
-  const posX = pPath !== 0 ? PATH_GetPosX113c(m, pPath) : 0
+  let posY = 0
+  let posX = 0
+  if (dwType === 2 || (dwType > 3 && dwType <= 5)) {
+    posY = pPath !== 0 ? i32(m, pPath + 0x10) : 0
+    posX = pPath !== 0 ? i32(m, pPath + 0x0c) : 0
+  } else {
+    posY = pPath !== 0 ? PATH_GetPosY113c(m, pPath) : 0
+    posX = pPath !== 0 ? PATH_GetPosX113c(m, pPath) : 0
+  }
   const pRoom = UNITS_GetRoom113c(m, pMonsterUnit)
-  sunitWarpUnitToCoords_6FD019C0(m, posX, pRoom, posY, pMonsterUnit, pGame, 0, 1)
+  if (
+    DUNGEON_TeleportUnitToRoomAndCoords_6FD019C0_113c(
+      m,
+      posX,
+      pRoom,
+      posY,
+      pGame,
+      pMonsterUnit,
+      0,
+      0,
+    ) === 0
+  ) {
+    return 0
+  }
 
+  const dwTypeNow = u32(m, pMonsterUnit)
   const pPathNow = u32(m, pMonsterUnit + 0x2c)
-  const newY = pPathNow !== 0 ? PATH_GetPosY113c(m, pPathNow) : 0
-  const newX = pPathNow !== 0 ? PATH_GetPosX113c(m, pPathNow) : 0
-  const colPattern = PATH_GetUnitCollisionPattern113c(m, pMonsterUnit)
+  let newY = 0
+  let newX = 0
+  if (dwTypeNow === 2 || (dwTypeNow > 3 && dwTypeNow <= 5)) {
+    newY = pPathNow !== 0 ? i32(m, pPathNow + 0x10) : 0
+    newX = pPathNow !== 0 ? i32(m, pPathNow + 0x0c) : 0
+  } else {
+    newY = pPathNow !== 0 ? PATH_GetPosY113c(m, pPathNow) : 0
+    newX = pPathNow !== 0 ? PATH_GetPosX113c(m, pPathNow) : 0
+  }
   const pRoomNow = UNITS_GetRoom113c(m, pMonsterUnit)
-  COLLISION_SetUnitCollisionMaskWithPattern113c(m, pRoomNow, newX, newY, colPattern, 0x100)
+  COLLISION_SetUnitCollisionMaskWithPattern113c(m, pRoomNow, newX, newY, 1, 0x100)
   PATH_SetUnitCollisionPattern113c(m, pMonsterUnit, 1)
   if (pPathNow !== 0) {
     PATH_SetMoveTestCollisionMask113c(m, pPathNow, 0x3c01)
   }
   AI_ScheduleAiThinkTimer_6FD120C0_113c(m, pGame, pMonsterUnit, 0x0c)
+  return 1
 }
 
 /**
@@ -2082,6 +2131,7 @@ export function SKILLS_SrvDo252_DragonFlight_6FCB3680_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCB3680)
   const sgpt = readSgptDataTablesPtr(m)
   if (sgpt === 0 || nSkillId < 0 || nSkillId >= i32(m, sgpt + 0xba0)) return 0
   const pSkillsTxtBase = u32(m, sgpt + 0xb98)
@@ -2174,6 +2224,7 @@ export function PETS_AssignMercOrPetRecordAndBroadcast_6FCB7E20_113c(
   nPetType: number,
   pPetInfo12Bytes: number,
 ): void {
+  hitD2GameVa113c(0x6FCB7E20)
   const pPlrData = UNITS_GetPlayerData113c(m, pPlayerUnit)
   if (pPlrData === 0) {
     throw new D2CommonAssertError('..\\Source\\D2Game\\Plr\\PlrPets.cpp', 0x3b8)
@@ -2253,6 +2304,7 @@ export function PETS_RegisterSummonPetAndClampCount_6FCB7F50_113c(
   nMaxPets: number,
   pPetInfo12Bytes: number,
 ): number {
+  hitD2GameVa113c(0x6FCB7F50)
   const pPlrData = UNITS_GetPlayerData113c(m, pPlayerUnit)
   const pPlayerPets = pPlrData !== 0 ? u32(m, pPlrData + 0x44) : 0
   if (pPlayerPets === 0) return 0
@@ -2333,6 +2385,7 @@ export function ACT_WarpClientPlayerToActTown_6FCBDF40_113c(
   nTargetLevelId: number,
   nPortalType: number,
 ): void {
+  hitD2GameVa113c(0x6FCBDF40)
   const pArena = u32(m, pGame + 0x1d28);
   if (pArena === 0) {
     throw new D2CommonAssertError('Act.cpp', 0x27);
@@ -2439,6 +2492,7 @@ export function AI_Think_TeleportLeashOrApproachOwner_6FCC9D40_113c(
   pMonster: number,
   pAiTickArgs: number,
 ): void {
+  hitD2GameVa113c(0x6FCC9D40)
   const pMonStats = u32(m, pAiTickArgs + 0x1c);
   const pOwner = u32(m, pAiTickArgs + 0x08);
   const nDist = i32(m, pAiTickArgs + 0x14);
@@ -2519,6 +2573,7 @@ export function SKILLS_SrvDo_TeleportMonsterToFirstPathPoint_6FCD46B0_113c(
   _nSkillId: number = 0,
   _nSkillLevel: number = 0,
 ): number {
+  hitD2GameVa113c(0x6FCD46B0)
   const pPath = u32(m, pMonster + 0x2c);
   const nX = PATH_GetFirstPointX113c(m, pPath);
   const nY = PATH_GetFirstPointY113c(m, pPath);
@@ -2571,6 +2626,7 @@ export function SKILLS_SrvDo_SubmergeOrBurrowMonster_6FCD4760_113c(
   _nSkillId: number = 0,
   _nSkillLevel: number = 0,
 ): number {
+  hitD2GameVa113c(0x6FCD4760)
   const nUnitType = i32(m, pMonster);
   const bStaticPos = nUnitType === 2 || (nUnitType > 3 && nUnitType <= 5);
   const pPath = u32(m, pMonster + 0x2c);
@@ -2624,6 +2680,7 @@ export function NPCTRADE_InteractResurrectMerc_6FCE0DB0_113c(
   pGame: number,
   pPlayer: number,
 ): void {
+  hitD2GameVa113c(0x6FCE0DB0)
   const pInteractUnit =
     u8(m, pPlayer + 0x6c) !== 0
       ? SUNIT_GetServerUnit113c(
@@ -2722,6 +2779,7 @@ export function ACT2Q4_JerhynPalaceNpcAiOverride_6FCE8990_113c(
   pOutSkipDefaultAi: number,
   pOutHandled: number,
 ): void {
+  hitD2GameVa113c(0x6FCE8990)
   void ACT2Q4_UnitIterate_CheckNearHorazonTome_6FCE31C0_113c;
   void STATES_ClearGfxStateFlag_6FCEB1A0_113c;
   const pQuestChainRoot = u32(m, pGame + 0x10f4);
@@ -2979,6 +3037,7 @@ export function C2S_Packet3B_SpendSkillPoint_6FCEDA20_113c(
   pPacket: number,
   nPacketLen: number,
 ): number {
+  hitD2GameVa113c(0x6FCEDA20)
   void pGame;
   if ((nPacketLen | 0) !== 3) {
     return 3;
@@ -3058,6 +3117,7 @@ export function C2S_Packet35_NpcRepair_6FCEF0A0_113c(
   pPacket: number,
   nPacketLen: number,
 ): number {
+  hitD2GameVa113c(0x6FCEF0A0)
   if ((nPacketLen | 0) !== 0x11) {
     return 3;
   }
@@ -3094,6 +3154,7 @@ export function PLAYER_TeleportToCoordsWithRateLimitDelay_6FCEFE40_113c(
   pGame: number,
   _pTargetRoom: number = 0,
 ): number {
+  hitD2GameVa113c(0x6FCEFE40)
   if (
     sunitWarpUnitToCoords_6FD019C0(
       m,
@@ -3154,6 +3215,7 @@ export function DUNGEON_ExecuteRoomTileWarpTransition_6FD01C00_113c(
   pPlayerUnit: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FD01C00)
   if (pGame === 0) {
     throw new D2CommonAssertError('SUnit.cpp', 0x14a);
   }

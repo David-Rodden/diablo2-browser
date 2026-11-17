@@ -89,9 +89,12 @@ import {
 import {
   ITEMS_ApplySocketAndEtherealBonuses113c,
   ITEMS_DropGoldPileAtUnit113c,
-  ITEMS_FinalizeCreatedItem113c,
   ITEMS_SpawnDroppedItemAtCoords113c,
 } from './combat-a1c-113c.js'
+import {
+  D2GAME_CreateItemEx_6FC31490_113c,
+  ITEMS_FindFreeGroundDropCoords_6FC2E930_113c,
+} from './k2-real-itemdrop-113c.js'
 import { SUNIT_GetServerUnit113c } from './game-strc.js'
 import {
   type K2GapMeleeDotHooks113c,
@@ -187,6 +190,7 @@ import {
 } from './replay-kernel-113c.js'
 import { MONSTER_RefreshAiEvent113c } from './timer-wheel.js'
 import { AITARGET_ScanUnitsByModeTable113c } from './town-runtime-gap-113c.js'
+import { hitD2GameVa113c } from '../va-trace-113c.js'
 
 export type D2KernMemory113c = Memory113c
 
@@ -349,6 +353,7 @@ export function STORM_TSListDestroySehWrapper_6FC21F60_113c(
   m: D2KernMemory113c,
   pList: number,
 ): void {
+  hitD2GameVa113c(0x6FC21F60)
   STORM_TSListDestroy_6FC21FE0_113c(m, pList)
 }
 
@@ -366,6 +371,7 @@ export function SKILLS_SetTargetAndDoNihlathakCorpseExplosion_6FC2C8D0_113c(
   nSkillLevel: number,
   _dwUnused = 0,
 ): number {
+  hitD2GameVa113c(0x6FC2C8D0)
   UNITS_SetTargetUnitForDynamicUnit113c(m, pUnit, pTargetUnit)
   return SKILLS_SrvDo_CorpseExplosion_6FC6F4D0_113c(m, pGame, pUnit, 0x11d, nSkillLevel)
 }
@@ -385,6 +391,7 @@ export function SKILLS_SrvDo_PackLeaderMarkAndFireMissile_6FC2D170_113c(
   nSkillLevel: number,
   hooks?: K2W4B1Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC2D170)
   const unit = pUnit >>> 0
   if (unit === 0 || m.u32(unit) !== 1) {
     return 0
@@ -457,6 +464,7 @@ export function ITEMS_SelectAndApplyUniqueItemMods_6FC2F370_113c(
   pItem: number,
   pItemDrop: number,
 ): number {
+  hitD2GameVa113c(0x6FC2F370)
   const item = pItem >>> 0
   const game = pGame >>> 0
   const drop = pItemDrop >>> 0
@@ -645,6 +653,7 @@ export function ITEMS_RollWeightedDropClassIdByLevel_6FC2FFC0_113c(
   bSkipRarityRoll: number,
   bAllowQuest0x28: number,
 ): number {
+  hitD2GameVa113c(0x6FC2FFC0)
   let goldId: number
   if ((m.u8(0x6fd39fa4) & 1) === 0) {
     m.setU32(0x6fd39fa4, (m.u32(0x6fd39fa4) | 1) >>> 0)
@@ -724,6 +733,7 @@ export function ITEMS_InitAndApplySuperiorQualityMods_6FC301E0_113c(
   pdwSeed: number,
   pItemDrop: number,
 ): void {
+  hitD2GameVa113c(0x6FC301E0)
   const pp = ppItem >>> 0
   const pSeedVar = pdwSeed >>> 0
   const drop = pItemDrop >>> 0
@@ -753,6 +763,7 @@ export function ITEMS_RollAndApplyMagicAffixesStrict_6FC30240_113c(
   pItem: number,
   pItemDrop: number,
 ): number {
+  hitD2GameVa113c(0x6FC30240)
   const item = pItem >>> 0
   const drop = pItemDrop >>> 0
   let wPrefix = 0
@@ -849,6 +860,7 @@ export function ITEMS_TryRollAndApplyMagicAffixes_6FC303C0_113c(
   ppItem: number,
   pItemDrop: number,
 ): number {
+  hitD2GameVa113c(0x6FC303C0)
   const pp = ppItem >>> 0
   const drop = pItemDrop >>> 0
   let wPrefix = 0
@@ -943,7 +955,7 @@ export function ITEMS_TryRollAndApplyMagicAffixes_6FC303C0_113c(
 
 /**
  * [9/45] Rolls a misc item of `nRequiredType` via `0x6FC2F780`, finds a free drop subtile near
- * `pCoords` (`eax`), and creates the ground item via `ITEMS_FinalizeCreatedItem113c`.
+ * `pCoords` (`eax`), and creates the ground item via `D2GAME_CreateItemEx_6FC31490_113c`.
  *
  * @va D2Game:0x6FC31CA0
  */
@@ -956,6 +968,7 @@ export function ITEMS_SpawnRandomMiscItemInRoomAtCoords_6FC31CA0_113c(
   bSkipRarityRoll: number,
   pOwnerUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC31CA0)
   const room = pRoom >>> 0
   const game = pGame >>> 0
   const coords = pCoords >>> 0
@@ -997,19 +1010,21 @@ export function ITEMS_SpawnRandomMiscItemInRoomAtCoords_6FC31CA0_113c(
   k2W4B1StackPtr = (sp + 0xa8) >>> 0
   try {
     m.fill(sp, 0xa8, 0)
-    const pBoxCoords = sp
-    const pOutCoords = (sp + 0x08) >>> 0
+    const pOutCoords = sp
+    const pCenterCoords = (sp + 0x08) >>> 0
     const pDrop = (sp + 0x18) >>> 0
+    m.setU32(pCenterCoords, x0 >>> 0)
+    m.setU32((pCenterCoords + 0x04) >>> 0, y0 >>> 0)
     if (pFoundRoom !== 0) {
-      m.setU32(pBoxCoords, xOff >>> 0)
-      m.setU32((pBoxCoords + 0x04) >>> 0, yOff >>> 0)
+      m.setU32(pOutCoords, xOff >>> 0)
+      m.setU32((pOutCoords + 0x04) >>> 0, yOff >>> 0)
     } else {
-      m.setU32(pBoxCoords, x0 >>> 0)
-      m.setU32((pBoxCoords + 0x04) >>> 0, y0 >>> 0)
+      m.setU32(pOutCoords, x0 >>> 0)
+      m.setU32((pOutCoords + 0x04) >>> 0, y0 >>> 0)
     }
 
     const pTargetRoom =
-      COLLISION_FindFreePositionBasic113c(m, room, pOutCoords, pBoxCoords, 1, 0x3e01, 0x801, 1) >>> 0
+      COLLISION_FindFreePositionBasic113c(m, room, pOutCoords, pCenterCoords, 1, 0x3e01, 0x801, 1) >>> 0
     if (pTargetRoom === 0) {
       return 0
     }
@@ -1027,7 +1042,7 @@ export function ITEMS_SpawnRandomMiscItemInRoomAtCoords_6FC31CA0_113c(
     m.setU16((pDrop + 0x28) >>> 0, 1)
     m.setU16((pDrop + 0x2a) >>> 0, m.u16((game + 0x78) >>> 0))
     m.setU32((pDrop + 0x30) >>> 0, 0)
-    return ITEMS_FinalizeCreatedItem113c(m, game, pDrop) | 0
+    return D2GAME_CreateItemEx_6FC31490_113c(m, game, pDrop, 0) | 0
   } finally {
     k2W4B1StackPtr = sp
   }
@@ -1049,6 +1064,7 @@ export function ITEMS_SpawnRandomCompactWeaponInRoomAtCoords_6FC31E20_113c(
   bSkipRarityRoll: number,
   pOwnerUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC31E20)
   const game = pGame >>> 0
   const room = pRoom >>> 0
   const coords = pCoords >>> 0
@@ -1094,19 +1110,21 @@ export function ITEMS_SpawnRandomCompactWeaponInRoomAtCoords_6FC31E20_113c(
   k2W4B1StackPtr = (sp + 0xa8) >>> 0
   try {
     m.fill(sp, 0xa8, 0)
-    const pBoxCoords = sp
-    const pOutCoords = (sp + 0x08) >>> 0
+    const pOutCoords = sp
+    const pCenterCoords = (sp + 0x08) >>> 0
     const pDrop = (sp + 0x18) >>> 0
+    m.setU32(pCenterCoords, x0 >>> 0)
+    m.setU32((pCenterCoords + 0x04) >>> 0, y0 >>> 0)
     if (pFoundRoom !== 0) {
-      m.setU32(pBoxCoords, xOff >>> 0)
-      m.setU32((pBoxCoords + 0x04) >>> 0, yOff >>> 0)
+      m.setU32(pOutCoords, xOff >>> 0)
+      m.setU32((pOutCoords + 0x04) >>> 0, yOff >>> 0)
     } else {
-      m.setU32(pBoxCoords, x0 >>> 0)
-      m.setU32((pBoxCoords + 0x04) >>> 0, y0 >>> 0)
+      m.setU32(pOutCoords, x0 >>> 0)
+      m.setU32((pOutCoords + 0x04) >>> 0, y0 >>> 0)
     }
 
     const pTargetRoom =
-      COLLISION_FindFreePositionBasic113c(m, room, pOutCoords, pBoxCoords, 1, 0x3e01, 0x801, 1) >>> 0
+      COLLISION_FindFreePositionBasic113c(m, room, pOutCoords, pCenterCoords, 1, 0x3e01, 0x801, 1) >>> 0
     if (pTargetRoom === 0) {
       return 0
     }
@@ -1125,7 +1143,7 @@ export function ITEMS_SpawnRandomCompactWeaponInRoomAtCoords_6FC31E20_113c(
     m.setU16((pDrop + 0x2a) >>> 0, m.u16((game + 0x78) >>> 0))
     m.setU32((pDrop + 0x30) >>> 0, 0)
     m.setU32((pDrop + 0x80) >>> 0, (m.u32((pDrop + 0x80) >>> 0) | 0x40) >>> 0)
-    return ITEMS_FinalizeCreatedItem113c(m, game, pDrop) | 0
+    return D2GAME_CreateItemEx_6FC31490_113c(m, game, pDrop, 0) | 0
   } finally {
     k2W4B1StackPtr = sp
   }
@@ -1146,6 +1164,7 @@ export function ITEMS_SpawnRandomArmorInRoomAtCoords_6FC31FB0_113c(
   bSkipRarityRoll: number,
   pOwnerUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC31FB0)
   const coords = pCoords >>> 0
   const room = pRoom >>> 0
   const game = pGame >>> 0
@@ -1174,30 +1193,18 @@ export function ITEMS_SpawnRandomArmorInRoomAtCoords_6FC31FB0_113c(
     return 0
   }
 
-  ITEMS_DropGoldPileAtUnit113c(m, 0, 0, 0, false)
-  const x0 = m.u32(coords) | 0
-  const y0 = m.u32((coords + 0x04) >>> 0) | 0
-  const xOff = (x0 + 2) | 0
-  const yOff = (y0 + 3) | 0
-  const pFoundRoom = ROOM_FindRoomContainingSubtile113c(m, room, xOff, yOff) >>> 0
-
   const sp = k2W4B1StackPtr
   k2W4B1StackPtr = (sp + 0xa8) >>> 0
   try {
     m.fill(sp, 0xa8, 0)
-    const pBoxCoords = sp
+    const pInCoords = sp
     const pOutCoords = (sp + 0x08) >>> 0
     const pDrop = (sp + 0x18) >>> 0
-    if (pFoundRoom !== 0) {
-      m.setU32(pBoxCoords, xOff >>> 0)
-      m.setU32((pBoxCoords + 0x04) >>> 0, yOff >>> 0)
-    } else {
-      m.setU32(pBoxCoords, x0 >>> 0)
-      m.setU32((pBoxCoords + 0x04) >>> 0, y0 >>> 0)
-    }
+    m.setU32(pInCoords, m.u32(coords))
+    m.setU32((pInCoords + 0x04) >>> 0, m.u32((coords + 0x04) >>> 0))
 
     const pTargetRoom =
-      COLLISION_FindFreePositionBasic113c(m, room, pOutCoords, pBoxCoords, 1, 0x3e01, 0x801, 1) >>> 0
+      ITEMS_FindFreeGroundDropCoords_6FC2E930_113c(m, room, pInCoords, pOutCoords, 1) >>> 0
     if (pTargetRoom === 0) {
       return 0
     }
@@ -1216,7 +1223,7 @@ export function ITEMS_SpawnRandomArmorInRoomAtCoords_6FC31FB0_113c(
     m.setU16((pDrop + 0x2a) >>> 0, m.u16((game + 0x78) >>> 0))
     m.setU32((pDrop + 0x30) >>> 0, 0)
     m.setU32((pDrop + 0x80) >>> 0, (m.u32((pDrop + 0x80) >>> 0) | 0x40) >>> 0)
-    return ITEMS_FinalizeCreatedItem113c(m, game, pDrop) | 0
+    return D2GAME_CreateItemEx_6FC31490_113c(m, game, pDrop, 0) | 0
   } finally {
     k2W4B1StackPtr = sp
   }
@@ -1234,6 +1241,7 @@ export function ITEMS_SpawnAndDropPlayerEar_6FC32AF0_113c(
   pGame: number,
   hooks?: K2W4B1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC32AF0)
   const player = pPlayerUnit >>> 0
   const game = pGame >>> 0
   if (player === 0 || m.u32(player) !== 0) {
@@ -1326,6 +1334,7 @@ export function ITEMS_SpawnGoldPilesAtUnit_6FC32B90_113c(
   dwGoldAmount: number,
   hooks?: K2W4B1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC32B90)
   const game = pGame >>> 0
   const unit = pUnit >>> 0
   const totalGold = dwGoldAmount >>> 0
@@ -1335,7 +1344,6 @@ export function ITEMS_SpawnGoldPilesAtUnit_6FC32B90_113c(
   try {
     const pGoldClassId = sp
     const pUnitCoords = (sp + 0x04) >>> 0
-    const pBoxCoords = (sp + 0x0c) >>> 0
     const pOutCoords = (sp + 0x14) >>> 0
     const pDrop = (sp + 0x20) >>> 0
     m.fill(sp, 0xb0, 0)
@@ -1357,30 +1365,8 @@ export function ITEMS_SpawnGoldPilesAtUnit_6FC32B90_113c(
       droppedSoFar = (droppedSoFar + chunk) >>> 0
 
       PATH_GetTargetTypeAndPosition113c(m, unit, pUnitCoords)
-      const x0 = m.u32(pUnitCoords) | 0
-      const y0 = m.u32((pUnitCoords + 0x04) >>> 0) | 0
-      const xOff = (x0 + 2) | 0
-      const yOff = (y0 + 3) | 0
-      const pFoundRoom = ROOM_FindRoomContainingSubtile113c(m, pRoom, xOff, yOff) >>> 0
-      if (pFoundRoom !== 0) {
-        m.setU32(pBoxCoords, xOff >>> 0)
-        m.setU32((pBoxCoords + 0x04) >>> 0, yOff >>> 0)
-      } else {
-        m.setU32(pBoxCoords, x0 >>> 0)
-        m.setU32((pBoxCoords + 0x04) >>> 0, y0 >>> 0)
-      }
-
       const pTargetRoom =
-        COLLISION_FindFreePositionBasic113c(
-          m,
-          pRoom,
-          pOutCoords,
-          pBoxCoords,
-          1,
-          0x3e01,
-          0x801,
-          1,
-        ) >>> 0
+        ITEMS_FindFreeGroundDropCoords_6FC2E930_113c(m, pRoom, pUnitCoords, pOutCoords, 1) >>> 0
       pRoom = pTargetRoom
       if (pTargetRoom !== 0) {
         const nGoldClassId = m.u32(pGoldClassId)
@@ -1396,7 +1382,7 @@ export function ITEMS_SpawnGoldPilesAtUnit_6FC32B90_113c(
         m.setU32((pDrop + 0x30) >>> 0, 2)
         m.setU32((pDrop + 0x80) >>> 0, (m.u32((pDrop + 0x80) >>> 0) | 0x0a) >>> 0)
 
-        const pGoldItem = ITEMS_FinalizeCreatedItem113c(m, game, pDrop) >>> 0
+        const pGoldItem = D2GAME_CreateItemEx_6FC31490_113c(m, game, pDrop, 0) >>> 0
         if (pGoldItem !== 0) {
           ITEMS_SetOrClearCommandFlags113c(m, pGoldItem, 0x10, 1)
           const signedChunk = chunk | 0
@@ -1441,6 +1427,7 @@ export function ITEMS_ApplySetItemModsByFormat_6FC341E0_113c(
   pItem: number,
   pItemDrop: number,
 ): number {
+  hitD2GameVa113c(0x6FC341E0)
   const item = pItem >>> 0
   if ((ITEMS_GetItemFormat113c(m, item) & 0xffff) >= 1) {
     return ITEMS_RollAndApplyUniqueItem_6FC33C20_113c(m, item, pItemDrop >>> 0)
@@ -1459,6 +1446,7 @@ export function ITEMS_ApplyLowQualityModsByFormat_6FC34AF0_113c(
   pItem: number,
   pItemDrop: number,
 ): number {
+  hitD2GameVa113c(0x6FC34AF0)
   const item = pItem >>> 0
   if ((ITEMS_GetItemFormat113c(m, item) & 0xffff) >= 1) {
     return ITEMS_ApplyLowQualityAndSpawnMods_6FC33E60_113c(m, item, pItemDrop >>> 0)
@@ -1479,6 +1467,7 @@ export function ITEMS_RollRareNameIdByFormat_6FC34B30_113c(
   pItem: number,
   bIsPrefix: number,
 ): number {
+  hitD2GameVa113c(0x6FC34B30)
   const item = pItem >>> 0
   if ((ITEMS_GetItemFormat113c(m, item) & 0xffff) >= 1) {
     return ITEMS_RollRarePrefixId_6FC34210_113c(m, bIsPrefix, item)
@@ -1502,6 +1491,7 @@ export function ITEMS_RollMagicAffixByFormat_6FC34B50_113c(
   bApplyProps: number,
   dwRequiredGroup: number,
 ): number {
+  hitD2GameVa113c(0x6FC34B50)
   const item = pItem >>> 0
   if ((ITEMS_GetItemFormat113c(m, item) & 0xffff) >= 1) {
     return ITEMS_RollMagicAffixId_6FC344D0_113c(
@@ -1538,6 +1528,7 @@ export function ITEMS_RollAndApplyCraftedItemAffixes_6FC34BF0_113c(
   pItem: number,
   pItemDrop: number,
 ): number {
+  hitD2GameVa113c(0x6FC34BF0)
   const item = pItem >>> 0
   const drop = pItemDrop >>> 0
   const wRarePre =
@@ -1679,6 +1670,7 @@ export function ITEMS_RollAndApplyTemperedOrRareItemAffixes_6FC34F20_113c(
   pItem: number,
   pItemDrop: number,
 ): number {
+  hitD2GameVa113c(0x6FC34F20)
   const item = pItem >>> 0
   const drop = pItemDrop >>> 0
   const wRarePre =
@@ -1826,6 +1818,7 @@ export function ITEMS_RollAndApplyRareItemAffixes_6FC35240_113c(
   pItem: number,
   pItemDrop: number,
 ): number {
+  hitD2GameVa113c(0x6FC35240)
   const item = pItem >>> 0
   const drop = pItemDrop >>> 0
   const wRarePre =
@@ -1949,6 +1942,7 @@ export function AI_ThinkPackIdlePatrol_6FC373D0_113c(
   pUnit: number,
   pAiTickArgs: number,
 ): void {
+  hitD2GameVa113c(0x6FC373D0)
   const pAiControl = m.u32((pAiTickArgs + 0x00) >>> 0) >>> 0
   let pAiCmd = 0
   if (pUnit !== 0 && m.u32(pUnit >>> 0) === 1) {
@@ -2096,6 +2090,7 @@ export function AI_ThinkPutridDefiler_6FC389E0_113c(
   pUnit: number,
   pAiTickArgs: number,
 ): void {
+  hitD2GameVa113c(0x6FC389E0)
   const pMonStatsTxt = m.u32((pAiTickArgs + 0x1c) >>> 0) >>> 0
   const pTarget = m.u32((pAiTickArgs + 0x08) >>> 0) >>> 0
   let bNeedScan = true
@@ -2187,6 +2182,7 @@ export function MONUMOD_ApplyPoisonEnchantedStats_6FC421D0_113c(
   nUModId: number,
   bChampion: number,
 ): void {
+  hitD2GameVa113c(0x6FC421D0)
   const scaled = applyMonUModElementalScaledDamage113c(m, pUnit, bChampion)
   if (scaled === null) return
   STATLIST_AddUnitStatMemPort113c(m, pUnit, 0x3e, (scaled.nAddMin << 8) | 0, 0)
@@ -2206,6 +2202,7 @@ export function MONUMOD_ApplyColdEnchantedStats_6FC42320_113c(
   nUModId: number,
   bChampion: number,
 ): void {
+  hitD2GameVa113c(0x6FC42320)
   const scaled = applyMonUModElementalScaledDamage113c(m, pUnit, bChampion)
   if (scaled === null) return
   STATLIST_AddUnitStatMemPort113c(m, pUnit, 0x39, scaled.nAddMin, 0)
@@ -2226,6 +2223,7 @@ export function MONUMOD_ApplyColdDamageAndLengthStats_6FC42490_113c(
   nUModId: number,
   bChampion: number,
 ): void {
+  hitD2GameVa113c(0x6FC42490)
   const scaled = applyMonUModElementalScaledDamage113c(m, pUnit, bChampion)
   if (scaled === null) return
   STATLIST_AddUnitStatMemPort113c(m, pUnit, 0x36, scaled.nAddMin, 0)
@@ -2246,6 +2244,7 @@ export function MONUMOD_ApplyLightningEnchantedStats_6FC42600_113c(
   nUModId: number,
   bChampion: number,
 ): void {
+  hitD2GameVa113c(0x6FC42600)
   const scaled = applyMonUModElementalScaledDamage113c(m, pUnit, bChampion)
   if (scaled === null) return
   STATLIST_AddUnitStatMemPort113c(m, pUnit, 0x32, scaled.nAddMin, 0)
@@ -2265,6 +2264,7 @@ export function MONUMOD_ApplyFireEnchantedStats_6FC42740_113c(
   nUModId: number,
   bChampion: number,
 ): void {
+  hitD2GameVa113c(0x6FC42740)
   const scaled = applyMonUModElementalScaledDamage113c(m, pUnit, bChampion)
   if (scaled === null) return
   STATLIST_AddUnitStatMemPort113c(m, pUnit, 0x30, scaled.nAddMin, 0)
@@ -2287,6 +2287,7 @@ export function MONUMOD_ApplyRandomElementalHitBonus_6FC42B60_113c(
   _arg0: number,
   bBoss: number,
 ): void {
+  hitD2GameVa113c(0x6FC42B60)
   if (bBoss === 0) return
   const newLo = stepSeed64At113c(m, (pUnit + 0x20) >>> 0) >>> 0
   const idx = (newLo % 5) | 0
@@ -2310,6 +2311,7 @@ export function MONUMOD_UnlinkMinionAndStopSkill_6FC43730_113c(
   pGame: number,
   _arg0 = 0,
 ): void {
+  hitD2GameVa113c(0x6FC43730)
   AIGENERAL_RemoveFromMinionList_6FC416A0_113c(m, pGame, pUnit)
   if (pUnit === 0) return
   if (m.u32(pUnit >>> 0) === 1) {
@@ -2338,6 +2340,7 @@ export function MONUMOD_ApplyChampionBerserkerStats_6FC437C0_113c(
   nUModId: number,
   bBoss: number,
 ): void {
+  hitD2GameVa113c(0x6FC437C0)
   if (pUnit === 0 || m.u32(pUnit >>> 0) !== 1 || bBoss === 0) return
   const pMonsterData = m.u32((pUnit + 0x14) >>> 0) >>> 0
   if (pMonsterData !== 0) {
@@ -2359,6 +2362,7 @@ export function MONUMOD_ApplyChampionFanaticStats_6FC43810_113c(
   nUModId: number,
   bBoss: number,
 ): void {
+  hitD2GameVa113c(0x6FC43810)
   if (pUnit === 0 || m.u32(pUnit >>> 0) !== 1 || bBoss === 0) return
   STATLIST_SetUnitStat113c(m, pUnit, 0x10, -70, 0)
   MONUMOD_ApplyFanaticOrPossessedStats_6FC42DA0_113c(m, pUnit, nUModId, bBoss)
@@ -2378,6 +2382,7 @@ export function MONUMOD_ApplyChampionGhostlyStats_6FC43850_113c(
   nUModId: number,
   bBoss: number,
 ): void {
+  hitD2GameVa113c(0x6FC43850)
   if (pUnit === 0 || m.u32(pUnit >>> 0) !== 1) return
   const pGame = m.u32((pUnit + 0x80) >>> 0) >>> 0
   if (pGame === 0 || bBoss === 0) return
@@ -2426,6 +2431,7 @@ export function MONUMOD_RollRandomUniqueBossMod_6FC43980_113c(
   pUnit: number,
   pExcludeFlags = 0,
 ): number {
+  hitD2GameVa113c(0x6FC43980)
   if (pGame === 0) return 0
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
   if (nDiff >= 3) return 0
@@ -2489,6 +2495,7 @@ export function MONUMOD_RollRandomChampionMod_6FC43AE0_113c(
   pGame: number,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC43AE0)
   if (pGame === 0) return 0
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
   if (nDiff >= 3) return 0
@@ -2579,6 +2586,7 @@ export function MONUMOD_InitBossAndMinionPackUMods_6FC448A0_113c(
   pBoss: number,
   pCoordNode = 0,
 ): void {
+  hitD2GameVa113c(0x6FC448A0)
   if (bSpawnMinions !== 0) {
     MONUMOD_SpawnBossMinionPack_6FC445A0_113c(m, pGame, pRoom, pCoordNode, pBoss)
   }
@@ -2633,6 +2641,7 @@ export function MONUMOD_EventScarabChargedBoltsWrapper_6FC468C0_113c(
   _nUModId: number,
   pAttacker: number,
 ): void {
+  hitD2GameVa113c(0x6FC468C0)
   if (pAttacker === 0) return
   if (pMonster !== 0 && m.u32((pMonster + 0x10) >>> 0) === 3) return
   MONUMOD_SpawnScarabChargedBolts_6FC46320_113c(m, pGame, pMonster)
@@ -2653,6 +2662,7 @@ export function SKILLS_EndChargeOrLeapMovement_6FC48170_113c(
   nPosX: number,
   nPosY: number,
 ): number {
+  hitD2GameVa113c(0x6FC48170)
   SKILLS_SetParam0C113c(m, pSkill, 0)
   MONSTER_RefreshAiEvent113c(m, pUnit, 0)
   UNITMSG_QueuePacketA5StateSkill_6FC9A0F0_113c(m, pUnit, nSkillId)
@@ -2725,6 +2735,7 @@ export function GAME_IsGameNameAvailable_6FC4ABD0_113c(
   m: D2KernMemory113c,
   szGameName: number,
 ): number {
+  hitD2GameVa113c(0x6FC4ABD0)
   for (let pSlot = 0x6fd30c08; pSlot < 0x6fd31c08; pSlot = (pSlot + 4) >>> 0) {
     const dwKey = m.u32(pSlot) >>> 0
     if (dwKey === 0 || dwKey === 0xffffffff) continue
@@ -2756,6 +2767,7 @@ export function OBJECTS_OperateGoldChestOrPile_6FC4F580_113c(
   m: D2KernMemory113c,
   pOperateArgs: number,
 ): void {
+  hitD2GameVa113c(0x6FC4F580)
   const pObject = m.u32((pOperateArgs + 0x04) >>> 0) >>> 0
   if (pObject !== 0 && m.u32((pObject + 0x10) >>> 0) !== 0) {
     return
@@ -2813,6 +2825,7 @@ export function OBJECTS_PopulateRoomEdgeObjectsMode1_6FC52790_113c(
   pRoomCoords = 0x00f0_b1c0,
   nFixedCoord = 0,
 ): number {
+  hitD2GameVa113c(0x6FC52790)
   DUNGEON_GetRoomCoordinates113c(m, pRoom, pRoomCoords)
   OBJECTS_PopulateRoomEdgeObjects_6FC4FA90_113c(
     m,
@@ -2840,6 +2853,7 @@ export function OBJECTS_PopulateRoomEdgeObjectsMode0_6FC527B0_113c(
   pRoomCoords = 0x00f0_b1c0,
   nFixedCoord = 0,
 ): number {
+  hitD2GameVa113c(0x6FC527B0)
   DUNGEON_GetRoomCoordinates113c(m, pRoom, pRoomCoords)
   OBJECTS_PopulateRoomEdgeObjects_6FC4FA90_113c(
     m,
@@ -2868,6 +2882,7 @@ export function OBJECTS_SpawnShrineFromGroupEntry_6FC527D0_113c(
   nWallSide: number,
   wDensity: number,
 ): number {
+  hitD2GameVa113c(0x6FC527D0)
   const pObjTxt = DATATBLS_GetObjectsTxtRecord113c(m, nObjectId) >>> 0
   const nSizeX = m.u32((pObjTxt + 0xd0) >>> 0) | 0
   const nSizeY = m.u32((pObjTxt + 0xd4) >>> 0) | 0
@@ -2966,6 +2981,7 @@ export function OBJECTS_SpawnWellFromGroupEntry_6FC52A10_113c(
   nObjectId: number,
   wDensity: number,
 ): number {
+  hitD2GameVa113c(0x6FC52A10)
   const nLevelId = DUNGEON_GetLevelIdIfNotHidden113c(m, pRoom) | 0
   const pObjRegion = m.u32((pGame + 0x10f0) >>> 0) >>> 0
   const pActCtrl = m.u32((pObjRegion + nLevelId * 4 + 0x48) >>> 0) >>> 0
@@ -3043,6 +3059,7 @@ export function OBJECTS_SpawnChestClusterInRoom_6FC52DF0_113c(
   nObjectId: number,
   wDensity: number,
 ): number {
+  hitD2GameVa113c(0x6FC52DF0)
   const pObjRegion = m.u32((pGame + 0x10f0) >>> 0) >>> 0
   const roll = (stepSeed64At113c(m, pObjRegion) >>> 0) % 100
   if ((roll >>> 0) > (wDensity & 0xffff)) {
@@ -3189,6 +3206,7 @@ export function OBJECTS_SpawnPresetBrazierOrTorch244_6FC531B0_113c(
   y: number,
   nInitMode = 0,
 ): number {
+  hitD2GameVa113c(0x6FC531B0)
   const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom) | 0
   const nEffObjectId = nLevelId === 0x19 ? 0x173 : nObjectId
   const pUnit = OBJECTS_SpawnPresetTorchOrBrazier_6FC522B0_113c(

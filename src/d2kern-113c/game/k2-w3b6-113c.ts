@@ -63,6 +63,7 @@ import {
   SUNIT_PlaceServerUnitInRoom113c,
 } from './regpop-spawn-113c.ts';
 import { EVENT_SetEventFull113c, MONSTER_RefreshAiEvent113c } from './timer-wheel.ts';
+import { hitD2GameVa113c } from '../va-trace-113c.ts';
 
 const ACT1Q6_DIALOG_STATE_MAP_VA = 0x6fd2a024;
 const ACT1Q3_DIALOG_STATE_MAP_VA = 0x6fd2a00c;
@@ -167,6 +168,7 @@ export function ACT5Q5_ResetAncientMonsterToStatue_6FC7E000_113c(
   pGame: number,
   dwMonsterUnitId: number,
 ): number {
+  hitD2GameVa113c(0x6FC7E000);
   const pMonster = findUnitInGameHash113c(m, pGame, 0x1320, dwMonsterUnitId);
   if (pMonster === 0) {
     return 0;
@@ -208,6 +210,7 @@ export function ACT5Q5_DeactivateAncientStatuesAndReset_6FC7E560_113c(
   pQuest: number,
   pQuestDataEx: number,
 ): number {
+  hitD2GameVa113c(0x6FC7E560);
   const sp = k2W3B6StackPtr;
   k2W3B6StackPtr = (sp + 0x10) >>> 0;
   try {
@@ -250,6 +253,7 @@ export function ACT5Q5_ActivateAncientStatueObjects_6FC7E660_113c(
   pGame: number,
   pQuest: number,
 ): number {
+  hitD2GameVa113c(0x6FC7E660);
   const pQuestDataEx = m.u32((pQuest + 0x18) >>> 0) >>> 0;
   if (m.u32((pQuestDataEx + 0x0c) >>> 0) !== 0 || m.u8((pQuestDataEx + 0x11) >>> 0) === 0) {
     m.setU8((pQuestDataEx + 0x04) >>> 0, 0);
@@ -292,6 +296,7 @@ export function ACT5Q3_UpdateAnyaObjectTimer_6FC7E840_113c(
   pQuest: number,
   pObject: number,
 ): void {
+  hitD2GameVa113c(0x6FC7E840);
   const nMode = (pObject >>> 0) !== 0 ? m.u32((pObject + 0x10) >>> 0) | 0 : 0;
   if (nMode === 1) {
     UNITS_ChangeAnimMode113c(m, pObject, 2);
@@ -328,6 +333,7 @@ export function ACT5Q3_InitFrozenAnyaObject_6FC7E8D0_113c(
   m: D2KernMemory113c,
   pObjInit: number,
 ): void {
+  hitD2GameVa113c(0x6FC7E8D0);
   const pGame = m.u32(pObjInit >>> 0) >>> 0;
   const pQuest = findQuestNodeInGame113c(m, pGame, 0x21);
   if (pQuest === 0 || m.u8((pQuest + 0x09) >>> 0) === 0) {
@@ -355,6 +361,7 @@ export function ACT5Q3_SpawnFrozenAnyaMonsterObject_6FC7E940_113c(
   pGame: number,
   pUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FC7E940);
   const pQuest = findQuestNodeInGame113c(m, pGame, 0x21);
   if (pQuest === 0 || m.u8((pQuest + 0x09) >>> 0) === 0) {
     return;
@@ -425,6 +432,7 @@ export function ACT5Q2_UpdatePrisonDoorObjectTimer_6FC7EE30_113c(
   pQuest: number,
   pObject: number,
 ): void {
+  hitD2GameVa113c(0x6FC7EE30);
   const dwObjGuid = (pObject >>> 0) !== 0 ? m.u32((pObject + 0x0c) >>> 0) >>> 0 : 0xffffffff;
   const pQuestDataEx = m.u32((pQuest + 0x18) >>> 0) >>> 0;
   let idx = 0;
@@ -470,6 +478,7 @@ export function QUESTS_CheckFirstTimeActiveOrChainRefresh_6FC801B0_113c(
   pQuest: number,
   hooks?: K2W3B6ChainRefreshHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC801B0);
   const bLastState = m.u8((pQuest + 0x0c) >>> 0);
   if (bLastState < 2 && m.u8((pQuest + 0x09) >>> 0) === 1) {
     return 1;
@@ -512,6 +521,7 @@ export function ACT1Q6_RemoveGuidFromSelectedList_6FC802A0_113c(
   bSecondList: number,
   dwGuid: number,
 ): number {
+  hitD2GameVa113c(0x6FC802A0);
   if (bSecondList !== 0) {
     const count = m.u16((pQuestDataEx + 0x64) >>> 0);
     for (let idx = 0; idx < count; idx = (idx + 1) | 0) {
@@ -553,6 +563,7 @@ export function QUESTS_CheckActiveOrChainRefresh_6FC806E0_113c(
   pQuest: number,
   hooks?: K2W3B6ChainRefreshHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC806E0);
   if (m.u8((pQuest + 0x0c) >>> 0) !== 5 && m.u8((pQuest + 0x09) >>> 0) !== 0) {
     return 1;
   }
@@ -589,6 +600,7 @@ export function ACT1Q6_Callback13_RefreshQuestState_6FC808B0_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC808B0);
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0;
   const pGame = m.u32(pQuestArg >>> 0) >>> 0;
   const pQuestFlags = getPlayerQuestFlags113c(m, pGame, pPlayer);
@@ -625,6 +637,7 @@ export function ACT1Q6_Callback00_NpcActivate_6FC80A80_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC80A80);
   ensureDialogStateTableSeeded113c(m, ACT1Q6_DIALOG_STATE_MAP_VA, DEFAULT_DIALOG_STATE_MAP_01234);
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0;
   const pGame = m.u32(pQuestArg >>> 0) >>> 0;
@@ -711,6 +724,7 @@ export function ACT1Q6_UpdatePlayerQuestStateCallback_6FC80D00_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC80D00);
   const pQuestFlags = getPlayerQuestFlags113c(m, pGame, pPlayer);
   if (
     DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 6, 0) === 1 ||
@@ -748,6 +762,7 @@ export function ACT1Q3_Callback13_RefreshQuestState_6FC80E00_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC80E00);
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0;
   const pGame = m.u32(pQuestArg >>> 0) >>> 0;
   const pQuestFlags = getPlayerQuestFlags113c(m, pGame, pPlayer);
@@ -796,6 +811,7 @@ export function ACT1Q3_OnCatacombsLevel4EnteredCallback_6FC80F70_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC80F70);
   const pQuestFlags = getPlayerQuestFlags113c(m, pGame, pPlayer);
   if (
     DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 5, 0) !== 0 ||
@@ -835,6 +851,7 @@ export function ACT1Q3_Callback00_NpcActivate_6FC81030_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC81030);
   ensureDialogStateTableSeeded113c(m, ACT1Q3_DIALOG_STATE_MAP_VA, DEFAULT_DIALOG_STATE_MAP_Q3);
   if (m.u8((pQuest + 0x09) >>> 0) === 0) {
     return;
@@ -905,6 +922,7 @@ export function ACT1Q3_Callback11_RemovePlayerGuid_6FC811B0_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC811B0);
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0;
   const dwPlayerGuid = pPlayer !== 0 ? m.u32((pPlayer + 0x0c) >>> 0) >>> 0 : 0xffffffff;
   const pQuestDataEx = m.u32((pQuest + 0x18) >>> 0) >>> 0;
@@ -924,6 +942,7 @@ export function ACT1Q3_UpdatePlayerQuestStateCallback_6FC81250_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC81250);
   const pQuestFlags = getPlayerQuestFlags113c(m, pGame, pPlayer);
   if (
     DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 5, 0) === 1 ||
@@ -967,6 +986,7 @@ export function ACT1Q4_SpawnTristramPortalObject_6FC81340_113c(
   pGame: number,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC81340);
   const pQuest = findQuestNodeInGame113c(m, pGame, 4);
   if (pQuest === 0) {
     return 1;
@@ -1002,6 +1022,7 @@ export function ACT1Q4_Callback13_RefreshQuestState_6FC81540_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC81540);
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0;
   const pGame = m.u32(pQuestArg >>> 0) >>> 0;
   const pQuestFlags = getPlayerQuestFlags113c(m, pGame, pPlayer);
@@ -1062,6 +1083,7 @@ export function ACT1Q4_SetCompletedBeforeAndAddGuidCallback_6FC81910_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC81910);
   const pQuestFlags = getPlayerQuestFlags113c(m, pGame, pPlayer);
   if (
     DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 4, 0) !== 0 ||
@@ -1088,6 +1110,7 @@ export function ACT1Q4_UpdatePlayerQuestStateCallback_6FC819B0_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC819B0);
   const pQuestFlags = getPlayerQuestFlags113c(m, pGame, pPlayer);
   if (
     DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 4, 0) === 1 ||
@@ -1120,6 +1143,7 @@ export function ACT1Q5_Callback13_RefreshQuestState_6FC81A80_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC81A80);
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0;
   const pGame = m.u32(pQuestArg >>> 0) >>> 0;
   const pQuestFlags = getPlayerQuestFlags113c(m, pGame, pPlayer);
@@ -1156,6 +1180,7 @@ export function ACT1Q5_Callback00_NpcActivate_6FC81C60_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC81C60);
   ensureDialogStateTableSeeded113c(m, ACT1Q5_DIALOG_STATE_MAP_VA, DEFAULT_DIALOG_STATE_MAP_01234);
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0;
   const pGame = m.u32(pQuestArg >>> 0) >>> 0;
@@ -1214,6 +1239,7 @@ export function ACT1Q5_UpdatePlayerQuestStateCallback_6FC81DA0_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC81DA0);
   const pQuestFlags = getPlayerQuestFlags113c(m, pGame, pPlayer);
   if (
     DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 3, 0) === 1 ||
@@ -1246,6 +1272,7 @@ export function ACT1Q2_Callback13_RefreshQuestState_6FC81E30_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC81E30);
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0;
   const pGame = m.u32(pQuestArg >>> 0) >>> 0;
   const pQuestFlags = getPlayerQuestFlags113c(m, pGame, pPlayer);
@@ -1283,6 +1310,7 @@ export function ACT1Q2_CompleteBloodRavenPartyCallback_6FC81EC0_113c(
   pPlayer: number,
   _pArg = 0,
 ): void {
+  hitD2GameVa113c(0x6FC81EC0);
   const pQuestFlags = getPlayerQuestFlags113c(m, pGame, pPlayer);
   if (
     DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 2, 0) === 1 ||
@@ -1315,6 +1343,7 @@ export function ACT1Q2_Callback00_NpcActivate_6FC81F50_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC81F50);
   ensureDialogStateTableSeeded113c(m, ACT1Q2_DIALOG_STATE_MAP_VA, DEFAULT_DIALOG_STATE_MAP_01234);
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0;
   const pGame = m.u32(pQuestArg >>> 0) >>> 0;
@@ -1364,6 +1393,7 @@ export function ACT1Q2_UpdatePlayerQuestStateCallback_6FC82040_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC82040);
   const pQuestFlags = getPlayerQuestFlags113c(m, pGame, pPlayer);
   if (
     DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 2, 0) === 1 ||
@@ -1401,6 +1431,7 @@ export function ACT1Q1_Callback13_RefreshQuestState_6FC820E0_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC820E0);
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0;
   const pGame = m.u32(pQuestArg >>> 0) >>> 0;
   const pQuestFlags = getPlayerQuestFlags113c(m, pGame, pPlayer);
@@ -1438,6 +1469,7 @@ export function ACT1Q1_CompleteDenOfEvilPartyCallback_6FC821B0_113c(
   pPlayer: number,
   _pArg = 0,
 ): void {
+  hitD2GameVa113c(0x6FC821B0);
   const pQuestFlags = getPlayerQuestFlags113c(m, pGame, pPlayer);
   if (
     DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 1, 0) === 1 ||
@@ -1470,6 +1502,7 @@ export function ACT1Q1_Callback00_NpcActivate_6FC82220_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC82220);
   ensureDialogStateTableSeeded113c(m, ACT1Q1_DIALOG_STATE_MAP_VA, DEFAULT_DIALOG_STATE_MAP_01234);
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0;
   const pGame = m.u32((pQuest + 0x04) >>> 0) >>> 0;
@@ -1524,6 +1557,7 @@ export function ACT1Q1_UpdatePlayerQuestStateCallback_6FC82370_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC82370);
   const pQuestFlags = getPlayerQuestFlags113c(m, pGame, pPlayer);
   if (
     DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 1, 0) === 1 ||
@@ -1561,6 +1595,7 @@ export function ACT1Q0_Callback00_WarrivIntroActivate_6FC82410_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC82410);
   const pNpc = m.u32((pQuestArg + 0x08) >>> 0) >>> 0;
   if (pNpc === 0 || (m.u32((pNpc + 0x04) >>> 0) | 0) !== 0x9b) {
     return;
@@ -1586,6 +1621,7 @@ export function ACT1_IntroCainActivate_6FC824D0_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC824D0);
   const pNpc = m.u32((pQuestArg + 0x08) >>> 0) >>> 0;
   if (pNpc === 0 || (m.u32((pNpc + 0x04) >>> 0) | 0) !== 0x10a) {
     return;
@@ -1633,6 +1669,7 @@ export function ACT1Q6_ApplyAndarielKillDifficultyRecord_6FC82640_113c(
   pQuestFlags: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC82640);
   QUESTRECORD_SetQuestState113c(m, pQuestFlags, 6, 0x0d);
   QUESTRECORD_SetQuestState113c(m, pQuestFlags, 6, 1);
   let pClient = 0;
@@ -1664,6 +1701,7 @@ export function ACT1Q3_CompleteCharsiImbueInCatacombsCallback_6FC827A0_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC827A0);
   const pQuestFlags = getPlayerQuestFlags113c(m, pGame, pPlayer);
   if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 5, 0) === 1) {
     return 0;
@@ -1706,6 +1744,7 @@ export function ACT1Q4_InitInifussTreeObject_6FC828D0_113c(
   m: D2KernMemory113c,
   pObjInit: number,
 ): void {
+  hitD2GameVa113c(0x6FC828D0);
   const pGame = m.u32(pObjInit >>> 0) >>> 0;
   const pQuest = findQuestNodeInGame113c(m, pGame, 4);
   if (pQuest === 0) {
@@ -1745,6 +1784,7 @@ export function ACT1Q4_CompleteCainRescuePartyCallback_6FC829B0_113c(
   pPlayer: number,
   _pArg = 0,
 ): void {
+  hitD2GameVa113c(0x6FC829B0);
   const pQuestFlags = getPlayerQuestFlags113c(m, pGame, pPlayer);
   if (
     DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 4, 0) === 1 ||
@@ -1779,6 +1819,7 @@ export function ACT1Q2_PlayBloodRavenDefeatedSoundCallback_6FC82B40_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC82B40);
   const pQuestFlags = getPlayerQuestFlags113c(m, pGame, pPlayer);
   if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 2, 0x0d) !== 1) {
     return 0;
@@ -1804,6 +1845,7 @@ export function ACT1_IntroNpcActivate_6FC82E50_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC82E50);
   const pNpc = m.u32((pQuestArg + 0x08) >>> 0) >>> 0;
   const nNpcId = pNpc !== 0 ? m.u32((pNpc + 0x04) >>> 0) | 0 : -1;
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0;
@@ -1842,6 +1884,7 @@ export function ACT1_IntroCallback12_MarkNpcIntroDone_6FC82F00_113c(
   _pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC82F00);
   const nNpcId = m.u32((pQuestArg + 0x14) >>> 0) | 0;
   const wMsgId = m.u16((pQuestArg + 0x18) >>> 0);
   let bMatch = false;
@@ -1881,6 +1924,7 @@ export function QUESTS_CompleteQuestForGuidListPlayers_6FC83270_113c(
   nQuestId: number,
   wSoundId: number,
 ): void {
+  hitD2GameVa113c(0x6FC83270);
   let i = 0;
   while (i < m.u16((pGuidList + 0x80) >>> 0)) {
     const dwPlayerGuid = m.u32((pGuidList + i * 4) >>> 0) >>> 0;
@@ -1914,6 +1958,7 @@ export function ACT1Q2_CompleteBloodRavenForNearbyPartyCallback_6FC83930_113c(
   pPlayer: number,
   pMonster: number,
 ): number {
+  hitD2GameVa113c(0x6FC83930);
   const pPlayerRoom = UNITS_GetRoom113c(m, pPlayer) >>> 0;
   if (pPlayerRoom === 0) {
     return 0;
@@ -1979,6 +2024,7 @@ export function ACT1Q4_SpawnCainCageAndPortalInTristram_6FC863A0_113c(
   m: D2KernMemory113c,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC863A0);
   const pQuest = findQuestNodeInGame113c(m, pGame, 4);
   if (pQuest === 0) {
     return;

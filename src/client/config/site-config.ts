@@ -12,14 +12,18 @@
  * 3. Default: `{ singlePlayerEnabled: false }`.
  */
 
+export type SinglePlayerBackendConfig = 'legacy' | 'd2kern-113c'
+
 export interface SiteConfig {
   readonly singlePlayerEnabled: boolean
+  readonly singlePlayerBackend?: SinglePlayerBackendConfig | undefined
 }
 
 export interface LoadSiteConfigOptions {
   readonly fetchFn?: ((input: string, init?: RequestInit) => Promise<Response>) | undefined
   readonly configUrl?: string | undefined
   readonly buildEnvSinglePlayer?: unknown
+  readonly buildEnvSinglePlayerBackend?: unknown
 }
 
 export const DEFAULT_SITE_CONFIG: SiteConfig = Object.freeze({
@@ -40,6 +44,18 @@ export function parseSinglePlayerFlag(raw: unknown): boolean | undefined {
   return undefined
 }
 
+/**
+ * Parses an explicit Single-Player backend mode (`'legacy'` or `'d2kern-113c'`).
+ * Returns `undefined` when omitted or unrecognized.
+ */
+export function parseSinglePlayerBackend(raw: unknown): SinglePlayerBackendConfig | undefined {
+  if (typeof raw !== 'string') return undefined
+  const norm = raw.trim().toLowerCase()
+  if (norm === 'd2kern-113c' || norm === 'd2kern') return 'd2kern-113c'
+  if (norm === 'legacy') return 'legacy'
+  return undefined
+}
+
 function readBuildEnvSinglePlayerFlag(): unknown {
   return (
     import.meta as {
@@ -48,6 +64,16 @@ function readBuildEnvSinglePlayerFlag(): unknown {
       }
     }
   ).env?.VITE_ENABLE_SINGLE_PLAYER
+}
+
+function readBuildEnvSinglePlayerBackend(): unknown {
+  return (
+    import.meta as {
+      readonly env?: {
+        readonly VITE_SINGLE_PLAYER_BACKEND?: unknown
+      }
+    }
+  ).env?.VITE_SINGLE_PLAYER_BACKEND
 }
 
 /**
@@ -61,12 +87,22 @@ export async function loadSiteConfig(options?: LoadSiteConfigOptions): Promise<S
         ? options.buildEnvSinglePlayer
         : readBuildEnvSinglePlayerFlag(),
     ) ?? false
+  const fallbackBackend = parseSinglePlayerBackend(
+    options && 'buildEnvSinglePlayerBackend' in options
+      ? options.buildEnvSinglePlayerBackend
+      : readBuildEnvSinglePlayerBackend(),
+  )
+
+  const buildResult = (
+    enabled: boolean,
+    backend?: SinglePlayerBackendConfig | undefined,
+  ): SiteConfig => (backend !== undefined ? { singlePlayerEnabled: enabled, singlePlayerBackend: backend } : { singlePlayerEnabled: enabled })
 
   const fetchImpl =
     options?.fetchFn ??
     (typeof globalThis.fetch === 'function' ? globalThis.fetch.bind(globalThis) : undefined)
   if (!fetchImpl) {
-    return { singlePlayerEnabled: fallbackFlag }
+    return buildResult(fallbackFlag, fallbackBackend)
   }
 
   const url = options?.configUrl ?? './site-config.json'
@@ -75,11 +111,11 @@ export async function loadSiteConfig(options?: LoadSiteConfigOptions): Promise<S
     if (res.ok && res.status === 200) {
       const data = (await res.json()) as unknown
       if (data && typeof data === 'object' && !Array.isArray(data)) {
-        const remoteFlag = parseSinglePlayerFlag(
-          (data as Record<string, unknown>).singlePlayerEnabled,
-        )
+        const obj = data as Record<string, unknown>
+        const remoteFlag = parseSinglePlayerFlag(obj.singlePlayerEnabled)
+        const remoteBackend = parseSinglePlayerBackend(obj.singlePlayerBackend) ?? fallbackBackend
         if (remoteFlag !== undefined) {
-          return { singlePlayerEnabled: remoteFlag }
+          return buildResult(remoteFlag, remoteBackend)
         }
       }
     }
@@ -87,5 +123,5 @@ export async function loadSiteConfig(options?: LoadSiteConfigOptions): Promise<S
     // Network / JSON errors fail closed to fallbackFlag (false by default)
   }
 
-  return { singlePlayerEnabled: fallbackFlag }
+  return buildResult(fallbackFlag, fallbackBackend)
 }

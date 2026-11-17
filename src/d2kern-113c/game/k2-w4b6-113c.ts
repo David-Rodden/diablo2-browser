@@ -115,8 +115,13 @@ import {
   SUNITDMG_FindCombatDamageData113c,
   SUNITDMG_RollDodgeAvoidEvadeBlock113c,
 } from './combat-a1c-113c'
-import { PLAYER_GetEquippedWeapon113c } from './fallen-ai-113c'
+import { PLAYER_GetEquippedWeapon113c } from './replay-kernel-113c.ts'
 import { SUNIT_GetServerUnit113c } from './game-strc'
+import {
+  D2GAME_CreateItemEx_6FC31490_113c,
+  ITEMS_FindFreeGroundDropCoords_6FC2E930_113c,
+  ITEMS_GetDropItemLevel_6FC2E5D0_113c,
+} from './k2-real-itemdrop-113c'
 import {
   AURA_ForEachUnitInRadius113c,
   STATES_CreateOrUpdateAuraStatList113c,
@@ -163,6 +168,7 @@ import {
   EVENT_FreeNode113c,
   EVENT_SetEventFull113c,
 } from './timer-wheel'
+import { hitD2GameVa113c } from '../va-trace-113c'
 
 export type D2KernMemory113c = Memory113c
 
@@ -365,6 +371,7 @@ export function CLIENT_SendLoadActAndEnvStatePackets_6FCBD610_113c(
   pClient: number,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FCBD610)
   if (pClient === 0) {
     throw new D2CommonAssertError('Client.cpp', 0x7cb)
   }
@@ -419,6 +426,7 @@ export function ACT_AllocGameActAndInitEclipse_6FCBD6F0_113c(
   pGame: number,
   nAct: number,
 ): void {
+  hitD2GameVa113c(0x6FCBD6F0)
   const pArena = m.u32((pGame + 0x1d28) >>> 0) >>> 0
   if (pArena === 0) {
     throw new D2CommonAssertError('Client.cpp', 0x27)
@@ -468,6 +476,7 @@ export function SKILLS_AllocAndFindUnitsInRadius_6FCBE570_113c(
   nX: number,
   hooks?: K2W4B6Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FCBE570)
   const sp = w4b6ScratchSp
   w4b6ScratchSp = (sp + 0x38) >>> 0
   try {
@@ -515,6 +524,7 @@ export function SKILLS_ClampLifeManaStaminaToMaxAndRefreshAnim_6FCBE6B0_113c(
   m: D2KernMemory113c,
   pUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FCBE6B0)
   const maxLife = STATLIST_GetMaxLifeFromUnit113c(m, pUnit >>> 0) | 0
   if ((STATLIST_GetUnitStat113c(m, pUnit >>> 0, 6, 0) | 0) > maxLife) {
     STATLIST_SetUnitStat113c(m, pUnit >>> 0, 6, maxLife, 0)
@@ -544,6 +554,7 @@ export function SKILLS_GetUnitBaseWalkVelocityShifted8_6FCBE730_113c(
   m: D2KernMemory113c,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FCBE730)
   if (pUnit === 0) return 0x600
   const dwUnitType = m.u32(pUnit >>> 0) | 0
   if (dwUnitType === 0) {
@@ -588,6 +599,7 @@ export function SKILLS_FindFirstCorpseInRadius10_6FCBE810_113c(
   pCasterUnit: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCBE810)
   if (pCasterUnit === 0 || (nSkillLevel | 0) <= 0 || pCenterUnit === 0) {
     return 0
   }
@@ -655,6 +667,7 @@ export function SKILLS_DispatchStateOnSrvDoFuncForSkill_6FCBE8E0_113c(
   nSkillLevel: number,
   hooks?: K2W4B6Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FCBE8E0)
   const skillId = nSkillId | 0
   if (skillId <= 0) return 0
   const pDataTables = getDataTablesPtr113c(m)
@@ -695,6 +708,7 @@ export function STATES_ClearSameGroupStatesOnUnit_6FCBEA30_113c(
   nStateId: number,
   bIncludeTargetState: number,
 ): number {
+  hitD2GameVa113c(0x6FCBEA30)
   const targetState = nStateId | 0
   if (targetState < 0) return 0
   const pDataTables = getDataTablesPtr113c(m)
@@ -750,6 +764,7 @@ export function SKILLS_EnsurePlayerWeaponOrQuiverQuantity_6FCBEB80_113c(
   m: D2KernMemory113c,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FCBEB80)
   if (pUnit === 0) return 0
   if ((m.u32(pUnit >>> 0) | 0) !== 0) return 1
   const pWeapon = PLAYER_GetEquippedWeapon113c(m, pUnit >>> 0) >>> 0
@@ -811,6 +826,7 @@ export function SKILLS_FindClosestUnitCallback_6FCBEDB0_113c(
   pCandidateUnit: number,
   hooks?: K2W4B6Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FCBEDB0)
   const pClosestCtx = m.u32((pFindArg + 0x0c) >>> 0) >>> 0
   const pfnFilter = m.u32((pClosestCtx + 0x10) >>> 0) >>> 0
   if (pfnFilter !== 0) {
@@ -867,6 +883,7 @@ export function SKILLS_ForEachUnitInSearchRadius_6FCBEEB0_113c(
   pGame: number,
   hooks?: K2W4B6Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCBEEB0)
   if (pSearchSpec === 0) {
     throw new D2CommonAssertError('Client.cpp', 0x10b8)
   }
@@ -958,6 +975,7 @@ export function SKILLS_RollAndAddSkillElemDamage_6FCBF210_113c(
   pDmg: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCBF210)
   const skillId = nSkillId | 0
   if (skillId < 0) return 0
   const pDataTables = getDataTablesPtr113c(m)
@@ -1006,6 +1024,7 @@ export function SKILLS_ConsumeEquippedItemSkillCharge_6FCBF4A0_113c(
   dwOwnerItemGuid: number,
   pSkill: number,
 ): number {
+  hitD2GameVa113c(0x6FCBF4A0)
   if (pGame === 0) {
     throw new D2CommonAssertError('Client.cpp', 0x2d3)
   }
@@ -1099,6 +1118,7 @@ export function SKILLS_UnlinkMonsterFromMinionList_6FCBF730_113c(
   m: D2KernMemory113c,
   pMonster: number,
 ): void {
+  hitD2GameVa113c(0x6FCBF730)
   if (pMonster === 0) return
   if ((m.u32(pMonster >>> 0) | 0) !== 1) return
   const pMonData = m.u32((pMonster + 0x14) >>> 0) >>> 0
@@ -1134,6 +1154,7 @@ export function SKILLS_GetUnitTargetOrFirstPathCoords_6FCBFA30_113c(
   pOutX: number,
   pOutY: number,
 ): number {
+  hitD2GameVa113c(0x6FCBFA30)
   SUNIT_ValidatePathTargetUnit113c(m, pUnit >>> 0, pGame >>> 0)
   const pPath = m.u32((pUnit + 0x2c) >>> 0) >>> 0
   const pTarget = PATH_GetTargetUnit113c(m, pPath) >>> 0
@@ -1180,6 +1201,7 @@ export function SKILLS_ApplySkillDelayState121OnPlayer_6FCBFF70_113c(
   pUnit: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FCBFF70)
   void STATES_OnTimedStateRemoved113c
   const nExpireFrame = ((m.u32((pGame + 0xa8) >>> 0) | 0) + (nDurationFrames | 0)) >>> 0
   if (pUnit === 0 || (m.u32(pUnit >>> 0) | 0) !== 0 || (nDurationFrames | 0) === 0) {
@@ -1220,6 +1242,7 @@ export function STATES_SetupAndCreateSkillAuraStatList_6FCC09F0_113c(
   nStatId: number,
   nStateId: number,
 ): number {
+  hitD2GameVa113c(0x6FCC09F0)
   const skillId = nSkillId | 0
   let pSkillsTxt = 0
   if (skillId >= 0) {
@@ -1272,6 +1295,7 @@ export function SKILLS_AllocSkillMinDamCombatOnPathTarget_6FCC0E80_113c(
   nSkillId: number,
   _nSkillLevel = 0,
 ): number {
+  hitD2GameVa113c(0x6FCC0E80)
   void _nSkillLevel
   SUNIT_ValidatePathTargetUnit113c(m, pAttacker >>> 0, pGame >>> 0)
   const pPath = m.u32((pAttacker + 0x2c) >>> 0) >>> 0
@@ -1331,6 +1355,7 @@ export function SKILLS_FindRingScanTargetInRadius_6FCC0F40_113c(
   pCenterUnit: number,
   nY: number,
 ): number {
+  hitD2GameVa113c(0x6FCC0F40)
   const sp = w4b6ScratchSp
   w4b6ScratchSp = (sp + 0x18) >>> 0
   try {
@@ -1386,6 +1411,7 @@ export function SKILLS_CountUnitsInRadius_6FCC0FC0_113c(
   pCenterUnit: number,
   nY: number,
 ): number {
+  hitD2GameVa113c(0x6FCC0FC0)
   const sp = w4b6ScratchSp
   w4b6ScratchSp = (sp + 0x04) >>> 0
   try {
@@ -1427,6 +1453,7 @@ export function SKILLS_RollAvoidAndApplySkillDamage_6FCC10B0_113c(
   pGame: number,
   pDefender: number,
 ): void {
+  hitD2GameVa113c(0x6FCC10B0)
   let pOwner = pAttacker;
   if (pOwner === 0 || pDefender === 0) {
     return;
@@ -1468,6 +1495,8 @@ export function SKILLS_RollAvoidAndApplySkillDamage_6FCC10B0_113c(
   SUNITDMG_ApplySideEffectsAndKill113c(m, pGame, pOwner, pDefender, pDmg);
 }
 
+let k2W4B6DropStackPtr = 0x6fd3c800
+
 /**
  * Resolves an item code to class ID, finds a free drop tile near the unit, and creates the dropped item.
  * @va D2Game:0x6FCC1350
@@ -1479,38 +1508,42 @@ export function SKILLS_CreateDroppedItemByCodeAtUnit_6FCC1350_113c(
   pGame: number,
   nQuality: number,
 ): number {
-  const nItemId = DATATBLS_GetItemIdFromItemCode113c(m, dwItemCode);
-  if (nItemId === -1 || (nItemId >>> 0) === 0xffffffff) {
+  hitD2GameVa113c(0x6FCC1350)
+  const nItemId = DATATBLS_GetItemIdFromItemCode113c(m, dwItemCode) | 0;
+  if (nItemId === -1) {
     return 0;
   }
-  const sp = m.alloc(0xa0);
-  const pPos = sp + 0x10;
-  const pOutRoom = sp + 0x0c;
-  const pDropParams = sp + 0x18;
-  PATH_GetTargetTypeAndPosition113c(m, pUnit, pPos);
-  const pRoom = UNITS_GetRoom113c(m, pUnit);
-  ITEMS_DropGoldPileAtUnit113c(m, pGame, pUnit, 256, true);
-  const pTargetRoom = pRoom;
-  m.setU32(pOutRoom, pTargetRoom);
-  if (pTargetRoom === 0) {
-    return 0;
+  const sp = k2W4B6DropStackPtr;
+  k2W4B6DropStackPtr = (sp + 0xa8) >>> 0;
+  try {
+    m.fill(sp, 0xa8, 0);
+    const pOutCoords = sp;
+    const pInCoords = (sp + 0x08) >>> 0;
+    const pDropParams = (sp + 0x18) >>> 0;
+    PATH_GetTargetTypeAndPosition113c(m, pUnit, pInCoords);
+    const pRoom = UNITS_GetRoom113c(m, pUnit) >>> 0;
+    const pTargetRoom =
+      ITEMS_FindFreeGroundDropCoords_6FC2E930_113c(m, pRoom, pInCoords, pOutCoords, 1) >>> 0;
+    if (pTargetRoom === 0) {
+      return 0;
+    }
+    const nIlvl = ITEMS_GetDropItemLevel_6FC2E5D0_113c(m, pGame, pUnit, 0) | 0;
+    m.setU32((pDropParams + 0x00) >>> 0, pUnit >>> 0);
+    m.setU32((pDropParams + 0x04) >>> 0, 0);
+    m.setU32((pDropParams + 0x08) >>> 0, pGame >>> 0);
+    m.setU32((pDropParams + 0x0c) >>> 0, nIlvl >>> 0);
+    m.setU32((pDropParams + 0x14) >>> 0, nItemId >>> 0);
+    m.setU32((pDropParams + 0x18) >>> 0, 3);
+    m.setU32((pDropParams + 0x1c) >>> 0, m.u32(pOutCoords));
+    m.setU32((pDropParams + 0x20) >>> 0, m.u32((pOutCoords + 0x04) >>> 0));
+    m.setU32((pDropParams + 0x24) >>> 0, pTargetRoom);
+    m.setU16((pDropParams + 0x28) >>> 0, 1);
+    m.setU16((pDropParams + 0x2a) >>> 0, pGame !== 0 ? m.u16((pGame + 0x78) >>> 0) : 0);
+    m.setU32((pDropParams + 0x30) >>> 0, nQuality >>> 0);
+    return D2GAME_CreateItemEx_6FC31490_113c(m, pGame, pDropParams, 0) | 0;
+  } finally {
+    k2W4B6DropStackPtr = sp;
   }
-  for (let i = 0; i < 0x21; i += 1) {
-    m.setU32(pDropParams + i * 4, 0);
-  }
-  m.setU32(pDropParams + 0x00, pUnit);
-  m.setU32(pDropParams + 0x08, pGame);
-  m.setU32(pDropParams + 0x10, nItemId);
-  m.setU32(pDropParams + 0x18, 3);
-  m.setU32(pDropParams + 0x1c, m.u32(pPos));
-  m.setU32(pDropParams + 0x20, m.u32(pPos + 0x04));
-  m.setU32(pDropParams + 0x24, pTargetRoom);
-  m.setU16(pDropParams + 0x26, m.u16(pGame + 0x78));
-  m.setU16(pDropParams + 0x28, 1);
-  m.setU32(pDropParams + 0x30, nQuality);
-  const nIlvl = ITEMS_GetDropItemLevel113c(m, pGame, pUnit, 0);
-  m.setU32(pDropParams + 0x08, nIlvl);
-  return ITEMS_FinalizeCreatedItem113c(m, pGame, pDropParams);
 }
 
 /**
@@ -1523,6 +1556,7 @@ export function SKILLS_ConsumeItemQuantityAndSyncDurability_6FCC16A0_113c(
   pGame: number,
   pOwnerUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FCC16A0)
   if (pItem === 0) {
     return 0;
   }
@@ -1569,6 +1603,7 @@ export function SKILLS_SpawnBurstProjectilesPattern_6FCC26E0_113c(
   nCount: number,
   hooks?: K2W4B6Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCC26E0)
   let nRem = (nCount - 1) | 0;
   const nGroupCount = Math.trunc(nRem / 5);
   if (nGroupCount > 7) {
@@ -1617,6 +1652,7 @@ export function SKILLS_ResetAttackerCombatAndStartWeaponOrMonsterAttack_6FCC2DE0
   pTarget: number,
   hooks?: K2W4B6Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FCC2DE0)
   if (pUnit === 0) {
     if (hooks !== undefined && hooks.assertFault !== undefined) {
       hooks.assertFault(0x1211);
@@ -1663,6 +1699,7 @@ export function SKILLS_FreeOrDistributeExpForLinkedMonster_6FCC2EE0_113c(
   pGame: number,
   hooks?: K2W4B6Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCC2EE0)
   if (pUnit === 0) {
     if (hooks !== undefined && hooks.assertFault !== undefined) {
       hooks.assertFault(0xfa8);
@@ -1705,6 +1742,7 @@ export function SKILLS_ApplyStunStateAndNeutralModeToMonster_6FCC2F90_113c(
   pUnit: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FCC2F90)
   if (STATES_CheckState113c(m, pUnit, 0x36) !== 0) {
     return;
   }
@@ -1761,6 +1799,7 @@ export function SKILLS_SchedulePeriodicSkillEvent_6FCC3120_113c(
   nEvalSkillLevel: number,
   bUseEvent8: number,
 ): number {
+  hitD2GameVa113c(0x6FCC3120)
   if (nSkillId < 0) {
     return 0;
   }
@@ -1813,6 +1852,7 @@ export function SKILLS_ApplyMeleeHitAuraStatesAndExecuteEvents_6FCC3220_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCC3220)
   if (nSkillId < 0) {
     return 0;
   }
@@ -1926,6 +1966,7 @@ export function SKILLS_CreateTimedAuraStatListOnTarget_6FCC34E0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCC34E0)
   if (nSkillId < 0) {
     return 0;
   }
@@ -1963,6 +2004,7 @@ export function STATES_HasOtherActiveStateInSameGroup_6FCC3A20_113c(
   pUnit: number,
   nState: number,
 ): number {
+  hitD2GameVa113c(0x6FCC3A20)
   if (nState < 0) {
     return 0;
   }
@@ -2014,6 +2056,7 @@ export function SKILLS_CheckMonsterDeadAlongReverseVelocitySteps_6FCC3B50_113c(
   pUnit: number,
   hooks?: K2W4B6Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FCC3B50)
   const pRoom = UNITS_GetRoom113c(m, pUnit);
   if (pRoom === 0) {
     if (hooks !== undefined && hooks.assertFault !== undefined) {
@@ -2055,6 +2098,7 @@ export function SKILLS_IsMonsterEligibleForSkillTarget_6FCC3C80_113c(
   pTarget: number,
   pCaster: number,
 ): number {
+  hitD2GameVa113c(0x6FCC3C80)
   if (pTarget === 0 || pCaster === pTarget) {
     return 0;
   }
@@ -2098,6 +2142,7 @@ export function AI_SetStateDirAndStartWalkMode_6FCC41B0_113c(
   pGame: number,
   pTargetOrDest: number,
 ): void {
+  hitD2GameVa113c(0x6FCC41B0)
   const nMappedState = nAiState === 1 ? 7 : nAiState;
   let pAiControl = 0;
   if (pUnit !== 0 && m.u32(pUnit) === 1) {
@@ -2138,6 +2183,7 @@ export function AI_InitSummonSkillLevelAndBasicAttack_6FCC4260_113c(
   pUnit: number,
   pAiArgs: number,
 ): void {
+  hitD2GameVa113c(0x6FCC4260)
   const pAiCmd = m.u32(pAiArgs + 0x00);
   m.setU32(pAiCmd + 0x1c, 1);
   if (pUnit === 0 || m.u32(pUnit) !== 1) {
@@ -2184,6 +2230,7 @@ export function AI_SyncSummonSkillLevelFromOwner_6FCC4450_113c(
   pUnit: number,
   pAiArgs: number,
 ): void {
+  hitD2GameVa113c(0x6FCC4450)
   const pAiCmd = m.u32(pAiArgs + 0x00);
   m.setU32(pAiCmd + 0x1c, 1);
   if (pUnit === 0 || m.u32(pUnit) !== 1) {
@@ -2227,6 +2274,7 @@ export function AI_UpdateSummonOwnerTownAndChargeCounter_6FCC4A10_113c(
   pAiArgs: number,
   bDecrementCounter: number,
 ): number {
+  hitD2GameVa113c(0x6FCC4A10)
   let bOwnerOutsideTown = 0;
   if (pUnit !== 0 && m.u32(pUnit) === 1) {
     const pMonsterData = m.u32(pUnit + 0x14);
@@ -2308,6 +2356,7 @@ export function AI_AttackWestOffsetThenDie_6FCC4B90_113c(
   pUnit: number,
   pAiArgs: number,
 ): void {
+  hitD2GameVa113c(0x6FCC4B90)
   const pAiCmd = m.u32(pAiArgs + 0x00);
   if ((m.u32(pAiCmd + 0x18) | 0) === 1) {
     if (pUnit !== 0) {
@@ -2372,6 +2421,7 @@ export function AI_TickSummonedTimedAttacker_6FCC4D10_113c(
   pUnit: number,
   pAiArgs: number,
 ): void {
+  hitD2GameVa113c(0x6FCC4D10)
   if (pUnit === 0 || ((m.u32(pUnit + 0xc8) >>> 10) & 0x01) === 0) {
     SUNITDMG_DistributeExperience113c(m, pGame, 0, pUnit);
     return;
@@ -2422,6 +2472,7 @@ export function AI_CastSkill286AtOffsetY13_6FCC4E40_113c(
   nParam1: number,
   hooks?: K2W4B6Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCC4E40)
   SKILLS_SetSkillLevelOnUnit113c(m, pUnit, 0x11e, 1, 0, 0x6fd1b6b0, 0x1700);
   const pSkill = SKILLS_GetHighestLevelSkillFromUnitAndIdFastcall113c(m, pUnit, 0x11e);
   if (pSkill === 0) {
@@ -2473,6 +2524,7 @@ export function AI_TickAncientStatueRevertCheck_6FCC4F40_113c(
   pUnit: number,
   _pAiArgs?: number,
 ): void {
+  hitD2GameVa113c(0x6FCC4F40)
   const pQuestControl = m.u32(pGame + 0x10f4);
   let pQuest35 = 0;
   if (pQuestControl !== 0) {
@@ -2519,6 +2571,7 @@ export function AI_TickSummonedFollowTeleportSkill292_6FCC5350_113c(
   pUnit: number,
   pAiArgs: number,
 ): void {
+  hitD2GameVa113c(0x6FCC5350)
   const pAiCmd = m.u32(pAiArgs + 0x00);
   const pMonStats = m.u32(pAiArgs + 0x1c);
   let pOwner = 0;
@@ -2600,6 +2653,7 @@ export function AI_TickEmergeQuadrantAttackAndSubmerge_6FCC5580_113c(
   pUnit: number,
   pAiArgs: number,
 ): void {
+  hitD2GameVa113c(0x6FCC5580)
   const pTarget = m.u32(pAiArgs + 0x08);
   const pAiCmd = m.u32(pAiArgs + 0x00);
   const bHasTargetInRange = m.u32(pAiArgs + 0x18);
@@ -2697,6 +2751,7 @@ export function AI_TickTimedSkillCasterOrExpire_6FCC57E0_113c(
   pUnit: number,
   pAiArgs: number,
 ): void {
+  hitD2GameVa113c(0x6FCC57E0)
   const pAiCmd = m.u32(pAiArgs + 0x00);
   const pMonStats = m.u32(pAiArgs + 0x1c);
   if ((m.u32(pAiCmd + 0x14) | 0) < (m.u32(pGame + 0xa8) | 0)) {
@@ -2733,6 +2788,7 @@ export function AI_TickAmbientMode8OrStall30_6FCC58D0_113c(
   pUnit: number,
   _pAiArgs?: number,
 ): void {
+  hitD2GameVa113c(0x6FCC58D0)
   const seed = { lo: m.u32(pUnit + 0x20), hi: m.u32(pUnit + 0x24) };
   const nRoll = seedRoll(seed, 100);
   m.setU32(pUnit + 0x20, seed.lo >>> 0);

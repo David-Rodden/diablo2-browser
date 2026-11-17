@@ -27,7 +27,15 @@ import {
   DATATBLS_GetItemsTxtRecordMemPort113c,
   SKILLS_SetUsedSkillMemPort113c,
 } from '../common/k0-d2common-memports'
-import { PATH_GetTargetTypeAndPosition113c } from '../common/path'
+import {
+  PATH_Compute113c,
+  PATH_GetNumberOfPathPoints113c,
+  PATH_GetTargetTypeAndPosition113c,
+  PATH_SetDistance113c,
+  PATH_SetNewDistance113c,
+  PATH_SetTargetUnit113c,
+  PATH_SetType113c,
+} from '../common/path'
 import {
   STATES_SetMonsterSkillIconOnUnit113c,
   STATES_ToggleGfxStateFlag113c,
@@ -70,7 +78,7 @@ import {
   AI_ApproachTarget113c,
   type FallenSliceWorld113c,
   MONSTER_StepPath113c,
-} from './fallen-ai-113c'
+} from './replay-kernel-113c.ts'
 import { SUNIT_GetServerUnit113c } from './game-strc'
 import {
   AIGENERAL_GetField3C_113c,
@@ -119,15 +127,43 @@ import {
   OBJ_ApplyShrineAuraStatList_6FC8A960_113c,
   OBJ_DropChestTreasureByActLevelTier_6FC8B570_113c,
   OBJ_OnStaminaShrineStateRemoved_6FC8A900_113c,
-  OBJ_SpawnSingleMonsterFromObject_6FC8B7A0_113c,
+  OBJ_SpawnCompanionObjectsA2AndA0_6FC8BF00_113c,
 } from './k2-w3b7-113c'
 import {
   AI_ScanCallbackHostileTargetsMetrics_6FC9CF10_113c,
   AI_UnburrowAndScheduleThink_6FC9BE10_113c,
 } from './k2-w3b8-113c'
-import { UNITS_ChangeAnimMode113c } from './monster-events'
+import {
+  ITEMS_SpawnRandomMiscItemInRoomAtCoords_6FC31CA0_113c,
+  MONUMOD_InitBossAndMinionPackUMods_6FC448A0_113c,
+} from './k2-w4b1-113c'
+import {
+  ACT5Q3_SpawnFrozenAnyaAndObject189_6FC7C690_113c,
+  ITEMS_ApplyTypeSpecificCreatedItemMods_6FC30600_113c,
+  ITEMS_RollAndDropItemByTypeAtUnit_6FC31A70_113c,
+  ITEMS_SpawnRandomRoomDropAtCoords_6FC32230_113c,
+  MONUMOD_PromoteToBossWithSingleUMod_6FC44BF0_113c,
+  MONUMOD_RollChampionOrUniqueUMods_6FC43CA0_113c,
+  OBJ_CalcShrineStatBonusValue_6FC89EE0_113c,
+  OBJ_SpawnMonster326FromObject_6FC8B880_113c,
+  OBJ_SpawnMonster329FromObject_6FC8B870_113c,
+  OBJ_SpawnMonster330FromObject_6FC8B890_113c,
+  OBJ_SpawnMonster369FromObject_6FC8B860_113c,
+  OBJ_SpawnRandomMonsterTrapFromObject_6FC8A4E0_113c,
+  PLRTRADE_DropPlayerInventoryGold_6FC57F80_113c,
+} from './k2-w4b3-113c'
+import {
+  ITEMS_FinalizeNormalExpansionItem_6FC30550_113c,
+  ITEMS_RollItemQualityOnCreatedItem_6FC2EE90_113c,
+  isSgptDataTablesLoaded113c,
+} from './k2-real-itemdrop-113c'
+import {
+  MONSTER_RegisterContinuousModeEvent113c,
+  UNITS_ChangeAnimMode113c,
+} from './monster-events'
 import {
   AI_InitMonsterAiThinkFn113c,
+  D2GAME_IAT_GDW_BITMASKS_VA_113C,
   MONSTATS2_GetRecordPtr113c,
   MONSTER_GetDifficultyAndPlayerBonus113c,
   MONSTER_SpawnAtCoords113c,
@@ -144,6 +180,7 @@ import {
   type EventWheelHooks113c,
 } from './timer-wheel'
 import { AITARGET_ScanUnitsByModeTable113c } from './town-runtime-gap-113c'
+import { hitD2GameVa113c } from '../va-trace-113c'
 
 export type D2KernMemory113c = Memory113c
 
@@ -312,6 +349,7 @@ export function STORM_TSListArraySetCount_6FC22510_113c(
   nNewCount: number,
   hooks?: K2W4B4Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC22510)
   const esi = pListArray >>> 0
   const edi = nNewCount >>> 0
   const nOldCount = m.u32((esi + 0x04) >>> 0) >>> 0
@@ -381,6 +419,7 @@ export function ITEMS_FallbackToNormalQualityAndFinalize_6FC309B0_113c(
   nSpellArg = 0,
   hooks?: K2W4B4Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC309B0)
   const edi = ppItem >>> 0
   const ebxSeed = dwSavedSeed >>> 0
   const esi = pItemDrop >>> 0
@@ -390,7 +429,11 @@ export function ITEMS_FallbackToNormalQualityAndFinalize_6FC309B0_113c(
   ITEMS_SetOwnerGuid113c(m, m.u32(edi) >>> 0, ebxSeed)
   const pSeed = ITEMS_GetItemSeed113c(m, m.u32(edi) >>> 0) >>> 0
   SEED_InitLowSeed113c(m, pSeed, ebxSeed)
-  ITEMS_ApplySocketAndEtherealBonuses113c(m, esi, m.u32(edi) >>> 0, 0)
+  if (isSgptDataTablesLoaded113c(m)) {
+    ITEMS_RollItemQualityOnCreatedItem_6FC2EE90_113c(m, m.u32(edi) >>> 0, esi)
+  } else {
+    ITEMS_ApplySocketAndEtherealBonuses113c(m, esi, m.u32(edi) >>> 0, 0)
+  }
   ITEMS_SetItemQuality113c(m, m.u32(edi) >>> 0, 2)
   m.setU32((esi + 0x30) >>> 0, 2)
 
@@ -399,10 +442,16 @@ export function ITEMS_FallbackToNormalQualityAndFinalize_6FC309B0_113c(
   if (fmt === 0) {
     if (hooks?.onApplyTypeSpecificCreatedItemMods_6FC30600) {
       hooks.onApplyTypeSpecificCreatedItemMods_6FC30600(m, ebxItem, esi, ebp)
+    } else {
+      ITEMS_ApplyTypeSpecificCreatedItemMods_6FC30600_113c(m, ebxItem, esi, ebp)
     }
     return
   }
-  ITEMS_PickUniqueItem113c(m, esi, ebxItem)
+  if (isSgptDataTablesLoaded113c(m)) {
+    ITEMS_FinalizeNormalExpansionItem_6FC30550_113c(m, ebxItem, esi)
+  } else {
+    ITEMS_PickUniqueItem113c(m, esi, ebxItem)
+  }
 }
 
 /**
@@ -418,6 +467,7 @@ export function MONUMOD_PromoteToRandomBossOrChampion_6FC44B70_113c(
   pGame: number,
   hooks?: K2W4B4Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC44B70)
   const edi = pMonster >>> 0
   const esi = pGame >>> 0
   if (edi === 0) return
@@ -432,10 +482,14 @@ export function MONUMOD_PromoteToRandomBossOrChampion_6FC44B70_113c(
   MONUMOD_MarkBossAndIncrementUniqueCount113c(m, edi, esi)
   if (hooks?.onRollChampionOrUniqueUMods_6FC43CA0) {
     hooks.onRollChampionOrUniqueUMods_6FC43CA0(m, esi, edi, 1)
+  } else {
+    MONUMOD_RollChampionOrUniqueUMods_6FC43CA0_113c(m, esi, edi, 1)
   }
   const pRoom = UNITS_GetRoom113c(m, edi) >>> 0
   if (hooks?.onInitBossAndMinionPackUMods_6FC448A0) {
     hooks.onInitBossAndMinionPackUMods_6FC448A0(m, 0, pRoom, esi, edi, 0)
+  } else {
+    MONUMOD_InitBossAndMinionPackUMods_6FC448A0_113c(m, 0, pRoom, esi, edi, 0)
   }
   const newFlags = (m.u32((edi + 0xc4) >>> 0) | 0x800) >>> 0
   const curType = m.u32(edi) | 0
@@ -462,6 +516,7 @@ export function OBJRGN_PopulateRoomRandomItemDropsGrid_6FC4F4B0_113c(
   pRoomCoords: number,
   hooks?: K2W4B4Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC4F4B0)
   const eaxCoords = pRoomCoords >>> 0
   const ecxGame = pGame >>> 0
   const edxRoom = pRoom >>> 0
@@ -501,6 +556,8 @@ export function OBJRGN_PopulateRoomRandomItemDropsGrid_6FC4F4B0_113c(
             if (clear === 1) {
               if (hooks?.onSpawnRandomRoomDropAtCoords_6FC32230) {
                 hooks.onSpawnRandomRoomDropAtCoords_6FC32230(m, pPos, ecxGame, edxRoom, 0)
+              } else {
+                ITEMS_SpawnRandomRoomDropAtCoords_6FC32230_113c(m, pPos, ecxGame, edxRoom, 0)
               }
               ebxCount = (ebxCount + 1) | 0
               if (ebxCount >= 0x20) {
@@ -533,6 +590,7 @@ export function PLAYER_ApplyDeathGoldPenaltyAndDrop_6FC58180_113c(
   pAttackerUnit: number,
   hooks?: K2W4B4Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC58180)
   const esi = pVictimUnit >>> 0
   const game = pGame >>> 0
   const attacker = pAttackerUnit >>> 0
@@ -577,6 +635,8 @@ export function PLAYER_ApplyDeathGoldPenaltyAndDrop_6FC58180_113c(
     const dwUnitId = esi !== 0 ? m.u32((esi + 0x0c) >>> 0) >>> 0 : 0xffffffff
     if (hooks?.onDropPlayerInventoryGold_6FC57F80) {
       hooks.onDropPlayerInventoryGold_6FC57F80(m, game, dwUnitId, esi, nDrop)
+    } else {
+      PLRTRADE_DropPlayerInventoryGold_6FC57F80_113c(m, game, dwUnitId, esi, nDrop)
     }
   }
 
@@ -694,6 +754,7 @@ export function MONSTER_SpawnChampionPackMembers_6FC67880_113c(
   pCoordNode: number,
   hooks?: K2W4B4Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC67880)
   const esi = pLeader >>> 0
   if (esi === 0) return
   if ((m.u32(esi) | 0) !== 1) return
@@ -721,6 +782,8 @@ export function MONSTER_SpawnChampionPackMembers_6FC67880_113c(
     if (pSpawned !== 0) {
       if (hooks?.onPromoteToBossWithSingleUMod_6FC44BF0) {
         hooks.onPromoteToBossWithSingleUMod_6FC44BF0(m, pSpawned, edi, 0x10)
+      } else {
+        MONUMOD_PromoteToBossWithSingleUMod_6FC44BF0_113c(m, pSpawned, edi, 0x10)
       }
     }
   }
@@ -737,6 +800,7 @@ export function ACT5Q3_TriggerFrozenAnyaSpawn_6FC7CC30_113c(
   pGame: number,
   hooks?: K2W4B4Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC7CC30)
   const pQuestCtrl = m.u32(((pGame >>> 0) + 0x10f4) >>> 0) >>> 0
   if (pQuestCtrl === 0) return
   let pQuest = m.u32(pQuestCtrl) >>> 0
@@ -747,6 +811,8 @@ export function ACT5Q3_TriggerFrozenAnyaSpawn_6FC7CC30_113c(
       m.setU32((pQuestData + 0x84) >>> 0, 2)
       if (hooks?.onSpawnFrozenAnyaAndObject189_6FC7C690) {
         hooks.onSpawnFrozenAnyaAndObject189_6FC7C690(m, pQuest, pQuestData)
+      } else {
+        ACT5Q3_SpawnFrozenAnyaAndObject189_6FC7C690_113c(m, pQuest, pQuestData)
       }
       return
     }
@@ -767,6 +833,7 @@ export function ACT1Q4_DropCountessChestGoldTick_6FC88E20_113c(
   pUnit: number,
   hooks?: K2W4B4Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC88E20)
   const ebp = pQuest >>> 0
   const edi = pUnit >>> 0
   const esi = m.u32((ebp + 0x18) >>> 0) >>> 0
@@ -792,6 +859,9 @@ export function ACT1Q4_DropCountessChestGoldTick_6FC88E20_113c(
       if (hooks?.onRollAndDropItemByTypeAtUnit_6FC31A70) {
         dropped =
           hooks.onRollAndDropItemByTypeAtUnit_6FC31A70(m, ebxGame, edi, 2, pIlvl, 0, -1, 0) | 0
+      } else {
+        dropped =
+          ITEMS_RollAndDropItemByTypeAtUnit_6FC31A70_113c(m, ebxGame, edi, 2, pIlvl, 0, -1, 0) | 0
       }
     } finally {
       freeStackFrame113c(4)
@@ -821,6 +891,7 @@ export function OBJ_DispatchObjectTrapOrMonsterSpawn_6FC89970_113c(
   pObject: number,
   hooks?: K2W4B4Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC89970)
   const ebxGame = pGame >>> 0
   const esiObj = pObject >>> 0
   const pRoom = UNITS_GetRoom113c(m, esiObj) >>> 0
@@ -863,15 +934,25 @@ export function OBJ_DispatchObjectTrapOrMonsterSpawn_6FC89970_113c(
   if (targetVa === 0) {
     throw new D2CommonAssertError('Objects.cpp', assertLine)
   }
-  if (targetVa === 0x6fc8b880) {
+  if (targetVa === 0x6fc8b890) {
+    OBJ_SpawnMonster330FromObject_6FC8B890_113c(m, ebxGame, esiObj)
+  } else if (targetVa === 0x6fc8b880) {
     if (hooks?.onSpawnMonster326FromObject_6FC8B880) {
       hooks.onSpawnMonster326FromObject_6FC8B880(m, ebxGame, esiObj)
     } else {
-      OBJ_SpawnSingleMonsterFromObject_6FC8B7A0_113c(m, esiObj, ebxGame, 0x146, hooks?.regpop)
+      OBJ_SpawnMonster326FromObject_6FC8B880_113c(m, ebxGame, esiObj)
     }
+  } else if (targetVa === 0x6fc8b870) {
+    OBJ_SpawnMonster329FromObject_6FC8B870_113c(m, ebxGame, esiObj)
+  } else if (targetVa === 0x6fc8b860) {
+    OBJ_SpawnMonster369FromObject_6FC8B860_113c(m, ebxGame, esiObj)
+  } else if (targetVa === 0x6fc8bf00) {
+    OBJ_SpawnCompanionObjectsA2AndA0_6FC8BF00_113c(m, ebxGame, esiObj)
   } else if (targetVa === 0x6fc8a4e0) {
     if (hooks?.onSpawnRandomMonsterTrapFromObject_6FC8A4E0) {
       hooks.onSpawnRandomMonsterTrapFromObject_6FC8A4E0(m, ebxGame, esiObj)
+    } else {
+      OBJ_SpawnRandomMonsterTrapFromObject_6FC8A4E0_113c(m, ebxGame, esiObj)
     }
   }
 }
@@ -888,6 +969,7 @@ export function OBJ_OperateAuraStatShrine_6FC8ABB0_113c(
   pShrineTxt: number,
   hooks?: K2W4B4Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC8ABB0)
   const ebp = pOperateArgs >>> 0
   const edxTxt = pShrineTxt >>> 0
   const nCode = m.u8(edxTxt) & 0xff
@@ -915,7 +997,7 @@ export function OBJ_OperateAuraStatShrine_6FC8ABB0_113c(
     if (hooks?.onCalcShrineStatBonusValue_6FC89EE0) {
       nStatBonus = hooks.onCalcShrineStatBonusValue_6FC89EE0(m, pPlayer, nBonusPct, dwStatId) | 0
     } else {
-      nStatBonus = nBonusPct
+      nStatBonus = OBJ_CalcShrineStatBonusValue_6FC89EE0_113c(m, pPlayer, nBonusPct, dwStatId) | 0
     }
   }
 
@@ -949,6 +1031,7 @@ export function OBJ_OperateStaminaShrine_6FC8AC30_113c(
   pShrineTxt: number,
   hooks?: K2W4B4Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC8AC30)
   void OBJ_OnStaminaShrineStateRemoved_6FC8A900_113c
   const ediArgs = pOperateArgs >>> 0
   const ebxTxt = pShrineTxt >>> 0
@@ -979,7 +1062,7 @@ export function OBJ_OperateStaminaShrine_6FC8AC30_113c(
   const nBonusPct = i32(m, (ebxTxt + 0x04) >>> 0)
   const esiBonus = hooks?.onCalcShrineStatBonusValue_6FC89EE0
     ? hooks.onCalcShrineStatBonusValue_6FC89EE0(m, pPlayer2, nBonusPct, dwStatId) | 0
-    : nBonusPct
+    : OBJ_CalcShrineStatBonusValue_6FC89EE0_113c(m, pPlayer2, nBonusPct, dwStatId) | 0
 
   const pGame = m.u32((ediArgs + 0x04) >>> 0) >>> 0
   const pUnit = m.u32((ediArgs + 0x08) >>> 0) >>> 0
@@ -1013,6 +1096,7 @@ export function OBJ_OperateCombatShrine_6FC8ACE0_113c(
   pShrineTxt: number,
   hooks?: K2W4B4Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC8ACE0)
   const ebpArgs = pOperateArgs >>> 0
   const ediTxt = pShrineTxt >>> 0
   const nCode = m.u8(ediTxt) & 0xff
@@ -1027,7 +1111,7 @@ export function OBJ_OperateCombatShrine_6FC8ACE0_113c(
   const entryVa = (0x6fd1a5f8 + imul32(nCode, 12)) >>> 0
   const esiToHit = hooks?.onCalcShrineStatBonusValue_6FC89EE0
     ? hooks.onCalcShrineStatBonusValue_6FC89EE0(m, pPlayer, nBonusPct, 0x13) | 0
-    : nBonusPct
+    : OBJ_CalcShrineStatBonusValue_6FC89EE0_113c(m, pPlayer, nBonusPct, 0x13) | 0
 
   const inMemState = tryReadU32(m, (entryVa + 0x08) >>> 0) | 0
   const hasInMem =
@@ -1069,6 +1153,7 @@ export function OBJ_OperateTomeOrScrollStand_6FC8B340_113c(
   pOperateArgs: number,
   hooks?: K2W4B4Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC8B340)
   const esi = pOperateArgs >>> 0
   const pObj0 = m.u32((esi + 0x04) >>> 0) >>> 0
   if (pObj0 !== 0 && m.u32((pObj0 + 0x10) >>> 0) !== 0) {
@@ -1118,6 +1203,17 @@ export function OBJ_OperateTomeOrScrollStand_6FC8B340_113c(
         -1,
         0,
       )
+    } else {
+      ITEMS_RollAndDropItemByTypeAtUnit_6FC31A70_113c(
+        m,
+        m.u32(esi) >>> 0,
+        m.u32((esi + 0x04) >>> 0) >>> 0,
+        2,
+        (pScratch + 8) >>> 0,
+        0,
+        -1,
+        0,
+      )
     }
   } finally {
     freeStackFrame113c(12)
@@ -1136,6 +1232,7 @@ export function OBJ_OperateWirtsBody_6FC8D960_113c(
   pOperateArgs: number,
   hooks?: K2W4B4Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC8D960)
   const esi = pOperateArgs >>> 0
   const pObj0 = m.u32((esi + 0x04) >>> 0) >>> 0
   if (pObj0 !== 0 && m.u32((pObj0 + 0x10) >>> 0) !== 0) {
@@ -1149,6 +1246,18 @@ export function OBJ_OperateWirtsBody_6FC8D960_113c(
     if (hooks?.onRollAndDropItemByTypeAtUnit_6FC31A70) {
       dropped =
         hooks.onRollAndDropItemByTypeAtUnit_6FC31A70(
+          m,
+          m.u32(esi) >>> 0,
+          m.u32((esi + 0x04) >>> 0) >>> 0,
+          2,
+          pIlvl,
+          0,
+          -1,
+          0,
+        ) | 0
+    } else {
+      dropped =
+        ITEMS_RollAndDropItemByTypeAtUnit_6FC31A70_113c(
           m,
           m.u32(esi) >>> 0,
           m.u32((esi + 0x04) >>> 0) >>> 0,
@@ -1210,6 +1319,7 @@ export function OBJ_OperateStashWithGoldAndPotions_6FC8DBF0_113c(
   pOperateArgs: number,
   hooks?: K2W4B4Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC8DBF0)
   const esi = pOperateArgs >>> 0
   const pObj0 = m.u32((esi + 0x04) >>> 0) >>> 0
   if (pObj0 !== 0 && m.u32((pObj0 + 0x10) >>> 0) !== 0) {
@@ -1254,6 +1364,27 @@ export function OBJ_OperateStashWithGoldAndPotions_6FC8DBF0_113c(
         -1,
         1,
       )
+    } else {
+      ITEMS_RollAndDropItemByTypeAtUnit_6FC31A70_113c(
+        m,
+        m.u32(esi) >>> 0,
+        m.u32((esi + 0x04) >>> 0) >>> 0,
+        2,
+        (pScratch + 8) >>> 0,
+        0,
+        -1,
+        1,
+      )
+      ITEMS_RollAndDropItemByTypeAtUnit_6FC31A70_113c(
+        m,
+        m.u32(esi) >>> 0,
+        m.u32((esi + 0x04) >>> 0) >>> 0,
+        2,
+        (pScratch + 8) >>> 0,
+        0,
+        -1,
+        1,
+      )
     }
 
     const mpCode = ITEMS_GetVendorManaPotionCode_6FC2E310_113c(
@@ -1277,6 +1408,27 @@ export function OBJ_OperateStashWithGoldAndPotions_6FC8DBF0_113c(
         1,
       )
       hooks.onRollAndDropItemByTypeAtUnit_6FC31A70(
+        m,
+        m.u32(esi) >>> 0,
+        m.u32((esi + 0x04) >>> 0) >>> 0,
+        2,
+        (pScratch + 8) >>> 0,
+        0,
+        -1,
+        1,
+      )
+    } else {
+      ITEMS_RollAndDropItemByTypeAtUnit_6FC31A70_113c(
+        m,
+        m.u32(esi) >>> 0,
+        m.u32((esi + 0x04) >>> 0) >>> 0,
+        2,
+        (pScratch + 8) >>> 0,
+        0,
+        -1,
+        1,
+      )
+      ITEMS_RollAndDropItemByTypeAtUnit_6FC31A70_113c(
         m,
         m.u32(esi) >>> 0,
         m.u32((esi + 0x04) >>> 0) >>> 0,
@@ -1332,6 +1484,7 @@ export function OBJ_ScheduleObjectTrapEventOrSound_6FC8DD60_113c(
   bTrapIndex: number,
   hooks?: K2W4B4Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC8DD60)
   const edi = pOperateArgs >>> 0
   const esiIdx = bTrapIndex & 0xff
   const rawMax = tryReadU32(m, 0x6fd27bb4) | 0
@@ -1375,6 +1528,7 @@ export function PLRTRADE_SavePlayerInventorySnapshot_6FC90FB0_113c(
   pPlayer: number,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FC90FB0)
   const ebx = pPlayer >>> 0
   const edi = pGame >>> 0
   const ebpData = UNITS_GetPlayerData113c(m, ebx) >>> 0
@@ -1426,6 +1580,7 @@ export function PLRTRADE_ValidateTradeItemAndCancelSession_6FC93860_113c(
   pItem = 0,
   hooks?: K2W4B4Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC93860)
   const esi = pPlayer >>> 0
   const ebx = pGame >>> 0
   const ebpData = UNITS_GetPlayerData113c(m, esi) >>> 0
@@ -1530,6 +1685,7 @@ export function MONSTER_TickPathStepAndAnim_6FC96A10_113c(
   pMonster: number,
   hooks?: K2W4B4Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC96A10)
   const edi = pGame >>> 0
   const esi = pMonster >>> 0
   if (hooks?.world) {
@@ -1558,6 +1714,7 @@ export function ITEMS_DropGoldPileWithOwnerAtUnit_6FC98C50_113c(
   pGame: number,
   hooks?: K2W4B4Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC98C50)
   const ediGold = nGoldAmount | 0
   if (ediGold <= 0) return
 
@@ -1578,7 +1735,15 @@ export function ITEMS_DropGoldPileWithOwnerAtUnit_6FC98C50_113c(
           1,
           ebxOwner,
         ) >>> 0
-      : 0
+      : ITEMS_SpawnRandomMiscItemInRoomAtCoords_6FC31CA0_113c(
+          m,
+          pCoords,
+          game,
+          pRoom,
+          4,
+          1,
+          ebxOwner,
+        ) >>> 0
     if (pGoldItem === 0) return
 
     const itemType = ITEMS_GetItemTypeFromItem113c(m, pGoldItem) | 0
@@ -1644,6 +1809,7 @@ export function AI_ThinkWakeOrUnburrowSkill_6FC9CE40_113c(
   pAiTickArgs: number,
   hooks?: K2W4B4Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC9CE40)
   const ediGame = pGame >>> 0
   const esiMon = pMonster >>> 0
   const ecxArgs = pAiTickArgs >>> 0
@@ -1707,6 +1873,7 @@ export function AI_ThinkMeleeBasic_6FCA1F50_113c(
   pAiTickArgs: number,
   hooks?: K2W4B4Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCA1F50)
   void seedRoll
   const ebxGame = pGame >>> 0
   const esiMon = pMonster >>> 0
@@ -1770,6 +1937,129 @@ export function AI_ThinkMeleeBasic_6FCA1F50_113c(
   approachTargetOrStartMode113c(m, ebxGame, esiMon, pTarget, 2, 1, 7, hooks)
 }
 
+function startMonsterAttackModeWithMonStats2MoveCheck113c(
+  m: D2KernMemory113c,
+  pGame: number,
+  pMonster: number,
+  nMode: number,
+  pTarget: number,
+  hooks?: K2W4B4Hooks113c,
+): void {
+  const ediGame = pGame >>> 0
+  const esiMon = pMonster >>> 0
+  const target = pTarget >>> 0
+  const mode = nMode | 0
+
+  SKILLS_SetUsedSkillMemPort113c(m, esiMon, 0)
+  const pModeArgs = allocStackFrame113c(0x20)
+  try {
+    for (let i = 0; i < 0x20; i += 4) {
+      m.setU32((pModeArgs + i) >>> 0, 0)
+    }
+    m.setU32(pModeArgs, mode >>> 0)
+    m.setU32((pModeArgs + 0x04) >>> 0, esiMon)
+    m.setU32((pModeArgs + 0x08) >>> 0, target)
+
+    let bPathType = 0x64
+    if (esiMon !== 0) {
+      const pMonStats2 = MONSTATS2_GetRecordPtr113c(m, i32(m, (esiMon + 0x04) >>> 0)) >>> 0
+      if (pMonStats2 !== 0) {
+        const pMasks = tryReadU32(m, D2GAME_IAT_GDW_BITMASKS_VA_113C)
+        const bitIdx = mode & 31
+        const mask =
+          pMasks !== 0 ? m.u32((pMasks + (bitIdx << 2)) >>> 0) >>> 0 : (1 << bitIdx) >>> 0
+        if ((m.u8((pMonStats2 + 0x104) >>> 0) & mask) !== 0) {
+          bPathType = 0x65
+        }
+      }
+    }
+    m.setU8((pModeArgs + 0x15) >>> 0, bPathType)
+
+    if (hooks?.aiFallen?.onMonsterStartMode) {
+      hooks.aiFallen.onMonsterStartMode(m, ediGame, pModeArgs, 1)
+      return
+    }
+
+    const pPath = esiMon !== 0 ? m.u32((esiMon + 0x2c) >>> 0) >>> 0 : 0
+    if (pPath !== 0 && mode !== 3) {
+      if (target !== 0) {
+        PATH_SetTargetUnit113c(m, pPath, target)
+      }
+      PATH_SetDistance113c(m, pPath, 0x14)
+    }
+
+    let pAiCtrl = 0
+    if (esiMon !== 0 && (m.u32(esiMon) | 0) === 1) {
+      const pMonData = m.u32((esiMon + 0x14) >>> 0) >>> 0
+      if (pMonData !== 0) {
+        pAiCtrl = m.u32((pMonData + 0x2c) >>> 0) >>> 0
+      }
+    }
+
+    let rawPathType = bPathType
+    let velOv = 0
+    let distOv = 0
+    if (pAiCtrl !== 0) {
+      const ptOv = m.u32((pAiCtrl + 0x18) >>> 0) | 0
+      if (ptOv !== 0) {
+        rawPathType = ptOv
+      }
+      velOv = m.u32((pAiCtrl + 0x1c) >>> 0) | 0
+      distOv = m.u8((pAiCtrl + 0x20) >>> 0) & 0xff
+      m.setU32((pAiCtrl + 0x18) >>> 0, 0)
+      m.setU32((pAiCtrl + 0x1c) >>> 0, 0)
+      m.setU8((pAiCtrl + 0x20) >>> 0, 0)
+    }
+
+    if (rawPathType === 0x64) {
+      if (pAiCtrl !== 0) {
+        m.setU32((pAiCtrl + 0x10) >>> 0, 0)
+        m.setU32((pAiCtrl + 0x14) >>> 0, 0xffffffff)
+      }
+      if (ediGame !== 0) {
+        m.setU32((ediGame + 0x1d70) >>> 0, (m.u32((ediGame + 0x1d70) >>> 0) + 1) >>> 0)
+      }
+      MONSTER_StartMode113c(m, ediGame, esiMon, mode, target, 0, 0)
+      return
+    }
+
+    const mappedPathType = rawPathType === 0x65 ? 0x0d : rawPathType
+    const newDist = distOv !== 0 ? distOv : 5
+    let pathOk = 0
+    if (pPath !== 0) {
+      PATH_SetNewDistance113c(m, pPath, newDist)
+      PATH_SetType113c(m, pPath, mappedPathType)
+      const pRoom = m.u32((pPath + 0x1c) >>> 0) >>> 0
+      const pRoomEx = pRoom !== 0 ? m.u32((pRoom + 0x10) >>> 0) >>> 0 : 0
+      if (pRoomEx !== 0 && m.u32((pRoomEx + 0x6c) >>> 0) !== 0) {
+        pathOk = PATH_Compute113c(m, pPath, esiMon, 0) !== 0 ? 1 : 0
+      } else {
+        m.setU32((pPath + 0x10) >>> 0, 1)
+        pathOk = 1
+      }
+    }
+    if (pAiCtrl !== 0) {
+      const hasPts = pPath !== 0 && PATH_GetNumberOfPathPoints113c(m, pPath) !== 0
+      m.setU32((pAiCtrl + 0x10) >>> 0, velOv >>> 0)
+      m.setU32((pAiCtrl + 0x14) >>> 0, pathOk !== 1 && hasPts ? 0x0a : 0xffffffff)
+    }
+    if (ediGame !== 0) {
+      const slotOff = (0x1d70 + (pathOk << 2)) >>> 0
+      m.setU32((ediGame + slotOff) >>> 0, (m.u32((ediGame + slotOff) >>> 0) + 1) >>> 0)
+      if (pathOk !== 0) {
+        m.setU32((ediGame + 0x1db4) >>> 0, (m.u32((ediGame + 0x1db4) >>> 0) + 1) >>> 0)
+      }
+    }
+
+    MONSTER_StartMode113c(m, ediGame, esiMon, mode, target, 0, 0)
+    if (pPath !== 0 && PATH_GetNumberOfPathPoints113c(m, pPath) !== 0) {
+      MONSTER_RegisterContinuousModeEvent113c(m, ediGame, esiMon)
+    }
+  } finally {
+    freeStackFrame113c(0x20)
+  }
+}
+
 function executeSimpleMeleeOrApproachAi113c(
   m: D2KernMemory113c,
   pGame: number,
@@ -1790,11 +2080,7 @@ function executeSimpleMeleeOrApproachAi113c(
   if (bInMelee !== 0) {
     const atkChance = (m.u16((ecxStats + diff * 2 + 0x62) >>> 0) << 16) >> 16
     if (roll100 < atkChance) {
-      SKILLS_SetUsedSkillMemPort113c(m, esiMon, 0)
-      if (esiMon !== 0) {
-        MONSTATS2_GetRecordPtr113c(m, i32(m, (esiMon + 0x04) >>> 0))
-      }
-      MONSTER_StartMode113c(m, ediGame, esiMon, 4, pTarget, 0, 0)
+      startMonsterAttackModeWithMonStats2MoveCheck113c(m, ediGame, esiMon, 4, pTarget, hooks)
       return
     }
   } else {
@@ -1811,6 +2097,7 @@ function executeSimpleMeleeOrApproachAi113c(
 
 /**
  * [23/45] Simple melee/approach AI think variant A (`0x6FCA2430`): clears used skill and starts mode `4`
+ * (setting `D2ModeChangeStrc.bPathType = 0x65` when `MonStats2[+0x104] & 0x10 !== 0`, else `0x64`)
  * when in melee range and `roll < wAiParam[2]`, approaches in mode `2` when `roll < wAiParam[0]`, or stalls.
  *
  * @va D2Game:0x6FCA2430
@@ -1822,6 +2109,7 @@ export function AI_ThinkSimpleMeleeVariantA_6FCA2430_113c(
   pAiTickArgs: number,
   hooks?: K2W4B4Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCA2430)
   executeSimpleMeleeOrApproachAi113c(m, pGame, pMonster, pAiTickArgs, hooks)
 }
 
@@ -1837,6 +2125,7 @@ export function AI_ThinkSimpleMeleeVariantB_6FCA2570_113c(
   pAiTickArgs: number,
   hooks?: K2W4B4Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCA2570)
   executeSimpleMeleeOrApproachAi113c(m, pGame, pMonster, pAiTickArgs, hooks)
 }
 
@@ -1854,6 +2143,7 @@ export function AI_ThinkChargerRunOrAttack_6FCA2EC0_113c(
   pAiTickArgs: number,
   hooks?: K2W4B4Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCA2EC0)
   const ediGame = pGame >>> 0
   const ebpMon = pMonster >>> 0
   const args = pAiTickArgs >>> 0
@@ -1912,11 +2202,7 @@ export function AI_ThinkChargerRunOrAttack_6FCA2EC0_113c(
     const diff1 = m.u8((ediGame + 0x6d) >>> 0) & 0xff
     const atkChance = (m.u16((ebxStats + diff1 * 2 + 0x62) >>> 0) << 16) >> 16
     if (rollAtk < atkChance) {
-      SKILLS_SetUsedSkillMemPort113c(m, ebpMon, 0)
-      if (ebpMon !== 0) {
-        MONSTATS2_GetRecordPtr113c(m, i32(m, (ebpMon + 0x04) >>> 0))
-      }
-      MONSTER_StartMode113c(m, ediGame, ebpMon, 4, pTarget, 0, 0)
+      startMonsterAttackModeWithMonStats2MoveCheck113c(m, ediGame, ebpMon, 4, pTarget, hooks)
       return
     }
     const stallDelay = (m.u16((ebxStats + diff1 * 2 + 0x5c) >>> 0) << 16) >> 16
@@ -1960,6 +2246,7 @@ export function AI_ThinkDualAttackMelee_6FCA3AC0_113c(
   pAiTickArgs: number,
   hooks?: K2W4B4Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCA3AC0)
   const ediGame = pGame >>> 0
   const esiMon = pMonster >>> 0
   const args = pAiTickArgs >>> 0
@@ -1976,11 +2263,7 @@ export function AI_ThinkDualAttackMelee_6FCA3AC0_113c(
       const diff1 = m.u8((ediGame + 0x6d) >>> 0) & 0xff
       const a1Chance = (m.u16((ebxStats + diff1 * 2 + 0x68) >>> 0) << 16) >> 16
       const atkMode = rollA1 < a1Chance ? 4 : 5
-      SKILLS_SetUsedSkillMemPort113c(m, esiMon, 0)
-      if (esiMon !== 0) {
-        MONSTATS2_GetRecordPtr113c(m, i32(m, (esiMon + 0x04) >>> 0))
-      }
-      MONSTER_StartMode113c(m, ediGame, esiMon, atkMode, ebpTarget, 0, 0)
+      startMonsterAttackModeWithMonStats2MoveCheck113c(m, ediGame, esiMon, atkMode, ebpTarget, hooks)
       return
     }
     const stallDelay = (m.u16((ebxStats + diff0 * 2 + 0x5c) >>> 0) << 16) >> 16
@@ -2013,6 +2296,7 @@ export function AI_SelectHostileTargetByMetrics_6FCA4720_113c(
   pMonStats: number,
   pDefaultTarget: number,
 ): number {
+  hitD2GameVa113c(0x6FCA4720)
   void AI_ScanCallbackHostileTargetsMetrics_6FC9CF10_113c
   const ediGame = pGame >>> 0
   const esiMon = pMonster >>> 0
@@ -2068,6 +2352,7 @@ export function AI_ThinkPackFollowerMelee_6FCA4800_113c(
   pAiTickArgs: number,
   hooks?: K2W4B4Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCA4800)
   void SKILLS_FindClosestSameBaseMonsterCallback_6FCBCA00_113c
   const ediGame = pGame >>> 0
   const esiMon = pMonster >>> 0
@@ -2081,11 +2366,7 @@ export function AI_ThinkPackFollowerMelee_6FCA4800_113c(
     const diff0 = m.u8((ediGame + 0x6d) >>> 0) & 0xff
     const atkChance = (m.u16((ebxStats + diff0 * 2 + 0x5c) >>> 0) << 16) >> 16
     if (rollAtk < atkChance) {
-      SKILLS_SetUsedSkillMemPort113c(m, esiMon, 0)
-      if (esiMon !== 0) {
-        MONSTATS2_GetRecordPtr113c(m, i32(m, (esiMon + 0x04) >>> 0))
-      }
-      MONSTER_StartMode113c(m, ediGame, esiMon, 4, ebpTarget, 0, 0)
+      startMonsterAttackModeWithMonStats2MoveCheck113c(m, ediGame, esiMon, 4, ebpTarget, hooks)
       return
     }
     const stallDelay = (m.u16((ebxStats + diff0 * 2 + 0x68) >>> 0) << 16) >> 16
@@ -2172,6 +2453,7 @@ export function AI_ThinkBurrowerSpawner_6FCA77B0_113c(
   pAiTickArgs: number,
   hooks?: K2W4B4Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCA77B0)
   const esiGame = pGame >>> 0
   const ediMon = pMonster >>> 0
   const args = pAiTickArgs >>> 0
@@ -2193,21 +2475,13 @@ export function AI_ThinkBurrowerSpawner_6FCA77B0_113c(
       AI_Stall113c(m, esiGame, ediMon, 5)
       return
     }
-    SKILLS_SetUsedSkillMemPort113c(m, ediMon, 0)
-    if (ediMon !== 0) {
-      MONSTATS2_GetRecordPtr113c(m, i32(m, (ediMon + 0x04) >>> 0))
-    }
-    MONSTER_StartMode113c(m, esiGame, ediMon, 0x0a, 0, 0, 0)
+    startMonsterAttackModeWithMonStats2MoveCheck113c(m, esiGame, ediMon, 0x0a, 0, hooks)
     AI_ScheduleAiThinkTimer_6FD120C0_113c(m, esiGame, ediMon, 0x14)
     return
   }
 
   if (nAnimMode === 0x0a) {
-    SKILLS_SetUsedSkillMemPort113c(m, ediMon, 0)
-    if (ediMon !== 0) {
-      MONSTATS2_GetRecordPtr113c(m, i32(m, (ediMon + 0x04) >>> 0))
-    }
-    MONSTER_StartMode113c(m, esiGame, ediMon, 0x0b, 0, 0, 0)
+    startMonsterAttackModeWithMonStats2MoveCheck113c(m, esiGame, ediMon, 0x0b, 0, hooks)
     AI_ScheduleAiThinkTimer_6FD120C0_113c(m, esiGame, ediMon, 0x14)
     return
   }
@@ -2291,6 +2565,7 @@ export function AI_ThinkMonsterSpawnerNest_6FCA7A60_113c(
   pAiTickArgs: number,
   hooks?: K2W4B4Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCA7A60)
   const ediGame = pGame >>> 0
   const ebpMon = pMonster >>> 0
   const args = pAiTickArgs >>> 0
@@ -2465,6 +2740,7 @@ export function NET_FlushPacket16_GroundUnitBatch_6FCAA2A0_113c(
   m: D2KernMemory113c,
   pClient: number,
 ): void {
+  hitD2GameVa113c(0x6FCAA2A0)
   const edx = pClient >>> 0
   const eaxCount = i32(m, (edx + 0x3bc) >>> 0)
   if (eaxCount === 0) return
@@ -2506,6 +2782,7 @@ export function NET_SendPacket7D_SetItemFlags_6FCAADE0_113c(
   dwFlags: number,
   dwMask: number,
 ): number {
+  hitD2GameVa113c(0x6FCAADE0)
   const eaxOwner = pOwnerUnit >>> 0
   const edxItem = pItemUnit >>> 0
   const pPkt = allocStackFrame113c(0x14)
@@ -2546,6 +2823,7 @@ export function NET_SendPacket9D_ItemActionOwned_6FCAB0F0_113c(
   dwCmdFlags: number,
   bGamble: number,
 ): number {
+  hitD2GameVa113c(0x6FCAB0F0)
   const ediOwner = pOwnerUnit >>> 0
   const esiItem = pItemUnit >>> 0
   const ebpCmdFlags = dwCmdFlags >>> 0
@@ -2602,6 +2880,7 @@ export function NET_SendPacket26_ChatMessage_6FCAB470_113c(
   pChatMsg: number,
   pClient: number,
 ): number {
+  hitD2GameVa113c(0x6FCAB470)
   const eaxMsg = pChatMsg >>> 0
   const ediText = (eaxMsg + 0x1a) >>> 0
   let textLen = 0
@@ -2650,6 +2929,7 @@ export function NET_SendPacket96_WalkVerify_6FCAB750_113c(
   bDx: number,
   bDy: number,
 ): number {
+  hitD2GameVa113c(0x6FCAB750)
   const pScratch = allocStackFrame113c(0x20)
   try {
     const pPkt = pScratch
@@ -2686,6 +2966,7 @@ export function NET_SendPacket95_LifeManaStamina_6FCAB7F0_113c(
   bDx: number,
   bDy: number,
 ): number {
+  hitD2GameVa113c(0x6FCAB7F0)
   const pScratch = allocStackFrame113c(0x28)
   try {
     const pPkt = pScratch
@@ -2726,6 +3007,7 @@ export function NET_SendPacket18_HpManaPot_6FCAB8C0_113c(
   bDx: number,
   bDy: number,
 ): number {
+  hitD2GameVa113c(0x6FCAB8C0)
   const pScratch = allocStackFrame113c(0x28)
   try {
     const pPkt = pScratch
@@ -2768,6 +3050,7 @@ export function NET_SendPacketA3_AuraTargetSkill_6FCABA90_113c(
   nTargetX: number,
   nTargetY: number,
 ): number {
+  hitD2GameVa113c(0x6FCABA90)
   const pPkt = allocStackFrame113c(0x18)
   try {
     for (let i = 0; i < 0x18; i += 4) {
@@ -2804,6 +3087,7 @@ export function NET_SendPacketA0A1A2_StatDelta_6FCABB10_113c(
   nBaseVal: number,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FCABB10)
   if ((wStatId & 0xffff) >= 0xff) {
     throw new D2CommonAssertError('SUnitNet.cpp', 0x42d)
   }
@@ -2845,6 +3129,7 @@ export function NET_SendPacket9E9FA0_StatValue_6FCABC20_113c(
   pClient: number,
   dwStatVal: number,
 ): number {
+  hitD2GameVa113c(0x6FCABC20)
   if ((wStatId & 0xffff) >= 0xff) {
     throw new D2CommonAssertError('SUnitNet.cpp', 0x3f5)
   }
@@ -2887,6 +3172,7 @@ export function NET_SendPacket19_1D1E1F_GoldUpdate_6FCABE10_113c(
   nNewGold: number,
   nOldGold: number,
 ): number {
+  hitD2GameVa113c(0x6FCABE10)
   const delta = ((nNewGold | 0) - (nOldGold | 0)) | 0
   const edxNew = nNewGold >>> 0
   const pPkt = allocStackFrame113c(8)
@@ -2936,6 +3222,7 @@ export function NET_SendPacket13B_UnitCoordEvent_6FCAC280_113c(
   bByteB: number,
   bByteC: number,
 ): number {
+  hitD2GameVa113c(0x6FCAC280)
   if ((bUnitType & 0xff) >= 6) {
     throw new D2CommonAssertError('SUnitNet.cpp', 0x136)
   }
@@ -2968,6 +3255,7 @@ export function NET_SendPacket8B_GameHandshake_6FCAC420_113c(
   bPacketId: number,
   pClient: number,
 ): number {
+  hitD2GameVa113c(0x6FCAC420)
   const eaxGame = pGame >>> 0
   const pArenaCtrl = m.u32((eaxGame + 0x1d28) >>> 0) >>> 0
   if (pArenaCtrl === 0) {
@@ -3000,6 +3288,7 @@ export function NET_CheckPartyMemberStatSyncDelta_6FCAC910_113c(
   nNewVal: number,
   dwKey: number,
 ): number {
+  hitD2GameVa113c(0x6FCAC910)
   const esiPlayer = pPlayerUnit >>> 0
   const ebpTarget = pTargetPlayerUnit >>> 0
   if (esiPlayer === 0) {
@@ -3066,6 +3355,7 @@ export function PARTY_BroadcastPlayerPartyIdPacket8D_6FCACFB0_113c(
   pPlayerUnit: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FCACFB0)
   const eaxPlayer = pPlayerUnit >>> 0
   const ediGame = pGame >>> 0
   const pPkt = allocStackFrame113c(8)

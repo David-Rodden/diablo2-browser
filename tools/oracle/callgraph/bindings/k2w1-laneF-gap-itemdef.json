@@ -10,15 +10,6 @@
   },
   {
     "module": "D2Game",
-    "va": "0x6FC57190",
-    "name": "UNITEVENT_RegisterTimerOrItemEventNode",
-    "kernFile": "src/d2kern-113c/game/k2-gap-itemdef-113c.ts",
-    "tsSymbol": "UNITEVENT_RegisterTimerOrItemEventNode113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneF-gap-itemdef.test.ts"
-  },
-  {
-    "module": "D2Game",
     "va": "0x6FC62EC0",
     "name": "SKILLS_CallbackStaticField",
     "kernFile": "src/d2kern-113c/game/k2-gap-itemdef-113c.ts",
@@ -167,33 +158,6 @@
     "name": "SKILLS_Event08_AuraPulseTick",
     "kernFile": "src/d2kern-113c/game/k2-gap-itemdef-113c.ts",
     "tsSymbol": "SKILLS_Event08_AuraPulseTick113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneF-gap-itemdef.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6FCCCDA0",
-    "name": "ITEMEVENT_ManaAfterKill",
-    "kernFile": "src/d2kern-113c/game/k2-gap-itemdef-113c.ts",
-    "tsSymbol": "ITEMEVENT_ManaAfterKill113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneF-gap-itemdef.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6FCCD910",
-    "name": "ITEMEVENT_AttackerTakesDamage",
-    "kernFile": "src/d2kern-113c/game/k2-gap-itemdef-113c.ts",
-    "tsSymbol": "ITEMEVENT_AttackerTakesDamage113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneF-gap-itemdef.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6FCCDCE0",
-    "name": "ITEMEVENT_ChanceToCastSkill",
-    "kernFile": "src/d2kern-113c/game/k2-gap-itemdef-113c.ts",
-    "tsSymbol": "ITEMEVENT_ChanceToCastSkill113c",
     "status": "ported",
     "diffEvidence": "Unit verification in tests/oracle/k2/laneF-gap-itemdef.test.ts"
   },

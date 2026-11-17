@@ -145,15 +145,6 @@
   },
   {
     "module": "D2Game",
-    "va": "0x6fca9730",
-    "name": "MONSTER_UnburrowOrResurrectCollisionInit_6FCA9730",
-    "kernFile": "src/d2kern-113c/game/k2-w11b1-113c.ts",
-    "tsSymbol": "MONSTER_UnburrowOrResurrectCollisionInit_6FCA9730_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w11b1.test.ts"
-  },
-  {
-    "module": "D2Game",
     "va": "0x6fcb3680",
     "name": "SKILLS_SrvDo252_DragonFlight_6FCB3680",
     "kernFile": "src/d2kern-113c/game/k2-w11b1-113c.ts",

@@ -126,6 +126,7 @@ import {
   type CharStatsGrowthMeta113c,
   type ItemStatCostMeta113c,
 } from '../tables/item-stat-cost-113c.ts'
+import { hitD2CommonVa113c } from '../va-trace-113c.ts'
 
 export {
   CANONICAL_CHAR_GROWTH_113C,
@@ -333,6 +334,7 @@ export function statKey113c(statId: number, layer = 0): number {
  * Returns index `>= 0` if found, `-1` if absent.
  */
 export function STATLIST_FindStatIndex113c(m: Memory113c, pArrayHdr: number, dwKey: number): number {
+  hitD2CommonVa113c(0x6FD882B0)
   const count = (m.u16(pArrayHdr + 4) << 16) >> 16 // movsx ecx, word ptr [esi + 4]
   if (count <= 0) return -1
   const pStat = m.u32(pArrayHdr)
@@ -355,6 +357,7 @@ export function STATLIST_FindStatIndex113c(m: Memory113c, pArrayHdr: number, dwK
 
 /** `D2Common 0x6FD88270`: lower-bound insertion index under signed 32-bit `dwKey` ordering. */
 export function STATLIST_FindInsertPos113c(m: Memory113c, pArrayHdr: number, dwKey: number): number {
+  hitD2CommonVa113c(0x6FD88270)
   const count = (m.u16(pArrayHdr + 4) << 16) >> 16
   if (count <= 0) return 0
   const pStat = m.u32(pArrayHdr)
@@ -375,6 +378,7 @@ export function STATLIST_FindInsertPos113c(m: Memory113c, pArrayHdr: number, dwK
 
 /** `D2Common 0x6FD88640`: insert `dwKey` at `insertIdx` with initial value `0`, growing capacity in steps of `+4`. */
 function insertStatSlot(m: Memory113c, pArrayHdr: number, insertIdx: number, dwKey: number): number {
+  hitD2CommonVa113c(0x6FD88640)
   const count = (m.u16(pArrayHdr + 4) << 16) >> 16
   let cap = (m.u16(pArrayHdr + 6) << 16) >> 16
   let pStat = m.u32(pArrayHdr)
@@ -401,6 +405,7 @@ function insertStatSlot(m: Memory113c, pArrayHdr: number, insertIdx: number, dwK
 
 /** `D2Common 0x6FD881A0`: remove entry at `idx`, shrinking capacity by `-4` if `(cap - newCount) > 8`. */
 export function removeStatSlot(m: Memory113c, pArrayHdr: number, idx: number): void {
+  hitD2CommonVa113c(0x6FD881A0)
   const count = (m.u16(pArrayHdr + 4) << 16) >> 16
   if (idx < 0 || idx >= count) return
   let pStat = m.u32(pArrayHdr)
@@ -475,6 +480,7 @@ function addFullStatDelta(
   keepZero: boolean,
   hasItemDynamicOp = false,
 ): void {
+  hitD2CommonVa113c(0x6FD889E0)
   const pFullHdr = pListEx + D2StatListExStrc.pFullStat.off
   let idx = STATLIST_FindStatIndex113c(m, pFullHdr, dwKey)
   let entryPtr = 0
@@ -510,6 +516,7 @@ export function STATLIST_AllocList113c(
   stateNo = 0,
   expireFrame = 0,
 ): number {
+  hitD2CommonVa113c(0x6FD88100)
   const pList = m.alloc(D2StatListStrc_SIZE)
   let fl = flags >>> 0
   if (expireFrame > 0) fl = (fl | STATLIST_FLAG_TIMED) >>> 0
@@ -528,6 +535,7 @@ export function STATLIST_CreateEx113c(
   argFlags = 0,
   pGame = 0,
 ): number {
+  hitD2CommonVa113c(0x6FD8AF00)
   const pListEx = m.alloc(D2StatListExStrc_SIZE)
   const pStateFlags = m.alloc(STATE_DWORDS_113C * 2 * 4) // 48 bytes: [0..5] active, [6..11] dirty/gfx
   const ownerType = pOwner !== 0 ? m.get(pOwner, D2UnitStrc.dwUnitType) : 6
@@ -555,6 +563,7 @@ export function ENVIRONMENT_GetTimeOfDayAndAngle113c(
   m: Memory113c,
   pAct: number,
 ): { readonly timeOfDay: number; readonly angle: number } {
+  hitD2CommonVa113c(0x6FD87470)
   if (pAct === 0) return { timeOfDay: 0, angle: 0 }
   const pEnv = m.get(pAct, D2ActStrc.pEnvironment)
   if (pEnv === 0) return { timeOfDay: 0, angle: 0 }
@@ -576,6 +585,7 @@ export function ITEMS_CalcByTimeStat113c(
   _nTimeOfDay: number,
   nAngle: number,
 ): number {
+  hitD2CommonVa113c(0x6FD96330)
   const raw = rawValue | 0
   const period = raw & 3
   const minVal = (((raw >> 2) & 0x3ff) - 0x100) | 0
@@ -608,6 +618,7 @@ export function STATLIST_SumDirectAndSubLists113c(
   dwKey: number,
   registry: StatTableRegistry113c = DEFAULT_STAT_REGISTRY_113C,
 ): number {
+  hitD2CommonVa113c(0x6FD88CD0)
   let sum = readStatFromArray(m, pList + D2StatListStrc.pStat.off, dwKey)
   const flags = m.get(pList, D2StatListStrc.dwFlags)
   if ((flags & STATLIST_FLAG_EXTENDED) === 0) {
@@ -646,6 +657,7 @@ export function EvalStatWithOps113c(
   dwKey: number,
   registry: StatTableRegistry113c = DEFAULT_STAT_REGISTRY_113C,
 ): number {
+  hitD2CommonVa113c(0x6FD89530)
   const statId = (dwKey >>> 16) & 0xffff
   const rawBaseSum = STATLIST_SumDirectAndSubLists113c(m, pList, dwKey, registry)
   const revOps = registry.getReverseOps(statId)
@@ -821,6 +833,7 @@ export function STATLIST_RecomputeExStat113c(
   registry: StatTableRegistry113c = DEFAULT_STAT_REGISTRY_113C,
   visited = new Set<number>(),
 ): number {
+  hitD2CommonVa113c(0x6FD89CE0)
   if ((m.get(pListEx, D2StatListStrc.dwFlags) & STATLIST_FLAG_EXTENDED) === 0) return 0
   const key = statKey113c(statId, layer)
   if (visited.has(key)) {
@@ -948,6 +961,7 @@ export function STATLIST_PropagateDelta113c(
   delta: number,
   registry: StatTableRegistry113c = DEFAULT_STAT_REGISTRY_113C,
 ): void {
+  hitD2CommonVa113c(0x6FD89F70)
   const d = delta | 0
   if (pStartList === 0 || d === 0 || statId < 0) return
   const meta = registry.get(statId)
@@ -1114,6 +1128,7 @@ export function STATLIST_FindModStatInsertPos113c(
   pModHdr: number,
   dwKey: number,
 ): number {
+  hitD2CommonVa113c(0x6FD88160)
   const count = (m.u16(pModHdr + 4) << 16) >> 16
   if (count <= 0) return 0
   const pMod = m.u32(pModHdr)
@@ -1147,6 +1162,7 @@ export function STATLIST_RecordModStat113c(
   dwKey: number,
   registry: StatTableRegistry113c = DEFAULT_STAT_REGISTRY_113C,
 ): void {
+  hitD2CommonVa113c(0x6FD88550)
   if (pListEx === 0) return
   if ((m.get(pListEx, D2StatListStrc.dwFlags) & STATLIST_FLAG_EXTENDED) === 0) return
   const statId = (dwKey >>> 16) & 0xffff
@@ -1200,6 +1216,8 @@ export function STATLIST_SetStat113c(
   layer = 0,
   registry: StatTableRegistry113c = DEFAULT_STAT_REGISTRY_113C,
 ): number {
+  hitD2CommonVa113c(0x6FD8A280)
+  hitD2CommonVa113c(0x6FD8A7B0)
   if (pList === 0 || statId < 0) return 0
   const key = statKey113c(statId, layer)
   const pBaseHdr = pList + D2StatListStrc.pStat.off
@@ -1265,6 +1283,7 @@ export function STATLIST_SetUnitStat113c(
   layer = 0,
   registry: StatTableRegistry113c = DEFAULT_STAT_REGISTRY_113C,
 ): number {
+  hitD2CommonVa113c(0x6FD8A740)
   if (pUnit === 0) return 0
   const pList = m.get(pUnit, D2UnitStrc.pStatListEx)
   if (pList === 0) return 0
@@ -1327,6 +1346,8 @@ export function STATLIST_GetUnitStat113c(
   layer = 0,
   registry: StatTableRegistry113c = DEFAULT_STAT_REGISTRY_113C,
 ): number {
+  hitD2CommonVa113c(0x6FD88A80)
+  hitD2CommonVa113c(0x6FD88B70)
   if (pUnit === 0 || statId < 0) return 0
   const pList = m.get(pUnit, D2UnitStrc.pStatListEx)
   if (pList === 0) return 0
@@ -1349,6 +1370,8 @@ export function STATLIST_GetUnitBaseStat113c(
   layer = 0,
   registry: StatTableRegistry113c = DEFAULT_STAT_REGISTRY_113C,
 ): number {
+  hitD2CommonVa113c(0x6FD88B00)
+  hitD2CommonVa113c(0x6FD88C20)
   if (pUnit === 0 || statId < 0) return 0
   const pList = m.get(pUnit, D2UnitStrc.pStatListEx)
   if (pList === 0) return 0
@@ -1373,6 +1396,7 @@ export function STATLIST_MergeStatLists113c(
   bType: number,
   registry: StatTableRegistry113c = DEFAULT_STAT_REGISTRY_113C,
 ): void {
+  hitD2CommonVa113c(0x6FD8A7D0)
   if (pTargetUnit === 0 || pSubList === 0) return
   const pParentEx = m.get(pTargetUnit, D2UnitStrc.pStatListEx)
   if (pParentEx === 0 || (m.get(pParentEx, D2StatListStrc.dwFlags) & STATLIST_FLAG_EXTENDED) === 0) {
@@ -1461,6 +1485,7 @@ export function STATLIST_UnlinkSubList113c(
   pSubList: number,
   registry: StatTableRegistry113c = DEFAULT_STAT_REGISTRY_113C,
 ): void {
+  hitD2CommonVa113c(0x6FD8A5F0)
   STATLIST_RemoveSubList113c(m, pSubList, registry)
 }
 
@@ -1477,6 +1502,7 @@ export function STATLIST_RemoveSubList113c(
   pSubList: number,
   registry: StatTableRegistry113c = DEFAULT_STAT_REGISTRY_113C,
 ): void {
+  hitD2CommonVa113c(0x6FD8A3B0)
   if (pSubList === 0) return
   const pParentEx = m.get(pSubList, D2StatListStrc.pParent)
   const subFlags = m.get(pSubList, D2StatListStrc.dwFlags)
@@ -1569,6 +1595,7 @@ export function STATLIST_GetStatListFromUnitAndState113c(
  * Returns raw masked bit (`1 << (stateId & 31)` >>> 0) or `0`.
  */
 export function STATES_CheckState113c(m: Memory113c, pUnit: number, stateId: number): number {
+  hitD2CommonVa113c(0x6FD83CD0)
   if (pUnit === 0) return 0
   const uType = m.get(pUnit, D2UnitStrc.dwUnitType)
   if (uType !== 0 && uType !== 1 && uType !== 3) return 0
@@ -1620,6 +1647,7 @@ export function STATES_CheckStateMaskOnUnit113c(
   pUnit: number,
   maskWords: number | ArrayLike<number>,
 ): number {
+  hitD2CommonVa113c(0x6FD83C20)
   if (pUnit === 0) return 0
   const pListEx = m.get(pUnit, D2UnitStrc.pStatListEx)
   if (pListEx === 0 || (m.get(pListEx, D2StatListStrc.dwFlags) & STATLIST_FLAG_EXTENDED) === 0) {
@@ -1662,6 +1690,7 @@ export function STATES_CheckStateMaskOnUnit113c(
  * and delegates to `0x6FD83C20` (`STATES_CheckStateMaskOnUnit113c`).
  */
 export function STATES_CheckStateMask33OnUnit113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD83D60)
   const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
   const pMask = m.u32((sgpt + 0x150) >>> 0)
   return STATES_CheckStateMaskOnUnit113c(m, pUnit, pMask)
@@ -1683,6 +1712,7 @@ export function STATES_ToggleState113c(
   stateId: number,
   bSet: boolean | number,
 ): void {
+  hitD2CommonVa113c(0x6FD88730)
   if (pUnit === 0 || stateId < 0 || stateId >= STATES_COUNT_113C) return
   const pListEx = m.get(pUnit, D2UnitStrc.pStatListEx)
   if (pListEx === 0 || (m.get(pListEx, D2StatListStrc.dwFlags) & STATLIST_FLAG_EXTENDED) === 0) {
@@ -1727,6 +1757,7 @@ export function STATES_ToggleGfxStateFlag113c(
   stateId: number,
   bSet: number | boolean,
 ): void {
+  hitD2CommonVa113c(0x6FD84510)
   if (stateId < 0 || stateId >= STATES_COUNT_113C) return
   STATES_ToggleState113c(m, pUnit, stateId, Boolean(bSet))
   UNITROOM_RefreshUnit113c(m, pUnit)
@@ -1759,6 +1790,7 @@ export function STATES_ClearGfxStateFlag113c(
   stateId: number,
   bSet: number | boolean = 0,
 ): void {
+  hitD2CommonVa113c(0x6FD84450)
   if (pUnit === 0 || stateId < 0 || stateId >= STATES_COUNT_113C) return
   const pListEx = m.get(pUnit, D2UnitStrc.pStatListEx)
   if (pListEx === 0 || (m.get(pListEx, D2StatListStrc.dwFlags) & STATLIST_FLAG_EXTENDED) === 0) {
@@ -1840,6 +1872,7 @@ export function STATES_CheckStateMaskExpOnUnit113c(
   pUnit: number,
   nState: number,
 ): number {
+  hitD2CommonVa113c(0x6FD83AB0)
   const state = nState | 0
   if (state < 0) return 0
   const dt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
@@ -1859,6 +1892,7 @@ export function STATES_CheckStateMaskExpOnUnit113c(
  * stdcall `[esp+4] = pStatList`, `ret 4` -> `pStatList->nSkillLevel (+0x20)`).
  */
 export function STATLIST_GetSkillLevel113c(m: Memory113c, pStatList: number): number {
+  hitD2CommonVa113c(0x6FD87D30)
   return m.get(pStatList >>> 0, D2StatListStrc.nSkillLevel) >>> 0
 }
 
@@ -1871,6 +1905,7 @@ export function STATLIST_SetSkillLevel113c(
   pStatList: number,
   nSkillLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FD87D40)
   m.set(pStatList >>> 0, D2StatListStrc.nSkillLevel, nSkillLevel >>> 0)
 }
 
@@ -1879,6 +1914,7 @@ export function STATLIST_SetSkillLevel113c(
  * stdcall `[esp+4] = pStatList`, `ret 4` -> `pStatList->nSkillNo (+0x1C)`).
  */
 export function STATLIST_GetSkillId113c(m: Memory113c, pStatList: number): number {
+  hitD2CommonVa113c(0x6FD87D50)
   return m.get(pStatList >>> 0, D2StatListStrc.nSkillNo) >>> 0
 }
 
@@ -1887,6 +1923,7 @@ export function STATLIST_GetSkillId113c(m: Memory113c, pStatList: number): numbe
  * stdcall `[esp+4] = pStatList`, `[esp+8] = nSkillNo`, `ret 8`, void).
  */
 export function STATLIST_SetSkillId113c(m: Memory113c, pStatList: number, nSkillNo: number): void {
+  hitD2CommonVa113c(0x6FD87D60)
   m.set(pStatList >>> 0, D2StatListStrc.nSkillNo, nSkillNo >>> 0)
 }
 
@@ -1899,6 +1936,7 @@ export function STATLIST_SetStatRemoveProc113c(
   pStatList: number,
   pfOnRemove: number,
 ): void {
+  hitD2CommonVa113c(0x6FD87D70)
   if (pStatList === 0) return
   m.set(pStatList, D2StatListStrc.fpRemove, pfOnRemove >>> 0)
 }
@@ -1908,6 +1946,7 @@ export function STATLIST_SetStatRemoveProc113c(
  * stdcall `[esp+4] = pUnit`, `ret 4` -> `(pUnit->pStatListEx->dwFlags >> 8) & 1` or `0`).
  */
 export function STATLIST_CheckUnitStatListFlag100113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD87DE0)
   if (pUnit === 0) return 0
   const pStatList = m.get(pUnit, D2UnitStrc.pStatListEx)
   if (pStatList === 0) return 0
@@ -1923,6 +1962,7 @@ export function STATLIST_GetOwnerAndDynamicFlag113c(
   pUnit: number,
   pOutNotMerged: number,
 ): number {
+  hitD2CommonVa113c(0x6FD87E70)
   if (pUnit !== 0) {
     const pList = m.get(pUnit, D2UnitStrc.pStatListEx)
     if (pList !== 0) {
@@ -1955,6 +1995,7 @@ export function STATLIST_GetStatListFromUnitStateAndFlag113c(
   nState: number,
   dwFilterFlags: number,
 ): number {
+  hitD2CommonVa113c(0x6FD87EC0)
   const pListEx = m.get(pUnit >>> 0, D2UnitStrc.pStatListEx)
   if (pListEx === 0) return 0
   if ((m.get(pListEx, D2StatListStrc.dwFlags) & STATLIST_FLAG_EXTENDED) === 0) return 0
@@ -1988,6 +2029,7 @@ export function STATLIST_GetStatListFromFlag113c(
   pStatList: number,
   dwFilterFlags: number,
 ): number {
+  hitD2CommonVa113c(0x6FD87F40)
   if (pStatList === 0) return 0
   let pCur = pStatList >>> 0
   if ((m.get(pStatList, D2StatListStrc.dwFlags) & STATLIST_FLAG_EXTENDED) !== 0) {
@@ -2011,6 +2053,7 @@ export function STATLIST_GetStatListFromFlag113c(
  * stdcall `[esp+4] = pStatList`, `ret 4` -> `pStatList->dwExpireFrame (+0x18)` or `0`).
  */
 export function STATLIST_GetExpireFrame113c(m: Memory113c, pStatList: number): number {
+  hitD2CommonVa113c(0x6FD88000)
   const s = pStatList >>> 0
   if (s === 0) return 0
   return m.get(s, D2StatListStrc.dwExpireFrame) >>> 0
@@ -2028,6 +2071,7 @@ export function STATLIST_SetExpireFrame113c(
   pStatList: number,
   nExpireFrame: number,
 ): void {
+  hitD2CommonVa113c(0x6FD88020)
   const s = pStatList >>> 0
   if (s === 0) return
   const frame = nExpireFrame | 0
@@ -2046,6 +2090,7 @@ export function STATLIST_SetExpireFrame113c(
  * stdcall `[esp+4] = pStatList`, `ret 4` -> `pStatList->dwStateNo (+0x14)` or `0`).
  */
 export function STATLIST_GetState113c(m: Memory113c, pStatList: number): number {
+  hitD2CommonVa113c(0x6FD88040)
   const s = pStatList >>> 0
   if (s === 0) return 0
   return m.get(s, D2StatListStrc.dwStateNo) >>> 0
@@ -2056,6 +2101,7 @@ export function STATLIST_GetState113c(m: Memory113c, pStatList: number): number 
  * stdcall `[esp+4] = pStatList`, `[esp+8] = nState`, `ret 8`, void).
  */
 export function STATLIST_SetState113c(m: Memory113c, pStatList: number, nState: number): void {
+  hitD2CommonVa113c(0x6FD88060)
   const s = pStatList >>> 0
   if (s === 0) return
   m.set(s, D2StatListStrc.dwStateNo, nState >>> 0)
@@ -2066,6 +2112,7 @@ export function STATLIST_SetState113c(m: Memory113c, pStatList: number, nState: 
  * stdcall `[esp+4] = pStatList`, `ret 4` -> `pStatList->dwOwnerId (+0x0C)` or `0`).
  */
 export function STATLIST_GetOwnerId113c(m: Memory113c, pStatList: number): number {
+  hitD2CommonVa113c(0x6FD88080)
   const s = pStatList >>> 0
   if (s === 0) return 0
   return m.get(s, D2StatListStrc.dwOwnerId) >>> 0
@@ -2076,6 +2123,7 @@ export function STATLIST_GetOwnerId113c(m: Memory113c, pStatList: number): numbe
  * stdcall `[esp+4] = pUnit`, `ret 4` -> `movsx eax, word [pListEx+0x4C]` or `0`).
  */
 export function STATLIST_GetUnitFullStatsCount113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD880A0)
   const u = pUnit >>> 0
   if (u === 0) return 0
   const pListEx = m.get(u, D2UnitStrc.pStatListEx)
@@ -2088,6 +2136,7 @@ export function STATLIST_GetUnitFullStatsCount113c(m: Memory113c, pUnit: number)
  * stdcall `[esp+4] = pStatList`, `ret 4` -> `pStatList->eOwnerType (+0x08)` or `6` if NULL).
  */
 export function STATLIST_GetOwnerType113c(m: Memory113c, pStatList: number): number {
+  hitD2CommonVa113c(0x6FD880E0)
   const s = pStatList >>> 0
   if (s === 0) return 6
   return m.get(s, D2StatListStrc.eOwnerType) >>> 0
@@ -2110,6 +2159,7 @@ export function STATLIST_FindStatFirstIndexOrLowerBound113c(
   pStatArrayHdr: number,
   dwKey: number,
 ): number {
+  hitD2CommonVa113c(0x6FD88220)
   const hdr = pStatArrayHdr >>> 0
   const count = (m.u16((hdr + 4) >>> 0) << 16) >> 16
   let hi = count
@@ -2147,6 +2197,7 @@ export function STATLIST_SetExpireFrameEx113c(
   pStatList: number,
   nExpireFrame: number,
 ): void {
+  hitD2CommonVa113c(0x6FD88380)
   const s = pStatList >>> 0
   if (s === 0) return
   const frame = nExpireFrame | 0
@@ -2167,6 +2218,7 @@ export function STATLIST_SetExpireFrameEx113c(
  * Byte-for-byte identical in machine code to `STATLIST_GetExpireFrame` (`0x6FD88000`).
  */
 export function STATLIST_GetExpireFrameEx113c(m: Memory113c, pStatList: number): number {
+  hitD2CommonVa113c(0x6FD883A0)
   const s = pStatList >>> 0
   if (s === 0) return 0
   return m.get(s, D2StatListStrc.dwExpireFrame) >>> 0
@@ -2187,6 +2239,7 @@ export function STATLIST_CopyBaseStatsToBuffer113c(
   pOutStats: number,
   nMaxStats: number,
 ): number {
+  hitD2CommonVa113c(0x6FD883C0)
   const s = pStatList >>> 0
   if (s === 0) return 0
   let count = (m.get(s, D2StatListStrc.wStatCount) << 16) >> 16
@@ -2223,6 +2276,7 @@ export function STATLIST_CopyUnitFullStatsToBuffer113c(
   pOutStats: number,
   nMaxStats: number,
 ): number {
+  hitD2CommonVa113c(0x6FD88410)
   const u = pUnit >>> 0
   if (u === 0) return 0
   const pListEx = m.get(u, D2UnitStrc.pStatListEx)
@@ -2252,6 +2306,7 @@ export function STATLIST_CopyUnitFullStatsToBuffer113c(
  * stdcall `[esp+4] = pAct`, `ret 4` -> `pAct->pDrlg->nBossTombLevel (+0x94)` or `0`).
  */
 export function DRLGLOGIC_GetBossTombLevel113c(m: Memory113c, pAct: number): number {
+  hitD2CommonVa113c(0x6FD8B080)
   const a = pAct >>> 0
   if (a === 0) return 0
   const pDrlg = m.get(a, D2ActStrc.pDrlg)
@@ -2274,6 +2329,7 @@ export const D2COMMON_ITEM_GRAPHIC_CELL_TABLE_VA_113C = 0x6fdeefa4
  * `pItem->pItemData (+0x14) != NULL` (`0x1080`), then stores `pItemData->dwItemCell (+0x28) = nItemCell`.
  */
 export function ITEMS_SetItemCell113c(m: Memory113c, pItem: number, nItemCell: number): void {
+  hitD2CommonVa113c(0x6FD725F0)
   const item = pItem >>> 0
   if (item === 0) {
     throw new D2CommonAssertError('Items.cpp', 0x107d)
@@ -2302,6 +2358,7 @@ export function UNITS_ApplyRunWalkStatListInline113c(
   nCharClassId: number,
   pUnit: number,
 ): void {
+  hitD2CommonVa113c(0x6FD82E10)
   const u = pUnit >>> 0
   let dwOwnerId: number
   let eOwnerType: number
@@ -2355,6 +2412,7 @@ export function UNITS_ApplyRunWalkStatListInline113c(
  * frees `pStatListEx->pModStat (+0x50)` if non-NULL, zeroes `pModStat`, and zeroes `wModStatCapacity (+0x56)` and `wModStatCount (+0x54)`.
  */
 export function STATLIST_FreeModStats113c(m: Memory113c, pUnit: number): void {
+  hitD2CommonVa113c(0x6FD87E20)
   const u = pUnit >>> 0
   if (u === 0) return
   const pStatListEx = m.get(u, D2UnitStrc.pStatListEx)
@@ -2381,6 +2439,7 @@ export function STATLIST_FreeModStats113c(m: Memory113c, pUnit: number): void {
  * `pModStat (+0x50)` if non-NULL, frees `pStateFlags (+0x58)`, and finally frees `pStatList`.
  */
 export function STATLIST_FreeStatListImpl113c(m: Memory113c, pStatList: number): void {
+  hitD2CommonVa113c(0x6FD8A9F0)
   const esi = pStatList >>> 0
   STATLIST_RemoveSubList113c(m, esi)
   const pStat = m.get(esi, D2StatListStrc.pStat)
@@ -2436,6 +2495,7 @@ export function STATLIST_FreeStatListImpl113c(m: Memory113c, pStatList: number):
  * Asserts `pStatList != NULL` (`line 0x634`) and returns `pStatList->eOwnerType (+0x08)`.
  */
 export function STATLIST_GetUnitType113c(m: Memory113c, pStatList: number): number {
+  hitD2CommonVa113c(0x6FD8B0A0)
   const s = pStatList >>> 0
   if (s === 0) {
     throw new D2CommonAssertError('Dungeon.cpp', 0x634)
@@ -2450,6 +2510,7 @@ export function STATLIST_GetUnitType113c(m: Memory113c, pStatList: number): numb
  * Asserts `pRoom != NULL` (`line 0x5B9`) and returns `(pRoom->pRoomEx (+0x10)->pLevel (+0x58) + 0x1E0) >>> 0`.
  */
 export function DUNGEON_GetRoomTileSubtypesPtr113c(m: Memory113c, pRoom: number): number {
+  hitD2CommonVa113c(0x6FD8B1A0)
   const r = pRoom >>> 0
   if (r === 0) {
     throw new D2CommonAssertError('Dungeon.cpp', 0x5b9)
@@ -2467,6 +2528,7 @@ export function DUNGEON_GetRoomTileSubtypesPtr113c(m: Memory113c, pRoom: number)
  * `m.u32(0x6FDE4084 + (nAct & 0xFF) * 4)`.
  */
 export function DUNGEON_GetActLevelId113c(m: Memory113c, nAct: number): number {
+  hitD2CommonVa113c(0x6FD8B1E0)
   const actByte = nAct & 0xff
   if (actByte >= 5) {
     throw new D2CommonAssertError('Dungeon.cpp', 0x59a)
@@ -2489,6 +2551,7 @@ export function STATLIST_UnpackSkillStatParam113c(
   pOutRem3: number,
   pOutSkillIdx: number,
 ): void {
+  hitD2CommonVa113c(0x6FD95780)
   const outDiv = pOutDiv3 >>> 0
   const outRem = pOutRem3 >>> 0
   const outIdx = pOutSkillIdx >>> 0
@@ -2514,6 +2577,7 @@ export function STATLIST_UnpackSkillStatParam113c(
  * records `0x00470000` via `0x6FD88550` (`STATLIST_RecordModStat113c`).
  */
 export function STATLIST_RollRandomItemGraphicStat113c(m: Memory113c, pItem: number): void {
+  hitD2CommonVa113c(0x6FD96920)
   const item = pItem >>> 0
   let pSeed = 0
   if (item !== 0 && m.get(item, D2UnitStrc.dwUnitType) === 4) {
@@ -2749,6 +2813,7 @@ function recordModStatMem113c(m: Memory113c, pListEx: number, dwKey: number): vo
  * stdcall `[esp+4] = pUnit`, `ret 4` -> total stat `0x49` if base stat `0x49 != 0`, else `0`).
  */
 export function STATLIST_GetMaxDurabilityFromUnit113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD88FF0)
   const u = pUnit >>> 0
   if (u === 0) return 0
   const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
@@ -2766,6 +2831,7 @@ export function STATLIST_GetMaxDurabilityFromUnit113c(m: Memory113c, pUnit: numb
  * stdcall `[esp+4] = pUnit`, `ret 4` -> total stat `0x0B` or `0`).
  */
 export function STATLIST_GetMaxStaminaFromUnit113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD89050)
   const u = pUnit >>> 0
   if (u === 0) return 0
   const pStatList = m.u32((u + 0x5c) >>> 0)
@@ -2782,6 +2848,7 @@ export function STATLIST_GetMaxStaminaFromUnit113c(m: Memory113c, pUnit: number)
  * stdcall `[esp+4] = pUnit`, `ret 4` -> total stat `0x09` or `0`).
  */
 export function STATLIST_GetMaxManaFromUnit113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD890A0)
   const u = pUnit >>> 0
   if (u === 0) return 0
   const pStatList = m.u32((u + 0x5c) >>> 0)
@@ -2798,6 +2865,7 @@ export function STATLIST_GetMaxManaFromUnit113c(m: Memory113c, pUnit: number): n
  * stdcall `[esp+4] = pUnit`, `ret 4` -> total stat `0x07` or `0`).
  */
 export function STATLIST_GetMaxLifeFromUnit113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD890F0)
   const u = pUnit >>> 0
   if (u === 0) return 0
   const pStatList = m.u32((u + 0x5c) >>> 0)
@@ -2819,6 +2887,7 @@ export function STATLIST_GetStatValue113c(
   nStatId: number,
   nLayer: number,
 ): number {
+  hitD2CommonVa113c(0x6FD89140)
   const s = pStatList >>> 0
   if (s === 0) return 0
   const statId = nStatId | 0
@@ -2840,6 +2909,7 @@ export function STATLIST_GetTotalStatValueLayer0_113c(
   pStatList: number,
   nStatId: number,
 ): number {
+  hitD2CommonVa113c(0x6FD891A0)
   const s = pStatList >>> 0
   if (s === 0) return 0
   const statId = nStatId | 0
@@ -2861,6 +2931,7 @@ export function STATLIST_GetStatBonusFromListInline113c(
   nStatId: number,
   nLayer: number,
 ): number {
+  hitD2CommonVa113c(0x6FD89380)
   const s = pStatList >>> 0
   if (s === 0) return 0
   const statId = nStatId | 0
@@ -2899,6 +2970,7 @@ export function STATLIST_GetUnitStatWithLayer113c(
   nStatId: number,
   nLayer: number,
 ): number {
+  hitD2CommonVa113c(0x6FD89430)
   const pStatList = m.u32(((pUnit >>> 0) + 0x5c) >>> 0)
   if (pStatList === 0) return 0
   const statId = nStatId | 0
@@ -2921,6 +2993,7 @@ export function STATLIST_GetBaseStatFromListInline113c(
   nStatId: number,
   nLayer: number,
 ): number {
+  hitD2CommonVa113c(0x6FD894E0)
   const s = pStatList >>> 0
   if (s === 0) return 0
   const statId = nStatId | 0
@@ -2945,6 +3018,7 @@ export function STATLIST_SetBaseStatEx113c(
   nLayer: number,
   pUnit: number,
 ): number {
+  hitD2CommonVa113c(0x6FD8A1D0)
   const s = pStatList >>> 0
   if (s === 0) return 0
   const dwKey = ((nStatId << 16) + (nLayer & 0xffff)) >>> 0
@@ -3138,6 +3212,7 @@ export function STATLIST_UnlinkUnitStatList113c(
   _pUnusedUnit: number,
   pTargetUnit: number,
 ): void {
+  hitD2CommonVa113c(0x6FD8A5D0)
   const u = pTargetUnit >>> 0
   if (u === 0) return
   const pStatList = m.u32((u + 0x5c) >>> 0)
@@ -3150,6 +3225,7 @@ export function STATLIST_UnlinkUnitStatList113c(
  * stdcall `[esp+4] = pStatList`, `ret 4`, void).
  */
 export function STATLIST_ClearBaseStats113c(m: Memory113c, pStatList: number): void {
+  hitD2CommonVa113c(0x6FD8A650)
   const s = pStatList >>> 0
   if (s === 0) return
   if ((m.u16((s + 0x28) >>> 0) << 16) >> 16 <= 0) return
@@ -3187,6 +3263,7 @@ export function STATLIST_UpdateUnitStateSetFlag113c(
   nState: number,
   bSet: number,
 ): number {
+  hitD2CommonVa113c(0x6FD8AAB0)
   const state = nState | 0
   if (state === 0) return 0
   const u = pUnit >>> 0
@@ -3224,6 +3301,7 @@ export function STATLIST_RemoveItemDurabilityStatsModHandler113c(
   _a5: number,
   pTargetUnit: number,
 ): number {
+  hitD2CommonVa113c(0x6FD96D50)
   const target = pTargetUnit >>> 0
   const u = target !== 0 && m.u32(target) === 4 ? target : pItem >>> 0
   for (const statKey of [0x00490000, 0x00480000]) {
@@ -3266,6 +3344,7 @@ export function DATATBLS_CalculateMonsterStatsByLevel113c(
   nFlags: number,
   pOutStats: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA4A00)
   const monId = nMonsterId | 0
   if (monId < 0) return 0
   const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
@@ -3404,6 +3483,7 @@ export function MISSILE_CalculateMasteryBonus113c(
   nElemType: number,
   nDamage: number,
 ): number {
+  hitD2CommonVa113c(0x6FDBAB20)
   const u = pUnit >>> 0
   const dmg = nDamage | 0
   if (u === 0 || dmg === 0) return 0
@@ -3451,6 +3531,7 @@ export function ITEMMODS_GetOrCreateStatList113c(
   nStateId: number,
   nFlags: number,
 ): number {
+  hitD2CommonVa113c(0x6FD97020)
   const pTarget = (pItem >>> 0) !== 0 ? pItem >>> 0 : pUnit >>> 0
   const pStatListEx = m.u32((pTarget + D2UnitStrc.pStatListEx.off) >>> 0)
   if (pStatListEx !== 0 && (m.u32((pStatListEx + D2StatListStrc.dwFlags.off) >>> 0) | 0) < 0) {
@@ -3837,6 +3918,7 @@ function evalStatWithOpsMem113c(m: Memory113c, pList: number, dwKey: number): nu
  * stdcall `[esp+4] = pUnit`, `ret 4` -> `u32`).
  */
 export function STATLIST_GetUnitHirelingResurrectCost113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD7CC60)
   const u = pUnit >>> 0
   let lvl = 0
   if (u !== 0) {
@@ -3862,6 +3944,7 @@ export function STATLIST_GetUnitHirelingResurrectCost113c(m: Memory113c, pUnit: 
  * stdcall `[esp+4] = pUnit`, `ret 4` -> `u32`).
  */
 export function STATLIST_GetUnitGoldBankLimit113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD81940)
   const u = pUnit >>> 0
   if (u === 0) return 0
   const pList = m.u32((u + 0x5c) >>> 0)
@@ -3879,6 +3962,7 @@ export function STATLIST_GetUnitGoldBankLimit113c(m: Memory113c, pUnit: number):
  * stdcall `[esp+4] = pUnit`, `ret 4` -> `i32`).
  */
 export function STATLIST_GetUnitLifePercent113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD82330)
   const u = pUnit >>> 0
   let hpRaw = 0
   if (u !== 0) {
@@ -3921,6 +4005,7 @@ export function STATES_SetUnitSourceUnit113c(
   nSrcType: number,
   nSrcId: number,
 ): void {
+  hitD2CommonVa113c(0x6FD82CA0)
   const edi = pUnit >>> 0
   if (edi === 0) return
   const esi0 = m.u32((edi + 0x5c) >>> 0)
@@ -3995,6 +4080,7 @@ export function STATES_CheckStateMaskByIndexOnUnit113c(
   pUnit: number,
   nMaskIdx: number,
 ): number {
+  hitD2CommonVa113c(0x6FD83D10)
   const u = pUnit >>> 0
   if (u === 0) return 0
   const idx = nMaskIdx | 0
@@ -4009,6 +4095,7 @@ export function STATES_CheckStateMaskByIndexOnUnit113c(
  * stdcall `[esp+4] = pUnit`, `ret 4` -> `0 | 1`).
  */
 export function STATES_CheckStateMask32OnUnit113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD83D80)
   const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
   const pMask = m.u32((sgpt + 0x14c) >>> 0)
   return STATES_CheckStateMaskOnUnit113c(m, pUnit >>> 0, pMask)
@@ -4019,6 +4106,7 @@ export function STATES_CheckStateMask32OnUnit113c(m: Memory113c, pUnit: number):
  * stdcall `[esp+4] = pUnit`, `ret 4` -> `0 | 1`).
  */
 export function STATES_CheckStateMask30OnUnit113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD83DC0)
   const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
   const pMask = m.u32((sgpt + 0x144) >>> 0)
   return STATES_CheckStateMaskOnUnit113c(m, pUnit >>> 0, pMask)
@@ -4029,6 +4117,7 @@ export function STATES_CheckStateMask30OnUnit113c(m: Memory113c, pUnit: number):
  * stdcall `[esp+4] = pUnit`, `ret 4` -> `0 | 1`).
  */
 export function STATES_CheckStateMask6OnUnit113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD83FE0)
   const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
   const pMask = m.u32((sgpt + 0xe4) >>> 0)
   return STATES_CheckStateMaskOnUnit113c(m, pUnit >>> 0, pMask)
@@ -4039,6 +4128,7 @@ export function STATES_CheckStateMask6OnUnit113c(m: Memory113c, pUnit: number): 
  * stdcall `[esp+4] = pUnit`, `ret 4` -> `0 | 1`).
  */
 export function STATES_CheckStateMask2OnUnit113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD84020)
   const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
   const pMask = m.u32((sgpt + 0xd4) >>> 0)
   return STATES_CheckStateMaskOnUnit113c(m, pUnit >>> 0, pMask)
@@ -4049,6 +4139,7 @@ export function STATES_CheckStateMask2OnUnit113c(m: Memory113c, pUnit: number): 
  * stdcall `[esp+4] = pUnit`, `ret 4` -> `0 | 1`).
  */
 export function STATES_CheckStateMask4OnUnit113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD84040)
   const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
   const pMask = m.u32((sgpt + 0xdc) >>> 0)
   return STATES_CheckStateMaskOnUnit113c(m, pUnit >>> 0, pMask)
@@ -4066,6 +4157,7 @@ export function STATLIST_NotifyIfStatModified113c(
   pfnCb: number,
   cb?: (m: Memory113c, pUnit: number, nStatId: number, nVal: number, pArg: number) => void,
 ): void {
+  hitD2CommonVa113c(0x6FD888E0)
   const u = pUnit >>> 0
   if (u === 0) return
   const esi = m.u32((u + 0x5c) >>> 0)
@@ -4106,6 +4198,7 @@ export function STATLIST_SetFullStatEntry113c(
     newVal: number,
   ) => void,
 ): void {
+  hitD2CommonVa113c(0x6FD88940)
   const ebx = pListEx >>> 0
   const ebp = nVal | 0
   const key = dwKey >>> 0
@@ -4154,6 +4247,7 @@ export function STATLIST_GetTotalStatWithLayerInline113c(
   nStatId: number,
   nLayer: number,
 ): number {
+  hitD2CommonVa113c(0x6FD88BD0)
   const s = pStatList >>> 0
   const statId = nStatId | 0
   if (s === 0 || statId < 0) return 0
@@ -4174,6 +4268,7 @@ export function STATLIST_GetUnitMinDamage113c(
   pUnit: number,
   bTwoHanded: number,
 ): number {
+  hitD2CommonVa113c(0x6FD88ED0)
   const u = pUnit >>> 0
   if (u === 0) return 0
   const pList = m.u32((u + 0x5c) >>> 0)
@@ -4195,6 +4290,7 @@ export function STATLIST_GetUnitMaxDamage113c(
   pUnit: number,
   bTwoHanded: number,
 ): number {
+  hitD2CommonVa113c(0x6FD88F60)
   const u = pUnit >>> 0
   if (u === 0) return 0
   const pList = m.u32((u + 0x5c) >>> 0)
@@ -4216,6 +4312,7 @@ export function STATLIST_DeactivateWeaponDamageStats113c(
   pOwnerUnit: number,
   pItemUnit: number,
 ): number {
+  hitD2CommonVa113c(0x6FD8A030)
   const owner = pOwnerUnit >>> 0
   const item = pItemUnit >>> 0
   if (owner === 0 || item === 0) return 0
@@ -4262,6 +4359,7 @@ export function STATLIST_ReactivateWeaponDamageStats113c(
   pOwnerUnit: number,
   pItemUnit: number,
 ): number {
+  hitD2CommonVa113c(0x6FD8A100)
   const owner = pOwnerUnit >>> 0
   const item = pItemUnit >>> 0
   if (owner === 0 || item === 0) return 0
@@ -4309,6 +4407,7 @@ export function STATLIST_SetWeaponStatListActive113c(
   pItemUnit: number,
   bActive: number,
 ): void {
+  hitD2CommonVa113c(0x6FD8AC90)
   const owner = pOwnerUnit >>> 0
   const item = pItemUnit >>> 0
   if (owner === 0 || item === 0) return
@@ -4352,6 +4451,7 @@ export function STATLIST_GetExtendedUnitStatsById113c(
   pOut: number,
   nMax: number,
 ): number {
+  hitD2CommonVa113c(0x6FD886E0)
   const pEx = m.u32(((pUnit >>> 0) + 0x5c) >>> 0)
   if (pEx === 0 || (m.u32((pEx + 0x10) >>> 0) | 0) >= 0) return 0
   return getStatsByIdFromListMem113c(m, pEx, pOut >>> 0, nStatId | 0, nMax | 0)
@@ -4373,6 +4473,7 @@ export function MONSTERS_ApplyClassicConversionStats113c(
   bExpansion: number,
   nMode: number,
 ): void {
+  hitD2CommonVa113c(0x6FD6B1D0)
   if ((bExpansion | 0) !== 0) return
   const modeByte = nMode & 0xff
   if (modeByte === 0) return
@@ -4408,6 +4509,7 @@ export function STATES_SetMonsterSkillIconOnUnit113c(
   nSkillId: number,
   _uUnused: number,
 ): void {
+  hitD2CommonVa113c(0x6FD82C10)
   const skillId = nSkillId | 0
   if (skillId < 0) return
   const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
@@ -4443,6 +4545,7 @@ export function STATLIST_GetStatListFromUnitStateOrFlag113c(
   nState: number,
   dwFlags: number,
 ): number {
+  hitD2CommonVa113c(0x6FD884B0)
   const pEx = m.u32(((pUnit >>> 0) + 0x5c) >>> 0)
   if (pEx === 0 || (m.u32((pEx + 0x10) >>> 0) | 0) >= 0) return 0
   if ((nState | 0) !== 0) {
@@ -4460,6 +4563,7 @@ export function STATLIST_GetStatListFromUnitAndFlag113c(
   pUnit: number,
   dwFlags: number,
 ): number {
+  hitD2CommonVa113c(0x6FD884F0)
   const pEx = m.u32(((pUnit >>> 0) + 0x5c) >>> 0)
   if (pEx === 0 || (m.u32((pEx + 0x10) >>> 0) | 0) >= 0) return 0
   return STATLIST_GetStatListFromFlag113c(m, pEx, dwFlags)
@@ -4474,6 +4578,7 @@ export function STATLIST_UpdateUnitByTimeStats113c(
   pUnit: number,
   pItem: number,
 ): void {
+  hitD2CommonVa113c(0x6FD89B60)
   const u = pUnit >>> 0
   if (u === 0) return
   const item = pItem >>> 0
@@ -4527,6 +4632,7 @@ export function STATLIST_GetUnitStatBonus113c(
   nStatId: number,
   nLayer: number,
 ): number {
+  hitD2CommonVa113c(0x6FD89CC0)
   const pList = m.u32(((pUnit >>> 0) + 0x5c) >>> 0)
   return STATLIST_GetStatBonusFromListInline113c(m, pList, nStatId, nLayer)
 }
@@ -4543,6 +4649,7 @@ export function STATLIST_SetBaseStatExIfValid113c(
   nLayer: number,
   pUnit: number,
 ): number {
+  hitD2CommonVa113c(0x6FD8A790)
   const s = pStatList >>> 0
   if (s === 0) return 0
   return STATLIST_SetBaseStatEx113c(m, s, nStatId, nVal, nLayer, pUnit)
@@ -4553,6 +4660,7 @@ export function STATLIST_SetBaseStatExIfValid113c(
  * stdcall `[esp+4] = pUnit`, `ret 4`, void).
  */
 export function STATLIST_ClampUnitPoolStatsToMax113c(m: Memory113c, pUnit: number): void {
+  hitD2CommonVa113c(0x6FD8AB30)
   const u = pUnit >>> 0
   if (u === 0) return
   let pList = m.u32((u + 0x5c) >>> 0)
@@ -4616,6 +4724,7 @@ export function STATLIST_ClampUnitPoolStatsToMax113c(m: Memory113c, pUnit: numbe
  * stdcall `[esp+4] = pUnit`, `ret 4`, void).
  */
 export function STATLIST_ClearMonsterSkillIconStatList113c(m: Memory113c, pUnit: number): void {
+  hitD2CommonVa113c(0x6FD8AC50)
   const u = pUnit >>> 0
   if (u === 0) return
   const pEx = m.u32((u + 0x5c) >>> 0)
@@ -4633,6 +4742,7 @@ export function STATLIST_ClearMonsterSkillIconStatList113c(m: Memory113c, pUnit:
  * stdcall `[esp+4] = pStatList`, `ret 4`, void).
  */
 export function STATLIST_FreeStatListIfNonExtended113c(m: Memory113c, pStatList: number): void {
+  hitD2CommonVa113c(0x6FD8AD40)
   const s = pStatList >>> 0
   if (s === 0) return
   if ((m.u32((s + 0x10) >>> 0) | 0) < 0) return
@@ -4644,6 +4754,7 @@ export function STATLIST_FreeStatListIfNonExtended113c(m: Memory113c, pStatList:
  * stdcall `[esp+4] = pUnit`, `ret 4`, void).
  */
 export function STATLIST_ExpireOrphanStateSubLists113c(m: Memory113c, pUnit: number): void {
+  hitD2CommonVa113c(0x6FD8AD60)
   const u = pUnit >>> 0
   if (u === 0) return
   const pEx = m.u32((u + 0x5c) >>> 0)
@@ -4676,6 +4787,7 @@ export function STATLIST_ExpireTimedSubLists113c(
   pUnit: number,
   nFrame: number,
 ): void {
+  hitD2CommonVa113c(0x6FD8ADD0)
   const u = pUnit >>> 0
   if (u === 0) return
   const pEx = m.u32((u + 0x5c) >>> 0)
@@ -4731,6 +4843,7 @@ export function ITEMS_AddOrSetStatOnStatList113c(
   nStateId: number,
   fStatListFlags: number,
 ): number {
+  hitD2CommonVa113c(0x6FD975E0)
   const bp = (wStatId << 16) >> 16
   if ((bApply >>> 0) === 0 || (nValue | 0) === 0) {
     return 0
@@ -4803,6 +4916,7 @@ export function ITEMS_ApplySkillBonusStat113c(
   nStateId: number,
   fStatListFlags: number,
 ): number {
+  hitD2CommonVa113c(0x6FD97EF0)
   const esi = pUnit >>> 0
   if (bRoll !== 0 || (bForceRoll | 0) === 1) {
     ITEMS_ResetBaseDamageOrACStatFromTxt113c(m, esi, nStatId)
@@ -4846,6 +4960,7 @@ export function ITEMS_ApplyElemMasteryOrPierceStat113c(
   nStateId: number,
   fStatListFlags: number,
 ): number {
+  hitD2CommonVa113c(0x6FD97FA0)
   const esi = pUnit >>> 0
   const prop = pPropEntry >>> 0
   const maxVal = m.u32((prop + 0x0c) >>> 0)
@@ -4894,6 +5009,7 @@ export function HIRELING_RollAndPopulateStatsEntry113c(
   nDifficulty: number,
   pOutStats: number,
 ): number {
+  hitD2CommonVa113c(0x6FD7CCC0)
   const recs: number[] = []
   let pRec = DATATBLS_GetHirelingTxtRecordFromActAndDifficulty113c(
     m,
@@ -5014,6 +5130,7 @@ export function ITEMS_AddChargedSkillStatToItemOrSocket113c(
   nLevel: number,
   nChargesToSet: number,
 ): number {
+  hitD2CommonVa113c(0x6FD97120)
   const ebx = pItem >>> 0
   if (ebx === 0 || m.u32(ebx) !== 4) {
     return 0
@@ -5103,6 +5220,7 @@ export function ITEMS_RollAndApplySkillBonusStat113c(
   fStatListFlags: number,
   _unused = 0,
 ): number {
+  hitD2CommonVa113c(0x6FD98B80)
   const prop = pPropEntry >>> 0
   const rolled = DRLGROOM_RollItemCoordinateAlt113c(
     m,
@@ -5143,6 +5261,7 @@ export function ITEMS_ApplyElemMasteryOrPierceMinToMax113c(
   fStatListFlags: number,
   _unused = 0,
 ): number {
+  hitD2CommonVa113c(0x6FD99140)
   return ITEMS_ApplyElemMasteryOrPierceStat113c(
     m,
     1,
@@ -5176,6 +5295,7 @@ export function ITEMS_ApplyElemMasteryOrPierceMaxOnly113c(
   fStatListFlags: number,
   _unused = 0,
 ): number {
+  hitD2CommonVa113c(0x6FD99190)
   return ITEMS_ApplyElemMasteryOrPierceStat113c(
     m,
     0,
@@ -5208,6 +5328,7 @@ export function ITEMMODS_ApplyPropertyIndestructible113c(
   fStatListFlags: number,
   _unused = 0,
 ): number {
+  hitD2CommonVa113c(0x6FD972E0)
   const u = pUnit >>> 0
   if (u === 0 || m.u32(u) !== 4) return 0
   if ((pProp >>> 0) === 0) return 0
@@ -5238,6 +5359,7 @@ export function ITEMMODS_ApplyPropertyPackedDuration113c(
   fStatListFlags: number,
   _unused = 0,
 ): number {
+  hitD2CommonVa113c(0x6FD97350)
   const prop = pProp >>> 0
   if (prop === 0) return 0
   const statId = (wStatId << 16) >> 16
@@ -5285,6 +5407,7 @@ export function ITEMMODS_ApplyPropertyCondResetRollDurability113c(
   fStatListFlags: number,
   _unused = 0,
 ): number {
+  hitD2CommonVa113c(0x6FD98070)
   const prop = pProp >>> 0
   if (prop === 0) return 0
   const u = pUnit >>> 0
@@ -5342,6 +5465,7 @@ export function ITEMMODS_UpdateSetItemBonusStates113c(
   pItem: number,
   dwMask: number,
 ): number {
+  hitD2CommonVa113c(0x6FD7C7C0)
   const item = pItem >>> 0
   if (item === 0 || m.get(item, D2UnitStrc.dwUnitType) !== 4) return 0
   const pItemData = m.get(item, D2UnitStrc.pUnitData) >>> 0
@@ -5402,6 +5526,7 @@ export function ITEMMODS_ApplyCastSkillPropStat113c(
   nStateId: number,
   fStatListFlags: number,
 ): number {
+  hitD2CommonVa113c(0x6FD97420)
   const prop = pProp >>> 0
   if (prop === 0) return 0
   const item = pItem >>> 0
@@ -5485,6 +5610,7 @@ export function ITEMMODS_ApplyClassSkillsPropStat113c(
   nStateId: number,
   fStatListFlags: number,
 ): number {
+  hitD2CommonVa113c(0x6FD97780)
   const item = pItem >>> 0
   const prop = pProp >>> 0
   const nMin = m.u32((prop + 0x08) >>> 0) | 0
@@ -5531,6 +5657,7 @@ export function ITEMMODS_ApplyAmazonSkillsPropStat113c(
   nStateId: number,
   fStatListFlags: number,
 ): number {
+  hitD2CommonVa113c(0x6FD978F0)
   const item = pItem >>> 0
   const prop = pProp >>> 0
   const nMin = m.u32((prop + 0x08) >>> 0) | 0
@@ -5573,6 +5700,7 @@ export function ITEMMODS_ApplyAddSingleSkillPropStat113c(
   nStateId: number,
   fStatListFlags: number,
 ): number {
+  hitD2CommonVa113c(0x6FD97980)
   const prop = pProp >>> 0
   if (prop === 0) return 0
   const item = pItem >>> 0
@@ -5609,6 +5737,7 @@ export function ITEMMODS_ApplyAddDamageTripletPropStat113c(
   nStateId: number,
   fStatListFlags: number,
 ): number {
+  hitD2CommonVa113c(0x6FD97A10)
   const prop = pProp >>> 0
   const item = pItem >>> 0
   const baseStat = wBaseStatId | 0
@@ -5662,6 +5791,7 @@ export function ITEMMODS_ApplyPackedDamageRangePropStat113c(
   nStateId: number,
   fStatListFlags: number,
 ): number {
+  hitD2CommonVa113c(0x6FD97B20)
   const prop = pProp >>> 0
   const nMin = m.u32((prop + 0x08) >>> 0) | 0
   const nMax = m.u32((prop + 0x0c) >>> 0) | 0
@@ -5703,6 +5833,7 @@ export function ITEMMODS_ApplyCastSkillOnItemPropStat113c(
   nStateId: number,
   fStatListFlags: number,
 ): number {
+  hitD2CommonVa113c(0x6FD97C00)
   const prop = pProp >>> 0
   if (prop === 0) return 0
   const item = pItem >>> 0
@@ -5772,6 +5903,7 @@ export function ITEMMODS_ApplyBaseStatOverridePropStat113c(
   nStateId: number,
   fStatListFlags: number,
 ): number {
+  hitD2CommonVa113c(0x6FD97E20)
   const prop = pProp >>> 0
   if (prop === 0) {
     throw new D2CommonAssertError(ITEMMODS_ASSERT_FILE_113C, 0x2e2)
@@ -5818,6 +5950,7 @@ export function ITEMMODS_ApplyDmgToUndeadPropStat113c(
   nStateId: number,
   fStatListFlags: number,
 ): number {
+  hitD2CommonVa113c(0x6FD996F0)
   const item = pItem >>> 0
   const prop = pProp >>> 0
   const nMin = m.u32((prop + 0x08) >>> 0) | 0
@@ -5871,6 +6004,7 @@ export function STATES_ApplyMonSkillIconToUnit113c(
   pUnit: number,
   nSkillId: number,
 ): void {
+  hitD2CommonVa113c(0x6FDA2480)
   const unit = pUnit >>> 0
   const skId = nSkillId | 0
   const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C) >>> 0
@@ -5946,6 +6080,7 @@ export function ITEMMODS_ApplyStateSkillTripletMod113c(
   nStateId: number,
   fStatListFlags: number,
 ): number {
+  hitD2CommonVa113c(0x6FD98BD0)
   const prop = pProp >>> 0
   const item = pItem >>> 0
   const unit = pUnit >>> 0
@@ -6127,6 +6262,7 @@ export function ITEMMODS_ApplyItemModProperty113c(
   nStateId: number,
   fStatListFlags: number,
 ): number {
+  hitD2CommonVa113c(0x6FD99AF0)
   return applyOrRemoveResistGroup113c(
     m,
     bCheckItem,
@@ -6158,6 +6294,7 @@ export function ITEMMODS_RemoveItemModProperty113c(
   nStateId: number,
   fStatListFlags: number,
 ): number {
+  hitD2CommonVa113c(0x6FD99F30)
   return applyOrRemoveResistGroup113c(
     m,
     bCheckItem,
@@ -6218,6 +6355,7 @@ export function MISSILE_ApplyDamageDataToStatList113c(
   pDmgData: number,
   nSrcDmg128: number,
 ): void {
+  hitD2CommonVa113c(0x6FDBB4A0)
   const missile = pMissile >>> 0
   if (missile === 0 || m.u32(missile) !== 3) return
 
@@ -6447,6 +6585,7 @@ export function ITEMS_ReadItemBitstream113c(
   pOutUnused: number,
   nVersion: number,
 ): number {
+  hitD2CommonVa113c(0x6FD7A600)
   const item = pItem >>> 0
   const bs = pBitStream >>> 0
   const fmt = bitStreamReadU113c(m, bs, 10)
@@ -7214,6 +7353,7 @@ export function ITEMS_ReadCompactEarItemFromBitstream113c(
   bHasCoords: number,
   nVersion: number,
 ): number {
+  hitD2CommonVa113c(0x6FD7C0C0)
   const item = pItem >>> 0
   const bs = pBitStream >>> 0
   const fmt = bitStreamReadU113c(m, bs, 10)
@@ -7387,6 +7527,7 @@ export function ITEMS_LoadStatsFromBitstream113c(
   nVersion: number,
   pOutFailed: number,
 ): number {
+  hitD2CommonVa113c(0x6FD7C470)
   const sm = withBitStreamScratch113c(m)
   const pBitBuf = BITSTREAM_STACK_BASE
   bitStreamInit113c(sm, pBitBuf, pBuf, nSize)
@@ -7454,6 +7595,7 @@ export function ITEMMODS_ToggleSetItemStateList113c(
   pItem: number,
   nMode: number,
 ): number {
+  hitD2CommonVa113c(0x6FD7C630)
   const mode = nMode | 0
   if (mode > 1) return 0
   const unit = pUnit >>> 0
@@ -7531,6 +7673,7 @@ export function ITEMMODS_UpdateSetItemEquipmentState113c(
   nMode: number,
   nFlag: number,
 ): number {
+  hitD2CommonVa113c(0x6FD7C910)
   const unit = pUnit >>> 0
   if (unit === 0) return 0
   const item = pItem >>> 0

@@ -41,6 +41,7 @@ import { QUESTS_SendPlayerQuestAlert5D_6FC554F0_113c } from './k2-w3b3-113c.ts'
 import { PARTY_ForEachSubPartyPlayerUnit_6FCBC160_113c } from './k2-w4b5-113c.ts'
 import { UNITS_ChangeAnimMode113c } from './monster-events.ts'
 import { EVENT_SetEventFull113c } from './timer-wheel.ts'
+import { hitD2GameVa113c } from '../va-trace-113c.ts'
 
 const DIALOG_STATE_MAP_6FD20520: readonly number[] = [0xffffffff, 0, 1, 2, 3, 4]
 const DIALOG_STATE_MAP_6FD21550: readonly number[] = [0xffffffff, 0, 1, 2, 3, 4]
@@ -106,6 +107,7 @@ export function ACT3Q7_SyncGameQuest20FromPlayer_6FD03050_113c(
   pQuestData: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD03050)
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0
   const pGame = m.u32(pQuestArg >>> 0) >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
@@ -129,6 +131,7 @@ export function ACT3Q7_SyncMephistoQuestStateFromPlayer_6FD03120_113c(
   pQuestData: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD03120)
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0
   const pGame = m.u32(pQuestArg >>> 0) >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
@@ -196,6 +199,7 @@ export function ACT3Q7_InitMephistoPortalObject_6FD03290_113c(
   m: D2KernMemory113c,
   pObjInit: number,
 ): void {
+  hitD2GameVa113c(0x6FD03290)
   const pGame = m.u32(pObjInit >>> 0) >>> 0
   const pQuest14 = findQuestNodeInGame113c(m, pGame, 0x14)
   const pRoom = m.u32((pObjInit + 0x08) >>> 0) >>> 0
@@ -226,6 +230,7 @@ export function ACT3Q7_NotifyPlayerMephistoState0DCallback_6FD03320_113c(
   pPlayer: number,
   _pArg: number = 0,
 ): number {
+  hitD2GameVa113c(0x6FD03320)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + nDiff * 4 + 0x10) >>> 0) >>> 0
@@ -251,6 +256,7 @@ export function ACT3Q7_AddMephistoNpcDialogNodes_6FD033A0_113c(
   pQuestData: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD033A0)
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0
   const pGame = m.u32(pQuestArg >>> 0) >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
@@ -303,6 +309,7 @@ export function ACT3Q7_CompleteMephistoPlayerQuestAndAdvanceAct_6FD034D0_113c(
   pPlayer: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FD034D0)
   const qf = pQuestFlags >>> 0
   QUESTRECORD_SetQuestState113c(m, qf, 0x16, 0x0d)
   QUESTRECORD_SetQuestState113c(m, qf, 0x16, 0)
@@ -337,6 +344,7 @@ export function ACT3Q7_SyncPlayerMephistoBitsFromQuest14Callback_6FD03560_113c(
   pPlayer: number,
   _pArg: number = 0,
 ): number {
+  hitD2GameVa113c(0x6FD03560)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + nDiff * 4 + 0x10) >>> 0) >>> 0
@@ -380,6 +388,7 @@ export function ACT3Q5_CountPlayersMissingFlailOrCubeCallback_6FD036A0_113c(
   pPlayer: number,
   _pArg: number = 0,
 ): number {
+  hitD2GameVa113c(0x6FD036A0)
   const pRoom = UNITS_GetRoom113c(m, pPlayer) >>> 0
   if (pRoom === 0) return 0
   const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom)
@@ -417,6 +426,7 @@ export function ACT3Q5_NotifyPlayerTravincalState0DCallback_6FD03760_113c(
   pPlayer: number,
   _pArg: number = 0,
 ): number {
+  hitD2GameVa113c(0x6FD03760)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + nDiff * 4 + 0x10) >>> 0) >>> 0
@@ -442,6 +452,7 @@ export function ACT3Q5_SyncTravincalQuestStateFromPlayer_6FD03850_113c(
   pQuestData: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD03850)
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0
   const pGame = m.u32(pQuestArg >>> 0) >>> 0
   const q = pQuestData >>> 0
@@ -493,6 +504,7 @@ export function ACT3Q5_AddTravincalNpcDialogNodes_6FD03970_113c(
   pQuestData: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD03970)
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0
   const pGame = m.u32(pQuestArg >>> 0) >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
@@ -547,6 +559,7 @@ export function ACT3Q1_SyncGoldenBirdQuestStateFromPlayer_6FD03B40_113c(
   pQuestData: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD03B40)
   const q = pQuestData >>> 0
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0
   const pGame = m.u32(pQuestArg >>> 0) >>> 0
@@ -613,6 +626,7 @@ export function ACT3Q1_GoldenBirdStatusFilter_6FD03CE0_113c(
   pQuestFlags: number,
   pOutStatus: number,
 ): number {
+  hitD2GameVa113c(0x6FD03CE0)
   const out = pOutStatus >>> 0
   if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x0f, 0) === 0) {
     m.setU8(out, 0)
@@ -673,6 +687,7 @@ export function ACT3Q1_AddGoldenBirdNpcDialogNodes_6FD03E30_113c(
   pQuestData: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD03E30)
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0
   const pGame = m.u32(pQuestArg >>> 0) >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
@@ -757,6 +772,7 @@ export function ACT3Q1_GoldenBirdActiveFilter_6FD04030_113c(
   pQuestFlags: number,
   _pNpc: number = 0,
 ): number {
+  hitD2GameVa113c(0x6FD04030)
   if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x14, 0) !== 0) return 0
   if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x14, 1) !== 0) return 0
   const q = pQuestData >>> 0
@@ -824,6 +840,7 @@ export function ACT3Q2_SetGidbinnTurnInPartyCallback_6FD041D0_113c(
   pPlayer: number,
   _pArg: number = 0,
 ): void {
+  hitD2GameVa113c(0x6FD041D0)
   if (findQuestNodeInGame113c(m, pGame, 0x11) === 0) return
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
@@ -851,6 +868,7 @@ export function ACT3Q2_SetGidbinnState0ECallback_6FD04280_113c(
   pPlayer: number,
   _pArg: number = 0,
 ): number {
+  hitD2GameVa113c(0x6FD04280)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + nDiff * 4 + 0x10) >>> 0) >>> 0
@@ -874,6 +892,7 @@ export function ACT3Q2_AddGidbinnNpcDialogNodes_6FD042F0_113c(
   pQuestData: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD042F0)
   const q = pQuestData >>> 0
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0
   const pGame = m.u32(pQuestArg >>> 0) >>> 0
@@ -964,6 +983,7 @@ export function ACT3Q2_GidbinnActiveFilter_6FD04500_113c(
   pQuestFlags: number,
   _pNpc: number = 0,
 ): number {
+  hitD2GameVa113c(0x6FD04500)
   if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x13, 0) !== 0) return 0
   const q = pQuestData >>> 0
   const npcId = nNpcClassId >>> 0
@@ -1013,6 +1033,7 @@ export function ACT3Q2_GidbinnStatusFilter_6FD045B0_113c(
   pQuestFlags: number,
   pOutStatus: number,
 ): number {
+  hitD2GameVa113c(0x6FD045B0)
   const out = pOutStatus >>> 0
   if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x0f, 0) === 0) {
     m.setU8(out, 0)
@@ -1073,6 +1094,7 @@ export function ACT3Q2_SyncPlayerGidbinnStateCallback_6FD046F0_113c(
   pPlayer: number,
   _pArg: number = 0,
 ): number {
+  hitD2GameVa113c(0x6FD046F0)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + nDiff * 4 + 0x10) >>> 0) >>> 0
@@ -1112,6 +1134,7 @@ export function ACT3Q3_KhalimsWillStatusFilter_6FD04AB0_113c(
   pQuestFlags: number,
   pOutStatus: number,
 ): number {
+  hitD2GameVa113c(0x6FD04AB0)
   const out = pOutStatus >>> 0
   const q = pQuestData >>> 0
   m.setU8(out, 0)
@@ -1213,6 +1236,7 @@ export function ACT3Q3_AddKhalimsWillCainDialogNodes_6FD04C90_113c(
   pQuestData: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD04C90)
   const q = pQuestData >>> 0
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0
   const pGame = m.u32(pQuestArg >>> 0) >>> 0
@@ -1337,6 +1361,7 @@ export function ACT3Q3_KhalimsWillActiveFilter_6FD04F60_113c(
   pQuestFlags: number,
   _pNpc: number = 0,
 ): number {
+  hitD2GameVa113c(0x6FD04F60)
   if ((nNpcClassId >>> 0) !== 0xf5) return 0
   const q = pQuestData >>> 0
   if (m.u8((q + 0x0c) >>> 0) >= 1 && DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x12, 2) === 0) {
@@ -1417,6 +1442,7 @@ export function ACT3Q4_SyncLamEsensTomeQuestFromPlayer_6FD050C0_113c(
   pQuestData: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD050C0)
   const q = pQuestData >>> 0
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0
   const pGame = m.u32(pQuestArg >>> 0) >>> 0
@@ -1468,6 +1494,7 @@ export function ACT3Q4_AddLamEsensTomeNpcDialogNodes_6FD05270_113c(
   pQuestData: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD05270)
   const q = pQuestData >>> 0
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0
   const pGame = m.u32(pQuestArg >>> 0) >>> 0
@@ -1519,6 +1546,7 @@ export function ACT3Q0_SyncHratliIntroQuestFromPlayer_6FD05450_113c(
   pQuestData: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD05450)
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0
   const pGame = m.u32(pQuestArg >>> 0) >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
@@ -1540,6 +1568,7 @@ export function ACT3Q0_AddHratliIntroDialogNodes_6FD054C0_113c(
   pQuestData: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD054C0)
   const pNpc = m.u32((pQuestArg + 0x08) >>> 0) >>> 0
   if (pNpc === 0 || m.u32((pNpc + 0x04) >>> 0) !== 0xfd) return
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0
@@ -1564,6 +1593,7 @@ export function ACT3Q0_OnHratliIntroSpeechDone_6FD05540_113c(
   pQuestData: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD05540)
   const wNpcId = m.u16((pQuestArg + 0x14) >>> 0)
   const wMsgId = m.u16((pQuestArg + 0x18) >>> 0)
   if (wNpcId !== 0xfd) return
@@ -1593,6 +1623,7 @@ export function ACT3_CainIntroActiveFilter_6FD055C0_113c(
   _pQuestFlags: number = 0,
   _pNpc: number = 0,
 ): number {
+  hitD2GameVa113c(0x6FD055C0)
   if ((nNpcClassId >>> 0) !== 0xf5) return 0
   const pGame = m.u32((pQuestData + 0x04) >>> 0) >>> 0
   return QUESTS_GetPlayerNpcIntroFlag_6FC89590_113c(m, pPlayer, 0xf5, pGame) === 0 ? 1 : 0
@@ -1623,6 +1654,7 @@ export function ACT3_AddKurastNpcIntroDialogNodes_6FD055F0_113c(
   pQuestData: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD055F0)
   const pNpc = m.u32((pQuestArg + 0x08) >>> 0) >>> 0
   const nNpcId = pNpc === 0 ? 0xffffffff : m.u32((pNpc + 0x04) >>> 0) >>> 0
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0
@@ -1664,6 +1696,7 @@ export function ACT3_OnKurastNpcIntroSpeechDone_6FD056E0_113c(
   _pQuestData: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD056E0)
   const wMsgId = m.u16((pQuestArg + 0x18) >>> 0)
   const nNpcId = m.u32((pQuestArg + 0x14) >>> 0) >>> 0
   let matched = false
@@ -1700,6 +1733,7 @@ export function ACT3Q7_ActivateMephistoBridgeAndPortal_6FD05A60_113c(
   m: D2KernMemory113c,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FD05A60)
   const pQuest14 = findQuestNodeInGame113c(m, pGame, 0x14)
   if (pQuest14 === 0) return
   const pQuestEx = m.u32((pQuest14 + 0x18) >>> 0) >>> 0
@@ -1728,6 +1762,7 @@ export function ACT3Q7_SendMephistoQuestAlertCallback_6FD05BE0_113c(
   pPlayer: number,
   _pArg: number = 0,
 ): number {
+  hitD2GameVa113c(0x6FD05BE0)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + nDiff * 4 + 0x10) >>> 0) >>> 0
@@ -1756,6 +1791,7 @@ export function ACT3Q5_SendTravincalQuestAlertCallback_6FD05D20_113c(
   pPlayer: number,
   _pArg: number = 0,
 ): number {
+  hitD2GameVa113c(0x6FD05D20)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + nDiff * 4 + 0x10) >>> 0) >>> 0
@@ -1787,6 +1823,7 @@ export function ACT3Q5_UpdateTravincalNearCouncilKillCallback_6FD05D80_113c(
   pPlayer: number,
   _pArg: number = 0,
 ): number {
+  hitD2GameVa113c(0x6FD05D80)
   const g = pGame >>> 0
   const u = pPlayer >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, u) >>> 0
@@ -1855,6 +1892,7 @@ export function ACT3Q1_SendGoldenBirdQuestAlertCallback_6FD05F00_113c(
   pPlayer: number,
   _pArg: number = 0,
 ): number {
+  hitD2GameVa113c(0x6FD05F00)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + nDiff * 4 + 0x10) >>> 0) >>> 0
@@ -1881,6 +1919,7 @@ export function ACT3Q2_ActivateGidbinnAltarObject_6FD05F60_113c(
   m: D2KernMemory113c,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FD05F60)
   const g = pGame >>> 0
   const pQuest11 = findQuestNodeInGame113c(m, g, 0x11)
   if (pQuest11 === 0) return
@@ -1909,6 +1948,7 @@ export function ACT3Q2_SendGidbinnQuestAlertCallback_6FD06130_113c(
   pPlayer: number,
   _pArg: number = 0,
 ): number {
+  hitD2GameVa113c(0x6FD06130)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + nDiff * 4 + 0x10) >>> 0) >>> 0
@@ -1936,6 +1976,7 @@ export function ACT3Q3_OnKhalimRelicPickedUp_6FD06190_113c(
   pQuestData: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD06190)
   const q = pQuestData >>> 0
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0
   const pGame = m.u32(pQuestArg >>> 0) >>> 0
@@ -2032,6 +2073,7 @@ export function ACT3Q3_SendKhalimsWillQuestAlertCallback_6FD06420_113c(
   pPlayer: number,
   _pArg: number = 0,
 ): number {
+  hitD2GameVa113c(0x6FD06420)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + nDiff * 4 + 0x10) >>> 0) >>> 0
@@ -2056,6 +2098,7 @@ export function ACT3Q4_CompleteLamEsensTomePartyCallback_6FD064C0_113c(
   pPlayer: number,
   _pArg: number = 0,
 ): number {
+  hitD2GameVa113c(0x6FD064C0)
   const pRoom = UNITS_GetRoom113c(m, pPlayer) >>> 0
   if (pRoom === 0) return 0
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
@@ -2084,6 +2127,7 @@ export function ACT3Q4_SendLamEsensTomeQuestAlertCallback_6FD06550_113c(
   pPlayer: number,
   _pArg: number = 0,
 ): number {
+  hitD2GameVa113c(0x6FD06550)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + nDiff * 4 + 0x10) >>> 0) >>> 0
@@ -2112,6 +2156,7 @@ export function ACT3Q5_PropagateCouncilCompletionToPartyCallback_6FD06980_113c(
   pPlayer: number,
   _pArg: number = 0,
 ): number {
+  hitD2GameVa113c(0x6FD06980)
   const u = pPlayer >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, u) >>> 0
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
@@ -2145,6 +2190,7 @@ export function ACT3Q4_PropagateTomeQuestStateToSubParty_6FD06B90_113c(
   pGame: number,
   pPlayer: number,
 ): number {
+  hitD2GameVa113c(0x6FD06B90)
   const u = pPlayer >>> 0
   if (u !== 0) {
     const pUnitGame = m.u32((u + 0x80) >>> 0) >>> 0

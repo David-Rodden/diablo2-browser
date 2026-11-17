@@ -194,13 +194,13 @@ describe('[K2] Wave 2 Batch 4 (w2b4: 0x6FCABF80..0x6FCBE490)', () => {
         0x09,
       ),
     ).toBe(1)
-    expect(m.u32(c1.pQueue + 0x04)).toBe(11)
-    expect(m.u8(c1.pQueue + 0x08)).toBe(0x15)
-    expect(m.u8(c1.pQueue + 0x09)).toBe(0x01)
-    expect(m.u32(c1.pQueue + 0x0a)).toBe(0x11223344)
-    expect(m.u16(c1.pQueue + 0x0e)).toBe(0x1234)
-    expect(m.u16(c1.pQueue + 0x10)).toBe(0x5678)
-    expect(m.u8(c1.pQueue + 0x12)).toBe(0x09)
+    expect(m.u32(c1.pQueue + 0x00)).toBe(11)
+    expect(m.u8(c1.pQueue + 0x04)).toBe(0x15)
+    expect(m.u8(c1.pQueue + 0x05)).toBe(0x01)
+    expect(m.u32(c1.pQueue + 0x06)).toBe(0x11223344)
+    expect(m.u16(c1.pQueue + 0x0a)).toBe(0x1234)
+    expect(m.u16(c1.pQueue + 0x0c)).toBe(0x5678)
+    expect(m.u8(c1.pQueue + 0x0e)).toBe(0x09)
 
     // 2. S2C_QueueMonsterMovePacket12_6FCAC160_113c (12 bytes)
     const c2 = allocClientWithQueue(m)
@@ -216,13 +216,13 @@ describe('[K2] Wave 2 Batch 4 (w2b4: 0x6FCABF80..0x6FCBE490)', () => {
         0xcc,
       ),
     ).toBe(1)
-    expect(m.u32(c2.pQueue + 0x04)).toBe(12)
-    expect(m.u8(c2.pQueue + 0x08)).toBe(0x67)
-    expect(m.u32(c2.pQueue + 0x09)).toBe(0xdeadbeef)
-    expect(m.u8(c2.pQueue + 0x0d)).toBe(0xaa)
-    expect(m.u8(c2.pQueue + 0x0e)).toBe(0xbb)
-    expect(m.u32(c2.pQueue + 0x0f)).toBe(0x01020304)
-    expect(m.u8(c2.pQueue + 0x13)).toBe(0xcc)
+    expect(m.u32(c2.pQueue + 0x00)).toBe(12)
+    expect(m.u8(c2.pQueue + 0x04)).toBe(0x67)
+    expect(m.u32(c2.pQueue + 0x05)).toBe(0xdeadbeef)
+    expect(m.u8(c2.pQueue + 0x09)).toBe(0xaa)
+    expect(m.u8(c2.pQueue + 0x0a)).toBe(0xbb)
+    expect(m.u32(c2.pQueue + 0x0b)).toBe(0x01020304)
+    expect(m.u8(c2.pQueue + 0x0f)).toBe(0xcc)
 
     // 3. S2C_QueueUnitTargetMovePacket16_6FCAC230_113c (16 bytes)
     const c3 = allocClientWithQueue(m)
@@ -240,29 +240,29 @@ describe('[K2] Wave 2 Batch 4 (w2b4: 0x6FCABF80..0x6FCBE490)', () => {
         0x2222,
       ),
     ).toBe(1)
-    expect(m.u32(c3.pQueue + 0x04)).toBe(16)
-    expect(m.u8(c3.pQueue + 0x08)).toBe(0x68)
-    expect(m.u8(c3.pQueue + 0x09)).toBe(0x01)
-    expect(m.u32(c3.pQueue + 0x0a)).toBe(0x100)
-    expect(m.u8(c3.pQueue + 0x0e)).toBe(0x02)
-    expect(m.u8(c3.pQueue + 0x0f)).toBe(0x00)
-    expect(m.u32(c3.pQueue + 0x10)).toBe(0x200)
-    expect(m.u16(c3.pQueue + 0x14)).toBe(0x1111)
-    expect(m.u16(c3.pQueue + 0x16)).toBe(0x2222)
+    expect(m.u32(c3.pQueue + 0x00)).toBe(16)
+    expect(m.u8(c3.pQueue + 0x04)).toBe(0x68)
+    expect(m.u8(c3.pQueue + 0x05)).toBe(0x01)
+    expect(m.u32(c3.pQueue + 0x06)).toBe(0x100)
+    expect(m.u8(c3.pQueue + 0x0a)).toBe(0x02)
+    expect(m.u8(c3.pQueue + 0x0b)).toBe(0x00)
+    expect(m.u32(c3.pQueue + 0x0c)).toBe(0x200)
+    expect(m.u16(c3.pQueue + 0x10)).toBe(0x1111)
+    expect(m.u16(c3.pQueue + 0x12)).toBe(0x2222)
 
     // 4. S2C_QueueByteDwordPacket6_6FCAC3B0_113c (6 bytes)
     const c4 = allocClientWithQueue(m)
     expect(S2C_QueueByteDwordPacket6_6FCAC3B0_113c(m, 0x20, 0x03, 0x89abcdef, c4.pClient)).toBe(1)
-    expect(m.u32(c4.pQueue + 0x04)).toBe(6)
-    expect(m.u8(c4.pQueue + 0x08)).toBe(0x20)
-    expect(m.u8(c4.pQueue + 0x09)).toBe(0x03)
-    expect(m.u32(c4.pQueue + 0x0a)).toBe(0x89abcdef)
+    expect(m.u32(c4.pQueue + 0x00)).toBe(6)
+    expect(m.u8(c4.pQueue + 0x04)).toBe(0x20)
+    expect(m.u8(c4.pQueue + 0x05)).toBe(0x03)
+    expect(m.u32(c4.pQueue + 0x06)).toBe(0x89abcdef)
 
     // 5. S2C_QueueSingleBytePacket1_6FCAC490_113c (1 byte)
     const c5 = allocClientWithQueue(m)
     expect(S2C_QueueSingleBytePacket1_6FCAC490_113c(m, 0x97, c5.pClient)).toBe(1)
-    expect(m.u32(c5.pQueue + 0x04)).toBe(1)
-    expect(m.u8(c5.pQueue + 0x08)).toBe(0x97)
+    expect(m.u32(c5.pQueue + 0x00)).toBe(1)
+    expect(m.u8(c5.pQueue + 0x04)).toBe(0x97)
 
     // 6-8. S2C_Send10/7/11BytePacketToPlayerUnit
     const pBuf = m.alloc(16)
@@ -271,16 +271,16 @@ describe('[K2] Wave 2 Batch 4 (w2b4: 0x6FCABF80..0x6FCBE490)', () => {
     }
     const p6 = allocPlayerWithClient(m)
     expect(S2C_Send10BytePacketToPlayerUnit_6FCAC530_113c(m, p6.pPlayer, pBuf)).toBe(1)
-    expect(m.u32(p6.pQueue + 0x04)).toBe(10)
+    expect(m.u32(p6.pQueue + 0x00)).toBe(10)
     expect(S2C_Send10BytePacketToPlayerUnit_6FCAC530_113c(m, 0, pBuf)).toBe(0)
 
     const p7 = allocPlayerWithClient(m)
     expect(S2C_Send7BytePacketToPlayerUnit_6FCAC5F0_113c(m, p7.pPlayer, pBuf)).toBe(1)
-    expect(m.u32(p7.pQueue + 0x04)).toBe(7)
+    expect(m.u32(p7.pQueue + 0x00)).toBe(7)
 
     const p8 = allocPlayerWithClient(m)
     expect(S2C_Send11BytePacketToPlayerUnit_6FCAC690_113c(m, p8.pPlayer, pBuf)).toBe(1)
-    expect(m.u32(p8.pQueue + 0x04)).toBe(11)
+    expect(m.u32(p8.pQueue + 0x00)).toBe(11)
   })
 
   it('ITEMS_Send*Packet0E..01 (0x6FCADE50..0x6FCAE090) assert client match and emit 0x9C actions', () => {
@@ -316,11 +316,13 @@ describe('[K2] Wave 2 Batch 4 (w2b4: 0x6FCABF80..0x6FCBE490)', () => {
 
     // Matching client sends 0x9C with each action code
     const checkAction = (fn: () => void, expectedAction: number) => {
-      m.setU32(pClient + 0x1b8, 0)
+      m.setU32(pQueue, 0)
+      m.setU32(pClient + 0x1b8, pQueue)
+      m.setU32(pClient + 0x1bc, pQueue)
       fn()
-      expect(m.u32(pClient + 0x1b8)).toBeGreaterThan(2)
-      expect(m.u8(pClient + 0x1c0)).toBe(0x9c)
-      expect(m.u8(pClient + 0x1c1)).toBe(expectedAction)
+      expect(m.u32(pQueue)).toBeGreaterThan(2)
+      expect(m.u8(pQueue + 0x04)).toBe(0x9c)
+      expect(m.u8(pQueue + 0x05)).toBe(expectedAction)
     }
 
     checkAction(() => ITEMS_SendBeltRemoveItemPacket0E_6FCADE50_113c(m, pPlayer, pClient, pItem, 0), 0x0e)

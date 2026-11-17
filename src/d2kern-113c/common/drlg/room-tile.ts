@@ -47,6 +47,7 @@ import {
   DRLGVER_ScaleOutdoorsVertices113c,
 } from './drlg-ver.ts';
 import { DUNGEON_FreeActiveRoom113c, DUNGEON_FreeRoomAndDetachUnits113c } from '../dungeon.ts';
+import { hitD2CommonVa113c } from '../../va-trace-113c.ts';
 
 const ROOMTILE_STACK_BASE = 0x7ff90000;
 const ROOMTILE_STACK_SIZE = 0x4000;
@@ -192,6 +193,7 @@ export const WARP_TILE_DESC_6FDDBF28: ReadonlyArray<readonly [number, number, nu
  * Returns `pPath ? (pPath->dwFlags & 0x08) : 0`.
  */
 export function PATH_CheckFlag08_113c(m: Memory113c, pPath: number): number {
+  hitD2CommonVa113c(0x6FD5CE90);
   if (pPath === 0) return 0;
   return (m.get(pPath, D2DynamicPathStrc.dwFlags) & 0x08) >>> 0;
 }
@@ -209,6 +211,7 @@ export function PATH_CheckStepTargetDistance113c(
   pPath: number,
   pOutStepVec: number,
 ): number {
+  hitD2CommonVa113c(0x6FD5D0A0);
   const velX = m.get(pPath, D2DynamicPathStrc.tVelocityVectorX) | 0;
   const velY = m.get(pPath, D2DynamicPathStrc.tVelocityVectorY) | 0;
   m.setU32(pOutStepVec, velX >>> 0);
@@ -263,6 +266,7 @@ export function DRLGROOMTILE_FindPresetRoomTile113c(
   nX: number,
   nY: number,
 ): number {
+  hitD2CommonVa113c(0x6FDB81A0);
   const pTileGrid = m.get(pRoomEx, D2RoomExStrc.pTileGrid);
   if (pTileGrid === 0) return 0;
 
@@ -326,6 +330,7 @@ export function DRLGROOMTILE_LookupWarpTileEntryIndex113c(
   nLevelId: number,
   dwTileFlags: number,
 ): number {
+  hitD2CommonVa113c(0x6FDB8340);
   const lvl = nLevelId | 0;
   const type9 = bIsType9 | 0;
   const style = (dwTileFlags >>> 20) & 0x3f;
@@ -365,6 +370,7 @@ export function DRLGROOMTILE_CountPresetWallTileCells113c(
   pTypeGrid: number,
   bNoExtraWidth: number,
 ): void {
+  hitD2CommonVa113c(0x6FDB85D0);
   const w =
     ((m.get(pRoomEx, D2RoomExStrc.nTileWidth) | 0) + ((bNoExtraWidth | 0) === 0 ? 1 : 0)) | 0;
   const h =
@@ -431,6 +437,7 @@ export function DRLGROOMTILE_CountAllTileTypes113c(
   bNoExtraWidth: number,
   bNoExtraHeight: number,
 ): void {
+  hitD2CommonVa113c(0x6FDB8660);
   const w =
     ((m.get(pRoomEx, D2RoomExStrc.nTileWidth) | 0) + ((bNoExtraWidth | 0) === 0 ? 1 : 0)) | 0;
   const h =
@@ -500,6 +507,7 @@ export function DRLGROOMTILE_CountAllTileTypes113c(
  * `mov eax, ecx; cmp eax, edx; jg +2; mov eax, edx; ret 8`.
  */
 export function DRLGROOMTILE_MaxInt113c(a: number, b: number): number {
+  hitD2CommonVa113c(0x6FDB9DA0);
   const sa = a | 0;
   const sb = b | 0;
   return sa > sb ? sa : sb;
@@ -511,6 +519,7 @@ export function DRLGROOMTILE_MaxInt113c(a: number, b: number): number {
  * `mov eax, ecx; cmp eax, edx; jl +2; mov eax, edx; ret 8`.
  */
 export function DRLGROOMTILE_MinInt113c(a: number, b: number): number {
+  hitD2CommonVa113c(0x6FDB9DB0);
   const sa = a | 0;
   const sb = b | 0;
   return sa < sb ? sa : sb;
@@ -635,6 +644,7 @@ export function DRLGROOMTILE_CountPresetTileTypes113c(
   pTypeGrid: number,
   nDefaultType: number,
 ): void {
+  hitD2CommonVa113c(0x6FD62E50);
   const maxW = ((m.u32((edi + 0x3c) >>> 0) | 0) + ((eax | 0) === 0 ? 1 : 0)) | 0;
   const maxH = ((m.u32((edi + 0x40) >>> 0) | 0) + ((edx | 0) === 0 ? 1 : 0)) | 0;
   const ebp = (m.u32((edi + 0x54) >>> 0) + 0x14) >>> 0;
@@ -702,6 +712,7 @@ export function DRLGROOMTILE_GetWarpLevelsArray113c(
   eax: number,
   edx: number,
 ): number {
+  hitD2CommonVa113c(0x6FD69950);
   let pNode = m.u32((eax + 0x90) >>> 0);
   const lvl = edx | 0;
   while (pNode !== 0) {
@@ -737,6 +748,7 @@ export function DRLGROOMTILE_FreeTileDataArrays113c(
   eax: number,
   _edi: number,
 ): void {
+  hitD2CommonVa113c(0x6FDB7F50);
   const pTileGrid = m.u32((eax + 0x54) >>> 0);
   if (pTileGrid === 0) return;
   const esi = (pTileGrid + 0x14) >>> 0;
@@ -768,6 +780,7 @@ export function DRLGROOMTILE_ReallocRoofTiles113c(
   esi: number,
   edi: number,
 ): void {
+  hitD2CommonVa113c(0x6FDB7FD0);
   if (edi === 0) return;
   const oldRoofs = m.u32((esi + 0x24) >>> 0);
   const curCap = m.u32((esi + 0x28) >>> 0);
@@ -811,6 +824,7 @@ export function DRLGROOMTILE_ReallocRoofTiles113c(
  * and `pRoofs` (`nRoofCapacity * 48`, only when `pRoofs == 0`) via `Fog.#10045`.
  */
 export function DRLGROOMTILE_AllocTileData113c(m: Memory113c, eax: number): void {
+  hitD2CommonVa113c(0x6FDB8040);
   const pLevel = m.u32((eax + 0x58) >>> 0);
   const pDrlg = m.u32((pLevel + 0x1b4) >>> 0);
   void m.u32((pDrlg + 0x478) >>> 0);
@@ -857,6 +871,7 @@ export function DRLGROOMTILE_GetTileCache113c(
   eax: number,
   nOrientation: number,
 ): number {
+  hitD2CommonVa113c(0x6FDB8B90);
   let style = 0;
   let seq = 0;
   if (eax !== 0) {
@@ -926,6 +941,7 @@ export function DRLGROOMTILE_InitRoofTileData113c(
   nY: number,
   pTileCache: number,
 ): number {
+  hitD2CommonVa113c(0x6FDB8CD0);
   const pTileGrid = m.u32((ecx + 0x54) >>> 0);
   const nRoofs = m.u32((pTileGrid + 0x10) >>> 0);
   const esi = (m.u32((pTileGrid + 0x24) >>> 0) + Math.imul(nRoofs, 0x30)) >>> 0;
@@ -1020,6 +1036,7 @@ export function DRLGROOMTILE_InitTileData113c(
   dwTileFlags: number,
   pTileCache: number,
 ): void {
+  hitD2CommonVa113c(0x6FDB8DF0);
   m.setU32((esi + 0x18) >>> 0, pTileCache >>> 0);
   m.setU32((esi + 0x1c) >>> 0, 0);
   m.setU32((esi + 0x14) >>> 0, 0);
@@ -1132,6 +1149,7 @@ export function DRLGROOMTILE_FreeRoomTileGridAndAnimList113c(
   m: Memory113c,
   pRoomEx: number,
 ): void {
+  hitD2CommonVa113c(0x6FDB8510);
   const roomEx = pRoomEx >>> 0;
   const pLevel = m.u32((roomEx + 0x58) >>> 0);
   const pDrlg = m.u32((pLevel + 0x1b4) >>> 0);
@@ -1175,6 +1193,7 @@ export function DRLGROOMTILE_UpdateWindowTileCacheEntry113c(
   pWindowNode: number,
   nOrientation: number,
 ): void {
+  hitD2CommonVa113c(0x6FDB8800);
   if (pWindowNode === 0) {
     throw new D2CommonAssertError(
       '..\\Source\\D2Common\\DRLG\\RoomTile.cpp',
@@ -1219,6 +1238,7 @@ export function DRLGROOMTILE_InitFloorTileData113c(
   dwTileFlags: number,
   pTileCache: number,
 ): number {
+  hitD2CommonVa113c(0x6FDB9170);
   const roomEx = pRoomEx >>> 0;
   const ppList = ppTileList >>> 0;
   const pTileGrid = m.get(roomEx, D2RoomExStrc.pTileGrid);
@@ -1265,6 +1285,7 @@ export function DRLGROOMTILE_FindAdjacentRoomTileGrid113c(
   nY: number,
   ppOutRoomEx: number,
 ): number {
+  hitD2CommonVa113c(0x6FDB8780);
   const roomEx = pRoomEx >>> 0;
   const flags = dwPresetFlags >>> 0;
   const ppOut = ppOutRoomEx >>> 0;
@@ -1344,6 +1365,7 @@ export function DRLGROOMTILE_RasterizeOutdoorRoadsToPreset113c(
   pRoomEx: number,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FD8DC90);
   const roomEx = pRoomEx >>> 0;
   const level = pLevel >>> 0;
   const pPreset = m.u32((roomEx + 0x20) >>> 0);
@@ -1382,6 +1404,7 @@ export function DRLGROOMTILE_SpawnWarpPresetUnit113c(
   nTileY: number,
   nTileType: number,
 ): void {
+  hitD2CommonVa113c(0x6FDB8970);
   const tileData = pTileData >>> 0;
   const roomEx = pRoomEx >>> 0;
   let bIsType9 = 0;
@@ -1446,6 +1469,7 @@ export function DRLGROOMTILE_AllocLevelWarpPresetUnit113c(
   nTileY: number,
   nTileType: number,
 ): number {
+  hitD2CommonVa113c(0x6FDB9090);
   const roomEx = pRoomEx >>> 0;
   const flags = dwTileFlags >>> 0;
   const pLevel = m.u32((roomEx + 0x58) >>> 0);
@@ -1492,6 +1516,7 @@ export function DRLGROOMTILE_ApplyTileFlagsAndSpawnWarp113c(
   nTileType: number,
   nTileY: number,
 ): void {
+  hitD2CommonVa113c(0x6FDB8A90);
   const roomEx = pRoomEx >>> 0;
   const tileData = pTileData >>> 0;
   const flags = dwTileFlags >>> 0;
@@ -1559,6 +1584,7 @@ export function DRLGROOMTILE_BuildPresetRoomTiles113c(
   m: Memory113c,
   pRoomEx: number,
 ): void {
+  hitD2CommonVa113c(0x6FD5C940);
   const roomEx = pRoomEx >>> 0;
   let pTileGrid = m.u32((roomEx + 0x54) >>> 0);
   if (pTileGrid === 0) {
@@ -1688,6 +1714,7 @@ export function DRLGPRESET_UpdateRoomTileAnims113c(
   nCount: number,
   pGridArray: number,
 ): void {
+  hitD2CommonVa113c(0x6FD62F80);
   const tileArr = pTileData >>> 0;
   if (tileArr === 0) return;
   const roomEx = pRoomEx >>> 0;
@@ -1804,6 +1831,7 @@ export function DRLGROOMTILE_InitOutdoorRoomTilesAndWallGrids113c(
   m: Memory113c,
   pRoomEx: number,
 ): void {
+  hitD2CommonVa113c(0x6FD9A670);
   const roomEx = pRoomEx >>> 0;
   const pLevel = m.u32((roomEx + 0x58) >>> 0) >>> 0;
   const pDrlg = m.u32((pLevel + 0x1b4) >>> 0) >>> 0;
@@ -1937,6 +1965,7 @@ export function DRLGROOMTILE_BuildOutdoorRoomTileData113c(
   m: Memory113c,
   pRoomEx: number,
 ): void {
+  hitD2CommonVa113c(0x6FD9A9B0);
   const roomEx = pRoomEx >>> 0;
   if ((m.u32((roomEx + 0x54) >>> 0) >>> 0) === 0) {
     const pLevel = m.u32((roomEx + 0x58) >>> 0) >>> 0;
@@ -1973,6 +2002,7 @@ export function DRLGROOMTILE_FreeRoomResources113c(
   pRoomEx: number,
   bKeepActiveFlag: number,
 ): void {
+  hitD2CommonVa113c(0x6FDB88B0);
   const roomEx = pRoomEx >>> 0;
   const pLevel = m.u32((roomEx + 0x58) >>> 0) >>> 0;
   const pDrlg = m.u32((pLevel + 0x1b4) >>> 0) >>> 0;
@@ -2030,6 +2060,7 @@ export function DRLGROOMTILE_AddWallTileData113c(
   pTileCache: number,
   nTileType: number,
 ): number {
+  hitD2CommonVa113c(0x6FDB8F00);
   const roomEx = pRoomEx >>> 0;
   const pTileGrid = m.u32((roomEx + 0x54) >>> 0) >>> 0;
   const idx = m.u32((pTileGrid + 0x08) >>> 0) | 0;
@@ -2111,6 +2142,7 @@ export function DRLGROOMTILE_AddLinkedWarpTileData113c(
   nY: number,
   nLayer: number,
 ): void {
+  hitD2CommonVa113c(0x6FDB91C0);
   const roomEx = pRoomEx >>> 0;
   const flags = dwFlags >>> 0;
   m.setU32((roomEx + 0x28) >>> 0, (m.u32((roomEx + 0x28) >>> 0) | 0x800000) >>> 0);
@@ -2182,6 +2214,7 @@ export function DRLGROOMTILE_LinkWarpTileToDoorPreset113c(
   dwFlags: number,
   nLayer: number,
 ): void {
+  hitD2CommonVa113c(0x6FDB9360);
   const roomEx = pRoomEx >>> 0;
   const tileData = pTileData >>> 0;
   const flags = dwFlags >>> 0;
@@ -2252,6 +2285,7 @@ export function DRLGROOMTILE_AddTileDataToRoomLink113c(
   nX: number,
   nY: number,
 ): number {
+  hitD2CommonVa113c(0x6FDB9470);
   const tileType = nTileType | 0;
   const roomEx = pRoomEx >>> 0;
   const x = nX | 0;
@@ -2338,6 +2372,7 @@ export function DRLGROOMTILE_UpdateTileData113c(
   nX: number,
   nY: number,
 ): void {
+  hitD2CommonVa113c(0x6FDB95D0);
   const tileType = nTileType | 0;
   const tileData = pTileData >>> 0;
   const roomEx = pRoomEx >>> 0;
@@ -2452,6 +2487,7 @@ export function DRLGROOMTILE_InsertOrUpdateTileAtCoord113c(
   pRoomEx: number,
   nTileType: number,
 ): void {
+  hitD2CommonVa113c(0x6FDB97C0);
   const sm = withRoomTileStackScratch113c(m);
   const pOutAdj = (ROOMTILE_STACK_BASE + 0x80) >>> 0;
   sm.setU32(pOutAdj, 0);
@@ -2504,6 +2540,7 @@ export function DRLGROOMTILE_ProcessGridCellTile113c(
   nY: number,
   bCheckRoomBounds = 0,
 ): void {
+  hitD2CommonVa113c(0x6FDB9820);
   let flags = dwFlags >>> 0;
   const roomEx = pRoomEx >>> 0;
   const tileType = nTileType | 0;
@@ -2647,6 +2684,7 @@ export function DRLGROOMTILE_PopulateRoomTileGrid113c(
   bAddBorderX: number,
   bAddBorderY: number,
 ): void {
+  hitD2CommonVa113c(0x6FDB9B50);
   const roomEx = pRoomEx >>> 0;
   const pLevel = m.u32((roomEx + 0x58) >>> 0) >>> 0;
   const pDrlg = m.u32((pLevel + 0x1b4) >>> 0) >>> 0;
@@ -2695,6 +2733,7 @@ export function DRLGOUTWILD_ResolveOutdoorRoomBridgeTargets113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FD8DD40);
   const sm = withRoomTileStackScratch113c(m);
   const level = pLevel >>> 0;
   const pOutdoors = sm.u32((level + 0x14) >>> 0);
@@ -2808,6 +2847,7 @@ export function DRLGOUTWILD_BuildOutdoorPathsAndEnv113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FD8E000);
   const level = pLevel >>> 0;
   const pOutdoors = m.u32((level + 0x14) >>> 0);
   DRLGVER_CollectOutdoorRoomLinks113c(m, level);

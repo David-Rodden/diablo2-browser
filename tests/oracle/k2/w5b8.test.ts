@@ -497,7 +497,7 @@ describe('K2 Wave 5 Batch 8 (w5b8: 45 D2Game.dll 1.13c VAs 0x6FD03050..0x6FD06B9
     m.setU32(pPickupArg + 0x0c, pPlayer)
     ACT3Q3_OnKhalimRelicPickedUp_6FD06190_113c(m, pQ12, pPickupArg)
     const pQueue = m.u32(pClient + 0x1bc)
-    expect(m.u32(pQueue + 0x04)).toBe(6)
+    expect(m.u32(pQueue + 0x00)).toBe(6)
 
     ACT3Q4_CompleteLamEsensTomePartyCallback_6FD064C0_113c(m, pGame, pPlayer)
     expect(DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x11, 0)).toBe(1)

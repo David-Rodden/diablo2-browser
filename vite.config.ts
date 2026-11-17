@@ -15,6 +15,9 @@ import type { AssetManifest } from './src/common/pack-contract/index.ts'
 import { createK1ShowcaseHttpMiddleware } from './tools/oracle/k1-showcase-server.ts'
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
+const PUBLIC_DIR = process.env.D2_VITE_PUBLIC_DIR
+  ? resolve(process.env.D2_VITE_PUBLIC_DIR)
+  : resolve(__dirname, 'public')
 
 function discoverPluginHtmlEntries(rootDir: string): Record<string, string> {
   const pluginsDir = resolve(rootDir, 'plugins')
@@ -36,17 +39,18 @@ function discoverPluginHtmlEntries(rootDir: string): Record<string, string> {
  * standalone kernel showcase page (`showcase/k1/index.html`, which is not a game plugin).
  */
 export default defineConfig({
+  publicDir: PUBLIC_DIR,
   plugins: [
     {
       name: 'd2-sidecar-asset-compression',
       configureServer(server) {
         server.middlewares.use(
-          createSidecarAssetHttpMiddleware({ publicDir: resolve(__dirname, 'public') }),
+          createSidecarAssetHttpMiddleware({ publicDir: PUBLIC_DIR }),
         )
       },
       configurePreviewServer(server) {
         server.middlewares.use(
-          createSidecarAssetHttpMiddleware({ publicDir: resolve(__dirname, 'public') }),
+          createSidecarAssetHttpMiddleware({ publicDir: PUBLIC_DIR }),
         )
       },
     },
@@ -83,12 +87,12 @@ export default defineConfig({
       name: 'd2-site-config-api',
       configureServer(server) {
         server.middlewares.use(
-          createSiteConfigHttpMiddleware({ publicDir: resolve(__dirname, 'public') }),
+          createSiteConfigHttpMiddleware({ publicDir: PUBLIC_DIR }),
         )
       },
       configurePreviewServer(server) {
         server.middlewares.use(
-          createSiteConfigHttpMiddleware({ publicDir: resolve(__dirname, 'public') }),
+          createSiteConfigHttpMiddleware({ publicDir: PUBLIC_DIR }),
         )
       },
     },
@@ -116,7 +120,7 @@ export default defineConfig({
             /^\/(?:diablo2\/)?asset-manifest\.json(?:\?.*)?$/.test(req.url)
           ) {
             try {
-              const publicDir = resolve(__dirname, 'public')
+              const publicDir = PUBLIC_DIR
               const manifestFile = resolve(publicDir, 'asset-manifest.json')
               const baseManifest = existsSync(manifestFile)
                 ? (JSON.parse(readFileSync(manifestFile, 'utf8')) as AssetManifest)

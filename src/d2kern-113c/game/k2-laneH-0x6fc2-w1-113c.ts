@@ -59,6 +59,7 @@ import {
   SUNIT_ValidatePathTargetUnit113c,
   type RegpopSpawnHooks113c,
 } from './regpop-spawn-113c.ts'
+import { hitD2GameVa113c } from '../va-trace-113c.ts'
 
 /** Optional host/spawn hooks for `Fog.#10045` pool allocation and `MONSTER_Create` dispatch. */
 export interface LaneH0x6fc2Hooks113c {
@@ -204,6 +205,7 @@ export function PLAYER_GetQuestRecordForDifficulty_6FC21020_113c(
   pPlayer: number,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FC21020)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer >>> 0)
   const nDifficulty = m.u8((pGame + 0x6d) >>> 0)
   return m.u32((pPlayerData + (nDifficulty << 2) + 0x10) >>> 0) >>> 0
@@ -222,6 +224,7 @@ export function STATLIST_SetUnitStatGoldGuarded_6FC21040_113c(
   nStatId: number,
   nValue: number,
 ): void {
+  hitD2GameVa113c(0x6FC21040)
   const u = pUnit >>> 0
   if (u === 0) return
   const statId = nStatId | 0
@@ -258,6 +261,7 @@ export function CHARSTATS_GetRecordPtrFast_6FC210A0_113c(
   m: Memory113c,
   nClassId: number,
 ): number {
+  hitD2GameVa113c(0x6FC210A0)
   return lookupTableRecordFast113c(m, nClassId, 0xbc4, 0xbc8, 0xc4)
 }
 
@@ -272,6 +276,7 @@ export function SEED_StepSeed64Fast_6FC21160_113c(
   m: Memory113c,
   pSeed: number,
 ): number {
+  hitD2GameVa113c(0x6FC21160)
   const addr = pSeed >>> 0
   const lo = BigInt(m.u32(addr))
   const hi = BigInt(m.u32((addr + 0x04) >>> 0))
@@ -293,6 +298,7 @@ export function MONSTER_GetInteractDataPtr_6FC21370_113c(
   m: Memory113c,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC21370)
   return readMonsterDataDword113c(m, pUnit, 0x30)
 }
 
@@ -306,6 +312,7 @@ export function MONSTER_GetMonStatsTxtFromUnit_6FC21540_113c(
   m: Memory113c,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC21540)
   return readMonsterDataDword113c(m, pUnit, 0x00)
 }
 
@@ -321,6 +328,7 @@ export function MONTYPE_TestNestedBit_6FC21620_113c(
   nBitMonType: number,
   nRowMonType: number,
 ): number {
+  hitD2GameVa113c(0x6FC21620)
   const bitType = nBitMonType | 0
   const rowType = nRowMonType | 0
   if (bitType <= 0) return 0
@@ -351,6 +359,7 @@ export function STATLIST_AddUnitStatGoldGuarded_6FC21670_113c(
   nStatId: number,
   nDelta: number,
 ): void {
+  hitD2GameVa113c(0x6FC21670)
   const u = pUnit >>> 0
   if (u === 0) return
   const statId = nStatId | 0
@@ -389,6 +398,7 @@ export function UNIQUEITEMS_GetRecordPtrFast_6FC216F0_113c(
   m: Memory113c,
   nUniqueId: number,
 ): number {
+  hitD2GameVa113c(0x6FC216F0)
   return lookupTableRecordFast113c(m, nUniqueId, 0xc24, 0xc28, 0x14c)
 }
 
@@ -404,6 +414,7 @@ export function PLAYER_GetWaypointDataForDifficulty_6FC21720_113c(
   pPlayer: number,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FC21720)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer >>> 0)
   const nDifficulty = m.u8((pGame + 0x6d) >>> 0)
   return m.u32((pPlayerData + (nDifficulty << 2) + 0x1c) >>> 0) >>> 0
@@ -419,6 +430,7 @@ export function SKILLS_GetMaxSkillLevel_6FC21740_113c(
   m: Memory113c,
   nSkillId: number,
 ): number {
+  hitD2GameVa113c(0x6FC21740)
   const id = nSkillId | 0
   if (id < 0) return 0x14
   const pDataTables = getDataTablesPtr113c(m)
@@ -439,6 +451,7 @@ export function DATATBLS_GetTableWordAE0_6FC21830_113c(
   m: Memory113c,
   nIndex: number,
 ): number {
+  hitD2GameVa113c(0x6FC21830)
   const idx = nIndex | 0
   if (idx < 0 || idx >= 0x42) return -1
   const pDataTables = getDataTablesPtr113c(m)
@@ -455,6 +468,7 @@ export function MONSTER_GetAiGeneralPtr_6FC218E0_113c(
   m: Memory113c,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC218E0)
   return readMonsterDataDword113c(m, pUnit, 0x28)
 }
 
@@ -469,6 +483,7 @@ export function SKILLS_EvalLinearParam34_6FC21A40_113c(
   nSkillId: number,
   nLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC21A40)
   return evalSkillLinearParamPair113c(m, nSkillId, nLevel, 0x150, 0x154)
 }
 
@@ -483,6 +498,7 @@ export function SKILLS_EvalLinearParam56_6FC21A90_113c(
   nSkillId: number,
   nLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC21A90)
   return evalSkillLinearParamPair113c(m, nSkillId, nLevel, 0x158, 0x15c)
 }
 
@@ -496,6 +512,7 @@ export function OVERLAY_GetRecordPtrFast_6FC21AE0_113c(
   m: Memory113c,
   nOverlayId: number,
 ): number {
+  hitD2GameVa113c(0x6FC21AE0)
   return lookupTableRecordFast113c(m, nOverlayId, 0xbc, 0xc4, 0x3c)
 }
 
@@ -510,6 +527,7 @@ export function SKILLS_EvalLinearParam12_6FC21B10_113c(
   nSkillId: number,
   nLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC21B10)
   return evalSkillLinearParamPair113c(m, nSkillId, nLevel, 0x148, 0x14c)
 }
 
@@ -523,6 +541,7 @@ export function PETTYPE_GetRecordPtrFast_6FC21B60_113c(
   m: Memory113c,
   nPetType: number,
 ): number {
+  hitD2GameVa113c(0x6FC21B60)
   return lookupTableRecordFast113c(m, nPetType, 0xbe8, 0xbf0, 0xe0)
 }
 
@@ -532,6 +551,7 @@ export function PETTYPE_GetRecordPtrFast_6FC21B60_113c(
  * @va D2Game:0x6FC21B90
  */
 export function SKILLS_GetParam1Fast_6FC21B90_113c(m: Memory113c, nSkillId: number): number {
+  hitD2GameVa113c(0x6FC21B90)
   return readSkillParamFast113c(m, nSkillId, 0x148)
 }
 
@@ -541,6 +561,7 @@ export function SKILLS_GetParam1Fast_6FC21B90_113c(m: Memory113c, nSkillId: numb
  * @va D2Game:0x6FC21BC0
  */
 export function SKILLS_GetParam2Fast_6FC21BC0_113c(m: Memory113c, nSkillId: number): number {
+  hitD2GameVa113c(0x6FC21BC0)
   return readSkillParamFast113c(m, nSkillId, 0x14c)
 }
 
@@ -550,6 +571,7 @@ export function SKILLS_GetParam2Fast_6FC21BC0_113c(m: Memory113c, nSkillId: numb
  * @va D2Game:0x6FC21BF0
  */
 export function SKILLS_GetParam3Fast_6FC21BF0_113c(m: Memory113c, nSkillId: number): number {
+  hitD2GameVa113c(0x6FC21BF0)
   return readSkillParamFast113c(m, nSkillId, 0x150)
 }
 
@@ -559,6 +581,7 @@ export function SKILLS_GetParam3Fast_6FC21BF0_113c(m: Memory113c, nSkillId: numb
  * @va D2Game:0x6FC21C20
  */
 export function SKILLS_GetParam4Fast_6FC21C20_113c(m: Memory113c, nSkillId: number): number {
+  hitD2GameVa113c(0x6FC21C20)
   return readSkillParamFast113c(m, nSkillId, 0x154)
 }
 
@@ -568,6 +591,7 @@ export function SKILLS_GetParam4Fast_6FC21C20_113c(m: Memory113c, nSkillId: numb
  * @va D2Game:0x6FC21C50
  */
 export function SKILLS_GetParam5Fast_6FC21C50_113c(m: Memory113c, nSkillId: number): number {
+  hitD2GameVa113c(0x6FC21C50)
   return readSkillParamFast113c(m, nSkillId, 0x158)
 }
 
@@ -585,6 +609,7 @@ export function MONSTATS_FollowSubClassChain_6FC21D30_113c(
   nClassId: number,
   nSteps: number,
 ): number {
+  hitD2GameVa113c(0x6FC21D30)
   const cls = nClassId | 0
   if (cls < 0) return -1
   const pDataTables = getDataTablesPtr113c(m)
@@ -619,6 +644,7 @@ export function MONSTER_GetMonsterDataField2C_6FC21DD0_113c(
   m: Memory113c,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC21DD0)
   return readMonsterDataDword113c(m, pUnit, 0x2c)
 }
 
@@ -632,6 +658,7 @@ export function MONLVL_GetRecordPtrFast_6FC21E90_113c(
   m: Memory113c,
   nLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC21E90)
   return lookupTableRecordFast113c(m, nLevel, 0xb70, 0xb74, 0x78)
 }
 
@@ -641,6 +668,7 @@ export function MONLVL_GetRecordPtrFast_6FC21E90_113c(
  * @va D2Game:0x6FC21EC0
  */
 export function SKILLS_GetParam6Fast_6FC21EC0_113c(m: Memory113c, nSkillId: number): number {
+  hitD2GameVa113c(0x6FC21EC0)
   return readSkillParamFast113c(m, nSkillId, 0x15c)
 }
 
@@ -650,6 +678,7 @@ export function SKILLS_GetParam6Fast_6FC21EC0_113c(m: Memory113c, nSkillId: numb
  * @va D2Game:0x6FC21EF0
  */
 export function SKILLS_GetParam7Fast_6FC21EF0_113c(m: Memory113c, nSkillId: number): number {
+  hitD2GameVa113c(0x6FC21EF0)
   return readSkillParamFast113c(m, nSkillId, 0x160)
 }
 
@@ -666,6 +695,7 @@ export function STORM_TSHashTableLookup_6FC22130_113c(
   pHashTable: number,
   dwKey: number,
 ): number {
+  hitD2GameVa113c(0x6FC22130)
   const tbl = pHashTable >>> 0
   const key = dwKey >>> 0
   const mask0 = m.u32((tbl + 0x24) >>> 0)
@@ -700,6 +730,7 @@ export function STORM_TSListUnlinkAll_6FC22180_113c(
   m: Memory113c,
   pList: number,
 ): void {
+  hitD2GameVa113c(0x6FC22180)
   const list = pList >>> 0
   while (true) {
     const pHead = m.u32((list + 0x08) >>> 0) >>> 0
@@ -739,6 +770,7 @@ export function STORM_TSListInitDefault_6FC224B0_113c(
   m: Memory113c,
   pList: number,
 ): number {
+  hitD2GameVa113c(0x6FC224B0)
   const addr = pList >>> 0
   const term = (addr + 0x04) >>> 0
   const notTerm = (~term) >>> 0
@@ -765,6 +797,7 @@ export function STORM_TSArrayCalcChunkSize_6FC225F0_113c(
   nCount: number,
   pArray: number,
 ): number {
+  hitD2GameVa113c(0x6FC225F0)
   let v = nCount >>> 0
   if (v >= 0x15) {
     m.setU32((pArray + 0x0c) >>> 0, 0x15)
@@ -790,6 +823,7 @@ export function STORM_TSListInitFromPrototype_6FC22740_113c(
   pDstList: number,
   pSrcList: number,
 ): number {
+  hitD2GameVa113c(0x6FC22740)
   const dst = pDstList >>> 0
   const term = (dst + 0x04) >>> 0
   m.setU32(term, 0)
@@ -814,6 +848,7 @@ export function MONSTER_TestUnitMonTypeFlag_6FC22790_113c(
   pUnit: number,
   nMonType: number,
 ): number {
+  hitD2GameVa113c(0x6FC22790)
   const u = pUnit >>> 0
   if (u === 0) return 0
   if (m.u32(u) !== 1) return 0
@@ -855,6 +890,7 @@ export function CHECKSUM_ComputeCrc32_6FC2B470_113c(
   pData: number,
   nLen: number,
 ): number {
+  hitD2GameVa113c(0x6FC2B470)
   const len = nLen >>> 0
   if (len === 0) {
     throw new D2CommonAssertError('', 0x40)
@@ -884,6 +920,7 @@ export function OBJRGN_CheckCoordSpacing40_6FC2B670_113c(
   nX: number,
   nY: number,
 ): number {
+  hitD2GameVa113c(0x6FC2B670)
   const pObjectCtrl = m.u32((pGame + 0x10f0) >>> 0) >>> 0
   const pRegion = m.u32((pObjectCtrl + imul32(nAct | 0, 4) + 0x48) >>> 0) >>> 0
   const count = m.u32((pRegion + 0x14) >>> 0) | 0
@@ -918,6 +955,7 @@ export function OBJRGN_CheckCoordSpacing20_6FC2B700_113c(
   nX: number,
   nY: number,
 ): number {
+  hitD2GameVa113c(0x6FC2B700)
   const pObjectCtrl = m.u32((pGame + 0x10f0) >>> 0) >>> 0
   const pRegion = m.u32((pObjectCtrl + imul32(nAct | 0, 4) + 0x48) >>> 0) >>> 0
   const count = m.u32((pRegion + 0x18) >>> 0) | 0
@@ -951,6 +989,7 @@ export function OBJRGN_PrependObjectCoordNode_6FC2B800_113c(
   dwParam: number,
   hooks?: LaneH0x6fc2Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC2B800)
   const game = pGame >>> 0
   const unit = pUnit >>> 0
   const pObjectCtrl = m.u32((game + 0x10f0) >>> 0) >>> 0
@@ -987,6 +1026,7 @@ export function SKILLS_ApplyBloodManaHealthCost_6FC2BE20_113c(
   pUnit: number,
   nHpCostFixed: number,
 ): number {
+  hitD2GameVa113c(0x6FC2BE20)
   const u = pUnit >>> 0
   const cost = nHpCostFixed | 0
   const pStateList = STATLIST_GetStatListFromUnitAndStateMemPort113c(m, u, 0x72)
@@ -1023,6 +1063,7 @@ export function SKILLS_SrvSt59_Submerge_6FC2BEE0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC2BEE0)
   const pSkillsTxt = lookupSkillsTxtNonNull113c(m, nSkillId)
   if (pSkillsTxt === 0) return 0
   const u = pUnit >>> 0
@@ -1057,6 +1098,7 @@ export function STATES_OnRemoveImpregnatedSpawn_6FC2C000_113c(
   pStatList: number,
   hooks?: LaneH0x6fc2Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC2C000)
   const u = pUnit >>> 0
   STATES_ToggleGfxStateFlag113c(m, u, nState | 0, 0)
 
@@ -1135,6 +1177,7 @@ export function SKILLS_CanMonsterBeImpregnated_6FC2C110_113c(
   m: Memory113c,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC2C110)
   const u = pUnit >>> 0
   if (u === 0) return 0
   if (m.u32(u) !== 1) return 0
@@ -1171,6 +1214,7 @@ export function SKILLS_SrvDo147_SyncOwnerPos_6FC2C170_113c(
   _nSkillId = 0,
   _nSkillLevel = 0,
 ): number {
+  hitD2GameVa113c(0x6FC2C170)
   const u = pUnit >>> 0
   if (u !== 0) {
     const dwFlagsEx = m.u32((u + 0xc8) >>> 0)
@@ -1200,6 +1244,7 @@ export function SKILLS_FindHostileUseableCorpseInRange_6FC2C1F0_113c(
   pGame: number,
   nRange: number,
 ): number {
+  hitD2GameVa113c(0x6FC2C1F0)
   const sp = k2LaneHStackPtr
   k2LaneHStackPtr = (sp + 0x70) >>> 0
   try {
@@ -1261,6 +1306,7 @@ export function SKILLS_SrvDo128_MinionAttackCmd_6FC2C310_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC2C310)
   const pSkillsTxt = lookupSkillsTxtNonNull113c(m, nSkillId)
   if (pSkillsTxt === 0) return 0
 

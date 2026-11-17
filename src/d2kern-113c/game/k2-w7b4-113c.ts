@@ -233,6 +233,7 @@ import {
 import { UNITS_ChangeAnimMode113c } from './monster-events'
 import { UNIT_GetPosX113c, UNIT_GetPosY113c } from './regpop-spawn-113c'
 import { EVENT_SetEventFull113c } from './timer-wheel'
+import { hitD2GameVa113c } from '../va-trace-113c'
 
 let k2W7B4StackPtr = 0x7ff90000
 
@@ -257,6 +258,7 @@ export function ACT2Q1_OnRadamentKilled_6FCE7540_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FCE7540)
   const edi = pQuest >>> 0
   const esi = pQuestArg >>> 0
   if (m.u8((edi + 0x09) >>> 0) === 0) {
@@ -373,6 +375,7 @@ export function ACT2Q6_OnDurielKilled_6FCE97D0_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FCE97D0)
   const ebp = pQuest >>> 0
   const edi = pQuestArg >>> 0
   const prevSp = k2W7B4StackPtr
@@ -496,6 +499,7 @@ export function MONREG_InitGameMonsterRegionsFromGameSeed_6FCEACC0_113c(
   m: D2KernMemory113c,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FCEACC0)
   const esi = pGame >>> 0
   const prevSp = k2W7B4StackPtr
   const sp = (prevSp - 0x08) >>> 0
@@ -542,6 +546,7 @@ export function C2S_Packet3A_AddStatPoint_6FCEC960_113c(
   pPacket: number,
   nPacketLen: number,
 ): number {
+  hitD2GameVa113c(0x6FCEC960)
   const ebx = pPlayer >>> 0
   if ((nPacketLen | 0) !== 3) {
     return 3
@@ -577,6 +582,7 @@ export function C2S_Packet30_CancelNpcInteract_6FCED480_113c(
   pPacket: number,
   nPacketLen: number,
 ): number {
+  hitD2GameVa113c(0x6FCED480)
   const ebx = pGame >>> 0
   const esi = pPlayer >>> 0
   if ((nPacketLen | 0) !== 9) {
@@ -622,6 +628,7 @@ export function C2S_Packet29_InsertScrollIntoTome_6FCEDB30_113c(
   pPacket: number,
   nPacketLen: number,
 ): number {
+  hitD2GameVa113c(0x6FCEDB30)
   const edi = pGame >>> 0
   const esi = pPlayer >>> 0
   if ((nPacketLen | 0) !== 9) {
@@ -666,6 +673,7 @@ export function C2S_Packet28_SocketItem_6FCEEBD0_113c(
   pPacket: number,
   nPacketLen: number,
 ): number {
+  hitD2GameVa113c(0x6FCEEBD0)
   const edi = pGame >>> 0
   const esi = pPlayer >>> 0
   if ((nPacketLen | 0) !== 9) {
@@ -720,6 +728,7 @@ export function C2S_Packet27_IdentifyItemWithScroll_6FCEEFE0_113c(
   pPacket: number,
   nPacketLen: number,
 ): number {
+  hitD2GameVa113c(0x6FCEEFE0)
   const ebx = pGame >>> 0
   const edi = pPlayer >>> 0
   if ((nPacketLen | 0) !== 5) {
@@ -758,6 +767,7 @@ export function C2S_Packet34_CainIdentifyItems_6FCEF070_113c(
   pPacket: number,
   nPacketLen: number,
 ): number {
+  hitD2GameVa113c(0x6FCEF070)
   if ((nPacketLen | 0) !== 5) {
     return 3
   }
@@ -780,6 +790,7 @@ export function C2S_Packet24_RemoveBeltItemToCursor_6FCF0F80_113c(
   pPacket: number,
   nPacketLen: number,
 ): number {
+  hitD2GameVa113c(0x6FCF0F80)
   const ebx = pGame >>> 0
   const esi = pPlayer >>> 0
   if ((nPacketLen | 0) !== 5) {
@@ -825,6 +836,7 @@ export function ITEMS_FillTomeWithFirstMatchingScroll_6FCF3C40_113c(
   pGame: number,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FCF3C40)
   const esi = pScrollItem >>> 0
   const ebx = pGame >>> 0
   const edi = pUnit >>> 0
@@ -863,6 +875,7 @@ export function ITEMS_ConsumeSkeletonKeyFromInventory_6FCF4140_113c(
   pUnit: number,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FCF4140)
   const ebx = pUnit >>> 0
   const ebp = pGame >>> 0
   if (ebp === 0) {
@@ -921,6 +934,7 @@ export function ITEMS_MergeCompatibleWeaponStackFromCursor_6FCF4230_113c(
   pUnit: number,
   pOutRejectReason: number,
 ): number {
+  hitD2GameVa113c(0x6FCF4230)
   const edi = dwSourceItemGuid >>> 0
   const ebx = dwTargetItemGuid >>> 0
   const ebp = pGame >>> 0
@@ -990,6 +1004,7 @@ export function ITEMS_AutoEquipItemToBodyLoc_6FCF4960_113c(
   bSkipRequirements: number,
   _uUnused = 0,
 ): number {
+  hitD2GameVa113c(0x6FCF4960)
   const edi = pItem >>> 0
   const esi = pUnit >>> 0
   const ebx = m.u32((esi + 0x60) >>> 0) >>> 0
@@ -1047,6 +1062,7 @@ export function ITEMS_RepairBrokenEquippedItemAndRefreshStats_6FCF5690_113c(
   pItem: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FCF5690)
   const esi = pUnit >>> 0
   const edi = pItem >>> 0
   const ebp = pGame >>> 0
@@ -1091,6 +1107,7 @@ export function ITEMS_EquipStoredItemToBodyLoc_6FCF57F0_113c(
   dwItemGuid: number,
   nBodyLoc: number,
 ): number {
+  hitD2GameVa113c(0x6FCF57F0)
   const esi = pUnit >>> 0
   const ebx = pGame >>> 0
   const ebp = dwItemGuid >>> 0
@@ -1172,6 +1189,7 @@ export function ITEMS_SwapDualWieldOrTwoHandBodyLocWithCursor_6FCF5C30_113c(
   nBodyLoc: number,
   pOutRejectReason: number,
 ): number {
+  hitD2GameVa113c(0x6FCF5C30)
   const esi = pGame >>> 0
   const edi = pUnit >>> 0
   const pOut = pOutRejectReason >>> 0
@@ -1324,6 +1342,7 @@ export function ITEMS_EquipCursorItemToBodyLoc_6FCF60D0_113c(
   bSecondarySlot: number,
   pOutRejectReason: number,
 ): number {
+  hitD2GameVa113c(0x6FCF60D0)
   const ebx = dwItemGuid >>> 0
   const esi = pUnit >>> 0
   const edi = pGame >>> 0
@@ -1414,6 +1433,7 @@ export function ITEMS_PickupGroundItemToCursor_6FCF7160_113c(
   dwItemGuid: number,
   pOutRejectReason: number,
 ): void {
+  hitD2GameVa113c(0x6FCF7160)
   const edi = pUnit >>> 0
   const ebx = pGame >>> 0
   const dwGuid = dwItemGuid >>> 0
@@ -1489,6 +1509,7 @@ export function ITEMS_UseBeltItem_6FCF8BA0_113c(
   nY: number,
   bShiftToMerc: number,
 ): number {
+  hitD2GameVa113c(0x6FCF8BA0)
   const edi = pOutRejectReason >>> 0
   const esi = dwItemGuid >>> 0
   const ebx = pGame >>> 0
@@ -1623,6 +1644,7 @@ export function ITEMS_SwitchWeaponSlots_6FCF8EA0_113c(
   pGame: number,
   pOutError: number,
 ): number {
+  hitD2GameVa113c(0x6FCF8EA0)
   const sp = k2W7B4StackPtr;
   k2W7B4StackPtr = (sp + 0x100) >>> 0;
   try {
@@ -1821,6 +1843,7 @@ export function ITEMS_UseInventoryItem_6FCF9BF0_113c(
   nY: number,
   pOutError: number,
 ): number {
+  hitD2GameVa113c(0x6FCF9BF0)
   if ((pGame >>> 0) === 0) {
     FOG_DisplayAssert113c('pGame', 'ItemMode.cpp', 0x105b);
     throw new D2CommonAssertError('ItemMode.cpp', 0x105b);
@@ -1977,6 +2000,7 @@ export function ITEMS_UseScrollOrTomeOnTargetItem_6FCF9FB0_113c(
   pGame: number,
   pOutError: number,
 ): number {
+  hitD2GameVa113c(0x6FCF9FB0)
   if ((pGame >>> 0) === 0) {
     FOG_DisplayAssert113c('pGame', 'ItemMode.cpp', 0xfd0);
     throw new D2CommonAssertError('ItemMode.cpp', 0xfd0);
@@ -2149,6 +2173,7 @@ export function SUNITDMG_GrantExpToPlayerOrHireling_6FCFE870_113c(
   nExpGain: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FCFE870)
   const unit = pUnit >>> 0;
   if (unit === 0) {
     return;
@@ -2201,6 +2226,7 @@ export function ACT3Q0_ScheduleDarkWandererTimerOnPlayerSeen_6FD06760_113c(
   pGame: number,
   pPlayerUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FD06760)
   void ACT3Q0_OnWandererSeenSpawnFleshBeasts_6FD057D0_113c;
   const pQuestCtrl = m.u32((pGame + 0x10f4) >>> 0) >>> 0;
   if (pQuestCtrl === 0) {
@@ -2234,6 +2260,7 @@ export function ACT3Q7_PropagateMephistoCompletionToPartyCallback_6FD06850_113c(
   pPlayer: number,
   _pArg: number = 0,
 ): number {
+  hitD2GameVa113c(0x6FD06850)
   const u = pPlayer >>> 0;
   const pPlayerData = UNITS_GetPlayerData113c(m, u) >>> 0;
   const nDiff = m.u8((pGame + 0x6d) >>> 0) & 0xff;
@@ -2266,6 +2293,7 @@ export function ACT3Q7_OnOrmusNpcActivateFilter_6FD07050_113c(
   pQuest: number,
   _pQuestArg: number = 0,
 ): number {
+  hitD2GameVa113c(0x6FD07050)
   void ACT3Q7_OnOrmusActivatedSendMephistoAlert_6FD06910_113c;
   const quest = pQuest >>> 0;
   if (m.u8((quest + 0x0c) >>> 0) !== 0) {
@@ -2289,6 +2317,7 @@ export function ACT3Q5_OnKhalimWillSmashedCompellingOrb_6FD073C0_113c(
   pGame: number,
   pUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FD073C0)
   const sp = k2W7B4StackPtr;
   k2W7B4StackPtr = (sp + 0x90) >>> 0;
   try {
@@ -2397,6 +2426,7 @@ export function ACT3Q4_OnLamEsensTomeDropped_6FD07A40_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD07A40)
   const sp = k2W7B4StackPtr;
   k2W7B4StackPtr = (sp + 0x80) >>> 0;
   try {
@@ -2443,6 +2473,7 @@ export function ACT3Q4_OnLamEsensTomePickedUp_6FD07AF0_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD07AF0)
   const sp = k2W7B4StackPtr;
   k2W7B4StackPtr = (sp + 0x84) >>> 0;
   try {
@@ -2511,6 +2542,7 @@ export function ACT3Q2_OnGidbinnBossKilled_6FD08140_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD08140)
   const sp = k2W7B4StackPtr;
   k2W7B4StackPtr = (sp + 0x10) >>> 0;
   try {
@@ -2590,6 +2622,7 @@ export function PLAYERSAVE_WriteSaveFileBuffer_6FD0C7F0_113c(
   arg4: number,
   arg5: number,
 ): number {
+  hitD2GameVa113c(0x6FD0C7F0)
   const sp = k2W7B4StackPtr;
   k2W7B4StackPtr = (sp + 0x8020) >>> 0;
   try {
@@ -2794,6 +2827,7 @@ export function MONSTER_SpawnFallenShamanPack_6FD0FB80_113c(
   _unusedY: number,
   dwSpawnFlags: number,
 ): number {
+  hitD2GameVa113c(0x6FD0FB80)
   const unit = pUnit >>> 0;
   if ((nClassId | 0) !== 0x154 || unit === 0) {
     return 0;
@@ -2841,6 +2875,7 @@ export function PARTY_DeclareHostility_6FD10CD0_113c(
   pSourcePlayer: number,
   pTargetPlayer: number,
 ): void {
+  hitD2GameVa113c(0x6FD10CD0)
   const src = pSourcePlayer >>> 0;
   const dst = pTargetPlayer >>> 0;
   const game = pGame >>> 0;
@@ -2873,6 +2908,7 @@ export function PARTY_ToggleLootPermission_6FD10F40_113c(
   dwEnable: number,
   _pOutError: number = 0,
 ): void {
+  hitD2GameVa113c(0x6FD10F40)
   const src = pSourcePlayer >>> 0;
   const dst = pTargetPlayer >>> 0;
   const game = pGame >>> 0;
@@ -2913,6 +2949,7 @@ export function OBJECTS_ExecuteUrnSporeTrapAndChain_6FC8AD60_113c(
   m: D2KernMemory113c,
   pOperateArgs: number,
 ): number {
+  hitD2GameVa113c(0x6FC8AD60)
   const savedSp = k2W7B4StackPtr;
   k2W7B4StackPtr = (savedSp - 0x20) >>> 0;
   const pCoords = k2W7B4StackPtr;
@@ -2981,6 +3018,7 @@ export function OBJECTS_OperateEvilUrnSporeTrap_6FC8D740_113c(
   m: D2KernMemory113c,
   pOperateArgs: number,
 ): number {
+  hitD2GameVa113c(0x6FC8D740)
   const pObject = m.u32((pOperateArgs + 4) >>> 0) >>> 0;
   if (pObject !== 0 && (m.u32((pObject + 0x10) >>> 0) >>> 0) !== 0) {
     return 0;
@@ -3020,6 +3058,7 @@ export function PLRTRADE_RemoveTradeItemToCursorAndResetAccept_6FC91330_113c(
   pPlayer: number,
   pItem: number,
 ): void {
+  hitD2GameVa113c(0x6FC91330)
   const savedSp = k2W7B4StackPtr;
   k2W7B4StackPtr = (savedSp - 0x20) >>> 0;
   const pPkt = k2W7B4StackPtr;
@@ -3166,6 +3205,7 @@ export function ITEMS_RemoveStoredItemToCursor_6FCF62E0_113c(
   bSetCmdFlag20: number,
   bAllowWhenCursorFull: number,
 ): number {
+  hitD2GameVa113c(0x6FCF62E0)
   if ((pGame >>> 0) === 0) {
     throw new D2CommonAssertError('Items.cpp', 0x907);
   }

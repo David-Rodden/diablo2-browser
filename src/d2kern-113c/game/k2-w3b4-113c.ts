@@ -174,6 +174,7 @@ import {
   EVENT_DeleteEventByArg14_113c,
   EVENT_SetEventFull113c,
 } from './timer-wheel.ts'
+import { hitD2GameVa113c } from '../va-trace-113c.ts'
 
 export type D2KernMemory113c = Memory113c
 
@@ -247,6 +248,7 @@ export function MISSILE_SrvDo_ScatterSubMissile_6FC60070_113c(
   pGame: number,
   pMissile: number,
 ): number {
+  hitD2GameVa113c(0x6FC60070)
   if (pMissile === 0) {
     return 2
   }
@@ -337,6 +339,7 @@ export function MISSILE_SrvDo_TrailSubMissile_6FC605E0_113c(
   pGame: number,
   pMissile: number,
 ): number {
+  hitD2GameVa113c(0x6FC605E0)
   if (pMissile === 0) {
     return 2
   }
@@ -382,6 +385,7 @@ export function MISSILE_SrvDo_PerpendicularSubMissiles_6FC606D0_113c(
   pGame: number,
   pMissile: number,
 ): number {
+  hitD2GameVa113c(0x6FC606D0)
   if (pMissile === 0) {
     return 2
   }
@@ -440,6 +444,7 @@ export function MISSILE_SrvDo_FollowOwnerOrCollide_6FC60860_113c(
   pGame: number,
   pMissile: number,
 ): number {
+  hitD2GameVa113c(0x6FC60860)
   if (pMissile !== 0 && ((m.u32((pMissile + 0xc8) >>> 0) >>> 10) & 1) !== 0) {
     const pOwner = SUNIT_GetServerUnit113c(
       m,
@@ -469,6 +474,7 @@ export function MISSILE_SrvDo_SpiralPath_6FC60BD0_113c(
   pGame: number,
   pMissile: number,
 ): number {
+  hitD2GameVa113c(0x6FC60BD0)
   if (pMissile === 0) {
     return 2
   }
@@ -509,6 +515,7 @@ export function MISSILE_SrvDo_RadialRingSubMissile_6FC60CA0_113c(
   pGame: number,
   pMissile: number,
 ): number {
+  hitD2GameVa113c(0x6FC60CA0)
   if (pMissile === 0) {
     return 2
   }
@@ -579,6 +586,7 @@ export function MISSILE_SrvDo_PeriodicSrvDoFunc_6FC60E10_113c(
   pGame: number,
   pMissile: number,
 ): number {
+  hitD2GameVa113c(0x6FC60E10)
   if (pMissile === 0) {
     return 2
   }
@@ -620,6 +628,7 @@ export function MISSILE_SrvDo_TrailOwnerSubMissile_6FC61110_113c(
   pGame: number,
   pMissile: number,
 ): number {
+  hitD2GameVa113c(0x6FC61110)
   if (pMissile === 0) {
     return 2
   }
@@ -675,6 +684,7 @@ export function MISSILE_SrvDo_HomingTargetStep_6FC61240_113c(
   pGame: number,
   pMissile: number,
 ): number {
+  hitD2GameVa113c(0x6FC61240)
   if (pMissile === 0) {
     return 2
   }
@@ -756,6 +766,7 @@ export function MISSILE_SrvDo_TrailInlineCoordSubMissile_6FC61520_113c(
   pGame: number,
   pMissile: number,
 ): number {
+  hitD2GameVa113c(0x6FC61520)
   let pMissilesTxt = 0
   if (pMissile !== 0) {
     pMissilesTxt = MISSILES_GetTxtRecordFast113c(m, i32(m, (pMissile + 0x04) >>> 0)) >>> 0
@@ -809,6 +820,7 @@ export function MISSILE_SrvDo_GuidedHostileRetarget_6FC61710_113c(
   pGame: number,
   pMissile: number,
 ): number {
+  hitD2GameVa113c(0x6FC61710)
   if (pMissile === 0) {
     return 2
   }
@@ -872,6 +884,7 @@ export function MISSILE_SrvDo_TrailVerifiedOwnerSubMissile_6FC61850_113c(
   pGame: number,
   pMissile: number,
 ): number {
+  hitD2GameVa113c(0x6FC61850)
   if (pMissile === 0 || ((m.u32((pMissile + 0xc8) >>> 0) >>> 10) & 1) === 0) {
     return 2
   }
@@ -928,6 +941,7 @@ export function MISSILE_SrvDo_CollisionPatternAndAnimFrame_6FC61980_113c(
   pGame: number,
   pMissile: number,
 ): number {
+  hitD2GameVa113c(0x6FC61980)
   if (pMissile === 0) {
     return MISSILE_SrvDo01_LinearProjectile113c(m, pMissile, pGame) | 0
   }
@@ -974,6 +988,7 @@ export function MISSILE_SrvDo_StoppedSubtileCollision_6FC61AE0_113c(
   pGame: number,
   pMissile: number,
 ): number {
+  hitD2GameVa113c(0x6FC61AE0)
   const pPath = m.u32((pMissile + 0x2c) >>> 0) >>> 0
   if (pPath !== 0 && PATH_GetVelocity113c(m, pPath) !== 0) {
     return MISSILE_SrvDo01_LinearProjectile113c(m, pMissile, pGame) | 0
@@ -999,6 +1014,7 @@ export function SKILLS_AbsorbDamageByManaShield_6FC61FB0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC61FB0)
   if (pDefender === 0 || pDmg === 0) {
     return 0
   }
@@ -1158,6 +1174,7 @@ export function SKILLS_SrvSt_ValidateTargetInCalc1Range_6FC62360_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC62360)
   SUNIT_ValidatePathTargetUnit113c(m, pUnit, pGame)
   const pTarget = PATH_GetTargetUnit113c(m, m.u32((pUnit + 0x2c) >>> 0)) >>> 0
   if (pTarget === pUnit >>> 0 || pTarget === 0) {
@@ -1213,6 +1230,7 @@ export function SKILLS_SrvDo_ApplyAlliedTargetAuraStats_6FC62570_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC62570)
   const pSkillsTxt = SKILLS_GetRecordPtrFast113c(m, nSkillId)
   if (pSkillsTxt === 0) {
     return 0
@@ -1299,6 +1317,7 @@ export function SKILLS_SrvDo_ApplySelfAuraAndItemEvents_6FC62730_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC62730)
   const pSkillsTxt = SKILLS_GetRecordPtrFast113c(m, nSkillId)
   if (pSkillsTxt === 0) {
     return 0
@@ -1398,6 +1417,7 @@ export function SKILLS_ItemEvent_CounterMissileOnMissileHit_6FC634E0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC634E0)
   if (pDefender === 0 || pMissile === 0) {
     return 0
   }
@@ -1471,6 +1491,7 @@ export function SKILLS_SpawnBlazeTrailMissileOnStep_6FC639A0_113c(
   pUnit: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC639A0)
   const pPath = m.u32((pUnit + 0x2c) >>> 0) >>> 0
   if (pPath === 0 || PATH_CheckFlag08_113c(m, pPath) === 0) {
     return
@@ -1534,6 +1555,7 @@ export function SKILLS_AbsorbElementalDamageByCycloneArmor_6FC64600_113c(
   nSkillId: number,
   _nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC64600)
   if (pDefender === 0 || pDmg === 0) {
     return 0
   }
@@ -1604,6 +1626,7 @@ export function SKILLS_RollAuraStateToHitAndAllocCombat_6FC64AC0_113c(
   pUnit: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC64AC0)
   SUNIT_ValidatePathTargetUnit113c(m, pUnit, pGame)
   const pTarget = PATH_GetTargetUnit113c(m, m.u32((pUnit + 0x2c) >>> 0)) >>> 0
   if (pTarget === pUnit >>> 0 || pTarget === 0) {
@@ -1677,6 +1700,7 @@ export function SKILLS_SrvSt_DruidChargeUpMelee_6FC64C20_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC64C20)
   const pSkillsTxt = SKILLS_GetRecordPtrFast113c(m, nSkillId)
   if (pSkillsTxt === 0) {
     return 0
@@ -1741,6 +1765,7 @@ export function SKILLS_SrvSt_MeleeWithElemConversion_6FC64D70_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC64D70)
   const pSkillsTxt = SKILLS_GetRecordPtrFast113c(m, nSkillId)
   if (pSkillsTxt === 0) {
     return 0
@@ -1816,6 +1841,7 @@ export function SKILLS_SpawnChargedSrvMissileWithTargetId_6FC65410_113c(
   nSkillLevel: number,
   nSubMissile: number,
 ): void {
+  hitD2GameVa113c(0x6FC65410)
   const pSkillsTxt = SKILLS_GetRecordPtrFast113c(m, nSkillId)
   if (pSkillsTxt === 0) {
     return
@@ -1863,6 +1889,7 @@ export function SKILLS_SrvDo_DruidShapeShift_6FC65CE0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC65CE0)
   const pSkillsTxt = SKILLS_GetRecordPtrFast113c(m, nSkillId)
   if (pSkillsTxt === 0) {
     return 0
@@ -1947,6 +1974,7 @@ export function SKILLS_ApplySecondaryAuraStateStats_6FC65EE0_113c(
   nSkillLevel: number,
   nChargeLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC65EE0)
   const pSkillsTxt = SKILLS_GetRecordPtrFast113c(m, nSkillId)
   if (pSkillsTxt === 0) {
     return 0
@@ -1999,6 +2027,7 @@ export function SKILLS_SrvDo_DruidChargeUpHit_6FC66000_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC66000)
   const pSkillsTxt = SKILLS_GetRecordPtrFast113c(m, nSkillId)
   if (pSkillsTxt === 0) {
     return 0
@@ -2092,6 +2121,7 @@ export function REGPOP_SpawnMonsterFormation_6FC671E0_113c(
   pOutX: number,
   pOutY: number,
 ): number {
+  hitD2GameVa113c(0x6FC671E0)
   const savedSp = k2W3B4StackPtr
   const sp = (savedSp - 0x48) >>> 0
   k2W3B4StackPtr = sp
@@ -2177,6 +2207,7 @@ export function SUNIT_InsertNearestPlayerIntoSortedList_6FC6A460_113c(
   pGame: number,
   nMaxCount: number,
 ): void {
+  hitD2GameVa113c(0x6FC6A460)
   if (pPlayerUnit === 0 || i32(m, pPlayerUnit >>> 0) !== 0) {
     return
   }
@@ -2355,6 +2386,7 @@ export function CLIENTS_AllocAndLinkClient_6FC6A9B0_113c(
   dwClientFlags60: number,
   bLocaleId: number,
 ): number {
+  hitD2GameVa113c(0x6FC6A9B0)
   if (m.u32(0x6fd31c18) === 0 || pGame === 0 || i32(m, (pGame + 0x8c) >>> 0) >= 8) {
     return 0
   }
@@ -2414,6 +2446,7 @@ export function CLIENTS_BuildPlayerPortraitDescString_6FC6AE90_113c(
   pOutBuf: number,
   pClient: number,
 ): void {
+  hitD2GameVa113c(0x6FC6AE90)
   fogEncode14BitsToString113c(m, pOutBuf, 0x0d)
   const pBody = (pOutBuf + 2) >>> 0
   if (pClient === 0) {
@@ -2506,6 +2539,7 @@ export function SKILLS_AuraCallback_ApplyAuraStatListFromCtx_6FC6C220_113c(
   pAuraCtx: number,
   pTargetUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC6C220)
   const pSubCtx = m.u32((pAuraCtx + 0x0c) >>> 0) >>> 0
   const pCaster = m.u32((pAuraCtx + 0x04) >>> 0) >>> 0
   const savedSp = k2W3B4StackPtr
@@ -2541,6 +2575,7 @@ export function SKILLS_SrvSt_MeleeWithSkillElemDamage_6FC6C3A0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC6C3A0)
   const pSkillsTxt = SKILLS_GetRecordPtrFast113c(m, nSkillId)
   if (pSkillsTxt === 0) {
     return 0
@@ -2611,6 +2646,7 @@ export function SKILLS_SrvDo_LightningStrikeBounce_6FC6CE10_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC6CE10)
   const pSkillsTxt = SKILLS_GetRecordPtrFast113c(m, nSkillId)
   if (pSkillsTxt === 0) {
     return 0
@@ -2708,6 +2744,7 @@ export function SKILLS_SrvDo_ChargedStrikeBolts_6FC6D040_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC6D040)
   if (pUnit !== 0) {
     m.setU32((pUnit + 0xc4) >>> 0, (m.u32((pUnit + 0xc4) >>> 0) | 0x40) >>> 0)
   }
@@ -2782,6 +2819,7 @@ export function SKILLS_AbsorbPhysicalDamageByBoneArmor_6FC6DFE0_113c(
   nSkillId: number,
   _nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC6DFE0)
   if (pDefender === 0 || pDmg === 0) {
     return 0
   }
@@ -2855,6 +2893,7 @@ export function SKILLS_TransferGolemDamageToOwnerLife_6FC6E500_113c(
   _nSkillId: number,
   _nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC6E500)
   if (pDefender === 0 || pDmg === 0) {
     return 0
   }
@@ -2905,6 +2944,7 @@ export function SKILLS_BloodGolemShareLifeSteal_6FC6E5F0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC6E5F0)
   if (pAttacker === 0 || pDefender === 0 || pDmg === 0) {
     return 0
   }
@@ -2984,6 +3024,7 @@ export function SKILLS_LifeTapHealAttackerOnHit_6FC6E760_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC6E760)
   if (pDefender === 0 || pAttacker === 0) {
     return 0
   }
@@ -3068,6 +3109,7 @@ export function SKILLS_HealBloodGolemFromPlayerHeal_6FC6EA30_113c(
   nHealAmount: number,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FC6EA30)
   let remHeal = nHealAmount | 0
   if (pPlayer === 0) {
     return remHeal
@@ -3149,6 +3191,7 @@ export function SKILLS_InitNecroSkeletonPetComponents_6FC6EB50_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): void {
+  hitD2GameVa113c(0x6FC6EB50)
   const nClassId = pMonster !== 0 ? i32(m, (pMonster + 0x04) >>> 0) : -1
   if (nClassId === 0x16b) {
     SKILLS_InitNecroWarriorSkeletonComponents_6FC6E960_113c(
@@ -3177,6 +3220,7 @@ export function SKILLS_ApplySlowTargetOnHit_6FC6EF70_113c(
   _nSkillId: number,
   _nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC6EF70)
   if (pAttacker === 0 || pDefender === 0) {
     return 0
   }
@@ -3242,6 +3286,7 @@ export function SKILLS_IronMaidenThornsReflectDamage_6FC6F090_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC6F090)
   if (pTarget === 0 || pUnit === 0) {
     return 0
   }
@@ -3363,6 +3408,7 @@ export function SKILLS_SrvDo_CorpseExplosion_6FC6F4D0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC6F4D0)
   SUNIT_ValidatePathTargetUnit113c(m, pUnit, pGame)
   const pCorpse = PATH_GetTargetUnit113c(m, m.u32((pUnit + 0x2c) >>> 0)) >>> 0
   if (pCorpse === pUnit >>> 0 || pCorpse === 0) {

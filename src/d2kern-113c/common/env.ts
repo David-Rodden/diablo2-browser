@@ -12,6 +12,7 @@ import type { Memory113c } from '../mem/sparse-memory.ts';
 import { DRLG_GetActNoFromLevelId113c } from './drlg/drlg.ts';
 import { D2CommonAssertError } from './inline-helpers.ts';
 import { imul32, sdiv32 } from './int-math.ts';
+import { hitD2CommonVa113c } from '../va-trace-113c.ts';
 
 const ENV_CPP_FILE_113C = '..\\Source\\D2Common\\ENVIRONMENT\\Env.cpp';
 
@@ -112,6 +113,7 @@ export function ENVIRONMENT_Init113c(
   pGrid: number,
   uFlags: number,
 ): void {
+  hitD2CommonVa113c(0x6FD86FE0);
   let esi = pNode >>> 0;
   const flags = uFlags >>> 0;
   while (esi !== 0) {
@@ -150,6 +152,7 @@ export function ENVIRONMENT_Alloc113c(
   eOp: number,
   bIncludeEnd: number,
 ): void {
+  hitD2CommonVa113c(0x6FD87020);
   const node = pNode >>> 0;
   const pNext = m.u32((node + 0x10) >>> 0);
   const x1 = m.u32(node) | 0;
@@ -240,6 +243,7 @@ export function ENVIRONMENT_SetCycleIndex113c(
   m: Memory113c,
   pEnv: number,
 ): void {
+  hitD2CommonVa113c(0x6FD87170);
   const bEclipse = m.get(pEnv, D2EnvironmentStrc.bEclipse) | 0;
   const idx = m.get(pEnv, D2EnvironmentStrc.dwCycleIndex) | 0;
   const table =
@@ -267,6 +271,7 @@ export function ENV_UpdateLightColor113c(
   nAct: number,
   pEnv: number,
 ): void {
+  hitD2CommonVa113c(0x6FD871C0);
   const env = pEnv >>> 0;
   const curIdx = m.u32(env) | 0;
   let nextIdx = (curIdx + 1) | 0;
@@ -325,6 +330,7 @@ export function ENV_GetCycleState113c(
   pTicks: number,
   pEclipse: number,
 ): void {
+  hitD2CommonVa113c(0x6FD873B0);
   if (pAct === 0) {
     throw new D2CommonAssertError(ENV_CPP_FILE_113C, 0x547);
   }
@@ -346,6 +352,7 @@ export function ENVIRONMENT_ApplyCycleColors113c(
   pEnv: number,
   nAct: number,
 ): void {
+  hitD2CommonVa113c(0x6FD87570);
   const act = nAct | 0;
   let ticks = ((m.get(pEnv, D2EnvironmentStrc.dwTicks) | 0) + 1) | 0;
   m.set(pEnv, D2EnvironmentStrc.dwTicks, ticks >>> 0);
@@ -419,6 +426,7 @@ export function ENV_StepCycle113c(
   pAct: number,
   nActNo: number,
 ): number {
+  hitD2CommonVa113c(0x6FD87660);
   if (pAct === 0) {
     throw new D2CommonAssertError(ENV_CPP_FILE_113C, 0x547);
   }
@@ -463,6 +471,7 @@ export function ENV_UpdateIntensityAndSunAngle113c(
   nAct: number,
   nLevelNo: number,
 ): void {
+  hitD2CommonVa113c(0x6FD876F0);
   const env = pEnv >>> 0;
   const act = nAct | 0;
   const lvl = nLevelNo | 0;
@@ -550,6 +559,7 @@ export function ENV_AllocDrlgEnvironment113c(
   m: Memory113c,
   _pMemPool = 0,
 ): number {
+  hitD2CommonVa113c(0x6FD87BA0);
   const pEnv = m.alloc(0x38);
   m.fill(pEnv, 0x38, 0);
   const rateIdx = m.u32((pEnv + 0x2c) >>> 0) | 0;
@@ -583,6 +593,7 @@ export function ENV_InitEclipseEnvironment113c(
   m: Memory113c,
   pAct: number,
 ): void {
+  hitD2CommonVa113c(0x6FD87CA0);
   if (pAct === 0) {
     throw new D2CommonAssertError(ENV_CPP_FILE_113C, 0x547);
   }

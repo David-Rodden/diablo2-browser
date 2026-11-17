@@ -82,6 +82,7 @@ import {
   SUNITDMG_DistributeExperience113c,
 } from './combat-a1c-113c.ts'
 import { SUNIT_GetServerUnit113c } from './game-strc.ts'
+import { MONSTER_StartMode113c as MONSTER_StartModeReal113c } from './k2-real-s2c-combat-113c.ts'
 import { MONSTER_GetOrRollRegionSubVariant113c } from './k2-combat-core-w1-113c.ts'
 import { PARTY_TestPlayerRelationFlags113c } from './k2-sunit-spawn-w1-113c.ts'
 import {
@@ -106,6 +107,7 @@ import {
 } from './regpop-spawn-113c.ts'
 import { EVENT_FreeNode113c, EVENT_SetEventFull113c } from './timer-wheel.ts'
 import { AI_StepRelativeToTargetUnit113c } from './town-npc-ai-113c.ts'
+import { hitD2GameVa113c } from '../va-trace-113c.ts'
 
 /** `D2Game.dll` `.data` `0x6FD18BE0`: global pointer to monster alignment filter table. */
 export const D2GAME_MON_ALIGN_TABLE_PTR_VA_113C = 0x6fd18be0
@@ -141,6 +143,7 @@ export function PLAYER_CanLootCorpse_6FC97E70_113c(
   pGame: number,
   pCorpseUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC97E70)
   if (pPlayer === 0) {
     throw new D2CommonAssertError('0x6fc97e70: pPlayer === 0', 908)
   }
@@ -181,6 +184,7 @@ export function PLAYER_PruneAndCountLiveCorpses_6FC97F00_113c(
   pPlayer: number,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FC97F00)
   const pInventory = m.u32((pPlayer + 0x60) >>> 0) >>> 0
   if (pInventory === 0) {
     return 0
@@ -225,6 +229,7 @@ export function PLAYER_FinalizeDeathStateAndEvents_6FC98230_113c(
   pPlayer: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC98230)
   STATLIST_SetUnitStat113c(m, pPlayer >>> 0, 6, 0, 0)
   STATLIST_ExpireOrphanStateSubLists113c(m, pPlayer >>> 0)
   STATES_UpdateGfxStateFlagsByMask113c(m, pPlayer >>> 0, 0)
@@ -275,6 +280,7 @@ export function EVENT_HandleFreeHoverMsg_6FC99AA0_113c(
   _arg1 = 0,
   _arg2 = 0,
 ): void {
+  hitD2GameVa113c(0x6FC99AA0)
   if (pUnit === 0) {
     return
   }
@@ -308,6 +314,7 @@ export function UNITMSG_QueuePacket23SetSkill_6FC9A020_113c(
   wSkillId: number,
   dwTargetId: number,
 ): void {
+  hitD2GameVa113c(0x6FC9A020)
   const pNode = m.alloc(0x10)
   m.setU32(pNode, 0)
   m.setU8((pNode + 0x04) >>> 0, 0x23)
@@ -329,6 +336,7 @@ export function UNITMSG_QueuePacketA5StateSkill_6FC9A0F0_113c(
   pUnit: number,
   wSkillId: number,
 ): void {
+  hitD2GameVa113c(0x6FC9A0F0)
   STATES_ToggleGfxStateFlag113c(m, pUnit >>> 0, 0x12, 0)
   const pNode = m.alloc(0x14)
   m.setU32(pNode, 0)
@@ -361,6 +369,7 @@ export function UNITMSG_QueuePacketA3AuraTargetFx_6FC9A190_113c(
   nY: number,
   bSkillLevel: number,
 ): void {
+  hitD2GameVa113c(0x6FC9A190)
   const pNode = m.alloc(0x28)
   for (let off = 0; off < 0x28; off += 4) {
     m.setU32((pNode + off) >>> 0, 0)
@@ -394,6 +403,7 @@ export function UNITMSG_QueuePacket9EMercStat_6FC9A3A0_113c(
   wStatId: number,
   dwStatValue: number,
 ): void {
+  hitD2GameVa113c(0x6FC9A3A0)
   if ((wStatId & 0xffff) >= 0xff) {
     throw new D2CommonAssertError('0x6fc9a3a0: wStatId >= 0xff', 682)
   }
@@ -421,6 +431,7 @@ export function UNITMSG_QueuePacket9ACoords_6FC9A440_113c(
   wWord0E: number,
   bByte10: number,
 ): void {
+  hitD2GameVa113c(0x6FC9A440)
   const pNode = m.alloc(0x14)
   m.setU32(pNode, 0)
   m.setU8((pNode + 0x04) >>> 0, 0x9a)
@@ -443,6 +454,7 @@ export function UNIT_SendStatB2Packet11ToClient_6FC9A570_113c(
   pUnit: number,
   pClient: number,
 ): void {
+  hitD2GameVa113c(0x6FC9A570)
   const pStatList = STATLIST_GetStatListFromUnitAndFlag113c(m, pUnit >>> 0, 0x80) >>> 0
   if (pStatList === 0) {
     return
@@ -485,6 +497,7 @@ export function AI_ScanCallbackNearestLowLifeUnit_6FC9B860_113c(
   pCandidate: number,
   pCtx: number,
 ): number {
+  hitD2GameVa113c(0x6FC9B860)
   if (pCandidate === 0) {
     return 0
   }
@@ -525,6 +538,7 @@ export function AI_ScanCallbackResurrectOrHealTarget_6FC9B8E0_113c(
   pCandidate: number,
   pCtx: number,
 ): number {
+  hitD2GameVa113c(0x6FC9B8E0)
   if (pCandidate === 0) {
     return 0
   }
@@ -604,6 +618,7 @@ export function AI_ScanCallbackNearestBaseId136_6FC9BA40_113c(
   pCandidate: number,
   pCtx: number,
 ): number {
+  hitD2GameVa113c(0x6FC9BA40)
   if ((pCandidate >>> 0) === (pUnit >>> 0) || pCandidate === 0) {
     return 0
   }
@@ -664,6 +679,7 @@ export function AI_ScanCallbackNearestSelectableCorpse_6FC9BB00_113c(
   pCandidate: number,
   pCtx: number,
 ): number {
+  hitD2GameVa113c(0x6FC9BB00)
   if ((pUnit >>> 0) === (pCandidate >>> 0) || pCandidate === 0) {
     return 0
   }
@@ -711,6 +727,7 @@ export function AI_ScanCallbackFetishMinions_6FC9BB90_113c(
   pCandidate: number,
   pCtx: number,
 ): number {
+  hitD2GameVa113c(0x6FC9BB90)
   if ((pUnit >>> 0) === (pCandidate >>> 0) || pCandidate === 0) {
     return 0
   }
@@ -812,9 +829,11 @@ function triggerMonsterSelfDeathMode0_113c(
     for (let off = 0; off < 0x20; off += 4) {
       m.setU32((sp + off) >>> 0, 0)
     }
+    m.setU32(sp, 0)
     m.setU32((sp + 0x04) >>> 0, pUnit >>> 0)
-    m.setU8((sp + 0x1d) >>> 0, 0x64)
-    MONSTER_StartMode113c(m, pGame >>> 0, pUnit >>> 0, 0, 0, 0, 0)
+    m.setU8((sp + 0x15) >>> 0, 0x64)
+    hitD2GameVa113c(0x6FC95E10)
+    MONSTER_StartModeReal113c(m, pGame >>> 0, pUnit >>> 0, 0, 0, 0, 0)
   } finally {
     k2W3B8StackPtr = (sp + 0x20) >>> 0
   }
@@ -833,6 +852,7 @@ export function AI_ScanCallbackLowestLifeBaseIdEBOrEE_6FC9BC70_113c(
   pCandidate: number,
   pCtx: number,
 ): number {
+  hitD2GameVa113c(0x6FC9BC70)
   if ((pUnit >>> 0) === (pCandidate >>> 0) || pCandidate === 0) {
     return 0
   }
@@ -885,6 +905,7 @@ export function AI_UnburrowAndScheduleThink_6FC9BE10_113c(
   pGame: number,
   pUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FC9BE10)
   if (pUnit !== 0) {
     m.setU32((pUnit + 0xc4) >>> 0, (m.u32((pUnit + 0xc4) >>> 0) & 0xfffffff1) >>> 0)
   }
@@ -927,6 +948,7 @@ export function AI_StationaryMeleeTrap_6FC9BF50_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FC9BF50)
   const pTarget = m.u32((pAiParam + 0x08) >>> 0) >>> 0
   const bInMeleeRange = m.u32((pAiParam + 0x18) >>> 0) | 0
   const pMonStatsTxt = m.u32((pAiParam + 0x1c) >>> 0) >>> 0
@@ -971,14 +993,7 @@ export function AI_StationaryMeleeTrap_6FC9BF50_113c(
   }
 }
 
-/**
- * Tentacle / spire skill-cast AI callback (`ecx = pGame`, `edx = pUnit`, `[esp+4] = pAiParam`, `ret 0x4`):
- * self-terminates (`mode 0`, `dwFlags |= 0x20000`) when `pTarget == 0`, `nDist > aip1[diff]`, or
- * `pAiControl->dwCount (+0x14) >= aip2[diff]`; otherwise alternates casting `Skill[0]` (`+0x170`) and stalling `aip3[diff]`.
- *
- * @va D2Game:0x6FC9C060
- */
-export function AI_TentacleSkillCastA_6FC9C060_113c(
+function runTentacleSkillCast113c(
   m: D2KernMemory113c,
   pGame: number,
   pUnit: number,
@@ -1013,6 +1028,23 @@ export function AI_TentacleSkillCastA_6FC9C060_113c(
 }
 
 /**
+ * Tentacle / spire skill-cast AI callback (`ecx = pGame`, `edx = pUnit`, `[esp+4] = pAiParam`, `ret 0x4`):
+ * self-terminates (`mode 0`, `dwFlags |= 0x20000`) when `pTarget == 0`, `nDist > aip1[diff]`, or
+ * `pAiControl->dwCount (+0x14) >= aip2[diff]`; otherwise alternates casting `Skill[0]` (`+0x170`) and stalling `aip3[diff]`.
+ *
+ * @va D2Game:0x6FC9C060
+ */
+export function AI_TentacleSkillCastA_6FC9C060_113c(
+  m: D2KernMemory113c,
+  pGame: number,
+  pUnit: number,
+  pAiParam: number,
+): void {
+  hitD2GameVa113c(0x6FC9C060)
+  runTentacleSkillCast113c(m, pGame, pUnit, pAiParam)
+}
+
+/**
  * Twin tentacle / spire skill-cast AI callback (`ecx = pGame`, `edx = pUnit`, `[esp+4] = pAiParam`, `ret 0x4`):
  * identical machine-code twin of `0x6FC9C060`.
  *
@@ -1024,7 +1056,8 @@ export function AI_TentacleSkillCastB_6FC9C1D0_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
-  AI_TentacleSkillCastA_6FC9C060_113c(m, pGame, pUnit, pAiParam)
+  hitD2GameVa113c(0x6FC9C1D0)
+  runTentacleSkillCast113c(m, pGame, pUnit, pAiParam)
 }
 
 /**
@@ -1040,6 +1073,7 @@ export function AI_WallTrapHorizontalY_6FC9C340_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FC9C340)
   const pMonStatsTxt = m.u32((pAiParam + 0x1c) >>> 0) >>> 0
   const pTarget = m.u32((pAiParam + 0x08) >>> 0) >>> 0
   const nDist = m.u32((pAiParam + 0x14) >>> 0) | 0
@@ -1094,6 +1128,7 @@ export function AI_WallTrapVerticalX_6FC9C460_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FC9C460)
   const pMonStatsTxt = m.u32((pAiParam + 0x1c) >>> 0) >>> 0
   const pTarget = m.u32((pAiParam + 0x08) >>> 0) >>> 0
   const nDist = m.u32((pAiParam + 0x14) >>> 0) | 0
@@ -1148,6 +1183,7 @@ export function AI_TentacleMeleeAttack_6FC9C580_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FC9C580)
   const pAiControl = m.u32(pAiParam >>> 0) >>> 0
   const nDist = m.u32((pAiParam + 0x14) >>> 0) | 0
   const pTarget = m.u32((pAiParam + 0x08) >>> 0) >>> 0
@@ -1188,6 +1224,7 @@ export function AI_TryCastTentacleSpawnAtDirection_6FC9C6E0_113c(
   pMonStatsTxt: number,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FC9C6E0)
   const targetY = getUnitPathCoordYInline113c(m, pTarget)
   const targetX = getUnitPathCoordXInline113c(m, pTarget)
   const rawDir = UNITS_GetDirectionToCoords113c(m, pUnit >>> 0, targetX, targetY) & 0xff
@@ -1252,6 +1289,7 @@ export function AI_CardinalBeamTurret_6FC9C910_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FC9C910)
   const pTarget = m.u32((pAiParam + 0x08) >>> 0) >>> 0
   const nDist = m.u32((pAiParam + 0x14) >>> 0) | 0
   const pAiControl = m.u32(pAiParam >>> 0) >>> 0
@@ -1313,6 +1351,7 @@ export function AI_LinkedOwnerTurretCycle_6FC9CB10_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FC9CB10)
   const bInMeleeRange = m.u32((pAiParam + 0x18) >>> 0) | 0
   const nDist = m.u32((pAiParam + 0x14) >>> 0) | 0
   const pTarget = m.u32((pAiParam + 0x08) >>> 0) >>> 0
@@ -1471,6 +1510,7 @@ export function AI_ScanCallbackHostileTargetsMetrics_6FC9CF10_113c(
   pCandidate: number,
   pCtx: number,
 ): number {
+  hitD2GameVa113c(0x6FC9CF10)
   if ((pUnit >>> 0) === (pCandidate >>> 0)) {
     return 0
   }
@@ -1525,6 +1565,7 @@ export function AI_MosquitoNestSpawner_6FC9CFD0_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FC9CFD0)
   const pTarget = m.u32((pAiParam + 0x08) >>> 0) >>> 0
   const nDist = m.u32((pAiParam + 0x14) >>> 0) | 0
   const pMonStatsTxt = m.u32((pAiParam + 0x1c) >>> 0) >>> 0
@@ -1579,6 +1620,7 @@ export function AI_FoulCrowNestSpawner_6FC9D170_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FC9D170)
   const pTarget = m.u32((pAiParam + 0x08) >>> 0) >>> 0
   const nDist = m.u32((pAiParam + 0x14) >>> 0) | 0
   const pMonStatsTxt = m.u32((pAiParam + 0x1c) >>> 0) >>> 0
@@ -1633,6 +1675,7 @@ export function AI_OneShotSkillTrap_6FC9D310_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FC9D310)
   const pMonStatsTxt = m.u32((pAiParam + 0x1c) >>> 0) >>> 0
   const pTarget = m.u32((pAiParam + 0x08) >>> 0) >>> 0
   const pAiControl = m.u32(pAiParam >>> 0) >>> 0
@@ -1763,6 +1806,7 @@ export function AI_CastSkillAtRandomOffsetAroundSelf_6FC9D400_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FC9D400)
   const pMonStatsTxt = m.u32((pAiParam + 0x1c) >>> 0) >>> 0
   const wSkill0Init = (m.u16((pMonStatsTxt + 0x170) >>> 0) << 16) >> 16
   if (wSkill0Init >= 0) {
@@ -1811,6 +1855,7 @@ export function AI_SubmergedOrStuckTransition_6FC9D550_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FC9D550)
   const pAiControl = m.u32(pAiParam >>> 0) >>> 0
   if (pUnit !== 0 && (m.u32((pUnit + 0x10) >>> 0) | 0) === 0x0b) {
     m.setU32((pAiControl + 0x14) >>> 0, 1)
@@ -1872,6 +1917,7 @@ export function AI_BasicMeleeOrStepApproach_6FC9D7C0_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FC9D7C0)
   const bInMeleeRange = m.u32((pAiParam + 0x18) >>> 0) | 0
   const pTarget = m.u32((pAiParam + 0x08) >>> 0) >>> 0
   const pMonStatsTxt = m.u32((pAiParam + 0x1c) >>> 0) >>> 0
@@ -1935,6 +1981,7 @@ export function AI_PackBroadcastOrMeleeApproach_6FC9D910_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FC9D910)
   const bInMeleeRange = m.u32((pAiParam + 0x18) >>> 0) | 0
   const pTarget = m.u32((pAiParam + 0x08) >>> 0) >>> 0
   const pMonStatsTxt = m.u32((pAiParam + 0x1c) >>> 0) >>> 0
@@ -2049,6 +2096,7 @@ export function AI_SelfBuffOrSkillAndStrafe_6FC9DB70_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FC9DB70)
   const pMonStatsTxt = m.u32((pAiParam + 0x1c) >>> 0) >>> 0
   const bInMeleeRange = m.u32((pAiParam + 0x18) >>> 0) | 0
   const nDist = m.u32((pAiParam + 0x14) >>> 0) | 0
@@ -2218,6 +2266,7 @@ export function AI_MeleeOrPathType13Approach_6FC9DF00_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FC9DF00)
   const bInMeleeRange = m.u32((pAiParam + 0x18) >>> 0) | 0
   const pTarget = m.u32((pAiParam + 0x08) >>> 0) >>> 0
   const pMonStatsTxt = m.u32((pAiParam + 0x1c) >>> 0) >>> 0
@@ -2290,6 +2339,7 @@ export function AI_InitialStall5ThenMeleeApproach_6FC9E4D0_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FC9E4D0)
   const pTarget = m.u32((pAiParam + 0x08) >>> 0) >>> 0
   const bInMeleeRange = m.u32((pAiParam + 0x18) >>> 0) | 0
   const pMonStatsTxt = m.u32((pAiParam + 0x1c) >>> 0) >>> 0
@@ -2361,6 +2411,7 @@ export function AI_AuraBuffAndLineOfSightSkillCaster_6FC9E640_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FC9E640)
   const pAiControl = m.u32(pAiParam >>> 0) >>> 0
   const nDist = m.u32((pAiParam + 0x14) >>> 0) | 0
   const pTarget = m.u32((pAiParam + 0x08) >>> 0) >>> 0
@@ -2542,6 +2593,7 @@ export function AI_MeleeStrafeOrStepApproach_6FC9F370_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FC9F370)
   const bInMeleeRange = m.u32((pAiParam + 0x18) >>> 0) | 0
   const pTarget = m.u32((pAiParam + 0x08) >>> 0) >>> 0
   const pMonStatsTxt = m.u32((pAiParam + 0x1c) >>> 0) >>> 0
@@ -2647,6 +2699,7 @@ export function AI_ThreeStageSuicideMinion_6FC9F5A0_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FC9F5A0)
   const pAiControl = m.u32(pAiParam >>> 0) >>> 0
   const bInMeleeRange = m.u32((pAiParam + 0x18) >>> 0) | 0
   const nDist = m.u32((pAiParam + 0x14) >>> 0) | 0
@@ -2730,6 +2783,7 @@ export function AI_ComboMeleeAndDualSkill_6FC9F760_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FC9F760)
   const bInMeleeRange = m.u32((pAiParam + 0x18) >>> 0) | 0
   const pTarget = m.u32((pAiParam + 0x08) >>> 0) >>> 0
   const pMonStatsTxt = m.u32((pAiParam + 0x1c) >>> 0) >>> 0
@@ -2828,6 +2882,7 @@ export function AI_AlternatingMeleeOrApproach_6FC9F9A0_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FC9F9A0)
   const bInMeleeRange = m.u32((pAiParam + 0x18) >>> 0) | 0
   const pTarget = m.u32((pAiParam + 0x08) >>> 0) >>> 0
   const pMonStatsTxt = m.u32((pAiParam + 0x1c) >>> 0) >>> 0
@@ -2906,6 +2961,7 @@ export function AI_ChargeRunOrTripleSkillMelee_6FC9FB30_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FC9FB30)
   const diff0 = m.u8((pGame + 0x6d) >>> 0)
   const pMonStatsTxt = m.u32((pAiParam + 0x1c) >>> 0) >>> 0
   const nDist = m.u32((pAiParam + 0x14) >>> 0) | 0
@@ -3038,6 +3094,7 @@ export function AI_MeleeOrDualSkillPathType7_6FC9FE60_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FC9FE60)
   const bInMeleeRange = m.u32((pAiParam + 0x18) >>> 0) | 0
   const pTarget = m.u32((pAiParam + 0x08) >>> 0) >>> 0
   const pMonStatsTxt = m.u32((pAiParam + 0x1c) >>> 0) >>> 0
@@ -3147,6 +3204,7 @@ export function AI_RegeneratingMultiStateMonster_6FCA0450_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FCA0450)
   const pAiControl = m.u32(pAiParam >>> 0) >>> 0
   const nDist = m.u32((pAiParam + 0x14) >>> 0) | 0
   const pTarget = m.u32((pAiParam + 0x08) >>> 0) >>> 0

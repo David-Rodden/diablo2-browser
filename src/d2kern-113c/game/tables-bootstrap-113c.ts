@@ -352,9 +352,11 @@ export function isItemCodeShieldPure113c(dwCode: number): boolean {
     for (let i = 0; i < ITEMS_PACKED_113C.length; i++) {
       const rec = getItemsTxtRecordPure113c(i)
       if (rec === null) continue
+      const anc1 = closure.ancestorsByIndex[rec.wType1]
+      const anc2 = closure.ancestorsByIndex[rec.wType2]
       const isShield =
-        (closure.ancestorsByIndex[rec.wType1]?.has(2) ?? false) ||
-        (closure.ancestorsByIndex[rec.wType2]?.has(2) ?? false)
+        (anc1 !== undefined && anc1.has(2)) ||
+        (anc2 !== undefined && anc2.has(2))
       if (!isShield) continue
       const c = rec.code.padEnd(4, ' ')
       const u32 =

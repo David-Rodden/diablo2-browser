@@ -95,7 +95,6 @@ import {
   SUNITDMG_ComputeWeaponBaseDamage113c,
   SUNITDMG_ExecuteSingleHit113c,
 } from './combat-a1c-113c.ts'
-import { PLAYER_GetEquippedWeapon113c } from './fallen-ai-113c.ts'
 import { SUNIT_GetServerUnit113c } from './game-strc.ts'
 import {
   AURA_ForEachUnitInRadius113c,
@@ -256,7 +255,11 @@ import {
   UNIT_GetPosY113c,
 } from './regpop-spawn-113c.ts'
 import { SUNIT_FreeUnit113c } from './replay-final11-113c.ts'
-import { ITEMS_CheckItemTypeId113c, SKILLS_GetFlags113c } from './replay-kernel-113c.ts'
+import {
+  ITEMS_CheckItemTypeId113c,
+  PLAYER_GetEquippedWeapon113c,
+  SKILLS_GetFlags113c,
+} from './replay-kernel-113c.ts'
 import {
   EVENT_DeleteEventByArg14_113c,
   EVENT_FreeNode113c,
@@ -269,6 +272,7 @@ import {
   UNITS_GetOctileDistanceToCoordinates113c,
 } from './town-npc-ai-113c.ts'
 import { AITARGET_ScanUnitsByModeTable113c } from './town-runtime-gap-113c.ts'
+import { hitD2GameVa113c } from '../va-trace-113c.ts'
 
 export type D2KernMemory113c = Memory113c
 export class D2CommonAssertError extends Error {
@@ -470,6 +474,7 @@ export function STORM_TSHashTableInsertOrCreateNode_6FC22090_113c(
     flags: number,
   ) => number,
 ): number {
+  hitD2GameVa113c(0x6FC22090)
   const tbl = pHashTable >>> 0
   const key = dwKey >>> 0
   let bucketIdx = (key & m.u32((tbl + 0x24) >>> 0)) >>> 0
@@ -528,6 +533,7 @@ export function SKILLS_SrvDo004_SpawnMissileWithDeltaTargetXY_6FC2D290_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC2D290)
   const skillId = nSkillId | 0
   if (skillId < 0) return 0
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C)) >>> 0
@@ -590,6 +596,7 @@ export function SKILLS_SrvDo006_SpawnSubClassIndexedMissile_6FC2D530_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC2D530)
   const skillId = nSkillId | 0
   if (skillId < 0) return 0
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C)) >>> 0
@@ -643,6 +650,7 @@ export function ITEMS_DuplicateItemWithSocketFillers_6FC307E0_113c(
   pSourceItem: number,
   bCloneSockets: number,
 ): number {
+  hitD2GameVa113c(0x6FC307E0)
   const game = pGame >>> 0
   const srcItem = pSourceItem >>> 0
   const pRoom = UNITS_GetRoom113c(m, srcItem) >>> 0
@@ -746,6 +754,7 @@ export function AI_Think_Overlord_6FC37CB0_113c(
   pUnit: number,
   pAiTickArgs: number,
 ): void {
+  hitD2GameVa113c(0x6FC37CB0)
   const game = pGame >>> 0
   const unit = pUnit >>> 0
   const args = pAiTickArgs >>> 0
@@ -900,6 +909,7 @@ export function AI_Think_CainAndAnyaPrisonPortal_6FC3BF60_113c(
   pUnit: number,
   pAiTickArgs: number,
 ): void {
+  hitD2GameVa113c(0x6FC3BF60)
   const game = pGame >>> 0
   const unit = pUnit >>> 0
   const bIsFrozenAnya = unit !== 0 && i32(m, (unit + 0x04) >>> 0) === 0x20f ? 1 : 0
@@ -1041,6 +1051,7 @@ export function MONSTER_OnDeathSuicideMinionExplosion_6FC457D0_113c(
   _arg0 = 0,
   _arg1 = 0,
 ): void {
+  hitD2GameVa113c(0x6FC457D0)
   const game = pGame >>> 0
   const unit = pUnit >>> 0
   let pMonStatsTxt = 0
@@ -1152,6 +1163,7 @@ export function MISSILE_SplitForkedProjectilesOnTarget_6FC45AD0_113c(
   _pHitTarget: number,
   bAllowSplit: number,
 ): void {
+  hitD2GameVa113c(0x6FC45AD0)
   const game = pGame >>> 0
   const missile = pMissile >>> 0
   if (bAllowSplit === 0 || missile === 0 || i32(m, missile) !== 3) return
@@ -1261,6 +1273,7 @@ export function MONSTER_OnDeathBossSpecialEffect_6FC45E60_113c(
   _arg0 = 0,
   _arg1 = 0,
 ): void {
+  hitD2GameVa113c(0x6FC45E60)
   const game = pGame >>> 0
   const unit = pUnit >>> 0
   const classId = unit !== 0 ? i32(m, (unit + 0x04) >>> 0) : -1
@@ -1327,6 +1340,7 @@ export function MONSTER_OnDeathSpawnPoisonCloud_6FC46230_113c(
   _arg0 = 0,
   _arg1 = 0,
 ): void {
+  hitD2GameVa113c(0x6FC46230)
   const game = pGame >>> 0
   const unit = pUnit >>> 0
   let lvl = STATLIST_GetUnitStat113c(m, unit, 0x0c, 0) | 0
@@ -1867,6 +1881,7 @@ export function MONSTER_OnDeathSpawnFireExplosion75_6FC465E0_113c(
   _arg0 = 0,
   _arg1 = 0,
 ): void {
+  hitD2GameVa113c(0x6FC465E0)
   const posX = readUnitPosXInline113c(m, pUnit);
   const posY = readUnitPosYInline113c(m, pUnit);
   const pMissile = SKILLS_CreateDirectionalProjectileWithToHitAndAmmo_6FCC28F0_113c(
@@ -1917,6 +1932,7 @@ export function MONSTER_OnDeathCorpseExplosionScaledByMonLvl_6FC466B0_113c(
   _arg0 = 0,
   _arg1 = 0,
 ): void {
+  hitD2GameVa113c(0x6FC466B0)
   const posX = readUnitPosXInline113c(m, pUnit);
   const posY = readUnitPosYInline113c(m, pUnit);
   const pMissile = SKILLS_CreateDirectionalProjectileWithToHitAndAmmo_6FCC28F0_113c(
@@ -2010,6 +2026,7 @@ export function SKILLS_SrvDo024_SpawnWeaponMissileWithToHitAndBonusDmg_6FC47E30_
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC47E30)
   if (pUnit === 0) return 0;
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C));
   if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xb98) >>> 0)) return 0;
@@ -2079,6 +2096,7 @@ export function SKILLS_SrvDo029_ApplySingleTargetMonsterCurse_6FC49000_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC49000)
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C));
   if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xb98) >>> 0)) return 0;
   const pSkillTxt = (m.u32((pDataTables + 0xb90) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
@@ -2166,6 +2184,7 @@ export function SKILLS_SrvDo030_BarbarianChargeUpdateAndStrike_6FC493B0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC493B0)
   const pSkill = SKILLS_GetHighestLevelSkillFromUnitAndIdFastcall113c(m, pUnit, nSkillId) >>> 0;
   if (pSkill === 0) return 0;
   const flags = SKILLS_GetFlags113c(m, pSkill) | 0;
@@ -2203,6 +2222,7 @@ export function SKILLS_SrvDo031_LeapLandingAndKnockback_6FC494A0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC494A0)
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C));
   if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xb98) >>> 0)) return 0;
   const pSkillTxt = (m.u32((pDataTables + 0xb90) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
@@ -2280,6 +2300,7 @@ export function PLAYER_CheckAndSendCharSaveToClient_6FC4BE20_113c(
   m: D2KernMemory113c,
   pClient: number,
 ): void {
+  hitD2GameVa113c(0x6FC4BE20)
   const ebx = m.u32((pClient + 0x1b8) >>> 0);
   let edi = 0;
   let pUnit = 0;
@@ -2327,6 +2348,7 @@ export function QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(
   pQuestArg: number,
   nState: number,
 ): void {
+  hitD2GameVa113c(0x6FC55EB0)
   const pBuf = 0x7ffdf400;
   m.setU8((pQuestArg + 0x0c) >>> 0, nState & 0xff);
   user32_wsprintfA113c(m, pBuf, 0x6fd1cc2c, nState);
@@ -2344,6 +2366,7 @@ export function QUESTS_Act2TaintedSunTriggerAltarDarkness_6FC56C20_113c(
   m: D2KernMemory113c,
   pArgs: number,
 ): void {
+  hitD2GameVa113c(0x6FC56C20)
   const pGame = m.u32(pArgs);
   const pAct2Quests = m.u32((pGame + 0x10f4) >>> 0);
   if (pAct2Quests === 0) return;
@@ -2367,6 +2390,7 @@ export function QUESTS_Act3KurastTemplesSequenceFilter_6FC5BB60_113c(
   pGame: number,
   nArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC5BB60)
   if (nArg === 0) {
     return QUESTS_Act3CheckBlackenedTempleActive_6FC5B5F0_113c(m, pGame, 0) | 0;
   }
@@ -2384,6 +2408,7 @@ export function SKILLS_SrvDo042_SpawnSrvMissileWithDeltaAndRange_6FC63610_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC63610)
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C));
   if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xb98) >>> 0)) return 0;
   const pSkillTxt = (m.u32((pDataTables + 0xb90) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
@@ -2443,6 +2468,7 @@ export function SKILLS_SrvDo043_SpawnSrvMissileWithRange_6FC63720_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC63720)
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C));
   if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xb98) >>> 0)) return 0;
   const pSkillTxt = (m.u32((pDataTables + 0xb90) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
@@ -2492,6 +2518,7 @@ export function SKILLS_SrvDo046_EnchantOrRevivePetWithAuraState_6FC63FA0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC63FA0)
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C));
   if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xb98) >>> 0)) return 0;
   const pSkillTxt = (m.u32((pDataTables + 0xb90) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
@@ -2593,6 +2620,7 @@ export function SKILLS_SrvDo047_SpawnSkillMissileAtTargetPos_6FC64390_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC64390)
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C));
   if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xb98) >>> 0)) return 0;
   const pSkillTxt = (m.u32((pDataTables + 0xb90) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
@@ -2626,6 +2654,7 @@ export function SKILLS_StartOrUpdateDelayedChannelSkillState_6FC643F0_113c(
   nSkillLevel: number,
   nMissileId: number,
 ): number {
+  hitD2GameVa113c(0x6FC643F0)
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C));
   if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xb98) >>> 0)) return 0;
   const pSkillTxt = (m.u32((pDataTables + 0xb90) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
@@ -2700,6 +2729,7 @@ export function SKILLS_SpawnSpreadProjectilesAtTargetOrPath_6FC654E0_113c(
   nCount: number,
   bSpawnFirstDirect = 0,
 ): number {
+  hitD2GameVa113c(0x6FC654E0)
   let rem = nCount | 0;
   if (bSpawnFirstDirect !== 0) {
     SKILLS_CreateDirectionalProjectileWithToHitAndAmmo_6FCC28F0_113c(
@@ -2762,6 +2792,7 @@ export function SKILLS_SrvDo051_SpawnMultipleBowOrCrossbowProjectiles_6FC656B0_1
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC656B0)
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C));
   if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xb98) >>> 0)) return 0;
   const pSkillTxt = (m.u32((pDataTables + 0xb90) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
@@ -2841,6 +2872,7 @@ export function SKILLS_EventFunc05_MoltenBoulderOrPerFrameAura_6FC65AF0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC65AF0)
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C));
   if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xb98) >>> 0)) {
     EVENT_CancelSkillEventsByTypeAndId_6FCAE900_113c(m, pGame, pUnit, 5, nSkillId);
@@ -2935,6 +2967,7 @@ export function PALADIN_FindAndSpawnBlessedHammerOrAuraSubMissile_6FC67900_113c(
   nSubMissileIdx: number,
   nLevel: number,
 ): void {
+  hitD2GameVa113c(0x6FC67900)
   const pOutX = 0x7ffdf400;
   const pOutY = 0x7ffdf404;
   if (
@@ -2978,6 +3011,7 @@ export function NPC_StartPlayerNpcInteraction_6FC687A0_113c(
   ppInteractionListHead: number,
   bFlag = 0,
 ): number {
+  hitD2GameVa113c(0x6FC687A0)
   let edi = m.u32(ppInteractionListHead);
   if (m.u8((pUnit + 0x6c) >>> 0) !== 0) {
     if (
@@ -3075,6 +3109,7 @@ export function SKILLS_SrvDo060_PaladinSmite_6FC6CC50_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC6CC50)
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C));
   if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xb98) >>> 0)) return 0;
   const pSkillTxt = (m.u32((pDataTables + 0xb90) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
@@ -3174,6 +3209,7 @@ export function SKILLS_SrvDo062_StrikeTrackedPetTargetAndAdvanceChain_6FC6DAC0_1
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC6DAC0)
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C));
   if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xb98) >>> 0)) return 0;
   const pSkillTxt = (m.u32((pDataTables + 0xb90) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
@@ -3280,6 +3316,7 @@ export function SKILLS_SrvDo063_RangedMultiShotAtTrackedPetTargets_6FC6DCD0_113c
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC6DCD0)
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C));
   if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xb98) >>> 0)) return 0;
   const pSkillTxt = (m.u32((pDataTables + 0xb90) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
@@ -3395,6 +3432,7 @@ export function SKILLS_ApplyDimVisionToTarget_6FC70470_113c(
   pTarget: number,
   nSkillLevel: number,
 ): void {
+  hitD2GameVa113c(0x6FC70470)
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C));
   if (i32(m, (pDataTables + 0xb98) >>> 0) <= 0x47) return;
   const pSkillTxt = (m.u32((pDataTables + 0xb90) >>> 0) + 0x9ea4) >>> 0;
@@ -3461,6 +3499,7 @@ export function SKILLS_SrvDo067_NecromancerCurseRadius_6FC705D0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC705D0)
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C));
   if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xb98) >>> 0)) return 0;
   const pSkillTxt = (m.u32((pDataTables + 0xb90) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
@@ -3568,6 +3607,7 @@ export function SKILLS_ApplyTerrorOrConfusionCallback_6FC70DB0_113c(
   pTarget: number,
   pCtx: number,
 ): number {
+  hitD2GameVa113c(0x6FC70DB0)
   if (
     SKILLS_CanApplyTerrorOrConfusionToMonster_6FC6EE80_113c(
       m,
@@ -3620,6 +3660,7 @@ export function SKILLS_SrvDo070_NecromancerWeakenOrDecrepify_6FC71A90_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC71A90)
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C));
   if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xb98) >>> 0)) return 0;
   const pSkillTxt = (m.u32((pDataTables + 0xb90) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
@@ -3716,6 +3757,7 @@ export function QUESTS_Act1AndarielOnDeath_6FC7B690_113c(
   pQuestData: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC7B690)
   if (m.u8((pQuestData + 0x09) >>> 0) === 0) return;
   const pRoom = UNITS_GetRoom113c(m, m.u32((pQuestArg + 0x08) >>> 0)) >>> 0;
   if (pRoom === 0) return;
@@ -3774,6 +3816,7 @@ export function QUESTS_Act5AncientsGrantExperienceReward_6FC7BF70_113c(
   pUnit: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC7BF70)
   QUESTS_RecordPlayerGUID_6FC54C00_113c(m, pUnit, pGame);
   const bDiff = m.u8((pGame + 0x6d) >>> 0);
   let expReward = 0x155cc0;
@@ -3824,6 +3867,7 @@ export function QUESTS_Act5RescueBarbsOnPrisonDoorOpen_6FC7C850_113c(
   m: D2KernMemory113c,
   pArgs: number,
 ): void {
+  hitD2GameVa113c(0x6FC7C850)
   const pGame = m.u32(pArgs);
   const pQuestCtrl = m.u32((pGame + 0x10f4) >>> 0);
   let pQuest = 0;

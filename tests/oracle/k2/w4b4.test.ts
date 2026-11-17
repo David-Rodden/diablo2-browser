@@ -65,6 +65,7 @@ import { SparseMemory113c } from '../../../src/d2kern-113c/mem/sparse-memory'
 
 function createW4B4World() {
   const m = new SparseMemory113c()
+  m.fill(0x6fd00000, 0x100000, 0)
   const pGame = m.alloc(0x2000)
   const pDataTables = m.alloc(0x1000)
   initD2GameGlobalsInMem113c(m, pDataTables)
@@ -84,12 +85,60 @@ function createW4B4World() {
   m.setU32((pDataTables + 0xbd4) >>> 0, 360)
   m.setU16((pIscTable + 0x0e * 0x144 + 0x04) >>> 0, 0x0800)
 
-  const pItemsTxt = m.alloc(0x1a8 * 16)
-  m.setU8((pItemsTxt + 1 * 0x1a8 + 0x12d) >>> 0, 1)
-  m.setU32((pDataTables + 0xb98) >>> 0, pItemsTxt)
-  m.setU32((pDataTables + 0xb94) >>> 0, 16)
+  const pSkillsTxt = m.alloc(0x23c * 16)
+  m.setU32((pDataTables + 0xb98) >>> 0, pSkillsTxt)
+  m.setU32((pDataTables + 0xba0) >>> 0, 16)
+
+  const itemCodes = [
+    0x20646c67, // 'gld '
+    0x20317068, // 'hp1 '
+    0x20327068, // 'hp2 '
+    0x20337068, // 'hp3 '
+    0x20347068, // 'hp4 '
+    0x20357068, // 'hp5 '
+    0x2031706d, // 'mp1 '
+    0x2032706d, // 'mp2 '
+    0x2033706d, // 'mp3 '
+    0x2034706d, // 'mp4 '
+    0x2035706d, // 'mp5 '
+    0x20637374, // 'tsc '
+    0x20637369, // 'isc '
+    0x206b6274, // 'tbk '
+    0x206b6269, // 'ibk '
+  ].sort((a, b) => (a >>> 0) - (b >>> 0))
+  const pItemsTxt = m.alloc(0x1a8 * itemCodes.length)
+  const pItemsLinker = m.alloc(0x20)
+  const pLinkerRows = m.alloc(itemCodes.length * 8)
+  for (let i = 0; i < itemCodes.length; i++) {
+    const code = itemCodes[i]! >>> 0
+    m.setU32((pLinkerRows + i * 8) >>> 0, code)
+    m.setU32((pLinkerRows + i * 8 + 4) >>> 0, i)
+    m.setU32((pItemsTxt + i * 0x1a8 + 0x80) >>> 0, code)
+    m.setU8((pItemsTxt + i * 0x1a8 + 0x10f) >>> 0, 1)
+    m.setU8((pItemsTxt + i * 0x1a8 + 0x110) >>> 0, 1)
+    m.setU8((pItemsTxt + i * 0x1a8 + 0x12d) >>> 0, 1)
+  }
+  m.setU32(pItemsLinker, itemCodes.length)
+  m.setU32((pItemsLinker + 0x08) >>> 0, pLinkerRows)
+  m.setU32(0x6fdefb94, itemCodes.length)
   m.setU32(0x6fdefb98, pItemsTxt)
-  m.setU32(0x6fdefb94, 16)
+  m.setU32(0x6fdeff6c, pItemsLinker)
+
+  const pItemTypesTxt = m.alloc(0xe4 * 16)
+  const pTypeEquiv = m.alloc(16 * 2 * 4)
+  m.setU32((pDataTables + 0xbf8) >>> 0, pItemTypesTxt)
+  m.setU32((pDataTables + 0xbfc) >>> 0, 16)
+  m.setU32((pDataTables + 0xc00) >>> 0, 2)
+  m.setU32((pDataTables + 0xc04) >>> 0, pTypeEquiv)
+
+  const pCharStatsTxt = m.alloc(0xc4 * 8)
+  m.setU32((pDataTables + 0xbc4) >>> 0, pCharStatsTxt)
+  m.setU32((pDataTables + 0xbc8) >>> 0, 8)
+  m.setU32((pDataTables + 0xba4) >>> 0, m.alloc(7 * 4))
+  m.setU32(0x6fded354, pCharStatsTxt)
+  m.setU32(0x6fded358, 8)
+
+  m.setU32(0x6fdefbb4, m.alloc(0x20))
   m.setU32(0x6fdefbbc, m.alloc(0x90))
   m.setU32(0x6fdefbc0, m.alloc(0x90))
   m.setU32(0x6fdefbc4, m.alloc(0x90))
@@ -294,6 +343,13 @@ describe('K2 Wave 4 Batch 4 (w4b4): 45 D2Game.dll functions', () => {
     m.setU32((pPlayerData + 0x9c) >>> 0, pClient)
     const pPlrStats = STATLIST_CreateEx113c(m, pPlayer, 0, 0)
     m.setU32((pPlayer + 0x5c) >>> 0, pPlrStats)
+    const pSkillList = m.alloc(0x20)
+    const pSkill0 = m.alloc(0x40)
+    m.setU32(pSkill0, m.u32((m.u32(D2COMMON_SGPT_DATATABLES_VA_113C) + 0xb98) >>> 0))
+    m.setU32((pSkill0 + 0x28) >>> 0, 1)
+    m.setU32((pSkill0 + 0x34) >>> 0, 0xffffffff)
+    m.setU32((pSkillList + 0x04) >>> 0, pSkill0)
+    m.setU32((pPlayer + 0xa8) >>> 0, pSkillList)
     STATLIST_SetUnitStat113c(m, pPlayer, 0x0a, 50 << 8, 0)
     STATLIST_SetUnitStat113c(m, pPlayer, 0x0b, 100 << 8, 0)
 

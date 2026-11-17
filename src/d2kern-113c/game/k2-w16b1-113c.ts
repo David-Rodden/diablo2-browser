@@ -79,13 +79,17 @@ import {
   D2GAME_PLRMODES_SendStatToClientOrParty113c,
 } from './boot-init-gap-b-113c';
 import { C2S_ValidateTargetUnitDistance113c, PLAYER_StartModeAtCoords113c } from './c2s-packet-113c';
+import { SUNITDMG_GetPlayerClientClassId113c } from './combat-a1c-113c';
 import {
-  ITEMS_DropGoldPileAtUnit113c,
-  ITEMS_FinalizeCreatedItem113c,
-  ITEMS_GetDropItemLevel113c,
-  SUNITDMG_GetPlayerClientClassId113c,
-} from './combat-a1c-113c';
-import { SUNIT_ScheduleModeAnimEvents113c } from './fallen-ai-113c';
+  D2GAME_CreateItemEx_6FC31490_113c,
+  ITEMS_FindFreeGroundDropCoords_6FC2E930_113c,
+  ITEMS_GetDropItemLevel_6FC2E5D0_113c,
+} from './k2-real-itemdrop-113c';
+import { ITEMS_PlaceItemInUnitInventoryGrid_6FCF76A0_113c } from './k2-w12b1-113c';
+import { D2Game_6FCEF810_113c } from './k2-w13b1-113c';
+import { ITEMS_DuplicateAndDropCursorItem_6FCF8310_113c } from './k2-w14b1-113c';
+import { QUESTS_OnBossActChangeOrBossKill_6FC56890_113c } from './k2-w15b1-113c';
+import { SUNIT_ScheduleModeAnimEvents113c } from './replay-kernel-113c';
 import { SUNIT_GetServerUnit113c } from './game-strc';
 import { PLRTRADE_SendTradeAcceptButtonAndSetState3_113c } from './k2-combat-core-w1-113c';
 import { SKILLS_AssignHandSkillAndSyncAura113c } from './k2-gap-melee-dot-113c';
@@ -319,6 +323,7 @@ import {
 } from './regpop-spawn-113c';
 import { EVENT_SetEventFull113c } from './timer-wheel';
 import { PLAYER_SetNeutralOrTownNeutralMode113c } from './town-runtime-gap-113c';
+import { hitD2GameVa113c } from '../va-trace-113c';
 
 function FOG_Allocation113c(
   m: SparseMemory113c,
@@ -439,6 +444,7 @@ export function CLIENTS_SendNextSaveChunkPacketB3_6FC4D140_113c(
   pClient: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC4D140);
   if (pClient === 0) {
     FOG_Assert113c('pClient', '0x6fd19ff9', 0xb8a);
     return;
@@ -497,6 +503,7 @@ export function CLIENTS_FlushPositionsSaveAndPacketQueue_6FC4D500_113c(
   pGame: number,
   bFlushPositions: number,
 ): void {
+  hitD2GameVa113c(0x6FC4D500);
   if (pGame === 0) {
     FOG_Assert113c('pGame', '0x6fd19ff9', 0xee2);
     return;
@@ -567,6 +574,7 @@ export function CLIENTS_DrainAllPendingSaveChunks_6FC4D790_113c(
   pGame: number,
   pClient: number,
 ): void {
+  hitD2GameVa113c(0x6FC4D790);
   const bGameType = m.u8((pGame + 0x6a) >>> 0);
   if (bGameType !== 1 && bGameType !== 2) return;
   if (pClient === 0) {
@@ -594,6 +602,7 @@ export function CLIENTS_DisconnectAndSaveClientById_6FC4DC70_113c(
   dwClientId: number,
   _uUnused = 0,
 ): void {
+  hitD2GameVa113c(0x6FC4DC70);
   const wGameKey = m.u16(0x6fd27d98);
   const pGame = GAME_LookupAndLockGameByKey_6FC4AAE0_113c(m, wGameKey);
   if (pGame === 0) return;
@@ -663,6 +672,7 @@ export function CLIENTS_SaveAndDrainAllSinglePlayerClients_6FC4DE30_113c(
   m: SparseMemory113c,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC4DE30);
   const bGameType = m.u8((pGame + 0x6a) >>> 0);
   if (bGameType !== 1 && bGameType !== 2) return;
   let pClient = m.u32((pGame + 0x88) >>> 0);
@@ -726,6 +736,7 @@ export function CLIENTS_DisconnectFlag20OrFallbackClient_6FC4E160_113c(
   pGame: number,
   pDefaultClient = 0,
 ): void {
+  hitD2GameVa113c(0x6FC4E160);
   const outSlot1 = 0x6fd44e60;
   m.setU32(outSlot1, 0);
   CLIENTS_ForEachInGameClient113c(m, pGame, 0x6fc4a700, outSlot1, (mem, pClient, ctx) =>
@@ -761,6 +772,7 @@ export function PLAYER_CloseActiveInteractAndSendPacket62_6FC58930_113c(
   pPlayer: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC58930);
   const bActive = m.u8((pPlayer + 0x6c) >>> 0);
   const dwInteractId = m.u32((pPlayer + 0x64) >>> 0);
   const nInteractType = m.u32((pPlayer + 0x68) >>> 0);
@@ -834,6 +846,7 @@ export function PLAYER_ClearActiveInteractOnDeath_6FC58AB0_113c(
   pPlayer: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC58AB0);
   const bActive = m.u8((pPlayer + 0x6c) >>> 0);
   const dwInteractId = m.u32((pPlayer + 0x64) >>> 0);
   const nInteractType = m.u32((pPlayer + 0x68) >>> 0);
@@ -866,6 +879,7 @@ export function ACT5Q6_OnTyraelPortalEnteredTriggerEndgame_6FC7FD00_113c(
   m: SparseMemory113c,
   pQuestArg: number,
 ): number {
+  hitD2GameVa113c(0x6FC7FD00);
   const pGame = m.u32(pQuestArg >>> 0);
   const pQuestControl = m.u32((pGame + 0x10f4) >>> 0);
   let pQuest = pQuestControl !== 0 ? m.u32(pQuestControl >>> 0) : 0;
@@ -914,6 +928,7 @@ export function ACT5Q6_OnBaalKilledCompleteQuestAndSpawnPortal_6FC7FE30_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC7FE30);
   const pQuestState = m.u32((pQuest + 0x18) >>> 0);
   const pGame = m.u32((pQuest + 0x04) >>> 0);
   const pQuestControl = m.u32((pGame + 0x10f4) >>> 0);
@@ -1116,6 +1131,7 @@ export function ACT5Q6_InitQuestTableRecord_6FC80080_113c(
   m: SparseMemory113c,
   pQuest: number,
 ): void {
+  hitD2GameVa113c(0x6FC80080);
   for (let i = 0; i < 0x3c; i += 4) {
     m.setU32((pQuest + 0xa0 + i) >>> 0, 0);
   }
@@ -1170,6 +1186,7 @@ export function OBJ_HandleShrineOrOrificeItemAction_6FC8E680_113c(
   dwObjectGuid: number,
   wSubAction: number,
 ): number {
+  hitD2GameVa113c(0x6FC8E680);
   if (pGame === 0) {
     FOG_Assert113c('pGame', '0x6fd19ff9', 0x2d3);
     return 0;
@@ -1274,6 +1291,7 @@ export function OBJ_DeactivateShrineOrStashObject_6FC8F520_113c(
   pPlayer: number,
   pObject: number,
 ): void {
+  hitD2GameVa113c(0x6FC8F520);
   if (pObject !== 0) {
     const wObjId = m.u16((pObject + 0x04) >>> 0);
     if (wObjId === 0x50 || wObjId === 0x5a) {
@@ -1340,6 +1358,7 @@ export function PLRTRADE_HandleClientTradeButton_6FC94200_113c(
   wButton: number,
   nGoldAmount: number,
 ): number {
+  hitD2GameVa113c(0x6FC94200);
   if (pPlayer === 0) return 1;
   const dwInteractId = m.u32((pPlayer + 0x64) >>> 0);
   const nInteractType = m.u32((pPlayer + 0x68) >>> 0);
@@ -1535,6 +1554,7 @@ export function PLAYER_HandleDeathCorpseAndSave_6FC99730_113c(
   _uArg1 = 0,
   _uArg2 = 0,
 ): void {
+  hitD2GameVa113c(0x6FC99730);
   const nType = m.u32(pPlayer >>> 0);
   const pPath = m.u32((pPlayer + 0x2c) >>> 0);
   const nY =
@@ -1622,6 +1642,7 @@ export function PLAYER_ProcessPlayerDeathAndPenalties_6FC99E40_113c(
   _nMode = 0,
   pAttacker = 0,
 ): void {
+  hitD2GameVa113c(0x6FC99E40);
   const bIsDruid =
     pVictim !== 0 &&
     m.u32(pVictim >>> 0) === 0 &&
@@ -1697,6 +1718,7 @@ export function SKILLS_ClearPlayerCursorIdentifyOrUseState_6FCC1580_113c(
   bDropCursor: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FCC1580);
   if (pPlayer !== 0) {
     m.setU32((pPlayer + 0xc8) >>> 0, (m.u32((pPlayer + 0xc8) >>> 0) & 0xffffffbf) >>> 0);
   }
@@ -1727,6 +1749,7 @@ export function ACT4Q2_OnHellforgeObjectOperate_6FCDB8D0_113c(
   m: SparseMemory113c,
   pQuestArg: number,
 ): number {
+  hitD2GameVa113c(0x6FCDB8D0);
   const pGame = m.u32(pQuestArg >>> 0);
   const pQuestControl = m.u32((pGame + 0x10f4) >>> 0);
   let pQuest = pQuestControl !== 0 ? m.u32(pQuestControl >>> 0) : 0;
@@ -1891,6 +1914,7 @@ export function ACT4Q3_TriggerEndgameOrSendPacket50_6FCDBCE0_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FCDBCE0);
   PLAYER_CloseActiveInteractAndSendPacket62_6FC58930_113c(m, pPlayer, pGame);
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer);
   m.setU32((pPlayerData + 0x4c) >>> 0, 1);
@@ -1934,6 +1958,7 @@ export function ACT4Q3_TimerCallback_CheckDiabloSpawnAndEndgame_6FCDBDC0_113c(
   pGame: number,
   pQuest: number,
 ): number {
+  hitD2GameVa113c(0x6FCDBDC0);
   const pQuestState = m.u32((pQuest + 0x18) >>> 0);
   if (m.u8((pQuestState + 0x02) >>> 0) !== 0) {
     const nTicks = (m.u32((pQuestState + 0x18) >>> 0) + 1) >>> 0;
@@ -2019,6 +2044,7 @@ export function ACT4Q3_OnDiabloSealOperate_6FCDBF30_113c(
   m: SparseMemory113c,
   pQuestArg: number,
 ): number {
+  hitD2GameVa113c(0x6FCDBF30);
   const pObject = m.u32((pQuestArg + 0x04) >>> 0);
   if (pObject !== 0 && m.u32((pObject + 0x10) >>> 0) !== 0) {
     return 0;
@@ -2079,6 +2105,7 @@ export function ACT4Q3_SpawnSealBossMarkerAndActivateSeal_6FCDC050_113c(
   pQuestArg: number,
   nSealBossIdx: number,
 ): void {
+  hitD2GameVa113c(0x6FCDC050);
   const pSealObj = m.u32((pQuestArg + 0x04) >>> 0);
   const pSealRoom = UNITS_GetRoom113c(m, pSealObj);
   const pTargetRoom = ROOM_FindRoomContainingSubtile113c(
@@ -2149,6 +2176,7 @@ export function ACT4Q3_OnSealObjectActivatedTriggerCheck_6FCDC220_113c(
   m: SparseMemory113c,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FCDC220);
   const pGame = m.u32(pQuestArg >>> 0);
   const pQuestControl = m.u32((pGame + 0x10f4) >>> 0);
   let pQuest = pQuestControl !== 0 ? m.u32(pQuestControl >>> 0) : 0;
@@ -2191,6 +2219,7 @@ export function ACT4Q3_OnSealBossOrDiabloKilled_6FCDC2C0_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FCDC2C0);
   const pVictim = m.u32((pQuestArg + 0x08) >>> 0);
   const pQuestState = m.u32((pQuest + 0x18) >>> 0);
   if (m.u32((pVictim + 0x04) >>> 0) !== 0xf3) {
@@ -2338,6 +2367,7 @@ export function ACT4Q3_OnSeal5Operate_6FCDC4A0_113c(
   m: SparseMemory113c,
   pQuestArg: number,
 ): number {
+  hitD2GameVa113c(0x6FCDC4A0);
   const pObject = m.u32((pQuestArg + 0x04) >>> 0);
   if (pObject !== 0 && m.u32((pObject + 0x10) >>> 0) !== 0) {
     return 0;
@@ -2401,6 +2431,7 @@ export function ACT4Q3_OnSeal3Operate_6FCDC510_113c(
   m: SparseMemory113c,
   pQuestArg: number,
 ): number {
+  hitD2GameVa113c(0x6FCDC510);
   const pObject = m.u32((pQuestArg + 0x04) >>> 0);
   if (pObject !== 0 && m.u32((pObject + 0x10) >>> 0) !== 0) {
     return 0;
@@ -2430,6 +2461,7 @@ export function ACT4Q3_OnSeal1Operate_6FCDC580_113c(
   m: SparseMemory113c,
   pQuestArg: number,
 ): number {
+  hitD2GameVa113c(0x6FCDC580);
   const pObject = m.u32((pQuestArg + 0x04) >>> 0);
   if (pObject !== 0 && m.u32((pObject + 0x10) >>> 0) !== 0) {
     return 0;
@@ -2459,6 +2491,7 @@ export function ACT4Q3_InitQuestTableRecord_6FCDC5F0_113c(
   m: SparseMemory113c,
   pQuest: number,
 ): void {
+  hitD2GameVa113c(0x6FCDC5F0);
   for (let i = 0; i < 0x3c; i += 4) {
     m.setU32((pQuest + 0xa0 + i) >>> 0, 0);
   }
@@ -2507,6 +2540,7 @@ export function NPCS_OpenNpcShopOrGambleSession_6FCDF810_113c(
   bResetShop: number,
   bGamble: number,
 ): void {
+  hitD2GameVa113c(0x6FCDF810);
   if (pNpc === 0) return;
   const pOutSlotScratch = 0x6fd44ec8;
   const pShopRecord = D2GAME_ARENA_FindPlayerSlotByUnit113c(
@@ -2543,60 +2577,6 @@ export function NPCS_OpenNpcShopOrGambleSession_6FCDF810_113c(
   }
 }
 
-function syncNpcAndPlayerQuestState_6FC56890(
-  m: SparseMemory113c,
-  _pNpc: number,
-  pPlayer: number,
-  pGame: number,
-): void {
-  QUESTS_SyncPlayerQuestLogAndPacket89_6FC559C0_113c(m, pGame, pPlayer, 0);
-}
-
-function takeWaypointToLevel_6FCEF810(
-  m: SparseMemory113c,
-  _pGame: number,
-  pPlayer: number,
-  nDestLevel: number,
-  _nMode: number,
-): void {
-  if (pPlayer !== 0) {
-    m.setU32((pPlayer + 0x64) >>> 0, nDestLevel >>> 0);
-    m.setU32((pPlayer + 0x68) >>> 0, 6);
-    m.setU8((pPlayer + 0x6c) >>> 0, 0);
-  }
-}
-
-function placeItemOnCursorOrInventory_6FCF76A0(
-  m: SparseMemory113c,
-  pGame: number,
-  pPlayer: number,
-  dwItemGuid: number,
-): number {
-  if (pPlayer === 0 || pGame === 0) return 0;
-  const pInv = m.u32((pPlayer + 0x60) >>> 0);
-  if (pInv === 0) return 0;
-  let pItem = m.u32((pGame + 0x1720 + (dwItemGuid & 0x7f) * 4) >>> 0);
-  while (pItem !== 0 && m.u32((pItem + 0x0c) >>> 0) !== dwItemGuid >>> 0) {
-    pItem = m.u32((pItem + 0xe4) >>> 0);
-  }
-  if (pItem !== 0) {
-    m.setU32((pInv + 0x20) >>> 0, pItem);
-    return 1;
-  }
-  return 0;
-}
-
-function resendCursorItemToClient_6FCF8310(
-  m: SparseMemory113c,
-  _dwItemGuid: number,
-  _pGame: number,
-  pPlayer: number,
-): void {
-  if (pPlayer !== 0) {
-    UNITS_SetUnitUpdateFlags113c(m, pPlayer, 1);
-  }
-}
-
 /**
  * @dll D2Game.dll
  * @va 0x6FCE00C0
@@ -2610,6 +2590,7 @@ export function NPCS_HandleNpcMenuRequest_6FCE00C0_113c(
   dwNpcGuid: number,
   dwItemGuid = 0,
 ): number {
+  hitD2GameVa113c(0x6FCE00C0);
   if (pGame === 0) {
     FOG_Assert113c('pGame', '0x6fd19ff9', 0x2d3);
     return 0;
@@ -2673,25 +2654,40 @@ export function NPCS_HandleNpcMenuRequest_6FCE00C0_113c(
     }
     return cur;
   };
-  const placeOrDropReward = (pNewItem: number): void => {
-    if (placeItemOnCursorOrInventory_6FCF76A0(m, pGame, pPlayer, m.u32((pNewItem + 0x0c) >>> 0)) === 0) {
+  const placeOrDropReward = (pNewItem: number, nLine: number): void => {
+    const dwNewGuid = pNewItem !== 0 ? m.u32((pNewItem + 0x0c) >>> 0) : 0xffffffff;
+    if (
+      ITEMS_PlaceItemInUnitInventoryGrid_6FCF76A0_113c(
+        m,
+        0x6fd1b3a4,
+        nLine,
+        pGame,
+        pPlayer,
+        dwNewGuid,
+        0,
+        0,
+        1,
+        1,
+        0,
+      ) === 0
+    ) {
       UNITS_ChangeAnimMode113c(m, pNewItem, 3);
       PATH_GetTargetTypeAndPosition113c(m, pPlayer, pCoordScratch);
-      const pRoom = ITEMS_DropGoldPileAtUnit113c(
+      const pRoom = ITEMS_FindFreeGroundDropCoords_6FC2E930_113c(
         m,
         UNITS_GetRoom113c(m, pPlayer),
         pCoordScratch,
         pOutCoordScratch,
-        true,
+        1,
       );
       ITEMS_PlaceItemOnGroundInRoom_6FC2E990_113c(
         m,
-        m.u32(pOutCoordScratch),
+        m.u32((pOutCoordScratch + 4) >>> 0),
         pNewItem,
         pRoom,
         pGame,
         0,
-        m.u32((pOutCoordScratch + 4) >>> 0),
+        m.u32(pOutCoordScratch),
       );
     }
   };
@@ -2706,33 +2702,34 @@ export function NPCS_HandleNpcMenuRequest_6FCE00C0_113c(
       if (pItem === 0 && DRLGWARP_TestRoomTileBit113c(m, pQuestRec, 3, 1) !== 0) return 0;
       m.setU8((pkt58 + 5) >>> 0, 7);
       NET_SendPacketBuffer7B_6FCAAB20_113c(m, pkt58, pClient);
-      resendCursorItemToClient_6FCF8310(m, dwItemGuid, pGame, pPlayer);
+      ITEMS_DuplicateAndDropCursorItem_6FCF8310_113c(m, dwItemGuid, pGame, pPlayer);
       return 0;
     }
     ITEMS_PopulateItemDropStruct_6FC2E410_113c(m, pDropStruct, pItem, pGame);
     const nEthBits = (ITEMS_CheckEtherealFlag113c(m, pItem) !== 0 ? 4 : 2) | 0x20;
-    m.setU32((pDropStruct + 0x7c) >>> 0, (m.u32((pDropStruct + 0x7c) >>> 0) | nEthBits) >>> 0);
+    m.setU32((pDropStruct + 0x80) >>> 0, (m.u32((pDropStruct + 0x80) >>> 0) | nEthBits) >>> 0);
     m.setU16((pDropStruct + 0x2a) >>> 0, m.u16((pGame + 0x78) >>> 0));
     const bPersonalized = ITEMS_TestFlagMask113c(m, ITEMS_GetCommandFlags113c(m, pItem), 0x1000000) !== 0;
+    const pSavedEarName = (pDropStruct + 0x84) >>> 0;
     if (bPersonalized) {
       const pEar = ITEMS_GetEarName113c(m, pItem);
       for (let i = 0; i < 16; i += 1) {
         const ch = pEar !== 0 ? m.u8((pEar + i) >>> 0) : 0;
-        m.setU8((pDropStruct + 0x80 + i) >>> 0, ch);
+        m.setU8((pSavedEarName + i) >>> 0, ch);
         if (ch === 0) break;
       }
     }
     if (ITEMS_DestroyCursorItemAndNotify_6FCF2C70_113c(m, pPlayer, pItem, pGame) === 0) {
       m.setU8((pkt58 + 5) >>> 0, 7);
       NET_SendPacketBuffer7B_6FCAAB20_113c(m, pkt58, pClient);
-      resendCursorItemToClient_6FCF8310(m, dwItemGuid, pGame, pPlayer);
+      ITEMS_DuplicateAndDropCursorItem_6FCF8310_113c(m, dwItemGuid, pGame, pPlayer);
       return 0;
     }
-    m.setU32((pDropStruct + 0x2c) >>> 0, 6);
-    let nIlvl = ITEMS_GetDropItemLevel113c(m, pPlayer, 0) | 0;
+    m.setU32((pDropStruct + 0x30) >>> 0, 6);
+    let nIlvl = ITEMS_GetDropItemLevel_6FC2E5D0_113c(m, pGame, pPlayer, 0) | 0;
     if (nIlvl > 5) nIlvl += 4;
-    m.setU32((pDropStruct + 0x14) >>> 0, nIlvl >>> 0);
-    const pNewItem = ITEMS_FinalizeCreatedItem113c(m, pGame, pDropStruct);
+    m.setU32((pDropStruct + 0x0c) >>> 0, nIlvl >>> 0);
+    const pNewItem = D2GAME_CreateItemEx_6FC31490_113c(m, pGame, pDropStruct, 0) >>> 0;
     if (pNewItem === 0) {
       m.setU8((pkt58 + 5) >>> 0, 7);
       NET_SendPacketBuffer7B_6FCAAB20_113c(m, pkt58, pClient);
@@ -2743,9 +2740,9 @@ export function NPCS_HandleNpcMenuRequest_6FCE00C0_113c(
     ITEMS_SetInvPage113c(m, pNewItem, 0);
     if (bPersonalized) {
       ITEMS_SetOrClearCommandFlags113c(m, pNewItem, 0x1000000, 1);
-      ITEMS_SetEarName113c(m, pNewItem, (pDropStruct + 0x80) >>> 0);
+      ITEMS_SetEarName113c(m, pNewItem, pSavedEarName);
     }
-    placeOrDropReward(pNewItem);
+    placeOrDropReward(pNewItem, 0x9be);
     ACT1Q3_InitPlayerQuestStateAndResetFlag0A_6FC837E0_113c(m, pPlayer, pGame);
     m.setU8((pkt58 + 5) >>> 0, 6);
     NET_SendPacketBuffer7B_6FCAAB20_113c(m, pkt58, pClient);
@@ -2778,21 +2775,21 @@ export function NPCS_HandleNpcMenuRequest_6FCE00C0_113c(
     if (DRLGWARP_TestRoomTileBit113c(m, pQuestRec, 0x23, 1) === 0) {
       m.setU8((pkt58 + 5) >>> 0, 7);
       NET_SendPacketBuffer7B_6FCAAB20_113c(m, pkt58, pClient);
-      resendCursorItemToClient_6FCF8310(m, dwItemGuid, pGame, pPlayer);
+      ITEMS_DuplicateAndDropCursorItem_6FCF8310_113c(m, dwItemGuid, pGame, pPlayer);
       return 0;
     }
     if (pItem === 0) return 0;
     if (ITEMS_CanItemBeSocketedByQuest113c(m, pItem) === 0) {
       m.setU8((pkt58 + 5) >>> 0, 7);
       NET_SendPacketBuffer7B_6FCAAB20_113c(m, pkt58, pClient);
-      resendCursorItemToClient_6FCF8310(m, dwItemGuid, pGame, pPlayer);
+      ITEMS_DuplicateAndDropCursorItem_6FCF8310_113c(m, dwItemGuid, pGame, pPlayer);
       return 0;
     }
     const pNewItem = ITEMS_DuplicateItemWithSocketFillers_6FC307E0_113c(m, pGame, pItem, 1);
     if (pNewItem === 0 || ITEMS_DestroyCursorItemAndNotify_6FCF2C70_113c(m, pPlayer, pItem, pGame) === 0) {
       m.setU8((pkt58 + 5) >>> 0, 7);
       NET_SendPacketBuffer7B_6FCAAB20_113c(m, pkt58, pClient);
-      resendCursorItemToClient_6FCF8310(m, dwItemGuid, pGame, pPlayer);
+      ITEMS_DuplicateAndDropCursorItem_6FCF8310_113c(m, dwItemGuid, pGame, pPlayer);
       return 0;
     }
     ITEMS_SetOrClearCommandFlags113c(m, pNewItem, 0x800, 1);
@@ -2808,7 +2805,7 @@ export function NPCS_HandleNpcMenuRequest_6FCE00C0_113c(
     NPCS_RepairAndRechargeUnitItem_6FCDD9B0_113c(m, 0, pNewItem, pGame);
     ITEMS_OnCharmPlacedInInventory_6FCF6710_113c(m, pPlayer, pNewItem, pGame);
     ITEMS_SetInvPage113c(m, pNewItem, 0);
-    placeOrDropReward(pNewItem);
+    placeOrDropReward(pNewItem, 0xb49);
     ACT5Q1_CompleteQuestRecord23AndVerifyQuest1F_6FC785C0_113c(m, pPlayer, pGame);
     m.setU8((pkt58 + 5) >>> 0, 6);
     NET_SendPacketBuffer7B_6FCAAB20_113c(m, pkt58, pClient);
@@ -2824,7 +2821,7 @@ export function NPCS_HandleNpcMenuRequest_6FCE00C0_113c(
     if (DRLGWARP_TestRoomTileBit113c(m, pQuestRec, 0x26, 1) === 0 || (pItem !== 0 && ITEMS_CanItemBeDroppedOrSold113c(m, pItem) === 0)) {
       m.setU8((pkt58 + 5) >>> 0, 7);
       NET_SendPacketBuffer7B_6FCAAB20_113c(m, pkt58, pClient);
-      resendCursorItemToClient_6FCF8310(m, dwItemGuid, pGame, pPlayer);
+      ITEMS_DuplicateAndDropCursorItem_6FCF8310_113c(m, dwItemGuid, pGame, pPlayer);
       return 0;
     }
     if (pItem === 0) return 0;
@@ -2832,13 +2829,13 @@ export function NPCS_HandleNpcMenuRequest_6FCE00C0_113c(
     if (pNewItem === 0 || ITEMS_DestroyCursorItemAndNotify_6FCF2C70_113c(m, pPlayer, pItem, pGame) === 0) {
       m.setU8((pkt58 + 5) >>> 0, 7);
       NET_SendPacketBuffer7B_6FCAAB20_113c(m, pkt58, pClient);
-      resendCursorItemToClient_6FCF8310(m, dwItemGuid, pGame, pPlayer);
+      ITEMS_DuplicateAndDropCursorItem_6FCF8310_113c(m, dwItemGuid, pGame, pPlayer);
       return 0;
     }
     NPCS_RepairAndRechargeUnitItem_6FCDD9B0_113c(m, 0, pNewItem, pGame);
     ITEMS_OnCharmPlacedInInventory_6FCF6710_113c(m, pPlayer, pNewItem, pGame);
     ITEMS_SetInvPage113c(m, pNewItem, 0);
-    placeOrDropReward(pNewItem);
+    placeOrDropReward(pNewItem, 0xc91);
     ITEMS_SetOrClearCommandFlags113c(m, pNewItem, 0x1000000, 1);
     ITEMS_SetEarName113c(m, pNewItem, UNITS_GetPlayerData113c(m, pPlayer));
     ACT5Q4_CompletePersonalizationReward_6FC777F0_113c(m, pPlayer, pGame);
@@ -2849,8 +2846,8 @@ export function NPCS_HandleNpcMenuRequest_6FCE00C0_113c(
   const travelToAct = (nQuestId: number, nDestLvl: number): void => {
     const pQuestRec = PLAYER_GetQuestRecordForDifficulty_6FC21020_113c(m, pPlayer, pGame);
     if (DRLGWARP_TestRoomTileBit113c(m, pQuestRec, nQuestId, 0) === 0) return;
-    takeWaypointToLevel_6FCEF810(m, pGame, pPlayer, nDestLvl, 0);
-    syncNpcAndPlayerQuestState_6FC56890(m, pNpc, pPlayer, pGame);
+    D2Game_6FCEF810_113c(m, pPlayer, pGame, nDestLvl, 0);
+    QUESTS_OnBossActChangeOrBossKill_6FC56890_113c(m, pNpc, pPlayer, pGame);
     if (WAYPOINT_GetWaypointNoFromLevelId113c(m, nDestLvl, pCoordScratch) !== 0) {
       WAYPOINT_ActivateWaypoint113c(
         m,
@@ -2862,15 +2859,15 @@ export function NPCS_HandleNpcMenuRequest_6FCE00C0_113c(
   if (nNpcClassId === 0x9b) {
     travelToAct(6, 0x28);
   } else if (nNpcClassId === 0xaf) {
-    takeWaypointToLevel_6FCEF810(m, pGame, pPlayer, 1, 5);
+    D2Game_6FCEF810_113c(m, pPlayer, pGame, 1, 5);
   } else if (nNpcClassId === 0xd2 && nMenuOption === 0) {
     travelToAct(0x0e, 0x4b);
   } else if (nNpcClassId === 0x108 && nMenuOption === 0) {
-    takeWaypointToLevel_6FCEF810(m, pGame, pPlayer, 0x28, 5);
+    D2Game_6FCEF810_113c(m, pPlayer, pGame, 0x28, 5);
   } else if (nNpcClassId === 0x16f && nMenuOption === 0 && m.u32((pGame + 0x70) >>> 0) !== 0) {
     travelToAct(0x1a, 0x6d);
   } else if (nNpcClassId === 0x208 && nMenuOption === 0) {
-    takeWaypointToLevel_6FCEF810(m, pGame, pPlayer, 0x67, 5);
+    D2Game_6FCEF810_113c(m, pPlayer, pGame, 0x67, 5);
   }
   return 0;
 }
@@ -2884,6 +2881,7 @@ export function ACT2Q2_InitQuestTableRecord_6FCE7ED0_113c(
   m: SparseMemory113c,
   pQuest: number,
 ): void {
+  hitD2GameVa113c(0x6FCE7ED0);
   for (let i = 0; i < 0x3c; i += 4) {
     m.setU32((pQuest + 0xa0 + i) >>> 0, 0);
   }
@@ -2933,6 +2931,7 @@ export function ACT2Q6_InitQuestTableRecord_6FCE9F60_113c(
   m: SparseMemory113c,
   pQuest: number,
 ): void {
+  hitD2GameVa113c(0x6FCE9F60);
   for (let i = 0; i < 0x3c; i += 4) {
     m.setU32((pQuest + 0xa0 + i) >>> 0, 0);
   }
@@ -2989,6 +2988,7 @@ export function C2S_HandlePacket27_IdentifyOrUseCursorItem_6FCEF400_113c(
   pPacket: number,
   nPacketLen: number,
 ): number {
+  hitD2GameVa113c(0x6FCEF400);
   if (nPacketLen !== 5) return 3;
   const dwItemGuid = m.u32((pPacket + 1) >>> 0);
   if (pGame === 0) {
@@ -3018,6 +3018,7 @@ export function C2S_HandlePacket38_NpcMenuRequest_6FCEFB30_113c(
   pPacket: number,
   nPacketLen: number,
 ): number {
+  hitD2GameVa113c(0x6FCEFB30);
   if (nPacketLen !== 0x0d) return 3;
   const nMenuOption = m.u32((pPacket + 1) >>> 0);
   const dwNpcGuid = m.u32((pPacket + 5) >>> 0);
@@ -3046,6 +3047,7 @@ export function C2S_HandlePacket1C_ShrineOrOrificeItemAction_6FCF0E90_113c(
   pPacket: number,
   nPacketLen: number,
 ): number {
+  hitD2GameVa113c(0x6FCF0E90);
   if (nPacketLen !== 0x11) return 3;
   const dwObjectGuid = m.u32((pPacket + 5) >>> 0);
   const dwItemGuid = m.u32((pPacket + 9) >>> 0);
@@ -3095,6 +3097,7 @@ export function C2S_HandlePacket4F_TradeButton_6FCF1470_113c(
   pPacket: number,
   nPacketLen: number,
 ): number {
+  hitD2GameVa113c(0x6FCF1470);
   if (nPacketLen !== 7) return 3;
   const wButton = m.u16((pPacket + 1) >>> 0);
   const nGoldAmount = ((m.u16((pPacket + 3) >>> 0) << 16) | m.u16((pPacket + 5) >>> 0)) >>> 0;
@@ -3113,6 +3116,7 @@ export function C2S_HandlePacket41_ResurrectPlayer_6FCF14B0_113c(
   _pPacket: number,
   nPacketLen: number,
 ): number {
+  hitD2GameVa113c(0x6FCF14B0);
   if (nPacketLen !== 1) return 3;
   if (pPlayer === 0 || m.u32((pPlayer + 0x10) >>> 0) !== 0x11) {
     return 0;
@@ -3167,6 +3171,7 @@ export function ACT3Q5_InitQuestTableRecord_6FD09200_113c(
   m: SparseMemory113c,
   pQuest: number,
 ): void {
+  hitD2GameVa113c(0x6FD09200);
   for (let i = 0; i < 0x3c; i += 4) {
     m.setU32((pQuest + 0xa0 + i) >>> 0, 0);
   }
@@ -3210,6 +3215,7 @@ export function ACT3Q1_InitQuestTableRecord_6FD092D0_113c(
   m: SparseMemory113c,
   pQuest: number,
 ): void {
+  hitD2GameVa113c(0x6FD092D0);
   for (let i = 0; i < 0x3c; i += 4) {
     m.setU32((pQuest + 0xa0 + i) >>> 0, 0);
   }
@@ -3261,6 +3267,7 @@ export function ACT3Q4_InitQuestTableRecord_6FD093C0_113c(
   m: SparseMemory113c,
   pQuest: number,
 ): void {
+  hitD2GameVa113c(0x6FD093C0);
   for (let i = 0; i < 0x3c; i += 4) {
     m.setU32((pQuest + 0xa0 + i) >>> 0, 0);
   }
@@ -3315,6 +3322,7 @@ export function ACT3Q4_OnLamEsensTomeStandOperate_6FD094C0_113c(
   m: SparseMemory113c,
   pQuestArg: number,
 ): number {
+  hitD2GameVa113c(0x6FD094C0);
   const pGame = m.u32(pQuestArg >>> 0);
   const pQuestControl = m.u32((pGame + 0x10f4) >>> 0);
   let pQuest = pQuestControl !== 0 ? m.u32(pQuestControl >>> 0) : 0;
@@ -3378,6 +3386,7 @@ export function ACT3Q2_InitQuestTableRecord_6FD09DC0_113c(
   m: SparseMemory113c,
   pQuest: number,
 ): void {
+  hitD2GameVa113c(0x6FD09DC0);
   for (let i = 0; i < 0x3c; i += 4) {
     m.setU32((pQuest + 0xa0 + i) >>> 0, 0);
   }

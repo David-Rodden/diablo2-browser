@@ -150,6 +150,7 @@ import {
   ITEMMODS_ApplyPropertyCondResetAndSeedRoll113c,
 } from './logging.ts'
 import { UNIT_ITEM, UNIT_PLAYER, UNITS_GetPlayerBaseToHit113c } from './unit.ts'
+import { hitD2CommonVa113c } from '../va-trace-113c.ts'
 
 /** `.data` `D2DataTablesStrc* sgptDataTables` at `0x6FDE9E1C` (`0x6FD72F88`, `0x6FD735D8`). */
 const ITEMS_SGPT_DATATABLES_VA_113C = 0x6fde9e1c
@@ -178,6 +179,7 @@ const ITEM_EXTRA_NODEPOS_OFF_113C = 0x0d
  * `@va D2Common:0x6FD71F60` (`D2Common.#10013` `ITEMS_NoOpReturnZero`, stdcall 2 stack args, `ret 8` -> `0`).
  */
 export function ITEMS_NoOpReturnZero113c(_m: Memory113c, _a0: number, _a1: number): number {
+  hitD2CommonVa113c(0x6FD71F60)
   return 0
 }
 
@@ -191,6 +193,7 @@ export function ITEMS_SetOrClearFlagMask113c(
   dwMask: number,
   bSet: number,
 ): number {
+  hitD2CommonVa113c(0x6FD71FB0)
   const ptr = pdwFlags >>> 0
   if ((bSet | 0) !== 0) {
     m.setU32(ptr, (m.u32(ptr) | dwMask) >>> 0)
@@ -205,6 +208,7 @@ export function ITEMS_SetOrClearFlagMask113c(
  * stdcall `[esp+4] = dwFlags`, `[esp+8] = dwMask`, `ret 8` -> `dwFlags & dwMask`).
  */
 export function ITEMS_TestFlagMask113c(_m: Memory113c, dwFlags: number, dwMask: number): number {
+  hitD2CommonVa113c(0x6FD71FE0)
   return (dwFlags & dwMask) >>> 0
 }
 
@@ -213,6 +217,7 @@ export function ITEMS_TestFlagMask113c(_m: Memory113c, dwFlags: number, dwMask: 
  * stdcall `[esp+4] = pUnit`, `[esp+8] = nValue`, `ret 8` -> scaled value).
  */
 export function ITEMS_ApplyClassManaPotionScale113c(m: Memory113c, pUnit: number, nValue: number): number {
+  hitD2CommonVa113c(0x6FD72210)
   const v = nValue | 0
   if (pUnit === 0) return v
   if (m.get(pUnit, D2UnitStrc.dwUnitType) !== UNIT_PLAYER) return v
@@ -237,6 +242,7 @@ export function ITEMS_ApplyClassManaPotionScale113c(m: Memory113c, pUnit: number
  * stdcall `[esp+4] = pUnit`, `[esp+8] = nValue`, `ret 8` -> scaled value).
  */
 export function ITEMS_ApplyClassLifePotionScale113c(m: Memory113c, pUnit: number, nValue: number): number {
+  hitD2CommonVa113c(0x6FD72260)
   const v = nValue | 0
   if (pUnit === 0) return (v + v) | 0
   if (m.get(pUnit, D2UnitStrc.dwUnitType) !== UNIT_PLAYER) return (v + v) | 0
@@ -259,6 +265,7 @@ export function ITEMS_ApplyClassLifePotionScale113c(m: Memory113c, pUnit: number
  * stdcall `[esp+4] = pItem`, `[esp+8] = nInvPage`, `ret 8`, void).
  */
 export function ITEMS_SetInvPage113c(m: Memory113c, pItem: number, nInvPage: number): void {
+  hitD2CommonVa113c(0x6FD737A0)
   if (pItem === 0) return
   if (m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return
   const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
@@ -271,6 +278,7 @@ export function ITEMS_SetInvPage113c(m: Memory113c, pItem: number, nInvPage: num
  * stdcall `[esp+4] = pItem`, `[esp+8] = wSuffix`, `ret 8`, void).
  */
 export function ITEMS_SetRareSuffix113c(m: Memory113c, pItem: number, wSuffix: number): void {
+  hitD2CommonVa113c(0x6FD73970)
   if (pItem === 0) return
   if (m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return
   const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
@@ -283,6 +291,7 @@ export function ITEMS_SetRareSuffix113c(m: Memory113c, pItem: number, wSuffix: n
  * stdcall `[esp+4] = pItem`, `[esp+8] = wPrefix`, `ret 8`, void).
  */
 export function ITEMS_SetRarePrefix113c(m: Memory113c, pItem: number, wPrefix: number): void {
+  hitD2CommonVa113c(0x6FD739C0)
   if (pItem === 0) return
   if (m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return
   const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
@@ -295,6 +304,7 @@ export function ITEMS_SetRarePrefix113c(m: Memory113c, pItem: number, wPrefix: n
  * stdcall `[esp+4] = pItem`, `[esp+8] = wSuffix`, `[esp+0xC] = nIndex`, `ret 0xC`, void).
  */
 export function ITEMS_SetMagicSuffix113c(m: Memory113c, pItem: number, wSuffix: number, nIndex: number): void {
+  hitD2CommonVa113c(0x6FD73A10)
   if (pItem === 0) return
   if (m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return
   const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
@@ -307,6 +317,7 @@ export function ITEMS_SetMagicSuffix113c(m: Memory113c, pItem: number, wSuffix: 
  * stdcall `[esp+4] = pItem`, `[esp+8] = wPrefix`, `[esp+0xC] = nIndex`, `ret 0xC`, void).
  */
 export function ITEMS_SetMagicPrefix113c(m: Memory113c, pItem: number, wPrefix: number, nIndex: number): void {
+  hitD2CommonVa113c(0x6FD73AC0)
   if (pItem === 0) return
   if (m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return
   const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
@@ -319,6 +330,7 @@ export function ITEMS_SetMagicPrefix113c(m: Memory113c, pItem: number, wPrefix: 
  * stdcall `[esp+4] = pItem`, `ret 4` -> `AL` = `pItemData->nBodyLoc (+0x44)` or `0`).
  */
 export function ITEMS_GetBodyLocation113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD73C50)
   if (pItem === 0) return 0
   if (m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0
   const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
@@ -331,6 +343,7 @@ export function ITEMS_GetBodyLocation113c(m: Memory113c, pItem: number): number 
  * custom reg `eax = nVal`, `ret` -> `1` if `nVal != 0 && (nVal <= 3 || nVal > 9)`, else `0`).
  */
 export function ITEMS_CheckQualityTradable113c(_m: Memory113c, nVal: number): number {
+  hitD2CommonVa113c(0x6FD71F70)
   const v = nVal | 0
   if (v === 0) return 0
   if (v <= 3 || v > 9) return 1
@@ -342,6 +355,7 @@ export function ITEMS_CheckQualityTradable113c(_m: Memory113c, nVal: number): nu
  * custom reg `eax, ecx`, `ret` -> `(((al << 5) & 0xff) + (cl & 0x1f)) & 0xff` or `0`).
  */
 export function ITEMS_PackColorIndex113c(_m: Memory113c, eax: number, ecx: number): number {
+  hitD2CommonVa113c(0x6FD71F90)
   const a = eax | 0
   const c = ecx | 0
   if (a <= 0 || a >= 9 || c < 0 || c >= 0x15) return 0
@@ -352,6 +366,7 @@ export function ITEMS_PackColorIndex113c(_m: Memory113c, eax: number, ecx: numbe
  * `@va D2Common:0x6FD71FF0` (internal LTCG helper `ITEMS_ReturnZero`, 0-arg `xor eax, eax; ret` -> `0`).
  */
 export function ITEMS_ReturnZero113c(_m: Memory113c): number {
+  hitD2CommonVa113c(0x6FD71FF0)
   return 0
 }
 
@@ -366,6 +381,7 @@ export function ITEMS_GetAutoAffixData113c(
   pOutField1C: number,
   pOutField20: number,
 ): void {
+  hitD2CommonVa113c(0x6FD72590)
   if (pItem !== 0 && m.get(pItem, D2UnitStrc.dwUnitType) === UNIT_ITEM) {
     const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
     if (pItemData !== 0) {
@@ -383,6 +399,7 @@ export function ITEMS_GetAutoAffixData113c(
  * stdcall `[esp+4] = nItemType`, `ret 4` -> `D2ItemTypesTxt.nNormal (+0x10)` or `0`).
  */
 export function ITEMS_GetItemTypeNormal113c(m: Memory113c, nItemType: number): number {
+  hitD2CommonVa113c(0x6FD72F80)
   const idx = nItemType | 0
   if (idx < 0) return 0
   const sgpt = m.u32(ITEMS_SGPT_DATATABLES_VA_113C)
@@ -404,6 +421,7 @@ export function ITEMS_AccumulateItemLevelReq113c(
   pItemsTxt: number,
   pUnit: number,
 ): number {
+  hitD2CommonVa113c(0x6FD72FC0)
   const cur = nCurrentReq | 0
   const rec = pItemsTxt >>> 0
   if (rec === 0) return cur
@@ -422,6 +440,7 @@ export function ITEMS_AccumulateItemLevelReq113c(
  * stdcall `[esp+4] = nItemType`, `ret 4` -> sign-extended `D2ItemTypesTxt.wShoots (+0x0E)` or `0`).
  */
 export function ITEMS_GetItemTypeShoots113c(m: Memory113c, nItemType: number): number {
+  hitD2CommonVa113c(0x6FD735D0)
   const idx = nItemType | 0
   if (idx < 0) return 0
   const sgpt = m.u32(ITEMS_SGPT_DATATABLES_VA_113C)
@@ -438,6 +457,7 @@ export function ITEMS_GetItemTypeShoots113c(m: Memory113c, nItemType: number): n
  * stdcall `[esp+4] = pItem`, `[esp+8] = nIndex`, `ret 8`, void).
  */
 export function ITEMS_SetVarGfxIndex113c(m: Memory113c, pItem: number, nIndex: number): void {
+  hitD2CommonVa113c(0x6FD73650)
   if (pItem === 0) return
   if (m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return
   const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
@@ -450,6 +470,7 @@ export function ITEMS_SetVarGfxIndex113c(m: Memory113c, pItem: number, nIndex: n
  * stdcall `[esp+4] = pItem`, `[esp+8] = nEarLevel`, `ret 8`, void).
  */
 export function ITEMS_SetEarLevel113c(m: Memory113c, pItem: number, nEarLevel: number): void {
+  hitD2CommonVa113c(0x6FD73690)
   if (pItem === 0) return
   if (m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return
   const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
@@ -462,6 +483,7 @@ export function ITEMS_SetEarLevel113c(m: Memory113c, pItem: number, nEarLevel: n
  * stdcall `[esp+4] = pItem`, `ret 4` -> `AL` = `pItemData->bEarLevel (+0x48)` or `1`).
  */
 export function ITEMS_GetEarLevel113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD736B0)
   if (pItem === 0) return 1
   if (m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 1
   const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
@@ -474,6 +496,7 @@ export function ITEMS_GetEarLevel113c(m: Memory113c, pItem: number): number {
  * stdcall `[esp+4] = pItem`, `[esp+8] = szName`, `ret 8`, void).
  */
 export function ITEMS_SetEarName113c(m: Memory113c, pItem: number, szName: number): void {
+  hitD2CommonVa113c(0x6FD736D0)
   if (pItem === 0) return
   if (m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return
   const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
@@ -493,6 +516,7 @@ export function ITEMS_SetEarName113c(m: Memory113c, pItem: number, szName: numbe
  * stdcall `[esp+4] = pItem`, `ret 4` -> `(pItemData + 0x4A) >>> 0` or `0`).
  */
 export function ITEMS_GetEarName113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD73700)
   if (pItem === 0) return 0
   if (m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0
   const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
@@ -505,6 +529,7 @@ export function ITEMS_GetEarName113c(m: Memory113c, pItem: number): number {
  * stdcall `[esp+4] = pItem`, `[esp+8] = nNodePage`, `ret 8`, void).
  */
 export function ITEMS_SetNodePage113c(m: Memory113c, pItem: number, nNodePage: number): void {
+  hitD2CommonVa113c(0x6FD73720)
   if (pItem === 0) return
   if (m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return
   const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
@@ -517,6 +542,7 @@ export function ITEMS_SetNodePage113c(m: Memory113c, pItem: number, nNodePage: n
  * stdcall `[esp+4] = pItem`, `ret 4` -> `AL` = `pItemData->bNodePage (+0x47)` or `0xFF`).
  */
 export function ITEMS_GetNodePage113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD73740)
   if (pItem === 0) return 0xff
   if (m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0xff
   const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
@@ -529,6 +555,7 @@ export function ITEMS_GetNodePage113c(m: Memory113c, pItem: number): number {
  * stdcall `[esp+4] = pItem`, `[esp+8] = nVal`, `ret 8`, void).
  */
 export function ITEMS_SetCmdFlagsByte113c(m: Memory113c, pItem: number, nVal: number): void {
+  hitD2CommonVa113c(0x6FD73760)
   if (pItem === 0) return
   if (m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return
   const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
@@ -541,6 +568,7 @@ export function ITEMS_SetCmdFlagsByte113c(m: Memory113c, pItem: number, nVal: nu
  * stdcall `[esp+4] = pItem`, `ret 4` -> `AL` = `pItemData->nInvPage (+0x45)` or `0xFF`).
  */
 export function ITEMS_GetInvPage113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD737C0)
   if (pItem === 0) return 0xff
   if (m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0xff
   const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
@@ -553,6 +581,7 @@ export function ITEMS_GetInvPage113c(m: Memory113c, pItem: number): number {
  * stdcall `[esp+4] = pItem`, `[esp+8] = nItemLevel`, `ret 8`, void).
  */
 export function ITEMS_SetItemLevel113c(m: Memory113c, pItem: number, nItemLevel: number): void {
+  hitD2CommonVa113c(0x6FD737E0)
   if (pItem === 0) return
   if (m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return
   const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
@@ -566,6 +595,7 @@ export function ITEMS_SetItemLevel113c(m: Memory113c, pItem: number, nItemLevel:
  * stdcall `[esp+4] = pItem`, `ret 4` -> `pItemData->dwItemLevel (+0x2C)`, clamped to `>= 1` in-place).
  */
 export function ITEMS_GetItemLevel113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD73810)
   if (pItem === 0) return 1
   if (m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 1
   const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
@@ -586,6 +616,7 @@ export function ITEMS_SetItemFlag113c(
   dwFlag: number,
   bSet: number,
 ): void {
+  hitD2CommonVa113c(0x6FD73870)
   if (pItem === 0) return
   if (m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return
   const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
@@ -602,6 +633,7 @@ export function ITEMS_SetItemFlag113c(
  * stdcall `[esp+4] = pItem`, `[esp+8] = dwFlag`, `ret 8` -> `pItemData->dwItemFlags & dwFlag` or `0`).
  */
 export function ITEMS_CheckItemFlag113c(m: Memory113c, pItem: number, dwFlag: number): number {
+  hitD2CommonVa113c(0x6FD738B0)
   if (pItem === 0) return 0
   if (m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0
   const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
@@ -614,6 +646,7 @@ export function ITEMS_CheckItemFlag113c(m: Memory113c, pItem: number, dwFlag: nu
  * stdcall `[esp+4] = pItem`, `ret 4` -> `pItemData->dwCommandFlags (+0x18)` or `0`).
  */
 export function ITEMS_GetCommandFlags113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD738E0)
   if (pItem === 0) return 0
   if (m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0
   const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
@@ -631,6 +664,7 @@ export function ITEMS_SetOrClearCommandFlags113c(
   dwFlag: number,
   bSet: number,
 ): void {
+  hitD2CommonVa113c(0x6FD73900)
   if (pItem === 0) return
   if (m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return
   const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
@@ -653,6 +687,7 @@ export function ITEMS_CheckCommandFlags113c(
   _u3 = 0,
   _u4 = 0,
 ): number {
+  hitD2CommonVa113c(0x6FD73940)
   if (pItem === 0) return 0
   if (m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0
   const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
@@ -665,6 +700,7 @@ export function ITEMS_CheckCommandFlags113c(
  * stdcall `[esp+4] = pItem`, `ret 4` -> `AX` = `pItemData->wRareSuffix (+0x34)` or `0`).
  */
 export function ITEMS_GetRareSuffix113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD73990)
   if (pItem === 0) return 0
   if (m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0
   const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
@@ -677,6 +713,7 @@ export function ITEMS_GetRareSuffix113c(m: Memory113c, pItem: number): number {
  * stdcall `[esp+4] = pItem`, `ret 4` -> `AX` = `pItemData->wRarePrefix (+0x32)` or `0`).
  */
 export function ITEMS_GetRarePrefix113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD739E0)
   if (pItem === 0) return 0
   if (m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0
   const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
@@ -689,6 +726,7 @@ export function ITEMS_GetRarePrefix113c(m: Memory113c, pItem: number): number {
  * stdcall `[esp+4] = pItem`, `[esp+8] = nIndex`, `ret 8` -> `AX` = `pItemData->wMagicSuffix[nIndex]` (`+0x3E + nIndex * 2`) or `0`).
  */
 export function ITEMS_GetMagicSuffix113c(m: Memory113c, pItem: number, nIndex: number): number {
+  hitD2CommonVa113c(0x6FD73A40)
   if (pItem === 0) return 0
   if (m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0
   const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
@@ -701,6 +739,7 @@ export function ITEMS_GetMagicSuffix113c(m: Memory113c, pItem: number, nIndex: n
  * stdcall `[esp+4] = pItem`, `[esp+8] = wAffix`, `ret 8`, void).
  */
 export function ITEMS_SetAutoAffix113c(m: Memory113c, pItem: number, wAffix: number): void {
+  hitD2CommonVa113c(0x6FD73A70)
   if (pItem === 0) return
   if (m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return
   const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
@@ -713,6 +752,7 @@ export function ITEMS_SetAutoAffix113c(m: Memory113c, pItem: number, wAffix: num
  * stdcall `[esp+4] = pItem`, `ret 4` -> `AX` = `pItemData->wAutoAffix (+0x36)` or `0`).
  */
 export function ITEMS_GetAutoAffix113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD73A90)
   if (pItem === 0) return 0
   if (m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0
   const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
@@ -725,6 +765,7 @@ export function ITEMS_GetAutoAffix113c(m: Memory113c, pItem: number): number {
  * stdcall `[esp+4] = pItem`, `[esp+8] = nIndex`, `ret 8` -> `AX` = `pItemData->wMagicPrefix[nIndex]` (`+0x38 + nIndex * 2`) or `0`).
  */
 export function ITEMS_GetMagicPrefix113c(m: Memory113c, pItem: number, nIndex: number): number {
+  hitD2CommonVa113c(0x6FD73AF0)
   if (pItem === 0) return 0
   if (m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0
   const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
@@ -737,6 +778,7 @@ export function ITEMS_GetMagicPrefix113c(m: Memory113c, pItem: number, nIndex: n
  * stdcall `[esp+4] = pItem`, `[esp+8] = nQuality`, `ret 8`, void).
  */
 export function ITEMS_SetItemQuality113c(m: Memory113c, pItem: number, nQuality: number): void {
+  hitD2CommonVa113c(0x6FD73B20)
   if (pItem === 0) return
   if (m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return
   const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
@@ -749,6 +791,7 @@ export function ITEMS_SetItemQuality113c(m: Memory113c, pItem: number, nQuality:
  * stdcall `[esp+4] = pItem`, `ret 4` -> `pItemData->dwQuality (+0x00)` or `2`).
  */
 export function ITEMS_GetItemQuality113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD73B40)
   if (pItem === 0) return 2
   if (m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 2
   const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
@@ -761,6 +804,7 @@ export function ITEMS_GetItemQuality113c(m: Memory113c, pItem: number): number {
  * stdcall `[esp+4] = pItem`, `ret 4` -> `pItemData->dwOwnerGuid (+0x10)` or `0`).
  */
 export function ITEMS_GetOwnerGuid113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD73BC0)
   if (pItem === 0) return 0
   if (m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0
   const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
@@ -773,6 +817,7 @@ export function ITEMS_GetOwnerGuid113c(m: Memory113c, pItem: number): number {
  * stdcall `[esp+4] = pItem`, `ret 4`, void: sets `dwSeedLo = 1`, `dwSeedHi = 666`).
  */
 export function ITEMS_InitItemSeed113c(m: Memory113c, pItem: number): void {
+  hitD2CommonVa113c(0x6FD73BE0)
   if (pItem === 0) return
   if (m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return
   const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
@@ -786,6 +831,7 @@ export function ITEMS_InitItemSeed113c(m: Memory113c, pItem: number): void {
  * stdcall `[esp+4] = pItem`, `ret 4` -> `(pItemData + 0x04) >>> 0` or `0`).
  */
 export function ITEMS_GetItemSeed113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD73C10)
   if (pItem === 0) return 0
   if (m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0
   const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
@@ -798,6 +844,7 @@ export function ITEMS_GetItemSeed113c(m: Memory113c, pItem: number): number {
  * stdcall `[esp+4] = pItem`, `[esp+8] = nBodyLoc`, `ret 8`, void).
  */
 export function ITEMS_SetBodyLocation113c(m: Memory113c, pItem: number, nBodyLoc: number): void {
+  hitD2CommonVa113c(0x6FD73C30)
   if (pItem === 0) return
   if (m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return
   const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
@@ -816,6 +863,7 @@ export function ITEMS_MaxIntFastcall113c(
   _s0 = 0,
   _s1 = 0,
 ): number {
+  hitD2CommonVa113c(0x6FD73D50)
   const x = a | 0
   const y = b | 0
   return (x > y ? x : y) >>> 0
@@ -832,6 +880,7 @@ export function ITEMS_MinIntFastcall113c(
   _s0 = 0,
   _s1 = 0,
 ): number {
+  hitD2CommonVa113c(0x6FD73D60)
   const x = a | 0
   const y = b | 0
   return (x < y ? x : y) >>> 0
@@ -842,6 +891,7 @@ export function ITEMS_MinIntFastcall113c(
  * stdcall `[esp+4] = pItem`, `ret 4` -> `(pItemData->dwCommandFlags & 0x400000) >>> 0` or `0`).
  */
 export function ITEMS_CheckEtherealFlag113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD73E00)
   if (pItem === 0) return 0
   if (m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0
   const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
@@ -856,6 +906,7 @@ export function ITEMS_CheckEtherealFlag113c(m: Memory113c, pItem: number): numbe
  * Note: unconditionally dereferences `pUnit + 0x60` (`pInventory`).
  */
 export function ITEMS_CountEquippedOrCarryItems113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD73E30)
   const pInv = m.get(pUnit, D2UnitStrc.pInventory)
   let count = 0
   let pItem =
@@ -889,6 +940,7 @@ export function ITEMS_CountEquippedOrCarryItems113c(m: Memory113c, pUnit: number
  * Note: unconditionally dereferences `pItem + 0x60` (`pInventory`).
  */
 export function ITEMS_HasSocketedItems113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD741A0)
   const pInv = m.get(pItem, D2UnitStrc.pInventory)
   if (pInv === 0 || m.get(pInv, D2InventoryStrc.dwSignature) !== INVENTORY_SIGNATURE_113C) return 0
   const pFirst = m.get(pInv, D2InventoryStrc.pFirstItem)
@@ -901,6 +953,7 @@ export function ITEMS_HasSocketedItems113c(m: Memory113c, pItem: number): number
  * stdcall `[esp+4] = pItem`, `ret 4` -> `1` if `4 <= dwQuality <= 9`, else `0`).
  */
 export function ITEMS_IsHighQualityItem113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD74210)
   let qual = 2
   if (pItem !== 0 && m.get(pItem, D2UnitStrc.dwUnitType) === UNIT_ITEM) {
     const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
@@ -917,6 +970,7 @@ export function ITEMS_IsHighQualityItem113c(m: Memory113c, pItem: number): numbe
  * stdcall `[esp+4] = dwCode`, `ret 4` -> record pointer `base + i * 0x4C` where `*(u32*)(base + i * 0x4C) == dwCode`, or `0`).
  */
 export function DATATBLS_FindCodeRecord4C113c(m: Memory113c, dwCode: number): number {
+  hitD2CommonVa113c(0x6FDA3020)
   const count = m.u32(DATATBLS_CODE_TABLE_COUNT_VA_113C) | 0
   if (count <= 0) return 0
   let ptr = m.u32(DATATBLS_CODE_TABLE_PTR_VA_113C)
@@ -964,6 +1018,7 @@ function lookupItemsTxtInlineOrAssert113c(m: Memory113c, nItemId: number, assert
  * stdcall `[esp+4] = pItem`, `ret 4` -> `AX` = `pItemData->wItemFormat (+0x30)`).
  */
 export function ITEMS_GetItemFormat113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD721C0)
   if (pItem === 0) {
     throw new D2CommonAssertError('Items.cpp', 0x1505)
   }
@@ -982,6 +1037,7 @@ export function ITEMS_GetItemFormat113c(m: Memory113c, pItem: number): number {
  * custom reg `eax = pItem`, `ret` -> `D2ItemsTxt.nDropSound (+0x143)`).
  */
 export function ITEMS_GetItemDropSound113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD722B0)
   const nItemId = pItem !== 0 ? m.get(pItem, D2UnitStrc.dwClassId) : 0xffffffff
   const pRec = lookupItemsTxtInlineOrAssert113c(m, nItemId, 0x12e1)
   return m.get(pRec, D2ItemsTxt.nDropSound)
@@ -992,6 +1048,7 @@ export function ITEMS_GetItemDropSound113c(m: Memory113c, pItem: number): number
  * stdcall `[esp+4] = pItem`, `ret 4` -> `AL` = `D2ItemsTxt.bQuest (+0x13C)`).
  */
 export function ITEMS_GetQuestItemByte113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD72380)
   if (pItem === 0) {
     throw new D2CommonAssertError('Items.cpp', 0x1190)
   }
@@ -1010,6 +1067,7 @@ export function ITEMS_GetQuestItemByte113c(m: Memory113c, pItem: number): number
  * stdcall `[esp+4] = pItem`, `ret 4` -> `pItemData->dwItemCell (+0x28)`).
  */
 export function ITEMS_GetItemCell113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD72640)
   if (pItem === 0) {
     throw new D2CommonAssertError('Items.cpp', 0x1071)
   }
@@ -1028,6 +1086,7 @@ export function ITEMS_GetItemCell113c(m: Memory113c, pItem: number): number {
  * stdcall `[esp+4] = nItemId`, `ret 4` -> `0` if `nComponent >= 1` or `wType1 == 0x27`, else `1`).
  */
 export function ITEMS_IsScrollOrTome113c(m: Memory113c, nItemId: number): number {
+  hitD2CommonVa113c(0x6FD72690)
   const pRec = lookupItemsTxtInlineOrAssert113c(m, nItemId, 0x105f)
   if (m.get(pRec, D2ItemsTxt.nComponent) >= 1) return 0
   const wType1 = (m.get(pRec, D2ItemsTxt.wType1) << 16) >> 16
@@ -1039,6 +1098,7 @@ export function ITEMS_IsScrollOrTome113c(m: Memory113c, nItemId: number): number
  * stdcall `[esp+4] = nItemId`, `ret 4` -> `D2ItemsTxt.dwBitField1 (+0xDC) & 1`).
  */
 export function ITEMS_IsThrowableBit113c(m: Memory113c, nItemId: number): number {
+  hitD2CommonVa113c(0x6FD727C0)
   const pRec = lookupItemsTxtInlineOrAssert113c(m, nItemId, 0x1041)
   return (m.get(pRec, D2ItemsTxt.dwBitField1) & 1) >>> 0
 }
@@ -1048,6 +1108,7 @@ export function ITEMS_IsThrowableBit113c(m: Memory113c, nItemId: number): number
  * stdcall `[esp+4] = nItemId`, `ret 4` -> `D2ItemsTxt.nGemApplyType (+0x13E)`).
  */
 export function ITEMS_GetGemApplyType113c(m: Memory113c, nItemId: number): number {
+  hitD2CommonVa113c(0x6FD72880)
   const pRec = lookupItemsTxtInlineOrAssert113c(m, nItemId, 0xf29)
   return m.get(pRec, D2ItemsTxt.nGemApplyType)
 }
@@ -1057,6 +1118,7 @@ export function ITEMS_GetGemApplyType113c(m: Memory113c, nItemId: number): numbe
  * stdcall `[esp+4] = nItemId`, `ret 4` -> `AL` = `D2ItemsTxt.bBelt (+0x138)` or `0` on out-of-range).
  */
 export function ITEMS_GetBeltTypeIndex113c(m: Memory113c, nItemId: number): number {
+  hitD2CommonVa113c(0x6FD728D0)
   if (nItemId >>> 0 >= m.u32(ITEMS_TXT_COUNT_VA_113C)) return 0
   const base = m.u32(ITEMS_TXT_PTR_VA_113C)
   if (base === 0) {
@@ -1072,6 +1134,7 @@ export function ITEMS_GetBeltTypeIndex113c(m: Memory113c, nItemId: number): numb
  * stdcall `[esp+4] = nItemId`, `ret 4` -> `D2ItemsTxt.nSubType (+0x137)` or `0` on out-of-range).
  */
 export function ITEMS_GetSubTypeByte113c(m: Memory113c, nItemId: number): number {
+  hitD2CommonVa113c(0x6FD72920)
   if (nItemId >>> 0 >= m.u32(ITEMS_TXT_COUNT_VA_113C)) return 0
   const base = m.u32(ITEMS_TXT_PTR_VA_113C)
   if (base === 0) {
@@ -1087,6 +1150,7 @@ export function ITEMS_GetSubTypeByte113c(m: Memory113c, nItemId: number): number
  * stdcall `[esp+4] = nItemId`, `ret 4` -> `D2ItemsTxt.dwGambleCost (+0xE4)`).
  */
 export function ITEMS_GetGambleCost113c(m: Memory113c, nItemId: number): number {
+  hitD2CommonVa113c(0x6FD72AD0)
   const pRec = lookupItemsTxtInlineOrAssert113c(m, nItemId, 0xd8b)
   return m.get(pRec, D2ItemsTxt.dwGambleCost)
 }
@@ -1096,6 +1160,7 @@ export function ITEMS_GetGambleCost113c(m: Memory113c, nItemId: number): number 
  * stdcall `[esp+4] = nItemId`, `ret 4` -> `D2ItemsTxt.dwBitField2 (+0xEC)`).
  */
 export function ITEMS_GetBitField2113c(m: Memory113c, nItemId: number): number {
+  hitD2CommonVa113c(0x6FD72B20)
   const pRec = lookupItemsTxtInlineOrAssert113c(m, nItemId, 0xd6d)
   return m.get(pRec, D2ItemsTxt.dwBitField2)
 }
@@ -1105,6 +1170,7 @@ export function ITEMS_GetBitField2113c(m: Memory113c, nItemId: number): number {
  * stdcall `[esp+4] = nItemId`, `ret 4` -> `D2ItemsTxt.dwSpeed (+0xE8)`).
  */
 export function ITEMS_GetBaseSpeed113c(m: Memory113c, nItemId: number): number {
+  hitD2CommonVa113c(0x6FD72B70)
   const pRec = lookupItemsTxtInlineOrAssert113c(m, nItemId, 0xd50)
   return m.get(pRec, D2ItemsTxt.dwSpeed)
 }
@@ -1114,6 +1180,7 @@ export function ITEMS_GetBaseSpeed113c(m: Memory113c, nItemId: number): number {
  * stdcall `[esp+4] = pItem`, `ret 4` -> `D2ItemsTxt.nComponent (+0x12A)`).
  */
 export function ITEMS_GetComponentByte113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD72BC0)
   if (pItem === 0) {
     throw new D2CommonAssertError('Items.cpp', 0x9db)
   }
@@ -1132,6 +1199,7 @@ export function ITEMS_GetComponentByte113c(m: Memory113c, pItem: number): number
  * stdcall `[esp+4] = pItem`, `ret 4` -> `D2ItemsTxt.nTwoHanded (+0x132)` or `0` on NULL / non-item).
  */
 export function ITEMS_GetTwoHandedFlag113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD72E20)
   if (pItem === 0 || m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0
   const pRec = lookupItemsTxtRecord113c(m, m.get(pItem, D2UnitStrc.dwClassId))
   if (pRec === 0) {
@@ -1146,6 +1214,7 @@ export function ITEMS_GetTwoHandedFlag113c(m: Memory113c, pItem: number): number
  * Note: binary has no `pRec == 0` guard after `0x6FDC19A0` and dereferences `[eax+0x84]` directly.
  */
 export function ITEMS_GetAltGfxOrBaseCode113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD72FF0)
   if (pItem === 0) {
     throw new D2CommonAssertError('Items.cpp', 0x798)
   }
@@ -1330,6 +1399,7 @@ function getUnitBaseStatWithIscCheck113c(m: Memory113c, pItem: number, nStatId: 
  * stdcall `[esp+4] = nItemId`, `ret 4` -> sign-extended `D2ItemsTxt.wType1 (+0x11E)`).
  */
 export function ITEMS_IsTome113c(m: Memory113c, nItemId: number): number {
+  hitD2CommonVa113c(0x6FD730A0)
   const pRec = lookupItemsTxtInlineOrAssert113c(m, nItemId, 0x68e)
   return ((m.get(pRec, D2ItemsTxt.wType1) << 16) >> 16) >>> 0
 }
@@ -1339,6 +1409,7 @@ export function ITEMS_IsTome113c(m: Memory113c, nItemId: number): number {
  * stdcall `[esp+4] = pItem`, `ret 4` -> `D2ItemsTxt.dwCode (+0x80)`).
  */
 export function ITEMS_GetBaseCode113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD73290)
   if (pItem === 0) {
     throw new D2CommonAssertError('Items.cpp', 0x61b)
   }
@@ -1357,6 +1428,7 @@ export function ITEMS_GetBaseCode113c(m: Memory113c, pItem: number): number {
  * stdcall `[esp+4] = pItem`, `[esp+8] = dwOwnerGuid`, `ret 8`, void).
  */
 export function ITEMS_SetOwnerGuid113c(m: Memory113c, pItem: number, dwOwnerGuid: number): void {
+  hitD2CommonVa113c(0x6FD73B70)
   if (pItem === 0) {
     throw new D2CommonAssertError('Items.cpp', 0x188)
   }
@@ -1375,6 +1447,7 @@ export function ITEMS_SetOwnerGuid113c(m: Memory113c, pItem: number, dwOwnerGuid
  * stdcall `[esp+4] = pMemPool`, `[esp+8] = pItem`, `ret 8`, void).
  */
 export function ITEMS_AllocItemData113c(m: Memory113c, _pMemPool: number, pItem: number): void {
+  hitD2CommonVa113c(0x6FD73C70)
   if (pItem === 0) return
   if (m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return
   const pData = m.alloc(D2ItemDataStrc_SIZE)
@@ -1396,6 +1469,7 @@ export function ITEMS_WriteBitsClamped113c(
   nValue: number,
   pBitStream: number,
 ): void {
+  hitD2CommonVa113c(0x6FD73DD0)
   let val = nValue | 0
   const bits = nBits | 0
   if (bits !== 0x20) {
@@ -1414,6 +1488,7 @@ export function ITEMS_WriteBitsClamped113c(
  * stdcall `[esp+4] = nItemId`, `ret 4` -> `1` if `D2ItemTypesTxt[wType1].nRarity < 7`, else `0`).
  */
 export function ITEMS_CheckItemTypeRarityUnder7113c(m: Memory113c, nItemId: number): number {
+  hitD2CommonVa113c(0x6FD74320)
   const pRec = lookupItemsTxtInlineOrAssert113c(m, nItemId, 0x68e)
   const wType1 = (m.get(pRec, D2ItemsTxt.wType1) << 16) >> 16
   if (wType1 < 0) return 0
@@ -1437,6 +1512,7 @@ export function ITEMS_AccumulateSocketedItemCosts113c(
   pOutCost2: number,
   pOutCost3: number,
 ): void {
+  hitD2CommonVa113c(0x6FD74A50)
   const pInv = m.get(pItem, D2UnitStrc.pInventory)
   if (pInv === 0) return
   let sum = 0
@@ -1484,6 +1560,7 @@ export function ITEMS_AccumulateSocketedItemCosts113c(
  * stdcall `[esp+4] = pItem`, `ret 4` -> `STAT_ITEM_NUMSOCKETS (0xC2)` or `0`).
  */
 export function ITEMS_GetMaxSockets113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD76080)
   if (pItem === 0) {
     throw new D2CommonAssertError('Items.cpp', 0xea7)
   }
@@ -1513,6 +1590,7 @@ export function ITEMS_DecodeAndSetSaveStat113c(
   pStatList: number,
   nStatId: number,
 ): void {
+  hitD2CommonVa113c(0x6FD79D90)
   const slot = nSaveSlot | 0
   const ver = nVersion >>> 0
   const isc = pIscRec >>> 0
@@ -1597,6 +1675,7 @@ export function ITEMS_EnsureMinimumBaseDamageAndACStats113c(
   pItem: number,
   nStatId: number,
 ): void {
+  hitD2CommonVa113c(0x6FD79F30)
   if (pItem === 0) {
     throw new D2CommonAssertError('Items.cpp', 0x61b)
   }
@@ -1689,6 +1768,7 @@ export function DRLGWARP_TestRoomTileBit113c(
   nX: number,
   nY: number,
 ): number {
+  hitD2CommonVa113c(0x6FD7D0F0)
   if (pRoomMaskPtr === 0) {
     throw new D2CommonAssertError('DrlgWarp.cpp', 0x1f)
   }
@@ -1707,6 +1787,7 @@ export function ITEMS_GetItemsTxtRecordFromUnitOrAlt113c(
   pUnit1: number,
   pUnit2: number,
 ): number {
+  hitD2CommonVa113c(0x6FD95A40)
   if (pUnit1 !== 0 && m.get(pUnit1, D2UnitStrc.dwUnitType) === UNIT_ITEM) {
     return lookupItemsTxtRecord113c(m, m.get(pUnit1, D2UnitStrc.dwClassId))
   }
@@ -1739,6 +1820,7 @@ function scaleItemBaseStatEthereal113c(m: Memory113c, pItem: number, statId: num
  * stdcall `[esp+4] = pItem`, `ret 4`, void).
  */
 export function ITEMS_ApplyEtherealBonusStats113c(m: Memory113c, pItem: number): void {
+  hitD2CommonVa113c(0x6FD96A40)
   if (pItem === 0) {
     throw new D2CommonAssertError('Items.cpp', 0x706)
   }
@@ -1773,6 +1855,7 @@ export function ITEMS_ResetBaseDamageOrACStatFromTxt113c(
   pItem: number,
   nStatId: number,
 ): void {
+  hitD2CommonVa113c(0x6FD96E50)
   if (pItem === 0) {
     throw new D2CommonAssertError('Items.cpp', 0x61b)
   }
@@ -2495,6 +2578,7 @@ function evalItemStatDirect113c(m: Memory113c, nStatId: number, nMode: number, p
  * `__stdcall(pItem) -> i32`, `ret 4`).
  */
 export function ITEMS_GetMissileType113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD72F50)
   const ptr = pItem >>> 0
   if (ptr === 0 || m.get(ptr, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0xffffffff
   const pRec = lookupItemsTxtRecord113c(m, m.get(ptr, D2UnitStrc.dwClassId))
@@ -2506,6 +2590,7 @@ export function ITEMS_GetMissileType113c(m: Memory113c, pItem: number): number {
  * `__stdcall(pItem) -> BOOL`, `ret 4`).
  */
 export function ITEMS_CheckIfSocketFiller113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD745C0)
   return ITEMS_CheckItemTypeIdMem113c(m, pItem >>> 0, 0x35)
 }
 
@@ -2518,6 +2603,7 @@ export function ITEMS_GetActiveWeaponForAttack113c(
   pUnit: number,
   bCheckSkill: number,
 ): number {
+  hitD2CommonVa113c(0x6FD81B90)
   const unitPtr = pUnit >>> 0
   const pInventory = m.get(unitPtr, D2UnitStrc.pInventory)
   if (pInventory === 0) return 0
@@ -2594,6 +2680,7 @@ export function ITEMS_GetActiveWeaponForAttack113c(
  * `__stdcall(pItem) -> i32`, `ret 4`).
  */
 export function ITEMS_GetItemTypeFromItem113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD730F0)
   const ptr = pItem >>> 0
   if (ptr === 0) {
     throw new D2CommonAssertError('Items.cpp', 0x67e)
@@ -2612,6 +2699,7 @@ export function ITEMS_EvalItemCalc113c(
   pOwner: number,
   dwCalcOffset: number,
 ): number {
+  hitD2CommonVa113c(0x6FD73CE0)
   const sgpt = m.u32(ITEMS_SGPT_DATATABLES_VA_113C)
   const pCodeBuf = m.u32((sgpt + DATATABLES_ITEMS_CODE_BUF_OFF_113C) >>> 0)
   if (pCodeBuf === 0) return 0
@@ -2635,6 +2723,7 @@ export function ITEMS_EvalItemCalc113c(
  * `__stdcall(pItem) -> u8`, `ret 4`).
  */
 export function ITEMS_GetGemApplyTypeFromItem113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD745D0)
   const ptr = pItem >>> 0
   if (ptr === 0) {
     throw new D2CommonAssertError('Items.cpp', 0xf3e)
@@ -2650,6 +2739,7 @@ export function ITEMS_GetGemApplyTypeFromItem113c(m: Memory113c, pItem: number):
  * `__stdcall(pItem) -> i32`, `ret 4`).
  */
 export function ITEMS_GetMagicLevelFromItem113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD74710)
   const ptr = pItem >>> 0
   if (ptr === 0) {
     throw new D2CommonAssertError('Items.cpp', 0xdad)
@@ -2684,6 +2774,7 @@ export function ITEMS_GetMagicLevelFromItem113c(m: Memory113c, pItem: number): n
  * `__stdcall(pItem) -> u32`, `ret 4`).
  */
 export function ITEMS_GetGambleCostFromItem113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD747C0)
   const ptr = pItem >>> 0
   if (ptr === 0) {
     throw new D2CommonAssertError('Items.cpp', 0xd94)
@@ -2699,6 +2790,7 @@ export function ITEMS_GetGambleCostFromItem113c(m: Memory113c, pItem: number): n
  * `__stdcall(pItem) -> u32`, `ret 4`).
  */
 export function ITEMS_GetBitField2FromItem113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD74800)
   const ptr = pItem >>> 0
   if (ptr === 0) {
     throw new D2CommonAssertError('Items.cpp', 0xd7c)
@@ -2728,6 +2820,7 @@ export function ITEMS_ComputeGambleBaseCost113c(
   pItem: number,
   nUnitLevel: number,
 ): number {
+  hitD2CommonVa113c(0x6FD74840)
   const dwCode = ITEMS_GetAltGfxOrBaseCode113c(m, pItem >>> 0)
   const idx = fogGetLinkIndex113c(m, m.u32(ITEMS_LINK_PTR_VA_113C), dwCode)
   if ((idx >>> 0) >= m.u32(ITEMS_TXT_COUNT_VA_113C)) {
@@ -2793,6 +2886,7 @@ export function ITEMS_ComputeGambleBaseCost113c(
  * custom reg `esi = pItem` -> `BOOL`, `ret`).
  */
 export function ITEMS_CanItemBePersonalizedOrRepaired113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD74F00)
   const ptr = pItem >>> 0
   if (ptr === 0) {
     throw new D2CommonAssertError('Items.cpp', 0x67e)
@@ -2818,6 +2912,7 @@ export function ITEMS_CanItemBePersonalizedOrRepaired113c(m: Memory113c, pItem: 
  * `__stdcall(pItem) -> BOOL`, `ret 4`).
  */
 export function ITEMS_CheckIfImbueable113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD750B0)
   const ptr = pItem >>> 0
   if (ptr === 0) {
     throw new D2CommonAssertError('Items.cpp', 0x67e)
@@ -2855,6 +2950,7 @@ export function ITEMS_EncodeCompactAndBasicItemStream113c(
   pItem: number,
   bWriteAutoAffix: number,
 ): void {
+  hitD2CommonVa113c(0x6FD75C10)
   const bs = pBitStream >>> 0
   const ptr = pItem >>> 0
   const nItemId = ptr !== 0 ? m.get(ptr, D2UnitStrc.dwClassId) : 0xffffffff
@@ -3056,6 +3152,7 @@ export function ITEMS_EncodeCompactAndBasicItemStream113c(
  * `__stdcall(pItem) -> i32`, `ret 4`).
  */
 export function ITEMS_GetTotalMaxStack113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD760F0)
   const ptr = pItem >>> 0
   if (ptr === 0) {
     throw new D2CommonAssertError('Items.cpp', 0xd5b)
@@ -3120,6 +3217,7 @@ export function ITEMS_CalculateAdditionalCostsForBonusStats113c(
   pCost2: number,
   nDivisor: number,
 ): void {
+  hitD2CommonVa113c(0x6FD78850)
   const ptr = pItem >>> 0
   // 0x6FD7885E..0x6FD78873: `0x6FD88410(pItem, stackBuf, 0x1FF)` (`STATLIST_CopyUnitFullStatsToBuffer`); the
   // returned count is tested with a signed `jle` (0x6FD78884), so `<= 0` (incl. a negative clamped count)
@@ -3259,6 +3357,7 @@ export function ITEMS_CheckQualityItemMatch113c(
   pItem: number,
   pQualityItemTxt: number,
 ): number {
+  hitD2CommonVa113c(0x6FD95BE0)
   const ptr = pItem >>> 0
   const qPtr = pQualityItemTxt >>> 0
   const f0 = m.u8((qPtr + 2) >>> 0)
@@ -3323,6 +3422,7 @@ export function ITEMS_CheckAffixAssignableToItem113c(
   pItem: number,
   pMagicAffixTxt: number,
 ): number {
+  hitD2CommonVa113c(0x6FD95D30)
   const ptr = pItem >>> 0
   if (ptr === 0) {
     throw new D2CommonAssertError('Items.cpp', 0x1505)
@@ -3368,6 +3468,7 @@ export function ITEMS_CheckAffixAssignableToItem113c(
  * `__stdcall(pItem) -> i32`, `ret 4`).
  */
 export function ITEMS_GetSetItemsSetId113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD73D70)
   const ptr = pItem >>> 0
   if (ptr === 0 || m.get(ptr, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0xffffffff
   const pItemData = m.get(ptr, D2UnitStrc.pUnitData)
@@ -3386,6 +3487,7 @@ export function ITEMS_GetSetItemsSetId113c(m: Memory113c, pItem: number): number
  * `__stdcall(pItem) -> ptr`, `ret 4`).
  */
 export function ITEMS_GetSetItemsTxtRecordFromItem113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD73F40)
   const ptr = pItem >>> 0
   if (ptr === 0 || m.get(ptr, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0
   const pItemData = m.get(ptr, D2UnitStrc.pUnitData)
@@ -3407,6 +3509,7 @@ export function ITEMS_GetEquippedSetItemsMask113c(
   pSetItem: number,
   bIncludeSelf: number,
 ): number {
+  hitD2CommonVa113c(0x6FD73F90)
   const plr = pPlayer >>> 0
   if (plr === 0) return 0
   const item = pSetItem >>> 0
@@ -3443,6 +3546,7 @@ export function ITEMS_GetEquippedSetItemsMask113c(
  * `__stdcall(pItem) -> BOOL`, `ret 4`).
  */
 export function ITEMS_CanItemBeShownInTradeOrStash113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD741D0)
   const ptr = pItem >>> 0
   let nItemId = 0xffffffff
   if (ptr !== 0) {
@@ -3466,6 +3570,7 @@ export function ITEMS_CheckItemIdMatchesItemType113c(
   nItemId: number,
   nItemType: number,
 ): number {
+  hitD2CommonVa113c(0x6FD74500)
   const t = nItemType | 0
   if (t < 0) return 0
   const sgpt = m.u32(ITEMS_SGPT_DATATABLES_VA_113C)
@@ -3497,6 +3602,7 @@ export function ITEMS_CheckItemIdMatchesItemType113c(
  * `__stdcall(pItem) -> u8`, `ret 4`).
  */
 export function ITEMS_GetSubTypeFromItem113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD746F0)
   const ptr = pItem >>> 0
   if (ptr === 0 || m.get(ptr, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0
   return ITEMS_GetSubTypeByte113c(m, m.get(ptr, D2UnitStrc.dwClassId))
@@ -3507,6 +3613,7 @@ export function ITEMS_GetSubTypeFromItem113c(m: Memory113c, pItem: number): numb
  * `__stdcall(pItem) -> u8`, `ret 4`).
  */
 export function ITEMS_GetInvWidthFromItem113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD74BF0)
   const ptr = pItem >>> 0
   if (ptr === 0 || m.get(ptr, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0
   return ITEMS_GetInvWidthFromId113c(m, m.get(ptr, D2UnitStrc.dwClassId))
@@ -3517,6 +3624,7 @@ export function ITEMS_GetInvWidthFromItem113c(m: Memory113c, pItem: number): num
  * custom reg `eax = pItem` -> `i32`, `ret`).
  */
 export function ITEMS_CountSocketedItemsInGemSocketable113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD74F90)
   const ptr = pItem >>> 0
   if (ptr === 0 || m.get(ptr, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0
   if (ITEMS_GetSubTypeByte113c(m, m.get(ptr, D2UnitStrc.dwClassId)) === 0) return 0
@@ -3548,6 +3656,7 @@ export function ITEMS_SumStatAcrossSocketedItems113c(
   nStatId: number,
   pOutSum: number,
 ): void {
+  hitD2CommonVa113c(0x6FD766E0)
   const outPtr = pOutSum >>> 0
   m.setU32(outPtr, 0)
   const ptr = pItem >>> 0
@@ -3595,6 +3704,7 @@ export function ITEMS_RollRandomInRangeCallback113c(
   _u0: number,
   ppItemCtx: number,
 ): number {
+  hitD2CommonVa113c(0x6FD767C0)
   const ctx = ppItemCtx >>> 0
   if (ctx === 0) return 0
   const pItem = m.u32(ctx)
@@ -3610,6 +3720,7 @@ export function ITEMS_AreStackableWeaponsCompatible113c(
   pItem1: number,
   pItem2: number,
 ): number {
+  hitD2CommonVa113c(0x6FD76930)
   const p1 = pItem1 >>> 0
   const p2 = pItem2 >>> 0
   const id1 = p1 !== 0 ? m.get(p1, D2UnitStrc.dwClassId) : 0xffffffff
@@ -3651,6 +3762,7 @@ export function ITEMS_AreStackableWeaponsCompatible113c(
  * `__stdcall(pItem) -> ptr`, `ret 4`).
  */
 export function ITEMS_FindMatchingRunesTxtRecord113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD76BA0)
   const ptr = pItem >>> 0
   if (ptr === 0) return 0
   if (m.get(ptr, D2UnitStrc.dwUnitType) === UNIT_ITEM) {
@@ -3727,6 +3839,7 @@ export function ITEMS_FindMatchingRunesTxtRecord113c(m: Memory113c, pItem: numbe
  * `__stdcall(pItem) -> BOOL`, `ret 4`).
  */
 export function ITEMS_CanItemLoseDurability113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD76D40)
   const ptr = pItem >>> 0
   if (ptr === 0 || m.get(ptr, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0
   const pRec = lookupItemsTxtRecord113c(m, m.get(ptr, D2UnitStrc.dwClassId))
@@ -3749,6 +3862,7 @@ export function ITEMS_EvalItemStatCallback113c(
   _u0: number,
   ppItemCtx: number,
 ): number {
+  hitD2CommonVa113c(0x6FD77120)
   const ctx = ppItemCtx >>> 0
   if (ctx === 0) return 0
   const pUnit = m.u32(ctx)
@@ -3760,6 +3874,7 @@ export function ITEMS_EvalItemStatCallback113c(
  * `__fastcall(ecx = pUnit) -> u16`, `ret`).
  */
 export function ITEMS_GetActiveWeaponClassCodeIdx113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD821C0)
   const pWeap = ITEMS_GetActiveWeaponForAttack113c(m, pUnit >>> 0, 1)
   if (pWeap === 0) return 0
   return ITEMS_GetWeaponClassCodeIdx113c(m, pWeap) & 0xffff
@@ -3770,6 +3885,7 @@ export function ITEMS_GetActiveWeaponClassCodeIdx113c(m: Memory113c, pUnit: numb
  * `__fastcall(ecx = pUnit) -> u8`, `ret`).
  */
 export function ITEMS_GetUnitHitClass113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD821E0)
   const ptr = pUnit >>> 0
   if (ptr === 0) return 0
   const uType = m.get(ptr, D2UnitStrc.dwUnitType)
@@ -3799,6 +3915,7 @@ export function ITEMS_RollItemOrUnitSeedRange113c(
   nMin: number,
   pUnit: number,
 ): number {
+  hitD2CommonVa113c(0x6FD965B0)
   let maxVal = nMax | 0
   let minVal = nMin | 0
   if (maxVal === minVal) return minVal >>> 0
@@ -3844,6 +3961,7 @@ export function ITEMS_GetAllowedBodyLocations113c(
   pLoc1: number,
   pLoc2: number,
 ): void {
+  hitD2CommonVa113c(0x6FD73130)
   const rec = lookupItemTypesTxtRecordFromItem113c(m, pItem)
   if (rec === 0) {
     m.setU8(pLoc1 >>> 0, 0)
@@ -3861,6 +3979,7 @@ export function ITEMS_GetAllowedBodyLocations113c(
  * `__stdcall(pItem) -> u32`, `ret 4`).
  */
 export function ITEMS_IsNormalQualityAllowed113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD73360)
   const rec = lookupItemTypesTxtRecordFromItem113c(m, pItem)
   if (rec === 0) return 1
   return m.get(rec, D2ItemTypesTxt.nNormalAllowed)
@@ -3871,6 +3990,7 @@ export function ITEMS_IsNormalQualityAllowed113c(m: Memory113c, pItem: number): 
  * `__stdcall(pItem) -> u32`, `ret 4`).
  */
 export function ITEMS_IsMagicQualityAllowed113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD733B0)
   const rec = lookupItemTypesTxtRecordFromItem113c(m, pItem)
   if (rec === 0) return 0
   return m.get(rec, D2ItemTypesTxt.nMagic)
@@ -3881,6 +4001,7 @@ export function ITEMS_IsMagicQualityAllowed113c(m: Memory113c, pItem: number): n
  * `__stdcall(pItem) -> u32`, `ret 4`).
  */
 export function ITEMS_IsRareQualityAllowed113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD73400)
   const rec = lookupItemTypesTxtRecordFromItem113c(m, pItem)
   if (rec === 0) return 0
   return m.get(rec, D2ItemTypesTxt.nRare)
@@ -3891,6 +4012,7 @@ export function ITEMS_IsRareQualityAllowed113c(m: Memory113c, pItem: number): nu
  * `__stdcall(pItem) -> u8`, `ret 4`).
  */
 export function ITEMS_GetVarInvGfxCount113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD73450)
   const rec = lookupItemTypesTxtRecordFromItem113c(m, pItem)
   if (rec === 0) return 0
   return m.get(rec, D2ItemTypesTxt.nVarInvGfx)
@@ -3901,6 +4023,7 @@ export function ITEMS_GetVarInvGfxCount113c(m: Memory113c, pItem: number): numbe
  * `__stdcall(pItem) -> u8`, `ret 4`).
  */
 export function ITEMS_GetStorePage113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD734A0)
   const rec = lookupItemTypesTxtRecordFromItem113c(m, pItem)
   if (rec === 0) return 0xff
   return m.get(rec, D2ItemTypesTxt.nStorePage)
@@ -3911,6 +4034,7 @@ export function ITEMS_GetStorePage113c(m: Memory113c, pItem: number): number {
  * `__stdcall(pItem) -> u32`, `ret 4`).
  */
 export function ITEMS_IsReEquip113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD734F0)
   const rec = lookupItemTypesTxtRecordFromItem113c(m, pItem)
   if (rec === 0) return 0
   return m.get(rec, D2ItemTypesTxt.nReEquip)
@@ -3921,6 +4045,7 @@ export function ITEMS_IsReEquip113c(m: Memory113c, pItem: number): number {
  * `__stdcall(pItem) -> u32`, `ret 4`).
  */
 export function ITEMS_IsReload113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD73540)
   const rec = lookupItemTypesTxtRecordFromItem113c(m, pItem)
   if (rec === 0) return 0
   return m.get(rec, D2ItemTypesTxt.nReload)
@@ -3931,6 +4056,7 @@ export function ITEMS_IsReload113c(m: Memory113c, pItem: number): number {
  * `__stdcall(pItem) -> u32`, `ret 4`).
  */
 export function ITEMS_GetClassOfClassSpecificItem113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD74280)
   const rec = lookupItemTypesTxtRecordFromItem113c(m, pItem)
   if (rec === 0) return 7
   return Math.min(m.get(rec, D2ItemTypesTxt.nRarity), 7)
@@ -3941,6 +4067,7 @@ export function ITEMS_GetClassOfClassSpecificItem113c(m: Memory113c, pItem: numb
  * `__stdcall(pItem) -> u32`, `ret 4`).
  */
 export function ITEMS_IsClassSpecific113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD742D0)
   const rec = lookupItemTypesTxtRecordFromItem113c(m, pItem)
   if (rec === 0) return 0
   return m.get(rec, D2ItemTypesTxt.nRarity) < 7 ? 1 : 0
@@ -3951,6 +4078,7 @@ export function ITEMS_IsClassSpecific113c(m: Memory113c, pItem: number): number 
  * `__stdcall(pItem) -> u8`, `ret 4`).
  */
 export function ITEMS_GetMaxSocketsFromItemType113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD74610)
   const ptr = pItem >>> 0
   const rec = lookupItemTypesTxtRecordFromItem113c(m, ptr)
   if (rec === 0) return 0
@@ -3970,6 +4098,7 @@ export function ITEMS_GetMaxSocketsFromItemType113c(m: Memory113c, pItem: number
  * `__stdcall(pItem) -> u32`, `ret 4`).
  */
 export function ITEMS_GetStaffModsClass113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD746A0)
   const rec = lookupItemTypesTxtRecordFromItem113c(m, pItem)
   if (rec === 0) return 7
   return m.get(rec, D2ItemTypesTxt.nStaffMods)
@@ -3980,6 +4109,7 @@ export function ITEMS_GetStaffModsClass113c(m: Memory113c, pItem: number): numbe
  * `__stdcall(pItem) -> u32`, `ret 4`).
  */
 export function ITEMS_IsBeltable113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD74BA0)
   const rec = lookupItemTypesTxtRecordFromItem113c(m, pItem)
   if (rec === 0) return 0
   return m.get(rec, D2ItemTypesTxt.nBeltable)
@@ -3990,6 +4120,7 @@ export function ITEMS_IsBeltable113c(m: Memory113c, pItem: number): number {
  * `__stdcall(pItem) -> u32`, `ret 4`).
  */
 export function ITEMS_IsAutoStack113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD74E10)
   const rec = lookupItemTypesTxtRecordFromItem113c(m, pItem)
   if (rec === 0) return 0
   return m.get(rec, D2ItemTypesTxt.nAutoStack)
@@ -4000,6 +4131,7 @@ export function ITEMS_IsAutoStack113c(m: Memory113c, pItem: number): number {
  * `__stdcall(pItem) -> i32`, `ret 4`).
  */
 export function ITEMS_GetItemTypeShootsFromItem113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD74E60)
   const rec = lookupItemTypesTxtRecordFromItem113c(m, pItem)
   if (rec === 0) return 0
   return ((m.get(rec, D2ItemTypesTxt.wShoots) << 16) >> 16) >>> 0
@@ -4010,6 +4142,7 @@ export function ITEMS_GetItemTypeShootsFromItem113c(m: Memory113c, pItem: number
  * `__stdcall(pItem) -> i32`, `ret 4`).
  */
 export function ITEMS_GetItemTypeQuiverFromItem113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD74EB0)
   const rec = lookupItemTypesTxtRecordFromItem113c(m, pItem)
   if (rec === 0) return 0
   return ((m.get(rec, D2ItemTypesTxt.wQuiver) << 16) >> 16) >>> 0
@@ -4020,6 +4153,7 @@ export function ITEMS_GetItemTypeQuiverFromItem113c(m: Memory113c, pItem: number
  * `__stdcall(pItem) -> u32`, `ret 4`).
  */
 export function ITEMS_CanBeEquipped113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD743B0)
   const rec = lookupItemTypesTxtRecordFromItem113c(m, pItem)
   if (rec === 0) return 0
   const b1 = m.get(rec, D2ItemTypesTxt.nBodyLoc1)
@@ -4039,6 +4173,7 @@ export function ITEMS_CheckBodyLocation113c(
   pItem: number,
   nBodyLoc: number,
 ): number {
+  hitD2CommonVa113c(0x6FD74C80)
   const ptr = pItem >>> 0
   if (ptr === 0 || m.get(ptr, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0
   const loc = nBodyLoc >>> 0
@@ -4083,6 +4218,7 @@ export function ITEMS_CanItemBeAutoBeltOrStacked113c(
   pInventory: number,
   pItem: number,
 ): number {
+  hitD2CommonVa113c(0x6FD74B20)
   const itm = pItem >>> 0
   if (itm === 0) {
     throw new D2CommonAssertError('Items.cpp', 0x9a7)
@@ -4103,6 +4239,7 @@ export function ITEMS_CanItemBeAutoBeltOrStacked113c(
  * `__stdcall(nItemId) -> BOOL`, `ret 4`).
  */
 export function ITEMS_IsUberOrUltraArmorOrWeapon113c(m: Memory113c, nItemId: number): number {
+  hitD2CommonVa113c(0x6FD74D00)
   const id = nItemId >>> 0
   let pRec = 0
   if (id < (m.u32(ITEMS_TXT_COUNT_VA_113C) >>> 0)) {
@@ -4138,6 +4275,7 @@ export function ITEMS_EvaluateRequiredLevel113c(
   pItem: number,
   pUnit: number,
 ): number {
+  hitD2CommonVa113c(0x6FD76190)
   const itm = pItem >>> 0
   const unit = pUnit >>> 0
   let ebp = 0
@@ -4300,6 +4438,7 @@ export function ITEMS_EvaluateRequiredLevel113c(
  * `__stdcall(pItem, nSockets) -> void`, `ret 8`).
  */
 export function ITEMS_AddSockets113c(m: Memory113c, pItem: number, nSockets: number): void {
+  hitD2CommonVa113c(0x6FD7A3D0)
   const edi = pItem >>> 0
   if (edi === 0 || m.get(edi, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return
   const pRec = lookupItemsTxtRecord113c(m, m.get(edi, D2UnitStrc.dwClassId))
@@ -4338,6 +4477,7 @@ export function ITEMS_CraftModMakeEthereal113c(
   _a7?: number,
   _a8?: number,
 ): number {
+  hitD2CommonVa113c(0x6FD97290)
   const esi = pItem >>> 0
   if ((bApply | 0) === 0 || esi === 0 || m.get(esi, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0
   const pData = m.get(esi, D2UnitStrc.pUnitData)
@@ -4375,6 +4515,7 @@ export function ITEMS_CheckRequirements113c(
   pOutDex: number,
   pOutLvl: number,
 ): number {
+  hitD2CommonVa113c(0x6FD76DB0)
   const outStr = pOutStr >>> 0
   const outDex = pOutDex >>> 0
   const outLvl = pOutLvl >>> 0
@@ -4491,6 +4632,7 @@ export function ITEMS_CanUseCharmInInventory113c(
   pItem: number,
   pUnit: number,
 ): number {
+  hitD2CommonVa113c(0x6FD787D0)
   const esi = pItem >>> 0
   if (esi === 0 || m.get(esi, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0
   const pData = m.get(esi, D2UnitStrc.pUnitData)
@@ -4518,6 +4660,7 @@ export function ITEMS_CraftModAddSockets113c(
   _a5?: number,
   _a6?: number,
 ): number {
+  hitD2CommonVa113c(0x6FD97DC0)
   const edx = pModDef >>> 0
   if (edx === 0) {
     throw new D2CommonAssertError('Items.cpp', 0x312)
@@ -4550,6 +4693,7 @@ export function ITEMS_HasUsedCharges113c(
   pItem: number,
   pOutAllFull: number,
 ): number {
+  hitD2CommonVa113c(0x6FD74FF0)
   const ebx = pOutAllFull >>> 0
   if (ebx !== 0) {
     m.setU32(ebx, 1)
@@ -4583,6 +4727,7 @@ export function ITEMS_RemoveFromSocketedOwner113c(
   _pMemPool: number,
   pItem: number,
 ): void {
+  hitD2CommonVa113c(0x6FD7A5C0)
   const esi = pItem >>> 0
   if (esi === 0 || m.get(esi, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return
   INVENTORY_RemoveItemInternal113c(m, esi)
@@ -4601,6 +4746,7 @@ export function ITEMS_EnsureThrowableOrStackableQuantity113c(
   m: Memory113c,
   pItem: number,
 ): number {
+  hitD2CommonVa113c(0x6FD7A170)
   const ebp = pItem >>> 0
   if (ebp === 0) return 0
   if ((statListGetUnitStatMem113c(m, ebp, 0x46, 0) | 0) > 0) return 1
@@ -4616,6 +4762,7 @@ export function ITEMS_EnsureThrowableOrStackableQuantity113c(
  * `__stdcall(pItem) -> BOOL`, `ret 4`).
  */
 export function ITEMS_CanItemBeDroppedOrSold113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD740D0)
   const esi = pItem >>> 0
   if (esi === 0) {
     throw new D2CommonAssertError('Items.cpp', 0x67e)
@@ -4642,6 +4789,7 @@ export function ITEMS_CanItemBeDroppedOrSold113c(m: Memory113c, pItem: number): 
  * `__stdcall(pItem) -> BOOL`, `ret 4`).
  */
 export function ITEMS_CanItemBeRepairedByNpc113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD77090)
   const esi = pItem >>> 0
   if (esi === 0 || m.get(esi, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0
   const pData = m.get(esi, D2UnitStrc.pUnitData)
@@ -4675,6 +4823,7 @@ export function ITEMS_CanItemBeRepairedByNpc113c(m: Memory113c, pItem: number): 
  * `__stdcall(pItem) -> BOOL`, `ret 4`).
  */
 export function ITEMS_CanItemBeSocketedByQuest113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD76AD0)
   const esi = pItem >>> 0
   if (esi === 0) {
     throw new D2CommonAssertError('Items.cpp', 0x67e)
@@ -4720,6 +4869,7 @@ export function ITEMS_CraftModRollSockets113c(
   _a7 = 0,
   _a8 = 0,
 ): number {
+  hitD2CommonVa113c(0x6FD96830)
   const ebp = pModDef >>> 0
   if (ebp === 0) return 0
   const edi = pItem >>> 0
@@ -4773,6 +4923,7 @@ export function ITEMS_GetMissileWeaponVelocity113c(
   pItem: number,
   nSockets: number,
 ): void {
+  hitD2CommonVa113c(0x6FD7A480)
   const edi = pItem >>> 0
   if (edi === 0 || m.get(edi, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return
   const pRec = lookupItemsTxtRecord113c(m, m.get(edi, D2UnitStrc.dwClassId))
@@ -4843,6 +4994,7 @@ export function ITEMS_EvalItemPropertyList113c(
   pItem: number,
   pAffixTxt: number,
 ): number {
+  hitD2CommonVa113c(0x6FD95E50)
   const esi = pItem >>> 0
   if (esi === 0) {
     throw new D2CommonAssertError('ItemMods.cpp', 0x1505)
@@ -4901,6 +5053,7 @@ export function ITEMS_AddChargedSkillsCostContribution113c(
   pItem: number,
   nBaseCost: number,
 ): number {
+  hitD2CommonVa113c(0x6FD75810)
   const ptr = pItem >>> 0
   const pStatListEx = m.get(ptr, D2UnitStrc.pStatListEx)
   const entries =
@@ -4957,6 +5110,7 @@ export function ITEMS_AddSingleSkillStatsCostContribution113c(
   pRepairCost: number,
   nDivisor: number,
 ): void {
+  hitD2CommonVa113c(0x6FD75970)
   const esi = pItem >>> 0
   if (esi === 0 || m.get(esi, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return
   const itemType = ITEMS_GetItemTypeFromItem113c(m, esi) | 0
@@ -5087,6 +5241,7 @@ export function UNITS_GetAnimDataStringOrPath113c(
   bIncludePath: number,
   bCheckWeapon: number,
 ): void {
+  hitD2CommonVa113c(0x6FD93C30)
   const ut = nUnitType | 0
   const cls = nClass >>> 0
   const mode = nMode >>> 0
@@ -5353,6 +5508,7 @@ export function ITEMS_CalcWeaponAttackSpeed113c(
   pUnit: number,
   pItem: number,
 ): number {
+  hitD2CommonVa113c(0x6FD767F0)
   const item = pItem >>> 0
   if (item === 0 || m.get(item, D2UnitStrc.dwUnitType) !== UNIT_ITEM) {
     throw new D2CommonAssertError('Items.cpp', 0x151e)
@@ -5437,6 +5593,7 @@ export function ITEMMODS_ApplyChargedSkillProperty113c(
   fStatListFlags: number,
   _arg8: number,
 ): number {
+  hitD2CommonVa113c(0x6FD98340)
   const prop = pItemProp >>> 0
   if (prop === 0) return 0
   const skillId = m.u32((prop + 0x04) >>> 0) | 0
@@ -5495,6 +5652,7 @@ export function ITEMMODS_ApplyMaxDamagePercentProperty113c(
   fStatListFlags: number,
   _arg8: number,
 ): number {
+  hitD2CommonVa113c(0x6FD98630)
   const prop = pItemProp >>> 0
   if (prop === 0) return 0
   const item = pItem >>> 0
@@ -5596,6 +5754,7 @@ export function ITEMMODS_ApplyMinDamagePercentProperty113c(
   fStatListFlags: number,
   _arg8: number,
 ): number {
+  hitD2CommonVa113c(0x6FD987C0)
   const prop = pItemProp >>> 0
   if (prop === 0) return 0
   const item = pItem >>> 0
@@ -5696,6 +5855,7 @@ export function ITEMMODS_ApplyEnhancedDamageProperty113c(
   fStatListFlags: number,
   _arg6: number,
 ): number {
+  hitD2CommonVa113c(0x6FD997E0)
   const item = pItem >>> 0
   if (item === 0) throw new D2CommonAssertError('ItemMods.cpp', 0x1505)
   if (m.get(item, D2UnitStrc.dwUnitType) !== UNIT_ITEM) {
@@ -5866,6 +6026,7 @@ export function ITEMMODS_ApplyDmgMaxProperty113c(
   fStatListFlags: number,
   _arg6: number,
 ): number {
+  hitD2CommonVa113c(0x6FD98E70)
   const prop = pItemProp >>> 0
   if (prop === 0) throw new D2CommonAssertError('ItemMods.cpp', 0x397)
   const item = pItem >>> 0
@@ -5946,6 +6107,7 @@ export function ITEMMODS_ApplyDmgMinProperty113c(
   fStatListFlags: number,
   _arg6: number,
 ): number {
+  hitD2CommonVa113c(0x6FD98FC0)
   const prop = pItemProp >>> 0
   if (prop === 0) throw new D2CommonAssertError('ItemMods.cpp', 0x37b)
   const item = pItem >>> 0
@@ -6027,6 +6189,7 @@ export function ITEMMODS_ApplyStatRolledProperty113c(
   fStatListFlags: number,
   arg8: number,
 ): number {
+  hitD2CommonVa113c(0x6FD991C0)
   const prop = pItemProp >>> 0
   if (prop === 0) return 0
   const item = pItem >>> 0
@@ -6089,6 +6252,7 @@ export function ITEMMODS_ApplyStatMaxProperty113c(
   fStatListFlags: number,
   arg8: number,
 ): number {
+  hitD2CommonVa113c(0x6FD99260)
   const prop = pItemProp >>> 0
   if (prop === 0) return 0
   const val = m.u32((prop + 0x0c) >>> 0) | 0
@@ -6139,6 +6303,7 @@ export function ITEMMODS_ApplyStatMinProperty113c(
   fStatListFlags: number,
   arg8: number,
 ): number {
+  hitD2CommonVa113c(0x6FD992D0)
   const prop = pItemProp >>> 0
   if (prop === 0) return 0
   const val = m.u32((prop + 0x08) >>> 0) | 0
@@ -6231,6 +6396,7 @@ export function ITEMMODS_ApplyEnhancedDamagePercentProperty113c(
   fStatListFlags: number,
   arg8: number,
 ): number {
+  hitD2CommonVa113c(0x6FD99340)
   const prop = pItemProp >>> 0
   if (prop === 0) return 0
   const item = pItem >>> 0
@@ -6398,6 +6564,7 @@ export function ITEMS_AutoPlaceIntoBelt113c(
   pItem: number,
   nBeltSlot: number,
 ): number {
+  hitD2CommonVa113c(0x6FD71EE0)
   const item = pItem >>> 0
   if (item === 0 || m.get(item, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0
   if (ITEMS_IsBeltable113c(m, item) === 0) return 0
@@ -6426,6 +6593,7 @@ export function ITEMS_GetItemColorColormap113c(
   bInventory: number,
   d2cmpBase = 0x6fe10000,
 ): number {
+  hitD2CommonVa113c(0x6FD751C0)
   const item = pItem >>> 0
   if (item === 0) return 0
   const unit = pUnit >>> 0
@@ -6661,6 +6829,7 @@ export function ITEMS_SerializeItemBitstream113c(
   bIncludeServerFields: number,
   bSimpleItemCodeOnly: number,
 ): void {
+  hitD2CommonVa113c(0x6FD77180)
   const item = pItem >>> 0
   if (item === 0) throw new D2CommonAssertError('Items.cpp', 0x1505)
   if (m.get(item, D2UnitStrc.dwUnitType) !== UNIT_ITEM) {
@@ -7321,6 +7490,7 @@ export function ITEMS_ComputeTransactionCost113c(
   nNpcCode: number,
   nTransactionType: number,
 ): number {
+  hitD2CommonVa113c(0x6FD78E80)
   const player = pPlayer >>> 0
   const item = pItem >>> 0
   if (player === 0 || item === 0 || m.get(item, D2UnitStrc.dwUnitType) !== UNIT_ITEM) {
@@ -7657,6 +7827,7 @@ export function ITEMS_WriteItemStreamAndSockets113c(
   bIncludeSockets: number,
   bSimpleItemCodeOnly: number,
 ): number {
+  hitD2CommonVa113c(0x6FD78D70)
   const item = pItem >>> 0
   const bs = pBitStream >>> 0
   const hdr = bWriteHeader | 0
@@ -7720,6 +7891,7 @@ export function ITEMS_GetTransactionCost113c(
   nNpcCode: number,
   nTransactionType: number,
 ): number {
+  hitD2CommonVa113c(0x6FD79D60)
   return ITEMS_ComputeTransactionCost113c(
     m,
     pPlayer,
@@ -7752,6 +7924,7 @@ export function ITEMS_GetRepairAllCost113c(
   pfnCallback = 0,
   onRepairItem?: RepairItemCallbackFn113c,
 ): number {
+  hitD2CommonVa113c(0x6FD7A210)
   const unit = pUnit >>> 0
   if (unit === 0) return 0
   const pInv = m.get(unit, D2UnitStrc.pInventory)
@@ -7824,6 +7997,7 @@ export function ITEMS_SerializeItemToBuffer113c(
   bIncludeSockets: number,
   bSimpleItemCodeOnly: number,
 ): number {
+  hitD2CommonVa113c(0x6FD79D00)
   const bitBuf = m.alloc(0x14)
   fogInitBitBuffer113c(m, bitBuf, pOutBuffer, nMaxBytes)
   ITEMS_WriteItemStreamAndSockets113c(
@@ -8178,6 +8352,7 @@ export function ITEMMODS_ApplyPropertyById113c(
   fStatListFlags: number,
   nUnused: number,
 ): void {
+  hitD2CommonVa113c(0x6FD95990)
   const prop = pProp >>> 0
   if (prop === 0) return
   const nPropId = m.u32(prop) | 0
@@ -8236,6 +8411,7 @@ export function ITEMMODS_ApplyItemProperty113c(
   s6: number,
   s7: number,
 ): void {
+  hitD2CommonVa113c(0x6FD95AA0)
   const item = pItem >>> 0
   if (item === 0) throw new D2CommonAssertError('', 5381)
   if ((m.u32(item) >>> 0) !== 4) throw new D2CommonAssertError('', 5382)
@@ -8294,6 +8470,7 @@ export function ITEMMODS_ApplySetItemBonusProps113c(
   pUnit: number,
   nUnused: number,
 ): void {
+  hitD2CommonVa113c(0x6FD95F90)
   const item = pItem >>> 0
   const unit = pUnit >>> 0
   if (unit === 0 || item === 0) return
@@ -8343,6 +8520,7 @@ export function ITEMS_ApplyItemQualityMods113c(
   pSeed: number,
   pUnit: number,
 ): void {
+  hitD2CommonVa113c(0x6FD960B0)
   const q = nQuality >>> 0
   const item = pItem >>> 0
   const unit = pUnit >>> 0
@@ -8436,6 +8614,7 @@ export function ITEMS_ApplyRunewordProps113c(
   pUnit: number,
   _nUnused: number,
 ): number {
+  hitD2CommonVa113c(0x6FD96770)
   const item = pItem >>> 0
   const pRunes = ITEMS_FindMatchingRunesTxtRecord113c(m, item) >>> 0
   if (pRunes === 0) return 0
@@ -8479,6 +8658,7 @@ export function ITEMS_ApplySinglePropAndEthereal113c(
   pProp: number,
   _nUnused: number,
 ): void {
+  hitD2CommonVa113c(0x6FD97730)
   const item = pItem >>> 0
   if (item === 0) return
   ITEMMODS_ApplyItemProperty113c(m, item, 0x40, 0, pProp >>> 0, 7, 0, pProp >>> 0, 0, 0, 0, 0)

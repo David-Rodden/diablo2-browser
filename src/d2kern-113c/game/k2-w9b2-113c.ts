@@ -103,6 +103,7 @@ import { ACT3Q1_OnBossKilledDropJadeFigurine_6FD08010_113c } from './k2-w8b4-113
 import { UNITS_ChangeAnimMode113c } from './monster-events'
 import { SEED_RollRangeHalfOpen113c } from './regpop-spawn-113c'
 import { ITEMS_CheckItemTypeId113c } from './replay-kernel-113c'
+import { hitD2GameVa113c } from '../va-trace-113c'
 
 export type { SparseMemory113c }
 
@@ -134,6 +135,7 @@ export function ACT2Q4_CompleteJerhynIntroAndActivateArcane_6FCE6CA0_113c(
   pGame: number,
   pPlayer: number,
 ): void {
+  hitD2GameVa113c(0x6FCE6CA0)
   const pQuestControl = m.u32((pGame + 0x10f4) >>> 0) >>> 0
   if (pQuestControl !== 0) {
     let pQuest = m.u32(pQuestControl) >>> 0
@@ -173,6 +175,7 @@ export function ACT2Q3_ScheduleTaintedSunTimer_6FCE7250_113c(
   m: SparseMemory113c,
   pQuest: number,
 ): void {
+  hitD2GameVa113c(0x6FCE7250)
   const pQuestState = m.u32((pQuest + 0x18) >>> 0) >>> 0
   if (m.u8((pQuest + 0x0c) >>> 0) !== 0) return
   if (m.u8((pQuestState + 0x01) >>> 0) !== 0) return
@@ -198,6 +201,7 @@ export function ACT2Q3_Callback13_PlayerEnterSyncState_6FCE72C0_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FCE72C0)
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0
   const pGameArg = m.u32(pQuestArg >>> 0) >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
@@ -244,6 +248,7 @@ export function ACT2Q1_InitQuestData_6FCE7B40_113c(
   pQuest: number,
   pPreallocatedState = 0,
 ): void {
+  hitD2GameVa113c(0x6FCE7B40)
   for (let i = 0; i < 15; i++) {
     m.setU32((pQuest + 0xa0 + i * 4) >>> 0, 0)
   }
@@ -288,6 +293,7 @@ export function ACT2Q4_InitQuestData_6FCE9400_113c(
   pQuest: number,
   pPreallocatedState = 0,
 ): void {
+  hitD2GameVa113c(0x6FCE9400)
   for (let i = 0; i < 15; i++) {
     m.setU32((pQuest + 0xa0 + i * 4) >>> 0, 0)
   }
@@ -335,6 +341,7 @@ export function C2S_PacketUseQuestScrollItem_6FCED8D0_113c(
   pPacket: number,
   nPacketSize: number,
 ): number {
+  hitD2GameVa113c(0x6FCED8D0)
   if ((nPacketSize | 0) !== 5) return 3
   const dwItemGuid = m.u32((pPacket + 1) >>> 0) >>> 0
   if (pGame === 0) {
@@ -394,6 +401,7 @@ export function C2S_PacketTriggerMonsterSpawnNode_6FCEE440_113c(
   pPacket: number,
   nPacketSize: number,
 ): number {
+  hitD2GameVa113c(0x6FCEE440)
   if ((nPacketSize | 0) !== 9) return 3
   const dwMonsterGuid = m.u32((pPacket + 5) >>> 0) >>> 0
   const sp = allocW9B2Stack(m, 16)
@@ -443,6 +451,7 @@ export function ITEMS_UseOrEquipCursorItemOnMerc_6FCF05B0_113c(
   pGame: number,
   pPlayer: number,
 ): number {
+  hitD2GameVa113c(0x6FCF05B0)
   const pInventory = m.u32((pPlayer + 0x60) >>> 0) >>> 0
   if (m.u32((pGame + 0x70) >>> 0) === 0) return 3
   if (ITEMS_CheckCommandFlags113c(m, pCursorItem, 0x10) === 0) return 0
@@ -544,6 +553,7 @@ export function ITEMS_PickupGroundItemToInventoryOrEquip_6FCF6E30_113c(
   pPlayer: number,
   pOutErrorCode: number,
 ): number {
+  hitD2GameVa113c(0x6FCF6E30)
   if (pGame === 0) {
     throw new D2CommonAssertError('0x6fd19ff9', 0x77b)
   }
@@ -681,6 +691,7 @@ export function ITEMS_ProcessItemDurabilityAndStackReplenish_6FCFA480_113c(
   pGame: number,
   pItem: number,
 ): void {
+  hitD2GameVa113c(0x6FCFA480)
   if (
     ITEMS_CheckCommandFlags113c(m, pItem, 0x100) === 0 &&
     ITEMS_CanItemLoseDurability113c(m, pItem) !== 0
@@ -711,6 +722,7 @@ export function ACT3Q3_InitQuestData_6FD07CE0_113c(
   pQuest: number,
   pPreallocatedState = 0,
 ): void {
+  hitD2GameVa113c(0x6FD07CE0)
   for (let i = 0; i < 15; i++) {
     m.setU32((pQuest + 0xa0 + i * 4) >>> 0, 0)
   }
@@ -753,6 +765,7 @@ export function ACT3Q1_AttachGoldenBirdBossMonster_6FD08200_113c(
   pQuest: number,
   pMonsterUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FD08200)
   const pQuestState = m.u32((pQuest + 0x18) >>> 0) >>> 0
   if (m.u8((pQuest + 0x09) >>> 0) === 0) return 0
   if (m.u8((pQuestState + 0x0c) >>> 0) === 0) return 0
@@ -793,6 +806,7 @@ export function ACT3Q6_InitQuestData_6FD0A080_113c(
   pQuest: number,
   pPreallocatedState = 0,
 ): void {
+  hitD2GameVa113c(0x6FD0A080)
   for (let i = 0; i < 15; i++) {
     m.setU32((pQuest + 0xa0 + i * 4) >>> 0, 0)
   }
@@ -830,6 +844,7 @@ export function SKILLS_EquipSummonedPetItems_6FD0E6F0_113c(
   m: SparseMemory113c,
   pMonsterUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FD0E6F0)
   if (pMonsterUnit === 0) {
     throw new D2CommonAssertError('0x6fd19ff9', 0xa2a)
   }
@@ -887,6 +902,7 @@ export function PARTY_NotifySubPartyAndLeaveParty_6FD110F0_113c(
   _uArg2 = 0,
   _uArg3 = 0,
 ): void {
+  hitD2GameVa113c(0x6FD110F0)
   let wPartyId = 0xffff
   if (pPlayerUnit !== 0) {
     const pUnitGame = m.u32((pPlayerUnit + 0x80) >>> 0) >>> 0

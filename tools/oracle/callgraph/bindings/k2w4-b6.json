@@ -190,15 +190,6 @@
   },
   {
     "module": "D2Game",
-    "va": "0x6FCC1350",
-    "name": "SKILLS_CreateDroppedItemByCodeAtUnit_6FCC1350",
-    "kernFile": "src/d2kern-113c/game/k2-w4b6-113c.ts",
-    "tsSymbol": "SKILLS_CreateDroppedItemByCodeAtUnit_6FCC1350_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b6.test.ts"
-  },
-  {
-    "module": "D2Game",
     "va": "0x6FCC16A0",
     "name": "SKILLS_ConsumeItemQuantityAndSyncDurability_6FCC16A0",
     "kernFile": "src/d2kern-113c/game/k2-w4b6-113c.ts",

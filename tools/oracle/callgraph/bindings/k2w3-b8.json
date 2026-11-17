@@ -163,24 +163,6 @@
   },
   {
     "module": "D2Game",
-    "va": "0x6FC9C060",
-    "name": "AI_TentacleSkillCastA_6FC9C060",
-    "kernFile": "src/d2kern-113c/game/k2-w3b8-113c.ts",
-    "tsSymbol": "AI_TentacleSkillCastA_6FC9C060_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w3b8.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6FC9C1D0",
-    "name": "AI_TentacleSkillCastB_6FC9C1D0",
-    "kernFile": "src/d2kern-113c/game/k2-w3b8-113c.ts",
-    "tsSymbol": "AI_TentacleSkillCastB_6FC9C1D0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w3b8.test.ts"
-  },
-  {
-    "module": "D2Game",
     "va": "0x6FC9C340",
     "name": "AI_WallTrapHorizontalY_6FC9C340",
     "kernFile": "src/d2kern-113c/game/k2-w3b8-113c.ts",

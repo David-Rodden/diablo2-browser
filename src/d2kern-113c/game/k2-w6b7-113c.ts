@@ -47,6 +47,7 @@ import {
 } from './k2-w5b9-113c'
 import { OBJECTS_RollScaledByte19C_6FD14260_113c } from './k2-w5b10-113c'
 import { SEED_RollLimitedFast113c } from './regpop-spawn-113c'
+import { hitD2GameVa113c } from '../va-trace-113c'
 
 export type { D2KernMemory113c }
 
@@ -113,6 +114,7 @@ export function PACKET_ProcessChatOrWhisperMessage_6FCEDBB0_113c(
   pPacket: number,
   nPacketLen: number,
 ): number {
+  hitD2GameVa113c(0x6FCEDBB0)
   const sp = k2W6B7StackPtr
   k2W6B7StackPtr = (sp + 0x3b0) >>> 0
   const pPkt5A = (sp + 0x14) >>> 0
@@ -278,6 +280,7 @@ export function PARTY_SendLeftPartyEvent5AToMemberCallback_6FD10820_113c(
   pMemberUnit: number,
   pLeavingPlayer: number,
 ): void {
+  hitD2GameVa113c(0x6FD10820)
   const edxMember = pMemberUnit >>> 0
   const eaxLeaving = pLeavingPlayer >>> 0
   if (edxMember === eaxLeaving) return
@@ -310,6 +313,7 @@ export function PARTY_InvitePlayerToParty_6FD10870_113c(
   _dwExtraArg = 0,
   _pOutError = 0,
 ): void {
+  hitD2GameVa113c(0x6FD10870)
   const esiGame = pGame >>> 0
   const ebpSource = pSourcePlayer >>> 0
   const ebxTarget = pTargetPlayer >>> 0
@@ -352,6 +356,7 @@ export function PARTY_CancelPartyInvitation_6FD10900_113c(
   _dwExtraArg = 0,
   _pOutError = 0,
 ): void {
+  hitD2GameVa113c(0x6FD10900)
   const esiGame = pGame >>> 0
   const ebpSource = pSourcePlayer >>> 0
   const ebxTarget = pTargetPlayer >>> 0
@@ -411,6 +416,7 @@ export function PARTY_SyncJoinedPartyRelationsCallback_6FD10B90_113c(
   pPlayer: number,
   pJoinCtx: number,
 ): void {
+  hitD2GameVa113c(0x6FD10B90)
   const ebpGame = pGame >>> 0
   const ebxPlayer = pPlayer >>> 0
   const esiCtx = pJoinCtx >>> 0
@@ -470,6 +476,7 @@ export function PARTY_UpdateRelationFlagAndSyncRoster_6FD10C60_113c(
   wFlagMask: number,
   dwEnable: number,
 ): void {
+  hitD2GameVa113c(0x6FD10C60)
   const esiTarget = pTargetPlayer >>> 0
   const ediSource = pSourcePlayer >>> 0
   const ebxGame = pGame >>> 0
@@ -509,6 +516,7 @@ export function PARTY_UpdateSquelchFlag04AndSyncRoster_6FD10E80_113c(
   dwEnable: number,
   _pOutError = 0,
 ): void {
+  hitD2GameVa113c(0x6FD10E80)
   const ebxGame = pGame >>> 0
   const ediSource = pSourcePlayer >>> 0
   const esiTarget = pTargetPlayer >>> 0
@@ -547,6 +555,7 @@ export function PARTY_UpdateMuteFlag02AndSyncRoster_6FD10EE0_113c(
   dwEnable: number,
   _pOutError = 0,
 ): void {
+  hitD2GameVa113c(0x6FD10EE0)
   const ebxGame = pGame >>> 0
   const ediSource = pSourcePlayer >>> 0
   const esiTarget = pTargetPlayer >>> 0
@@ -583,6 +592,7 @@ export function PARTY_EnableHostilityFlag08_6FD141C0_113c(
   pGame: number,
   pOwnerPlayer: number,
 ): void {
+  hitD2GameVa113c(0x6FD141C0)
   const esiTarget = pTargetPlayer >>> 0
   const ebxGame = pGame >>> 0
   const ediOwner = pOwnerPlayer >>> 0
@@ -608,6 +618,7 @@ export function PARTY_ClearHostilityFlag08_6FD14210_113c(
   pGame: number,
   pOwnerPlayer: number,
 ): number {
+  hitD2GameVa113c(0x6FD14210)
   const esiTarget = pTargetPlayer >>> 0
   const ebxGame = pGame >>> 0
   const ediOwner = pOwnerPlayer >>> 0
@@ -637,6 +648,7 @@ export function OBJECTS_ApplyTrapDamageToTarget_6FD142D0_113c(
   pTargetUnit: number,
   nElemType: number,
 ): void {
+  hitD2GameVa113c(0x6FD142D0)
   const ebpTarget = pTargetUnit >>> 0
   const pRoom = UNITS_GetRoom113c(m, ebpTarget) >>> 0
   DUNGEON_GetLevelIdFromRoom113c(m, pRoom)

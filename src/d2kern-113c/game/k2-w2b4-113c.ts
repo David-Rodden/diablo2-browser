@@ -70,6 +70,7 @@ import {
   SUNIT_ValidatePathTargetUnit113c,
   UNIT_CalcSqDistSubtiles113c,
 } from './regpop-spawn-113c.ts'
+import { hitD2GameVa113c } from '../va-trace-113c.ts'
 
 /** `D2Game.dll` `.data` `0x6FD274A8`: `gpSrvDoFuncTable[0..0xBE]` (`uint32[191]`). */
 export const D2GAME_SRVDOFUNC_TABLE_VA_113C = 0x6fd274a8
@@ -153,6 +154,7 @@ export function S2C_QueueLocationPacket11_6FCABF80_113c(
   wY: number,
   bFlag: number,
 ): number {
+  hitD2GameVa113c(0x6FCABF80)
   const sp = k2W2B4StackPtr
   k2W2B4StackPtr = (sp + 0x10) >>> 0
   try {
@@ -184,6 +186,7 @@ export function S2C_QueueMonsterMovePacket12_6FCAC160_113c(
   dwField7: number,
   bByte11: number,
 ): number {
+  hitD2GameVa113c(0x6FCAC160)
   const sp = k2W2B4StackPtr
   k2W2B4StackPtr = (sp + 0x10) >>> 0
   try {
@@ -220,6 +223,7 @@ export function S2C_QueueUnitTargetMovePacket16_6FCAC230_113c(
   wX: number,
   wY: number,
 ): number {
+  hitD2GameVa113c(0x6FCAC230)
   const sp = k2W2B4StackPtr
   k2W2B4StackPtr = (sp + 0x10) >>> 0
   try {
@@ -250,6 +254,7 @@ export function S2C_QueueByteDwordPacket6_6FCAC3B0_113c(
   dwValue: number,
   pClient: number,
 ): number {
+  hitD2GameVa113c(0x6FCAC3B0)
   const sp = k2W2B4StackPtr
   k2W2B4StackPtr = (sp + 0x08) >>> 0
   try {
@@ -273,6 +278,7 @@ export function S2C_QueueSingleBytePacket1_6FCAC490_113c(
   bPacketId: number,
   pClient: number,
 ): number {
+  hitD2GameVa113c(0x6FCAC490)
   const sp = k2W2B4StackPtr
   k2W2B4StackPtr = (sp + 0x04) >>> 0
   try {
@@ -294,6 +300,7 @@ export function S2C_Send10BytePacketToPlayerUnit_6FCAC530_113c(
   pPlayer: number,
   pPacket: number,
 ): number {
+  hitD2GameVa113c(0x6FCAC530)
   const pClient = getClientFromPlayerUnitInline113c(m, pPlayer)
   return NET_QueuePacketToClientBuffer113c(m, pClient, 1, pPacket >>> 0, 0x0a) | 0
 }
@@ -309,6 +316,7 @@ export function S2C_Send7BytePacketToPlayerUnit_6FCAC5F0_113c(
   pPlayer: number,
   pPacket: number,
 ): number {
+  hitD2GameVa113c(0x6FCAC5F0)
   const pClient = getClientFromPlayerUnitInline113c(m, pPlayer)
   return NET_QueuePacketToClientBuffer113c(m, pClient, 1, pPacket >>> 0, 0x07) | 0
 }
@@ -324,6 +332,7 @@ export function S2C_Send11BytePacketToPlayerUnit_6FCAC690_113c(
   pPlayer: number,
   pPacket: number,
 ): number {
+  hitD2GameVa113c(0x6FCAC690)
   const pClient = getClientFromPlayerUnitInline113c(m, pPlayer)
   return NET_QueuePacketToClientBuffer113c(m, pClient, 1, pPacket >>> 0, 0x0b) | 0
 }
@@ -341,6 +350,7 @@ export function ITEMS_SendBeltRemoveItemPacket0E_6FCADE50_113c(
   pItem: number,
   nCmdFlags: number,
 ): void {
+  hitD2GameVa113c(0x6FCADE50)
   const pResolvedClient = getClientFromPlayerUnitInline113c(m, pPlayer)
   if (pResolvedClient !== (pClient >>> 0)) {
     throw new D2CommonAssertError('SendPacket.cpp', 0x85c)
@@ -361,6 +371,7 @@ export function ITEMS_SendSwapContainerItemPacket0D_6FCADEB0_113c(
   pItem: number,
   nCmdFlags: number,
 ): void {
+  hitD2GameVa113c(0x6FCADEB0)
   const pResolvedClient = getClientFromPlayerUnitInline113c(m, pPlayer)
   if (pResolvedClient !== (pClient >>> 0)) {
     throw new D2CommonAssertError('SendPacket.cpp', 0x853)
@@ -381,6 +392,7 @@ export function ITEMS_SendRemoveContainerItemPacket0A_6FCADF10_113c(
   pItem: number,
   nCmdFlags: number,
 ): void {
+  hitD2GameVa113c(0x6FCADF10)
   const pResolvedClient = getClientFromPlayerUnitInline113c(m, pPlayer)
   if (pResolvedClient !== (pClient >>> 0)) {
     throw new D2CommonAssertError('SendPacket.cpp', 0x849)
@@ -401,6 +413,7 @@ export function ITEMS_SendCursorPutItemPacket04_6FCADF70_113c(
   pItem: number,
   nCmdFlags: number,
 ): void {
+  hitD2GameVa113c(0x6FCADF70)
   const pResolvedClient = getClientFromPlayerUnitInline113c(m, pPlayer)
   if (pResolvedClient !== (pClient >>> 0)) {
     throw new D2CommonAssertError('SendPacket.cpp', 0x7ef)
@@ -421,6 +434,7 @@ export function ITEMS_SendGroundItemPacket03_6FCADFD0_113c(
   pItem: number,
   nCmdFlags: number,
 ): void {
+  hitD2GameVa113c(0x6FCADFD0)
   const pResolvedClient = getClientFromPlayerUnitInline113c(m, pPlayer)
   if (pResolvedClient !== (pClient >>> 0)) {
     throw new D2CommonAssertError('SendPacket.cpp', 0x7e6)
@@ -441,6 +455,7 @@ export function ITEMS_SendDropToGroundPacket02_6FCAE030_113c(
   pItem: number,
   nCmdFlags: number,
 ): void {
+  hitD2GameVa113c(0x6FCAE030)
   const pResolvedClient = getClientFromPlayerUnitInline113c(m, pPlayer)
   if (pResolvedClient !== (pClient >>> 0)) {
     throw new D2CommonAssertError('SendPacket.cpp', 0x7dd)
@@ -462,6 +477,7 @@ export function ITEMS_ZeroStaticPosAndSendPickupPacket01_6FCAE090_113c(
   pClient: number,
   nCmdFlags: number,
 ): void {
+  hitD2GameVa113c(0x6FCAE090)
   const pResolvedClient = getClientFromPlayerUnitInline113c(m, pPlayer)
   if (pResolvedClient !== (pClient >>> 0)) {
     throw new D2CommonAssertError('SendPacket.cpp', 0x7d2)
@@ -482,6 +498,7 @@ export function EVENT_DestroyTimerQueue_6FCAE4D0_113c(
   pGame: number,
   hooks?: K2W2B4Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCAE4D0)
   const pTimerQueue = m.u32((pGame + 0xb8) >>> 0) >>> 0
   if (pTimerQueue === 0) {
     return
@@ -516,6 +533,7 @@ export function SUNITPROXY_FindOrCreateNodeInList18_6FCAF6C0_113c(
   pGame: number,
   hooks?: K2W2B4Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FCAF6C0)
   const dwGuid = pTargetUnit === 0 ? 0xffffffff : m.u32((pTargetUnit + 0x0c) >>> 0) >>> 0
   let pNode = m.u32((pSlot + 0x18) >>> 0) >>> 0
   while (pNode !== 0) {
@@ -547,6 +565,7 @@ export function SUNITPROXY_FindNpcSlotByUnit_6FCAF820_113c(
   pGame: number,
   pOutIndex: number,
 ): number {
+  hitD2GameVa113c(0x6FCAF820)
   const nClassId = pNpcUnit === 0 ? 0xffffffff : m.u32((pNpcUnit + 0x04) >>> 0) >>> 0
   return D2GAME_ARENA_FindPlayerSlotByUnit113c(m, pOutIndex >>> 0, pGame >>> 0, nClassId) >>> 0
 }
@@ -564,6 +583,7 @@ export function SUNITPROXY_GetPlayerNodeItemInNpcSlot_6FCAFAA0_113c(
   pGame: number,
   pPlayerUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FCAFAA0)
   const nClassId = pNpcUnit === 0 ? 0xffffffff : m.u32((pNpcUnit + 0x04) >>> 0) >>> 0
   const sp = k2W2B4StackPtr
   k2W2B4StackPtr = (sp + 0x04) >>> 0
@@ -599,6 +619,7 @@ export function MISSILE_InitGuidedPathAndFrames_6FCB0EA0_113c(
   pMissile: number,
   dwSeed: number,
 ): void {
+  hitD2GameVa113c(0x6FCB0EA0)
   if (pMissile === 0) {
     return
   }
@@ -627,6 +648,7 @@ export function STATES_ClearGfxStateFlagCallback_6FCB0F00_113c(
   nState: number,
   _pStatList = 0,
 ): void {
+  hitD2GameVa113c(0x6FCB0F00)
   void _pStatList
   STATES_ToggleGfxStateFlag113c(m, pUnit >>> 0, nState | 0, 0)
 }
@@ -643,6 +665,7 @@ export function STATES_ClearGfxStateFlagAndSetUpdate40_6FCB0F10_113c(
   nState: number,
   _pStatList = 0,
 ): void {
+  hitD2GameVa113c(0x6FCB0F10)
   void _pStatList
   STATES_ToggleGfxStateFlag113c(m, pUnit >>> 0, nState | 0, 0)
   if (pUnit !== 0) {
@@ -663,6 +686,7 @@ export function SKILLS_SrvSt25_ValidateDistinctTarget_6FCB1B40_113c(
   _nSkillId = 0,
   _nSkillLevel = 0,
 ): number {
+  hitD2GameVa113c(0x6FCB1B40)
   void _nSkillId
   void _nSkillLevel
   SUNIT_ValidatePathTargetUnit113c(m, pUnit >>> 0, pGame >>> 0)
@@ -687,6 +711,7 @@ export function SKILLS_SrvSt23_ValidateMeleeTarget_6FCB2030_113c(
   _nSkillId = 0,
   _nSkillLevel = 0,
 ): number {
+  hitD2GameVa113c(0x6FCB2030)
   void _nSkillId
   void _nSkillLevel
   SUNIT_ValidatePathTargetUnit113c(m, pUnit >>> 0, pGame >>> 0)
@@ -712,6 +737,7 @@ export function SKILLS_SrvSt22_ValidateNonTownPlayerOrMonsterTarget_6FCB2060_113
   _nSkillId = 0,
   _nSkillLevel = 0,
 ): number {
+  hitD2GameVa113c(0x6FCB2060)
   void _nSkillId
   void _nSkillLevel
   SUNIT_ValidatePathTargetUnit113c(m, pUnit >>> 0, pGame >>> 0)
@@ -746,6 +772,7 @@ export function SUMMON_GetPetTypeBucketPtr_6FCB6540_113c(
   nPetType: number,
   pPlayerPets: number,
 ): number {
+  hitD2GameVa113c(0x6FCB6540)
   const petType = nPetType | 0
   if (petType < 0) {
     return 0
@@ -771,6 +798,7 @@ export function SUMMON_GetFirstPetGuidForType_6FCB67B0_113c(
   pPlayer: number,
   nPetType: number,
 ): number {
+  hitD2GameVa113c(0x6FCB67B0)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer >>> 0) >>> 0
   if (pPlayerData === 0) {
     throw new D2CommonAssertError('Summon.cpp', 0x171)
@@ -813,6 +841,7 @@ export function SKILLS_SrvSt36_HasEquippedShield_6FCB8390_113c(
   _nSkillId = 0,
   _nSkillLevel = 0,
 ): number {
+  hitD2GameVa113c(0x6FCB8390)
   void _pGame
   void _nSkillId
   void _nSkillLevel
@@ -835,6 +864,7 @@ export function SKILLS_FindFirstZeroByteOffsetInSeqRecord_6FCB83B0_113c(
   m: Memory113c,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FCB83B0)
   const pSeq = ANIMSEQ_GetUnitSeqRecordPtr113c(m, pUnit >>> 0) >>> 0
   if (pSeq !== 0) {
     const nFrames = ANIMSEQ_GetUnitSeqFrameDataField8_113c(m, pUnit >>> 0) | 0
@@ -861,6 +891,7 @@ export function ITEMS_ClearAllDupeAndCommandFlags_6FCBB340_113c(
   m: Memory113c,
   pItem: number,
 ): void {
+  hitD2GameVa113c(0x6FCBB340)
   if (pItem !== 0) {
     m.setU32((pItem + 0xc8) >>> 0, (m.u32((pItem + 0xc8) >>> 0) & 0xffffffeb) >>> 0)
   }
@@ -892,6 +923,7 @@ export function PARTY_SplitGoldPickupByCap_6FCBBC70_113c(
   pOutGoldToAdd: number,
   pOutRemainder: number,
 ): void {
+  hitD2GameVa113c(0x6FCBBC70)
   const nGoldLimit = STATLIST_GetUnitGoldBankLimit113c(m, pPlayer >>> 0) | 0
   const nCurGold = STATLIST_GetUnitStat113c(m, pPlayer >>> 0, 0x0e, 0) | 0
   const nAdd = nGoldToAdd | 0
@@ -917,6 +949,7 @@ export function PARTY_IsUnitInSubPartyNode_6FCBBCB0_113c(
   pSubParty: number,
   dwTargetUnitId: number,
 ): number {
+  hitD2GameVa113c(0x6FCBBCB0)
   if (pSubParty === 0) {
     throw new D2CommonAssertError('Party.cpp', 0xe5)
   }
@@ -943,6 +976,7 @@ export function PARTY_FindSubPartyById_6FCBBD00_113c(
   pGame: number,
   wPartyId: number,
 ): number {
+  hitD2GameVa113c(0x6FCBBD00)
   const pPartyControl = m.u32((pGame + 0x1d2c) >>> 0) >>> 0
   if (pPartyControl === 0) {
     throw new D2CommonAssertError('Party.cpp', 0xd2)
@@ -966,6 +1000,7 @@ export function PARTY_FindSubPartyById_6FCBBD00_113c(
  * @va D2Game.dll@0x6fcbbd40
  */
 export function PARTY_AllocNextPartyId_6FCBBD40_113c(m: Memory113c, pGame: number): number {
+  hitD2GameVa113c(0x6FCBBD40)
   const pPartyControl = m.u32((pGame + 0x1d2c) >>> 0) >>> 0
   let wId = m.u16(pPartyControl)
   if (wId < 3) {
@@ -1002,6 +1037,7 @@ export function PARTY_AllocPartyControl_6FCBBE40_113c(
   pGame: number,
   hooks?: K2W2B4Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCBBE40)
   if (pGame === 0) {
     throw new D2CommonAssertError('Party.cpp', 0x18)
   }
@@ -1028,6 +1064,7 @@ export function PARTY_AllocPartyControl_6FCBBE40_113c(
  * @va D2Game.dll@0x6fcbc990
  */
 export function MONAI_NoOpStub_6FCBC990_113c(_m: Memory113c, _arg0 = 0): number {
+  hitD2GameVa113c(0x6FCBC990)
   void _m
   void _arg0
   return 0
@@ -1046,6 +1083,7 @@ export function SKILLS_CanMonsterReviveOrTeleportInMode_6FCBC9A0_113c(
   nMode: number,
   bCheckBossFlag: number,
 ): number {
+  hitD2GameVa113c(0x6FCBC9A0)
   const mode = nMode | 0
   if (mode === 0 || (mode !== 0x0a && mode !== 0x0b && mode !== 0x0c)) {
     return 1
@@ -1079,6 +1117,7 @@ export function SKILLS_FindClosestSameBaseMonsterCallback_6FCBCA00_113c(
   pCandidate: number,
   pBestCtx: number,
 ): number {
+  hitD2GameVa113c(0x6FCBCA00)
   const cand = pCandidate >>> 0
   const src = pSourceUnit >>> 0
   if (cand !== 0 && (m.u32(cand) >>> 0) === 1 && src !== cand) {
@@ -1107,6 +1146,7 @@ export function CLIENT_RemoveClientFromAdjacentRooms_6FCBD550_113c(
   pRoom: number,
   pClient: number,
 ): void {
+  hitD2GameVa113c(0x6FCBD550)
   if (pRoom === 0) {
     throw new D2CommonAssertError('Client.cpp', 0x14e)
   }
@@ -1139,6 +1179,7 @@ export function SKILLS_CorpseSearchFilterCallback_6FCBE2E0_113c(
   pUnit: number,
   pSearch: number,
 ): number {
+  hitD2GameVa113c(0x6FCBE2E0)
   if (SKILLS_IsSelectableCorpse11157_113c(m, pUnit >>> 0) === 0) {
     return 0
   }
@@ -1158,6 +1199,7 @@ export function SKILLS_ComputeMercSkillDamageAndToHit_6FCBE330_113c(
   pUnit: number,
   pOutStats3Dwords: number,
 ): number {
+  hitD2GameVa113c(0x6FCBE330)
   const nLvl = SKILLS_GetSkillLevelByIdWithBonus113c(m, pUnit >>> 0, nSkillId | 0) | 0
   const minDmg = (SKILLS_GetSkillPhysMinDamage113c(m, pUnit >>> 0, nSkillId | 0, nLvl, 1) | 0) >> 8
   m.setU32(pOutStats3Dwords >>> 0, minDmg >>> 0)
@@ -1179,6 +1221,7 @@ export function SKILLS_RefreshPassiveSkillsAndIconsOnUnit_6FCBE370_113c(
   m: Memory113c,
   pUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FCBE370)
   const pSkillList = m.u32((pUnit + 0xa8) >>> 0) >>> 0
   if (pSkillList === 0) {
     return
@@ -1210,6 +1253,7 @@ export function SKILLS_DispatchSrvDoFunc_6FCBE420_113c(
   nSkillLevel: number,
   hooks?: K2W2B4Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FCBE420)
   const idx = nSrvDoFunc | 0
   if (idx < 0 || idx >= 0xbf) {
     return idx
@@ -1236,6 +1280,7 @@ export function VECTOR_NormalizePerpendicularToMaxSq3_6FCBE450_113c(
   pX: number,
   pY: number,
 ): void {
+  hitD2GameVa113c(0x6FCBE450)
   let ecx = (-(m.u32(pX >>> 0) | 0)) | 0
   let esi = m.u32(pY >>> 0) | 0
   let sq = (imul32(ecx, ecx) + imul32(esi, esi)) | 0
@@ -1260,6 +1305,7 @@ export function VECTOR_ScaleUpBelowSq4AndSq16_6FCBE490_113c(
   pX: number,
   pY: number,
 ): void {
+  hitD2GameVa113c(0x6FCBE490)
   let ecx = m.u32(pX >>> 0) | 0
   let eax = m.u32(pY >>> 0) | 0
   let sq = (imul32(eax, eax) + imul32(ecx, ecx)) | 0

@@ -59,7 +59,7 @@ import {
   SUNITDMG_ExecuteEvents113c,
   SUNITDMG_RollPassiveWeaponBlockOrShieldBlock113c,
 } from './combat-a1c-113c.ts'
-import { UNITS_GetDistanceToCoordinates113c } from './fallen-ai-113c.ts'
+import { UNITS_GetDistanceToCoordinates113c } from './replay-kernel-113c.ts'
 import {
   SKILLS_ApplyBloodManaHealthCost_6FC2BE20_113c,
   SKILLS_CanMonsterBeImpregnated_6FC2C110_113c,
@@ -74,6 +74,7 @@ import {
   UNIT_GetPosX113c,
   UNIT_GetPosY113c,
 } from './regpop-spawn-113c.ts'
+import { hitD2GameVa113c } from '../va-trace-113c.ts'
 
 /** `D2Game.dll` `.rdata` `0x6FD1B980`: `"..\\Source\\D2Game\\SKILLS\\Skills.cpp"`. */
 export const D2GAME_SKILLS_CPP_VA_113C = 0x6fd1b980
@@ -239,6 +240,7 @@ export function SKILLS_ApplyThrowingWeaponMasteryToMissile_6FCBE4F0_113c(
   pMissile: number,
   pWeapon: number,
 ): void {
+  hitD2GameVa113c(0x6FCBE4F0)
   if (pUnit === 0 || pMissile === 0 || pWeapon === 0) return
   const curToHit = STATLIST_GetUnitStat113c(m, pMissile >>> 0, 0x13, 0) | 0
   const rawBonusToHit = SKILLS_GetThrowingWeaponMasteryBonus113c(
@@ -277,6 +279,7 @@ export function SKILLS_IncrementUnitFindCountCallback_6FCBE600_113c(
   m: Memory113c,
   pFindData: number,
 ): number {
+  hitD2GameVa113c(0x6FCBE600)
   const pCount = m.u32((pFindData + 0x0c) >>> 0) >>> 0
   m.setU32(pCount, ((m.u32(pCount) | 0) + 1) >>> 0)
   return 1
@@ -296,6 +299,7 @@ export function SKILLS_ApplyVelocityStatListAndRefreshAnimMode_6FCBE7B0_113c(
   pUnit: number,
   nVelPct: number,
 ): void {
+  hitD2GameVa113c(0x6FCBE7B0)
   const dwOwnerId = pUnit === 0 ? 0xffffffff : m.u32((pUnit + 0x0c) >>> 0) >>> 0
   const dwOwnerType = pUnit === 0 ? 6 : m.u32(pUnit >>> 0) >>> 0
   const pStatList = STATLIST_AllocList113c(m, 4, dwOwnerType, dwOwnerId, 0, 0) >>> 0
@@ -324,6 +328,7 @@ export function SKILLS_CalcNextChannelTriggerFrame_6FCBE970_113c(
   pGame: number,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FCBE970)
   const dwCalc = m.u32((pSkillsTxt + 0x128) >>> 0) >>> 0
   let nPeriod =
     SKILLS_EvalCalcByOffset113c(m, pUnit >>> 0, dwCalc, nSkillId | 0, nSkillLevel | 0) | 0
@@ -352,6 +357,7 @@ export function SKILLS_SetElemDurationInDamageData_6FCBE9B0_113c(
   nDuration: number,
   pDmg: number,
 ): void {
+  hitD2GameVa113c(0x6FCBE9B0)
   const pSkillsTxt = lookupSkillsTxtRecord113c(m, nSkillId)
   if (pSkillsTxt === 0) return
   const bEType = m.u8((pSkillsTxt + 0x1dc) >>> 0)
@@ -390,6 +396,7 @@ export function SKILLS_CheckPlayerClassMatchesSkillCharClass_6FCBEB30_113c(
   nSkillId: number,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FCBEB30)
   if (pUnit === 0) return 0
   if ((m.u32(pUnit >>> 0) | 0) !== 0) return 0
   const pSkillsTxt = lookupSkillsTxtRecord113c(m, nSkillId)
@@ -414,6 +421,7 @@ export function SKILLS_ConsumeSkillManaOrBloodMana_6FCBED20_113c(
   pUnit: number,
   nManaCostFixed: number,
 ): number {
+  hitD2GameVa113c(0x6FCBED20)
   if (pUnit === 0 || (m.u32(pUnit >>> 0) | 0) !== 0) return 1
   if ((STATES_CheckState113c(m, pUnit >>> 0, 0x72) | 0) !== 0) {
     return SKILLS_ApplyBloodManaHealthCost_6FC2BE20_113c(m, pUnit >>> 0, nManaCostFixed | 0) | 0
@@ -442,6 +450,7 @@ export function SKILLS_TargetRingScanCallback_6FCBED70_113c(
   pFindData: number,
   pCandidateUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FCBED70)
   const pCtx = m.u32((pFindData + 0x0c) >>> 0) >>> 0
   const dwGuid =
     pCandidateUnit === 0 ? 0xffffffff : m.u32((pCandidateUnit + 0x0c) >>> 0) >>> 0
@@ -485,6 +494,7 @@ export function SKILLS_ResolveSummonMonsterId_6FCBEE50_113c(
   nSkillId: number,
   nArg4: number,
 ): number {
+  hitD2GameVa113c(0x6FCBEE50)
   let nMonId =
     UNITS_GetSpawnedMonsterOrSkillSummonInfo113c(
       m,
@@ -532,6 +542,7 @@ export function SKILLS_RollAndAddSkillPhysDamage_6FCBF1A0_113c(
   pDmg: number,
   nSkillLevel: number,
 ): void {
+  hitD2GameVa113c(0x6FCBF1A0)
   const pSkillsTxt = lookupSkillsTxtRecord113c(m, nSkillId)
   if (pSkillsTxt === 0) return
   const nMinDmg =
@@ -567,6 +578,7 @@ export function SKILLS_RollSkillAttackHitFlags_6FCC11B0_113c(
   nWeaponRangePenalty: number,
   hooks?: K2W2B5Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FCC11B0)
   const wSkillFlags = m.u16((pSkillsTxt + 0x12e) >>> 0)
   if ((wSkillFlags & 1) !== 0) {
     m.setU16((pDmg + 0x04) >>> 0, wSkillFlags)
@@ -606,6 +618,7 @@ export function SKILLS_ExecuteMeleeEventsOnPathTarget_6FCC20C0_113c(
   pGame: number,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FCC20C0)
   if (pUnit !== 0) {
     m.setU32((pUnit + 0xc4) >>> 0, (m.u32((pUnit + 0xc4) >>> 0) | 0x40) >>> 0)
   }
@@ -632,7 +645,9 @@ export function MONAI_NoOpRet4_6FCC3880_113c(
   _pGame = 0,
   _pUnit = 0,
   _pAiArgs = 0,
-): void {}
+): void {
+  hitD2GameVa113c(0x6FCC3880)
+}
 
 /**
  * [14/45] Asserts `pUnit1 != 0` (line `0x15CA`) and `pUnit2 != 0` (line `0x15CB`),
@@ -648,6 +663,7 @@ export function MONAI_AreUnitsInSameRoomLevel_6FCC38C0_113c(
   pUnit1: number,
   pUnit2: number,
 ): number {
+  hitD2GameVa113c(0x6FCC38C0)
   if (pUnit1 === 0) {
     throw new D2CommonAssertError('', 0x15ca)
   }
@@ -674,7 +690,9 @@ export function MONAI_NoOpRet4_6FCC3920_113c(
   _pGame = 0,
   _pUnit = 0,
   _pAiArgs = 0,
-): void {}
+): void {
+  hitD2GameVa113c(0x6FCC3920)
+}
 
 /**
  * [16/45] Empty AI callback stub (`ret 4`).
@@ -689,7 +707,9 @@ export function MONAI_NoOpRet4_6FCC3930_113c(
   _pGame = 0,
   _pUnit = 0,
   _pAiArgs = 0,
-): void {}
+): void {
+  hitD2GameVa113c(0x6FCC3930)
+}
 
 /**
  * [17/45] Clears `pAiControl->dwAiParam0 (+0x14) = 0` where `pAiControl = [pAiArgs]`.
@@ -703,6 +723,7 @@ export function MONAI_ClearAiControlParam0_6FCC3980_113c(
   m: Memory113c,
   pAiArgs: number,
 ): void {
+  hitD2GameVa113c(0x6FCC3980)
   const pAiControl = m.u32(pAiArgs >>> 0) >>> 0
   m.setU32((pAiControl + 0x14) >>> 0, 0)
 }
@@ -720,6 +741,7 @@ export function MONAI_InitAiControlDefaultParams_6FCC3990_113c(
   m: Memory113c,
   pAiArgs: number,
 ): void {
+  hitD2GameVa113c(0x6FCC3990)
   const pAiControl = m.u32(pAiArgs >>> 0) >>> 0
   m.setU32((pAiControl + 0x14) >>> 0, 0xffffffff)
   m.setU32((pAiControl + 0x18) >>> 0, 1)
@@ -740,6 +762,7 @@ export function MONAI_InitAiControlFrameAndMinusOne_6FCC39B0_113c(
   pGame: number,
   pAiArgs: number,
 ): void {
+  hitD2GameVa113c(0x6FCC39B0)
   const pAiControl = m.u32(pAiArgs >>> 0) >>> 0
   const dwGameFrame = m.u32((pGame + 0xa8) >>> 0) >>> 0
   m.setU32((pAiControl + 0x14) >>> 0, dwGameFrame)
@@ -759,7 +782,9 @@ export function MONAI_NoOpRet4_6FCC39D0_113c(
   _pGame = 0,
   _pUnit = 0,
   _pAiArgs = 0,
-): void {}
+): void {
+  hitD2GameVa113c(0x6FCC39D0)
+}
 
 /**
  * [21/45] Unit-find filter callback that matches an object unit (`dwUnitType == 2`) with
@@ -778,6 +803,7 @@ export function MONAI_MatchNearbyWorldstoneObject233Callback_6FCC39E0_113c(
   pCandidateUnit: number,
   pScanCtx: number,
 ): number {
+  hitD2GameVa113c(0x6FCC39E0)
   if (pCandidateUnit === 0) return 0
   if ((m.u32(pCandidateUnit >>> 0) | 0) !== 2) return 0
   if ((m.u32((pCandidateUnit + 0x04) >>> 0) | 0) !== 0x233) return 0
@@ -803,6 +829,7 @@ export function MONAI_CalcScaledAiTickDelay_6FCC3AE0_113c(
   pSkill: number,
   pAiArgs: number,
 ): number {
+  hitD2GameVa113c(0x6FCC3AE0)
   let nSkillLvl = 1
   if (pUnit !== 0) {
     nSkillLvl = SKILLS_EvaluateSkillLevel113c(m, pUnit >>> 0, pSkill >>> 0, 1) | 0
@@ -830,6 +857,7 @@ export function MONAI_InitAiControlAip3AndRandomParity_6FCC3C30_113c(
   pUnit: number,
   pAiArgs: number,
 ): void {
+  hitD2GameVa113c(0x6FCC3C30)
   const pMonStatsTxt = m.u32((pAiArgs + 0x1c) >>> 0) >>> 0
   const pAiControl = m.u32(pAiArgs >>> 0) >>> 0
   m.setU32((pAiControl + 0x14) >>> 0, 0xffffffff)
@@ -863,6 +891,7 @@ export function MONAI_CalcClampedSkillBonusRadius_6FCC3D00_113c(
   nSkillId: number,
   nBaseBonus: number,
 ): number {
+  hitD2GameVa113c(0x6FCC3D00)
   let nSkillLvl = 1
   if (pUnit !== 0) {
     const pSkill = SKILLS_GetSkillById113c(m, pUnit >>> 0, nSkillId | 0, -1) >>> 0
@@ -890,6 +919,7 @@ export function MONAI_AreUnitsInSameActWithin1020Subtiles_6FCC3E10_113c(
   pUnit1: number,
   pUnit2: number,
 ): number {
+  hitD2GameVa113c(0x6FCC3E10)
   if (pUnit1 === 0) {
     throw new D2CommonAssertError('', 0x36c)
   }
@@ -923,6 +953,7 @@ export function MONAI_MatchImpregnatableMonsterWithin25Callback_6FCC4180_113c(
   pCandidateUnit: number,
   _pContext = 0,
 ): number {
+  hitD2GameVa113c(0x6FCC4180)
   if (SKILLS_CanMonsterBeImpregnated_6FC2C110_113c(m, pCandidateUnit >>> 0) === 0) {
     return 0
   }
@@ -946,6 +977,7 @@ export function MONAI_RecordPathTargetInteractByUnitType_6FCC5AC0_113c(
   pUnit: number,
   _pAiArgs = 0,
 ): void {
+  hitD2GameVa113c(0x6FCC5AC0)
   SUNIT_ValidatePathTargetUnit113c(m, pUnit >>> 0, pGame >>> 0)
   const pPath = m.u32((pUnit + 0x2c) >>> 0) >>> 0
   const pTarget = PATH_GetTargetUnit113c(m, pPath) >>> 0
@@ -976,6 +1008,7 @@ export function MONAI_Stall200IfUnitHasRoom_6FCC5D40_113c(
   pUnit: number,
   _pAiArgs = 0,
 ): void {
+  hitD2GameVa113c(0x6FCC5D40)
   if (UNITS_GetRoom113c(m, pUnit >>> 0) !== 0) {
     AI_Stall113c(m, pGame >>> 0, pUnit >>> 0, 0xc8)
   }
@@ -998,6 +1031,7 @@ export function MONAI_EnableState172OnTarget_6FCCC910_113c(
   _a4 = 0,
   _a5 = 0,
 ): number {
+  hitD2GameVa113c(0x6FCCC910)
   if (pUnit === 0 || pTarget === 0) return 0
   STATES_ToggleGfxStateFlag113c(m, pTarget >>> 0, 0xac, 1)
   return 1
@@ -1017,6 +1051,7 @@ export function MONAI_InventoryContainsItemPointer_6FCCC9E0_113c(
   pUnit: number,
   pTargetItem: number,
 ): number {
+  hitD2GameVa113c(0x6FCCC9E0)
   const pInventory = m.u32((pUnit + 0x60) >>> 0) >>> 0
   if (pInventory === 0) return 0
   let pNode = INVENTORY_GetFirstItem113c(m, pInventory) >>> 0
@@ -1049,6 +1084,7 @@ export function MONAI_TransferItemCellStatFromItemToUnit_6FCCCA20_113c(
   _a4 = 0,
   _a5 = 0,
 ): number {
+  hitD2GameVa113c(0x6FCCCA20)
   const nStatId = ITEMS_GetItemCell113c(m, pItem >>> 0) | 0
   if (nStatId < 0) return 0
   const pDataTables = getDataTablesPtr113c(m)
@@ -1077,6 +1113,7 @@ export function MONAI_InvokeUnitFindFilterIfUnmatched_6FCD06F0_113c(
   pOutResult: number,
   hooks?: K2W2B5Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCD06F0)
   if (m.u32(pOutResult >>> 0) !== 0) return
   const pfnFilter = m.u32(pFilterArgs >>> 0) >>> 0
   const pGame = m.u32((pFilterArgs + 0x04) >>> 0) >>> 0
@@ -1168,6 +1205,7 @@ export function MONAI_MonsterHasSkillIdInMonStats_6FCD0840_113c(
   pUnit: number,
   nSkillId: number,
 ): number {
+  hitD2GameVa113c(0x6FCD0840)
   if (pUnit === 0) return 0
   if ((m.u32(pUnit >>> 0) | 0) !== 1) return 0
   const nClassId = m.u32((pUnit + 0x04) >>> 0) | 0
@@ -1195,6 +1233,7 @@ export function MONAI_GetUnitMeleeVelocity_6FCD08A0_113c(
   m: Memory113c,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FCD08A0)
   if (pUnit === 0) return 0
   const dwUnitType = m.u32(pUnit >>> 0) | 0
   if (dwUnitType === 0) return 0x0e
@@ -1219,6 +1258,7 @@ export function MONAI_SetAiGeneralTargetGuidAndType_6FCD0BA0_113c(
   pMonster: number,
   pTargetUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FCD0BA0)
   if (pMonster === 0) return
   if ((m.u32(pMonster >>> 0) | 0) !== 1) return
   const pMonData = m.u32((pMonster + 0x14) >>> 0) >>> 0
@@ -1249,6 +1289,7 @@ export function MONAI_CountSameClassAliveMonstersInRangeCallback_6FCD0DB0_113c(
   pCandidateUnit: number,
   pCountCtx: number,
 ): number {
+  hitD2GameVa113c(0x6FCD0DB0)
   if (pCandidateUnit !== 0 && (m.u32(pCandidateUnit >>> 0) | 0) === 1) {
     if ((m.u32((pCandidateUnit + 0x04) >>> 0) | 0) === (m.u32(pCountCtx >>> 0) | 0)) {
       if ((SUNIT_IsDeadOrDying113c(m, pCandidateUnit >>> 0) | 0) === 0) {
@@ -1283,6 +1324,7 @@ export function MONAI_FindClosestClosedDoorCallback_6FCD0DF0_113c(
   pCandidateUnit: number,
   pDoorOut: number,
 ): number {
+  hitD2GameVa113c(0x6FCD0DF0)
   if (pCandidateUnit !== 0 && (m.u32(pCandidateUnit >>> 0) | 0) === 2) {
     if ((UNITS_IsDoor113c(m, pCandidateUnit >>> 0) | 0) !== 0) {
       if ((m.u32((pCandidateUnit + 0x10) >>> 0) | 0) === 0) {
@@ -1315,6 +1357,7 @@ export function MONAI_MatchSpawnMode0MonsterWithinRadiusCallback_6FCD0E30_113c(
   pCandidateUnit: number,
   pMaxRadiusPtr: number,
 ): number {
+  hitD2GameVa113c(0x6FCD0E30)
   if (pCandidateUnit === 0) return 0
   if ((m.u32(pCandidateUnit >>> 0) | 0) !== 1) return 0
   if ((m.u32((pCandidateUnit + 0x10) >>> 0) | 0) !== 0) return 0
@@ -1343,6 +1386,7 @@ export function MONAI_TrackPackCorpseInRangeCallback_6FCD12B0_113c(
   pCandidateUnit: number,
   pCorpseTrackCtx: number,
 ): number {
+  hitD2GameVa113c(0x6FCD12B0)
   const nDist =
     AI_CalcApproxUnitDistSubtiles113c(m, pSelfUnit >>> 0, pCandidateUnit >>> 0) | 0
   if (nDist <= (m.u32((pCorpseTrackCtx + 0x0c) >>> 0) | 0)) {
@@ -1387,6 +1431,7 @@ export function MONAI_IsUnitValidHostileCombatTarget_6FCD13B0_113c(
   pGame: number,
   pSelfUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FCD13B0)
   if (pTargetUnit === 0) return 0
   const dwUnitType = m.u32(pTargetUnit >>> 0) | 0
   if (dwUnitType < 0 || dwUnitType > 1) return 0
@@ -1412,6 +1457,7 @@ export function MONAI_IsUnitValidHostileCombatTarget_6FCD13B0_113c(
  * @va D2Game:0x6FCD22D0 (46B)
  */
 export function ARENA_GetModeByte_6FCD22D0_113c(m: Memory113c, pGame: number): number {
+  hitD2GameVa113c(0x6FCD22D0)
   const pArena = m.u32((pGame + 0x1d28) >>> 0) >>> 0
   if (pArena === 0) {
     throw new D2CommonAssertError('', 0x172)
@@ -1435,6 +1481,7 @@ export function ARENA_FreePlayerArenaUnit_6FCD2480_113c(
   pGame: number,
   hooks?: K2W2B5Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCD2480)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer >>> 0) >>> 0
   if (pPlayerData === 0) {
     throw new D2CommonAssertError('', 0x52)
@@ -1465,6 +1512,7 @@ export function ARENA_AllocPlayerArenaUnit_6FCD24D0_113c(
   pPlayer: number,
   hooks?: K2W2B5Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCD24D0)
   const pMemPool = m.u32((pGame + 0x1c) >>> 0) >>> 0
   const pArenaUnit =
     (hooks !== undefined && hooks.allocPoolMemory !== undefined
@@ -1496,6 +1544,7 @@ export function ARENA_AllocGameArenaCtrl_6FCD2560_113c(
   bArenaMode: number,
   hooks?: K2W2B5Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCD2560)
   const pMemPool = m.u32((pGame + 0x1c) >>> 0) >>> 0
   const pArena =
     (hooks !== undefined && hooks.allocPoolMemory !== undefined
@@ -1521,6 +1570,7 @@ export function ARENA_AllocGameArenaCtrl_6FCD2560_113c(
  * @va D2Game:0x6FCD2620 (48B)
  */
 export function ARENA_CheckFlagBit8_6FCD2620_113c(m: Memory113c, pGame: number): number {
+  hitD2GameVa113c(0x6FCD2620)
   const pArena = m.u32((pGame + 0x1d28) >>> 0) >>> 0
   if (pArena === 0) {
     throw new D2CommonAssertError('', 0x27)

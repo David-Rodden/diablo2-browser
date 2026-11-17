@@ -73,46 +73,10 @@
   },
   {
     "module": "D2Game",
-    "va": "0x6FC31CA0",
-    "name": "ITEMS_SpawnRandomMiscItemInRoomAtCoords_6FC31CA0",
-    "kernFile": "src/d2kern-113c/game/k2-w4b1-113c.ts",
-    "tsSymbol": "ITEMS_SpawnRandomMiscItemInRoomAtCoords_6FC31CA0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b1.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6FC31E20",
-    "name": "ITEMS_SpawnRandomCompactWeaponInRoomAtCoords_6FC31E20",
-    "kernFile": "src/d2kern-113c/game/k2-w4b1-113c.ts",
-    "tsSymbol": "ITEMS_SpawnRandomCompactWeaponInRoomAtCoords_6FC31E20_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b1.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6FC31FB0",
-    "name": "ITEMS_SpawnRandomArmorInRoomAtCoords_6FC31FB0",
-    "kernFile": "src/d2kern-113c/game/k2-w4b1-113c.ts",
-    "tsSymbol": "ITEMS_SpawnRandomArmorInRoomAtCoords_6FC31FB0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b1.test.ts"
-  },
-  {
-    "module": "D2Game",
     "va": "0x6FC32AF0",
     "name": "ITEMS_SpawnAndDropPlayerEar_6FC32AF0",
     "kernFile": "src/d2kern-113c/game/k2-w4b1-113c.ts",
     "tsSymbol": "ITEMS_SpawnAndDropPlayerEar_6FC32AF0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b1.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6FC32B90",
-    "name": "ITEMS_SpawnGoldPilesAtUnit_6FC32B90",
-    "kernFile": "src/d2kern-113c/game/k2-w4b1-113c.ts",
-    "tsSymbol": "ITEMS_SpawnGoldPilesAtUnit_6FC32B90_113c",
     "status": "ported",
     "diffEvidence": "Unit verification in tests/oracle/k2/w4b1.test.ts"
   },

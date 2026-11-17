@@ -485,8 +485,8 @@ describe('K2 Wave 13 Batch 1 (44 D2Game VAs 0x6FC3E3D0..0x6FD095E0)', () => {
 
     // [25/44] 0x6FCDB4F0 (queues 6-byte S2C 0x5D packet to client buffer)
     D2Game_6FCDB4F0_113c(m, pGame, pPlayer);
-    expect(m.u32(pQueue + 0x04)).toBe(6);
-    expect(m.u8(pQueue + 0x08)).toBe(0x5d);
+    expect(m.u32(pQueue + 0x00)).toBe(6);
+    expect(m.u8(pQueue + 0x04)).toBe(0x5d);
 
     // [26/44] 0x6FCDE2A0 (allocates player gamble inventory node on shop +0x08)
     D2Game_6FCDE2A0_113c(m, pShop, pPlayer, pGame, pNpc);
@@ -512,11 +512,11 @@ describe('K2 Wave 13 Batch 1 (44 D2Game VAs 0x6FC3E3D0..0x6FD095E0)', () => {
     D2Game_6FCE1030_113c(m, pGame, pPlayer, 198);
 
     // [31/44] 0x6FCE1510 (unregistered NPC record queues 0x2A result 9)
-    m.setU32(pQueue + 0x04, 0);
+    m.setU32(pQueue + 0x00, 0);
     D2Game_6FCE1510_113c(m, pPlayer, pGame, pNpc, 1);
-    expect(m.u32(pQueue + 0x04)).toBe(0x0f);
-    expect(m.u8(pQueue + 0x08)).toBe(0x2a);
-    expect(m.u8(pQueue + 0x0a)).toBe(0x09);
+    expect(m.u32(pQueue + 0x00)).toBe(0x0f);
+    expect(m.u8(pQueue + 0x04)).toBe(0x2a);
+    expect(m.u8(pQueue + 0x06)).toBe(0x09);
   });
 
   it('32..36: C2S item buffer, portal creation, entity interaction, and unequip packets (0x6FCEF0E0..0x6FCF12E0)', () => {

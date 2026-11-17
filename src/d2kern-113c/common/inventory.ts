@@ -76,6 +76,7 @@ import {
   UNITS_GetY113c,
   UNITS_SetTargetUnitForDynamicUnitEx113c,
 } from './unit.ts'
+import { hitD2CommonVa113c } from '../va-trace-113c.ts'
 
 export const INVENTORY_SIGNATURE_113C = 0x01020304
 
@@ -129,6 +130,7 @@ function itemExtraOrZero(m: Memory113c, pItem: number, checkPostAddZero: boolean
  * stdcall `[esp+4] = pCorpse`, `ret 4` -> `pCorpse->dwUnitId (+0x04)` or `0`).
  */
 export function INVENTORY_GetCorpseUnitId113c(m: Memory113c, pCorpse: number): number {
+  hitD2CommonVa113c(0x6FD6DC70)
   if (pCorpse === 0) return 0
   return m.get(pCorpse, D2CorpseStrc.dwUnitId) >>> 0
 }
@@ -138,6 +140,7 @@ export function INVENTORY_GetCorpseUnitId113c(m: Memory113c, pCorpse: number): n
  * stdcall `[esp+4] = pCorpse`, `ret 4` -> `pCorpse->pNextCorpse (+0x0C)` or `0`).
  */
 export function INVENTORY_GetNextCorpse113c(m: Memory113c, pCorpse: number): number {
+  hitD2CommonVa113c(0x6FD6DC90)
   if (pCorpse === 0) return 0
   return m.get(pCorpse, D2CorpseStrc.pNextCorpse) >>> 0
 }
@@ -147,6 +150,7 @@ export function INVENTORY_GetNextCorpse113c(m: Memory113c, pCorpse: number): num
  * stdcall `[esp+4] = pInventory`, `ret 4` -> `pInventory->nCorpseCount (+0x3C)` or `0`).
  */
 export function INVENTORY_GetCorpseCount113c(m: Memory113c, pInventory: number): number {
+  hitD2CommonVa113c(0x6FD6DCB0)
   if (pInventory === 0) return 0
   if (m.get(pInventory, D2InventoryStrc.dwSignature) !== INVENTORY_SIGNATURE_113C) return 0
   return m.get(pInventory, D2InventoryStrc.nCorpseCount) >>> 0
@@ -157,6 +161,7 @@ export function INVENTORY_GetCorpseCount113c(m: Memory113c, pInventory: number):
  * stdcall `[esp+4] = pInventory`, `ret 4` -> `pInventory->pFirstCorpse (+0x34)` or `0`).
  */
 export function INVENTORY_GetFirstCorpse113c(m: Memory113c, pInventory: number): number {
+  hitD2CommonVa113c(0x6FD6DD20)
   if (pInventory === 0) return 0
   if (m.get(pInventory, D2InventoryStrc.dwSignature) !== INVENTORY_SIGNATURE_113C) return 0
   return m.get(pInventory, D2InventoryStrc.pFirstCorpse) >>> 0
@@ -167,6 +172,7 @@ export function INVENTORY_GetFirstCorpse113c(m: Memory113c, pInventory: number):
  * stdcall `[esp+4] = pInventory`, `ret 4` -> `pInventory->dwLeftItemGuid (+0x24)` or `-1` (`0xFFFFFFFF`)).
  */
 export function INVENTORY_GetLeftItemGuid113c(m: Memory113c, pInventory: number): number {
+  hitD2CommonVa113c(0x6FD6DE50)
   if (pInventory === 0) return -1
   if (m.get(pInventory, D2InventoryStrc.dwSignature) !== INVENTORY_SIGNATURE_113C) return -1
   return m.get(pInventory, D2InventoryStrc.dwLeftItemGuid) >>> 0
@@ -181,6 +187,7 @@ export function INVENTORY_SetLeftItemGuid113c(
   pInventory: number,
   dwItemGuid: number,
 ): void {
+  hitD2CommonVa113c(0x6FD6DE70)
   if (pInventory === 0) return
   if (m.get(pInventory, D2InventoryStrc.dwSignature) !== INVENTORY_SIGNATURE_113C) return
   m.set(pInventory, D2InventoryStrc.dwLeftItemGuid, dwItemGuid >>> 0)
@@ -191,6 +198,7 @@ export function INVENTORY_SetLeftItemGuid113c(
  * stdcall `[esp+4] = pInventory`, `ret 4` -> `pInventory->dwItemCount (+0x28)` or `0`).
  */
 export function INVENTORY_GetItemCount113c(m: Memory113c, pInventory: number): number {
+  hitD2CommonVa113c(0x6FD6DE90)
   if (pInventory === 0) return 0
   if (m.get(pInventory, D2InventoryStrc.dwSignature) !== INVENTORY_SIGNATURE_113C) return 0
   return m.get(pInventory, D2InventoryStrc.dwItemCount) >>> 0
@@ -201,6 +209,7 @@ export function INVENTORY_GetItemCount113c(m: Memory113c, pInventory: number): n
  * stdcall `[esp+4] = pNode`, `ret 4` -> `pNode->dwItemId (+0x00)` or `0`).
  */
 export function INVENTORY_GetNodeItemGuid113c(m: Memory113c, pNode: number): number {
+  hitD2CommonVa113c(0x6FD6DEB0)
   if (pNode === 0) return 0
   return m.get(pNode, D2InventoryNodeStrc.dwItemId) >>> 0
 }
@@ -210,6 +219,7 @@ export function INVENTORY_GetNodeItemGuid113c(m: Memory113c, pNode: number): num
  * stdcall `[esp+4] = pNode`, `ret 4` -> `pNode->pNext (+0x04)` or `0`).
  */
 export function INVENTORY_GetNextNode113c(m: Memory113c, pNode: number): number {
+  hitD2CommonVa113c(0x6FD6DEC0)
   if (pNode === 0) return 0
   return m.get(pNode, D2InventoryNodeStrc.pNext) >>> 0
 }
@@ -223,6 +233,7 @@ export function INVENTORY_CheckNodeExists113c(
   pInventory: number,
   dwItemId: number,
 ): number {
+  hitD2CommonVa113c(0x6FD6DEE0)
   if (pInventory === 0) return 0
   if (m.get(pInventory, D2InventoryStrc.dwSignature) !== INVENTORY_SIGNATURE_113C) return 0
   let pNode = m.get(pInventory, D2InventoryStrc.pFirstNode)
@@ -239,6 +250,7 @@ export function INVENTORY_CheckNodeExists113c(
  * stdcall `[esp+4] = pInventory`, `ret 4` -> `pInventory->pFirstNode (+0x2C)` or `0`).
  */
 export function INVENTORY_GetFirstNode113c(m: Memory113c, pInventory: number): number {
+  hitD2CommonVa113c(0x6FD6DF70)
   if (pInventory === 0) return 0
   if (m.get(pInventory, D2InventoryStrc.dwSignature) !== INVENTORY_SIGNATURE_113C) return 0
   return m.get(pInventory, D2InventoryStrc.pFirstNode) >>> 0
@@ -248,13 +260,16 @@ export function INVENTORY_GetFirstNode113c(m: Memory113c, pInventory: number): n
  * `@va D2Common:0x6FD6DF90` (`D2Common.#10267` `INVENTORY_NoOpRet8A`,
  * stdcall 2 stack args, `ret 8`, void).
  */
-export function INVENTORY_NoOpRet8A113c(_m: Memory113c, _a0: number, _a1: number): void {}
+export function INVENTORY_NoOpRet8A113c(_m: Memory113c, _a0: number, _a1: number): void {
+  hitD2CommonVa113c(0x6FD6DF90)
+}
 
 /**
  * `@va D2Common:0x6FD6DFB0` (`D2Common.#11017` `INVENTORY_GetCursorItem`,
  * stdcall `[esp+4] = pInventory`, `ret 4` -> `pInventory->pCursorItem (+0x20)` or `0`).
  */
 export function INVENTORY_GetCursorItem113c(m: Memory113c, pInventory: number): number {
+  hitD2CommonVa113c(0x6FD6DFB0)
   if (pInventory === 0) return 0
   if (m.get(pInventory, D2InventoryStrc.dwSignature) !== INVENTORY_SIGNATURE_113C) return 0
   return m.get(pInventory, D2InventoryStrc.pCursorItem) >>> 0
@@ -264,7 +279,9 @@ export function INVENTORY_GetCursorItem113c(m: Memory113c, pInventory: number): 
  * `@va D2Common:0x6FD6DFD0` (`D2Common.#10608` `INVENTORY_NoOpRet8B`,
  * stdcall 2 stack args, `ret 8`, void).
  */
-export function INVENTORY_NoOpRet8B113c(_m: Memory113c, _a0: number, _a1: number): void {}
+export function INVENTORY_NoOpRet8B113c(_m: Memory113c, _a0: number, _a1: number): void {
+  hitD2CommonVa113c(0x6FD6DFD0)
+}
 
 /**
  * `@va D2Common:0x6FD6DFF0` (`D2Common.#10869` `INVENTORY_NoOpRet20`,
@@ -280,7 +297,9 @@ export function INVENTORY_NoOpRet20113c(
   _a5: number,
   _a6: number,
   _a7: number,
-): void {}
+): void {
+  hitD2CommonVa113c(0x6FD6DFF0)
+}
 
 /**
  * `@va D2Common:0x6FD6E010` (`INVENTORY_ScoreGridRectPlacement`,
@@ -295,6 +314,7 @@ export function INVENTORY_ScoreGridRectPlacement113c(
   nX: number,
   nWidth: number,
 ): number {
+  hitD2CommonVa113c(0x6FD6E010)
   const y0 = nY | 0
   const h = nHeight & 0xff
   const x0 = nX | 0
@@ -368,6 +388,7 @@ export function INVENTORY_ScoreGridRectPlacement113c(
  * stdcall `[esp+4] = pInventory`, `ret 4` -> `pInventory->pFirstItem (+0x0C)` or `0`).
  */
 export function INVENTORY_GetFirstItem113c(m: Memory113c, pInventory: number): number {
+  hitD2CommonVa113c(0x6FD6E190)
   if (pInventory === 0) return 0
   if (m.get(pInventory, D2InventoryStrc.dwSignature) !== INVENTORY_SIGNATURE_113C) return 0
   return m.get(pInventory, D2InventoryStrc.pFirstItem) >>> 0
@@ -387,6 +408,7 @@ export function INVENTORY_FillGridRect113c(
   nWidth: number,
   pItem: number,
 ): void {
+  hitD2CommonVa113c(0x6FD6E310)
   const y0 = nY | 0
   const yEnd = ((nHeight & 0xff) + y0) | 0
   if (y0 >= yEnd) return
@@ -422,6 +444,7 @@ export function INVENTORY_IsGridRectEmpty113c(
   nX: number,
   nHeight: number,
 ): number {
+  hitD2CommonVa113c(0x6FD6E360)
   const yStart = nY | 0
   const yEnd = ((nHeight & 0xff) + yStart) | 0
   if (yStart >= yEnd) return 1
@@ -451,6 +474,7 @@ export function INVENTORY_IsGridRectEmpty113c(
  * -> `pUnit` if `pUnit != NULL && pUnit->dwUnitType == 4`, else `0`).
  */
 export function INVENTORY_UnitIsItem113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD6E400)
   if (pUnit === 0) return 0
   return m.get(pUnit, D2UnitStrc.dwUnitType) === UNIT_ITEM ? pUnit >>> 0 : 0
 }
@@ -460,6 +484,7 @@ export function INVENTORY_UnitIsItem113c(m: Memory113c, pUnit: number): number {
  * -> `pItemData + 0x5C` or `0`).
  */
 export function INVENTORY_GetItemExtraData113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD6E790)
   return itemExtraOrZero(m, pItem, false)
 }
 
@@ -468,6 +493,7 @@ export function INVENTORY_GetItemExtraData113c(m: Memory113c, pItem: number): nu
  * stdcall `[esp+4] = pInventory`, `[esp+8] = pItem`, `ret 8` -> `pItem` or `0`).
  */
 export function INVENTORY_GetItemIfOwnedByInventory113c(m: Memory113c, pInventory: number, pItem: number): number {
+  hitD2CommonVa113c(0x6FD6E880)
   if (pInventory === 0) return 0
   const pExtra = itemExtraOrZero(m, pItem, true)
   if (pExtra === 0) return 0
@@ -479,6 +505,7 @@ export function INVENTORY_GetItemIfOwnedByInventory113c(m: Memory113c, pInventor
  * stdcall `[esp+4] = pItem`, `ret 4` -> signed `int8` at `pExtra + 0x0D` or `0`).
  */
 export function INVENTORY_GetItemNodePositionOther113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD6E8C0)
   const pExtra = itemExtraOrZero(m, pItem, true)
   if (pExtra === 0) return 0
   return s8(m.u8((pExtra + ITEM_EXTRA_OFF_113C.nNodePosOther) >>> 0))
@@ -489,6 +516,7 @@ export function INVENTORY_GetItemNodePositionOther113c(m: Memory113c, pItem: num
  * stdcall `[esp+4] = pItem`, `ret 4` -> `pExtra->pNextItem (+0x08)` or `0`).
  */
 export function INVENTORY_GetNextItem113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD6E8F0)
   const pExtra = itemExtraOrZero(m, pItem, true)
   if (pExtra === 0) return 0
   return m.u32((pExtra + ITEM_EXTRA_OFF_113C.pNextItem) >>> 0)
@@ -505,6 +533,7 @@ export function INVENTORY_GetNextItem113c(m: Memory113c, pItem: number): number 
  * existing cache entries, clamps `s >= 255` back to `nextFree`, and writes `0xFF` to `0x6FDF13A0`.
  */
 export function INVENTORY_InitItemGfxCodeTable113c(m: Memory113c): void {
+  hitD2CommonVa113c(0x6FD6E920)
   if (m.u32(D2COMMON_ITEM_GFX_INIT_FLAG_VA_113C) !== 0) return
 
   for (let i = 0; i < 0x1fe; i++) {
@@ -611,6 +640,7 @@ export function INVENTORY_LinkItemToGridList113c(
   pGrid: number,
   pInventory: number,
 ): void {
+  hitD2CommonVa113c(0x6FD6F630)
   const pExtra = itemExtraOrZero(m, pItem, true)
   if (pExtra === 0) return
   if (m.u32(pExtra) !== pInventory >>> 0) return
@@ -634,6 +664,7 @@ export function INVENTORY_LinkItemToGridList113c(
  * `ret`, void).
  */
 export function INVENTORY_LinkItemToInventoryList113c(m: Memory113c, pItem: number, pInventory: number): void {
+  hitD2CommonVa113c(0x6FD6F690)
   const pExtra = itemExtraOrZero(m, pItem, true)
   if (pExtra === 0) return
 
@@ -657,6 +688,7 @@ export function INVENTORY_LinkItemToInventoryList113c(m: Memory113c, pItem: numb
  * stdcall `[esp+4] = pInventory`, `[esp+8] = pItem`, `ret 8` -> `0` or `1`).
  */
 export function INVENTORY_IsItemOwnedByInventory113c(m: Memory113c, pInventory: number, pItem: number): number {
+  hitD2CommonVa113c(0x6FD6F6E0)
   if (pInventory === 0) return 0
   const pExtra = itemExtraOrZero(m, pItem, true)
   if (pExtra === 0) return 0
@@ -668,6 +700,7 @@ export function INVENTORY_IsItemOwnedByInventory113c(m: Memory113c, pInventory: 
  * (`{ pFirstItem (+0), pLastItem (+4) }`, e.g. `pInventory + 0x0C`), `ret`, void).
  */
 export function INVENTORY_UnlinkItemFromList113c(m: Memory113c, pItem: number, pListHeader: number): void {
+  hitD2CommonVa113c(0x6FD6F8F0)
   const pExtra = itemExtraOrZero(m, pItem, true)
   if (pExtra === 0) return
 
@@ -836,6 +869,7 @@ export function DATATBLS_GetInventoryTxtRecord113c(
   bHigherRes: number,
   pOutRecord: number,
 ): void {
+  hitD2CommonVa113c(0x6FD632A0)
   const base = m.u32(G_INVENTORY_TXT_TABLE_VA_113C)
   const checkAddr = (base + imul32(nInvId | 0, 0x108)) >>> 0
   if (checkAddr === 0) {
@@ -864,6 +898,7 @@ export function INVENTORY_FreeCorpse113c(
   dwUnitId: number,
   bCountAsCorpse: number,
 ): number {
+  hitD2CommonVa113c(0x6FD6DD40)
   const inv = pInventory >>> 0
   if (inv === 0) return 0
   if (m.get(inv, D2InventoryStrc.dwSignature) !== INVENTORY_SIGNATURE_113C) return 0
@@ -921,6 +956,7 @@ export function INVENTORY_AllocCorpse113c(
   eClass: number,
   bCountAsCorpse: number,
 ): number {
+  hitD2CommonVa113c(0x6FD6DDD0)
   const inv = pInventory >>> 0
   if (inv === 0 || m.get(inv, D2InventoryStrc.dwSignature) !== INVENTORY_SIGNATURE_113C) {
     return 0
@@ -957,6 +993,7 @@ export function INVENTORY_AllocCorpse113c(
  * `0x6FD6DF3F mov esi, [edx+4]`), frees each node via `Fog.#10046`, and zeroes `pFirstNode (+0x2C)` and `pLastNode (+0x30)`.
  */
 export function INVENTORY_FreeAllNodes113c(m: Memory113c, pInventory: number): void {
+  hitD2CommonVa113c(0x6FD6DF20)
   const inv = pInventory >>> 0
   if (inv === 0) return
   if (m.get(inv, D2InventoryStrc.dwSignature) !== INVENTORY_SIGNATURE_113C) return
@@ -984,6 +1021,7 @@ export function INVENTORY_GetItemSaveGridPageLimits113c(
   pItem: number,
   pOutPageLimits6: number,
 ): void {
+  hitD2CommonVa113c(0x6FD6E420)
   const item = pItem >>> 0
   const out = pOutPageLimits6 >>> 0
   if (item === 0) {
@@ -1025,6 +1063,7 @@ export function INVENTORY_AllocInventory113c(
   pMemPool: number,
   pOwnerUnit: number,
 ): number {
+  hitD2CommonVa113c(0x6FD6E710)
   let ebx = pMemPool >>> 0
   const esi = pOwnerUnit >>> 0
   if (ebx === 0 && esi !== 0) {
@@ -1067,6 +1106,7 @@ export function ITEMS_DecodeItemCompactBitstream113c(
   pOutHeader: number,
   nVersion: number,
 ): number {
+  hitD2CommonVa113c(0x6FD72000)
   const out = pOutHeader >>> 0
   const bitBuf: FogBitBufferState113c = {
     pBuffer: pBitstreamData >>> 0,
@@ -1137,6 +1177,7 @@ export function ITEMS_DecodeItemCompactBitstream113c(
  * then writes `pItemData->wItemFormat (+0x30) = wFormat & 0xFFFF`.
  */
 export function ITEMS_SetItemFormat113c(m: Memory113c, pItem: number, wFormat: number): void {
+  hitD2CommonVa113c(0x6FD72170)
   const item = pItem >>> 0
   if (item === 0) {
     throw new D2CommonAssertError('..\\Source\\D2Common\\ITEMS\\Items.cpp', 0x1510)
@@ -1165,6 +1206,7 @@ export function ITEMS_CanPlayerClassUseItem113c(
   pPlayer: number,
   pItem: number,
 ): number {
+  hitD2CommonVa113c(0x6FD72310)
   const item = pItem >>> 0
   if (item === 0) {
     throw new D2CommonAssertError('..\\Source\\D2Common\\ITEMS\\Items.cpp', 0x119c)
@@ -1204,6 +1246,7 @@ export function ITEMS_CanPlayerClassUseItem113c(
  * count at `0x6FDEF020`) returning the matching `u16` index at `0x6FDEF02C + i * 8` (or `0` if not found).
  */
 export function ITEMS_GetWeaponClassCodeIdx113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD72430)
   const item = pItem >>> 0
   const dwClassId = item !== 0 ? m.get(item, D2UnitStrc.dwClassId) >>> 0 : 0xffffffff
   if (dwClassId >= (m.u32(D2COMMON_ITEMS_TXT_COUNT_VA_113C) >>> 0)) {
@@ -1237,6 +1280,7 @@ export function ITEMS_GetWeaponClassCodeIdx113c(m: Memory113c, pItem: number): n
  * then returns `m.u32(pItemData + 0x0C)`.
  */
 export function ITEMS_GetCellOverwrite113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD724C0)
   const item = pItem >>> 0
   if (item === 0) {
     throw new D2CommonAssertError('..\\Source\\D2Common\\ITEMS\\Items.cpp', 0x10c8)
@@ -1259,6 +1303,7 @@ export function ITEMS_GetCellOverwrite113c(m: Memory113c, pItem: number): number
  * then writes `m.setU32(pItemData + 0x0C, nCell)`.
  */
 export function ITEMS_SetCellOverwrite113c(m: Memory113c, pItem: number, nCell: number): void {
+  hitD2CommonVa113c(0x6FD72510)
   const item = pItem >>> 0
   if (item === 0) {
     throw new D2CommonAssertError('..\\Source\\D2Common\\ITEMS\\Items.cpp', 0x10bd)
@@ -1284,6 +1329,7 @@ export function ITEMS_CheckItemFlagCompactSaveByClassId113c(
   m: Memory113c,
   nItemId: number,
 ): number {
+  hitD2CommonVa113c(0x6FD72760)
   const id = nItemId >>> 0
   if (id >= (m.u32(D2COMMON_ITEMS_TXT_COUNT_VA_113C) >>> 0)) {
     throw new D2CommonAssertError('..\\Source\\D2Common\\ITEMS\\Items.cpp', 0x104b)
@@ -1307,6 +1353,7 @@ export function ITEMS_CheckItemFlagCompactSaveByClassId113c(
  * and `pItemsTxt != 0` at `line 0x1EF`) and returns `m.u8(pRec + 0x11C)`.
  */
 export function ITEMS_GetInvWidthFromId113c(m: Memory113c, nItemId: number): number {
+  hitD2CommonVa113c(0x6FD72E70)
   const id = nItemId >>> 0
   if (id >= (m.u32(D2COMMON_ITEMS_TXT_COUNT_VA_113C) >>> 0)) {
     throw new D2CommonAssertError('..\\Source\\D2Common\\ITEMS\\Items.cpp', 0x907)
@@ -1331,6 +1378,7 @@ export function ITEMS_GetInvWidthFromId113c(m: Memory113c, nItemId: number): num
  * `m.u8(pRec + 0x115)`.
  */
 export function ITEMS_GetComponentFromItem113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD731E0)
   const item = pItem >>> 0
   if (item === 0) {
     throw new D2CommonAssertError('..\\Source\\D2Common\\ITEMS\\Items.cpp', 0x635)
@@ -1361,6 +1409,7 @@ export function ITEMS_GetComponentFromItem113c(m: Memory113c, pItem: number): nu
  * then writes `pUnit->pPath->nPosY (+0x10) = nPosY`.
  */
 export function UNITS_SetStaticPathPosY113c(m: Memory113c, pUnit: number, nPosY: number): void {
+  hitD2CommonVa113c(0x6FD7F270)
   const u = pUnit >>> 0
   if (u === 0) {
     throw new D2CommonAssertError('..\\Source\\D2Common\\UNITS\\Units.cpp', 0x706)
@@ -1381,6 +1430,7 @@ export function UNITS_SetStaticPathPosY113c(m: Memory113c, pUnit: number, nPosY:
  * then writes `pUnit->pPath->nPosX (+0x0C) = nPosX`.
  */
 export function UNITS_SetStaticPathPosX113c(m: Memory113c, pUnit: number, nPosX: number): void {
+  hitD2CommonVa113c(0x6FD7F2C0)
   const u = pUnit >>> 0
   if (u === 0) {
     throw new D2CommonAssertError('..\\Source\\D2Common\\UNITS\\Units.cpp', 0x6ef)
@@ -1402,6 +1452,7 @@ export function UNITS_SetStaticPathPosX113c(m: Memory113c, pUnit: number, nPosX:
  * and returns `m.u8(pRec + 0x130)`.
  */
 export function UNITS_GetBeltTypeFromItem113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD7F8A0)
   const item = pItem >>> 0
   if (item === 0 || m.get(item, D2UnitStrc.dwUnitType) !== UNIT_ITEM) {
     throw new D2CommonAssertError('..\\Source\\D2Common\\UNITS\\Units.cpp', 0xf20)
@@ -1438,6 +1489,7 @@ export function UNITS_GetInventoryRecordId113c(
   nInvPage: number,
   bLoD: number,
 ): number {
+  hitD2CommonVa113c(0x6FD7FB60)
   const u = pUnit >>> 0
   if (u === 0) {
     throw new D2CommonAssertError('..\\Source\\D2Common\\UNITS\\Units.cpp', 0xa2f)
@@ -1491,6 +1543,7 @@ export function COMPOSIT_GetItemPageLimitByBodyLoc113c(
   nBodyLoc: number,
   pPageLimits6: number,
 ): number {
+  hitD2CommonVa113c(0x6FD93710)
   if ((nBodyLoc | 0) >= 0x10) {
     throw new D2CommonAssertError('..\\Source\\D2Common\\COMPOSIT\\Composit.cpp', 0x265)
   }
@@ -1715,6 +1768,7 @@ export function INVENTORY_GetBeltItem113c(
   pInventory: number,
   nBeltSlot: number,
 ): number {
+  hitD2CommonVa113c(0x6FD6E5B0)
   const inv = pInventory >>> 0
   if (inv === 0 || m.u32(inv) !== INVENTORY_SIGNATURE_113C) return 0
   const pGrid1 = INVENTORY_GetOrInitGridMem113c(m, inv, 1, D2COMMON_GRID1_INFO_VA_113C)
@@ -1733,6 +1787,7 @@ export function INVENTORY_GetItemGridXIfInInventory113c(
   pInventory: number,
   pItem: number,
 ): number {
+  hitD2CommonVa113c(0x6FD6E600)
   const inv = pInventory >>> 0
   const itm = pItem >>> 0
   if (inv === 0 || m.u32(inv) !== INVENTORY_SIGNATURE_113C) return 0
@@ -1749,6 +1804,7 @@ export function INVENTORY_GetItemBodyLocFromX113c(
   pInventory: number,
   pItem: number,
 ): number {
+  hitD2CommonVa113c(0x6FD6E630)
   const inv = pInventory >>> 0
   const itm = pItem >>> 0
   if (inv === 0 || m.u32(inv) !== INVENTORY_SIGNATURE_113C) return 0
@@ -1767,6 +1823,7 @@ export function INVENTORY_RemoveItemFromGrid113c(
   pGrid: number,
   bUseItemDimensions: number,
 ): void {
+  hitD2CommonVa113c(0x6FD6F720)
   const itm = pItem >>> 0
   const grid = pGrid >>> 0
   const pExtra = itemExtraOrZero(m, itm, true)
@@ -1835,6 +1892,7 @@ export function INVENTORY_GetEquippedShield113c(
   pInventory: number,
   ppOutItem: number,
 ): number {
+  hitD2CommonVa113c(0x6FD6FF40)
   const inv = pInventory >>> 0
   const ppOut = ppOutItem >>> 0
   if (inv === 0) return 0
@@ -1868,6 +1926,7 @@ export function INVENTORY_GetEquippedShield113c(
  * stdcall `[esp+4] = pInventory`, `ret 0x4` -> `D2UnitStrc*` or `0`).
  */
 export function INVENTORY_GetSecondaryWeapon113c(m: Memory113c, pInventory: number): number {
+  hitD2CommonVa113c(0x6FD70270)
   const inv = pInventory >>> 0
   if (inv === 0 || m.u32(inv) !== INVENTORY_SIGNATURE_113C) return 0
   const activeGuid = m.u32((inv + 0x1c) >>> 0) | 0
@@ -1906,6 +1965,7 @@ export function ITEMS_AreStackablesCompatible113c(
   pItem1: number,
   pItem2: number,
 ): number {
+  hitD2CommonVa113c(0x6FD72CD0)
   const itm1 = pItem1 >>> 0
   const itm2 = pItem2 >>> 0
   if (itm1 === 0 || itm2 === 0) return 0
@@ -1942,6 +2002,7 @@ export function INVENTORY_GetItemDimensionsCallback113c(
   _a4: number,
   _a5: number,
 ): void {
+  hitD2CommonVa113c(0x6FD731A0)
   const itm = pItem >>> 0
   if (itm === 0 || m.u32(itm) !== UNIT_ITEM) return
   const pTxt = getItemsTxtRecordInvMem113c(m, m.u32((itm + 4) >>> 0))
@@ -2030,6 +2091,7 @@ export function INVENTORY_CopyGrid2Cells113c(
   pDstInv: number,
   pUnit: number,
 ): number {
+  hitD2CommonVa113c(0x6FD6E7B0)
   const dstInv = pDstInv >>> 0
   const u = pUnit >>> 0
   if (dstInv === 0 || m.u32(dstInv) !== INVENTORY_SIGNATURE_113C) return 0
@@ -2067,6 +2129,7 @@ export function INVENTORY_CanStackIntoBeltRow113c(
   pInventory: number,
   pItem: number,
 ): number {
+  hitD2CommonVa113c(0x6FD6EEE0)
   const inv = pInventory >>> 0
   if (inv === 0 || m.u32(inv) !== INVENTORY_SIGNATURE_113C) return 0
   const itm = pItem >>> 0
@@ -2099,6 +2162,7 @@ export function INVENTORY_FindFirstFitColMajor113c(
   pOutY: number,
   nWidth: number,
 ): number {
+  hitD2CommonVa113c(0x6FD6F370)
   const grid = pGrid >>> 0
   const h = nHeight & 0xff
   const w = nWidth & 0xff
@@ -2142,6 +2206,7 @@ export function INVENTORY_FindBestFitRowMajor113c(
   pOutY: number,
   nWidth: number,
 ): number {
+  hitD2CommonVa113c(0x6FD6F410)
   const grid = pGrid >>> 0
   const h = nHeight & 0xff
   const w = nWidth & 0xff
@@ -2186,6 +2251,7 @@ export function INVENTORY_FindFirstFitRightToLeft113c(
   pOutY: number,
   nWidth: number,
 ): number {
+  hitD2CommonVa113c(0x6FD6F4E0)
   const grid = pGrid >>> 0
   const h = nHeight & 0xff
   const w = nWidth & 0xff
@@ -2226,6 +2292,7 @@ export function INVENTORY_FindBestFitReverse113c(
   pOutY: number,
   nWidth: number,
 ): number {
+  hitD2CommonVa113c(0x6FD6F580)
   const grid = pGrid >>> 0
   const h = nHeight & 0xff
   const w = nWidth & 0xff
@@ -2262,6 +2329,7 @@ export function INVENTORY_FindItemGfxCodeIndex113c(
   dwCode1: number,
   dwCode2: number,
 ): number {
+  hitD2CommonVa113c(0x6FD6FB50)
   const c1 = dwCode1 >>> 0
   const c2 = dwCode2 >>> 0
   INVENTORY_InitItemGfxCodeTable113c(m)
@@ -2281,6 +2349,7 @@ export function INVENTORY_UpdateWeaponGuidOnRemoval113c(
   pInventory: number,
   pItem: number,
 ): void {
+  hitD2CommonVa113c(0x6FD6FC70)
   const inv = pInventory >>> 0
   if (inv === 0) return
   const itm = pItem >>> 0
@@ -2322,6 +2391,7 @@ export function INVENTORY_FindBackpackItemByType113c(
   nItemType: number,
   pAfterItem: number,
 ): number {
+  hitD2CommonVa113c(0x6FD6FE10)
   const inv = pInventory >>> 0
   if (inv === 0 || m.u32(inv) !== INVENTORY_SIGNATURE_113C) return 0
   const pOwner = m.u32((inv + 0x08) >>> 0)
@@ -2368,6 +2438,7 @@ export function INVENTORY_UpdateWeaponGuidOnInsert113c(
   pInventory: number,
   pItem: number,
 ): void {
+  hitD2CommonVa113c(0x6FD70620)
   const inv = pInventory >>> 0
   if (inv === 0) return
   const itm = pItem >>> 0
@@ -2408,6 +2479,7 @@ export function INVENTORY_UpdateWeaponGuidOnInsert113c(
  * custom reg `eax = pItem`, `ret` -> `0 | 1`).
  */
 export function INVENTORY_RemoveItemInternal113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD71640)
   const itm = pItem >>> 0
   const pExtra = itemExtraOrZero(m, itm, true)
   if (pExtra === 0) return 0
@@ -2456,6 +2528,7 @@ export function ITEMS_DecodeItemCompactBitstreamV96_113c(
   bCheckHeader: number,
   pOutHeader: number,
 ): number {
+  hitD2CommonVa113c(0x6FD72150)
   return ITEMS_DecodeItemCompactBitstream113c(m, pBitstreamData, nDataSize, bCheckHeader, pOutHeader, 0x60)
 }
 
@@ -2468,6 +2541,7 @@ export function INVENTORY_AppendItemGuidNode113c(
   pInventory: number,
   pItem: number,
 ): void {
+  hitD2CommonVa113c(0x6FD6E4F0)
   const inv = pInventory >>> 0
   if (inv === 0 || m.u32(inv) !== INVENTORY_SIGNATURE_113C) return
   const itm = pItem >>> 0
@@ -2501,6 +2575,7 @@ export function INVENTORY_GetEquippedWeaponHandClass113c(
   pPlayer: number,
   pInventory: number,
 ): number {
+  hitD2CommonVa113c(0x6FD6FB80)
   const ebx = pInventory >>> 0
   if (ebx === 0) return 0xffffffff
   let edi = 0
@@ -2548,6 +2623,7 @@ export function INVENTORY_GetItemEquipLocation113c(
   pUnit: number,
   pItem: number,
 ): number {
+  hitD2CommonVa113c(0x6FD81260)
   const ebp = pItem >>> 0
   let loc = 0
   if (ebp !== 0 && m.u32(ebp) === UNIT_ITEM) {
@@ -2619,6 +2695,7 @@ export function INVENTORY_FindGridPlacementMode0_113c(
   pInventory: number,
   nHeight: number,
 ): number {
+  hitD2CommonVa113c(0x6FD70520)
   const inv = pInventory >>> 0
   if (inv === 0) return 0
   const pOwner = m.u32((inv + 0x08) >>> 0)
@@ -2642,6 +2719,7 @@ export function INVENTORY_FindGridPlacementMode1_113c(
   pInventory: number,
   nHeight: number,
 ): number {
+  hitD2CommonVa113c(0x6FD70560)
   const inv = pInventory >>> 0
   if (inv === 0) return 0
   const pOwner = m.u32((inv + 0x08) >>> 0)
@@ -2665,6 +2743,7 @@ export function INVENTORY_FindGridPlacementMode2_113c(
   pInventory: number,
   nHeight: number,
 ): number {
+  hitD2CommonVa113c(0x6FD705A0)
   const inv = pInventory >>> 0
   if (inv === 0) return 0
   const pOwner = m.u32((inv + 0x08) >>> 0)
@@ -2688,6 +2767,7 @@ export function INVENTORY_FindGridPlacementMode3_113c(
   pInventory: number,
   nHeight: number,
 ): number {
+  hitD2CommonVa113c(0x6FD705E0)
   const inv = pInventory >>> 0
   if (inv === 0) return 0
   const pOwner = m.u32((inv + 0x08) >>> 0)
@@ -2702,6 +2782,7 @@ export function INVENTORY_FindGridPlacementMode3_113c(
  * stdcall `[esp+4] = pInventory`, `ret 4` -> `0 | 1`).
  */
 export function INVENTORY_EmptyInventory113c(m: Memory113c, pInventory: number): number {
+  hitD2CommonVa113c(0x6FD71710)
   const esi = pInventory >>> 0
   if (esi === 0 || m.u32(esi) !== INVENTORY_SIGNATURE_113C) return 0
   let pItem = m.u32((esi + 0x0c) >>> 0)
@@ -2726,6 +2807,7 @@ export function INVENTORY_SetCursorItem113c(
   pInventory: number,
   pItem: number,
 ): void {
+  hitD2CommonVa113c(0x6FD71790)
   const edx = pInventory >>> 0
   if (edx === 0 || m.u32(edx) !== INVENTORY_SIGNATURE_113C) return
   const ecx = pItem >>> 0
@@ -2750,6 +2832,7 @@ export function INVENTORY_RemoveItemFromInventory113c(
   pInventory: number,
   pItem: number,
 ): number {
+  hitD2CommonVa113c(0x6FD71B00)
   const inv = pInventory >>> 0
   if (inv === 0) return 0
   const esi = pItem >>> 0
@@ -2794,6 +2877,7 @@ export function INVENTORY_CanDualWieldItems113c(
   pItem1: number,
   pItem2: number,
 ): number {
+  hitD2CommonVa113c(0x6FD6F980)
   const esi = pItem1 >>> 0
   const edi = pItem2 >>> 0
   if (esi === 0 || edi === 0) return 1
@@ -2861,6 +2945,7 @@ export function INVENTORY_GetBeltAutoPlaceSlot113c(
   pItem: number,
   pOutSlot: number,
 ): number {
+  hitD2CommonVa113c(0x6FD700D0)
   const inv = pInventory >>> 0
   if (inv === 0 || m.u32(inv) !== INVENTORY_SIGNATURE_113C) return 0
   const itm = pItem >>> 0
@@ -2919,6 +3004,7 @@ export function INVENTORY_GetSwapWeaponItem113c(
   ppOtherItemOut: number,
   nBodyLoc: number,
 ): void {
+  hitD2CommonVa113c(0x6FD70490)
   const inv = pInventory >>> 0
   if (inv === 0 || m.u32(inv) !== INVENTORY_SIGNATURE_113C) return
   const handClass = INVENTORY_GetEquippedWeaponHandClass113c(m, pPlayer, inv)
@@ -2949,6 +3035,7 @@ export function INVENTORY_GetFreePosition113c(
   pOutY: number,
   nInvPage: number,
 ): number {
+  hitD2CommonVa113c(0x6FD708E0)
   const inv = pInventory >>> 0
   if (inv === 0 || m.u32(inv) !== INVENTORY_SIGNATURE_113C) return 0
   const itm = pItem >>> 0
@@ -2985,6 +3072,7 @@ export function INVENTORY_PlaceItemInSocket113c(
   pItem: number,
   _unused = 0,
 ): number {
+  hitD2CommonVa113c(0x6FD717F0)
   const inv = pInventory >>> 0
   if (inv === 0 || m.u32(inv) !== INVENTORY_SIGNATURE_113C) return 0
   const pOwner = m.u32((inv + 0x08) >>> 0)
@@ -3019,6 +3107,7 @@ export function INVENTORY_PlaceItemInGridPage113c(
   nGridPage: number,
   nInvRecordId: number,
 ): number {
+  hitD2CommonVa113c(0x6FD718A0)
   const inv = pInventory >>> 0
   if (inv === 0 || m.u32(inv) !== INVENTORY_SIGNATURE_113C) return 0
   const itm = pItem >>> 0
@@ -3100,6 +3189,7 @@ export function INVENTORY_PlaceItemInGridPage113c(
  * stdcall `[esp+4] = pInventory`, `ret 4`, void).
  */
 export function INVENTORY_FreeInventory113c(m: Memory113c, pInventory: number): void {
+  hitD2CommonVa113c(0x6FD71B40)
   const inv = pInventory >>> 0
   if (inv === 0 || m.u32(inv) !== INVENTORY_SIGNATURE_113C) return
   const curItem = m.u32((inv + 0x20) >>> 0)
@@ -3215,6 +3305,7 @@ export function INVENTORY_ReserveGridFreePosition113c(
   pUnit: number,
   pItem: number,
 ): number {
+  hitD2CommonVa113c(0x6FD70A30)
   const inv = pInventory >>> 0
   if (inv === 0 || m.u32(inv) !== INVENTORY_SIGNATURE_113C) return 0
   const itm = pItem >>> 0
@@ -3256,6 +3347,7 @@ export function INVENTORY_CanBodyLocFitInGrid113c(
   nBodyLoc: number,
   nInvRecordId: number,
 ): number {
+  hitD2CommonVa113c(0x6FD70B50)
   const inv = pInventory >>> 0
   if (inv === 0 || m.u32(inv) !== INVENTORY_SIGNATURE_113C) return 0
   const loc = nBodyLoc | 0
@@ -3289,6 +3381,7 @@ export function INVENTORY_CheckGrid2ItemsFitClone113c(
   pDstInv: number,
   pOtherUnit: number,
 ): number {
+  hitD2CommonVa113c(0x6FD70D20)
   const u = pUnit >>> 0
   const pInv = m.u32((u + 0x60) >>> 0)
   if (pInv === 0 || m.u32(pInv) !== INVENTORY_SIGNATURE_113C) return 1
@@ -3328,6 +3421,7 @@ export function INVENTORY_CanAutoEquipToBodyLoc113c(
   pUnit: number,
   nOtherLoc: number,
 ): number {
+  hitD2CommonVa113c(0x6FD70DB0)
   const u = pUnit >>> 0
   const pInv = m.u32((u + 0x60) >>> 0)
   const itemA = pItemA >>> 0
@@ -3371,6 +3465,7 @@ export function INVENTORY_CanAutoEquipItem113c(
   pItem: number,
   bSkipReq: number,
 ): number {
+  hitD2CommonVa113c(0x6FD711D0)
   const u = pUnit >>> 0
   if (u === 0) return 0
   const pInv = m.u32((u + 0x60) >>> 0)
@@ -3414,6 +3509,7 @@ export function INVENTORY_CanTradeInventoriesSwap113c(
   pUnit2: number,
   pOutFailedSide: number,
 ): number {
+  hitD2CommonVa113c(0x6FD71C50)
   const pool = pMemPool >>> 0
   const inv1 = m.alloc(0x40)
   if (inv1 !== 0) {
@@ -3458,6 +3554,7 @@ export function INVENTORY_AutoPlaceItemInBeltSlot113c(
   pItem: number,
   nBeltSlot: number,
 ): number {
+  hitD2CommonVa113c(0x6FD71D70)
   const inv = pInventory >>> 0
   const itm = pItem >>> 0
   const slot = nBeltSlot | 0
@@ -3477,6 +3574,7 @@ export function INVENTORY_PlaceItemInBodyLoc113c(
   pItem: number,
   nBodyLoc: number,
 ): number {
+  hitD2CommonVa113c(0x6FD71DA0)
   const inv = pInventory >>> 0
   const loc = nBodyLoc | 0
   if (inv === 0 || loc < 0 || loc >= 0x0d) return 0
@@ -3497,6 +3595,7 @@ export function INVENTORY_PlaceItemInGridCell113c(
   _unused = 0,
   nPage = 0,
 ): number {
+  hitD2CommonVa113c(0x6FD71DD0)
   const inv = pInventory >>> 0
   if (inv === 0) return 0
   return INVENTORY_PlaceItemInGridPage113c(
@@ -3524,6 +3623,7 @@ export function INVENTORY_AutoPlaceItemInGrid113c(
   _unused1 = 0,
   _unused2 = 0,
 ): number {
+  hitD2CommonVa113c(0x6FD71E10)
   const inv = pInventory >>> 0
   if (inv === 0) return 0
   const itm = pItem >>> 0
@@ -3554,6 +3654,7 @@ export function INVENTORY_AutoPlaceItemInBelt113c(
   pInventory: number,
   pItem: number,
 ): number {
+  hitD2CommonVa113c(0x6FD71E80)
   const inv = pInventory >>> 0
   const itm = pItem >>> 0
   const sm = withInvStackScratch113c(m)
@@ -3617,6 +3718,7 @@ export function INVENTORY_FindReagentForTome113c(
   pMatchTome: number,
   pStartAfterItem = 0,
 ): number {
+  hitD2CommonVa113c(0x6FD70BC0)
   const inv = pInventory >>> 0
   if (inv === 0 || m.u32(inv) !== INVENTORY_SIGNATURE_113C) return 0
   const pOwner = m.u32((inv + 0x08) >>> 0)
@@ -3688,6 +3790,7 @@ export function INVENTORY_UpdateQuiverComponentDisplay113c(
   pCompArr1: number,
   pCompArr2: number,
 ): void {
+  hitD2CommonVa113c(0x6FD70E80)
   const player = pPlayer >>> 0
   if (player === 0) {
     throw new D2CommonAssertError('Inventory.cpp', 0x13b4)
@@ -3767,6 +3870,7 @@ export function INVENTORY_FindStackableCompatItemInGrid0_113c(
   pMatchItem: number,
   pStartAfterItem = 0,
 ): number {
+  hitD2CommonVa113c(0x6FD70FD0)
   const inv = pInventory >>> 0
   if (inv === 0 || m.u32(inv) !== INVENTORY_SIGNATURE_113C) return 0
   const pGrid0 = INVENTORY_GetOrInitGridMem113c(m, inv, 0, D2COMMON_GRID0_INFO_VA_113C)
@@ -3817,6 +3921,7 @@ export function INVENTORY_FindStackableCompatItemInBelt113c(
   pMatchItem: number,
   pStartAfterItem = 0,
 ): number {
+  hitD2CommonVa113c(0x6FD710B0)
   const inv = pInventory >>> 0
   if (inv === 0 || m.u32(inv) !== INVENTORY_SIGNATURE_113C) return 0
   const pOwner = m.u32((inv + 0x08) >>> 0)
@@ -3877,6 +3982,7 @@ export function INVENTORY_FindEquippedSkillChargeItem113c(
   pOutCharges: number,
   pOutStatList: number,
 ): number {
+  hitD2CommonVa113c(0x6FD96600)
   const outCharges = pOutCharges >>> 0
   const outStatList = pOutStatList >>> 0
   if (outCharges !== 0) {
@@ -3956,6 +4062,7 @@ export function INVENTORY_UpdateItemBodyLocGfx113c(
   pOutColor: number,
   pItem: number,
 ): void {
+  hitD2CommonVa113c(0x6FD71300)
   const unit = pUnit >>> 0
   const pInv = m.u32((unit + 0x60) >>> 0)
   if (pInv === 0) return
@@ -4014,6 +4121,7 @@ export function INVENTORY_UpdateEquippedGfxAndColor113c(
   pOutComp: number,
   pOutColor: number,
 ): void {
+  hitD2CommonVa113c(0x6FD71420)
   const unit = pUnit >>> 0
   const pInv = m.u32((unit + 0x60) >>> 0)
   if (pInv === 0 || m.u32(pInv) !== 0x01020304) return

@@ -262,15 +262,6 @@
   },
   {
     "module": "D2Game",
-    "va": "0x6fce00c0",
-    "name": "NPCS_HandleNpcMenuRequest_6FCE00C0",
-    "kernFile": "src/d2kern-113c/game/k2-w16b1-113c.ts",
-    "tsSymbol": "NPCS_HandleNpcMenuRequest_6FCE00C0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w16b1.test.ts"
-  },
-  {
-    "module": "D2Game",
     "va": "0x6fce7ed0",
     "name": "ACT2Q2_InitQuestTableRecord_6FCE7ED0",
     "kernFile": "src/d2kern-113c/game/k2-w16b1-113c.ts",

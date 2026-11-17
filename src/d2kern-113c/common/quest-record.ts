@@ -19,6 +19,7 @@ import {
 } from '../tables/monster-tbls-113c.ts'
 import { D2CommonAssertError } from './inline-helpers.ts'
 import { imul32 } from './int-math.ts'
+import { hitD2CommonVa113c } from '../va-trace-113c.ts'
 
 /** `.data` `sgDefaultWaypointWordIdx` (`i16`) at `0x6FDE9C58` (`0x6FD80A49 movsx eax, word ptr ds:0x6fde9c58`). */
 export const SG_DEFAULT_WAYPOINT_WORD_IDX_VA_113C = 0x6fde9c58
@@ -42,6 +43,7 @@ const WAYPOINT_ASSERT_FILE_113C = '..\\Source\\D2Common\\WayPoint\\Waypoint.cpp'
  * `mov ecx, [esp+4]; lea eax, [ecx+1]; imul eax, ecx; imul eax, ecx; imul eax, [esp+8]; ret 8`.
  */
 export function HIRELING_GetExpForLevel113c(nLevel: number, nExpPerLvl: number): number {
+  hitD2CommonVa113c(0x6FD7C990)
   const lvl = nLevel | 0
   let v = (lvl + 1) | 0
   v = imul32(v, lvl)
@@ -67,6 +69,7 @@ export function DRLG_SetWarpId113c(
   nIndex: number,
   nWarpId: number,
 ): void {
+  hitD2CommonVa113c(0x6FD7D210)
   const w = pWarp >>> 0
   const vis = nVis >>> 0
   const warpId = nWarpId >>> 0
@@ -109,6 +112,7 @@ export function QUESTRECORD_CopyRecordToBuffer113c(
   wSize: number,
   _bUnused: number,
 ): void {
+  hitD2CommonVa113c(0x6FD7CF40)
   if ((wSize & 0xffff) !== 0x60) {
     throw new D2CommonAssertError(QUESTRECORD_ASSERT_FILE_113C, 0x84)
   }
@@ -129,6 +133,7 @@ export function QUESTRECORD_CopyRecordToBuffer113c(
  * and returns the `D2BitBufferStrc` pointer.
  */
 export function QUESTRECORD_AllocRecord113c(m: Memory113c, _pMemPool: number): number {
+  hitD2CommonVa113c(0x6FD7CFC0)
   const pRecord = m.alloc(0x14)
   const pBuf = m.alloc(0x60)
   for (let i = 0; i < 0x60; i += 4) {
@@ -154,6 +159,7 @@ export function QUESTRECORD_ClearQuestStateBits2To11_113c(
   pQuestData: number,
   nQuest: number,
 ): void {
+  hitD2CommonVa113c(0x6FD7D020)
   const qd = pQuestData >>> 0
   if (qd === 0) {
     throw new D2CommonAssertError(QUESTRECORD_ASSERT_FILE_113C, 0x3e)
@@ -181,6 +187,7 @@ export function QUESTRECORD_ClearQuestState113c(
   nQuest: number,
   nState: number,
 ): void {
+  hitD2CommonVa113c(0x6FD7D070)
   const qd = pQuestData >>> 0
   if (qd === 0) {
     throw new D2CommonAssertError(QUESTRECORD_ASSERT_FILE_113C, 0x34)
@@ -205,6 +212,7 @@ export function QUESTRECORD_SetQuestState113c(
   nQuest: number,
   nState: number,
 ): void {
+  hitD2CommonVa113c(0x6FD7D0B0)
   const qd = pQuestData >>> 0
   if (qd === 0) {
     throw new D2CommonAssertError(QUESTRECORD_ASSERT_FILE_113C, 0x29)
@@ -235,6 +243,7 @@ export function UNITS_InitStaticPathCoords113c(
   nX: number,
   nY: number,
 ): void {
+  hitD2CommonVa113c(0x6FD7FED0)
   const u = pUnit >>> 0
   if (u === 0) {
     throw new D2CommonAssertError(UNITS_ASSERT_FILE_113C, 0x866)
@@ -258,6 +267,7 @@ export function UNITS_InitStaticPathCoords113c(
  * then returns `pSkills->pRightSkill (+0x0C)`.
  */
 export function UNITS_GetRightSkill113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD80420)
   const u = pUnit >>> 0
   if (u === 0) {
     throw new D2CommonAssertError(UNITS_ASSERT_FILE_113C, 0x64a)
@@ -277,6 +287,7 @@ export function UNITS_GetRightSkill113c(m: Memory113c, pUnit: number): number {
  * then returns `pSkills->pLeftSkill (+0x08)`.
  */
 export function UNITS_GetLeftSkill113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD80460)
   const u = pUnit >>> 0
   if (u === 0) {
     throw new D2CommonAssertError(UNITS_ASSERT_FILE_113C, 0x641)
@@ -302,6 +313,7 @@ export function UNITS_FreePlayerData113c(
   _pMemPool: number,
   pPlayerUnit: number,
 ): void {
+  hitD2CommonVa113c(0x6FD80880)
   const u = pPlayerUnit >>> 0
   if (u === 0) {
     throw new D2CommonAssertError(UNITS_ASSERT_FILE_113C, 0xf6b)
@@ -341,6 +353,7 @@ export function UNITS_FreePlayerData113c(
  * and zeroes `+0x4C`.
  */
 export function UNITS_InitPlayerData113c(m: Memory113c, pPlayerUnit: number): void {
+  hitD2CommonVa113c(0x6FD80970)
   const u = pPlayerUnit >>> 0
   if (u === 0) {
     throw new D2CommonAssertError(UNITS_ASSERT_FILE_113C, 0xf4f)
@@ -410,6 +423,7 @@ export function HIRELING_GetActIndex113c(
   nClassId: number,
   nNameId: number,
 ): number {
+  hitD2CommonVa113c(0x6FD7C9E0)
   let pRec = DATATBLS_GetHirelingTxtRecordFromClassId113c(m, bExpansion, nClassId, 0)
   if (pRec === 0) {
     pRec = DATATBLS_GetHirelingTxtRecordFromNameId113c(m, bExpansion, nNameId, 0)
@@ -428,6 +442,7 @@ export function HIRELING_GetActIndex113c(
  * then writes `pPlayerData + 0x8C = pSkill->dwOwnerGuid (+0x34)`.
  */
 export function PLAYER_StoreSwitchLeftSkill113c(m: Memory113c, pUnit: number): void {
+  hitD2CommonVa113c(0x6FD80590)
   const u = pUnit >>> 0
   if (u === 0 || m.get(u, D2UnitStrc.dwUnitType) !== 0) return
   const pPlayerData = m.get(u, D2UnitStrc.pUnitData)
@@ -453,6 +468,7 @@ export function PLAYER_StoreSwitchLeftSkill113c(m: Memory113c, pUnit: number): v
  * then writes `pPlayerData + 0x88 = pSkill->dwOwnerGuid (+0x34)`.
  */
 export function PLAYER_StoreSwitchRightSkill113c(m: Memory113c, pUnit: number): void {
+  hitD2CommonVa113c(0x6FD80600)
   const u = pUnit >>> 0
   if (u === 0 || m.get(u, D2UnitStrc.dwUnitType) !== 0) return
   const pPlayerData = m.get(u, D2UnitStrc.pUnitData)
@@ -478,6 +494,7 @@ export function PLAYER_StoreSwitchRightSkill113c(m: Memory113c, pUnit: number): 
  * then writes `pPlayerData + 0x7C = pSkill->dwOwnerGuid (+0x34)`.
  */
 export function PLAYER_StoreLeftSkill113c(m: Memory113c, pUnit: number): void {
+  hitD2CommonVa113c(0x6FD80670)
   const u = pUnit >>> 0
   if (u === 0 || m.get(u, D2UnitStrc.dwUnitType) !== 0) return
   const pPlayerData = m.get(u, D2UnitStrc.pUnitData)
@@ -503,6 +520,7 @@ export function PLAYER_StoreLeftSkill113c(m: Memory113c, pUnit: number): void {
  * then writes `pPlayerData + 0x78 = pSkill->dwOwnerGuid (+0x34)`.
  */
 export function PLAYER_StoreRightSkill113c(m: Memory113c, pUnit: number): void {
+  hitD2CommonVa113c(0x6FD806D0)
   const u = pUnit >>> 0
   if (u === 0 || m.get(u, D2UnitStrc.dwUnitType) !== 0) return
   const pPlayerData = m.get(u, D2UnitStrc.pUnitData)

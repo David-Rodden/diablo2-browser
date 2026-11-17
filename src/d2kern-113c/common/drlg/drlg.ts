@@ -29,6 +29,7 @@ import {
   D2CMP_10059_FindTiles113c,
   DRLGROOMTILE_GetWarpLevelsArray113c,
 } from './room-tile.ts';
+import { hitD2CommonVa113c } from '../../va-trace-113c.ts';
 
 /**
  * Act level threshold table at `0x6FDE4668` (`int32[6] = [1, 40, 75, 103, 109, 1024]`).
@@ -108,6 +109,7 @@ export function DRLG_GetActNoFromLevelId113c(
   _m: Memory113c,
   nLevelId: number,
 ): number {
+  hitD2CommonVa113c(0x6FD7D2C0);
   const lvl = nLevelId | 0;
   for (let eax = 1; eax <= 5; eax++) {
     if (lvl < ACT_LEVEL_THRESHOLDS_6FDE4668[eax]!) {
@@ -132,6 +134,7 @@ export function DRLG_ComputeLevelRoomsBoundingBox113c(
   pMaxX: number,
   pMaxY: number,
 ): void {
+  hitD2CommonVa113c(0x6FD7D3C0);
   let pRoomEx = m.get(pLevel, D2DrlgLevelStrc.pFirstRoomEx);
   const x0 = m.get(pRoomEx, D2RoomExStrc.nTileXPos) | 0;
   const y0 = m.get(pRoomEx, D2RoomExStrc.nTileYPos) | 0;
@@ -175,6 +178,7 @@ export function DRLG_MarkLevelRoomsWithWarpFlag113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FD7D420);
   if (m.get(pLevel, D2DrlgLevelStrc.nRooms) === 0) return;
   if (m.get(pLevel, D2DrlgLevelStrc.pRoomWarpFlags) === 0) return;
   let pRoomEx = m.get(pLevel, D2DrlgLevelStrc.pFirstRoomEx);
@@ -204,6 +208,7 @@ export function DRLG_GetRectTouchDirection113c(
   pRect1: number,
   pRect2: number,
 ): number {
+  hitD2CommonVa113c(0x6FD7D470);
   const x1 = m.get(pRect1, D2DrlgCoordStrc.nPosX) | 0;
   const x2 = m.get(pRect2, D2DrlgCoordStrc.nPosX) | 0;
   if (x1 > x2) {
@@ -246,6 +251,7 @@ export function DRLG_LoadActTownTileLibrary113c(
   m: Memory113c,
   pDrlg: number,
 ): void {
+  hitD2CommonVa113c(0x6FD7D4E0);
   const drlg = pDrlg >>> 0;
   const nAct = m.u8((drlg + 0x480) >>> 0);
   let fmtVa: number;
@@ -275,6 +281,7 @@ export function DRLG_FindLevelIdAtCoord113c(
   nX: number,
   nY: number,
 ): number {
+  hitD2CommonVa113c(0x6FD7D5B0);
   let pLevel = m.get(pDrlg, D2DrlgStrc.pLevel);
   const x = nX | 0;
   const y = nY | 0;
@@ -309,6 +316,7 @@ export function DRLG_GetOrAllocObjectPresetRecord113c(
   pDrlg: number,
   nObjId: number,
 ): number {
+  hitD2CommonVa113c(0x6FD7D730);
   const drlg = pDrlg >>> 0;
   const objId = nObjId | 0;
   let pCur = m.u32((drlg + 0x90) >>> 0);
@@ -357,6 +365,7 @@ export function DRLG_GetLevelDefField94_113c(
   m: Memory113c,
   nLevelId: number,
 ): number {
+  hitD2CommonVa113c(0x6FD7D850);
   const id = nLevelId | 0;
   const sgptDataTables = m.u32(SGPT_DATA_TABLES_PTR_VA_6FDE9E1C);
   const count = m.u32((sgptDataTables + 0xc5c) >>> 0) | 0;
@@ -378,6 +387,7 @@ export function DRLG_InitActTownFloorTileData113c(
   pDrlg: number,
   pTileData: number,
 ): void {
+  hitD2CommonVa113c(0x6FD7E0C0);
   if (pDrlg === 0) {
     throw new D2CommonAssertError('..\\Source\\D2Common\\DRLG\\Drlg.cpp', 1079);
   }
@@ -453,6 +463,7 @@ export function ENV_ResetDefaultEnvironment113c(
   m: Memory113c,
   pAct: number,
 ): void {
+  hitD2CommonVa113c(0x6FD87C20);
   if (pAct === 0) {
     throw new D2CommonAssertError('..\\Source\\D2Common\\ENVIRONMENT\\Env.cpp', 1351);
   }
@@ -478,6 +489,7 @@ export function DATATBLS_FindWallTileCacheEntry113c(
   m: Memory113c,
   nPackedTileId: number,
 ): number {
+  hitD2CommonVa113c(0x6FDBC520);
   const pTable = m.u32(GP_WALL_TILE_CACHE_VA_6FDF1434);
   if (pTable === 0) {
     throw new D2CommonAssertError('..\\Source\\D2Common\\DATATBLS\\DataTbls.cpp', 867);
@@ -499,6 +511,7 @@ export function DATATBLS_FindWallTileCacheEntry113c(
  * Initializes the 4 act warp list heads embedded in `D2DrlgStrc` at `+0xA0`, `+0x18C`, `+0x278`, and `+0x364`.
  */
 export function DRLG_InitActWarpLists113c(m: Memory113c, pDrlg: number): void {
+  hitD2CommonVa113c(0x6FDCB8D0);
   const base = pDrlg >>> 0;
   const c0 = (base + 0xa0) >>> 0;
   m.setU32((base + 0xbc) >>> 0, c0);
@@ -526,6 +539,7 @@ export function DRLG_CollectWarpAndSpecialRoomCenters113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FD7DC90);
   const level = pLevel >>> 0;
   let pRoomEx = m.u32((level + 0x10) >>> 0);
   let bSpecial = 0;
@@ -588,6 +602,7 @@ export function DRLG_InitLevelCoordsFromLevelsTxt113c(
   pLevel: number,
   pDrlg: number,
 ): void {
+  hitD2CommonVa113c(0x6FD7D890);
   const level = pLevel >>> 0;
   const drlg = pDrlg >>> 0;
   const nLevelId = m.u32((level + 0x1d0) >>> 0) | 0;
@@ -629,6 +644,7 @@ export function DRLG_AllocAndInitLevel113c(
   pDrlg: number,
   nLevelId: number,
 ): number {
+  hitD2CommonVa113c(0x6FD7D9B0);
   const drlg = pDrlg >>> 0;
   const lvlId = nLevelId | 0;
   const pLevel = m.alloc(0x230) >>> 0;
@@ -679,6 +695,7 @@ export function DRLG_FreeLevelData113c(
   pMemPool: number,
   bKeepAllocated: number,
 ): void {
+  hitD2CommonVa113c(0x6FD7DAF0);
   const level = pLevel >>> 0;
   const freeFn = (m as { free?: (p: number) => void }).free;
   const keep = bKeepAllocated | 0;
@@ -775,6 +792,7 @@ export function DRLG_GetLevel113c(
   pDrlg: number,
   nLevelId: number,
 ): number {
+  hitD2CommonVa113c(0x6FD7DD80);
   const drlg = pDrlg >>> 0;
   const lvlId = nLevelId | 0;
   let pLevel = m.u32((drlg + 0x47c) >>> 0);
@@ -795,6 +813,7 @@ export function DRLG_TryDeactivateLevelRooms113c(
   m: Memory113c,
   pLevel: number,
 ): number {
+  hitD2CommonVa113c(0x6FD7DDB0);
   const level = pLevel >>> 0;
   const freeFn = (m as { free?: (p: number) => void }).free;
   const pDrlg = m.u32((level + 0x1b4) >>> 0);
@@ -875,6 +894,7 @@ export function DRLG_UpdateLevelActiveCount113c(
   pLevel: number,
   nDelta: number,
 ): void {
+  hitD2CommonVa113c(0x6FD7DF80);
   const level = pLevel >>> 0;
   const delta = nDelta | 0;
   const nLevelId = m.u32((level + 0x1d0) >>> 0) | 0;
@@ -903,6 +923,7 @@ export function DRLG_CountNonPresetRoomsInLevel113c(
   pDrlg: number,
   nLevelId: number,
 ): number {
+  hitD2CommonVa113c(0x6FD7E1A0);
   const pLevel = DRLG_GetLevel113c(m, pDrlg, nLevelId);
   let count = 0;
   let pRoomEx = m.u32((pLevel + 0x10) >>> 0);
@@ -920,6 +941,7 @@ export function DRLG_CountNonPresetRoomsInLevel113c(
  * Ticks down inactive timers on all levels in `pDrlg` and frees expired levels.
  */
 export function DRLG_UpdateInactiveLevels113c(m: Memory113c, pDrlg: number): void {
+  hitD2CommonVa113c(0x6FD7E2C0);
   const drlg = pDrlg >>> 0;
   let pLevel = m.u32((drlg + 0x47c) >>> 0);
   const pMemPool = m.u32((drlg + 0x478) >>> 0);

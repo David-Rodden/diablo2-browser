@@ -32,6 +32,7 @@ import {
 import { STATES_CheckState113c, STATES_ToggleGfxStateFlag113c } from '../common/statlist.ts'
 import { UNITROOM_RefreshUnit113c } from '../common/unit.ts'
 import { SUNIT_GetServerUnit113c } from './game-strc.ts'
+import { hitD2GameVa113c } from '../va-trace-113c.ts'
 
 export { EVENT_PARTITION_BY_UNIT_TYPE_113C, EVENT_UPDATE_PARTITION_ORDER_113C, type EventWheelHooks113c }
 
@@ -61,6 +62,7 @@ export type EventDispatchCallback113c = (
 
 /** `@va D2Game:0x6FCAE420`: allocate one `0x7088` chunk of 600 `0x30`-byte `D2EventStrc` nodes. */
 export function EVENT_AllocChunk113c(m: Memory113c, pTimer: number): number {
+  hitD2GameVa113c(0x6FCAE420)
   const chunk = m.alloc(EVENT_CHUNK_SIZE_113C)
   for (let i = 0; i < EVENT_NODES_PER_CHUNK_113C - 1; i++) {
     const node = chunk + i * EVENT_NODE_SIZE_113C
@@ -85,6 +87,7 @@ export function EVENT_AllocChunk113c(m: Memory113c, pTimer: number): number {
 
 /** `@va D2Game:0x6FCAE630`: allocate `D2TimerStrc` (`0xA20`) and initial `0x7088` node pool chunk. */
 export function EVENT_InitTimerQueue113c(m: Memory113c, pGame: number): number {
+  hitD2GameVa113c(0x6FCAE630)
   const pTimer = m.alloc(D2TimerStrc_SIZE)
   m.set(pGame, D2GameStrc.pTimer, pTimer)
   EVENT_AllocChunk113c(m, pTimer)
@@ -93,6 +96,7 @@ export function EVENT_InitTimerQueue113c(m: Memory113c, pGame: number): number {
 
 /** `@va D2Game:0x6FCAE540`: pop a free `D2EventStrc` node across pool chunks, allocating a new chunk if full. */
 export function EVENT_AllocNodeWithGrowth113c(m: Memory113c, pTimer: number): number {
+  hitD2GameVa113c(0x6FCAE540)
   for (let chunk = m.get(pTimer, D2TimerStrc.pPool); chunk !== 0; chunk = m.u32(chunk + EVENT_CHUNK_NEXT_OFF_113C)) {
     const node = m.u32(chunk + EVENT_CHUNK_FREE_OFF_113C)
     if (node === 0) continue
@@ -109,6 +113,7 @@ export function EVENT_AllocNodeWithGrowth113c(m: Memory113c, pTimer: number): nu
 
 /** `@va D2Game:0x6FCAE680`: allocate event node and prepend to `pUnit->pEventFirst (+0xDC)`. */
 export function EVENT_CreateNodeWithGrowth113c(m: Memory113c, pGame: number, pUnit: number): number {
+  hitD2GameVa113c(0x6FCAE680)
   const pTimer = m.get(pGame, D2GameStrc.pTimer)
   const node = EVENT_AllocNodeWithGrowth113c(m, pTimer)
   m.set(node, D2EventStrc.pUnit, pUnit)
@@ -136,6 +141,7 @@ export function EVENT_CreateNodeWithGrowth113c(m: Memory113c, pGame: number, pUn
  * advance, wheel unlink, unit list unlink, and free-list return.
  */
 export function EVENT_FreeNode113c(m: Memory113c, pGame: number, pNode: number): void {
+  hitD2GameVa113c(0x6FCAE6F0)
   if (pGame === 0 || pNode === 0) return
   const flags = m.get(pNode, D2EventStrc.fFlags)
   if ((flags & EVENT_FLAG_FIRING) !== 0) {
@@ -205,6 +211,7 @@ export function EVENT_FreeNode113c(m: Memory113c, pGame: number, pNode: number):
  * `SUNIT_GetServerUnit113c(m, pGame, u32(pUnit + 0x9C), u32(pUnit + 0xA0))`.
  */
 export function SUNIT_GetLastAttacker113c(m: Memory113c, pGame: number, pUnit: number): number {
+  hitD2GameVa113c(0x6FD009D0)
   if (pUnit === 0 || pGame === 0) return 0
   if ((m.get(pUnit, D2UnitStrc.dwFlags2) & 0x20000) === 0) return 0
   return SUNIT_GetServerUnit113c(m, pGame, m.u32(pUnit + 0x9c), m.u32(pUnit + 0xa0))
@@ -229,6 +236,7 @@ export function MONSTER_RefreshAiEvent113c(
   bSet: number,
   onCorpseNoDrawKill?: (m: Memory113c, pGame: number, pUnit: number, pKiller: number) => void,
 ): void {
+  hitD2GameVa113c(0x6FD02240)
   if (pUnit === 0) return
   STATES_ToggleGfxStateFlag113c(m, pUnit, STATE_UNINTERRUPTABLE_113C, bSet)
   const pGame = m.get(pUnit, D2UnitStrc.pGame)
@@ -272,6 +280,7 @@ export function EVENT_SetPersistentEventFull113c(
   arg14: number,
   arg18: number,
 ): number {
+  hitD2GameVa113c(0x6FCAE810)
   if ((type | 0) >= 15) return 0
   const node = EVENT_CreateNodeWithGrowth113c(m, pGame, pUnit)
   m.set(node, D2EventStrc.fFlags, m.get(node, D2EventStrc.fFlags) | EVENT_FLAG_PERSISTENT)
@@ -307,6 +316,7 @@ export function EVENT_SetEventFull113c(
   arg18 = 0,
   hooks?: EventWheelHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FCAEA80)
   if ((type | 0) >= 15) return 0
   if ((frame | 0) === -1) {
     return EVENT_SetPersistentEventFull113c(m, pGame, pUnit, type, 0, arg14, arg18)
@@ -351,6 +361,7 @@ export function EVENT_SetEventFull113c(
 
 /** `@va D2Game:0x6FCAE880` (`EVENT_RemoveUnitEvents`). */
 export function EVENT_RemoveUnitEvents113c(m: Memory113c, pGame: number, pUnit: number): void {
+  hitD2GameVa113c(0x6FCAE880)
   if (pGame === 0 || pUnit === 0) return
   let cur = m.get(pUnit, D2UnitStrc.pEventFirst)
   while (cur !== 0) {
@@ -374,6 +385,7 @@ export function EVENT_DeleteEventByType113c(
   type: number,
   handler = 0,
 ): void {
+  hitD2GameVa113c(0x6FCAE8C0)
   if (pGame === 0 || pUnit === 0) return
   const expectedType = type & 0xff
   const expectedHandler = handler >>> 0
@@ -401,6 +413,7 @@ export function EVENT_DeleteEventByArg14_113c(
   evType: number,
   arg14 = 0,
 ): void {
+  hitD2GameVa113c(0x6FCAE900)
   if (pGame === 0 || pUnit === 0) return
   const expectedType = evType & 0xff
   const expectedArg14 = arg14 >>> 0
@@ -419,6 +432,7 @@ export function EVENT_DeleteEventByArg14_113c(
 
 /** `@va D2Game:0x6FCAE490` (`EVENT_GetNextEventFrame`, `eax = pUnit`, `esi = type`). */
 export function EVENT_GetNextEventFrame113c(m: Memory113c, pUnit: number, type: number): number {
+  hitD2GameVa113c(0x6FCAE490)
   if (pUnit === 0) return 0
   let best = 0
   for (let cur = m.get(pUnit, D2UnitStrc.pEventFirst); cur !== 0; cur = m.get(cur, D2EventStrc.pUnitNext)) {
@@ -441,6 +455,7 @@ export function EVENT_UpdateTimers113c(
   pGame: number,
   dispatch: EventDispatchCallback113c,
 ): number {
+  hitD2GameVa113c(0x6FCAF070)
   const pTimer = m.get(pGame, D2GameStrc.pTimer)
   if (pTimer === 0) return 0
   const frame = m.get(pGame, D2GameStrc.dwGameFrame) >>> 0

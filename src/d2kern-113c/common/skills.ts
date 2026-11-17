@@ -128,6 +128,7 @@ import {
   D2UnitStrc,
   type FieldLayout113c,
 } from '../mem/layout.generated.ts'
+import { hitD2CommonVa113c } from '../va-trace-113c.ts'
 
 /**
  * `@va D2Common:0x6FD803A0` (`D2Common.#10511` `SKILLS_GetUsedSkill`):
@@ -186,6 +187,7 @@ export function ITEMS_CheckItemTypeIdEquivalent113c(
   nItemType1: number,
   nItemType2: number,
 ): number {
+  hitD2CommonVa113c(0x6FD72820)
   const t1 = nItemType1 | 0
   if (t1 < 0) return 0
   const pDataTables = m.u32(SGPT_DATATABLES_VA_113C)
@@ -216,6 +218,7 @@ export function STATES_CheckStateMaskOnUnitFast113c(
   pUnit: number,
   nStateId: number,
 ): number {
+  hitD2CommonVa113c(0x6FD87DB0)
   if (pUnit === 0) return 0
   const pStatListEx = m.get(pUnit, D2UnitStrc.pStatListEx)
   if (pStatListEx === 0) return 0
@@ -243,6 +246,7 @@ export function SKILLS_CalcDiminishingReturns113c(
   nMin: number,
   nMax: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9DC30)
   const lvl = nLevel | 0
   const p1 = nMin | 0
   const p2 = nMax | 0
@@ -271,6 +275,7 @@ export function SKILLS_Calc5BandLinear113c(
   nLevel: number,
   pCoeffs: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9DDB0)
   const lvl = nLevel | 0
   if (lvl <= 1 || pCoeffs === 0) return 0
   const c0 = m.u32(pCoeffs) | 0
@@ -301,6 +306,7 @@ export function SKILLS_Calc5BandLinear113c(
  * `@va D2Common:0x6FD9E180` (`D2Common.#10136`, `SKILLS_GetLeftSkillFromSkillList`, `__stdcall(pSkillList) -> D2SkillStrc*`).
  */
 export function SKILLS_GetLeftSkillFromSkillList113c(m: Memory113c, pSkillList: number): number {
+  hitD2CommonVa113c(0x6FD9E180)
   if (pSkillList === 0) return 0
   return m.get(pSkillList, D2SkillListStrc.pLeftSkill)
 }
@@ -315,6 +321,7 @@ export function SKILLS_SetSkillSlotIndex113c(
   pSkill: number,
   nSlotIndex: number,
 ): void {
+  hitD2CommonVa113c(0x6FD9E1A0)
   if (pSkill === 0) return
   const slot = nSlotIndex | 0
   if (slot < 0 || slot > 0x20) return
@@ -325,6 +332,7 @@ export function SKILLS_SetSkillSlotIndex113c(
  * `@va D2Common:0x6FD9E1C0` (`D2Common.#10858`, `SKILLS_GetSkillsTxtFromSkill`, `__fastcall(ecx=pSkill) -> D2SkillsTxt*`).
  */
 export function SKILLS_GetSkillsTxtFromSkill113c(m: Memory113c, pSkill: number): number {
+  hitD2CommonVa113c(0x6FD9E1C0)
   if (pSkill === 0) return 0
   return m.get(pSkill, D2SkillStrc.pSkillsTxt)
 }
@@ -341,6 +349,7 @@ export function SKILLS_GetSkillIdFromSkill113c(
   _pFile = 0,
   _nLine = 0,
 ): number {
+  hitD2CommonVa113c(0x6FD9E1D0)
   if (pSkill === 0) return 0
   const pSkillsTxt = m.get(pSkill, D2SkillStrc.pSkillsTxt)
   return i16(m.get(pSkillsTxt, D2SkillsTxt.wSkillId)) >>> 0
@@ -350,6 +359,7 @@ export function SKILLS_GetSkillIdFromSkill113c(
  * `@va D2Common:0x6FD9E3B0` (`D2Common.#10784`, `SKILLS_GetNextSkill`, `__stdcall(pSkill) -> D2SkillStrc*`).
  */
 export function SKILLS_GetNextSkill113c(m: Memory113c, pSkill: number): number {
+  hitD2CommonVa113c(0x6FD9E3B0)
   if (pSkill === 0) return 0
   return m.get(pSkill, D2SkillStrc.pNextSkill)
 }
@@ -358,6 +368,7 @@ export function SKILLS_GetNextSkill113c(m: Memory113c, pSkill: number): number {
  * `@va D2Common:0x6FD9E3D0` (`D2Common.#10273`, `SKILLS_GetFirstSkillFromSkillList`, `__stdcall(pSkillList) -> D2SkillStrc*`).
  */
 export function SKILLS_GetFirstSkillFromSkillList113c(m: Memory113c, pSkillList: number): number {
+  hitD2CommonVa113c(0x6FD9E3D0)
   if (pSkillList === 0) return 0
   return m.get(pSkillList, D2SkillListStrc.pFirstSkill)
 }
@@ -373,6 +384,7 @@ export function SKILLS_GetSkillSlotIndex113c(
   pUnit: number,
   pSkill: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9E460)
   if (pUnit === 0 || pSkill === 0) return 0
   return m.get(pSkill, D2SkillStrc.nSlotIndex)
 }
@@ -392,6 +404,7 @@ export function SKILLS_GetHighestLevelSkillFromUnitAndId113c(
   pUnit: number,
   nSkillId: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9E480)
   const pSkills = m.get(pUnit, D2UnitStrc.pSkills)
   if (pSkills === 0) return 0
   let pCur = m.get(pSkills, D2SkillListStrc.pFirstSkill)
@@ -426,6 +439,7 @@ export function SKILLS_GetHighestLevelSkillFromUnitAndId113c(
  * Returns `sgptDataTables->pPlayerClassSkillCount (+0xBA4)[nCharClass]` if `0 <= (nCharClass | 0) < 7`, else `0`.
  */
 export function SKILLS_GetClassSkillCount113c(m: Memory113c, nCharClass: number): number {
+  hitD2CommonVa113c(0x6FD9E520)
   const cls = nCharClass | 0
   if (cls < 0 || cls >= 7) return 0
   const pDataTables = m.u32(SGPT_DATATABLES_VA_113C)
@@ -446,6 +460,7 @@ export function SKILLS_GetClassSkillId113c(
   nCharClass: number,
   nIndex: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9E550)
   const cls = nCharClass | 0
   if (cls < 0 || cls >= 7) return 0xffffffff
   const idx = nIndex | 0
@@ -478,6 +493,7 @@ function getSkillsTxtRecord(m: Memory113c, nSkillId: number): number {
  * else returns `(int8)pSkillsTxt->nCharClass`.
  */
 export function SKILLS_GetClassIdFromSkillId113c(m: Memory113c, nSkillId: number): number {
+  hitD2CommonVa113c(0x6FD9E8C0)
   const pRec = getSkillsTxtRecord(m, nSkillId)
   if (pRec === 0) return 7
   const c = (m.get(pRec, D2SkillsTxt.nCharClass) << 24) >> 24
@@ -495,6 +511,7 @@ export function SKILLS_EvaluateManaCost256ths113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9EA00)
   const pRec = getSkillsTxtRecord(m, nSkillId)
   if (pRec === 0) return 0
   const wLvlMana = i16(m.get(pRec, D2SkillsTxt.wLvlMana))
@@ -510,6 +527,7 @@ export function SKILLS_EvaluateManaCost256ths113c(
  * Returns `(int16)pSkillsTxt->wReqLevel (+0x174)` if `nSkillId` is valid, else `0x7FFFFFFF`.
  */
 export function SKILLS_GetReqLevel113c(m: Memory113c, nSkillId: number): number {
+  hitD2CommonVa113c(0x6FD9EB00)
   const pRec = getSkillsTxtRecord(m, nSkillId)
   if (pRec === 0) return 0x7fffffff
   return i16(m.get(pRec, D2SkillsTxt.wReqLevel)) >>> 0
@@ -528,6 +546,7 @@ export function SKILLS_GetSkillById113c(
   nSkillId: number,
   nOwnerItemGuid: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9F080)
   const pSkills = m.get(pUnit, D2UnitStrc.pSkills)
   if (pSkills === 0) return 0
   let pCur = m.get(pSkills, D2SkillListStrc.pFirstSkill)
@@ -558,6 +577,7 @@ export function SKILLS_CalcMaxCallback113c(
   _arg0 = 0,
   _arg1 = 0,
 ): number {
+  hitD2CommonVa113c(0x6FD9F0C0)
   const x = a | 0
   const y = b | 0
   return (x > y ? x : y) >>> 0
@@ -575,6 +595,7 @@ export function SKILLS_CalcMinCallback113c(
   _arg0 = 0,
   _arg1 = 0,
 ): number {
+  hitD2CommonVa113c(0x6FD9F0D0)
   const x = a | 0
   const y = b | 0
   return (x < y ? x : y) >>> 0
@@ -586,6 +607,7 @@ export function SKILLS_CalcMinCallback113c(
  * Returns `(int16)pSkillsTxt->wPassiveState (+0x94)` if positive (`jg`), else `0`.
  */
 export function SKILLS_GetPassiveState113c(m: Memory113c, nSkillId: number): number {
+  hitD2CommonVa113c(0x6FD9F0E0)
   const pRec = getSkillsTxtRecord(m, nSkillId)
   if (pRec === 0) return 0
   const st = i16(m.get(pRec, D2SkillsTxt.wPassiveState))
@@ -603,6 +625,7 @@ export function SKILLS_GetBaseSkillLevelById113c(
   pUnit: number,
   nSkillId: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9F4C0)
   if (pUnit === 0) return 0
   const pSkills = m.get(pUnit, D2UnitStrc.pSkills)
   if (pSkills === 0) return 0
@@ -632,6 +655,7 @@ export function SKILLS_GetRequiredLevelForNextRank113c(
   pUnit: number,
   nSkillId: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9F510)
   const pRec = getSkillsTxtRecord(m, nSkillId)
   if (pRec === 0) return 0x7fffffff
   let reqLvl = i16(m.get(pRec, D2SkillsTxt.wReqLevel))
@@ -663,6 +687,7 @@ export function SKILLS_MapPlayerAnimModeToMonsterMode113c(
   nPlrMode: number,
   nMonClassId: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9F780)
   let mode = m.u32((PLR_TO_MON_MODE_TABLE_VA_113C + Math.imul(nPlrMode | 0, 4)) >>> 0) | 0
   const pDataTables = m.u32(SGPT_DATATABLES_VA_113C)
   const monId = nMonClassId | 0
@@ -708,6 +733,7 @@ export function SKILLS_MapPlayerAnimModeToMonsterMode113c(
  * `__stdcall(nSeqId) -> D2MonSeqTableStrc*`, `ret 4`).
  */
 export function DATATBLS_GetMonSeqTableRecord113c(m: Memory113c, nSeqId: number): number {
+  hitD2CommonVa113c(0x6FDA2E00)
   const id = nSeqId | 0
   if (id < 0) return 0
   const nCount = m.u32(G_MONSEQ_COUNT_VA_113C) | 0
@@ -727,6 +753,7 @@ export function MISSILE_EvaluateElementalLength113c(
   nMissileId: number,
   nLevel: number,
 ): number {
+  hitD2CommonVa113c(0x6FDB9DC0)
   const id = nMissileId | 0
   if (id < 0) return 0
   const pDataTables = m.u32(SGPT_DATATABLES_VA_113C)
@@ -760,6 +787,7 @@ export function UNITS_GetUnitDistanceToCoordinates113c(
   nTargetX: number,
   nTargetY: number,
 ): number {
+  hitD2CommonVa113c(0x6FDCF5E0)
   const unitType = m.get(pUnit, D2UnitStrc.dwUnitType) | 0
   const pPath = m.get(pUnit, D2UnitStrc.pPath)
   let unitX = 0
@@ -794,6 +822,7 @@ export function UNITS_GetUnitDistanceToCoordinates113c(
  * stdcall `[esp+4] = pSkill`, `[esp+8] = nCharges`, `ret 8`, void).
  */
 export function SKILLS_SetCharges113c(m: Memory113c, pSkill: number, nCharges: number): void {
+  hitD2CommonVa113c(0x6FD9DD30)
   const ptr = pSkill >>> 0
   if (ptr === 0) {
     throw new D2CommonAssertError('Skills.cpp', 0xdae)
@@ -806,6 +835,7 @@ export function SKILLS_SetCharges113c(m: Memory113c, pSkill: number, nCharges: n
  * stdcall `[esp+4] = pSkill`, `ret 4` -> `int32_t`).
  */
 export function SKILLS_GetCharges113c(m: Memory113c, pSkill: number): number {
+  hitD2CommonVa113c(0x6FD9DD70)
   const ptr = pSkill >>> 0
   if (ptr === 0) {
     throw new D2CommonAssertError('Skills.cpp', 0xda5)
@@ -818,6 +848,7 @@ export function SKILLS_GetCharges113c(m: Memory113c, pSkill: number): number {
  * stdcall `[esp+4] = pSkill`, `[esp+8] = nVal`, `ret 8`, void).
  */
 export function SKILLS_SetParam0C113c(m: Memory113c, pSkill: number, nVal: number): void {
+  hitD2CommonVa113c(0x6FD9DE60)
   const ptr = pSkill >>> 0
   if (ptr === 0) {
     throw new D2CommonAssertError('Skills.cpp', 0xa9b)
@@ -830,6 +861,7 @@ export function SKILLS_SetParam0C113c(m: Memory113c, pSkill: number, nVal: numbe
  * stdcall `[esp+4] = pSkill`, `[esp+8] = nVal`, `ret 8`, void).
  */
 export function SKILLS_SetParam4113c(m: Memory113c, pSkill: number, nVal: number): void {
+  hitD2CommonVa113c(0x6FD9DEA0)
   const ptr = pSkill >>> 0
   if (ptr === 0) {
     throw new D2CommonAssertError('Skills.cpp', 0xa92)
@@ -842,6 +874,7 @@ export function SKILLS_SetParam4113c(m: Memory113c, pSkill: number, nVal: number
  * stdcall `[esp+4] = pSkill`, `[esp+8] = nVal`, `ret 8`, void).
  */
 export function SKILLS_SetParam3113c(m: Memory113c, pSkill: number, nVal: number): void {
+  hitD2CommonVa113c(0x6FD9DEE0)
   const ptr = pSkill >>> 0
   if (ptr === 0) {
     throw new D2CommonAssertError('Skills.cpp', 0xa89)
@@ -854,6 +887,7 @@ export function SKILLS_SetParam3113c(m: Memory113c, pSkill: number, nVal: number
  * stdcall `[esp+4] = pSkill`, `[esp+8] = nVal`, `ret 8`, void).
  */
 export function SKILLS_SetParam2113c(m: Memory113c, pSkill: number, nVal: number): void {
+  hitD2CommonVa113c(0x6FD9DF20)
   const ptr = pSkill >>> 0
   if (ptr === 0) {
     throw new D2CommonAssertError('Skills.cpp', 0xa80)
@@ -866,6 +900,7 @@ export function SKILLS_SetParam2113c(m: Memory113c, pSkill: number, nVal: number
  * stdcall `[esp+4] = pSkill`, `[esp+8] = nVal`, `ret 8`, void).
  */
 export function SKILLS_SetParam1113c(m: Memory113c, pSkill: number, nVal: number): void {
+  hitD2CommonVa113c(0x6FD9DF60)
   const ptr = pSkill >>> 0
   if (ptr === 0) {
     throw new D2CommonAssertError('Skills.cpp', 0xa77)
@@ -878,6 +913,7 @@ export function SKILLS_SetParam1113c(m: Memory113c, pSkill: number, nVal: number
  * stdcall `[esp+4] = pSkill`, `ret 4` -> `int32_t`).
  */
 export function SKILLS_GetParam4113c(m: Memory113c, pSkill: number): number {
+  hitD2CommonVa113c(0x6FD9DFA0)
   const ptr = pSkill >>> 0
   if (ptr === 0) {
     throw new D2CommonAssertError('Skills.cpp', 0xa6e)
@@ -890,6 +926,7 @@ export function SKILLS_GetParam4113c(m: Memory113c, pSkill: number): number {
  * stdcall `[esp+4] = pSkill`, `ret 4` -> `int32_t`).
  */
 export function SKILLS_GetParam3113c(m: Memory113c, pSkill: number): number {
+  hitD2CommonVa113c(0x6FD9DFD0)
   const ptr = pSkill >>> 0
   if (ptr === 0) {
     throw new D2CommonAssertError('Skills.cpp', 0xa65)
@@ -902,6 +939,7 @@ export function SKILLS_GetParam3113c(m: Memory113c, pSkill: number): number {
  * stdcall `[esp+4] = pSkill`, `ret 4` -> `int32_t`).
  */
 export function SKILLS_GetParam2113c(m: Memory113c, pSkill: number): number {
+  hitD2CommonVa113c(0x6FD9E000)
   const ptr = pSkill >>> 0
   if (ptr === 0) {
     throw new D2CommonAssertError('Skills.cpp', 0xa5c)
@@ -914,6 +952,7 @@ export function SKILLS_GetParam2113c(m: Memory113c, pSkill: number): number {
  * stdcall `[esp+4] = pSkill`, `ret 4` -> `int32_t`).
  */
 export function SKILLS_GetParam1113c(m: Memory113c, pSkill: number): number {
+  hitD2CommonVa113c(0x6FD9E030)
   const ptr = pSkill >>> 0
   if (ptr === 0) {
     throw new D2CommonAssertError('Skills.cpp', 0xa53)
@@ -934,6 +973,7 @@ export function SKILLS_GetItemSkillInfo113c(
   pOutLevel: number,
   pOutCharges: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9E240)
   const ptr = pSkill >>> 0
   if (ptr === 0) {
     throw new D2CommonAssertError('Skills.cpp', 0x642)
@@ -968,6 +1008,7 @@ export function SKILLS_GetItemSkillInfo113c(
  * stdcall `[esp+4] = pSkill`, `ret 4` -> `uint32_t`).
  */
 export function SKILLS_GetOwnerItemGuid113c(m: Memory113c, pSkill: number): number {
+  hitD2CommonVa113c(0x6FD9E2B0)
   const ptr = pSkill >>> 0
   if (ptr === 0) {
     throw new D2CommonAssertError('Skills.cpp', 0x638)
@@ -980,6 +1021,7 @@ export function SKILLS_GetOwnerItemGuid113c(m: Memory113c, pSkill: number): numb
  * stdcall `[esp+4] = pMemPool`, `ret 4` -> `D2SkillListStrc*`).
  */
 export function SKILLS_AllocSkillList113c(m: Memory113c, pMemPool: number): number {
+  hitD2CommonVa113c(0x6FD9E3F0)
   const pList = m.alloc(D2SkillListStrc_SIZE) >>> 0
   m.set(pList, D2SkillListStrc.pMemPool, 0)
   m.set(pList, D2SkillListStrc.pFirstSkill, 0)
@@ -1000,6 +1042,7 @@ export function SKILLS_EvaluateSkillManaCost113c(
   nSkillId: number,
   nLevel: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9E6D0)
   const skillId = nSkillId | 0
   if (skillId < 0) {
     throw new D2CommonAssertError('Skills.cpp', 0x100d)
@@ -1032,6 +1075,7 @@ export function SKILLS_HasSkillByTxtRecord113c(
   eax: number,
   ecx: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9EB40)
   const pUnit = eax >>> 0
   if (pUnit === 0) {
     throw new D2CommonAssertError('Skills.cpp', 0x638)
@@ -1061,6 +1105,7 @@ export function SKILLS_SetRightSkill113c(
   nSkillId: number,
   dwOwnerGuid: number,
 ): void {
+  hitD2CommonVa113c(0x6FD9ECC0)
   const skillId = nSkillId | 0
   if (skillId < 0) {
     throw new D2CommonAssertError('Skills.cpp', 0x680)
@@ -1103,6 +1148,7 @@ export function SKILLS_SetLeftSkill113c(
   nSkillId: number,
   dwOwnerGuid: number,
 ): void {
+  hitD2CommonVa113c(0x6FD9ED60)
   const skillId = nSkillId | 0
   if (skillId < 0) {
     throw new D2CommonAssertError('Skills.cpp', 0x669)
@@ -1140,6 +1186,7 @@ export function SKILLS_SetLeftSkill113c(
  * stdcall `[esp+4] = pUnit`, `ret 4`, void).
  */
 export function SKILLS_FreeSkillList113c(m: Memory113c, pUnit: number): void {
+  hitD2CommonVa113c(0x6FD9F000)
   const unitPtr = pUnit >>> 0
   if (unitPtr === 0) {
     return
@@ -1311,6 +1358,7 @@ function statListGetUnitStatMem113c(
  * `__stdcall(pUnit) -> BOOL`, `ret 4`).
  */
 export function STATES_CheckUnitAnyActiveStateMask113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD83F40)
   const sgpt = m.u32(SGPT_DATATABLES_VA_113C)
   const pMask = m.u32((sgpt + DATATABLES_FSTATEMASKS_PTR_OFF_113C) >>> 0)
   const unitPtr = pUnit >>> 0
@@ -1341,6 +1389,7 @@ export function SKILLS_GetWeaponFromArmSlot113c(
   nArmCode: number,
   pInventory: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9EBF0)
   const inv = pInventory >>> 0
   if ((nArmCode | 0) === 5) {
     if (inv === 0 || m.get(inv, D2InventoryStrc.dwSignature) !== INV_SIGNATURE_113C) return 0
@@ -1366,6 +1415,7 @@ export function SKILLS_ApplyElementalMasteryBonus113c(
   nElemType: number,
   nDamage: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9F870)
   const elemIdx = ((nElemType | 0) - 1) >>> 0
   if (elemIdx > 11) return 0
   switch (elemIdx) {
@@ -1408,6 +1458,7 @@ export function SKILLS_GetBasePhysDamageMinOrMax113c(
   pUnit: number,
   bIsMin: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9F930)
   const unitPtr = pUnit >>> 0
   let ecx = 0
   if (unitPtr !== 0) {
@@ -1462,6 +1513,7 @@ export function SKILLS_CheckItemChargedSkillHasCharges113c(
   pUnit: number,
   pSkill: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA0870)
   const unitPtr = pUnit >>> 0
   const skillPtr = pSkill >>> 0
   if (unitPtr === 0 || skillPtr === 0) return 0
@@ -1508,6 +1560,7 @@ export function SKILLS_AddOrRemoveItemChargedSkill113c(
   nCharges: number,
   bRemove: number,
 ): void {
+  hitD2CommonVa113c(0x6FD9EE00)
   const unitPtr = pUnit >>> 0
   if (unitPtr === 0) return
   if (m.get(unitPtr, D2UnitStrc.dwUnitType) !== 0) return
@@ -1653,16 +1706,19 @@ function skillsEvalParamPairDimReturns(
 
 /** `@va D2Common:0x6FD9E5E0` (`D2Common.#10832`, `__stdcall(nLevel, nSkillId) -> int`, `ret 8`): Param5/Param6 (`+0x158/+0x15C`). */
 export function SKILLS_EvalParam56DimReturns113c(m: Memory113c, nLevel: number, nSkillId: number): number {
+  hitD2CommonVa113c(0x6FD9E5E0)
   return skillsEvalParamPairDimReturns(m, nLevel, nSkillId, D2SkillsTxt.dwParam5, D2SkillsTxt.dwParam6)
 }
 
 /** `@va D2Common:0x6FD9E630` (`D2Common.#10400`, `__stdcall(nLevel, nSkillId) -> int`, `ret 8`): Param3/Param4 (`+0x150/+0x154`). */
 export function SKILLS_EvalParam34DimReturns113c(m: Memory113c, nLevel: number, nSkillId: number): number {
+  hitD2CommonVa113c(0x6FD9E630)
   return skillsEvalParamPairDimReturns(m, nLevel, nSkillId, D2SkillsTxt.dwParam3, D2SkillsTxt.dwParam4)
 }
 
 /** `@va D2Common:0x6FD9E680` (`D2Common.#10703`, `__stdcall(nLevel, nSkillId) -> int`, `ret 8`): Param1/Param2 (`+0x148/+0x14C`). */
 export function SKILLS_EvalParam12DimReturns113c(m: Memory113c, nLevel: number, nSkillId: number): number {
+  hitD2CommonVa113c(0x6FD9E680)
   return skillsEvalParamPairDimReturns(m, nLevel, nSkillId, D2SkillsTxt.dwParam1, D2SkillsTxt.dwParam2)
 }
 
@@ -1675,6 +1731,7 @@ export function SKILLS_GetHighestLevelSkillFromUnitAndIdFastcall113c(
   pUnit: number,
   nSkillId: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9F070)
   return SKILLS_GetHighestLevelSkillFromUnitAndId113c(m, pUnit, nSkillId)
 }
 
@@ -1704,16 +1761,19 @@ function skillsIsSelectableCorpse(m: Memory113c, pUnit: number): number {
 
 /** `@va D2Common:0x6FD9FF80` (`D2Common.#10501`, `__stdcall(pUnit) -> BOOL`, `ret 4`). */
 export function SKILLS_IsSelectableCorpse10501_113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD9FF80)
   return skillsIsSelectableCorpse(m, pUnit)
 }
 
 /** `@va D2Common:0x6FD9FFD0` (`D2Common.#11157`, `__stdcall(pUnit) -> BOOL`, `ret 4`; byte-identical to 0x6FD9FF80). */
 export function SKILLS_IsSelectableCorpse11157_113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD9FFD0)
   return skillsIsSelectableCorpse(m, pUnit)
 }
 
 /** `@va D2Common:0x6FDA0090` (`D2Common.#10678`, `__stdcall(pUnit) -> BOOL`, `ret 4`; byte-identical to 0x6FD9FF80). */
 export function SKILLS_IsSelectableCorpse10678_113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FDA0090)
   return skillsIsSelectableCorpse(m, pUnit)
 }
 
@@ -1723,6 +1783,7 @@ export function SKILLS_IsSelectableCorpse10678_113c(m: Memory113c, pUnit: number
  * register with itself and never branches, so it has no TS counterpart.
  */
 export function SKILLS_IsSelectableCorpseWithFlag12_113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FDA00E0)
   const u = pUnit >>> 0
   if (u === 0) return 0
   if (m.get(u, D2UnitStrc.dwUnitType) !== UNIT_MONSTER_113C) return 0
@@ -1746,6 +1807,7 @@ export function SKILLS_IsSelectableCorpseWithVelocity113c(
   pUnit: number,
   bAllowMode0: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA0150)
   const u = pUnit >>> 0
   if (u === 0) return 0
   if (m.get(u, D2UnitStrc.dwUnitType) !== UNIT_MONSTER_113C) return 0
@@ -1826,6 +1888,7 @@ export function inventoryGetActiveWeaponFullMem113c(
  * fastcall `ecx = nMonsterId`, `ret` -> `BOOL`).
  */
 export function SKILLS_CanMonsterReviveInMode2_113c(m: Memory113c, nMonsterId: number): number {
+  hitD2CommonVa113c(0x6FD81200)
   const id = nMonsterId | 0
   if (id < 0) return 0
   const sgpt = m.u32(SGPT_DATATABLES_VA_113C) >>> 0
@@ -1850,6 +1913,7 @@ export function SKILLS_CheckLineOfSight113c(
   pRoom: number,
   dwMask: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9E750)
   const s0 = m.u32(LOS_SCRATCH_PT1_VA_113C)
   const s1 = m.u32((LOS_SCRATCH_PT1_VA_113C + 4) >>> 0)
   const s2 = m.u32(LOS_SCRATCH_PT2_VA_113C)
@@ -1877,6 +1941,7 @@ export function SKILLS_CheckLineOfSight113c(
  * stdcall `pUnit`, `ret 4` -> `0` or `2`).
  */
 export function SKILLS_GetShrineSkillBonus113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD9EBA0)
   const u = pUnit >>> 0
   if (u === 0) return 0
   const uType = m.u32(u) | 0
@@ -1895,6 +1960,7 @@ export function SKILLS_GetUnitSkillRequiredOrMonLevel113c(
   pUnit: number,
   pSkill: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9EC50)
   const u = pUnit >>> 0
   const sk = pSkill >>> 0
   if (u === 0 || sk === 0) return 0
@@ -1925,6 +1991,7 @@ export function SKILLS_IsUnitPosNotInTown113c(
   nX: number,
   nY: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9F120)
   const pRoom = UNITS_GetRoom113c(m, pUnit >>> 0) >>> 0
   if (pRoom === 0) return 0
   const pTargetRoom = DUNGEON_GetRoomAtPosition113c(m, pRoom, nX | 0, nY | 0) >>> 0
@@ -1944,6 +2011,7 @@ export function SKILLS_CheckSkillStateRestriction113c(
   pSkill: number,
   pUnit: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9F590)
   const u = pUnit >>> 0
   const sk = pSkill >>> 0
   if (u === 0 || sk === 0) return 0
@@ -1978,6 +2046,7 @@ export function SKILLS_AssignItemChargedSkillStdcall113c(
   nCharges: number,
   bRemove: number,
 ): void {
+  hitD2CommonVa113c(0x6FD9F610)
   SKILLS_AddOrRemoveItemChargedSkill113c(m, nSkillId, pUnit, dwItemGuid, nLevel, nCharges, bRemove)
 }
 
@@ -1986,6 +2055,7 @@ export function SKILLS_AssignItemChargedSkillStdcall113c(
  * stdcall `pUnit, pSkill`, `ret 8` -> `BOOL`).
  */
 export function SKILLS_CheckSkillStartMana113c(m: Memory113c, pUnit: number, pSkill: number): number {
+  hitD2CommonVa113c(0x6FD9FDC0)
   const u = pUnit >>> 0
   if (u === 0 || m.u32(u) !== 0) return 1
   const pSkTxt = m.u32(pSkill >>> 0) >>> 0
@@ -2021,6 +2091,7 @@ export function SKILLS_CheckWeaponPairMatchesSkill113c(
   pSecondaryItem: number,
   pSkillsTxt: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA0610)
   const idx = nSlotIdx | 0
   const prim = pPrimaryItem >>> 0
   const sec = pSecondaryItem >>> 0
@@ -2100,6 +2171,7 @@ export function SKILLS_CheckSkillWeaponAndQuantity113c(
   pSkill: number,
   pUnit: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA0930)
   const u = pUnit >>> 0
   const sk = pSkill >>> 0
   if (u === 0 || sk === 0) return 0
@@ -2161,6 +2233,7 @@ export function SKILLS_EvalUnitStatFormulaHelper113c(
   _unused: number,
   ppUnit: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA0C30)
   const pp = ppUnit >>> 0
   if (pp === 0) return 0
   const pUnit = m.u32(pp) >>> 0
@@ -2185,6 +2258,7 @@ export function SKILLS_EvalUnitRandFormulaHelper113c(
   _unused: number,
   ppUnit: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA0CB0)
   const pp = ppUnit >>> 0
   if (pp === 0) return 0
   const pUnit = m.u32(pp) >>> 0
@@ -2196,6 +2270,7 @@ export function SKILLS_EvalUnitRandFormulaHelper113c(
  * custom `eax = pSkill, esi = pUnit`, `ret` -> `i32`).
  */
 export function SKILLS_GetSkillBonusLevel113c(m: Memory113c, pSkill: number, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD9FCB0)
   const sk = pSkill >>> 0
   if (sk === 0) return 0
   const pSkTxt = m.u32(sk) >>> 0
@@ -2251,6 +2326,7 @@ export function SKILLS_GetUnitSkillBonusBySkillId113c(
   pUnit: number,
   nSkillId: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA0560)
   const u = pUnit >>> 0
   if (u === 0) return 0
   const pSkillList = m.u32((u + 0xa8) >>> 0) >>> 0
@@ -2277,6 +2353,7 @@ export function SKILLS_EvaluateSkillLevel113c(
   pSkill: number,
   bBonus: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA05C0)
   const u = pUnit >>> 0
   const sk = pSkill >>> 0
   if (u === 0 || sk === 0) return 0
@@ -2299,6 +2376,7 @@ export function SKILLS_CheckSkillManaOrCharges113c(
   pSkill: number,
   pUnit: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA0AF0)
   const sk = pSkill >>> 0
   if (sk === 0) {
     throw new D2CommonAssertError('Skills.cpp', 0x638)
@@ -2353,6 +2431,7 @@ export function SKILLS_GetSkillLevelByIdWithBonus113c(
   pUnit: number,
   nSkillId: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA0EA0)
   const u = pUnit >>> 0
   if (u === 0) return 0
   const pSkill = SKILLS_GetHighestLevelSkillFromUnitAndId113c(m, u, nSkillId | 0) >>> 0
@@ -2374,6 +2453,7 @@ export function SKILLS_CheckUnitEquippedWeaponsMatchSkill113c(
   pSkill: number,
   pUnit: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA0F00)
   const sk = pSkill >>> 0
   if (sk === 0) return 0
   const pSkTxt = m.u32(sk) >>> 0
@@ -2490,6 +2570,7 @@ export function SKILLS_GetOrCreateSkillStatList113c(
   nStateId: number,
   bCreate: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA22C0)
   const u = pUnit >>> 0
   const st = nStateId | 0
   const pListEx = m.u32((u + 0x5c) >>> 0) >>> 0
@@ -2532,6 +2613,7 @@ export function SKILLS_TestLineOfSightFromUnitToTarget113c(
   pUnit: number,
   dwMask: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9F160)
   const u = pUnit >>> 0
   const uType = m.u32(u) | 0
   const pPath = m.u32((u + 0x2c) >>> 0) >>> 0
@@ -2552,6 +2634,7 @@ export function STATES_UpdateOrClearState98Transform113c(
   pUnit: number,
   pOwner: number,
 ): void {
+  hitD2CommonVa113c(0x6FD83020)
   const edi = pUnit >>> 0
   const owner = pOwner >>> 0
   if (owner !== 0) {
@@ -2629,6 +2712,7 @@ export function MISSILE_EvaluateElementalMaxDamage113c(
   nMissileId: number,
   nLevel: number,
 ): number {
+  hitD2CommonVa113c(0x6FDBA3E0)
   return missileEvalBandDamage113c(m, pMissile, pOwner, nMissileId, nLevel, 0x104, 0xec, 0x118)
 }
 
@@ -2643,6 +2727,7 @@ export function MISSILE_EvaluatePhysMaxDamage113c(
   nMissileId: number,
   nLevel: number,
 ): number {
+  hitD2CommonVa113c(0x6FDBA4B0)
   return missileEvalBandDamage113c(m, pMissile, pOwner, nMissileId, nLevel, 0xcc, 0xb4, 0xe0)
 }
 
@@ -2657,6 +2742,7 @@ export function MISSILE_EvaluatePhysMinDamage113c(
   nMissileId: number,
   nLevel: number,
 ): number {
+  hitD2CommonVa113c(0x6FDBA580)
   return missileEvalBandDamage113c(m, pMissile, pOwner, nMissileId, nLevel, 0xb8, 0xb0, 0xe0)
 }
 
@@ -2679,6 +2765,7 @@ export function MISSILE_EvaluateMissCalcFormula113c(
   nMissileId: number,
   nLevel: number,
 ): number {
+  hitD2CommonVa113c(0x6FDBA790)
   const edx = pMissile >>> 0
   if (edx !== 0 && m.u32(edx) !== 3) return 0
   const eax = nMissileId | 0
@@ -2733,6 +2820,7 @@ export function MISSILE_EvalMissCalcParamCallback113c(
   nParamId: number,
   pCtx: number,
 ): number {
+  hitD2CommonVa113c(0x6FDBB160)
   const edx = pCtx >>> 0
   if (edx === 0) return 0
   return MISSILE_EvaluateMissCalcFormula113c(
@@ -2774,6 +2862,7 @@ export function SKILLS_GetSkillElemMinDamage113c(
   nLevel: number,
   bApplyMastery: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA0460)
   const pSkTxt = DATATBLS_GetSkillsTxtRecordInline113c(m, nSkillId) >>> 0
   const lvl = nLevel | 0
   if (pSkTxt === 0 || lvl <= 0) return 0
@@ -2807,6 +2896,7 @@ export function SKILLS_GetSkillElemMaxDamage113c(
   nLevel: number,
   bApplyMastery: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA0360)
   const pSkTxt = DATATBLS_GetSkillsTxtRecordInline113c(m, nSkillId) >>> 0
   const lvl = nLevel | 0
   if (pSkTxt === 0 || lvl <= 0) return 0
@@ -2840,6 +2930,7 @@ export function SKILLS_EvalCalcByOffset113c(
   nSkillId: number,
   nLevel: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA1BF0)
   return evalSkillCalcRpnMem113c(m, dwCalcOffset, pOwner, nSkillId, nLevel)
 }
 
@@ -3012,6 +3103,7 @@ export function SKILLS_EvalSkillSynergyOrMasteryCalc113c(
   nLevel: number,
   nCalcGroup: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9E7A0)
   const skId = nSkillId | 0
   const pSkTxt = DATATBLS_GetSkillsTxtRecordInline113c(m, skId) >>> 0
   const lvl = nLevel | 0
@@ -3046,6 +3138,7 @@ export function SKILLS_GetSkillPeriodicDelayOrLength113c(
   nLevel: number,
   _unused = 0,
 ): number {
+  hitD2CommonVa113c(0x6FD9E900)
   const skId = nSkillId | 0
   const pSkTxt = DATATBLS_GetSkillsTxtRecordInline113c(m, skId) >>> 0
   const lvl = nLevel | 0
@@ -3078,6 +3171,7 @@ export function SKILLS_GetSkillToHitBonus113c(
   nSkillId: number,
   nLevel: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9EA50)
   const skId = nSkillId | 0
   const pSkTxt = DATATBLS_GetSkillsTxtRecordInline113c(m, skId) >>> 0
   const lvl = nLevel | 0
@@ -3100,6 +3194,7 @@ export function SKILLS_GetSkillCalcFieldById113c(
   nSkillId: number,
   nLevel: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA1070)
   const skId = nSkillId | 0
   const pSkTxt = DATATBLS_GetSkillsTxtRecordInline113c(m, skId) >>> 0
   if (pSkTxt === 0) return 0
@@ -3424,6 +3519,7 @@ export function MISSILE_ResolveSkillIdByCodeOrRef113c(
   nMissileId: number,
   nLevel: number,
 ): number {
+  hitD2CommonVa113c(0x6FDBB2B0)
   const esi = pMissile >>> 0
   let edi = nMissileId | 0
   let edx = nLevel | 0
@@ -3468,6 +3564,7 @@ export function MISSILE_EvaluateElementalMinDamage113c(
   nMissileId: number,
   nLevel: number,
 ): number {
+  hitD2CommonVa113c(0x6FDBB360)
   return missileEvalBandDamage113c(m, pMissile, pOwner, nMissileId, nLevel, 0xf0, 0xe8, 0x118)
 }
 
@@ -3482,6 +3579,7 @@ export function SKILLS_EvalMissileParamCallback113c(
   _unused: number,
   pSkillCalcCtx: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA0C90)
   const eax = pSkillCalcCtx >>> 0
   if (eax === 0) return 0
   return MISSILE_EvaluateMissCalcFormula113c(
@@ -3503,6 +3601,7 @@ export function SKILLS_ScaleValueByMasteryAndSkillParam1113c(
   pUnit: number,
   nSkillId: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9FE80)
   const edi = pUnit >>> 0
   if (edi === 0) return 0
   const uType = m.u32(edi) | 0
@@ -3534,6 +3633,7 @@ export function SKILLS_CanUnitAllocateSkillPoint113c(
   pUnit: number,
   nSkillId: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9FA30)
   const skId = nSkillId | 0
   if (skId < 0) return 0
   const sgpt = m.u32(SGPT_DATATABLES_VA_113C) >>> 0
@@ -3561,6 +3661,7 @@ export function SKILLS_RemoveAllCurseAndDebuffStatesFromUnit113c(
   m: Memory113c,
   pUnit: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA1ED0)
   const edi = pUnit >>> 0
   if (edi === 0) return 0
   if (((m.u32((edi + 0xc8) >>> 0) >>> 3) & 1) === 0) return 0
@@ -3595,6 +3696,7 @@ export function SKILLS_GetWeaponMasteryPassiveStatId113c(
   pUnit: number,
   pOutBonus: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA0D40)
   const esi = pUnit >>> 0
   if (esi === 0) return 0
   const pOut = pOutBonus >>> 0
@@ -3630,6 +3732,7 @@ export function SKILLS_CheckSkillLevelAndPrereqs113c(
   pUnit: number,
   nSkillId: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9FB30)
   const skId = nSkillId | 0
   const ebp = DATATBLS_GetSkillsTxtRecordInline113c(m, skId) >>> 0
   if (ebp === 0) return 0
@@ -3658,6 +3761,7 @@ export const SKILLS_CanUnitLearnSkillWithPrereqs113c = SKILLS_CheckSkillLevelAnd
  * stdcall `pUnit`, `ret 4` -> `i32`).
  */
 export function SKILLS_CalcUnitVelocityDivided113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FDA0CE0)
   const unit = pUnit >>> 0
   if (unit === 0 || m.get(unit, D2UnitStrc.dwUnitType) !== 0) return 0
   if (((m.u32((unit + 0xc8) >>> 0) >>> 3) & 1) === 0) return 0
@@ -3679,6 +3783,7 @@ export function SKILLS_SkillCalcVarCallback113c(
   nVarId: number,
   pCtx: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA1B60)
   const ctx = pCtx >>> 0
   if (ctx === 0) return 0
   return SKILLS_GetSkillCalcFieldById113c(
@@ -3701,6 +3806,7 @@ export function SKILLS_EvalCalcSkillFieldPair113c(
   nFieldId2: number,
   pCtx: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA1AB0)
   const ctx = pCtx >>> 0
   if (ctx === 0) return 0
   const pUnit = m.u32(ctx) >>> 0
@@ -3744,6 +3850,7 @@ export function SKILLS_EvalCalcUnitSkillFieldByCtx113c(
   _unused: number,
   pCtx: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA1AF0)
   const ctx = pCtx >>> 0
   if (ctx === 0) return 0
   const pUnit = m.u32(ctx) >>> 0
@@ -3762,6 +3869,7 @@ export function MISSILE_EvalCalcOwnerSkillFieldByCtx113c(
   _unused: number,
   pCtx: number,
 ): number {
+  hitD2CommonVa113c(0x6FDBB430)
   const ctx = pCtx >>> 0
   if (ctx === 0) return 0
   const pOwner = m.u32((ctx + 0x04) >>> 0) >>> 0
@@ -3778,6 +3886,7 @@ export function SKILLS_GetSkillNumTargetsOrShots113c(
   pUnit: number,
   pSkill: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA1000)
   const sk = pSkill >>> 0
   if (sk === 0) return 0
   const pSkTxt = m.u32(sk) >>> 0
@@ -3838,6 +3947,7 @@ export function SKILLS_CalcKickBootDamage113c(
   pOutMax: number,
   pOutPct: number,
 ): void {
+  hitD2CommonVa113c(0x6FDA1C60)
   const unit = pUnit >>> 0
   if (unit === 0) return
   let kickPct = 0
@@ -3937,6 +4047,7 @@ export function SKILLS_GetSkillPhysMaxDamage113c(
   nLevel: number,
   bIncludeSrcDmg: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA1FF0)
   const skId = nSkillId | 0
   const pSkTxt = DATATBLS_GetSkillsTxtRecordInline113c(m, skId) >>> 0
   if (pSkTxt === 0) return 2
@@ -3987,6 +4098,7 @@ export function SKILLS_GetSkillPhysMinDamage113c(
   nLevel: number,
   bIncludeSrcDmg: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA2100)
   const skId = nSkillId | 0
   const pSkTxt = DATATBLS_GetSkillsTxtRecordInline113c(m, skId) >>> 0
   if (pSkTxt === 0) return 1
@@ -4035,6 +4147,7 @@ export function SKILLS_IsSkillBlockedByState113c(
   pUnit: number,
   pSkill: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA2210)
   const unit = pUnit >>> 0
   if (unit === 0 || m.get(unit, D2UnitStrc.dwUnitType) !== 0) return 1
   const dt = m.u32(SGPT_DATATABLES_VA_113C) >>> 0
@@ -4066,6 +4179,7 @@ export function SKILLS_GetSkillUseFailReason113c(
   pUnit: number,
   pSkill: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA2340)
   const sk = pSkill >>> 0
   if (sk === 0) throw new D2CommonAssertError('Skills.cpp', 0x8ea)
   const pSkTxt = m.u32(sk) >>> 0
@@ -4178,6 +4292,7 @@ export function SKILLS_FindMeleeTargetPosition113c(
   pOutX: number,
   pOutY: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA1870)
   const unit = pUnit >>> 0
   const target = pTarget >>> 0
   if (target !== 0 && UNITS_CanUnitMeleeAttackTarget113c(m, unit, target, 0) !== 0) {
@@ -4244,6 +4359,7 @@ export function SKILLS_AddSkillToUnit113c(
   pUnit: number,
   nSkillId: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA2660)
   const unit = pUnit >>> 0
   if (unit === 0) return 0
   const skId = nSkillId | 0
@@ -4332,6 +4448,7 @@ export function SKILLS_RemoveOrDecrementSkillFromUnit113c(
   nSkillId: number,
   bDecrement: number,
 ): void {
+  hitD2CommonVa113c(0x6FDA28B0)
   const unit = pUnit >>> 0
   if (unit === 0) return
   const pSkillList = m.u32((unit + 0xa8) >>> 0) >>> 0
@@ -4400,6 +4517,7 @@ export function SKILLS_RemoveOrDecrementSkillFromUnit113c(
  * `__stdcall(pUnit) -> void`, `ret 0x4`).
  */
 export function SKILLS_InitCharStartSkills113c(m: Memory113c, pUnit: number): void {
+  hitD2CommonVa113c(0x6FDA29E0)
   const unit = pUnit >>> 0
   let pSkillList = m.u32((unit + 0xa8) >>> 0) >>> 0
   let hasAttack = false
@@ -4451,6 +4569,7 @@ export function SKILLS_InitCharStartSkills113c(m: Memory113c, pUnit: number): vo
  * `__stdcall(pUnit) -> void`, `ret 0x4`).
  */
 export function SKILLS_RefreshPassiveAuraSkills113c(m: Memory113c, pUnit: number): void {
+  hitD2CommonVa113c(0x6FDA2AE0)
   const unit = pUnit >>> 0
   const sgpt = m.u32(SGPT_DATATABLES_VA_113C) >>> 0
   const nAuraCount = m.u32((sgpt + 0xbb0) >>> 0) | 0
@@ -4491,6 +4610,7 @@ export function SKILLS_SetSkillLevelOnUnit113c(
   _u5: number,
   _u6: number,
 ): void {
+  hitD2CommonVa113c(0x6FDA2BC0)
   const unit = pUnit >>> 0
   const skId = nSkillId | 0
   const lvl = nLvl | 0

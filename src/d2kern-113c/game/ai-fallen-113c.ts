@@ -91,6 +91,7 @@ import {
   SUNITDMG_ExecuteMissileOrMeleeDmg113c,
   type FallenSliceWorld113c,
 } from './replay-kernel-113c.ts'
+import { hitD2GameVa113c } from '../va-trace-113c.ts'
 
 /** `D2Game.dll` `.data` `0x6FD2E668`: special AI dispatch table (`16` bytes/row). */
 export const D2GAME_SPECIAL_AI_TABLE_VA_113C = 0x6fd2e668
@@ -206,6 +207,7 @@ export function AIGENERAL_LinkMinionToLeader113c(
   pMinion: number,
   _pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC40CF0)
   if (pLeader === 0) return
   if ((m.u32(pLeader) | 0) !== 1) return
   const pMonData = m.u32((pLeader + 0x14) >>> 0)
@@ -237,6 +239,7 @@ export function AIGENERAL_InitBossGroup113c(
   bIsGroupMember: number,
   bIsBoss: number,
 ): void {
+  hitD2GameVa113c(0x6FC40D90)
   if (pUnit === 0) return
   if ((m.u32(pUnit) | 0) !== 1) return
   const pMonData = m.u32((pUnit + 0x14) >>> 0)
@@ -264,6 +267,7 @@ export function AIGENERAL_ReassignPackOnBossDeath113c(
   pBossAiGen: number,
   pOldBossUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FC410D0)
   const pOrigHead = m.u32((pBossAiGen + 0x34) >>> 0)
   if (pOrigHead === 0) return
 
@@ -331,6 +335,7 @@ export function AIGENERAL_ReassignPackOnBossDeath113c(
  * @va D2Game:0x6FC41260 (46B)
  */
 export function AIGENERAL_GetPackLeaderUnit113c(m: Memory113c, pUnit: number): number {
+  hitD2GameVa113c(0x6FC41260)
   if (pUnit === 0) return 0
   if ((m.u32(pUnit) | 0) !== 1) return 0
   const pMonData = m.u32((pUnit + 0x14) >>> 0)
@@ -357,6 +362,7 @@ export function AIGENERAL_BroadcastCmdToMinions113c(
   pGame: number,
   pCmdNode: number,
 ): void {
+  hitD2GameVa113c(0x6FC412F0)
   const pLeader = AIGENERAL_GetPackLeaderUnit113c(m, pUnit)
   if (pLeader === 0) return
   if ((m.u32(pLeader) | 0) !== 1) return
@@ -411,6 +417,7 @@ export function MONSTER_CheckTypeFlagsMask113c(
   pUnit: number,
   wMask: number,
 ): number {
+  hitD2GameVa113c(0x6FC42A80)
   if (pUnit === 0) return 0
   if ((m.u32(pUnit) | 0) !== 1) return 0
   const pMonData = m.u32((pUnit + 0x14) >>> 0)
@@ -430,6 +437,7 @@ export function MONSTER_InitModeChangeStrc113c(
   pModeArgs: number,
   nMode: number,
 ): void {
+  hitD2GameVa113c(0x6FC95070)
   const mode = nMode | 0
   if (mode >= 0x10) {
     throw new Error('MONSTER_InitModeChangeStrc113c: nMode >= 16 (line 1976)')
@@ -455,6 +463,7 @@ export function MONSTER_StartAttackOrCast113c(
   pModeArgs: number,
   hooks?: AiFallenHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC95510)
   const nMode = m.u32(pModeArgs) | 0
   const pUnit = m.u32((pModeArgs + 0x04) >>> 0) >>> 0
 
@@ -499,6 +508,7 @@ export function MONSTER_FireModeMissile113c(
   bCheckAnimEvent: number,
   hooks?: AiFallenHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC95C60)
   if (pUnit === 0) return 0
   const nMissileId = MONSTER_GetMissileIdForAnimMode113c(m, pUnit, bCheckAnimEvent)
   if (nMissileId < 0) return 0
@@ -534,6 +544,7 @@ export function MONSTER_AdvanceAttackOrSkillStep113c(
   world?: FallenSliceWorld113c,
   hooks?: AiFallenHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC95CE0)
   const pSkill = SKILLS_GetUsedSkillMemPort113c(m, pUnit)
   if (pSkill !== 0) {
     const dwSkillFlags = SKILLS_GetFlags113c(m, pSkill)
@@ -617,6 +628,7 @@ export function MONSTER_ApplyCritDamage113c(
   pDamage: number,
   pDefender: number,
 ): void {
+  hitD2GameVa113c(0x6FC970E0)
   if (pAttacker === 0) return
   if ((m.u32(pAttacker) | 0) !== 1) return
   const nClassId = m.u32((pAttacker + 0x04) >>> 0) | 0
@@ -662,6 +674,7 @@ export function MONSTER_ExecuteMeleeSwing113c(
   world?: FallenSliceWorld113c,
   hooks?: AiFallenHooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC97790)
   SUNIT_ValidatePathTargetUnit113c(m, pAttacker, pGame)
   const pPath = m.u32((pAttacker + 0x2c) >>> 0)
   const pDefender = PATH_GetTargetUnit113c(m, pPath)
@@ -697,6 +710,7 @@ export function AI_FallenShamanCorpseFilter113c(
   pCandidate: number,
   pScanCtx: number,
 ): number {
+  hitD2GameVa113c(0x6FC9BD50)
   if (pShaman === pCandidate || pCandidate === 0) return 0
   if ((m.u32(pCandidate) | 0) !== 1) return 0
 
@@ -735,6 +749,7 @@ export function AI_Skeleton113c(
   world?: FallenSliceWorld113c,
   hooks?: AiFallenHooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCA3550)
   const pAiControl = m.u32(pAiArgs) >>> 0
   const nDist = m.u32((pAiArgs + 0x14) >>> 0) | 0
   const pMonStatsTxt = m.u32((pAiArgs + 0x1c) >>> 0) >>> 0
@@ -868,6 +883,7 @@ export function AI_FallenShaman113c(
   world?: FallenSliceWorld113c,
   hooks?: AiFallenHooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCA90A0)
   let curDist = m.u32((pAiArgs + 0x14) >>> 0) | 0
   const bInMelee = m.u32((pAiArgs + 0x18) >>> 0) | 0
   const pTarget = m.u32((pAiArgs + 0x08) >>> 0) >>> 0
@@ -1059,6 +1075,7 @@ export function AI_CheckApproachTauntSound113c(
   pGame: number,
   world?: FallenSliceWorld113c,
 ): number {
+  hitD2GameVa113c(0x6FCBCA60)
   let isBossOrFlag6 = false
   if (pUnit !== 0 && (m.u32(pUnit) | 0) === 1) {
     const pMonData = m.u32((pUnit + 0x14) >>> 0)
@@ -1113,6 +1130,7 @@ export function AI_TryMonsterTeleportEscape113c(
   world?: FallenSliceWorld113c,
   hooks?: AiFallenHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FCBCDE0)
   if (SUNIT_IsDeadOrDying113c(m, pUnit) !== 0) return 0
   const pAiControl = m.u32(pAiArgs)
   if ((m.u8((pAiControl + 0x08) >>> 0) & 0x20) === 0) return 0
@@ -1203,6 +1221,7 @@ export function AI_LookupDispatchTableRow113c(
   pUnit: number,
   nSpecialAiIdx: number,
 ): number {
+  hitD2GameVa113c(0x6FCBD0F0)
   let pMonStatsTxt = 0
   if (pUnit !== 0 && (m.u32(pUnit) | 0) === 1) {
     const pMonData = m.u32((pUnit + 0x14) >>> 0)
@@ -1243,6 +1262,7 @@ export function AI_CalcApproxUnitDistSubtiles113c(
   pUnit1: number,
   pUnit2: number,
 ): number {
+  hitD2GameVa113c(0x6FCD0A20)
   let dx = (UNIT_GetPosX113c(m, pUnit1) - UNIT_GetPosX113c(m, pUnit2)) | 0
   let dy = (UNIT_GetPosY113c(m, pUnit1) - UNIT_GetPosY113c(m, pUnit2)) | 0
   if (dx < 0) dx = (-dx) | 0
@@ -1262,6 +1282,7 @@ export function AI_CalcApproxUnitDistSubtiles113c(
  * @va D2Game:0x6FCD0BE0 (40B)
  */
 export function MONSTER_HasAlwaysChaseFlag113c(m: Memory113c, pUnit: number): number {
+  hitD2GameVa113c(0x6FCD0BE0)
   if (pUnit === 0) return 0
   if ((m.u32(pUnit) | 0) !== 1) return 0
   const pMonData = m.u32((pUnit + 0x14) >>> 0)
@@ -1281,6 +1302,7 @@ export function SUNITDMG_FreeAttackerCombatList113c(
   pUnit: number,
   _pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FCFA750)
   let pCur = m.u32((pUnit + 0xac) >>> 0)
   if (pCur === 0) return
   const selfType = m.u32(pUnit) | 0
@@ -1317,6 +1339,7 @@ export function SUNIT_SetUnitEventSound113c(
   wSoundId: number,
   pSourceUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FCFFFD0)
   if (pUnit === 0) {
     throw new Error('SUNIT_SetUnitEventSound113c: pUnit == NULL (line 1368)')
   }
@@ -1339,6 +1362,7 @@ export function AI_SetAiControlOverrides113c(
   nVelPct: number,
   nDist: number,
 ): void {
+  hitD2GameVa113c(0x6FD11A20)
   const vel = nVelPct | 0
   if (vel < -0x7e || vel > 0x7e) {
     throw new Error('AI_SetAiControlOverrides113c: nVelPct out of [-126..126] (line 272)')
@@ -1382,6 +1406,7 @@ export function AI_CastSkillMode14_113c(
   world?: FallenSliceWorld113c,
   hooks?: AiFallenHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FD12120)
   const id = nSkillId | 0
   if (id < 0) return 0
   const pTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C))
@@ -1424,6 +1449,7 @@ export function AI_StartAttackMode113c(
   world?: FallenSliceWorld113c,
   hooks?: AiFallenHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FD12220)
   const sp = aiFallenStackPtr
   aiFallenStackPtr = (sp + 0x20) >>> 0
   try {
@@ -1453,6 +1479,7 @@ export function AI_CastSkillWithMode113c(
   world?: FallenSliceWorld113c,
   hooks?: AiFallenHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FD12380)
   const modeByte = nMode & 0xff
   if (modeByte >= 0x10) return 0
 
@@ -1498,6 +1525,7 @@ export function SKILLS_CanMonsterCastAtTarget113c(
   x: number,
   hooks?: AiFallenHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FD13E30)
   const id = nSkillId | 0
   const pSkillsTxt = SKILLS_GetRecordPtrFast113c(m, id)
   if (pSkillsTxt === 0) return 0

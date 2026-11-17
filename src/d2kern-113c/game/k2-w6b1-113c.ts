@@ -206,6 +206,7 @@ import {
   EVENT_FreeNode113c,
   EVENT_SetEventFull113c,
 } from './timer-wheel'
+import { hitD2GameVa113c } from '../va-trace-113c'
 
 export type D2KernMemory113c = Memory113c
 
@@ -402,6 +403,7 @@ export function STORM_TSHashTableCheckChainAndGrow_6FC221D0_113c(
   pHashTable: number,
   nBucketIndex: number,
 ): number {
+  hitD2GameVa113c(0x6FC221D0)
   const ht = pHashTable >>> 0
   if ((m.u32((ht + 0x24) >>> 0) >>> 0) >= 0x3ff) return 0
   const prevScore = m.u32((ht + 0x10) >>> 0) >>> 0
@@ -443,6 +445,7 @@ export function SKILLS_SrvDo_RadialPhysAndElemDamage_6FC2C900_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC2C900)
   const skillId = nSkillId | 0
   if (skillId < 0) return 0
   const pDataTables = readSgptDataTables113c(m)
@@ -522,6 +525,7 @@ export function SKILLS_SrvDo_SpawnChargedBoltFanByCalc1_6FC2D7B0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC2D7B0)
   const skillId = nSkillId | 0
   if (skillId < 0) return 0
   const pDataTables = readSgptDataTables113c(m)
@@ -569,6 +573,7 @@ export function SKILLS_SrvDo_ApplyAuraOrMorphMinion_6FC2D9C0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC2D9C0)
   const skillId = nSkillId | 0
   if (skillId < 0) return 0
   const pDataTables = readSgptDataTables113c(m)
@@ -622,6 +627,7 @@ export function AI_ThinkSuccubus_6FC3A9F0_113c(
   pUnit: number,
   pAiThinkArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC3A9F0)
   const game = pGame >>> 0
   const unit = pUnit >>> 0
   const arg = pAiThinkArg >>> 0
@@ -837,6 +843,7 @@ export function AI_ThinkCurseCaster_6FC3AF80_113c(
   pUnit: number,
   pAiThinkArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC3AF80)
   const game = pGame >>> 0
   const unit = pUnit >>> 0
   const arg = pAiThinkArg >>> 0
@@ -993,6 +1000,7 @@ export function MONUMOD_OnHitApplyCursedAmplifyDamage_6FC44250_113c(
   _pDefender: number,
   bCanApply: number,
 ): void {
+  hitD2GameVa113c(0x6FC44250)
   if ((bCanApply | 0) === 0) return
   const att = pAttacker >>> 0
   const seedLo = stepSeed64At113c(m, (att + 0x20) >>> 0) >>> 0
@@ -1059,6 +1067,7 @@ export function SKILLS_CanUnownedMonsterUseSkillInMode12_6FC47130_113c(
   _pGame: number,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC47130)
   const unit = pUnit >>> 0
   if (unit === 0 || i32(m, unit) !== 1) return 0
   if ((SKILLS_CanMonsterUseSkillInMode_6FCBF120_113c(m, unit, 0x0c) | 0) === 0) return 0
@@ -1093,6 +1102,7 @@ export function SKILLS_SrvDo019_FuryMultiTargetHit_6FC47B90_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC47B90)
   const game = pGame >>> 0
   const unit = pUnit >>> 0
   SUNIT_ValidatePathTargetUnit113c(m, unit, game)
@@ -1164,6 +1174,7 @@ export function SKILLS_SrvDo_ProgressiveChargeDualHit_6FC49600_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC49600)
   const game = pGame >>> 0
   const unit = pUnit >>> 0
   SUNIT_ValidatePathTargetUnit113c(m, unit, game)
@@ -1252,6 +1263,7 @@ export function OBJECTS_SpawnPresetFalseTombSymbol_6FC52110_113c(
   y: number,
   _nInitMode = 0,
 ): number {
+  hitD2GameVa113c(0x6FC52110)
   const game = pGame >>> 0
   const room = pRoom >>> 0
   let nSymbolObjId = 0x133
@@ -1326,6 +1338,7 @@ export function QUESTS_TriggerAct2Q0SpawnJerhyn_6FC565B0_113c(
   m: D2KernMemory113c,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC565B0)
   const arg = pQuestArg >>> 0
   const pGame = m.u32(arg) >>> 0
   const pQuestCtrl = m.u32((pGame + 0x10f4) >>> 0) >>> 0
@@ -1352,6 +1365,7 @@ export function MISSILE_SrvHit_SpawnSubMissileAndCopyTargetX_6FC5AB30_113c(
   pMissile: number,
   pHitUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC5AB30)
   const mis = pMissile >>> 0
   if (mis === 0) return 1
   const classId = i32(m, (mis + 0x04) >>> 0)
@@ -1402,6 +1416,7 @@ export function MISSILE_SrvHit_GuidedProjectileCheck_6FC5B140_113c(
   pMissile: number,
   pHitUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC5B140)
   const game = pGame >>> 0
   const mis = pMissile >>> 0
   const hit = pHitUnit >>> 0
@@ -1454,6 +1469,7 @@ export function MISSILE_SrvHit_RadialStatsDamageAndSubMissile_6FC5B210_113c(
   pMissile: number,
   _pHitUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC5B210)
   const game = pGame >>> 0
   const mis = pMissile >>> 0
   if (mis === 0) return 1
@@ -1544,6 +1560,7 @@ export function MISSILE_SrvHit_RadialETypeDamageWithDuration_6FC5B3E0_113c(
   pMissile: number,
   pHitUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC5B3E0)
   const game = pGame >>> 0
   const mis = pMissile >>> 0
   if (mis === 0) return 1
@@ -1637,6 +1654,7 @@ export function MISSILE_SrvHit_RadialStatsDamageByAuraRange_6FC5B5F0_113c(
   pMissile: number,
   pHitUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC5B5F0)
   const game = pGame >>> 0
   const mis = pMissile >>> 0
   if (mis === 0) return 1
@@ -1717,6 +1735,7 @@ export function MISSILE_SrvHit_RadialStatsDamageByCalc1_6FC5B7C0_113c(
   pMissile: number,
   pHitUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC5B7C0)
   const game = pGame >>> 0
   const mis = pMissile >>> 0
   if (mis === 0) return 1
@@ -1791,6 +1810,7 @@ export function MISSILE_SrvHit_RadialETypeDamageByCalc1_6FC5B990_113c(
   pMissile: number,
   pHitUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC5B990)
   const game = pGame >>> 0
   const mis = pMissile >>> 0
   if (mis === 0) return 1
@@ -1864,6 +1884,7 @@ export function MISSILE_SrvHit_SpawnScatteredSubMissiles_6FC5C490_113c(
   pMissile: number,
   _pHitUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC5C490)
   const game = pGame >>> 0
   const mis = pMissile >>> 0
   if (mis === 0) return 1
@@ -1927,6 +1948,7 @@ export function MISSILE_SrvHit_RadialDamageAndRing18IfFlag0B_6FC5D8C0_113c(
   pMissile: number,
   pHitUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC5D8C0)
   const game = pGame >>> 0
   const mis = pMissile >>> 0
   if (mis === 0) return 1
@@ -2015,6 +2037,7 @@ export function MISSILE_SrvHit_RadialDamageAndLinearParam34Ring18_6FC5DEF0_113c(
   pMissile: number,
   pHitUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC5DEF0)
   const game = pGame >>> 0
   const mis = pMissile >>> 0
   if (mis === 0) return 1
@@ -2098,6 +2121,7 @@ export function MISSILE_SrvHit_CircularSubMissilesAndRadialETypeBlast_6FC5E0B0_1
   pMissile: number,
   pHitUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC5E0B0)
   const game = pGame >>> 0
   const mis = pMissile >>> 0
   if (mis === 0) return 1
@@ -2223,6 +2247,7 @@ export function MISSILE_SrvDo_SpawnTimedSubMissilesAndStep_6FC5F550_113c(
   pGame: number,
   pMissile: number,
 ): number {
+  hitD2GameVa113c(0x6FC5F550)
   const game = pGame >>> 0
   const mis = pMissile >>> 0
   if (mis === 0) return 2
@@ -2273,6 +2298,7 @@ export function MISSILE_SrvDo_RedemptionCorpsePulseAndStep_6FC5F6D0_113c(
   pGame: number,
   pMissile: number,
 ): number {
+  hitD2GameVa113c(0x6FC5F6D0)
   const game = pGame >>> 0
   const mis = pMissile >>> 0
   const remFrames = MISSILE_GetRemainingFrames113c(m, mis) | 0
@@ -2344,6 +2370,7 @@ export function MISSILE_SrvDo_PeriodicRadialDamageAndStep_6FC60280_113c(
   pGame: number,
   pMissile: number,
 ): number {
+  hitD2GameVa113c(0x6FC60280)
   const game = pGame >>> 0
   const mis = pMissile >>> 0
   if (mis === 0) return 2
@@ -2435,6 +2462,7 @@ export function MISSILE_SrvDo_PeriodicSubMissile1AndStep_6FC60420_113c(
   pGame: number,
   pMissile: number,
 ): number {
+  hitD2GameVa113c(0x6FC60420)
   const game = pGame >>> 0
   const mis = pMissile >>> 0
   if (mis === 0) return 2
@@ -2484,6 +2512,7 @@ export function MISSILE_SrvDo_BlazeTrailAndFollowOwner_6FC61EB0_113c(
   pGame: number,
   pMissile: number,
 ): number {
+  hitD2GameVa113c(0x6FC61EB0)
   const game = pGame >>> 0
   const mis = pMissile >>> 0
   if (mis === 0) return 2
@@ -2534,6 +2563,7 @@ export function SKILLS_SpawnProjectileAtTargetUnitIfBothOutsideTown_6FC62510_113
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC62510)
   const caster = pCaster >>> 0
   const target = pTargetUnit >>> 0
   if (caster === 0 || target === 0) return 0
@@ -2573,6 +2603,7 @@ export function SKILLS_SrvDo_SpawnProjectileAtTargetIfCanSpawnObj_6FC62D90_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC62D90)
   const game = pGame >>> 0
   const unit = pUnit >>> 0
   const skillId = nSkillId | 0
@@ -2634,6 +2665,7 @@ export function SKILLS_SrvDo_FireWallPerpendicularControllers_6FC637D0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC637D0)
   const game = pGame >>> 0
   const unit = pUnit >>> 0
   const skillId = nSkillId | 0
@@ -2723,6 +2755,7 @@ export function SKILLS_SrvDo_SpawnChargedAreaControllerWithPacketA3_6FC652C0_113
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC652C0)
   const game = pGame >>> 0
   const unit = pUnit >>> 0
   const skillId = nSkillId | 0
@@ -2790,6 +2823,7 @@ export function SKILLS_Event05_PeriodicAuraRandomMissileStrike_6FC65850_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC65850)
   const game = pGame >>> 0
   const unit = pUnit >>> 0
   const skillId = nSkillId | 0
@@ -2899,6 +2933,7 @@ export function SKILLS_SrvDo_ToggleOrApplyTimedSkillState_6FC66210_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC66210)
   const game = pGame >>> 0
   const unit = pUnit >>> 0
   const skillId = nSkillId | 0
@@ -2973,6 +3008,7 @@ export function SKILLS_SrvDo_ReleaseChargedMeleeHitWithSecondaryAura_6FC66A20_11
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC66A20)
   const game = pGame >>> 0
   const unit = pUnit >>> 0
   const skillId = nSkillId | 0
@@ -3036,6 +3072,7 @@ export function NPCS_ClosePlayerTradeAndFreeGamble_6FC685C0_113c(
   pNpcUnit: number,
   pNpcRecord: number,
 ): void {
+  hitD2GameVa113c(0x6FC685C0)
   const game = pGame >>> 0
   const player = pPlayer >>> 0
   const npcUnit = pNpcUnit >>> 0
@@ -3112,6 +3149,7 @@ export function SKILLS_SrvSt_PrepareMultiTargetRangedVolley_6FC6C870_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC6C870)
   const game = pGame >>> 0
   const unit = pUnit >>> 0
   const skillId = nSkillId | 0
@@ -3198,6 +3236,7 @@ export function SKILLS_IsMonsterCorpseUsableForRaise_6FC6EC30_113c(
   m: D2KernMemory113c,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC6EC30)
   const unit = pUnit >>> 0
   if (unit === 0 || i32(m, unit) !== 1) return 0
   if ((MONSTATS2_CheckFlagBit113c(m, i32(m, (unit + 0x04) >>> 0), 8) | 0) === 0) return 0
@@ -3220,6 +3259,7 @@ export function SKILLS_SrvSt_ValidateTargetMonsterCorpse_6FC6ED60_113c(
   _nSkillId = 0,
   _nSkillLevel = 0,
 ): number {
+  hitD2GameVa113c(0x6FC6ED60)
   const game = pGame >>> 0
   const unit = pUnit >>> 0
   if (unit === 0) return 0
@@ -3246,6 +3286,7 @@ export function SKILLS_CanConvertOrMindBlastTarget_6FC6EE80_113c(
   pCasterUnit: number,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FC6EE80)
   const target = pTargetUnit >>> 0
   const caster = pCasterUnit >>> 0
   const game = pGame >>> 0
@@ -3271,6 +3312,7 @@ export function SKILLS_ApplyCurseStateAndStatsCallback_6FC70250_113c(
   pTargetUnit: number,
   pCurseCtx: number,
 ): number {
+  hitD2GameVa113c(0x6FC70250)
   const target = pTargetUnit >>> 0
   const ctx = pCurseCtx >>> 0
   if (ctx === 0) return 0
@@ -3398,6 +3440,7 @@ export function SKILLS_ApplyAttractCurseCallback_6FC70B70_113c(
   pTargetUnit: number,
   pCurseCtx: number,
 ): number {
+  hitD2GameVa113c(0x6FC70B70)
   const target = pTargetUnit >>> 0
   const ctx = pCurseCtx >>> 0
   if (target === 0 || ctx === 0) return 0
@@ -3512,6 +3555,7 @@ export function ACT5Q3_StatusFilter_6FC7B8C0_113c(
   pPlayerFlags: number,
   pOutFilterByte: number,
 ): number {
+  hitD2GameVa113c(0x6FC7B8C0)
   const questData = pQuestData >>> 0
   const player = pPlayer >>> 0
   const playerFlags = pPlayerFlags >>> 0
@@ -3584,6 +3628,7 @@ export function ACT1Q4_RandomizeCairnStonesOrder_6FC833C0_113c(
   m: D2KernMemory113c,
   pQuestData: number,
 ): void {
+  hitD2GameVa113c(0x6FC833C0)
   const questData = pQuestData >>> 0
   if (questData === 0) return
   const pQuestState = m.u32((questData + 0x18) >>> 0) >>> 0
@@ -3659,6 +3704,7 @@ export function ACT1Q5_StatusFilter_6FC85500_113c(
   pPlayerFlags: number,
   pOutFilterByte: number,
 ): number {
+  hitD2GameVa113c(0x6FC85500)
   const questData = pQuestData >>> 0
   const player = pPlayer >>> 0
   const playerFlags = pPlayerFlags >>> 0

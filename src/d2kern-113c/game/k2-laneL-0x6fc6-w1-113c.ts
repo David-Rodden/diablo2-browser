@@ -84,6 +84,7 @@ import {
   type RegpopSpawnHooks113c,
 } from './regpop-spawn-113c.ts'
 import { EVENT_FreeNode113c, EVENT_SetEventFull113c } from './timer-wheel.ts'
+import { hitD2GameVa113c } from '../va-trace-113c.ts'
 
 /** `D2Game.dll` `.rdata` `0x6FD1C3A8`: `"..\\Source\\D2Game\\SKILLS\\SkillDruid.cpp"`. */
 const D2GAME_STR_SKILL_DRUID_CPP_VA_113C = 0x6fd1c3a8
@@ -189,6 +190,7 @@ export function SKILLS_SrvEvent02_ApplyCalcFreezeAndState_6FC62C70_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC62C70)
   if (pUnit === 0 || pTarget === 0) return 0
   const targetType = m.u32(pTarget >>> 0) >>> 0
   if (targetType !== 0 && targetType !== 1) return 0
@@ -240,6 +242,7 @@ export function SKILLS_ClearState0CAndScheduleMonStats2Event_6FC63CA0_113c(
   pGame: number,
   pUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FC63CA0)
   let delay = 1
   STATES_ToggleGfxStateFlag113c(m, pUnit, 0x0c, 0)
   if (pUnit !== 0) {
@@ -290,6 +293,7 @@ export function SKILLS_ApplySkillPassiveStatCalcs_6FC647D0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): void {
+  hitD2GameVa113c(0x6FC647D0)
   if (pUnit === 0 || pStatList === 0) return
   const pSkillsTxt =
     pSkillsTxtIn !== 0 ? pSkillsTxtIn >>> 0 : lookupSkillsTxtPtr113c(m, nSkillId)
@@ -325,6 +329,7 @@ export function SKILLS_ApplySkillAuraStatCalcs_6FC648E0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): void {
+  hitD2GameVa113c(0x6FC648E0)
   if (pUnit === 0 || pStatList === 0) return
   const pSkillsTxt =
     pSkillsTxtIn !== 0 ? pSkillsTxtIn >>> 0 : lookupSkillsTxtPtr113c(m, nSkillId)
@@ -356,6 +361,7 @@ export function SKILLS_GetNonPlayerTransformAnimMode_6FC649F0_113c(
   pUnit: number,
   nAnimMode: number,
 ): number {
+  hitD2GameVa113c(0x6FC649F0)
   if (pUnit !== 0 && m.u32(pUnit >>> 0) === 0) {
     return nAnimMode | 0
   }
@@ -404,6 +410,7 @@ export function REGPOP_SpawnMonStatsGroupPackAtSubtile_6FC670F0_113c(
   pRoom: number,
   hooks?: RegpopSpawnHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC670F0)
   let pMonStatsTxt = 0
   const id = nClassId | 0
   if (id >= 0) {
@@ -467,6 +474,7 @@ export function MONSTER_RemovePlayerFromNpcInteractList_6FC68300_113c(
   pPlayer: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC68300)
   if (pInteract === 0) return
   const head = m.u32(pInteract >>> 0) >>> 0
   if (head === 0) return
@@ -507,6 +515,7 @@ export function MONSTER_CloseAllNpcInteractionsAndNotify_6FC68410_113c(
   pfnCallbackVa = 0,
   onCancelPlayer?: (m: Memory113c, pPlayer: number, pfnCallbackVa: number) => void,
 ): void {
+  hitD2GameVa113c(0x6FC68410)
   if (pMonster === 0) return
   if (m.u32(pMonster >>> 0) !== 1) return
   const pMonsterData = m.u32((pMonster + 0x14) >>> 0) >>> 0
@@ -565,6 +574,7 @@ export function CLIENTS_GetSaveHeaderPtr_6FC69240_113c(
   _m: Memory113c,
   pClient: number,
 ): number {
+  hitD2GameVa113c(0x6FC69240)
   if (pClient === 0) {
     throw new D2CommonAssertError('Clients.cpp', 0xcfc)
   }
@@ -580,6 +590,7 @@ export function CLIENTS_SetClientFlag20_6FC69580_113c(
   m: Memory113c,
   pClient: number,
 ): void {
+  hitD2GameVa113c(0x6FC69580)
   if (pClient === 0) {
     throw new D2CommonAssertError('Clients.cpp', 0xb9b)
   }
@@ -597,6 +608,7 @@ export function CLIENTS_FreeSaveDataBuffer_6FC69630_113c(
   m: Memory113c,
   pClient: number,
 ): void {
+  hitD2GameVa113c(0x6FC69630)
   if (pClient === 0) {
     throw new D2CommonAssertError('Clients.cpp', 0xb69)
   }
@@ -629,6 +641,7 @@ export function CLIENTS_StoreSaveDataBuffer_6FC696B0_113c(
   nSize: number,
   pSrcData: number,
 ): void {
+  hitD2GameVa113c(0x6FC696B0)
   if (pClient === 0) {
     throw new D2CommonAssertError('Clients.cpp', 0xb55)
   }
@@ -674,6 +687,7 @@ export function CLIENTS_GetSaveDataSize_6FC69760_113c(
   m: Memory113c,
   pClient: number,
 ): number {
+  hitD2GameVa113c(0x6FC69760)
   if (pClient === 0) {
     throw new D2CommonAssertError('Clients.cpp', 0xb4b)
   }
@@ -689,6 +703,7 @@ export function CLIENTS_GetSaveDataPtr_6FC69790_113c(
   m: Memory113c,
   pClient: number,
 ): number {
+  hitD2GameVa113c(0x6FC69790)
   if (pClient === 0) {
     throw new D2CommonAssertError('Clients.cpp', 0xb41)
   }
@@ -704,6 +719,7 @@ export function CLIENTS_GetClientNamePtr_6FC69A20_113c(
   _m: Memory113c,
   pClient: number,
 ): number {
+  hitD2GameVa113c(0x6FC69A20)
   if (pClient === 0) {
     throw new D2CommonAssertError('Clients.cpp', 0x9d9)
   }
@@ -719,6 +735,7 @@ export function CLIENTS_GetClientGame_6FC69A80_113c(
   m: Memory113c,
   pClient: number,
 ): number {
+  hitD2GameVa113c(0x6FC69A80)
   if (pClient === 0) {
     throw new D2CommonAssertError('Clients.cpp', 0x996)
   }
@@ -734,6 +751,7 @@ export function CLIENTS_GetClientField488_6FC69AB0_113c(
   m: Memory113c,
   pClient: number,
 ): number {
+  hitD2GameVa113c(0x6FC69AB0)
   if (pClient === 0) {
     throw new D2CommonAssertError('Clients.cpp', 0x98b)
   }
@@ -750,6 +768,7 @@ export function CLIENTS_SetClientInitState_6FC69B70_113c(
   pClient: number,
   dwState: number,
 ): void {
+  hitD2GameVa113c(0x6FC69B70)
   if (pClient === 0) {
     throw new D2CommonAssertError('Clients.cpp', 0x95f)
   }
@@ -765,6 +784,7 @@ export function CLIENTS_GetClientByte08_6FC69BF0_113c(
   m: Memory113c,
   pClient: number,
 ): number {
+  hitD2GameVa113c(0x6FC69BF0)
   if (pClient === 0) {
     throw new D2CommonAssertError('Clients.cpp', 0x8a4)
   }
@@ -782,6 +802,7 @@ export function CLIENTS_SetClientActNo_6FC69D70_113c(
   pClient: number,
   nAct: number,
 ): void {
+  hitD2GameVa113c(0x6FC69D70)
   if (pClient === 0) {
     throw new D2CommonAssertError('Clients.cpp', 0x7d6)
   }
@@ -803,6 +824,7 @@ export function CLIENTS_FindClientByIdInGame_6FC69FE0_113c(
   pGame: number,
   dwClientId: number,
 ): number {
+  hitD2GameVa113c(0x6FC69FE0)
   if (pGame === 0) {
     throw new D2CommonAssertError('Clients.cpp', 0xe9)
   }
@@ -830,6 +852,7 @@ export function CLIENTS_RecordTrackedUnitPositions_6FC6A370_113c(
   pClient: number,
   pNodeArray: number,
 ): void {
+  hitD2GameVa113c(0x6FC6A370)
   m.setU32((pClient + 0x3bc) >>> 0, 0)
   const base = pNodeArray >>> 0
   let pCur = base
@@ -877,6 +900,7 @@ export function CLIENTS_IsActionRateLimitExceeded_6FC6A660_113c(
   pPlayer: number,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FC6A660)
   if (pPlayer === 0 || m.u32(pPlayer >>> 0) !== 0) {
     throw new D2CommonAssertError('Clients.cpp', 0xd19)
   }
@@ -910,6 +934,7 @@ export function CLIENTS_RecordActionRateLimitFrame_6FC6A6E0_113c(
   pPlayer: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC6A6E0)
   if (pPlayer === 0 || m.u32(pPlayer >>> 0) !== 0) {
     throw new D2CommonAssertError('Clients.cpp', 0xd07)
   }
@@ -939,6 +964,7 @@ export function CLIENTS_UpdateCurrentRoomIfChanged_6FC6B3C0_113c(
   pClient: number,
   pRoom: number,
 ): void {
+  hitD2GameVa113c(0x6FC6B3C0)
   if (pClient === 0) {
     throw new D2CommonAssertError('Clients.cpp', 0x78b)
   }
@@ -960,6 +986,7 @@ export function SKILLS_AddDamagePercentStat_6FC6C190_113c(
   pUnit: number,
   nDelta: number,
 ): void {
+  hitD2GameVa113c(0x6FC6C190)
   const delta = nDelta | 0
   if (delta === 0) return
   const cur = STATLIST_GetUnitStat113c(m, pUnit, 0x19, 0) | 0
@@ -980,6 +1007,7 @@ export function SKILLS_SrvSt05_CheckValidSkillTarget_6FC6C1C0_113c(
   nSkillId: number,
   _nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC6C1C0)
   if (lookupSkillsTxtPtr113c(m, nSkillId) === 0) {
     return 0
   }
@@ -1004,6 +1032,7 @@ export function SKILLS_HealUnitLifeClampedToMax_6FC6DF20_113c(
   nHealAmount: number,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC6DF20)
   let heal = nHealAmount | 0
   if (heal <= 0) return 0
   const curLife = STATLIST_GetUnitStat113c(m, pUnit, 6, 0) | 0
@@ -1029,6 +1058,7 @@ export function SKILLS_ApplySummonResistStatList_6FC6E180_113c(
   pOwner: number,
   pPet: number,
 ): void {
+  hitD2GameVa113c(0x6FC6E180)
   const resBonus = STATLIST_GetUnitStat113c(m, pOwner, 0x15d, 0) | 0
   if (resBonus === 0) return
 
@@ -1066,6 +1096,7 @@ export function SKILLS_ApplySummonLevelAcAndToHit_6FC6E2A0_113c(
   pPet: number,
   nLevelBonus: number,
 ): number {
+  hitD2GameVa113c(0x6FC6E2A0)
   let lvl = nOverrideLevel | 0
   if (lvl <= 0) {
     const ownerLvl = STATLIST_GetUnitStat113c(m, pOwner, 0x0c, 0) | 0
@@ -1122,6 +1153,7 @@ export function SKILLS_InitNecroMageSkeletonComponents_6FC6E900_113c(
   pOwnerUnit: number,
   pMonster: number,
 ): void {
+  hitD2GameVa113c(0x6FC6E900)
   const nTier = resolveNecroSkeletonTierFromState61_113c(m, pOwnerUnit)
   SKILLS_SetNecroSkeletonComponents113c(m, nTier, pMonster, pOwnerUnit, 0, 1)
 }
@@ -1141,6 +1173,7 @@ export function SKILLS_InitNecroWarriorSkeletonComponents_6FC6E960_113c(
   pMonster: number,
   nSkillLevel: number,
 ): void {
+  hitD2GameVa113c(0x6FC6E960)
   const nTier = resolveNecroSkeletonTierFromState61_113c(m, pOwnerUnit)
   let bHasShield = 0
   if ((nSkillLevel | 0) > 2) {
@@ -1174,6 +1207,7 @@ export function SKILLS_OnCurseExpireResetAlignmentA_6FC6EB90_113c(
   nStateId: number,
   _pArg = 0,
 ): void {
+  hitD2GameVa113c(0x6FC6EB90)
   SUNIT_SetMonsterAlignmentState113c(m, pUnit, 0, 1)
   STATES_ToggleGfxStateFlag113c(m, pUnit, nStateId, 0)
   if (pUnit === 0) {
@@ -1196,6 +1230,7 @@ export function SKILLS_OnCurseExpireResetAlignmentB_6FC6EBE0_113c(
   nStateId: number,
   _pArg = 0,
 ): void {
+  hitD2GameVa113c(0x6FC6EBE0)
   SUNIT_SetMonsterAlignmentState113c(m, pUnit, 0, 1)
   STATES_ToggleGfxStateFlag113c(m, pUnit, nStateId, 0)
   if (pUnit === 0) {
@@ -1219,6 +1254,7 @@ export function SKILLS_CanCurseAffectTargetUnit_6FC6ECD0_113c(
   pGame: number,
   pCaster: number,
 ): number {
+  hitD2GameVa113c(0x6FC6ECD0)
   if (pTarget === 0) return 0
   const uType = m.u32(pTarget >>> 0) >>> 0
   if (uType === 1) {
@@ -1254,6 +1290,7 @@ export function SKILLS_SrvSt20_CanCreateIronGolemOnItem_6FC6EDD0_113c(
   _nSkillId: number,
   _nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC6EDD0)
   SUNIT_ValidatePathTargetUnit113c(m, pUnit, pGame)
   if (pUnit === 0) return 0
   const pPath = m.u32((pUnit + 0x2c) >>> 0) >>> 0
@@ -1288,6 +1325,7 @@ export function SKILLS_SrvSt19_CheckTargetOutsideTown_6FC6EE40_113c(
   _nSkillId: number,
   _nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC6EE40)
   SUNIT_ValidatePathTargetUnit113c(m, pUnit, pGame)
   if (pUnit === 0) return 0
   const pPath = m.u32((pUnit + 0x2c) >>> 0) >>> 0
@@ -1312,6 +1350,7 @@ export function SKILLS_SrvSt17_CheckSelectableCorpseOutsideTown_6FC6EEE0_113c(
   _nSkillId: number,
   _nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC6EEE0)
   SUNIT_ValidatePathTargetUnit113c(m, pUnit, pGame)
   if (pUnit === 0) return 0
   const pPath = m.u32((pUnit + 0x2c) >>> 0) >>> 0
@@ -1339,6 +1378,7 @@ export function SKILLS_SrvSt15_CheckRevivableCorpseOutsideTown_6FC6EF20_113c(
   _nSkillId: number,
   _nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC6EF20)
   SUNIT_ValidatePathTargetUnit113c(m, pUnit, pGame)
   if (pUnit === 0) return 0
   const pPath = m.u32((pUnit + 0x2c) >>> 0) >>> 0
@@ -1366,6 +1406,7 @@ export function SKILLS_ApplyCorpseExplosionAreaDamageCallback_6FC6F370_113c(
   pAuraCtx: number,
   pTarget: number,
 ): number {
+  hitD2GameVa113c(0x6FC6F370)
   const pSubCtx = m.u32((pAuraCtx + 0x0c) >>> 0) >>> 0
   if (pSubCtx === 0) return 0
 
@@ -1409,6 +1450,7 @@ export function SKILLS_ApplyPaladinEighthMaxLifeCost_6FC6F450_113c(
   pUnit: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC6F450)
   if (pUnit === 0) return
   if (m.u32(pUnit >>> 0) !== 0) return
   if (m.u32((pUnit + 0x04) >>> 0) !== 3) return
@@ -1445,6 +1487,7 @@ export function SKILLS_SrvDo32_FlagSkillEndAndExecuteEvents_6FC6F920_113c(
   _nSkillId: number,
   _nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC6F920)
   if (pUnit !== 0) {
     m.setU32((pUnit + 0xc4) >>> 0, (m.u32((pUnit + 0xc4) >>> 0) | 0x40) >>> 0)
   }
@@ -1472,6 +1515,7 @@ export function SKILLS_ApplyCurseSpecialMonsterAiState_6FC700A0_113c(
   pMonster: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC700A0)
   const pSkillsTxt = lookupSkillsTxtPtr113c(m, nSkillId)
   if (pSkillsTxt === 0) return
 
@@ -1540,6 +1584,7 @@ export function GAMETIME_GetElapsedMilliseconds_6FC72020_113c(
   m: Memory113c,
   hooks?: GameTimeHostHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC72020)
   const useQpc = m.u32(D2GAME_USE_PERF_COUNTER_VA_113C) >>> 0
   if (useQpc !== 0) {
     const sp = k2LaneLStackPtr
@@ -1598,6 +1643,7 @@ export function PLAYERSAVE_CountInventoryAndCursorItems_6FC73260_113c(
   m: Memory113c,
   pInventory: number,
 ): number {
+  hitD2GameVa113c(0x6FC73260)
   if (pInventory === 0) {
     return 0
   }

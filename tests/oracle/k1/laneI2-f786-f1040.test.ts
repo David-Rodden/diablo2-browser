@@ -70,14 +70,16 @@ describe('K1R14-LaneI2: D2Game.dll Post-F150 F786..F1040 (37 VAs)', () => {
     m.setU32(pClient + 0x1a8, pGame);
     m.setU32(pGame + 0x1320 + ((7 & 0x7f) << 2), pUnit);
     S2C_SendPacket0F_UnitWalkToTarget113c(m, pClient, 7, 0x0f, 1, 0x01, 0x14601400, 0);
-    expect(m.u32(pClient + 0x1b8)).toBe(0x15);
-    expect(m.u32(pClient + 0x1bc)).toBe(1);
-    expect(m.u8(pClient + 0x1c0 + 0x00)).toBe(0x0f);
-    expect(m.u32(pClient + 0x1c0 + 0x01)).toBe(7);
-    expect(m.u16(pClient + 0x1c0 + 0x06)).toBe(5100);
-    expect(m.u16(pClient + 0x1c0 + 0x08)).toBe(5200);
-    expect(m.u8(pClient + 0x1c0 + 0x11)).toBe(2);
-    expect(m.u8(pClient + 0x1c0 + 0x14)).toBe(14);
+    const pNode0f = m.u32(pClient + 0x1b8);
+    expect(pNode0f).toBeGreaterThan(0);
+    expect(m.u32(pClient + 0x1bc)).toBe(pNode0f);
+    expect(m.u32(pNode0f)).toBe(0x15);
+    expect(m.u8(pNode0f + 0x04 + 0x00)).toBe(0x0f);
+    expect(m.u32(pNode0f + 0x04 + 0x01)).toBe(7);
+    expect(m.u16(pNode0f + 0x04 + 0x06)).toBe(5100);
+    expect(m.u16(pNode0f + 0x04 + 0x08)).toBe(5200);
+    expect(m.u8(pNode0f + 0x04 + 0x11)).toBe(2);
+    expect(m.u8(pNode0f + 0x04 + 0x14)).toBe(14);
   });
 
   it('F795: skill mana/charges, target alignment, start, and broadcast', () => {
@@ -101,8 +103,11 @@ describe('K1R14-LaneI2: D2Game.dll Post-F150 F786..F1040 (37 VAs)', () => {
     expect(SKILLS_CheckSkillManaAndCharges113c(m, pPlayer)).toBe(0);
 
     m.setU32(pSkill + 0x38, 2);
-    expect(SKILLS_ConsumeSkillManaOrCharge113c(m, pPlayer, 0, 0x21000, 1)).toBe(1);
-    expect((m.u32(pSkill + 0x38) | 0)).toBe(1);
+    // Missing item 42 in pGame->pUnitList[4] (+0x1720) -> 0x6FCBF4A0 returns 0
+    expect(SKILLS_ConsumeSkillManaOrCharge113c(m, pPlayer, 0, 0x21000, 1)).toBe(0);
+    // Native skill (ownerItemGuid == -1) with 0 mana cost -> 0x6FCBF850 returns 0 (`wMana == 0 && wLvlMana == 0`)
+    m.setU32(pSkill + 0x34, 0xffffffff);
+    expect(SKILLS_ConsumeSkillManaOrCharge113c(m, pPlayer, 0, 0x21000, 1)).toBe(0);
 
     expect(SKILLS_ValidateSkillTargetAlignment113c(m, pPlayer, 0x21000, 0)).toBe(1);
     expect(SKILLS_ExecuteSkillStart113c(m, 0, 0, pPlayer, 1, 0)).toBe(0);
@@ -131,9 +136,10 @@ describe('K1R14-LaneI2: D2Game.dll Post-F150 F786..F1040 (37 VAs)', () => {
 
     const pClient = 0x31000;
     S2C_SendPacket0E_UnitCorpseState113c(m, 0x0e, 0x1234, pClient, 1, 100, 200, 1, 0);
-    expect(m.u32(pClient + 0x1b8)).toBe(0x0c);
-    expect(m.u8(pClient + 0x1c0)).toBe(0x0e);
-    expect(m.u32(pClient + 0x1c0 + 2)).toBe(0x1234);
+    const pNode0e = m.u32(pClient + 0x1b8);
+    expect(m.u32(pNode0e)).toBe(0x0c);
+    expect(m.u8(pNode0e + 0x04)).toBe(0x0e);
+    expect(m.u32(pNode0e + 0x04 + 2)).toBe(0x1234);
 
     SKILLS_ConsumeProgressiveChargesOnHit113c(m, 0, 0, 0);
     SKILLS_ApplyProgressiveChargesToDamage113c(m, 0, 0);
@@ -185,10 +191,11 @@ describe('K1R14-LaneI2: D2Game.dll Post-F150 F786..F1040 (37 VAs)', () => {
 
     const pClient = 0x41000;
     S2C_SendPacket0D_UnitStop113c(m, 0x0d, 99, pClient, 1, 2, 0x006400c8, 80, 0x100, 0);
-    expect(m.u32(pClient + 0x1b8)).toBe(0x10);
-    expect(m.u8(pClient + 0x1c0 + 0x00)).toBe(0x0d);
-    expect(m.u32(pClient + 0x1c0 + 0x02)).toBe(99);
-    expect(m.u8(pClient + 0x1c0 + 0x0b)).toBe(80);
+    const pNode0d = m.u32(pClient + 0x1b8);
+    expect(m.u32(pNode0d)).toBe(0x10);
+    expect(m.u8(pNode0d + 0x04 + 0x00)).toBe(0x0d);
+    expect(m.u32(pNode0d + 0x04 + 0x02)).toBe(99);
+    expect(m.u8(pNode0d + 0x04 + 0x0b)).toBe(80);
 
     expect(ITEMS_SyncSocketedSubItemsToClient113c(m, pClient, 0, 0)).toBe(1);
     S2C_SendPacket9C_ItemActionWorld113c(m, pClient, 0, 2, 0, 0);

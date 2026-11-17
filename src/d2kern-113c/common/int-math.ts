@@ -1,3 +1,4 @@
+import { hitD2CommonVa113c, hitD2GameVa113c } from '../va-trace-113c.ts'
 /**
  * Diablo II v1.13c x86 32-bit integer arithmetic primitives.
  *
@@ -20,6 +21,8 @@
  * - else `(int32)(edx * eax) / ecx` (`32-bit imul; cdq; idiv`)
  */
 export function mulDiv113c(factor: number, value: number, divisor: number): number {
+  hitD2CommonVa113c(0x6FD511E0)
+  hitD2GameVa113c(0x6FC214D0)
   const eax = factor | 0
   const edx = value | 0
   const ecx = divisor | 0

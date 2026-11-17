@@ -24,6 +24,7 @@ import { DRLGVER_SnapAndOffsetVertex113c } from '../text.ts';
 import { UNITS_GetAnimOrSeqEventAtFrame113c, UNITS_GetFrameAndFrameCount113c } from '../unit.ts';
 import { DRLGGRID_OpOverwrite113c } from './drlg-grid.ts';
 import { DRLGOUTPLACE_StepMazeLinkNode113c } from './drlg-room.ts';
+import { hitD2CommonVa113c } from '../../va-trace-113c.ts';
 
 const DRLGVER_STACK_BASE = 0x7ff80000;
 const DRLGVER_STACK_SIZE = 0x1000;
@@ -157,6 +158,7 @@ export function DRLGOUTPLACE_CanStepMazeLinkNode113c(
   nCandY: number,
   pLevel: number,
 ): number {
+  hitD2CommonVa113c(0x6FD67C80);
   const candX = nCandX | 0;
   const candY = nCandY | 0;
   const target = pTargetCoord >>> 0;
@@ -207,6 +209,7 @@ export function DRLGOUTPLACE_CanStepMazeLinkNode113c(
  * Writes the low byte of `bUsed` to `pHoverMsg + 0x08` (`D2HoverTextStrc.nLangId`).
  */
 export function CHAT_SetUsed113c(m: Memory113c, pHoverMsg: number, bUsed: number): void {
+  hitD2CommonVa113c(0x6FD681E0);
   m.setU8(((pHoverMsg >>> 0) + D2HoverTextStrc.nLangId.off) >>> 0, bUsed & 0xff);
 }
 
@@ -217,6 +220,7 @@ export function CHAT_SetUsed113c(m: Memory113c, pHoverMsg: number, bUsed: number
  * Reads the byte at `pHoverMsg + 0x08` (`D2HoverTextStrc.nLangId`) into `AL`.
  */
 export function CHAT_GetUsed113c(m: Memory113c, pHoverMsg: number): number {
+  hitD2CommonVa113c(0x6FD681F0);
   return m.u8(((pHoverMsg >>> 0) + D2HoverTextStrc.nLangId.off) >>> 0);
 }
 
@@ -228,6 +232,7 @@ export function CHAT_GetUsed113c(m: Memory113c, pHoverMsg: number): number {
  * `D2MonStatsTxt.nBitField2` (`+0x0D`) has the bit at `gdwBitMasks[5]` (`*(u8*)(*(u32*)0x6FDD90B0 + 0x14)`) set.
  */
 export function MONSTER_CheckMonTypeFlag0x20_113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD6A610);
   const unit = pUnit >>> 0;
   if (unit === 0 || m.u32(unit) !== 1) {
     return 0;
@@ -260,6 +265,7 @@ export function MONSTER_CheckMonTypeFlag0x20_113c(m: Memory113c, pUnit: number):
  * for monster units (`dwUnitType == 1`), or `0` otherwise.
  */
 export function MONSTER_GetMonStatsInteractBit113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD6A720);
   const unit = pUnit >>> 0;
   if (unit === 0 || m.u32(unit) !== 1) {
     return 0;
@@ -300,6 +306,7 @@ export function DRLG_ResolveMonsterSubClassIdForRoom113c(
   pRoom1: number,
   nClassId: number,
 ): number {
+  hitD2CommonVa113c(0x6FD6A770);
   const room1 = pRoom1 >>> 0;
   const gpDataTables = m.u32(SGPT_DATA_TABLES_PTR_VA);
   let pLevelsTxt = 0;
@@ -396,6 +403,7 @@ export function MONSTER_IsSarcophagusBaseAndZeroArg113c(
   pUnit: number,
   nArg: number,
 ): number {
+  hitD2CommonVa113c(0x6FD6A990);
   const unit = pUnit >>> 0;
   const gpDataTables = m.u32(SGPT_DATA_TABLES_PTR_VA);
   let baseId = -1;
@@ -423,6 +431,7 @@ export function MONSTER_IsSarcophagusBaseAndZeroArg113c(
  * Returns `sgptDataTables.dwCubemainRecs` (`*(int32_t*)0x6FDF1468`).
  */
 export function DATATBLS_GetCubemainTxtRecordCount113c(m: Memory113c): number {
+  hitD2CommonVa113c(0x6FD6B880);
   return m.u32(SGPT_CUBEMAIN_RECS_VA) | 0;
 }
 
@@ -448,6 +457,7 @@ export function DRLGGRID_Get3x3Neighborhood113c(
   nX: number,
   pOut9Dwords: number,
 ): void {
+  hitD2CommonVa113c(0x6FD8D810);
   const grid = pGrid >>> 0;
   const out = pOut9Dwords >>> 0;
   const x = nX | 0;
@@ -512,6 +522,7 @@ export function PATH_QuantizeDeltaIndex25_113c(
   nY2: number,
   nX2: number,
 ): number {
+  hitD2CommonVa113c(0x6FD8E230);
   let edx = ((nX1 | 0) - (nX2 | 0)) | 0;
   let esi = ((nY1 | 0) - (nY2 | 0)) | 0;
   const absX = edx < 0 ? -edx | 0 : edx;
@@ -563,6 +574,7 @@ export function DRLGVER_FreeVertices113c(
   pMemPool: number,
   ppVertexList: number,
 ): void {
+  hitD2CommonVa113c(0x6FD6B3D0);
   void pMemPool;
   const listPtr = ppVertexList >>> 0;
   const head = m.u32(listPtr);
@@ -607,6 +619,7 @@ export function DRLGVER_CreateVerticesForRoom113c(
   nFlagByte: number,
   pOrthList: number,
 ): void {
+  hitD2CommonVa113c(0x6FD6B4B0);
   void pMemPool;
   const v0 = pVertexHead >>> 0;
   const v1 = m.u32((v0 + D2DrlgVertexStrc.pNext.off) >>> 0);
@@ -740,6 +753,7 @@ export function DRLGVER_CreateVerticesForRoom113c(
  * `pCubemainTxt != NULL` and `nIndex < dwCubemainRecs`.
  */
 export function DATATBLS_GetCubemainTxtRecord113c(m: Memory113c, nIndex: number): number {
+  hitD2CommonVa113c(0x6FD6B890);
   const pBase = m.u32(SGPT_CUBEMAIN_TXT_VA);
   if (pBase === 0) {
     throw new D2CommonAssertError('..\\Source\\D2Common\\DRLG\\DrlgVer.cpp', 846);
@@ -764,6 +778,7 @@ export function DRLGVER_ScaleOutdoorsVertices113c(
   pLevel: number,
   nIndex: number,
 ): void {
+  hitD2CommonVa113c(0x6FD8D920);
   const level = pLevel >>> 0;
   const pDrlg = m.u32((level + D2DrlgLevelStrc.pDrlg.off) >>> 0);
   void m.u32((pDrlg + D2DrlgStrc.pMemPool.off) >>> 0);
@@ -850,6 +865,7 @@ export function DRLGVER_BuildAndLocalizeRoomVertices113c(
   ppVertices: number,
   pRoomCoordNode: number,
 ): void {
+  hitD2CommonVa113c(0x6FD6B6E0);
   const coord = pDrlgCoord >>> 0;
   const ppVerts = ppVertices >>> 0;
   const flagByte = nFlag & 0xff;
@@ -953,6 +969,7 @@ export function MONSTER_GetMissileIdForAnimMode113c(
   pUnit: number,
   bCheckAnimEvent: number,
 ): number {
+  hitD2CommonVa113c(0x6FD6B280);
   const unit = pUnit >>> 0;
   if ((bCheckAnimEvent | 0) !== 0) {
     if (m.u8((unit + 0x4e) >>> 0) === 0) {
@@ -1071,6 +1088,7 @@ export function DRLGOUTPLACE_ExpandMazeLinkPath113c(
   pLevel: number,
   pGoal: number,
 ): number {
+  hitD2CommonVa113c(0x6FD67D00);
   const ctx = pCtx >>> 0;
   const maxCost = nMaxCost | 0;
   const level = pLevel >>> 0;
@@ -1157,6 +1175,7 @@ export function DRLGOUTPLACE_BuildOutdoorMazeLinkPath113c(
   pLevel: number,
   nPathIdx: number,
 ): number {
+  hitD2CommonVa113c(0x6FD67EB0);
   const sm = withMazeLinkStack113c(m);
   const level = pLevel >>> 0;
   const idx = nPathIdx | 0;
@@ -1270,6 +1289,7 @@ export function DRLGVER_CollectOutdoorRoomLinks113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FD8D5A0);
   const level = pLevel >>> 0;
   const pOutdoors = m.u32((level + 0x14) >>> 0);
   let pOrth = m.u32((pOutdoors + 0x264) >>> 0);
@@ -1383,6 +1403,7 @@ export function DRLGVER_ApplyMazeBorderTiles113c(
   m: Memory113c,
   pRoomEx: number,
 ): void {
+  hitD2CommonVa113c(0x6FD8DB20);
   const sm = withDrlgVerStackScratch113c(m);
   const roomEx = pRoomEx >>> 0;
   const maxX0 = ((sm.u32((roomEx + 0x3c) >>> 0) | 0) + 1) | 0;

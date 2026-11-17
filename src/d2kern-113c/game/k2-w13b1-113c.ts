@@ -206,11 +206,14 @@ import {
   AI_FleeFrom113c,
   AI_IdleWander113c,
   AI_Stall113c,
-  ITEMS_FinalizeCreatedItem113c,
   ITEMS_GetDropItemLevel113c,
   ITEMS_InitCreatedItemStats113c,
   MONSTER_StartMode113c,
 } from './combat-a1c-113c'
+import {
+  D2GAME_CreateItemEx_6FC31490_113c,
+  ITEMS_InitCreatedItemStats_6FC31070_113c,
+} from './k2-real-itemdrop-113c'
 import { SUNIT_GetServerUnit113c } from './game-strc'
 import {
   ITEMS_ClearInventoryCmdFlag4AndSync3F113c,
@@ -370,6 +373,7 @@ import { SUNIT_FreeUnit113c } from './replay-final11-113c'
 import { EVENT_FreeNode113c, EVENT_SetEventFull113c } from './timer-wheel'
 import { AI_StepRelativeToTargetUnit113c } from './town-npc-ai-113c'
 import { AITARGET_ScanUnitsByModeTable113c } from './town-runtime-gap-113c'
+import { hitD2GameVa113c } from '../va-trace-113c'
 
 
 type D2KernMemory113c = SparseMemory113c
@@ -976,6 +980,7 @@ export function D2Game_6FC3E3D0_113c(
   pUnit: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC3E3D0)
   const pMonStatsTxt = m.u32((pAiTickArgs + 0x1c) >>> 0) >>> 0
   const pAiControl = m.u32(pAiTickArgs >>> 0) >>> 0
 
@@ -1095,6 +1100,7 @@ export function D2Game_6FC3E640_113c(
   pAiTickArgs: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC3E640)
   const pAiControl = m.u32(pAiTickArgs >>> 0) >>> 0
 
   let pOwner = 0
@@ -1239,6 +1245,7 @@ export function D2Game_6FC56470_113c(
   nQuality: number,
   bDropOnGround: number,
 ): number {
+  hitD2GameVa113c(0x6FC56470)
   const sp = k2W13B1StackPtr
   k2W13B1StackPtr = (sp + 0x18) >>> 0
   try {
@@ -1329,6 +1336,7 @@ export function D2Game_6FC565E0_113c(
   pGame: number,
   pInventory: number,
 ): void {
+  hitD2GameVa113c(0x6FC565E0)
   let pClient = 0
   if (pPlayer !== 0 && (m.u32(pPlayer >>> 0) >>> 0) === 0) {
     const pPlrData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
@@ -1375,6 +1383,7 @@ export function D2Game_6FC565E0_113c(
  * @ordinalOrName D2Game_6FC7D690
  */
 export function D2Game_6FC7D690_113c(m: D2KernMemory113c, pObjInteractArg: number): number {
+  hitD2GameVa113c(0x6FC7D690)
   const pGame = m.u32(pObjInteractArg >>> 0) >>> 0
   const pQuestCtrl = pGame !== 0 ? m.u32((pGame + 0x10f4) >>> 0) >>> 0 : 0
   if (pQuestCtrl === 0) return 0
@@ -1428,6 +1437,7 @@ export function D2Game_6FC7D690_113c(m: D2KernMemory113c, pObjInteractArg: numbe
  * @ordinalOrName D2Game_6FC7DF70
  */
 export function D2Game_6FC7DF70_113c(m: D2KernMemory113c, pObjInteractArg: number): number {
+  hitD2GameVa113c(0x6FC7DF70)
   const pGame = m.u32(pObjInteractArg);
   const pQuestCtrl = m.u32(pGame + 0x10f4);
   if (pQuestCtrl === 0) return 0;
@@ -1458,6 +1468,7 @@ export function D2Game_6FC7DF70_113c(m: D2KernMemory113c, pObjInteractArg: numbe
  * @ordinalOrName D2Game_6FC7E2A0
  */
 export function D2Game_6FC7E2A0_113c(m: D2KernMemory113c, pObjInteractArg: number): number {
+  hitD2GameVa113c(0x6FC7E2A0)
   const pGame = m.u32(pObjInteractArg);
   const pQuestCtrl = m.u32(pGame + 0x10f4);
   if (pQuestCtrl === 0) return 0;
@@ -1509,6 +1520,7 @@ export function D2Game_6FC7E2A0_113c(m: D2KernMemory113c, pObjInteractArg: numbe
  * @ordinalOrName D2Game_6FC8D620
  */
 export function D2Game_6FC8D620_113c(m: D2KernMemory113c, pObjInteractArg: number): number {
+  hitD2GameVa113c(0x6FC8D620)
   const pObject = m.u32(pObjInteractArg + 4);
   const pRoom = UNITS_GetRoom113c(m, pObject);
   const levelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom);
@@ -1575,6 +1587,7 @@ export function D2Game_6FC8E930_113c(
   pPlayer: number,
   wDestLevelId: number,
 ): void {
+  hitD2GameVa113c(0x6FC8E930)
   if (pGame === 0) {
     FOG_Assertion113c(m, 0x2d3, 0x6fd19ff9);
   }
@@ -1651,6 +1664,7 @@ export function D2Game_6FC8E930_113c(
  * @ordinalOrName D2Game_6FC8F4F0
  */
 export function D2Game_6FC8F4F0_113c(m: D2KernMemory113c, pObjInteractArg: number): number {
+  hitD2GameVa113c(0x6FC8F4F0)
   const pObject = m.u32(pObjInteractArg + 4);
   if (pObject !== 0) {
     const mode = m.u32(pObject + 0x10) & 0xffff;
@@ -1672,6 +1686,7 @@ export function D2Game_6FC91E10_113c(
   pGame: number,
   pPlayer2: number,
 ): number {
+  hitD2GameVa113c(0x6FC91E10)
   let pClient2 = 0;
   if (pPlayer2 !== 0 && m.u32(pPlayer2) === 0) {
     const pPData2 = UNITS_GetPlayerData113c(m, pPlayer2);
@@ -1851,6 +1866,7 @@ export function D2Game_6FC92220_113c(
   pCubeTxt: number,
   pOutputArgs: number,
 ): number {
+  hitD2GameVa113c(0x6FC92220)
   const sp = k2W13B1StackPtr;
   k2W13B1StackPtr = (sp + 0x130) >>> 0;
   try {
@@ -1916,9 +1932,10 @@ export function D2Game_6FC92220_113c(
           m.setU32(pDup + 4, newCode);
         }
         m.setU32(sp + 0x18, pDup);
-        ITEMS_InitCreatedItemStats113c(m, pGame, pDup, clampedIlvl);
-        m.setU32(sp + 0x28 + i * 4, pDup);
-        UNITS_ChangeAnimMode113c(m, pDup, 4);
+        ITEMS_InitCreatedItemStats_6FC31070_113c(m, pGame, sp + 0x18, 0, 0);
+        const pInitDup = m.u32(sp + 0x18);
+        m.setU32(sp + 0x28 + i * 4, pInitDup);
+        UNITS_ChangeAnimMode113c(m, pInitDup, 4);
         ITEMS_SetInvPage113c(m, pSrcItem, 3);
       } else if (nQuality === 0xfe) {
         const pSrcItem = m.u32(pOutputArgs + i * 12);
@@ -1997,23 +2014,7 @@ export function D2Game_6FC92220_113c(
           let dropFlags = (wFlags & 2) !== 0 && m.u8(pOutDef + 7) === 0 ? 0x10 : 0x08;
           dropFlags |= (wFlags & 4) !== 0 ? 4 : 2;
           m.setU32(dropBase + 0x80, dropFlags);
-          const pCreated = ITEMS_SpawnItemWithParams_6FC31980_113c(
-            m,
-            clampedIlvl,
-            (dropFlags & 8) !== 0 ? 1 : 0,
-            (dropFlags & 2) !== 0 ? 1 : 0,
-            pPlayer,
-            outCode,
-            pGame,
-            4,
-            bOutQual,
-            0,
-            0,
-            0,
-          );
-          if (pCreated !== 0) {
-            ITEMS_FinalizeCreatedItem113c(m, pGame, pCreated);
-          }
+          const pCreated = D2GAME_CreateItemEx_6FC31490_113c(m, pGame, dropBase, 0) >>> 0;
           m.setU32(sp + 0x28 + i * 4, pCreated);
           if (nUniqueIdx >= 0) {
             const invTbl = m.u32(0x6fd18bac);
@@ -2252,6 +2253,7 @@ export function D2Game_6FC93570_113c(
   _arg1 = 0,
   _arg2 = 0,
 ): void {
+  hitD2GameVa113c(0x6FC93570)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer);
   const state = signedU32(m, pPlayerData + 0x50);
   if (state <= 4) return;
@@ -2376,6 +2378,7 @@ export function D2Game_6FC93570_113c(
  * @ordinalOrName D2Game_6FC93AA0
  */
 export function D2Game_6FC93AA0_113c(m: D2KernMemory113c, pGame: number, pPlayer: number): void {
+  hitD2GameVa113c(0x6FC93AA0)
   if (m.u8(pPlayer + 0x6c) === 0 || m.u32(pPlayer + 0x68) !== 0) return;
   const pTarget = SUNIT_GetServerUnit113c(m, pGame, 0, m.u32(pPlayer + 0x64));
   if (pTarget === 0) return;
@@ -2422,6 +2425,7 @@ export function D2Game_6FC93BA0_113c(
   pPlayerData1: number,
   pPlayerData2: number,
 ): void {
+  hitD2GameVa113c(0x6FC93BA0)
   ITEMS_ResetAndRecountInventoryScrollAndTomeCharges_6FCF4570_113c(m, pPlayer1);
   ITEMS_ResetAndRecountInventoryScrollAndTomeCharges_6FCF4570_113c(m, pPlayer2);
   UNITS_UpdateInventoryItems113c(m, pPlayer1, 1);
@@ -2490,6 +2494,7 @@ export function D2Game_6FC98D00_113c(
   pGame: number,
   nLocation: number,
 ): void {
+  hitD2GameVa113c(0x6FC98D00)
   const pInv = m.u32(pPlayer + 0x60);
   ITEMS_StopAllItemFunctions113c(m, pPlayer, pItem);
   INVENTORY_UpdateWeaponGUIDOnRemove113c(m, pInv, pItem);
@@ -2524,6 +2529,7 @@ export function D2Game_6FC98D00_113c(
  * @ordinalOrName D2Game_6FCC3610
  */
 export function D2Game_6FCC3610_113c(m: D2KernMemory113c, pSpawnDesc: number, pGame: number): number {
+  hitD2GameVa113c(0x6FCC3610)
   const sp = k2W13B1StackPtr;
   k2W13B1StackPtr = (sp + 0x40) >>> 0;
   try {
@@ -2606,6 +2612,7 @@ export function D2Game_6FCCA4D0_113c(
   pUnit: number,
   pAiTickArgs: number,
 ): void {
+  hitD2GameVa113c(0x6FCCA4D0)
   let pOwner = 0;
   if (pUnit !== 0 && m.u32(pUnit) === 1) {
     const pAiGen = getMonsterAiGeneralPtr(m, pUnit);
@@ -2683,6 +2690,7 @@ export function D2Game_6FCCA710_113c(
   _unused: number,
   pAiTickArgs: number,
 ): void {
+  hitD2GameVa113c(0x6FCCA710)
   const pAiControl = m.u32(pAiTickArgs);
   const pMonStats = m.u32(pAiTickArgs + 0x1c);
   let pOwner = 0;
@@ -2863,6 +2871,7 @@ export function D2Game_6FCCAC30_113c(
   pUnit: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FCCAC30)
   const pMonStats = m.u32(pAiTickArgs + 0x1c);
   const pAiControl = m.u32(pAiTickArgs);
   let pOwner = 0;
@@ -3008,6 +3017,7 @@ export function D2Game_6FCCB070_113c(
   pUnit: number,
   pAiTickParam: number,
 ): void {
+  hitD2GameVa113c(0x6FCCB070)
   const pAiParam = m.u32(pAiTickParam + 0x1c);
   const pAiControl = m.u32(pAiTickParam);
   if (pUnit === 0 || signedU32(m, pUnit) !== 1) return;
@@ -3132,6 +3142,7 @@ export function D2Game_6FCCB360_113c(
   pUnit: number,
   pAiTickParam: number,
 ): void {
+  hitD2GameVa113c(0x6FCCB360)
   const pAiParam = m.u32(pAiTickParam + 0x1c);
   const pAiControl = m.u32(pAiTickParam);
   let pOwner = 0;
@@ -3440,6 +3451,7 @@ export function D2Game_6FCCB580_113c(
   pUnit: number,
   pAiTickParam: number,
 ): void {
+  hitD2GameVa113c(0x6FCCB580)
   let pTarget = m.u32(pAiTickParam + 0x08);
   const pAiParam = m.u32(pAiTickParam + 0x1c);
   const bInCombat = signedU32(m, pAiTickParam + 0x18);
@@ -3743,6 +3755,7 @@ export function D2Game_6FCCC410_113c(
   pUnit: number,
   pAiTickParam: number,
 ): void {
+  hitD2GameVa113c(0x6FCCC410)
   const pAiParam = m.u32(pAiTickParam + 0x1c);
   const bInCombat = signedU32(m, pAiTickParam + 0x18);
   let pTarget = m.u32(pAiTickParam + 0x08);
@@ -3906,6 +3919,7 @@ export function D2Game_6FCDB4F0_113c(
   eax: number,
   pUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FCDB4F0)
   D2Game_6FCBE170_113c(m, pUnit, 0x67, eax, 0);
   let pClient = 0;
   if (pUnit !== 0 && signedU32(m, pUnit) === 0) {
@@ -3935,6 +3949,7 @@ export function D2Game_6FCDE2A0_113c(
   pGame: number,
   pNpc: number,
 ): void {
+  hitD2GameVa113c(0x6FCDE2A0)
   const pGambleTbl = DATATBLS_GetGambleRecord113c(m);
   if (pGambleTbl === 0) return;
   const pDiffLvl = DATATBLS_GetDifficultyLevelsTxtRecord113c(m, m.u8(pGame + 0x6d));
@@ -4094,6 +4109,7 @@ export function D2Game_6FCDE640_113c(
   nBuyMode: number,
   bFillStack: number,
 ): number {
+  hitD2GameVa113c(0x6FCDE640)
   if (pGame === 0) return 0;
 
   let pItem = m.u32(pGame + 0x1720 + (dwItemGuid & 0x7f) * 4);
@@ -4381,6 +4397,7 @@ export function D2Game_6FCDEE30_113c(
   nQuality: number,
   nMaxQuality: number,
 ): number {
+  hitD2GameVa113c(0x6FCDEE30)
   if (pGame === 0 || pNpc === 0) return 0;
 
   const sp = k2W13B1StackPtr;
@@ -4548,6 +4565,7 @@ export function D2Game_6FCDF990_113c(
   dwItemGuid: number,
   nSellMode: number,
 ): number {
+  hitD2GameVa113c(0x6FCDF990)
   if (pGame === 0) return 0;
 
   const pInteractingUnit =
@@ -4751,6 +4769,7 @@ export function D2Game_6FCE1030_113c(
   pPlayer: number,
   nSellerClassId: number,
 ): void {
+  hitD2GameVa113c(0x6FCE1030)
   const sp = k2W13B1StackPtr;
   k2W13B1StackPtr = (sp + 0x10) >>> 0;
   let pNpcRecord = 0;
@@ -4866,6 +4885,7 @@ export function D2Game_6FCE1510_113c(
   pNpc: number,
   wHireId: number,
 ): void {
+  hitD2GameVa113c(0x6FCE1510)
   const sp = k2W13B1StackPtr
   k2W13B1StackPtr = (sp + 0x60) >>> 0
   try {
@@ -5051,6 +5071,7 @@ export function D2Game_6FCEF0E0_113c(
   pPacket: number,
   nPacketLen: number,
 ): number {
+  hitD2GameVa113c(0x6FCEF0E0)
   if (nPacketLen !== 0x11) {
     return 3
   }
@@ -5123,6 +5144,7 @@ export function D2Game_6FCEF810_113c(
   nDestLevel: number,
   dwObjectId: number,
 ): void {
+  hitD2GameVa113c(0x6FCEF810)
   const destAct = DRLG_GetActNoFromLevelId113c(m, nDestLevel) & 0xff
   const pRoom = UNITS_GetRoom113c(m, pPlayer)
   const nSrcLevel = DUNGEON_GetLevelIdFromRoom113c(m, pRoom)
@@ -5237,6 +5259,7 @@ export function D2Game_6FCF08B0_113c(
   pPacket: number,
   nPacketLen: number,
 ): number {
+  hitD2GameVa113c(0x6FCF08B0)
   if (nPacketLen !== 0x0d) {
     return 3
   }
@@ -5266,6 +5289,7 @@ export function D2Game_6FCF0910_113c(
   pPacket: number,
   nPacketLen: number,
 ): number {
+  hitD2GameVa113c(0x6FCF0910)
   if (nPacketLen !== 9) {
     return 3
   }
@@ -5289,6 +5313,7 @@ export function D2Game_6FCF12E0_113c(
   pPacket: number,
   nPacketLen: number,
 ): number {
+  hitD2GameVa113c(0x6FCF12E0)
   if (nPacketLen !== 3) {
     return 3;
   }
@@ -5347,6 +5372,7 @@ export function D2Game_6FCF7300_113c(
   pOutSwapped: number,
   pOutFailed: number,
 ): number {
+  hitD2GameVa113c(0x6FCF7300)
   if (pGame === 0) {
     throw new D2CommonAssertError('0x6fd19ff9', 0xec1);
   }
@@ -5507,6 +5533,7 @@ export function D2Game_6FCF78C0_113c(
   pPlayer: number,
   pCubeItem: number,
 ): void {
+  hitD2GameVa113c(0x6FCF78C0)
   const nItemClass = pCubeItem !== 0 ? m.u32((pCubeItem + 0x04) >>> 0) | 0 : -1;
   const pItemsTxt = DATATBLS_GetItemsTxtRecordMemPort113c(m, nItemClass);
   if (pItemsTxt === 0) {
@@ -5687,6 +5714,7 @@ export function D2Game_6FCF7CC0_113c(
   dwCursorItemGuid: number,
   pOutFailed: number,
 ): number {
+  hitD2GameVa113c(0x6FCF7CC0)
   if (pGame === 0) {
     throw new D2CommonAssertError('0x6fd19ff9', 0x14a8);
   }
@@ -5770,6 +5798,7 @@ export function D2Game_6FCF8020_113c(
   bForce: number,
   pOutFailed: number,
 ): number {
+  hitD2GameVa113c(0x6FCF8020)
   if (pGame === 0) {
     throw new D2CommonAssertError('0x6fd19ff9', 0xb7c);
   }
@@ -5907,6 +5936,7 @@ export function D2Game_6FCF8600_113c(
   bForce: number,
   pOutFailed: number,
 ): number {
+  hitD2GameVa113c(0x6FCF8600)
   if (pGame === 0) {
     throw new D2CommonAssertError('0x6fd19ff9', 0xca8);
   }
@@ -6040,6 +6070,7 @@ export function D2Game_6FD08EB0_113c(
   m: D2KernMemory113c,
   pObjInteractArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD08EB0)
   const pGame = m.u32(pObjInteractArg);
   const pQuestChain = m.u32((pGame + 0x10f4) >>> 0);
   let pQuest = pQuestChain !== 0 ? m.u32(pQuestChain) : 0;
@@ -6078,6 +6109,7 @@ export function D2Game_6FD08F30_113c(
   pGame: number,
   pQuest: number,
 ): number {
+  hitD2GameVa113c(0x6FD08F30)
   const pQData = m.u32((pQuest + 0x18) >>> 0);
   const bFlag18 = m.u8((pQData + 0x18) >>> 0) === 1;
   m.setU8((pQData + 0x05) >>> 0, 0);
@@ -6137,6 +6169,7 @@ export function D2Game_6FD095E0_113c(
   m: D2KernMemory113c,
   pObjInteractArg: number,
 ): number {
+  hitD2GameVa113c(0x6FD095E0)
   const pObject = m.u32((pObjInteractArg + 0x04) >>> 0);
   if (pObject !== 0 && m.u32((pObject + 0x10) >>> 0) === 2) {
     D2Game_6FCE8950_113c(m, pObjInteractArg);

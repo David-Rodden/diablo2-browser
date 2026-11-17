@@ -37,6 +37,7 @@ import { DRLGVER_FreeVertices113c } from './drlg-ver.ts'
 import { DRLGROOMTILE_GetWarpLevelsArray113c } from './room-tile.ts'
 import { DRLG_GetLevel113c, DRLG_InitLevelCoordsFromLevelsTxt113c } from './drlg.ts'
 import { DRLGROOM_BuildRoomGridsAndTiles113c, DRLG_InitLevelRooms113c } from './drlg-room.ts'
+import { hitD2CommonVa113c } from '../../va-trace-113c.ts'
 
 const PRESET_STACK_BASE = 0x7ff90000
 const PRESET_STACK_SIZE = 0x4000
@@ -103,6 +104,7 @@ function withPresetStackScratch113c(m: Memory113c): Memory113c {
  *     add eax, edx; sar eax, 2; dec eax`), i.e. `sdiv32(idx, 4) - 1`, NOT a flooring `>> 2`.
  */
 export function DRLGPRESET_FinalizePopsLocations113c(m: Memory113c, pDrlgMap: number, nPops: number): void {
+  hitD2CommonVa113c(0x6FD59C60)
   const n = nPops | 0
   m.set(pDrlgMap, D2DrlgMapStrc.nPops, n >>> 0)
   if (n <= 0) return
@@ -132,6 +134,7 @@ export function DRLGPRESET_FinalizePopsLocations113c(m: Memory113c, pDrlgMap: nu
  * the value re-read from `*ppDst` (so `ppSrc == ppDst` returns `0`).
  */
 export function DRLGPRESET_MovePointerAndClear113c(m: Memory113c, ppSrc: number, ppDst: number): number {
+  hitD2CommonVa113c(0x6FD59DD0)
   m.setU32(ppDst, m.u32(ppSrc))
   m.setU32(ppSrc, 0)
   return m.u32(ppDst)
@@ -166,6 +169,7 @@ export function DRLGPRESET_ReadFileData113c(
   nSize: number,
   pBuffer: number,
 ): void {
+  hitD2CommonVa113c(0x6FD59610)
   if (hFile === 0) {
     throw new D2CommonAssertError('..\\Source\\D2Common\\DRLG\\Preset.cpp', 135)
   }
@@ -195,6 +199,7 @@ export function DRLGPRESET_GetFileSize113c(
   hFile: number,
   lpFileSizeHigh: number,
 ): number {
+  hitD2CommonVa113c(0x6FD59700)
   if (hFile === 0) {
     throw new D2CommonAssertError('..\\Source\\D2Common\\DRLG\\Preset.cpp', 89)
   }
@@ -220,6 +225,7 @@ export function DRLGPRESET_FreeSaveHeaderBlock113c(
   _pMemPool: number,
   pBlock: number,
 ): void {
+  hitD2CommonVa113c(0x6FD59D90)
   const freeFn = (m as { free?: (p: number) => void }).free
   const pData = m.u32((pBlock + 4) >>> 0)
   if (pData !== 0) {
@@ -243,6 +249,7 @@ export function DRLGPRESET_CloneSaveHeaderBlock113c(
   _pMemPool: number,
   pSrcBlock: number,
 ): number {
+  hitD2CommonVa113c(0x6FD59DE0)
   const pDst = m.alloc(8)
   m.setU32(pDst, 0)
   m.setU32((pDst + 4) >>> 0, 0)
@@ -274,6 +281,7 @@ export function DRLGPRESET_CloneSaveHeaderBlock113c(
  * - Finally frees `pDrlgFile` via `Fog.#10046`.
  */
 export function DRLGPRESET_FreeDrlgFile113c(m: Memory113c, pDrlgFile: number): void {
+  hitD2CommonVa113c(0x6FD59FA0)
   const freeFn = (m as { free?: (p: number) => void }).free
   const pBuffer = m.u32((pDrlgFile + 0x04) >>> 0)
   if (pBuffer !== 0) {
@@ -316,6 +324,7 @@ export function DRLGPRESET_FreeDrlgFile113c(m: Memory113c, pDrlgFile: number): v
  * - Stores `count` at `pPresetRoom->nTombCoords (+0xF4)`.
  */
 export function DRLGPRESET_BuildRoomTombCoords113c(m: Memory113c, pRoomEx: number): void {
+  hitD2CommonVa113c(0x6FD5AA80)
   const pPresetRoom = m.u32((pRoomEx + 0x20) >>> 0)
   if (m.u32((pPresetRoom + 0xf0) >>> 0) !== 0) {
     return
@@ -373,6 +382,7 @@ export function DRLGPRESET_AllocDrlgMap113c(
   nLvlPrestId: number,
   pBox: number,
 ): number {
+  hitD2CommonVa113c(0x6FD5BC60)
   const pDrlg = m.u32((pLevel + 0x1b4) >>> 0)
   void m.u32((pDrlg + 0x478) >>> 0)
   const pMap = m.alloc(0x58)
@@ -453,6 +463,7 @@ export function STATLIST_EnumerateCopyListStats113c(
   pfCallback: number,
   customCallback?: StatEnumCallbackFn113c,
 ): void {
+  hitD2CommonVa113c(0x6FD88850)
   if (pUnit === 0) return
   if (pArg === 0 && pfCallback !== 0) return
 
@@ -520,6 +531,7 @@ export function DRLGPRESET_LoadFileFromArchive113c(
   _pMemPool: number,
   pdwSize: number,
 ): number {
+  hitD2CommonVa113c(0x6FD59900)
   const fileNamePtr = szFileName >>> 0
   if (fileNamePtr === 0) {
     return 0
@@ -592,6 +604,7 @@ export function DRLGPRESET_CopyMapPresetUnitNode113c(
   pMemPool: number,
   nOffsetX: number,
 ): number {
+  hitD2CommonVa113c(0x6FD59EA0)
   const src = pSrcNode >>> 0
   const offX = nOffsetX | 0
   const offY = nOffsetY | 0
@@ -650,6 +663,7 @@ export function DRLGPRESET_ReleaseCachedPresetFile113c(
   m: Memory113c,
   ppFileData: number,
 ): void {
+  hitD2CommonVa113c(0x6FD5A5B0)
   const ppFile = ppFileData >>> 0
   const pTarget = m.u32(ppFile)
   if (pTarget === 0) {
@@ -697,6 +711,7 @@ export function DRLGPRESET_FreePresetRoomData113c(
   m: Memory113c,
   pRoomEx: number,
 ): void {
+  hitD2CommonVa113c(0x6FD5AEC0)
   const roomEx = pRoomEx >>> 0
   const pLevel = m.u32((roomEx + 0x58) >>> 0)
   const pDrlg = m.u32((pLevel + 0x1b4) >>> 0)
@@ -723,6 +738,7 @@ export function DRLGPRESET_BuildFortressAndMapAIPaths113c(
   pDrlgMap: number,
   pMemPool: number,
 ): void {
+  hitD2CommonVa113c(0x6FD5BD60)
   const map = pDrlgMap >>> 0
   const memPool = pMemPool >>> 0
   const nWidth = m.u32((map + 0x18) >>> 0) | 0
@@ -847,6 +863,7 @@ export function DRLGPRESET_FreeDrlgMapList113c(
   pMemPool: number,
   pDrlgMap: number,
 ): void {
+  hitD2CommonVa113c(0x6FD5A8E0)
   let cur = pDrlgMap >>> 0
   if (cur === 0) return
   const freeFn = (m as { free?: (p: number) => void }).free
@@ -903,6 +920,7 @@ export function DRLGPRESET_SpawnPresetUnits113c(
   pMemPool: number,
   pDrlgMap: number,
 ): void {
+  hitD2CommonVa113c(0x6FD5B320)
   const map = pDrlgMap >>> 0
   const pFile = m.u32((map + 0x0c) >>> 0)
   const nOffX = imul32(m.u32((map + 0x10) >>> 0) | 0, 5)
@@ -960,6 +978,7 @@ export function DRLGPRESET_ParseDS1File113c(
   pDrlgFile: number,
   szFileName: number,
 ): void {
+  hitD2CommonVa113c(0x6FD5B560)
   const file = pDrlgFile >>> 0
   let pCur = DRLGPRESET_LoadFileFromArchive113c(m, szFileName >>> 0, pMemPool >>> 0, 0) >>> 0
   m.setU32((file + 0x04) >>> 0, pCur)
@@ -1225,6 +1244,7 @@ export function DRLGPRESET_AllocLevelPresetInfo113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FD5BBC0)
   const lvl = pLevel >>> 0
   const pDrlg = m.get(lvl, D2DrlgLevelStrc.pDrlg)
   const nLevelId = m.get(lvl, D2DrlgLevelStrc.nLevelId) | 0
@@ -1256,6 +1276,7 @@ export function DRLGPRESET_AcquireCachedPresetFile113c(
   szFileName: number,
   pMemPool = 0,
 ): void {
+  hitD2CommonVa113c(0x6FD5BE50)
   const ppOut = ppFileData >>> 0
   const szName = szFileName >>> 0
   let pCurr = m.u32(GP_CACHED_PRESET_FILE_LIST_HEAD_VA_6FDF147C)
@@ -1307,6 +1328,7 @@ export function DRLGPRESET_LoadPresetRoomMap113c(
   m: Memory113c,
   pRoomEx: number,
 ): void {
+  hitD2CommonVa113c(0x6FD5BF70)
   const roomEx = pRoomEx >>> 0
   const pPreset = m.u32((roomEx + 0x20) >>> 0)
   const pLevel = m.get(roomEx, D2RoomExStrc.pLevel)
@@ -1362,6 +1384,7 @@ export function DRLGPRESET_ProcessPresetMap113c(
   pDrlgMap: number,
   bSingleRoom: number,
 ): void {
+  hitD2CommonVa113c(0x6FD5C060)
   const lvl = pLevel >>> 0
   const grid = pGrid >>> 0
   const map = pDrlgMap >>> 0
@@ -1545,6 +1568,7 @@ export function DRLGPRESET_BuildPresetRoomsFromMap113c(
   nFlags: number,
   bSingleRoom: number,
 ): number {
+  hitD2CommonVa113c(0x6FD5C690)
   const lvl = pLevel >>> 0
   const map = pDrlgMap >>> 0
   let flags = nFlags >>> 0
@@ -1637,6 +1661,7 @@ export function DRLGPRESET_InitLevelPresetRooms113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FD5CD10)
   const lvl = pLevel >>> 0
   const nLevelId = m.get(lvl, D2DrlgLevelStrc.nLevelId) | 0
   const pInfo = m.get(lvl, D2DrlgLevelStrc.pOutdoors)

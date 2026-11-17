@@ -662,12 +662,12 @@ describe('Milestone 33 [K2] Lane K2-B: 45 D2Game SUNIT / REGPOP / MONSTER / ACT3
     m.setU32(pPlayerData + 0x9c, pClient)
 
     ACT3Q7_SendQuestUpdatePacket5D_113c(m, pQuest7, 0x06, pQuestArg)
-    expect(m.u32(pQueue + 0x04)).toBe(6)
-    expect(m.u8(pQueue + 0x08)).toBe(0x5d)
-    expect(m.u8(pQueue + 0x09)).toBe(0x10)
-    expect(m.u8(pQueue + 0x0a)).toBe(0x03)
-    expect(m.u8(pQueue + 0x0b)).toBe(0x06)
-    expect(m.u16(pQueue + 0x0c)).toBe(0)
+    expect(m.u32(pQueue + 0x00)).toBe(6)
+    expect(m.u8(pQueue + 0x04)).toBe(0x5d)
+    expect(m.u8(pQueue + 0x05)).toBe(0x10)
+    expect(m.u8(pQueue + 0x06)).toBe(0x03)
+    expect(m.u8(pQueue + 0x07)).toBe(0x06)
+    expect(m.u16(pQueue + 0x08)).toBe(0)
   })
 
   it('ports PARTY player relation list queries (0x6FD10060, 0x6FD100E0, 0x6FD101D0, 0x6FD102A0)', () => {

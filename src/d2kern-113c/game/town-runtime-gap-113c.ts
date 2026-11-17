@@ -108,6 +108,8 @@ import {
   UNIT_GetPosY113c,
 } from './regpop-spawn-113c.ts';
 import { EVENT_GetNextEventFrame113c } from './timer-wheel.ts';
+import { NET_QueuePacketPtrToClient113c } from '../net/packet-sink.ts';
+import { hitD2GameVa113c } from '../va-trace-113c.ts';
 
 
 function i32(m: Memory113c, p: number): number {
@@ -137,34 +139,7 @@ function checkQuestBitStateHelper(m: Memory113c, pBitBuffer: number, nQuestId: n
 }
 
 function appendClientNetPacketNode(m: Memory113c, pClient: number, pPayload: number, nSize: number): void {
-  if (pClient === 0) {
-    return;
-  }
-  let pTail = m.u32(pClient + 0x1bc);
-  let curLen = pTail !== 0 ? i32(m, pTail) : 0;
-  if (curLen + nSize > 0x200 || pTail === 0) {
-    curLen = 0;
-    let pNew = m.u32(pClient + 0x1c0);
-    if (pNew !== 0) {
-      m.setU32(pClient + 0x1c0, m.u32(pNew + 0x204));
-    } else {
-      pNew = m.alloc(0x208);
-    }
-    zeroMem(m, pNew, 0x208);
-    const pOldTail = m.u32(pClient + 0x1bc);
-    if (pOldTail === 0) {
-      m.setU32(pClient + 0x1b8, pNew);
-    } else {
-      m.setU32(pOldTail + 0x204, pNew);
-    }
-    m.setU32(pClient + 0x1bc, pNew);
-    pTail = pNew;
-  }
-  const dst = (pTail + curLen + 4) >>> 0;
-  for (let i = 0; i < nSize; i++) {
-    m.setU8(dst + i, m.u8(pPayload + i));
-  }
-  m.setU32(pTail, (curLen + nSize) >>> 0);
+  NET_QueuePacketPtrToClient113c(m, pClient >>> 0, pPayload >>> 0, nSize | 0);
 }
 
 function stepSeedLcg(m: Memory113c, pSeed: number): number {
@@ -380,6 +355,7 @@ export function AI_FollowPackLeaderOrAttack113c(
   pUnit: number,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FCBCB30);
   const pAiControl = m.u32(pAiTickArgsPtr);
   const leaderGuid = i32(m, pAiControl + 0xc);
   if (leaderGuid === -1) {
@@ -452,6 +428,7 @@ export function AI_TryOpenNearbyClosedDoor113c(
   pUnit: number,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FCBCCF0);
   const pMonStats = m.u32(pAiTickArgs + 0x1c);
   const flagsByte = m.u8(pMonStats + 0xc);
   const gdwBitMasks = m.u32(D2GAME_IAT_GDW_BITMASKS_VA_113C);
@@ -496,6 +473,7 @@ export function AI_HandleStunDoorOrLeaderFollow113c(
   pGame: number,
   pAiTickArgs: number,
 ): number {
+  hitD2GameVa113c(0x6FCBCD90);
   if (STATES_CheckState113c(m, pUnit, 0x15) !== 0) {
     AI_Stall113c(m, pGame, pUnit, 3);
     return 1;
@@ -517,6 +495,7 @@ export function AI_AcquireOrValidateCombatTarget113c(
   pUnit: number,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FCBCFE0);
   const pTarget = m.u32(pAiTickArgs + 8);
   if (pTarget === 0) {
     return 0;
@@ -570,6 +549,7 @@ export function AI_AcquireOrValidateCombatTarget113c(
 
 // @va D2Game:0x6FC53B70
 export function QUESTS_StepQuestTimers113c(m: Memory113c, pGame: number): void {
+  hitD2GameVa113c(0x6FC53B70);
   const pQuestControl = m.u32(pGame + 0x10f4);
   if (pQuestControl === 0) {
     return;
@@ -625,6 +605,7 @@ export function QUESTS_CheckNpcQuestInteractAlert113c(
   pGame: number,
   pNpc: number,
 ): number {
+  hitD2GameVa113c(0x6FC54EA0);
   if (pPlayer === 0 || m.u32(pPlayer) !== 0) {
     throw new D2CommonAssertError('QUESTS_CheckNpcQuestInteractAlert113c: invalid player', 0x7ec);
   }
@@ -708,6 +689,7 @@ function dispatchQuestNpcAlertCallback(
 
 // @va D2Game:0x6FC69DB0
 export function SPLAYER_GetClientActNo113c(m: Memory113c, pClient: number): number {
+  hitD2GameVa113c(0x6FC69DB0);
   if (pClient === 0) {
     throw new D2CommonAssertError('SPLAYER_GetClientActNo113c: pClient == NULL', 0x7cb);
   }
@@ -723,6 +705,7 @@ export function ACT1Q1_CheckDenOfEvilNpcAlert113c(
   pQuestFlags: number,
   _pNpc: number,
 ): number {
+  hitD2GameVa113c(0x6FC80660);
   if (nNpcClassId !== 0x96) {
     return 0;
   }
@@ -750,6 +733,7 @@ export function ACT1Q2_CheckBloodRavenNpcAlert113c(
   pQuestFlags: number,
   _pNpc: number,
 ): number {
+  hitD2GameVa113c(0x6FC80750);
   if (nNpcClassId !== 0x94) {
     return 0;
   }
@@ -777,6 +761,7 @@ export function ACT1Q0_CheckWarrivIntroNpcAlert113c(
   pQuestFlags: number,
   _pNpc: number,
 ): number {
+  hitD2GameVa113c(0x6FC807D0);
   if (nNpcClassId !== 0x9b) {
     return 0;
   }
@@ -795,6 +780,7 @@ export function ACT1Q6_CheckTravelEastNpcAlert113c(
   _pQuestFlags: number,
   _pNpc: number,
 ): number {
+  hitD2GameVa113c(0x6FC80820);
   if (nNpcClassId !== 0x10a) {
     return 0;
   }
@@ -845,6 +831,7 @@ export function ACT1Q5_CheckCharsiImbueNpcAlert113c(
   pQuestFlags: number,
   _pNpc: number,
 ): number {
+  hitD2GameVa113c(0x6FC80940);
   const playerGuid = pPlayer === 0 ? 0xffffffff : m.u32(pPlayer + 0xc);
   const pQuestData = m.u32(pQuest + 0x18);
   if (nNpcClassId === 0x109) {
@@ -889,6 +876,7 @@ export function ACT1Q4_CheckCainTownNpcAlert113c(
   _pQuestFlags: number,
   _pNpc: number,
 ): number {
+  hitD2GameVa113c(0x6FC80F20);
   const pQuestData = m.u32(pQuest + 0x18);
   const playerGuid = pPlayer === 0 ? 0xffffffff : m.u32(pPlayer + 0xc);
   const count = m.u16(pQuestData + 0x64);
@@ -912,6 +900,7 @@ export function ACT1Q4_CheckSearchForCainNpcAlert113c(
   pQuestFlags: number,
   _pNpc: number,
 ): number {
+  hitD2GameVa113c(0x6FC81750);
   const bBit13 = checkQuestBitStateHelper(m, pQuestFlags, 4, 0x0d);
   let bBit0 = checkQuestBitStateHelper(m, pQuestFlags, 4, 0);
   const bBit1 = checkQuestBitStateHelper(m, pQuestFlags, 4, 1);
@@ -961,6 +950,7 @@ export function ACT1Q3_CheckMalusNpcAlert113c(
   pQuestFlags: number,
   _pNpc: number,
 ): number {
+  hitD2GameVa113c(0x6FC81B70);
   if (nNpcClassId !== 0x9a) {
     return 0;
   }
@@ -994,6 +984,7 @@ export function ACT1Q2_CheckAkaraIntroNpcAlert113c(
   _pQuestFlags: number,
   _pNpc: number,
 ): number {
+  hitD2GameVa113c(0x6FC82DF0);
   const pGame = m.u32(pQuest + 4);
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer);
   const diff = m.u8(pGame + 0x6d);
@@ -1018,6 +1009,7 @@ export function PLAYER_RecalcTargetUnitPath113c(
   pUnit: number,
   _unusedArg: number,
 ): number {
+  hitD2GameVa113c(0x6FC94D50);
   const pPath = m.u32(pUnit + 0x2c);
   PATH_SetNewDistance113c(m, pPath, nNewDist);
   const pTarget = PATH_GetTargetUnit113c(m, pPath);
@@ -1056,6 +1048,7 @@ export function PLAYER_RecalcTargetUnitPath113c(
 
 // @va D2Game:0x6FCAA770
 export function D2NET_SendPacket0x06BytesToClient113c(m: Memory113c, pPacket6: number, pClient: number): void {
+  hitD2GameVa113c(0x6FCAA770);
   const buf = m.alloc(8);
   m.setU32(buf, m.u32(pPacket6));
   m.setU16(buf + 4, m.u16(pPacket6 + 4));
@@ -1074,6 +1067,7 @@ export function D2NET_SendUnitPosSync0x15ToClient113c(
   wPosY: number,
   bUnkFlag: number,
 ): void {
+  hitD2GameVa113c(0x6FCADB00);
   if (pClient === 0) {
     throw new D2CommonAssertError('D2NET_SendUnitPosSync0x15ToClient113c: pClient == NULL', 0x996);
   }
@@ -1133,6 +1127,7 @@ export function AITARGET_IterateRoomActiveClients113c(
   pCtx: number,
   pfnCallback: number,
 ): number {
+  hitD2GameVa113c(0x6FCD11A0);
   const pRoom = UNITS_GetRoom113c(m, pOriginUnit);
   if (pRoom === 0) {
     return 0;
@@ -1286,6 +1281,7 @@ export function AITARGET_ScanUnitsByModeTable113c(
   pOriginUnit: number,
   pfnOverrideCallback: number,
 ): number {
+  hitD2GameVa113c(0x6FCD17B0);
   const entry = AITARGET_SCAN_MODE_TABLE[nScanIndex];
   const mode = entry !== undefined ? entry[0] : 0;
   const defaultCb = entry !== undefined ? entry[1] : 0;
@@ -1368,6 +1364,7 @@ export function AI_FindNearestPlayerCallback113c(
   pCandidatePlayer: number,
   pCtx: number,
 ): number {
+  hitD2GameVa113c(0x6FD11A90);
   if (pCandidatePlayer === 0 || m.u32(pCandidatePlayer) !== 0) {
     return 0;
   }
@@ -1400,6 +1397,7 @@ export function AITHINK_CanPlayerStartSkillOrCast113c(
   bCheckSkill: number,
   pTargetSkill: number,
 ): number {
+  hitD2GameVa113c(0x6FC97FA0);
   if (STATES_CheckState113c(m, pUnit, 0x36) !== 0) {
     return 0;
   }
@@ -1475,6 +1473,7 @@ export function AITHINK_CanPlayerSwitchToMode113c(
   pGame: number,
   nTargetMode: number,
 ): number {
+  hitD2GameVa113c(0x6FC98340);
   const pInventory = m.u32(pUnit + 0x60);
   if (pInventory !== 0 && INVENTORY_GetCursorItem113c(m, pInventory) !== 0) {
     if (nTargetMode !== 0 && nTargetMode !== 0x11) {
@@ -1530,6 +1529,7 @@ export function PLAYER_StartWalkOrRunMode113c(
   pUnit: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC98610);
   if (pGame === 0) {
     throw new D2CommonAssertError('PLAYER_StartWalkOrRunMode113c: pGame == NULL', 0x139);
   }
@@ -1569,6 +1569,7 @@ export function PLAYER_SetPathTargetCoordsAndWalk113c(
   nX: number,
   nY: number,
 ): void {
+  hitD2GameVa113c(0x6FC98710);
   if (pGame === 0) {
     throw new D2CommonAssertError('PLAYER_SetPathTargetCoordsAndWalk113c: pGame == NULL', 0x17d);
   }
@@ -1585,6 +1586,7 @@ export function PLAYER_StepAnimationModeTick113c(
   nArg1: number,
   nArg2: number,
 ): void {
+  hitD2GameVa113c(0x6FC99A10);
   const mode = pUnit === 0 ? 0 : m.u32(pUnit + 0x10);
   if (mode >= 20) {
     return;
@@ -1642,6 +1644,7 @@ export function SPLAYER_BroadcastUnitMovementToClient113c(
   pClient: number,
   nModeIdx: number,
 ): number {
+  hitD2GameVa113c(0x6FCEE150);
   if (pClient === 0) {
     throw new D2CommonAssertError('SPLAYER_BroadcastUnitMovementToClient113c: pClient == NULL', 0xfb);
   }
@@ -1724,6 +1727,7 @@ export function PLAYER_SetNeutralOrTownNeutralMode113c(
   _unused1: number,
   _unused2: number,
 ): void {
+  hitD2GameVa113c(0x6FC982F0);
   const pRoom = UNITS_GetRoom113c(m, pUnit);
   let mode = nFallbackMode;
   if (pRoom !== 0) {
@@ -1744,6 +1748,7 @@ export function PLAYER_FinishModeAndResetToNeutral113c(
   _nArg1: number,
   _nArg2: number,
 ): void {
+  hitD2GameVa113c(0x6FC99850);
   const curMode = pUnit === 0 ? 0 : m.u32(pUnit + 0x10);
   let bTriggerPostSkill = 0;
   if (curMode === 7 || curMode === 8 || curMode === 0x0b) {
@@ -1785,6 +1790,7 @@ export function PLAYER_FinishModeAndResetToNeutral113c(
 
 // @va D2Game:0x6FCFF620
 export function SUNIT_FindValidNextRoomInAct113c(m: Memory113c, pUnit: number, pGame: number): number {
+  hitD2GameVa113c(0x6FCFF620);
   const pPath = m.u32(pUnit + 0x2c);
   const pNextRoom = PATH_GetNextRoom113c(m, pPath);
   const pCurRoom = UNITS_GetRoom113c(m, pUnit);
@@ -1811,6 +1817,7 @@ export function SUNIT_UpdateUnitPositionAndRoom113c(
   pUnit: number,
   pGame?: number,
 ): void {
+  hitD2GameVa113c(0x6FD01610);
   const gamePtr = pGame !== undefined ? pGame : pTargetRoomArg;
   const targetRoomIn = pGame !== undefined ? pTargetRoomArg : 0;
   if (UNITS_GetPathRoomRefreshFlag113c(m, pUnit) === 0) {
@@ -1937,6 +1944,7 @@ export function D2NET_SendUnitMovePacket0x10BytesToClient113c(
   wCurrentX: number,
   wCurrentY: number,
 ): void {
+  hitD2GameVa113c(0x6FCAC010);
   const pkt = m.alloc(0x10);
   zeroMem(m, pkt, 0x10);
   m.setU8(pkt, nPacketHeader & 0xff);

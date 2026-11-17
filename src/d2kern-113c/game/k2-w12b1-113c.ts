@@ -359,6 +359,7 @@ import {
   AI_StepRelativeToTargetUnit113c,
   UNITS_GetOctileDistanceToCoordinates113c,
 } from './town-npc-ai-113c'
+import { hitD2GameVa113c } from '../va-trace-113c'
 
 const K2_W12B1_SCRATCH_BASE = 0x00ff7000
 
@@ -624,6 +625,7 @@ export function SKILLS_SrvDo_ImpTeleportOrMountSiegeBeast_6FC2DBD0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC2DBD0)
   if (nSkillId < 0) return 0
   const sgpt = readSgptDataTablesPtr(m)
   if (sgpt === 0 || nSkillId >= i32(m, sgpt + 0xba0)) return 0
@@ -701,6 +703,7 @@ export function AI_ThinkMercenaryMain_6FC3DD40_113c(
   pUnit: number,
   pAiTickParam: number,
 ): void {
+  hitD2GameVa113c(0x6FC3DD40)
   if (pUnit === 0) {
     AI_InitMonsterAiThinkFn113c(m, pUnit)
     AI_Stall113c(m, pGame, pUnit, 10)
@@ -891,6 +894,7 @@ export function AI_FollowOwnerOrTeleportIfFar_6FC3E140_113c(
   bSkipCase2: number,
   nMaxFollowDist: number,
 ): number {
+  hitD2GameVa113c(0x6FC3E140)
   const pOwnerPath = u32(m, pOwnerUnit + 0x2c)
   const nDist = AI_CalcApproxUnitDistSubtiles113c(m, pPetUnit, pOwnerUnit) | 0
   const dwOwnerMode = i32(m, pOwnerUnit + 0x10)
@@ -1038,6 +1042,7 @@ export function MONUMOD_SpawnUniqueOrChampionBossPack_6FC44C70_113c(
   bIsChampion: number,
   nMonHcIdx: number,
 ): number {
+  hitD2GameVa113c(0x6FC44C70)
   const pMonster = MONUMOD_SpawnMinionOrUniqueMonster_6FC44950_113c(
     m,
     nMonHcIdx,
@@ -1092,6 +1097,7 @@ export function MONUMOD_SpawnPresetUniqueOrSuperUnique_6FC44E70_113c(
   wSuperUniqueId: number,
   pUModBytes: number,
 ): number {
+  hitD2GameVa113c(0x6FC44E70)
   const pMonster = MONUMOD_SpawnMinionOrUniqueMonster_6FC44950_113c(
     m,
     nMonHcIdx,
@@ -1200,6 +1206,7 @@ export function MONUMOD_SpawnSuperUniqueMonsterPack_6FC451F0_113c(
   nY: number,
   nSuperUniqueId: number,
 ): number {
+  hitD2GameVa113c(0x6FC451F0)
   if (u8(m, pGame + 0x6d) >= 3) return 0
   const pSuRec = DATATBLS_GetSuperUniquesTxtRecord113c(m, nSuperUniqueId)
   if (pSuRec === 0) return 0
@@ -1432,6 +1439,7 @@ export function MONSTER_SpawnUniqueBossWithChampionMinionPack_6FC679B0_113c(
   pGame: number,
   nMonHcIdx: number,
 ): number {
+  hitD2GameVa113c(0x6FC679B0)
   const pMonster = MONUMOD_SpawnMinionOrUniqueMonster_6FC44950_113c(
     m,
     nMonHcIdx,
@@ -1463,6 +1471,7 @@ export function HIRELING_AssignMercenaryToPlayer_6FC68FC0_113c(
   pMercSaveData: number,
   bSkipSubParty: number,
 ): void {
+  hitD2GameVa113c(0x6FC68FC0)
   if (
     pPlayerUnit === 0 ||
     pMercUnit === 0 ||
@@ -1600,6 +1609,7 @@ export function SKILLS_SrvDo_MonsterConvert_6FC71340_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC71340)
   const sgpt = readSgptDataTablesPtr(m)
   let pSkillsTxt = 0
   if (nSkillId >= 0 && sgpt !== 0 && nSkillId < i32(m, sgpt + 0xba0)) {
@@ -1717,6 +1727,7 @@ export function ITEMS_PlaceLoadedPlayerOrMercItem_6FC74420_113c(
   pGame: number,
   pOwnerUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC74420)
   const dwAnimMode = pItemUnit !== 0 ? i32(m, pItemUnit + 0x10) : 0
   if (dwAnimMode === 0) {
     UNITS_ChangeAnimMode113c(m, pItemUnit, 4)
@@ -1916,6 +1927,7 @@ export function ITEMS_PlaceLoadedPlayerItemWithSync_6FC745D0_113c(
   pOwnerUnit: number,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FC745D0)
   const dwAnimMode = pItemUnit !== 0 ? i32(m, pItemUnit + 0x10) : 0
   const pOutErr = (K2_W12B1_SCRATCH_BASE + 0x230) >>> 0
   w32(m, pOutErr, 0)
@@ -2017,6 +2029,7 @@ export function ITEMS_DeserializeAndPlaceItemListFromJMStream_6FC74810_113c(
   bIsMercOrDirect: number,
   pOutBytesRead: number,
 ): number {
+  hitD2GameVa113c(0x6FC74810)
   if (u16(m, pBitstream) !== 0x4d4a) return 0x0e
   const nItemCount = u16(m, pBitstream + 2)
   let pCur = (pBitstream + 4) >>> 0
@@ -2131,6 +2144,7 @@ export function OBJ_OperateFn_DungeonStairOrTileWarp_6FC8BCB0_113c(
   m: SparseMemory113c,
   pOperateArgs: number,
 ): number {
+  hitD2GameVa113c(0x6FC8BCB0)
   const pObj = u32(m, pOperateArgs + 4)
   UNITS_GetRoom113c(m, pObj)
   PATH_GetTargetTypeAndPosition113c(m, pObj, (K2_W12B1_SCRATCH_BASE + 0x270) >>> 0)
@@ -2172,6 +2186,7 @@ export function OBJ_OperateFn_FindPairedObjectAndTeleportPad_6FC8BE40_113c(
   m: SparseMemory113c,
   pOperateArgs: number,
 ): number {
+  hitD2GameVa113c(0x6FC8BE40)
   const pObj = u32(m, pOperateArgs + 4)
   const pRoom = UNITS_GetRoom113c(m, pObj)
   if (pRoom === 0) return 0
@@ -2220,6 +2235,7 @@ export function OBJ_OperateFn_TrapDoorOrDelayedTileWarp_6FC8DFC0_113c(
   m: SparseMemory113c,
   pOperateArgs: number,
 ): number {
+  hitD2GameVa113c(0x6FC8DFC0)
   const pObj = u32(m, pOperateArgs + 4)
   const pRoom = UNITS_GetRoom113c(m, pObj)
   PATH_GetTargetTypeAndPosition113c(m, pObj, (K2_W12B1_SCRATCH_BASE + 0x280) >>> 0)
@@ -2283,6 +2299,7 @@ export function OBJ_OperateFn_SparklyChestOrTrapSpawner_6FC8EDB0_113c(
   m: SparseMemory113c,
   pOperateArgs: number,
 ): number {
+  hitD2GameVa113c(0x6FC8EDB0)
   const pObj = u32(m, pOperateArgs + 0x04)
   if (pObj !== 0 && u32(m, pObj + 0x10) !== 0) {
     return 1
@@ -2367,6 +2384,7 @@ export function PLRTRADE_RestorePlayerInventoryAndGoldFromSnapshot_6FC915E0_113c
   pPlayerUnit: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC915E0)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit)
   if (pPlayerData === 0) {
     throw new D2CommonAssertError('..\\Source\\D2Game\\Player\\PlrTrade.cpp', 0x87d)
@@ -2428,6 +2446,7 @@ export function PLRTRADE_RollbackPlayerItemsToSnapshot_6FC916D0_113c(
   pGame: number,
   pPlayerUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FC916D0)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit)
   if (u32(m, pPlayerData + 0x5c) === 0) {
     return
@@ -2496,6 +2515,7 @@ export function PLRTRADE_AbortTradeAndRollbackBothPlayers_6FC919A0_113c(
   pPlrData2: number,
   nTradeState1: number,
 ): void {
+  hitD2GameVa113c(0x6FC919A0)
   UNITS_SetUnitUpdateFlags113c(m, pPlayer1, 1)
   UNITS_SetUnitUpdateFlags113c(m, pPlayer2, 1)
 
@@ -2572,6 +2592,7 @@ export function PLRTRADE_MirrorItemToPartnerTradeGrid_6FC91B00_113c(
   pGame: number,
   pPlayerUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FC91B00)
   const pPkt = (K2_W12B1_SCRATCH_BASE + 0x2c8) >>> 0
   const dwPartnerGuid = u32(m, pPlayerUnit + 0x64)
   if (u8(m, pPlayerUnit + 0x6c) !== 0 && u32(m, pPlayerUnit + 0x68) !== 0) {
@@ -2717,6 +2738,7 @@ export function AI_Think_SandMaggot_6FCA9870_113c(
   pUnit: number,
   pAiTickArgs: number,
 ): void {
+  hitD2GameVa113c(0x6FCA9870)
   const pTarget = u32(m, pAiTickArgs + 0x08)
   const nTargetDist = i32(m, pAiTickArgs + 0x14)
   const bInCombat = u32(m, pAiTickArgs + 0x18)
@@ -2830,6 +2852,7 @@ export function AI_Think_BurrowingScarabOrFrog_6FCA9C30_113c(
   pUnit: number,
   pAiTickArgs: number,
 ): void {
+  hitD2GameVa113c(0x6FCA9C30)
   const pTarget = u32(m, pAiTickArgs + 0x08)
   const bInCombat = u32(m, pAiTickArgs + 0x18)
   const pMonStatsTxt = u32(m, pAiTickArgs + 0x1c)
@@ -2992,6 +3015,7 @@ export function PLAYER_ChangeLevelOrActTransition_6FCBE170_113c(
   pGame: number,
   bAllowCollisionFallback: number,
 ): void {
+  hitD2GameVa113c(0x6FCBE170)
   const nTargetAct = DRLG_GetActNoFromLevelId113c(m, nTargetLevelId) & 0xff
   if (pPlayerUnit === 0) {
     throw new D2CommonAssertError('..\\Source\\D2Game\\Player\\PlrMod.cpp', 0x5fc)
@@ -3056,6 +3080,7 @@ export function SKILLS_RegisterSummonedMonsterPet_6FCC3090_113c(
   pPetUnit: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FCC3090)
   if ((u8(m, pSummonArg) & 0x08) === 0 && pPetUnit !== 0) {
     w32(m, pPetUnit + 0xc4, (u32(m, pPetUnit + 0xc4) | 0x80000000) >>> 0)
   }
@@ -3123,6 +3148,7 @@ export function AI_Think_ShadowWarriorAndMaster_6FCC9E80_113c(
   pUnit: number,
   pAiTickArgs: number,
 ): void {
+  hitD2GameVa113c(0x6FCC9E80)
   const pAiControl = u32(m, pAiTickArgs)
   const pMonStatsTxt = u32(m, pAiTickArgs + 0x1c)
   if (pAiControl === 0 || pMonStatsTxt === 0) {
@@ -3263,6 +3289,7 @@ export function AI_Think_Raven_6FCCA1D0_113c(
   pUnit: number,
   pAiTickArgs: number,
 ): void {
+  hitD2GameVa113c(0x6FCCA1D0)
   const pAiControl = u32(m, pAiTickArgs)
   const pMonStatsTxt = u32(m, pAiTickArgs + 0x1c)
   if (pAiControl === 0 || pMonStatsTxt === 0) {
@@ -3401,6 +3428,7 @@ export function ACT2Q6_WarpPlayerThroughRoomTileUnit_6FCE8950_113c(
   m: SparseMemory113c,
   pOperateArgs: number,
 ): void {
+  hitD2GameVa113c(0x6FCE8950)
   const pRoom = UNITS_GetRoom113c(m, u32(m, pOperateArgs + 0x04))
   let pUnit = u32(m, pRoom + 0x74)
   while (pUnit !== 0) {
@@ -3484,6 +3512,7 @@ export function C2S_Packet23_MercReviveHandler_6FCEFB90_113c(
   pPacket: number,
   nPacketLen: number,
 ): number {
+  hitD2GameVa113c(0x6FCEFB90)
   if (u32(m, pGame + 0x70) === 0 || nPacketLen !== 5) {
     return 3
   }
@@ -3506,6 +3535,7 @@ export function C2S_ExecuteEntityInteractionOrRunToTarget_6FCF01D0_113c(
   pPlayerUnit: number,
   dwTargetGuid: number,
 ): number {
+  hitD2GameVa113c(0x6FCF01D0)
   switch (nTargetUnitType >>> 0) {
     case 0: {
       const pTarget = SUNIT_GetServerUnit113c(m, pGame, 0, dwTargetGuid)
@@ -3754,6 +3784,7 @@ export function ITEMS_ClearInvalidRunewordOnItem_6FCF3280_113c(
   pOwnerUnit: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FCF3280)
   if (pGame === 0 || pOwnerUnit === 0 || pItemUnit === 0 || u32(m, pItemUnit) !== 4) {
     return
   }
@@ -3822,6 +3853,7 @@ export function ITEMS_PlaceItemInUnitInventoryGrid_6FCF76A0_113c(
   bUpdateClient: number,
   nInvPageOrInvPtr: number,
 ): number {
+  hitD2GameVa113c(0x6FCF76A0)
   if (pGame === 0 || pOwnerUnit === 0) {
     return 0
   }
@@ -3925,6 +3957,7 @@ export function ITEMS_RemoveExcessBeltItemsOnUnequip_6FCF7E30_113c(
   pOwnerUnit: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FCF7E30)
   const pInventory = u32(m, pOwnerUnit + 0x60)
   if (pInventory === 0) {
     throw new D2CommonAssertError('..\\Source\\D2Game\\Items\\Items.cpp', 0xc0d)
@@ -4026,6 +4059,7 @@ export function ITEMS_UnequipItemFromBodyLocToCursor_6FCF8970_113c(
   bToCursor: number,
   pOutResult: number,
 ): number {
+  hitD2GameVa113c(0x6FCF8970)
   if (pGame === 0) {
     throw new D2CommonAssertError('..\\Source\\D2Game\\Items\\Items.cpp', 0xc45)
   }
@@ -4113,6 +4147,7 @@ export function ACT1Q4_SpawnSmithBossInBarracks_6FD08780_113c(
   pRoom: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FD08780)
   w8(m, pQuestState + 0x04, 1)
   const pSmith = MONUMOD_SpawnMinionOrUniqueMonster_6FC44950_113c(
     m,

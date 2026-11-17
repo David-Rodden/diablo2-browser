@@ -19,123 +19,6 @@
   },
   {
     "module": "D2Game",
-    "va": "0x6FC44B70",
-    "name": "MONUMOD_PromoteToRandomBossOrChampion_6FC44B70",
-    "kernFile": "src/d2kern-113c/game/k2-w4b4-113c.ts",
-    "tsSymbol": "MONUMOD_PromoteToRandomBossOrChampion_6FC44B70_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6FC4F4B0",
-    "name": "OBJRGN_PopulateRoomRandomItemDropsGrid_6FC4F4B0",
-    "kernFile": "src/d2kern-113c/game/k2-w4b4-113c.ts",
-    "tsSymbol": "OBJRGN_PopulateRoomRandomItemDropsGrid_6FC4F4B0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6FC58180",
-    "name": "PLAYER_ApplyDeathGoldPenaltyAndDrop_6FC58180",
-    "kernFile": "src/d2kern-113c/game/k2-w4b4-113c.ts",
-    "tsSymbol": "PLAYER_ApplyDeathGoldPenaltyAndDrop_6FC58180_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6FC67880",
-    "name": "MONSTER_SpawnChampionPackMembers_6FC67880",
-    "kernFile": "src/d2kern-113c/game/k2-w4b4-113c.ts",
-    "tsSymbol": "MONSTER_SpawnChampionPackMembers_6FC67880_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6FC7CC30",
-    "name": "ACT5Q3_TriggerFrozenAnyaSpawn_6FC7CC30",
-    "kernFile": "src/d2kern-113c/game/k2-w4b4-113c.ts",
-    "tsSymbol": "ACT5Q3_TriggerFrozenAnyaSpawn_6FC7CC30_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6FC88E20",
-    "name": "ACT1Q4_DropCountessChestGoldTick_6FC88E20",
-    "kernFile": "src/d2kern-113c/game/k2-w4b4-113c.ts",
-    "tsSymbol": "ACT1Q4_DropCountessChestGoldTick_6FC88E20_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6FC89970",
-    "name": "OBJ_DispatchObjectTrapOrMonsterSpawn_6FC89970",
-    "kernFile": "src/d2kern-113c/game/k2-w4b4-113c.ts",
-    "tsSymbol": "OBJ_DispatchObjectTrapOrMonsterSpawn_6FC89970_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6FC8ABB0",
-    "name": "OBJ_OperateAuraStatShrine_6FC8ABB0",
-    "kernFile": "src/d2kern-113c/game/k2-w4b4-113c.ts",
-    "tsSymbol": "OBJ_OperateAuraStatShrine_6FC8ABB0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6FC8AC30",
-    "name": "OBJ_OperateStaminaShrine_6FC8AC30",
-    "kernFile": "src/d2kern-113c/game/k2-w4b4-113c.ts",
-    "tsSymbol": "OBJ_OperateStaminaShrine_6FC8AC30_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6FC8ACE0",
-    "name": "OBJ_OperateCombatShrine_6FC8ACE0",
-    "kernFile": "src/d2kern-113c/game/k2-w4b4-113c.ts",
-    "tsSymbol": "OBJ_OperateCombatShrine_6FC8ACE0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6FC8B340",
-    "name": "OBJ_OperateTomeOrScrollStand_6FC8B340",
-    "kernFile": "src/d2kern-113c/game/k2-w4b4-113c.ts",
-    "tsSymbol": "OBJ_OperateTomeOrScrollStand_6FC8B340_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6FC8D960",
-    "name": "OBJ_OperateWirtsBody_6FC8D960",
-    "kernFile": "src/d2kern-113c/game/k2-w4b4-113c.ts",
-    "tsSymbol": "OBJ_OperateWirtsBody_6FC8D960_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6FC8DBF0",
-    "name": "OBJ_OperateStashWithGoldAndPotions_6FC8DBF0",
-    "kernFile": "src/d2kern-113c/game/k2-w4b4-113c.ts",
-    "tsSymbol": "OBJ_OperateStashWithGoldAndPotions_6FC8DBF0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts"
-  },
-  {
-    "module": "D2Game",
     "va": "0x6FC8DD60",
     "name": "OBJ_ScheduleObjectTrapEventOrSound_6FC8DD60",
     "kernFile": "src/d2kern-113c/game/k2-w4b4-113c.ts",
@@ -172,15 +55,6 @@
   },
   {
     "module": "D2Game",
-    "va": "0x6FC98C50",
-    "name": "ITEMS_DropGoldPileWithOwnerAtUnit_6FC98C50",
-    "kernFile": "src/d2kern-113c/game/k2-w4b4-113c.ts",
-    "tsSymbol": "ITEMS_DropGoldPileWithOwnerAtUnit_6FC98C50_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts"
-  },
-  {
-    "module": "D2Game",
     "va": "0x6FC9CE40",
     "name": "AI_ThinkWakeOrUnburrowSkill_6FC9CE40",
     "kernFile": "src/d2kern-113c/game/k2-w4b4-113c.ts",
@@ -194,24 +68,6 @@
     "name": "AI_ThinkMeleeBasic_6FCA1F50",
     "kernFile": "src/d2kern-113c/game/k2-w4b4-113c.ts",
     "tsSymbol": "AI_ThinkMeleeBasic_6FCA1F50_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6FCA2430",
-    "name": "AI_ThinkSimpleMeleeVariantA_6FCA2430",
-    "kernFile": "src/d2kern-113c/game/k2-w4b4-113c.ts",
-    "tsSymbol": "AI_ThinkSimpleMeleeVariantA_6FCA2430_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6FCA2570",
-    "name": "AI_ThinkSimpleMeleeVariantB_6FCA2570",
-    "kernFile": "src/d2kern-113c/game/k2-w4b4-113c.ts",
-    "tsSymbol": "AI_ThinkSimpleMeleeVariantB_6FCA2570_113c",
     "status": "ported",
     "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts"
   },

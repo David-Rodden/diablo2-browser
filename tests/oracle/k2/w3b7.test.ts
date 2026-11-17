@@ -371,6 +371,8 @@ describe('D2Game 1.13c K2 Wave 3 Batch 7 (0x6FC88150..0x6FC97D90)', () => {
     MONSTER_StartGetHitOrScheduleAi_6FC965E0_113c(m, pGame, pMon)
     MONSTER_StartMode8CastA_6FC96A50_113c(m, pGame, pMon)
     MONSTER_StartMode8CastB_6FC96B20_113c(m, pGame, pMon)
+    expect(MONSTER_StepSkillCastAnim_6FC96F20_113c(m, pGame, pMon)).toBe(1)
+    m.setU32(pMon + 0x44, m.u32(pMon + 0x48))
     expect(MONSTER_StepSkillCastAnim_6FC96F20_113c(m, pGame, pMon)).toBe(2)
 
     // [45/45] PLAYER_ClearCursorItemAndNotify42_6FC97D90_113c

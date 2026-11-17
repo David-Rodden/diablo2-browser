@@ -160,7 +160,7 @@ import {
   AIGENERAL_PopAiCommand113c,
   ITEMS_CheckNotBrokenOrUnequipping113c,
   SKILLS_GetFlags113c,
-} from './fallen-ai-113c'
+} from './replay-kernel-113c'
 import { SUNIT_GetServerUnit113c } from './game-strc'
 import {
   AURAS_ApplyRadialStatBuffCallback113c,
@@ -255,6 +255,7 @@ import { CLIENTS_GetPlayerUnit113c } from './replay-final11-113c'
 import { EVENT_FreeNode113c, EVENT_SetEventFull113c, MONSTER_RefreshAiEvent113c } from './timer-wheel'
 import { UNITS_GetOctileDistanceToCoordinates113c } from './town-npc-ai-113c'
 import { AITARGET_ScanUnitsByModeTable113c } from './town-runtime-gap-113c'
+import { hitD2GameVa113c } from '../va-trace-113c'
 
 export type D2KernMemory113c = Memory113c
 
@@ -416,6 +417,7 @@ export function HIRELING_LevelUpHirelingAndSyncSkills_6FC68BA0_113c(
   pPetUnit: number,
   nNewLevel: number,
 ): void {
+  hitD2GameVa113c(0x6FC68BA0)
   if (pGame === 0) throw new D2CommonAssertError('Hireling.cpp', 0xe0)
   if (pPlayer === 0) throw new D2CommonAssertError('Hireling.cpp', 0xe1)
   if ((m.u32(pPlayer >>> 0) | 0) !== 0) throw new D2CommonAssertError('Hireling.cpp', 0xe2)
@@ -557,6 +559,7 @@ export function SKILLS_SrvDo024_SpawnWallOfProjectiles_6FC6D420_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC6D420)
   if (pUnit !== 0) {
     m.setU32((pUnit + 0xc4) >>> 0, (m.u32((pUnit + 0xc4) >>> 0) | 0x40) >>> 0)
   }
@@ -704,6 +707,7 @@ export function MONAI_GloamPackLightningDanceThink_6FCA0F20_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FCA0F20)
   const pAiControl = m.u32(pAiParam >>> 0) >>> 0
   const pTarget = m.u32((pAiParam + 0x08) >>> 0) >>> 0
   const bInMeleeRange = rdI32(m, (pAiParam + 0x18) >>> 0)
@@ -1014,6 +1018,7 @@ export function MONAI_SandMaggotThink_6FCA1C80_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FCA1C80)
   const pAiControl = m.u32(pAiParam >>> 0) >>> 0
   const pTarget = m.u32((pAiParam + 0x08) >>> 0) >>> 0
   const bInMeleeRange = rdI32(m, (pAiParam + 0x18) >>> 0)
@@ -1099,6 +1104,7 @@ export function MONAI_CorruptRogueArcherThink_6FCA26B0_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FCA26B0)
   const pTarget = m.u32((pAiParam + 0x08) >>> 0) >>> 0
   const nDistance = rdI32(m, (pAiParam + 0x14) >>> 0)
   const bInMeleeRange = rdI32(m, (pAiParam + 0x18) >>> 0)
@@ -1222,6 +1228,7 @@ export function MONAI_BlunderboreThink_6FCA3CE0_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FCA3CE0)
   const pTarget = m.u32((pAiParam + 0x08) >>> 0) >>> 0
   const bInMeleeRange = rdI32(m, (pAiParam + 0x18) >>> 0)
   const pMonStatsTxt = m.u32((pAiParam + 0x1c) >>> 0) >>> 0
@@ -1283,6 +1290,7 @@ export function MONAI_CorpseSpitterThink_6FCA3FE0_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FCA3FE0)
   const pAiControl = m.u32(pAiParam >>> 0) >>> 0
   const pTarget = m.u32((pAiParam + 0x08) >>> 0) >>> 0
   const bInMeleeRange = rdI32(m, (pAiParam + 0x18) >>> 0)
@@ -1456,6 +1464,7 @@ export function MONAI_TentacleBeastHeadThink_6FCA43F0_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FCA43F0)
   const pAiControl = m.u32(pAiParam >>> 0) >>> 0
   const pTarget = m.u32((pAiParam + 0x08) >>> 0) >>> 0
   const bInMeleeRange = rdI32(m, (pAiParam + 0x18) >>> 0)
@@ -1554,6 +1563,7 @@ export function MONAI_OblivionKnightThink_6FCA7E60_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FCA7E60)
   const pAiControl = m.u32(pAiParam >>> 0) >>> 0
   const pTarget = m.u32((pAiParam + 0x08) >>> 0) >>> 0
   const bInMeleeRange = rdI32(m, (pAiParam + 0x18) >>> 0)
@@ -1711,6 +1721,7 @@ export function MONAI_SuccubusThink_6FCA8A70_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FCA8A70)
   const pAiControl = m.u32(pAiParam >>> 0) >>> 0
   const pTarget = m.u32((pAiParam + 0x08) >>> 0) >>> 0
   const nDistance = rdI32(m, (pAiParam + 0x14) >>> 0)
@@ -1796,6 +1807,7 @@ export function MONAI_FetishShamanOrCasterThink_6FCA8D80_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FCA8D80)
   const pAiControl = m.u32(pAiParam >>> 0) >>> 0
   const pTarget = m.u32((pAiParam + 0x08) >>> 0) >>> 0
   const nDistance = rdI32(m, (pAiParam + 0x14) >>> 0)
@@ -1868,6 +1880,7 @@ export function MONAI_AuraKnightOrZealotThink_6FCA9430_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FCA9430)
   const pTarget = m.u32((pAiParam + 0x08) >>> 0) >>> 0
   const bInMeleeRange = rdI32(m, (pAiParam + 0x18) >>> 0)
   const pMonStatsTxt = m.u32((pAiParam + 0x1c) >>> 0) >>> 0
@@ -2005,6 +2018,7 @@ export function NPCS_InitGameNpcControl_6FCAFBE0_113c(
   m: D2KernMemory113c,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FCAFBE0)
   const pNpcArray = m.alloc(0x1100) >>> 0
   for (let i = 0; i < 0x440; i++) m.setU32((pNpcArray + i * 4) >>> 0, 0)
   const pNpcControl = m.alloc(0x14) >>> 0
@@ -2145,6 +2159,7 @@ export function SKILLS_CalcKickAndProgressiveFinishDamage_6FCB2360_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): void {
+  hitD2GameVa113c(0x6FCB2360)
   SKILLS_ApplyProgressiveAttackRatingAndPhysBonuses113c(m, pAttacker >>> 0, pDmg >>> 0)
   m.setU32(pDmg >>> 0, (m.u32(pDmg >>> 0) | 3) >>> 0)
 
@@ -2320,6 +2335,7 @@ export function SKILLS_SpawnNovaRingOfSpiralProjectiles_6FCB3D60_113c(
   nSkillLevel: number,
   nStep: number,
 ): void {
+  hitD2GameVa113c(0x6FCB3D60)
   spawnNovaRingProjectilesCommon(
     m,
     nLowSeed,
@@ -2353,6 +2369,7 @@ export function SKILLS_SpawnNovaRingOfGuidedProjectiles_6FCB4370_113c(
   nSkillLevel: number,
   nStep: number,
 ): void {
+  hitD2GameVa113c(0x6FCB4370)
   spawnNovaRingProjectilesCommon(
     m,
     nLowSeed,
@@ -2546,6 +2563,7 @@ export function SKILLS_SrvDo_PulseUndeadAura_6FCBABC0_113c(
   nSkillId: number,
   nLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCBABC0)
   return executePulseAuraTickCommon(
     m,
     pGame,
@@ -2571,6 +2589,7 @@ export function SKILLS_SrvDo_PulseElementalAura_6FCBAF50_113c(
   nSkillId: number,
   nLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCBAF50)
   return executePulseAuraTickCommon(
     m,
     pGame,
@@ -2596,6 +2615,7 @@ export function AITARGET_EvaluateTargetThreatScore_6FCC3E80_113c(
   pCandidateUnit: number,
   pAttackerUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FCC3E80)
   const bInMelee = UNITS_CanUnitMeleeAttackTarget113c(m, pAttackerUnit >>> 0, pCandidateUnit >>> 0, 0) | 0
   let tetherScore = 0
   if (pTetherCoords !== 0) {
@@ -2701,6 +2721,7 @@ export function MONAI_SiegeRunnerThink_6FCC66E0_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FCC66E0)
   const pTarget = m.u32((pAiParam + 0x08) >>> 0) >>> 0
   const nDist = rdI32(m, (pAiParam + 0x14) >>> 0)
   const bInMeleeRange = rdI32(m, (pAiParam + 0x18) >>> 0)
@@ -2830,6 +2851,7 @@ export function MONAI_BaalThroneThink_6FCC8430_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FCC8430)
   const pMonStatsTxt = m.u32((pAiParam + 0x1c) >>> 0) >>> 0
   const pAiControl = m.u32(pAiParam >>> 0) >>> 0
 
@@ -2984,6 +3006,7 @@ export function AIBAAL_SelectCombatAction_6FCC8E80_113c(
   nCloneOrMinionCount: number,
   pTetherCoords: number,
 ): number {
+  hitD2GameVa113c(0x6FCC8E80)
   const curState = rdI32(m, (pAiControl + 0x14) >>> 0)
   if (curState !== 0) return curState
 
@@ -3382,6 +3405,7 @@ export function ITEMS_UsePercentagePotion_6FCCE6D0_113c(
   _dwArg4 = 0,
   _dwArg5 = 0,
 ): number {
+  hitD2GameVa113c(0x6FCCE6D0)
   void _nTargetX
   void _nTargetY
   void _dwArg4
@@ -3406,6 +3430,7 @@ export function ITEMS_UseFlatOrBuffPotion_6FCCEA40_113c(
   _dwArg4 = 0,
   _dwArg5 = 0,
 ): number {
+  hitD2GameVa113c(0x6FCCEA40)
   void _nTargetX
   void _nTargetY
   void _dwArg4
@@ -3430,6 +3455,7 @@ export function ITEMS_UseHealingOrManaPotion_6FCCEDC0_113c(
   _dwArg4 = 0,
   _dwArg5 = 0,
 ): number {
+  hitD2GameVa113c(0x6FCCEDC0)
   void _nTargetX
   void _nTargetY
   void _dwArg4
@@ -3452,6 +3478,7 @@ export function SKILLS_SrvDo_MonsterLeapStep_6FCD60C0_113c(
   _nSkillId = 0,
   _nLevel = 0,
 ): number {
+  hitD2GameVa113c(0x6FCD60C0)
   void _nSkillId
   void _nLevel
   const pUsedSkill = SKILLS_GetUsedSkillMemPort113c(m, pUnit >>> 0) >>> 0
@@ -3558,6 +3585,7 @@ export function AITARGET_EvaluateTargetThreatScoreTether75_6FCD6DA0_113c(
   pCandidateUnit: number,
   pAttackerUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FCD6DA0)
   const bInMelee = UNITS_CanUnitMeleeAttackTarget113c(m, pAttackerUnit >>> 0, pCandidateUnit >>> 0, 0) | 0
   let tetherScore = 0
   if (pTetherCoords !== 0) {
@@ -3663,6 +3691,7 @@ export function AIBAAL_TrySpawnBaalClone_6FCD7D30_113c(
   pGame: number,
   pAiControl: number,
 ): number {
+  hitD2GameVa113c(0x6FCD7D30)
   const sp = allocScratch(m, 0x20)
   try {
     const pSelfPtr = sp
@@ -3850,6 +3879,7 @@ export function A5Q3_SpawnRedPortalObject13E_6FCE8CD0_113c(
   pUnit: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FCE8CD0)
   const pQuestState = m.u32((pQuestArg + 0x18) >>> 0) >>> 0
   const sp = allocScratch(m, 0x10)
   try {
@@ -3903,6 +3933,7 @@ export function A5Q4_OpenTemplePortalObject_6FCE94E0_113c(
   pGame: number,
   pQuestArg: number,
 ): number {
+  hitD2GameVa113c(0x6FCE94E0)
   const pQuestState = m.u32((pQuestArg + 0x18) >>> 0) >>> 0
   let nChanged = 0
 
@@ -4019,6 +4050,7 @@ export function MONREG_SelectRegionMonsterTypes_6FCEA760_113c(
   pLevelsTxt: number,
   pMonsterRegion: number,
 ): void {
+  hitD2GameVa113c(0x6FCEA760)
   let nToPick = m.u8((pLevelsTxt + 0x32) >>> 0)
   if (nToPick > 0x0d) nToPick = 0x0d
 
@@ -4092,6 +4124,7 @@ export function PACKET_DeliverChatIfNotSquelched_6FCECA00_113c(
   pClient: number,
   pChatDesc: number,
 ): void {
+  hitD2GameVa113c(0x6FCECA00)
   if (pClient === 0) throw new D2CommonAssertError('Packet.cpp', 0x996)
   const pRawPkt = m.u32((pChatDesc + 0x04) >>> 0) >>> 0
   const pChatMsg = m.u32(pChatDesc >>> 0) >>> 0
@@ -4142,6 +4175,7 @@ export function C2S_ValidateWaypointInteraction_6FCECB50_113c(
   pPlayer: number,
   wDestLevelId: number,
 ): number {
+  hitD2GameVa113c(0x6FCECB50)
   if (pGame === 0) throw new D2CommonAssertError('Packet.cpp', 0x2d3)
   const pObj = findObjectByGuidInGameHash(m, pGame >>> 0, dwObjectGuid >>> 0)
   if (pObj === 0) return 1
@@ -4199,6 +4233,7 @@ export function C2S_ValidateNpcMonsterInteract_6FCECCF0_113c(
   pPlayer: number,
   bCheckDist: number,
 ): number {
+  hitD2GameVa113c(0x6FCECCF0)
   if (pGame === 0) throw new D2CommonAssertError('Packet.cpp', 0x2d3)
   const pMonster = findMonsterByGuidInGameHash(m, pGame >>> 0, dwMonsterGuid >>> 0)
   m.setU32(ppOutMonster >>> 0, pMonster >>> 0)
@@ -4243,6 +4278,7 @@ export function C2S_ValidateBeltItemOwnership_6FCECDB0_113c(
   dwItemGuid: number,
   pPlayer: number,
 ): number {
+  hitD2GameVa113c(0x6FCECDB0)
   if (pGame === 0) throw new D2CommonAssertError('Packet.cpp', 0x4b3)
   const pItem = findItemByGuidInGameHash(m, pGame >>> 0, dwItemGuid >>> 0)
   if (pItem === 0 || rdI32(m, (pItem + 0x10) >>> 0) !== 2) return 1
@@ -4263,6 +4299,7 @@ export function C2S_ValidateInventoryOrCursorItem_6FCECE20_113c(
   dwItemGuid: number,
   pPlayer: number,
 ): number {
+  hitD2GameVa113c(0x6FCECE20)
   if (pGame === 0) throw new D2CommonAssertError('Packet.cpp', 0x473)
   const pItem = findItemByGuidInGameHash(m, pGame >>> 0, dwItemGuid >>> 0)
   if (pItem === 0) return 1
@@ -4284,6 +4321,7 @@ export function C2S_ValidateStoredOrEquippedItem_6FCECE90_113c(
   dwItemGuid: number,
   pPlayer: number,
 ): number {
+  hitD2GameVa113c(0x6FCECE90)
   if (pGame === 0) throw new D2CommonAssertError('Packet.cpp', 0x45c)
   const pItem = findItemByGuidInGameHash(m, pGame >>> 0, dwItemGuid >>> 0)
   if (pItem === 0) return 1
@@ -4305,6 +4343,7 @@ export function C2S_ValidateStoredItem_6FCECF00_113c(
   dwItemGuid: number,
   pPlayer: number,
 ): number {
+  hitD2GameVa113c(0x6FCECF00)
   if (pGame === 0) throw new D2CommonAssertError('Packet.cpp', 0x445)
   const pItem = findItemByGuidInGameHash(m, pGame >>> 0, dwItemGuid >>> 0)
   if (pItem === 0 || rdI32(m, (pItem + 0x10) >>> 0) !== 0) return 1
@@ -4324,6 +4363,7 @@ export function C2S_ValidateCursorItem_6FCECF70_113c(
   dwItemGuid: number,
   pPlayer: number,
 ): number {
+  hitD2GameVa113c(0x6FCECF70)
   if (pGame === 0) throw new D2CommonAssertError('Packet.cpp', 0x42e)
   const pItem = findItemByGuidInGameHash(m, pGame >>> 0, dwItemGuid >>> 0)
   if (pItem === 0 || rdI32(m, (pItem + 0x10) >>> 0) !== 4) return 1
@@ -4364,6 +4404,7 @@ export function PLRMODES_SyncBaseStatsToOtherClient_6FCED0E0_113c(
   pClient: number,
   pPlayerUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FCED0E0)
   if (pClient === 0) throw new D2CommonAssertError('PlrModes.cpp', 0xfb)
   const pClientPlayer = resolveClientPlayerUnitInline(m, pClient >>> 0)
   if (pClientPlayer === (pPlayerUnit >>> 0)) return
@@ -4443,6 +4484,7 @@ export function PLRMODES_SendPlayerStop0DAndSyncStatAF_6FCED2C0_113c(
   pClient: number,
   nPlayerMode: number,
 ): void {
+  hitD2GameVa113c(0x6FCED2C0)
   sendPacket0DPlayerStop6FCEB950(m, pUnit >>> 0, pClient >>> 0, nPlayerMode | 0)
   if (pClient === 0) throw new D2CommonAssertError('PlrModes.cpp', 0xfb)
   const pClientPlayer = resolveClientPlayerUnitInline(m, pClient >>> 0)
@@ -4497,6 +4539,7 @@ export function C2S_SyncObjectCollisionByGuid_6FCED440_113c(
   pPacket: number,
   nPacketLen: number,
 ): number {
+  hitD2GameVa113c(0x6FCED440)
   if ((nPacketLen | 0) !== 5) return 3
   const objGuid = m.u32((pPacket + 1) >>> 0) >>> 0
   const err = validateTargetUnitActAndDist6FCECFE0(m, pGame, 2, objGuid, pPlayer, 0x0a)
@@ -4516,6 +4559,7 @@ export function PACKET_DeliverOverheadOrPartyChat_6FCED530_113c(
   pClient: number,
   pChatDesc: number,
 ): void {
+  hitD2GameVa113c(0x6FCED530)
   if (pClient === 0) throw new D2CommonAssertError('Packet.cpp', 0x996)
   const pChatMsg = m.u32(pChatDesc >>> 0) >>> 0
   const pGame = m.u32((pClient + 0x1a8) >>> 0) >>> 0
@@ -4557,6 +4601,7 @@ export function SKILLS_TestPathReachableToCoords_6FCED790_113c(
   pGame: number,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FCED790)
   const tx = targetX | 0
   const ty = targetY | 0
   if (
@@ -4617,6 +4662,7 @@ export function C2S_Packet50_DropPlayerGold_6FCEEF40_113c(
   pPacket: number,
   nPacketLen: number,
 ): number {
+  hitD2GameVa113c(0x6FCEEF40)
   if ((nPacketLen | 0) !== 9) return 3
   const nGold = rdI32(m, (pPacket + 5) >>> 0)
   const dwPlayerId = m.u32((pPacket + 1) >>> 0) >>> 0

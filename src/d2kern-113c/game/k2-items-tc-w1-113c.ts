@@ -34,6 +34,7 @@ import {
   D2GAME_IAT_SGPT_DATATABLES_VA_113C,
   MONSTATS_CheckFlagBit113c,
 } from './regpop-spawn-113c.ts'
+import { hitD2GameVa113c } from '../va-trace-113c.ts'
 
 /** `D2Game.dll` `.rdata` `0x6FD1CEE8`: Shadow Master init `(nSkillSlot, dwParam)` 2-entry table (`{2, 0}, {4, 0}`). */
 export const D2GAME_SHADOW_MASTER_INIT_SLOTS_VA_113C = 0x6fd1cee8
@@ -189,6 +190,7 @@ export function ITEMS_HasAffixGroupOnItem113c(
   pItem: number,
   dwAffixGroup: number,
 ): number {
+  hitD2GameVa113c(0x6FC331E0)
   const targetGroup = dwAffixGroup >>> 0
   for (let i = 0; i < 3; i++) {
     const wPrefix = ITEMS_GetMagicPrefix113c(m, pItem, i) & 0xffff
@@ -225,6 +227,7 @@ export function ITEMS_ScaleStatByPercentWithMin113c(
   nMinValue: number,
   nPercent: number,
 ): number {
+  hitD2GameVa113c(0x6FC33230)
   void m
   const prod32 = imul32(nValue | 0, nPercent | 0)
   const hi = Number((BigInt(prod32 | 0) * 0x51eb851fn) >> 32n) | 0
@@ -246,6 +249,7 @@ export function ITEMS_FindSuperiorQualityRecordIndex113c(
   pItem: number,
   bCheckField18: number,
 ): number {
+  hitD2GameVa113c(0x6FC332A0)
   const pCountDesc = DATATBLS_GetQualityItemsTxtRecordCountPtr113c(m) >>> 0
   const nClassId = pItem === 0 ? -1 : m.u32((pItem + 0x04) >>> 0) | 0
   const pItemsTxt = DATATBLS_GetItemsTxtRecordMemPort113c(m, nClassId) >>> 0
@@ -292,6 +296,7 @@ export function AI_InitMonsterClearAiParam3_113c(
   _pMonster: number,
   pAiTickParam: number,
 ): void {
+  hitD2GameVa113c(0x6FC35520)
   const pAiCtrl = m.u32(pAiTickParam >>> 0) >>> 0
   m.setU32((pAiCtrl + 0x1c) >>> 0, 0)
 }
@@ -308,6 +313,7 @@ export function AI_InitMonsterResetAiStateNeg1_113c(
   _pMonster: number,
   pAiTickParam: number,
 ): void {
+  hitD2GameVa113c(0x6FC35530)
   const pAiCtrl = m.u32(pAiTickParam >>> 0) >>> 0
   m.setU32((pAiCtrl + 0x14) >>> 0, 0xffffffff)
 }
@@ -324,6 +330,7 @@ export function AI_InitBaalMinionSpawnState113c(
   _pMonster: number,
   pAiTickParam: number,
 ): void {
+  hitD2GameVa113c(0x6FC35540)
   const pAiCtrl1 = m.u32(pAiTickParam >>> 0) >>> 0
   const dwFrame = m.u32((pGame + 0xa8) >>> 0) >>> 0
   m.setU32((pAiCtrl1 + 0x14) >>> 0, dwFrame)
@@ -344,6 +351,7 @@ export function AI_CheckAnyMinionDeadCallback113c(
   pOutHasDead: number,
   _dwUnused = 0,
 ): void {
+  hitD2GameVa113c(0x6FC35570)
   if (pMinion === 0 || MONSTERS_IsDead113c(m, pMinion) !== 0) {
     m.setU32(pOutHasDead >>> 0, 1)
   }
@@ -363,6 +371,7 @@ export function AI_InitShadowMasterSkillSlot113c(
   pMonster: number,
   pAiTickParam: number,
 ): void {
+  hitD2GameVa113c(0x6FC355C0)
   const newLo = stepSeed64At113c(m, (pMonster + 0x20) >>> 0)
   let edi = newLo & 1
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -400,6 +409,7 @@ export function AI_InitMonsterSkillDelayFrame113c(
   _pMonster: number,
   pAiTickParam: number,
 ): void {
+  hitD2GameVa113c(0x6FC356C0)
   const pAiCtrl = m.u32(pAiTickParam >>> 0) >>> 0
   const pMonStats = m.u32((pAiTickParam + 0x1c) >>> 0) >>> 0
   if (pMonStats === 0) return
@@ -436,6 +446,7 @@ export function AI_SelectBaalThroneSpawnClassId113c(
   pGame: number,
   pOutClassId: number,
 ): number {
+  hitD2GameVa113c(0x6FC35730)
   let pSgptPtr = m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C) >>> 0
   const pDataTables0 = m.u32(pSgptPtr) >>> 0
   const nMonCount0 = m.u32((pDataTables0 + 0xa80) >>> 0) | 0
@@ -515,6 +526,7 @@ export function AI_SelectBaalThroneSpawnClassId113c(
  * @va D2Game:0x6FC40C60
  */
 export function AIGENERAL_GetField3C_113c(m: Memory113c, pUnit: number): number {
+  hitD2GameVa113c(0x6FC40C60)
   let pAiGeneral = 0
   if (pUnit !== 0 && (m.u32(pUnit >>> 0) >>> 0) === 1) {
     const pMonData = m.u32((pUnit + 0x14) >>> 0) >>> 0
@@ -532,6 +544,7 @@ export function AIGENERAL_GetField3C_113c(m: Memory113c, pUnit: number): number 
  * @va D2Game:0x6FC40DE0
  */
 export function AIGENERAL_GetQuestDataPtr38_113c(m: Memory113c, pUnit: number): number {
+  hitD2GameVa113c(0x6FC40DE0)
   let pAiGeneral = 0
   if (pUnit !== 0 && (m.u32(pUnit >>> 0) >>> 0) === 1) {
     const pMonData = m.u32((pUnit + 0x14) >>> 0) >>> 0
@@ -556,6 +569,7 @@ export function MONUMOD_ApplyToMinionCallback113c(
   bBoss: number,
   hooks?: K2ItemsTcW1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC41840)
   const pfn = m.u32((D2GAME_MONUMOD_TABLE_VA_113C + imul32(nUModId | 0, 4)) >>> 0) >>> 0
   if (pfn === 0) return
   if (pfn === 0x6fc43020) {
@@ -574,6 +588,7 @@ export function MONUMOD_ApplyToMinionCallback113c(
  * @va D2Game:0x6FC41860
  */
 export function MONUMOD_CountUnitUMods113c(m: Memory113c, pUModBytes: number): number {
+  hitD2GameVa113c(0x6FC41860)
   let count = 0
   let ptr = pUModBytes >>> 0
   while (m.u8(ptr) !== 0) {
@@ -600,6 +615,7 @@ export function MONUMOD_DispatchOnKillEvent5_113c(
   pGame: number,
   hooks?: K2ItemsTcW1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC41880)
   if (pMonster === 0) return
   if ((m.u32(pMonster >>> 0) >>> 0) !== 1) return
   if (pTarget === 0) return
@@ -613,6 +629,7 @@ export function MONUMOD_DispatchOnKillEvent5_113c(
  * @va D2Game:0x6FC41F60
  */
 export function MONUMOD_GetMinionClassIdForBoss113c(m: Memory113c, pUnit: number): number {
+  hitD2GameVa113c(0x6FC41F60)
   if (pUnit === 0) return -1
   const nClassId = m.u32((pUnit + 0x04) >>> 0) | 0
   if (nClassId < 0) return nClassId
@@ -634,6 +651,7 @@ export function MONUMOD_GetMinionClassIdForBoss113c(m: Memory113c, pUnit: number
  * @va D2Game:0x6FC41FB0
  */
 export function MONUMOD_GetConstantValue113c(m: Memory113c, nConstIndex: number): number {
+  hitD2GameVa113c(0x6FC41FB0)
   const idx = nConstIndex | 0
   if (idx < 0) return 0
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C) >>> 0) >>> 0
@@ -656,6 +674,7 @@ export function MONUMOD_AppendUModToMonster113c(
   pMonster: number,
   nUModId: number,
 ): void {
+  hitD2GameVa113c(0x6FC42920)
   if (pMonster === 0) return
   if ((m.u32(pMonster >>> 0) >>> 0) !== 1) return
   const pMonData = m.u32((pMonster + 0x14) >>> 0) >>> 0
@@ -679,6 +698,7 @@ export function MONUMOD_SetSuperUniqueId113c(
   pMonster: number,
   wSuperUniqueId: number,
 ): void {
+  hitD2GameVa113c(0x6FC42A10)
   if (pMonster === 0) return
   if ((m.u32(pMonster >>> 0) >>> 0) !== 1) return
   const pMonData = m.u32((pMonster + 0x14) >>> 0) >>> 0
@@ -693,6 +713,7 @@ export function MONUMOD_SetSuperUniqueId113c(
  * @va D2Game:0x6FC42AF0
  */
 export function MONUMOD_GetUModListPtr113c(m: Memory113c, pMonster: number): number {
+  hitD2GameVa113c(0x6FC42AF0)
   if (pMonster === 0) return 0
   if ((m.u32(pMonster >>> 0) >>> 0) !== 1) return 0
   const pMonData = m.u32((pMonster + 0x14) >>> 0) >>> 0
@@ -713,6 +734,7 @@ export function MONUMOD_RollBossOrMinionNameSeed113c(
   _nUModId: number,
   bBoss: number,
 ): void {
+  hitD2GameVa113c(0x6FC43020)
   if (pMonster === 0) return
   if ((bBoss | 0) === 0) return
   const newLo = stepSeed64At113c(m, (pMonster + 0x20) >>> 0)
@@ -734,6 +756,7 @@ export function MONUMOD_CopyMinionEligibleUMods113c(
   pMinion: number,
   bOverwrite: number,
 ): void {
+  hitD2GameVa113c(0x6FC43060)
   let pSrc = 0
   if (pBoss !== 0 && (m.u32(pBoss >>> 0) >>> 0) === 1) {
     const pBossData = m.u32((pBoss + 0x14) >>> 0) >>> 0
@@ -793,6 +816,7 @@ export function MONUMOD_MarkBossAndIncrementUniqueCount113c(
   pMonster: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC43260)
   if (pMonster === 0) return
   if ((m.u32(pMonster >>> 0) >>> 0) !== 1) return
   const pMonData0 = m.u32((pMonster + 0x14) >>> 0) >>> 0
@@ -827,6 +851,7 @@ export function MONSTER_Event7_MonUModEvent2_113c(
   _dwArg18 = 0,
   hooks?: K2ItemsTcW1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC469B0)
   dispatchMonUModMatrix6FC468E0(m, pGame, pMonster, 0, 2, hooks)
 }
 
@@ -845,6 +870,7 @@ export function CLIENTS_CaptureFirstInGameClientCallback113c(
   pClient: number,
   pOutClientPtr: number,
 ): void {
+  hitD2GameVa113c(0x6FC4A0C0)
   if (m.u32(pOutClientPtr >>> 0) === 0) {
     m.setU32(pOutClientPtr >>> 0, pClient >>> 0)
   }
@@ -857,6 +883,7 @@ export function CLIENTS_CaptureFirstInGameClientCallback113c(
  * @va D2Game:0x6FC4A210
  */
 export function GAME_SetGlobalSeed113c(m: Memory113c, dwSeed: number): void {
+  hitD2GameVa113c(0x6FC4A210)
   m.setU32(D2GAME_GLOBAL_SEED_OVERRIDE_VA_113C, dwSeed >>> 0)
 }
 
@@ -871,6 +898,7 @@ export function OBJECTS_SetUnitField7CDword4_113c(
   pUnit: number,
   dwValue: number,
 ): void {
+  hitD2GameVa113c(0x6FC4E4F0)
   const pField7C = UNITS_GetField7C_113c(m, pUnit) >>> 0
   if (pField7C !== 0) {
     m.setU32((pField7C + 0x04) >>> 0, dwValue >>> 0)
@@ -889,6 +917,7 @@ export function OBJECTS_LevelHookAlwaysTrue113c(
   _pRoom = 0,
   _pRoomCoords = 0,
 ): number {
+  hitD2GameVa113c(0x6FC4E5C0)
   void m
   return 1
 }
@@ -899,6 +928,7 @@ export function OBJECTS_LevelHookAlwaysTrue113c(
  * @va D2Game:0x6FC4E720
  */
 export function OBJECTS_InitFn05_NoOp113c(m: Memory113c, _pInitParam = 0): void {
+  hitD2GameVa113c(0x6FC4E720)
   void m
 }
 
@@ -912,6 +942,7 @@ export function OBJECTS_InitFn16_DoubleActToSubType113c(
   m: Memory113c,
   pInitParam: number,
 ): void {
+  hitD2GameVa113c(0x6FC4E760)
   const pObjectsTxt = m.u32((pInitParam + 0x10) >>> 0) >>> 0
   const doubled = (m.u8((pObjectsTxt + 0x180) >>> 0) << 1) & 0xff
   const pObject = m.u32((pInitParam + 0x04) >>> 0) >>> 0
@@ -929,6 +960,7 @@ export function OBJECTS_SubstituteObjectClassIdFromParm0_113c(
   m: Memory113c,
   pObject: number,
 ): void {
+  hitD2GameVa113c(0x6FC4E8B0)
   const nObjId = pObject === 0 ? -1 : m.u32((pObject + 0x04) >>> 0) | 0
   const pObjectsTxt = DATATBLS_GetObjectsTxtRecord113c(m, nObjId) >>> 0
   const dwParm0 = m.u32((pObjectsTxt + 0x17c) >>> 0) | 0
@@ -947,6 +979,7 @@ export function OBJECTS_SubstituteObjectClassIdFromParm0_113c(
  * @va D2Game:0x6FC4E9F0
  */
 export function OBJECTS_InitFn27_RollSubType3_113c(m: Memory113c, pInitParam: number): void {
+  hitD2GameVa113c(0x6FC4E9F0)
   const pObjCtrl = m.u32((pInitParam + 0x0c) >>> 0) >>> 0
   const newLo = stepSeed64At113c(m, pObjCtrl)
   const rem = (newLo >>> 0) % 1000
@@ -971,6 +1004,7 @@ export function QUESTS_HasPlayerGuidInQuest113c(
   pQuestData: number,
   dwGuid: number,
 ): number {
+  hitD2GameVa113c(0x6FC537D0)
   const count = m.u16((pQuestData + 0x9c) >>> 0)
   if (count <= 0) return 0
   const target = dwGuid >>> 0
@@ -993,6 +1027,7 @@ export function QUESTS_GuidListContains113c(
   pGuidList: number,
   dwGuid: number,
 ): number {
+  hitD2GameVa113c(0x6FC53800)
   const count = m.u16((pGuidList + 0x80) >>> 0)
   if (count <= 0) return 0
   const target = dwGuid >>> 0
@@ -1015,6 +1050,7 @@ export function QUESTS_GuidListAdd113c(
   pGuidList: number,
   dwGuid: number,
 ): void {
+  hitD2GameVa113c(0x6FC53880)
   const count = m.u16((pGuidList + 0x80) >>> 0)
   if (count >= 0x20) return
   const target = dwGuid >>> 0
@@ -1047,6 +1083,7 @@ export function QUESTS_AddNpcDialogTextNodes113c(
   pTextHeader: number,
   nNpcClassId: number,
 ): void {
+  hitD2GameVa113c(0x6FC53EB0)
   const pMsgTables = m.u32((pQuestData + 0xdc) >>> 0) >>> 0
   const pTable = (pMsgTables + imul32(nMsgTableIdx | 0, 0xc4)) >>> 0
   let nCount = m.u32((pTable + 0xc0) >>> 0) | 0
@@ -1078,6 +1115,7 @@ export function QUESTS_RemovePlayerGuidIfQuestState1AndNot0_113c(
   pQuestData: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC540C0)
   const pPlayer0 = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0
   const pGame = m.u32((pQuestData + 0x04) >>> 0) >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer0) >>> 0
@@ -1106,6 +1144,7 @@ export function QUESTS_SendQuestStateAlert5D_113c(
   uQuestId: number,
   uMinAct: number,
 ): void {
+  hitD2GameVa113c(0x6FC54AA0)
   const pRoom = UNITS_GetRoom113c(m, pPlayer) >>> 0
   if (pRoom !== 0) {
     const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom) | 0
@@ -1143,6 +1182,7 @@ export function QUESTS_SendQuestItemState2_5D_113c(
   pPlayer: number,
   uQuestId: number,
 ): void {
+  hitD2GameVa113c(0x6FC54B20)
   let pClient = 0
   if (pPlayer !== 0 && (m.u32(pPlayer >>> 0) >>> 0) === 0) {
     const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
@@ -1175,6 +1215,7 @@ export function QUESTS_SendNpcMessagePacket27_113c(
   pObject: number,
   wMessageId: number,
 ): void {
+  hitD2GameVa113c(0x6FC54B80)
   let pClient = 0
   if (pPlayer !== 0 && (m.u32(pPlayer >>> 0) >>> 0) === 0) {
     const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
@@ -1209,6 +1250,7 @@ export function QUESTS_SendPlayerQuestLogPacket28_113c(
   pPlayer: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC54C00)
   const pPlayerData0 = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
   const pQuestRecord = m.u32((pPlayerData0 + nDiff * 4 + 0x10) >>> 0) >>> 0
@@ -1249,6 +1291,7 @@ export function SUNIT_FindItemEventNode113c(
   dwItemGuid: number,
   dwParam0C: number,
 ): number {
+  hitD2GameVa113c(0x6FC570E0)
   if (pUnit === 0) return 0
   let cur = m.u32((pUnit + 0x90) >>> 0) >>> 0
   const targetEvent = nEventType >>> 0
@@ -1275,6 +1318,7 @@ export function SUNIT_FindItemEventNode113c(
  * @va D2Game:0x6FC57680
  */
 export function PLAYER_IsBusyWithCursorOrNpcInteract113c(m: Memory113c, pPlayer: number): number {
+  hitD2GameVa113c(0x6FC57680)
   if (pPlayer === 0) return 0
   if ((m.u32(pPlayer >>> 0) >>> 0) !== 0) return 0
   if (m.u8((pPlayer + 0x6c) >>> 0) !== 0) return 1
@@ -1299,6 +1343,7 @@ export function PLAYER_SetClientSkillHotkeySlot113c(
   bLeftHand: number,
   dwItemGuid: number,
 ): number {
+  hitD2GameVa113c(0x6FC57890)
   if (pPlayer === 0) return 0
   if ((m.u32(pPlayer >>> 0) >>> 0) !== 0) return 0
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
@@ -1324,6 +1369,7 @@ export function PLAYER_CheckHostilePlayerCallback113c(
   pIterPlayer: number,
   pCtx: number,
 ): void {
+  hitD2GameVa113c(0x6FC57940)
   const pSubject = m.u32((pCtx + 0x04) >>> 0) >>> 0
   const pSubjectData = UNITS_GetPlayerData113c(m, pSubject) >>> 0
   const dwIterGuid =

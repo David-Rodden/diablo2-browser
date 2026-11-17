@@ -59,6 +59,7 @@ import {
   D2GAME_IAT_SGPT_DATATABLES_VA_113C,
 } from './regpop-spawn-113c.ts'
 import { EVENT_SetEventFull113c, type EventWheelHooks113c } from './timer-wheel.ts'
+import { hitD2GameVa113c } from '../va-trace-113c.ts'
 
 /** Optional host callbacks for `w2b1` routines (`AIGENERAL`, `MONUMOD`, and `EVENT` hooks). */
 export interface K2W2B1Hooks113c extends K2ItemsTcW1Hooks113c, LaneIHooks113c {
@@ -152,6 +153,7 @@ export function ITEMS_IsUniqueItemDisabled_6FC217E0_113c(
   m: Memory113c,
   pItem: number,
 ): number {
+  hitD2GameVa113c(0x6FC217E0)
   const item = pItem >>> 0
   if (item === 0) return 0
   if ((m.u32(item) | 0) !== 4) return 0
@@ -178,6 +180,7 @@ export function STORM_TSHashTableAllocUniqueKey_6FC22060_113c(
   m: Memory113c,
   pHashTable: number,
 ): number {
+  hitD2GameVa113c(0x6FC22060)
   const tbl = pHashTable >>> 0
   while (true) {
     const nextKey = ((m.u32((tbl + 0x48) >>> 0) | 0) + 1) >>> 0
@@ -205,6 +208,7 @@ export function STORM_TSListPlacementNewDefault_6FC225A0_113c(
   m: Memory113c,
   pList: number,
 ): number {
+  hitD2GameVa113c(0x6FC225A0)
   const addr = pList >>> 0
   if (addr !== 0) {
     return STORM_TSListInitDefault_6FC224B0_113c(m, addr) >>> 0
@@ -224,6 +228,7 @@ export function STORM_TSListPlacementNewCopy_6FC226F0_113c(
   pDstList: number,
   pSrcList: number,
 ): number {
+  hitD2GameVa113c(0x6FC226F0)
   const dst = pDstList >>> 0
   if (dst !== 0) {
     return STORM_TSListInitFromPrototype_6FC22740_113c(m, dst, pSrcList >>> 0) >>> 0
@@ -242,6 +247,7 @@ export function ITEMS_RemoveUnitInventoryOrCursorItem_6FC2E7E0_113c(
   pUnit: number,
   pTargetItem: number,
 ): void {
+  hitD2GameVa113c(0x6FC2E7E0)
   const pInventory = m.u32((pUnit + 0x60) >>> 0) >>> 0
   ITEMS_RemoveFromInventoryOrCursor_6FC2E1C0_113c(m, pInventory, pTargetItem >>> 0)
 }
@@ -264,6 +270,7 @@ export function AIGENERAL_ReplaceMinionListAndInitBossGroup_6FC41210_113c(
   pNewMinionList: number,
   hooks?: K2W2B1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC41210)
   const unit = pUnit >>> 0
   if (unit === 0) return
   if ((m.u32(unit) | 0) !== 1) return
@@ -299,6 +306,7 @@ export function MONUMOD_AssignSpecificUModAndInit_6FC432B0_113c(
   bBoss: number,
   hooks?: K2W2B1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC432B0)
   const monster = pMonster >>> 0
   if (monster === 0) return
   if ((m.u32(monster) | 0) !== 1) return
@@ -353,6 +361,7 @@ export function QUESTS_SyncPlayerQuestLogAndPacket89_6FC559C0_113c(
   pPlayer: number,
   _uUnused = 0,
 ): number {
+  hitD2GameVa113c(0x6FC559C0)
   const game = pGame >>> 0
   const player = pPlayer >>> 0
   const pQuestControl = m.u32((game + 0x10f4) >>> 0) >>> 0
@@ -390,6 +399,7 @@ export function PLAYER_HasAnyLivingHostilePlayer_6FC57AC0_113c(
   pGame: number,
   pPlayer: number,
 ): number {
+  hitD2GameVa113c(0x6FC57AC0)
   const game = pGame >>> 0
   const player = pPlayer >>> 0
   if (game === 0) return 0
@@ -427,6 +437,7 @@ export function MISSILE_InitMissileRangeAndFrameFlag_6FC59600_113c(
   _pGame: number,
   pOutData: number,
 ): void {
+  hitD2GameVa113c(0x6FC59600)
   const missile = pMissile >>> 0
   if (missile === 0) return
   const nMissileId = m.u32((missile + 0x04) >>> 0) | 0
@@ -466,6 +477,7 @@ export function ACT5Q3_MarkQuest3PotionFlagIfPlayerHasIceItem_6FC77D80_113c(
   pPlayer: number,
   _pArg = 0,
 ): void {
+  hitD2GameVa113c(0x6FC77D80)
   const game = pGame >>> 0
   if (ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, pPlayer >>> 0, game, 0x20656369) === 0) {
     return
@@ -489,6 +501,7 @@ export function ACT5Q3_Callback11_RemovePlayerGuidAndCheckIce_6FC78040_113c(
   pQuest: number,
   pQuestArg: number,
 ): number {
+  hitD2GameVa113c(0x6FC78040)
   const quest = pQuest >>> 0
   const arg = pQuestArg >>> 0
   const pPlayer0 = m.u32((arg + 0x0c) >>> 0) >>> 0
@@ -520,6 +533,7 @@ export function ACT5Q4_Callback11_RemovePlayerFromQuestGuidList_6FC787A0_113c(
   pQuest: number,
   pQuestArg: number,
 ): number {
+  hitD2GameVa113c(0x6FC787A0)
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0
   const dwGuid = pPlayer === 0 ? 0xffffffff : m.u32((pPlayer + 0x0c) >>> 0) >>> 0
   return QUESTS_GuidListRemove113c(m, (pQuest + 0x1c) >>> 0, dwGuid)
@@ -538,6 +552,7 @@ export function ACT5Q6_SyncPlayerQuest28State0EAlert24_6FC78BA0_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC78BA0)
   const player = pPlayer >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, player) >>> 0
   const diffIdx = m.u8((pGame + 0x6d) >>> 0)
@@ -560,6 +575,7 @@ export function ACT5Q5_OnAncientsObjectOperateCompletedMsg_6FC78DA0_113c(
   m: Memory113c,
   pOpParam: number,
 ): number {
+  hitD2GameVa113c(0x6FC78DA0)
   const op = pOpParam >>> 0
   const pPlayer0 = m.u32((op + 0x08) >>> 0) >>> 0
   const pGame0 = m.u32(op) >>> 0
@@ -591,6 +607,7 @@ export function ACT5Q5_InitAncientStatueObject1C_6FC78E50_113c(
   m: Memory113c,
   pObjInit: number,
 ): void {
+  hitD2GameVa113c(0x6FC78E50)
   const init = pObjInit >>> 0
   const pGame = m.u32(init) >>> 0
   const pQuest = findQuestNodeInChain113c(m, pGame, 0x23)
@@ -611,6 +628,7 @@ export function ACT5Q5_InitAncientStatueObject18_6FC78EA0_113c(
   m: Memory113c,
   pObjInit: number,
 ): void {
+  hitD2GameVa113c(0x6FC78EA0)
   const init = pObjInit >>> 0
   const pGame = m.u32(init) >>> 0
   const pQuest = findQuestNodeInChain113c(m, pGame, 0x23)
@@ -631,6 +649,7 @@ export function ACT5Q5_InitAncientStatueObject14_6FC78EF0_113c(
   m: Memory113c,
   pObjInit: number,
 ): void {
+  hitD2GameVa113c(0x6FC78EF0)
   const init = pObjInit >>> 0
   const pGame = m.u32(init) >>> 0
   const pQuest = findQuestNodeInChain113c(m, pGame, 0x23)
@@ -654,6 +673,7 @@ export function ACT5Q5_SyncPlayerQuest27State0EAlert23_6FC78F40_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC78F40)
   const player = pPlayer >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, player) >>> 0
   const diffIdx = m.u8((pGame + 0x6d) >>> 0)
@@ -681,6 +701,7 @@ export function ACT5Q4_ApplyPlayerSkillState52IfQuest26State0D_6FC78FF0_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC78FF0)
   const player = pPlayer >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, player) >>> 0
   const diffIdx = m.u8((pGame + 0x6d) >>> 0)
@@ -704,6 +725,7 @@ export function ACT5Q4_SyncPlayerQuest26State0EAlert22_6FC79060_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC79060)
   const player = pPlayer >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, player) >>> 0
   const diffIdx = m.u8((pGame + 0x6d) >>> 0)
@@ -732,6 +754,7 @@ export function ACT5Q3_SyncPlayerQuest25State0EAlert21_6FC79120_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC79120)
   const player = pPlayer >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, player) >>> 0
   const diffIdx = m.u8((pGame + 0x6d) >>> 0)
@@ -757,6 +780,7 @@ export function ACT5Q3_SendQuest21State20Packet5D_6FC79180_113c(
   m: Memory113c,
   pPlayer: number,
 ): void {
+  hitD2GameVa113c(0x6FC79180)
   const player = pPlayer >>> 0
   let pClient = 0
   if (player !== 0 && (m.u32(player) | 0) === 0) {
@@ -786,6 +810,7 @@ export function ACT5Q2_IncrementPrisonGroupKillCount_6FC79230_113c(
   pGame: number,
   pUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FC79230)
   const pQuest = findQuestNodeInChain113c(m, pGame >>> 0, 0x20)
   if (pQuest === 0) return
   if (m.u8((pQuest + 0x09) >>> 0) === 0) return
@@ -812,6 +837,7 @@ export function ACT5Q2_HasPrisonGroupAnyKills_6FC79290_113c(
   pGame: number,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC79290)
   const pQuest = findQuestNodeInChain113c(m, pGame >>> 0, 0x20)
   if (pQuest === 0) return 0
   if (m.u8((pQuest + 0x09) >>> 0) === 0) return 0
@@ -835,6 +861,7 @@ export function ACT5Q2_ApplyPlayerSkillState51IfQuest24State0D_6FC792F0_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC792F0)
   const player = pPlayer >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, player) >>> 0
   const diffIdx = m.u8((pGame + 0x6d) >>> 0)
@@ -858,6 +885,7 @@ export function ACT5Q2_SyncPlayerQuest24State0EAlert20_6FC79390_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC79390)
   const player = pPlayer >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, player) >>> 0
   const diffIdx = m.u8((pGame + 0x6d) >>> 0)
@@ -886,6 +914,7 @@ export function ACT5Q1_ApplyPlayerSkillState50IfQuest23State0D_6FC79550_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC79550)
   const player = pPlayer >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, player) >>> 0
   const diffIdx = m.u8((pGame + 0x6d) >>> 0)
@@ -909,6 +938,7 @@ export function ACT5Q1_SyncPlayerQuest23State0EAlert1F_6FC795C0_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC795C0)
   const player = pPlayer >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, player) >>> 0
   const diffIdx = m.u8((pGame + 0x6d) >>> 0)
@@ -934,6 +964,7 @@ export function ACT5Q4_OnObjectOperateApplySkillState13A_6FC79A60_113c(
   m: Memory113c,
   pOpParam: number,
 ): number {
+  hitD2GameVa113c(0x6FC79A60)
   const pPlayer = m.u32((pOpParam + 0x08) >>> 0) >>> 0
   applySelfUnitEventSound113c(m, pPlayer, 0x13)
   return 0
@@ -949,6 +980,7 @@ export function ACT5Q4_OnObjectOperateApplySkillState13B_6FC79AB0_113c(
   m: Memory113c,
   pOpParam: number,
 ): number {
+  hitD2GameVa113c(0x6FC79AB0)
   const pPlayer = m.u32((pOpParam + 0x08) >>> 0) >>> 0
   applySelfUnitEventSound113c(m, pPlayer, 0x13)
   return 0
@@ -964,6 +996,7 @@ export function ACT5Q4_OnObjectOperateApplySkillState13C_6FC79B00_113c(
   m: Memory113c,
   pOpParam: number,
 ): number {
+  hitD2GameVa113c(0x6FC79B00)
   const pPlayer = m.u32((pOpParam + 0x08) >>> 0) >>> 0
   applySelfUnitEventSound113c(m, pPlayer, 0x13)
   return 0
@@ -981,6 +1014,7 @@ export function ACT5Q4_ScheduleTimerEventIfActiveFlag87_6FC7E7F0_113c(
   pUnit: number,
   hooks?: K2W2B1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC7E7F0)
   const game = pGame >>> 0
   const pQuest = findQuestNodeInChain113c(m, game, 0x22)
   if (pQuest === 0) return
@@ -1017,6 +1051,7 @@ export function ACT4_IntroStatusFilter_6FC80170_113c(
   _pPlayerFlags = 0,
   _pOutStatus = 0,
 ): number {
+  hitD2GameVa113c(0x6FC80170)
   return 0
 }
 
@@ -1029,7 +1064,9 @@ export function ACT4_IntroCallback08Noop_6FC80180_113c(
   _m?: Memory113c,
   _pQuest = 0,
   _pQuestArg = 0,
-): void {}
+): void {
+  hitD2GameVa113c(0x6FC80180)
+}
 
 /**
  * Checks whether Act 1 Quest 4 (`dwQuestId == 4`) has `pQuestDataEx[+0x93] != 0` (`eax = pGame`, plain `ret`).
@@ -1040,6 +1077,7 @@ export function ACT1Q4_IsCainSavedFlag93Set_6FC80390_113c(
   m: Memory113c,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FC80390)
   const pQuest = findQuestNodeInChain113c(m, pGame >>> 0, 4)
   if (pQuest === 0) return 0
   const pQuestDataEx = m.u32((pQuest + 0x18) >>> 0) >>> 0
@@ -1055,6 +1093,7 @@ export function ACT1Q4_MarkPortalOpenedFlag92_6FC803D0_113c(
   m: Memory113c,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC803D0)
   const pQuest = findQuestNodeInChain113c(m, pGame >>> 0, 4)
   if (pQuest === 0) return
   const pQuestDataEx = m.u32((pQuest + 0x18) >>> 0) >>> 0
@@ -1073,6 +1112,7 @@ export function ACT1Q4_RecordUnitCoordsOnceAt9C_6FC80400_113c(
   pGame: number,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC80400)
   const pQuest = findQuestNodeInChain113c(m, pGame >>> 0, 4)
   if (pQuest === 0) return 0
   const pQuestDataEx = m.u32((pQuest + 0x18) >>> 0) >>> 0
@@ -1095,6 +1135,7 @@ export function ACT1Q4_GetTristramPortalTargetCoords_6FC80450_113c(
   pUnit: number,
   pOutCoords: number,
 ): number {
+  hitD2GameVa113c(0x6FC80450)
   const pQuest = findQuestNodeInChain113c(m, pGame >>> 0, 4)
   if (pQuest === 0) return 0
   const pQuestDataEx = m.u32((pQuest + 0x18) >>> 0) >>> 0
@@ -1120,6 +1161,7 @@ export function ACT1Q4_GetCairnStonesTargetCoords_6FC804C0_113c(
   pGame: number,
   pOutCoords: number,
 ): number {
+  hitD2GameVa113c(0x6FC804C0)
   const pQuest = findQuestNodeInChain113c(m, pGame >>> 0, 4)
   if (pQuest === 0) return 0
   if (m.u8((pQuest + 0x09) >>> 0) === 0) return 0
@@ -1141,6 +1183,7 @@ export function ACT1Q4_MarkFlag52_6FC80590_113c(
   m: Memory113c,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC80590)
   const pQuest = findQuestNodeInChain113c(m, pGame >>> 0, 4)
   if (pQuest === 0) return
   const pQuestDataEx = m.u32((pQuest + 0x18) >>> 0) >>> 0
@@ -1156,6 +1199,7 @@ export function ACT1Q4_MarkFlag63_6FC805C0_113c(
   m: Memory113c,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC805C0)
   const pQuest = findQuestNodeInChain113c(m, pGame >>> 0, 4)
   if (pQuest === 0) return
   const pQuestDataEx = m.u32((pQuest + 0x18) >>> 0) >>> 0
@@ -1175,6 +1219,7 @@ export function ACT1Q4_StoreTristramPortalUnitIfInTristram_6FC805F0_113c(
   pUnit: number,
   _uUnused = 0,
 ): number {
+  hitD2GameVa113c(0x6FC805F0)
   const unit = pUnit >>> 0
   const pRoom = UNITS_GetRoom113c(m, unit) >>> 0
   if (pRoom === 0) return 0
@@ -1199,6 +1244,7 @@ export function ACT1_IntroStatusFilter_6FC80800_113c(
   _pPlayerFlags = 0,
   _pOutStatus = 0,
 ): number {
+  hitD2GameVa113c(0x6FC80800)
   return 0
 }
 
@@ -1216,6 +1262,7 @@ export function ACT4_EndgameStatusFilter_6FC80810_113c(
   _pPlayerFlags: number,
   pOutStatus: number,
 ): number {
+  hitD2GameVa113c(0x6FC80810)
   m.setU8(pOutStatus >>> 0, 0)
   return 0
 }

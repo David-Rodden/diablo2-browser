@@ -154,15 +154,6 @@
   },
   {
     "module": "D2Game",
-    "va": "0x6FC4CB80",
-    "name": "DRLG_PopulateSingleRoom_6FC4CB80",
-    "kernFile": "src/d2kern-113c/game/k2-laneJ-0x6fc4-w1-113c.ts",
-    "tsSymbol": "DRLG_PopulateSingleRoom_6FC4CB80_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneJ-0x6fc4-w1.test.ts"
-  },
-  {
-    "module": "D2Game",
     "va": "0x6FC4E5D0",
     "name": "OBJECTS_CheckSpawnSpotClearMargin2_6FC4E5D0",
     "kernFile": "src/d2kern-113c/game/k2-laneJ-0x6fc4-w1-113c.ts",
@@ -212,15 +203,6 @@
     "name": "OBJECTS_InitFn57_InitSpecialChest_6FC4EF50",
     "kernFile": "src/d2kern-113c/game/k2-laneJ-0x6fc4-w1-113c.ts",
     "tsSymbol": "OBJECTS_InitFn57_InitSpecialChest_6FC4EF50_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneJ-0x6fc4-w1.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6FC52BC0",
-    "name": "OBJECTS_SpawnSingleDensityObjectInRoom_6FC52BC0",
-    "kernFile": "src/d2kern-113c/game/k2-laneJ-0x6fc4-w1-113c.ts",
-    "tsSymbol": "OBJECTS_SpawnSingleDensityObjectInRoom_6FC52BC0_113c",
     "status": "ported",
     "diffEvidence": "Unit verification in tests/oracle/k2/laneJ-0x6fc4-w1.test.ts"
   },

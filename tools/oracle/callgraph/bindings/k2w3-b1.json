@@ -172,15 +172,6 @@
   },
   {
     "module": "D2Game",
-    "va": "0x6FC320E0",
-    "name": "ITEMS_CreateGoldPileInRoomAtCoords_6FC320E0",
-    "kernFile": "src/d2kern-113c/game/k2-w3b1-113c.ts",
-    "tsSymbol": "ITEMS_CreateGoldPileInRoomAtCoords_6FC320E0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w3b1.test.ts"
-  },
-  {
-    "module": "D2Game",
     "va": "0x6FC33320",
     "name": "ITEMS_AddClassSpecificAutoModSkills_6FC33320",
     "kernFile": "src/d2kern-113c/game/k2-w3b1-113c.ts",

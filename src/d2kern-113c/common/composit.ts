@@ -39,6 +39,7 @@ import {
 } from './inventory.ts'
 import { ITEMS_Get2HandedWClass113c, ITEMS_GetWeaponClassCode113c } from '../tables/datatbls-113c.ts'
 import { unitsGetTransformGfxValues113c } from './unit.ts'
+import { hitD2CommonVa113c } from '../va-trace-113c.ts'
 
 const UNIT_OBJECT = 2
 
@@ -82,6 +83,7 @@ export function ANIMSEQ_GetEventAtFrame113c(
   dwFrameFp8: number,
   pEventOut: number,
 ): void {
+  hitD2CommonVa113c(0x6FD7E6B0)
   const seq = pSeqRecord >>> 0
   const out = pEventOut >>> 0
   if (seq === 0) {
@@ -117,6 +119,7 @@ export function ANIMSEQ_EvaluateSequenceFrame113c(
   pDirOut: number,
   pEventOut: number,
 ): void {
+  hitD2CommonVa113c(0x6FD7E6E0)
   const seq = pSeqRecord >>> 0
   const modePtr = pModeOut >>> 0
   const framePtr = pFrameOut >>> 0
@@ -168,6 +171,7 @@ export function ANIMSEQ_EvaluateSequenceFrame113c(
  * stdcall `[esp+4] = pUnit`, `ret 4` -> `0x2625A0` (`2500000`)).
  */
 export function UNITS_GetStashGoldLimit113c(_pUnit: number): number {
+  hitD2CommonVa113c(0x6FD7E9C0)
   return 0x2625a0
 }
 
@@ -176,6 +180,7 @@ export function UNITS_GetStashGoldLimit113c(_pUnit: number): number {
  * stdcall `[esp+4] = pUnit`, `ret 4` -> `1` if `pUnit->dwUnitType == 2` and `(pUnit->pObjectData->pObjectTxt->nSubClass & 1) != 0`, else `0`).
  */
 export function UNITS_HasObjectSubClassBit0113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD7ED30)
   const u = pUnit >>> 0
   if (m.get(u, D2UnitStrc.dwUnitType) !== UNIT_OBJECT) {
     return 0
@@ -196,6 +201,7 @@ export function COMPOSIT_GetWeaponClassIdFromCode113c(
   m: Memory113c,
   dwWeaponClassCode: number,
 ): number {
+  hitD2CommonVa113c(0x6FD937F0)
   const target = dwWeaponClassCode >>> 0
   for (let i = 0; i < WEAPON_CLASS_TABLE_COUNT_113C; i++) {
     const code = m.u32((D2COMMON_WEAPON_CLASS_TABLE_VA_113C + i * 8) >>> 0)
@@ -213,6 +219,7 @@ const COMPOSIT_UNITS_CPP_FILE_113C = '..\\Source\\D2Common\\UNITS\\Units.cpp'
  * fastcall `ecx = pUnit`, `ret` -> `number`).
  */
 export function UNITS_GetField7C_113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD7E960)
   if (pUnit >>> 0 === 0) {
     throw new D2CommonAssertError(COMPOSIT_UNITS_CPP_FILE_113C, 0x1513)
   }
@@ -224,6 +231,7 @@ export function UNITS_GetField7C_113c(m: Memory113c, pUnit: number): number {
  * fastcall `ecx = pUnit`, `edx = dwValue`, `ret`, void).
  */
 export function UNITS_SetField7C_113c(m: Memory113c, pUnit: number, dwValue: number): void {
+  hitD2CommonVa113c(0x6FD7E990)
   if (pUnit >>> 0 === 0) {
     throw new D2CommonAssertError(COMPOSIT_UNITS_CPP_FILE_113C, 0x150b)
   }
@@ -239,6 +247,7 @@ export function UNITS_SetObjectPortalFlags113c(
   pUnit: number,
   nFlags: number,
 ): void {
+  hitD2CommonVa113c(0x6FD7EA30)
   if (pUnit >>> 0 === 0) {
     throw new D2CommonAssertError(COMPOSIT_UNITS_CPP_FILE_113C, 0xfef)
   }
@@ -254,6 +263,7 @@ export function UNITS_SetObjectPortalFlags113c(
  * stdcall `[esp+4] = pUnit`, `ret 0x4`, `retMask: 0xFF`).
  */
 export function UNITS_GetObjectPortalFlags113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD7EA70)
   if (pUnit >>> 0 === 0) {
     throw new D2CommonAssertError(COMPOSIT_UNITS_CPP_FILE_113C, 0xfe4)
   }
@@ -269,6 +279,7 @@ export function UNITS_GetObjectPortalFlags113c(m: Memory113c, pUnit: number): nu
  * stdcall `[esp+4] = pUnit`, `ret 0x4` -> `number`).
  */
 export function UNITS_GetPlayerActiveWeaponFlags113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD7EAF0)
   if (pUnit >>> 0 === 0) {
     throw new D2CommonAssertError(COMPOSIT_UNITS_CPP_FILE_113C, 0xfc9)
   }
@@ -288,6 +299,7 @@ export function UNITS_SetPlayerActiveWeaponFlags113c(
   pUnit: number,
   dwFlags: number,
 ): void {
+  hitD2CommonVa113c(0x6FD7EB30)
   if (pUnit >>> 0 === 0) {
     throw new D2CommonAssertError(COMPOSIT_UNITS_CPP_FILE_113C, 0xfbf)
   }
@@ -303,6 +315,7 @@ export function UNITS_SetPlayerActiveWeaponFlags113c(
  * stdcall `[esp+4] = pUnit`, `ret 0x4` -> `D2PlayerDataStrc*`).
  */
 export function UNITS_GetPlayerData113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD7EB70)
   if (pUnit >>> 0 === 0) {
     throw new D2CommonAssertError(COMPOSIT_UNITS_CPP_FILE_113C, 0xfb4)
   }
@@ -317,6 +330,7 @@ export function UNITS_GetPlayerData113c(m: Memory113c, pUnit: number): number {
  * stdcall `[esp+4] = pUnit`, `ret 0x4` -> `char*`).
  */
 export function UNITS_GetPlayerName113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD7EBB0)
   if (pUnit >>> 0 === 0) {
     throw new D2CommonAssertError(COMPOSIT_UNITS_CPP_FILE_113C, 0xfa5)
   }
@@ -335,6 +349,7 @@ export function UNITS_GetPlayerName113c(m: Memory113c, pUnit: number): number {
  * stdcall `[esp+4] = pUnit`, `[esp+8] = szName`, `ret 0x8`, void).
  */
 export function UNITS_SetPlayerName113c(m: Memory113c, pUnit: number, szName: number): void {
+  hitD2CommonVa113c(0x6FD7EC00)
   if (pUnit >>> 0 === 0) {
     throw new D2CommonAssertError(COMPOSIT_UNITS_CPP_FILE_113C, 0xf97)
   }
@@ -369,6 +384,7 @@ export function UNITS_SetObjectShrineTxt113c(
   pUnit: number,
   pShrineTxt: number,
 ): void {
+  hitD2CommonVa113c(0x6FD7EC60)
   if (pUnit >>> 0 === 0) {
     throw new D2CommonAssertError(COMPOSIT_UNITS_CPP_FILE_113C, 0xe60)
   }
@@ -384,6 +400,7 @@ export function UNITS_SetObjectShrineTxt113c(
  * stdcall `[esp+4] = pUnit`, `ret 0x4` -> `D2ShrinesTxt*`).
  */
 export function UNITS_GetObjectShrineTxt113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD7ECB0)
   if (pUnit >>> 0 === 0) {
     throw new D2CommonAssertError(COMPOSIT_UNITS_CPP_FILE_113C, 0xe4e)
   }
@@ -399,6 +416,7 @@ export function UNITS_GetObjectShrineTxt113c(m: Memory113c, pUnit: number): numb
  * stdcall `[esp+4] = pUnit`, `ret 0x4` -> `D2ObjectsTxt*`).
  */
 export function UNITS_GetObjectTxt113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD7ECF0)
   if (pUnit >>> 0 === 0) {
     throw new D2CommonAssertError(COMPOSIT_UNITS_CPP_FILE_113C, 0xe3c)
   }
@@ -595,6 +613,7 @@ export function COMPOSIT_GetWeaponClassCode113c(
   pInventory: number,
   pOutWeaponClassId: number,
 ): number {
+  hitD2CommonVa113c(0x6FD93860)
   const { code, wcid, hasWcid } = compositGetWeaponClassCodeAndId113c(
     m,
     pUnit,
@@ -622,6 +641,7 @@ export function COMPOSIT_GetUnitWeaponClassCode113c(
   nAnimMode: number,
   bUseShiftedMode: number,
 ): number {
+  hitD2CommonVa113c(0x6FD941E0)
   const esi = pUnit >>> 0
   if (esi === 0) {
     return 0x20687468
@@ -652,6 +672,7 @@ export function COMPOSIT_GetUnitWeaponClassCode113c(
  * stdcall `[esp+4] = pUnit`, `ret 4` -> `0 | 1`).
  */
 export function COMPOSIT_IsUnitUsingBowOrCrossbow113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD94350)
   const esi = pUnit >>> 0
   let uType = m.u32(esi)
   let uClass = m.u32((esi + 0x04) >>> 0)

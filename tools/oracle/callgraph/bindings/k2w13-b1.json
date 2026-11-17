@@ -100,15 +100,6 @@
   },
   {
     "module": "D2Game",
-    "va": "0x6fc92220",
-    "name": "D2GAME_Sub_6FC92220",
-    "kernFile": "src/d2kern-113c/game/k2-w13b1-113c.ts",
-    "tsSymbol": "D2Game_6FC92220_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w13b1.test.ts"
-  },
-  {
-    "module": "D2Game",
     "va": "0x6fc93570",
     "name": "D2GAME_Sub_6FC93570",
     "kernFile": "src/d2kern-113c/game/k2-w13b1-113c.ts",

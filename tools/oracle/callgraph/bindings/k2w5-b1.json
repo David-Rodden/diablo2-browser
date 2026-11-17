@@ -271,15 +271,6 @@
   },
   {
     "module": "D2Game",
-    "va": "0x6FC608D0",
-    "name": "MISSILES_SrvDo_StashGoldFountain_6FC608D0",
-    "kernFile": "src/d2kern-113c/game/k2-w5b1-113c.ts",
-    "tsSymbol": "MISSILES_SrvDo_StashGoldFountain_6FC608D0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w5b1.test.ts"
-  },
-  {
-    "module": "D2Game",
     "va": "0x6FC62AD0",
     "name": "SKILLS_CanCastAtNonTownTargetCoords_6FC62AD0",
     "kernFile": "src/d2kern-113c/game/k2-w5b1-113c.ts",

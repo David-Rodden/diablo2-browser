@@ -1,77 +1,122 @@
 /**
  * @file src/d2kern-113c/game/town-npc-ai-113c.ts
- * Clean-room 1:1 binary port of D2Game.dll v1.13c Town NPC AI, Warriv Act 1 intro
- * greeting AI, and DS1 MapAI waypoint path-following routines.
+ * Clean-room 1:1 binary port of D2Game.dll v1.13c Town NPC AI, Warriv/Town NPC
+ * greeting & interaction AI, Rogue Town AI, and DS1 MapAI waypoint path-following.
  *
- * All functions operate strictly on `Memory113c` virtual pointers (`pGame`, `pUnit`,
- * `pAiTickParam`, `pMonsterData`, `pAiControl`, `D2AiCmdStrc`, `D2MapAIStrc`).
- * Zero JS Maps, zero array sorting, zero permissive `??` fallbacks.
+ * Every function operates strictly on `Memory113c` virtual pointers (`pGame`, `pUnit`,
+ * `pAiTickParam`, `D2MonsterDataStrc`, `D2AiGeneralStrc`, `D2AiCmdStrc`, `D2MapAIStrc`).
+ * Zero JS Maps, zero array sorting, zero permissive nullish fallbacks.
  */
 
+import { UNITS_GetPlayerData113c } from '../common/composit.ts';
 import { imul32, sdiv32 } from '../common/int-math.ts';
+import { INVENTORY_GetCursorItem113c } from '../common/inventory.ts';
+import {
+  PATH_ClearPathPointsAndFlag0x20_113c,
+  PATH_SetNewDirection113c,
+  PATH_SetStepNum113c,
+} from '../common/path.ts';
+import { STATES_CheckState113c } from '../common/statlist.ts';
 import {
   UNIT_MONSTER,
   UNIT_PLAYER,
-  UNITS_GetDistanceToOtherUnit113c,
   UNITS_GetRoom113c,
   UNITS_GetX113c,
   UNITS_GetY113c,
 } from '../common/unit.ts';
-import { UNITFINDS_FindNearestUnitInRange113c } from '../common/unit-finds.ts';
 import {
   D2ActiveRoomStrc,
   D2AiCmdStrc,
   D2AiGeneralStrc,
-  D2DrlgLevelStrc,
-  D2DynamicPathStrc,
-  D2GameStrc,
   D2MonsterDataStrc,
-  D2RoomExStrc,
   D2UnitStrc,
 } from '../mem/layout.generated.ts';
-import type { Memory113c } from '../mem/sparse-memory.ts';
-import { type D2SeedStrc, seedRoll } from '../prng.ts';
-import { AIGENERAL_AllocAiCommand113c } from './replay-kernel-113c.ts';
+import type { Memory113c, SparseMemory113c } from '../mem/sparse-memory.ts';
+import { hitD2GameVa113c } from '../va-trace-113c.ts';
 import {
-  MON_EVENT_AI_THINK,
-  MONSTER_RegisterContinuousModeEvent113c,
-  SUNIT_IsDeadOrDying113c,
-} from './monster-events.ts';
-import { EVENT_DeleteEventByArg14_113c, EVENT_SetEventFull113c } from './timer-wheel.ts';
+  AI_CalcApproxUnitDistSubtiles113c,
+  AI_StartAttackMode113c,
+  MONSTER_InitModeChangeStrc113c,
+  SUNIT_SetUnitEventSound113c,
+} from './ai-fallen-113c.ts';
+import {
+  AI_IdleWander113c,
+  AI_Stall113c,
+  MONSTER_StartMode113c,
+  SEED_RollLimitedRandomNumber113c,
+} from './combat-a1c-113c.ts';
+import { AIGENERAL_CopyAiCommandParams113c } from './replay-kernel-113c.ts';
+import {
+  ACT3Q1_GetHratliTargetCoords113c,
+  ACT3Q4_CheckOrmusNpcWaitFlag113c,
+  ACT3Q4_ClearOrmusNpcWaitFlag113c,
+} from './k2-sunit-spawn-w1-113c.ts';
+import {
+  ACT1Q4_GetCairnStonesTargetCoords_6FC804C0_113c,
+  ACT1Q4_MarkPortalOpenedFlag92_6FC803D0_113c,
+} from './k2-w2b1-113c.ts';
+import { ACT2Q4_ActivateHorazonJournal_6FCE1F90_113c } from './k2-w2b7-113c.ts';
+import { AI_StartModeAtCoordsKeepSteps_6FD121E0_113c } from './k2-w2b8-113c.ts';
+import { ACT2Q4_IsPalaceCellarAllowed_6FCE3260_113c } from './k2-w5b4-113c.ts';
+import { ACT3Q2_ActivateGidbinnAltarObject_6FD05F60_113c } from './k2-w5b8-113c.ts';
+import { ACT5Q2_TrySpawnNihlathakPortalForUnitInAct5_6FC7D1D0_113c } from './k2-w7b2-113c.ts';
+import { ACT2Q4_JerhynPalaceNpcAiOverride_6FCE8990_113c } from './k2-w11b1-113c.ts';
+import {
+  MONSTATS2_CheckModeBit113c,
+  SEED_RollLimitedFast113c,
+  UNIT_GetPosX113c,
+  UNIT_GetPosY113c,
+} from './regpop-spawn-113c.ts';
+import { EVENT_FreeNode113c } from './timer-wheel.ts';
+import {
+  AI_FindNearestPlayerCallback113c,
+  AITARGET_ScanUnitsByModeTable113c,
+} from './town-runtime-gap-113c.ts';
 
 /**
- * Offset `+0x38` on `D2MonsterDataStrc` where `ROOM_SpawnPresetUnit113c` (`0x6FD013B0` /
- * `MAPAI_CopyMapAiData113c` `0x6FD0F8C0`) stores `D2MapAIStrc*` and `0x6FC3BBC0` reads it.
+ * Offset `+0x38` on `D2AiGeneralStrc` (and `D2MonsterDataStrc` fallback) where
+ * `MAPAI_CopyMapAiData113c` (`0x6FD0F8C0`) stores `D2MapAIStrc*` and `0x6FC3BBC0` reads it.
  */
 export const D2MONSTERDATA_MAPAI_OFF_113C = 0x38;
 
 /**
- * `D2MapAIStrc` header layout at `pMonsterData + 0x38`:
- * - `+0x00`: `nCurrentIndex` (int32, index into `pPosition` array)
- * - `+0x04`: `pPosition` (uint32 pointer to `D2MapAiActionStrc[]` array)
+ * `D2Game.dll` `.data` global counter at `0x6FD31F90` toggled by `0x6FC36A30` (`AI_TickNodes4_5_7`)
+ * (`(dwCounter & 3) == 0 ? 5 : 7` path type override on `pAiParam + 0x18`).
+ */
+export const D2GAME_MAPAI_NODE4_COUNTER_VA_6FD31F90 = 0x6fd31f90;
+
+/**
+ * Disjoint scratch stack region for `town-npc-ai-113c.ts` (`0x7FF67C00..0x7FF68000`, 1 KB).
+ */
+const TOWN_NPC_AI_STACK_BASE = 0x7ff67c00;
+let townNpcAiStackPtr = TOWN_NPC_AI_STACK_BASE;
+
+/**
+ * `D2MapAIStrc` header layout (`8` bytes) read by `0x6FC3BBC0`:
+ * - `+0x00`: `nPositionCount` (`DWORD PTR [edi]`, count of 12-byte `D2MapAiPositionStrc` entries)
+ * - `+0x04`: `pPosition` (`DWORD PTR [edi+0x4]`, pointer to `D2MapAiPositionStrc[]` array)
  */
 export const D2MapAiHeaderOffsets = {
+  nPositionCount: 0x00,
   nCurrentIndex: 0x00,
   pPosition: 0x04,
 } as const;
 
 /**
- * Each 16-byte `D2MapAiActionStrc` entry in `pPosition`:
- * - `+0x00`: `nX` (int32 world subtile X)
- * - `+0x04`: `nY` (int32 world subtile Y)
- * - `+0x08`: `nAction` (int32 action id `1..5`; `0` marks end-of-path sentinel)
- * - `+0x0C`: `nWait` (int32 optional wait parameter)
+ * Each 12-byte `D2MapAiPositionStrc` entry in `pPosition` (`lea eax, [eax+eax*2]; lea eax, [ecx+eax*4]`):
+ * - `+0x00`: `nAction` (`int32` action id `1..5`; `0` / `6` = null handler in `0x6FD2F850`)
+ * - `+0x04`: `nX` (`int32` world subtile X)
+ * - `+0x08`: `nY` (`int32` world subtile Y)
  */
 export const D2MapAiActionOffsets = {
-  nX: 0x00,
-  nY: 0x04,
-  nAction: 0x08,
-  nWait: 0x0c,
-  SIZE: 0x10,
+  nAction: 0x00,
+  nX: 0x04,
+  nY: 0x08,
+  SIZE: 0x0c,
 } as const;
 
 /**
- * `D2AiTickParamStrc` offsets passed to AI think functions (`0x6FC3DB40`, `0x6FC39C20`, etc.).
+ * `D2AiTickParamStrc` offsets passed to AI think functions (`0x6FC3DB40`, `0x6FC39C20`, `0x6FC3BBC0`).
  */
 export const D2AiTickParamOffsets = {
   pAiControl: 0x00,
@@ -83,12 +128,11 @@ export const D2AiTickParamOffsets = {
 } as const;
 
 /**
- * Injectable low-level movement / mode hooks for Town NPC AI (`D2Game.dll` sub-callees).
- * Default implementations perform deterministic in-memory path target updates and
- * timer-wheel `MON_EVENT_AI_THINK` scheduling on `Memory113c`.
+ * Legacy optional hook bag type retained strictly for signature compatibility with
+ * external K2 callers (`k2-w6b3-113c.ts`). All Town NPC AI functions execute real
+ * `D2Game.dll` / `D2Common.dll` functions directly on `Memory113c`.
  */
 export interface TownNpcAiCallees113c {
-  /** `D2Game:0x6FC352A0` — Walk monster toward `(nDestX, nDestY)`. Returns 1 if movement started. */
   aiWalkToCoords?: (
     mem: Memory113c,
     pGame: number,
@@ -98,14 +142,12 @@ export interface TownNpcAiCallees113c {
     nVelocityOverride: number,
     bForceWalk: number,
   ) => number;
-  /** `D2Game:0x6FC3B0E0` — Idle wait for `nDelayFrames` frames and schedule next `MON_EVENT_AI_THINK`. */
   aiIdleWait?: (
     mem: Memory113c,
     pGame: number,
     pUnit: number,
     nDelayFrames: number,
   ) => number;
-  /** `D2Game:0x6FC34CC0` — Fallback step or idle delay when direct pathing is blocked. */
   aiStepOrIdle?: (
     mem: Memory113c,
     pGame: number,
@@ -114,14 +156,12 @@ export interface TownNpcAiCallees113c {
     nDestX: number,
     nDestY: number,
   ) => number;
-  /** `D2Game:0x6FC34BA0` — Trigger a monster animation mode (e.g. `8` = `SKILL1`, `9` = `SKILL2`). */
   aiTriggerMode?: (
     mem: Memory113c,
     pGame: number,
     pUnit: number,
     nMode: number,
   ) => number;
-  /** `D2Game:0x6FC349B0` — Random local wander step within radius. */
   aiWanderStep?: (
     mem: Memory113c,
     pGame: number,
@@ -130,114 +170,149 @@ export interface TownNpcAiCallees113c {
   ) => number;
 }
 
-function scheduleNextAiThinkIfTimerReady113c(
-  mem: Memory113c,
-  pGame: number,
-  pUnit: number,
-  delayFrames: number,
-): void {
-  if (pGame === 0) return;
-  const pTimer = mem.get(pGame, D2GameStrc.pTimer);
-  if (pTimer === 0) return;
-  const dwGameFrame = mem.get(pGame, D2GameStrc.dwGameFrame);
-  EVENT_DeleteEventByArg14_113c(mem, pGame, pUnit, MON_EVENT_AI_THINK);
-  EVENT_SetEventFull113c(
-    mem,
-    pGame,
-    pUnit,
-    MON_EVENT_AI_THINK,
-    (dwGameFrame + delayFrames) >>> 0,
-    0,
-    0,
-    0,
-  );
-}
-
-function defaultAiIdleWait113c(
-  mem: Memory113c,
-  pGame: number,
-  pUnit: number,
-  nDelayFrames: number,
-): number {
-  const delay = nDelayFrames > 0 ? nDelayFrames | 0 : 15;
-  mem.set(pUnit, D2UnitStrc.dwAnimMode, 1); // MONMODE_NEUTRAL
-  scheduleNextAiThinkIfTimerReady113c(mem, pGame, pUnit, delay);
-  return 1;
-}
-
-function defaultAiWalkToCoords113c(
-  mem: Memory113c,
-  pGame: number,
-  pUnit: number,
-  nDestX: number,
-  nDestY: number,
-): number {
-  const pPath = mem.get(pUnit, D2UnitStrc.pPath);
-  const curX = UNITS_GetX113c(mem, pUnit);
-  const curY = UNITS_GetY113c(mem, pUnit);
-  if (curX === (nDestX | 0) && curY === (nDestY | 0)) {
+function readMapAiNode4Counter113c(m: Memory113c): number {
+  try {
+    return m.u32(D2GAME_MAPAI_NODE4_COUNTER_VA_6FD31F90) | 0;
+  } catch {
+    m.setU32(D2GAME_MAPAI_NODE4_COUNTER_VA_6FD31F90, 0);
     return 0;
   }
-  if (pPath !== 0) {
-    mem.set(pPath, D2DynamicPathStrc.wTargetX, (nDestX | 0) & 0xffff);
-    mem.set(pPath, D2DynamicPathStrc.wTargetY, (nDestY | 0) & 0xffff);
-    mem.set(pPath, D2DynamicPathStrc.pTargetUnit, 0);
-    const dx = (nDestX | 0) - curX;
-    const dy = (nDestY | 0) - curY;
-    const stepX = dx > 2 ? 2 : dx < -2 ? -2 : dx;
-    const stepY = dy > 2 ? 2 : dy < -2 ? -2 : dy;
-    mem.set(pPath, D2DynamicPathStrc.wPosX, (curX + stepX) & 0xffff);
-    mem.set(pPath, D2DynamicPathStrc.wPosY, (curY + stepY) & 0xffff);
-  }
-  mem.set(pUnit, D2UnitStrc.dwAnimMode, 2); // MONMODE_WALK
-  if (pGame !== 0 && mem.get(pGame, D2GameStrc.pTimer) !== 0) {
-    MONSTER_RegisterContinuousModeEvent113c(mem, pGame, pUnit);
-    scheduleNextAiThinkIfTimerReady113c(mem, pGame, pUnit, 12);
-  }
-  return 1;
 }
 
-function defaultAiTriggerMode113c(
-  mem: Memory113c,
-  pGame: number,
-  pUnit: number,
-  nMode: number,
-): number {
-  mem.set(pUnit, D2UnitStrc.dwAnimMode, nMode >>> 0);
-  scheduleNextAiThinkIfTimerReady113c(mem, pGame, pUnit, 15);
-  return 1;
-}
-
-function defaultAiWanderStep113c(
-  mem: Memory113c,
-  pGame: number,
-  pUnit: number,
-  nRadius: number,
-): number {
-  const seed: D2SeedStrc = {
-    lo: mem.get(pUnit, D2UnitStrc.seedLo),
-    hi: mem.get(pUnit, D2UnitStrc.seedHi),
-  };
-  const span = ((nRadius | 0) * 2 + 1) | 0;
-  const dx = (seedRoll(seed, span > 0 ? span : 1) - (nRadius | 0)) | 0;
-  const dy = (seedRoll(seed, span > 0 ? span : 1) - (nRadius | 0)) | 0;
-  mem.set(pUnit, D2UnitStrc.seedLo, seed.lo >>> 0);
-  mem.set(pUnit, D2UnitStrc.seedHi, seed.hi >>> 0);
-  const curX = UNITS_GetX113c(mem, pUnit);
-  const curY = UNITS_GetY113c(mem, pUnit);
-  return defaultAiWalkToCoords113c(mem, pGame, pUnit, (curX + dx) | 0, (curY + dy) | 0);
+function stepSeed64At113c(m: Memory113c, pSeed: number): number {
+  const lo = BigInt(m.u32(pSeed >>> 0));
+  const hi = BigInt(m.u32((pSeed + 4) >>> 0));
+  const prod = lo * 0x6ac690c5n + hi;
+  const newLo = Number(prod & 0xffffffffn) >>> 0;
+  const newHi = Number((prod >> 32n) & 0xffffffffn) >>> 0;
+  m.setU32(pSeed >>> 0, newLo);
+  m.setU32((pSeed + 4) >>> 0, newHi);
+  return newLo;
 }
 
 /**
- * @va D2Game:0x6FC40E00
- * Find an AI command node in `pUnit->pMonsterData->pAiGeneral->pCommandHead` whose
- * `dwCmdType == nCmdType`.
+ * Pure `Memory113c` port of `D2Game:0x6FD12540` (`AI_ApproachTarget`).
+ */
+function aiApproachTargetMem113c(
+  m: Memory113c,
+  pGame: number,
+  pUnit: number,
+  pTarget: number,
+  nMode: number,
+  nX: number,
+  nY: number,
+  nStepNum: number,
+  dwFlags: number,
+): number {
+  let mode = nMode | 0;
+  if (mode === 0x0f && (STATES_CheckState113c(m, pUnit >>> 0, 0x3c) | 0) !== 0) {
+    let pAiParam = 0;
+    if (pUnit !== 0 && (m.u32(pUnit >>> 0) | 0) === 1) {
+      const pMonData = m.u32((pUnit + 0x14) >>> 0) >>> 0;
+      if (pMonData !== 0) {
+        pAiParam = m.u32((pMonData + 0x2c) >>> 0) >>> 0;
+      }
+    }
+    if (pAiParam !== 0) {
+      m.setU32((pAiParam + 0x18) >>> 0, 0);
+      m.setU32((pAiParam + 0x1c) >>> 0, 0);
+      m.setU8((pAiParam + 0x20) >>> 0, 0);
+    }
+    mode = 2;
+  }
+  const pPath = pUnit !== 0 ? m.u32((pUnit + 0x2c) >>> 0) >>> 0 : 0;
+  if (pPath !== 0) {
+    PATH_SetStepNum113c(m, pPath, nStepNum | 0);
+  }
+  const res =
+    MONSTER_StartMode113c(m, pGame >>> 0, pUnit >>> 0, mode, pTarget >>> 0, nX | 0, nY | 0) | 0;
+  if (res !== 0) {
+    return res;
+  }
+  const flagsByte = dwFlags & 0xff;
+  if ((flagsByte & 4) !== 0 && pUnit !== 0) {
+    let pEvent = m.u32((pUnit + 0xdc) >>> 0) >>> 0;
+    while (pEvent !== 0) {
+      const pNext = m.u32((pEvent + 0x24) >>> 0) >>> 0;
+      if (m.u8(pEvent) === 2) {
+        EVENT_FreeNode113c(m, pGame >>> 0, pEvent);
+      }
+      pEvent = pNext;
+    }
+  }
+  if ((flagsByte & 1) !== 0 && pUnit !== 0 && (m.u32(pUnit >>> 0) | 0) === 1) {
+    const pMonData = m.u32((pUnit + 0x14) >>> 0) >>> 0;
+    const pAiGen = pMonData !== 0 ? m.u32((pMonData + 0x28) >>> 0) >>> 0 : 0;
+    if (pAiGen !== 0) {
+      m.setU8((pAiGen + 0x08) >>> 0, (m.u8((pAiGen + 0x08) >>> 0) | 0x40) & 0xff);
+    }
+  }
+  if ((flagsByte & 2) !== 0 && pUnit !== 0) {
+    const roll = (stepSeed64At113c(m, (pUnit + 0x20) >>> 0) >>> 0) % 100;
+    if (roll < 0x46) {
+      AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0);
+      return 1;
+    }
+    AI_Stall113c(m, pGame >>> 0, pUnit >>> 0, 10);
+    return 1;
+  }
+  return res;
+}
+
+function monsterStartModeFromArgs113c(
+  mem: Memory113c,
+  pGame: number,
+  pModeArgs: number,
+): number {
+  const mode = mem.u32(pModeArgs >>> 0) | 0;
+  const pUnit = mem.u32((pModeArgs + 0x04) >>> 0) >>> 0;
+  const pTarget = mem.u32((pModeArgs + 0x08) >>> 0) >>> 0;
+  const tx = mem.u32((pModeArgs + 0x0c) >>> 0) | 0;
+  const ty = mem.u32((pModeArgs + 0x10) >>> 0) | 0;
+  return MONSTER_StartMode113c(mem, pGame >>> 0, pUnit, mode, pTarget, tx, ty) | 0;
+}
+
+function setMonsterAiParamState113c(m: Memory113c, pUnit: number, nState: number): void {
+  if (pUnit === 0 || (m.u32(pUnit >>> 0) | 0) !== 1) return;
+  const pMonData = m.u32((pUnit + 0x14) >>> 0) >>> 0;
+  if (pMonData === 0) return;
+  const pAiParam = m.u32((pMonData + 0x2c) >>> 0) >>> 0;
+  if (pAiParam === 0) return;
+  m.setU32((pAiParam + 0x18) >>> 0, nState >>> 0);
+}
+
+function resolveMapAiCoords113c(
+  mem: Memory113c,
+  pEntryOrDestX: number,
+  nDestY?: number | TownNpcAiCallees113c,
+): { valid: boolean; nX: number; nY: number } {
+  if (typeof nDestY === 'number') {
+    const nX = pEntryOrDestX | 0;
+    const nY = nDestY | 0;
+    return { valid: nX !== 0 && nY !== 0, nX, nY };
+  }
+  const pEntry = pEntryOrDestX >>> 0;
+  if (pEntry === 0) {
+    return { valid: false, nX: 0, nY: 0 };
+  }
+  const nX = mem.u32((pEntry + 0x04) >>> 0) | 0;
+  const nY = mem.u32((pEntry + 0x08) >>> 0) | 0;
+  return { valid: nX !== 0 && nY !== 0, nX, nY };
+}
+
+/**
+ * @va D2Game:0x6FC40E00 (72B)
+ * Walks the circular `D2AiCmdStrc` command list at `pUnit->pMonsterData->pAiGeneral->pCommandHead (+0x20)`
+ * starting at `head->pNext` (`mov eax, [ecx]`) until `pCmd == head`, returning the node with
+ * `dwCmdType == nCmdType` (`+0x08`). When `bSetCurrent != 0`, updates `pAiGeneral->pCommandHead = pCmd`.
  */
 export function AIGENERAL_FindAiCommandByType113c(
   mem: Memory113c,
   pUnit: number,
   nCmdType: number,
+  bSetCurrent = 0,
 ): number {
+  hitD2GameVa113c(0x6FC40E00);
   if (pUnit === 0) return 0;
   if (mem.get(pUnit, D2UnitStrc.dwUnitType) !== UNIT_MONSTER) {
     return 0;
@@ -250,47 +325,58 @@ export function AIGENERAL_FindAiCommandByType113c(
   const head = mem.get(pAiGeneral, D2AiGeneralStrc.pCommandHead);
   if (head === 0) return 0;
 
-  let pCmd = head;
   const targetType = nCmdType | 0;
+  let pCmd = mem.get(head, D2AiCmdStrc.pNext);
+  if (pCmd === 0) {
+    pCmd = head;
+  }
   let guard = 0;
   while (pCmd !== 0 && guard < 256) {
     if ((mem.get(pCmd, D2AiCmdStrc.dwCmdType) | 0) === targetType) {
-      return pCmd;
+      break;
+    }
+    if (pCmd === head) {
+      break;
     }
     const nextCmd = mem.get(pCmd, D2AiCmdStrc.pNext);
-    if (nextCmd === head) {
+    if (nextCmd === 0) {
       break;
     }
     pCmd = nextCmd;
     guard = (guard + 1) | 0;
   }
-  return 0;
+  if (pCmd === 0 || (mem.get(pCmd, D2AiCmdStrc.dwCmdType) | 0) !== targetType) {
+    return 0;
+  }
+  if ((bSetCurrent | 0) !== 0) {
+    mem.set(pAiGeneral, D2AiGeneralStrc.pCommandHead, pCmd);
+  }
+  return pCmd;
 }
 
 /**
- * @va D2Game:0x6FC417D0
- * Find an existing `D2AiCmdStrc` node with `dwCmdType == nCmdType`, or allocate
- * and link a new zero-initialized command node with `dwCmdType = nCmdType`.
+ * @va D2Game:0x6FC417D0 (69B)
+ * Queries `AIGENERAL_FindAiCommandByType113c(pUnit, nCmdType, bSetCurrent)`; if absent (`0`),
+ * allocates and initializes `[nCmdType, 0, 0, 0, 0]` via `0x6FC41290` (`AIGENERAL_CopyAiCommandParams113c`)
+ * and re-queries `0x6FC40E00(pUnit, nCmdType, bSetCurrent)`.
  */
 export function AIGENERAL_GetOrAllocAiCommandByType113c(
   mem: Memory113c,
   _pGame: number,
   pUnit: number,
   nCmdType: number,
+  bSetCurrent = 0,
 ): number {
-  const existing = AIGENERAL_FindAiCommandByType113c(mem, pUnit, nCmdType);
-  if (existing !== 0) {
-    return existing;
+  hitD2GameVa113c(0x6FC417D0);
+  const existing = AIGENERAL_FindAiCommandByType113c(mem, pUnit, nCmdType, bSetCurrent);
+  if (existing === 0) {
+    AIGENERAL_CopyAiCommandParams113c(mem, pUnit, nCmdType >>> 0, 0, 0, 0, 0);
   }
-  const pCmd = AIGENERAL_AllocAiCommand113c(mem, pUnit);
-  if (pCmd !== 0) {
-    mem.set(pCmd, D2AiCmdStrc.dwCmdType, nCmdType >>> 0);
-  }
-  return pCmd;
+  return AIGENERAL_FindAiCommandByType113c(mem, pUnit, nCmdType, bSetCurrent);
 }
 
 /**
- * @va D2Game:0x6FCD07B0
+ * @va D2Game:0x6FCD07B0 (135B)
  * Compute octile distance (`max(|dx|, |dy|) + (min(|dx|, |dy|) >> 1)`) from `pUnit`
  * to world coordinates `(nX, nY)`.
  */
@@ -300,6 +386,7 @@ export function UNITS_GetOctileDistanceToCoordinates113c(
   nX: number,
   nY: number,
 ): number {
+  hitD2GameVa113c(0x6FCD07B0);
   if (pUnit === 0) return 0;
   const unitX = UNITS_GetX113c(mem, pUnit);
   const unitY = UNITS_GetY113c(mem, pUnit);
@@ -316,136 +403,205 @@ export function UNITS_GetOctileDistanceToCoordinates113c(
 }
 
 /**
- * @va D2Game:0x6FD11D90
- * Step `pUnit` by `nStepDist` subtiles toward (`bMoveToward != 0`) or away from
- * (`bMoveToward == 0`) `pTargetUnit`.
+ * @va D2Game:0x6FD11D90 (516B)
+ * Steps `pUnit` relative to `pTargetUnit` along the `(dx, dy)` vector:
+ * - In binary 7-arg form `(mem, pGame, pUnit, pTargetUnit, nMaxStep, nMode, nTargetDist)`:
+ *   computes `dist = AI_CalcApproxUnitDistSubtiles(pUnit, pTargetUnit)`, sets `dirSign = dist < nTargetDist ? -1 : 1`,
+ *   clamps `stepLen = min(|dist - nTargetDist|, nMaxStep)`, scales `(stepX, stepY)` with the x86
+ *   diagonal increment loop (`while (stepX + stepY < stepLen) { stepX++; stepY++; }`), initializes
+ *   `D2ModeChangeStrc` via `0x6FC95070`, sets `PATH_SetStepNum(pPath, 1)` (`D2Common.#11005`), and
+ *   dispatches `MONSTER_StartMode` (`0x6FC95E10`).
+ * - Also supports 6-arg callers `(mem, pGame, pUnit, pTargetUnit, nStepDist, bMoveTowardOrMode)`.
  */
 export function AI_StepRelativeToTargetUnit113c(
   mem: Memory113c,
   pGame: number,
   pUnit: number,
   pTargetUnit: number,
-  nStepDist: number,
-  bMoveToward: number,
-  callees?: TownNpcAiCallees113c,
+  nMaxStep: number,
+  nModeOrToward: number,
+  nTargetDistOrCallees?: number | TownNpcAiCallees113c,
 ): number {
+  hitD2GameVa113c(0x6FD11D90);
   if (pUnit === 0 || pTargetUnit === 0) return 0;
-  const unitX = UNITS_GetX113c(mem, pUnit);
-  const unitY = UNITS_GetY113c(mem, pUnit);
-  const targetX = UNITS_GetX113c(mem, pTargetUnit);
-  const targetY = UNITS_GetY113c(mem, pTargetUnit);
 
-  let dx = (targetX - unitX) | 0;
-  let dy = (targetY - unitY) | 0;
-  if ((bMoveToward | 0) === 0) {
-    dx = (-dx) | 0;
-    dy = (-dy) | 0;
+  const dist = AI_CalcApproxUnitDistSubtiles113c(mem, pUnit >>> 0, pTargetUnit >>> 0) | 0;
+  let dirSign = 1;
+  let stepLen = 0;
+  let nMode = 2;
+
+  if (typeof nTargetDistOrCallees === 'number') {
+    const nTargetDist = nTargetDistOrCallees | 0;
+    if (dist < nTargetDist) {
+      dirSign = -1;
+    }
+    let diff = (dist - nTargetDist) | 0;
+    if (diff < 0) diff = (-diff) | 0;
+    stepLen = diff <= (nMaxStep | 0) ? diff : nMaxStep | 0;
+    nMode = nModeOrToward | 0;
+  } else {
+    const modeOrToward = nModeOrToward | 0;
+    if (modeOrToward === 0) {
+      dirSign = -1;
+      nMode = 2;
+    } else {
+      dirSign = 1;
+      nMode = modeOrToward === 15 ? 15 : 2;
+    }
+    stepLen = (nMaxStep | 0) > 0 ? nMaxStep | 0 : 0;
   }
-  const absDx = dx < 0 ? (-dx) | 0 : dx;
-  const absDy = dy < 0 ? (-dy) | 0 : dy;
-  const maxDelta = absDx >= absDy ? absDx : absDy;
-  if (maxDelta <= 0) {
-    return 0;
+
+  const targetX = UNIT_GetPosX113c(mem, pTargetUnit >>> 0) | 0;
+  const targetY = UNIT_GetPosY113c(mem, pTargetUnit >>> 0) | 0;
+  const unitX = UNIT_GetPosX113c(mem, pUnit >>> 0) | 0;
+  const unitY = UNIT_GetPosY113c(mem, pUnit >>> 0) | 0;
+
+  let absDx = (targetX - unitX) | 0;
+  if (absDx < 0) absDx = (-absDx) | 0;
+  let absDy = (targetY - unitY) | 0;
+  if (absDy < 0) absDy = (-absDy) | 0;
+
+  let denom = (absDx + absDy) | 0;
+  if (denom < stepLen) {
+    denom = stepLen;
   }
-  const stepX = sdiv32(imul32(dx, nStepDist | 0), maxDelta);
-  const stepY = sdiv32(imul32(dy, nStepDist | 0), maxDelta);
-  const destX = (unitX + stepX) | 0;
-  const destY = (unitY + stepY) | 0;
-  const walkFn =
-    callees !== undefined && callees.aiWalkToCoords !== undefined
-      ? callees.aiWalkToCoords
-      : defaultAiWalkToCoords113c;
-  return walkFn(mem, pGame, pUnit, destX, destY, 0, 1);
+  let stepX = 0;
+  let stepY = 0;
+  if (denom > 0) {
+    stepX = sdiv32(imul32(absDx, stepLen), denom);
+    stepY = sdiv32(imul32(absDy, stepLen), denom);
+    if (((stepX + stepY) | 0) < stepLen) {
+      do {
+        stepX = (stepX + 1) | 0;
+        stepY = (stepY + 1) | 0;
+      } while (((stepX + stepY) | 0) < stepLen);
+    }
+  }
+
+  let signX = 0;
+  if (targetX > unitX) signX = 1;
+  else if (targetX < unitX) signX = -1;
+
+  let signY = 0;
+  if (targetY > unitY) signY = 1;
+  else if (targetY < unitY) signY = -1;
+
+  const destX = (unitX + imul32(imul32(signX, stepX), dirSign)) | 0;
+  const destY = (unitY + imul32(imul32(signY, stepY), dirSign)) | 0;
+
+  const sp = townNpcAiStackPtr;
+  townNpcAiStackPtr = (sp + 0x20) >>> 0;
+  try {
+    MONSTER_InitModeChangeStrc113c(mem, pUnit >>> 0, sp, nMode);
+    const pPath = mem.u32((pUnit + 0x2c) >>> 0) >>> 0;
+    if (pPath !== 0) {
+      PATH_SetStepNum113c(mem, pPath, 1);
+    }
+    mem.setU32((sp + 0x0c) >>> 0, destX >>> 0);
+    mem.setU32((sp + 0x10) >>> 0, destY >>> 0);
+    return MONSTER_StartMode113c(mem, pGame >>> 0, pUnit >>> 0, nMode, 0, destX, destY) | 0;
+  } finally {
+    townNpcAiStackPtr = sp;
+  }
 }
 
 /**
- * @va D2Game:0x6FD130C0
- * Find the nearest living `UNIT_PLAYER` in `pUnit`'s active room or nearby rooms.
+ * @va D2Game:0x6FD130C0 (97B)
+ * Scans nearby rooms via `AITARGET_ScanUnitsByModeTable113c` (`nScanIndex = 2`, callback `0x6FD11A90`)
+ * to find an eligible player within `15` subtiles. When `bestPlayer != 0 && bestDist < 4` and
+ * `pOutClose != 0`, writes `*pOutClose = 1`.
  */
 export function AI_FindNearestPlayerTarget113c(
   mem: Memory113c,
-  _pGame: number,
+  pGame: number,
   pUnit: number,
+  pOutClose = 0,
 ): number {
+  hitD2GameVa113c(0x6FD130C0);
   if (pUnit === 0) return 0;
   const pRoom = UNITS_GetRoom113c(mem, pUnit);
   if (pRoom === 0) return 0;
 
-  const nRoomsNear = mem.get(pRoom, D2ActiveRoomStrc.nRoomsNear) | 0;
-  const ppRoomsNear = mem.get(pRoom, D2ActiveRoomStrc.ppRoomsNear);
-  if (nRoomsNear > 0 && ppRoomsNear !== 0) {
-    const unitX = UNITS_GetX113c(mem, pUnit);
-    const unitY = UNITS_GetY113c(mem, pUnit);
-    return UNITFINDS_FindNearestUnitInRange113c(
-      mem,
-      pUnit,
-      unitX,
-      unitY,
-      0,
-      (m, pCandidate) => {
-        if (m.get(pCandidate, D2UnitStrc.dwUnitType) !== UNIT_PLAYER) {
-          return 0;
-        }
-        return SUNIT_IsDeadOrDying113c(m, pCandidate) === 0 ? 1 : 0;
-      },
-    );
-  }
+  const sp = townNpcAiStackPtr;
+  townNpcAiStackPtr = (sp + 0x10) >>> 0;
+  try {
+    mem.setU32(sp, 0);
+    mem.setU32((sp + 0x04) >>> 0, 0x7fffffff);
 
-  let bestPlayer = 0;
-  let bestDist = 0x7fffffff;
-  let pCandidate = mem.get(pRoom, D2ActiveRoomStrc.pUnitFirst);
-  let guard = 0;
-  while (pCandidate !== 0 && guard < 512) {
-    if (
-      mem.get(pCandidate, D2UnitStrc.dwUnitType) === UNIT_PLAYER &&
-      SUNIT_IsDeadOrDying113c(mem, pCandidate) === 0
-    ) {
-      const dist = UNITS_GetDistanceToOtherUnit113c(mem, pUnit, pCandidate);
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestPlayer = pCandidate;
+    const ppRoomsNear = mem.get(pRoom, D2ActiveRoomStrc.ppRoomsNear);
+    const nRoomsNear = mem.get(pRoom, D2ActiveRoomStrc.nRoomsNear) | 0;
+    if (ppRoomsNear !== 0 && nRoomsNear > 0) {
+      AITARGET_ScanUnitsByModeTable113c(mem, 2, sp, pGame >>> 0, pUnit >>> 0, 0x6fd11a90);
+    } else {
+      let pCandidate = mem.get(pRoom, D2ActiveRoomStrc.pUnitFirst);
+      let guard = 0;
+      while (pCandidate !== 0 && guard < 512) {
+        const res = AI_FindNearestPlayerCallback113c(
+          mem,
+          pGame >>> 0,
+          pUnit >>> 0,
+          pCandidate >>> 0,
+          sp,
+        );
+        if (res !== 0) {
+          break;
+        }
+        pCandidate = mem.get(pCandidate, D2UnitStrc.pRoomUnitNext);
+        guard = (guard + 1) | 0;
       }
     }
-    pCandidate = mem.get(pCandidate, D2UnitStrc.pRoomUnitNext);
-    guard = (guard + 1) | 0;
+
+    const bestPlayer = mem.u32(sp) >>> 0;
+    if (bestPlayer === 0) {
+      return 0;
+    }
+    const bestDist = mem.u32((sp + 0x04) >>> 0) | 0;
+    if (bestDist < 4 && pOutClose !== 0) {
+      mem.setU32(pOutClose >>> 0, 1);
+    }
+    return bestPlayer;
+  } finally {
+    townNpcAiStackPtr = sp;
   }
-  return bestPlayer;
 }
 
 /**
- * @va D2Game:0x6FC35D10
- * Initialize AI command node `10` with `pUnit`'s home `(nX, nY, nLevelId)`.
+ * @va D2Game:0x6FC35D10 (231B)
+ * Ensures AI command node `10` (`0x0A`) exists on `pUnit->pMonsterData->pAiGeneral->pCommandHead`.
+ * If its stored home coordinates `(dwParam1, dwParam2)` are `(0, 0)`, captures `(UNIT_GetPosX, UNIT_GetPosY)`,
+ * stalls `pUnit` for `20` (`0x14`) frames via `AI_Stall113c`, and returns `1`; otherwise returns `0`.
  */
 export function AI_InitHomeNode10_113c(
   mem: Memory113c,
   pGame: number,
   pUnit: number,
 ): number {
-  const pCmd10 = AIGENERAL_GetOrAllocAiCommandByType113c(mem, pGame, pUnit, 10);
-  if (pCmd10 === 0) return 0;
-  const homeX = UNITS_GetX113c(mem, pUnit);
-  const homeY = UNITS_GetY113c(mem, pUnit);
-  let nLevelId = 0;
-  const pRoom = UNITS_GetRoom113c(mem, pUnit);
-  if (pRoom !== 0) {
-    const pRoomEx = mem.get(pRoom, D2ActiveRoomStrc.pRoomEx);
-    if (pRoomEx !== 0) {
-      const pLevel = mem.get(pRoomEx, D2RoomExStrc.pLevel);
-      if (pLevel !== 0) {
-        nLevelId = mem.get(pLevel, D2DrlgLevelStrc.nLevelId) | 0;
-      }
-    }
+  hitD2GameVa113c(0x6FC35D10);
+  if (AIGENERAL_FindAiCommandByType113c(mem, pUnit, 0x0a) === 0) {
+    AIGENERAL_CopyAiCommandParams113c(mem, pUnit, 0x0a, 0, 0, 0, 0);
   }
-  mem.set(pCmd10, D2AiCmdStrc.dwParam1, homeX >>> 0);
-  mem.set(pCmd10, D2AiCmdStrc.dwParam2, homeY >>> 0);
-  mem.set(pCmd10, D2AiCmdStrc.dwParam3, nLevelId >>> 0);
-  return pCmd10;
+  const pCmd10 = AIGENERAL_FindAiCommandByType113c(mem, pUnit, 0x0a);
+  if (pCmd10 === 0) return 0;
+
+  if (
+    mem.get(pCmd10, D2AiCmdStrc.dwParam1) === 0 &&
+    mem.get(pCmd10, D2AiCmdStrc.dwParam2) === 0
+  ) {
+    const homeX = UNIT_GetPosX113c(mem, pUnit >>> 0) >>> 0;
+    const homeY = UNIT_GetPosY113c(mem, pUnit >>> 0) >>> 0;
+    mem.set(pCmd10, D2AiCmdStrc.dwParam1, homeX);
+    mem.set(pCmd10, D2AiCmdStrc.dwParam2, homeY);
+    AI_Stall113c(mem, pGame >>> 0, pUnit >>> 0, 0x14);
+    return 1;
+  }
+  return 0;
 }
 
 /**
- * @va D2Game:0x6FC36610
- * If `pUnit` has wandered beyond `nLeashDist` octile distance from its home node `10`,
- * walk back toward `(homeX, homeY)`.
+ * @va D2Game:0x6FC36610 (179B)
+ * Finds home node `10` (`0x0A`, or tail-calls `0x6FC35D10` if absent). If octile distance from `pUnit`
+ * to `(homeX, homeY)` exceeds `(nLeashDist >>> 0)`, writes node `4` (`+0x0C = homeX`, `+0x10 = homeY`,
+ * `+0x14 = 12`, `+0x18 = 10`), stalls `10` frames via `AI_Stall113c`, and returns `1`; else returns `0`.
  */
 export function AI_CheckReturnHomeToNode10_113c(
   mem: Memory113c,
@@ -453,346 +609,454 @@ export function AI_CheckReturnHomeToNode10_113c(
   pUnit: number,
   _pAiTickParam: number,
   nLeashDist: number,
-  callees?: TownNpcAiCallees113c,
+  _callees?: TownNpcAiCallees113c,
 ): number {
-  const pCmd10 = AIGENERAL_FindAiCommandByType113c(mem, pUnit, 10);
-  if (pCmd10 === 0) return 0;
+  hitD2GameVa113c(0x6FC36610);
+  const pCmd10 = AIGENERAL_FindAiCommandByType113c(mem, pUnit, 0x0a);
+  if (pCmd10 === 0) {
+    return AI_InitHomeNode10_113c(mem, pGame, pUnit);
+  }
   const homeX = mem.get(pCmd10, D2AiCmdStrc.dwParam1) | 0;
   const homeY = mem.get(pCmd10, D2AiCmdStrc.dwParam2) | 0;
-  const leash = (nLeashDist | 0) > 0 ? nLeashDist | 0 : 15;
-  const dist = UNITS_GetOctileDistanceToCoordinates113c(mem, pUnit, homeX, homeY);
-  if (dist <= leash) {
+  const dist = UNITS_GetOctileDistanceToCoordinates113c(mem, pUnit, homeX, homeY) >>> 0;
+  if (dist <= (nLeashDist >>> 0)) {
     return 0;
   }
-  const walkFn =
-    callees !== undefined && callees.aiWalkToCoords !== undefined
-      ? callees.aiWalkToCoords
-      : defaultAiWalkToCoords113c;
-  return walkFn(mem, pGame, pUnit, homeX, homeY, 0, 1);
+  const pCmd4 = AIGENERAL_GetOrAllocAiCommandByType113c(mem, pGame, pUnit, 4, 0);
+  if (pCmd4 !== 0) {
+    mem.set(pCmd4, D2AiCmdStrc.dwParam1, homeX >>> 0);
+    mem.set(pCmd4, D2AiCmdStrc.dwParam2, homeY >>> 0);
+    mem.set(pCmd4, D2AiCmdStrc.dwParam3, 0x0c);
+    mem.set(pCmd4, D2AiCmdStrc.dwParam4, 0x0a);
+  }
+  AI_Stall113c(mem, pGame >>> 0, pUnit >>> 0, 0x0a);
+  return 1;
 }
 
 /**
- * @va D2Game:0x6FC39AD0
- * MapAI Action `4`: Walk within 3 subtiles of `(nDestX, nDestY)` and trigger `MONMODE_SKILL1` (`8`).
- */
-export function AI_MapAiAction4_WalkAndMode8_113c(
-  mem: Memory113c,
-  pGame: number,
-  pUnit: number,
-  nDestX: number,
-  nDestY: number,
-  callees?: TownNpcAiCallees113c,
-): number {
-  const pCmd4 = AIGENERAL_GetOrAllocAiCommandByType113c(mem, pGame, pUnit, 4);
-  if (pCmd4 === 0) return 0;
-
-  const state = mem.get(pCmd4, D2AiCmdStrc.dwParam1) | 0;
-  if (state === 0) {
-    const curX = UNITS_GetX113c(mem, pUnit);
-    const curY = UNITS_GetY113c(mem, pUnit);
-    let dx = (curX - (nDestX | 0)) | 0;
-    if (dx < 0) dx = (-dx) | 0;
-    let dy = (curY - (nDestY | 0)) | 0;
-    if (dy < 0) dy = (-dy) | 0;
-    if (dx > 3 || dy > 3) {
-      mem.set(pCmd4, D2AiCmdStrc.dwParam2, nDestX >>> 0);
-      mem.set(pCmd4, D2AiCmdStrc.dwParam3, nDestY >>> 0);
-      const walkFn =
-        callees !== undefined && callees.aiWalkToCoords !== undefined
-          ? callees.aiWalkToCoords
-          : defaultAiWalkToCoords113c;
-      if (walkFn(mem, pGame, pUnit, nDestX | 0, nDestY | 0, 0, 1) !== 0) {
-        return 1;
-      }
-      if (callees !== undefined && callees.aiStepOrIdle !== undefined) {
-        callees.aiStepOrIdle(mem, pGame, pUnit, 15, nDestX | 0, nDestY | 0);
-      } else {
-        defaultAiIdleWait113c(mem, pGame, pUnit, 15);
-      }
-      return 1;
-    }
-    mem.set(pCmd4, D2AiCmdStrc.dwParam1, 1);
-    const modeFn =
-      callees !== undefined && callees.aiTriggerMode !== undefined
-        ? callees.aiTriggerMode
-        : defaultAiTriggerMode113c;
-    modeFn(mem, pGame, pUnit, 8);
-    return 1;
-  }
-
-  mem.set(pCmd4, D2AiCmdStrc.dwParam1, 0);
-  return 0;
-}
-
-/**
- * @va D2Game:0x6FC39A00
- * MapAI Action `5`: Walk within 3 subtiles of `(nDestX, nDestY)` and trigger `MONMODE_SKILL2` (`9`).
- */
-export function AI_MapAiAction5_WalkAndMode9_113c(
-  mem: Memory113c,
-  pGame: number,
-  pUnit: number,
-  nDestX: number,
-  nDestY: number,
-  callees?: TownNpcAiCallees113c,
-): number {
-  const pCmd5 = AIGENERAL_GetOrAllocAiCommandByType113c(mem, pGame, pUnit, 5);
-  if (pCmd5 === 0) return 0;
-
-  const state = mem.get(pCmd5, D2AiCmdStrc.dwParam1) | 0;
-  if (state === 0) {
-    const curX = UNITS_GetX113c(mem, pUnit);
-    const curY = UNITS_GetY113c(mem, pUnit);
-    let dx = (curX - (nDestX | 0)) | 0;
-    if (dx < 0) dx = (-dx) | 0;
-    let dy = (curY - (nDestY | 0)) | 0;
-    if (dy < 0) dy = (-dy) | 0;
-    if (dx > 3 || dy > 3) {
-      mem.set(pCmd5, D2AiCmdStrc.dwParam2, nDestX >>> 0);
-      mem.set(pCmd5, D2AiCmdStrc.dwParam3, nDestY >>> 0);
-      const walkFn =
-        callees !== undefined && callees.aiWalkToCoords !== undefined
-          ? callees.aiWalkToCoords
-          : defaultAiWalkToCoords113c;
-      if (walkFn(mem, pGame, pUnit, nDestX | 0, nDestY | 0, 0, 1) !== 0) {
-        return 1;
-      }
-      if (callees !== undefined && callees.aiStepOrIdle !== undefined) {
-        callees.aiStepOrIdle(mem, pGame, pUnit, 15, nDestX | 0, nDestY | 0);
-      } else {
-        defaultAiIdleWait113c(mem, pGame, pUnit, 15);
-      }
-      return 1;
-    }
-    mem.set(pCmd5, D2AiCmdStrc.dwParam1, 1);
-    const modeFn =
-      callees !== undefined && callees.aiTriggerMode !== undefined
-        ? callees.aiTriggerMode
-        : defaultAiTriggerMode113c;
-    modeFn(mem, pGame, pUnit, 9);
-    return 1;
-  }
-
-  mem.set(pCmd5, D2AiCmdStrc.dwParam1, 0);
-  return 0;
-}
-
-/**
- * @va D2Game:0x6FC36A30
- * Check pending continuation nodes `7`, `4`, and `5` before evaluating a new waypoint step.
- */
-export function AI_TickNodes4_5_7_113c(
-  mem: Memory113c,
-  pGame: number,
-  pUnit: number,
-  callees?: TownNpcAiCallees113c,
-): number {
-  const pCmd7 = AIGENERAL_FindAiCommandByType113c(mem, pUnit, 7);
-  if (pCmd7 !== 0) {
-    const count7 = mem.get(pCmd7, D2AiCmdStrc.dwParam1) | 0;
-    if (count7 > 0) {
-      mem.set(pCmd7, D2AiCmdStrc.dwParam1, ((count7 - 1) | 0) >>> 0);
-      const idleFn =
-        callees !== undefined && callees.aiIdleWait !== undefined
-          ? callees.aiIdleWait
-          : defaultAiIdleWait113c;
-      idleFn(mem, pGame, pUnit, 20);
-      return 1;
-    }
-  }
-
-  const pCmd4 = AIGENERAL_FindAiCommandByType113c(mem, pUnit, 4);
-  if (pCmd4 !== 0 && (mem.get(pCmd4, D2AiCmdStrc.dwParam1) | 0) !== 0) {
-    const destX = mem.get(pCmd4, D2AiCmdStrc.dwParam2) | 0;
-    const destY = mem.get(pCmd4, D2AiCmdStrc.dwParam3) | 0;
-    return AI_MapAiAction4_WalkAndMode8_113c(mem, pGame, pUnit, destX, destY, callees);
-  }
-
-  const pCmd5 = AIGENERAL_FindAiCommandByType113c(mem, pUnit, 5);
-  if (pCmd5 !== 0 && (mem.get(pCmd5, D2AiCmdStrc.dwParam1) | 0) !== 0) {
-    const destX = mem.get(pCmd5, D2AiCmdStrc.dwParam2) | 0;
-    const destY = mem.get(pCmd5, D2AiCmdStrc.dwParam3) | 0;
-    return AI_MapAiAction5_WalkAndMode9_113c(mem, pGame, pUnit, destX, destY, callees);
-  }
-
-  return 0;
-}
-
-/**
- * @va D2Game:0x6FC36970
- * MapAI Action `1`: Walk within 3 subtiles of `(nDestX, nDestY)`.
- * Returns `1` while still walking toward the waypoint, or `0` once within `<= 3` subtiles.
+ * @va D2Game:0x6FC36970 (183B)
+ * MapAI Action `1`: If `pUnit` is at octile distance `> 0` from `(nX, nY)`, sets `pAiParam->dwState = 7`,
+ * calls `AI_ApproachTarget` (`0x6FD12540`) toward `(nX, nY)` in `MONMODE_WALK (2)`, populates continuation
+ * node `4` (`+0x0C = nX`, `+0x10 = nY`, `+0x14 = 12`, `+0x18 = 10`), and returns `1`; else returns `0`.
  */
 export function AI_MapAiAction1_WalkToWaypoint113c(
   mem: Memory113c,
   pGame: number,
   pUnit: number,
-  nDestX: number,
-  nDestY: number,
-  callees?: TownNpcAiCallees113c,
+  pEntryOrDestX: number,
+  nDestY?: number | TownNpcAiCallees113c,
+  _callees?: TownNpcAiCallees113c,
 ): number {
-  if (AI_TickNodes4_5_7_113c(mem, pGame, pUnit, callees) !== 0) {
-    return 1;
-  }
-  const curX = UNITS_GetX113c(mem, pUnit);
-  const curY = UNITS_GetY113c(mem, pUnit);
-  let dx = (curX - (nDestX | 0)) | 0;
-  if (dx < 0) dx = (-dx) | 0;
-  let dy = (curY - (nDestY | 0)) | 0;
-  if (dy < 0) dy = (-dy) | 0;
-  if (dx <= 3 && dy <= 3) {
+  hitD2GameVa113c(0x6FC36970);
+  if (pUnit === 0) return 0;
+  const coords = resolveMapAiCoords113c(mem, pEntryOrDestX, nDestY);
+  if (!coords.valid) return 0;
+
+  const dist = UNITS_GetOctileDistanceToCoordinates113c(mem, pUnit, coords.nX, coords.nY) | 0;
+  if (dist <= 0) {
     return 0;
   }
+  setMonsterAiParamState113c(mem, pUnit, 7);
+  aiApproachTargetMem113c(mem, pGame, pUnit, 0, 2, coords.nX, coords.nY, 0, 0);
 
-  const walkFn =
-    callees !== undefined && callees.aiWalkToCoords !== undefined
-      ? callees.aiWalkToCoords
-      : defaultAiWalkToCoords113c;
-  if (walkFn(mem, pGame, pUnit, nDestX | 0, nDestY | 0, 0, 1) !== 0) {
-    return 1;
-  }
-  if (callees !== undefined && callees.aiStepOrIdle !== undefined) {
-    callees.aiStepOrIdle(mem, pGame, pUnit, 15, nDestX | 0, nDestY | 0);
-  } else {
-    defaultAiIdleWait113c(mem, pGame, pUnit, 15);
+  const pCmd4 = AIGENERAL_GetOrAllocAiCommandByType113c(mem, pGame, pUnit, 4, 0);
+  if (pCmd4 !== 0) {
+    mem.set(pCmd4, D2AiCmdStrc.dwParam1, coords.nX >>> 0);
+    mem.set(pCmd4, D2AiCmdStrc.dwParam2, coords.nY >>> 0);
+    mem.set(pCmd4, D2AiCmdStrc.dwParam3, 0x0c);
+    mem.set(pCmd4, D2AiCmdStrc.dwParam4, 0x0a);
   }
   return 1;
 }
 
 /**
- * @va D2Game:0x6FC39BB0
- * MapAI Action `2`: Walk to `(nDestX, nDestY)`, then pause for 20 frames via node `7`.
- */
-export function AI_MapAiAction2_WalkAndWait20_113c(
-  mem: Memory113c,
-  pGame: number,
-  pUnit: number,
-  nDestX: number,
-  nDestY: number,
-  callees?: TownNpcAiCallees113c,
-): number {
-  if (AI_MapAiAction1_WalkToWaypoint113c(mem, pGame, pUnit, nDestX, nDestY, callees) !== 0) {
-    return 1;
-  }
-  const pCmd7 = AIGENERAL_GetOrAllocAiCommandByType113c(mem, pGame, pUnit, 7);
-  if (pCmd7 === 0) return 0;
-
-  if ((mem.get(pCmd7, D2AiCmdStrc.dwParam1) | 0) === 0) {
-    mem.set(pCmd7, D2AiCmdStrc.dwParam1, 1);
-    const idleFn =
-      callees !== undefined && callees.aiIdleWait !== undefined
-        ? callees.aiIdleWait
-        : defaultAiIdleWait113c;
-    idleFn(mem, pGame, pUnit, 20);
-    return 1;
-  }
-
-  mem.set(pCmd7, D2AiCmdStrc.dwParam1, 0);
-  return 0;
-}
-
-/**
- * @va D2Game:0x6FC39BA0
- * MapAI Action `3`: Alias for `AI_MapAiAction1_WalkToWaypoint113c` (`0x6FC36970`).
+ * @va D2Game:0x6FC39BA0 (5B)
+ * MapAI Action `3`: 5-byte `jmp 0x6FC36970` (`AI_MapAiAction1_WalkToWaypoint113c`).
  */
 export function AI_MapAiAction3_WalkToWaypoint113c(
   mem: Memory113c,
   pGame: number,
   pUnit: number,
-  nDestX: number,
-  nDestY: number,
+  pEntryOrDestX: number,
+  nDestY?: number | TownNpcAiCallees113c,
   callees?: TownNpcAiCallees113c,
 ): number {
-  return AI_MapAiAction1_WalkToWaypoint113c(mem, pGame, pUnit, nDestX, nDestY, callees);
+  hitD2GameVa113c(0x6FC39BA0);
+  return AI_MapAiAction1_WalkToWaypoint113c(mem, pGame, pUnit, pEntryOrDestX, nDestY, callees);
 }
 
 /**
- * Clean-room 1:1 binary port of D2Game `0x6FC3BBC0` (`AI_FollowDs1NpcPath`).
- * Steps the `D2MapAIStrc` waypoint table stored at `pUnit->pMonsterData + 0x38`.
- * (Replacement export for the K0 stand-in in `replay-kernel-113c.ts`).
+ * @va D2Game:0x6FC39BB0 (105B)
+ * MapAI Action `2`: Calls `0x6FC36970` (`AI_MapAiAction1_WalkToWaypoint113c`), then configures
+ * node `4` with `dwParam3 = 20` (`0x14` ticks) and `dwParam4 = 10` (`0x0A` stall delay), returning
+ * the result of `0x6FC36970`.
+ */
+export function AI_MapAiAction2_WalkAndWait20_113c(
+  mem: Memory113c,
+  pGame: number,
+  pUnit: number,
+  pEntryOrDestX: number,
+  nDestY?: number | TownNpcAiCallees113c,
+  callees?: TownNpcAiCallees113c,
+): number {
+  hitD2GameVa113c(0x6FC39BB0);
+  if (pUnit === 0) return 0;
+  const coords = resolveMapAiCoords113c(mem, pEntryOrDestX, nDestY);
+  if (!coords.valid) return 0;
+
+  const moved = AI_MapAiAction1_WalkToWaypoint113c(
+    mem,
+    pGame,
+    pUnit,
+    coords.nX,
+    coords.nY,
+    callees,
+  );
+  const pCmd4 = AIGENERAL_GetOrAllocAiCommandByType113c(mem, pGame, pUnit, 4, 0);
+  if (pCmd4 !== 0) {
+    mem.set(pCmd4, D2AiCmdStrc.dwParam1, coords.nX >>> 0);
+    mem.set(pCmd4, D2AiCmdStrc.dwParam2, coords.nY >>> 0);
+    mem.set(pCmd4, D2AiCmdStrc.dwParam3, 0x14);
+    mem.set(pCmd4, D2AiCmdStrc.dwParam4, 0x0a);
+  }
+  return moved;
+}
+
+/**
+ * @va D2Game:0x6FC39AD0 (195B)
+ * MapAI Action `4`: Calls `0x6FC36970`, configures node `7` with `dwParam1 = MONSTATS2_CheckModeBit(hcIdx, 8) ? 8 : 1`
+ * (`MONMODE_SKILL1` or `MONMODE_NEUTRAL`), `(dwParam2, dwParam3) = (nX, nY)`, `dwParam4 = 4`, and configures
+ * node `4` (`dwParam1 = nX`, `dwParam2 = nY`, `dwParam3 = 12`, `dwParam4 = 10`), returning `0x6FC36970`'s result.
+ */
+export function AI_MapAiAction4_WalkAndMode8_113c(
+  mem: Memory113c,
+  pGame: number,
+  pUnit: number,
+  pEntryOrDestX: number,
+  nDestY?: number | TownNpcAiCallees113c,
+  callees?: TownNpcAiCallees113c,
+): number {
+  hitD2GameVa113c(0x6FC39AD0);
+  if (pUnit === 0) return 0;
+  const coords = resolveMapAiCoords113c(mem, pEntryOrDestX, nDestY);
+  if (!coords.valid) return 0;
+
+  const moved = AI_MapAiAction1_WalkToWaypoint113c(
+    mem,
+    pGame,
+    pUnit,
+    coords.nX,
+    coords.nY,
+    callees,
+  );
+  const pCmd7 = AIGENERAL_GetOrAllocAiCommandByType113c(mem, pGame, pUnit, 7, 0);
+  if (pCmd7 !== 0) {
+    const classId = mem.get(pUnit, D2UnitStrc.dwClassId) | 0;
+    const hasMode8 = MONSTATS2_CheckModeBit113c(mem, classId, 8) !== 0 ? 8 : 1;
+    mem.set(pCmd7, D2AiCmdStrc.dwParam1, hasMode8 >>> 0);
+    mem.set(pCmd7, D2AiCmdStrc.dwParam2, coords.nX >>> 0);
+    mem.set(pCmd7, D2AiCmdStrc.dwParam3, coords.nY >>> 0);
+    mem.set(pCmd7, D2AiCmdStrc.dwParam4, 4);
+  }
+  const pCmd4 = AIGENERAL_GetOrAllocAiCommandByType113c(mem, pGame, pUnit, 4, 0);
+  if (pCmd4 !== 0) {
+    mem.set(pCmd4, D2AiCmdStrc.dwParam1, coords.nX >>> 0);
+    mem.set(pCmd4, D2AiCmdStrc.dwParam2, coords.nY >>> 0);
+    mem.set(pCmd4, D2AiCmdStrc.dwParam3, 0x0c);
+    mem.set(pCmd4, D2AiCmdStrc.dwParam4, 0x0a);
+  }
+  return moved;
+}
+
+/**
+ * @va D2Game:0x6FC39A00 (195B)
+ * MapAI Action `5`: Calls `0x6FC36970`, configures node `7` with `dwParam1 = MONSTATS2_CheckModeBit(hcIdx, 9) ? 9 : 1`
+ * (`MONMODE_SKILL2` or `MONMODE_NEUTRAL`), `(dwParam2, dwParam3) = (nX, nY)`, `dwParam4 = 4`, and configures
+ * node `4` (`dwParam1 = nX`, `dwParam2 = nY`, `dwParam3 = 12`, `dwParam4 = 10`), returning `0x6FC36970`'s result.
+ */
+export function AI_MapAiAction5_WalkAndMode9_113c(
+  mem: Memory113c,
+  pGame: number,
+  pUnit: number,
+  pEntryOrDestX: number,
+  nDestY?: number | TownNpcAiCallees113c,
+  callees?: TownNpcAiCallees113c,
+): number {
+  hitD2GameVa113c(0x6FC39A00);
+  if (pUnit === 0) return 0;
+  const coords = resolveMapAiCoords113c(mem, pEntryOrDestX, nDestY);
+  if (!coords.valid) return 0;
+
+  const moved = AI_MapAiAction1_WalkToWaypoint113c(
+    mem,
+    pGame,
+    pUnit,
+    coords.nX,
+    coords.nY,
+    callees,
+  );
+  const pCmd7 = AIGENERAL_GetOrAllocAiCommandByType113c(mem, pGame, pUnit, 7, 0);
+  if (pCmd7 !== 0) {
+    const classId = mem.get(pUnit, D2UnitStrc.dwClassId) | 0;
+    const hasMode9 = MONSTATS2_CheckModeBit113c(mem, classId, 9) !== 0 ? 9 : 1;
+    mem.set(pCmd7, D2AiCmdStrc.dwParam1, hasMode9 >>> 0);
+    mem.set(pCmd7, D2AiCmdStrc.dwParam2, coords.nX >>> 0);
+    mem.set(pCmd7, D2AiCmdStrc.dwParam3, coords.nY >>> 0);
+    mem.set(pCmd7, D2AiCmdStrc.dwParam4, 4);
+  }
+  const pCmd4 = AIGENERAL_GetOrAllocAiCommandByType113c(mem, pGame, pUnit, 4, 0);
+  if (pCmd4 !== 0) {
+    mem.set(pCmd4, D2AiCmdStrc.dwParam1, coords.nX >>> 0);
+    mem.set(pCmd4, D2AiCmdStrc.dwParam2, coords.nY >>> 0);
+    mem.set(pCmd4, D2AiCmdStrc.dwParam3, 0x0c);
+    mem.set(pCmd4, D2AiCmdStrc.dwParam4, 0x0a);
+  }
+  return moved;
+}
+
+/**
+ * @va D2Game:0x6FC36A30 (1019B)
+ * Steps active Town NPC continuation command nodes in exact binary priority order (`4` -> `5` -> `7`):
+ * - Node `4`: walks toward `(dwParam1, dwParam2)` while octile distance `> 3` (toggling `0x6FD31F90` `& 3 == 0 ? 5 : 7`
+ *   into `pAiParam + 0x18`), or stalls `dwParam4` frames once within `<= 3` subtiles, decrementing `dwParam3`.
+ * - Node `5`: alternates `AI_IdleWander113c` (`dwParam1` odd) and `AI_Stall113c(dwParam4)` (`dwParam1` even / `dwParam3 > 0`).
+ * - Node `7`: approaches `(dwParam2, dwParam3)` for up to `dwParam4` retries, sets NPC facing direction via
+ *   `D2Common.#10425` (`0x9A -> 0x38`, `0x9B -> 0x34`, `0xB2 -> 0x04`, `0x195 -> 0x34/0x30`), checks `0x1FF` 5% gate,
+ *   and triggers `AI_StartAttackMode113c` (`0x6FD12220`) for modes `8..11` (with `0xB2` Cow 66% mode-8 roll).
+ */
+export function AI_TickNodes4_5_7_113c(
+  mem: Memory113c,
+  pGame: number,
+  pUnit: number,
+  _callees?: TownNpcAiCallees113c,
+): number {
+  hitD2GameVa113c(0x6FC36A30);
+  if (pUnit === 0) return 0;
+  if (mem.get(pUnit, D2UnitStrc.dwUnitType) !== UNIT_MONSTER) return 0;
+
+  // 1. Node 4: Walk-to-waypoint / post-arrival stall counter
+  const pCmd4 = AIGENERAL_FindAiCommandByType113c(mem, pUnit, 4);
+  if (pCmd4 !== 0) {
+    const count4 = mem.get(pCmd4, D2AiCmdStrc.dwParam3) | 0;
+    if (count4 > 0) {
+      const destX = mem.get(pCmd4, D2AiCmdStrc.dwParam1) | 0;
+      const destY = mem.get(pCmd4, D2AiCmdStrc.dwParam2) | 0;
+      if (
+        destX !== 0 &&
+        destY !== 0 &&
+        (UNITS_GetOctileDistanceToCoordinates113c(mem, pUnit, destX, destY) >>> 0) > 3
+      ) {
+        const counter = readMapAiNode4Counter113c(mem);
+        const mod4 = ((counter % 4) + 4) % 4;
+        setMonsterAiParamState113c(mem, pUnit, mod4 === 0 ? 5 : 7);
+        aiApproachTargetMem113c(mem, pGame, pUnit, 0, 2, destX, destY, 0, 0);
+        mem.setU32(D2GAME_MAPAI_NODE4_COUNTER_VA_6FD31F90, ((counter + 1) | 0) >>> 0);
+        mem.set(pCmd4, D2AiCmdStrc.dwParam3, ((count4 - 1) | 0) >>> 0);
+        return 1;
+      }
+      const stallDelay = mem.get(pCmd4, D2AiCmdStrc.dwParam4) | 0;
+      AI_Stall113c(mem, pGame >>> 0, pUnit >>> 0, stallDelay);
+      mem.set(pCmd4, D2AiCmdStrc.dwParam3, ((count4 - 1) | 0) >>> 0);
+      return 1;
+    }
+  }
+
+  // 2. Node 5: Alternating wander / stall sequence
+  const pCmd5 = AIGENERAL_FindAiCommandByType113c(mem, pUnit, 5);
+  if (pCmd5 !== 0) {
+    const step5 = mem.get(pCmd5, D2AiCmdStrc.dwParam1) | 0;
+    if (step5 > 0) {
+      if ((step5 & 1) !== 0) {
+        AI_IdleWander113c(mem, pGame >>> 0, pUnit >>> 0);
+        mem.set(pCmd5, D2AiCmdStrc.dwParam1, ((step5 - 1) | 0) >>> 0);
+        return 1;
+      }
+      const waitCount = mem.get(pCmd5, D2AiCmdStrc.dwParam3) | 0;
+      if (waitCount > 0) {
+        const stallDelay = mem.get(pCmd5, D2AiCmdStrc.dwParam4) | 0;
+        AI_Stall113c(mem, pGame >>> 0, pUnit >>> 0, stallDelay);
+        mem.set(pCmd5, D2AiCmdStrc.dwParam3, ((waitCount - 1) | 0) >>> 0);
+        mem.set(pCmd5, D2AiCmdStrc.dwParam1, ((step5 - 1) | 0) >>> 0);
+        return 1;
+      }
+      mem.set(pCmd5, D2AiCmdStrc.dwParam1, ((step5 - 1) | 0) >>> 0);
+    } else {
+      const waitCount = mem.get(pCmd5, D2AiCmdStrc.dwParam3) | 0;
+      if (waitCount > 0) {
+        const stallDelay = mem.get(pCmd5, D2AiCmdStrc.dwParam4) | 0;
+        AI_Stall113c(mem, pGame >>> 0, pUnit >>> 0, stallDelay);
+        mem.set(pCmd5, D2AiCmdStrc.dwParam3, ((waitCount - 1) | 0) >>> 0);
+        return 1;
+      }
+    }
+  }
+
+  // 3. Node 7: Waypoint skill/animation trigger (modes 8..11)
+  const pCmd7 = AIGENERAL_FindAiCommandByType113c(mem, pUnit, 7);
+  if (pCmd7 === 0) return 0;
+  let mode7 = mem.get(pCmd7, D2AiCmdStrc.dwParam1) | 0;
+  if (mode7 === 0) return 0;
+
+  if (mode7 !== 8 && mode7 !== 9 && mode7 !== 10 && mode7 !== 11) {
+    mem.set(pCmd7, D2AiCmdStrc.dwParam1, 0);
+    AI_Stall113c(mem, pGame >>> 0, pUnit >>> 0, 0x32);
+    return 1;
+  }
+
+  const targetX7 = mem.get(pCmd7, D2AiCmdStrc.dwParam2) | 0;
+  const targetY7 = mem.get(pCmd7, D2AiCmdStrc.dwParam3) | 0;
+  const dist7 = UNITS_GetOctileDistanceToCoordinates113c(mem, pUnit, targetX7, targetY7) | 0;
+  if (dist7 > 0) {
+    const retries = mem.get(pCmd7, D2AiCmdStrc.dwParam4) | 0;
+    if (retries > 0) {
+      setMonsterAiParamState113c(mem, pUnit, 7);
+      const approached = aiApproachTargetMem113c(mem, pGame, pUnit, 0, 2, targetX7, targetY7, 0, 0);
+      if (approached === 0) {
+        AI_Stall113c(mem, pGame >>> 0, pUnit >>> 0, 0x19);
+      }
+      mem.set(pCmd7, D2AiCmdStrc.dwParam4, ((retries - 1) | 0) >>> 0);
+      return 1;
+    }
+    if (dist7 > 1) {
+      mem.set(pCmd7, D2AiCmdStrc.dwParam1, 0);
+    }
+  }
+
+  const classId = mem.get(pUnit, D2UnitStrc.dwClassId) | 0;
+  const pPath = mem.get(pUnit, D2UnitStrc.pPath);
+  if (classId === 0x9a && pPath !== 0) {
+    PATH_SetNewDirection113c(mem, pPath, 0x38);
+  }
+  if (classId === 0x9b && pPath !== 0) {
+    PATH_SetNewDirection113c(mem, pPath, 0x34);
+  }
+  if (classId === 0xb2 && pPath !== 0) {
+    PATH_SetNewDirection113c(mem, pPath, 0x04);
+  }
+  if (classId === 0x195 && pPath !== 0) {
+    const curMode7 = mem.get(pCmd7, D2AiCmdStrc.dwParam1) | 0;
+    if (curMode7 === 8) {
+      PATH_SetNewDirection113c(mem, pPath, 0x34);
+    }
+    if (curMode7 === 9) {
+      PATH_SetNewDirection113c(mem, pPath, 0x30);
+    }
+  }
+
+  if (classId === 0x1ff) {
+    const roll = SEED_RollLimitedRandomNumber113c(mem, (pUnit + 0x20) >>> 0, 100) | 0;
+    if (roll > 4) {
+      mem.set(pCmd7, D2AiCmdStrc.dwParam1, 0);
+      AI_Stall113c(mem, pGame >>> 0, pUnit >>> 0, 0x32);
+      return 1;
+    }
+  }
+
+  mode7 = mem.get(pCmd7, D2AiCmdStrc.dwParam1) | 0;
+  if (mode7 !== 0) {
+    if ((mem.get(pUnit, D2UnitStrc.dwAnimMode) | 0) === mode7) {
+      AI_Stall113c(mem, pGame >>> 0, pUnit >>> 0, 0x32);
+      return 1;
+    }
+    AI_StartAttackMode113c(mem, mode7, pUnit >>> 0, pGame >>> 0, pUnit >>> 0, undefined, {
+      onMonsterStartMode: (m, g, sp) => monsterStartModeFromArgs113c(m, g, sp),
+    });
+    mem.set(pCmd7, D2AiCmdStrc.dwParam1, 0);
+    return 1;
+  }
+
+  if (classId === 0xb2) {
+    const cowRoll = SEED_RollLimitedRandomNumber113c(mem, (pUnit + 0x20) >>> 0, 100) | 0;
+    if (cowRoll < 0x42) {
+      mem.set(pCmd7, D2AiCmdStrc.dwParam1, 8);
+    }
+  }
+  return 0;
+}
+
+/**
+ * @va D2Game:0x6FC3BBC0 (149B)
+ * Pure `SparseMemory113c` port of `AI_FollowDs1NpcPath`:
+ * 1. Resolves `pMapAi` from `[pAiTickParam]->pMapAi (+0x38)` (or `pMonsterData + 0x38` when `pAiTickParam == 0`).
+ * 2. Steps `pUnit->tSeed (+0x20)` LCG (`mod 100 < 0x42` = 66% chance to pick a waypoint; else returns `0`).
+ * 3. Rolls `idx = SEED_RollLimitedFast(&pUnit->tSeed, nPositionCount)` (`0x6FC211D0`) into the 12-byte
+ *    `D2MapAiPositionStrc` array (`+0x00 = nAction`, `+0x04 = nX`, `+0x08 = nY`).
+ * 4. Dispatches `0x6FD2F850[nAction]` (`1 -> 0x6FC36970`, `2 -> 0x6FC39BB0`, `3 -> 0x6FC39BA0`,
+ *    `4 -> 0x6FC39AD0`, `5 -> 0x6FC39A00`, `0/6 -> 0`).
  */
 export function AI_FollowDs1NpcPathMem113c(
   mem: Memory113c,
   pGame: number,
   pUnit: number,
-  _pAiTickParam: number,
+  pAiTickParam: number,
   callees?: TownNpcAiCallees113c,
 ): number {
+  hitD2GameVa113c(0x6FC3BBC0);
   if (pUnit === 0) return 0;
-  if (mem.get(pUnit, D2UnitStrc.dwUnitType) !== UNIT_MONSTER) {
-    return 0;
+
+  let pAiGeneral = 0;
+  if (pAiTickParam !== 0) {
+    pAiGeneral = mem.u32(pAiTickParam >>> 0) >>> 0;
+  } else if (mem.get(pUnit, D2UnitStrc.dwUnitType) === UNIT_MONSTER) {
+    const pMonsterData = mem.get(pUnit, D2UnitStrc.pUnitData);
+    if (pMonsterData !== 0) {
+      pAiGeneral = mem.get(pMonsterData, D2MonsterDataStrc.pAiGeneral);
+    }
   }
-  const pMonsterData = mem.get(pUnit, D2UnitStrc.pUnitData);
-  if (pMonsterData === 0) return 0;
-  const pAiGeneral = mem.get(pMonsterData, D2MonsterDataStrc.pAiGeneral);
+
   let pMapAi =
     pAiGeneral !== 0
-      ? mem.u32((pAiGeneral + D2MONSTERDATA_MAPAI_OFF_113C) >>> 0)
+      ? mem.u32((pAiGeneral + D2MONSTERDATA_MAPAI_OFF_113C) >>> 0) >>> 0
       : 0;
-  if (pMapAi === 0) {
-    pMapAi = mem.u32((pMonsterData + D2MONSTERDATA_MAPAI_OFF_113C) >>> 0);
+  if (pMapAi === 0 && mem.get(pUnit, D2UnitStrc.dwUnitType) === UNIT_MONSTER) {
+    const pMonsterData = mem.get(pUnit, D2UnitStrc.pUnitData);
+    if (pMonsterData !== 0) {
+      pMapAi = mem.u32((pMonsterData + D2MONSTERDATA_MAPAI_OFF_113C) >>> 0) >>> 0;
+    }
   }
   if (pMapAi === 0) return 0;
 
-  const pActions = mem.u32((pMapAi + D2MapAiHeaderOffsets.pPosition) >>> 0);
-  if (pActions === 0) return 0;
-  if ((mem.u32((pActions + D2MapAiActionOffsets.nAction) >>> 0) | 0) === 0) {
+  const chanceRoll = (stepSeed64At113c(mem, (pUnit + 0x20) >>> 0) >>> 0) % 100;
+  if (chanceRoll >= 0x42) {
     return 0;
   }
 
-  let idx = mem.u32((pMapAi + D2MapAiHeaderOffsets.nCurrentIndex) >>> 0) | 0;
-  if (
-    idx < 0 ||
-    (mem.u32((pActions + (idx << 4) + D2MapAiActionOffsets.nAction) >>> 0) | 0) === 0
-  ) {
-    idx = 0;
-    mem.setU32((pMapAi + D2MapAiHeaderOffsets.nCurrentIndex) >>> 0, 0);
+  const nCount = mem.u32((pMapAi + D2MapAiHeaderOffsets.nPositionCount) >>> 0) >>> 0;
+  if (nCount === 0) {
+    return 0;
+  }
+  const pPosition = mem.u32((pMapAi + D2MapAiHeaderOffsets.pPosition) >>> 0) >>> 0;
+  if (pPosition === 0) {
+    return 0;
   }
 
-  const pEntry = (pActions + (idx << 4)) >>> 0;
-  const nDestX = mem.u32((pEntry + D2MapAiActionOffsets.nX) >>> 0) | 0;
-  const nDestY = mem.u32((pEntry + D2MapAiActionOffsets.nY) >>> 0) | 0;
+  const idx = SEED_RollLimitedFast113c(mem, (pUnit + 0x20) >>> 0, nCount | 0) >>> 0;
+  const pEntry = (pPosition + imul32(idx | 0, D2MapAiActionOffsets.SIZE)) >>> 0;
   const nAction = mem.u32((pEntry + D2MapAiActionOffsets.nAction) >>> 0) | 0;
+  if (nAction < 0 || nAction >= 7) {
+    return 0;
+  }
 
-  let stepResult = 0;
   switch (nAction) {
     case 1:
-      stepResult = AI_MapAiAction1_WalkToWaypoint113c(mem, pGame, pUnit, nDestX, nDestY, callees);
-      break;
+      return AI_MapAiAction1_WalkToWaypoint113c(mem, pGame, pUnit, pEntry, callees);
     case 2:
-      stepResult = AI_MapAiAction2_WalkAndWait20_113c(mem, pGame, pUnit, nDestX, nDestY, callees);
-      break;
+      return AI_MapAiAction2_WalkAndWait20_113c(mem, pGame, pUnit, pEntry, callees);
     case 3:
-      stepResult = AI_MapAiAction3_WalkToWaypoint113c(mem, pGame, pUnit, nDestX, nDestY, callees);
-      break;
+      return AI_MapAiAction3_WalkToWaypoint113c(mem, pGame, pUnit, pEntry, callees);
     case 4:
-      stepResult = AI_MapAiAction4_WalkAndMode8_113c(mem, pGame, pUnit, nDestX, nDestY, callees);
-      break;
+      return AI_MapAiAction4_WalkAndMode8_113c(mem, pGame, pUnit, pEntry, callees);
     case 5:
-      stepResult = AI_MapAiAction5_WalkAndMode9_113c(mem, pGame, pUnit, nDestX, nDestY, callees);
-      break;
+      return AI_MapAiAction5_WalkAndMode9_113c(mem, pGame, pUnit, pEntry, callees);
     default:
       return 0;
   }
-
-  if (stepResult === 0) {
-    let nextIdx = (idx + 1) | 0;
-    if ((mem.u32((pActions + (nextIdx << 4) + D2MapAiActionOffsets.nAction) >>> 0) | 0) === 0) {
-      nextIdx = 0;
-    }
-    mem.setU32((pMapAi + D2MapAiHeaderOffsets.nCurrentIndex) >>> 0, nextIdx >>> 0);
-    const pNextEntry = (pActions + (nextIdx << 4)) >>> 0;
-    const nextX = mem.u32((pNextEntry + D2MapAiActionOffsets.nX) >>> 0) | 0;
-    const nextY = mem.u32((pNextEntry + D2MapAiActionOffsets.nY) >>> 0) | 0;
-    return AI_MapAiAction2_WalkAndWait20_113c(mem, pGame, pUnit, nextX, nextY, callees);
-  }
-
-  return 1;
 }
 
 /**
- * @va D2Game:0x6FC3BC60
- * Simple DS1 path-following NPC AI: follows `D2MapAIStrc` waypoints or idles 15 frames.
+ * @va D2Game:0x6FC3BC60 (60B)
+ * Simple DS1 path-following NPC AI:
+ * `0x6FC35D10` -> `0x6FC36A30` -> `0x6FC3BBC0` -> `AI_Stall(12)`.
  */
 export function AI_SimpleMapAiNpc113c(
   mem: Memory113c,
@@ -801,21 +1065,190 @@ export function AI_SimpleMapAiNpc113c(
   pAiTickParam: number,
   callees?: TownNpcAiCallees113c,
 ): void {
-  if (AI_FollowDs1NpcPathMem113c(mem, pGame, pUnit, pAiTickParam, callees) !== 0) {
+  hitD2GameVa113c(0x6FC3BC60);
+  if ((AI_InitHomeNode10_113c(mem, pGame, pUnit) & 0xff) !== 0) {
     return;
   }
-  const idleFn =
-    callees !== undefined && callees.aiIdleWait !== undefined
-      ? callees.aiIdleWait
-      : defaultAiIdleWait113c;
-  idleFn(mem, pGame, pUnit, 15);
+  if ((AI_TickNodes4_5_7_113c(mem, pGame, pUnit, callees) & 0xff) !== 0) {
+    return;
+  }
+  if ((AI_FollowDs1NpcPathMem113c(mem, pGame, pUnit, pAiTickParam, callees) & 0xff) !== 0) {
+    return;
+  }
+  AI_Stall113c(mem, pGame >>> 0, pUnit >>> 0, 0x0c);
 }
 
 /**
- * Clean-room 1:1 binary port of D2Game `0x6FC3DB40` (`AI_TownNpc`).
- * Handles dialogue-lock node `9`, DS1 path following (`0x6FC3BBC0`), home-node `10`
- * leash check (`0x6FC35D10` / `0x6FC36610`), and random wander/idle ticks.
- * (Replacement export for the K0 stand-in in `replay-kernel-113c.ts`).
+ * @va D2Game:0x6FC39C20 (591B)
+ * Town NPC player-interaction, leash, and greeting helper (`AI_WarrivGreet` / `QUESTS_NpcGreetingAi`):
+ * - Scans for nearest player via `0x6FD130C0` and measures subtile distance via `0x6FCD0A20`.
+ * - Requires active `pMonsterData->pNpcInteract (+0x30)` (`D2NpcInteractStrc`); otherwise returns `0`.
+ * - Checks active NPC dialogue list (`[pInteract]`), player busy/cursor/trade state, or `pAiGeneral->dwTimer (+0x14) > 0`
+ *   to hold or walk to `(pAiGeneral + 0x18, +0x1C)`.
+ * - When idle with an eligible player within `(2, 24)` subtiles, checks home leash `16` (`0x6FC36610`), sets
+ *   `pAiParam->dwState = 7`, and steps toward player (`step = dist < 5 ? dist - 2 : 3`, `nTargetDist = 2`) via `0x6FD11D90`.
+ * - When `dist <= 2 || dist >= 24`, stops path (`D2Common.#10159`), triggers unit event sound `0x12` (`0x6FCFFFD0`)
+ *   with `60`-tick (`0x3C`) cooldown at `pAiGeneral + 0x18`, and stalls `20` (`0x14`) frames.
+ */
+export function AI_WarrivGreetMem113c(
+  mem: Memory113c,
+  pGame: number,
+  pUnit: number,
+  pAiTickParam: number,
+  _callees?: TownNpcAiCallees113c,
+): number {
+  hitD2GameVa113c(0x6FC39C20);
+  const sp = townNpcAiStackPtr;
+  townNpcAiStackPtr = (sp + 0x10) >>> 0;
+  try {
+    mem.setU32(sp, 0);
+    const pTarget = AI_FindNearestPlayerTarget113c(mem, pGame, pUnit, sp) >>> 0;
+    const dist =
+      pUnit !== 0 && pTarget !== 0
+        ? AI_CalcApproxUnitDistSubtiles113c(mem, pUnit >>> 0, pTarget) | 0
+        : 0;
+
+    if (pUnit === 0 || mem.get(pUnit, D2UnitStrc.dwUnitType) !== UNIT_MONSTER) {
+      return 0;
+    }
+    const pMonsterData = mem.get(pUnit, D2UnitStrc.pUnitData);
+    if (pMonsterData === 0) {
+      return 0;
+    }
+    const pInteract = mem.u32((pMonsterData + 0x30) >>> 0) >>> 0;
+    if (pInteract === 0) {
+      return 0;
+    }
+
+    let playerBusy = 0;
+    let pNode = mem.u32(pInteract) >>> 0;
+    let guard = 0;
+    while (pNode !== 0 && guard < 128) {
+      if (mem.u32(pNode) >>> 0 === pTarget && pTarget !== 0) {
+        playerBusy = 1;
+        break;
+      }
+      pNode = mem.u32((pNode + 0x08) >>> 0) >>> 0;
+      guard = (guard + 1) | 0;
+    }
+
+    if (
+      playerBusy === 0 &&
+      pTarget !== 0 &&
+      mem.get(pTarget, D2UnitStrc.dwUnitType) === UNIT_PLAYER
+    ) {
+      if (mem.u8((pTarget + 0x6c) >>> 0) !== 0) {
+        playerBusy = 1;
+      } else {
+        const pInv = mem.u32((pTarget + 0x60) >>> 0) >>> 0;
+        if (pInv !== 0 && INVENTORY_GetCursorItem113c(mem, pInv) !== 0) {
+          playerBusy = 1;
+        } else {
+          const pPlayerData = UNITS_GetPlayerData113c(mem, pTarget) >>> 0;
+          if (pPlayerData !== 0 && (mem.u32((pPlayerData + 0x4c) >>> 0) | 0) === 1) {
+            playerBusy = 1;
+          }
+        }
+      }
+    }
+
+    let hasInteractingPlayers = 0;
+    pNode = mem.u32(pInteract) >>> 0;
+    guard = 0;
+    while (pNode !== 0 && guard < 128) {
+      if (mem.u32(pNode) !== 0) {
+        hasInteractingPlayers = 1;
+        break;
+      }
+      pNode = mem.u32((pNode + 0x08) >>> 0) >>> 0;
+      guard = (guard + 1) | 0;
+    }
+
+    const pAiGeneral =
+      pAiTickParam !== 0
+        ? mem.u32(pAiTickParam >>> 0) >>> 0
+        : mem.get(pMonsterData, D2MonsterDataStrc.pAiGeneral);
+    if (pAiGeneral === 0) {
+      return 0;
+    }
+
+    const holdTimer = mem.u32((pAiGeneral + 0x14) >>> 0) | 0;
+    if (hasInteractingPlayers !== 0 || playerBusy !== 0 || holdTimer > 0) {
+      const holdX = mem.u32((pAiGeneral + 0x18) >>> 0) | 0;
+      const holdY = mem.u32((pAiGeneral + 0x1c) >>> 0) | 0;
+      const holdDist = UNITS_GetOctileDistanceToCoordinates113c(mem, pUnit, holdX, holdY) >>> 0;
+      if (holdDist > 2 && holdTimer > 0x24) {
+        aiApproachTargetMem113c(mem, pGame, pUnit, 0, 2, holdX, holdY, 1, 0);
+      } else if (holdTimer > 0) {
+        const pPath = mem.get(pUnit, D2UnitStrc.pPath);
+        if (pPath !== 0) {
+          PATH_ClearPathPointsAndFlag0x20_113c(mem, pPath);
+        }
+        AI_Stall113c(mem, pGame >>> 0, pUnit >>> 0, 8);
+      }
+      const curTimer = mem.u32((pAiGeneral + 0x14) >>> 0) | 0;
+      if (curTimer < 0) {
+        mem.setU32((pAiGeneral + 0x14) >>> 0, 0);
+        return 1;
+      }
+      mem.setU32((pAiGeneral + 0x14) >>> 0, ((curTimer - 1) | 0) >>> 0);
+      return 1;
+    }
+
+    if (pTarget === 0 || pTarget === (pUnit >>> 0)) {
+      return 0;
+    }
+
+    if (dist > 2 && dist < 0x18) {
+      if (AI_CheckReturnHomeToNode10_113c(mem, pGame, pUnit, pAiTickParam, 0x10) !== 0) {
+        return 1;
+      }
+      setMonsterAiParamState113c(mem, pUnit, 7);
+      const maxStep = dist < 5 ? (dist - 2) | 0 : 3;
+      AI_StepRelativeToTargetUnit113c(mem, pGame, pUnit, pTarget, maxStep, 2, 2);
+      return 1;
+    }
+
+    const pPath = mem.get(pUnit, D2UnitStrc.pPath);
+    if (pPath !== 0) {
+      PATH_ClearPathPointsAndFlag0x20_113c(mem, pPath);
+    }
+    const soundCooldown = mem.u32((pAiGeneral + 0x18) >>> 0) | 0;
+    if (soundCooldown === 0) {
+      mem.setU32((pAiGeneral + 0x18) >>> 0, 0x3c);
+      if (mem.get(pTarget, D2UnitStrc.dwUnitType) === UNIT_PLAYER) {
+        SUNIT_SetUnitEventSound113c(mem, pTarget, 0x12, pTarget);
+        AI_Stall113c(mem, pGame >>> 0, pUnit >>> 0, 0x14);
+        return 1;
+      }
+    } else {
+      if (soundCooldown < 0) {
+        mem.setU32((pAiGeneral + 0x18) >>> 0, 0);
+      }
+      const curCd = mem.u32((pAiGeneral + 0x18) >>> 0) | 0;
+      if (curCd > 0) {
+        mem.setU32((pAiGeneral + 0x18) >>> 0, ((curCd - 1) | 0) >>> 0);
+      }
+    }
+    AI_Stall113c(mem, pGame >>> 0, pUnit >>> 0, 0x14);
+    return 1;
+  } finally {
+    townNpcAiStackPtr = sp;
+  }
+}
+
+/**
+ * @va D2Game:0x6FC3DB40 (511B)
+ * Pure `SparseMemory113c` port of `AI_TownNpc`:
+ * 1. Initializes home node `10` (`0x6FC35D10`; returns immediately on initial 20-frame stall).
+ * 2. Executes quest-specific Town NPC overrides by `hcIdx`:
+ *    - `0xC9` (Jerhyn): Act 2 Quest 4 palace cellar / Horazon's Journal sequence (`0x6FCE3260`, `0x6FCE8990`, `0x6FCE1F90`)
+ *    - `0xFE` (Ormus): Act 3 Quest 4 wait flag & `MONMODE_SKILL1 (8)` (`0x6FD02B40`, `0x6FD121E0`, `0x6FD02B10`)
+ *    - `0xFF` (Hratli): Act 3 Quest 1/2 Gidbinn altar walk & `MONMODE_SKILL1 (8)` (`0x6FD02C40`, `0x6FD121E0`, `0x6FD05F60`)
+ *    - `0x109` (Deckard Cain): Act 1 Quest 4 Cairn Stones portal walk (`0x6FC804C0`, `0x6FC803D0`)
+ *    - `0x200` (Anya): Act 5 Quest 2 Nihlathak portal check (`0x6FC7D1D0`)
+ * 3. Runs `0x6FC39C20` (`AI_WarrivGreetMem113c`) -> `0x6FC36A30` (`AI_TickNodes4_5_7_113c`) ->
+ *    `0x6FC3BBC0` (`AI_FollowDs1NpcPathMem113c`) -> `AI_Stall113c(8)`.
  */
 export function AI_TownNpcMem113c(
   mem: Memory113c,
@@ -824,116 +1257,118 @@ export function AI_TownNpcMem113c(
   pAiTickParam: number,
   callees?: TownNpcAiCallees113c,
 ): void {
-  if (pUnit === 0) return;
-
-  const pCmd9 = AIGENERAL_FindAiCommandByType113c(mem, pUnit, 9);
-  const idleFn =
-    callees !== undefined && callees.aiIdleWait !== undefined
-      ? callees.aiIdleWait
-      : defaultAiIdleWait113c;
-  if (pCmd9 !== 0 && (mem.get(pCmd9, D2AiCmdStrc.dwParam1) | 0) !== 0) {
-    idleFn(mem, pGame, pUnit, 15);
+  hitD2GameVa113c(0x6FC3DB40);
+  if ((AI_InitHomeNode10_113c(mem, pGame, pUnit) & 0xff) !== 0) {
     return;
   }
 
-  if (AI_FollowDs1NpcPathMem113c(mem, pGame, pUnit, pAiTickParam, callees) !== 0) {
-    return;
-  }
+  const classId = pUnit !== 0 ? mem.get(pUnit, D2UnitStrc.dwClassId) | 0 : -1;
+  const sp = townNpcAiStackPtr;
+  townNpcAiStackPtr = (sp + 0x18) >>> 0;
+  try {
+    if (classId === 0xfe) {
+      if (ACT3Q4_CheckOrmusNpcWaitFlag113c(mem, pGame >>> 0) !== 0) {
+        AI_StartModeAtCoordsKeepSteps_6FD121E0_113c(mem, pUnit >>> 0, 8, pGame >>> 0, 0, 0, {
+          onMonsterStartMode: (m, g, args) => monsterStartModeFromArgs113c(m, g, args),
+        });
+        ACT3Q4_ClearOrmusNpcWaitFlag113c(mem, pGame >>> 0);
+        return;
+      }
+    } else if (classId === 0xc9) {
+      if ((ACT2Q4_IsPalaceCellarAllowed_6FCE3260_113c(mem, pGame >>> 0) & 0xff) !== 1) {
+        AI_Stall113c(mem, pGame >>> 0, pUnit >>> 0, 0x28);
+        return;
+      }
+      mem.setU32(sp, 0);
+      mem.setU32((sp + 0x04) >>> 0, 0);
+      ACT2Q4_JerhynPalaceNpcAiOverride_6FCE8990_113c(
+        mem as SparseMemory113c,
+        pGame >>> 0,
+        pUnit >>> 0,
+        (sp + 0x04) >>> 0,
+        sp,
+      );
+      if (mem.u32(sp) !== 0) {
+        AI_Stall113c(mem, pGame >>> 0, pUnit >>> 0, 0x14);
+      }
+      if (mem.u32((sp + 0x04) >>> 0) === 0) {
+        return;
+      }
+      if (ACT2Q4_ActivateHorazonJournal_6FCE1F90_113c(mem, pGame >>> 0) !== 0) {
+        const pCmd10 = AIGENERAL_GetOrAllocAiCommandByType113c(mem, pGame, pUnit, 0x0a, 0);
+        if (pCmd10 !== 0) {
+          const newHomeX = ((UNIT_GetPosX113c(mem, pUnit >>> 0) | 0) + 9) >>> 0;
+          const newHomeY = UNIT_GetPosY113c(mem, pUnit >>> 0) >>> 0;
+          mem.set(pCmd10, D2AiCmdStrc.dwParam1, newHomeX);
+          mem.set(pCmd10, D2AiCmdStrc.dwParam2, newHomeY);
+          AI_Stall113c(mem, pGame >>> 0, pUnit >>> 0, 0x32);
+          return;
+        }
+      }
+    } else if (classId === 0xff) {
+      mem.setU32(sp, 0);
+      mem.setU32((sp + 0x04) >>> 0, 0);
+      if (ACT3Q1_GetHratliTargetCoords113c(mem, pGame >>> 0, sp) !== 0) {
+        const tx = mem.u32(sp) | 0;
+        const ty = mem.u32((sp + 0x04) >>> 0) | 0;
+        const dist = UNITS_GetOctileDistanceToCoordinates113c(mem, pUnit, tx, ty) >>> 0;
+        if (dist > 3) {
+          aiApproachTargetMem113c(mem, pGame, pUnit, 0, 2, tx, ty, 1, 0);
+          return;
+        }
+        AI_StartModeAtCoordsKeepSteps_6FD121E0_113c(mem, pUnit >>> 0, 8, pGame >>> 0, 0, 0, {
+          onMonsterStartMode: (m, g, args) => monsterStartModeFromArgs113c(m, g, args),
+        });
+        ACT3Q2_ActivateGidbinnAltarObject_6FD05F60_113c(mem, pGame >>> 0);
+        return;
+      }
+    } else if (classId === 0x109) {
+      mem.setU32(sp, 0);
+      mem.setU32((sp + 0x04) >>> 0, 0);
+      if (ACT1Q4_GetCairnStonesTargetCoords_6FC804C0_113c(mem, pGame >>> 0, sp) !== 0) {
+        const tx = mem.u32(sp) | 0;
+        const ty = mem.u32((sp + 0x04) >>> 0) | 0;
+        const dist = UNITS_GetOctileDistanceToCoordinates113c(mem, pUnit, tx, ty) >>> 0;
+        if (dist > 2) {
+          aiApproachTargetMem113c(mem, pGame, pUnit, 0, 2, tx, ty, 1, 0);
+          return;
+        }
+        ACT1Q4_MarkPortalOpenedFlag92_6FC803D0_113c(mem, pGame >>> 0);
+      }
+    } else if (classId === 0x200) {
+      ACT5Q2_TrySpawnNihlathakPortalForUnitInAct5_6FC7D1D0_113c(mem, pUnit >>> 0, pGame >>> 0);
+    }
 
-  if (AIGENERAL_FindAiCommandByType113c(mem, pUnit, 10) === 0) {
-    AI_InitHomeNode10_113c(mem, pGame, pUnit);
-  }
-
-  const leashDist =
-    pAiTickParam !== 0
-      ? mem.u32((pAiTickParam + D2AiTickParamOffsets.nVelocity) >>> 0) | 0
-      : 15;
-  if (AI_CheckReturnHomeToNode10_113c(mem, pGame, pUnit, pAiTickParam, leashDist, callees) !== 0) {
-    return;
-  }
-
-  const seed: D2SeedStrc = {
-    lo: mem.get(pUnit, D2UnitStrc.seedLo),
-    hi: mem.get(pUnit, D2UnitStrc.seedHi),
-  };
-  const roll = seedRoll(seed, 100);
-  mem.set(pUnit, D2UnitStrc.seedLo, seed.lo >>> 0);
-  mem.set(pUnit, D2UnitStrc.seedHi, seed.hi >>> 0);
-
-  if (roll < 35) {
-    const wanderFn =
-      callees !== undefined && callees.aiWanderStep !== undefined
-        ? callees.aiWanderStep
-        : defaultAiWanderStep113c;
-    if (wanderFn(mem, pGame, pUnit, 4) !== 0) {
+    if ((AI_WarrivGreetMem113c(mem, pGame, pUnit, pAiTickParam, callees) & 0xff) !== 0) {
       return;
     }
+    if ((AI_TickNodes4_5_7_113c(mem, pGame, pUnit, callees) & 0xff) !== 0) {
+      return;
+    }
+    if ((AI_FollowDs1NpcPathMem113c(mem, pGame, pUnit, pAiTickParam, callees) & 0xff) !== 0) {
+      return;
+    }
+    AI_Stall113c(mem, pGame >>> 0, pUnit >>> 0, 8);
+  } finally {
+    townNpcAiStackPtr = sp;
   }
-  idleFn(mem, pGame, pUnit, 15);
 }
 
 /**
- * Clean-room 1:1 binary port of D2Game `0x6FC39C20` (`AI_WarrivGreet`).
- * Act 1 Warriv intro greeting AI: checks dialogue node `9`, checks one-shot greeting
- * node `8` (steps toward the nearest player within 25 subtiles and pauses 10 frames
- * once within 4 subtiles), then delegates to `AI_TownNpcMem113c` (`0x6FC3DB40`).
- * (Replacement export for the K0 stand-in in `replay-kernel-113c.ts`).
+ * @va D2Game:0x6FCBCB00 (33B)
+ * Pure `SparseMemory113c` port of `AI_RogueTown` (stationary town/ambient AI fallback):
+ * checks `D2Common.#10331` (`UNITS_GetRoom(pUnit) != NULL`), and if active, stalls `pUnit`
+ * for `200` (`0xC8`) frames via `AI_Stall113c`.
  */
-export function AI_WarrivGreetMem113c(
+export function AI_RogueTownMem113c(
   mem: Memory113c,
   pGame: number,
   pUnit: number,
-  pAiTickParam: number,
-  callees?: TownNpcAiCallees113c,
+  _pAiTickParam = 0,
 ): void {
+  hitD2GameVa113c(0x6FCBCB00);
   if (pUnit === 0) return;
-
-  const idleFn =
-    callees !== undefined && callees.aiIdleWait !== undefined
-      ? callees.aiIdleWait
-      : defaultAiIdleWait113c;
-  const pCmd9 = AIGENERAL_FindAiCommandByType113c(mem, pUnit, 9);
-  if (pCmd9 !== 0 && (mem.get(pCmd9, D2AiCmdStrc.dwParam1) | 0) !== 0) {
-    idleFn(mem, pGame, pUnit, 15);
-    return;
+  if (UNITS_GetRoom113c(mem, pUnit) !== 0) {
+    AI_Stall113c(mem, pGame >>> 0, pUnit >>> 0, 0xc8);
   }
-
-  const pCmd8 = AIGENERAL_GetOrAllocAiCommandByType113c(mem, pGame, pUnit, 8);
-  if (pCmd8 !== 0 && (mem.get(pCmd8, D2AiCmdStrc.dwParam1) | 0) === 0) {
-    let pTarget =
-      pAiTickParam !== 0
-        ? mem.u32((pAiTickParam + D2AiTickParamOffsets.pTarget) >>> 0)
-        : 0;
-    if (
-      pTarget === 0 ||
-      mem.get(pTarget, D2UnitStrc.dwUnitType) !== UNIT_PLAYER
-    ) {
-      pTarget = AI_FindNearestPlayerTarget113c(mem, pGame, pUnit);
-    }
-    if (pTarget !== 0) {
-      const dist = UNITS_GetDistanceToOtherUnit113c(mem, pUnit, pTarget);
-      if (dist < 25) {
-        if (dist >= 4) {
-          if (
-            AI_StepRelativeToTargetUnit113c(
-              mem,
-              pGame,
-              pUnit,
-              pTarget,
-              (dist - 2) | 0,
-              1,
-              callees,
-            ) !== 0
-          ) {
-            return;
-          }
-        }
-        mem.set(pCmd8, D2AiCmdStrc.dwParam1, 1);
-        idleFn(mem, pGame, pUnit, 10);
-        return;
-      }
-    }
-  }
-
-  AI_TownNpcMem113c(mem, pGame, pUnit, pAiTickParam, callees);
 }

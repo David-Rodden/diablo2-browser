@@ -1,11 +1,20 @@
 /**
- * K2 replay coverage fixtures (tests/fixtures/oracle/k1/replay/<scenario>.coverage.ndjson.gz):
- * recorded by the oracle hook's `cover` mode on the original 1.13c DLLs under Wine; source of
- * docs/oracle/k1-replay/gap-{a1-bloodmoor-melee,p52-dot-ticks,p52-item-defense}.md.
+ * K2 replay coverage & runtime VA execution fixtures
+ * (`tests/fixtures/oracle/k1/replay/<scenario>.coverage.ndjson.gz` vs live `va-trace-113c` in `runReplay113c`).
  */
 import { describe, expect, it } from 'vitest'
-import { computeGaps113c, loadCoverage113c } from '../../../tools/oracle/kern-replay/gap-report.ts'
-import { loadManifest113c, loadScenario113c, manifestKey113c } from '../../../tools/oracle/kern-replay/replay-113c.ts'
+import {
+  computeGaps113c,
+  loadCoverage113c,
+  renderCombinedGapMd113c,
+  renderScenarioGapMd113c,
+} from '../../../tools/oracle/kern-replay/gap-report.ts'
+import {
+  loadManifest113c,
+  loadScenario113c,
+  manifestKey113c,
+  runReplay113c,
+} from '../../../tools/oracle/kern-replay/replay-113c.ts'
 
 interface K2CoverageBaseline113c {
   readonly name: 'a1-bloodmoor-melee' | 'p52-dot-ticks' | 'p52-item-defense'
@@ -14,7 +23,6 @@ interface K2CoverageBaseline113c {
   readonly d2CommonExecuted: number
   readonly d2GameExecuted: number
   readonly initialD2GameGapCount: number
-  readonly initialD2GameGapBytes: number
   readonly initialD2GameGapVas: readonly string[]
 }
 
@@ -26,7 +34,6 @@ const K2_COVERAGE_BASELINES_113C: readonly K2CoverageBaseline113c[] = [
     d2CommonExecuted: 572,
     d2GameExecuted: 473,
     initialD2GameGapCount: 10,
-    initialD2GameGapBytes: 1664,
     initialD2GameGapVas: [
       '0x6FC95210',
       '0x6FCB0F30',
@@ -47,7 +54,6 @@ const K2_COVERAGE_BASELINES_113C: readonly K2CoverageBaseline113c[] = [
     d2CommonExecuted: 620,
     d2GameExecuted: 499,
     initialD2GameGapCount: 39,
-    initialD2GameGapBytes: 8528,
     initialD2GameGapVas: [
       '0x6FC95210',
       '0x6FCB0F30',
@@ -97,7 +103,6 @@ const K2_COVERAGE_BASELINES_113C: readonly K2CoverageBaseline113c[] = [
     d2CommonExecuted: 571,
     d2GameExecuted: 468,
     initialD2GameGapCount: 41,
-    initialD2GameGapBytes: 11009,
     initialD2GameGapVas: [
       '0x6FC570E0',
       '0x6FC57110',
@@ -185,12 +190,18 @@ for (const spec of K2_COVERAGE_BASELINES_113C) {
       expect(byKey.get('D2Game:0x6FCEC550')).toBe(firstInput)
     })
 
-    it('has 0 D2Common unported hits, 0 impure kernFile hits, and exact measured D2Game dynamic gap counts', () => {
+    it('computes honest manifestGap + runtimeExecGap (tsExecutedVas vs dllExecutedVas) with 0 impure hits', () => {
       expect(spec.initialD2GameGapVas.length).toBe(spec.initialD2GameGapCount)
 
-      const s = computeGaps113c(spec.name)
+      const replay = runReplay113c(spec.name)
+      expect(replay.bootCheck).toBeNull()
+      expect(replay.tsExecutedVas.length).toBeGreaterThan(0)
+      expect(replay.tsExecutedVas).toContain('D2Game:0x6FC4E050')
+
+      const s = computeGaps113c(spec.name, { tsExecutedVas: replay.tsExecutedVas })
       const manifest = loadManifest113c()
       const hitKeySet = new Set(cov.hits.map((h) => manifestKey113c(h.module, h.va)))
+      const tsSet = new Set(replay.tsExecutedVas)
 
       expect(s.executed.D2Common).toEqual({
         total: spec.d2CommonExecuted,
@@ -198,27 +209,119 @@ for (const spec of K2_COVERAGE_BASELINES_113C) {
         gap: 0,
         gapBytes: 0,
       })
-      expect(s.gaps.filter((g) => g.module === 'D2Common')).toEqual([])
+      expect(s.manifestGap.filter((g) => g.module === 'D2Common')).toEqual([])
       expect(s.impure).toEqual([])
 
       expect(s.executed.D2Game?.total).toBe(spec.d2GameExecuted)
-      expect(s.executed.D2Game!.gap).toBeLessThanOrEqual(spec.initialD2GameGapCount)
-      expect(s.executed.D2Game!.gapBytes).toBeLessThanOrEqual(spec.initialD2GameGapBytes)
-
       for (const vaHex of spec.initialD2GameGapVas) {
         expect(hitKeySet.has(`D2Game:${vaHex}`), `D2Game:${vaHex} must be in recorded coverage`).toBe(true)
       }
 
-      const expectedRemainingD2GameVas = spec.initialD2GameGapVas.filter((vaHex) => {
-        const fn = manifest.get(`D2Game:${vaHex}`)
-        expect(fn, `D2Game:${vaHex}`).toBeDefined()
-        return !DONE_STATUSES_113C.has(fn!.status)
-      })
-      const actualD2GameGapVas = s.gaps.filter((g) => g.module === 'D2Game').map((g) => formatVa113c(g.va))
+      // Exact manifestGap invariance: every DLL-executed D2Game VA whose manifest status is unported
+      const expectedManifestGapVas = [...cov.hits]
+        .filter((h) => h.module === 'D2Game' && !DONE_STATUSES_113C.has(manifest.get(manifestKey113c(h.module, h.va))!.status))
+        .sort((a, b) => a.firstFrame - b.firstFrame || a.va - b.va)
+        .map((h) => formatVa113c(h.va))
+      const actualManifestGapVas = s.manifestGap.filter((g) => g.module === 'D2Game').map((g) => formatVa113c(g.va))
 
-      expect(s.executed.D2Game!.gap).toBe(expectedRemainingD2GameVas.length)
-      expect(s.executed.D2Game!.done).toBe(spec.d2GameExecuted - expectedRemainingD2GameVas.length)
-      expect(actualD2GameGapVas).toEqual(expectedRemainingD2GameVas)
+      expect(s.executed.D2Game!.gap).toBe(expectedManifestGapVas.length)
+      expect(s.executed.D2Game!.done).toBe(spec.d2GameExecuted - expectedManifestGapVas.length)
+      expect(actualManifestGapVas).toEqual(expectedManifestGapVas)
+
+      // Exact runtimeExecGap invariance: every DLL-executed VA not actually hit at runtime by TS
+      const expectedRuntimeGapKeys = [...cov.hits]
+        .sort((a, b) => a.firstFrame - b.firstFrame || a.va - b.va)
+        .map((h) => manifestKey113c(h.module, h.va))
+        .filter((k) => !tsSet.has(k))
+      const actualRuntimeGapKeys = s.runtimeExecGap.map((g) => manifestKey113c(g.module, g.va))
+      expect(actualRuntimeGapKeys).toEqual(expectedRuntimeGapKeys)
+
+      const rg = s.runtimeExecuted.D2Game!
+      expect(rg.dllExecuted).toBe(spec.d2GameExecuted)
+      expect(rg.tsExecuted).toBeGreaterThan(0)
+      expect(rg.tsExecuted + rg.runtimeGap).toBe(spec.d2GameExecuted)
+
+      const rc = s.runtimeExecuted.D2Common!
+      expect(rc.dllExecuted).toBe(spec.d2CommonExecuted)
+      expect(rc.tsExecuted).toBeGreaterThan(0)
+      expect(rc.tsExecuted + rc.runtimeGap).toBe(spec.d2CommonExecuted)
+
+      // Markdown renderers report both tsExecuted / dllExecuted and manifestUnported / runtimeExecGap
+      const scenarioMd = renderScenarioGapMd113c(s)
+      expect(scenarioMd).toContain(`| D2Game | ${spec.d2GameExecuted} | ${rg.tsExecuted} / ${rg.dllExecuted} |`)
+      const combinedMd = renderCombinedGapMd113c([s])
+      expect(combinedMd).toContain(`| \`${spec.name}\` | \`${rg.tsExecuted} / ${rg.dllExecuted}\``)
     })
   })
 }
+
+const DIFF_VERIFIED_K2_ITEMDROP_VAS_113C = [
+  '0x6FC2E5D0',
+  '0x6FC2E930',
+  '0x6FC2EA10',
+  '0x6FC2EA70',
+  '0x6FC2EBB0',
+  '0x6FC2EC90',
+  '0x6FC2EE90',
+  '0x6FC2F260',
+  '0x6FC2FC40',
+  '0x6FC30550',
+  '0x6FC307B0',
+  '0x6FC30A20',
+  '0x6FC31070',
+  '0x6FC31490',
+  '0x6FC31880',
+  '0x6FC32380',
+  '0x6FC32D60',
+  '0x6FC32EE0',
+  '0x6FC33DE0',
+  '0x6FC95680',
+  '0x6FC95900',
+] as const
+
+const DIFF_VERIFIED_K2_REPLAY_COMMON_VAS_113C = [
+  '0x6FC400E0',
+  '0x6FC40760',
+  '0x6FC40E00',
+  '0x6FC417D0',
+  '0x6FCBD980',
+  '0x6FCBDC10',
+] as const
+
+const DIFF_VERIFIED_K2_REPLAY_SCENARIO_VAS_113C = [
+  '0x6FC57190',
+  '0x6FCBF850',
+  '0x6FCCCDA0',
+  '0x6FCCD910',
+  '0x6FCCDCE0',
+] as const
+
+describe('K2 diff-verified D2Game itemdrop, combat & S2C runtime execution parity', () => {
+  it('executes all diff-verified K2 D2Game VAs in both Wine DLL and TS with strict t0+t1+t4+s2c+gs zero divergence', () => {
+    const unionBoth = new Set<string>()
+    for (const scen of ['a1-bloodmoor-melee', 'p52-dot-ticks', 'p52-item-defense'] as const) {
+      const replay = runReplay113c(scen)
+      expect(replay.bootCheck).toBeNull()
+      expect(replay.strictHorizon).toBe(replay.lastGoldenFrame)
+      expect(replay.firstStrictDivergence).toBeNull()
+      const gap = computeGaps113c(scen, { tsExecutedVas: replay.tsExecutedVas })
+      const dllSet = new Set(gap.dllExecutedVas)
+      const tsSet = new Set(replay.tsExecutedVas)
+      for (const k of replay.tsExecutedVas) {
+        if (dllSet.has(k)) unionBoth.add(k)
+      }
+      for (const va of [
+        ...DIFF_VERIFIED_K2_ITEMDROP_VAS_113C,
+        ...DIFF_VERIFIED_K2_REPLAY_COMMON_VAS_113C,
+      ]) {
+        const key = `D2Game:${va}`
+        expect(dllSet.has(key), `${scen} dllExecutedVas missing ${key}`).toBe(true)
+        expect(tsSet.has(key), `${scen} tsExecutedVas missing ${key}`).toBe(true)
+      }
+    }
+    for (const va of DIFF_VERIFIED_K2_REPLAY_SCENARIO_VAS_113C) {
+      const key = `D2Game:${va}`
+      expect(unionBoth.has(key), `K2 union dll∩ts missing ${key}`).toBe(true)
+    }
+  })
+})

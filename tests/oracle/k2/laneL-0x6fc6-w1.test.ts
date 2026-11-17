@@ -422,13 +422,11 @@ describe('Milestone 33 [K2] Lane K2-L: 45 D2Game 0x6FC62C70..0x6FC73260 Function
 
     const pClient1 = m.alloc(0x520)
     const pQueue1 = m.alloc(0x40c)
-    m.setU32(pQueue1, 1)
     m.setU32(pClient1 + 0x1bc, pQueue1)
     m.setU32(pPD1 + 0x9c, pClient1)
 
     const pClient2 = m.alloc(0x520)
     const pQueue2 = m.alloc(0x40c)
-    m.setU32(pQueue2, 1)
     m.setU32(pClient2 + 0x1bc, pQueue2)
     m.setU32(pPD2 + 0x9c, pClient2)
 
@@ -475,11 +473,11 @@ describe('Milestone 33 [K2] Lane K2-L: 45 D2Game 0x6FC62C70..0x6FC73260 Function
     expect(m.u32(pP1 + 0x68)).toBe(6)
     expect(m.u8(pP1 + 0x6c)).toBe(0)
 
-    expect(m.u32(pQueue1 + 0x04)).toBe(7)
-    expect(m.u8(pQueue1 + 0x08)).toBe(0x62)
-    expect(m.u8(pQueue1 + 0x09)).toBe(0x01)
-    expect(m.u32(pQueue1 + 0x0a)).toBe(777)
-    expect(m.u8(pQueue1 + 0x0e)).toBe(0x00)
+    expect(m.u32(pQueue1 + 0x00)).toBe(7)
+    expect(m.u8(pQueue1 + 0x04)).toBe(0x62)
+    expect(m.u8(pQueue1 + 0x05)).toBe(0x01)
+    expect(m.u32(pQueue1 + 0x06)).toBe(777)
+    expect(m.u8(pQueue1 + 0x0a)).toBe(0x00)
   })
 
   it('ports CLIENTS getters, setters, save buffer lifecycle, and client lookup (0x6FC69240..0x6FC69FE0)', () => {

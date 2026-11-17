@@ -86,6 +86,7 @@ import {
   EVENT_FreeNode113c,
   EVENT_SetEventFull113c,
 } from './timer-wheel.ts'
+import { hitD2GameVa113c } from '../va-trace-113c.ts'
 
 /** `D2Game.dll` `.rdata` `0x6FD1B9A4`: `..\Source\D2Game\UNIT\PlayerList.cpp` source string VA. */
 export const D2GAME_PLAYERLIST_CPP_STR_VA_113C = 0x6fd1b9a4
@@ -245,6 +246,7 @@ export function PACKET_Recv12_ClearGfxState0C_6FCEB590_113c(
   _pPacket: number,
   nPacketLen: number,
 ): number {
+  hitD2GameVa113c(0x6FCEB590)
   if ((nPacketLen | 0) !== 1) {
     return 3
   }
@@ -266,6 +268,7 @@ export function PACKET_Recv3F_PlayVoicePhrase_6FCEBD50_113c(
   pPacket: number,
   nPacketLen: number,
 ): number {
+  hitD2GameVa113c(0x6FCEBD50)
   if ((nPacketLen | 0) !== 3) {
     return 3
   }
@@ -292,6 +295,7 @@ export function ITEMS_PlaceItemInSocketInventory_6FCF1650_113c(
   pUnit: number,
   pItem: number,
 ): number {
+  hitD2GameVa113c(0x6FCF1650)
   if (pUnit === 0) {
     throw new D2CommonAssertError('Items.cpp', 0x19a1)
   }
@@ -316,6 +320,7 @@ export function ITEMS_ExpireTimedStatSubListsEvent_6FCF1780_113c(
   pGame: number,
   pItem: number,
 ): void {
+  hitD2GameVa113c(0x6FCF1780)
   STATLIST_ExpireTimedSubLists113c(m, pItem >>> 0, m.u32((pGame + 0xa8) >>> 0))
 }
 
@@ -329,6 +334,7 @@ export function ITEMS_CheckSkillUseNotBlocked2Or7_6FCF1A30_113c(
   pUnit: number,
   pSkill: number,
 ): number {
+  hitD2GameVa113c(0x6FCF1A30)
   const reason = SKILLS_GetSkillUseFailReason113c(m, pUnit >>> 0, pSkill >>> 0) | 0
   if (reason === 2 || reason === 7) {
     return 0
@@ -348,6 +354,7 @@ export function ITEMS_GetPrimaryAndSecondaryWeapon_6FCF1A50_113c(
   pOutPrimaryWeapon: number,
   pOutSecondaryWeapon: number,
 ): void {
+  hitD2GameVa113c(0x6FCF1A50)
   m.setU32(pOutSecondaryWeapon >>> 0, 0)
   m.setU32(pOutPrimaryWeapon >>> 0, 0)
   const pInventory = m.u32((pUnit + 0x60) >>> 0) >>> 0
@@ -384,6 +391,7 @@ export function ITEMS_OnInsertOrEquipUpdateStats_6FCF4FF0_113c(
   pItem: number,
   _pGame = 0,
 ): void {
+  hitD2GameVa113c(0x6FCF4FF0)
   const pInventory = m.u32((pUnit + 0x60) >>> 0) >>> 0
   if (pInventory === 0) {
     return
@@ -418,6 +426,7 @@ export function ITEMS_OnCharmPlacedInInventory_6FCF6710_113c(
   pItem: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FCF6710)
   ITEMS_SetOrClearCommandFlags113c(m, pItem >>> 0, 0x10, 1)
   if (pItem !== 0 && (m.u32((pItem + 0x10) >>> 0) | 0) !== 0) {
     return
@@ -441,6 +450,7 @@ export function SUNITDMG_AddManaToUnitClamped_6FCFAE70_113c(
   pUnit: number,
   nManaGain: number,
 ): number {
+  hitD2GameVa113c(0x6FCFAE70)
   const gain = nManaGain | 0
   if (gain <= 0) {
     return 0
@@ -470,6 +480,7 @@ export function SUNIT_FreeCombatListAndChangeAnimMode_6FCFF980_113c(
   pGame: number,
   nMode: number,
 ): number {
+  hitD2GameVa113c(0x6FCFF980)
   SUNITDMG_FreeAttackerCombatList113c(m, pUnit >>> 0, pGame >>> 0)
   return UNITS_ChangeAnimMode113c(m, pUnit >>> 0, nMode | 0) | 0
 }
@@ -486,6 +497,7 @@ export function SUNIT_SetLastKillerInfo_6FCFFAE0_113c(
   dwKillerId: number,
   dwKillerType: number,
 ): void {
+  hitD2GameVa113c(0x6FCFFAE0)
   const bHasKiller = m.u8((pUnit + 0x6c) >>> 0)
   if (bHasKiller !== 0) {
     if ((m.u32(pUnit >>> 0) | 0) === 0) {
@@ -509,6 +521,7 @@ export function SUNIT_SetPlayerClientPtr_6FD00040_113c(
   pUnit: number,
   pClient: number,
 ): void {
+  hitD2GameVa113c(0x6FD00040)
   if (pUnit === 0) {
     throw new D2CommonAssertError('SUnit.cpp', 0x4bb)
   }
@@ -533,6 +546,7 @@ export function SUNIT_ClearPlayerTimeoutEvent_6FD00410_113c(
   _nArg1 = 0,
   _nArg2 = 0,
 ): number {
+  hitD2GameVa113c(0x6FD00410)
   if (pPlayer === 0) {
     return 0
   }
@@ -560,6 +574,7 @@ export function SUNIT_GetValidatedPathTargetUnit_6FD00BD0_113c(
   pUnit: number,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FD00BD0)
   SUNIT_ValidatePathTargetUnit113c(m, pUnit >>> 0, pGame >>> 0)
   const pTarget = PATH_GetTargetUnit113c(m, m.u32((pUnit + 0x2c) >>> 0)) >>> 0
   return pTarget === (pUnit >>> 0) ? 0 : pTarget
@@ -576,6 +591,7 @@ export function ACT3Q5_InitCompellingOrbObject_6FD02A00_113c(
   m: Memory113c,
   pObjInitStrc: number,
 ): void {
+  hitD2GameVa113c(0x6FD02A00)
   const pGame = m.u32(pObjInitStrc >>> 0) >>> 0
   const pQuestControl = m.u32((pGame + 0x10f4) >>> 0) >>> 0
   let pQuest = pQuestControl !== 0 ? m.u32(pQuestControl) >>> 0 : 0
@@ -601,6 +617,7 @@ export function ACT3Q2_OnGidbinnItemRemoved_6FD02D00_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD02D00)
   const pItem = m.u32((pQuestArg + 8) >>> 0) >>> 0
   const pState = m.u32((pQuest + 0x18) >>> 0) >>> 0
   if ((ITEMS_GetBaseCode113c(m, pItem) >>> 0) !== 0x20333367) {
@@ -634,6 +651,7 @@ export function ACT3Q3_InitSewerStairsObject_6FD02E00_113c(
   m: Memory113c,
   pObjInitStrc: number,
 ): void {
+  hitD2GameVa113c(0x6FD02E00)
   const pGame = m.u32(pObjInitStrc >>> 0) >>> 0
   const pQuestControl = m.u32((pGame + 0x10f4) >>> 0) >>> 0
   if (pQuestControl === 0) {
@@ -665,6 +683,7 @@ export function ACT3Q5_Callback14_RemovePlayerGuid_6FD03390_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD03390)
   QUESTS_RemovePlayerGuidIfQuestState1AndNot0_113c(m, pQuest >>> 0, pQuestArg >>> 0)
 }
 
@@ -679,6 +698,7 @@ export function ACT3Q6_Callback14_RemovePlayerGuid_6FD03960_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD03960)
   QUESTS_RemovePlayerGuidIfQuestState1AndNot0_113c(m, pQuest >>> 0, pQuestArg >>> 0)
 }
 
@@ -693,6 +713,7 @@ export function ACT3Q2_Callback14_RemovePlayerGuid_6FD03B30_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD03B30)
   QUESTS_RemovePlayerGuidIfQuestState1AndNot0_113c(m, pQuest >>> 0, pQuestArg >>> 0)
 }
 
@@ -707,6 +728,7 @@ export function ACT3Q2_InitGidbinnAltarObject_6FD04120_113c(
   m: Memory113c,
   pObjInitStrc: number,
 ): void {
+  hitD2GameVa113c(0x6FD04120)
   const pGame = m.u32(pObjInitStrc >>> 0) >>> 0
   const pQuestControl = m.u32((pGame + 0x10f4) >>> 0) >>> 0
   if (pQuestControl === 0) {
@@ -743,6 +765,7 @@ export function ACT3Q2_OnPlayerEnteredCheckGidbinn_6FD041A0_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD041A0)
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0
   const pGame = m.u32(pQuestArg >>> 0) >>> 0
   const pState = m.u32((pQuest + 0x18) >>> 0) >>> 0
@@ -766,6 +789,7 @@ export function ACT3Q3_CountPlayerMissingKhalimHeart_6FD047D0_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FD047D0)
   if (
     ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, pPlayer >>> 0, pGame >>> 0, 0x20726871) === 0 &&
     ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, pPlayer >>> 0, pGame >>> 0, 0x20326671) === 0
@@ -798,6 +822,7 @@ export function ACT3Q3_CountPlayerMissingKhalimBrain_6FD04830_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FD04830)
   if (
     ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, pPlayer >>> 0, pGame >>> 0, 0x20726271) === 0 &&
     ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, pPlayer >>> 0, pGame >>> 0, 0x20326671) === 0
@@ -830,6 +855,7 @@ export function ACT3Q3_CountPlayerMissingKhalimEye_6FD04890_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FD04890)
   if (
     ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, pPlayer >>> 0, pGame >>> 0, 0x20796571) === 0 &&
     ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, pPlayer >>> 0, pGame >>> 0, 0x20326671) === 0
@@ -862,6 +888,7 @@ export function ACT3Q3_InitSewerLeverObject_6FD04980_113c(
   m: Memory113c,
   pObjInitStrc: number,
 ): void {
+  hitD2GameVa113c(0x6FD04980)
   const pGame = m.u32(pObjInitStrc >>> 0) >>> 0
   const pQuestControl = m.u32((pGame + 0x10f4) >>> 0) >>> 0
   if (pQuestControl === 0) {
@@ -902,6 +929,7 @@ export function ACT3Q4_CheckPlayerHasLamEsensTome_6FD05080_113c(
   pPlayer: number,
   _pArg = 0,
 ): void {
+  hitD2GameVa113c(0x6FD05080)
   if (ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, pPlayer >>> 0, pGame >>> 0, 0x20626262) === 0) {
     return
   }
@@ -927,6 +955,7 @@ export function ACT3Q4_OnAlkorInteractPlayVoice_6FD051C0_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD051C0)
   const pTarget = m.u32((pQuestArg + 8) >>> 0) >>> 0
   if (pTarget === 0) {
     return
@@ -961,6 +990,7 @@ export function ACT3Q4_Callback14_RemovePlayerGuid_6FD05220_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD05220)
   QUESTS_RemovePlayerGuidIfQuestState1AndNot0_113c(m, pQuest >>> 0, pQuestArg >>> 0)
 }
 
@@ -980,6 +1010,7 @@ export function ACT3Q4_CheckAlkorQuestAlert_6FD053F0_113c(
   pQuestFlags: number,
   _pNpcUnit = 0,
 ): number {
+  hitD2GameVa113c(0x6FD053F0)
   if ((nNpcId | 0) !== 0xfe) {
     return 0
   }
@@ -1016,6 +1047,7 @@ export function ACT3Q6_UpdatePlayerQuestState0E_6FD05B10_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FD05B10)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer >>> 0) >>> 0
   const bDiff = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + bDiff * 4 + 0x10) >>> 0) >>> 0
@@ -1042,6 +1074,7 @@ export function ACT3Q5_UpdatePlayerQuestState0E_6FD05CD0_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FD05CD0)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer >>> 0) >>> 0
   const bDiff = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + bDiff * 4 + 0x10) >>> 0) >>> 0
@@ -1068,6 +1101,7 @@ export function ACT3Q4_GrantPlayerStatPointsReward_6FD06470_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FD06470)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer >>> 0) >>> 0
   const bDiff = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + bDiff * 4 + 0x10) >>> 0) >>> 0
@@ -1096,6 +1130,7 @@ export function MONSTER_SpawnSubClassMinionInRing_6FD0DF20_113c(
   wFlags: number,
   hooks?: RegpopSpawnHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FD0DF20)
   const pRoom = UNITS_GetRoom113c(m, pLeader >>> 0) >>> 0
   if ((DUNGEON_GetLevelIdIfNotHidden113c(m, pRoom) | 0) === 0) {
     return 0
@@ -1135,6 +1170,7 @@ export function MONSTER_SpawnAtCoords_6FD0F450_113c(
   wFlags: number,
   hooks?: RegpopSpawnHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FD0F450)
   const sp = (k2W2B8StackPtr - 0x28) >>> 0
   k2W2B8StackPtr = sp
   try {
@@ -1167,6 +1203,7 @@ export function PLAYERLIST_RemoveRelationNode_6FD0FFD0_113c(
   pGame: number,
   hooks?: K2W2B8Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FD0FFD0)
   const pPlayerData = UNITS_GetPlayerData113c(m, pOwnerUnit >>> 0) >>> 0
   const targetGuid = pTargetUnit === 0 ? 0xffffffff : m.u32((pTargetUnit + 0x0c) >>> 0)
   if ((pOwnerUnit >>> 0) === (pTargetUnit >>> 0)) {
@@ -1210,6 +1247,7 @@ export function PLAYERLIST_SetHostileDelayTick_6FD10090_113c(
   dwHostileTick: number,
   hooks?: K2W2B8Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FD10090)
   const pPlayerData = UNITS_GetPlayerData113c(m, pOwnerUnit >>> 0) >>> 0
   const targetGuid = pTargetUnit === 0 ? 0xffffffff : m.u32((pTargetUnit + 0x0c) >>> 0)
   if ((pOwnerUnit >>> 0) !== (pTargetUnit >>> 0)) {
@@ -1250,6 +1288,7 @@ export function AI_StartModeAtCoordsStep0_6FD11FA0_113c(
   nY: number,
   hooks?: K2W2B8Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FD11FA0)
   const sp = (k2W2B8StackPtr - 0x20) >>> 0
   k2W2B8StackPtr = sp
   try {
@@ -1278,6 +1317,7 @@ export function AI_StartModeAtCoordsStep1_6FD11FF0_113c(
   nY: number,
   hooks?: K2W2B8Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FD11FF0)
   const sp = (k2W2B8StackPtr - 0x20) >>> 0
   k2W2B8StackPtr = sp
   try {
@@ -1303,6 +1343,7 @@ export function AI_ScheduleAiThinkTimer_6FD120C0_113c(
   pUnit: number,
   nDelay: number,
 ): void {
+  hitD2GameVa113c(0x6FD120C0)
   const delay = (nDelay | 0) === 0 ? 1 : nDelay | 0
   if (pUnit !== 0) {
     let pEvent = m.u32((pUnit + 0xdc) >>> 0) >>> 0
@@ -1333,6 +1374,7 @@ export function AI_StartModeAtCoordsKeepSteps_6FD121E0_113c(
   nY: number,
   hooks?: K2W2B8Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FD121E0)
   const sp = (k2W2B8StackPtr - 0x20) >>> 0
   k2W2B8StackPtr = sp
   try {
@@ -1359,6 +1401,7 @@ export function AI_RunTowardTarget_6FD12F00_113c(
   nStepNum: number,
   hooks?: K2W2B8Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FD12F00)
   const stepNum = (nStepNum & 0xff) === 0 ? (nStepNum & ~0xff) | 1 : nStepNum | 0
   return aiApproachTarget6FD12540(m, pGame >>> 0, pUnit >>> 0, pTarget >>> 0, 0x0f, 0, 0, stepNum, 0, hooks)
 }
@@ -1377,6 +1420,7 @@ export function AI_WalkTowardTarget_6FD12F30_113c(
   nStepNum: number,
   hooks?: K2W2B8Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FD12F30)
   const stepNum = (nStepNum & 0xff) === 0 ? (nStepNum & ~0xff) | 1 : nStepNum | 0
   return aiApproachTarget6FD12540(m, pGame >>> 0, pUnit >>> 0, pTarget >>> 0, 2, 0, 0, stepNum, 0, hooks)
 }
@@ -1395,6 +1439,7 @@ export function AI_ApproachTargetPathType13_6FD13000_113c(
   dwFlags: number,
   hooks?: K2W2B8Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FD13000)
   let pAiControl = 0
   if (pUnit !== 0 && (m.u32(pUnit >>> 0) | 0) === 1) {
     const pMonData = m.u32((pUnit + 0x14) >>> 0) >>> 0
@@ -1429,6 +1474,7 @@ export function AI_SelectMonsterResurrectSkillAndMode_6FD13CB0_113c(
   pUnit: number,
   bEquipSkill: number,
 ): number {
+  hitD2GameVa113c(0x6FD13CB0)
   if ((bEquipSkill | 0) === 0) {
     return 1
   }

@@ -13,10 +13,35 @@
  * round): `+0x00` mode, `+0x04` class id, `+0x08` x (subtiles, room relative), `+0x0C` next, `+0x10` save
  * chain, `+0x14` unit type, `+0x18` y, `+0x1C` flags (bit 0 = already spawned).
  */
-import { DUNGEON_AcquireRoomExDT1Mask113c, DUNGEON_GetLevelIdFromRoom113c, DUNGEON_GetRoomCoordinates113c } from '../common/dungeon.ts'
+import {
+  DUNGEON_AcquireRoomExDT1Mask113c,
+  DUNGEON_GetLevelIdFromRoom113c,
+  DUNGEON_GetLevelIdIfNotHidden113c,
+  DUNGEON_GetRoomCoordinates113c,
+} from '../common/dungeon.ts'
 import { DRLGPRESET_MovePointerAndClear113c } from '../common/drlg/preset.ts'
-import type { Memory113c } from '../mem/sparse-memory.ts'
-import { MONSTATS2_CheckFlagBit113c } from './regpop-spawn-113c.ts'
+import { DRLG_ResolveMonsterSubClassIdForRoom113c } from '../common/drlg/drlg-ver.ts'
+import type { Memory113c, SparseMemory113c } from '../mem/sparse-memory.ts'
+import { SEED_RollLimitedRandomNumber113c } from './combat-a1c-113c.ts'
+import { MONSTATS_FollowSubClassChain_6FC21D30_113c } from './k2-laneH-0x6fc2-w1-113c.ts'
+import { QUESTS_CheckNotIntro_6FC53970_113c } from './k2-laneJ-0x6fc4-w1-113c.ts'
+import { REGPOP_SpawnMonStatsGroupPackAtSubtile_6FC670F0_113c } from './k2-laneL-0x6fc6-w1-113c.ts'
+import { REGPOP_RemapDirectionalMonsterClassId113c } from './k2-sunit-spawn-w1-113c.ts'
+import { MONUMOD_PromoteToBossWithSingleUMod_6FC44BF0_113c } from './k2-w4b3-113c.ts'
+import { MONSTER_SpawnChampionPackMembers_6FC67880_113c } from './k2-w4b4-113c.ts'
+import {
+  MONUMOD_SpawnSuperUniqueMonsterPack_6FC451F0_113c,
+  MONUMOD_SpawnUniqueOrChampionBossPack_6FC44C70_113c,
+} from './k2-w12b1-113c.ts'
+import {
+  D2GAME_IAT_SGPT_DATATABLES_VA_113C,
+  MONSTATS2_CheckFlagBit113c,
+  MONSTATS_GetRecordPtr113c,
+  MONSTATS_ValidateClassId113c,
+  MONSTER_ChooseMonsterClass113c,
+} from './regpop-spawn-113c.ts'
+import { EVENT_SetEventFull113c } from './timer-wheel.ts'
+import { hitD2GameVa113c } from '../va-trace-113c.ts'
 
 const PRESET_OFF_MODE = 0x00
 const PRESET_OFF_CLASS = 0x04
@@ -82,6 +107,7 @@ export function OBJECTS_InitPresetQuestObject113c(
   pSaveChain: number,
   callees: RoomPresetCallees113c,
 ): void {
+  hitD2GameVa113c(0x6FC55E50)
   if (pUnit === 0) return
   if (m.u32(pUnit >>> 0) !== 2) return
   const nClassId = m.u32((pUnit + 4) >>> 0) | 0
@@ -113,6 +139,7 @@ export function SUNIT_CreatePresetUnit113c(
   y: number,
   callees: RoomPresetCallees113c,
 ): number {
+  hitD2GameVa113c(0x6FD012D0)
   let pUnit = 0
   if (nUnitType === 1) {
     pUnit = callees.spawnMonsterPreset(m, pRoom, nClassId, pGame, x, y, nMode) >>> 0
@@ -164,6 +191,7 @@ export function ROOM_SpawnPresetUnit113c(
   pPreset: number,
   callees: RoomPresetCallees113c,
 ): void {
+  hitD2GameVa113c(0x6FD013B0)
   const sp = presetStackPtr
   presetStackPtr = (sp + 0x20) >>> 0
   let x = 0
@@ -219,6 +247,7 @@ export function ROOM_SpawnPresetUnits113c(
   pRoom: number,
   callees: RoomPresetCallees113c,
 ): void {
+  hitD2GameVa113c(0x6FD01430)
   if (pGame === 0) return
   const pFirst = DUNGEON_AcquireRoomExDT1Mask113c(m, pRoom) >>> 0
   const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom) | 0
@@ -258,12 +287,74 @@ export function ROOM_SpawnPresetUnits113c(
   }
 }
 
+function readSgptDataTablesForPresets113c(m: Memory113c): number {
+  try {
+    const pIat = m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C) >>> 0
+    if (pIat !== 0) {
+      return m.u32(pIat) >>> 0
+    }
+  } catch {
+    // Fall back to direct D2Common!sgptDataTables pointer when IAT slot is unloaded in standalone tests.
+  }
+  try {
+    return m.u32(0x6fde9e1c) >>> 0
+  } catch {
+    return 0
+  }
+}
+
+function spawnRegularPresetMonster6FC66F70(
+  m: Memory113c,
+  pTables: number,
+  resolvedId: number,
+  nLevelId: number,
+  nMode: number,
+  pGame: number,
+  pRoom: number,
+  x: number,
+  y: number,
+  spawnAtCoords: (
+    m: Memory113c,
+    nClassId: number,
+    nMode: number,
+    pGame: number,
+    pRoom: number,
+    x: number,
+    y: number,
+    nMaxRadius: number,
+    wFlags: number,
+  ) => number,
+): number {
+  if (resolvedId === 0x222 && nLevelId === 0x78) {
+    return spawnAtCoords(m, 0x222, nMode, pGame, pRoom, x, y, -1, 0x42)
+  }
+  if (MONSTATS2_CheckFlagBit113c(m, resolvedId, 0x0d) !== 0) {
+    return 0
+  }
+  const pMonStatsBase = pTables !== 0 ? m.u32((pTables + 0xa78) >>> 0) >>> 0 : 0
+  const pMonStatsRec =
+    pMonStatsBase !== 0 ? (pMonStatsBase + Math.imul(resolvedId, 0x1a8)) >>> 0 : 0
+  const wFlags = pMonStatsRec !== 0 && (m.u8((pMonStatsRec + 0x0e) >>> 0) & 4) !== 0 ? 8 : 0
+  let pUnit = spawnAtCoords(m, resolvedId, nMode, pGame, pRoom, x, y, -1, wFlags)
+  if (pUnit === 0 && (wFlags & 8) !== 0) {
+    pUnit = spawnAtCoords(m, resolvedId, nMode, pGame, pRoom, x, y, 4, wFlags)
+  }
+  return pUnit
+}
+
 /**
  * Spawns a monster preset unit (`ecx = pRoom, eax = nClassId`, stack `(pGame, x, y, nMode)`, `ret 0x10`).
- * Resolves `MonPresetTxt` (`D2Common.#11241` via `DRLG_GetActNoFromLevelId`) when `nClassId` is a preset
- * index, and handles SuperUnique (`1`), regular monster (`2`), or special handler (`nClassId >= nMonStatsCount + nSuperUniquesCount`).
+ * Implements the full 1322-byte `D2Game:0x6FC67CF0` three-way dispatch:
+ * 1. Normal monster (`resolvedId < nMonStatsCount`): Act 5 Quest `0x1F` `0x1F2 -> 0x1F3` / `0x205 -> 0x206`
+ *    remap, NM/Hell level `0x6E` `0x1C5`/`0x211` filter, and `0x6FC66F70` spawn.
+ * 2. SuperUnique (`nMonStatsCount <= resolvedId < nMonStatsCount + nSuperUniquesCount`, or `nType == 1`):
+ *    dispatches `0x6FC451F0` (`MONUMOD_SpawnSuperUniqueMonsterPack_6FC451F0_113c`).
+ * 3. Special preset (`resolvedId >= nMonStatsCount + nSuperUniquesCount`, `specialId = 2..32` via `0x6FC6821C` /
+ *    `0x6FC68240` / `0x6FC68260` / `0x6FC68284`): random Unique/Champion boss packs (`2`, `3`), Sarcophagus (`4`),
+ *    Evil Urn (`5`), Trapped Soul (`8`), Act 3 Fetish subclass chain (`10`, `11`), directional catapult/siege/tentacle
+ *    presets (`17..23`, `29..32` with `0x1B6` event `7` and dead-corpse flag `0x02000000`), and Normal-only group packs (`24`, `26`).
  *
- * @va D2Game:0x6FC67CF0 (305B)
+ * @va D2Game:0x6FC67CF0 (1322B)
  */
 export function ROOM_SpawnMonsterPreset113c(
   m: Memory113c,
@@ -287,41 +378,235 @@ export function ROOM_SpawnMonsterPreset113c(
   getMonPresetRecord?: (m: Memory113c, nAct: number, nPlaceId: number, pOutType: number) => number,
   spawnSuperUnique?: (m: Memory113c, pGame: number, pRoom: number, x: number, y: number, nSuperUniqueId: number) => number,
 ): number {
-  const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom) | 0
+  hitD2GameVa113c(0x6FC67CF0)
   let resolvedId = nClassId | 0
-  let nType = 2
+  if (resolvedId < 0) return 0
+
+  const pTables = readSgptDataTablesForPresets113c(m)
+  const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom) | 0
+
   if (getMonPresetRecord !== undefined && nLevelId > 0) {
-    const pTables = m.u32(0x6fde9e1c) >>> 0
-    const pLvlRec = pTables !== 0 ? (m.u32((pTables + 0xbb8) >>> 0) + Math.imul(nLevelId, 0x220)) >>> 0 : 0
+    const pLvlRec =
+      pTables !== 0 ? (m.u32((pTables + 0xbb8) >>> 0) + Math.imul(nLevelId, 0x220)) >>> 0 : 0
     const nAct = pLvlRec !== 0 ? m.u8((pLvlRec + 0x05) >>> 0) : 0
-    const pScratch = 0x7ff00f00
-    m.setU8(pScratch, 2)
-    resolvedId = getMonPresetRecord(m, nAct, resolvedId, pScratch) | 0
-    nType = (m.u8(pScratch) << 24) >> 24
+    const sp = presetStackPtr
+    presetStackPtr = (sp + 0x10) >>> 0
+    let nType = 2
+    try {
+      m.setU8(sp, 2)
+      resolvedId = getMonPresetRecord(m, nAct, resolvedId, sp) | 0
+      nType = (m.u8(sp) << 24) >> 24
+    } finally {
+      presetStackPtr = sp
+    }
+    if (resolvedId < 0) return 0
+    if (nType === 1) {
+      if (spawnSuperUnique !== undefined) {
+        return spawnSuperUnique(m, pGame, pRoom, x, y, resolvedId)
+      }
+      return MONUMOD_SpawnSuperUniqueMonsterPack_6FC451F0_113c(
+        m as SparseMemory113c,
+        pGame,
+        pRoom,
+        x,
+        y,
+        resolvedId,
+      )
+    }
+    if (nType === 0) {
+      resolvedId =
+        (resolvedId +
+          (pTables !== 0 ? m.u32((pTables + 0xa80) >>> 0) | 0 : 0) +
+          (pTables !== 0 ? m.u32((pTables + 0xa74) >>> 0) | 0 : 0)) |
+        0
+    }
   }
-  const pTables = m.u32(0x6fde9e1c) >>> 0
+
   const nMonStats = pTables !== 0 ? m.u32((pTables + 0xa80) >>> 0) | 0 : 0
   const nSuperUniques = pTables !== 0 ? m.u32((pTables + 0xa74) >>> 0) | 0 : 0
-  if (resolvedId >= nMonStats + nSuperUniques) return 0
-  if (nType === 2) {
-    if (resolvedId === 0x222 && nLevelId === 0x78) {
-      return spawnAtCoords(m, 0x222, nMode, pGame, pRoom, x, y, -1, 0x42)
+
+  if (resolvedId < nMonStats) {
+    let cid = resolvedId
+    if ((cid === 0x1f2 || cid === 0x205) && pGame !== 0 && m.u32((pGame + 0x10f4) >>> 0) !== 0) {
+      const pQuestCtrl = m.u32((pGame + 0x10f4) >>> 0) >>> 0
+      if (
+        m.u32((pQuestCtrl + 0x08) >>> 0) !== 0 &&
+        QUESTS_CheckNotIntro_6FC53970_113c(m, pGame, 0x1f) !== 0 &&
+        DUNGEON_GetLevelIdFromRoom113c(m, pRoom) === 0x6e
+      ) {
+        if (cid === 0x1f2) {
+          cid = nMonStats > 0x1f3 ? 0x1f3 : -1
+        } else {
+          cid = nMonStats > 0x206 ? 0x206 : -1
+        }
+      }
     }
-    if (MONSTATS2_CheckFlagBit113c(m, resolvedId, 0x0d) !== 0) {
-      return 0
+    if (pGame !== 0 && m.u8((pGame + 0x6d) >>> 0) > 0) {
+      const validCid = cid >= 0 && cid < nMonStats ? cid : -1
+      if ((validCid === 0x1c5 || validCid === 0x211) && nLevelId === 0x6e) {
+        return 0
+      }
     }
-    const pMonStatsBase = pTables !== 0 ? m.u32((pTables + 0xa78) >>> 0) >>> 0 : 0
-    const pMonStatsRec = pMonStatsBase !== 0 ? (pMonStatsBase + Math.imul(resolvedId, 0x1a8)) >>> 0 : 0
-    const wFlags = pMonStatsRec !== 0 && (m.u8((pMonStatsRec + 0x0e) >>> 0) & 4) !== 0 ? 8 : 0
-    let pUnit = spawnAtCoords(m, resolvedId, nMode, pGame, pRoom, x, y, -1, wFlags)
-    if (pUnit === 0 && (wFlags & 8) !== 0) {
-      pUnit = spawnAtCoords(m, resolvedId, nMode, pGame, pRoom, x, y, 4, wFlags)
-    }
-    return pUnit
+    return spawnRegularPresetMonster6FC66F70(
+      m,
+      pTables,
+      cid,
+      nLevelId,
+      nMode,
+      pGame,
+      pRoom,
+      x,
+      y,
+      spawnAtCoords,
+    )
   }
-  if (nType === 1 && spawnSuperUnique !== undefined) {
-    return spawnSuperUnique(m, pGame, pRoom, x, y, resolvedId)
+
+  const suOffset = (resolvedId - nMonStats) | 0
+  if (suOffset < nSuperUniques) {
+    if (spawnSuperUnique !== undefined) {
+      return spawnSuperUnique(m, pGame, pRoom, x, y, suOffset)
+    }
+    return MONUMOD_SpawnSuperUniqueMonsterPack_6FC451F0_113c(
+      m as SparseMemory113c,
+      pGame,
+      pRoom,
+      x,
+      y,
+      suOffset,
+    )
   }
-  return 0
+
+  const specialId = (suOffset - nSuperUniques) | 0
+  if (specialId < 2 || specialId > 32) {
+    return 0
+  }
+
+  const sp = presetStackPtr
+  presetStackPtr = (sp + 0x10) >>> 0
+  try {
+    switch (specialId) {
+      case 2: {
+        const visLvl = DUNGEON_GetLevelIdIfNotHidden113c(m, pRoom) | 0
+        const pMonReg = pGame !== 0 ? m.u32((pGame + 0xf0 + visLvl * 4) >>> 0) >>> 0 : 0
+        if (pMonReg === 0) return 0
+        m.setU32(sp, 0)
+        const cid = MONSTER_ChooseMonsterClass113c(m, 1, pRoom, pMonReg, pGame, sp, 0) | 0
+        if (m.u32(sp) === 0) return 0
+        MONUMOD_SpawnUniqueOrChampionBossPack_6FC44C70_113c(
+          m as SparseMemory113c,
+          pGame,
+          pRoom,
+          0,
+          x,
+          y,
+          0,
+          1,
+          cid,
+        )
+        return 0
+      }
+      case 3: {
+        const visLvl = DUNGEON_GetLevelIdIfNotHidden113c(m, pRoom) | 0
+        const pMonReg = pGame !== 0 ? m.u32((pGame + 0xf0 + visLvl * 4) >>> 0) >>> 0 : 0
+        if (pMonReg === 0) return 0
+        m.setU32(sp, 0)
+        const cid = MONSTER_ChooseMonsterClass113c(m, 1, pRoom, pMonReg, pGame, sp, 0) | 0
+        if (m.u32(sp) === 0) return 0
+        const pLeader = spawnAtCoords(m, cid, nMode, pGame, pRoom, x, y, -1, 0) >>> 0
+        if (pLeader === 0) return 0
+        MONUMOD_PromoteToBossWithSingleUMod_6FC44BF0_113c(m, pLeader, pGame, 0x10)
+        MONSTER_SpawnChampionPackMembers_6FC67880_113c(m, pLeader, cid, pGame, 0)
+        return pLeader
+      }
+      case 4:
+        return spawnAtCoords(m, 0x10a, nMode, pGame, pRoom, x, y, -1, 0)
+      case 5: {
+        const cid = nMonStats > 0x10b ? 0x10b : 0
+        return spawnAtCoords(m, cid, nMode, pGame, pRoom, x, y, -1, 0)
+      }
+      case 8:
+        return spawnAtCoords(m, 0x11c, nMode, pGame, pRoom, x, y, -1, 8)
+      case 10:
+      case 11: {
+        const wFlags = specialId === 10 ? 4 : 0
+        let steps = 0
+        if (nLevelId >= 0x4c && nLevelId <= 0x4e) {
+          steps = 1
+        } else if (nLevelId === 0x5c || nLevelId === 0x5d) {
+          steps = 2
+        }
+        const baseCid = nMonStats > 0x105 ? 0x105 : -1
+        const cid = MONSTATS_FollowSubClassChain_6FC21D30_113c(m, baseCid, steps) | 0
+        return spawnAtCoords(m, cid, nMode, pGame, pRoom, x, y, -1, wFlags)
+      }
+      case 17:
+      case 18:
+      case 22:
+      case 23:
+      case 29:
+      case 30:
+      case 31:
+      case 32: {
+        let rawCid = 0
+        let modeUse = nMode | 0
+        if (specialId === 17) {
+          rawCid = 0x13
+        } else if (specialId === 18) {
+          rawCid = 0x3a
+        } else if (specialId === 22) {
+          rawCid = 0x8d
+        } else if (specialId === 23) {
+          rawCid = 0x116
+        } else if (specialId === 29) {
+          rawCid = 0x1c5
+          modeUse = 0x0c
+        } else if (specialId === 30) {
+          rawCid = nLevelId === 0x6e ? 0x211 : 0x1ec
+          modeUse = 0x0c
+        } else if (specialId === 31) {
+          rawCid = 0x20a
+          modeUse = 0x0c
+        } else {
+          rawCid = 0x1b6
+          modeUse = 0x0c
+        }
+        const valCid = MONSTATS_ValidateClassId113c(m, rawCid) | 0
+        const subCid = DRLG_ResolveMonsterSubClassIdForRoom113c(m, pRoom, valCid) | 0
+        const dirCid = REGPOP_RemapDirectionalMonsterClassId113c(m, subCid, nLevelId) | 0
+        const pMonStatsRec = MONSTATS_GetRecordPtr113c(m, dirCid) >>> 0
+        const wFlags =
+          pMonStatsRec !== 0 && (m.u8((pMonStatsRec + 0x0e) >>> 0) & 4) !== 0 ? 8 : 0
+        let pSpawned = spawnAtCoords(m, dirCid, modeUse, pGame, pRoom, x, y, -1, wFlags) >>> 0
+        if (pSpawned === 0) {
+          pSpawned = spawnAtCoords(m, dirCid, modeUse, pGame, pRoom, x, y, 4, wFlags) >>> 0
+          if (pSpawned === 0) return 0
+        }
+        if (MONSTATS_ValidateClassId113c(m, dirCid) === 0x1b6 && pGame !== 0) {
+          const delayRoll = SEED_RollLimitedRandomNumber113c(m, (pSpawned + 0x20) >>> 0, 0x32) | 0
+          const targetFrame = ((m.u32((pGame + 0xa8) >>> 0) | 0) + delayRoll + 0xfa) >>> 0
+          EVENT_SetEventFull113c(m, pGame, pSpawned, 7, targetFrame, 0, 0, 0)
+        }
+        if (modeUse === 0x0c) {
+          m.setU32((pSpawned + 0xc4) >>> 0, (m.u32((pSpawned + 0xc4) >>> 0) | 0x02000000) >>> 0)
+        }
+        return pSpawned
+      }
+      case 24:
+      case 26: {
+        if (pGame !== 0 && m.u8((pGame + 0x6d) >>> 0) > 0) {
+          return 0
+        }
+        const rawCid = specialId === 24 ? (nLevelId === 0x6e ? 0x211 : 0x1ec) : 0x1c5
+        const valCid = MONSTATS_ValidateClassId113c(m, rawCid) | 0
+        const subCid = DRLG_ResolveMonsterSubClassIdForRoom113c(m, pRoom, valCid) | 0
+        REGPOP_SpawnMonStatsGroupPackAtSubtile_6FC670F0_113c(m, y, x, subCid, pGame, pRoom)
+        return 0
+      }
+      default:
+        return 0
+    }
+  } finally {
+    presetStackPtr = sp
+  }
 }
 

@@ -130,6 +130,7 @@ import {
 } from './regpop-spawn-113c.ts'
 import { CLIENTS_GetPlayerUnit113c } from './replay-final11-113c.ts'
 import { EVENT_SetEventFull113c } from './timer-wheel.ts'
+import { hitD2GameVa113c } from '../va-trace-113c.ts'
 
 export type D2KernMemory113c = Memory113c
 
@@ -151,6 +152,7 @@ export function QUESTS_SpawnQuestMonsterWithRetryRings_6FC561E0_113c(
   bSetFlag0x03000000: number,
   nMonsterId: number,
 ): number {
+  hitD2GameVa113c(0x6FC561E0)
   const sp = k2W4B2StackPtr
   k2W4B2StackPtr = (sp + 0x60) >>> 0
   try {
@@ -277,6 +279,7 @@ export function PLAYER_FreePlayerDataQuestAndList98_6FC576B0_113c(
   pPlayerUnit: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC576B0)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit)
   if (pPlayerData === 0) return
   PLAYER_FreePlayerDataList98_6FC57500_113c(m, pPlayerData, pGame)
@@ -296,6 +299,7 @@ export function PLAYER_AllocPlayerDataQuestBitBuffers_6FC576F0_113c(
   pPlayerUnit: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC576F0)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit)
   if (pPlayerData === 0) return
   for (let i = 0; i < 3; i++) {
@@ -315,6 +319,7 @@ export function MISSILES_ApplyDemonUndeadElemBonus_6FC5A790_113c(
   pTargetUnit: number,
   pDamage: number,
 ): void {
+  hitD2GameVa113c(0x6FC5A790)
   if (pMissile === 0) return
   const nMissileId = m.u32((pMissile + 0x04) >>> 0) | 0
   if (nMissileId < 0) return
@@ -346,6 +351,7 @@ export function MISSILES_ConvertPhysToElemByCalc90_6FC5A850_113c(
   pTargetUnit: number,
   pDamage: number,
 ): void {
+  hitD2GameVa113c(0x6FC5A850)
   if (pMissile === 0) return
   const nMissileId = m.u32((pMissile + 0x04) >>> 0) | 0
   if (nMissileId < 0) return
@@ -391,6 +397,7 @@ export function MISSILE_SrvDmg_HealOwnerFromElemDamage_6FC5A920_113c(
   pMissile: number,
   pTargetUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC5A920)
   if (pMissile === 0) return 1
   const nMissileId = m.u32((pMissile + 0x04) >>> 0) | 0
   if (nMissileId < 0) return 1
@@ -437,6 +444,7 @@ export function MISSILE_SrvDmg_SpawnRing16SubMissiles_6FC5D800_113c(
   pMissile: number,
   _pTargetUnit = 0,
 ): number {
+  hitD2GameVa113c(0x6FC5D800)
   if (pMissile === 0) return 1
   const nMissileId = m.u32((pMissile + 0x04) >>> 0) | 0
   if (nMissileId < 0) return 1
@@ -485,6 +493,7 @@ export function MISSILE_SrvDmg_SpawnRadial8SubMissiles_6FC5DA60_113c(
   pMissile: number,
   pTargetUnit = 0,
 ): number {
+  hitD2GameVa113c(0x6FC5DA60)
   if (pMissile === 0) return 1
   const nMissileId = m.u32((pMissile + 0x04) >>> 0) | 0
   if (nMissileId < 0) return 1
@@ -531,6 +540,7 @@ export function MISSILE_SrvDmg_ApplyTargetDmgAndAuraSubMissiles_6FC5DB30_113c(
   pMissile: number,
   _pTargetUnit = 0,
 ): number {
+  hitD2GameVa113c(0x6FC5DB30)
   if (pMissile === 0) return 1
   const nMissileId = m.u32((pMissile + 0x04) >>> 0) | 0
   if (nMissileId < 0) return 1
@@ -634,6 +644,7 @@ export function MISSILE_SrvDmg_SpawnAuraSubMissilesStrictCount_6FC5DD60_113c(
   pMissile: number,
   _pTargetUnit = 0,
 ): number {
+  hitD2GameVa113c(0x6FC5DD60)
   if (pMissile === 0) return 1
   const nMissileId = m.u32((pMissile + 0x04) >>> 0) | 0
   if (nMissileId < 0) return 1
@@ -718,6 +729,7 @@ export function MISSILE_SrvDmg_SpawnRing16WithOuterStepAndVel_6FC5E330_113c(
   pMissile: number,
   pTargetUnit = 0,
 ): number {
+  hitD2GameVa113c(0x6FC5E330)
   if (pMissile === 0) return 3
   const nMissileId = m.u32((pMissile + 0x04) >>> 0) | 0
   if (nMissileId < 0) return 3
@@ -766,6 +778,7 @@ export function MISSILE_SrvDo_LinearWithSkillCalcSubMissileMask45_6FC604D0_113c(
   pGame: number,
   pMissile: number,
 ): number {
+  hitD2GameVa113c(0x6FC604D0)
   if (pMissile === 0) return 2
   const nMissileId = m.u32((pMissile + 0x04) >>> 0) | 0
   if (nMissileId < 0) return 2
@@ -818,6 +831,7 @@ export function MISSILE_SrvDo_LinearWithSkillCalcSubMissileMask05_6FC613D0_113c(
   pGame: number,
   pMissile: number,
 ): number {
+  hitD2GameVa113c(0x6FC613D0)
   let pMissilesTxt = 0
   if (pMissile !== 0) {
     const nMissileId = m.u32((pMissile + 0x04) >>> 0) | 0
@@ -890,6 +904,7 @@ export function MISSILE_SrvDo_LinearWithParamScaledSubMissileMask05_6FC61670_113
   pGame: number,
   pMissile: number,
 ): number {
+  hitD2GameVa113c(0x6FC61670)
   let pMissilesTxt = 0
   if (pMissile !== 0) {
     const nMissileId = m.u32((pMissile + 0x04) >>> 0) | 0
@@ -931,6 +946,7 @@ export function MISSILE_SrvDo_LinearWithTrailingCalc80SubMissile_6FC61B80_113c(
   pGame: number,
   pMissile: number,
 ): number {
+  hitD2GameVa113c(0x6FC61B80)
   if (pMissile !== 0) {
     const nMissileId = m.u32((pMissile + 0x04) >>> 0) | 0
     if (nMissileId >= 0) {
@@ -989,6 +1005,7 @@ export function MISSILE_SrvDo_StoppedRandomSlotSubMissile_6FC61C30_113c(
   pGame: number,
   pMissile: number,
 ): number {
+  hitD2GameVa113c(0x6FC61C30)
   if (pMissile === 0) return 2
   const nMissileId = m.u32((pMissile + 0x04) >>> 0) | 0
   if (nMissileId < 0) return 2
@@ -1070,6 +1087,7 @@ export function MISSILE_SrvDo_GuidedWithPathFlag08SubMissile_6FC61DE0_113c(
   pGame: number,
   pMissile: number,
 ): number {
+  hitD2GameVa113c(0x6FC61DE0)
   if (pMissile === 0) return 2
   const nMissileId = m.u32((pMissile + 0x04) >>> 0) | 0
   if (nMissileId < 0) return 2
@@ -1115,6 +1133,7 @@ export function SKILLS_ApplySecondaryAuraAndSpawnChargedMissile_6FC663A0_113c(
   nChargeLevel: number,
   pTarget = pUnit,
 ): number {
+  hitD2GameVa113c(0x6FC663A0)
   if ((nChargeLevel | 0) <= 0) return 0
   if (
     SKILLS_ApplySecondaryAuraStateStats_6FC65EE0_113c(
@@ -1148,6 +1167,7 @@ export function MONSTER_SendMercStatPackets9EForPlayer_6FC68950_113c(
   pPlayerUnit: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC68950)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit)
   if (pPlayerData === 0) return
   const pTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C))
@@ -1210,6 +1230,7 @@ export function CLIENTS_AppendSaveDataChunk_6FC6A190_113c(
   nTotalSize: number,
   dwSaveArg178: number,
 ): number {
+  hitD2GameVa113c(0x6FC6A190)
   if (m.u32(0x6fd31c18) === 0) return 0
   let bCompleted = 0
   let pClient = m.u32((0x6fd307b8 + ((dwClientId & 0xff) << 2)) >>> 0)
@@ -1259,6 +1280,7 @@ export function CLIENTS_CollectAndRecordNearbyPlayerPositions_6FC6AD80_113c(
   pClient: number,
   nMaxCount: number,
 ): void {
+  hitD2GameVa113c(0x6FC6AD80)
   const pRoom = m.u32((pClient + 0x1b4) >>> 0);
   if (pRoom === 0) {
     throw new Error('D2Game_6FC6AD80: pRoom is null');
@@ -1322,6 +1344,7 @@ export function SKILLS_SrvDo_ApplyRadiusAuraStatList_6FC6C2A0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC6C2A0)
   if ((nSkillId | 0) < 0) {
     return 0;
   }
@@ -1405,6 +1428,7 @@ export function SKILLS_SrvDo_CorpseRing16SubMissiles_6FC70190_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC70190)
   const pTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C));
   let pSkillsTxt = 0;
   if ((nSkillId | 0) >= 0 && (nSkillId | 0) < (m.u32((pTables + 0xba0) >>> 0) | 0)) {
@@ -1461,6 +1485,7 @@ export function PLAYERSAVE_WriteInventoryOrCachedSaveBuffer_6FC73B40_113c(
   arg4: number,
   arg5: number,
 ): number {
+  hitD2GameVa113c(0x6FC73B40)
   if (bUseCached5C !== 0 && pPlayerUnit !== 0 && m.u32(pPlayerUnit) === 0) {
     const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit);
     const pCached = m.u32((pPlayerData + 0x5c) >>> 0);
@@ -1505,6 +1530,7 @@ export function ACT5Q6_SendAlert24IfQuest28Active_6FC78D40_113c(
   pPlayerUnit: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC78D40)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit);
   const nDiff = m.u8((pGame + 0x6d) >>> 0);
   const pFlags = m.u32((pPlayerData + 0x10 + nDiff * 4) >>> 0);
@@ -1530,6 +1556,7 @@ export function ACT5Q5_SendAlert23IfQuest27Active_6FC78F90_113c(
   pPlayerUnit: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC78F90)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit);
   const nDiff = m.u8((pGame + 0x6d) >>> 0);
   const pFlags = m.u32((pPlayerData + 0x10 + nDiff * 4) >>> 0);
@@ -1556,6 +1583,7 @@ export function ACT5Q4_SendAlert22IfQuest26Active_6FC790C0_113c(
   pPlayerUnit: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC790C0)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit);
   const nDiff = m.u8((pGame + 0x6d) >>> 0);
   const pFlags = m.u32((pPlayerData + 0x10 + nDiff * 4) >>> 0);
@@ -1582,6 +1610,7 @@ export function ACT5Q3_SendAlert21IfQuest25Active_6FC791D0_113c(
   pPlayerUnit: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC791D0)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit);
   const nDiff = m.u8((pGame + 0x6d) >>> 0);
   const pFlags = m.u32((pPlayerData + 0x10 + nDiff * 4) >>> 0);
@@ -1608,6 +1637,7 @@ export function ACT5Q2_SendAlert20IfQuest24Active_6FC793F0_113c(
   pPlayerUnit: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC793F0)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit);
   const nDiff = m.u8((pGame + 0x6d) >>> 0);
   const pFlags = m.u32((pPlayerData + 0x10 + nDiff * 4) >>> 0);
@@ -1634,6 +1664,7 @@ export function ACT5Q1_SendAlert1FIfQuest23Active_6FC79620_113c(
   pPlayerUnit: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC79620)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit);
   const nDiff = m.u8((pGame + 0x6d) >>> 0);
   const pFlags = m.u32((pPlayerData + 0x10 + nDiff * 4) >>> 0);
@@ -1659,6 +1690,7 @@ export function ACT5Q6_CallbackSendPacket50Quest24_6FC799D0_113c(
   pPlayerUnit: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC799D0)
   ACT5Q6_SendPacket50Quest24WordA4_6FC78A40_113c(m, pPlayerUnit, pGame);
   return 0;
 }
@@ -1675,6 +1707,7 @@ export function ACT5Q6_CheckLevel84AndCompleteQuest28_6FC799E0_113c(
   pPlayerUnit: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC799E0)
   const pPlayerData0 = UNITS_GetPlayerData113c(m, pPlayerUnit);
   const nDiff0 = m.u8((pGame + 0x6d) >>> 0);
   const pFlags0 = m.u32((pPlayerData0 + 0x10 + nDiff0 * 4) >>> 0);
@@ -1711,6 +1744,7 @@ export function ACT5Q0_InitQuest2ADescriptor_6FC7A7C0_113c(
   m: D2KernMemory113c,
   pQuest: number,
 ): void {
+  hitD2GameVa113c(0x6FC7A7C0)
   const pCallbacks = (pQuest + 0xa0) >>> 0;
   for (let i = 0; i < 0x0f; i = (i + 1) >>> 0) {
     m.setU32((pCallbacks + i * 4) >>> 0, 0);
@@ -1738,6 +1772,7 @@ export function ACT5Q3_ApplyScrollOfResistanceAcrossDifficulties_6FC7B0B0_113c(
   pPlayerUnit: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC7B0B0)
   let nTotalBonus = 0;
   const pData0 = UNITS_GetPlayerData113c(m, pPlayerUnit);
   if (DRLGWARP_TestRoomTileBit113c(m, m.u32((pData0 + 0x10) >>> 0), 0x25, 7) !== 0) {
@@ -1768,6 +1803,7 @@ export function ACT5Q2_SpawnMonster209NearUnitOffsetMinus5_6FC7C1F0_113c(
   pGame: number,
   pRoom: number,
 ): void {
+  hitD2GameVa113c(0x6FC7C1F0)
   const sp = k2W4B2StackPtr;
   k2W4B2StackPtr = (sp + 0x34) >>> 0;
   try {
@@ -1819,6 +1855,7 @@ export function ACT5Q1_SpawnShenkAndAttachQuestData_6FC7C3A0_113c(
   m: D2KernMemory113c,
   pOp: number,
 ): void {
+  hitD2GameVa113c(0x6FC7C3A0)
   const pGame = m.u32(pOp);
   const pQuestControl = m.u32((pGame + 0x10f4) >>> 0);
   if (pQuestControl === 0) {
@@ -1904,6 +1941,7 @@ export function ACT5Q6_SpawnDestructionsEndPortalObject_6FC7D760_113c(
   pUnit: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC7D760)
   const pRoom = UNITS_GetRoom113c(m, pUnit);
   if (pRoom === 0 || DUNGEON_GetLevelIdFromRoom113c(m, pRoom) !== 0x84) {
     return 0;
@@ -1984,6 +2022,7 @@ export function ACT5Q3_FindQuest21AndThawFrozenAnya_6FC7DEF0_113c(
   m: D2KernMemory113c,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC7DEF0)
   const pQuestControl = m.u32((pGame + 0x10f4) >>> 0);
   if (pQuestControl === 0) {
     return;
@@ -2026,6 +2065,7 @@ export function ACT5Q5_ResetAncientsToStatuesAndAltar_6FC7E0E0_113c(
   pQuest: number,
   pQuestData: number,
 ): void {
+  hitD2GameVa113c(0x6FC7E0E0)
   for (let i = 0; i < 3; i = (i + 1) >>> 0) {
     if (m.u8((pQuestData + 0x2c + i) >>> 0) !== 0) {
       const dwMonId = m.u32((pQuestData + 0x20 + i * 4) >>> 0);
@@ -2081,6 +2121,7 @@ export function ACT5Q3_CleanupFrozenAnyaAndTownNpcState_6FC7EC30_113c(
   m: D2KernMemory113c,
   pQuest: number,
 ): void {
+  hitD2GameVa113c(0x6FC7EC30)
   const pQuestData = m.u32((pQuest + 0x18) >>> 0);
   if (
     m.u8((pQuestData + 0x91) >>> 0) !== 0 &&
@@ -2169,6 +2210,7 @@ export function ACT1Q6_SendAlert06IfQuest06Active_6FC82700_113c(
   pPlayerUnit: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC82700)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit);
   const nDiff = m.u8((pGame + 0x6d) >>> 0);
   const pFlags = m.u32((pPlayerData + 0x10 + nDiff * 4) >>> 0);
@@ -2195,6 +2237,7 @@ export function ACT1Q5_SendAlert05IfQuest05Active_6FC82870_113c(
   pPlayerUnit: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC82870)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit);
   const nDiff = m.u8((pGame + 0x6d) >>> 0);
   const pFlags = m.u32((pPlayerData + 0x10 + nDiff * 4) >>> 0);
@@ -2220,6 +2263,7 @@ export function ACT1Q4_SendAlert04IfQuest04Active_6FC82A80_113c(
   pPlayerUnit: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC82A80)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit);
   const nDiff = m.u8((pGame + 0x6d) >>> 0);
   const pFlags = m.u32((pPlayerData + 0x10 + nDiff * 4) >>> 0);
@@ -2246,6 +2290,7 @@ export function ACT1Q3_SendAlert03IfQuest03Active_6FC82AE0_113c(
   pPlayerUnit: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC82AE0)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit);
   const nDiff = m.u8((pGame + 0x6d) >>> 0);
   const pFlags = m.u32((pPlayerData + 0x10 + nDiff * 4) >>> 0);
@@ -2272,6 +2317,7 @@ export function ACT1Q2_SendAlert02IfQuest02Active_6FC82C00_113c(
   pPlayerUnit: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC82C00)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit);
   const nDiff = m.u8((pGame + 0x6d) >>> 0);
   const pFlags = m.u32((pPlayerData + 0x10 + nDiff * 4) >>> 0);

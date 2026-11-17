@@ -19,6 +19,7 @@ import {
 } from './items.ts'
 import { ITEMS_AddOrSetStatOnStatList113c } from './statlist.ts'
 import { UNIT_ITEM } from './unit.ts'
+import { hitD2CommonVa113c } from '../va-trace-113c.ts'
 
 export const D2COMMON_LOG_LOCK_VA_113C = 0x6fdf1470
 export const D2COMMON_LOG_ENABLED_VA_113C = 0x6fdf1474
@@ -38,6 +39,7 @@ export function LOGGING_WriteFormattedEntry113c(
   szFormat: number,
   vaList: number,
 ): void {
+  hitD2CommonVa113c(0x6FD62AF0)
   const bLogEnabled = m.u32(D2COMMON_LOG_ENABLED_VA_113C)
   if (bLogEnabled === 0) return
 
@@ -83,6 +85,7 @@ export function LOGGING_WriteLockedEntry113c(
   szFormat: number,
   pVaList = 0,
 ): void {
+  hitD2CommonVa113c(0x6FD62C00)
   if (m.u32(D2COMMON_LOG_LOCK_VA_113C) === 0) return
   m.u32(D2COMMON_LOG_LOCK_VA_113C)
   LOGGING_WriteFormattedEntry113c(m, a0, a1, a2, a3, szFile, nLine, szFormat, pVaList)
@@ -134,6 +137,7 @@ export function ITEMMODS_ApplyPropertySkillOnHit113c(
   fStatListFlags: number,
   _unused?: number,
 ): number {
+  hitD2CommonVa113c(0x6FD98100)
   const prop = pProp >>> 0
   if (prop === 0) return 0
   const layer = rollPropRangeWithSeed113c(m, prop, pUnit)
@@ -169,6 +173,7 @@ export function ITEMMODS_ApplyPropertyAura113c(
   fStatListFlags: number,
   _unused?: number,
 ): number {
+  hitD2CommonVa113c(0x6FD98190)
   const prop = pProp >>> 0
   if (prop === 0) return 0
   const val = rollPropRangeWithSeed113c(m, prop, pUnit)
@@ -205,6 +210,7 @@ export function ITEMMODS_ApplyPropertyClassSkill113c(
   fStatListFlags: number,
   _unused?: number,
 ): number {
+  hitD2CommonVa113c(0x6FD98220)
   const prop = pProp >>> 0
   if (prop === 0) return 0
   const layer = rollPropRangeWithSeed113c(m, prop, pUnit)
@@ -241,6 +247,7 @@ export function ITEMMODS_ApplyPropertySingleSkill113c(
   fStatListFlags: number,
   _unused?: number,
 ): number {
+  hitD2CommonVa113c(0x6FD982B0)
   const prop = pProp >>> 0
   if (prop === 0) return 0
   const val = rollPropRangeWithSeed113c(m, prop, pUnit)
@@ -276,6 +283,7 @@ export function ITEMMODS_ApplyPropertyClassSkillTab113c(
   fStatListFlags: number,
   _unused?: number,
 ): number {
+  hitD2CommonVa113c(0x6FD98470)
   const prop = pProp >>> 0
   if (prop === 0) return 0
   let val = nValue | 0
@@ -324,6 +332,7 @@ export function ITEMMODS_ApplyPropertySimpleStat113c(
   fStatListFlags: number,
   _unused?: number,
 ): number {
+  hitD2CommonVa113c(0x6FD984F0)
   const prop = pProp >>> 0
   if (prop === 0) return 0
   let val = nValue | 0
@@ -367,6 +376,7 @@ export function ITEMMODS_ApplyPropertyOskill113c(
   fStatListFlags: number,
   _unused?: number,
 ): number {
+  hitD2CommonVa113c(0x6FD98550)
   const prop = pProp >>> 0
   if (prop === 0) return 0
   let val = nValue | 0
@@ -415,6 +425,7 @@ export function ITEMMODS_ApplyPropertySimpleLayer0_113c(
   fStatListFlags: number,
   _unused?: number,
 ): number {
+  hitD2CommonVa113c(0x6FD985D0)
   const prop = pProp >>> 0
   if (prop === 0) return 0
   let val = nValue | 0
@@ -458,6 +469,7 @@ export function ITEMMODS_ApplyPropertyResetAndRoll113c(
   fStatListFlags: number,
   _unused?: number,
 ): number {
+  hitD2CommonVa113c(0x6FD98960)
   const prop = pProp >>> 0
   if (prop === 0) return 0
   const u = pUnit >>> 0
@@ -505,6 +517,7 @@ export function ITEMMODS_ApplyPropertyCondResetAndRoll113c(
   fStatListFlags: number,
   _unused?: number,
 ): number {
+  hitD2CommonVa113c(0x6FD989D0)
   const prop = pProp >>> 0
   if (prop === 0) return 0
   const u = pUnit >>> 0
@@ -552,6 +565,7 @@ export function ITEMMODS_ApplyPropertyResetAndSeedRoll113c(
   fStatListFlags: number,
   _unused?: number,
 ): number {
+  hitD2CommonVa113c(0x6FD98A40)
   const prop = pProp >>> 0
   if (prop === 0) return 0
   const u = pUnit >>> 0
@@ -591,6 +605,7 @@ export function ITEMMODS_ApplyPropertyCondResetAndSeedRoll113c(
   fStatListFlags: number,
   _unused?: number,
 ): number {
+  hitD2CommonVa113c(0x6FD98AE0)
   const prop = pProp >>> 0
   if (prop === 0) return 0
   const u = pUnit >>> 0

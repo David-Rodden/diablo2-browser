@@ -120,6 +120,7 @@ import {
   PATH_RemoveUnitCollisionFootprint113c,
   PATH_SetVelocity113c,
 } from './path.ts'
+import { hitD2CommonVa113c } from '../va-trace-113c.ts'
 
 export const UNIT_PLAYER = 0
 export const UNIT_MONSTER = 1
@@ -139,6 +140,7 @@ const UNITS_CPP_FILE_113C = '..\\Source\\D2Common\\UNITS\\Units.cpp'
 
 /** `@va D2Common:0x6FD7F370` (`D2Common.#11153` `UNIT_Alloc`): allocate a `0xF4`-byte `D2UnitStrc`. */
 export function UNIT_Alloc113c(m: Memory113c, unitType = 0): number {
+  hitD2CommonVa113c(0x6FD7F370)
   const pUnit = m.alloc(D2UNIT_ALLOC_SIZE_113C)
   m.set(pUnit, D2UnitStrc.dwUnitType, unitType >>> 0)
   return pUnit
@@ -183,6 +185,7 @@ export function UNITS_InitPath113c(m: Memory113c, pUnit: number, x: number, y: n
  * stdcall `[esp+4] = pUnit`, `ret 0x4` -> `D2ActiveRoomStrc*`).
  */
 export function UNITS_GetRoom113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD7FE10)
   if (pUnit >>> 0 === 0) {
     throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x896)
   }
@@ -206,6 +209,7 @@ export function UNITS_SetRoom113c(m: Memory113c, pUnit: number, pRoom: number): 
 
 /** `D2Common 0x6FD51050` (`UNITS_GetX`, `ecx = pUnit`). */
 export function UNITS_GetX113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD51050)
   const unitType = m.get(pUnit, D2UnitStrc.dwUnitType)
   const pPath = m.get(pUnit, D2UnitStrc.pPath)
   if (unitType === UNIT_OBJECT || unitType === UNIT_ITEM || unitType === UNIT_TILE) {
@@ -220,6 +224,7 @@ export function UNITS_GetX113c(m: Memory113c, pUnit: number): number {
  * (0x6FD51080 `mov eax, [ecx]`) and no path null test for static paths (0x6FD510A0..0x6FD510A3).
  */
 export function UNITS_GetY113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD51080)
   const unitType = m.get(pUnit, D2UnitStrc.dwUnitType)
   const pPath = m.get(pUnit, D2UnitStrc.pPath)
   if (unitType === UNIT_OBJECT || unitType === UNIT_ITEM || unitType === UNIT_TILE) {
@@ -236,6 +241,7 @@ export function UNITS_GetY113c(m: Memory113c, pUnit: number): number {
  * 0x6FDB65EE `add eax, 0x1C` + 0x6FDB6600 `jne` else `push 0x88` (address of `pUpdateList` is null).
  */
 export function UNITROOM_RefreshUnit113c(m: Memory113c, pUnit: number): void {
+  hitD2CommonVa113c(0x6FDB65C0)
   if (pUnit >>> 0 === 0) {
     throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x75)
   }
@@ -263,6 +269,8 @@ export function UNITROOM_RefreshUnit113c(m: Memory113c, pUnit: number): void {
  * returns `1` when bit `0x400` is set; otherwise `0` (evil).
  */
 export function UNIT_GetAlignment113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD891F0)
+  hitD2CommonVa113c(0x6FD8B650)
   if (pUnit === 0) return 2
   const uType = m.get(pUnit, D2UnitStrc.dwUnitType)
   if (uType !== UNIT_MONSTER) return 2
@@ -283,6 +291,7 @@ export function UNIT_GetAlignment113c(m: Memory113c, pUnit: number): number {
  * `pRoomUpdateNext (+0xE0)` on each unit, then zeroes `pRoom->pUpdateList`.
  */
 export function UNITROOM_ClearUpdateQueue113c(m: Memory113c, pRoom: number): void {
+  hitD2CommonVa113c(0x6FDB63B0)
   if (pRoom === 0) return
   let cur = m.get(pRoom, D2ActiveRoomStrc.pUpdateList)
   while (cur !== 0) {
@@ -296,6 +305,7 @@ export function UNITROOM_ClearUpdateQueue113c(m: Memory113c, pRoom: number): voi
 
 /** `D2Common.#10531` (`0x6FDB6800` `UNITROOM_AddUnitToRoom`). */
 export function UNITROOM_AddUnitToRoom113c(m: Memory113c, pUnit: number, pRoom: number): void {
+  hitD2CommonVa113c(0x6FDB6800)
   if (pUnit === 0 || pRoom === 0) return
   const prevFirst = m.get(pRoom, D2ActiveRoomStrc.pUnitFirst)
   m.set(pUnit, D2UnitStrc.pRoomUnitNext, prevFirst)
@@ -317,6 +327,7 @@ export function UNITROOM_AddUnitToRoom113c(m: Memory113c, pUnit: number, pRoom: 
  *   path room via `0x6FD7FE70` only when the unit was found in the room list.
  */
 export function UNITROOM_RemoveUnitFromRoom113c(m: Memory113c, pUnit: number): void {
+  hitD2CommonVa113c(0x6FDB6700)
   if (pUnit >>> 0 === 0) {
     throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0xef)
   }
@@ -372,6 +383,7 @@ export function UNITROOM_RemoveUnitFromRoom113c(m: Memory113c, pUnit: number): v
  * (no-op when absent) and zeroes its `pRoomUpdateNext`.
  */
 export function UNITROOM_UnlinkUnitFromUpdateList113c(m: Memory113c, pUnit: number): void {
+  hitD2CommonVa113c(0x6FDB6410)
   if (pUnit >>> 0 === 0) {
     throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x127)
   }
@@ -430,6 +442,7 @@ export function UNITS_GetFrameAndFrameCount113c(
   pFrame: number,
   pFrameCount: number,
 ): void {
+  hitD2CommonVa113c(0x6FD7EE60)
   const u = pUnit >>> 0
   if (u === 0) {
     m.setU32(pFrame >>> 0, 0)
@@ -458,6 +471,7 @@ export function UNITS_IsWalkModeForType113c(
   nUnitType: number,
   nMode: number,
 ): number {
+  hitD2CommonVa113c(0x6FD7EF90)
   const t = nUnitType | 0
   const mode = nMode | 0
   if (t === 0) return mode === 9 ? 1 : 0
@@ -474,6 +488,7 @@ export function UNITS_IsGetHitModeForType113c(
   nUnitType: number,
   nMode: number,
 ): number {
+  hitD2CommonVa113c(0x6FD7EFC0)
   const t = nUnitType | 0
   const mode = nMode | 0
   if (t === 0) return mode === 4 ? 1 : 0
@@ -490,6 +505,7 @@ export function UNITS_IsRunModeForType113c(
   nUnitType: number,
   nMode: number,
 ): number {
+  hitD2CommonVa113c(0x6FD7F010)
   const t = nUnitType | 0
   const mode = nMode | 0
   if (t === 0) return mode === 0x13 ? 1 : 0
@@ -502,6 +518,7 @@ export function UNITS_IsRunModeForType113c(
  * stdcall `[esp+4] = pUnit`, `ret 4` -> `dwSeqMode (+0x40)` or `dwAnimMode (+0x10)`).
  */
 export function UNITS_GetAnimOrSeqMode113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD7F1B0)
   const u = pUnit >>> 0
   if (u === 0) return 0
   const uType = m.get(u, D2UnitStrc.dwUnitType)
@@ -524,6 +541,7 @@ export function UNITS_GetWeaponSpeedAnimRate113c(
   nWeapClass: number,
   nClassId: number,
 ): number {
+  hitD2CommonVa113c(0x6FD7FAC0)
   const t = nUnitType | 0
   const wc = nWeapClass | 0
   const cid = nClassId | 0
@@ -552,6 +570,7 @@ export function UNITS_GetBaseAnimSpeed113c(
   nClassId: number,
   nAnimMode: number,
 ): number {
+  hitD2CommonVa113c(0x6FD7FB10)
   const t = nUnitType | 0
   const cid = nClassId | 0
   const mode = nAnimMode | 0
@@ -584,6 +603,7 @@ export function UNITS_GetBaseWalkVelocity113c(
   nUnitType: number,
   nClassId: number,
 ): number {
+  hitD2CommonVa113c(0x6FD80D50)
   const t = nUnitType | 0
   const cid = nClassId | 0
   if (t === 0) {
@@ -617,6 +637,7 @@ export function UNITS_GetBaseWalkVelocity113c(
  * stdcall `[esp+4] = nState`, `ret 4` -> masked bit word or `0`).
  */
 export function UNITS_CheckStateMaskOnCurse113c(m: Memory113c, nState: number): number {
+  hitD2CommonVa113c(0x6FD83A70)
   const state = nState | 0
   if (state < 0) return 0
   const dt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
@@ -633,6 +654,7 @@ export function UNITS_CheckStateMaskOnCurse113c(m: Memory113c, nState: number): 
  * stdcall `[esp+4] = nState`, `ret 4` -> masked bit word or `0`).
  */
 export function UNITS_CheckStateMaskExp113c(m: Memory113c, nState: number): number {
+  hitD2CommonVa113c(0x6FD83B00)
   const state = nState | 0
   if (state < 0) return 0
   const dt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
@@ -649,6 +671,7 @@ export function UNITS_CheckStateMaskExp113c(m: Memory113c, nState: number): numb
  * stdcall `[esp+4] = nState`, `ret 4` -> masked bit word or `0`).
  */
 export function UNITS_CheckStateMaskAura113c(m: Memory113c, nState: number): number {
+  hitD2CommonVa113c(0x6FD83B40)
   const state = nState | 0
   if (state < 0) return 0
   const dt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
@@ -665,6 +688,7 @@ export function UNITS_CheckStateMaskAura113c(m: Memory113c, nState: number): num
  * stdcall `[esp+4] = pUnit`, `ret 4` -> `(pUnit->dwFlags2 >> 3) & 1` or `0`).
  */
 export function UNITS_IsShapeshifted113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD83B80)
   const u = pUnit >>> 0
   if (u === 0) return 0
   return (m.get(u, D2UnitStrc.dwFlags2) >>> 3) & 1
@@ -675,6 +699,7 @@ export function UNITS_IsShapeshifted113c(m: Memory113c, pUnit: number): number {
  * stdcall `[esp+4] = pUnit`, `ret 4` -> `pStatListEx->pStateFlags (+0x58)` or `0`).
  */
 export function UNITS_GetStateFlagsPtr113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD83CA0)
   const u = pUnit >>> 0
   if (u === 0) return 0
   const pStatListEx = m.get(u, D2UnitStrc.pStatListEx)
@@ -688,6 +713,7 @@ export function UNITS_GetStateFlagsPtr113c(m: Memory113c, pUnit: number): number
  * stdcall `[esp+4] = pUnit`, `ret 4` -> `1` if any dirty/gfx state word is non-zero, else `0`).
  */
 export function UNITS_HasAnyGfxStateFlag113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD84330)
   const u = pUnit >>> 0
   if (u === 0) return 0
   const pStatListEx = m.get(u, D2UnitStrc.pStatListEx)
@@ -712,6 +738,7 @@ export function UNITS_HasAnyGfxStateFlag113c(m: Memory113c, pUnit: number): numb
  * stdcall `[esp+4] = pUnit`, `ret 4`, void).
  */
 export function UNITS_ClearGfxStateFlags113c(m: Memory113c, pUnit: number): void {
+  hitD2CommonVa113c(0x6FD84390)
   const u = pUnit >>> 0
   if (u === 0) return
   const pStatListEx = m.get(u, D2UnitStrc.pStatListEx)
@@ -743,6 +770,7 @@ const SGPT_OBJECTS_TXT_COUNT_VA_113C = 0x6fdf0b98
  * stdcall `[esp+4] = pUnit`, `ret 0x4` -> `number`).
  */
 export function UNITS_IsDoor113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD7EDA0)
   if (pUnit >>> 0 === 0) {
     throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0xe10)
   }
@@ -764,6 +792,7 @@ export function UNITS_GetShiftedFrameMetrics113c(
   pOutFrame: number,
   pOutFrameCount: number,
 ): void {
+  hitD2CommonVa113c(0x6FD7EEC0)
   if (pUnit >>> 0 === 0) {
     throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0xd8f)
   }
@@ -790,6 +819,7 @@ export function UNITS_GetShiftedFrameMetrics113c(
  * stdcall `[esp+4] = pUnit`, `ret 0x4` -> `1` or `0`).
  */
 export function UNITS_HasAnimFinished113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD7EF30)
   if (pUnit >>> 0 === 0) {
     throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0xd81)
   }
@@ -813,6 +843,7 @@ export function UNITS_SetSeqFrameFromLowByte113c(
   pUnit: number,
   nFrame: number,
 ): void {
+  hitD2CommonVa113c(0x6FD7F0C0)
   if (pUnit >>> 0 === 0) {
     throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0xace)
   }
@@ -825,6 +856,7 @@ export function UNITS_SetSeqFrameFromLowByte113c(
  * stdcall `[esp+4] = pUnit`, `ret 0x4`, void).
  */
 export function UNITS_FreeStaticPath113c(m: Memory113c, pUnit: number): void {
+  hitD2CommonVa113c(0x6FD7F3E0)
   const pStaticPath = m.get(pUnit, D2UnitStrc.pPath)
   if (pStaticPath !== 0) {
     m.get(pUnit, D2UnitStrc.pMemPool)
@@ -837,6 +869,7 @@ export function UNITS_FreeStaticPath113c(m: Memory113c, pUnit: number): void {
  * stdcall `[esp+4] = pUnit`, `ret 0x4`, void).
  */
 export function UNITS_AllocStaticPath113c(m: Memory113c, pUnit: number): void {
+  hitD2CommonVa113c(0x6FD7F410)
   const existing = m.get(pUnit, D2UnitStrc.pPath)
   if (existing === 0) {
     m.get(pUnit, D2UnitStrc.pMemPool)
@@ -855,6 +888,7 @@ export function UNITS_AllocStaticPath113c(m: Memory113c, pUnit: number): void {
  * stdcall `[esp+4] = pUnit`, `ret 0x4` -> `number`).
  */
 export function UNITS_GetInteractItemGuid113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD7F460)
   if (pUnit >>> 0 === 0) {
     throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0xfb4)
   }
@@ -877,6 +911,7 @@ export function UNITS_SetInteractItem113c(
   pPlayer: number,
   pItem: number,
 ): void {
+  hitD2CommonVa113c(0x6FD7F4B0)
   if (pPlayer >>> 0 === 0 || m.get(pPlayer, D2UnitStrc.dwUnitType) !== 0) {
     return
   }
@@ -908,6 +943,7 @@ export function UNITS_GetPlayerSubtargetLeft113c(
   pOutType: number,
   pOutGuid: number,
 ): void {
+  hitD2CommonVa113c(0x6FD7F5C0)
   if (pUnit >>> 0 === 0 || m.get(pUnit, D2UnitStrc.dwUnitType) !== 0) {
     m.setU32(pOutType >>> 0, 0)
     m.setU32(pOutGuid >>> 0, 0xffffffff)
@@ -931,6 +967,7 @@ export function UNITS_GetPlayerSubtargetRight113c(
   pOutType: number,
   pOutGuid: number,
 ): void {
+  hitD2CommonVa113c(0x6FD7F630)
   if (pUnit >>> 0 === 0 || m.get(pUnit, D2UnitStrc.dwUnitType) !== 0) {
     m.setU32(pOutType >>> 0, 0)
     m.setU32(pOutGuid >>> 0, 0xffffffff)
@@ -954,6 +991,7 @@ export function UNITS_PopPlayerSubtargetRight113c(
   pOutType: number,
   pOutGuid: number,
 ): void {
+  hitD2CommonVa113c(0x6FD7F6A0)
   if (pUnit >>> 0 === 0 || m.get(pUnit, D2UnitStrc.dwUnitType) !== 0) {
     m.setU32(pOutType >>> 0, 0)
     m.setU32(pOutGuid >>> 0, 0xffffffff)
@@ -981,6 +1019,7 @@ export function UNITS_PopPlayerSubtargetLeft113c(
   pOutType: number,
   pOutGuid: number,
 ): void {
+  hitD2CommonVa113c(0x6FD7F720)
   if (pUnit >>> 0 === 0 || m.get(pUnit, D2UnitStrc.dwUnitType) !== 0) {
     m.setU32(pOutType >>> 0, 0)
     m.setU32(pOutGuid >>> 0, 0xffffffff)
@@ -1008,6 +1047,7 @@ export function UNITS_GetPlayerTargetRight113c(
   pOutVal: number,
   pOutGuid: number,
 ): void {
+  hitD2CommonVa113c(0x6FD7F7A0)
   if (pUnit >>> 0 === 0 || m.get(pUnit, D2UnitStrc.dwUnitType) !== 0) {
     m.setU32(pOutVal >>> 0, 0)
     m.setU32(pOutGuid >>> 0, 0xffffffff)
@@ -1031,6 +1071,7 @@ export function UNITS_GetPlayerTargetLeft113c(
   pOutVal: number,
   pOutGuid: number,
 ): void {
+  hitD2CommonVa113c(0x6FD7F800)
   if (pUnit >>> 0 === 0 || m.get(pUnit, D2UnitStrc.dwUnitType) !== 0) {
     m.setU32(pOutVal >>> 0, 0)
     m.setU32(pOutGuid >>> 0, 0xffffffff)
@@ -1049,6 +1090,7 @@ export function UNITS_GetPlayerTargetLeft113c(
  * stdcall `[esp+4] = pUnit`, `[esp+8] = pOwner`, `ret 0x8`, void).
  */
 export function UNITS_SetOwner113c(m: Memory113c, pUnit: number, pOwner: number): void {
+  hitD2CommonVa113c(0x6FD7F9B0)
   if (pUnit >>> 0 === 0) {
     throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0xee7)
   }
@@ -1074,6 +1116,7 @@ export function UNITS_SetPathRoomRefreshFlag113c(
   pUnit: number,
   bSet: number,
 ): void {
+  hitD2CommonVa113c(0x6FD7FC50)
   if (pUnit >>> 0 === 0) {
     throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x9fe)
   }
@@ -1097,6 +1140,7 @@ export function UNITS_SetPathRoomRefreshFlag113c(
  * stdcall `[esp+4] = pUnit`, `ret 0x4` -> `number`).
  */
 export function UNITS_GetPathRoomRefreshFlag113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD7FCC0)
   if (pUnit >>> 0 === 0) {
     throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x9ec)
   }
@@ -1114,6 +1158,7 @@ export function UNITS_GetPathRoomRefreshFlag113c(m: Memory113c, pUnit: number): 
  * stdcall `[esp+4] = pUnit`, `ret 0x4`, void).
  */
 export function UNITS_ClearRoom113c(m: Memory113c, pUnit: number): void {
+  hitD2CommonVa113c(0x6FD7FE70)
   if (pUnit >>> 0 === 0) {
     throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x87d)
   }
@@ -1134,6 +1179,7 @@ export function UNITS_ClearRoom113c(m: Memory113c, pUnit: number): void {
  * fastcall `ecx = pUnit`, `ret` -> `number`).
  */
 export function UNITS_GetCollisionMask113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD7FF30)
   if (pUnit >>> 0 === 0) {
     throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x80e)
   }
@@ -1176,6 +1222,7 @@ export function UNITS_CanSwitchToModeDuringAnim113c(
   dwClassId: number,
   pUnit: number,
 ): number {
+  hitD2CommonVa113c(0x6FD80C70)
   let pEntry = 0
   if (dwUnitType === 0) {
     pEntry = (PLAYER_MODE_SWITCH_TABLE_VA_113C + imul32(nMode | 0, 20)) >>> 0
@@ -1226,6 +1273,7 @@ export function UNITS_CanSwitchToModeDuringAnim113c(
  * stdcall `[esp+4] = pUnit`, `ret 0x4` -> `number`).
  */
 export function UNITS_GetPlayerBaseToHit113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD81EA0)
   if (pUnit >>> 0 === 0 || m.get(pUnit, D2UnitStrc.dwUnitType) !== 0) {
     throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x107f)
   }
@@ -1273,6 +1321,7 @@ export function UNITS_GetPlayerBaseToHit113c(m: Memory113c, pUnit: number): numb
  * stdcall `[esp+4] = pUnit`, `ret 0x4` -> `number`).
  */
 export function UNITS_GetGfxStateFlagsPtr113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD842D0)
   if (pUnit >>> 0 === 0) {
     throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x99)
   }
@@ -1296,6 +1345,7 @@ export function UNITS_GetGfxStateFlagsPtr113c(m: Memory113c, pUnit: number): num
  * stdcall `[esp+4] = nObjectId`, `ret 0x4` -> `D2ObjectsTxt*`).
  */
 export function DATATBLS_GetObjectsTxtRecord113c(m: Memory113c, nObjectId: number): number {
+  hitD2CommonVa113c(0x6FD8E980)
   const id = nObjectId | 0
   const count = m.u32(SGPT_OBJECTS_TXT_COUNT_VA_113C) | 0
   if (id >= count) {
@@ -1316,6 +1366,7 @@ export function PATH_ResetDynamicPathRoomAndCoordsInline113c(
   m: Memory113c,
   pDynamicPath: number,
 ): void {
+  hitD2CommonVa113c(0x6FD5D540)
   const d0 = m.u32(0x6fddd458)
   const d1 = m.u32(0x6fddd45c)
   m.setU32((pDynamicPath + 0x00) >>> 0, d0)
@@ -1347,6 +1398,7 @@ export function UNITS_GetSpawnedMonsterOrSkillSummonInfo113c(
   pOutX: number,
   pOutY: number,
 ): number {
+  hitD2CommonVa113c(0x6FD6A3D0)
   const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
   if (bIsMonsterSpawn !== 0 && pUnit !== 0 && m.u32(pUnit) === UNIT_MONSTER) {
     const classId = m.u32((pUnit + 0x04) >>> 0) | 0
@@ -1402,6 +1454,7 @@ export function UNITS_GetSpawnedMonsterOrSkillSummonInfo113c(
  * stdcall `[esp+4] = pUnit, [esp+8] = bSet`, `ret 0x8` -> `void`).
  */
 export function UNITS_SetUnitUpdateFlags113c(m: Memory113c, pUnit: number, bSet: number): void {
+  hitD2CommonVa113c(0x6FD80DC0)
   // 0x6FD80DCA: `test edi, edi; je` -> refresh only when bSet (callee asserts on pUnit == 0).
   if (bSet !== 0) {
     UNITROOM_RefreshUnit113c(m, pUnit)
@@ -1429,6 +1482,7 @@ export function UNITS_GetDiminishingStatBonusInline113c(
   nTableIdx: number,
   pUnit: number,
 ): number {
+  hitD2CommonVa113c(0x6FD823E0)
   const entryAddr = (0x6fde4608 + imul32(nTableIdx | 0, 12)) >>> 0
   const statId = m.u32((entryAddr + 8) >>> 0) | 0
   const val = STATLIST_GetUnitStatWithLayer113c(m, pUnit, statId, 0) | 0
@@ -1459,6 +1513,7 @@ export function UNITS_TransferStateMaskToRemoved113c(
   pMaskArray: number,
   pUnit: number,
 ): void {
+  hitD2CommonVa113c(0x6FD84080)
   if (pUnit >>> 0 === 0) return
   const pStatList = m.u32((pUnit + 0x5c) >>> 0)
   if (pStatList === 0 || (m.u32((pStatList + 0x10) >>> 0) & 0x80000000) === 0) return
@@ -1488,6 +1543,7 @@ export function STATES_UpdateGfxStateFlagsByMask113c(
   pUnit: number,
   bIsBossOrTown: number,
 ): void {
+  hitD2CommonVa113c(0x6FD84150)
   // 0x6FD84155: `test ebp, ebp; je 0x6FD842C4` -> `pop ebp; ret 8` (no assert).
   if (pUnit >>> 0 === 0) return
   const pStatList = m.u32((pUnit + 0x5c) >>> 0)
@@ -1542,6 +1598,7 @@ function getStatListUnitAlignment113c(m: Memory113c, pUnit: number): number {
  * stdcall `[esp+4] = pUnit, [esp+8] = pRoom`, `ret 0x8` -> `number`).
  */
 export function UNITROOM_SortUnitListByY113c(m: Memory113c, pUnit: number, pRoom: number): number {
+  hitD2CommonVa113c(0x6FDB6900)
   // 0x6FDB6800 (callee, `push 1` = bAssertIfPresent): 0x6FDB6805 `test edi, edi; jne` else `push 0x42`;
   // 0x6FDB682A `test esi, esi; jne` else `push 0x43`; both -> assert thunk 0x6FD5921C + exit(-1).
   if (pUnit >>> 0 === 0) {
@@ -1585,6 +1642,7 @@ export function UNITROOM_SortUnitListByY113c(m: Memory113c, pUnit: number, pRoom
  * stdcall `[esp+4] = pUnit1, [esp+8] = pUnit2`, `ret 0x8` -> `number`).
  */
 export function UNITS_AreUnitsAligned113c(m: Memory113c, pUnit1: number, pUnit2: number): number {
+  hitD2CommonVa113c(0x6FDD4D30)
   if (pUnit1 >>> 0 === 0 || pUnit2 >>> 0 === 0) {
     return 0
   }
@@ -1611,6 +1669,7 @@ export function UNITS_StepAnimSeqFrame113c(
   pUnit: number,
   dwPrevFrameFp8: number,
 ): number {
+  hitD2CommonVa113c(0x6FD7F100)
   const u = pUnit >>> 0
   const oldSeqMode = m.u32((u + 0x40) >>> 0)
   const pSeq = m.u32((u + 0x30) >>> 0)
@@ -1660,6 +1719,7 @@ export function UNITS_IsCastAnimMode113c(
   nMode: number,
   pUnit: number,
 ): number {
+  hitD2CommonVa113c(0x6FD80B80)
   const uType = dwUnitType | 0
   const mode = nMode | 0
   if (uType === 0) {
@@ -1686,6 +1746,7 @@ export function UNITS_IsCastAnimMode113c(
  * stdcall `[esp+4] = pUnit`, `ret 0x4` -> `number`).
  */
 export function UNITS_GetUnitSizeX113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD80F80)
   const u = pUnit >>> 0
   if (u === 0) return 0
   const uType = m.u32(u) >>> 0
@@ -1731,6 +1792,7 @@ export function UNITS_GetTransformGfx113c(
   _a5 = 0,
   _a6 = 0,
 ): void {
+  hitD2CommonVa113c(0x6FDA01E0)
   const u = pUnit >>> 0
   if (u === 0) return
   if (((m.u32((u + 0xc8) >>> 0) >>> 3) & 1) === 0) return
@@ -1791,6 +1853,7 @@ export function UNITS_GetTransformGfx113c(
  * stdcall `[esp+4] = pUnit1`, `[esp+8] = pUnit2`, `ret 0x8` -> `BOOL`).
  */
 export function UNITS_AreInAdjacentRooms113c(m: Memory113c, pUnit1: number, pUnit2: number): number {
+  hitD2CommonVa113c(0x6FD62450)
   const u1 = pUnit1 >>> 0
   if (u1 === 0) {
     throw new D2CommonAssertError(COLSN_CPP_FILE_113C, 0x18)
@@ -1825,6 +1888,7 @@ export function UNITS_IsAttackAnimMode113c(
   pUnit: number,
   dwClassId: number,
 ): number {
+  hitD2CommonVa113c(0x6FD80BD0)
   const uType = dwUnitType | 0
   const mode = nMode | 0
   let pEntry = 0
@@ -1863,6 +1927,7 @@ export function UNITS_IsAttackAnimMode113c(
  * stdcall `[esp+4] = pUnit`, `ret 0x4` -> `number`).
  */
 export function UNITS_GetUnitSizeY113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD80EE0)
   const u = pUnit >>> 0
   if (u === 0) {
     throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x74b)
@@ -1901,6 +1966,7 @@ export function UNITS_GetUnitSizeY113c(m: Memory113c, pUnit: number): number {
  * stdcall `[esp+4] = pUnit`, `ret 0x4`, void).
  */
 export function UNITS_FreeUnit113c(m: Memory113c, pUnit: number): void {
+  hitD2CommonVa113c(0x6FD83990)
   const u = pUnit >>> 0
   if (u === 0) return
   const pStatListEx = m.u32((u + 0x5c) >>> 0)
@@ -1932,6 +1998,7 @@ export function UNITROOM_ValidateUnitInRoom113c(
   pUnit: number,
   bAssertIfPresent: number,
 ): number {
+  hitD2CommonVa113c(0x6FDB6630)
   const room = pRoom >>> 0
   const u = pUnit >>> 0
   if (room !== 0) {
@@ -1992,6 +2059,7 @@ export function UNITROOM_ValidateUnitInRoom113c(
  * stdcall `[esp+4] = pUnit`, `ret 0x4`, void).
  */
 export function UNITROOM_ClearUnitRoom113c(m: Memory113c, pUnit: number): void {
+  hitD2CommonVa113c(0x6FDB68A0)
   const u = pUnit >>> 0
   if (u === 0) {
     throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0xcc)
@@ -2044,6 +2112,7 @@ export function UNITS_SyncDualWieldWeaponStatLists113c(
   pUnit: number,
   bCheckSkill: number,
 ): void {
+  hitD2CommonVa113c(0x6FD82EF0)
   const ebx = pUnit >>> 0
   if (unitsCanDualWieldMem113c(m, ebx) === 0) return
   const edi = ITEMS_GetActiveWeaponForAttack113c(m, ebx, bCheckSkill)
@@ -2092,6 +2161,7 @@ export function UNITS_GetDistanceToOtherUnit113c(
   pUnit1: number,
   pUnit2: number,
 ): number {
+  hitD2CommonVa113c(0x6FDCFCD0)
   const u1 = pUnit1 >>> 0
   const u2 = pUnit2 >>> 0
   const esi = m.u32(u1) | 0
@@ -2246,6 +2316,7 @@ function resolveTransformGfxMem113c(
  * stdcall `[esp+4] = pUnit`, `ret 0x4` -> `number`).
  */
 export function UNITS_GetAnimStartFrame113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD82220)
   const esi = pUnit >>> 0
   const initMonGfx = esi !== 0 ? m.u32(esi) : 6
   const initClassId = esi !== 0 ? m.u32((esi + 0x04) >>> 0) | 0 : -1
@@ -2284,6 +2355,7 @@ export function UNITS_HasCollisionBetweenUnits113c(
   pUnit2: number,
   wMask: number,
 ): number {
+  hitD2CommonVa113c(0x6FD814A0)
   const esi = pUnit1 >>> 0
   if (esi === 0) {
     throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x1290)
@@ -2341,6 +2413,7 @@ export function UNITS_SetCollisionMaskAtCoords113c(
   nX: number,
   nY: number,
 ): void {
+  hitD2CommonVa113c(0x6FD81850)
   const esi = pUnit >>> 0
   if (esi === 0) {
     throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x851)
@@ -2358,6 +2431,7 @@ export function UNITS_SetCollisionMaskAtCoords113c(
  * stdcall `[esp+4] = pUnit`, `ret 0x4` -> `0 | 1`).
  */
 export function UNITS_IsUnitMovingBool113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD819A0)
   return UNITS_IsInMovingMode113c(m, pUnit) !== 0 ? 1 : 0
 }
 
@@ -2445,6 +2519,7 @@ export function UNITS_TestCollisionBetweenUnitsWithDoors113c(
   dwPattern: number,
   dwMoveMask: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9D760)
   COLLISION_ResetMaskWithPatternSimple113c(m, pRoom, nX1, nY1, nUnitSize, dwPattern)
   const hit =
     COLLISION_CheckMaskWithPattern1_113c(m, pRoom, nX2, nY2, nUnitSize, dwMoveMask) & 0xffff
@@ -2472,6 +2547,7 @@ export function UNITS_FindFreeCoords113c(
   nY2: number,
   dwMask: number,
 ): number {
+  hitD2CommonVa113c(0x6FD815E0)
   const edi = pUnit >>> 0
   if (edi === 0) return 0
   const ebp = UNITS_GetRoom113c(m, edi)
@@ -2501,6 +2577,7 @@ export function UNITS_FindFreeCoords113c(
  * stdcall `[esp+4] = pUnit`, `ret 4`, void).
  */
 export function UNITS_SetTargetUnitForDynamicUnitEx113c(m: Memory113c, pUnit: number): void {
+  hitD2CommonVa113c(0x6FD818C0)
   const esi = pUnit >>> 0
   const t1 = m.u32(esi) | 0
   const p1 = m.u32((esi + 0x2c) >>> 0)
@@ -2536,6 +2613,7 @@ export const D2COMMON_PLAYER_SEQ_TABLE_PTRS_VA_113C = 0x6fdecf40
  * custom reg `esi = pUnit`, `ret` -> `0..13 | -1`).
  */
 export function ANIMSEQ_GetPlayerSeqWeaponClassIdx113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD7E790)
   const esi = pUnit >>> 0
   let uType = m.u32(esi)
   let uClass = m.u32((esi + 0x04) >>> 0)
@@ -2565,6 +2643,7 @@ export function ANIMSEQ_GetPlayerSeqWeaponClassIdx113c(m: Memory113c, pUnit: num
  * custom reg `eax = pUnit`, `ret` -> `D2SeqLookupStrc* | 0`).
  */
 export function ANIMSEQ_GetUnitSeqLookupEntry113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD7E840)
   const esi = pUnit >>> 0
   if (esi === 0) {
     throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x65c)
@@ -2597,6 +2676,7 @@ export function ANIMSEQ_GetUnitSeqLookupEntry113c(m: Memory113c, pUnit: number):
  * stdcall `[esp+4] = pUnit`, `ret 4` -> `int32`).
  */
 export function ANIMSEQ_GetUnitSeqFrameDataField8_113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD7E900)
   const pEntry = ANIMSEQ_GetUnitSeqLookupEntry113c(m, pUnit)
   if (pEntry === 0) return 0
   return m.u32((pEntry + 0x08) >>> 0)
@@ -2607,6 +2687,7 @@ export function ANIMSEQ_GetUnitSeqFrameDataField8_113c(m: Memory113c, pUnit: num
  * stdcall `[esp+4] = pUnit`, `ret 4` -> `int32`).
  */
 export function ANIMSEQ_GetUnitSeqFrameCountFp8_113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD7E920)
   const pEntry = ANIMSEQ_GetUnitSeqLookupEntry113c(m, pUnit)
   if (pEntry === 0) return 0
   return (m.u32((pEntry + 0x04) >>> 0) << 8) >>> 0
@@ -2617,6 +2698,7 @@ export function ANIMSEQ_GetUnitSeqFrameCountFp8_113c(m: Memory113c, pUnit: numbe
  * stdcall `[esp+4] = pUnit`, `ret 4` -> `D2AnimSeqTxt* | 0`).
  */
 export function ANIMSEQ_GetUnitSeqRecordPtr113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD7E940)
   const pEntry = ANIMSEQ_GetUnitSeqLookupEntry113c(m, pUnit)
   if (pEntry === 0) return 0
   return m.u32(pEntry)
@@ -2631,6 +2713,7 @@ export function UNITS_GetApproximateDistance113c(
   pUnit1: number,
   pUnit2: number,
 ): number {
+  hitD2CommonVa113c(0x6FDCFBD0)
   const esi = pUnit1 >>> 0
   const ebp = pUnit2 >>> 0
 
@@ -2690,6 +2773,7 @@ export function UNITS_GetApproximateDistance113c(
  * stdcall `[esp+4] = pUnit`, `ret 4`, void).
  */
 export function UNITS_InitSkillAnimSequence113c(m: Memory113c, pUnit: number): void {
+  hitD2CommonVa113c(0x6FD82820)
   const esi = pUnit >>> 0
   if (esi === 0) return
   const pEntry1 = ANIMSEQ_GetUnitSeqLookupEntry113c(m, esi)
@@ -2717,6 +2801,7 @@ export function UNITS_GetAnimOrSeqEventAtFrame113c(
   pUnit: number,
   nFrameIdx: number,
 ): number {
+  hitD2CommonVa113c(0x6FD82770)
   const eax = pUnit >>> 0
   if (eax === 0) {
     throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0xdcc)
@@ -2746,6 +2831,7 @@ export function UNITS_GetAnimOrSeqEventAtFrame113c(
  * stdcall `[esp+4] = pUnit`, `ret 4` -> `int32`).
  */
 export function UNITS_GetEquippedWeaponAdder113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD825C0)
   const esi = pUnit >>> 0
   if (esi === 0) {
     throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x11be)
@@ -2791,6 +2877,7 @@ export function UNITS_CanUnitMeleeAttackTarget113c(
   pUnit2: number,
   nAdder: number,
 ): number {
+  hitD2CommonVa113c(0x6FD826C0)
   const edi = pUnit2 >>> 0
   if (edi === 0) return 0
   const esi = pUnit1 >>> 0
@@ -2830,6 +2917,7 @@ export function UNITS_TestCollisionBetweenUnits113c(
   pUnit2: number,
   dwMask: number,
 ): number {
+  hitD2CommonVa113c(0x6FD819C0)
   const u1 = pUnit1 >>> 0
   if (u1 === 0) return 0
   const u2 = pUnit2 >>> 0
@@ -2895,6 +2983,7 @@ export function UNITS_TestCollisionBetweenUnits113c(
  * stdcall `[esp+4] = pUnit`, `ret 4`, void).
  */
 export function UNITS_AdvanceAnimFrame113c(m: Memory113c, pUnit: number): void {
+  hitD2CommonVa113c(0x6FD82460)
   const esi = pUnit >>> 0
   const pSeq = m.u32((esi + 0x30) >>> 0)
   m.setU8((esi + 0x4e) >>> 0, 0)
@@ -3037,6 +3126,7 @@ export function UNITS_GetMonsterSplitSpawnParams113c(
   pfnGetUberClass: number | ((m: Memory113c, pUnit: number) => number),
   cbGetUberClass?: (m: Memory113c, pUnit: number) => number,
 ): void {
+  hitD2CommonVa113c(0x6FD6AA00)
   const esi = pUnit >>> 0
   const outClass = pOutClassId >>> 0
   const outX = pOutX >>> 0
@@ -3271,6 +3361,7 @@ export function UNITS_IsUnitInObjRectRange113c(
   pOtherUnit: number,
   pObjUnit: number,
 ): number {
+  hitD2CommonVa113c(0x6FD81000)
   const obj = pObjUnit >>> 0
   if (obj === 0 || m.u32(obj) !== UNIT_OBJECT) return 0
   const other = pOtherUnit >>> 0
@@ -3322,6 +3413,7 @@ export function UNITS_IsUnitInObjRectRange113c(
  * stdcall `[esp+4] = pUnit`, `ret 4` -> `int32`).
  */
 export function UNITS_GetVelocity113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD82890)
   const u = pUnit >>> 0
   let v = 0
   let pEx = 0
@@ -3467,6 +3559,7 @@ export function UNITS_FindUnitAnimDataRecord113c(
   nUnitType: number,
   pInventory: number,
 ): number {
+  hitD2CommonVa113c(0x6FD91F70)
   const sm = withUnitStackScratch113c(m)
   const pSzOut = UNIT_STACK_SCRATCH_BASE
   const pWeapCode = UNIT_STACK_SCRATCH_BASE + 0x10
@@ -3502,6 +3595,7 @@ export function UNITS_GetAnimDataRecord113c(
   nClassId: number,
   nAnimMode: number,
 ): number {
+  hitD2CommonVa113c(0x6FD82670)
   const u = pUnit >>> 0
   if (u === 0) {
     throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x936)
@@ -3522,6 +3616,7 @@ export function UNITS_SetUnitAnimMode113c(
   _szFile = 0,
   _nLine = 0,
 ): void {
+  hitD2CommonVa113c(0x6FD83110)
   const edi = pUnit >>> 0
   if (edi === 0) return
   const rawType = m.u32(edi) | 0
@@ -3687,6 +3782,7 @@ export function UNITS_SetUnitAnimMode113c(
  * stdcall `[esp+4] = pUnit`, `ret 4` -> `0 | 1`).
  */
 export function UNITS_UpdateAnimFrame113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD835F0)
   const edi = pUnit >>> 0
   if (edi === 0) {
     throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x951)
@@ -3797,6 +3893,7 @@ export function UNITS_UpdateAnimFrame113c(m: Memory113c, pUnit: number): number 
  * `D2Common.dll` `0x6FD81680` (internal `__usercall(pUnit@<eax>)`).
  */
 export function UNITS_IsMonsterShieldEquipped113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD81680)
   const unit = pUnit >>> 0
   let classId = -1
   if (unit !== 0) {
@@ -3841,6 +3938,7 @@ export function UNITS_GetBlockChance113c(
   pUnit: number,
   bApplyDexFormula: number,
 ): number {
+  hitD2CommonVa113c(0x6FD81D20)
   const unit = pUnit >>> 0
   const unitType = unit !== 0 ? (m.u32(unit) >>> 0) : 6
   const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)

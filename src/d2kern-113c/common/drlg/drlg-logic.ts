@@ -21,6 +21,7 @@ import {
   DRLGGRID_AllocAndInitGridCells113c,
   DRLGGRID_OpOverwrite113c,
 } from './drlg-grid.ts';
+import { hitD2CommonVa113c } from '../../va-trace-113c.ts';
 
 const DRLGLOGIC_STACK_BASE = 0x7ffa0000;
 const DRLGLOGIC_STACK_SIZE = 0x10000;
@@ -124,6 +125,7 @@ export function DRLGLOGIC_ReplaceRoomCoordListIndex113c(
   nNewIdx: number,
   bNodeFlag: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD0EE0);
   const roomEx = pRoomEx >>> 0;
   const pLogical = m.get(roomEx, D2RoomExStrc.pLogicalRoomInfo);
   if (pLogical === 0) return;
@@ -183,6 +185,7 @@ export function DRLGLOGIC_MarkWallTileCells113c(
   pRoomEx: number,
   pGrid: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD14C0);
   const roomEx = pRoomEx >>> 0;
   const grid = pGrid >>> 0;
   const pTileGrid = m.get(roomEx, D2RoomExStrc.pTileGrid);
@@ -288,6 +291,7 @@ export function DRLGLOGIC_MarkFloorTileCells113c(
   pRoomEx: number,
   pGrid: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD1650);
   const roomEx = pRoomEx >>> 0;
   const grid = pGrid >>> 0;
   const pTileGrid = m.get(roomEx, D2RoomExStrc.pTileGrid);
@@ -334,6 +338,7 @@ export function DRLGLOGIC_FloodFillLogicalCoordGrid113c(
   nY: number,
   nFromDir: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD17A0);
   const ctx = pContext >>> 0;
   let curX = nX | 0;
   let curY = nY | 0;
@@ -471,6 +476,7 @@ export function DRLGLOGIC_AssignTileDataCoordListPointers113c(
   m: Memory113c,
   pRoomEx: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD1A20);
   const roomEx = pRoomEx >>> 0;
   const pTileGrid = m.get(roomEx, D2RoomExStrc.pTileGrid);
   const pWallsSlot = (pTileGrid + 0x14) >>> 0;
@@ -520,6 +526,7 @@ export function DRLGLOGIC_GetRoomCoordListAtSubtile113c(
   nTileY: number,
   nTileX: number,
 ): number {
+  hitD2CommonVa113c(0x6FDD10A0);
   const roomEx = pRoomEx >>> 0;
   const pCoords = m.get(roomEx, D2RoomExStrc.pLogicalRoomInfo);
   if (pCoords === 0) {
@@ -546,6 +553,7 @@ export function DRLGLOGIC_AllocSingleRoomCoordList113c(
   m: Memory113c,
   pRoomEx: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD1100);
   const roomEx = pRoomEx >>> 0;
   const pLevel0 = m.get(roomEx, D2RoomExStrc.pLevel);
   const pDrlg0 = m.u32((pLevel0 + 0x1b4) >>> 0);
@@ -629,6 +637,7 @@ export function DRLGLOGIC_GetRoomCoordListFromWorldSubtile113c(
   nWorldSubtileX: number,
   nWorldSubtileY: number,
 ): number {
+  hitD2CommonVa113c(0x6FDD1950);
   const roomEx = pRoomEx >>> 0;
   const pCoords = m.get(roomEx, D2RoomExStrc.pLogicalRoomInfo);
   if (pCoords === 0) {
@@ -659,6 +668,7 @@ export function DRLGLOGIC_GetRoomCoordListIndexAtSubtile113c(
   nTileY: number,
   nTileX: number,
 ): number {
+  hitD2CommonVa113c(0x6FDD19C0);
   const roomEx = pRoomEx >>> 0;
   const pCoords = m.get(roomEx, D2RoomExStrc.pLogicalRoomInfo);
   if (pCoords === 0) {
@@ -694,6 +704,7 @@ export function DRLGLOGIC_BuildRoomCoordListRegions113c(
   pRoomEx: number,
   pCoords: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD1200);
   const roomEx = pRoomEx >>> 0;
   const coords = pCoords >>> 0;
   const pLevel = m.get(roomEx, D2RoomExStrc.pLevel);
@@ -868,6 +879,7 @@ export function DRLGLOGIC_LinkAdjacentRoomCoordListsAtSubtile113c(
   pRoomEx1: number,
   pRoomEx2: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD16C0);
   const room1 = pRoomEx1 >>> 0;
   const room2 = pRoomEx2 >>> 0;
   const x = nSubtileX | 0;
@@ -909,6 +921,7 @@ export function DRLGLOGIC_AssignCoordListIndicesAcrossGrid113c(
   m: Memory113c,
   pLogicalCoordCtx: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD1BC0);
   const ctx = pLogicalCoordCtx >>> 0;
   const pRoomEx = m.u32(ctx);
   if ((m.u32((pRoomEx + 0x40) >>> 0) | 0) < 0) return;
@@ -961,6 +974,7 @@ export function DRLGLOGIC_AssignCoordListIndicesAcrossGrid113c(
  * custom LTCG `esi = pRoomEx`, `ret`).
  */
 export function DRLGLOGIC_LinkAdjacentRoomsCoordLists113c(m: Memory113c, pRoomEx: number): void {
+  hitD2CommonVa113c(0x6FDD1AD0);
   const roomEx = pRoomEx >>> 0;
   let i = 0;
   while (i < (m.u32((roomEx + 0x2c) >>> 0) | 0)) {
@@ -1012,6 +1026,7 @@ export function DRLGLOGIC_AllocAndBuildRoomCoordList113c(
   pTileGrid1: number,
   pTileGrid2: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD1CA0);
   const roomEx = pRoomEx >>> 0;
   const pLevel = m.u32((roomEx + 0x58) >>> 0);
   const pDrlg = m.u32((pLevel + 0x1b4) >>> 0);

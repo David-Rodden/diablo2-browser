@@ -328,7 +328,7 @@ describe('K2 Wave 5 Batch 10 (w5b10): D2Game 0x6FD11C30..0x6FD14260', () => {
 
     // Flag bit 0 at +0x5C clear -> no packet queued
     NET_SendPacket57MonsterUniqueEnchants_6FD13410_113c(m, boss.pUnit, pClient)
-    expect(m.u32((pQueue + 0x04) >>> 0)).toBe(0)
+    expect(m.u32((pQueue + 0x00) >>> 0)).toBe(0)
 
     // Populate unique name, champion bit, enchants, and +0x5C flag
     m.setU16((pMonData + 0x14) >>> 0, 0x01ab)
@@ -339,9 +339,9 @@ describe('K2 Wave 5 Batch 10 (w5b10): D2Game 0x6FD11C30..0x6FD14260', () => {
     m.setU8((pMonData + 0x5c) >>> 0, 1)
 
     NET_SendPacket57MonsterUniqueEnchants_6FD13410_113c(m, boss.pUnit, pClient)
-    expect(m.u32((pQueue + 0x04) >>> 0)).toBe(14)
+    expect(m.u32((pQueue + 0x00) >>> 0)).toBe(14)
 
-    const pkt = (pQueue + 0x08) >>> 0
+    const pkt = (pQueue + 0x04) >>> 0
     expect(m.u8(pkt)).toBe(0x57)
     expect(m.u32((pkt + 0x01) >>> 0)).toBe(0x11223344)
     expect(m.u8((pkt + 0x05) >>> 0)).toBe(1)
@@ -374,8 +374,8 @@ describe('K2 Wave 5 Batch 10 (w5b10): D2Game 0x6FD11C30..0x6FD14260', () => {
 
     // Case A: pTargetUnit == 0 -> queues 17-byte 0x4D ground packet
     NET_SendMonsterSkillCastPacket4COr4D_6FD134C0_113c(m, caster.pUnit, pClient, 0)
-    expect(m.u32((pQueue + 0x04) >>> 0)).toBe(17)
-    const pkt4d = (pQueue + 0x08) >>> 0
+    expect(m.u32((pQueue + 0x00) >>> 0)).toBe(17)
+    const pkt4d = (pQueue + 0x04) >>> 0
     expect(m.u8(pkt4d)).toBe(0x4d)
     expect(m.u8((pkt4d + 0x01) >>> 0)).toBe(1)
     expect(m.u32((pkt4d + 0x02) >>> 0)).toBe(0x55667788)
@@ -386,7 +386,7 @@ describe('K2 Wave 5 Batch 10 (w5b10): D2Game 0x6FD11C30..0x6FD14260', () => {
     expect(m.u16((pkt4d + 0x0f) >>> 0)).toBe(0)
 
     // Case B: pTargetUnit in pRoom whose ppClients contains pClient -> delegates to 16-byte 0x4C packet
-    m.setU32((pQueue + 0x04) >>> 0, 0)
+    m.setU32((pQueue + 0x00) >>> 0, 0)
     const target = allocDynamicUnit(0, 0, 99, 130, 140)
     const ppClients = m.alloc(8)
     m.setU32(ppClients, pClient)
@@ -394,8 +394,8 @@ describe('K2 Wave 5 Batch 10 (w5b10): D2Game 0x6FD11C30..0x6FD14260', () => {
     m.setU32((pRoom + 0x78) >>> 0, 1)
 
     NET_SendMonsterSkillCastPacket4COr4D_6FD134C0_113c(m, caster.pUnit, pClient, target.pUnit)
-    expect(m.u32((pQueue + 0x04) >>> 0)).toBe(16)
-    const pkt4c = (pQueue + 0x08) >>> 0
+    expect(m.u32((pQueue + 0x00) >>> 0)).toBe(16)
+    const pkt4c = (pQueue + 0x04) >>> 0
     expect(m.u8(pkt4c)).toBe(0x4c)
     expect(m.u8((pkt4c + 0x01) >>> 0)).toBe(1)
     expect(m.u32((pkt4c + 0x02) >>> 0)).toBe(0x55667788)

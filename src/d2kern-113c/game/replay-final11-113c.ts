@@ -100,6 +100,7 @@ import {
   PLAYER_StartWalkOrRunMode113c,
   SUNIT_UpdateUnitPositionAndRoom113c,
 } from './town-runtime-gap-113c.ts'
+import { hitD2GameVa113c } from '../va-trace-113c.ts'
 
 export type { SparseMemory113c }
 
@@ -138,6 +139,7 @@ export function ROOM_DeactivateAnyUnitInRoom113c(
   pUnit: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC409B0)
   const pRoom = UNITS_GetRoom113c(m, pUnit) >>> 0
   const dwUnitType = m.u32(pUnit >>> 0) >>> 0
   const dwClassId = m.u32((pUnit + 0x04) >>> 0) >>> 0
@@ -277,6 +279,7 @@ export function OBJECTS_SpawnDensityWithSecondaryTorch113c(
   nProb: number,
   hooks?: RegpopSpawnHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC53260)
   const activeHooks = hooks !== undefined ? hooks : SECONDARY_TORCH_DENSITY_HOOKS_113C
   const pObj = OBJECTS_SpawnDensityObjectsInRoom113c(
     m,
@@ -353,6 +356,7 @@ export function CLIENTS_GetPlayerUnit113c(
   pClient: number,
   bSkipVerify: number,
 ): number {
+  hitD2GameVa113c(0x6FC6AD10)
   if ((m.u8((pClient + 0x3d4) >>> 0) & 1) !== 0 || (bSkipVerify | 0) !== 0) {
     return m.u32((pClient + 0x174) >>> 0) >>> 0
   }
@@ -384,6 +388,7 @@ export function CLIENTS_UpdatePlayerRoom113c(
   pClient: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC6B400)
   if (pGame === 0 || pClient === 0) {
     return
   }
@@ -434,6 +439,7 @@ export function MONSTER_StartModeWalk113c(
   pGame: number,
   pModeArgs: number,
 ): number {
+  hitD2GameVa113c(0x6FC94C60)
   const pUnit = m.u32((pModeArgs + 0x04) >>> 0) >>> 0
   const pPath = m.u32((pUnit + 0x2c) >>> 0) >>> 0
   if (PATH_GetNumberOfPathPoints113c(m, pPath) === 0) {
@@ -456,6 +462,7 @@ export function MONSTER_ApplyModeVelocityOverride113c(
   pModeArgs: number,
   pUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FC94CE0)
   const nVel = m.u32((pModeArgs + 0x10) >>> 0) | 0
   if (nVel === 0) {
     return
@@ -491,6 +498,7 @@ export function PLAYER_StepModeWalkOrRun113c(
   pGame: number,
   pPlayer: number,
 ): number {
+  hitD2GameVa113c(0x6FC99B90)
   SUNIT_ValidatePathTargetUnit113c(m, pPlayer, pGame)
   if (STATES_CheckState113c(m, pPlayer, 0x0d) !== 0) {
     m.setU32((pPlayer + 0xc4) >>> 0, (m.u32((pPlayer + 0xc4) >>> 0) | 1) >>> 0)
@@ -588,6 +596,7 @@ export function SUNIT_SendRemovePortalsInAdjacentRooms113c(
   pRoom: number,
   pClient: number,
 ): void {
+  hitD2GameVa113c(0x6FCBD780)
   const sp = replayFinal11StackPtr
   replayFinal11StackPtr = (sp + 0x20) >>> 0
   try {
@@ -635,6 +644,7 @@ export function SUNIT_SendRemovePortalsInAdjacentRooms113c(
  * @va D2Game:0x6FCBD850
  */
 export function GAME_ClearAllActRoomUpdateLists113c(m: Memory113c, pGame: number): void {
+  hitD2GameVa113c(0x6FCBD850)
   for (let actIdx = 0; actIdx < 5; actIdx++) {
     const pAct = m.u32((pGame + 0xbc + actIdx * 4) >>> 0) >>> 0
     if (pAct !== 0 && m.u32(pAct) !== 0) {
@@ -669,6 +679,7 @@ export function SUNIT_SyncAdjacentRoomUnitsToClient113c(
   pClient: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FCBDEC0)
   const nAct = m.u8((pClient + 0x1ac) >>> 0)
   const pAct = m.u32((pGame + 0xbc + nAct * 4) >>> 0) >>> 0
   if (m.u32(pAct) === 0) {
@@ -706,6 +717,7 @@ export function SUNIT_SyncAdjacentRoomUnitsToClient113c(
  * @va D2Game:0x6FD020A0
  */
 export function SUNIT_FreeUnit113c(m: Memory113c, pGame: number, pUnit: number): void {
+  hitD2GameVa113c(0x6FD020A0)
   SUNIT_DeactivateAndRemoveUnit113c(m, pGame, pUnit, 0)
   let pNode74 = m.u32((pUnit + 0x74) >>> 0) >>> 0
   if (pNode74 !== 0) {

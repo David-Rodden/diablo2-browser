@@ -149,6 +149,7 @@ import {
   UNIT_GetPosY113c,
 } from './regpop-spawn-113c.ts'
 import { EVENT_SetEventFull113c, type EventWheelHooks113c } from './timer-wheel.ts'
+import { hitD2GameVa113c } from '../va-trace-113c.ts'
 
 export type D2KernMemory113c = Memory113c
 
@@ -291,6 +292,7 @@ export function OBJECTS_InitFn05_InitPortalDestLevel_6FC533D0_113c(
   pObjInit: number,
   hooks?: K2W3B3Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC533D0)
   const initPtr = pObjInit >>> 0
   const pRoom = m.u32((initPtr + 0x08) >>> 0) >>> 0
   const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom) | 0
@@ -410,6 +412,7 @@ export function QUESTS_CheckLevelTransitionBlocked_6FC54020_113c(
   pUnit: number,
   nSourceLevelId: number,
 ): number {
+  hitD2GameVa113c(0x6FC54020)
   const game = pGame >>> 0
   switch (nTargetLevelId | 0) {
     case 0x49:
@@ -445,6 +448,7 @@ export function QUESTS_FindFreeSubtileInRoomRings_6FC54130_113c(
   ppOutRoom: number,
   nMaxRing: number,
 ): void {
+  hitD2GameVa113c(0x6FC54130)
   const coordPtr = pIoCoord >>> 0
   const outRoomPtr = ppOutRoom >>> 0
   const halfSize = (nSubtileRadius >>> 0) >>> 1
@@ -553,6 +557,7 @@ export function QUESTS_AllocAndInitGameQuests_6FC548A0_113c(
   pGame: number,
   hooks?: K2W3B3Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC548A0)
   const game = pGame >>> 0
   let esi = 0
   let ebx = 0
@@ -653,6 +658,7 @@ export function QUESTS_SendPlayerQuestAlert5D_6FC554F0_113c(
   pGame: number,
   hooks?: K2W3B3Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC554F0)
   const game = pGame >>> 0
   const player = pPlayerUnit >>> 0
   const questIdByte = nQuestId & 0xff
@@ -742,6 +748,7 @@ export function QUESTS_SendQuestLogPackets50And52_6FC55640_113c(
   pPlayerUnit: number,
   hooks?: K2W3B3Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC55640)
   const game = pGame >>> 0
   const player = pPlayerUnit >>> 0
   QUESTS_SendPlayerQuestLogPacket28_113c(m, player, game)
@@ -875,6 +882,7 @@ export function QUESTS_AttachUnitToQuest_6FC55890_113c(
   nQuestId: number,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FC55890)
   const qId = nQuestId | 0
   if (qId < 0) {
     throw new D2CommonAssertError('Quests.cpp', 0xe0)
@@ -905,6 +913,7 @@ export function QUESTS_TriggerNpcInteractAndSendPacket27_6FC55910_113c(
   pGame: number,
   hooks?: K2W3B3Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC55910)
   const npc = pNpcUnit >>> 0
   const player = pPlayerUnit >>> 0
   const game = pGame >>> 0
@@ -958,6 +967,7 @@ export function QUESTS_SendNpcIntroPacket91_6FC55B60_113c(
   nAct: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC55B60)
   const player = pPlayerUnit >>> 0
   const game = pGame >>> 0
   const actIdx = nAct & 0xff
@@ -1023,6 +1033,7 @@ export function QUESTS_ApplyActNpcIntroFlags_6FC55C20_113c(
   nAct: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC55C20)
   const actIdx = nAct & 0xff
   if (actIdx > 4 || actIdx === 3) return
   ensureActNpcIntroArraysSeeded113c(m)
@@ -1052,6 +1063,7 @@ export function MISSILES_ApplyColdLengthToDamage_6FC59080_113c(
   _pUnit: number,
   pDamage: number,
 ): void {
+  hitD2GameVa113c(0x6FC59080)
   const missile = pMissile >>> 0
   if (missile === 0) return
   const pMissilesTxt = getMissilesTxtRecord113c(m, readI32(m, (missile + 0x04) >>> 0))
@@ -1095,6 +1107,7 @@ export function MISSILES_InitGuidedOrLinearPath_6FC597C0_113c(
   pMissile: number,
   pTargetUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FC597C0)
   const missile = pMissile >>> 0
   if (missile === 0) return
   const pMissilesTxt = getMissilesTxtRecord113c(m, readI32(m, (missile + 0x04) >>> 0))
@@ -1169,6 +1182,7 @@ export function MISSILES_ConvertPhysToElemDamageByCalc_6FC59CE0_113c(
   _pTarget: number,
   pDamage: number,
 ): void {
+  hitD2GameVa113c(0x6FC59CE0)
   const missile = pMissile >>> 0
   if (missile === 0) return
   const pMissilesTxt = getMissilesTxtRecord113c(m, readI32(m, (missile + 0x04) >>> 0))
@@ -1212,6 +1226,7 @@ export function MISSILES_SrvDmg05_DispatchSkillSrvDo_6FC59DA0_113c(
   pTargetUnit: number,
   hooks?: K2W3B3Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC59DA0)
   const missile = pMissile >>> 0
   if (missile === 0) return 1
   const pMissilesTxt = getMissilesTxtRecord113c(m, readI32(m, (missile + 0x04) >>> 0))
@@ -1256,6 +1271,7 @@ export function MISSILES_SrvDmg14_HolyBoltHeal_6FC59E30_113c(
   pMissile: number,
   pTargetUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC59E30)
   const missile = pMissile >>> 0
   if (missile === 0) return 1
   const pMissilesTxt = getMissilesTxtRecord113c(m, readI32(m, (missile + 0x04) >>> 0))
@@ -1361,6 +1377,7 @@ export function MISSILES_SrvDmg15_HolyBoltHealOrUndeadFilter_6FC59FD0_113c(
   pMissile: number,
   pTargetUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC59FD0)
   const missile = pMissile >>> 0
   if (missile === 0) return 1
   const pMissilesTxt = getMissilesTxtRecord113c(m, readI32(m, (missile + 0x04) >>> 0))
@@ -1445,6 +1462,7 @@ export function MISSILES_PopulateDamageByEType_6FC5A280_113c(
   pDamage: number,
   pTargetUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC5A280)
   const missile = pMissile >>> 0
   if (missile === 0) return 0
   const dmg = pDamage >>> 0
@@ -1565,6 +1583,7 @@ export function MISSILES_SrvDmg09_ApplySkillAuraState_6FC5ABD0_113c(
   pMissile: number,
   pTargetUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC5ABD0)
   const missile = pMissile >>> 0
   if (missile === 0) return 1
   if (((m.u32((missile + 0xc8) >>> 0) >>> 10) & 1) === 0) return 1
@@ -1636,6 +1655,7 @@ export function MISSILES_TargetFilter_PlayersAndAlignedMonsters_6FC5AD70_113c(
   pTargetUnit: number,
   pFilterCtx: number,
 ): number {
+  hitD2GameVa113c(0x6FC5AD70)
   const ctx = pFilterCtx >>> 0
   if (ctx === 0) return 0
   const pOwner = m.u32((ctx + 0x0c) >>> 0) >>> 0
@@ -1666,6 +1686,7 @@ export function MISSILES_TargetFilter_MonstersOnly_6FC5ADD0_113c(
   pTargetUnit: number,
   pFilterCtx: number,
 ): number {
+  hitD2GameVa113c(0x6FC5ADD0)
   const ctx = pFilterCtx >>> 0
   if (ctx === 0) return 0
   const pOwner = m.u32((ctx + 0x0c) >>> 0) >>> 0
@@ -1694,6 +1715,7 @@ export function MISSILES_SrvDmg01_SpawnRandomOffsetSubMissile_6FC5BED0_113c(
   _pTargetUnit: number,
   hooks?: K2W3B3Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC5BED0)
   const missile = pMissile >>> 0
   if (missile === 0) return 1
   const pMissilesTxt = getMissilesTxtRecord113c(m, readI32(m, (missile + 0x04) >>> 0))
@@ -1758,6 +1780,7 @@ export function MISSILES_SrvDmg02_PlagueJavelin8WaySubMissiles_6FC5C030_113c(
   _pTargetUnit: number,
   hooks?: K2W3B3Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC5C030)
   const missile = pMissile >>> 0
   if (missile === 0) return 1
   const pMissilesTxt = getMissilesTxtRecord113c(m, readI32(m, (missile + 0x04) >>> 0))
@@ -1817,6 +1840,7 @@ export function MISSILES_SrvDmg03_SpawnSubMissiles123_6FC5C160_113c(
   _pTargetUnit: number,
   hooks?: K2W3B3Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC5C160)
   const missile = pMissile >>> 0
   if (missile === 0) return 1
   const pMissilesTxt = getMissilesTxtRecord113c(m, readI32(m, (missile + 0x04) >>> 0))
@@ -1878,6 +1902,7 @@ export function MISSILES_SrvDmg04_SpawnSubMissileAlongPath_6FC5C260_113c(
   _pTargetUnit: number,
   hooks?: K2W3B3Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC5C260)
   const missile = pMissile >>> 0
   if (missile === 0) return 1
   const pMissilesTxt = getMissilesTxtRecord113c(m, readI32(m, (missile + 0x04) >>> 0))
@@ -1936,6 +1961,7 @@ export function MISSILES_SrvDmg12_Nova64RingSubMissiles_6FC5C700_113c(
   _pTargetUnit: number,
   hooks?: K2W3B3Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC5C700)
   const missile = pMissile >>> 0
   if (missile === 0) return 1
   const pMissilesTxt = getMissilesTxtRecord113c(m, readI32(m, (missile + 0x04) >>> 0))
@@ -1997,6 +2023,7 @@ export function MISSILES_SrvDmg12B_Nova64RingOnExpire_6FC5C850_113c(
   _pTargetUnit: number,
   hooks?: K2W3B3Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC5C850)
   const missile = pMissile >>> 0
   if (missile === 0) return 1
   const pMissilesTxt = getMissilesTxtRecord113c(m, readI32(m, (missile + 0x04) >>> 0))
@@ -2059,6 +2086,7 @@ export function MISSILES_SrvDmg13_PoisonExplosionCloud_6FC5C990_113c(
   _pTargetUnit: number,
   hooks?: K2W3B3Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC5C990)
   const missile = pMissile >>> 0
   if (missile === 0) return 1
   const pMissilesTxt = getMissilesTxtRecord113c(m, readI32(m, (missile + 0x04) >>> 0))
@@ -2126,6 +2154,7 @@ export function MISSILES_SpawnRadial8SubMissiles_6FC5CB00_113c(
   nStep: number,
   hooks?: K2W3B3Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC5CB00)
   const pMissilesTxt = getMissilesTxtRecord113c(m, nMissileId)
   if (pMissilesTxt === 0) return 0
 
@@ -2181,6 +2210,7 @@ export function MISSILES_AuraCallback_SpawnSubMissileOnTarget_6FC5CC30_113c(
   pTargetUnit: number,
   hooks?: K2W3B3Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC5CC30)
   const auraCtx = pAuraCtx >>> 0
   const target = pTargetUnit >>> 0
   const pUserCtx = m.u32((auraCtx + 0x0c) >>> 0) >>> 0
@@ -2225,6 +2255,7 @@ export function MISSILES_AuraCallback_SpawnSubMissileStrictCount_6FC5CD00_113c(
   pTargetUnit: number,
   hooks?: K2W3B3Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC5CD00)
   const auraCtx = pAuraCtx >>> 0
   const target = pTargetUnit >>> 0
   const pUserCtx = m.u32((auraCtx + 0x0c) >>> 0) >>> 0
@@ -2269,6 +2300,7 @@ export function MISSILES_SrvDmg10_SpawnSubMissileAtSelfPos_6FC5CDD0_113c(
   _pTargetUnit: number,
   hooks?: K2W3B3Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC5CDD0)
   const missile = pMissile >>> 0
   if (missile === 0) return 1
   const pMissilesTxt = getMissilesTxtRecord113c(m, readI32(m, (missile + 0x04) >>> 0))
@@ -2332,6 +2364,7 @@ export function MISSILES_SpawnRing18SubMissiles_6FC5CEC0_113c(
   nStep: number,
   hooks?: K2W3B3Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC5CEC0)
   const subId = nSubMissile | 0
   if (subId < 0) return
 
@@ -2397,6 +2430,7 @@ export function MISSILES_SpawnRandomWalkableSubMissileOnInterval_6FC5D1E0_113c(
   wCollisionMask: number,
   hooks?: K2W3B3Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC5D1E0)
   const interval = nInterval | 0
   if (interval === 0) return 0
 
@@ -2466,6 +2500,7 @@ export function MISSILES_SpawnTrailingSubMissileIfMoved_6FC5D320_113c(
   nVelFlag: number,
   hooks?: K2W3B3Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC5D320)
   const missile = pMissile >>> 0
   const pPath = m.u32((missile + 0x2c) >>> 0) >>> 0
   const flag08 = PATH_CheckFlag08_113c(m, pPath) | 0
@@ -2533,6 +2568,7 @@ export function MISSILES_SpawnCircularAreaSubMissiles_6FC5D450_113c(
   nRangeOverride: number,
   hooks?: K2W3B3Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC5D450)
   const missile = pMissile >>> 0
   if ((UNITS_GetRoom113c(m, missile) >>> 0) === 0) return
 
@@ -2633,6 +2669,7 @@ export function MISSILES_SpawnRing16WithOptionalInnerRingSubMissiles_6FC5D680_11
   nVelocityOverride: number,
   hooks?: K2W3B3Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC5D680)
   const subId = nSubMissile | 0
   if (subId < 0) return 0
   const pMissilesTxt = getMissilesTxtRecord113c(m, subId)
@@ -2708,6 +2745,7 @@ export function MISSILES_SrvDmg29_ApplySkillStateAndAuraStatsCalc1_6FC5E8A0_113c
   pTargetUnit: number,
   hooks?: K2W3B3Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC5E8A0)
   const missile = pMissile >>> 0
   const nSkillId = MISSILE_GetSkill113c(m, missile) | 0
   const nLevel = MISSILE_GetLevel113c(m, missile) | 0
@@ -2770,6 +2808,7 @@ export function MISSILES_SrvDmg30_ApplySkillStateAndAuraStatsCalc4_6FC5EC10_113c
   pTargetUnit: number,
   hooks?: K2W3B3Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC5EC10)
   const missile = pMissile >>> 0
   const nSkillId = MISSILE_GetSkill113c(m, missile) | 0
   const nLevel = MISSILE_GetLevel113c(m, missile) | 0
@@ -2833,6 +2872,7 @@ export function MISSILES_SrvDmg35_SpawnSubMissilesAndCollide_6FC5F120_113c(
   pTargetUnit: number,
   hooks?: K2W3B3Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC5F120)
   const missile = pMissile >>> 0
   if (missile === 0) return 1
   const pMissilesTxt = getMissilesTxtRecord113c(m, readI32(m, (missile + 0x04) >>> 0))
@@ -2888,6 +2928,7 @@ export function MISSILES_SrvDmg36_SpawnSubMissilesAndCollideRet3_6FC5F220_113c(
   pTargetUnit: number,
   hooks?: K2W3B3Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC5F220)
   const missile = pMissile >>> 0
   if (missile === 0) return 1
   const pMissilesTxt = getMissilesTxtRecord113c(m, readI32(m, (missile + 0x04) >>> 0))
@@ -2944,6 +2985,7 @@ export function MISSILES_SrvDo12_RandomWalkStepProjectile_6FC5F890_113c(
   pMissile: number,
   hooks?: K2W3B3Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC5F890)
   const missile = pMissile >>> 0
   if (missile === 0) return 2
   const pMissilesTxt = getMissilesTxtRecord113c(m, readI32(m, (missile + 0x04) >>> 0))
@@ -3016,6 +3058,7 @@ export function MISSILES_SrvDo13_SpawnOppositeSubMissilesAlongStep_6FC5F9F0_113c
   pMissile: number,
   hooks?: K2W3B3Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC5F9F0)
   const missile = pMissile >>> 0
   if (missile === 0) return 2
   const pMissilesTxt = getMissilesTxtRecord113c(m, readI32(m, (missile + 0x04) >>> 0))
@@ -3081,6 +3124,7 @@ export function MISSILES_SrvDo15_FollowOwnerAndSpawnRandomSubMissile_6FC5FB40_11
   pMissile: number,
   hooks?: K2W3B3Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC5FB40)
   const missile = pMissile >>> 0
   if (missile === 0) return 2
   const pMissilesTxt = getMissilesTxtRecord113c(m, readI32(m, (missile + 0x04) >>> 0))
@@ -3168,6 +3212,7 @@ export function MISSILES_SrvDo16_RedemptionManaHealOnFrame_6FC5FD30_113c(
   pMissile: number,
   hooks?: K2W3B3Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC5FD30)
   const missile = pMissile >>> 0
   if (missile === 0) return 2
   const pMissilesTxt = getMissilesTxtRecord113c(m, readI32(m, (missile + 0x04) >>> 0))
@@ -3226,6 +3271,7 @@ export function MISSILES_SrvDo17_RedemptionLifeHealOnFrame_6FC5FED0_113c(
   pMissile: number,
   hooks?: K2W3B3Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC5FED0)
   const missile = pMissile >>> 0
   if (missile === 0) return 2
   const pMissilesTxt = getMissilesTxtRecord113c(m, readI32(m, (missile + 0x04) >>> 0))

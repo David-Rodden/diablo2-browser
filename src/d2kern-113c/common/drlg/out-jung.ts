@@ -24,6 +24,7 @@ import {
   DRLGOUTDOORS_BuildOutdoorSubstContext113c,
   DRLGOUTDOORS_PlaceRandomOutdoorShrineOrSpecial113c,
 } from './outdoors.ts';
+import { hitD2CommonVa113c } from '../../va-trace-113c.ts';
 
 export const OUTJUNG_STACK_BASE = 0x7ff68000;
 export const OUTJUNG_STACK_SIZE = 0x100;
@@ -106,6 +107,7 @@ export function UNITS_GetMonStats2ComponentChoice113c(
   pUnit: number,
   nComponent: number,
 ): number {
+  hitD2CommonVa113c(0x6FDD4C30);
   const unit = pUnit >>> 0;
   if (unit === 0 || (m.u32(unit) | 0) !== 1) {
     return 0;
@@ -167,6 +169,7 @@ export function DRLGOUTJUNG_SpawnLowerKurastPresets113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD58E0);
   const lvl = pLevel >>> 0;
   for (let i = 0; i < 9; i++) {
     const base = i * 4;
@@ -189,6 +192,7 @@ export function DRLGOUTJUNG_SpawnKurastCausewayPresets113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD5930);
   const lvl = pLevel >>> 0;
   const seed: D2SeedStrc = {
     lo: m.u32((lvl + 0x1c4) >>> 0),
@@ -220,6 +224,7 @@ export function DRLGOUTJUNG_SpawnAct2LutGholeinBorderPreset113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD5990);
   const lvl = pLevel >>> 0;
   const pOutdoors = m.u32((lvl + 0x14) >>> 0);
   let pNode = m.u32((pOutdoors + 0x264) >>> 0);
@@ -250,6 +255,7 @@ export function DRLGOUTJUNG_SpawnPandemoniumFortressPresets113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD5FD0);
   const lvl = pLevel >>> 0;
   for (let i = 0; i < 25; i++) {
     const worldY = Math.trunc(i / 5) * 3;
@@ -269,6 +275,7 @@ export function DRLGOUTJUNG_SpawnOuterSteppesTransitions113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD6000);
   const lvl = pLevel >>> 0;
   const pOutdoors = m.u32((lvl + 0x14) >>> 0);
   if ((m.u32(pOutdoors) & 0x400000) !== 0) {
@@ -291,6 +298,7 @@ export function DRLGOUTJUNG_SpawnSpiderForestSpecialPreset113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD59F0);
   const lvl = pLevel >>> 0;
   const nLevelId = m.u32((lvl + 0x1d0) >>> 0) | 0;
   const caseIdx = (nLevelId - 41) >>> 0;
@@ -314,6 +322,7 @@ export function DRLGOUTJUNG_PlaceShuffledPresetList113c(
   nCount: number,
   bAllFiles: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD5A80);
   const lvl = pLevel >>> 0;
   const presetIds = pPresetIds >>> 0;
   const count = nCount | 0;
@@ -360,6 +369,7 @@ export function DRLGOUTJUNG_SpawnTravincalPresets113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD4DA0);
   const lvl = pLevel >>> 0;
   if ((m.u32((lvl + 0x1d0) >>> 0) | 0) !== 0x53) {
     return;
@@ -380,6 +390,7 @@ export function DRLGOUTJUNG_SpawnPresetsSet1_113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD5B80);
   const sm = withOutJungStackScratch113c(m);
   const pA = writeStackInt32List113c(sm, OUTJUNG_STACK_BASE, [0x191, 0x192, 0x196, 0x197, 0x193]);
   const pB = writeStackInt32List113c(sm, OUTJUNG_STACK_BASE + 0x20, [0x188, 0x189]);
@@ -395,6 +406,7 @@ export function DRLGOUTJUNG_SpawnPresetsSet2_113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD5BE0);
   const sm = withOutJungStackScratch113c(m);
   const pA = writeStackInt32List113c(sm, OUTJUNG_STACK_BASE, [0x18b, 0x190, 0x18e, 0x194, 0x195]);
   const pB = writeStackInt32List113c(sm, OUTJUNG_STACK_BASE + 0x20, [0x19b]);
@@ -411,6 +423,7 @@ export function DRLGOUTJUNG_SpawnPresetsSet3_113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD5C50);
   const sm = withOutJungStackScratch113c(m);
   const pA = writeStackInt32List113c(sm, OUTJUNG_STACK_BASE, [0x19d, 0x198, 0x199, 0x19a]);
   DRLGOUTJUNG_PlaceShuffledPresetList113c(sm, pLevel, pA, 4, 0);
@@ -424,6 +437,7 @@ export function DRLGOUTJUNG_SpawnPresetsSet4_113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD5C90);
   const sm = withOutJungStackScratch113c(m);
   const pA = writeStackInt32List113c(sm, OUTJUNG_STACK_BASE, [0x19b, 0x18f, 0x18e, 0x193]);
   const pB = writeStackInt32List113c(sm, OUTJUNG_STACK_BASE + 0x20, [0x18b]);
@@ -440,6 +454,7 @@ export function DRLGOUTJUNG_SpawnPresetsSet5_113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD5CF0);
   const sm = withOutJungStackScratch113c(m);
   const pA = writeStackInt32List113c(sm, OUTJUNG_STACK_BASE, [0x18c, 0x18d]);
   DRLGOUTJUNG_PlaceShuffledPresetList113c(sm, pLevel, pA, 2, 0);
@@ -453,6 +468,7 @@ export function DRLGOUTJUNG_SpawnPresetsSet6_113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD5D20);
   const sm = withOutJungStackScratch113c(m);
   const pA = writeStackInt32List113c(sm, OUTJUNG_STACK_BASE, [0x18b, 0x19b, 0x190, 0x18e]);
   const pB = writeStackInt32List113c(sm, OUTJUNG_STACK_BASE + 0x20, [0x194, 0x195, 0x196, 0x197]);
@@ -468,6 +484,7 @@ export function DRLGOUTJUNG_SpawnPresetsSet7_113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD5D90);
   const sm = withOutJungStackScratch113c(m);
   const pA = writeStackInt32List113c(
     sm,
@@ -485,6 +502,7 @@ export function DRLGOUTJUNG_SpawnAct4OutdoorPresets113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD6040);
   const lvl = pLevel >>> 0;
   const nLevelId = m.u32((lvl + 0x1d0) >>> 0) | 0;
   if (nLevelId === 0x6a) {
@@ -530,6 +548,7 @@ export function DRLGOUTJUNG_SpawnRandomPresetRange113c(
   nStartLvlPrestId: number,
   nMaxSpawns: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD4E40);
   const lvl = pLevel >>> 0;
   const pOutdoors = m.u32((lvl + 0x14) >>> 0);
   const gridW = m.u32((pOutdoors + 0x5c) >>> 0) | 0;
@@ -590,6 +609,7 @@ export function DRLGOUTJUNG_SpawnAct3KurastBazaarBorders113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD50D0);
   const lvl = pLevel >>> 0;
   const maxX = (sdiv32(m.u32((lvl + 0x24) >>> 0) | 0, 8) - 1) | 0;
   const maxY = (sdiv32(m.u32((lvl + 0x28) >>> 0) | 0, 8) - 1) | 0;
@@ -629,6 +649,7 @@ export function DRLGOUTJUNG_SpawnAct3LowerKurastBorders113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD5220);
   const lvl = pLevel >>> 0;
   const maxX = (sdiv32(m.u32((lvl + 0x24) >>> 0) | 0, 8) - 1) | 0;
   const maxY = (sdiv32(m.u32((lvl + 0x28) >>> 0) | 0, 8) - 1) | 0;
@@ -663,6 +684,7 @@ export function DRLGOUTJUNG_SpawnAct3GreatMarshBorders113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD5360);
   const lvl = pLevel >>> 0;
   const maxX = (sdiv32(m.u32((lvl + 0x24) >>> 0) | 0, 8) - 1) | 0;
   const maxY = (sdiv32(m.u32((lvl + 0x28) >>> 0) | 0, 8) - 1) | 0;
@@ -702,6 +724,7 @@ export function DRLGOUTJUNG_SpawnAct3CityPresetsByLevel113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD56C0);
   const lvl = pLevel >>> 0;
   const levelId = m.u32((lvl + 0x1d0) >>> 0) | 0;
   if (levelId === 0x4f) {
@@ -751,6 +774,7 @@ export function DRLGOUTJUNG_SpawnAct2DryHillsBorders113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD5DF0);
   const lvl = pLevel >>> 0;
   DRLGOUTDOORS_BuildOutdoorSubstContext113c(m, lvl, 2, 0x16c);
   DRLGOUTDOORS_BuildOutdoorSubstContext113c(m, lvl, 1, 0x16c);
@@ -771,6 +795,7 @@ export function DRLGOUTJUNG_InitAct2OutdoorLevel113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD5E20);
   const lvl = pLevel >>> 0;
   DRLGOUTPLACE_ApplyOutdoorVerticesToGrids113c(m, lvl);
   DRLGROOM_SpawnOutdoorBorderPresets113c(m, lvl);
@@ -832,6 +857,7 @@ export function DRLGOUTJUNG_InitAct4OutdoorLevel113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD61A0);
   const lvl = pLevel >>> 0;
   const levelId = m.u32((lvl + 0x1d0) >>> 0) | 0;
   DRLGOUTPLACE_ApplyOutdoorVerticesToGrids113c(m, lvl);

@@ -101,6 +101,7 @@ import { SUNIT_FreeUnit113c } from './replay-final11-113c.ts'
 import { ROOM_SpawnMonsterPreset113c } from './room-presets-113c.ts'
 import { EVENT_SetEventFull113c, type EventWheelHooks113c } from './timer-wheel.ts'
 import { PLAYER_SetNeutralOrTownNeutralMode113c } from './town-runtime-gap-113c.ts'
+import { hitD2GameVa113c } from '../va-trace-113c.ts'
 
 /**
  * Optional host/callback hooks for `Lane K2-K` (`0x6FC54660..0x6FC62290`).
@@ -332,6 +333,7 @@ export function QUESTS_TriggerCallback00_6FC54660_113c(
   dwExtra: number,
   hooks?: LaneK0x6fc5Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC54660)
   const client = pClient >>> 0
   if (client === 0) {
     throw new D2CommonAssertError('QUESTS_TriggerCallback00_6FC54660_113c: pClient == NULL', 0x996)
@@ -366,6 +368,7 @@ export function QUESTS_RefreshInventoryQuestItems_6FC54760_113c(
   pGame: number,
   hooks?: LaneK0x6fc5Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC54760)
   const unit = pUnit >>> 0
   const game = pGame >>> 0
   const pInventory = m.u32((unit + 0x60) >>> 0) >>> 0
@@ -441,6 +444,7 @@ export function QUESTS_PackNpcIntroFlags_6FC54C70_113c(
   pQuestIntro: number,
   nCount: number,
 ): number {
+  hitD2GameVa113c(0x6FC54C70)
   const pPayload = ((pPacket >>> 0) + 2) >>> 0
   for (let off = 0; off < 0x18; off += 4) {
     m.setU32((pPayload + off) >>> 0, 0xffffffff)
@@ -483,6 +487,7 @@ export function QUESTS_SetNpcIntroFlags_6FC54D00_113c(
   pGame: number,
   pNpcIds: number,
 ): void {
+  hitD2GameVa113c(0x6FC54D00)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit >>> 0) >>> 0
   const nDiff = m.u8(((pGame >>> 0) + 0x6d) >>> 0)
   const pIntro = m.u32((pPlayerData + nDiff * 4 + 0x60) >>> 0) >>> 0
@@ -511,6 +516,7 @@ export function QUESTS_InitAct1Quest4Object_6FC54DA0_113c(
   m: Memory113c,
   pObjInit: number,
 ): void {
+  hitD2GameVa113c(0x6FC54DA0)
   const initPtr = pObjInit >>> 0
   const pGame = m.u32(initPtr) >>> 0
   const pQuest = findQuestInChain113c(m, pGame, 4)
@@ -545,6 +551,7 @@ export function QUESTS_InitAct1Quest3Object_6FC54E10_113c(
   m: Memory113c,
   pObjInit: number,
 ): void {
+  hitD2GameVa113c(0x6FC54E10)
   const initPtr = pObjInit >>> 0
   const pGame = m.u32(initPtr) >>> 0
   const pQuest = findQuestInChain113c(m, pGame, 3)
@@ -582,6 +589,7 @@ export function QUESTS_SendGameQuestStatePacket29_6FC55030_113c(
   pGame: number,
   pClient: number,
 ): void {
+  hitD2GameVa113c(0x6FC55030)
   const pQuestCtrl = m.u32(((pGame >>> 0) + 0x10f4) >>> 0) >>> 0
   if (m.u32((pQuestCtrl + 0x08) >>> 0) === 0) {
     throw new D2CommonAssertError(
@@ -617,6 +625,7 @@ export function QUESTS_CompleteQuestForPlayerGuidList_6FC55A20_113c(
   pGuidList: number,
   wSoundId: number,
 ): void {
+  hitD2GameVa113c(0x6FC55A20)
   const list = pGuidList >>> 0
   const game = pGame >>> 0
   const questId = nQuestId | 0
@@ -672,6 +681,7 @@ export function QUESTS_TriggerCallback0B_6FC55C90_113c(
   wMessageId: number,
   hooks?: LaneK0x6fc5Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC55C90)
   const game = pGame >>> 0
   const targetGuid = dwTargetGuid | 0
   let pMonster = 0
@@ -723,6 +733,7 @@ export function QUESTS_SpawnPresetMonsterAtCoord_6FC56820_113c(
   pUnit: number,
   hooks?: LaneK0x6fc5Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC56820)
   const nAdjustedId = DATATBLS_AdjustMonsterPresetIndex113c(m, nType | 0, nPlaceId | 0) | 0
   const pStartRoom = UNITS_GetRoom113c(m, pUnit >>> 0) >>> 0
   const coordPtr = pCoord >>> 0
@@ -760,6 +771,7 @@ export function OBJECTS_OperateContainer_6FC56B90_113c(
   pOp: number,
   hooks?: LaneK0x6fc5Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC56B90)
   const op = pOp >>> 0
   const pObj0 = m.u32((op + 0x04) >>> 0) >>> 0
   if (pObj0 !== 0 && m.u32((pObj0 + 0x10) >>> 0) !== 0) {
@@ -818,6 +830,7 @@ export function PLAYER_GetPlayerDataField48_6FC57440_113c(
   m: Memory113c,
   pPlayer: number,
 ): number {
+  hitD2GameVa113c(0x6FC57440)
   const player = pPlayer >>> 0
   if (player === 0) {
     throw new D2CommonAssertError('PLAYER_GetPlayerDataField48_6FC57440_113c: pPlayer == NULL', 0x24c)
@@ -843,6 +856,7 @@ export function PLAYER_SetPlayerDataField48_6FC57480_113c(
   pPlayer: number,
   dwValue: number,
 ): void {
+  hitD2GameVa113c(0x6FC57480)
   const player = pPlayer >>> 0
   if (player === 0) {
     throw new D2CommonAssertError('PLAYER_SetPlayerDataField48_6FC57480_113c: pPlayer == NULL', 0x23f)
@@ -869,6 +883,7 @@ export function PLAYER_FreePlayerDataList98_6FC57500_113c(
   pPlayerData: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC57500)
   const pd = pPlayerData >>> 0
   const game = pGame >>> 0
   let pNode = m.u32((pd + 0x98) >>> 0) >>> 0
@@ -894,6 +909,7 @@ export function PLAYER_ApplyDeathExpPenalty_6FC57730_113c(
   pGame: number,
   pPlayer: number,
 ): void {
+  hitD2GameVa113c(0x6FC57730)
   const game = pGame >>> 0
   const player = pPlayer >>> 0
   const nDiff = m.u8((game + 0x6d) >>> 0)
@@ -949,6 +965,7 @@ export function PLAYER_FreePlayerCorpses_6FC579E0_113c(
   pPlayer: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC579E0)
   const player = pPlayer >>> 0
   const game = pGame >>> 0
   const pInventory = m.u32((player + 0x60) >>> 0) >>> 0
@@ -988,6 +1005,7 @@ export function PLAYER_InitPlacedModesAndEvents_6FC57E20_113c(
   y: number,
   hooks?: LaneK0x6fc5Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC57E20)
   const game = pGame >>> 0
   if (game === 0) {
     throw new D2CommonAssertError(
@@ -1034,6 +1052,7 @@ export function MISSILES_SrvHit_MoveColdLenToFrzLen_6FC58E70_113c(
   _pTarget: number,
   pDamage: number,
 ): void {
+  hitD2GameVa113c(0x6FC58E70)
   const dmg = pDamage >>> 0
   const coldLen = m.u32((dmg + 0x30) >>> 0) >>> 0
   m.setU32((dmg + 0x34) >>> 0, coldLen)
@@ -1052,6 +1071,7 @@ export function MISSILES_SrvDo_ReturnTwoIfCollided_6FC58E90_113c(
   _pMissile: number,
   bCollided: number,
 ): number {
+  hitD2GameVa113c(0x6FC58E90)
   return (bCollided | 0) !== 0 ? 2 : 0
 }
 
@@ -1067,6 +1087,7 @@ export function MISSILES_SrvDo_ClearRoomPortalFlag_6FC58EA0_113c(
   pMissile: number,
   bCollided: number,
 ): number {
+  hitD2GameVa113c(0x6FC58EA0)
   if ((bCollided | 0) === 0) {
     const pRoom = UNITS_GetRoom113c(m, pMissile >>> 0) >>> 0
     if (pRoom !== 0) {
@@ -1087,6 +1108,7 @@ export function MISSILES_SrvDo_ReturnOne_6FC58EC0_113c(
   _pMissile: number,
   _bCollided: number,
 ): number {
+  hitD2GameVa113c(0x6FC58EC0)
   return 1
 }
 
@@ -1101,6 +1123,7 @@ export function MISSILES_ConsumePierceStat_6FC58F40_113c(
   m: Memory113c,
   pMissile: number,
 ): number {
+  hitD2GameVa113c(0x6FC58F40)
   const missile = pMissile >>> 0
   const pMissilesTxt = getMissilesTxtRecordFromMissile113c(m, missile)
   if (pMissilesTxt === 0) {
@@ -1136,6 +1159,7 @@ export function MISSILES_SrvHit_ApplyProgOverlay_6FC58FF0_113c(
   pTarget: number,
   _pDamage: number,
 ): void {
+  hitD2GameVa113c(0x6FC58FF0)
   const pMissilesTxt = getMissilesTxtRecordFromMissile113c(m, pMissile >>> 0)
   if (pMissilesTxt === 0) return
   const target = pTarget >>> 0
@@ -1161,6 +1185,7 @@ export function MISSILES_SrvHit_CopyColdLenToFrzLen_6FC59040_113c(
   _pTarget: number,
   pDamage: number,
 ): void {
+  hitD2GameVa113c(0x6FC59040)
   const pMissilesTxt = getMissilesTxtRecordFromMissile113c(m, pMissile >>> 0)
   if (pMissilesTxt === 0) return
   const dmg = pDamage >>> 0
@@ -1180,6 +1205,7 @@ export function MISSILES_SrvDo_ExpireBeforeEndWindow_6FC591A0_113c(
   pMissile: number,
   bCollided: number,
 ): number {
+  hitD2GameVa113c(0x6FC591A0)
   const missile = pMissile >>> 0
   const pMissilesTxt = getMissilesTxtRecordFromMissile113c(m, missile)
   if (pMissilesTxt === 0) {
@@ -1206,6 +1232,7 @@ export function MISSILES_InitDrunkenPath_6FC59210_113c(
   pMissile: number,
   _nUnusedSeedOffset = 0,
 ): void {
+  hitD2GameVa113c(0x6FC59210)
   const missile = pMissile >>> 0
   if (missile === 0) return
 
@@ -1232,6 +1259,7 @@ export function MISSILES_AddElemDamageByEType_6FC59260_113c(
   pDamage: number,
   nAmount: number,
 ): void {
+  hitD2GameVa113c(0x6FC59260)
   const missile = pMissile >>> 0
   if (missile === 0) return
   const nMissileId = m.u32((missile + 0x04) >>> 0) | 0
@@ -1300,6 +1328,7 @@ export function MISSILES_ResetDamageKeepETypeLen_6FC592E0_113c(
   pMissile: number,
   pDamage: number,
 ): void {
+  hitD2GameVa113c(0x6FC592E0)
   const missile = pMissile >>> 0
   if (missile === 0) return
 
@@ -1358,6 +1387,7 @@ export function MISSILES_SetElemLenByEType_6FC594B0_113c(
   pDamage: number,
   nLength: number,
 ): void {
+  hitD2GameVa113c(0x6FC594B0)
   const missile = pMissile >>> 0
   if (missile === 0) return
   const nMissileId = m.u32((missile + 0x04) >>> 0) | 0
@@ -1398,6 +1428,7 @@ export function MISSILES_FilterFlagBit4Missile_6FC59510_113c(
   m: Memory113c,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC59510)
   const unit = pUnit >>> 0
   if (unit === 0 || m.u32(unit) !== 3) return 0
   const pMissilesTxt = getMissilesTxtRecordFromMissile113c(m, unit)
@@ -1423,6 +1454,7 @@ export function MISSILES_SrvHit_SetStunLenAndConv60_6FC59560_113c(
   _pTarget: number,
   pDamage: number,
 ): void {
+  hitD2GameVa113c(0x6FC59560)
   const missile = pMissile >>> 0
   const pMissilesTxt = getMissilesTxtRecordFromMissile113c(m, missile)
   if (pMissilesTxt === 0) return
@@ -1465,6 +1497,7 @@ export function MISSILES_SrvHit_RollKnockbackResult_6FC59670_113c(
   _pTarget: number,
   pDamage: number,
 ): void {
+  hitD2GameVa113c(0x6FC59670)
   const missile = pMissile >>> 0
   const pMissilesTxt = getMissilesTxtRecordFromMissile113c(m, missile)
   if (pMissilesTxt === 0) return
@@ -1500,6 +1533,7 @@ export function MISSILES_SrvDo_DrainPlayerManaPct_6FC596E0_113c(
   pMissile: number,
   pTarget: number,
 ): number {
+  hitD2GameVa113c(0x6FC596E0)
   const target = pTarget >>> 0
   if (target === 0 || m.u32(target) !== 0) {
     return 2
@@ -1554,6 +1588,7 @@ export function SKILLS_RedemptionCorpseCallback_6FC59930_113c(
   nLevel: number,
   _nUnusedArg3 = 0,
 ): void {
+  hitD2GameVa113c(0x6FC59930)
   const pSgptPtr = m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C) >>> 0
   const pDataTables = m.u32(pSgptPtr) >>> 0
   const nSkillsCount = m.u32((pDataTables + 0xba0) >>> 0) | 0
@@ -1612,6 +1647,7 @@ export function MISSILES_SrvHit_RollSizeScaledHitFlag_6FC59A40_113c(
   pTarget: number,
   pDamage: number,
 ): void {
+  hitD2GameVa113c(0x6FC59A40)
   const missile = pMissile >>> 0
   if (missile === 0 || m.u32(missile) !== 3) return
   const pMissilesTxt = getMissilesTxtRecordFromMissile113c(m, missile)
@@ -1675,6 +1711,7 @@ export function MISSILES_SrvHit_ClampRemainingPoisonLen_6FC59BD0_113c(
   pTarget: number,
   pDamage: number,
 ): void {
+  hitD2GameVa113c(0x6FC59BD0)
   const game = pGame >>> 0
   const missile = pMissile >>> 0
   const dmg = pDamage >>> 0
@@ -1717,6 +1754,7 @@ export function MISSILES_SrvHit_SetTargetFlag20000_6FC59C80_113c(
   pTarget: number,
   _pDamage: number,
 ): void {
+  hitD2GameVa113c(0x6FC59C80)
   const pOwner = getMissileOwnerUnit113c(m, pGame >>> 0, pMissile >>> 0)
   if (pOwner === 0) return
   if (((m.u32((pOwner + 0xc4) >>> 0) >>> 9) & 1) !== 0) return
@@ -1738,6 +1776,7 @@ export function MISSILES_SrvDo_KeepAliveOnBlazeOwner_6FC59F70_113c(
   pMissile: number,
   pCollidedUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC59F70)
   const collided = pCollidedUnit >>> 0
   if (collided === 0) return 2
   const pOwner = getMissileOwnerUnit113c(m, pGame >>> 0, pMissile >>> 0)
@@ -1760,6 +1799,7 @@ export function MISSILES_WarpPathToOwnerPos_6FC5A1D0_113c(
   pGame: number,
   pMissile: number,
 ): void {
+  hitD2GameVa113c(0x6FC5A1D0)
   const missile = pMissile >>> 0
   if (missile === 0) return
   const pOwner = getMissileOwnerUnit113c(m, pGame >>> 0, missile)
@@ -1804,6 +1844,7 @@ export function MISSILES_SrvDo_SpawnSkillParam1Monster_6FC5BC80_113c(
   bCollided: number,
   hooks?: LaneK0x6fc5Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC5BC80)
   if ((bCollided | 0) !== 0) return 1
   const game = pGame >>> 0
   const missile = pMissile >>> 0
@@ -1836,6 +1877,7 @@ export function MISSILES_SrvDo_SpawnMissileParam0Monster_6FC5BD10_113c(
   _bCollided = 0,
   hooks?: LaneK0x6fc5Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC5BD10)
   const missile = pMissile >>> 0
   if (missile === 0) return 1
   const nMissileId = m.u32((missile + 0x04) >>> 0) | 0
@@ -1879,6 +1921,7 @@ export function MISSILES_SrvDo_OpenTownPortalObject_6FC5E670_113c(
   bCollided: number,
   hooks?: LaneK0x6fc5Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC5E670)
   if ((bCollided | 0) !== 0) return 0
   const dwPortalGuid = MISSILE_GetTargetX113c(m, pMissile >>> 0) >>> 0
   const game = pGame >>> 0
@@ -1934,6 +1977,7 @@ export function MISSILES_InitChargedBoltPath_6FC61F50_113c(
   pMissile: number,
   nSeedOffset: number,
 ): void {
+  hitD2GameVa113c(0x6FC61F50)
   const missile = pMissile >>> 0
   if (missile === 0) return
 
@@ -1968,6 +2012,7 @@ export function SKILLS_SrvSt13_ResetSkillParams_6FC62230_113c(
   nSkillId: number,
   _nLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC62230)
   const skillId = nSkillId | 0
   if (skillId < 0) return 0
   const pSgptPtr = m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C) >>> 0
@@ -1998,6 +2043,7 @@ export function SKILLS_StatListExpireClearState_6FC62290_113c(
   nState: number,
   _pStatList: number,
 ): void {
+  hitD2GameVa113c(0x6FC62290)
   const unit = pUnit >>> 0
   STATES_ToggleGfxStateFlag113c(m, unit, nState | 0, 0)
   if (unit !== 0) {

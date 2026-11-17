@@ -114,6 +114,7 @@ import {
   EVENT_SetEventFull113c,
   type EventWheelHooks113c,
 } from './timer-wheel.ts'
+import { hitD2GameVa113c } from '../va-trace-113c.ts'
 
 export type D2KernMemory113c = Memory113c
 
@@ -235,6 +236,7 @@ export function STATES_OnStateRemovedResetMonsterAi_6FC70130_113c(
   pStatList = 0,
   hooks?: K2W3B5Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC70130)
   const unit = pUnit >>> 0
   if (unit === 0) {
     return
@@ -271,6 +273,7 @@ export function SKILLS_ConvertMonsterAndScheduleExpire_6FC709E0_113c(
   nLevel: number,
   hooks?: K2W3B5Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC709E0)
   const skillId = nSkillId | 0
   let pSkillsTxt = 0
   if (skillId >= 0) {
@@ -379,6 +382,7 @@ export function GAMETIME_QueueTaskNodeToWorkerList_6FC72390_113c(
   dwArg8: number,
   hooks?: K2W3B5Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC72390)
   const node = pNode >>> 0
   const elapsed = GAMETIME_GetElapsedMilliseconds_6FC72020_113c(
     m,
@@ -451,6 +455,7 @@ export function PLAYERSAVE_ComputeHeaderChecksum_6FC73170_113c(
   pSaveData: number,
   nByteLen: number,
 ): number {
+  hitD2GameVa113c(0x6FC73170)
   const base = pSaveData >>> 0
   const dwVersion = m.u32((base + 0x04) >>> 0) >>> 0
   let saved0c = 0
@@ -496,6 +501,7 @@ export function PLAYERSAVE_WriteInventoryAndCursorItems_6FC737D0_113c(
   _arg4 = 0,
   _arg5 = 0,
 ): number {
+  hitD2GameVa113c(0x6FC737D0)
   const maxBytes = nMaxBytes | 0
   if (maxBytes < 2) {
     return 0
@@ -679,6 +685,7 @@ export function ACT5Q6_SeqFilter_6FC767A0_113c(
   pQuest: number,
   hooks?: K2W3B5Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC767A0)
   const quest = pQuest >>> 0
   const bState = m.u8((quest + 0x0c) >>> 0)
   if (bState !== 5 && m.u8((quest + 0x09) >>> 0) !== 0) {
@@ -714,6 +721,7 @@ export function ACT5Q4_SeqFilter_6FC76B10_113c(
   pQuest: number,
   hooks?: K2W3B5Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC76B10)
   const quest = pQuest >>> 0
   const bState = m.u8((quest + 0x0c) >>> 0)
   if (bState < 5 && m.u8((quest + 0x09) >>> 0) !== 0) {
@@ -749,6 +757,7 @@ export function ACT5Q5_SeqFilter_6FC76BD0_113c(
   pQuest: number,
   hooks?: K2W3B5Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC76BD0)
   const quest = pQuest >>> 0
   const bState = m.u8((quest + 0x0c) >>> 0)
   if (bState !== 5 && m.u8((quest + 0x09) >>> 0) !== 0) {
@@ -784,6 +793,7 @@ export function ACT5Q1_SeqFilter_6FC76D10_113c(
   pQuest: number,
   hooks?: K2W3B5Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC76D10)
   const quest = pQuest >>> 0
   if (m.u8((quest + 0x0c) >>> 0) !== 5 && m.u8((quest + 0x09) >>> 0) !== 0) {
     return 1
@@ -819,6 +829,7 @@ export function ACT5Q6_ActiveFilter_6FC76EF0_113c(
   pQuestFlags: number,
   _pNpcUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC76EF0)
   const quest = pQuest >>> 0
   const npc = nNpcId | 0
   if (npc >= 0x219 && npc <= 0x21b) {
@@ -874,6 +885,7 @@ export function ACT5Q6_Callback00_NpcActivate_6FC77000_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC77000)
   const quest = pQuest >>> 0
   const arg = pQuestArg >>> 0
   const pGame = m.u32((quest + 0x04) >>> 0) >>> 0
@@ -988,6 +1000,7 @@ export function ACT5Q5_Callback00_NpcActivate_6FC775F0_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC775F0)
   const quest = pQuest >>> 0
   const arg = pQuestArg >>> 0
   const pQuestDataEx = m.u32((quest + 0x18) >>> 0) >>> 0
@@ -1072,6 +1085,7 @@ export function ACT5Q4_CheckPlayerNearNihlathakRoom_6FC77900_113c(
   pPlayer: number,
   _arg0 = 0,
 ): number {
+  hitD2GameVa113c(0x6FC77900)
   const game = pGame >>> 0
   const player = pPlayer >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, player) >>> 0
@@ -1149,6 +1163,7 @@ export function ACT5Q4_Callback00_NpcActivate_6FC77A60_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC77A60)
   const quest = pQuest >>> 0
   const arg = pQuestArg >>> 0
   const pGame = m.u32((quest + 0x04) >>> 0) >>> 0
@@ -1240,6 +1255,7 @@ export function ACT5Q3_Callback03_OnItemPickedUp_6FC77DD0_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC77DD0)
   const quest = pQuest >>> 0
   const arg = pQuestArg >>> 0
   const pPlayer = m.u32((arg + 0x0c) >>> 0) >>> 0
@@ -1310,6 +1326,7 @@ export function ACT5Q3_Callback11_OnPlayerConnect_6FC77E80_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC77E80)
   const quest = pQuest >>> 0
   const arg = pQuestArg >>> 0
   const pGame = m.u32((quest + 0x04) >>> 0) >>> 0
@@ -1370,6 +1387,7 @@ export function ACT5Q3_ActiveFilter_6FC77F50_113c(
   pQuestFlags: number,
   _pNpcUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC77F50)
   const quest = pQuest >>> 0
   const npc = nNpcId | 0
   const flags = pQuestFlags >>> 0
@@ -1433,6 +1451,7 @@ export function ACT5Q2_Callback00_NpcActivate_6FC783C0_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC783C0)
   const quest = pQuest >>> 0
   const arg = pQuestArg >>> 0
   const pGame = m.u32((quest + 0x04) >>> 0) >>> 0
@@ -1505,6 +1524,7 @@ export function ACT5Q2_SyncPlayerQuestStateWithQuest20_6FC78530_113c(
   pPlayer: number,
   _arg0 = 0,
 ): number {
+  hitD2GameVa113c(0x6FC78530)
   const game = pGame >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer >>> 0) >>> 0
   const bDiff = m.u8((game + 0x6d) >>> 0)
@@ -1542,6 +1562,7 @@ export function ACT5Q1_CompleteQuestRecord23AndVerifyQuest1F_6FC785C0_113c(
   pPlayer: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC785C0)
   const game = pGame >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer >>> 0) >>> 0
   const bDiff = m.u8((game + 0x6d) >>> 0)
@@ -1571,6 +1592,7 @@ export function ACT5Q1_RewardPlayerInAct5PartyCallback_6FC78640_113c(
   pPlayer: number,
   _arg0 = 0,
 ): void {
+  hitD2GameVa113c(0x6FC78640)
   const game = pGame >>> 0
   const player = pPlayer >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, player) >>> 0
@@ -1613,6 +1635,7 @@ export function ACT5Q1_CheckPlayerNearShenkRoomCallback_6FC786C0_113c(
   pPlayer: number,
   _arg0 = 0,
 ): number {
+  hitD2GameVa113c(0x6FC786C0)
   const game = pGame >>> 0
   const player = pPlayer >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, player) >>> 0
@@ -1673,6 +1696,7 @@ export function ACT5Q1_Callback00_NpcActivate_6FC787C0_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC787C0)
   const quest = pQuest >>> 0
   const arg = pQuestArg >>> 0
   const pGame = m.u32((quest + 0x04) >>> 0) >>> 0
@@ -1732,6 +1756,7 @@ export function ACT5Q1_SyncPlayerQuestStateWithQuest1F_6FC78890_113c(
   pPlayer: number,
   _arg0 = 0,
 ): number {
+  hitD2GameVa113c(0x6FC78890)
   const game = pGame >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer >>> 0) >>> 0
   const bDiff = m.u8((game + 0x6d) >>> 0)
@@ -1774,6 +1799,7 @@ export function ACT5Q6_Callback11_OnPlayerConnect_6FC78930_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC78930)
   const quest = pQuest >>> 0
   const arg = pQuestArg >>> 0
   const pPlayer = m.u32((arg + 0x0c) >>> 0) >>> 0
@@ -1841,6 +1867,7 @@ export function ACT5Q6_SendPacket50Quest24WordA4_6FC78A40_113c(
   pPlayer: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC78A40)
   const player = pPlayer >>> 0
   let pClient = 0
   if (player !== 0 && (m.u32(player) >>> 0) === 0) {
@@ -1877,6 +1904,7 @@ export function ACT5Q6_SendPacket5DAndTriggerSpeech53_6FC78AE0_113c(
   pPlayer: number,
   _arg0 = 0,
 ): number {
+  hitD2GameVa113c(0x6FC78AE0)
   const game = pGame >>> 0
   const player = pPlayer >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, player) >>> 0
@@ -1927,6 +1955,7 @@ export function ACT5Q6_CompleteQuest28AndUpdateProgression_6FC78BE0_113c(
   pPlayer: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC78BE0)
   const flags = pQuestFlags >>> 0
   const player = pPlayer >>> 0
   const game = pGame >>> 0
@@ -1970,6 +1999,7 @@ export function ACT5Q6_RewardPlayerInAct5PartyCallback_6FC78C90_113c(
   pPlayer: number,
   _arg0 = 0,
 ): void {
+  hitD2GameVa113c(0x6FC78C90)
   const game = pGame >>> 0
   const player = pPlayer >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, player) >>> 0
@@ -2016,6 +2046,7 @@ export function ACT5Q4_Callback11_OnPlayerConnect_6FC79450_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC79450)
   const quest = pQuest >>> 0
   const arg = pQuestArg >>> 0
   const pPlayer = m.u32((arg + 0x0c) >>> 0) >>> 0
@@ -2152,6 +2183,7 @@ export function ACT5Intro_ActiveFilter_6FC79680_113c(
   _pQuestFlags = 0,
   _pNpcUnit = 0,
 ): number {
+  hitD2GameVa113c(0x6FC79680)
   if ((nNpcId | 0) !== 0x201) {
     return 0
   }
@@ -2174,6 +2206,7 @@ export function ACT5Intro_Callback00_NpcActivate_6FC796B0_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC796B0)
   const quest = pQuest >>> 0
   const arg = pQuestArg >>> 0
   const pTarget = m.u32((arg + 0x08) >>> 0) >>> 0
@@ -2237,6 +2270,7 @@ export function ACT5Intro_Callback02_ScrollMessage_6FC797B0_113c(
   _pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC797B0)
   const arg = pQuestArg >>> 0
   const nNpcClassId = m.u32((arg + 0x14) >>> 0) | 0
   const wMsgId = m.u16((arg + 0x18) >>> 0)
@@ -2312,6 +2346,7 @@ export function ACT5Q3_InitPresetQuestObject1CD_6FC79D30_113c(
   pGame: number,
   pSaveChain: number,
 ): void {
+  hitD2GameVa113c(0x6FC79D30)
   const pQuest = findQuestNodeInChain113c(m, pGame >>> 0, 0x21)
   if (pQuest === 0 || (pSaveChain >>> 0) === 0) {
     return
@@ -2361,6 +2396,7 @@ export function ACT5Q3_InitPresetQuestObject1CB_6FC79E10_113c(
   pGame: number,
   pSaveChain: number,
 ): void {
+  hitD2GameVa113c(0x6FC79E10)
   const pQuest = findQuestNodeInChain113c(m, pGame >>> 0, 0x21)
   if (pQuest === 0 || (pSaveChain >>> 0) === 0) {
     return
@@ -2412,6 +2448,7 @@ export function ACT5Q3_GrantScrollOfResistanceStats_6FC7A000_113c(
   pGame: number,
   hooks?: K2W3B5Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC7A000)
   const player = pPlayer >>> 0
   const bonus = nResistBonus | 0
   const dwOwnerId = player === 0 ? 0xffffffff : (m.u32((player + 0x0c) >>> 0) >>> 0)
@@ -2447,6 +2484,7 @@ export function ACT5Q2_HasNearbySoldierPrisonDoorInMode12_6FC7A160_113c(
   pGame: number,
   pFallbackUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC7A160)
   let pTarget = pPlayer >>> 0
   const game = pGame >>> 0
   if (pTarget === 0) {
@@ -2511,6 +2549,7 @@ export function ACT5Q2_FindSpawnedPrisonObjectForUnit_6FC7A290_113c(
   pUnit: number,
   ppOutObject: number,
 ): number {
+  hitD2GameVa113c(0x6FC7A290)
   const game = pGame >>> 0
   const pQuest = findQuestNodeInChain113c(m, game, 0x20)
   if (pQuest === 0) {
@@ -2548,6 +2587,7 @@ export function ACT5Q1_InitPresetQuestObject21F_6FC7A5C0_113c(
   pGame: number,
   pSaveChain: number,
 ): void {
+  hitD2GameVa113c(0x6FC7A5C0)
   const pQuest = findQuestNodeInChain113c(m, pGame >>> 0, 0x1f)
   if (pQuest === 0 || (pSaveChain >>> 0) === 0) {
     return
@@ -2599,6 +2639,7 @@ export function ACT5Q2_SpawnBarbarianSoldiersInPrison_6FC7C2A0_113c(
   nGroupIdx: number,
   hooks?: K2W3B5Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC7C2A0)
   const quest = pQuest >>> 0
   const coord = pCoordInfo >>> 0
   const groupIdx = nGroupIdx | 0
@@ -2659,6 +2700,7 @@ export function ACT5Q3_SpawnFrozenAnyaMonsterIfNeeded_6FC7CF70_113c(
   pCoordInfo: number,
   hooks?: K2W3B5Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC7CF70)
   const coord = pCoordInfo >>> 0
   const pGame0 = m.u32(coord) >>> 0
   const pQuest = findQuestNodeInChain113c(m, pGame0, 0x21)
@@ -2712,6 +2754,7 @@ export function ACT5Q3_SpawnAnyaThawProjectile_6FC7D960_113c(
   pQuestArg: number,
   hooks?: K2W3B5Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC7D960)
   const quest = pQuest >>> 0
   const arg = pQuestArg >>> 0
   const objGuid = dwObjectGuid >>> 0
@@ -2784,6 +2827,7 @@ export function ACT5Q3_Callback00_NpcActivate_6FC7DA70_113c(
   pQuestArg: number,
   hooks?: K2W3B5Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC7DA70)
   const quest = pQuest >>> 0
   const arg = pQuestArg >>> 0
   const pGame = m.u32((quest + 0x04) >>> 0) >>> 0
@@ -2898,6 +2942,7 @@ export function ACT5Q3_ThawFrozenAnyaMonster_6FC7DD00_113c(
   pQuest: number,
   hooks?: K2W3B5Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC7DD00)
   const mon = pMonster >>> 0
   const quest = pQuest >>> 0
   let pInteractHeadPtr = 0
@@ -2954,6 +2999,7 @@ export function ACT5Q3_TryUseThawPotionOnFrozenAnya_6FC7DDF0_113c(
   _pPlayer = 0,
   hooks?: K2W3B5Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC7DDF0)
   const game = pGame >>> 0
   const target = pTargetUnit >>> 0
   if (target === 0 || (m.u32((target + 0x04) >>> 0) | 0) !== 0x20f) {

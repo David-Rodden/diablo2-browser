@@ -12,6 +12,7 @@ import { join } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
 import { D2GameStrc, D2UnitStrc } from '../../../src/d2kern-113c/mem/layout.generated.ts'
+import { beginVaTrace113c, endVaTrace113c } from '../../../src/d2kern-113c/va-trace-113c.ts'
 import { parseTrace, type Trace, type TraceHeader, type UnitRow } from '../../../tools/oracle/lib/trace-diff.ts'
 import {
   REPO_ROOT_113C,
@@ -71,76 +72,87 @@ function runK4QuestReplay113c(name: string, bootFrame = 2): { result: ReplayResu
     scenario.save !== undefined
       ? new Uint8Array(readFileSync(join(REPO_ROOT_113C, scenario.save)))
       : undefined
-  const world = bootFromSnapshot113c(loadSnapshotFile113c(k4SnapshotPath(name, bootFrame)), saveBytes)
-  if (world.bootFrame !== bootFrame) {
-    throw new Error(`snapshot boots at F${world.bootFrame}, expected F${bootFrame}`)
-  }
+  const snap = loadSnapshotFile113c(k4SnapshotPath(name, bootFrame))
   const header = golden.header
   let lastGoldenFrame = 0
   for (const f of golden.frames.keys()) if (f > lastGoldenFrame) lastGoldenFrame = f
   const bootGolden = golden.frames.get(bootFrame)
   if (bootGolden === undefined) throw new Error(`golden has no frame ${bootFrame}`)
-  const bootCheck = diffFrame113c(bootGolden, sampleFrame113c(world, header), header, 'strict')
 
+  beginVaTrace113c()
+  let bootCheck: FieldDivergence113c | null = null
   let strictHorizon = bootFrame
   let posHorizon = bootFrame
-  let firstStrict: FieldDivergence113c | null = bootCheck
-  let firstPos: FieldDivergence113c | null =
-    bootCheck === null ? null : diffFrame113c(bootGolden, sampleFrame113c(world, header), header, 'pos')
+  let firstStrict: FieldDivergence113c | null = null
+  let firstPos: FieldDivergence113c | null = null
   let unportedHit: ReplayResult113c['unportedHit'] = null
   let framesStepped = 0
+  let tsExecutedVas: string[] = []
 
-  if (bootCheck === null) {
-    for (let f = bootFrame + 1; f <= lastGoldenFrame; f++) {
-      const g = golden.frames.get(f)
-      if (g === undefined) throw new Error(`golden has no frame ${f}`)
-      const packets = scenario.inputs.filter((i) => i.frame === f).map((i) => hexBytes(i.c2s))
-      try {
-        stepFrame113c(world, packets)
-      } catch (e) {
-        if (e instanceof UnportedFunction113c) {
-          const d: FieldDivergence113c = {
-            frame: f,
-            key: 'step',
-            id: null,
-            field: `<unported ${manifestKey113c(e.module, e.va)}>`,
-            expected: 'frame simulated by the original game',
-            actual: e.message,
-          }
-          unportedHit = { frame: f, key: manifestKey113c(e.module, e.va), status: e.status, reason: e.reason }
-          if (firstStrict === null) firstStrict = d
-          if (firstPos === null) firstPos = d
-          break
-        }
-        if (e instanceof Error && e.message.startsWith('SparseMemory113c:')) {
-          const d: FieldDivergence113c = {
-            frame: f,
-            key: 'step',
-            id: null,
-            field: '<unhydrated SparseMemory113c>',
-            expected: 'frame simulated by the original game',
-            actual: e.message,
-          }
-          if (firstStrict === null) firstStrict = d
-          if (firstPos === null) firstPos = d
-          break
-        }
-        throw e
-      }
-      framesStepped++
-      const sample = sampleFrame113c(world, header)
-      if (firstStrict === null) {
-        const d = diffFrame113c(g, sample, header, 'strict')
-        if (d === null) strictHorizon = f
-        else firstStrict = d
-      }
-      const dp = diffFrame113c(g, sample, header, 'pos')
-      if (dp !== null) {
-        firstPos = dp
-        break
-      }
-      posHorizon = f
+  try {
+    const world = bootFromSnapshot113c(snap, saveBytes)
+    if (world.bootFrame !== bootFrame) {
+      throw new Error(`snapshot boots at F${world.bootFrame}, expected F${bootFrame}`)
     }
+    bootCheck = diffFrame113c(bootGolden, sampleFrame113c(world, header), header, 'strict')
+    firstStrict = bootCheck
+    firstPos =
+      bootCheck === null ? null : diffFrame113c(bootGolden, sampleFrame113c(world, header), header, 'pos')
+
+    if (bootCheck === null) {
+      for (let f = bootFrame + 1; f <= lastGoldenFrame; f++) {
+        const g = golden.frames.get(f)
+        if (g === undefined) throw new Error(`golden has no frame ${f}`)
+        const packets = scenario.inputs.filter((i) => i.frame === f).map((i) => hexBytes(i.c2s))
+        try {
+          stepFrame113c(world, packets)
+        } catch (e) {
+          if (e instanceof UnportedFunction113c) {
+            const d: FieldDivergence113c = {
+              frame: f,
+              key: 'step',
+              id: null,
+              field: `<unported ${manifestKey113c(e.module, e.va)}>`,
+              expected: 'frame simulated by the original game',
+              actual: e.message,
+            }
+            unportedHit = { frame: f, key: manifestKey113c(e.module, e.va), status: e.status, reason: e.reason }
+            if (firstStrict === null) firstStrict = d
+            if (firstPos === null) firstPos = d
+            break
+          }
+          if (e instanceof Error && e.message.startsWith('SparseMemory113c:')) {
+            const d: FieldDivergence113c = {
+              frame: f,
+              key: 'step',
+              id: null,
+              field: '<unhydrated SparseMemory113c>',
+              expected: 'frame simulated by the original game',
+              actual: e.message,
+            }
+            if (firstStrict === null) firstStrict = d
+            if (firstPos === null) firstPos = d
+            break
+          }
+          throw e
+        }
+        framesStepped++
+        const sample = sampleFrame113c(world, header)
+        if (firstStrict === null) {
+          const d = diffFrame113c(g, sample, header, 'strict')
+          if (d === null) strictHorizon = f
+          else firstStrict = d
+        }
+        const dp = diffFrame113c(g, sample, header, 'pos')
+        if (dp !== null) {
+          firstPos = dp
+          break
+        }
+        posHorizon = f
+      }
+    }
+  } finally {
+    tsExecutedVas = [...endVaTrace113c()].sort()
   }
 
   return {
@@ -156,6 +168,7 @@ function runK4QuestReplay113c(name: string, bootFrame = 2): { result: ReplayResu
       firstPosDivergence: firstPos,
       unportedHit,
       framesStepped,
+      tsExecutedVas,
     },
   }
 }

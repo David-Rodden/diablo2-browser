@@ -79,7 +79,7 @@ function createTestClientWithQueue(m: Memory113c): { pClient: number; pQueue: nu
 function readQueuedBytes(m: Memory113c, pQueue: number, nSize: number): number[] {
   const out: number[] = []
   for (let i = 0; i < nSize; i++) {
-    out.push(m.u8((pQueue + 0x08 + i) >>> 0))
+    out.push(m.u8((pQueue + 0x04 + i) >>> 0))
   }
   return out
 }
@@ -585,7 +585,7 @@ describe('Milestone 33 [K2] Wave 2 Batch 3 (w2b3: 45 D2Game.dll functions)', () 
       const pSrc = m.alloc(0x20) >>> 0
       for (let i = 0; i < 32; i++) m.setU8((pSrc + i) >>> 0, i + 1)
       expect(NET_SendPacketBuffer32B_6FCAAA10_113c(m, pSrc, pClient)).toBe(1)
-      expect(m.u32((pQueue + 0x04) >>> 0)).toBe(32)
+      expect(m.u32((pQueue + 0x00) >>> 0)).toBe(32)
       expect(readQueuedBytes(m, pQueue, 4)).toEqual([1, 2, 3, 4])
     }
 
@@ -595,8 +595,8 @@ describe('Milestone 33 [K2] Wave 2 Batch 3 (w2b3: 45 D2Game.dll functions)', () 
       const pSrc = m.alloc(0x18) >>> 0
       for (let i = 0; i < 21; i++) m.setU8((pSrc + i) >>> 0, 0x10 + i)
       expect(NET_SendPacketBuffer21B_6FCAAA70_113c(m, pSrc, pClient)).toBe(1)
-      expect(m.u32((pQueue + 0x04) >>> 0)).toBe(21)
-      expect(m.u8((pQueue + 0x08 + 20) >>> 0)).toBe(0x24)
+      expect(m.u32((pQueue + 0x00) >>> 0)).toBe(21)
+      expect(m.u8((pQueue + 0x04 + 20) >>> 0)).toBe(0x24)
     }
 
     // [25/45] 0x61
@@ -639,8 +639,8 @@ describe('Milestone 33 [K2] Wave 2 Batch 3 (w2b3: 45 D2Game.dll functions)', () 
       const pSrc = m.alloc(16) >>> 0
       for (let i = 0; i < 15; i++) m.setU8((pSrc + i) >>> 0, 0x40 + i)
       expect(NET_SendPacketBuffer15B_6FCAABF0_113c(m, pSrc, pClient)).toBe(1)
-      expect(m.u32((pQueue + 0x04) >>> 0)).toBe(15)
-      expect(m.u8((pQueue + 0x08 + 14) >>> 0)).toBe(0x4e)
+      expect(m.u32((pQueue + 0x00) >>> 0)).toBe(15)
+      expect(m.u8((pQueue + 0x04 + 14) >>> 0)).toBe(0x4e)
     }
 
     // [29/45] 15B transaction result
@@ -699,11 +699,11 @@ describe('Milestone 33 [K2] Wave 2 Batch 3 (w2b3: 45 D2Game.dll functions)', () 
           0x09,
         ),
       ).toBe(1)
-      expect(m.u32((pQueue + 0x04) >>> 0)).toBe(0x67)
+      expect(m.u32((pQueue + 0x00) >>> 0)).toBe(0x67)
       expect(readQueuedBytes(m, pQueue, 8)).toEqual([
         0x28, 0x01, 0x44, 0x33, 0x22, 0x11, 0x09, 0xaa,
       ])
-      expect(m.u8((pQueue + 0x08 + 0x66) >>> 0)).toBe(0xbb)
+      expect(m.u8((pQueue + 0x04 + 0x66) >>> 0)).toBe(0xbb)
     }
   })
 
@@ -807,8 +807,8 @@ describe('Milestone 33 [K2] Wave 2 Batch 3 (w2b3: 45 D2Game.dll functions)', () 
       const pSrc = m.alloc(0x18) >>> 0
       for (let i = 0; i < 21; i++) m.setU8((pSrc + i) >>> 0, 0x60 + i)
       expect(NET_SendPacketBuffer21B_Alt_6FCAB2F0_113c(m, pSrc, pClient)).toBe(1)
-      expect(m.u32((pQueue + 0x04) >>> 0)).toBe(21)
-      expect(m.u8((pQueue + 0x08 + 20) >>> 0)).toBe(0x74)
+      expect(m.u32((pQueue + 0x00) >>> 0)).toBe(21)
+      expect(m.u8((pQueue + 0x04 + 20) >>> 0)).toBe(0x74)
     }
   })
 
@@ -828,8 +828,8 @@ describe('Milestone 33 [K2] Wave 2 Batch 3 (w2b3: 45 D2Game.dll functions)', () 
       const pSrc = m.alloc(0x28) >>> 0
       for (let i = 0; i < 40; i++) m.setU8((pSrc + i) >>> 0, i + 1)
       expect(NET_SendPacketBuffer40B_6FCAB3D0_113c(m, pSrc, pClient)).toBe(1)
-      expect(m.u32((pQueue + 0x04) >>> 0)).toBe(40)
-      expect(m.u8((pQueue + 0x08 + 39) >>> 0)).toBe(40)
+      expect(m.u32((pQueue + 0x00) >>> 0)).toBe(40)
+      expect(m.u8((pQueue + 0x04 + 39) >>> 0)).toBe(40)
     }
 
     // [42/45] 10B unit byte stat + assert on wStatId >= 0xFF

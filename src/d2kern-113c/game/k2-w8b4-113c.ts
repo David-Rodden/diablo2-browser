@@ -74,6 +74,7 @@ import { QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c } from './k2-w7b
 import { PARTY_AddPlayerToSubParty_6FCBC4F0_113c } from './k2-w7b3-113c'
 import { UNITS_ChangeAnimMode113c } from './monster-events'
 import { EVENT_SetEventFull113c } from './timer-wheel'
+import { hitD2GameVa113c } from '../va-trace-113c'
 
 let k2W8B4StackPtr = 0x7ff80000
 
@@ -98,6 +99,7 @@ export function ACT3Q1_OnQuestItemPickedUp_6FD07640_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD07640)
   const esi = pQuest >>> 0
   const ebp = pQuestArg >>> 0
   const pPlayer = m.u32((ebp + 0x0c) >>> 0) >>> 0
@@ -174,6 +176,7 @@ export function ACT3Q2_OnGidbinnPickedUp_6FD07770_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD07770)
   const ebp = pQuest >>> 0
   const esi = pQuestArg >>> 0
 
@@ -251,6 +254,7 @@ export function ACT3Q3_OnNpcSpeechComplete_6FD07940_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD07940)
   const esi = pQuest >>> 0
   const edx = pQuestArg >>> 0
   const pPlayer = m.u32((edx + 0x0c) >>> 0) >>> 0
@@ -311,6 +315,7 @@ export function ACT3Q5_OnCouncilMemberKilled_6FD07DB0_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD07DB0)
   const ebp = pQuest >>> 0
   const edi = pQuestArg >>> 0
 
@@ -483,6 +488,7 @@ export function ACT3Q1_OnBossKilledDropJadeFigurine_6FD08010_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD08010)
   const esi = pQuest >>> 0
   const ebx = pQuestArg >>> 0
 
@@ -645,6 +651,7 @@ export function ACT3Q7_OnMephistoKilled_6FD09A10_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD09A10)
   const ebp = pQuest >>> 0
   const esi = pQuestArg >>> 0
 
@@ -833,6 +840,7 @@ export function PARTY_AcceptInviteAndSyncParty_6FD10D50_113c(
   _dwUnused1: number = 0,
   _dwUnused2: number = 0,
 ): void {
+  hitD2GameVa113c(0x6FD10D50)
   const edi = pGame >>> 0
   const ebp = pAccepterUnit >>> 0
   const esi = pInviterUnit >>> 0
@@ -906,6 +914,7 @@ export function PARTY_DeclareHostilityBetweenPlayers_6FD10FF0_113c(
   pSourcePlayer: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FD10FF0)
   const ebx = pTargetPlayer >>> 0
   const ebp = pSourcePlayer >>> 0
   const edi = pGame >>> 0

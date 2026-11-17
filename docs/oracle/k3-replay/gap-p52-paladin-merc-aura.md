@@ -10,19 +10,17 @@ one-shot INT3 on all 4810 manifest entries, armed inside the server frame (1210 
 | Module | executed | ported/dv | gap | gap bytes |
 |---|---:|---:|---:|---:|
 | D2Common | 666 | 666 | 0 | 0 |
-| D2Game | 544 | 542 | 2 | 2908 |
+| D2Game | 544 | 544 | 0 | 0 |
 
 ## D2Common (0)
 
 | first | VA | size | status | name |
 |---:|---|---:|---|---|
 
-## D2Game (2)
+## D2Game (0)
 
 | first | VA | size | status | name |
 |---:|---|---:|---|---|
-| F3 | `0x6FC3D3C0` | 1890 | unported | D2Game_6FC3D3C0 |
-| F3 | `0x6FC3DD40` | 1018 | unported | D2Game_6FC3DD40 |
 
 ## Executed ported/diff-verified functions on an impure kernFile (0)
 

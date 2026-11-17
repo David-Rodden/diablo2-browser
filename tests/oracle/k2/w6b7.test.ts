@@ -130,7 +130,7 @@ describe('K2 Wave 6 Batch 7 (w6b7: 0x6FCEDBB0..0x6FD142D0)', () => {
         0x20,
       ),
     ).toBe(0)
-    expect(m.u32((sender.pQueue + 0x04) >>> 0)).toBe(0)
+    expect(m.u32(sender.pQueue)).toBe(0)
 
     const pWhisperPkt = m.alloc(0x40) >>> 0
     m.setU8(pWhisperPkt, 0x15)
@@ -146,14 +146,14 @@ describe('K2 Wave 6 Batch 7 (w6b7: 0x6FCEDBB0..0x6FD142D0)', () => {
         0x30,
       ),
     ).toBe(0)
-    expect(m.u32((target.pQueue + 0x04) >>> 0)).toBeGreaterThan(0)
-    expect(m.u8((target.pQueue + 0x08) >>> 0)).toBe(0x26)
-    expect(m.u8((target.pQueue + 0x09) >>> 0)).toBe(0x02)
-    expect(m.u32((sender.pQueue + 0x04) >>> 0)).toBeGreaterThan(0)
-    expect(m.u8((sender.pQueue + 0x08) >>> 0)).toBe(0x26)
-    expect(m.u8((sender.pQueue + 0x09) >>> 0)).toBe(0x06)
+    expect(m.u32(target.pQueue)).toBeGreaterThan(0)
+    expect(m.u8((target.pQueue + 0x04) >>> 0)).toBe(0x26)
+    expect(m.u8((target.pQueue + 0x05) >>> 0)).toBe(0x02)
+    expect(m.u32(sender.pQueue)).toBeGreaterThan(0)
+    expect(m.u8((sender.pQueue + 0x04) >>> 0)).toBe(0x26)
+    expect(m.u8((sender.pQueue + 0x05) >>> 0)).toBe(0x06)
 
-    m.setU32((sender.pQueue + 0x04) >>> 0, 0)
+    m.setU32(sender.pQueue, 0)
     const pMissingWhisperPkt = m.alloc(0x40) >>> 0
     m.setU8(pMissingWhisperPkt, 0x15)
     m.setU8((pMissingWhisperPkt + 1) >>> 0, 2)
@@ -168,9 +168,9 @@ describe('K2 Wave 6 Batch 7 (w6b7: 0x6FCEDBB0..0x6FD142D0)', () => {
         0x30,
       ),
     ).toBe(0)
-    expect(m.u32((sender.pQueue + 0x04) >>> 0)).toBe(0x28)
-    expect(m.u8((sender.pQueue + 0x08) >>> 0)).toBe(0x5a)
-    expect(m.u8((sender.pQueue + 0x09) >>> 0)).toBe(0x04)
+    expect(m.u32(sender.pQueue)).toBe(0x28)
+    expect(m.u8((sender.pQueue + 0x04) >>> 0)).toBe(0x5a)
+    expect(m.u8((sender.pQueue + 0x05) >>> 0)).toBe(0x04)
   })
 
   it('PARTY_SendLeftPartyEvent5AToMemberCallback_6FD10820_113c sends 0x5A event 0x09 to other party members only', () => {
@@ -185,7 +185,7 @@ describe('K2 Wave 6 Batch 7 (w6b7: 0x6FCEDBB0..0x6FD142D0)', () => {
       leaving.pPlayer,
       leaving.pPlayer,
     )
-    expect(m.u32((leaving.pQueue + 0x04) >>> 0)).toBe(0)
+    expect(m.u32(leaving.pQueue)).toBe(0)
 
     PARTY_SendLeftPartyEvent5AToMemberCallback_6FD10820_113c(
       m,
@@ -193,12 +193,12 @@ describe('K2 Wave 6 Batch 7 (w6b7: 0x6FCEDBB0..0x6FD142D0)', () => {
       member.pPlayer,
       leaving.pPlayer,
     )
-    expect(m.u32((member.pQueue + 0x04) >>> 0)).toBe(0x28)
-    expect(m.u8((member.pQueue + 0x08) >>> 0)).toBe(0x5a)
-    expect(m.u8((member.pQueue + 0x09) >>> 0)).toBe(0x07)
-    expect(m.u8((member.pQueue + 0x0a) >>> 0)).toBe(0x09)
-    expect(m.u32((member.pQueue + 0x0b) >>> 0)).toBe(22)
-    expect(m.u8((member.pQueue + 0x0f) >>> 0)).toBe(0x09)
+    expect(m.u32(member.pQueue)).toBe(0x28)
+    expect(m.u8((member.pQueue + 0x04) >>> 0)).toBe(0x5a)
+    expect(m.u8((member.pQueue + 0x05) >>> 0)).toBe(0x07)
+    expect(m.u8((member.pQueue + 0x06) >>> 0)).toBe(0x09)
+    expect(m.u32((member.pQueue + 0x07) >>> 0)).toBe(22)
+    expect(m.u8((member.pQueue + 0x0b) >>> 0)).toBe(0x09)
   })
 
   it('PARTY_InvitePlayerToParty_6FD10870_113c and PARTY_CancelPartyInvitation_6FD10900_113c transition relation states and send 0x5A / 0x8B', () => {
@@ -210,9 +210,9 @@ describe('K2 Wave 6 Batch 7 (w6b7: 0x6FCEDBB0..0x6FD142D0)', () => {
     PARTY_InvitePlayerToParty_6FD10870_113c(m, pGame, source.pPlayer, target.pPlayer)
     expect(PARTY_GetPlayerRelationState113c(m, source.pPlayer, target.pPlayer)).toBe(4)
     expect(PARTY_GetPlayerRelationState113c(m, target.pPlayer, source.pPlayer)).toBe(2)
-    expect(m.u8((target.pQueue + 0x0f) >>> 0)).toBe(0x05)
-    expect(m.u32(target.pQueue)).toBe(0x06)
-    expect(m.u8((target.pQueue + 0x04) >>> 0)).toBe(0x8b)
+    expect(m.u8((target.pQueue + 0x0b) >>> 0)).toBe(0x05)
+    expect(m.u32(target.pQueue)).toBe(0x2e)
+    expect(m.u8((target.pQueue + 0x2c) >>> 0)).toBe(0x8b)
     expect(m.u32(source.pQueue)).toBe(0x06)
     expect(m.u8((source.pQueue + 0x04) >>> 0)).toBe(0x8b)
 
@@ -226,9 +226,9 @@ describe('K2 Wave 6 Batch 7 (w6b7: 0x6FCEDBB0..0x6FD142D0)', () => {
     PARTY_CancelPartyInvitation_6FD10900_113c(m, pGame, source.pPlayer, target.pPlayer)
     expect(PARTY_GetPlayerRelationState113c(m, source.pPlayer, target.pPlayer)).toBe(0)
     expect(PARTY_GetPlayerRelationState113c(m, target.pPlayer, source.pPlayer)).toBe(0)
-    expect(m.u8((target.pQueue + 0x0f) >>> 0)).toBe(0x06)
-    expect(m.u32(target.pQueue)).toBe(0x06)
-    expect(m.u8((target.pQueue + 0x04) >>> 0)).toBe(0x8b)
+    expect(m.u8((target.pQueue + 0x0b) >>> 0)).toBe(0x06)
+    expect(m.u32(target.pQueue)).toBe(0x2e)
+    expect(m.u8((target.pQueue + 0x2c) >>> 0)).toBe(0x8b)
     expect(m.u32(source.pQueue)).toBe(0x06)
     expect(m.u8((source.pQueue + 0x04) >>> 0)).toBe(0x8b)
   })
@@ -259,11 +259,11 @@ describe('K2 Wave 6 Batch 7 (w6b7: 0x6FCEDBB0..0x6FD142D0)', () => {
     m.setU16((pJoinCtx + 0x08) >>> 0, 3)
 
     PARTY_SyncJoinedPartyRelationsCallback_6FD10B90_113c(m, pGame, player.pPlayer, pJoinCtx)
-    expect(m.u8((player.pQueue + 0x0f) >>> 0)).toBe(0x07)
-    expect(m.u16((player.pQueue + 0x0b) >>> 0)).toBe(402)
-    expect(m.u8((player.pQueue + 0x0e) >>> 0)).toBe(2)
-    expect(m.u8((player.pQueue + 0x04) >>> 0)).toBe(0x8b)
-    expect(m.u32((joining.pQueue + 0x04) >>> 0)).toBeGreaterThan(0)
+    expect(m.u8((player.pQueue + 0x0b) >>> 0)).toBe(0x07)
+    expect(m.u16((player.pQueue + 0x07) >>> 0)).toBe(402)
+    expect(m.u8((player.pQueue + 0x0a) >>> 0)).toBe(2)
+    expect(m.u8((player.pQueue + 0x2c) >>> 0)).toBe(0x8b)
+    expect(m.u32(joining.pQueue)).toBeGreaterThan(0)
   })
 
   it('PARTY_UpdateRelationFlagAndSyncRoster_6FD10C60_113c, SquelchFlag04 (0x6FD10E80), and MuteFlag02 (0x6FD10EE0) toggle flags and queue 0x75 roster packets', () => {
@@ -282,8 +282,8 @@ describe('K2 Wave 6 Batch 7 (w6b7: 0x6FCEDBB0..0x6FD142D0)', () => {
       1,
     )
     expect(PARTY_TestPlayerRelationFlags113c(m, source.pPlayer, target.pPlayer, 1)).toBe(1)
-    expect(m.u32((source.pQueue + 0x04) >>> 0)).toBeGreaterThanOrEqual(0x0d)
-    expect(m.u32((target.pQueue + 0x04) >>> 0)).toBeGreaterThanOrEqual(0x0d)
+    expect(m.u32(source.pQueue)).toBeGreaterThanOrEqual(0x0d)
+    expect(m.u32(target.pQueue)).toBeGreaterThanOrEqual(0x0d)
 
     PARTY_UpdateSquelchFlag04AndSyncRoster_6FD10E80_113c(
       m,

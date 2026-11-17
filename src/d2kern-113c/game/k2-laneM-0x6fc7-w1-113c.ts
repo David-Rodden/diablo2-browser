@@ -33,6 +33,7 @@ import {
   ROOM_FindRoomContainingSubtile113c,
   SUNIT_AllocUnitData113c,
 } from './regpop-spawn-113c.ts'
+import { hitD2GameVa113c } from '../va-trace-113c.ts'
 
 /**
  * Jump-table state mapping for `D2Game.dll` `.text` table at `0x6FC77300`
@@ -87,6 +88,7 @@ export function SAVE_SerializeUnflaggedItemToBuffer_6FC73470_113c(
   nMaxBytes: number,
   pOutBuffer: number,
 ): number {
+  hitD2GameVa113c(0x6FC73470)
   const item = pItem >>> 0
   if (item === 0) {
     return 0
@@ -114,6 +116,7 @@ export function ACT5Q6_InitWorldstoneChamberObject9C_6FC764D0_113c(
   m: Memory113c,
   pObjInit: number,
 ): void {
+  hitD2GameVa113c(0x6FC764D0)
   const pGame = m.u32(pObjInit >>> 0) >>> 0
   const pQuest = findQuestNodeInChain113c(m, pGame, 0x24)
   const pQuestDataEx = m.u32((pQuest + 0x18) >>> 0) >>> 0
@@ -134,6 +137,7 @@ export function ACT5Q6_InitWorldstoneChamberObject94_6FC76520_113c(
   m: Memory113c,
   pObjInit: number,
 ): void {
+  hitD2GameVa113c(0x6FC76520)
   const pGame = m.u32(pObjInit >>> 0) >>> 0
   const pQuest = findQuestNodeInChain113c(m, pGame, 0x24)
   const pQuestDataEx = m.u32((pQuest + 0x18) >>> 0) >>> 0
@@ -153,6 +157,7 @@ export function ACT5Q6_IsWorldstoneEntryAllowed_6FC76570_113c(
   m: Memory113c,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FC76570)
   const pQuest = findQuestNodeInChain113c(m, pGame >>> 0, 0x24)
   if (pQuest === 0) {
     return 1
@@ -172,6 +177,7 @@ export function ACT5Q5_InitSummitDoorObject_6FC765B0_113c(
   m: Memory113c,
   pObjInit: number,
 ): void {
+  hitD2GameVa113c(0x6FC765B0)
   const pGame = m.u32(pObjInit >>> 0) >>> 0
   const pQuest = findQuestNodeInChain113c(m, pGame, 0x23)
   if (pQuest === 0) {
@@ -194,6 +200,7 @@ export function ACT5Q5_CanSpawnTownPortalOnSummit_6FC76600_113c(
   m: Memory113c,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FC76600)
   const pQuest = findQuestNodeInChain113c(m, pGame >>> 0, 0x23)
   if (m.u8((pQuest + 0x09) >>> 0) === 0) {
     return 0
@@ -212,6 +219,7 @@ export function ACT5Q5_IsLastAncientDefeatedReady_6FC76640_113c(
   m: Memory113c,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FC76640)
   const pQuest = findQuestNodeInChain113c(m, pGame >>> 0, 0x23)
   if (pQuest === 0) {
     return 0
@@ -232,6 +240,7 @@ export function ACT5Q5_GetSummitPlayerCount_6FC766D0_113c(
   m: Memory113c,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FC766D0)
   const pQuest = findQuestNodeInChain113c(m, pGame >>> 0, 0x23)
   const pQuestDataEx = m.u32((pQuest + 0x18) >>> 0) >>> 0
   return m.u32((pQuestDataEx + 0x0c) >>> 0) >>> 0
@@ -249,6 +258,7 @@ export function ACT5Q5_OnPlayerLeaveSummitCheck_6FC76740_113c(
   pUnit: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC76740)
   const pRoom = UNITS_GetRoom113c(m, pUnit >>> 0) >>> 0
   const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom) | 0
   if (nLevelId !== 0x78) {
@@ -282,6 +292,7 @@ export function ACT5Q6_ActiveFilter_6FC76810_113c(
   pQuestFlags: number,
   _pNpcUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC76810)
   if ((nNpcId | 0) !== 0x203) {
     return 0
   }
@@ -306,6 +317,7 @@ export function ACT5Q4_ActiveFilter_6FC76840_113c(
   pQuestFlags: number,
   _pNpcUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC76840)
   if ((nNpcId | 0) !== 0x200) {
     return 0
   }
@@ -346,6 +358,7 @@ export function ACT5Q4_StatusFilter_6FC768C0_113c(
   pPlayerFlags: number,
   pOutStatus: number,
 ): number {
+  hitD2GameVa113c(0x6FC768C0)
   const outAddr = pOutStatus >>> 0
   const flags = pPlayerFlags >>> 0
   m.setU8(outAddr, 0)
@@ -383,6 +396,7 @@ export function ACT5Q3_IsFrozenAnyaUnspawned_6FC76950_113c(
   m: Memory113c,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FC76950)
   const pQuest = findQuestNodeInChain113c(m, pGame >>> 0, 0x21)
   if (pQuest === 0) {
     return 0
@@ -403,6 +417,7 @@ export function ACT5Q3_RecordAnyaPosition_6FC76A00_113c(
   pGame: number,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC76A00)
   const pQuest = findQuestNodeInChain113c(m, pGame >>> 0, 0x21)
   if (pQuest === 0) {
     return 0
@@ -428,6 +443,7 @@ export function ACT5Q3_GetPortalTargetCoords_6FC76A40_113c(
   pUnit: number,
   pOutCoords: number,
 ): number {
+  hitD2GameVa113c(0x6FC76A40)
   const pQuest = findQuestNodeInChain113c(m, pGame >>> 0, 0x21)
   if (pQuest === 0) {
     return 0
@@ -457,6 +473,7 @@ export function ACT5Q2_CalcRemainingSoldiersCount_6FC76B80_113c(
   m: Memory113c,
   pQuest: number,
 ): number {
+  hitD2GameVa113c(0x6FC76B80)
   const pQuestDataEx = m.u32((pQuest + 0x18) >>> 0) >>> 0
   let count = 0
   if (m.u8((pQuestDataEx + 0x86) >>> 0) === 0) {
@@ -490,6 +507,7 @@ export function ACT5Q2_ActiveFilter_6FC76C40_113c(
   pQuestFlags: number,
   _pNpcUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC76C40)
   const npc = nNpcId | 0
   const flags = pQuestFlags >>> 0
   if (npc === 0x203) {
@@ -521,7 +539,9 @@ export function ACT5Q2_ActiveFilter_6FC76C40_113c(
 export function ACT5_InitObjectNoop_6FC76CE0_113c(
   _m: Memory113c,
   _pObjInit: number,
-): void {}
+): void {
+  hitD2GameVa113c(0x6FC76CE0)
+}
 
 /**
  * Sets `pQuest->bLastState` (`+0x0C`) to `1` on `pQuest` (`eax`) when `bLastState == 0`
@@ -533,6 +553,7 @@ export function ACT5Q1_ActivateQuestIfNotIntro_6FC76CF0_113c(
   m: Memory113c,
   pQuest: number,
 ): void {
+  hitD2GameVa113c(0x6FC76CF0)
   if (m.u8((pQuest + 0x0c) >>> 0) !== 0) {
     return
   }
@@ -555,6 +576,7 @@ export function ACT5Q1_ActiveFilter_6FC76D80_113c(
   pQuestFlags: number,
   _pNpcUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC76D80)
   if ((nNpcId | 0) !== 0x1ff) {
     return 0
   }
@@ -595,6 +617,7 @@ export function ACT5Q1_StatusFilter_6FC76E00_113c(
   pPlayerFlags: number,
   pOutStatus: number,
 ): number {
+  hitD2GameVa113c(0x6FC76E00)
   const outAddr = pOutStatus >>> 0
   const flags = pPlayerFlags >>> 0
   m.setU8(outAddr, 0)
@@ -639,6 +662,7 @@ export function ACT5Q0_StatusFilter_6FC76EA0_113c(
   _pPlayerFlags: number,
   pOutStatus: number,
 ): number {
+  hitD2GameVa113c(0x6FC76EA0)
   m.setU8(pOutStatus >>> 0, 0)
   return 0
 }
@@ -655,6 +679,7 @@ export function ACT5Q5_Callback15_SetState0AIfCompleted_6FC76EB0_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC76EB0)
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0
   const pGame = m.u32(pQuestArg >>> 0) >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
@@ -679,6 +704,7 @@ export function ACT5Q5_Callback11_RemovePlayerGuid_6FC76FC0_113c(
   pQuest: number,
   pQuestArg: number,
 ): number {
+  hitD2GameVa113c(0x6FC76FC0)
   return removeQuestArgPlayerFromQuestAndExGuidLists113c(m, pQuest, pQuestArg)
 }
 
@@ -694,6 +720,7 @@ export function ACT5Q5_Callback12_NpcScrollSetState_6FC77270_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC77270)
   const msgId = m.u16((pQuestArg + 0x18) >>> 0)
   const idx = (msgId + 0xffffb131) >>> 0
   if (idx > 5) {
@@ -722,6 +749,7 @@ export function ACT5Q6_SyncBaalQuestStateCallback_6FC77320_113c(
   pPlayer: number,
   _pArg: number,
 ): number {
+  hitD2GameVa113c(0x6FC77320)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer >>> 0) >>> 0
   const diffIdx = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
@@ -765,6 +793,7 @@ export function ACT5Q5_InitAncientsAltarObject_6FC773D0_113c(
   m: Memory113c,
   pObjInit: number,
 ): void {
+  hitD2GameVa113c(0x6FC773D0)
   const pGame = m.u32(pObjInit >>> 0) >>> 0
   const pQuest = findQuestNodeInChain113c(m, pGame, 0x23)
   const pQuestDataEx = m.u32((pQuest + 0x18) >>> 0) >>> 0
@@ -797,6 +826,7 @@ export function ACT5Q5_CountLivingSummitPlayersCallback_6FC77440_113c(
   pPlayer: number,
   _pArg: number,
 ): number {
+  hitD2GameVa113c(0x6FC77440)
   const player = pPlayer >>> 0
   const pRoom = UNITS_GetRoom113c(m, player) >>> 0
   if (pRoom === 0) {
@@ -830,6 +860,7 @@ export function ACT5Q5_InitWorldstoneKeepEntranceObject_6FC774A0_113c(
   m: Memory113c,
   pObjInit: number,
 ): void {
+  hitD2GameVa113c(0x6FC774A0)
   const pGame = m.u32(pObjInit >>> 0) >>> 0
   const pQuest = findQuestNodeInChain113c(m, pGame, 0x23)
   if (pQuest === 0) {
@@ -859,6 +890,7 @@ export function ACT5Q5_SyncAncientStatueObjectAnimMode_6FC774F0_113c(
   pObjInit: number,
   pQuestDataEx: number,
 ): void {
+  hitD2GameVa113c(0x6FC774F0)
   const pObject = m.u32((pObjInit + 0x04) >>> 0) >>> 0
   const classId = pObject === 0 ? -1 : m.u32((pObject + 0x04) >>> 0) | 0
   let slot = -1
@@ -887,6 +919,7 @@ export function ACT5Q6_Callback14_PlayerJoined_6FC77540_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC77540)
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0
   const pGame = m.u32(pQuestArg >>> 0) >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
@@ -928,6 +961,7 @@ export function ACT5Q6_Callback11_RemovePlayerGuid_6FC775D0_113c(
   pQuest: number,
   pQuestArg: number,
 ): number {
+  hitD2GameVa113c(0x6FC775D0)
   const pUnit = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0
   const guid = pUnit === 0 ? 0xffffffff : m.u32((pUnit + 0x0c) >>> 0) >>> 0
   return QUESTS_GuidListRemove113c(m, (pQuest + 0x1c) >>> 0, guid)
@@ -947,6 +981,7 @@ export function ACT5Q5_SyncRiteOfPassageQuestStateCallback_6FC77750_113c(
   pPlayer: number,
   _pArg: number,
 ): number {
+  hitD2GameVa113c(0x6FC77750)
   const player = pPlayer >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, player) >>> 0
   const diffIdx0 = m.u8((pGame + 0x6d) >>> 0)
@@ -982,6 +1017,7 @@ export function ACT5Q4_CompletePersonalizationReward_6FC777F0_113c(
   pPlayer: number,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FC777F0)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer >>> 0) >>> 0
   const diffIdx = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
@@ -1004,6 +1040,7 @@ export function ACT5Q4_CompleteNihlathakPartyCallback_6FC77830_113c(
   pPlayer: number,
   _pArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC77830)
   const player = pPlayer >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, player) >>> 0
   const diffIdx = m.u8((pGame + 0x6d) >>> 0)
@@ -1042,6 +1079,7 @@ export function ACT5Q4_Callback11_RemovePlayerGuid_6FC77A20_113c(
   pQuest: number,
   pQuestArg: number,
 ): number {
+  hitD2GameVa113c(0x6FC77A20)
   return removeQuestArgPlayerFromQuestAndExGuidLists113c(m, pQuest, pQuestArg)
 }
 
@@ -1058,6 +1096,7 @@ export function ACT5Q4_SyncNihlathakQuestStateCallback_6FC77C00_113c(
   pPlayer: number,
   _pArg: number,
 ): number {
+  hitD2GameVa113c(0x6FC77C00)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer >>> 0) >>> 0
   const diffIdx = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
@@ -1101,6 +1140,7 @@ export function ACT5Q3_EnsureAnyaTownPortalSpawned_6FC77CB0_113c(
   pGame: number,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC77CB0)
   const game = pGame >>> 0
   const pQuest = findQuestNodeInChain113c(m, game, 0x21)
   if (pQuest === 0) {
@@ -1149,6 +1189,7 @@ export function ACT5Q3_CompleteAnyaRescuePartyCallback_6FC780A0_113c(
   pPlayer: number,
   _pArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC780A0)
   const player = pPlayer >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, player) >>> 0
   const diffIdx = m.u8((pGame + 0x6d) >>> 0)
@@ -1178,6 +1219,7 @@ export function ACT5Q3_SyncPrisonOfIceQuestStateCallback_6FC78110_113c(
   pPlayer: number,
   _pArg: number,
 ): number {
+  hitD2GameVa113c(0x6FC78110)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer >>> 0) >>> 0
   const diffIdx = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
@@ -1211,6 +1253,7 @@ export function ACT5Q2_Callback14_PlayerJoined_6FC781A0_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC781A0)
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0
   const pGame = m.u32(pQuestArg >>> 0) >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
@@ -1248,6 +1291,7 @@ export function ACT5Q2_Callback15_ClearState04_6FC78240_113c(
   _pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC78240)
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0
   const pGame = m.u32(pQuestArg >>> 0) >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
@@ -1268,6 +1312,7 @@ export function ACT5Q2_FindSoldierPrisonGroupIndex_6FC78260_113c(
   pUnit: number,
   pQuest: number,
 ): number {
+  hitD2GameVa113c(0x6FC78260)
   const unit = pUnit >>> 0
   const pQuestDataEx = m.u32((pQuest + 0x18) >>> 0) >>> 0
   const targetGuid = unit === 0 ? 0xffffffff : m.u32((unit + 0x0c) >>> 0) >>> 0
@@ -1294,6 +1339,7 @@ export function ACT5Q2_Callback11_RemovePlayerGuid_6FC782A0_113c(
   pQuest: number,
   pQuestArg: number,
 ): number {
+  hitD2GameVa113c(0x6FC782A0)
   return removeQuestArgPlayerFromQuestAndExGuidLists113c(m, pQuest, pQuestArg)
 }
 
@@ -1311,6 +1357,7 @@ export function ACT5Q2_CompleteSoldierRescuePartyCallback_6FC782E0_113c(
   pPlayer: number,
   _pArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC782E0)
   const player = pPlayer >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, player) >>> 0
   const diffIdx = m.u8((pGame + 0x6d) >>> 0)

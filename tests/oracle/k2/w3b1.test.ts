@@ -99,8 +99,8 @@ function createW3B1Mem(): {
   pSetItemsTxt: number
 } {
   const m = new SparseMemory113c()
-  m.fill(0x6fd20000, 0x10000, 0)
-  m.fill(0x6fdd6000, 0x20000, 0)
+  m.fill(0x6fd18000, 0x30000, 0)
+  m.fill(0x6fdd6000, 0x28000, 0)
   const pDataTables = m.alloc(0x2000)
   initD2GameGlobalsInMem113c(m, pDataTables)
   m.setU32(0x6fde9e1c, pDataTables)
@@ -118,11 +118,19 @@ function createW3B1Mem(): {
   m.setU32(pDataTables + 0xbbc, pStatesTxt)
   m.setU32(pDataTables + 0xbc0, 200)
 
-  const pItemStatCostTxt = m.alloc(16 * 0x144)
+  const pItemStatCostTxt = m.alloc(360 * 0x144)
+  m.setU32(pDataTables + 0x2c, pItemStatCostTxt)
+  m.setU32(pDataTables + 0x34, 360)
   m.setU32(pDataTables + 0xbcc, pItemStatCostTxt)
-  m.setU32(pDataTables + 0xbd4, 16)
+  m.setU32(pDataTables + 0xbd4, 360)
+  m.setU32(0x6fde9e48, pItemStatCostTxt)
+  m.setU32(0x6fde9e50, 360)
 
   const pItemsTxt = m.alloc(16 * D2ItemsTxt_SIZE)
+  m.setU32(pDataTables + 0x00, 16)
+  m.setU32(pDataTables + 0x04, pItemsTxt)
+  m.setU32(pDataTables + 0xbd8, pItemsTxt)
+  m.setU32(pDataTables + 0xbdc, 16)
   m.setU32(0x6fdefb94, 16)
   m.setU32(0x6fdefb98, pItemsTxt)
   m.setU32(0x6fdefb9c, pItemsTxt) // weapons
@@ -131,7 +139,27 @@ function createW3B1Mem(): {
   m.setU32(0x6fdefba8, 4)
   m.setU32(0x6fdefbac, pItemsTxt + 8 * D2ItemsTxt_SIZE) // misc
   m.setU32(0x6fdefbb0, 8)
-  m.setU32(0x6fdeff6c, m.alloc(0x20)) // SGPT_ITEMS_LINKER_PTR_VA
+  m.setU32(pItemsTxt + 9 * D2ItemsTxt_SIZE + 0x80, 0x20646c67) // 'gld '
+  m.setU8(pItemsTxt + 9 * D2ItemsTxt_SIZE + 0x14d, 1)
+  const pLinker = m.alloc(0x20)
+  const pLinkerRows = m.alloc(16)
+  m.setU32(pLinker + 0x00, 1)
+  m.setU32(pLinker + 0x08, pLinkerRows)
+  m.setU32(pLinkerRows + 0x00, 0x20646c67)
+  m.setU32(pLinkerRows + 0x04, 9)
+  m.setU32(0x6fdeff6c, pLinker) // SGPT_ITEMS_LINKER_PTR_VA
+
+  const fieldDx = [0, 1, 1, 1, 0, -1, -1, -1, 0]
+  const fieldDy = [-1, -1, 0, 1, 1, 1, 0, -1, 0]
+  for (let i = 0; i < 9; i++) {
+    m.setU32((0x6fde9ba0 + i * 4) >>> 0, fieldDx[i]! >>> 0)
+    m.setU32((0x6fde9bc4 + i * 4) >>> 0, fieldDy[i]! >>> 0)
+  }
+  const pFieldData = m.alloc(256 * 256)
+  m.fill(pFieldData, 256 * 256, 8)
+  m.setU32(0x6fdf1404, pFieldData)
+  m.setU32(0x6fdf1414, 128)
+  m.setU32(0x6fdf1418, 128)
 
   const pItemTypesTxt = m.alloc(64 * D2ItemTypesTxt_SIZE)
   m.setU32(pDataTables + 0xbf8, pItemTypesTxt)
@@ -353,11 +381,23 @@ describe('K2 Wave 3 Batch 1 (w3b1: 45 functions across 0x6FC21FE0..0x6FC38CE0)',
     const pRoom = m.alloc(D2ActiveRoomStrc_SIZE)
     const pRoomEx = m.alloc(D2RoomExStrc_SIZE)
     const pLevel = m.alloc(D2DrlgLevelStrc_SIZE)
+    const ppNear = m.alloc(8)
+    m.setU32(ppNear, pRoom)
+    m.setU32(pRoom, ppNear)
+    m.setU32(pRoom + 0x24, 1)
+    m.setU32(pRoom + 0x3c, m.alloc(16))
+    const pCollGrid = m.alloc(0x28)
+    const pCollMap = m.alloc(100 * 100 * 2)
+    m.setU32(pCollGrid + 0x08, 100)
+    m.setU32(pCollGrid + 0x0c, 100)
+    m.setU32(pCollGrid + 0x20, pCollMap)
+    m.setU32(pRoom + 0x20, pCollGrid)
     m.set(pRoom, D2ActiveRoomStrc.pRoomEx, pRoomEx)
     m.setU32(pRoom + 0x54, 100)
     m.setU32(pRoom + 0x58, 100)
     m.set(pRoomEx, D2RoomExStrc.pLevel, pLevel)
     m.set(pLevel, D2DrlgLevelStrc.nLevelId, 1)
+    EVENT_InitTimerQueue113c(m, pGame)
     ITEMS_PlaceItemOnGroundInRoom_6FC2E990_113c(m, 50, pItem, pRoom, pGame, 0, 40)
     expect(m.u32(pItem + 0x10)).toBe(3)
     expect(m.u8(pItemData + 0x45)).toBe(0xff)

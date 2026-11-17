@@ -29,11 +29,26 @@ import {
   D2GAME_IAT_SGPT_DATATABLES_VA_113C,
   OBJECTS_InitChestLockAndSeed113c,
   OBJECTS_InitShrineType113c,
+  OBJECTS_RollChestTrapType113c,
   OBJECTS_SpawnDensityObjectsInRoom113c,
   SUNIT_InitUnitSeed113c,
   type RegpopSpawnHooks113c,
 } from './regpop-spawn-113c.ts'
+import {
+  OBJECTS_InitFn05_NoOp113c,
+  OBJECTS_InitFn16_DoubleActToSubType113c,
+  OBJECTS_InitFn27_RollSubType3_113c,
+  OBJECTS_LevelHookAlwaysTrue113c,
+} from './k2-items-tc-w1-113c.ts'
+import { OBJECTS_PopulateGridObjectsInRect_6FC4FEC0_113c } from './k2-w3b2-113c.ts'
+import {
+  OBJECTS_PopulateRoomEdgeObjectsMode0_6FC527B0_113c,
+  OBJECTS_PopulateRoomEdgeObjectsMode1_6FC52790_113c,
+} from './k2-w4b1-113c.ts'
+import { OBJRGN_PopulateRoomRandomItemDropsGrid_6FC4F4B0_113c } from './k2-w4b4-113c.ts'
+import { UNITS_ChangeAnimMode113c } from './monster-events.ts'
 import { EVENT_RemoveUnitEvents113c } from './timer-wheel.ts'
+import { hitD2GameVa113c } from '../va-trace-113c.ts'
 
 /** `pGame->pObjectControl` (`0x6FC4EEC1 mov eax, [ebp+0x10F0]`). */
 const GAME_OFF_POBJECTCONTROL = 0x10f0
@@ -107,6 +122,7 @@ export function OBJECTS_CanPopulateRoom113c(
   pLevelsTxt: number,
   callees: ObjectsPopulateCallees113c,
 ): number {
+  hitD2GameVa113c(0x6FC4EEA0)
   if (DUNGEON_HasRoomExWaypointFlags113c(m, pRoom) !== 0) return 0
   const nLevelId = DUNGEON_GetLevelIdIfNotHidden113c(m, pRoom) | 0
   const pObjCtrl = m.u32((pGame + GAME_OFF_POBJECTCONTROL) >>> 0) >>> 0
@@ -149,6 +165,7 @@ export function OBJECTS_PopulateRoom113c(
   pRoom: number,
   callees: ObjectsPopulateCallees113c,
 ): void {
+  hitD2GameVa113c(0x6FC4F0D0)
   const pLevelsTxt = DATATBLS_GetLevelsTxtRecord113c(m, DUNGEON_GetLevelIdFromRoom113c(m, pRoom)) >>> 0
   if (pLevelsTxt === 0) {
     throw new Error('OBJECTS_PopulateRoom113c: pLevelsTxt == NULL (line 3052)')
@@ -253,6 +270,7 @@ export function OBJECTS_SpawnRandomObjectInRoom113c(
   pRoom: number,
   callees: ObjectSpawnCallees113c,
 ): number {
+  hitD2GameVa113c(0x6FC51E20)
   const sp = objSpawnStackPtr
   objSpawnStackPtr = (sp + 0x20) >>> 0
   let subX = 0
@@ -329,6 +347,7 @@ export function OBJECTS_AllocInteractStrc113c(
   pUnit: number,
   pObjectsTxt: number,
 ): void {
+  hitD2GameVa113c(0x6FC4E7D0)
   if (pObjectsTxt === 0) return
   if (m.u8((pObjectsTxt + 0x168) >>> 0) !== 1) return
   const pObjData = pUnit !== 0 ? m.u32((pUnit + 0x14) >>> 0) : 0
@@ -340,20 +359,106 @@ export function OBJECTS_AllocInteractStrc113c(
 }
 
 /**
- * `@va D2Game:0x6FC4EAD0` (`OBJECTS_CheckLevelObjectHook`, `__fastcall(pLevelObjInfo, pRoom, pGame, bFlag)`).
+ * `@va D2Game:0x6FC4EAD0` (`OBJECTS_CheckLevelObjectHook`, 407B: `ecx = pLevelObjInfo`,
+ * stack `(pGame, pRoom, bDensityFlags)`, `ret 0x0C`).
+ *
+ * 1. Requires `pLevelObjInfo->nRooms (+0x08) >= pLevelObjInfo->dwField0C (+0x0C) * 10`.
+ * 2. Steps `pGame->pObjectControl->tSeed` (`[pGame + 0x10F0]`) mod `100` against threshold
+ *    `12 + (visited > rooms / 2 ? 5 : 0) + (visited > rooms - rooms / 4 ? 5 : 0)`.
+ * 3. Fetches room coordinates (`DUNGEON_GetRoomCoordinates113c`), builds candidate hook IDs `1..7`
+ *    from `bDensityFlags` bits `0..6`, rolls `idx = rollObjCtrlSeed(pObjCtrl, candCount)`,
+ *    checks `idx < candCount && hookId < candCount` (`0x6FC4EC1A..0x6FC4EC24`), and dispatches
+ *    `0x6FD2E2FC[hookId]` (`1 -> 0x6FC4E5C0`, `2 -> 0x6FC4FEC0`, `4 -> 0x6FC4F4B0`,
+ *    `5 -> 0x6FC527B0`, `6 -> 0x6FC52790`).
  */
 export function OBJECTS_CheckLevelObjectHook113c(
   m: Memory113c,
   pLevelObjInfo: number,
-  _pRoom: number,
-  _pGame: number,
-  _bFlag: number,
+  pRoom: number,
+  pGame: number,
+  bDensityFlags: number,
 ): number {
-  if (pLevelObjInfo === 0) return 0
+  hitD2GameVa113c(0x6FC4EAD0)
+  if (pLevelObjInfo === 0 || pGame === 0) return 0
   const count0C = m.u32((pLevelObjInfo + 0x0c) >>> 0) | 0
   const rooms08 = m.u32((pLevelObjInfo + 0x08) >>> 0) | 0
   if (rooms08 < Math.imul(count0C, 10)) return 0
-  return 0
+
+  const pObjCtrl = m.u32((pGame + GAME_OFF_POBJECTCONTROL) >>> 0) >>> 0
+  if (pObjCtrl === 0) return 0
+
+  const roll100 = (seedStep113c(m, pObjCtrl) >>> 0) % 100
+  const totalRooms = m.u32((pLevelObjInfo + 0x08) >>> 0) | 0
+  const visitedRooms = m.u32((pLevelObjInfo + 0x04) >>> 0) | 0
+
+  let threshold = 0
+  const halfRooms = Math.trunc(totalRooms / 2) | 0
+  if (visitedRooms > halfRooms) {
+    threshold = 5
+  }
+  const quarterRooms = Math.trunc(totalRooms / 4) | 0
+  if (visitedRooms > ((totalRooms - quarterRooms) | 0)) {
+    threshold = (threshold + 5) | 0
+  }
+  threshold = (threshold + 12) | 0
+  if ((roll100 | 0) >= threshold) {
+    return 0
+  }
+
+  const sp = objSpawnStackPtr
+  objSpawnStackPtr = (sp + 0x40) >>> 0
+  try {
+    const pRoomCoords = (sp + 0x20) >>> 0
+    if (pRoom !== 0) {
+      DUNGEON_GetRoomCoordinates113c(m, pRoom, pRoomCoords)
+    } else {
+      m.fill(pRoomCoords, 0x20, 0)
+    }
+
+    const mask = bDensityFlags & 0xff
+    let candCount = 0
+    for (let bit = 0; bit < 7; bit++) {
+      if ((mask & (1 << bit)) !== 0) {
+        m.setU32((sp + candCount * 4) >>> 0, (bit + 1) >>> 0)
+        candCount = (candCount + 1) | 0
+      }
+    }
+
+    const pickIdx = candCount > 0 ? rollObjCtrlSeed113c(m, pObjCtrl, candCount) | 0 : 0
+    if (pickIdx >= candCount) {
+      return 0
+    }
+    const hookId = m.u32((sp + pickIdx * 4) >>> 0) | 0
+    if (hookId >= candCount) {
+      return 0
+    }
+
+    switch (hookId) {
+      case 1:
+        return OBJECTS_LevelHookAlwaysTrue113c(m, pGame, pRoom, pRoomCoords) | 0
+      case 2:
+        return (
+          OBJECTS_PopulateGridObjectsInRect_6FC4FEC0_113c(
+            m,
+            pGame,
+            pRoom,
+            pRoomCoords,
+            pRoomCoords,
+            0,
+          ) | 0
+        )
+      case 4:
+        return OBJRGN_PopulateRoomRandomItemDropsGrid_6FC4F4B0_113c(m, pGame, pRoom, pRoomCoords) | 0
+      case 5:
+        return OBJECTS_PopulateRoomEdgeObjectsMode0_6FC527B0_113c(m, pGame, pRoom, 0, pRoomCoords) | 0
+      case 6:
+        return OBJECTS_PopulateRoomEdgeObjectsMode1_6FC52790_113c(m, pGame, pRoom, 0, pRoomCoords) | 0
+      default:
+        return 0
+    }
+  } finally {
+    objSpawnStackPtr = sp
+  }
 }
 
 /**
@@ -375,6 +480,7 @@ export function OBJECTS_InitObjectUnit113c(
   x: number,
   y: number,
 ): void {
+  hitD2GameVa113c(0x6FC4F300)
   if (pUnit === 0) return
   const nClassId = m.u32((pUnit + 0x04) >>> 0) | 0
   const pObjectsTxt = DATATBLS_GetObjectsTxtRecord113c(m, nClassId) >>> 0
@@ -417,16 +523,22 @@ export function OBJECTS_InitObjectUnit113c(
       m.setU32((sp + 0x10) >>> 0, pObjectsTxt >>> 0)
       m.setU32((sp + 0x14) >>> 0, x >>> 0)
       m.setU32((sp + 0x18) >>> 0, y >>> 0)
-      if (nInitFn === 1 || nInitFn === 3) {
-        OBJECTS_InitChestLockAndSeed113c(m, sp)
-      } else if (nInitFn === 2) {
+      if (nInitFn === 1) {
         OBJECTS_InitShrineType113c(m, sp)
-      } else if (nInitFn === 8 || nInitFn === 10) {
-        m.setU32((pUnit + 0x10) >>> 0, 1)
-      } else if (nInitFn === 9) {
-        m.setU32((pUnit + 0x10) >>> 0, 2)
-      } else if (nInitFn === 16 && pObjData !== 0) {
-        m.setU8((pObjData + 0x04) >>> 0, (m.u8((pObjectsTxt + 0x180) >>> 0) << 1) & 0xff)
+      } else if (nInitFn === 2) {
+        OBJECTS_RollChestTrapType113c(m, sp)
+      } else if (nInitFn === 3) {
+        OBJECTS_InitChestLockAndSeed113c(m, sp)
+      } else if (nInitFn === 5) {
+        OBJECTS_InitFn05_NoOp113c(m, sp)
+      } else if (nInitFn === 8) {
+        UNITS_ChangeAnimMode113c(m, pUnit, 2)
+      } else if (nInitFn === 14 || nInitFn === 26) {
+        UNITS_ChangeAnimMode113c(m, pUnit, 1)
+      } else if (nInitFn === 16) {
+        OBJECTS_InitFn16_DoubleActToSubType113c(m, sp)
+      } else if (nInitFn === 27) {
+        OBJECTS_InitFn27_RollSubType3_113c(m, sp)
       }
     } finally {
       objSpawnStackPtr = sp
@@ -451,7 +563,7 @@ export function OBJECTS_InitObjectUnit113c(
     m.setU32(pObjControl, seed.lo >>> 0)
     m.setU32((pObjControl + 0x04) >>> 0, seed.hi >>> 0)
     if (r === 0) {
-      m.setU32((pUnit + 0x10) >>> 0, 2)
+      UNITS_ChangeAnimMode113c(m, pUnit, 2)
     }
   }
 

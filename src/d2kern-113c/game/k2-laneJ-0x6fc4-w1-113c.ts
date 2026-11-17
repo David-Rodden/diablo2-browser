@@ -16,6 +16,7 @@ import { COLLISION_CheckMaskWithSizeXY113c } from '../common/collision.ts'
 import { DRLG_GetActNoFromLevelId113c } from '../common/drlg/drlg.ts'
 import {
   DUNGEON_CheckRoomFlag2_113c,
+  DUNGEON_CountNonPresetRoomsInLevel113c,
   DUNGEON_GetAdjacentRoomsListFromRoom113c,
   DUNGEON_GetLevelIdFromRoom113c,
   DUNGEON_GetRoomCoordinates113c,
@@ -82,6 +83,8 @@ import {
 } from './k2-sunit-spawn-w1-113c.ts'
 import { UNITS_ChangeAnimMode113c } from './monster-events.ts'
 import {
+  OBJECTS_CheckLevelObjectHook113c,
+  OBJECTS_InitObjectUnit113c,
   OBJECTS_PopulateRoom113c,
   OBJECTS_SpawnRandomObjectInRoom113c,
   type ObjectSpawnCallees113c,
@@ -90,16 +93,44 @@ import {
   D2GAME_IAT_GDW_BITMASKS_VA_113C,
   D2GAME_IAT_SGPT_DATATABLES_VA_113C,
   MONSTER_ScheduleInitialAiEvent113c,
+  MONSTER_SpawnAtCoords113c,
   OBJECTS_InitChestLockAndSeed113c,
   REGPOP_PopulateRoomMonsters113c,
   ROOM_FindRoomContainingSubtile113c,
+  SUNIT_AllocUnitData113c,
+  SUNIT_PlaceServerUnitInRoom113c,
   SUNIT_ValidatePathTargetUnit113c,
   UNIT_GetPosX113c,
   UNIT_GetPosY113c,
   type RegpopSpawnHooks113c,
 } from './regpop-spawn-113c.ts'
-import { ROOM_SpawnPresetUnits113c } from './room-presets-113c.ts'
+import {
+  ITEMS_InitCreatedItemStats_6FC31070_113c,
+  OBJECTS_FindFreeDropCoordsAndSpawnItem_6FC51000_113c,
+} from './k2-real-itemdrop-113c.ts'
+import {
+  OBJECTS_DispatchPresetObjectSpawner_6FC4E830_113c,
+  OBJECTS_PopulateBarrelClustersInRoom_6FC50800_113c,
+  OBJECTS_PopulateCrateClustersInRoom_6FC50150_113c,
+} from './k2-w3b2-113c.ts'
+import {
+  ACT5Q1_InitPresetQuestObject21F_6FC7A5C0_113c,
+  ACT5Q3_InitPresetQuestObject1CB_6FC79E10_113c,
+  ACT5Q3_InitPresetQuestObject1CD_6FC79D30_113c,
+} from './k2-w3b5-113c.ts'
+import {
+  OBJECTS_SpawnChestClusterInRoom_6FC52DF0_113c,
+  OBJECTS_SpawnShrineFromGroupEntry_6FC527D0_113c,
+  OBJECTS_SpawnWellFromGroupEntry_6FC52A10_113c,
+} from './k2-w4b1-113c.ts'
+import { SUBPARTY_PrependUnitToBucket8Or9_6FD0FDB0_113c } from './k2-w5b9-113c.ts'
+import {
+  OBJECTS_SpawnDensityWithSecondaryTorch113c,
+  SUNIT_FreeUnit113c,
+} from './replay-final11-113c.ts'
+import { ROOM_SpawnMonsterPreset113c, ROOM_SpawnPresetUnits113c } from './room-presets-113c.ts'
 import { EVENT_FreeNode113c, EVENT_SetEventFull113c } from './timer-wheel.ts'
+import { hitD2GameVa113c } from '../va-trace-113c.ts'
 
 /** `D2Game.dll` `.data` `0x6FD2E350`: 16-bit next global game slot index (`1..0x400`). */
 const D2GAME_NEXT_GAME_SLOT_VA_113C = 0x6fd2e350
@@ -149,30 +180,176 @@ export interface LaneJKernHooks113c {
 }
 
 const DEFAULT_OBJECT_SPAWN_CALLEES_113C: ObjectSpawnCallees113c = {
-  initObject: () => {},
-  placeServerUnit: () => {},
+  initObject(m, pUnit, pGame, nUnitId, pRoom, x, y) {
+    OBJECTS_InitObjectUnit113c(m, pUnit, pGame, nUnitId, pRoom, x, y)
+  },
+  placeServerUnit(m, y, pUnit, pRoom, x, pGame, a2) {
+    SUNIT_PlaceServerUnitInRoom113c(m, pRoom, y, pUnit, x, pGame, a2)
+  },
+}
+
+const DEFAULT_REGPOP_SPAWN_HOOKS_113C: RegpopSpawnHooks113c = {
+  getLevelRoomCountInAct(mem, pAct, nLevelId) {
+    return DUNGEON_CountNonPresetRoomsInLevel113c(mem, pAct, nLevelId)
+  },
 }
 
 const DEFAULT_ACT_ROOMS_CALLEES_113C: ActRoomsCallees113c = {
-  refreshRoomUnits: ROOM_RefreshUnitsAndLoadSaved113c,
+  refreshRoomUnits(mem, pGame, pRoom) {
+    ROOM_RefreshUnitsAndLoadSaved113c(mem, pGame, pRoom)
+  },
   objects: {
-    getLevelRoomCountInAct: () => 0,
-    checkLevelObjectHook: () => 0,
-    spawnObjectsByFn: () => 0,
+    getLevelRoomCountInAct(mem, pAct, nLevelId) {
+      return DUNGEON_CountNonPresetRoomsInLevel113c(mem, pAct, nLevelId)
+    },
+    checkLevelObjectHook(mem, pLevelObjInfo, pGame, pRoom, nHook) {
+      return OBJECTS_CheckLevelObjectHook113c(mem, pLevelObjInfo, pRoom, pGame, nHook)
+    },
+    spawnObjectsByFn(mem, nFnVa, pGame, pRoom, nDensity, nObjectId, nProb) {
+      if (nFnVa === 0x6fc51000) {
+        return OBJECTS_FindFreeDropCoordsAndSpawnItem_6FC51000_113c(
+          mem,
+          pGame,
+          pRoom,
+          nDensity,
+          nObjectId,
+          nProb,
+        )
+      }
+      if (nFnVa === 0x6fc527d0) {
+        return OBJECTS_SpawnShrineFromGroupEntry_6FC527D0_113c(
+          mem,
+          pGame,
+          pRoom,
+          nObjectId,
+          0,
+          nProb,
+        )
+      }
+      if (nFnVa === 0x6fc50800) {
+        return OBJECTS_PopulateBarrelClustersInRoom_6FC50800_113c(mem, pGame, pRoom, nDensity)
+      }
+      if (nFnVa === 0x6fc50150) {
+        return OBJECTS_PopulateCrateClustersInRoom_6FC50150_113c(mem, pGame, pRoom, nDensity)
+      }
+      if (nFnVa === 0x6fc53260) {
+        return OBJECTS_SpawnDensityWithSecondaryTorch113c(
+          mem,
+          pGame,
+          pRoom,
+          nDensity,
+          nObjectId,
+          nProb,
+        )
+      }
+      if (nFnVa === 0x6fc52df0) {
+        return OBJECTS_SpawnChestClusterInRoom_6FC52DF0_113c(mem, pGame, pRoom, nObjectId, nProb)
+      }
+      if (nFnVa === 0x6fc52a10) {
+        return OBJECTS_SpawnWellFromGroupEntry_6FC52A10_113c(
+          mem,
+          pGame,
+          pRoom,
+          nDensity,
+          nObjectId,
+          nProb,
+        )
+      }
+      if (nFnVa === 0x6fc52bc0) {
+        return OBJECTS_SpawnSingleDensityObjectInRoom_6FC52BC0_113c(
+          mem,
+          pGame,
+          pRoom,
+          nDensity,
+          nObjectId,
+          nProb,
+          { objectSpawn: DEFAULT_OBJECT_SPAWN_CALLEES_113C },
+        )
+      }
+      return 0
+    },
     spawn: DEFAULT_OBJECT_SPAWN_CALLEES_113C,
   },
-  initAmbientMonster: () => {},
-  presets: {
-    spawnMonsterPreset: () => 0,
-    spawnSpecialObject: () => 0,
-    allocUnitData: () => 0,
-    placePresetItem: () => 0,
-    freeUnit: () => {},
-    initQuestObject1CB: () => {},
-    initQuestObject1CD: () => {},
-    initQuestObject21F: () => {},
+  initAmbientMonster(mem, pUnit) {
+    const pGame = pUnit !== 0 ? mem.u32((pUnit + 0x80) >>> 0) >>> 0 : 0
+    if (pGame !== 0) {
+      SUBPARTY_PrependUnitToBucket8Or9_6FD0FDB0_113c(mem, pGame, 8, pUnit, 0)
+    }
+    const pMonData = pUnit !== 0 ? mem.u32((pUnit + 0x14) >>> 0) >>> 0 : 0
+    if (pMonData !== 0) {
+      const pAiGen = mem.u32((pMonData + 0x28) >>> 0) >>> 0
+      if (pAiGen !== 0) {
+        mem.setU32(pAiGen, 8)
+      }
+    }
   },
-  regpop: {},
+  presets: {
+    spawnMonsterPreset(mem, pRoom, nClassId, pGame, x, y, nMode) {
+      return ROOM_SpawnMonsterPreset113c(
+        mem,
+        pRoom,
+        nClassId,
+        pGame,
+        x,
+        y,
+        nMode,
+        (m2, cid, mode, pg2, pr2, px, py, maxR, wf) =>
+          MONSTER_SpawnAtCoords113c(
+            m2,
+            cid,
+            mode,
+            pg2,
+            pr2,
+            px,
+            py,
+            maxR,
+            wf,
+            DEFAULT_REGPOP_SPAWN_HOOKS_113C,
+          ),
+      )
+    },
+    spawnSpecialObject(mem, nClassId, pGame, pRoom, x, y, nMode) {
+      return OBJECTS_DispatchPresetObjectSpawner_6FC4E830_113c(
+        mem,
+        nClassId,
+        pGame,
+        pRoom,
+        x,
+        y,
+        nMode,
+      )
+    },
+    allocUnitData(mem, nUnitType, nClassId, x, y, pGame, pRoom, a5, nMode, a7) {
+      return SUNIT_AllocUnitData113c(
+        mem,
+        nUnitType,
+        nClassId,
+        x,
+        y,
+        pGame,
+        pRoom,
+        a5,
+        nMode,
+        a7,
+      )
+    },
+    placePresetItem(mem, ppItem, pGame, pDropArgs, a2) {
+      return ITEMS_InitCreatedItemStats_6FC31070_113c(mem, pGame, ppItem, pDropArgs, a2)
+    },
+    freeUnit(mem, pGame, pUnit) {
+      SUNIT_FreeUnit113c(mem, pGame, pUnit)
+    },
+    initQuestObject1CB(mem, pGame, _pUnit, pSaveChain) {
+      ACT5Q3_InitPresetQuestObject1CB_6FC79E10_113c(mem, pGame, pSaveChain)
+    },
+    initQuestObject1CD(mem, pGame, _pUnit, pSaveChain) {
+      ACT5Q3_InitPresetQuestObject1CD_6FC79D30_113c(mem, pGame, pSaveChain)
+    },
+    initQuestObject21F(mem, pGame, _pUnit, pSaveChain) {
+      ACT5Q1_InitPresetQuestObject21F_6FC7A5C0_113c(mem, pGame, pSaveChain)
+    },
+  },
+  regpop: DEFAULT_REGPOP_SPAWN_HOOKS_113C,
 }
 
 function dispatchQuestCallback113c(
@@ -220,6 +397,7 @@ export function MONUMOD_ScheduleInitialAiAndEvent7_6FC43320_113c(
   _nUMod = 0,
   _bUnique = 0,
 ): void {
+  hitD2GameVa113c(0x6FC43320)
   const unit = pUnit >>> 0
   if (unit === 0) return
   if ((m.u8((unit + 0xc6) >>> 0) & 1) !== 0) return
@@ -255,6 +433,7 @@ export function MONUMOD_GetHitForceDeathAndScheduleEvent7_6FC43390_113c(
   _nUMod = 0,
   _bUnique = 0,
 ): void {
+  hitD2GameVa113c(0x6FC43390)
   const game = pGame >>> 0
   const unit = pUnit >>> 0
   if (unit === 0) {
@@ -292,6 +471,7 @@ export function MONUMOD_RollSelfResurrectEvent7_6FC43570_113c(
   _nUMod = 0,
   _bUnique = 0,
 ): void {
+  hitD2GameVa113c(0x6FC43570)
   const game = pGame >>> 0
   const unit = pUnit >>> 0
   if (unit !== 0) {
@@ -353,6 +533,7 @@ export function MONUMOD_AddRogueOwnerSecondaryDamageToMissile_6FC43670_113c(
   _nUMod = 0,
   _bUnique = 0,
 ): void {
+  hitD2GameVa113c(0x6FC43670)
   const game = pGame >>> 0
   const mis = pMissile >>> 0
   if (mis === 0) return
@@ -394,6 +575,7 @@ export function MONUMOD_InitUMod41ScheduleEvent7_6FC469F0_113c(
   pUnit: number,
   _bUnique = 0,
 ): void {
+  hitD2GameVa113c(0x6FC469F0)
   const unit = pUnit >>> 0
   if (unit === 0) return
   if (m.u32(unit) !== 1) return
@@ -413,6 +595,7 @@ export function PLRMODE_IsDualWieldingClaws_6FC46A30_113c(
   m: Memory113c,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC46A30)
   const pInventory = m.u32(((pUnit >>> 0) + 0x60) >>> 0) >>> 0
   if (pInventory === 0) return 0
   const pSlot6 = INVENTORY_GetWeaponByHandSlotMemPort113c(m, pInventory, 6) >>> 0
@@ -438,6 +621,7 @@ export function PLRMODE_CanCastSkillAtTargetSubtile_6FC46B30_113c(
   pUnit: number,
   nX: number,
 ): number {
+  hitD2GameVa113c(0x6FC46B30)
   const id = nSkillId | 0
   if (id < 0) return 0
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C) >>> 0) >>> 0
@@ -477,6 +661,7 @@ export function PLRMODE_SetupRetreatFromSkillTargetPath_6FC47030_113c(
   nX: number,
   nY: number,
 ): number {
+  hitD2GameVa113c(0x6FC47030)
   const skill = pSkill >>> 0
   if (skill === 0) return 0
   const unit = pUnit >>> 0
@@ -532,6 +717,7 @@ export function SKILLS_SrvSt34_CheckSelectableCorpseTarget_6FC47240_113c(
   _nSkillId = 0,
   _nSkillLevel = 0,
 ): number {
+  hitD2GameVa113c(0x6FC47240)
   const unit = pUnit >>> 0
   SUNIT_ValidatePathTargetUnit113c(m, unit, pGame >>> 0)
   const pPath = m.u32((unit + 0x2c) >>> 0) >>> 0
@@ -555,6 +741,7 @@ export function SKILLS_SrvSt33_CheckSelectableCorpseNoState76_6FC47270_113c(
   _nSkillId = 0,
   _nSkillLevel = 0,
 ): number {
+  hitD2GameVa113c(0x6FC47270)
   const unit = pUnit >>> 0
   SUNIT_ValidatePathTargetUnit113c(m, unit, pGame >>> 0)
   const pPath = m.u32((unit + 0x2c) >>> 0) >>> 0
@@ -582,6 +769,7 @@ export function PLRMODE_ExecuteMonsterMeleeSkillHit_6FC479C0_113c(
   pGame: number,
   hooks?: LaneJKernHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC479C0)
   const def = pDefender >>> 0
   const sk = pSkill >>> 0
   if (def === 0 || sk === 0) return 0
@@ -614,6 +802,7 @@ export function GAME_LeaveGameCriticalSection_6FC49BA0_113c(
   pGame: number,
   hooks?: LaneJKernHooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC49BA0)
   const game = pGame >>> 0
   if (game === 0) {
     throw new Error('GAME_LeaveGameCriticalSection_6FC49BA0_113c: pGame == NULL (line 4110)')
@@ -638,6 +827,7 @@ export function GAME_ReserveGlobalGameSlot_6FC4A220_113c(
   m: Memory113c,
   hooks?: LaneJKernHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC4A220)
   if (hooks !== undefined && hooks.onEnterCriticalSection !== undefined) {
     hooks.onEnterCriticalSection(m, D2GAME_GLOBAL_GAME_CS_VA_113C, 0x19b)
   }
@@ -687,6 +877,7 @@ export function GAME_CommitGlobalGameSlot_6FC4A2D0_113c(
   wSlotIndex: number,
   hooks?: LaneJKernHooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC4A2D0)
   if (hooks !== undefined && hooks.onEnterCriticalSection !== undefined) {
     hooks.onEnterCriticalSection(m, D2GAME_GLOBAL_GAME_CS_VA_113C, 0x17f)
   }
@@ -713,6 +904,7 @@ export function CLIENT_SelectFlag20ClientCallback_6FC4A700_113c(
   pClient: number,
   ppOutClient: number,
 ): void {
+  hitD2GameVa113c(0x6FC4A700)
   const client = pClient >>> 0
   if (client === 0) {
     throw new Error('CLIENT_SelectFlag20ClientCallback_6FC4A700_113c: pClient == NULL (line 2982)')
@@ -735,6 +927,7 @@ export function CLIENT_SendUnitRemoveIfInNearRoom_6FC4A9F0_113c(
   pClient: number,
   pUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FC4A9F0)
   const unit = pUnit >>> 0
   if (unit === 0) return
   const client = pClient >>> 0
@@ -797,6 +990,7 @@ export function CLIENT_BroadcastPlayerLeftPacket5C_6FC4BED0_113c(
   pLeavingClient: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC4BED0)
   const client = pLeavingClient >>> 0
   if (client === 0) {
     throw new Error(
@@ -856,6 +1050,7 @@ export function DRLG_PopulateSingleRoom_6FC4CB80_113c(
   pGame: number,
   callees: ActRoomsCallees113c = DEFAULT_ACT_ROOMS_CALLEES_113C,
 ): void {
+  hitD2GameVa113c(0x6FC4CB80)
   const room = pRoom >>> 0
   const game = pGame >>> 0
   ROOM_TickSeedAndAmbientSpawn113c(m, room, game, callees)
@@ -890,6 +1085,7 @@ export function OBJECTS_CheckSpawnSpotClearMargin2_6FC4E5D0_113c(
   nSizeX: number,
   nSizeY: number,
 ): number {
+  hitD2GameVa113c(0x6FC4E5D0)
   const rc = pRoomCoords >>> 0
   const pos = pPos >>> 0
   const subW = m.u32((rc + 0x08) >>> 0) | 0
@@ -942,6 +1138,7 @@ export function OBJECTS_CheckSpawnSpotClearMargin7_6FC4E660_113c(
   pRoom: number,
   nSizeY: number,
 ): number {
+  hitD2GameVa113c(0x6FC4E660)
   const rc = pRoomCoords >>> 0
   const pos = pPos >>> 0
   const sizeX = nSizeX | 0
@@ -1000,6 +1197,7 @@ export function OBJECTS_InitFn26_SetAnimMode1_6FC4E730_113c(
   m: Memory113c,
   pObjInit: number,
 ): number {
+  hitD2GameVa113c(0x6FC4E730)
   const pObject = m.u32(((pObjInit >>> 0) + 0x04) >>> 0) >>> 0
   return UNITS_ChangeAnimMode113c(m, pObject, 1)
 }
@@ -1014,6 +1212,7 @@ export function OBJECTS_InitFn14_SetAnimMode1_6FC4E740_113c(
   m: Memory113c,
   pObjInit: number,
 ): number {
+  hitD2GameVa113c(0x6FC4E740)
   const pObject = m.u32(((pObjInit >>> 0) + 0x04) >>> 0) >>> 0
   return UNITS_ChangeAnimMode113c(m, pObject, 1)
 }
@@ -1028,6 +1227,7 @@ export function OBJECTS_InitFn34_RandomSetAnimMode1_6FC4EC70_113c(
   m: Memory113c,
   pObjInit: number,
 ): void {
+  hitD2GameVa113c(0x6FC4EC70)
   const initPtr = pObjInit >>> 0
   const pGame = m.u32(initPtr) >>> 0
   const pObjCtrl = m.u32((pGame + 0x10f0) >>> 0) >>> 0
@@ -1049,6 +1249,7 @@ export function OBJECTS_InitFn57_InitSpecialChest_6FC4EF50_113c(
   m: Memory113c,
   pObjInit: number,
 ): void {
+  hitD2GameVa113c(0x6FC4EF50)
   const initPtr = pObjInit >>> 0
   OBJECTS_InitChestLockAndSeed113c(m, initPtr)
   const pObject = m.u32((initPtr + 0x04) >>> 0) >>> 0
@@ -1077,6 +1278,7 @@ export function OBJECTS_SpawnSingleDensityObjectInRoom_6FC52BC0_113c(
   nProb: number,
   hooks?: LaneJKernHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC52BC0)
   const densByte = nDensity & 0xff
   if (densByte > 0x80) {
     throw new Error(
@@ -1163,6 +1365,7 @@ export function OBJECTS_InitFn51_ScheduleEvent9IfOperatingOrOpened_6FC532F0_113c
   m: Memory113c,
   pObjInit: number,
 ): void {
+  hitD2GameVa113c(0x6FC532F0)
   const initPtr = pObjInit >>> 0
   const pObject = m.u32((initPtr + 0x04) >>> 0) >>> 0
   if (pObject === 0) return
@@ -1186,6 +1389,7 @@ export function OBJECTS_InitFn11_InitTownPortal_6FC53330_113c(
   m: Memory113c,
   pObjInit: number,
 ): void {
+  hitD2GameVa113c(0x6FC53330)
   const initPtr = pObjInit >>> 0
   const pRoom0 = m.u32((initPtr + 0x08) >>> 0) >>> 0
   const levelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom0)
@@ -1225,6 +1429,7 @@ export function OBJECTS_InitFn59_ActivateAndScheduleEvents7And1_6FC53620_113c(
   m: Memory113c,
   pObjInit: number,
 ): void {
+  hitD2GameVa113c(0x6FC53620)
   const initPtr = pObjInit >>> 0
   const pObject0 = m.u32((initPtr + 0x04) >>> 0) >>> 0
   if (pObject0 !== 0 && m.u32((pObject0 + 0x10) >>> 0) !== 0) return
@@ -1254,6 +1459,7 @@ export function OBJECTS_InitFn58_ScheduleRandomEvent8_6FC53680_113c(
   m: Memory113c,
   pObjInit: number,
 ): void {
+  hitD2GameVa113c(0x6FC53680)
   const initPtr = pObjInit >>> 0
   const pGame0 = m.u32(initPtr) >>> 0
   const pObjCtrl = m.u32((pGame0 + 0x10f0) >>> 0) >>> 0
@@ -1276,6 +1482,7 @@ export function OBJECTS_InitFn24_ScheduleEvent3_6FC536D0_113c(
   m: Memory113c,
   pObjInit: number,
 ): void {
+  hitD2GameVa113c(0x6FC536D0)
   const initPtr = pObjInit >>> 0
   const pGame = m.u32(initPtr) >>> 0
   const targetFrame = (m.u32((pGame + 0xa8) >>> 0) + 0x19) >>> 0
@@ -1294,6 +1501,7 @@ export function OBJECTS_InitFn22_InitBrazierAndScheduleEvent0_6FC536F0_113c(
   m: Memory113c,
   pObjInit: number,
 ): void {
+  hitD2GameVa113c(0x6FC536F0)
   const initPtr = pObjInit >>> 0
   const pObjectsTxt = m.u32((initPtr + 0x10) >>> 0) >>> 0
   if (m.u8((pObjectsTxt + 0x141) >>> 0) !== 0) {
@@ -1322,6 +1530,7 @@ export function OBJECTS_InitFn10_InitRogueFireAndScheduleEvent_6FC53740_113c(
   m: Memory113c,
   pObjInit: number,
 ): void {
+  hitD2GameVa113c(0x6FC53740)
   const initPtr = pObjInit >>> 0
   const pRoom = m.u32((initPtr + 0x08) >>> 0) >>> 0
   const levelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom) | 0
@@ -1352,6 +1561,7 @@ export function QUESTS_CheckGlobalQuestState_6FC538D0_113c(
   nQuestId: number,
   nState: number,
 ): number {
+  hitD2GameVa113c(0x6FC538D0)
   const pQuestCtrl = m.u32(((pGame >>> 0) + 0x10f4) >>> 0) >>> 0
   if (m.u32((pQuestCtrl + 0x08) >>> 0) === 0) {
     throw new Error('QUESTS_CheckGlobalQuestState_6FC538D0_113c: bInitialized == 0 (line 2092)')
@@ -1372,6 +1582,7 @@ export function QUESTS_SetGlobalQuestState_6FC53920_113c(
   nQuestId: number,
   nState: number,
 ): void {
+  hitD2GameVa113c(0x6FC53920)
   const pQuestCtrl = m.u32(((pGame >>> 0) + 0x10f4) >>> 0) >>> 0
   if (m.u32((pQuestCtrl + 0x08) >>> 0) === 0) {
     throw new Error('QUESTS_SetGlobalQuestState_6FC53920_113c: bInitialized == 0 (line 2080)')
@@ -1392,6 +1603,7 @@ export function QUESTS_CheckNotIntro_6FC53970_113c(
   pGame: number,
   nQuestNo: number,
 ): number {
+  hitD2GameVa113c(0x6FC53970)
   const game = pGame >>> 0
   if (game === 0) {
     throw new Error('QUESTS_CheckNotIntro_6FC53970_113c: pGame == NULL (line 1987)')
@@ -1424,6 +1636,7 @@ export function QUESTS_ResolveDefaultStatusByte_6FC53A30_113c(
   pQuestFlags: number,
   pOutStateByte: number,
 ): void {
+  hitD2GameVa113c(0x6FC53A30)
   const quest = pQuest >>> 0
   const qFlags = pQuestFlags >>> 0
   const outPtr = pOutStateByte >>> 0
@@ -1493,6 +1706,7 @@ export function QUESTS_AppendQuestTimer_6FC53AF0_113c(
   pQuest: number,
   pfnTimerCallback: number,
 ): void {
+  hitD2GameVa113c(0x6FC53AF0)
   const quest = pQuest >>> 0
   const pGame = m.u32((quest + 0x04) >>> 0) >>> 0
   const pQuestCtrl = m.u32((pGame + 0x10f4) >>> 0) >>> 0
@@ -1526,6 +1740,7 @@ export function QUESTS_DispatchUnitChainCallbacks_6FC53C70_113c(
   bForceInactive: number,
   hooks?: LaneJKernHooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC53C70)
   const argPtr = pQuestArg >>> 0
   const pUnit = m.u32((argPtr + 0x08) >>> 0) >>> 0
   let pNode = m.u32((pUnit + 0x74) >>> 0) >>> 0
@@ -1563,6 +1778,7 @@ export function QUESTS_GetQuestSeedPtr_6FC53D90_113c(
   m: Memory113c,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FC53D90)
   const pQuestCtrl = m.u32(((pGame >>> 0) + 0x10f4) >>> 0) >>> 0
   if (pQuestCtrl === 0) {
     throw new Error('QUESTS_GetQuestSeedPtr_6FC53D90_113c: pQuestControl == NULL (line 507)')
@@ -1582,6 +1798,7 @@ export function QUESTS_GetQuestData_6FC53F30_113c(
   pGame: number,
   nQuestId: number,
 ): number {
+  hitD2GameVa113c(0x6FC53F30)
   const pQuestCtrl = m.u32(((pGame >>> 0) + 0x10f4) >>> 0) >>> 0
   if ((nQuestId | 0) < 0) {
     throw new Error('QUESTS_GetQuestData_6FC53F30_113c: nQuestId < 0 (line 119)')
@@ -1612,6 +1829,7 @@ export function QUESTS_AttachQuestToUnit_6FC53F80_113c(
   pUnit: number,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FC53F80)
   const quest = pQuest >>> 0
   const unit = pUnit >>> 0
   let pCur = m.u32((unit + 0x74) >>> 0) >>> 0
@@ -1645,6 +1863,7 @@ export function QUESTS_FreeUnitQuestChain_6FC53FF0_113c(
   pChainHead: number,
   hooks?: LaneJKernHooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC53FF0)
   let pCur = pChainHead >>> 0
   if (pCur === 0) return
   const game = pGame >>> 0
@@ -1669,6 +1888,7 @@ export function OBJECTS_InitFn23_SyncQuest0FObjectAnimMode_6FC54370_113c(
   m: Memory113c,
   pObjInit: number,
 ): number {
+  hitD2GameVa113c(0x6FC54370)
   const initPtr = pObjInit >>> 0
   const pGame = m.u32(initPtr) >>> 0
   const pQuestCtrl = m.u32((pGame + 0x10f4) >>> 0) >>> 0
@@ -1706,6 +1926,7 @@ export function QUESTS_TriggerItemPickedUp_6FC54510_113c(
   pPlayer: number,
   hooks?: LaneJKernHooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC54510)
   const item = pItem >>> 0
   let pNode = m.u32((item + 0x74) >>> 0) >>> 0
   if (pNode === 0) return
@@ -1755,6 +1976,7 @@ export function QUESTS_TriggerItemDropped_6FC545A0_113c(
   pUnit: number,
   hooks?: LaneJKernHooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC545A0)
   const item = pItem >>> 0
   let pNode = m.u32((item + 0x74) >>> 0) >>> 0
   if (pNode === 0) return

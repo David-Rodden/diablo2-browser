@@ -43,6 +43,7 @@ import {
 import { ITEMS_FindQuestItemByBaseCode_6FC2E660_113c } from './k2-laneI-0x6fc3-w1-113c.ts';
 import { UNITS_ChangeAnimMode113c } from './monster-events.ts';
 import { EVENT_SetEventFull113c } from './timer-wheel.ts';
+import { hitD2GameVa113c } from '../va-trace-113c.ts';
 
 const QUEST_NPC_INTRO_TABLE_VA = 0x6fd27e50;
 const QUEST_NPC_INTRO_COUNT_VA = 0x6fd27f68;
@@ -129,6 +130,7 @@ export function ACT1Q6_Callback11_RemovePlayerGuid_6FC80A30_113c(
   pQuest: number,
   pQuestArg: number,
 ): number {
+  hitD2GameVa113c(0x6FC80A30);
   QUESTS_RemovePlayerGuidIfQuestState1AndNot0_113c(m, pQuest, pQuestArg);
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0;
   const pQuestDataEx = m.u32((pQuest + 0x18) >>> 0) >>> 0;
@@ -146,6 +148,7 @@ export function ACT1Q5_InitHoradricMalusStandObject_6FC80DA0_113c(
   m: Memory113c,
   pObjInit: number,
 ): void {
+  hitD2GameVa113c(0x6FC80DA0);
   const pGame = m.u32(pObjInit >>> 0) >>> 0;
   const pQuest = findQuestNodeInGame(m, pGame, 5);
   if (pQuest === 0) {
@@ -167,6 +170,7 @@ export function ACT1Q5_CompleteCharsiImbuePartyCallback_6FC80EC0_113c(
   pPlayer: number,
   _pArg = 0,
 ): void {
+  hitD2GameVa113c(0x6FC80EC0);
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer);
   const nDifficulty = m.u8((pGame + 0x6d) >>> 0);
   const pQuestFlags = m.u32((pPlayerData + nDifficulty * 4 + 0x10) >>> 0) >>> 0;
@@ -197,6 +201,7 @@ export function ACT1Q4_RemovePlayerFromCainPortalGuidList_6FC81420_113c(
   pGame: number,
   pPlayer: number,
 ): number {
+  hitD2GameVa113c(0x6FC81420);
   const pQuest = findQuestNodeInGame(m, pGame, 4);
   const pQuestDataEx = m.u32((pQuest + 0x18) >>> 0) >>> 0;
   const dwGuid = (pPlayer >>> 0) !== 0 ? m.u32((pPlayer + 0x0c) >>> 0) >>> 0 : 0xffffffff;
@@ -211,6 +216,7 @@ export function ACT1Q4_InitCainGibbetObject_6FC814A0_113c(
   m: Memory113c,
   pObjInit: number,
 ): void {
+  hitD2GameVa113c(0x6FC814A0);
   const pGame = m.u32(pObjInit >>> 0) >>> 0;
   const pQuest = findQuestNodeInGame(m, pGame, 4);
   if (pQuest === 0) {
@@ -240,6 +246,7 @@ export function ACT1Q4_SetTristramEnteredQuestStateCallback_6FC81500_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC81500);
   const pRoom = UNITS_GetRoom113c(m, pPlayer) >>> 0;
   if (pRoom !== 0) {
     const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom) | 0;
@@ -263,6 +270,7 @@ export function ACT1Q4_SetCainRescuedByPartyCallback_6FC816F0_113c(
   pPlayer: number,
   _pArg = 0,
 ): void {
+  hitD2GameVa113c(0x6FC816F0);
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer);
   const nDifficulty = m.u8((pGame + 0x6d) >>> 0);
   const pQuestFlags = m.u32((pPlayerData + nDifficulty * 4 + 0x10) >>> 0) >>> 0;
@@ -295,6 +303,7 @@ export function ACT1Q4_RecordInifussTreeObjectGuid_6FC81860_113c(
   pQuest: number,
   pObject: number,
 ): void {
+  hitD2GameVa113c(0x6FC81860);
   const pQuestDataEx = m.u32((pQuest + 0x18) >>> 0) >>> 0;
   m.setU8((pQuestDataEx + 0x49) >>> 0, 1);
   const dwGuid = (pObject >>> 0) !== 0 ? m.u32((pObject + 0x0c) >>> 0) >>> 0 : 0xffffffff;
@@ -310,6 +319,7 @@ export function ACT1Q4_Callback11_RemovePlayerGuid_6FC81880_113c(
   pQuest: number,
   pQuestArg: number,
 ): number {
+  hitD2GameVa113c(0x6FC81880);
   QUESTS_RemovePlayerGuidIfQuestState1AndNot0_113c(m, pQuest, pQuestArg);
   const pPlayer0 = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0;
   const pQuestDataEx = m.u32((pQuest + 0x18) >>> 0) >>> 0;
@@ -329,6 +339,7 @@ export function ACT1Q4_Callback14_CountPlayerInifussScrolls_6FC818D0_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC818D0);
   const pQuestDataEx = m.u32((pQuest + 0x18) >>> 0) >>> 0;
   const pBkd = ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(
     m,
@@ -360,6 +371,7 @@ export function ACT1Q5_CheckPlayerHasHoradricMalusCallback_6FC81B20_113c(
   pPlayer: number,
   _pArg = 0,
 ): void {
+  hitD2GameVa113c(0x6FC81B20);
   const pItem = ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, pPlayer, pGame, 0x206d6468);
   if (pItem === 0) {
     return;
@@ -380,6 +392,7 @@ export function ACT1Q5_Callback11_RemovePlayerGuid_6FC81BE0_113c(
   pQuest: number,
   pQuestArg: number,
 ): number {
+  hitD2GameVa113c(0x6FC81BE0);
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0;
   const pQuestDataEx = m.u32((pQuest + 0x18) >>> 0) >>> 0;
   const dwGuid = pPlayer !== 0 ? m.u32((pPlayer + 0x0c) >>> 0) >>> 0 : 0xffffffff;
@@ -395,6 +408,7 @@ export function ACT1Q5_Callback14_PlayerJoinedWithMalus_6FC81C00_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC81C00);
   const pItem = ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(
     m,
     m.u32((pQuestArg + 0x0c) >>> 0) >>> 0,
@@ -432,6 +446,7 @@ export function ACT1Q5_GrantImbueRewardIfLevel8Callback_6FC81D40_113c(
   pPlayer: number,
   _pArg = 0,
 ): void {
+  hitD2GameVa113c(0x6FC81D40);
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer);
   const nDifficulty = m.u8((pGame + 0x6d) >>> 0);
   const pQuestFlags = m.u32((pPlayerData + nDifficulty * 4 + 0x10) >>> 0) >>> 0;
@@ -457,6 +472,7 @@ export function QUESTS_Callback11_RemovePlayerFromQuestGuidList_6FC81F30_113c(
   pQuest: number,
   pQuestArg: number,
 ): number {
+  hitD2GameVa113c(0x6FC81F30);
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0;
   const dwGuid = pPlayer !== 0 ? m.u32((pPlayer + 0x0c) >>> 0) >>> 0 : 0xffffffff;
   return QUESTS_GuidListRemove113c(m, (pQuest + 0x1c) >>> 0, dwGuid);
@@ -471,6 +487,7 @@ export function QUESTS_Callback11_RemovePlayerFromQuestAndExGuidLists_6FC82170_1
   pQuest: number,
   pQuestArg: number,
 ): number {
+  hitD2GameVa113c(0x6FC82170);
   const pPlayer0 = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0;
   const dwGuid0 = pPlayer0 !== 0 ? m.u32((pPlayer0 + 0x0c) >>> 0) >>> 0 : 0xffffffff;
   QUESTS_GuidListRemove113c(m, (pQuest + 0x1c) >>> 0, dwGuid0);
@@ -489,6 +506,7 @@ export function ACT1Q1_CompleteAkaraRespecReward_6FC82340_113c(
   pPlayer: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC82340);
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer);
   const nDifficulty = m.u8((pGame + 0x6d) >>> 0);
   const pQuestFlags = m.u32((pPlayerData + nDifficulty * 4 + 0x10) >>> 0) >>> 0;
@@ -505,6 +523,7 @@ export function ACT1Q0_Callback12_WarrivIntroSetState0_6FC82490_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC82490);
   const wNpcId = m.u16((pQuestArg + 0x14) >>> 0);
   const wMessageIndex = m.u16((pQuestArg + 0x18) >>> 0);
   if (wNpcId !== 0x9b) {
@@ -531,6 +550,7 @@ export function ACT1Q6_SetCompletedBeforeAlertCallback_6FC825F0_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC825F0);
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer);
   const nDifficulty = m.u8((pGame + 0x6d) >>> 0);
   const pQuestFlags = m.u32((pPlayerData + nDifficulty * 4 + 0x10) >>> 0) >>> 0;
@@ -554,6 +574,7 @@ export function ACT1Q6_PlayAndarielDefeatedSoundCallback_6FC826C0_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC826C0);
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer);
   const nDifficulty = m.u8((pGame + 0x6d) >>> 0);
   const pQuestFlags = m.u32((pPlayerData + nDifficulty * 4 + 0x10) >>> 0) >>> 0;
@@ -576,6 +597,7 @@ export function ACT1Q3_SetCompletedBeforeAlertCallback_6FC82760_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC82760);
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer);
   const nDifficulty = m.u8((pGame + 0x6d) >>> 0);
   const pQuestFlags = m.u32((pPlayerData + nDifficulty * 4 + 0x10) >>> 0) >>> 0;
@@ -596,6 +618,7 @@ export function ACT1Q4_SetCompletedBeforeAlertCallback_6FC82960_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC82960);
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer);
   const nDifficulty = m.u8((pGame + 0x6d) >>> 0);
   const pQuestFlags = m.u32((pPlayerData + nDifficulty * 4 + 0x10) >>> 0) >>> 0;
@@ -617,6 +640,7 @@ export function ACT1Q5_SendTowerTomeQuestAlert5D_6FC82A30_113c(
   m: Memory113c,
   pPlayer: number,
 ): void {
+  hitD2GameVa113c(0x6FC82A30);
   const sp = k2W2B2StackPtr;
   k2W2B2StackPtr = (sp + 8) >>> 0;
   try {
@@ -648,6 +672,7 @@ export function ACT1Q2_SetCompletedBeforeAlertCallback_6FC82BB0_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC82BB0);
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer);
   const nDifficulty = m.u8((pGame + 0x6d) >>> 0);
   const pQuestFlags = m.u32((pPlayerData + nDifficulty * 4 + 0x10) >>> 0) >>> 0;
@@ -671,6 +696,7 @@ export function ACT1Q1_PlayDenClearedSoundCallback_6FC82C60_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC82C60);
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer);
   const nDifficulty = m.u8((pGame + 0x6d) >>> 0);
   const pQuestFlags = m.u32((pPlayerData + nDifficulty * 4 + 0x10) >>> 0) >>> 0;
@@ -696,6 +722,7 @@ export function ACT1Q1_SetCompletedBeforeAlertCallback_6FC82CD0_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC82CD0);
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer);
   const nDifficulty = m.u8((pGame + 0x6d) >>> 0);
   const pQuestFlags = m.u32((pPlayerData + nDifficulty * 4 + 0x10) >>> 0) >>> 0;
@@ -718,6 +745,7 @@ export function OBJECTS_InitOperatingObjectWithTimer25_6FC88F90_113c(
   m: Memory113c,
   pObjInit: number,
 ): void {
+  hitD2GameVa113c(0x6FC88F90);
   const pObject0 = m.u32((pObjInit + 0x04) >>> 0) >>> 0;
   UNITS_ChangeAnimMode113c(m, pObject0, 1);
   const pGame = m.u32(pObjInit >>> 0) >>> 0;
@@ -736,6 +764,7 @@ export function QUESTS_ClearPlayerNpcIntroFlag_6FC89490_113c(
   nNpcClassId: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC89490);
   ensureQuestNpcIntroTableSeeded(m);
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer);
   const nDifficulty = m.u8((pGame + 0x6d) >>> 0);
@@ -765,6 +794,7 @@ export function QUESTS_GetPlayerNpcIntroFlag_6FC89590_113c(
   nNpcClassId: number,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FC89590);
   ensureQuestNpcIntroTableSeeded(m);
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer);
   const nDifficulty = m.u8((pGame + 0x6d) >>> 0);
@@ -793,6 +823,7 @@ export function QUESTS_SetPlayerNpcIntroFlag_6FC895F0_113c(
   nNpcClassId: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC895F0);
   ensureQuestNpcIntroTableSeeded(m);
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer);
   const nDifficulty = m.u8((pGame + 0x6d) >>> 0);
@@ -821,6 +852,7 @@ export function OBJECTS_GrantUnitSkillPoints_6FC89650_113c(
   pUnitOrDelta: number,
   nDeltaOpt?: number,
 ): number {
+  hitD2GameVa113c(0x6FC89650);
   const pUnit = nDeltaOpt !== undefined ? pUnitOrDelta : pGameOrUnit;
   const nDelta = nDeltaOpt !== undefined ? nDeltaOpt : pUnitOrDelta;
   STATLIST_AddUnitStatMemPort113c(m, pUnit, 5, nDelta | 0, 0);
@@ -837,6 +869,7 @@ export function OBJECTS_AddUnitMaxAndCurrentLifeFixed8_6FC89670_113c(
   pUnitOrLifeAdd: number,
   nLifeAddOpt?: number,
 ): number {
+  hitD2GameVa113c(0x6FC89670);
   const pUnit = nLifeAddOpt !== undefined ? pUnitOrLifeAdd : pGameOrUnit;
   const nLifeAdd = nLifeAddOpt !== undefined ? nLifeAddOpt : pUnitOrLifeAdd;
   const nMaxLife = STATLIST_GetMaxLifeFromUnit113c(m, pUnit) | 0;
@@ -856,6 +889,7 @@ export function OBJECTS_GrantUnitStrength_6FC896B0_113c(
   pUnitOrDelta: number,
   nDeltaOpt?: number,
 ): number {
+  hitD2GameVa113c(0x6FC896B0);
   const pUnit = nDeltaOpt !== undefined ? pUnitOrDelta : pGameOrUnit;
   const nDelta = nDeltaOpt !== undefined ? nDeltaOpt : pUnitOrDelta;
   STATLIST_AddUnitStatMemPort113c(m, pUnit, 0, nDelta | 0, 0);
@@ -872,6 +906,7 @@ export function OBJECTS_GrantUnitVitality_6FC896D0_113c(
   pUnitOrDelta: number,
   nDeltaOpt?: number,
 ): number {
+  hitD2GameVa113c(0x6FC896D0);
   const pUnit = nDeltaOpt !== undefined ? pUnitOrDelta : pGameOrUnit;
   const nDelta = nDeltaOpt !== undefined ? nDeltaOpt : pUnitOrDelta;
   STATLIST_AddUnitStatMemPort113c(m, pUnit, 3, nDelta | 0, 0);
@@ -888,6 +923,7 @@ export function OBJECTS_GrantUnitDexterity_6FC896F0_113c(
   pUnitOrDelta: number,
   nDeltaOpt?: number,
 ): number {
+  hitD2GameVa113c(0x6FC896F0);
   const pUnit = nDeltaOpt !== undefined ? pUnitOrDelta : pGameOrUnit;
   const nDelta = nDeltaOpt !== undefined ? nDeltaOpt : pUnitOrDelta;
   STATLIST_AddUnitStatMemPort113c(m, pUnit, 2, nDelta | 0, 0);
@@ -904,6 +940,7 @@ export function OBJECTS_GrantUnitEnergy_6FC89710_113c(
   pUnitOrDelta: number,
   nDeltaOpt?: number,
 ): number {
+  hitD2GameVa113c(0x6FC89710);
   const pUnit = nDeltaOpt !== undefined ? pUnitOrDelta : pGameOrUnit;
   const nDelta = nDeltaOpt !== undefined ? nDeltaOpt : pUnitOrDelta;
   STATLIST_AddUnitStatMemPort113c(m, pUnit, 1, nDelta | 0, 0);
@@ -920,6 +957,7 @@ export function OBJECTS_AddUnitMaxAndCurrentManaFixed8_6FC89730_113c(
   pUnitOrManaAdd: number,
   nManaAddOpt?: number,
 ): number {
+  hitD2GameVa113c(0x6FC89730);
   const pUnit = nManaAddOpt !== undefined ? pUnitOrManaAdd : pGameOrUnit;
   const nManaAdd = nManaAddOpt !== undefined ? nManaAddOpt : pUnitOrManaAdd;
   const nMaxMana = STATLIST_GetMaxManaFromUnit113c(m, pUnit) | 0;
@@ -938,6 +976,7 @@ export function SHRINES_ApplyEnirhsReversePlayerName_6FC89770_113c(
   pObjOperate: number,
   _pShrinesTxt = 0,
 ): void {
+  hitD2GameVa113c(0x6FC89770);
   const pPlayer = m.u32((pObjOperate + 0x08) >>> 0) >>> 0;
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0;
   if (pPlayerData === 0) {
@@ -977,6 +1016,7 @@ export function SHRINES_ApplyManaExchangeEffect_6FC897A0_113c(
   pObjOperate: number,
   pShrinesTxt: number,
 ): void {
+  hitD2GameVa113c(0x6FC897A0);
   const pUnit0 = m.u32((pObjOperate + 0x08) >>> 0) >>> 0;
   const nCurMana = STATLIST_GetUnitStat113c(m, pUnit0, 8, 0) | 0;
   const nArg0 = m.u32((pShrinesTxt + 0x04) >>> 0) | 0;
@@ -1000,6 +1040,7 @@ export function SHRINES_ApplyHealthExchangeEffect_6FC89800_113c(
   pObjOperate: number,
   pShrinesTxt: number,
 ): void {
+  hitD2GameVa113c(0x6FC89800);
   const pUnit0 = m.u32((pObjOperate + 0x08) >>> 0) >>> 0;
   const nCurLifeWhole = (STATLIST_GetUnitStat113c(m, pUnit0, 6, 0) | 0) >> 8;
   const nArg0 = m.u32((pShrinesTxt + 0x04) >>> 0) | 0;
@@ -1022,6 +1063,7 @@ export function SHRINES_ApplyManaRechargeEffect_6FC89860_113c(
   m: Memory113c,
   pObjOperate: number,
 ): void {
+  hitD2GameVa113c(0x6FC89860);
   const pUnit0 = m.u32((pObjOperate + 0x08) >>> 0) >>> 0;
   const nCurMana = STATLIST_GetUnitStat113c(m, pUnit0, 8, 0) | 0;
   const pUnit1 = m.u32((pObjOperate + 0x08) >>> 0) >>> 0;
@@ -1041,6 +1083,7 @@ export function SHRINES_ApplyHealthRechargeEffect_6FC898A0_113c(
   m: Memory113c,
   pObjOperate: number,
 ): void {
+  hitD2GameVa113c(0x6FC898A0);
   const pUnit0 = m.u32((pObjOperate + 0x08) >>> 0) >>> 0;
   const nCurLife = STATLIST_GetUnitStat113c(m, pUnit0, 6, 0) | 0;
   const pUnit1 = m.u32((pObjOperate + 0x08) >>> 0) >>> 0;
@@ -1061,6 +1104,7 @@ export function OBJECTS_HasItemOfTypeInInventory_6FC898E0_113c(
   pUnit: number,
   nItemType: number,
 ): number {
+  hitD2GameVa113c(0x6FC898E0);
   const pInventory = m.u32((pUnit + 0x60) >>> 0) >>> 0;
   if (pInventory === 0) {
     throw new D2CommonAssertError('OBJECTS_HasItemOfTypeInInventory_6FC898E0_113c', 0x6d3);
@@ -1085,6 +1129,7 @@ export function OBJECTS_CanSpawnMonsterClassInRoom_6FC89940_113c(
   pRoom: number,
   nMonsterClassId: number,
 ): number {
+  hitD2GameVa113c(0x6FC89940);
   if ((nMonsterClassId | 0) !== 0xea) {
     return 1;
   }
@@ -1106,6 +1151,7 @@ export function OBJECTS_OperateToggleObjectMode012_6FC89A80_113c(
   m: Memory113c,
   pObjOperate: number,
 ): number {
+  hitD2GameVa113c(0x6FC89A80);
   const pObject = m.u32((pObjOperate + 0x04) >>> 0) >>> 0;
   if (pObject === 0 || (m.u32((pObject + 0x10) >>> 0) >>> 0) === 0) {
     UNITS_ChangeAnimMode113c(m, pObject, 1);

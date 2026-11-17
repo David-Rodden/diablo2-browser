@@ -1041,3 +1041,218 @@ export function dispatchD2NetIat113c(
   const args = fourth as readonly number[] | undefined
   return first.dispatchIat(second as number, third as Memory113c, args !== undefined ? args : [])
 }
+
+const HEX_NIBBLES_113C = '0123456789abcdef'
+
+let activeFrameS2CTrace113c: string[] | null = null
+
+export function beginFrameS2CTrace113c(): void {
+  activeFrameS2CTrace113c = []
+}
+
+export function isFrameS2CTraceActive113c(): boolean {
+  return activeFrameS2CTrace113c !== null
+}
+
+export function endFrameS2CTrace113c(): string[] {
+  const out = activeFrameS2CTrace113c !== null ? activeFrameS2CTrace113c : []
+  activeFrameS2CTrace113c = null
+  return out
+}
+
+function bytesToHexLower113c(bytes: Uint8Array, start: number, len: number): string {
+  let out = ''
+  for (let i = 0; i < len; i++) {
+    const b = bytes[start + i]!
+    out += HEX_NIBBLES_113C[(b >>> 4) & 0x0f]! + HEX_NIBBLES_113C[b & 0x0f]!
+  }
+  return out
+}
+
+/**
+ * `@va D2Game:0x6FCAA3E0` (`NET_QueuePacketToClient`, `eax = pClient`, `[esp+4] = pPacket`, `[esp+8] = nLen`):
+ * Appends `pktBytes` (`1..0x200` bytes) onto `pClient`'s `0x208`-byte `D2PacketDataStrc` linked list:
+ * - `[pClient + 0x1B8]`: `pPacketDataHead`
+ * - `[pClient + 0x1BC]`: `pPacketDataTail`
+ * - `[pClient + 0x1C0]`: `pPacketDataFreeList`
+ * Each `0x208`-byte node stores `u32 nUsedBytes` at `+0x00`, raw bytes at `+0x04..+0x203`, and `u32 pNext` at `+0x204`.
+ */
+export function NET_QueuePacketToClient113c(
+  m: Memory113c,
+  pClient: number,
+  pktBytes: Uint8Array,
+): number {
+  const nLen = pktBytes.byteLength
+  if (pClient === 0 || nLen <= 0 || nLen > 0x200) return 0
+  if (activeFrameS2CTrace113c !== null) {
+    activeFrameS2CTrace113c.push(bytesToHexLower113c(pktBytes, 0, nLen))
+  }
+
+  const pTail = m.u32((pClient + 0x1bc) >>> 0) >>> 0
+  if (pTail !== 0) {
+    const used = m.u32(pTail) >>> 0
+    if ((used + nLen) <= 0x200) {
+      for (let i = 0; i < nLen; i++) {
+        m.setU8((pTail + 0x04 + used + i) >>> 0, pktBytes[i]!)
+      }
+      m.setU32(pTail, (used + nLen) >>> 0)
+      return 1
+    }
+  }
+
+  let pNode = m.u32((pClient + 0x1c0) >>> 0) >>> 0
+  if (pNode !== 0) {
+    m.setU32((pClient + 0x1c0) >>> 0, m.u32((pNode + 0x204) >>> 0) >>> 0)
+  } else {
+    pNode = m.alloc(0x208) >>> 0
+  }
+
+  m.setU32(pNode, nLen >>> 0)
+  for (let i = 0; i < nLen; i++) {
+    m.setU8((pNode + 0x04 + i) >>> 0, pktBytes[i]!)
+  }
+  m.setU32((pNode + 0x204) >>> 0, 0)
+
+  if (pTail !== 0) {
+    m.setU32((pTail + 0x204) >>> 0, pNode)
+    m.setU32((pClient + 0x1bc) >>> 0, pNode)
+  } else {
+    m.setU32((pClient + 0x1b8) >>> 0, pNode)
+    m.setU32((pClient + 0x1bc) >>> 0, pNode)
+  }
+  return 1
+}
+
+/**
+ * `@va D2Game:0x6FCAA3E0` pointer-overload (`pPacket` in `Memory113c` + `nLen`).
+ */
+export function NET_QueuePacketPtrToClient113c(
+  m: Memory113c,
+  pClient: number,
+  pPacket: number,
+  nLen: number,
+): number {
+  const size = nLen | 0
+  if (pClient === 0 || pPacket === 0 || size <= 0 || size > 0x200) return 0
+  const buf = new Uint8Array(size)
+  for (let i = 0; i < size; i++) {
+    buf[i] = m.u8((pPacket + i) >>> 0)
+  }
+  return NET_QueuePacketToClient113c(m, pClient, buf)
+}
+
+/**
+ * Drains all queued `D2PacketDataStrc` nodes from `pClient` (`+0x1B8`/`+0x1BC`), splitting concatenated
+ * raw S2C frames via `D2Net.#10033` (`getS2CPacketSize113c`) and recycling popped `0x208`-byte nodes
+ * onto `[pClient + 0x1C0]` (`D2Game:0x6FC4D500`).
+ */
+export function drainClientS2CPackets113c(m: Memory113c, pClient: number): string[] {
+  const out: string[] = []
+  if (pClient === 0) return out
+
+  let pNode = m.u32((pClient + 0x1b8) >>> 0) >>> 0
+  m.setU32((pClient + 0x1b8) >>> 0, 0)
+  m.setU32((pClient + 0x1bc) >>> 0, 0)
+
+  while (pNode !== 0) {
+    const pNext = m.u32((pNode + 0x204) >>> 0) >>> 0
+    const used = m.u32(pNode) >>> 0
+    const cappedUsed = used <= 0x200 ? used : 0x200
+    if (cappedUsed > 0) {
+      const raw = new Uint8Array(cappedUsed)
+      for (let i = 0; i < cappedUsed; i++) {
+        raw[i] = m.u8((pNode + 0x04 + i) >>> 0)
+      }
+      let pos = 0
+      while (pos < cappedUsed) {
+        const slice = raw.subarray(pos)
+        let pktLen = getS2CPacketSize113c(slice)
+        if (slice[0] === 0x3e && pktLen > 0 && pktLen < 0x22 && pos + 0x22 <= cappedUsed) {
+          let trailingZero = true
+          for (let z = pktLen; z < 0x22; z++) {
+            if (slice[z] !== 0) {
+              trailingZero = false
+              break
+            }
+          }
+          if (trailingZero) {
+            pktLen = 0x22
+          }
+        }
+        if (pktLen <= 0 || pos + pktLen > cappedUsed) {
+          out.push(bytesToHexLower113c(raw, pos, cappedUsed - pos))
+          break
+        }
+        out.push(bytesToHexLower113c(raw, pos, pktLen))
+        pos += pktLen
+      }
+    }
+
+    // Recycle node onto pClient->pPacketDataFreeList (+0x1C0) per 0x6FC4D500
+    m.setU32(pNode, 0)
+    m.setU32((pNode + 0x204) >>> 0, m.u32((pClient + 0x1c0) >>> 0) >>> 0)
+    m.setU32((pClient + 0x1c0) >>> 0, pNode)
+    pNode = pNext
+  }
+  return out
+}
+
+/**
+ * `@va D2Game:0x6FC4D500` (`CLIENTS_FlushAllClientPackets`):
+ * Drains all queued per-frame S2C packets across `pGame->pClientList (+0x88)` (chained via `[pClient + 0x4A8]`)
+ * as well as any player unit client at `[pPlayerData + 0x9C]` in `pGame->pUnitHash[0] (+0x1120)`, returning
+ * lowercase hex strings in exact emission order.
+ */
+export function drainFrameS2CPackets113c(m: Memory113c, pGame: number): string[] {
+  const out: string[] = []
+  if (pGame === 0) return out
+
+  const seenClients: number[] = []
+  let pClient = m.u32((pGame + 0x88) >>> 0) >>> 0
+  while (pClient !== 0) {
+    let alreadySeen = false
+    for (let i = 0; i < seenClients.length; i++) {
+      if (seenClients[i] === pClient) {
+        alreadySeen = true
+        break
+      }
+    }
+    if (alreadySeen) break
+    seenClients.push(pClient)
+    const drained = drainClientS2CPackets113c(m, pClient)
+    for (let i = 0; i < drained.length; i++) {
+      out.push(drained[i]!)
+    }
+    pClient = m.u32((pClient + 0x4a8) >>> 0) >>> 0
+  }
+
+  // Also check player hash buckets (+0x1120..+0x131C) in case a single-player client was attached via pPlayerData+0x9C
+  for (let bucket = 0; bucket < 128; bucket++) {
+    let pPlayer = m.u32((pGame + 0x1120 + bucket * 4) >>> 0) >>> 0
+    while (pPlayer !== 0) {
+      if (m.u32(pPlayer) === 0) {
+        const pPlayerData = m.u32((pPlayer + 0x14) >>> 0) >>> 0
+        const pPlrClient = pPlayerData !== 0 ? (m.u32((pPlayerData + 0x9c) >>> 0) >>> 0) : 0
+        if (pPlrClient !== 0) {
+          let alreadySeen = false
+          for (let i = 0; i < seenClients.length; i++) {
+            if (seenClients[i] === pPlrClient) {
+              alreadySeen = true
+              break
+            }
+          }
+          if (!alreadySeen) {
+            seenClients.push(pPlrClient)
+            const drained = drainClientS2CPackets113c(m, pPlrClient)
+            for (let i = 0; i < drained.length; i++) {
+              out.push(drained[i]!)
+            }
+          }
+        }
+      }
+      pPlayer = m.u32((pPlayer + 0xe4) >>> 0) >>> 0
+    }
+  }
+
+  return out
+}

@@ -121,7 +121,7 @@ import {
 } from './ai-fallen-113c.js'
 import { CLIENTS_ForEachInGameClient113c } from './boot-init-gap-a-113c.js'
 import { AI_Stall113c, MONSTER_StartMode113c } from './combat-a1c-113c.js'
-import { PLAYER_GetEquippedWeapon113c, AIGENERAL_CopyAiCommandParams113c } from './fallen-ai-113c.js'
+import { PLAYER_GetEquippedWeapon113c, AIGENERAL_CopyAiCommandParams113c } from './replay-kernel-113c.ts'
 import { SUNIT_GetServerUnit113c } from './game-strc.js'
 import {
   AURA_ForEachUnitInRadius113c,
@@ -193,6 +193,7 @@ import {
 } from './regpop-spawn-113c.js'
 import { SUNIT_FreeUnit113c } from './replay-final11-113c.js'
 import { EVENT_FreeNode113c, EVENT_SetEventFull113c } from './timer-wheel.js'
+import { hitD2GameVa113c } from '../va-trace-113c.js'
 
 export type D2KernMemory113c = Memory113c
 
@@ -462,6 +463,7 @@ export function AI_SpawnPackMinionOrStartMode_6FC3BCA0_113c(
   pAiTickArgs: number,
   hooks?: K2W3B2Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC3BCA0)
   const bMask = m.u8((pGame + 0x6d) >>> 0) !== 0 ? 0x0f : 0x08
   let pMonData = 0
   if (pUnit !== 0 && (m.u32(pUnit >>> 0) >>> 0) === 1) {
@@ -541,6 +543,7 @@ export function AI_StepTurnAndCastSkill4_6FC3C1E0_113c(
   pAiTickArgs: number,
   hooks?: K2W3B2Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC3C1E0)
   const pAiControl = m.u32(pAiTickArgs >>> 0) >>> 0
   const pMonStatsTxt = m.u32((pAiTickArgs + 0x1c) >>> 0) >>> 0
   const pTarget = m.u32((pAiTickArgs + 0x08) >>> 0) >>> 0
@@ -680,6 +683,7 @@ export function AI_SelectAndCastHirelingSkill_6FC3C4E0_113c(
   bAllowMove: number,
   hooks?: K2W3B2Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC3C4E0)
   const nUnitLevel = STATLIST_GetUnitStat113c(m, pUnit, 0x0c, 0) | 0
   let wSubTypeId = 0
   if (pUnit !== 0 && (m.u32(pUnit >>> 0) >>> 0) === 1) {
@@ -831,6 +835,7 @@ export function MONSTER_ApplyPresetAiCommands_6FC3F2D0_113c(
   pMonster: number,
   ppPresetNode: number,
 ): void {
+  hitD2GameVa113c(0x6FC3F2D0)
   const sp = w3b2ScratchSp
   w3b2ScratchSp = (sp + 8) >>> 0
   try {
@@ -895,6 +900,7 @@ export function ITEMS_LoadItemAndSocketsFromBitstream_6FC3F9F0_113c(
   ppOutItem: number,
   pOutTotalBytesRead: number,
 ): number {
+  hitD2GameVa113c(0x6FC3F9F0)
   m.setU32(ppOutItem >>> 0, 0)
   m.setU32(pOutTotalBytesRead >>> 0, 0)
 
@@ -994,6 +1000,7 @@ export function ITEMS_SaveItemToNodeAndFree_6FC403D0_113c(
   pSaveNode: number,
   pItem: number,
 ): number {
+  hitD2GameVa113c(0x6FC403D0)
   m.setU8((pSaveNode + 0x02) >>> 0, ITEMS_GetSubTypeFromItem113c(m, pItem) & 0xff)
   const nWritten = ITEMS_SerializeItemToBuffer113c(
     m,
@@ -1039,6 +1046,7 @@ export function AIGENERAL_RemoveFromMinionList_6FC416A0_113c(
   pGame: number,
   pMinion: number,
 ): void {
+  hitD2GameVa113c(0x6FC416A0)
   if (pMinion === 0) return
   if ((m.u32(pMinion >>> 0) >>> 0) !== 1) return
   const pMonData = m.u32((pMinion + 0x14) >>> 0) >>> 0
@@ -1112,6 +1120,7 @@ export function MONUMOD_ApplyChampionBaseStats_6FC418A0_113c(
   _nUModId = 0,
   _bBoss = 0,
 ): void {
+  hitD2GameVa113c(0x6FC418A0)
   let nMlvl = 2
   const pRoom = UNITS_GetRoom113c(m, pMonster) >>> 0
   const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom) | 0
@@ -1174,6 +1183,7 @@ export function MONUMOD_ApplyResistanceBonus_6FC41BE0_113c(
   nUModId: number,
   bBoss: number,
 ): void {
+  hitD2GameVa113c(0x6FC41BE0)
   if (bBoss === 0 || pMonster === 0) return
   if ((m.u32(pMonster >>> 0) >>> 0) !== 1) return
 
@@ -1257,6 +1267,7 @@ export function MONUMOD_ApplyElementalDamageBonus_6FC41FE0_113c(
   nElemType: number,
   bBoss: number,
 ): void {
+  hitD2GameVa113c(0x6FC41FE0)
   if (pMonster === 0) return
   if ((m.u32(pMonster >>> 0) >>> 0) !== 1) return
   const pGame = m.u32((pMonster + 0x80) >>> 0) >>> 0
@@ -1404,6 +1415,7 @@ export function MONUMOD_ApplyStrongToHitAndDamageBonus_6FC42BC0_113c(
   _nUModId: number,
   bBoss: number,
 ): void {
+  hitD2GameVa113c(0x6FC42BC0)
   if (pMonster === 0) return
   if ((m.u32(pMonster >>> 0) >>> 0) !== 1) return
   const pGame = m.u32((pMonster + 0x80) >>> 0) >>> 0
@@ -1465,6 +1477,7 @@ export function MONUMOD_ApplyGhostlyStats_6FC42D00_113c(
   _nUModId = 0,
   _bBoss = 0,
 ): void {
+  hitD2GameVa113c(0x6FC42D00)
   if (pMonster === 0) return
   if ((m.u32(pMonster >>> 0) >>> 0) !== 1) return
 
@@ -1507,6 +1520,7 @@ export function MONUMOD_ApplyFanaticOrPossessedStats_6FC42DA0_113c(
   _nUModId = 0,
   _bBoss = 0,
 ): void {
+  hitD2GameVa113c(0x6FC42DA0)
   if (pMonster === 0) return
   if ((m.u32(pMonster >>> 0) >>> 0) !== 1) return
 
@@ -1579,6 +1593,7 @@ export function MONUMOD_ApplyExtraHealthBonus_6FC42FA0_113c(
   _nUModId: number,
   bBoss: number,
 ): void {
+  hitD2GameVa113c(0x6FC42FA0)
   if (pMonster === 0) return
   if ((m.u32(pMonster >>> 0) >>> 0) !== 1) return
 
@@ -1609,6 +1624,7 @@ export function MONUMOD_CheckModEligibility_6FC43100_113c(
   nUModId: number,
   bCheckRandomPick: number,
 ): number {
+  hitD2GameVa113c(0x6FC43100)
   const idx = nUModId | 0
   if (idx <= 0) return 0
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C) >>> 0) >>> 0
@@ -1671,6 +1687,7 @@ export function MONUMOD_EventReviveOrCorpseCheck_6FC43E20_113c(
   pUnit: number,
   hooks?: K2W3B2Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC43E20)
   if (pUnit !== 0) {
     let pPrevPtr = (pUnit + 0xdc) >>> 0
     let pNode = m.u32(pPrevPtr) >>> 0
@@ -1783,6 +1800,7 @@ export function MONUMOD_ApplyCursedAmplifyDamage_6FC44030_113c(
   pAttacker: number,
   pTarget: number,
 ): void {
+  hitD2GameVa113c(0x6FC44030)
   if (pAttacker === 0 || pTarget === 0) return
   if (SUNIT_AreUnitsHostileOrUnaligned113c(m, pAttacker, pTarget, pGame) === 0) return
 
@@ -1850,6 +1868,7 @@ export function MONUMOD_SpawnBossMinionPack_6FC445A0_113c(
   pBoss: number,
   hooks?: K2W3B2Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC445A0)
   if (pBoss === 0) return
   if ((m.u32(pBoss >>> 0) >>> 0) !== 1) return
 
@@ -1964,6 +1983,7 @@ export function MONUMOD_SpawnSuperUniqueOrBoss_6FC446D0_113c(
   wSuperUniqueId: number,
   hooks?: K2W3B2Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC446D0)
   const sp = w3b2ScratchSp
   w3b2ScratchSp = (sp + 0x50) >>> 0
   let pBoss = 0
@@ -2091,6 +2111,7 @@ export function MONUMOD_SpawnLightningEnchantedBolts_6FC45CC0_113c(
   pMonster: number,
   hooks?: K2W3B2Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC45CC0)
   if (pMonster === 0) return
   if ((m.u32(pMonster >>> 0) >>> 0) !== 1) return
 
@@ -2149,6 +2170,7 @@ export function MONUMOD_SpawnFireEnchantedBolts_6FC460D0_113c(
   pMonster: number,
   hooks?: K2W3B2Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC460D0)
   if (pMonster === 0) return
   if ((m.u32(pMonster >>> 0) >>> 0) !== 1) return
 
@@ -2205,6 +2227,7 @@ export function MONUMOD_SpawnColdEnchantedFrostNova_6FC462D0_113c(
   pMonster: number,
   hooks?: K2W3B2Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC462D0)
   if (pMonster === 0) return
   if ((m.u32(pMonster >>> 0) >>> 0) !== 1) return
 
@@ -2237,6 +2260,7 @@ export function MONUMOD_SpawnScarabChargedBolts_6FC46320_113c(
   pMonster: number,
   hooks?: K2W3B2Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC46320)
   if (pMonster === 0) return
   if ((m.u32(pMonster >>> 0) >>> 0) !== 1) return
   if (pGame === 0) return
@@ -2306,6 +2330,7 @@ export function MONUMOD_SpawnDeathNova_6FC46520_113c(
   nMode: number,
   hooks?: K2W3B2Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC46520)
   if (pMonster === 0) return
   if ((m.u32(pMonster >>> 0) >>> 0) !== 1) return
 
@@ -2358,6 +2383,7 @@ export function SKILLS_SetupChargeOrLeapPath_6FC46A80_113c(
   pSkill: number,
   nVelocityBonusPct: number,
 ): number {
+  hitD2GameVa113c(0x6FC46A80)
   const pPath = m.u32((pUnit + 0x2c) >>> 0) >>> 0
   if (pPath === 0) return 0
 
@@ -2404,6 +2430,7 @@ export function SKILLS_ClampTargetAndFindFreeLosPos_6FC46BB0_113c(
   pInOutY: number,
   pOutRoom: number,
 ): number {
+  hitD2GameVa113c(0x6FC46BB0)
   const nSkillIdx = nSkillId | 0
   if (nSkillIdx < 0) return 0
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C) >>> 0) >>> 0
@@ -2494,6 +2521,7 @@ export function SKILLS_CalcWhirlwindFrameInterval_6FC46E40_113c(
   pGame: number,
   pSkill: number,
 ): number {
+  hitD2GameVa113c(0x6FC46E40)
   if (pUnit !== 0 && (m.u32(pUnit >>> 0) >>> 0) === 1) {
     const lo = stepSeed64InMem113c(m, (pUnit + 0x20) >>> 0)
     return (lo & 1) === 0 ? 1 : 0
@@ -2558,6 +2586,7 @@ export function SKILLS_SelectPotionCodeFromActAndDifficulty_6FC46F70_113c(
   pUnit: number,
   nSkillId: number,
 ): number {
+  hitD2GameVa113c(0x6FC46F70)
   const pRoom = UNITS_GetRoom113c(m, pUnit) >>> 0
   if (pRoom === 0) return 0
 
@@ -2621,6 +2650,7 @@ export function SKILLS_FindNextMeleeTargetInRadius_6FC472C0_113c(
   pUnit: number,
   pSkill: number,
 ): number {
+  hitD2GameVa113c(0x6FC472C0)
   const nSavedGuid = SKILLS_GetParam4113c(m, pSkill) | 0
   const nSavedType = SKILLS_GetParam3113c(m, pSkill) | 0
   let pLastTarget = SUNIT_GetServerUnit113c(m, pGame, nSavedType, nSavedGuid) >>> 0
@@ -2699,6 +2729,7 @@ export function SKILLS_SrvDo_FindItemCorpseDrop_6FC476D0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC476D0)
   const nSkillIdx = nSkillId | 0
   if (nSkillIdx < 0) return 0
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C) >>> 0) >>> 0
@@ -2751,6 +2782,7 @@ export function SKILLS_SrvDo_SpawnCorpseMissile_6FC47C90_113c(
   nSkillLevel: number,
   hooks?: K2W3B2Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC47C90)
   const nSkillIdx = nSkillId | 0
   if (nSkillIdx < 0) return 0
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C) >>> 0) >>> 0
@@ -2840,6 +2872,7 @@ export function SKILLS_ApplyProgressiveChargeState_6FC48E70_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC48E70)
   const nSkillIdx = nSkillId | 0
   if (nSkillIdx < 0) return 0
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C) >>> 0) >>> 0
@@ -2915,6 +2948,7 @@ export function GAME_LookupAndLockGameByKey_6FC4AAE0_113c(
   m: D2KernMemory113c,
   wGameKey: number,
 ): number {
+  hitD2GameVa113c(0x6FC4AAE0)
   const pTable = m.u32(0x6fd31c24) >>> 0
   if (pTable === 0) return 0
   const pGame = STORM_TSHashTableLookup_6FC22130_113c(m, pTable, wGameKey & 0xffff) >>> 0
@@ -2939,6 +2973,7 @@ export function SUNIT_BroadcastRemoveAndFreeUnit_6FC4CD10_113c(
   pGame: number,
   pUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FC4CD10)
   CLIENTS_ForEachInGameClient113c(
     m,
     pGame,
@@ -2967,6 +3002,7 @@ export function OBJECTS_DispatchPresetObjectSpawner_6FC4E830_113c(
   nInitMode: number,
   hooks?: K2W3B2Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC4E830)
   const objId = nObjectId | 0
   if (objId <= 0x23d) return 0
 
@@ -3008,6 +3044,7 @@ export function OBJECTS_PopulateEvilUrnMonstersInRoom_6FC4F690_113c(
   nDensity: number,
   hooks?: K2W3B2Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC4F690)
   const sp = w3b2ScratchSp
   w3b2ScratchSp = (sp + 0x70) >>> 0
   try {
@@ -3132,6 +3169,7 @@ export function OBJECTS_PopulateRoomEdgeObjects_6FC4FA90_113c(
   nFixedCoord: number,
   nDensity: number,
 ): number {
+  hitD2GameVa113c(0x6FC4FA90)
   const pSeed = pRoom !== 0 ? (pRoom + 0x6c) >>> 0 : 0
   const pFirstObjRec = DATATBLS_GetObjectsTxtRecord113c(m, DEFAULT_EDGE_OBJ_TABLE_6FD2E334[0]!) >>> 0
   const nSizeX = pFirstObjRec !== 0 ? m.u32((pFirstObjRec + 0xdc) >>> 0) | 0 : 1
@@ -3211,6 +3249,7 @@ export function OBJECTS_PopulateGridObjectsInRect_6FC4FEC0_113c(
   pRect: number,
   nDensity: number,
 ): number {
+  hitD2GameVa113c(0x6FC4FEC0)
   const pSeed = pRoom !== 0 ? (pRoom + 0x6c) >>> 0 : 0
   const pObjRec = DATATBLS_GetObjectsTxtRecord113c(m, 7) >>> 0
   const nSizeX = pObjRec !== 0 ? m.u32((pObjRec + 0xdc) >>> 0) | 0 : 1
@@ -3257,6 +3296,7 @@ export function OBJECTS_PopulateCrateClustersInRoom_6FC50150_113c(
   pRoom: number,
   nDensity: number,
 ): number {
+  hitD2GameVa113c(0x6FC50150)
   const sp = w3b2ScratchSp
   w3b2ScratchSp = (sp + 0x30) >>> 0
   try {
@@ -3341,6 +3381,7 @@ export function OBJECTS_PopulateBarrelClustersInRoom_6FC50800_113c(
   pRoom: number,
   nDensity: number,
 ): number {
+  hitD2GameVa113c(0x6FC50800)
   const sp = w3b2ScratchSp
   w3b2ScratchSp = (sp + 0x30) >>> 0
   try {
@@ -3416,6 +3457,7 @@ export function OBJECTS_TrySpawnTargetSpotObject67_6FC50E50_113c(
   pUnit: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC50E50)
   const pObjCtrl = m.u32((pGame + 0x10f0) >>> 0) >>> 0
   const nRoll = (stepSeed64InMem113c(m, pObjCtrl) >>> 0) % 100
   if (nRoll <= 0x46) return
@@ -3454,6 +3496,7 @@ export function OBJECTS_SpawnWallAlignedObjectWithCallback_6FC517F0_113c(
   pfnCallback: number,
   hooks?: K2W3B2Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC517F0)
   const sp = w3b2ScratchSp
   w3b2ScratchSp = (sp + 0x20) >>> 0
   let subX = 0
@@ -3551,6 +3594,7 @@ export function OBJECTS_SpawnRandomObjectWithCallback_6FC51B40_113c(
   pfnCallback: number,
   hooks?: K2W3B2Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC51B40)
   const sp = w3b2ScratchSp
   w3b2ScratchSp = (sp + 0x20) >>> 0
   let subX = 0
@@ -3634,6 +3678,7 @@ export function OBJECTS_SpawnPresetTorchOrBrazier_6FC522B0_113c(
   y: number,
   _nInitMode = 0,
 ): number {
+  hitD2GameVa113c(0x6FC522B0)
   const nLevelId0 = DUNGEON_GetLevelIdFromRoom113c(m, pRoom) | 0
   const nAct = DRLG_GetActNoFromLevelId113c(m, nLevelId0) & 0xff
   const pSeed = m.u32((pGame + 0x10f0) >>> 0) >>> 0
@@ -3691,6 +3736,7 @@ export function OBJECTS_SpawnPresetShrineFromGroup_6FC525C0_113c(
   y: number,
   nInitMode = 0,
 ): number {
+  hitD2GameVa113c(0x6FC525C0)
   const objId = nObjectId | 0
   if (objId < 0x23e || objId > 0x243) {
     return 0

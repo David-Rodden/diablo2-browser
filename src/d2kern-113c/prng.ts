@@ -18,6 +18,7 @@ import type { Memory113c } from './mem/sparse-memory.ts'
 import { DRLGOUTDOORS_SpawnPresetInGrid113c } from './common/drlg/drlg-grid.ts'
 import { D2CommonAssertError, SEED_RollRandomNumberInline113c } from './common/inline-helpers.ts'
 import { imul32 } from './common/int-math.ts'
+import { hitD2CommonVa113c, hitD2GameVa113c } from './va-trace-113c.ts'
 
 export interface D2SeedStrc {
   lo: number // uint32
@@ -48,6 +49,8 @@ export function seedNext(seed: D2SeedStrc): number {
  * @va D2Common:0x6FD510B0
  */
 export function seedRoll(seed: D2SeedStrc, nMax: number): number {
+  hitD2CommonVa113c(0x6FD510B0)
+  hitD2GameVa113c(0x6FC21180)
   const max = nMax | 0
   if (max <= 0) return 0
   const raw = seedNext(seed) >>> 0
@@ -63,6 +66,7 @@ export const seedRollLimited113c = seedRoll
  * Writes `pSeed->nLowSeed = nLowSeed` (`+0x00`) and `pSeed->nHighSeed = 0x29A` (`666`, `+0x04`).
  */
 export function SEED_InitLowSeed113c(m: Memory113c, pSeed: number, nLowSeed: number): void {
+  hitD2CommonVa113c(0x6FD86740)
   const s = pSeed >>> 0
   m.setU32(s, nLowSeed >>> 0)
   m.setU32((s + 4) >>> 0, 0x29a)
@@ -75,6 +79,7 @@ export function SEED_InitLowSeed113c(m: Memory113c, pSeed: number, nLowSeed: num
  * Writes `pSeed->nLowSeed = 1` (`+0x00`) and `pSeed->nHighSeed = 0x29A` (`666`, `+0x04`).
  */
 export function SEED_InitSeed113c(m: Memory113c, pSeed: number): void {
+  hitD2CommonVa113c(0x6FD86750)
   const s = pSeed >>> 0
   m.setU32(s, 1)
   m.setU32((s + 4) >>> 0, 0x29a)
@@ -92,6 +97,7 @@ const PATH_WF_ASSERT_FILE_113C = '..\\Source\\D2Common\\PATH\\PathWF.cpp'
  * (`while (k != 0) { pNode = [pNode + 0x24]; k--; }`).
  */
 export function SEED_PickRandomListNode113c(m: Memory113c, pOwner: number): number {
+  hitD2CommonVa113c(0x6FD69A50)
   const owner = pOwner >>> 0
   if (owner === 0) {
     throw new D2CommonAssertError(PATH_WF_ASSERT_FILE_113C, 0x13e)
@@ -142,6 +148,7 @@ const JUNG_PERM_TABLE_6FDE0168 = Int32Array.from([
  *   - Otherwise iterates `bx = 0 .. blocksX - 1`, reading `prestId = pJungDefs[defCursor++]`; if `prestId > 0x23E`, asserts `specialIdx < 3` at `OutJung.cpp:0x47` (`71`), adds `JUNG_PRESET_OFFSET_6FDE0080[dwLevelId - 0x4C]`, and picks `pickedFile = JUNG_PERM_TABLE_6FDE0168[permIdx * 3 + specialIdx++]`. Calls `DRLGOUTDOORS_SpawnPresetInGrid113c(pLevel, bx * 4, by * 4, prestId, pickedFile, 0)` when `prestId != 0`.
  */
 export function DRLGOUTJUNG_BuildJunglePresets113c(m: Memory113c, pLevel: number): void {
+  hitD2CommonVa113c(0x6FDD54C0)
   const esi = pLevel >>> 0
   const lvlId0 = m.u32((esi + 0x1d0) >>> 0) | 0
   if (lvlId0 < 0x4c || lvlId0 > 0x4e) return

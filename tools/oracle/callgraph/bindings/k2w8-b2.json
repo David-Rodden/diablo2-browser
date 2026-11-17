@@ -181,15 +181,6 @@
   },
   {
     "module": "D2Game",
-    "va": "0x6FCC6E60",
-    "name": "MONAI_DarkWandererThink_6FCC6E60",
-    "kernFile": "src/d2kern-113c/game/k2-w8b2-113c.ts",
-    "tsSymbol": "MONAI_DarkWandererThink_6FCC6E60_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w8b2.test.ts"
-  },
-  {
-    "module": "D2Game",
     "va": "0x6FCC7530",
     "name": "MONAI_SiegeMinionThinkDispatch_6FCC7530",
     "kernFile": "src/d2kern-113c/game/k2-w8b2-113c.ts",

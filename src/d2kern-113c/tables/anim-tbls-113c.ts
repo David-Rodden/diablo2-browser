@@ -34,6 +34,7 @@ import {
   DATATBLS_GetLevelDefRecord113c,
   DATATBLS_GetLvlTypesTxtRecord113c,
 } from './lvl-tbls-113c.ts'
+import { hitD2CommonVa113c } from '../va-trace-113c.ts'
 
 /** `.rdata` `int32[4][2]` offset table at `0x6FDE380C..0x6FDE3828` used by `0x6FD90E10`. */
 const LINK_OFFSET_COORDS_113C: readonly [number, number][] = [
@@ -64,6 +65,7 @@ export function DRLGOUTROOM_LinkLevelsByOffsetCoords113c(
   m: Memory113c,
   pLinkData: number,
 ): number {
+  hitD2CommonVa113c(0x6FD90E10)
   const it = m.get(pLinkData, D2DrlgLevelLinkDataStrc.nIteration) | 0
   const r1Addr = (pLinkData + D2DrlgLevelLinkDataStrc.nRand1.off + it * 4) >>> 0
   const r0Addr = (pLinkData + D2DrlgLevelLinkDataStrc.nRand0.off + it * 4) >>> 0
@@ -125,6 +127,7 @@ export function DRLGOUTROOM_LinkLevelsByLevelDef113c(
   m: Memory113c,
   pLinkData: number,
 ): number {
+  hitD2CommonVa113c(0x6FD90F00)
   const seedLo = BigInt(m.get(pLinkData, D2DrlgLevelLinkDataStrc.seedLo))
   const seedHi = BigInt(m.get(pLinkData, D2DrlgLevelLinkDataStrc.seedHi))
   const prod = seedLo * 0x6ac690c5n + seedHi
@@ -169,6 +172,7 @@ export function DRLGOUTROOM_LinkLevelsByLevelCoords113c(
   m: Memory113c,
   pLinkData: number,
 ): number {
+  hitD2CommonVa113c(0x6FD90FC0)
   const seedLo = BigInt(m.get(pLinkData, D2DrlgLevelLinkDataStrc.seedLo))
   const seedHi = BigInt(m.get(pLinkData, D2DrlgLevelLinkDataStrc.seedHi))
   const prod = seedLo * 0x6ac690c5n + seedHi
@@ -218,6 +222,7 @@ export function DRLGOUTROOM_LinkLevelsByLevelCoords113c(
  * then compares the two 8-byte blocks as two 32-bit dwords (`+0x00` and `+0x04`).
  */
 export function ANIMTBLS_CompareCode8113c(m: Memory113c, ecx: number, edx: number): number {
+  hitD2CommonVa113c(0x6FD91D00)
   const s1 = ecx >>> 0
   const s2 = edx >>> 0
   let len1 = 0
@@ -267,6 +272,7 @@ const ANIMDATA_EVENT_SCAN_MAX_113C = 0x90
  *    else `pRec += 0xA0`, `n--`. Returns `0` when the bucket is exhausted.
  */
 export function ANIMDATA_FindRecordByCode113c(m: Memory113c, szCode: number): number {
+  hitD2CommonVa113c(0x6FD91DD0)
   const sz = szCode >>> 0
   if (m.u8(sz) !== 0) {
     let p = sz
@@ -322,6 +328,7 @@ export function ANIMDATA_GetAnimDataInfo113c(
   pAnimSpeed: number,
   pFirstEvent: number,
 ): number {
+  hitD2CommonVa113c(0x6FD91EF0)
   const pRec = ANIMDATA_FindRecordByCode113c(m, szCode)
   if (pRec !== 0) {
     m.setU32(pFramesPerDirection >>> 0, m.get(pRec, D2AnimDataRecordStrc.dwFramesPerDirection))
@@ -391,6 +398,7 @@ export function DRLGOUTROOM_SpawnAct5BarricadeWallStrip113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FD91070)
   const lvl = pLevel >>> 0
   const pOutdoors = m.u32((lvl + 0x14) >>> 0)
   if (pOutdoors === 0) {
@@ -424,6 +432,7 @@ export function DRLGOUTROOM_SpawnFrigidHighlandsCorner113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FD91120)
   const lvl = pLevel >>> 0
   if (lvl === 0) {
     throw new D2CommonAssertError('OutRoom.cpp', 0x26f)
@@ -457,6 +466,7 @@ export function DRLGOUTROOM_TryUpgradeBorderPreset113c(
   nGridX: number,
   nGridY: number,
 ): number {
+  hitD2CommonVa113c(0x6FD911E0)
   const lvl = pLevel >>> 0
   const gx = nGridX | 0
   const gy = nGridY | 0
@@ -484,6 +494,7 @@ export function DRLGOUTROOM_TraceAndSpawnPlateauPerimeter113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FD91230)
   const lvl = pLevel >>> 0
   const pOutdoors = m.u32((lvl + 0x14) >>> 0)
   const endY = ((m.u32((pOutdoors + 0x60) >>> 0) | 0) - 2) | 0
@@ -518,6 +529,7 @@ export function DRLGOUTROOM_SpawnHellAct5SpecialCorners113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FD916B0)
   const lvl = pLevel >>> 0
   const pOutdoors = m.u32((lvl + 0x14) >>> 0)
   for (let i = 0; i < HELL_SPECIAL_CORNERS_113C.length; i++) {
@@ -550,6 +562,7 @@ export function DRLGOUTROOM_SpawnAct5EdgeTransitions113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FD91B50)
   const lvl = pLevel >>> 0
   const pOutdoors = m.u32((lvl + 0x14) >>> 0)
 
@@ -650,6 +663,7 @@ export function DRLGOUTPLACE_SpawnAct5Barricade421Preset113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FD91730)
   const lvl = pLevel >>> 0
   if ((m.u32((lvl + 0x1d0) >>> 0) | 0) !== 0x6f) return
 
@@ -728,6 +742,7 @@ export function DRLGOUTPLACE_ConnectOutdoorsRoomsAndPlaceWalls113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FD91340)
   const lvl = pLevel >>> 0
   const pOutdoors = m.u32((lvl + 0x14) >>> 0)
   const lvlId0 = m.u32((lvl + 0x1d0) >>> 0) | 0
@@ -898,6 +913,7 @@ export function DRLGOUTANIM_PlaceLevelPresets113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FD91A20)
   const lvl = pLevel >>> 0
   const bNarrow = (m.u32((lvl + 0x24) >>> 0) | 0) < (m.u32((lvl + 0x28) >>> 0) | 0) ? 1 : 0
   for (let idx = 0; idx < ACT5_OUTDOOR_LEVEL_PRESETS_113C.length; idx++) {
@@ -968,6 +984,7 @@ export function DRLGOUTANIM_BuildAct5PresetContext113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FD91AD0)
   const level = pLevel >>> 0
   if ((m.u32((level + 0x1d0) >>> 0) | 0) === 0x6e) return
   const sm = withAnimTblStackScratch113c(m)
@@ -1000,6 +1017,7 @@ export function DRLGOUTANIM_BuildAct5Outdoors113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FD91CA0)
   const level = pLevel >>> 0
   if ((m.u32((level + 0x1d0) >>> 0) | 0) === 0x6e) {
     DRLGOUTROOM_SpawnAct5BarricadeWallStrip113c(m, level)

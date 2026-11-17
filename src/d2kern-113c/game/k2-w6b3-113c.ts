@@ -85,16 +85,6 @@ import {
   MONSTER_StartMode113c as MONSTER_StartModeMem113c,
   SUNITDMG_GetPlayerClientClassId113c,
 } from './combat-a1c-113c'
-import {
-  AIGENERAL_CopyAiCommandParams113c,
-  AIGENERAL_PopAiCommand113c,
-  AI_ApproachTarget113c,
-  AI_FleeFrom113c,
-  AI_IdleWander113c,
-  AI_Stall113c,
-  MONSTER_StartMode113c,
-  PLAYER_GetEquippedWeapon113c,
-} from './fallen-ai-113c'
 import { SUNIT_GetServerUnit113c } from './game-strc'
 import { MISSILES_GetTxtRecordFast113c } from './k2-gap-melee-dot-113c'
 import { QUESTS_SendPlayerQuestLogPacket28_113c } from './k2-items-tc-w1-113c'
@@ -193,7 +183,18 @@ import {
   UNIT_GetPosY113c,
   type RegpopSpawnHooks113c,
 } from './regpop-spawn-113c'
-import { AI_WarrivGreet113c, type FallenSliceWorld113c } from './replay-kernel-113c'
+import {
+  AIGENERAL_CopyAiCommandParams113c,
+  AIGENERAL_PopAiCommand113c,
+  AI_ApproachTarget113c,
+  AI_FleeFrom113c,
+  AI_IdleWander113c,
+  AI_Stall113c,
+  AI_WarrivGreet113c,
+  MONSTER_StartMode113c,
+  PLAYER_GetEquippedWeapon113c,
+  type FallenSliceWorld113c,
+} from './replay-kernel-113c'
 import {
   EVENT_FreeNode113c,
   EVENT_GetNextEventFrame113c,
@@ -209,6 +210,7 @@ import {
   type TownNpcAiCallees113c,
 } from './town-npc-ai-113c'
 import { AITARGET_ScanUnitsByModeTable113c } from './town-runtime-gap-113c'
+import { hitD2GameVa113c } from '../va-trace-113c'
 
 export type { D2KernMemory113c }
 
@@ -745,6 +747,7 @@ export function AI_ThinkImpregnatedMonster_6FC366D0_113c(
   pAiThinkArg: number,
   hooks?: K2W6B3Hooks113c | undefined,
 ): void {
+  hitD2GameVa113c(0x6FC366D0)
   const game = pGame >>> 0
   const u = pUnit >>> 0
   const arg = pAiThinkArg >>> 0
@@ -848,6 +851,7 @@ export function AI_ThinkZakarumHealerOrPriest_6FC39080_113c(
   pAiThinkArg: number,
   hooks?: K2W6B3Hooks113c | undefined,
 ): void {
+  hitD2GameVa113c(0x6FC39080)
   const game = pGame >>> 0
   const u = pUnit >>> 0
   const arg = pAiThinkArg >>> 0
@@ -1039,6 +1043,7 @@ export function AI_ThinkTownRogueGuard_6FC39740_113c(
   pAiThinkArg: number,
   hooks?: K2W6B3Hooks113c | undefined,
 ): void {
+  hitD2GameVa113c(0x6FC39740)
   const game = pGame >>> 0
   const u = pUnit >>> 0
   const pMonStatsTxt = m.u32(((pAiThinkArg >>> 0) + 0x1c) >>> 0) >>> 0
@@ -1109,6 +1114,7 @@ export function AI_ThinkHomeLeashedCaster_6FC39E70_113c(
   pAiThinkArg: number,
   hooks?: K2W6B3Hooks113c | undefined,
 ): void {
+  hitD2GameVa113c(0x6FC39E70)
   const game = pGame >>> 0
   const u = pUnit >>> 0
   const arg = pAiThinkArg >>> 0
@@ -1299,6 +1305,7 @@ export function AI_ThinkPutridDefiler_6FC3A550_113c(
   pAiThinkArg: number,
   hooks?: K2W6B3Hooks113c | undefined,
 ): void {
+  hitD2GameVa113c(0x6FC3A550)
   const game = pGame >>> 0
   const u = pUnit >>> 0
   const arg = pAiThinkArg >>> 0
@@ -1552,6 +1559,7 @@ export function AI_ThinkMinionCommandSkirmisher_6FC3B2F0_113c(
   pAiThinkArg: number,
   hooks?: K2W6B3Hooks113c | undefined,
 ): void {
+  hitD2GameVa113c(0x6FC3B2F0)
   const game = pGame >>> 0
   const u = pUnit >>> 0
   const arg = pAiThinkArg >>> 0
@@ -1724,6 +1732,7 @@ export function AI_ThinkPackRegroupSkirmisher_6FC3B780_113c(
   pAiThinkArg: number,
   hooks?: K2W6B3Hooks113c | undefined,
 ): void {
+  hitD2GameVa113c(0x6FC3B780)
   const game = pGame >>> 0
   const u = pUnit >>> 0
   const arg = pAiThinkArg >>> 0
@@ -1815,6 +1824,7 @@ export function AI_ThinkAct2SewerTownNpc_6FC3B950_113c(
   pAiThinkArg: number,
   hooks?: K2W6B3Hooks113c | undefined,
 ): void {
+  hitD2GameVa113c(0x6FC3B950)
   const game = pGame >>> 0
   const u = pUnit >>> 0
   const arg = pAiThinkArg >>> 0
@@ -1920,6 +1930,7 @@ export function AI_ExecuteHirelingCombatStep_6FC3C8A0_113c(
   pAiThinkArg: number,
   hooks?: K2W6B3Hooks113c | undefined,
 ): void {
+  hitD2GameVa113c(0x6FC3C8A0)
   const u = pUnit >>> 0
   const game = pGame >>> 0
   const cls = nClassId | 0
@@ -2006,6 +2017,7 @@ export function AI_ThinkCommand14TriggeredSkill_6FC9D670_113c(
   pAiThinkArg: number,
   hooks?: K2W6B3Hooks113c | undefined,
 ): void {
+  hitD2GameVa113c(0x6FC9D670)
   const game = pGame >>> 0
   const u = pUnit >>> 0
   const arg = pAiThinkArg >>> 0
@@ -2055,6 +2067,7 @@ export function AI_ThinkLowLifeFleeCaster_6FC9E070_113c(
   pAiThinkArg: number,
   hooks?: K2W6B3Hooks113c | undefined,
 ): void {
+  hitD2GameVa113c(0x6FC9E070)
   const game = pGame >>> 0
   const u = pUnit >>> 0
   const arg = pAiThinkArg >>> 0
@@ -2236,6 +2249,7 @@ export function AI_ThinkFetishMelee_6FC9ED90_113c(
   pAiThinkArg: number,
   hooks?: K2W6B3Hooks113c | undefined,
 ): void {
+  hitD2GameVa113c(0x6FC9ED90)
   const game = pGame >>> 0
   const u = pUnit >>> 0
   const arg = pAiThinkArg >>> 0
@@ -2406,6 +2420,7 @@ export function AI_ThinkThreePhaseMeleeRetreat_6FCA00C0_113c(
   pAiThinkArg: number,
   hooks?: K2W6B3Hooks113c | undefined,
 ): void {
+  hitD2GameVa113c(0x6FCA00C0)
   const game = pGame >>> 0
   const u = pUnit >>> 0
   const arg = pAiThinkArg >>> 0
@@ -2548,6 +2563,7 @@ export function AI_ThinkMultiStrikeComboMelee_6FCA08A0_113c(
   pAiThinkArg: number,
   hooks?: K2W6B3Hooks113c | undefined,
 ): void {
+  hitD2GameVa113c(0x6FCA08A0)
   const game = pGame >>> 0
   const u = pUnit >>> 0
   const arg = pAiThinkArg >>> 0
@@ -2654,6 +2670,7 @@ export function AI_ThinkSelfBuffRetreatSkirmisher_6FCA0B00_113c(
   pAiThinkArg: number,
   hooks?: K2W6B3Hooks113c | undefined,
 ): void {
+  hitD2GameVa113c(0x6FCA0B00)
   const game = pGame >>> 0
   const u = pUnit >>> 0
   const arg = pAiThinkArg >>> 0
@@ -2805,6 +2822,7 @@ export function AI_ThinkPackLeaderCommand1Melee_6FCA20D0_113c(
   pAiThinkArg: number,
   hooks?: K2W6B3Hooks113c | undefined,
 ): void {
+  hitD2GameVa113c(0x6FCA20D0)
   const game = pGame >>> 0
   const u = pUnit >>> 0
   const arg = pAiThinkArg >>> 0
@@ -2916,6 +2934,7 @@ export function AI_ThinkRegenBoostRetreatMelee_6FCA2990_113c(
   pAiThinkArg: number,
   hooks?: K2W6B3Hooks113c | undefined,
 ): void {
+  hitD2GameVa113c(0x6FCA2990)
   const game = pGame >>> 0
   const u = pUnit >>> 0
   const arg = pAiThinkArg >>> 0
@@ -3072,6 +3091,7 @@ export function AI_ThinkChargeStateIconMelee_6FCA4A90_113c(
   pAiThinkArg: number,
   hooks?: K2W6B3Hooks113c | undefined,
 ): void {
+  hitD2GameVa113c(0x6FCA4A90)
   const game = pGame >>> 0
   const u = pUnit >>> 0
   const arg = pAiThinkArg >>> 0
@@ -3198,6 +3218,7 @@ export function AI_ThinkOblivionKnightCaster_6FCA4DB0_113c(
   pAiThinkArg: number,
   hooks?: K2W6B3Hooks113c | undefined,
 ): void {
+  hitD2GameVa113c(0x6FCA4DB0)
   const game = pGame >>> 0
   const u = pUnit >>> 0
   const arg = pAiThinkArg >>> 0
@@ -3401,6 +3422,7 @@ export function AI_ThinkMephistoBoss_6FCA5B60_113c(
   pAiThinkArg: number,
   hooks?: K2W6B3Hooks113c | undefined,
 ): void {
+  hitD2GameVa113c(0x6FCA5B60)
   const game = pGame >>> 0
   const u = pUnit >>> 0
   const arg = pAiThinkArg >>> 0
@@ -3597,6 +3619,7 @@ export function AI_ThinkGiantMosquito_6FCA6280_113c(
   pAiThinkArg: number,
   hooks?: K2W6B3Hooks113c | undefined,
 ): void {
+  hitD2GameVa113c(0x6FCA6280)
   const game = pGame >>> 0
   const u = pUnit >>> 0
   const arg = pAiThinkArg >>> 0
@@ -3692,6 +3715,7 @@ export function AI_ThinkThornHulk_6FCA64A0_113c(
   pAiThinkArg: number,
   hooks?: K2W6B3Hooks113c | undefined,
 ): void {
+  hitD2GameVa113c(0x6FCA64A0)
   const game = pGame >>> 0
   const u = pUnit >>> 0
   const arg = pAiThinkArg >>> 0
@@ -3877,6 +3901,7 @@ export function AI_ThinkVampire_6FCA6900_113c(
   pAiThinkArg: number,
   hooks?: K2W6B3Hooks113c | undefined,
 ): void {
+  hitD2GameVa113c(0x6FCA6900)
   const game = pGame >>> 0
   const u = pUnit >>> 0
   const arg = pAiThinkArg >>> 0
@@ -4244,6 +4269,7 @@ export function AI_ThinkWillowisp_6FCA7010_113c(
   pAiThinkArg: number,
   hooks?: K2W6B3Hooks113c | undefined,
 ): void {
+  hitD2GameVa113c(0x6FCA7010)
   const game = pGame >>> 0
   const u = pUnit >>> 0
   const arg = pAiThinkArg >>> 0
@@ -4460,6 +4486,7 @@ export function AI_ThinkSlinger_6FCA74A0_113c(
   pAiThinkArg: number,
   hooks?: K2W6B3Hooks113c | undefined,
 ): void {
+  hitD2GameVa113c(0x6FCA74A0)
   const game = pGame >>> 0
   const u = pUnit >>> 0
   const arg = pAiThinkArg >>> 0
@@ -4597,6 +4624,7 @@ export function AI_ThinkFetishShaman_6FCA7BB0_113c(
   pAiThinkArg: number,
   hooks?: K2W6B3Hooks113c | undefined,
 ): void {
+  hitD2GameVa113c(0x6FCA7BB0)
   const game = pGame >>> 0
   const u = pUnit >>> 0
   const arg = pAiThinkArg >>> 0
@@ -4719,6 +4747,7 @@ export function AI_ThinkBloodLord_6FCA8810_113c(
   pAiThinkArg: number,
   hooks?: K2W6B3Hooks113c | undefined,
 ): void {
+  hitD2GameVa113c(0x6FCA8810)
   const game = pGame >>> 0
   const u = pUnit >>> 0
   const arg = pAiThinkArg >>> 0
@@ -4822,6 +4851,7 @@ export function AI_ThinkSpecialAiState3_6FCBCC00_113c(
   pAiThinkArg: number,
   hooks?: K2W6B3Hooks113c | undefined,
 ): void {
+  hitD2GameVa113c(0x6FCBCC00)
   const game = pGame >>> 0
   const u = pUnit >>> 0
   const arg = pAiThinkArg >>> 0
@@ -4883,6 +4913,7 @@ export function AI_ThinkBladeCreeper_6FCC6B70_113c(
   pAiThinkArg: number,
   hooks?: K2W6B3Hooks113c | undefined,
 ): void {
+  hitD2GameVa113c(0x6FCC6B70)
   const game = pGame >>> 0
   const u = pUnit >>> 0
   const arg = pAiThinkArg >>> 0
@@ -5035,6 +5066,7 @@ export function AI_ThinkTerrorCurse_6FCC6FC0_113c(
   pAiThinkArg: number,
   hooks?: K2W6B3Hooks113c | undefined,
 ): void {
+  hitD2GameVa113c(0x6FCC6FC0)
   const game = pGame >>> 0
   const u = pUnit >>> 0
   const arg = pAiThinkArg >>> 0
@@ -5153,6 +5185,7 @@ export function ACT2Q6_UnitIterate_GrantTombEntryState5_6FCE5820_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FCE5820)
   const game = pGame >>> 0
   const player = pPlayer >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, player) >>> 0
@@ -5196,6 +5229,7 @@ export function ACT2Q6_UnitIterate_CompleteInAct2ForKillers_6FCE5910_113c(
   pPlayer: number,
   _pArg = 0,
 ): void {
+  hitD2GameVa113c(0x6FCE5910)
   const game = pGame >>> 0
   const player = pPlayer >>> 0
   const pQuestChain = m.u32((game + 0x10f4) >>> 0) >>> 0
@@ -5237,6 +5271,7 @@ export function ACT2Q6_UnitIterate_CompleteInTalRashaChamber_6FCE59A0_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FCE59A0)
   const game = pGame >>> 0
   const player = pPlayer >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, player) >>> 0
@@ -5279,6 +5314,7 @@ export function ACT2Q5_UnitIterate_PropagateCompleteToSubParty_6FCE5B80_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FCE5B80)
   const game = pGame >>> 0
   const player = pPlayer >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, player) >>> 0
@@ -5317,6 +5353,7 @@ export function ACT2Q4_UnitIterate_CompleteArcaneSanctuaryInLevel74_6FCE5C60_113
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FCE5C60)
   const game = pGame >>> 0
   const player = pPlayer >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, player) >>> 0
@@ -5362,6 +5399,7 @@ export function ACT2Q3_UnitIterate_PropagateCompleteToSubParty_6FCE5ED0_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FCE5ED0)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer >>> 0) >>> 0;
   const nDiff = m.u8((pGame + 0x6d) >>> 0);
   const pQuestFlags = m.u32((pPlayerData + nDiff * 4 + 0x10) >>> 0) >>> 0;
@@ -5397,6 +5435,7 @@ export function ACT2Q1_UnitIterate_GrantRadamentKillInRoom_6FCE6070_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FCE6070)
   const pPlayerRoom = UNITS_GetRoom113c(m, pPlayer >>> 0) >>> 0;
   if (pPlayerRoom === 0) return 0;
   const pQuestChain = m.u32((pGame + 0x10f4) >>> 0) >>> 0;
@@ -5474,6 +5513,7 @@ export function ACT2Q0_PresetSpawnJerhynAndRelocate_6FCE9B70_113c(
   pQuestData: number,
   hooks?: K2W6B3Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCE9B70)
   const pGame = m.u32((pQuestData + 0x04) >>> 0) >>> 0;
   const pQuestChain = m.u32((pGame + 0x10f4) >>> 0) >>> 0;
   if ((m.u32((pQuestChain + 0x08) >>> 0) | 0) === 0) {
@@ -5563,6 +5603,7 @@ export function NET_BroadcastSystemChatMessage_6FCEBE70_113c(
   pGame: number,
   nColorByte: number,
 ): void {
+  hitD2GameVa113c(0x6FCEBE70)
   const prevSp = k2W6B3StackPtr;
   const sp = (prevSp - 0x120) >>> 0;
   k2W6B3StackPtr = sp;
@@ -5601,6 +5642,7 @@ export function PLAYER_SyncClientLifeManaStaminaGoldAndCoords_6FCEC030_113c(
   pUnit: number,
   bForceSync = 0,
 ): number {
+  hitD2GameVa113c(0x6FCEC030)
   if (pPlayer === 0 || pUnit === 0 || (m.u32(pPlayer >>> 0) | 0) !== 0) {
     return 0;
   }
@@ -5748,6 +5790,7 @@ export function PACKET_SrvMercMoveToCoord_6FCED360_113c(
   pPacket: number,
   nPacketLen: number,
 ): number {
+  hitD2GameVa113c(0x6FCED360)
   if ((nPacketLen | 0) !== 0x0d) return 3;
   const dwMercGuid = m.u32((pPacket + 0x01) >>> 0) >>> 0;
   const wX = m.u16((pPacket + 0x05) >>> 0);
@@ -5779,6 +5822,7 @@ export function PACKET_SrvMercMoveToUnit_6FCED3D0_113c(
   pPacket: number,
   nPacketLen: number,
 ): number {
+  hitD2GameVa113c(0x6FCED3D0)
   if ((nPacketLen | 0) !== 0x0d) return 3;
   const dwMercGuid = m.u32((pPacket + 0x01) >>> 0) >>> 0;
   const dwTargetGuid = m.u32((pPacket + 0x05) >>> 0) >>> 0;
@@ -5821,6 +5865,7 @@ export function SUNIT_CancelPlayerUnitInteraction_6FD00BF0_113c(
   pPlayer: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FD00BF0)
   const bInteracting = m.u8((pPlayer + 0x6c) >>> 0);
   const dwInteractUnitId = m.u32((pPlayer + 0x64) >>> 0) >>> 0;
   const dwInteractUnitType = m.u32((pPlayer + 0x68) >>> 0) >>> 0;
@@ -5862,6 +5907,7 @@ export function ACT3Q0_InitQuestData_6FD05920_113c(
   m: D2KernMemory113c,
   pQuestData: number,
 ): void {
+  hitD2GameVa113c(0x6FD05920)
   void ACT3Q0_ActiveFilter113c;
   void ACT3Q0_StatusFilter113c;
   void ACT3Q7_SyncGameQuest20FromPlayer_6FD03050_113c;
@@ -5903,6 +5949,7 @@ export function ACT3Q7_UnitIterate_CompleteInAct3ForParty_6FD05B60_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FD05B60)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer >>> 0) >>> 0;
   const nDiff = m.u8((pGame + 0x6d) >>> 0);
   const pQuestFlags = m.u32((pPlayerData + nDiff * 4 + 0x10) >>> 0) >>> 0;

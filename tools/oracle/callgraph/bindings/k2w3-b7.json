@@ -145,15 +145,6 @@
   },
   {
     "module": "D2Game",
-    "va": "0x6FC8AFA0",
-    "name": "OBJ_SpawnItemByCodeNearUnit_6FC8AFA0",
-    "kernFile": "src/d2kern-113c/game/k2-w3b7-113c.ts",
-    "tsSymbol": "OBJ_SpawnItemByCodeNearUnit_6FC8AFA0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w3b7.test.ts"
-  },
-  {
-    "module": "D2Game",
     "va": "0x6FC8B570",
     "name": "OBJ_DropChestTreasureByActLevelTier_6FC8B570",
     "kernFile": "src/d2kern-113c/game/k2-w3b7-113c.ts",
@@ -176,24 +167,6 @@
     "name": "OBJ_SpawnCompanionObjectsA2AndA0_6FC8BF00",
     "kernFile": "src/d2kern-113c/game/k2-w3b7-113c.ts",
     "tsSymbol": "OBJ_SpawnCompanionObjectsA2AndA0_6FC8BF00_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w3b7.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6FC8C200",
-    "name": "OBJ_ShrineEffectPoisonPotionsAndClouds_6FC8C200",
-    "kernFile": "src/d2kern-113c/game/k2-w3b7-113c.ts",
-    "tsSymbol": "OBJ_ShrineEffectPoisonPotionsAndClouds_6FC8C200_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w3b7.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6FC8C580",
-    "name": "OBJ_ShrineEffectExplodingPotionsAndMissiles_6FC8C580",
-    "kernFile": "src/d2kern-113c/game/k2-w3b7-113c.ts",
-    "tsSymbol": "OBJ_ShrineEffectExplodingPotionsAndMissiles_6FC8C580_113c",
     "status": "ported",
     "diffEvidence": "Unit verification in tests/oracle/k2/w3b7.test.ts"
   },
@@ -365,24 +338,6 @@
     "name": "MONSTER_StartGetHitOrScheduleAi_6FC965E0",
     "kernFile": "src/d2kern-113c/game/k2-w3b7-113c.ts",
     "tsSymbol": "MONSTER_StartGetHitOrScheduleAi_6FC965E0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w3b7.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6FC96A50",
-    "name": "MONSTER_StartMode8CastA_6FC96A50",
-    "kernFile": "src/d2kern-113c/game/k2-w3b7-113c.ts",
-    "tsSymbol": "MONSTER_StartMode8CastA_6FC96A50_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w3b7.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6FC96B20",
-    "name": "MONSTER_StartMode8CastB_6FC96B20",
-    "kernFile": "src/d2kern-113c/game/k2-w3b7-113c.ts",
-    "tsSymbol": "MONSTER_StartMode8CastB_6FC96B20_113c",
     "status": "ported",
     "diffEvidence": "Unit verification in tests/oracle/k2/w3b7.test.ts"
   },

@@ -71,15 +71,21 @@ const INVENTORY_SIGNATURE_113C = 0x01020304
 function allocClientWithQueue(m: SparseMemory113c, pClient: number, pQueue: number): void {
   m.fill(pClient >>> 0, 0x200, 0)
   m.fill(pQueue >>> 0, 0x410, 0)
+  m.setU32((pClient + 0x1b8) >>> 0, pQueue >>> 0)
   m.setU32((pClient + 0x1bc) >>> 0, pQueue >>> 0)
-  m.setU32((pQueue + 0x04) >>> 0, 0)
+  m.setU32(pQueue >>> 0, 0)
 }
 
 function readQueuedBytes(m: SparseMemory113c, pQueue: number): number[] {
-  const used = m.u32((pQueue + 0x04) >>> 0)
   const out: number[] = []
-  for (let i = 0; i < used; i++) {
-    out.push(m.u8((pQueue + 0x08 + i) >>> 0))
+  let walk = pQueue >>> 0
+  let guard = 0
+  while (walk !== 0 && guard++ < 16) {
+    const used = m.u32(walk) >>> 0
+    for (let i = 0; i < used; i++) {
+      out.push(m.u8((walk + 0x04 + i) >>> 0))
+    }
+    walk = m.u32((walk + 0x204) >>> 0) >>> 0
   }
   return out
 }
@@ -317,7 +323,7 @@ describe('[K2-W1 Lane C] D2Game.dll combat-core / PlrTrade / Modes / Packet / It
       expect(readQueuedBytes(m, pTargetQueue)).toEqual([0x92, 0x00, 0x44, 0x33, 0x22, 0x11])
 
       // Null source player -> dwOwnerGuid = 0xFFFFFFFF
-      m.setU32((pTargetQueue + 0x04) >>> 0, 0)
+      m.setU32(pTargetQueue >>> 0, 0)
       PLRTRADE_BroadcastClearMercUnitCallback113c(m, 0, pTarget, 0)
       expect(readQueuedBytes(m, pTargetQueue)).toEqual([0x92, 0x00, 0xff, 0xff, 0xff, 0xff])
     })
@@ -648,13 +654,13 @@ describe('[K2-W1 Lane C] D2Game.dll combat-core / PlrTrade / Modes / Packet / It
       expect(pkt0F[14]! | (pkt0F[15]! << 8)).toBe(5200)
 
       // Also verify hydrated D2GAME_PLR_MODE_SYNC_TABLE_VA_113C override
-      m.setU32((pQueue + 0x04) >>> 0, 0)
+      m.setU32(pQueue >>> 0, 0)
       m.setU8((D2GAME_PLR_MODE_SYNC_TABLE_VA_113C + 4 + 2 * 12) >>> 0, 0x33)
       NET_SendUnitMovePacket0F113c(m, 0, pPlayer, pClient, 2)
       expect(readQueuedBytes(m, pQueue)[6]).toBe(0x33)
 
       // 2. NET_SendReassignUnitPacket15_113c (11 bytes)
-      m.setU32((pQueue + 0x04) >>> 0, 0)
+      m.setU32(pQueue >>> 0, 0)
       NET_SendReassignUnitPacket15_113c(m, pPlayer, pClient, 1)
       const pkt15 = readQueuedBytes(m, pQueue)
       expect(pkt15).toEqual([
@@ -672,7 +678,7 @@ describe('[K2-W1 Lane C] D2Game.dll combat-core / PlrTrade / Modes / Packet / It
       ])
 
       // 3. NET_SendEventMessage5A_Type0E_113c (40 bytes)
-      m.setU32((pQueue + 0x04) >>> 0, 0)
+      m.setU32(pQueue >>> 0, 0)
       expect(NET_SendEventMessage5A_Type0E_113c(m, pPlayer)).toBe(1)
       const pkt5A = readQueuedBytes(m, pQueue)
       expect(pkt5A.length).toBe(40)

@@ -69,6 +69,7 @@ import {
 } from './unit.ts'
 import { PATH_GetTargetUnitCoordsWithTrigOffset113c } from '../tables/datatbls-113c.ts'
 import { seedNext, type D2SeedStrc } from '../prng.ts'
+import { hitD2CommonVa113c } from '../va-trace-113c.ts'
 
 const PATH_STACK_SCRATCH_BASE = 0x7ff00000
 const PATH_STACK_SCRATCH_SIZE = 0x80000
@@ -249,6 +250,7 @@ export const PATH_DIRECTION_TABLE_6FDDD470 = Int32Array.from([
  *   `tVelocityVectorY (+0x76) = imul32(tDirectionVectorY (+0x6E), s) >> 12` (`0x6FD5CF2C`).
  */
 export function PATH_StepVelocity113c(m: Memory113c, pPath: number, nRate: number): void {
+  hitD2CommonVa113c(0x6FD5CEB0)
   const rate = (nRate | 0) > 0 ? nRate | 0 : 0x400
   const acc = m.get(pPath, D2DynamicPathStrc.dwAcceleration) | 0
   if (acc !== 0) {
@@ -293,6 +295,7 @@ export function PATH_GetDirectionVector113c(
   pVec: number,
   pDir: number,
 ): number {
+  hitD2CommonVa113c(0x6FD5CF40)
   const uX1 = nX1 >>> 0
   const uX2 = nX2 >>> 0
   const bXPos = uX1 <= uX2 ? 1 : 0
@@ -367,6 +370,7 @@ export function PATH_SimplifyToLines113c(
   pOut: number,
   nPoints: number,
 ): number {
+  hitD2CommonVa113c(0x6FD68310)
   const n = nPoints | 0
   if (n < 2) {
     if (n === 1) {
@@ -428,6 +432,7 @@ export function PATH_BresenhamLine113c(
   nMax: number,
   pDir: number,
 ): number {
+  hitD2CommonVa113c(0x6FD684C0)
   const lim = (nMax - 1) | 0
   const x0 = dwStartPt & 0xffff
   const y0 = dwStartPt >>> 16
@@ -544,6 +549,7 @@ export function PATH_BresenhamLine113c(
  * `dx = nX2 - nX1; dy = nY2 - nY1; return imul32(dy, dy) + imul32(dx, dx)` (`0x6FD8458C..0x6FD8459E`, 32-bit wrapping).
  */
 export function PATH_ComputeSquaredDistance113c(nX1: number, nY1: number, nX2: number, nY2: number): number {
+  hitD2CommonVa113c(0x6FD84580)
   const dx = (nX2 - nX1) | 0
   const dy = (nY2 - nY1) | 0
   return (imul32(dy, dy) + imul32(dx, dx)) | 0
@@ -555,6 +561,7 @@ export function PATH_ComputeSquaredDistance113c(nX1: number, nY1: number, nX2: n
  * `pUnit->pPath (+0x2C)->dwCollisionPattern (+0x48) = dwCollisionPattern` (`0x6FD845B4 / 0x6FD845BB`, no NULL checks).
  */
 export function PATH_SetUnitCollisionPattern113c(m: Memory113c, pUnit: number, dwCollisionPattern: number): void {
+  hitD2CommonVa113c(0x6FD845B0)
   const pPath = m.get(pUnit, D2UnitStrc.pPath)
   m.set(pPath, D2DynamicPathStrc.dwCollisionPattern, dwCollisionPattern >>> 0)
 }
@@ -565,6 +572,7 @@ export function PATH_SetUnitCollisionPattern113c(m: Memory113c, pUnit: number, d
  * Returns `pUnit->pPath (+0x2C)->dwCollisionPattern (+0x48)` (`0x6FD845D4 / 0x6FD845D7`, no NULL checks).
  */
 export function PATH_GetUnitCollisionPattern113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD845D0)
   const pPath = m.get(pUnit, D2UnitStrc.pPath)
   return m.get(pPath, D2DynamicPathStrc.dwCollisionPattern)
 }
@@ -575,6 +583,7 @@ export function PATH_GetUnitCollisionPattern113c(m: Memory113c, pUnit: number): 
  * `movzx eax, byte [eax+0x93]; inc eax; ret 4` (`0x6FD84694 / 0x6FD8469B`, no NULL check; returns `1..256`).
  */
 export function PATH_GetStepNum113c(m: Memory113c, pPath: number): number {
+  hitD2CommonVa113c(0x6FD84690)
   return (m.get(pPath, D2DynamicPathStrc.nStepNum) + 1) | 0
 }
 
@@ -585,6 +594,7 @@ export function PATH_GetStepNum113c(m: Memory113c, pPath: number): number {
  * writes `al - 1` to `pPath->nStepNum (+0x93)` (`0x6FD846B6`), else writes `0` (`0x6FD846BF`).
  */
 export function PATH_SetStepNum113c(m: Memory113c, pPath: number, nSteps: number): void {
+  hitD2CommonVa113c(0x6FD846A0)
   if (pPath === 0) return
   const b = nSteps & 0xff
   m.set(pPath, D2DynamicPathStrc.nStepNum, b !== 0 && b < 0x14 ? (b - 1) & 0xff : 0)
@@ -597,6 +607,7 @@ export function PATH_SetStepNum113c(m: Memory113c, pPath: number, nSteps: number
  * no NULL check).
  */
 export function PATH_ClearPrevTargetCoord113c(m: Memory113c, pPath: number): void {
+  hitD2CommonVa113c(0x6FD846D0)
   m.set(pPath, D2DynamicPathStrc.wPrevTargetX, 0)
   m.set(pPath, D2DynamicPathStrc.wPrevTargetY, 0)
 }
@@ -608,6 +619,7 @@ export function PATH_ClearPrevTargetCoord113c(m: Memory113c, pPath: number): voi
  * upper 24 bits of `eax` in the x86 caller are the pointer high bits, so callers read `AL` / `u8`).
  */
 export function PATH_GetMaxDistance113c(m: Memory113c, pPath: number): number {
+  hitD2CommonVa113c(0x6FD84860)
   return m.get(pPath, D2DynamicPathStrc.nDistMax)
 }
 
@@ -617,6 +629,7 @@ export function PATH_GetMaxDistance113c(m: Memory113c, pPath: number): number {
  * `mov eax, [esp+4]; mov al, [eax+0x90]; ret 4`: returns the low byte `AL = pPath->nDist (+0x90)` (no NULL check).
  */
 export function PATH_GetDistance113c(m: Memory113c, pPath: number): number {
+  hitD2CommonVa113c(0x6FD84870)
   return m.get(pPath, D2DynamicPathStrc.nDist)
 }
 
@@ -626,6 +639,7 @@ export function PATH_GetDistance113c(m: Memory113c, pPath: number): number {
  * `mov al, [esp+8]; mov ecx, [esp+4]; mov [ecx+0x90], al; ret 8` (`pPath->nDist = (u8)nDist`, no NULL check).
  */
 export function PATH_SetDistance113c(m: Memory113c, pPath: number, nDist: number): void {
+  hitD2CommonVa113c(0x6FD84880)
   m.set(pPath, D2DynamicPathStrc.nDist, nDist & 0xff)
 }
 
@@ -635,6 +649,7 @@ export function PATH_SetDistance113c(m: Memory113c, pPath: number, nDist: number
  * Returns `pPath->dwPathType (+0x3C)` (`0x6FD848A4`, no NULL check).
  */
 export function PATH_GetType113c(m: Memory113c, pPath: number): number {
+  hitD2CommonVa113c(0x6FD848A0)
   return m.get(pPath, D2DynamicPathStrc.dwPathType)
 }
 
@@ -644,6 +659,7 @@ export function PATH_GetType113c(m: Memory113c, pPath: number): number {
  * Stores full 32-bit `dwMask` at `pPath->nMoveTestCollisionMask (+0x50)` (`0x6FD848B8 mov [ecx+0x50], eax`, no NULL check).
  */
 export function PATH_SetMoveTestCollisionMask113c(m: Memory113c, pPath: number, dwMask: number): void {
+  hitD2CommonVa113c(0x6FD848B0)
   m.set(pPath, D2DynamicPathStrc.nMoveTestCollisionMask, dwMask >>> 0)
 }
 
@@ -653,6 +669,7 @@ export function PATH_SetMoveTestCollisionMask113c(m: Memory113c, pPath: number, 
  * Loads full 32-bit `pPath->nMoveTestCollisionMask (+0x50)` (`0x6FD848C4 mov eax, [eax+0x50]`, no NULL check).
  */
 export function PATH_GetMoveTestCollisionMask113c(m: Memory113c, pPath: number): number {
+  hitD2CommonVa113c(0x6FD848C0)
   return m.get(pPath, D2DynamicPathStrc.nMoveTestCollisionMask)
 }
 
@@ -662,6 +679,7 @@ export function PATH_GetMoveTestCollisionMask113c(m: Memory113c, pPath: number):
  * NULL -> `0xFFFF` (`0x6FD848D8 mov eax, 0xffff`); otherwise `pPath->nFootprintCollisionMask (+0x4C)` (`0x6FD848E0`).
  */
 export function PATH_GetFootprintCollisionMask113c(m: Memory113c, pPath: number): number {
+  hitD2CommonVa113c(0x6FD848D0)
   if (pPath === 0) return 0xffff
   return m.get(pPath, D2DynamicPathStrc.nFootprintCollisionMask)
 }
@@ -672,6 +690,7 @@ export function PATH_GetFootprintCollisionMask113c(m: Memory113c, pPath: number)
  * NULL -> `0` (`0x6FD848F4 test eax, eax; jne; ret 4`); otherwise `pPath->pTargetUnit (+0x58)` (`0x6FD848FB`).
  */
 export function PATH_GetTargetUnit113c(m: Memory113c, pPath: number): number {
+  hitD2CommonVa113c(0x6FD848F0)
   if (pPath === 0) return 0
   return m.get(pPath, D2DynamicPathStrc.pTargetUnit)
 }
@@ -745,6 +764,7 @@ export const PATH_ASTAR_HASH_Y_6FDDB658 = Uint32Array.from([
  * Returns `pPath->dwVelocity (+0x7C)` (`0x6FD84D34`, no NULL check).
  */
 export function PATH_GetVelocity113c(m: Memory113c, pPath: number): number {
+  hitD2CommonVa113c(0x6FD84D30)
   return m.get(pPath, D2DynamicPathStrc.dwVelocity)
 }
 
@@ -762,6 +782,7 @@ export function PATH_SetVelocity113c(
   _szFile = 0,
   _nLine = 0,
 ): void {
+  hitD2CommonVa113c(0x6FD84D40)
   if (pPath === 0) return
   const v = nVelocity >>> 0
   if (v !== m.get(pPath, D2DynamicPathStrc.dwVelocity)) {
@@ -783,6 +804,7 @@ export function PATH_SetVelocity113c(
  *     and returns (`0x6FD84ED1..0x6FD84EDB`).
  */
 export function PATH_UpdateOutOfRoomFlag113c(m: Memory113c, pPath: number): void {
+  hitD2CommonVa113c(0x6FD84E70)
   let flags = (m.get(pPath, D2DynamicPathStrc.dwFlags) & ~1) >>> 0
   m.set(pPath, D2DynamicPathStrc.dwFlags, flags)
   const nPts = m.get(pPath, D2DynamicPathStrc.dwPathPoints) | 0
@@ -832,6 +854,7 @@ export function PATH_UpdateOutOfRoomFlag113c(m: Memory113c, pPath: number): void
  *   `pPath->nDistMax (+0x91)` and `pPath->nDist (+0x90)` (`0x6FD84F64..0x6FD84F6A`).
  */
 export function PATH_SetNewDistance113c(m: Memory113c, pPath: number, nNewDist: number): void {
+  hitD2CommonVa113c(0x6FD84F50)
   if (pPath === 0) return
   let v = nNewDist & 0xff
   if (v >= 0x4d) v = 0x4d
@@ -846,6 +869,7 @@ export function PATH_SetNewDistance113c(m: Memory113c, pPath: number, nNewDist: 
  * `pPath->dwTargetType (+0x5C)` and `pUnit->dwUnitId (+0x0C)` to `pPath->dwTargetId (+0x60)`.
  */
 export function PATH_SetTargetUnit113c(m: Memory113c, pPath: number, pUnit: number): void {
+  hitD2CommonVa113c(0x6FD85040)
   const u = pUnit >>> 0
   m.set(pPath, D2DynamicPathStrc.pTargetUnit, u)
   if (u !== 0) {
@@ -861,6 +885,7 @@ export function PATH_SetTargetUnit113c(m: Memory113c, pPath: number, pUnit: numb
  * and stores into `pPath->dwPathPoints (+0x28)`.
  */
 export function PATH_SetNumberOfPathPoints113c(m: Memory113c, pPath: number, nPoints: number): void {
+  hitD2CommonVa113c(0x6FD85080)
   const pts = (nPoints | 0) > 0x4d ? 0x4d : nPoints | 0
   m.set(pPath, D2DynamicPathStrc.dwPathPoints, pts >>> 0)
 }
@@ -875,6 +900,7 @@ export function PATH_SetNumberOfPathPoints113c(m: Memory113c, pPath: number, nPo
  *   `nDiffDirection (+0x66) = PATH_DIR_TURN_RATE_TABLE_6FDE41C8[(dir - nDirection) & 0x3F] & 0xFF`.
  */
 export function PATH_SetDirection113c(m: Memory113c, pPath: number, nDir: number): void {
+  hitD2CommonVa113c(0x6FD850B0)
   const dir = nDir & 0x3f
   const pUnit = m.get(pPath, D2DynamicPathStrc.pUnit)
   const uType = pUnit === 0 ? 6 : m.get(pUnit, D2UnitStrc.dwUnitType) | 0
@@ -906,6 +932,7 @@ export function PATH_SetDirection113c(m: Memory113c, pPath: number, nDir: number
  *   otherwise `0x3C01`.
  */
 export function PATH_GetMonsterMoveTestMask113c(m: Memory113c, pMonsterUnit: number): number {
+  hitD2CommonVa113c(0x6FD85100)
   let pMonStats = 0
   if (pMonsterUnit !== 0) {
     const classId = m.get(pMonsterUnit, D2UnitStrc.dwClassId) | 0
@@ -933,6 +960,7 @@ export function PATH_GetMonsterMoveTestMask113c(m: Memory113c, pMonsterUnit: num
  * then again while `*pVecY > 0x10000` or `*pVecY < -0x10000`.
  */
 export function PATH_NormalizePrecisionVector113c(m: Memory113c, pVecX: number, pVecY: number): void {
+  hitD2CommonVa113c(0x6FD8E110)
   const x0 = m.u32(pVecX) | 0
   if (x0 >= 0) {
     if (x0 > 0x10000) {
@@ -974,6 +1002,7 @@ export function PATH_NormalizePrecisionVector113c(m: Memory113c, pVecX: number, 
  * Quantizes the 16-bit `(x, y)` delta between `dwStartCoord` and `dwEndCoord` into a 5x5 grid index `5*sx + sy + 12` (`0..24`).
  */
 export function PATH_QuantizeDirectionIndex25_113c(dwStartCoord: number, dwEndCoord: number): number {
+  hitD2CommonVa113c(0x6FD8E190)
   let edx = ((dwEndCoord & 0xffff) - (dwStartCoord & 0xffff)) | 0
   let esi = ((dwEndCoord >>> 16) - (dwStartCoord >>> 16)) | 0
   const absX = edx >= 0 ? edx : -edx | 0
@@ -1010,6 +1039,7 @@ export function PATH_QuantizeDirectionIndex25_113c(dwStartCoord: number, dwEndCo
  * Otherwise returns `dx > dy ? dy + dx * 2 : dx + dy * 2`.
  */
 export function PATH_OctileDistanceWithTable113c(dwCoord1: number, dwCoord2: number): number {
+  hitD2CommonVa113c(0x6FD8E2B0)
   let dx = ((dwCoord1 & 0xffff) - (dwCoord2 & 0xffff)) | 0
   if (dx < 0) dx = -dx | 0
   let dy = ((dwCoord1 >>> 16) - (dwCoord2 >>> 16)) | 0
@@ -1030,6 +1060,7 @@ export function PATH_OctileDistanceWithTable113c(dwCoord1: number, dwCoord2: num
  * and returns `count`; else returns `0`.
  */
 export function PATH_IdaStar_FlushNodeToDynamicPath113c(m: Memory113c, pPathInfo: number, pNode: number): number {
+  hitD2CommonVa113c(0x6FDC0650)
   const pOut = (m.u32((pPathInfo + 0x30) >>> 0) + 0x9c) >>> 0
   if (pNode === 0) return 0
   const stack = new Uint32Array(0x4e)
@@ -1068,6 +1099,7 @@ export function PATH_IdaStar_FlushNodeToDynamicPath113c(m: Memory113c, pPathInfo
  * - Otherwise sets `pNode->nNextNeighborIndex = (*pNode->pBestDirection + pNode->nNextNeighborIndex) & 7`.
  */
 export function PATH_IdaStar_AdvanceNeighborIndex113c(m: Memory113c, pContext: number, pNode: number): void {
+  hitD2CommonVa113c(0x6FDC07E0)
   const bRandom = m.u32((pContext + 0x36fd0) >>> 0)
   if (bRandom !== 0) {
     const pSeed = m.u32((pContext + 0x36fd4) >>> 0)
@@ -1097,6 +1129,7 @@ export function PATH_IdaStar_AdvanceNeighborIndex113c(m: Memory113c, pContext: n
  * and returns `count`; else returns `0`.
  */
 export function PATH_AStar_FlushNodeToDynamicPath113c(m: Memory113c, pPathInfo: number, pNode: number): number {
+  hitD2CommonVa113c(0x6FDCAB50)
   const pOut = (m.u32((pPathInfo + 0x30) >>> 0) + 0x9c) >>> 0
   if (pNode === 0) return 0
   const stack = new Uint32Array(0x4e)
@@ -1134,6 +1167,7 @@ export function PATH_AStar_FlushNodeToDynamicPath113c(m: Memory113c, pPathInfo: 
  *   linked via `pNode->pBestNext` at `+0x34`), placing `pNode` before the first node with `cur->wFScore >= pNode->wFScore`.
  */
 export function PATH_AStar_PushToOpenAndHash113c(m: Memory113c, pContext: number, pNode: number): void {
+  hitD2CommonVa113c(0x6FDCAE20)
   let cur = m.u32((pContext + 0x400) >>> 0)
   const yIdx = m.u8((pNode + 2) >>> 0) & 0x7f
   const xIdx = m.u8(pNode) & 0x7f
@@ -1169,6 +1203,7 @@ export function PATH_AStar_PushToOpenAndHash113c(m: Memory113c, pContext: number
  * `dy = |(dwCoord1 >>> 16) - (dwCoord2 >>> 16)|`.
  */
 export function PATH_AStar_EvaluateHeuristic113c(dwCoord1: number, dwCoord2: number): number {
+  hitD2CommonVa113c(0x6FDCAF70)
   let dx = ((dwCoord1 & 0xffff) - (dwCoord2 & 0xffff)) | 0
   if (dx < 0) dx = -dx | 0
   let dy = ((dwCoord1 >>> 16) - (dwCoord2 >>> 16)) | 0
@@ -1185,6 +1220,7 @@ export function PATH_AStar_EvaluateHeuristic113c(dwCoord1: number, dwCoord2: num
  *   then pushes `pNode` onto `pContext->pClosedHeaders[h]` (`pContext + 0x200 + h*4`) and returns `pNode`.
  */
 export function PATH_AStar_PopBestOpenToClosed113c(m: Memory113c, pContext: number): number {
+  hitD2CommonVa113c(0x6FDCB220)
   const pNode = m.u32((pContext + 0x400) >>> 0)
   if (pNode === 0) return 0
   m.setU32((pContext + 0x400) >>> 0, m.get(pNode, D2AStarNodeStrc.pBestNext))
@@ -1222,6 +1258,7 @@ export function PATH_AStar_PopBestOpenToClosed113c(m: Memory113c, pContext: numb
  * (`PATH_CURRENT_ROOM_INVALID`) on `pPath->dwFlags (+0x34)`, else clears bit `0x02` (`& 0xFFFFFFFD`).
  */
 export function PATH_SetCurrentRoomInvalid113c(m: Memory113c, pPath: number, bInvalid: number): void {
+  hitD2CommonVa113c(0x6FD84990)
   const flags = m.get(pPath, D2DynamicPathStrc.dwFlags)
   if ((bInvalid | 0) !== 0) {
     m.set(pPath, D2DynamicPathStrc.dwFlags, (flags | 2) >>> 0)
@@ -1238,6 +1275,7 @@ export function PATH_SetCurrentRoomInvalid113c(m: Memory113c, pPath: number, bIn
  *   and `u32` `0` to `pPath->pTargetUnit (+0x58)`.
  */
 export function PATH_SetTargetPos113c(m: Memory113c, pPath: number, nTargetX: number, nTargetY: number): void {
+  hitD2CommonVa113c(0x6FD849D0)
   if (pPath === 0) return
   m.set(pPath, D2DynamicPathStrc.wTargetX, nTargetX & 0xffff)
   m.set(pPath, D2DynamicPathStrc.wTargetY, nTargetY & 0xffff)
@@ -1250,6 +1288,7 @@ export function PATH_SetTargetPos113c(m: Memory113c, pPath: number, nTargetX: nu
  * Unconditionally stores `0` at `pPath->pPreviousRoom (+0x20)` (`0x6FD84A04`, no NULL check).
  */
 export function PATH_ClearNextRoom113c(m: Memory113c, pPath: number): void {
+  hitD2CommonVa113c(0x6FD84A00)
   m.set(pPath, D2DynamicPathStrc.pPreviousRoom, 0)
 }
 
@@ -1259,6 +1298,7 @@ export function PATH_ClearNextRoom113c(m: Memory113c, pPath: number): void {
  * Unconditionally reads and returns `pPath->pPreviousRoom (+0x20)` (`0x6FD84A14`, no NULL check).
  */
 export function PATH_GetNextRoom113c(m: Memory113c, pPath: number): number {
+  hitD2CommonVa113c(0x6FD84A10)
   return m.get(pPath, D2DynamicPathStrc.pPreviousRoom) | 0
 }
 
@@ -1269,6 +1309,7 @@ export function PATH_GetNextRoom113c(m: Memory113c, pPath: number): number {
  * otherwise returns `u16(pPath + 0x9A + count * 4)` (`wPathPoints[count - 1].y`).
  */
 export function PATH_GetLastPointY113c(m: Memory113c, pPath: number): number {
+  hitD2CommonVa113c(0x6FD84A40)
   const count = m.get(pPath, D2DynamicPathStrc.dwPathPoints)
   if (count === 0) return 0
   return m.u16((pPath + 0x9a + ((count << 2) >>> 0)) >>> 0)
@@ -1281,6 +1322,7 @@ export function PATH_GetLastPointY113c(m: Memory113c, pPath: number): number {
  * otherwise returns `u16(pPath + 0x98 + count * 4)` (`wPathPoints[count - 1].x`).
  */
 export function PATH_GetLastPointX113c(m: Memory113c, pPath: number): number {
+  hitD2CommonVa113c(0x6FD84A60)
   const count = m.get(pPath, D2DynamicPathStrc.dwPathPoints)
   if (count === 0) return 0
   return m.u16((pPath + 0x98 + ((count << 2) >>> 0)) >>> 0)
@@ -1292,6 +1334,7 @@ export function PATH_GetLastPointX113c(m: Memory113c, pPath: number): number {
  * Unconditionally zero-extends `pPath->wFinalTargetY (+0x1A)` (`0x6FD84A84`, no NULL check).
  */
 export function PATH_GetPrevTargetY113c(m: Memory113c, pPath: number): number {
+  hitD2CommonVa113c(0x6FD84A80)
   return m.get(pPath, D2DynamicPathStrc.wFinalTargetY)
 }
 
@@ -1301,6 +1344,7 @@ export function PATH_GetPrevTargetY113c(m: Memory113c, pPath: number): number {
  * Unconditionally zero-extends `pPath->wFinalTargetX (+0x18)` (`0x6FD84A94`, no NULL check).
  */
 export function PATH_GetPrevTargetX113c(m: Memory113c, pPath: number): number {
+  hitD2CommonVa113c(0x6FD84A90)
   return m.get(pPath, D2DynamicPathStrc.wFinalTargetX)
 }
 
@@ -1310,6 +1354,7 @@ export function PATH_GetPrevTargetX113c(m: Memory113c, pPath: number): number {
  * Unconditionally zero-extends `pPath->wTargetY (+0x12)` (`0x6FD84AA4`, no NULL check).
  */
 export function PATH_GetFirstPointY113c(m: Memory113c, pPath: number): number {
+  hitD2CommonVa113c(0x6FD84AA0)
   return m.get(pPath, D2DynamicPathStrc.wTargetY)
 }
 
@@ -1319,6 +1364,7 @@ export function PATH_GetFirstPointY113c(m: Memory113c, pPath: number): number {
  * Unconditionally zero-extends `pPath->wTargetX (+0x10)` (`0x6FD84AB4`, no NULL check).
  */
 export function PATH_GetFirstPointX113c(m: Memory113c, pPath: number): number {
+  hitD2CommonVa113c(0x6FD84AB0)
   return m.get(pPath, D2DynamicPathStrc.wTargetX)
 }
 
@@ -1330,6 +1376,7 @@ export function PATH_GetFirstPointX113c(m: Memory113c, pPath: number): number {
  *   and `pPath->nNewDirection (+0x65)`.
  */
 export function PATH_ForceDirection113c(m: Memory113c, pPath: number, nDir: number): void {
+  hitD2CommonVa113c(0x6FD84BE0)
   if (pPath === 0) return
   const d = nDir & 0x3f
   m.set(pPath, D2DynamicPathStrc.nDirection, d)
@@ -1342,6 +1389,7 @@ export function PATH_ForceDirection113c(m: Memory113c, pPath: number, nDir: numb
  * Unconditionally reads and returns `pPath->nNewDirection (+0x65)` (`mov al, [eax+0x65]`, no NULL check).
  */
 export function PATH_GetNewDirection113c(m: Memory113c, pPath: number): number {
+  hitD2CommonVa113c(0x6FD84C00)
   return m.get(pPath, D2DynamicPathStrc.nNewDirection)
 }
 
@@ -1351,6 +1399,7 @@ export function PATH_GetNewDirection113c(m: Memory113c, pPath: number): number {
  * NULL `pPath` -> `0`; otherwise returns `pPath->nDirection (+0x64)` (`mov al, [eax+0x64]`).
  */
 export function PATH_GetDirection113c(m: Memory113c, pPath: number): number {
+  hitD2CommonVa113c(0x6FD84C10)
   if (pPath === 0) return 0
   return m.get(pPath, D2DynamicPathStrc.nDirection)
 }
@@ -1361,6 +1410,7 @@ export function PATH_GetDirection113c(m: Memory113c, pPath: number): number {
  * Unconditionally stores `(pPath + 0x9C)` at `*ppPathPoints` and returns `pPath->dwPathPoints (+0x28)` (no NULL check).
  */
 export function PATH_GetPathPoints113c(m: Memory113c, pPath: number, ppPathPoints: number): number {
+  hitD2CommonVa113c(0x6FD84C30)
   m.setU32(ppPathPoints >>> 0, (pPath + D2DynamicPathStrc.wPathPoints.off) >>> 0)
   return m.get(pPath, D2DynamicPathStrc.dwPathPoints) | 0
 }
@@ -1371,6 +1421,7 @@ export function PATH_GetPathPoints113c(m: Memory113c, pPath: number, ppPathPoint
  * Unconditionally reads and returns `pPath->dwPathPoints (+0x28)` (no NULL check).
  */
 export function PATH_GetNumberOfPathPoints113c(m: Memory113c, pPath: number): number {
+  hitD2CommonVa113c(0x6FD84C60)
   return m.get(pPath, D2DynamicPathStrc.dwPathPoints) | 0
 }
 
@@ -1381,6 +1432,7 @@ export function PATH_GetNumberOfPathPoints113c(m: Memory113c, pPath: number): nu
  * to `pPath->dwPathPoints (+0x28)` (no NULL check).
  */
 export function PATH_ClearPathPointsAndFlag0x20_113c(m: Memory113c, pPath: number): void {
+  hitD2CommonVa113c(0x6FD84CB0)
   m.set(pPath, D2DynamicPathStrc.dwFlags, (m.get(pPath, D2DynamicPathStrc.dwFlags) & 0xffffffdf) >>> 0)
   m.set(pPath, D2DynamicPathStrc.dwPathPoints, 0)
 }
@@ -1391,6 +1443,7 @@ export function PATH_ClearPathPointsAndFlag0x20_113c(m: Memory113c, pPath: numbe
  * Unconditionally stores `nAcceleration` at `pPath->dwAcceleration (+0x88)` (no NULL check).
  */
 export function PATH_SetAcceleration113c(m: Memory113c, pPath: number, nAcceleration: number): void {
+  hitD2CommonVa113c(0x6FD84CE0)
   m.set(pPath, D2DynamicPathStrc.dwAcceleration, nAcceleration >>> 0)
 }
 
@@ -1400,6 +1453,7 @@ export function PATH_SetAcceleration113c(m: Memory113c, pPath: number, nAccelera
  * Unconditionally stores `nMaxVelocity` at `pPath->dwMaxVelocity (+0x84)` (no NULL check).
  */
 export function PATH_SetMaxVelocity113c(m: Memory113c, pPath: number, nMaxVelocity: number): void {
+  hitD2CommonVa113c(0x6FD84D10)
   m.set(pPath, D2DynamicPathStrc.dwMaxVelocity, nMaxVelocity >>> 0)
 }
 
@@ -1461,6 +1515,7 @@ export function PATH_SpliceSegmentPoints113c(
   pPointsBuf: number,
   pnCurIdx: number,
 ): void {
+  hitD2CommonVa113c(0x6FD68400)
   const insIdx = nInsertIdx | 0
   const subPath = pSubPath >>> 0
   const pTotal = pnTotalPoints >>> 0
@@ -1516,6 +1571,7 @@ export function PATH_SetStepDistance113c(
   pPath: number,
   nDistance: number,
 ): void {
+  hitD2CommonVa113c(0x6FD84630)
   const dist = nDistance | 0
   if (dist < 0 || dist > 0xff) {
     throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\Path.cpp', 2405)
@@ -1535,6 +1591,7 @@ export function PATH_GetSavedSteps113c(
   pPath: number,
   ppOutSavedSteps: number,
 ): number {
+  hitD2CommonVa113c(0x6FD847C0)
   const path = pPath >>> 0
   if ((m.u32((path + 0x34) >>> 0) & 0x20000) === 0) {
     throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\Path.cpp', 2292)
@@ -1556,6 +1613,7 @@ export function PATH_GetTargetTypeAndId113c(
   pOutTargetType: number,
   pOutTargetId: number,
 ): void {
+  hitD2CommonVa113c(0x6FD84910)
   const path = pPath >>> 0
   if (m.u32((path + 0x58) >>> 0) === 0) {
     throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\Path.cpp', 1984)
@@ -1571,6 +1629,7 @@ export function PATH_GetTargetTypeAndId113c(
  * Asserts `pPath != 0` (`line 1693`, `0x69D`) and returns `u16(pPath + 0x06)` (`wPosY`).
  */
 export function PATH_GetPosY113c(m: Memory113c, pPath: number): number {
+  hitD2CommonVa113c(0x6FD84B80)
   if (pPath === 0) {
     throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\Path.cpp', 1693)
   }
@@ -1584,6 +1643,7 @@ export function PATH_GetPosY113c(m: Memory113c, pPath: number): number {
  * Asserts `pPath != 0` (`line 1682`, `0x692`) and returns `u16(pPath + 0x02)` (`wPosX`).
  */
 export function PATH_GetPosX113c(m: Memory113c, pPath: number): number {
+  hitD2CommonVa113c(0x6FD84BB0)
   if (pPath === 0) {
     throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\Path.cpp', 1682)
   }
@@ -1601,6 +1661,7 @@ export function PATH_FreeDynamicPath113c(
   _pMemPool: number,
   pPath: number,
 ): void {
+  hitD2CommonVa113c(0x6FD84DC0)
   const freeFn = (m as { free?: (p: number) => void }).free
   if (pPath !== 0) {
     freeFn?.call(m, pPath >>> 0)
@@ -1625,6 +1686,7 @@ export function PATH_SetType113c(
   pPath: number,
   nPathType: number,
 ): void {
+  hitD2CommonVa113c(0x6FD84F80)
   const path = pPath >>> 0
   const type = nPathType | 0
   const pUnit = m.u32((path + 0x30) >>> 0)
@@ -1676,6 +1738,7 @@ export function PATH_AdjustTargetForDoorObject113c(
   m: Memory113c,
   pContext: number,
 ): void {
+  hitD2CommonVa113c(0x6FD85160)
   const pPath = m.u32((pContext + 0x30) >>> 0)
   const pTargetUnit = m.u32((pPath + 0x58) >>> 0)
   if (pTargetUnit === 0) {
@@ -1720,6 +1783,7 @@ export function PATH_SetNewDirection113c(
   pPath: number,
   nNewDir: number,
 ): void {
+  hitD2CommonVa113c(0x6FD85270)
   const rawByte = nNewDir & 0xff
   if (rawByte >= 0x40) {
     throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\Path.cpp', 1650)
@@ -1761,6 +1825,7 @@ export function PATH_OffsetTargetByUnitRadius113c(
   m: Memory113c,
   pPath: number,
 ): void {
+  hitD2CommonVa113c(0x6FD8E080)
   if (pPath === 0) {
     throw new D2CommonAssertError('..\\Source\\D2Common\\DRLG\\DrlgVer.cpp', 490)
   }
@@ -1799,6 +1864,7 @@ export function PATH_BuildSpiralPath77Points113c(
   m: Memory113c,
   pPath: number,
 ): void {
+  hitD2CommonVa113c(0x6FDB6920)
   const path = pPath >>> 0
   const originX = m.u32(path) | 0
   const originY = m.u32((path + 4) >>> 0) | 0
@@ -1857,6 +1923,7 @@ export function PATH_GetTargetTypeAndPosition113c(
   pUnit: number,
   pOutCoords: number,
 ): void {
+  hitD2CommonVa113c(0x6FD80050)
   const unit = pUnit >>> 0
   if (unit === 0) {
     throw new D2CommonAssertError('Path.cpp', 0x7ca) // pUnit == 0 (line 1994)
@@ -1899,6 +1966,7 @@ export function PATH_ResetToDefaultType113c(
   m: Memory113c,
   pDynamicPath: number,
 ): void {
+  hitD2CommonVa113c(0x6FD85210)
   const path = pDynamicPath >>> 0
   const pUnit = m.u32((path + 0x30) >>> 0)
   if (pUnit === 0) {
@@ -1965,6 +2033,7 @@ export function PATH_ComputeDirection113c(
   nX2: number,
   nY2: number,
 ): number {
+  hitD2CommonVa113c(0x6FD5D180)
   const sm = withPathStackScratch113c(m)
   const pVec = PATH_STACK_SCRATCH_BASE
   const pDir = PATH_STACK_SCRATCH_BASE + 0x08
@@ -1990,6 +2059,7 @@ export function PATH_ComputeVelocityToNextPoint113c(
   bDirOnArrive: number,
   bAlwaysDir: number,
 ): number {
+  hitD2CommonVa113c(0x6FD5D240)
   const path = pPath >>> 0
   let idx = m.u32((path + 0x24) >>> 0) | 0
   let tx = toFixedSubtileCenter(m.u16((path + 0x9c + idx * 4) >>> 0))
@@ -2052,6 +2122,7 @@ export function PATH_RecacheRoom113c(
   pPath: number,
   pHintRoom: number,
 ): void {
+  hitD2CommonVa113c(0x6FD5D760)
   const path = pPath >>> 0
   const r0 = m.u32((path + 0x1c) >>> 0)
   const x = m.u16((path + 0x02) >>> 0)
@@ -2098,6 +2169,7 @@ export function UNITS_GetDirectionToCoords113c(
   nX: number,
   nY: number,
 ): number {
+  hitD2CommonVa113c(0x6FD7F910)
   const unit = pUnit >>> 0
   const ux = UNITS_GetX113c(m, unit)
   const uy = UNITS_GetY113c(m, unit)
@@ -2124,6 +2196,7 @@ export function UNITS_TransferStateMaskDCToRemoved113c(
   m: Memory113c,
   pUnit: number,
 ): void {
+  hitD2CommonVa113c(0x6FD844F0)
   const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
   const pMaskArray = m.u32((sgpt + DATATABLES_OFF_113C.fStateMasksDC) >>> 0)
   UNITS_TransferStateMaskToRemoved113c(m, pMaskArray, pUnit)
@@ -2140,6 +2213,7 @@ export function PATH_FaceTowardsCoords113c(
   nY: number,
   bSetBoth: number,
 ): void {
+  hitD2CommonVa113c(0x6FD852F0)
   const path = pPath >>> 0
   if (path === 0) return
   const sm = withPathStackScratch113c(m)
@@ -2173,6 +2247,7 @@ export function PATH_GetCollisionPatternForSize113c(
   pUnit: number,
   nSize: number,
 ): number {
+  hitD2CommonVa113c(0x6FD85360)
   const sz = nSize | 0
   if (sz < 0 || sz >= 4) return 1
   let v = PATH_SIZE_COLLISION_PATTERN_6FDDC5E4[sz]! | 0
@@ -2197,6 +2272,7 @@ export function PATH_ResolveTargetUnitPosition113c(
   m: Memory113c,
   pPathInfo: number,
 ): number {
+  hitD2CommonVa113c(0x6FD85470)
   const info = pPathInfo >>> 0
   const pPath = m.get(info, D2PathInfoStrc.pDynamicPath)
   const pTarget = m.u32((pPath + 0x58) >>> 0)
@@ -2235,6 +2311,7 @@ export function PATH_IsMonsterDestinationAllowed113c(
   pUnit: number,
   pPathInfo: number,
 ): number {
+  hitD2CommonVa113c(0x6FD856E0)
   const unit = pUnit >>> 0
   if (unit === 0) return 1
   if ((m.u32(unit) | 0) !== 1) return 1
@@ -2267,6 +2344,7 @@ export function PATH_ComputePathChargedBolt113c(
   pSeed: number,
   pPath: number,
 ): void {
+  hitD2CommonVa113c(0x6FDB6AA0)
   const seedPtr = pSeed >>> 0
   const path = pPath >>> 0
   let curX = m.u16((path + 0x02) >>> 0)
@@ -2299,6 +2377,7 @@ export function PATH_IdaStar_AdvanceToNextCandidate113c(
   pNode: number,
   pContext: number,
 ): number {
+  hitD2CommonVa113c(0x6FDC0840)
   let node = pNode >>> 0
   const ctx = pContext >>> 0
   const visit0 = (m.get(node, D2IdaStarNodeStrc.nVisitCount) << 16) >> 16
@@ -2330,6 +2409,7 @@ export function PATH_AStar_ProcessNeighbor113c(
   dwPointXY: number,
   dwTargetXY: number,
 ): number {
+  hitD2CommonVa113c(0x6FDCAFB0)
   const parent = pParent >>> 0
   const ctx = pContext >>> 0
   const xy = dwPointXY >>> 0
@@ -2425,6 +2505,7 @@ export function PATH_SetPrecisionPosAndRecacheRoom113c(
   dwPrecisionY: number,
   pHintRoom: number,
 ): void {
+  hitD2CommonVa113c(0x6FD5DA40)
   const path = pPath >>> 0
   const px = dwPrecisionX >>> 0
   const py = dwPrecisionY >>> 0
@@ -2462,6 +2543,7 @@ export function PATH_ComputeDirectSinglePointPath113c(
   m: Memory113c,
   pDynamicPath: number,
 ): number {
+  hitD2CommonVa113c(0x6FD85530)
   const path = pDynamicPath >>> 0
   const posY = m.u16((path + 0x06) >>> 0)
   const posX = m.u16((path + 0x02) >>> 0)
@@ -2531,6 +2613,7 @@ export function PATH_StopMovementAndSnapToTileCenter113c(
   m: Memory113c,
   pDynamicPath: number,
 ): void {
+  hitD2CommonVa113c(0x6FD5DC80)
   const path = pDynamicPath >>> 0
   const precY = ((m.u32((path + 0x04) >>> 0) & 0xffff0000) + 0x8000) >>> 0
   const precX = ((m.u32(path) & 0xffff0000) + 0x8000) >>> 0
@@ -2566,6 +2649,7 @@ export function PATH_FindNonCollidingTargetPoint113c(
   pPathInfo: number,
   pPathMov: number,
 ): number {
+  hitD2CommonVa113c(0x6FD686D0)
   const info = pPathInfo >>> 0
   const mov = pPathMov >>> 0
   const nPattern = m.get(info, D2PathInfoStrc.dwCollisionPattern)
@@ -2612,6 +2696,7 @@ export function PATH_ComputeSpecialFlag40000Path113c(
   pDynamicPath: number,
   pUnit: number,
 ): number {
+  hitD2CommonVa113c(0x6FD85780)
   const path = pDynamicPath >>> 0
   const unit = pUnit >>> 0
   const t = m.get(path, D2DynamicPathStrc.dwPathType) | 0
@@ -2647,6 +2732,7 @@ export function PATH_RemoveUnitCollisionFootprint113c(
   pUnit: number,
   bForce: number,
 ): number {
+  hitD2CommonVa113c(0x6FD85800)
   const unit = pUnit >>> 0
   const uType = m.u32(unit) | 0
   if (uType === 0 || uType === 1) {
@@ -2704,6 +2790,7 @@ export function PATH_AddUnitCollisionFootprint113c(
   m: Memory113c,
   pUnit: number,
 ): void {
+  hitD2CommonVa113c(0x6FD859D0)
   const unit = pUnit >>> 0
   const uType = m.u32(unit) | 0
   if (uType >= 0 && uType <= 1) {
@@ -2747,6 +2834,7 @@ export function PATH_NudgeTargetOutOfImmediateCollision113c(
   m: Memory113c,
   pPathInfo: number,
 ): void {
+  hitD2CommonVa113c(0x6FD85D40)
   const info = pPathInfo >>> 0
   const sx = m.get(info, D2PathInfoStrc.startX)
   const sy = m.get(info, D2PathInfoStrc.startY)
@@ -2787,6 +2875,7 @@ export function PATH_RaycastGridLineCollision113c(
   dwStartPoint: number,
   pInOutTargetPoint: number,
 ): number {
+  hitD2CommonVa113c(0x6FDB6C20)
   const path = pDynamicPath >>> 0
   const pTargetPtr = pInOutTargetPoint >>> 0
   const nPattern = m.get(path, D2DynamicPathStrc.dwCollisionPattern)
@@ -2885,6 +2974,7 @@ export function PATH_PickStepDirectionCandidate3_113c(
   pCandidateDirs: number,
   pOutDir: number,
 ): number {
+  hitD2CommonVa113c(0x6FDB71B0)
   const info = pPathInfo >>> 0
   const cand = pCandidateDirs >>> 0
   const outDir = pOutDir >>> 0
@@ -2940,6 +3030,7 @@ export function PATH_IdaStar_SearchLoop113c(
   nFScoreCutoff: number,
   pPathInfo: number,
 ): number {
+  hitD2CommonVa113c(0x6FDC08F0)
   const ctx = pContext >>> 0
   const info = pPathInfo >>> 0
   const cutoff = nFScoreCutoff | 0
@@ -3096,6 +3187,7 @@ export function PATH_AStar_IsTargetReachableOrHasNoTargetUnit113c(
   m: Memory113c,
   pPathInfo: number,
 ): number {
+  hitD2CommonVa113c(0x6FDCB2C0)
   const info = pPathInfo >>> 0
   const pDynPath = m.get(info, D2PathInfoStrc.pDynamicPath)
   if (m.get(pDynPath, D2DynamicPathStrc.pTargetUnit) === 0) {
@@ -3146,6 +3238,7 @@ export function PATH_AStar_ExpandNodeNeighbors113c(
   pContext: number,
   dwTargetXY: number,
 ): number {
+  hitD2CommonVa113c(0x6FDCB3C0)
   const node = pNode >>> 0
   const info = pPathInfo >>> 0
   const ctx = pContext >>> 0
@@ -3188,6 +3281,7 @@ export function PATH_WallFollow_StepBidirectional113c(
   nMaxStepBudget: number,
   nLineDir: number,
 ): number {
+  hitD2CommonVa113c(0x6FD68830)
   const info = pPathInfo >>> 0
   const startPt = dwStartPt >>> 0
   const ptsBuf = pPtsBuf >>> 0
@@ -3353,6 +3447,7 @@ export function PATH_FindValidTargetPosition113c(
   m: Memory113c,
   pPathInfo: number,
 ): number {
+  hitD2CommonVa113c(0x6FD85E00)
   const info = pPathInfo >>> 0
   const pDynPath = m.get(info, D2PathInfoStrc.pDynamicPath)
   if ((m.get(pDynPath, D2DynamicPathStrc.dwFlags) & 0x40000) !== 0) {
@@ -3435,6 +3530,7 @@ export function PATH_AllocDynamicPath113c(
   pUnit: number,
   bSetFlag10: number,
 ): number {
+  hitD2CommonVa113c(0x6FD86030)
   const unit = pUnit >>> 0
   const room = pRoom >>> 0
   const uType = m.get(unit, D2UnitStrc.dwUnitType) | 0
@@ -3551,6 +3647,7 @@ export function PATH_ComputeKnockbackServer113c(
   m: Memory113c,
   pPathInfo: number,
 ): number {
+  hitD2CommonVa113c(0x6FDB7390)
   const info = pPathInfo >>> 0
   const pDynPath = m.get(info, D2PathInfoStrc.pDynamicPath)
   const pTargetUnit = m.get(pDynPath, D2DynamicPathStrc.pTargetUnit)
@@ -3620,6 +3717,7 @@ export function PATH_RebuildTurnCornersWithDirOffset113c(
   m: Memory113c,
   pPathInfo: number,
 ): number {
+  hitD2CommonVa113c(0x6FDB74C0)
   const info = pPathInfo >>> 0
   const pDynPath = m.get(info, D2PathInfoStrc.pDynamicPath)
   const stepBudget = m.u32((info + 0x18) >>> 0) | 0
@@ -3686,6 +3784,7 @@ export function PATH_RaycastVelocityAndCollide113c(
   pDynamicPath: number,
   pInOutTargetPoint: number,
 ): number {
+  hitD2CommonVa113c(0x6FDB7630)
   const path = pDynamicPath >>> 0
   const pTargetPtr = pInOutTargetPoint >>> 0
   const pUnit = m.get(path, D2DynamicPathStrc.pUnit)
@@ -3733,6 +3832,7 @@ export function PATH_IdaStar_ComputeInRoomBounds113c(
   pRoomBoundsRect: number,
   pPathInfo: number,
 ): number {
+  hitD2CommonVa113c(0x6FDC0BB0)
   const rect = pRoomBoundsRect >>> 0
   const info = pPathInfo >>> 0
   const sm = withPathStackScratch113c(m)
@@ -3833,6 +3933,7 @@ export function PATH_AStar_ComputePath113c(
   m: Memory113c,
   pPathInfo: number,
 ): number {
+  hitD2CommonVa113c(0x6FDCB630)
   const info = pPathInfo >>> 0
   if (PATH_AStar_IsTargetReachableOrHasNoTargetUnit113c(m, info) === 0) {
     return 0
@@ -3909,6 +4010,7 @@ export function PATH_WallFollow_ComputePath113c(
   m: Memory113c,
   pPathInfo: number,
 ): number {
+  hitD2CommonVa113c(0x6FD68C40)
   const info = pPathInfo >>> 0
   const pDynPath = m.get(info, D2PathInfoStrc.pDynamicPath)
   const pUnit = m.get(pDynPath, D2DynamicPathStrc.pUnit)
@@ -3989,6 +4091,7 @@ export function PATH_ComputeStraightLineWalk113c(
   m: Memory113c,
   pPathInfo: number,
 ): number {
+  hitD2CommonVa113c(0x6FDB77C0)
   const info = pPathInfo >>> 0
   const pDynPath = m.get(info, D2PathInfoStrc.pDynamicPath)
   m.set(pDynPath, D2DynamicPathStrc.dwCurrentPointIdx, 0)
@@ -4005,6 +4108,7 @@ export function PATH_ComputeLeapOrKnockback113c(
   m: Memory113c,
   pPathInfo: number,
 ): number {
+  hitD2CommonVa113c(0x6FDB77F0)
   const info = pPathInfo >>> 0
   const pDynPath = m.get(info, D2PathInfoStrc.pDynamicPath)
   const dwTarget = m.u32((info + 0x04) >>> 0)
@@ -4032,6 +4136,7 @@ export function PATH_BuildTurnCornersWithFallbackOffset113c(
   m: Memory113c,
   pPathInfo: number,
 ): number {
+  hitD2CommonVa113c(0x6FDB7850)
   const info = pPathInfo >>> 0
   const pDynPath = m.get(info, D2PathInfoStrc.pDynamicPath)
   m.set(pDynPath, D2DynamicPathStrc.dwCurrentPointIdx, 0)
@@ -4059,6 +4164,7 @@ export function PATH_ComputeGuidedStepPath113c(
   m: Memory113c,
   pPathInfo: number,
 ): number {
+  hitD2CommonVa113c(0x6FDB78B0)
   const info = pPathInfo >>> 0
   const pDynPath = m.get(info, D2PathInfoStrc.pDynamicPath)
   m.set(pDynPath, D2DynamicPathStrc.dwCurrentPointIdx, 0)
@@ -4152,6 +4258,7 @@ export function PATH_IdaStar_ComputePathWithRooms113c(
   m: Memory113c,
   pPathInfo: number,
 ): number {
+  hitD2CommonVa113c(0x6FDC0E40)
   const info = pPathInfo >>> 0
   const sm = withPathStackScratch113c(m)
   const pRect = PATH_STACK_F23_BASE
@@ -4213,6 +4320,7 @@ export function PATH_ComputeMonsterSeekPath113c(
   m: Memory113c,
   pPathInfo: number,
 ): number {
+  hitD2CommonVa113c(0x6FDB7AD0)
   const info = pPathInfo >>> 0
   const pDynPath = m.get(info, D2PathInfoStrc.pDynamicPath)
   m.set(pDynPath, D2DynamicPathStrc.dwCurrentPointIdx, 0)
@@ -4251,6 +4359,7 @@ export function PATH_ComputeChargedBoltOrGuidedPath113c(
   m: Memory113c,
   pPathInfo: number,
 ): number {
+  hitD2CommonVa113c(0x6FDB7B70)
   const info = pPathInfo >>> 0
   const pDynPath = m.get(info, D2PathInfoStrc.pDynamicPath)
   m.set(pDynPath, D2DynamicPathStrc.dwCurrentPointIdx, 0)
@@ -4267,6 +4376,7 @@ export function PATH_Compute113c(
   pUnit: number,
   bAllowInTown: number,
 ): number {
+  hitD2CommonVa113c(0x6FD86230)
   const path = pDynamicPath >>> 0
   if (path === 0) {
     return 0
@@ -4480,6 +4590,7 @@ export function PATH_MoveOrTestSubtileStepCollision113c(
   packedNewCoord: number,
   packedOldCoord: number,
 ): number {
+  hitD2CommonVa113c(0x6FD5D420)
   const path = pDynamicPath >>> 0
   const dwFlags = m.u32((path + 0x34) >>> 0) >>> 0
   const newX = packedNewCoord & 0xffff
@@ -4560,6 +4671,7 @@ export function PATH_RecomputeDynamicPath113c(
   pUnit: number,
   bUsePrevTarget: number,
 ): number {
+  hitD2CommonVa113c(0x6FD5D820)
   const unit = pUnit >>> 0
   const path = m.u32((unit + 0x2c) >>> 0)
   if (path === 0) {
@@ -4607,6 +4719,7 @@ export function PATH_CopyPositionFromUnit113c(
   pDstUnit: number,
   pSrcUnit: number,
 ): void {
+  hitD2CommonVa113c(0x6FD5DAB0)
   const dstUnit = pDstUnit >>> 0
   const srcUnit = pSrcUnit >>> 0
   if (dstUnit === 0) {
@@ -4644,6 +4757,7 @@ export function PATH_CopyPositionFromUnit113c(
  * `__stdcall(pDynamicPath) -> void`, `ret 4`).
  */
 export function PATH_SnapToSubtileCenter113c(m: Memory113c, pDynamicPath: number): void {
+  hitD2CommonVa113c(0x6FD5DB40)
   const path = pDynamicPath >>> 0
   const newPrecY = ((m.u32((path + 0x04) >>> 0) & 0xffff0000) + 0x8000) >>> 0
   const newPrecX = ((m.u32(path) & 0xffff0000) + 0x8000) >>> 0
@@ -4659,6 +4773,7 @@ export function PATH_SetCollisionMask113c(
   pDynamicPath: number,
   nNewCollisionMask: number,
 ): void {
+  hitD2CommonVa113c(0x6FD85640)
   const path = pDynamicPath >>> 0
   const pRoom1 = m.u32((path + 0x1c) >>> 0)
   const wPosY = m.u16((path + 0x06) >>> 0)
@@ -4717,6 +4832,7 @@ export function PATH_SetCollisionMask113c(
  * `__stdcall(pDynamicPath) -> uint16`, `ret 4`).
  */
 export function PATH_GetOrCheckLastCollisionMask113c(m: Memory113c, pDynamicPath: number): number {
+  hitD2CommonVa113c(0x6FD85BA0)
   const path = pDynamicPath >>> 0
   if (m.u32((path + 0x7c) >>> 0) === 0) {
     const mask =
@@ -4738,6 +4854,7 @@ export function PATH_GetOrCheckLastCollisionMask113c(m: Memory113c, pDynamicPath
  * `__stdcall(pUnit) -> void`, `ret 4`).
  */
 export function PATH_RemoveUnitCollisionIfHasPath113c(m: Memory113c, pUnit: number): void {
+  hitD2CommonVa113c(0x6FD85CD0)
   const unit = pUnit >>> 0
   if (m.u32((unit + 0x2c) >>> 0) !== 0) {
     PATH_RemoveUnitCollisionFootprint113c(m, unit, 1)
@@ -4749,6 +4866,7 @@ export function PATH_RemoveUnitCollisionIfHasPath113c(m: Memory113c, pUnit: numb
  * `__stdcall(pUnit) -> void`, `ret 4`).
  */
 export function PATH_RefreshUnitCollisionPattern113c(m: Memory113c, pUnit: number): void {
+  hitD2CommonVa113c(0x6FD85CF0)
   const unit = pUnit >>> 0
   const pPath = m.u32((unit + 0x2c) >>> 0)
   if (pPath === 0) {
@@ -4777,6 +4895,7 @@ export function PATH_RaymarchSubtileSteps113c(
   pOutPos: number,
   pOutSteps: number,
 ): number {
+  hitD2CommonVa113c(0x6FD5D580)
   const path = pDynamicPath >>> 0
   const outPos = pOutPos >>> 0
   const outSteps = pOutSteps >>> 0
@@ -4846,6 +4965,7 @@ export function PATH_RaymarchSubtileSteps113c(
  * custom LTCG `esi = pDynamicPath -> eax`, `ret`).
  */
 export function PATH_CheckTargetMovedAndRecompute113c(m: Memory113c, pDynamicPath: number): number {
+  hitD2CommonVa113c(0x6FD5DB70)
   const path = pDynamicPath >>> 0
   const dwPathType = m.u32((path + 0x3c) >>> 0) | 0
   if (
@@ -4919,6 +5039,7 @@ export function PATH_AdvancePrecisionStep113c(
   pOutPos: number,
   pOutSteps: number,
 ): number {
+  hitD2CommonVa113c(0x6FD5D8E0)
   const path = pDynamicPath >>> 0
   const outPos = pOutPos >>> 0
   const outSteps = pOutSteps >>> 0
@@ -4981,6 +5102,7 @@ export function PATH_AdvancePrecisionStep113c(
  * `__stdcall(pUnit, nRate) -> BOOL`, `ret 8`).
  */
 export function PATH_Step113c(m: Memory113c, pUnit: number, nRate: number): number {
+  hitD2CommonVa113c(0x6FD5E230)
   const unit = pUnit >>> 0
   const pPath = m.u32((unit + 0x2c) >>> 0)
   if (pPath === 0) {
@@ -5055,6 +5177,7 @@ export function PATH_MarkUnitDeadCollision113c(
   pUnit: number,
   bIsCorpse: number,
 ): void {
+  hitD2CommonVa113c(0x6FD865A0)
   const unit = pUnit >>> 0
   const pPath = m.u32((unit + 0x2c) >>> 0)
   if ((bIsCorpse | 0) === 0 && m.u32(unit) === 1) {

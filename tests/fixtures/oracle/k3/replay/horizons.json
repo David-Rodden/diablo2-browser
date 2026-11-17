@@ -1,8 +1,8 @@
 {
   "p52-amazon-defense": {
     "bootFrame": 2,
-    "strict": 716,
-    "pos": 716
+    "strict": 1800,
+    "pos": 1800
   },
   "p52-amazon-valkyrie": {
     "bootFrame": 2,
@@ -11,8 +11,8 @@
   },
   "p52-barbarian-warcries": {
     "bootFrame": 2,
-    "strict": 637,
-    "pos": 637
+    "strict": 1600,
+    "pos": 1600
   },
   "p52-necromancer-curses": {
     "bootFrame": 2,
@@ -36,12 +36,12 @@
   },
   "p52-sorceress-elemental": {
     "bootFrame": 2,
-    "strict": 629,
-    "pos": 629
+    "strict": 1800,
+    "pos": 1800
   },
   "p52-sorceress-fire-dot": {
     "bootFrame": 2,
-    "strict": 635,
-    "pos": 635
+    "strict": 1800,
+    "pos": 1800
   }
 }

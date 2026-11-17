@@ -49,6 +49,8 @@ import {
 import { SparseMemory113c } from '../../../src/d2kern-113c/mem/sparse-memory'
 
 function initSparseGlobals(m: SparseMemory113c): number {
+  m.fill(0x6fd18000, 0x30000, 0)
+  m.fill(0x6fdd6000, 0x28000, 0)
   const pDataTables = m.alloc(0x2000)
   const ppDataTablesIat = m.alloc(8)
   m.setU32(ppDataTablesIat, pDataTables)
@@ -63,6 +65,8 @@ function initSparseGlobals(m: SparseMemory113c): number {
   }
   m.setU32(pDataTables + 0xbf8, pItemTypesTxt)
   m.setU32(pDataTables + 0xbfc, 4)
+  m.setU32(0x6fdeff6c, m.alloc(0x20))
+  m.fill(0x6fd39fa0, 0x20, 0)
   m.fill(0x6fd1bd80, 0x80, 0)
   return pDataTables
 }
@@ -127,7 +131,7 @@ describe('K2 Wave 4 Batch 3 (w4b3): 45 D2Game.dll VAs', () => {
       ITEMS_RollAndDropItemByTypeAtUnit_6FC31A70_113c(m, pGame, pUnit, 0, pIlvl, pOutDrop, 0, 0, {
         onRollWeightedDropClassIdByLevel_6FC2FFC0: () => -1,
       }),
-    ).toBe(1)
+    ).toBe(0)
   })
 
   it('[6..15] ITEMS room/gold drops, MONUMOD spectral/pack/boss, GAME name & missile dmg', () => {

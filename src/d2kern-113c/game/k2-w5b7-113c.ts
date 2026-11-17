@@ -211,6 +211,7 @@ import {
 } from './regpop-spawn-113c'
 import { SUNIT_FreeUnit113c } from './replay-final11-113c'
 import { EVENT_FreeNode113c, EVENT_SetEventFull113c } from './timer-wheel'
+import { hitD2GameVa113c } from '../va-trace-113c'
 
 /** Isolated reentrant scratch stack pointer for `w5b7` local stack frames. */
 let k2W5B7StackPtr = 0x7eb80000
@@ -283,6 +284,7 @@ export function PACKET_C2S59_MoveTownNpcToCoords_6FCEFF30_113c(
   pPacket: number,
   nPacketSize: number,
 ): number {
+  hitD2GameVa113c(0x6FCEFF30)
   if ((nPacketSize >>> 0) !== 0x11) {
     return 3
   }
@@ -370,6 +372,7 @@ export function PACKET_C2S14_SetUnitOverheadChat_6FCF00A0_113c(
   pPacket: number,
   nPacketSize: number,
 ): number {
+  hitD2GameVa113c(0x6FCF00A0)
   const sz = nPacketSize >>> 0
   if (sz < 4 || sz > 0x113) {
     return 3
@@ -433,6 +436,7 @@ export function ITEMS_GetBookOrScrollSkillId_6FCF17B0_113c(
   m: D2KernMemory113c,
   pItem: number,
 ): number {
+  hitD2GameVa113c(0x6FCF17B0)
   let nSkillId = -1
   if (ITEMS_CheckItemTypeIdMemPort113c(m, pItem, 0x12) !== 0) {
     const nBookIdx = ITEMS_GetMagicSuffix113c(m, pItem, 0) & 0xffff
@@ -467,6 +471,7 @@ export function ITEMS_FindMatchingInventoryBookForScroll_6FCF1B20_113c(
   pUnit: number,
   pOutSpaceRemaining: number,
 ): number {
+  hitD2GameVa113c(0x6FCF1B20)
   if (ITEMS_CheckItemTypeIdMemPort113c(m, pScrollItem, 0x16) === 0) {
     return 0
   }
@@ -519,6 +524,7 @@ export function ITEMS_CanEquipPairedBodyLocItem_6FCF1C00_113c(
   pUnit: number,
   ppSecondaryItem: number,
 ): number {
+  hitD2GameVa113c(0x6FCF1C00)
   if (pUnit === 0 || pItem === 0 || m.u32(pItem >>> 0) !== 4) {
     return 0
   }
@@ -628,6 +634,7 @@ export function ITEMS_PopulateHandItemFlagsStrc_6FCF1F60_113c(
   pUnit: number,
   pOutHandFlags: number,
 ): void {
+  hitD2GameVa113c(0x6FCF1F60)
   if (pItem === 0) {
     throw new D2CommonAssertError('ItemMode.cpp', 0x676)
   }
@@ -693,6 +700,7 @@ export function ITEMS_HasConflictingCarry1OrQuestItemInList_6FCF2070_113c(
   pCandidateItemsTxt: number,
   pCandidateItem: number,
 ): number {
+  hitD2GameVa113c(0x6FCF2070)
   let nCarry1UniqueId = -1
   if (pCandidateItem !== 0 && m.u32(pCandidateItem >>> 0) === 4) {
     if ((ITEMS_GetItemQuality113c(m, pCandidateItem) | 0) === 7) {
@@ -784,6 +792,7 @@ export function ITEMS_IsUsableRangedMissileWeaponSkill_6FCF22C0_113c(
   pSkill: number,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FCF22C0)
   if (pSkill === 0) {
     return 0
   }
@@ -817,6 +826,7 @@ export function ITEMS_RestoreSavedHandSkillIfUsable_6FCF2310_113c(
   pCurrentSkill: number,
   bLeft: number,
 ): void {
+  hitD2GameVa113c(0x6FCF2310)
   if (pUnit === 0 || pCurrentSkill === 0) {
     return
   }
@@ -857,6 +867,7 @@ export function ITEMS_RechargeAllChargedSkillStatsOnItem_6FCF2380_113c(
   pOwnerUnit: number,
   pItem: number,
 ): number {
+  hitD2GameVa113c(0x6FCF2380)
   if (pGame === 0 || pItem === 0 || m.u32(pItem >>> 0) !== 4) {
     return 0
   }
@@ -910,6 +921,7 @@ export function ITEMS_RefreshAllInventoryItemStatListsAndSkills_6FCF24B0_113c(
   m: D2KernMemory113c,
   pUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FCF24B0)
   if (pUnit === 0) {
     return
   }
@@ -954,6 +966,7 @@ export function ITEMS_CompactBeltColumnDown_6FCF2540_113c(
   nBeltSlot: number,
   pUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FCF2540)
   const pInventory = m.u32((pUnit + 0x60) >>> 0) >>> 0
   let col = nBeltSlot & 3
   if (col <= 0) {
@@ -999,6 +1012,7 @@ export function ITEMS_SetDroppedItemGroundModeAndRefreshOwner_6FCF2840_113c(
   pOwnerUnit: number,
   wActionType: number,
 ): void {
+  hitD2GameVa113c(0x6FCF2840)
   const dwUnitType = pItem === 0 ? 6 : (m.u32(pItem >>> 0) >>> 0)
   const dwUnitGuid = pItem === 0 ? 0xffffffff : (m.u32((pItem + 0x0c) >>> 0) >>> 0)
   const pRoom = UNITS_GetRoom113c(m, pItem) >>> 0
@@ -1027,6 +1041,7 @@ export function ITEMS_ZeroScrollOrTomeSkillChargesAndSync22_6FCF2BE0_113c(
   pItem: number,
   pUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FCF2BE0)
   const nSkillId = ITEMS_GetScrollOrTomeSkillId113c(m, pItem) | 0
   if (nSkillId === -1) {
     return
@@ -1064,6 +1079,7 @@ export function ITEMS_DestroyCursorItemAndNotify_6FCF2C70_113c(
   pItem: number,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FCF2C70)
   const pInventory = m.u32((pUnit + 0x60) >>> 0) >>> 0
   if (pItem === 0) {
     return 0
@@ -1109,6 +1125,7 @@ export function ITEMS_RemoveBeltItemAndFreeUnit_6FCF2CF0_113c(
   pItem: number,
   pUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FCF2CF0)
   if (pItem !== 0) {
     m.setU32((pItem + 0xc4) >>> 0, (m.u32((pItem + 0xc4) >>> 0) & ~2) >>> 0)
   }
@@ -1154,6 +1171,7 @@ export function ITEMS_RemoveGridItemAndFreeUnit_6FCF2D90_113c(
   pGame: number,
   bSendRemovePacket: number,
 ): void {
+  hitD2GameVa113c(0x6FCF2D90)
   if (pGame === 0) {
     throw new D2CommonAssertError('ItemMode.cpp', 0xf70)
   }
@@ -1208,6 +1226,7 @@ export function ITEMS_AddScrollOrTomeSkillChargesAndSync22_6FCF31D0_113c(
   pUnit: number,
   nDeltaCharges: number,
 ): void {
+  hitD2GameVa113c(0x6FCF31D0)
   if (pUnit === 0) {
     throw new D2CommonAssertError('ItemMode.cpp', 0x203)
   }
@@ -1256,6 +1275,7 @@ export function ITEMS_PlaceCursorItemIntoBelt_6FCF4E80_113c(
   bAutoPlace: number,
   pOutRejectReason: number,
 ): number {
+  hitD2GameVa113c(0x6FCF4E80)
   if (pGame === 0) {
     throw new D2CommonAssertError('ItemMode.cpp', 0x11fc)
   }
@@ -1339,6 +1359,7 @@ export function ITEMS_StripAndEmptyUnitInventory_6FCF5590_113c(
   pUnit: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FCF5590)
   if (pUnit === 0) {
     return
   }
@@ -1391,6 +1412,7 @@ export function ITEMS_BreakEquippedItemAtZeroDurability_6FCF5740_113c(
   pUnit: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FCF5740)
   const pInventory = m.u32((pUnit + 0x60) >>> 0) >>> 0
   ITEMS_SetOrClearCommandFlags113c(m, pItem, 0x100, 1)
   INVENTORY_UpdateWeaponGuidOnRemoval113c(m, m.u32((pUnit + 0x60) >>> 0) >>> 0, pItem)
@@ -1427,6 +1449,7 @@ export function ITEMS_SwapCursorItemWithBeltItem_6FCF5A00_113c(
   dwBeltItemGuid: number,
   pOutRejectReason: number,
 ): number {
+  hitD2GameVa113c(0x6FCF5A00)
   if (pGame === 0) throw new D2CommonAssertError('ItemMode.cpp', 0x128b)
   if (pUnit === 0) throw new D2CommonAssertError('ItemMode.cpp', 0x128c)
   m.setU32(pOutRejectReason >>> 0, 0)
@@ -1499,6 +1522,7 @@ export function ITEMS_AutoPlaceItemIntoUnitGridPage_6FCF6590_113c(
   szFile: number,
   nLine: number,
 ): number {
+  hitD2GameVa113c(0x6FCF6590)
   if (pGame === 0) throw new D2CommonAssertError('ItemMode.cpp', 0x747)
   const pInventory = m.u32((pUnit + 0x60) >>> 0) >>> 0
   if (pInventory === 0) throw new D2CommonAssertError('ItemMode.cpp', 0x74a)
@@ -1551,6 +1575,7 @@ export function ITEMS_SyncNewlyIdentifiedInventoryItem_6FCF6BC0_113c(
   pItem: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FCF6BC0)
   const pInventory = m.u32((pUnit + 0x60) >>> 0) >>> 0
   if (ITEMS_CheckCommandFlags113c(m, pItem, 0x10, 0x1381, 0x6fd1b14c) !== 0 || pInventory === 0) {
     return
@@ -1580,6 +1605,7 @@ export function ITEMS_PickupGoldItemAndDistributeOrDropRemainder_6FCF6C80_113c(
   pGame: number,
   pGoldItem: number,
 ): void {
+  hitD2GameVa113c(0x6FCF6C80)
   const nMaxGold = STATLIST_GetUnitGoldBankLimit113c(m, pPlayer) | 0
   const nCurGold = STATLIST_GetUnitStat113c(m, pPlayer, 0x0e, 0) | 0
   const nPileGold = STATLIST_GetUnitStat113c(m, pGoldItem, 0x0e, 0) | 0
@@ -1663,6 +1689,7 @@ export function ITEMS_DecrementScrollOrTomeSkillChargeAndResetRightSkill_6FCF8DE
   pUnit: number,
   nSkillId: number,
 ): void {
+  hitD2GameVa113c(0x6FCF8DE0)
   const pSkill = SKILLS_GetSkillById113c(m, pUnit, nSkillId, -1) >>> 0
   if (pSkill === 0) {
     throw new D2CommonAssertError('ItemMode.cpp', 0xfc5)
@@ -1701,6 +1728,7 @@ export function SUNITDMG_OpenMatchingObjectAtUnitPos_6FCFAB00_113c(
   pUnit: number,
   dwObjectClassId: number,
 ): void {
+  hitD2GameVa113c(0x6FCFAB00)
   const pRoom = UNITS_GetRoom113c(m, pUnit) >>> 0
   if (pRoom === 0) {
     return
@@ -1760,6 +1788,7 @@ export function SUNITDMG_CollectPartyExpMemberCallback_6FCFAED0_113c(
   pMember: number,
   pExpCtx: number,
 ): void {
+  hitD2GameVa113c(0x6FCFAED0)
   if (!isUnitLivingPlayerOrMonster113c(m, pMember)) {
     return
   }
@@ -1823,6 +1852,7 @@ export function SUNITDMG_OnFreezeStateExpiredCallback_6FCFB4C0_113c(
   nState: number,
   _pStatList = 0,
 ): void {
+  hitD2GameVa113c(0x6FCFB4C0)
   if (!isUnitLivingPlayerOrMonster113c(m, pUnit)) {
     if (STATES_CheckStateMaskExpOnUnit113c(m, pUnit, nState) !== 0) {
       return
@@ -1847,6 +1877,7 @@ export function SUNITDMG_OnStunOrFreezeEndNeutralCallback_6FCFBD90_113c(
   nState: number,
   _pStatList = 0,
 ): void {
+  hitD2GameVa113c(0x6FCFBD90)
   if (!isUnitLivingPlayerOrMonster113c(m, pUnit)) {
     if (STATES_CheckStateMaskExpOnUnit113c(m, pUnit, nState) !== 0) {
       return
@@ -1908,6 +1939,7 @@ export function SUNITDMG_RollSkillPhysAndElemDamage_6FCFCE00_113c(
   nSkillLevel: number,
   pDmg: number,
 ): void {
+  hitD2GameVa113c(0x6FCFCE00)
   if ((nSkillId | 0) < 0) {
     return
   }
@@ -1947,6 +1979,7 @@ export function SUNITDMG_ApplyRadialMissileSplashDamage_6FCFE380_113c(
     | ((m: D2KernMemory113c, pGame: number, pMissile: number, pTarget: number) => number),
   dwFindFlags: number,
 ): number {
+  hitD2GameVa113c(0x6FCFE380)
   const pStartRoom = UNITS_GetRoom113c(m, pMissile) >>> 0
   const pRoom = ROOM_FindRoomContainingSubtile113c(m, pStartRoom, nCenterX, nCenterY) >>> 0
   const effFlags = dwFindFlags === 0 ? 0x583 : (dwFindFlags >>> 0)
@@ -2038,6 +2071,7 @@ export function SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
   dwUnitType: number,
   pArg: number,
 ): number {
+  hitD2GameVa113c(0x6FCFFCC0)
   if (pGame === 0) throw new D2CommonAssertError('SUnit.cpp', 0x7b3)
   if (pfnPredicate === 0) throw new D2CommonAssertError('SUnit.cpp', 0x7b4)
   let pBuckets = 0
@@ -2093,6 +2127,7 @@ export function SUNIT_LinkPortalPairCoordsAndLevels_6FCFFDC0_113c(
   pPortalA: number,
   pPortalB: number,
 ): void {
+  hitD2GameVa113c(0x6FCFFDC0)
   if (pPortalA === 0) throw new D2CommonAssertError('SUnit.cpp', 0x754)
   if (pPortalB === 0) throw new D2CommonAssertError('SUnit.cpp', 0x756)
   const [xB, yB] = readUnitPosXY113c(m, pPortalB)
@@ -2138,6 +2173,7 @@ export function SUNIT_PlaceUnitAtRoomAndCoords_6FD00D00_113c(
   pGame: number,
   nX: number,
 ): void {
+  hitD2GameVa113c(0x6FD00D00)
   if (pGame === 0) throw new D2CommonAssertError('SUnit.cpp', 0x45d)
   if (pUnit === 0) throw new D2CommonAssertError('SUnit.cpp', 0x45e)
   const nAct = DRLG_GetActNoFromLevelId113c(m, DUNGEON_GetLevelIdFromRoom113c(m, pRoom)) & 0xff
@@ -2230,6 +2266,7 @@ export function SUNIT_EnsurePortalDestRoomPopulatedAndGetOwner_6FD01570_113c(
   pGame: number,
   pPortalUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FD01570)
   if (pPortalUnit === 0) {
     throw new D2CommonAssertError('SUnit.cpp', 0x78b)
   }
@@ -2347,6 +2384,7 @@ export function SUNIT_ScheduleAnimEventsFromStartFrame_6FD02310_113c(
   pGame: number,
   nStartFrame: number,
 ): void {
+  hitD2GameVa113c(0x6FD02310)
   clearUnitAnimEvents0And1_113c(m, pGame, pUnit)
   const nGameFrame = m.u32((pGame + 0xa8) >>> 0) | 0
   scheduleUnitAnimEventsFromFrame113c(m, pGame, pUnit, nStartFrame | 0, nGameFrame)
@@ -2364,6 +2402,7 @@ export function SUNIT_RewindAndRescheduleAnimEvents_6FD02480_113c(
   pGame: number,
   nRewindFrames: number,
 ): void {
+  hitD2GameVa113c(0x6FD02480)
   if ((nRewindFrames | 0) <= 0) {
     return
   }
@@ -2386,6 +2425,7 @@ export function SUNIT_ScaleElapsedAndRescheduleAnimEvents_6FD02600_113c(
   pGame: number,
   nSlowPct: number,
 ): void {
+  hitD2GameVa113c(0x6FD02600)
   clearUnitAnimEvents0And1_113c(m, pGame, pUnit)
   const nGameFrame = m.u32((pGame + 0xa8) >>> 0) | 0
   const nBaseShift = (m.u32((pUnit + 0x44) >>> 0) | 0) >> 8
@@ -2409,6 +2449,7 @@ export function ACT5Q3_FindAnyaTownSpawnPosition_6FD02780_113c(
   pUnit: number,
   pOutCoords: number,
 ): number {
+  hitD2GameVa113c(0x6FD02780)
   const pQuestCtrl = m.u32((pGame + 0x10f4) >>> 0) >>> 0
   if (pQuestCtrl === 0) return 0
   let pQuest = m.u32(pQuestCtrl) >>> 0
@@ -2497,6 +2538,7 @@ export function QUESTS_ChainStatusFilterNotState7_6FD02A40_113c(
   pQuestData: number,
   onStatusFilter?: QuestStatusFilterHook113c,
 ): number {
+  hitD2GameVa113c(0x6FD02A40)
   if (m.u8((pQuestData + 0x0c) >>> 0) !== 7 && m.u8((pQuestData + 0x09) >>> 0) !== 0) {
     return 1
   }
@@ -2526,6 +2568,7 @@ export function QUESTS_ChainStatusFilterOrQuest17_6FD02B70_113c(
   pQuestData: number,
   onStatusFilter?: QuestStatusFilterHook113c,
 ): number {
+  hitD2GameVa113c(0x6FD02B70)
   if (m.u8((pQuestData + 0x0c) >>> 0) !== 5 && m.u8((pQuestData + 0x09) >>> 0) !== 0) {
     return 1
   }
@@ -2571,6 +2614,7 @@ export function QUESTS_ChainStatusFilterPromoteState1A_6FD02D40_113c(
   pQuestData: number,
   onStatusFilter?: QuestStatusFilterHook113c,
 ): number {
+  hitD2GameVa113c(0x6FD02D40)
   const bLastState = m.u8((pQuestData + 0x0c) >>> 0)
   if (bLastState !== 5 && m.u8((pQuestData + 0x09) >>> 0) !== 0) {
     if (bLastState === 0) {
@@ -2604,6 +2648,7 @@ export function QUESTS_ChainStatusFilterPromoteState1B_6FD02E80_113c(
   pQuestData: number,
   onStatusFilter?: QuestStatusFilterHook113c,
 ): number {
+  hitD2GameVa113c(0x6FD02E80)
   const bLastState = m.u8((pQuestData + 0x0c) >>> 0)
   if (bLastState !== 5 && m.u8((pQuestData + 0x09) >>> 0) !== 0) {
     if (bLastState === 0) {
@@ -2637,6 +2682,7 @@ export function QUESTS_ChainStatusFilterNotState5_6FD02F00_113c(
   pQuestData: number,
   onStatusFilter?: QuestStatusFilterHook113c,
 ): number {
+  hitD2GameVa113c(0x6FD02F00)
   if (m.u8((pQuestData + 0x0c) >>> 0) !== 5 && m.u8((pQuestData + 0x09) >>> 0) !== 0) {
     return 1
   }

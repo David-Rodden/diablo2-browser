@@ -26,6 +26,7 @@ import {
   D2GAME_IAT_SGPT_DATATABLES_VA_113C,
   MONSTATS_CheckFlagBit113c,
 } from './regpop-spawn-113c.ts'
+import { hitD2GameVa113c } from '../va-trace-113c.ts'
 
 /**
  * `D2Game.dll` `.data` `0x6FD2D8C0..0x6FD2D922` (`11` rows x `9` bytes):
@@ -127,6 +128,7 @@ export function SKILLS_DeductFromStatPool113c(
   nAmount: number,
   pPool: number,
 ): number {
+  hitD2GameVa113c(0x6FC645E0)
   const addr = pPool >>> 0
   const cur = m.u32(addr) | 0
   const amt = nAmount | 0
@@ -150,6 +152,7 @@ export function REGPOP_CanSpawnPresetMinionPack113c(
   m: Memory113c,
   nClassId: number,
 ): number {
+  hitD2GameVa113c(0x6FC66D90)
   let id = nClassId | 0
   if (id >= 0) {
     const pSgptPtr = m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C)
@@ -185,6 +188,7 @@ export function REGPOP_RemapDirectionalMonsterClassId113c(
   nClassId: number,
   nOrientation: number,
 ): number {
+  hitD2GameVa113c(0x6FC66E80)
   const id = nClassId | 0
   const pSgptPtr = m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C)
   let baseId = id
@@ -242,6 +246,7 @@ export function MONSTER_HasAnyInteractingPlayer113c(
   m: Memory113c,
   pInteract: number,
 ): number {
+  hitD2GameVa113c(0x6FC68370)
   if (pInteract === 0) return 0
   let pNode = m.u32(pInteract >>> 0) >>> 0
   while (pNode !== 0) {
@@ -263,6 +268,7 @@ export function MONSTER_CountInteractingPlayers113c(
   m: Memory113c,
   pInteract: number,
 ): number {
+  hitD2GameVa113c(0x6FC68390)
   if (pInteract === 0) return 0
   let pNode = m.u32(pInteract >>> 0) >>> 0
   let count = 0
@@ -288,6 +294,7 @@ export function MONSTER_CheckPlayerInteractUnlocked113c(
   pMonster: number,
   pPlayer: number,
 ): number {
+  hitD2GameVa113c(0x6FC684F0)
   const pInteract = getMonsterInteractPtr113c(m, pMonster)
   if (pInteract === 0) return 0
   let pNode = m.u32(pInteract) >>> 0
@@ -313,6 +320,7 @@ export function MONSTER_IsPlayerInteractInTradeState113c(
   pMonster: number,
   pPlayer: number,
 ): number {
+  hitD2GameVa113c(0x6FC686D0)
   const pInteract = getMonsterInteractPtr113c(m, pMonster)
   if (pInteract === 0) return 0
   let pNode = m.u32(pInteract) >>> 0
@@ -337,6 +345,7 @@ export function MONSTER_PromotePlayerInteractToTradeState113c(
   pMonster: number,
   pPlayer: number,
 ): void {
+  hitD2GameVa113c(0x6FC68710)
   const pInteract = getMonsterInteractPtr113c(m, pMonster)
   if (pInteract === 0) return
   let pNode = m.u32(pInteract) >>> 0
@@ -365,6 +374,7 @@ export function MONSTER_SetLastInteractTarget113c(
   nInteractType: number,
   dwTargetGuid: number,
 ): number {
+  hitD2GameVa113c(0x6FC68750)
   if (pMonster === 0) return 0
   const dwUnitType = m.u32(pMonster >>> 0) >>> 0
   if (dwUnitType !== 1) return 0
@@ -391,6 +401,7 @@ export function CLIENTS_UpdateCharacterProgression113c(
   nDifficulty: number,
   nActProgression: number,
 ): void {
+  hitD2GameVa113c(0x6FC6A2D0)
   if (pClient === 0) return
   const flagsAddr = (pClient + 0x0a) >>> 0
   const wFlags0 = m.u16(flagsAddr)
@@ -414,6 +425,7 @@ export function SKILLS_DivideValueByMonLvlHp113c(
   nLevelByte: number,
   nValue: number,
 ): number {
+  hitD2GameVa113c(0x6FC6DF60)
   const val = nValue | 0
   const pMonLvl = DATATBLS_GetMonLvlTxtRecord113c(m, nLevelByte & 0xff) >>> 0
   if (pMonLvl === 0) return val
@@ -431,6 +443,7 @@ export function SKILLS_IsDimVisionOrTerrorState113c(
   _m: Memory113c,
   nStateId: number,
 ): number {
+  hitD2GameVa113c(0x6FC6DF80)
   const id = nStateId | 0
   if (id === 0x17) return 1
   return id === 0x38 ? 1 : 0
@@ -449,6 +462,7 @@ export function SKILLS_SrvSt18_ReturnOne113c(
   _nSkillId: number,
   _nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC6DFD0)
   return 1
 }
 
@@ -469,6 +483,7 @@ export function SKILLS_SetNecroSkeletonComponents113c(
   bHasShield: number,
   bIsMage: number,
 ): void {
+  hitD2GameVa113c(0x6FC6E390)
   let tier = nTier | 0
   if (tier > 10) {
     tier = 10
@@ -527,6 +542,7 @@ export function SUNIT_CanTargetOwnPetWithSkill113c(
   pTarget: number,
   nSkillId: number,
 ): number {
+  hitD2GameVa113c(0x6FD00210)
   if (pOwner === 0 || pTarget === 0) return 0
   if (m.u32(pOwner >>> 0) !== 0 && m.u32(pTarget >>> 0) !== 1) return 0
 
@@ -569,6 +585,7 @@ export function SUNIT_GetOwnerUnit113c(
   pUnit: number,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FD00A20)
   if (pUnit === 0) return 0
   const hasOwner = (m.u32((pUnit + 0xc8) >>> 0) >>> 10) & 1
   if (hasOwner === 0) return 0
@@ -590,6 +607,7 @@ export function ACT3Q0_ActiveFilter113c(
   _pQuestFlags: number,
   _pNpcUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FD028A0)
   return 0
 }
 
@@ -606,6 +624,7 @@ export function ACT3Q0_StatusFilter113c(
   _pPlayerFlags: number,
   _pOutStatus: number,
 ): number {
+  hitD2GameVa113c(0x6FD028B0)
   return 0
 }
 
@@ -624,6 +643,7 @@ export function ACT3Q6_MephistoActiveFilter113c(
   pQuestFlags: number,
   _pNpcUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FD028C0)
   if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x16, 0) === 0) {
     if ((nNpcId | 0) === 0xff && m.u8((pQuest + 0x0c) >>> 0) === 1) {
       return 1
@@ -644,6 +664,7 @@ export function ACT3Q5_IsDuranceEntryBlocked113c(
   pGame: number,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FD02900)
   const pQuest13 = findQuestNodeInGame113c(m, pGame, 0x13)
   const pRoom = UNITS_GetRoom113c(m, pUnit) >>> 0
   if (pRoom !== 0) {
@@ -669,6 +690,7 @@ export function ACT3Q5_IsCompellingOrbIntact113c(
   m: Memory113c,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FD02960)
   const pQuest13 = findQuestNodeInGame113c(m, pGame, 0x13)
   if (pQuest13 === 0) {
     return 1
@@ -692,6 +714,7 @@ export function ACT3Q5_BlackenedTempleActiveFilter113c(
   pQuestFlags: number,
   _pNpcUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FD02AB0)
   if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x15, 0) !== 0) {
     return 0
   }
@@ -718,6 +741,7 @@ export function ACT3Q4_ClearOrmusNpcWaitFlag113c(
   m: Memory113c,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FD02B10)
   const pQuest12 = findQuestNodeInGame113c(m, pGame, 0x12)
   if (pQuest12 === 0) return
   const pQuestDataEx = m.u32((pQuest12 + 0x18) >>> 0) >>> 0
@@ -733,6 +757,7 @@ export function ACT3Q4_CheckOrmusNpcWaitFlag113c(
   m: Memory113c,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FD02B40)
   const pQuest12 = findQuestNodeInGame113c(m, pGame, 0x12)
   if (pQuest12 === 0) return 0
   const pQuestDataEx = m.u32((pQuest12 + 0x18) >>> 0) >>> 0
@@ -751,6 +776,7 @@ export function ACT3Q1_GetHratliTargetCoords113c(
   pGame: number,
   pOutCoords: number,
 ): number {
+  hitD2GameVa113c(0x6FD02C40)
   const pQuest11 = findQuestNodeInGame113c(m, pGame, 0x11)
   if (pQuest11 === 0) return 0
   const pQuestDataEx = m.u32((pQuest11 + 0x18) >>> 0) >>> 0
@@ -771,6 +797,7 @@ export function ACT3Q1_GetQuestDataByte04_113c(
   m: Memory113c,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FD02CD0)
   const pQuest11 = findQuestNodeInGame113c(m, pGame, 0x11)
   if (pQuest11 === 0) return 0
   const pQuestDataEx = m.u32((pQuest11 + 0x18) >>> 0) >>> 0
@@ -788,6 +815,7 @@ export function ACT3Q2_AddQuestDataCount1C_113c(
   pGame: number,
   nDelta: number,
 ): void {
+  hitD2GameVa113c(0x6FD02DB0)
   const pQuest10 = findQuestNodeInGame113c(m, pGame, 0x10)
   if (pQuest10 === 0) return
   const pQuestDataEx = m.u32((pQuest10 + 0x18) >>> 0) >>> 0
@@ -805,7 +833,9 @@ export function ACT3Q7_Callback11_Noop113c(
   _m: Memory113c,
   _pQuest: number,
   _pQuestArg: number,
-): void {}
+): void {
+  hitD2GameVa113c(0x6FD02EF0)
+}
 
 /**
  * Act 3 Hratli intro (`dwQuestNo = 0x10` in `0x6FD06660`) `pfActiveFilter` (`+0xEC`, `ret 0xC`):
@@ -821,6 +851,7 @@ export function ACT3Q1_HratliIntroActiveFilter113c(
   pQuestFlags: number,
   _pNpcUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FD03000)
   if ((nNpcId | 0) !== 0xfd) return 0
   return DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x10, 0) === 0 ? 1 : 0
 }
@@ -838,6 +869,7 @@ export function ACT3Q1_HratliIntroStatusFilter113c(
   _pPlayerFlags: number,
   _pOutStatus: number,
 ): number {
+  hitD2GameVa113c(0x6FD03030)
   return 0
 }
 
@@ -855,6 +887,7 @@ export function ACT3Q2_DarkWandererStatusFilter113c(
   _pPlayerFlags: number,
   pOutStatus: number,
 ): number {
+  hitD2GameVa113c(0x6FD03040)
   m.setU8(pOutStatus >>> 0, 0)
   return 0
 }
@@ -871,6 +904,7 @@ export function ACT3Q0_MarkWandererSeenCallback113c(
   pPlayer: number,
   _pArg: number,
 ): number {
+  hitD2GameVa113c(0x6FD030C0)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
   const diffIdx = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
@@ -903,6 +937,7 @@ export function ACT3Q5_CompleteCouncilPartyCallback113c(
   pPlayer: number,
   _pArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD037D0)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
   const diffIdx = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
@@ -933,6 +968,7 @@ export function ACT3Q5_SyncCouncilQuestFlagsCallback113c(
   pPlayer: number,
   _pArg: number,
 ): number {
+  hitD2GameVa113c(0x6FD03A80)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
   const diffIdx = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
@@ -962,6 +998,7 @@ export function ACT3Q4_OnQuestUnitDeactivate113c(
   pQuest: number,
   pUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FD03B00)
   const pQuestDataEx = m.u32((pQuest + 0x18) >>> 0) >>> 0
   if (m.u8((pQuestDataEx + 0x02) >>> 0) !== 1) return
   const unitGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) >>> 0 : 0xffffffff
@@ -984,6 +1021,7 @@ export function ACT3Q4_SyncTomePartyQuestStateCallback113c(
   pPlayer: number,
   _pArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD03C70)
   const pQuest12 = findQuestNodeInGame113c(m, pGame, 0x12)
   if (pQuest12 === 0) return
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
@@ -1008,6 +1046,7 @@ export function ACT3Q3_OnKhalimsWillCubed113c(
   pPlayer: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FD04900)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
   const diffIdx = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
@@ -1042,6 +1081,7 @@ export function ACT3Q7_Callback14_PlayerJoined113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD049E0)
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0
   const pGame = m.u32(pQuestArg >>> 0) >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
@@ -1082,6 +1122,7 @@ export function ACT3Q7_SendQuestUpdatePacket5D_113c(
   nSubState: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD04A50)
   const bQuestByte14 = m.u8((pQuest + 0x14) >>> 0)
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0
   let pClient = 0
@@ -1116,6 +1157,7 @@ export function ACT3Q6_SetGidbinnState0ECallback113c(
   pPlayer: number,
   _pArg: number,
 ): number {
+  hitD2GameVa113c(0x6FD05230)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
   const diffIdx = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
@@ -1138,6 +1180,7 @@ export function ACT3Q6_SyncGidbinnState02Callback113c(
   pPlayer: number,
   _pArg: number,
 ): number {
+  hitD2GameVa113c(0x6FD05370)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
   const diffIdx = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
@@ -1164,6 +1207,7 @@ export function PARTY_FindPlayerRelationNode113c(
   pOwnerUnit: number,
   pTargetUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FD10060)
   const pPlayerData = UNITS_GetPlayerData113c(m, pOwnerUnit) >>> 0
   return findPlayerRelationNodeInList113c(m, pPlayerData, pOwnerUnit, pTargetUnit)
 }
@@ -1181,6 +1225,7 @@ export function PARTY_GetHostileCooldownTick113c(
   pOwnerUnit: number,
   pTargetUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FD100E0)
   if ((pTargetUnit >>> 0) === 0) {
     const pPlayerData0 = UNITS_GetPlayerData113c(m, pOwnerUnit) >>> 0
     if (pPlayerData0 !== 0) {
@@ -1205,6 +1250,7 @@ export function PARTY_GetPlayerRelationState113c(
   pOwnerUnit: number,
   pTargetUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FD101D0)
   const pPlayerData = UNITS_GetPlayerData113c(m, pOwnerUnit) >>> 0
   const pNode = findPlayerRelationNodeInList113c(m, pPlayerData, pOwnerUnit, pTargetUnit)
   if ((pOwnerUnit >>> 0) === (pTargetUnit >>> 0)) return 1
@@ -1225,6 +1271,7 @@ export function PARTY_TestPlayerRelationFlags113c(
   pTargetUnit: number,
   dwFlagMask: number,
 ): number {
+  hitD2GameVa113c(0x6FD102A0)
   const pPlayerData = UNITS_GetPlayerData113c(m, pOwnerUnit) >>> 0
   const pNode = findPlayerRelationNodeInList113c(m, pPlayerData, pOwnerUnit, pTargetUnit)
   if ((pOwnerUnit >>> 0) === (pTargetUnit >>> 0) || pNode === 0) return 0

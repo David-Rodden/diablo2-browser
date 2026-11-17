@@ -515,10 +515,10 @@ describe('Milestone 33 [K2] Lane K2-K: 45 D2Game 0x6FC54660..0x6FC62290 Function
     m.setU32(pQuestCtrl + 0x0c, pQuestRec)
 
     QUESTS_SendGameQuestStatePacket29_6FC55030_113c(m, pGame, pClient)
-    expect(m.u32(pQueue + 0x04)).toBe(0x61)
-    expect(m.u8(pQueue + 0x08)).toBe(0x29)
-    expect(m.u8(pQueue + 0x09)).toBe(0xa5)
-    expect(m.u8(pQueue + 0x08 + 0x60)).toBe(0x5a)
+    expect(m.u32(pQueue + 0x00)).toBe(0x61)
+    expect(m.u8(pQueue + 0x04)).toBe(0x29)
+    expect(m.u8(pQueue + 0x05)).toBe(0xa5)
+    expect(m.u8(pQueue + 0x04 + 0x60)).toBe(0x5a)
   })
 
   it('ports QUESTS_CompleteQuestForPlayerGuidList_6FC55A20_113c (0x6FC55A20)', () => {

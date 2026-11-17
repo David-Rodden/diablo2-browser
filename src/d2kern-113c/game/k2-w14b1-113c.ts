@@ -24,10 +24,6 @@ import { imul32, mulDiv113c } from '../common/int-math'
 import {
   INVENTORY_CanTradeInventoriesSwap113c,
   INVENTORY_GetCursorItem113c,
-  INVENTORY_GetFirstItem113c,
-  INVENTORY_GetNextItem113c,
-  INVENTORY_PlaceItemInSocket113c,
-  INVENTORY_RemoveItemFromInventory113c,
   INVENTORY_SetCursorItem113c,
   INVENTORY_UnitIsItem113c,
 } from '../common/inventory'
@@ -35,15 +31,9 @@ import {
   DRLGWARP_TestRoomTileBit113c,
   ITEMS_CheckCommandFlags113c,
   ITEMS_GetAllowedBodyLocations113c,
-  ITEMS_GetBaseCode113c,
   ITEMS_GetInvPage113c,
-  ITEMS_GetItemQuality113c,
-  ITEMS_GetMagicSuffix113c,
-  ITEMS_GetMaxSockets113c,
   ITEMS_GetTotalMaxStack113c,
   ITEMS_IsThrowableBit113c,
-  ITEMS_SetInvPage113c,
-  ITEMS_SetItemFlag113c,
   ITEMS_SetOrClearCommandFlags113c,
 } from '../common/items'
 import {
@@ -95,7 +85,6 @@ import {
   UNITS_SetTargetUnitForDynamicUnitEx113c,
 } from '../common/unit'
 import type { SparseMemory113c } from '../mem/sparse-memory'
-import { seedRoll } from '../prng'
 import {
   DATATBLS_GetItemsTxtRecordByCode113c,
   DATATBLS_GetMaxLevel113c,
@@ -109,12 +98,7 @@ import {
 } from './ai-fallen-113c'
 import { NET_QueuePacketToClientBuffer113c } from './boot-init-gap-a-113c'
 import { D2GAME_ARENA_FindPlayerSlotByUnit113c } from './boot-init-gap-b-113c'
-import {
-  ITEMS_DropGoldPileAtUnit113c,
-  ITEMS_GetDropItemLevel113c,
-  MONSTER_StartMode113c,
-  SUNITDMG_GetPlayerClientClassId113c,
-} from './combat-a1c-113c'
+import { MONSTER_StartMode113c } from './combat-a1c-113c'
 import { SUNIT_GetServerUnit113c } from './game-strc'
 import {
   ITEMS_ClearInventoryCmdFlag4AndSync3F113c,
@@ -145,9 +129,41 @@ import {
 } from './k2-laneH-0x6fc2-w1-113c'
 import {
   ITEMS_FindQuestItemByBaseCode_6FC2E660_113c,
-  ITEMS_SpawnItemWithParams_6FC31980_113c,
   MONREG_DeleteInactiveMonsterByClassId_6FC3EC40_113c,
 } from './k2-laneI-0x6fc3-w1-113c'
+import {
+  ITEMS_FindFreeGroundDropCoords_6FC2E930_113c,
+  ITEMS_GetDropItemLevel_6FC2E5D0_113c,
+} from './k2-real-itemdrop-113c'
+import { SUNITDMG_GetPlayerClientClassId113c } from './k2-real-s2c-combat-113c'
+import { SKILLS_PostInitSummonedPetStatsAndAi_6FC70070_113c } from './k2-w11b1-113c'
+import {
+  D2Game_6FC3E3D0_113c,
+  D2Game_6FC3E640_113c,
+  D2Game_6FC56470_113c,
+  D2Game_6FC565E0_113c,
+  D2Game_6FC8E930_113c,
+  D2Game_6FC91E10_113c,
+  D2Game_6FC92220_113c,
+  D2Game_6FC93AA0_113c,
+  D2Game_6FC93BA0_113c,
+  D2Game_6FC98D00_113c,
+  D2Game_6FCC3610_113c,
+  D2Game_6FCCA710_113c,
+  D2Game_6FCCAC30_113c,
+  D2Game_6FCDE2A0_113c,
+  D2Game_6FCDE640_113c,
+  D2Game_6FCDEE30_113c,
+  D2Game_6FCDF990_113c,
+  D2Game_6FCE1030_113c,
+  D2Game_6FCE1510_113c,
+  D2Game_6FCEF810_113c,
+  D2Game_6FCF7300_113c,
+  D2Game_6FCF78C0_113c,
+  D2Game_6FCF7CC0_113c,
+  D2Game_6FCF8020_113c,
+  D2Game_6FCF8600_113c,
+} from './k2-w13b1-113c'
 import {
   CLIENT_BroadcastPlayerLeftPacket5C_6FC4BED0_113c,
   QUESTS_AppendQuestTimer_6FC53AF0_113c,
@@ -193,10 +209,18 @@ import {
   SKILLS_InitNecroSkeletonPetComponents_6FC6EB50_113c,
 } from './k2-w3b4-113c'
 import {
+  ACT5Q1_SeqFilter_6FC76D10_113c,
   ACT5Q2_SyncPlayerQuestStateWithQuest20_6FC78530_113c,
   ACT5Q3_TryUseThawPotionOnFrozenAnya_6FC7DDF0_113c,
+  ACT5Q4_SeqFilter_6FC76B10_113c,
+  ACT5Q5_SeqFilter_6FC76BD0_113c,
+  ACT5Q6_SeqFilter_6FC767A0_113c,
 } from './k2-w3b5-113c'
-import { ACT1Q2_UpdatePlayerQuestStateCallback_6FC82040_113c } from './k2-w3b6-113c'
+import {
+  ACT1Q2_UpdatePlayerQuestStateCallback_6FC82040_113c,
+  QUESTS_CheckActiveOrChainRefresh_6FC806E0_113c,
+  QUESTS_CheckFirstTimeActiveOrChainRefresh_6FC801B0_113c,
+} from './k2-w3b6-113c'
 import {
   PLAYER_ClearCursorItemAndNotify42_6FC97D90_113c,
   PLAYER_FreePlayerDataField5CList_6FC900C0_113c,
@@ -217,14 +241,23 @@ import {
   SKILLS_ApplyMonsterSkillBuffAndUMod_6FCB1660_113c,
 } from './k2-w4b5-113c'
 import { SKILLS_GetUnitTargetOrFirstPathCoords_6FCBFA30_113c } from './k2-w4b6-113c'
+import { ACT4Q1_EnsureStartedOrInvokeLinkedQuestCallback_6FCD8A70_113c } from './k2-w4b8-113c'
 import { PLAYER_CanManipulateItemDuringInteractOrTrade_6FC588C0_113c } from './k2-w5b1-113c'
+import {
+  ACT2Q1_SeqFilter_6FCE24A0_113c,
+  ACT2Q3_SeqFilter_6FCE21E0_113c,
+} from './k2-w5b4-113c'
 import {
   C2S_ValidateCursorItem_6FCECF70_113c,
   C2S_ValidateStoredItem_6FCECF00_113c,
   C2S_ValidateWaypointInteraction_6FCECB50_113c,
 } from './k2-w5b6-113c'
 import {
-  ITEMS_RemoveGridItemAndFreeUnit_6FCF2D90_113c,
+  QUESTS_ChainStatusFilterNotState5_6FD02F00_113c,
+  QUESTS_ChainStatusFilterNotState7_6FD02A40_113c,
+  QUESTS_ChainStatusFilterOrQuest17_6FD02B70_113c,
+  QUESTS_ChainStatusFilterPromoteState1A_6FD02D40_113c,
+  QUESTS_ChainStatusFilterPromoteState1B_6FD02E80_113c,
   SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c,
 } from './k2-w5b7-113c'
 import { ACT3Q7_ActivateMephistoBridgeAndPortal_6FD05A60_113c } from './k2-w5b8-113c'
@@ -234,19 +267,36 @@ import {
 } from './k2-w5b9-113c'
 import { NET_SendPacket7F_PartyMemberLifeAndLevel_6FCAE2A0_113c } from './k2-w6b2-113c'
 import { NET_BroadcastSystemChatMessage_6FCEBE70_113c } from './k2-w6b3-113c'
+import { ACT5Q6_PromoteQuest24ToState1AndSync_6FC79930_113c } from './k2-w6b4-113c'
 import { C2S_ValidateItemInteractionByAnimMode_6FCED6D0_113c } from './k2-w6b5-113c'
 import { ITEMS_ResetAndRecountInventoryScrollAndTomeCharges_6FCF4570_113c } from './k2-w6b6-113c'
 import {
   ITEMS_DuplicateItemWithSocketFillers_6FC307E0_113c,
   QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c,
 } from './k2-w7b1-113c'
-import { CUBE_CanPlayerPickupAllCubeItems_6FC91170_113c } from './k2-w7b2-113c'
-import { PETS_FreePlayerPetTable_6FCB7640_113c } from './k2-w7b3-113c'
-import { ITEMS_EquipCursorItemToBodyLoc_6FCF60D0_113c } from './k2-w7b4-113c'
 import {
-  PARTY_LeavePartyForPlayer_6FCBC840_113c,
-  PETS_ClampPlayerPetTypeMaxAndUnsummonExcess_6FCB6EA0_113c,
-} from './k2-w8b2-113c'
+  ACT1Q2_ActivateOrChainQuest_6FC84E10_113c,
+  ACT1Q3_ActivateOrChainQuest_6FC84AA0_113c,
+  ACT1Q3_ActivateQuestState1_6FC83D20_113c,
+  ACT1Q4_ActivateOrChainQuest_6FC846D0_113c,
+  CUBE_CanPlayerPickupAllCubeItems_6FC91170_113c,
+} from './k2-w7b2-113c'
+import {
+  ACT2Q3_SeqCallback_6FCE6390_113c,
+  ACT2Q5_SeqCallback_6FCE69D0_113c,
+  ACT4Q1_SeqCallback_6FCDA270_113c,
+  ACT4Q3_SeqCallback_6FCDA4F0_113c,
+  PETS_FreePlayerPetTable_6FCB7640_113c,
+} from './k2-w7b3-113c'
+import {
+  ACT3Q7_OnOrmusNpcActivateFilter_6FD07050_113c,
+  ITEMS_EquipCursorItemToBodyLoc_6FCF60D0_113c,
+} from './k2-w7b4-113c'
+import {
+  ACT1Q1_SequenceFilter_6FC85410_113c,
+  QUESTS_DefaultSequenceFilter_6FC7AFB0_113c,
+} from './k2-w8b1-113c'
+import { PARTY_LeavePartyForPlayer_6FCBC840_113c } from './k2-w8b2-113c'
 import { UNITS_ChangeAnimMode113c } from './monster-events'
 import {
   MONSTER_AddSkillToUnit113c,
@@ -254,7 +304,6 @@ import {
   ROOM_FindRoomContainingSubtile113c,
   SEED_RollRangeHalfOpen113c,
   SKILLS_GetRecordPtrFast113c,
-  SUNIT_AllocUnitData113c,
   SUNIT_SetMonsterAlignmentState113c,
   SUNIT_ValidatePathTargetUnit113c,
   UNIT_GetPosX113c,
@@ -262,6 +311,7 @@ import {
 } from './regpop-spawn-113c'
 import { CLIENTS_GetPlayerUnit113c, SUNIT_FreeUnit113c } from './replay-final11-113c'
 import { EVENT_FreeNode113c, EVENT_SetEventFull113c } from './timer-wheel'
+import { hitD2GameVa113c } from '../va-trace-113c'
 
 const QUESTRECORD_GetQuestState113c = DRLGWARP_TestRoomTileBit113c
 
@@ -273,38 +323,6 @@ function FOG_FreeClientMemory113c(
   _line: number,
   _zero: number,
 ): void {}
-
-function findDropRoomAtCoords_6FC2E930(
-  m: SparseMemory113c,
-  pRoom: number,
-  spInCoords: number,
-  spOutCoords: number,
-  nSize: number,
-): number {
-  const inX = m.u32(spInCoords >>> 0) | 0
-  const inY = m.u32((spInCoords + 0x04) >>> 0) | 0
-  const candX = (inX + 2) | 0
-  const candY = (inY + 3) | 0
-  if (ROOM_FindRoomContainingSubtile113c(m, pRoom, candX, candY) !== 0) {
-    m.setU32(spOutCoords >>> 0, candX >>> 0)
-    m.setU32((spOutCoords + 0x04) >>> 0, candY >>> 0)
-  } else {
-    m.setU32(spOutCoords >>> 0, inX >>> 0)
-    m.setU32((spOutCoords + 0x04) >>> 0, inY >>> 0)
-  }
-  return (
-    COLLISION_FindFreePositionBasic113c(
-      m,
-      pRoom,
-      spOutCoords,
-      spInCoords,
-      nSize,
-      0x3e01,
-      0x801,
-      1,
-    ) >>> 0
-  )
-}
 
 const K2_W14B1_STACK_BASE = 0x00fa0000
 let k2W14B1StackPtr = K2_W14B1_STACK_BASE
@@ -321,6 +339,86 @@ function allocW14B1Stack(m: SparseMemory113c, size: number): number {
 
 function freeW14B1Stack(base: number): void {
   k2W14B1StackPtr = base >>> 0
+}
+
+function advanceSeed64_113c(m: SparseMemory113c, pSeed: number): number {
+  const lo = BigInt(m.u32(pSeed >>> 0))
+  const hi = BigInt(m.u32((pSeed + 4) >>> 0))
+  const prod = lo * 0x6ac690c5n + hi
+  const newLo = Number(prod & 0xffffffffn) >>> 0
+  const newHi = Number((prod >> 32n) & 0xffffffffn) >>> 0
+  m.setU32(pSeed >>> 0, newLo)
+  m.setU32((pSeed + 4) >>> 0, newHi)
+  return newLo
+}
+
+function dispatchQuestSeqFilterF0_113c(
+  m: SparseMemory113c,
+  pQuest: number,
+  onQuestCallbackF0?: (m: SparseMemory113c, pQuestData: number) => void,
+): number {
+  if (onQuestCallbackF0 !== undefined) {
+    onQuestCallbackF0(m, pQuest)
+    return 1
+  }
+  const fnVa = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+  switch (fnVa) {
+    case 0x6fc767a0:
+      return ACT5Q6_SeqFilter_6FC767A0_113c(m, pQuest) & 0xff
+    case 0x6fc76b10:
+      return ACT5Q4_SeqFilter_6FC76B10_113c(m, pQuest) & 0xff
+    case 0x6fc76bd0:
+      return ACT5Q5_SeqFilter_6FC76BD0_113c(m, pQuest) & 0xff
+    case 0x6fc76d10:
+      return ACT5Q1_SeqFilter_6FC76D10_113c(m, pQuest) & 0xff
+    case 0x6fc79930:
+      ACT5Q6_PromoteQuest24ToState1AndSync_6FC79930_113c(m, pQuest)
+      return 1
+    case 0x6fc7afb0:
+      return QUESTS_DefaultSequenceFilter_6FC7AFB0_113c(m, pQuest) & 0xff
+    case 0x6fc801b0:
+      return QUESTS_CheckFirstTimeActiveOrChainRefresh_6FC801B0_113c(m, pQuest) & 0xff
+    case 0x6fc806e0:
+      return QUESTS_CheckActiveOrChainRefresh_6FC806E0_113c(m, pQuest) & 0xff
+    case 0x6fc83d20:
+      return ACT1Q3_ActivateQuestState1_6FC83D20_113c(m, pQuest) & 0xff
+    case 0x6fc846d0:
+      return ACT1Q4_ActivateOrChainQuest_6FC846D0_113c(m, pQuest) & 0xff
+    case 0x6fc84aa0:
+      return ACT1Q3_ActivateOrChainQuest_6FC84AA0_113c(m, pQuest) & 0xff
+    case 0x6fc84e10:
+      return ACT1Q2_ActivateOrChainQuest_6FC84E10_113c(m, pQuest) & 0xff
+    case 0x6fc85410:
+      return ACT1Q1_SequenceFilter_6FC85410_113c(m, pQuest) & 0xff
+    case 0x6fcd8a70:
+      return ACT4Q1_EnsureStartedOrInvokeLinkedQuestCallback_6FCD8A70_113c(m, pQuest) & 0xff
+    case 0x6fcda270:
+      return ACT4Q1_SeqCallback_6FCDA270_113c(m, pQuest) & 0xff
+    case 0x6fcda4f0:
+      return ACT4Q3_SeqCallback_6FCDA4F0_113c(m, pQuest) & 0xff
+    case 0x6fce21e0:
+      return ACT2Q3_SeqFilter_6FCE21E0_113c(m, pQuest) & 0xff
+    case 0x6fce24a0:
+      return ACT2Q1_SeqFilter_6FCE24A0_113c(m, pQuest) & 0xff
+    case 0x6fce6390:
+      return ACT2Q3_SeqCallback_6FCE6390_113c(m, pQuest) & 0xff
+    case 0x6fce69d0:
+      return ACT2Q5_SeqCallback_6FCE69D0_113c(m, pQuest) & 0xff
+    case 0x6fd02a40:
+      return QUESTS_ChainStatusFilterNotState7_6FD02A40_113c(m, pQuest) & 0xff
+    case 0x6fd02b70:
+      return QUESTS_ChainStatusFilterOrQuest17_6FD02B70_113c(m, pQuest) & 0xff
+    case 0x6fd02d40:
+      return QUESTS_ChainStatusFilterPromoteState1A_6FD02D40_113c(m, pQuest) & 0xff
+    case 0x6fd02e80:
+      return QUESTS_ChainStatusFilterPromoteState1B_6FD02E80_113c(m, pQuest) & 0xff
+    case 0x6fd02f00:
+      return QUESTS_ChainStatusFilterNotState5_6FD02F00_113c(m, pQuest) & 0xff
+    case 0x6fd07050:
+      return ACT3Q7_OnOrmusNpcActivateFilter_6FD07050_113c(m, pQuest) & 0xff
+    default:
+      return 0
+  }
 }
 
 /** D2Game.dll .data 0x6FD1C3D0 (dy) and 0x6FD1C3DC (dx) for Wake of Fire / Sentry 3-trap triangle. */
@@ -364,155 +462,6 @@ const ACT5Q3_ANYA_CODES_NORM_6FD2F1CC: readonly (readonly number[])[] = [
   [0x2072746b, 0x20627277, 0x20667861, 0x20736563, 0x20776c63, 0x206c7462, 0x20726b73],
 ]
 
-function defaultD2Game_6FC565E0_113c(
-  m: SparseMemory113c,
-  pPlayerUnit: number,
-  pItem: number,
-  pGame: number,
-  pInventory: number,
-): void {
-  const nItemMode = pItem !== 0 ? m.u32((pItem + 0x10) >>> 0) : 0
-  if (nItemMode === 0 || nItemMode === 1 || nItemMode === 4) {
-    ITEMS_RemoveGridItemAndFreeUnit_6FCF2D90_113c(m, pPlayerUnit, pItem, pGame, 0)
-    if (pInventory !== 0 && nItemMode === 4) {
-      INVENTORY_SetCursorItem113c(m, pInventory, 0)
-    }
-  }
-}
-
-function defaultD2Game_6FCC3610_113c(
-  m: SparseMemory113c,
-  pGame: number,
-  pSummonArg: number,
-): number {
-  const sp = allocW14B1Stack(m, 0x30)
-  try {
-    const dwFlags = m.u32(pSummonArg >>> 0)
-    const pOwner = m.u32((pSummonArg + 0x04) >>> 0)
-    let x = 0
-    let y = 0
-    if ((dwFlags & 1) !== 0) {
-      x = (m.u32((pSummonArg + 0x14) >>> 0) | 0)
-      y = (m.u32((pSummonArg + 0x18) >>> 0) | 0)
-    } else {
-      const pOutY = sp >>> 0
-      const pOutX = (sp + 0x04) >>> 0
-      SKILLS_GetUnitTargetOrFirstPathCoords_6FCBFA30_113c(m, pOwner, pGame, pOutX, pOutY)
-      x = (m.u32(pOutX) | 0)
-      y = (m.u32(pOutY) | 0)
-    }
-    const pOwnerRoom = UNITS_GetRoom113c(m, pOwner) >>> 0
-    const pRoom = ROOM_FindRoomContainingSubtile113c(m, pOwnerRoom, x, y) >>> 0
-    if (pRoom === 0) return 0
-    const nHcIdx = (m.u32((pSummonArg + 0x08) >>> 0) | 0)
-    const nAnimMode = (m.u32((pSummonArg + 0x10) >>> 0) | 0)
-    const pMonster = SUNIT_AllocUnitData113c(m, 1, nHcIdx, x, y, pGame, pRoom, 1, nAnimMode, 0) >>> 0
-    if (pMonster === 0) return 0
-    m.setU32((pMonster + 0xc4) >>> 0, (m.u32((pMonster + 0xc4) >>> 0) | 0x20000) >>> 0)
-    const nOwnerType = pOwner !== 0 ? m.u32(pOwner) : 6
-    const dwOwnerGuid = pOwner !== 0 ? m.u32((pOwner + 0x0c) >>> 0) : 0xffffffff
-    if (m.u32(pMonster) === 1) {
-      const pMonData = m.u32((pMonster + 0x14) >>> 0)
-      const pAiControl = pMonData !== 0 ? m.u32((pMonData + 0x28) >>> 0) : 0
-      if (pAiControl !== 0) {
-        m.setU32((pAiControl + 0x28) >>> 0, pGame >>> 0)
-        m.setU32((pAiControl + 0x2c) >>> 0, dwOwnerGuid >>> 0)
-        m.setU32((pAiControl + 0x30) >>> 0, nOwnerType >>> 0)
-      }
-    }
-    if (pOwner !== 0 && m.u32(pOwner) === 0 && (dwFlags & 2) === 0) {
-      PETS_ClampPlayerPetTypeMaxAndUnsummonExcess_6FCB6EA0_113c(
-        m,
-        m.u32((pSummonArg + 0x1c) >>> 0) | 0,
-        pOwner,
-        pGame,
-        m.u32((pSummonArg + 0x20) >>> 0) | 0,
-      )
-    }
-    let pEvt = m.u32((pMonster + 0xdc) >>> 0)
-    while (pEvt !== 0) {
-      const pNext = m.u32((pEvt + 0x24) >>> 0)
-      if (m.u8(pEvt) === 2) {
-        EVENT_FreeNode113c(m, pGame, pEvt)
-      }
-      pEvt = pNext
-    }
-    const dwFrame = (m.u32((pGame + 0xa8) >>> 0) + 0x19) >>> 0
-    EVENT_SetEventFull113c(m, pGame, pMonster, 2, dwFrame, 0, 0, 0)
-    return pMonster >>> 0
-  } finally {
-    freeW14B1Stack(sp)
-  }
-}
-
-function defaultD2Game_6FC70070_113c(
-  m: SparseMemory113c,
-  pGame: number,
-  pOwnerUnit: number,
-  pPetUnit: number,
-  nSkillId: number,
-  nSkillLevel: number,
-): void {
-  SKILLS_ApplySummonLevelAcAndToHit_6FC6E2A0_113c(m, pOwnerUnit, 0, pGame, pPetUnit, nSkillLevel)
-  SKILLS_ApplySummonStatsPassivesAndEquip_6FC6F970_113c(
-    m,
-    pGame,
-    pOwnerUnit,
-    pPetUnit,
-    nSkillId,
-    nSkillLevel,
-    0,
-  )
-  SKILLS_ApplySummonResistStatList_6FC6E180_113c(m, pOwnerUnit, pPetUnit)
-}
-
-function defaultD2Game_6FC56470_113c(
-  m: SparseMemory113c,
-  pGame: number,
-  pPlayerUnit: number,
-  dwItemCode: number,
-  nItemLevel: number,
-  nQuality: number,
-  bDropIfFull: number,
-): number {
-  const sp = allocW14B1Stack(m, 0x10)
-  try {
-    const pTxt = DATATBLS_GetItemsTxtRecordByCode113c(m, dwItemCode >>> 0, sp) >>> 0
-    if (pTxt === 0) return 0
-    const nLvl = nItemLevel !== 0 ? nItemLevel : m.u8((pTxt + 0xfd) >>> 0)
-    const pItem =
-      ITEMS_SpawnItemWithParams_6FC31980_113c(
-        m,
-        nLvl,
-        1,
-        0,
-        pPlayerUnit,
-        dwItemCode >>> 0,
-        pGame,
-        4,
-        nQuality,
-        bDropIfFull,
-        0,
-        0,
-      ) >>> 0
-    if (pItem === 0) return 0
-    const nMaxStack = ITEMS_GetTotalMaxStack113c(m, pItem) | 0
-    if (nMaxStack > 0) {
-      STATLIST_SetUnitStat113c(m, pItem, 0x48, nMaxStack, 0)
-    }
-    ITEMS_SetItemFlag113c(m, pItem, 0x10, 1)
-    if (bDropIfFull === 0 && pPlayerUnit !== 0) {
-      const pInv = m.u32((pPlayerUnit + 0x60) >>> 0)
-      if (pInv !== 0 && m.u32((pInv + 0x20) >>> 0) === 0) {
-        m.setU32((pInv + 0x20) >>> 0, pItem)
-      }
-    }
-    return pItem >>> 0
-  } finally {
-    freeW14B1Stack(sp)
-  }
-}
-
 /**
  * [1/44] Clears type-2 AI events on `pUnit` and dispatches treasure drop table evaluation (`0x6FC3E3D0` or `0x6FC3E640`).
  * @dll D2Game.dll
@@ -532,6 +481,7 @@ export function ITEMS_EvaluateMonsterDropTableEntry_6FC3E900_113c(
     pGame: number,
   ) => void,
 ): void {
+  hitD2GameVa113c(0x6FC3E900)
   if (pUnit !== 0) {
     let pEvt = m.u32((pUnit + 0xdc) >>> 0)
     while (pEvt !== 0) {
@@ -547,9 +497,13 @@ export function ITEMS_EvaluateMonsterDropTableEntry_6FC3E900_113c(
   if (dwField14 !== 0) {
     if (onEvalTable14 !== undefined) {
       onEvalTable14(m, pDropContext, pUnit, pGame)
+    } else {
+      D2Game_6FC3E3D0_113c(m, pDropContext, pUnit, pGame)
     }
   } else if (onEvalTableDefault !== undefined) {
     onEvalTableDefault(m, pDropContext, pUnit, pGame)
+  } else {
+    D2Game_6FC3E640_113c(m, pUnit, pDropContext, pGame)
   }
 }
 
@@ -564,18 +518,23 @@ export function QUESTS_FindAndDeletePlayerQuestItemByCode_6FC566A0_113c(
   pGame: number,
   pPlayerUnit: number,
   dwItemCode: number,
-  onDeleteQuestItem: (
+  onDeleteQuestItem?: (
     m: SparseMemory113c,
     pPlayerUnit: number,
     pItem: number,
     pGame: number,
     pInventory: number,
-  ) => void = defaultD2Game_6FC565E0_113c,
+  ) => void,
 ): void {
+  hitD2GameVa113c(0x6FC566A0)
   const pItem = ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, pPlayerUnit, pGame, dwItemCode) >>> 0
   if (pItem !== 0) {
     const pInventory = m.u32((pPlayerUnit + 0x60) >>> 0)
-    onDeleteQuestItem(m, pPlayerUnit, pItem, pGame, pInventory)
+    if (onDeleteQuestItem !== undefined) {
+      onDeleteQuestItem(m, pPlayerUnit, pItem, pGame, pInventory)
+    } else {
+      D2Game_6FC565E0_113c(m, pItem, pPlayerUnit, pGame, pInventory)
+    }
   }
 }
 
@@ -591,14 +550,15 @@ export function ACT3Q7_OnMephistoPortalWarpToAct4_6FC566C0_113c(
   pPlayerUnit: number,
   nTargetLevelId: number,
   _dwUnused = 0,
-  onDeleteQuestItem: (
+  onDeleteQuestItem?: (
     m: SparseMemory113c,
     pPlayerUnit: number,
     pItem: number,
     pGame: number,
     pInventory: number,
-  ) => void = defaultD2Game_6FC565E0_113c,
+  ) => void,
 ): void {
+  hitD2GameVa113c(0x6FC566C0)
   const pPlayerData1 = UNITS_GetPlayerData113c(m, pPlayerUnit) >>> 0
   const pPlayerData2 = UNITS_GetPlayerData113c(m, pPlayerUnit) >>> 0
   const bDifficulty = m.u8((pGame + 0x6d) >>> 0)
@@ -618,7 +578,12 @@ export function ACT3Q7_OnMephistoPortalWarpToAct4_6FC566C0_113c(
       const pItem =
         ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, pPlayerUnit, pGame, khalimCodes[i]!) >>> 0
       if (pItem !== 0) {
-        onDeleteQuestItem(m, pPlayerUnit, pItem, pGame, m.u32((pPlayerUnit + 0x60) >>> 0))
+        const pInv = m.u32((pPlayerUnit + 0x60) >>> 0)
+        if (onDeleteQuestItem !== undefined) {
+          onDeleteQuestItem(m, pPlayerUnit, pItem, pGame, pInv)
+        } else {
+          D2Game_6FC565E0_113c(m, pItem, pPlayerUnit, pGame, pInv)
+        }
       }
     }
   }
@@ -654,12 +619,9 @@ export function MISSILE_SrvDo_MonsterCarrierSubSpawn_6FC60EB0_113c(
   m: SparseMemory113c,
   pGame: number,
   pMissile: number,
-  onSpawnPet: (
-    m: SparseMemory113c,
-    pGame: number,
-    pSummonArg: number,
-  ) => number = defaultD2Game_6FCC3610_113c,
+  onSpawnPet?: (m: SparseMemory113c, pGame: number, pSummonArg: number) => number,
 ): number {
+  hitD2GameVa113c(0x6FC60EB0)
   if (pMissile === 0) return 2
   const dwBit10 = (m.u32((pMissile + 0xc8) >>> 0) >>> 10) & 1
   if (dwBit10 === 0) return 2
@@ -721,7 +683,10 @@ export function MISSILE_SrvDo_MonsterCarrierSubSpawn_6FC60EB0_113c(
     m.setU32((pSummonArg + 0x18) >>> 0, UNIT_GetPosY113c(m, pMissile) >>> 0)
     m.setU32((pSummonArg + 0x1c) >>> 0, bPetType >>> 0)
     m.setU32((pSummonArg + 0x20) >>> 0, 0)
-    const pSpawned = onSpawnPet(m, pGame, pSummonArg) >>> 0
+    const pSpawned =
+      (onSpawnPet !== undefined
+        ? onSpawnPet(m, pGame, pSummonArg)
+        : D2Game_6FCC3610_113c(m, pSummonArg, pGame)) >>> 0
     if (pSpawned !== 0) {
       const dwCarrierGuid = m.u32((pCarrierMon + 0x0c) >>> 0)
       if (m.u32(pSpawned) === 1) {
@@ -765,12 +730,9 @@ export function SKILLS_SrvDo_Summon3TrapsInTriangle_6FC63D40_113c(
   pUnit: number,
   nSkillId: number,
   nSkillLevel: number,
-  onSpawnPet: (
-    m: SparseMemory113c,
-    pGame: number,
-    pSummonArg: number,
-  ) => number = defaultD2Game_6FCC3610_113c,
+  onSpawnPet?: (m: SparseMemory113c, pGame: number, pSummonArg: number) => number,
 ): number {
+  hitD2GameVa113c(0x6FC63D40)
   if ((nSkillId | 0) < 0) return 0
   const pDataTablesPtr = m.u32(0x6fd1829c)
   const pDataTables = pDataTablesPtr !== 0 ? m.u32(pDataTablesPtr) : 0
@@ -842,7 +804,10 @@ export function SKILLS_SrvDo_Summon3TrapsInTriangle_6FC63D40_113c(
       m.setU32((pSummonArg + 0x08) >>> 0, (nSummonId + i) >>> 0)
       m.setU32((pSummonArg + 0x14) >>> 0, (targetX + SENTRY_TRAP_DX_6FD1C3DC[i]!) >>> 0)
       m.setU32((pSummonArg + 0x18) >>> 0, (targetY + SENTRY_TRAP_DY_6FD1C3D0[i]!) >>> 0)
-      const pSpawned = onSpawnPet(m, pGame, pSummonArg) >>> 0
+      const pSpawned =
+        (onSpawnPet !== undefined
+          ? onSpawnPet(m, pGame, pSummonArg)
+          : D2Game_6FCC3610_113c(m, pSummonArg, pGame)) >>> 0
       if (pSpawned !== 0) {
         MONSTER_AddSkillToUnit113c(m, nSkillLevel, nSkillId, pSpawned, 1)
         SKILLS_ApplySummonStatsPassivesAndEquip_6FC6F970_113c(
@@ -883,12 +848,9 @@ export function SKILLS_SrvDo_SummonPetAtTarget_6FC66560_113c(
   pUnit: number,
   nSkillId: number,
   nSkillLevel: number,
-  onSpawnPet: (
-    m: SparseMemory113c,
-    pGame: number,
-    pSummonArg: number,
-  ) => number = defaultD2Game_6FCC3610_113c,
+  onSpawnPet?: (m: SparseMemory113c, pGame: number, pSummonArg: number) => number,
 ): number {
+  hitD2GameVa113c(0x6FC66560)
   if ((nSkillId | 0) < 0) return 0
   const pDataTablesPtr = m.u32(0x6fd1829c)
   const pDataTables = pDataTablesPtr !== 0 ? m.u32(pDataTablesPtr) : 0
@@ -938,7 +900,10 @@ export function SKILLS_SrvDo_SummonPetAtTarget_6FC66560_113c(
     m.setU32((pSummonArg + 0x18) >>> 0, m.u32(spY))
     m.setU32((pSummonArg + 0x1c) >>> 0, nPetType >>> 0)
     m.setU32((pSummonArg + 0x20) >>> 0, nPetMax >>> 0)
-    const pSpawned = onSpawnPet(m, pGame, pSummonArg) >>> 0
+    const pSpawned =
+      (onSpawnPet !== undefined
+        ? onSpawnPet(m, pGame, pSummonArg)
+        : D2Game_6FCC3610_113c(m, pSummonArg, pGame)) >>> 0
     if (pSpawned === 0) return 0
     SUBPARTY_InsertUnitAfterBucketHead_6FD0FE40_113c(
       m,
@@ -991,12 +956,9 @@ export function SKILLS_SrvDo_SummonDruidSpirit_6FC66720_113c(
   pUnit: number,
   nSkillId: number,
   nSkillLevel: number,
-  onSpawnPet: (
-    m: SparseMemory113c,
-    pGame: number,
-    pSummonArg: number,
-  ) => number = defaultD2Game_6FCC3610_113c,
+  onSpawnPet?: (m: SparseMemory113c, pGame: number, pSummonArg: number) => number,
 ): number {
+  hitD2GameVa113c(0x6FC66720)
   if ((nSkillId | 0) < 0) return 0
   const pDataTablesPtr = m.u32(0x6fd1829c)
   const pDataTables = pDataTablesPtr !== 0 ? m.u32(pDataTablesPtr) : 0
@@ -1038,7 +1000,10 @@ export function SKILLS_SrvDo_SummonDruidSpirit_6FC66720_113c(
     m.setU32((pSummonArg + 0x18) >>> 0, 0)
     m.setU32((pSummonArg + 0x1c) >>> 0, nPetType >>> 0)
     m.setU32((pSummonArg + 0x20) >>> 0, nPetMax >>> 0)
-    const pSpawned = onSpawnPet(m, pGame, pSummonArg) >>> 0
+    const pSpawned =
+      (onSpawnPet !== undefined
+        ? onSpawnPet(m, pGame, pSummonArg)
+        : D2Game_6FCC3610_113c(m, pSummonArg, pGame)) >>> 0
     if (pSpawned === 0) return 0
     SUBPARTY_InsertUnitAfterBucketHead_6FD0FE40_113c(
       m,
@@ -1085,12 +1050,9 @@ export function SKILLS_SrvDo_SummonVineOrCreeper_6FC668A0_113c(
   pUnit: number,
   nSkillId: number,
   nSkillLevel: number,
-  onSpawnPet: (
-    m: SparseMemory113c,
-    pGame: number,
-    pSummonArg: number,
-  ) => number = defaultD2Game_6FCC3610_113c,
+  onSpawnPet?: (m: SparseMemory113c, pGame: number, pSummonArg: number) => number,
 ): number {
+  hitD2GameVa113c(0x6FC668A0)
   if ((nSkillId | 0) < 0) return 0
   const pDataTablesPtr = m.u32(0x6fd1829c)
   const pDataTables = pDataTablesPtr !== 0 ? m.u32(pDataTablesPtr) : 0
@@ -1132,7 +1094,10 @@ export function SKILLS_SrvDo_SummonVineOrCreeper_6FC668A0_113c(
     m.setU32((pSummonArg + 0x18) >>> 0, 0)
     m.setU32((pSummonArg + 0x1c) >>> 0, nPetType >>> 0)
     m.setU32((pSummonArg + 0x20) >>> 0, nPetMax >>> 0)
-    const pSpawned = onSpawnPet(m, pGame, pSummonArg) >>> 0
+    const pSpawned =
+      (onSpawnPet !== undefined
+        ? onSpawnPet(m, pGame, pSummonArg)
+        : D2Game_6FCC3610_113c(m, pSummonArg, pGame)) >>> 0
     if (pSpawned === 0) return 0
     m.setU32((pSpawned + 0xc4) >>> 0, (m.u32((pSpawned + 0xc4) >>> 0) & ~0x04) >>> 0)
     STATLIST_SetUnitStat113c(m, pSpawned, 0x4a, 0, 0)
@@ -1216,6 +1181,7 @@ export function CLIENTS_RemoveClientFromGameAndFree_6FC6B7F0_113c(
   bSendSave: number,
   onCancelPlayerTrade_6FC93AA0?: (m: SparseMemory113c, pGame: number, pPlayerUnit: number) => void,
 ): void {
+  hitD2GameVa113c(0x6FC6B7F0)
   if (pGame === 0) {
     throw new D2CommonAssertError('pGame', 0x489)
   }
@@ -1325,6 +1291,8 @@ export function CLIENTS_RemoveClientFromGameAndFree_6FC6B7F0_113c(
       QUESTS_RefreshInventoryQuestItems_6FC54760_113c(m, pPlayer, pGame)
       if (onCancelPlayerTrade_6FC93AA0 !== undefined) {
         onCancelPlayerTrade_6FC93AA0(m, pGame, pPlayer)
+      } else {
+        D2Game_6FC93AA0_113c(m, pGame, pPlayer)
       }
       const pRoom = UNITS_GetRoom113c(m, pPlayer) >>> 0
       if (pRoom !== 0) {
@@ -1385,12 +1353,9 @@ export function SKILLS_SrvDo_SummonDecoy_6FC6D710_113c(
   pUnit: number,
   nSkillId: number,
   nSkillLevel: number,
-  onSpawnPet: (
-    m: SparseMemory113c,
-    pGame: number,
-    pSummonArg: number,
-  ) => number = defaultD2Game_6FCC3610_113c,
+  onSpawnPet?: (m: SparseMemory113c, pGame: number, pSummonArg: number) => number,
 ): number {
+  hitD2GameVa113c(0x6FC6D710)
   const pSkillsTxt = SKILLS_GetRecordPtrFast113c(m, nSkillId) >>> 0
   if (pSkillsTxt === 0 || pUnit === 0 || m.u32(pUnit) !== 0) return 0
   const sp = allocW14B1Stack(m, 0x38)
@@ -1429,7 +1394,10 @@ export function SKILLS_SrvDo_SummonDecoy_6FC6D710_113c(
         nSkillLevel,
       ) | 0
     m.setU32((pSummonArg + 0x20) >>> 0, nPetMax >>> 0)
-    const pSpawned = onSpawnPet(m, pGame, pSummonArg) >>> 0
+    const pSpawned =
+      (onSpawnPet !== undefined
+        ? onSpawnPet(m, pGame, pSummonArg)
+        : D2Game_6FCC3610_113c(m, pSummonArg, pGame)) >>> 0
     if (pSpawned === 0) return 0
     SKILLS_ApplySummonLevelAcAndToHit_6FC6E2A0_113c(m, pUnit, 0, pGame, pSpawned, nSkillLevel)
     const nCalc13C =
@@ -1485,12 +1453,9 @@ export function SKILLS_SrvDo_SummonShadowWarriorOrMaster_6FC6D8C0_113c(
   pUnit: number,
   nSkillId: number,
   nSkillLevel: number,
-  onSpawnPet: (
-    m: SparseMemory113c,
-    pGame: number,
-    pSummonArg: number,
-  ) => number = defaultD2Game_6FCC3610_113c,
+  onSpawnPet?: (m: SparseMemory113c, pGame: number, pSummonArg: number) => number,
 ): number {
+  hitD2GameVa113c(0x6FC6D8C0)
   const pSkillsTxt = SKILLS_GetRecordPtrFast113c(m, nSkillId) >>> 0
   if (pSkillsTxt === 0) return 0
   const sp = allocW14B1Stack(m, 0x38)
@@ -1531,7 +1496,10 @@ export function SKILLS_SrvDo_SummonShadowWarriorOrMaster_6FC6D8C0_113c(
         nSkillLevel,
       ) | 0
     m.setU32((pSummonArg + 0x20) >>> 0, nPetMax >>> 0)
-    const pSpawned = onSpawnPet(m, pGame, pSummonArg) >>> 0
+    const pSpawned =
+      (onSpawnPet !== undefined
+        ? onSpawnPet(m, pGame, pSummonArg)
+        : D2Game_6FCC3610_113c(m, pSummonArg, pGame)) >>> 0
     if (pSpawned === 0) return 0
     STATES_UpdateOrClearState98Transform113c(m, pSpawned, pUnit)
     const nOwnerMaxLife = STATLIST_GetMaxLifeFromUnit113c(m, pUnit) | 0
@@ -1597,12 +1565,9 @@ export function SKILLS_SpawnBoneWallSegment_6FC70E60_113c(
   x: number,
   y: number,
   nSkillLevel: number,
-  onSpawnPet: (
-    m: SparseMemory113c,
-    pGame: number,
-    pSummonArg: number,
-  ) => number = defaultD2Game_6FCC3610_113c,
+  onSpawnPet?: (m: SparseMemory113c, pGame: number, pSummonArg: number) => number,
 ): number {
+  hitD2GameVa113c(0x6FC70E60)
   const pSkillsTxt = SKILLS_GetRecordPtrFast113c(m, nSkillId) >>> 0
   if (nSkillId === 0) return 0
   const sp = allocW14B1Stack(m, 0x38)
@@ -1645,7 +1610,10 @@ export function SKILLS_SpawnBoneWallSegment_6FC70E60_113c(
         nSkillLevel,
       ) | 0
     m.setU32((pSummonArg + 0x20) >>> 0, nPetMax >>> 0)
-    const pSpawned = onSpawnPet(m, pGame, pSummonArg) >>> 0
+    const pSpawned =
+      (onSpawnPet !== undefined
+        ? onSpawnPet(m, pGame, pSummonArg)
+        : D2Game_6FCC3610_113c(m, pSummonArg, pGame)) >>> 0
     if (pSpawned === 0) return 0
     SKILLS_ApplySummonStatsPassivesAndEquip_6FC6F970_113c(
       m,
@@ -1676,12 +1644,9 @@ export function SKILLS_SrvDo_BoneWall_6FC70FE0_113c(
   pUnit: number,
   nSkillId: number,
   nSkillLevel: number,
-  onSpawnPet: (
-    m: SparseMemory113c,
-    pGame: number,
-    pSummonArg: number,
-  ) => number = defaultD2Game_6FCC3610_113c,
+  onSpawnPet?: (m: SparseMemory113c, pGame: number, pSummonArg: number) => number,
 ): number {
+  hitD2GameVa113c(0x6FC70FE0)
   const sp = allocW14B1Stack(m, 0xa0)
   try {
     const pOutY = sp >>> 0
@@ -1739,7 +1704,10 @@ export function SKILLS_SrvDo_BoneWall_6FC70FE0_113c(
         nSkillLevel,
       ) | 0
     m.setU32((pSummonArg + 0x20) >>> 0, nPetMax >>> 0)
-    const pCenterSeg = onSpawnPet(m, pGame, pSummonArg) >>> 0
+    const pCenterSeg =
+      (onSpawnPet !== undefined
+        ? onSpawnPet(m, pGame, pSummonArg)
+        : D2Game_6FCC3610_113c(m, pSummonArg, pGame)) >>> 0
     if (pCenterSeg === 0) return 0
     const nOwnerType = pUnit !== 0 ? m.u32(pUnit) : 6
     const dwOwnerGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
@@ -1824,20 +1792,17 @@ export function SKILLS_SrvDo_IronGolem_6FC71540_113c(
   pUnit: number,
   nSkillId: number,
   nSkillLevel: number,
-  onSpawnPet: (
-    m: SparseMemory113c,
-    pGame: number,
-    pSummonArg: number,
-  ) => number = defaultD2Game_6FCC3610_113c,
-  onInitGolemStats: (
+  onSpawnPet?: (m: SparseMemory113c, pGame: number, pSummonArg: number) => number,
+  onInitGolemStats?: (
     m: SparseMemory113c,
     pGame: number,
     pOwnerUnit: number,
     pPetUnit: number,
     nSkillId: number,
     nSkillLevel: number,
-  ) => void = defaultD2Game_6FC70070_113c,
+  ) => void,
 ): number {
+  hitD2GameVa113c(0x6FC71540)
   if (
     SKILLS_SrvSt20_CanCreateIronGolemOnItem_6FC6EDD0_113c(
       m,
@@ -1901,7 +1866,10 @@ export function SKILLS_SrvDo_IronGolem_6FC71540_113c(
       m.setU32((pSummonArg + 0x14) >>> 0, UNIT_GetPosX113c(m, pTargetItem) >>> 0)
       m.setU32((pSummonArg + 0x18) >>> 0, UNIT_GetPosY113c(m, pTargetItem) >>> 0)
     }
-    const pGolem = onSpawnPet(m, pGame, pSummonArg) >>> 0
+    const pGolem =
+      (onSpawnPet !== undefined
+        ? onSpawnPet(m, pGame, pSummonArg)
+        : D2Game_6FCC3610_113c(m, pSummonArg, pGame)) >>> 0
     if (pGolem === 0) return 0
     if (pTargetItem !== 0) {
       const pItemRoom = UNITS_GetRoom113c(m, pTargetItem) >>> 0
@@ -1919,7 +1887,18 @@ export function SKILLS_SrvDo_IronGolem_6FC71540_113c(
       const bBodyLoc = m.u8(pOutBodyLoc1)
       ITEMS_EquipCursorItemToBodyLoc_6FCF60D0_113c(m, pGolem, dwItemGuid, pGame, bBodyLoc, 1, 0)
     }
-    onInitGolemStats(m, pGame, pUnit, pGolem, nSkillId, nSkillLevel)
+    if (onInitGolemStats !== undefined) {
+      onInitGolemStats(m, pGame, pUnit, pGolem, nSkillId, nSkillLevel)
+    } else {
+      SKILLS_PostInitSummonedPetStatsAndAi_6FC70070_113c(
+        m,
+        pGolem,
+        pUnit,
+        nSkillLevel,
+        pGame,
+        nSkillId,
+      )
+    }
     const pClient =
       pUnit !== 0 && m.u32(pUnit) === 0
         ? m.u32((UNITS_GetPlayerData113c(m, pUnit) + 0x9c) >>> 0)
@@ -1950,20 +1929,17 @@ export function SKILLS_SrvDo_ClayBloodFireGolem_6FC71750_113c(
   pUnit: number,
   nSkillId: number,
   nSkillLevel: number,
-  onSpawnPet: (
-    m: SparseMemory113c,
-    pGame: number,
-    pSummonArg: number,
-  ) => number = defaultD2Game_6FCC3610_113c,
-  onInitGolemStats: (
+  onSpawnPet?: (m: SparseMemory113c, pGame: number, pSummonArg: number) => number,
+  onInitGolemStats?: (
     m: SparseMemory113c,
     pGame: number,
     pOwnerUnit: number,
     pPetUnit: number,
     nSkillId: number,
     nSkillLevel: number,
-  ) => void = defaultD2Game_6FC70070_113c,
+  ) => void,
 ): number {
+  hitD2GameVa113c(0x6FC71750)
   if (pUnit !== 0) {
     m.setU32((pUnit + 0xc4) >>> 0, (m.u32((pUnit + 0xc4) >>> 0) | 0x40) >>> 0)
   }
@@ -1998,9 +1974,23 @@ export function SKILLS_SrvDo_ClayBloodFireGolem_6FC71750_113c(
         nSkillLevel,
       ) | 0
     m.setU32((pSummonArg + 0x20) >>> 0, nPetMax >>> 0)
-    const pGolem = onSpawnPet(m, pGame, pSummonArg) >>> 0
+    const pGolem =
+      (onSpawnPet !== undefined
+        ? onSpawnPet(m, pGame, pSummonArg)
+        : D2Game_6FCC3610_113c(m, pSummonArg, pGame)) >>> 0
     if (pGolem === 0) return 0
-    onInitGolemStats(m, pGame, pUnit, pGolem, nSkillId, nSkillLevel)
+    if (onInitGolemStats !== undefined) {
+      onInitGolemStats(m, pGame, pUnit, pGolem, nSkillId, nSkillLevel)
+    } else {
+      SKILLS_PostInitSummonedPetStatsAndAi_6FC70070_113c(
+        m,
+        pGolem,
+        pUnit,
+        nSkillLevel,
+        pGame,
+        nSkillId,
+      )
+    }
     const pClient =
       pUnit !== 0 && m.u32(pUnit) === 0
         ? m.u32((UNITS_GetPlayerData113c(m, pUnit) + 0x9c) >>> 0)
@@ -2031,12 +2021,9 @@ export function SKILLS_SrvDo_RaiseSkeletonOrMage_6FC718B0_113c(
   pUnit: number,
   nSkillId: number,
   nSkillLevel: number,
-  onSpawnPet: (
-    m: SparseMemory113c,
-    pGame: number,
-    pSummonArg: number,
-  ) => number = defaultD2Game_6FCC3610_113c,
+  onSpawnPet?: (m: SparseMemory113c, pGame: number, pSummonArg: number) => number,
 ): number {
+  hitD2GameVa113c(0x6FC718B0)
   SUNIT_ValidatePathTargetUnit113c(m, pUnit, pGame)
   const pCorpse = PATH_GetTargetUnit113c(m, m.u32((pUnit + 0x2c) >>> 0)) >>> 0
   if (
@@ -2094,7 +2081,10 @@ export function SKILLS_SrvDo_RaiseSkeletonOrMage_6FC718B0_113c(
         nSkillLevel,
       ) | 0
     m.setU32((pSummonArg + 0x20) >>> 0, nPetMax >>> 0)
-    const pSkeleton = onSpawnPet(m, pGame, pSummonArg) >>> 0
+    const pSkeleton =
+      (onSpawnPet !== undefined
+        ? onSpawnPet(m, pGame, pSummonArg)
+        : D2Game_6FCC3610_113c(m, pSummonArg, pGame)) >>> 0
     if (pSkeleton === 0) return 0
     SKILLS_ApplySummonLevelAcAndToHit_6FC6E2A0_113c(m, pUnit, 0, pGame, pSkeleton, nSkillLevel)
     SKILLS_InitNecroSkeletonPetComponents_6FC6EB50_113c(
@@ -2137,7 +2127,7 @@ export function ACT5Q2_OnQualKehkScrollCallback_6FC7C9E0_113c(
   m: SparseMemory113c,
   pQuestData: number,
   pQuestArg: number,
-  onCreateQuestItem: (
+  onCreateQuestItem?: (
     m: SparseMemory113c,
     pGame: number,
     pPlayerUnit: number,
@@ -2145,8 +2135,9 @@ export function ACT5Q2_OnQualKehkScrollCallback_6FC7C9E0_113c(
     nItemLevel: number,
     nQuality: number,
     bDropIfFull: number,
-  ) => number = defaultD2Game_6FC56470_113c,
+  ) => number,
 ): void {
+  hitD2GameVa113c(0x6FC7C9E0)
   const wNpcClassId = m.u16((pQuestArg + 0x14) >>> 0)
   const wScrollId = m.u16((pQuestArg + 0x18) >>> 0)
   const pExt = m.u32((pQuestData + 0x18) >>> 0)
@@ -2160,8 +2151,9 @@ export function ACT5Q2_OnQualKehkScrollCallback_6FC7C9E0_113c(
     m.setU8((pExt + 0x84) >>> 0, 1)
     m.setU8((pQuestData + 0x0c) >>> 0, 2)
     if (m.u32(0x6fd31c20) !== 0) {
-      const sp = allocW14B1Stack(m, 0x10)
+      const sp = allocW14B1Stack(m, 0x80)
       try {
+        writeAsciiStr113c(m, sp, 'quest state = 2')
         NET_BroadcastSystemChatMessage_6FCEBE70_113c(m, sp, m.u32((pQuestData + 0x04) >>> 0), 4)
       } finally {
         freeW14B1Stack(sp)
@@ -2190,6 +2182,10 @@ export function ACT5Q2_OnQualKehkScrollCallback_6FC7C9E0_113c(
   if (QUESTRECORD_GetQuestState113c(m, pQuestFlags, dwQuestId, 0x0d) !== 0) {
     if (m.u8((pQuestData + 0x0c) >>> 0) !== 5) {
       QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, 5, pQuestData)
+      if (m.u32((pQuestData + 0xf0) >>> 0) === 0) {
+        throw new D2CommonAssertError('0x6fd19ff9', 0x129)
+      }
+      dispatchQuestSeqFilterF0_113c(m, pQuestData)
       m.setU8((pQuestData + 0x14) >>> 0, 0)
       m.setU8((pQuestData + 0x0b) >>> 0, 0x0d)
     }
@@ -2204,7 +2200,10 @@ export function ACT5Q2_OnQualKehkScrollCallback_6FC7C9E0_113c(
   const pArgGame = m.u32(pQuestArg)
   for (let i = 0; i < nRunesToGrant; i = (i + 1) | 0) {
     const dwRuneCode = ACT5Q2_RUNE_CODES_6FD2BC38[i]!
-    const pItem = onCreateQuestItem(m, pArgGame, pPlayer, dwRuneCode, 0, 2, 1) >>> 0
+    const pItem =
+      (onCreateQuestItem !== undefined
+        ? onCreateQuestItem(m, pArgGame, pPlayer, dwRuneCode, 0, 2, 1)
+        : D2Game_6FC56470_113c(m, 0, dwRuneCode, pPlayer, pArgGame, 2, 1)) >>> 0
     if (pItem !== 0) {
       bCreatedAny = 1
     }
@@ -2214,7 +2213,7 @@ export function ACT5Q2_OnQualKehkScrollCallback_6FC7C9E0_113c(
     QUESTRECORD_ClearQuestStateBits2To11_113c(m, pQuestFlags, dwQuestId)
     QUESTRECORD_ClearQuestState113c(m, pQuestFlags, dwQuestId, 1)
     const dwPlayerGuid = pPlayer !== 0 ? m.u32((pPlayer + 0x0c) >>> 0) : 0xffffffff
-    QUESTS_GuidListRemove113c(m, (pQuestData + 0x1c) >>> 0, dwPlayerGuid)
+    QUESTS_GuidListAdd113c(m, (pQuestData + 0x1c) >>> 0, dwPlayerGuid)
     const sp = allocW14B1Stack(m, 0x10)
     try {
       const pClient =
@@ -2248,7 +2247,7 @@ export function ACT5Q3_OnMalahOrAnyaScrollCallback_6FC7F5E0_113c(
   m: SparseMemory113c,
   pQuestData: number,
   pQuestArg: number,
-  onCreateQuestItem: (
+  onCreateQuestItem?: (
     m: SparseMemory113c,
     pGame: number,
     pPlayerUnit: number,
@@ -2256,8 +2255,19 @@ export function ACT5Q3_OnMalahOrAnyaScrollCallback_6FC7F5E0_113c(
     nItemLevel: number,
     nQuality: number,
     bDropIfFull: number,
-  ) => number = defaultD2Game_6FC56470_113c,
+  ) => number,
 ): void {
+  hitD2GameVa113c(0x6FC7F5E0)
+  const createQuestItem = (
+    dwItemCode: number,
+    nItemLevel: number,
+    nQuality: number,
+    bDropIfFull: number,
+  ): number =>
+    (onCreateQuestItem !== undefined
+      ? onCreateQuestItem(m, pArgGame, pPlayer, dwItemCode, nItemLevel, nQuality, bDropIfFull)
+      : D2Game_6FC56470_113c(m, nItemLevel, dwItemCode, pPlayer, pArgGame, nQuality, bDropIfFull)) >>>
+    0
   const pExt = m.u32((pQuestData + 0x18) >>> 0)
   const wScrollId = m.u16((pQuestArg + 0x18) >>> 0)
   const pArgGame = m.u32(pQuestArg)
@@ -2271,8 +2281,9 @@ export function ACT5Q3_OnMalahOrAnyaScrollCallback_6FC7F5E0_113c(
       m.setU8((pExt + 0xac) >>> 0, 1)
       m.setU8((pQuestData + 0x0c) >>> 0, 2)
       if (m.u32(0x6fd31c20) !== 0) {
-        const sp = allocW14B1Stack(m, 0x10)
+        const sp = allocW14B1Stack(m, 0x80)
         try {
+          writeAsciiStr113c(m, sp, 'quest state = 2')
           NET_BroadcastSystemChatMessage_6FCEBE70_113c(
             m,
             sp,
@@ -2304,7 +2315,7 @@ export function ACT5Q3_OnMalahOrAnyaScrollCallback_6FC7F5E0_113c(
         return
       }
       if (m.u32((pExt + 0xd8) >>> 0) !== 0) return
-      const pPotion = onCreateQuestItem(m, pArgGame, pPlayer, 0x20656369, 0, 2, 1) >>> 0
+      const pPotion = createQuestItem(0x20656369, 0, 2, 1)
       if (pPotion === 0) return
       m.setU32((pExt + 0xd8) >>> 0, (m.u32((pExt + 0xd8) >>> 0) + 1) >>> 0)
       const sp = allocW14B1Stack(m, 0x10)
@@ -2330,7 +2341,7 @@ export function ACT5Q3_OnMalahOrAnyaScrollCallback_6FC7F5E0_113c(
         QUESTRECORD_GetQuestState113c(m, pQuestFlags, 0x25, 1) !== 0 &&
         QUESTRECORD_GetQuestState113c(m, pQuestFlags, 0x25, 0) === 0
       ) {
-        const pScroll = onCreateQuestItem(m, pArgGame, pPlayer, 0x20327274, 0, 2, 1) >>> 0
+        const pScroll = createQuestItem(0x20327274, 0, 2, 1)
         if (pScroll === 0) return
         QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x25, 8)
         const sp = allocW14B1Stack(m, 0x10)
@@ -2401,7 +2412,7 @@ export function ACT5Q3_OnMalahOrAnyaScrollCallback_6FC7F5E0_113c(
       if (ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, pPlayer, pArgGame, 0x20327274) !== 0) {
         return
       }
-      const pScroll = onCreateQuestItem(m, pArgGame, pPlayer, 0x20327274, 0, 2, 1) >>> 0
+      const pScroll = createQuestItem(0x20327274, 0, 2, 1)
       if (pScroll === 0) return
       m.setU8((pExt + 0x102) >>> 0, 1)
       return
@@ -2429,10 +2440,10 @@ export function ACT5Q3_OnMalahOrAnyaScrollCallback_6FC7F5E0_113c(
     const nClassId = pPlayer !== 0 ? m.u32((pPlayer + 0x04) >>> 0) : 0xffffffff
     const pSeed = QUESTS_GetQuestSeedPtr_6FC53D90_113c(m, pArgGame) >>> 0
     const row = codeTable[nClassId] !== undefined ? codeTable[nClassId]! : codeTable[0]!
-    const nRoll = SEED_RollRangeHalfOpen113c(m, row.length, pSeed, 0) >>> 0
+    const nRoll = SEED_RollRangeHalfOpen113c(m, pSeed, 0, row.length) >>> 0
     const dwRewardCode = row[nRoll] !== undefined ? row[nRoll]! : row[0]!
-    const nDropItemLvl = ITEMS_GetDropItemLevel113c(m, pPlayer, pArgGame, 0)
-    const pRewardItem = onCreateQuestItem(m, pArgGame, pPlayer, dwRewardCode, nDropItemLvl, 6, 1) >>> 0
+    const nDropItemLvl = ITEMS_GetDropItemLevel_6FC2E5D0_113c(m, pArgGame, pPlayer, 0)
+    const pRewardItem = createQuestItem(dwRewardCode, nDropItemLvl, 6, 1)
     if (pRewardItem === 0) return
     const sp = allocW14B1Stack(m, 0x10)
     try {
@@ -2494,14 +2505,15 @@ export function ACT1Q3_OnNpcInitCainSearch_6FC86960_113c(
   m: SparseMemory113c,
   pQuestData: number,
   pQuestArg: number,
-  onDeletePlayerQuestItem: (
+  onDeletePlayerQuestItem?: (
     m: SparseMemory113c,
     pPlayerUnit: number,
     pItem: number,
     pGame: number,
     pInventory: number,
-  ) => void = defaultD2Game_6FC565E0_113c,
+  ) => void,
 ): void {
+  hitD2GameVa113c(0x6FC86960)
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0)
   const pArgGame = m.u32(pQuestArg)
   const pBksItem = ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, pPlayer, pArgGame, 0x20736b62) >>> 0
@@ -2518,7 +2530,12 @@ export function ACT1Q3_OnNpcInitCainSearch_6FC86960_113c(
     if (ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, pPlayer, pArgGame, 0x20646b62) !== 0) {
       const pBkdItem = ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, pPlayer, pArgGame, 0x20646b62) >>> 0
       if (pBkdItem !== 0) {
-        onDeletePlayerQuestItem(m, pPlayer, pBkdItem, pArgGame, m.u32((pPlayer + 0x60) >>> 0))
+        const pInv = m.u32((pPlayer + 0x60) >>> 0)
+        if (onDeletePlayerQuestItem !== undefined) {
+          onDeletePlayerQuestItem(m, pPlayer, pBkdItem, pArgGame, pInv)
+        } else {
+          D2Game_6FC565E0_113c(m, pBkdItem, pPlayer, pArgGame, pInv)
+        }
       }
       m.setU32((pExt + 0x7c) >>> 0, (m.u32((pExt + 0x7c) >>> 0) - 1) >>> 0)
     }
@@ -2624,14 +2641,14 @@ export function ACT1Q3_OnScrollMessageCainSearch_6FC86CE0_113c(
   m: SparseMemory113c,
   pQuestData: number,
   pQuestArg: number,
-  onDeletePlayerQuestItem: (
+  onDeletePlayerQuestItem?: (
     m: SparseMemory113c,
     pPlayerUnit: number,
     pItem: number,
     pGame: number,
     pInventory: number,
-  ) => void = defaultD2Game_6FC565E0_113c,
-  onCreateQuestItem: (
+  ) => void,
+  onCreateQuestItem?: (
     m: SparseMemory113c,
     pGame: number,
     pPlayerUnit: number,
@@ -2639,8 +2656,9 @@ export function ACT1Q3_OnScrollMessageCainSearch_6FC86CE0_113c(
     nItemLevel: number,
     nQuality: number,
     bDropIfFull: number,
-  ) => number = defaultD2Game_6FC56470_113c,
+  ) => number,
 ): void {
+  hitD2GameVa113c(0x6FC86CE0)
   const wNpcClassId = m.u16((pQuestArg + 0x14) >>> 0)
   const pArgGame = m.u32(pQuestArg)
   const pExt = m.u32((pQuestData + 0x18) >>> 0)
@@ -2654,8 +2672,9 @@ export function ACT1Q3_OnScrollMessageCainSearch_6FC86CE0_113c(
       m.setU8((pExt + 0x53) >>> 0, 1)
       m.setU8((pQuestData + 0x0c) >>> 0, 2)
       if (m.u32(0x6fd31c20) !== 0) {
-        const sp = allocW14B1Stack(m, 0x10)
+        const sp = allocW14B1Stack(m, 0x80)
         try {
+          writeAsciiStr113c(m, sp, 'quest state = 2')
           NET_BroadcastSystemChatMessage_6FCEBE70_113c(
             m,
             sp,
@@ -2680,9 +2699,18 @@ export function ACT1Q3_OnScrollMessageCainSearch_6FC86CE0_113c(
       }
       const pBks = ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, pPlayer, pArgGame, 0x20736b62) >>> 0
       if (pBks !== 0) {
-        onDeletePlayerQuestItem(m, pPlayer, pBks, pArgGame, m.u32((pPlayer + 0x60) >>> 0))
+        const pInv = m.u32((pPlayer + 0x60) >>> 0)
+        if (onDeletePlayerQuestItem !== undefined) {
+          onDeletePlayerQuestItem(m, pPlayer, pBks, pArgGame, pInv)
+        } else {
+          D2Game_6FC565E0_113c(m, pBks, pPlayer, pArgGame, pInv)
+        }
       }
-      const pBkd = onCreateQuestItem(m, m.u32(pQuestArg), pPlayer, 0x20646b62, 0, 2, 1) >>> 0
+      const pCreateGame = m.u32(pQuestArg)
+      const pBkd =
+        (onCreateQuestItem !== undefined
+          ? onCreateQuestItem(m, pCreateGame, pPlayer, 0x20646b62, 0, 2, 1)
+          : D2Game_6FC56470_113c(m, 0, 0x20646b62, pPlayer, pCreateGame, 2, 1)) >>> 0
       if (pBkd !== 0) {
         m.setU8((pExt + 0x64) >>> 0, 1)
         m.setU8((pExt + 0x4b) >>> 0, 1)
@@ -2707,9 +2735,9 @@ export function ACT1Q3_OnScrollMessageCainSearch_6FC86CE0_113c(
     if (wScrollId === 0x76) {
       if (QUESTRECORD_GetQuestState113c(m, pQuestFlags, 4, 1) === 0) return
       QUESTRECORD_SetQuestState113c(m, pQuestFlags, 4, 0)
-      QUESTRECORD_ClearQuestStateBits2To11_113c(m, pQuestFlags, 4)
+      QUESTRECORD_ClearQuestState113c(m, pQuestFlags, 4, 1)
       const dwPlayerGuid = pPlayer !== 0 ? m.u32((pPlayer + 0x0c) >>> 0) : 0xffffffff
-      QUESTS_GuidListRemove113c(m, (pQuestData + 0x1c) >>> 0, dwPlayerGuid)
+      QUESTS_GuidListAdd113c(m, (pQuestData + 0x1c) >>> 0, dwPlayerGuid)
       QUESTS_SendPlayerQuestLogPacket28_113c(m, pPlayer, m.u32((pQuestData + 0x04) >>> 0))
       const pRingGame = m.u32(pQuestArg)
       const bRingDiff = m.u8((pRingGame + 0x6d) >>> 0)
@@ -2722,7 +2750,11 @@ export function ACT1Q3_OnScrollMessageCainSearch_6FC86CE0_113c(
         nRingLvl = 0x3c
         nRingQual = 6
       }
-      onCreateQuestItem(m, pRingGame, pPlayer, 0x206e6972, nRingLvl, nRingQual, 1)
+      if (onCreateQuestItem !== undefined) {
+        onCreateQuestItem(m, pRingGame, pPlayer, 0x206e6972, nRingLvl, nRingQual, 1)
+      } else {
+        D2Game_6FC56470_113c(m, nRingLvl, 0x206e6972, pPlayer, pRingGame, nRingQual, 1)
+      }
       QUESTS_SendQuestItemState2_5D_113c(m, pPlayer, 4)
       QUESTS_TriggerNpcInteractAndSendPacket27_6FC55910_113c(
         m,
@@ -2739,6 +2771,10 @@ export function ACT1Q3_OnScrollMessageCainSearch_6FC86CE0_113c(
         }
         if (QUESTS_CheckGlobalQuestState_6FC538D0_113c(m, m.u32(pQuestArg), 4, 0x0d) === 0) {
           QUESTS_SetGlobalQuestState_6FC53920_113c(m, m.u32((pQuestData + 0x04) >>> 0), 4, 0x0d)
+          if (m.u32((pQuestData + 0xf0) >>> 0) === 0) {
+            throw new D2CommonAssertError('0x6fd19ff9', 0x194)
+          }
+          dispatchQuestSeqFilterF0_113c(m, pQuestData)
         }
       }
       if (m.u8((pExt + 0x63) >>> 0) === 1) {
@@ -2750,8 +2786,8 @@ export function ACT1Q3_OnScrollMessageCainSearch_6FC86CE0_113c(
   if (wNpcClassId === 0x109) {
     if (wScrollId === 0x7d) {
       const dwPlayerGuid = pPlayer !== 0 ? m.u32((pPlayer + 0x0c) >>> 0) : 0xffffffff
-      QUESTS_GuidListRemove113c(m, (pQuestData + 0x1c) >>> 0, dwPlayerGuid)
-      QUESTS_GuidListAdd113c(m, (pExt + 0xb4) >>> 0, dwPlayerGuid)
+      QUESTS_GuidListAdd113c(m, (pQuestData + 0x1c) >>> 0, dwPlayerGuid)
+      QUESTS_GuidListRemove113c(m, (pExt + 0xb4) >>> 0, dwPlayerGuid)
       QUESTS_TriggerNpcInteractAndSendPacket27_6FC55910_113c(
         m,
         m.u32((pQuestArg + 0x08) >>> 0),
@@ -2760,7 +2796,7 @@ export function ACT1Q3_OnScrollMessageCainSearch_6FC86CE0_113c(
       )
     } else if (wScrollId === 0x7e || wScrollId === 0x7b) {
       const dwPlayerGuid = pPlayer !== 0 ? m.u32((pPlayer + 0x0c) >>> 0) : 0xffffffff
-      QUESTS_GuidListRemove113c(m, (pExt + 0x138) >>> 0, dwPlayerGuid)
+      QUESTS_GuidListAdd113c(m, (pExt + 0x138) >>> 0, dwPlayerGuid)
       QUESTS_TriggerNpcInteractAndSendPacket27_6FC55910_113c(
         m,
         m.u32((pQuestArg + 0x08) >>> 0),
@@ -2787,15 +2823,16 @@ export function ACT1Q5_OnScrollMessageCharsiMalus_6FC87000_113c(
   m: SparseMemory113c,
   pQuestData: number,
   pQuestArg: number,
-  onDeletePlayerQuestItem: (
+  onDeletePlayerQuestItem?: (
     m: SparseMemory113c,
     pPlayer: number,
     pItem: number,
     pGame: number,
     pInventory: number,
-  ) => void = defaultD2Game_6FC565E0_113c,
+  ) => void,
   onQuestCallbackF0?: (m: SparseMemory113c, pQuestData: number) => void,
 ): void {
+  hitD2GameVa113c(0x6FC87000)
   const wScrollId = m.u16((pQuestArg + 0x18) >>> 0)
   const pArgGame = m.u32(pQuestArg >>> 0)
   const wNpcClassId = m.u16((pQuestArg + 0x14) >>> 0)
@@ -2813,14 +2850,19 @@ export function ACT1Q5_OnScrollMessageCharsiMalus_6FC87000_113c(
       return
     }
     const dwPlayerGuid = pPlayer !== 0 ? m.u32((pPlayer + 0x0c) >>> 0) : 0xffffffff
-    QUESTS_GuidListRemove113c(m, (pExt + 0x14) >>> 0, dwPlayerGuid)
+    QUESTS_GuidListAdd113c(m, (pExt + 0x14) >>> 0, dwPlayerGuid)
     if (pHdm !== 0) {
       QUESTRECORD_SetQuestState113c(m, pQuestFlags, 3, 0x0d)
       QUESTRECORD_SetQuestState113c(m, pQuestFlags, 3, 1)
       QUESTS_SendPlayerQuestLogPacket28_113c(m, pPlayer, m.u32((pQuestData + 0x04) >>> 0))
       const pHdm2 = ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, pPlayer, pArgGame, 0x206d6468) >>> 0
       if (pHdm2 !== 0) {
-        onDeletePlayerQuestItem(m, pPlayer, pHdm2, pArgGame, m.u32((pPlayer + 0x60) >>> 0))
+        const pInv = m.u32((pPlayer + 0x60) >>> 0)
+        if (onDeletePlayerQuestItem !== undefined) {
+          onDeletePlayerQuestItem(m, pPlayer, pHdm2, pArgGame, pInv)
+        } else {
+          D2Game_6FC565E0_113c(m, pHdm2, pPlayer, pArgGame, pInv)
+        }
       }
       m.setU32((pExt + 0x9c) >>> 0, (m.u32((pExt + 0x9c) >>> 0) - 1) >>> 0)
       const wPartyId = SUNITDMG_GetPlayerClientClassId113c(m, pPlayer) & 0xffff
@@ -2838,13 +2880,10 @@ export function ACT1Q5_OnScrollMessageCharsiMalus_6FC87000_113c(
           QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, 5, pQuestData)
           m.setU8((pExt + 0x03) >>> 0, 1)
           QUESTS_SetGlobalQuestState_6FC53920_113c(m, m.u32((pQuestData + 0x04) >>> 0), 3, 0x0d)
-          const pfnCallback = m.u32((pQuestData + 0xf0) >>> 0)
-          if (pfnCallback === 0) {
-            return
+          if (m.u32((pQuestData + 0xf0) >>> 0) === 0) {
+            throw new D2CommonAssertError('0x6fd19ff9', 0xfa)
           }
-          if (onQuestCallbackF0 !== undefined) {
-            onQuestCallbackF0(m, pQuestData)
-          }
+          dispatchQuestSeqFilterF0_113c(m, pQuestData, onQuestCallbackF0)
         } else if (m.u8((pExt + 0xa1) >>> 0) !== 0) {
           const pTargetQuest = QUESTS_GetQuestData_6FC53F30_113c(
             m,
@@ -2852,13 +2891,10 @@ export function ACT1Q5_OnScrollMessageCharsiMalus_6FC87000_113c(
             m.u32((pQuestData + 0x10) >>> 0),
           )
           if (pTargetQuest !== 0) {
-            const pfnCallback = m.u32((pQuestData + 0xf0) >>> 0)
-            if (pfnCallback === 0) {
-              return
+            if (m.u32((pQuestData + 0xf0) >>> 0) === 0) {
+              throw new D2CommonAssertError('0x6fd19ff9', 0x102)
             }
-            if (onQuestCallbackF0 !== undefined) {
-              onQuestCallbackF0(m, pQuestData)
-            }
+            dispatchQuestSeqFilterF0_113c(m, pTargetQuest, onQuestCallbackF0)
           }
         }
       }
@@ -2908,6 +2944,7 @@ export function ACT1Q2_OnScrollMessageBloodRaven_6FC88920_113c(
   ) => void,
   onQuestCallbackF0?: (m: SparseMemory113c, pQuestData: number) => void,
 ): void {
+  hitD2GameVa113c(0x6FC88920)
   const wScrollId = m.u16((pQuestArg + 0x18) >>> 0)
   const pArgGame = m.u32(pQuestArg >>> 0)
   const wNpcClassId = m.u16((pQuestArg + 0x14) >>> 0)
@@ -2933,9 +2970,9 @@ export function ACT1Q2_OnScrollMessageBloodRaven_6FC88920_113c(
     }
     SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
       m,
-      0,
-      ACT1Q2_UpdatePlayerQuestStateCallback_6FC82040_113c,
       m.u32((pQuestData + 0x04) >>> 0),
+      ACT1Q2_UpdatePlayerQuestStateCallback_6FC82040_113c,
+      0,
       0,
     )
     QUESTS_TriggerNpcInteractAndSendPacket27_6FC55910_113c(
@@ -2956,21 +2993,21 @@ export function ACT1Q2_OnScrollMessageBloodRaven_6FC88920_113c(
       m.setU8((pQuestData + 0x14) >>> 0, 0)
       m.setU8((pQuestData + 0x0b) >>> 0, 0x0d)
       QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, 5, pQuestData)
-      const pfnCallback = m.u32((pQuestData + 0xf0) >>> 0)
-      if (pfnCallback === 0) {
-        return
+      if (m.u32((pQuestData + 0xf0) >>> 0) === 0) {
+        throw new D2CommonAssertError('0x6fd19ff9', 0xce)
       }
-      if (onQuestCallbackF0 !== undefined) {
-        onQuestCallbackF0(m, pQuestData)
-      }
+      dispatchQuestSeqFilterF0_113c(m, pQuestData, onQuestCallbackF0)
     }
     QUESTRECORD_SetQuestState113c(m, pQuestFlags, (m.u32((pQuestData + 0xe0) >>> 0) | 0), 0)
     QUESTRECORD_ClearQuestState113c(m, pQuestFlags, (m.u32((pQuestData + 0xe0) >>> 0) | 0), 1)
     QUESTS_SendPlayerQuestLogPacket28_113c(m, pPlayer, m.u32((pQuestData + 0x04) >>> 0))
     const dwPlayerGuid = pPlayer !== 0 ? m.u32((pPlayer + 0x0c) >>> 0) : 0xffffffff
-    QUESTS_GuidListRemove113c(m, (pQuestData + 0x1c) >>> 0, dwPlayerGuid)
+    QUESTS_GuidListAdd113c(m, (pQuestData + 0x1c) >>> 0, dwPlayerGuid)
+    const pQuestGame = m.u32((pQuestData + 0x04) >>> 0)
     if (onGrantMercReward_6FCE1030 !== undefined) {
-      onGrantMercReward_6FCE1030(m, m.u32((pQuestData + 0x04) >>> 0), pPlayer, 0x96)
+      onGrantMercReward_6FCE1030(m, pQuestGame, pPlayer, 0x96)
+    } else {
+      D2Game_6FCE1030_113c(m, pQuestGame, pPlayer, 0x96)
     }
     QUESTS_TriggerNpcInteractAndSendPacket27_6FC55910_113c(
       m,
@@ -2999,6 +3036,7 @@ export function CUBE_TransmuteHoradricCubeItems_6FC92FC0_113c(
     pMatchedInputs: number,
   ) => void,
 ): void {
+  hitD2GameVa113c(0x6FC92FC0)
   if (pPlayer === 0) {
     return
   }
@@ -3093,6 +3131,8 @@ export function CUBE_TransmuteHoradricCubeItems_6FC92FC0_113c(
       ) {
         if (onExecuteRecipe_6FC92220 !== undefined) {
           onExecuteRecipe_6FC92220(m, pGame, pPlayer, pRecipeTxt, sp)
+        } else {
+          D2Game_6FC92220_113c(m, pGame, pPlayer, pRecipeTxt, sp)
         }
         return
       }
@@ -3115,12 +3155,12 @@ export function PLRTRADE_ExecutePlayerTradeSwap_6FC93D90_113c(
   pPlayer2: number,
   pGame: number,
   pPlayerData2: number,
-  onSwapItems: (
+  onSwapItems?: (
     m: SparseMemory113c,
     pDestPlayer: number,
     pGame: number,
     pSrcPlayer: number,
-  ) => number = () => 1,
+  ) => number,
   onCancelTrade_6FC93BA0?: (
     m: SparseMemory113c,
     pPlayer1: number,
@@ -3129,6 +3169,7 @@ export function PLRTRADE_ExecutePlayerTradeSwap_6FC93D90_113c(
     pPlayerData2: number,
   ) => void,
 ): void {
+  hitD2GameVa113c(0x6FC93D90)
   const sendTradePacket77 = (pUnit: number, bSubType: number): void => {
     const pClient =
       pUnit !== 0 && m.u32(pUnit) === 0
@@ -3149,18 +3190,7 @@ export function PLRTRADE_ExecutePlayerTradeSwap_6FC93D90_113c(
       onCancelTrade_6FC93BA0(m, pPlayer1, pGame, pPlayerData1, pPlayerData2)
       return
     }
-    if (pPlayer1 !== 0) {
-      m.setU32((pPlayer1 + 0x68) >>> 0, 6)
-      m.setU32((pPlayer1 + 0x64) >>> 0, 0xffffffff)
-      m.setU8((pPlayer1 + 0x6c) >>> 0, 0)
-      PLAYER_FreePlayerDataField5CList_6FC900C0_113c(m, pPlayer1, pGame)
-    }
-    if (pPlayer2 !== 0) {
-      m.setU32((pPlayer2 + 0x68) >>> 0, 6)
-      m.setU32((pPlayer2 + 0x64) >>> 0, 0xffffffff)
-      m.setU8((pPlayer2 + 0x6c) >>> 0, 0)
-      PLAYER_FreePlayerDataField5CList_6FC900C0_113c(m, pPlayer2, pGame)
-    }
+    D2Game_6FC93BA0_113c(m, pPlayer1, pPlayer2, pGame, pPlayerData1, pPlayerData2)
   }
 
   const pTrade1 = m.u32((pPlayerData1 + 0x5c) >>> 0)
@@ -3247,10 +3277,19 @@ export function PLRTRADE_ExecutePlayerTradeSwap_6FC93D90_113c(
   EVENT_SetEventFull113c(m, pGame, pPlayer1, 0x0d, dwNextFrame, 0, 0, 0)
   EVENT_SetEventFull113c(m, pGame, pPlayer2, 0x0d, dwNextFrame, 0, 0, 0)
 
-  if (
-    (onSwapItems(m, pPlayer2, pGame, pPlayer1) & 0xff) === 0 ||
-    (onSwapItems(m, pPlayer1, pGame, pPlayer2) & 0xff) === 0
-  ) {
+  const swap1 =
+    onSwapItems !== undefined
+      ? onSwapItems(m, pPlayer2, pGame, pPlayer1)
+      : D2Game_6FC91E10_113c(m, pPlayer2, pGame, pPlayer1)
+  if ((swap1 & 0xff) === 0) {
+    cancelTrade()
+    return
+  }
+  const swap2 =
+    onSwapItems !== undefined
+      ? onSwapItems(m, pPlayer1, pGame, pPlayer2)
+      : D2Game_6FC91E10_113c(m, pPlayer1, pGame, pPlayer2)
+  if ((swap2 & 0xff) === 0) {
     cancelTrade()
     return
   }
@@ -3321,6 +3360,7 @@ export function PLRDEATH_DropPlayerEquippedItemsAndGoldToCorpseOrGround_6FC98FA0
     nBodyLoc: number,
   ) => void,
 ): void {
+  hitD2GameVa113c(0x6FC98FA0)
   const sp = allocW14B1Stack(m, 0x20)
   try {
     const spCoordBox = sp >>> 0
@@ -3338,13 +3378,12 @@ export function PLRDEATH_DropPlayerEquippedItemsAndGoldToCorpseOrGround_6FC98FA0
         pItem = INVENTORY_GetItemFromBodyLocMemPort113c(m, pInventory, nBodyLoc) >>> 0
         if (pItem !== 0) {
           if ((m.u32((pItem + 0x10) >>> 0) | 0) !== 1) {
-            return
+            throw new D2CommonAssertError('0x6fd19ff9', 0x2a7)
           }
           if (onRemoveEquippedItem_6FC98D00 !== undefined) {
             onRemoveEquippedItem_6FC98D00(m, pPlayer, pItem, pGame, nBodyLoc)
           } else {
-            INVENTORY_RemoveItemFromInventory113c(m, pInventory, pItem)
-            m.setU32((pItem + 0x10) >>> 0, 4)
+            D2Game_6FC98D00_113c(m, pPlayer, pItem, pGame, nBodyLoc)
           }
         }
       }
@@ -3353,19 +3392,38 @@ export function PLRDEATH_DropPlayerEquippedItemsAndGoldToCorpseOrGround_6FC98FA0
         const pDup = ITEMS_DuplicateItemWithSocketFillers_6FC307E0_113c(m, pGame, pItem, 1) >>> 0
         PATH_GetTargetTypeAndPosition113c(m, pPlayer, spCoordBox)
         const pRoom = UNITS_GetRoom113c(m, pPlayer) >>> 0
-        if (pRoom !== 0) {
-          const pFreeRoom = findDropRoomAtCoords_6FC2E930(m, pRoom, spCoordBox, spOutCoords, 1)
-          if (pFreeRoom !== 0 && pDup !== 0) {
-            ITEMS_PlaceItemOnGroundInRoom_6FC2E990_113c(
-              m,
-              m.u32((spOutCoords + 0x04) >>> 0) | 0,
-              pDup,
-              pFreeRoom,
-              pGame,
-              pPlayer,
-              m.u32(spOutCoords) | 0,
-            )
-          }
+        const inX = m.u32(spCoordBox) | 0
+        const inY = m.u32((spCoordBox + 0x04) >>> 0) | 0
+        const candX = (inX + 2) | 0
+        const candY = (inY + 3) | 0
+        if (ROOM_FindRoomContainingSubtile113c(m, pRoom, candX, candY) !== 0) {
+          m.setU32(spOutCoords, candX >>> 0)
+          m.setU32((spOutCoords + 0x04) >>> 0, candY >>> 0)
+        } else {
+          m.setU32(spOutCoords, inX >>> 0)
+          m.setU32((spOutCoords + 0x04) >>> 0, inY >>> 0)
+        }
+        const pFreeRoom =
+          COLLISION_FindFreePositionBasic113c(
+            m,
+            pRoom,
+            spOutCoords,
+            spCoordBox,
+            1,
+            0x3e01,
+            0x801,
+            1,
+          ) >>> 0
+        if (pFreeRoom !== 0 && pDup !== 0) {
+          ITEMS_PlaceItemOnGroundInRoom_6FC2E990_113c(
+            m,
+            m.u32((spOutCoords + 0x04) >>> 0) | 0,
+            pDup,
+            pFreeRoom,
+            pGame,
+            pPlayer,
+            m.u32(spOutCoords) | 0,
+          )
         }
       }
     }
@@ -3396,12 +3454,9 @@ export function SKILLS_SrvDo_Valkyrie_6FCB5980_113c(
   pOwnerUnit: number,
   nSkillId: number,
   nSkillLevel: number,
-  onSummonMonster: (
-    m: SparseMemory113c,
-    pGame: number,
-    pSummonArg: number,
-  ) => number = defaultD2Game_6FCC3610_113c,
+  onSummonMonster?: (m: SparseMemory113c, pGame: number, pSummonArg: number) => number,
 ): number {
+  hitD2GameVa113c(0x6FCB5980)
   if (pOwnerUnit !== 0) {
     m.setU32((pOwnerUnit + 0xc4) >>> 0, (m.u32((pOwnerUnit + 0xc4) >>> 0) | 0x40) >>> 0)
   }
@@ -3461,7 +3516,10 @@ export function SKILLS_SrvDo_Valkyrie_6FCB5980_113c(
     m.setU32((spSummonArg + 0x1c) >>> 0, nSummonMode >>> 0)
     m.setU32((spSummonArg + 0x20) >>> 0, nMaxPets >>> 0)
 
-    const pValkyrie = onSummonMonster(m, pGame, spSummonArg) >>> 0
+    const pValkyrie =
+      (onSummonMonster !== undefined
+        ? onSummonMonster(m, pGame, spSummonArg)
+        : D2Game_6FCC3610_113c(m, spSummonArg, pGame)) >>> 0
     if (pValkyrie === 0) {
       return 0
     }
@@ -3536,8 +3594,8 @@ export function SKILLS_SrvDo_Valkyrie_6FCB5980_113c(
     SUBPARTY_InsertUnitAfterBucketHead_6FD0FE40_113c(
       m,
       pGame,
-      m.u32((pOwnerUnit + 0xd0) >>> 0),
       pValkyrie,
+      m.u32((pOwnerUnit + 0xd0) >>> 0),
       0,
     )
     return 1
@@ -3561,12 +3619,9 @@ export function SKILLS_SummonMonsterFromSkillOrMissile_6FCB5D50_113c(
   pSkillTxt: number,
   bUpdateStatsFlag: number,
   nSkillLevel: number,
-  onSummonMonster: (
-    m: SparseMemory113c,
-    pGame: number,
-    pSummonArg: number,
-  ) => number = defaultD2Game_6FCC3610_113c,
+  onSummonMonster?: (m: SparseMemory113c, pGame: number, pSummonArg: number) => number,
 ): number {
+  hitD2GameVa113c(0x6FCB5D50)
   if (pSkillTxt === 0) {
     return 0
   }
@@ -3711,7 +3766,10 @@ export function SKILLS_SummonMonsterFromSkillOrMissile_6FCB5D50_113c(
     m.setU32((spSummonArg + 0x1c) >>> 0, nPetType >>> 0)
     m.setU32((spSummonArg + 0x20) >>> 0, nMaxPets >>> 0)
 
-    const pPet = onSummonMonster(m, pGame, spSummonArg) >>> 0
+    const pPet =
+      (onSummonMonster !== undefined
+        ? onSummonMonster(m, pGame, spSummonArg)
+        : D2Game_6FCC3610_113c(m, spSummonArg, pGame)) >>> 0
     if (pPet === 0) {
       return 0
     }
@@ -3719,7 +3777,7 @@ export function SKILLS_SummonMonsterFromSkillOrMissile_6FCB5D50_113c(
     SKILLS_ApplySummonLevelAcAndToHit_6FC6E2A0_113c(
       m,
       pOwnerUnit,
-      bUpdateStatsFlag,
+      0,
       pGame,
       pPet,
       nSkillLevel,
@@ -3729,9 +3787,9 @@ export function SKILLS_SummonMonsterFromSkillOrMissile_6FCB5D50_113c(
       pGame,
       pOwnerUnit,
       pPet,
-      ((m.u16(pSkillTxt) << 16) >> 16),
-      nSkillLevel,
       bUpdateStatsFlag,
+      nSkillLevel,
+      0,
     )
     SUNIT_SetMonsterAlignmentState113c(m, pPet, 2, 1)
     const nSummonMode = m.u32(spSummonMode) | 0
@@ -3775,14 +3833,19 @@ export function AI_MercOrShadowWarriorThink_6FCCC8E0_113c(
     pAiTickArgs: number,
   ) => void,
 ): void {
+  hitD2GameVa113c(0x6FCCC8E0)
   if (pMonster !== 0 && m.u32((pMonster + 0x04) >>> 0) === 0x1a4) {
     if (onAiThink1A4_6FCCAC30 !== undefined) {
       onAiThink1A4_6FCCAC30(m, pAiTickArgs, pMonster, pGame)
+    } else {
+      D2Game_6FCCAC30_113c(m, pAiTickArgs, pMonster, pGame)
     }
     return
   }
   if (onAiThinkDefault_6FCCA710 !== undefined) {
     onAiThinkDefault_6FCCA710(m, pMonster, pGame, pAiTickArgs)
+  } else {
+    D2Game_6FCCA710_113c(m, pMonster, pGame, 0, pAiTickArgs)
   }
 }
 
@@ -3796,7 +3859,7 @@ export function ACT3Q3_OnScrollMessageOrmusGidbinn_6FCDAA50_113c(
   m: SparseMemory113c,
   pQuestData: number,
   pQuestArg: number,
-  onCreateQuestItem: (
+  onCreateQuestItem?: (
     m: SparseMemory113c,
     pGame: number,
     pPlayerUnit: number,
@@ -3804,14 +3867,10 @@ export function ACT3Q3_OnScrollMessageOrmusGidbinn_6FCDAA50_113c(
     nItemLevel: number,
     nQuality: number,
     bDropIfFull: number,
-  ) => number = defaultD2Game_6FC56470_113c,
-  onUpdatePlayerQuestState_6FCDA280: (
-    m: SparseMemory113c,
-    pGame: number,
-    pPlayerUnit: number,
-  ) => void = () => {},
+  ) => number,
   onQuestCallbackF0?: (m: SparseMemory113c, pQuestData: number) => void,
 ): void {
+  hitD2GameVa113c(0x6FCDAA50)
   const wScrollId = m.u16((pQuestArg + 0x18) >>> 0)
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0)
   const wNpcClassId = m.u16((pQuestArg + 0x14) >>> 0)
@@ -3824,18 +3883,17 @@ export function ACT3Q3_OnScrollMessageOrmusGidbinn_6FCDAA50_113c(
   }
   const pExt = m.u32((pQuestData + 0x18) >>> 0)
   if (wScrollId === 0x2a6) {
-    m.setU8((pExt + 0x08) >>> 0, 1)
-    QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, 2, pQuestData)
-    SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
-      m,
-      m.u32((pQuestData + 0x04) >>> 0),
-      (_mem, pGameArg, pUnitArg) => {
-        onUpdatePlayerQuestState_6FCDA280(m, pGameArg, pUnitArg)
-        return 0
-      },
-      0,
-      0,
-    )
+    m.setU8((pExt + 0x02) >>> 0, 1)
+    m.setU8((pQuestData + 0x0c) >>> 0, 2)
+    if (m.u32(0x6fd31c20) !== 0) {
+      const sp = allocW14B1Stack(m, 0x80)
+      try {
+        writeAsciiStr113c(m, sp, 'quest state = 2')
+        NET_BroadcastSystemChatMessage_6FCEBE70_113c(m, sp, m.u32((pQuestData + 0x04) >>> 0), 4)
+      } finally {
+        freeW14B1Stack(sp)
+      }
+    }
     QUESTS_TriggerNpcInteractAndSendPacket27_6FC55910_113c(
       m,
       m.u32((pQuestArg + 0x08) >>> 0),
@@ -3843,11 +3901,17 @@ export function ACT3Q3_OnScrollMessageOrmusGidbinn_6FCDAA50_113c(
       m.u32(pQuestArg >>> 0),
     )
   } else if (wScrollId === 0x2a7) {
-    if (onCreateQuestItem(m, m.u32(pQuestArg >>> 0), pPlayer, 0x2073736d, 0, 7, 1) !== 0) {
-      QUESTRECORD_SetQuestState113c(m, pQuestFlags, (m.u32((pQuestData + 0xe0) >>> 0) | 0), 4)
-      QUESTRECORD_ClearQuestState113c(m, pQuestFlags, (m.u32((pQuestData + 0xe0) >>> 0) | 0), 2)
-      QUESTS_SendPlayerQuestLogPacket28_113c(m, pPlayer, m.u32((pQuestData + 0x04) >>> 0))
-      m.setU32((pExt + 0x5c) >>> 0, (m.u32((pExt + 0x5c) >>> 0) + 1) >>> 0)
+    const pGameRef = m.u32(pQuestArg >>> 0)
+    const pCreated =
+      (onCreateQuestItem !== undefined
+        ? onCreateQuestItem(m, pGameRef, pPlayer, 0x2073736d, 0, 2, 1)
+        : D2Game_6FC56470_113c(m, 0, 0x2073736d, pPlayer, pGameRef, 2, 1)) >>> 0
+    if (pCreated !== 0) {
+      m.setU8((pExt + 0x02) >>> 0, 1)
+      if (m.u8((pQuestData + 0x0c) >>> 0) < 2) {
+        QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, 2, pQuestData)
+      }
+      m.setU8((pExt + 0x1c) >>> 0, 1)
       QUESTS_TriggerNpcInteractAndSendPacket27_6FC55910_113c(
         m,
         m.u32((pQuestArg + 0x08) >>> 0),
@@ -3867,19 +3931,15 @@ export function ACT3Q3_OnScrollMessageOrmusGidbinn_6FCDAA50_113c(
       m.setU8((pQuestData + 0x14) >>> 0, 0)
       m.setU8((pQuestData + 0x0b) >>> 0, 0x0d)
       QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, 5, pQuestData)
-      const pfnCallback = m.u32((pQuestData + 0xf0) >>> 0)
-      if (pfnCallback === 0) {
-        return
+      if (m.u32((pQuestData + 0xf0) >>> 0) === 0) {
+        throw new D2CommonAssertError('0x6fd19ff9', 0x213)
       }
-      if (onQuestCallbackF0 !== undefined) {
-        onQuestCallbackF0(m, pQuestData)
-      }
+      dispatchQuestSeqFilterF0_113c(m, pQuestData, onQuestCallbackF0)
     }
     QUESTRECORD_SetQuestState113c(m, pQuestFlags, (m.u32((pQuestData + 0xe0) >>> 0) | 0), 0)
     QUESTRECORD_ClearQuestState113c(m, pQuestFlags, (m.u32((pQuestData + 0xe0) >>> 0) | 0), 1)
-    QUESTS_SendPlayerQuestLogPacket28_113c(m, pPlayer, m.u32((pQuestData + 0x04) >>> 0))
     const dwPlayerGuid = pPlayer !== 0 ? m.u32((pPlayer + 0x0c) >>> 0) : 0xffffffff
-    QUESTS_GuidListRemove113c(m, (pQuestData + 0x1c) >>> 0, dwPlayerGuid)
+    QUESTS_GuidListAdd113c(m, (pQuestData + 0x1c) >>> 0, dwPlayerGuid)
     QUESTS_TriggerNpcInteractAndSendPacket27_6FC55910_113c(
       m,
       m.u32((pQuestArg + 0x08) >>> 0),
@@ -3906,11 +3966,12 @@ export function ACT4Q3_OnDiabloDeathPortalWarpToAct5_6FCDB550_113c(
     nWarpState: number,
   ) => void,
 ): number {
-  const pPlayer = m.u32((pQuestArg + 0x08) >>> 0)
+  hitD2GameVa113c(0x6FCDB550)
   const pGame = m.u32(pQuestArg >>> 0)
-  if (pPlayer === 0 || m.u32((pGame + 0x70) >>> 0) === 0) {
+  if (m.u32((pGame + 0x70) >>> 0) === 0) {
     return 0
   }
+  const pPlayer = m.u32((pQuestArg + 0x08) >>> 0)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + nDiff * 4 + 0x10) >>> 0)
@@ -3922,6 +3983,9 @@ export function ACT4Q3_OnDiabloDeathPortalWarpToAct5_6FCDB550_113c(
     return 0
   }
   const pRoom = UNITS_GetRoom113c(m, pPlayer) >>> 0
+  if (pRoom === 0) {
+    return 0
+  }
   const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom) | 0
   const nAct = DRLG_GetActNoFromLevelId113c(m, nLevelId) & 0xff
   if (nAct !== 3) {
@@ -3931,25 +3995,46 @@ export function ACT4Q3_OnDiabloDeathPortalWarpToAct5_6FCDB550_113c(
     QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x1c, 0)
     QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x1c, 0x0d)
     const pClient =
-      m.u32(pPlayer) === 0 ? m.u32((UNITS_GetPlayerData113c(m, pPlayer) + 0x9c) >>> 0) : 0
-    const sp = allocW14B1Stack(m, 0x10)
-    try {
-      m.setU8(sp, 0x5d)
-      m.setU8((sp + 1) >>> 0, 0x17)
-      m.setU8((sp + 2) >>> 0, 2)
-      m.setU8((sp + 3) >>> 0, 0)
-      m.setU16((sp + 4) >>> 0, 0)
-      NET_SendPacketBuffer6B_6FCAACD0_113c(m, pClient, sp)
-    } finally {
-      freeW14B1Stack(sp)
+      pPlayer !== 0 && m.u32(pPlayer) === 0
+        ? m.u32((UNITS_GetPlayerData113c(m, pPlayer) + 0x9c) >>> 0)
+        : 0
+    const pPd2 = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
+    if (pClient !== 0 && PLAYER_IsBusyWithCursorOrNpcInteract113c(m, pPlayer) === 0) {
+      m.setU32((pPlayer + 0x64) >>> 0, 0xffffffff)
+      m.setU32((pPlayer + 0x68) >>> 0, 6)
+      m.setU8((pPlayer + 0x6c) >>> 0, 0)
+      m.setU32((pPd2 + 0x4c) >>> 0, 1)
+      const sp = allocW14B1Stack(m, 0x10)
+      try {
+        m.setU8(sp, 0x5d)
+        m.setU8((sp + 1) >>> 0, 0x17)
+        m.setU8((sp + 2) >>> 0, 2)
+        m.setU8((sp + 3) >>> 0, 0)
+        m.setU16((sp + 4) >>> 0, 0)
+        NET_SendPacketBuffer6B_6FCAACD0_113c(m, sp, pClient)
+      } finally {
+        freeW14B1Stack(sp)
+      }
+      NET_SendPacket61_ByteParam_6FCAAAC0_113c(m, 5, pClient)
     }
-    NET_SendPacket61_ByteParam_6FCAAAC0_113c(m, pClient, 5)
   }
+  const pPlayerWarp = m.u32((pQuestArg + 0x08) >>> 0)
+  const pGameWarp = m.u32(pQuestArg >>> 0)
   if (onTownWarp_6FCEF810 !== undefined) {
-    onTownWarp_6FCEF810(m, pGame, pPlayer, 0x6d, 5)
+    onTownWarp_6FCEF810(m, pGameWarp, pPlayerWarp, 0x6d, 5)
+  } else {
+    D2Game_6FCEF810_113c(m, pPlayerWarp, pGameWarp, 0x6d, 5)
   }
-  QUESTS_SendPlayerQuestLogPacket28_113c(m, pPlayer, pGame)
-  ACT4Q3_ActivateHarrogathWaypointForPlayer_6FCD9030_113c(m, pGame, pPlayer)
+  QUESTS_SendPlayerQuestLogPacket28_113c(
+    m,
+    m.u32((pQuestArg + 0x08) >>> 0),
+    m.u32(pQuestArg >>> 0),
+  )
+  ACT4Q3_ActivateHarrogathWaypointForPlayer_6FCD9030_113c(
+    m,
+    m.u32(pQuestArg >>> 0),
+    m.u32((pQuestArg + 0x08) >>> 0),
+  )
   return 0
 }
 
@@ -3976,14 +4061,21 @@ export function NPCTRADE_EnsureVendorInventoryGenerated_6FCDF1C0_113c(
     bIsGamble: number,
   ) => void,
 ): void {
-  const dwNpcGuid = pNpcUnit !== 0 ? m.u32((pNpcUnit + 0x0c) >>> 0) : 0xffffffff;
-  let pNode = m.u32((pNpcControl + 0x08) >>> 0);
-  while (pNode !== 0 && m.u32((pNode + 0x04) >>> 0) !== dwNpcGuid) {
-    pNode = m.u32((pNode + 0x08) >>> 0);
+  hitD2GameVa113c(0x6FCDF1C0)
+  const dwGuid = pNpcUnit !== 0 ? m.u32((pNpcUnit + 0x0c) >>> 0) : 0xffffffff
+  let pNode = m.u32((pNpcControl + 0x08) >>> 0)
+  let bFound = 0
+  while (pNode !== 0) {
+    if (m.u32((pNode + 0x04) >>> 0) === dwGuid) {
+      bFound = 1
+    }
+    pNode = m.u32((pNode + 0x08) >>> 0)
   }
-  if (pNode === 0) {
+  if (bFound === 0) {
     if (onGenerateVendorItems !== undefined) {
-      onGenerateVendorItems(m, pNpcControl >>> 0, pNpcUnit >>> 0, pGame >>> 0, bIsGamble | 0);
+      onGenerateVendorItems(m, pNpcControl >>> 0, pNpcUnit >>> 0, pGame >>> 0, bIsGamble | 0)
+    } else {
+      D2Game_6FCDE2A0_113c(m, pNpcControl >>> 0, pNpcUnit >>> 0, pGame >>> 0, bIsGamble >>> 0)
     }
   }
 }
@@ -4006,6 +4098,18 @@ export function NPCTRADE_InteractBuyItem_6FCDF200_113c(
   nBuyMode: number,
   wTab: number,
   dwCost: number,
+  bFillStackOrHook?:
+    | number
+    | ((
+        m: SparseMemory113c,
+        pGame: number,
+        pPlayer: number,
+        pNpc: number,
+        dwItemGuid: number,
+        nBuyMode: number,
+        wTab: number,
+        dwCost: number,
+      ) => void),
   onExecuteBuy?: (
     m: SparseMemory113c,
     pGame: number,
@@ -4017,42 +4121,44 @@ export function NPCTRADE_InteractBuyItem_6FCDF200_113c(
     dwCost: number,
   ) => void,
 ): number {
-  let pInteractUnit = 0;
-  if (m.u8((pPlayer + 0x6c) >>> 0) !== 0) {
-    const dwInteractId = m.u32((pPlayer + 0x64) >>> 0);
-    const nInteractType = (m.u32((pPlayer + 0x68) >>> 0) | 0);
-    pInteractUnit = SUNIT_GetServerUnit113c(m, pGame >>> 0, nInteractType, dwInteractId) >>> 0;
-  }
+  hitD2GameVa113c(0x6FCDF200)
   if (pGame === 0) {
-    throw new D2CommonAssertError('NpcTrade.cpp', 0x93f);
+    throw new D2CommonAssertError('NpcTrade.cpp', 0x93f)
   }
-  const bucketIdx = (dwNpcGuid & 0x7f) >>> 0;
-  let pNpc = m.u32((pGame + 0x1320 + (bucketIdx << 2)) >>> 0);
+  let pInteractUnit = 0
+  if (m.u8((pPlayer + 0x6c) >>> 0) !== 0) {
+    const dwInteractId = m.u32((pPlayer + 0x64) >>> 0)
+    const nInteractType = m.u32((pPlayer + 0x68) >>> 0) | 0
+    pInteractUnit = SUNIT_GetServerUnit113c(m, pGame >>> 0, nInteractType, dwInteractId) >>> 0
+  }
+  const bucketIdx = (dwNpcGuid & 0x7f) >>> 0
+  let pNpc = m.u32((pGame + 0x1320 + (bucketIdx << 2)) >>> 0)
   while (pNpc !== 0 && m.u32((pNpc + 0x0c) >>> 0) !== (dwNpcGuid >>> 0)) {
-    pNpc = m.u32((pNpc + 0xe4) >>> 0);
+    pNpc = m.u32((pNpc + 0xe4) >>> 0)
   }
   if (pNpc === 0 || pNpc !== pInteractUnit) {
-    const dwGold = STATLIST_GetUnitStat113c(m, pPlayer >>> 0, 0x0e, 0) >>> 0;
-    let pClient = 0;
+    const dwGold = STATLIST_GetUnitStat113c(m, pPlayer >>> 0, 0x0e, 0) >>> 0
+    let pClient = 0
     if (pPlayer !== 0 && m.u32(pPlayer >>> 0) === 0) {
-      const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer >>> 0) >>> 0;
-      pClient = m.u32((pPlayerData + 0x9c) >>> 0);
+      const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer >>> 0) >>> 0
+      pClient = m.u32((pPlayerData + 0x9c) >>> 0)
     }
-    const sp = allocW14B1Stack(m, 0x14);
+    const sp = allocW14B1Stack(m, 0x14)
     try {
-      m.setU8(sp, 0x2a);
-      m.setU8((sp + 1) >>> 0, 0);
-      m.setU16((sp + 2) >>> 0, 9);
-      m.setU32((sp + 7) >>> 0, 0xffffffff);
-      m.setU32((sp + 0x0b) >>> 0, dwGold);
-      NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 0, sp, 0x0f);
+      m.setU8(sp, 0x2a)
+      m.setU8((sp + 1) >>> 0, 0)
+      m.setU16((sp + 2) >>> 0, 9)
+      m.setU32((sp + 7) >>> 0, 0xffffffff)
+      m.setU32((sp + 0x0b) >>> 0, dwGold)
+      NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 0, sp, 0x0f)
     } finally {
-      freeW14B1Stack(sp);
+      freeW14B1Stack(sp)
     }
-    return 1;
+    return 1
   }
-  if (onExecuteBuy !== undefined) {
-    onExecuteBuy(
+  const hook = typeof bFillStackOrHook === 'function' ? bFillStackOrHook : onExecuteBuy
+  if (hook !== undefined) {
+    hook(
       m,
       pGame >>> 0,
       pPlayer >>> 0,
@@ -4061,9 +4167,23 @@ export function NPCTRADE_InteractBuyItem_6FCDF200_113c(
       nBuyMode | 0,
       wTab & 0xffff,
       dwCost >>> 0,
-    );
+    )
+    return 1
   }
-  return 1;
+  const bFillStack = typeof bFillStackOrHook === 'number' ? bFillStackOrHook : 0
+  const effectiveBuyMode =
+    typeof bFillStackOrHook === 'number' ? wTab : wTab !== 0 ? wTab : nBuyMode
+  return (
+    D2Game_6FCDE640_113c(
+      m,
+      pGame >>> 0,
+      pPlayer >>> 0,
+      pNpc >>> 0,
+      dwItemGuid >>> 0,
+      effectiveBuyMode,
+      bFillStack,
+    ) | 0
+  )
 }
 
 /**
@@ -4079,7 +4199,7 @@ export function NPCTRADE_PopulateVendorItemsFromTable_6FCDF2E0_113c(
   pGame: number,
   pPlayer: number,
   pNpc: number,
-  bIsGamble: number,
+  pShop: number,
   onCreateVendorItem?: (
     m: SparseMemory113c,
     pNpc: number,
@@ -4091,127 +4211,180 @@ export function NPCTRADE_PopulateVendorItemsFromTable_6FCDF2E0_113c(
     bPermStore: number,
   ) => number,
 ): void {
-  const pNpcControl = m.u32((pGame + 0x1d24) >>> 0);
-  if (pNpcControl === 0 || m.u32((pNpcControl + 0x04) >>> 0) === 0) {
-    return;
+  hitD2GameVa113c(0x6FCDF2E0)
+  if (pShop === 0) {
+    return
   }
-  const spIdx = allocW14B1Stack(m, 8);
-  let pSlot = 0;
+  const pNpcControl = m.u32((pGame + 0x1d24) >>> 0)
+  const pSeed = (pNpcControl + 0x08) >>> 0
+  m.setU32((pShop + 0x08) >>> 0, m.u32(0x6fd18d10) >>> 0)
+
+  const sp = allocW14B1Stack(m, 0x18)
   try {
-    const nNpcClassId = pNpc !== 0 ? m.u32((pNpc + 0x04) >>> 0) : 0xffffffff;
-    pSlot = D2GAME_ARENA_FindPlayerSlotByUnit113c(m, spIdx, pGame >>> 0, nNpcClassId) >>> 0;
-  } finally {
-    freeW14B1Stack(spIdx);
-  }
-  if (pSlot === 0) {
-    return;
-  }
-  const nTotalEntries = (m.u32((pSlot + 0x38) >>> 0) | 0);
-  if (nTotalEntries <= 0) {
-    return;
-  }
-  const pEntries = m.u32((pSlot + 0x34) >>> 0);
-  if (pEntries === 0) {
-    return;
-  }
-  const nCharLvl = STATLIST_GetUnitStat113c(m, pPlayer >>> 0, 0x0c, 0) | 0;
-  const nTargetLvl = nCharLvl + 4 < 1 ? 1 : (nCharLvl + 4) | 0;
-  const nPlayerAct = m.u8((pPlayer + 0x18) >>> 0);
-  const nClampedCharLvl =
-    NPCTRADE_ClampNormalActLevelCap_6FCDCB20_113c(m, pGame >>> 0, nPlayerAct, nTargetLvl) | 0;
-  const sp = allocW14B1Stack(m, 8);
-  try {
-    for (let i = 0; i < nTotalEntries; i = (i + 1) | 0) {
-      const pEntry = (pEntries + ((i * 0x44) | 0)) >>> 0;
-      const bDiff = m.u8((pGame + 0x6d) >>> 0);
-      const bPermFlag = (m.u8((pEntry + 0x3b) >>> 0) << 24) >> 24;
-      if (bPermFlag > 0 || (bDiff === 0 && m.u8((pEntry + 0x3a) >>> 0) !== 0)) {
-        const dwCode = m.u32((pEntry + 0x30) >>> 0);
-        const pItem =
-          onCreateVendorItem !== undefined
-            ? onCreateVendorItem(m, pNpc >>> 0, dwCode, pGame >>> 0, nClampedCharLvl, 1, 5, 1) >>> 0
-            : 0;
-        if (pItem !== 0) {
-          m.setU32(sp, 0);
-          const pItemsTxt = DATATBLS_GetItemsTxtRecordByCode113c(m, dwCode, sp) >>> 0;
-          if (pItemsTxt !== 0) {
-            const dwTxtCode = m.u32((pItemsTxt + 0x80) >>> 0);
-            if (dwTxtCode === 0x20767163 || dwTxtCode === 0x20767161) {
-              STATLIST_SetUnitStat113c(m, pItem, 0x46, 0xff, 0);
-            } else {
-              const isThrowable = ITEMS_IsThrowableBit113c(m, pItem) | 0;
-              if (isThrowable === 0) {
-                STATLIST_SetUnitStat113c(m, pItem, 0x46, 1, 0);
-              } else {
-                const nMaxStack = ITEMS_GetTotalMaxStack113c(m, pItem) | 0;
-                STATLIST_SetUnitStat113c(m, pItem, 0x46, nMaxStack, 0);
-              }
+    const spSlotIdx = sp >>> 0
+    const spItemIdx = (sp + 0x08) >>> 0
+    const spPermIdx = (sp + 0x10) >>> 0
+    const nNpcClassId = pNpc !== 0 ? m.u32((pNpc + 0x04) >>> 0) : 0xffffffff
+    const pNpcRecord =
+      D2GAME_ARENA_FindPlayerSlotByUnit113c(m, spSlotIdx, pGame >>> 0, nNpcClassId) >>> 0
+    if (pNpcRecord === 0) {
+      throw new D2CommonAssertError('0x6fd19ff9', 0x2c4)
+    }
+
+    let nFailedCount = 0
+    const nPlayerLvl = STATLIST_GetUnitStat113c(m, pPlayer >>> 0, 0x0c, 0) | 0
+    const nShopLvl =
+      NPCTRADE_ClampNormalActLevelCap_6FCDCB20_113c(
+        m,
+        pGame >>> 0,
+        pNpc >>> 0,
+        (nPlayerLvl + 5) | 0,
+      ) | 0
+
+    const spawnVendorItem = (dwCode: number, nQual: number, bPerm: number): number => {
+      if (onCreateVendorItem !== undefined) {
+        return (
+          onCreateVendorItem(
+            m,
+            pNpc >>> 0,
+            dwCode >>> 0,
+            pGame >>> 0,
+            nShopLvl,
+            1,
+            nQual,
+            bPerm,
+          ) >>> 0
+        )
+      }
+      return (
+        D2Game_6FCDEE30_113c(
+          m,
+          pGame >>> 0,
+          dwCode >>> 0,
+          pNpc >>> 0,
+          1,
+          nQual,
+          nShopLvl,
+          nPlayerLvl,
+        ) >>> 0
+      )
+    }
+
+    const nShopEntries = m.u32((pNpcRecord + 0x30) >>> 0) | 0
+    for (let i = 0, byteOff = 0; i < nShopEntries; i = (i + 1) | 0, byteOff = (byteOff + 0x0c) | 0) {
+      const pShopItems = m.u32((pShop + 0x0c) >>> 0)
+      const dwCode = m.u32((pShopItems + byteOff + 0x04) >>> 0)
+      m.setU32(spItemIdx, 0)
+      const pItemsTxt = DATATBLS_GetItemsTxtRecordByCode113c(m, dwCode, spItemIdx) >>> 0
+      if (pItemsTxt === 0 || m.u8((pItemsTxt + 0xfd) >>> 0) > nShopLvl) {
+        continue
+      }
+
+      let nNormalCount = 0
+      if (nShopLvl < 0x19) {
+        const pMinMax = (m.u32((pNpcRecord + 0x2c) >>> 0) + byteOff) >>> 0
+        const nMin = m.u8(pMinMax)
+        const nMaxPlus1 = (m.u8((pMinMax + 1) >>> 0) + 1) | 0
+        nNormalCount = SEED_RollRangeHalfOpen113c(m, pSeed, nMin, nMaxPlus1) | 0
+      }
+
+      if (m.u16((pItemsTxt + 0xf6) >>> 0) >= 0x64 && m.u16((pGame + 0x78) >>> 0) < 0x64) {
+        continue
+      }
+
+      if (nNormalCount >>> 0 > 0) {
+        let bExceeded = false
+        for (let k = 0; (k >>> 0) < (nNormalCount >>> 0); k = (k + 1) | 0) {
+          const roll100 = (advanceSeed64_113c(m, pSeed) % 100) >>> 0
+          let nQual = 2
+          if (nShopLvl < 5) {
+            if (roll100 > 0x5a) {
+              nQual = 1
             }
+          } else if (nShopLvl < 10) {
+            if (roll100 > 0x55) {
+              nQual = 3
+            }
+          } else if (roll100 >= 0x4b) {
+            nQual = 3
+          }
+          const pMinMaxCodeBase = m.u32((pShop + 0x0c) >>> 0)
+          const pMinMaxRecOff = m.u32((pNpcRecord + 0x2c) >>> 0)
+          void pMinMaxRecOff
+          const dwSpawnCode = m.u32((pMinMaxCodeBase + byteOff + 0x04) >>> 0)
+          if (spawnVendorItem(dwSpawnCode, nQual, 0) === 0) {
+            nFailedCount = (nFailedCount + 1) | 0
+          }
+          if (nFailedCount > 0x20) {
+            bExceeded = true
+            break
           }
         }
-      } else {
-        const nMin = m.u8((pEntry + bDiff + 0x18) >>> 0);
-        const nMax = m.u8((pEntry + bDiff + 0x1b) >>> 0);
-        const pSeed = (pSlot + 0x14) >>> 0;
-        let nSpawnCount = SEED_RollRangeHalfOpen113c(m, pSeed, nMin, nMax) | 0;
-        if (nSpawnCount > 0) {
-          const bMagicMin = m.u8((pEntry + bDiff + 0x1e) >>> 0);
-          const bMagicMax = m.u8((pEntry + bDiff + 0x21) >>> 0);
-          let nMagicCount = SEED_RollRangeHalfOpen113c(m, pSeed, bMagicMin, bMagicMax) | 0;
-          const dwMagicLvlRaw = m.u32((pEntry + bDiff * 4 + 0x24) >>> 0);
-          const bMagicCap = dwMagicLvlRaw & 0xff;
-          const bHasMagicCap = bMagicCap !== 0xff;
-          if (bHasMagicCap && bMagicCap < nClampedCharLvl) {
-            if (nMagicCount < nSpawnCount) {
-              nMagicCount = nSpawnCount;
-            }
-          }
-          const nNormalLvl = bHasMagicCap && bMagicCap < nClampedCharLvl ? bMagicCap : nClampedCharLvl;
-          const nMagicItemLvl =
-            bMagicCap === 0xff || nClampedCharLvl <= bMagicCap ? nClampedCharLvl : bMagicCap;
-          if (nMagicCount > 0 && bIsGamble === 0) {
-            for (let j = 0; j < nMagicCount; j = (j + 1) | 0) {
-              const bAutoAffix = m.u8((pEntry + 0x39) >>> 0) === 0 ? 4 : 5;
-              const dwCode = m.u32((pEntry + 0x30) >>> 0);
-              const pItem =
-                onCreateVendorItem !== undefined
-                  ? onCreateVendorItem(
-                      m,
-                      pNpc >>> 0,
-                      dwCode,
-                      pGame >>> 0,
-                      nMagicItemLvl,
-                      1,
-                      bAutoAffix,
-                      0,
-                    ) >>> 0
-                  : 0;
-              if (pItem !== 0) {
-                nSpawnCount = (nSpawnCount - 1) | 0;
-              }
-            }
-          }
-          if (nSpawnCount > 0) {
-            const bNormalQuality = bIsGamble !== 0 ? 0 : m.u8((pEntry + 0x39) >>> 0) === 0 ? 4 : 5;
-            const dwCode = m.u32((pEntry + 0x30) >>> 0);
-            if (onCreateVendorItem !== undefined) {
-              onCreateVendorItem(
-                m,
-                pNpc >>> 0,
-                dwCode,
-                pGame >>> 0,
-                nNormalLvl,
-                nSpawnCount,
-                bNormalQuality,
-                0,
-              );
-            }
-          }
+        if (bExceeded) {
+          return
+        }
+      }
+
+      const pShopItemsAfter = m.u32((pShop + 0x0c) >>> 0)
+      const dwMagicCode = m.u32((pShopItemsAfter + byteOff + 0x04) >>> 0)
+      m.setU32(spItemIdx, 0)
+      DATATBLS_GetItemsTxtRecordByCode113c(m, dwMagicCode, spItemIdx)
+      if (ITEMS_IsThrowableBit113c(m, m.u32(spItemIdx) | 0) !== 1) {
+        continue
+      }
+      if (m.u8((pShopItemsAfter + byteOff + 0x08) >>> 0) > nShopLvl) {
+        continue
+      }
+
+      let nMagicBonus = 1
+      if (nShopLvl >= 0x19) {
+        nMagicBonus = (SEED_RollRangeHalfOpen113c(m, pSeed, 1, 3) + 1) | 0
+      }
+      const pMagicMinMax = (m.u32((pNpcRecord + 0x2c) >>> 0) + byteOff) >>> 0
+      const nMagicMax = (m.u8((pMagicMinMax + 3) >>> 0) + nMagicBonus) | 0
+      const nMagicMin = m.u8((pMagicMinMax + 2) >>> 0)
+      let nMagicCount = nMagicMin >>> 0
+      if (nMagicMax > nMagicMin) {
+        const span = (nMagicMax - nMagicMin) >>> 0
+        const raw = advanceSeed64_113c(m, pSeed)
+        const rem = (span & (span - 1)) === 0 ? (raw & (span - 1)) >>> 0 : (raw % span) >>> 0
+        nMagicCount = (nMagicMin + rem) >>> 0
+      }
+      for (let mIdx = 0; (mIdx >>> 0) < nMagicCount; mIdx = (mIdx + 1) | 0) {
+        const dwCurMagicCode = m.u32((m.u32((pShop + 0x0c) >>> 0) + byteOff + 0x04) >>> 0)
+        if (spawnVendorItem(dwCurMagicCode, 4, 0) === 0) {
+          nFailedCount = (nFailedCount + 1) | 0
         }
       }
     }
+
+    const nPermEntries = m.u32((pNpcRecord + 0x38) >>> 0) | 0
+    for (let j = 0; j < nPermEntries; j = (j + 1) | 0) {
+      const pPermCodes = m.u32((pNpcRecord + 0x34) >>> 0)
+      const dwPermCode = m.u32((pPermCodes + j * 4) >>> 0)
+      const pPermItem = spawnVendorItem(dwPermCode, 2, 1)
+      if (pPermItem !== 0) {
+        const pShopPermCodes = m.u32((pShop + 0x14) >>> 0)
+        const dwLookupCode =
+          pShopPermCodes !== 0 ? m.u32((pShopPermCodes + j * 4) >>> 0) : dwPermCode
+        m.setU32(spPermIdx, 0)
+        const pPermTxt = DATATBLS_GetItemsTxtRecordByCode113c(m, dwLookupCode, spPermIdx) >>> 0
+        if (pPermTxt !== 0) {
+          const dwTxtCode = m.u32((pPermTxt + 0x80) >>> 0)
+          if (dwTxtCode === 0x20767163 || dwTxtCode === 0x20767161) {
+            const nMaxStack = ITEMS_GetTotalMaxStack113c(m, pPermItem) | 0
+            STATLIST_SetUnitStat113c(m, pPermItem, 0x46, nMaxStack, 0)
+          }
+        }
+      } else {
+        nFailedCount = (nFailedCount + 1) | 0
+      }
+      if (nFailedCount > 0x20) {
+        break
+      }
+    }
   } finally {
-    freeW14B1Stack(sp);
+    freeW14B1Stack(sp)
   }
 }
 
@@ -4220,9 +4393,9 @@ export function NPCTRADE_PopulateVendorItemsFromTable_6FCDF2E0_113c(
  * @va 0x6FCE1890
  * @ordinalOrName sub_6FCE1890
  *
- * Validates NPC interaction for repairing items (`0x6FCE1890`).
+ * Validates NPC interaction for hiring a mercenary (`0x6FCE1890`).
  * If the player is not actively interacting with `dwNpcGuid`, queues a 15-byte `0x2A` failure packet
- * (`type = 2`, `result = 9`); otherwise delegates to `0x6FCE1510`.
+ * (`type = 0`, `result = 9`); otherwise delegates to `0x6FCE1510`.
  */
 export function NPCTRADE_InteractRepairItem_6FCE1890_113c(
   m: SparseMemory113c,
@@ -4238,42 +4411,45 @@ export function NPCTRADE_InteractRepairItem_6FCE1890_113c(
     dwItemGuidOrAll: number,
   ) => void,
 ): void {
-  let pInteractUnit = 0;
+  hitD2GameVa113c(0x6FCE1890)
+  let pInteractUnit = 0
   if (m.u8((pPlayer + 0x6c) >>> 0) !== 0) {
-    const dwInteractId = m.u32((pPlayer + 0x64) >>> 0);
-    const nInteractType = (m.u32((pPlayer + 0x68) >>> 0) | 0);
-    pInteractUnit = SUNIT_GetServerUnit113c(m, pGame >>> 0, nInteractType, dwInteractId) >>> 0;
+    const dwInteractId = m.u32((pPlayer + 0x64) >>> 0)
+    const nInteractType = m.u32((pPlayer + 0x68) >>> 0) | 0
+    pInteractUnit = SUNIT_GetServerUnit113c(m, pGame >>> 0, nInteractType, dwInteractId) >>> 0
   }
   if (pGame === 0) {
-    throw new D2CommonAssertError('NpcTrade.cpp', 0x2d3);
+    throw new D2CommonAssertError('NpcTrade.cpp', 0x2d3)
   }
-  const bucketIdx = (dwNpcGuid & 0x7f) >>> 0;
-  let pNpc = m.u32((pGame + 0x1320 + (bucketIdx << 2)) >>> 0);
+  const bucketIdx = (dwNpcGuid & 0x7f) >>> 0
+  let pNpc = m.u32((pGame + 0x1320 + (bucketIdx << 2)) >>> 0)
   while (pNpc !== 0 && m.u32((pNpc + 0x0c) >>> 0) !== (dwNpcGuid >>> 0)) {
-    pNpc = m.u32((pNpc + 0xe4) >>> 0);
+    pNpc = m.u32((pNpc + 0xe4) >>> 0)
   }
   if (pNpc === 0 || pNpc !== pInteractUnit) {
-    const dwGold = STATLIST_GetUnitStat113c(m, pPlayer >>> 0, 0x0e, 0) >>> 0;
-    let pClient = 0;
+    const dwGold = STATLIST_GetUnitStat113c(m, pPlayer >>> 0, 0x0e, 0) >>> 0
+    let pClient = 0
     if (pPlayer !== 0 && m.u32(pPlayer >>> 0) === 0) {
-      const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer >>> 0) >>> 0;
-      pClient = m.u32((pPlayerData + 0x9c) >>> 0);
+      const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer >>> 0) >>> 0
+      pClient = m.u32((pPlayerData + 0x9c) >>> 0)
     }
-    const sp = allocW14B1Stack(m, 0x14);
+    const sp = allocW14B1Stack(m, 0x14)
     try {
-      m.setU8(sp, 0x2a);
-      m.setU8((sp + 1) >>> 0, 2);
-      m.setU16((sp + 2) >>> 0, 9);
-      m.setU32((sp + 7) >>> 0, 0xffffffff);
-      m.setU32((sp + 0x0b) >>> 0, dwGold);
-      NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 0, sp, 0x0f);
+      m.setU8(sp, 0x2a)
+      m.setU8((sp + 1) >>> 0, 0)
+      m.setU16((sp + 2) >>> 0, 9)
+      m.setU32((sp + 7) >>> 0, 0xffffffff)
+      m.setU32((sp + 0x0b) >>> 0, dwGold)
+      NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 0, sp, 0x0f)
     } finally {
-      freeW14B1Stack(sp);
+      freeW14B1Stack(sp)
     }
-    return;
+    return
   }
   if (onExecuteRepair !== undefined) {
-    onExecuteRepair(m, pGame >>> 0, pPlayer >>> 0, pNpc >>> 0, dwItemGuidOrAll >>> 0);
+    onExecuteRepair(m, pGame >>> 0, pPlayer >>> 0, pNpc >>> 0, dwItemGuidOrAll >>> 0)
+  } else {
+    D2Game_6FCE1510_113c(m, pPlayer >>> 0, pGame >>> 0, pNpc >>> 0, dwItemGuidOrAll & 0xffff)
   }
 }
 
@@ -4290,14 +4466,15 @@ export function ACT2Q2_CleanupHoradricStaffItemsOnEnterAct1_6FCE7D00_113c(
   pGame: number,
   pPlayer: number,
   _dwUnused: number = 0,
-  onDeleteQuestItem: (
+  onDeleteQuestItem?: (
     m: SparseMemory113c,
     pPlayerUnit: number,
     pItem: number,
     pGame: number,
     pInventory: number,
-  ) => void = defaultD2Game_6FC565E0_113c,
+  ) => void,
 ): void {
+  hitD2GameVa113c(0x6FCE7D00)
   const bDiff = m.u8((pGame + 0x6d) >>> 0);
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer >>> 0) >>> 0;
   const pQuestFlags = m.u32((pPlayerData + bDiff * 4 + 0x10) >>> 0);
@@ -4320,15 +4497,30 @@ export function ACT2Q2_CleanupHoradricStaffItemsOnEnterAct1_6FCE7D00_113c(
   }
   const pHst = ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, pPlayer >>> 0, pGame >>> 0, 0x20747368) >>> 0;
   if (pHst !== 0) {
-    onDeleteQuestItem(m, pPlayer >>> 0, pHst, pGame >>> 0, m.u32((pPlayer + 0x60) >>> 0));
+    const pInv = m.u32((pPlayer + 0x60) >>> 0);
+    if (onDeleteQuestItem !== undefined) {
+      onDeleteQuestItem(m, pPlayer >>> 0, pHst, pGame >>> 0, pInv);
+    } else {
+      D2Game_6FC565E0_113c(m, pHst, pPlayer >>> 0, pGame >>> 0, pInv);
+    }
   }
   const pVip = ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, pPlayer >>> 0, pGame >>> 0, 0x20706976) >>> 0;
   if (pVip !== 0) {
-    onDeleteQuestItem(m, pPlayer >>> 0, pVip, pGame >>> 0, m.u32((pPlayer + 0x60) >>> 0));
+    const pInv = m.u32((pPlayer + 0x60) >>> 0);
+    if (onDeleteQuestItem !== undefined) {
+      onDeleteQuestItem(m, pPlayer >>> 0, pVip, pGame >>> 0, pInv);
+    } else {
+      D2Game_6FC565E0_113c(m, pVip, pPlayer >>> 0, pGame >>> 0, pInv);
+    }
   }
   const pMsf = ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, pPlayer >>> 0, pGame >>> 0, 0x2066736d) >>> 0;
   if (pMsf !== 0) {
-    onDeleteQuestItem(m, pPlayer >>> 0, pMsf, pGame >>> 0, m.u32((pPlayer + 0x60) >>> 0));
+    const pInv = m.u32((pPlayer + 0x60) >>> 0);
+    if (onDeleteQuestItem !== undefined) {
+      onDeleteQuestItem(m, pPlayer >>> 0, pMsf, pGame >>> 0, pInv);
+    } else {
+      D2Game_6FC565E0_113c(m, pMsf, pPlayer >>> 0, pGame >>> 0, pInv);
+    }
   }
 }
 
@@ -4355,6 +4547,7 @@ export function C2S_Packet_PlaceCursorItemIntoContainer_6FCEF270_113c(
     pOutErr: number,
   ) => number,
 ): number {
+  hitD2GameVa113c(0x6FCEF270)
   if ((nPacketLen | 0) !== 9) {
     return 3;
   }
@@ -4384,7 +4577,7 @@ export function C2S_Packet_PlaceCursorItemIntoContainer_6FCEF270_113c(
     const res =
       onPlaceIntoContainer !== undefined
         ? onPlaceIntoContainer(m, dwContainerGuid, pPlayer >>> 0, pGame >>> 0, dwCursorGuid, sp) | 0
-        : 1;
+        : D2Game_6FCF7CC0_113c(m, dwContainerGuid, pPlayer >>> 0, pGame >>> 0, dwCursorGuid, sp) | 0;
     if (res === 0 && m.u32(sp) !== 0) {
       return 3;
     }
@@ -4418,6 +4611,7 @@ export function C2S_Packet1A_EquipCursorItem_6FCEF2F0_113c(
     pOutErr: number,
   ) => number,
 ): number {
+  hitD2GameVa113c(0x6FCEF2F0)
   if ((nPacketLen | 0) !== 9) {
     return 3;
   }
@@ -4436,7 +4630,7 @@ export function C2S_Packet1A_EquipCursorItem_6FCEF2F0_113c(
     const res =
       onEquipItem !== undefined
         ? onEquipItem(m, dwCursorGuid, pPlayer >>> 0, pGame >>> 0, bBodyLoc, 0, sp) | 0
-        : 1;
+        : D2Game_6FCF8020_113c(m, dwCursorGuid, pPlayer >>> 0, pGame >>> 0, bBodyLoc, 0, sp) | 0;
     if (res === 0 && m.u32(sp) !== 0) {
       return 3;
     }
@@ -4470,6 +4664,7 @@ export function C2S_Packet32_NpcBuyItem_6FCEF570_113c(
     dwCost: number,
   ) => number,
 ): number {
+  hitD2GameVa113c(0x6FCEF570)
   if ((nPacketLen | 0) !== 0x11) {
     return 3;
   }
@@ -4480,7 +4675,7 @@ export function C2S_Packet32_NpcBuyItem_6FCEF570_113c(
   if (onNpcBuy !== undefined) {
     return onNpcBuy(m, dwNpcGuid, pGame >>> 0, pPlayer >>> 0, dwItemGuid, wTab, dwCost) | 0;
   }
-  return 0;
+  return D2Game_6FCDF990_113c(m, dwNpcGuid, pGame >>> 0, pPlayer >>> 0, dwItemGuid, wTab) | 0;
 }
 
 /**
@@ -4506,26 +4701,30 @@ export function C2S_Packet49_WaypointInteract_6FCF0D30_113c(
     wDestLevelId: number,
   ) => void,
 ): number {
+  hitD2GameVa113c(0x6FCF0D30)
   if ((nPacketLen | 0) !== 9) {
     return 3;
   }
   const dwWaypointGuid = m.u32((pPacket + 1) >>> 0);
   const wDestLevelId = m.u16((pPacket + 5) >>> 0);
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer >>> 0) >>> 0;
-  let dwLastTick = m.u32((pPlayerData + 0x160) >>> 0);
-  if (dwLastTick === 0) {
-    let pNode = m.u32((pPlayerData + 0x38) >>> 0);
-    while (pNode !== 0 && m.u32(pNode >>> 0) !== 0xffffffff) {
-      pNode = m.u32((pNode + 0x10) >>> 0);
-    }
-    if (pNode === 0) {
-      dwLastTick = 0;
-    } else {
-      dwLastTick = m.u32((pNode + 0x08) >>> 0);
+  let dwLastTick = 0;
+  if (pPlayerData !== 0) {
+    dwLastTick = m.u32((pPlayerData + 0x160) >>> 0);
+  } else {
+    const pPlayerData2 = UNITS_GetPlayerData113c(m, pPlayer >>> 0) >>> 0;
+    if ((pPlayer >>> 0) !== 0) {
+      let pNode = m.u32((pPlayerData2 + 0x38) >>> 0);
+      while (pNode !== 0 && m.u32(pNode >>> 0) !== 0xffffffff) {
+        pNode = m.u32((pNode + 0x10) >>> 0);
+      }
+      if (pNode !== 0) {
+        dwLastTick = m.u32((pNode + 0x08) >>> 0);
+      }
     }
   }
   const dwCurTick = m.u32(0x6fd18d10) >>> 0;
-  if (dwCurTick !== 0 && ((dwLastTick + 0x2710) >>> 0) > dwCurTick) {
+  if (((dwLastTick + 0x2710) >>> 0) > dwCurTick) {
     SUNIT_SetUnitEventSound113c(m, pPlayer >>> 0, 0x13, 0);
     m.setU32((pPlayer + 0x64) >>> 0, 0xffffffff);
     m.setU32((pPlayer + 0x68) >>> 0, 6);
@@ -4554,7 +4753,7 @@ export function C2S_Packet49_WaypointInteract_6FCF0D30_113c(
     while (pObj !== 0 && m.u32((pObj + 0x0c) >>> 0) !== dwWaypointGuid) {
       pObj = m.u32((pObj + 0xe4) >>> 0);
     }
-    if (pObj === pInteractUnit) {
+    if (pObj !== 0 && pObj === pInteractUnit) {
       m.setU32((pPlayer + 0x64) >>> 0, 0xffffffff);
       m.setU32((pPlayer + 0x68) >>> 0, 6);
       m.setU8((pPlayer + 0x6c) >>> 0, 0);
@@ -4563,6 +4762,8 @@ export function C2S_Packet49_WaypointInteract_6FCF0D30_113c(
   }
   if (onActivateWaypoint !== undefined) {
     onActivateWaypoint(m, dwWaypointGuid, pPlayer >>> 0, pGame >>> 0, wDestLevelId);
+  } else {
+    D2Game_6FC8E930_113c(m, dwWaypointGuid, pGame >>> 0, pPlayer >>> 0, wDestLevelId);
   }
   return 0;
 }
@@ -4592,6 +4793,7 @@ export function C2S_Packet1F_SwapCursorWithContainerItem_6FCF1010_113c(
     pOutErr: number,
   ) => number,
 ): number {
+  hitD2GameVa113c(0x6FCF1010)
   if ((nPacketLen | 0) !== 0x11) {
     return 3;
   }
@@ -4647,7 +4849,17 @@ export function C2S_Packet1F_SwapCursorWithContainerItem_6FCF1010_113c(
             nY,
             sp,
           ) | 0
-        : 1;
+        : D2Game_6FCF7300_113c(
+            m,
+            pPlayer >>> 0,
+            pGame >>> 0,
+            dwCursorGuid,
+            dwStoredGuid,
+            nX,
+            nY,
+            sp,
+            sp,
+          ) | 0;
     if (res === 0 && m.u32(sp) !== 0) {
       return 3;
     }
@@ -4681,6 +4893,7 @@ export function C2S_Packet1D_SwapCursorWithBodyItem_6FCF1200_113c(
     pOutErr: number,
   ) => number,
 ): number {
+  hitD2GameVa113c(0x6FCF1200)
   if ((nPacketLen | 0) !== 9) {
     return 3;
   }
@@ -4720,7 +4933,7 @@ export function C2S_Packet1D_SwapCursorWithBodyItem_6FCF1200_113c(
     const res =
       onSwapBodyItem !== undefined
         ? onSwapBodyItem(m, dwCursorGuid, pPlayer >>> 0, pGame >>> 0, bBodyLoc, 0, sp) | 0
-        : 1;
+        : D2Game_6FCF8600_113c(m, dwCursorGuid, pPlayer >>> 0, pGame >>> 0, bBodyLoc, 0, sp) | 0;
     if (res === 0 && m.u32(sp) !== 0) {
       return 3;
     }
@@ -4750,6 +4963,7 @@ export function ITEMS_DuplicateAndDropCursorItem_6FCF8310_113c(
     pItem: number,
   ) => void,
 ): void {
+  hitD2GameVa113c(0x6FCF8310)
   if (pGame === 0) {
     throw new D2CommonAssertError('Items.cpp', 0x834);
   }
@@ -4776,7 +4990,7 @@ export function ITEMS_DuplicateAndDropCursorItem_6FCF8310_113c(
     if (pRoom === 0) {
       return;
     }
-    const pDropRoom = findDropRoomAtCoords_6FC2E930(m, pRoom, spInCoords, spOutCoords, 1);
+    const pDropRoom = ITEMS_FindFreeGroundDropCoords_6FC2E930_113c(m, pRoom, spInCoords, spOutCoords, 1) >>> 0;
     if (pDropRoom === 0) {
       return;
     }
@@ -4798,6 +5012,8 @@ export function ITEMS_DuplicateAndDropCursorItem_6FCF8310_113c(
     }
     if (onDeleteItemUnit !== undefined) {
       onDeleteItemUnit(m, pGame >>> 0, pPlayer >>> 0, pItem);
+    } else {
+      D2Game_6FCF78C0_113c(m, pGame >>> 0, pPlayer >>> 0, pItem);
     }
   } finally {
     freeW14B1Stack(sp);
@@ -4818,14 +5034,15 @@ export function ACT3Q3_CleanupKhalimItemsOnEnterAct2OrComplete_6FD087E0_113c(
   pGame: number,
   pPlayer: number,
   _dwUnused: number = 0,
-  onDeleteQuestItem: (
+  onDeleteQuestItem?: (
     m: SparseMemory113c,
     pPlayerUnit: number,
     pItem: number,
     pGame: number,
     pInventory: number,
-  ) => void = defaultD2Game_6FC565E0_113c,
+  ) => void,
 ): void {
+  hitD2GameVa113c(0x6FD087E0)
   const bDiff = m.u8((pGame + 0x6d) >>> 0);
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer >>> 0) >>> 0;
   const pQuestFlags = m.u32((pPlayerData + bDiff * 4 + 0x10) >>> 0);
@@ -4839,7 +5056,12 @@ export function ACT3Q3_CleanupKhalimItemsOnEnterAct2OrComplete_6FD087E0_113c(
         khalimCodes[i]!,
       ) >>> 0;
       if (pItem !== 0) {
-        onDeleteQuestItem(m, pPlayer >>> 0, pItem, pGame >>> 0, m.u32((pPlayer + 0x60) >>> 0));
+        const pInv = m.u32((pPlayer + 0x60) >>> 0);
+        if (onDeleteQuestItem !== undefined) {
+          onDeleteQuestItem(m, pPlayer >>> 0, pItem, pGame >>> 0, pInv);
+        } else {
+          D2Game_6FC565E0_113c(m, pItem, pPlayer >>> 0, pGame >>> 0, pInv);
+        }
       }
     }
     return;
@@ -4864,7 +5086,12 @@ export function ACT3Q3_CleanupKhalimItemsOnEnterAct2OrComplete_6FD087E0_113c(
         khalimCodes[i]!,
       ) >>> 0;
       if (pItem !== 0) {
-        onDeleteQuestItem(m, pPlayer >>> 0, pItem, pGame >>> 0, m.u32((pPlayer + 0x60) >>> 0));
+        const pInv = m.u32((pPlayer + 0x60) >>> 0);
+        if (onDeleteQuestItem !== undefined) {
+          onDeleteQuestItem(m, pPlayer >>> 0, pItem, pGame >>> 0, pInv);
+        } else {
+          D2Game_6FC565E0_113c(m, pItem, pPlayer >>> 0, pGame >>> 0, pInv);
+        }
       }
     }
   }
@@ -4888,6 +5115,7 @@ export function ACT3Q2_OperateGidbinnAltar_6FD09C80_113c(
   m: SparseMemory113c,
   pOperateArgs: number,
 ): number {
+  hitD2GameVa113c(0x6FD09C80)
   const pObj = m.u32((pOperateArgs + 0x04) >>> 0);
   if (pObj !== 0 && m.u32((pObj + 0x10) >>> 0) !== 0) {
     return 0;

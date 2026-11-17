@@ -86,6 +86,7 @@ import {
   EVENT_GetNextEventFrame113c,
   EVENT_RemoveUnitEvents113c,
 } from './timer-wheel.ts'
+import { hitD2GameVa113c } from '../va-trace-113c.ts'
 
 /** `D2Game.dll` image base (`0x6FC20000`) used to compute internal callback VAs without raw literals. */
 const D2GAME_IMAGE_BASE_113C = 0x6fc20000
@@ -400,6 +401,7 @@ export function QUESTS_GuidListRemove113c(
   pList: number,
   dwGuid: number,
 ): number {
+  hitD2GameVa113c(0x6FC53830)
   const count = m.u16((pList + 0x80) >>> 0)
   if (count === 0) {
     return 0
@@ -433,6 +435,7 @@ export function QUESTS_TriggerCallback113c(
   bFilterAct: number,
   hooks?: Post150LaneI1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC53CE0)
   const pGame = m.u32(pArg >>> 0) >>> 0
   if (pGame === 0) return
   const pQuestCtrl = m.u32((pGame + 0x10f4) >>> 0) >>> 0
@@ -571,6 +574,7 @@ export function QUESTS_NotifyLevelChange113c(
   nToLevel: number,
   hooks?: Post150LaneI1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC54860)
   const savedStack = laneI1StackPtr
   const pArg = allocStackFrame(m, 0x1c)
   m.setU32(pArg >>> 0, pGame >>> 0)
@@ -595,6 +599,7 @@ export function ACT4Q1_Callback03_LevelChanged113c(
   pArg: number,
   hooks?: Post150LaneI1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC7A9B0)
   if (m.u32((pArg + 0x14) >>> 0) === 0x6d) {
     const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
     const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
@@ -665,6 +670,7 @@ export function ACT4Q2_Callback03_LevelChanged113c(
   pArg: number,
   hooks?: Post150LaneI1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC7AB60)
   const nFromLevel = m.u32((pArg + 0x14) >>> 0)
   if (nFromLevel === 0x6d) {
     const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
@@ -753,6 +759,7 @@ export function ACT4Q3_Callback03_LevelChanged113c(
   pArg: number,
   hooks?: Post150LaneI1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC7AD50)
   if (m.u32((pArg + 0x14) >>> 0) === 0x6d) {
     const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
     if (m.u8((pQuestData + 0x05) >>> 0) === 0 && m.u32((pQuestData + 0x10) >>> 0) !== 0) {
@@ -795,6 +802,7 @@ export function ACT4Q1_Callback03_AltLevelChanged113c(
   pArg: number,
   hooks?: Post150LaneI1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC7B1E0)
   if (m.u32((pArg + 0x14) >>> 0) === 0x67) {
     const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
     const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
@@ -874,6 +882,7 @@ export function ACT4Q2_Callback03_AltLevelChanged113c(
   pArg: number,
   hooks?: Post150LaneI1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC7B380)
   if (m.u32((pArg + 0x14) >>> 0) === 0x67) {
     const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
     const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
@@ -922,6 +931,7 @@ export function ACT4Q2_Hellforge_Callback03_LevelChanged113c(
   pArg: number,
   hooks?: Post150LaneI1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC7F3F0)
   if (m.u32((pArg + 0x14) >>> 0) === 0x67) {
     const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
     const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
@@ -1020,6 +1030,7 @@ export function ACT1Q1_Callback03_LevelChanged113c(
   pArg: number,
   hooks?: Post150LaneI1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC83DD0)
   const nToLevel = m.u32((pArg + 0x18) >>> 0)
   if (nToLevel === 8) {
     if (m.u8((pQuest + 0x0a) >>> 0) === 1) {
@@ -1094,6 +1105,7 @@ export function ACT1Q2_Callback03_LevelChanged113c(
   pArg: number,
   hooks?: Post150LaneI1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC842D0)
   if (m.u32((pArg + 0x14) >>> 0) === 1) {
     const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
     const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
@@ -1155,6 +1167,7 @@ export function ACT1Q4_Callback03_LevelChanged113c(
   pArg: number,
   hooks?: Post150LaneI1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC84D30)
   const nToLevel = m.u32((pArg + 0x18) >>> 0)
   if (nToLevel === 0x14) {
     if (m.u8((pQuest + 0x0a) >>> 0) !== 1) return
@@ -1228,6 +1241,7 @@ export function ACT1Q5_Callback03_LevelChanged113c(
   pArg: number,
   hooks?: Post150LaneI1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC84ED0)
   if (m.u32((pArg + 0x14) >>> 0) === 1) {
     const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
     const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
@@ -1281,6 +1295,7 @@ export function ACT1Q6_Callback03_LevelChanged113c(
   pArg: number,
   hooks?: Post150LaneI1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC85040)
   if (m.u32((pArg + 0x14) >>> 0) === 1) {
     const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
     const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
@@ -1373,6 +1388,7 @@ export function ACT1Q3_Callback03_LevelChanged113c(
   pArg: number,
   hooks?: Post150LaneI1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC884B0)
   const nFromLevel = m.u32((pArg + 0x14) >>> 0)
   if (nFromLevel === 1) {
     const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
@@ -1497,6 +1513,7 @@ export function ARENA_CountPlayersInLevelCallback113c(
   pUnit: number,
   pCtx: number,
 ): void {
+  hitD2GameVa113c(0x6FCAF410)
   const pRoom = UNITS_GetRoom113c(m, pUnit)
   const nLevel = DUNGEON_GetLevelIdFromRoom113c(m, pRoom)
   if (nLevel === (m.u32(pCtx >>> 0) | 0)) {
@@ -1517,6 +1534,7 @@ export function NPCS_UpdateMercenaryOrVendorSlots113c(
   bTownEmpty: number,
   hooks?: Post150LaneI1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCB0320)
   const pNpcCtrl = m.u32((pGame + 0x1d24) >>> 0) >>> 0
   if (pNpcCtrl === 0) return
   const count = (m.u32(pNpcCtrl >>> 0) | 0)
@@ -1594,6 +1612,7 @@ export function NPCS_OnPlayerLevelChange113c(
   nToLevel: number,
   hooks?: Post150LaneI1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCB0C60)
   const savedStack = laneI1StackPtr
   const pCtx = allocStackFrame(m, 8)
   m.setU32(pCtx >>> 0, (nFromLevel | 0) >>> 0)
@@ -1653,6 +1672,7 @@ export function ACT3Q1_Callback03_LevelChanged113c(
   pArg: number,
   hooks?: Post150LaneI1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCDA1E0)
   if (m.u32((pArg + 0x14) >>> 0) === 0x67) {
     const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
     const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
@@ -1688,6 +1708,7 @@ export function ACT3Q2_Callback03_LevelChanged113c(
   pArg: number,
   hooks?: Post150LaneI1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCDA3A0)
   if (m.u32((pArg + 0x18) >>> 0) === 0x6c) {
     const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
     const pPlayerData = UNITS_GetPlayerData113c(m, pUnit)
@@ -1729,6 +1750,7 @@ export function ACT3Q3_Callback03_LevelChanged113c(
   pArg: number,
   _hooks?: Post150LaneI1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCDA550)
   if (m.u32((pArg + 0x14) >>> 0) === 0x67) {
     const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
     const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
@@ -1762,6 +1784,7 @@ export function ACT2Q1_Callback03_LevelChanged113c(
   pQuest: number,
   pArg: number,
 ): void {
+  hitD2GameVa113c(0x6FCE2E20)
   if (m.u32((pArg + 0x14) >>> 0) === 0x28) {
     const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
     const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
@@ -1785,6 +1808,7 @@ export function ACT2Q2_Callback03_LevelChanged113c(
   pQuest: number,
   pArg: number,
 ): void {
+  hitD2GameVa113c(0x6FCE3EC0)
   if (m.u32((pArg + 0x14) >>> 0) === 0x28) {
     const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
     const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
@@ -1805,6 +1829,7 @@ export function ACT2Q3_Callback03_LevelChanged113c(
   pArg: number,
   hooks?: Post150LaneI1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCE6450)
   const nFromLevel = m.u32((pArg + 0x14) >>> 0)
   if (nFromLevel === 0x28) {
     const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
@@ -1895,6 +1920,7 @@ export function ACT2Q4_Callback03_LevelChanged113c(
   pArg: number,
   _hooks?: Post150LaneI1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCE6E00)
   if (m.u32((pArg + 0x14) >>> 0) === 0x28) {
     const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
     const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
@@ -1930,6 +1956,7 @@ export function ACT2Q5_Callback03_LevelChanged113c(
   pArg: number,
   hooks?: Post150LaneI1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCE73A0)
   if (m.u32((pArg + 0x14) >>> 0) === 0x28) {
     const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
     const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
@@ -1980,6 +2007,7 @@ export function ACT2Q6_Callback03_LevelChanged113c(
   pArg: number,
   hooks?: Post150LaneI1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCE9190)
   const nFromLevel = m.u32((pArg + 0x14) >>> 0)
   if (nFromLevel === 0x28) {
     const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
@@ -2085,6 +2113,7 @@ export function ACT3Q0_Callback03_LevelChanged113c(
   pQuest: number,
   pArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD03E00)
   if (m.u32((pArg + 0x14) >>> 0) === 0x4b) {
     const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
     const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
@@ -2105,6 +2134,7 @@ export function ACT3Q4_Callback03_LevelChanged113c(
   pArg: number,
   hooks?: Post150LaneI1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FD071D0)
   if (m.u32((pArg + 0x14) >>> 0) === 0x4b) {
     const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
     const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
@@ -2204,6 +2234,7 @@ export function ACT3Q5_Callback03_LevelChanged113c(
   pArg: number,
   hooks?: Post150LaneI1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FD07560)
   if (m.u32((pArg + 0x14) >>> 0) === 0x4b) {
     const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
     const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
@@ -2258,6 +2289,7 @@ export function ACT3Q6_Callback03_LevelChanged113c(
   pArg: number,
   hooks?: Post150LaneI1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FD07880)
   if (m.u32((pArg + 0x14) >>> 0) === 0x4b) {
     const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
     const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
@@ -2298,6 +2330,7 @@ export function ACT3Q7_Callback03_LevelChanged113c(
   pArg: number,
   hooks?: Post150LaneI1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FD07A10)
   if (m.u32((pArg + 0x18) >>> 0) === 0x52 && m.u32((pQuest + 0x14) >>> 0) < 2) {
     m.setU32((pQuest + 0x14) >>> 0, 2)
     setQuestMainStateDefault(m, pQuest, 1, hooks)
@@ -2315,6 +2348,7 @@ export function ACT3Q8_Callback03_LevelChanged113c(
   pArg: number,
   hooks?: Post150LaneI1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FD07BE0)
   if (m.u32((pArg + 0x14) >>> 0) === 0x4b) {
     const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
     const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
@@ -2382,6 +2416,7 @@ export function QUESTS_CountLivingUnitsInRoomCallback113c(
   pUnit: number,
   pCount: number,
 ): void {
+  hitD2GameVa113c(0x6FC57810)
   if (pUnit === 0) return
   if ((m.u8((pUnit + 0xc6) >>> 0) & 1) !== 0) return
   const dwUnitType = m.u32(pUnit >>> 0)
@@ -2447,6 +2482,7 @@ export function PLRINTRO_CleanInvalidMonsterMinions113c(
   pPlayerData: number,
   hooks?: Post150LaneI1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCB7D10)
   const sgpt = getSgptDataTablesPtr(m)
   const petTypesCount = sgpt !== 0 ? (m.u32((sgpt + 0xbf0) | 0) >>> 0) : 0
   if (petTypesCount <= 1) return
@@ -2514,6 +2550,7 @@ export function PLRINTRO_SendAllPlayerPetsToClient113c(
   pGame: number,
   hooks?: Post150LaneI1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCB8250)
   if (pPlayer === 0 || m.u32(pPlayer >>> 0) !== 0 || pGame === 0) return
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer)
   if (pPlayerData === 0) return
@@ -2567,6 +2604,7 @@ export function PARTY_SendPartyPetsToClient113c(
   pPlayer: number,
   hooks?: Post150LaneI1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCBC620)
   if (pPlayer === 0 || m.u32(pPlayer >>> 0) !== 0 || pGame === 0) return
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer)
   const pClient = pPlayerData !== 0 ? m.u32((pPlayerData + 0x9c) >>> 0) >>> 0 : 0
@@ -2650,6 +2688,7 @@ export function MONSTER_PackPresetSaveData113c(
   pNode: number,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FC3EF50)
   if (pUnit === 0 || m.u32(pUnit >>> 0) !== 1) return 0
   const pMonsterData = m.u32((pUnit + 0x14) >>> 0) >>> 0
   if (pMonsterData === 0) return 0
@@ -2729,6 +2768,7 @@ export function MONSTER_SaveInactiveMonsterNode113c(
   pUnit: number,
   hooks?: Post150LaneI1Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC3F600)
   const sgpt = getSgptDataTablesPtr(m)
   const statesCount = sgpt !== 0 ? m.u16((sgpt + 0x178) >>> 0) : 0
   for (let stateId = 0; stateId < statesCount; stateId++) {
@@ -2875,6 +2915,7 @@ export function UNIT_SaveInactiveUnitNode113c(
   pUnit: number,
   hooks?: Post150LaneI1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC404E0)
   const dwUnitType = m.u32(pUnit >>> 0)
   if (dwUnitType === 1) {
     MONSTER_SaveInactiveMonsterNode113c(m, pGame, pUnit, hooks)
@@ -2983,6 +3024,7 @@ export function MONSTER_FreeAiCmdCircularList113c(
   _pGame: number,
   pAiGeneral: number,
 ): void {
+  hitD2GameVa113c(0x6FC40B60)
   if (pAiGeneral === 0) return
   let pHead = m.u32((pAiGeneral + 0x24) >>> 0) >>> 0
   if (pHead === 0) return
@@ -3010,6 +3052,7 @@ export function MONSTER_FreeAiGeneral113c(
   pGame: number,
   pAiGeneral: number,
 ): void {
+  hitD2GameVa113c(0x6FC40C00)
   if (pAiGeneral === 0) return
   DRLGPRESET_FreeSaveHeaderBlock113c(m, m.u32((pGame + 0x1c) >>> 0) >>> 0, (pAiGeneral + 0x38) >>> 0)
   let pMinion = m.u32((pAiGeneral + 0x34) >>> 0) >>> 0
@@ -3034,6 +3077,7 @@ export function OBJECT_FreeObjectRegionData113c(
   _pGame: number,
   pObjRegion: number,
 ): void {
+  hitD2GameVa113c(0x6FC4E790)
   if (pObjRegion === 0) return
   let pNode = m.u32(pObjRegion >>> 0) >>> 0
   while (pNode !== 0) {
@@ -3055,6 +3099,7 @@ export function OBJECT_DestroyObjectUnit113c(
   pGame: number,
   pUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FC4EE60)
   if (pUnit === 0) return
   const pHoverMsg = m.u32((pUnit + 0xa4) >>> 0) >>> 0
   if (pHoverMsg !== 0) {
@@ -3076,6 +3121,7 @@ export function QUESTS_FreeUnitQuestChain113c(
   _pGame: number,
   pUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FC57220)
   if (pUnit === 0) return
   let pNode = m.u32((pUnit + 0x90) >>> 0) >>> 0
   while (pNode !== 0) {
@@ -3097,6 +3143,7 @@ export function MONSTER_FreeInteractData113c(
   _pGame: number,
   pInteract: number,
 ): void {
+  hitD2GameVa113c(0x6FC683B0)
   if (pInteract === 0) return
   let pNode = m.u32(pInteract >>> 0) >>> 0
   while (pNode !== 0) {
@@ -3120,6 +3167,7 @@ export function MONSTER_DestroyMonsterUnit113c(
   pUnit: number,
   hooks?: Post150LaneI1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCCFB90)
   if (pUnit === 0) return
   SUNITDMG_FreeAttackerCombatList113c(m, pGame, pUnit)
 
@@ -3171,6 +3219,7 @@ export function SUNIT_GetUnitField78_113c(
   m: Memory113c,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FCFF6C0)
   return m.u8((pUnit + 0x78) >>> 0)
 }
 
@@ -3187,6 +3236,7 @@ export function SUNIT_DeactivateAndRemoveUnit113c(
   bKeepInRoom: number,
   hooks?: Post150LaneI1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FD00C80)
   if (pUnit === 0) return
   const dwUnitType = m.u32(pUnit >>> 0) >>> 0
   if (dwUnitType <= 3) {
@@ -3219,6 +3269,7 @@ export function SUNIT_ClearUnitInventoryItems113c(
   pUnit: number,
   hooks?: Post150LaneI1Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FD01110)
   if (pUnit === 0) return
   const pInv = m.u32((pUnit + 0x60) >>> 0) >>> 0
   if (pInv === 0) return
@@ -3333,6 +3384,7 @@ export function SUNIT_UnlinkFromRoomUpdateList113c(
   pGame: number,
   pUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FD0FC60)
   if (pUnit === 0) return
   const listIdx = m.u32((pUnit + 0xd0) >>> 0) >>> 0
   if (listIdx === 0x0b) return

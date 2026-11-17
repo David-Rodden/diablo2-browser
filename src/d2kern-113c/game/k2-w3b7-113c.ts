@@ -73,6 +73,7 @@ import {
   PATH_GetTargetUnit113c,
   PATH_ResetToDefaultType113c,
   PATH_SetDistance113c,
+  PATH_SetStepNum113c,
   PATH_SetType113c,
   PATH_Step113c,
 } from '../common/path.js'
@@ -154,7 +155,6 @@ import {
 import {
   ITEMS_ChooseTreasureClassItem113c,
   ITEMS_DropGoldPileAtUnit113c,
-  ITEMS_FinalizeCreatedItem113c,
   ITEMS_GetDropItemLevel113c,
   MONSTER_SetDeathPathAndAnim113c,
   MONSTER_StartMode113c,
@@ -164,6 +164,12 @@ import {
   SUNITDMG_DistributeExperience113c,
 } from './combat-a1c-113c.js'
 import { SUNIT_GetServerUnit113c } from './game-strc.js'
+import {
+  D2GAME_CreateItemEx_6FC31490_113c,
+  ITEMS_FindFreeGroundDropCoords_6FC2E930_113c,
+  ITEMS_GetDropItemLevel_6FC2E5D0_113c,
+} from './k2-real-itemdrop-113c.js'
+import { MONSTER_StartMode113c as MONSTER_StartModeReal113c } from './k2-real-s2c-combat-113c.js'
 import {
   DATATBLS_GetItemStatCostRecordFast113c,
   STATES_CreateOrUpdateAuraStatList113c,
@@ -218,6 +224,7 @@ import {
 } from './replay-kernel-113c.js'
 import { EVENT_FreeNode113c, EVENT_SetEventFull113c } from './timer-wheel.js'
 import { SUNIT_UpdateUnitPositionAndRoom113c } from './town-runtime-gap-113c.js'
+import { hitD2GameVa113c } from '../va-trace-113c.js'
 
 export type D2KernMemory113c = Memory113c
 
@@ -248,7 +255,6 @@ void ITEMS_CheckItemIdMatchesItemType113c
 void ITEMS_CheckItemTypeIdMemPort113c
 void ITEMS_ChooseTreasureClassItem113c
 void ITEMS_DropGoldPileAtUnit113c
-void ITEMS_FinalizeCreatedItem113c
 void ITEMS_GetBaseCode113c
 void ITEMS_GetCommandFlags113c
 void ITEMS_GetDropItemLevel113c
@@ -384,6 +390,7 @@ export function ACT1Q4_OnCainModeOrInteract_6FC88150_113c(
   pUnit: number,
   _arg4 = 0,
 ): number {
+  hitD2GameVa113c(0x6FC88150)
   if (pUnit === 0) return 0
   if ((m.u32((pUnit + 0x04) >>> 0) | 0) !== 0x92) return 0
 
@@ -446,6 +453,7 @@ export function ACT1Q4_StepCainObjectAnimAndReschedule_6FC88F00_113c(
   pQuestData: number,
   pObject: number,
 ): void {
+  hitD2GameVa113c(0x6FC88F00)
   const nMode = pObject !== 0 ? m.u32((pObject + 0x10) >>> 0) | 0 : 0
   if (nMode === 1) {
     UNITS_ChangeAnimMode113c(m, pObject >>> 0, 2)
@@ -487,6 +495,7 @@ export function QUESTS_FreeBitBufferPair_6FC892D0_113c(
   pPair: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC892D0)
   const pFirst = m.u32(pPair >>> 0) >>> 0
   if (pFirst !== 0) {
     m.u32(pFirst)
@@ -518,6 +527,7 @@ export function QUESTS_AllocBitBufferPair_6FC89360_113c(
   m: D2KernMemory113c,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FC89360)
   m.u32((pGame + 0x1c) >>> 0)
   const pPair = m.alloc(0x08) >>> 0
 
@@ -568,6 +578,7 @@ export function SKILLS_CalcUnitSkillToHit_6FC89B00_113c(
   pOutToHit: number,
   nSkillLevel: number,
 ): void {
+  hitD2GameVa113c(0x6FC89B00)
   const nBaseToHit = UNITS_GetPlayerBaseToHit113c(m, pUnit >>> 0) | 0
   m.setU32(pOutToHit >>> 0, nBaseToHit >>> 0)
   if (pSkill === 0) {
@@ -639,6 +650,7 @@ export function OBJ_IncrementWellChargesAndRefresh_6FC89CA0_113c(
   _pGame: number,
   pObject: number,
 ): void {
+  hitD2GameVa113c(0x6FC89CA0)
   const pObjData0 = m.u32((pObject + 0x14) >>> 0) >>> 0
   const bl = m.u8((pObjData0 + 0x04) >>> 0)
   const edi = bl
@@ -689,6 +701,7 @@ export function OBJ_HealLifeCurePoisonFreezeAndPurgeStates_6FC89DE0_113c(
   pUnit: number,
   pbHealedOut: number,
 ): number {
+  hitD2GameVa113c(0x6FC89DE0)
   const nCurLife = STATLIST_GetUnitStat113c(m, pUnit >>> 0, 6, 0) | 0
   const nMaxLife = STATLIST_GetMaxLifeFromUnit113c(m, pUnit >>> 0) | 0
   if (nCurLife < nMaxLife) {
@@ -733,6 +746,7 @@ export function OBJ_RollAndDispatchObjectEffectTable_6FC89E50_113c(
     dwArg: number,
   ) => number,
 ): number {
+  hitD2GameVa113c(0x6FC89E50)
   const nTableCount = m.u32(D2GAME_SHRINE_EFFECT_COUNT_VA_113C) | 0
   const idx = nIndex & 0xff
   if (idx >= nTableCount) {
@@ -776,6 +790,7 @@ export function OBJ_SpawnMonsterFromObjectInRings_6FC8A050_113c(
   nMode: number,
   hooks?: RegpopSpawnHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC8A050)
   const monId = nMonsterId | 0
   if (monId < 0) return 0
 
@@ -851,6 +866,7 @@ export function OBJ_ClearObject151OwnerIfMatchingPlayer_6FC8A1A0_113c(
   pObject: number,
   pPlayer: number,
 ): void {
+  hitD2GameVa113c(0x6FC8A1A0)
   if (pObject === 0) return
   if ((m.u32((pObject + 0x04) >>> 0) | 0) !== 0x151) return
 
@@ -897,6 +913,7 @@ export function OBJ_SyncObjectMode2Or5ByCollision_6FC8A220_113c(
   pGame: number,
   dwObjectGuid: number,
 ): void {
+  hitD2GameVa113c(0x6FC8A220)
   if (pGame === 0) {
     throw new D2CommonAssertError('SUnit.cpp', 0x2d3)
   }
@@ -966,6 +983,7 @@ export function OBJ_ValidateAndDispatchOperateFn_6FC8A330_113c(
     pOperateArgs: number,
   ) => number,
 ): number {
+  hitD2GameVa113c(0x6FC8A330)
   m.setU32(pOutFlag >>> 0, 1)
   const pObject = SUNIT_GetServerUnit113c(
     m,
@@ -1036,6 +1054,7 @@ export function OBJ_IsEligibleMonsterForShrineUpgrade_6FC8A440_113c(
   pCandidateUnit: number,
   pSourceUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC8A440)
   if ((pCandidateUnit >>> 0) === (pSourceUnit >>> 0) || pCandidateUnit === 0) return 0
   if ((m.u32(pCandidateUnit >>> 0) | 0) !== 1) return 0
   if ((UNITS_AreUnitsAligned113c(m, pSourceUnit >>> 0, pCandidateUnit >>> 0) | 0) === 1) return 0
@@ -1078,6 +1097,7 @@ export function OBJ_OperateBookOrSpecialContainer_6FC8A7A0_113c(
   m: D2KernMemory113c,
   pOperateArgs: number,
 ): number {
+  hitD2GameVa113c(0x6FC8A7A0)
   const pGame = m.u32(pOperateArgs >>> 0) >>> 0
   const pPlayer0 = m.u32((pOperateArgs + 0x08) >>> 0) >>> 0
   let pInteractingUnit = 0
@@ -1171,6 +1191,7 @@ export function OBJ_OnStaminaShrineStateRemoved_6FC8A900_113c(
   nState: number,
   pStatList: number,
 ): void {
+  hitD2GameVa113c(0x6FC8A900)
   STATES_OnTimedStateRemoved113c(m, pUnit >>> 0, nState | 0, pStatList >>> 0)
   const nMaxStamina = STATLIST_GetMaxStaminaFromUnit113c(m, pUnit >>> 0) | 0
   STATLIST_SetUnitStat113c(m, pUnit >>> 0, 0x0a, nMaxStamina, 0)
@@ -1195,6 +1216,7 @@ export function OBJ_ApplyShrineAuraStatList_6FC8A960_113c(
   dwStatValue: number,
   dwExpireFrame: number,
 ): number {
+  hitD2GameVa113c(0x6FC8A960)
   const pSetup = allocStackFrame113c(0x24)
   try {
     m.setU32(pSetup, pGame >>> 0)
@@ -1233,6 +1255,7 @@ export function OBJ_SpawnItemByCodeNearUnit_6FC8AFA0_113c(
     pOutCoords: number,
   ) => number,
 ): number {
+  hitD2GameVa113c(0x6FC8AFA0)
   const nItemId = DATATBLS_GetItemIdFromItemCode113c(m, dwItemCode >>> 0) | 0
   if (nItemId === -1) {
     return 0
@@ -1249,10 +1272,9 @@ export function OBJ_SpawnItemByCodeNearUnit_6FC8AFA0_113c(
     let pDropRoom = 0
     if (onFindFreeDropRoom !== undefined) {
       pDropRoom = onFindFreeDropRoom(m, pRoom, pInCoords, pOutCoords) >>> 0
-    } else if (pRoom !== 0) {
-      m.setU32(pOutCoords, m.u32(pInCoords) >>> 0)
-      m.setU32((pOutCoords + 0x04) >>> 0, m.u32((pInCoords + 0x04) >>> 0) >>> 0)
-      pDropRoom = pRoom
+    } else {
+      pDropRoom =
+        ITEMS_FindFreeGroundDropCoords_6FC2E930_113c(m, pRoom, pInCoords, pOutCoords, 1) >>> 0
     }
     if (pDropRoom === 0) {
       return 0
@@ -1274,9 +1296,9 @@ export function OBJ_SpawnItemByCodeNearUnit_6FC8AFA0_113c(
     m.setU16((pItemDrop + 0x2a) >>> 0, wItemFormat)
     m.setU32((pItemDrop + 0x30) >>> 0, nQuality >>> 0)
 
-    const nIlvl = ITEMS_GetDropItemLevel113c(m, pGame >>> 0, pUnit >>> 0, 0) | 0
+    const nIlvl = ITEMS_GetDropItemLevel_6FC2E5D0_113c(m, pGame >>> 0, pUnit >>> 0, 0) | 0
     m.setU32((pItemDrop + 0x0c) >>> 0, nIlvl >>> 0)
-    return ITEMS_FinalizeCreatedItem113c(m, pGame >>> 0, pItemDrop) | 0
+    return D2GAME_CreateItemEx_6FC31490_113c(m, pGame >>> 0, pItemDrop, 0) | 0
   } finally {
     freeStackFrame113c(pFrame)
   }
@@ -1297,6 +1319,7 @@ export function OBJ_DropChestTreasureByActLevelTier_6FC8B570_113c(
   pOperateArgs: number,
   nDropArg: number,
 ): number {
+  hitD2GameVa113c(0x6FC8B570)
   const pObject0 = m.u32((pOperateArgs + 0x04) >>> 0) >>> 0
   if (pObject0 === 0) {
     throw new D2CommonAssertError('Objects.cpp', 0x1313)
@@ -1361,6 +1384,7 @@ export function OBJ_SpawnSingleMonsterFromObject_6FC8B7A0_113c(
   nMonsterId: number,
   hooks?: RegpopSpawnHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC8B7A0)
   const pFrame = allocStackFrame113c(0x38)
   try {
     const pCoords = pFrame
@@ -1425,6 +1449,7 @@ export function OBJ_SpawnCompanionObjectsA2AndA0_6FC8BF00_113c(
   pGame: number,
   pSourceUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FC8BF00)
   const pFrame = allocStackFrame113c(0x28)
   try {
     const pCoords = pFrame
@@ -1545,7 +1570,6 @@ function runExplodingOrPoisonShrine113c(
   try {
     const pCoords = pFrame
     const pDropCoords = (pFrame + 0x08) >>> 0
-    const pFieldBoxCoords = (pFrame + 0x10) >>> 0
     const pItemDrop = (pFrame + 0x20) >>> 0
     const pMissileParams = (pFrame + 0x20) >>> 0
 
@@ -1582,7 +1606,7 @@ function runExplodingOrPoisonShrine113c(
           m,
           pRoom,
           pDropCoords,
-          pFieldBoxCoords,
+          pCoords,
           1,
           0x3e01,
           0x801,
@@ -1626,10 +1650,10 @@ function runExplodingOrPoisonShrine113c(
         }
         m.setU32((pItemDrop + 0x0c) >>> 0, nIlvl >>> 0)
         m.setU32((pItemDrop + 0x54) >>> 0, 1)
-        const pItem = ITEMS_FinalizeCreatedItem113c(m, pGame0, pItemDrop) >>> 0
-        STATLIST_SetUnitStat113c(m, pItem, 0x46, 1, 0)
-        UNITROOM_RefreshUnit113c(m, pItem)
+        const pItem = D2GAME_CreateItemEx_6FC31490_113c(m, pGame0, pItemDrop, 0) >>> 0
         if (pItem !== 0) {
+          STATLIST_SetUnitStat113c(m, pItem, 0x46, 1, 0)
+          UNITROOM_RefreshUnit113c(m, pItem)
           m.setU32((pItem + 0xc4) >>> 0, (m.u32((pItem + 0xc4) >>> 0) | 1) >>> 0)
         }
       }
@@ -1679,6 +1703,7 @@ export function OBJ_ShrineEffectPoisonPotionsAndClouds_6FC8C200_113c(
   pOperateArgs: number,
   pShrineTxt: number,
 ): void {
+  hitD2GameVa113c(0x6FC8C200)
   runExplodingOrPoisonShrine113c(m, pOperateArgs, pShrineTxt, 0x206d7067, 0x8f4, 0x30)
 }
 
@@ -1695,6 +1720,7 @@ export function OBJ_ShrineEffectExplodingPotionsAndMissiles_6FC8C580_113c(
   pOperateArgs: number,
   pShrineTxt: number,
 ): void {
+  hitD2GameVa113c(0x6FC8C580)
   runExplodingOrPoisonShrine113c(m, pOperateArgs, pShrineTxt, 0x206d706f, 0x8b2, 0x2d)
 }
 
@@ -1712,6 +1738,7 @@ export function OBJ_ShrineEffectFireNovaAndHpDamage_6FC8C900_113c(
   pOperateArgs: number,
   pShrineTxt: number,
 ): void {
+  hitD2GameVa113c(0x6FC8C900)
   const pFrame = allocStackFrame113c(0xe0)
   try {
     const pUnitFindData = (pFrame + 0x10) >>> 0
@@ -1818,6 +1845,7 @@ export function OBJ_OperateWaypoint_6FC8CF90_113c(
   m: D2KernMemory113c,
   pOperateArgs: number,
 ): number {
+  hitD2GameVa113c(0x6FC8CF90)
   const pFrame = allocStackFrame113c(0x20)
   try {
     const pWpNo = pFrame
@@ -1911,6 +1939,7 @@ export function OBJ_OperateBreakawayObject_6FC8D8F0_113c(
   m: D2KernMemory113c,
   pOperateArgs: number,
 ): number {
+  hitD2GameVa113c(0x6FC8D8F0)
   const pObject0 = m.u32((pOperateArgs + 0x04) >>> 0) >>> 0
   if (pObject0 === 0 || (m.u32((pObject0 + 0x10) >>> 0) | 0) === 0) {
     UNITS_ChangeAnimMode113c(m, pObject0, 1)
@@ -1961,6 +1990,7 @@ export function OBJ_OperateShrine_6FC8DA00_113c(
   ) => void,
   onIsBadCodePtr?: (pfnEffectVa: number) => boolean,
 ): number {
+  hitD2GameVa113c(0x6FC8DA00)
   const pPlayer = m.u32((pOperateArgs + 0x08) >>> 0) >>> 0
   const pObject0 = m.u32((pOperateArgs + 0x04) >>> 0) >>> 0
   const pObjData0 = m.u32((pObject0 + 0x14) >>> 0) >>> 0
@@ -2091,6 +2121,7 @@ export function OBJ_OperateGenericMode0To1_6FC8DE00_113c(
   m: D2KernMemory113c,
   pOperateArgs: number,
 ): number {
+  hitD2GameVa113c(0x6FC8DE00)
   const pObject0 = m.u32((pOperateArgs + 0x04) >>> 0) >>> 0
   if (pObject0 !== 0 && (m.u32((pObject0 + 0x10) >>> 0) | 0) !== 0) {
     return 1
@@ -2146,6 +2177,7 @@ export function OBJ_OperateToggleDoorWithCooldown_6FC8DEC0_113c(
   pOperateArgs: number,
   dwTickCount = 0x1000,
 ): number {
+  hitD2GameVa113c(0x6FC8DEC0)
   const pCoords = allocStackFrame113c(8)
   try {
     const pObject0 = m.u32((pOperateArgs + 0x04) >>> 0) >>> 0
@@ -2215,6 +2247,7 @@ export function OBJ_EventHoverMsgTimeout_6FC8E470_113c(
   pGame: number,
   pObject: number,
 ): void {
+  hitD2GameVa113c(0x6FC8E470)
   if (pObject === 0) return
   const pHoverMsg = m.u32((pObject + 0xa4) >>> 0) >>> 0
   if (pHoverMsg === 0) return
@@ -2247,6 +2280,7 @@ export function OBJ_EventPeriodicOrTimeOfDaySync_6FC8E4E0_113c(
   pGame: number,
   pObject: number,
 ): void {
+  hitD2GameVa113c(0x6FC8E4E0)
   let wMode = 0
   if (pObject !== 0) {
     wMode = m.u32((pObject + 0x10) >>> 0) & 0xffff
@@ -2287,12 +2321,15 @@ export function OBJ_EventPeriodicOrTimeOfDaySync_6FC8E4E0_113c(
 
   const pAct0 = m.u32((pGame + 0xbc) >>> 0) >>> 0
   const envRes = ENVIRONMENT_GetTimeOfDayAndAngle113c(m, pAct0) as unknown
+  const envObj = envRes as { period?: number; timeOfDay?: number } | null | undefined
   const nPeriod =
     typeof envRes === 'number'
       ? envRes | 0
-      : (((envRes as { period?: number; timeOfDay?: number })?.period ??
-          (envRes as { timeOfDay?: number })?.timeOfDay ??
-          0) |
+      : ((envObj !== null && envObj !== undefined && envObj.period !== undefined
+          ? envObj.period
+          : envObj !== null && envObj !== undefined && envObj.timeOfDay !== undefined
+            ? envObj.timeOfDay
+            : 0) |
         0)
 
   if (nPeriod === 0) {
@@ -2372,6 +2409,7 @@ export function MISSILE_SendSyncPacket73_6FC8F740_113c(
   pClient: number,
   bIncludeTargetPos: number,
 ): void {
+  hitD2GameVa113c(0x6FC8F740)
   if (pMissile === 0) return
   if ((m.u32(pMissile >>> 0) | 0) !== 3) return
   if (((m.u32((pMissile + 0xc8) >>> 0) >>> 10) & 1) === 0) return
@@ -2434,6 +2472,7 @@ export function PLAYER_FreePlayerDataField5CList_6FC900C0_113c(
   pPlayer: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC900C0)
   void pGame
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer >>> 0) >>> 0
   const pStruct5C = m.u32((pPlayerData + 0x5c) >>> 0) >>> 0
@@ -2473,6 +2512,7 @@ export function CUBE_ValidateRecipeInputSlot_6FC90240_113c(
   pCubeOutputCtx: number,
   pUsedItemFlags: number,
 ): number {
+  hitD2GameVa113c(0x6FC90240)
   if (pInventory === 0) return 0
 
   const pInParam = (pCubeMainTxt + (nInputSlotIdx << 3) + 0x14) >>> 0
@@ -2707,6 +2747,7 @@ export function NET_SendEventMessagePacket5A_6FC90BF0_113c(
   bEventType: number,
   pPlayer: number,
 ): void {
+  hitD2GameVa113c(0x6FC90BF0)
   const pPkt = allocStackFrame113c(0x28)
   try {
     for (let i = 0; i < 10; i++) {
@@ -2754,6 +2795,7 @@ export function CUBE_RollRandomItemIdByTypeAndLevel_6FC91060_113c(
   nMaxItemLevel: number,
   nItemType: number,
 ): number {
+  hitD2GameVa113c(0x6FC91060)
   const pItemDataTables = DATATBLS_GetItemDataTables113c(m) >>> 0
   if (pItemDataTables === 0) {
     throw new D2CommonAssertError('Cube.cpp', 0x381)
@@ -2796,7 +2838,8 @@ export function CUBE_RollRandomItemIdByTypeAndLevel_6FC91060_113c(
     return 0
   }
   const nPickedIdx = SEED_RollLimitedFast113c(m, pSeed, candidates.length) | 0
-  return candidates[nPickedIdx] ?? 0
+  const picked = candidates[nPickedIdx]
+  return picked !== undefined ? picked : 0
 }
 
 
@@ -2815,6 +2858,7 @@ export function MONSTER_ModeChangeKnockback_6FC95160_113c(
   pGame: number,
   pModeChangeArgs: number,
 ): number {
+  hitD2GameVa113c(0x6FC95160)
   const pMonster = m.u32((pModeChangeArgs + 0x04) >>> 0) >>> 0
   const nClassId0 = pMonster !== 0 ? m.u32((pMonster + 0x04) >>> 0) | 0 : -1
   if ((MONSTATS2_CheckModeBit113c(m, nClassId0, 3) | 0) === 0) {
@@ -2861,6 +2905,7 @@ export function MONSTER_ModeChangeCorpse_6FC95460_113c(
   pGame: number,
   pModeChangeArgs: number,
 ): number {
+  hitD2GameVa113c(0x6FC95460)
   const pMonster = m.u32((pModeChangeArgs + 0x04) >>> 0) >>> 0
   if (pMonster !== 0 && (m.u32((pMonster + 0x10) >>> 0) | 0) !== 0) {
     const bFlag14 = m.u8((pModeChangeArgs + 0x14) >>> 0)
@@ -2906,6 +2951,7 @@ export function MONSTER_ApplyRoomCrushDamageToNearbyPlayers_6FC955C0_113c(
   pMonster: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC955C0)
   const pRoom = UNITS_GetRoom113c(m, pMonster >>> 0) >>> 0
   if (pRoom === 0) return
 
@@ -2954,6 +3000,7 @@ export function MONSTER_NotifyOwnerOrDistributeExpOnDeath_6FC960F0_113c(
   pMonster: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC960F0)
   if (pMonster === 0) return
   if (((m.u32((pMonster + 0xc8) >>> 0) >>> 10) & 1) === 0) return
 
@@ -3034,6 +3081,7 @@ export function MONSTER_EventHoverMsgTimeout_6FC96570_113c(
   _dwArg0 = 0,
   _dwArg1 = 0,
 ): void {
+  hitD2GameVa113c(0x6FC96570)
   void _dwArg0
   void _dwArg1
   if (pMonster === 0) return
@@ -3068,6 +3116,7 @@ export function MONSTER_StartGetHitOrScheduleAi_6FC965E0_113c(
   pGame: number,
   pMonster: number,
 ): void {
+  hitD2GameVa113c(0x6FC965E0)
   const pPath = m.u32((pMonster + 0x2c) >>> 0) >>> 0
   PATH_ResetToDefaultType113c(m, pPath)
 
@@ -3110,25 +3159,70 @@ function startMonsterMode8WithTargetValidation113c(
   pMonster: number,
   onPostModeCallback?: (m: D2KernMemory113c, pGame: number, pMonster: number) => void,
 ): void {
-  SKILLS_SetUsedSkillMemPort113c(m, pMonster >>> 0, 0)
-  if (pMonster !== 0) {
-    const pMonStats2 = MONSTATS2_GetRecordPtr113c(m, m.u32((pMonster + 0x04) >>> 0) | 0) >>> 0
-    if (pMonStats2 !== 0) {
-      void m.u8((pMonStats2 + 0x105) >>> 0)
+  const mon = pMonster >>> 0
+  const game = pGame >>> 0
+  SKILLS_SetUsedSkillMemPort113c(m, mon, 0)
+  const sp = allocStackFrame113c(0x20)
+  try {
+    for (let off = 0; off < 0x20; off += 4) {
+      m.setU32((sp + off) >>> 0, 0)
     }
-  }
-
-  SUNIT_ValidatePathTargetUnit113c(m, pMonster >>> 0, pGame >>> 0)
-  const pPath = m.u32((pMonster + 0x2c) >>> 0) >>> 0
-  const pTarget = PATH_GetTargetUnit113c(m, pPath) >>> 0
-  const pEffectiveTarget = pTarget === (pMonster >>> 0) ? 0 : pTarget
-  MONSTER_StartMode113c(m, pGame >>> 0, pMonster >>> 0, 8, pEffectiveTarget, 0, 0)
-
-  const bHasState1 = STATES_CheckState113c(m, pMonster >>> 0, 1) | 0
-  if (bHasState1 === 0 || (SUNIT_IsDeadOrDying113c(m, pMonster >>> 0) | 0) === 0) {
-    if (m.u32(0x6fd1bc1c) !== 0 && onPostModeCallback !== undefined) {
-      onPostModeCallback(m, pGame >>> 0, pMonster >>> 0)
+    m.setU32(sp, 8)
+    m.setU32((sp + 0x04) >>> 0, mon)
+    let blPathMode = 0x64
+    if (mon !== 0) {
+      const pMonStats2 = MONSTATS2_GetRecordPtr113c(m, m.u32((mon + 0x04) >>> 0) | 0) >>> 0
+      if (pMonStats2 !== 0) {
+        const bFlags105 = m.u8((pMonStats2 + 0x105) >>> 0)
+        const pBitMasks = m.u32(0x6fd18be0) >>> 0
+        const mask0 = pBitMasks !== 0 ? m.u32(pBitMasks) >>> 0 : 1
+        if ((bFlags105 & mask0) !== 0) {
+          blPathMode = 0x65
+        }
+      }
     }
+    m.setU8((sp + 0x15) >>> 0, blPathMode)
+
+    SUNIT_ValidatePathTargetUnit113c(m, mon, game)
+    const pPath = mon !== 0 ? m.u32((mon + 0x2c) >>> 0) >>> 0 : 0
+    const pTarget = PATH_GetTargetUnit113c(m, pPath) >>> 0
+    const pEffectiveTarget = pTarget === mon ? 0 : pTarget
+    m.setU32((sp + 0x08) >>> 0, pEffectiveTarget)
+
+    if (mon !== 0 && m.u32(mon) === 1) {
+      const pMonData = m.u32((mon + 0x14) >>> 0) >>> 0
+      const pMonPlan = pMonData !== 0 ? m.u32((pMonData + 0x2c) >>> 0) >>> 0 : 0
+      let effPathMode = blPathMode
+      let stepNum = m.u8((sp + 0x1c) >>> 0)
+      if (pMonPlan !== 0) {
+        const plan18 = m.u32((pMonPlan + 0x18) >>> 0) | 0
+        if (plan18 !== 0) effPathMode = plan18
+        const plan20 = m.u8((pMonPlan + 0x20) >>> 0)
+        if (plan20 !== 0) stepNum = plan20
+        m.setU32((pMonPlan + 0x18) >>> 0, 0)
+        m.setU32((pMonPlan + 0x1c) >>> 0, 0)
+        m.setU8((pMonPlan + 0x20) >>> 0, 0)
+      }
+      if (effPathMode !== 0x64 && pPath !== 0) {
+        if (stepNum === 0) stepNum = 5
+        const nPathType = effPathMode === 0x65 ? 0x0d : effPathMode
+        PATH_SetStepNum113c(m, pPath, stepNum)
+        PATH_SetType113c(m, pPath, nPathType)
+        PATH_Compute113c(m, pPath, mon, 0)
+      }
+    }
+
+    hitD2GameVa113c(0x6FC95E10)
+    MONSTER_StartModeReal113c(m, game, mon, 8, pEffectiveTarget, 0, 0)
+
+    const bHasState1 = STATES_CheckState113c(m, mon, 1) | 0
+    if (bHasState1 === 0 || (SUNIT_IsDeadOrDying113c(m, mon) | 0) !== 0) {
+      if (onPostModeCallback !== undefined) {
+        onPostModeCallback(m, game, mon)
+      }
+    }
+  } finally {
+    freeStackFrame113c(sp)
   }
 }
 
@@ -3146,6 +3240,7 @@ export function MONSTER_StartMode8CastA_6FC96A50_113c(
   pMonster: number,
   onPostModeCallback?: (m: D2KernMemory113c, pGame: number, pMonster: number) => void,
 ): void {
+  hitD2GameVa113c(0x6FC96A50)
   startMonsterMode8WithTargetValidation113c(m, pGame, pMonster, onPostModeCallback)
 }
 
@@ -3163,6 +3258,7 @@ export function MONSTER_StartMode8CastB_6FC96B20_113c(
   pMonster: number,
   onPostModeCallback?: (m: D2KernMemory113c, pGame: number, pMonster: number) => void,
 ): void {
+  hitD2GameVa113c(0x6FC96B20)
   startMonsterMode8WithTargetValidation113c(m, pGame, pMonster, onPostModeCallback)
 }
 
@@ -3184,6 +3280,7 @@ export function MONSTER_StepSkillCastAnim_6FC96F20_113c(
   pMonster: number,
   stepPathOverride?: (m: D2KernMemory113c, pMonster: number) => number,
 ): number {
+  hitD2GameVa113c(0x6FC96F20)
   if ((UNITS_HasAnimFinished113c(m, pMonster >>> 0) | 0) !== 0) {
     UNITS_ChangeAnimMode113c(m, pMonster >>> 0, 1)
     return 2
@@ -3232,6 +3329,7 @@ export function PLAYER_ClearCursorItemAndNotify42_6FC97D90_113c(
   pPlayer: number,
   pItem: number,
 ): void {
+  hitD2GameVa113c(0x6FC97D90)
   const pInventory = m.u32((pPlayer + 0x60) >>> 0) >>> 0
   let pClient = 0
   if ((m.u32(pPlayer >>> 0) | 0) === 0) {

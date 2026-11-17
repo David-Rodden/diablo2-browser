@@ -84,6 +84,7 @@ import {
   SEED_RollRangeHalfOpen113c,
 } from './regpop-spawn-113c.ts'
 import { EVENT_GetNextEventFrame113c } from './timer-wheel.ts'
+import { hitD2GameVa113c } from '../va-trace-113c.ts'
 
 /** `D2Game.dll` `.data` `0x6FD22CE0`: 20-entry `itemActionPacketSubTable` (`12` bytes per `dwAnimMode`). */
 export const D2GAME_PLR_MODE_SYNC_TABLE_VA_113C = 0x6fd22ce0
@@ -205,6 +206,7 @@ export function PLRTRADE_SyncClonedItemEarOrPersonalizedData113c(
   pSrcItem: number,
   bSetCmdFlag8000: number,
 ): void {
+  hitD2GameVa113c(0x6FC90010)
   const dst = pDstItem >>> 0
   if (dst === 0) return
   const itemType = ITEMS_GetItemTypeFromItem113c(m, dst) | 0
@@ -231,6 +233,7 @@ export function PLRTRADE_SyncClonedItemEarOrPersonalizedData113c(
  * @va D2Game:0x6FC90080
  */
 export function PLRTRADE_HasAnyCubePageItemOnUnit113c(m: Memory113c, pUnit: number): number {
+  hitD2GameVa113c(0x6FC90080)
   const u = pUnit >>> 0
   if (u === 0) return 0
   const pInventory = m.u32((u + 0x60) >>> 0) >>> 0
@@ -258,6 +261,7 @@ export function PLRTRADE_TradeButtonNoopAction3_113c(
   _pGame = 0,
   _pPlayer = 0,
 ): number {
+  hitD2GameVa113c(0x6FC90170)
   return 0
 }
 
@@ -273,6 +277,7 @@ export function PLRTRADE_TradeButtonNoopAction2_113c(
   _pGame = 0,
   _pPlayer = 0,
 ): number {
+  hitD2GameVa113c(0x6FC90180)
   return 0
 }
 
@@ -287,6 +292,7 @@ export function PLRTRADE_CountCubePageItemsInInventory113c(
   m: Memory113c,
   pInventory: number,
 ): number {
+  hitD2GameVa113c(0x6FC90190)
   let count = 0
   let pNode = INVENTORY_GetFirstItem113c(m, pInventory >>> 0) >>> 0
   while (pNode !== 0) {
@@ -309,6 +315,7 @@ export function PLRTRADE_CountCubePageItemsInInventory113c(
  * @va D2Game:0x6FC901F0
  */
 export function PLRTRADE_CanModifyBeltDuringTrade113c(m: Memory113c, pUnit: number): number {
+  hitD2GameVa113c(0x6FC901F0)
   const u = pUnit >>> 0
   if (u === 0) return 1
   if (m.u8((u + 0x6c) >>> 0) === 0) return 1
@@ -339,6 +346,7 @@ export function PLRTRADE_SendTradeAcceptButtonAndSetState3_113c(
   pTrade1: number,
   pTrade2: number,
 ): number {
+  hitD2GameVa113c(0x6FC90B70)
   const sp = k2LaneCStackPtr
   const pkt = allocScratchBytes113c(m, 4)
   try {
@@ -379,6 +387,7 @@ export function PLRTRADE_BroadcastClearMercUnitCallback113c(
   pTargetPlayer: number,
   pSourcePlayer: number,
 ): void {
+  hitD2GameVa113c(0x6FC90C90)
   const dst = pTargetPlayer >>> 0
   const src = pSourcePlayer >>> 0
   if (dst === src) return
@@ -412,6 +421,7 @@ export function PLRTRADE_IsInteractingWithValidPlayer113c(
   pPlayer: number,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FC90D60)
   const plr = pPlayer >>> 0
   if (plr === 0) return 0
   const dwInteractGuid = m.u32((plr + 0x64) >>> 0) >>> 0
@@ -434,7 +444,9 @@ export function PLRTRADE_IsInteractingWithValidPlayer113c(
  *
  * @va D2Game:0x6FC94890
  */
-export function MONSTER_EndModeS3Noop113c(_m: Memory113c, _pGame = 0, _pUnit = 0): void {}
+export function MONSTER_EndModeS3Noop113c(_m: Memory113c, _pGame = 0, _pUnit = 0): void {
+  hitD2GameVa113c(0x6FC94890)
+}
 
 /**
  * Monster timer wheel event `10` handler (`monsterEventFunctionsTable[10]` at `0x6FD1BC3C`):
@@ -451,6 +463,7 @@ export function MONSTER_Event10_ClearMonsterFields34And38_113c(
   _nEventArg1 = 0,
   _nEventArg2 = 0,
 ): void {
+  hitD2GameVa113c(0x6FC94E40)
   const u = pUnit >>> 0
   if (u === 0) return
   if ((m.u32(u) | 0) !== 1) return
@@ -475,6 +488,7 @@ export function PLAYER_SkillModeNoopHandler_04_09_113c(
   _pSkill = 0,
   _nSkillLevel = 0,
 ): number {
+  hitD2GameVa113c(0x6FC97920)
   return 1
 }
 
@@ -493,6 +507,7 @@ export function PLAYER_SkillModeNoopHandler_01_05_113c(
   _pSkill = 0,
   _nSkillLevel = 0,
 ): number {
+  hitD2GameVa113c(0x6FC97930)
   return 1
 }
 
@@ -511,6 +526,7 @@ export function PLAYER_SkillModeNoopHandler_00_17_113c(
   _pSkill = 0,
   _nSkillLevel = 0,
 ): number {
+  hitD2GameVa113c(0x6FC97940)
   return 1
 }
 
@@ -527,6 +543,7 @@ export function PLAYER_CanInterruptCurrentSkillOrEvent113c(
   pPlayer: number,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FC98100)
   const plr = pPlayer >>> 0
   const pSkill = SKILLS_GetUsedSkill113c(m, plr) >>> 0
   if (pSkill !== 0) {
@@ -554,6 +571,7 @@ export function NET_SendRemoveUnitPacket0A113c(
   pUnit: number,
   pClient: number,
 ): void {
+  hitD2GameVa113c(0x6FC9A540)
   const u = pUnit >>> 0
   if (u === 0) return
   const nUnitType = m.u8(u) & 0xff
@@ -585,7 +603,9 @@ export function AITHINK_Fn146_UberMephistoNoop113c(
   _pGame = 0,
   _pUnit = 0,
   _pAiParam = 0,
-): void {}
+): void {
+  hitD2GameVa113c(0x6FC9B4E0)
+}
 
 /**
  * `MonAI.txt` `pfnAiInit` for `FoulCrowNest` (`43`), `Sarcophagus` (`45`), and `MinionSpawner` (`121`):
@@ -601,6 +621,7 @@ export function AIINIT_SpawnerResetFrameTimers113c(
   _pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FC9B4F0)
   const g = pGame >>> 0
   const param = pAiParam >>> 0
   if (g === 0 || param === 0) return
@@ -625,6 +646,7 @@ export function MONSTER_GetOrRollRegionSubVariant113c(
   pUnit: number,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FC9B510)
   const u = pUnit >>> 0
   const g = pGame >>> 0
   if (u === 0 || g === 0) return 0
@@ -659,6 +681,7 @@ export function AI_FilterLivingGloamUnit113c(
   pUnit: number,
   _pContext = 0,
 ): number {
+  hitD2GameVa113c(0x6FC9BD00)
   const u = pUnit >>> 0
   if (u === 0) return 0
   if ((m.u32(u) | 0) !== 1) return 0
@@ -690,6 +713,7 @@ export function PACKET_C2S66_WardenResponseNoop113c(
   _pPacket = 0,
   _nPacketSize = 0,
 ): number {
+  hitD2GameVa113c(0x6FCEB190)
   return 0
 }
 
@@ -707,6 +731,7 @@ export function PACKET_C2S43_QuestInitNoop113c(
   _pPacket = 0,
   _nPacketSize = 0,
 ): number {
+  hitD2GameVa113c(0x6FCEB1B0)
   return 0
 }
 
@@ -724,6 +749,7 @@ export function PACKET_C2S42_ClearCursorNoop113c(
   _pPacket = 0,
   _nPacketSize = 0,
 ): number {
+  hitD2GameVa113c(0x6FCEB1C0)
   return 0
 }
 
@@ -741,6 +767,7 @@ export function PACKET_C2S2E_PlaySoundNoop113c(
   _pPacket = 0,
   _nPacketSize = 0,
 ): number {
+  hitD2GameVa113c(0x6FCEB1D0)
   return 0
 }
 
@@ -758,6 +785,7 @@ export function PACKET_C2S2C_Reject3_113c(
   _pPacket = 0,
   _nPacketSize = 0,
 ): number {
+  hitD2GameVa113c(0x6FCEB1E0)
   return 3
 }
 
@@ -774,6 +802,7 @@ export function PACKET_CheckUnitsInDifferentActs113c(
   pUnit1: number,
   pUnit2: number,
 ): number {
+  hitD2GameVa113c(0x6FCEB370)
   const room1 = UNITS_GetRoom113c(m, pUnit1 >>> 0) >>> 0
   const lvl1 = DUNGEON_GetLevelIdFromRoom113c(m, room1) | 0
   const act1 = DRLG_GetActNoFromLevelId113c(m, lvl1) & 0xff
@@ -802,6 +831,7 @@ export function PACKET_C2S58_MarkQuestIntroSeen113c(
   pPacket: number,
   nPacketSize: number,
 ): number {
+  hitD2GameVa113c(0x6FCEB3D0)
   if ((nPacketSize | 0) !== 3) return 3
   const wQuestId = m.u16((pPacket + 1) >>> 0)
   if (wQuestId >= 0x2a) return 2
@@ -826,6 +856,7 @@ export function PACKET_C2S52_Reject3_113c(
   _pPacket = 0,
   _nPacketSize = 0,
 ): number {
+  hitD2GameVa113c(0x6FCEB490)
   return 3
 }
 
@@ -843,6 +874,7 @@ export function PACKET_C2S45_Reject3_113c(
   _pPacket = 0,
   _nPacketSize = 0,
 ): number {
+  hitD2GameVa113c(0x6FCEB550)
   return 3
 }
 
@@ -860,6 +892,7 @@ export function PACKET_C2S39_Reject3_113c(
   _pPacket = 0,
   _nPacketSize = 0,
 ): number {
+  hitD2GameVa113c(0x6FCEB560)
   return 3
 }
 
@@ -878,6 +911,7 @@ export function NET_SendUnitMovePacket0F113c(
   pClient: number,
   nAnimMode: number,
 ): void {
+  hitD2GameVa113c(0x6FCEBA20)
   const u = pUnit >>> 0
   if (u === 0) return
 
@@ -922,6 +956,7 @@ export function NET_SendReassignUnitPacket15_113c(
   pClient: number,
   bFlash: number,
 ): void {
+  hitD2GameVa113c(0x6FCEBB10)
   const u = pUnit >>> 0
   if (u === 0) return
 
@@ -959,6 +994,7 @@ export function PACKET_C2S2D_Reject3_113c(
   _pPacket = 0,
   _nPacketSize = 0,
 ): number {
+  hitD2GameVa113c(0x6FCEBDA0)
   return 3
 }
 
@@ -971,6 +1007,7 @@ export function PACKET_C2S2D_Reject3_113c(
  * @va D2Game:0x6FCEBED0
  */
 export function NET_SendEventMessage5A_Type0E_113c(m: Memory113c, pPlayer: number): number {
+  hitD2GameVa113c(0x6FCEBED0)
   const sp = k2LaneCStackPtr
   const pkt40 = allocScratchBytes113c(m, 40)
   try {
@@ -1003,6 +1040,7 @@ export function PACKET_C2S4B_RequestUnitRefresh113c(
   pPacket: number,
   nPacketSize: number,
 ): number {
+  hitD2GameVa113c(0x6FCEC6E0)
   if ((nPacketSize | 0) !== 9) return 3
   const dwUnitType = m.u32((pPacket + 1) >>> 0) >>> 0
   const dwUnitId = m.u32((pPacket + 5) >>> 0) >>> 0
@@ -1029,6 +1067,7 @@ export function PACKET_IsInteractingWithDifferentPlayer113c(
   pGame: number,
   pOtherPlayer: number,
 ): number {
+  hitD2GameVa113c(0x6FCECB10)
   const plr = pPlayer >>> 0
   if (plr === 0) return 0
   const dwInteractGuid = m.u32((plr + 0x64) >>> 0) >>> 0
@@ -1057,6 +1096,7 @@ export function ITEMS_AreAffixesEqual113c(
   pItem1: number,
   pItem2: number,
 ): number {
+  hitD2GameVa113c(0x6FCF16B0)
   const a = pItem1 >>> 0
   const b = pItem2 >>> 0
   for (let i = 0; i < 3; i++) {
@@ -1085,6 +1125,7 @@ export function ITEMS_GetOppositeHandOrRingBodyLoc113c(
   _m: Memory113c,
   nBodyLoc: number,
 ): number {
+  hitD2GameVa113c(0x6FCF1720)
   switch (nBodyLoc | 0) {
     case 4:
       return 5
@@ -1110,7 +1151,9 @@ export function ITEMS_GetOppositeHandOrRingBodyLoc113c(
  *
  * @va D2Game:0x6FCF1790
  */
-export function ITEMMODE_UnitTimerNoop113c(_m: Memory113c, _pGame = 0, _pItem = 0): void {}
+export function ITEMMODE_UnitTimerNoop113c(_m: Memory113c, _pGame = 0, _pItem = 0): void {
+  hitD2GameVa113c(0x6FCF1790)
+}
 
 /**
  * Evaluates two `0x28`-byte `D2HandItemFlagsStrc` records (`pFlagsA` in `eax`, `pFlagsB` in `ecx`)
@@ -1126,6 +1169,7 @@ export function ITEMS_AreWeaponSlotTypesCompatible113c(
   pHandFlagsA: number,
   pHandFlagsB: number,
 ): number {
+  hitD2GameVa113c(0x6FCF1950)
   const a = pHandFlagsA >>> 0
   const b = pHandFlagsB >>> 0
   if (a === 0 || b === 0) return 0
@@ -1178,6 +1222,7 @@ export function ITEMS_DoItemRecordsMatchCodePair113c(
   dwCode1: number,
   dwCode2: number,
 ): number {
+  hitD2GameVa113c(0x6FCF1A00)
   const a = pItemsTxtA >>> 0
   const b = pItemsTxtB >>> 0
   if (a === 0 || b === 0) return 0
@@ -1199,6 +1244,7 @@ export function ITEMS_DoItemRecordsMatchCodePair113c(
  * @va D2Game:0x6FCF1BC0
  */
 export function ITEMS_HasSocketedSubItems113c(m: Memory113c, pItem: number): number {
+  hitD2GameVa113c(0x6FCF1BC0)
   const itm = pItem >>> 0
   if (itm === 0) return 0
   if ((m.u32(itm) | 0) !== 4) return 0
@@ -1225,6 +1271,7 @@ export function ITEMS_BuildItemDropParamsFromItem113c(
   pGame: number,
   nClassId: number,
 ): void {
+  hitD2GameVa113c(0x6FCF1E10)
   const out = pOutDrop >>> 0
   const src = pSourceItem >>> 0
   const g = pGame >>> 0
@@ -1268,6 +1315,7 @@ export function ITEMS_BuildItemDropParamsFromItem113c(
  * @va D2Game:0x6FCF29F0
  */
 export function ITEMS_ClearInventoryCmdFlag4AndSync3F113c(m: Memory113c, pUnit: number): void {
+  hitD2GameVa113c(0x6FCF29F0)
   const u = pUnit >>> 0
   if (u === 0) return
   const pInventory = m.u32((u + 0x60) >>> 0) >>> 0
@@ -1315,6 +1363,7 @@ export function SUNITDMG_GetDefenderColdEffect113c(
   pDefender: number,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FCFAE20)
   const def = pDefender >>> 0
   if (def === 0) return -50
   if ((m.u32(def) | 0) !== 1) return -50

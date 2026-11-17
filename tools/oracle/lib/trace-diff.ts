@@ -13,13 +13,165 @@ export interface TraceHeader {
   schema: string
   source: string
   initSeed?: number
+  seedOverride?: number
   dot?: boolean
+  s2c?: boolean
   unitFields: string[]
+  itemFields?: string[]
   statIds: number[]
 }
 
-/** One unit row: unitFields values followed by stat values (t0/t1). */
+/** One unit row: unitFields values followed by stat values (t0/t1), or itemFields + flat [statId, param, value] triples (t4). */
 export type UnitRow = (number | null)[]
+
+/** Canonical 30 scalar columns emitted by `d2oracle.c` `dump_items` before trailing `[statId, param, value]` triples. */
+export const ORACLE_ITEM_FIELDS_113C = [
+  'id',
+  'class',
+  'mode',
+  'x',
+  'y',
+  'seedLo',
+  'seedHi',
+  'itemSeedLo',
+  'itemSeedHi',
+  'initSeed',
+  'ownerId',
+  'quality',
+  'ilvl',
+  'itemFlags',
+  'cmdFlags',
+  'fileIndex',
+  'itemFormat',
+  'rarePrefix',
+  'rareSuffix',
+  'autoPrefix',
+  'magicPrefix0',
+  'magicPrefix1',
+  'magicPrefix2',
+  'magicSuffix0',
+  'magicSuffix1',
+  'magicSuffix2',
+  'bodyLoc',
+  'itemPage',
+  'earLevel',
+  'invGfxIdx',
+] as const
+
+export interface ParsedItemStat {
+  readonly statId: number
+  readonly param: number
+  readonly value: number
+}
+
+export interface ParsedItemRow {
+  readonly fields: Record<string, number | null>
+  readonly stats: ParsedItemStat[]
+}
+
+/** Parses one `t4` item tuple using `header.itemFields` + trailing `[statId, param, value]` stat triples. */
+export function parseItemRow(row: readonly (number | null)[], itemFields: readonly string[]): ParsedItemRow {
+  const fields: Record<string, number | null> = {}
+  for (let i = 0; i < itemFields.length; i++) {
+    fields[itemFields[i]!] = row[i] ?? null
+  }
+  const stats: ParsedItemStat[] = []
+  for (let i = itemFields.length; i + 2 < row.length; i += 3) {
+    stats.push({
+      statId: Number(row[i] ?? 0),
+      param: Number(row[i + 1] ?? 0),
+      value: Number(row[i + 2] ?? 0),
+    })
+  }
+  return { fields, stats }
+}
+
+export interface ItemOrS2cDiff {
+  readonly key: 't4' | 's2c'
+  readonly id: number | null
+  readonly field: string
+  readonly expected: unknown
+  readonly actual: unknown
+}
+
+const ITEM_POS_FIELDS = new Set(['id', 'class', 'mode', 'x', 'y'])
+
+/**
+ * Pure frame-level `t4` item comparator reusable by `replay-113c` (`diffFrame113c`) and tests.
+ * Compares item presence by `id`, scalar `itemFields`, and (under `'strict'`) trailing `[statId, param, value]` triples.
+ */
+export function diffItemFrameRows(
+  goldenRows: readonly UnitRow[] | undefined,
+  actualRows: readonly UnitRow[] | undefined,
+  itemFields: readonly string[],
+  policy: 'strict' | 'pos' = 'strict',
+): ItemOrS2cDiff | null {
+  if (goldenRows === undefined) return null
+  if (actualRows === undefined) {
+    return { key: 't4', id: null, field: 'list', expected: goldenRows.length, actual: null }
+  }
+  const idIdx = Math.max(0, itemFields.indexOf('id'))
+  const actualById = new Map<number, UnitRow>()
+  for (const row of actualRows) actualById.set(row[idIdx] as number, row)
+  const goldIds = new Set<number>()
+  for (const grow of goldenRows) {
+    const id = grow[idIdx] as number
+    goldIds.add(id)
+    const arow = actualById.get(id)
+    if (arow === undefined) {
+      return { key: 't4', id, field: 'presence', expected: grow, actual: null }
+    }
+    for (let c = 0; c < itemFields.length; c++) {
+      const name = itemFields[c]!
+      if (policy === 'pos' && !ITEM_POS_FIELDS.has(name)) continue
+      if (grow[c] !== arow[c]) {
+        return { key: 't4', id, field: name, expected: grow[c], actual: arow[c] }
+      }
+    }
+    if (policy === 'strict') {
+      const gStats = parseItemRow(grow, itemFields).stats
+      const aStats = parseItemRow(arow, itemFields).stats
+      const maxStats = Math.max(gStats.length, aStats.length)
+      for (let s = 0; s < maxStats; s++) {
+        const gs = gStats[s] ?? null
+        const as = aStats[s] ?? null
+        if (!gs || !as || gs.statId !== as.statId || gs.param !== as.param || gs.value !== as.value) {
+          const label = gs ? `stat(${gs.statId}:${gs.param})` : as ? `stat(${as.statId}:${as.param})` : `stat[${s}]`
+          return { key: 't4', id, field: label, expected: gs, actual: as }
+        }
+      }
+    }
+  }
+  for (const row of actualRows) {
+    const id = row[idIdx] as number
+    if (!goldIds.has(id)) {
+      return { key: 't4', id, field: 'presence', expected: null, actual: row }
+    }
+  }
+  return null
+}
+
+/**
+ * Pure frame-level `s2c` uncompressed packet list comparator reusable by `replay-113c` (`diffFrame113c`) and tests.
+ */
+export function diffS2cFramePackets(
+  goldenPkts: readonly string[] | undefined,
+  actualPkts: readonly string[] | undefined,
+): ItemOrS2cDiff | null {
+  if (goldenPkts === undefined) return null
+  if (actualPkts === undefined) {
+    return { key: 's2c', id: null, field: 'list', expected: goldenPkts.length, actual: null }
+  }
+  const maxLen = Math.max(goldenPkts.length, actualPkts.length)
+  for (let i = 0; i < maxLen; i++) {
+    const gp = goldenPkts[i]?.toLowerCase() ?? null
+    const ap = actualPkts[i]?.toLowerCase() ?? null
+    if (gp !== ap) {
+      return { key: 's2c', id: null, field: `s2c[${i}]`, expected: goldenPkts[i] ?? null, actual: actualPkts[i] ?? null }
+    }
+  }
+  return null
+}
 
 /** One `SUNITDMG_ApplyDamage` (`0x6FCFC0B0`) event emitted in `dmg`. */
 export interface TraceDmgEvent {
@@ -36,8 +188,10 @@ export type TraceDotEvent = [number, number, number, number]
 export interface TraceFrame {
   frame: number
   [unitKey: `t${number}`]: UnitRow[] | undefined
+  t4?: UnitRow[]
   gs?: [number, number]
   st?: number[][]
+  s2c?: string[]
   dmg?: TraceDmgEvent[]
   dot?: TraceDotEvent[]
   in?: unknown[]
@@ -63,6 +217,12 @@ export interface DiffOptions {
   compareDamage?: boolean
   /** Compare per-frame `stat 6` DoT / regen `dot` events when both headers advertise `dot: true` (default true). */
   compareDot?: boolean
+  /** Compare per-frame `t4` item units (and trailing stat triples) when both headers advertise `itemFields` (default true). */
+  compareItems?: boolean
+  /** Item scalar fields to compare in `t4` (default all shared `itemFields` except item seed columns unless `compareSeeds` is true). */
+  itemFields?: string[]
+  /** Compare per-frame uncompressed `s2c` packets when both headers advertise `s2c: true` (default true). */
+  compareS2c?: boolean
   /** Stat ids to compare (default all stat ids present in both headers). */
   statIds?: number[]
   /** Absolute tolerance per field/stat name (default 0 = exact). */
@@ -79,10 +239,12 @@ export type DivergenceKind =
   | 'missing-unit'
   | 'extra-unit'
   | 'field'
+  | 'item-stats'
   | 'game-seed'
   | 'states'
   | 'damage'
   | 'dot'
+  | 's2c'
 
 export interface Divergence {
   frame: number
@@ -90,8 +252,8 @@ export interface Divergence {
   type?: number
   unitId?: number
   field?: string
-  oracle?: number | null | UnitRow | TraceDmgEvent | TraceDotEvent
-  replica?: number | null | UnitRow | TraceDmgEvent | TraceDotEvent
+  oracle?: number | string | null | UnitRow | TraceDmgEvent | TraceDotEvent | ParsedItemStat
+  replica?: number | string | null | UnitRow | TraceDmgEvent | TraceDotEvent | ParsedItemStat
   /** Rows of the involved unit in the preceding frames: [frame, oracleRow, replicaRow]. */
   context: [number, UnitRow | null, UnitRow | null][]
 }
@@ -106,6 +268,7 @@ export interface DiffResult {
 }
 
 const SEED_FIELDS = new Set(['seedLo', 'seedHi'])
+const ITEM_SEED_FIELDS = new Set(['seedLo', 'seedHi', 'itemSeedLo', 'itemSeedHi', 'initSeed'])
 
 export function parseTrace(text: string): Trace {
   let header: TraceHeader | null = null
@@ -171,8 +334,24 @@ function byId(rows: UnitRow[] | undefined, idIdx: number): Map<number, UnitRow> 
 function unitRowAt(t: Trace, frame: number, type: number, id: number): UnitRow | null {
   const f = t.frames.get(frame)
   if (!f) return null
-  const idIdx = t.header.unitFields.indexOf('id')
+  const cols = type === 4 && t.header.itemFields ? t.header.itemFields : t.header.unitFields
+  const idIdx = cols.indexOf('id')
   return (f[`t${type}`] ?? []).find((r) => r[idIdx] === id) ?? null
+}
+
+function planItemColumns(aFields: readonly string[], bFields: readonly string[], opts: DiffOptions): ColumnPlan[] {
+  const fields =
+    opts.itemFields ??
+    aFields.filter((f) => (opts.compareSeeds || !ITEM_SEED_FIELDS.has(f)) && bFields.includes(f))
+  const cols: ColumnPlan[] = []
+  for (const f of fields) {
+    if (f === 'id') continue
+    const ia = aFields.indexOf(f)
+    const ib = bFields.indexOf(f)
+    if (ia < 0 || ib < 0) throw new Error(`item field ${f} missing from ${ia < 0 ? 'oracle' : 'replica'} header`)
+    cols.push({ name: f, oracleIdx: ia, replicaIdx: ib })
+  }
+  return cols
 }
 
 function sameIntArray(a: readonly number[], b: readonly number[]): boolean {
@@ -209,8 +388,12 @@ function statesMap(rows: readonly number[][] | undefined, allowedTypes: Readonly
 }
 
 export function diffTraces(oracle: Trace, replica: Trace, opts: DiffOptions = {}): DiffResult {
-  const types = opts.types ?? [0, 1, 3]
-  const allowedTypeSet = new Set(types)
+  const hasItemSchema = Boolean(oracle.header.itemFields && replica.header.itemFields)
+  const rawTypes = opts.types ?? [0, 1, 3]
+  const types = hasItemSchema ? rawTypes.filter((t) => t !== 4) : rawTypes
+  const shouldCompareItems =
+    hasItemSchema && (opts.compareItems === true || (opts.compareItems !== false && (opts.types === undefined || rawTypes.includes(4))))
+  const allowedTypeSet = new Set(rawTypes)
   const ctxN = opts.context ?? 5
   const tol = opts.tolerance ?? {}
   const idA = oracle.header.unitFields.indexOf('id')
@@ -218,6 +401,10 @@ export function diffTraces(oracle: Trace, replica: Trace, opts: DiffOptions = {}
   if (idA < 0 || idB < 0) throw new Error('trace header lacks an id column')
   const plans = new Map<number, ColumnPlan[]>()
   for (const t of types) plans.set(t, planColumns(oracle.header, replica.header, opts, t === 0 || t === 1))
+  const itemPlan = shouldCompareItems ? planItemColumns(oracle.header.itemFields!, replica.header.itemFields!, opts) : null
+  const itemIdA = shouldCompareItems ? oracle.header.itemFields!.indexOf('id') : -1
+  const itemIdB = shouldCompareItems ? replica.header.itemFields!.indexOf('id') : -1
+  if (shouldCompareItems && (itemIdA < 0 || itemIdB < 0)) throw new Error('trace itemFields lacks an id column')
 
   const frameNos = [...oracle.frames.keys()]
     .filter((f) => (opts.fromFrame === undefined || f >= opts.fromFrame) && (opts.toFrame === undefined || f <= opts.toFrame))
@@ -294,6 +481,86 @@ export function diffTraces(oracle: Trace, replica: Trace, opts: DiffOptions = {}
               oracle: va,
               replica: vb,
               context: context(frame, type, id),
+            },
+          }
+        }
+      }
+    }
+
+    if (shouldCompareItems && itemPlan) {
+      const ra = byId(fa.t4, itemIdA)
+      const rb = byId(fb.t4, itemIdB)
+      const ids = [...new Set([...ra.keys(), ...rb.keys()])].sort((x, y) => x - y)
+      for (const id of ids) {
+        const a = ra.get(id)
+        const b = rb.get(id)
+        if (!a || !b) {
+          return {
+            uncomparedFields,
+            comparedFrames: compared,
+            oracleFrames: oracle.frames.size,
+            replicaFrames: replica.frames.size,
+            firstDivergence: {
+              frame,
+              kind: a ? 'missing-unit' : 'extra-unit',
+              type: 4,
+              unitId: id,
+              ...(a ? { oracle: a } : {}),
+              ...(b ? { replica: b } : {}),
+              context: context(frame, 4, id),
+            },
+          }
+        }
+        for (const col of itemPlan) {
+          const va = a[col.oracleIdx] ?? null
+          const vb = b[col.replicaIdx] ?? null
+          if (va === null || vb === null) {
+            if (va === vb) continue
+          } else if (Math.abs(va - vb) <= (tol[col.name] ?? 0)) {
+            continue
+          }
+          return {
+            uncomparedFields,
+            comparedFrames: compared,
+            oracleFrames: oracle.frames.size,
+            replicaFrames: replica.frames.size,
+            firstDivergence: {
+              frame,
+              kind: 'field',
+              type: 4,
+              unitId: id,
+              field: col.name,
+              oracle: va,
+              replica: vb,
+              context: context(frame, 4, id),
+            },
+          }
+        }
+        const sa = parseItemRow(a, oracle.header.itemFields!).stats
+        const sb = parseItemRow(b, replica.header.itemFields!).stats
+        const maxStats = Math.max(sa.length, sb.length)
+        for (let k = 0; k < maxStats; k++) {
+          const ea = sa[k] ?? null
+          const eb = sb[k] ?? null
+          const statTol = ea ? (tol[`itemStat${ea.statId}`] ?? 0) : 0
+          if (ea && eb && ea.statId === eb.statId && ea.param === eb.param && Math.abs(ea.value - eb.value) <= statTol) {
+            continue
+          }
+          const label = ea ? `stat(${ea.statId}:${ea.param})` : eb ? `stat(${eb.statId}:${eb.param})` : `stat[${k}]`
+          return {
+            uncomparedFields,
+            comparedFrames: compared,
+            oracleFrames: oracle.frames.size,
+            replicaFrames: replica.frames.size,
+            firstDivergence: {
+              frame,
+              kind: 'item-stats',
+              type: 4,
+              unitId: id,
+              field: label,
+              oracle: ea,
+              replica: eb,
+              context: context(frame, 4, id),
             },
           }
         }
@@ -405,6 +672,26 @@ export function diffTraces(oracle: Trace, replica: Trace, opts: DiffOptions = {}
               context: ea ? context(frame, ea[0], ea[1]) : eb ? context(frame, eb[0], eb[1]) : [],
             },
           }
+        }
+      }
+    }
+
+    if (opts.compareS2c !== false && Boolean(oracle.header.s2c && replica.header.s2c)) {
+      const s2cDiff = diffS2cFramePackets(fa.s2c ?? [], fb.s2c ?? [])
+      if (s2cDiff) {
+        return {
+          uncomparedFields,
+          comparedFrames: compared,
+          oracleFrames: oracle.frames.size,
+          replicaFrames: replica.frames.size,
+          firstDivergence: {
+            frame,
+            kind: 's2c',
+            field: s2cDiff.field,
+            oracle: (s2cDiff.expected as string | null) ?? null,
+            replica: (s2cDiff.actual as string | null) ?? null,
+            context: [],
+          },
         }
       }
     }

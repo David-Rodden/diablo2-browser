@@ -10,26 +10,17 @@ one-shot INT3 on all 4810 manifest entries, armed inside the server frame (1131 
 | Module | executed | ported/dv | gap | gap bytes |
 |---|---:|---:|---:|---:|
 | D2Common | 615 | 615 | 0 | 0 |
-| D2Game | 516 | 507 | 9 | 4907 |
+| D2Game | 516 | 516 | 0 | 0 |
 
 ## D2Common (0)
 
 | first | VA | size | status | name |
 |---:|---|---:|---|---|
 
-## D2Game (9)
+## D2Game (0)
 
 | first | VA | size | status | name |
 |---:|---|---:|---|---|
-| F637 | `0x6FC70070` | 48 | unported | D2Game_6FC70070 |
-| F637 | `0x6FC71750` | 346 | unported | D2Game_6FC71750 |
-| F637 | `0x6FCB7F50` | 273 | unported | D2Game_6FCB7F50 |
-| F637 | `0x6FCC3090` | 129 | unported | D2Game_6FCC3090 |
-| F637 | `0x6FCC3610` | 448 | unported | D2Game_6FCC3610 |
-| F662 | `0x6FC3CAE0` | 2234 | unported | D2Game_6FC3CAE0 |
-| F662 | `0x6FC3E140` | 655 | unported | D2Game_6FC3E140 |
-| F662 | `0x6FC3E640` | 693 | unported | D2Game_6FC3E640 |
-| F662 | `0x6FC3E900` | 81 | unported | D2Game_6FC3E900 |
 
 ## Executed ported/diff-verified functions on an impure kernFile (0)
 

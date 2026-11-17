@@ -222,6 +222,7 @@ import {
 import { SUNIT_FreeUnit113c } from './replay-final11-113c'
 import { ITEMS_CheckItemTypeId113c } from './replay-kernel-113c'
 import { EVENT_FreeNode113c, EVENT_SetEventFull113c } from './timer-wheel'
+import { hitD2GameVa113c } from '../va-trace-113c'
 
 export type { SparseMemory113c }
 
@@ -255,6 +256,7 @@ export function NPCS_ReturnSoldOrGambledItemToPlayerInventoryOrFree_6FCDD880_113
   pPlayer: number,
   _uUnused = 0,
 ): number {
+  hitD2GameVa113c(0x6FCDD880)
   if (pGame === 0) throw new D2CommonAssertError('0x6fd19ff9', 0x1a2)
   if (pPlayer === 0) throw new D2CommonAssertError('0x6fd19ff9', 0x1a3)
   if (pItem === 0) throw new D2CommonAssertError('0x6fd19ff9', 0x1a4)
@@ -301,6 +303,7 @@ export function NPCS_PlaceGambledOrBoughtItemIntoNpcTabOrFree_6FCDD920_113c(
   pGame: number,
   _uUnused = 0,
 ): number {
+  hitD2GameVa113c(0x6FCDD920)
   if (pItem === 0 || pNpcUnit === 0) return 0
   const pNpcInv = SUNITPROXY_GetPlayerNodeItemInNpcSlot_6FCAFAA0_113c(
     m,
@@ -357,6 +360,7 @@ export function NPCS_RepairAndRechargeUnitItem_6FCDD9B0_113c(
   pItem: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FCDD9B0)
   if (ITEMS_CanItemBeRepairedByNpc113c(m, pItem) === 0) return
   if (
     ITEMS_CheckIfThrowItemMemPort113c(m, pItem) !== 0 &&
@@ -403,6 +407,7 @@ export function ACT2Q5_ActivateSummonerQuestAndSyncPlayers_6FCE6600_113c(
   m: SparseMemory113c,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FCE6600)
   const pQuestControl = m.u32((pGame + 0x10f4) >>> 0) >>> 0
   if (pQuestControl === 0) return
   let pQuest = m.u32(pQuestControl) >>> 0
@@ -449,6 +454,7 @@ export function ACT2Q4_ActivateArcaneSanctuaryQuestOrOpenPortal_6FCE6920_113c(
   m: SparseMemory113c,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FCE6920)
   const pQuestControl = m.u32((pGame + 0x10f4) >>> 0) >>> 0
   if (pQuestControl === 0) return
   let pQuest = m.u32(pQuestControl) >>> 0
@@ -489,6 +495,7 @@ export function ACT2Q3_TimerActivateTaintedSunAndSyncPlayers_6FCE6AF0_113c(
   pQuestOrGame: number,
   pQuestAlt = 0,
 ): number {
+  hitD2GameVa113c(0x6FCE6AF0)
   const pQuest = (pQuestAlt !== 0 ? pQuestAlt : pQuestOrGame) >>> 0
   const pQuestState = m.u32((pQuest + 0x18) >>> 0) >>> 0
   const bAlreadyStarted = m.u8((pQuestState + 0x02) >>> 0)
@@ -524,6 +531,7 @@ export function ACT2Q3_Callback01_NpcDeactivate_6FCE6B30_113c(
   pQuestArg: number,
   onQuestChainCallback?: (m: SparseMemory113c, pQuest: number) => void,
 ): void {
+  hitD2GameVa113c(0x6FCE6B30)
   const wMessageId = m.u16((pQuestArg + 0x18) >>> 0)
   if (wMessageId === 0x15c) {
     if (m.u8((pQuest + 0x09) >>> 0) === 0) return
@@ -593,6 +601,7 @@ export function ACT2Q1_OnPlayerEnterSewersLevel3_6FCE6D20_113c(
   pGame: number,
   pUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FCE6D20)
   const pQuestControl = m.u32((pGame + 0x10f4) >>> 0) >>> 0
   if (pQuestControl === 0) return
   let pQuest = m.u32(pQuestControl) >>> 0
@@ -652,6 +661,7 @@ export function ACT2Q1_Callback01_NpcDeactivate_6FCE6E90_113c(
   pQuestArg: number,
   onQuestChainCallback?: (m: SparseMemory113c, pTargetQuest: number) => void,
 ): void {
+  hitD2GameVa113c(0x6FCE6E90)
   const wMessageId = m.u16((pQuestArg + 0x18) >>> 0)
   const wNpcClassId = m.u16((pQuestArg + 0x14) >>> 0)
   const pGame = m.u32(pQuestArg >>> 0) >>> 0
@@ -756,6 +766,7 @@ export function ACT2Q5_InitQuestData_6FCE7080_113c(
   pQuest: number,
   pPreallocatedState = 0,
 ): void {
+  hitD2GameVa113c(0x6FCE7080)
   for (let i = 0; i < 15; i++) {
     m.setU32((pQuest + 0xa0 + i * 4) >>> 0, 0)
   }
@@ -792,6 +803,7 @@ export function ACT2Q3_TryActivateTaintedSunOrSendPacket5D_6FCE7130_113c(
   pQuest: number,
   pPlayer: number,
 ): void {
+  hitD2GameVa113c(0x6FCE7130)
   const pQuestState = m.u32((pQuest + 0x18) >>> 0) >>> 0
   const bActivated = ACT2Q3_ActivateTaintedSunQuest_6FCE6A30_113c(m, pQuest) & 0xff
   if (bActivated !== 0) {
@@ -829,6 +841,7 @@ export function ACT2Q3_OnTaintedSunAltarInit_6FCE71A0_113c(
   pQuest: number,
   pOpStrc: number,
 ): number {
+  hitD2GameVa113c(0x6FCE71A0)
   const pQuestState = m.u32((pQuest + 0x18) >>> 0) >>> 0
   m.setU8((pQuestState + 0x05) >>> 0, 1)
   const pObjectUnit = m.u32((pOpStrc + 0x04) >>> 0) >>> 0
@@ -883,6 +896,7 @@ export function ACT2Q3_OperateTaintedSunAltar_6FCE76B0_113c(
   m: SparseMemory113c,
   pOpStrc: number,
 ): number {
+  hitD2GameVa113c(0x6FCE76B0)
   const pGame = m.u32(pOpStrc >>> 0) >>> 0
   const pQuestControl = m.u32((pGame + 0x10f4) >>> 0) >>> 0
   if (pQuestControl === 0) return 0
@@ -1099,6 +1113,7 @@ export function ACT2Q4_Callback01_NpcDeactivate_6FCE85A0_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FCE85A0)
   if (pQuest === 0) return
   const wNpcClassId = m.u16((pQuestArg + 0x14) >>> 0)
   const wMessageId = m.u16((pQuestArg + 0x18) >>> 0)
@@ -1285,6 +1300,7 @@ export function ACT2Q4_OperateHorazonsJournal_6FCE9A80_113c(
   m: SparseMemory113c,
   pOpStrc: number,
 ): number {
+  hitD2GameVa113c(0x6FCE9A80)
   const pObjectUnit = m.u32((pOpStrc + 0x04) >>> 0) >>> 0
   if (pObjectUnit === 0 || m.u32((pObjectUnit + 0x10) >>> 0) === 0) {
     UNITS_ChangeAnimMode113c(m, pObjectUnit, 1)
@@ -1352,6 +1368,7 @@ export function C2S_Packet21_MergeStackableItems_6FCEE4B0_113c(
   pPacket: number,
   nPacketSize: number,
 ): number {
+  hitD2GameVa113c(0x6FCEE4B0)
   if ((nPacketSize >>> 0) !== 9) return 3
   const dwTargetItemGuid = m.u32((pPacket + 5) >>> 0) >>> 0
   const dwSourceItemGuid = m.u32((pPacket + 1) >>> 0) >>> 0
@@ -1392,6 +1409,7 @@ export function ITEMS_UnequipMercBodyLocItemToPlayerCursor_6FCEECE0_113c(
   pGame: number,
   pPlayerUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FCEECE0)
   const pPlayerInv = m.u32((pPlayerUnit + 0x60) >>> 0) >>> 0
   if (m.u32((pGame + 0x70) >>> 0) === 0) return 3
   const pMercInv = m.u32((pMercUnit + 0x60) >>> 0) >>> 0
@@ -1431,6 +1449,7 @@ export function C2S_Packet1A_EquipCursorItemToBodyLoc_6FCEEE60_113c(
   pPacket: number,
   nPacketSize: number,
 ): number {
+  hitD2GameVa113c(0x6FCEEE60)
   if ((nPacketSize >>> 0) !== 9) return 3
   const nBodyLoc = m.u8((pPacket + 5) >>> 0)
   const dwItemGuid = m.u32((pPacket + 1) >>> 0) >>> 0
@@ -1478,6 +1497,7 @@ export function C2S_Packet60_SwapWeapons_6FCEF510_113c(
   _pPacket: number,
   nPacketSize: number,
 ): number {
+  hitD2GameVa113c(0x6FCEF510)
   if ((nPacketSize >>> 0) !== 1) return 3
   if (m.u32((pGame + 0x70) >>> 0) === 0) return 3
   if (SKILLS_GetUsedSkill113c(m, pPlayer) !== 0) return 0
@@ -1507,6 +1527,7 @@ export function C2S_Packet26_UseBeltItem_6FCEF5B0_113c(
   pPacket: number,
   nPacketSize: number,
 ): number {
+  hitD2GameVa113c(0x6FCEF5B0)
   if ((nPacketSize >>> 0) !== 0x0d) return 3
   const dwItemGuid = m.u32((pPacket + 1) >>> 0) >>> 0
   const bShiftToMerc = m.u32((pPacket + 5) >>> 0) | 0
@@ -1562,6 +1583,7 @@ export function C2S_Packet27_IdentifyItem_6FCEF6B0_113c(
   pPacket: number,
   nPacketSize: number,
 ): number {
+  hitD2GameVa113c(0x6FCEF6B0)
   if ((nPacketSize | 0) !== 9) {
     return 3
   }
@@ -1617,6 +1639,7 @@ export function C2S_Packet20_UseInventoryItem_6FCEF730_113c(
   pPacket: number,
   nPacketSize: number,
 ): number {
+  hitD2GameVa113c(0x6FCEF730)
   if ((nPacketSize | 0) !== 0x0d) {
     return 3
   }
@@ -1671,6 +1694,7 @@ export function ITEMS_EquipMercBodyLocFromPlayerCursor_6FCEFBC0_113c(
   pPlayerUnit: number,
   pCursorItem: number,
 ): number {
+  hitD2GameVa113c(0x6FCEFBC0)
   if (m.u32(pGame + 0x70) === 0) {
     return 3
   }
@@ -1802,6 +1826,7 @@ export function C2S_Packet1B_SwapTwoHandedOrDualWeaponBodyLoc_6FCF1140_113c(
   pPacket: number,
   nPacketSize: number,
 ): number {
+  hitD2GameVa113c(0x6FCF1140)
   if ((nPacketSize | 0) !== 9) {
     return 3
   }
@@ -1867,6 +1892,7 @@ export function C2S_Packet19_PickupBufferOrStorageItemToCursor_6FCF1370_113c(
   pPacket: number,
   nPacketSize: number,
 ): number {
+  hitD2GameVa113c(0x6FCF1370)
   if ((nPacketSize | 0) !== 5) {
     return 3
   }
@@ -1937,6 +1963,7 @@ export function ITEMS_AutoStackGroundItemOrScroll_6FCF4360_113c(
   pUnit: number,
   pItem: number,
 ): number {
+  hitD2GameVa113c(0x6FCF4360)
   if (pUnit === 0) {
     throw new D2CommonAssertError('0x6fd19ff9', 0x660)
   }
@@ -1983,6 +2010,7 @@ export function ITEMS_DuplicateAndSocketAllSubItems_6FCF5080_113c(
   pDestItem: number,
   bSyncClient: number,
 ): number {
+  hitD2GameVa113c(0x6FCF5080)
   if (ITEMS_GetSubTypeFromItem113c(m, pSourceItem) === 0) {
     return 1
   }
@@ -2085,6 +2113,7 @@ export function ITEMS_TransferCorpseItemsToPlayer_6FCF6760_113c(
   pGame: number,
   pPlayerUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FCF6760)
   if (pPlayerUnit === 0 || pCorpseUnit === 0) {
     return 0
   }
@@ -2353,6 +2382,7 @@ export function ITEMS_ProcessReplenishStatTick_6FCFA350_113c(
   pItem: number,
   nMaxVal: number,
 ): number {
+  hitD2GameVa113c(0x6FCFA350)
   const nReplenishRate =
     STATLIST_GetUnitStat113c(m, pItem, nReplenishStatId, 0) | 0
   if (nReplenishRate === 0) {
@@ -2432,6 +2462,7 @@ export function ACT3Q7_Callback00_NpcActivate_6FD07080_113c(
   pQuestData: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FD07080)
   const wMessageIndex = m.u16(pQuestArg + 0x14)
   const wScrollIndex = m.u16(pQuestArg + 0x18)
   const pGame = m.u32(pQuestArg)

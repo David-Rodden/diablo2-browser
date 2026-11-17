@@ -112,6 +112,7 @@ import {
   type PureCharAnimClip113c,
   type PureItemTypeClosure113c,
 } from './tables-bootstrap-113c.ts'
+import { hitD2CommonVa113c, hitD2GameVa113c } from '../va-trace-113c.ts'
 
 const COLLIDE_MASK_INVALID_113C = 0xffff
 const PATHTYPE_TOWARD_FINISH_113C = 13
@@ -279,6 +280,7 @@ export function ITEMS_CheckItemTypeId113c(
  * and for `UNIT_ITEM` returns `1` iff `pItemData == 0` or `(pItemData->dwFlags (+0x18) & 0x4100) == 0`.
  */
 export function ITEMS_CheckNotBrokenOrUnequipping113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD73EF0)
   if (pItem === 0) return 0
   if (m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 1
   const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
@@ -524,6 +526,7 @@ export const STATLIST_FLAG_EXTENDED_113C = 0x80000000
  * when `0 <= classId < sgptDataTables->nMonStatsCount` (`0x6FDE9E1C` -> `+0xA80`).
  */
 export function UNITS_CanDualWield113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD80530)
   if (pUnit === 0) return 0
   const uType = m.get(pUnit, D2UnitStrc.dwUnitType)
   const classId = m.get(pUnit, D2UnitStrc.dwClassId) | 0
@@ -545,6 +548,7 @@ export function UNITS_CanDualWield113c(m: Memory113c, pUnit: number): number {
  * Returns `pSkill->dwFlags (+0x0C)` (`0` if `pSkill == 0`).
  */
 export function SKILLS_GetFlags113c(m: Memory113c, pSkill: number): number {
+  hitD2CommonVa113c(0x6FD9DE40)
   if (pSkill === 0) return 0
   return m.u32(pSkill + 0x0c)
 }
@@ -560,6 +564,7 @@ export function STATLIST_FindSubListByStateAndFlags113c(
   pStatListEx: number,
   stateId: number,
 ): number {
+  hitD2CommonVa113c(0x6FD87F80)
   if (pStatListEx === 0 || stateId === 0) return 0
   if ((m.get(pStatListEx, D2StatListStrc.dwFlags) & STATLIST_FLAG_EXTENDED_113C) === 0) {
     return 0
@@ -596,6 +601,7 @@ export function STATLIST_FindSubListByStateAndFlags113c(
  * 5. Shared tail (`0x6FC573D6..0x6FC57403`): if `#10744(pChosen, 45) != 0` and `#11006(pChosen) != 0`, returns `pChosen`; else returns `pDefault`.
  */
 export function PLAYER_GetEquippedWeapon113c(m: Memory113c, pUnit: number): number {
+  hitD2GameVa113c(0x6FC572C0)
   if (pUnit === 0) return 0
   const pInv = m.get(pUnit, D2UnitStrc.pInventory)
   if (pInv === 0) return 0
@@ -855,6 +861,7 @@ export function UNITS_GetDistanceToCoordinates113c(
   x2: number,
   y2: number,
 ): number {
+  hitD2GameVa113c(0x6FCD08F0)
   const dx = Math.abs((x1 | 0) - (x2 | 0))
   const dy = Math.abs((y1 | 0) - (y2 | 0))
   const hi = dx >= dy ? dx : dy
@@ -867,6 +874,7 @@ export function UNITS_GetDistanceToCoordinates113c(
  * Record `dwUnitId` in `pRoom->dwDeathRing[bDeathRingIdx]` and advance `(idx + 1) & 3`.
  */
 export function ROOM_RecordMonsterDeath113c(m: Memory113c, pRoom: number, unitId: number): void {
+  hitD2CommonVa113c(0x6FD8AFD0)
   if (pRoom === 0) return
   const idx = m.get(pRoom, D2ActiveRoomStrc.bDeathRingIdx) & 3
   m.set(pRoom, D2ActiveRoomStrc.dwDeathRing, unitId >>> 0, idx)
@@ -944,6 +952,7 @@ function getDifficultyIdx113c(m: Memory113c, pGame: number): 0 | 1 | 2 {
  * doubly-linked command list (`pCommandHead` `+0x20`, `pCommandTail` `+0x24`).
  */
 export function AIGENERAL_AllocAiCommand113c(m: Memory113c, pMonster: number): number {
+  hitD2GameVa113c(0x6FC40F30)
   if (pMonster === 0 || m.get(pMonster, D2UnitStrc.dwUnitType) !== UNIT_MONSTER) return 0
   const pMonData = m.get(pMonster, D2UnitStrc.pUnitData)
   if (pMonData === 0) return 0
@@ -980,6 +989,7 @@ export function AIGENERAL_CopyAiCommandParams113c(
   arg3 = 0,
   arg4 = 0,
 ): number {
+  hitD2GameVa113c(0x6FC41290)
   const node = AIGENERAL_AllocAiCommand113c(m, pMonster)
   if (node === 0) return 0
   m.set(node, D2AiCmdStrc.dwCmdType, cmdType >>> 0)
@@ -995,6 +1005,7 @@ export function AIGENERAL_CopyAiCommandParams113c(
  * Pops and frees (`m.free`) the current head `D2AiCmdStrc` node at `pAiGeneral->pCommandHead (+0x20)`.
  */
 export function AIGENERAL_PopAiCommand113c(m: Memory113c, pMonster: number): void {
+  hitD2GameVa113c(0x6FC40EC0)
   if (pMonster === 0 || m.get(pMonster, D2UnitStrc.dwUnitType) !== UNIT_MONSTER) return
   const pMonData = m.get(pMonster, D2UnitStrc.pUnitData)
   if (pMonData === 0) return
@@ -1029,6 +1040,7 @@ export function MONSTER_SavePrevMode113c(
   pMonster: number,
   prevMode: number,
 ): void {
+  hitD2GameVa113c(0x6FC95260)
   if (pMonster === 0) return
   const pMonData = m.get(pMonster, D2UnitStrc.pUnitData)
   if (pMonData === 0) return
@@ -1056,6 +1068,7 @@ export function AI_Stall113c(
   pMonster: number,
   delayFrames: number,
 ): void {
+  hitD2GameVa113c(0x6FD122C0)
   const { m, pGame } = world
   if (pMonster === 0) return
   SKILLS_SetUsedSkill113c(m, pMonster, 0)
@@ -1087,6 +1100,8 @@ export function MONSTER_StartMode113c(
   targetX: number,
   targetY: number,
 ): boolean {
+  hitD2GameVa113c(0x6FC94F90)
+  hitD2GameVa113c(0x6FC95E10)
   const { m, pGame } = world
   const pu = world.pathUnitByPtr.get(pMonster)
   const pPath = m.get(pMonster, D2UnitStrc.pPath)
@@ -1319,6 +1334,7 @@ export function AI_ApproachTarget113c(
   stepNum: number,
   flags: number,
 ): boolean {
+  hitD2GameVa113c(0x6FD12540)
   const { m, pGame } = world
   let actualMode = mode
   if (actualMode === 15 && STATES_CheckState113c(m, pMonster, 60) !== 0) {
@@ -1367,6 +1383,7 @@ export function AI_IdleWander113c(
   pMonster: number,
   range: number,
 ): boolean {
+  hitD2GameVa113c(0x6FD11B10)
   const { m } = world
   const { x: x0, y: y0 } = getUnitPosSubtile113c(m, pMonster)
   const axisRoll = stepUnitSeed(m, pMonster)
@@ -1397,6 +1414,7 @@ export function AI_FleeFrom113c(
   distSteps: number,
   clearThinkOnFail: boolean,
 ): boolean {
+  hitD2GameVa113c(0x6FD12D80)
   if (pFrom === 0) return false
   const { m } = world
   const { x: mx, y: my } = getUnitPosSubtile113c(m, pMonster)
@@ -1430,6 +1448,7 @@ export function AiZombie113c(
   dist: number,
   inMeleeRange: boolean,
 ): void {
+  hitD2GameVa113c(0x6FCA38B0)
   const { m, pGame } = world
   const entryMode = m.get(pMonster, D2UnitStrc.dwAnimMode)
   if (entryMode === 0 || entryMode === 12) return
@@ -1480,6 +1499,7 @@ export function AiFallen113c(
   dist: number,
   inMeleeRange: boolean,
 ): void {
+  hitD2GameVa113c(0x6FCA3130)
   const { m, pGame } = world
   const entryMode = m.get(pMonster, D2UnitStrc.dwAnimMode)
   if (entryMode === 0 || entryMode === 12) return
@@ -1690,6 +1710,7 @@ export function MONSTER_EndToAiOrNeutral113c(
   world: FallenSliceWorld113c,
   pMonster: number,
 ): void {
+  hitD2GameVa113c(0x6FC96BF0)
   const { m } = world
   const prevMode = m.get(pMonster, D2UnitStrc.dwAnimMode) >>> 0
   const inlineAiFlag =
@@ -1720,6 +1741,7 @@ export function MONSTER_StepPath113c(
   world: FallenSliceWorld113c,
   pMonster: number,
 ): number {
+  hitD2GameVa113c(0x6FD01930)
   const { m } = world
   const pPath = m.get(pMonster, D2UnitStrc.pPath)
   if (pPath === 0) return 0
@@ -1736,6 +1758,7 @@ export function MONSTER_StepWalk113c(
   world: FallenSliceWorld113c,
   pMonster: number,
 ): void {
+  hitD2GameVa113c(0x6FC97010)
   const { m } = world
   const hasBlazeOrInferno =
     STATES_CheckState113c(m, pMonster, 0x0d) !== 0 ||
@@ -1758,6 +1781,7 @@ export function MONSTER_StepRun113c(
   world: FallenSliceWorld113c,
   pMonster: number,
 ): void {
+  hitD2GameVa113c(0x6FC96FE0)
   const { m } = world
   const stepped = MONSTER_StepPath113c(world, pMonster)
   if (STATES_CheckState113c(m, pMonster, 0x0d) !== 0) {
@@ -1776,6 +1800,7 @@ export const MONSTER_StepContinuousMove113c = MONSTER_StepWalk113c
  * `D2AiGeneralStrc.dwLeaderId (+0x2C)` across the dying leader and all pack members.
  */
 function promotePackLeaderOnDeath113c(world: FallenSliceWorld113c, pMonster: number): void {
+  hitD2GameVa113c(0x6FC40D50)
   const { m } = world
   const pMonData = m.get(pMonster, D2UnitStrc.pUnitData)
   if (pMonData === 0) return
@@ -1938,6 +1963,7 @@ export function MONSTER_StartDeath113c(
   pMonster: number,
   pKiller: number,
 ): void {
+  hitD2GameVa113c(0x6FC96270)
   const { m, pGame } = world
   const prevMode = m.get(pMonster, D2UnitStrc.dwAnimMode)
   const pMonData = m.get(pMonster, D2UnitStrc.pUnitData)
@@ -2023,6 +2049,7 @@ export function MONSTER_StartDeath113c(
  * (`dwFrameCount = 256`, `wAnimSpeed = 256`) without setting `0x10000` on `dwFlags`.
  */
 export function MONSTER_EndDeath113c(world: FallenSliceWorld113c, pMonster: number): void {
+  hitD2GameVa113c(0x6FC96040)
   const { m, pGame } = world
   MONSTER_ClearModeEvents113c(m, pGame, pMonster)
   m.set(pMonster, D2UnitStrc.dwAnimMode, 12)
@@ -2121,6 +2148,7 @@ export function SUNITDMG_CheckToHit113c(
   pDefender: number,
   arBonus = 0,
 ): boolean {
+  hitD2GameVa113c(0x6FCFDE90)
   const hitChance = SUNITDMG_ComputeHitChance113c(m, pGame, pAttacker, pDefender, arBonus)
   const toHitRoll = rollUnitLimited(m, pAttacker, 100)
   return toHitRoll < hitChance
@@ -2535,6 +2563,7 @@ function resolvePlayerWeaponClass113c(world: FallenSliceWorld113c, pPlayer: numb
  * stamina `> 0`, else clamps `STAT_STAMINA = 0` (`0x6FC97C92`) and returns `0`.
  */
 export function PLAYER_DrainRunStamina113c(m: Memory113c, pPlayer: number): number {
+  hitD2GameVa113c(0x6FC97BB0)
   if (pPlayer === 0 || m.get(pPlayer, D2UnitStrc.dwUnitType) !== UNIT_PLAYER) return 0
   if (DUNGEON_CheckRoomIsTown113c(m, UNITS_GetRoom113c(m, pPlayer)) !== 0) return 1
   const pInventory = m.get(pPlayer, D2UnitStrc.pInventory)
@@ -2571,6 +2600,7 @@ export function PLAYER_DrainRunStamina113c(m: Memory113c, pPlayer: number): numb
  * `stat 352` (`0x6FC97D17..0x6FC97D80`).
  */
 export function PLAYER_UpdateHpRegen113c(m: Memory113c, pPlayer: number): void {
+  hitD2GameVa113c(0x6FC97CB0)
   if (pPlayer === 0 || m.get(pPlayer, D2UnitStrc.dwUnitType) !== UNIT_PLAYER) return
   const curHp = STATLIST_GetUnitStat113c(m, pPlayer, STAT_HITPOINTS, 0) | 0
   if (curHp <= 0) return
@@ -2607,6 +2637,7 @@ export function PLAYER_UpdateHpRegen113c(m: Memory113c, pPlayer: number): void {
  * and clamps `delta` to `[-curMana, maxMana - curMana]`.
  */
 export function PLAYER_UpdateManaRegen113c(m: Memory113c, pPlayer: number): void {
+  hitD2GameVa113c(0x6FC97950)
   if (pPlayer === 0 || m.get(pPlayer, D2UnitStrc.dwUnitType) !== UNIT_PLAYER) return
   if (STATES_CheckState113c(m, pPlayer, 85) !== 0) return
   const maxMana = STATLIST_GetUnitStat113c(m, pPlayer, STAT_MAXMANA, 0) | 0
@@ -2654,6 +2685,7 @@ export function PLAYER_UpdateManaRegen113c(m: Memory113c, pPlayer: number): void
  * - `mode 3 (RN)` / `mode 4 (GH)` / `7..16` / `18..19` (`0x6FC97A92`): if `stat 28 < 1000` (`0x3E8`) return, else `baseDelta = maxStam >> 8`.
  */
 export function PLAYER_UpdateStaminaRegen113c(m: Memory113c, pPlayer: number): void {
+  hitD2GameVa113c(0x6FC97A50)
   if (pPlayer === 0 || m.get(pPlayer, D2UnitStrc.dwUnitType) !== UNIT_PLAYER) return
   const mode = m.get(pPlayer, D2UnitStrc.dwAnimMode) >>> 0
   if (mode > 19 || mode === 0 || mode === 17) return
@@ -2698,6 +2730,7 @@ export function PLAYER_Event3_RegenTick113c(
   pGame: number,
   pPlayer: number,
 ): void {
+  hitD2GameVa113c(0x6FC99B10)
   const frame = m.get(pGame, D2GameStrc.dwGameFrame) >>> 0
   EVENT_SetEventFull113c(m, pGame, pPlayer, PLR_EVENT_STAMINA, (frame + 1) >>> 0, 0, 0, 0)
   if (SUNIT_IsDeadOrDying113c(m, pPlayer) !== 0) return
@@ -2712,6 +2745,7 @@ export function PLAYER_Event11_PeriodicTick113c(
   pGame: number,
   pPlayer: number,
 ): void {
+  hitD2GameVa113c(0x6FC99A60)
   if (SUNIT_IsDeadOrDying113c(m, pPlayer) !== 0) return
   const frame = m.get(pGame, D2GameStrc.dwGameFrame) >>> 0
   EVENT_SetEventFull113c(m, pGame, pPlayer, PLR_EVENT_IDLE, (frame + 30) >>> 0, 0, 0, 0)
@@ -2750,6 +2784,7 @@ export function SUNIT_ScheduleModeAnimEvents113c(
   startFrame: number,
   stepSpeed: number,
 ): void {
+  hitD2GameVa113c(0x6FCFF7B0)
   const gameFrame = m.get(pGame, D2GameStrc.dwGameFrame) >>> 0
   if (stepSpeed <= 0) {
     EVENT_SetEventFull113c(m, pGame, pUnit, PLR_EVENT_MODE_END, (gameFrame + 1) >>> 0, 0, 0, 0)
@@ -2798,6 +2833,7 @@ export function applyPlayerPacket113c(
   pPlayer: number,
   packetBytes: Uint8Array,
 ): void {
+  hitD2GameVa113c(0x6FC987C0)
   if (packetBytes.length < 9 || packetBytes[0] !== 0x06) return
   const { m, pGame } = world
   const view = new DataView(packetBytes.buffer, packetBytes.byteOffset, packetBytes.byteLength)
@@ -3058,6 +3094,7 @@ export function stepFallenSliceFrame113c(
   world: FallenSliceWorld113c,
   c2sPackets: ReadonlyArray<readonly [clientId: number, hexPayload: string]> = [],
 ): number {
+  hitD2GameVa113c(0x6FC4E050)
   const { m, pGame } = world
   world.lastFrameOrd.length = 0
   world.lastFrameDmg.length = 0

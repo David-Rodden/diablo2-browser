@@ -1,33 +1,6 @@
 [
   {
     "module": "D2Game",
-    "va": "0x6fc4d090",
-    "name": "CLIENT_NotifyAndDisconnectClient_6FC4D090",
-    "kernFile": "src/d2kern-113c/game/k2-w15b1-113c.ts",
-    "tsSymbol": "CLIENT_NotifyAndDisconnectClient_6FC4D090_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6fc56890",
-    "name": "QUESTS_OnBossActChangeOrBossKill_6FC56890",
-    "kernFile": "src/d2kern-113c/game/k2-w15b1-113c.ts",
-    "tsSymbol": "QUESTS_OnBossActChangeOrBossKill_6FC56890_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6fc71e70",
-    "name": "SKILLS_SrvDo_SpawnRadialMinionRing12_6FC71E70",
-    "kernFile": "src/d2kern-113c/game/k2-w15b1-113c.ts",
-    "tsSymbol": "SKILLS_SrvDo_SpawnRadialMinionRing12_6FC71E70_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts"
-  },
-  {
-    "module": "D2Game",
     "va": "0x6fc7cc70",
     "name": "ACT5Q2_InitQuestData_6FC7CC70",
     "kernFile": "src/d2kern-113c/game/k2-w15b1-113c.ts",
@@ -37,28 +10,10 @@
   },
   {
     "module": "D2Game",
-    "va": "0x6fc7cd50",
-    "name": "ACT5Q3_Callback02_OnFrozenAnyaObjectActivate_6FC7CD50",
-    "kernFile": "src/d2kern-113c/game/k2-w15b1-113c.ts",
-    "tsSymbol": "ACT5Q3_Callback02_OnFrozenAnyaObjectActivate_6FC7CD50_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts"
-  },
-  {
-    "module": "D2Game",
     "va": "0x6fc7fc20",
     "name": "ACT5Q3_InitQuestData_6FC7FC20",
     "kernFile": "src/d2kern-113c/game/k2-w15b1-113c.ts",
     "tsSymbol": "ACT5Q3_InitQuestData_6FC7FC20_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6fc864f0",
-    "name": "ACT1Q4_Callback02_OnCairnStoneActivate_6FC864F0",
-    "kernFile": "src/d2kern-113c/game/k2-w15b1-113c.ts",
-    "tsSymbol": "ACT1Q4_Callback02_OnCairnStoneActivate_6FC864F0_113c",
     "status": "ported",
     "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts"
   },
@@ -91,181 +46,10 @@
   },
   {
     "module": "D2Game",
-    "va": "0x6fc8cd40",
-    "name": "OBJ_OperateDuranceStairs_6FC8CD40",
-    "kernFile": "src/d2kern-113c/game/k2-w15b1-113c.ts",
-    "tsSymbol": "OBJ_OperateDuranceStairs_6FC8CD40_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6fc934e0",
-    "name": "PLRTRADE_DispatchSubAction17Or18_6FC934E0",
-    "kernFile": "src/d2kern-113c/game/k2-w15b1-113c.ts",
-    "tsSymbol": "PLRTRADE_DispatchSubAction17Or18_6FC934E0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6fc99210",
-    "name": "PLAYER_CreateCorpseOnDeath_6FC99210",
-    "kernFile": "src/d2kern-113c/game/k2-w15b1-113c.ts",
-    "tsSymbol": "PLAYER_CreateCorpseOnDeath_6FC99210_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6fcb6280",
-    "name": "SKILLS_SpawnSkillSummonMonsterAtTarget_6FCB6280",
-    "kernFile": "src/d2kern-113c/game/k2-w15b1-113c.ts",
-    "tsSymbol": "SKILLS_SpawnSkillSummonMonsterAtTarget_6FCB6280_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6fcb6310",
-    "name": "SKILLS_SrvDo_SummonPetWithAiInit_6FCB6310",
-    "kernFile": "src/d2kern-113c/game/k2-w15b1-113c.ts",
-    "tsSymbol": "SKILLS_SrvDo_SummonPetWithAiInit_6FCB6310_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts"
-  },
-  {
-    "module": "D2Game",
     "va": "0x6fcdad40",
     "name": "ACT4Q2_InitQuestData_6FCDAD40",
     "kernFile": "src/d2kern-113c/game/k2-w15b1-113c.ts",
     "tsSymbol": "ACT4Q2_InitQuestData_6FCDAD40_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6fcdaf20",
-    "name": "ACT4Q2_CompleteQuestForPlayerOnActChange_6FCDAF20",
-    "kernFile": "src/d2kern-113c/game/k2-w15b1-113c.ts",
-    "tsSymbol": "ACT4Q2_CompleteQuestForPlayerOnActChange_6FCDAF20_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6fcdf730",
-    "name": "NPCS_BeginVendorOrGambleInteract_6FCDF730",
-    "kernFile": "src/d2kern-113c/game/k2-w15b1-113c.ts",
-    "tsSymbol": "NPCS_BeginVendorOrGambleInteract_6FCDF730_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6fce7dc0",
-    "name": "ACT2Q2_OnNpcSpeechComplete_6FCE7DC0",
-    "kernFile": "src/d2kern-113c/game/k2-w15b1-113c.ts",
-    "tsSymbol": "ACT2Q2_OnNpcSpeechComplete_6FCE7DC0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6fce8050",
-    "name": "ACT2Q6_OnNpcSpeechComplete_6FCE8050",
-    "kernFile": "src/d2kern-113c/game/k2-w15b1-113c.ts",
-    "tsSymbol": "ACT2Q6_OnNpcSpeechComplete_6FCE8050_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6fce9cb0",
-    "name": "ACT2Q2_OnHoradricStaffOrificeActivate_6FCE9CB0",
-    "kernFile": "src/d2kern-113c/game/k2-w15b1-113c.ts",
-    "tsSymbol": "ACT2Q2_OnHoradricStaffOrificeActivate_6FCE9CB0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6fcef220",
-    "name": "C2S_Packet_NpcBuyItem_6FCEF220",
-    "kernFile": "src/d2kern-113c/game/k2-w15b1-113c.ts",
-    "tsSymbol": "C2S_Packet_NpcBuyItem_6FCEF220_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6fcef380",
-    "name": "C2S_Packet_DropCursorItem_6FCEF380",
-    "kernFile": "src/d2kern-113c/game/k2-w15b1-113c.ts",
-    "tsSymbol": "C2S_Packet_DropCursorItem_6FCEF380_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6fcf0060",
-    "name": "C2S_Packet_HireMercenary_6FCF0060",
-    "kernFile": "src/d2kern-113c/game/k2-w15b1-113c.ts",
-    "tsSymbol": "C2S_Packet_HireMercenary_6FCF0060_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6fcf8440",
-    "name": "ITEMS_SplitOrTransmuteStackedItem_6FCF8440",
-    "kernFile": "src/d2kern-113c/game/k2-w15b1-113c.ts",
-    "tsSymbol": "ITEMS_SplitOrTransmuteStackedItem_6FCF8440_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6fd089a0",
-    "name": "ACT3Q5_OnNpcSpeechComplete_6FD089A0",
-    "kernFile": "src/d2kern-113c/game/k2-w15b1-113c.ts",
-    "tsSymbol": "ACT3Q5_OnNpcSpeechComplete_6FD089A0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6fd08b60",
-    "name": "ACT3Q1_OnNpcSpeechComplete_6FD08B60",
-    "kernFile": "src/d2kern-113c/game/k2-w15b1-113c.ts",
-    "tsSymbol": "ACT3Q1_OnNpcSpeechComplete_6FD08B60_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6fd08fe0",
-    "name": "ACT3Q4_OnNpcSpeechComplete_6FD08FE0",
-    "kernFile": "src/d2kern-113c/game/k2-w15b1-113c.ts",
-    "tsSymbol": "ACT3Q4_OnNpcSpeechComplete_6FD08FE0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6fd09600",
-    "name": "ACT3Q2_OnNpcSpeechComplete_6FD09600",
-    "kernFile": "src/d2kern-113c/game/k2-w15b1-113c.ts",
-    "tsSymbol": "ACT3Q2_OnNpcSpeechComplete_6FD09600_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6fd0a140",
-    "name": "ACT3Q5_OnCompellingOrbOperate_6FD0A140",
-    "kernFile": "src/d2kern-113c/game/k2-w15b1-113c.ts",
-    "tsSymbol": "ACT3Q5_OnCompellingOrbOperate_6FD0A140_113c",
     "status": "ported",
     "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts"
   }

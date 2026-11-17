@@ -45024,21 +45024,21 @@
         "D2Game:6FCC1350",
         "D2Game:6FCE00C0"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "Wine 1.13c longitudinal t4+gs differential replay zero-divergence in tests/oracle/k2/replay-k2-coverage.test.ts and tests/oracle/k2/real-itemdrop-pipeline.test.ts (a1c-bloodmoor-fallen, a1-bloodmoor-melee, p52-dot-ticks, p52-item-defense)",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-itemdrop-113c.ts",
       "module": "D2Game",
-      "name": "ITEMS_GetDropItemLevel",
+      "name": "ITEMS_GetDropItemLevel_6FC2E5D0",
       "sccId": 1661,
       "size": 129,
-      "status": "ported",
+      "status": "diff-verified",
       "topoLevel": 3,
-      "tsReference": "ITEMS_GetDropItemLevel113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
-      "tsSymbol": "ITEMS_GetDropItemLevel113c",
+      "tsReference": "ITEMS_GetDropItemLevel_6FC2E5D0_113c (src/d2kern-113c/game/k2-real-itemdrop-113c.ts)",
+      "tsSymbol": "ITEMS_GetDropItemLevel_6FC2E5D0_113c",
       "va": "0x6FC2E5D0"
     },
     {
@@ -45241,17 +45241,17 @@
         "D2Game:6FCF7E30",
         "D2Game:6FCF8310"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "Wine 1.13c longitudinal t4+gs differential replay zero-divergence in tests/oracle/k2/replay-k2-coverage.test.ts and tests/oracle/k2/real-itemdrop-pipeline.test.ts (a1c-bloodmoor-fallen, a1-bloodmoor-melee, p52-dot-ticks, p52-item-defense)",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-itemdrop-113c.ts",
       "module": "D2Game",
-      "name": "ITEMS_DropGoldPileAtUnit",
+      "name": "ITEMS_FindFreeGroundDropCoords_6FC2E930",
       "sccId": 1619,
       "size": 85,
-      "status": "ported",
+      "status": "diff-verified",
       "topoLevel": 6,
-      "tsReference": "ITEMS_DropGoldPileAtUnit113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
-      "tsSymbol": "ITEMS_DropGoldPileAtUnit113c",
+      "tsReference": "ITEMS_FindFreeGroundDropCoords_6FC2E930_113c (src/d2kern-113c/game/k2-real-itemdrop-113c.ts)",
+      "tsSymbol": "ITEMS_FindFreeGroundDropCoords_6FC2E930_113c",
       "va": "0x6FC2E930"
     },
     {
@@ -45303,17 +45303,17 @@
         "D2Game:6FCF4A70",
         "D2Game:6FCF6760"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "Wine 1.13c longitudinal t4+gs differential replay zero-divergence in tests/oracle/k2/replay-k2-coverage.test.ts and tests/oracle/k2/real-itemdrop-pipeline.test.ts (a1c-bloodmoor-fallen, a1-bloodmoor-melee, p52-dot-ticks, p52-item-defense)",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-itemdrop-113c.ts",
       "module": "D2Game",
-      "name": "ITEMS_GetQualityBonusDivisor",
+      "name": "ITEMS_ScheduleReplenishQuantityEvent_6FC2EA10",
       "sccId": 1840,
       "size": 81,
-      "status": "ported",
+      "status": "diff-verified",
       "topoLevel": 21,
-      "tsReference": "ITEMS_GetQualityBonusDivisor113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
-      "tsSymbol": "ITEMS_GetQualityBonusDivisor113c",
+      "tsReference": "ITEMS_ScheduleReplenishQuantityEvent_6FC2EA10_113c (src/d2kern-113c/game/k2-real-itemdrop-113c.ts)",
+      "tsSymbol": "ITEMS_ScheduleReplenishQuantityEvent_6FC2EA10_113c",
       "va": "0x6FC2EA10"
     },
     {
@@ -45330,17 +45330,17 @@
         "D2Game:6FCF4A70",
         "D2Game:6FCF6760"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "Wine 1.13c longitudinal t4+gs differential replay zero-divergence in tests/oracle/k2/replay-k2-coverage.test.ts and tests/oracle/k2/real-itemdrop-pipeline.test.ts (a1c-bloodmoor-fallen, a1-bloodmoor-melee, p52-dot-ticks, p52-item-defense)",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-itemdrop-113c.ts",
       "module": "D2Game",
-      "name": "ITEMS_GetQualityMinValue",
+      "name": "ITEMS_ScheduleReplenishDurabilityEvent_6FC2EA70",
       "sccId": 1840,
       "size": 81,
-      "status": "ported",
+      "status": "diff-verified",
       "topoLevel": 21,
-      "tsReference": "ITEMS_GetQualityMinValue113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
-      "tsSymbol": "ITEMS_GetQualityMinValue113c",
+      "tsReference": "ITEMS_ScheduleReplenishDurabilityEvent_6FC2EA70_113c (src/d2kern-113c/game/k2-real-itemdrop-113c.ts)",
+      "tsSymbol": "ITEMS_ScheduleReplenishDurabilityEvent_6FC2EA70_113c",
       "va": "0x6FC2EA70"
     },
     {
@@ -45387,17 +45387,17 @@
       "callers": [
         "D2Game:6FC30A20"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "Wine 1.13c longitudinal t4+gs differential replay zero-divergence in tests/oracle/k2/replay-k2-coverage.test.ts and tests/oracle/k2/real-itemdrop-pipeline.test.ts (a1c-bloodmoor-fallen, a1-bloodmoor-melee, p52-dot-ticks, p52-item-defense)",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-itemdrop-113c.ts",
       "module": "D2Game",
-      "name": "ITEMS_EvalTreasureClassFactor",
+      "name": "ITEMS_RollAndApplyEthereal_6FC2EBB0",
       "sccId": 1664,
       "size": 211,
-      "status": "ported",
+      "status": "diff-verified",
       "topoLevel": 8,
-      "tsReference": "ITEMS_EvalTreasureClassFactor113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
-      "tsSymbol": "ITEMS_EvalTreasureClassFactor113c",
+      "tsReference": "ITEMS_RollAndApplyEthereal_6FC2EBB0_113c (src/d2kern-113c/game/k2-real-itemdrop-113c.ts)",
+      "tsSymbol": "ITEMS_RollAndApplyEthereal_6FC2EBB0_113c",
       "va": "0x6FC2EBB0"
     },
     {
@@ -45418,17 +45418,17 @@
         "D2Game:6FC30600",
         "D2Game:6FC30A20"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "Wine 1.13c longitudinal t4+gs differential replay zero-divergence in tests/oracle/k2/replay-k2-coverage.test.ts and tests/oracle/k2/real-itemdrop-pipeline.test.ts (a1c-bloodmoor-fallen, a1-bloodmoor-melee, p52-dot-ticks, p52-item-defense)",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-itemdrop-113c.ts",
       "module": "D2Game",
-      "name": "ITEMS_RollQualityThreshold",
+      "name": "ITEMS_RollAndApplySockets_6FC2EC90",
       "sccId": 1665,
       "size": 299,
-      "status": "ported",
+      "status": "diff-verified",
       "topoLevel": 9,
-      "tsReference": "ITEMS_RollQualityThreshold113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
-      "tsSymbol": "ITEMS_RollQualityThreshold113c",
+      "tsReference": "ITEMS_RollAndApplySockets_6FC2EC90_113c (src/d2kern-113c/game/k2-real-itemdrop-113c.ts)",
+      "tsSymbol": "ITEMS_RollAndApplySockets_6FC2EC90_113c",
       "va": "0x6FC2EC90"
     },
     {
@@ -45498,21 +45498,21 @@
         "D2Game:6FC309B0",
         "D2Game:6FC30A20"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "Wine 1.13c longitudinal t4+gs differential replay zero-divergence in tests/oracle/k2/replay-k2-coverage.test.ts and tests/oracle/k2/real-itemdrop-pipeline.test.ts (a1c-bloodmoor-fallen, a1-bloodmoor-melee, p52-dot-ticks, p52-item-defense)",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-itemdrop-113c.ts",
       "module": "D2Game",
-      "name": "ITEMS_ApplySocketAndEtherealBonuses",
+      "name": "ITEMS_RollItemQualityOnCreatedItem_6FC2EE90",
       "sccId": 1666,
       "size": 702,
-      "status": "ported",
+      "status": "diff-verified",
       "topoLevel": 4,
-      "tsReference": "ITEMS_ApplySocketAndEtherealBonuses113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
-      "tsSymbol": "ITEMS_ApplySocketAndEtherealBonuses113c",
+      "tsReference": "ITEMS_RollItemQualityOnCreatedItem_6FC2EE90_113c (src/d2kern-113c/game/k2-real-itemdrop-113c.ts)",
+      "tsSymbol": "ITEMS_RollItemQualityOnCreatedItem_6FC2EE90_113c",
       "va": "0x6FC2EE90"
     },
     {
@@ -45550,17 +45550,17 @@
       "callers": [
         "D2Game:6FC32380"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "Wine 1.13c longitudinal t4+gs differential replay zero-divergence in tests/oracle/k2/replay-k2-coverage.test.ts and tests/oracle/k2/real-itemdrop-pipeline.test.ts (a1c-bloodmoor-fallen, a1-bloodmoor-melee, p52-dot-ticks, p52-item-defense)",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-itemdrop-113c.ts",
       "module": "D2Game",
-      "name": "ITEMS_InitScrollOrTomeStats",
+      "name": "ITEMS_ApplyGoldFindBonus_6FC2F260",
       "sccId": 2014,
       "size": 138,
-      "status": "ported",
+      "status": "diff-verified",
       "topoLevel": 8,
-      "tsReference": "ITEMS_InitScrollOrTomeStats113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
-      "tsSymbol": "ITEMS_InitScrollOrTomeStats113c",
+      "tsReference": "ITEMS_ApplyGoldFindBonus_6FC2F260_113c (src/d2kern-113c/game/k2-real-itemdrop-113c.ts)",
+      "tsSymbol": "ITEMS_ApplyGoldFindBonus_6FC2F260_113c",
       "va": "0x6FC2F260"
     },
     {
@@ -45731,17 +45731,17 @@
       "callers": [
         "D2Game:6FC4C0F0"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c binary port verified in tests/oracle/k2/real-itemdrop-pipeline.test.ts",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-itemdrop-113c.ts",
       "module": "D2Game",
-      "name": "ITEMS_ExpireGroundItemsInAct",
+      "name": "ITEMS_ExpireGroundItemsInAct_6FC2FB70",
       "sccId": 2016,
       "size": 194,
       "status": "ported",
       "topoLevel": 22,
-      "tsReference": "ITEMS_ExpireGroundItemsInAct113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
-      "tsSymbol": "ITEMS_ExpireGroundItemsInAct113c",
+      "tsReference": "ITEMS_ExpireGroundItemsInAct_6FC2FB70_113c (src/d2kern-113c/game/k2-real-itemdrop-113c.ts)",
+      "tsSymbol": "ITEMS_ExpireGroundItemsInAct_6FC2FB70_113c",
       "va": "0x6FC2FB70"
     },
     {
@@ -45756,21 +45756,21 @@
       "callers": [
         "D2Game:6FC32380"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "Wine 1.13c longitudinal t4+gs differential replay zero-divergence in tests/oracle/k2/replay-k2-coverage.test.ts and tests/oracle/k2/real-itemdrop-pipeline.test.ts (a1c-bloodmoor-fallen, a1-bloodmoor-melee, p52-dot-ticks, p52-item-defense)",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-itemdrop-113c.ts",
       "module": "D2Game",
-      "name": "ITEMS_RollItemQuality",
+      "name": "ITEMS_RollItemQuality_6FC2FC40",
       "sccId": 2017,
       "size": 893,
-      "status": "ported",
+      "status": "diff-verified",
       "topoLevel": 4,
-      "tsReference": "ITEMS_RollItemQuality113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
-      "tsSymbol": "ITEMS_RollItemQuality113c",
+      "tsReference": "ITEMS_RollItemQuality_6FC2FC40_113c (src/d2kern-113c/game/k2-real-itemdrop-113c.ts)",
+      "tsSymbol": "ITEMS_RollItemQuality_6FC2FC40_113c",
       "va": "0x6FC2FC40"
     },
     {
@@ -45812,17 +45812,17 @@
       "callers": [
         "D2Game:6FD01D90"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c binary port verified in tests/oracle/k2/real-itemdrop-pipeline.test.ts",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-itemdrop-113c.ts",
       "module": "D2Game",
-      "name": "ITEMS_RollEarOrClassItem",
+      "name": "ITEMS_InitItemUnit_6FC30160",
       "sccId": 1632,
       "size": 122,
       "status": "ported",
       "topoLevel": 9,
-      "tsReference": "ITEMS_RollEarOrClassItem113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
-      "tsSymbol": "ITEMS_RollEarOrClassItem113c",
+      "tsReference": "ITEMS_InitItemUnit_6FC30160_113c (src/d2kern-113c/game/k2-real-itemdrop-113c.ts)",
+      "tsSymbol": "ITEMS_InitItemUnit_6FC30160_113c",
       "va": "0x6FC30160"
     },
     {
@@ -45952,17 +45952,17 @@
         "D2Game:6FC307B0",
         "D2Game:6FC309B0"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "Wine 1.13c longitudinal t4+gs differential replay zero-divergence in tests/oracle/k2/replay-k2-coverage.test.ts and tests/oracle/k2/real-itemdrop-pipeline.test.ts (a1c-bloodmoor-fallen, a1-bloodmoor-melee, p52-dot-ticks, p52-item-defense)",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-itemdrop-113c.ts",
       "module": "D2Game",
-      "name": "ITEMS_PickUniqueItem",
+      "name": "ITEMS_FinalizeNormalExpansionItem_6FC30550",
       "sccId": 1689,
       "size": 173,
-      "status": "ported",
+      "status": "diff-verified",
       "topoLevel": 17,
-      "tsReference": "ITEMS_PickUniqueItem113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
-      "tsSymbol": "ITEMS_PickUniqueItem113c",
+      "tsReference": "ITEMS_FinalizeNormalExpansionItem_6FC30550_113c (src/d2kern-113c/game/k2-real-itemdrop-113c.ts)",
+      "tsSymbol": "ITEMS_FinalizeNormalExpansionItem_6FC30550_113c",
       "va": "0x6FC30550"
     },
     {
@@ -46055,17 +46055,17 @@
       "callers": [
         "D2Game:6FC30A20"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "Wine 1.13c longitudinal t4+gs differential replay zero-divergence in tests/oracle/k2/replay-k2-coverage.test.ts and tests/oracle/k2/real-itemdrop-pipeline.test.ts (a1c-bloodmoor-fallen, a1-bloodmoor-melee, p52-dot-ticks, p52-item-defense)",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-itemdrop-113c.ts",
       "module": "D2Game",
-      "name": "ITEMS_CheckSetItemEligibility",
+      "name": "ITEMS_DispatchNormalItemModsByFormat_6FC307B0",
       "sccId": 1691,
       "size": 35,
-      "status": "ported",
+      "status": "diff-verified",
       "topoLevel": 18,
-      "tsReference": "ITEMS_CheckSetItemEligibility113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
-      "tsSymbol": "ITEMS_CheckSetItemEligibility113c",
+      "tsReference": "ITEMS_DispatchNormalItemModsByFormat_6FC307B0_113c (src/d2kern-113c/game/k2-real-itemdrop-113c.ts)",
+      "tsSymbol": "ITEMS_DispatchNormalItemModsByFormat_6FC307B0_113c",
       "va": "0x6FC307B0"
     },
     {
@@ -46188,17 +46188,17 @@
       "callers": [
         "D2Game:6FC31070"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "Wine 1.13c longitudinal t4+gs differential replay zero-divergence in tests/oracle/k2/replay-k2-coverage.test.ts and tests/oracle/k2/real-itemdrop-pipeline.test.ts (a1c-bloodmoor-fallen, a1-bloodmoor-melee, p52-dot-ticks, p52-item-defense)",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-itemdrop-113c.ts",
       "module": "D2Game",
-      "name": "ITEMS_GenerateMagicOrRareAffixes",
+      "name": "ITEMS_GenerateMagicOrRareAffixes_6FC30A20",
       "sccId": 1704,
       "size": 1558,
-      "status": "ported",
+      "status": "diff-verified",
       "topoLevel": 19,
-      "tsReference": "ITEMS_GenerateMagicOrRareAffixes113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
-      "tsSymbol": "ITEMS_GenerateMagicOrRareAffixes113c",
+      "tsReference": "ITEMS_GenerateMagicOrRareAffixes_6FC30A20_113c (src/d2kern-113c/game/k2-real-itemdrop-113c.ts)",
+      "tsSymbol": "ITEMS_GenerateMagicOrRareAffixes_6FC30A20_113c",
       "va": "0x6FC30A20"
     },
     {
@@ -46234,21 +46234,21 @@
         "D2Game:6FC92220",
         "D2Game:6FD012D0"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "Wine 1.13c longitudinal t4+gs differential replay zero-divergence in tests/oracle/k2/replay-k2-coverage.test.ts and tests/oracle/k2/real-itemdrop-pipeline.test.ts (a1c-bloodmoor-fallen, a1-bloodmoor-melee, p52-dot-ticks, p52-item-defense)",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-itemdrop-113c.ts",
       "module": "D2Game",
-      "name": "ITEMS_InitCreatedItemStats",
+      "name": "ITEMS_InitCreatedItemStats_6FC31070",
       "sccId": 1705,
       "size": 1050,
-      "status": "ported",
+      "status": "diff-verified",
       "topoLevel": 20,
-      "tsReference": "ITEMS_InitCreatedItemStats113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
-      "tsSymbol": "ITEMS_InitCreatedItemStats113c",
+      "tsReference": "ITEMS_InitCreatedItemStats_6FC31070_113c (src/d2kern-113c/game/k2-real-itemdrop-113c.ts)",
+      "tsSymbol": "ITEMS_InitCreatedItemStats_6FC31070_113c",
       "va": "0x6FC31070"
     },
     {
@@ -46302,21 +46302,21 @@
         "D2Game:6FCE00C0",
         "D2Game:6FCF8440"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "Wine 1.13c longitudinal t4+gs differential replay zero-divergence in tests/oracle/k2/replay-k2-coverage.test.ts and tests/oracle/k2/real-itemdrop-pipeline.test.ts (a1c-bloodmoor-fallen, a1-bloodmoor-melee, p52-dot-ticks, p52-item-defense)",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-itemdrop-113c.ts",
       "module": "D2Game",
-      "name": "ITEMS_FinalizeCreatedItem",
+      "name": "D2GAME_CreateItemEx_6FC31490",
       "sccId": 1840,
       "size": 996,
-      "status": "ported",
+      "status": "diff-verified",
       "topoLevel": 21,
-      "tsReference": "ITEMS_FinalizeCreatedItem113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
-      "tsSymbol": "ITEMS_FinalizeCreatedItem113c",
+      "tsReference": "D2GAME_CreateItemEx_6FC31490_113c (src/d2kern-113c/game/k2-real-itemdrop-113c.ts)",
+      "tsSymbol": "D2GAME_CreateItemEx_6FC31490_113c",
       "va": "0x6FC31490"
     },
     {
@@ -46330,17 +46330,17 @@
       "callers": [
         "D2Game:6FC32380"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "Wine 1.13c longitudinal t4+gs differential replay zero-divergence in tests/oracle/k2/replay-k2-coverage.test.ts and tests/oracle/k2/real-itemdrop-pipeline.test.ts (a1c-bloodmoor-fallen, a1-bloodmoor-melee, p52-dot-ticks, p52-item-defense)",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-itemdrop-113c.ts",
       "module": "D2Game",
-      "name": "ITEMS_CreateItem",
+      "name": "ITEMS_CreateDroppedItemAtUnit_6FC31880",
       "sccId": 2018,
       "size": 248,
-      "status": "ported",
+      "status": "diff-verified",
       "topoLevel": 22,
-      "tsReference": "ITEMS_CreateItem113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
-      "tsSymbol": "ITEMS_CreateItem113c",
+      "tsReference": "ITEMS_CreateDroppedItemAtUnit_6FC31880_113c (src/d2kern-113c/game/k2-real-itemdrop-113c.ts)",
+      "tsSymbol": "ITEMS_CreateDroppedItemAtUnit_6FC31880_113c",
       "va": "0x6FC31880"
     },
     {
@@ -46408,7 +46408,7 @@
         "D2Game:6FD0A5F0",
         "D2Game:6FD0AA30"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -46439,7 +46439,7 @@
         "D2Game:6FC57F80",
         "D2Game:6FC98C50"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b1.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w4b1.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w4b1-113c.ts",
       "module": "D2Game",
@@ -46465,7 +46465,7 @@
       "callers": [
         "D2Game:6FC8B280"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b1.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w4b1.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w4b1-113c.ts",
       "module": "D2Game",
@@ -46489,7 +46489,7 @@
       "callers": [
         "D2Game:6FC8B2E0"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b1.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w4b1.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w4b1-113c.ts",
       "module": "D2Game",
@@ -46515,7 +46515,7 @@
       "callers": [
         "D2Game:6FC4F580"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w3b1.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w3b1.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w3b1-113c.ts",
       "module": "D2Game",
@@ -46540,7 +46540,7 @@
       "callers": [
         "D2Game:6FC4F4B0"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w4b3-113c.ts",
       "module": "D2Game",
@@ -46576,7 +46576,7 @@
         "D2Game:6FC32D60",
         "D2Game:6FC8B570"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "Wine 1.13c longitudinal t4+gs differential replay zero-divergence in tests/oracle/k2/replay-k2-coverage.test.ts and tests/oracle/k2/real-itemdrop-pipeline.test.ts (a1c-bloodmoor-fallen, a1-bloodmoor-melee, p52-dot-ticks, p52-item-defense)",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "d2game.msvc_libcmt:0x6FD14A57",
@@ -46584,15 +46584,15 @@
         "fog.dll:10024",
         "fog.dll:10265"
       ],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-itemdrop-113c.ts",
       "module": "D2Game",
-      "name": "ITEMS_ChooseTreasureClassItem",
+      "name": "ITEMS_ChooseTreasureClassAndDrop_6FC32380",
       "sccId": 2026,
       "size": 1899,
-      "status": "ported",
+      "status": "diff-verified",
       "topoLevel": 23,
-      "tsReference": "ITEMS_ChooseTreasureClassItem113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
-      "tsSymbol": "ITEMS_ChooseTreasureClassItem113c",
+      "tsReference": "ITEMS_ChooseTreasureClassAndDrop_6FC32380_113c (src/d2kern-113c/game/k2-real-itemdrop-113c.ts)",
+      "tsSymbol": "ITEMS_ChooseTreasureClassAndDrop_6FC32380_113c",
       "va": "0x6FC32380"
     },
     {
@@ -46639,7 +46639,7 @@
         "D2Game:6FC7FE30",
         "D2Game:6FCF6C80"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b1.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w4b1.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w4b1-113c.ts",
       "module": "D2Game",
@@ -46662,17 +46662,17 @@
       "callers": [
         "D2Game:6FC95680"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "Wine 1.13c longitudinal t4+gs differential replay zero-divergence in tests/oracle/k2/replay-k2-coverage.test.ts and tests/oracle/k2/real-itemdrop-pipeline.test.ts (a1c-bloodmoor-fallen, a1-bloodmoor-melee, p52-dot-ticks, p52-item-defense)",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-itemdrop-113c.ts",
       "module": "D2Game",
-      "name": "ITEMS_DropMonsterTreasure",
+      "name": "ITEMS_DropMonsterTreasure_6FC32D60",
       "sccId": 2029,
       "size": 131,
-      "status": "ported",
+      "status": "diff-verified",
       "topoLevel": 24,
-      "tsReference": "ITEMS_DropMonsterTreasure113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
-      "tsSymbol": "ITEMS_DropMonsterTreasure113c",
+      "tsReference": "ITEMS_DropMonsterTreasure_6FC32D60_113c (src/d2kern-113c/game/k2-real-itemdrop-113c.ts)",
+      "tsSymbol": "ITEMS_DropMonsterTreasure_6FC32D60_113c",
       "va": "0x6FC32D60"
     },
     {
@@ -46688,7 +46688,7 @@
         "D2Game:6FC93D90",
         "D2Game:6FCDF990"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w4b3-113c.ts",
       "module": "D2Game",
@@ -46721,17 +46721,17 @@
       "callers": [
         "D2Game:6FCFEBA0"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c binary port verified in tests/oracle/k2/real-itemdrop-pipeline.test.ts and tests/oracle/k2/replay-k2-coverage.test.ts (awaiting 0x6FC99100 re-binding for transitive diff-verified)",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-itemdrop-113c.ts",
       "module": "D2Game",
-      "name": "ITEMS_ApplyItemDurabilityLoss",
+      "name": "ITEMS_ApplyItemDurabilityLoss_6FC32EE0",
       "sccId": 1924,
       "size": 666,
       "status": "ported",
       "topoLevel": 22,
-      "tsReference": "ITEMS_ApplyItemDurabilityLoss113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
-      "tsSymbol": "ITEMS_ApplyItemDurabilityLoss113c",
+      "tsReference": "ITEMS_ApplyItemDurabilityLoss_6FC32EE0_113c (src/d2kern-113c/game/k2-real-itemdrop-113c.ts)",
+      "tsSymbol": "ITEMS_ApplyItemDurabilityLoss_6FC32EE0_113c",
       "va": "0x6FC32EE0"
     },
     {
@@ -46955,17 +46955,17 @@
         "D2Game:6FC34F20",
         "D2Game:6FC35240"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "Wine 1.13c longitudinal t4+gs differential replay zero-divergence in tests/oracle/k2/replay-k2-coverage.test.ts and tests/oracle/k2/real-itemdrop-pipeline.test.ts (a1c-bloodmoor-fallen, a1-bloodmoor-melee, p52-dot-ticks, p52-item-defense)",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-itemdrop-113c.ts",
       "module": "D2Game",
-      "name": "ITEMS_SpawnDroppedItemAtCoords",
+      "name": "ITEMS_RollStaffModsOnItem_6FC33DE0",
       "sccId": 1674,
       "size": 120,
-      "status": "ported",
+      "status": "diff-verified",
       "topoLevel": 9,
-      "tsReference": "ITEMS_SpawnDroppedItemAtCoords113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
-      "tsSymbol": "ITEMS_SpawnDroppedItemAtCoords113c",
+      "tsReference": "ITEMS_RollStaffModsOnItem_6FC33DE0_113c (src/d2kern-113c/game/k2-real-itemdrop-113c.ts)",
+      "tsSymbol": "ITEMS_RollStaffModsOnItem_6FC33DE0_113c",
       "va": "0x6FC33DE0"
     },
     {
@@ -47706,6 +47706,7 @@
         "D2Game:6FC3BC60",
         "D2Game:6FC3DB40"
       ],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/town-npc-ai-113c.ts",
       "module": "D2Game",
@@ -47905,6 +47906,7 @@
       "callers": [
         "D2Game:6FC39C20"
       ],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/town-npc-ai-113c.ts",
       "module": "D2Game",
@@ -47958,6 +47960,7 @@
         "D2Game:6FC39BA0",
         "D2Game:6FC39BB0"
       ],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/town-npc-ai-113c.ts",
       "module": "D2Game",
@@ -47984,6 +47987,7 @@
         "D2Game:6FC3BC60",
         "D2Game:6FC3DB40"
       ],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/town-npc-ai-113c.ts",
       "module": "D2Game",
@@ -48511,6 +48515,7 @@
         "D2Game:6FC417D0"
       ],
       "callers": [],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/town-npc-ai-113c.ts",
       "module": "D2Game",
@@ -48530,6 +48535,7 @@
         "D2Game:6FC417D0"
       ],
       "callers": [],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/town-npc-ai-113c.ts",
       "module": "D2Game",
@@ -48547,6 +48553,7 @@
         "D2Game:6FC36970"
       ],
       "callers": [],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/town-npc-ai-113c.ts",
       "module": "D2Game",
@@ -48565,6 +48572,7 @@
         "D2Game:6FC417D0"
       ],
       "callers": [],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/town-npc-ai-113c.ts",
       "module": "D2Game",
@@ -48596,16 +48604,17 @@
         "D2Game:6FC3BF60",
         "D2Game:6FC3DB40"
       ],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified in tests/oracle/k2/real-c2s-spawn-town.test.ts",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/replay-kernel-113c.ts",
+      "kernFile": "src/d2kern-113c/game/town-npc-ai-113c.ts",
       "module": "D2Game",
       "name": "AI_WarrivGreet",
       "sccId": 2124,
       "size": 591,
       "status": "ported",
       "topoLevel": 24,
-      "tsReference": "AI_WarrivGreet113c (src/d2kern-113c/game/replay-kernel-113c.ts)",
-      "tsSymbol": "AI_WarrivGreet113c",
+      "tsReference": "AI_WarrivGreetMem113c (src/d2kern-113c/game/town-npc-ai-113c.ts)",
+      "tsSymbol": "AI_WarrivGreetMem113c",
       "va": "0x6FC39C20"
     },
     {
@@ -48833,17 +48842,18 @@
         "D2Game:6FC3BC60",
         "D2Game:6FC3DB40"
       ],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "indirectUnknown": true,
-      "kernFile": "src/d2kern-113c/game/replay-kernel-113c.ts",
+      "kernFile": "src/d2kern-113c/game/town-npc-ai-113c.ts",
       "module": "D2Game",
-      "name": "AI_FollowDs1NpcPath",
+      "name": "AI_FollowDs1NpcPathMem",
       "sccId": 2141,
       "size": 149,
       "status": "ported",
       "topoLevel": 1,
-      "tsReference": "AI_FollowDs1NpcPath113c (src/d2kern-113c/game/replay-kernel-113c.ts)",
-      "tsSymbol": "AI_FollowDs1NpcPath113c",
+      "tsReference": "AI_FollowDs1NpcPathMem113c (src/d2kern-113c/game/town-npc-ai-113c.ts)",
+      "tsSymbol": "AI_FollowDs1NpcPathMem113c",
       "va": "0x6FC3BBC0"
     },
     {
@@ -48854,6 +48864,7 @@
         "D2Game:6FD122C0"
       ],
       "callers": [],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/town-npc-ai-113c.ts",
       "module": "D2Game",
@@ -49181,16 +49192,17 @@
         "D2Game:6FD12540"
       ],
       "callers": [],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/replay-kernel-113c.ts",
+      "kernFile": "src/d2kern-113c/game/town-npc-ai-113c.ts",
       "module": "D2Game",
-      "name": "AI_TownNpc",
+      "name": "AI_TownNpcMem",
       "sccId": 2191,
       "size": 511,
       "status": "ported",
       "topoLevel": 29,
-      "tsReference": "AI_TownNpc113c (src/d2kern-113c/game/replay-kernel-113c.ts)",
-      "tsSymbol": "AI_TownNpc113c",
+      "tsReference": "AI_TownNpcMem113c (src/d2kern-113c/game/town-npc-ai-113c.ts)",
+      "tsSymbol": "AI_TownNpcMem113c",
       "va": "0x6FC3DB40"
     },
     {
@@ -49415,18 +49427,18 @@
       "callers": [
         "D2Game:6FC4C0F0"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [
         "fog.dll:10046"
       ],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "AIGENERAL_ExpireMinionListsInAct",
       "sccId": 2198,
       "size": 104,
       "status": "ported",
       "topoLevel": 0,
-      "tsReference": "AIGENERAL_ExpireMinionListsInAct113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "AIGENERAL_ExpireMinionListsInAct113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "AIGENERAL_ExpireMinionListsInAct113c",
       "va": "0x6FC3EB20"
     },
@@ -49681,7 +49693,7 @@
         "D2Game:6FC4CB80",
         "D2Game:6FC4CBE0"
       ],
-      "diffEvidence": "tests/oracle/k1/laneE-act-rooms.test.ts (control-flow vectors from the D2Game.dll disassembly)",
+      "diffEvidence": "Wine 1.13c longitudinal t0+t1+t4+s2c+gs strict zero-divergence replay in tests/oracle/k2/replay-k2-coverage.test.ts (a1-bloodmoor-melee, p52-dot-ticks, p52-item-defense)",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -49693,7 +49705,7 @@
       "name": "ROOM_RefreshUnitsAndLoadSaved",
       "sccId": 1840,
       "size": 739,
-      "status": "ported",
+      "status": "diff-verified",
       "topoLevel": 21,
       "tsReference": "ROOM_RefreshUnitsAndLoadSaved113c (src/d2kern-113c/game/act-rooms-113c.ts)",
       "tsSymbol": "ROOM_RefreshUnitsAndLoadSaved113c",
@@ -49780,17 +49792,17 @@
       "callers": [
         "D2Game:6FC409B0"
       ],
-      "diffEvidence": "tests/oracle/k1/laneE-act-rooms.test.ts (control-flow vectors from the D2Game.dll disassembly)",
+      "diffEvidence": "Wine 1.13c longitudinal t0+t1+t4+s2c+gs strict zero-divergence replay in tests/oracle/k2/replay-k2-coverage.test.ts (a1-bloodmoor-melee, p52-dot-ticks, p52-item-defense)",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/act-rooms-113c.ts",
       "module": "D2Game",
-      "name": "ROOM_DeactivateUnitInRoom",
+      "name": "ROOM_DeactivateMonsterInRoom",
       "sccId": 2207,
       "size": 580,
-      "status": "ported",
+      "status": "diff-verified",
       "topoLevel": 24,
-      "tsReference": "ROOM_DeactivateUnitInRoom113c (src/d2kern-113c/game/act-rooms-113c.ts)",
-      "tsSymbol": "ROOM_DeactivateUnitInRoom113c",
+      "tsReference": "ROOM_DeactivateMonsterInRoom113c (src/d2kern-113c/game/act-rooms-113c.ts)",
+      "tsSymbol": "ROOM_DeactivateMonsterInRoom113c",
       "va": "0x6FC40760"
     },
     {
@@ -50005,13 +50017,14 @@
         "D2Game:6FC417D0",
         "D2Game:6FCD8460"
       ],
+      "diffEvidence": "Wine 1.13c longitudinal t0+t1+t4+s2c+gs strict zero-divergence replay in tests/oracle/k2/replay-k2-coverage.test.ts (a1-bloodmoor-melee, p52-dot-ticks, p52-item-defense)",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/town-npc-ai-113c.ts",
       "module": "D2Game",
       "name": "AIGENERAL_FindAiCommandByType",
       "sccId": 2059,
       "size": 72,
-      "status": "ported",
+      "status": "diff-verified",
       "topoLevel": 0,
       "tsReference": "AIGENERAL_FindAiCommandByType113c (src/d2kern-113c/game/town-npc-ai-113c.ts)",
       "tsSymbol": "AIGENERAL_FindAiCommandByType113c",
@@ -50357,13 +50370,14 @@
         "D2Game:6FC39BB0",
         "D2Game:6FC3DB40"
       ],
+      "diffEvidence": "Wine 1.13c longitudinal t0+t1+t4+s2c+gs strict zero-divergence replay in tests/oracle/k2/replay-k2-coverage.test.ts (a1-bloodmoor-melee, p52-dot-ticks, p52-item-defense)",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/town-npc-ai-113c.ts",
       "module": "D2Game",
       "name": "AIGENERAL_GetOrAllocAiCommandByType",
       "sccId": 2060,
       "size": 69,
-      "status": "ported",
+      "status": "diff-verified",
       "topoLevel": 2,
       "tsReference": "AIGENERAL_GetOrAllocAiCommandByType113c (src/d2kern-113c/game/town-npc-ai-113c.ts)",
       "tsSymbol": "AIGENERAL_GetOrAllocAiCommandByType113c",
@@ -51264,7 +51278,7 @@
         "D2Game:6FC42B60"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w4b3-113c.ts",
       "module": "D2Game",
@@ -51431,7 +51445,7 @@
         "D2Game:6FD003A0"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w4b3-113c.ts",
       "module": "D2Game",
@@ -51459,7 +51473,7 @@
         "D2Game:6FC8EDB0",
         "D2Game:6FD08780"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w4b3-113c.ts",
       "module": "D2Game",
@@ -51739,7 +51753,7 @@
       "callers": [
         "D2Game:6FC8B8A0"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts",
+      "diffEvidence": "tests/oracle/k2/w4b4.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FC44B70)",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w4b4-113c.ts",
       "module": "D2Game",
@@ -51763,7 +51777,7 @@
         "D2Game:6FC67880",
         "D2Game:6FC67CF0"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w4b3-113c.ts",
       "module": "D2Game",
@@ -52174,7 +52188,7 @@
         "D2Game:6FCFCF20",
         "D2Game:6FCFE0C0"
       ],
-      "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/boot-init-gap-a-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "indirectUnknown": true,
       "kernFile": "src/d2kern-113c/game/boot-init-gap-a-113c.ts",
@@ -53574,7 +53588,7 @@
         "D2Game:6FC4C2D0",
         "D2Game:6FC4C570"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "d2game.msvc_libcmt:0x6FC22A6D",
@@ -53901,7 +53915,7 @@
         "D2Game:6FCE7FB0",
         "D2Game:6FD01570"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/laneJ-0x6fc4-w1.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/laneJ-0x6fc4-w1.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-laneJ-0x6fc4-w1-113c.ts",
       "module": "D2Game",
@@ -54004,7 +54018,7 @@
         "D2Game:6FC4D670",
         "D2Game:6FCF14B0"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts",
+      "diffEvidence": "tests/oracle/k2/w15b1.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FC4D090)",
       "externalDeps": [
         "d2net.dll:10000",
         "d2net.dll:10002",
@@ -54147,7 +54161,7 @@
       "callers": [
         "D2Game:6FC4E050"
       ],
-      "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/boot-init-gap-a-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -54577,7 +54591,7 @@
       "callers": [
         "D2Game:6FC4EEA0"
       ],
-      "diffEvidence": "tests/oracle/k1/laneE-objects-populate.test.ts (control-flow vectors from the D2Game.dll disassembly)",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/objects-populate-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "indirectUnknown": true,
       "kernFile": "src/d2kern-113c/game/objects-populate-113c.ts",
@@ -54840,7 +54854,7 @@
         "D2Game:6FC4E5D0"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts",
+      "diffEvidence": "tests/oracle/k2/w4b4.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FC4F4B0)",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w4b4-113c.ts",
       "module": "D2Game",
@@ -55074,22 +55088,22 @@
         "D2Game:6FD00F40"
       ],
       "callers": [],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c binary port verified in tests/oracle/k2/real-itemdrop-pipeline.test.ts",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
         "fog.dll:10045",
         "fog.dll:10265"
       ],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-itemdrop-113c.ts",
       "module": "D2Game",
-      "name": "OBJECTS_FindFreeDropCoordsAndSpawnItem",
+      "name": "OBJECTS_FindFreeDropCoordsAndSpawnItem_6FC51000",
       "sccId": 2557,
       "size": 2027,
       "status": "ported",
       "topoLevel": 22,
-      "tsReference": "OBJECTS_FindFreeDropCoordsAndSpawnItem113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
-      "tsSymbol": "OBJECTS_FindFreeDropCoordsAndSpawnItem113c",
+      "tsReference": "OBJECTS_FindFreeDropCoordsAndSpawnItem_6FC51000_113c (src/d2kern-113c/game/k2-real-itemdrop-113c.ts)",
+      "tsSymbol": "OBJECTS_FindFreeDropCoordsAndSpawnItem_6FC51000_113c",
       "va": "0x6FC51000"
     },
     {
@@ -55397,7 +55411,7 @@
         "D2Game:6FC51E20"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/laneJ-0x6fc4-w1.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-laneJ-0x6fc4-w1-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -57501,7 +57515,7 @@
         "D2Game:6FD08FE0",
         "D2Game:6FD09600"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w14b1-113c.ts",
       "module": "D2Game",
@@ -57529,7 +57543,7 @@
       "callers": [
         "D2Game:6FC8CD40"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w14b1-113c.ts",
       "module": "D2Game",
@@ -57581,7 +57595,7 @@
       "callers": [
         "D2Game:6FCE00C0"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts",
+      "diffEvidence": "tests/oracle/k2/w15b1.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FC56890)",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -57698,13 +57712,14 @@
         "D2Game:6FCFE6D0",
         "D2Game:6FCFED30"
       ],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [
         "fog.dll:10046"
       ],
       "indirectUnknown": true,
       "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
       "module": "D2Game",
-      "name": "SUNIT_DispatchItemEventCallbacks113c",
+      "name": "SUNIT_DispatchItemEventCallbacks",
       "sccId": 1582,
       "size": 170,
       "status": "ported",
@@ -57769,7 +57784,7 @@
         "D2Game:6FCBE290",
         "D2Game:6FCCF210"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/laneF-gap-itemdef.test.ts",
+      "diffEvidence": "Wine 1.13c longitudinal t0+t1+t4+s2c+gs strict zero-divergence replay in tests/oracle/k2/replay-k2-coverage.test.ts (a1-bloodmoor-melee, p52-dot-ticks, p52-item-defense)",
       "externalDeps": [
         "fog.dll:10045"
       ],
@@ -57778,7 +57793,7 @@
       "name": "UNITEVENT_RegisterTimerOrItemEventNode",
       "sccId": 1796,
       "size": 134,
-      "status": "ported",
+      "status": "diff-verified",
       "topoLevel": 0,
       "tsReference": "UNITEVENT_RegisterTimerOrItemEventNode113c (src/d2kern-113c/game/k2-gap-itemdef-113c.ts)",
       "tsSymbol": "UNITEVENT_RegisterTimerOrItemEventNode113c",
@@ -58268,7 +58283,7 @@
         "D2Game:6FC98FA0",
         "D2Game:6FCEEF40"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -58297,7 +58312,7 @@
       "callers": [
         "D2Game:6FC583A0"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts",
+      "diffEvidence": "tests/oracle/k2/w4b4.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FC58180)",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w4b4-113c.ts",
       "module": "D2Game",
@@ -59362,7 +59377,7 @@
         "D2Game:6FD003A0"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w4b3-113c.ts",
       "module": "D2Game",
@@ -59746,7 +59761,7 @@
         "D2Game:6FC7C1F0"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w4b3-113c.ts",
       "module": "D2Game",
@@ -61003,7 +61018,7 @@
         "D2Game:6FC7C1F0"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w4b3-113c.ts",
       "module": "D2Game",
@@ -61050,7 +61065,7 @@
         "D2Game:6FD003A0"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w4b3-113c.ts",
       "module": "D2Game",
@@ -61416,7 +61431,7 @@
         "D2Game:6FCFFFD0"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w5b1.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w5b1.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -61552,7 +61567,7 @@
         "D2Game:6FD0FDB0"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -62550,7 +62565,7 @@
         "D2Game:6FD00460"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w14b1-113c.ts",
       "module": "D2Game",
@@ -63360,7 +63375,7 @@
         "D2Game:6FD0FE40"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w14b1-113c.ts",
       "module": "D2Game",
@@ -63384,7 +63399,7 @@
         "D2Game:6FD0FE40"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w14b1-113c.ts",
       "module": "D2Game",
@@ -63407,7 +63422,7 @@
         "D2Game:6FCC3610"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w14b1-113c.ts",
       "module": "D2Game",
@@ -63759,7 +63774,7 @@
         "D2Game:6FC679B0",
         "D2Game:6FC67CF0"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts",
+      "diffEvidence": "tests/oracle/k2/w4b4.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FC67880)",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w4b4-113c.ts",
       "module": "D2Game",
@@ -63899,7 +63914,7 @@
         "D2Game:6FC7CF70",
         "D2Game:6FD012D0"
       ],
-      "diffEvidence": "tests/oracle/k1/laneE-room-presets.test.ts (control-flow vectors from the D2Game.dll disassembly)",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/room-presets-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/room-presets-113c.ts",
       "module": "D2Game",
@@ -65006,7 +65021,7 @@
         "D2Game:6FC4D090",
         "D2Game:6FC4DC70"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -65469,7 +65484,7 @@
         "D2Game:6FD0FE40"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w14b1-113c.ts",
       "module": "D2Game",
@@ -65500,7 +65515,7 @@
         "D2Game:6FD0FE40"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w14b1-113c.ts",
       "module": "D2Game",
@@ -66734,7 +66749,7 @@
       "callers": [
         "D2Game:6FC71E70"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w14b1-113c.ts",
       "module": "D2Game",
@@ -66766,7 +66781,7 @@
         "D2Game:6FD0FDB0"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w14b1-113c.ts",
       "module": "D2Game",
@@ -66835,7 +66850,7 @@
         "D2Game:6FD0FE40"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w14b1-113c.ts",
       "module": "D2Game",
@@ -66858,7 +66873,7 @@
         "D2Game:6FD0FE40"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w14b1-113c.ts",
       "module": "D2Game",
@@ -66892,7 +66907,7 @@
         "D2Game:6FD0FE40"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w14b1-113c.ts",
       "module": "D2Game",
@@ -66968,7 +66983,7 @@
         "D2Game:6FCBFA30"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts",
+      "diffEvidence": "tests/oracle/k2/w15b1.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FC71E70)",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w15b1-113c.ts",
       "module": "D2Game",
@@ -70882,7 +70897,7 @@
       "callers": [
         "D2Game:6FC7CD50"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -70906,7 +70921,7 @@
         "D2Game:6FC561E0"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w4b3-113c.ts",
       "module": "D2Game",
@@ -70936,7 +70951,7 @@
         "D2Game:6FC7CC30",
         "D2Game:6FC7F5E0"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -70998,7 +71013,7 @@
       "callers": [
         "D2Game:6FC7CC70"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -71026,7 +71041,7 @@
         "D2Game:6FC3BDF0",
         "D2Game:6FC3BF60"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts",
+      "diffEvidence": "tests/oracle/k2/w4b4.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FC7CC30)",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w4b4-113c.ts",
       "module": "D2Game",
@@ -71090,7 +71105,7 @@
         "D2Game:6FCFFCC0"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts",
+      "diffEvidence": "tests/oracle/k2/w15b1.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FC7CD50)",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -71667,7 +71682,7 @@
       "callers": [
         "D2Game:6FCCF450"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w4b3-113c.ts",
       "module": "D2Game",
@@ -71691,7 +71706,7 @@
       "callers": [
         "D2Game:6FC56C50"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w4b3-113c.ts",
       "module": "D2Game",
@@ -71882,7 +71897,7 @@
         "D2Game:6FC7E7F0"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w4b3-113c.ts",
       "module": "D2Game",
@@ -72095,7 +72110,7 @@
       "callers": [
         "D2Game:6FC7FC20"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -75802,7 +75817,7 @@
         "D2Game:6FCFFFD0"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts",
+      "diffEvidence": "tests/oracle/k2/w15b1.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FC864F0)",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -75832,7 +75847,7 @@
       "callers": [
         "D2Game:6FC887D0"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w14b1-113c.ts",
       "module": "D2Game",
@@ -75867,7 +75882,7 @@
       "callers": [
         "D2Game:6FC887D0"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -75908,7 +75923,7 @@
       "callers": [
         "D2Game:6FC87210"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -76425,7 +76440,7 @@
       "callers": [
         "D2Game:6FC89130"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -76553,7 +76568,7 @@
       "callers": [
         "D2Game:6FC56C50"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts",
+      "diffEvidence": "tests/oracle/k2/w4b4.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FC88E20)",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -77096,7 +77111,7 @@
         "D2Game:6FC8B880"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts",
+      "diffEvidence": "tests/oracle/k2/w4b4.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FC89970)",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -77747,7 +77762,7 @@
         "D2Game:6FC8A960"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts",
+      "diffEvidence": "tests/oracle/k2/w4b4.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FC8ABB0)",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -77774,7 +77789,7 @@
         "D2Game:6FC8A960"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts",
+      "diffEvidence": "tests/oracle/k2/w4b4.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FC8AC30)",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -77798,7 +77813,7 @@
         "D2Game:6FC8A960"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts",
+      "diffEvidence": "tests/oracle/k2/w4b4.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FC8ACE0)",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -77884,7 +77899,7 @@
         "D2Game:6FD0A4C0",
         "D2Game:6FD0A5F0"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w3b7.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w3b7.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w3b7-113c.ts",
       "module": "D2Game",
@@ -77917,7 +77932,7 @@
       "callers": [
         "D2Game:6FC8B430"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w6b4.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w6b4.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w6b4-113c.ts",
       "module": "D2Game",
@@ -77941,7 +77956,7 @@
       "callers": [
         "D2Game:6FCBDCD0"
       ],
-      "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/boot-init-gap-a-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/boot-init-gap-a-113c.ts",
       "module": "D2Game",
@@ -77962,7 +77977,7 @@
         "D2Game:6FC31E20"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w4b3-113c.ts",
       "module": "D2Game",
@@ -77983,7 +77998,7 @@
         "D2Game:6FC31FB0"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w4b3.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w4b3-113c.ts",
       "module": "D2Game",
@@ -78003,7 +78018,7 @@
         "D2Game:6FC31A70"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts",
+      "diffEvidence": "tests/oracle/k2/w4b4.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FC8B340)",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w4b4-113c.ts",
       "module": "D2Game",
@@ -78448,7 +78463,7 @@
         "D2Game:6FC8F930"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w3b7.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w3b7.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -78484,7 +78499,7 @@
         "D2Game:6FC8F930"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w3b7.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w3b7.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -78540,7 +78555,7 @@
         "D2Game:6FCBE170"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts",
+      "diffEvidence": "tests/oracle/k2/w15b1.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FC8CD40)",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w15b1-113c.ts",
       "module": "D2Game",
@@ -78792,7 +78807,7 @@
         "D2Game:6FCAEA80"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts",
+      "diffEvidence": "tests/oracle/k2/w4b4.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FC8D960)",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w4b4-113c.ts",
       "module": "D2Game",
@@ -78851,7 +78866,7 @@
       "callers": [
         "D2Game:6FC608D0"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts",
+      "diffEvidence": "tests/oracle/k2/w4b4.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FC8DBF0)",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -80531,7 +80546,7 @@
       "callers": [
         "D2Game:6FC92FC0"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w13b1.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w13b1.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "d2game.msvc_libcmt:0x6FD144B0",
@@ -80565,7 +80580,7 @@
       "callers": [
         "D2Game:6FC934E0"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [
         "kernel32.dll:GetLocalTime"
       ],
@@ -80588,7 +80603,7 @@
       "callers": [
         "D2Game:6FC94200"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts",
+      "diffEvidence": "tests/oracle/k2/w15b1.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FC934E0)",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w15b1-113c.ts",
       "module": "D2Game",
@@ -80731,7 +80746,7 @@
       "callers": [
         "D2Game:6FC94200"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w14b1-113c.ts",
       "module": "D2Game",
@@ -81255,16 +81270,16 @@
         "D2Game:6FC95460",
         "D2Game:6FC96270"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "MONSTER_SetDeathPathAndAnim",
       "sccId": 3516,
       "size": 265,
       "status": "ported",
       "topoLevel": 9,
-      "tsReference": "MONSTER_SetDeathPathAndAnim113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "MONSTER_SetDeathPathAndAnim113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "MONSTER_SetDeathPathAndAnim113c",
       "va": "0x6FC95350"
     },
@@ -81384,21 +81399,21 @@
         "D2Game:6FC958D0",
         "D2Game:6FC95900"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "Wine 1.13c longitudinal t4+gs differential replay zero-divergence in tests/oracle/k2/replay-k2-coverage.test.ts and tests/oracle/k2/real-itemdrop-pipeline.test.ts (a1c-bloodmoor-fallen, a1-bloodmoor-melee, p52-dot-ticks, p52-item-defense)",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-itemdrop-113c.ts",
       "module": "D2Game",
-      "name": "MONSTER_DropTreasureOnDeath",
+      "name": "MONSTER_DropTreasureOnDeath_6FC95680",
       "sccId": 2303,
       "size": 591,
-      "status": "ported",
+      "status": "diff-verified",
       "topoLevel": 25,
-      "tsReference": "MONSTER_DropTreasureOnDeath113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
-      "tsSymbol": "MONSTER_DropTreasureOnDeath113c",
+      "tsReference": "MONSTER_DropTreasureOnDeath_6FC95680_113c (src/d2kern-113c/game/k2-real-itemdrop-113c.ts)",
+      "tsSymbol": "MONSTER_DropTreasureOnDeath_6FC95680_113c",
       "va": "0x6FC95680"
     },
     {
@@ -81433,21 +81448,21 @@
       "callers": [
         "D2Game:6FC96270"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "Wine 1.13c longitudinal t4+gs differential replay zero-divergence in tests/oracle/k2/replay-k2-coverage.test.ts and tests/oracle/k2/real-itemdrop-pipeline.test.ts (a1c-bloodmoor-fallen, a1-bloodmoor-melee, p52-dot-ticks, p52-item-defense)",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-itemdrop-113c.ts",
       "module": "D2Game",
-      "name": "MONSTER_DropDeathItems",
+      "name": "MONSTER_DropDeathItems_6FC95900",
       "sccId": 3524,
       "size": 171,
-      "status": "ported",
+      "status": "diff-verified",
       "topoLevel": 26,
-      "tsReference": "MONSTER_DropDeathItems113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
-      "tsSymbol": "MONSTER_DropDeathItems113c",
+      "tsReference": "MONSTER_DropDeathItems_6FC95900_113c (src/d2kern-113c/game/k2-real-itemdrop-113c.ts)",
+      "tsSymbol": "MONSTER_DropDeathItems_6FC95900_113c",
       "va": "0x6FC95900"
     },
     {
@@ -81998,7 +82013,7 @@
         "D2Game:6FD007A0"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w3b7.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w3b7.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [],
       "indirectUnknown": true,
       "kernFile": "src/d2kern-113c/game/k2-w3b7-113c.ts",
@@ -82023,7 +82038,7 @@
         "D2Game:6FD007A0"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w3b7.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w3b7.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [],
       "indirectUnknown": true,
       "kernFile": "src/d2kern-113c/game/k2-w3b7-113c.ts",
@@ -82203,16 +82218,16 @@
       "callers": [
         "D2Game:6FCFCF20"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "MONSTER_CheckSandLeaperMidAir",
       "sccId": 1562,
       "size": 98,
       "status": "ported",
       "topoLevel": 2,
-      "tsReference": "MONSTER_CheckSandLeaperMidAir113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "MONSTER_CheckSandLeaperMidAir113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "MONSTER_CheckSandLeaperMidAir113c",
       "va": "0x6FC971D0"
     },
@@ -82281,16 +82296,16 @@
       "callers": [
         "D2Game:6FCFEEE0"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "MONSTER_ExecuteEventsWrapper",
       "sccId": 1840,
       "size": 42,
       "status": "ported",
       "topoLevel": 21,
-      "tsReference": "MONSTER_ExecuteEventsWrapper113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "MONSTER_ExecuteEventsWrapper113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "MONSTER_ExecuteEventsWrapper113c",
       "va": "0x6FC977F0"
     },
@@ -82322,17 +82337,17 @@
       "callers": [
         "D2Game:6FC99100"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
-      "name": "PLAYER_EndAttackOrBlockAnim",
+      "name": "PLAYER_SnapshotHandSkillsToStruct",
       "sccId": 1606,
       "size": 113,
       "status": "ported",
       "topoLevel": 1,
-      "tsReference": "PLAYER_EndAttackOrBlockAnim113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
-      "tsSymbol": "PLAYER_EndAttackOrBlockAnim113c",
+      "tsReference": "PLAYER_SnapshotHandSkillsToStruct113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
+      "tsSymbol": "PLAYER_SnapshotHandSkillsToStruct113c",
       "va": "0x6FC978A0"
     },
     {
@@ -82443,16 +82458,16 @@
       "callers": [
         "D2Game:6FC99100"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "PLAYER_AdvanceSkillModeFrame",
       "sccId": 1840,
       "size": 140,
       "status": "ported",
       "topoLevel": 21,
-      "tsReference": "PLAYER_AdvanceSkillModeFrame113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "PLAYER_AdvanceSkillModeFrame113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "PLAYER_AdvanceSkillModeFrame113c",
       "va": "0x6FC97B20"
     },
@@ -82694,20 +82709,20 @@
         "D2Game:6FD00750"
       ],
       "callers": [],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "PLAYER_StartBlockMode",
       "sccId": 3559,
       "size": 97,
       "status": "ported",
       "topoLevel": 22,
-      "tsReference": "PLAYER_StartBlockMode113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "PLAYER_StartBlockMode113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "PLAYER_StartBlockMode113c",
       "va": "0x6FC981C0"
     },
@@ -82810,7 +82825,7 @@
         "D2Game:6FCEE620",
         "D2Game:6FCFCF20"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -82818,15 +82833,15 @@
         "kernel32.dll:IsBadCodePtr"
       ],
       "indirectUnknown": true,
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
       "module": "D2Game",
-      "name": "PLAYER_StartModeAttack",
+      "name": "PLAYER_StartModeOnUnit",
       "sccId": 1567,
       "size": 276,
       "status": "ported",
       "topoLevel": 4,
-      "tsReference": "PLAYER_StartModeAttack113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
-      "tsSymbol": "PLAYER_StartModeAttack113c",
+      "tsReference": "PLAYER_StartModeOnUnit113c (src/d2kern-113c/game/c2s-packet-113c.ts)",
+      "tsSymbol": "PLAYER_StartModeOnUnit113c",
       "va": "0x6FC98430"
     },
     {
@@ -82851,6 +82866,7 @@
         "D2Game:6FCFCF20",
         "D2Game:6FD01C00"
       ],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -82935,20 +82951,20 @@
         "D2Game:6FC98610"
       ],
       "callers": [],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "PLAYER_ScheduleAttackActionFrameEvents",
       "sccId": 3563,
       "size": 86,
       "status": "ported",
       "topoLevel": 15,
-      "tsReference": "PLAYER_ScheduleAttackActionFrameEvents113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "PLAYER_ScheduleAttackActionFrameEvents113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "PLAYER_ScheduleAttackActionFrameEvents113c",
       "va": "0x6FC98760"
     },
@@ -83066,16 +83082,16 @@
         "D2Game:6FCC1600",
         "D2Game:6FCC1630"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "PLAYER_StartModeCast",
       "sccId": 2339,
       "size": 196,
       "status": "ported",
       "topoLevel": 22,
-      "tsReference": "PLAYER_StartModeCast113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "PLAYER_StartModeCast113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "PLAYER_StartModeCast113c",
       "va": "0x6FC98A90"
     },
@@ -83122,7 +83138,7 @@
       "callers": [
         "D2Game:6FC99210"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts",
+      "diffEvidence": "tests/oracle/k2/w4b4.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FC98C50)",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -83201,16 +83217,16 @@
       "callers": [
         "D2Game:6FC99100"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "PLAYER_StartModeSkill",
       "sccId": 1840,
       "size": 458,
       "status": "ported",
       "topoLevel": 21,
-      "tsReference": "PLAYER_StartModeSkill113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "PLAYER_StartModeSkill113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "PLAYER_StartModeSkill113c",
       "va": "0x6FC98DD0"
     },
@@ -83234,7 +83250,7 @@
       "callers": [
         "D2Game:6FC99210"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -83268,16 +83284,16 @@
         "D2Game:6FCC1630",
         "D2Game:6FCC16A0"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "PLAYER_ScheduleSkillActionFrameEvents",
       "sccId": 1840,
       "size": 97,
       "status": "ported",
       "topoLevel": 21,
-      "tsReference": "PLAYER_ScheduleSkillActionFrameEvents113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "PLAYER_ScheduleSkillActionFrameEvents113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "PLAYER_ScheduleSkillActionFrameEvents113c",
       "va": "0x6FC99100"
     },
@@ -83293,16 +83309,16 @@
         "D2Game:6FD01930"
       ],
       "callers": [],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "PLAYER_StartModeDispatch",
       "sccId": 3569,
       "size": 153,
       "status": "ported",
       "topoLevel": 25,
-      "tsReference": "PLAYER_StartModeDispatch113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "PLAYER_StartModeDispatch113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "PLAYER_StartModeDispatch113c",
       "va": "0x6FC99170"
     },
@@ -83358,7 +83374,7 @@
       "callers": [
         "D2Game:6FC99730"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts",
+      "diffEvidence": "tests/oracle/k2/w15b1.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FC99210)",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "d2game.msvc_libcmt:0x6FC2A090",
@@ -83949,16 +83965,16 @@
         "D2Game:6FC988B0",
         "D2Game:6FD13A40"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "MONSTER_BroadcastEventSoundToClients",
       "sccId": 2461,
       "size": 88,
       "status": "ported",
       "topoLevel": 2,
-      "tsReference": "MONSTER_BroadcastEventSoundToClients113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "MONSTER_BroadcastEventSoundToClients113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "MONSTER_BroadcastEventSoundToClients113c",
       "va": "0x6FC9AC50"
     },
@@ -84419,7 +84435,7 @@
         "D2Game:6FD12380"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w3b8.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w3b8.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w3b8-113c.ts",
       "module": "D2Game",
@@ -84440,7 +84456,7 @@
         "D2Game:6FD12380"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w3b8.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w3b8.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w3b8-113c.ts",
       "module": "D2Game",
@@ -85435,7 +85451,7 @@
         "D2Game:6FD12540"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts",
+      "diffEvidence": "tests/oracle/k2/w4b4.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FCA2430)",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w4b4-113c.ts",
       "module": "D2Game",
@@ -85457,7 +85473,7 @@
         "D2Game:6FD12540"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts",
+      "diffEvidence": "tests/oracle/k2/w4b4.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FCA2570)",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w4b4-113c.ts",
       "module": "D2Game",
@@ -86401,7 +86417,7 @@
         "D2Game:6FCA9870",
         "D2Game:6FCA9C30"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w11b1.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w11b1.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w11b1-113c.ts",
       "module": "D2Game",
@@ -90725,14 +90741,14 @@
         "D2Game:6FCB5980",
         "D2Game:6FCCFDB0"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts",
+      "diffEvidence": "tests/oracle/k2/real-c2s-spawn-town.test.ts + 5/5 K1/K2 Wine 1.13c golden t0+t1+t4+s2c+gs zero-divergence replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
       "module": "D2Game",
       "name": "MONSTER_EquipMonEquipItems",
       "sccId": 1840,
       "size": 366,
-      "status": "ported",
+      "status": "diff-verified",
       "topoLevel": 21,
       "tsReference": "MONSTER_EquipMonEquipItems113c (src/d2kern-113c/game/regpop-spawn-113c.ts)",
       "tsSymbol": "MONSTER_EquipMonEquipItems113c",
@@ -91378,7 +91394,7 @@
         "D2Game:6FD0FE40"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w14b1-113c.ts",
       "module": "D2Game",
@@ -91447,7 +91463,7 @@
         "D2Game:6FCB6280",
         "D2Game:6FCB6310"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w14b1-113c.ts",
       "module": "D2Game",
@@ -91520,7 +91536,7 @@
         "D2Game:6FCBFA30"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts",
+      "diffEvidence": "tests/oracle/k2/w15b1.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FCB6280)",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w15b1-113c.ts",
       "module": "D2Game",
@@ -91549,7 +91565,7 @@
         "D2Game:6FD019C0"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts",
+      "diffEvidence": "tests/oracle/k2/w15b1.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FCB6310)",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w15b1-113c.ts",
       "module": "D2Game",
@@ -94025,16 +94041,17 @@
       "callers": [
         "D2Game:6FCBD230"
       ],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/replay-kernel-113c.ts",
+      "kernFile": "src/d2kern-113c/game/town-npc-ai-113c.ts",
       "module": "D2Game",
-      "name": "AI_RogueTown",
+      "name": "AI_RogueTownMem",
       "sccId": 1840,
       "size": 33,
       "status": "ported",
       "topoLevel": 21,
-      "tsReference": "AI_RogueTown113c (src/d2kern-113c/game/replay-kernel-113c.ts)",
-      "tsSymbol": "AI_RogueTown113c",
+      "tsReference": "AI_RogueTownMem113c (src/d2kern-113c/game/town-npc-ai-113c.ts)",
+      "tsSymbol": "AI_RogueTownMem113c",
       "va": "0x6FCBCB00"
     },
     {
@@ -94221,16 +94238,16 @@
       "callers": [
         "D2Game:6FCBD3B0"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "AI_DispatchTargetByAiFlag",
       "sccId": 3816,
       "size": 172,
       "status": "ported",
       "topoLevel": 24,
-      "tsReference": "AI_DispatchTargetByAiFlag113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "AI_DispatchTargetByAiFlag113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "AI_DispatchTargetByAiFlag113c",
       "va": "0x6FCBD160"
     },
@@ -94272,7 +94289,7 @@
         "D2Game:6FCD2120",
         "D2Game:6FCD78A0"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/regpop-spawn-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -94513,7 +94530,7 @@
       "callers": [
         "D2Game:6FC6B1D0"
       ],
-      "diffEvidence": "tests/oracle/k1/laneE-act-rooms.test.ts (control-flow vectors from the D2Game.dll disassembly)",
+      "diffEvidence": "Wine 1.13c longitudinal t0+t1+t4+s2c+gs strict zero-divergence replay in tests/oracle/k2/replay-k2-coverage.test.ts (a1-bloodmoor-melee, p52-dot-ticks, p52-item-defense)",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -94524,7 +94541,7 @@
       "name": "ROOM_DeactivateRoomForClient",
       "sccId": 2478,
       "size": 190,
-      "status": "ported",
+      "status": "diff-verified",
       "topoLevel": 3,
       "tsReference": "ROOM_DeactivateRoomForClient113c (src/d2kern-113c/game/act-rooms-113c.ts)",
       "tsSymbol": "ROOM_DeactivateRoomForClient113c",
@@ -94543,7 +94560,7 @@
       "callers": [
         "D2Game:6FC6B1D0"
       ],
-      "diffEvidence": "tests/oracle/k1/laneE-act-rooms.test.ts (control-flow vectors from the D2Game.dll disassembly)",
+      "diffEvidence": "Wine 1.13c longitudinal t0+t1+t4+s2c+gs strict zero-divergence replay in tests/oracle/k2/replay-k2-coverage.test.ts (a1-bloodmoor-melee, p52-dot-ticks, p52-item-defense)",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -94554,7 +94571,7 @@
       "name": "ROOM_ActivateRoomForClient",
       "sccId": 2480,
       "size": 178,
-      "status": "ported",
+      "status": "diff-verified",
       "topoLevel": 23,
       "tsReference": "ROOM_ActivateRoomForClient113c (src/d2kern-113c/game/act-rooms-113c.ts)",
       "tsSymbol": "ROOM_ActivateRoomForClient113c",
@@ -95717,13 +95734,14 @@
         "D2Game:6FCBFD00",
         "D2Game:6FCC19A0"
       ],
+      "diffEvidence": "Wine 1.13c longitudinal t0+t1+t4+s2c+gs strict zero-divergence replay in tests/oracle/k2/replay-k2-coverage.test.ts (a1-bloodmoor-melee, p52-dot-ticks, p52-item-defense)",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
       "module": "D2Game",
-      "name": "SKILLS_ConsumeSkillManaOrCharge113c",
+      "name": "SKILLS_ConsumeSkillManaOrCharge",
       "sccId": 1601,
       "size": 284,
-      "status": "ported",
+      "status": "diff-verified",
       "topoLevel": 10,
       "tsReference": "SKILLS_ConsumeSkillManaOrCharge113c (src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts)",
       "tsSymbol": "SKILLS_ConsumeSkillManaOrCharge113c",
@@ -95743,7 +95761,7 @@
         "D2Game:6FCC1280",
         "D2Game:6FCCFDB0"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/regpop-spawn-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
       "module": "D2Game",
@@ -96593,7 +96611,7 @@
       "callers": [
         "D2Game:6FC47600"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w4b6.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w4b6.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w4b6-113c.ts",
       "module": "D2Game",
@@ -96660,10 +96678,11 @@
         "D2Game:6FCBEB80"
       ],
       "callers": [],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
       "module": "D2Game",
-      "name": "SKILLS_StartPlayerSkillAnimOrCast113c",
+      "name": "SKILLS_StartPlayerSkillAnimOrCast",
       "sccId": 3834,
       "size": 99,
       "status": "ported",
@@ -97223,10 +97242,11 @@
         "D2Game:6FD007A0"
       ],
       "callers": [],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
       "module": "D2Game",
-      "name": "SrvDoFunc_001_Attack113c",
+      "name": "SrvDoFunc_001_Attack",
       "sccId": 3839,
       "size": 411,
       "status": "ported",
@@ -98727,7 +98747,7 @@
         "D2Game:6FD12540"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w8b2.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w8b2.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w8b2-113c.ts",
       "module": "D2Game",
@@ -99770,14 +99790,14 @@
         "D2Game:6FC214D0"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/laneF-gap-itemdef.test.ts",
+      "diffEvidence": "Wine 1.13c longitudinal t0+t1+t4+s2c+gs strict zero-divergence replay in tests/oracle/k2/replay-k2-coverage.test.ts (a1-bloodmoor-melee, p52-dot-ticks, p52-item-defense)",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-gap-itemdef-113c.ts",
       "module": "D2Game",
       "name": "ITEMEVENT_ManaAfterKill",
       "sccId": 3934,
       "size": 188,
-      "status": "ported",
+      "status": "diff-verified",
       "topoLevel": 9,
       "tsReference": "ITEMEVENT_ManaAfterKill113c (src/d2kern-113c/game/k2-gap-itemdef-113c.ts)",
       "tsSymbol": "ITEMEVENT_ManaAfterKill113c",
@@ -100039,14 +100059,14 @@
         "D2Game:6FCFE0C0"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/laneF-gap-itemdef.test.ts",
+      "diffEvidence": "Wine 1.13c longitudinal t0+t1+t4+s2c+gs strict zero-divergence replay in tests/oracle/k2/replay-k2-coverage.test.ts (a1-bloodmoor-melee, p52-dot-ticks, p52-item-defense)",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-gap-itemdef-113c.ts",
       "module": "D2Game",
       "name": "ITEMEVENT_AttackerTakesDamage",
       "sccId": 3945,
       "size": 171,
-      "status": "ported",
+      "status": "diff-verified",
       "topoLevel": 25,
       "tsReference": "ITEMEVENT_AttackerTakesDamage113c (src/d2kern-113c/game/k2-gap-itemdef-113c.ts)",
       "tsSymbol": "ITEMEVENT_AttackerTakesDamage113c",
@@ -100153,14 +100173,14 @@
         "D2Game:6FD117E0"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/laneF-gap-itemdef.test.ts",
+      "diffEvidence": "Wine 1.13c longitudinal t0+t1+t4+s2c+gs strict zero-divergence replay in tests/oracle/k2/replay-k2-coverage.test.ts (a1-bloodmoor-melee, p52-dot-ticks, p52-item-defense)",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-gap-itemdef-113c.ts",
       "module": "D2Game",
       "name": "ITEMEVENT_ChanceToCastSkill",
       "sccId": 3955,
       "size": 209,
-      "status": "ported",
+      "status": "diff-verified",
       "topoLevel": 24,
       "tsReference": "ITEMEVENT_ChanceToCastSkill113c (src/d2kern-113c/game/k2-gap-itemdef-113c.ts)",
       "tsSymbol": "ITEMEVENT_ChanceToCastSkill113c",
@@ -100895,7 +100915,7 @@
       "callers": [
         "D2Game:6FCD0320"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts",
+      "diffEvidence": "tests/oracle/k2/real-c2s-spawn-town.test.ts + 5/5 K1/K2 Wine 1.13c golden t0+t1+t4+s2c+gs zero-divergence replay",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -100906,7 +100926,7 @@
       "name": "MONSTER_InitStats",
       "sccId": 1840,
       "size": 1378,
-      "status": "ported",
+      "status": "diff-verified",
       "topoLevel": 21,
       "tsReference": "MONSTER_InitStats113c (src/d2kern-113c/game/regpop-spawn-113c.ts)",
       "tsSymbol": "MONSTER_InitStats113c",
@@ -101644,20 +101664,20 @@
         "D2Game:6FCD1BC0",
         "D2Game:6FCD1C90"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "AI_FindTargetScanRoomCallback",
       "sccId": 2101,
       "size": 633,
       "status": "ported",
       "topoLevel": 9,
-      "tsReference": "AI_FindTargetScanRoomCallback113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "AI_FindTargetScanRoomCallback113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "AI_FindTargetScanRoomCallback113c",
       "va": "0x6FCD1820"
     },
@@ -101770,20 +101790,20 @@
         "D2Game:6FD13150",
         "D2Game:6FD13220"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "AI_FindNearestPlayerOrAlly",
       "sccId": 2103,
       "size": 1155,
       "status": "ported",
       "topoLevel": 10,
-      "tsReference": "AI_FindNearestPlayerOrAlly113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "AI_FindNearestPlayerOrAlly113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "AI_FindNearestPlayerOrAlly113c",
       "va": "0x6FCD1C90"
     },
@@ -105414,7 +105434,7 @@
       "callers": [
         "D2Game:6FCDAD40"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -105540,7 +105560,7 @@
       "callers": [
         "D2Game:6FCDB8D0"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts",
+      "diffEvidence": "tests/oracle/k2/w15b1.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FCDAF20)",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w15b1-113c.ts",
       "module": "D2Game",
@@ -105709,7 +105729,7 @@
         "D2Game:6FCFFFD0"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w14b1-113c.ts",
       "module": "D2Game",
@@ -106945,7 +106965,7 @@
       "callers": [
         "D2Game:6FCDF730"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w14b1-113c.ts",
       "module": "D2Game",
@@ -106969,7 +106989,7 @@
       "callers": [
         "D2Game:6FCEF220"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -107002,7 +107022,7 @@
         "D2Game:6FCDF730",
         "D2Game:6FCDF810"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -107031,7 +107051,7 @@
       "callers": [
         "D2Game:6FCDF810"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts",
+      "diffEvidence": "tests/oracle/k2/w15b1.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FCDF730)",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w15b1-113c.ts",
       "module": "D2Game",
@@ -107223,7 +107243,7 @@
       "callers": [
         "D2Game:6FCEFB30"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w16b1.test.ts",
+      "diffEvidence": "Unit verification in tests/oracle/k2/w16b1.test.ts and tests/oracle/k2/remed-r3.test.ts",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -107394,7 +107414,7 @@
       "callers": [
         "D2Game:6FCF0060"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -111257,7 +111277,7 @@
       "callers": [
         "D2Game:6FCE9CB0"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w14b1-113c.ts",
       "module": "D2Game",
@@ -111282,7 +111302,7 @@
       "callers": [
         "D2Game:6FCE7ED0"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts",
+      "diffEvidence": "tests/oracle/k2/w15b1.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FCE7DC0)",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w15b1-113c.ts",
       "module": "D2Game",
@@ -111386,7 +111406,7 @@
       "callers": [
         "D2Game:6FCE9F60"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts",
+      "diffEvidence": "tests/oracle/k2/w15b1.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FCE8050)",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -111819,7 +111839,7 @@
       "callers": [
         "D2Game:6FC8E680"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts",
+      "diffEvidence": "tests/oracle/k2/w15b1.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FCE9CB0)",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -112256,6 +112276,7 @@
         "D2Game:6FCEDF30",
         "D2Game:6FCEE620"
       ],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -112501,6 +112522,7 @@
     {
       "callees": [],
       "callers": [],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
       "module": "D2Game",
@@ -112650,16 +112672,16 @@
       "callers": [
         "D2Game:6FCED2C0"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_TriggerBlockEvents",
       "sccId": 4339,
       "size": 200,
       "status": "ported",
       "topoLevel": 3,
-      "tsReference": "SUNITDMG_TriggerBlockEvents113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_TriggerBlockEvents113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_TriggerBlockEvents113c",
       "va": "0x6FCEB950"
     },
@@ -112718,16 +112740,16 @@
       "callers": [
         "D2Game:6FC988B0"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_ApplyArmorDurabilityAndGetHit",
       "sccId": 2475,
       "size": 179,
       "status": "ported",
       "topoLevel": 3,
-      "tsReference": "SUNITDMG_ApplyArmorDurabilityAndGetHit113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_ApplyArmorDurabilityAndGetHit113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_ApplyArmorDurabilityAndGetHit113c",
       "va": "0x6FCEBBB0"
     },
@@ -112947,6 +112969,7 @@
         "D2Game:6FCEE790",
         "D2Game:6FCEE8F0"
       ],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
       "module": "D2Game",
@@ -113473,6 +113496,7 @@
         "D2Game:6FCEFB30",
         "D2Game:6FCF0E90"
       ],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
       "module": "D2Game",
@@ -113699,6 +113723,7 @@
         "D2Game:6FCEEB10",
         "D2Game:6FCEEB70"
       ],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
       "module": "D2Game",
@@ -113898,6 +113923,7 @@
         "D2Game:6FCEE520",
         "D2Game:6FCEE5A0"
       ],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
       "module": "D2Game",
@@ -113916,6 +113942,7 @@
         "D2Game:6FCED630"
       ],
       "callers": [],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
       "module": "D2Game",
@@ -113934,6 +113961,7 @@
         "D2Game:6FCEBF50"
       ],
       "callers": [],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
       "module": "D2Game",
@@ -113952,6 +113980,7 @@
         "D2Game:6FCED630"
       ],
       "callers": [],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
       "module": "D2Game",
@@ -113970,6 +113999,7 @@
         "D2Game:6FCEBF50"
       ],
       "callers": [],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
       "module": "D2Game",
@@ -113991,6 +114021,7 @@
         "D2Game:6FCEE620",
         "D2Game:6FCF01D0"
       ],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
       "module": "D2Game",
@@ -114112,6 +114143,7 @@
       "callers": [
         "D2Game:6FCEE790"
       ],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
       "module": "D2Game",
@@ -114135,6 +114167,7 @@
       "callers": [
         "D2Game:6FCEE8F0"
       ],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
       "module": "D2Game",
@@ -114171,6 +114204,7 @@
         "D2Game:6FCEE950",
         "D2Game:6FCEE9D0"
       ],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
       "module": "D2Game",
@@ -114190,6 +114224,7 @@
         "D2Game:6FCEE520"
       ],
       "callers": [],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
       "module": "D2Game",
@@ -114213,6 +114248,7 @@
       "callers": [
         "D2Game:6FCEEA50"
       ],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
       "module": "D2Game",
@@ -114236,6 +114272,7 @@
       "callers": [
         "D2Game:6FCEEAB0"
       ],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
       "module": "D2Game",
@@ -114255,6 +114292,7 @@
         "D2Game:6FCEE5A0"
       ],
       "callers": [],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
       "module": "D2Game",
@@ -114278,6 +114316,7 @@
       "callers": [
         "D2Game:6FCEEB10"
       ],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
       "module": "D2Game",
@@ -114301,6 +114340,7 @@
       "callers": [
         "D2Game:6FCEEB70"
       ],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
       "module": "D2Game",
@@ -114320,6 +114360,7 @@
         "D2Game:6FCEE7F0"
       ],
       "callers": [],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
       "module": "D2Game",
@@ -114339,6 +114380,7 @@
         "D2Game:6FCEE870"
       ],
       "callers": [],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
       "module": "D2Game",
@@ -114358,6 +114400,7 @@
         "D2Game:6FCEE950"
       ],
       "callers": [],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
       "module": "D2Game",
@@ -114377,6 +114420,7 @@
         "D2Game:6FCEE9D0"
       ],
       "callers": [],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
       "module": "D2Game",
@@ -114617,7 +114661,7 @@
         "D2Game:6FCDF200"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts",
+      "diffEvidence": "tests/oracle/k2/w15b1.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FCEF220)",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w15b1-113c.ts",
       "module": "D2Game",
@@ -114637,7 +114681,7 @@
         "D2Game:6FCF7CC0"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w14b1-113c.ts",
       "module": "D2Game",
@@ -114656,7 +114700,7 @@
         "D2Game:6FCF8020"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w14b1-113c.ts",
       "module": "D2Game",
@@ -114678,7 +114722,7 @@
         "D2Game:6FCF8310"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts",
+      "diffEvidence": "tests/oracle/k2/w15b1.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FCEF380)",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w15b1-113c.ts",
       "module": "D2Game",
@@ -114722,6 +114766,7 @@
         "D2Game:6FCC2100"
       ],
       "callers": [],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
       "module": "D2Game",
@@ -114759,7 +114804,7 @@
         "D2Game:6FCDF990"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w14b1-113c.ts",
       "module": "D2Game",
@@ -115023,7 +115068,7 @@
         "D2Game:6FCE1890"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts",
+      "diffEvidence": "tests/oracle/k2/w15b1.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FCF0060)",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w15b1-113c.ts",
       "module": "D2Game",
@@ -115150,6 +115195,7 @@
         "D2Game:6FD00BD0"
       ],
       "callers": [],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -115280,7 +115326,7 @@
         "D2Game:6FD003A0"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -115351,7 +115397,7 @@
         "D2Game:6FCF7300"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -115398,7 +115444,7 @@
         "D2Game:6FCF8600"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w14b1-113c.ts",
       "module": "D2Game",
@@ -118373,7 +118419,7 @@
         "D2Game:6FCEF380",
         "D2Game:6FCF8440"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -118406,7 +118452,7 @@
       "callers": [
         "D2Game:6FCC1580"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts",
+      "diffEvidence": "tests/oracle/k2/w15b1.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FCF8440)",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -118868,17 +118914,17 @@
       "callers": [
         "D2Game:6FCFB030"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
-      "name": "SUNITDMG_GetColdEffectLengthBonus",
+      "name": "SUNITDMG_GetWeaponBlockChance_6FCFA540",
       "sccId": 1861,
       "size": 175,
       "status": "ported",
       "topoLevel": 3,
-      "tsReference": "SUNITDMG_GetColdEffectLengthBonus113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
-      "tsSymbol": "SUNITDMG_GetColdEffectLengthBonus113c",
+      "tsReference": "SUNITDMG_GetWeaponBlockChance_6FCFA540_113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
+      "tsSymbol": "SUNITDMG_GetWeaponBlockChance_6FCFA540_113c",
       "va": "0x6FCFA540"
     },
     {
@@ -118886,16 +118932,16 @@
       "callers": [
         "D2Game:6FCFCF20"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_SelectDeathOverlayFlag",
       "sccId": 1569,
       "size": 104,
       "status": "ported",
       "topoLevel": 0,
-      "tsReference": "SUNITDMG_SelectDeathOverlayFlag113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_SelectDeathOverlayFlag113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_SelectDeathOverlayFlag113c",
       "va": "0x6FCFA660"
     },
@@ -118908,18 +118954,18 @@
         "D2Game:6FCD6790",
         "D2Game:6FCFED30"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [
         "fog.dll:10046"
       ],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_RemoveCombatNode",
       "sccId": 1923,
       "size": 127,
       "status": "ported",
       "topoLevel": 0,
-      "tsReference": "SUNITDMG_RemoveCombatNode113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_RemoveCombatNode113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_RemoveCombatNode113c",
       "va": "0x6FCFA6D0"
     },
@@ -118979,16 +119025,16 @@
       "callers": [
         "D2Game:6FCFC0B0"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_ExecuteSingleHit",
       "sccId": 1876,
       "size": 161,
       "status": "ported",
       "topoLevel": 3,
-      "tsReference": "SUNITDMG_ExecuteSingleHit113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_ExecuteSingleHit113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_ExecuteSingleHit113c",
       "va": "0x6FCFA7B0"
     },
@@ -119001,16 +119047,16 @@
       "callers": [
         "D2Game:6FCFD450"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_ApplyAttackerThornsToSelf",
       "sccId": 1884,
       "size": 46,
       "status": "ported",
       "topoLevel": 8,
-      "tsReference": "SUNITDMG_ApplyAttackerThornsToSelf113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_ApplyAttackerThornsToSelf113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_ApplyAttackerThornsToSelf113c",
       "va": "0x6FCFA890"
     },
@@ -119024,16 +119070,16 @@
       "callers": [
         "D2Game:6FCFD450"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_AddDemonDamageBonus",
       "sccId": 1885,
       "size": 61,
       "status": "ported",
       "topoLevel": 5,
-      "tsReference": "SUNITDMG_AddDemonDamageBonus113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_AddDemonDamageBonus113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_AddDemonDamageBonus113c",
       "va": "0x6FCFA8C0"
     },
@@ -119045,16 +119091,16 @@
       "callers": [
         "D2Game:6FCFE0C0"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_ConsumeStaminaCost",
       "sccId": 1892,
       "size": 55,
       "status": "ported",
       "topoLevel": 8,
-      "tsReference": "SUNITDMG_ConsumeStaminaCost113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_ConsumeStaminaCost113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_ConsumeStaminaCost113c",
       "va": "0x6FCFA930"
     },
@@ -119066,16 +119112,16 @@
       "callers": [
         "D2Game:6FCFE0C0"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_ConsumeManaCost",
       "sccId": 1893,
       "size": 53,
       "status": "ported",
       "topoLevel": 8,
-      "tsReference": "SUNITDMG_ConsumeManaCost113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_ConsumeManaCost113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_ConsumeManaCost113c",
       "va": "0x6FCFA970"
     },
@@ -119086,16 +119132,16 @@
       "callers": [
         "D2Game:6FCFC030"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_CheckMonTypeFlag",
       "sccId": 1577,
       "size": 87,
       "status": "ported",
       "topoLevel": 1,
-      "tsReference": "SUNITDMG_CheckMonTypeFlag113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_CheckMonTypeFlag113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_CheckMonTypeFlag113c",
       "va": "0x6FCFA9E0"
     },
@@ -119106,17 +119152,17 @@
       "callers": [
         "D2Game:6FCFC030"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
-      "name": "SUNITDMG_GetAttackerDamageData",
+      "name": "SUNITDMG_ApplyLevelDiffExpRatio_6FCFAA40",
       "sccId": 1578,
       "size": 73,
       "status": "ported",
       "topoLevel": 1,
-      "tsReference": "SUNITDMG_GetAttackerDamageData113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
-      "tsSymbol": "SUNITDMG_GetAttackerDamageData113c",
+      "tsReference": "SUNITDMG_ApplyLevelDiffExpRatio_6FCFAA40_113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
+      "tsSymbol": "SUNITDMG_ApplyLevelDiffExpRatio_6FCFAA40_113c",
       "va": "0x6FCFAA40"
     },
     {
@@ -119134,16 +119180,16 @@
         "D2Game:6FCC2C40",
         "D2Game:6FCC3220"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_FindCombatDamageData",
       "sccId": 1921,
       "size": 71,
       "status": "ported",
       "topoLevel": 0,
-      "tsReference": "SUNITDMG_FindCombatDamageData113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_FindCombatDamageData113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_FindCombatDamageData113c",
       "va": "0x6FCFAA90"
     },
@@ -119175,18 +119221,18 @@
       "callers": [
         "D2Game:6FCFDDE0"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [
         "fog.dll:10045"
       ],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_PrependCombatNode",
       "sccId": 1875,
       "size": 125,
       "status": "ported",
       "topoLevel": 0,
-      "tsReference": "SUNITDMG_PrependCombatNode113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_PrependCombatNode113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_PrependCombatNode113c",
       "va": "0x6FCFAB90"
     },
@@ -119199,16 +119245,16 @@
       "callers": [
         "D2Game:6FCFC0B0"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_GetPvpOrPetDamageMultiplier",
       "sccId": 1877,
       "size": 226,
       "status": "ported",
       "topoLevel": 1,
-      "tsReference": "SUNITDMG_GetPvpOrPetDamageMultiplier113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_GetPvpOrPetDamageMultiplier113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_GetPvpOrPetDamageMultiplier113c",
       "va": "0x6FCFAC10"
     },
@@ -119220,16 +119266,16 @@
       "callers": [
         "D2Game:6FCFBD00"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_ApplyElementalAbsorb",
       "sccId": 1878,
       "size": 103,
       "status": "ported",
       "topoLevel": 3,
-      "tsReference": "SUNITDMG_ApplyElementalAbsorb113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_ApplyElementalAbsorb113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_ApplyElementalAbsorb113c",
       "va": "0x6FCFAD00"
     },
@@ -119241,16 +119287,16 @@
       "callers": [
         "D2Game:6FCFD450"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_AddMonsterTypeDamageBonus",
       "sccId": 1886,
       "size": 174,
       "status": "ported",
       "topoLevel": 3,
-      "tsReference": "SUNITDMG_AddMonsterTypeDamageBonus113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_AddMonsterTypeDamageBonus113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_AddMonsterTypeDamageBonus113c",
       "va": "0x6FCFAD70"
     },
@@ -119336,20 +119382,20 @@
         "D2Game:6FCC10B0",
         "D2Game:6FCFB790"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_RollDodgeAvoidEvadeBlock",
       "sccId": 1862,
       "size": 438,
       "status": "ported",
       "topoLevel": 6,
-      "tsReference": "SUNITDMG_RollDodgeAvoidEvadeBlock113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_RollDodgeAvoidEvadeBlock113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_RollDodgeAvoidEvadeBlock113c",
       "va": "0x6FCFB030"
     },
@@ -119365,18 +119411,18 @@
       "callers": [
         "D2Game:6FCFDE90"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FD144B0"
       ],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_ApplyArmorPenetrationAndFlatBonus",
       "sccId": 1865,
       "size": 390,
       "status": "ported",
       "topoLevel": 3,
-      "tsReference": "SUNITDMG_ApplyArmorPenetrationAndFlatBonus113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_ApplyArmorPenetrationAndFlatBonus113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_ApplyArmorPenetrationAndFlatBonus113c",
       "va": "0x6FCFB1F0"
     },
@@ -119389,16 +119435,16 @@
       "callers": [
         "D2Game:6FCFBD00"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_GetEffectiveResistance",
       "sccId": 1879,
       "size": 245,
       "status": "ported",
       "topoLevel": 3,
-      "tsReference": "SUNITDMG_GetEffectiveResistance113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_GetEffectiveResistance113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_GetEffectiveResistance113c",
       "va": "0x6FCFB3C0"
     },
@@ -119436,16 +119482,16 @@
         "D2Game:6FCFBA40",
         "D2Game:6FCFE0C0"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_AddLeechedLifeToUnit",
       "sccId": 1894,
       "size": 106,
       "status": "ported",
       "topoLevel": 8,
-      "tsReference": "SUNITDMG_AddLeechedLifeToUnit113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_AddLeechedLifeToUnit113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_AddLeechedLifeToUnit113c",
       "va": "0x6FCFB570"
     },
@@ -119460,16 +119506,16 @@
       "callers": [
         "D2Game:6FCFEA00"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_ResolveAttackerPlayer",
       "sccId": 1576,
       "size": 208,
       "status": "ported",
       "topoLevel": 2,
-      "tsReference": "SUNITDMG_ResolveAttackerPlayer113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_ResolveAttackerPlayer113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_ResolveAttackerPlayer113c",
       "va": "0x6FCFB5E0"
     },
@@ -119483,16 +119529,16 @@
       "callers": [
         "D2Game:6FCFC030"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_ClampManaBurnByMonsterSkill",
       "sccId": 1580,
       "size": 172,
       "status": "ported",
       "topoLevel": 2,
-      "tsReference": "SUNITDMG_ClampManaBurnByMonsterSkill113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_ClampManaBurnByMonsterSkill113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_ClampManaBurnByMonsterSkill113c",
       "va": "0x6FCFB6B0"
     },
@@ -119506,20 +119552,20 @@
         "D2Game:6FC5AE10",
         "D2Game:6FCFE5A0"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_RollPassiveWeaponBlockOrShieldBlock",
       "sccId": 1863,
       "size": 203,
       "status": "ported",
       "topoLevel": 7,
-      "tsReference": "SUNITDMG_RollPassiveWeaponBlockOrShieldBlock113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_RollPassiveWeaponBlockOrShieldBlock113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_RollPassiveWeaponBlockOrShieldBlock113c",
       "va": "0x6FCFB790"
     },
@@ -119533,16 +119579,16 @@
       "callers": [
         "D2Game:6FCFCF20"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_TriggerGetHitStateAndMode",
       "sccId": 1570,
       "size": 244,
       "status": "ported",
       "topoLevel": 3,
-      "tsReference": "SUNITDMG_TriggerGetHitStateAndMode113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_TriggerGetHitStateAndMode113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_TriggerGetHitStateAndMode113c",
       "va": "0x6FCFB910"
     },
@@ -119563,16 +119609,16 @@
       "callers": [
         "D2Game:6FCFE0C0"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_ApplyLifeManaSteal",
       "sccId": 1896,
       "size": 690,
       "status": "ported",
       "topoLevel": 9,
-      "tsReference": "SUNITDMG_ApplyLifeManaSteal113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_ApplyLifeManaSteal113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_ApplyLifeManaSteal113c",
       "va": "0x6FCFBA40"
     },
@@ -119585,16 +119631,16 @@
       "callers": [
         "D2Game:6FCFC0B0"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_ApplySingleChannelResistance",
       "sccId": 1880,
       "size": 139,
       "status": "ported",
       "topoLevel": 4,
-      "tsReference": "SUNITDMG_ApplySingleChannelResistance113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_ApplySingleChannelResistance113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_ApplySingleChannelResistance113c",
       "va": "0x6FCFBD00"
     },
@@ -119636,18 +119682,18 @@
         "D2Game:6FCFCD80",
         "D2Game:6FCFD450"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FD144B0"
       ],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_RollDamageValue",
       "sccId": 1872,
       "size": 350,
       "status": "ported",
       "topoLevel": 1,
-      "tsReference": "SUNITDMG_RollDamageValue113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_RollDamageValue113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_RollDamageValue113c",
       "va": "0x6FCFBED0"
     },
@@ -119664,16 +119710,16 @@
         "D2Game:6FCFE8F0",
         "D2Game:6FCFEA00"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_GetTotalSkillDamageBonus",
       "sccId": 1581,
       "size": 128,
       "status": "ported",
       "topoLevel": 3,
-      "tsReference": "SUNITDMG_GetTotalSkillDamageBonus113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_GetTotalSkillDamageBonus113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_GetTotalSkillDamageBonus113c",
       "va": "0x6FCFC030"
     },
@@ -119696,18 +119742,18 @@
         "D2Game:6FCFE0C0",
         "D2Game:6FD142D0"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FD144B0"
       ],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_ApplyResistancesAndAbsorb",
       "sccId": 1881,
       "size": 1152,
       "status": "ported",
       "topoLevel": 5,
-      "tsReference": "SUNITDMG_ApplyResistancesAndAbsorb113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_ApplyResistancesAndAbsorb113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_ApplyResistancesAndAbsorb113c",
       "va": "0x6FCFC0B0"
     },
@@ -119730,18 +119776,18 @@
         "D2Game:6FCFCE00",
         "D2Game:6FCFD450"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FD144B0"
       ],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_ComputeWeaponBaseDamage",
       "sccId": 1873,
       "size": 590,
       "status": "ported",
       "topoLevel": 5,
-      "tsReference": "SUNITDMG_ComputeWeaponBaseDamage113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_ComputeWeaponBaseDamage113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_ComputeWeaponBaseDamage113c",
       "va": "0x6FCFC530"
     },
@@ -119767,20 +119813,20 @@
         "D2Game:6FCFDAC0",
         "D2Game:6FCFE0C0"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_ApplyColdChilledEffect",
       "sccId": 1899,
       "size": 445,
       "status": "ported",
       "topoLevel": 22,
-      "tsReference": "SUNITDMG_ApplyColdChilledEffect113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_ApplyColdChilledEffect113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_ApplyColdChilledEffect113c",
       "va": "0x6FCFC780"
     },
@@ -119803,21 +119849,21 @@
       "callers": [
         "D2Game:6FCFE0C0"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
-      "name": "SUNITDMG_ApplyFreezeEffect",
+      "name": "SUNITDMG_ApplyBurnEffect_6FCFC940",
       "sccId": 1900,
       "size": 356,
       "status": "ported",
       "topoLevel": 22,
-      "tsReference": "SUNITDMG_ApplyFreezeEffect113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
-      "tsSymbol": "SUNITDMG_ApplyFreezeEffect113c",
+      "tsReference": "SUNITDMG_ApplyBurnEffect_6FCFC940_113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
+      "tsSymbol": "SUNITDMG_ApplyBurnEffect_6FCFC940_113c",
       "va": "0x6FCFC940"
     },
     {
@@ -119839,20 +119885,20 @@
       "callers": [
         "D2Game:6FCFE0C0"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_ApplyPoisonEffect",
       "sccId": 1901,
       "size": 356,
       "status": "ported",
       "topoLevel": 22,
-      "tsReference": "SUNITDMG_ApplyPoisonEffect113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_ApplyPoisonEffect113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_ApplyPoisonEffect113c",
       "va": "0x6FCFCAB0"
     },
@@ -119874,20 +119920,20 @@
       "callers": [
         "D2Game:6FCFE0C0"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_ApplyStunEffect",
       "sccId": 1902,
       "size": 337,
       "status": "ported",
       "topoLevel": 22,
-      "tsReference": "SUNITDMG_ApplyStunEffect113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_ApplyStunEffect113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_ApplyStunEffect113c",
       "va": "0x6FCFCC20"
     },
@@ -119899,16 +119945,16 @@
       "callers": [
         "D2Game:6FCFD450"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_RollElementalStatDamage",
       "sccId": 1887,
       "size": 125,
       "status": "ported",
       "topoLevel": 3,
-      "tsReference": "SUNITDMG_RollElementalStatDamage113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_RollElementalStatDamage113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_RollElementalStatDamage113c",
       "va": "0x6FCFCD80"
     },
@@ -119943,16 +119989,16 @@
       "callers": [
         "D2Game:6FCFDE90"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_TriggerAttackerBlindOrFlee",
       "sccId": 1866,
       "size": 162,
       "status": "ported",
       "topoLevel": 23,
-      "tsReference": "SUNITDMG_TriggerAttackerBlindOrFlee113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_TriggerAttackerBlindOrFlee113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_TriggerAttackerBlindOrFlee113c",
       "va": "0x6FCFCE70"
     },
@@ -120013,16 +120059,16 @@
         "D2Game:6FD02240",
         "D2Game:6FD142D0"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_ApplySideEffectsAndKill",
       "sccId": 1840,
       "size": 1324,
       "status": "ported",
       "topoLevel": 21,
-      "tsReference": "SUNITDMG_ApplySideEffectsAndKill113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_ApplySideEffectsAndKill113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_ApplySideEffectsAndKill113c",
       "va": "0x6FCFCF20"
     },
@@ -120059,16 +120105,16 @@
         "D2Game:6FCC2C40",
         "D2Game:6FCFDDE0"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_FillDamageValues",
       "sccId": 1888,
       "size": 1588,
       "status": "ported",
       "topoLevel": 10,
-      "tsReference": "SUNITDMG_FillDamageValues113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_FillDamageValues113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_FillDamageValues113c",
       "va": "0x6FCFD450"
     },
@@ -120097,21 +120143,21 @@
       "callers": [
         "D2Game:6FCFE0C0"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
-      "name": "SUNITDMG_ApplyColdOrFreezeState",
+      "name": "SUNITDMG_ApplyFreezeEffect",
       "sccId": 1904,
       "size": 492,
       "status": "ported",
       "topoLevel": 23,
-      "tsReference": "SUNITDMG_ApplyColdOrFreezeState113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
-      "tsSymbol": "SUNITDMG_ApplyColdOrFreezeState113c",
+      "tsReference": "SUNITDMG_ApplyFreezeEffect113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
+      "tsSymbol": "SUNITDMG_ApplyFreezeEffect113c",
       "va": "0x6FCFDAC0"
     },
     {
@@ -120190,16 +120236,16 @@
         "D2Game:6FCD4520",
         "D2Game:6FCD6380"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_AllocCombat",
       "sccId": 1889,
       "size": 169,
       "status": "ported",
       "topoLevel": 11,
-      "tsReference": "SUNITDMG_AllocCombat113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_AllocCombat113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_AllocCombat113c",
       "va": "0x6FCFDDE0"
     },
@@ -120290,16 +120336,16 @@
         "D2Game:6FCFED30",
         "D2Game:6FD142D0"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_ApplyDamage",
       "sccId": 1905,
       "size": 692,
       "status": "ported",
       "topoLevel": 24,
-      "tsReference": "SUNITDMG_ApplyDamage113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_ApplyDamage113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_ApplyDamage113c",
       "va": "0x6FCFE0C0"
     },
@@ -120383,16 +120429,16 @@
         "D2Game:6FCD4520",
         "D2Game:6FCD6380"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_CalcMonsterExperience",
       "sccId": 1868,
       "size": 291,
       "status": "ported",
       "topoLevel": 25,
-      "tsReference": "SUNITDMG_CalcMonsterExperience113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_CalcMonsterExperience113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_CalcMonsterExperience113c",
       "va": "0x6FCFE5A0"
     },
@@ -120411,16 +120457,16 @@
         "D2Game:6FCFE8F0",
         "D2Game:6FCFEA00"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_AddPlayerExperienceAndCheckLevelUp",
       "sccId": 1840,
       "size": 127,
       "status": "ported",
       "topoLevel": 21,
-      "tsReference": "SUNITDMG_AddPlayerExperienceAndCheckLevelUp113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_AddPlayerExperienceAndCheckLevelUp113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_AddPlayerExperienceAndCheckLevelUp113c",
       "va": "0x6FCFE6D0"
     },
@@ -120457,19 +120503,19 @@
       "callers": [
         "D2Game:6FCFEA00"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FD14FE8",
         "d2game.msvc_libcmt:0x6FD15724"
       ],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_ComputeExperienceGain",
       "sccId": 1840,
       "size": 261,
       "status": "ported",
       "topoLevel": 21,
-      "tsReference": "SUNITDMG_ComputeExperienceGain113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_ComputeExperienceGain113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_ComputeExperienceGain113c",
       "va": "0x6FCFE8F0"
     },
@@ -120487,20 +120533,20 @@
       "callers": [
         "D2Game:6FC977F0"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
         "fog.dll:10265"
       ],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_TriggerPostCombatEvents",
       "sccId": 1840,
       "size": 410,
       "status": "ported",
       "topoLevel": 21,
-      "tsReference": "SUNITDMG_TriggerPostCombatEvents113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_TriggerPostCombatEvents113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_TriggerPostCombatEvents113c",
       "va": "0x6FCFEA00"
     },
@@ -120514,16 +120560,16 @@
       "callers": [
         "D2Game:6FCFED30"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_ApplyWeaponAndArmorDurabilityLoss",
       "sccId": 1925,
       "size": 387,
       "status": "ported",
       "topoLevel": 23,
-      "tsReference": "SUNITDMG_ApplyWeaponAndArmorDurabilityLoss113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_ApplyWeaponAndArmorDurabilityLoss113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_ApplyWeaponAndArmorDurabilityLoss113c",
       "va": "0x6FCFEBA0"
     },
@@ -120576,16 +120622,16 @@
         "D2Game:6FCD5600",
         "D2Game:6FCD60C0"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_ExecuteEvents",
       "sccId": 1926,
       "size": 421,
       "status": "ported",
       "topoLevel": 26,
-      "tsReference": "SUNITDMG_ExecuteEvents113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_ExecuteEvents113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_ExecuteEvents113c",
       "va": "0x6FCFED30"
     },
@@ -120624,16 +120670,16 @@
         "D2Game:6FCFCF20",
         "D2Game:6FD02240"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_DistributeExperience",
       "sccId": 1840,
       "size": 391,
       "status": "ported",
       "topoLevel": 21,
-      "tsReference": "SUNITDMG_DistributeExperience113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_DistributeExperience113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_DistributeExperience113c",
       "va": "0x6FCFEEE0"
     },
@@ -120898,16 +120944,16 @@
         "D2Game:6FD102F0",
         "D2Game:6FD11130"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "SUNITDMG_GetPlayerClientClassId",
       "sccId": 1834,
       "size": 33,
       "status": "ported",
       "topoLevel": 2,
-      "tsReference": "SUNITDMG_GetPlayerClientClassId113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "SUNITDMG_GetPlayerClientClassId113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "SUNITDMG_GetPlayerClientClassId113c",
       "va": "0x6FCFFA60"
     },
@@ -121889,7 +121935,7 @@
         "D2Game:6FCD1820",
         "D2Game:6FD0EF10"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts",
+      "diffEvidence": "tests/oracle/k2/real-c2s-spawn-town.test.ts + 5/5 K1/K2 Wine 1.13c golden t0+t1+t4+s2c+gs zero-divergence replay",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -121900,7 +121946,7 @@
       "name": "SUNIT_SetMonsterAlignmentState",
       "sccId": 1657,
       "size": 258,
-      "status": "ported",
+      "status": "diff-verified",
       "topoLevel": 8,
       "tsReference": "SUNIT_SetMonsterAlignmentState113c (src/d2kern-113c/game/regpop-spawn-113c.ts)",
       "tsSymbol": "SUNIT_SetMonsterAlignmentState113c",
@@ -122165,7 +122211,7 @@
         "D2Game:6FD00D00",
         "D2Game:6FD00F40"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/regpop-spawn-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -126343,7 +126389,7 @@
       "callers": [
         "D2Game:6FD0A140"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts",
+      "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/k2-w14b1-113c.ts",
       "module": "D2Game",
@@ -126372,7 +126418,7 @@
       "callers": [
         "D2Game:6FD09200"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts",
+      "diffEvidence": "tests/oracle/k2/w15b1.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FD089A0)",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -126412,7 +126458,7 @@
       "callers": [
         "D2Game:6FD092D0"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts",
+      "diffEvidence": "tests/oracle/k2/w15b1.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FD08B60)",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -126495,7 +126541,7 @@
         "D2Game:6FD093C0",
         "D2Game:6FD094C0"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts",
+      "diffEvidence": "tests/oracle/k2/w15b1.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FD08FE0)",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -126666,7 +126712,7 @@
       "callers": [
         "D2Game:6FD09DC0"
       ],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts",
+      "diffEvidence": "tests/oracle/k2/w15b1.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FD09600)",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -126926,7 +126972,7 @@
         "D2Game:6FD121E0"
       ],
       "callers": [],
-      "diffEvidence": "Unit verification in tests/oracle/k2/w15b1.test.ts",
+      "diffEvidence": "tests/oracle/k2/w15b1.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FD0A140)",
       "externalDeps": [
         "d2game.msvc_libcmt:0x6FC22A3C",
         "fog.dll:10024",
@@ -127792,14 +127838,14 @@
       "callers": [
         "D2Game:6FD0EF10"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts",
+      "diffEvidence": "tests/oracle/k2/real-c2s-spawn-town.test.ts + 5/5 K1/K2 Wine 1.13c golden t0+t1+t4+s2c+gs zero-divergence replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
       "module": "D2Game",
       "name": "MONSTER_InitSpecialClassEvents",
       "sccId": 1659,
       "size": 316,
-      "status": "ported",
+      "status": "diff-verified",
       "topoLevel": 2,
       "tsReference": "MONSTER_InitSpecialClassEvents113c (src/d2kern-113c/game/regpop-spawn-113c.ts)",
       "tsSymbol": "MONSTER_InitSpecialClassEvents113c",
@@ -127869,14 +127915,14 @@
       "callers": [
         "D2Game:6FD0EF10"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts",
+      "diffEvidence": "tests/oracle/k2/real-c2s-spawn-town.test.ts + 5/5 K1/K2 Wine 1.13c golden t0+t1+t4+s2c+gs zero-divergence replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
       "module": "D2Game",
       "name": "MONSTER_PostSpawnQuestAndSpecialInit",
       "sccId": 1840,
       "size": 1464,
-      "status": "ported",
+      "status": "diff-verified",
       "topoLevel": 21,
       "tsReference": "MONSTER_PostSpawnQuestAndSpecialInit113c (src/d2kern-113c/game/regpop-spawn-113c.ts)",
       "tsSymbol": "MONSTER_PostSpawnQuestAndSpecialInit113c",
@@ -129387,6 +129433,7 @@
         "D2Game:6FCCAC30",
         "D2Game:6FCD8070"
       ],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/town-npc-ai-113c.ts",
       "module": "D2Game",
@@ -130394,6 +130441,7 @@
         "D2Game:6FCC7A10",
         "D2Game:6FCC80C0"
       ],
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
       "kernFile": "src/d2kern-113c/game/town-npc-ai-113c.ts",
       "module": "D2Game",
@@ -130450,16 +130498,16 @@
         "D2Game:6FCBD160",
         "D2Game:6FCC7F60"
       ],
-      "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneE2-combat.test.ts",
+      "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-real-s2c-combat-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay",
       "externalDeps": [],
-      "kernFile": "src/d2kern-113c/game/combat-a1c-113c.ts",
+      "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
       "module": "D2Game",
       "name": "AI_GeneralFindTargetOrThrottle",
       "sccId": 3815,
       "size": 307,
       "status": "ported",
       "topoLevel": 23,
-      "tsReference": "AI_GeneralFindTargetOrThrottle113c (src/d2kern-113c/game/combat-a1c-113c.ts)",
+      "tsReference": "AI_GeneralFindTargetOrThrottle113c (src/d2kern-113c/game/k2-real-s2c-combat-113c.ts)",
       "tsSymbol": "AI_GeneralFindTargetOrThrottle113c",
       "va": "0x6FD13220"
     },
@@ -131246,8 +131294,8 @@
     },
     "sccCount": 4626,
     "statusBreakdown": {
-      "diff-verified": 1522,
-      "ported": 3288,
+      "diff-verified": 1558,
+      "ported": 3252,
       "unported": 0
     },
     "totalReachable": 4810

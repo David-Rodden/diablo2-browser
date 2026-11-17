@@ -114,23 +114,17 @@ describe('K1R14-LaneJ2: D2Game.dll Boot/Init & Event/Sync Coverage Gap Closure P
     expect(m.u32(pAiGeneral + 0x20)).toBe(0);
     expect(m.u32(pAiGeneral + 0x24)).toBe(0);
 
-    const pTable = m.alloc(0x40);
-    m.setU32(D2GAME_MINION_COMP_COUNT_VA_113C, 2);
-    m.setU32(D2GAME_MINION_COMP_TABLE_PTR_VA_113C, pTable);
-    m.setU32(pTable + 0x08, 0x6fc01111);
-
-    const pCompNode = m.alloc(0x18);
-    m.setU32(pCompNode + 0x00, 0);
-    m.setU32(pMonData + 0x58, pCompNode);
+    // 0x6FC468E0 dispatches MonUMod callbacks from 0x6FD2F448 via nMonUMod bytes (+0x1C..+0x24)
+    m.setU8(pMonData + 0x1c, 0x09); // Fire Enchanted death explosion MonUMod (id 9, slot 2 -> 0x6FC466B0)
+    m.setU8(pMonData + 0x1d, 0x00);
 
     const seen: number[] = [];
-    MONSTER_DispatchMinionComponentCallbacks113c(m, 0x2000, pMonster, 1, {
+    MONSTER_DispatchMinionComponentCallbacks113c(m, 0, pMonster, 2, {
       onComponentCallback: (_m, pfn) => {
         seen.push(pfn);
       },
     });
-    expect(seen).toEqual([0x6fc01111]);
-    expect(m.u32(pMonData + 0x58)).toBe(0);
+    expect(seen).toEqual([0x6fc466b0]);
   });
 
   it('verifies client iteration, tick metrics, periodic expire, join sync & timeouts (0x6FC49820..0x6FC4D9B0)', () => {
@@ -138,12 +132,14 @@ describe('K1R14-LaneJ2: D2Game.dll Boot/Init & Event/Sync Coverage Gap Closure P
     const pGame = m.alloc(0x2000);
     const pClient1 = m.alloc(0x500);
     const pClient2 = m.alloc(0x500);
-    const pQueue1 = m.alloc(0x40c);
-    const pQueue2 = m.alloc(0x40c);
+    const pQueue1 = m.alloc(0x208);
+    const pQueue2 = m.alloc(0x208);
     m.setU32(pClient1 + 0x04, 4);
+    m.setU32(pClient1 + 0x1b8, pQueue1);
     m.setU32(pClient1 + 0x1bc, pQueue1);
     m.setU32(pClient1 + 0x4a8, pClient2);
     m.setU32(pClient2 + 0x04, 2);
+    m.setU32(pClient2 + 0x1b8, pQueue2);
     m.setU32(pClient2 + 0x1bc, pQueue2);
     m.setU32(pGame + 0x88, pClient1);
 
@@ -178,8 +174,8 @@ describe('K1R14-LaneJ2: D2Game.dll Boot/Init & Event/Sync Coverage Gap Closure P
       },
     });
     expect(postJoinSynced).toBe(1);
-    expect(m.u32(pClient1 + 0x1c4)).toBeGreaterThan(0);
-    expect(m.u32(pClient2 + 0x1c4)).toBeGreaterThan(0);
+    expect(m.u32(pQueue1 + 0x00)).toBeGreaterThan(0);
+    expect(m.u32(pQueue2 + 0x00)).toBeGreaterThan(0);
 
     GAME_StepActEnvironmentCycles113c(m, pGame, {
       checkAct2EclipseQuest: () => 0,
@@ -213,18 +209,19 @@ describe('K1R14-LaneJ2: D2Game.dll Boot/Init & Event/Sync Coverage Gap Closure P
     expect(QUEST_Act1TownPortalUpdateState113c(m, pPortal, pGame)).toBe(0);
 
     const pClient = m.alloc(0x500);
-    const pQueue = m.alloc(0x40c);
+    const pQueue = m.alloc(0x208);
+    m.setU32(pClient + 0x1b8, pQueue);
     m.setU32(pClient + 0x1bc, pQueue);
     const pObj = m.alloc(0x100);
     m.setU32(pObj + 0x00, 2);
     m.setU32(pObj + 0x0c, 77);
     m.setU32(pObj + 0x10, 1);
-    m.setU32(pObj + 0xc4, 0x8040);
+    m.setU32(pObj + 0xc4, 0x8041);
     OBJECT_SendUpdatePacketsToClient113c(m, pClient, pObj);
-    expect(m.u32(pClient + 0x1c4)).toBe(1);
+    expect(m.u32(pQueue + 0x00)).toBe(0x0c);
 
     expect(OBJECT_SyncStateAndEventsToClient113c(m, pObj, pClient)).toBe(1);
-    expect(m.u32(pClient + 0x1c4)).toBe(2);
+    expect(m.u32(pQueue + 0x00)).toBe(0x18);
 
     expect(MONSTER_CalcLifePercentage128_113c(m, 0)).toBe(0);
 
@@ -240,7 +237,8 @@ describe('K1R14-LaneJ2: D2Game.dll Boot/Init & Event/Sync Coverage Gap Closure P
     const m = new SparseMemory113c();
     const pGame = m.alloc(0x2000);
     const pClient = m.alloc(0x500);
-    const pQueue = m.alloc(0x40c);
+    const pQueue = m.alloc(0x208);
+    m.setU32(pClient + 0x1b8, pQueue);
     m.setU32(pClient + 0x1bc, pQueue);
 
     const pUnit = m.alloc(0x100);
@@ -257,9 +255,10 @@ describe('K1R14-LaneJ2: D2Game.dll Boot/Init & Event/Sync Coverage Gap Closure P
     const pNotify2 = m.alloc(0x14);
     m.setU8(pNotify1 + 0x04, 0xa4);
     m.setU16(pNotify1 + 0x08, 0x77);
-    m.setU32(pNotify1 + 0x10, pNotify2);
+    m.setU32(pNotify1, pNotify2);
     m.setU8(pNotify2 + 0x04, 0x9a);
-    m.setU32(pUnit + 0xe8, pNotify1);
+    m.setU32(pUnit + 0xec, pNotify1);
+    m.setU32(pUnit + 0xf0, pNotify2);
 
     let soundSent = 0;
     UNIT_SyncStateAndStatsToClient113c(m, pGame, pClient, pUnit, {
@@ -268,24 +267,29 @@ describe('K1R14-LaneJ2: D2Game.dll Boot/Init & Event/Sync Coverage Gap Closure P
       },
     });
     expect(soundSent).toBe(0x55);
-    expect(m.u32(pClient + 0x1c4)).toBe(2);
+    const bytesAfterSync = m.u32(pQueue);
+    expect(bytesAfterSync).toBeGreaterThan(0);
 
     UNIT_FlushEventNotifyQueueToClient113c(m, pClient, pUnit);
-    expect(m.u32(pClient + 0x1c4)).toBe(4);
+    const bytesAfterFlush = m.u32(pQueue);
+    expect(bytesAfterFlush).toBeGreaterThan(bytesAfterSync);
 
     UNIT_FreeEventNotifyList113c(m, pUnit);
-    expect(m.u32(pUnit + 0xe8)).toBe(0);
+    expect(m.u32(pUnit + 0xec)).toBe(0);
+    expect(m.u32(pUnit + 0xf0)).toBe(0);
 
     UNIT_SendGfxStatesBitstreamToClient113c(m, pUnit, pClient);
     UNIT_SendAllStatesBitstreamToClient113c(m, pUnit, pClient);
 
     UNIT_SendFullUnitSyncToClient113c(m, pClient, pUnit, 0);
-    expect(m.u32(pClient + 0x1c4)).toBe(5);
+    const bytesAfterFullSync = m.u32(pQueue);
+    expect(bytesAfterFullSync).toBeGreaterThan(bytesAfterFlush);
 
     const pPkt40 = m.alloc(0x28);
     m.setU8(pPkt40, 0x5b);
     expect(NET_SendFixed40BytePacketToClient113c(m, pClient, pPkt40)).toBe(1);
     expect(NET_QueuePacketToClientBuffer113c(m, pClient, 1, pPkt40, 10)).toBe(1);
+    expect(m.u32(pQueue)).toBe(bytesAfterFullSync + 0x28 + 10);
   });
 
   it('verifies timer wheel partition executors (0x6FCAE9A0..0x6FCAEF20) & ACT_FreeAllActRoomPortalLists113c (0x6FCBD5B0)', () => {

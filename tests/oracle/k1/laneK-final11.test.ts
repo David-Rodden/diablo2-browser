@@ -100,10 +100,10 @@ describe('K1R14-LaneK: Final 11 D2Game.dll Functions (2,308 B)', () => {
     m.setU32(pClient + 0x1bc, pQueue)
 
     SUNIT_SendRemovePortalsInAdjacentRooms113c(m, pRoom, pClient)
-    expect(m.u32(pQueue + 0x04)).toBe(6)
-    expect(m.u8(pQueue + 0x08)).toBe(0x0a)
-    expect(m.u8(pQueue + 0x09)).toBe(2)
-    expect(m.u32(pQueue + 0x0a)).toBe(0x42)
+    expect(m.u32(pQueue + 0x00)).toBe(6)
+    expect(m.u8(pQueue + 0x04)).toBe(0x0a)
+    expect(m.u8(pQueue + 0x05)).toBe(2)
+    expect(m.u32(pQueue + 0x06)).toBe(0x42)
 
     SUNIT_SyncAdjacentRoomUnitsToClient113c(m, pRoom, pClient, pGame)
     m.setU32(pAct, 0)

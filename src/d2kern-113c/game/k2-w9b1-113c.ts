@@ -249,6 +249,7 @@ import {
   ACT1Q4_CheckCainTownNpcAlert113c,
   AITARGET_ScanUnitsByModeTable113c,
 } from './town-runtime-gap-113c'
+import { hitD2GameVa113c } from '../va-trace-113c'
 
 export type { SparseMemory113c }
 
@@ -307,6 +308,7 @@ export function QUESTS_OnTaintedSunAltarInitOrFallbackMode2_6FC56100_113c(
   m: SparseMemory113c,
   pOpStrc: number,
 ): number {
+  hitD2GameVa113c(0x6FC56100)
   const pGame = m.u32(pOpStrc >>> 0) >>> 0
   const pQuestControl = m.u32((pGame + 0x10f4) >>> 0) >>> 0
   if (pQuestControl !== 0) {
@@ -337,6 +339,7 @@ export function QUESTS_ObjectEvent07_DispatchByClassId_6FC56C50_113c(
   pGame: number,
   pObject: number,
 ): void {
+  hitD2GameVa113c(0x6FC56C50)
   const nClassId = pObject === 0 ? -1 : i32(m, (pObject + 0x04) >>> 0)
   const pRoom = UNITS_GetRoom113c(m, pObject) >>> 0
 
@@ -476,6 +479,7 @@ export function PLAYER_DestroyPlayerUnitResources_6FC587E0_113c(
   pGame: number,
   pPlayerUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FC587E0)
   PETS_FreePlayerPetTable_6FCB7640_113c(m, pGame, pPlayerUnit)
   PARTY_LeavePartyForPlayer_6FCBC840_113c(m, pPlayerUnit, pGame)
   PLAYERLIST_FreeAllPlayerRelations_6FD10390_113c(m, pPlayerUnit, pGame)
@@ -507,6 +511,7 @@ export function MISSILE_SrvHit_SpawnPortalOnGroundImpact_6FC5BE70_113c(
   pMissile: number,
   pTarget: number,
 ): number {
+  hitD2GameVa113c(0x6FC5BE70)
   if (pMissile !== 0) {
     const nClassId = i32(m, (pMissile + 0x04) >>> 0)
     if (nClassId >= 0) {
@@ -538,6 +543,7 @@ export function MISSILE_SrvDo_RadamentDeathPortalAndSubMissiles_6FC60B20_113c(
   pGame: number,
   pMissile: number,
 ): number {
+  hitD2GameVa113c(0x6FC60B20)
   if (pMissile === 0) return 2
   const nClassId = i32(m, (pMissile + 0x04) >>> 0)
   if (nClassId < 0) return 2
@@ -596,6 +602,7 @@ export function PLAYERSAVE_SavePlayerCharacter_6FC74320_113c(
   szAccountName: number,
   bSaveMerc: number,
 ): number {
+  hitD2GameVa113c(0x6FC74320)
   if (pPlayerUnit === 0) return 0
   const dwFlagsC8 = (m.u32((pPlayerUnit + 0xc8) >>> 0) & ~2) >>> 0
   const bHasFlag6C = m.u8((pPlayerUnit + 0x6c) >>> 0)
@@ -675,6 +682,7 @@ export function ACT5Q4_Callback01_NpcDeactivate_6FC7B7A0_113c(
   pQuestData: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC7B7A0)
   const wNpcClassId = m.u16((pQuestArg + 0x14) >>> 0)
   const wMessageId = m.u16((pQuestArg + 0x18) >>> 0)
   const pQuestState = m.u32((pQuestData + 0x18) >>> 0) >>> 0
@@ -754,6 +762,7 @@ export function ACT5Q1_InitQuestData_6FC7BEA0_113c(
   pQuestData: number,
   pPreallocatedState = 0,
 ): void {
+  hitD2GameVa113c(0x6FC7BEA0)
   void ACT5Q1_Callback00_NpcActivate_6FC787C0_113c
   void ACT5Q4_Callback11_RemovePlayerFromQuestGuidList_6FC787A0_113c
   void ACT4Q2_Callback03_AltLevelChanged113c
@@ -804,6 +813,7 @@ export function ACT5Q5_CheckAndGrantAncientsRewardToPlayerAndParty_6FC7C100_113c
   pPlayerUnit: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FC7C100)
   const pRoom = UNITS_GetRoom113c(m, pPlayerUnit) >>> 0
   if (pRoom === 0) return 0
 
@@ -863,6 +873,7 @@ export function ACT5Q5_OperateAncientsAltar_6FC7D0A0_113c(
   m: SparseMemory113c,
   pOpStrc: number,
 ): number {
+  hitD2GameVa113c(0x6FC7D0A0)
   const pGame = m.u32(pOpStrc >>> 0) >>> 0
   const pQC = m.u32((pGame + 0x10f4) >>> 0) >>> 0
   if (pQC === 0) return 0
@@ -969,6 +980,7 @@ export function ACT1Q1_InitQuestData_6FC85990_113c(
   pQuestData: number,
   pPreallocatedState = 0,
 ): void {
+  hitD2GameVa113c(0x6FC85990)
   void ACT1Q1_Callback00_NpcActivate_6FC82220_113c
   void QUESTS_Callback11_RemovePlayerFromQuestAndExGuidLists_6FC82170_113c
   void ACT1Q6_Callback03_LevelChanged113c
@@ -1018,6 +1030,7 @@ export function ACT1Q4_OperateInifussTree_6FC85B40_113c(
   m: SparseMemory113c,
   pOpStrc: number,
 ): number {
+  hitD2GameVa113c(0x6FC85B40)
   void ACT1Q4_OnScrollPickedUpOrDropped_6FC854A0_113c
   const pGame = m.u32(pOpStrc >>> 0) >>> 0
   const pQC = m.u32((pGame + 0x10f4) >>> 0) >>> 0
@@ -1115,6 +1128,7 @@ export function ACT1Q6_OnAndarielKilled_6FC87E00_113c(
   pQuestData: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC87E00)
   void ACT1Q6_TimerTickAndarielDeathSequence_6FC87C60_113c
   void ACT1Q6_Callback11_RemovePlayerGuid_6FC80A30_113c
 
@@ -1268,6 +1282,7 @@ export function ACT1Q5_InitQuestData_6FC89200_113c(
   pQuestData: number,
   pPreallocatedState = 0,
 ): void {
+  hitD2GameVa113c(0x6FC89200)
   void ACT1Q3_Callback00_NpcActivate_6FC81030_113c
   void ACT1Q2_Callback03_LevelChanged113c
   void ACT1Q5_NpcIntroAndRewardCharsiImbue_6FC84430_113c
@@ -1317,6 +1332,7 @@ export function PLAYER_LootPlayerCorpseUnit_6FC99910_113c(
   pLooterPlayer: number,
   pCorpseUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FC99910)
   if (STATES_CheckState113c(m, pCorpseUnit, 7) === 0) return
   if (PLAYER_CanLootCorpse_6FC97E70_113c(m, pLooterPlayer, pGame, pCorpseUnit) === 0) return
 
@@ -1384,6 +1400,7 @@ export function AI_SummonerThink_6FCA5780_113c(
   pUnit: number,
   pAiTickArgs: number,
 ): void {
+  hitD2GameVa113c(0x6FCA5780)
   const sp = allocStack(m, 0x20);
   const pTarget = m.u32((pAiTickArgs + 0x08) >>> 0);
   const nTargetDist = i32(m, (pAiTickArgs + 0x14) >>> 0);
@@ -1588,6 +1605,7 @@ export function AI_GreaterMummyThink_6FCA8380_113c(
   pUnit: number,
   pAiTickArgs: number,
 ): void {
+  hitD2GameVa113c(0x6FCA8380)
   const nTargetDist = i32(m, (pAiTickArgs + 0x14) >>> 0);
   const bInCombat = m.u32((pAiTickArgs + 0x18) >>> 0);
   const pTarget = m.u32((pAiTickArgs + 0x08) >>> 0);
@@ -1768,6 +1786,7 @@ export function SKILLS_SrvDo_RadialAuraDamage_6FCB57F0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCB57F0)
   if ((nSkillId | 0) < 0) return 0;
   const pDataTables = m.u32(m.u32(0x6fd1829c));
   if (pDataTables === 0 || (nSkillId | 0) >= (i32(m, (pDataTables + 0xba0) >>> 0) | 0)) return 0;
@@ -1831,6 +1850,7 @@ export function PETS_ClampAllPlayerPetTypesToDefaultMax_6FCB6F40_113c(
   pPlayerUnit: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FCB6F40)
   const pDataTablesPtr = m.u32(0x6fd1829c);
   if (pDataTablesPtr === 0) return;
   let pDataTables = m.u32(pDataTablesPtr);
@@ -1859,6 +1879,7 @@ export function PETS_RecalcAndClampAllPlayerPetCountsFromSkills_6FCB6FA0_113c(
   pGame: number,
   pPlayerUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FCB6FA0)
   if (pPlayerUnit === 0 || m.u32(pPlayerUnit) !== 0) return;
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit) >>> 0;
   if (pPlayerData === 0 || m.u32((pPlayerData + 0x44) >>> 0) === 0) return;
@@ -1927,6 +1948,7 @@ export function PETS_WarpOrUnsummonPlayerPets_6FCB7340_113c(
   nX: number,
   nY: number,
 ): void {
+  hitD2GameVa113c(0x6FCB7340)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit) >>> 0;
   if (pPlayerData === 0) return;
   const pPetListWrapper = m.u32((pPlayerData + 0x44) >>> 0);
@@ -1981,6 +2003,7 @@ export function PETS_RecalcAndClampPlayerPetTypeForSkill_6FCBF600_113c(
   pPlayerUnit: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FCBF600)
   if (pPlayerUnit === 0 || m.u32(pPlayerUnit) !== 0 || (nSkillId | 0) < 0) return;
   const pDataTablesPtr = m.u32(0x6fd1829c);
   if (pDataTablesPtr === 0) return;
@@ -2032,6 +2055,7 @@ export function ACT4Q1_InitQuestData_6FCDAE40_113c(
   m: SparseMemory113c,
   pQuestData: number,
 ): void {
+  hitD2GameVa113c(0x6FCDAE40)
   for (let i = 0; i < 0x3c; i += 4) {
     m.setU32((pQuestData + 0xa0 + i) >>> 0, 0);
   }
@@ -2084,6 +2108,7 @@ export function NPCS_HandleSoldOrGambledItemPlacement_6FCDDD80_113c(
   pPlayerUnit: number,
   nTradeMode: number,
 ): void {
+  hitD2GameVa113c(0x6FCDDD80)
   const sp = allocStack(m, 0x10);
   const nNpcClassId = pNpcUnit !== 0 ? i32(m, (pNpcUnit + 0x04) >>> 0) : -1;
   const pNpcRecord = D2GAME_ARENA_FindPlayerSlotByUnit113c(m, sp, pGame, nNpcClassId >>> 0) >>> 0;
@@ -2135,5 +2160,6 @@ export function NPCS_RepairAndRechargePlayerItemWrapper_6FCDDE50_113c(
   pPlayerUnit: number,
   pItem: number,
 ): void {
+  hitD2GameVa113c(0x6FCDDE50)
   NPCS_RepairAndRechargeUnitItem_6FCDD9B0_113c(m, pPlayerUnit, pItem, pGame);
 }

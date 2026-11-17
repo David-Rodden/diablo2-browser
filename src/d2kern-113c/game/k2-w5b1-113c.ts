@@ -117,9 +117,6 @@ import {
   NET_QueuePacketToClientBuffer113c,
 } from './boot-init-gap-a-113c'
 import {
-  ITEMS_DropGoldPileAtUnit113c,
-  ITEMS_FinalizeCreatedItem113c,
-  ITEMS_GetDropItemLevel113c,
   PLAYER_ScheduleSkillActionFrameEvents113c,
   PLAYER_StartModeCast113c,
   SEED_RollLimitedRandomNumber113c,
@@ -131,6 +128,10 @@ import {
   SUNITDMG_FillDamageValues113c,
   SUNITDMG_FindCombatDamageData113c,
 } from './combat-a1c-113c'
+import {
+  D2GAME_CreateItemEx_6FC31490_113c,
+  ITEMS_FindFreeGroundDropCoords_6FC2E930_113c,
+} from './k2-real-itemdrop-113c'
 import { SUNIT_GetServerUnit113c } from './game-strc'
 import { SUNITDMG_AddElementalDamageToStruct113c } from './k2-gap-itemdef-113c'
 import {
@@ -265,6 +266,7 @@ import {
 import { EVENT_SetEventFull113c, MONSTER_RefreshAiEvent113c } from './timer-wheel'
 import { AI_StepRelativeToTargetUnit113c } from './town-npc-ai-113c'
 import { AITARGET_ScanUnitsByModeTable113c } from './town-runtime-gap-113c'
+import { hitD2GameVa113c } from '../va-trace-113c'
 
 export type D2KernMemory113c = Memory113c
 
@@ -346,6 +348,7 @@ export function STORM_TSHashTableGrowAndRehash_6FC222D0_113c(
   m: D2KernMemory113c,
   pHashTable: number,
 ): void {
+  hitD2GameVa113c(0x6FC222D0)
   const esi = pHashTable >>> 0
   const ebxOldCount = ((m.u32((esi + 0x24) >>> 0) >>> 0) + 1) >>> 0
   const ebpNewCount = (ebxOldCount << 1) >>> 0
@@ -445,6 +448,7 @@ export function SKILLS_SrvDo001_JumpOrLeapMissile_6FC2C400_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC2C400)
   const skillId = nSkillId | 0
   if (skillId < 0) return 0
   const pDataTables = readSgptDataTables113c(m)
@@ -546,6 +550,7 @@ export function SKILLS_SrvDo004_NihlathakCorpseExplosion_6FC2CA20_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC2CA20)
   const esi = pUnit >>> 0
   const edi = pGame >>> 0
   const uType = i32(m, esi)
@@ -627,6 +632,7 @@ export function SKILLS_SrvDo005_PerpendicularLineMissiles_6FC2D370_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC2D370)
   const skillId = nSkillId | 0
   if (skillId < 0) return 0
   const pDataTables = readSgptDataTables113c(m)
@@ -722,6 +728,7 @@ export function SKILLS_SpawnChargedBoltFanMissiles_6FC2D5D0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC2D5D0)
   const sp = k2W5B1StackPtr
   k2W5B1StackPtr = (sp + 0x5c) >>> 0
   try {
@@ -925,6 +932,7 @@ export function SKILLS_SrvDo006_SpawnChargedSkillMissile_6FC2D680_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC2D680)
   const ebpSkillId = nSkillId | 0
   if (ebpSkillId < 0) return 0
   const pDataTables = readSgptDataTables113c(m)
@@ -1001,6 +1009,7 @@ export function SKILLS_MorphMonsterAndApplyState142_6FC2D850_113c(
   nMode: number,
   pSourceUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FC2D850)
   const skillId = nSkillId | 0
   if (skillId < 0) return
   const pDataTables = readSgptDataTables113c(m)
@@ -1075,6 +1084,7 @@ export function SKILLS_SrvDo009_CorpseConsumeAuraBuff_6FC2DD50_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC2DD50)
   const ebxSkillId = nSkillId | 0
   if (ebxSkillId < 0) return 0
   const pDataTables = readSgptDataTables113c(m)
@@ -1124,6 +1134,7 @@ export function AI_Thinker_PutridDefiler_6FC38730_113c(
   pUnit: number,
   pAiTickArgs: number,
 ): void {
+  hitD2GameVa113c(0x6FC38730)
   const ebx = pGame >>> 0
   const esi = pUnit >>> 0
   const args = pAiTickArgs >>> 0
@@ -1271,6 +1282,7 @@ export function AI_Thinker_MeleeRangedApproachStall_6FC38A90_113c(
   pUnit: number,
   pAiTickArgs: number,
 ): void {
+  hitD2GameVa113c(0x6FC38A90)
   const ebx = pGame >>> 0
   const esi = pUnit >>> 0
   const args = pAiTickArgs >>> 0
@@ -1392,11 +1404,6 @@ function skillsSpawnItemFromCodeAtUnit_6FCC1350(
   pGame: number,
   nDropQuality: number,
 ): number {
-  void DATATBLS_GetItemIdFromItemCode113c
-  void PATH_GetTargetTypeAndPosition113c
-  void ITEMS_DropGoldPileAtUnit113c
-  void ITEMS_GetDropItemLevel113c
-  void ITEMS_FinalizeCreatedItem113c
   return SKILLS_CreateDroppedItemByCodeAtUnit_6FCC1350_113c(
     m,
     dwItemCode >>> 0,
@@ -1454,6 +1461,7 @@ export function AI_HandleSpecialQuestNpcCmd3_6FC3BDF0_113c(
   pUnit: number,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FC3BDF0)
   const esi = pUnit >>> 0
   const game = pGame >>> 0
   const sp = k2W5B1StackPtr
@@ -1551,6 +1559,7 @@ export function SKILLS_SrvDo017_FeralRageOrMaulHit_6FC473C0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC473C0)
   const ebpSkillId = nSkillId | 0
   if (ebpSkillId < 0) return 0
   const pDataTables = readSgptDataTables113c(m)
@@ -1677,6 +1686,7 @@ export function SKILLS_SrvDo018_FindPotion_6FC47600_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC47600)
   const ebpSkillId = nSkillId | 0
   if (ebpSkillId < 0) return 0
   const pDataTables = readSgptDataTables113c(m)
@@ -1730,6 +1740,7 @@ export function SKILLS_ExecuteRadiusMeleeHitAndClearStun_6FC47820_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC47820)
   const ebpSkillId = nSkillId | 0
   if (ebpSkillId < 0) return 0
   const pDataTables = readSgptDataTables113c(m)
@@ -1825,6 +1836,7 @@ export function SKILLS_ExecuteTargetedMeleeSkillHit_6FC47A10_113c(
   pTarget: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC47A10)
   const ebxSkillId = nSkillId | 0
   if (ebxSkillId < 0) return 0
   const pDataTables = readSgptDataTables113c(m)
@@ -1916,6 +1928,7 @@ export function SKILLS_SrvSt03_WhirlwindStart_6FC47F30_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC47F30)
   const skillId = nSkillId | 0
   if (skillId < 0) return 0
   const pDataTables = readSgptDataTables113c(m)
@@ -2048,6 +2061,7 @@ export function SKILLS_SrvSt06_ChargeStart_6FC48600_113c(
   nSkillId: number,
   _nSkillLevel = 1,
 ): number {
+  hitD2GameVa113c(0x6FC48600)
   const esi = pUnit >>> 0
   const ebxGame = pGame >>> 0
   const ebpSkill = SKILLS_GetHighestLevelSkillFromUnitAndIdFastcall113c(m, esi, nSkillId | 0) >>> 0
@@ -2120,6 +2134,7 @@ export function SKILLS_SrvDo021_MeleeHitWithTimedAuraState_6FC489A0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC489A0)
   const ebpSkillId = nSkillId | 0
   const game = pGame >>> 0
   const esi = pUnit >>> 0
@@ -2250,6 +2265,7 @@ export function CLIENTS_SendHandshakeAndSetInitState1_6FC4AC60_113c(
   pClient: number,
   pGame = 0,
 ): void {
+  hitD2GameVa113c(0x6FC4AC60)
   const esi = pClient >>> 0
   const sp = k2W5B1StackPtr
   k2W5B1StackPtr = (sp + 0x08) >>> 0
@@ -2278,6 +2294,7 @@ export function CLIENTS_CollectAndFlushNearbyPlayerPositions_6FC4C060_113c(
   m: D2KernMemory113c,
   pClient: number,
 ): void {
+  hitD2GameVa113c(0x6FC4C060)
   const esi = pClient >>> 0
   if (esi === 0) return
   const ediBuf = m.u32((esi + 0x1b8) >>> 0) >>> 0
@@ -2332,6 +2349,7 @@ export function PLAYER_SendInventoryItemsSyncPackets_6FC57C90_113c(
   pClient: number,
   pUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FC57C90)
   const edi = pClient >>> 0
   const ebp = pUnit >>> 0
   const pInventory = ebp !== 0 ? m.u32((ebp + 0x60) >>> 0) >>> 0 : 0
@@ -2381,6 +2399,7 @@ export function PLAYER_ApplyDeathGoldAndExpPenalties_6FC583A0_113c(
   pGame: number,
   pAttackerUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FC583A0)
   const esiVictim = pVictimUnit >>> 0
   const ebxGame = pGame >>> 0
   const ediAttacker = pAttackerUnit >>> 0
@@ -2423,6 +2442,7 @@ export function PLAYER_CanManipulateItemDuringInteractOrTrade_6FC588C0_113c(
   pGame: number,
   pItem: number,
 ): number {
+  hitD2GameVa113c(0x6FC588C0)
   const esi = pPlayer >>> 0
   const ebx = pGame >>> 0
   const ebpItem = pItem >>> 0
@@ -2464,6 +2484,7 @@ export function MISSILES_RedeemCorpseWithSkill124_6FC59910_113c(
   nLevel: number,
   _nUnused = 0,
 ): number {
+  hitD2GameVa113c(0x6FC59910)
   void pGame
   return (
     SKILLS_TryRedeemCorpseHealLifeAndMana_6FCB8490_113c(
@@ -2489,6 +2510,7 @@ export function MISSILES_RetargetGuidedProjectileInRadius_6FC5B070_113c(
   pMissile: number,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FC5B070)
   const esi = pMissile >>> 0
   const ebpGame = pGame >>> 0
   if (esi === 0) return 1
@@ -2546,6 +2568,7 @@ export function MISSILES_SrvHit_SpawnBurstSubMissiles_6FC5C3B0_113c(
   pMissile: number,
   _pHitTarget = 0,
 ): number {
+  hitD2GameVa113c(0x6FC5C3B0)
   const ebpGame = pGame >>> 0
   const esi = pMissile >>> 0
   if (esi === 0) return 1
@@ -2598,6 +2621,7 @@ export function MISSILES_SrvHit_SpawnScaledBurstSubMissiles_6FC5C5B0_113c(
   pMissile: number,
   _pHitTarget = 0,
 ): number {
+  hitD2GameVa113c(0x6FC5C5B0)
   const game = pGame >>> 0
   const esi = pMissile >>> 0
   if (esi === 0) return 1
@@ -2680,6 +2704,7 @@ export function MISSILES_SrvHit_ChainBounceProjectile_6FC5D020_113c(
   pMissile: number,
   pHitTarget: number,
 ): number {
+  hitD2GameVa113c(0x6FC5D020)
   const ebxGame = pGame >>> 0
   const esi = pMissile >>> 0
   if (esi === 0) return 1
@@ -2780,6 +2805,7 @@ export function MISSILES_SrvHit_AttractMonsterToTargetGuid_6FC5E740_113c(
   pMissile: number,
   pHitTarget: number,
 ): number {
+  hitD2GameVa113c(0x6FC5E740)
   const ebxGame = pGame >>> 0
   const ediMissile = pMissile >>> 0
   const ebpSkill = MISSILE_GetSkill113c(m, ediMissile) | 0
@@ -2842,6 +2868,7 @@ export function MISSILES_SrvHit_TauntMonsterIfLevelCheck_6FC5EAE0_113c(
   pMissile: number,
   pHitTarget: number,
 ): number {
+  hitD2GameVa113c(0x6FC5EAE0)
   const game = pGame >>> 0
   const esiMissile = pMissile >>> 0
   const ebxSkill = MISSILE_GetSkill113c(m, esiMissile) | 0
@@ -2896,6 +2923,7 @@ export function MISSILES_SrvDo_StashGoldFountain_6FC608D0_113c(
   pGame: number,
   pMissile: number,
 ): number {
+  hitD2GameVa113c(0x6FC608D0)
   const ediGame = pGame >>> 0
   const ebx = pMissile >>> 0
   if (ebx === 0) return 2
@@ -2965,19 +2993,8 @@ export function MISSILES_SrvDo_StashGoldFountain_6FC608D0_113c(
         const dy = (SEED_RollLimitedFast113c(m, (ebx + 0x20) >>> 0, nSpan) | 0) - ediSpread
         m.setU32((pCoord + 0x04) >>> 0, ((i32(m, (pCoord + 0x04) >>> 0) + dy) | 0) >>> 0)
         const pRoom = UNITS_GetRoom113c(m, ebx) >>> 0
-        void ITEMS_DropGoldPileAtUnit113c
-        const bx = (i32(m, pCoord) + 2) | 0
-        const di = (i32(m, (pCoord + 0x04) >>> 0) + 3) | 0
-        if (ROOM_FindRoomContainingSubtile113c(m, pRoom, bx, di) !== 0) {
-          m.setU32(pOutDrop, bx >>> 0)
-          m.setU32((pOutDrop + 0x04) >>> 0, di >>> 0)
-        } else {
-          m.setU32(pOutDrop, m.u32(pCoord))
-          m.setU32((pOutDrop + 0x04) >>> 0, m.u32((pCoord + 0x04) >>> 0))
-        }
         const esiDropRoom =
-          COLLISION_FindFreePositionBasic113c(m, pRoom, pOutDrop, pCoord, 1, 0x3e01, 0x0801, 1) >>>
-          0
+          ITEMS_FindFreeGroundDropCoords_6FC2E930_113c(m, pRoom, pCoord, pOutDrop, 1) >>> 0
         if (esiDropRoom !== 0) {
           const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, esiDropRoom) | 0
           const nMonLvl =
@@ -2989,20 +3006,20 @@ export function MISSILES_SrvDo_StashGoldFountain_6FC608D0_113c(
             ) | 0
           const pCreate = (sp + 0x30) >>> 0
           m.fill(pCreate, 0x84, 0)
+          const nGoldItemId = DATATBLS_GetItemIdFromItemCode113c(m, 0x20646c67) | 0
           m.setU32(pCreate, ebx)
           m.setU32((pCreate + 0x04) >>> 0, 0)
           m.setU32((pCreate + 0x08) >>> 0, ediGame)
+          m.setU32((pCreate + 0x0c) >>> 0, nMonLvl >>> 0)
+          m.setU32((pCreate + 0x14) >>> 0, nGoldItemId >>> 0)
+          m.setU32((pCreate + 0x18) >>> 0, 3)
+          m.setU32((pCreate + 0x1c) >>> 0, m.u32(pOutDrop))
+          m.setU32((pCreate + 0x20) >>> 0, m.u32((pOutDrop + 0x04) >>> 0))
+          m.setU32((pCreate + 0x24) >>> 0, esiDropRoom)
+          m.setU16((pCreate + 0x28) >>> 0, 1)
           m.setU16((pCreate + 0x2a) >>> 0, ediGame !== 0 ? m.u16((ediGame + 0x78) >>> 0) : 0)
-          const nGoldItemId = DATATBLS_GetItemIdFromItemCode113c(m, 0x20646c67) | 0
-          m.setU32((pCreate + 0x10) >>> 0, nGoldItemId >>> 0)
-          m.setU32((pCreate + 0x14) >>> 0, nMonLvl >>> 0)
-          m.setU32((pCreate + 0x18) >>> 0, m.u32(pOutDrop))
-          m.setU32((pCreate + 0x1c) >>> 0, 3)
-          m.setU32((pCreate + 0x24) >>> 0, m.u32((pOutDrop + 0x04) >>> 0))
-          m.setU32((pCreate + 0x28) >>> 0, esiDropRoom)
-          m.setU16((pCreate + 0x2c) >>> 0, 1)
-          m.setU32((pCreate + 0x34) >>> 0, 2)
-          ITEMS_FinalizeCreatedItem113c(m, ediGame, pCreate)
+          m.setU32((pCreate + 0x30) >>> 0, 2)
+          D2GAME_CreateItemEx_6FC31490_113c(m, ediGame, pCreate, 0)
         }
       }
     }
@@ -3026,6 +3043,7 @@ export function SKILLS_CanCastAtNonTownTargetCoords_6FC62AD0_113c(
   _nSkillId = 0,
   _nSkillLevel = 1,
 ): number {
+  hitD2GameVa113c(0x6FC62AD0)
   const ediGame = pGame >>> 0
   const esi = pUnit >>> 0
   const ebpRoom = UNITS_GetRoom113c(m, esi) >>> 0
@@ -3063,6 +3081,7 @@ export function SKILLS_ApplyDirectSkillElemDamageAndIcon_6FC62B40_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC62B40)
   const game = pGame >>> 0
   const ebxAttacker = pAttacker >>> 0
   const ebpDefender = pDefender >>> 0
@@ -3115,6 +3134,7 @@ export function SKILLS_SrvDo031_ChargedBoltProjectiles_6FC63B60_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC63B60)
   const game = pGame >>> 0
   const esi = pUnit >>> 0
   if (esi !== 0) {
@@ -3183,6 +3203,7 @@ export function STATES_OnTransformStateRemoved_6FC64A60_113c(
   nState: number,
   pStatList: number,
 ): void {
+  hitD2GameVa113c(0x6FC64A60)
   const ebxUnit = pUnit >>> 0
   const ediState = nState | 0
   const statList = pStatList >>> 0
@@ -3215,6 +3236,7 @@ export function SKILLS_SrvDo035_MeleeSkillHitWithWeaponFill_6FC64ED0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC64ED0)
   const esiGame = pGame >>> 0
   const ebpUnit = pUnit >>> 0
   const skillId = nSkillId | 0
@@ -3290,6 +3312,7 @@ export function SKILLS_SrvDo036_MeleeHitWithPhysScaleAndLeech_6FC65000_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC65000)
   const esiGame = pGame >>> 0
   const ebpUnit = pUnit >>> 0
   const skillId = nSkillId | 0
@@ -3396,6 +3419,7 @@ export function SKILLS_ApplySkillDamageWithElemDuration_6FC651B0_113c(
   pSkillsTxt: number,
   nSkillLevel: number,
 ): void {
+  hitD2GameVa113c(0x6FC651B0)
   const esiSkillId = nSkillId | 0
   const ebxAttacker = pAttacker >>> 0
   const def = pDefender >>> 0
@@ -3462,6 +3486,7 @@ export function SKILLS_SrvSt30_MultiHitMeleeStart_6FC6C4F0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC6C4F0)
   const ediGame = pGame >>> 0
   const esi = pUnit >>> 0
   const skillId = nSkillId | 0
@@ -3529,6 +3554,7 @@ export function SKILLS_SrvSt31_CappedMultiHitMeleeStart_6FC6C600_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC6C600)
   const ediGame = pGame >>> 0
   const esi = pUnit >>> 0
   const skillId = nSkillId | 0
@@ -3613,6 +3639,7 @@ export function SKILLS_SrvDo054_MeleeHitZeroBonus_6FC6C720_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC6C720)
   const game = pGame >>> 0
   const ebxUnit = pUnit >>> 0
   SUNIT_ValidatePathTargetUnit113c(m, ebxUnit, game)
@@ -3686,6 +3713,7 @@ export function SKILLS_SrvSt32_EnsureWeaponOrQuiverOrStartCast_6FC6C840_113c(
   _nSkillId = 0,
   _nSkillLevel = 1,
 ): number {
+  hitD2GameVa113c(0x6FC6C840)
   const esiGame = pGame >>> 0
   const ebxUnit = pUnit >>> 0
   if ((SKILLS_EnsurePlayerWeaponOrQuiverQuantity_6FCBEB80_113c(m, ebxUnit) | 0) !== 0) {
@@ -3711,6 +3739,7 @@ export function SKILLS_SrvDo055_MeleeHitWithMonsterElemStatsAndEvents_6FC6CB00_1
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC6CB00)
   const game = pGame >>> 0
   const esi = pUnit >>> 0
   const ebpSkillId = nSkillId | 0
@@ -3792,6 +3821,7 @@ export function SKILLS_SrvDo058_SpawnWeaponClassProjectileWithDmgPct_6FC6D270_11
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC6D270)
   const game = pGame >>> 0
   const esi = pUnit >>> 0
   if (esi !== 0) {
@@ -3897,6 +3927,7 @@ export function SKILLS_SrvDo064_NonTownMeleeHitWithElemConversion_6FC6F7D0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC6F7D0)
   const game = pGame >>> 0
   const esi = pUnit >>> 0
   SUNIT_ValidatePathTargetUnit113c(m, esi, game)

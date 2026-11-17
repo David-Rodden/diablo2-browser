@@ -244,6 +244,18 @@ function createW4B1World() {
   }
   m.fill(0x6fde41c8, 64 * 4, 1)
 
+  const fieldDx = [0, 1, 1, 1, 0, -1, -1, -1, 0]
+  const fieldDy = [-1, -1, 0, 1, 1, 1, 0, -1, 0]
+  for (let i = 0; i < 9; i++) {
+    m.setU32((0x6fde9ba0 + i * 4) >>> 0, fieldDx[i]! >>> 0)
+    m.setU32((0x6fde9bc4 + i * 4) >>> 0, fieldDy[i]! >>> 0)
+  }
+  const pFieldData = m.alloc(256 * 256)
+  m.fill(pFieldData, 256 * 256, 8)
+  m.setU32(0x6fdf1404, pFieldData)
+  m.setU32(0x6fdf1414, 128)
+  m.setU32(0x6fdf1418, 128)
+
   const pGame = m.alloc(0x1e00)
   m.setU32(pGame + 0x1c, 0x12340000)
   m.setU8(pGame + 0x6d, 1)

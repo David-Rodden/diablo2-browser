@@ -112,7 +112,7 @@ import {
   SUNITDMG_RemoveCombatNode113c,
   SUNITDMG_RollPassiveWeaponBlockOrShieldBlock113c,
 } from './combat-a1c-113c'
-import { ITEMS_CheckNotBrokenOrUnequipping113c } from './fallen-ai-113c'
+import { ITEMS_CheckNotBrokenOrUnequipping113c } from './replay-kernel-113c.ts'
 import { SUNIT_GetServerUnit113c } from './game-strc'
 import {
   AURA_ForEachUnitInRadius113c,
@@ -233,6 +233,7 @@ import {
 import { CLIENTS_GetPlayerUnit113c, SUNIT_FreeUnit113c } from './replay-final11-113c'
 import { EVENT_FreeNode113c, EVENT_SetEventFull113c } from './timer-wheel'
 import { AI_FindNearestPlayerTarget113c } from './town-npc-ai-113c'
+import { hitD2GameVa113c } from '../va-trace-113c'
 
 export type D2KernMemory113c = Memory113c
 
@@ -342,6 +343,7 @@ export function ACT1Q3_SpawnCairnStonePortalLightning_6FC85E90_113c(
   pQuestData: number,
   pQuestState: number,
 ): void {
+  hitD2GameVa113c(0x6FC85E90)
   const qData = pQuestData >>> 0
   const qState = pQuestState >>> 0
   if (m.u8((qState + 0x118) >>> 0) === 0) return
@@ -460,6 +462,7 @@ export function ACT1Q3_SpawnCairnStonePortalLightning_6FC85E90_113c(
  * @ordinalOrName D2Game_6FC8CEE0
  */
 export function OBJ_OperateWell_6FC8CEE0_113c(m: D2KernMemory113c, pObjOpArgs: number): number {
+  hitD2GameVa113c(0x6FC8CEE0)
   const args = pObjOpArgs >>> 0
   const pObject0 = m.u32((args + 0x04) >>> 0) >>> 0
   const pObjectsTxt = UNITS_GetObjectTxt113c(m, pObject0) >>> 0
@@ -509,6 +512,7 @@ export function MONAI_SkirmishApproachFleeAttackThink_6FCA51E0_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FCA51E0)
   const game = pGame >>> 0
   const unit = pUnit >>> 0
   const param = pAiParam >>> 0
@@ -628,6 +632,7 @@ export function MONAI_PutridDefilerImpregnateThink_6FCA5500_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FCA5500)
   const game = pGame >>> 0
   const unit = pUnit >>> 0
   const param = pAiParam >>> 0
@@ -760,6 +765,7 @@ export function NET_SendPacket7F_PartyMemberLifeAndLevel_6FCAE2A0_113c(
   pClient: number,
   pMemberUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FCAE2A0)
   const client = pClient >>> 0
   const member = pMemberUnit >>> 0
   if (member === 0) {
@@ -812,6 +818,7 @@ export function NPCS_ResetVendorSlotInventory_6FCB02E0_113c(
   pNpcSlot: number,
   pNpcUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FCB02E0)
   const game = pGame >>> 0
   const slot = pNpcSlot >>> 0
   const npc = pNpcUnit >>> 0
@@ -839,6 +846,7 @@ export function SKILLS_RollMonsterConversionChance_6FCB1610_113c(
   pAttacker: number,
   nChance: number,
 ): number {
+  hitD2GameVa113c(0x6FCB1610)
   const mon = pMonster >>> 0
   if (mon === 0 || (m.u32(mon) | 0) !== 1) return 0
   if ((UNIT_GetAlignment113c(m, mon) | 0) !== 0) return 0
@@ -870,6 +878,7 @@ export function SKILLS_SrvDo_SpawnChargedProjectileAtTarget_6FCB2230_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCB2230)
   const game = pGame >>> 0
   const unit = pUnit >>> 0
   const skillId = nSkillId | 0
@@ -915,6 +924,7 @@ export function SKILLS_SrvDo_ApplyChargeScaledRadialSkillDamage_6FCB2CF0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCB2CF0)
   const game = pGame >>> 0
   const attacker = pAttacker >>> 0
   const skillId = nSkillId | 0
@@ -977,6 +987,7 @@ export function SKILLS_SrvDo_DragonTailFireSplash_6FCB3110_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCB3110)
   const game = pGame >>> 0
   const attacker = pAttacker >>> 0
   const skillId = nSkillId | 0
@@ -1051,6 +1062,7 @@ export function SKILLS_SrvDo_DragonClawDualStrike_6FCB3270_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCB3270)
   const game = pGame >>> 0
   const attacker = pAttacker >>> 0
   SUNIT_ValidatePathTargetUnit113c(m, attacker, game)
@@ -1094,6 +1106,7 @@ export function SKILLS_SrvDo_ExecuteEventsAndTargetRadialDamage_6FCB3340_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCB3340)
   const game = pGame >>> 0
   const attacker = pAttacker >>> 0
   const skillId = nSkillId | 0
@@ -1163,6 +1176,7 @@ export function SKILLS_AuraDo_TickBladeShieldRadialDamage_6FCB35F0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCB35F0)
   const game = pGame >>> 0
   const attacker = pAttacker >>> 0
   const skillId = nSkillId | 0
@@ -1198,6 +1212,7 @@ export function SKILLS_ApplyRadialAuraStatsAndBlindAiCallback_6FCB3850_113c(
   pAuraCtx: number,
   pTargetUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FCB3850)
   void STATES_OnStateRemovedResetMonsterAi_6FC70130_113c
   const ctx = pAuraCtx >>> 0
   const target = pTargetUnit >>> 0
@@ -1278,6 +1293,7 @@ export function SKILLS_SrvDo_SpawnChargeScaledScatteredProjectiles_6FCB4DC0_113c
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCB4DC0)
   const game = pGame >>> 0
   const caster = pCaster >>> 0
   const skillId = nSkillId | 0
@@ -1326,6 +1342,7 @@ export function SKILLS_SrvDo_DualClawProgressiveChargeAttack_6FCB61A0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCB61A0)
   const game = pGame >>> 0
   const attacker = pAttacker >>> 0
   const pInv = m.u32((attacker + 0x60) >>> 0) >>> 0
@@ -1379,6 +1396,7 @@ export function PETS_KillAllPetsInSlotAndClear_6FCB64B0_113c(
   pGame: number,
   pPetTypeSlot: number,
 ): void {
+  hitD2GameVa113c(0x6FCB64B0)
   const game = pGame >>> 0
   const slot = pPetTypeSlot >>> 0
   let pNode = m.u32(slot) >>> 0
@@ -1409,6 +1427,7 @@ export function PETS_CleanupOrMarkDeadPetSlot_6FCB7420_113c(
   bPlayerAlive: number,
   bKeepHirelingDeadNode: number,
 ): void {
+  hitD2GameVa113c(0x6FCB7420)
   const game = pGame >>> 0
   const player = pPlayer >>> 0
   const slot = pPetTypeSlot >>> 0
@@ -1516,6 +1535,7 @@ export function PETS_RemovePetFromSlotByGuid_6FCB7920_113c(
   pPetTypeSlot: number,
   bKillMonsterUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FCB7920)
   const game = pGame >>> 0
   const petGuid = dwPetGuid >>> 0
   const slot = pPetTypeSlot >>> 0
@@ -1589,6 +1609,7 @@ export function SKILLS_CanConvertMonsterAndRollChance_6FCB88B0_113c(
   nSkillLevel: number,
   bRollChance: number,
 ): number {
+  hitD2GameVa113c(0x6FCB88B0)
   const skillId = nSkillId | 0
   const target = pTargetUnit >>> 0
   const caster = pCasterUnit >>> 0
@@ -1633,6 +1654,7 @@ export function ITEMS_DispatchCommandFlagPacketsToClient_6FCBB630_113c(
   pOwnerUnit: number,
   pClient: number,
 ): number {
+  hitD2GameVa113c(0x6FCBB630)
   const item = pItem >>> 0
   const owner = pOwnerUnit >>> 0
   const client = pClient >>> 0
@@ -1809,6 +1831,7 @@ export function AURAS_ApplyRadialDamageWithDefaultFilter_6FCC1240_113c(
   nY: number,
   nRadius: number,
 ): number {
+  hitD2GameVa113c(0x6FCC1240)
   const filter = dwFilterFlags !== 0 ? dwFilterFlags >>> 0 : 0x8583
   const center = pCenterUnit >>> 0
   if (center !== 0) {
@@ -1868,6 +1891,7 @@ export function SKILLS_CreateProjectileAtOffsetWithAmmoCheck_6FCC1880_113c(
   nTargetY: number,
   bConsumeAmmo: number,
 ): number {
+  hitD2GameVa113c(0x6FCC1880)
   const unit = pUnit >>> 0
   const game = pGame >>> 0
   const pMisParams = allocScratch(0x5c)
@@ -1929,6 +1953,7 @@ export function SKILLS_CreateDirectionalProjectileWithToHitAndAmmo_6FCC28F0_113c
   nTargetY: number,
   bConsumeAmmo: number,
 ): number {
+  hitD2GameVa113c(0x6FCC28F0)
   const game = pGame >>> 0
   const unit = pUnit >>> 0
   const pMisParams = allocScratch(0x5c)
@@ -1994,6 +2019,7 @@ export function MONAI_InitShadowMasterClassSkills_6FCC4320_113c(
   pSummonUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FCC4320)
   const summon = pSummonUnit >>> 0
   const param = pAiParam >>> 0
   const pAiCtrl = m.u32(param) >>> 0
@@ -2062,6 +2088,7 @@ export function MONAI_CanShadowCastSkillInContext_6FCC44C0_113c(
   _pGame: number,
   pOwnerUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FCC44C0)
   const param = pAiParam >>> 0
   const skillId = nSkillId | 0
   const shadow = pShadowUnit >>> 0
@@ -2142,6 +2169,7 @@ export function MONAI_DeathSentryTrapThink_6FCC7C20_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FCC7C20)
   const game = pGame >>> 0
   const unit = pUnit >>> 0
   const param = pAiParam >>> 0
@@ -2225,6 +2253,7 @@ export function MONAI_StationarySentryTrapThink_6FCC7DC0_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FCC7DC0)
   const game = pGame >>> 0
   const unit = pUnit >>> 0
   const param = pAiParam >>> 0
@@ -2314,6 +2343,7 @@ export function MONAI_BarricadeTauntAndAttackThink_6FCC80C0_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FCC80C0)
   const game = pGame >>> 0
   const unit = pUnit >>> 0
   const param = pAiParam >>> 0
@@ -2408,6 +2438,7 @@ export function MONAI_StationaryMeleeWithin25ThinkA_6FCC8270_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FCC8270)
   const game = pGame >>> 0
   const unit = pUnit >>> 0
   const param = pAiParam >>> 0
@@ -2443,6 +2474,7 @@ export function MONAI_StationaryMeleeWithin25ThinkB_6FCC8350_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FCC8350)
   const game = pGame >>> 0
   const unit = pUnit >>> 0
   const param = pAiParam >>> 0
@@ -2482,6 +2514,7 @@ export function ITEMS_UseAntidoteOrThawingCurePotion_6FCCF370_113c(
   nY: number,
   nSpellParam: number,
 ): number {
+  hitD2GameVa113c(0x6FCCF370)
   const game = pGame >>> 0
   const unit = pUnit >>> 0
   const item = pItem >>> 0
@@ -2600,6 +2633,7 @@ export function SKILLS_SrvDo_MonsterOrFeralRageMeleeHit_6FCD41B0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCD41B0)
   const game = pGame >>> 0
   const unit = pUnit >>> 0
   const skillId = nSkillId | 0
@@ -2661,6 +2695,7 @@ export function SKILLS_SrvDo_MonsterSmiteAndProgressiveCharge_6FCD6790_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCD6790)
   const game = pGame >>> 0
   const unit = pUnit >>> 0
   const skillId = nSkillId | 0
@@ -2699,6 +2734,7 @@ export function ACT4Q3_PropagateQuestCompletionToPartyCallback_6FCDA490_113c(
   pPlayerUnit: number,
   _nArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FCDA490)
   void _nArg
   const game = pGame >>> 0
   const player = pPlayerUnit >>> 0
@@ -2740,6 +2776,7 @@ export function NPC_RefreshHirelingVendorRosterIfExhausted_6FCDD160_113c(
   pNpcSlot: number,
   nSellerClassId: number,
 ): void {
+  hitD2GameVa113c(0x6FCDD160)
   const game = pGame >>> 0
   const slot = pNpcSlot >>> 0
   const sellerId = nSellerClassId | 0
@@ -2792,6 +2829,7 @@ export function NPC_SendHirelingListPacketsToClient_6FCDD330_113c(
   pGame: number,
   pClient: number,
 ): void {
+  hitD2GameVa113c(0x6FCDD330)
   const npc = pNpcUnit >>> 0
   const game = pGame >>> 0
   const client = pClient >>> 0
@@ -2873,6 +2911,7 @@ export function NPC_HealPlayerAndPetsOnInteract_6FCDD490_113c(
   pGame: number,
   pNpcUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FCDD490)
   const player = pPlayer >>> 0
   const game = pGame >>> 0
   const npc = pNpcUnit >>> 0
@@ -2963,6 +3002,7 @@ export function ACT2Q2_Callback_UnitDropOrDestroyHoradricItem_6FCE23C0_113c(
   pQuestData: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FCE23C0)
   const qData = pQuestData >>> 0
   const qArg = pQuestArg >>> 0
   const pItem = m.u32((qArg + 0x08) >>> 0) >>> 0
@@ -3013,6 +3053,7 @@ export function ACT2Q8_InitQuestData_6FCE4880_113c(
   m: D2KernMemory113c,
   pQuestData: number,
 ): void {
+  hitD2GameVa113c(0x6FCE4880)
   void ACT2Q5_StatusFilter_6FCE1960_113c
   void ACT2Q8_ActiveFilter_6FCE25F0_113c
   void ACT2Q8_Callback00_NpcActivate_6FCE2680_113c
@@ -3051,6 +3092,7 @@ export function ACT2Q2_Callback00_NpcActivateCainHoradricDialog_6FCE5310_113c(
   pQuestData: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FCE5310)
   const qData = pQuestData >>> 0
   const qArg = pQuestArg >>> 0
   const pPlayer = m.u32((qArg + 0x0c) >>> 0) >>> 0
@@ -3142,6 +3184,7 @@ export function ACT2Q2_ActiveFilter_6FCE5440_113c(
   pQuestFlags: number,
   _pNpcUnit = 0,
 ): number {
+  hitD2GameVa113c(0x6FCE5440)
   void _pNpcUnit
   if ((nNpcId | 0) !== 0xf4) return 0
   if ((DRLGWARP_TestRoomTileBit113c(m, pQuestFlags >>> 0, 0x0a, 0x01) | 0) === 1) {
@@ -3175,6 +3218,7 @@ export function ACT2Q0_InitQuestData_6FCE5690_113c(
   m: D2KernMemory113c,
   pQuestData: number,
 ): void {
+  hitD2GameVa113c(0x6FCE5690)
   void ACT2Q0_ActiveFilter_6FCE2590_113c
   void ACT2Q0_StatusFilter_6FCE25C0_113c
   void ACT2Q0_Callback_PlayerEnterSyncWarrivIntroState_6FCE44E0_113c
@@ -3214,6 +3258,7 @@ export function ACT2Intro_InitQuestData_6FCE5730_113c(
   m: D2KernMemory113c,
   pQuestData: number,
 ): void {
+  hitD2GameVa113c(0x6FCE5730)
   void ACT2Q8_ActiveFilter_6FCE25D0_113c
   void ACT2Q8_StatusFilter_6FCE25E0_113c
   void ACT2Intro_Callback_NpcActivateDialog_6FCE4690_113c
@@ -3244,6 +3289,7 @@ export function ACT2Q7_InitQuestData_6FCE5790_113c(
   m: D2KernMemory113c,
   pQuestData: number,
 ): void {
+  hitD2GameVa113c(0x6FCE5790)
   void ACT2Q4_StatusFilter_6FCE1970_113c
   void ACT2Q4_Callback00_Noop_6FCE1980_113c
   void ACT2Q7_ActiveFilter_6FCE2750_113c

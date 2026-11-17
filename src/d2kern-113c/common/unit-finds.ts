@@ -32,6 +32,7 @@ import { UNITS_GetRoom113c, UNITS_GetX113c, UNITS_GetY113c } from './unit.ts'
 import { UNITS_GetUnitDistanceToCoordinates113c } from './skills.ts'
 import { MONSTERS_IsDemonOrUndead113c } from '../tables/datatbls-113c.ts'
 import { FIELD_StepFieldCoords113c } from '../tables/field-tbls-113c.ts'
+import { hitD2CommonVa113c } from '../va-trace-113c.ts'
 
 /**
  * `@va D2Common:0x6FD62000` (`D2Common.#10344` `UNITFINDS_FreeUnitFindData`,
@@ -41,6 +42,7 @@ import { FIELD_StepFieldCoords113c } from '../tables/field-tbls-113c.ts'
  * frees `pUnitsArray` via `Fog.#10046` (line `0xFF` = `255`), and zeroes `pUnitFindData->pUnitsArray (+0x04)`.
  */
 export function UNITFINDS_FreeUnitFindData113c(m: Memory113c, pUnitFindData: number): void {
+  hitD2CommonVa113c(0x6FD62000)
   const pData = pUnitFindData >>> 0
   if (pData === 0) return
   const pUnitsArray = m.get(pData, D2UnitFindDataStrc.pUnitsArray)
@@ -68,6 +70,7 @@ export function UNITFINDS_InitUnitFindData113c(
   pfnCallback: number,
   pFilterUnit: number,
 ): void {
+  hitD2CommonVa113c(0x6FD62030)
   const pData = pUnitFindData >>> 0
   if (pData === 0) {
     throw new D2CommonAssertError('UnitFinds.cpp', 0xe2)
@@ -101,6 +104,7 @@ export function UNITFINDS_InitUnitFindData113c(
  * via `Fog.#10047` (line `0xC5` = `197`), updates `+0x1C` and `+0x04`, and returns `pNewArray`.
  */
 export function UNITFINDS_GrowUnitsArray113c(m: Memory113c, pUnitFindData: number): number {
+  hitD2CommonVa113c(0x6FD620F0)
   const pData = pUnitFindData >>> 0
   if (pData === 0) {
     throw new D2CommonAssertError('UnitFinds.cpp', 0xc0)
@@ -139,6 +143,7 @@ export function UNITFINDS_FindUnitInAdjacentRooms113c(
   nUnitType: number,
   nClassId: number,
 ): number {
+  hitD2CommonVa113c(0x6FD622B0)
   const room = pRoom >>> 0
   if (room === 0) {
     throw new D2CommonAssertError('UnitFinds.cpp', 0x31)
@@ -241,6 +246,7 @@ export function UNITFINDS_FindNearestUnitInRange113c(
   pfnCallback: number | UnitFindNearestCallback113c,
   cb?: UnitFindNearestCallback113c,
 ): number {
+  hitD2CommonVa113c(0x6FD62330)
   const u = pUnit >>> 0
   const pRoom = UNITS_GetRoom113c(m, u)
   if (pRoom === 0) {
@@ -290,6 +296,7 @@ export function UNITFINDS_MatchUnitCandidate113c(
   pSearch: number,
   pfnCallback?: UnitFindCandidateCallback113c,
 ): number {
+  hitD2CommonVa113c(0x6FD624E0)
   const search = pSearch >>> 0
   if (search === 0) return 0
   let flags = m.u32(search)
@@ -406,6 +413,7 @@ export function UNITFINDS_FindAllMatchingUnitsInAdjacentRooms113c(
   pUnitFindData: number,
   pfnCallback?: UnitFindCandidateCallback113c,
 ): number {
+  hitD2CommonVa113c(0x6FD62720)
   const pData = pUnitFindData >>> 0
   if (pData === 0) {
     throw new D2CommonAssertError('..\\Source\\D2Common\\UNITFINDS\\UnitFinds.cpp', 0x10a)

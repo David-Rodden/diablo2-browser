@@ -180,6 +180,7 @@ import {
   EVENT_SetEventFull113c,
   SUNIT_GetLastAttacker113c,
 } from './timer-wheel.ts'
+import { hitD2GameVa113c } from '../va-trace-113c.ts'
 
 // ---------------------------------------------------------------------------
 // Binary constant tables & scratch stack region
@@ -312,6 +313,9 @@ function applyPostDamageHitReaction(
       SUNITDMG_DistributeExperience113c(m, pGame, pAttacker, pDefender)
       MONSTER_StartDeath113c(m, pGame, pDefender, pAttacker, false)
     }
+  } else if ((resultFlags & 0x4000) !== 0 && (m.u32((pDmg + 0x4c) >>> 0) | 0) > 0) {
+    UNITROOM_RefreshUnit113c(m, pDefender)
+    m.setU32((pDefender + 0xc4) >>> 0, (m.u32((pDefender + 0xc4) >>> 0) | 0x8000) >>> 0)
   }
 }
 
@@ -928,7 +932,7 @@ function queueSkillCastGroundNotify9A(
   UNITROOM_RefreshUnit113c(m, pUnit)
 }
 
-/** Casts a ground-targeted triggered skill at `(nX, nY)` and queues `0x9A` event notification. */
+/** Casts a ground-targeted triggered skill at `(nX, nY)` and queues `0x9A` event notification (`0x6FD11730`). */
 function triggerSkillAtCoords(
   m: Memory113c,
   pCaster: number,
@@ -992,6 +996,7 @@ export function DATATBLS_GetItemStatCostRecordFast113c(
   m: Memory113c,
   nStatId: number,
 ): number {
+  hitD2GameVa113c(0x6FC210D0)
   const id = nStatId | 0
   if (id < 0) return 0
   const pTables = readSgptDataTables(m)
@@ -1019,21 +1024,22 @@ export function UNITEVENT_RegisterTimerOrItemEventNode113c(
   nFuncType: number,
   dwGuid: number,
 ): number {
+  hitD2GameVa113c(0x6FC57190)
   if (pUnit === 0) return 0
-  void pGame
-  const pNode = m.alloc(0x20) >>> 0
+  const pMemPool = pGame !== 0 ? m.u32((pGame + 0x1c) >>> 0) >>> 0 : 0
+  const pNode = (pMemPool !== 0 ? m.alloc(0x20) : m.alloc(0x20)) >>> 0
   m.fill(pNode, 0x20, 0)
   m.setU8(pNode, nEventType & 0xff)
-  m.setU32((pNode + 0x04) >>> 0, nFuncType >>> 0)
-  m.setU32((pNode + 0x08) >>> 0, dwGuid >>> 0)
   m.setU32((pNode + 0x0c) >>> 0, dwArg1 >>> 0)
   m.setU32((pNode + 0x10) >>> 0, dwArg2 >>> 0)
   m.setU32((pNode + 0x14) >>> 0, pfnCallback >>> 0)
-
   const pOldHead = m.u32((pUnit + 0x90) >>> 0) >>> 0
   m.setU32((pNode + 0x1c) >>> 0, pOldHead)
-  if (pOldHead !== 0) {
-    m.setU32((pOldHead + 0x18) >>> 0, pNode)
+  m.setU32((pNode + 0x04) >>> 0, nFuncType >>> 0)
+  m.setU32((pNode + 0x08) >>> 0, dwGuid >>> 0)
+  const pCurHead = m.u32((pUnit + 0x90) >>> 0) >>> 0
+  if (pCurHead !== 0) {
+    m.setU32((pCurHead + 0x18) >>> 0, pNode)
   }
   m.setU32((pUnit + 0x90) >>> 0, pNode)
   return pNode
@@ -1050,6 +1056,7 @@ export function SKILLS_CallbackStaticField113c(
   pAuraCtx: number,
   pTarget: number,
 ): number {
+  hitD2GameVa113c(0x6FC62EC0)
   if (pAuraCtx === 0 || pTarget === 0) return 0
   const pAttacker = m.u32((pAuraCtx + 0x04) >>> 0) >>> 0
   const pStaticArgs = m.u32((pAuraCtx + 0x0c) >>> 0) >>> 0
@@ -1158,6 +1165,7 @@ export function SrvDoFunc_020_StaticField113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC630D0)
   const skillId = nSkillId | 0
   if (skillId < 0 || pGame === 0) return 0
   const pSkillsTxt = SKILLS_GetRecordPtrFast113c(m, skillId)
@@ -1233,6 +1241,7 @@ export function CURSES_ScaleImmuneMonsterResistPenalty113c(
   nValue: number,
   pTargetUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC6E230)
   const statId = nStatId | 0
   const val = nValue | 0
   const isPrimaryResist =
@@ -1262,6 +1271,7 @@ export function MONSTER_StartModeRun113c(
   pGame: number,
   pModeArgs: number,
 ): number {
+  hitD2GameVa113c(0x6FC94C30)
   if (pModeArgs === 0) return 0
   const pUnit = m.u32((pModeArgs + 0x04) >>> 0) >>> 0
   if (pUnit === 0) return 0
@@ -1285,6 +1295,7 @@ export function PLAYER_Event0C_ExpireTimedStats113c(
   _arg14 = 0,
   _arg18 = 0,
 ): void {
+  hitD2GameVa113c(0x6FC97820)
   void _arg14
   void _arg18
   if (pGame === 0) return
@@ -1307,6 +1318,7 @@ export function UNIT_QueueSkillCastNotify99_113c(
   dwTargetId: number,
   bExtraFlag: number,
 ): void {
+  hitD2GameVa113c(0x6FC9A4C0)
   if (pUnit === 0) return
   const pNode = m.alloc(0x14) >>> 0
   m.setU32(pNode, 0)
@@ -1346,6 +1358,7 @@ export function NET_SendUnitTargetedSkillAction113c(
   wExtra: number,
   nSkillLevel: number,
 ): void {
+  hitD2GameVa113c(0x6FCAD210)
   if (pClient === 0) {
     throw new Error('NET_SendUnitTargetedSkillAction113c: pClient == NULL (line 2454)')
   }
@@ -1424,6 +1437,7 @@ export function AURAS_ApplyRadialStatBuffCallback113c(
   pAuraCtx: number,
   pTargetUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FCBA1A0)
   if (pAuraCtx === 0 || pTargetUnit === 0) return 0
   const pSourceUnit = m.u32((pAuraCtx + 0x04) >>> 0) >>> 0
   const pDesc = m.u32((pAuraCtx + 0x0c) >>> 0) >>> 0
@@ -1547,6 +1561,7 @@ export function SrvDoFunc_065_AuraRadialStatBuff113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCBA8D0)
   const skillId = nSkillId | 0
   if (skillId < 0 || pGame === 0) return 0
   const pSkillsTxt = SKILLS_GetRecordPtrFast113c(m, skillId)
@@ -1679,6 +1694,7 @@ export function ITEMS_RegisterItemEventCallback113c(
   dwArg1: number,
   dwArg2: number,
 ): number {
+  hitD2GameVa113c(0x6FCBE290)
   const idx = nItemEventId | 0
   if (idx < 0 || idx >= 0x32) return 0
   const pfnCallback = D2GAME_ITEM_EVENT_CALLBACK_TABLE_113C[idx]! >>> 0
@@ -1709,6 +1725,7 @@ export function AURA_CheckCircleIntersectsRoom113c(
   nX: number,
   nRadius: number,
 ): number {
+  hitD2GameVa113c(0x6FCBE610)
   if (pRoom === 0) return 0
   const sp = itemdefGapStackPtr
   itemdefGapStackPtr = (sp + 0x20) >>> 0
@@ -1751,6 +1768,7 @@ export function SUNITDMG_AddElementalDamageToStruct113c(
   pOutResStat: number,
   pOutActualElemType: number,
 ): void {
+  hitD2GameVa113c(0x6FCBEFE0)
   if (pDmg === 0) return
   let elemType = eElemType | 0
   let len = nLength | 0
@@ -1844,6 +1862,7 @@ export function STATES_CreateOrUpdateAuraStatList113c(
   m: Memory113c,
   pAuraSetup: number,
 ): number {
+  hitD2GameVa113c(0x6FCC00B0)
   if (pAuraSetup === 0) return 0
   const pTarget = m.u32((pAuraSetup + 0x04) >>> 0) >>> 0
   if (pTarget === 0) {
@@ -1985,6 +2004,7 @@ export function AURA_CheckUnitMatchesFilterFlags113c(
   pSourceUnit: number,
   pTargetUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FCC0370)
   if (pTargetUnit === 0) return 0
   const flags = dwFilterFlags >>> 0
   let pSource = pSourceUnit >>> 0
@@ -2133,6 +2153,7 @@ export function AURA_ForEachUnitInRadius113c(
   bSkipMonFlag1B: number,
   customCallback?: AuraRadiusUnitCallback113c,
 ): void {
+  hitD2GameVa113c(0x6FCC0C70)
   if (pGame === 0 || pCenterUnit === 0 || pfnCallback === 0) return
   const rad = nRadius | 0
   if (rad <= 0) return
@@ -2236,6 +2257,7 @@ export function SKILLS_ActivateAuraSkillOnUnit113c(
   pGame: number,
   nSkillId: number,
 ): void {
+  hitD2GameVa113c(0x6FCC1D10)
   const skillId = nSkillId | 0
   if (skillId < 0) return
   const pSkillsTxt = SKILLS_GetRecordPtrFast113c(m, skillId)
@@ -2289,6 +2311,7 @@ export function SKILLS_Event08_AuraPulseTick113c(
   nAuraSkillId: number,
   _arg18 = 0,
 ): void {
+  hitD2GameVa113c(0x6FCC1E80)
   void _arg18
   const argSkillId = nAuraSkillId | 0
 
@@ -2368,8 +2391,7 @@ export function ITEMEVENT_ManaAfterKill113c(
   dwStatAndLayer: number,
   _dwArg2 = 0,
 ): number {
-  void _pTarget
-  void _dwArg2
+  hitD2GameVa113c(0x6FCCCDA0)
   if (pUnit === 0 || (m.u32(pUnit >>> 0) | 0) !== 0) return 0
   if (pDmg === 0) return 0
   const dmgTotal = m.u32((pDmg + 0x4c) >>> 0) | 0
@@ -2384,7 +2406,7 @@ export function ITEMEVENT_ManaAfterKill113c(
   const curMana = STATLIST_GetUnitStat113c(m, pUnit, 8, 0) | 0
   if (curMana >= maxMana) return 0
 
-  const gain = mulDiv113c(pct, dmgTotal, 100) | 0
+  const gain = mulDiv113c(pct, m.u32((pDmg + 0x4c) >>> 0) | 0, 100) | 0
   let nextMana = (curMana + gain) | 0
   if (nextMana <= 0) nextMana = 0
   if (nextMana >= maxMana) nextMana = maxMana
@@ -2409,8 +2431,7 @@ export function ITEMEVENT_AttackerTakesDamage113c(
   dwStatAndLayer: number,
   _dwArg2 = 0,
 ): number {
-  void _pDmg
-  void _dwArg2
+  hitD2GameVa113c(0x6FCCD910)
   if (pUnit === 0 || pAttacker === 0) return 0
   if (((m.u32((pAttacker + 0xc4) >>> 0) >>> 2) & 1) === 0) return 0
 
@@ -2450,7 +2471,7 @@ export function ITEMEVENT_ChanceToCastSkill113c(
   dwStatAndLayer: number,
   _dwArg2 = 0,
 ): number {
-  void _dwArg2
+  hitD2GameVa113c(0x6FCCDCE0)
   if (pUnit === 0) return 0
   const statId = (dwStatAndLayer >>> 16) & 0xffff
   const layer = dwStatAndLayer & 0xffff
@@ -2493,6 +2514,7 @@ export function MONSTER_SetLastHitModeField54_113c(
   pUnit: number,
   dwValue: number,
 ): void {
+  hitD2GameVa113c(0x6FCCF710)
   if (pUnit === 0) return
   if ((m.u32(pUnit >>> 0) | 0) !== 1) return
   const pMonsterData = m.u32((pUnit + 0x14) >>> 0) >>> 0
@@ -2511,6 +2533,7 @@ export function ITEMS_GetScrollOrTomeSkillId113c(
   m: Memory113c,
   pItem: number,
 ): number {
+  hitD2GameVa113c(0x6FCF1AA0)
   if (pItem === 0) {
     throw new Error('ITEMS_GetScrollOrTomeSkillId113c: pItem == NULL (line 493)')
   }
@@ -2542,6 +2565,7 @@ export function ITEMS_UpdateScrollOrTomeSkillCharges113c(
   pUnit: number,
   bEquip: number,
 ): number {
+  hitD2GameVa113c(0x6FCF43E0)
   const skillId = ITEMS_GetScrollOrTomeSkillId113c(m, pItem) | 0
   if (skillId === -1) return 0
 
@@ -2615,6 +2639,7 @@ export function ITEMS_OnUnequipScrollOrTome113c(
   pItem: number,
   pUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FCF4630)
   if (pUnit === 0) {
     throw new Error('ITEMS_OnUnequipScrollOrTome113c: pUnit == NULL (line 917)')
   }
@@ -2636,6 +2661,7 @@ export function ITEMS_OnEquipScrollOrTome113c(
   pItem: number,
   pUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FCF4670)
   if (pUnit === 0) {
     throw new Error('ITEMS_OnEquipScrollOrTome113c: pUnit == NULL (line 590)')
   }
@@ -2661,6 +2687,7 @@ export function ITEMS_DeactivateEquippedItemStats113c(
   bForceBrokenUnlink: number,
   bClampPools: number,
 ): void {
+  hitD2GameVa113c(0x6FCF46B0)
   if (pUnit === 0 || pItem === 0) return
   if ((m.u32(pItem >>> 0) | 0) !== 4) return
   if ((m.u32(pUnit >>> 0) | 0) === 0 && STATES_CheckState113c(m, pUnit, 7) !== 0) {
@@ -2723,6 +2750,7 @@ export function ITEMS_ActivateEquippedItemStats113c(
   pItem: number,
   bActivateEvenIfBroken: number,
 ): void {
+  hitD2GameVa113c(0x6FCF47C0)
   if (pUnit === 0 || pItem === 0) return
   if ((m.u32(pItem >>> 0) | 0) !== 4) return
   if ((m.u32(pUnit >>> 0) | 0) === 0 && STATES_CheckState113c(m, pUnit, 7) !== 0) {
@@ -2792,6 +2820,7 @@ export function SUNIT_AreUnitsInSamePartyOrAligned113c(
   pUnit2: number,
   pUnit1: number,
 ): number {
+  hitD2GameVa113c(0x6FD00570)
   let u1 = pUnit1 >>> 0
   let u2 = pUnit2 >>> 0
 
@@ -2868,6 +2897,7 @@ export function SKILLS_CastTriggeredSkillCore113c(
   pOutY: number,
   bConsumeMana: number,
 ): number {
+  hitD2GameVa113c(0x6FD114F0)
   const skillId = nSkillId | 0
   if (skillId <= 0 || pCasterUnit === 0) return 0
   const pSkillsTxt = SKILLS_GetRecordPtrFast113c(m, skillId)
@@ -3008,6 +3038,7 @@ export function SKILLS_TriggerSkillOnTarget113c(
   nSkillLevel: number,
   bConsumeMana: number,
 ): number {
+  hitD2GameVa113c(0x6FD117E0)
   if (pCasterUnit === 0 || pTargetUnit === 0) return 0
   const pGame = m.u32((pCasterUnit + 0x80) >>> 0) >>> 0
   if (pGame === 0) return 0

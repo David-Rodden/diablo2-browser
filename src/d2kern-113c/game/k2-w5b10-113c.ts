@@ -42,24 +42,25 @@ import {
   AI_Stall113c,
   MONSTER_StartMode113c as MONSTER_StartModeMem113c,
 } from './combat-a1c-113c.ts'
-import {
-  AI_ApproachTarget113c,
-  AI_IdleWander113c,
-  MONSTER_StartMode113c,
-} from './fallen-ai-113c.ts'
 import { NET_SendUnitTargetedSkillAction113c } from './k2-gap-itemdef-113c.ts'
 import { AI_ScheduleAiThinkTimer_6FD120C0_113c } from './k2-w2b8-113c.ts'
 import {
   MONSTATS2_CheckModeBit113c,
   SEED_RollLimitedFast113c,
 } from './regpop-spawn-113c.ts'
-import type { FallenSliceWorld113c } from './replay-kernel-113c.ts'
+import {
+  AI_ApproachTarget113c,
+  AI_IdleWander113c,
+  MONSTER_StartMode113c,
+  type FallenSliceWorld113c,
+} from './replay-kernel-113c.ts'
 import {
   EVENT_FreeNode113c,
   EVENT_GetNextEventFrame113c,
   EVENT_SetEventFull113c,
   type EventWheelHooks113c,
 } from './timer-wheel.ts'
+import { hitD2GameVa113c } from '../va-trace-113c.ts'
 
 export type { D2KernMemory113c }
 
@@ -306,6 +307,7 @@ export function AI_WalkToLeashDistanceFromUnit_6FD11C30_113c(
   nDistance: number,
   hooks?: K2W5B10Hooks113c | undefined,
 ): number {
+  hitD2GameVa113c(0x6FD11C30)
   const dist = UNITS_GetApproximateDistance113c(m, pUnit >>> 0, pFromUnit >>> 0) | 0
   const fromX = getUnitXInline113c(m, pFromUnit >>> 0)
   const fromY = getUnitYInline113c(m, pFromUnit >>> 0)
@@ -352,6 +354,7 @@ export function AI_ScheduleAiThinkTimerIfSooner_6FD12040_113c(
   nDelay: number,
   hooks?: K2W5B10Hooks113c | undefined,
 ): void {
+  hitD2GameVa113c(0x6FD12040)
   const delay = (nDelay | 0) === 0 ? 1 : nDelay | 0
   const nextFrame = EVENT_GetNextEventFrame113c(m, pUnit >>> 0, 2) >>> 0
   if (nextFrame !== 0) {
@@ -398,6 +401,7 @@ export function AI_CastSkillWithModeRandomScatter_6FD12420_113c(
   nMode: number,
   hooks?: K2W5B10Hooks113c | undefined,
 ): number {
+  hitD2GameVa113c(0x6FD12420)
   const unitX = getUnitXInline113c(m, pUnit >>> 0)
   const diameter = ((nRadius | 0) * 2) | 0
   const rX = SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, diameter) | 0
@@ -437,6 +441,7 @@ export function AI_CircleStrafeTarget_6FD126B0_113c(
   nDistance: number,
   hooks?: K2W5B10Hooks113c | undefined,
 ): number {
+  hitD2GameVa113c(0x6FD126B0)
   const newLo = stepSeed64At113c(m, (pUnit + 0x20) >>> 0)
   let pathType = (newLo & 0xff) >= 0x80 ? 6 : 5
   if (pathType === 1) {
@@ -493,6 +498,7 @@ export function AI_RunWanderAroundUnit_6FD12750_113c(
   pUnit: number,
   hooks?: K2W5B10Hooks113c | undefined,
 ): number {
+  hitD2GameVa113c(0x6FD12750)
   const originX = getUnitXInline113c(m, pOriginUnit >>> 0)
   const originY = getUnitYInline113c(m, pOriginUnit >>> 0)
 
@@ -548,6 +554,7 @@ export function AI_WalkWanderAroundUnitOrSelf_6FD12870_113c(
   pUnit: number,
   hooks?: K2W5B10Hooks113c | undefined,
 ): number {
+  hitD2GameVa113c(0x6FD12870)
   if ((pOriginUnit >>> 0) === 0) {
     if (hooks !== undefined && hooks.world !== undefined) {
       return AI_IdleWander113c(hooks.world, pUnit >>> 0, 2) ? 1 : 0
@@ -610,6 +617,7 @@ export function AI_WalkWanderAroundSelf_6FD129B0_113c(
   pUnit: number,
   hooks?: K2W5B10Hooks113c | undefined,
 ): number {
+  hitD2GameVa113c(0x6FD129B0)
   const unitX = getUnitXInline113c(m, pUnit >>> 0)
   const unitY = getUnitYInline113c(m, pUnit >>> 0)
 
@@ -667,6 +675,7 @@ export function AI_RunFleeFromUnit_6FD12C10_113c(
   bClearAiThinkOnFail: number,
   hooks?: K2W5B10Hooks113c | undefined,
 ): number {
+  hitD2GameVa113c(0x6FD12C10)
   const unitX = getUnitXInline113c(m, pUnit >>> 0)
   const unitY = getUnitYInline113c(m, pUnit >>> 0)
   const fromX = getUnitXInline113c(m, pFromUnit >>> 0)
@@ -738,6 +747,7 @@ export function AI_FindTargetOrUnstickOverlap_6FD13150_113c(
   pUnit: number,
   hooks?: K2W5B10Hooks113c | undefined,
 ): number {
+  hitD2GameVa113c(0x6FD13150)
   const unitRoom0 = UNITS_GetRoom113c(m, pUnit >>> 0) >>> 0
   if (unitRoom0 !== 0) {
     if ((pAiControl >>> 0) !== 0) {
@@ -802,6 +812,7 @@ export function NET_SendPacket57MonsterUniqueEnchants_6FD13410_113c(
   pMonster: number,
   pClient: number,
 ): void {
+  hitD2GameVa113c(0x6FD13410)
   if ((pMonster >>> 0) === 0) {
     return
   }
@@ -858,6 +869,7 @@ export function NET_SendMonsterSkillCastPacket4COr4D_6FD134C0_113c(
   pClient: number,
   pTargetUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FD134C0)
   const pSkill = SKILLS_GetUsedSkillMemPort113c(m, pMonster >>> 0) >>> 0
   if (pSkill === 0) {
     return
@@ -932,6 +944,7 @@ export function OBJECTS_RollScaledByte19C_6FD14260_113c(
   nMinPct: number,
   pObject: number,
 ): number {
+  hitD2GameVa113c(0x6FD14260)
   if ((nMinPct >>> 0) > (nMaxPct >>> 0)) {
     throw new D2CommonAssertError('', 0x14)
   }

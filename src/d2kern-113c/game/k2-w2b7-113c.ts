@@ -33,6 +33,7 @@ import {
 } from './k2-items-tc-w1-113c.ts'
 import { ITEMS_FindQuestItemByBaseCode_6FC2E660_113c } from './k2-laneI-0x6fc3-w1-113c.ts'
 import { UNITS_ChangeAnimMode113c } from './monster-events.ts'
+import { hitD2GameVa113c } from '../va-trace-113c.ts'
 
 /**
  * Walks `pGame->pQuestControl (+0x10F4)->pQuest (+0x00)` via `pPrev (+0xF4)` to find
@@ -46,6 +47,7 @@ export function ACT2Q4_ActivateHorazonJournal_6FCE1F90_113c(
   m: Memory113c,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FCE1F90)
   let eax = m.u32((pGame + 0x10f4) >>> 0) >>> 0
   if (eax === 0) return 0
   eax = m.u32(eax) >>> 0
@@ -72,6 +74,7 @@ export function ACT2Q4_IsPortalOpen_6FCE2040_113c(
   m: Memory113c,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FCE2040)
   let eax = m.u32((pGame + 0x10f4) >>> 0) >>> 0
   if (eax === 0) return 0
   eax = m.u32(eax) >>> 0
@@ -95,6 +98,7 @@ export function ACT2Q3_GetAltarState_6FCE2120_113c(
   m: Memory113c,
   pAct: number,
 ): number {
+  hitD2GameVa113c(0x6FCE2120)
   const pGame = m.u32((pAct + 0x04) >>> 0) >>> 0
   let eax = m.u32((pGame + 0x10f4) >>> 0) >>> 0
   if (eax === 0) return 0
@@ -121,6 +125,7 @@ export function ACT2Q3_InitAct2EclipseIfActive_6FCE2150_113c(
   nAct: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FCE2150)
   if ((nAct & 0xff) !== 1) return
   let eax = m.u32((pGame + 0x10f4) >>> 0) >>> 0
   if (eax === 0) return
@@ -151,6 +156,7 @@ export function ACT2Q3_IsEclipseInactive_6FCE21A0_113c(
   m: Memory113c,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FCE21A0)
   let eax = m.u32((pGame + 0x10f4) >>> 0) >>> 0
   if (eax === 0) return 1
   eax = m.u32(eax) >>> 0
@@ -168,21 +174,27 @@ export function ACT2Q3_IsEclipseInactive_6FCE21A0_113c(
  *
  * @va D2Game.dll@0x6fce2350
  */
-export function ACT2Q3_NoOpA_6FCE2350_113c(_m?: Memory113c): void {}
+export function ACT2Q3_NoOpA_6FCE2350_113c(_m?: Memory113c): void {
+  hitD2GameVa113c(0x6FCE2350)
+}
 
 /**
  * Single-byte `ret` stub at `0x6FCE2360`.
  *
  * @va D2Game.dll@0x6fce2360
  */
-export function ACT2Q3_NoOpB_6FCE2360_113c(_m?: Memory113c): void {}
+export function ACT2Q3_NoOpB_6FCE2360_113c(_m?: Memory113c): void {
+  hitD2GameVa113c(0x6FCE2360)
+}
 
 /**
  * Single-byte `ret` stub at `0x6FCE2370`.
  *
  * @va D2Game.dll@0x6fce2370
  */
-export function ACT2Q3_NoOpC_6FCE2370_113c(_m?: Memory113c): void {}
+export function ACT2Q3_NoOpC_6FCE2370_113c(_m?: Memory113c): void {
+  hitD2GameVa113c(0x6FCE2370)
+}
 
 /**
  * Reads `pGame = pAct->pGame (+0x04)`, finds quest `9` (`ACT2Q2`) in
@@ -196,6 +208,7 @@ export function ACT2Q2_AddStaffCount_6FCE2380_113c(
   pAct: number,
   nDelta: number,
 ): void {
+  hitD2GameVa113c(0x6FCE2380)
   const pGame = m.u32((pAct + 0x04) >>> 0) >>> 0
   let eax = m.u32((pGame + 0x10f4) >>> 0) >>> 0
   if (eax === 0) return
@@ -215,7 +228,9 @@ export function ACT2Q2_AddStaffCount_6FCE2380_113c(
  *
  * @va D2Game.dll@0x6fce2450
  */
-export function ACT2Q2_NoOp_6FCE2450_113c(_m?: Memory113c): void {}
+export function ACT2Q2_NoOp_6FCE2450_113c(_m?: Memory113c): void {
+  hitD2GameVa113c(0x6FCE2450)
+}
 
 /**
  * Walks `pGame->pQuestControl (+0x10F4)` for quest `8` (`ACT2Q1` Radament).
@@ -228,6 +243,7 @@ export function ACT2Q1_IsRadamentKilledOrInactive_6FCE2460_113c(
   m: Memory113c,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FCE2460)
   let eax = m.u32((pGame + 0x10f4) >>> 0) >>> 0
   if (eax === 0) return 1
   eax = m.u32(eax) >>> 0
@@ -256,6 +272,7 @@ export function ACT2Q0_ActiveFilter_6FCE2590_113c(
   pQuestFlags: number,
   _pNpc: number,
 ): number {
+  hitD2GameVa113c(0x6FCE2590)
   if ((nNpcId | 0) !== 0xc9) return 0
   return DRLGWARP_TestRoomTileBit113c(m, pQuestFlags >>> 0, 8, 0) === 0 ? 1 : 0
 }
@@ -273,6 +290,7 @@ export function ACT2Q0_StatusFilter_6FCE25C0_113c(
   _pFlags?: number,
   _pStatus?: number,
 ): number {
+  hitD2GameVa113c(0x6FCE25C0)
   return 0
 }
 
@@ -289,6 +307,7 @@ export function ACT2Q8_ActiveFilter_6FCE25D0_113c(
   _pQuestFlags?: number,
   _pNpc?: number,
 ): number {
+  hitD2GameVa113c(0x6FCE25D0)
   return 0
 }
 
@@ -307,6 +326,7 @@ export function ACT2Q8_StatusFilter_6FCE25E0_113c(
   _pFlags: number,
   pStatus: number,
 ): number {
+  hitD2GameVa113c(0x6FCE25E0)
   m.setU8(pStatus >>> 0, 0)
   return 0
 }
@@ -323,6 +343,7 @@ export function ACT2Q7_Callback_SetQuest31State0_6FCE2720_113c(
   _pQuestData: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FCE2720)
   if (m.u16((pQuestArg + 0x14) >>> 0) !== 0x17a) return
   if (m.u16((pQuestArg + 0x18) >>> 0) !== 0x12f) return
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0
@@ -351,6 +372,7 @@ export function ACT2Q7_ActiveFilter_6FCE2750_113c(
   _pQuestFlags?: number,
   _pNpc?: number,
 ): number {
+  hitD2GameVa113c(0x6FCE2750)
   if ((nNpcId | 0) !== 0x179) return 0
   const pGame = m.u32((pQuestData + 0x04) >>> 0) >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer >>> 0) >>> 0
@@ -382,6 +404,7 @@ export function ACT2Q7_ClearNpcIdleTimerOnInteract_6FCE27C0_113c(
   pQuestData: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FCE27C0)
   const pNpc = m.u32((pQuestArg + 0x08) >>> 0) >>> 0
   if (pNpc === 0) return
   if (m.u16((pNpc + 0x04) >>> 0) !== 0x179) return
@@ -404,6 +427,7 @@ export function ACT2Q6_ActivateHoradricOrifice_6FCE27F0_113c(
   m: Memory113c,
   pInteractArg: number,
 ): void {
+  hitD2GameVa113c(0x6FCE27F0)
   const pGame = m.u32(pInteractArg >>> 0) >>> 0
   let eax = m.u32((pGame + 0x10f4) >>> 0) >>> 0
   if (eax === 0) return
@@ -441,6 +465,7 @@ export function ACT2Q6_ClearQuest10State9ForPlayer_6FCE29C0_113c(
   _pQuestData: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FCE29C0)
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0
   const pGame = m.u32(pQuestArg >>> 0) >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
@@ -463,6 +488,7 @@ export function ACT2Q6_UnitIterateSetQuest14State2_6FCE2A90_113c(
   pUnit: number,
   _pArg?: number,
 ): number {
+  hitD2GameVa113c(0x6FCE2A90)
   const pPlayerData = UNITS_GetPlayerData113c(m, pUnit >>> 0) >>> 0
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + (nDiff << 2) + 0x10) >>> 0) >>> 0
@@ -494,6 +520,7 @@ export function ACT2Q6_Callback10_RemovePlayerGuid_6FCE2AF0_113c(
   pQuestData: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FCE2AF0)
   QUESTS_RemovePlayerGuidIfQuestState1AndNot0_113c(m, pQuestData, pQuestArg)
 }
 
@@ -510,6 +537,7 @@ export function ACT2Q5_Callback13_UpdateStartedState_6FCE2DC0_113c(
   pQuestData: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FCE2DC0)
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0
   const pGame = m.u32(pQuestArg >>> 0) >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
@@ -536,6 +564,7 @@ export function ACT2Q5_Callback10_RemovePlayerGuid_6FCE2F00_113c(
   pQuestData: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FCE2F00)
   QUESTS_RemovePlayerGuidIfQuestState1AndNot0_113c(m, pQuestData, pQuestArg)
 }
 
@@ -551,6 +580,7 @@ export function ACT2Q4_UnitIterateCheckQuest12State13_6FCE3190_113c(
   pUnit: number,
   _pArg?: number,
 ): number {
+  hitD2GameVa113c(0x6FCE3190)
   const pPlayerData = UNITS_GetPlayerData113c(m, pUnit >>> 0) >>> 0
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + (nDiff << 2) + 0x10) >>> 0) >>> 0
@@ -571,6 +601,7 @@ export function ACT2Q4_InitArcanePortalObject_6FCE32C0_113c(
   m: Memory113c,
   pInteractArg: number,
 ): void {
+  hitD2GameVa113c(0x6FCE32C0)
   const pGame = m.u32(pInteractArg >>> 0) >>> 0
   let eax = m.u32((pGame + 0x10f4) >>> 0) >>> 0
   if (eax === 0) return
@@ -607,6 +638,7 @@ export function ACT2Q4_UnitIterateSetQuest12State14_6FCE3510_113c(
   pUnit: number,
   _pArg?: number,
 ): number {
+  hitD2GameVa113c(0x6FCE3510)
   const pPlayerData = UNITS_GetPlayerData113c(m, pUnit >>> 0) >>> 0
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + (nDiff << 2) + 0x10) >>> 0) >>> 0
@@ -629,6 +661,7 @@ export function ACT2Q4_Callback10_RemovePlayerGuid_6FCE3620_113c(
   pQuestData: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FCE3620)
   QUESTS_RemovePlayerGuidIfQuestState1AndNot0_113c(m, pQuestData, pQuestArg)
 }
 
@@ -644,6 +677,7 @@ export function ACT2Q3_Callback10_RemovePlayerAndDataExGuid_6FCE3970_113c(
   pQuestData: number,
   pQuestArg: number,
 ): number {
+  hitD2GameVa113c(0x6FCE3970)
   QUESTS_RemovePlayerGuidIfQuestState1AndNot0_113c(m, pQuestData, pQuestArg)
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0
   const pQuestDataEx = m.u32((pQuestData + 0x18) >>> 0) >>> 0
@@ -662,6 +696,7 @@ export function ACT2Q2_Callback10_RemovePlayerGuid_6FCE3EB0_113c(
   pQuestData: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FCE3EB0)
   QUESTS_RemovePlayerGuidIfQuestState1AndNot0_113c(m, pQuestData, pQuestArg)
 }
 
@@ -679,6 +714,7 @@ export function ACT2Q2_UnitIterateCountPlayersMissingCube_6FCE3EF0_113c(
   pUnit: number,
   _pArg?: number,
 ): number {
+  hitD2GameVa113c(0x6FCE3EF0)
   const pItem = ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, pUnit >>> 0, pGame >>> 0, 0x20786f62)
   if (pItem === 0) {
     let eax = m.u32((pGame + 0x10f4) >>> 0) >>> 0
@@ -711,6 +747,7 @@ export function ACT2Q2_UnitIterateCountEligibleAmuletPlayers_6FCE3FC0_113c(
   pUnit: number,
   _pArg?: number,
 ): number {
+  hitD2GameVa113c(0x6FCE3FC0)
   const pPlayerData = UNITS_GetPlayerData113c(m, pUnit >>> 0) >>> 0
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + (nDiff << 2) + 0x10) >>> 0) >>> 0
@@ -747,6 +784,7 @@ export function ACT2Q2_CanPlayerReceiveViperAmulet_6FCE4170_113c(
   pPlayer: number,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FCE4170)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer >>> 0) >>> 0
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + (nDiff << 2) + 0x10) >>> 0) >>> 0
@@ -775,6 +813,7 @@ export function ACT2Q1_Callback10_RemovePlayerGuid_6FCE44D0_113c(
   pQuestData: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FCE44D0)
   QUESTS_RemovePlayerGuidIfQuestState1AndNot0_113c(m, pQuestData, pQuestArg)
 }
 
@@ -790,6 +829,7 @@ export function ACT2Q0_Callback10_RemovePlayerGuidFromDataEx_6FCE4550_113c(
   pQuestData: number,
   pQuestArg: number,
 ): number {
+  hitD2GameVa113c(0x6FCE4550)
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0
   const pQuestDataEx = m.u32((pQuestData + 0x18) >>> 0) >>> 0
   const dwGuid = pPlayer === 0 ? 0xffffffff : m.u32((pPlayer + 0x0c) >>> 0) >>> 0
@@ -810,6 +850,7 @@ export function ACT2Q6_UnitIterateSetCompletionState_6FCE4BD0_113c(
   pUnit: number,
   _pArg?: number,
 ): number {
+  hitD2GameVa113c(0x6FCE4BD0)
   const pPlayerData = UNITS_GetPlayerData113c(m, pUnit >>> 0) >>> 0
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + (nDiff << 2) + 0x10) >>> 0) >>> 0
@@ -838,6 +879,7 @@ export function ACT2Q5_UnitIterateSetCompletionState_6FCE4D90_113c(
   pUnit: number,
   _pArg?: number,
 ): number {
+  hitD2GameVa113c(0x6FCE4D90)
   const pPlayerData = UNITS_GetPlayerData113c(m, pUnit >>> 0) >>> 0
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + (nDiff << 2) + 0x10) >>> 0) >>> 0
@@ -864,6 +906,7 @@ export function ACT2Q5_UnitIteratePlaySummonerTauntInArcane_6FCE4DE0_113c(
   pUnit: number,
   _pArg?: number,
 ): number {
+  hitD2GameVa113c(0x6FCE4DE0)
   const u = pUnit >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, u) >>> 0
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
@@ -894,6 +937,7 @@ export function ACT2Q3_UnitIterateSetCompletionState_6FCE5260_113c(
   pUnit: number,
   _pArg?: number,
 ): number {
+  hitD2GameVa113c(0x6FCE5260)
   const pPlayerData = UNITS_GetPlayerData113c(m, pUnit >>> 0) >>> 0
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + (nDiff << 2) + 0x10) >>> 0) >>> 0
@@ -920,6 +964,7 @@ export function ACT2Q1_UnitIterateSetCompletionState_6FCE5560_113c(
   pUnit: number,
   _pArg?: number,
 ): number {
+  hitD2GameVa113c(0x6FCE5560)
   const pPlayerData = UNITS_GetPlayerData113c(m, pUnit >>> 0) >>> 0
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + (nDiff << 2) + 0x10) >>> 0) >>> 0
@@ -945,6 +990,7 @@ export function MONREG_DecrementActActiveEvilMonsterCount_6FCEA490_113c(
   pUnit: number,
   ppMonsterRegion: number,
 ): void {
+  hitD2GameVa113c(0x6FCEA490)
   const u = pUnit >>> 0
   let nAct = 0
   if (u !== 0) {
@@ -978,6 +1024,7 @@ export function STATES_ClearGfxStateFlag_6FCEB1A0_113c(
   nState: number,
   _bUnused?: number,
 ): void {
+  hitD2GameVa113c(0x6FCEB1A0)
   STATES_ToggleGfxStateFlag113c(m, pUnit >>> 0, nState | 0, 0)
 }
 
@@ -996,6 +1043,7 @@ export function PACKET_Srv54_TurnOffRunToWalk_6FCEB420_113c(
   _pPacket: number,
   nPacketLen: number,
 ): number {
+  hitD2GameVa113c(0x6FCEB420)
   if ((nPacketLen | 0) !== 1) return 3
   const u = pPlayer >>> 0
   if (u !== 0 && (m.u32(u) | 0) === 0 && (m.u32((u + 0x10) >>> 0) | 0) === 3) {
@@ -1019,6 +1067,7 @@ export function PACKET_Srv53_TurnOnWalkToRun_6FCEB450_113c(
   _pPacket: number,
   nPacketLen: number,
 ): number {
+  hitD2GameVa113c(0x6FCEB450)
   if ((nPacketLen | 0) !== 1) return 3
   const u = pPlayer >>> 0
   if (u !== 0 && (m.u32(u) | 0) === 0 && (m.u32((u + 0x10) >>> 0) | 0) === 2) {
@@ -1045,6 +1094,7 @@ export function PACKET_Srv48_ClearPlayerIntro_6FCEB4E0_113c(
   _pPacket: number,
   nPacketLen: number,
 ): number {
+  hitD2GameVa113c(0x6FCEB4E0)
   if ((nPacketLen | 0) !== 1) return 3
   const u = pPlayer >>> 0
   const pPlayerData0 = UNITS_GetPlayerData113c(m, u) >>> 0

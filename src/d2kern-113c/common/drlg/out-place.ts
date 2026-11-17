@@ -28,6 +28,7 @@ import { D2CommonAssertError, D2COMMON_SGPT_DATATABLES_VA_113C } from '../inline
 import { DRLG_SetWarpId113c } from '../quest-record.ts';
 import { DRLG_AllocAndInitLevel113c, DRLG_GetOrAllocObjectPresetRecord113c } from './drlg.ts';
 import { SGPT_DATA_TABLES_PTR_VA } from './drlg-ver.ts';
+import { hitD2CommonVa113c } from '../../va-trace-113c.ts';
 
 /**
  * `D2Common.dll` `.data` `D2LevelLinkDefStrc` table for Act 1 outdoor link placement (15 records x 16 bytes).
@@ -130,6 +131,7 @@ export function DRLGOUTPLACE_InitRoomExCoordByDir113c(
   pSrc: number,
   nDir: number,
 ): void {
+  hitD2CommonVa113c(0x6FD63F30);
   const dest = pDest >>> 0;
   const src = pSrc >>> 0;
   const w = nWidth | 0;
@@ -189,6 +191,7 @@ export function DRLGOUTPLACE_CheckAct2LinkOverlap113c(
   pLinkData: number,
   nIteration: number,
 ): number {
+  hitD2CommonVa113c(0x6FD64900);
   const base = pLinkData >>> 0;
   const iter = nIteration | 0;
   const pCurrBox = (base + D2DrlgLevelLinkDataStrc.nPosX.off + (iter << 4)) >>> 0;
@@ -239,6 +242,7 @@ export function DRLGOUTPLACE_CheckAct1LinkOverlap113c(
   pLinkData: number,
   nIteration: number,
 ): number {
+  hitD2CommonVa113c(0x6FD64A00);
   const base = pLinkData >>> 0;
   const iter = nIteration | 0;
   const pCurrBox = (base + D2DrlgLevelLinkDataStrc.nPosX.off + (iter << 4)) >>> 0;
@@ -287,6 +291,7 @@ export function DRLGOUTPLACE_CheckAct1LinkOverlap113c(
  * (odd seed low bit) or `0x400000` (even seed low bit) to `0x6FDF146C`, and returns `1`.
  */
 export function DRLGOUTPLACE_LinkAct4Step113c(m: Memory113c, pLinkData: number): number {
+  hitD2CommonVa113c(0x6FD64B00);
   const base = pLinkData >>> 0;
   const iter0 = m.u32((base + D2DrlgLevelLinkDataStrc.nIteration.off) >>> 0) | 0;
   m.setU32((base + D2DrlgLevelLinkDataStrc.nRand1.off + (iter0 << 2)) >>> 0, 3);
@@ -357,6 +362,7 @@ export function DRLGOUTPLACE_LinkAct3KurastCauseway113c(
   m: Memory113c,
   pLinkData: number,
 ): number {
+  hitD2CommonVa113c(0x6FD64D00);
   const base = pLinkData >>> 0;
   const iter = m.u32((base + D2DrlgLevelLinkDataStrc.nIteration.off) >>> 0) | 0;
   const rand1Addr = (base + D2DrlgLevelLinkDataStrc.nRand1.off + (iter << 2)) >>> 0;
@@ -418,6 +424,7 @@ export function DRLGOUTPLACE_LinkAct3SpiderForest113c(
   m: Memory113c,
   pLinkData: number,
 ): number {
+  hitD2CommonVa113c(0x6FD64E30);
   const base = pLinkData >>> 0;
   const iter = m.u32((base + D2DrlgLevelLinkDataStrc.nIteration.off) >>> 0) | 0;
   const rand1Addr = (base + D2DrlgLevelLinkDataStrc.nRand1.off + (iter << 2)) >>> 0;
@@ -480,6 +487,7 @@ export function DRLGOUTPLACE_LinkAct3SpiderForest113c(
  * according to `nRand0[iter] % 2`, and positions `pCoord[iter]` relative to `pCoord[targetIdx]` with `±16` offsets.
  */
 export function DRLGOUTPLACE_LinkAct1Rotating113c(m: Memory113c, pLinkData: number): number {
+  hitD2CommonVa113c(0x6FD64F90);
   const base = pLinkData >>> 0;
   const iter = m.u32((base + D2DrlgLevelLinkDataStrc.nIteration.off) >>> 0) | 0;
   const rand1Addr = (base + D2DrlgLevelLinkDataStrc.nRand1.off + (iter << 2)) >>> 0;
@@ -580,6 +588,7 @@ export function DRLGOUTPLACE_LinkAct1Rotating113c(m: Memory113c, pLinkData: numb
  * (preserving existing `nWidth`/`nHeight`) and positions `pCoord[iter]` relative to `pCoord[targetIdx]`.
  */
 export function DRLGOUTPLACE_LinkAct1FixedSize113c(m: Memory113c, pLinkData: number): number {
+  hitD2CommonVa113c(0x6FD65250);
   const base = pLinkData >>> 0;
   const iter = m.u32((base + D2DrlgLevelLinkDataStrc.nIteration.off) >>> 0) | 0;
   const rand1Addr = (base + D2DrlgLevelLinkDataStrc.nRand1.off + (iter << 2)) >>> 0;
@@ -670,6 +679,7 @@ export function DRLGOUTPLACE_LinkAct1FixedSize113c(m: Memory113c, pLinkData: num
  * places `pCoord[iter]` with half-dimension (`w / 2` or `h / 2` signed division) and `±8` offsets.
  */
 export function DRLGOUTPLACE_LinkAct3Jungle113c(m: Memory113c, pLinkData: number): number {
+  hitD2CommonVa113c(0x6FD65480);
   const base = pLinkData >>> 0;
   const iter = m.u32((base + D2DrlgLevelLinkDataStrc.nIteration.off) >>> 0) | 0;
   const rand1Addr = (base + D2DrlgLevelLinkDataStrc.nRand1.off + (iter << 2)) >>> 0;
@@ -742,6 +752,7 @@ export function DRLGOUTPLACE_LinkAct3Jungle113c(m: Memory113c, pLinkData: number
  * places `pCoord[iter]` around `pCoord[targetIdx]` with `±16` (`0x10`) offsets.
  */
 export function DRLGOUTPLACE_LinkQuadrant4_113c(m: Memory113c, pLinkData: number): number {
+  hitD2CommonVa113c(0x6FD65680);
   const base = pLinkData >>> 0;
   const iter = m.u32((base + D2DrlgLevelLinkDataStrc.nIteration.off) >>> 0) | 0;
   const rand1Addr = (base + D2DrlgLevelLinkDataStrc.nRand1.off + (iter << 2)) >>> 0;
@@ -800,6 +811,7 @@ export function DRLGOUTPLACE_LinkQuadrant4_113c(m: Memory113c, pLinkData: number
  * (`0x6FDF0B38`, stride `0x9C`) into `pLinkData->pCoord[nIteration].(nPosX, nPosY)` and returns `1`.
  */
 export function DRLGOUTPLACE_LinkFromLevelDef113c(m: Memory113c, pLinkData: number): number {
+  hitD2CommonVa113c(0x6FD657D0);
   const base = pLinkData >>> 0;
   const iter0 = m.u32((base + D2DrlgLevelLinkDataStrc.nIteration.off) >>> 0) | 0;
   const rand1Addr = (base + D2DrlgLevelLinkDataStrc.nRand1.off + (iter0 << 2)) >>> 0;
@@ -838,6 +850,7 @@ export function DRLGOUTPLACE_LinkFromLevelDef113c(m: Memory113c, pLinkData: numb
  * on cells until a cell with bit `0` (`& 1`) set is encountered along each row/column.
  */
 export function DRLGOUTPLACE_MarkBorderGridCells113c(m: Memory113c, pLevel: number): void {
+  hitD2CommonVa113c(0x6FD65840);
   const pOutdoors = m.u32(((pLevel >>> 0) + D2DrlgLevelStrc.pOutdoors.off) >>> 0);
   const passes: ReadonlyArray< readonly [number, number, number, number]> = [
     [0, 0, 1, 1],
@@ -1147,6 +1160,7 @@ function findOrAllocLevel113c(m: Memory113c, pDrlg: number, nLevelId: number): n
  * `@va D2Common:0x6FD65980` (`DRLGOUTPLACE_PlaceAct4Levels`, stdcall `[esp+4] = pLevel`, `ret 4`, void).
  */
 export function DRLGOUTPLACE_PlaceAct4Levels113c(m: Memory113c, pLevel: number): void {
+  hitD2CommonVa113c(0x6FD65980);
   const lvl = pLevel >>> 0;
   const pDrlg = m.u32((lvl + D2DrlgLevelStrc.pDrlg.off) >>> 0);
   const halfH = truncDiv2_113c(m.u32((lvl + D2DrlgLevelStrc.nWidth.off) >>> 0) | 0);
@@ -1188,6 +1202,7 @@ export function DRLGOUTPLACE_PlaceAct4Levels113c(m: Memory113c, pLevel: number):
  * `@va D2Common:0x6FD65A80` (`DRLGOUTPLACE_PlaceAct5OutdoorLevels`, custom LTCG `eax = pLevel`, `ret` -> `pLastLevel`).
  */
 export function DRLGOUTPLACE_PlaceAct5OutdoorLevels113c(m: Memory113c, pLevel: number): number {
+  hitD2CommonVa113c(0x6FD65A80);
   const lvl = pLevel >>> 0;
   const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C);
   let pLvlDef76 = 0;
@@ -1752,6 +1767,7 @@ export function DRLGOUTPLACE_LinkAct5OutdoorLevels113c(
   nStartLevelId: number,
   nEndLevelId: number,
 ): void {
+  hitD2CommonVa113c(0x6FD66CF0);
   const drlg = pDrlg >>> 0;
   const startId = nStartLevelId | 0;
   const endId = nEndLevelId | 0;
@@ -1866,6 +1882,7 @@ export function DRLGOUTPLACE_PlaceActLevelsByList113c(
   pfnValidate?: OutPlaceValidateArg113c,
   pfnPost?: OutPlacePostArg113c,
 ): void {
+  hitD2CommonVa113c(0x6FD66E10);
   const drlg = pDrlg >>> 0;
   const listPtr = pList >>> 0;
   const validateFn = resolveOutPlaceValidateArg113c(pfnValidate);

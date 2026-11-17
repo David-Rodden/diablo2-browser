@@ -32,6 +32,7 @@ import {
   STATES_CheckStateMaskOnUnit113c,
 } from './statlist.ts'
 import { UNIT_ITEM, UNITROOM_RefreshUnit113c } from './unit.ts'
+import { hitD2CommonVa113c } from '../va-trace-113c.ts'
 
 const INV_SIGNATURE_113C = 0x01020304
 const BODYLOC_COUNT_113C = 13
@@ -54,6 +55,7 @@ function s16MemPort(v: number): number {
  * `stdcall (nItemId) -> D2ItemsTxt*`, `ret 4`).
  */
 export function DATATBLS_GetItemsTxtRecordMemPort113c(m: Memory113c, nItemId: number): number {
+  hitD2CommonVa113c(0x6FDC19A0)
   if ((nItemId >>> 0) >= m.u32(D2COMMON_ITEMS_TXT_COUNT_VA_MEMPORT_113C)) return 0
   const base = m.u32(D2COMMON_ITEMS_TXT_PTR_VA_MEMPORT_113C)
   if (base === 0) {
@@ -67,6 +69,7 @@ export function DATATBLS_GetItemsTxtRecordMemPort113c(m: Memory113c, nItemId: nu
  * `stdcall (pItem) -> uint16`, `ret 4`, `retMask = 0xFFFF`).
  */
 export function ITEMS_GetDexBonusMemPort113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD72970)
   const itm = pItem >>> 0
   if (itm === 0 || m.u32(itm) !== UNIT_ITEM) return 100
   const rec = DATATBLS_GetItemsTxtRecordMemPort113c(m, m.u32((itm + 4) >>> 0))
@@ -80,6 +83,7 @@ export function ITEMS_GetDexBonusMemPort113c(m: Memory113c, pItem: number): numb
  * `stdcall (pItem) -> uint16`, `ret 4`, `retMask = 0xFFFF`).
  */
 export function ITEMS_GetStrBonusMemPort113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD729A0)
   const itm = pItem >>> 0
   if (itm === 0 || m.u32(itm) !== UNIT_ITEM) return 100
   const rec = DATATBLS_GetItemsTxtRecordMemPort113c(m, m.u32((itm + 4) >>> 0))
@@ -97,6 +101,7 @@ export function ITEMS_CheckItemTypeIdMemPort113c(
   pItem: number,
   nItemType: number,
 ): number {
+  hitD2CommonVa113c(0x6FD74430)
   const itm = pItem >>> 0
   if (itm === 0) return 0
   const t = nItemType | 0
@@ -127,6 +132,7 @@ export function ITEMS_CheckItemTypeIdMemPort113c(
  * `stdcall (pItem) -> uint8`, `ret 4`).
  */
 export function ITEMS_CheckIfThrowItemMemPort113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD74C30)
   const itm = pItem >>> 0
   if (itm === 0 || m.u32(itm) !== UNIT_ITEM) return 0
   const nType = ITEMS_GetItemTypeFromItemMem113c(m, itm)
@@ -148,6 +154,7 @@ export function INVENTORY_GetOrInitGridMemPort113c(
   gridIdx: number,
   pGridDef: number,
 ): number {
+  hitD2CommonVa113c(0x6FD6E1B0)
   const inv = pInventory >>> 0
   const idx = gridIdx | 0
   const nGridCount = m.u32((inv + 0x18) >>> 0) | 0
@@ -204,6 +211,7 @@ export function INVENTORY_GetItemFromBodyLocMemPort113c(
   pInventory: number,
   bodyLoc: number,
 ): number {
+  hitD2CommonVa113c(0x6FD6E670)
   const inv = pInventory >>> 0
   if (inv === 0 || m.u32(inv) !== INV_SIGNATURE_113C) return 0
   const loc = bodyLoc | 0
@@ -218,6 +226,7 @@ export function INVENTORY_GetItemFromBodyLocMemPort113c(
  * `stdcall (pInventory) -> D2UnitStrc*`, `ret 4`).
  */
 export function INVENTORY_GetCompositWeaponMemPort113c(m: Memory113c, pInventory: number): number {
+  hitD2CommonVa113c(0x6FD70320)
   const inv = pInventory >>> 0
   if (inv === 0 || m.u32(inv) !== INV_SIGNATURE_113C) return 0
   if (m.u32((inv + 0x1c) >>> 0) === 0xffffffff) return 0
@@ -257,6 +266,7 @@ export function INVENTORY_GetActiveWeaponMemPort113c(
   pBodyLoc: number,
   pbIsActive: number,
 ): number {
+  hitD2CommonVa113c(0x6FD70700)
   const inv = pInventory >>> 0
   if (inv === 0) return 0
   const outWeapon = ppWeapon >>> 0
@@ -323,6 +333,7 @@ export function INVENTORY_GetWeaponByHandSlotMemPort113c(
   pInventory: number,
   nSlotCode: number,
 ): number {
+  hitD2CommonVa113c(0x6FD70830)
   const inv = pInventory >>> 0
   if (inv === 0 || m.u32(inv) !== INV_SIGNATURE_113C) return 0
   const pGrid = INVENTORY_GetOrInitGridMemPort113c(m, inv, 0, D2COMMON_GRID0_INFO_VA_MEMPORT_113C)
@@ -351,6 +362,7 @@ export function INVENTORY_GetWeaponByHandSlotMemPort113c(
  * `stdcall (pRoom) -> BOOL`, `ret 4`).
  */
 export function DUNGEON_CheckRoomIsTownMemPort113c(m: Memory113c, pRoom: number): number {
+  hitD2CommonVa113c(0x6FD8C390)
   if ((pRoom >>> 0) === 0) return 0
   const pRoomEx = m.get(pRoom, D2ActiveRoomStrc.pRoomEx)
   const pLevel = m.get(pRoomEx, D2RoomExStrc.pLevel)
@@ -371,6 +383,7 @@ export function SKILLS_GetWeaponMasteryBonusMemPort113c(
   pSkill: number,
   nBonusType: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9F640)
   const u = pUnit >>> 0
   const w = pWeapon >>> 0
   if (u === 0 || w === 0) return 0
@@ -407,6 +420,7 @@ export function STATLIST_AddStatMemPort113c(
   nDelta: number,
   nLayer = 0,
 ): number {
+  hitD2CommonVa113c(0x6FD8A330)
   const s = pStatList >>> 0
   const d = nDelta | 0
   if (s === 0 || d === 0) return 0
@@ -434,6 +448,7 @@ export function STATLIST_AddUnitStatMemPort113c(
   nDelta: number,
   nLayer = 0,
 ): number {
+  hitD2CommonVa113c(0x6FD8A710)
   const d = nDelta | 0
   if (d === 0) return 0
   const u = pUnit >>> 0
@@ -481,6 +496,7 @@ export function STATLIST_ExpireStateListsOnModeChangeMemPort113c(
   m: Memory113c,
   pUnit: number,
 ): void {
+  hitD2CommonVa113c(0x6FD8AE60)
   const u = pUnit >>> 0
   const pListEx = m.u32((u + 0x5c) >>> 0)
   if (pListEx === 0 || (m.u8((pListEx + 0x10) >>> 0) & 0x02) === 0) return
@@ -515,6 +531,7 @@ export function STATLIST_ExpireStateListsOnModeChangeMemPort113c(
  * - Reads `pSkills = *(uint32_t*)(pUnit + 0xA8)`; returns `0` if `pSkills == 0`, else `*(uint32_t*)(pSkills + 0x10)`.
  */
 export function SKILLS_GetUsedSkillMemPort113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD803A0)
   const u = pUnit >>> 0
   if (u === 0) {
     throw new D2CommonAssertError('Skills.cpp', 0x65c)
@@ -537,6 +554,7 @@ export function SKILLS_SetUsedSkillMemPort113c(
   pUnit: number,
   pSkill: number,
 ): void {
+  hitD2CommonVa113c(0x6FD803E0)
   const u = pUnit >>> 0
   if (u === 0) {
     throw new D2CommonAssertError('Skills.cpp', 0x653)
@@ -561,6 +579,7 @@ export function STATLIST_GetStatListFromUnitAndStateMemPort113c(
   pUnit: number,
   stateId: number,
 ): number {
+  hitD2CommonVa113c(0x6FD88520)
   return STATLIST_GetStatListFromUnitAndState113c(m, pUnit >>> 0, stateId)
 }
 

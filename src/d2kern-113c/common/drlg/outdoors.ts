@@ -47,6 +47,7 @@ import { DRLGPRESET_AllocDrlgMap113c, DRLGPRESET_BuildPresetRoomsFromMap113c } f
 import { DRLGOUTWILD_BuildOutdoorPathsAndEnv113c } from './room-tile.ts';
 import { DRLGOUTJUNG_BuildJunglePresets113c } from '../../prng.ts';
 import { DRLGOUTANIM_BuildAct5Outdoors113c } from '../../tables/anim-tbls-113c.ts';
+import { hitD2CommonVa113c } from '../../va-trace-113c.ts';
 
 /**
  * `D2Common.dll` `.rdata` table at `0x6FDE34A4` (4 `{ dX, dY }` `int32_t` pairs = 32 bytes).
@@ -88,6 +89,7 @@ export function DRLGOUTDOORS_MapPresetSlotIndex113c(
   nX: number,
   nY: number,
 ): number {
+  hitD2CommonVa113c(0x6FD92270);
   const pOutdoors = m.get(pLevel, D2DrlgLevelStrc.pOutdoors);
   const pRowOffsets = m.u32((pOutdoors + 0x30) >>> 0);
   const pCells = m.u32((pOutdoors + 0x2c) >>> 0);
@@ -110,6 +112,7 @@ export function DRLGOUTDOORS_SetOutdoorCellFlag200_113c(
   nX: number,
   nY: number,
 ): void {
+  hitD2CommonVa113c(0x6FD922A0);
   const pOutdoors = m.get(pLevel, D2DrlgLevelStrc.pOutdoors);
   const x = nX | 0;
   const y = nY | 0;
@@ -140,6 +143,7 @@ export function DRLGOUTDOORS_ClearOutdoorCellFlag200_113c(
   nX: number,
   nY: number,
 ): void {
+  hitD2CommonVa113c(0x6FD922F0);
   const pOutdoors = m.get(pLevel, D2DrlgLevelStrc.pOutdoors);
   const x = nX | 0;
   const y = nY | 0;
@@ -175,6 +179,7 @@ export function DRLGOUTDOORS_SpawnOutdoorRoomEx113c(
   nBorder: number,
   uFlags: number,
 ): number {
+  hitD2CommonVa113c(0x6FD92370);
   const pOutdoors = m.get(pLevel, D2DrlgLevelStrc.pOutdoors);
   let x = nX | 0;
   let y = nY | 0;
@@ -254,6 +259,7 @@ export function DRLGOUTDOORS_SpawnRandomOutdoorThemes113c(
   pLevel: number,
   nMaxSpawns: number,
 ): void {
+  hitD2CommonVa113c(0x6FD92460);
   const pSeed = (pLevel + D2DrlgLevelStrc.sSeed.off) >>> 0;
   const pOutdoors = m.get(pLevel, D2DrlgLevelStrc.pOutdoors);
   let themeIdx = SEED_RollRandomNumberInline113c(m, pSeed, 4) & 3;
@@ -325,6 +331,7 @@ export function DRLGOUTDOORS_ScaleAndCompactVertices113c(
   ppVertexHead: number,
   _pMemPool = 0,
 ): void {
+  hitD2CommonVa113c(0x6FD92070);
   const ppHead = ppVertexHead >>> 0;
   let pCur = m.u32(ppHead);
   do {
@@ -369,6 +376,7 @@ export function DRLGOUTDOORS_GetLevelLinkVisBit113c(
   pLevel: number,
   pAdjLevel: number,
 ): number {
+  hitD2CommonVa113c(0x6FD92A20);
   const lvl = pLevel >>> 0;
   const adj = pAdjLevel >>> 0;
   const nLevelId = m.get(lvl, D2DrlgLevelStrc.nLevelId) | 0;
@@ -395,6 +403,7 @@ export function DRLGOUTDOORS_PlaceRandomOutdoorPresetRoom113c(
   nBorder: number,
   uFlags: number,
 ): number {
+  hitD2CommonVa113c(0x6FD92CE0);
   const lvl = pLevel >>> 0;
   const pOutdoors = m.u32((lvl + 0x14) >>> 0);
   const innerW = ((m.u32((pOutdoors + 0x5c) >>> 0) | 0) - 2) | 0;
@@ -462,6 +471,7 @@ export function DRLGOUTDOORS_ComputeVertexLevelLinkVisBit113c(
   pVertex: number,
   pLevel: number,
 ): number {
+  hitD2CommonVa113c(0x6FD92C00);
   const vertex = pVertex >>> 0;
   const lvl = pLevel >>> 0;
   const pOutdoors = m.u32((lvl + 0x14) >>> 0);
@@ -628,6 +638,7 @@ export function DRLGOUTWILD_SpawnOptionalBorderPair113c(
   pLevel: number,
   bExtra: number,
 ): void {
+  hitD2CommonVa113c(0x6FDCEDC0);
   const lvl = pLevel >>> 0;
   const pSeed = (lvl + 0x1c4) >>> 0;
   const lo = BigInt(m.u32(pSeed));
@@ -667,6 +678,7 @@ export function DRLGOUTWILD_SpawnSpecialOutdoorEdgesAndWaypoint113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FDCEE50);
   const lvl = pLevel >>> 0;
   if ((m.u32((lvl + 0x1d0) >>> 0) | 0) === 0x27) return;
   const pOut = m.u32((lvl + 0x14) >>> 0) >>> 0;
@@ -729,6 +741,7 @@ export function DRLGOUTWILD_SpawnAct1OutdoorPresetsByLevel113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FDCF180);
   const lvl = pLevel >>> 0;
   const idx = ((m.u32((lvl + 0x1d0) >>> 0) | 0) - 2) >>> 0;
   if (idx > 0x25) return;
@@ -791,6 +804,7 @@ export function DRLGOUTWILD_InitAct1OutdoorLevel113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FDCF3A0);
   const lvl = pLevel >>> 0;
   const nLevelId = m.u32((lvl + 0x1d0) >>> 0) | 0;
   if (nLevelId !== 2 && nLevelId !== 3 && nLevelId !== 0x11) {
@@ -833,6 +847,7 @@ export function DRLGOUTDOORS_PlaceRandomOutdoorShrineOrSpecial113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FD926A0);
   const level = pLevel >>> 0;
   const nLevelId = m.u32((level + 0x1d0) >>> 0) | 0;
   const pOutdoors = m.u32((level + 0x14) >>> 0);
@@ -925,6 +940,7 @@ export function DRLGOUTDOORS_PlaceClosestOutdoorPresetToRect113c(
   nArg4: number,
   nArg5: number,
 ): number {
+  hitD2CommonVa113c(0x6FD92EB0);
   const level = pLevel >>> 0;
   const pOutdoors = m.u32((level + 0x14) >>> 0);
   const innerW = ((m.u32((pOutdoors + 0x5c) >>> 0) | 0) - 2) | 0;
@@ -981,6 +997,7 @@ export function DRLGOUTDOORS_BuildOutdoorSubstContext113c(
   nArg1: number,
   nArg2: number,
 ): void {
+  hitD2CommonVa113c(0x6FD93100);
   const sm = withOutdoorsStackScratch113c(m);
   const level = pLevel >>> 0;
   const pOutdoors = sm.u32((level + 0x14) >>> 0);
@@ -1008,6 +1025,7 @@ export function DRLGOUTDOORS_BuildOutdoorRoomExList113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FD93190);
   const sm = withOutdoorsStackScratch113c(m);
   const level = pLevel >>> 0;
   const nLevelType = sm.u32((level + 0x1c0) >>> 0) | 0;
@@ -1074,6 +1092,7 @@ export function DRLGOUTDOORS_PlaceRandomOutdoorPresetNearSeed113c(
   nPresetId: number,
   nFlags: number,
 ): number {
+  hitD2CommonVa113c(0x6FD93350);
   const level = pLevel >>> 0;
   const pOutdoors = m.u32((level + 0x14) >>> 0);
   const innerW = ((m.u32((pOutdoors + 0x5c) >>> 0) | 0) - 2) | 0;
@@ -1126,6 +1145,7 @@ export function DRLGOUTDOORS_InitOutdoorLevel113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FD93580);
   const level = pLevel >>> 0;
   const pDrlg = m.u32((level + 0x1b4) >>> 0);
   const pMemPool = m.u32((pDrlg + 0x478) >>> 0);

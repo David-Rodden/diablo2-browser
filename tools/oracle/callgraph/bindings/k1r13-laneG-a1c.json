@@ -451,15 +451,6 @@
   },
   {
     "module": "D2Game",
-    "va": "0x6FCB2ED0",
-    "name": "MONSTER_EquipMonEquipItems",
-    "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
-    "tsSymbol": "MONSTER_EquipMonEquipItems113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
-  },
-  {
-    "module": "D2Game",
     "va": "0x6FCBCA60",
     "name": "AI_CheckApproachTauntSound",
     "kernFile": "src/d2kern-113c/game/ai-fallen-113c.ts",
@@ -482,24 +473,6 @@
     "name": "AI_LookupDispatchTableRow",
     "kernFile": "src/d2kern-113c/game/ai-fallen-113c.ts",
     "tsSymbol": "AI_LookupDispatchTableRow113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6FCBD230",
-    "name": "AI_InitMonsterAiThinkFn",
-    "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
-    "tsSymbol": "AI_InitMonsterAiThinkFn113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6FCBF9A0",
-    "name": "MONSTER_AddSkillToUnit",
-    "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
-    "tsSymbol": "MONSTER_AddSkillToUnit113c",
     "status": "ported",
     "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
   },
@@ -554,15 +527,6 @@
     "name": "MONSTER_InitPlacedMonsterPathAndMode",
     "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
     "tsSymbol": "MONSTER_InitPlacedMonsterPathAndMode113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6FCCFDB0",
-    "name": "MONSTER_InitStats",
-    "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
-    "tsSymbol": "MONSTER_InitStats113c",
     "status": "ported",
     "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
   },
@@ -721,28 +685,10 @@
   },
   {
     "module": "D2Game",
-    "va": "0x6FD00460",
-    "name": "SUNIT_SetMonsterAlignmentState",
-    "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
-    "tsSymbol": "SUNIT_SetMonsterAlignmentState113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
-  },
-  {
-    "module": "D2Game",
     "va": "0x6FD007A0",
     "name": "SUNIT_ValidatePathTargetUnit",
     "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
     "tsSymbol": "SUNIT_ValidatePathTargetUnit113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6FD00860",
-    "name": "SUNIT_DeactivateUnitStatesAndEvents",
-    "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
-    "tsSymbol": "SUNIT_DeactivateUnitStatesAndEvents113c",
     "status": "ported",
     "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
   },
@@ -793,28 +739,10 @@
   },
   {
     "module": "D2Game",
-    "va": "0x6FD0E260",
-    "name": "MONSTER_InitSpecialClassEvents",
-    "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
-    "tsSymbol": "MONSTER_InitSpecialClassEvents113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
-  },
-  {
-    "module": "D2Game",
     "va": "0x6FD0E480",
     "name": "MONSTER_SpawnPartyMinions",
     "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
     "tsSymbol": "MONSTER_SpawnPartyMinions113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6FD0E7B0",
-    "name": "MONSTER_PostSpawnQuestAndSpecialInit",
-    "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
-    "tsSymbol": "MONSTER_PostSpawnQuestAndSpecialInit113c",
     "status": "ported",
     "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
   },

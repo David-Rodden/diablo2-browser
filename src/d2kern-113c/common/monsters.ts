@@ -19,6 +19,7 @@ import {
 } from './inline-helpers.ts'
 import { imul32 } from './int-math.ts'
 import { UNITS_GetRoom113c } from './unit.ts'
+import { hitD2CommonVa113c } from '../va-trace-113c.ts'
 
 const UNIT_MONSTER = 1
 
@@ -32,6 +33,7 @@ const UNIT_MONSTER = 1
  * (`0x6FD6A69A..0x6FD6A6B2`), and otherwise returns `(pUnit->dwFlags (+0xC4) >>> 31) !== 0 ? 1 : 0`.
  */
 export function MONSTERS_IsTownOrFriendlyUnit113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD6A660)
   const u = pUnit >>> 0
   if (u === 0) return 0
   if (m.get(u, D2UnitStrc.dwUnitType) !== UNIT_MONSTER) return 0
@@ -104,6 +106,7 @@ export function MONSTERS_GetCompCode113c(
   nCompIdx: number,
   nVarIdx: number,
 ): number {
+  hitD2CommonVa113c(0x6FDD4C70)
   const unit = pUnit >>> 0
   if (unit === 0 || (m.u32(unit) >>> 0) !== UNIT_MONSTER) return 0
   const compIdx = nCompIdx >>> 0

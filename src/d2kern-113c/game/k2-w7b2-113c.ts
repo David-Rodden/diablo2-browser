@@ -199,6 +199,7 @@ import {
 } from './regpop-spawn-113c'
 import { EVENT_FreeNode113c, EVENT_SetEventFull113c } from './timer-wheel'
 import { AI_StepRelativeToTargetUnit113c } from './town-npc-ai-113c'
+import { hitD2GameVa113c } from '../va-trace-113c'
 
 export type D2KernMemory113c = Memory113c
 export type SparseMemory113c = Memory113c
@@ -252,6 +253,7 @@ export function ACT5Q4_DestroyPlayerPortalIfInArreatSummit_6FC7CFF0_113c(
   pPlayer: number,
   _uUnused = 0,
 ): number {
+  hitD2GameVa113c(0x6FC7CFF0)
   void _uUnused
   const esi = pPlayer >>> 0
   const ebx = pGame >>> 0
@@ -293,6 +295,7 @@ export function ACT5Q2_TrySpawnNihlathakPortalForUnitInAct5_6FC7D1D0_113c(
   pUnit: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC7D1D0)
   const ebx = pUnit >>> 0
   const game = pGame >>> 0
   const pChain = m.u32((game + 0x10f4) >>> 0) >>> 0
@@ -365,6 +368,7 @@ export function ACT5Q2_SpawnNihlathakPortalFromQuestData_6FC7D380_113c(
   pUnit: number,
   pQuestData: number,
 ): number {
+  hitD2GameVa113c(0x6FC7D380)
   const esi = pUnit >>> 0
   const ebp = pQuestData >>> 0
   const pExt = m.u32((ebp + 0x18) >>> 0) >>> 0
@@ -432,6 +436,7 @@ export function ACT1Q4_OnQuestActivatedUpdatePlayers_6FC83570_113c(
   m: D2KernMemory113c,
   pQuestData: number,
 ): void {
+  hitD2GameVa113c(0x6FC83570)
   const esi = pQuestData >>> 0
   if (m.u32(0x6fd31c20) !== 0) {
     NET_BroadcastSystemChatMessage_6FCEBE70_113c(m, 0x6fd1beec, m.u32((esi + 0x04) >>> 0) >>> 0, 4)
@@ -457,6 +462,7 @@ export function ACT1Q4_BroadcastDebugQuestNotice_6FC835B0_113c(
   m: D2KernMemory113c,
   pQuestData: number,
 ): void {
+  hitD2GameVa113c(0x6FC835B0)
   const questData = pQuestData >>> 0
   if (m.u32(0x6fd31c20) !== 0) {
     NET_BroadcastSystemChatMessage_6FCEBE70_113c(
@@ -507,6 +513,7 @@ export function ACT1Q3_InitPlayerQuestStateAndResetFlag0A_6FC837E0_113c(
   pPlayer: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC837E0)
   const edi = pGame >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer >>> 0) >>> 0
   const nDiff = m.u8((edi + 0x6d) >>> 0)
@@ -542,6 +549,7 @@ export function ACT1Q1_InitPlayerQuestStateAndResetFlag0A_6FC83BB0_113c(
   pPlayer: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC83BB0)
   const edi = pGame >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer >>> 0) >>> 0
   const nDiff = m.u8((edi + 0x6d) >>> 0)
@@ -576,6 +584,7 @@ export function ACT1Q3_ActivateQuestState1_6FC83D20_113c(
   m: D2KernMemory113c,
   pQuestData: number,
 ): number {
+  hitD2GameVa113c(0x6FC83D20)
   const esi = pQuestData >>> 0
   if (m.u8((esi + 0x0c) >>> 0) === 0) {
     const pBuf = allocScratch(0x80)
@@ -607,6 +616,7 @@ export function ACT1Q4_ActivateOrChainQuest_6FC846D0_113c(
   m: D2KernMemory113c,
   pQuestData: number,
 ): number {
+  hitD2GameVa113c(0x6FC846D0)
   const esi = pQuestData >>> 0
   const al = m.u8((esi + 0x0c) >>> 0)
   if (al === 0 && m.u8((esi + 0x09) >>> 0) === 1) {
@@ -663,6 +673,7 @@ export function ACT1Q4_SendScrollOfInifussOrderPacket50_6FC847B0_113c(
   pGame: number,
   pPlayer: number,
 ): void {
+  hitD2GameVa113c(0x6FC847B0)
   const game = pGame >>> 0
   const edi = pPlayer >>> 0
   const pChain = m.u32((game + 0x10f4) >>> 0) >>> 0
@@ -712,6 +723,7 @@ export function ACT1Q4_PromoteQuestState3AndUpdatePlayers_6FC84940_113c(
   m: D2KernMemory113c,
   pQuestData: number,
 ): void {
+  hitD2GameVa113c(0x6FC84940)
   const esi = pQuestData >>> 0
   const ebp = m.u32((esi + 0x18) >>> 0) >>> 0
   const bFlag47 = m.u8((ebp + 0x47) >>> 0)
@@ -779,6 +791,7 @@ export function ACT1Q3_ActivateOrChainQuest_6FC84AA0_113c(
   m: D2KernMemory113c,
   pQuestData: number,
 ): number {
+  hitD2GameVa113c(0x6FC84AA0)
   const esi = pQuestData >>> 0
   const al = m.u8((esi + 0x0c) >>> 0)
   if (al === 0 && m.u8((esi + 0x09) >>> 0) === 1) {
@@ -826,6 +839,7 @@ export function ACT1Q3_PromoteQuestState3AndResetMalusStand_6FC84C10_113c(
   m: D2KernMemory113c,
   pQuestData: number,
 ): number {
+  hitD2GameVa113c(0x6FC84C10)
   const esi = pQuestData >>> 0
   if (m.u8((esi + 0x09) >>> 0) === 0) {
     return 0
@@ -898,6 +912,7 @@ export function ACT1Q2_ActivateOrChainQuest_6FC84E10_113c(
   m: D2KernMemory113c,
   pQuestData: number,
 ): number {
+  hitD2GameVa113c(0x6FC84E10)
   const esi = pQuestData >>> 0
   const al = m.u8((esi + 0x0c) >>> 0)
   if (al === 0 && m.u8((esi + 0x09) >>> 0) === 1) {
@@ -946,6 +961,7 @@ export function ACT1Q2_OnBloodRavenKilled_6FC85620_113c(
   pQuestData: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC85620)
   const edi = pQuestData >>> 0
   const esi = pQuestArg >>> 0
   if (m.u8((edi + 0x09) >>> 0) === 0) {
@@ -1032,6 +1048,7 @@ export function ACT1Q6_SpawnCatacombs4ReturnPortal_6FC87320_113c(
   pUnit: number,
   _uUnused = 0,
 ): number {
+  hitD2GameVa113c(0x6FC87320)
   void _uUnused
   const game = pGame >>> 0
   const edi = pUnit >>> 0
@@ -1111,6 +1128,7 @@ export function ACT1Q4_TrySpawnSecretCowLevelPortal_6FC874A0_113c(
   pGame: number,
   pPlayer: number,
 ): number {
+  hitD2GameVa113c(0x6FC874A0)
   const ebp = pGame >>> 0
   const esi = pPlayer >>> 0
   const pQuestCtrl = m.u32((ebp + 0x10f4) >>> 0) >>> 0
@@ -1243,6 +1261,7 @@ export function ACT1Q4_OnCainGibbetOperated_6FC87730_113c(
   pGame: number,
   pObjectUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FC87730)
   const game = pGame >>> 0
   const ebx = pObjectUnit >>> 0
   const pChain = m.u32((game + 0x10f4) >>> 0) >>> 0
@@ -1425,6 +1444,7 @@ export function ACT1Q4_SpawnTristramPortalAtCairnStones_6FC87A90_113c(
   pGame: number,
   pQuestData: number,
 ): number {
+  hitD2GameVa113c(0x6FC87A90)
   const game = pGame >>> 0
   const pExt = m.u32(((pQuestData >>> 0) + 0x18) >>> 0) >>> 0
   const dwObjGuid = m.u32((pExt + 0x40) >>> 0) >>> 0
@@ -1503,6 +1523,7 @@ export function ACT1Q4_UpdateGibbetModeAndCainState_6FC88280_113c(
   bScheduleTimer: number,
   bDeleteCainMonster: number,
 ): void {
+  hitD2GameVa113c(0x6FC88280)
   const ebp = pQuestData >>> 0
   const esi = m.u32((ebp + 0x18) >>> 0) >>> 0
   let skipSet54 = false
@@ -1590,6 +1611,7 @@ export function ACT1Q5_RecordPlayerInMalusRoomAndSpawnLightning_6FC88AB0_113c(
   m: SparseMemory113c,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC88AB0)
   const edi = pQuestArg >>> 0;
   const pGame = m.u32(edi) >>> 0;
   const pQuestChain = m.u32((pGame + 0x10f4) >>> 0) >>> 0;
@@ -1648,6 +1670,7 @@ export function ACT1Q5_OnAndarielKilled_6FC88B90_113c(
   pQuestData: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC88B90)
   const esi = pQuestData >>> 0;
   const ebp = pQuestArg >>> 0;
   const edi = m.u32((esi + 0x18) >>> 0) >>> 0;
@@ -1735,6 +1758,7 @@ export function ACT1Q5_OnPortalLightningTimerEvent_6FC88D20_113c(
   pQuestData: number,
   pUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FC88D20)
   const esi = pQuestData >>> 0;
   const pExt = m.u32((esi + 0x18) >>> 0) >>> 0;
   ACT1Q3_SpawnCairnStonePortalLightning_6FC85E90_113c(m, esi, pExt);
@@ -1760,6 +1784,7 @@ export function OBJECTS_ApplyLightningTrapDamageInRoom_6FC8AE60_113c(
   pObjectUnit: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC8AE60)
   const edi = pObjectUnit >>> 0;
   const ebp = pGame >>> 0;
   const pRoom = UNITS_GetRoom113c(m, edi) >>> 0;
@@ -1808,6 +1833,7 @@ export function OBJECTS_OperateGemShrine_6FC8B430_113c(
   m: SparseMemory113c,
   pOpStrc: number,
 ): void {
+  hitD2GameVa113c(0x6FC8B430)
   const edi = pOpStrc >>> 0;
   const pPlayer = m.u32((edi + 8) >>> 0) >>> 0;
   const ebp = m.u32((pPlayer + 0x60) >>> 0) >>> 0;
@@ -1875,6 +1901,7 @@ export function OBJECTS_LinkHellPortalToDestinationLevel_6FC8B930_113c(
   pGame: number,
   pPortalUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FC8B930)
   const esi = pGame >>> 0;
   const edi = pPortalUnit >>> 0;
   const pSrcRoom = UNITS_GetRoom113c(m, edi) >>> 0;
@@ -1906,6 +1933,7 @@ export function OBJECTS_OperatePortalShrine_6FC8B9B0_113c(
   m: SparseMemory113c,
   pOpStrc: number,
 ): void {
+  hitD2GameVa113c(0x6FC8B9B0)
   const edi = pOpStrc >>> 0;
   const pUnit0 = m.u32((edi + 8) >>> 0) >>> 0;
   const ebp = UNITS_GetRoom113c(m, pUnit0) >>> 0;
@@ -1990,6 +2018,7 @@ export function OBJECTS_OperateFireAndLightningTrap_6FC8E0E0_113c(
   m: SparseMemory113c,
   pOpStrc: number,
 ): number {
+  hitD2GameVa113c(0x6FC8E0E0)
   const esi = pOpStrc >>> 0;
   const pObj0 = m.u32((esi + 4) >>> 0) >>> 0;
   if (pObj0 !== 0 && (m.u32((pObj0 + 0x10) >>> 0) | 0) !== 0) {
@@ -2038,6 +2067,7 @@ export function OBJECTS_FloorSpikesEventTick_6FC8E270_113c(
   pGame: number,
   pObjectUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FC8E270)
   const ebp = pGame >>> 0;
   const esi = pObjectUnit >>> 0;
   const ebxMode = esi !== 0 ? (m.u32((esi + 0x10) >>> 0) | 0) : 0;
@@ -2122,6 +2152,7 @@ export function CUBE_CanPlayerPickupAllCubeItems_6FC91170_113c(
   pPlayer: number,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FC91170)
   const edi = pPlayer >>> 0;
   const ebp = pGame >>> 0;
   const pInv = m.u32((edi + 0x60) >>> 0) >>> 0;
@@ -2267,6 +2298,7 @@ export function STASH_ClearKillerInfoAndRecountScrolls_6FC91270_113c(
   pPlayer: number,
   _pGame = 0,
 ): void {
+  hitD2GameVa113c(0x6FC91270)
   const eax = pPlayer >>> 0;
   m.setU32((eax + 0x64) >>> 0, 0xffffffff);
   m.setU32((eax + 0x68) >>> 0, 6);
@@ -2287,6 +2319,7 @@ export function OBJECTS_OperateBankStash_6FC91290_113c(
   m: SparseMemory113c,
   pOpStrc: number,
 ): number {
+  hitD2GameVa113c(0x6FC91290)
   const esi = pOpStrc >>> 0;
   if ((m.u32((esi + 0x10) >>> 0) | 0) !== 0x10b) {
     return 0;
@@ -2329,6 +2362,7 @@ export function STASH_HandleBankGoldOrCloseAction_6FC917E0_113c(
   wAction: number,
   nGoldAmount: number,
 ): void {
+  hitD2GameVa113c(0x6FC917E0)
   const esi = pPlayer >>> 0;
   const ebx = pGame >>> 0;
   const ebp = nGoldAmount | 0;
@@ -2406,6 +2440,7 @@ export function MONSTER_SpawnSiegeBeastStompProjectiles_6FC95A40_113c(
   pGame: number,
   nMissileId: number,
 ): void {
+  hitD2GameVa113c(0x6FC95A40)
   const edi = pMonsterUnit >>> 0;
   if (edi === 0 || (m.u32(edi) | 0) !== 1) {
     return;
@@ -2498,6 +2533,7 @@ export function AI_Thinker_Izual_6FC9EA10_113c(
   pUnit: number,
   pAiTickArgs: number,
 ): void {
+  hitD2GameVa113c(0x6FC9EA10)
   const ebx = pGame >>> 0;
   const edxUnit = pUnit >>> 0;
   const args = pAiTickArgs >>> 0;
@@ -2626,6 +2662,7 @@ export function SKILLS_SrvDo075_DragonTalonKickHit_6FCB2DF0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCB2DF0)
   const ebxGame = pGame >>> 0;
   const ebp = pUnit >>> 0;
   const esi = nSkillId | 0;
@@ -2686,6 +2723,7 @@ export function SKILLS_SrvDo_CloakOfShadows_6FCB4B10_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCB4B10)
   const pGame0 = pGame >>> 0;
   const ebp = pUnit >>> 0;
   const edi = nSkillId | 0;
@@ -2797,6 +2835,7 @@ export function SKILLS_TryConvertMonsterOnHit_6FCB5120_113c(
   pGame: number,
   pAttacker: number,
 ): number {
+  hitD2GameVa113c(0x6FCB5120)
   const ebx = pConvArgs >>> 0;
   const esi = pTargetMonster >>> 0;
   const pGame0 = pGame >>> 0;
@@ -2898,6 +2937,7 @@ export function SKILLS_SrvDo077_ChannelChargedStream_6FCB5BC0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCB5BC0)
   const edi = pGame >>> 0;
   const esi = pUnit >>> 0;
   const ebp = nSkillId | 0;
@@ -2982,6 +3022,7 @@ export function SKILLS_SrvDo078_DragonTalonMultiKick_6FCB5FE0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCB5FE0)
   const ebp = pGame >>> 0;
   const esi = pUnit >>> 0;
   const nSkill = nSkillId | 0;

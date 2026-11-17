@@ -32,6 +32,7 @@ import {
   DRLGROOM_LinkRoomsBidirectional113c,
 } from './drlg-room.ts'
 import { DRLGPRESET_AllocDrlgMap113c, DRLGPRESET_BuildPresetRoomsFromMap113c } from './preset.ts'
+import { hitD2CommonVa113c } from '../../va-trace-113c.js'
 
 /**
  * 0x6FD5E3E0 — DRLGMAZE_HasMapDS1 (73 bytes).
@@ -40,6 +41,7 @@ import { DRLGPRESET_AllocDrlgMap113c, DRLGPRESET_BuildPresetRoomsFromMap113c } f
  * @va D2Common:0x6FD5E3E0
  */
 export function DRLGMAZE_HasMapDS1113c(m: Memory113c, pLevel: number): number {
+  hitD2CommonVa113c(0x6FD5E3E0)
   if (pLevel === 0) {
     throw new D2CommonAssertError('..\\Source\\D2Common\\DRLG\\Maze.cpp', 28)
   }
@@ -83,6 +85,7 @@ export function DRLGMAZE_AssignMazeRoomPrestId113c(
   pRoomEx: number,
   bClearFlag2: number,
 ): number {
+  hitD2CommonVa113c(0x6FD5E490)
   const roomEx = pRoomEx >>> 0
   let esi = 0
   let edi = -1
@@ -220,6 +223,7 @@ export function DRLGMAZE_PickSequentialSpecialPresetFileIndex113c(
   pLevel: number,
   pDrlgMap: number,
 ): void {
+  hitD2CommonVa113c(0x6FD5ECB0)
   const lvl = pLevel >>> 0
   const map = pDrlgMap >>> 0
   void m.u32((m.u32((lvl + 0x1b4) >>> 0) + 0x478) >>> 0)
@@ -283,6 +287,7 @@ export function DRLGMAZE_PositionAdjacentRoomAndCheckSeparation113c(
   pBaseRoomEx: number,
   pNewRoomEx: number,
 ): number {
+  hitD2CommonVa113c(0x6FD5EEC0)
   const baseRoom = pBaseRoomEx >>> 0
   const newRoom = pNewRoomEx >>> 0
   const baseX = m.u32((baseRoom + 0x34) >>> 0) | 0
@@ -361,6 +366,7 @@ export function DRLGMAZE_PositionAdjacentRoomAndCheckSeparation113c(
  * `__stdcall(pRoomEx) -> void`, `ret 4`).
  */
 export function DRLGMAZE_LinkTouchingMazeRooms113c(m: Memory113c, pRoomEx: number): void {
+  hitD2CommonVa113c(0x6FD5EB80)
   const roomEx = pRoomEx >>> 0
   if ((m.u32((m.u32((roomEx + 0x20) >>> 0) + 0x0c) >>> 0) & 0x02) !== 0) {
     return
@@ -433,6 +439,7 @@ export function DRLGMAZE_SpawnAndLinkAdjacentRoomEx113c(
   nDir: number,
   bLinkTouching: number,
 ): number {
+  hitD2CommonVa113c(0x6FD5F000)
   const baseRoom = pBaseRoomEx >>> 0
   const pNewRoomEx = DRLGROOM_AllocRoomEx113c(m, m.u32((baseRoom + 0x58) >>> 0), 2)
   const pLevelNew = m.u32((pNewRoomEx + 0x58) >>> 0)
@@ -490,6 +497,7 @@ export function DRLGMAZE_SpawnAndAssignCornerRoomPresets113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FD5FD20)
   const level = pLevel >>> 0
   const lo = BigInt(m.u32((level + 0x1c4) >>> 0))
   const hi = BigInt(m.u32((level + 0x1c8) >>> 0))
@@ -542,6 +550,7 @@ export function DRLGMAZE_SpawnCrossOrPairSpecialRooms113c(
   bAllFourDirs: number,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FD5FE70)
   const level = pLevel >>> 0
   const pBase = m.u32((level + 0x10) >>> 0)
   let prestId = 0x122
@@ -588,6 +597,7 @@ export function DRLGMAZE_FillAdjacentRoomsWithPreset113c(
   nLvlPrestId: number,
   pIgnoreRoomEx: number,
 ): void {
+  hitD2CommonVa113c(0x6FD60010)
   const level = pLevel >>> 0
   const ignore = pIgnoreRoomEx >>> 0
   const nRooms = m.u32((level + 0x08) >>> 0) | 0
@@ -637,6 +647,7 @@ export function DRLGMAZE_PlaceOrReplaceSpecialRoomPreset113c(
   pLevel: number,
   pOutDir: number,
 ): void {
+  hitD2CommonVa113c(0x6FD606B0)
   const spec = pPresetSpec >>> 0
   const level = pLevel >>> 0
   const outDir = pOutDir >>> 0
@@ -683,6 +694,7 @@ export function PATH_WarpUnitToRoomAndCoord113c(
   nX: number,
   nY: number,
 ): number {
+  hitD2CommonVa113c(0x6FD5E1E0)
   const path = pDynamicPath >>> 0
   const packedXY = (((nY & 0xffff) << 16) | (nX & 0xffff)) >>> 0
   if (COLLISION_MoveUnitToRoomAndCoord113c(m, path, pRoom, packedXY) === 0) {
@@ -700,6 +712,7 @@ export function DRLGMAZE_PlaceTunnelsSpecialPresets113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FD60AF0)
   const level = pLevel >>> 0
   const pBase = m.u32((level + 0x10) >>> 0)
   const lo = BigInt(m.u32((pBase + 0x14) >>> 0))
@@ -931,6 +944,7 @@ export function DRLGMAZE_ReplaceMazeRoomWithPresetRooms113c(
   pLevel: number,
   pRoomEx: number,
 ): void {
+  hitD2CommonVa113c(0x6FD5F110)
   const lvl = pLevel >>> 0
   const roomEx = pRoomEx >>> 0
   const pMaze = m.u32((roomEx + 0x20) >>> 0)
@@ -981,6 +995,7 @@ function mazeStepRingRoom113c(m: Memory113c, pPrevRoom: number, nDir: number): n
  * custom LTCG `ecx = pLevel`, plain `ret`).
  */
 export function DRLGMAZE_BuildSpiderCavernRing113c(m: Memory113c, pLevel: number): void {
+  hitD2CommonVa113c(0x6FD5F220)
   const lvl = pLevel >>> 0
   const nStartDir = stepMazeSeed64_113c(m, lvl) & 3
   const ring: number[] = new Array(60).fill(0)
@@ -1025,6 +1040,7 @@ export function DRLGMAZE_BuildSpiderCavernRing113c(m: Memory113c, pLevel: number
  * custom LTCG `eax = pLevel`, stack `[esp+4] = nSide`, `ret 4`).
  */
 export function DRLGMAZE_BuildSquarePerimeterRooms113c(m: Memory113c, pLevel: number, nSide: number): void {
+  hitD2CommonVa113c(0x6FD602F0)
   const lvl = pLevel >>> 0
   const side = nSide | 0
   const pFirst = m.u32((lvl + 0x10) >>> 0)
@@ -1047,6 +1063,7 @@ export function DRLGMAZE_BuildSquarePerimeterRooms113c(m: Memory113c, pLevel: nu
  * custom LTCG `esi = pLevel`, plain `ret`).
  */
 export function DRLGMAZE_PlaceAct5IceCavesPresets113c(m: Memory113c, pLevel: number): void {
+  hitD2CommonVa113c(0x6FD60BE0)
   const lvl = pLevel >>> 0
   const sm = withMazeStackAndRdata113c(m)
   const pDir = MAZE_STACK_BASE_IT14
@@ -1069,6 +1086,7 @@ export function DRLGMAZE_PlaceAct5IceCavesPresets113c(m: Memory113c, pLevel: num
  * `__stdcall(pLevel)`, `ret 4`).
  */
 export function DRLGMAZE_FinalizeAct5HellBarrow113c(m: Memory113c, pLevel: number): void {
+  hitD2CommonVa113c(0x6FD60CA0)
   const lvl = pLevel >>> 0
   const pDrlg = m.get(lvl, D2DrlgLevelStrc.pDrlg)
   if (m.get(pDrlg, D2DrlgStrc.nAct) === 4) return
@@ -1144,6 +1162,7 @@ export function DRLGMAZE_FinalizeAct5HellBarrow113c(m: Memory113c, pLevel: numbe
  * `__stdcall(pLevel)`, `ret 4`).
  */
 export function DRLGMAZE_FinalizeAct1JailConnect113c(m: Memory113c, pLevel: number): void {
+  hitD2CommonVa113c(0x6FD60EB0)
   const lvl = pLevel >>> 0
   const pDrlg = m.get(lvl, D2DrlgLevelStrc.pDrlg)
   let pTarget = m.get(pDrlg, D2DrlgStrc.pLevel)
@@ -1235,6 +1254,7 @@ export function DRLGMAZE_FinalizeAct1JailConnect113c(m: Memory113c, pLevel: numb
 
 /** `@va D2Common:0x6FD61170` (`DRLGMAZE_PlaceAct5GlacialPresets113c`, `esi = pLevel`, `ret`). */
 export function DRLGMAZE_PlaceAct5GlacialPresets113c(m: Memory113c, pLevel: number): void {
+  hitD2CommonVa113c(0x6FD61170)
   const lvl = pLevel >>> 0
   const sm = withMazeStackAndRdata113c(m)
   const pDir = MAZE_STACK_BASE_IT14
@@ -1248,6 +1268,7 @@ export function DRLGMAZE_PlaceAct5GlacialPresets113c(m: Memory113c, pLevel: numb
 
 /** `@va D2Common:0x6FD611E0` (`DRLGMAZE_PlaceAct5BaalKeepPresets113c`, `esi = pLevel`, `ret`). */
 export function DRLGMAZE_PlaceAct5BaalKeepPresets113c(m: Memory113c, pLevel: number): void {
+  hitD2CommonVa113c(0x6FD611E0)
   const lvl = pLevel >>> 0
   const sm = withMazeStackAndRdata113c(m)
   const pDir = MAZE_STACK_BASE_IT14
@@ -1268,6 +1289,7 @@ export function DRLGMAZE_PlaceAct5BaalKeepPresets113c(m: Memory113c, pLevel: num
 
 /** `@va D2Common:0x6FD61280` (`DRLGMAZE_PlaceAct3DurancePresets113c`, `esi = pLevel`, `ret`). */
 export function DRLGMAZE_PlaceAct3DurancePresets113c(m: Memory113c, pLevel: number): void {
+  hitD2CommonVa113c(0x6FD61280)
   const lvl = pLevel >>> 0
   const sm = withMazeStackAndRdata113c(m)
   const pDir = MAZE_STACK_BASE_IT14
@@ -1286,6 +1308,7 @@ export function DRLGMAZE_PlaceAct3DurancePresets113c(m: Memory113c, pLevel: numb
 
 /** `@va D2Common:0x6FD61320` (`DRLGMAZE_PlaceAct3SewersPresets113c`, `esi = pLevel`, `ret`). */
 export function DRLGMAZE_PlaceAct3SewersPresets113c(m: Memory113c, pLevel: number): void {
+  hitD2CommonVa113c(0x6FD61320)
   const lvl = pLevel >>> 0
   const sm = withMazeStackAndRdata113c(m)
   const pDir = MAZE_STACK_BASE_IT14
@@ -1297,6 +1320,7 @@ export function DRLGMAZE_PlaceAct3SewersPresets113c(m: Memory113c, pLevel: numbe
 
 /** `@va D2Common:0x6FD61380` (`DRLGMAZE_PlaceAct3FlayerDungeonPresets113c`, `esi = pLevel`, `ret`). */
 export function DRLGMAZE_PlaceAct3FlayerDungeonPresets113c(m: Memory113c, pLevel: number): void {
+  hitD2CommonVa113c(0x6FD61380)
   const lvl = pLevel >>> 0
   const sm = withMazeStackAndRdata113c(m)
   const pDir = MAZE_STACK_BASE_IT14
@@ -1308,6 +1332,7 @@ export function DRLGMAZE_PlaceAct3FlayerDungeonPresets113c(m: Memory113c, pLevel
 
 /** `@va D2Common:0x6FD613E0` (`DRLGMAZE_PlaceAct2PalaceCellarPresets113c`, `ecx = pLevel`, `ret`). */
 export function DRLGMAZE_PlaceAct2PalaceCellarPresets113c(m: Memory113c, pLevel: number): void {
+  hitD2CommonVa113c(0x6FD613E0)
   const lvl = pLevel >>> 0
   const sm = withMazeStackAndRdata113c(m)
   const pDir = MAZE_STACK_BASE_IT14
@@ -1318,6 +1343,7 @@ export function DRLGMAZE_PlaceAct2PalaceCellarPresets113c(m: Memory113c, pLevel:
 
 /** `@va D2Common:0x6FD61430` (`DRLGMAZE_PlaceAct2MaggotLairPresets113c`, `esi = pLevel`, `ret`). */
 export function DRLGMAZE_PlaceAct2MaggotLairPresets113c(m: Memory113c, pLevel: number): void {
+  hitD2CommonVa113c(0x6FD61430)
   const lvl = pLevel >>> 0
   const sm = withMazeStackAndRdata113c(m)
   const pDir = MAZE_STACK_BASE_IT14
@@ -1335,6 +1361,7 @@ export function DRLGMAZE_PlaceAct2MaggotLairPresets113c(m: Memory113c, pLevel: n
 
 /** `@va D2Common:0x6FD614C0` (`DRLGMAZE_PlaceAct2TombPresets113c`, `esi = pLevel`, `ret`). */
 export function DRLGMAZE_PlaceAct2TombPresets113c(m: Memory113c, pLevel: number): void {
+  hitD2CommonVa113c(0x6FD614C0)
   const lvl = pLevel >>> 0
   const sm = withMazeStackAndRdata113c(m)
   let pRoom = sm.get(lvl, D2DrlgLevelStrc.pFirstRoomEx)
@@ -1388,6 +1415,7 @@ export function DRLGMAZE_PlaceAct2TombPresets113c(m: Memory113c, pLevel: number)
 
 /** `@va D2Common:0x6FD616B0` (`DRLGMAZE_PlaceAct2SewersPresets113c`, `esi = pLevel`, `ret`). */
 export function DRLGMAZE_PlaceAct2SewersPresets113c(m: Memory113c, pLevel: number): void {
+  hitD2CommonVa113c(0x6FD616B0)
   const lvl = pLevel >>> 0
   const sm = withMazeStackAndRdata113c(m)
   const pDir1 = MAZE_STACK_BASE_IT14
@@ -1456,6 +1484,7 @@ export function DRLGMAZE_PlaceAct2SewersPresets113c(m: Memory113c, pLevel: numbe
 
 /** `@va D2Common:0x6FD61940` (`DRLGMAZE_PlaceAct1CatacombsPresets113c`, `esi = pLevel`, `ret`). */
 export function DRLGMAZE_PlaceAct1CatacombsPresets113c(m: Memory113c, pLevel: number): void {
+  hitD2CommonVa113c(0x6FD61940)
   const lvl = pLevel >>> 0
   const sm = withMazeStackAndRdata113c(m)
   const pDir = MAZE_STACK_BASE_IT14
@@ -1469,6 +1498,7 @@ export function DRLGMAZE_PlaceAct1CatacombsPresets113c(m: Memory113c, pLevel: nu
 
 /** `@va D2Common:0x6FD619B0` (`DRLGMAZE_PlaceAct1JailPresets113c`, `esi = pLevel`, `ret`). */
 export function DRLGMAZE_PlaceAct1JailPresets113c(m: Memory113c, pLevel: number): void {
+  hitD2CommonVa113c(0x6FD619B0)
   const lvl = pLevel >>> 0
   const sm = withMazeStackAndRdata113c(m)
   const pDir = MAZE_STACK_BASE_IT14
@@ -1491,6 +1521,7 @@ export function DRLGMAZE_PlaceAct1JailPresets113c(m: Memory113c, pLevel: number)
 
 /** `@va D2Common:0x6FD61A70` (`DRLGMAZE_PlaceAct1CryptsPresets113c`, `esi = pLevel`, `ret`). */
 export function DRLGMAZE_PlaceAct1CryptsPresets113c(m: Memory113c, pLevel: number): void {
+  hitD2CommonVa113c(0x6FD61A70)
   const lvl = pLevel >>> 0
   const sm = withMazeStackAndRdata113c(m)
   const pDir = MAZE_STACK_BASE_IT14
@@ -1512,6 +1543,7 @@ export function DRLGMAZE_PlaceAct1CryptsPresets113c(m: Memory113c, pLevel: numbe
 
 /** `@va D2Common:0x6FD61B30` (`DRLGMAZE_PlaceAct1CavesPresets113c`, `esi = pLevel`, `ret`). */
 export function DRLGMAZE_PlaceAct1CavesPresets113c(m: Memory113c, pLevel: number): void {
+  hitD2CommonVa113c(0x6FD61B30)
   const lvl = pLevel >>> 0
   const sm = withMazeStackAndRdata113c(m)
   const pDir = MAZE_STACK_BASE_IT14
@@ -1536,6 +1568,7 @@ export function DRLGMAZE_PlaceAct1CavesPresets113c(m: Memory113c, pLevel: number
  * custom LTCG `eax = pLevel`, plain `ret`).
  */
 export function DRLGMAZE_GenerateMazeLevel113c(m: Memory113c, pLevel: number): void {
+  hitD2CommonVa113c(0x6FD61BF0)
   const lvl = pLevel >>> 0
   const pRoom = DRLGROOM_AllocRoomEx113c(m, lvl, 2) >>> 0
   const pMazeData = m.u32((lvl + 0x14) >>> 0)

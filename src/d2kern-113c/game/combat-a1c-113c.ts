@@ -4,7 +4,7 @@
  *
  * All functions operate 100% on `Memory113c` (`D2GameStrc`, `D2UnitStrc`, `D2MonsterDataStrc`,
  * `D2AiGeneralStrc`, `D2AiCmdStrc`, `D2CombatStrc`, `D2DamageStrc`, `D2DynamicPathStrc`,
- * `D2ActiveRoomStrc`, `D2StatListExStrc`) with zero JS Map caches, zero array sorting, and zero `??`.
+ * `D2ActiveRoomStrc`, `D2StatListExStrc`) with zero JS Map caches, zero array sorting, and zero nullish fallbacks.
  */
 import type { Memory113c } from '../mem/sparse-memory.ts'
 import {
@@ -89,8 +89,36 @@ import {
   isItemCodeShieldPure113c,
   isMonsterCritterPure113c,
   playerAnimStartFramePure113c,
-  rollTreasureClassSeedOnly113c,
 } from './tables-bootstrap-113c.ts'
+import {
+  D2GAME_CreateItemEx_6FC31490_113c,
+  ITEMS_ApplyGoldFindBonus_6FC2F260_113c,
+  ITEMS_ApplyItemDurabilityLoss_6FC32EE0_113c,
+  ITEMS_ChooseTreasureClassAndDrop_6FC32380_113c,
+  ITEMS_CreateDroppedItemAtUnit_6FC31880_113c,
+  ITEMS_DispatchNormalItemModsByFormat_6FC307B0_113c,
+  ITEMS_DropMonsterTreasure_6FC32D60_113c,
+  ITEMS_ExpireGroundItemsInAct_6FC2FB70_113c,
+  ITEMS_FinalizeNormalExpansionItem_6FC30550_113c,
+  ITEMS_FindFreeGroundDropCoords_6FC2E930_113c,
+  ITEMS_GenerateMagicOrRareAffixes_6FC30A20_113c,
+  ITEMS_GetDropItemLevel_6FC2E5D0_113c,
+  ITEMS_InitCreatedItemStats_6FC31070_113c,
+  ITEMS_InitItemUnit_6FC30160_113c,
+  ITEMS_PlaceItemOnGroundInRoom_6FC2E990_113c,
+  ITEMS_RollAndApplyEthereal_6FC2EBB0_113c,
+  ITEMS_RollAndApplySockets_6FC2EC90_113c,
+  ITEMS_RollItemQualityOnCreatedItem_6FC2EE90_113c,
+  ITEMS_RollItemQuality_6FC2FC40_113c,
+  ITEMS_RollStaffModsOnItem_6FC33DE0_113c,
+  ITEMS_ScheduleReplenishDurabilityEvent_6FC2EA70_113c,
+  ITEMS_ScheduleReplenishQuantityEvent_6FC2EA10_113c,
+  MONSTER_DropDeathItems_6FC95900_113c,
+  MONSTER_DropTreasureOnDeath_6FC95680_113c,
+  OBJECTS_FindFreeDropCoordsAndSpawnItem_6FC51000_113c,
+  isItemRatioTableLoaded113c,
+  isSgptDataTablesLoaded113c,
+} from './k2-real-itemdrop-113c.ts'
 import {
   AI_CalcApproxUnitDistSubtiles113c,
   AI_CastSkillMode14_113c,
@@ -305,7 +333,16 @@ export function SUNIT_GetServerUnitFromHash113c(
   unitId: number,
 ): number {
   if (pGame === 0 || (unitType >>> 0) >= 6) return 0
-  let pUnit = m.u32(pGame + D2GameStrc.pUnitHash.off + ((unitType & 7) << 9) + ((unitId & 0x7f) << 2))
+  const baseOff =
+    unitType === 4
+      ? 0x1720
+      : unitType === 3
+        ? 0x1920
+        : unitType === 5
+          ? 0x1b20
+          : 0x1120 + ((unitType & 3) << 9)
+  const bucketOff = unitType === 5 ? 0 : (unitId & 0x7f) << 2
+  let pUnit = m.u32((pGame + baseOff + bucketOff) >>> 0)
   while (pUnit !== 0) {
     if (
       m.get(pUnit, D2UnitStrc.dwUnitType) === (unitType >>> 0) &&
@@ -354,114 +391,151 @@ function getEffectiveDiff113c(m: Memory113c, pGame: number): 0 | 1 | 2 {
 // ============================================================================
 
 /**
- * `@va D2Game:0x6FC2E5D0` (`ITEMS_GetDropItemLevel`, `eax = pGame`, `edx = pMonster`, `[esp+4] = pAct`):
- * Returns monster drop `ilvl` (`STAT_LEVEL (12)` clamped to `[1, 99]`).
+ * `@va D2Game:0x6FC2E5D0` (`ITEMS_GetDropItemLevel`, `eax = pGame`, `edx = pDropper`):
+ * Resolves drop `ilvl` for `UNIT_MONSTER` (`STAT_LEVEL`), `UNIT_PLAYER` (`base STAT_LEVEL`),
+ * or objects (`DATATBLS_GetLevelMonsterLevel`), clamped to `>= 1`.
  */
 export function ITEMS_GetDropItemLevel113c(
   m: Memory113c,
-  pGame: number,
-  pMonster: number,
-  _pAct = 0,
+  arg1: number,
+  arg2 = 0,
+  arg3 = 0,
 ): number {
-  void pGame
-  if (pMonster === 0) return 1
-  let ilvl = STATLIST_GetUnitStat113c(m, pMonster, STAT_LEVEL_113C, 0) | 0
-  if (ilvl < 1) ilvl = 1
-  if (ilvl > 99) ilvl = 99
-  return ilvl
+  if (arg1 === 0 && arg2 === 0) return 1
+  let pGame = arg1 >>> 0
+  let pDropper = arg2 >>> 0
+  if (arg2 === 0) {
+    pDropper = arg1 >>> 0
+    pGame = m.u32((pDropper + 0x80) >>> 0) >>> 0
+  } else if (
+    m.u32((pGame + 0x80) >>> 0) === pDropper ||
+    (m.u32(pGame) <= 5 && m.u32((pGame + 0x5c) >>> 0) !== 0 && m.u32((pDropper + 0x5c) >>> 0) === 0)
+  ) {
+    pDropper = arg1 >>> 0
+    pGame = arg2 >>> 0
+  }
+  return ITEMS_GetDropItemLevel_6FC2E5D0_113c(m, pGame, pDropper, arg3)
 }
 
 /**
- * `@va D2Game:0x6FC2EA10` (`ITEMS_GetQualityBonusDivisor`, `eax = nQuality`, `ecx = pQualityFactorRow`):
- * Reads the quality divisor from `ItemRatio.txt` (`+0x04` Unique, `+0x0C` Set, `+0x14` Rare, `+0x1C` Magic, `+0x24` HiQuality, `+0x2C` Normal).
+ * `@va D2Game:0x6FC2EA10` (`ITEMS_ScheduleReplenishQuantityEvent` / `ItemRatio` divisor helper):
+ * Schedules `Event 3` (`STAT_ITEM_REPLENISH_QUANTITY` = `253`) when invoked with `UNIT_ITEM`,
+ * or reads `ItemRatio.txt` quality divisor when invoked with quality index `1..9`.
  */
 export function ITEMS_GetQualityBonusDivisor113c(
   m: Memory113c,
-  nQuality: number,
-  pItemRatioRow: number,
+  nQualityOrItem: number,
+  pItemRatioRowOrGame: number,
 ): number {
-  if (pItemRatioRow === 0) return 1
-  switch (nQuality | 0) {
+  const ptr = nQualityOrItem >>> 0
+  if (ptr >= 0x1000 && m.u32(ptr) === UNIT_ITEM) {
+    ITEMS_ScheduleReplenishQuantityEvent_6FC2EA10_113c(m, pItemRatioRowOrGame >>> 0, ptr)
+    return 1
+  }
+  if (pItemRatioRowOrGame === 0) return 1
+  switch (nQualityOrItem | 0) {
     case 7:
-      return m.u32(pItemRatioRow + 0x04) | 0
+      return m.u32(pItemRatioRowOrGame + 0x04) | 0
     case 5:
-      return m.u32(pItemRatioRow + 0x0c) | 0
+      return m.u32(pItemRatioRowOrGame + 0x0c) | 0
     case 6:
-      return m.u32(pItemRatioRow + 0x14) | 0
+      return m.u32(pItemRatioRowOrGame + 0x14) | 0
     case 4:
-      return m.u32(pItemRatioRow + 0x1c) | 0
+      return m.u32(pItemRatioRowOrGame + 0x1c) | 0
     case 3:
-      return m.u32(pItemRatioRow + 0x24) | 0
+      return m.u32(pItemRatioRowOrGame + 0x24) | 0
     case 2:
-      return m.u32(pItemRatioRow + 0x2c) | 0
+      return m.u32(pItemRatioRowOrGame + 0x2c) | 0
     default:
       return 1
   }
 }
 
 /**
- * `@va D2Game:0x6FC2EA70` (`ITEMS_GetQualityMinValue`, `eax = nQuality`, `ecx = pItemRatioRow`):
- * Reads minimum quality threshold from `ItemRatio.txt` (`+0x08` UniqueMin, `+0x10` SetMin, `+0x18` RareMin, `+0x20` MagicMin).
+ * `@va D2Game:0x6FC2EA70` (`ITEMS_ScheduleReplenishDurabilityEvent` / `ItemRatio` min threshold helper):
+ * Schedules `Event 3` (`STAT_ITEM_REPLENISH_DURABILITY` = `252`) when invoked with `UNIT_ITEM`,
+ * or reads `ItemRatio.txt` minimum threshold when invoked with quality index `1..9`.
  */
 export function ITEMS_GetQualityMinValue113c(
   m: Memory113c,
-  nQuality: number,
-  pItemRatioRow: number,
+  nQualityOrItem: number,
+  pItemRatioRowOrGame: number,
 ): number {
-  if (pItemRatioRow === 0) return 0
-  switch (nQuality | 0) {
+  const ptr = nQualityOrItem >>> 0
+  if (ptr >= 0x1000 && m.u32(ptr) === UNIT_ITEM) {
+    ITEMS_ScheduleReplenishDurabilityEvent_6FC2EA70_113c(m, pItemRatioRowOrGame >>> 0, ptr)
+    return 0
+  }
+  if (pItemRatioRowOrGame === 0) return 0
+  switch (nQualityOrItem | 0) {
     case 7:
-      return m.u32(pItemRatioRow + 0x08) | 0
+      return m.u32(pItemRatioRowOrGame + 0x08) | 0
     case 5:
-      return m.u32(pItemRatioRow + 0x10) | 0
+      return m.u32(pItemRatioRowOrGame + 0x10) | 0
     case 6:
-      return m.u32(pItemRatioRow + 0x18) | 0
+      return m.u32(pItemRatioRowOrGame + 0x18) | 0
     case 4:
-      return m.u32(pItemRatioRow + 0x20) | 0
+      return m.u32(pItemRatioRowOrGame + 0x20) | 0
     default:
       return 0
   }
 }
 
 /**
- * `@va D2Game:0x6FC2EBB0` (`ITEMS_EvalTreasureClassFactor`, `eax = nQuality`, `ecx = pTcFactorArray`):
- * Selects the treasure-class quality factor (`Unique`, `Set`, `Rare`, `Magic` at `0..3`) for `nQuality`.
+ * `@va D2Game:0x6FC2EBB0` (`ITEMS_RollAndApplyEthereal` / TC quality factor selector):
+ * Applies 5% Ethereal roll and `+50%` base defense/damage when invoked on `UNIT_ITEM`,
+ * or reads treasure-class quality factor (`Unique`, `Set`, `Rare`, `Magic`) when invoked with quality `1..9`.
  */
 export function ITEMS_EvalTreasureClassFactor113c(
   m: Memory113c,
-  nQuality: number,
-  pTcFactors: number,
+  nQualityOrItem: number,
+  pTcFactorsOrDrop: number,
 ): number {
-  if (pTcFactors === 0) return 0
-  switch (nQuality | 0) {
+  const ptr = nQualityOrItem >>> 0
+  if (ptr >= 0x1000 && m.u32(ptr) === UNIT_ITEM) {
+    ITEMS_RollAndApplyEthereal_6FC2EBB0_113c(m, ptr, pTcFactorsOrDrop >>> 0)
+    return 1
+  }
+  if (pTcFactorsOrDrop === 0) return 0
+  switch (nQualityOrItem | 0) {
     case 7:
-      return m.u32(pTcFactors + 0x00) | 0
+      return m.u32(pTcFactorsOrDrop + 0x00) | 0
     case 5:
-      return m.u32(pTcFactors + 0x04) | 0
+      return m.u32(pTcFactorsOrDrop + 0x04) | 0
     case 6:
-      return m.u32(pTcFactors + 0x08) | 0
+      return m.u32(pTcFactorsOrDrop + 0x08) | 0
     case 4:
-      return m.u32(pTcFactors + 0x0c) | 0
+      return m.u32(pTcFactorsOrDrop + 0x0c) | 0
     default:
       return 0
   }
 }
 
 /**
- * `@va D2Game:0x6FC2EC90` (`ITEMS_RollQualityThreshold`):
- * Computes effective quality threshold using `ItemRatio`, `ilvl - qlvl`, magic find, and TC factor,
- * then rolls `SEED_RollLimitedRandomNumber(pSeed, threshold) < 128`.
+ * `@va D2Game:0x6FC2EC90` (`ITEMS_RollAndApplySockets` / quality threshold roll):
+ * Rolls 33% sockets (`STAT_ITEM_NUMSOCKETS = 194`) when invoked with `(pItem, pDrop, pGame)`,
+ * or evaluates `ItemRatio` quality threshold against `SEED_RollLimitedRandomNumber`.
  */
 export function ITEMS_RollQualityThreshold113c(
   m: Memory113c,
   pSeed: number,
   baseChance: number,
   divisor: number,
-  minValue: number,
-  ilvlMinusQlvl: number,
-  mfBonusPct: number,
-  tcFactor: number,
+  minValue = 0,
+  ilvlMinusQlvl = 0,
+  mfBonusPct = 0,
+  tcFactor = 0,
 ): number {
+  const ptr = pSeed >>> 0
+  if (
+    ptr >= 0x1000 &&
+    m.u32(ptr) === UNIT_ITEM &&
+    (baseChance >>> 0) >= 0x1000 &&
+    (divisor >>> 0) >= 0x1000
+  ) {
+    ITEMS_RollAndApplySockets_6FC2EC90_113c(m, ptr, baseChance >>> 0, divisor >>> 0)
+    return 1
+  }
   const safeDiv = divisor > 0 ? divisor : 1
   let chance = (baseChance - Math.trunc(ilvlMinusQlvl / safeDiv)) << 7
   if (mfBonusPct > 0) {
@@ -478,166 +552,279 @@ export function ITEMS_RollQualityThreshold113c(
 
 /**
  * `@va D2Game:0x6FC2FC40` (`ITEMS_RollItemQuality`):
- * Determines dropped item quality (`1..7`), returning `2` (`ITEMQUAL_NORMAL`) for gold/misc items that skip quality rolls.
+ * Full `ItemRatio.txt` + diminishing Magic Find + `TreasureClassEx` factor quality evaluator (`1..7`).
  */
 export function ITEMS_RollItemQuality113c(
   m: Memory113c,
-  pGame: number,
-  pDropper: number,
-  pSeed: number,
-  itemClassId: number,
-  ilvl: number,
+  pGameOrDrop: number,
+  pDropper = 0,
+  pSeed = 0,
+  itemClassId = -1,
+  ilvl = 1,
   pTcFactors = 0,
 ): number {
-  void pGame
-  void pDropper
-  void itemClassId
-  void ilvl
-  void pTcFactors
-  if (pSeed === 0) return 2
+  if (pGameOrDrop === 0) return 2
+  if (pDropper === 0 && pSeed === 0 && itemClassId < 0) {
+    const pDrop = pGameOrDrop >>> 0
+    return ITEMS_RollItemQuality_6FC2FC40_113c(
+      m,
+      m.u32((pDrop + 0x08) >>> 0),
+      m.u32(pDrop),
+      0,
+      m.u32((pDrop + 0x14) >>> 0) | 0,
+      m.u32((pDrop + 0x0c) >>> 0) | 0,
+      (pDrop + 0x70) >>> 0,
+      m.u32((pDrop + 0x04) >>> 0),
+    )
+  }
+  if (!isSgptDataTablesLoaded113c(m) || pSeed === 0) return 2
+  let pFac16 = 0
+  if (pTcFactors !== 0) {
+    pFac16 = 0x6fd3f300
+    m.fill(pFac16, 16, 0)
+    m.setU16(pFac16 + 0, m.u32((pTcFactors >>> 0) + 0x0c) & 0xffff) // Magic
+    m.setU16(pFac16 + 2, m.u32((pTcFactors >>> 0) + 0x08) & 0xffff) // Rare
+    m.setU16(pFac16 + 4, m.u32((pTcFactors >>> 0) + 0x04) & 0xffff) // Set
+    m.setU16(pFac16 + 6, m.u32((pTcFactors >>> 0) + 0x00) & 0xffff) // Unique
+  }
+  return ITEMS_RollItemQuality_6FC2FC40_113c(
+    m,
+    pGameOrDrop >>> 0,
+    pDropper >>> 0,
+    0,
+    itemClassId | 0,
+    ilvl | 0,
+    pFac16,
+    pSeed >>> 0,
+  )
+}
+
+/**
+ * `@va D2Game:0x6FC2EE90` (`ITEMS_RollItemQualityOnCreatedItem` / socket & ethereal helper):
+ * Evaluates created-item quality on `ITEMS_GetItemSeed(pItem)` (`0x6FC2EE90`), or applies
+ * Ethereal (`0x6FC2EBB0`) + Sockets (`0x6FC2EC90`) when invoked with `(pGame, pItem, allowSockets)`.
+ */
+export function ITEMS_ApplySocketAndEtherealBonuses113c(
+  m: Memory113c,
+  arg1: number,
+  arg2: number,
+  allowSockets = 0,
+): number {
+  const u1 = arg1 >>> 0
+  const u2 = arg2 >>> 0
+  if (u1 >= 0x1000 && m.u32(u1) === UNIT_ITEM) {
+    return ITEMS_RollItemQualityOnCreatedItem_6FC2EE90_113c(m, u1, u2)
+  }
+  if (u2 >= 0x1000 && m.u32(u2) === UNIT_ITEM) {
+    const itemGame = m.u32((u2 + 0x80) >>> 0) >>> 0
+    if (u1 !== 0 && u1 !== itemGame) {
+      return ITEMS_RollItemQualityOnCreatedItem_6FC2EE90_113c(m, u2, u1)
+    }
+    if (isSgptDataTablesLoaded113c(m)) {
+      const pDrop = 0x6fd3f300
+      m.fill(pDrop, 0x84, 0)
+      m.setU32((pDrop + 0x08) >>> 0, u1)
+      m.setU32((pDrop + 0x14) >>> 0, m.u32((u2 + 0x04) >>> 0))
+      m.setU32((pDrop + 0x80) >>> 0, allowSockets !== 0 ? 0 : 8)
+      ITEMS_RollAndApplyEthereal_6FC2EBB0_113c(m, u2, pDrop)
+      ITEMS_RollAndApplySockets_6FC2EC90_113c(m, u2, pDrop, u1)
+    }
+  }
   return 2
 }
 
 /**
- * `@va D2Game:0x6FC2EE90` (`ITEMS_ApplySocketAndEtherealBonuses`):
- * Applies socket count and ethereal roll (`5%` when `nodurability == 0`) on newly created armor/weapons.
+ * `@va D2Game:0x6FC2F260` (`ITEMS_ApplyGoldFindBonus` / scroll spell icon helper):
+ * Applies `STAT_ITEM_GOLDBONUS (79)` on dropped gold piles (`0x6FC2F260`), or sets spell icon on scroll/tome.
  */
-export function ITEMS_ApplySocketAndEtherealBonuses113c(
+export function ITEMS_InitScrollOrTomeStats113c(
   m: Memory113c,
-  pGame: number,
-  pItem: number,
-  allowSockets = 0,
+  pKillerOrItem: number,
+  pGoldItemOrSpell = 0,
+  nBaseGold = 0,
 ): void {
-  void m
-  void pGame
-  void pItem
-  void allowSockets
-}
-
-/**
- * `@va D2Game:0x6FC2F260` (`ITEMS_InitScrollOrTomeStats`):
- * Initializes scroll/tome quantity or spell icon stats on `pItem`.
- */
-export function ITEMS_InitScrollOrTomeStats113c(m: Memory113c, pItem: number, nSpell = 0): void {
-  if (pItem === 0) return
-  const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
-  if (pItemData !== 0 && nSpell > 0) {
-    m.setU32(pItemData + 0x30, nSpell >>> 0)
+  const u2 = pGoldItemOrSpell >>> 0
+  if (nBaseGold !== 0 && u2 >= 0x1000 && m.u32(u2) === UNIT_ITEM) {
+    ITEMS_ApplyGoldFindBonus_6FC2F260_113c(m, u2, pKillerOrItem >>> 0)
+    return
+  }
+  if (pKillerOrItem === 0) return
+  const pItemData = m.get(pKillerOrItem, D2UnitStrc.pUnitData)
+  if (pItemData !== 0 && pGoldItemOrSpell > 0) {
+    m.setU32(pItemData + 0x30, pGoldItemOrSpell >>> 0)
   }
 }
 
 /**
  * `@va D2Game:0x6FC2FB70` (`ITEMS_ExpireGroundItemsInAct`):
- * Expires ground items on the act ground-item list whose timer has elapsed.
+ * Sweeps ground `UNIT_ITEM`s (`mode == 3`) in `pAct`'s active rooms and frees items whose
+ * `dwActionStamp` (`pItemData + 0x24`) has expired against `pGame->dwGameFrame`.
  */
 export function ITEMS_ExpireGroundItemsInAct113c(
   m: Memory113c,
   pGame: number,
   pAct: number,
 ): void {
-  void m
-  void pGame
-  void pAct
+  ITEMS_ExpireGroundItemsInAct_6FC2FB70_113c(m, pGame, pAct)
 }
 
 /**
- * `@va D2Game:0x6FC30160` (`ITEMS_RollEarOrClassItem`):
- * Initializes ear or class-specific auto-mod stats on `pItem`.
+ * `@va D2Game:0x6FC30160` (`ITEMS_InitItemUnit`):
+ * Initializes `dwUnitId`, `(dwFlags & ~8) | 2`, `ITEMCMD_NEWITEM (0x10)`, `STATLIST_CreateEx`,
+ * quest attachment, and event cleanup on a newly allocated `UNIT_ITEM`.
  */
 export function ITEMS_RollEarOrClassItem113c(
   m: Memory113c,
   pGame: number,
   pItem: number,
+  dwUnitId = -1,
 ): number {
-  void m
-  void pGame
-  return pItem !== 0 ? 1 : 0
+  if (pItem === 0) return 0
+  if (!isSgptDataTablesLoaded113c(m)) return 1
+  return ITEMS_InitItemUnit_6FC30160_113c(m, pGame, pItem, dwUnitId)
 }
 
 /**
- * `@va D2Game:0x6FC30550` (`ITEMS_PickUniqueItem`):
- * Selects an eligible `UniqueItems.txt` row for `pItem` or downgrades to high-durability Rare.
+ * `@va D2Game:0x6FC30550` (`ITEMS_FinalizeNormalExpansionItem`):
+ * Finalizes charms, organs, body parts, scrolls, tomes, and staffmods (`0x6FC33DE0`) on a Normal Expansion item.
  */
 export function ITEMS_PickUniqueItem113c(
   m: Memory113c,
-  pGame: number,
-  pItem: number,
+  arg1: number,
+  arg2: number,
 ): number {
-  void m
-  void pGame
-  void pItem
+  if (!isSgptDataTablesLoaded113c(m)) return 0
+  const u1 = arg1 >>> 0
+  const u2 = arg2 >>> 0
+  if (u1 >= 0x1000 && m.u32(u1) === UNIT_ITEM) {
+    return ITEMS_FinalizeNormalExpansionItem_6FC30550_113c(m, u1, u2)
+  }
+  if (u2 >= 0x1000 && m.u32(u2) === UNIT_ITEM) {
+    const pDrop = 0x6fd3f300
+    m.fill(pDrop, 0x84, 0)
+    const pData = m.u32((u2 + 0x14) >>> 0) >>> 0
+    m.setU32((pDrop + 0x08) >>> 0, u1)
+    m.setU32((pDrop + 0x0c) >>> 0, pData !== 0 ? m.u32((pData + 0x2c) >>> 0) : 1)
+    m.setU32((pDrop + 0x14) >>> 0, m.u32((u2 + 0x04) >>> 0))
+    return ITEMS_FinalizeNormalExpansionItem_6FC30550_113c(m, u2, pDrop)
+  }
   return 0
 }
 
 /**
- * `@va D2Game:0x6FC307B0` (`ITEMS_CheckSetItemEligibility`):
- * Checks whether a `SetItems.txt` row exists for `itemClassId` at `ilvl`.
+ * `@va D2Game:0x6FC307B0` (`ITEMS_DispatchNormalItemModsByFormat`):
+ * Dispatches Normal-quality item finalization (`0x6FC30600` Classic vs `0x6FC30550` Expansion).
  */
 export function ITEMS_CheckSetItemEligibility113c(
   m: Memory113c,
-  pGame: number,
-  itemClassId: number,
-  ilvl: number,
+  arg1: number,
+  arg2: number,
+  arg3 = 0,
 ): number {
-  void m
-  void pGame
-  void itemClassId
-  void ilvl
+  if (!isSgptDataTablesLoaded113c(m)) return 0
+  const u2 = arg2 >>> 0
+  if (u2 >= 0x1000 && m.u32(u2) === UNIT_ITEM) {
+    ITEMS_DispatchNormalItemModsByFormat_6FC307B0_113c(m, arg1 >>> 0, u2, arg3 | 0)
+    return 1
+  }
   return 0
 }
 
 /**
  * `@va D2Game:0x6FC30A20` (`ITEMS_GenerateMagicOrRareAffixes`):
- * Generates prefix/suffix mods on magic (`4`) or rare (`6`) items.
+ * Generates item quality (`1..9`), Magic/Rare/Set/Unique/Superior/LowQ/Crafted/Tempered affixes and stats,
+ * failed Unique (`3x` dur) / Set (`2x` dur) downgrades, Ethereal (`0x6FC2EBB0`), Sockets (`0x6FC2EC90`),
+ * and class `wAutoPrefix` automods.
  */
 export function ITEMS_GenerateMagicOrRareAffixes113c(
   m: Memory113c,
   pGame: number,
-  pItem: number,
+  ppItemOrItem: number,
+  pItemDrop = 0,
 ): number {
-  void m
-  void pGame
-  return pItem !== 0 ? 1 : 0
+  return ITEMS_GenerateMagicOrRareAffixes_6FC30A20_113c(m, pGame, ppItemOrItem, pItemDrop)
 }
 
 /**
  * `@va D2Game:0x6FC31070` (`ITEMS_InitCreatedItemStats`):
- * Initializes base stats (`STAT_LEVEL`, `STAT_GOLD`, defense, durability) on a newly created item unit.
+ * Initializes base stats (`STAT_GOLD`, `STAT_QUANTITY`, `STAT_ARMORCLASS`, `STAT_DURABILITY`,
+ * `STAT_MAXDURABILITY`, weapon damage, `nInvGfxIdx`) and invokes `0x6FC30A20`.
  */
 export function ITEMS_InitCreatedItemStats113c(
   m: Memory113c,
   pGame: number,
-  pItem: number,
-  ilvl = 1,
+  ppItemOrItem: number,
+  ilvlOrDrop = 1,
+  bGenerateQualityMods = 1,
 ): number {
-  void pGame
-  if (pItem === 0) return 0
-  const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
-  if (pItemData !== 0) {
-    m.setU32(pItemData + 0x2c, ilvl >>> 0)
+  if (ppItemOrItem === 0) return 0
+  if (!isSgptDataTablesLoaded113c(m)) {
+    const pItemData = m.get(ppItemOrItem, D2UnitStrc.pUnitData)
+    if (pItemData !== 0) {
+      m.setU32(pItemData + 0x2c, ilvlOrDrop >>> 0)
+    }
+    return 1
+  }
+  const dropCand = ilvlOrDrop >>> 0
+  if (dropCand >= 0x1000) {
+    return ITEMS_InitCreatedItemStats_6FC31070_113c(
+      m,
+      pGame,
+      ppItemOrItem,
+      dropCand,
+      bGenerateQualityMods,
+    )
+  }
+  if (m.u32(ppItemOrItem >>> 0) === UNIT_ITEM) {
+    const pItemData = m.get(ppItemOrItem, D2UnitStrc.pUnitData)
+    if (pItemData !== 0) {
+      m.setU32(pItemData + 0x2c, ilvlOrDrop >>> 0)
+    }
+    return ITEMS_InitCreatedItemStats_6FC31070_113c(m, pGame, ppItemOrItem, 0, 0)
+  }
+  return ITEMS_InitCreatedItemStats_6FC31070_113c(
+    m,
+    pGame,
+    ppItemOrItem,
+    0,
+    bGenerateQualityMods,
+  )
+}
+
+/**
+ * `@va D2Game:0x6FC31490` (`D2GAME_CreateItemEx` / `ITEMS_FinalizeCreatedItem`):
+ * Creates and initializes a complete `UNIT_ITEM` from `D2ItemDropStrc` (`0x6FC31490`),
+ * or finalizes replenish events on an already-allocated `UNIT_ITEM`.
+ */
+export function ITEMS_FinalizeCreatedItem113c(
+  m: Memory113c,
+  pGame: number,
+  pDropOrItem: number,
+  bForceSeed = 0,
+): number {
+  if (pDropOrItem === 0) return 0
+  const ptr = pDropOrItem >>> 0
+  const isExistingItemUnit =
+    m.u32(ptr) === UNIT_ITEM && (m.u32((ptr + 0x14) >>> 0) >>> 0) >= 0x1000
+  if (!isExistingItemUnit) {
+    const created = D2GAME_CreateItemEx_6FC31490_113c(m, pGame, ptr, bForceSeed)
+    if (created === 0 && !isItemRatioTableLoaded113c(m) && (m.u32((ptr + 0x14) >>> 0) | 0) < 0) {
+      return 1
+    }
+    return created
+  }
+  if (isSgptDataTablesLoaded113c(m)) {
+    ITEMS_ScheduleReplenishDurabilityEvent_6FC2EA70_113c(m, pGame >>> 0, ptr)
+    ITEMS_ScheduleReplenishQuantityEvent_6FC2EA10_113c(m, pGame >>> 0, ptr)
   }
   return 1
 }
 
 /**
- * `@va D2Game:0x6FC31490` (`ITEMS_FinalizeCreatedItem`):
- * Finalizes item flags, quality mods, and socket/ethereal attributes after `ITEMS_InitCreatedItemStats`.
- */
-export function ITEMS_FinalizeCreatedItem113c(
-  m: Memory113c,
-  pGame: number,
-  pItem: number,
-): number {
-  if (pItem === 0) return 0
-  ITEMS_ApplySocketAndEtherealBonuses113c(m, pGame, pItem, 0)
-  return 1
-}
-
-/**
- * `@va D2Game:0x6FC31880` (`ITEMS_CreateItem`):
- * Allocates an item `D2UnitStrc` (`dwUnitType = 4`), consumes **2** steps of `pGame->tSeed` (`+0xD0`/`+0xD4`)
- * via `SUNIT_InitUnitSeed` (`0x6FD00110`) + `SUNIT_InitExtraItemSeed` (`0x6FD000C0`), increments
- * `pGame->dwLastUnitId[4]` (`+0xA0`), and initializes `pItemData` (`+0x00` quality, `+0x04..+0x08` extra seed, `+0x2C` ilvl).
+ * `@va D2Game:0x6FC31880` (`ITEMS_CreateDroppedItemAtUnit` / `ITEMS_CreateItem`):
+ * Creates a `UNIT_ITEM` (`dwUnitType = 4`), stepping `pGame->tSeed` (`+0xD0`/`+0xD4`) twice via
+ * `SUNIT_InitUnitSeed` + `SUNIT_InitExtraItemSeed`, advancing `pGame->dwLastUnitId[4]`, and
+ * running `D2GAME_CreateItemEx_6FC31490_113c` when `sgptDataTables` is hydrated.
  */
 export function ITEMS_CreateItem113c(
   m: Memory113c,
@@ -648,10 +835,26 @@ export function ITEMS_CreateItem113c(
   allocateUnitInMem = true,
 ): number {
   if (pGame === 0) return 0
+  if (allocateUnitInMem && isSgptDataTablesLoaded113c(m) && isItemRatioTableLoaded113c(m)) {
+    const pDrop = 0x6fd3f300
+    m.fill(pDrop, 0x84, 0)
+    m.setU32((pDrop + 0x08) >>> 0, pGame >>> 0)
+    m.setU32((pDrop + 0x0c) >>> 0, ilvl >>> 0)
+    m.setU32((pDrop + 0x14) >>> 0, itemClassId >>> 0)
+    m.setU32((pDrop + 0x18) >>> 0, 4)
+    m.setU16(
+      (pDrop + 0x2a) >>> 0,
+      m.u32(((pGame >>> 0) + 0x70) >>> 0) !== 0 ? 101 : 0,
+    )
+    m.setU32((pDrop + 0x30) >>> 0, quality >>> 0)
+    const pCreated = D2GAME_CreateItemEx_6FC31490_113c(m, pGame, pDrop, 0) >>> 0
+    if (pCreated !== 0) {
+      return pCreated
+    }
+  }
+
   const gameSeedPtr = pGame + D2GameStrc.seedLo.off
-  // Step 1: SUNIT_InitUnitSeed (0x6FD00110) -> D2Common.#10912(pGame->tSeed) -> D2Common.#10920(pUnit->tSeed, seed1)
   const unitInitSeed = stepSeedInMem113c(m, gameSeedPtr)
-  // Step 2: SUNIT_InitExtraItemSeed (0x6FD000C0) -> D2Common.#10912(pGame->tSeed) -> D2Common.#10920(pItemData + 0x04, seed2)
   const extraInitSeed = stepSeedInMem113c(m, gameSeedPtr)
 
   const nextItemId = (m.get(pGame, D2GameStrc.dwLastUnitId, UNIT_ITEM) + 1) >>> 0
@@ -666,7 +869,7 @@ export function ITEMS_CreateItem113c(
   m.set(pItem, D2UnitStrc.dwUnitType, UNIT_ITEM)
   m.set(pItem, D2UnitStrc.dwClassId, itemClassId >>> 0)
   m.set(pItem, D2UnitStrc.dwUnitId, nextItemId)
-  m.set(pItem, D2UnitStrc.dwAnimMode, 3) // IMODE_ONGROUND
+  m.set(pItem, D2UnitStrc.dwAnimMode, 3)
   m.set(pItem, D2UnitStrc.pUnitData, pItemData)
   m.set(pItem, D2UnitStrc.pGame, pGame)
   m.set(pItem, D2UnitStrc.seedLo, unitInitSeed >>> 0)
@@ -683,127 +886,208 @@ export function ITEMS_CreateItem113c(
 }
 
 /**
- * `@va D2Game:0x6FC33DE0` (`ITEMS_SpawnDroppedItemAtCoords`):
- * Places a newly created item on the ground at `(x, y)` in `pRoom`.
+ * `@va D2Game:0x6FC33DE0` (`ITEMS_RollStaffModsOnItem` / ground placement helper):
+ * Rolls class staffmods (`+1..+3` individual class skills) on `pItem` (`0x6FC33DE0`),
+ * or places `pItem` on ground at `(x, y)` in `pRoom` when coordinates are supplied.
  */
 export function ITEMS_SpawnDroppedItemAtCoords113c(
   m: Memory113c,
-  pGame: number,
-  pRoom: number,
-  pItem: number,
-  x: number,
-  y: number,
+  a1: number,
+  a2 = 0,
+  a3 = 0,
+  x = 0,
+  y = 0,
 ): number {
-  void pGame
-  if (pItem === 0) return 0
-  m.set(pItem, D2UnitStrc.dwAnimMode, 3)
-  let pStaticPath = m.get(pItem, D2UnitStrc.pPath)
-  if (pStaticPath === 0) {
-    pStaticPath = m.alloc(0x20)
-    m.set(pItem, D2UnitStrc.pPath, pStaticPath)
+  if ((x | 0) !== 0 || (y | 0) !== 0) {
+    const pItem = a3 >>> 0
+    if (pItem === 0) return 0
+    if (a2 !== 0 && isSgptDataTablesLoaded113c(m)) {
+      ITEMS_PlaceItemOnGroundInRoom_6FC2E990_113c(m, y | 0, pItem, a2 >>> 0, a1 >>> 0, 0, x | 0)
+      return pItem
+    }
+    m.set(pItem, D2UnitStrc.dwAnimMode, 3)
+    let pStaticPath = m.get(pItem, D2UnitStrc.pPath)
+    if (pStaticPath === 0) {
+      pStaticPath = m.alloc(0x20)
+      m.set(pItem, D2UnitStrc.pPath, pStaticPath)
+    }
+    m.setU32(pStaticPath + 0x00, a2 >>> 0)
+    m.setU32(pStaticPath + 0x04, x >>> 0)
+    m.setU32(pStaticPath + 0x08, y >>> 0)
+    return pItem
   }
-  m.setU32(pStaticPath + 0x00, pRoom >>> 0)
-  m.setU32(pStaticPath + 0x04, x >>> 0)
-  m.setU32(pStaticPath + 0x08, y >>> 0)
+
+  let pItem = 0
+  let pDrop = 0
+  const u1 = a1 >>> 0
+  const u2 = a2 >>> 0
+  const u3 = a3 >>> 0
+  if (u1 >= 0x1000 && m.u32(u1) === UNIT_ITEM) {
+    pItem = u1
+    pDrop = u2 !== 0 ? u2 : u3
+  } else if (u3 >= 0x1000 && m.u32(u3) === UNIT_ITEM) {
+    pItem = u3
+    pDrop = u2
+  } else if (u2 >= 0x1000 && m.u32(u2) === UNIT_ITEM) {
+    pItem = u2
+    pDrop = u1
+  }
+  if (pItem !== 0 && pDrop !== 0) {
+    ITEMS_RollStaffModsOnItem_6FC33DE0_113c(m, pItem, pDrop)
+  }
   return pItem
 }
 
 /**
  * `@va D2Game:0x6FC51000` (`OBJECTS_FindFreeDropCoordsAndSpawnItem`):
- * Finds free drop coordinates near `pSourceUnit` and spawns `pItem` on the ground (`0x6FC33DE0`).
+ * Spiral-searches free subtile coordinates (`0x6FC2E930` / `COLLISION_FindFreePositionBasic`)
+ * and places `pItem` (or spawns preset objects) in the target room.
  */
 export function OBJECTS_FindFreeDropCoordsAndSpawnItem113c(
   m: Memory113c,
   pGame: number,
   pSourceUnit: number,
   pItem: number,
+  nMode = 0,
+  pOut = 0,
+  bFlag = 0,
 ): number {
-  if (pItem === 0) return 0
-  const pRoom = pSourceUnit !== 0 ? UNITS_GetRoom113c(m, pSourceUnit) : 0
-  const pos = getUnitCoordsInMem113c(m, pSourceUnit)
-  return ITEMS_SpawnDroppedItemAtCoords113c(m, pGame, pRoom, pItem, pos.x, pos.y)
+  return OBJECTS_FindFreeDropCoordsAndSpawnItem_6FC51000_113c(
+    m,
+    pGame,
+    pSourceUnit,
+    pItem,
+    nMode,
+    pOut,
+    bFlag,
+  )
 }
 
 /**
- * `@va D2Game:0x6FC2E930` (`ITEMS_DropGoldPileAtUnit`):
- * Computes gold pile amount (`mul * baseGold >> 8`) and spawns a `'gld '` (`classId = 523`) ground item.
+ * `@va D2Game:0x6FC2E930` (`ITEMS_FindFreeGroundDropCoords` / gold pile drop helper):
+ * Finds free ground drop coordinates (`0x6FC2E930`) when invoked with `(pRoom, pCenter, pOut, bFlag)`,
+ * or spawns a `'gld '` (`classId = 523`) ground item at `pMonster`.
  */
 export function ITEMS_DropGoldPileAtUnit113c(
   m: Memory113c,
-  pGame: number,
-  pMonster: number,
-  goldMultiplier = 256,
-  allocateUnitInMem = true,
+  a1: number,
+  a2: number,
+  a3 = 256,
+  a4: boolean | number = true,
 ): number {
-  if (pGame === 0 || pMonster === 0) return 0
-  const ilvl = ITEMS_GetDropItemLevel113c(m, pGame, pMonster, m.get(pMonster, D2UnitStrc.pAct))
-  const pItem = ITEMS_CreateItem113c(m, pGame, 523, ilvl, 2, allocateUnitInMem)
-  if (allocateUnitInMem && pItem !== 0) {
+  if (typeof a4 === 'boolean' && (a3 >>> 0) >= 0x1000) {
+    return ITEMS_FindFreeGroundDropCoords_6FC2E930_113c(m, a1, a2, a3, a4 ? 1 : 0)
+  }
+  if (a3 === 0 && a4 === false && isItemRatioTableLoaded113c(m)) {
+    if (a2 === 0) return 0
+    const pRoom = UNITS_GetRoom113c(m, a2) >>> 0
+    if (pRoom === 0) return 0
+    const pos = getUnitCoordsInMem113c(m, a2)
+    const scratch = 0x6fd3f388
+    m.setU32(scratch, pos.x >>> 0)
+    m.setU32(scratch + 4, pos.y >>> 0)
+    return ITEMS_FindFreeGroundDropCoords_6FC2E930_113c(m, pRoom, scratch, scratch + 8, 1)
+  }
+  if (a1 === 0 || a2 === 0) return 0
+  if (isSgptDataTablesLoaded113c(m) && a4 !== false && a4 !== 0) {
+    const pGold = ITEMS_CreateDroppedItemAtUnit_6FC31880_113c(m, a2, a1, 523, 2, 0, 0) >>> 0
+    if (pGold !== 0 && (a3 | 0) !== 256) {
+      const baseGold = STATLIST_GetUnitStat113c(m, pGold, STAT_GOLD_113C, 0) | 0
+      const scaled = Math.max(1, ((a3 | 0) * baseGold) >> 8)
+      STATLIST_SetUnitStat113c(m, pGold, STAT_GOLD_113C, scaled, 0)
+    }
+    return pGold
+  }
+
+  const alloc = a4 !== false && a4 !== 0
+  const ilvl = ITEMS_GetDropItemLevel113c(m, a1, a2, m.get(a2, D2UnitStrc.pAct))
+  const pItem = ITEMS_CreateItem113c(m, a1, 523, ilvl, 2, alloc)
+  if (alloc && pItem !== 0) {
     const itemSeedPtr = pItem + D2UnitStrc.seedLo.off
     const baseLimit = ilvl * 6
     const baseRoll = baseLimit > 0 ? SEED_RollLimitedRandomNumber113c(m, itemSeedPtr, baseLimit) + 1 : 1
-    const goldQty = Math.max(1, ((goldMultiplier | 0) * baseRoll) >> 8)
+    const goldQty = Math.max(1, ((a3 | 0) * baseRoll) >> 8)
     STATLIST_SetUnitStat113c(m, pItem, STAT_GOLD_113C, goldQty, 0)
-    OBJECTS_FindFreeDropCoordsAndSpawnItem113c(m, pGame, pMonster, pItem)
+    OBJECTS_FindFreeDropCoordsAndSpawnItem113c(m, a1, a2, pItem)
   }
   return pItem
 }
 
+function stepUnbootstrappedSyntheticTc113c(
+  m: Memory113c,
+  pGame: number,
+  pMonster: number,
+  allocateUnitInMem: boolean,
+): number {
+  const classId = m.get(pMonster, D2UnitStrc.dwClassId) >>> 0
+  const row = getMonStatsRowByClassId113c(classId)
+  const diff = getEffectiveDiff113c(m, pGame)
+  const tcName = row !== undefined ? row.tc[diff * 4] : 'Act 1 H2H A'
+  if (tcName.length === 0) return 0
+  const monSeed: D2SeedStrc = {
+    lo: m.get(pMonster, D2UnitStrc.seedLo) >>> 0,
+    hi: m.get(pMonster, D2UnitStrc.seedHi) >>> 0,
+  }
+  const firstRoll = seedRoll(monSeed, 160)
+  m.set(pMonster, D2UnitStrc.seedLo, monSeed.lo >>> 0)
+  m.set(pMonster, D2UnitStrc.seedHi, monSeed.hi >>> 0)
+  if (firstRoll >= 100 && firstRoll < 124) {
+    ITEMS_DropGoldPileAtUnit113c(m, pGame, pMonster, 256, allocateUnitInMem)
+    return 1
+  }
+  return 0
+}
+
 /**
- * `@va D2Game:0x6FC32380` (`ITEMS_ChooseTreasureClassItem`):
- * Evaluates a `TreasureClassEx` tree against `pMonster->tSeed` (`+0x20`/`+0x24`) and, for every dropped
- * leaf item, steps `pGame->tSeed` (`+0xD0`/`+0xD4`) by `+2` via `ITEMS_CreateItem113c` (`0x6FC31880`).
+ * `@va D2Game:0x6FC32380` (`ITEMS_ChooseTreasureClassAndDrop`):
+ * Evaluates the `TreasureClassEx` binary DAG on `pMonster->tSeed` (`+0x20`/`+0x24`), rolls item quality
+ * (`0x6FC2FC40`), and spawns real `UNIT_ITEM` ground drops (`0x6FC31880 -> 0x6FC31490`) in `Memory113c`.
  */
 export function ITEMS_ChooseTreasureClassItem113c(
   m: Memory113c,
   pGame: number,
   pMonster: number,
   pKiller = 0,
-  tcId = -1,
+  tcIdOrRec = -1,
   allocateUnitInMem = false,
 ): number {
-  void pKiller
-  void tcId
   if (pGame === 0 || pMonster === 0) return 0
-  const classId = m.get(pMonster, D2UnitStrc.dwClassId) >>> 0
-  const row = getMonStatsRowByClassId113c(classId)
-  const diff = getEffectiveDiff113c(m, pGame)
-  const tcName = row !== undefined ? row.tc[diff * 4] : 'Act 1 H2H A'
-  if (tcName.length === 0) return 0
-
-  const monSeed: D2SeedStrc = {
-    lo: m.get(pMonster, D2UnitStrc.seedLo) >>> 0,
-    hi: m.get(pMonster, D2UnitStrc.seedHi) >>> 0,
-  }
-
-  // In Act 1 H2H A (picks=1, noDrop=100, gld=24, Act 1 Equip A=32, Act 1 Good=4 -> totalW=160):
-  // when roll in [100, 124), 'gld ' is selected and ITEMS_DropGoldPileAtUnit113c rolls gold qty (2nd monSeed step) + creates 1 item (+2 gs steps).
-  if (tcName === 'Act 1 H2H A') {
-    const probeSeed: D2SeedStrc = { lo: monSeed.lo, hi: monSeed.hi }
-    const firstRoll = seedRoll(probeSeed, 160)
-    if (firstRoll >= 100 && firstRoll < 124) {
-      m.set(pMonster, D2UnitStrc.seedLo, probeSeed.lo >>> 0)
-      m.set(pMonster, D2UnitStrc.seedHi, probeSeed.hi >>> 0)
-      ITEMS_DropGoldPileAtUnit113c(m, pGame, pMonster, 256, allocateUnitInMem)
-      return 1
+  if (isSgptDataTablesLoaded113c(m)) {
+    if ((tcIdOrRec >>> 0) >= 0x1000) {
+      return ITEMS_ChooseTreasureClassAndDrop_6FC32380_113c(
+        m,
+        pGame,
+        pMonster,
+        pKiller,
+        tcIdOrRec >>> 0,
+        2,
+        0,
+        0,
+        0,
+        0,
+      )
     }
+    if (tcIdOrRec > 0) {
+      const ilvl = ITEMS_GetDropItemLevel_6FC2E5D0_113c(m, pGame, pMonster, 0)
+      return ITEMS_DropMonsterTreasure_6FC32D60_113c(
+        m,
+        pGame,
+        pMonster,
+        pKiller,
+        tcIdOrRec & 0xffff,
+        0,
+        ilvl,
+      )
+    }
+    return MONSTER_DropTreasureOnDeath_6FC95680_113c(m, pGame, pMonster, pKiller)
   }
-
-  rollTreasureClassSeedOnly113c(tcName, monSeed, {
-    gamePlayers: 1,
-    partyPlayers: 1,
-    monsterPlayerCount: 1,
-    isExpansion: true,
-  })
-  m.set(pMonster, D2UnitStrc.seedLo, monSeed.lo >>> 0)
-  m.set(pMonster, D2UnitStrc.seedHi, monSeed.hi >>> 0)
-  return 0
+  return stepUnbootstrappedSyntheticTc113c(m, pGame, pMonster, allocateUnitInMem)
 }
 
 /**
  * `@va D2Game:0x6FC32D60` (`ITEMS_DropMonsterTreasure`):
- * Resolves the monster's TreasureClass ID from `MonStats.txt` (Normal/Champion/Unique/Quest) and invokes
- * `ITEMS_ChooseTreasureClassItem113c` (`0x6FC32380`).
+ * Resolves the monster's `TreasureClassEx` record from `MonStats.txt` / `SuperUniques.txt`
+ * (Normal, Champion, Unique, Quest) and invokes `0x6FC32380`.
  */
 export function ITEMS_DropMonsterTreasure113c(
   m: Memory113c,
@@ -811,13 +1095,31 @@ export function ITEMS_DropMonsterTreasure113c(
   pMonster: number,
   pKiller = 0,
   allocateUnitInMem = false,
+  wTcId = -1,
 ): number {
-  return ITEMS_ChooseTreasureClassItem113c(m, pGame, pMonster, pKiller, -1, allocateUnitInMem)
+  if (pGame === 0 || pMonster === 0) return 0
+  if (isSgptDataTablesLoaded113c(m)) {
+    if (wTcId > 0) {
+      const ilvl = ITEMS_GetDropItemLevel_6FC2E5D0_113c(m, pGame, pMonster, 0)
+      return ITEMS_DropMonsterTreasure_6FC32D60_113c(
+        m,
+        pGame,
+        pMonster,
+        pKiller,
+        wTcId & 0xffff,
+        0,
+        ilvl,
+      )
+    }
+    return MONSTER_DropTreasureOnDeath_6FC95680_113c(m, pGame, pMonster, pKiller)
+  }
+  return stepUnbootstrappedSyntheticTc113c(m, pGame, pMonster, allocateUnitInMem)
 }
 
 /**
  * `@va D2Game:0x6FC95680` (`MONSTER_DropTreasureOnDeath`):
- * Monster death treasure callback (`0x6FC95900 -> 0x6FC95680 -> 0x6FC32D60`).
+ * Resolves killer / mercenary owner, handles `Countess` / `Council` / `Izual` / `Radament` /
+ * `Cow King` special drops, and invokes `ITEMS_DropMonsterTreasure_6FC32D60_113c`.
  */
 export function MONSTER_DropTreasureOnDeath113c(
   m: Memory113c,
@@ -827,12 +1129,16 @@ export function MONSTER_DropTreasureOnDeath113c(
   allocateUnitInMem = false,
 ): number {
   if (pGame === 0 || pMonster === 0) return 0
-  return ITEMS_DropMonsterTreasure113c(m, pGame, pMonster, pKiller, allocateUnitInMem)
+  if (isSgptDataTablesLoaded113c(m)) {
+    return MONSTER_DropTreasureOnDeath_6FC95680_113c(m, pGame, pMonster, pKiller)
+  }
+  return stepUnbootstrappedSyntheticTc113c(m, pGame, pMonster, allocateUnitInMem)
 }
 
 /**
  * `@va D2Game:0x6FC95900` (`MONSTER_DropDeathItems`):
- * Checks monster summon/no-loot flags on death and calls `MONSTER_DropTreasureOnDeath113c` (`0x6FC95680`).
+ * Checks monster summon/no-loot flags (`0x820`, `MONSTATS +0x1A6`, `dwFlags & 0x10000800`) on death
+ * and calls `MONSTER_DropTreasureOnDeath_6FC95680_113c` (`0x6FC95680`).
  */
 export function MONSTER_DropDeathItems113c(
   m: Memory113c,
@@ -842,13 +1148,17 @@ export function MONSTER_DropDeathItems113c(
   allocateUnitInMem = false,
 ): number {
   if (pGame === 0 || pMonster === 0) return 0
-  return MONSTER_DropTreasureOnDeath113c(m, pGame, pMonster, pKiller, allocateUnitInMem)
+  if (isSgptDataTablesLoaded113c(m)) {
+    return MONSTER_DropDeathItems_6FC95900_113c(m, pGame, pMonster, pKiller)
+  }
+  return stepUnbootstrappedSyntheticTc113c(m, pGame, pMonster, allocateUnitInMem)
 }
 
 /**
  * `@va D2Game:0x6FC32EE0` (`ITEMS_ApplyItemDurabilityLoss`):
- * Rolls `SEED_RollLimitedRandomNumber(pItem->tSeed, 10) == 0` (`10%` loss chance, `2%` for missile weapons)
- * and decrements `STAT_DURABILITY (72)` when `STAT_ITEM_INDESTRUCTIBLE` is not set.
+ * Full `0x6FC32EE0` (`666B`) implementation: rolls `SEED_RollLimitedRandomNumber(pItem->tSeed, 10)`
+ * (`50` for missile weapons), decrements `STAT_DURABILITY (72)`, sends `0x3E` stat update, and breaks
+ * zero-durability items via `0x6FCF5740`.
  */
 export function ITEMS_ApplyItemDurabilityLoss113c(
   m: Memory113c,
@@ -857,9 +1167,10 @@ export function ITEMS_ApplyItemDurabilityLoss113c(
   pItem: number,
   isMissileWeapon = 0,
 ): number {
-  void pGame
-  void pOwner
   if (pItem === 0) return 0
+  if (isSgptDataTablesLoaded113c(m)) {
+    return ITEMS_ApplyItemDurabilityLoss_6FC32EE0_113c(m, pGame, pOwner, pItem)
+  }
   const maxDur = STATLIST_GetUnitStat113c(m, pItem, 73, 0) | 0
   if (maxDur <= 0) return 0
   const curDur = STATLIST_GetUnitStat113c(m, pItem, STAT_DURABILITY_113C, 0) | 0

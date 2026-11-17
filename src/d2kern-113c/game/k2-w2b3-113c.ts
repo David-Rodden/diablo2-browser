@@ -51,6 +51,7 @@ import {
 } from './regpop-spawn-113c.js'
 import { EVENT_SetEventFull113c } from './timer-wheel.js'
 import { SUNIT_UpdateUnitPositionAndRoom113c } from './town-runtime-gap-113c.js'
+import { hitD2GameVa113c } from '../va-trace-113c.js'
 
 /**
  * Pure-memory helper for `D2Game:0x6FD01930` (`MONSTER_StepPath`):
@@ -155,6 +156,7 @@ export function OBJ_ToggleNeutralAndOperatingMode_6FC89AD0_113c(
   m: Memory113c,
   pOperateArgs: number,
 ): number {
+  hitD2GameVa113c(0x6FC89AD0)
   const pObject = m.u32((pOperateArgs + 0x04) >>> 0) >>> 0
   const nMode = pObject === 0 ? 0 : m.u32((pObject + 0x10) >>> 0) | 0
   if (nMode === 0) {
@@ -181,6 +183,7 @@ export function OBJ_RestoreUnitLifeAndManaToMax_6FC89C00_113c(
   m: Memory113c,
   pOperateArgs: number,
 ): void {
+  hitD2GameVa113c(0x6FC89C00)
   const pUnit1 = m.u32((pOperateArgs + 0x08) >>> 0) >>> 0
   const nCurLife = STATLIST_GetUnitStat113c(m, pUnit1, 6, 0) | 0
   const pUnit2 = m.u32((pOperateArgs + 0x08) >>> 0) >>> 0
@@ -215,6 +218,7 @@ export function OBJ_IsPlayerOrMonsterAlive_6FC89C60_113c(
   m: Memory113c,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC89C60)
   if (pUnit === 0) return 0
   const nUnitType = m.u32(pUnit >>> 0) | 0
   if (nUnitType === 1) {
@@ -241,6 +245,7 @@ export function OBJ_ResetSubClassBit0ObjectToNeutral_6FC89D60_113c(
   _pGame: number,
   pObject: number,
 ): void {
+  hitD2GameVa113c(0x6FC89D60)
   if ((UNITS_HasObjectSubClassBit0113c(m, pObject >>> 0) | 0) !== 0) {
     UNITROOM_RefreshUnit113c(m, pObject >>> 0)
     if (pObject !== 0) {
@@ -267,6 +272,7 @@ export function OBJ_FinishOperatingToOpenedMode_6FC89DA0_113c(
   _pGame: number,
   pObject: number,
 ): void {
+  hitD2GameVa113c(0x6FC89DA0)
   if (pObject === 0) return
   if (m.u16((pObject + 0x10) >>> 0) !== 1) return
   const nClassId = m.u32((pObject + 0x04) >>> 0) | 0
@@ -292,6 +298,7 @@ export function PLRTRADE_WalkTradeItemList_6FC8FFA0_113c(
   m: Memory113c,
   pPlayer: number,
 ): number {
+  hitD2GameVa113c(0x6FC8FFA0)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer >>> 0) >>> 0
   if (pPlayerData === 0) return 0
   const pTrade = m.u32((pPlayerData + 0x5c) >>> 0) >>> 0
@@ -319,6 +326,7 @@ export function PLRTRADE_PrependTradeItemNode_6FC8FFC0_113c(
   dwItemGuid: number,
   dwField4: number,
 ): number {
+  hitD2GameVa113c(0x6FC8FFC0)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer >>> 0) >>> 0
   if (pPlayerData === 0) return 0
   const pTrade = m.u32((pPlayerData + 0x5c) >>> 0) >>> 0
@@ -350,6 +358,7 @@ export function MONMODE_EnterAnimMode6_6FC94C10_113c(
   pGame: number,
   pModeChange: number,
 ): number {
+  hitD2GameVa113c(0x6FC94C10)
   const pUnit = m.u32((pModeChange + 0x04) >>> 0) >>> 0
   SUNITDMG_FreeAttackerCombatList113c(m, pUnit, pGame >>> 0)
   UNITS_ChangeAnimMode113c(m, pUnit, 6)
@@ -370,6 +379,7 @@ export function MONMODE_EnterAnimMode10_6FC94C90_113c(
   pGame: number,
   pModeChange: number,
 ): number {
+  hitD2GameVa113c(0x6FC94C90)
   const pUnit = m.u32((pModeChange + 0x04) >>> 0) >>> 0
   SUNITDMG_FreeAttackerCombatList113c(m, pUnit, pGame >>> 0)
   UNITS_ChangeAnimMode113c(m, pUnit, 0x0a)
@@ -391,6 +401,7 @@ export function MONMODE_EnterSequenceMode14_6FC954E0_113c(
   pGame: number,
   pModeChange: number,
 ): number {
+  hitD2GameVa113c(0x6FC954E0)
   const pUnit = m.u32((pModeChange + 0x04) >>> 0) >>> 0
   SUNITDMG_FreeAttackerCombatList113c(m, pUnit, pGame >>> 0)
   UNITS_ChangeAnimMode113c(m, pUnit, 0x0e)
@@ -416,6 +427,7 @@ export function MONMODE_DropTreasureOnDeathWrapper_6FC958D0_113c(
   pKiller: number,
   allocateUnitInMem = false,
 ): number {
+  hitD2GameVa113c(0x6FC958D0)
   return (
     MONSTER_DropTreasureOnDeath113c(
       m,
@@ -442,6 +454,7 @@ export function MONMODE_StepPathAndAdvanceToMode11_6FC959B0_113c(
   pGame: number,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC959B0)
   stepMonsterPathMem113c(m, pGame >>> 0, pUnit >>> 0)
   UNITS_AdvanceAnimFrame113c(m, pUnit >>> 0)
   if ((UNITS_HasAnimFinished113c(m, pUnit >>> 0) | 0) !== 0) {
@@ -467,6 +480,7 @@ export function MONMODE_StepPathOrFinishToDeadMode12_6FC959F0_113c(
   pGame: number,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC959F0)
   let bEnterDeadMode = true
   if ((MONSTER_IsSarcophagusBaseAndZeroArg113c(m, pUnit >>> 0, 0) | 0) !== 0) {
     stepMonsterPathMem113c(m, pGame >>> 0, pUnit >>> 0)
@@ -497,6 +511,7 @@ export function MONMODE_EnterMode11AndScheduleEndAnim15_6FC96700_113c(
   pGame: number,
   pModeChange: number,
 ): number {
+  hitD2GameVa113c(0x6FC96700)
   const pUnit = m.u32((pModeChange + 0x04) >>> 0) >>> 0
   SUNITDMG_FreeAttackerCombatList113c(m, pUnit, pGame >>> 0)
   UNITS_ChangeAnimMode113c(m, pUnit, 0x0b)
@@ -524,6 +539,7 @@ export function MONMODE_SetUnitAnimModeAndRescheduleEvents_6FC98150_113c(
   _arg8 = 0,
   _argC = 0,
 ): void {
+  hitD2GameVa113c(0x6FC98150)
   if (pUnit === 0) {
     throw new D2CommonAssertError('SUnitMode.cpp', 0x46f)
   }
@@ -550,6 +566,7 @@ export function SUNITMSG_QueuePacketA4ToUnit_6FC9A090_113c(
   pUnit: number,
   wMsgId: number,
 ): void {
+  hitD2GameVa113c(0x6FC9A090)
   if (pUnit !== 0) {
     m.u32((pUnit + 0x08) >>> 0)
   }
@@ -587,6 +604,7 @@ export function AI_FindClosestEvilMonsterCallback_6FC9B9F0_113c(
   pCandidateUnit: number,
   pBestOut: number,
 ): number {
+  hitD2GameVa113c(0x6FC9B9F0)
   if ((pSelfUnit >>> 0) === (pCandidateUnit >>> 0)) return 0
   if (pCandidateUnit === 0) return 0
   if ((m.u32(pCandidateUnit >>> 0) | 0) !== 1) return 0
@@ -616,6 +634,7 @@ export function AI_ClearState12InitThinkFnAndStall1_6FC9C8C0_113c(
   pUnit: number,
   pAiInitArgs: number,
 ): void {
+  hitD2GameVa113c(0x6FC9C8C0)
   const pAiEntry = pAiInitArgs !== 0 ? m.u32(pAiInitArgs >>> 0) >>> 0 : 0
   if ((STATES_CheckState113c(m, pUnit >>> 0, 0x0c) | 0) !== 0) {
     STATES_ToggleGfxStateFlag113c(m, pUnit >>> 0, 0x0c, 0)
@@ -642,6 +661,7 @@ export function NET_ShouldSyncTrackedStatDelta_6FCAA330_113c(
   pSyncTrack: number,
   nNewVal: number,
 ): number {
+  hitD2GameVa113c(0x6FCAA330)
   const nOldVal = m.u32((pSyncTrack + 0x04) >>> 0) | 0
   let nDiff = ((nNewVal | 0) - nOldVal) | 0
   if (nDiff === 0) return 0
@@ -675,6 +695,7 @@ export function NET_SendPacket9B_MercReviveInfo_6FCAA690_113c(
   dwReviveCost: number,
   pClient: number,
 ): number {
+  hitD2GameVa113c(0x6FCAA690)
   const pPkt = m.alloc(8) >>> 0
   m.setU8(pPkt, 0x9b)
   m.setU16((pPkt + 0x01) >>> 0, wMercNameId & 0xffff)
@@ -697,6 +718,7 @@ export function NET_SendPacket98_UnitWordValue_6FCAA6C0_113c(
   wValue: number,
   pClient: number,
 ): number {
+  hitD2GameVa113c(0x6FCAA6C0)
   const pPkt = m.alloc(8) >>> 0
   m.setU8(pPkt, 0x98)
   m.setU32((pPkt + 0x01) >>> 0, dwUnitGuid >>> 0)
@@ -720,6 +742,7 @@ export function NET_SendPacket74_PlayerCorpseAssign_6FCAA9C0_113c(
   pClient: number,
   bAssign: number,
 ): number {
+  hitD2GameVa113c(0x6FCAA9C0)
   const pPkt = m.alloc(0x0c) >>> 0
   m.setU8(pPkt, 0x74)
   m.setU8((pPkt + 0x01) >>> 0, bAssign & 0xff)
@@ -744,6 +767,7 @@ export function NET_SendPacketBuffer32B_6FCAAA10_113c(
   pSrc: number,
   pClient: number,
 ): number {
+  hitD2GameVa113c(0x6FCAAA10)
   const pPkt = m.alloc(0x20) >>> 0
   for (let i = 0; i < 8; i = (i + 1) | 0) {
     const off = (i << 2) >>> 0
@@ -766,6 +790,7 @@ export function NET_SendPacketBuffer21B_6FCAAA70_113c(
   pSrc: number,
   pClient: number,
 ): number {
+  hitD2GameVa113c(0x6FCAAA70)
   const pPkt = m.alloc(0x18) >>> 0
   m.setU32(pPkt, m.u32(pSrc >>> 0) >>> 0)
   m.setU32((pPkt + 0x04) >>> 0, m.u32((pSrc + 0x04) >>> 0) >>> 0)
@@ -790,6 +815,7 @@ export function NET_SendPacket61_ByteParam_6FCAAAC0_113c(
   bParam: number,
   pClient: number,
 ): number {
+  hitD2GameVa113c(0x6FCAAAC0)
   const pPkt = m.alloc(4) >>> 0
   m.setU8(pPkt, 0x61)
   m.setU8((pPkt + 0x01) >>> 0, bParam & 0xff)
@@ -811,6 +837,7 @@ export function NET_SendPacket60_PortalInfo_6FCAAAE0_113c(
   pPortalObject: number,
   pClient: number,
 ): number {
+  hitD2GameVa113c(0x6FCAAAE0)
   const pPkt = m.alloc(8) >>> 0
   m.setU8(pPkt, 0x60)
   const bPortalFlags = UNITS_GetObjectPortalFlags113c(m, pPortalObject >>> 0) & 0xff
@@ -837,6 +864,7 @@ export function NET_SendPacketBuffer7B_6FCAAB20_113c(
   pSrc: number,
   pClient: number,
 ): number {
+  hitD2GameVa113c(0x6FCAAB20)
   const pPkt = m.alloc(8) >>> 0
   m.setU32(pPkt, m.u32(pSrc >>> 0) >>> 0)
   m.setU16((pPkt + 0x04) >>> 0, m.u16((pSrc + 0x04) >>> 0))
@@ -858,6 +886,7 @@ export function NET_SendPacketBuffer15B_6FCAABF0_113c(
   pSrc: number,
   pClient: number,
 ): number {
+  hitD2GameVa113c(0x6FCAABF0)
   const pPkt = m.alloc(0x10) >>> 0
   m.setU32(pPkt, m.u32(pSrc >>> 0) >>> 0)
   m.setU32((pPkt + 0x04) >>> 0, m.u32((pSrc + 0x04) >>> 0) >>> 0)
@@ -886,6 +915,7 @@ export function NET_SendPacket15B_TransactionResult_6FCAAC90_113c(
   dwParam7: number,
   bByte1: number,
 ): number {
+  hitD2GameVa113c(0x6FCAAC90)
   const pPkt = m.alloc(0x10) >>> 0
   m.setU8(pPkt, bPacketId & 0xff)
   m.setU8((pPkt + 0x01) >>> 0, bByte1 & 0xff)
@@ -909,6 +939,7 @@ export function NET_SendPacketBuffer6B_6FCAACD0_113c(
   pSrc: number,
   pClient: number,
 ): number {
+  hitD2GameVa113c(0x6FCAACD0)
   const pPkt = m.alloc(8) >>> 0
   m.setU32(pPkt, m.u32(pSrc >>> 0) >>> 0)
   m.setU16((pPkt + 0x04) >>> 0, m.u16((pSrc + 0x04) >>> 0))
@@ -931,6 +962,7 @@ export function NET_SendPacket7B_ByteAndDword_6FCAAD10_113c(
   dwParam2: number,
   pClient: number,
 ): number {
+  hitD2GameVa113c(0x6FCAAD10)
   const pPkt = m.alloc(8) >>> 0
   m.setU8(pPkt, bPacketId & 0xff)
   m.setU8((pPkt + 0x01) >>> 0, bByte1 & 0xff)
@@ -958,6 +990,7 @@ export function NET_SendPacket103B_QuestRecord_6FCAAD40_113c(
   pQuestData: number,
   bByte6: number,
 ): number {
+  hitD2GameVa113c(0x6FCAAD40)
   const pPkt = m.alloc(0x68) >>> 0
   m.setU8(pPkt, bPacketId & 0xff)
   m.setU8((pPkt + 0x01) >>> 0, bByte1 & 0xff)
@@ -983,6 +1016,7 @@ export function NET_SendPacket48_UnitRequestStatus_6FCAAE60_113c(
   pClient: number,
   bResult: number,
 ): number {
+  hitD2GameVa113c(0x6FCAAE60)
   const pPkt = m.alloc(0x0c) >>> 0
   m.setU8(pPkt, 0x48)
   const bUnitType = pUnit === 0 ? 6 : m.u32(pUnit >>> 0) & 0xff
@@ -1009,6 +1043,7 @@ export function NET_SendPacket47_UnitRelator1_6FCAAEC0_113c(
   pUnit: number,
   pClient: number,
 ): number {
+  hitD2GameVa113c(0x6FCAAEC0)
   const pPkt = m.alloc(0x0c) >>> 0
   m.setU8(pPkt, 0x47)
   const bUnitType = pUnit === 0 ? 6 : m.u32(pUnit >>> 0) & 0xff
@@ -1034,6 +1069,7 @@ export function NET_SendPacket42_ClearCursor_6FCAAF10_113c(
   pUnit: number,
   pClient: number,
 ): number {
+  hitD2GameVa113c(0x6FCAAF10)
   const pPkt = m.alloc(8) >>> 0
   m.setU8(pPkt, 0x42)
   const bUnitType = pUnit === 0 ? 6 : m.u32(pUnit >>> 0) & 0xff
@@ -1058,6 +1094,7 @@ export function NET_SendPacket79_GoldInTrade_6FCAB1F0_113c(
   bOwnerFlag: number,
   pClient: number,
 ): number {
+  hitD2GameVa113c(0x6FCAB1F0)
   const pPkt = m.alloc(8) >>> 0
   m.setU8(pPkt, 0x79)
   m.setU8((pPkt + 0x01) >>> 0, bOwnerFlag & 0xff)
@@ -1086,6 +1123,7 @@ export function NET_SendPacket81_AssignMerc_6FCAB220_113c(
   dwSeed: number,
   dwWParam: number,
 ): number {
+  hitD2GameVa113c(0x6FCAB220)
   const pPkt = m.alloc(0x14) >>> 0
   m.setU8(pPkt, 0x81)
   m.setU8((pPkt + 0x01) >>> 0, bByte1 & 0xff)
@@ -1117,6 +1155,7 @@ export function NET_SendPacket7A_SummonChange_6FCAB290_113c(
   dwOwnerGuid: number,
   wSummonArg: number,
 ): number {
+  hitD2GameVa113c(0x6FCAB290)
   const pPkt = m.alloc(0x10) >>> 0
   m.setU8(pPkt, 0x7a)
   m.setU8((pPkt + 0x01) >>> 0, bAction & 0xff)
@@ -1141,6 +1180,7 @@ export function NET_SendPacketBuffer21B_Alt_6FCAB2F0_113c(
   pSrc: number,
   pClient: number,
 ): number {
+  hitD2GameVa113c(0x6FCAB2F0)
   const pPkt = m.alloc(0x18) >>> 0
   m.setU32(pPkt, m.u32(pSrc >>> 0) >>> 0)
   m.setU32((pPkt + 0x04) >>> 0, m.u32((pSrc + 0x04) >>> 0) >>> 0)
@@ -1165,6 +1205,7 @@ export function NET_SendPacket77_ButtonAction_6FCAB340_113c(
   bAction: number,
   pClient: number,
 ): number {
+  hitD2GameVa113c(0x6FCAB340)
   const pPkt = m.alloc(4) >>> 0
   m.setU8(pPkt, 0x77)
   m.setU8((pPkt + 0x01) >>> 0, bAction & 0xff)
@@ -1185,6 +1226,7 @@ export function NET_SendPacketBuffer40B_6FCAB3D0_113c(
   pSrc: number,
   pClient: number,
 ): number {
+  hitD2GameVa113c(0x6FCAB3D0)
   const pPkt = m.alloc(0x28) >>> 0
   for (let i = 0; i < 10; i = (i + 1) | 0) {
     const off = (i << 2) >>> 0
@@ -1212,6 +1254,7 @@ export function NET_SendPacket10B_UnitByteStat_6FCAB9B0_113c(
   dwUnitGuid: number,
   dwStatVal: number,
 ): number {
+  hitD2GameVa113c(0x6FCAB9B0)
   if ((wStatId & 0xffff) >= 0xff) {
     throw new D2CommonAssertError('SUnitNet.cpp', 0x4b8)
   }
@@ -1239,6 +1282,7 @@ export function NET_SendPacketA5_StateSkill_6FCABA10_113c(
   pClient: number,
   wSkillId: number,
 ): number {
+  hitD2GameVa113c(0x6FCABA10)
   const pPkt = m.alloc(8) >>> 0
   m.setU8(pPkt, 0xa5)
   m.setU8((pPkt + 0x01) >>> 0, bUnitType & 0xff)
@@ -1264,6 +1308,7 @@ export function NET_SendPacket1A1B1C_StatUpdate_6FCABDA0_113c(
   nNewVal: number,
   nOldVal: number,
 ): number {
+  hitD2GameVa113c(0x6FCABDA0)
   const nDelta = ((nNewVal | 0) - (nOldVal | 0)) | 0
   const pPkt = m.alloc(8) >>> 0
   if (nDelta >= 0 && nDelta < 0xffff) {
@@ -1297,6 +1342,7 @@ export function NET_SendPacket07_RoomTileCoords_6FCABF50_113c(
   pClient: number,
   bAct: number,
 ): number {
+  hitD2GameVa113c(0x6FCABF50)
   const pPkt = m.alloc(8) >>> 0
   m.setU8(pPkt, 0x07)
   m.setU16((pPkt + 0x01) >>> 0, wTileX & 0xffff)

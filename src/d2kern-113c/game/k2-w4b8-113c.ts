@@ -139,6 +139,7 @@ import {
   type EventWheelHooks113c,
   MONSTER_RefreshAiEvent113c,
 } from './timer-wheel.ts'
+import { hitD2GameVa113c } from '../va-trace-113c.ts'
 
 export type { D2KernMemory113c }
 
@@ -181,6 +182,7 @@ export function SKILLS_SrvDo127_HealTargetByMasteryCalc_6FCD3770_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCD3770)
   const pSkillTxt = lookupSkillsTxtRecordFast113c(m, nSkillId)
   if (pSkillTxt === 0) {
     return 0
@@ -231,6 +233,7 @@ export function SKILLS_SrvSt58_ComputeApproachPathToTarget_6FCD3890_113c(
   _nSkillId = 0,
   _nSkillLevel = 0,
 ): number {
+  hitD2GameVa113c(0x6FCD3890)
   SUNIT_ValidatePathTargetUnit113c(m, pUnit, pGame)
   const pTarget = PATH_GetTargetUnit113c(m, m.u32((pUnit + 0x2c) >>> 0)) >>> 0
   if (pTarget === (pUnit >>> 0) || pTarget === 0) {
@@ -271,6 +274,7 @@ export function SKILLS_SrvSt59_SaveTargetPosToSkillParams_6FCD3930_113c(
   _nSkillId = 0,
   _nSkillLevel = 0,
 ): number {
+  hitD2GameVa113c(0x6FCD3930)
   SUNIT_ValidatePathTargetUnit113c(m, pUnit, pGame)
   const pTarget = PATH_GetTargetUnit113c(m, m.u32((pUnit + 0x2c) >>> 0)) >>> 0
   if (pTarget === (pUnit >>> 0) || pTarget === 0) {
@@ -319,6 +323,7 @@ export function SKILLS_SrvDo129_SpawnSummonTowardsTarget_6FCD42D0_113c(
   nSkillLevel: number,
   hooks?: RegpopSpawnHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FCD42D0)
   const pSkillTxt = lookupSkillsTxtRecordFast113c(m, nSkillId)
   if (pSkillTxt === 0) {
     return 0
@@ -385,6 +390,7 @@ export function SKILLS_FireDirectionalMissile143ForSkill173_6FCD4870_113c(
   pGame: number,
   hooks?: K2GapMeleeDotHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FCD4870)
   const pPath = m.u32((pUnit + 0x2c) >>> 0) >>> 0
   if (pPath === 0) {
     return 0
@@ -486,6 +492,7 @@ export function SKILLS_SrvDo132_SpawnNovaWithCalcSubLoopFrames_6FCD4D30_113c(
   nSkillLevel: number,
   hooks?: K2GapMeleeDotHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FCD4D30)
   const pSkillTxt = lookupSkillsTxtRecordFast113c(m, nSkillId)
   if (pSkillTxt === 0) {
     return 0
@@ -533,6 +540,7 @@ export function SKILLS_SrvDo134_FireProjectileTowardsTargetOrPath_6FCD5110_113c(
   nSkillLevel: number,
   hooks?: K2GapMeleeDotHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FCD5110)
   const pSkillTxt = lookupSkillsTxtRecordFast113c(m, nSkillId)
   if (pSkillTxt === 0) {
     return 0
@@ -612,6 +620,7 @@ export function SKILLS_SrvDo135_SpawnPerimeterRingProjectiles_6FCD52A0_113c(
   nSkillLevel: number,
   hooks?: K2GapMeleeDotHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FCD52A0)
   const pSkillTxt = lookupSkillsTxtRecordFast113c(m, nSkillId)
   if (pSkillTxt === 0) {
     return 0
@@ -701,6 +710,7 @@ export function SKILLS_SrvDo136_FireSteppedAxisProjectile_6FCD5450_113c(
   nSkillLevel: number,
   hooks?: K2GapMeleeDotHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FCD5450)
   const pSkillTxt = lookupSkillsTxtRecordFast113c(m, nSkillId)
   if (pSkillTxt === 0) {
     return 0
@@ -786,6 +796,7 @@ export function SKILLS_SrvDo138_ConsumeCorpseAndHealCaster_6FCD5D40_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCD5D40)
   const pSkillTxt = lookupSkillsTxtRecordFast113c(m, nSkillId)
   if (pSkillTxt === 0) {
     return 0
@@ -845,6 +856,7 @@ export function SKILLS_SrvDo139_EmergeSubmergedSummon_6FCD5E50_113c(
   _nSkillLevel = 0,
   hooks?: RegpopSpawnHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FCD5E50)
   const pSkillTxt = lookupSkillsTxtRecordFast113c(m, nSkillId)
   if (pSkillTxt === 0) {
     return 0
@@ -916,6 +928,7 @@ export function SKILLS_SrvSt61_PrepareSubmergedSummonParams_6FCD5FB0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCD5FB0)
   const pSkillTxt = lookupSkillsTxtRecordFast113c(m, nSkillId)
   if (pSkillTxt === 0) {
     return 0
@@ -985,6 +998,7 @@ export function SKILLS_SrvDo141_SpawnPartyMinionsAndDistributeExp_6FCD65E0_113c(
   nSkillLevel: number,
   hooks?: RegpopSpawnHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FCD65E0)
   const pSkillTxt = lookupSkillsTxtRecordFast113c(m, nSkillId)
   if (pSkillTxt === 0) {
     return 0
@@ -1066,6 +1080,7 @@ export function SKILLS_ScheduleUnitTimerEventType1_6FCD6720_113c(
   pUnit: number,
   eventHooks?: EventWheelHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FCD6720)
   let nFrames = 11
   if ((pUnit >>> 0) !== 0) {
     if ((m.u32(pUnit) | 0) === 1) {
@@ -1107,6 +1122,7 @@ export function AIBAAL_ChooseActionWeighted_6FCD7380_113c(
   bTargetCursed: number,
   nFrameDelta: number,
 ): number {
+  hitD2GameVa113c(0x6FCD7380)
   const weights = new Int32Array(16)
   weights[0] = 0
   weights[2] = 5
@@ -1258,6 +1274,7 @@ export function AIBAAL_ChooseMidRangeActionWeighted_6FCD75D0_113c(
   bHasCloneOrTentacle: number,
   bTargetChilled: number,
 ): number {
+  hitD2GameVa113c(0x6FCD75D0)
   const weights = new Int32Array(16)
   weights[0] = 0
   weights[2] = 20
@@ -1356,6 +1373,7 @@ export function AIBAAL_ChooseCloseRangeActionWeighted_6FCD7750_113c(
   pTarget: number,
   bAllowCloseAttacks: number,
 ): number {
+  hitD2GameVa113c(0x6FCD7750)
   const weights = new Int32Array(16)
   weights[0] = 0
   weights[2] = 0
@@ -1436,6 +1454,7 @@ export function AIBAAL_ReinitAiThinkAndRestoreCmd10_6FCD78A0_113c(
   pUnit: number,
   pAiParamPtr: number,
 ): void {
+  hitD2GameVa113c(0x6FCD78A0)
   const pAiParam = m.u32(pAiParamPtr >>> 0) >>> 0
   let savedArg1 = 0
   let savedArg2 = 0
@@ -1519,6 +1538,7 @@ export function ACT4Q1_HasNpcQuestIndicator_6FCD8970_113c(
   pQuestFlags: number,
   _pArg3 = 0,
 ): number {
+  hitD2GameVa113c(0x6FCD8970)
   if ((nNpcClassId | 0) === 0x16f) {
     if (
       DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x1a, 0) === 0 &&
@@ -1585,6 +1605,7 @@ export function ACT4Q1_EnsureStartedOrInvokeLinkedQuestCallback_6FCD8A70_113c(
     onQuestCallbackF0?: (m: D2KernMemory113c, pfn: number, pQuest: number) => number
   },
 ): number {
+  hitD2GameVa113c(0x6FCD8A70)
   if (m.u8((pQuestData + 0x0c) >>> 0) !== 5 && m.u8((pQuestData + 0x09) >>> 0) !== 0) {
     return 1
   }
@@ -1628,6 +1649,7 @@ export function ACT4Q1_HasActiveQuestNpcIndicator_6FCD8AE0_113c(
   pQuestFlags: number,
   _pArg3 = 0,
 ): number {
+  hitD2GameVa113c(0x6FCD8AE0)
   if (m.u8((pQuestData + 0x09) >>> 0) === 0) {
     return 0
   }
@@ -1665,6 +1687,7 @@ export function ACT4Q2_HasHadrielQuestIndicator_6FCD8B90_113c(
   _pQuestFlags = 0,
   _pArg3 = 0,
 ): number {
+  hitD2GameVa113c(0x6FCD8B90)
   if ((nNpcClassId | 0) !== 0x198) {
     return 0
   }
@@ -1700,6 +1723,7 @@ export function ACT4Q2_InitHadrielNpcDialog_6FCD8C00_113c(
   pQuestData: number,
   pNpcParams: number,
 ): void {
+  hitD2GameVa113c(0x6FCD8C00)
   const pNpcUnit = m.u32((pNpcParams + 0x08) >>> 0) >>> 0
   if (pNpcUnit === 0) {
     return
@@ -1763,6 +1787,7 @@ export function ACT4Q2_InitHellforgeNpcDialog_6FCD8CE0_113c(
   pQuestData: number,
   pNpcParams: number,
 ): void {
+  hitD2GameVa113c(0x6FCD8CE0)
   const pPlayerUnit = m.u32((pNpcParams + 0x0c) >>> 0) >>> 0
   const pGame = m.u32(pNpcParams >>> 0) >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit) >>> 0
@@ -1876,6 +1901,7 @@ export function ACT4Q2_SyncPlayerQuest1BState_6FCD8E80_113c(
   pPlayerUnit: number,
   _nArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FCD8E80)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit) >>> 0
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + nDiff * 4 + 0x10) >>> 0) >>> 0
@@ -1941,6 +1967,7 @@ export function ACT4Q3_SyncQuestDataFromPlayerFlags_6FCD8F20_113c(
   pQuestData: number,
   pNpcParams: number,
 ): void {
+  hitD2GameVa113c(0x6FCD8F20)
   const pPlayerUnit = m.u32((pNpcParams + 0x0c) >>> 0) >>> 0
   const pGame = m.u32(pNpcParams >>> 0) >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit) >>> 0
@@ -1992,6 +2019,7 @@ export function ACT4Q3_InitNpcDialog_6FCD9070_113c(
   pQuestData: number,
   pNpcParams: number,
 ): void {
+  hitD2GameVa113c(0x6FCD9070)
   ensureAct4Q3DialogSlotTableSeeded113c(m)
   const pPlayerUnit = m.u32((pNpcParams + 0x0c) >>> 0) >>> 0
   const pGame = m.u32(pNpcParams >>> 0) >>> 0
@@ -2142,6 +2170,7 @@ export function ACT4Q3_SyncPlayerQuest1AState_6FCD9290_113c(
   pPlayerUnit: number,
   _nArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FCD9290)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit) >>> 0
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + nDiff * 4 + 0x10) >>> 0) >>> 0
@@ -2187,6 +2216,7 @@ export function ACT4Q1_SyncQuestDataFromPlayerFlags_6FCD9320_113c(
   pQuestData: number,
   pNpcParams: number,
 ): void {
+  hitD2GameVa113c(0x6FCD9320)
   const pPlayerUnit = m.u32((pNpcParams + 0x0c) >>> 0) >>> 0
   const pGame = m.u32(pNpcParams >>> 0) >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit) >>> 0
@@ -2232,6 +2262,7 @@ export function ACT4Q1_CheckPlayerNearIzualAndMarkQuestBits_6FCD93B0_113c(
   pPlayerUnit: number,
   _nArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FCD93B0)
   const pPlayerRoom = UNITS_GetRoom113c(m, pPlayerUnit) >>> 0
   const pQuestChain = m.u32((pGame + 0x10f4) >>> 0) >>> 0
   let pQuestNode = 0
@@ -2325,6 +2356,7 @@ export function ACT4Q1_MarkQuestFailedIfPlayerInAct4_6FCD94F0_113c(
   pPlayerUnit: number,
   _nArg = 0,
 ): void {
+  hitD2GameVa113c(0x6FCD94F0)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit) >>> 0
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + nDiff * 4 + 0x10) >>> 0) >>> 0
@@ -2362,6 +2394,7 @@ export function ACT4Q1_InitNpcDialog_6FCD9560_113c(
   pQuestData: number,
   pNpcParams: number,
 ): void {
+  hitD2GameVa113c(0x6FCD9560)
   ensureAct4Q1DialogSlotTableSeeded113c(m)
   const pPlayerUnit = m.u32((pNpcParams + 0x0c) >>> 0) >>> 0
   const pGame = m.u32(pNpcParams >>> 0) >>> 0
@@ -2466,6 +2499,7 @@ export function ACT4Q1_SyncPlayerQuest19State_6FCD96A0_113c(
   pPlayerUnit: number,
   _nArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FCD96A0)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit) >>> 0
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + nDiff * 4 + 0x10) >>> 0) >>> 0
@@ -2512,6 +2546,7 @@ export function ACT4Q0_InitTyraelIntroDialog_6FCD9730_113c(
   pQuestData: number,
   pNpcParams: number,
 ): void {
+  hitD2GameVa113c(0x6FCD9730)
   const pNpcUnit = m.u32((pNpcParams + 0x08) >>> 0) >>> 0
   if (pNpcUnit === 0) {
     return
@@ -2551,6 +2586,7 @@ export function ACT4Q2_SyncQuestDataFromPlayerInventoryAndFlags_6FCD9830_113c(
   pQuestData: number,
   pNpcParams: number,
 ): void {
+  hitD2GameVa113c(0x6FCD9830)
   const pPlayerUnit = m.u32((pNpcParams + 0x0c) >>> 0) >>> 0
   const pGame = m.u32(pNpcParams >>> 0) >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit) >>> 0
@@ -2611,6 +2647,7 @@ export function ACT4Q2_SendQuestAlertIfEligible_6FCD9970_113c(
   pPlayerUnit: number,
   _nArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FCD9970)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit) >>> 0
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + nDiff * 4 + 0x10) >>> 0) >>> 0
@@ -2644,6 +2681,7 @@ export function ACT4Q3_SendQuestAlertIfEligible_6FCD99D0_113c(
   pPlayerUnit: number,
   _nArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FCD99D0)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit) >>> 0
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + nDiff * 4 + 0x10) >>> 0) >>> 0
@@ -2677,6 +2715,7 @@ export function ACT4Q3_CompleteQuestForPlayer_6FCD9A30_113c(
   pPlayerUnit: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FCD9A30)
   QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x1a, 0x0d)
   QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x1a, 0)
   QUESTRECORD_ClearQuestStateBits2To11_113c(m, pQuestFlags, 0x1a)
@@ -2730,6 +2769,7 @@ export function ACT4Q3_NotifyDiabloKilledAndPlaySpeech_6FCD9B00_113c(
   pPlayerUnit: number,
   _nArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FCD9B00)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit) >>> 0
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + nDiff * 4 + 0x10) >>> 0) >>> 0
@@ -2779,6 +2819,7 @@ export function ACT4Q1_IsRoomClearOfQuestPlayers_6FCD9C00_113c(
   pGame: number,
   pTargetRoom: number,
 ): number {
+  hitD2GameVa113c(0x6FCD9C00)
   const pQuestChain = m.u32((pGame + 0x10f4) >>> 0) >>> 0
   if (pQuestChain === 0) {
     return 0
@@ -2849,6 +2890,7 @@ export function ACT4Q1_SendQuestAlertIfEligible_6FCD9D20_113c(
   pPlayerUnit: number,
   _nArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FCD9D20)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit) >>> 0
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + nDiff * 4 + 0x10) >>> 0) >>> 0
@@ -2882,6 +2924,7 @@ export function ACT4Q2_DropHellforgeHammerAtUnit_6FCDA810_113c(
   pNpcParams: number,
   hooks?: K2W4B3Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCDA810)
   const pCustom = m.u32((pQuestData + 0x18) >>> 0) >>> 0
   if (m.u8((pQuestData + 0x09) >>> 0) === 0) {
     return
@@ -2930,6 +2973,7 @@ export function ACT4Q3_SpawnDiabloInSanctuary_6FCDA850_113c(
   pQuestCustomData: number,
   hooks?: RegpopSpawnHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FCDA850)
   const savedSp = k2W4B8StackPtr
   k2W4B8StackPtr = (savedSp + 0x28) >>> 0
   try {
@@ -2970,6 +3014,7 @@ export function ACT4Q3_SpawnLastPortalObject_6FCDAFF0_113c(
   pNpcParams: number,
   pQuestCustomData: number,
 ): number {
+  hitD2GameVa113c(0x6FCDAFF0)
   const savedSp = k2W4B8StackPtr
   k2W4B8StackPtr = (savedSp + 0x18) >>> 0
   try {
@@ -3093,6 +3138,7 @@ export function ACT4Q2_ProcessHellforgeSmashRewardWave_6FCDB6A0_113c(
   hooks?: K2W4B3Hooks113c,
   eventHooks?: EventWheelHooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCDB6A0)
   ensureHellforgeDropTablesSeeded113c(m)
   const pCustom = m.u32((pQuestData + 0x18) >>> 0) >>> 0
   if (m.u8((pCustom + 0x04) >>> 0) !== 0) {

@@ -253,6 +253,7 @@ import {
   ACT1Q5_CheckCharsiImbueNpcAlert113c,
   SUNIT_UpdateUnitPositionAndRoom113c,
 } from './town-runtime-gap-113c'
+import { hitD2GameVa113c } from '../va-trace-113c'
 
 function i32(m: SparseMemory113c, addr: number): number {
   return m.u32(addr >>> 0) | 0
@@ -287,6 +288,7 @@ export function MONSTER_AssignTeleportSkill_6FC441B0_113c(
   pMonsterUnit: number,
   pArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC441B0)
   const esi = pMonsterUnit >>> 0
   if (esi === 0 || m.u32(esi) !== 1 || pArg === 0) {
     return
@@ -327,6 +329,7 @@ export function MONSTER_AssignAuraEnchantedSkill_6FC44CD0_113c(
   pMonsterUnit: number,
   pArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC44CD0)
   const esi = pMonsterUnit >>> 0
   if (esi === 0 || m.u32(esi) !== 1 || pArg === 0) {
     return
@@ -415,6 +418,7 @@ export function STATES_OnSkillStateRemovedRefreshAnim_6FC47190_113c(
   nState: number,
   _pStatList = 0,
 ): void {
+  hitD2GameVa113c(0x6FC47190)
   const edi = pUnit >>> 0
   const esi = nState | 0
   if (edi === 0) {
@@ -466,6 +470,7 @@ export function SKILLS_ApplyTimedSkillAuraToTarget_6FC49240_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC49240)
   const eax = nSkillId | 0
   if (eax < 0) {
     return 0
@@ -557,6 +562,7 @@ export function PLAYERSAVE_SaveAllClientCharactersInGame_6FC4C830_113c(
     szAccountName: number,
   ) => void,
 ): void {
+  hitD2GameVa113c(0x6FC4C830)
   const game = pGame >>> 0
   let edi = m.u32((game + 0x88) >>> 0)
   while (edi !== 0) {
@@ -622,6 +628,7 @@ export function PLAYERSAVE_SaveClientAndAllOtherPlayers_6FC4C910_113c(
     szAccountName: number,
   ) => void,
 ): void {
+  hitD2GameVa113c(0x6FC4C910)
   const client = pClient >>> 0
   if (client === 0) {
     return
@@ -711,6 +718,7 @@ export function QUESTS_OnBossMonsterSpawnedCheckAct3GoldenBird_6FC56140_113c(
   pMonsterUnit: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC56140)
   const esi = pMonsterUnit >>> 0
   const pRoom = UNITS_GetRoom113c(m, esi)
   const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom)
@@ -770,6 +778,7 @@ export function STATES_OnBuffStateRemovedRefreshAnim_6FC622B0_113c(
   nState: number,
   _pStatList = 0,
 ): void {
+  hitD2GameVa113c(0x6FC622B0)
   const edi = pUnit >>> 0
   const esi = nState | 0
   if (edi === 0) {
@@ -820,6 +829,7 @@ export function SKILLS_SrvDo_Telekinesis_6FC631C0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FC631C0)
   const edi = pGame >>> 0
   const esi = pPlayerUnit >>> 0
   const ebx = nSkillId | 0
@@ -985,6 +995,7 @@ export function SKILLS_ApplySummonStatsPassivesAndEquip_6FC6F970_113c(
     nArg: number,
   ) => void,
 ): number {
+  hitD2GameVa113c(0x6FC6F970)
   const edx = nSkillId | 0
   const ebp = pPetUnit >>> 0
   let pSkillsTxt = 0
@@ -1313,6 +1324,7 @@ export function ACT5Q4_InitQuestData_6FC7D5C0_113c(
   pQuestData: number,
   pPreallocatedState = 0,
 ): void {
+  hitD2GameVa113c(0x6FC7D5C0)
   const esi = pQuestData >>> 0
   for (let i = 0; i < 0xf; i += 1) {
     m.setU32((esi + 0xa0 + i * 4) >>> 0, 0)
@@ -1369,6 +1381,7 @@ export function ACT5Q5_Callback02_OnAncientKilled_6FC7EED0_113c(
   pQuestArg: number,
   onChainedSeqFilter?: (m: SparseMemory113c, pChainedQuest: number) => number,
 ): void {
+  hitD2GameVa113c(0x6FC7EED0)
   const edi = pQuestData >>> 0
   const ebp = pQuestArg >>> 0
   const esi = m.u32((edi + 0x18) >>> 0)
@@ -1532,6 +1545,7 @@ export function ACT1Q6_InitQuestData_6FC88060_113c(
   pQuestData: number,
   pPreallocatedState = 0,
 ): void {
+  hitD2GameVa113c(0x6FC88060)
   const esi = pQuestData >>> 0
   for (let i = 0; i < 0xf; i += 1) {
     m.setU32((esi + 0xa0 + i * 4) >>> 0, 0)
@@ -1590,6 +1604,7 @@ export function SHRINES_OnShrineStateRemoved_6FC8A930_113c(
   nState: number,
   pStatList = 0,
 ): void {
+  hitD2GameVa113c(0x6FC8A930)
   const esi = pUnit >>> 0
   STATES_OnTimedStateRemoved113c(m, esi, nState | 0, pStatList >>> 0)
   SKILLS_RefreshPassiveAuraSkills113c(m, esi)
@@ -1612,6 +1627,7 @@ export function QUESTS_ObjectEvent07_FastcallThunk_6FC8F510_113c(
   pGame: number,
   pObject: number,
 ): void {
+  hitD2GameVa113c(0x6FC8F510)
   QUESTS_ObjectEvent07_DispatchByClassId_6FC56C50_113c(m, pGame >>> 0, pObject >>> 0)
 }
 
@@ -1625,6 +1641,7 @@ export function PETS_AllocAndInitPlayerPetTable_6FCB7120_113c(
   pGame: number,
   pPlayerUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FCB7120)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit)
   if (pPlayerData === 0) {
     throw new D2CommonAssertError('0x6fd19ff9', 0x9a)
@@ -1653,6 +1670,7 @@ export function PETS_CleanupAllPlayerPetsOnActChangeOrSave_6FCB7730_113c(
   pGame: number,
   pPlayerUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FCB7730)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit)
   if (pPlayerData === 0) {
     throw new D2CommonAssertError('0x6fd19ff9', 0x12f)
@@ -1701,6 +1719,7 @@ export function PETS_InsertPetIntoPlayerPetSlot_6FCB7A20_113c(
   pPetUnit: number,
   pPetArg: number,
 ): number {
+  hitD2GameVa113c(0x6FCB7A20)
   let nMaxAllowed = i32(m, (pPetTypeSlot + 0x8) >>> 0)
   if (nMaxAllowed === 0) {
     PETS_RecalcAndClampAllPlayerPetCountsFromSkills_6FCB6FA0_113c(m, pGame, pPlayerUnit)
@@ -1760,6 +1779,7 @@ export function SKILLS_SpendSkillPointsAndIncrementSkill_6FCBFAE0_113c(
   pUnit: number,
   nSkillId: number,
 ): number {
+  hitD2GameVa113c(0x6FCBFAE0)
   if (nSkillId < 0) {
     return 0
   }
@@ -1826,6 +1846,7 @@ export function NPCS_RepairPlayerItemOrAllItems_6FCDDE60_113c(
   dwItemGuid: number,
   dwModeOrFlags: number,
 ): number {
+  hitD2GameVa113c(0x6FCDDE60)
   if (pGame === 0) {
     throw new D2CommonAssertError('0x6fd19ff9', 0x9b7)
   }
@@ -2118,6 +2139,7 @@ export function NPCS_ResurrectOrReplacePlayerMerc_6FCE0B90_113c(
   pGame: number,
   pPlayerUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FCE0B90)
   if (pMercUnit === 0 || pPlayerUnit === 0) {
     return
   }
@@ -2219,6 +2241,7 @@ export function ACT2Q3_InitQuestData_6FCE7480_113c(
   m: SparseMemory113c,
   pQuestData: number,
 ): void {
+  hitD2GameVa113c(0x6FCE7480)
   const pCallbacks = (pQuestData + 0xa0) >>> 0
   for (let i = 0; i < 0xf; i += 1) {
     m.setU32((pCallbacks + i * 4) >>> 0, 0)
@@ -2282,6 +2305,7 @@ export function PACKETS_SrvMercItemAction_6FCF0BC0_113c(
   pPacket: number,
   nPacketSize: number,
 ): number {
+  hitD2GameVa113c(0x6FCF0BC0)
   if (nPacketSize !== 3 || m.u32((pGame + 0x70) >>> 0) === 0) {
     return 3
   }
@@ -2390,6 +2414,7 @@ export function DUNGEON_TeleportUnitToRoomAndCoords_6FD019C0_113c(
   bKeepExactCoords: number,
   bUseFlag800: number,
 ): number {
+  hitD2GameVa113c(0x6FD019C0)
   if (pUnit === 0) {
     throw new D2CommonAssertError('0x6fd19ff9', 0xc22)
   }
@@ -2493,6 +2518,7 @@ export function PARTY_SetOrClearPlayerHostility_6FD11130_113c(
   bDeclareHostility: number,
   pOutError: number,
 ): void {
+  hitD2GameVa113c(0x6FD11130)
   const pSourceRoom = UNITS_GetRoom113c(m, pSourcePlayer)
   if (
     pSourceRoom === 0 ||

@@ -128,10 +128,10 @@ import {
 } from './k2-w2b4-113c.js';
 import { SKILLS_ResolveSummonMonsterId_6FCBEE50_113c } from './k2-w2b5-113c.js';
 import {
-  AI_ApproachTargetPathType13_6FD13000_113c,
   AI_SelectMonsterResurrectSkillAndMode_6FD13CB0_113c,
   AI_StartModeAtCoordsKeepSteps_6FD121E0_113c,
 } from './k2-w2b8-113c.js';
+import { AI_ApproachTarget113c } from './k2-real-s2c-combat-113c.js';
 import { QUESTS_TriggerNpcInteractAndSendPacket27_6FC55910_113c } from './k2-w3b3-113c.js';
 import {
   ACT1Q4_SetCompletedBeforeAndAddGuidCallback_6FC81910_113c,
@@ -215,6 +215,7 @@ import { ITEMS_CheckItemTypeId113c } from './replay-kernel-113c.js';
 import { UNITS_ChangeAnimMode113c } from './monster-events.js';
 import { EVENT_SetEventFull113c } from './timer-wheel.js';
 import { UNITS_GetOctileDistanceToCoordinates113c } from './town-npc-ai-113c.js';
+import { hitD2GameVa113c } from '../va-trace-113c.js';
 
 void ACT1Q1_TimerPromoteState5_6FC83B50_113c;
 void ACT1Q4_SpawnTristramPortalAtCairnStones_6FC87A90_113c;
@@ -229,6 +230,7 @@ export function ACT1Q1_OnMonsterKilled_6FC85760_113c(
   pQuestData: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FC85760);
   if (m.u8((pQuestData + 0x09) >>> 0) === 0) return;
   const pGame = m.u32(pQuestArg >>> 0);
   const pQuestExt = m.u32((pQuestData + 0x18) >>> 0);
@@ -355,6 +357,7 @@ export function ACT1Q5_OnTreeOfInifussOperated_6FC85D40_113c(
   m: SparseMemory113c,
   pOperateArgs: number,
 ): number {
+  hitD2GameVa113c(0x6FC85D40);
   const pGame = m.u32(pOperateArgs >>> 0);
   const pQuestControl = m.u32((pGame + 0x10f4) >>> 0);
   if (pQuestControl === 0) return 0;
@@ -440,6 +443,7 @@ export function ACT1Q6_TimerTickAndarielDeathSequence_6FC87C60_113c(
   pGame: number,
   pQuestData: number,
 ): number {
+  hitD2GameVa113c(0x6FC87C60);
   const pQuestExt = m.u32((pQuestData + 0x18) >>> 0);
   const wTimerTicks = (m.u16((pQuestExt + 0x192) >>> 0) + 1) & 0xffff;
   m.setU16((pQuestExt + 0x192) >>> 0, wTimerTicks);
@@ -487,6 +491,7 @@ export function ACT1Q4_OnCairnStoneInit_6FC87D20_113c(
   m: SparseMemory113c,
   pObjInitArgs: number,
 ): void {
+  hitD2GameVa113c(0x6FC87D20);
   const pGame = m.u32(pObjInitArgs >>> 0);
   const pQuestControl = m.u32((pGame + 0x10f4) >>> 0);
   let pQuestData = pQuestControl !== 0 ? m.u32(pQuestControl >>> 0) : 0;
@@ -543,6 +548,7 @@ export function ACT1Q4_OnPlayerEnterTristramWithCainUnrescued_6FC883C0_113c(
   pPlayerUnit: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC883C0);
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit);
   const nDifficulty = m.u8((pGame + 0x6d) >>> 0);
   const pQuestRecord = m.u32((pPlayerData + nDifficulty * 4 + 0x10) >>> 0);
@@ -605,6 +611,7 @@ export function ACT1Q5_OnForgottenTowerTomeOperated_6FC88D70_113c(
   m: SparseMemory113c,
   pOperateArgs: number,
 ): number {
+  hitD2GameVa113c(0x6FC88D70);
   const pObjectUnit = m.u32((pOperateArgs + 0x04) >>> 0);
   if (pObjectUnit === 0 || m.u32((pObjectUnit + 0x10) >>> 0) === 0) {
     UNITS_ChangeAnimMode113c(m, pObjectUnit, 1);
@@ -663,6 +670,7 @@ export function OBJ_OperateDoorWithLockCheck_6FC8A9D0_113c(
   pOperateArgs: number,
   dwTickCount = m.u32(0x6fd18d10),
 ): number {
+  hitD2GameVa113c(0x6FC8A9D0);
   const pScratchCoords = (0x7fff0000 - 0x410) >>> 0;
   const pRoom = UNITS_GetRoom113c(m, m.u32((pOperateArgs + 0x04) >>> 0));
   PATH_GetTargetTypeAndPosition113c(
@@ -774,6 +782,7 @@ export function OBJ_ThinkEventSparkyChest_6FC8E150_113c(
   pGame: number,
   pObjectUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FC8E150);
   const nObjMode = pObjectUnit !== 0 ? m.u32((pObjectUnit + 0x10) >>> 0) : 0;
   const nObjClassId =
     pObjectUnit !== 0 ? (m.u32((pObjectUnit + 0x04) >>> 0) | 0) : -1;
@@ -861,6 +870,7 @@ export function OBJ_ThinkEventLightningSpire_6FC8E400_113c(
   pGame: number,
   pObjectUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FC8E400);
   if (pObjectUnit !== 0 && m.u32((pObjectUnit + 0x10) >>> 0) === 1) {
     m.setU32((pObjectUnit + 0x10) >>> 0, 2);
   }
@@ -888,6 +898,7 @@ export function OBJ_OperateChestAndSparkyChest_6FC8F040_113c(
   m: SparseMemory113c,
   pOperateArgs: number,
 ): number {
+  hitD2GameVa113c(0x6FC8F040);
   const pObjectUnit = m.u32((pOperateArgs + 0x04) >>> 0);
   if (pObjectUnit !== 0 && m.u32((pObjectUnit + 0x10) >>> 0) !== 0) {
     return 1;
@@ -1230,6 +1241,7 @@ export function CUBE_Op15_SpawnSecretCowLevelPortal_6FC92210_113c(
   pGame: number,
   pPlayerUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC92210);
   return ACT1Q4_TrySpawnSecretCowLevelPortal_6FC874A0_113c(
     m,
     pGame,
@@ -1248,6 +1260,7 @@ export function MONSTER_AutoEquipInteractItem_6FC98B60_113c(
   pUnit: number,
   bInitBodyLoc = 0,
 ): void {
+  hitD2GameVa113c(0x6FC98B60);
   const pScratchBodyLoc = (0x7fff0000 - 0x460) >>> 0;
   m.setU32(pScratchBodyLoc, bInitBodyLoc & 0xff);
   const dwItemGuid = UNITS_GetInteractItemGuid113c(m, pUnit) >>> 0;
@@ -1305,6 +1318,7 @@ export function AURA_ApplyRadialDamageCallback_6FCB54F0_113c(
     pGame: number,
   ) => number,
 ): number {
+  hitD2GameVa113c(0x6FCB54F0);
   const pGame = m.u32((pAuraIterArgs + 0x04) >>> 0);
   const pAttacker = m.u32(pAuraIterArgs >>> 0);
   const pAuraDamageCtx = m.u32((pAuraIterArgs + 0x0c) >>> 0);
@@ -1363,6 +1377,7 @@ export function PETS_UnsummonPetsBeyondDistanceSq_6FCB6C00_113c(
   pPlayerUnit: number,
   nMaxDistSq: number,
 ): void {
+  hitD2GameVa113c(0x6FCB6C00);
   let pPetNode = m.u32(pPetListWrapper >>> 0);
   while (pPetNode !== 0) {
     const pNextNode = m.u32((pPetNode + 0x14) >>> 0);
@@ -1441,6 +1456,7 @@ export function PETS_ClampPlayerPetTypeMaxAndUnsummonExcess_6FCB6EA0_113c(
   pGame: number,
   nMaxCount: number,
 ): void {
+  hitD2GameVa113c(0x6FCB6EA0);
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit);
   if (pPlayerData === 0) {
     throw new D2CommonAssertError('0x6FD19FF9', 0x200);
@@ -1487,6 +1503,7 @@ export function PETS_UnsummonSameGroupPetTypes_6FCB7C20_113c(
   pPlayerUnit: number,
   nPetType: number,
 ): void {
+  hitD2GameVa113c(0x6FCB7C20);
   if (pPlayerUnit === 0 || m.u32(pPlayerUnit >>> 0) !== 0) return;
   if (nPetType < 0) return;
   const pDataTablesPtr = m.u32(0x6fd1829c);
@@ -1554,6 +1571,7 @@ export function PETS_UnsummonPetAndCheckNodeStillExists_6FCB8070_113c(
   pPlayerUnit: number,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FCB8070);
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit);
   if (pPlayerData === 0) {
     throw new D2CommonAssertError('0x6FD19FF9', 0x2d3);
@@ -1601,6 +1619,7 @@ export function PETS_OnPetOrMercKilled_6FCB8120_113c(
   pPlayerUnit: number,
   pPetUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FCB8120);
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit);
   if (pPlayerData === 0) {
     throw new D2CommonAssertError('0x6FD19FF9', 0x2a0);
@@ -1676,6 +1695,7 @@ export function PARTY_LeavePartyForPlayer_6FCBC840_113c(
   pPlayerUnit: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FCBC840);
   if (pPlayerUnit === 0) {
     throw new D2CommonAssertError('0x6FD19FF9', 0x130);
   }
@@ -1727,6 +1747,7 @@ export function SKILLS_SrvDo_Unsummon_6FCC2EA0_113c(
   _nSkillId = 0,
   _nSkillLevel = 0,
 ): number {
+  hitD2GameVa113c(0x6FCC2EA0);
   const pUsedSkill = SKILLS_GetUsedSkill113c(m, pPlayerUnit);
   if (pUsedSkill === 0) return 0;
   const dwPetGuid = SKILLS_GetParam1113c(m, pUsedSkill);
@@ -1751,7 +1772,7 @@ export function MONAI_DarkWandererThink_6FCC6E60_113c(
   pUnit: number,
   pAiThinkArg: number,
 ): void {
-  void AI_ApproachTargetPathType13_6FD13000_113c;
+  hitD2GameVa113c(0x6FCC6E60);
   const pAiControl = m.u32(pAiThinkArg >>> 0);
   const pTarget = m.u32((pAiThinkArg + 0x08) >>> 0);
   const nTargetDist = (m.u32((pAiThinkArg + 0x14) >>> 0) | 0);
@@ -1786,9 +1807,8 @@ export function MONAI_DarkWandererThink_6FCC6E60_113c(
   const nDestX = (m.u32(pScratchCoords) | 0);
   const nDestY = (m.u32((pScratchCoords + 0x04) >>> 0) | 0);
   if (nAiState === 1) {
-    const pPath = pUnit !== 0 ? m.u32((pUnit + 0x2c) >>> 0) : 0;
-    if (pPath !== 0) PATH_SetStepNum113c(m, pPath, 1);
-    MONSTER_StartMode113c(m, pGame, pUnit, 2, 0, nDestX, nDestY);
+    hitD2GameVa113c(0x6FD12540);
+    AI_ApproachTarget113c(m, pGame, pUnit, 0, 2, nDestX, nDestY, 1, 0);
     m.setU32((pAiControl + 0x14) >>> 0, 2);
     return;
   }
@@ -1806,10 +1826,11 @@ export function MONAI_DarkWandererThink_6FCC6E60_113c(
       const pMonData = m.u32((pUnit + 0x14) >>> 0);
       if (pMonData !== 0) pMonAiCtrl = m.u32((pMonData + 0x2c) >>> 0);
     }
-    m.setU32((pMonAiCtrl + 0x18) >>> 0, 7);
-    const pPath = pUnit !== 0 ? m.u32((pUnit + 0x2c) >>> 0) : 0;
-    if (pPath !== 0) PATH_SetStepNum113c(m, pPath, 1);
-    MONSTER_StartMode113c(m, pGame, pUnit, 2, 0, nDestX, nDestY);
+    if (pMonAiCtrl !== 0) {
+      m.setU32((pMonAiCtrl + 0x18) >>> 0, 7);
+    }
+    hitD2GameVa113c(0x6FD12540);
+    AI_ApproachTarget113c(m, pGame, pUnit, 0, 2, nDestX, nDestY, 1, 0);
     return;
   }
   if (pUnit !== 0) {
@@ -1833,6 +1854,7 @@ export function MONAI_SiegeMinionThinkDispatch_6FCC7530_113c(
   pUnit: number,
   pAiThinkArg: number,
 ): void {
+  hitD2GameVa113c(0x6FCC7530);
   const dwClassId = pUnit !== 0 ? (m.u32((pUnit + 0x04) >>> 0) | 0) : -1;
   if (dwClassId === 0x21c) {
     MONAI_SiegeMinionThinkC_6FCC62D0_113c(m, pAiThinkArg, pUnit, pGame);
@@ -1855,6 +1877,7 @@ export function SKILLS_SrvDo_FindPotionOrConsumeBook_6FCCDFA0_113c(
   nSpellId: number,
   _uUnused = 0,
 ): number {
+  hitD2GameVa113c(0x6FCCDFA0);
   const pInventory = m.u32((pUnit + 0x60) >>> 0);
   if (pInventory === 0) return 0;
   let pNode = INVENTORY_GetFirstItem113c(m, pInventory);
@@ -1935,6 +1958,7 @@ export function SKILLS_OnHitEffect_HitBlindsTarget_6FCCE0E0_113c(
   dwStatAndLayer = 0,
   _uUnused = 0,
 ): number {
+  hitD2GameVa113c(0x6FCCE0E0);
   if (pAttacker === 0 || pDefender === 0 || m.u32(pDefender >>> 0) !== 1) {
     return 0;
   }
@@ -1991,6 +2015,7 @@ export function SKILLS_SrvDo_BookOrScrollOfTownPortal_6FCCF450_113c(
   _uArg4 = 0,
   _uArg5 = 0,
 ): number {
+  hitD2GameVa113c(0x6FCCF450);
   if (pUnit === 0 || m.u32(pUnit >>> 0) !== 0) return 0;
   m.setU32((pUnit + 0xc4) >>> 0, (m.u32((pUnit + 0xc4) >>> 0) | 0x40) >>> 0);
   const pRoom = UNITS_GetRoom113c(m, pUnit);
@@ -2089,6 +2114,7 @@ export function MONSTER_SpawnAndEquipMonEquipRecordItem_6FCCFCE0_113c(
   nItemLevel: number,
   nQuality: number,
 ): void {
+  hitD2GameVa113c(0x6FCCFCE0);
   if (pMonsterUnit === 0 || m.u32(pMonsterUnit >>> 0) !== 1) return;
   if (m.u32((pMonsterUnit + 0x60) >>> 0) === 0) {
     INVENTORY_AllocInventory113c(m, 0, pMonsterUnit);
@@ -2155,6 +2181,7 @@ export function SKILLS_SrvDo_SummonFallenShamanPack_6FCD4410_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCD4410);
   const nSkill = nSkillId | 0;
   if (nSkill < 0) return 0;
   const pDataTables = m.u32(m.u32(0x6fd1829c) >>> 0);
@@ -2223,6 +2250,7 @@ export function SKILLS_SrvDo_MonResurrectCorpse_6FCD5BD0_113c(
   nSkillId: number,
   _nSkillLevel = 0,
 ): number {
+  hitD2GameVa113c(0x6FCD5BD0);
   const nSkill = nSkillId | 0;
   if (nSkill < 0) return 0;
   const pDataTables = m.u32(m.u32(0x6fd1829c) >>> 0);
@@ -2297,6 +2325,7 @@ export function ACT4Q1_OnPlayerChangeLevel_6FCDA330_113c(
   pQuestData: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FCDA330);
   const pPlayerUnit = m.u32((pQuestArg + 0x0c) >>> 0);
   const pGame = m.u32((pQuestData + 0x04) >>> 0);
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit);
@@ -2325,6 +2354,7 @@ export function ACT4Q1_OnNpcMessage_6FCDA5E0_113c(
   pQuestArg: number,
   pfnQuestCallbackF0?: (m: SparseMemory113c, pQuestData: number) => void,
 ): void {
+  hitD2GameVa113c(0x6FCDA5E0);
   const wMessageId = m.u16((pQuestArg + 0x14) >>> 0);
   const wScrollId = m.u16((pQuestArg + 0x18) >>> 0);
   const pQuestExt = m.u32((pQuestData + 0x18) >>> 0);

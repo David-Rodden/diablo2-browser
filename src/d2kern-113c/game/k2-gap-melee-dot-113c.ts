@@ -128,6 +128,7 @@ import {
 import { UNITS_SetTargetUnitForDynamicUnit113c } from '../common/waypoint.ts'
 import { MONSTERS_IsDemonOrUndead113c } from '../tables/datatbls-113c.ts'
 import { DATATBLS_CalcMissileSubLoopFrames113c } from '../tables/missile-tbls-113c.ts'
+import { NET_QueuePacketPtrToClient113c } from '../net/packet-sink.ts'
 import {
   PLAYER_UpdateDualWieldWeaponStatLists113c,
   SKILLS_ExecuteSkillDoFunc113c,
@@ -171,6 +172,7 @@ import {
   EVENT_SetEventFull113c,
 } from './timer-wheel.ts'
 import { SUNIT_UpdateUnitPositionAndRoom113c } from './town-runtime-gap-113c.ts'
+import { hitD2GameVa113c } from '../va-trace-113c.ts'
 
 // ============================================================================
 // Binary `.rdata` / `.data` Addresses & Static Tables (`D2Game.dll` v1.13c)
@@ -467,35 +469,7 @@ function queuePacketToClient0x6FCAA3E0(
     hooks.queuePacket(m, pClient >>> 0, pPacket >>> 0, nSize | 0)
     return
   }
-  const esi = pClient >>> 0
-  if (esi === 0) return
-  const ebp = nSize | 0
-  let edx = m.u32((esi + 0x1bc) >>> 0)
-  let ebx = edx !== 0 ? m.u32(edx) | 0 : 0
-  if (((ebx + ebp) | 0) > 0x200 || edx === 0) {
-    edx = m.u32((esi + 0x1c0) >>> 0)
-    ebx = 0
-    if (edx !== 0) {
-      const nextFree = m.u32((edx + 0x204) >>> 0)
-      m.setU32((esi + 0x1c0) >>> 0, nextFree)
-    } else {
-      edx = m.alloc(0x208)
-    }
-    m.fill(edx, 0x208, 0)
-    const prevTail = m.u32((esi + 0x1bc) >>> 0)
-    if (prevTail === 0) {
-      m.setU32((esi + 0x1b8) >>> 0, edx)
-    } else {
-      m.setU32((prevTail + 0x204) >>> 0, edx)
-    }
-    m.setU32((esi + 0x1bc) >>> 0, edx)
-  }
-  const src = pPacket >>> 0
-  const dst = (edx + ebx + 4) >>> 0
-  for (let i = 0; i < ebp; i++) {
-    m.setU8((dst + i) >>> 0, m.u8((src + i) >>> 0))
-  }
-  m.setU32(edx, ((m.u32(edx) | 0) + ebp) >>> 0)
+  NET_QueuePacketPtrToClient113c(m, pClient >>> 0, pPacket >>> 0, nSize | 0)
 }
 
 /** Internal `0x6FC21620` (`eax = nMonType`, `ecx = nTargetType`): checks compiled `MonType.txt` bit matrix (`+0xC40`, `+0xC44`, `+0xC48`). */
@@ -1104,7 +1078,10 @@ function applyDamage0x6FCFE0C0(
   }
   if (SUNIT_IsDeadOrDying113c(m, def) !== 0) return
 
-  const piercePct = m.u32((dmg + 0x54) >>> 0) | 0
+  const firePierce = att !== 0 ? (STATLIST_GetUnitStat113c(m, att, 0x14d, 0) | 0) : 0
+  const ltngPierce = att !== 0 ? (STATLIST_GetUnitStat113c(m, att, 0x14e, 0) | 0) : 0
+  const coldPierce = att !== 0 ? (STATLIST_GetUnitStat113c(m, att, 0x14f, 0) | 0) : 0
+  const poisPierce = att !== 0 ? (STATLIST_GetUnitStat113c(m, att, 0x150, 0) | 0) : 0
   let phys = m.u32((dmg + 0x08) >>> 0) | 0
   let fire = m.u32((dmg + 0x10) >>> 0) | 0
   let burn = m.u32((dmg + 0x14) >>> 0) | 0
@@ -1116,12 +1093,12 @@ function applyDamage0x6FCFE0C0(
 
   if (bApplyResists !== 0) {
     phys = applySingleElementalResistChannel113c(m, def, phys, 0x24, 0, 0)
-    fire = applySingleElementalResistChannel113c(m, def, fire, 0x27, 0x28, piercePct)
-    burn = applySingleElementalResistChannel113c(m, def, burn, 0x27, 0x28, piercePct)
-    ltng = applySingleElementalResistChannel113c(m, def, ltng, 0x29, 0x2a, piercePct)
+    fire = applySingleElementalResistChannel113c(m, def, fire, 0x27, 0x28, firePierce)
+    burn = applySingleElementalResistChannel113c(m, def, burn, 0x27, 0x28, firePierce)
+    ltng = applySingleElementalResistChannel113c(m, def, ltng, 0x29, 0x2a, ltngPierce)
     mag = applySingleElementalResistChannel113c(m, def, mag, 0x25, 0x26, 0)
-    cold = applySingleElementalResistChannel113c(m, def, cold, 0x2b, 0x2c, piercePct)
-    pois = applySingleElementalResistChannel113c(m, def, pois, 0x2d, 0x2e, piercePct)
+    cold = applySingleElementalResistChannel113c(m, def, cold, 0x2b, 0x2c, coldPierce)
+    pois = applySingleElementalResistChannel113c(m, def, pois, 0x2d, 0x2e, poisPierce)
     if (pois <= 0) {
       poisLen = 0
     } else {
@@ -1393,6 +1370,40 @@ function unlinkSubListWithRemoveProc113c(
   }
 }
 
+/**
+ * `D2Common.#11004` (`0x6FD8AD60` `STATLIST_ExpireOrphanStateSubLists`) invoked by `D2Game:0x6FC95350`
+ * (`0x6FC953FB`) on death, dispatching `fpRemove` callbacks (`0x6FC9A6B0` / `0x6FCC07C0`) when freeing
+ * non-`exp` state sublists.
+ */
+export function MONSTER_ExpireDeathStateSubLists113c(
+  m: Memory113c,
+  pUnit: number,
+  hooks?: K2GapMeleeDotHooks113c,
+): void {
+  const u = pUnit >>> 0
+  if (u === 0) return
+  const pEx = m.u32((u + 0x5c) >>> 0)
+  if (pEx === 0 || (m.u32((pEx + 0x10) >>> 0) | 0) >= 0) return
+  let sub = m.u32((pEx + 0x3c) >>> 0)
+  while (sub !== 0) {
+    let next = m.u32((sub + 0x2c) >>> 0)
+    if (m.u32((sub + 0x08) >>> 0) !== 4) {
+      const flags = m.u32((sub + 0x10) >>> 0)
+      if ((flags & 0x181) === 0) {
+        const stateNo = m.u32((sub + 0x14) >>> 0) | 0
+        if (STATES_CheckStateMaskExpOnUnit113c(m, u, stateNo) === 0) {
+          if ((flags | 0) >= 0) {
+            unlinkSubListWithRemoveProc113c(m, u, sub, hooks)
+            STATLIST_FreeStatListIfNonExtended113c(m, sub)
+          }
+          next = m.u32((pEx + 0x3c) >>> 0)
+        }
+      }
+    }
+    sub = next
+  }
+}
+
 // ============================================================================
 // 39 Assigned `D2Game.dll` v1.13c Functions (Lane K2-E)
 // ============================================================================
@@ -1403,6 +1414,7 @@ function unlinkSubListWithRemoveProc113c(
  * @va D2Game:0x6FC21250
  */
 export function MISSILES_GetTxtRecordFast113c(m: Memory113c, nMissileId: number): number {
+  hitD2GameVa113c(0x6FC21250)
   const eax = nMissileId | 0
   if (eax < 0) return 0
   const ecx = readSgptDataTables113c(m)
@@ -1423,6 +1435,7 @@ export function SEED_RollRangeWithMinFast113c(
   nMin: number,
   nRange: number,
 ): number {
+  hitD2GameVa113c(0x6FC21480)
   const esi = nRange | 0
   const edi = nMin | 0
   if (esi <= 0) return edi
@@ -1444,6 +1457,7 @@ export function BITSTREAM_WriteVarUint113c(
   pBitStream: number,
   dwVal: number,
 ): void {
+  hitD2GameVa113c(0x6FC21CD0)
   const val = dwVal >>> 0
   if (val < 0x100) {
     fogWriteBits113c(m, pBitStream, 0, 1)
@@ -1466,6 +1480,7 @@ export function BITSTREAM_WriteVarUint113c(
  * @va D2Game:0x6FC2F2F0
  */
 export function ITEMS_GetUnitAndLeaderMagicFind113c(m: Memory113c, pUnit: number): number {
+  hitD2GameVa113c(0x6FC2F2F0)
   const esi = pUnit >>> 0
   if (esi === 0) return 0
   const uType = m.u32(esi) | 0
@@ -1484,6 +1499,7 @@ export function ITEMS_GetUnitAndLeaderMagicFind113c(m: Memory113c, pUnit: number
  * @va D2Game:0x6FC2F700
  */
 export function ITEMS_RollInitialDurabilityStat113c(m: Memory113c, pItem: number): void {
+  hitD2GameVa113c(0x6FC2F700)
   const ebp = pItem >>> 0
   const classId = ebp !== 0 ? m.u32((ebp + 0x04) >>> 0) | 0 : -1
   const pItemsTxt = DATATBLS_GetItemsTxtRecordMemPort113c(m, classId)
@@ -1512,6 +1528,7 @@ export function ITEMEVENT_RemoveByTypeAndState113c(
   nType: number,
   nState: number,
 ): void {
+  hitD2GameVa113c(0x6FC57110)
   const edi = pUnit >>> 0
   if (edi === 0) return
   let edx = m.u32((edi + 0x90) >>> 0)
@@ -1556,6 +1573,7 @@ export function MISSILE_ClearStateGfxRemoveProc113c(
   nState: number,
   _pStatList = 0,
 ): void {
+  hitD2GameVa113c(0x6FC58E60)
   STATES_ToggleGfxStateFlag113c(m, pUnit, nState, 0)
 }
 
@@ -1569,6 +1587,7 @@ export function MISSILE_MatchTargetCollideKillMode113c(
   pTarget: number,
   nCollideKillMode: number,
 ): number {
+  hitD2GameVa113c(0x6FC58FB0)
   const uType = pTarget !== 0 ? m.u32(pTarget >>> 0) | 0 : 6
   const mode = nCollideKillMode >>> 0
   if (mode > 3) return 1
@@ -1590,6 +1609,7 @@ export function MISSILE_RollMasteryStatRange113c(
   pUnit: number,
   nMinStatId: number,
 ): number {
+  hitD2GameVa113c(0x6FC59B40)
   const ebp = pUnit >>> 0
   let esiMax = STATLIST_GetUnitStat113c(m, ebp, nMaxStatId | 0, 0) | 0
   if (esiMax <= 0) return 0
@@ -1623,6 +1643,7 @@ export function MISSILE_BuildDamageStrcFromStats113c(
   pDefender: number,
   pDamageOut: number,
 ): void {
+  hitD2GameVa113c(0x6FC5A4E0)
   const ebx = pMissile >>> 0
   const def = pDefender >>> 0
   const ebp = pDamageOut >>> 0
@@ -1739,6 +1760,7 @@ export function MISSILE_CanCollideWithUnit113c(
   pGame: number,
   pMissile: number,
 ): number {
+  hitD2GameVa113c(0x6FC5AA20)
   const esi = pTarget >>> 0
   if (esi === 0) return 0
   const flags = m.u32((esi + 0xc4) >>> 0)
@@ -1765,6 +1787,7 @@ export function MISSILE_CollideFilterPlayerOrMonster113c(
   pUnit: number,
   pCtx: number,
 ): number {
+  hitD2GameVa113c(0x6FC5AD30)
   const edx = pCtx >>> 0
   const ecx = pUnit >>> 0
   if (edx === 0) return 0
@@ -1791,6 +1814,7 @@ export function MISSILE_ApplyDamageStrcToTarget113c(
   pDefender: number,
   hooks?: K2GapMeleeDotHooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC5AE10)
   const ebp = pMissile >>> 0
   if (ebp === 0 || m.u32(ebp) !== 3) return
   if (((m.u32((ebp + 0xc8) >>> 0) >>> 10) & 1) === 0) return
@@ -1897,6 +1921,7 @@ export function MISSILE_ApplyDamageAndArmorShred113c(
   pDefender: number,
   hooks?: K2GapMeleeDotHooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC5AFF0)
   MISSILE_ApplyDamageStrcToTarget113c(m, pDamage, pGame, pMissile, pDefender, hooks)
   const esi = pDefender >>> 0
   if (esi === 0 || m.u32(esi) !== 1) return
@@ -1919,6 +1944,7 @@ export function MISSILE_DispatchFrameTick113c(
   pMissile: number,
   hooks?: K2GapMeleeDotHooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC5E3F0)
   const esi = pMissile >>> 0
   if (esi === 0) return
   const ebpMisTxt = MISSILES_GetTxtRecordFast113c(m, m.u32((esi + 0x04) >>> 0) | 0)
@@ -1986,6 +2012,7 @@ export function MISSILE_ApplyNextHitDelayState113c(
   pMissile: number,
   pDefender: number,
 ): void {
+  hitD2GameVa113c(0x6FC5E590)
   const ecx = pMissile >>> 0
   const ebp = pDefender >>> 0
   const pMisTxt = ecx !== 0 ? MISSILES_GetTxtRecordFast113c(m, m.u32((ecx + 0x04) >>> 0) | 0) : 0
@@ -2026,6 +2053,7 @@ export function MISSILE_ProcessTargetCollisionHit113c(
   bForceDestroy: number,
   hooks?: K2GapMeleeDotHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC5EDE0)
   const edi = pMissile >>> 0
   const g = pGame >>> 0
   const ebp = pTarget >>> 0
@@ -2152,6 +2180,7 @@ export function MISSILE_SrvDo01_LinearProjectile113c(
   pGame: number,
   hooks?: K2GapMeleeDotHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC5F320)
   const ebx = pMissile >>> 0
   const ediGame = pGame >>> 0
   const pMisTxt = ebx !== 0 ? MISSILES_GetTxtRecordFast113c(m, m.u32((ebx + 0x04) >>> 0) | 0) : 0
@@ -2256,6 +2285,7 @@ export function MISSILE_SrvDo01_FastcallThunk113c(
   pMissile: number,
   hooks?: K2GapMeleeDotHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC5F540)
   return MISSILE_SrvDo01_LinearProjectile113c(m, pMissile, pGame, hooks)
 }
 
@@ -2272,6 +2302,7 @@ export function SKILLS_SrvDo_NovaRing113c(
   nLevel: number,
   hooks?: K2GapMeleeDotHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC63AA0)
   const ediUnit = pUnit >>> 0
   if (ediUnit !== 0) {
     m.setU32((ediUnit + 0xc4) >>> 0, (m.u32((ediUnit + 0xc4) >>> 0) | 0x40) >>> 0)
@@ -2307,6 +2338,7 @@ export function MISSILE_InitOwnerDamageStats113c(
   nLevel: number,
   pOriginUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FC8F620)
   const esiOwner = pOwner >>> 0
   const ebxMissile = pMissile >>> 0
   const ediLvl = nLevel | 0
@@ -2330,6 +2362,7 @@ export function MISSILE_RollInitialPierceCount113c(
   pOwner: number,
   pMissile: number,
 ): void {
+  hitD2GameVa113c(0x6FC8F660)
   const esiOwner = pOwner >>> 0
   const ecxMissile = pMissile >>> 0
   if (esiOwner === 0 || ecxMissile === 0 || m.u32(ecxMissile) !== 3) return
@@ -2377,6 +2410,7 @@ export function MISSILE_DestroyDataAndEvents113c(
   pMissile: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FC8F880)
   const esi = pMissile >>> 0
   if (esi === 0) return
   MISSILE_FreeMissileData113c(m, esi)
@@ -2394,6 +2428,7 @@ export function MISSILE_InitDataAndPersistentEvent113c(
   pGame: number,
   dwUnitId: number,
 ): void {
+  hitD2GameVa113c(0x6FC8F8A0)
   const esi = pMissile >>> 0
   if (esi === 0) return
   const ediGame = pGame >>> 0
@@ -2439,6 +2474,7 @@ export function MISSILE_CreateServerProjectile113c(
   pParams: number,
   hooks?: K2GapMeleeDotHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC8F930)
   const ebp = pParams >>> 0
   const game = pGame >>> 0
   if (ebp === 0 || game === 0) return 0
@@ -2685,6 +2721,7 @@ export function MONSTER_Event12_ExpireTimedStats113c(
   _arg2 = 0,
   hooks?: K2GapMeleeDotHooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC94870)
   const u = pUnit >>> 0
   if (u === 0 || pGame === 0) return
   const nFrame = m.u32(((pGame >>> 0) + 0xa8) >>> 0) | 0
@@ -2735,6 +2772,7 @@ export function MONSTER_StartGetHitMode113c(
   pGame: number,
   pModeChange: number,
 ): number {
+  hitD2GameVa113c(0x6FC95210)
   const edi = m.u32(((pModeChange >>> 0) + 0x04) >>> 0)
   if (edi === 0) return 1
   const mode = m.u32((edi + 0x10) >>> 0) | 0
@@ -2760,6 +2798,7 @@ export function MONSTER_Event03_RegenAndPoisonTick113c(
   _arg2 = 0,
   hooks?: K2GapMeleeDotHooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC96740)
   const ediGame = pGame >>> 0
   const esi = pMonster >>> 0
   if (ediGame === 0) return
@@ -2870,6 +2909,7 @@ export function PLAYER_StartCastSkillAtCoords113c(
   nY: number,
   hooks?: K2GapMeleeDotHooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC98840)
   const ebpGame = pGame >>> 0
   const esiPlayer = pPlayer >>> 0
   const pPath = m.u32((esiPlayer + 0x2c) >>> 0)
@@ -2895,6 +2935,7 @@ export function MONSTER_QueuePacket0xAB_LifeNotify113c(
   pUnit: number,
   bLifePct: number,
 ): void {
+  hitD2GameVa113c(0x6FC9A260)
   const esi = pUnit >>> 0
   if (esi !== 0) {
     m.u32((esi + 0x08) >>> 0)
@@ -2937,6 +2978,7 @@ export function NET_SendPacket0x3E_ItemStatBitStream113c(
   dwValue: number,
   hooks?: K2GapMeleeDotHooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCAB010)
   const pScratch = allocStackScratch113c(m, 0x40)
   try {
     const pBs = pScratch
@@ -2983,6 +3025,7 @@ export function NET_SendPacket0x23_AssignSkill113c(
   dwItemGuid: number,
   hooks?: K2GapMeleeDotHooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCAB710)
   const pPkt = allocStackScratch113c(m, 0x10)
   try {
     m.setU8(pPkt, 0x23)
@@ -3010,6 +3053,7 @@ export function NET_SendPacket0xAB_UnitHeal113c(
   bLifePct: number,
   hooks?: K2GapMeleeDotHooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCABA50)
   const pPkt = allocStackScratch113c(m, 0x10)
   try {
     m.setU8(pPkt, 0xab)
@@ -3032,6 +3076,7 @@ export function STATES_ClearCurseStatesOnUnit113c(
   pUnit: number,
   hooks?: K2GapMeleeDotHooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCB0F30)
   const ebp = pUnit >>> 0
   if (STATES_CheckStateMask6OnUnit113c(m, ebp) === 0) return
 
@@ -3087,6 +3132,7 @@ export function SKILLS_ResolveChargedSrvMissileId113c(
   nSkillId: number,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FCB1340)
   const skillId = nSkillId | 0
   if (skillId < 0) return -1
   const pTables = readSgptDataTables113c(m)
@@ -3124,6 +3170,7 @@ export function STATES_OnTimedStateRemoved113c(
   _pStatList = 0,
   hooks?: K2GapMeleeDotHooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCBF7A0)
   const edi = pUnit >>> 0
   const esiState = nState | 0
   if (edi === 0) {
@@ -3173,6 +3220,7 @@ export function SKILLS_AssignHandSkillAndSyncAura113c(
   dwOwnerGuid: number,
   hooks?: K2GapMeleeDotHooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCC2100)
   const ebxSkillId = nSkillId | 0
   if (ebxSkillId === 5) return
   const esi = pUnit >>> 0
@@ -3270,6 +3318,7 @@ export function MISSILE_SpawnNova64Directions113c(
   nLevel: number,
   hooks?: K2GapMeleeDotHooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCC2800)
   const esiOrigin = pOriginUnit >>> 0
   const pParams = allocStackScratch113c(m, 0x60)
   try {
@@ -3322,6 +3371,7 @@ export function MONSTER_SendPacket0x0C_LifeSync113c(
   pClient: number,
   hooks?: K2GapMeleeDotHooks113c,
 ): void {
+  hitD2GameVa113c(0x6FD13360)
   const esi = pMonster >>> 0
   const hitClassByte = m.u8((esi + 0xb0) >>> 0)
   const hpShr8 = (STATLIST_GetUnitStat113c(m, esi, 0x06, 0) | 0) >> 8

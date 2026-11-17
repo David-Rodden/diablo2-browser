@@ -727,21 +727,21 @@ describe('Milestone 33 [K2] Lane K2-J: 45 D2Game 0x6FC43320..0x6FC545A0 Function
     // Distant room -> nothing queued
     m.setU32(pClient + 0x1b4, pRoomB)
     CLIENT_SendUnitRemoveIfInNearRoom_6FC4A9F0_113c(m, pClient, pMonster)
-    expect(m.u32(pQueue + 0x04)).toBe(0)
+    expect(m.u32(pQueue + 0x00)).toBe(0)
 
     // Adjacent room, missile type (3) -> skipped
     m.setU32(pClient + 0x1b4, pRoomA)
     m.setU32(pMonster, 3)
     CLIENT_SendUnitRemoveIfInNearRoom_6FC4A9F0_113c(m, pClient, pMonster)
-    expect(m.u32(pQueue + 0x04)).toBe(0)
+    expect(m.u32(pQueue + 0x00)).toBe(0)
 
     // Adjacent room, monster (1) -> 6-byte [0x0A, 0x01, 0x11223344] packet queued
     m.setU32(pMonster, 1)
     CLIENT_SendUnitRemoveIfInNearRoom_6FC4A9F0_113c(m, pClient, pMonster)
-    expect(m.u32(pQueue + 0x04)).toBe(6)
-    expect(m.u8(pQueue + 0x08)).toBe(0x0a)
-    expect(m.u8(pQueue + 0x09)).toBe(0x01)
-    expect(m.u32(pQueue + 0x0a)).toBe(0x11223344)
+    expect(m.u32(pQueue + 0x00)).toBe(6)
+    expect(m.u8(pQueue + 0x04)).toBe(0x0a)
+    expect(m.u8(pQueue + 0x05)).toBe(0x01)
+    expect(m.u32(pQueue + 0x06)).toBe(0x11223344)
   })
 
   it('ports CLIENT_BroadcastPlayerLeftPacket5C_6FC4BED0_113c (0x6FC4BED0)', () => {
@@ -776,10 +776,10 @@ describe('Milestone 33 [K2] Lane K2-J: 45 D2Game 0x6FC43320..0x6FC545A0 Function
     m.setU32(pLeaving + 0x1a8, pGame)
 
     CLIENT_BroadcastPlayerLeftPacket5C_6FC4BED0_113c(m, pLeaving, pGame)
-    expect(m.u32(pQueue1 + 0x04)).toBe(5)
-    expect(m.u8(pQueue1 + 0x08)).toBe(0x5c)
-    expect(m.u32(pQueue1 + 0x09)).toBe(0x778899aa)
-    expect(m.u32(pQueue2 + 0x04)).toBe(0)
+    expect(m.u32(pQueue1 + 0x00)).toBe(5)
+    expect(m.u8(pQueue1 + 0x04)).toBe(0x5c)
+    expect(m.u32(pQueue1 + 0x05)).toBe(0x778899aa)
+    expect(m.u32(pQueue2 + 0x00)).toBe(0)
 
     // Missing server unit clears stale +0x174 cache
     m.setU32(pLeaving + 0x170, 0xdead)

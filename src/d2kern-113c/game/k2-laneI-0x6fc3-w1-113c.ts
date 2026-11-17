@@ -126,6 +126,7 @@ import {
   EVENT_RemoveUnitEvents113c,
   EVENT_SetEventFull113c,
 } from './timer-wheel.ts'
+import { hitD2GameVa113c } from '../va-trace-113c.ts'
 
 /**
  * `D2Game.dll` `.data` `0x6FD2F870..0x6FD2F87F` (`count = 4` at `0x6FD2F86C`):
@@ -420,6 +421,7 @@ export function SKILLS_ResetUnitAiThinkEvent_6FC2DE20_113c(
   pGame: number,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC2DE20)
   const unit = pUnit >>> 0
   const game = pGame >>> 0
   if (unit !== 0) {
@@ -451,6 +453,7 @@ export function ITEMS_CalcGroundExpireFrame_6FC2E0A0_113c(
   pGame: number,
   pItem: number,
 ): number {
+  hitD2GameVa113c(0x6FC2E0A0)
   if (ITEMS_GetComponentByte113c(m, pItem) !== 0) {
     return 0
   }
@@ -488,6 +491,7 @@ export function ITEMS_CalcDiminishingMfPercent_6FC2E130_113c(
   nFactor: number,
   nScale: number,
 ): number {
+  hitD2GameVa113c(0x6FC2E130)
   const mf = nMfPercent | 0
   if (mf <= 0x6e) {
     return mf
@@ -511,6 +515,7 @@ export function ITEMS_IsItemInUnitInventoryOrCursor_6FC2E150_113c(
   pTargetItem: number,
   pInventoryOverride = 0,
 ): number {
+  hitD2GameVa113c(0x6FC2E150)
   let pInv = m.u32((pOwnerUnit + 0x60) >>> 0) >>> 0
   if (pInv === 0) {
     throw new Error('ITEMS_IsItemInUnitInventoryOrCursor: pUnit->pInventory == NULL (line 2740)')
@@ -544,6 +549,7 @@ export function ITEMS_RemoveFromInventoryOrCursor_6FC2E1C0_113c(
   pInventory: number,
   pTargetItem: number,
 ): void {
+  hitD2GameVa113c(0x6FC2E1C0)
   const inv = pInventory >>> 0
   const target = pTargetItem >>> 0
   let pNode = INVENTORY_GetFirstItem113c(m, inv) >>> 0
@@ -570,6 +576,7 @@ export function ITEMS_ClearAffixesAndItemCell_6FC2E210_113c(
   m: Memory113c,
   ppItem: number,
 ): void {
+  hitD2GameVa113c(0x6FC2E210)
   const ptr = ppItem >>> 0
   for (let i = 0; i < 3; i++) {
     ITEMS_SetMagicPrefix113c(m, m.u32(ptr) >>> 0, 0, i)
@@ -592,6 +599,7 @@ export function ITEMS_TestUniqueSpawnedBit_6FC2E250_113c(
   pGame: number,
   nUniqueId: number,
 ): number {
+  hitD2GameVa113c(0x6FC2E250)
   const game = pGame >>> 0
   if (game === 0) return 0
   const id = nUniqueId | 0
@@ -612,6 +620,7 @@ export function ITEMS_GetVendorManaPotionCode_6FC2E310_113c(
   m: Memory113c,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC2E310)
   const unit = pUnit >>> 0
   const pRoom = UNITS_GetRoom113c(m, unit) >>> 0
   if (pRoom === 0) {
@@ -645,6 +654,7 @@ export function ITEMS_GetVendorHealthPotionCode_6FC2E390_113c(
   m: Memory113c,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FC2E390)
   const unit = pUnit >>> 0
   const pRoom = UNITS_GetRoom113c(m, unit) >>> 0
   if (pRoom === 0) {
@@ -681,6 +691,7 @@ export function ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(
   pGame: number,
   dwBaseCode: number,
 ): number {
+  hitD2GameVa113c(0x6FC2E660)
   const pInv = m.u32((pUnit + 0x60) >>> 0) >>> 0
   if (pInv === 0) return 0
   const targetCode = dwBaseCode >>> 0
@@ -737,6 +748,7 @@ export function ITEMS_CheckUniqueItemAlreadySpawned_6FC2E800_113c(
   pItem: number,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FC2E800)
   if ((ITEMS_GetItemQuality113c(m, pItem) | 0) !== 7) {
     return 0
   }
@@ -760,6 +772,7 @@ export function ITEMS_InitBaseWeaponDamageStats_6FC2E860_113c(
   m: Memory113c,
   pItem: number,
 ): void {
+  hitD2GameVa113c(0x6FC2E860)
   const item = pItem >>> 0
   const classId = item !== 0 ? m.u32((item + 0x04) >>> 0) | 0 : -1
   const pItemsTxt = DATATBLS_GetItemsTxtRecordMemPort113c(m, classId) >>> 0
@@ -809,6 +822,7 @@ export function ITEMS_AllocAndLoadFromBitstream_6FC2EAE0_113c(
   pOutBytesRead: number,
   nSaveVersion: number,
 ): number {
+  hitD2GameVa113c(0x6FC2EAE0)
   const game = pGame >>> 0
   if (game === 0) {
     return 0
@@ -888,6 +902,7 @@ export function ITEMS_CheckItemTxtSpawnable_6FC2F180_113c(
   pSeed: number,
   bSkipRarityRoll: number,
 ): number {
+  hitD2GameVa113c(0x6FC2F180)
   let lvl = nLevelId | 0
   if (lvl <= 0) {
     lvl = 1
@@ -929,6 +944,7 @@ export function ITEMS_DestroyItemEventsAndSubInventory_6FC30700_113c(
   pItem: number,
   hooks?: LaneIHooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC30700)
   const game = pGame >>> 0
   const item = pItem >>> 0
   if (ITEMS_GetSubTypeFromItem113c(m, item) !== 0) {
@@ -961,6 +977,7 @@ export function ITEMS_SpawnItemWithParams_6FC31980_113c(
   dwInitSeed: number,
   hooks?: LaneIHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC31980)
   let clampedLvl = nItemLevel | 0
   if (clampedLvl <= 0) {
     clampedLvl = 1
@@ -1012,6 +1029,7 @@ export function AI_CountAdjacentUnitsCallback_6FC35590_113c(
   pCandidateUnit: number,
   pScanCtx: number,
 ): void {
+  hitD2GameVa113c(0x6FC35590)
   const ctx = pScanCtx >>> 0
   const candidate = pCandidateUnit >>> 0
   const origin = m.u32(ctx) >>> 0
@@ -1036,6 +1054,7 @@ export function AI_FindLowestLifeInjuredAllyCallback_6FC35660_113c(
   pCandidateUnit: number,
   pHealScanCtx: number,
 ): number {
+  hitD2GameVa113c(0x6FC35660)
   const candidate = pCandidateUnit >>> 0
   if (candidate === 0) return 0
   if (m.u32(candidate) !== 1) return 0
@@ -1069,6 +1088,7 @@ export function AI_CountNearbyMinion453Or461Callback_6FC35890_113c(
   pCandidateUnit: number,
   pOutCount: number,
 ): number {
+  hitD2GameVa113c(0x6FC35890)
   const candidate = pCandidateUnit >>> 0
   if ((pOriginUnit >>> 0) === candidate) return 0
   if (candidate === 0) return 0
@@ -1106,6 +1126,7 @@ export function AI_UpdateCloserTrackedTargetGuid_6FC358F0_113c(
   pMonster: number,
   pCandidateTarget: number,
 ): void {
+  hitD2GameVa113c(0x6FC358F0)
   const mon = pMonster >>> 0
   let pAiGen = 0
   if (mon !== 0 && m.u32(mon) === 1) {
@@ -1153,6 +1174,7 @@ export function AI_DespawnIfNoPlayerInteracting_6FC35BB0_113c(
   world?: FallenSliceWorld113c,
   hooks?: LaneIHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC35BB0)
   const mon = pMonster >>> 0
   let pInteract = 0
   if (mon !== 0 && m.u32(mon) === 1) {
@@ -1188,6 +1210,7 @@ export function AI_ScanOverlordMinionTargetsCallback_6FC35C40_113c(
   pCandidateUnit: number,
   pScanCtx: number,
 ): number {
+  hitD2GameVa113c(0x6FC35C40)
   const origin = pOriginUnit >>> 0
   const candidate = pCandidateUnit >>> 0
   if (origin === candidate) return 0
@@ -1242,6 +1265,7 @@ export function AI_CastNextPatrolPointSkill_6FC35F90_113c(
   world?: FallenSliceWorld113c,
   hooks?: LaneIHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC35F90)
   const game = pGame >>> 0
   const pAiCtrl = m.u32(pAiArgs >>> 0) >>> 0
   const pSaveBlock = m.u32((pAiCtrl + 0x38) >>> 0) >>> 0
@@ -1295,6 +1319,7 @@ export function AI_InitClearFreezeAndStall_6FC36060_113c(
   pAiInitArgs: number,
   world?: FallenSliceWorld113c,
 ): void {
+  hitD2GameVa113c(0x6FC36060)
   const pAiGen = m.u32(pAiInitArgs >>> 0) >>> 0
   const mon = pMonster >>> 0
   if (STATES_CheckState113c(m, mon, 0x0c) !== 0) {
@@ -1321,6 +1346,7 @@ export function AI_ThinkSingleStrikeTurret_6FC360B0_113c(
   world?: FallenSliceWorld113c,
   hooks?: LaneIHooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC360B0)
   const args = pAiArgs >>> 0
   const game = pGame >>> 0
   const mon = pMonster >>> 0
@@ -1357,6 +1383,7 @@ export function AI_ThinkStaticTrapAttack_6FC36190_113c(
   world?: FallenSliceWorld113c,
   hooks?: LaneIHooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC36190)
   const game = pGame >>> 0
   const mon = pMonster >>> 0
   const pMonStatsTxt = m.u32((pAiArgs + 0x1c) >>> 0) >>> 0
@@ -1387,6 +1414,7 @@ export function AI_ThinkTimedExpireOrStall_6FC36410_113c(
   world?: FallenSliceWorld113c,
   hooks?: LaneIHooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC36410)
   const game = pGame >>> 0
   const mon = pMonster >>> 0
   const pAiCtrl = m.u32(pAiArgs >>> 0) >>> 0
@@ -1415,6 +1443,7 @@ export function AI_ThinkMeleeOrApproach7_6FC372B0_113c(
   world?: FallenSliceWorld113c,
   hooks?: LaneIHooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC372B0)
   const args = pAiArgs >>> 0
   const game = pGame >>> 0
   const mon = pMonster >>> 0
@@ -1457,6 +1486,7 @@ export function AI_ThinkSpecialGuard_6FC39640_113c(
   world?: FallenSliceWorld113c,
   hooks?: LaneIHooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC39640)
   const game = pGame >>> 0
   const mon = pMonster >>> 0
   if (mon === 0 || m.u32((mon + 0x10) >>> 0) !== 1) {
@@ -1512,6 +1542,7 @@ export function MONREG_DeleteInactiveMonsterByClassId_6FC3EC40_113c(
   wClassId: number,
   hooks?: LaneIHooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC3EC40)
   const game = pGame >>> 0
   const actIdx = nAct & 0xff
   const targetClassId = wClassId & 0xffff
@@ -1574,6 +1605,7 @@ export function MONREG_IsMonsterDeadAtCoords_6FC3EE50_113c(
   nClassId: number,
   hooks?: LaneIHooks113c,
 ): number {
+  hitD2GameVa113c(0x6FC3EE50)
   const game = pGame >>> 0
   const originRoom = pOriginRoom >>> 0
   const x = nX | 0
@@ -1654,6 +1686,7 @@ export function AIGENERAL_FreeMinionList_6FC40B30_113c(
   pMinionListHead: number,
   hooks?: LaneIHooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC40B30)
   const game = pGame >>> 0
   let pNode = pMinionListHead >>> 0
   while (pNode !== 0) {
@@ -1676,6 +1709,7 @@ export function AIGENERAL_DissolveMinionPackLeaderRefs_6FC41040_113c(
   m: Memory113c,
   pAiGeneral: number,
 ): void {
+  hitD2GameVa113c(0x6FC41040)
   const aiGen = pAiGeneral >>> 0
   const pGame = m.u32((aiGen + 0x28) >>> 0) >>> 0
   let pNode = m.u32((aiGen + 0x34) >>> 0) >>> 0
@@ -1712,6 +1746,7 @@ export function AIGENERAL_ForEachPackMember_6FC41490_113c(
   pArg2: number,
   hooks?: LaneIHooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC41490)
   if (typeof pfnCallback === 'number' && (pfnCallback >>> 0) === 0) {
     throw new Error('AIGENERAL_ForEachPackMember: IsBadCodePtr(pfnCallback) (line 590)')
   }
@@ -1764,6 +1799,7 @@ export function AIGENERAL_FreeBossMinionListAndClearRefs_6FC41590_113c(
   pMonster: number,
   hooks?: LaneIHooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC41590)
   const mon = pMonster >>> 0
   if (mon === 0 || m.u32(mon) !== 1) return
   const pMonData = m.u32((mon + 0x14) >>> 0) >>> 0
@@ -1820,6 +1856,7 @@ export function MONUMOD_SetShatterOnDeath_6FC41A70_113c(
   _nUModId: number,
   _bUnique: number,
 ): void {
+  hitD2GameVa113c(0x6FC41A70)
   const mon = pMonster >>> 0
   if (mon === 0 || m.u32((mon + 0x10) >>> 0) === 0) {
     STATES_ToggleGfxStateFlag113c(m, mon, 0x6b, 1)
@@ -1840,6 +1877,7 @@ export function MONUMOD_ScheduleDeathEvent4UnlessMod18_6FC41A90_113c(
   nUModId: number,
   bUnique: number,
 ): void {
+  hitD2GameVa113c(0x6FC41A90)
   if ((bUnique | 0) === 0 && (nUModId | 0) === 0x12) return
   const mon = pMonster >>> 0
   if (mon !== 0 && m.u32((mon + 0x10) >>> 0) !== 0) return
@@ -1862,6 +1900,7 @@ export function MONUMOD_ScheduleGetHitEvent2ForUnique_6FC41AD0_113c(
   _nUModId: number,
   bUnique: number,
 ): void {
+  hitD2GameVa113c(0x6FC41AD0)
   if ((bUnique | 0) === 0) return
   const mon = pMonster >>> 0
   if (mon === 0) return
@@ -1885,6 +1924,7 @@ export function MONUMOD_ScheduleGetHitOrDeathEvent2_6FC41B00_113c(
   _nUModId: number,
   _bUnique: number,
 ): void {
+  hitD2GameVa113c(0x6FC41B00)
   const mon = pMonster >>> 0
   if (mon !== 0) {
     const mode = m.u32((mon + 0x10) >>> 0) >>> 0
@@ -1910,6 +1950,7 @@ export function MONUMOD_AddSecondaryDamageToBaseStats_6FC41B30_113c(
   _nUModId: number,
   _bUnique: number,
 ): void {
+  hitD2GameVa113c(0x6FC41B30)
   const mon = pMonster >>> 0
   let minDmg = STATLIST_GetUnitStat113c(m, mon, 0x15, 0) | 0
   let maxDmg = STATLIST_GetUnitStat113c(m, mon, 0x16, 0) | 0
@@ -1942,6 +1983,7 @@ export function MONUMOD_ScheduleDeathEvent4ForUnique_6FC41BB0_113c(
   _nUModId: number,
   bUnique: number,
 ): void {
+  hitD2GameVa113c(0x6FC41BB0)
   if ((bUnique | 0) === 0) return
   const mon = pMonster >>> 0
   if (mon !== 0 && m.u32((mon + 0x10) >>> 0) !== 0) return
@@ -1962,6 +2004,7 @@ export function MONUMOD_ApplyBossLevelAndExpBonus_6FC41E80_113c(
   _nUModId = 0,
   _bUnique = 0,
 ): void {
+  hitD2GameVa113c(0x6FC41E80)
   const mon = pMonster >>> 0
   if (mon === 0 || m.u32(mon) !== 1) return
   const curLvl = STATLIST_GetUnitStat113c(m, mon, 0x0c, 0) | 0
@@ -1982,6 +2025,7 @@ export function MONUMOD_ScaleMonsterMaxAndCurLife_6FC41EC0_113c(
   pMonster: number,
   nLifePctBonus: number,
 ): void {
+  hitD2GameVa113c(0x6FC41EC0)
   const mon = pMonster >>> 0
   const maxLife = STATLIST_GetMaxLifeFromUnit113c(m, mon) | 0
   const pct = nLifePctBonus | 0
@@ -2021,6 +2065,7 @@ export function MONUMOD_ApplyExtraFastVelocity_6FC42880_113c(
   _nUModId = 0,
   _bUnique = 0,
 ): void {
+  hitD2GameVa113c(0x6FC42880)
   const mon = pMonster >>> 0
   if (mon === 0 || m.u32(mon) !== 1) return
   const classId = m.u32((mon + 0x04) >>> 0) | 0
@@ -2059,6 +2104,7 @@ export function MONUMOD_SpawnPainWormOnDeath_6FC42B10_113c(
   _bUnique: number,
   hooks?: LaneIHooks113c,
 ): void {
+  hitD2GameVa113c(0x6FC42B10)
   const mon = pMonster >>> 0
   if (mon !== 0 && m.u32((mon + 0x10) >>> 0) !== 0) return
   const pRoom = UNITS_GetRoom113c(m, mon) >>> 0

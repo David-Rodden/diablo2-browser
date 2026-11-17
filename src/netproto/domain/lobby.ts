@@ -322,8 +322,12 @@ export interface LocalAreaLevelRequest {
 /** Builds the DRLG geometry of a level; `null` when the level cannot be built (map assets not loaded). */
 export type LocalAreaLevelSource = (request: LocalAreaLevelRequest) => LocalAreaLevelGeometry | null
 
+/** Runtime backend mode for Single-Player / local game server sessions (`'legacy'` TS GameInstance vs `'d2kern-113c'` ByteStream + D2gsAdapter kernel bridge). */
+export type SinglePlayerBackendMode = 'legacy' | 'd2kern-113c'
+
 export interface LobbyEnterGameTarget {
   readonly mode?: 'local' | 'd2gs' | 'ts' | 'single' | 'create' | 'join' | undefined
+  readonly backend?: SinglePlayerBackendMode | undefined
   readonly charName?: string | undefined
   readonly charSummary?: CharSummary | undefined
   readonly d2sBytes?: Uint8Array | undefined
@@ -379,9 +383,13 @@ export interface LobbyProvider {
   /** Session-scoped `/players N` (`1..8`) override persisted across consecutive games (`D2Game.dll` `0x6FD31C1C`). */
   getPersistedPlayersX?(): number | undefined
   setPersistedPlayersX?(value: number | undefined): void
+  /** Active Single-Player server backend (`'legacy'` vs `'d2kern-113c'`). */
+  getBackend?(): SinglePlayerBackendMode
+  setBackend?(mode: SinglePlayerBackendMode): void
 }
 
 export interface LocalServerOptions {
+  readonly backend?: SinglePlayerBackendMode | undefined
   readonly charName?: string | undefined
   readonly classId?: CharClassId | number | string | undefined
   readonly charClass?: CharClassId | string | undefined

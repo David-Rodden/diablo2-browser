@@ -251,6 +251,7 @@ import {
   MONSTER_RefreshAiEvent113c,
 } from './timer-wheel'
 import { AITARGET_ScanUnitsByModeTable113c } from './town-runtime-gap-113c'
+import { hitD2GameVa113c } from '../va-trace-113c'
 
 export type D2KernMemory113c = Memory113c
 
@@ -344,6 +345,7 @@ export function SKILLS_DoChargeStart_6FCB9620_113c(
   nSkillId: number,
   _nSkillLevel = 0,
 ): number {
+  hitD2GameVa113c(0x6FCB9620)
   const skillId = nSkillId | 0
   if (skillId < 0) return 0
   const pDataTablesPtr = m.u32(SGPT_DATATABLES_6FD1829C) >>> 0
@@ -444,6 +446,7 @@ export function SKILLS_DoRedemptionAuraPulse_6FCBA400_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCBA400)
   const skillId = nSkillId | 0
   if (skillId < 0) return 0
   const pDataTablesPtr = m.u32(SGPT_DATATABLES_6FD1829C) >>> 0
@@ -550,6 +553,7 @@ export function SKILLS_CanMonsterUseSkillInMode_6FCBF120_113c(
   pUnit: number,
   nMode: number,
 ): number {
+  hitD2GameVa113c(0x6FCBF120)
   if (pUnit !== 0 && m.u32(pUnit >>> 0) === 1) {
     let nClassId = readI32(m, (pUnit + 0x04) >>> 0)
     const pDataTablesPtr = m.u32(SGPT_DATATABLES_6FD1829C) >>> 0
@@ -592,6 +596,7 @@ export function SKILLS_ForEachUnitInCoordsRadius_6FCBF340_113c(
   pfnCallback: number,
   hooks?: K2W4B6Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCBF340)
   const pSearchSpec = m.alloc(0x24) >>> 0
   m.setU32(pSearchSpec, dwFlags >>> 0)
   m.setU32((pSearchSpec + 0x04) >>> 0, pOwnerUnit >>> 0)
@@ -616,6 +621,7 @@ export function SKILLS_DoUnsummonStart_6FCBFEF0_113c(
   _nSkillId = 0,
   _nSkillLevel = 0,
 ): number {
+  hitD2GameVa113c(0x6FCBFEF0)
   SUNIT_ValidatePathTargetUnit113c(m, pUnit >>> 0, pGame >>> 0)
   const pTarget = PATH_GetTargetUnit113c(m, m.u32((pUnit + 0x2c) >>> 0) >>> 0) >>> 0
   if (pTarget === (pUnit >>> 0) || pTarget === 0) return 0
@@ -655,6 +661,7 @@ export function SKILLS_CreateProjectileAtTargetWithin100_6FCC0000_113c(
   nX: number,
   nY: number,
 ): number {
+  hitD2GameVa113c(0x6FCC0000)
   if (pUnit === 0) return 0
   let x = nX | 0
   let y = nY | 0
@@ -698,6 +705,7 @@ export function SKILLS_CanSpawnObjectAtTargetCoords_6FCC0630_113c(
   pGame: number,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FCC0630)
   const objId = nObjectId | 0
   let pObjectsTxt = 0
   if (objId >= 0) {
@@ -751,6 +759,7 @@ export function SKILLS_ForEachUnitNearTargetCoords_6FCC06F0_113c(
       ) => void),
   pCallbackArg: number,
 ): void {
+  hitD2GameVa113c(0x6FCC06F0)
   if (pfnCallback === 0) return
   const sp = m.alloc(0x70) >>> 0
   const pOutX = sp
@@ -819,6 +828,7 @@ export function SKILLS_EvalAndApplySkillDelayOnPlayer_6FCC09A0_113c(
   pGame: number,
   nSkillLevel: number,
 ): void {
+  hitD2GameVa113c(0x6FCC09A0)
   const skillId = nSkillId | 0
   if (skillId < 0) return
   const pDataTablesPtr = m.u32(SGPT_DATATABLES_6FD1829C) >>> 0
@@ -859,6 +869,7 @@ export function AURA_ForEachUnitInTargetRadius_6FCC0AD0_113c(
     | ((m: D2KernMemory113c, pTargetUnit: number, pCallbackArg: number) => void),
   pCallbackArg: number,
 ): number {
+  hitD2GameVa113c(0x6FCC0AD0)
   if (pfnCallback === 0) return 0
   const sp = m.alloc(0x18) >>> 0
   const pOutX = sp
@@ -945,6 +956,7 @@ export function AURA_FindClosestUnitInRadius_6FCC1000_113c(
   pfnFilter: number,
   hooks?: K2W4B6Hooks113c,
 ): number {
+  hitD2GameVa113c(0x6FCC1000)
   const pClosestCtx = m.alloc(0x14) >>> 0
   m.setU32(pClosestCtx, 0)
   writeI32(m, (pClosestCtx + 0x04) >>> 0, 0x7fffffff)
@@ -998,6 +1010,7 @@ export function AURAS_ApplyRadialSkillDamageCallback_6FCC1210_113c(
   pAuraCtx: number,
   pTargetUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FCC1210)
   const pDmgSrc = m.u32((pAuraCtx + 0x0c) >>> 0) >>> 0
   const pDmgCopy = m.alloc(0x70) >>> 0
   for (let i = 0; i < 0x1c; i += 1) {
@@ -1028,6 +1041,7 @@ export function SKILLS_EnsureWeaponOrQuiverElseStartModeCast_6FCC1600_113c(
   _nSkillId = 0,
   _nSkillLevel = 0,
 ): number {
+  hitD2GameVa113c(0x6FCC1600)
   if (SKILLS_EnsurePlayerWeaponOrQuiverQuantity_6FCBEB80_113c(m, pUnit >>> 0) !== 0) {
     return 1
   }
@@ -1047,6 +1061,7 @@ export function SKILLS_ConsumeThrowOrQuiverQuantityForPlayer_6FCC1790_113c(
   pUnit: number,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FCC1790)
   if (pUnit === 0 || m.u32(pUnit >>> 0) !== 0) return 0
   const pWeapon = PLAYER_GetEquippedWeapon113c(m, pUnit >>> 0) >>> 0
   let bMustMatchWeapon = 1
@@ -1106,6 +1121,7 @@ export function SKILLS_OnPeriodicItemAuraEvent9_6FCC37D0_113c(
   nEventArg: number,
   nSkillId: number,
 ): void {
+  hitD2GameVa113c(0x6FCC37D0)
   const skillId = nSkillId | 0
   if (skillId >= 0) {
     const pDataTablesPtr = m.u32(SGPT_DATATABLES_6FD1829C) >>> 0
@@ -1160,6 +1176,7 @@ export function SKILLS_CanSummonTargetUnitForSkill_6FCC3D60_113c(
   nSkillId: number,
   pTargetUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FCC3D60)
   const skillId = nSkillId | 0
   if (skillId < 0) return 0
   const pDataTablesPtr = m.u32(SGPT_DATATABLES_6FD1829C) >>> 0
@@ -1202,6 +1219,7 @@ export function AI_ReverseCheckAndCastRandomPosSkill_6FCC4FD0_113c(
   pAiTickArgs: number,
   hooks?: K2W4B6Hooks113c,
 ): void {
+  hitD2GameVa113c(0x6FCC4FD0)
   void seedRoll
   const pMonStats = m.u32((pAiTickArgs + 0x1c) >>> 0) >>> 0
   const pTarget = m.u32((pAiTickArgs + 0x08) >>> 0) >>> 0
@@ -1323,6 +1341,7 @@ export function AI_ScanRoomTargetAndCountAlliesCallback_6FCC5230_113c(
   pCandidateUnit: number,
   pScanCtx: number,
 ): number {
+  hitD2GameVa113c(0x6FCC5230)
   if ((pOriginUnit >>> 0) === (pCandidateUnit >>> 0)) return 0
   if (SUNIT_IsDeadOrDying113c(m, pCandidateUnit >>> 0) !== 0) return 0
   if (pCandidateUnit === 0) return 0
@@ -1417,6 +1436,7 @@ export function ITEMS_UseSpellIconOrScrollItem_6FCCD0F0_113c(
     nSpellParam: number,
   ) => number,
 ): number {
+  hitD2GameVa113c(0x6FCCD0F0)
   if (pOwnerUnit === 0) return 0
   const dwOwnerType = m.u32(pOwnerUnit >>> 0)
   if (dwOwnerType !== 0 && dwOwnerType !== 1) return 0
@@ -1530,6 +1550,7 @@ export function SUNITDMG_ProcHitOpenWounds_6FCCD410_113c(
   dwStatAndLayer: number,
   _nArg4 = 0,
 ): number {
+  hitD2GameVa113c(0x6FCCD410)
   if (pAttacker === 0 || pDefender === 0) return 0
   const nChance =
     STATLIST_GetUnitStatWithLayer113c(
@@ -1607,6 +1628,7 @@ export function ITEMS_UseTimedStateBuffPotion_6FCCE4D0_113c(
   _nY = 0,
   _nSpellParam = 0,
 ): number {
+  hitD2GameVa113c(0x6FCCE4D0)
   void STATES_OnTimedStateRemoved113c
   const nItemClassId = pItem !== 0 ? readI32(m, (pItem + 0x04) >>> 0) : -1
   const pItemsTxt = DATATBLS_GetItemsTxtRecordMemPort113c(m, nItemClassId) >>> 0
@@ -1699,6 +1721,7 @@ export function SUNITDMG_ProcHitMonsterFleeOrTaunt_6FCCF2E0_113c(
   dwStatAndLayer: number,
   _nArg4 = 0,
 ): number {
+  hitD2GameVa113c(0x6FCCF2E0)
   if (pAttacker === 0 || pDefender === 0) return 0
   if (m.u32(pDefender >>> 0) !== 1) return 0
   const pMonData = m.u32((pDefender + 0x14) >>> 0) >>> 0
@@ -1742,6 +1765,7 @@ export function MONAI_FindClosestWalkableHostileMeleeTargetCallback_6FCD1520_113
   pCandidateUnit: number,
   pBestCtx: number,
 ): number {
+  hitD2GameVa113c(0x6FCD1520)
   if ((pCandidateUnit >>> 0) === (m.u32((pBestCtx + 0x08) >>> 0) >>> 0)) return 0
   if (
     MONAI_IsUnitValidHostileCombatTarget_6FCD13B0_113c(
@@ -1788,6 +1812,7 @@ export function MONAI_FindClosestLoSHostileMeleeTargetCallback_6FCD1580_113c(
   pCandidateUnit: number,
   pBestCtx: number,
 ): number {
+  hitD2GameVa113c(0x6FCD1580)
   if ((pCandidateUnit >>> 0) === (m.u32((pBestCtx + 0x08) >>> 0) >>> 0)) return 0
   if (
     MONAI_IsHostileAttackableTargetFilter_6FCD1400_113c(
@@ -1828,6 +1853,7 @@ export function MONAI_FindClosestLoSHostileMeleeAndRangedTargetCallback_6FCD15E0
   pCandidateUnit: number,
   pBestCtx: number,
 ): number {
+  hitD2GameVa113c(0x6FCD15E0)
   if (
     MONAI_IsHostileAttackableTargetFilter_6FCD1400_113c(
       m,
@@ -1878,6 +1904,7 @@ export function MONAI_FindTargetOrNearestBlockingObstacle_6FCD1BC0_113c(
   pbCanMeleeOut: number,
   pnOutDist: number,
 ): number {
+  hitD2GameVa113c(0x6FCD1BC0)
   const bestState = { pBestUnit: 0, bestDist: 0x7fffffff }
   const pPresetCand = pUnit !== 0 ? m.u32((pUnit + 0x94) >>> 0) >>> 0 : 0
   let pChosen = 0
@@ -1940,6 +1967,7 @@ export function SKILLS_DoFindPotionOrGrimWardRadiusCurse_6FCD39F0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCD39F0)
   const pCoords = m.alloc(8)
   const pOutX = pCoords
   const pOutY = (pCoords + 4) >>> 0
@@ -2019,6 +2047,7 @@ export function SKILLS_DoFeralRageOrHungerHit_6FCD3B20_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCD3B20)
   const skillId = nSkillId | 0
   if (skillId < 0) return 0
   const pDataTablesPtr = m.u32(SGPT_DATATABLES_6FD1829C) >>> 0
@@ -2100,6 +2129,7 @@ export function SKILLS_DoElemMeleeHitAndSetSkillIcon_6FCD3D60_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCD3D60)
   const skillId = nSkillId | 0
   if (skillId < 0) return 0
   const pDataTablesPtr = m.u32(SGPT_DATATABLES_6FD1829C) >>> 0
@@ -2154,6 +2184,7 @@ export function SKILLS_DoImpaleOrRabiesStep_6FCD3F10_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCD3F10)
   const skillId = nSkillId | 0
   if (skillId < 0) return 0
   const pDataTablesPtr = m.u32(SGPT_DATATABLES_6FD1829C) >>> 0
@@ -2259,6 +2290,7 @@ export function SKILLS_DoSmiteOrTelekinesisCombatHit_6FCD4520_113c(
   pGame: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCD4520)
   const skillId = nSkillId | 0
   if (skillId < 0) return 0
   const pDataTablesPtr = m.u32(SGPT_DATATABLES_6FD1829C) >>> 0
@@ -2316,6 +2348,7 @@ export function SKILLS_DoTeethOrMultipleShotFan_6FCD4DE0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCD4DE0)
   const skillId = nSkillId | 0
   if (skillId < 0) return 0
   const pDataTablesPtr = m.u32(SGPT_DATATABLES_6FD1829C) >>> 0
@@ -2416,6 +2449,7 @@ export function SKILLS_DoChargedBoltOrSpiderWebFan_6FCD4FF0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCD4FF0)
   const skillId = nSkillId | 0
   if (skillId < 0) return 0
   const pDataTablesPtr = m.u32(SGPT_DATATABLES_6FD1829C) >>> 0
@@ -2495,6 +2529,7 @@ export function SKILLS_DoBlazeOrInfernoStepMissile_6FCD56C0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCD56C0)
   const skillId = nSkillId | 0
   if (skillId < 0) return 0
   const pDataTablesPtr = m.u32(SGPT_DATATABLES_6FD1829C) >>> 0
@@ -2579,6 +2614,7 @@ export function SKILLS_DoChargeOrSmiteKnockbackStart_6FCD6380_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCD6380)
   const skillId = nSkillId | 0
   if (skillId < 0) return 0
   const pDataTablesPtr = m.u32(SGPT_DATATABLES_6FD1829C) >>> 0
@@ -2669,6 +2705,7 @@ export function SKILLS_SrvDoInfernoChannelTick_6FCD6840_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCD6840)
   const skillId = nSkillId | 0
   if (skillId < 0) return 0
   const pDataTablesPtr = m.u32(SGPT_DATATABLES_6FD1829C) >>> 0
@@ -2770,6 +2807,7 @@ export function SKILLS_SrvDoArcticBlastChannelTick_6FCD6A60_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCD6A60)
   const skillId = nSkillId | 0
   if (skillId < 0) return 0
   const pDataTablesPtr = m.u32(SGPT_DATATABLES_6FD1829C) >>> 0
@@ -2876,6 +2914,7 @@ export function AIBAAL_SelectAction_6FCD79B0_113c(
   nNearbyCount: number,
   pAnchorStaticPath: number,
 ): number {
+  hitD2GameVa113c(0x6FCD79B0)
   const forcedAction = m.u32((pAiState + 0x14) >>> 0) | 0
   if (forcedAction !== 0) return forcedAction
 
@@ -3010,6 +3049,7 @@ export function ACT4Q2_InitHadrielQuestDescriptor_6FCD97D0_113c(
   m: D2KernMemory113c,
   pQuestData: number,
 ): void {
+  hitD2GameVa113c(0x6FCD97D0)
   void ACT4Q0_StatusFilter_6FCD87D0_113c
   void ACT4Q2_HasHadrielQuestIndicator_6FCD8B90_113c
   void ACT4Q2_InitHadrielNpcDialog_6FCD8C00_113c
@@ -3038,6 +3078,7 @@ export function ACT4Prologue_InitQuestDescriptor_6FCD9D80_113c(
   m: D2KernMemory113c,
   pQuestData: number,
 ): void {
+  hitD2GameVa113c(0x6FCD9D80)
   void ACT4Prologue_ActiveFilter_6FCD8B50_113c
   void ACT4Prologue_Callback11_ScrollMessage_6FCD97A0_113c
   void ACT4Prologue_StatusFilter_6FCD8B80_113c
@@ -3070,6 +3111,7 @@ export function ACT4Q3_CompleteQuestIfPlayerNearDiabloRoom_6FCD9F20_113c(
   pPlayerUnit: number,
   _nArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FCD9F20)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit >>> 0) >>> 0
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + nDiff * 4 + 0x10) >>> 0) >>> 0
@@ -3132,6 +3174,7 @@ export function ACT4Q3_CompleteQuestIfPlayerInAct4_6FCDA010_113c(
   pPlayerUnit: number,
   _nArg = 0,
 ): void {
+  hitD2GameVa113c(0x6FCDA010)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit >>> 0) >>> 0
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + nDiff * 4 + 0x10) >>> 0) >>> 0
@@ -3159,6 +3202,7 @@ export function ACT4Q1_PropagateQuestFailureToSubParty_6FCDA180_113c(
   pPlayerUnit: number,
   _nArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FCDA180)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit >>> 0) >>> 0
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
   const pQuestFlags = m.u32((pPlayerData + nDiff * 4 + 0x10) >>> 0) >>> 0
@@ -3192,6 +3236,7 @@ export function ACT4Q3_SpawnChaosSealBossOrRetryEvent7_6FCDBC00_113c(
   pGame: number,
   pUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FCDBC00)
   const pCoord = m.alloc(8) >>> 0
   PATH_GetTargetTypeAndPosition113c(m, pUnit >>> 0, pCoord)
 
@@ -3263,6 +3308,7 @@ export function ITEMS_FindAutoStackCompatItemInInventory_6FCDC6B0_113c(
   pItem: number,
   pnOutFreeSpace: number,
 ): number {
+  hitD2GameVa113c(0x6FCDC6B0)
   m.setU32(pnOutFreeSpace >>> 0, 1)
   const pInventory = m.u32((pUnit + 0x60) >>> 0) >>> 0
   if (pInventory === 0) return 0

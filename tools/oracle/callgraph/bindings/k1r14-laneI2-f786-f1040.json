@@ -17,14 +17,6 @@
   },
   {
     "module": "D2Game",
-    "va": "0x6FC57030",
-    "name": "SUNIT_DispatchItemEventCallbacks113c",
-    "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
-    "tsSymbol": "SUNIT_DispatchItemEventCallbacks113c",
-    "status": "ported"
-  },
-  {
-    "module": "D2Game",
     "va": "0x6FC57260",
     "name": "PLAYER_SetActiveDualWeaponStatLists113c",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
@@ -169,14 +161,6 @@
   },
   {
     "module": "D2Game",
-    "va": "0x6FCBF850",
-    "name": "SKILLS_ConsumeSkillManaOrCharge113c",
-    "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
-    "tsSymbol": "SKILLS_ConsumeSkillManaOrCharge113c",
-    "status": "ported"
-  },
-  {
-    "module": "D2Game",
     "va": "0x6FCBFC00",
     "name": "SKILLS_ValidateSkillTargetAlignment113c",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
@@ -201,14 +185,6 @@
   },
   {
     "module": "D2Game",
-    "va": "0x6FCC1630",
-    "name": "SKILLS_StartPlayerSkillAnimOrCast113c",
-    "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
-    "tsSymbol": "SKILLS_StartPlayerSkillAnimOrCast113c",
-    "status": "ported"
-  },
-  {
-    "module": "D2Game",
     "va": "0x6FCC19A0",
     "name": "SKILLS_ExecuteSkillDoFunc113c",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
@@ -221,14 +197,6 @@
     "name": "SKILLS_DoUsedSkillAction113c",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
     "tsSymbol": "SKILLS_DoUsedSkillAction113c",
-    "status": "ported"
-  },
-  {
-    "module": "D2Game",
-    "va": "0x6FCC2C40",
-    "name": "SrvDoFunc_001_Attack113c",
-    "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
-    "tsSymbol": "SrvDoFunc_001_Attack113c",
     "status": "ported"
   },
   {

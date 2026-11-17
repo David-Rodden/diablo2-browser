@@ -69,20 +69,48 @@ describe('K1 kernel replay purity', () => {
     }
   })
 
-  it('calling an unported manifest function throws UnportedFunction113c', () => {
+  it('calling an unwired or unported function throws UnportedFunction113c', () => {
     const world = bootFromSnapshot113c(loadSnapshotFile113c(snapshotPath113c('a1-town-walk', 2)))
-    const unported = [...loadManifest113c().values()].find((f) => f.module === 'D2Game' && f.status === 'unported')
-    expect(unported).toBeDefined()
-    const va = parseInt(unported!.va, 16)
-    let err: unknown = null
-    try {
-      callKernel113c(world, 'D2Game', va, [world.pGame])
-    } catch (e) {
-      err = e
+    const manifest = loadManifest113c()
+    const unported = [...manifest.values()].find((f) => f.module === 'D2Game' && f.status === 'unported')
+    if (unported !== undefined) {
+      const va = parseInt(unported.va, 16)
+      let err: unknown = null
+      try {
+        callKernel113c(world, 'D2Game', va, [world.pGame])
+      } catch (e) {
+        err = e
+      }
+      expect(err).toBeInstanceOf(UnportedFunction113c)
+      expect((err as UnportedFunction113c).status).toBe('unported')
+      expect((err as UnportedFunction113c).va).toBe(va)
+    } else {
+      // At 4810/4810 100% manifest closure, every manifest VA is ported/diff-verified:
+      // verify unwired manifest VAs and non-manifest VAs both throw UnportedFunction113c.
+      const unwired = [...manifest.entries()].find(
+        ([k, f]) => f.module === 'D2Game' && !KERNEL_REGISTRY_113C.has(k),
+      )
+      expect(unwired).toBeDefined()
+      const unwiredVa = parseInt(unwired![1].va, 16)
+      let unwiredErr: unknown = null
+      try {
+        callKernel113c(world, 'D2Game', unwiredVa, [world.pGame])
+      } catch (e) {
+        unwiredErr = e
+      }
+      expect(unwiredErr).toBeInstanceOf(UnportedFunction113c)
+      expect((unwiredErr as UnportedFunction113c).va).toBe(unwiredVa)
+
+      let unknownErr: unknown = null
+      try {
+        callKernel113c(world, 'D2Game', 0x6fc20000, [world.pGame])
+      } catch (e) {
+        unknownErr = e
+      }
+      expect(unknownErr).toBeInstanceOf(UnportedFunction113c)
+      expect((unknownErr as UnportedFunction113c).status).toBe('not-in-manifest')
+      expect((unknownErr as UnportedFunction113c).va).toBe(0x6fc20000)
     }
-    expect(err).toBeInstanceOf(UnportedFunction113c)
-    expect((err as UnportedFunction113c).status).toBe('unported')
-    expect((err as UnportedFunction113c).va).toBe(va)
   })
 
   it('horizon updater only moves up and reports regressions', () => {
@@ -96,6 +124,7 @@ describe('K1 kernel replay purity', () => {
       firstPosDivergence: null,
       unportedHit: null,
       framesStepped: 0,
+      tsExecutedVas: [],
     }
     const up = mergeHorizons113c(committed, [{ ...base, strictHorizon: 12, posHorizon: 25 }])
     expect(up.regressions).toEqual([])

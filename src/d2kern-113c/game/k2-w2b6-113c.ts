@@ -44,7 +44,7 @@ import {
   SUNITDMG_ExecuteEvents113c,
   SUNITDMG_RemoveCombatNode113c,
 } from './combat-a1c-113c.js';
-import { UNITS_GetDistanceToCoordinates113c } from './fallen-ai-113c.js';
+import { UNITS_GetDistanceToCoordinates113c } from './replay-kernel-113c.ts';
 import { QUESTS_SendQuestStateAlert5D_113c } from './k2-items-tc-w1-113c.js';
 import { ITEMS_FindQuestItemByBaseCode_6FC2E660_113c } from './k2-laneI-0x6fc3-w1-113c.js';
 import { UNITS_ChangeAnimMode113c } from './monster-events.js';
@@ -55,6 +55,7 @@ import {
   UNIT_GetPosX113c,
   UNIT_GetPosY113c,
 } from './regpop-spawn-113c.js';
+import { hitD2GameVa113c } from '../va-trace-113c.js';
 
 /** `D2Game.dll` `.rdata` `0x6FD1B434`: `'..\\Source\\D2Game\\Ai\\AiBaal.cpp'`. */
 const AIBAAL_CPP_VA_113C = 0x6fd1b434;
@@ -98,6 +99,7 @@ export function SKILLS_SrvDo124_ClearSeqFlagAndFrameCount_6FCD2E90_113c(
   _nSkillId = 0,
   _nSkillLevel = 0,
 ): number {
+  hitD2GameVa113c(0x6FCD2E90);
   const sp = m.alloc(8) >>> 0;
   const pOutFrame = sp;
   const pOutFrameCount = (sp + 4) >>> 0;
@@ -123,6 +125,7 @@ export function SKILLS_SrvSt_SetUnitFlags0E_6FCD2F80_113c(
   _nSkillId = 0,
   _nSkillLevel = 0,
 ): number {
+  hitD2GameVa113c(0x6FCD2F80);
   const unit = pUnit >>> 0;
   if (unit !== 0) {
     m.setU32((unit + 0xc4) >>> 0, (m.u32((unit + 0xc4) >>> 0) | 0x0e) >>> 0);
@@ -143,6 +146,7 @@ export function SKILLS_SrvSt_ClearUnitFlags0E_6FCD2FA0_113c(
   _nSkillId = 0,
   _nSkillLevel = 0,
 ): number {
+  hitD2GameVa113c(0x6FCD2FA0);
   const unit = pUnit >>> 0;
   if (unit !== 0) {
     m.setU32((unit + 0xc4) >>> 0, (m.u32((unit + 0xc4) >>> 0) & 0xfffffff1) >>> 0);
@@ -163,6 +167,7 @@ export function SKILLS_SrvSt_ClearUnitFlags0EAndMarkDeadCollision_6FCD31B0_113c(
   _nSkillId = 0,
   _nSkillLevel = 0,
 ): number {
+  hitD2GameVa113c(0x6FCD31B0);
   const unit = pUnit >>> 0;
   if (unit !== 0) {
     m.setU32((unit + 0xc4) >>> 0, (m.u32((unit + 0xc4) >>> 0) & 0xfffffff1) >>> 0);
@@ -183,6 +188,7 @@ export function SKILLS_InitInfernoSeqFrames_6FCD3270_113c(
   pUnit: number,
   pSkillsTxt: number,
 ): void {
+  hitD2GameVa113c(0x6FCD3270);
   const unit = pUnit >>> 0;
   if (unit === 0 || (m.u32(unit) >>> 0) !== 1) {
     UNITS_SetSeqFrameFromLowByte113c(m, unit, 8);
@@ -219,6 +225,7 @@ export function SKILLS_SrvDo002_ValidateNonSelfPathTarget_6FCD3570_113c(
   _nSkillId = 0,
   _nSkillLevel = 0,
 ): number {
+  hitD2GameVa113c(0x6FCD3570);
   const unit = pUnit >>> 0;
   SUNIT_ValidatePathTargetUnit113c(m, unit, pGame >>> 0);
   const pTarget = PATH_GetTargetUnit113c(m, m.u32((unit + 0x2c) >>> 0)) >>> 0;
@@ -242,6 +249,7 @@ export function SKILLS_SrvSt_AllocZeroDamageCombatForTarget_6FCD3EB0_113c(
   _nSkillId = 0,
   _nSkillLevel = 0,
 ): number {
+  hitD2GameVa113c(0x6FCD3EB0);
   const unit = pUnit >>> 0;
   const game = pGame >>> 0;
   SUNIT_ValidatePathTargetUnit113c(m, unit, game);
@@ -272,6 +280,7 @@ export function SKILLS_SrvDo113_ExecuteCombatAndRestartSkill_6FCD4660_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCD4660);
   const unit = pUnit >>> 0;
   const game = pGame >>> 0;
   SUNIT_ValidatePathTargetUnit113c(m, unit, game);
@@ -295,6 +304,7 @@ export function AIBAAL_NoopThink_6FCD6C80_113c(
   _pUnit = 0,
   _pAiTickParam = 0,
 ): void {
+  hitD2GameVa113c(0x6FCD6C80);
   // No-op (ret 4)
 }
 
@@ -310,6 +320,7 @@ export function AIBAAL_IsHighThreatAoESkill_6FCD6C90_113c(
   pSkill: number,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FCD6C90);
   const skill = pSkill >>> 0;
   if (skill === 0) {
     return 0;
@@ -341,6 +352,7 @@ export function AIBAAL_CountLivingMinionCallback_6FCD6CE0_113c(
   pSelfUnitPtr: number,
   pOutCount: number,
 ): void {
+  hitD2GameVa113c(0x6FCD6CE0);
   const unit = pUnit >>> 0;
   if (unit === (m.u32(pSelfUnitPtr >>> 0) >>> 0)) {
     return;
@@ -368,6 +380,7 @@ export function AIBAAL_AreUnitsInSameActWithin1020_6FCD6D30_113c(
   pUnit1: number,
   pUnit2: number,
 ): number {
+  hitD2GameVa113c(0x6FCD6D30);
   const u1 = pUnit1 >>> 0;
   const u2 = pUnit2 >>> 0;
   if (u1 === 0) {
@@ -400,6 +413,7 @@ export function ACT4Q0_StatusFilter_6FCD87D0_113c(
   _pPlayerFlags = 0,
   _pStatusOut = 0,
 ): number {
+  hitD2GameVa113c(0x6FCD87D0);
   return 0;
 }
 
@@ -414,6 +428,7 @@ export function ACT4Q2_Callback04_ItemPickedUp_6FCD87F0_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FCD87F0);
   const pItem = m.u32((pQuestArg + 8) >>> 0) >>> 0;
   const pQuestDataEx = m.u32((pQuest + 0x18) >>> 0) >>> 0;
   const dwCode = ITEMS_GetBaseCode113c(m, pItem) >>> 0;
@@ -437,6 +452,7 @@ export function ACT4Q2_ActiveFilter_6FCD8810_113c(
   pPlayerFlags: number,
   _pTargetUnit = 0,
 ): number {
+  hitD2GameVa113c(0x6FCD8810);
   if ((nNpcId | 0) !== 0xf6) {
     return 0;
   }
@@ -469,6 +485,7 @@ export function ACT4Q2_ActiveFilter_6FCD8810_113c(
  * @va D2Game.dll@0x6fcd8870
  */
 export function ACT4Q2_InitHellforgeObject_6FCD8870_113c(m: Memory113c, pObjInit: number): void {
+  hitD2GameVa113c(0x6FCD8870);
   const initPtr = pObjInit >>> 0;
   const pGame = m.u32(initPtr) >>> 0;
   const pQuest = findQuestDataByIdInline113c(m, pGame, 0x17);
@@ -497,6 +514,7 @@ export function ACT4Q2_IsClassicDiabloDropBlocked_6FCD88C0_113c(
   m: Memory113c,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FCD88C0);
   const game = pGame >>> 0;
   if (m.u32((game + 0x70) >>> 0) !== 0) {
     return 0;
@@ -515,6 +533,7 @@ export function ACT4Q2_IsClassicDiabloDropBlocked_6FCD88C0_113c(
  * @va D2Game.dll@0x6fcd8930
  */
 export function ACT4_InitObjectNoop_6FCD8930_113c(_m: Memory113c, _pObjInit = 0): void {
+  hitD2GameVa113c(0x6FCD8930);
   // No-op (ret)
 }
 
@@ -530,6 +549,7 @@ export function ACT4Q1_CheckPlayerNearIzualCallback_6FCD8A50_113c(
   pPlayer: number,
   pQuestDataEx: number,
 ): void {
+  hitD2GameVa113c(0x6FCD8A50);
   const dataEx = pQuestDataEx >>> 0;
   const pTarget = m.u32((dataEx + 0x14) >>> 0) >>> 0;
   const dist = UNITS_GetApproximateDistance113c(m, pPlayer >>> 0, pTarget) | 0;
@@ -552,6 +572,7 @@ export function ACT4Prologue_ActiveFilter_6FCD8B50_113c(
   pPlayerFlags: number,
   _pTargetUnit = 0,
 ): number {
+  hitD2GameVa113c(0x6FCD8B50);
   if ((nNpcId | 0) !== 0x16f) {
     return 0;
   }
@@ -571,6 +592,7 @@ export function ACT4Prologue_StatusFilter_6FCD8B80_113c(
   _pPlayerFlags = 0,
   _pStatusOut = 0,
 ): number {
+  hitD2GameVa113c(0x6FCD8B80);
   return 0;
 }
 
@@ -585,6 +607,7 @@ export function ACT4Q2_Callback14_PlayerJoined_6FCD8CC0_113c(
   pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FCD8CC0);
   const arg = pQuestArg >>> 0;
   const pPlayer = m.u32((arg + 0x0c) >>> 0) >>> 0;
   const pGame = m.u32(arg) >>> 0;
@@ -607,6 +630,7 @@ export function ACT4Q2_Callback10_RemovePlayerGuid_6FCD8E60_113c(
   pQuest: number,
   pQuestArg: number,
 ): number {
+  hitD2GameVa113c(0x6FCD8E60);
   const pUnit = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0;
   const dwGuid = pUnit === 0 ? 0xffffffff : m.u32((pUnit + 0x0c) >>> 0) >>> 0;
   return QUESTS_GuidListRemove113c(m, (pQuest + 0x1c) >>> 0, dwGuid) | 0;
@@ -623,6 +647,7 @@ export function ACT4Q3_Callback14_ClearState09IfAct5Incomplete_6FCD8FE0_113c(
   _pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FCD8FE0);
   const arg = pQuestArg >>> 0;
   const pGame = m.u32(arg) >>> 0;
   if (m.u32((pGame + 0x70) >>> 0) === 0) {
@@ -650,6 +675,7 @@ export function ACT4Q3_ActivateHarrogathWaypointForPlayer_6FCD9030_113c(
   pGame: number,
   pPlayer: number,
 ): void {
+  hitD2GameVa113c(0x6FCD9030);
   const pWaypointNoOut = m.alloc(4) >>> 0;
   if (WAYPOINT_GetWaypointNoFromLevelId113c(m, 0x6d, pWaypointNoOut) !== 0) {
     const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer >>> 0) >>> 0;
@@ -671,6 +697,7 @@ export function ACT4Q1_Callback10_RemovePlayerGuid_6FCD94D0_113c(
   pQuest: number,
   pQuestArg: number,
 ): number {
+  hitD2GameVa113c(0x6FCD94D0);
   const pUnit = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0;
   const dwGuid = pUnit === 0 ? 0xffffffff : m.u32((pUnit + 0x0c) >>> 0) >>> 0;
   return QUESTS_GuidListRemove113c(m, (pQuest + 0x1c) >>> 0, dwGuid) | 0;
@@ -687,6 +714,7 @@ export function ACT4Prologue_Callback11_ScrollMessage_6FCD97A0_113c(
   _pQuest: number,
   pQuestArg: number,
 ): void {
+  hitD2GameVa113c(0x6FCD97A0);
   const arg = pQuestArg >>> 0;
   if (m.u16((arg + 0x14) >>> 0) !== 0x16f) {
     return;
@@ -714,6 +742,7 @@ export function ACT4Q2_SyncHellforgeQuestStateCallback_6FCD9920_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FCD9920);
   const player = pPlayer >>> 0;
   const pPlayerData = UNITS_GetPlayerData113c(m, player) >>> 0;
   const nDifficulty = m.u8((pGame + 0x6d) >>> 0);
@@ -740,6 +769,7 @@ export function ACT4Q3_SyncDiabloQuestStateCallback_6FCD9BC0_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FCD9BC0);
   const player = pPlayer >>> 0;
   const pPlayerData = UNITS_GetPlayerData113c(m, player) >>> 0;
   const nDifficulty = m.u8((pGame + 0x6d) >>> 0);
@@ -765,6 +795,7 @@ export function ACT4Q1_BroadcastIzualQuestChatCallback_6FCD9C60_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FCD9C60);
   const player = pPlayer >>> 0;
   const pPlayerData = UNITS_GetPlayerData113c(m, player) >>> 0;
   const nDifficulty = m.u8((pGame + 0x6d) >>> 0);
@@ -793,6 +824,7 @@ export function ACT4Q1_SyncIzualQuestStateCallback_6FCD9CD0_113c(
   pPlayer: number,
   _pArg = 0,
 ): number {
+  hitD2GameVa113c(0x6FCD9CD0);
   const player = pPlayer >>> 0;
   const pPlayerData = UNITS_GetPlayerData113c(m, player) >>> 0;
   const nDifficulty = m.u8((pGame + 0x6d) >>> 0);
@@ -824,6 +856,7 @@ export function HIRELING_GetVendorNameIdRange_6FCDC7D0_113c(
   pOutMonsterClassId: number,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FCDC7D0);
   const outLow = pOutIdLow >>> 0;
   const outHigh = pOutIdHigh >>> 0;
   const outClass = pOutMonsterClassId >>> 0;
@@ -867,6 +900,7 @@ export function STATES_PurgeExpStateStatLists_6FCDC920_113c(
   m: Memory113c,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FCDC920);
   const unit = pUnit >>> 0;
   let pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C) >>> 0) >>> 0;
   let nStatesCount = m.u32((pDataTables + 0xc4) >>> 0) | 0;
@@ -903,6 +937,7 @@ export function INVENTORY_IsCursorItemMatchingGuid_6FCDC990_113c(
   pUnit: number,
   dwItemGuid: number,
 ): number {
+  hitD2GameVa113c(0x6FCDC990);
   const pInventory = m.u32((pUnit + 0x60) >>> 0) >>> 0;
   if (pInventory === 0) {
     return 0;
@@ -927,6 +962,7 @@ export function NPCTRADE_ClampNormalActLevelCap_6FCDCB20_113c(
   pNpc: number,
   nMaxCap: number,
 ): number {
+  hitD2GameVa113c(0x6FCDCB20);
   const game = pGame >>> 0;
   const maxCap = nMaxCap | 0;
   if (m.u8((game + 0x6d) >>> 0) !== 0) {
@@ -960,6 +996,7 @@ export function ACT2Q5_StatusFilter_6FCE1960_113c(
   _pPlayerFlags = 0,
   _pStatusOut = 0,
 ): number {
+  hitD2GameVa113c(0x6FCE1960);
   return 0;
 }
 
@@ -976,6 +1013,7 @@ export function ACT2Q4_StatusFilter_6FCE1970_113c(
   _pPlayerFlags = 0,
   _pStatusOut = 0,
 ): number {
+  hitD2GameVa113c(0x6FCE1970);
   return 0;
 }
 
@@ -989,6 +1027,7 @@ export function ACT2Q4_Callback00_Noop_6FCE1980_113c(
   _pQuest = 0,
   _pQuestArg = 0,
 ): void {
+  hitD2GameVa113c(0x6FCE1980);
   // No-op (ret)
 }
 
@@ -1002,6 +1041,7 @@ export function ACT2Q2_IsHoradricStaffQuestInactiveOrCompleted_6FCE1A00_113c(
   m: Memory113c,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FCE1A00);
   const pQuest = findQuestDataByIdInline113c(m, pGame >>> 0, 0x0d);
   if (pQuest === 0) {
     return 1;
@@ -1025,6 +1065,7 @@ export function ACT2Q4_CheckPlayerNearHorazonTomeCallback_6FCE1A40_113c(
   pPlayer: number,
   pQuestDataEx: number,
 ): void {
+  hitD2GameVa113c(0x6FCE1A40);
   const dataEx = pQuestDataEx >>> 0;
   const pTarget = m.u32((dataEx + 0x40) >>> 0) >>> 0;
   const dist = UNITS_GetApproximateDistance113c(m, pPlayer >>> 0, pTarget) | 0;
@@ -1043,6 +1084,7 @@ export function ACT2Q2_CanSpawnViperAmuletChest_6FCE1A60_113c(
   m: Memory113c,
   pGame: number,
 ): number {
+  hitD2GameVa113c(0x6FCE1A60);
   const pQuest = findQuestDataByIdInline113c(m, pGame >>> 0, 0x0d);
   if (pQuest === 0) {
     return 0;
@@ -1061,6 +1103,7 @@ export function ACT2Q2_CanSpawnViperAmuletChest_6FCE1A60_113c(
  * @va D2Game.dll@0x6fce1b20
  */
 export function ACT2Q2_IsQuestInState01_6FCE1B20_113c(m: Memory113c, pGame: number): number {
+  hitD2GameVa113c(0x6FCE1B20);
   const pQuest = findQuestDataByIdInline113c(m, pGame >>> 0, 0x0d);
   if (pQuest === 0) {
     return 0;
@@ -1078,6 +1121,7 @@ export function ACT2Q2_IsQuestInState01_6FCE1B20_113c(m: Memory113c, pGame: numb
  * @va D2Game.dll@0x6fce1b60
  */
 export function ACT2Q2_IsQuestPastState01_6FCE1B60_113c(m: Memory113c, pGame: number): number {
+  hitD2GameVa113c(0x6FCE1B60);
   const pQuest = findQuestDataByIdInline113c(m, pGame >>> 0, 0x0d);
   if (pQuest === 0) {
     return 1;
@@ -1100,6 +1144,7 @@ export function ACT2Q1_GetRadamentSpawnCoords_6FCE1EE0_113c(
   pGame: number,
   pOutCoord: number,
 ): number {
+  hitD2GameVa113c(0x6FCE1EE0);
   const pQuest = findQuestDataByIdInline113c(m, pGame >>> 0, 0x0b);
   if (pQuest === 0) {
     return 0;
@@ -1129,6 +1174,7 @@ export function ACT2Q1_GetRadamentSpawnCoords_6FCE1EE0_113c(
  * @va D2Game.dll@0x6fce1f40
  */
 export function ACT2Q1_IsSewerTrapDoorOpen_6FCE1F40_113c(m: Memory113c, pGame: number): number {
+  hitD2GameVa113c(0x6FCE1F40);
   const pQuest = findQuestDataByIdInline113c(m, pGame >>> 0, 0x0b);
   if (pQuest === 0) {
     return 1;

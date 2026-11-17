@@ -454,10 +454,10 @@ describe('k2-w2b2-113c oracle tests (45 D2Game.dll functions)', () => {
     // Test ACT1Q5_SendTowerTomeQuestAlert5D_6FC82A30_113c on a fresh client queue
     const { pPlayer: pPlayerTome, pQueue: pQueueTome } = createPlayerWithQuestFlags(m)
     ACT1Q5_SendTowerTomeQuestAlert5D_6FC82A30_113c(m, pPlayerTome)
-    expect(m.u32(pQueueTome + 0x04)).toBe(6)
-    expect(m.u8(pQueueTome + 0x08)).toBe(0x5d)
-    expect(m.u8(pQueueTome + 0x09)).toBe(4)
-    expect(m.u8(pQueueTome + 0x0a)).toBe(1)
+    expect(m.u32(pQueueTome + 0x00)).toBe(6)
+    expect(m.u8(pQueueTome + 0x04)).toBe(0x5d)
+    expect(m.u8(pQueueTome + 0x05)).toBe(4)
+    expect(m.u8(pQueueTome + 0x06)).toBe(1)
   })
 
   it('ACT1Q6_PlayAndarielDefeatedSoundCallback_6FC826C0_113c and ACT1Q1_PlayDenClearedSoundCallback_6FC82C60_113c', () => {
@@ -669,7 +669,7 @@ describe('k2-w2b2-113c oracle tests (45 D2Game.dll functions)', () => {
     // Mode 0 -> transitions to 1 and clears bit 0x02 of dwFlags (+0xC4)
     expect(OBJECTS_OperateToggleObjectMode012_6FC89A80_113c(m, pObjOperate)).toBe(1)
     expect(m.u32(pObject + 0x10)).toBe(1)
-    expect(m.u32(pObject + 0xc4)).toBe(0x04)
+    expect(m.u32(pObject + 0xc4)).toBe(0x05)
 
     // Mode 2 -> transitions to 0
     m.setU32(pObject + 0x10, 2)

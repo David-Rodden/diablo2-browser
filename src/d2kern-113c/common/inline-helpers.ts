@@ -44,6 +44,7 @@ import {
 } from '../mem/layout.generated.ts'
 import { seedNext, type D2SeedStrc } from '../prng.ts'
 import { imul32, sar32, umod32 } from './int-math.ts'
+import { hitD2CommonVa113c } from '../va-trace-113c.ts'
 
 /** `D2Common` `.data` dword holding `sgptDataTables` (`mov ecx, ds:0x6FDE9E1C` at 0x6FD51154). */
 export const D2COMMON_SGPT_DATATABLES_VA_113C = 0x6fde9e1c
@@ -172,6 +173,7 @@ export function PLAYER_SetPlayerData150Params113c(
   nArg1: number,
   nArg2: number,
 ): void {
+  hitD2CommonVa113c(0x6FD51000)
   if (pUnit === 0) return
   if (m.get(pUnit, D2UnitStrc.dwUnitType) !== UNIT_PLAYER) return
   const pPlayerData = m.get(pUnit, D2UnitStrc.pUnitData)
@@ -189,6 +191,7 @@ export function PLAYER_SetPlayerData150Params113c(
  * return 0 without advancing the seed; otherwise one LCG step and a power-of-two mask or unsigned remainder.
  */
 export function SEED_RollRandomNumberInline113c(m: Memory113c, pSeed: number, nMax: number): number {
+  hitD2CommonVa113c(0x6FD51100)
   const max = nMax | 0
   if (max <= 0) return 0
   return seedRollRange(m, pSeed, max)
@@ -208,6 +211,7 @@ export function SEED_RollLimitedRandomNumberInline113c(
   nMin: number,
   nMax: number,
 ): number {
+  hitD2CommonVa113c(0x6FD51180)
   const min = nMin | 0
   const max = nMax | 0
   if (!(min < max)) return min
@@ -218,6 +222,7 @@ export function SEED_RollLimitedRandomNumberInline113c(
 
 /** `@va D2Common:0x6FD51150` (`DATATBLS_GetMissilesTxtRecordInline`, `eax = nMissileId` -> record or 0). */
 export function DATATBLS_GetMissilesTxtRecordInline113c(m: Memory113c, nMissileId: number): number {
+  hitD2CommonVa113c(0x6FD51150)
   return lookupTxtRecord(
     m,
     nMissileId,
@@ -229,6 +234,7 @@ export function DATATBLS_GetMissilesTxtRecordInline113c(m: Memory113c, nMissileI
 
 /** `@va D2Common:0x6FD51250` (`DATATBLS_GetSkillsTxtRecordInline`, `eax = nSkillId` -> record or 0). */
 export function DATATBLS_GetSkillsTxtRecordInline113c(m: Memory113c, nSkillId: number): number {
+  hitD2CommonVa113c(0x6FD51250)
   return lookupTxtRecord(
     m,
     nSkillId,
@@ -243,6 +249,7 @@ export function DATATBLS_GetSkillsTxtRecordInline113c(m: Memory113c, nSkillId: n
  * `test eax,eax; jl` / `cmp eax,[ecx+0xA80]; jl ok` else `or eax, 0xFFFFFFFF`.
  */
 export function DATATBLS_ValidateMonStatsIdInline113c(m: Memory113c, nMonStatsId: number): number {
+  hitD2CommonVa113c(0x6FD51280)
   const n = nMonStatsId | 0
   if (n < 0) return -1
   const dt = DATATBLS_GetDataTablesPtr113c(m)
@@ -252,6 +259,7 @@ export function DATATBLS_ValidateMonStatsIdInline113c(m: Memory113c, nMonStatsId
 
 /** `@va D2Common:0x6FD512A0` (`DATATBLS_GetMonStatsTxtRecordInline`, `eax = nMonStatsId` -> record or 0). */
 export function DATATBLS_GetMonStatsTxtRecordInline113c(m: Memory113c, nMonStatsId: number): number {
+  hitD2CommonVa113c(0x6FD512A0)
   return lookupTxtRecord(
     m,
     nMonStatsId,
@@ -266,6 +274,7 @@ export function DATATBLS_GetMonStatsTxtRecordInline113c(m: Memory113c, nMonStats
  * Called from `EvalStatWithOps` (0x6FD8995E / 0x6FD899DA) with `eax = pUnit->dwClassId`.
  */
 export function DATATBLS_GetCharStatsTxtRecordInline113c(m: Memory113c, nClassId: number): number {
+  hitD2CommonVa113c(0x6FD512D0)
   return lookupTxtRecord(
     m,
     nClassId,
@@ -277,6 +286,7 @@ export function DATATBLS_GetCharStatsTxtRecordInline113c(m: Memory113c, nClassId
 
 /** `@va D2Common:0x6FD51300` (`DATATBLS_GetItemTypesTxtRecordInline`, `eax = nItemType` -> record or 0). */
 export function DATATBLS_GetItemTypesTxtRecordInline113c(m: Memory113c, nItemType: number): number {
+  hitD2CommonVa113c(0x6FD51300)
   return lookupTxtRecord(
     m,
     nItemType,
@@ -308,6 +318,7 @@ function monStats2FromMonStatsId(m: Memory113c, nMonStatsId: number): number {
  * -> MonStats2 record or 0). KB: `kb/combat/d2game-gethit-recovery-113c.md` (HitClass at `+0x14`).
  */
 export function DATATBLS_GetMonStats2TxtRecordFromMonStatsIdInline113c(m: Memory113c, nMonStatsId: number): number {
+  hitD2CommonVa113c(0x6FD513B0)
   return monStats2FromMonStatsId(m, nMonStatsId)
 }
 
@@ -331,6 +342,7 @@ function monStats2BitTest(m: Memory113c, nMonStatsId: number, nBitIndex: number,
  * at 0x6FD5144B).
  */
 export function DATATBLS_CheckMonStats2ModeFlagInline113c(m: Memory113c, nMonStatsId: number, nMode: number): number {
+  hitD2CommonVa113c(0x6FD51400)
   return monStats2BitTest(m, nMonStatsId, nMode, D2MonStats2Txt.dwModeFlags.off)
 }
 
@@ -340,6 +352,7 @@ export function DATATBLS_CheckMonStats2ModeFlagInline113c(m: Memory113c, nMonSta
  * at 0x6FD514BB).
  */
 export function DATATBLS_CheckMonStats2FlagInline113c(m: Memory113c, nMonStatsId: number, nFlag: number): number {
+  hitD2CommonVa113c(0x6FD51470)
   return monStats2BitTest(m, nMonStatsId, nFlag, D2MonStats2Txt.dwFlags.off)
 }
 
@@ -351,6 +364,7 @@ export function DATATBLS_CheckMonStats2FlagInline113c(m: Memory113c, nMonStatsId
  * `jg`) returns `w`, else `20`.
  */
 export function DATATBLS_GetSkillsTxtMaxLvlInline113c(m: Memory113c, nSkillId: number): number {
+  hitD2CommonVa113c(0x6FD514D0)
   const n = nSkillId | 0
   if (n < 0) return SKILLS_DEFAULT_MAX_LEVEL_113C
   const dt = DATATBLS_GetDataTablesPtr113c(m)
@@ -367,6 +381,7 @@ export function DATATBLS_GetSkillsTxtMaxLvlInline113c(m: Memory113c, nSkillId: n
  * bounds against `nSkillDescTxtRecordCount (+0xB94)`, `pSkillDescTxt (+0xB8C) + d * 0x120`.
  */
 export function DATATBLS_GetSkillDescTxtRecordFromSkillIdInline113c(m: Memory113c, nSkillId: number): number {
+  hitD2CommonVa113c(0x6FD51500)
   const pSkill = DATATBLS_GetSkillsTxtRecordInline113c(m, nSkillId)
   if (pSkill === 0) return 0
   const dt = DATATBLS_GetDataTablesPtr113c(m)
@@ -385,31 +400,37 @@ function skillsParam(m: Memory113c, nSkillId: number, field: FieldLayout113c): n
 
 /** `@va D2Common:0x6FD51550` (`DATATBLS_GetSkillsTxtParam1Inline`, `eax = nSkillId` -> `Param1 (+0x148)` or 0). */
 export function DATATBLS_GetSkillsTxtParam1Inline113c(m: Memory113c, nSkillId: number): number {
+  hitD2CommonVa113c(0x6FD51550)
   return skillsParam(m, nSkillId, D2SkillsTxt.dwParam1)
 }
 
 /** `@va D2Common:0x6FD51580` (`DATATBLS_GetSkillsTxtParam2Inline`, `eax = nSkillId` -> `Param2 (+0x14C)` or 0). */
 export function DATATBLS_GetSkillsTxtParam2Inline113c(m: Memory113c, nSkillId: number): number {
+  hitD2CommonVa113c(0x6FD51580)
   return skillsParam(m, nSkillId, D2SkillsTxt.dwParam2)
 }
 
 /** `@va D2Common:0x6FD515B0` (`DATATBLS_GetSkillsTxtParam3Inline`, `eax = nSkillId` -> `Param3 (+0x150)` or 0). */
 export function DATATBLS_GetSkillsTxtParam3Inline113c(m: Memory113c, nSkillId: number): number {
+  hitD2CommonVa113c(0x6FD515B0)
   return skillsParam(m, nSkillId, D2SkillsTxt.dwParam3)
 }
 
 /** `@va D2Common:0x6FD515E0` (`DATATBLS_GetSkillsTxtParam4Inline`, internal LTCG helper, `eax = nSkillId` -> `Param4 (+0x154)` or 0). */
 export function DATATBLS_GetSkillsTxtParam4Inline113c(m: Memory113c, nSkillId: number): number {
+  hitD2CommonVa113c(0x6FD515E0)
   return skillsParam(m, nSkillId, D2SkillsTxt.dwParam4)
 }
 
 /** `@va D2Common:0x6FD51610` (`DATATBLS_GetSkillsTxtParam5Inline`, internal LTCG helper, `eax = nSkillId` -> `Param5 (+0x158)` or 0). */
 export function DATATBLS_GetSkillsTxtParam5Inline113c(m: Memory113c, nSkillId: number): number {
+  hitD2CommonVa113c(0x6FD51610)
   return skillsParam(m, nSkillId, D2SkillsTxt.dwParam5)
 }
 
 /** `@va D2Common:0x6FD51640` (`DATATBLS_GetSkillsTxtParam6Inline`, internal LTCG helper, `eax = nSkillId` -> `Param6 (+0x15C)` or 0). */
 export function DATATBLS_GetSkillsTxtParam6Inline113c(m: Memory113c, nSkillId: number): number {
+  hitD2CommonVa113c(0x6FD51640)
   return skillsParam(m, nSkillId, D2SkillsTxt.dwParam6)
 }
 
@@ -438,6 +459,7 @@ function skillsLinearParam(
  * `eax = nSkillId`, `edx = nLevel` -> `dwParam1 + (nLevel - 1) * dwParam2` or 0).
  */
 export function DATATBLS_CalcSkillLinearParam12Inline113c(m: Memory113c, nSkillId: number, nLevel: number): number {
+  hitD2CommonVa113c(0x6FD51670)
   return skillsLinearParam(m, nSkillId, nLevel, D2SkillsTxt.dwParam1, D2SkillsTxt.dwParam2)
 }
 
@@ -446,6 +468,7 @@ export function DATATBLS_CalcSkillLinearParam12Inline113c(m: Memory113c, nSkillI
  * `eax = nSkillId`, `edx = nLevel` -> `dwParam3 + (nLevel - 1) * dwParam4` or 0).
  */
 export function DATATBLS_CalcSkillLinearParam34Inline113c(m: Memory113c, nSkillId: number, nLevel: number): number {
+  hitD2CommonVa113c(0x6FD516B0)
   return skillsLinearParam(m, nSkillId, nLevel, D2SkillsTxt.dwParam3, D2SkillsTxt.dwParam4)
 }
 
@@ -454,6 +477,7 @@ export function DATATBLS_CalcSkillLinearParam34Inline113c(m: Memory113c, nSkillI
  * `eax = nSkillId`, `edx = nLevel` -> `dwParam5 + (nLevel - 1) * dwParam6` or 0).
  */
 export function DATATBLS_CalcSkillLinearParam56Inline113c(m: Memory113c, nSkillId: number, nLevel: number): number {
+  hitD2CommonVa113c(0x6FD516F0)
   return skillsLinearParam(m, nSkillId, nLevel, D2SkillsTxt.dwParam5, D2SkillsTxt.dwParam6)
 }
 
@@ -462,11 +486,13 @@ export function DATATBLS_CalcSkillLinearParam56Inline113c(m: Memory113c, nSkillI
  * `eax = nSkillId`, `edx = nLevel` -> `dwParam7 + (nLevel - 1) * dwParam8` or 0).
  */
 export function DATATBLS_CalcSkillLinearParam78Inline113c(m: Memory113c, nSkillId: number, nLevel: number): number {
+  hitD2CommonVa113c(0x6FD51730)
   return skillsLinearParam(m, nSkillId, nLevel, D2SkillsTxt.dwParam7, D2SkillsTxt.dwParam8)
 }
 
 /** `@va D2Common:0x6FD51770` (`DATATBLS_GetStatesTxtRecordInline`, internal LTCG helper, `eax = nStateId` -> record or 0). */
 export function DATATBLS_GetStatesTxtRecordInline113c(m: Memory113c, nStateId: number): number {
+  hitD2CommonVa113c(0x6FD51770)
   return lookupTxtRecord(
     m,
     nStateId,
@@ -478,6 +504,7 @@ export function DATATBLS_GetStatesTxtRecordInline113c(m: Memory113c, nStateId: n
 
 /** `@va D2Common:0x6FD517A0` (`DATATBLS_GetItemStatCostTxtRecordInline`, internal LTCG helper, `eax = nStatId` -> record or 0). */
 export function DATATBLS_GetItemStatCostTxtRecordInline113c(m: Memory113c, nStatId: number): number {
+  hitD2CommonVa113c(0x6FD517A0)
   return lookupTxtRecord(
     m,
     nStatId,
@@ -489,6 +516,7 @@ export function DATATBLS_GetItemStatCostTxtRecordInline113c(m: Memory113c, nStat
 
 /** `@va D2Common:0x6FD517D0` (`DATATBLS_GetSetsTxtRecordInline`, internal LTCG helper, `eax = nSetId` -> record or 0). */
 export function DATATBLS_GetSetsTxtRecordInline113c(m: Memory113c, nSetId: number): number {
+  hitD2CommonVa113c(0x6FD517D0)
   return lookupTxtRecord(
     m,
     nSetId,
@@ -500,6 +528,7 @@ export function DATATBLS_GetSetsTxtRecordInline113c(m: Memory113c, nSetId: numbe
 
 /** `@va D2Common:0x6FD51800` (`DATATBLS_GetSetItemsTxtRecordInline`, internal LTCG helper, `eax = nSetItemId` -> record or 0). */
 export function DATATBLS_GetSetItemsTxtRecordInline113c(m: Memory113c, nSetItemId: number): number {
+  hitD2CommonVa113c(0x6FD51800)
   return lookupTxtRecord(
     m,
     nSetItemId,
@@ -511,6 +540,7 @@ export function DATATBLS_GetSetItemsTxtRecordInline113c(m: Memory113c, nSetItemI
 
 /** `@va D2Common:0x6FD51830` (`DATATBLS_GetUniqueItemsTxtRecordInline`, internal LTCG helper, `eax = nUniqueItemId` -> record or 0). */
 export function DATATBLS_GetUniqueItemsTxtRecordInline113c(m: Memory113c, nUniqueItemId: number): number {
+  hitD2CommonVa113c(0x6FD51830)
   return lookupTxtRecord(
     m,
     nUniqueItemId,
@@ -528,6 +558,7 @@ export function DATATBLS_GetUniqueItemsTxtRecordInline113c(m: Memory113c, nUniqu
  * returns `ecx` (`mov eax, ecx; ret` at 0x6FD5188E); otherwise returns `movsx eax, word ptr [pMonStats+2]` (`wBaseId`).
  */
 export function MONSTERS_GetBaseIdFromMonsterUnitInline113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD51860)
   if (pUnit === 0) return -1
   if (m.get(pUnit, D2UnitStrc.dwUnitType) !== 1) return -1
   const nClassId = m.get(pUnit, D2UnitStrc.dwClassId) | 0
@@ -541,6 +572,7 @@ export function MONSTERS_GetBaseIdFromMonsterUnitInline113c(m: Memory113c, pUnit
  * `eax = nMonStatsId`, `edx = nFlag` -> `gdwBitMasks[nFlag & 7] & MonStats.dwMonStatsFlags.byte[nFlag sar 3]`).
  */
 export function DATATBLS_CheckMonStatsFlagInline113c(m: Memory113c, nMonStatsId: number, nFlag: number): number {
+  hitD2CommonVa113c(0x6FD518A0)
   const pMonStats = DATATBLS_GetMonStatsTxtRecordInline113c(m, nMonStatsId)
   if (pMonStats === 0) return 0
   const idx = nFlag | 0
@@ -554,6 +586,7 @@ export function DATATBLS_CheckMonStatsFlagInline113c(m: Memory113c, nMonStatsId:
  * `eax = nSkillId` -> `1` if `0 <= wSkillDesc < nSkillDescTxtRecordCount`, else `0`).
  */
 export function DATATBLS_HasValidSkillDescInline113c(m: Memory113c, nSkillId: number): number {
+  hitD2CommonVa113c(0x6FD518F0)
   const n = nSkillId | 0
   if (n < 0) return 0
   const dt = DATATBLS_GetDataTablesPtr113c(m)
@@ -578,6 +611,7 @@ export function DATATBLS_WalkMonsterClassChainInline113c(
   nMonStatsId: number,
   nSteps: number,
 ): number {
+  hitD2CommonVa113c(0x6FD51930)
   const rec0 = DATATBLS_GetMonStatsTxtRecordInline113c(m, nMonStatsId)
   if (rec0 === 0) return -1
   let eax = s16(m.get(rec0, D2MonStatsTxt.wBaseId))

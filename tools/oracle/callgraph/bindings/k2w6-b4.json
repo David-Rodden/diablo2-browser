@@ -379,15 +379,6 @@
   },
   {
     "module": "D2Game",
-    "va": "0x6FC8B070",
-    "name": "ACT2Q2_SpawnCubeDropItemAndRemoveOld_6FC8B070",
-    "kernFile": "src/d2kern-113c/game/k2-w6b4-113c.ts",
-    "tsSymbol": "ACT2Q2_SpawnCubeDropItemAndRemoveOld_6FC8B070_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w6b4.test.ts"
-  },
-  {
-    "module": "D2Game",
     "va": "0x6FC911D0",
     "name": "ACT3Q2_RemoveAllCubePage3ItemsFromUnit_6FC911D0",
     "kernFile": "src/d2kern-113c/game/k2-w6b4-113c.ts",

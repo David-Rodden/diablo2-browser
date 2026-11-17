@@ -16,6 +16,7 @@ import {
   D2DrlgOutdoorInfoStrc,
   D2DrlgVertexStrc,
 } from '../mem/layout.generated.ts'
+import { hitD2CommonVa113c } from '../va-trace-113c.ts'
 
 /**
  * `@va D2Common:0x6FD9D8A0` (`D2Common.#11158`, `DUNGEON_GameTileToSubtileCoords`, `__stdcall(pX, pY) -> void`, `ret 8`).
@@ -27,6 +28,7 @@ export function DUNGEON_GameTileToSubtileCoords113c(
   pX: number,
   pY: number,
 ): void {
+  hitD2CommonVa113c(0x6FD9D8A0)
   m.setU32(pX, Math.imul(m.u32(pX) | 0, 5) >>> 0)
   m.setU32(pY, Math.imul(m.u32(pY) | 0, 5) >>> 0)
 }
@@ -52,6 +54,7 @@ export function DRLGOUTWILD_MarkCliffBorderVertices113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FDCE8C0)
   const pOutdoors = m.get(pLevel, D2DrlgLevelStrc.pOutdoors)
   let pHead = m.get(pOutdoors, D2DrlgOutdoorInfoStrc.pVertex)
 
@@ -151,6 +154,7 @@ export function DRLGOUTWILD_TestSpawnRiver113c(
   pLevel: number,
   nX: number,
 ): number {
+  hitD2CommonVa113c(0x6FDCE9F0)
   const pOutdoors = m.get(pLevel, D2DrlgLevelStrc.pOutdoors)
   const nHeight = m.get(pOutdoors, D2DrlgOutdoorInfoStrc.nGridHeight) | 0
   const x = nX | 0
@@ -181,6 +185,7 @@ export function DRLGOUTWILD_GetBridgeCoords113c(
   pOutX: number,
   pOutY: number,
 ): void {
+  hitD2CommonVa113c(0x6FDCEA40)
   const pOutdoors = m.get(pLevel, D2DrlgLevelStrc.pOutdoors)
   const limit = ((m.get(pOutdoors, D2DrlgOutdoorInfoStrc.nGridWidth) | 0) - 1) | 0
   const x = nX | 0
@@ -225,6 +230,7 @@ export function FIELD_StepFieldCoords113c(
   pX: number,
   pY: number,
 ): number {
+  hitD2CommonVa113c(0x6FDCE290)
   const fieldPtr = pField >>> 0
   if (fieldPtr === 0) {
     throw new D2CommonAssertError('FieldTbls.cpp', 0xbf)
@@ -262,6 +268,7 @@ export function FIELD_StepFieldCoords113c(
  * stdcall `[esp+4] = pField`, `ret 4`, void).
  */
 export function FIELD_FreeField113c(m: Memory113c, pField: number): void {
+  hitD2CommonVa113c(0x6FDCE3D0)
   const ptr = pField >>> 0
   if (ptr === 0) {
     throw new D2CommonAssertError('FieldTbls.cpp', 0x93)
@@ -274,6 +281,7 @@ export function FIELD_FreeField113c(m: Memory113c, pField: number): void {
  * stdcall 0-arg `ret` -> `D2FieldStrc*`).
  */
 export function FIELD_AllocField113c(m: Memory113c): number {
+  hitD2CommonVa113c(0x6FDCE410)
   const ptr = m.alloc(8) >>> 0
   if (ptr === 0) {
     throw new D2CommonAssertError('FieldTbls.cpp', 0x88)
@@ -316,6 +324,7 @@ export function DRLGOUTWILD_PlaceRandomRiverBridge113c(
   nGridX: number,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FDCEB40)
   const lvl = pLevel >>> 0
   const gx = nGridX | 0
   const pOutdoors = m.u32((lvl + 0x14) >>> 0)
@@ -370,6 +379,7 @@ export function DRLGOUTWILD_SpawnRiverColumnAndBridge113c(
   nGridX: number,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FDCECC0)
   const lvl = pLevel >>> 0
   const gx = nGridX | 0
   const pOutdoors = m.u32((lvl + 0x14) >>> 0)
@@ -432,6 +442,7 @@ export function DRLGOUTWILD_SpawnAllRiversAndBridges113c(
   m: Memory113c,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FDCEF60)
   const lvl = pLevel >>> 0
   if ((m.u32((lvl + 0x1d0) >>> 0) | 0) === 0x27) return
 

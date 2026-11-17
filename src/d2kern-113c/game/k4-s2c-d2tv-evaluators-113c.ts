@@ -297,13 +297,34 @@ function setupTestItemFromInput113c(
   return pItem
 }
 
+function drainQueuedClientRawBytes113c(m: Memory113c, pClient: number): Uint8Array {
+  let total = 0
+  let walk = m.u32((pClient + 0x1b8) >>> 0) >>> 0
+  let guard = 0
+  while (walk !== 0 && guard++ < 64) {
+    total += m.u32(walk) >>> 0
+    walk = m.u32((walk + 0x204) >>> 0) >>> 0
+  }
+  const out = new Uint8Array(total)
+  let off = 0
+  walk = m.u32((pClient + 0x1b8) >>> 0) >>> 0
+  guard = 0
+  while (walk !== 0 && guard++ < 64) {
+    const used = m.u32(walk) >>> 0
+    for (let i = 0; i < used; i++) {
+      out[off++] = m.u8((walk + 0x04 + i) >>> 0)
+    }
+    walk = m.u32((walk + 0x204) >>> 0) >>> 0
+  }
+  return out
+}
+
 export function evaluateS2CVector113c(
   m: Memory113c,
   input: S2CVectorInput113c,
 ): S2CVectorOutput113c {
   const pGame = m.alloc(0x2000) >>> 0
   const pClient = m.alloc(0x600) >>> 0
-  const pQueue = m.alloc(0x410) >>> 0
   m.setU32(pClient + 0x00, 1)
   m.setU32(pClient + 0x1a8, pGame)
 
@@ -312,7 +333,6 @@ export function evaluateS2CVector113c(
 
   switch (input.opKind) {
     case 0: {
-      m.setU32(pClient + 0x1bc, pQueue)
       const wLife = input.u16A & 0x7fff
       const wMana = input.u32A & 0x7fff
       const wStam = (input.u32A >>> 15) & 0x7fff
@@ -331,11 +351,10 @@ export function evaluateS2CVector113c(
         (input.u32B >>> 8) & 0xff,
         (input.u32B >>> 16) & 0xff,
       )
-      rawBytes = readMemorySlice(m, pQueue + 0x08, m.u32(pQueue + 0x04))
+      rawBytes = drainQueuedClientRawBytes113c(m, pClient)
       break
     }
     case 1: {
-      m.setU32(pClient + 0x1bc, pQueue)
       NET_SendPacket95_LifeManaStamina_6FCAB7F0_113c(
         m,
         pClient,
@@ -347,11 +366,10 @@ export function evaluateS2CVector113c(
         input.u32B & 0xff,
         (input.u32B >>> 8) & 0xff,
       )
-      rawBytes = readMemorySlice(m, pQueue + 0x08, m.u32(pQueue + 0x04))
+      rawBytes = drainQueuedClientRawBytes113c(m, pClient)
       break
     }
     case 2: {
-      m.setU32(pClient + 0x1bc, pQueue)
       NET_SendPacket96_WalkVerify_6FCAB750_113c(
         m,
         pClient,
@@ -361,7 +379,7 @@ export function evaluateS2CVector113c(
         input.u32A & 0xff,
         (input.u32A >>> 8) & 0xff,
       )
-      rawBytes = readMemorySlice(m, pQueue + 0x08, m.u32(pQueue + 0x04))
+      rawBytes = drainQueuedClientRawBytes113c(m, pClient)
       break
     }
     case 3: {
@@ -371,30 +389,26 @@ export function evaluateS2CVector113c(
       break
     }
     case 4: {
-      m.setU32(pClient + 0x1bc, pQueue)
       NET_SendPacket1A1B1C_StatUpdate_6FCABDA0_113c(m, pClient, input.u32A | 0, input.u32B | 0)
-      rawBytes = readMemorySlice(m, pQueue + 0x08, m.u32(pQueue + 0x04))
+      rawBytes = drainQueuedClientRawBytes113c(m, pClient)
       break
     }
     case 5: {
-      m.setU32(pClient + 0x1bc, pQueue)
       NET_SendPacket19_1D1E1F_GoldUpdate_6FCABE10_113c(m, pClient, input.u32A | 0, input.u32B | 0)
-      rawBytes = readMemorySlice(m, pQueue + 0x08, m.u32(pQueue + 0x04))
+      rawBytes = drainQueuedClientRawBytes113c(m, pClient)
       break
     }
     case 6: {
-      m.setU32(pClient + 0x1bc, pQueue)
       let pU = 0
       if ((input.flags & 4) === 0) {
         pU = m.alloc(0x100) >>> 0
         m.setU32(pU + 0x0c, input.u32B >>> 0)
       }
       NET_SendPacket9E9FA0_StatValue_6FCABC20_113c(m, input.u16A % 255, pU, pClient, input.u32A >>> 0)
-      rawBytes = readMemorySlice(m, pQueue + 0x08, m.u32(pQueue + 0x04))
+      rawBytes = drainQueuedClientRawBytes113c(m, pClient)
       break
     }
     case 7: {
-      m.setU32(pClient + 0x1bc, pQueue)
       let pU = 0
       if ((input.flags & 4) === 0) {
         pU = m.alloc(0x100) >>> 0
@@ -408,11 +422,10 @@ export function evaluateS2CVector113c(
         input.u32B | 0,
         pU,
       )
-      rawBytes = readMemorySlice(m, pQueue + 0x08, m.u32(pQueue + 0x04))
+      rawBytes = drainQueuedClientRawBytes113c(m, pClient)
       break
     }
     case 8: {
-      m.setU32(pClient + 0x1bc, pQueue)
       const uType = (input.flags >>> 2) & 1
       const modeA = (input.flags >>> 3) & 3
       const hasSecond = (input.flags >>> 5) & 1
@@ -452,11 +465,10 @@ export function evaluateS2CVector113c(
       }
 
       UNIT_SendGfxStatesBitstreamToClient113c(m, pUnit, pClient)
-      rawBytes = readMemorySlice(m, pQueue + 0x08, m.u32(pQueue + 0x04))
+      rawBytes = drainQueuedClientRawBytes113c(m, pClient)
       break
     }
     case 9: {
-      m.setU32(pClient + 0x1bc, pQueue)
       const uType = (input.flags >>> 2) & 1
       const hasStats0 = (input.flags >>> 3) & 1
       const hasTwo0 = (input.flags >>> 4) & 1
@@ -497,11 +509,10 @@ export function evaluateS2CVector113c(
       }
 
       UNIT_SendAllStatesBitstreamToClient113c(m, pUnit, pClient)
-      rawBytes = readMemorySlice(m, pQueue + 0x08, m.u32(pQueue + 0x04))
+      rawBytes = drainQueuedClientRawBytes113c(m, pClient)
       break
     }
     case 10: {
-      m.setU32(pClient + 0x1bc, pQueue)
       const pUnit = m.alloc(0x200) >>> 0
       const pPath = m.alloc(0x200) >>> 0
       m.setU32(pUnit + 0x00, 0)
@@ -513,11 +524,10 @@ export function evaluateS2CVector113c(
       m.setU16(pPath + 0x10, input.u32B & 0xffff)
       m.setU16(pPath + 0x12, (input.u32B >>> 16) & 0xffff)
       NET_SendUnitMovePacket0F113c(m, pGame, pUnit, pClient, input.u16A % 20)
-      rawBytes = readMemorySlice(m, pQueue + 0x08, m.u32(pQueue + 0x04))
+      rawBytes = drainQueuedClientRawBytes113c(m, pClient)
       break
     }
     case 11: {
-      m.setU32(pClient + 0x1bc, pQueue)
       const uType = ((input.flags >>> 2) % 3) >>> 0
       const pUnit = m.alloc(0x200) >>> 0
       const pPath = m.alloc(0x200) >>> 0
@@ -532,11 +542,10 @@ export function evaluateS2CVector113c(
         m.setU16(pPath + 0x06, input.u16C)
       }
       NET_SendReassignUnitPacket15_113c(m, pUnit, pClient, input.u16A & 0xff)
-      rawBytes = readMemorySlice(m, pQueue + 0x08, m.u32(pQueue + 0x04))
+      rawBytes = drainQueuedClientRawBytes113c(m, pClient)
       break
     }
     case 12: {
-      m.setU32(pClient + 0x1bc, pQueue)
       const pt = input.u16A & 0x0f
       const extremeVel = (input.flags >>> 2) & 1
       const moveType = (input.flags >>> 3) & 7
@@ -578,11 +587,10 @@ export function evaluateS2CVector113c(
         bByteF,
         bByteB,
       )
-      rawBytes = readMemorySlice(m, pQueue + 0x08, m.u32(pQueue + 0x04))
+      rawBytes = drainQueuedClientRawBytes113c(m, pClient)
       break
     }
     case 13: {
-      m.setU32(pClient + 0x1bc, pQueue)
       const pt = input.u16A & 0x0f
       const extremeVel = (input.flags >>> 2) & 1
       const moveType = (input.flags >>> 3) & 7
@@ -616,7 +624,7 @@ export function evaluateS2CVector113c(
         bByte14,
         bByte10,
       )
-      rawBytes = readMemorySlice(m, pQueue + 0x08, m.u32(pQueue + 0x04))
+      rawBytes = drainQueuedClientRawBytes113c(m, pClient)
       break
     }
     case 14: {
@@ -649,11 +657,10 @@ export function evaluateS2CVector113c(
       m.setU8(pClient + 0x3d4, clientActive)
 
       S2C_SendPacket9C_ItemActionWorld113c(m, pClient, pItem, bAction, extraCmdFlags, bSimple)
-      rawBytes = readMemorySlice(m, pClient + 0x1c0, m.u32(pClient + 0x1b8))
+      rawBytes = drainQueuedClientRawBytes113c(m, pClient)
       break
     }
     case 16: {
-      m.setU32(pClient + 0x1bc, pQueue)
       const pItem = setupTestItemFromInput113c(m, pGame, input)
       const bGamble = (input.flags >>> 2) & 1
       const ownerMode = (input.flags >>> 4) & 3
@@ -676,16 +683,7 @@ export function evaluateS2CVector113c(
         extraCmdFlags,
         bGamble,
       )
-      const parentBytes = readMemorySlice(m, pQueue + 0x08, m.u32(pQueue + 0x04))
-      const subLen = m.u32(pClient + 0x1b8) >>> 0
-      if (subLen > 0) {
-        const subBytes = readMemorySlice(m, pClient + 0x1c0, subLen)
-        rawBytes = new Uint8Array(parentBytes.byteLength + subBytes.byteLength)
-        rawBytes.set(parentBytes, 0)
-        rawBytes.set(subBytes, parentBytes.byteLength)
-      } else {
-        rawBytes = parentBytes
-      }
+      rawBytes = drainQueuedClientRawBytes113c(m, pClient)
       break
     }
     case 17: {
@@ -709,7 +707,6 @@ export function evaluateS2CVector113c(
       break
     }
     case 18: {
-      m.setU32(pClient + 0x1bc, pQueue)
       let pOw = 0
       if (((input.flags >>> 2) & 1) === 0) {
         pOw = m.alloc(0x100) >>> 0
@@ -733,11 +730,10 @@ export function evaluateS2CVector113c(
         input.u32A >>> 0,
         input.u32B >>> 0,
       )
-      rawBytes = readMemorySlice(m, pQueue + 0x08, m.u32(pQueue + 0x04))
+      rawBytes = drainQueuedClientRawBytes113c(m, pClient)
       break
     }
     case 19: {
-      m.setU32(pClient + 0x1bc, pQueue)
       const uType = (input.flags >>> 2) & 1
       const cClass = (input.flags >>> 3) & 7
       const itemOwned = (input.flags >>> 6) & 1
@@ -767,11 +763,10 @@ export function evaluateS2CVector113c(
         m.setU32(pUnit + 0xa8, pSkillList)
       }
       NET_SendPacket21_UpdateUnitSkill_6FCAD5F0_113c(m, pClient, pUnit, skId, baseLvl, arg2)
-      rawBytes = readMemorySlice(m, pQueue + 0x08, m.u32(pQueue + 0x04))
+      rawBytes = drainQueuedClientRawBytes113c(m, pClient)
       break
     }
     case 20: {
-      m.setU32(pClient + 0x1bc, pQueue)
       const uType = (input.flags >>> 2) & 1
       const regUnit = (input.flags >>> 3) & 1
       const morph = (input.flags >>> 4) & 1
@@ -793,7 +788,7 @@ export function evaluateS2CVector113c(
         input.u16A,
         input.u16B & 0xff,
       )
-      rawBytes = readMemorySlice(m, pQueue + 0x08, m.u32(pQueue + 0x04))
+      rawBytes = drainQueuedClientRawBytes113c(m, pClient)
       break
     }
     case 21: {
@@ -815,8 +810,7 @@ export function evaluateS2CVector113c(
     case 22: {
       const subMode = (input.flags >>> 2) & 7
       if (subMode === 0) {
-        m.setU32(pClient + 0x1bc, pQueue)
-        NET_SendPacketA3_AuraTargetSkill_6FCABA90_113c(
+          NET_SendPacketA3_AuraTargetSkill_6FCABA90_113c(
           m,
           input.u16A & 3,
           input.u16B,
@@ -829,7 +823,7 @@ export function evaluateS2CVector113c(
           (input.u32A ^ 0x1234) & 0x7fff,
           (input.u32B ^ 0x5678) & 0x7fff,
         )
-        rawBytes = readMemorySlice(m, pQueue + 0x08, m.u32(pQueue + 0x04))
+        rawBytes = drainQueuedClientRawBytes113c(m, pClient)
       } else if (subMode === 1) {
         NET_SendPacket0xAB_UnitHeal113c(
           m,
@@ -841,8 +835,7 @@ export function evaluateS2CVector113c(
         const pNode = m.u32(pClient + 0x1b8) >>> 0
         rawBytes = readMemorySlice(m, pNode + 4, m.u32(pNode))
       } else if (subMode === 2) {
-        m.setU32(pClient + 0x1bc, pQueue)
-        const nPkts = input.u16A >>> 0
+          const nPkts = input.u16A >>> 0
         for (let p = 0; p < nPkts; p++) {
           const g1 = (input.u32A + imul32(p, 0x9e3779b9)) >>> 0
           const g2 = (input.u32B ^ imul32(p, 0x85ebca6b)) >>> 0
@@ -860,7 +853,7 @@ export function evaluateS2CVector113c(
             ((g2 >>> 3) ^ imul32(p, 733)) >>> 0,
           )
         }
-        rawBytes = readMemorySlice(m, pQueue + 0x08, m.u32(pQueue + 0x04))
+        rawBytes = drainQueuedClientRawBytes113c(m, pClient)
       } else if (subMode === 3) {
         rawBytes = new Uint8Array([0xaf, input.u16A & 0xff])
       } else {

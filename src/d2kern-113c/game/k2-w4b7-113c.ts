@@ -191,7 +191,7 @@ import {
 } from './a1c-post150-f786-f1040-113c.ts'
 import {
   SKILLS_GetFlags113c,
-} from './fallen-ai-113c.ts'
+} from './replay-kernel-113c.ts'
 import {
   SUNIT_GetServerUnit113c,
 } from './game-strc.ts'
@@ -199,6 +199,7 @@ import {
   SUNIT_IsDeadOrDying113c,
   UNITS_ChangeAnimMode113c,
 } from './monster-events.ts'
+import { hitD2GameVa113c } from '../va-trace-113c.ts'
 
 export type D2KernMemory113c = Memory113c
 
@@ -312,6 +313,7 @@ export function MONAI_UnburrowThink_6FCC59B0_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FCC59B0)
   const pAiCtrl = pAiParam !== 0 ? m.u32(pAiParam >>> 0) >>> 0 : 0
   let savedParam1 = 0
   let savedParam2 = 0
@@ -388,6 +390,7 @@ export function MONAI_NestOrMeleeWanderThink_6FCC5B30_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FCC5B30)
   const pTarget = m.u32((pAiParam + 0x08) >>> 0) >>> 0
   const bInMelee = m.u32((pAiParam + 0x18) >>> 0) | 0
   if (bInMelee !== 0) {
@@ -435,6 +438,7 @@ export function MONAI_MinionSwitchToBaseAiThink_6FCC5C80_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FCC5C80)
   const dist = m.u32((pAiParam + 0x14) >>> 0) | 0
   let hasCmd8 = false
   if (pUnit !== 0 && (m.u32(pUnit >>> 0) | 0) === 1) {
@@ -503,6 +507,7 @@ export function MONAI_MeleeSkillOrApproachWithTimerThink_6FCC5D70_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FCC5D70)
   const pTarget = m.u32((pAiParam + 0x08) >>> 0) >>> 0
   const pMonStatsTxt = m.u32((pAiParam + 0x1c) >>> 0) >>> 0
   const pSeed = (pUnit + 0x20) >>> 0
@@ -556,6 +561,7 @@ export function MONAI_MeleeAndRangedSkillThink_6FCC6530_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FCC6530)
   const bInMelee = m.u32((pAiParam + 0x18) >>> 0) | 0
   const pTarget = m.u32((pAiParam + 0x08) >>> 0) >>> 0
   const dist = m.u32((pAiParam + 0x14) >>> 0) | 0
@@ -620,6 +626,7 @@ export function MONAI_TryCastLeftSkillOrRunTowardTarget_6FCC6AB0_113c(
   nX: number,
   nY: number,
 ): number {
+  hitD2GameVa113c(0x6FCC6AB0)
   if (pTarget !== 0) {
     if ((pTarget >>> 0) === (pSelfUnit >>> 0) || (pTarget >>> 0) === (pCaster >>> 0)) {
       return 0
@@ -663,6 +670,7 @@ export function MONAI_PutridDefilerThink_6FCC7290_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FCC7290)
   const pTarget = m.u32((pAiParam + 0x08) >>> 0) >>> 0
   const pMonStatsTxt = m.u32((pAiParam + 0x1c) >>> 0) >>> 0
   const dist = m.u32((pAiParam + 0x14) >>> 0) | 0
@@ -717,6 +725,7 @@ export function MONAI_ImpregnateChaseThink_6FCC7F60_113c(
   pUnit: number,
   pAiParam: number,
 ): void {
+  hitD2GameVa113c(0x6FCC7F60)
   SUNIT_ValidatePathTargetUnit113c(m, pUnit >>> 0, pGame >>> 0)
   const pPath = m.u32((pUnit + 0x2c) >>> 0) >>> 0
   const pPathTarget = PATH_GetTargetUnit113c(m, pPath) >>> 0
@@ -786,6 +795,7 @@ export function MONSTATS_EvalPiecewiseFiveTierLinear_6FCCC940_113c(
   pTierSlopes: number,
   nLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCCC940)
   const lvl = nLevel | 0
   if (lvl <= 1 || pTierSlopes === 0) return 0
   const s0 = m.u32(pTierSlopes >>> 0) | 0
@@ -828,6 +838,7 @@ export function ITEMMODS_ApplyHealAfterDemonKill_6FCCCA70_113c(
   nStatParam: number,
   _nUnused = 0,
 ): number {
+  hitD2GameVa113c(0x6FCCCA70)
   if (pAttacker === 0 || pDefender === 0) return 0
   if (MONSTER_CheckMonTypeFlag0x20_113c(m, pDefender >>> 0) === 0) return 0
   const heal = STATLIST_GetUnitStatWithLayer113c(
@@ -862,6 +873,7 @@ export function ITEMMODS_ApplyHealAfterKill_6FCCCB10_113c(
   nStatParam: number,
   _nUnused = 0,
 ): number {
+  hitD2GameVa113c(0x6FCCCB10)
   if (pAttacker === 0 || pDefender === 0) return 0
   const heal = STATLIST_GetUnitStatWithLayer113c(
     m,
@@ -895,6 +907,7 @@ export function ITEMMODS_ApplyManaAfterKill_6FCCCBA0_113c(
   nStatParam: number,
   _nUnused = 0,
 ): number {
+  hitD2GameVa113c(0x6FCCCBA0)
   if (pAttacker === 0 || pDefender === 0) return 0
   if ((m.u32(pAttacker >>> 0) | 0) !== 0) return 0
   const manaGain = STATLIST_GetUnitStatWithLayer113c(
@@ -931,6 +944,7 @@ export function ITEMMODS_ApplyCrushingBlow_6FCCCC30_113c(
   nStatParam: number,
   _nUnused = 0,
 ): number {
+  hitD2GameVa113c(0x6FCCCC30)
   if (pAttacker === 0 || pDefender === 0) return 0
   const cbChance = STATLIST_GetUnitStatWithLayer113c(
     m,
@@ -1002,6 +1016,7 @@ export function ITEMMODS_ApplyKnockback_6FCCCE60_113c(
   nStatParam: number,
   _nUnused = 0,
 ): number {
+  hitD2GameVa113c(0x6FCCCE60)
   if (pAttacker === 0 || pDefender === 0 || pDamage === 0) return 0
   const kbVal = STATLIST_GetUnitStatWithLayer113c(
     m,
@@ -1042,6 +1057,7 @@ export function ITEMS_SendInventoryItemCmdFlag4Updates3F_6FCCCF10_113c(
   pUnit: number,
   _nUnused = 0,
 ): void {
+  hitD2GameVa113c(0x6FCCCF10)
   const pInventory = m.u32((pUnit + 0x60) >>> 0) >>> 0
   if (pInventory === 0) return
   let pNode = INVENTORY_GetFirstItem113c(m, pInventory) >>> 0
@@ -1085,6 +1101,7 @@ export function ITEMS_SendUseScrollOrTomePacket3F_6FCCCFD0_113c(
   pUnit: number,
   pItem: number,
 ): number {
+  hitD2GameVa113c(0x6FCCCFD0)
   ITEMS_SetOrClearCommandFlags113c(m, pItem, 4, 1);
   const magicLvl = ITEMS_GetMagicLevelFromItem113c(m, pItem) | 0;
   if (magicLvl >= 0) {
@@ -1118,6 +1135,7 @@ export function SKILLS_RemoveAuraStateAndEvent9OnSkillChange_6FCCD050_113c(
   pGame: number,
   nEventArg14: number,
 ): void {
+  hitD2GameVa113c(0x6FCCD050)
   if (pUnit === 0 || (nSkillId | 0) < 0) return;
   const pTables = getSgptDataTablesPtr(m);
   if (pTables === 0) return;
@@ -1158,6 +1176,7 @@ export function ITEMMODS_ApplySlowTarget_6FCCD2A0_113c(
   nStatParam: number,
   _nUnused = 0,
 ): number {
+  hitD2GameVa113c(0x6FCCD2A0)
   if (pAttacker === 0 || pDefender === 0) return 0;
   let slowPct = STATLIST_GetUnitStatWithLayer113c(
     m,
@@ -1223,6 +1242,7 @@ export function ITEMMODS_ApplyMonsterFlee_6FCCD580_113c(
   nStatParam: number,
   _nUnused = 0,
 ): number {
+  hitD2GameVa113c(0x6FCCD580)
   if (pAttacker === 0 || pDefender === 0) return 0;
   const fearVal = STATLIST_GetUnitStatWithLayer113c(
     m,
@@ -1285,6 +1305,7 @@ export function ITEMMODS_ApplyAttackerTakesDamage_6FCCD6C0_113c(
   _pArg3: number,
   nStatParam: number,
 ): number {
+  hitD2GameVa113c(0x6FCCD6C0)
   if (pUnit === 0 || pAttacker === 0) return 0;
   if (((m.u32((pAttacker + 0xc4) >>> 0) >>> 2) & 1) === 0) return 0;
 
@@ -1332,6 +1353,7 @@ export function ITEMMODS_ApplyAttackerTakesFireDamage_6FCCD7B0_113c(
   _pArg3: number,
   nStatParam: number,
 ): number {
+  hitD2GameVa113c(0x6FCCD7B0)
   if (pUnit === 0 || pAttacker === 0) return 0;
   if (((m.u32((pAttacker + 0xc4) >>> 0) >>> 2) & 1) === 0) return 0;
 
@@ -1371,6 +1393,7 @@ export function ITEMMODS_ApplyAttackerTakesLightningDamage_6FCCD860_113c(
   _pArg3: number,
   nStatParam: number,
 ): number {
+  hitD2GameVa113c(0x6FCCD860)
   if (pUnit === 0 || pAttacker === 0) return 0;
   if (((m.u32((pAttacker + 0xc4) >>> 0) >>> 2) & 1) === 0) return 0;
 
@@ -1410,6 +1433,7 @@ export function SKILLS_RestartAuraEvent9AndTriggerOnSkillChange_6FCCDB30_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): void {
+  hitD2GameVa113c(0x6FCCDB30)
   if (pUnit === 0 || (nSkillId | 0) < 0) return;
   const pTables = getSgptDataTablesPtr(m);
   if (pTables === 0) return;
@@ -1454,6 +1478,7 @@ export function MONSTER_MorphMonsterClassId_6FCCFC50_113c(
   nNewClassId: number,
   nAnimMode: number,
 ): number {
+  hitD2GameVa113c(0x6FCCFC50)
   if (pUnit === 0 || m.u32(pUnit >>> 0) !== 1 || (nNewClassId | 0) < 0) return 0;
   const pTables = getSgptDataTablesPtr(m);
   if (pTables === 0) return 0;
@@ -1493,6 +1518,7 @@ export function MONAI_ForEachUnitInAdjacentRooms_6FCD0720_113c(
     pContext: number,
   ) => number,
 ): number {
+  hitD2GameVa113c(0x6FCD0720)
   const pRoom = UNITS_GetRoom113c(m, pUnit) >>> 0;
   if (pRoom === 0) return 0;
   const sp = allocScratch(m, 8);
@@ -1538,6 +1564,7 @@ export function AI_CalcApproxDistFromUnitToCoords_6FCD0980_113c(
   nTargetX: number,
   nTargetY: number,
 ): number {
+  hitD2GameVa113c(0x6FCD0980)
   const dwType1 = m.u32(pUnit >>> 0) | 0;
   let unitX = 0;
   if (dwType1 === 2 || (dwType1 > 3 && dwType1 <= 5)) {
@@ -1582,6 +1609,7 @@ export function MONAI_CanMonsterTeleportOrUseSkillInMode_6FCD0B20_113c(
   pUnit: number,
   nMode: number,
 ): number {
+  hitD2GameVa113c(0x6FCD0B20)
   if (pUnit === 0 || (m.u32(pUnit >>> 0) | 0) !== 1 || (nMode | 0) > 0x13) return 0;
   if (STATES_CheckState113c(m, pUnit, 0x36) !== 0) return 0;
   if (SKILLS_CanMonsterReviveInMode2_113c(m, m.u32((pUnit + 0x04) >>> 0)) === 0) return 0;
@@ -1623,6 +1651,7 @@ export function MONAI_ForEachUnitInNonTownAdjacentRoomsWithPlayer_6FCD0CE0_113c(
     pContext: number,
   ) => number,
 ): number {
+  hitD2GameVa113c(0x6FCD0CE0)
   if (pUnit === 0) return 0;
   const dwUnitType = m.u32(pUnit >>> 0) | 0;
   if (dwUnitType < 0 || dwUnitType > 1) return 0;
@@ -1677,6 +1706,7 @@ export function MONAI_CheckLineOfWalkFreeCoordsBetweenUnits_6FCD0E90_113c(
   pUnit1: number,
   pUnit2: number,
 ): number {
+  hitD2GameVa113c(0x6FCD0E90)
   if (pUnit1 === 0 || pUnit2 === 0) return 0;
 
   const dist = AI_CalcApproxUnitDistSubtiles113c(m, pUnit1, pUnit2) | 0;
@@ -1739,6 +1769,7 @@ export function MONAI_ForEachPackMemberWithFilter_6FCD1320_113c(
   pfnFilter: number,
   pUserParam: number,
 ): number {
+  hitD2GameVa113c(0x6FCD1320)
   if (pUnit === 0 || m.u32(pUnit >>> 0) !== 1) return 0;
   const pMonsterData = m.u32((pUnit + 0x14) >>> 0);
   if (pMonsterData === 0) return 0;
@@ -1781,6 +1812,7 @@ export function MONAI_IsHostileAttackableTargetFilter_6FCD1400_113c(
   pCandidateUnit: number,
   nAlignFlag: number,
 ): number {
+  hitD2GameVa113c(0x6FCD1400)
   if (pOriginUnit === 0) return 0;
   const origType = i32(m, pOriginUnit >>> 0);
   if (origType < 0 || origType > 1) return 0;
@@ -1825,6 +1857,7 @@ export function MONAI_FindNearestFriendlyMonsterCallback_6FCD14B0_113c(
   pCandidateUnit: number,
   pFindCtx: number,
 ): number {
+  hitD2GameVa113c(0x6FCD14B0)
   if ((pOriginUnit >>> 0) === (pCandidateUnit >>> 0) || pCandidateUnit === 0) return 0;
   if (m.u32(pCandidateUnit >>> 0) !== 1) return 0;
   if (SUNIT_IsDeadOrDying113c(m, pCandidateUnit) !== 0) return 0;
@@ -1855,6 +1888,7 @@ export function MONAI_EvaluateTargetCandidateCallback_6FCD1660_113c(
   pCandidateUnit: number,
   pScanCtx: number,
 ): number {
+  hitD2GameVa113c(0x6FCD1660)
   if (pCandidateUnit === 0) return 0;
   const candType = i32(m, pCandidateUnit >>> 0);
   if (
@@ -1921,6 +1955,7 @@ export function MONAI_CheckDirectPathOrFindNearestBlockingObstacle_6FCD1AB0_113c
   bAllowForPlayer: number,
   nAction: number,
 ): number {
+  hitD2GameVa113c(0x6FCD1AB0)
   if (pUnit !== 0 && m.u32(pUnit >>> 0) === 0) return 0;
   if (bAllowForPlayer === 0) return 0;
 
@@ -1974,6 +2009,7 @@ export function MONAI_ApplyTauntOrAttractTarget_6FCD2120_113c(
   pTargetMonster: number,
   nDurationFrames: number,
 ): void {
+  hitD2GameVa113c(0x6FCD2120)
   if (pTargetMonster === 0) return;
   if ((m.u8((pTargetMonster + 0xc6) >>> 0) & 1) !== 0) return;
 
@@ -2054,6 +2090,7 @@ export function ARENA_UpdatePlayerArenaScore_6FCD2820_113c(
   pGame: number,
   pTargetUnit: number,
 ): void {
+  hitD2GameVa113c(0x6FCD2820)
   if (pPlayerUnit === 0 || m.u32(pPlayerUnit >>> 0) !== 0) return;
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit) >>> 0;
   if (pPlayerData === 0) return;
@@ -2102,6 +2139,7 @@ export function MONSTER_FindNextAnimEventInRemainingFrames_6FCD2E00_113c(
   m: D2KernMemory113c,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FCD2E00)
   const pSeq = ANIMSEQ_GetUnitSeqRecordPtr113c(m, pUnit) >>> 0;
   if (pSeq !== 0) {
     const totalFrames = ANIMSEQ_GetUnitSeqFrameCountFp8_113c(m, pUnit) >> 8;
@@ -2152,6 +2190,7 @@ export function MONSTER_StartChargeSkillStateAndParam1_6FCD2ED0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCD2ED0)
   if ((nSkillId | 0) < 0) return 0;
   const pTables = getSgptDataTablesPtr(m);
   if (pTables === 0 || (nSkillId | 0) >= i32(m, (pTables + 0xba0) >>> 0)) return 0;
@@ -2190,6 +2229,7 @@ export function MONSTER_InitSkillSequenceFrameFromCalc_6FCD2FC0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCD2FC0)
   if ((nSkillId | 0) < 0) return 0;
   const pTables = getSgptDataTablesPtr(m);
   if (pTables === 0 || (nSkillId | 0) >= i32(m, (pTables + 0xba0) >>> 0)) return 0;
@@ -2225,6 +2265,7 @@ export function MONSTER_HealPercentLifeAndUpdateFrameMetrics_6FCD3060_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCD3060)
   if ((nSkillId | 0) < 0) return 0;
   const pTables = getSgptDataTablesPtr(m);
   if (pTables === 0 || (nSkillId | 0) >= i32(m, (pTables + 0xba0) >>> 0)) return 0;
@@ -2279,6 +2320,7 @@ export function MONSTER_ClearUnitCollisionAndAttackableFlags_6FCD3120_113c(
   _arg1 = 0,
   _arg2 = 0,
 ): number {
+  hitD2GameVa113c(0x6FCD3120)
   if (pUnit !== 0) {
     m.setU32((pUnit + 0xc4) >>> 0, (m.u32((pUnit + 0xc4) >>> 0) & 0xfffffff1) >>> 0);
   }
@@ -2316,6 +2358,7 @@ export function MISSILE_InitSpiderWebOrChargedBoltPath_6FCD31D0_113c(
   pMissile: number,
   nSeedOffset: number,
 ): void {
+  hitD2GameVa113c(0x6FCD31D0)
   if (pMissile === 0) return;
   let totalFrames = MISSILE_GetTotalFrames113c(m, pMissile) | 0;
   if (totalFrames >= 0x4e) {
@@ -2348,6 +2391,7 @@ export function MISSILE_ConfigureSkillRangeAndFrames_6FCD32E0_113c(
   pOwnerUnit: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCD32E0)
   if ((nSkillId | 0) < 0) return 0;
   const pTables = getSgptDataTablesPtr(m);
   if (pTables === 0 || (nSkillId | 0) >= i32(m, (pTables + 0xba0) >>> 0)) return 0;
@@ -2400,6 +2444,7 @@ export function MONSTER_InitChargeOrLeapSkillTargetParams_6FCD35A0_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
+  hitD2GameVa113c(0x6FCD35A0)
   if ((nSkillId | 0) < 0) return 0;
   const pTables = getSgptDataTablesPtr(m);
   if (pTables === 0 || (nSkillId | 0) >= i32(m, (pTables + 0xba0) >>> 0)) return 0;
@@ -2459,6 +2504,7 @@ export function MONSTER_LockTargetUnitIntoSkillParamsAndSetPathPos_6FCD36A0_113c
   _arg1 = 0,
   _arg2 = 0,
 ): number {
+  hitD2GameVa113c(0x6FCD36A0)
   const pSkill = SKILLS_GetUsedSkillMemPort113c(m, pUnit) >>> 0;
   if (pSkill === 0) return 0;
 

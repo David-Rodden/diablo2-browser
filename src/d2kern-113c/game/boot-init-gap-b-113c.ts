@@ -61,6 +61,7 @@ import {
   STATES_ToggleGfxStateFlag113c,
   STATLIST_CheckUnitStatListFlag100113c,
   STATLIST_CopyBaseStatsToBuffer113c,
+  STATLIST_GetMaxLifeFromUnit113c,
   STATLIST_GetOwnerAndDynamicFlag113c,
   STATLIST_GetStatListFromUnitStateAndFlag113c,
   STATLIST_GetUnitBaseStat113c,
@@ -101,6 +102,8 @@ import {
   UNIT_GetPosX113c,
   UNIT_GetPosY113c,
 } from './regpop-spawn-113c.js'
+import { hitD2GameVa113c } from '../va-trace-113c.js'
+import { NET_QueuePacketToClient113c } from '../net/packet-sink.ts'
 
 export interface BootInitGapBCallees113c {
   sendPacketToClient?: (mem: Memory113c, pClient: D2Ptr, packet: Uint8Array) => void
@@ -302,36 +305,7 @@ function enqueueClientPacket113c(
     callees.sendPacketToClient(mem, pClient, packet)
     return
   }
-  if (pClient === 0) {
-    return
-  }
-  const len = packet.byteLength
-  let pPacketData = mem.u32(pClient + 0x1bc) >>> 0
-  let curLen = pPacketData !== 0 ? mem.u32(pPacketData) >>> 0 : 0
-  if (pPacketData === 0 || curLen + len > 0x200) {
-    const pFree = mem.u32(pClient + 0x1c0) >>> 0
-    if (pFree !== 0) {
-      const pNextFree = mem.u32(pFree + 0x204) >>> 0
-      mem.setU32(pClient + 0x1c0, pNextFree)
-      pPacketData = pFree
-    } else {
-      pPacketData = mem.alloc(0x208)
-    }
-    mem.setU32(pPacketData, 0)
-    mem.setU32(pPacketData + 0x204, 0)
-    const pTail = mem.u32(pClient + 0x1bc) >>> 0
-    if (pTail !== 0) {
-      mem.setU32(pTail + 0x204, pPacketData)
-    } else {
-      mem.setU32(pClient + 0x1b8, pPacketData)
-    }
-    mem.setU32(pClient + 0x1bc, pPacketData)
-    curLen = 0
-  }
-  for (let i = 0; i < len; i += 1) {
-    mem.setU8(pPacketData + 4 + curLen + i, packet[i]!)
-  }
-  mem.setU32(pPacketData, (curLen + len) >>> 0)
+  NET_QueuePacketToClient113c(mem, pClient >>> 0, packet)
 }
 
 function getUnitXByType113c(mem: Memory113c, pUnit: D2Ptr): number {
@@ -352,6 +326,19 @@ function getUnitYByType113c(mem: Memory113c, pUnit: D2Ptr): number {
   return pPath !== 0 ? PATH_GetPosY113c(mem, pPath) & 0xffff : 0
 }
 
+// @va D2Game:0x6FC97060
+export function MONSTER_GetLifeByte113c(mem: Memory113c, pUnit: D2Ptr): number {
+  if (pUnit === 0) {
+    return 0x80
+  }
+  const curHp = (STATLIST_GetUnitStat113c(mem, pUnit, 6, 0) | 0) >> 8
+  const maxHp = (STATLIST_GetMaxLifeFromUnit113c(mem, pUnit) | 0) >> 8
+  if (maxHp <= 0 || curHp >= maxHp) {
+    return 0x80
+  }
+  return Math.trunc((curHp << 7) / maxHp) & 0xff
+}
+
 function getMonsterDirectionDefault113c(
   mem: Memory113c,
   pUnit: D2Ptr,
@@ -360,14 +347,7 @@ function getMonsterDirectionDefault113c(
   if (callees && callees.getMonsterDirection) {
     return callees.getMonsterDirection(mem, pUnit) & 0xff
   }
-  if (pUnit === 0) {
-    return 0x80
-  }
-  const pPath = mem.u32(pUnit + 0x2c) >>> 0
-  if (pPath === 0) {
-    return 0
-  }
-  return PATH_GetDirection113c(mem, pPath) & 0xff
+  return MONSTER_GetLifeByte113c(mem, pUnit)
 }
 
 function getMonsterStatsTxtRecord113c(mem: Memory113c, pUnit: D2Ptr): D2Ptr {
@@ -422,6 +402,7 @@ export function D2GAME_PACKET_SendStatByteWordDword113c(
   nValue: number,
   callees?: BootInitGapBCallees113c,
 ): void {
+  hitD2GameVa113c(0x6FCABD00)
   const statLo = nStatId & 0xff
   const valU32 = nValue >>> 0
   if (valU32 < 0xff) {
@@ -461,6 +442,7 @@ export function D2GAME_PACKET_SendUnitStop113c(
   bLifePct: number,
   callees?: BootInitGapBCallees113c,
 ): void {
+  hitD2GameVa113c(0x6FCABFC0)
   const pkt = new Uint8Array(10)
   const uid = dwUnitId >>> 0
   pkt[0] = 0x6d
@@ -483,6 +465,7 @@ export function D2GAME_PACKET_SendPlayerPartyRelationship113c(
   pDestUnit: D2Ptr,
   callees?: BootInitGapBCallees113c,
 ): void {
+  hitD2GameVa113c(0x6FCAC570)
   const dwUnitId = pTargetUnit !== 0 ? mem.u32(pTargetUnit + 0x0c) >>> 0 : 0xffffffff
   let wPartyId = 0xffff
   if (pTargetUnit !== 0) {
@@ -518,6 +501,7 @@ export function D2GAME_PACKET_SendMonsterAssign113c(
   sgptDataTablesPtr = 0,
   callees?: BootInitGapBCallees113c,
 ): void {
+  hitD2GameVa113c(0x6FCACA20)
   if (pUnit === 0 || (mem.u32(pUnit) >>> 0) !== 1) {
     return
   }
@@ -716,6 +700,7 @@ export function D2GAME_PACKET_Send0x73MissileSync113c(
   bParam2: number,
   callees?: BootInitGapBCallees113c,
 ): void {
+  hitD2GameVa113c(0x6FCAD670)
   if (pClient === 0) {
     return
   }
@@ -752,6 +737,7 @@ export function D2GAME_PACKET_Send0x5BPlayerInGame113c(
   sgptDataTablesPtr = 0,
   callees?: BootInitGapBCallees113c,
 ): void {
+  hitD2GameVa113c(0x6FCAE170)
   const pPlayerData = UNITS_GetPlayerData113c(mem, pUnit)
   const pkt = new Uint8Array(290)
   pkt[0] = 0x5b
@@ -838,6 +824,7 @@ export function D2GAME_ARENA_FindPlayerSlotByUnit113c(
   pGame: D2Ptr,
   pUnit: D2Ptr,
 ): D2Ptr {
+  hitD2GameVa113c(0x6FCAF5C0)
   const pArena = mem.u32(pGame + 0x1d24) >>> 0
   const pTable = mem.u32(pArena + 4) >>> 0
   mem.setU32(pOutIndex, 0)
@@ -860,6 +847,7 @@ export function D2GAME_SUMMON_BroadcastPlayerPetsToClient113c(
   sgptDataTablesPtr = 0,
   callees?: BootInitGapBCallees113c,
 ): void {
+  hitD2GameVa113c(0x6FCB6920)
   const pPlayerData = UNITS_GetPlayerData113c(mem, pPlayerUnit)
   if (pPlayerUnit === 0 || pPlayerData === 0) {
     return
@@ -952,6 +940,7 @@ export function D2GAME_INVENTORY_DestroyUnitInventoryItems113c(
   pGame: D2Ptr,
   callees?: BootInitGapBCallees113c,
 ): void {
+  hitD2GameVa113c(0x6FCBB3B0)
   const pInventory = mem.u32(pUnit + 0x60) >>> 0
   if (pInventory === 0) {
     return
@@ -1029,6 +1018,7 @@ export function D2GAME_PARTY_GetPartyIdForUnit113c(
   pUnit: D2Ptr,
   pGame: D2Ptr,
 ): number {
+  hitD2GameVa113c(0x6FCBBEB0)
   const dwUnitId = pUnit !== 0 ? mem.u32(pUnit + 0x0c) >>> 0 : 0xffffffff
   const pInventory = pUnit !== 0 ? mem.u32(pUnit + 0x60) >>> 0 : 0
   if (pInventory !== 0) {
@@ -1063,6 +1053,7 @@ export function D2GAME_SUNIT_SyncUnitStateToClient113c(
   pUnit: D2Ptr,
   callees?: BootInitGapBCallees113c,
 ): void {
+  hitD2GameVa113c(0x6FCBDCD0)
   if (pUnit === 0) {
     return
   }
@@ -1124,6 +1115,7 @@ export function D2GAME_SUNIT_SyncRoomUnitsToClient113c(
   pGame: D2Ptr,
   callees?: BootInitGapBCallees113c,
 ): void {
+  hitD2GameVa113c(0x6FCBDE10)
   if (pRoom === 0) {
     return
   }
@@ -1143,6 +1135,7 @@ export function D2GAME_MONSTER_ApplyMercStatsOnOwner113c(
   sgptDataTablesPtr: D2Ptr,
   callees?: BootInitGapBCallees113c,
 ): void {
+  hitD2GameVa113c(0x6FCBF2B0)
   if (pMonsterUnit === 0 || (mem.u32(pMonsterUnit) >>> 0) !== 1) {
     return
   }
@@ -1196,6 +1189,7 @@ export function D2GAME_MONSTER_ApplyMercStatsOnOwner113c(
 
 // @va D2Game:0x6FCCF610
 export function D2GAME_MONSTER_HasComponentChoices113c(mem: Memory113c, pUnit: D2Ptr): number {
+  hitD2GameVa113c(0x6FCCF610)
   let pComp = 0
   if (pUnit !== 0 && (mem.u32(pUnit) >>> 0) === 1) {
     const pMonData = mem.u32(pUnit + 0x14) >>> 0
@@ -1221,6 +1215,7 @@ export function D2GAME_PACKET_Send0x65PlayerKillCount113c(
   pClient: D2Ptr,
   callees?: BootInitGapBCallees113c,
 ): void {
+  hitD2GameVa113c(0x6FCD2760)
   const pPlayerData = UNITS_GetPlayerData113c(mem, pUnit)
   if (pPlayerData === 0) {
     return
@@ -1244,6 +1239,7 @@ export function D2GAME_PACKET_Send0x65PlayerKillCount113c(
 
 // @va D2Game:0x6FCD27D0
 export function D2GAME_ARENA_ClearPlayerArenaFlags113c(mem: Memory113c, pUnit: D2Ptr): void {
+  hitD2GameVa113c(0x6FCD27D0)
   if (pUnit === 0 || (mem.u32(pUnit) >>> 0) !== 0) {
     return
   }
@@ -1266,6 +1262,7 @@ export function D2GAME_ARENA_BroadcastKillCountsToClients113c(
   bForceAll: number,
   callees?: BootInitGapBCallees113c,
 ): void {
+  hitD2GameVa113c(0x6FCD2C20)
   if (pClient === 0 || pGame === 0) {
     return
   }
@@ -1299,6 +1296,7 @@ export function D2GAME_ARENA_SyncClientKillCountsOnJoin113c(
   pClient: D2Ptr,
   callees?: BootInitGapBCallees113c,
 ): void {
+  hitD2GameVa113c(0x6FCD2D40)
   D2GAME_ARENA_BroadcastKillCountsToClients113c(mem, pGame, pClient, 1, callees)
   if (pClient === 0) {
     return
@@ -1317,6 +1315,7 @@ export function D2GAME_ARENA_SyncArenaJoinState113c(
   pClient: D2Ptr,
   callees?: BootInitGapBCallees113c,
 ): void {
+  hitD2GameVa113c(0x6FCD2D90)
   if (pGame === 0) {
     return
   }
@@ -1351,6 +1350,7 @@ export function D2GAME_PLRMODES_SendClientWhisperAdapter113c(
   pTargetClient: D2Ptr,
   callees?: BootInitGapBCallees113c,
 ): void {
+  hitD2GameVa113c(0x6FCEB570)
   if (pTargetClient === 0) {
     return
   }
@@ -1390,6 +1390,7 @@ export function D2GAME_PLRMODES_DispatchModeSyncToClient113c(
   pClient: D2Ptr,
   callees?: BootInitGapBCallees113c,
 ): void {
+  hitD2GameVa113c(0x6FCEB8F0)
   const modeIndex = pUnit !== 0 ? mem.u32(pUnit + 0x10) >>> 0 : 0
   if (modeIndex >= PLAYER_MODE_SYNC_TABLE_113C.length) {
     return
@@ -1411,6 +1412,7 @@ export function D2GAME_PLRMODES_BroadcastPlayerJoinNotification113c(
   pGame: D2Ptr,
   callees?: BootInitGapBCallees113c,
 ): void {
+  hitD2GameVa113c(0x6FCEBDB0)
   let len = 0
   while (len < 16) {
     if (mem.u8(pClient + 8 + len) === 0) {
@@ -1451,6 +1453,7 @@ export function D2GAME_PLRMODES_SendStatToClientOrParty113c(
   nStatValue: number,
   callees?: BootInitGapBCallees113c,
 ): void {
+  hitD2GameVa113c(0x6FCEC2F0)
   if (pDestPlayerUnit === 0 || (mem.u32(pDestPlayerUnit) >>> 0) !== 0) {
     return
   }
@@ -1490,6 +1493,7 @@ export function D2GAME_PLRMODES_Send0x0DPlayerStop113c(
   nModeIndex: number,
   callees?: BootInitGapBCallees113c,
 ): void {
+  hitD2GameVa113c(0x6FCED190)
   if (pClient === 0 || pUnit === 0) {
     return
   }
@@ -1529,6 +1533,7 @@ export function D2GAME_ITEMS_CheckEquipAndAmmoRequirements113c(
   pUnit: D2Ptr,
   pItem: D2Ptr,
 ): number {
+  hitD2GameVa113c(0x6FCF1830)
   const bReqMet = ITEMS_CheckRequirements113c(mem, pItem, pUnit, 0, 0, 0, 0)
   if (bReqMet === 0) {
     return 0
@@ -1558,6 +1563,7 @@ export function D2GAME_ITEMS_SnapshotUnitStatsAndSkills113c(
   pUnit: D2Ptr,
   pOutSnapshot: D2Ptr,
 ): void {
+  hitD2GameVa113c(0x6FCF1890)
   mem.setU32(pOutSnapshot, STATLIST_GetUnitStat113c(mem, pUnit, 6, 0) >>> 0)
   mem.setU32(pOutSnapshot + 4, STATLIST_GetUnitStat113c(mem, pUnit, 8, 0) >>> 0)
   mem.setU32(pOutSnapshot + 8, STATLIST_GetUnitStat113c(mem, pUnit, 10, 0) >>> 0)
@@ -1588,6 +1594,7 @@ export function D2GAME_ITEMS_RestoreUnitSkillsFromSnapshot113c(
   pSnapshot: D2Ptr,
   callees?: BootInitGapBCallees113c,
 ): void {
+  hitD2GameVa113c(0x6FCF1ED0)
   const nLeftSkillId = mem.u32(pSnapshot + 0x10) >>> 0
   if (nLeftSkillId !== 0) {
     const dwLeftOwnerGuid = mem.u32(pSnapshot + 0x18) >>> 0
@@ -1620,6 +1627,7 @@ export function D2GAME_ITEMS_UpdateAllInventoryAndEquipmentStats113c(
   bSendPacket: number,
   callees?: BootInitGapBCallees113c,
 ): void {
+  hitD2GameVa113c(0x6FCF51A0)
   if (pUnit === 0) {
     return
   }
@@ -1804,6 +1812,7 @@ export function D2GAME_ITEMSTAT_OnStatChangedCallback113c(
   sgptDataTablesPtr: D2Ptr,
   callees?: BootInitGapBCallees113c,
 ): void {
+  hitD2GameVa113c(0x6FCF9470)
   if (pGame === 0 || pUnit === 0 || sgptDataTablesPtr === 0) {
     return
   }
@@ -2079,6 +2088,7 @@ export function D2GAME_ITEMSTAT_OnStatChangedCallback113c(
 
 // @va D2Game:0x6FCFF780
 export function D2GAME_SUNIT_GetGameFromUnit113c(mem: Memory113c, pUnit: D2Ptr): D2Ptr {
+  hitD2GameVa113c(0x6FCFF780)
   if (pUnit === 0) {
     return 0
   }
@@ -2092,6 +2102,7 @@ export function D2GAME_SUNIT_IterateAllLivingPlayers113c(
   pfnCallback: (mem: Memory113c, pGame: D2Ptr, pPlayer: D2Ptr, pContext: D2Ptr) => void,
   pContext: D2Ptr,
 ): void {
+  hitD2GameVa113c(0x6FCFFC10)
   if (pGame === 0) {
     return
   }
@@ -2113,6 +2124,7 @@ export function D2GAME_PARTY_Send0x8BPartyRelationStatus113c(
   pDestUnit: D2Ptr,
   callees?: BootInitGapBCallees113c,
 ): void {
+  hitD2GameVa113c(0x6FD10130)
   const pPlayerDataDest = UNITS_GetPlayerData113c(mem, pDestUnit)
   const guidA = pUnitA !== 0 ? mem.u32(pUnitA + 0x0c) >>> 0 : 0xffffffff
   let pNode = 0
@@ -2152,6 +2164,7 @@ export function D2GAME_PARTY_SetPlayerRelationState113c(
   pTargetUnit: D2Ptr,
   dwState: number,
 ): void {
+  hitD2GameVa113c(0x6FD10220)
   const pNode = findPlayerRelationNode113c(mem, pOwnerUnit, pTargetUnit)
   if (pOwnerUnit !== pTargetUnit && pNode !== 0) {
     mem.setU32(pNode + 0x0c, dwState >>> 0)
@@ -2165,6 +2178,7 @@ export function D2GAME_PARTY_EnsurePlayerRelationNode113c(
   pUnitB: D2Ptr,
   _pGame: D2Ptr,
 ): void {
+  hitD2GameVa113c(0x6FD102F0)
   const pPlayerDataB = UNITS_GetPlayerData113c(mem, pUnitB)
   if (pUnitB === pUnitA || pPlayerDataB === 0) {
     return
@@ -2196,6 +2210,7 @@ export function D2GAME_PARTY_SyncAllPlayerRelationsOnJoin113c(
   pUnitExisting: D2Ptr,
   callees?: BootInitGapBCallees113c,
 ): void {
+  hitD2GameVa113c(0x6FD10480)
   const guidNew = pUnitNew !== 0 ? mem.u32(pUnitNew + 0x0c) >>> 0 : 0xffffffff
   D2GAME_PARTY_EnsurePlayerRelationNode113c(mem, pUnitExisting, pUnitNew, pGame)
   D2GAME_PARTY_EnsurePlayerRelationNode113c(mem, pUnitNew, pUnitExisting, pGame)
@@ -2260,6 +2275,7 @@ export function D2GAME_MONSTER_SendMonsterMovementSync113c(
   pClient: D2Ptr,
   callees?: BootInitGapBCallees113c,
 ): void {
+  hitD2GameVa113c(0x6FD135C0)
   if (pUnit === 0 || pClient === 0) {
     return
   }
@@ -2460,6 +2476,7 @@ export function D2GAME_MONSTER_SyncMonsterUnitToClient113c(
   bPreSynced: number,
   callees?: BootInitGapBCallees113c,
 ): void {
+  hitD2GameVa113c(0x6FD13A40)
   if (pUnit !== 0) {
     if ((mem.u8(pUnit + 0xca) & 1) !== 0) {
       const wPosY = getUnitYByType113c(mem, pUnit)

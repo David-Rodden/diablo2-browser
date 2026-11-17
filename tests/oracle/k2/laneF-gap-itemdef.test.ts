@@ -699,15 +699,15 @@ describe('Lane K2-F: p52-item-defense 32 Dynamic-Gap D2Game.dll VAs (8,978 B)', 
     m.setU8(pClient + 0x3d4, 1)
 
     NET_SendUnitTargetedSkillAction113c(m, pClient, 1, 0, 1, 1, 2, 38, 0, 3)
-    expect(m.u32(pQueue + 0x04)).toBe(0x10)
-    expect(m.u8(pQueue + 0x08)).toBe(0x99)
-    expect(m.u16(pQueue + 0x08 + 6)).toBe(38)
+    expect(m.u32(pQueue + 0x00)).toBe(0x10)
+    expect(m.u8(pQueue + 0x04)).toBe(0x99)
+    expect(m.u16(pQueue + 0x04 + 6)).toBe(38)
 
     NET_SendUnitTargetedSkillAction113c(m, pClient, 1, 0, 1, 1, 3, 38, 0, 3)
-    expect(m.u32(pQueue + 0x04)).toBe(0x21) // 0x10 + 0x11
-    expect(m.u8(pQueue + 0x18)).toBe(0x9a)
-    expect(m.u16(pQueue + 0x18 + 0x0b)).toBe(310)
-    expect(m.u16(pQueue + 0x18 + 0x0d)).toBe(312)
+    expect(m.u32(pQueue + 0x00)).toBe(0x21) // 0x10 + 0x11
+    expect(m.u8(pQueue + 0x14)).toBe(0x9a)
+    expect(m.u16(pQueue + 0x14 + 0x0b)).toBe(310)
+    expect(m.u16(pQueue + 0x14 + 0x0d)).toBe(312)
   })
 
   it('ports 0x6FCF1AA0, 0x6FCF43E0, 0x6FCF4630, 0x6FCF4670, 0x6FCF46B0 & 0x6FCF47C0 (scroll/tome charges & equipment stat lifecycle)', () => {
