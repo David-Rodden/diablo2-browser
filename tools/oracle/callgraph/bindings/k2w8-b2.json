@@ -131,8 +131,8 @@
     "name": "PETS_ClampPlayerPetTypeMaxAndUnsummonExcess_6FCB6EA0",
     "kernFile": "src/d2kern-113c/game/k2-w8b2-113c.ts",
     "tsSymbol": "PETS_ClampPlayerPetTypeMaxAndUnsummonExcess_6FCB6EA0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w8b2.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w8b2.test.ts; Diff-verified 1:1 in dll\u2229ts across full-horizon strict zero-divergence K3 summon/curse replays (p52-amazon-valkyrie F1500/1500, p52-necromancer-poison-golem F1800/1800, p52-necromancer-curses F2000/2000) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -140,8 +140,8 @@
     "name": "PETS_UnsummonSameGroupPetTypes_6FCB7C20",
     "kernFile": "src/d2kern-113c/game/k2-w8b2-113c.ts",
     "tsSymbol": "PETS_UnsummonSameGroupPetTypes_6FCB7C20_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w8b2.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w8b2.test.ts; Diff-verified 1:1 in dll\u2229ts across full-horizon strict zero-divergence K3 summon/curse replays (p52-amazon-valkyrie F1500/1500, p52-necromancer-poison-golem F1800/1800, p52-necromancer-curses F2000/2000) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -221,8 +221,8 @@
     "name": "MONSTER_SpawnAndEquipMonEquipRecordItem_6FCCFCE0",
     "kernFile": "src/d2kern-113c/game/k2-w8b2-113c.ts",
     "tsSymbol": "MONSTER_SpawnAndEquipMonEquipRecordItem_6FCCFCE0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w8b2.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w8b2.test.ts; Diff-verified 1:1 in dll\u2229ts across full-horizon strict zero-divergence K3 summon/curse replays (p52-amazon-valkyrie F1500/1500, p52-necromancer-poison-golem F1800/1800, p52-necromancer-curses F2000/2000) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",

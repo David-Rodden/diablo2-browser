@@ -253,7 +253,9 @@ function getDataTablesPtr113c(m: D2KernMemory113c): number {
   return m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C) >>> 0) >>> 0
 }
 
-const readSgptDataTables113c = getDataTablesPtr113c
+function readSgptDataTables113c(...args: Parameters<typeof getDataTablesPtr113c>): ReturnType<typeof getDataTablesPtr113c> {
+  return getDataTablesPtr113c(...args)
+}
 
 function readGdwBitMasks113c(m: D2KernMemory113c, nBitIndex: number): number {
   const pTable = m.u32(D2GAME_IAT_GDW_BITMASKS_VA_113C) >>> 0
@@ -281,7 +283,9 @@ function lookupSkillsTxtNonNull113c(m: D2KernMemory113c, nSkillId: number): numb
   return (base + imul32(id, 0x23c)) >>> 0
 }
 
-const DATATBLS_GetSkillsTxtRecord113c = lookupSkillsTxtNonNull113c
+function DATATBLS_GetSkillsTxtRecord113c(...args: Parameters<typeof lookupSkillsTxtNonNull113c>): ReturnType<typeof lookupSkillsTxtNonNull113c> {
+  return lookupSkillsTxtNonNull113c(...args)
+}
 
 function STATLIST_AllocStatList113c(
   m: D2KernMemory113c,
@@ -2541,7 +2545,7 @@ export function ITEMS_RollMagicAffixId_6FC344D0_113c(
 
   let pSubTable = 0
   let pEndTable = 0
-  if (bForceRoll !== 0) {
+  if (dwRequiredGroup !== 0) {
     const nTotal = m.u32(pMagicTables) | 0
     const pBase = m.u32(pMagicTables + 0x04)
     pSubTable = m.u32(pMagicTables + 0x10)

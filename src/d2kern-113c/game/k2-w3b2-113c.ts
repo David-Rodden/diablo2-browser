@@ -17,7 +17,7 @@ import { DRLG_ResolveMonsterSubClassIdForRoom113c } from '../common/drlg/drlg-ve
 import { DRLGPRESET_MovePointerAndClear113c } from '../common/drlg/preset.js'
 import { DUNGEON_GetLevelIdFromRoom113c, DUNGEON_GetRoomCoordinates113c } from '../common/dungeon.js'
 import { D2CommonAssertError } from '../common/inline-helpers.js'
-import { imul32 } from '../common/int-math.js'
+import { imul32, sdiv32 } from '../common/int-math.js'
 import {
   INVENTORY_AllocInventory113c,
   INVENTORY_GetFirstItem113c,
@@ -48,6 +48,7 @@ import {
   PATH_GetUnitCollisionPattern113c,
   PATH_SetCollisionMask113c,
   PATH_SetMoveTestCollisionMask113c,
+  PATH_SetStepNum113c,
   PATH_SetTargetPos113c,
   PATH_SetType113c,
   PATH_SetVelocity113c,
@@ -121,7 +122,11 @@ import {
 } from './ai-fallen-113c.js'
 import { CLIENTS_ForEachInGameClient113c } from './boot-init-gap-a-113c.js'
 import { AI_Stall113c, MONSTER_StartMode113c } from './combat-a1c-113c.js'
-import { PLAYER_GetEquippedWeapon113c, AIGENERAL_CopyAiCommandParams113c } from './replay-kernel-113c.ts'
+import {
+  AIGENERAL_CopyAiCommandParams113c,
+  type FallenSliceWorld113c,
+  PLAYER_GetEquippedWeapon113c,
+} from './replay-kernel-113c.ts'
 import { SUNIT_GetServerUnit113c } from './game-strc.js'
 import {
   AURA_ForEachUnitInRadius113c,
@@ -170,6 +175,7 @@ import { MONSTER_SpawnAtCoords_6FD0F450_113c } from './k2-w2b8-113c.js'
 import { UNITS_ChangeAnimMode113c } from './monster-events.js'
 import { OBJECTS_InitObjectUnit113c } from './objects-populate-113c.js'
 import {
+  D2GAME_IAT_GDW_BITMASKS_VA_113C,
   D2GAME_IAT_SGPT_DATATABLES_VA_113C,
   MONSTATS2_CheckModeBit113c,
   MONSTATS2_GetRecordPtr113c,
@@ -185,6 +191,7 @@ import {
   ROOM_FindRoomContainingSubtile113c,
   SEED_RollLimitedFast113c,
   SEED_RollRangeHalfOpen113c,
+  SKILLS_GetRecordPtrFast113c,
   SUNIT_InitUnitSeed113c,
   SUNIT_PlaceServerUnitInRoom113c,
   SUNIT_ValidatePathTargetUnit113c,
@@ -669,6 +676,12 @@ export function AI_StepTurnAndCastSkill4_6FC3C1E0_113c(
   AI_Stall113c(m, pGame, pUnit, 0x0a)
 }
 
+function isFallenSliceWorldW3B2_113c(
+  v: D2KernMemory113c | FallenSliceWorld113c,
+): v is FallenSliceWorld113c {
+  return !('u32' in v)
+}
+
 /**
  * [3/45] Evaluates hireling skill slots (`HirelingTxt + 0x78`), performs weighted random selection,
  * and either casts the selected skill or executes a melee attack / approach against `pTarget`.
@@ -676,14 +689,138 @@ export function AI_StepTurnAndCastSkill4_6FC3C1E0_113c(
  * @va D2Game:0x6FC3C4E0
  */
 export function AI_SelectAndCastHirelingSkill_6FC3C4E0_113c(
-  m: D2KernMemory113c,
-  pGame: number,
-  pUnit: number,
-  pTarget: number,
-  bAllowMove: number,
-  hooks?: K2W3B2Hooks113c,
+  arg0: D2KernMemory113c | FallenSliceWorld113c,
+  arg1: number,
+  arg2: number,
+  arg3: number,
+  arg4: number,
+  arg5?: number | K2W3B2Hooks113c,
 ): number {
   hitD2GameVa113c(0x6FC3C4E0)
+  if (isFallenSliceWorldW3B2_113c(arg0)) {
+    const world = arg0
+    const { m, pGame } = world
+    const pMerc = arg1 >>> 0
+    const nClassId = arg2 | 0
+    const wMercType = arg3 | 0
+    const pTarget = arg4 >>> 0
+    const pSeed = typeof arg5 === 'number' ? arg5 >>> 0 : (pMerc + 0x20) >>> 0
+
+    const pMonStatsTxt = MONSTATS_GetRecordPtr113c(m, nClassId) >>> 0
+    if (pMonStatsTxt === 0) return 0
+
+    const mercLvl = STATLIST_GetUnitStat113c(m, pMerc, 0x0c, 0) | 0
+    const bExpansion = m.u32((pGame + 0x70) >>> 0) | 0
+    const pHirelingTxt =
+      DATATBLS_GetHirelingTxtRecordFromIdAndLevel113c(m, bExpansion, wMercType, mercLvl) >>> 0
+    if (pHirelingTxt === 0) return 0
+
+    let totalWeight = m.u32((pHirelingTxt + 0x64) >>> 0) | 0
+    let lvlDiff = (mercLvl - (m.u32((pHirelingTxt + 0x1c) >>> 0) | 0)) | 0
+    if (lvlDiff < 0) lvlDiff = 0
+
+    const pTablesPtr = m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C) >>> 0
+    const pTables = pTablesPtr !== 0 ? (m.u32(pTablesPtr) >>> 0) : 0
+    const nSkillsCount = pTables !== 0 ? (m.u32((pTables + 0xba0) >>> 0) | 0) : 0
+    const nStatesCount = pTables !== 0 ? (m.u32((pTables + 0xc4) >>> 0) | 0) : 0
+
+    const cumWeights = [0, 0, 0, 0, 0, 0]
+    for (let slot = 0; slot < 6; slot += 1) {
+      const skillId = m.u32((pHirelingTxt + 0x78 + slot * 4) >>> 0) | 0
+      if (skillId <= 0 || skillId >= nSkillsCount) break
+      const pSkillsTxt = SKILLS_GetRecordPtrFast113c(m, skillId) >>> 0
+      if (pSkillsTxt === 0) continue
+
+      const pSkill = SKILLS_GetSkillById113c(m, pMerc, skillId, 0xffffffff) >>> 0
+      if (pSkill === 0) continue
+      const effSlvl = m.u32((pSkill + 0x28) >>> 0) | 0
+      if (effSlvl <= 0) continue
+
+      if (m.u8((pSkillsTxt + 0x230) >>> 0) === 1) {
+        const auraState = sx16(m.u16((pSkillsTxt + 0x80) >>> 0))
+        if (auraState >= 0 && auraState < nStatesCount) {
+          if (STATES_CheckState113c(m, pMerc, auraState) !== 0) continue
+        }
+      }
+
+      if (skillId === 0x29 && pTarget !== 0) {
+        const halfSlvl = sdiv32(effSlvl, 2)
+        const maxRange = (halfSlvl + 4) | 0
+        if ((UNITS_GetApproximateDistance113c(m, pMerc, pTarget) | 0) > maxRange) continue
+      }
+
+      const chancePerLvl = m.u32((pHirelingTxt + 0xa8 + slot * 4) >>> 0) | 0
+      const baseChance = m.u32((pHirelingTxt + 0x90 + slot * 4) >>> 0) | 0
+      const prod = imul32(chancePerLvl, lvlDiff)
+      const scaled = ((prod + ((prod >> 31) & 3)) >> 2) | 0
+      totalWeight = (totalWeight + baseChance + scaled) | 0
+      cumWeights[slot] = totalWeight
+    }
+
+    const rollBound = (totalWeight + 1) | 0
+    const roll = rollBound > 0 ? rollLimitedSeed64InMem113c(m, pSeed, rollBound) : 0
+    const baseAttackWeight = m.u32((pHirelingTxt + 0x64) >>> 0) | 0
+
+    if (roll >= baseAttackWeight) {
+      let chosenSlot = 0
+      if (roll > cumWeights[0]!) {
+        while (chosenSlot < 6) {
+          const nextW = chosenSlot + 1 < 6 ? cumWeights[chosenSlot + 1]! : 0
+          chosenSlot += 1
+          if (roll <= nextW) break
+        }
+      }
+      if (chosenSlot < 6) {
+        const chosenSkillId = m.u32((pHirelingTxt + 0x78 + chosenSlot * 4) >>> 0) | 0
+        if (chosenSkillId > 0 && chosenSkillId < nSkillsCount) {
+          const pSkillsTxt = SKILLS_GetRecordPtrFast113c(m, chosenSkillId) >>> 0
+          const pMasks = m.u32(D2GAME_IAT_GDW_BITMASKS_VA_113C) >>> 0
+          const auraMask = pMasks !== 0 ? m.u8((pMasks + 0x14) >>> 0) : 0x20
+          if (pSkillsTxt !== 0 && (m.u8((pSkillsTxt + 0x04) >>> 0) & auraMask) !== 0) {
+            SKILLS_AssignHandSkillAndSyncAura113c(m, pMerc, 0, chosenSkillId, 0xffffffff)
+            AI_Stall113c(world, pMerc, 10)
+            return 1
+          }
+          const bMode = m.u8((pHirelingTxt + 0xc0 + chosenSlot) >>> 0)
+          return AI_CastSkillWithMode113c(m, bMode, pMerc, pGame, chosenSkillId, pTarget, 0, 0, world)
+        }
+      }
+    }
+
+    if (nClassId === 0x10f) {
+      const wSkill0 = sx16(m.u16((pMonStatsTxt + 0x170) >>> 0))
+      const bMode0 = m.u8((pMonStatsTxt + 0x180) >>> 0)
+      return AI_CastSkillWithMode113c(m, bMode0, pMerc, pGame, wSkill0, pTarget, 0, 0, world)
+    }
+
+    if (
+      nClassId === 0x152 ||
+      nClassId === 0x167 ||
+      nClassId === 0x230 ||
+      nClassId === 0x231
+    ) {
+      if (UNITS_CanUnitMeleeAttackTarget113c(m, pMerc, pTarget, 0) === 0) {
+        AI_Stall113c(world, pMerc, 10)
+        return 0
+      }
+      SKILLS_SetUsedSkillMemPort113c(m, pMerc, 0)
+      const pPath = m.u32((pMerc + 0x2c) >>> 0) >>> 0
+      if (pPath !== 0) {
+        PATH_SetStepNum113c(m, pPath, 1)
+      }
+      return MONSTER_StartMode113c(world, pMerc, 4, pTarget, 0, 0) ? 1 : 0
+    }
+
+    AI_Stall113c(world, pMerc, 10)
+    return 0
+  }
+
+  const m = arg0
+  const pGame = arg1
+  const pUnit = arg2
+  const pTarget = arg3
+  const bAllowMove = arg4
+  const hooks = typeof arg5 === 'object' ? arg5 : undefined
   const nUnitLevel = STATLIST_GetUnitStat113c(m, pUnit, 0x0c, 0) | 0
   let wSubTypeId = 0
   if (pUnit !== 0 && (m.u32(pUnit >>> 0) >>> 0) === 1) {

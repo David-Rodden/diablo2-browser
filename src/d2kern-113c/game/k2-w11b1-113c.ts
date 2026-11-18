@@ -141,7 +141,11 @@ import {
   SUNITDMG_FindCombatDamageData113c,
   SUNITDMG_GetPlayerClientClassId113c,
 } from './combat-a1c-113c'
-import { AI_ApproachTarget113c, type FallenSliceWorld113c } from './replay-kernel-113c'
+import {
+  AI_ApproachTarget113c,
+  type FallenSliceWorld113c,
+  syncActRoomsAndUnitsIntoWorld113c,
+} from './replay-kernel-113c'
 import { SUNIT_GetServerUnit113c } from './game-strc'
 import {
   ITEMS_RegisterItemEventCallback113c,
@@ -274,6 +278,7 @@ import {
 } from './regpop-spawn-113c'
 import { CLIENTS_GetPlayerUnit113c, SUNIT_FreeUnit113c } from './replay-final11-113c'
 import {
+  EVENT_DeleteEventByArg14_113c,
   EVENT_FreeNode113c,
   EVENT_RemoveUnitEvents113c,
   EVENT_SetEventFull113c,
@@ -390,6 +395,63 @@ function sunitWarpUnitToCoords_6FD019C0(
   )
 }
 
+export interface PetMoveActionOps113c {
+  readonly world?: FallenSliceWorld113c | undefined
+  approachTarget(
+    pMonster: number,
+    pTarget: number,
+    mode: number,
+    targetX: number,
+    targetY: number,
+    stepNum: number,
+    flags: number,
+  ): boolean
+  fleeFrom(
+    pFrom: number,
+    pMonster: number,
+    distSteps: number,
+    clearThinkOnFail: boolean,
+  ): boolean
+  idleWander(pMonster: number, range: number): boolean
+  stall(pMonster: number, frames: number): void
+  startMode(
+    pMonster: number,
+    mode: number,
+    pTarget: number,
+    targetX: number,
+    targetY: number,
+  ): boolean
+}
+
+function ensureBreadcrumbZeroedIfUnloadedW11B1(
+  m: SparseMemory113c,
+  baseAddr: number,
+  byteLen: number,
+): void {
+  const memInternal = m as unknown as { known?: Map<number, Uint8Array> }
+  const known = memInternal.known
+  if (known === undefined) return
+  for (let i = 0; i < byteLen; i++) {
+    const addr = (baseAddr + i) >>> 0
+    const kp = known.get(addr >>> 12)
+    if (kp === undefined || kp[addr & 0xfff] === 0) {
+      m.setU8(addr, 0)
+    }
+  }
+}
+
+function freeUnitType2Events113cW11B1(m: SparseMemory113c, pGame: number, pUnit: number): void {
+  if (pUnit === 0) return
+  let pEvt = u32(m, pUnit + 0xdc)
+  while (pEvt !== 0) {
+    const pNext = u32(m, pEvt + 0x24)
+    if (u8(m, pEvt) === 2) {
+      EVENT_FreeNode113c(m, pGame, pEvt)
+    }
+    pEvt = pNext
+  }
+}
+
 /**
  * @dll D2Game.dll
  * @va 0x6FC3CAE0
@@ -404,212 +466,251 @@ export function AI_PetMoveActionDispatch_6FC3CAE0_113c(
   nFlag: number,
   nDistOrDelay: number,
   nDirOrParam: number,
+  ops?: PetMoveActionOps113c,
 ): number {
   hitD2GameVa113c(0x6FC3CAE0)
   if (pOwnerUnit === 0 || pPetUnit === 0) return 0
-  const pMonData = u32(m, pPetUnit) === 1 ? u32(m, pPetUnit + 0x14) : 0
-  const pAiCtrl = pMonData !== 0 ? u32(m, pMonData + 0x28) : 0
-  if (pAiCtrl === 0) return 0
   if (nActionCase >>> 0 > 5) return 0
+
+  const pMonData = u32(m, pPetUnit) === 1 ? u32(m, pPetUnit + 0x14) : 0
+  const pAiCtrl =
+    pMonData !== 0
+      ? u32(m, pMonData + 0x2c) !== 0
+        ? u32(m, pMonData + 0x2c)
+        : u32(m, pMonData + 0x28)
+      : 0
+  if (ops === undefined && pAiCtrl === 0) return 0
+
+  const doApproach = (
+    mode: number,
+    tx: number,
+    ty: number,
+    stepNum: number,
+    flags: number,
+  ): boolean => {
+    if (ops !== undefined) {
+      return ops.approachTarget(pPetUnit, 0, mode, tx, ty, stepNum, flags)
+    }
+    return Boolean(
+      AI_ApproachTarget113c(worldOf(m, pGame), pPetUnit, 0, mode, tx, ty, stepNum, flags),
+    )
+  }
+  const doFlee = (distSteps: number, clearOnFail: boolean): boolean => {
+    if (ops !== undefined) {
+      return ops.fleeFrom(pOwnerUnit, pPetUnit, distSteps, clearOnFail)
+    }
+    return AI_FleeFrom113c(m, pGame, pPetUnit, pOwnerUnit, distSteps, clearOnFail ? 1 : 0) !== 0
+  }
+  const doStall = (frames: number): void => {
+    if (ops !== undefined) {
+      ops.stall(pPetUnit, frames)
+      return
+    }
+    AI_Stall113c(m, pGame, pPetUnit, frames)
+  }
+  const doWalkWander = (pCenter: number, rad: number): boolean => {
+    if (pCenter === pPetUnit) {
+      return (
+        AI_WalkWanderAroundSelf_6FD129B0_113c(
+          m,
+          rad & 0xff,
+          pGame,
+          pPetUnit,
+          ops !== undefined ? { world: ops.world } : undefined,
+        ) !== 0
+      )
+    }
+    return (
+      AI_WalkWanderAroundUnitOrSelf_6FD12870_113c(
+        m,
+        pCenter,
+        rad & 0xff,
+        pGame,
+        pPetUnit,
+        ops !== undefined ? { world: ops.world } : undefined,
+      ) !== 0
+    )
+  }
 
   const pScratchX = K2_W11B1_SCRATCH_BASE + 0x00
   const pScratchY = K2_W11B1_SCRATCH_BASE + 0x04
+  const pOwnerPath = u32(m, pOwnerUnit + 0x2c)
+  const ownerMode = i32(m, pOwnerUnit + 0x10)
+  const prevX = pOwnerPath !== 0 ? (PATH_GetPrevTargetX113c(m, pOwnerPath) | 0) : 0
+  const prevY = pOwnerPath !== 0 ? (PATH_GetPrevTargetY113c(m, pOwnerPath) | 0) : 0
+  const petX = UNIT_GetPosX113c(m, pPetUnit) | 0
+  const petY = UNIT_GetPosY113c(m, pPetUnit) | 0
+  const ownerX = UNIT_GetPosX113c(m, pOwnerUnit) | 0
+  const ownerY = UNIT_GetPosY113c(m, pOwnerUnit) | 0
 
   switch (nActionCase | 0) {
     case 0: {
-      const pOwnerPath = u32(m, pOwnerUnit + 0x2c)
-      if (pOwnerPath === 0) return 0
-      const prevY = PATH_GetPrevTargetY113c(m, pOwnerPath)
-      const prevX = PATH_GetPrevTargetX113c(m, pOwnerPath)
       const rawDir = UNITS_GetDirectionToCoords113c(m, pOwnerUnit, prevX, prevY)
-      const normDir = DATATBLS_NormalizeDirection113c(m, rawDir) & 0xff
-      const ownerPosY = UNIT_GetPosY113c(m, pOwnerUnit)
-      const ownerPosX = UNIT_GetPosX113c(m, pOwnerUnit)
+      let normDir = DATATBLS_NormalizeDirection113c(m, rawDir) & 0x07
       const pOwnerRoom = UNITS_GetRoom113c(m, pOwnerUnit)
-      const ownerCoordIdx = DUNGEON_GetRoomCoordListIndexAtSubtile113c(
-        m,
-        pOwnerRoom,
-        ownerPosX,
-        ownerPosY,
-      )
+      const ownerCoordIdx =
+        DUNGEON_GetRoomCoordListIndexAtSubtile113c(m, pOwnerRoom, ownerX, ownerY) | 0
 
-      let foundIdx = 8
-      let candX = 0
-      let candY = 0
       for (let i = 0; i < 8; i += 1) {
-        const dirStep = ((normDir + AI_DIR_OFFSET_TABLE_6FD1CED8[i]!) & 7) << 2
+        const dirStep = AI_DIR_OFFSET_TABLE_6FD1CED8[normDir]!
         DATATBLS_GetDirectionOffset113c(m, dirStep, pScratchX, pScratchY)
-        const testX = (prevX + (i32(m, pScratchX) << 3)) | 0
-        const testY = (prevY + (i32(m, pScratchY) << 3)) | 0
-        const pRoomNow = UNITS_GetRoom113c(m, pOwnerUnit)
-        const testCoordIdx = DUNGEON_GetRoomCoordListIndexAtSubtile113c(
-          m,
-          pRoomNow,
-          testX,
-          testY,
-        )
-        candX = testX
-        candY = testY
+        const candX = (prevX + (i32(m, pScratchX) << 3)) | 0
+        const candY = (prevY + (i32(m, pScratchY) << 3)) | 0
+        const testRoom = UNITS_GetRoom113c(m, pOwnerUnit)
+        const testCoordIdx =
+          DUNGEON_GetRoomCoordListIndexAtSubtile113c(m, testRoom, candX, candY) | 0
         if (testCoordIdx === ownerCoordIdx) {
-          foundIdx = i
-          break
-        }
-      }
-
-      if (foundIdx < 8) {
-        if (nDistOrDelay < -126 || nDistOrDelay > 126) {
-          throw new D2CommonAssertError('..\\Source\\D2Game\\Ai\\AiThink.cpp', 0x110)
-        }
-        w32(m, pAiCtrl + 0x1c, nDistOrDelay)
-        w8(m, pAiCtrl + 0x20, 0x28)
-        const mode = nDirOrParam !== 0 ? 0x0f : 0x02
-        if (
-          Boolean(AI_ApproachTarget113c(worldOf(m, pGame), pPetUnit, 0, mode, candX, candY, 1, 0))
-        ) {
-          return 1
-        }
-        const midX = ((UNIT_GetPosX113c(m, pOwnerUnit) + candX) >>> 1) | 0
-        const midY = ((UNIT_GetPosY113c(m, pOwnerUnit) + candY) >>> 1) | 0
-        if (Boolean(AI_ApproachTarget113c(worldOf(m, pGame), pPetUnit, 0, 2, midX, midY, 1, 0))) {
-          return 1
-        }
-      }
-
-      freeUnitEventNodesByType(m, pGame, pPetUnit, 2)
-      if (AI_WalkWanderAroundSelf_6FD129B0_113c(m, 4, pGame, pPetUnit) !== 0) {
-        return 1
-      }
-      freeUnitEventNodesByType(m, pGame, pPetUnit, 2)
-      const midPosX = ((UNIT_GetPosX113c(m, pPetUnit) + UNIT_GetPosX113c(m, pOwnerUnit)) >> 1) | 0
-      const midPosY = ((UNIT_GetPosY113c(m, pPetUnit) + UNIT_GetPosY113c(m, pOwnerUnit)) >> 1) | 0
-      if (Boolean(AI_ApproachTarget113c(worldOf(m, pGame), pPetUnit, 0, 2, midPosX, midPosY, 1, 0))) {
-        return 1
-      }
-      freeUnitEventNodesByType(m, pGame, pPetUnit, 2)
-      const ownerX = UNIT_GetPosX113c(m, pOwnerUnit)
-      const ownerY = UNIT_GetPosY113c(m, pOwnerUnit)
-      return Boolean(AI_ApproachTarget113c(worldOf(m, pGame), pPetUnit, 0, 2, ownerX, ownerY, 1, 0))
-        ? 1
-        : 0
-    }
-
-    case 1: {
-      if (nFlag !== 0) {
-        const midPosX =
-          ((UNIT_GetPosX113c(m, pPetUnit) + UNIT_GetPosX113c(m, pOwnerUnit)) >> 1) | 0
-        const midPosY =
-          ((UNIT_GetPosY113c(m, pPetUnit) + UNIT_GetPosY113c(m, pOwnerUnit)) >> 1) | 0
-        if (
-          Boolean(AI_ApproachTarget113c(worldOf(m, pGame), pPetUnit, 0, 2, midPosX, midPosY, 1, 0))
-        ) {
-          return 1
-        }
-        const ownerX = UNIT_GetPosX113c(m, pOwnerUnit)
-        const ownerY = UNIT_GetPosY113c(m, pOwnerUnit)
-        if (
-          Boolean(AI_ApproachTarget113c(worldOf(m, pGame), pPetUnit, 0, 2, ownerX, ownerY, 1, 0))
-        ) {
-          return 1
-        }
-        freeUnitEventNodesByType(m, pGame, pPetUnit, 2)
-      }
-
-      if (u32(m, pOwnerUnit) === 0) {
-        const pPlrData = UNITS_GetPlayerData113c(m, pOwnerUnit)
-        if (pPlrData === 0) {
-          throw new D2CommonAssertError('..\\Source\\D2Game\\Ai\\AiThink.cpp', 0xf6)
-        }
-        const headIdx = u8(m, pPlrData + 0xa0)
-        for (let idx = headIdx - 1; idx >= 0; idx -= 1) {
-          const histX = i32(m, pPlrData + 0xa8 + idx * 8)
-          const histY = i32(m, pPlrData + 0xac + idx * 8)
-          if (
-            histX !== 0 &&
-            histY !== 0 &&
-            UNITS_GetOctileDistanceToCoordinates113c(m, pPetUnit, histX, histY) > 5
-          ) {
-            if (
-              Boolean(AI_ApproachTarget113c(worldOf(m, pGame), pPetUnit, 0, 2, histX, histY, 1, 0))
-            ) {
-              return 1
+          if (pAiCtrl !== 0) {
+            if (nDistOrDelay !== 0) {
+              w32(m, pAiCtrl + 0x1c, nDistOrDelay >>> 0)
             }
-            freeUnitEventNodesByType(m, pGame, pPetUnit, 2)
+            w8(m, pAiCtrl + 0x20, 0x28)
           }
-        }
-        for (let idx = 19; idx >= headIdx; idx -= 1) {
-          const histX = i32(m, pPlrData + 0xa8 + idx * 8)
-          const histY = i32(m, pPlrData + 0xac + idx * 8)
-          if (
-            histX !== 0 &&
-            histY !== 0 &&
-            UNITS_GetOctileDistanceToCoordinates113c(m, pPetUnit, histX, histY) > 5
-          ) {
-            if (
-              Boolean(AI_ApproachTarget113c(worldOf(m, pGame), pPetUnit, 0, 2, histX, histY, 1, 0))
-            ) {
-              return 1
-            }
-            freeUnitEventNodesByType(m, pGame, pPetUnit, 2)
+          const mode = nFlag !== 0 ? 15 : 2
+          if (doApproach(mode, candX, candY, 1, 4)) {
+            return 1
           }
-        }
-      }
-
-      const ownerX = UNIT_GetPosX113c(m, pOwnerUnit)
-      const ownerY = UNIT_GetPosY113c(m, pOwnerUnit)
-      if (Boolean(AI_ApproachTarget113c(worldOf(m, pGame), pPetUnit, 0, 2, ownerX, ownerY, 1, 0))) {
-        return 1
-      }
-      freeUnitEventNodesByType(m, pGame, pPetUnit, 2)
-      let approxDist = (AI_CalcApproxUnitDistSubtiles113c(m, pPetUnit, pOwnerUnit) >>> 2) | 0
-      if (approxDist < 4) approxDist = 4
-      if (approxDist > 127) {
-        throw new D2CommonAssertError('..\\Source\\D2Game\\Ai\\AiThink.cpp', 0x14d)
-      }
-      return AI_WalkWanderAroundSelf_6FD129B0_113c(m, approxDist & 0xff, pGame, pPetUnit) !== 0
-        ? 1
-        : 0
-    }
-
-    case 2: {
-      if (seedRoll(unitSeedOf(m, pPetUnit + 0x20), 100) < 10) {
-        const wanderDist = (seedRoll(unitSeedOf(m, pPetUnit + 0x20), 3) + 3) & 0xff
-        if (AI_WalkWanderAroundSelf_6FD129B0_113c(m, wanderDist, pGame, pPetUnit) !== 0) {
-          return 1
-        }
-        freeUnitEventNodesByType(m, pGame, pPetUnit, 2)
-        const pOwnerPath = u32(m, pOwnerUnit + 0x2c)
-        if (pOwnerPath !== 0) {
-          const prevY = PATH_GetPrevTargetY113c(m, pOwnerPath)
-          const prevX = PATH_GetPrevTargetX113c(m, pOwnerPath)
-          if (
-            Boolean(AI_ApproachTarget113c(worldOf(m, pGame), pPetUnit, 0, 2, prevX, prevY, 1, 0))
-          ) {
+          const midX = ((petX + candX) >>> 1) | 0
+          const midY = ((petY + candY) >>> 1) | 0
+          if (doApproach(mode, midX, midY, 1, 4)) {
             return 1
           }
         }
+        normDir = (normDir + 1) & 0x07
       }
-      AI_Stall113c(m, pGame, pPetUnit, 15)
+
+      freeUnitType2Events113cW11B1(m, pGame, pPetUnit)
+      if (doWalkWander(pPetUnit, 4)) {
+        return 1
+      }
+      const midOwnerX = (petX + ownerX) >> 1
+      const midOwnerY = (petY + ownerY) >> 1
+      if (nFlag !== 0) {
+        if (doApproach(15, midOwnerX, midOwnerY, 1, 4)) {
+          return 1
+        }
+      }
+      if (doApproach(2, midOwnerX, midOwnerY, 1, 4)) {
+        return 1
+      }
+      return doApproach(2, ownerX, ownerY, 1, 0) ? 1 : 0
+    }
+
+    case 1: {
+      if (ownerMode === 2) {
+        if (pAiCtrl !== 0) {
+          w8(m, pAiCtrl + 0x20, 0x4d)
+        }
+        if (doApproach(2, prevX, prevY, 1, 4)) {
+          return 1
+        }
+        const midPrevX = (petX + prevX) >> 1
+        const midPrevY = (petY + prevY) >> 1
+        if (doApproach(2, midPrevX, midPrevY, 1, 4)) {
+          return 1
+        }
+      }
+
+      let speedBonus = nDistOrDelay | 0
+      if (speedBonus === 0) {
+        speedBonus = (seedRoll(unitSeedOf(m, pPetUnit + 0x20), 0x28) + 0x28) | 0
+      }
+
+      const pPlrData = u32(m, pOwnerUnit) === 0 ? UNITS_GetPlayerData113c(m, pOwnerUnit) : 0
+      if (pPlrData !== 0) {
+        ensureBreadcrumbZeroedIfUnloadedW11B1(m, (pPlrData + 0xa0) >>> 0, 0xcc)
+        let bl = u8(m, pPlrData + 0xa0)
+        let triedPathType1 = false
+        for (let iter = 0; iter < 20; iter += 1) {
+          bl = bl === 0 ? 19 : (bl - 1) & 0xff
+          const histX = i32(m, pPlrData + 0xa8 + bl * 8)
+          const histY = i32(m, pPlrData + 0xac + bl * 8)
+          if (
+            histX !== 0 &&
+            histY !== 0 &&
+            UNITS_GetOctileDistanceToCoordinates113c(m, pPetUnit, histX, histY) >>> 0 > 5
+          ) {
+            if (pAiCtrl !== 0) {
+              if (speedBonus !== 0) w32(m, pAiCtrl + 0x1c, speedBonus >>> 0)
+              w8(m, pAiCtrl + 0x20, 0x4d)
+            }
+            const firstMode = nFlag !== 0 ? 15 : 2
+            const firstFlags = nFlag !== 0 ? 0 : 4
+            if (doApproach(firstMode, histX, histY, 1, firstFlags)) {
+              return 1
+            }
+            freeUnitType2Events113cW11B1(m, pGame, pPetUnit)
+
+            const retryMode = bl !== 0 ? 15 : 2
+            if (pAiCtrl !== 0) {
+              w32(m, pAiCtrl + 0x18, 0x0f)
+              if (speedBonus !== 0) w32(m, pAiCtrl + 0x1c, speedBonus >>> 0)
+              w8(m, pAiCtrl + 0x20, 0x4d)
+            }
+            if (doApproach(retryMode, histX, histY, 1, 4)) {
+              return 1
+            }
+
+            if (!triedPathType1) {
+              triedPathType1 = true
+              if (pAiCtrl !== 0) {
+                w32(m, pAiCtrl + 0x18, 1)
+                if (speedBonus !== 0) w32(m, pAiCtrl + 0x1c, speedBonus >>> 0)
+                w8(m, pAiCtrl + 0x20, 0x4d)
+              }
+              if (doApproach(retryMode, histX, histY, 1, 4)) {
+                return 1
+              }
+            }
+          }
+        }
+      }
+
+      const approxDist = AI_CalcApproxUnitDistSubtiles113c(m, pPetUnit, pOwnerUnit) >>> 0
+      let wanderRad = approxDist >>> 2
+      if (wanderRad < 4) wanderRad = 4
+      if (pAiCtrl !== 0) {
+        w32(m, pAiCtrl + 0x1c, 0x0f)
+      }
+      return doWalkWander(pPetUnit, wanderRad) ? 1 : 0
+    }
+
+    case 2: {
+      if (seedRoll(unitSeedOf(m, pPetUnit + 0x20), 100) >= 10) {
+        doStall(15)
+        return 1
+      }
+      const wanderDist = (seedRoll(unitSeedOf(m, pPetUnit + 0x20), 3) + 3) & 0xff
+      if (doWalkWander(pPetUnit, wanderDist)) {
+        return 1
+      }
+      freeUnitType2Events113cW11B1(m, pGame, pPetUnit)
+      if (pAiCtrl !== 0) {
+        w8(m, pAiCtrl + 0x20, 0x28)
+      }
+      if (doApproach(2, prevX, prevY, 1, 4)) {
+        return 1
+      }
+      doStall(15)
       return 1
     }
 
     case 3: {
-      const ownerPosY = UNIT_GetPosY113c(m, pOwnerUnit)
-      const ownerPosX = UNIT_GetPosX113c(m, pOwnerUnit)
       const pOwnerRoom = UNITS_GetRoom113c(m, pOwnerUnit)
+      if (pOwnerRoom === 0) return 0
       const pCoordList = DUNGEON_GetRoomCoordListFromSubtile113c(
         m,
         pOwnerRoom,
-        ownerPosX,
-        ownerPosY,
+        ownerX,
+        ownerY,
       )
       const sgpt = readSgptDataTablesPtr(m)
       const nClassId = sgpt !== 0 && i32(m, sgpt + 0xa80) > 0x16b ? 0x16b : 0
-      const pOwnerRoom2 = UNITS_GetRoom113c(m, pOwnerUnit)
-      w32(m, pScratchX, 0)
-      w32(m, pScratchY, 0)
-      REGPOP_FindPackSpawnCoords113c(
+      w32(m, pScratchX, ownerX >>> 0)
+      w32(m, pScratchY, ownerY >>> 0)
+      const hasWalkable = REGPOP_FindPackSpawnCoords113c(
         m,
-        pOwnerRoom2,
+        pOwnerRoom,
         pGame,
         pCoordList,
         nClassId,
@@ -617,30 +718,24 @@ export function AI_PetMoveActionDispatch_6FC3CAE0_113c(
         pScratchY,
         0,
       )
+      if (hasWalkable === 0) return 0
       const spawnX = i32(m, pScratchX)
       const spawnY = i32(m, pScratchY)
-      const pOwnerRoom3 = UNITS_GetRoom113c(m, pOwnerUnit)
-      const pTargetRoom = ROOM_FindRoomContainingSubtile113c(m, pOwnerRoom3, spawnX, spawnY)
-      if (pTargetRoom !== 0) {
-        if (
-          sunitWarpUnitToCoords_6FD019C0(m, spawnX, pTargetRoom, spawnY, pPetUnit, pGame, 0, 0) !==
-          0
-        ) {
-          UNITROOM_RefreshUnit113c(m, pPetUnit)
-          w32(m, pPetUnit + 0xc8, (u32(m, pPetUnit + 0xc8) | 0x10000) >>> 0)
-          AI_Stall113c(m, pGame, pPetUnit, 5)
-          return 1
-        }
+      if (
+        sunitWarpUnitToCoords_6FD019C0(m, spawnX, pOwnerRoom, spawnY, pPetUnit, pGame, 0, 0) === 0
+      ) {
+        return 0
       }
-      return 0
+      w32(m, pPetUnit + 0xc8, (u32(m, pPetUnit + 0xc8) | 0x10000) >>> 0)
+      doStall(5)
+      return 1
     }
 
     case 4: {
       const pScanCtx = K2_W11B1_SCRATCH_BASE + 0x10
       w32(m, pScanCtx, pPetUnit)
       w32(m, pScanCtx + 0x04, 0)
-      w32(m, pScanCtx + 0x08, MONSTER_GetMonsterDataField2C_6FC21DD0_113c(m, pPetUnit))
-      w32(m, pScanCtx + 0x0c, 1)
+      w32(m, pScanCtx + 0x08, 0)
       PETS_ForEachPlayerPetUnit_6FCB6AF0_113c(
         m,
         pGame,
@@ -648,50 +743,48 @@ export function AI_PetMoveActionDispatch_6FC3CAE0_113c(
         (mem, _g, _owner, pet, ctx) => AI_CountAdjacentUnitsCallback_6FC35590_113c(mem, pet, ctx),
         pScanCtx,
       )
-      if (i32(m, pScanCtx + 0x04) >= 1) {
-        freeUnitEventNodesByType(m, pGame, pPetUnit, 2)
-        if (AI_FleeFrom113c(m, pGame, pPetUnit, pOwnerUnit, nDistOrDelay, 1) !== 0) {
-          return 1
-        }
+      if (i32(m, pScanCtx + 0x08) < 1) {
+        doStall(15)
+        return 1
       }
-      if (seedRoll(unitSeedOf(m, pPetUnit + 0x20), 100) < 10) {
-        const wanderDist = (seedRoll(unitSeedOf(m, pPetUnit + 0x20), 3) + 3) & 0xff
-        if (AI_WalkWanderAroundSelf_6FD129B0_113c(m, wanderDist, pGame, pPetUnit) !== 0) {
-          return 1
-        }
+      freeUnitType2Events113cW11B1(m, pGame, pPetUnit)
+      if (doFlee(nDirOrParam | 0, true)) {
+        return 1
       }
-      AI_Stall113c(m, pGame, pPetUnit, 15)
+      freeUnitType2Events113cW11B1(m, pGame, pPetUnit)
+      if (doWalkWander(pPetUnit, nDirOrParam & 0xff)) {
+        return 1
+      }
+      doStall(15)
       return 1
     }
 
     case 5: {
-      w32(m, pAiCtrl + 0x18, 7)
-      const wanderDist = (seedRoll(unitSeedOf(m, pPetUnit + 0x20), 3) + 3) & 0xff
-      if (
-        AI_WalkWanderAroundUnitOrSelf_6FD12870_113c(m, pOwnerUnit, wanderDist, pGame, pPetUnit) !==
-        0
-      ) {
+      if (pAiCtrl !== 0) {
+        w32(m, pAiCtrl + 0x18, 7)
+      }
+      if (doWalkWander(pOwnerUnit, nDirOrParam & 0xff)) {
         return 1
       }
-      freeUnitEventNodesByType(m, pGame, pPetUnit, 2)
-      if (AI_FleeFrom113c(m, pGame, pPetUnit, pOwnerUnit, nDistOrDelay, 1) !== 0) {
+      freeUnitType2Events113cW11B1(m, pGame, pPetUnit)
+      if (doFlee(nDirOrParam | 0, true)) {
         return 1
       }
-      freeUnitEventNodesByType(m, pGame, pPetUnit, 2)
-      const pOwnerPath = u32(m, pOwnerUnit + 0x2c)
-      if (pOwnerPath !== 0) {
-        const prevY = PATH_GetPrevTargetY113c(m, pOwnerPath)
-        const prevX = PATH_GetPrevTargetX113c(m, pOwnerPath)
-        if (Boolean(AI_ApproachTarget113c(worldOf(m, pGame), pPetUnit, 0, 2, prevX, prevY, 1, 0))) {
-          return 1
-        }
+      if (pAiCtrl !== 0) {
+        w8(m, pAiCtrl + 0x20, 0x28)
       }
-      return 0
+      return doApproach(2, prevX, prevY, 1, 4) ? 1 : 0
     }
 
     default:
       return 0
   }
+}
+
+function isFallenSliceWorldW11B1_113c(
+  v: SparseMemory113c | FallenSliceWorld113c,
+): v is FallenSliceWorld113c {
+  return !('u32' in v)
 }
 
 /**
@@ -700,16 +793,277 @@ export function AI_PetMoveActionDispatch_6FC3CAE0_113c(
  * @ordinalOrName D2Game_6FC3D3C0
  */
 export function AI_MercMoveActionDispatch_6FC3D3C0_113c(
-  m: SparseMemory113c,
-  pPetUnit: number,
-  pGame: number,
-  pOwnerUnit: number,
-  nActionCase: number,
-  nFlag: number,
-  nDistOrDelay: number,
-  nDirOrParam: number,
+  arg0: SparseMemory113c | FallenSliceWorld113c,
+  arg1: number,
+  arg2: number,
+  arg3 = 0,
+  arg4 = 0,
+  arg5 = 0,
+  arg6 = 0,
+  arg7 = 0,
 ): number {
   hitD2GameVa113c(0x6FC3D3C0)
+  if (isFallenSliceWorldW11B1_113c(arg0)) {
+    const world = arg0
+    const { m, pGame } = world
+    const pMerc = arg1 >>> 0
+    const pOwner = arg2 >>> 0
+    const subAction = arg3 | 0
+    const bRunMode = arg4 | 0
+    const velOverride = arg5 | 0
+    const wanderArg = arg6 | 0
+
+    const pOwnerData = pOwner !== 0 && m.u32(pOwner) === 0 ? (m.u32((pOwner + 0x14) >>> 0) >>> 0) : 0
+    const pOwnerPath = pOwner !== 0 ? (m.u32((pOwner + 0x2c) >>> 0) >>> 0) : 0
+    const ownerPrevTargetX = pOwnerPath !== 0 ? (PATH_GetPrevTargetX113c(m, pOwnerPath) | 0) : 0
+    const ownerPrevTargetY = pOwnerPath !== 0 ? (PATH_GetPrevTargetY113c(m, pOwnerPath) | 0) : 0
+
+    const pMonData = pMerc !== 0 ? (m.u32((pMerc + 0x14) >>> 0) >>> 0) : 0
+    const pAiCtrl = pMonData !== 0 ? (m.u32((pMonData + 0x2c) >>> 0) >>> 0) : 0
+    const pSeed = (pMerc + 0x20) >>> 0
+    const rollSeedLim = (nMax: number): number => {
+      const max = nMax | 0
+      if (max <= 0) return 0
+      const s: D2SeedStrc = { lo: m.u32(pSeed) >>> 0, hi: m.u32((pSeed + 4) >>> 0) >>> 0 }
+      const r = seedRoll(s, max) | 0
+      m.setU32(pSeed, s.lo >>> 0)
+      m.setU32((pSeed + 4) >>> 0, s.hi >>> 0)
+      return r
+    }
+    const ringDirs = [4, 3, 2, 1, 0, 7, 6, 5]
+
+    switch (subAction) {
+      case 0: {
+        const rawDir = UNITS_GetDirectionToCoords113c(m, pOwner, ownerPrevTargetX, ownerPrevTargetY)
+        let dirIdx = DATATBLS_NormalizeDirection113c(m, rawDir) & 7
+        const pOwnerRoom = UNITS_GetRoom113c(m, pOwner) >>> 0
+        const ownerX = UNIT_GetPosX113c(m, pOwner) | 0
+        const ownerY = UNIT_GetPosY113c(m, pOwner) | 0
+        const ownerCoordIdx = DUNGEON_GetRoomCoordListIndexAtSubtile113c(m, pOwnerRoom, ownerX, ownerY)
+        const sp = m.alloc(0x10)
+        for (let attempt = 0; attempt < 8; attempt += 1) {
+          const mappedDir = ringDirs[dirIdx & 7]!
+          DATATBLS_GetDirectionOffset113c(m, mappedDir, sp, (sp + 4) >>> 0)
+          const offX = m.u32(sp) | 0
+          const offY = m.u32((sp + 4) >>> 0) | 0
+          const tx = (ownerPrevTargetX + offX * 8) | 0
+          const ty = (ownerPrevTargetY + offY * 8) | 0
+          if (
+            DUNGEON_GetRoomCoordListIndexAtSubtile113c(m, pOwnerRoom, tx, ty) === ownerCoordIdx
+          ) {
+            if (pAiCtrl !== 0) {
+              if (velOverride !== 0) {
+                m.setU32((pAiCtrl + 0x1c) >>> 0, velOverride >>> 0)
+              }
+              m.setU8((pAiCtrl + 0x20) >>> 0, 0x28)
+            }
+            if (AI_ApproachTarget113c(world, pMerc, 0, 2, tx, ty, 1, 4)) {
+              return 1
+            }
+          }
+          dirIdx = (dirIdx + 1) & 7
+        }
+        EVENT_DeleteEventByArg14_113c(m, pGame, pMerc, 2, 0)
+        AI_WalkWanderAroundSelf_6FD129B0_113c(m, 4, pGame, pMerc, { world })
+        return 1
+      }
+
+      case 1: {
+        const ownerMode = m.u32((pOwner + 0x10) >>> 0) | 0
+        if (ownerMode === 2) {
+          if (pAiCtrl !== 0) {
+            m.setU8((pAiCtrl + 0x20) >>> 0, 0x4d)
+          }
+          AI_ApproachTarget113c(world, pMerc, 0, 2, ownerPrevTargetX, ownerPrevTargetY, 1, 0)
+          return 1
+        }
+
+        let effVel = velOverride | 0
+        if (effVel === 0) {
+          effVel = (rollSeedLim(15) + 0x32) | 0
+        }
+        let crumbIdx = pOwnerData !== 0 ? m.u8((pOwnerData + 0xa0) >>> 0) : 0
+        let retriedPathType1 = false
+
+        for (let i = 0; i < 20; i += 1) {
+          crumbIdx = crumbIdx === 0 ? 0x13 : (crumbIdx - 1) & 0xff
+          const cx = pOwnerData !== 0 ? (m.u32((pOwnerData + 0xa8 + crumbIdx * 8) >>> 0) | 0) : 0
+          const cy = pOwnerData !== 0 ? (m.u32((pOwnerData + 0xac + crumbIdx * 8) >>> 0) | 0) : 0
+          const dCrumb = UNITS_GetOctileDistanceToCoordinates113c(m, pMerc, cx, cy)
+          if (dCrumb <= 5) continue
+
+          if (pAiCtrl !== 0) {
+            if (effVel !== 0) m.setU32((pAiCtrl + 0x1c) >>> 0, effVel >>> 0)
+            m.setU8((pAiCtrl + 0x20) >>> 0, 0x4d)
+          }
+          if (AI_ApproachTarget113c(world, pMerc, 0, 2, cx, cy, 1, 4)) {
+            return 1
+          }
+          EVENT_DeleteEventByArg14_113c(m, pGame, pMerc, 2, 0)
+
+          if (pAiCtrl !== 0) {
+            m.setU32((pAiCtrl + 0x18) >>> 0, 0x0f)
+            if (effVel !== 0) m.setU32((pAiCtrl + 0x1c) >>> 0, effVel >>> 0)
+            m.setU8((pAiCtrl + 0x20) >>> 0, 0x4d)
+          }
+          const moveMode = bRunMode !== 0 ? 15 : 2
+          const moveFlags = bRunMode !== 0 ? 0 : 4
+          if (AI_ApproachTarget113c(world, pMerc, 0, moveMode, cx, cy, 1, moveFlags)) {
+            return 1
+          }
+          EVENT_DeleteEventByArg14_113c(m, pGame, pMerc, 2, 0)
+
+          if (!retriedPathType1 && pAiCtrl !== 0) {
+            retriedPathType1 = true
+            m.setU32((pAiCtrl + 0x18) >>> 0, 1)
+            if (effVel !== 0) m.setU32((pAiCtrl + 0x1c) >>> 0, effVel >>> 0)
+            m.setU8((pAiCtrl + 0x20) >>> 0, 0x4d)
+            if (AI_ApproachTarget113c(world, pMerc, 0, moveMode, cx, cy, 1, moveFlags)) {
+              return 1
+            }
+            EVENT_DeleteEventByArg14_113c(m, pGame, pMerc, 2, 0)
+          }
+        }
+
+        const dOwner = AI_CalcApproxUnitDistSubtiles113c(m, pMerc, pOwner)
+        let boxRange = dOwner >>> 2
+        if (boxRange < 4) boxRange = 4
+        if (pAiCtrl !== 0) {
+          m.setU32((pAiCtrl + 0x1c) >>> 0, 0x0f)
+        }
+        AI_WalkWanderAroundSelf_6FD129B0_113c(m, boxRange & 0xff, pGame, pMerc, { world })
+        return 1
+      }
+
+      case 2: {
+        if (rollSeedLim(100) < 10) {
+          const boxRange = (rollSeedLim(3) + 3) & 0xff
+          if (AI_WalkWanderAroundSelf_6FD129B0_113c(m, boxRange, pGame, pMerc, { world }) !== 0) {
+            return 1
+          }
+          EVENT_DeleteEventByArg14_113c(m, pGame, pMerc, 2, 0)
+          if (pAiCtrl !== 0) {
+            m.setU8((pAiCtrl + 0x20) >>> 0, 0x28)
+          }
+          AI_ApproachTarget113c(world, pMerc, 0, 2, ownerPrevTargetX, ownerPrevTargetY, 1, 0)
+          return 1
+        }
+        AI_Stall113c(world, pMerc, 15)
+        return 1
+      }
+
+      case 3: {
+        const pOwnerRoom = UNITS_GetRoom113c(m, pOwner) >>> 0
+        const ox = UNIT_GetPosX113c(m, pOwner) | 0
+        const oy = UNIT_GetPosY113c(m, pOwner) | 0
+        const pCoordList = DUNGEON_GetRoomCoordListFromSubtile113c(m, pOwnerRoom, ox, oy) >>> 0
+        const sgpt = readSgptDataTablesPtr(m as SparseMemory113c)
+        const nMonCount = sgpt !== 0 ? (m.u32((sgpt + 0xa80) >>> 0) | 0) : 0
+        const checkClassId = nMonCount > 0x16b ? 0x16b : 0
+        const sp = m.alloc(0x10)
+        m.setU32(sp, 0)
+        m.setU32((sp + 4) >>> 0, 0)
+        if (
+          REGPOP_FindPackSpawnCoords113c(
+            m,
+            pOwnerRoom,
+            pGame,
+            pCoordList,
+            checkClassId,
+            sp,
+            (sp + 4) >>> 0,
+            0,
+          ) === 0
+        ) {
+          return 0
+        }
+        const tx = m.u32(sp) | 0
+        const ty = m.u32((sp + 4) >>> 0) | 0
+        const pDestRoom = ROOM_FindRoomContainingSubtile113c(m, pOwnerRoom, tx, ty) >>> 0
+        if (pDestRoom === 0) return 0
+        if (
+          DUNGEON_TeleportUnitToRoomAndCoords_6FD019C0_113c(
+            m as unknown as Parameters<typeof DUNGEON_TeleportUnitToRoomAndCoords_6FD019C0_113c>[0],
+            tx,
+            pDestRoom,
+            ty,
+            pGame,
+            pMerc,
+            0,
+            0,
+          ) === 0
+        ) {
+          return 0
+        }
+        UNITROOM_RefreshUnit113c(m, pMerc)
+        m.setU32((pMerc + 0xc8) >>> 0, (m.u32((pMerc + 0xc8) >>> 0) | 0x10000) >>> 0)
+        syncActRoomsAndUnitsIntoWorld113c(world)
+        AI_Stall113c(world, pMerc, 5)
+        return 1
+      }
+
+      case 4: {
+        const sp = m.alloc(0x18)
+        m.setU32(sp, pMerc >>> 0)
+        m.setU32((sp + 4) >>> 0, 0)
+        m.setU32((sp + 8) >>> 0, 0)
+        PETS_ForEachPlayerPetUnit_6FCB6AF0_113c(
+          m,
+          pGame,
+          pOwner,
+          AI_CountAdjacentUnitsCallback_6FC35590_113c,
+          sp,
+        )
+        const nOverlap = m.u32((sp + 4) >>> 0) | 0
+        const pOtherPet = m.u32((sp + 8) >>> 0) >>> 0
+        if (nOverlap >= 1) {
+          EVENT_DeleteEventByArg14_113c(m, pGame, pMerc, 2, 0)
+          if (AI_FleeFrom113c(world, pOtherPet, pMerc, wanderArg, true)) {
+            return 1
+          }
+          EVENT_DeleteEventByArg14_113c(m, pGame, pMerc, 2, 0)
+          AI_WalkWanderAroundSelf_6FD129B0_113c(m, wanderArg & 0xff, pGame, pMerc, { world })
+          return 1
+        }
+        AI_Stall113c(world, pMerc, 15)
+        return 1
+      }
+
+      case 5: {
+        if (pAiCtrl !== 0) {
+          m.setU32((pAiCtrl + 0x18) >>> 0, 7)
+        }
+        if (
+          AI_WalkWanderAroundUnitOrSelf_6FD12870_113c(m, pOwner, wanderArg & 0xff, pGame, pMerc, {
+            world,
+          }) !== 0
+        ) {
+          return 1
+        }
+        EVENT_DeleteEventByArg14_113c(m, pGame, pMerc, 2, 0)
+        if (AI_FleeFrom113c(world, pOwner, pMerc, wanderArg, true)) {
+          return 1
+        }
+        if (pAiCtrl !== 0) {
+          m.setU8((pAiCtrl + 0x20) >>> 0, 0x28)
+        }
+        AI_ApproachTarget113c(world, pMerc, 0, 2, ownerPrevTargetX, ownerPrevTargetY, 1, 0)
+        return 1
+      }
+
+      default:
+        return 0
+    }
+  }
+
+  const m = arg0 as SparseMemory113c
+  const pPetUnit = arg1
+  const pGame = arg2
+  const pOwnerUnit = arg3
+  const nActionCase = arg4
+  const nFlag = arg5
+  const nDistOrDelay = arg6
+  const nDirOrParam = arg7
   if (pOwnerUnit === 0 || pPetUnit === 0) return 0
   const pMonData = u32(m, pPetUnit) === 1 ? u32(m, pPetUnit + 0x14) : 0
   const pAiCtrl = pMonData !== 0 ? u32(m, pMonData + 0x28) : 0

@@ -14,8 +14,8 @@
     "name": "AI_ThinkTyraelOrIzualGhost_6FC39880",
     "kernFile": "src/d2kern-113c/game/k2-w6b4-113c.ts",
     "tsSymbol": "AI_ThinkTyraelOrIzualGhost_6FC39880_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w6b4.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w6b4.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",

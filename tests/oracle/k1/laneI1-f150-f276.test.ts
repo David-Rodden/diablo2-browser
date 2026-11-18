@@ -97,7 +97,7 @@ describe('K1R14 Lane I1: D2Game post-F150 coverage gap closure Part 1 (F150..F27
     m.setU8((pQuest + 0x0a) >>> 0, 1) // active
     m.setU32((pQuest + 0xa0 + 3 * 4) >>> 0, 0x6fc83dd0) // callback[3] = ACT1Q1_Callback03_LevelChanged
     const pQuestData1 = m.alloc(0x80)
-    m.setU32((pQuest + 0xf0) >>> 0, pQuestData1)
+    m.setU32((pQuest + 0x18) >>> 0, pQuestData1)
     m.setU32(pQuestCtrl >>> 0, pQuest)
 
     const pArg = m.alloc(0x28)
@@ -137,7 +137,7 @@ describe('K1R14 Lane I1: D2Game post-F150 coverage gap closure Part 1 (F150..F27
     const pQuestData = m.alloc(0x400)
     m.setU32((pQuest + 0x04) >>> 0, pGame)
     m.setU8((pQuest + 0x0a) >>> 0, 1)
-    m.setU32((pQuest + 0xf0) >>> 0, pQuestData)
+    m.setU32((pQuest + 0x18) >>> 0, pQuestData)
 
     const pArg = m.alloc(0x28)
     m.setU32(pArg >>> 0, pGame)

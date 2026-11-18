@@ -613,7 +613,7 @@ export function QUESTS_CheckNpcQuestInteractAlert113c(
     throw new D2CommonAssertError('QUESTS_CheckNpcQuestInteractAlert113c: invalid npc', 0x7ed);
   }
   const npcClassId = i32(m, pNpc + 4);
-  if (MONSTATS2_CheckModeBit113c(m, npcClassId, 9) === 0) {
+  if (MONSTATS_CheckFlagBit113c(m, npcClassId, 9) === 0) {
     return 0;
   }
   const pQuestControl = m.u32(pGame + 0x10f4);
@@ -683,8 +683,36 @@ function dispatchQuestNpcAlertCallback(
     case 0x6fc82df0:
       return ACT1Q2_CheckAkaraIntroNpcAlert113c(m, pQuest, npcClassId, pPlayer, pQuestFlags, pNpc);
     default:
-      return 0;
+      return k4QuestNpcAlertDispatcher !== null
+        ? k4QuestNpcAlertDispatcher(m, pfnCheck, pQuest, pPlayer, npcClassId, pQuestFlags, pNpc)
+        : 0;
   }
+}
+
+let k4QuestNpcAlertDispatcher:
+  | ((
+      m: Memory113c,
+      pfnCheck: number,
+      pQuest: number,
+      pPlayer: number,
+      npcClassId: number,
+      pQuestFlags: number,
+      pNpc: number,
+    ) => number)
+  | null = null;
+
+export function registerK4QuestNpcAlertDispatcher113c(
+  fn: (
+    m: Memory113c,
+    pfnCheck: number,
+    pQuest: number,
+    pPlayer: number,
+    npcClassId: number,
+    pQuestFlags: number,
+    pNpc: number,
+  ) => number,
+): void {
+  k4QuestNpcAlertDispatcher = fn;
 }
 
 // @va D2Game:0x6FC69DB0
@@ -1172,6 +1200,23 @@ export function AITARGET_IterateRoomActiveClients113c(
   return 0;
 }
 
+export type AiTargetModeCallback113c = (
+  m: Memory113c,
+  pGame: number,
+  pOriginUnit: number,
+  pCandidateUnit: number,
+  pCtx: number,
+) => number;
+
+const registeredAiTargetModeCallbacks = new Map<number, AiTargetModeCallback113c>();
+
+export function registerAiTargetModeCallback113c(
+  cbId: number,
+  cb: AiTargetModeCallback113c,
+): void {
+  registeredAiTargetModeCallbacks.set(cbId >>> 0, cb);
+}
+
 const CB_ID_MODE_4 = 4;
 const CB_ID_MODE_8 = 8;
 const CB_ID_MODE_11 = 11;
@@ -1185,6 +1230,10 @@ function dispatchAiTargetCallback(
   pCandidateUnit: number,
   pCtx: number,
 ): number {
+  const regCb = registeredAiTargetModeCallbacks.get(pfnCallback >>> 0);
+  if (regCb !== undefined) {
+    return regCb(m, pGame, pOriginUnit, pCandidateUnit, pCtx);
+  }
   switch (pfnCallback >>> 0) {
     case 0x6fd11a90:
       return AI_FindNearestPlayerCallback113c(m, pGame, pOriginUnit, pCandidateUnit, pCtx);
@@ -1373,7 +1422,7 @@ export function AI_FindNearestPlayerCallback113c(
     return 0;
   }
   const classId = pMonster === 0 ? -1 : i32(m, pMonster + 4);
-  if (MONSTATS2_CheckModeBit113c(m, classId, 9) === 0) {
+  if (MONSTATS_CheckFlagBit113c(m, classId, 9) === 0) {
     m.setU32(pCtx + 4, dist);
     m.setU32(pCtx, pCandidatePlayer);
     return pCandidatePlayer;
@@ -1556,7 +1605,7 @@ export function PLAYER_StartWalkOrRunMode113c(
   }
   MONSTER_ClearModeEvents113c(m, pGame, pUnit);
   UNITS_ChangeAnimMode113c(m, pUnit, resolvedMode);
-  SUNIT_ValidatePathTargetUnit113c(m, pGame, pUnit);
+  SUNIT_ValidatePathTargetUnit113c(m, pUnit, pGame);
   MONSTER_RegisterContinuousModeEvent113c(m, pGame, pUnit);
 }
 
@@ -1734,7 +1783,7 @@ export function PLAYER_SetNeutralOrTownNeutralMode113c(
     const bInTown = DUNGEON_CheckRoomIsTownMemPort113c(m, pRoom);
     mode = bInTown !== 0 ? 5 : 1;
   }
-  SUNIT_ValidatePathTargetUnit113c(m, pGame, pUnit);
+  SUNIT_ValidatePathTargetUnit113c(m, pUnit, pGame);
   MONSTER_ClearModeEvents113c(m, pGame, pUnit);
   UNITS_ChangeAnimMode113c(m, pUnit, mode);
   SUNIT_InitUnitAnimData113c(m, pUnit);
@@ -1778,7 +1827,7 @@ export function PLAYER_FinishModeAndResetToNeutral113c(
   }
   if (curMode === 0) {
     UNITS_ChangeAnimMode113c(m, pUnit, 0x11);
-    SUNIT_ValidatePathTargetUnit113c(m, pGame, pUnit);
+    SUNIT_ValidatePathTargetUnit113c(m, pUnit, pGame);
     return;
   }
   if (curMode === 0x13) {

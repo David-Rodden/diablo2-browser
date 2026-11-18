@@ -1,0 +1,29 @@
+{
+  "description": "Monotonic allowlist of manifest-bound tsSymbols currently defined in >1 file under src/d2kern-113c/**. Only decreases toward 0; adding new symbols or increasing maxCount is forbidden.",
+  "maxCount": 23,
+  "symbols": [
+    "ITEMS_CheckNotBrokenOrUnequipping113c",
+    "PLAYER_AdvanceSkillModeFrame113c",
+    "PLAYER_DrainRunStamina113c",
+    "PLAYER_Event11_PeriodicTick113c",
+    "PLAYER_Event3_RegenTick113c",
+    "PLAYER_GetEquippedWeapon113c",
+    "PLAYER_ScheduleAttackActionFrameEvents113c",
+    "PLAYER_ScheduleSkillActionFrameEvents113c",
+    "PLAYER_StartBlockMode113c",
+    "PLAYER_StartModeCast113c",
+    "PLAYER_StartModeDispatch113c",
+    "PLAYER_StartModeSkill113c",
+    "PLAYER_UpdateHpRegen113c",
+    "PLAYER_UpdateManaRegen113c",
+    "PLAYER_UpdateStaminaRegen113c",
+    "SKILLS_GetFlags113c",
+    "STATLIST_FindSubListByStateAndFlags113c",
+    "SUNITDMG_CheckToHit113c",
+    "SUNITDMG_ExecuteEvents113c",
+    "SUNIT_ScheduleModeAnimEvents113c",
+    "UNITS_CanDualWield113c",
+    "applyPlayerPacket113c",
+    "stepFallenSliceFrame113c"
+  ]
+}

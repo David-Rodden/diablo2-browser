@@ -41,8 +41,8 @@
     "name": "ITEMS_ValidateAndFallbackPlayerHandSkills_6FCF28D0",
     "kernFile": "src/d2kern-113c/game/k2-w6b6-113c.ts",
     "tsSymbol": "ITEMS_ValidateAndFallbackPlayerHandSkills_6FCF28D0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w6b6.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w6b6.test.ts; Diff-verified 1:1 in dll\u2229ts across full-horizon strict zero-divergence K3 summon/curse replays (p52-amazon-valkyrie F1500/1500, p52-necromancer-poison-golem F1800/1800, p52-necromancer-curses F2000/2000) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -95,8 +95,8 @@
     "name": "ITEMS_ConsumeGridItemAndNotify9D_6FCF39B0",
     "kernFile": "src/d2kern-113c/game/k2-w6b6-113c.ts",
     "tsSymbol": "ITEMS_ConsumeGridItemAndNotify9D_6FCF39B0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w6b6.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w6b6.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -149,8 +149,8 @@
     "name": "HIRELING_GrantSharedExpAndCheckLevelUp_6FCFDCB0",
     "kernFile": "src/d2kern-113c/game/k2-w6b6-113c.ts",
     "tsSymbol": "HIRELING_GrantSharedExpAndCheckLevelUp_6FCFDCB0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w6b6.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w6b6.test.ts; K3 golden replay diff-verified (dll\u2229ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -185,8 +185,8 @@
     "name": "ACT3Q0_InitHratliIntroQuestTable_6FD06660",
     "kernFile": "src/d2kern-113c/game/k2-w6b6-113c.ts",
     "tsSymbol": "ACT3Q0_InitHratliIntroQuestTable_6FD06660_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w6b6.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w6b6.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -194,8 +194,8 @@
     "name": "ACT3_InitKurastNpcIntroQuestTable_6FD06700",
     "kernFile": "src/d2kern-113c/game/k2-w6b6-113c.ts",
     "tsSymbol": "ACT3_InitKurastNpcIntroQuestTable_6FD06700_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w6b6.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w6b6.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",

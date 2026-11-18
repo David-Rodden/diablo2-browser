@@ -497,26 +497,34 @@ export function PLAYER_StepModeWalkOrRun113c(
   m: Memory113c,
   pGame: number,
   pPlayer: number,
+  bBreadcrumbOnly = false,
 ): number {
   hitD2GameVa113c(0x6FC99B90)
-  SUNIT_ValidatePathTargetUnit113c(m, pPlayer, pGame)
-  if (STATES_CheckState113c(m, pPlayer, 0x0d) !== 0) {
-    m.setU32((pPlayer + 0xc4) >>> 0, (m.u32((pPlayer + 0xc4) >>> 0) | 1) >>> 0)
-  }
-  if (pPlayer !== 0 && (m.u32((pPlayer + 0x10) >>> 0) | 0) === 3) {
-    if (PLAYER_DrainRunStamina113c(m, pPlayer) === 0) {
-      PLAYER_StartWalkOrRunMode113c(m, 2, pPlayer, pGame)
+  let stepResult = 1
+  if (!bBreadcrumbOnly) {
+    SUNIT_ValidatePathTargetUnit113c(m, pPlayer, pGame)
+    if (STATES_CheckState113c(m, pPlayer, 0x0d) !== 0) {
+      m.setU32((pPlayer + 0xc4) >>> 0, (m.u32((pPlayer + 0xc4) >>> 0) | 1) >>> 0)
+    }
+    if (pPlayer !== 0 && (m.u32((pPlayer + 0x10) >>> 0) | 0) === 3) {
+      if (PLAYER_DrainRunStamina113c(m, pPlayer) === 0) {
+        PLAYER_StartWalkOrRunMode113c(m, 2, pPlayer, pGame)
+      }
+    }
+
+    SUNIT_ValidatePathTargetUnit113c(m, pPlayer, pGame)
+    const stepped = PATH_Step113c(m, pPlayer, 0x400)
+    stepResult = stepped !== 0 ? 1 : 2
+    if (UNITS_GetPathRoomRefreshFlag113c(m, pPlayer) !== 0) {
+      SUNIT_UpdateUnitPositionAndRoom113c(m, 0, pPlayer, pGame)
     }
   }
 
-  SUNIT_ValidatePathTargetUnit113c(m, pPlayer, pGame)
-  const stepped = PATH_Step113c(m, pPlayer, 0x400)
-  let stepResult = stepped !== 0 ? 1 : 2
-  if (UNITS_GetPathRoomRefreshFlag113c(m, pPlayer) !== 0) {
-    SUNIT_UpdateUnitPositionAndRoom113c(m, 0, pPlayer, pGame)
-  }
-
-  const dwTick = m.u32(0x6fd18d10) >>> 0
+  const dwTick = bBreadcrumbOnly
+    ? pGame !== 0
+      ? (0x00100000 + Math.imul(m.u32((pGame + 0xa8) >>> 0) | 0, 40)) >>> 0
+      : 0
+    : m.u32(0x6fd18d10) >>> 0
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
   if (pPlayerData !== 0) {
     const lastTick = m.u32((pPlayerData + 0xa4) >>> 0) >>> 0
@@ -545,6 +553,8 @@ export function PLAYER_StepModeWalkOrRun113c(
       }
     }
   }
+
+  if (bBreadcrumbOnly) return 1
 
   if (stepResult === 2) {
     if (pPlayer !== 0 && m.u32(pPlayer >>> 0) === 0) {

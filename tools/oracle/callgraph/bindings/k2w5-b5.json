@@ -59,8 +59,8 @@
     "name": "ACT2Q0_Callback_PlayerEnterSyncWarrivIntroState_6FCE44E0",
     "kernFile": "src/d2kern-113c/game/k2-w5b5-113c.ts",
     "tsSymbol": "ACT2Q0_Callback_PlayerEnterSyncWarrivIntroState_6FCE44E0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w5b5.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w5b5.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -68,8 +68,8 @@
     "name": "ACT2Q0_Callback_NpcActivateWarrivAndCainIntro_6FCE4570",
     "kernFile": "src/d2kern-113c/game/k2-w5b5-113c.ts",
     "tsSymbol": "ACT2Q0_Callback_NpcActivateWarrivAndCainIntro_6FCE4570_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w5b5.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w5b5.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -77,8 +77,8 @@
     "name": "ACT2Q0_Callback_ScrollMessageCompleteIntro_6FCE4620",
     "kernFile": "src/d2kern-113c/game/k2-w5b5-113c.ts",
     "tsSymbol": "ACT2Q0_Callback_ScrollMessageCompleteIntro_6FCE4620_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w5b5.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w5b5.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -401,7 +401,7 @@
     "name": "PACKET_Srv2F_NpcQuestMessage_6FCEC9D0",
     "kernFile": "src/d2kern-113c/game/k2-w5b5-113c.ts",
     "tsSymbol": "PACKET_Srv2F_NpcQuestMessage_6FCEC9D0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w5b5.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w5b5.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   }
 ]

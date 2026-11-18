@@ -1412,6 +1412,22 @@ export function drawLeftDockPanelImpl(
         align: 'center',
       })
     }
+
+    if (this.vendorStatusMsg && performance.now() < this.vendorStatusMsg.untilMs) {
+      const statusText = this.vendorStatusMsg.text
+      const statusW = Math.min(316, Math.max(80, font.renderedWidth(ctx, statusText, 'font8') + 16))
+      const statusH = 20
+      const centerX = ox + 160
+      const boxX = Math.round(centerX - statusW / 2)
+      const boxY = oy + 320
+      ctx.fillStyle = STONE_BOX_BG_FILL
+      ctx.fillRect(boxX, boxY, statusW, statusH)
+      font.drawText(ctx, statusText, centerX, boxY + 14, {
+        font: 'font8',
+        color: this.vendorStatusMsg.color,
+        align: 'center',
+      })
+    }
   } else if (kind === 'vendor') {
     if (!this.activeVendorDescriptor || this.activeVendorDescriptor.vendorId === null) {
       throw new Error('Cannot draw vendor panel without an active vendor descriptor')

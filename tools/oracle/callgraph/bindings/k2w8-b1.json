@@ -95,8 +95,8 @@
     "name": "MONSTER_MarkSpawnNodeProcessedAndTrigger_6FC68B60",
     "kernFile": "src/d2kern-113c/game/k2-w8b1-113c.ts",
     "tsSymbol": "MONSTER_MarkSpawnNodeProcessedAndTrigger_6FC68B60_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w8b1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w8b1.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",

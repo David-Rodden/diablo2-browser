@@ -104,8 +104,8 @@
     "name": "ACT3Q1_SyncGoldenBirdQuestStateFromPlayer_6FD03B40",
     "kernFile": "src/d2kern-113c/game/k2-w5b8-113c.ts",
     "tsSymbol": "ACT3Q1_SyncGoldenBirdQuestStateFromPlayer_6FD03B40_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w5b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w5b8.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -122,8 +122,8 @@
     "name": "ACT3Q1_AddGoldenBirdNpcDialogNodes_6FD03E30",
     "kernFile": "src/d2kern-113c/game/k2-w5b8-113c.ts",
     "tsSymbol": "ACT3Q1_AddGoldenBirdNpcDialogNodes_6FD03E30_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w5b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w5b8.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -131,8 +131,8 @@
     "name": "ACT3Q1_GoldenBirdActiveFilter_6FD04030",
     "kernFile": "src/d2kern-113c/game/k2-w5b8-113c.ts",
     "tsSymbol": "ACT3Q1_GoldenBirdActiveFilter_6FD04030_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w5b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w5b8.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -167,8 +167,8 @@
     "name": "ACT3Q2_GidbinnActiveFilter_6FD04500",
     "kernFile": "src/d2kern-113c/game/k2-w5b8-113c.ts",
     "tsSymbol": "ACT3Q2_GidbinnActiveFilter_6FD04500_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w5b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w5b8.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -212,8 +212,8 @@
     "name": "ACT3Q3_KhalimsWillActiveFilter_6FD04F60",
     "kernFile": "src/d2kern-113c/game/k2-w5b8-113c.ts",
     "tsSymbol": "ACT3Q3_KhalimsWillActiveFilter_6FD04F60_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w5b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w5b8.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -266,8 +266,8 @@
     "name": "ACT3_CainIntroActiveFilter_6FD055C0",
     "kernFile": "src/d2kern-113c/game/k2-w5b8-113c.ts",
     "tsSymbol": "ACT3_CainIntroActiveFilter_6FD055C0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w5b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w5b8.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",

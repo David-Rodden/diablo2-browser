@@ -28,6 +28,7 @@ import {
   type CharsiImbueOptions,
 } from './drop-tables.ts'
 import { getEmbeddedDropTables } from './embedded-drop-tables.ts'
+import { resolveQuestItemDifficulty113c } from './quest-item-difficulty.ts'
 import { CANONICAL_RUNES_TABLE, type RunewordDefinition } from './runeword.ts'
 import {
   type UiInventoryItem,
@@ -2768,6 +2769,8 @@ export function onlineItemDataToUiInventoryItem(
           : undefined
       : undefined
 
+  const questItemDifficulty = resolveQuestItemDifficulty113c(item)
+
   const syntheticItem = {
     id: String(item.id ?? item.itemId ?? `item-${code}-${++itemBridgeSeqCounter}`),
     code,
@@ -2836,6 +2839,7 @@ export function onlineItemDataToUiInventoryItem(
     stats: item.goldAmount !== undefined ? { amount: item.goldAmount } : {},
     ...((item as any).buyCost !== undefined ? { buyCost: (item as any).buyCost } : {}),
     ...((item as any).sellCost !== undefined ? { sellCost: (item as any).sellCost } : {}),
+    ...(questItemDifficulty !== undefined ? { questItemDifficulty } : {}),
   } as unknown as Item & Record<string, any>
 
   const uiItem = itemToUiInventoryItem(syntheticItem, tables)
@@ -2915,6 +2919,7 @@ export function onlineItemDataToUiInventoryItem(
     ...(!isGambleMystery && twoHandDamage !== undefined ? { twoHandDamage } : {}),
     ...((item as any).buyCost !== undefined ? { buyCost: (item as any).buyCost } : {}),
     ...((item as any).sellCost !== undefined ? { sellCost: (item as any).sellCost } : {}),
+    ...(questItemDifficulty !== undefined ? { questItemDifficulty } : {}),
   }
 }
 

@@ -196,6 +196,7 @@ import {
   type FallenSliceWorld113c,
 } from './replay-kernel-113c'
 import {
+  EVENT_DeleteEventByArg14_113c,
   EVENT_FreeNode113c,
   EVENT_GetNextEventFrame113c,
   EVENT_SetEventFull113c,
@@ -1911,6 +1912,12 @@ export function AI_ThinkAct2SewerTownNpc_6FC3B950_113c(
   aiStall6FD122C0(m, game, u, 0x78, hooks)
 }
 
+function isFallenSliceWorldW6B3_113c(
+  v: D2KernMemory113c | FallenSliceWorld113c,
+): v is FallenSliceWorld113c {
+  return !('u32' in v)
+}
+
 /**
  * [9/45] Hireling combat action step (`0x6FC3C8A0`, `eax = pUnit`, `ret 0x18`):
  * computes level-scaled cast threshold (`pAiParam->dwField14 + 40 + 2 * clvl`, capped at `95`, or `98`
@@ -1920,24 +1927,104 @@ export function AI_ThinkAct2SewerTownNpc_6FC3B950_113c(
  * @va D2Game:0x6FC3C8A0
  */
 export function AI_ExecuteHirelingCombatStep_6FC3C8A0_113c(
-  m: D2KernMemory113c,
-  pUnit: number,
-  pGame: number,
-  nClassId: number,
-  pPlayer: number,
-  pTarget: number,
-  pSeed: number,
-  pAiThinkArg: number,
+  arg0: D2KernMemory113c | FallenSliceWorld113c,
+  arg1: number,
+  arg2: number,
+  arg3: number,
+  arg4: number,
+  arg5: number,
+  arg6: number,
+  arg7: number,
   hooks?: K2W6B3Hooks113c | undefined,
 ): void {
   hitD2GameVa113c(0x6FC3C8A0)
-  const u = pUnit >>> 0
-  const game = pGame >>> 0
-  const cls = nClassId | 0
-  const player = pPlayer >>> 0
-  const target = pTarget >>> 0
-  const seed = pSeed >>> 0
-  const arg = pAiThinkArg >>> 0
+  if (isFallenSliceWorldW6B3_113c(arg0)) {
+    const world = arg0
+    const { m, pGame } = world
+    const pMerc = arg1 >>> 0
+    const nClassId = arg2 | 0
+    const pOwner = arg3 >>> 0
+    const pTarget = arg4 >>> 0
+    const pSeed = arg5 >>> 0
+    const pAiCtrl = arg6 >>> 0
+    const pMonStatsTxt = arg7 >>> 0
+
+    let aggroChance = 0x62
+    if (nClassId !== 0x152 && (nClassId <= 0x22f || nClassId > 0x231)) {
+      const bonus = m.u32((pAiCtrl + 0x14) >>> 0) | 0
+      const mercLvl = STATLIST_GetUnitStat113c(m, pMerc, 0x0c, 0) | 0
+      aggroChance = (bonus + 0x28 + mercLvl * 2) | 0
+      if (aggroChance >= 0x5f) aggroChance = 0x5f
+    }
+
+    const dist = AI_CalcApproxUnitDistSubtiles113c(m, pMerc, pTarget) | 0
+    const mercGuid = pMerc !== 0 ? (m.u32((pMerc + 0x0c) >>> 0) >>> 0) : 0xffffffff
+    const pPetArg = PETS_FindPetArgByGuid_6FCB6570_113c(m, pOwner, mercGuid) >>> 0
+    if (pPetArg === 0) {
+      AI_Stall113c(world, pMerc, 10)
+      return
+    }
+    const wMercType = m.u32((pPetArg + 0x08) >>> 0) | 0
+
+    const aggroRoll = (stepSeed64At113c(m, pSeed) >>> 0) % 100
+    let doAct = 0
+    if ((aggroRoll | 0) < aggroChance) {
+      doAct = 1
+      m.setU32((pAiCtrl + 0x14) >>> 0, 0)
+    } else {
+      m.setU32((pAiCtrl + 0x14) >>> 0, ((m.u32((pAiCtrl + 0x14) >>> 0) | 0) + 10) >>> 0)
+    }
+
+    const rawDiff = m.u8((pGame + 0x6d) >>> 0)
+    const diff = rawDiff >= 2 ? 2 : rawDiff === 1 ? 1 : 0
+    const aip2 = m.u16((pMonStatsTxt + 0x56 + diff * 2) >>> 0)
+
+    if (aip2 === 0) {
+      if (dist < 4) {
+        const kiteRoll = (stepSeed64At113c(m, pSeed) >>> 0) % 100
+        if ((kiteRoll | 0) < 50) {
+          if (AI_WalkWanderAroundUnitOrSelf_6FD12870_113c(m, pOwner, 4, pGame, pMerc, { world }) !== 0) {
+            return
+          }
+          EVENT_DeleteEventByArg14_113c(m, pGame, pMerc, 2, 0)
+          if (AI_FleeFrom113c(world, pTarget, pMerc, 4, true)) {
+            return
+          }
+          AI_SelectAndCastHirelingSkill_6FC3C4E0_113c(world, pMerc, nClassId, wMercType, pTarget, pSeed)
+          return
+        }
+      }
+      if (doAct !== 0) {
+        AI_SelectAndCastHirelingSkill_6FC3C4E0_113c(world, pMerc, nClassId, wMercType, pTarget, pSeed)
+        return
+      }
+      AI_Stall113c(world, pMerc, 10)
+      return
+    }
+
+    if (dist < 3 && UNITS_CanUnitMeleeAttackTarget113c(m, pMerc, pTarget, 0) !== 0) {
+      if (doAct !== 0) {
+        AI_SelectAndCastHirelingSkill_6FC3C4E0_113c(world, pMerc, nClassId, wMercType, pTarget, pSeed)
+        return
+      }
+      AI_Stall113c(world, pMerc, 10)
+      return
+    }
+
+    const pMonStats2 = m.u32((pMonStatsTxt + 0x08) >>> 0) >>> 0
+    const walkSteps = pMonStats2 !== 0 ? m.u8((pMonStats2 + 0x0e) >>> 0) : 8
+    AI_ApproachTarget113c(world, pMerc, pTarget, 15, 0, 0, walkSteps > 0 ? walkSteps : 1, 1)
+    return
+  }
+
+  const m = arg0
+  const u = arg1 >>> 0
+  const game = arg2 >>> 0
+  const cls = arg3 | 0
+  const player = arg4 >>> 0
+  const target = arg5 >>> 0
+  const seed = arg6 >>> 0
+  const arg = arg7 >>> 0
 
   const pMonStatsTxt = m.u32((arg + 0x1c) >>> 0) >>> 0
   const pAiParam = m.u32(arg) >>> 0

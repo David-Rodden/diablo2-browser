@@ -111,6 +111,12 @@ import { stateOffSoundRequest113c, stateOnSoundRequest113c } from './state-on-so
 import { statePrgSoundStartRequest113c, statePrgSoundStopRequest113c } from './state-prgsound-113c.ts'
 import { isMonsterUndead113c, SANCTUARY_AURA_113C } from './world-missile-stepper.ts'
 import { addLocalSystemMessageImpl } from './world-chat-social.ts'
+import {
+  QUEST_OBJECT_REJECT_WINDOW_MS,
+  QUEST_QOL_HINT_COOLDOWN_MS,
+  isTrackedQuestRejectObject113c,
+  resolveServerQuestObjectRejectHint113c,
+} from './quest-item-difficulty-qol.ts'
 import { DEFAULT_SKILLS_113C } from '../../common/units/default-skills-113c.ts'
 import type { CharacterClassCode } from '../../common/units/classes.ts'
 import { ensureBladeShieldAttachment113c } from './world-skill-missiles.ts'
@@ -242,6 +248,8 @@ export function noteOutgoingCommandImpl(
     case 'NpcInit': {
       this._pendingMeleeAttack = null
       this._awaitingArtisanConfirmNpcId = null
+      this._pendingQuestObjectInteract = null
+      this._pendingQuestObjectInteract = null
       const targetUnitType = cmd.target.unitType ?? (cmd.target as any).kind ?? 'monster'
       const resolvedUnitType: 1 | 2 =
         targetUnitType === 'object' || targetUnitType === 2 ? 2 : 1
@@ -319,6 +327,19 @@ export function noteOutgoingCommandImpl(
     case 'Interact': {
       this._pendingMeleeAttack = null
       const targetUnit = this.getUnit(cmd.target.unitType, cmd.target.id)
+      if (
+        targetUnit?.unitType === 'object' &&
+        isTrackedQuestRejectObject113c(targetUnit.classId, targetUnit.mode ?? 0)
+      ) {
+        this._pendingQuestObjectInteract = {
+          objectId: targetUnit.id,
+          classId: targetUnit.classId,
+          mode: targetUnit.mode ?? 0,
+          sentAtMs: this.resolveEventNowMs(nowMs),
+        }
+      } else {
+        this._pendingQuestObjectInteract = null
+      }
       const isMonsterTarget =
         cmd.target.unitType === 1 ||
         cmd.target.unitType === 'monster' ||
@@ -341,12 +362,22 @@ export function noteOutgoingCommandImpl(
     }
     case 'OperateObject': {
       this._pendingMeleeAttack = null
+      const opTarget = this.getUnit('object', cmd.objectId)
+      if (opTarget && isTrackedQuestRejectObject113c(opTarget.classId, opTarget.mode ?? 0)) {
+        this._pendingQuestObjectInteract = {
+          objectId: opTarget.id,
+          classId: opTarget.classId,
+          mode: opTarget.mode ?? 0,
+          sentAtMs: this.resolveEventNowMs(nowMs),
+        }
+      } else {
+        this._pendingQuestObjectInteract = null
+      }
       const resolvedSelfId = this.selfId || (this.getUnit('player', 1) ? 1 : 0)
       if (resolvedSelfId !== 0) {
-        const targetUnit = this.getUnit('object', cmd.objectId)
-        if (targetUnit) {
+        if (opTarget) {
           const selfUnit = this.ensureUnit('player', resolvedSelfId)
-          selfUnit.faceToward(targetUnit.x, targetUnit.y, false)
+          selfUnit.faceToward(opTarget.x, opTarget.y, false)
         }
       }
       break
@@ -354,6 +385,7 @@ export function noteOutgoingCommandImpl(
     case 'TakeWarp':
     case 'WarpTo': {
       this._pendingMeleeAttack = null
+      this._pendingQuestObjectInteract = null
       break
     }
     case 'NpcOpenTrade':
@@ -482,6 +514,7 @@ export function noteOutgoingCommandImpl(
     }
     case 'NpcCancel': {
       this._awaitingArtisanConfirmNpcId = null
+      this._pendingQuestObjectInteract = null
       if (cur.npcId !== null) {
         this.npcMotion.setNpcInteractionLock(cur.npcId, false)
       }
@@ -511,6 +544,8 @@ export function noteOutgoingCommandImpl(
     }
     case 'StaffInOrifice': {
       this._awaitingArtisanConfirmNpcId = null
+      this._pendingQuestObjectInteract = null
+      this._pendingQuestObjectInteract = null
       this._npcInteraction = {
         ...cur,
         npcId: null,
@@ -591,6 +626,7 @@ export function noteOutgoingCommandImpl(
     case 'WalkToTarget':
     case 'RunToTarget': {
       this._pendingMeleeAttack = null
+      this._pendingQuestObjectInteract = null
       const isWalk =
         isSelfStaminaExhausted(this) ||
         cmd.type === 'WalkToLocation' ||
@@ -619,6 +655,7 @@ export function noteOutgoingCommandImpl(
     case 'CastLeftSkillOnLocation':
     case 'CastRightSkillOnLocation': {
       this._pendingMeleeAttack = null
+      this._pendingQuestObjectInteract = null
       const isRight =
         cmd.type === 'CastRightSkillOnLocation' || (cmd.type === 'SkillAt' && cmd.hand === 'right')
       const skillId = isRight ? this._self.rightSkill : this._self.leftSkill
@@ -672,6 +709,7 @@ export function noteOutgoingCommandImpl(
     case 'SkillOn':
     case 'CastLeftSkillOnTarget':
     case 'CastRightSkillOnTarget': {
+      this._pendingQuestObjectInteract = null
       const isRight =
         cmd.type === 'CastRightSkillOnTarget' || (cmd.type === 'SkillOn' && cmd.hand === 'right')
       const hand: 'left' | 'right' = isRight ? 'right' : 'left'
@@ -1199,6 +1237,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         this.objectSeed = ev.objectSeed >>> 0
       }
       this._awaitingArtisanConfirmNpcId = null
+      this._pendingQuestObjectInteract = null
       this._npcInteraction = {
         npcId: null,
         window: 'none',
@@ -1241,10 +1280,12 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
 
     case 'UnloadComplete':
       this.loading = true
+      this._pendingQuestObjectInteract = null
       break
 
     case 'GameLogout':
       this.loading = false
+      this._pendingQuestObjectInteract = null
       break
 
     case 'CanGoToAct':
@@ -1253,6 +1294,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
 
     case 'OpenUi': {
       if (ev.uiId === 0) {
+        this._pendingQuestObjectInteract = null
         this._npcInteraction = {
           ...this._npcInteraction,
           npcId: ev.unitId > 0 ? ev.unitId : this._npcInteraction.npcId,
@@ -1262,6 +1304,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         }
       } else if (ev.uiId === 1) {
         this._awaitingArtisanConfirmNpcId = null
+      this._pendingQuestObjectInteract = null
         this._npcInteraction = {
           ...this._npcInteraction,
           npcId: null,
@@ -1271,6 +1314,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         }
       } else if (ev.uiId === 4) {
         this._awaitingArtisanConfirmNpcId = null
+      this._pendingQuestObjectInteract = null
       } else if (ev.uiId === 5) {
         // D2Client.dll 0x6fb5029e..0x6fb502cf + D2Game.dll 0x6fc565e0 -> 0x6fcf2c70:
         // D2Game deletes the cursor-held Horadric Staff without emitting S2C 0x0A RemoveUnit,
@@ -1279,6 +1323,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           this._containers.clearCursor()
         }
         this._awaitingArtisanConfirmNpcId = null
+      this._pendingQuestObjectInteract = null
         this._npcInteraction = {
           ...this._npcInteraction,
           npcId: null,
@@ -1300,6 +1345,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           this._awaitingArtisanConfirmNpcId !== null
         if (isCompletion) {
           this._awaitingArtisanConfirmNpcId = null
+      this._pendingQuestObjectInteract = null
           this._npcInteraction = {
             ...this._npcInteraction,
             npcId: null,
@@ -1332,6 +1378,7 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
           this._awaitingArtisanConfirmNpcId !== null
         if (isCompletion) {
           this._awaitingArtisanConfirmNpcId = null
+      this._pendingQuestObjectInteract = null
           this._npcInteraction = {
             ...this._npcInteraction,
             npcId: null,
@@ -4790,6 +4837,38 @@ export function applyWorldEventImpl(this: ClientWorldInternal, rawEv: ServerEven
         }
         this.pushSoundRequest(resolved)
       }
+      if (isSelfPlayer && this._pendingQuestObjectInteract !== null) {
+        const pending = this._pendingQuestObjectInteract
+        const tNow = this.resolveEventNowMs()
+        if (tNow < pending.sentAtMs || tNow - pending.sentAtMs > QUEST_OBJECT_REJECT_WINDOW_MS) {
+          this._pendingQuestObjectInteract = null
+        } else if (
+          this._npcInteraction.activeWindow !== 'orifice' &&
+          (this.getUnit('object', pending.objectId)?.mode ?? pending.mode) === pending.mode
+        ) {
+          const hint = resolveServerQuestObjectRejectHint113c({
+            pending,
+            soundId: ev.sound,
+            gameDifficulty: this.difficulty,
+            containers: this._containers,
+            quests: this._quests,
+            lang: this.lang,
+          })
+          if (hint !== null) {
+            this._pendingQuestObjectInteract = null
+            const prevHint = this._lastQuestQolHint
+            if (
+              !prevHint ||
+              prevHint.text !== hint ||
+              tNow < prevHint.atMs ||
+              tNow - prevHint.atMs >= QUEST_QOL_HINT_COOLDOWN_MS
+            ) {
+              this._lastQuestQolHint = { text: hint, atMs: tNow }
+              addLocalSystemMessageImpl.call(this, hint, RED_TEXT, tNow)
+            }
+          }
+        }
+      }
       break
     }
 
@@ -5223,6 +5302,15 @@ export function applyUnitModeImmediateImpl(
   }
   if (unit.unitType === 'monster') {
     this._monsters.set(unit.id, unit)
+  }
+  if (
+    unit.unitType === 'object' &&
+    ev.mode !== undefined &&
+    this._pendingQuestObjectInteract !== null &&
+    this._pendingQuestObjectInteract.objectId === uId &&
+    ev.mode !== this._pendingQuestObjectInteract.mode
+  ) {
+    this._pendingQuestObjectInteract = null
   }
   const wasDead = unit.dead
   if (ev.mode !== undefined) {

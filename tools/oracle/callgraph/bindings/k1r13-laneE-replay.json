@@ -5,8 +5,8 @@
     "name": "GAME_UpdateActRooms",
     "kernFile": "src/d2kern-113c/game/act-rooms-113c.ts",
     "tsSymbol": "GAME_UpdateActRooms113c",
-    "status": "ported",
-    "diffEvidence": "tests/oracle/k1/laneE-act-rooms.test.ts (control-flow vectors from the D2Game.dll disassembly)"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k1/laneE-act-rooms.test.ts (control-flow vectors from the D2Game.dll disassembly); tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -14,8 +14,8 @@
     "name": "GAME_DeactivateUnusedRoomsTick",
     "kernFile": "src/d2kern-113c/game/act-rooms-113c.ts",
     "tsSymbol": "GAME_DeactivateUnusedRoomsTick113c",
-    "status": "ported",
-    "diffEvidence": "tests/oracle/k1/laneE-act-rooms.test.ts (control-flow vectors from the D2Game.dll disassembly)"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k1/laneE-act-rooms.test.ts (control-flow vectors from the D2Game.dll disassembly); tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -23,8 +23,8 @@
     "name": "OBJECTS_AllocInteractStrc",
     "kernFile": "src/d2kern-113c/game/objects-populate-113c.ts",
     "tsSymbol": "OBJECTS_AllocInteractStrc113c",
-    "status": "ported",
-    "diffEvidence": "tests/oracle/k1/laneE-objects-populate.test.ts (control-flow vectors from the D2Game.dll disassembly)"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k1/laneE-objects-populate.test.ts (control-flow vectors from the D2Game.dll disassembly); tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -32,8 +32,8 @@
     "name": "OBJECTS_CanPopulateRoom",
     "kernFile": "src/d2kern-113c/game/objects-populate-113c.ts",
     "tsSymbol": "OBJECTS_CanPopulateRoom113c",
-    "status": "ported",
-    "diffEvidence": "tests/oracle/k1/laneE-objects-populate.test.ts (control-flow vectors from the D2Game.dll disassembly)"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k1/laneE-objects-populate.test.ts (control-flow vectors from the D2Game.dll disassembly); tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -68,8 +68,8 @@
     "name": "OBJECTS_InitPresetQuestObject",
     "kernFile": "src/d2kern-113c/game/room-presets-113c.ts",
     "tsSymbol": "OBJECTS_InitPresetQuestObject113c",
-    "status": "ported",
-    "diffEvidence": "tests/oracle/k1/laneE-room-presets.test.ts (control-flow vectors from the D2Game.dll disassembly)"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k1/laneE-room-presets.test.ts (control-flow vectors from the D2Game.dll disassembly); tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -104,8 +104,8 @@
     "name": "CLIENTS_SetPlayerCurrentRoom",
     "kernFile": "src/d2kern-113c/game/act-rooms-113c.ts",
     "tsSymbol": "CLIENTS_SetPlayerCurrentRoom113c",
-    "status": "ported",
-    "diffEvidence": "tests/oracle/k1/laneE-act-rooms.test.ts (control-flow vectors from the D2Game.dll disassembly)"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k1/laneE-act-rooms.test.ts (control-flow vectors from the D2Game.dll disassembly); tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -113,8 +113,8 @@
     "name": "ROOM_SleepRoomMonsters",
     "kernFile": "src/d2kern-113c/game/act-rooms-113c.ts",
     "tsSymbol": "ROOM_SleepRoomMonsters113c",
-    "status": "ported",
-    "diffEvidence": "tests/oracle/k1/laneE-act-rooms.test.ts (control-flow vectors from the D2Game.dll disassembly)"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across (a1c-bloodmoor-fallen, a1-bloodmoor-melee, p52-dot-ticks, p52-item-defense) against real D2Game.dll 1.13c golden traces"
   },
   {
     "module": "D2Game",
@@ -122,8 +122,8 @@
     "name": "ROOM_WakeRoomMonsters",
     "kernFile": "src/d2kern-113c/game/act-rooms-113c.ts",
     "tsSymbol": "ROOM_WakeRoomMonsters113c",
-    "status": "ported",
-    "diffEvidence": "tests/oracle/k1/laneE-act-rooms.test.ts (control-flow vectors from the D2Game.dll disassembly)"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across (a1c-bloodmoor-fallen, a1-bloodmoor-melee, p52-dot-ticks, p52-item-defense) against real D2Game.dll 1.13c golden traces"
   },
   {
     "module": "D2Game",
@@ -139,8 +139,8 @@
     "name": "SUNIT_CreatePresetUnit",
     "kernFile": "src/d2kern-113c/game/room-presets-113c.ts",
     "tsSymbol": "SUNIT_CreatePresetUnit113c",
-    "status": "ported",
-    "diffEvidence": "tests/oracle/k1/laneE-room-presets.test.ts (control-flow vectors from the D2Game.dll disassembly)"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k1/laneE-room-presets.test.ts (control-flow vectors from the D2Game.dll disassembly); tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -148,8 +148,8 @@
     "name": "ROOM_SpawnPresetUnit",
     "kernFile": "src/d2kern-113c/game/room-presets-113c.ts",
     "tsSymbol": "ROOM_SpawnPresetUnit113c",
-    "status": "ported",
-    "diffEvidence": "tests/oracle/k1/laneE-room-presets.test.ts (control-flow vectors from the D2Game.dll disassembly)"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k1/laneE-room-presets.test.ts (control-flow vectors from the D2Game.dll disassembly); tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -157,7 +157,7 @@
     "name": "ROOM_SpawnPresetUnits",
     "kernFile": "src/d2kern-113c/game/room-presets-113c.ts",
     "tsSymbol": "ROOM_SpawnPresetUnits113c",
-    "status": "ported",
-    "diffEvidence": "tests/oracle/k1/laneE-room-presets.test.ts (control-flow vectors from the D2Game.dll disassembly)"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k1/laneE-room-presets.test.ts (control-flow vectors from the D2Game.dll disassembly); tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   }
 ]

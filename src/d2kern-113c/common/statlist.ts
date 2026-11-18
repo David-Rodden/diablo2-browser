@@ -434,6 +434,48 @@ function readStatFromArray(m: Memory113c, pArrayHdr: number, dwKey: number): num
   return m.u32(pStat + idx * 8 + 4) | 0
 }
 
+export type StatListOnValueCallback113c = (
+  m: Memory113c,
+  pGame: number,
+  pOwner: number,
+  pItem: number,
+  dwKey: number,
+  oldVal: number,
+  newVal: number,
+) => void
+
+const statListOnValueHandlers113c = new Map<number, StatListOnValueCallback113c>()
+
+export function registerStatListOnValueHandler113c(
+  va: number,
+  handler: StatListOnValueCallback113c,
+): void {
+  statListOnValueHandlers113c.set(va >>> 0, handler)
+}
+
+function fireRegisteredOnValue113c(
+  m: Memory113c,
+  pListEx: number,
+  pItem: number,
+  dwKey: number,
+  oldVal: number,
+  newVal: number,
+  registry: StatTableRegistry113c,
+): void {
+  if ((oldVal | 0) === (newVal | 0) || statListOnValueHandlers113c.size === 0) return
+  const pfOnValue = m.u32((pListEx + 0x5c) >>> 0) >>> 0
+  if (pfOnValue === 0) return
+  const cb = statListOnValueHandlers113c.get(pfOnValue)
+  if (cb === undefined) return
+  const statId = (dwKey >>> 16) & 0xffff
+  const meta = registry.get(statId)
+  const metaFlags = meta !== undefined && meta.flags !== undefined ? meta.flags : 0
+  if ((metaFlags & 0x0800) === 0) return
+  const pOwner = m.u32((pListEx + 0x44) >>> 0) >>> 0
+  const pGame = m.u32((pListEx + 0x60) >>> 0) >>> 0
+  cb(m, pGame, pOwner, pItem >>> 0, dwKey >>> 0, oldVal | 0, newVal | 0)
+}
+
 function writeFullStat(
   m: Memory113c,
   pListEx: number,
@@ -441,12 +483,32 @@ function writeFullStat(
   value: number,
   keepZero: boolean,
   hasItemDynamicOp = false,
+  pItem = 0,
+  registry: StatTableRegistry113c = DEFAULT_STAT_REGISTRY_113C,
 ): void {
+  if (statListOnValueHandlers113c.size > 0) {
+    const statId = (dwKey >>> 16) & 0xffff
+    let pIsc = 0
+    try {
+      const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C) >>> 0
+      if (sgpt !== 0 && statId >= 0 && statId < (m.u32((sgpt + 0xbd4) >>> 0) | 0)) {
+        pIsc = (m.u32((sgpt + 0xbcc) >>> 0) + imul32(statId, 0x144)) >>> 0
+      }
+    } catch {
+      pIsc = 0
+    }
+    if (pIsc !== 0 && !((value | 0) === 0 && keepZero)) {
+      STATLIST_SetFullStatEntry113c(m, pListEx, dwKey, value, pIsc, pItem)
+      return
+    }
+  }
   const pFullHdr = pListEx + D2StatListExStrc.pFullStat.off
   const idx = STATLIST_FindStatIndex113c(m, pFullHdr, dwKey)
+  const oldVal = idx >= 0 ? (m.u32(m.u32(pFullHdr) + idx * 8 + 4) | 0) : 0
   const val = value | 0
   if (val === 0 && !keepZero) {
     if (idx >= 0) removeStatSlot(m, pFullHdr, idx)
+    fireRegisteredOnValue113c(m, pListEx, pItem, dwKey, oldVal, 0, registry)
     return
   }
   if (idx >= 0) {
@@ -465,6 +527,7 @@ function writeFullStat(
       (m.get(pListEx, D2StatListStrc.dwFlags) | STATLIST_FLAG_DYNAMIC_OP) >>> 0,
     )
   }
+  fireRegisteredOnValue113c(m, pListEx, pItem, dwKey, oldVal, val, registry)
 }
 
 /**
@@ -479,6 +542,8 @@ function addFullStatDelta(
   delta: number,
   keepZero: boolean,
   hasItemDynamicOp = false,
+  pItem = 0,
+  registry: StatTableRegistry113c = DEFAULT_STAT_REGISTRY_113C,
 ): void {
   hitD2CommonVa113c(0x6FD889E0)
   const pFullHdr = pListEx + D2StatListExStrc.pFullStat.off
@@ -505,6 +570,7 @@ function addFullStatDelta(
   if (nextVal === 0 && !keepZero) {
     removeStatSlot(m, pFullHdr, idx)
   }
+  fireRegisteredOnValue113c(m, pListEx, pItem, dwKey, prevVal, nextVal, registry)
 }
 
 /** `D2Common.#11013` (`0x6FD88100`): allocate base `D2StatListStrc` (`0x3C` bytes). */
@@ -534,6 +600,7 @@ export function STATLIST_CreateEx113c(
   pOwner: number,
   argFlags = 0,
   pGame = 0,
+  pfOnValue = 0,
 ): number {
   hitD2CommonVa113c(0x6FD8AF00)
   const pListEx = m.alloc(D2StatListExStrc_SIZE)
@@ -547,6 +614,9 @@ export function STATLIST_CreateEx113c(
   m.set(pListEx, D2StatListExStrc.dwFlags, dwFlags)
   m.set(pListEx, D2StatListExStrc.pOwner, pOwner)
   m.set(pListEx, D2StatListExStrc.pStateFlags, pStateFlags)
+  if (pfOnValue !== 0) {
+    m.setU32((pListEx + 0x5c) >>> 0, pfOnValue >>> 0)
+  }
   m.set(pListEx, D2StatListExStrc.pGame, pGame)
   if (pOwner !== 0) {
     m.set(pOwner, D2UnitStrc.pStatListEx, pListEx)
@@ -832,6 +902,7 @@ export function STATLIST_RecomputeExStat113c(
   layer = 0,
   registry: StatTableRegistry113c = DEFAULT_STAT_REGISTRY_113C,
   visited = new Set<number>(),
+  pItem = 0,
 ): number {
   hitD2CommonVa113c(0x6FD89CE0)
   if ((m.get(pListEx, D2StatListStrc.dwFlags) & STATLIST_FLAG_EXTENDED) === 0) return 0
@@ -852,11 +923,11 @@ export function STATLIST_RecomputeExStat113c(
   const hasDynOp = op === 4 || op === 5
   if (!hasOpStat) {
     // 0x6FD89CFD: byte [esi + 0x51] == 0 -> write directly to FullStats and return
-    writeFullStat(m, pListEx, key, val, keepZero, hasDynOp)
+    writeFullStat(m, pListEx, key, val, keepZero, hasDynOp, pItem, registry)
   } else {
     // 0x6FD89D1E: if evaluated carrier == 0, clear stale FullStats slot immediately
     if (val === 0) {
-      writeFullStat(m, pListEx, key, 0, keepZero, hasDynOp)
+      writeFullStat(m, pListEx, key, 0, keepZero, hasDynOp, pItem, registry)
     }
     let keepCarrier = true // [esp + 0x10] = 1 at 0x6FD89D38
     const flags = m.get(pListEx, D2StatListStrc.dwFlags)
@@ -867,12 +938,12 @@ export function STATLIST_RecomputeExStat113c(
       const targetStat = opStats[i]!
       if (targetStat < 0 || targetStat === 0xffff) break
       const targetKey = statKey113c(targetStat, 0)
-      const targetVal = STATLIST_RecomputeExStat113c(m, pListEx, targetStat, 0, registry, visited)
+      const targetVal = STATLIST_RecomputeExStat113c(m, pListEx, targetStat, 0, registry, visited, pItem)
       const targetMeta = registry.get(targetStat)
       const targetKeepZero =
         targetMeta !== undefined && targetMeta.keepZero !== undefined ? targetMeta.keepZero : false
       const targetDynOp = targetMeta !== undefined && (targetMeta.op === 4 || targetMeta.op === 5)
-      writeFullStat(m, pListEx, targetKey, targetVal, targetKeepZero, targetDynOp)
+      writeFullStat(m, pListEx, targetKey, targetVal, targetKeepZero, targetDynOp, pItem, registry)
 
       if (targetVal !== 0) {
         // 0x6FD89DBB..0x6FD89E65: jump table 0x6FD89F48 indexed by 0x6FD89F60[bOp]
@@ -929,15 +1000,15 @@ export function STATLIST_RecomputeExStat113c(
 
     // 0x6FD89E9D..0x6FD89F36: write carrier if unconsumed, then recompute wBaseDepStats[0..63] (+0x5E)
     if (keepCarrier && val !== 0) {
-      writeFullStat(m, pListEx, key, val, keepZero, hasDynOp)
+      writeFullStat(m, pListEx, key, val, keepZero, hasDynOp, pItem, registry)
       for (const depStat of baseDeps) {
         const depKey = statKey113c(depStat, 0)
-        const depVal = STATLIST_RecomputeExStat113c(m, pListEx, depStat, 0, registry, visited)
+        const depVal = STATLIST_RecomputeExStat113c(m, pListEx, depStat, 0, registry, visited, pItem)
         const depMeta = registry.get(depStat)
         const depKeepZero =
           depMeta !== undefined && depMeta.keepZero !== undefined ? depMeta.keepZero : false
         const depDynOp = depMeta !== undefined && (depMeta.op === 4 || depMeta.op === 5)
-        writeFullStat(m, pListEx, depKey, depVal, depKeepZero, depDynOp)
+        writeFullStat(m, pListEx, depKey, depVal, depKeepZero, depDynOp, pItem, registry)
       }
     }
   }
@@ -960,6 +1031,7 @@ export function STATLIST_PropagateDelta113c(
   layer: number,
   delta: number,
   registry: StatTableRegistry113c = DEFAULT_STAT_REGISTRY_113C,
+  pItem = 0,
 ): void {
   hitD2CommonVa113c(0x6FD89F70)
   const d = delta | 0
@@ -987,9 +1059,9 @@ export function STATLIST_PropagateDelta113c(
 
   while (cur !== 0) {
     if (!bHasOpStat && !bIsOpTarget) {
-      addFullStatDelta(m, cur, key, d, keepZero, hasDynOp)
+      addFullStatDelta(m, cur, key, d, keepZero, hasDynOp, pItem, registry)
     } else {
-      STATLIST_RecomputeExStat113c(m, cur, statId, layer, registry, new Set<number>())
+      STATLIST_RecomputeExStat113c(m, cur, statId, layer, registry, new Set<number>(), pItem)
     }
     const curFlags = m.get(cur, D2StatListStrc.dwFlags)
     cur = m.get(cur, D2StatListStrc.pParent)
@@ -1472,9 +1544,11 @@ export function STATLIST_InsertSubList113c(
   m.set(pSubList, D2StatListStrc.dwFlags, nextFlags)
 
   // 0x6FD8A91C..0x6FD8A9D5: propagate each sub-list entry via `0x6FD89F70`
+  const pItem =
+    (nextFlags & STATLIST_FLAG_EXTENDED) !== 0 ? m.get(pSubList, D2StatListExStrc.pOwner) : 0
   const entries = collectSubListEntries113c(m, pSubList, registry, bType === 0)
   for (const [k, v] of entries) {
-    STATLIST_PropagateDelta113c(m, pParentEx, (k >>> 16) & 0xffff, k & 0xffff, v, registry)
+    STATLIST_PropagateDelta113c(m, pParentEx, (k >>> 16) & 0xffff, k & 0xffff, v, registry, pItem)
   }
 }
 
@@ -1535,9 +1609,19 @@ export function STATLIST_RemoveSubList113c(
 
   // 0x6FD8A4EF..0x6FD8A59D: propagate `-nVal` for each sub-list entry via `0x6FD89F70`
   if (pParentEx !== 0) {
+    const pItem =
+      (subFlags & STATLIST_FLAG_EXTENDED) !== 0 ? m.get(pSubList, D2StatListExStrc.pOwner) : 0
     const entries = collectSubListEntries113c(m, pSubList, registry, wasMerged)
     for (const [k, v] of entries) {
-      STATLIST_PropagateDelta113c(m, pParentEx, (k >>> 16) & 0xffff, k & 0xffff, (-v) | 0, registry)
+      STATLIST_PropagateDelta113c(
+        m,
+        pParentEx,
+        (k >>> 16) & 0xffff,
+        k & 0xffff,
+        (-v) | 0,
+        registry,
+        pItem,
+      )
     }
   }
 }
@@ -2758,12 +2842,28 @@ function propagateDeltaMem113c(
       }
       const pfOnValue = m.u32((cur + 0x5c) >>> 0)
       if (pfOnValue !== 0) {
-        m.u8((pIscRec + 5) >>> 0)
-        m.u8((m.u32(D2COMMON_GDWBITMASKS_IAT_VA_113C) + 0x0c) >>> 0)
+        const isc5 = m.u8((pIscRec + 5) >>> 0)
+        const mask3 = m.u8((m.u32(D2COMMON_GDWBITMASKS_IAT_VA_113C) + 0x0c) >>> 0)
+        if ((isc5 & mask3) !== 0 && prevVal !== nextVal) {
+          const regCb = statListOnValueHandlers113c.get(pfOnValue >>> 0)
+          if (regCb !== undefined) {
+            const pOwner = m.u32((cur + 0x44) >>> 0) >>> 0
+            const pGame = m.u32((cur + 0x60) >>> 0) >>> 0
+            regCb(m, pGame, pOwner, _pUnit >>> 0, dwKey >>> 0, prevVal, nextVal)
+          }
+        }
       }
     } else {
       // 0x6FD89FFD..0x6FD8A003: op-stat source/target -> `0x6FD89CE0` (`STATLIST_RecomputeExStat`).
-      STATLIST_RecomputeExStat113c(m, cur, statId, dwKey & 0xffff)
+      STATLIST_RecomputeExStat113c(
+        m,
+        cur,
+        statId,
+        dwKey & 0xffff,
+        DEFAULT_STAT_REGISTRY_113C,
+        new Set<number>(),
+        _pUnit >>> 0,
+      )
     }
     const curFlags = m.u32((cur + 0x10) >>> 0)
     cur = m.u32((cur + 0x34) >>> 0)
@@ -3094,6 +3194,8 @@ function propagateSubListEntriesMem113c(
   bSkipDamageRelated: boolean,
 ): void {
   const flags = m.u32((s + 0x10) >>> 0)
+  const pItem =
+    statListOnValueHandlers113c.size > 0 && (flags | 0) < 0 ? (m.u32((s + 0x44) >>> 0) >>> 0) : 0
   const pHdr = (flags | 0) < 0 ? (s + 0x48) >>> 0 : (s + 0x24) >>> 0
   const pArr = m.u32(pHdr)
   const count = (m.u16((pHdr + 4) >>> 0) << 16) >> 16
@@ -3106,7 +3208,7 @@ function propagateSubListEntriesMem113c(
       if ((m.u8((pBitMasks + 8) >>> 0) & m.u8((pRec + 4) >>> 0)) !== 0) continue
     }
     const v = m.u32((pArr + i * 8 + 4) >>> 0) | 0
-    propagateDeltaMem113c(m, pTarget, k, imul32(sign, v), 0)
+    propagateDeltaMem113c(m, pTarget, k, imul32(sign, v), pItem)
   }
 }
 
@@ -4231,7 +4333,14 @@ export function STATLIST_SetFullStatEntry113c(
       if ((m.u8((pBitMasks + 0x0c) >>> 0) & dl) !== 0) {
         const pOwner = m.u32((ebx + 0x44) >>> 0)
         const pGame = m.u32((ebx + 0x60) >>> 0)
-        onValueCb?.(m, pGame, pOwner, pUnit >>> 0, key, oldVal, ebp)
+        if (onValueCb !== undefined) {
+          onValueCb(m, pGame, pOwner, pUnit >>> 0, key, oldVal, ebp)
+        } else {
+          const regCb = statListOnValueHandlers113c.get(pfOnValue >>> 0)
+          if (regCb !== undefined) {
+            regCb(m, pGame, pOwner, pUnit >>> 0, key, oldVal, ebp)
+          }
+        }
       }
     }
   }

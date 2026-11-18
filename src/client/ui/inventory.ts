@@ -1106,6 +1106,7 @@ export interface PlayerItemRequirementContext {
   readonly str: number
   readonly dex: number
   readonly classCode?: CharacterClassCode | undefined
+  readonly gameDifficulty?: 0 | 1 | 2 | undefined
 }
 
 let _playerContextSeqCounter = 0
@@ -2650,6 +2651,8 @@ export class InventoryPanel {
       str: ctx.str !== undefined ? Math.max(0, ctx.str) : this.playerContext.str,
       dex: ctx.dex !== undefined ? Math.max(0, ctx.dex) : this.playerContext.dex,
       classCode: ctx.classCode !== undefined ? ctx.classCode : this.playerContext.classCode,
+      gameDifficulty:
+        ctx.gameDifficulty !== undefined ? ctx.gameDifficulty : this.playerContext.gameDifficulty,
     }
     this.playerContextSeq = nextPlayerContextSeq()
   }

@@ -228,6 +228,7 @@ import {
   ACT_WarpClientPlayerToActTown_6FCBDF40_113c,
   AI_MercMoveActionDispatch_6FC3D3C0_113c,
   AI_PetMoveActionDispatch_6FC3CAE0_113c,
+  type PetMoveActionOps113c,
   MONSTER_UnburrowOrResurrectCollisionInit_6FCA9730_113c,
   MONUMOD_SpawnMinionOrUniqueMonster_6FC44950_113c,
   OBJ_TeleportPlayerToRoomPad_6FC8BD60_113c,
@@ -353,8 +354,17 @@ import {
   UNIT_GetPosX113c,
   UNIT_GetPosY113c,
 } from './regpop-spawn-113c'
+import { bindK2KernelGlobals113c } from './k2-d2tv-evaluators-113c'
+import {
+  ensureSliceWorldPathMemory113c,
+  type FallenSliceWorld113c,
+} from './replay-kernel-113c'
 import { CLIENTS_GetPlayerUnit113c, SUNIT_FreeUnit113c } from './replay-final11-113c'
-import { EVENT_FreeNode113c, EVENT_SetEventFull113c } from './timer-wheel'
+import {
+  EVENT_DeleteEventByArg14_113c,
+  EVENT_FreeNode113c,
+  EVENT_SetEventFull113c,
+} from './timer-wheel'
 import {
   AI_StepRelativeToTargetUnit113c,
   UNITS_GetOctileDistanceToCoordinates113c,
@@ -636,7 +646,7 @@ export function SKILLS_SrvDo_ImpTeleportOrMountSiegeBeast_6FC2DBD0_113c(
   if (wSrvMissile < 0 || wSrvMissile >= i32(m, sgpt + 0xc4)) return 0
 
   const pOwner = SUNIT_GetOwnerUnit113c(m, pUnit, pGame)
-  SUNIT_ValidatePathTargetUnit113c(m, pGame, pUnit)
+  SUNIT_ValidatePathTargetUnit113c(m, pUnit, pGame)
   const pRawTarget = PATH_GetTargetUnit113c(m, u32(m, pUnit + 0x2c))
   const pTarget = pRawTarget === pUnit ? 0 : pRawTarget
 
@@ -692,18 +702,188 @@ export function SKILLS_SrvDo_ImpTeleportOrMountSiegeBeast_6FC2DBD0_113c(
   return 1
 }
 
+function isFallenSliceWorldW12B1_113c(
+  v: SparseMemory113c | FallenSliceWorld113c,
+): v is FallenSliceWorld113c {
+  return !('u32' in v)
+}
+
 /**
  * @dll D2Game.dll
  * @va 0x6FC3DD40
  * @ordinalOrName D2Game_6FC3DD40
  */
 export function AI_ThinkMercenaryMain_6FC3DD40_113c(
-  m: SparseMemory113c,
-  pGame: number,
-  pUnit: number,
-  pAiTickParam: number,
+  arg0: SparseMemory113c | FallenSliceWorld113c,
+  arg1: number,
+  arg2 = 0,
+  arg3 = 0,
 ): void {
   hitD2GameVa113c(0x6FC3DD40)
+  if (isFallenSliceWorldW12B1_113c(arg0)) {
+    const world = arg0
+    const pMerc = arg1 >>> 0
+    const { m, pGame } = world
+    ensureSliceWorldPathMemory113c(world)
+    bindK2KernelGlobals113c(m)
+
+    if (pMerc === 0 || m.u32(pMerc) !== 1) return
+    const nClassId = m.u32((pMerc + 0x04) >>> 0) | 0
+    const pMonStatsTxt = MONSTATS_GetRecordPtr113c(m, nClassId) >>> 0
+    if (pMonStatsTxt === 0) return
+
+    const pMonData = m.u32((pMerc + 0x14) >>> 0) >>> 0
+    const pAiGen = pMonData !== 0 ? (m.u32((pMonData + 0x28) >>> 0) >>> 0) : 0
+    const pAiCtrl = pMonData !== 0 ? (m.u32((pMonData + 0x2c) >>> 0) >>> 0) : 0
+    if (pAiGen === 0 || pAiCtrl === 0) return
+
+    let pOwner = 0
+    if (m.u32((pAiGen + 0x28) >>> 0) !== 0) {
+      const ownerGuid = m.u32((pAiGen + 0x2c) >>> 0) >>> 0
+      const ownerType = m.u32((pAiGen + 0x30) >>> 0) | 0
+      pOwner = SUNIT_GetServerUnit113c(m, pGame, ownerType, ownerGuid) >>> 0
+    }
+    if (pOwner === 0 || m.u32(pOwner) !== 0) {
+      AI_Stall113c(world, pMerc, 10)
+      return
+    }
+
+    if (STATES_CheckState113c(m, pMerc, 0x0c) !== 0) {
+      STATES_ToggleGfxStateFlag113c(m, pMerc, 0x0c, 0)
+    }
+
+    const mercMode = m.u32((pMerc + 0x10) >>> 0) | 0
+    if (mercMode === 2 || mercMode === 15) return
+
+    const aiField14 = m.u32((pAiCtrl + 0x14) >>> 0) | 0
+    let farDist = 0x18
+    let midDist = 0x10
+    let closeArg = 5
+    if (aiField14 > 0x10 && aiField14 < 0x14) {
+      farDist = (aiField14 * 2) | 0
+      midDist = aiField14
+      closeArg = aiField14 >> 1
+    }
+
+    const distOwner = AI_CalcApproxUnitDistSubtiles113c(m, pMerc, pOwner)
+    const ownerMode = m.u32((pOwner + 0x10) >>> 0) | 0
+
+    if ((distOwner >>> 0) > 100) {
+      AI_MercMoveActionDispatch_6FC3D3C0_113c(world, pMerc, pOwner, 3, 0, 0, 0)
+      return
+    }
+    if ((distOwner >>> 0) > (farDist >>> 0)) {
+      AI_MercMoveActionDispatch_6FC3D3C0_113c(world, pMerc, pOwner, 1, 1, 0x3c, 0)
+      return
+    }
+    if ((distOwner >>> 0) > (midDist >>> 0)) {
+      if (ownerMode === 2 || ownerMode === 6) {
+        AI_MercMoveActionDispatch_6FC3D3C0_113c(world, pMerc, pOwner, 0, 0, 0, 0)
+        return
+      }
+      if (ownerMode === 3) {
+        AI_MercMoveActionDispatch_6FC3D3C0_113c(world, pMerc, pOwner, 0, 1, 0x3c, 0)
+        return
+      }
+    }
+
+    if (mercMode !== 1) {
+      EVENT_DeleteEventByArg14_113c(m, pGame, pMerc, 2, 0)
+      AI_Stall113c(world, pMerc, 5)
+      return
+    }
+
+    const doorwayChance =
+      nClassId === 0x152 || (nClassId > 0x22f && nClassId <= 0x231) ? 6 : 12
+    let onDoorwayMask = false
+    const pMercRoom = UNITS_GetRoom113c(m, pMerc) >>> 0
+    const collPat = PATH_GetUnitCollisionPattern113c(m, pMerc)
+    const mx = UNIT_GetPosX113c(m, pMerc) | 0
+    const my = UNIT_GetPosY113c(m, pMerc) | 0
+    const pSeed = (pMerc + 0x20) >>> 0
+    const rollSeedLim = (nMax: number): number => {
+      const max = nMax | 0
+      if (max <= 0) return 0
+      const s: D2SeedStrc = { lo: m.u32(pSeed) >>> 0, hi: m.u32((pSeed + 4) >>> 0) >>> 0 }
+      const r = seedRoll(s, max) | 0
+      m.setU32(pSeed, s.lo >>> 0)
+      m.setU32((pSeed + 4) >>> 0, s.hi >>> 0)
+      return r
+    }
+
+    if (
+      pMercRoom !== 0 &&
+      COLLISION_CheckMaskWithPattern2_113c(m, pMercRoom, mx, my, collPat, 0x40) !== 0
+    ) {
+      onDoorwayMask = true
+      if (rollSeedLim(0x80) < doorwayChance) {
+        AI_IdleWander113c(world, pMerc, 5)
+        return
+      }
+    }
+
+    const isInTown = pMercRoom !== 0 && DUNGEON_CheckRoomIsTownMemPort113c(m, pMercRoom) !== 0
+    if (!isInTown) {
+      const sp = m.alloc(0x10)
+      m.setU32(sp, 0)
+      m.setU32((sp + 4) >>> 0, 0x7fffffff)
+      const pTarget =
+        MONAI_FindTargetOrNearestBlockingObstacle_6FCD1BC0_113c(
+          m,
+          pMerc,
+          pGame,
+          sp,
+          (sp + 4) >>> 0,
+        ) >>> 0
+      const targetDist = m.u32((sp + 4) >>> 0) >>> 0
+      if (pTarget !== 0 && targetDist < 0x19) {
+        AI_ExecuteHirelingCombatStep_6FC3C8A0_113c(
+          world,
+          pMerc,
+          nClassId,
+          pOwner,
+          pTarget,
+          pSeed,
+          pAiCtrl,
+          pMonStatsTxt,
+        )
+        return
+      }
+    }
+
+    if (onDoorwayMask) {
+      AI_IdleWander113c(world, pMerc, 5)
+      return
+    }
+
+    const pOwnerRoom = UNITS_GetRoom113c(m, pOwner) >>> 0
+    const ox = UNIT_GetPosX113c(m, pOwner) | 0
+    const oy = UNIT_GetPosY113c(m, pOwner) | 0
+    const ownerCoordIdx = DUNGEON_GetRoomCoordListIndexAtSubtile113c(m, pOwnerRoom, ox, oy)
+    const mercCoordIdx = DUNGEON_GetRoomCoordListIndexAtSubtile113c(m, pMercRoom, mx, my)
+    if (mercCoordIdx !== ownerCoordIdx) {
+      AI_MercMoveActionDispatch_6FC3D3C0_113c(world, pMerc, pOwner, 0, 1, 0x3c, 0)
+      return
+    }
+
+    if ((distOwner >>> 0) <= 1) {
+      AI_MercMoveActionDispatch_6FC3D3C0_113c(world, pMerc, pOwner, 5, 0, 0, (closeArg - 1) & 0xff)
+      return
+    }
+
+    if (rollSeedLim(100) >= 5) {
+      EVENT_DeleteEventByArg14_113c(m, pGame, pMerc, 2, 0)
+      AI_Stall113c(world, pMerc, 5)
+      return
+    }
+    AI_WalkWanderAroundUnitOrSelf_6FD12870_113c(m, pOwner, midDist & 0xff, pGame, pMerc, { world })
+    return
+  }
+
+  const m = arg0
+  const pGame = arg1
+  const pUnit = arg2
+  const pAiTickParam = arg3
   if (pUnit === 0) {
     AI_InitMonsterAiThinkFn113c(m, pUnit)
     AI_Stall113c(m, pGame, pUnit, 10)
@@ -893,24 +1073,37 @@ export function AI_FollowOwnerOrTeleportIfFar_6FC3E140_113c(
   bForceNoRepositionOnClose: number,
   bSkipCase2: number,
   nMaxFollowDist: number,
+  ops?: PetMoveActionOps113c,
 ): number {
   hitD2GameVa113c(0x6FC3E140)
   const pOwnerPath = u32(m, pOwnerUnit + 0x2c)
   const nDist = AI_CalcApproxUnitDistSubtiles113c(m, pPetUnit, pOwnerUnit) | 0
   const dwOwnerMode = i32(m, pOwnerUnit + 0x10)
-  const pPlrData = UNITS_GetPlayerData113c(m, pOwnerUnit)
-  const pPlrData2 = UNITS_GetPlayerData113c(m, pOwnerUnit)
+  const pPlrData = u32(m, pOwnerUnit) === 0 ? UNITS_GetPlayerData113c(m, pOwnerUnit) : 0
+  if (pPlrData !== 0) {
+    const memInternal = m as unknown as { known?: Map<number, Uint8Array> }
+    const known = memInternal.known
+    if (known !== undefined) {
+      for (let i = 0; i < 0xcc; i++) {
+        const addr = (pPlrData + 0xa0 + i) >>> 0
+        const kp = known.get(addr >>> 12)
+        if (kp === undefined || kp[addr & 0xfff] === 0) {
+          m.setU8(addr, 0)
+        }
+      }
+    }
+  }
 
   let nTotalPets = 0
-  if (pPlrData2 !== 0) {
-    const pPetTable = u32(m, pPlrData2 + 0x44)
+  if (pPlrData !== 0) {
+    const pPetTable = u32(m, pPlrData + 0x44)
     if (pPetTable !== 0) {
       const sgpt = readSgptDataTablesPtr(m)
       const nPetTypes = sgpt !== 0 ? i32(m, sgpt + 0xbf0) : 0
-      if (nPetTypes > 0) {
-        const pSlotArray = u32(m, pPetTable)
+      const pSlotArray = u32(m, pPetTable)
+      if (nPetTypes > 0 && pSlotArray !== 0) {
         for (let i = 0; i < nPetTypes; i += 1) {
-          nTotalPets = (nTotalPets + i32(m, pSlotArray + 4 + i * 16)) | 0
+          nTotalPets = (nTotalPets + i32(m, pSlotArray + 4 + i * 12)) | 0
         }
       }
     }
@@ -931,6 +1124,7 @@ export function AI_FollowOwnerOrTeleportIfFar_6FC3E140_113c(
       0,
       0,
       nAdjustedMaxDist,
+      ops,
     )
   }
 
@@ -948,6 +1142,7 @@ export function AI_FollowOwnerOrTeleportIfFar_6FC3E140_113c(
         0,
         0,
         nAdjustedMaxDist,
+        ops,
       )
     }
     return 0
@@ -971,10 +1166,10 @@ export function AI_FollowOwnerOrTeleportIfFar_6FC3E140_113c(
     nPetY,
   )
 
-  const nFirstX = PATH_GetFirstPointX113c(m, pOwnerPath)
-  const nFirstY = PATH_GetFirstPointY113c(m, pOwnerPath)
-  const nPrevX = PATH_GetPrevTargetX113c(m, pOwnerPath)
-  const nPrevY = PATH_GetPrevTargetY113c(m, pOwnerPath)
+  const nFirstX = pOwnerPath !== 0 ? PATH_GetFirstPointX113c(m, pOwnerPath) : 0
+  const nFirstY = pOwnerPath !== 0 ? PATH_GetFirstPointY113c(m, pOwnerPath) : 0
+  const nPrevX = pOwnerPath !== 0 ? PATH_GetPrevTargetX113c(m, pOwnerPath) : 0
+  const nPrevY = pOwnerPath !== 0 ? PATH_GetPrevTargetY113c(m, pOwnerPath) : 0
 
   let nAction = 2
   if (dwOwnerMode === 2 || dwOwnerMode === 6 || dwOwnerMode === 3) {
@@ -993,12 +1188,14 @@ export function AI_FollowOwnerOrTeleportIfFar_6FC3E140_113c(
     nAction = 3
   }
 
+  const histTargetX = pPlrData !== 0 ? i32(m, pPlrData + 0x148) : 0
+  const histTargetY = pPlrData !== 0 ? i32(m, pPlrData + 0x14c) : 0
   const nHistDist =
     UNITS_GetOctileDistanceToCoordinates113c(
       m,
       pPetUnit,
-      i32(m, pPlrData + 0x148),
-      i32(m, pPlrData + 0x14c),
+      histTargetX,
+      histTargetY,
     ) >>> 0
   if (nHistDist < 0x1c) {
     if (nAction === 1) {
@@ -1023,6 +1220,7 @@ export function AI_FollowOwnerOrTeleportIfFar_6FC3E140_113c(
     0,
     0,
     nAdjustedMaxDist,
+    ops,
   )
 }
 
@@ -1622,7 +1820,7 @@ export function SKILLS_SrvDo_MonsterConvert_6FC71340_113c(
     nPetType = 0
   }
 
-  SUNIT_ValidatePathTargetUnit113c(m, pGame, pPlayerUnit)
+  SUNIT_ValidatePathTargetUnit113c(m, pPlayerUnit, pGame)
   const pTarget = PATH_GetTargetUnit113c(m, u32(m, pPlayerUnit + 0x2c))
   if (
     pTarget === pPlayerUnit ||
@@ -3584,8 +3782,7 @@ export function C2S_ExecuteEntityInteractionOrRunToTarget_6FCF01D0_113c(
       const pMonStatsTxt = MONSTATS_GetRecordPtr113c(m, i32(m, pTarget + 0x04))
       if (pMonStatsTxt !== 0) {
         const nAlign = u8(m, pMonStatsTxt + 0x0d)
-        const pSgPt = readSgptDataTablesPtr(m)
-        if ((u32(m, pSgPt + 0x04) & nAlign) !== 0 && (u32(m, pSgPt) & nAlign) !== 0) {
+        if ((nAlign & 2) !== 0 && (nAlign & 1) !== 0) {
           PATH_ClearPathPointsAndFlag0x20_113c(m, u32(m, pTarget + 0x2c))
           if (u32(m, pTarget) === 1) {
             const pMonData = u32(m, pTarget + 0x14)
@@ -3634,13 +3831,14 @@ export function C2S_ExecuteEntityInteractionOrRunToTarget_6FCF01D0_113c(
       }
       if (PLAYER_IsBusyWithCursorOrNpcInteract113c(m, pPlayerUnit) === 0) {
         PATH_ClearPathPointsAndFlag0x20_113c(m, u32(m, pPlayerUnit + 0x2c))
-        const bCanInteract = MONSTER_GetInteractDataPtr_6FC21370_113c(m, pTarget) !== 0 ? 1 : 0
+        const ppInteract = MONSTER_GetInteractDataPtr_6FC21370_113c(m, pTarget)
         NPC_StartPlayerNpcInteraction_6FC687A0_113c(
           m,
           pPlayerUnit,
-          pGame,
           pTarget,
-          bCanInteract,
+          pGame,
+          ppInteract,
+          0,
         )
       }
       return 0

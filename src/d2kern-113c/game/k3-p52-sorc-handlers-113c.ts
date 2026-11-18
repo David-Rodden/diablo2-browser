@@ -7,6 +7,8 @@
  */
 
 import { COLLISION_SetMaskWithPattern113c } from '../common/collision.ts'
+import { SKILLS_SrvSt15_CheckRevivableCorpseOutsideTown_6FC6EF20_113c } from './k2-laneL-0x6fc6-w1-113c.ts'
+import { dispatchSummonOrCurseDoFuncK3_113c } from './k3-summon-curse-replay-113c.ts'
 import { ANIMSEQ_GetEventAtFrame113c } from '../common/composit.ts'
 import { PATH_CheckFlag08_113c } from '../common/drlg/room-tile.ts'
 import { imul32, sdiv32, smod32 } from '../common/int-math.ts'
@@ -79,12 +81,17 @@ import {
 } from './k2-gap-melee-dot-113c.ts'
 import { MISSILES_SrvHit_RollKnockbackResult_6FC59670_113c } from './k2-laneK-0x6fc5-w1-113c.ts'
 import {
+  MISSILES_ConvertPhysToElemDamageByCalc_6FC59CE0_113c,
   MISSILES_PopulateDamageByEType_6FC5A280_113c,
   MISSILES_SrvDmg12B_Nova64RingOnExpire_6FC5C850_113c,
 } from './k2-w3b3-113c.ts'
+import { SKILLS_SrvDo_ApplyRadiusAuraStatList_6FC6C2A0_113c } from './k2-w4b2-113c.ts'
 import { MISSILES_SrvHit_ChainBounceProjectile_6FC5D020_113c } from './k2-w5b1-113c.ts'
+import { STATES_RemoveMorphStateAndClampVitals_6FCB8450_113c } from './k2-w5b2-113c.ts'
+import { SUNITDMG_OnFreezeStateExpiredCallback_6FCFB4C0_113c } from './k2-w5b7-113c.ts'
 import { SKILLS_SrvDo_FireWallPerpendicularControllers_6FC637D0_113c } from './k2-w6b1-113c.ts'
 import { SKILLS_CreateDirectionalProjectileWithToHitAndAmmo_6FCC28F0_113c } from './k2-w6b2-113c.ts'
+import { SKILLS_SrvDo120_LaunchSkillOrWeaponMissile_6FCD49F0_113c } from './k2-w7b3-113c.ts'
 import {
   MISSILE_DefaultSrvHitFlagsK3_113c,
   MISSMODE_SrvDmg07_WarcryShockWaveK3_113c,
@@ -239,7 +246,11 @@ export function PLAYER_StartCastSkillOnUnitK3_113c(
   PLAYER_ScheduleModeAnimEventsK3_113c(m, game, plr)
   m.setU32((plr + 0xc4) >>> 0, (m.u32((plr + 0xc4) >>> 0) & 0xffffffbf) >>> 0)
   SUNIT_ValidatePathTargetUnit113c(m, plr, game)
-  SKILLS_StartUsedSkill113c(m, plr, game)
+  SKILLS_StartUsedSkill113c(m, plr, game, (mem, stIdx, pg, pu, skId, skLvl) =>
+    stIdx === 15
+      ? SKILLS_SrvSt15_CheckRevivableCorpseOutsideTown_6FC6EF20_113c(mem, pg, pu, skId, skLvl)
+      : 1,
+  )
 }
 
 /**
@@ -462,6 +473,9 @@ export function SKILLS_DoUsedSkillActionK3_113c(
   }
 
   return SKILLS_DoUsedSkillAction113c(m, pUnit, pGame, (doIdx, skId, effLvl) => {
+    if (doIdx === 6) {
+      return SKILLS_SrvDo_ApplyRadiusAuraStatList_6FC6C2A0_113c(m, pGame, pUnit, skId, effLvl)
+    }
     if (doIdx === 22) {
       return SKILLS_SrvDo_NovaRing113c(m, pGame, pUnit, skId, effLvl, hooks)
     }
@@ -473,6 +487,12 @@ export function SKILLS_DoUsedSkillActionK3_113c(
     }
     if (doIdx === 68) {
       return SKILLS_SrvDo068_BasicShoutK3_113c(m, pGame, pUnit, skId, effLvl, hooks)
+    }
+    if (doIdx === 110) {
+      return SKILLS_SrvDo120_LaunchSkillOrWeaponMissile_6FCD49F0_113c(m, pGame, pUnit, skId, effLvl)
+    }
+    if (doIdx === 16 || doIdx === 30 || doIdx === 31 || doIdx === 56) {
+      return dispatchSummonOrCurseDoFuncK3_113c(m, pGame, pUnit, doIdx, skId, effLvl)
     }
     return 1
   })
@@ -994,10 +1014,19 @@ export function MISSILE_BuildK3Hooks113c(
       return MISSILE_DefaultSrvHitFlagsK3_113c(m, pMissile)
     },
     srvDmgMissile(m, wSrvDmgIdx, _fnVa, pGame, pMissile, pTarget, pDamage) {
-      if (wSrvDmgIdx === 3) {
+      if (wSrvDmgIdx === 1) {
+        MISSILES_ConvertPhysToElemDamageByCalc_6FC59CE0_113c(m, pGame, pMissile, pTarget, pDamage)
+      } else if (wSrvDmgIdx === 3) {
         MISSILES_SrvHit_RollKnockbackResult_6FC59670_113c(m, pGame, pMissile, pTarget, pDamage)
       } else if (wSrvDmgIdx === 7) {
         MISSMODE_SrvDmg07_WarcryShockWaveK3_113c(m, pGame, pMissile, pDamage)
+      }
+    },
+    onStatRemoveProc(m, fnVa, pUnit, nState, pStatList) {
+      if (fnVa === 0x6fcb8450) {
+        STATES_RemoveMorphStateAndClampVitals_6FCB8450_113c(m, pUnit, nState, pStatList)
+      } else if (fnVa === 0x6fcfb4c0) {
+        SUNITDMG_OnFreezeStateExpiredCallback_6FCFB4C0_113c(m, pUnit, nState, pStatList)
       }
     },
     killUnit(m, pGame, pDefender, pAttacker) {

@@ -23,8 +23,8 @@
     "name": "AI_SelectAndCastHirelingSkill_6FC3C4E0",
     "kernFile": "src/d2kern-113c/game/k2-w3b2-113c.ts",
     "tsSymbol": "AI_SelectAndCastHirelingSkill_6FC3C4E0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w3b2.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w3b2.test.ts; K3 golden replay diff-verified (dll\u2229ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",

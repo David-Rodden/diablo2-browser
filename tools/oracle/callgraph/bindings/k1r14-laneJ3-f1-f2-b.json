@@ -5,8 +5,8 @@
     "name": "D2GAME_PACKET_SendStatByteWordDword",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-b-113c.ts",
     "tsSymbol": "D2GAME_PACKET_SendStatByteWordDword113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ3-f1-f2-b.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ3-f1-f2-b.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "va": "0x6FCABFC0",
@@ -14,8 +14,8 @@
     "name": "D2GAME_PACKET_SendUnitStop",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-b-113c.ts",
     "tsSymbol": "D2GAME_PACKET_SendUnitStop113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ3-f1-f2-b.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ3-f1-f2-b.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "va": "0x6FCAC570",
@@ -32,8 +32,8 @@
     "name": "D2GAME_PACKET_SendMonsterAssign",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-b-113c.ts",
     "tsSymbol": "D2GAME_PACKET_SendMonsterAssign113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ3-f1-f2-b.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across (a1c-bloodmoor-fallen, a1-bloodmoor-melee, p52-dot-ticks, p52-item-defense) against real D2Game.dll 1.13c golden traces"
   },
   {
     "va": "0x6FCAD670",
@@ -59,8 +59,8 @@
     "name": "D2GAME_ARENA_FindPlayerSlotByUnit",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-b-113c.ts",
     "tsSymbol": "D2GAME_ARENA_FindPlayerSlotByUnit113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ3-f1-f2-b.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ3-f1-f2-b.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "va": "0x6FCB6920",
@@ -95,8 +95,8 @@
     "name": "D2GAME_SUNIT_SyncUnitStateToClient",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-b-113c.ts",
     "tsSymbol": "D2GAME_SUNIT_SyncUnitStateToClient113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ3-f1-f2-b.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ3-f1-f2-b.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FCBDE10",
@@ -104,8 +104,8 @@
     "name": "D2GAME_SUNIT_SyncRoomUnitsToClient",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-b-113c.ts",
     "tsSymbol": "D2GAME_SUNIT_SyncRoomUnitsToClient113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ3-f1-f2-b.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ3-f1-f2-b.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FCBF2B0",
@@ -122,8 +122,8 @@
     "name": "D2GAME_MONSTER_HasComponentChoices",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-b-113c.ts",
     "tsSymbol": "D2GAME_MONSTER_HasComponentChoices113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ3-f1-f2-b.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across (a1c-bloodmoor-fallen, a1-bloodmoor-melee, p52-dot-ticks, p52-item-defense) against real D2Game.dll 1.13c golden traces"
   },
   {
     "va": "0x6FCD2760",
@@ -203,8 +203,8 @@
     "name": "D2GAME_PLRMODES_SendStatToClientOrParty",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-b-113c.ts",
     "tsSymbol": "D2GAME_PLRMODES_SendStatToClientOrParty113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ3-f1-f2-b.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ3-f1-f2-b.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "va": "0x6FCED190",
@@ -221,8 +221,8 @@
     "name": "D2GAME_ITEMS_CheckEquipAndAmmoRequirements",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-b-113c.ts",
     "tsSymbol": "D2GAME_ITEMS_CheckEquipAndAmmoRequirements113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ3-f1-f2-b.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ3-f1-f2-b.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FCF1890",
@@ -230,8 +230,8 @@
     "name": "D2GAME_ITEMS_SnapshotUnitStatsAndSkills",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-b-113c.ts",
     "tsSymbol": "D2GAME_ITEMS_SnapshotUnitStatsAndSkills113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ3-f1-f2-b.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ3-f1-f2-b.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FCF1ED0",
@@ -239,8 +239,8 @@
     "name": "D2GAME_ITEMS_RestoreUnitSkillsFromSnapshot",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-b-113c.ts",
     "tsSymbol": "D2GAME_ITEMS_RestoreUnitSkillsFromSnapshot113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ3-f1-f2-b.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ3-f1-f2-b.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FCF51A0",
@@ -248,8 +248,8 @@
     "name": "D2GAME_ITEMS_UpdateAllInventoryAndEquipmentStats",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-b-113c.ts",
     "tsSymbol": "D2GAME_ITEMS_UpdateAllInventoryAndEquipmentStats113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ3-f1-f2-b.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ3-f1-f2-b.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FCF9470",
@@ -257,8 +257,8 @@
     "name": "D2GAME_ITEMSTAT_OnStatChangedCallback",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-b-113c.ts",
     "tsSymbol": "D2GAME_ITEMSTAT_OnStatChangedCallback113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ3-f1-f2-b.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ3-f1-f2-b.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FCFF780",
@@ -266,8 +266,8 @@
     "name": "D2GAME_SUNIT_GetGameFromUnit",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-b-113c.ts",
     "tsSymbol": "D2GAME_SUNIT_GetGameFromUnit113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ3-f1-f2-b.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ3-f1-f2-b.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FCFFC10",
@@ -320,8 +320,8 @@
     "name": "D2GAME_MONSTER_SendMonsterMovementSync",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-b-113c.ts",
     "tsSymbol": "D2GAME_MONSTER_SendMonsterMovementSync113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ3-f1-f2-b.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across (a1-town-walk, a1c-bloodmoor-fallen, a1-bloodmoor-melee, p52-dot-ticks, p52-item-defense) against real D2Game.dll 1.13c golden traces"
   },
   {
     "va": "0x6FD13A40",
@@ -329,7 +329,7 @@
     "name": "D2GAME_MONSTER_SyncMonsterUnitToClient",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-b-113c.ts",
     "tsSymbol": "D2GAME_MONSTER_SyncMonsterUnitToClient113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ3-f1-f2-b.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ3-f1-f2-b.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   }
 ]

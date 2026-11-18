@@ -167,7 +167,6 @@ import {
   SUNIT_ValidatePathTargetUnit113c,
   UNIT_GetPosX113c,
 } from './regpop-spawn-113c'
-import { DATATBLS_GetItemsTxtRecord113c } from './replay-kernel-113c'
 import { EVENT_InitTimerQueue113c, EVENT_SetEventFull113c } from './timer-wheel'
 import { hitD2GameVa113c } from '../va-trace-113c'
 
@@ -743,7 +742,6 @@ export function QUESTS_UseQuestScrollItem_6FC56070_113c(
   }
 
   const dwClassId = m.u32((pItem + 0x04) >>> 0) | 0
-  void DATATBLS_GetItemsTxtRecord113c(dwClassId)
   const pItemsTxt = DATATBLS_GetItemsTxtRecordMemPort113c(m, dwClassId) >>> 0
   if (pItemsTxt === 0) return
 
@@ -1880,8 +1878,8 @@ export function ACT1Q6_NpcIntroAndRewardWarrivAndTownsfolk_6FC83F90_113c(
       )
       QUESTS_TriggerNpcInteractAndSendPacket27_6FC55910_113c(
         m,
-        pPlayer,
         m.u32((arg + 0x08) >>> 0) >>> 0,
+        pPlayer,
         m.u32(arg) >>> 0,
       )
       return
@@ -1897,8 +1895,8 @@ export function ACT1Q6_NpcIntroAndRewardWarrivAndTownsfolk_6FC83F90_113c(
     const pGame = m.u32(arg) >>> 0
     QUESTS_TriggerNpcInteractAndSendPacket27_6FC55910_113c(
       m,
-      pPlayer,
       m.u32((arg + 0x08) >>> 0) >>> 0,
+      pPlayer,
       pGame,
     )
     const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
@@ -2141,8 +2139,8 @@ export function ACT1Q1_NpcIntroAndRewardAkaraDenOfEvil_6FC85260_113c(
     )
     QUESTS_TriggerNpcInteractAndSendPacket27_6FC55910_113c(
       m,
-      pPlayer,
       m.u32((arg + 0x08) >>> 0) >>> 0,
+      pPlayer,
       m.u32(arg) >>> 0,
     )
     return
@@ -2175,8 +2173,8 @@ export function ACT1Q1_NpcIntroAndRewardAkaraDenOfEvil_6FC85260_113c(
   QUESTS_GuidListAdd113c(m, (quest + 0x1c) >>> 0, dwPlayerGuid)
   QUESTS_TriggerNpcInteractAndSendPacket27_6FC55910_113c(
     m,
-    pPlayer,
     m.u32((arg + 0x08) >>> 0) >>> 0,
+    pPlayer,
     m.u32(arg) >>> 0,
   )
 }

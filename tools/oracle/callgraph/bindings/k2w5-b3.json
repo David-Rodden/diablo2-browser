@@ -221,8 +221,8 @@
     "name": "MONAI_FindClosestLoSHostileMeleeAndRangedTargetCallback_6FCD15E0",
     "kernFile": "src/d2kern-113c/game/k2-w5b3-113c.ts",
     "tsSymbol": "MONAI_FindClosestLoSHostileMeleeAndRangedTargetCallback_6FCD15E0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w5b3.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w5b3.test.ts; K3 golden replay diff-verified (dll\u2229ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -230,8 +230,8 @@
     "name": "MONAI_FindTargetOrNearestBlockingObstacle_6FCD1BC0",
     "kernFile": "src/d2kern-113c/game/k2-w5b3-113c.ts",
     "tsSymbol": "MONAI_FindTargetOrNearestBlockingObstacle_6FCD1BC0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w5b3.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w5b3.test.ts; K3 golden replay diff-verified (dll\u2229ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -347,8 +347,8 @@
     "name": "ACT4Q2_InitHadrielQuestDescriptor_6FCD97D0",
     "kernFile": "src/d2kern-113c/game/k2-w5b3-113c.ts",
     "tsSymbol": "ACT4Q2_InitHadrielQuestDescriptor_6FCD97D0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w5b3.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w5b3.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -356,8 +356,8 @@
     "name": "ACT4Prologue_InitQuestDescriptor_6FCD9D80",
     "kernFile": "src/d2kern-113c/game/k2-w5b3-113c.ts",
     "tsSymbol": "ACT4Prologue_InitQuestDescriptor_6FCD9D80_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w5b3.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w5b3.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",

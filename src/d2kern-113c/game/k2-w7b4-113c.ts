@@ -690,8 +690,8 @@ export function C2S_Packet28_SocketItem_6FCEEBD0_113c(
     return err2 >>> 0
   }
   const bInteracting = m.u8((esi + 0x6c) >>> 0)
-  const dwInteractType = m.u32((esi + 0x64) >>> 0) >>> 0
-  const dwInteractGuid = m.u32((esi + 0x68) >>> 0) >>> 0
+  const dwInteractGuid = m.u32((esi + 0x64) >>> 0) >>> 0
+  const dwInteractType = m.u32((esi + 0x68) >>> 0) >>> 0
   if (bInteracting !== 0) {
     const pInteractUnit = SUNIT_GetServerUnit113c(m, edi, dwInteractType, dwInteractGuid) >>> 0
     if (pInteractUnit !== 0 && (m.u32(pInteractUnit) | 0) === 0) {

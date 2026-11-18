@@ -5,7 +5,8 @@
     "name": "MONSTER_GetSuperUniqueId113c",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
     "tsSymbol": "MONSTER_GetSuperUniqueId113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across (a1c-bloodmoor-fallen, a1-bloodmoor-melee, p52-dot-ticks, p52-item-defense) against real D2Game.dll 1.13c golden traces"
   },
   {
     "module": "D2Game",
@@ -29,7 +30,8 @@
     "name": "PLAYER_UpdateDualWieldWeaponStatLists113c",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
     "tsSymbol": "PLAYER_UpdateDualWieldWeaponStatLists113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -125,7 +127,8 @@
     "name": "PARTY_CountLivingPartyMemberCallback113c",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
     "tsSymbol": "PARTY_CountLivingPartyMemberCallback113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "K3 golden replay diff-verified (dll\u2229ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -141,7 +144,8 @@
     "name": "PARTY_CountLivingPartyMembersInSameLevel113c",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
     "tsSymbol": "PARTY_CountLivingPartyMembersInSameLevel113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "K3 golden replay diff-verified (dll\u2229ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -149,7 +153,8 @@
     "name": "SKILLS_CheckSkillManaAndCharges113c",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
     "tsSymbol": "SKILLS_CheckSkillManaAndCharges113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "K3 golden replay diff-verified (dll\u2229ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -157,7 +162,8 @@
     "name": "SKILLS_SetSkillDelayTimer113c",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
     "tsSymbol": "SKILLS_SetSkillDelayTimer113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "K3 golden replay diff-verified (dll\u2229ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -165,7 +171,8 @@
     "name": "SKILLS_ValidateSkillTargetAlignment113c",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
     "tsSymbol": "SKILLS_ValidateSkillTargetAlignment113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "K3 golden replay diff-verified (dll\u2229ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -173,7 +180,8 @@
     "name": "SKILLS_ExecuteSkillStart113c",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
     "tsSymbol": "SKILLS_ExecuteSkillStart113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "K3 golden replay diff-verified (dll\u2229ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -181,7 +189,8 @@
     "name": "SKILLS_StartUsedSkill113c",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
     "tsSymbol": "SKILLS_StartUsedSkill113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "K3 golden replay diff-verified (dll\u2229ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -189,7 +198,8 @@
     "name": "SKILLS_ExecuteSkillDoFunc113c",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
     "tsSymbol": "SKILLS_ExecuteSkillDoFunc113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "K3 golden replay diff-verified (dll\u2229ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -197,7 +207,8 @@
     "name": "SKILLS_DoUsedSkillAction113c",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
     "tsSymbol": "SKILLS_DoUsedSkillAction113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "K3 golden replay diff-verified (dll\u2229ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -261,6 +272,7 @@
     "name": "SUNIT_AreUnitsHostileOrUnaligned113c",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
     "tsSymbol": "SUNIT_AreUnitsHostileOrUnaligned113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "K3 golden replay diff-verified (dll\u2229ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   }
 ]

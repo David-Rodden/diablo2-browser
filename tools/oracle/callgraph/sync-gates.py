@@ -38,6 +38,8 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(SCRIPT_DIR)))
 FN_MAP_PATH = os.path.join(REPO_ROOT, "docs", "oracle", "function-map.md")
 MANIFEST_REL = "tools/oracle/callgraph/manifest-113c.json"
 BINDINGS_REL = "tools/oracle/callgraph/bindings"
+DUP_TSSYMBOL_ALLOWLIST_REL = "tools/oracle/callgraph/duplicate-tssymbol-allowlist.json"
+_EXPORT_DEF_RE = re.compile(r"^export\s+(?:async\s+)?(?:function|const)\s+([A-Za-z0-9_$]+)\b", re.MULTILINE)
 
 STATUS_RANK = {"unported": 0, "ported": 1, "diff-verified": 2}
 MIN_JUSTIFICATION = 40
@@ -321,6 +323,48 @@ def check_private_standins_and_callees(
     return errors, warnings
 
 
+def check_duplicate_manifest_tssymbols(repo_root: str, manifest: dict) -> list:
+    """Enforces single-definition rule for manifest-bound tsSymbols in src/d2kern-113c/** against monotonic allowlist."""
+    allow_path = os.path.join(repo_root, DUP_TSSYMBOL_ALLOWLIST_REL)
+    if not os.path.isfile(allow_path):
+        return [f"missing {DUP_TSSYMBOL_ALLOWLIST_REL}"]
+    with open(allow_path, "r", encoding="utf-8") as f:
+        cfg = json.load(f)
+    max_count = cfg.get("maxCount", -1)
+    symbols = cfg.get("symbols", [])
+    errors = []
+    if not isinstance(max_count, int) or max_count < 0 or max_count > 98:
+        errors.append(f"{DUP_TSSYMBOL_ALLOWLIST_REL}: maxCount ({max_count}) must be in [0, 98]")
+    if not isinstance(symbols, list) or symbols != sorted(set(symbols)):
+        errors.append(f"{DUP_TSSYMBOL_ALLOWLIST_REL}: symbols must be a sorted unique list")
+    if isinstance(symbols, list) and isinstance(max_count, int) and len(symbols) > max_count:
+        errors.append(f"{DUP_TSSYMBOL_ALLOWLIST_REL}: len(symbols)={len(symbols)} exceeds maxCount={max_count}")
+
+    bound = {fn["tsSymbol"] for fn in manifest.get("functions", []) if fn.get("tsSymbol")}
+    defs = {}
+    kern_dir = os.path.join(repo_root, "src", "d2kern-113c")
+    for r, _, files in os.walk(kern_dir):
+        for fn_name in sorted(files):
+            if not fn_name.endswith(".ts"):
+                continue
+            abs_p = os.path.join(r, fn_name)
+            rel_p = os.path.relpath(abs_p, repo_root).replace("\\", "/")
+            with open(abs_p, "r", encoding="utf-8") as sf:
+                txt = sf.read()
+            for m in _EXPORT_DEF_RE.finditer(txt):
+                sym = m.group(1)
+                if sym in bound:
+                    defs.setdefault(sym, []).append(rel_p)
+
+    actual_dups = {sym: paths for sym, paths in defs.items() if len(paths) > 1}
+    allow_set = set(symbols) if isinstance(symbols, list) else set()
+    for sym in sorted(set(actual_dups) - allow_set):
+        errors.append(f"unallowlisted duplicate manifest tsSymbol '{sym}' in {', '.join(actual_dups[sym])}")
+    for sym in sorted(allow_set - set(actual_dups)):
+        errors.append(f"stale allowlisted tsSymbol '{sym}' in {DUP_TSSYMBOL_ALLOWLIST_REL} (now defined <= 1 time; remove and lower maxCount)")
+    return errors
+
+
 def load_k1_bindings_and_sources(repo_root: str) -> tuple:
     bdir = os.path.join(repo_root, BINDINGS_REL)
     batch_bindings = []
@@ -438,6 +482,29 @@ def ratchet_violations(old_manifest: dict, new_manifest: dict, old_binding_files
     return viol
 
 
+def dup_allowlist_ratchet_violations(ref: str, repo_root: str) -> list:
+    """Forbids increasing maxCount or adding new symbols to duplicate-tssymbol-allowlist.json vs <ref> (if present at <ref>)."""
+    try:
+        old_raw = _git("show", f"{ref}:{DUP_TSSYMBOL_ALLOWLIST_REL}")
+    except subprocess.CalledProcessError:
+        return []
+    old_cfg = json.loads(old_raw)
+    cur_path = os.path.join(repo_root, DUP_TSSYMBOL_ALLOWLIST_REL)
+    if not os.path.isfile(cur_path):
+        return [f"{DUP_TSSYMBOL_ALLOWLIST_REL} was deleted"]
+    with open(cur_path, "r", encoding="utf-8") as f:
+        new_cfg = json.load(f)
+    errs = []
+    if new_cfg.get("maxCount", 999) > old_cfg.get("maxCount", 98):
+        errs.append(
+            f"{DUP_TSSYMBOL_ALLOWLIST_REL} maxCount increased {old_cfg.get('maxCount')} -> {new_cfg.get('maxCount')}"
+        )
+    added = sorted(set(new_cfg.get("symbols", [])) - set(old_cfg.get("symbols", [])))
+    for sym in added:
+        errs.append(f"{DUP_TSSYMBOL_ALLOWLIST_REL} added duplicate tsSymbol '{sym}' (only removals allowed)")
+    return errs
+
+
 def run_ratchet(ref: str, allow_specs, allow_file=None) -> int:
     old_manifest = json.loads(_git("show", f"{ref}:{MANIFEST_REL}"))
     with open(os.path.join(REPO_ROOT, MANIFEST_REL), "r", encoding="utf-8") as f:
@@ -458,6 +525,9 @@ def run_ratchet(ref: str, allow_specs, allow_file=None) -> int:
             failed = True
     for item in sorted(set(allow) - set(viol)):
         print(f"[ratchet] UNUSED allowlist entry (not a violation vs {ref}): {item}")
+        failed = True
+    for derr in dup_allowlist_ratchet_violations(ref, REPO_ROOT):
+        print(f"[ratchet] VIOLATION: {derr}")
         failed = True
     if failed:
         print(f"[ratchet] FAILED against {ref}")
@@ -623,6 +693,13 @@ def main(argv=None) -> int:
         for err in standin_errors:
             print(f"[sync-gates] STANDIN/CALLEE VIOLATION: {err}")
         print("[sync-gates] FAILED: diff-verified functions cannot use private stand-ins or unported callees")
+        return 1
+
+    dup_errors = check_duplicate_manifest_tssymbols(REPO_ROOT, manifest)
+    if dup_errors:
+        for err in dup_errors:
+            print(f"[sync-gates] DUPLICATE TSSYMBOL VIOLATION: {err}")
+        print("[sync-gates] FAILED: manifest-bound tsSymbols violate single-definition allowlist")
         return 1
 
     manifest_path = ex.DEFAULT_MANIFEST_PATH

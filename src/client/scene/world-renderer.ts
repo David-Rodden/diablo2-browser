@@ -32,6 +32,7 @@ import type { AtlasHandle, SpriteRenderer } from '../render/renderer.ts'
 import {
   resolveAutomapShrineBadge,
   type AutomapEntityMarker,
+  type AutomapPortalDescriptor,
   type AutomapShrineDescriptor,
   type Minimap,
   type MinimapLevel,
@@ -3128,13 +3129,10 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
           }
           const automapEntities: AutomapEntityMarker[] = []
           const automapShrines: AutomapShrineDescriptor[] = []
-          const automapPortals: {
-            readonly x: number
-            readonly y: number
-            readonly active: boolean
-            readonly kind: 'blue' | 'red'
-            readonly label?: string
-          }[] = []
+          const automapPortals: AutomapPortalDescriptor[] = []
+          // Miniature portal marker art: frame 0 of the looping Town Portal sprite (`town_portal_on_hd`).
+          const portalIconArt = ctx.overlayArtMap?.get('town_portal_on_hd')
+          const portalIconFrame = portalIconArt?.frames[0]?.[0]
           for (const u of snapshot.entities.unitDrawables) {
             if (u.unitKind === 'monster') {
               const marker = classifyAutomapMonsterMarker(
@@ -3148,12 +3146,18 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
               }
             } else if (u.unitKind === 'object') {
               if (u.classId === 59 || u.classId === 60) {
+                // Label follows the active string-table language (`ENG` -> `name`, `CHI` -> `nameZh`),
+                // matching the hovered world label of the same portal.
+                const portalLabel = isEn ? u.name || u.nameZh : u.nameZh || u.name
                 automapPortals.push({
                   x: u.worldX,
                   y: u.worldY,
                   active: true,
                   kind: u.classId === 60 ? 'red' : 'blue',
-                  ...(u.name !== undefined ? { label: u.name } : {}),
+                  ...(portalLabel ? { label: portalLabel } : {}),
+                  ...(portalIconArt && portalIconFrame
+                    ? { iconAtlas: portalIconArt.handle, iconFrame: portalIconFrame }
+                    : {}),
                 })
               } else if (radar.automapShowShrines) {
                 const shrineDesc = buildAutomapShrineDescriptor(u, isEn, ctx.overlayArtMap)

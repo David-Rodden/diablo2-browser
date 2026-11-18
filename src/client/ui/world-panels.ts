@@ -458,6 +458,8 @@ export class WorldPanelsHud {
       str: ctx.str !== undefined ? Math.max(0, ctx.str) : this.vendorPlayerStats.str,
       dex: ctx.dex !== undefined ? Math.max(0, ctx.dex) : this.vendorPlayerStats.dex,
       classCode: ctx.classCode ?? this.vendorPlayerStats.classCode,
+      gameDifficulty:
+        ctx.gameDifficulty !== undefined ? ctx.gameDifficulty : this.vendorPlayerStats.gameDifficulty,
     }
     const seq = nextPlayerContextSeq()
     this.playerContextSeq = seq

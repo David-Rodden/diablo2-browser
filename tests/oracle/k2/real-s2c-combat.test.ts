@@ -871,11 +871,11 @@ describe('K2 Real D2Game Non-Item Combat, Timed StatLists, Room Restore & 0x6FCA
     expect(killPkts).toContain('1d0c02') // 0x1D clvl = 2
 
     // RollDodgeAvoidEvadeBlock (`0x6FCFB030`)
-    STATLIST_SetUnitStat113c(m, pPlayer, 60, 100, 0) // 100% Dodge
+    STATLIST_SetUnitStat113c(m, pPlayer, 338, 100, 0) // 100% STAT_PASSIVE_DODGE
     m.set(pPlayer, D2UnitStrc.dwAnimMode, 1)
     m.set(pDmg, D2DamageStrc.wResultFlags, 0x01)
     expect(SUNITDMG_RollDodgeAvoidEvadeBlock113c(m, pFallen, pPlayer, pDmg)).toBe(1)
-    expect((m.get(pDmg, D2DamageStrc.wResultFlags) & 0x101) >>> 0).toBe(0x100)
+    expect((m.get(pDmg, D2DamageStrc.wResultFlags) & 0x81) >>> 0).toBe(0x80)
   })
 
   it('7. Pure SparseMemory113c replacements for all 30 fallen-ai VAs & GAME_UpdateGameFrame113c', () => {

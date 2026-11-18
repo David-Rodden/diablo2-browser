@@ -1145,7 +1145,7 @@ export function SKILLS_CallbackStaticField113c(
     m.setU8((pDmg + 0x64) >>> 0, 1)
     m.setU16((pDmg + 0x04) >>> 0, 0x4001)
 
-    SUNITDMG_ApplyDamage113c(m, pGame, pAttacker, pTarget, pDmg)
+    SUNITDMG_ApplyDamage113c(m, pGame, pAttacker, pTarget, pDmg, 1, { suppressDirectS2c: true }, 1)
     applyPostDamageHitReaction(m, pGame, pAttacker, pTarget, pDmg)
     return 1
   } finally {
@@ -2448,7 +2448,7 @@ export function ITEMEVENT_AttackerTakesDamage113c(
     m.setU32((sp + 0x08) >>> 0, (thornsVal << 8) >>> 0)
     m.setU32((sp + 0x60) >>> 0, 0x8d)
 
-    SUNITDMG_ApplyDamage113c(m, pGame, pUnit, pAttacker, sp)
+    SUNITDMG_ApplyDamage113c(m, pGame, pUnit, pAttacker, sp, 1, { suppressDirectS2c: true }, 1)
     applyPostDamageHitReaction(m, pGame, pUnit, pAttacker, sp)
     return 1
   } finally {
@@ -3124,7 +3124,7 @@ export function SKILLS_ItemEventThorns113c(
     m.setU16((sp + 0x04) >>> 0, 0x4021)
     m.setU32((sp + 0x08) >>> 0, reflPhys >>> 0)
     m.setU32((sp + 0x60) >>> 0, 0x8d)
-    SUNITDMG_ApplyDamage113c(m, pGame, pDefender, pAttacker, sp)
+    SUNITDMG_ApplyDamage113c(m, pGame, pDefender, pAttacker, sp, 1, { suppressDirectS2c: true }, 1)
     applyPostDamageHitReaction(m, pGame, pDefender, pAttacker, sp)
     return 1
   } finally {

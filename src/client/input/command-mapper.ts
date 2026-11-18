@@ -32,6 +32,7 @@ import {
 import type { LocalMovementPredictor } from '../motion/predictor.ts'
 import { OutboundRateLimiter, type RateLimitAcquireResult } from '../session/rate-limiter.ts'
 import type { HudModel } from '../ui-model/hud-model.ts'
+import { resolveClientWeaponGateRejectHint113c } from '../world/quest-item-difficulty-qol.ts'
 import {
   VIEWPORT_800x600,
   computePanelCameraShift,
@@ -1014,11 +1015,25 @@ export class CommandMapper {
     if (obj.classId === 404 && mode === 0) {
       if (!this.hasEquippedPrimaryWeaponCode113c('qf2', world)) {
         this.triggerImpossibleSpeech(nowMs, world)
+        const hint = resolveClientWeaponGateRejectHint113c({
+          classId: 404,
+          gameDifficulty: world?.difficulty ?? 0,
+          containers: world?.containers,
+          lang: this.hudManager?.lang ?? world?.lang,
+        })
+        world?.emitQuestQolHint?.(hint, nowMs)
         return false
       }
     } else if (obj.classId === 376 && mode === 2) {
       if (!this.hasEquippedPrimaryWeaponCode113c('hfh', world)) {
         this.triggerImpossibleSpeech(nowMs, world)
+        const hint = resolveClientWeaponGateRejectHint113c({
+          classId: 376,
+          gameDifficulty: world?.difficulty ?? 0,
+          containers: world?.containers,
+          lang: this.hudManager?.lang ?? world?.lang,
+        })
+        world?.emitQuestQolHint?.(hint, nowMs)
         return false
       }
     }

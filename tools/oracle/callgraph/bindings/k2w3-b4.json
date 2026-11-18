@@ -293,8 +293,8 @@
     "name": "SKILLS_AuraCallback_ApplyAuraStatListFromCtx_6FC6C220",
     "kernFile": "src/d2kern-113c/game/k2-w3b4-113c.ts",
     "tsSymbol": "SKILLS_AuraCallback_ApplyAuraStatListFromCtx_6FC6C220_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w3b4.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w3b4.test.ts; K3 golden replay diff-verified (dll\u2229ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -374,8 +374,8 @@
     "name": "SKILLS_InitNecroSkeletonPetComponents_6FC6EB50",
     "kernFile": "src/d2kern-113c/game/k2-w3b4-113c.ts",
     "tsSymbol": "SKILLS_InitNecroSkeletonPetComponents_6FC6EB50_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w3b4.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w3b4.test.ts; Diff-verified 1:1 in dll\u2229ts across full-horizon strict zero-divergence K3 summon/curse replays (p52-amazon-valkyrie F1500/1500, p52-necromancer-poison-golem F1800/1800, p52-necromancer-curses F2000/2000) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",

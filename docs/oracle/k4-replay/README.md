@@ -31,40 +31,38 @@ Every scenario starts at Frame 2 inside its canonical Act town (`level` `1`, `40
 | `k4-act4-quest` | Act IV — Pandemonium Fortress (`103`) | `A4Q1` The Fallen Angel (`word 25 = 0x0002`, `0x16`) | Tyrael (`#3`, `367`): `0x03` -> `0x13` -> `0x2F` -> `0x31` (`wScrollId = 0x02A4`) -> `0x30` | `+2` `STAT_NEWSKILLS` (`stat 5`: `12 -> 14`) |
 | `k4-act5-quest` | Act V — Harrogath (`109`) | `A5Q3` Prison of Ice (`word 37 = 0x0202`, `0x21`) | Malah (`#7`, `513`): `0x03` -> `0x13` -> `0x2F` -> `0x31` (`0x4EA4` mints `'tr2 '` `#9`) -> `0x30`, then `0x20` (`UseItem #9`) | Consumes Scroll of Resistance `'tr2 '`, `+10` Fire/Light/Cold/Poison Resist (`stats 39, 41, 43, 45`: `0 -> 10`) |
 
-## Measured Replay Horizons (`2026-11-16`)
+## Measured Replay Horizons (`2026-11-18`)
 
-All 5 Act snapshots hydrate cleanly at `F2` with **zero strict field mismatch (`bootCheck === null`)** and step deterministically through `C2S 0x03` (`RunToLocation`) player movement before hitting two localized kernel boundaries:
+All 5 Act snapshots hydrate cleanly at `F2` with **zero strict field mismatch (`bootCheck === null`)** and run to **full-frame strict zero divergence (`t0 + t1 + t4 + s2c + gs`, `firstDivergence === null`, `firstPosDivergence === null`)** across their entire golden trace horizons:
 
 | Scenario | Golden Frames | Boot Check (`F2`) | Strict Horizon | Pos Horizon | First Strict Divergence | First Pos Divergence |
 |---|---:|---|---:|---:|---|---|
-| `k4-act1-quest` | `F1..F160` | `null` (identical) | `F23` (21 frames) | `F27` (25 frames) | `F24` `t1` `#3` (Kashya) `seedLo`: `269855137` vs `1594730363` | `F28` `t1` `#3` (Kashya) `x`: `5672` vs `5673` |
-| `k4-act2-quest` | `F1..F140` | `null` (identical) | `F16` (14 frames) | `F16` (14 frames) | `F17` `step` `<unhydrated SparseMemory113c>` (`0x29d3400`) | `F17` `step` `<unhydrated SparseMemory113c>` (`0x29d3400`) |
-| `k4-act3-quest` | `F1..F130` | `null` (identical) | `F23` (21 frames) | `F23` (21 frames) | `F24` `t1` `#1` (Hratli) `mode`: `2` (`WALK`) vs `1` (`NEUTRAL`) | `F24` `t1` `#1` (Hratli) `mode`: `2` vs `1` |
-| `k4-act4-quest` | `F1..F140` | `null` (identical) | `F18` (16 frames) | `F18` (16 frames) | `F19` `step` `<unhydrated SparseMemory113c>` (`0x2634420`) | `F19` `step` `<unhydrated SparseMemory113c>` (`0x2634420`) |
-| `k4-act5-quest` | `F1..F140` | `null` (identical) | `F23` (21 frames) | `F23` (21 frames) | `F24` `t1` `#1` (Larzuk) `mode`: `2` (`WALK`) vs `1` (`NEUTRAL`) | `F24` `t1` `#1` (Larzuk) `mode`: `2` vs `1` |
+| `k4-act1-quest` | `F1..F160` | `null` (identical) | `F160` (158/158 frames) | `F160` (158/158 frames) | `null` (zero divergence) | `null` (zero divergence) |
+| `k4-act2-quest` | `F1..F140` | `null` (identical) | `F140` (138/138 frames) | `F140` (138/138 frames) | `null` (zero divergence) | `null` (zero divergence) |
+| `k4-act3-quest` | `F1..F130` | `null` (identical) | `F130` (128/128 frames) | `F130` (128/128 frames) | `null` (zero divergence) | `null` (zero divergence) |
+| `k4-act4-quest` | `F1..F140` | `null` (identical) | `F140` (138/138 frames) | `F140` (138/138 frames) | `null` (zero divergence) | `null` (zero divergence) |
+| `k4-act5-quest` | `F1..F140` | `null` (identical) | `F140` (138/138 frames) | `F140` (138/138 frames) | `null` (zero divergence) | `null` (zero divergence) |
 
-## Root-Cause Breakdown & Exact 1.13c VAs for `[K2]` Closure
+## Closed 1.13c Kernel Subsystems Across Acts 1–5
 
-### 1. Town NPC Patrol AI (`F24` in Acts 1, 3, 5)
-- **Observed**: At `F24`, the initial `EVENT_MONSTERTHINK` (`eventType = 2`) timer fires on town NPCs (`Kashya` `#3` in Act 1, `Hratli` `#1` in Act 3, `Larzuk` `#1` in Act 5). In `D2Game.dll`, town NPCs invoke `AI_Npc_Town` (`0x6FCCA4D0`), rolling `pUnit->pSeed` (`seedLo`/`seedHi`) to select a town patrol waypoint and transitioning `dwAnimMode` from `1` (`MONMODE_NEUTRAL`) to `2` (`MONMODE_WALK`).
-- **Kernel Gap**: `stepFallenSliceFrame113c` in `src/d2kern-113c/game/replay-kernel-113c.ts` does not yet route town NPC classes (`MonStatsTxt.bInTown` / `AI_Npc_Town` `D2Game:0x6FCCA4D0`) through their patrol AI callback.
+### 1. Town NPC Patrol, Greeting & Waypoint AI (`Acts 1–5`)
+- Town NPCs execute canonical 1.13c AI callbacks (`AI_TownNpc` `D2Game:0x6FC3DB40`, `AI_SimpleMapAiNpc` `D2Game:0x6FC3BC60`, `AI_RogueTown` `D2Game:0x6FCBCB00`, `AI_ThinkTyraelOrIzualGhost` `D2Game:0x6FC39880`, `AI_Npc_Town` `D2Game:0x6FCCA4D0`), including `MONSTER_EndToAiOrNeutral` (`D2Game:0x6FC96BF0`) re-dispatch through `AI_DispatchTargetByAiFlag` (`D2Game:0x6FCBD160`) and `AI_WarrivGreet` (`D2Game:0x6FC39C20`) player-interaction busy/greeting state.
 
-### 2. Act 2–5 Outer `D2RoomExStrc` Neighbor Hydration (`F17` in Act 2, `F19` in Act 4)
-- **Observed**: When the player walks across an active town room boundary in Lut Gholein (`F17`) or Pandemonium Fortress (`F19`), `CLIENTS_SetPlayerCurrentRoom113c` (`D2Game:0x6FC39180`) calls `DUNGEON_SyncActiveRoomStatusChange113c` -> `DRLGROOM_IncrementRoomAndNeighborsStatus113c` -> `DRLGROOM_PropagateRoomStatusIncrement113c` (`D2Common:0x6FD64860`), which reads `pRoomEx->ppRoomsNear` pointing to outer non-active `D2RoomExStrc` structs (`0x29d3400` in Act 2, `0x2634420` in Act 4).
-- **Kernel Gap**: `d2oracle.c` `write_snapshot` dumps `D2RoomExStrc` only for active `D2ActiveRoomStrc` nodes, and `hydrateSnapshotKernelTables113c` currently synthesizes outer `D2RoomExStrc` rings only for Act 1 (`act1Ds1Dt1`). Extending `d2oracle.c` `write_snapshot` (or `hydrateSnapshotKernelTables113c`) to include 1-hop `pRoomEx->ppRoomsNear` `D2RoomExStrc` headers (`0xEC` bytes) for Acts 2–5 eliminates this `SparseMemory113c` fault without needing full DRLG generation.
+### 2. Act 2–5 Town `D2RoomExStrc` Preset & Neighbor Hydration
+- Hydrates Act 2–5 town DS1/DT1 preset rooms (`tests/fixtures/oracle/k4/drlg-act2-5-ds1-dt1-113c.json.gz`), `D2MapAIStrc` waypoint chains (`+0x38`), and `D2NpcInteractStrc` heads (`+0x30`) for seamless room boundary transitions (`CLIENTS_SetPlayerCurrentRoom` `D2Game:0x6FC6B1D0` -> `DRLGROOM_PropagateRoomStatusIncrement` `D2Common:0x6FD64860`).
 
-### 3. Downstream Quest & Consumable C2S Handlers (`F34..F114` across Acts 1–5)
-Once Root Causes #1 and #2 are wired, reaching `F130..F160` across all 5 scenarios requires wiring the following 1.13c `D2Game.dll` C2S opcodes and quest callbacks in `applyPlayerPacket113c`:
-- `C2S 0x13` (`PACKET_Recv13_UnitInteract`, `D2Game:0x6FCF0910` -> `0x6FCF01D0` -> `MONSTER_Interact` `0x6FC687A0`)
+### 3. Act 1–5 Quest State Machines & Consumable C2S Handlers (`F34..F160`)
+All C2S opcodes and quest callbacks execute through canonical manifest-bound `tsSymbol` functions:
+- `C2S 0x13` (`PACKET_Recv13_UnitInteract`, `D2Game:0x6FCF0910` -> `0x6FCF01D0` -> `NPC_StartPlayerNpcInteraction` `0x6FC687A0` -> `SUNIT_SetLastKillerInfo` `0x6FCFFAE0` `[+0x64 = dwUnitId, +0x68 = nUnitType, +0x6C = 1]`)
 - `C2S 0x2F` (`PACKET_Recv2F_NpcInit`, `D2Game:0x6FCEE440` -> `0x6FCECCF0` -> `0x6FC68B60` -> `NPC_Activate` `0x6FCDD810`)
-- `C2S 0x31` (`PACKET_Recv31_QuestMessage`, `D2Game:0x6FCEC9D0` -> `QUESTS_ScrollMessage` `0x6FC55C90` -> `QUESTS_TriggerEvent` `0x6FC53CE0` `event = 0x0B`):
-  - **Act 1 `A1Q1`**: `D2Game:0x6FC852F5..0x6FC853E0` (`wScrollId = 0x004C`, clears bit `1`, sets bit `0`, `STATLIST_AddUnitStat(pPlayer, 5, 1, 0)`)
-  - **Act 2 `A2Q0`**: `D2Game:0x6FCE4620..0x6FCE4663` (`wScrollId = 0x00FD`, sets `word 8` bit `0`)
-  - **Act 3 `A3Q1`**: `D2Game:0x6FD08E1E..0x6FD08EA0` (`wScrollId = 0x0211`, calls `QUESTS_DeleteItem` `0x6FC566A0` for `'j34 '` and `QUESTS_CreateItem` `0x6FC56470` for `'g34 '`)
-  - **Act 4 `A4Q1`**: `D2Game:0x6FCDA68F..0x6FCDA755` (`wScrollId = 0x02A4`, clears bit `1`, sets bit `0`, `STATLIST_AddUnitStat(pPlayer, 5, 2, 0)`)
-  - **Act 5 `A5Q3`**: `D2Game:0x6FC7F734..0x6FC7F7ED` (`wScrollId = 0x4EA4`, calls `QUESTS_CreateItem` `0x6FC56470` for `'tr2 '`, sets bit `8`, completes `word 37` when bit `9` is set)
-- `C2S 0x30` (`PACKET_Recv30_NpcCancel`, `D2Game:0x6FCED480` -> `0x6FC685C0`)
-- `C2S 0x20` (`PACKET_Recv20_UseItem`, `D2Game:0x6FCEF730` -> `ITEMS_UseConsumableItem` `0x6FCF9E73..0x6FCF9F52`, handling `'ass '` `+1` `stat 5` and `'tr2 '` -> `0x6FC7B0B0` `+10` `stats 39, 41, 43, 45`)
+- `C2S 0x31` (`PACKET_Recv31_QuestMessage`, `D2Game:0x6FCEC9D0` -> `QUESTS_ScrollMessage` `0x6FC55C90` -> `QUESTS_TriggerCallback` `0x6FC53CE0` `event = 0x0B`):
+  - **Act 1 `A1Q1`**: `D2Game:0x6FC85260` (`wScrollId = 0x004C`, clears bit `1`, sets bit `0`, `STATLIST_AddUnitStat(pPlayer, 5, 1, 0)`)
+  - **Act 2 `A2Q0`**: `D2Game:0x6FCE4620` (`wScrollId = 0x00FD`, sets `word 8` bit `0`)
+  - **Act 3 `A3Q1`**: `D2Game:0x6FD08B60` (`wScrollId = 0x0211`, calls `QUESTS_DeleteItem` `0x6FC566A0` for `'j34 '` and `QUESTS_CreateItem` `0x6FC56470` for `'g34 '`)
+  - **Act 4 `A4Q1`**: `D2Game:0x6FCDA5E0` (`wScrollId = 0x02A4`, clears bit `1`, sets bit `0`, `STATLIST_AddUnitStat(pPlayer, 5, 2, 0)`)
+  - **Act 5 `A5Q3`**: `D2Game:0x6FC7F5E0` (`wScrollId = 0x4EA4`, calls `QUESTS_CreateItem` `0x6FC56470` for `'tr2 '`, sets bit `8`, clears bit `1`, completes `word 37` when bit `9` is set)
+- `C2S 0x30` (`PACKET_Recv30_NpcCancel`, `D2Game:0x6FCED480` -> `0x6FC685C0`, resetting `[+0x64 = 0xFFFFFFFF, +0x68 = 6, +0x6C = 0]`)
+- `C2S 0x20` (`PACKET_Recv20_UseItem`, `D2Game:0x6FCEF730` -> `ITEMS_UseConsumableItem` `0x6FCF9B70`, handling `'ass '` `+1` `stat 5` and `'tr2 '` -> `0x6FC7B0B0` `+10` `stats 39, 41, 43, 45`)
 
 ## Fixture Provenance (`tests/fixtures/oracle/k4/`)
 

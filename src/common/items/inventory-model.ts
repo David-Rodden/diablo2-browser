@@ -120,6 +120,7 @@ export interface UiInventoryItem {
   readonly identified?: boolean | undefined
   readonly quantity?: number | undefined
   readonly maxQuantity?: number | undefined
+  readonly questItemDifficulty?: 0 | 1 | 2 | undefined
 }
 
 export interface GridPlacement {

@@ -735,13 +735,10 @@ function passesRecipeOp113c(
   if (recipe.op === 0) return true
   if (recipe.op === 28) {
     // D2Game.dll 0x6FC90EA0: quest items stamped with `item_questitemdifficulty` (stat 356)
-    // cannot be transmuted in a higher/mismatched difficulty.
+    // require `nStat164 >= pGame->nDifficulty` (lower-difficulty quest items cannot be transmuted).
     for (const item of cubeItems) {
       const diffStat = item.stats?.find((s) => s.statId === STAT_QUEST_ITEM_DIFFICULTY)
       if (diffStat !== undefined && diffStat.value < difficulty) {
-        return false
-      }
-      if (diffStat !== undefined && diffStat.value !== difficulty) {
         return false
       }
     }

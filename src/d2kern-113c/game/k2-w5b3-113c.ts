@@ -250,7 +250,10 @@ import {
   EVENT_SetEventFull113c,
   MONSTER_RefreshAiEvent113c,
 } from './timer-wheel'
-import { AITARGET_ScanUnitsByModeTable113c } from './town-runtime-gap-113c'
+import {
+  AITARGET_ScanUnitsByModeTable113c,
+  registerAiTargetModeCallback113c,
+} from './town-runtime-gap-113c'
 import { hitD2GameVa113c } from '../va-trace-113c'
 
 export type D2KernMemory113c = Memory113c
@@ -1888,6 +1891,25 @@ export function MONAI_FindClosestLoSHostileMeleeAndRangedTargetCallback_6FCD15E0
   }
   return 0
 }
+
+registerAiTargetModeCallback113c(6, (m, pGame, pOriginUnit, pCandidateUnit, pBestCtx) =>
+  MONAI_FindClosestLoSHostileMeleeAndRangedTargetCallback_6FCD15E0_113c(
+    m,
+    pGame,
+    pOriginUnit,
+    pCandidateUnit,
+    pBestCtx,
+  ),
+)
+registerAiTargetModeCallback113c(7, (m, pGame, pOriginUnit, pCandidateUnit, pBestCtx) =>
+  MONAI_FindClosestLoSHostileMeleeTargetCallback_6FCD1580_113c(
+    m,
+    pGame,
+    pOriginUnit,
+    pCandidateUnit,
+    pBestCtx,
+  ),
+)
 
 
 /**

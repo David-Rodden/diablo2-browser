@@ -2,111 +2,14 @@
   "scenario": "p52-necromancer-poison-golem",
   "bootFrame": 2,
   "lastGoldenFrame": 1800,
-  "strictHorizon": 636,
-  "posHorizon": 636,
-  "matchedKernelFrames": 634,
+  "strictHorizon": 1800,
+  "posHorizon": 1800,
+  "matchedKernelFrames": 1798,
   "bootCheck": null,
-  "firstDivergence": {
-    "frame": 637,
-    "key": "t1",
-    "id": 12,
-    "field": "presence",
-    "expected": [
-      12,
-      289,
-      8,
-      5664,
-      5831,
-      3798512748,
-      41304058,
-      2,
-      0,
-      0,
-      0,
-      0,
-      73728,
-      73728,
-      0,
-      0,
-      0,
-      0,
-      35,
-      0,
-      0,
-      0
-    ],
-    "actual": null
-  },
-  "firstPosDivergence": {
-    "frame": 637,
-    "key": "t1",
-    "id": 12,
-    "field": "presence",
-    "expected": [
-      12,
-      289,
-      8,
-      5664,
-      5831,
-      3798512748,
-      41304058,
-      2,
-      0,
-      0,
-      0,
-      0,
-      73728,
-      73728,
-      0,
-      0,
-      0,
-      0,
-      35,
-      0,
-      0,
-      0
-    ],
-    "actual": null
-  },
+  "firstDivergence": null,
+  "firstPosDivergence": null,
   "unportedHit": null,
-  "context": [
-    {
-      "frame": 634
-    },
-    {
-      "frame": 635
-    },
-    {
-      "frame": 636
-    },
-    {
-      "frame": 637,
-      "row": [
-        12,
-        289,
-        8,
-        5664,
-        5831,
-        3798512748,
-        41304058,
-        2,
-        0,
-        0,
-        0,
-        0,
-        73728,
-        73728,
-        0,
-        0,
-        0,
-        0,
-        35,
-        0,
-        0,
-        0
-      ]
-    }
-  ],
+  "context": [],
   "goldenSha256": "1b2af91a11215851be9f7c364b8974422f07d34ad1c38e68482f55547585ec56",
   "snapshotSha256": "105ac71370143a464cb6a63c44362d21d476623d930c7d31f08db785e9105329"
 }

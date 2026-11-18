@@ -498,6 +498,7 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
     str: stats.get(D2StatId.Strength),
     dex: stats.get(D2StatId.Dexterity),
     classCode: self.charClass !== null ? resolveClassCode(self.charClass) : undefined,
+    gameDifficulty: model.world.difficulty,
   })
 
   // 1. Vitals (globes & stamina bar): verbatim server values (0x18 / 0x95 / stats 6-11), absent = 0.

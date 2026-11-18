@@ -24,7 +24,7 @@
  * - `AUTOMAP_DrawCrosshair` (`0x6fb11490`) & `AUTOMAP_CrosshairColors` (`0x6fabd390`):
  *   12-segment closed directional polygon crosshairs for Player (0x210), Party (0x213),
  *   Pets/Mercenaries (0x214/0x215), Friendly NPCs (0x216), and Player Corpses (0x212),
- *   plus active town portal sprites (`306`/`307`/`300`), warp destination
+ *   plus active town portal crosshairs (class `59`/`60`, 0x218 `RGB(244, 244, 0)`), warp destination
  *   `Font6` labels, and top-right right-aligned gold `Font16` Level Name + Difficulty readout.
  */
 
@@ -162,6 +162,13 @@ const COLOR_PARTY_PET = [72 / 255, 160 / 255, 52 / 255, 1.0] as const
 const COLOR_NPC = [244 / 255, 244 / 255, 244 / 255, 1.0] as const
 const COLOR_NEUTRAL = [128 / 255, 128 / 255, 128 / 255, 1.0] as const
 const COLOR_PORTAL = [244 / 255, 244 / 255, 0.0, 1.0] as const
+
+/** Miniature portal marker height in automap pixels (port QoL, full automap / corner minimap). */
+export const AUTOMAP_PORTAL_ICON_HEIGHT_FULL = 34
+export const AUTOMAP_PORTAL_ICON_HEIGHT_MINI = 22
+const AUTOMAP_PORTAL_ICON_TINT_BLUE = [1.0, 1.0, 1.0, 1.0] as const
+/** Class `60` (red) portals reuse the Town Portal sprite with a red tint. */
+const AUTOMAP_PORTAL_ICON_TINT_RED = [1.0, 0.3, 0.25, 1.0] as const
 
 /**
  * Canonical 1.13c crosshair palette colors (`AUTOMAP_DrawCrosshair` @ `0x6fb11490`, `0x6fabd390`).
@@ -554,14 +561,19 @@ export interface AutomapEntityMarker {
   readonly alive?: boolean
 }
 
-/** Active Town Portal descriptor for dynamic portal rendering (`0x6fb11490`). */
+/** Active Town Portal descriptor for dynamic portal crosshair rendering (`0x6fb11490` / `0x6fb119e0`). */
 export interface AutomapPortalDescriptor {
   readonly x: number
   readonly y: number
   readonly active?: boolean
-  readonly isLocalPlayerOwner?: boolean
   readonly kind?: 'blue' | 'red'
   readonly label?: string
+  /**
+   * Port QoL marker: atlas + frame of the portal's own world sprite (`town_portal_on_hd` frame 0), drawn
+   * scaled down as a miniature portal. Without it the 1.13c portal crosshair (`0x6fb11b2a`) is drawn.
+   */
+  readonly iconAtlas?: AtlasHandle | undefined
+  readonly iconFrame?: AtlasFrame | undefined
 }
 
 /** Stash position descriptor for `"Stash"` label and icon rendering. */
@@ -611,7 +623,7 @@ export interface MinimapLevel {
   readonly layerKey?: string
   /** Pre-built 4-layer isometric automap data (`floors`, `walls`, `objects`, `extras`). */
   readonly automap: AutomapLayerData
-  /** Optional level ID (`1..136`) for portal sprite selection (`300` in Level 4 vs `306`/`307`). */
+  /** Optional level ID (`1..136`) for the class `60` portal crosshair level gate (`0x6fb114f2..0x6fb11522`). */
   readonly levelId?: number
   /** Optional localized or English level name for top-right `Font16` HUD display. */
   readonly levelName?: string
@@ -680,6 +692,7 @@ export interface AutomapRenderTelemetry {
     walls: number
     objects: number
     extras: number
+    /** Miniature portal sprites (port QoL marker for class `59` / `60`). */
     portals: number
     shrines: number
     waypoints: number
@@ -692,6 +705,8 @@ export interface AutomapRenderTelemetry {
     mercenaries: number
     bosses: number
     monsters: number
+    /** Town Portal (`59`) / Permanent Portal (`60`) crosshairs (`0x6fb114b9`), drawn when no portal sprite is available. */
+    portals: number
     total: number
   }
   revealedRooms: number
@@ -805,7 +820,7 @@ export class Minimap {
     viewport: computeAutomapViewport(800, 600, true),
     cellCounts: { floors: 0, walls: 0, objects: 0, extras: 0, total: 0 },
     spritesDrawn: { floors: 0, walls: 0, objects: 0, extras: 0, portals: 0, shrines: 0, waypoints: 0, total: 0 },
-    crosshairsDrawn: { player: 0, party: 0, npcs: 0, mercenaries: 0, bosses: 0, monsters: 0, total: 0 },
+    crosshairsDrawn: { player: 0, party: 0, npcs: 0, mercenaries: 0, bosses: 0, monsters: 0, portals: 0, total: 0 },
     revealedRooms: 0,
     warpLabels: [],
     entityLabels: [],
@@ -1434,7 +1449,7 @@ export class Minimap {
    * Call between `renderer.begin` and `renderer.flush`.
    * Applies hardware WebGL scissor clipping (`gl.SCISSOR_TEST`) for the active viewport,
    * renders the 4 isometric sprite layers in strict order (`floors -> walls -> objects -> extras`),
-   * renders dynamic town portals (`MaxiMap` / `MaxiMapS` `306`/`307`/`300`), and draws the
+   * renders dynamic town portals (0x218 crosshairs, `0x6fb114b9` / `0x6fb11b2a`), and draws the
    * 12-segment closed directional crosshair polygons (`0x6fb107f0`).
    */
   draw(
@@ -1503,6 +1518,7 @@ export class Minimap {
     this.lastRenderStats.crosshairsDrawn.mercenaries = 0
     this.lastRenderStats.crosshairsDrawn.bosses = 0
     this.lastRenderStats.crosshairsDrawn.monsters = 0
+    this.lastRenderStats.crosshairsDrawn.portals = 0
     this.lastRenderStats.crosshairsDrawn.total = 0
     this.lastRenderStats.revealedRooms = this.revealedRoomCount(level.key)
     this.lastRenderStats.warpLabels = []
@@ -1677,12 +1693,16 @@ export class Minimap {
       drawLayerCells(automapLayer.extras, 'extras', true)
     }
 
-    // 5. Dynamic active Town Portals (`0x6fb11490`: `MaxiMap` / `MaxiMapS` frame 300 in Level 4, else 306/307)
+    // 5. Dynamic active Town Portals (`D2Client.dll` `0x6fb11490` object branch `0x6fb114b9..0x6fb1154c`
+    //    + `0x6fb119e0` object branch `0x6fb11aca..0x6fb11b33`): in 1.13c class `59` / `60` objects are NOT drawn
+    //    with a `MaxiMap` cell; they get the same 12-segment crosshair as units (`0x6fb0f1c0`) in the
+    //    portal palette colour `0x6FBCC218` = `RGB(244, 244, 0)`. Class `60` is skipped in levels
+    //    `111`, `112`, `117`, `125..127` (`0x6fb114f2..0x6fb11522`).
     const maxiSheetName = resolveAutomapSheetName(0, this.bMinimap)
     const maxiMeta = AUTOMAP_UI_MANIFEST.atlases[maxiSheetName]
     const maxiAtlas = this.resolveAtlasHandle(renderer, maxiSheetName, maxiMeta)
     const effectiveLevelId = options?.levelId ?? level.levelId ?? 0
-    if (options?.portals && maxiMeta && maxiAtlas) {
+    if (options?.portals) {
       for (const portal of options.portals) {
         if (portal.active === false) continue
         if (
@@ -1696,41 +1716,49 @@ export class Minimap {
         }
         const pClientX = Math.round(portal.x - originX)
         const pClientY = Math.round(portal.y - originY)
-        const xPixel = Math.trunc(pClientX / 10)
-        const yPixel = Math.trunc(pClientY / 10)
-        const cellNo =
-          effectiveLevelId === 4 ? 300 : portal.isLocalPlayerOwner === false ? 307 : 306
-        const frame = maxiMeta.frames[cellNo]
-        if (!frame || frame.width <= 0 || frame.height <= 0) continue
-        const screenX = Math.trunc((xPixel * 10) / divisor) - offsetX
-        const screenY = Math.trunc((yPixel * 10) / divisor) - offsetY
-        const drawLeft = screenX + frame.offsetX - halfAnchorX
-        const drawTop = screenY - frame.height + frame.offsetY
-        if (
-          drawLeft + frame.width < vp.vpX ||
-          drawLeft > vpRight ||
-          drawTop + frame.height < vp.vpY ||
-          drawTop > vpBottom
-        ) {
+        const px = Math.trunc(pClientX / vp.divisor) - offsetX
+        const py = Math.trunc(pClientY / vp.divisor) - offsetY - 8
+        if (px < vp.vpX || px > vpRight || py < vp.vpY || py > vpBottom) {
           continue
         }
-        drawOptions.atlas = maxiAtlas
-        drawOptions.width = frame.width * invZoom
-        drawOptions.height = frame.height * invZoom
-        drawOptions.tint = uniformTint
-        renderer.draw(
-          frame,
-          toWorldX(drawLeft),
-          toWorldY(drawTop),
-          drawOptions,
-        )
-        this.lastRenderStats.spritesDrawn.portals += 1
-        this.lastRenderStats.spritesDrawn.total += 1
+        // Port QoL marker: a miniature of the portal's own sprite, standing on the unit point. The original
+        // (`0x6fb11b2a`) draws the 0x218 crosshair here; that is kept for portals whose sprite is not loaded.
+        let labelY = py - 10
+        const iconFrame = portal.iconFrame
+        if (portal.iconAtlas && iconFrame && iconFrame.width > 0 && iconFrame.height > 0) {
+          const iconH = this.bMinimap ? AUTOMAP_PORTAL_ICON_HEIGHT_MINI : AUTOMAP_PORTAL_ICON_HEIGHT_FULL
+          const iconW = Math.max(4, Math.round((iconFrame.width * iconH) / iconFrame.height))
+          const iconLeft = px - Math.round(iconW / 2)
+          const iconTop = py + 4 - iconH
+          drawOptions.atlas = portal.iconAtlas
+          drawOptions.width = iconW * invZoom
+          drawOptions.height = iconH * invZoom
+          drawOptions.tint = portal.kind === 'red' ? AUTOMAP_PORTAL_ICON_TINT_RED : AUTOMAP_PORTAL_ICON_TINT_BLUE
+          drawOptions.blendMode = 'additive'
+          renderer.draw(iconFrame, toWorldX(iconLeft), toWorldY(iconTop), drawOptions)
+          drawOptions.blendMode = 'normal'
+          this.lastRenderStats.spritesDrawn.portals += 1
+          this.lastRenderStats.spritesDrawn.total += 1
+          labelY = iconTop - 4
+        } else {
+          this.drawCrosshairPolygon(
+            renderer,
+            px,
+            py,
+            this.bMinimap,
+            AUTOMAP_CROSSHAIR_COLORS.portal,
+            toWorldX,
+            toWorldY,
+            zoom,
+          )
+          this.lastRenderStats.crosshairsDrawn.portals += 1
+          this.lastRenderStats.crosshairsDrawn.total += 1
+        }
         if (portal.label) {
           this.lastRenderStats.warpLabels.push({
             text: portal.label,
-            x: screenX,
-            y: screenY - 8,
+            x: px,
+            y: labelY,
             color: 'blue',
             kind: 'portal',
           })

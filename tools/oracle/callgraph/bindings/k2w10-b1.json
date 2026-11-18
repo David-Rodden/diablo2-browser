@@ -86,8 +86,8 @@
     "name": "SKILLS_ApplySummonStatsPassivesAndEquip_6FC6F970",
     "kernFile": "src/d2kern-113c/game/k2-w10b1-113c.ts",
     "tsSymbol": "SKILLS_ApplySummonStatsPassivesAndEquip_6FC6F970_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w10b1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w10b1.test.ts; Diff-verified 1:1 in dll\u2229ts across full-horizon strict zero-divergence K3 summon/curse replays (p52-amazon-valkyrie F1500/1500, p52-necromancer-poison-golem F1800/1800, p52-necromancer-curses F2000/2000) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -95,8 +95,8 @@
     "name": "ACT5Q4_InitQuestData_6FC7D5C0",
     "kernFile": "src/d2kern-113c/game/k2-w10b1-113c.ts",
     "tsSymbol": "ACT5Q4_InitQuestData_6FC7D5C0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w10b1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w10b1.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -113,8 +113,8 @@
     "name": "ACT1Q6_InitQuestData_6FC88060",
     "kernFile": "src/d2kern-113c/game/k2-w10b1-113c.ts",
     "tsSymbol": "ACT1Q6_InitQuestData_6FC88060_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w10b1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w10b1.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -158,8 +158,8 @@
     "name": "PETS_InsertPetIntoPlayerPetSlot_6FCB7A20",
     "kernFile": "src/d2kern-113c/game/k2-w10b1-113c.ts",
     "tsSymbol": "PETS_InsertPetIntoPlayerPetSlot_6FCB7A20_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w10b1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w10b1.test.ts; Diff-verified 1:1 in dll\u2229ts across full-horizon strict zero-divergence K3 summon/curse replays (p52-amazon-valkyrie F1500/1500, p52-necromancer-poison-golem F1800/1800, p52-necromancer-curses F2000/2000) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -194,8 +194,8 @@
     "name": "ACT2Q3_InitQuestData_6FCE7480",
     "kernFile": "src/d2kern-113c/game/k2-w10b1-113c.ts",
     "tsSymbol": "ACT2Q3_InitQuestData_6FCE7480_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w10b1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w10b1.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",

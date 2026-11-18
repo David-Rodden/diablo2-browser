@@ -462,8 +462,18 @@ export function MONSTER_StartAttackOrCast113c(
   pGame: number,
   pModeArgs: number,
   hooks?: AiFallenHooks113c,
+  bUsedSkillStartOnly = false,
 ): number {
   hitD2GameVa113c(0x6FC95510)
+  if (bUsedSkillStartOnly) {
+    const pUnitOnly = pModeArgs >>> 0
+    if (SKILLS_GetUsedSkillMemPort113c(m, pUnitOnly) !== 0) {
+      if (hooks !== undefined && hooks.onSkillDoStart !== undefined) {
+        hooks.onSkillDoStart(m, pUnitOnly, pGame)
+      }
+    }
+    return 1
+  }
   const nMode = m.u32(pModeArgs) | 0
   const pUnit = m.u32((pModeArgs + 0x04) >>> 0) >>> 0
 
@@ -675,7 +685,9 @@ export function MONSTER_ExecuteMeleeSwing113c(
   hooks?: AiFallenHooks113c,
 ): void {
   hitD2GameVa113c(0x6FC97790)
-  SUNIT_ValidatePathTargetUnit113c(m, pAttacker, pGame)
+  if (world === undefined) {
+    SUNIT_ValidatePathTargetUnit113c(m, pAttacker, pGame)
+  }
   const pPath = m.u32((pAttacker + 0x2c) >>> 0)
   const pDefender = PATH_GetTargetUnit113c(m, pPath)
   if (pDefender === pAttacker || pDefender === 0) return
@@ -692,7 +704,7 @@ export function MONSTER_ExecuteMeleeSwing113c(
     return
   }
 
-  if (world !== undefined) {
+  if (world !== undefined && SUNIT_IsDeadOrDying113c(m, pDefender) === 0) {
     SUNITDMG_ExecuteMissileOrMeleeDmg113c(world, pAttacker, pDefender, 0, 0)
   }
 }
