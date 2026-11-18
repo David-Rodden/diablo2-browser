@@ -15,6 +15,7 @@ import { resolve } from 'node:path'
 
 export interface SiteDeploymentConfig {
   readonly singlePlayerEnabled: boolean
+  readonly singlePlayerBackend?: 'legacy' | 'd2kern-113c' | undefined
 }
 
 export interface SiteConfigMiddlewareOptions {
@@ -40,6 +41,16 @@ export function parseExplicitBooleanFlag(raw: unknown): boolean | undefined {
   return undefined
 }
 
+export function parseExplicitSinglePlayerBackend(
+  raw: unknown,
+): 'legacy' | 'd2kern-113c' | undefined {
+  if (typeof raw !== 'string') return undefined
+  const norm = raw.trim().toLowerCase()
+  if (norm === 'd2kern-113c' || norm === 'd2kern') return 'd2kern-113c'
+  if (norm === 'legacy') return 'legacy'
+  return undefined
+}
+
 /**
  * Resolves the active deployment configuration from environment variables and `public/site-config.json`.
  * Precedence: explicit `VITE_ENABLE_SINGLE_PLAYER` env var > `public/site-config.json` > `false`.
@@ -47,26 +58,35 @@ export function parseExplicitBooleanFlag(raw: unknown): boolean | undefined {
 export function resolveServerSiteConfig(options: SiteConfigMiddlewareOptions): SiteDeploymentConfig {
   const env = options.env ?? process.env
   const envFlag = parseExplicitBooleanFlag(env.VITE_ENABLE_SINGLE_PLAYER)
-  if (envFlag !== undefined) {
-    return { singlePlayerEnabled: envFlag }
-  }
+  const envBackend = parseExplicitSinglePlayerBackend(env.VITE_SINGLE_PLAYER_BACKEND)
 
   const configFile = resolve(options.publicDir, 'site-config.json')
+  let diskFlag: boolean | undefined
+  let diskBackend: 'legacy' | 'd2kern-113c' | undefined
   if (existsSync(configFile)) {
     try {
       const parsed = JSON.parse(readFileSync(configFile, 'utf8')) as Record<string, unknown>
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        const diskFlag = parseExplicitBooleanFlag(parsed.singlePlayerEnabled)
-        if (diskFlag !== undefined) {
-          return { singlePlayerEnabled: diskFlag }
-        }
+        diskFlag = parseExplicitBooleanFlag(parsed.singlePlayerEnabled)
+        diskBackend = parseExplicitSinglePlayerBackend(parsed.singlePlayerBackend)
       }
     } catch {
       // Malformed JSON fails closed to singlePlayerEnabled: false
     }
   }
 
-  return DEFAULT_SITE_DEPLOYMENT_CONFIG
+  const effectiveEnabled = envFlag !== undefined ? envFlag : diskFlag !== undefined ? diskFlag : false
+  const effectiveBackend = envBackend !== undefined ? envBackend : diskBackend
+  if (effectiveBackend !== undefined) {
+    return {
+      singlePlayerEnabled: effectiveEnabled,
+      singlePlayerBackend: effectiveBackend,
+    }
+  }
+  if (effectiveEnabled === false) {
+    return DEFAULT_SITE_DEPLOYMENT_CONFIG
+  }
+  return { singlePlayerEnabled: true }
 }
 
 /**

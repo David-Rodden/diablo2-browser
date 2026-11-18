@@ -22,6 +22,7 @@ import type { Memory113c } from '../mem/sparse-memory.ts'
 import { D2GameStrc, D2GameStrc_SIZE, D2UnitStrc } from '../mem/layout.generated.ts'
 import { seedNext, seedRoll, type D2SeedStrc } from '../prng.ts'
 import { EVENT_InitTimerQueue113c } from './timer-wheel.ts'
+import { hitD2GameVa113c } from '../va-trace-113c.ts'
 
 /** Full `D2GameStrc` allocation size (`0x1DF4` bytes). */
 const D2GAME_ALLOC_SIZE_113C = 0x1df4
@@ -55,6 +56,7 @@ export function GAME_InitSeed113c(
   initSeed = 1,
   seedHi = 0x29a,
 ): void {
+  hitD2GameVa113c(0x6FC4A900)
   const lo = initSeed >>> 0
   m.set(pGame, D2GameStrc.dwInitSeed, lo)
   m.set(pGame, D2GameStrc.seedLo, lo)
@@ -107,6 +109,7 @@ export function GAME_SeedRoll113c(m: Memory113c, pGame: number, nMax: number): n
 
 /** `@va D2Game:0x6FCFF9C0` (`SUNIT_GetNewUnitId`, `edx = pGame`, `ecx = dwUnitType`). */
 export function SUNIT_GetNewUnitId113c(m: Memory113c, pGame: number, unitType: number): number {
+  hitD2GameVa113c(0x6FCFF9C0)
   if ((unitType >>> 0) >= 6) return 0xffffffff
   let next = (m.get(pGame, D2GameStrc.dwLastUnitId, unitType) + 1) >>> 0
   if (next === 0xffffffff) {
@@ -128,6 +131,7 @@ function hashHeadAddr(pGame: number, unitType: number, unitId: number): number {
  * Keeps bucket chain sorted in descending `dwUnitId` (`cmp [eax + 0x0C], edi; jbe`).
  */
 export function SUNIT_InsertServerUnit113c(m: Memory113c, pGame: number, pUnit: number): void {
+  hitD2GameVa113c(0x6FD00310)
   if (pGame === 0 || pUnit === 0) return
   const unitType = m.get(pUnit, D2UnitStrc.dwUnitType)
   if ((unitType >>> 0) >= 6) return
@@ -141,6 +145,7 @@ export function SUNIT_InsertServerUnit113c(m: Memory113c, pGame: number, pUnit: 
     prev = cur
     cur = m.get(cur, D2UnitStrc.pGameHashNext)
   }
+  if (cur === pUnit) return
   m.set(pUnit, D2UnitStrc.pGameHashNext, cur)
   if (prev === 0) {
     m.setU32(headAddr, pUnit)
@@ -156,6 +161,7 @@ export function SUNIT_GetServerUnit113c(
   unitType: number,
   unitId: number,
 ): number {
+  hitD2GameVa113c(0x6FD003A0)
   if (pGame === 0 || (unitType >>> 0) >= 6) return 0
   const targetId = unitId >>> 0
   const headAddr = hashHeadAddr(pGame, unitType, targetId)
@@ -175,6 +181,7 @@ export function SUNIT_GetServerUnit113c(
  * (`pGameHashNext`) untouched.
  */
 export function SUNIT_RemoveServerUnit113c(m: Memory113c, pGame: number, pUnit: number): void {
+  hitD2GameVa113c(0x6FD002A0)
   if (pGame === 0 || pUnit === 0) return
   const unitType = m.get(pUnit, D2UnitStrc.dwUnitType)
   if ((unitType >>> 0) >= 6) return

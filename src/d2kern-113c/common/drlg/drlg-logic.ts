@@ -21,6 +21,59 @@ import {
   DRLGGRID_AllocAndInitGridCells113c,
   DRLGGRID_OpOverwrite113c,
 } from './drlg-grid.ts';
+import { hitD2CommonVa113c } from '../../va-trace-113c.ts';
+
+const DRLGLOGIC_STACK_BASE = 0x7ffa0000;
+const DRLGLOGIC_STACK_SIZE = 0x10000;
+const _drlgLogicStackBuf = new ArrayBuffer(DRLGLOGIC_STACK_SIZE);
+const _drlgLogicStackU8 = new Uint8Array(_drlgLogicStackBuf);
+const _drlgLogicStackDV = new DataView(_drlgLogicStackBuf);
+
+function withDrlgLogicStackScratch113c(m: Memory113c): Memory113c {
+  const isStack = (p: number): boolean => {
+    const u = p >>> 0;
+    return u >= DRLGLOGIC_STACK_BASE && u < DRLGLOGIC_STACK_BASE + DRLGLOGIC_STACK_SIZE;
+  };
+  const self: Memory113c = {
+    alloc: size => m.alloc(size),
+    u8: p => (isStack(p) ? _drlgLogicStackU8[(p >>> 0) - DRLGLOGIC_STACK_BASE]! : m.u8(p)),
+    u16: p => (isStack(p) ? _drlgLogicStackDV.getUint16((p >>> 0) - DRLGLOGIC_STACK_BASE, true) : m.u16(p)),
+    u32: p => (isStack(p) ? _drlgLogicStackDV.getUint32((p >>> 0) - DRLGLOGIC_STACK_BASE, true) : m.u32(p)),
+    setU8: (p, v) => {
+      if (isStack(p)) _drlgLogicStackU8[(p >>> 0) - DRLGLOGIC_STACK_BASE] = v & 0xff;
+      else m.setU8(p, v);
+    },
+    setU16: (p, v) => {
+      if (isStack(p)) _drlgLogicStackDV.setUint16((p >>> 0) - DRLGLOGIC_STACK_BASE, v & 0xffff, true);
+      else m.setU16(p, v);
+    },
+    setU32: (p, v) => {
+      if (isStack(p)) _drlgLogicStackDV.setUint32((p >>> 0) - DRLGLOGIC_STACK_BASE, v >>> 0, true);
+      else m.setU32(p, v);
+    },
+    get: (base, f, idx = 0) => {
+      const width = f.type === 'u8' ? 1 : f.type === 'u16' ? 2 : 4;
+      const p = ((base >>> 0) + f.off + idx * width) >>> 0;
+      return width === 1 ? self.u8(p) : width === 2 ? self.u16(p) : self.u32(p);
+    },
+    set: (base, f, v, idx = 0) => {
+      const width = f.type === 'u8' ? 1 : f.type === 'u16' ? 2 : 4;
+      const p = ((base >>> 0) + f.off + idx * width) >>> 0;
+      if (width === 1) self.setU8(p, v);
+      else if (width === 2) self.setU16(p, v);
+      else self.setU32(p, v);
+    },
+    fill: (p, len, v) => {
+      if (isStack(p)) {
+        const off = (p >>> 0) - DRLGLOGIC_STACK_BASE;
+        _drlgLogicStackU8.fill(v & 0xff, off, off + len);
+      } else {
+        m.fill(p, len, v);
+      }
+    },
+  };
+  return self;
+}
 
 /**
  * Wall style group lookup table at `0x6FDDA758` (`int32[15]`, 60 bytes: `0x6FDDA758 .. 0x6FDDA793`).
@@ -72,6 +125,7 @@ export function DRLGLOGIC_ReplaceRoomCoordListIndex113c(
   nNewIdx: number,
   bNodeFlag: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD0EE0);
   const roomEx = pRoomEx >>> 0;
   const pLogical = m.get(roomEx, D2RoomExStrc.pLogicalRoomInfo);
   if (pLogical === 0) return;
@@ -131,6 +185,7 @@ export function DRLGLOGIC_MarkWallTileCells113c(
   pRoomEx: number,
   pGrid: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD14C0);
   const roomEx = pRoomEx >>> 0;
   const grid = pGrid >>> 0;
   const pTileGrid = m.get(roomEx, D2RoomExStrc.pTileGrid);
@@ -236,6 +291,7 @@ export function DRLGLOGIC_MarkFloorTileCells113c(
   pRoomEx: number,
   pGrid: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD1650);
   const roomEx = pRoomEx >>> 0;
   const grid = pGrid >>> 0;
   const pTileGrid = m.get(roomEx, D2RoomExStrc.pTileGrid);
@@ -282,6 +338,7 @@ export function DRLGLOGIC_FloodFillLogicalCoordGrid113c(
   nY: number,
   nFromDir: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD17A0);
   const ctx = pContext >>> 0;
   let curX = nX | 0;
   let curY = nY | 0;
@@ -419,6 +476,7 @@ export function DRLGLOGIC_AssignTileDataCoordListPointers113c(
   m: Memory113c,
   pRoomEx: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD1A20);
   const roomEx = pRoomEx >>> 0;
   const pTileGrid = m.get(roomEx, D2RoomExStrc.pTileGrid);
   const pWallsSlot = (pTileGrid + 0x14) >>> 0;
@@ -468,6 +526,7 @@ export function DRLGLOGIC_GetRoomCoordListAtSubtile113c(
   nTileY: number,
   nTileX: number,
 ): number {
+  hitD2CommonVa113c(0x6FDD10A0);
   const roomEx = pRoomEx >>> 0;
   const pCoords = m.get(roomEx, D2RoomExStrc.pLogicalRoomInfo);
   if (pCoords === 0) {
@@ -494,6 +553,7 @@ export function DRLGLOGIC_AllocSingleRoomCoordList113c(
   m: Memory113c,
   pRoomEx: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD1100);
   const roomEx = pRoomEx >>> 0;
   const pLevel0 = m.get(roomEx, D2RoomExStrc.pLevel);
   const pDrlg0 = m.u32((pLevel0 + 0x1b4) >>> 0);
@@ -577,6 +637,7 @@ export function DRLGLOGIC_GetRoomCoordListFromWorldSubtile113c(
   nWorldSubtileX: number,
   nWorldSubtileY: number,
 ): number {
+  hitD2CommonVa113c(0x6FDD1950);
   const roomEx = pRoomEx >>> 0;
   const pCoords = m.get(roomEx, D2RoomExStrc.pLogicalRoomInfo);
   if (pCoords === 0) {
@@ -607,6 +668,7 @@ export function DRLGLOGIC_GetRoomCoordListIndexAtSubtile113c(
   nTileY: number,
   nTileX: number,
 ): number {
+  hitD2CommonVa113c(0x6FDD19C0);
   const roomEx = pRoomEx >>> 0;
   const pCoords = m.get(roomEx, D2RoomExStrc.pLogicalRoomInfo);
   if (pCoords === 0) {
@@ -642,6 +704,7 @@ export function DRLGLOGIC_BuildRoomCoordListRegions113c(
   pRoomEx: number,
   pCoords: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD1200);
   const roomEx = pRoomEx >>> 0;
   const coords = pCoords >>> 0;
   const pLevel = m.get(roomEx, D2RoomExStrc.pLevel);
@@ -816,6 +879,7 @@ export function DRLGLOGIC_LinkAdjacentRoomCoordListsAtSubtile113c(
   pRoomEx1: number,
   pRoomEx2: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD16C0);
   const room1 = pRoomEx1 >>> 0;
   const room2 = pRoomEx2 >>> 0;
   const x = nSubtileX | 0;
@@ -857,6 +921,7 @@ export function DRLGLOGIC_AssignCoordListIndicesAcrossGrid113c(
   m: Memory113c,
   pLogicalCoordCtx: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD1BC0);
   const ctx = pLogicalCoordCtx >>> 0;
   const pRoomEx = m.u32(ctx);
   if ((m.u32((pRoomEx + 0x40) >>> 0) | 0) < 0) return;
@@ -902,6 +967,135 @@ export function DRLGLOGIC_AssignCoordListIndicesAcrossGrid113c(
     y = (y + 1) | 0;
     if (y > curHeight) break;
   } while (true);
+}
+
+/**
+ * `@va D2Common:0x6FDD1AD0` (`DRLGLOGIC_LinkAdjacentRoomsCoordLists113c`, not exported;
+ * custom LTCG `esi = pRoomEx`, `ret`).
+ */
+export function DRLGLOGIC_LinkAdjacentRoomsCoordLists113c(m: Memory113c, pRoomEx: number): void {
+  hitD2CommonVa113c(0x6FDD1AD0);
+  const roomEx = pRoomEx >>> 0;
+  let i = 0;
+  while (i < (m.u32((roomEx + 0x2c) >>> 0) | 0)) {
+    const pNear = m.u32((m.u32((roomEx + 0x08) >>> 0) + i * 4) >>> 0);
+    if (pNear !== roomEx && m.u32((pNear + 0x64) >>> 0) !== 0) {
+      const rX = m.u32((roomEx + 0x34) >>> 0) | 0;
+      const nX = m.u32((pNear + 0x34) >>> 0) | 0;
+      const rW = m.u32((roomEx + 0x3c) >>> 0) | 0;
+      const nW = m.u32((pNear + 0x3c) >>> 0) | 0;
+      const distX = rX < nX ? (nX - rW - rX) | 0 : (rX - nW - nX) | 0;
+
+      const rY = m.u32((roomEx + 0x38) >>> 0) | 0;
+      const nY = m.u32((pNear + 0x38) >>> 0) | 0;
+      const rH = m.u32((roomEx + 0x40) >>> 0) | 0;
+      const nH = m.u32((pNear + 0x40) >>> 0) | 0;
+      const distY = rY < nY ? (nY - rH - rY) | 0 : (rY - nH - nY) | 0;
+
+      if (distX < 1 && distY < 1) {
+        const startX = m.u32((roomEx + 0x34) >>> 0) | 0;
+        const startY = m.u32((roomEx + 0x38) >>> 0) | 0;
+        const endX = (startX + (m.u32((roomEx + 0x3c) >>> 0) | 0)) | 0;
+        for (let x = startX; x <= endX; x++) {
+          const curY = m.u32((roomEx + 0x38) >>> 0) | 0;
+          DRLGLOGIC_LinkAdjacentRoomCoordListsAtSubtile113c(m, curY, x, pNear, roomEx);
+          const botY = ((m.u32((roomEx + 0x38) >>> 0) | 0) + (m.u32((roomEx + 0x40) >>> 0) | 0)) | 0;
+          DRLGLOGIC_LinkAdjacentRoomCoordListsAtSubtile113c(m, botY, x, pNear, roomEx);
+        }
+        const endY = (startY + (m.u32((roomEx + 0x40) >>> 0) | 0)) | 0;
+        for (let y = startY; y <= endY; y++) {
+          const curX = m.u32((roomEx + 0x34) >>> 0) | 0;
+          DRLGLOGIC_LinkAdjacentRoomCoordListsAtSubtile113c(m, y, curX, pNear, roomEx);
+          const rightX = ((m.u32((roomEx + 0x34) >>> 0) | 0) + (m.u32((roomEx + 0x3c) >>> 0) | 0)) | 0;
+          DRLGLOGIC_LinkAdjacentRoomCoordListsAtSubtile113c(m, y, rightX, pNear, roomEx);
+        }
+      }
+    }
+    i++;
+  }
+}
+
+/**
+ * `@va D2Common:0x6FDD1CA0` (`DRLGLOGIC_AllocAndBuildRoomCoordList113c`, not exported;
+ * `__stdcall(pRoomEx, nPresetFlags, pTileGrid1, pTileGrid2) -> void`, `ret 0x10`).
+ */
+export function DRLGLOGIC_AllocAndBuildRoomCoordList113c(
+  m: Memory113c,
+  pRoomEx: number,
+  nPresetFlags: number,
+  pTileGrid1: number,
+  pTileGrid2: number,
+): void {
+  hitD2CommonVa113c(0x6FDD1CA0);
+  const roomEx = pRoomEx >>> 0;
+  const pLevel = m.u32((roomEx + 0x58) >>> 0);
+  const pDrlg = m.u32((pLevel + 0x1b4) >>> 0);
+  void m.u32((pDrlg + 0x478) >>> 0);
+
+  const pLogical = m.alloc(0x34);
+  m.fill(pLogical, 0x34, 0);
+  m.setU32((roomEx + 0x64) >>> 0, pLogical);
+
+  DRLGLOGIC_MarkFloorTileCells113c(m, roomEx, pTileGrid2 >>> 0);
+  m.setU32(pLogical, (m.u32(pLogical) | 0x02) >>> 0);
+
+  const pLogicalGrid = (pLogical + 0x08) >>> 0;
+  const w = ((m.u32((roomEx + 0x3c) >>> 0) | 0) + 1) | 0;
+  const h = ((m.u32((roomEx + 0x40) >>> 0) | 0) + 1) | 0;
+  DRLGGRID_AllocAndInitGridCells113c(m, pLogicalGrid, m.u32((pDrlg + 0x478) >>> 0), w, h);
+
+  if (m.u32((pLevel + 0x1dc) >>> 0) === 0) {
+    m.setU32((pLevel + 0x1dc) >>> 0, 1);
+  }
+  const startCoordId = m.u32((pLevel + 0x1dc) >>> 0) | 0;
+
+  const sm = withDrlgLogicStackScratch113c(m);
+  const ctx = DRLGLOGIC_STACK_BASE;
+  const tempWallGrid = (DRLGLOGIC_STACK_BASE + 0x40) >>> 0;
+  const rowOffsetsBuf = (DRLGLOGIC_STACK_BASE + 0x80) >>> 0;
+  const cellsBuf = (DRLGLOGIC_STACK_BASE + 0x500) >>> 0;
+
+  const cellBytes = Math.imul(w, h) * 4;
+  if (cellBytes > 0) {
+    sm.fill(cellsBuf, cellBytes, 0);
+  }
+  let rowOff = 0;
+  for (let y = 0; y < h; y++) {
+    sm.setU32((rowOffsetsBuf + y * 4) >>> 0, rowOff >>> 0);
+    rowOff = (rowOff + w) | 0;
+  }
+
+  sm.setU32(tempWallGrid, cellsBuf);
+  sm.setU32((tempWallGrid + 0x04) >>> 0, rowOffsetsBuf);
+  sm.setU32((tempWallGrid + 0x08) >>> 0, w >>> 0);
+  sm.setU32((tempWallGrid + 0x0c) >>> 0, h >>> 0);
+  sm.setU32((tempWallGrid + 0x10) >>> 0, 0);
+
+  DRLGLOGIC_MarkWallTileCells113c(sm, roomEx, tempWallGrid);
+
+  sm.fill(ctx, 0x20, 0);
+  sm.setU32(ctx, roomEx);
+  sm.setU32((ctx + 0x04) >>> 0, pLogicalGrid);
+  sm.setU32((ctx + 0x08) >>> 0, nPresetFlags >>> 0);
+  sm.setU32((ctx + 0x0c) >>> 0, pTileGrid2 >>> 0);
+  sm.setU32((ctx + 0x10) >>> 0, pTileGrid1 >>> 0);
+  sm.setU32((ctx + 0x14) >>> 0, tempWallGrid);
+  sm.setU32((ctx + 0x18) >>> 0, startCoordId >>> 0);
+  sm.setU32((ctx + 0x1c) >>> 0, 0);
+
+  DRLGLOGIC_AssignCoordListIndicesAcrossGrid113c(sm, ctx);
+
+  const nCoordLists = ((sm.u32((ctx + 0x18) >>> 0) | 0) - startCoordId + 1) | 0;
+  m.setU32((pLogical + 0x04) >>> 0, nCoordLists >>> 0);
+  const arrBytes = Math.imul(nCoordLists, 0x30) >>> 0;
+  const pCoordListArr = m.alloc(arrBytes);
+  m.fill(pCoordListArr, arrBytes, 0);
+  m.setU32((pLogical + 0x30) >>> 0, pCoordListArr);
+  m.setU32((pLevel + 0x1dc) >>> 0, ((m.u32((pLevel + 0x1dc) >>> 0) | 0) + nCoordLists) >>> 0);
+
+  DRLGLOGIC_BuildRoomCoordListRegions113c(m, roomEx, pLogical);
+  DRLGLOGIC_AssignTileDataCoordListPointers113c(m, roomEx);
+  DRLGLOGIC_LinkAdjacentRoomsCoordLists113c(m, roomEx);
 }
 
 

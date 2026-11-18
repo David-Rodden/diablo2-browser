@@ -37,6 +37,7 @@ import {
   type LocalServerSessionHandle,
   type LocalServerSessionRequest,
   type ServerEvent,
+  type SinglePlayerBackendMode,
   type UnitId,
 } from '../netproto/index.ts'
 import {
@@ -45,6 +46,16 @@ import {
   type GameModePolicy,
 } from './engine/game-instance.ts'
 import { FIXED_ONE } from './engine/stat-list.ts'
+import {
+  LocalKernelD2gsAdapter113c,
+  type LocalKernelD2gsAdapterOptions113c,
+} from './net/local-kernel-d2gs-adapter-113c.ts'
+
+export {
+  LocalKernelD2gsAdapter113c,
+  type LocalKernelD2gsAdapterOptions113c,
+  type SinglePlayerBackendMode,
+}
 import { createAreaBootstrapResolver } from './world/area-bootstrap.ts'
 import {
   extractCharSummaryFromD2s,
@@ -585,6 +596,7 @@ export interface LocalLobbyProviderOptions {
   readonly seed?: number | undefined
   readonly seedGenerator?: ((previousSeed?: number) => number) | undefined
   readonly registry?: unknown
+  readonly backend?: SinglePlayerBackendMode | undefined
 }
 
 /**
@@ -646,6 +658,15 @@ export class LocalLobbyProvider implements LobbyProvider {
   private selectedCharName: string | undefined
   private persistedPlayersX: number | undefined = undefined
   private lastAreaLevelSource: LocalAreaLevelSource | undefined = undefined
+  private backendMode: SinglePlayerBackendMode = 'legacy'
+
+  getBackend(): SinglePlayerBackendMode {
+    return this.backendMode
+  }
+
+  setBackend(mode: SinglePlayerBackendMode): void {
+    this.backendMode = mode === 'd2kern-113c' ? 'd2kern-113c' : 'legacy'
+  }
 
   getPersistedPlayersX(): number | undefined {
     return this.persistedPlayersX
@@ -660,6 +681,9 @@ export class LocalLobbyProvider implements LobbyProvider {
   }
 
   constructor(options: LocalLobbyProviderOptions = {}) {
+    if (options.backend === 'd2kern-113c') {
+      this.backendMode = 'd2kern-113c'
+    }
     const configuredSeed = options.defaultMapSeed ?? options.seed
     this.defaultMapSeed = configuredSeed !== undefined ? (configuredSeed >>> 0) || 1 : undefined
     this.seedGenerator = options.seedGenerator
@@ -896,13 +920,49 @@ export class LocalLobbyProvider implements LobbyProvider {
     }
   }
 
+  async enterKernelGame(
+    target?:
+      | { readonly mode: 'create'; readonly spec: GameCreateSpec }
+      | { readonly mode: 'join'; readonly name: string; readonly password?: string | undefined }
+      | { readonly mode: 'single'; readonly difficulty?: 0 | 1 | 2 | undefined }
+      | LobbyEnterGameTarget,
+  ): Promise<LocalKernelD2gsAdapter113c> {
+    return (await this.enterGameInternal(target, 'd2kern-113c')) as LocalKernelD2gsAdapter113c
+  }
+
+  enterGame(
+    target: LobbyEnterGameTarget & { readonly backend: 'd2kern-113c' },
+  ): Promise<LocalKernelD2gsAdapter113c>
+  enterGame(
+    target?:
+      | { readonly mode: 'create'; readonly spec: GameCreateSpec }
+      | { readonly mode: 'join'; readonly name: string; readonly password?: string | undefined }
+      | { readonly mode: 'single'; readonly difficulty?: 0 | 1 | 2 | undefined }
+      | LobbyEnterGameTarget,
+  ): Promise<LocalLoopbackAdapter>
   async enterGame(
     target?:
       | { readonly mode: 'create'; readonly spec: GameCreateSpec }
       | { readonly mode: 'join'; readonly name: string; readonly password?: string | undefined }
       | { readonly mode: 'single'; readonly difficulty?: 0 | 1 | 2 | undefined }
       | LobbyEnterGameTarget,
-  ): Promise<LocalLoopbackAdapter> {
+  ): Promise<LocalLoopbackAdapter | LocalKernelD2gsAdapter113c> {
+    const requestedBackend: SinglePlayerBackendMode =
+      target !== undefined && 'backend' in target && target.backend !== undefined
+        ? target.backend
+        : this.backendMode
+    return await this.enterGameInternal(target, requestedBackend)
+  }
+
+  private async enterGameInternal(
+    target:
+      | { readonly mode: 'create'; readonly spec: GameCreateSpec }
+      | { readonly mode: 'join'; readonly name: string; readonly password?: string | undefined }
+      | { readonly mode: 'single'; readonly difficulty?: 0 | 1 | 2 | undefined }
+      | LobbyEnterGameTarget
+      | undefined,
+    backend: SinglePlayerBackendMode,
+  ): Promise<LocalLoopbackAdapter | LocalKernelD2gsAdapter113c> {
     if (target && 'd2sBytes' in target && target.d2sBytes instanceof Uint8Array) {
       const parsed = readD2sSave113c(target.d2sBytes)
       this.putCharacterD2s(parsed.name, target.d2sBytes)
@@ -973,6 +1033,23 @@ export class LocalLobbyProvider implements LobbyProvider {
       (target && 'areaLevelSource' in target ? target.areaLevelSource : undefined) ??
       this.lastAreaLevelSource
 
+    if (backend === 'd2kern-113c') {
+      return new LocalKernelD2gsAdapter113c({
+        charName: key,
+        d2s: d2sBytes,
+        difficulty: requestedDifficulty,
+        mapSeed: effectiveSeed,
+        playersX: this.persistedPlayersX,
+        onPlayersXChange: (nextPlayersX) => {
+          this.persistedPlayersX = nextPlayersX
+        },
+        resolveAreaBootstrap: areaLevelSource ? createAreaBootstrapResolver(areaLevelSource) : undefined,
+        onAutoSave: (updatedBytes) => {
+          this.saves.set(key!, new Uint8Array(updatedBytes))
+        },
+      })
+    }
+
     return new LocalLoopbackAdapter({
       charName: key,
       d2s: d2sBytes,
@@ -990,16 +1067,37 @@ export class LocalLobbyProvider implements LobbyProvider {
     })
   }
 
-  async enterSinglePlayerGame(
+  enterSinglePlayerGame(
+    options: {
+      readonly backend: 'd2kern-113c'
+      readonly charName?: string | undefined
+      readonly difficulty?: 0 | 1 | 2 | undefined
+      readonly mapSeed?: number | undefined
+      readonly playersX?: number | undefined
+    },
+  ): Promise<LocalKernelD2gsAdapter113c>
+  enterSinglePlayerGame(
     charNameOrOptions?:
       | string
       | {
+          readonly backend?: SinglePlayerBackendMode | undefined
           readonly charName?: string | undefined
           readonly difficulty?: 0 | 1 | 2 | undefined
           readonly mapSeed?: number | undefined
           readonly playersX?: number | undefined
         },
-  ): Promise<LocalLoopbackAdapter> {
+  ): Promise<LocalLoopbackAdapter>
+  async enterSinglePlayerGame(
+    charNameOrOptions?:
+      | string
+      | {
+          readonly backend?: SinglePlayerBackendMode | undefined
+          readonly charName?: string | undefined
+          readonly difficulty?: 0 | 1 | 2 | undefined
+          readonly mapSeed?: number | undefined
+          readonly playersX?: number | undefined
+        },
+  ): Promise<LocalLoopbackAdapter | LocalKernelD2gsAdapter113c> {
     if (typeof charNameOrOptions === 'string') {
       return this.enterGame({ charName: charNameOrOptions })
     }
@@ -1091,11 +1189,84 @@ export class LocalLobbyProvider implements LobbyProvider {
   }
 }
 
-export function createLocalLoopbackSession(
+export function createLocalKernelSession113c(
   req: LocalServerSessionRequest = {},
-): LocalServerSessionHandle & { readonly gameAdapter: LocalLoopbackAdapter } {
+): LocalServerSessionHandle & { readonly gameAdapter: LocalKernelD2gsAdapter113c } {
   const diffNum = resolveDifficultyNum(req.difficulty)
   const lobby = getLocalLobbyProvider()
+  if (req.playersX !== undefined) {
+    lobby?.setPersistedPlayersX?.(req.playersX)
+  }
+  const adapter = new LocalKernelD2gsAdapter113c({
+    charName: req.charName,
+    classId: req.classId ?? req.charClass ?? req.charClassId ?? 0,
+    level: req.charLevel,
+    areaId: req.levelId,
+    difficulty: diffNum,
+    mapSeed: req.mapSeed,
+    playersX: req.playersX,
+    onPlayersXChange: (nextPlayersX) => {
+      lobby?.setPersistedPlayersX?.(nextPlayersX)
+    },
+    d2sBytes: req.d2sBytes,
+    allowPause: req.allowPause,
+    resolveAreaBootstrap: req.areaLevelSource
+      ? createAreaBootstrapResolver(req.areaLevelSource)
+      : undefined,
+    onAutoSave:
+      req.onSaveD2s && req.charName
+        ? (bytes) => req.onSaveD2s!(req.charName!, bytes)
+        : undefined,
+  })
+  return {
+    adapter,
+    gameAdapter: adapter,
+    stepFrame(): void {
+      adapter.stepFrame()
+    },
+    stepTick(): void {
+      adapter.stepFrame()
+    },
+    setPaused(paused: boolean): void {
+      adapter.setPaused(paused)
+    },
+    isPaused(): boolean {
+      return adapter.isPaused()
+    },
+    getPlayersX(): number {
+      return adapter.getPlayersX()
+    },
+    exportD2s(): Uint8Array {
+      return adapter.exportD2s()
+    },
+    stop(): void {
+      adapter.leave()
+    },
+  }
+}
+
+export function createLocalLoopbackSession(
+  req: LocalServerSessionRequest & { readonly backend: 'd2kern-113c' },
+): LocalServerSessionHandle & { readonly gameAdapter: LocalKernelD2gsAdapter113c }
+export function createLocalLoopbackSession(
+  req?: LocalServerSessionRequest,
+): LocalServerSessionHandle & { readonly gameAdapter: LocalLoopbackAdapter }
+export function createLocalLoopbackSession(
+  req: LocalServerSessionRequest = {},
+): LocalServerSessionHandle & {
+  readonly gameAdapter: LocalLoopbackAdapter | LocalKernelD2gsAdapter113c
+} {
+  const lobby = getLocalLobbyProvider()
+  const effectiveBackend: SinglePlayerBackendMode =
+    req.backend !== undefined
+      ? req.backend
+      : lobby?.getBackend?.() === 'd2kern-113c'
+        ? 'd2kern-113c'
+        : 'legacy'
+  if (effectiveBackend === 'd2kern-113c') {
+    return createLocalKernelSession113c(req)
+  }
+  const diffNum = resolveDifficultyNum(req.difficulty)
   if (req.playersX !== undefined) {
     lobby?.setPersistedPlayersX?.(req.playersX)
   }

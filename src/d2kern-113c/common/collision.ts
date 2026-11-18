@@ -6,14 +6,21 @@
  */
 import { D2RoomCollisionGridStrc } from '../mem/layout.generated.ts';
 import type { Memory113c } from '../mem/sparse-memory.ts';
-import { FIELD_StepFieldCoords113c } from '../tables/field-tbls-113c.ts';
+import { FIELD_AllocField113c, FIELD_FreeField113c, FIELD_StepFieldCoords113c } from '../tables/field-tbls-113c.ts';
 import {
+  DUNGEON_GetAdjacentRoomsListFromRoom113c,
   DUNGEON_GetCollisionGridFromRoomFast113c,
   DUNGEON_GetRoomAtPosition113c,
   DUNGEON_GetRoomCoordinates113c,
 } from './dungeon.ts';
 import { D2CommonAssertError } from './inline-helpers.ts';
 import { imul32 } from './int-math.ts';
+import {
+  PATH_SetPrecisionPosAndRecacheRoom113c,
+  PATH_StopMovementAndSnapToTileCenter113c,
+} from './path.ts';
+import { UNITS_GetUnitSizeX113c } from './unit.ts';
+import { hitD2CommonVa113c } from '../va-trace-113c.ts';
 
 const STACK_SCRATCH_BASE = 0x7fff0000;
 const STACK_SCRATCH_SIZE = 0x1000;
@@ -91,6 +98,7 @@ export function COLLISION_SetMaskForBoundingBox113c(
   pBox: number,
   wMask: number,
 ): void {
+  hitD2CommonVa113c(0x6FD9AB60);
   const box = pBox >>> 0;
   const gridX = m.get(pCollGrid, D2RoomCollisionGridStrc.nSubtileX) | 0;
   const gridY = m.get(pCollGrid, D2RoomCollisionGridStrc.nSubtileY) | 0;
@@ -127,6 +135,7 @@ export function COLLISION_ClearMaskForBoundingBox113c(
   pBox: number,
   wMask: number,
 ): void {
+  hitD2CommonVa113c(0x6FD9ABD0);
   const box = pBox >>> 0;
   const gridX = m.get(pCollGrid, D2RoomCollisionGridStrc.nSubtileX) | 0;
   const gridY = m.get(pCollGrid, D2RoomCollisionGridStrc.nSubtileY) | 0;
@@ -163,6 +172,7 @@ export function COLLISION_CheckMaskForBoundingBox113c(
   pBox: number,
   wMask: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9AC40);
   const box = pBox >>> 0;
   const gridX = m.get(pCollGrid, D2RoomCollisionGridStrc.nSubtileX) | 0;
   const gridY = m.get(pCollGrid, D2RoomCollisionGridStrc.nSubtileY) | 0;
@@ -204,6 +214,7 @@ export function COLLISION_FillTileSubtilesMask113c(
   pCollGrid: number,
   wMask: number,
 ): void {
+  hitD2CommonVa113c(0x6FD9B560);
   const grid = pCollGrid >>> 0;
   if (grid === 0) return;
   const pMapStart = m.get(grid, D2RoomCollisionGridStrc.pMapStart);
@@ -245,6 +256,7 @@ export function COLLISION_SplitClipRectByRoomBounds113c(
   pInRect: number,
   pOutRects: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9AA90);
   const inRect = pInRect >>> 0;
   const outRects = pOutRects >>> 0;
   const inTop = m.u32((inRect + 0x04) >>> 0) | 0;
@@ -326,6 +338,7 @@ export function COLLISION_CopyTileSubtileFlagsToCollGrid113c(
   pCollGrid: number,
   pTileLibraryEntry: number,
 ): void {
+  hitD2CommonVa113c(0x6FD9B5F0);
   const grid = pCollGrid >>> 0;
   if (grid === 0) return;
   const pMapStart = m.get(grid, D2RoomCollisionGridStrc.pMapStart);
@@ -375,6 +388,7 @@ export function COLLISION_ClearTileSubtileFlagsFromCollGrid113c(
   pCollGrid: number,
   pTileLibraryEntry: number,
 ): void {
+  hitD2CommonVa113c(0x6FD9B6B0);
   const grid = pCollGrid >>> 0;
   if (grid === 0) return;
   const pMapStart = m.get(grid, D2RoomCollisionGridStrc.pMapStart);
@@ -425,6 +439,7 @@ export function COLLISION_OrTileSubtileFlagsToCollGrid113c(
   pCollGrid: number,
   pTileLibraryEntry: number,
 ): void {
+  hitD2CommonVa113c(0x6FD9B780);
   const grid = pCollGrid >>> 0;
   if (grid === 0) return;
   const pMapStart = m.get(grid, D2RoomCollisionGridStrc.pMapStart);
@@ -473,6 +488,7 @@ export function COLLISION_InitBoundingBox113c(
   nLeft: number,
   nBottom: number,
 ): void {
+  hitD2CommonVa113c(0x6FDCE390);
   if (pBox === 0) {
     throw new D2CommonAssertError('..\\Source\\D2Common\\DATATBLS\\FieldTbls.cpp', 161);
   }
@@ -498,6 +514,7 @@ export function COLLISION_StampRoomTileGridToCollGrid113c(
   nTileCount: number,
   bCopyMode: number,
 ): void {
+  hitD2CommonVa113c(0x6FD9CA90);
   const count = nTileCount | 0;
   if (count <= 0) {
     return;
@@ -580,6 +597,7 @@ export function COLLISION_RayTrace113c(
   pPt2: number,
   dwMask: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9AD20);
   const pt1 = pPt1 >>> 0;
   const pt2 = pPt2 >>> 0;
   const y1 = m.u32((pt1 + 0x04) >>> 0) | 0;
@@ -859,6 +877,7 @@ export function COLLISION_SetMaskForBoundingBoxRecursively113c(
   wMask: number,
   depth = 0,
 ): void {
+  hitD2CommonVa113c(0x6FD9B280);
   const sm = withStackScratch113c(m);
   const rect = pClipRect >>> 0;
   const edi = DUNGEON_GetRoomAtPosition113c(sm, pRoom, sm.u32(rect) | 0, sm.u32((rect + 0x04) >>> 0) | 0);
@@ -898,6 +917,7 @@ export function COLLISION_ClearMaskForBoundingBoxRecursively113c(
   wMask: number,
   depth = 0,
 ): void {
+  hitD2CommonVa113c(0x6FD9B2F0);
   const sm = withStackScratch113c(m);
   const rect = pClipRect >>> 0;
   const edi = DUNGEON_GetRoomAtPosition113c(sm, pRoom, sm.u32(rect) | 0, sm.u32((rect + 0x04) >>> 0) | 0);
@@ -937,6 +957,7 @@ export function COLLISION_CheckAnyCollisionWithBoxRecursively113c(
   wMask: number,
   depth = 0,
 ): number {
+  hitD2CommonVa113c(0x6FD9B360);
   const sm = withStackScratch113c(m);
   const rect = pClipRect >>> 0;
   const edi = DUNGEON_GetRoomAtPosition113c(sm, pRoom, sm.u32(rect) | 0, sm.u32((rect + 0x04) >>> 0) | 0);
@@ -984,6 +1005,7 @@ export function COLLISION_GetCombinedMaskForBoxRecursively113c(
   wMask: number,
   depth = 0,
 ): number {
+  hitD2CommonVa113c(0x6FD9B3F0);
   const sm = withStackScratch113c(m);
   const rect = pClipRect >>> 0;
   const edi = DUNGEON_GetRoomAtPosition113c(sm, pRoom, sm.u32(rect) | 0, sm.u32((rect + 0x04) >>> 0) | 0);
@@ -1027,6 +1049,7 @@ export function COLLISION_ClearSubtileMaskInRoom113c(
   nY: number,
   nX: number,
 ): void {
+  hitD2CommonVa113c(0x6FD9B4D0);
   const room = DUNGEON_GetRoomAtPosition113c(m, pRoom, nX | 0, nY | 0);
   if (room === 0) return;
   const pCollGrid = m.u32((room + 0x20) >>> 0);
@@ -1051,6 +1074,7 @@ export function COLLISION_SetSubtileMaskInRoom113c(
   nX: number,
   wMask: number,
 ): void {
+  hitD2CommonVa113c(0x6FD9B930);
   const room = DUNGEON_GetRoomAtPosition113c(m, pRoom, nX | 0, nY | 0);
   if (room === 0) return;
   const pCollGrid = m.u32((room + 0x20) >>> 0);
@@ -1075,6 +1099,7 @@ export function COLLISION_SetCrossPatternMask113c(
   nX: number,
   wMask: number,
 ): void {
+  hitD2CommonVa113c(0x6FD9B970);
   const x = nX | 0;
   const y = nY | 0;
   const mask16 = wMask & 0xffff;
@@ -1111,6 +1136,7 @@ export function COLLISION_ClearSubtileMaskInRoom_6FD9BB70_113c(
   nY: number,
   nX: number,
 ): void {
+  hitD2CommonVa113c(0x6FD9BB70);
   COLLISION_ClearSubtileMaskInRoom113c(m, pRoom, wMask, nY, nX);
 }
 
@@ -1125,6 +1151,7 @@ export function COLLISION_ClearCrossPatternMask113c(
   nX: number,
   wMask: number,
 ): void {
+  hitD2CommonVa113c(0x6FD9BBB0);
   const x = nX | 0;
   const y = nY | 0;
   const invMask16 = ~wMask & 0xffff;
@@ -1161,6 +1188,7 @@ export function COLLISION_CheckSubtileMaskInRoomFast113c(
   nX: number,
   wMask: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9C570);
   const room = DUNGEON_GetRoomAtPosition113c(m, pRoom, nX | 0, nY | 0);
   if (room === 0) return 0x27;
   const pCollGrid = m.u32((room + 0x20) >>> 0);
@@ -1185,6 +1213,7 @@ export function COLLISION_ClearSubtileMask113c(
   nY: number,
   wMask: number,
 ): void {
+  hitD2CommonVa113c(0x6FD9C940);
   COLLISION_ClearSubtileMaskInRoom113c(m, pRoom, wMask, nY, nX);
 }
 
@@ -1199,6 +1228,7 @@ export function COLLISION_SetSubtileMask113c(
   nY: number,
   wMask: number,
 ): void {
+  hitD2CommonVa113c(0x6FD9C990);
   COLLISION_SetSubtileMaskInRoom113c(m, pRoom, nY, nX, wMask);
 }
 
@@ -1213,6 +1243,7 @@ export function COLLISION_CheckSubtileMask113c(
   nY: number,
   wMask: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9C9D0);
   return COLLISION_CheckSubtileMaskInRoomFast113c(m, pRoom, nY, nX, wMask);
 }
 
@@ -1226,6 +1257,7 @@ export function COLLISION_ReplaceTileSubtileFlagsInRoom113c(
   pTileEntry: number,
   pNewTileLibraryEntry: number,
 ): void {
+  hitD2CommonVa113c(0x6FD9CA20);
   const room0 = pRoom >>> 0;
   if (room0 === 0) return;
   const pRoomCoords = m.u32((room0 + 0x20) >>> 0);
@@ -1262,6 +1294,7 @@ export function COLLISION_TraceFieldCollision113c(
   nY: number,
   wMask: number,
 ): number {
+  hitD2CommonVa113c(0x6FDCE6C0);
   const sm = withStackScratch113c(m);
   const room0 = pRoom >>> 0;
   if (room0 === 0) return 0;
@@ -1317,6 +1350,7 @@ export function COLLISION_IsPointWithinRoomMargin113c(
   nX: number,
   nMargin: number,
 ): number {
+  hitD2CommonVa113c(0x6FDCF490);
   const sm = withStackScratch113c(m);
   const pRoomCoords = STACK_SCRATCH_BASE + 0x900;
   DUNGEON_GetRoomCoordinates113c(sm, pRoom, pRoomCoords);
@@ -1354,6 +1388,7 @@ export function COLLISION_GetMaskAt113c(
   nY: number,
   wMask: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9B510);
   const room = DUNGEON_GetRoomAtPosition113c(m, pRoom, nX | 0, nY | 0);
   if (room === 0) return 0x27;
   const pCollGrid = m.u32((room + 0x20) >>> 0);
@@ -1384,6 +1419,7 @@ export function COLLISION_RayTraceBetweenSizedPoints113c(
   pRoom: number,
   dwMask: number,
 ): number {
+  hitD2CommonVa113c(0x6FD80730);
   const sm = withStackScratch113c(m);
   const s1 = (nSize1 | 0) >= 3 ? 2 : (nSize1 | 0);
   const s2 = (nSize2 | 0) >= 3 ? 2 : (nSize2 | 0);
@@ -1440,6 +1476,7 @@ export function COLLISION_SetMaskWithSizeXY113c(
   nSizeY: number,
   wMask: number,
 ): void {
+  hitD2CommonVa113c(0x6FD9B840);
   const sx = nSizeX | 0;
   const sy = nSizeY | 0;
   if (sx === 1 && sy === 1) {
@@ -1470,6 +1507,7 @@ export function COLLISION_SetMask3x3_113c(
   nY: number,
   wMask: number,
 ): void {
+  hitD2CommonVa113c(0x6FD9B8F0);
   const sm = withStackScratch113c(m);
   const x = nX | 0;
   const y = nY | 0;
@@ -1494,6 +1532,7 @@ export function COLLISION_ResetMaskWithSizeXY113c(
   nSizeY: number,
   wMask: number,
 ): void {
+  hitD2CommonVa113c(0x6FD9BAB0);
   const sx = nSizeX | 0;
   const sy = nSizeY | 0;
   if (sx <= 0 || sy <= 0) return;
@@ -1525,6 +1564,7 @@ export function COLLISION_ResetMask3x3_113c(
   nY: number,
   wMask: number,
 ): void {
+  hitD2CommonVa113c(0x6FD9BB30);
   const sm = withStackScratch113c(m);
   const x = nX | 0;
   const y = nY | 0;
@@ -1548,6 +1588,7 @@ export function COLLISION_SetMaskWithPattern113c(
   nPattern: number,
   wMask: number,
 ): void {
+  hitD2CommonVa113c(0x6FD9BFC0);
   const pat = nPattern | 0;
   if (pat === 1) {
     COLLISION_SetSubtileMaskInRoom113c(m, pRoom, nY, nX, wMask);
@@ -1571,6 +1612,7 @@ export function COLLISION_CheckMaskWithSizeXY113c(
   nSizeY: number,
   wMask: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9C080);
   const sx = nSizeX | 0;
   const sy = nSizeY | 0;
   if (sx <= 1 && sy <= 1) {
@@ -1601,6 +1643,7 @@ export function COLLISION_CheckCrossPatternCollision113c(
   pRoom: number,
   nY: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9C140);
   const x = nX | 0;
   const y = nY | 0;
   const mask16 = wMask & 0xffff;
@@ -1709,6 +1752,7 @@ export function COLLISION_GetMask3x3_113c(
   nY: number,
   wMask: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9C530);
   const sm = withStackScratch113c(m);
   const x = nX | 0;
   const y = nY | 0;
@@ -1732,6 +1776,7 @@ export function COLLISION_GetCrossPatternMask113c(
   nY: number,
   wMask: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9C5C0);
   const x = nX | 0;
   const y = nY | 0;
   const mask16 = wMask & 0xffff;
@@ -1852,6 +1897,7 @@ export function COLLISION_FindFreeCoordsNear113c(
   wMask: number,
   ppRoomOut: number,
 ): void {
+  hitD2CommonVa113c(0x6FD9CB90);
   const sm = withStackScratch113c(m);
   const coord = pCoord >>> 0;
   const roomOut = ppRoomOut >>> 0;
@@ -1929,6 +1975,7 @@ export function COLLISION_ResetMaskWithPattern113c(
   nCollisionPattern: number,
   wMask: number,
 ): void {
+  hitD2CommonVa113c(0x6FD9BCF0);
   const room = pRoom >>> 0;
   if (room === 0) return;
   const pat = nCollisionPattern >>> 0;
@@ -1978,6 +2025,7 @@ export function COLLISION_ResetMaskWithPatternSimple113c(
   nCollisionPattern: number,
   wMask: number,
 ): void {
+  hitD2CommonVa113c(0x6FD9BE10);
   const room = pRoom >>> 0;
   if (room === 0) return;
   const pat = nCollisionPattern >>> 0;
@@ -2003,6 +2051,7 @@ export function COLLISION_SetUnitCollisionMaskWithPattern113c(
   nCollisionPattern: number,
   wMask: number,
 ): void {
+  hitD2CommonVa113c(0x6FD9BE90);
   const pat = nCollisionPattern >>> 0;
   if (pat > 5) return;
   switch (pat) {
@@ -2050,6 +2099,7 @@ export function COLLISION_CheckMaskWithPattern1_113c(
   nCollisionPattern: number,
   wMask: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9CE00);
   const pat = nCollisionPattern >>> 0;
   if (pat === 0 || pat === 1) {
     return COLLISION_CheckSubtileMaskInRoomFast113c(m, pRoom, nY, nX, wMask) & 0xffff;
@@ -2075,6 +2125,7 @@ export function COLLISION_CheckMaskWithPattern2_113c(
   nCollisionPattern: number,
   wMask: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9CE90);
   const pat = nCollisionPattern >>> 0;
   if (pat === 0) {
     return COLLISION_CheckSubtileMaskInRoomFast113c(m, pRoom, nY, nX, wMask) & 0xffff;
@@ -2108,6 +2159,7 @@ export function COLLISION_GetMaskWithPattern2_113c(
   nCollisionPattern: number,
   wMask: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9CF40);
   const pat = nCollisionPattern >>> 0;
   if (pat === 0) {
     return COLLISION_CheckSubtileMaskInRoomFast113c(m, pRoom, nY, nX, wMask) & 0xffff;
@@ -2144,6 +2196,7 @@ export function COLLISION_MoveUnitCollisionMask113c(
   wFootprintMask: number,
   wMoveTestMask: number,
 ): number {
+  hitD2CommonVa113c(0x6FD9D6E0);
   COLLISION_ResetMaskWithPattern113c(m, pRoom, nOldX, nOldY, nCollisionPattern, wFootprintMask);
   const hit =
     COLLISION_GetMaskWithPattern2_113c(m, pRoom, nNewX, nNewY, nCollisionPattern, wMoveTestMask) &
@@ -2168,5 +2221,556 @@ export function COLLISION_MoveUnitCollisionMask113c(
     );
   }
   return hit;
+}
+
+/**
+ * `@va D2Common:0x6FD5DF30` (`COLLISION_MoveUnitToRoomAndCoord113c`, not exported;
+ * custom LTCG `eax = pDynamicPath`, `[esp+4] = pRoom`, `[esp+8] = packedXY`, `ret 8 -> BOOL`).
+ */
+export function COLLISION_MoveUnitToRoomAndCoord113c(
+  m: Memory113c,
+  pDynamicPath: number,
+  pRoom: number,
+  packedXY: number,
+): number {
+  hitD2CommonVa113c(0x6FD5DF30);
+  const path = pDynamicPath >>> 0;
+  const room = pRoom >>> 0;
+  const packed = packedXY >>> 0;
+  const wX = packed & 0xffff;
+  const wY = (packed >>> 16) & 0xffff;
+  const pUnit = m.u32((path + 0x30) >>> 0);
+
+  if (pUnit !== 0 && m.u32(pUnit) === 3) {
+    if (wX === 0 && wY === 0) {
+      COLLISION_ResetMaskWithPatternSimple113c(
+        m,
+        m.u32((path + 0x1c) >>> 0),
+        m.u16((path + 0x02) >>> 0),
+        m.u16((path + 0x06) >>> 0),
+        m.u32((path + 0x44) >>> 0) | 0,
+        m.u32((path + 0x4c) >>> 0) & 0xffff,
+      );
+      m.setU16((path + 0x54) >>> 0, 0);
+    } else {
+      const oldX = m.u16((path + 0x02) >>> 0);
+      const oldY = m.u16((path + 0x06) >>> 0);
+      const curFlags = m.u32((path + 0x34) >>> 0);
+      if (oldX === wX && oldY === wY) {
+        m.setU32((path + 0x34) >>> 0, (curFlags & ~0x08) >>> 0);
+      } else {
+        m.setU32((path + 0x34) >>> 0, (curFlags | 0x08) >>> 0);
+      }
+      const dwUnitSize = m.u32((path + 0x44) >>> 0) | 0;
+      const nFootprintMask = m.u32((path + 0x4c) >>> 0) & 0xffff;
+      const nMoveTestMask = m.u32((path + 0x50) >>> 0) & 0xffff;
+      const pOldRoom = m.u32((path + 0x1c) >>> 0);
+      if (pOldRoom !== 0) {
+        COLLISION_ResetMaskWithPatternSimple113c(
+          m,
+          pOldRoom,
+          oldX,
+          oldY,
+          dwUnitSize,
+          nFootprintMask,
+        );
+      }
+      const mask =
+        COLLISION_CheckMaskWithPattern1_113c(m, room, wX, wY, dwUnitSize, nMoveTestMask) &
+        0xffff;
+      COLLISION_SetMaskWithPattern113c(m, room, wX, wY, dwUnitSize, nFootprintMask);
+      m.setU16((path + 0x54) >>> 0, mask);
+      m.setU32((path + 0x1d4) >>> 0, 1);
+      m.setU32((path + 0x1d8) >>> 0, packed);
+    }
+  } else {
+    const oldX = m.u16((path + 0x02) >>> 0);
+    const oldY = m.u16((path + 0x06) >>> 0);
+    const dwCollPattern = m.u32((path + 0x48) >>> 0) | 0;
+    const nFootprintMask = m.u32((path + 0x4c) >>> 0) & 0xffff;
+    if (wX === 0 && wY === 0) {
+      COLLISION_ResetMaskWithPattern113c(
+        m,
+        m.u32((path + 0x1c) >>> 0),
+        oldX,
+        oldY,
+        dwCollPattern,
+        nFootprintMask,
+      );
+    } else {
+      const pOldRoom = m.u32((path + 0x1c) >>> 0);
+      if (pOldRoom !== 0) {
+        COLLISION_ResetMaskWithPattern113c(
+          m,
+          pOldRoom,
+          oldX,
+          oldY,
+          dwCollPattern,
+          nFootprintMask,
+        );
+        COLLISION_SetUnitCollisionMaskWithPattern113c(
+          m,
+          room,
+          wX,
+          wY,
+          dwCollPattern,
+          nFootprintMask,
+        );
+      }
+    }
+  }
+
+  if (m.u32((path + 0x1c) >>> 0) !== room) {
+    m.setU32((path + 0x34) >>> 0, (m.u32((path + 0x34) >>> 0) | 0x01) >>> 0);
+  }
+  PATH_SetPrecisionPosAndRecacheRoom113c(
+    m,
+    path,
+    (((wX << 16) + 0x8000) | 0) >>> 0,
+    (((wY << 16) + 0x8000) | 0) >>> 0,
+    room,
+  );
+  if (wX !== 0 || wY !== 0) {
+    if (DUNGEON_GetRoomAtPosition113c(m, room, wX, wY) === 0) {
+      throw new D2CommonAssertError('..\\Source\\D2Common\\PATH\\Path.cpp', 1161);
+    }
+  }
+  PATH_StopMovementAndSnapToTileCenter113c(m, path);
+  return 1;
+}
+
+/**
+ * `@va D2Common:0x6FD9D010` (`COLLISION_AllocAndBuildRoomGrid113c`, not exported;
+ * `__stdcall(pMemPool, pRoom) -> void`, `ret 8`).
+ */
+export function COLLISION_AllocAndBuildRoomGrid113c(
+  m: Memory113c,
+  _pMemPool: number,
+  pRoom: number,
+): void {
+  hitD2CommonVa113c(0x6FD9D010);
+  const room = pRoom >>> 0;
+  if (room === 0) {
+    return;
+  }
+  const sm = withStackScratch113c(m);
+  const coords = (STACK_SCRATCH_BASE + 0xb00) >>> 0;
+  DUNGEON_GetRoomCoordinates113c(sm, room, coords);
+
+  const subtileW = sm.u32((coords + 0x08) >>> 0) | 0;
+  const subtileH = sm.u32((coords + 0x0c) >>> 0) | 0;
+  const cellCount = imul32(subtileW, subtileH);
+  const allocSize = (((cellCount + subtileH * 2 + 0x12) | 0) << 1) >>> 0;
+  const pGrid = sm.alloc(allocSize) >>> 0;
+
+  for (let i = 0; i < 8; i++) {
+    sm.setU32((pGrid + i * 4) >>> 0, sm.u32((coords + i * 4) >>> 0));
+  }
+  sm.setU32((room + 0x20) >>> 0, pGrid);
+  const pMapStart = (pGrid + 0x24) >>> 0;
+  sm.setU32((pGrid + 0x20) >>> 0, pMapStart);
+  sm.fill(pMapStart, (cellCount << 1) >>> 0, 0);
+
+  const nRoomsNear = sm.u32((room + 0x24) >>> 0) | 0;
+  const ppRoomsNear = sm.u32(room);
+  for (let i = 0; i < nRoomsNear; i++) {
+    const pNear0 = sm.u32((ppRoomsNear + i * 4) >>> 0);
+    if (pNear0 === 0) {
+      throw new D2CommonAssertError('..\\Source\\D2Common\\COLLISN\\Collisn.cpp', 709);
+    }
+    const pTileGrid0 = sm.u32((pNear0 + 0x08) >>> 0);
+    const pNearCoords = sm.u32((pNear0 + 0x20) >>> 0);
+    const pFloors = pTileGrid0 !== 0 ? sm.u32((pTileGrid0 + 0x08) >>> 0) : 0;
+    const nFloors = pTileGrid0 !== 0 ? (sm.u32((pTileGrid0 + 0x0c) >>> 0) | 0) : 0;
+    COLLISION_StampRoomTileGridToCollGrid113c(sm, pFloors, pGrid, pNearCoords, nFloors, 0);
+
+    const pNear1 = sm.u32((ppRoomsNear + i * 4) >>> 0);
+    if (pNear1 === 0) {
+      throw new D2CommonAssertError('..\\Source\\D2Common\\COLLISN\\Collisn.cpp', 177);
+    }
+    const pTileGrid1 = sm.u32((pNear1 + 0x08) >>> 0);
+    COLLISION_StampRoomTileGridToCollGrid113c(
+      sm,
+      sm.u32(pTileGrid1),
+      pGrid,
+      pNearCoords,
+      sm.u32((pTileGrid1 + 0x04) >>> 0) | 0,
+      0,
+    );
+
+    const pNear2 = sm.u32((ppRoomsNear + i * 4) >>> 0);
+    if (pNear2 === 0) {
+      throw new D2CommonAssertError('..\\Source\\D2Common\\COLLISN\\Collisn.cpp', 190);
+    }
+    const pTileGrid2 = sm.u32((pNear2 + 0x08) >>> 0);
+    COLLISION_StampRoomTileGridToCollGrid113c(
+      sm,
+      sm.u32((pTileGrid2 + 0x10) >>> 0),
+      pGrid,
+      pNearCoords,
+      sm.u32((pTileGrid2 + 0x14) >>> 0) | 0,
+      0,
+    );
+  }
+}
+
+/**
+ * `@va D2Common:0x6FD9D140` (`COLLISION_FindFreePosition113c`, not exported;
+ * `__stdcall(pRoom, pOutCoords, pFieldBoxCoords, nUnitSize, wMask, wFieldMask, bAllowFallback, nMaxRadius, nStep) -> pRoom`, `ret 0x24`).
+ */
+export function COLLISION_FindFreePosition113c(
+  m: Memory113c,
+  pRoom: number,
+  pOutCoords: number,
+  pFieldBoxCoords: number,
+  nUnitSize: number,
+  wMask: number,
+  wFieldMask: number,
+  bAllowFallback: number,
+  nMaxRadius: number,
+  nStep: number,
+): number {
+  hitD2CommonVa113c(0x6FD9D140);
+  const outCoords = pOutCoords >>> 0;
+  if (outCoords === 0) {
+    throw new D2CommonAssertError('..\\Source\\D2Common\\COLLISN\\Collisn.cpp', 1830);
+  }
+  const x0 = m.u32(outCoords) | 0;
+  const y0 = m.u32((outCoords + 4) >>> 0) | 0;
+  const fieldBox = pFieldBoxCoords >>> 0;
+  let pField = 0;
+  if (fieldBox !== 0) {
+    pField = FIELD_AllocField113c(m) >>> 0;
+    if (pField === 0) {
+      throw new D2CommonAssertError('..\\Source\\D2Common\\COLLISN\\Collisn.cpp', 1840);
+    }
+    COLLISION_InitBoundingBox113c(
+      m,
+      pField,
+      m.u32(fieldBox) | 0,
+      m.u32((fieldBox + 4) >>> 0) | 0,
+    );
+  }
+
+  const unitSize = nUnitSize | 0;
+  const mask16 = wMask & 0xffff;
+  const fieldMask16 = wFieldMask & 0xffff;
+  let pHintRoom = DUNGEON_GetRoomAtPosition113c(m, pRoom >>> 0, x0, y0) >>> 0;
+  if (
+    pHintRoom !== 0 &&
+    (COLLISION_CheckMaskWithPattern1_113c(m, pHintRoom, x0, y0, unitSize, mask16) & 0xffff) === 0
+  ) {
+    if (
+      fieldBox === 0 ||
+      COLLISION_TraceFieldCollision113c(m, pField, pHintRoom, x0, y0, fieldMask16) === 0
+    ) {
+      if (pField !== 0) {
+        FIELD_FreeField113c(m, pField);
+      }
+      return pHintRoom;
+    }
+  }
+
+  let bestDist = -1;
+  const maxRadius = nMaxRadius | 0;
+  const step = nStep | 0;
+  if (maxRadius > 1) {
+    let xMin = x0;
+    let xMax = x0;
+    let yMin = (y0 - 1) | 0;
+    let yMax = (y0 + 1) | 0;
+    let xStep = 2;
+
+    while (true) {
+      bestDist = -1;
+      for (let cy = yMin; cy <= yMax; cy = (cy + step) | 0) {
+        const xStart = (xMin - 1) | 0;
+        const xEnd = (xMax + 1) | 0;
+        const dy = (cy - y0) | 0;
+        const absDy = dy >= 0 ? dy : (-dy) | 0;
+        for (let cx = xStart; cx <= xEnd; cx = (cx + xStep) | 0) {
+          const pCand = DUNGEON_GetRoomAtPosition113c(m, pHintRoom, cx, cy) >>> 0;
+          if (pCand !== 0) {
+            pHintRoom = pCand;
+            if (
+              (COLLISION_CheckMaskWithPattern1_113c(m, pCand, cx, cy, unitSize, mask16) &
+                0xffff) ===
+              0
+            ) {
+              if (
+                fieldBox === 0 ||
+                COLLISION_TraceFieldCollision113c(m, pField, pCand, cx, cy, fieldMask16) === 0
+              ) {
+                const dx = (cx - x0) | 0;
+                const absDx = dx >= 0 ? dx : (-dx) | 0;
+                const dist = (absDx + absDy) | 0;
+                if (bestDist === -1 || dist < bestDist) {
+                  m.setU32(outCoords, cx >>> 0);
+                  m.setU32((outCoords + 4) >>> 0, cy >>> 0);
+                  bestDist = dist;
+                }
+              }
+            }
+          }
+        }
+      }
+
+      for (let cx = xMin; cx <= xMax; cx = (cx + step) | 0) {
+        const dx = (cx - x0) | 0;
+        const absDx = dx >= 0 ? dx : (-dx) | 0;
+        for (let cy = yMin; cy <= yMax; cy = (cy + xStep) | 0) {
+          const pCand = DUNGEON_GetRoomAtPosition113c(m, pHintRoom, cx, cy) >>> 0;
+          if (pCand !== 0) {
+            pHintRoom = pCand;
+            if (
+              (COLLISION_CheckMaskWithPattern1_113c(m, pCand, cx, cy, unitSize, mask16) &
+                0xffff) ===
+              0
+            ) {
+              if (
+                fieldBox === 0 ||
+                COLLISION_TraceFieldCollision113c(m, pField, pCand, cx, cy, fieldMask16) === 0
+              ) {
+                const dy = (cy - y0) | 0;
+                const absDy = dy >= 0 ? dy : (-dy) | 0;
+                const dist = (absDx + absDy) | 0;
+                if (bestDist === -1 || dist < bestDist) {
+                  m.setU32(outCoords, cx >>> 0);
+                  m.setU32((outCoords + 4) >>> 0, cy >>> 0);
+                  bestDist = dist;
+                }
+              }
+            }
+          }
+        }
+      }
+
+      if (bestDist !== -1) {
+        break;
+      }
+      yMax = (yMax + step) | 0;
+      xStep = (xStep + step * 2) | 0;
+      xMax = (xMax + step) | 0;
+      xMin = (xMin - step) | 0;
+      yMin = (yMin - step) | 0;
+      if (((1 - x0 + xMax) | 0) >= maxRadius) {
+        break;
+      }
+    }
+  }
+
+  if (pField !== 0) {
+    FIELD_FreeField113c(m, pField);
+  }
+  if (bestDist !== -1 || (bAllowFallback | 0) !== 0) {
+    return (
+      DUNGEON_GetRoomAtPosition113c(
+        m,
+        pHintRoom,
+        m.u32(outCoords) | 0,
+        m.u32((outCoords + 4) >>> 0) | 0,
+      ) >>> 0
+    );
+  }
+  return 0;
+}
+
+/**
+ * `@va D2Common:0x6FD9D7E0` (`D2Common.#10654` `COLLISION_FindFreePositionBasic113c`,
+ * `__stdcall(pRoom, pOutCoords, pFieldBoxCoords, nUnitSize, wMask, wFieldMask, bAllowFallback) -> pRoom`, `ret 0x1C`).
+ */
+export function COLLISION_FindFreePositionBasic113c(
+  m: Memory113c,
+  pRoom: number,
+  pOutCoords: number,
+  pFieldBoxCoords: number,
+  nUnitSize: number,
+  wMask: number,
+  wFieldMask: number,
+  bAllowFallback: number,
+): number {
+  hitD2CommonVa113c(0x6FD9D7E0);
+  return (
+    COLLISION_FindFreePosition113c(
+      m,
+      pRoom,
+      pOutCoords,
+      pFieldBoxCoords,
+      nUnitSize,
+      wMask,
+      wFieldMask,
+      bAllowFallback,
+      50,
+      1,
+    ) >>> 0
+  );
+}
+
+/**
+ * `@va D2Common:0x6FD9D810` (`D2Common.#11049` `COLLISION_FindFreePositionWithStep113c`,
+ * `__stdcall(pRoom, pOutCoords, nUnitSize, wMask, nStep) -> pRoom`, `ret 0x14`).
+ */
+export function COLLISION_FindFreePositionWithStep113c(
+  m: Memory113c,
+  pRoom: number,
+  pOutCoords: number,
+  nUnitSize: number,
+  wMask: number,
+  nStep: number,
+): number {
+  hitD2CommonVa113c(0x6FD9D810);
+  return (
+    COLLISION_FindFreePosition113c(
+      m,
+      pRoom,
+      pOutCoords,
+      0,
+      nUnitSize,
+      wMask,
+      wMask,
+      0,
+      50,
+      nStep,
+    ) >>> 0
+  );
+}
+
+/**
+ * `@va D2Common:0x6FD9D840` (`D2Common.#10509` `COLLISION_FindFreePositionSimple113c`,
+ * `__stdcall(pRoom, pOutCoords, nUnitSize, wMask, bAllowFallback) -> pRoom`, `ret 0x14`).
+ */
+export function COLLISION_FindFreePositionSimple113c(
+  m: Memory113c,
+  pRoom: number,
+  pOutCoords: number,
+  nUnitSize: number,
+  wMask: number,
+  bAllowFallback: number,
+): number {
+  hitD2CommonVa113c(0x6FD9D840);
+  return (
+    COLLISION_FindFreePosition113c(
+      m,
+      pRoom,
+      pOutCoords,
+      0,
+      nUnitSize,
+      wMask,
+      wMask,
+      bAllowFallback,
+      50,
+      1,
+    ) >>> 0
+  );
+}
+
+/**
+ * `@va D2Common:0x6FDCF6A0` (`D2Common.#10389` `COLLISION_FindAdjacentUnitWithCallback113c`,
+ * `__stdcall(pRoom, nX, nY, pfnCallback, pContext, nRangeType) -> pUnit`, `ret 0x18`).
+ */
+export function COLLISION_FindAdjacentUnitWithCallback113c(
+  m: Memory113c,
+  pRoom: number,
+  nX: number,
+  nY: number,
+  pfnCallback: number,
+  pContext: number,
+  nRangeType: number,
+  onUnit?: (m: Memory113c, pUnit: number, pContext: number) => number,
+): number {
+  hitD2CommonVa113c(0x6FDCF6A0);
+  const room = pRoom >>> 0;
+  const rangeType = nRangeType | 0;
+  if (room === 0 || rangeType <= 0 || rangeType >= 4) {
+    return 0;
+  }
+  const x = nX | 0;
+  const y = nY | 0;
+  const rangeBase = (rangeType * 3 - 3) | 0;
+
+  const sm = withStackScratch113c(m);
+  const pppRoomsNear = (STACK_SCRATCH_BASE + 0xb20) >>> 0;
+  const pnRoomsNear = (STACK_SCRATCH_BASE + 0xb24) >>> 0;
+  DUNGEON_GetAdjacentRoomsListFromRoom113c(sm, room, pppRoomsNear, pnRoomsNear);
+
+  const nRoomsNear = sm.u32(pnRoomsNear) | 0;
+  const ppRoomsNear = sm.u32(pppRoomsNear);
+  for (let i = 0; i < nRoomsNear; i++) {
+    const pAdjRoom = sm.u32((ppRoomsNear + i * 4) >>> 0);
+    if (COLLISION_IsPointWithinRoomMargin113c(sm, y, pAdjRoom, x, 2) === 0) {
+      continue;
+    }
+    let pUnit = sm.u32((pAdjRoom + 0x74) >>> 0);
+    while (pUnit !== 0) {
+      const dwUnitType = sm.u32(pUnit) >>> 0;
+      let skip = false;
+      if (dwUnitType === 0) {
+        const animMode = sm.u32((pUnit + 0x10) >>> 0) >>> 0;
+        if (animMode === 0 || animMode === 17) skip = true;
+      } else if (dwUnitType === 1) {
+        const animMode = sm.u32((pUnit + 0x10) >>> 0) >>> 0;
+        if (animMode === 0 || animMode === 12) skip = true;
+      } else if (dwUnitType !== 3) {
+        skip = true;
+      }
+
+      if (!skip) {
+        let clampedSize = UNITS_GetUnitSizeX113c(sm, pUnit) | 0;
+        if (clampedSize >= 3) {
+          clampedSize = 3;
+        }
+        if (clampedSize > 0) {
+          const pPath = sm.u32((pUnit + 0x2c) >>> 0);
+          const isStatic = dwUnitType === 2 || (dwUnitType > 3 && dwUnitType <= 5);
+          const ux = isStatic
+            ? (sm.u32((pPath + 0x0c) >>> 0) | 0)
+            : pPath !== 0
+              ? sm.u16((pPath + 0x02) >>> 0)
+              : 0;
+          const uy = isStatic
+            ? (sm.u32((pPath + 0x10) >>> 0) | 0)
+            : pPath !== 0
+              ? sm.u16((pPath + 0x06) >>> 0)
+              : 0;
+
+          const rangeIdx = (clampedSize + rangeBase - 1) >>> 0;
+          let inRange = false;
+          if (rangeIdx === 0) {
+            inRange = x === ux && y === uy;
+          } else if (rangeIdx === 1 || rangeIdx === 3) {
+            const dx = (x - ux) | 0;
+            const dy = (y - uy) | 0;
+            inRange = (((dx >= 0 ? dx : -dx) + (dy >= 0 ? dy : -dy)) | 0) <= 1;
+          } else if (rangeIdx === 4) {
+            const dx = (x - ux) | 0;
+            const dy = (y - uy) | 0;
+            inRange = (((dx >= 0 ? dx : -dx) + (dy >= 0 ? dy : -dy)) | 0) <= 2;
+          } else if (rangeIdx === 2 || rangeIdx === 6) {
+            inRange = x >= ux - 1 && x <= ux + 1 && y >= uy - 1 && y <= uy + 1;
+          } else if (rangeIdx === 5 || rangeIdx === 7) {
+            const dx = (x - ux) | 0;
+            const dy = (y - uy) | 0;
+            const absDx = dx >= 0 ? dx : -dx;
+            const absDy = dy >= 0 ? dy : -dy;
+            inRange = (absDx <= 2 && absDy <= 1) || (absDy <= 2 && absDx <= 1);
+          } else if (rangeIdx === 8) {
+            inRange = x >= ux - 2 && x <= ux + 2 && y >= uy - 2 && y <= uy + 2;
+          }
+
+          if (inRange) {
+            void pfnCallback;
+            if (
+              onUnit !== undefined &&
+              (onUnit(sm, pUnit, pContext >>> 0) | 0) !== 0
+            ) {
+              return pUnit >>> 0;
+            }
+          }
+        }
+      }
+      pUnit = sm.u32((pUnit + 0xe8) >>> 0);
+    }
+  }
+  return 0;
 }
 

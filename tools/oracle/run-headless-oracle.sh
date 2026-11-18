@@ -16,8 +16,8 @@ rm -rf "$WORK"
 mkdir -p "$WORK"
 
 # Flatten scenario JSON into d2oracle's scenario.txt format + shell variables.
-eval "$(python3 - "$SCN" "$WORK/scenario.txt" <<'EOF'
-import json, shlex, sys
+eval "$(python3 - "$SCN" "$WORK/scenario.txt" "$REPO" <<'EOF'
+import json, os, shlex, sys
 s = json.load(open(sys.argv[1]))
 with open(sys.argv[2], 'w') as f:
     f.write(f"frames {int(s['frames'])}\n")
@@ -40,6 +40,15 @@ with open(sys.argv[2], 'w') as f:
         f.write('orderlog ' + ' '.join(str(int(v)) for v in s['oracleOrderLog']) + '\n')
     if s.get('oracleAnimDump'):
         f.write('animdump ' + ' '.join(str(int(v)) for v in s['oracleAnimDump']) + '\n')
+    for fr in s.get('oracleSnapshot', []):
+        f.write(f"snapshot {int(fr)}\n")
+    if s.get('oracleCover'):
+        lo, hi = (int(v) for v in s['oracleCover'])
+        f.write(f"cover {lo} {hi}\n")
+        man = json.load(open(os.path.join(sys.argv[3], 'tools/oracle/callgraph/manifest-113c.json')))
+        for fn in man['functions']:
+            mod = {'D2Game': 'g', 'D2Common': 'c'}[fn['module']]
+            f.write(f"cva {mod} {fn['va'][2:].lower()}\n")
     for st in s.get('oracleSteer', []):
         f.write('steer ' + ' '.join(str(int(v)) for v in st) + '\n')
     for i in s.get('inputs', []):

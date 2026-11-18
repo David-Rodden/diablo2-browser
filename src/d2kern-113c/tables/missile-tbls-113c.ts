@@ -18,6 +18,7 @@ import {
   D2RoomExStrc,
   D2RoomExStrc_SIZE,
 } from '../mem/layout.generated.ts'
+import { hitD2CommonVa113c } from '../va-trace-113c.ts'
 
 /** `.data` `D2MissilesTxt* sgpMissilesTxt` at `0x6FDF0A3C` (`0x6FDCC4B0 mov ecx, ds:0x6fdf0a3c`). */
 export const SGP_MISSILES_TXT_VA_113C = 0x6fdf0a3c
@@ -37,6 +38,7 @@ export const DRLG_STATUS_ROOMS_LIST_OFF_113C = 0xa0
  * Preserves `EAX = pRoomEx` on all return paths as relied upon by all 4 callers (`mov byte [eax+0x44], bl`).
  */
 export function DRLGROOM_SetStatusLink113c(m: Memory113c, pRoomEx: number, nNewStatus: number): number {
+  hitD2CommonVa113c(0x6FDCBB70)
   const room = pRoomEx >>> 0
   const bl = nNewStatus & 0xff
   if (m.get(room, D2RoomExStrc.nRoomStatus) === bl) return room
@@ -74,6 +76,7 @@ export function DRLGROOM_SetStatusLink113c(m: Memory113c, pRoomEx: number, nNewS
  * Constant-specialized clone of `0x6FDCBB70` for `nNewStatus = 3` (`0xA0 + 3 * 0xEC = 0x364`).
  */
 export function DRLGROOM_SetStatusLink3_113c(m: Memory113c, pRoomEx: number): void {
+  hitD2CommonVa113c(0x6FDCBC60)
   DRLGROOM_SetStatusLink113c(m, pRoomEx, 3)
 }
 
@@ -82,6 +85,7 @@ export function DRLGROOM_SetStatusLink3_113c(m: Memory113c, pRoomEx: number): vo
  * Constant-specialized clone of `0x6FDCBB70` for `nNewStatus = 1` (`0xA0 + 1 * 0xEC = 0x18C`).
  */
 export function DRLGROOM_SetStatusLink1_113c(m: Memory113c, pRoomEx: number): void {
+  hitD2CommonVa113c(0x6FDCBCD0)
   DRLGROOM_SetStatusLink113c(m, pRoomEx, 1)
 }
 
@@ -90,6 +94,7 @@ export function DRLGROOM_SetStatusLink1_113c(m: Memory113c, pRoomEx: number): vo
  * Constant-specialized clone of `0x6FDCBB70` for `nNewStatus = 0` (`0xA0 + 0 * 0xEC = 0xA0`).
  */
 export function DRLGROOM_SetStatusLink0_113c(m: Memory113c, pRoomEx: number): void {
+  hitD2CommonVa113c(0x6FDCBD40)
   DRLGROOM_SetStatusLink113c(m, pRoomEx, 0)
 }
 
@@ -106,6 +111,7 @@ export function DATATBLS_CalcMissileSubLoopFrames113c(
   nMissileId: number,
   nLevel: number,
 ): number {
+  hitD2CommonVa113c(0x6FDCC4A0)
   const id = nMissileId | 0
   if (id < 0) return 0
   const nCount = m.u32(SGN_MISSILES_TXT_COUNT_VA_113C) | 0
@@ -151,25 +157,30 @@ function drlgRoomRefreshStatusFromCounts(m: Memory113c, pRoomEx: number): number
 
 /** `@va D2Common:0x6FDCBC20` (internal, custom reg `eax = pRoomEx` -> `eax = pRoomEx`, `ebx` preserved). */
 export function DRLGROOM_RefreshStatusFromCountsEax113c(m: Memory113c, pRoomEx: number): number {
+  hitD2CommonVa113c(0x6FDCBC20)
   return drlgRoomRefreshStatusFromCounts(m, pRoomEx)
 }
 
 /** `@va D2Common:0x6FDCBE10` (internal, `__fastcall(ecx = pRoomEx)` -> `eax = pRoomEx`; `mov eax, ecx` then the 0x6FDCBC20 body). */
 export function DRLGROOM_RefreshStatusFromCountsA113c(m: Memory113c, pRoomEx: number): number {
+  hitD2CommonVa113c(0x6FDCBE10)
   return drlgRoomRefreshStatusFromCounts(m, pRoomEx)
 }
 
 /** `@va D2Common:0x6FDCBE50` (internal, `__fastcall(ecx = pRoomEx)` -> `eax = pRoomEx`; byte-identical to 0x6FDCBE10). */
 export function DRLGROOM_RefreshStatusFromCountsB113c(m: Memory113c, pRoomEx: number): number {
+  hitD2CommonVa113c(0x6FDCBE50)
   return drlgRoomRefreshStatusFromCounts(m, pRoomEx)
 }
 
 /** `@va D2Common:0x6FDCBE90` (internal, `__fastcall(ecx = pRoomEx)` -> `eax = pRoomEx`; byte-identical to 0x6FDCBE10). */
 export function DRLGROOM_RefreshStatusFromCounts113c(m: Memory113c, pRoomEx: number): number {
+  hitD2CommonVa113c(0x6FDCBE90)
   return drlgRoomRefreshStatusFromCounts(m, pRoomEx)
 }
 
 /** `@va D2Common:0x6FDCBED0` (internal, `__fastcall(ecx = pRoomEx)` -> void; `mov eax, ecx; jmp 0x6FDCBD40`). */
 export function DRLGROOM_SetStatusLink0Fastcall113c(m: Memory113c, pRoomEx: number): void {
+  hitD2CommonVa113c(0x6FDCBED0)
   DRLGROOM_SetStatusLink0_113c(m, pRoomEx)
 }

@@ -13,6 +13,7 @@ import {
   D2LvlPrestTxt_SIZE,
   D2LvlTypesTxt_SIZE,
 } from '../mem/layout.generated.ts'
+import { hitD2CommonVa113c } from '../va-trace-113c.ts'
 
 /** `.data` `D2DataTablesStrc* sgptDataTables` at `0x6FDE9E1C` (initialised to the static block `0x6FDEFED8`); read at `0x6FDBC950`. */
 export const SGPT_DATATABLES_VA_113C = 0x6fde9e1c
@@ -35,7 +36,9 @@ export const G_LVLPREST_TXT_VA_113C = 0x6fdf0b3c
  * `@va D2Common:0x6FDBC230` (`D2Common.#10469`, `__stdcall(a0, a1) -> void`, `ret 8`).
  * 3-byte empty stub (`c2 08 00`).
  */
-export function DATATBLS_UnusedStub10469_113c(_m: Memory113c, _a0 = 0, _a1 = 0): void {}
+export function DATATBLS_UnusedStub10469_113c(_m: Memory113c, _a0 = 0, _a1 = 0): void {
+  hitD2CommonVa113c(0x6FDBC230)
+}
 
 /**
  * `@va D2Common:0x6FDBC950` (`DATATBLS_GetLvlPrestTxtRecordFromLevelId`, not exported; LTCG `esi = nLevelId`, plain `ret`).
@@ -46,6 +49,7 @@ export function DATATBLS_UnusedStub10469_113c(_m: Memory113c, _a0 = 0, _a1 = 0):
  *   return `base + 0x1B0*i` (`0x6FDBC983 imul eax, eax, 0x1B0; add eax, edi`, 32-bit wrapping); else `0`.
  */
 export function DATATBLS_GetLvlPrestTxtRecordFromLevelId113c(m: Memory113c, nLevelId: number): number {
+  hitD2CommonVa113c(0x6FDBC950)
   const pDataTables = m.u32(SGPT_DATATABLES_VA_113C)
   const n = m.u32((pDataTables + DATATABLES_LVLPREST_COUNT_OFF_113C) >>> 0) | 0
   if (n <= 0) return 0
@@ -64,6 +68,7 @@ export function DATATBLS_GetLvlPrestTxtRecordFromLevelId113c(m: Memory113c, nLev
  * - Returns `(m.u32(0x6FDF0B3C) + Math.imul(nLevelType | 0, 0x1B0)) >>> 0`.
  */
 export function DATATBLS_GetLvlTypesTxtRecord113c(m: Memory113c, nLevelType: number): number {
+  hitD2CommonVa113c(0x6FDBC990)
   const id = nLevelType | 0
   if (id < 0) return 0
   const pDataTables = m.u32(SGPT_DATATABLES_VA_113C)
@@ -80,6 +85,7 @@ export function DATATBLS_GetLvlTypesTxtRecord113c(m: Memory113c, nLevelType: num
  * - Returns `(m.u32(0x6FDF0B38) + Math.imul(nLevelId | 0, 0x9C)) >>> 0`.
  */
 export function DATATBLS_GetLevelDefRecord113c(m: Memory113c, nLevelId: number): number {
+  hitD2CommonVa113c(0x6FDBCB20)
   const id = nLevelId | 0
   if (id < 0) return 0
   const pDataTables = m.u32(SGPT_DATATABLES_VA_113C)
@@ -97,6 +103,7 @@ export function DATATBLS_GetLevelDefRecord113c(m: Memory113c, nLevelId: number):
  * - Returns `(sgptDataTables->pLevelsTxt (+0xC58) + Math.imul(nLevelId | 0, 0x220)) >>> 0`.
  */
 export function DATATBLS_GetLevelsTxtRecord113c(m: Memory113c, nLevelId: number): number {
+  hitD2CommonVa113c(0x6FDBCCC0)
   const id = nLevelId | 0
   if (id <= 0) return 0
   const pDataTables = m.u32(SGPT_DATATABLES_VA_113C)

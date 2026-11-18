@@ -1,0 +1,29 @@
+[
+  {
+    "module": "D2Game",
+    "va": "0x6fc3e900",
+    "name": "ITEMS_EvaluateMonsterDropTableEntry_6FC3E900",
+    "kernFile": "src/d2kern-113c/game/k2-w14b1-113c.ts",
+    "tsSymbol": "ITEMS_EvaluateMonsterDropTableEntry_6FC3E900_113c",
+    "status": "ported",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts"
+  },
+  {
+    "module": "D2Game",
+    "va": "0x6fccc8e0",
+    "name": "AI_MercOrShadowWarriorThink_6FCCC8E0",
+    "kernFile": "src/d2kern-113c/game/k2-w14b1-113c.ts",
+    "tsSymbol": "AI_MercOrShadowWarriorThink_6FCCC8E0_113c",
+    "status": "ported",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts"
+  },
+  {
+    "module": "D2Game",
+    "va": "0x6fd09c80",
+    "name": "ACT3Q2_OperateGidbinnAltar_6FD09C80",
+    "kernFile": "src/d2kern-113c/game/k2-w14b1-113c.ts",
+    "tsSymbol": "ACT3Q2_OperateGidbinnAltar_6FD09C80_113c",
+    "status": "ported",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w14b1.test.ts"
+  }
+]

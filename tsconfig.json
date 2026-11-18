@@ -16,7 +16,7 @@
     "resolveJsonModule": true,
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "plugins/**/*.ts", "tools/**/*.ts", "vite.config.ts", "tests/**/*.test.ts"],
+  "include": ["src/**/*.ts", "plugins/**/*.ts", "showcase/**/*.ts", "tools/**/*.ts", "vite.config.ts", "tests/**/*.test.ts"],
   "exclude": [
     "tests/e2e-drop-parity",
     "tests/fail-fast-drop.test.ts"

@@ -26,8 +26,7 @@ import type { AutomapView } from '../automap/automap-view.ts'
 import type { LevelView } from '../map/level-view.ts'
 import type { MapService } from '../map/map-service.ts'
 import {
-  findPathWorld,
-  TOWN_ASTAR_OBSTACLE_DISTANCE_SQ,
+  findPlayerPathD2Common113c,
   type SubTilePoint,
 } from '../motion/pathfind.ts'
 import type { LocalMovementPredictor } from '../motion/predictor.ts'
@@ -726,7 +725,7 @@ export class CommandMapper {
    * & `0x6fd9fdc0` (`wStartMana` check):
    * Returns `false` when the player's current mana is constrained and lower than `skillId`'s mana cost.
    */
-  private hasEnoughManaForSkill(skillId: number, world: ClientWorld = this.world): boolean {
+  private hasEnoughManaForSkill(skillId: number, world: ClientWorld = this.world, ownerItemId?: number): boolean {
     if (skillId <= 0 || isPassiveSkill(skillId) || isAuraSkill(skillId)) {
       return true
     }
@@ -757,11 +756,41 @@ export class CommandMapper {
             readonly isItemSkill?: boolean
             readonly charges?: number
           }[]
-          readonly getSkillCharges?: (id: number) => number | undefined
+          readonly getSkillCharges?: (id: number, itemId?: number) => number | undefined
         }
       | undefined
     // 1.13c 0x6fda0b17: item-granted charged skills (`pSkill->dwItemId != -1`) bypass mana check.
-    if (self?.skillCharges?.has(skillId) || hotkeys?.getSkillCharges?.(skillId) !== undefined) {
+    // Issue #289: only the item's charged node is free; the player's own skill of the same id still costs mana.
+    // The owner is the item GUID of the hand currently holding `skillId` (`0x23 AssignSkill`), else resolved.
+    const handSelf = world?.self as
+      | {
+          readonly leftSkill?: number
+          readonly rightSkill?: number
+          readonly leftSkillItemId?: number | undefined
+          readonly rightSkillItemId?: number | undefined
+        }
+      | undefined
+    const handOwner =
+      ownerItemId !== undefined
+        ? ownerItemId
+        : handSelf?.rightSkill === skillId
+          ? handSelf.rightSkillItemId
+          : handSelf?.leftSkill === skillId
+            ? handSelf.leftSkillItemId
+            : undefined
+    if (handOwner !== undefined && handOwner !== 0xffffffff) {
+      return true
+    }
+    const nativeEntry = self?.skillEntries?.get(skillId)
+    const nativeLevel = nativeEntry
+      ? (nativeEntry.baseLevel ?? nativeEntry.level ?? 0) + (nativeEntry.bonus ?? 0)
+      : 0
+    if (nativeLevel <= 0) {
+      if (self?.skillCharges?.has(skillId) || hotkeys?.getSkillCharges?.(skillId) !== undefined) {
+        return true
+      }
+    } else if (hotkeys?.getSkillCharges?.(skillId, 0xffffffff) !== undefined) {
+      // Scroll / tome style native counts.
       return true
     }
     // 1.13c 0x6fda0beb (`nocostinstate = 1` in `Skills.txt`): unshifting from Werewolf (#223 in state 139)
@@ -3656,7 +3685,7 @@ export class CommandMapper {
     if (this.isPlayerBusyCasting(nowMs, skillId) || this.world.isSkillOnCooldown?.(skillId, nowMs)) {
       return false
     }
-    if (itemId === 0xffffffff && !this.hasEnoughManaForSkill(skillId, this.world)) {
+    if (itemId === 0xffffffff && !this.hasEnoughManaForSkill(skillId, this.world, itemId)) {
       this.triggerNeedManaSpeech(nowMs, skillId, this.world)
       return false
     }
@@ -4101,6 +4130,10 @@ export class CommandMapper {
       // 0x6faeadb0 (skills 1..16): no bind/select while dead (mode 0x11). Slots 9..15 additionally require
       // 0x6FBC9854 (0x6faea92b), which is set for the expansion game the web client always runs.
       if (this.isSelfDeadForCommands113c()) {
+        return true
+      }
+      // Enhancement row: equipment-granted auras / passives are display-only and can never take an F-key.
+      if (this.hudManager.hotkeys.openPopup !== null && this.hudManager.hotkeys.hoveredGrantedSkill != null) {
         return true
       }
       // Native bind: skill popup open + hovered skill + bindable key (vanilla gate).
@@ -5525,12 +5558,6 @@ export class CommandMapper {
     const snap = this.predictor.getSnapshot()
     const sx = Math.round(snap.logicalX)
     const sy = Math.round(snap.logicalY)
-    // Town waypoint/NPC/chest clicks routinely start >18 sub-tiles from the
-    // target after the straight ray hits a wall. Use the wider town detour
-    // budget so the local A* can still route around the obstacle (#1318).
-    const pathfindOptions = this.isTownArea()
-      ? { unitSize: 2 as const, maxAstarObstacleDistanceSq: TOWN_ASTAR_OBSTACLE_DISTANCE_SQ }
-      : { unitSize: 2 as const }
     const candidateAreas = [
       ...(this.world.areaId > 0 ? [this.world.areaId] : []),
       ...this.world.getRevealedAreaIds(),
@@ -5581,7 +5608,7 @@ export class CommandMapper {
       }
 
       if (inBounds) {
-        const pathResult = findPathWorld(effectiveView, sx, sy, targetX, targetY, pathfindOptions)
+        const pathResult = findPlayerPathD2Common113c(effectiveView, sx, sy, targetX, targetY)
         const endPt = pathResult.path[pathResult.path.length - 1]
         const targetIdx = (Math.floor(targetY) - oy) * levelView.subWidth + (Math.floor(targetX) - ox)
         const targetStampedSolid =
@@ -5593,7 +5620,8 @@ export class CommandMapper {
           pathResult.reachedGoal &&
           endPt &&
           (targetStampedSolid ||
-            (Math.abs(endPt.x - targetX) <= 1 && Math.abs(endPt.y - targetY) <= 1))
+            (Math.abs(endPt.x - pathResult.finalTarget.x) <= 1 &&
+              Math.abs(endPt.y - pathResult.finalTarget.y) <= 1))
         ) {
           this.lastPath = pathResult.path
           this.predictor.setPath(pathResult.path, isRunning)
@@ -5651,79 +5679,21 @@ export class CommandMapper {
       }
 
       if (extraViews.length > 0 && Math.hypot(targetX - sx, targetY - sy) <= 300) {
-        const pad = 40
-        const boxOriginX = Math.min(sx, targetX) - pad
-        const boxOriginY = Math.min(sy, targetY) - pad
-        const boxWidth = Math.min(400, Math.max(sx, targetX) + pad - boxOriginX + 1)
-        const boxHeight = Math.min(400, Math.max(sy, targetY) + pad - boxOriginY + 1)
-        if (boxWidth > 0 && boxHeight > 0) {
-          const compositeWalkable = new Uint8Array(boxWidth * boxHeight)
-          const allViews = [levelView, ...extraViews]
-          for (const v of allViews) {
-            const vox = v.subOriginX ?? 0
-            const voy = v.subOriginY ?? 0
-            const vw = v.subWidth
-            const vh = v.subHeight
-            const vWalk = v.walkable
-            const startLX = Math.max(0, vox - boxOriginX)
-            const endLX = Math.min(boxWidth - 1, vox + vw - 1 - boxOriginX)
-            const startLY = Math.max(0, voy - boxOriginY)
-            const endLY = Math.min(boxHeight - 1, voy + vh - 1 - boxOriginY)
-            for (let ly = startLY; ly <= endLY; ly++) {
-              const wy = boxOriginY + ly
-              const vRow = (wy - voy) * vw
-              const cRow = ly * boxWidth
-              for (let lx = startLX; lx <= endLX; lx++) {
-                const wx = boxOriginX + lx
-                if (vWalk[vRow + (wx - vox)] !== 0) {
-                  compositeWalkable[cRow + lx] = 1
-                }
-              }
-            }
-          }
-          this.applyDynamicCollisionsToGrid(
-            compositeWalkable,
-            boxOriginX,
-            boxOriginY,
-            boxWidth,
-            boxHeight,
-            sx,
-            sy,
-            false,
-            objects,
-            false,
-          )
-          const crossPath = findPathWorld(
-            {
-              subOriginX: boxOriginX,
-              subOriginY: boxOriginY,
-              subWidth: boxWidth,
-              subHeight: boxHeight,
-              walkable: compositeWalkable,
-            },
-            sx,
-            sy,
-            targetX,
-            targetY,
-            pathfindOptions,
-          )
-          if (
-            crossPath.path.length > 0 &&
-            (!inBounds || this.lastPath.length === 0 || crossPath.reachedGoal)
-          ) {
-            this.lastPath = crossPath.path
-            this.predictor.setPath(crossPath.path, isRunning)
-            return this.lastPath
-          }
-        }
-      }
-
-      if (startInBounds && !inBounds && this.lastPath.length === 0) {
-        const clampedX = Math.max(ox, Math.min(ox + levelView.subWidth - 1, targetX))
-        const clampedY = Math.max(oy, Math.min(oy + levelView.subHeight - 1, targetY))
-        const clampedRes = findPathWorld(effectiveView, sx, sy, clampedX, clampedY, pathfindOptions)
-        if (clampedRes.path.length > 0) {
-          this.lastPath = clampedRes.path
+        const crossPath = findPlayerPathD2Common113c(
+          effectiveView,
+          sx,
+          sy,
+          targetX,
+          targetY,
+          extraViews,
+        )
+        if (
+          crossPath.path.length > 0 &&
+          (!inBounds || this.lastPath.length === 0 || crossPath.reachedGoal)
+        ) {
+          this.lastPath = crossPath.path
+          this.predictor.setPath(crossPath.path, isRunning)
+          return this.lastPath
         }
       }
 

@@ -20,6 +20,8 @@ them field by field.
 | `statIds` | stat ids appended to every player (`t0`) and monster (`t1`) row, accrued value (`STATLIST_GetUnitStat(unit, id, 0)`, fixed point as stored: HP/mana/stamina are `<<8`) |
 | `rng` | optional capability flag (`true` when `gs` and unit `seedLo`/`seedHi` are authoritative and compared by default) |
 | `dot` | optional capability flag (`true` when per-frame `dot` StatRegen / DoT `stat 6` tick events are recorded; `trace-diff` compares `dot` iff both headers set `dot: true`) |
+| `itemFields` | optional 30-column schema for `t4` (`dwUnitType == 4` item units) before trailing `[statId, param, value]` stat triples; `trace-diff` compares `t4` iff both headers advertise `itemFields` |
+| `s2c` | optional capability flag (`true` when per-frame uncompressed `s2c` packet hex arrays from `D2Game:0x6FCAA3E0` are recorded; `trace-diff` compares `s2c` iff both headers set `s2c: true`) |
 
 ## Frame lines
 
@@ -49,6 +51,8 @@ them field by field.
 | `st` | `[[type, unitId, stateId, ...], ...]` | active states of players/monsters (`STATES_CheckState` #10871 for ids `1..stateCount-1`; only units with at least one state) |
 | `dmg` | `[{att:[type,id], def:[type,id], hp:[before,after], ret, raw:[18 dwords]}]` | every `SUNITDMG_ApplyDamage` (`0x6FCFC0B0`) call this frame; `raw` is the 0x48-byte `D2DamageStrc` after the call, `hp` the defender's stat 6 around it |
 | `dot` | `[[type, unitId, hp0, hp1], ...]` | every non-zero `STATLIST_SetUnitStat(unit, 6, hp1, 0)` (`D2Common.#10887`) tick from `MONSTER_Event3_HpRegen` (`0x6FC9684A`) or `PLAYER_UpdateHpRegen` (`0x6FC97D12`) this frame (`hp0` / `hp1` in `1/256`ths, emitted in execution order when non-empty; gated on `header.dot`) |
+| `t4` | `[[...itemFields, statId0, param0, val0, ...], ...]` | every `dwUnitType == 4` item unit across `G_UNITS` hash lists `0..4` (`mode`: `0` stored, `1` equipped, `2` belt, `3` ground, `4` cursor, `5` dropping, `6` socketed): 30 scalar `D2UnitStrc` + `D2ItemDataStrc` columns followed by sorted `[statId, param, value]` triples from `D2StatListExStrc` `FullStats` (`+0x48/+0x4C`, or `MyStats` `+0x24/+0x28` when non-extended) |
+| `s2c` | `["<hexPkt0>", ...]` | uncompressed Server-to-Client gameplay packets queued via `CLIENTS_QueuePacket` (`D2Game:0x6FCAA3E0`) during `[on_pre_frame .. GAME_UpdateGameFrame (0x6FC4E050)]` in exact emission order |
 | `in` | `[[dispatchResult, hex], ...]` | C2S packets delivered this frame (scenario inputs and `steer` moves) |
 
 RNG: D2 inlines its `SEED` recurrence at every call site, so individual draws cannot be hooked

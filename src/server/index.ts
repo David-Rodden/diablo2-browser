@@ -11,6 +11,8 @@ export * from './engine.ts'
 export * from './loopback-adapter.ts'
 export * from './room-host.ts'
 export * from './net/aoi.ts'
+export * from './net/d2gs-kernel-bridge-113c.ts'
+export * from './net/local-kernel-d2gs-adapter-113c.ts'
 export * from './net/party.ts'
 export * from './net/session.ts'
 export {

@@ -13,7 +13,7 @@ Binary ground truth for running original Diablo II: Lord of Destruction v1.13c s
 | `D2Net.dll` | `0x6FBF0000` | `#10005(1, 1)`, `#10034(1, NULL)`, `#10019()`, `#10012(0)`, `#10024`, `#10020` | Protocol `1` in-memory loopback packet queues (collides with `Storm.dll` preferred `0x6FBF0000` and is dynamically rebased by the Win32 loader) |
 | `D2Game.dll` | `0x6FC20000` | `#10037` (`0x6FC4A370`), `#10038` (`0x6FC4D4B0`), `#10017` (`0x6FC4A210`), `#10040` (`0x6FC4E460`), `#10008` (`0x6FC4E1E0`), `#10024` (`0x6FC4DF10`) | Authoritative server state machine, `GAME_UpdateGames`, `S2C` packet flush |
 
-## 2. Five Critical Reverse-Engineered Invariants
+## 2. Six Critical Reverse-Engineered Invariants
 
 ### 2.1 `Storm.dll` Dynamic `LoadLibraryA` Poison Crypt Seed (`base + 0x25CD6..0x25CE3`)
 When `Game.exe` statically imports `Storm.dll` (preferred `ImageBase = 0x6FBF0000`), the Windows PE loader invokes `Storm.dll`'s `DllMain` with `lpvReserved != NULL` (`[esp+0x0C] != 0`). At `base + 0x25CD6` (`0x6FC15CD6` at preferred base `0x6FBF0000`), `Storm.dll` checks `cmp [ebp+0x10], ebx` (`lpvReserved == NULL`):
@@ -45,6 +45,11 @@ To match `Game.exe` Single Player frame numbering exactly:
 - `D2Game.#10002` (`0x6FC729F0 -> 0x6FC726F0`) is Battle.net's multi-threaded realm task runner (`__fastcall(ecx, edx)`), which calls `SMemFree(pTaskNode)` at `0x6FC729BE` — it must **not** be called with a stack node in Single Player.
 - `D2Game.#10008` (`0x6FC4E1E0`) is the actual Single Player frame driver called by `D2Client.dll` (`0x6FAF4D00`), and `d2oracle.c` hooks its `call 0x6FC4E050` site at `0x6FC4E2DB`.
 - Setting `*(uint32_t *)(0x6FD2E35C + rebase) = 1` forces `[pGame + 0x1DBC] = 0x400` (deterministic 1.0× 40 ms delta at `0x6FC4E26F`), and setting `*(uint32_t *)(0x6FD31C44 + rebase) = (GetTickCount() & 0x7FFFFFFF) - 40` before each `D2Game.#10008(1)` call bypasses the `40 ms` wall-clock gate (`0x6FC4E21B`) with zero division-by-zero risk on `[0x6FD31F70]`.
+
+### 2.6 Deterministic `25 fps` Virtual `GetTickCount` (`0x6FD18D10`) for Player Breadcrumb Ring (`0x6FC99BE7`)
+- Inside `PLAYER_StepModeWalkOrRun` (`0x6FC99B90` @ `0x6FC99BE7..0x6FC99C06`), `D2Game.dll` calls `KERNEL32.dll!GetTickCount` (`[0x6FD18D10]`) and skips appending to the player's 20-entry position breadcrumb ring (`pPlayerData + 0xA8`, ring index `+0xA0`) whenever `GetTickCount() <= pPlayerData->dwLastBreadcrumbMs (+0xA4) + 25` (`0x19`).
+- Under `25 fps` `Game.exe` (`40 ms/frame > 25 ms`), every walk/run step records a breadcrumb; under unthrottled `d2host-113c.exe` (`~16,000 fps`, `~0.06 ms/frame`), wall-clock `GetTickCount()` advances by `< 1 ms/frame` and starves the breadcrumb ring, causing `NecroPet` `PetMove` state `1` (`0x6FC3CAE0` @ `0x6FC3CE2A`) to diverge on `p52-amazon-valkyrie` (`F988`), `p52-necromancer-poison-golem` (`F919`), and `p52-necromancer-curses` (`F1597`).
+- Patching `D2Game.dll`'s `GetTickCount` IAT slot to a virtual `25 fps` clock (`g_virtual_tick_ms`, initialized to `0x00100000` and incremented by `+40` before each server frame) eliminates wall-clock dependence and achieves `100%` frame-for-frame parity across all `p52-*` summon/pet scenarios.
 
 ## 3. Verified Parity & Automated Speedup Measurements (`tests/oracle/headless-host.test.ts`)
 

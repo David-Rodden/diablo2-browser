@@ -95,6 +95,7 @@ export type {
   LocalServerSessionRequest,
   RealmInfo,
   RealmSummary,
+  SinglePlayerBackendMode,
 } from './domain/lobby.ts'
 export type {
   D2CapHeader,

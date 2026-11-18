@@ -23,6 +23,7 @@ import {
 } from './inline-helpers.ts'
 import { imul32 } from './int-math.ts'
 import { STATES_CheckStateMask33OnUnit113c } from './statlist.ts'
+import { hitD2CommonVa113c } from '../va-trace-113c.ts'
 
 /** Byte offsets of `pLevelsTxt` and `nLevelsTxtRecordCount` in `sgptDataTables` (`0x6FDB7E64..0x6FDB7E70`). */
 export const DATATABLES_LEVELS_TXT_PTR_OFF_113C = 0xc58
@@ -36,6 +37,7 @@ export const DATATABLES_LEVELS_TXT_COUNT_OFF_113C = 0xc5c
  * `>= 0x7FFF -> 0x7FFF`) and writes `pUnit->wAnimSpeed (+0x4C)`.
  */
 export function UNITS_SetAnimSpeed113c(m: Memory113c, pUnit: number, nSpeed: number): void {
+  hitD2CommonVa113c(0x6FD80B40)
   const u = pUnit >>> 0
   const s = nSpeed | 0
   let clamped: number
@@ -63,6 +65,7 @@ export function WAYPOINT_GetWaypointNoFromLevelId113c(
   nLevelId: number,
   pWaypointNoOut: number,
 ): number {
+  hitD2CommonVa113c(0x6FDB7E50)
   const outPtr = pWaypointNoOut >>> 0
   const lvlId = nLevelId | 0
   m.setU16(outPtr, 0x00ff)
@@ -97,6 +100,7 @@ export function UNITS_SetTargetUnitForDynamicUnit113c(
   pUnit: number,
   pTargetUnit: number,
 ): void {
+  hitD2CommonVa113c(0x6FD80E80)
   if (pUnit >>> 0 === 0) {
     throw new D2CommonAssertError(WAYPOINT_ASSERT_FILE_113C, 0x8ac)
   }
@@ -125,6 +129,7 @@ export function WAYPOINT_ActivateWaypoint113c(
   pWaypointData: number,
   nWaypoint: number,
 ): void {
+  hitD2CommonVa113c(0x6FDB7C20)
   if (pWaypointData >>> 0 === 0) {
     throw new D2CommonAssertError(WAYPOINT_ASSERT_FILE_113C, 0xed)
   }
@@ -150,6 +155,7 @@ export function WAYPOINT_GetWaypointState113c(
   pWaypointData: number,
   nWaypoint: number,
 ): number {
+  hitD2CommonVa113c(0x6FDB7C90)
   if (pWaypointData >>> 0 === 0) {
     throw new D2CommonAssertError(WAYPOINT_ASSERT_FILE_113C, 0xdd)
   }
@@ -174,6 +180,7 @@ export function WAYPOINT_CopyAndValidateWaypointData113c(
   pSrc: number,
   pDst: number,
 ): void {
+  hitD2CommonVa113c(0x6FDB7D00)
   const wMagic = m.u16(pSrc >>> 0)
   if (wMagic !== 0x0102) {
     if (wMagic === 0 || wMagic === 0x0101) {
@@ -204,6 +211,7 @@ const MON_MOVING_MODE_INDEX_6FD81490 = Uint8Array.from([
  * `(pMonStats2[+0x04] & gdwBitMasks[7]) == 0`; otherwise returns `STATES_CheckStateMask33OnUnit(pUnit) == 0 ? 1 : 0`.
  */
 export function UNITS_IsCorpseUseable113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD811B0)
   const u = pUnit >>> 0
   if (u === 0 || m.get(u, D2UnitStrc.dwUnitType) !== 1) return 0
   if (m.get(u, D2UnitStrc.dwAnimMode) !== 0x0c) return 0
@@ -232,6 +240,7 @@ export function UNITS_IsCorpseUseable113c(m: Memory113c, pUnit: number): number 
  * - All other unit types return `0`.
  */
 export function UNITS_IsInMovingMode113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD813F0)
   const u = pUnit >>> 0
   if (u === 0) return 0
   const dwUnitType = m.get(u, D2UnitStrc.dwUnitType) | 0

@@ -35,6 +35,7 @@ import {
   type UiItemQuality,
 } from './inventory-model.ts'
 import { BAKED_UI_MANIFEST } from './baked-ui-meta.ts'
+import { RARE_NAME_COLLISION_UNIQUE_CODES } from './item-inv-trans-data.ts'
 import {
   formatItemTooltip,
   CANONICAL_ISC_DESC_TABLE,
@@ -477,11 +478,19 @@ function lookupPacketAffix(
   return undefined
 }
 
+export function isUniqueSetNameCompatibleWithCode(itemName: string, itemCode?: string): boolean {
+  const code = (itemCode ?? '').trim().toLowerCase()
+  if (!code) return true
+  const validCodes = RARE_NAME_COLLISION_UNIQUE_CODES[itemName.trim().toLowerCase()]
+  if (!validCodes) return true
+  return validCodes.includes(code)
+}
+
 export function resolveItemColorTransform(
   item: Item,
   quality: UiItemQuality,
   code: string,
-  dropTables?: DropTables,
+  dropTables: DropTables = getEmbeddedDropTables(),
 ): { invtransform?: string | undefined; chrtransform?: string | undefined } {
   const isUnidentified = Boolean(
     item.isGambleMystery ||
@@ -546,14 +555,26 @@ export function resolveItemColorTransform(
         item.rolledRareAffixes?.suffixes ??
         (item.rolledMagicAffixes?.suffix ? [item.rolledMagicAffixes.suffix] : [])
       for (const suf of suffixes) {
-        if (suf && suf.transform && suf.transformColor) {
-          affixColor = suf.transformColor.trim().toLowerCase()
+        const def = (suf as any)?.affix ?? suf
+        if (def && def.transform && def.transformColor) {
+          affixColor = String(def.transformColor).trim().toLowerCase()
           break
         }
       }
       if (!affixColor && dropTables?.magicAffixes?.suffixes) {
         const sufTable = dropTables.magicAffixes.suffixes
-        const sufIds = (item as any).magicSuffixIds ?? (item.magicSuffixId !== undefined ? [item.magicSuffixId] : [])
+        const rareAffixList = Array.isArray((item as any).rareAffixes)
+          ? ((item as any).rareAffixes as number[])
+          : []
+        const rareSufFromPairs = rareAffixList.filter((_, idx) => idx % 2 === 1)
+        const sufIds =
+          (item as any).magicSuffixIds ??
+          (item as any).rareSuffixIds ??
+          (rareSufFromPairs.length > 0
+            ? rareSufFromPairs
+            : item.magicSuffixId !== undefined
+              ? [item.magicSuffixId]
+              : [])
         for (const id of sufIds) {
           if (typeof id === 'number' && id > 0) {
             const suf = lookupPacketAffix(sufTable, id)
@@ -570,15 +591,27 @@ export function resolveItemColorTransform(
           item.rolledRareAffixes?.prefixes ??
           (item.rolledMagicAffixes?.prefix ? [item.rolledMagicAffixes.prefix] : [])
         for (const pre of prefixes) {
-          if (pre && pre.transform && pre.transformColor) {
-            affixColor = pre.transformColor.trim().toLowerCase()
+          const def = (pre as any)?.affix ?? pre
+          if (def && def.transform && def.transformColor) {
+            affixColor = String(def.transformColor).trim().toLowerCase()
             break
           }
         }
       }
       if (!affixColor && dropTables?.magicAffixes?.prefixes) {
         const preTable = dropTables.magicAffixes.prefixes
-        const preIds = (item as any).magicPrefixIds ?? (item.magicPrefixId !== undefined ? [item.magicPrefixId] : [])
+        const rareAffixList = Array.isArray((item as any).rareAffixes)
+          ? ((item as any).rareAffixes as number[])
+          : []
+        const rarePreFromPairs = rareAffixList.filter((_, idx) => idx % 2 === 0)
+        const preIds =
+          (item as any).magicPrefixIds ??
+          (item as any).rarePrefixIds ??
+          (rarePreFromPairs.length > 0
+            ? rarePreFromPairs
+            : item.magicPrefixId !== undefined
+              ? [item.magicPrefixId]
+              : [])
         for (const id of preIds) {
           if (typeof id === 'number' && id > 0) {
             const pre = lookupPacketAffix(preTable, id)
@@ -664,7 +697,7 @@ export function resolveItemInvFile(
   item: Item,
   quality: UiItemQuality,
   code: string,
-  dropTables?: DropTables,
+  dropTables: DropTables = getEmbeddedDropTables(),
 ): { invFile: string; invtransform?: string | undefined; chrtransform?: string | undefined } {
   let invFile: string | undefined = undefined
   const resolvedColors = resolveItemColorTransform(item, quality, code, dropTables)
@@ -727,7 +760,9 @@ export function resolveItemInvFile(
   // Strictly gated to unique/set quality so rare/crafted/personalized items whose generated name collides
   // with a UniqueItems.txt / SetItems.txt entry (e.g. RarePrefix 158 "Raven" + RareSuffix 92 "Claw" = "Raven Claw")
   // never hijack the unique/set weapon/armor sprite.
-  const canUseUniqueSetName = quality === 'unique' || quality === 'set'
+  const canUseUniqueSetName =
+    (quality === 'unique' || quality === 'set') &&
+    Boolean(item.name && isUniqueSetNameCompatibleWithCode(item.name, code))
   if (!invFile && canUseUniqueSetName && item.name && BAKED_UI_MANIFEST.codeToInvFile[item.name]) {
     const manifestInv = BAKED_UI_MANIFEST.codeToInvFile[item.name]
     if (manifestInv.includes('_')) {

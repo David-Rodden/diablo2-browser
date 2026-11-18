@@ -797,7 +797,7 @@ export function handleServerEvent(host: SessionEventProcessorHost, rawEv: Server
       if (ev.uiId === 0) {
         host.hudModel.openArtisanWindow('orifice', ev.unitId)
       } else if (ev.uiId === 1) {
-        host.hudModel.closeActiveNpcPanel()
+        host.hudModel.cancelOrificeUiFromServer()
       } else if (ev.uiId === 5) {
         host.hudModel.completeOrificeUi(ev.extra ?? 0)
       } else if (ev.uiId === 6) {

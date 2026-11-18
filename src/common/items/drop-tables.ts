@@ -1379,6 +1379,45 @@ export function createDroppedItem(
     ? propRng.randRange(Math.min(minStack, maxStack), maxStack)
     : 1
 
+  let invtransform: string | undefined
+  let chrtransform: string | undefined
+  if (isIdentified) {
+    if (qualityTier === 'unique' && options.uniqueItem) {
+      if (options.uniqueItem.invtransform) invtransform = options.uniqueItem.invtransform.trim().toLowerCase()
+      if (options.uniqueItem.chrtransform) chrtransform = options.uniqueItem.chrtransform.trim().toLowerCase()
+    } else if (qualityTier === 'set' && options.setItem) {
+      if (options.setItem.invtransform) invtransform = options.setItem.invtransform.trim().toLowerCase()
+      if (options.setItem.chrtransform) chrtransform = options.setItem.chrtransform.trim().toLowerCase()
+    } else if (qualityTier === 'magic' || qualityTier === 'rare') {
+      const suffixes =
+        options.magicAffixes?.suffixes ??
+        options.rareAffixes?.suffixes ??
+        (options.magicAffixes?.suffix ? [options.magicAffixes.suffix] : [])
+      const prefixes =
+        options.magicAffixes?.prefixes ??
+        options.rareAffixes?.prefixes ??
+        (options.magicAffixes?.prefix ? [options.magicAffixes.prefix] : [])
+      for (const suf of suffixes) {
+        const def = suf?.affix ?? suf
+        if (def?.transform && def.transformColor) {
+          invtransform = def.transformColor.trim().toLowerCase()
+          chrtransform = invtransform
+          break
+        }
+      }
+      if (!invtransform) {
+        for (const pre of prefixes) {
+          const def = pre?.affix ?? pre
+          if (def?.transform && def.transformColor) {
+            invtransform = def.transformColor.trim().toLowerCase()
+            chrtransform = invtransform
+            break
+          }
+        }
+      }
+    }
+  }
+
   return {
     base: outputBase,
     prefix,
@@ -1403,6 +1442,8 @@ export function createDroppedItem(
     uniqueId: options.dwInitSeed,
     durability,
     maxDurability,
+    ...(invtransform ? { invtransform } : {}),
+    ...(chrtransform ? { chrtransform } : {}),
     ...(qualitySubtype !== undefined ? { qualitySubtype } : {}),
     ...(isEthereal ? { ethereal: true } : {}),
     ...(socketCount > 0 ? { sockets: socketCount, totalSockets: socketCount } : {}),

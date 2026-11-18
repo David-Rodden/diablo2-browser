@@ -53,6 +53,7 @@ import {
   DATATABLES_LEVELS_TXT_OFF_113C,
   SGPT_DATATABLES_VA_113C,
 } from './lvl-tbls-113c.ts'
+import { hitD2CommonVa113c } from '../va-trace-113c.ts'
 
 /** `.rdata` outdoor vertex flag rule table `[15][6]` (360 bytes) at `0x6FDE5350..0x6FDE54B8` (`0x6FD63FE4 mov eax, 0x6fde5350`). */
 export const OUTDOOR_VERTEX_RULES_VA_113C = 0x6fde5350
@@ -113,6 +114,7 @@ export function DRLG_ReplacePresetRoom113c(
   nNewOrient: number,
   bClearBit1: number,
 ): number {
+  hitD2CommonVa113c(0x6FD5E430)
   let pRoomEx = m.get(pLevel >>> 0, D2DrlgLevelStrc.pFirstRoomEx)
   const targetPrest = nOldPrestId >>> 0
   while (pRoomEx !== 0) {
@@ -144,6 +146,7 @@ export function DRLG_ReplacePresetRoom113c(
  * `max(2, (nRooms / 5) + 1)` preset rooms over `nRooms * 2` attempts with `targetPrest + 15` and `nOrientation = -1`.
  */
 export function DRLG_RandomizePresetRooms113c(m: Memory113c, pLevel: number): void {
+  hitD2CommonVa113c(0x6FD5E700)
   const lvl = pLevel >>> 0
   let basePrest: number
   switch (m.get(lvl, D2DrlgLevelStrc.nLevelType)) {
@@ -249,6 +252,7 @@ export function DRLG_ApplyOutdoorVertexFlags113c(
   nIndex: number,
   pDirArray: number,
 ): void {
+  hitD2CommonVa113c(0x6FD63FD0)
   const lvl = pLevel >>> 0
   if (m.get(lvl, D2DrlgLevelStrc.nDrlgType) !== 3) return
   const pOutdoors = m.get(lvl, D2DrlgLevelStrc.pOutdoors)
@@ -283,6 +287,7 @@ export function DRLG_ApplyOutdoorVertexFlags113c(
  * Preserves the exact 3 memory reloads of `pLinkData->nIteration` (`+0x1EC`) at `0x6FD644C0`, `0x6FD644D1`, and `0x6FD644EC`.
  */
 export function DRLG_LinkOutdoorLevels113c(m: Memory113c, pLinkData: number): number {
+  hitD2CommonVa113c(0x6FD644C0)
   const base = pLinkData >>> 0
   const nIter0 = m.get(base, D2DrlgLevelLinkDataStrc.nIteration)
   m.setU32((base + D2DrlgLevelLinkDataStrc.nRand1.off + ((nIter0 << 2) >>> 0)) >>> 0, 0)
@@ -348,6 +353,7 @@ export function DRLG_LinkOutdoorLevels113c(m: Memory113c, pLinkData: number): nu
  * Maps `pLevel->nLevelType` (`+0x1C0`) and `bFlag` (`[esp+4]` low byte) to outdoor border preset index (`-1..5`).
  */
 export function DRLG_GetLevelBorderStyle113c(m: Memory113c, pLevel: number, bFlag: number): number {
+  hitD2CommonVa113c(0x6FD645A0)
   const lvl = pLevel >>> 0
   switch (m.get(lvl, D2DrlgLevelStrc.nLevelType)) {
     case 2:
@@ -408,6 +414,7 @@ export function DRLG_CheckAct1LinkOverlap113c(
   pLinkData: number,
   nIteration: number,
 ): number {
+  hitD2CommonVa113c(0x6FD64630)
   return checkLinkBoxesNoOverlap113c(m, pLinkData, nIteration, LINK_TABLE_ACT1_VA_113C)
 }
 
@@ -420,6 +427,7 @@ export function DRLG_CheckAct1WildLinkOverlap113c(
   pLinkData: number,
   nIteration: number,
 ): number {
+  hitD2CommonVa113c(0x6FD646C0)
   return checkLinkBoxesNoOverlap113c(m, pLinkData, nIteration, LINK_TABLE_ACT1_WILD_VA_113C)
 }
 
@@ -432,6 +440,7 @@ export function DRLG_CheckAct2LinkOverlap113c(
   pLinkData: number,
   nIteration: number,
 ): number {
+  hitD2CommonVa113c(0x6FD64750)
   return checkLinkBoxesNoOverlap113c(m, pLinkData, nIteration, LINK_TABLE_ACT2_VA_113C)
 }
 
@@ -444,6 +453,7 @@ export function DRLG_CheckAct4LinkOverlap113c(
   pLinkData: number,
   nIteration: number,
 ): number {
+  hitD2CommonVa113c(0x6FD647E0)
   return checkLinkBoxesNoOverlap113c(m, pLinkData, nIteration, LINK_TABLE_ACT4_VA_113C)
 }
 
@@ -456,6 +466,7 @@ export function DRLG_CheckMonasteryLinkOverlap113c(
   pLinkData: number,
   nIteration: number,
 ): number {
+  hitD2CommonVa113c(0x6FD64870)
   return checkLinkBoxesNoOverlap113c(m, pLinkData, nIteration, LINK_TABLE_MONASTERY_VA_113C)
 }
 
@@ -469,6 +480,7 @@ export function DATATBLS_GetDirectionOffset113c(
   pOutX: number,
   pOutY: number,
 ): void {
+  hitD2CommonVa113c(0x6FD6A270)
   const idx = nDir & 0xff
   const dx = (m.u8((DIR_OFFSET_X_VA_113C + idx) >>> 0) << 24) >> 24
   m.setU32(pOutX >>> 0, dx >>> 0)
@@ -481,6 +493,7 @@ export function DATATBLS_GetDirectionOffset113c(
  * Returns `m.u8(0x6FDEF0B0 + (nDir & 0xFF))`.
  */
 export function DATATBLS_NormalizeDirection113c(m: Memory113c, nDir: number): number {
+  hitD2CommonVa113c(0x6FD6A2B0)
   const idx = nDir & 0xff
   return m.u8((DIR_RING_LUT_VA_113C + idx) >>> 0)
 }
@@ -489,13 +502,16 @@ export function DATATBLS_NormalizeDirection113c(m: Memory113c, nDir: number): nu
  * `@va D2Common:0x6FD6A3C0` (`D2Common.#10182`, `__stdcall(a0, a1) -> void`, `ret 8`).
  * 3-byte empty stub (`c2 08 00`).
  */
-export function DATATBLS_UnusedStub10182_113c(_m: Memory113c, _a0 = 0, _a1 = 0): void {}
+export function DATATBLS_UnusedStub10182_113c(_m: Memory113c, _a0 = 0, _a1 = 0): void {
+  hitD2CommonVa113c(0x6FD6A3C0)
+}
 
 /**
  * `@va D2Common:0x6FD6A520` (`D2Common.#10648`, `__stdcall(pUnit) -> BOOL`, `ret 4`).
  * Returns `1` iff `pUnit != 0 && pUnit->dwUnitType == 1` (`UNIT_MONSTER`) and `pUnit->dwAnimMode` (`+0x10`) is `0` (`MONMODE_DEATH`) or `12` (`MONMODE_DEAD`).
  */
 export function MONSTERS_IsDead113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD6A520)
   const u = pUnit >>> 0
   if (u === 0 || m.get(u, D2UnitStrc.dwUnitType) !== UNIT_MONSTER) return 0
   const mode = m.get(u, D2UnitStrc.dwAnimMode)
@@ -513,6 +529,7 @@ export function MONSTERS_CheckMonStatsFlagBit6_113c(
   pMonStatsTxt: number,
   pUnit: number,
 ): number {
+  hitD2CommonVa113c(0x6FD6A550)
   const u = pUnit >>> 0
   if (u === 0 || m.get(u, D2UnitStrc.dwUnitType) !== UNIT_MONSTER) return 0
   let pRec = pMonStatsTxt >>> 0
@@ -537,6 +554,7 @@ export function MONSTERS_CheckMonStatsFlagBit6_113c(
  * bit 3 (`gdwBitMasks[3]` at `*(0x6FDD90B0) + 0x0C`) or bit 4 (`gdwBitMasks[4]` at `*(0x6FDD90B0) + 0x10`) set, else `0`.
  */
 export function MONSTERS_IsDemonOrUndead113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD6A5B0)
   const u = pUnit >>> 0
   if (u === 0 || m.get(u, D2UnitStrc.dwUnitType) !== UNIT_MONSTER) return 0
   const classId = m.get(u, D2UnitStrc.dwClassId) | 0
@@ -559,6 +577,7 @@ export function MONSTERS_IsDemonOrUndead113c(m: Memory113c, pUnit: number): numb
  * 0-arg `ret` -> `m.u32(0x6FDF0B90)`).
  */
 export function DATATBLS_GetObjGroupTxtRecordCount113c(m: Memory113c): number {
+  hitD2CommonVa113c(0x6FD8E900)
   return m.u32(G_OBJGROUP_COUNT_VA_113C)
 }
 
@@ -568,6 +587,7 @@ export function DATATBLS_GetObjGroupTxtRecordCount113c(m: Memory113c): number {
  * Note: binary has no `nIndex < 0` check (`0x6FD8E960 cmp ecx, eax; jle`).
  */
 export function DATATBLS_GetShrinesTxtRecord113c(m: Memory113c, nIndex: number): number {
+  hitD2CommonVa113c(0x6FD8E960)
   const idx = nIndex | 0
   const count = m.u32(G_SHRINES_COUNT_VA_113C) | 0
   if (count <= idx) return 0
@@ -583,6 +603,7 @@ export function DATATBLS_AdjustMonsterPresetIndex113c(
   nType: number,
   nIndex: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA3AA0)
   const type = nType | 0
   const idx = nIndex >>> 0
   if (type === 0) {
@@ -607,6 +628,7 @@ export function DATATBLS_GetChestTreasureClass113c(
   nAct: number,
   nTier: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA43C0)
   let diff = nDifficulty | 0
   if (diff < 0) diff = 0
   else if (diff >= 3) diff = 2
@@ -629,6 +651,7 @@ export function DATATBLS_GetChestTreasureClass113c(
  * Note: binary has no `nIndex < 0` check (`0x6FDAE1C4 cmp eax, ds:0x6FDEFF5C; jge`).
  */
 export function DATATBLS_GetCompCodeString113c(m: Memory113c, nIndex: number): number {
+  hitD2CommonVa113c(0x6FDAE1C0)
   const idx = nIndex | 0
   if (idx >= (m.u32(G_COMPCODE_COUNT_VA_113C) | 0)) return 0
   const pBase = m.u32(G_COMPCODE_PTR_VA_113C)
@@ -640,6 +663,7 @@ export function DATATBLS_GetCompCodeString113c(m: Memory113c, nIndex: number): n
  * stdcall `[esp+4] = nClass`, `ret 4` -> `m.u32(m.u32(0x6FDF0B50) + cls * 4)`).
  */
 export function DATATBLS_GetMaxLevel113c(m: Memory113c, nClass: number): number {
+  hitD2CommonVa113c(0x6FDAE7E0)
   let cls = nClass | 0
   if (cls < 0 || cls >= 7) cls = 0
   const pExp = m.u32(G_EXPERIENCE_BIN_VA_113C)
@@ -655,6 +679,7 @@ export function DATATBLS_GetStartExpForLevel113c(
   nClass: number,
   nLevel: number,
 ): number {
+  hitD2CommonVa113c(0x6FDAE810)
   let cls = nClass | 0
   if (cls < 0 || cls >= 7) cls = 0
   const pExp = m.u32(G_EXPERIENCE_BIN_VA_113C)
@@ -667,6 +692,7 @@ export function DATATBLS_GetStartExpForLevel113c(
  * stdcall `[esp+4] = nLevel`, `ret 4` -> `ExpRatio` from `sgpExperienceBin`).
  */
 export function DATATBLS_GetExpRatio113c(m: Memory113c, nLevel: number): number {
+  hitD2CommonVa113c(0x6FDAE840)
   const pExp = m.u32(G_EXPERIENCE_BIN_VA_113C)
   if (pExp === 0) return 0
   const lvl = nLevel | 0
@@ -680,6 +706,7 @@ export function DATATBLS_GetExpRatio113c(m: Memory113c, nLevel: number): number 
  * stdcall `[esp+4] = nLevel`, `ret 4` -> `D2MonLvlTxt*`).
  */
 export function DATATBLS_GetMonLvlTxtRecord113c(m: Memory113c, nLevel: number): number {
+  hitD2CommonVa113c(0x6FDB03C0)
   const count = m.u32(G_MONLVL_COUNT_VA_113C) | 0
   let lvl = nLevel | 0
   if (lvl < 0) lvl = 0
@@ -696,6 +723,7 @@ export function DATATBLS_GetCurrentLevelFromExp113c(
   nClass: number,
   dwExp: number,
 ): number {
+  hitD2CommonVa113c(0x6FDB08D0)
   let cls = nClass | 0
   if (cls < 0 || cls >= 7) cls = 0
   const pExp = m.u32(G_EXPERIENCE_BIN_VA_113C)
@@ -725,6 +753,7 @@ export function DATATBLS_GetLevelMonsterLevel113c(
   nDifficulty: number,
   bExpansion: number,
 ): number {
+  hitD2CommonVa113c(0x6FDBE0C0)
   const diff = nDifficulty & 0xff
   if (diff >= 3) return 1
   const id = nLevelId | 0
@@ -746,6 +775,7 @@ export function DATATBLS_GetLevelMonsterLevel113c(
  * 0-arg `ret` -> `0x6FDEFD98`).
  */
 export function DATATBLS_GetBooksTxtRecordCountPtr113c(_m: Memory113c): number {
+  hitD2CommonVa113c(0x6FDC1480)
   return 0x6fdefd98
 }
 
@@ -754,6 +784,7 @@ export function DATATBLS_GetBooksTxtRecordCountPtr113c(_m: Memory113c): number {
  * 0-arg `ret` -> `0x6FDEFDA0`).
  */
 export function DATATBLS_GetQualityItemsTxtRecordCountPtr113c(_m: Memory113c): number {
+  hitD2CommonVa113c(0x6FDC1520)
   return 0x6fdefda0
 }
 
@@ -762,6 +793,7 @@ export function DATATBLS_GetQualityItemsTxtRecordCountPtr113c(_m: Memory113c): n
  * 0-arg `ret` -> `0x6FDEFD90`).
  */
 export function DATATBLS_GetBeltsTxtRecordCountPtr113c(_m: Memory113c): number {
+  hitD2CommonVa113c(0x6FDC1660)
   return 0x6fdefd90
 }
 
@@ -776,6 +808,7 @@ export function UNITS_IsPointWithinRadius113c(
   pPoint: number,
   nRadius: number,
 ): number {
+  hitD2CommonVa113c(0x6FDCF550)
   const u = pUnit >>> 0
   const unitType = m.get(u, D2UnitStrc.dwUnitType)
   let ux: number
@@ -902,6 +935,7 @@ export function MONSTER_GetSubClassVelocityInfo113c(
   pOut0: number,
   pOut1: number,
 ): void {
+  hitD2CommonVa113c(0x6FD6A330)
   const unitPtr = pUnit >>> 0
   if (unitPtr === 0 || m.get(unitPtr, D2UnitStrc.dwUnitType) !== UNIT_MONSTER) {
     throw new D2CommonAssertError('Monsters.cpp', 0x2bc)
@@ -925,6 +959,7 @@ export function MONSTER_GetSubClassVelocityInfo113c(
  * stdcall `[esp+4] = pItem`, `ret 4` -> `D2ItemsTxt.nUnique (+0x129)`).
  */
 export function ITEMS_CheckIfUnique113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD72C20)
   const ptr = pItem >>> 0
   if (ptr === 0) {
     throw new D2CommonAssertError('Items.cpp', 0x9ce)
@@ -944,6 +979,7 @@ export function ITEMS_CheckIfUnique113c(m: Memory113c, pItem: number): number {
  * stdcall `[esp+4] = pItem`, `ret 4` -> `D2ItemsTxt.nUseable (+0x11D)` or `0` on NULL / non-item).
  */
 export function ITEMS_CheckIfUseable113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD72C80)
   const ptr = pItem >>> 0
   if (ptr === 0 || m.get(ptr, D2UnitStrc.dwUnitType) !== 4) {
     return 0
@@ -960,6 +996,7 @@ export function ITEMS_CheckIfUseable113c(m: Memory113c, pItem: number): number {
  * stdcall `[esp+4] = pItem`, `ret 4` -> `AL` = `D2ItemsTxt.nLevel (+0xFD)`).
  */
 export function ITEMS_GetBaseLevel113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD73050)
   const ptr = pItem >>> 0
   if (ptr === 0) {
     throw new D2CommonAssertError('Items.cpp', 0x697)
@@ -979,6 +1016,7 @@ export function ITEMS_GetBaseLevel113c(m: Memory113c, pItem: number): number {
  * stdcall `[esp+4] = pItem`, `ret 4` -> `D2ItemsTxt.dw2HandedWClass (+0xC4)`).
  */
 export function ITEMS_Get2HandedWClass113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD732E0)
   const ptr = pItem >>> 0
   if (ptr === 0) {
     throw new D2CommonAssertError('Items.cpp', 0x609)
@@ -1002,6 +1040,7 @@ export function PATH_GetTargetUnitCoordsWithTrigOffset113c(
   edx: number,
   edi: number,
 ): void {
+  hitD2CommonVa113c(0x6FD8E310)
   const pDynamicPath = edx >>> 0
   const pOut = edi >>> 0
   if (pDynamicPath === 0) {
@@ -1056,6 +1095,7 @@ export function PATH_GetTargetUnitCoordsWithTrigOffset113c(
  * stdcall `[esp+4] = nIndex`, `ret 4` -> `D2ObjGroupTxt*`).
  */
 export function DATATBLS_GetObjGroupTxtRecord113c(m: Memory113c, nIndex: number): number {
+  hitD2CommonVa113c(0x6FD8E910)
   const idx = nIndex | 0
   if (idx >= (m.u32(SGPT_OBJGROUP_TXT_COUNT_VA) | 0)) {
     throw new D2CommonAssertError('ObjectsTbls.cpp', 0x15f)
@@ -1071,6 +1111,7 @@ export function DATATBLS_GetObjGroupTxtRecord113c(m: Memory113c, nIndex: number)
  * custom reg `edx = nSubType`, `ret` -> `D2LvlSubTxt*`).
  */
 export function DATATBLS_GetLvlSubTxtRecordBySubType113c(m: Memory113c, edx: number): number {
+  hitD2CommonVa113c(0x6FDBC4D0)
   const nSubType = edx | 0
   if (nSubType < 0) {
     throw new D2CommonAssertError('LvlTbls.cpp', 0x402)
@@ -1096,6 +1137,7 @@ export function DATATBLS_GetLvlWarpTxtRecordByIdAndDir113c(
   ebx: number,
   edx: number,
 ): number {
+  hitD2CommonVa113c(0x6FDBC5D0)
   const pLvlWarpTxt = m.u32(SGPT_LVLWARP_TXT_PTR_VA)
   if (pLvlWarpTxt === 0) {
     throw new D2CommonAssertError('LvlTbls.cpp', 0x32b)
@@ -1124,6 +1166,7 @@ export function DATATBLS_GetLvlWarpTxtRecordByIdAndDir113c(
  * stdcall `[esp+4] = nIndex`, `ret 4` -> `D2BooksTxt*` or `0`).
  */
 export function DATATBLS_GetBooksTxtRecord113c(m: Memory113c, nIndex: number): number {
+  hitD2CommonVa113c(0x6FDC1430)
   const idx = nIndex | 0
   if (idx >= (m.u32(SGPT_BOOKS_TXT_COUNT_VA) | 0) || idx === -1) {
     return 0
@@ -1144,6 +1187,7 @@ export function DATATBLS_GetBooksTxtRecord113c(m: Memory113c, nIndex: number): n
  * stdcall `[esp+4] = nIndex`, `ret 4` -> `D2QualityItemsTxt*` or `0`).
  */
 export function DATATBLS_GetQualityItemsTxtRecord113c(m: Memory113c, nIndex: number): number {
+  hitD2CommonVa113c(0x6FDC14D0)
   const idx = nIndex | 0
   if (idx >= (m.u32(SGPT_QUALITYITEMS_TXT_COUNT_VA) | 0) || idx === -1) {
     return 0
@@ -1164,6 +1208,7 @@ export function DATATBLS_GetQualityItemsTxtRecord113c(m: Memory113c, nIndex: num
  * stdcall `[esp+4] = nIndex`, `ret 4` -> `D2GemsTxt*` or `0`).
  */
 export function DATATBLS_GetGemsTxtRecord113c(m: Memory113c, nIndex: number): number {
+  hitD2CommonVa113c(0x6FDC1570)
   const idx = nIndex | 0
   if (idx >= (m.u32(SGPT_GEMS_TXT_COUNT_VA) | 0) || idx === -1) {
     return 0
@@ -1184,6 +1229,7 @@ export function DATATBLS_GetGemsTxtRecord113c(m: Memory113c, nIndex: number): nu
  * stdcall `[esp+4] = nIndex`, `ret 4` -> `D2BeltsTxt*` or `0`).
  */
 export function DATATBLS_GetBeltsTxtRecord113c(m: Memory113c, nIndex: number): number {
+  hitD2CommonVa113c(0x6FDC1610)
   const idx = nIndex | 0
   if (idx >= (m.u32(SGPT_BELTS_TXT_COUNT_VA) | 0) || idx === -1) {
     return 0
@@ -1204,6 +1250,7 @@ export function DATATBLS_GetBeltsTxtRecord113c(m: Memory113c, nIndex: number): n
  * stdcall `[esp+4] = nIndex1Based`, `ret 4` -> `D2MagicAffixTxt*` or `0`).
  */
 export function DATATBLS_GetMagicAffixTxtRecord113c(m: Memory113c, nIndex: number): number {
+  hitD2CommonVa113c(0x6FDC1820)
   const pBase = m.u32(SGPT_MAGICAFFIX_TXT_PTR_VA)
   if (pBase === 0) {
     throw new D2CommonAssertError('ItemTbls.cpp', 0x2c8)
@@ -1224,6 +1271,7 @@ export function DATATBLS_GetItemsTxtRecordByCode113c(
   dwCode: number,
   pOutIndex: number,
 ): number {
+  hitD2CommonVa113c(0x6FDC1960)
   const idx = fogGetRowFromTxt113c(m, m.u32(SGPT_ITEMS_LINKER_PTR_VA), dwCode >>> 0, 0) | 0
   if (idx < 0) {
     m.setU32(pOutIndex >>> 0, 0)
@@ -1238,6 +1286,7 @@ export function DATATBLS_GetItemsTxtRecordByCode113c(
  * `__fastcall(ecx = nArenaType)` -> `D2ArenaTxt*`, `ret`).
  */
 export function DATATBLS_GetArenaTxtRecord113c(m: Memory113c, ecx: number): number {
+  hitD2CommonVa113c(0x6FDCFF80)
   const idx = ecx | 0
   if (idx >= 1) {
     throw new D2CommonAssertError('ArenaTbls.cpp', 0x41)
@@ -1254,6 +1303,7 @@ export function DATATBLS_GetCharTemplateStartLevel113c(
   ecx: number,
   edx: number,
 ): number {
+  hitD2CommonVa113c(0x6FDCFFB0)
   const nTemplate = ecx | 0
   const nClass = edx | 0
   if (nTemplate <= 0) {
@@ -1277,6 +1327,7 @@ export function DATATBLS_GetInventoryGridInfo113c(
   nMode: number,
   pOutGridInfo: number,
 ): void {
+  hitD2CommonVa113c(0x6FDD1FB0)
   const idx = ((nMode << 4) + nIndex) >>> 0
   const pBase = m.u32(SGPT_INVENTORY_TXT_PTR_VA)
   if (pBase === 0) {
@@ -1309,6 +1360,7 @@ export function DATATBLS_GetInventoryGridInfo113c(
  * Note: binary has no `pRec == 0` guard after `0x6FDC19A0` and reads `BYTE PTR [eax+0x104]` directly.
  */
 export function ITEMS_GetQuiverType113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD72F20)
   const ptr = pItem >>> 0
   if (ptr === 0) return 0
   if (m.get(ptr, D2UnitStrc.dwUnitType) !== 4) return 0
@@ -1321,6 +1373,7 @@ export function ITEMS_GetQuiverType113c(m: Memory113c, pItem: number): number {
  * stdcall `[esp+4] = pItem`, `ret 4` -> `D2ItemsTxt.dwWClass (+0xC0)` or `0`).
  */
 export function ITEMS_GetWeaponClassCode113c(m: Memory113c, pItem: number): number {
+  hitD2CommonVa113c(0x6FD73330)
   const ptr = pItem >>> 0
   if (ptr === 0) return 0
   if (m.get(ptr, D2UnitStrc.dwUnitType) !== 4) return 0
@@ -1336,6 +1389,7 @@ export function ITEMS_GetWeaponClassCode113c(m: Memory113c, pItem: number): numb
  * pollute `StrictMem` diff verification.
  */
 export function DRLG_ValidateAndRebaseLevelRooms113c(m: Memory113c, pLevel: number): void {
+  hitD2CommonVa113c(0x6FD7D660)
   const lvl = pLevel >>> 0
   if (lvl === 0) {
     throw new D2CommonAssertError('Drlg.cpp', 0x2e3)
@@ -1399,6 +1453,7 @@ export function PLAYER_SetPlayerData150ParamsExport113c(
   nArg1: number,
   nArg2: number,
 ): void {
+  hitD2CommonVa113c(0x6FDCF670)
   const u = pUnit >>> 0
   if (u === 0) return
   if (m.get(u, D2UnitStrc.dwUnitType) !== 0) return
@@ -1431,6 +1486,7 @@ export function DATATBLS_GetItemRatioTxtRecord113c(
   _unused: number,
   wVersion: number,
 ): number {
+  hitD2CommonVa113c(0x6FDC4000)
   const bClassSpec = ITEMS_CheckItemTypeRarityUnder7113c(m, nItemId) | 0
   const bUber = ITEMS_IsUberOrUltraArmorOrWeapon113c(m, nItemId) | 0
   const ver16 = wVersion & 0xffff

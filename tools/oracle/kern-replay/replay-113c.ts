@@ -13,7 +13,7 @@
  * 3. Sample: walk the `pGame` unit hash lists exactly like the hook's `dump_units` and compare every
  *    golden field (strict: all unit fields incl. seeds and level, all stats, `gs`; pos: id/class/mode/x/y).
  */
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { gunzipSync } from 'node:zlib'
@@ -22,7 +22,32 @@ import { D2DynamicPathStrc, D2GameStrc, D2StaticPathStrc, D2UnitStrc } from '../
 import { STATLIST_GetUnitStat113c } from '../../../src/d2kern-113c/common/statlist.ts'
 import { UNITS_GetRoom113c } from '../../../src/d2kern-113c/common/unit.ts'
 import { DUNGEON_GetLevelIdFromRoom113c } from '../../../src/d2kern-113c/common/dungeon.ts'
-import { parseTrace, type Trace, type TraceFrame, type TraceHeader, type UnitRow } from '../lib/trace-diff.ts'
+import {
+  C2S_DispatchFromMem113c,
+  configureReplayHydrationAssets113c,
+  GAME_UpdateGameFrame113c,
+  hydrateSnapshotKernelTables113c,
+  type ReplayHydrationAssets113c,
+} from '../../../src/d2kern-113c/game/replay-kernel-113c.ts'
+import {
+  beginFrameS2CTrace113c,
+  endFrameS2CTrace113c,
+} from '../../../src/d2kern-113c/net/packet-sink.ts'
+import {
+  beginVaTrace113c,
+  endVaTrace113c,
+  hitD2CommonVa113c,
+  hitD2GameVa113c,
+} from '../../../src/d2kern-113c/va-trace-113c.ts'
+import {
+  diffItemFrameRows,
+  diffS2cFramePackets,
+  parseTrace,
+  type Trace,
+  type TraceFrame,
+  type TraceHeader,
+  type UnitRow,
+} from '../lib/trace-diff.ts'
 import { collectImportGraph, legacyReachable } from './import-graph.ts'
 
 export const REPO_ROOT_113C = fileURLToPath(new URL('../../../', import.meta.url))
@@ -36,7 +61,7 @@ export interface SnapshotBlock113c {
 }
 
 export interface SnapshotRecord113c {
-  readonly k: 'game' | 'unit' | 'act' | 'room'
+  readonly k: 'game' | 'unit' | 'act' | 'room' | 'gamestate' | 'drlg'
   readonly type?: number
   readonly id?: number
   readonly list?: number
@@ -62,7 +87,14 @@ export function parseSnapshot113c(text: string): Snapshot113c {
     if (line.length === 0) continue
     const obj = JSON.parse(line) as { k: string } & Record<string, unknown>
     if (obj.k === 'hdr') hdr = obj as unknown as Hdr
-    else if (obj.k === 'game' || obj.k === 'unit' || obj.k === 'act' || obj.k === 'room')
+    else if (
+      obj.k === 'game' ||
+      obj.k === 'unit' ||
+      obj.k === 'act' ||
+      obj.k === 'room' ||
+      obj.k === 'gamestate' ||
+      obj.k === 'drlg'
+    )
       records.push(obj as unknown as SnapshotRecord113c)
     else throw new Error(`snapshot: unknown record kind '${obj.k}'`)
   }
@@ -81,10 +113,45 @@ export interface KernWorld113c {
   readonly m: SparseMemory113c
   readonly pGame: number
   readonly bootFrame: number
+  lastFrameS2c: string[]
+}
+
+let loadedReplayHydrationAssets113c: ReplayHydrationAssets113c | null = null
+
+function ensureReplayHydrationAssetsLoaded113c(): void {
+  if (loadedReplayHydrationAssets113c !== null) return
+  const drlgDataTblsImg = new Uint8Array(
+    gunzipSync(readFileSync(join(REPO_ROOT_113C, 'tests/fixtures/oracle/vectors/drlg-datatbls-113c.img.gz'))),
+  )
+  const d2gameDataTblsImg = new Uint8Array(
+    gunzipSync(readFileSync(join(REPO_ROOT_113C, 'tests/fixtures/oracle/k1/d2game-datatbls-113c.img.gz'))),
+  )
+  const animDataBytes = new Uint8Array(
+    gunzipSync(readFileSync(join(REPO_ROOT_113C, 'tests/fixtures/oracle/k1/animdata-113c.bin.gz'))),
+  )
+  const raw = JSON.parse(
+    gunzipSync(readFileSync(join(REPO_ROOT_113C, 'tests/fixtures/oracle/k1/drlg-act1-ds1-dt1-113c.json.gz'))).toString('utf8'),
+  ) as { ds1: Record<string, string>; dt1: Record<string, string> }
+  const ds1 = new Map<string, Uint8Array>()
+  const dt1 = new Map<string, Uint8Array>()
+  for (const [k, b64] of Object.entries(raw.ds1)) {
+    ds1.set(k.replace(/\//g, '\\').toLowerCase(), new Uint8Array(Buffer.from(b64, 'base64')))
+  }
+  for (const [k, b64] of Object.entries(raw.dt1)) {
+    dt1.set(k.replace(/\//g, '\\').toLowerCase(), new Uint8Array(Buffer.from(b64, 'base64')))
+  }
+  loadedReplayHydrationAssets113c = {
+    drlgDataTblsImg,
+    d2gameDataTblsImg,
+    animDataBytes,
+    act1Ds1Dt1: { ds1, dt1 },
+  }
+  configureReplayHydrationAssets113c(loadedReplayHydrationAssets113c)
 }
 
 /** Hydrates every recorded block at its original address. Unreadable blocks (`h: null`) stay absent. */
-export function bootFromSnapshot113c(snap: Snapshot113c): KernWorld113c {
+export function bootFromSnapshot113c(snap: Snapshot113c, saveBytes?: Uint8Array): KernWorld113c {
+  ensureReplayHydrationAssetsLoaded113c()
   const m = new SparseMemory113c()
   let loaded = 0
   for (const rec of snap.records) {
@@ -100,7 +167,8 @@ export function bootFromSnapshot113c(snap: Snapshot113c): KernWorld113c {
   if (frame !== snap.frame) {
     throw new Error(`snapshot pGame->dwGameFrame ${frame} != recorded frame ${snap.frame}`)
   }
-  return { m, pGame, bootFrame: frame }
+  hydrateSnapshotKernelTables113c(m, pGame, snap.d2game >>> 0, saveBytes)
+  return { m, pGame, bootFrame: frame, lastFrameS2c: [] }
 }
 
 // ---------------------------------------------------------------- registry
@@ -131,6 +199,31 @@ export function loadManifest113c(): Map<string, ManifestFn> {
   ) as { functions: ManifestFn[] }
   const map = new Map<string, ManifestFn>()
   for (const f of raw.functions) map.set(manifestKey113c(f.module, parseInt(f.va, 16)), f)
+  const bDir = join(REPO_ROOT_113C, 'tools/oracle/callgraph/bindings')
+  for (const fn of readdirSync(bDir)) {
+    if (!fn.endsWith('.json')) continue
+    const entries = JSON.parse(readFileSync(join(bDir, fn), 'utf8')) as Array<{
+      module: string
+      va: string
+      name: string
+      kernFile: string
+      tsSymbol: string
+      status: string
+    }>
+    for (const e of entries) {
+      const k = manifestKey113c(e.module, parseInt(e.va, 16))
+      const prev = map.get(k)
+      map.set(k, {
+        module: e.module,
+        va: e.va,
+        name: e.name,
+        status: e.status,
+        size: prev !== undefined ? prev.size : 0,
+        kernFile: e.kernFile,
+        tsSymbol: e.tsSymbol,
+      })
+    }
+  }
   manifestCache = map
   return map
 }
@@ -144,7 +237,10 @@ export function loadManifest113c(): Map<string, ManifestFn> {
  * Fallen slice driver (`stepFallenSliceFrame113c`), whose module imports the legacy `src/common`
  * path/monstats/treasure code, and the C2S dispatcher `0x6FCEC550` is unported.
  */
-export const KERNEL_REGISTRY_113C: ReadonlyMap<string, KernelEntry113c> = new Map<string, KernelEntry113c>()
+export const KERNEL_REGISTRY_113C: ReadonlyMap<string, KernelEntry113c> = new Map<string, KernelEntry113c>([
+  ['D2Game:0x6FC4E050', (world, args) => GAME_UpdateGameFrame113c(world.m, args[0]!)],
+  ['D2Game:0x6FCEC550', (world, args) => C2S_DispatchFromMem113c(world.m, args[0]!, args[1]!, args[2]!)],
+])
 
 export class UnportedFunction113c extends Error {
   constructor(
@@ -184,6 +280,8 @@ export function callKernel113c(world: KernWorld113c, module: string, va: number,
     const { status, reason } = unavailableReason(loadManifest113c().get(key))
     throw new UnportedFunction113c(module, va, status, reason)
   }
+  if (module === 'D2Game') hitD2GameVa113c(va)
+  else if (module === 'D2Common') hitD2CommonVa113c(va)
   return entry(world, args)
 }
 
@@ -200,11 +298,16 @@ const PACKET_STAGING_BASE_113C = 0x7f000000
  * (oracle `on_pre_frame` contract), then `GAME_UpdateGameFrame` runs.
  */
 export function stepFrame113c(world: KernWorld113c, packets: readonly Uint8Array[]): void {
-  for (const pkt of packets) {
-    world.m.loadBlock(PACKET_STAGING_BASE_113C, pkt)
-    callKernel113c(world, 'D2Game', D2GAME_C2S_DISPATCH_VA_113C, [world.pGame, PACKET_STAGING_BASE_113C, pkt.length])
+  beginFrameS2CTrace113c()
+  try {
+    for (const pkt of packets) {
+      world.m.loadBlock(PACKET_STAGING_BASE_113C, pkt)
+      callKernel113c(world, 'D2Game', D2GAME_C2S_DISPATCH_VA_113C, [world.pGame, PACKET_STAGING_BASE_113C, pkt.length])
+    }
+    callKernel113c(world, 'D2Game', D2GAME_UPDATE_GAME_FRAME_VA_113C, [world.pGame])
+  } finally {
+    world.lastFrameS2c = endFrameS2CTrace113c()
   }
-  callKernel113c(world, 'D2Game', D2GAME_UPDATE_GAME_FRAME_VA_113C, [world.pGame])
 }
 
 // ------------------------------------------------------------------ sample
@@ -264,6 +367,65 @@ function unitRow(world: KernWorld113c, header: TraceHeader, pUnit: number, key: 
   return row
 }
 
+function itemRow113c(world: KernWorld113c, header: TraceHeader, pUnit: number): UnitRow {
+  const { m } = world
+  const [x, y] = unitXY(m, pUnit)
+  const itd = m.u32((pUnit + 0x14) >>> 0) >>> 0
+  const itemFields = header.itemFields ?? []
+  const row: number[] = []
+  for (const field of itemFields) {
+    switch (field) {
+      case 'id': row.push(m.get(pUnit, D2UnitStrc.dwUnitId) >>> 0); break
+      case 'class': row.push(m.get(pUnit, D2UnitStrc.dwClassId) >>> 0); break
+      case 'mode': row.push(m.get(pUnit, D2UnitStrc.dwAnimMode) >>> 0); break
+      case 'x': row.push(x >>> 0); break
+      case 'y': row.push(y >>> 0); break
+      case 'seedLo': row.push(m.get(pUnit, D2UnitStrc.seedLo) >>> 0); break
+      case 'seedHi': row.push(m.get(pUnit, D2UnitStrc.seedHi) >>> 0); break
+      case 'itemSeedLo': row.push(itd !== 0 ? (m.u32((itd + 0x04) >>> 0) >>> 0) : 0); break
+      case 'itemSeedHi': row.push(itd !== 0 ? (m.u32((itd + 0x08) >>> 0) >>> 0) : 0); break
+      case 'initSeed': row.push(itd !== 0 ? (m.u32((itd + 0x10) >>> 0) >>> 0) : 0); break
+      case 'ownerId': row.push(itd !== 0 ? (m.u32((itd + 0x0c) >>> 0) | 0) : -1); break
+      case 'quality': row.push(itd !== 0 ? (m.u32((itd + 0x00) >>> 0) >>> 0) : 0); break
+      case 'ilvl': row.push(itd !== 0 ? (m.u32((itd + 0x2c) >>> 0) >>> 0) : 0); break
+      case 'itemFlags': row.push(itd !== 0 ? (m.u32((itd + 0x18) >>> 0) >>> 0) : 0); break
+      case 'cmdFlags': row.push(itd !== 0 ? (m.u32((itd + 0x14) >>> 0) >>> 0) : 0); break
+      case 'fileIndex': row.push(itd !== 0 ? (m.u32((itd + 0x28) >>> 0) | 0) : 0); break
+      case 'itemFormat': row.push(itd !== 0 ? m.u16((itd + 0x30) >>> 0) : 0); break
+      case 'rarePrefix': row.push(itd !== 0 ? m.u16((itd + 0x32) >>> 0) : 0); break
+      case 'rareSuffix': row.push(itd !== 0 ? m.u16((itd + 0x34) >>> 0) : 0); break
+      case 'autoPrefix': row.push(itd !== 0 ? m.u16((itd + 0x36) >>> 0) : 0); break
+      case 'magicPrefix0': row.push(itd !== 0 ? m.u16((itd + 0x38) >>> 0) : 0); break
+      case 'magicPrefix1': row.push(itd !== 0 ? m.u16((itd + 0x3a) >>> 0) : 0); break
+      case 'magicPrefix2': row.push(itd !== 0 ? m.u16((itd + 0x3c) >>> 0) : 0); break
+      case 'magicSuffix0': row.push(itd !== 0 ? m.u16((itd + 0x3e) >>> 0) : 0); break
+      case 'magicSuffix1': row.push(itd !== 0 ? m.u16((itd + 0x40) >>> 0) : 0); break
+      case 'magicSuffix2': row.push(itd !== 0 ? m.u16((itd + 0x42) >>> 0) : 0); break
+      case 'bodyLoc': row.push(itd !== 0 ? m.u8((itd + 0x44) >>> 0) : 0); break
+      case 'itemPage': row.push(itd !== 0 ? m.u8((itd + 0x45) >>> 0) : 0xff); break
+      case 'earLevel': row.push(itd !== 0 ? m.u8((itd + 0x48) >>> 0) : 0); break
+      case 'invGfxIdx': row.push(itd !== 0 ? m.u8((itd + 0x49) >>> 0) : 0xff); break
+      default:
+        throw new Error(`sampleFrame: unsupported item field '${field}'`)
+    }
+  }
+  const slex = m.u32((pUnit + 0x5c) >>> 0) >>> 0
+  if (slex !== 0) {
+    const slOff = (m.u32((slex + 0x10) >>> 0) & 0x80000000) !== 0 ? 0x48 : 0x24
+    const stats = m.u32((slex + slOff) >>> 0) >>> 0
+    const cnt = m.u16((slex + slOff + 4) >>> 0)
+    if (stats !== 0 && cnt > 0 && cnt <= 256) {
+      for (let si = 0; si < cnt; si++) {
+        const param = m.u16((stats + si * 8) >>> 0)
+        const statId = m.u16((stats + si * 8 + 2) >>> 0)
+        const val = m.u32((stats + si * 8 + 4) >>> 0) | 0
+        row.push(statId, param, val)
+      }
+    }
+  }
+  return row
+}
+
 /** Samples the world the way the hook samples the original game after `GAME_UpdateGameFrame`. */
 export function sampleFrame113c(world: KernWorld113c, header: TraceHeader): TraceFrame {
   const { m, pGame } = world
@@ -283,6 +445,22 @@ export function sampleFrame113c(world: KernWorld113c, header: TraceHeader): Trac
     }
     out[`t${key}`] = rows
   }
+  if (header.itemFields !== undefined) {
+    const itemRows: UnitRow[] = []
+    for (let list = 0; list < 5; list++) {
+      for (let b = 0; b < 128; b++) {
+        let u = m.get(pGame, D2GameStrc.pUnitHash, list * 128 + b)
+        while (u !== 0) {
+          if (m.get(u, D2UnitStrc.dwUnitType) === 4) itemRows.push(itemRow113c(world, header, u))
+          u = m.get(u, D2UnitStrc.pGameHashNext)
+        }
+      }
+    }
+    out.t4 = itemRows
+  }
+  if (header.s2c === true && out.frame > world.bootFrame) {
+    out.s2c = [...world.lastFrameS2c]
+  }
   out.gs = [m.get(pGame, D2GameStrc.seedLo), m.get(pGame, D2GameStrc.seedHi)]
   return out
 }
@@ -293,7 +471,7 @@ export type DiffPolicy113c = 'strict' | 'pos'
 
 export interface FieldDivergence113c {
   readonly frame: number
-  /** `t0`/`t1`/`t3`, `gs`, or `step` when the kernel could not run the frame. */
+  /** `t0`/`t1`/`t3`/`t4`, `s2c`, `gs`, or `step` when the kernel could not run the frame. */
   readonly key: string
   readonly id: number | null
   readonly field: string
@@ -338,10 +516,36 @@ export function diffFrame113c(
       if (!goldIds.has(id)) return { frame, key: k, id, field: 'presence', expected: null, actual: row }
     }
   }
+  if (header.itemFields !== undefined && golden.t4 !== undefined) {
+    const idiff = diffItemFrameRows(golden.t4, actual.t4, header.itemFields, policy)
+    if (idiff !== null) {
+      return {
+        frame,
+        key: 't4',
+        id: idiff.id,
+        field: idiff.field,
+        expected: idiff.expected,
+        actual: idiff.actual,
+      }
+    }
+  }
   if (policy === 'strict' && golden.gs !== undefined) {
     const ga = actual.gs
     if (ga === undefined || ga[0] !== golden.gs[0] || ga[1] !== golden.gs[1]) {
       return { frame, key: 'gs', id: null, field: 'gs', expected: golden.gs, actual: ga }
+    }
+  }
+  if (policy === 'strict' && header.s2c === true && golden.s2c !== undefined && frame > 2) {
+    const sdiff = diffS2cFramePackets(golden.s2c, actual.s2c)
+    if (sdiff !== null) {
+      return {
+        frame,
+        key: 's2c',
+        id: sdiff.id,
+        field: sdiff.field,
+        expected: sdiff.expected,
+        actual: sdiff.actual,
+      }
     }
   }
   return null
@@ -351,6 +555,7 @@ export function diffFrame113c(
 
 export interface ReplayScenario113c {
   readonly name: string
+  readonly save?: string
   readonly frames: number
   readonly inputs: ReadonlyArray<{ readonly frame: number; readonly c2s: string }>
 }
@@ -369,6 +574,8 @@ export interface ReplayResult113c {
   readonly firstPosDivergence: FieldDivergence113c | null
   readonly unportedHit: { readonly frame: number; readonly key: string; readonly status: string; readonly reason: string } | null
   readonly framesStepped: number
+  /** Sorted `Module:0xVA` keys actually executed at runtime by TS across `bootFromSnapshot113c` + `stepFrame113c`. */
+  readonly tsExecutedVas: ReadonlyArray<string>
 }
 
 export function goldenPath113c(name: string): string {
@@ -398,57 +605,71 @@ function hexBytes(hex: string): Uint8Array {
 export function runReplay113c(name: string, bootFrame = 2): ReplayResult113c {
   const golden = loadGolden113c(name)
   const scenario = loadScenario113c(name)
-  const world = bootFromSnapshot113c(loadSnapshotFile113c(snapshotPath113c(name, bootFrame)))
-  if (world.bootFrame !== bootFrame) throw new Error(`snapshot boots at F${world.bootFrame}, expected F${bootFrame}`)
+  const saveBytes =
+    scenario.save !== undefined
+      ? new Uint8Array(readFileSync(join(REPO_ROOT_113C, scenario.save)))
+      : undefined
+  const snap = loadSnapshotFile113c(snapshotPath113c(name, bootFrame))
   const header = golden.header
   let lastGoldenFrame = 0
   for (const f of golden.frames.keys()) if (f > lastGoldenFrame) lastGoldenFrame = f
   const bootGolden = golden.frames.get(bootFrame)
   if (bootGolden === undefined) throw new Error(`golden has no frame ${bootFrame}`)
-  const bootCheck = diffFrame113c(bootGolden, sampleFrame113c(world, header), header, 'strict')
 
+  beginVaTrace113c()
+  let bootCheck: FieldDivergence113c | null = null
   let strictHorizon = bootFrame
   let posHorizon = bootFrame
-  let firstStrict: FieldDivergence113c | null = bootCheck
-  let firstPos: FieldDivergence113c | null = bootCheck === null ? null : diffFrame113c(bootGolden, sampleFrame113c(world, header), header, 'pos')
+  let firstStrict: FieldDivergence113c | null = null
+  let firstPos: FieldDivergence113c | null = null
   let unportedHit: ReplayResult113c['unportedHit'] = null
   let framesStepped = 0
-  if (bootCheck === null) {
-    for (let f = bootFrame + 1; f <= lastGoldenFrame; f++) {
-      const g = golden.frames.get(f)
-      if (g === undefined) throw new Error(`golden has no frame ${f}`)
-      const packets = scenario.inputs.filter((i) => i.frame === f).map((i) => hexBytes(i.c2s))
-      try {
-        stepFrame113c(world, packets)
-      } catch (e) {
-        if (!(e instanceof UnportedFunction113c)) throw e
-        const d: FieldDivergence113c = {
-          frame: f,
-          key: 'step',
-          id: null,
-          field: `<unported ${manifestKey113c(e.module, e.va)}>`,
-          expected: 'frame simulated by the original game',
-          actual: e.message,
+  let tsExecutedVas: string[] = []
+  try {
+    const world = bootFromSnapshot113c(snap, saveBytes)
+    if (world.bootFrame !== bootFrame) throw new Error(`snapshot boots at F${world.bootFrame}, expected F${bootFrame}`)
+    bootCheck = diffFrame113c(bootGolden, sampleFrame113c(world, header), header, 'strict')
+    firstStrict = bootCheck
+    firstPos = bootCheck === null ? null : diffFrame113c(bootGolden, sampleFrame113c(world, header), header, 'pos')
+    if (bootCheck === null) {
+      for (let f = bootFrame + 1; f <= lastGoldenFrame; f++) {
+        const g = golden.frames.get(f)
+        if (g === undefined) throw new Error(`golden has no frame ${f}`)
+        const packets = scenario.inputs.filter((i) => i.frame === f).map((i) => hexBytes(i.c2s))
+        try {
+          stepFrame113c(world, packets)
+        } catch (e) {
+          if (!(e instanceof UnportedFunction113c)) throw e
+          const d: FieldDivergence113c = {
+            frame: f,
+            key: 'step',
+            id: null,
+            field: `<unported ${manifestKey113c(e.module, e.va)}>`,
+            expected: 'frame simulated by the original game',
+            actual: e.message,
+          }
+          unportedHit = { frame: f, key: manifestKey113c(e.module, e.va), status: e.status, reason: e.reason }
+          if (firstStrict === null) firstStrict = d
+          if (firstPos === null) firstPos = d
+          break
         }
-        unportedHit = { frame: f, key: manifestKey113c(e.module, e.va), status: e.status, reason: e.reason }
-        if (firstStrict === null) firstStrict = d
-        if (firstPos === null) firstPos = d
-        break
+        framesStepped++
+        const sample = sampleFrame113c(world, header)
+        if (firstStrict === null) {
+          const d = diffFrame113c(g, sample, header, 'strict')
+          if (d === null) strictHorizon = f
+          else firstStrict = d
+        }
+        const dp = diffFrame113c(g, sample, header, 'pos')
+        if (dp !== null) {
+          firstPos = dp
+          break
+        }
+        posHorizon = f
       }
-      framesStepped++
-      const sample = sampleFrame113c(world, header)
-      if (firstStrict === null) {
-        const d = diffFrame113c(g, sample, header, 'strict')
-        if (d === null) strictHorizon = f
-        else firstStrict = d
-      }
-      const dp = diffFrame113c(g, sample, header, 'pos')
-      if (dp !== null) {
-        firstPos = dp
-        break
-      }
-      posHorizon = f
     }
+  } finally {
+    tsExecutedVas = [...endVaTrace113c()].sort()
   }
   return {
     scenario: name,
@@ -461,5 +682,6 @@ export function runReplay113c(name: string, bootFrame = 2): ReplayResult113c {
     firstPosDivergence: firstPos,
     unportedHit,
     framesStepped,
+    tsExecutedVas,
   }
 }

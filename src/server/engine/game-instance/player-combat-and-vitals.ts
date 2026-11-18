@@ -6,7 +6,11 @@ import { createLinearMissilePath113c, linearMissileStep16_113c } from '../missil
 import type { MissileRecord, SkillRecord } from '../../../common/data/data-registry.ts'
 import { LocalMovementPredictor } from '../../../common/path/movement-predictor.ts'
 import { resolveArmorBlock113c, resolveArmorSpeed113c, resolveWeaponBase113c } from '../../../common/units/char-anim-speed.ts'
-import { findPathWorld, type SubTilePoint } from '../../../common/path/pathfind.ts'
+import {
+  findPlayerPathD2Common113c,
+  type D2CommonPathRoomRect,
+  type SubTilePoint,
+} from '../../../common/path/pathfind.ts'
 import { CANONICAL_113C_OBJECTS } from '../../../common/world/objects-meta.ts'
 import { doesDoorOrGateBlockMode113c, isDoorOrGateObject113c } from '../../../common/world/object-operate-113c.ts'
 import { scaleLowQualityWeaponBand113c } from '../../../common/items/drop-tables.ts'
@@ -933,8 +937,10 @@ function isPlayerSubTileBlocked(this: GameInstanceHost, areaId: number, subX: nu
 
 
 /**
- * Player path from `(fromX, fromY)` to `(toX, toY)` with the client's `findPathWorld`
- * (`unitSize: 2`), over a collision window sampled from the area collision callback. Without a
+ * Player path from `(fromX, fromY)` to `(toX, toY)` with the client's
+ * `findPlayerPathD2Common113c` (1.13c `D2Common_10142`, `PATHTYPE_STRAIGHT = 7`: D2Game
+ * `0x6FC98710` never calls `PATH_SetType` for walk/run), over a collision window sampled from
+ * the area collision callback. An empty path means the server does not move the player. Without a
  * collision callback (no level loaded) the path is the straight segment, unless a Bone Prison or closed door is active.
  */
 function findPlayerPath(this: GameInstanceHost, 
@@ -971,13 +977,22 @@ function findPlayerPath(this: GameInstanceHost,
       walkable[ly * subWidth + lx] = this.isWorldWalkableForPlayer(areaId, minX + lx, minY + ly) ? 1 : 0
     }
   }
-  return findPathWorld(
-    { subWidth, subHeight, walkable, subOriginX: minX, subOriginY: minY },
-    fromX,
-    fromY,
+  // DRLG rooms overlapping the collision window: `D2Common_10142` only accepts a target inside the
+  // start room or one of its adjacent rooms (`DUNGEON_GetRoomAtPosition` 0x6FD90A60).
+  const rooms: D2CommonPathRoomRect[] = []
+  for (const [loadedAreaId, record] of this.loadedAreas) {
+    for (const r of record.roomRects) {
+      if (r.w <= 0 || r.h <= 0) continue
+      if (r.x > maxX || r.y > maxY || r.x + r.w <= minX || r.y + r.h <= minY) continue
+      rooms.push({ worldSubX: r.x, worldSubY: r.y, subW: r.w, subH: r.h, areaId: loadedAreaId })
+    }
+  }
+  return findPlayerPathD2Common113c(
+    { subWidth, subHeight, walkable, subOriginX: minX, subOriginY: minY, areaId, rooms },
+    Math.round(fromX),
+    Math.round(fromY),
     toX,
     toY,
-    { unitSize: 2 },
   ).path
 }
 

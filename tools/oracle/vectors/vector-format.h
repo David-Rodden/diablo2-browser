@@ -6,6 +6,7 @@
 
 #define D2TV_MAGIC 0x56543244  /* 'D','2','T','V' */
 #define D2TV_VERSION 1
+#define D2TV_KIND_SKILLCALC "SKLCALC"
 
 #pragma pack(push, 1)
 typedef struct {

@@ -46,6 +46,7 @@ import {
   autoBeltItemImpl,
   buyFromNpcImpl,
   cancelNpcSessionImpl,
+  cancelOrificeUiFromServerImpl,
   castTownPortalImpl,
   clickButtonImpl,
   closeActiveNpcPanelImpl,
@@ -1307,6 +1308,15 @@ export class HudModel implements HudCommandSink {
    */
   closeHoradricOrifice(orificeObjectId?: number): void {
     closeHoradricOrificeImpl(this, orificeObjectId)
+  }
+
+  /**
+   * Handle `S2C 0x58` `uiAction = 1` (`D2Client.dll` `0x6fb50270`):
+   * close the Horadric Orifice UI locally without emitting a duplicate `C2S 0x44` cancel packet
+   * or slamming shut unrelated HUD panels.
+   */
+  cancelOrificeUiFromServer(): void {
+    cancelOrificeUiFromServerImpl(this)
   }
 
   /**

@@ -185,6 +185,8 @@ export function hudRepaintUnchanged(hud: HudManager, nowMs: number): boolean {
     hud.hotkeys.hoverSkillId ?? -1,
     hud.hotkeys.hoverSpeedbarSkillId ?? -1,
     hud.hotkeys.hoveredPopupSkill ? `${hud.hotkeys.hoveredPopupSkill.side}:${hud.hotkeys.hoveredPopupSkill.skillId}` : '',
+    hud.hotkeys.hoveredGrantedSkill ? `${hud.hotkeys.hoveredGrantedSkill.kind}:${hud.hotkeys.hoveredGrantedSkill.skillId}` : '',
+    hud.hotkeys.getGrantedSkillsKey?.() ?? '',
     hud.hoveredNpcLabel
       ? `${hud.hoveredNpcLabel.text}@${Math.round(hud.hoveredNpcLabel.screenX)},${Math.round(hud.hoveredNpcLabel.screenY)}`
       : '',

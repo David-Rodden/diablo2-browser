@@ -27,11 +27,41 @@ import type { GameInstanceHost } from './host.ts'
 import { updatePlayerBreadcrumbs113c } from './hireable-ai-113c.ts'
 import { stepOracleNecroPetsEarly113c } from './summoned-pets.ts'
 import type { InternalMonsterRecord, InternalPlayerRecord, PlayerSkillCast, QueuedPlayerCommand, ServerItemEntry } from './types.ts'
-import { ACT_TOWN_AREAS, BODYLOC_LEFT_ARM, BODYLOC_RIGHT_ARM, NPC_INTRO_BIT_BY_HCIDX_113C, PLAYER_SIZE_X_113C, SKILL_TELEPORT, SRVDOFUNC_MIND_BLAST, SRVDOFUNC_WHIRLWIND, STAT_ITEM_ADDCLASSSKILLS, STAT_ITEM_ADDSKILL_TAB, STAT_ITEM_ALLSKILLS, STAT_ITEM_EXPLOSIVEARROW, STAT_ITEM_MAGICARROW, STAT_ITEM_NONCLASSSKILL, STAT_ITEM_SINGLESKILL, STAT_QUANTITY, TOWN_AREAS, UNIVERSAL_PLAYER_SKILL_IDS, WARP_INTERACT_DISTANCE_SUBTILES, WAYPOINT_AREA_IDS, WAYPOINT_INTERACT_DISTANCE_SUBTILES, areaToAct, collectEquippedItemStats, collectItemStats, computeObjectApproachSearchRadius113c, findBestInteractApproachSubTile113c, findChargedSkill, normalizeMissileElement, resolvePlayerServerMissileName, UNIT_TYPE_113C, type UnitType113c } from './constants-and-helpers.ts'
+import { ACT_TOWN_AREAS, BODYLOC_LEFT_ARM, BODYLOC_RIGHT_ARM, NPC_INTRO_BIT_BY_HCIDX_113C, PLAYER_SIZE_X_113C, SKILL_TELEPORT, SRVDOFUNC_MIND_BLAST, SRVDOFUNC_WHIRLWIND, STAT_ITEM_ADDCLASSSKILLS, STAT_ITEM_ADDSKILL_TAB, STAT_ITEM_ALLSKILLS, STAT_ITEM_EXPLOSIVEARROW, STAT_ITEM_MAGICARROW, STAT_ITEM_NONCLASSSKILL, STAT_ITEM_SINGLESKILL, STAT_QUANTITY, TOWN_AREAS, UNIVERSAL_PLAYER_SKILL_IDS, WALK_PACKET_MAX_AXIS_DELTA_113C, WALK_PACKET_REJECT_REASSIGN_FRAMES_113C, WARP_INTERACT_DISTANCE_SUBTILES, WAYPOINT_AREA_IDS, WAYPOINT_INTERACT_DISTANCE_SUBTILES, areaToAct, collectEquippedItemStats, collectItemStats, computeObjectApproachSearchRadius113c, findBestInteractApproachSubTile113c, findChargedSkill, normalizeMissileElement, resolvePlayerServerMissileName, UNIT_TYPE_113C, type UnitType113c } from './constants-and-helpers.ts'
 
 
 
 /** Wire / domain unit type (`0..5` or `UnitTypeName`, `'warp'` = tile) -> 1.13c unit type, else undefined. */
+
+/** Frame of the last accepted C2S `0x01` / `0x03` packet per player (D2Game `[pPlayerData+0x168]`). */
+const lastAcceptedWalkPacketFrame113c = new WeakMap<InternalPlayerRecord, number>()
+
+/**
+ * 1.13c D2Game `0x6FCEBF50` -> `0x6FCEB690` (`ebx = 0x32`): drops a walk/run location packet whose
+ * target is more than 50 sub-tiles away from the unit on either axis. The player position is
+ * re-sent only when the last accepted walk/run packet is more than 25 frames old
+ * (`0x6FCEBFBC..0x6FCEBFC5`); an accepted packet stamps the current frame (`0x6FCEC00D`).
+ * Returns `true` when the packet was rejected.
+ */
+function rejectWalkPacketBeyondAxisDelta113c(
+  host: GameInstanceHost,
+  player: InternalPlayerRecord,
+  targetX: number,
+  targetY: number,
+): boolean {
+  const dx = Math.abs(Math.round(player.x) - Math.trunc(targetX))
+  const dy = Math.abs(Math.round(player.y) - Math.trunc(targetY))
+  if (dx <= WALK_PACKET_MAX_AXIS_DELTA_113C && dy <= WALK_PACKET_MAX_AXIS_DELTA_113C) {
+    lastAcceptedWalkPacketFrame113c.set(player, host.currentFrame)
+    return false
+  }
+  const lastAccepted = lastAcceptedWalkPacketFrame113c.get(player) ?? 0
+  if (host.currentFrame - lastAccepted > WALK_PACKET_REJECT_REASSIGN_FRAMES_113C) {
+    host.rubberbandPlayer113c(player)
+  }
+  return true
+}
+
 function interactUnitType113c(raw: unknown): UnitType113c | undefined {
   if (typeof raw === 'number') {
     return Number.isInteger(raw) && raw >= 0 && raw <= 5 ? (raw as UnitType113c) : undefined
@@ -558,6 +588,7 @@ function processPlayerCommand(this: GameInstanceHost, player: InternalPlayerReco
         return
       }
       if (!Number.isFinite(cmd.x) || !Number.isFinite(cmd.y)) return
+      if (rejectWalkPacketBeyondAxisDelta113c(this, player, cmd.x, cmd.y)) return
       this.clearPlayerChannelState(player)
       player.queuedSkillOnTarget = undefined
       player.pendingInteraction = undefined
@@ -585,6 +616,7 @@ function processPlayerCommand(this: GameInstanceHost, player: InternalPlayerReco
         return
       }
       if (!Number.isFinite(cmd.x) || !Number.isFinite(cmd.y)) return
+      if (rejectWalkPacketBeyondAxisDelta113c(this, player, cmd.x, cmd.y)) return
       this.clearPlayerChannelState(player)
       player.queuedSkillOnTarget = undefined
       player.pendingInteraction = undefined
@@ -1342,6 +1374,69 @@ function processPlayerCommand(this: GameInstanceHost, player: InternalPlayerReco
     }
     case 'RequestEntityUpdate': {
       this.handleRequestEntityUpdate(player, cmd.unitType, cmd.unitId)
+      break
+    }
+    case 'StaffInOrifice': {
+      if (player.dead) return
+      const obj =
+        this.objects.get(cmd.orificeObjectId) ??
+        [...this.objects.values()].find(
+          (candidate) => candidate.areaId === player.areaId && candidate.classId === 152,
+        )
+      if (cmd.state === 2) {
+        if (obj !== undefined && obj.classId === 152 && obj.mode === 1) {
+          this.setObjectMode(obj, 0)
+        }
+        this.emitToPlayer(player.unitId, {
+          type: 'OpenUi',
+          unitType: 2,
+          unitId: obj?.unitId ?? cmd.orificeObjectId,
+          uiId: 1,
+          extra: 0,
+        })
+        break
+      }
+      if (cmd.state === 3) {
+        const staff =
+          player.items.find(
+            (item) =>
+              item.unitId === cmd.staffItemId && item.code.toLowerCase().trim() === 'hst',
+          ) ??
+          player.items.find(
+            (item) => item.location === 'cursor' && item.code.toLowerCase().trim() === 'hst',
+          ) ??
+          player.items.find((item) => item.code.toLowerCase().trim() === 'hst')
+        if (staff === undefined) {
+          this.emitToPlayer(player.unitId, {
+            type: 'OpenUi',
+            unitType: 2,
+            unitId: obj?.unitId ?? cmd.orificeObjectId,
+            uiId: 4,
+            extra: 0,
+          })
+          break
+        }
+        if (obj !== undefined && obj.classId === 152) {
+          if (obj.mode === 0) {
+            this.setObjectMode(obj, 1)
+          }
+          if (obj.mode !== 2) {
+            this.setObjectMode(obj, 2)
+            this.advanceQuestObject(player, obj)
+          } else {
+            this.removePlayerQuestItem(player, staff)
+          }
+        } else {
+          this.removePlayerQuestItem(player, staff)
+        }
+        this.emitToPlayer(player.unitId, {
+          type: 'OpenUi',
+          unitType: 2,
+          unitId: obj?.unitId ?? cmd.orificeObjectId,
+          uiId: 5,
+          extra: 1,
+        })
+      }
       break
     }
     case 'MakeEntityMove':

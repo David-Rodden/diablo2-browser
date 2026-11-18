@@ -19,6 +19,7 @@ import {
   D2TextNodeStrc_SIZE,
 } from '../mem/layout.generated.ts'
 import { D2CommonAssertError } from './inline-helpers.ts'
+import { hitD2CommonVa113c } from '../va-trace-113c.ts'
 
 export const D2COMMON_LANG_ID_SHADOW_VA_113C = 0x6fdf1478
 
@@ -30,6 +31,7 @@ export const D2COMMON_LANG_ID_SHADOW_VA_113C = 0x6fdf1478
  * (`0x6FD68228 add eax, 0x10; 0x6FD68230..0x6FD68238 mov cl, [eax]; mov [edx+eax], cl; inc eax; test cl, cl; jne`).
  */
 export function CHAT_CopyHoverMsg113c(m: Memory113c, pHoverMsg: number, szDest: number): void {
+  hitD2CommonVa113c(0x6FD68220)
   const srcBase = ((pHoverMsg >>> 0) + D2HoverTextStrc.szMsg.off) >>> 0
   const dstBase = szDest >>> 0
   let i = 0
@@ -46,6 +48,7 @@ export function CHAT_CopyHoverMsg113c(m: Memory113c, pHoverMsg: number, szDest: 
  * stdcall `[esp+4] = pHoverMsg`, `ret 4` -> `pHoverMsg->dwExpireTime (+0x04)`).
  */
 export function CHAT_GetTimeoutFromHoverMsg113c(m: Memory113c, pHoverMsg: number): number {
+  hitD2CommonVa113c(0x6FD68240)
   return m.get(pHoverMsg >>> 0, D2HoverTextStrc.dwExpireTime) >>> 0
 }
 
@@ -72,6 +75,7 @@ export function DRLGVER_SnapAndOffsetVertex113c(
   pSrcVertex: number,
   pLevel: number,
 ): void {
+  hitD2CommonVa113c(0x6FD8D4A0)
   const dst = pDstVertex >>> 0
   const src = pSrcVertex >>> 0
   const lvl = pLevel >>> 0
@@ -125,6 +129,7 @@ export function DRLGVER_SnapAndOffsetVertex113c(
  * stdcall `[esp+4] = pMemPool`, `[esp+8] = pHoverText`, `ret 8`, void).
  */
 export function CHAT_FreeHoverMsg113c(m: Memory113c, pMemPool: number, pHoverText: number): void {
+  hitD2CommonVa113c(0x6FD68260)
   const pMsg = pHoverText >>> 0
   if (pMsg !== 0) {
     void pMemPool
@@ -142,6 +147,7 @@ export function CHAT_AllocHoverMsg113c(
   szText: number,
   nFrame: number,
 ): number {
+  hitD2CommonVa113c(0x6FD68280)
   void pMemPool
   const pStr = szText >>> 0
   let len = 0
@@ -178,6 +184,7 @@ export function TEXT_BuildMessageList113c(
   pTextHeader: number,
   pMsgList: number,
 ): void {
+  hitD2CommonVa113c(0x6FD8D060)
   const pHdr = pTextHeader >>> 0
   if (pHdr === 0) {
     throw new D2CommonAssertError('Text.cpp', 0xed)
@@ -219,6 +226,7 @@ export function TEXT_AddNodeToTextList113c(
   nStringId: number,
   nMenuIndex: number,
 ): void {
+  hitD2CommonVa113c(0x6FD8D210)
   const pHdr = pTextHeader >>> 0
   const pMemPool = m.get(pHdr, D2TextHeaderStrc.pMemPool)
   void pMemPool
@@ -236,6 +244,7 @@ export function TEXT_AddNodeToTextList113c(
  * stdcall `[esp+4] = pMemPool`, `ret 4` -> `pTextHeader`).
  */
 export function TEXT_AllocTextList113c(m: Memory113c, pMemPool: number): number {
+  hitD2CommonVa113c(0x6FD8D280)
   const pool = pMemPool >>> 0
   const pHdr = m.alloc(D2TextHeaderStrc_SIZE)
   m.set(pHdr, D2TextHeaderStrc.pMemPool, pool)
@@ -249,6 +258,7 @@ export function TEXT_AllocTextList113c(m: Memory113c, pMemPool: number): number 
  * stdcall `[esp+4] = pTextHeader`, `ret 4`, void).
  */
 export function TEXT_FreeTextList113c(m: Memory113c, pTextHeader: number): void {
+  hitD2CommonVa113c(0x6FD8D450)
   const pHdr = pTextHeader >>> 0
   let pNode = m.get(pHdr, D2TextHeaderStrc.pFirstNode)
   while (pNode !== 0) {

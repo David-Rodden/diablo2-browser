@@ -83,7 +83,7 @@ function nodeKey(mod: string, vaHexOrInt: string | number): string {
 // Frozen K0 contribution of KERN_BINDINGS_113C (extract-callgraph.py). K1 adds bindings ONLY through
 // tools/oracle/callgraph/bindings/*.json (see its README.md); editing these literals requires editing the
 // K0 list itself (e.g. a justified K0 promotion), never a per-batch bump.
-const K0_BASE = { dv: 93, ported: 36, d2CommonDv: 47, d2CommonPorted: 18 } as const;
+const K0_BASE = { dv: 111, ported: 18, d2CommonDv: 65, d2CommonPorted: 0 } as const;
 
 const BINDINGS_DIR = path.join(REPO_ROOT, 'tools', 'oracle', 'callgraph', 'bindings');
 interface BatchBinding {
@@ -775,11 +775,11 @@ describe('Diablo II v1.13c Kernel Call Graph & Manifest ([K0] Track A)', () => {
     // Unexercised or unit-tested 100%-complete helpers in src/d2kern-113c/ must be classified as 'ported', while slice-scoped helpers remain 'unported'
     expect(fnByKey.get('D2Game:6FCA38B0')!.status).toBe('ported'); // AiZombie (dormant in F786..F825)
     expect(fnByKey.get('D2Game:6FC96FE0')!.status).toBe('ported'); // MONSTER_StepRun (Fallen only walk in WL=2)
-    expect(fnByKey.get('D2Common:6FD8A330')!.status).toBe('ported'); // STATLIST_AddStat
-    expect(fnByKey.get('D2Common:6FD88520')!.status).toBe('ported'); // STATLIST_GetStatListFromUnitAndState
-    expect(fnByKey.get('D2Game:6FCBD160')!.status).toBe('unported'); // slice-scoped target acquisition helper
-    expect(fnByKey.get('D2Game:6FD13220')!.status).toBe('unported'); // slice-scoped fallback helper
-    expect(fnByKey.get('D2Game:6FCFE5A0')!.status).toBe('unported'); // slice-scoped combat wrapper
+    expect(fnByKey.get('D2Common:6FD8A330')!.status).toBe('diff-verified'); // STATLIST_AddStat (real-DLL vectors in k1r13-i14d-1.ndjson)
+    expect(fnByKey.get('D2Common:6FD88520')!.status).toBe('diff-verified'); // STATLIST_GetStatListFromUnitAndState (real-DLL vectors in k1r13-i14d-1.ndjson)
+    expect(fnByKey.get('D2Game:6FCBD160')!.status).toBe('ported'); // AI_DispatchTargetByAiFlag (remediated 1:1 in k2-real-s2c-combat-113c.ts)
+    expect(fnByKey.get('D2Game:6FD13220')!.status).toBe('ported'); // AI_GeneralFindTargetOrThrottle (remediated 1:1 in k2-real-s2c-combat-113c.ts)
+    expect(fnByKey.get('D2Game:6FCFE5A0')!.status).toBe('ported'); // SUNITDMG_CalcMonsterExperience (remediated 1:1 in k2-real-s2c-combat-113c.ts)
     for (const demotedKey of [
       'D2Game:6FC97CB0',
       'D2Game:6FC97950',
@@ -787,14 +787,20 @@ describe('Diablo II v1.13c Kernel Call Graph & Manifest ([K0] Track A)', () => {
       'D2Game:6FC40EC0',
       'D2Game:6FC94F20',
       'D2Game:6FC95260',
-      'D2Common:6FD6E670',
       'D2Game:6FC572C0',
-      'D2Common:6FD9F640',
-      'D2Common:6FD8C390',
     ]) {
       const fn = fnByKey.get(demotedKey)!;
       expect(fn.status, `${demotedKey} (${fn.name}) should be 'ported'`).toBe('ported');
       expect(fn.diffEvidence).toContain('tests/oracle/kern-fallen-f790-f821.test.ts');
+    }
+    for (const promotedKey of [
+      'D2Common:6FD6E670',
+      'D2Common:6FD9F640',
+      'D2Common:6FD8C390',
+    ]) {
+      const fn = fnByKey.get(promotedKey)!;
+      expect(fn.status, `${promotedKey} (${fn.name}) should be 'diff-verified'`).toBe('diff-verified');
+      expect(fn.diffEvidence).toContain('tests/oracle/k1/laneD-ported29.test.ts');
     }
 
     // Verify corrected symbol names from binary audit (#41)
@@ -813,12 +819,27 @@ describe('Diablo II v1.13c Kernel Call Graph & Manifest ([K0] Track A)', () => {
     expect(fnByKey.get('D2Common:6FD510B0')!.name).toBe('SEED_RollRandomNumber');
 
     // Verify every @va-tagged closure function across src/d2kern-113c/**/*.ts is bound in manifest-113c.json
+    // unless explicitly downgraded to 'unported' in docs/oracle/k2-stub-audit.md.
+    const auditMdPath = path.join(REPO_ROOT, 'docs', 'oracle', 'k2-stub-audit.md');
+    const auditedDowngradedKeys = new Set<string>();
+    if (fs.existsSync(auditMdPath)) {
+      const auditMd = fs.readFileSync(auditMdPath, 'utf-8');
+      for (const m of auditMd.matchAll(/^\|\s*`(0x6F[CD][0-9A-Fa-f]{5})`\s*\|.*\|\s*`downgraded-stub`\s*\|/gm)) {
+        auditedDowngradedKeys.add(nodeKey('D2Game', m[1]!));
+      }
+    }
+    for (const key of auditedDowngradedKeys) {
+      const fn = fnByKey.get(key);
+      expect(fn, `Audited downgraded key ${key} must exist in manifest-113c.json`).toBeDefined();
+      expect(fn!.status, `Audited downgraded key ${key} must be 'unported' in manifest-113c.json`).toBe('unported');
+    }
     const kernTsFiles = collectFilesRecursive(path.join(REPO_ROOT, 'src', 'd2kern-113c'), new Set(['.ts']));
     const vaTagRegex = /@va\s+(D2Game|D2Common):(0x[0-9A-Fa-f]{8})\b/g;
     for (const tsFile of kernTsFiles) {
       const content = fs.readFileSync(tsFile, 'utf-8');
       for (const m of content.matchAll(vaTagRegex)) {
         const key = nodeKey(m[1]!, m[2]!);
+        if (auditedDowngradedKeys.has(key)) continue;
         const fn = fnByKey.get(key);
         if (fn !== undefined) {
           expect(
@@ -882,7 +903,11 @@ describe('Diablo II v1.13c Kernel Call Graph & Manifest ([K0] Track A)', () => {
     }
 
     expect(legacyFns.length).toBe(manifest.summary.legacyRefCount);
-    expect(legacyFns.length).toBeGreaterThan(20);
+    if (manifest.summary.statusBreakdown.unported === 0) {
+      expect(legacyFns.length).toBe(0);
+    } else {
+      expect(legacyFns.length).toBeLessThanOrEqual(manifest.summary.statusBreakdown.unported);
+    }
     for (const fn of legacyFns) {
       expect(fn.status).toBe('unported');
       expect(fn.kernFile).toBeUndefined();

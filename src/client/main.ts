@@ -61,6 +61,7 @@ import {
   registerLocalLobbyProvider,
   registerLocalServerFactory,
   type CharClassId,
+  type SinglePlayerBackendMode,
 } from '../netproto/index.ts'
 import { loadSiteConfig, type SiteConfig } from './config/site-config.ts'
 import { SpriteRenderer, type AtlasHandle } from './render/renderer.ts'
@@ -258,6 +259,8 @@ export interface PlayAppController {
   readonly replayD2Cap: (jsonlText: string) => number
   readonly simulateDisconnect: (reason?: string) => Promise<void>
   readonly renderFrame: (nowMs?: number) => void
+  readonly getSinglePlayerBackend: () => SinglePlayerBackendMode
+  readonly setSinglePlayerBackend: (mode: SinglePlayerBackendMode) => void
   setInstanceFocused?(focused: boolean): void
   isInstanceFocused?(): boolean
 }
@@ -2111,6 +2114,9 @@ export async function startPlayApp(options?: {
     if (capturedLocalServerFactory) {
       registerLocalServerFactory(capturedLocalServerFactory)
     }
+    if (siteConfig.singlePlayerBackend !== undefined) {
+      getLocalLobbyProvider()?.setBackend?.(siteConfig.singlePlayerBackend)
+    }
     frontendRenderer.setAsyncHandlers({
       ...baseAsyncHandlers,
       onSinglePlayer: handleSinglePlayerEntry,
@@ -2973,6 +2979,11 @@ export async function startPlayApp(options?: {
       renderFrame(performance.now())
     },
     renderFrame,
+    getSinglePlayerBackend: (): SinglePlayerBackendMode =>
+      getLocalLobbyProvider()?.getBackend?.() ?? 'legacy',
+    setSinglePlayerBackend: (mode: SinglePlayerBackendMode): void => {
+      getLocalLobbyProvider()?.setBackend?.(mode)
+    },
     setInstanceFocused,
     isInstanceFocused: () => instanceFocused,
   }

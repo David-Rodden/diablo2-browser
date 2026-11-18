@@ -24,6 +24,7 @@ import {
   D2TreasureClassExStrc,
   D2TreasureClassExStrc_SIZE,
 } from '../mem/layout.generated.ts'
+import { hitD2CommonVa113c } from '../va-trace-113c.ts'
 
 /** `.data` `sgptDataTables->pHirelingTxt` at `0x6FDF0078` (`0x6FDA3050`). */
 export const G_HIRELING_TXT_VA_113C = 0x6fdf0078
@@ -62,6 +63,7 @@ export function DATATBLS_GetHirelingTxtRecordFromActAndDifficulty113c(
   nDifficulty: number,
   pPrevRecord: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA3050)
   const targetAct = ((nAct | 0) + 1) | 0
   const targetDiff = ((nDifficulty | 0) + 1) | 0
   const targetVer = (bExpansion | 0) !== 0 ? 100 : 0
@@ -100,6 +102,7 @@ export function DATATBLS_GetHirelingTxtRecordFromVendorAndDifficulty113c(
   nDifficulty: number,
   pPrevRecord: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA30F0)
   const targetSeller = nSeller | 0
   const targetDiff = ((nDifficulty | 0) + 1) | 0
   const targetVer = (bExpansion | 0) !== 0 ? 100 : 0
@@ -134,6 +137,7 @@ export function DATATBLS_GetHirelingTxtRecordFromClassId113c(
   nClassId: number,
   pPrevRecord: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA3190)
   const targetClass = nClassId | 0
   const targetVer = (bExpansion | 0) !== 0 ? 100 : 0
   const pBase = m.u32(G_HIRELING_TXT_VA_113C)
@@ -166,6 +170,7 @@ export function DATATBLS_GetHirelingTxtRecordFromNameId113c(
   wNameId: number,
   pPrevRecord: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA3220)
   const nameId = wNameId & 0xffff
   const targetVer = (bExpansion | 0) !== 0 ? 100 : 0
   const pBase = m.u32(G_HIRELING_TXT_VA_113C)
@@ -199,6 +204,7 @@ export function DATATBLS_GetHirelingTxtRecordFromIdAndLevel113c(
   nSubTypeId: number,
   nLevel: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA32C0)
   const id = nSubTypeId | 0
   if (id >= 0x100) return 0
   const targetVer = (bExpansion | 0) !== 0 ? 100 : 0
@@ -237,6 +243,7 @@ export function DATATBLS_GetHirelingTxtRecordFromIdAndLevel113c(
  * Returns `sgptDataTables->nSuperUniquesTxtRecordCount` at `0x6FDF09B4`.
  */
 export function DATATBLS_GetSuperUniquesTxtRecordCount113c(m: Memory113c): number {
+  hitD2CommonVa113c(0x6FDA3360)
   return m.u32(G_SUPERUNIQUES_COUNT_VA_113C)
 }
 
@@ -250,6 +257,7 @@ export function DATATBLS_GetSuperUniquesTxtRecord113c(
   m: Memory113c,
   nSuperUniqueId: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA3370)
   const id = nSuperUniqueId | 0
   const nCount = m.u32(G_SUPERUNIQUES_COUNT_VA_113C) | 0
   if (id < nCount) {
@@ -268,6 +276,7 @@ export function DATATBLS_GetTreasureClassExRecordFromIdAndLevel113c(
   wTcId: number,
   nLevel: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA3420)
   const tcId = wTcId & 0xffff
   if (tcId === 0) return 0
   const nCount = m.u32(G_TREASURECLASSEX_COUNT_VA_113C) | 0
@@ -301,6 +310,7 @@ export function DATATBLS_GetMonsterChainInfo113c(
   pOutSubClassCount: number,
   pOutSubClassIndex: number,
 ): number {
+  hitD2CommonVa113c(0x6FDA3850)
   const id = nMonsterId | 0
   const nCount = m.u32(G_MONSTATS_COUNT_VA_113C) | 0
   if (id < 0 || id >= nCount) {

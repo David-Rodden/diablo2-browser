@@ -88,6 +88,45 @@ typedef struct {
 static DotEntry g_dotlog[512];
 static int g_dotn;
 
+/* CLIENTS_QueuePacket (D2Game 0x6FCAA3E0: eax = pClient, stack: pPacket,
+ * nPacketLen, ret 8): sole inner choke point queueing uncompressed S2C packets
+ * into pClient+0x1B8/+0x1BC. Gated on [on_pre_frame .. on_frame] so trace
+ * key "s2c" captures every S2C packet emitted by c2s_dispatch and
+ * GAME_UpdateGameFrame in exact emission order. */
+#define S2C_MAX_PKTS 2048
+#define S2C_BUF_CAP 131072
+void *g_s2c_tramp;
+static uint8_t g_s2c_buf[S2C_BUF_CAP];
+static uint32_t g_s2c_off[S2C_MAX_PKTS];
+static uint32_t g_s2c_len[S2C_MAX_PKTS];
+static int g_s2c_n;
+static uint32_t g_s2c_used;
+static int g_s2c_active;
+
+void __cdecl s2c_record(uint8_t *client, const uint8_t *pkt, uint32_t len) {
+  if (!g_s2c_active || !client || !pkt || len == 0 || len > 0x400) return;
+  if (g_s2c_n >= S2C_MAX_PKTS || g_s2c_used + len > S2C_BUF_CAP) return;
+  g_s2c_off[g_s2c_n] = g_s2c_used;
+  g_s2c_len[g_s2c_n] = len;
+  memcpy(g_s2c_buf + g_s2c_used, pkt, len);
+  g_s2c_used += len;
+  g_s2c_n++;
+}
+
+__attribute__((naked)) static void s2c_wrap(void) {
+  __asm__ volatile(
+      "pushfl\n\t"
+      "pushal\n\t"
+      "push 44(%%esp)\n\t"
+      "push 44(%%esp)\n\t"
+      "push %%eax\n\t"
+      "call _s2c_record\n\t"
+      "add $12, %%esp\n\t"
+      "popal\n\t"
+      "popfl\n\t"
+      "jmp *%0\n\t" ::"m"(g_s2c_tramp));
+}
+
 /* Stats sampled per player/monster each frame (overridable via scenario). */
 static int g_stat_ids[64] = {0, 1, 2, 3, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
 static int g_nstats = 14;
@@ -225,6 +264,95 @@ static void dump_units(uint8_t *game, int type) {
     }
   }
   fputc(']', g_trace);
+}
+
+/* D2ItemDataStrc (0x74 bytes at pUnit+0x14, verified via D2Common exports):
+ * +0x00 dwQuality, +0x04 dwLowSeed, +0x08 dwHighSeed, +0x0C dwOwnerGUID,
+ * +0x10 dwInitSeed, +0x14 dwCommandFlags, +0x18 dwItemFlags, +0x28 dwFileIndex,
+ * +0x2C dwItemLevel, +0x30 wItemFormat, +0x32 wRarePrefix, +0x34 wRareSuffix,
+ * +0x36 wAutoPrefix, +0x38 wMagicPrefix[3], +0x3E wMagicSuffix[3],
+ * +0x44 nBodyLoc, +0x45 nItemPage, +0x48 nEarLevel, +0x49 nInvGfxIdx.
+ * Trailing flat [statId, param, value] triples come from D2StatListExStrc
+ * FullStats (+0x48/+0x4C) when STATLIST_EXTENDED (0x80000000), else MyStats
+ * (+0x24/+0x28), matching D2Common 0x6FD88A80 (STATLIST_GetUnitStat). */
+static void dump_items(uint8_t *game) {
+  int first = 1;
+  fputs(",\"t4\":[", g_trace);
+  for (int list = 0; list < 5; list++)
+    for (int b = 0; b < 128; b++) {
+      uint8_t *u =
+          (uint8_t *)(uintptr_t)RD32(game, G_UNITS + list * 0x200 + b * 4);
+      for (; u; u = (uint8_t *)(uintptr_t)RD32(u, U_GAME_NEXT)) {
+        if (RD32(u, U_TYPE) != 4) continue;
+        uint32_t x, y;
+        unit_xy(u, &x, &y);
+        uint8_t *itd = (uint8_t *)(uintptr_t)RD32(u, 0x14);
+        uint32_t it_seed_lo = itd ? RD32(itd, 0x04) : 0;
+        uint32_t it_seed_hi = itd ? RD32(itd, 0x08) : 0;
+        uint32_t init_seed = itd ? RD32(itd, 0x10) : 0;
+        int32_t owner_id = itd ? (int32_t)RD32(itd, 0x0C) : -1;
+        uint32_t quality = itd ? RD32(itd, 0x00) : 0;
+        uint32_t ilvl = itd ? RD32(itd, 0x2C) : 0;
+        uint32_t item_flags = itd ? RD32(itd, 0x18) : 0;
+        uint32_t cmd_flags = itd ? RD32(itd, 0x14) : 0;
+        int32_t file_idx = itd ? (int32_t)RD32(itd, 0x28) : 0;
+        uint16_t item_fmt = itd ? *(uint16_t *)(itd + 0x30) : 0;
+        uint16_t rare_pre = itd ? *(uint16_t *)(itd + 0x32) : 0;
+        uint16_t rare_suf = itd ? *(uint16_t *)(itd + 0x34) : 0;
+        uint16_t auto_pre = itd ? *(uint16_t *)(itd + 0x36) : 0;
+        uint16_t mag_pre0 = itd ? *(uint16_t *)(itd + 0x38) : 0;
+        uint16_t mag_pre1 = itd ? *(uint16_t *)(itd + 0x3A) : 0;
+        uint16_t mag_pre2 = itd ? *(uint16_t *)(itd + 0x3C) : 0;
+        uint16_t mag_suf0 = itd ? *(uint16_t *)(itd + 0x3E) : 0;
+        uint16_t mag_suf1 = itd ? *(uint16_t *)(itd + 0x40) : 0;
+        uint16_t mag_suf2 = itd ? *(uint16_t *)(itd + 0x42) : 0;
+        uint8_t body_loc = itd ? itd[0x44] : 0;
+        uint8_t item_page = itd ? itd[0x45] : 0xFF;
+        uint8_t ear_lvl = itd ? itd[0x48] : 0;
+        uint8_t inv_gfx = itd ? itd[0x49] : 0xFF;
+        fprintf(g_trace,
+                "%s[%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%d,%u,%u,%u,%u,%d,"
+                "%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u",
+                first ? "" : ",", RD32(u, U_ID), RD32(u, U_CLASS),
+                RD32(u, U_MODE), x, y, RD32(u, U_SEED_LO), RD32(u, U_SEED_HI),
+                it_seed_lo, it_seed_hi, init_seed, owner_id, quality, ilvl,
+                item_flags, cmd_flags, file_idx, item_fmt, rare_pre, rare_suf,
+                auto_pre, mag_pre0, mag_pre1, mag_pre2, mag_suf0, mag_suf1,
+                mag_suf2, body_loc, item_page, ear_lvl, inv_gfx);
+        uint8_t *slex = (uint8_t *)(uintptr_t)RD32(u, 0x5C);
+        if (slex) {
+          uint32_t sl_off = (RD32(slex, 0x10) & 0x80000000u) ? 0x48u : 0x24u;
+          uint8_t *stats = (uint8_t *)(uintptr_t)RD32(slex, sl_off);
+          uint16_t cnt = *(uint16_t *)(slex + sl_off + 4u);
+          if (stats && cnt > 0 && cnt <= 256) {
+            for (uint16_t si = 0; si < cnt; si++) {
+              uint16_t param = *(uint16_t *)(stats + si * 8u + 0u);
+              uint16_t stat_id = *(uint16_t *)(stats + si * 8u + 2u);
+              int32_t val = *(int32_t *)(stats + si * 8u + 4u);
+              fprintf(g_trace, ",%u,%u,%d", stat_id, param, val);
+            }
+          }
+        }
+        fputc(']', g_trace);
+        first = 0;
+      }
+    }
+  fputc(']', g_trace);
+}
+
+static void dump_s2c(void) {
+  fputs(",\"s2c\":[", g_trace);
+  for (int i = 0; i < g_s2c_n; i++) {
+    if (i) fputc(',', g_trace);
+    fputc('"', g_trace);
+    const uint8_t *p = g_s2c_buf + g_s2c_off[i];
+    uint32_t len = g_s2c_len[i];
+    for (uint32_t k = 0; k < len; k++) fprintf(g_trace, "%02x", p[k]);
+    fputc('"', g_trace);
+  }
+  fputc(']', g_trace);
+  g_s2c_n = 0;
+  g_s2c_used = 0;
 }
 
 /* ------------------------------------------------------------- inputs */
@@ -547,6 +675,9 @@ void __cdecl on_pre_frame(uint8_t *game) {
   uint32_t next = RD32(game, G_FRAME) + 1;
   if (g_cov_tls != TLS_OUT_OF_INDEXES && next >= g_cov_from && next <= g_cov_to) cover_arm(next);
   g_inlog_len = 0;
+  g_s2c_n = 0;
+  g_s2c_used = 0;
+  g_s2c_active = 1;
   if (g_setexp_frame && next == g_setexp_frame && p_SetUnitStat) {
     uint8_t *pl = first_player(game);
     if (pl) {
@@ -733,7 +864,7 @@ static void dump_unit_blocks(uint8_t *u, int *pfirst) {
         mem_block("fullstats", (void *)(uintptr_t)RD32(slex, 0x48), (uint32_t)fullCnt * 8u, &first);
       mem_block("stateflags", (void *)(uintptr_t)RD32(slex, 0x58), 0x30, &first);
       uint8_t *cl = (uint8_t *)(uintptr_t)RD32(slex, 0x3C);
-      for (int ck = 0; cl && ck < 8 && !IsBadReadPtr(cl, 0x3C); ck++) {
+      for (int ck = 0; cl && ck < 32 && !IsBadReadPtr(cl, 0x3C); ck++) {
         uint32_t clSz = ((RD32(cl, 0x10) & 0x80000000u) && !IsBadReadPtr(cl, 0x64)) ? 0x64u : 0x3Cu;
         mem_block("childstatlist", cl, clSz, &first);
         uint16_t clCnt = *(uint16_t *)(cl + 0x28);
@@ -933,6 +1064,47 @@ static void write_snapshot(uint8_t *game, uint32_t fr) {
     }
   }
   fputs("]}\n", f);
+  /* D2Game per-level state read by room population (REGPOP / OBJECTS): pGame->pMonReg[0..136]
+   * (pGame+0xF0, D2Game 0x6FCEABC0 alloc 0x2E4) and pGame->pObjectControl (pGame+0x10F0, alloc 0x1114
+   * at 0x6FC2B9DD) with its per-level object info (ctrl+0x48+lvl*4, alloc 0x90 at 0x6FC2BA61). */
+  snap_line_begin(f, "gamestate");
+  fputs(",\"blocks\":[", f);
+  first = 1;
+  for (int lvl = 0; lvl < 137; lvl++) {
+    uint8_t *mr = (uint8_t *)(uintptr_t)RD32(game, 0xF0 + lvl * 4);
+    if (mr) mem_block("monreg", mr, 0x2E4, &first);
+  }
+  uint8_t *octl = (uint8_t *)(uintptr_t)RD32(game, 0x10F0);
+  if (octl && !IsBadReadPtr(octl, 0x1114)) {
+    mem_block("objctrl", octl, 0x1114, &first);
+    for (int lvl = 0; lvl < 137; lvl++) {
+      uint8_t *oi = (uint8_t *)(uintptr_t)RD32(octl, 0x48 + lvl * 4);
+      if (oi) mem_block("objlevel", oi, 0x90, &first);
+    }
+  }
+  fputs("]}\n", f);
+  /* DRLG graph of every act (pAct+0x48 -> D2DrlgStrc 0x48C; levels pDrlg+0x47C chained by +0x1AC, 0x230;
+   * RoomEx pLevel+0x10 chained by +0x24, 0xEC) for cross-checking the kernel DRLG regeneration. */
+  for (int a = 0; a < 5; a++) {
+    uint8_t *act = (uint8_t *)(uintptr_t)RD32(game, 0xBC + a * 4);
+    if (!act || IsBadReadPtr(act, 0x60)) continue;
+    uint8_t *drlg = (uint8_t *)(uintptr_t)RD32(act, 0x48);
+    if (!drlg || IsBadReadPtr(drlg, 0x48C)) continue;
+    fprintf(f, "{\"k\":\"drlg\",\"act\":%d,\"blocks\":[", a);
+    first = 1;
+    mem_block("drlg", drlg, 0x48C, &first);
+    uint8_t *lvl = (uint8_t *)(uintptr_t)RD32(drlg, 0x47C);
+    for (int k = 0; lvl && k < 256 && !IsBadReadPtr(lvl, 0x230); k++) {
+      mem_block("drlglevel", lvl, 0x230, &first);
+      uint8_t *rex = (uint8_t *)(uintptr_t)RD32(lvl, 0x10);
+      for (int r = 0; rex && r < 4096 && !IsBadReadPtr(rex, 0xEC); r++) {
+        mem_block("drlgroomex", rex, 0xEC, &first);
+        rex = (uint8_t *)(uintptr_t)RD32(rex, 0x24);
+      }
+      lvl = (uint8_t *)(uintptr_t)RD32(lvl, 0x1AC);
+    }
+    fputs("]}\n", f);
+  }
   /* Every unit in every hash list, in hook iteration order (list, bucket, chain). */
   int nunits = 0;
   for (int list = 0; list < 5; list++)
@@ -1108,6 +1280,7 @@ static void cover_write(void) {
 }
 
 void __cdecl on_frame(uint8_t *game) {
+  g_s2c_active = 0;
   LONG n = InterlockedIncrement(&g_frames);
   if (g_cov_active) cover_disarm();
   if (g_ncov && !g_cov_written && g_cov_from != 0xFFFFFFFFu && RD32(game, G_FRAME) >= g_cov_to) {
@@ -1144,14 +1317,24 @@ void __cdecl on_frame(uint8_t *game) {
   if (!g_trace) {
     g_dotn = 0;
     g_nlast_dmg = 0;
+    g_s2c_n = 0;
+    g_s2c_used = 0;
     return;
   }
   if (n == 1) {
     fprintf(g_trace,
             "{\"schema\":\"d2oracle/1\",\"source\":\"oracle\","
-            "\"initSeed\":%u,\"seedOverride\":%u,\"dot\":true,"
+            "\"initSeed\":%u,\"seedOverride\":%u,\"dot\":true,\"s2c\":true,"
             "\"unitFields\":[\"id\",\"class\",\"mode\",\"x\",\"y\","
-            "\"seedLo\",\"seedHi\",\"level\"],\"statIds\":[",
+            "\"seedLo\",\"seedHi\",\"level\"],"
+            "\"itemFields\":[\"id\",\"class\",\"mode\",\"x\",\"y\","
+            "\"seedLo\",\"seedHi\",\"itemSeedLo\",\"itemSeedHi\",\"initSeed\","
+            "\"ownerId\",\"quality\",\"ilvl\",\"itemFlags\",\"cmdFlags\","
+            "\"fileIndex\",\"itemFormat\",\"rarePrefix\",\"rareSuffix\","
+            "\"autoPrefix\",\"magicPrefix0\",\"magicPrefix1\",\"magicPrefix2\","
+            "\"magicSuffix0\",\"magicSuffix1\",\"magicSuffix2\","
+            "\"bodyLoc\",\"itemPage\",\"earLevel\",\"invGfxIdx\"],"
+            "\"statIds\":[",
             RD32(game, 0x7C), RD32(game, 0x84));
     for (int i = 0; i < g_nstats; i++)
       fprintf(g_trace, "%s%d", i ? "," : "", g_stat_ids[i]);
@@ -1161,9 +1344,11 @@ void __cdecl on_frame(uint8_t *game) {
   dump_units(game, 0);
   dump_units(game, 1);
   dump_units(game, 3); /* scans all lists: missiles' list is unconfirmed */
+  dump_items(game);
   if (RD32(game, G_FRAME) % 250 == 0) list_histogram(game);
   fprintf(g_trace, ",\"gs\":[%u,%u]", RD32(game, 0xD0), RD32(game, 0xD4));
   if (g_nstates && p_CheckState) dump_states(game);
+  dump_s2c();
   if (g_dmglog_len) {
     fprintf(g_trace, ",\"dmg\":[%s]", g_dmglog);
     g_dmglog_len = 0;
@@ -1818,6 +2003,12 @@ static void install_d2game_hooks(void) {
     dotk += patch_call(G(dot_sites[i]), (void *)dot_setstat_hook,
                        G(0x6FC2A472));
   logf_("%d/2 dot hooks", dotk);
+  {
+    static const uint8_t s2c_prologue[6] = {0x53, 0x55, 0x8B, 0x6C, 0x24, 0x10};
+    int s2ck = patch_entry_jmp(G(0x6FCAA3E0), s2c_prologue, 6, (void *)s2c_wrap,
+                               &g_s2c_tramp);
+    logf_("%d/1 s2c queue hooks", s2ck);
+  }
   if (g_rec && g_rec_from != 0xFFFFFFFFu) {
     static const uint8_t se_prologue[5] = {0x53, 0x8B, 0x5C, 0x24, 0x08};
     int rk = patch_entry_jmp(G(0x6FCAEA80), se_prologue, 5, (void *)se_wrap, &g_se_tramp);

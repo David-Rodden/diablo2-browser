@@ -29,7 +29,8 @@ import {
   EVENT_SetPersistentEventFull113c,
   type EventDispatchCallback113c,
 } from './timer-wheel.ts'
-import { MONSTATS_113C_ROWS } from '../../common/units/monstats-113c-data.ts'
+import { getMonStatsRowByClassId113c } from './tables-bootstrap-113c.ts'
+import { hitD2CommonVa113c, hitD2GameVa113c } from '../va-trace-113c.ts'
 
 export const MON_EVENT_MODE_STEP = 0
 export const MON_EVENT_MODE_END = 1
@@ -269,6 +270,7 @@ export function MONSTER_GetModeEntry113c(
   pUnit: number,
   mode: number,
 ): MonsterModeEntry113c | null {
+  hitD2GameVa113c(0x6FC949A0)
   if (pUnit === 0 || m.get(pUnit, D2UnitStrc.dwUnitType) !== UNIT_MONSTER) return null
   if ((mode >>> 0) >= 16) return null
   const classId = m.get(pUnit, D2UnitStrc.dwClassId) >>> 0
@@ -308,6 +310,7 @@ export function MONSTER_IsContinuousMode113c(
   pUnit: number,
   mode: number,
 ): boolean {
+  hitD2GameVa113c(0x6FC94F20)
   if (pUnit === 0 || (mode >>> 0) >= 16) return false
   const rule = MONSTER_CONTINUOUS_MODE_TABLE_113C[mode >>> 0]
   if (rule === undefined) {
@@ -334,6 +337,7 @@ export function MONSTER_IsContinuousMode113c(
  * - Any other `dwUnitType` (`object`, `missile`, `item`, `tile`) -> returns `1` (`0x6FCFFAAD`).
  */
 export function SUNIT_IsDeadOrDying113c(m: Memory113c, pUnit: number): number {
+  hitD2GameVa113c(0x6FCFFA90)
   if (pUnit === 0) return 1
   if ((m.get(pUnit, D2UnitStrc.dwFlags) & UNITFLAG_DEAD_113C) !== 0) return 1
   const unitType = m.get(pUnit, D2UnitStrc.dwUnitType)
@@ -380,6 +384,7 @@ export function EVENT_SetPersistentUnitEvent113c(
  * `nType == 2` (`AI_THINK`) and `nType == 3` (`STAT_REGEN`).
  */
 export function MONSTER_ClearModeEvents113c(m: Memory113c, pGame: number, pUnit: number): void {
+  hitD2GameVa113c(0x6FD00750)
   if (pGame === 0 || pUnit === 0) return
   EVENT_DeleteEventByArg14_113c(m, pGame, pUnit, MON_EVENT_MODE_STEP, 0)
   EVENT_DeleteEventByArg14_113c(m, pGame, pUnit, MON_EVENT_MODE_END, 0)
@@ -391,6 +396,7 @@ export function MONSTER_ClearModeEvents113c(m: Memory113c, pGame: number, pUnit:
  * frees all `nType == 0` (`MODE_STEP`, `0x6FC95332: cmp byte ptr [eax], 0`) nodes on `pUnit` and returns `1`.
  */
 export function MONSTER_ClearStepEvents113c(m: Memory113c, pGame: number, pUnit: number): number {
+  hitD2GameVa113c(0x6FC95320)
   if (pUnit === 0) return 1
   EVENT_DeleteEventByArg14_113c(m, pGame, pUnit, MON_EVENT_MODE_STEP, 0)
   return 1
@@ -416,9 +422,22 @@ export const SKILLS_SetSkillMode113c = SKILLS_SetUsedSkill113c
  * and expires mode-bound statlists (`0x6FD8AE60` with `bIsClient = 0`).
  */
 export function UNITS_ChangeAnimMode113c(m: Memory113c, pUnit: number, nMode: number): number {
+  hitD2CommonVa113c(0x6FD83920)
   if (pUnit === 0) return 0
-  m.set(pUnit, D2UnitStrc.dwAnimMode, nMode >>> 0)
+  const uType = m.get(pUnit, D2UnitStrc.dwUnitType) >>> 0
+  if (uType === 5) return 0
+  const curMode = m.get(pUnit, D2UnitStrc.dwAnimMode) >>> 0
+  const nextMode = nMode >>> 0
+  if (curMode === nextMode) {
+    if (!(uType === 1 && curMode === 1)) {
+      UNITROOM_RefreshUnit113c(m, pUnit)
+      m.setU32((pUnit + 0xc4) >>> 0, (m.u32((pUnit + 0xc4) >>> 0) | 0x01) >>> 0)
+    }
+    return 0
+  }
   UNITROOM_RefreshUnit113c(m, pUnit)
+  m.setU32((pUnit + 0xc4) >>> 0, (m.u32((pUnit + 0xc4) >>> 0) | 0x01) >>> 0)
+  m.set(pUnit, D2UnitStrc.dwAnimMode, nextMode)
   STATLIST_ExpireStateListsOnModeChange113c(m, pUnit, 0)
   return 1
 }
@@ -430,6 +449,7 @@ export function UNITS_ChangeAnimMode113c(m: Memory113c, pUnit: number, nMode: nu
  * (when `STATE_STUNNED = 0x15` is active) or `dwGameFrame + (aidel > 0 ? aidel : 15)`.
  */
 export function MONSTER_StartNeutral113c(m: Memory113c, pGame: number, pUnit: number): number {
+  hitD2GameVa113c(0x6FC94E60)
   if (pGame === 0 || pUnit === 0) return 0
   if (m.get(pUnit, D2UnitStrc.dwAnimMode) !== 1) {
     UNITS_ChangeAnimMode113c(m, pUnit, 1)
@@ -445,7 +465,7 @@ export function MONSTER_StartNeutral113c(m: Memory113c, pGame: number, pUnit: nu
   }
   if (m.get(pUnit, D2UnitStrc.dwUnitType) === UNIT_MONSTER) {
     const classId = m.get(pUnit, D2UnitStrc.dwClassId) >>> 0
-    const row = MONSTATS_113C_ROWS[classId]
+    const row = getMonStatsRowByClassId113c(classId)
     if (row !== undefined) {
       // 0x6FC94ED3..0x6FC94EDF: `cmp byte ptr [ebx+0x6A], 0; jnz exp; cmp dword ptr [ebx+0x74], 0; jz classic`
       const isExp =
@@ -476,6 +496,7 @@ export function MONSTER_NullModeEventFallback113c(
   pUnit: number,
   mode: number,
 ): number {
+  hitD2GameVa113c(0x6FC950F0)
   if (pUnit === 0) return 0
   SKILLS_SetUsedSkill113c(m, pUnit, 0)
   if (mode !== 0 && mode !== 12 && SUNIT_IsDeadOrDying113c(m, pUnit) !== 0) {
@@ -495,6 +516,7 @@ export function MONSTER_RegisterContinuousModeEvent113c(
   pGame: number,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FD00B40)
   if (pGame === 0 || pUnit === 0) return 0
   EVENT_DeleteEventByArg14_113c(m, pGame, pUnit, MON_EVENT_MODE_STEP, 0)
   return EVENT_SetPersistentEventFull113c(m, pGame, pUnit, MON_EVENT_MODE_STEP, 0, 0, 0)
@@ -555,6 +577,7 @@ export function MONSTER_Event0_ModeStep113c(
   arg18: number,
   callbacks: MonsterEventCallbacks113c,
 ): void {
+  hitD2GameVa113c(0x6FC952E0)
   if (pUnit === 0) return
   const mode = m.get(pUnit, D2UnitStrc.dwAnimMode)
   const entry = MONSTER_GetModeEntry113c(m, pUnit, mode)
@@ -574,6 +597,7 @@ export function MONSTER_Event1_ModeEnd113c(
   arg18: number,
   callbacks: MonsterEventCallbacks113c,
 ): void {
+  hitD2GameVa113c(0x6FC952A0)
   if (pUnit === 0) return
   const mode = m.get(pUnit, D2UnitStrc.dwAnimMode)
   const entry = MONSTER_GetModeEntry113c(m, pUnit, mode)
@@ -593,6 +617,7 @@ export function AI_RunMonsterAI113c(
   arg18: number,
   callbacks: MonsterEventCallbacks113c,
 ): void {
+  hitD2GameVa113c(0x6FCBD3B0)
   if (pUnit === 0 || m.get(pUnit, D2UnitStrc.dwUnitType) !== UNIT_MONSTER) return
   if (SUNIT_IsDeadOrDying113c(m, pUnit) !== 0) return
   // 0x6FCBCD94: `STATES_CheckState(pUnit, STATE_STUNNED = 0x15)` -> `AI_Stall(pGame, pUnit, 15)`
@@ -630,6 +655,7 @@ export function MONSTER_DispatchEvent113c(
   arg18: number,
   callbacks: MonsterEventCallbacks113c,
 ): void {
+  hitD2GameVa113c(0x6FC969A0)
   const ev = eventType | 0
   if (ev < 0 || ev >= 15 || pUnit === 0) return
 

@@ -23,17 +23,44 @@ import {
   D2COMMON_GDWBITMASKS_IAT_VA_113C,
   D2COMMON_SGPT_DATATABLES_VA_113C,
   D2CommonAssertError,
+  DATATABLES_OFF_113C,
   DATATBLS_GetMissilesTxtRecordInline113c,
+  DATATBLS_GetSkillsTxtRecordInline113c,
   SEED_RollLimitedRandomNumberInline113c,
 } from './inline-helpers.ts'
-import { imul32, sar32 } from './int-math.ts'
-import { INVENTORY_GetActiveWeaponMem113c } from './inventory.ts'
-import { ITEMS_CheckItemTypeIdMem113c, ITEMS_IsTome113c } from './items.ts'
-import { ITEMS_CheckItemTypeIdEquivalent113c } from './skills.ts'
+import { imul32, sar32, sdiv32 } from './int-math.ts'
 import {
+  INVENTORY_GetActiveWeaponMem113c,
+  INVENTORY_GetEquippedWeaponHandClass113c,
+  getItemsTxtRecordInvMem113c,
+} from './inventory.ts'
+import {
+  ITEMS_CheckItemTypeIdMem113c,
+  ITEMS_GetActiveWeaponForAttack113c,
+  ITEMS_GetInvWidthFromItem113c,
+  ITEMS_GetItemTypeFromItem113c,
+  ITEMS_IsTome113c,
+} from './items.ts'
+import {
+  ITEMS_CheckItemTypeIdEquivalent113c,
+  MISSILE_EvaluateElementalLength113c,
+  MISSILE_EvaluateElementalMaxDamage113c,
+  MISSILE_EvaluateElementalMinDamage113c,
+  MISSILE_EvaluatePhysMaxDamage113c,
+  MISSILE_EvaluatePhysMinDamage113c,
+  SKILLS_GetSkillElemMaxDamage113c,
+  SKILLS_GetSkillElemMinDamage113c,
+  SKILLS_GetSkillPeriodicDelayOrLength113c,
+  SKILLS_GetSkillPhysMaxDamage113c,
+  SKILLS_GetSkillPhysMinDamage113c,
+} from './skills.ts'
+import {
+  MISSILE_CalculateMasteryBonus113c,
   STATLIST_FindStatFirstIndexOrLowerBound113c,
   STATLIST_GetUnitStatWithLayer113c,
 } from './statlist.ts'
+import { UNITS_SyncDualWieldWeaponStatLists113c } from './unit.ts'
+import { hitD2CommonVa113c } from '../va-trace-113c.ts'
 
 const UNIT_MONSTER = 1
 const UNIT_MISSILE = 3
@@ -77,6 +104,7 @@ function scaleDmgFieldBy128(m: Memory113c, pDmgData: number, field: FieldLayout1
  * or `0` otherwise.
  */
 export function MONSTERS_GetHirelingTypeId113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD6A2D0)
   if (pUnit === 0) return 0
   if (m.get(pUnit, D2UnitStrc.dwUnitType) !== UNIT_MONSTER) return 0
   const classId = m.get(pUnit, D2UnitStrc.dwClassId) >>> 0
@@ -99,6 +127,7 @@ export function MISSILE_ScaleDamageDataBy128thsInline113c(
   pDmgData: number,
   nScale128: number,
 ): void {
+  hitD2CommonVa113c(0x6FDB9C60)
   const scale = nScale128 | 0
   if (scale === 128) return
   scaleDmgFieldBy128(m, pDmgData, D2MissileDamageDataStrc.nFireMinDamage, scale)
@@ -127,6 +156,7 @@ export function MISSILE_ScaleDamageDataBy128thsInline113c(
  * Looks up `MissilesTxt[nMissileId]`; returns `0` (`xor al, al`) if NULL, else `rec->nHitShift (+0xE4)` in `al`.
  */
 export function MISSILE_GetHitShiftFromId113c(m: Memory113c, nMissileId: number): number {
+  hitD2CommonVa113c(0x6FDB9E70)
   const rec = DATATBLS_GetMissilesTxtRecordInline113c(m, nMissileId)
   if (rec === 0) return 0
   return m.get(rec, D2MissilesTxt.nHitShift) & 0xff
@@ -137,6 +167,7 @@ export function MISSILE_GetHitShiftFromId113c(m: Memory113c, nMissileId: number)
  * `stdcall (pMissile) -> int`, `ret 4`).
  */
 export function MISSILE_GetTargetY113c(m: Memory113c, pMissile: number): number {
+  hitD2CommonVa113c(0x6FDB9F50)
   const pData = getMissileData(m, pMissile)
   if (pData === 0) return 0
   return m.get(pData, D2MissileDataStrc.nTargetY) | 0
@@ -147,6 +178,7 @@ export function MISSILE_GetTargetY113c(m: Memory113c, pMissile: number): number 
  * `stdcall (pMissile, nTargetY) -> void`, `ret 8`).
  */
 export function MISSILE_SetTargetY113c(m: Memory113c, pMissile: number, nTargetY: number): void {
+  hitD2CommonVa113c(0x6FDB9F70)
   const pData = getMissileData(m, pMissile)
   if (pData === 0) return
   m.set(pData, D2MissileDataStrc.nTargetY, nTargetY >>> 0)
@@ -157,6 +189,7 @@ export function MISSILE_SetTargetY113c(m: Memory113c, pMissile: number, nTargetY
  * `stdcall (pMissile) -> int`, `ret 4`).
  */
 export function MISSILE_GetTargetX113c(m: Memory113c, pMissile: number): number {
+  hitD2CommonVa113c(0x6FDB9F90)
   const pData = getMissileData(m, pMissile)
   if (pData === 0) return 0
   return m.get(pData, D2MissileDataStrc.nTargetX) | 0
@@ -167,6 +200,7 @@ export function MISSILE_GetTargetX113c(m: Memory113c, pMissile: number): number 
  * `stdcall (pMissile, nTargetX) -> void`, `ret 8`).
  */
 export function MISSILE_SetTargetX113c(m: Memory113c, pMissile: number, nTargetX: number): void {
+  hitD2CommonVa113c(0x6FDB9FB0)
   const pData = getMissileData(m, pMissile)
   if (pData === 0) return
   m.set(pData, D2MissileDataStrc.nTargetX, nTargetX >>> 0)
@@ -177,6 +211,7 @@ export function MISSILE_SetTargetX113c(m: Memory113c, pMissile: number, nTargetX
  * `stdcall (pMissile) -> int`, `ret 4`).
  */
 export function MISSILE_GetActivateFrame113c(m: Memory113c, pMissile: number): number {
+  hitD2CommonVa113c(0x6FDBA030)
   const pData = getMissileData(m, pMissile)
   if (pData === 0) return 0
   return s16(m.get(pData, D2MissileDataStrc.nActivateFrame))
@@ -190,6 +225,7 @@ export function MISSILE_GetActivateFrame113c(m: Memory113c, pMissile: number): n
  * and returns `movzx eax, byte ptr [rec+0x94]` (`nActivate`) or `0`.
  */
 export function MISSILE_GetActivateFrameFromUnit113c(m: Memory113c, pMissile: number): number {
+  hitD2CommonVa113c(0x6FDBA050)
   if (pMissile === 0) return 0
   if (m.get(pMissile, D2UnitStrc.dwUnitType) !== UNIT_MISSILE) return 0
   const rec = DATATBLS_GetMissilesTxtRecordInline113c(m, m.get(pMissile, D2UnitStrc.dwClassId) | 0)
@@ -206,6 +242,7 @@ export function MISSILE_GetActivateFrameFromUnit113c(m: Memory113c, pMissile: nu
  * `pData->nOwnerType (+0x18) == pOwner->dwUnitType` and `pData->dwOwnerId (+0x1C) == pOwner->dwUnitId`.
  */
 export function MISSILE_IsOwnedByUnit113c(m: Memory113c, pMissile: number, pOwner: number): number {
+  hitD2CommonVa113c(0x6FDBA130)
   if (pMissile === 0) return 0
   if (pOwner === 0) return 0
   if (m.get(pMissile, D2UnitStrc.dwUnitType) !== UNIT_MISSILE) return 0
@@ -228,6 +265,7 @@ export function MISSILE_IsOwnedByUnit113c(m: Memory113c, pMissile: number, pOwne
  * leaving `nOwnerType (+0x18)` unchanged; otherwise copies `pOwner->dwUnitType` and `pOwner->dwUnitId`.
  */
 export function MISSILE_SetOwner113c(m: Memory113c, pMissile: number, pOwner: number): void {
+  hitD2CommonVa113c(0x6FDBA1B0)
   if (pMissile === 0) return
   if (m.get(pMissile, D2UnitStrc.dwUnitType) !== UNIT_MISSILE) return
   const rec = DATATBLS_GetMissilesTxtRecordInline113c(m, m.get(pMissile, D2UnitStrc.dwClassId) | 0)
@@ -249,6 +287,7 @@ export function MISSILE_SetOwner113c(m: Memory113c, pMissile: number, pOwner: nu
  * `stdcall (pMissile) -> int`, `ret 4`).
  */
 export function MISSILE_GetClassId113c(m: Memory113c, pMissile: number): number {
+  hitD2CommonVa113c(0x6FDBA220)
   if (pMissile === 0) return 0
   if (m.get(pMissile, D2UnitStrc.dwUnitType) !== UNIT_MISSILE) return 0
   return m.get(pMissile, D2UnitStrc.dwClassId) | 0
@@ -261,6 +300,7 @@ export function MISSILE_GetClassId113c(m: Memory113c, pMissile: number): number 
  * Returns `s16(pData->nTotalFrames) - s16(pData->nRemainingFrames)`, or `0` if invalid.
  */
 export function MISSILE_GetElapsedFrames113c(m: Memory113c, pMissile: number): number {
+  hitD2CommonVa113c(0x6FDBA240)
   const pData = getMissileData(m, pMissile)
   if (pData === 0) return 0
   return (s16(m.get(pData, D2MissileDataStrc.nTotalFrames)) - s16(m.get(pData, D2MissileDataStrc.nRemainingFrames))) | 0
@@ -271,6 +311,7 @@ export function MISSILE_GetElapsedFrames113c(m: Memory113c, pMissile: number): n
  * `stdcall (pMissile) -> int`, `ret 4`).
  */
 export function MISSILE_GetRemainingFrames113c(m: Memory113c, pMissile: number): number {
+  hitD2CommonVa113c(0x6FDBA270)
   const pData = getMissileData(m, pMissile)
   if (pData === 0) return 0
   return s16(m.get(pData, D2MissileDataStrc.nRemainingFrames))
@@ -281,6 +322,7 @@ export function MISSILE_GetRemainingFrames113c(m: Memory113c, pMissile: number):
  * `stdcall (pMissile) -> int`, `ret 4`).
  */
 export function MISSILE_GetTotalFrames113c(m: Memory113c, pMissile: number): number {
+  hitD2CommonVa113c(0x6FDBA290)
   const pData = getMissileData(m, pMissile)
   if (pData === 0) return 0
   return s16(m.get(pData, D2MissileDataStrc.nTotalFrames))
@@ -291,6 +333,7 @@ export function MISSILE_GetTotalFrames113c(m: Memory113c, pMissile: number): num
  * `stdcall (pMissile) -> int`, `ret 4`).
  */
 export function MISSILE_GetSkill113c(m: Memory113c, pMissile: number): number {
+  hitD2CommonVa113c(0x6FDBA2B0)
   const pData = getMissileData(m, pMissile)
   if (pData === 0) return 0
   return s16(m.get(pData, D2MissileDataStrc.nSkill))
@@ -301,6 +344,7 @@ export function MISSILE_GetSkill113c(m: Memory113c, pMissile: number): number {
  * `stdcall (pMissile) -> int`, `ret 4`).
  */
 export function MISSILE_GetLevel113c(m: Memory113c, pMissile: number): number {
+  hitD2CommonVa113c(0x6FDBA2D0)
   const pData = getMissileData(m, pMissile)
   if (pData === 0) return 0
   return s16(m.get(pData, D2MissileDataStrc.nLevel))
@@ -313,6 +357,7 @@ export function MISSILE_GetLevel113c(m: Memory113c, pMissile: number): number {
  * Unclamped 16-bit write `mov cx, [esp+8]; mov [eax+0x0C], cx`.
  */
 export function MISSILE_SetLevel113c(m: Memory113c, pMissile: number, nLevel: number): void {
+  hitD2CommonVa113c(0x6FDBA2F0)
   const pData = getMissileData(m, pMissile)
   if (pData === 0) return
   m.set(pData, D2MissileDataStrc.nLevel, nLevel & 0xffff)
@@ -323,6 +368,7 @@ export function MISSILE_SetLevel113c(m: Memory113c, pMissile: number, nLevel: nu
  * `stdcall (pMissile, dwStreamFlags) -> void`, `ret 8`).
  */
 export function MISSILE_SetStreamFlags113c(m: Memory113c, pMissile: number, dwStreamFlags: number): void {
+  hitD2CommonVa113c(0x6FDBA310)
   const pData = getMissileData(m, pMissile)
   if (pData === 0) return
   m.set(pData, D2MissileDataStrc.dwStreamFlags, dwStreamFlags >>> 0)
@@ -333,6 +379,7 @@ export function MISSILE_SetStreamFlags113c(m: Memory113c, pMissile: number, dwSt
  * `stdcall (pMissile) -> uint32`, `ret 4`).
  */
 export function MISSILE_GetStreamFlags113c(m: Memory113c, pMissile: number): number {
+  hitD2CommonVa113c(0x6FDBA330)
   const pData = getMissileData(m, pMissile)
   if (pData === 0) return 0
   return m.get(pData, D2MissileDataStrc.dwStreamFlags)
@@ -345,6 +392,7 @@ export function MISSILE_GetStreamFlags113c(m: Memory113c, pMissile: number): num
  * Clamps signed 32-bit `nActivateFrame` to `[-32768, 32767]` before storing `u16` at `+0x08`.
  */
 export function MISSILE_SetActivateFrame113c(m: Memory113c, pMissile: number, nActivateFrame: number): void {
+  hitD2CommonVa113c(0x6FDBA690)
   const clamped = clampS16(nActivateFrame)
   const pData = getMissileData(m, pMissile)
   if (pData === 0) return
@@ -358,6 +406,7 @@ export function MISSILE_SetActivateFrame113c(m: Memory113c, pMissile: number, nA
  * Clamps signed 32-bit `nRemainingFrames` to `[-32768, 32767]` before storing `u16` at `+0x10`.
  */
 export function MISSILE_SetRemainingFrames113c(m: Memory113c, pMissile: number, nRemainingFrames: number): void {
+  hitD2CommonVa113c(0x6FDBA6D0)
   const clamped = clampS16(nRemainingFrames)
   const pData = getMissileData(m, pMissile)
   if (pData === 0) return
@@ -371,6 +420,7 @@ export function MISSILE_SetRemainingFrames113c(m: Memory113c, pMissile: number, 
  * Clamps signed 32-bit `nTotalFrames` to `[-32768, 32767]` before storing `u16` at `+0x0E`.
  */
 export function MISSILE_SetTotalFrames113c(m: Memory113c, pMissile: number, nTotalFrames: number): void {
+  hitD2CommonVa113c(0x6FDBA710)
   const clamped = clampS16(nTotalFrames)
   const pData = getMissileData(m, pMissile)
   if (pData === 0) return
@@ -384,6 +434,7 @@ export function MISSILE_SetTotalFrames113c(m: Memory113c, pMissile: number, nTot
  * Clamps signed 32-bit `nSkill` to `[0, 32767]` before storing `u16` at `+0x0A`.
  */
 export function MISSILE_SetSkill113c(m: Memory113c, pMissile: number, nSkill: number): void {
+  hitD2CommonVa113c(0x6FDBA750)
   const clamped = clampNonNegS16(nSkill)
   const pData = getMissileData(m, pMissile)
   if (pData === 0) return
@@ -395,6 +446,7 @@ export function MISSILE_SetSkill113c(m: Memory113c, pMissile: number, nSkill: nu
  * stdcall `[esp+4] = pMissile`, `ret 0x4`, void).
  */
 export function MISSILE_FreeMissileData113c(m: Memory113c, pMissile: number): void {
+  hitD2CommonVa113c(0x6FDBA350)
   if (pMissile >>> 0 === 0 || m.get(pMissile, D2UnitStrc.dwUnitType) !== UNIT_MISSILE) {
     return
   }
@@ -411,6 +463,7 @@ export function MISSILE_FreeMissileData113c(m: Memory113c, pMissile: number): vo
  * stdcall `[esp+4] = pMissile`, `ret 0x4`, void).
  */
 export function MISSILE_AllocMissileData113c(m: Memory113c, pMissile: number): void {
+  hitD2CommonVa113c(0x6FDBA390)
   if (pMissile >>> 0 === 0 || m.get(pMissile, D2UnitStrc.dwUnitType) !== UNIT_MISSILE) {
     return
   }
@@ -467,10 +520,13 @@ export function STATLIST_GetStatsByIdFromList113c(
   pStatList: number,
   nStatId: number,
   nMax: number,
+  pOut = 0,
 ): Array<readonly [number, number]> {
+  hitD2CommonVa113c(0x6FD882F0)
   const out: Array<readonly [number, number]> = []
   const list = pStatList >>> 0
   if (list === 0) return out
+  const outBase = pOut >>> 0
   const pHdr = (m.u32((list + 0x10) >>> 0) | 0) < 0 ? (list + 0x48) >>> 0 : (list + 0x24) >>> 0
   let idx = STATLIST_FindStatFirstIndexOrLowerBound113c(m, pHdr, (nStatId << 16) >>> 0) | 0
   if (idx < 0) return out
@@ -479,7 +535,13 @@ export function STATLIST_GetStatsByIdFromList113c(
     const dwKey = m.u32(pEntry)
     if (((dwKey >> 16) & 0xffff) !== (nStatId | 0)) break
     if (out.length >= (nMax | 0)) break
-    out.push([dwKey, m.u32((pEntry + 4) >>> 0)])
+    const dwVal = m.u32((pEntry + 4) >>> 0)
+    if (outBase !== 0) {
+      const dst = (outBase + out.length * 8) >>> 0
+      m.setU32(dst, dwKey)
+      m.setU32((dst + 4) >>> 0, dwVal)
+    }
+    out.push([dwKey, dwVal])
     idx++
     pEntry = (pEntry + 8) >>> 0
   }
@@ -504,8 +566,8 @@ function maxMasteryValueMem113c(
 /**
  * `@va D2Common:0x6FD9F200` (`SKILLS_GetThrowingWeaponMasteryBonus`, stdcall
  * `(pUnit, pWeapon, pSkill, nBonusType, pbThrowing)`, `ret 0x14`). Returns `null` where the DLL returns `0`
- * with `*pbThrowing == 0`, else the max bonus (`*pbThrowing = 1`, 0x6FD9F36B); the `pbThrowing` slot is a
- * caller stack local in every DLL call site.
+ * with `*pbThrowing == 0`, else the max bonus (`*pbThrowing = 1`, 0x6FD9F36B); when `pbThrowing != 0`,
+ * also mirrors the exact `*pbThrowing` dword writes into emulated memory (`0x6FD9F20E` / `0x6FD9F36B`).
  */
 export function SKILLS_GetThrowingWeaponMasteryBonus113c(
   m: Memory113c,
@@ -513,7 +575,13 @@ export function SKILLS_GetThrowingWeaponMasteryBonus113c(
   pWeapon: number,
   pSkillIn: number,
   nBonusType: number,
+  pbThrowing = 0,
 ): number | null {
+  hitD2CommonVa113c(0x6FD9F200)
+  const outThrow = pbThrowing >>> 0
+  if (outThrow !== 0) {
+    m.setU32(outThrow, 0)
+  }
   let pSkill = pSkillIn >>> 0
   if (pSkill === 0) {
     pSkill = getUsedSkillMem113c(m, pUnit)
@@ -545,7 +613,11 @@ export function SKILLS_GetThrowingWeaponMasteryBonus113c(
     pStatList !== 0 && (m.u32((pStatList + 0x10) >>> 0) | 0) < 0
       ? STATLIST_GetStatsByIdFromList113c(m, pStatList, nStatId, 0x20)
       : []
-  return maxMasteryValueMem113c(m, w, entries)
+  const best = maxMasteryValueMem113c(m, w, entries)
+  if (outThrow !== 0) {
+    m.setU32(outThrow, 1)
+  }
+  return best
 }
 
 /**
@@ -585,6 +657,7 @@ function SKILLS_GetWeaponMasteryBonusMem113c(
  * stdcall `[esp+4] = pUnit`, `ret 0x4` -> `D2UnitStrc*` weapon or `0`).
  */
 export function UNITS_GetMonsterActiveWeapon113c(m: Memory113c, pUnit: number): number {
+  hitD2CommonVa113c(0x6FD81B40)
   const u = pUnit >>> 0
   if (u === 0 || m.u32(u) !== UNIT_MONSTER) return 0
   const pInventory = m.u32((u + 0x60) >>> 0)
@@ -602,6 +675,7 @@ export function MISSILE_AddStatsToDamage113c(
   pUnit: number,
   nShift: number,
 ): void {
+  hitD2CommonVa113c(0x6FDBABE0)
   const dmg = pDmgData >>> 0
   const u = pUnit >>> 0
   const sh = nShift & 0x1f
@@ -657,6 +731,7 @@ export function MISSILE_RollCriticalStrike113c(
   pUnit: number,
   pWeapon: number,
 ): number {
+  hitD2CommonVa113c(0x6FDBB180)
   const u = pUnit >>> 0
   const w = pWeapon >>> 0
   const critPct = u !== 0 ? STATLIST_GetUnitStatWithLayer113c(m, u, 0x151, 0) | 0 : 0
@@ -693,8 +768,281 @@ export function MISSILE_RollLimitedFromUnitSeed113c(
   _unused: number,
   pUnit: number,
 ): number {
+  hitD2CommonVa113c(0x6FDBB140)
   const u = pUnit >>> 0
   if (u === 0) return 0
   return SEED_RollLimitedRandomNumberInline113c(m, (u + 0x20) >>> 0, nMin, nMax) >>> 0
 }
+
+// ============================================================================
+// Iteration 13 Lane A — I13A-2 (#11) Missile Damage Calculation Port
+// ============================================================================
+
+function itemsCheckIfThrowItemMem113c(m: Memory113c, pItem: number): number {
+  const itm = pItem >>> 0
+  if (itm === 0 || m.u32(itm) !== 4) return 0
+  const typeId = ITEMS_GetItemTypeFromItem113c(m, itm) | 0
+  if (typeId < 0) return 0
+  const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+  if (typeId >= (m.u32((sgpt + DATATABLES_OFF_113C.nItemTypesTxtRecordCount) >>> 0) | 0)) return 0
+  const pRec = (m.u32((sgpt + DATATABLES_OFF_113C.pItemTypesTxt) >>> 0) + typeId * 0xe4) >>> 0
+  if (pRec === 0) return 0
+  return m.u8((pRec + 0x10) >>> 0)
+}
+
+function itemsGetStrOrDexBonusMem113c(m: Memory113c, pItem: number, fieldOff: number): number {
+  const itm = pItem >>> 0
+  if (itm === 0 || m.u32(itm) !== 4) return 100
+  const pTxt = getItemsTxtRecordInvMem113c(m, m.u32((itm + 4) >>> 0))
+  if (pTxt === 0) return 100
+  const w = m.u16((pTxt + fieldOff) >>> 0)
+  return w === 1 ? 100 : s16(w)
+}
+
+function mulRecip100MisMem113c(val: number): number {
+  const prod = BigInt(val | 0) * 0x51eb851fn
+  const hi = Number(BigInt.asIntN(32, prod >> 32n))
+  const s = sar32(hi, 5)
+  return (s + ((s >>> 31) & 1)) | 0
+}
+
+/**
+ * `@va D2Common:0x6FDBBAA0` (`D2Common.#10413` `MISSILE_CalculateDamageData`,
+ * stdcall `[esp+4] = pDmgData`, `[esp+8] = pOwner`, `[esp+0xC] = pAltUnit`,
+ * `[esp+0x10] = pMissile`, `[esp+0x14] = nSkillLevel`, `ret 0x14`, void).
+ */
+export function MISSILE_CalculateDamageData113c(
+  m: Memory113c,
+  pDmgData: number,
+  pOwner: number,
+  pAltUnit: number,
+  pMissile: number,
+  nSkillLevel: number,
+): void {
+  hitD2CommonVa113c(0x6FDBBAA0)
+  const dmg = pDmgData >>> 0
+  for (let off = 0; off < 0x7c; off += 4) {
+    m.setU32((dmg + off) >>> 0, 0)
+  }
+
+  const owner = pOwner >>> 0
+  const altUnit = pAltUnit >>> 0
+  const missile = pMissile >>> 0
+  const level = nSkillLevel | 0
+  if (owner === 0 || missile === 0 || m.u32(missile) !== UNIT_MISSILE) return
+
+  const missileId = m.u32((missile + 4) >>> 0) | 0
+  const pMisTxt = DATATBLS_GetMissilesTxtRecordInline113c(m, missileId)
+  if (pMisTxt === 0) return
+
+  const pBitMasks = m.u32(D2COMMON_GDWBITMASKS_IAT_VA_113C)
+  let srcDmg = 0
+  let scale128 = 0
+  let elemType = 0
+  let physMin = 0
+  let physMax = 0
+  let elemMin = 0
+  let elemMax = 0
+  let elemLen = 0
+
+  const wSkill = s16(m.u16((pMisTxt + 0x194) >>> 0))
+  const hasSkillBit = (m.u8((pMisTxt + 5) >>> 0) & m.u8((pBitMasks + 0x1c) >>> 0)) !== 0
+
+  if (wSkill > 0 || hasSkillBit) {
+    let effSkill = wSkill
+    if (hasSkillBit) {
+      const mSkill = MISSILE_GetSkill113c(m, missile) | 0
+      if (mSkill > 0) effSkill = mSkill
+    }
+    const pSkTxt = DATATBLS_GetSkillsTxtRecordInline113c(m, effSkill)
+    if (pSkTxt === 0) return
+    srcDmg = m.u8((pSkTxt + 0x1a5) >>> 0)
+    scale128 = 0
+    if (m.u8((pMisTxt + 0x12d) >>> 0) === 0xff) {
+      srcDmg = 0
+    }
+    physMin = SKILLS_GetSkillPhysMinDamage113c(m, owner, effSkill, level, 0) | 0
+    physMax = SKILLS_GetSkillPhysMaxDamage113c(m, owner, effSkill, level, 0) | 0
+    elemType = m.u8((pSkTxt + 0x1dc) >>> 0)
+    elemMin = SKILLS_GetSkillElemMinDamage113c(m, owner, effSkill, level, 1) | 0
+    elemMax = SKILLS_GetSkillElemMaxDamage113c(m, owner, effSkill, level, 1) | 0
+    elemLen = SKILLS_GetSkillPeriodicDelayOrLength113c(m, owner, effSkill, level, 1) | 0
+  } else {
+    srcDmg = m.u8((pMisTxt + 0x12d) >>> 0)
+    scale128 = m.u8((pMisTxt + 0x12e) >>> 0)
+    physMin = MISSILE_EvaluatePhysMinDamage113c(m, missile, owner, missileId, level) | 0
+    physMax = MISSILE_EvaluatePhysMaxDamage113c(m, missile, owner, missileId, level) | 0
+    elemType = m.u8((pMisTxt + 0xe4) >>> 0)
+    elemMin = MISSILE_EvaluateElementalMinDamage113c(m, missile, owner, missileId, level) | 0
+    elemMax = MISSILE_EvaluateElementalMaxDamage113c(m, missile, owner, missileId, level) | 0
+    elemLen = MISSILE_EvaluateElementalLength113c(m, owner, missile, missileId, level) | 0
+    if ((m.u8((pMisTxt + 5) >>> 0) & m.u8(pBitMasks)) !== 0) {
+      elemMin = (elemMin + (MISSILE_CalculateMasteryBonus113c(m, owner, elemType, elemMin) | 0)) | 0
+      elemMax = (elemMax + (MISSILE_CalculateMasteryBonus113c(m, owner, elemType, elemMax) | 0)) | 0
+    }
+  }
+
+  const pFlags = m.u8((pMisTxt + 0x12f) >>> 0)
+  if ((pFlags & 1) !== 0) m.setU32(dmg, (m.u32(dmg) | 0x100) >>> 0)
+  if ((pFlags & 2) !== 0) m.setU32(dmg, (m.u32(dmg) | 0x200) >>> 0)
+  if ((pFlags & 4) !== 0) m.setU32(dmg, (m.u32(dmg) | 0x400) >>> 0)
+
+  let slot14 = 0
+  let slot28 = 0
+  let slot40 = 0
+  let pWeapon = 0
+  let basePhysMin = 0
+  let basePhysMax = 0
+
+  if (srcDmg !== 0) {
+    m.setU32(dmg, (m.u32(dmg) | 1) >>> 0)
+    const ownerType = m.u32(owner) | 0
+    if (ownerType === 0) {
+      pWeapon = ITEMS_GetActiveWeaponForAttack113c(m, owner, 1) >>> 0
+    } else if (ownerType === 1 && m.u32((owner + 0x60) >>> 0) !== 0) {
+      pWeapon = UNITS_GetMonsterActiveWeapon113c(m, owner) >>> 0
+    }
+    if (MISSILE_RollCriticalStrike113c(m, owner, pWeapon) !== 0) {
+      m.setU32(dmg, (m.u32(dmg) | 2) >>> 0)
+    }
+
+    if (pWeapon !== 0 && m.u32(pWeapon) === 4) {
+      const bitMasksNow = m.u32(D2COMMON_GDWBITMASKS_IAT_VA_113C)
+      if ((m.u8((pMisTxt + 5) >>> 0) & m.u8((bitMasksNow + 0x18) >>> 0)) !== 0) {
+        if (ITEMS_GetInvWidthFromItem113c(m, pWeapon) !== 0) {
+          srcDmg = sdiv32(srcDmg, 2)
+        }
+      }
+      slot14 = SKILLS_GetWeaponMasteryBonusMem113c(m, owner, pWeapon, 0, 1) | 0
+      const strPct = itemsGetStrOrDexBonusMem113c(m, pWeapon, 0x106)
+      if (strPct !== 0) {
+        const strVal = STATLIST_GetUnitStatWithLayer113c(m, owner, 0x00, 0) | 0
+        slot14 = (slot14 + mulRecip100MisMem113c(imul32(strVal, strPct))) | 0
+      }
+      const dexPct = itemsGetStrOrDexBonusMem113c(m, pWeapon, 0x108)
+      if (dexPct !== 0) {
+        const dexVal = STATLIST_GetUnitStatWithLayer113c(m, owner, 0x02, 0) | 0
+        slot14 = (slot14 + mulRecip100MisMem113c(imul32(dexVal, dexPct))) | 0
+      }
+      if (itemsCheckIfThrowItemMem113c(m, pWeapon) !== 0) {
+        basePhysMin = (STATLIST_GetUnitStatWithLayer113c(m, owner, 0x9f, 0) | 0) << 8
+        basePhysMax = (STATLIST_GetUnitStatWithLayer113c(m, owner, 0xa0, 0) | 0) << 8
+      } else {
+        const pInv = m.u32((owner + 0x60) >>> 0)
+        if (pInv !== 0 && INVENTORY_GetEquippedWeaponHandClass113c(m, owner, pInv) === 2) {
+          basePhysMin = (STATLIST_GetUnitStatWithLayer113c(m, owner, 0x17, 0) | 0) << 8
+          basePhysMax = (STATLIST_GetUnitStatWithLayer113c(m, owner, 0x18, 0) | 0) << 8
+        } else {
+          basePhysMin = (STATLIST_GetUnitStatWithLayer113c(m, owner, 0x15, 0) | 0) << 8
+          basePhysMax = (STATLIST_GetUnitStatWithLayer113c(m, owner, 0x16, 0) | 0) << 8
+        }
+      }
+      if (ITEMS_CheckItemTypeIdMem113c(m, pWeapon, 0x39) !== 0) {
+        m.setU32((dmg + 0x70) >>> 0, ((m.u32((dmg + 0x70) >>> 0) | 0) + 0x32) >>> 0)
+      }
+    } else {
+      if ((m.u32(owner) | 0) === 1 && MONSTERS_GetHirelingTypeId113c(m, owner) !== 0) {
+        slot40 = STATLIST_GetUnitStatWithLayer113c(m, owner, 0x02, 0) | 0
+      }
+      basePhysMin = (STATLIST_GetUnitStatWithLayer113c(m, owner, 0x15, 0) | 0) << 8
+      basePhysMax = (STATLIST_GetUnitStatWithLayer113c(m, owner, 0x16, 0) | 0) << 8
+    }
+
+    const q = (sId: number): number => STATLIST_GetUnitStatWithLayer113c(m, owner, sId, 0) | 0
+    basePhysMin = sar32(imul32(basePhysMin, srcDmg) + ((imul32(basePhysMin, srcDmg) >> 31) & 0x7f), 7)
+    basePhysMax = sar32(imul32(basePhysMax, srcDmg) + ((imul32(basePhysMax, srcDmg) >> 31) & 0x7f), 7)
+    slot40 = (slot40 + q(0x19) + slot14) | 0
+    slot14 = q(0x12)
+    slot28 = q(0x11)
+    m.setU32((dmg + 0x6c) >>> 0, ((m.u32((dmg + 0x6c) >>> 0) | 0) + q(0x79)) >>> 0)
+    m.setU32((dmg + 0x70) >>> 0, ((m.u32((dmg + 0x70) >>> 0) | 0) + q(0x7a)) >>> 0)
+    m.setU32((dmg + 0x74) >>> 0, ((m.u32((dmg + 0x74) >>> 0) | 0) + q(0x78)) >>> 0)
+    if (q(0x67) !== 0) m.setU32(dmg, (m.u32(dmg) | 0x100) >>> 0)
+    if (q(0x68) !== 0) m.setU32(dmg, (m.u32(dmg) | 0x200) >>> 0)
+    if (q(0x6a) !== 0) m.setU32(dmg, (m.u32(dmg) | 0x400) >>> 0)
+  } else if (scale128 !== 0 && altUnit !== 0) {
+    if (MISSILE_RollCriticalStrike113c(m, altUnit, 0) !== 0) {
+      m.setU32(dmg, (m.u32(dmg) | 2) >>> 0)
+    }
+    const qAlt = (sId: number): number => STATLIST_GetUnitStatWithLayer113c(m, altUnit, sId, 0) | 0
+    const s21 = qAlt(0x15)
+    basePhysMin = sar32(imul32(s21, scale128) + ((imul32(s21, scale128) >> 31) & 0x7f), 7)
+    const s22 = qAlt(0x16)
+    basePhysMax = sar32(imul32(s22, scale128) + ((imul32(s22, scale128) >> 31) & 0x7f), 7)
+    slot40 = qAlt(0x19)
+    slot14 = qAlt(0x12)
+    slot28 = qAlt(0x11)
+    m.setU32((dmg + 0x6c) >>> 0, ((m.u32((dmg + 0x6c) >>> 0) | 0) + qAlt(0x79)) >>> 0)
+    m.setU32((dmg + 0x70) >>> 0, ((m.u32((dmg + 0x70) >>> 0) | 0) + qAlt(0x7a)) >>> 0)
+    m.setU32((dmg + 0x74) >>> 0, ((m.u32((dmg + 0x74) >>> 0) | 0) + qAlt(0x78)) >>> 0)
+  }
+
+  let pctFinal = (slot40 + (STATLIST_GetUnitStatWithLayer113c(m, missile, 0x19, 0) | 0)) | 0
+  pctFinal = (pctFinal + (slot14 > slot28 ? slot14 : slot28)) | 0
+  if (pctFinal <= -90) pctFinal = -90
+  m.setU32((dmg + 0x78) >>> 0, pctFinal >>> 0)
+  m.setU32((dmg + 0x04) >>> 0, (basePhysMin + physMin) >>> 0)
+  m.setU32((dmg + 0x08) >>> 0, (basePhysMax + physMax) >>> 0)
+
+  switch (elemType) {
+    case 1:
+      m.setU32((dmg + 0x0c) >>> 0, elemMin >>> 0)
+      m.setU32((dmg + 0x10) >>> 0, elemMax >>> 0)
+      m.setU32((dmg + 0x14) >>> 0, elemLen >>> 0)
+      break
+    case 2:
+      m.setU32((dmg + 0x18) >>> 0, elemMin >>> 0)
+      m.setU32((dmg + 0x1c) >>> 0, elemMax >>> 0)
+      break
+    case 3:
+      m.setU32((dmg + 0x20) >>> 0, elemMin >>> 0)
+      m.setU32((dmg + 0x24) >>> 0, elemMax >>> 0)
+      break
+    case 4:
+    case 12:
+      m.setU32((dmg + 0x28) >>> 0, elemMin >>> 0)
+      m.setU32((dmg + 0x2c) >>> 0, elemMax >>> 0)
+      m.setU32((dmg + 0x30) >>> 0, elemLen >>> 0)
+      break
+    case 5:
+      m.setU32((dmg + 0x34) >>> 0, elemMin >>> 0)
+      m.setU32((dmg + 0x38) >>> 0, elemMax >>> 0)
+      m.setU32((dmg + 0x3c) >>> 0, elemLen >>> 0)
+      break
+    case 6:
+      m.setU32((dmg + 0x44) >>> 0, elemMin >>> 0)
+      m.setU32((dmg + 0x48) >>> 0, elemMax >>> 0)
+      break
+    case 7:
+      m.setU32((dmg + 0x4c) >>> 0, elemMin >>> 0)
+      m.setU32((dmg + 0x50) >>> 0, elemMax >>> 0)
+      break
+    case 8:
+      m.setU32((dmg + 0x54) >>> 0, elemMin >>> 0)
+      m.setU32((dmg + 0x58) >>> 0, elemMax >>> 0)
+      break
+    case 9:
+      m.setU32((dmg + 0x5c) >>> 0, elemLen >>> 0)
+      break
+    case 11:
+      m.setU32((dmg + 0x60) >>> 0, elemMin >>> 0)
+      m.setU32((dmg + 0x64) >>> 0, elemMax >>> 0)
+      m.setU32((dmg + 0x68) >>> 0, elemLen >>> 0)
+      break
+    default:
+      break
+  }
+
+  if (srcDmg !== 0) {
+    UNITS_SyncDualWieldWeaponStatLists113c(m, owner, 1)
+    MISSILE_AddStatsToDamage113c(m, dmg, owner, 8)
+    MISSILE_ScaleDamageDataBy128thsInline113c(m, dmg, srcDmg)
+    return
+  }
+  if (scale128 !== 0 && altUnit !== 0) {
+    MISSILE_AddStatsToDamage113c(m, dmg, altUnit, 0)
+    MISSILE_ScaleDamageDataBy128thsInline113c(m, dmg, scale128)
+  }
+}
+
 

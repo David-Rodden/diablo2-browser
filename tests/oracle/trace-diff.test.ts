@@ -1,5 +1,16 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { gunzipSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
-import { diffTraces, formatDivergence, parseTrace } from '../../tools/oracle/lib/trace-diff.ts'
+import {
+  ORACLE_ITEM_FIELDS_113C,
+  diffItemFrameRows,
+  diffS2cFramePackets,
+  diffTraces,
+  formatDivergence,
+  parseItemRow,
+  parseTrace,
+} from '../../tools/oracle/lib/trace-diff.ts'
 
 const HDR = {
   schema: 'd2oracle/1',
@@ -223,5 +234,187 @@ describe('oracle trace diff', () => {
         { compareDot: false },
       ).firstDivergence,
     ).toBeNull()
+  })
+
+  it('parses and diffs t4 items (itemFields + trailing stat triples) and preserves backward compatibility', () => {
+    const itemHdr = {
+      ...HDR,
+      itemFields: [...ORACLE_ITEM_FIELDS_113C],
+    }
+    const groundItem = [
+      9, 344, 3, 5664, 5797,
+      694881265, 331052482, 2009214798, 669412953, 1604951332,
+      -1, 2, 1, 0x80010, 0, 0,
+      101, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 255, 0, 0,
+      31, 0, 2,
+      72, 0, 7,
+      73, 0, 12,
+    ]
+    const parsed = parseItemRow(groundItem, ORACLE_ITEM_FIELDS_113C)
+    expect(parsed.fields).toMatchObject({
+      id: 9,
+      class: 344,
+      mode: 3,
+      x: 5664,
+      y: 5797,
+      ownerId: -1,
+      quality: 2,
+      ilvl: 1,
+      itemFlags: 0x80010,
+      itemFormat: 101,
+      itemPage: 255,
+    })
+    expect(parsed.stats).toEqual([
+      { statId: 31, param: 0, value: 2 },
+      { statId: 72, param: 0, value: 7 },
+      { statId: 73, param: 0, value: 12 },
+    ])
+
+    const oFrames = {
+      1: { ...structuredClone(base[1]), t4: [] },
+      2: { ...structuredClone(base[2]), t4: [groundItem] },
+    }
+    const rFrames = structuredClone(oFrames)
+    // Default ignores item seed columns unless compareSeeds: true
+    rFrames[2].t4[0]![5] = 111
+    rFrames[2].t4[0]![7] = 222
+    rFrames[2].t4[0]![9] = 333
+    expect(diffTraces(parseTrace(trace('oracle', oFrames, itemHdr)), parseTrace(trace('replica', rFrames, itemHdr))).firstDivergence).toBeNull()
+    expect(
+      diffTraces(parseTrace(trace('oracle', oFrames, itemHdr)), parseTrace(trace('replica', rFrames, itemHdr)), {
+        compareSeeds: true,
+      }).firstDivergence,
+    ).toMatchObject({
+      frame: 2,
+      kind: 'field',
+      type: 4,
+      unitId: 9,
+      field: 'seedLo',
+      oracle: 694881265,
+      replica: 111,
+    })
+
+    // Scalar item field mismatch (e.g. quality)
+    const badQual = structuredClone(oFrames)
+    badQual[2].t4[0]![11] = 4
+    expect(diffTraces(parseTrace(trace('oracle', oFrames, itemHdr)), parseTrace(trace('replica', badQual, itemHdr))).firstDivergence).toMatchObject({
+      frame: 2,
+      kind: 'field',
+      type: 4,
+      unitId: 9,
+      field: 'quality',
+      oracle: 2,
+      replica: 4,
+    })
+
+    // Trailing item stat triple mismatch (durability 7 -> 6)
+    const badStat = structuredClone(oFrames)
+    badStat[2].t4[0]![35] = 6
+    expect(diffTraces(parseTrace(trace('oracle', oFrames, itemHdr)), parseTrace(trace('replica', badStat, itemHdr))).firstDivergence).toMatchObject({
+      frame: 2,
+      kind: 'item-stats',
+      type: 4,
+      unitId: 9,
+      field: 'stat(72:0)',
+      oracle: { statId: 72, param: 0, value: 7 },
+      replica: { statId: 72, param: 0, value: 6 },
+    })
+
+    // Reusable frame-level helper diffItemFrameRows ('strict' vs 'pos')
+    expect(diffItemFrameRows([groundItem], badStat[2].t4, ORACLE_ITEM_FIELDS_113C, 'strict')).toEqual({
+      key: 't4',
+      id: 9,
+      field: 'stat(72:0)',
+      expected: { statId: 72, param: 0, value: 7 },
+      actual: { statId: 72, param: 0, value: 6 },
+    })
+    expect(diffItemFrameRows([groundItem], badStat[2].t4, ORACLE_ITEM_FIELDS_113C, 'pos')).toBeNull()
+
+    // Backward compatibility: legacy header without itemFields skips t4 comparison
+    expect(
+      diffTraces(parseTrace(trace('oracle', oFrames, itemHdr)), parseTrace(trace('replica', { 1: base[1], 2: base[2] }, HDR))).firstDivergence,
+    ).toBeNull()
+  })
+
+  it('parses and diffs s2c packet arrays in emission order and preserves backward compatibility', () => {
+    const s2cHdr = { ...HDR, s2c: true }
+    const oFrames = {
+      1: { ...structuredClone(base[1]), s2c: [] },
+      2: {
+        ...structuredClone(base[2]),
+        s2c: ['6d090000002016a31680', '9c001d100900000010208000650cc4a2d4824d8c0d040181010c07fe03'],
+      },
+    }
+    const rFrames = structuredClone(oFrames)
+    rFrames[2].s2c[0] = rFrames[2].s2c[0]!.toUpperCase()
+    expect(diffTraces(parseTrace(trace('oracle', oFrames, s2cHdr)), parseTrace(trace('replica', rFrames, s2cHdr))).firstDivergence).toBeNull()
+
+    const badPkt = structuredClone(oFrames)
+    badPkt[2].s2c[1] = '9c001d100900000010208000650cc4a2d4824d8c0d040181010c07fe00'
+    expect(diffTraces(parseTrace(trace('oracle', oFrames, s2cHdr)), parseTrace(trace('replica', badPkt, s2cHdr))).firstDivergence).toMatchObject({
+      frame: 2,
+      kind: 's2c',
+      field: 's2c[1]',
+      oracle: oFrames[2].s2c[1],
+      replica: badPkt[2].s2c[1],
+    })
+    expect(diffS2cFramePackets(oFrames[2].s2c, badPkt[2].s2c)).toEqual({
+      key: 's2c',
+      id: null,
+      field: 's2c[1]',
+      expected: oFrames[2].s2c[1],
+      actual: badPkt[2].s2c[1],
+    })
+
+    // Backward compatibility: legacy header without s2c:true skips s2c comparison
+    expect(
+      diffTraces(parseTrace(trace('oracle', oFrames, s2cHdr)), parseTrace(trace('replica', { 1: base[1], 2: base[2] }, HDR))).firstDivergence,
+    ).toBeNull()
+  })
+
+  it('loads legacy K1 golden without t4/s2c and K2 goldens with real t4 ground drops and 0x9c s2c packets', () => {
+    const goldenDir = join(import.meta.dirname, '../fixtures/oracle/golden')
+    const loadGolden = (name: string) =>
+      parseTrace(gunzipSync(readFileSync(join(goldenDir, `${name}.oracle.ndjson.gz`))).toString('utf8'))
+
+    // Legacy K1 golden without t4/s2c parses cleanly with zero changes
+    const k1 = loadGolden('a1-town-walk')
+    expect(k1.header.itemFields).toBeUndefined()
+    expect(k1.header.s2c).toBeUndefined()
+    expect(k1.frames.get(2)?.t4).toBeUndefined()
+
+    // K2 a1-bloodmoor-melee: ground drop item #9 + 0x9C S2C at frame 1106
+    const melee = loadGolden('a1-bloodmoor-melee')
+    expect(melee.header.itemFields).toEqual([...ORACLE_ITEM_FIELDS_113C])
+    expect(melee.header.s2c).toBe(true)
+    expect(melee.frames.size).toBe(1800)
+    const f1106 = melee.frames.get(1106)!
+    expect(f1106.s2c?.some((p) => p.startsWith('9c00'))).toBe(true)
+    const drop9 = f1106.t4?.find((r) => r[0] === 9)
+    expect(drop9).toBeDefined()
+    expect(parseItemRow(drop9!, melee.header.itemFields!)).toMatchObject({
+      fields: { id: 9, class: 344, mode: 3, x: 5664, y: 5797, quality: 2, ilvl: 1 },
+    })
+
+    // K2 p52-dot-ticks: ground drops #8 (f808) and #9 gold pile (f883)
+    const dot = loadGolden('p52-dot-ticks')
+    expect(dot.header.itemFields).toEqual([...ORACLE_ITEM_FIELDS_113C])
+    expect(dot.header.s2c).toBe(true)
+    expect(dot.frames.size).toBe(1200)
+    expect(dot.frames.get(808)?.s2c?.some((p) => p.startsWith('9c00'))).toBe(true)
+    expect(dot.frames.get(883)?.s2c?.some((p) => p.startsWith('9c00'))).toBe(true)
+
+    // K2 p52-item-defense: 6 equipped unique/set items (fileIndex 76, 109, 242, 110, 236, 384) + 2 ground drops (#13 f781, #14 f1129)
+    const itemDef = loadGolden('p52-item-defense')
+    expect(itemDef.header.itemFields).toEqual([...ORACLE_ITEM_FIELDS_113C])
+    expect(itemDef.header.s2c).toBe(true)
+    expect(itemDef.frames.size).toBe(1600)
+    const equipped = (itemDef.frames.get(2)?.t4 ?? [])
+      .map((r) => parseItemRow(r, itemDef.header.itemFields!))
+      .filter((it) => it.fields.mode === 1)
+    expect(equipped.map((it) => it.fields.fileIndex)).toEqual([76, 109, 242, 110, 236, 384])
+    expect(itemDef.frames.get(781)?.s2c?.some((p) => p.startsWith('9c00'))).toBe(true)
+    expect(itemDef.frames.get(1129)?.s2c?.some((p) => p.startsWith('9c00'))).toBe(true)
   })
 })

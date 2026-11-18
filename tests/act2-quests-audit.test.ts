@@ -8,6 +8,7 @@ import { CommandMapper } from '../src/client/input/command-mapper.js'
 import { LocalMovementPredictor } from '../src/client/motion/predictor.js'
 import { ClientWorld } from '../src/client/world/client-world.js'
 import { HudModel } from '../src/client/ui-model/hud-model.js'
+import { GameInstance } from '../src/server/engine/game-instance.js'
 import type { ClientCommand } from '../src/netproto/domain/client-command.js'
 
 if (typeof globalThis.window === 'undefined') {
@@ -337,6 +338,293 @@ describe('Act 2 Quests Audit Fixes (1.13c Ground Truth)', () => {
           playerUnitId: 7,
         },
       ])
+    })
+
+    it('clears cursor-held Horadric Staff (hst) from both ClientWorld.containers.cursor and HudManager.inventory.cursorItem on confirm & S2C 0x58(uiId=5)', () => {
+      const world = new ClientWorld()
+      const hud = new HudManager()
+      const commands: ClientCommand[] = []
+      const hudModel = new HudModel({
+        world,
+        hudManager: hud,
+        onCommand: (cmd: ClientCommand) => commands.push(cmd),
+      })
+      hud.commandSink = hudModel
+
+      world.apply({
+        type: 'UnitAssign',
+        isSelf: true,
+        unit: { unitType: 'player', id: 7, classId: 1, name: 'Hero', x: 5000, y: 5000 },
+      })
+      world.apply({
+        type: 'OpenUi',
+        unitType: 2,
+        unitId: 42,
+        uiId: 0,
+        extra: 0,
+      })
+      hudModel.openArtisanWindow('orifice', 42)
+      expect(hud.leftPanel).toBe('orifice')
+      expect(hud.rightPanel).toBe('inv')
+
+      // Simulate C2S 0x19 -> S2C 0x9C moving Horadric Staff ('hst', id=99) to world.containers.cursor
+      world.containers.applyItemEvent(
+        'toCursor',
+        {
+          id: 99,
+          code: 'hst',
+          name: 'Horadric Staff',
+          baseName: 'Horadric Staff',
+          quality: 'normal',
+          identified: true,
+          gridX: 0,
+          gridY: 0,
+          gridW: 1,
+          gridH: 4,
+          container: 'cursor',
+        } as any,
+        'cursor',
+      )
+      hudModel.syncFromWorld()
+      expect(hud.inventory.cursorItem?.code).toBe('hst')
+
+      // Place staff into the orifice slot (167, 160)
+      hud.handleHudMouseDown({
+        button: 0,
+        clientX: 167,
+        clientY: 160,
+        _logicalX: 167,
+        _logicalY: 160,
+        preventDefault: () => {},
+        stopPropagation: () => {},
+      } as any)
+      expect((hud.worldPanels as any).questRewardItem?.code).toBe('hst')
+      expect(hud.inventory.cursorItem).toBeNull()
+      // Server still considers the item on cursor until 0x44(state=3) is processed
+      expect(world.containers.cursor?.id).toBe(99)
+
+      // Click the Orifice Confirm [✓] button at (138, 240)
+      hud.handleHudMouseDown({
+        button: 0,
+        clientX: 138,
+        clientY: 240,
+        _logicalX: 138,
+        _logicalY: 240,
+        preventDefault: () => {},
+        stopPropagation: () => {},
+      } as any)
+      expect(commands).toContainEqual({
+        type: 'StaffInOrifice',
+        orificeObjectId: 42,
+        staffItemId: 99,
+        state: 3,
+        playerUnitId: 7,
+      })
+      expect(hud.leftPanel).toBe('none')
+      expect(hud.rightPanel).toBe('none')
+      expect(hud.inventory.visible).toBe(false)
+      expect(hud.inventory.cursorItem).toBeNull()
+      expect(world.containers.cursor).toBeNull()
+
+      // Even if S2C 0x58(uiId=5, extra=1) arrives afterwards, cursor remains empty
+      world.apply({
+        type: 'OpenUi',
+        unitType: 2,
+        unitId: 42,
+        uiId: 5,
+        extra: 1,
+      })
+      hudModel.completeOrificeUi(1)
+      hudModel.syncFromWorld()
+      expect(world.containers.cursor).toBeNull()
+      expect(hud.inventory.cursorItem).toBeNull()
+      expect(hud.leftPanel).toBe('none')
+      expect(hud.rightPanel).toBe('none')
+    })
+
+    it('S2C 0x58(uiId=1) server cancel ack closes only the orifice UI without emitting duplicate C2S 0x44(state=2) or closing unrelated panels', () => {
+      const world = new ClientWorld()
+      const hud = new HudManager()
+      const commands: ClientCommand[] = []
+      const hudModel = new HudModel({
+        world,
+        hudManager: hud,
+        onCommand: (cmd: ClientCommand) => commands.push(cmd),
+      })
+      hud.commandSink = hudModel
+
+      world.apply({
+        type: 'UnitAssign',
+        isSelf: true,
+        unit: { unitType: 'player', id: 7, classId: 1, name: 'Hero', x: 5000, y: 5000 },
+      })
+      world.apply({
+        type: 'OpenUi',
+        unitType: 2,
+        unitId: 42,
+        uiId: 0,
+        extra: 0,
+      })
+      hudModel.openArtisanWindow('orifice', 42)
+      commands.length = 0
+
+      // Player walks away (client already sent 0x44 state=2 and closed orifice), then opens character sheet
+      hudModel.closeHoradricOrifice(42)
+      expect(commands).toHaveLength(1)
+      commands.length = 0
+      hud.toggleLeftPanel('char')
+      expect(hud.leftPanel).toBe('char')
+
+      // Server's delayed S2C 0x58(uiId=1) ack arrives: must NOT emit another 0x44 or close 'char'
+      world.apply({
+        type: 'OpenUi',
+        unitType: 2,
+        unitId: 42,
+        uiId: 1,
+        extra: 0,
+      })
+      hudModel.cancelOrificeUiFromServer()
+      expect(commands).toEqual([])
+      expect(hud.leftPanel).toBe('char')
+    })
+
+    it('blocks dropping cursor-held Horadric Staff to ground when clicking outside panels in widescreen while orifice is open, and closes orifice if inventory [X] is clicked', () => {
+      const world = new ClientWorld()
+      const hud = new HudManager()
+      hud.resize(1280, 720)
+      const commands: ClientCommand[] = []
+      const hudModel = new HudModel({
+        world,
+        hudManager: hud,
+        onCommand: (cmd: ClientCommand) => commands.push(cmd),
+      })
+      hud.commandSink = hudModel
+
+      world.apply({
+        type: 'UnitAssign',
+        isSelf: true,
+        unit: { unitType: 'player', id: 7, classId: 1, name: 'Hero', x: 5000, y: 5000 },
+      })
+      world.apply({
+        type: 'OpenUi',
+        unitType: 2,
+        unitId: 42,
+        uiId: 0,
+        extra: 0,
+      })
+      hudModel.openArtisanWindow('orifice', 42)
+      const staff = {
+        id: '99',
+        code: 'hst',
+        name: 'Horadric Staff',
+        invWidth: 1,
+        invHeight: 4,
+        identified: true,
+      } as any
+      hud.inventory.cursorItem = staff
+      commands.length = 0
+
+      // Click in the widescreen gap (x = 640, y = 300 on 1280x720) while dragging 'hst'
+      hud.handleHudMouseDown({
+        button: 0,
+        clientX: 640,
+        clientY: 300,
+        _logicalX: 640,
+        _logicalY: 300,
+        preventDefault: () => {},
+        stopPropagation: () => {},
+      } as any)
+      expect(commands.filter((c) => c.type === 'ItemDrop')).toEqual([])
+      expect(hud.inventory.cursorItem).toBe(staff)
+      expect(hud.leftPanel).toBe('orifice')
+
+      // Put cursor item away, then click the right-side Inventory Close [X] button (INV_CLOSE_BTN_BOUNDS: x=418, y=445, w=32, h=32)
+      hud.inventory.cursorItem = null
+      const docking = hud.getDockingLayout()
+      const closeX = docking.rightDockX - 400 + 434
+      const closeY = (docking.panelOffsetY ?? 0) + 461
+      hud.handleHudMouseDown({
+        button: 0,
+        clientX: closeX,
+        clientY: closeY,
+        _logicalX: closeX,
+        _logicalY: closeY,
+        preventDefault: () => {},
+        stopPropagation: () => {},
+      } as any)
+      hud.handleHudMouseUp(closeX, closeY, 0)
+      expect(hud.rightPanel).toBe('none')
+      expect(hud.leftPanel).toBe('none')
+      expect(commands.filter((c) => c.type === 'StaffInOrifice')).toEqual([
+        {
+          type: 'StaffInOrifice',
+          orificeObjectId: 42,
+          staffItemId: 0,
+          state: 2,
+          playerUnitId: 7,
+        },
+      ])
+    })
+
+    it('handles C2S 0x44 StaffInOrifice(state=2 & state=3) in GameInstance server engine', () => {
+      const game = new GameInstance({ areaId: 66 })
+      const p1 = game.connectPlayer({ name: 'Hero', classId: 1, x: 100, y: 100, areaId: 66 })
+      const orificeId = game.spawnObject({
+        classId: 152,
+        x: 101,
+        y: 100,
+        areaId: 66,
+        mode: 1,
+      })
+      const staff = (game as any).givePlayerInventoryQuestItem(
+        (game as any).players.get(p1),
+        'hst',
+      )
+      staff.location = 'cursor'
+      game.drainPlayerEvents(p1)
+
+      // state = 2 cancels and resets mode 1 -> 0
+      game.enqueueCommand(p1, {
+        type: 'StaffInOrifice',
+        orificeObjectId: orificeId,
+        staffItemId: 0,
+        state: 2,
+        playerUnitId: p1,
+      })
+      game.stepFrame()
+      const cancelEvents = game.drainPlayerEvents(p1)
+      expect(cancelEvents).toContainEqual({
+        type: 'OpenUi',
+        unitType: 2,
+        unitId: orificeId,
+        uiId: 1,
+        extra: 0,
+      })
+      expect((game as any).objects.get(orificeId).mode).toBe(0)
+
+      // state = 3 consumes 'hst', emits OpenUi(uiId=5, extra=1), and schedules Duriel's Lair (100)
+      game.enqueueCommand(p1, {
+        type: 'StaffInOrifice',
+        orificeObjectId: orificeId,
+        staffItemId: staff.unitId,
+        state: 3,
+        playerUnitId: p1,
+      })
+      game.stepFrame()
+      const confirmEvents = game.drainPlayerEvents(p1)
+      expect(confirmEvents).toContainEqual({
+        type: 'OpenUi',
+        unitType: 2,
+        unitId: orificeId,
+        uiId: 5,
+        extra: 1,
+      })
+      expect((game as any).objects.get(orificeId).mode).toBe(2)
+      expect(
+        (game as any).players
+          .get(p1)
+          .items.some((it: any) => it.code.trim().toLowerCase() === 'hst'),
+      ).toBe(false)
     })
   })
 

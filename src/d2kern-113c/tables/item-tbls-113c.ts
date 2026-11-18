@@ -14,6 +14,7 @@
 import type { Memory113c } from '../mem/sparse-memory.ts'
 import { D2AStarNodeStrc } from '../mem/layout.generated.ts'
 import { fogGetRowFromTxt113c, SGPT_ITEMS_LINKER_PTR_VA } from './datatbls-113c.ts'
+import { hitD2CommonVa113c } from '../va-trace-113c.ts'
 
 /** `.data` `&sgItemDataTables` at `0x6FDEFB94` (`0x6FDC1A40 mov eax, 0x6fdefb94`). */
 export const SG_ITEM_DATATABLES_VA_113C = 0x6fdefb94
@@ -44,6 +45,7 @@ function i16(v: number): number {
  * Returns constant `.data` address `0x6FDEFBF0` (`&sgGambleDataTables`).
  */
 export function DATATBLS_GetGambleDataTables113c(_m: Memory113c): number {
+  hitD2CommonVa113c(0x6FDC1280)
   return SG_GAMBLE_DATATABLES_VA_113C
 }
 
@@ -52,6 +54,7 @@ export function DATATBLS_GetGambleDataTables113c(_m: Memory113c): number {
  * Returns constant `.data` address `0x6FDEFBDC` (`&sgRareAffixDataTables`).
  */
 export function DATATBLS_GetRareAffixDataTables113c(_m: Memory113c): number {
+  hitD2CommonVa113c(0x6FDC17E0)
   return SG_RARE_AFFIX_DATATABLES_VA_113C
 }
 
@@ -60,6 +63,7 @@ export function DATATBLS_GetRareAffixDataTables113c(_m: Memory113c): number {
  * Returns constant `.data` address `0x6FDEFBB8` (`&sgMagicAffixDataTables`).
  */
 export function DATATBLS_GetMagicAffixDataTables113c(_m: Memory113c): number {
+  hitD2CommonVa113c(0x6FDC1870)
   return SG_MAGIC_AFFIX_DATATABLES_VA_113C
 }
 
@@ -68,6 +72,7 @@ export function DATATBLS_GetMagicAffixDataTables113c(_m: Memory113c): number {
  * Returns constant `.data` address `0x6FDEFB94` (`&sgItemDataTables`).
  */
 export function DATATBLS_GetItemDataTables113c(_m: Memory113c): number {
+  hitD2CommonVa113c(0x6FDC1A40)
   return SG_ITEM_DATATABLES_VA_113C
 }
 
@@ -83,6 +88,7 @@ export function PATH_AStar_PropagateNewFScoreToChildren113c(
   pContext: number,
   pNewNode: number,
 ): void {
+  hitD2CommonVa113c(0x6FDCAC50)
   const ctx = pContext >>> 0
   const initCount = m.u32((ctx + ASTAR_CTX_STACK_COUNT_OFF_113C) >>> 0) | 0
   m.setU32((ctx + ASTAR_CTX_POINTS_STACK_OFF_113C + ((initCount << 2) >>> 0)) >>> 0, pNewNode >>> 0)
@@ -131,6 +137,7 @@ export function PATH_AStar_FindPointInVisitedCache113c(
   pContext: number,
   packedPointXY: number,
 ): number {
+  hitD2CommonVa113c(0x6FDCAED0)
   const wX = packedPointXY & 0xffff
   const wY = (packedPointXY >>> 16) & 0xffff
   const hashY = m.u32((ASTAR_HASH_Y_VA_113C + ((wY & 0x7f) << 2)) >>> 0)
@@ -156,6 +163,7 @@ export function PATH_AStar_GetNodeFromPendingCache113c(
   pContext: number,
   packedPointXY: number,
 ): number {
+  hitD2CommonVa113c(0x6FDCAF20)
   const wX = packedPointXY & 0xffff
   const wY = (packedPointXY >>> 16) & 0xffff
   const hashY = m.u32((ASTAR_HASH_Y_VA_113C + ((wY & 0x7f) << 2)) >>> 0)
@@ -180,6 +188,7 @@ export function PATH_AStar_GetNodeFromPendingCache113c(
  * stdcall `[esp+4] = dwCode`, `ret 4` -> `int32_t` item row index or `-1`).
  */
 export function DATATBLS_GetItemIdFromItemCode113c(m: Memory113c, dwCode: number): number {
+  hitD2CommonVa113c(0x6FDC1940)
   return fogGetRowFromTxt113c(m, m.u32(SGPT_ITEMS_LINKER_PTR_VA), dwCode >>> 0, 0) >>> 0
 }
 
