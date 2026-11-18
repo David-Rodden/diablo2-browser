@@ -5,8 +5,8 @@
     "name": "QUESTS_TriggerCallback00_6FC54660",
     "kernFile": "src/d2kern-113c/game/k2-laneK-0x6fc5-w1-113c.ts",
     "tsSymbol": "QUESTS_TriggerCallback00_6FC54660_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneK-0x6fc5-w1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/laneK-0x6fc5-w1.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -59,8 +59,8 @@
     "name": "QUESTS_SendGameQuestStatePacket29_6FC55030",
     "kernFile": "src/d2kern-113c/game/k2-laneK-0x6fc5-w1-113c.ts",
     "tsSymbol": "QUESTS_SendGameQuestStatePacket29_6FC55030_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneK-0x6fc5-w1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/laneK-0x6fc5-w1.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -77,8 +77,8 @@
     "name": "QUESTS_TriggerCallback0B_6FC55C90",
     "kernFile": "src/d2kern-113c/game/k2-laneK-0x6fc5-w1-113c.ts",
     "tsSymbol": "QUESTS_TriggerCallback0B_6FC55C90_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneK-0x6fc5-w1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/laneK-0x6fc5-w1.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -239,8 +239,8 @@
     "name": "MISSILES_AddElemDamageByEType_6FC59260",
     "kernFile": "src/d2kern-113c/game/k2-laneK-0x6fc5-w1-113c.ts",
     "tsSymbol": "MISSILES_AddElemDamageByEType_6FC59260_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneK-0x6fc5-w1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/laneK-0x6fc5-w1.test.ts; K3 golden replay diff-verified (dll\u2229ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",

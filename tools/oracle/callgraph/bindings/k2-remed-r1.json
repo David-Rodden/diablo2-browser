@@ -5,8 +5,8 @@
     "name": "QUESTS_FindAndDeletePlayerQuestItemByCode_6FC566A0",
     "kernFile": "src/d2kern-113c/game/k2-w14b1-113c.ts",
     "tsSymbol": "QUESTS_FindAndDeletePlayerQuestItemByCode_6FC566A0_113c",
-    "status": "ported",
-    "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -77,8 +77,8 @@
     "name": "SKILLS_SrvDo_SummonDecoy_6FC6D710",
     "kernFile": "src/d2kern-113c/game/k2-w14b1-113c.ts",
     "tsSymbol": "SKILLS_SrvDo_SummonDecoy_6FC6D710_113c",
-    "status": "ported",
-    "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts; Diff-verified 1:1 in dll\u2229ts across full-horizon strict zero-divergence K3 summon/curse replays (p52-amazon-valkyrie F1500/1500, p52-necromancer-poison-golem F1800/1800, p52-necromancer-curses F2000/2000) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -122,8 +122,8 @@
     "name": "SKILLS_SrvDo_ClayBloodFireGolem_6FC71750",
     "kernFile": "src/d2kern-113c/game/k2-w14b1-113c.ts",
     "tsSymbol": "SKILLS_SrvDo_ClayBloodFireGolem_6FC71750_113c",
-    "status": "ported",
-    "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts; Diff-verified 1:1 in dll\u2229ts across full-horizon strict zero-divergence K3 summon/curse replays (p52-amazon-valkyrie F1500/1500, p52-necromancer-poison-golem F1800/1800, p52-necromancer-curses F2000/2000) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -131,8 +131,8 @@
     "name": "SKILLS_SrvDo_RaiseSkeletonOrMage_6FC718B0",
     "kernFile": "src/d2kern-113c/game/k2-w14b1-113c.ts",
     "tsSymbol": "SKILLS_SrvDo_RaiseSkeletonOrMage_6FC718B0_113c",
-    "status": "ported",
-    "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts; Diff-verified 1:1 in dll\u2229ts across full-horizon strict zero-divergence K3 summon/curse replays (p52-amazon-valkyrie F1500/1500, p52-necromancer-poison-golem F1800/1800, p52-necromancer-curses F2000/2000) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -149,8 +149,8 @@
     "name": "ACT5Q3_OnMalahOrAnyaScrollCallback_6FC7F5E0",
     "kernFile": "src/d2kern-113c/game/k2-w14b1-113c.ts",
     "tsSymbol": "ACT5Q3_OnMalahOrAnyaScrollCallback_6FC7F5E0_113c",
-    "status": "ported",
-    "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",

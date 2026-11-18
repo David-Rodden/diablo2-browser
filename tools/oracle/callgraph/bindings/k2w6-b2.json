@@ -212,8 +212,8 @@
     "name": "SKILLS_CreateDirectionalProjectileWithToHitAndAmmo_6FCC28F0",
     "kernFile": "src/d2kern-113c/game/k2-w6b2-113c.ts",
     "tsSymbol": "SKILLS_CreateDirectionalProjectileWithToHitAndAmmo_6FCC28F0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w6b2.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w6b2.test.ts; K3 golden replay diff-verified (dll\u2229ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -329,8 +329,8 @@
     "name": "NPC_SendHirelingListPacketsToClient_6FCDD330",
     "kernFile": "src/d2kern-113c/game/k2-w6b2-113c.ts",
     "tsSymbol": "NPC_SendHirelingListPacketsToClient_6FCDD330_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w6b2.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w6b2.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -356,8 +356,8 @@
     "name": "ACT2Q8_InitQuestData_6FCE4880",
     "kernFile": "src/d2kern-113c/game/k2-w6b2-113c.ts",
     "tsSymbol": "ACT2Q8_InitQuestData_6FCE4880_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w6b2.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w6b2.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -374,8 +374,8 @@
     "name": "ACT2Q2_ActiveFilter_6FCE5440",
     "kernFile": "src/d2kern-113c/game/k2-w6b2-113c.ts",
     "tsSymbol": "ACT2Q2_ActiveFilter_6FCE5440_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w6b2.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w6b2.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -383,8 +383,8 @@
     "name": "ACT2Q0_InitQuestData_6FCE5690",
     "kernFile": "src/d2kern-113c/game/k2-w6b2-113c.ts",
     "tsSymbol": "ACT2Q0_InitQuestData_6FCE5690_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w6b2.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w6b2.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -392,8 +392,8 @@
     "name": "ACT2Intro_InitQuestData_6FCE5730",
     "kernFile": "src/d2kern-113c/game/k2-w6b2-113c.ts",
     "tsSymbol": "ACT2Intro_InitQuestData_6FCE5730_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w6b2.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w6b2.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -401,7 +401,7 @@
     "name": "ACT2Q7_InitQuestData_6FCE5790",
     "kernFile": "src/d2kern-113c/game/k2-w6b2-113c.ts",
     "tsSymbol": "ACT2Q7_InitQuestData_6FCE5790_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w6b2.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w6b2.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   }
 ]

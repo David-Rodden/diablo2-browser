@@ -1070,9 +1070,174 @@ describe('K3 replay purity & suite roster', () => {
       pos: 1800,
     })
   })
+
+  it('locks full-horizon closure for p52-paladin-merc-aura (F1700/F1700)', () => {
+    const horizons = loadK3Horizons113c()
+    expect(horizons['p52-paladin-merc-aura']).toEqual({
+      bootFrame: 2,
+      strict: 1700,
+      pos: 1700,
+    })
+  })
+
+  it('locks full-horizon closure for p52-amazon-valkyrie (F1500/F1500)', () => {
+    const horizons = loadK3Horizons113c()
+    expect(horizons['p52-amazon-valkyrie']).toEqual({
+      bootFrame: 2,
+      strict: 1500,
+      pos: 1500,
+    })
+  })
+
+  it('locks full-horizon closure for p52-necromancer-poison-golem (F1800/F1800)', () => {
+    const horizons = loadK3Horizons113c()
+    expect(horizons['p52-necromancer-poison-golem']).toEqual({
+      bootFrame: 2,
+      strict: 1800,
+      pos: 1800,
+    })
+  })
+
+  it('locks full-horizon closure for p52-necromancer-curses (F2000/F2000)', () => {
+    const horizons = loadK3Horizons113c()
+    expect(horizons['p52-necromancer-curses']).toEqual({
+      bootFrame: 2,
+      strict: 2000,
+      pos: 2000,
+    })
+  })
 })
 
+const DIFF_VERIFIED_K3_MERC_AURA_VAS_113C = [
+  // Hireling AI, movement, breadcrumb & LoS target scan (17)
+  '0x6FC3C4E0',
+  '0x6FC3C8A0',
+  '0x6FC3D3C0',
+  '0x6FC3DD40',
+  '0x6FC94CE0',
+  '0x6FC970A0',
+  '0x6FC99B90',
+  '0x6FCB6570',
+  '0x6FCD08A0',
+  '0x6FCD0A20',
+  '0x6FCD1400',
+  '0x6FCD15E0',
+  '0x6FCD17B0',
+  '0x6FCD1AB0',
+  '0x6FCD1BC0',
+  '0x6FD12380',
+  '0x6FD12870',
+  // Mercenary & player shared kill XP (4)
+  '0x6FCBC000',
+  '0x6FCBC1F0',
+  '0x6FCFDCB0',
+  '0x6FCFE6D0',
+  // Paladin party aura & Rogue Inner Sight radial aura (15)
+  '0x6FC210D0',
+  '0x6FC21420',
+  '0x6FC6C220',
+  '0x6FC6C2A0',
+  '0x6FC97820',
+  '0x6FCBA1A0',
+  '0x6FCBA8D0',
+  '0x6FCBE610',
+  '0x6FCBF7A0',
+  '0x6FCC00B0',
+  '0x6FCC0370',
+  '0x6FCC1D10',
+  '0x6FCC1E80',
+  '0x6FD00570',
+  '0x6FD00A60',
+  // Rogue skill cast, Cold Arrow projectile & Cold/Chill/Shatter settlement (32)
+  '0x6FC21250',
+  '0x6FC43670',
+  '0x6FC58FB0',
+  '0x6FC59260',
+  '0x6FC59B40',
+  '0x6FC59CE0',
+  '0x6FC5A4E0',
+  '0x6FC5AA20',
+  '0x6FC5AD30',
+  '0x6FC5AE10',
+  '0x6FC5AFF0',
+  '0x6FC5E590',
+  '0x6FC5F320',
+  '0x6FC5F540',
+  '0x6FC8F620',
+  '0x6FC8F660',
+  '0x6FC8F8A0',
+  '0x6FC95510',
+  '0x6FC95C60',
+  '0x6FC95CE0',
+  '0x6FCBEC80',
+  '0x6FCBF3B0',
+  '0x6FCBFA30',
+  '0x6FCBFC00',
+  '0x6FCBFD00',
+  '0x6FCC0830',
+  '0x6FCC19A0',
+  '0x6FCC2060',
+  '0x6FCC28F0',
+  '0x6FCFAE20',
+  '0x6FCFB4C0',
+  '0x6FCFC780',
+] as const
+
+const DIFF_VERIFIED_K3_SUMMON_CURSE_VAS_113C = [
+  '0x6FC2E860',
+  '0x6FC31980',
+  '0x6FC331E0',
+  '0x6FC34210',
+  '0x6FC344D0',
+  '0x6FC35240',
+  '0x6FC354F0',
+  '0x6FC3CAE0',
+  '0x6FC3E140',
+  '0x6FC3E640',
+  '0x6FC3E900',
+  '0x6FC6D710',
+  '0x6FC6DF80',
+  '0x6FC6E180',
+  '0x6FC6E230',
+  '0x6FC6E2A0',
+  '0x6FC6E390',
+  '0x6FC6E960',
+  '0x6FC6EB50',
+  '0x6FC6ECD0',
+  '0x6FC6EF20',
+  '0x6FC6F450',
+  '0x6FC6F970',
+  '0x6FC70070',
+  '0x6FC70250',
+  '0x6FC705D0',
+  '0x6FC71750',
+  '0x6FC718B0',
+  '0x6FCAB290',
+  '0x6FCB6540',
+  '0x6FCB66E0',
+  '0x6FCB6EA0',
+  '0x6FCB7A20',
+  '0x6FCB7C20',
+  '0x6FCB7F50',
+  '0x6FCBEE50',
+  '0x6FCC3090',
+  '0x6FCC3610',
+  '0x6FCCD2A0',
+  '0x6FCCFCE0',
+  '0x6FCD08A0',
+  '0x6FCD0E90',
+  '0x6FCD1660',
+  '0x6FCF28D0',
+  '0x6FCF60D0',
+  '0x6FD0FE40',
+  '0x6FD12870',
+  '0x6FD129B0',
+  '0x6FD13000',
+] as const
+
 const horizonsByScenario = loadK3Horizons113c()
+const cachedReplayByScenario = new Map<K3ReplayScenarioName113c, ReturnType<typeof runK3Replay113c>>()
+const cachedCovByScenario = new Map<K3ReplayScenarioName113c, ReturnType<typeof loadK3Coverage113c>>()
 
 for (const spec of K3_COVERAGE_BASELINES_113C) {
   const name = spec.name
@@ -1084,6 +1249,8 @@ for (const spec of K3_COVERAGE_BASELINES_113C) {
     const golden = loadGolden113c(name)
     const scenario = loadScenario113c(name)
     const cov = loadK3Coverage113c(name)
+    cachedReplayByScenario.set(name, r)
+    cachedCovByScenario.set(name, cov)
 
     it('hydrated F2 boot snapshot equals the golden boot frame on every field (strict)', () => {
       expect(r.bootCheck).toBeNull()
@@ -1188,6 +1355,18 @@ for (const spec of K3_COVERAGE_BASELINES_113C) {
       expect(actualD2GameGapVas).toEqual(expectedRemainingD2GameVas)
     })
 
+    if (name === 'p52-paladin-merc-aura') {
+      it('executes all 68 diff-verified D2Game hireling, party aura, skill, missile & cold/chill VAs in dll∩ts across F2..F1700', () => {
+        const dllSet = new Set(cov.hits.map((h) => manifestKey113c(h.module, h.va)))
+        const tsSet = new Set(r.tsExecutedVas)
+        for (const va of DIFF_VERIFIED_K3_MERC_AURA_VAS_113C) {
+          const key = `D2Game:${va}`
+          expect(dllSet.has(key), `p52-paladin-merc-aura dllExecutedVas missing ${key}`).toBe(true)
+          expect(tsSet.has(key), `p52-paladin-merc-aura tsExecutedVas missing ${key}`).toBe(true)
+        }
+      })
+    }
+
     if (H.strict >= r.lastGoldenFrame) {
       it(`gate: zero divergence F${H.bootFrame + 1}..F${r.lastGoldenFrame}`, () => {
         expect(r.firstStrictDivergence).toBeNull()
@@ -1199,3 +1378,35 @@ for (const spec of K3_COVERAGE_BASELINES_113C) {
     }
   })
 }
+
+describe('K3 summon/pet/curse diff-verified dll∩ts execution gate', () => {
+  it('executes all 49 promoted summon/pet/curse/MonEquip VAs in dll∩ts across full-horizon summon & curse scenarios', () => {
+    const manifest = loadManifest113c()
+    const summonCurseScenarios: readonly K3ReplayScenarioName113c[] = [
+      'p52-amazon-valkyrie',
+      'p52-necromancer-poison-golem',
+      'p52-necromancer-curses',
+    ]
+    const dllUnion = new Set<string>()
+    const tsUnion = new Set<string>()
+    for (const scen of summonCurseScenarios) {
+      const r = cachedReplayByScenario.get(scen) ?? runK3Replay113c(scen, horizonsByScenario[scen]!.bootFrame)
+      const cov = cachedCovByScenario.get(scen) ?? loadK3Coverage113c(scen)
+      for (const h of cov.hits) {
+        dllUnion.add(manifestKey113c(h.module, h.va))
+      }
+      for (const k of r.tsExecutedVas) {
+        tsUnion.add(k)
+      }
+    }
+    for (const va of DIFF_VERIFIED_K3_SUMMON_CURSE_VAS_113C) {
+      const key = `D2Game:${va}`
+      const fn = manifest.get(key)
+      expect(fn, `${key} missing from manifest-113c.json`).toBeDefined()
+      expect(fn!.status, `${key} (${fn!.name}) expected diff-verified`).toBe('diff-verified')
+      expect(dllUnion.has(key), `K3 summon/curse DLL coverage union missing ${key}`).toBe(true)
+      expect(tsUnion.has(key), `K3 summon/curse TS trace union missing ${key}`).toBe(true)
+    }
+  })
+})
+

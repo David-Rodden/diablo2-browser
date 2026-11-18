@@ -185,8 +185,8 @@
     "name": "NET_SendPacket9D_ItemAction05WithNodePage_6FCAC810",
     "kernFile": "src/d2kern-113c/game/k2-w5b2-113c.ts",
     "tsSymbol": "NET_SendPacket9D_ItemAction05WithNodePage_6FCAC810_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w5b2.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w5b2.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -212,8 +212,8 @@
     "name": "NPCS_FreePlayerGambleInventoryForNpc_6FCAF620",
     "kernFile": "src/d2kern-113c/game/k2-w5b2-113c.ts",
     "tsSymbol": "NPCS_FreePlayerGambleInventoryForNpc_6FCAF620_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w5b2.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w5b2.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",

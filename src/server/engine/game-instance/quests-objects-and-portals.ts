@@ -810,13 +810,12 @@ function operateObject(this: GameInstanceHost, player: InternalPlayerRecord, obj
       sound: 11,
     })
   }
-  // Objects.txt 152 Horadric Orifice (OperateFn 25, D2Game 0x6fce6240, #1961):
-  // requires assembled Horadric Staff ('hst' ONLY — rejects incomplete 'msf' / 'vip'),
+  // Objects.txt 152 Horadric Orifice (OperateFn 25, D2Game 0x6fce6240, #1961 / #2027):
+  // requires assembled Horadric Staff ('hst' ONLY — rejects incomplete 'msf' / 'vip' and
+  // lower-difficulty 'hst' failing 0x6FC2E660 stat 356 >= gameDifficulty),
   // emitting cant-use sound 19 (0x6fce6318) and keeping mode 0.
   if (obj.classId === 152) {
-    const hasFullStaff = player.items.some(
-      (item) => item.code.toLowerCase().trim() === 'hst',
-    )
+    const hasFullStaff = this.playerHasQuestItem(player, 'hst')
     if (!hasFullStaff) {
       this.emitToPlayer(player.unitId, {
         type: 'PlaySound',

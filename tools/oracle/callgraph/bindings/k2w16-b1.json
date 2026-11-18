@@ -95,8 +95,8 @@
     "name": "ACT5Q6_InitQuestTableRecord_6FC80080",
     "kernFile": "src/d2kern-113c/game/k2-w16b1-113c.ts",
     "tsSymbol": "ACT5Q6_InitQuestTableRecord_6FC80080_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w16b1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w16b1.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -248,8 +248,8 @@
     "name": "ACT4Q3_InitQuestTableRecord_6FCDC5F0",
     "kernFile": "src/d2kern-113c/game/k2-w16b1-113c.ts",
     "tsSymbol": "ACT4Q3_InitQuestTableRecord_6FCDC5F0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w16b1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w16b1.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -266,8 +266,8 @@
     "name": "ACT2Q2_InitQuestTableRecord_6FCE7ED0",
     "kernFile": "src/d2kern-113c/game/k2-w16b1-113c.ts",
     "tsSymbol": "ACT2Q2_InitQuestTableRecord_6FCE7ED0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w16b1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w16b1.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -275,8 +275,8 @@
     "name": "ACT2Q6_InitQuestTableRecord_6FCE9F60",
     "kernFile": "src/d2kern-113c/game/k2-w16b1-113c.ts",
     "tsSymbol": "ACT2Q6_InitQuestTableRecord_6FCE9F60_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w16b1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w16b1.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -329,8 +329,8 @@
     "name": "ACT3Q5_InitQuestTableRecord_6FD09200",
     "kernFile": "src/d2kern-113c/game/k2-w16b1-113c.ts",
     "tsSymbol": "ACT3Q5_InitQuestTableRecord_6FD09200_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w16b1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w16b1.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -338,8 +338,8 @@
     "name": "ACT3Q1_InitQuestTableRecord_6FD092D0",
     "kernFile": "src/d2kern-113c/game/k2-w16b1-113c.ts",
     "tsSymbol": "ACT3Q1_InitQuestTableRecord_6FD092D0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w16b1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w16b1.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -347,8 +347,8 @@
     "name": "ACT3Q4_InitQuestTableRecord_6FD093C0",
     "kernFile": "src/d2kern-113c/game/k2-w16b1-113c.ts",
     "tsSymbol": "ACT3Q4_InitQuestTableRecord_6FD093C0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w16b1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w16b1.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -365,7 +365,7 @@
     "name": "ACT3Q2_InitQuestTableRecord_6FD09DC0",
     "kernFile": "src/d2kern-113c/game/k2-w16b1-113c.ts",
     "tsSymbol": "ACT3Q2_InitQuestTableRecord_6FD09DC0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w16b1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w16b1.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   }
 ]

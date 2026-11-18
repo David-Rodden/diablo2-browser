@@ -1851,8 +1851,8 @@ export function NPCS_RepairPlayerItemOrAllItems_6FCDDE60_113c(
     throw new D2CommonAssertError('0x6fd19ff9', 0x9b7)
   }
   const bInteracting = m.u8((pPlayerUnit + 0x6c) >>> 0)
-  const dwInteractType = m.u32((pPlayerUnit + 0x64) >>> 0)
-  const dwInteractId = m.u32((pPlayerUnit + 0x68) >>> 0)
+  const dwInteractId = m.u32((pPlayerUnit + 0x64) >>> 0)
+  const dwInteractType = m.u32((pPlayerUnit + 0x68) >>> 0)
   const pInteractingUnit =
     bInteracting !== 0
       ? SUNIT_GetServerUnit113c(m, pGame, dwInteractType, dwInteractId)

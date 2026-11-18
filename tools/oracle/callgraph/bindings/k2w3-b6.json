@@ -95,8 +95,8 @@
     "name": "ACT1Q6_Callback13_RefreshQuestState_6FC808B0",
     "kernFile": "src/d2kern-113c/game/k2-w3b6-113c.ts",
     "tsSymbol": "ACT1Q6_Callback13_RefreshQuestState_6FC808B0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w3b6.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w3b6.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -230,8 +230,8 @@
     "name": "ACT1Q2_Callback13_RefreshQuestState_6FC81E30",
     "kernFile": "src/d2kern-113c/game/k2-w3b6-113c.ts",
     "tsSymbol": "ACT1Q2_Callback13_RefreshQuestState_6FC81E30_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w3b6.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w3b6.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -266,8 +266,8 @@
     "name": "ACT1Q1_Callback13_RefreshQuestState_6FC820E0",
     "kernFile": "src/d2kern-113c/game/k2-w3b6-113c.ts",
     "tsSymbol": "ACT1Q1_Callback13_RefreshQuestState_6FC820E0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w3b6.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w3b6.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -284,8 +284,8 @@
     "name": "ACT1Q1_Callback00_NpcActivate_6FC82220",
     "kernFile": "src/d2kern-113c/game/k2-w3b6-113c.ts",
     "tsSymbol": "ACT1Q1_Callback00_NpcActivate_6FC82220_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w3b6.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w3b6.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",

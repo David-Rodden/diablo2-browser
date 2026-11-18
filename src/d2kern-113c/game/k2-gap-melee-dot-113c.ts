@@ -138,6 +138,11 @@ import {
   SUNIT_DispatchItemEventCallbacks113c,
 } from './a1c-post150-f786-f1040-113c.ts'
 import {
+  SUNITDMG_ApplyDamage113c,
+  SUNITDMG_ApplySideEffectsAndKill113c,
+  type SUnitDmgHooks113c,
+} from './k2-real-s2c-combat-113c.ts'
+import {
   AIGENERAL_GetPackLeaderUnit113c,
   MONSTER_ApplyCritDamage113c,
   SUNITDMG_FreeAttackerCombatList113c,
@@ -998,36 +1003,33 @@ function applyPoison0x6FCFCAB0(
   }
 }
 
-function applySingleElementalResistChannel113c(
-  m: Memory113c,
-  pDefender: number,
-  rawDmg: number,
-  resStatId: number,
-  maxResStatId: number,
-  piercePct: number,
-): number {
-  let dmg = rawDmg | 0
-  if (dmg <= 0) return 0
-  let res = STATLIST_GetUnitStat113c(m, pDefender, resStatId, 0) | 0
-  if (piercePct > 0 && res < 100) {
-    res = (res - piercePct) | 0
+function buildMeleeDotCombatHooks(hooks?: K2GapMeleeDotHooks113c): SUnitDmgHooks113c {
+  return {
+    suppressDirectS2c: true,
+    onApplyPoison: (mem, _pg, att, def, poisDmg, poisLen) => {
+      applyPoison0x6FCFCAB0(mem, att, def, poisDmg, poisLen)
+    },
+    onKillUnit: (mem, pg, def, att, bAwardExp) => {
+      killUnit0x6FCFEEE0(mem, pg, def, att, bAwardExp, hooks)
+    },
+    onMonsterStartMode: (mem, pg, def, mode) => {
+      if (mode === 3) {
+        const pModeScratch = allocStackScratch113c(mem, 0x24)
+        try {
+          mem.setU32(pModeScratch, 3)
+          mem.setU32((pModeScratch + 4) >>> 0, def)
+          MONSTER_StartGetHitMode113c(mem, pg, pModeScratch)
+        } finally {
+          freeStackScratch113c(0x24)
+        }
+      }
+    },
   }
-  if (res > 0 && m.u32(pDefender >>> 0) === 0) {
-    const maxBonus = maxResStatId >= 0 ? STATLIST_GetUnitStat113c(m, pDefender, maxResStatId, 0) | 0 : 0
-    let cap = (75 + maxBonus) | 0
-    if (cap > 95) cap = 95
-    if (res > cap) res = cap
-  }
-  if (res < -100) res = -100
-  if (res >= 100) return 0
-  if (res !== 0) {
-    dmg = (dmg - sdiv32(Math.imul(dmg, res), 100)) | 0
-  }
-  return dmg > 0 ? dmg : 0
 }
 
 /**
- * Exact internal port of `0x6FCFE0C0` (`eax = pDefender`, `[esp+4] = pGame`, `[esp+8] = pAttacker`, `[esp+0xC] = bApplyResists`, `[esp+0x10] = pDamage`).
+ * Exact internal port of `0x6FCFE0C0` (`eax = pDefender`, `[esp+4] = pGame`, `[esp+8] = pAttacker`, `[esp+0xC] = bApplyResists`, `[esp+0x10] = pDamage`),
+ * delegating directly to canonical `SUNITDMG_ApplyDamage113c` in `./k2-real-s2c-combat-113c.ts`.
  */
 function applyDamage0x6FCFE0C0(
   m: Memory113c,
@@ -1042,156 +1044,16 @@ function applyDamage0x6FCFE0C0(
     hooks.applyDamage(m, pGame, pAttacker, pDefender, bApplyResists, pDamage)
     return
   }
-  const def = pDefender >>> 0
-  const att = pAttacker >>> 0
-  const g = pGame >>> 0
-  const dmg = pDamage >>> 0
-
-  const hostile = SUNIT_AreUnitsHostileOrUnaligned113c(m, att, def, g)
-  const combatFlags = m.u32(dmg)
-  if (hostile === 0 && (combatFlags & 0x1000) === 0) {
-    m.setU8((dmg + 0x04) >>> 0, m.u8((dmg + 0x04) >>> 0) & 0xfc)
-    return
-  }
-  const pDefRoom = def !== 0 ? UNITS_GetRoom113c(m, def) : 0
-  if (pDefRoom === 0) {
-    m.setU8((dmg + 0x04) >>> 0, m.u8((dmg + 0x04) >>> 0) & 0xfc)
-    return
-  }
-  if (DUNGEON_CheckRoomIsTownMemPort113c(m, pDefRoom) !== 0) {
-    let allowTownDmg = 0
-    if (att !== 0 && m.u32(att) === 1) {
-      const pAttMonTxt = MONSTATS_GetRecordPtr113c(m, m.u32((att + 4) >>> 0) | 0)
-      if (pAttMonTxt !== 0 && (readGdwBitMaskU8_113c(m, 0x08) & m.u8((pAttMonTxt + 0x0d) >>> 0)) !== 0) {
-        allowTownDmg = 1
-      }
-    }
-    if (allowTownDmg === 0) {
-      m.setU8((dmg + 0x04) >>> 0, m.u8((dmg + 0x04) >>> 0) & 0xfd)
-      return
-    }
-  }
-
-  const defType = def !== 0 ? m.u32(def) | 0 : 6
-  if (defType === 1) {
-    if (MONSTATS_CheckFlagBit113c(m, m.u32((def + 4) >>> 0) | 0, 0x0f) === 0) return
-  }
-  if (SUNIT_IsDeadOrDying113c(m, def) !== 0) return
-
-  const firePierce = att !== 0 ? (STATLIST_GetUnitStat113c(m, att, 0x14d, 0) | 0) : 0
-  const ltngPierce = att !== 0 ? (STATLIST_GetUnitStat113c(m, att, 0x14e, 0) | 0) : 0
-  const coldPierce = att !== 0 ? (STATLIST_GetUnitStat113c(m, att, 0x14f, 0) | 0) : 0
-  const poisPierce = att !== 0 ? (STATLIST_GetUnitStat113c(m, att, 0x150, 0) | 0) : 0
-  let phys = m.u32((dmg + 0x08) >>> 0) | 0
-  let fire = m.u32((dmg + 0x10) >>> 0) | 0
-  let burn = m.u32((dmg + 0x14) >>> 0) | 0
-  let ltng = m.u32((dmg + 0x1c) >>> 0) | 0
-  let mag = m.u32((dmg + 0x24) >>> 0) | 0
-  let cold = m.u32((dmg + 0x20) >>> 0) | 0
-  let pois = m.u32((dmg + 0x28) >>> 0) | 0
-  let poisLen = m.u32((dmg + 0x2c) >>> 0) | 0
-
-  if (bApplyResists !== 0) {
-    phys = applySingleElementalResistChannel113c(m, def, phys, 0x24, 0, 0)
-    fire = applySingleElementalResistChannel113c(m, def, fire, 0x27, 0x28, firePierce)
-    burn = applySingleElementalResistChannel113c(m, def, burn, 0x27, 0x28, firePierce)
-    ltng = applySingleElementalResistChannel113c(m, def, ltng, 0x29, 0x2a, ltngPierce)
-    mag = applySingleElementalResistChannel113c(m, def, mag, 0x25, 0x26, 0)
-    cold = applySingleElementalResistChannel113c(m, def, cold, 0x2b, 0x2c, coldPierce)
-    pois = applySingleElementalResistChannel113c(m, def, pois, 0x2d, 0x2e, poisPierce)
-    if (pois <= 0) {
-      poisLen = 0
-    } else {
-      const plr = STATLIST_GetUnitStat113c(m, def, 0x6e, 0) | 0
-      if (plr !== 0) {
-        let clampedPlr = plr
-        if (clampedPlr > 75) clampedPlr = 75
-        if (clampedPlr < -100) clampedPlr = -100
-        poisLen = (poisLen - sdiv32(Math.imul(poisLen, clampedPlr), 100)) | 0
-        if (poisLen < 0) poisLen = 0
-      }
-    }
-    m.setU32((dmg + 0x08) >>> 0, phys >>> 0)
-    m.setU32((dmg + 0x10) >>> 0, fire >>> 0)
-    m.setU32((dmg + 0x14) >>> 0, burn >>> 0)
-    m.setU32((dmg + 0x1c) >>> 0, ltng >>> 0)
-    m.setU32((dmg + 0x24) >>> 0, mag >>> 0)
-    m.setU32((dmg + 0x20) >>> 0, cold >>> 0)
-    m.setU32((dmg + 0x28) >>> 0, pois >>> 0)
-    m.setU32((dmg + 0x2c) >>> 0, poisLen >>> 0)
-  }
-
-  const resFlags = m.u16((dmg + 0x04) >>> 0)
-  if ((resFlags & 0x20) === 0 && (resFlags & 0x01) !== 0) {
-    if (bApplyResists !== 0) {
-      if ((combatFlags & 0x20) !== 0) {
-        if ((combatFlags & 0x80) === 0) {
-          SUNIT_DispatchItemEventCallbacks113c(m, att, g, 6, def, dmg)
-        }
-        SUNIT_DispatchItemEventCallbacks113c(m, def, g, 2, att, dmg)
-      }
-    } else {
-      SUNIT_DispatchItemEventCallbacks113c(m, att, g, 5, def, dmg)
-      SUNIT_DispatchItemEventCallbacks113c(m, def, g, 1, att, dmg)
-    }
-  }
-
-  const curHp = STATLIST_GetUnitStat113c(m, def, 0x06, 0) | 0
-  if (phys > curHp) {
-    phys = curHp
-    m.setU32((dmg + 0x08) >>> 0, phys >>> 0)
-  }
-  const dwDmgTotal = (phys + fire + ltng + mag + cold + pois) | 0
-  m.setU32((dmg + 0x4c) >>> 0, dwDmgTotal >>> 0)
-
-  if (att !== 0 && m.u32(att) === 1 && (m.u8((dmg + 0x04) >>> 0) & 0x01) !== 0) {
-    MONSTER_DispatchMinionComponentCallbacks113c(m, g, att, 3)
-  }
-
-  if (dwDmgTotal > 0) {
-    let nextHp = (STATLIST_GetUnitStat113c(m, def, 0x06, 0) | 0) - dwDmgTotal
-    if (nextHp < 0x100) nextHp = 0
-    STATLIST_SetUnitStat113c(m, def, 0x06, nextHp, 0)
-  }
-
-  applyPoison0x6FCFCAB0(
+  SUNITDMG_ApplyDamage113c(
     m,
-    att,
-    def,
-    m.u32((dmg + 0x28) >>> 0) | 0,
-    m.u32((dmg + 0x2c) >>> 0) | 0,
+    pGame,
+    pAttacker,
+    pDefender,
+    pDamage,
+    bApplyResists,
+    buildMeleeDotCombatHooks(hooks),
+    1,
   )
-
-  const afterHp = STATLIST_GetUnitStat113c(m, def, 0x06, 0) | 0
-  if (afterHp > 0) {
-    m.setU8((dmg + 0x04) >>> 0, m.u8((dmg + 0x04) >>> 0) & 0xfd)
-    if (dwDmgTotal !== 0 && defType === 1) {
-      if ((STATLIST_GetUnitStat113c(m, def, 0x4a, 0) | 0) !== 0) {
-        let ev = m.u32((def + 0xdc) >>> 0)
-        while (ev !== 0) {
-          const nextEv = m.u32((ev + 0x24) >>> 0)
-          if (m.u8(ev) === 3) {
-            EVENT_FreeNode113c(m, g, ev)
-          }
-          ev = nextEv
-        }
-        const nextFrame = ((m.u32((g + 0xa8) >>> 0) | 0) + 1) | 0
-        EVENT_SetEventFull113c(m, g, def, 3, nextFrame, 0, 0, 0)
-      } else {
-        STATES_ClearCurseStatesOnUnit113c(m, def)
-      }
-    }
-  } else {
-    m.setU8((dmg + 0x04) >>> 0, (m.u8((dmg + 0x04) >>> 0) | 0x02) & 0xff)
-  }
-
-  const finalFlags = m.u16((dmg + 0x04) >>> 0)
-  if ((finalFlags & 0x20) === 0 && (finalFlags & 0x02) !== 0) {
-    SUNIT_DispatchItemEventCallbacks113c(m, def, g, 0x0a, att, dmg)
-    if (att !== 0) {
-      SUNIT_DispatchItemEventCallbacks113c(m, att, g, 0x09, def, dmg)
-    }
-  }
 }
 
 /** Internal `0x6FCFEEE0` (`ecx = pGame`, `edx = pDefender`, `[esp+4] = pAttacker`, `[esp+8] = bAwardExp`): transitions dead unit to death mode. */
@@ -1243,7 +1105,8 @@ function calcUnitLifePct128_113c(m: Memory113c, pUnit: number): number {
 }
 
 /**
- * Exact internal port of `0x6FCFCF20` (`eax = pDefender`, `[esp+4] = pGame`, `[esp+8] = pAttacker`, `[esp+0xC] = pDamage`).
+ * Exact internal port of `0x6FCFCF20` (`eax = pDefender`, `[esp+4] = pGame`, `[esp+8] = pAttacker`, `[esp+0xC] = pDamage`),
+ * delegating directly to canonical `SUNITDMG_ApplySideEffectsAndKill113c` in `./k2-real-s2c-combat-113c.ts`.
  */
 function executePostDamage0x6FCFCF20(
   m: Memory113c,
@@ -1257,93 +1120,14 @@ function executePostDamage0x6FCFCF20(
     hooks.executePostDamage(m, pGame, pAttacker, pDefender, pDamage)
     return
   }
-  const def = pDefender >>> 0
-  const att = pAttacker >>> 0
-  const g = pGame >>> 0
-  const dmg = pDamage >>> 0
-
-  const pRoom = def !== 0 ? UNITS_GetRoom113c(m, def) : 0
-  if (pRoom !== 0 && DUNGEON_CheckRoomIsTownMemPort113c(m, pRoom) !== 0) {
-    let allowTown = 0
-    if (att !== 0 && m.u32(att) === 1) {
-      const pMonTxt = MONSTATS_GetRecordPtr113c(m, m.u32((att + 4) >>> 0) | 0)
-      if (pMonTxt !== 0 && (readGdwBitMaskU8_113c(m, 0x08) & m.u8((pMonTxt + 0x0d) >>> 0)) !== 0) {
-        allowTown = 1
-      }
-    }
-    if (allowTown === 0) return
-  }
-
-  if ((m.u8((dmg + 0x04) >>> 0) & 0x01) !== 0) {
-    const hitClass = m.u32((dmg + 0x60) >>> 0)
-    m.setU32((def + 0xb0) >>> 0, hitClass)
-  }
-
-  if (STATES_CheckState113c(m, def, 0x36) !== 0) {
-    if ((m.u8((dmg + 0x04) >>> 0) & 0x02) !== 0) {
-      STATES_ToggleGfxStateFlag113c(m, def, 0x5c, 1)
-    }
-    return
-  }
-
-  const defType = def !== 0 ? m.u32(def) | 0 : 6
-  if (defType === 1) {
-    const curMode = m.u32((def + 0x10) >>> 0) | 0
-    if (curMode === 0 || curMode === 0x0c) return
-    let flags = m.u16((dmg + 0x04) >>> 0)
-    if ((flags & 0x08) !== 0) {
-      if (MONSTATS2_CheckModeBit113c(m, m.u32((def + 4) >>> 0) | 0, 0x0d) === 0) {
-        flags = ((flags & 0xfff7) | 0x04) & 0xffff
-        m.setU16((dmg + 0x04) >>> 0, flags)
-      }
-    }
-    if ((flags & 0x02) !== 0) {
-      killUnit0x6FCFEEE0(m, g, def, att, 1, hooks)
-      return
-    }
-    if ((flags & 0x04) !== 0) {
-      if (STATLIST_GetStatListFromUnitAndStateMemPort113c(m, def, 0x15) !== 0) {
-        const pModeScratch = allocStackScratch113c(m, 0x24)
-        try {
-          m.setU32(pModeScratch, 3)
-          m.setU32((pModeScratch + 4) >>> 0, def)
-          MONSTER_StartGetHitMode113c(m, g, pModeScratch)
-        } finally {
-          freeStackScratch113c(0x24)
-        }
-        MONSTER_DispatchMinionComponentCallbacks113c(m, g, def, 4)
-        return
-      }
-    }
-    if ((flags & 0x4000) !== 0) {
-      UNITROOM_RefreshUnit113c(m, def)
-      m.setU32((def + 0xc4) >>> 0, (m.u32((def + 0xc4) >>> 0) | 0x8000) >>> 0)
-      MONSTER_DispatchMinionComponentCallbacks113c(m, g, def, 4)
-      return
-    }
-    if ((flags & 0x01) !== 0 && (m.u32((dmg + 0x4c) >>> 0) | 0) > 0) {
-      const prevPct = STATLIST_GetUnitStat113c(m, def, 0x160, 0) & 0xff
-      const newPct = calcUnitLifePct128_113c(m, def) & 0xff
-      const diff = prevPct >= newPct ? prevPct - newPct : newPct - prevPct
-      if (diff > 4) {
-        UNITROOM_RefreshUnit113c(m, def)
-        m.setU32((def + 0xc4) >>> 0, (m.u32((def + 0xc4) >>> 0) | 0x8000) >>> 0)
-      }
-    }
-    return
-  }
-
-  if (defType === 0) {
-    const flags = m.u16((dmg + 0x04) >>> 0)
-    if ((flags & 0x02) !== 0) {
-      killUnit0x6FCFEEE0(m, g, def, att, 0, hooks)
-      return
-    }
-    if ((flags & 0x4000) !== 0) {
-      UNITROOM_RefreshUnit113c(m, def)
-      m.setU32((def + 0xc4) >>> 0, (m.u32((def + 0xc4) >>> 0) | 0x8000) >>> 0)
-    }
-  }
+  SUNITDMG_ApplySideEffectsAndKill113c(
+    m,
+    pGame,
+    pAttacker,
+    pDefender,
+    pDamage,
+    buildMeleeDotCombatHooks(hooks),
+  )
 }
 
 /** Unlinks `pSub` via `STATLIST_UnlinkSubList113c` AND executes `D2Common:0x6FD8A5A7` `fpRemove(pUnit, dwStateNo, pSub)`. */

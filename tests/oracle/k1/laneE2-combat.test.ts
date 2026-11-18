@@ -343,9 +343,9 @@ describe('K1R14-LaneE2: a1c-bloodmoor-fallen Combat, Zombie/Fallen AI, Boss Prom
       expect(m.get(pAiGen, D2AiGeneralStrc.dwLeaderId)).toBe(13)
     }
 
-    // Verify room death ring recorded (#12 death at (5132, 5075)) and morale counter incremented
+    // Verify room death ring recorded (#12 unitId in dwDeathRing[0])
     expect(m.get(pRoom, D2ActiveRoomStrc.bDeathRingIdx)).toBe(1)
-    expect(m.u32(pRoom + 0xec)).toBe(1)
+    expect(m.get(pRoom, D2ActiveRoomStrc.dwDeathRing, 0)).toBe(12)
 
     // Verify #12 TreasureClass roll was NoDrop (1634144344 % 160 - 100 = -76 < 0) and gs stayed unchanged
     expect([
@@ -356,13 +356,11 @@ describe('K1R14-LaneE2: a1c-bloodmoor-fallen Combat, Zombie/Fallen AI, Boss Prom
       3728736013, 367307274,
     ])
 
-    // F802: Fallen #13 sees pRoom + 0xec > 0 and triggers morale flee (dwCmdType = 1)
+    // F802: Fallen #13 sees dying #12 in dwDeathRing[0] and triggers morale flee (bAfraid = 1)
     m.set(pGame, D2GameStrc.dwGameFrame, 802)
     AI_RunMonsterAI113c(m, pGame, pFallen13)
     const pAiGen13 = m.get(m.get(pFallen13, D2UnitStrc.pUnitData), D2MonsterDataStrc.pAiGeneral)
-    const pCmd13 = m.get(pAiGen13, D2AiGeneralStrc.pCommandHead)
-    expect(pCmd13).not.toBe(0)
-    expect(m.get(pCmd13, D2AiCmdStrc.dwCmdType)).toBe(1)
+    expect(m.get(pAiGen13, D2AiGeneralStrc.bAfraid)).toBe(1)
 
     // F821 (20 frames after F801): MONSTER_EndDeath113c transitions #12 from mode 0 (DT) -> 12 (DD)
     m.set(pGame, D2GameStrc.dwGameFrame, 821)
@@ -425,7 +423,7 @@ describe('K1R14-LaneE2: a1c-bloodmoor-fallen Combat, Zombie/Fallen AI, Boss Prom
     expect([
       m.get(pZombie11, D2UnitStrc.seedLo) >>> 0,
       m.get(pZombie11, D2UnitStrc.seedHi) >>> 0,
-    ]).toEqual([2783994832, 510929374])
+    ]).toEqual([387493438, 640010762])
 
     // Verify AiZombie113c dispatch with unengaged D2AiParamStrc
     const pAiParam = m.alloc(D2AiParamStrc_SIZE_113C)
@@ -645,11 +643,11 @@ describe('K1R14-LaneE2: a1c-bloodmoor-fallen Combat, Zombie/Fallen AI, Boss Prom
     SUNITDMG_RollElementalStatDamage113c(m, pBarb, pDmg)
     SUNITDMG_ApplyArmorPenetrationAndFlatBonus113c(m, pBarb, pZombie11, pDmg, 128)
     SUNITDMG_ClampManaBurnByMonsterSkill113c(m, pBarb, pDmg)
-    expect(SUNITDMG_GetPvpOrPetDamageMultiplier113c(m, pBarb, pZombie11)).toBe(100)
+    expect(SUNITDMG_GetPvpOrPetDamageMultiplier113c(m, pBarb, pZombie11)).toBe(1000)
     expect(SUNITDMG_GetEffectiveResistance113c(m, pZombie11, 36)).toBe(0)
     expect(SUNITDMG_ApplySingleChannelResistance113c(m, pZombie11, 512, 36)).toBe(512)
     expect(SUNITDMG_ApplyElementalAbsorb113c(m, pZombie11, 512, 142, 143, pDmg)).toBe(512)
-    expect(SUNITDMG_GetColdEffectLengthBonus113c(m, pBarb, pZombie11)).toBe(0)
+    expect(SUNITDMG_GetColdEffectLengthBonus113c(m, pBarb, pZombie11)).toBe(100)
     expect(SUNITDMG_RollPassiveWeaponBlockOrShieldBlock113c(m, pZombie11)).toBe(0)
     expect(SUNITDMG_RollDodgeAvoidEvadeBlock113c(m, pBarb, pZombie11, pDmg)).toBe(0)
     expect(SUNITDMG_ApplyResistancesAndAbsorb113c(m, pBarb, pZombie11, pDmg)).toBeGreaterThan(0)

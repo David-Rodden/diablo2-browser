@@ -9,6 +9,7 @@ import {
   decodeD2gsS2cPacket,
   hexToBytes,
   parseD2CapJsonl,
+  type ClientCommand,
   type D2CapRecord,
   type D2gsS2cFramer,
   type InMemoryPacketTap,
@@ -18,6 +19,7 @@ import {
   type ServerEvent,
 } from '../../netproto/index.ts'
 import type { AudioRuntime113c } from '../audio/audio-runtime-113c.ts'
+import type { ClientWorld } from '../world/client-world.ts'
 import { getCanonicalItemDataTables } from '../world/item-tables-provider.ts'
 import type { OnlineSessionPhase } from './online-session.ts'
 
@@ -40,6 +42,7 @@ export interface SessionReplayHost {
   readonly audioRuntime: AudioRuntime113c
   readonly packetTap: InMemoryPacketTap
   readonly itemTables: ItemDataTables
+  readonly world?: Pick<ClientWorld, 'noteOutgoingCommand'> | undefined
   setPhase(next: OnlineSessionPhase): void
   handleServerEvent(rawEv: ServerEvent): void
   stepD2CapReplay(): ReplayedD2CapFrame | null
@@ -117,6 +120,24 @@ export function stepSessionD2CapReplay(host: SessionReplayHost): ReplayedD2CapFr
     packetId: opcode,
     raw: rawBytes,
   })
+  if (
+    record.conn === 'game' &&
+    record.dir === 'c2s' &&
+    rawBytes.byteLength >= 9 &&
+    rawBytes[0] === 0x13
+  ) {
+    const unitType =
+      (rawBytes[1]! | (rawBytes[2]! << 8) | (rawBytes[3]! << 16) | (rawBytes[4]! << 24)) >>> 0
+    const id =
+      (rawBytes[5]! | (rawBytes[6]! << 8) | (rawBytes[7]! << 16) | (rawBytes[8]! << 24)) >>> 0
+    if (unitType <= 5) {
+      const cmd: ClientCommand = {
+        type: 'Interact',
+        target: { unitType: unitType as 0 | 1 | 2 | 3 | 4 | 5, id },
+      }
+      host.world?.noteOutgoingCommand(cmd)
+    }
+  }
   const events = host.extractEventsFromReplayRecord(record.conn, record.dir, rawBytes, record)
   for (const ev of events) {
     host.handleServerEvent(ev)

@@ -18,6 +18,7 @@ import {
   DUNGEON_FindRoomBySubtileCoordinates113c,
   DUNGEON_GetAdjacentRoomsListFromRoom113c,
   DUNGEON_GetLevelIdFromRoom113c,
+  DUNGEON_GetRoomCoordListIndexAtSubtile113c,
   DUNGEON_IsTownLevelId113c,
   DUNGEON_ToggleHasPortalFlag113c,
 } from '../common/dungeon'
@@ -159,7 +160,10 @@ import {
 } from '../common/waypoint'
 import type { SparseMemory113c } from '../mem/sparse-memory'
 import { DUNGEON_TeleportUnitToRoomAndCoords_6FD019C0_113c } from './k2-w10b1-113c'
-import { AI_PetMoveActionDispatch_6FC3CAE0_113c } from './k2-w11b1-113c'
+import {
+  AI_PetMoveActionDispatch_6FC3CAE0_113c,
+  type PetMoveActionOps113c,
+} from './k2-w11b1-113c'
 import {
   ACT1Q4_SpawnSmithBossInBarracks_6FD08780_113c,
   ACT2Q6_WarpPlayerThroughRoomTileUnit_6FCE8950_113c,
@@ -296,7 +300,10 @@ import {
   STATES_HasOtherActiveStateInSameGroup_6FCC3A20_113c,
 } from './k2-w4b6-113c'
 import {
+  MONAI_CheckDirectPathOrFindNearestBlockingObstacle_6FCD1AB0_113c,
   MONAI_CheckLineOfWalkFreeCoordsBetweenUnits_6FCD0E90_113c,
+  MONAI_EvaluateTargetCandidateCallback_6FCD1660_113c,
+  MONAI_ForEachUnitInNonTownAdjacentRoomsWithPlayer_6FCD0CE0_113c,
   MONAI_TryCastLeftSkillOrRunTowardTarget_6FCC6AB0_113c,
 } from './k2-w4b7-113c'
 import { PLAYER_CanManipulateItemDuringInteractOrTrade_6FC588C0_113c } from './k2-w5b1-113c'
@@ -460,6 +467,7 @@ function D2Game_6FC3CAE0_113c(
   bRunFlag: number,
   nOffset: number,
   nDirOverride: number,
+  ops?: PetMoveActionOps113c,
 ): number {
   return AI_PetMoveActionDispatch_6FC3CAE0_113c(
     m,
@@ -470,6 +478,7 @@ function D2Game_6FC3CAE0_113c(
     bRunFlag,
     nOffset,
     nDirOverride,
+    ops,
   )
 }
 
@@ -482,6 +491,7 @@ function D2Game_6FC3E140_113c(
   bUnk1: number,
   nMaxDist: number,
   nDirOverride: number,
+  ops?: PetMoveActionOps113c,
 ): number {
   return AI_FollowOwnerOrTeleportIfFar_6FC3E140_113c(
     m,
@@ -492,6 +502,7 @@ function D2Game_6FC3E140_113c(
     bUnk1,
     nMaxDist,
     nDirOverride,
+    ops,
   )
 }
 
@@ -664,91 +675,261 @@ function D2Game_6FD08780_113c(
   ACT1Q4_SpawnSmithBossInBarracks_6FD08780_113c(m, pQData, pRoom, pGame)
 }
 
-const QUESTS_GetGlobalState113c = DRLGWARP_TestRoomTileBit113c
-const DUNGEON_ToggleRoomTileStandableFlag113c = DUNGEON_ToggleHasPortalFlag113c
-const UNITS_GetObjectTxtRecordFromObject113c = UNITS_GetObjectTxt113c
-const PLAYER_GetWaypointHistoryFlags113c = PLAYER_GetWaypointDataForDifficulty_6FC21720_113c
-const DATATBLS_GetWaypointIndexByLevelId113c = WAYPOINT_GetWaypointNoFromLevelId113c
-const WAYPOINTS_GetWaypointFlag113c = WAYPOINT_GetWaypointState113c
-const DUNGEON_FindActSpawnLocation113c = DUNGEON_FindLevelSpawnRoom113c
-const UNITS_GetCoords113c = PATH_GetTargetTypeAndPosition113c
-const ITEMS_Duplicate113c = ITEMS_DuplicateItemWithSocketFillers_6FC307E0_113c
-const ITEMS_SetItemPage113c = ITEMS_SetInvPage113c
-const UNITS_GetInventoryGridType113c = UNITS_GetInventoryRecordId113c
-const INVENTORY_PlaceItemAtFreePosition113c = INVENTORY_AutoPlaceItemInGrid113c
-const INVENTORY_AddItemToTradeInventory113c = INVENTORY_PlaceItemInSocket113c
-const ITEMS_CanUpdateSocketStats113c = ITEMS_CanUseCharmInInventory113c
-const INVENTORY_SetInventoryUpdateFlag113c = INVENTORY_SetCursorItem113c
-const UNITS_ToggleFlag113c = ITEMS_SetOrClearCommandFlags113c
-const UNITS_UpdateInventoryItems113c = UNITS_SetUnitUpdateFlags113c
-const INVENTORY_AppendRecord113c = INVENTORY_AppendItemGuidNode113c
-const ITEMS_IsSocketable113c = ITEMS_GetSubTypeFromItem113c
-const INVENTORY_AllocTradeRecord113c = ITEMS_SetOrClearFlagMask113c
-const ITEMS_SerializeItemToBitstream113c = ITEMS_SetOrClearFlagMask113c
-const ITEMS_GetHoradricCubeFlag113c = ITEMS_SetNodePage113c
-const STATLIST_UnitGetStatValue113c = STATLIST_GetUnitStat113c
-const STATLIST_AddUnitStat113c = STATLIST_AddUnitStatMemPort113c
-const STATLIST_GetUnitMaxLife113c = STATLIST_GetMaxLifeFromUnit113c
-const STATLIST_GetUnitMaxMana113c = STATLIST_GetMaxManaFromUnit113c
-const ITEMS_GetFileIndex113c = ITEMS_GetItemCell113c
-const ITEMS_GetCompactItemDataFromUnit113c = ITEMS_GetItemCell113c
-const STATLIST_GetUnitAlignment113c = ITEMS_GetCommandFlags113c
-const ITEMS_SetEarLevel113c = ITEMS_SetMagicPrefix113c
-const STATLIST_GetStatListFromUnitAndState113c = STATLIST_GetStatListFromUnitStateOrFlag113c
-const STATLIST_UnlinkStatList113c = STATLIST_UnlinkSubList113c
-const STATLIST_FreeStatListEx113c = STATLIST_FreeStatListIfNonExtended113c
-const ITEMS_AssignProperty113c = ITEMS_ApplySinglePropAndEthereal113c
-const ITEMS_CheckIfStackable113c = ITEMS_GetTwoHandedFlag113c
-const ITEMS_CanBeStacked113c = ITEMS_GetTwoHandedFlag113c
-const ITEMS_GetMaxSockets113c = ITEMS_GetMaxSocketsFromItemType113c
-const ITEMS_AddSockets113c = ITEMS_GetMissileWeaponVelocity113c
-const UNITS_RefreshInventory113c = UNITROOM_RefreshUnit113c
-const SUNIT_RemoveUnit113c = SUNIT_FreeUnit113c
-const DATATBLS_GetItemsTxtRecord113c = DATATBLS_GetItemsTxtRecordMemPort113c
-const ACT3Q2_OnKhalimFlailCreated113c = ACT3Q3_OnKhalimsWillCubed113c
-const ITEMS_StopAllItemFunctions113c = ITEMS_NoOpReturnZero113c
-const INVENTORY_UpdateWeaponGUIDOnRemove113c = INVENTORY_UpdateWeaponGuidOnRemoval113c
-const ITEMS_GetItemType113c = ITEMS_GetItemTypeFromItem113c
-const UNITS_AttachAndSync113c = ITEMMODS_UpdateSetItemEquipmentState113c
-const DUNGEON_FindRoomBySubtileCoords113c = ROOM_FindRoomContainingSubtile113c
-const MONSTER_SpawnFromSubpreset113c = MONSTER_Create113c
-const AI_SetNextThinkDelay113c = AI_Stall113c
-const AI_DelayNextThink113c = AI_ScheduleAiThinkTimer_6FD120C0_113c
-const AI_UseSkillOrAttack113c = AI_CastSkillWithMode113c
-const UNITS_GetDistanceToOtherUnit113c = UNITS_GetApproximateDistance113c
-const SUNIT_GetXPos113c = UNIT_GetPosX113c
-const SUNIT_GetYPos113c = UNIT_GetPosY113c
-const DUNGEON_IsRoomInTown113c = DUNGEON_CheckRoomIsTownMemPort113c
-const UNITS_CanAttackWithSkill113c = UNITS_CanUnitMeleeAttackTarget113c
-const DUNGEON_CheckLineOfSight113c = UNITS_CanUnitMeleeAttackTarget113c
-const DATATBLS_GetSkillsTxtRecord113c = SKILLS_GetRecordPtrFast113c
-const SKILLS_GetSkillLevel113c = SKILLS_EvaluateSkillLevel113c
-const SKILLS_EvaluateSkillFormula113c = SKILLS_EvalCalcByOffset113c
-const MONSTER_GetSummonPet113c = STATLIST_GetStatListFromUnitAndStateMemPort113c
-const DATATBLS_GetMissilesTxtRecord113c = MISSILES_GetTxtRecordFast113c
-const UNITS_GetUsedSkill113c = UNITS_GetLeftSkill113c
-const SKILLS_SetLeftActiveSkill113c = SKILLS_SetLeftSkill113c
-const UNITS_GetSkillFromSkillId113c = SKILLS_GetSkillById113c
-const SKILLS_CheckSkillDelay113c = SKILLS_GetSkillNumTargetsOrShots113c
-const SKILLS_GetSkillModeFromSkill113c = SKILLS_GetLeftSkillFromSkillList113c
-const MONSTERAI_GetLifePct113c = STATLIST_GetUnitLifePercent113c
-const DUNGEON_CheckRoomFlags113c = STATES_CheckStateMask4OnUnit113c
-const DUNGEON_CheckCollisionMask113c = UNITS_HasCollisionBetweenUnits113c
-const SKILLS_AssignSkill113c = SKILLS_SetSkillLevelOnUnit113c
-const DATATBLS_GetGambleRecord113c = DATATBLS_GetGambleDataTables113c
-const DATATBLS_GetDifficultyLevelsTxtRecord113c = DATATBLS_GetMonLvlTxtRecord113c
-const DATATBLS_GetItemIdFromItemCode113c = DATATBLS_GetItemsTxtRecordByCode113c
-const ITEMS_CheckIfThrowable113c = ITEMS_CheckIfThrowItemMemPort113c
-const ITEMS_CheckIfAutoStack113c = ITEMS_IsAutoStack113c
-const ITEMS_GetMaxDurabilityFromUnit113c = STATLIST_GetMaxDurabilityFromUnit113c
-const ITEMS_CheckItemTypeId113c = ITEMS_CheckItemTypeIdMemPort113c
-const INVENTORY_CanItemBePlaced113c = ITEMS_CanItemBeAutoBeltOrStacked113c
-const INVENTORY_GetBeltItem113c = INVENTORY_GetCompositWeaponMemPort113c
-const UNITS_GetBeltType113c = ITEMS_GetActiveWeaponClassCodeIdx113c
-const ITEMS_GetPrefixId113c = ITEMS_GetMagicSuffix113c
-const ITEMS_CheckIfTradable113c = ITEMS_CanItemBeShownInTradeOrStash113c
-const DATATBLS_GetHirelingTxtRecord113c = DATATBLS_GetHirelingTxtRecordFromVendorAndDifficulty113c
-const RANDOM_RollBounded113c = SEED_RollLimitedFast113c
+function QUESTS_GetGlobalState113c(...args: Parameters<typeof DRLGWARP_TestRoomTileBit113c>): ReturnType<typeof DRLGWARP_TestRoomTileBit113c> {
+  return DRLGWARP_TestRoomTileBit113c(...args)
+}
+function DUNGEON_ToggleRoomTileStandableFlag113c(...args: Parameters<typeof DUNGEON_ToggleHasPortalFlag113c>): ReturnType<typeof DUNGEON_ToggleHasPortalFlag113c> {
+  return DUNGEON_ToggleHasPortalFlag113c(...args)
+}
+function UNITS_GetObjectTxtRecordFromObject113c(...args: Parameters<typeof UNITS_GetObjectTxt113c>): ReturnType<typeof UNITS_GetObjectTxt113c> {
+  return UNITS_GetObjectTxt113c(...args)
+}
+function PLAYER_GetWaypointHistoryFlags113c(...args: Parameters<typeof PLAYER_GetWaypointDataForDifficulty_6FC21720_113c>): ReturnType<typeof PLAYER_GetWaypointDataForDifficulty_6FC21720_113c> {
+  return PLAYER_GetWaypointDataForDifficulty_6FC21720_113c(...args)
+}
+function DATATBLS_GetWaypointIndexByLevelId113c(...args: Parameters<typeof WAYPOINT_GetWaypointNoFromLevelId113c>): ReturnType<typeof WAYPOINT_GetWaypointNoFromLevelId113c> {
+  return WAYPOINT_GetWaypointNoFromLevelId113c(...args)
+}
+function WAYPOINTS_GetWaypointFlag113c(...args: Parameters<typeof WAYPOINT_GetWaypointState113c>): ReturnType<typeof WAYPOINT_GetWaypointState113c> {
+  return WAYPOINT_GetWaypointState113c(...args)
+}
+function DUNGEON_FindActSpawnLocation113c(...args: Parameters<typeof DUNGEON_FindLevelSpawnRoom113c>): ReturnType<typeof DUNGEON_FindLevelSpawnRoom113c> {
+  return DUNGEON_FindLevelSpawnRoom113c(...args)
+}
+function UNITS_GetCoords113c(...args: Parameters<typeof PATH_GetTargetTypeAndPosition113c>): ReturnType<typeof PATH_GetTargetTypeAndPosition113c> {
+  return PATH_GetTargetTypeAndPosition113c(...args)
+}
+function ITEMS_Duplicate113c(...args: Parameters<typeof ITEMS_DuplicateItemWithSocketFillers_6FC307E0_113c>): ReturnType<typeof ITEMS_DuplicateItemWithSocketFillers_6FC307E0_113c> {
+  return ITEMS_DuplicateItemWithSocketFillers_6FC307E0_113c(...args)
+}
+function ITEMS_SetItemPage113c(...args: Parameters<typeof ITEMS_SetInvPage113c>): ReturnType<typeof ITEMS_SetInvPage113c> {
+  return ITEMS_SetInvPage113c(...args)
+}
+function UNITS_GetInventoryGridType113c(...args: Parameters<typeof UNITS_GetInventoryRecordId113c>): ReturnType<typeof UNITS_GetInventoryRecordId113c> {
+  return UNITS_GetInventoryRecordId113c(...args)
+}
+function INVENTORY_PlaceItemAtFreePosition113c(...args: Parameters<typeof INVENTORY_AutoPlaceItemInGrid113c>): ReturnType<typeof INVENTORY_AutoPlaceItemInGrid113c> {
+  return INVENTORY_AutoPlaceItemInGrid113c(...args)
+}
+function INVENTORY_AddItemToTradeInventory113c(...args: Parameters<typeof INVENTORY_PlaceItemInSocket113c>): ReturnType<typeof INVENTORY_PlaceItemInSocket113c> {
+  return INVENTORY_PlaceItemInSocket113c(...args)
+}
+function ITEMS_CanUpdateSocketStats113c(...args: Parameters<typeof ITEMS_CanUseCharmInInventory113c>): ReturnType<typeof ITEMS_CanUseCharmInInventory113c> {
+  return ITEMS_CanUseCharmInInventory113c(...args)
+}
+function INVENTORY_SetInventoryUpdateFlag113c(...args: Parameters<typeof INVENTORY_SetCursorItem113c>): ReturnType<typeof INVENTORY_SetCursorItem113c> {
+  return INVENTORY_SetCursorItem113c(...args)
+}
+function UNITS_ToggleFlag113c(...args: Parameters<typeof ITEMS_SetOrClearCommandFlags113c>): ReturnType<typeof ITEMS_SetOrClearCommandFlags113c> {
+  return ITEMS_SetOrClearCommandFlags113c(...args)
+}
+function UNITS_UpdateInventoryItems113c(...args: Parameters<typeof UNITS_SetUnitUpdateFlags113c>): ReturnType<typeof UNITS_SetUnitUpdateFlags113c> {
+  return UNITS_SetUnitUpdateFlags113c(...args)
+}
+function INVENTORY_AppendRecord113c(...args: Parameters<typeof INVENTORY_AppendItemGuidNode113c>): ReturnType<typeof INVENTORY_AppendItemGuidNode113c> {
+  return INVENTORY_AppendItemGuidNode113c(...args)
+}
+function ITEMS_IsSocketable113c(...args: Parameters<typeof ITEMS_GetSubTypeFromItem113c>): ReturnType<typeof ITEMS_GetSubTypeFromItem113c> {
+  return ITEMS_GetSubTypeFromItem113c(...args)
+}
+function INVENTORY_AllocTradeRecord113c(...args: Parameters<typeof ITEMS_SetOrClearFlagMask113c>): ReturnType<typeof ITEMS_SetOrClearFlagMask113c> {
+  return ITEMS_SetOrClearFlagMask113c(...args)
+}
+function ITEMS_SerializeItemToBitstream113c(...args: Parameters<typeof ITEMS_SetOrClearFlagMask113c>): ReturnType<typeof ITEMS_SetOrClearFlagMask113c> {
+  return ITEMS_SetOrClearFlagMask113c(...args)
+}
+function ITEMS_GetHoradricCubeFlag113c(...args: Parameters<typeof ITEMS_SetNodePage113c>): ReturnType<typeof ITEMS_SetNodePage113c> {
+  return ITEMS_SetNodePage113c(...args)
+}
+function STATLIST_UnitGetStatValue113c(...args: Parameters<typeof STATLIST_GetUnitStat113c>): ReturnType<typeof STATLIST_GetUnitStat113c> {
+  return STATLIST_GetUnitStat113c(...args)
+}
+function STATLIST_AddUnitStat113c(...args: Parameters<typeof STATLIST_AddUnitStatMemPort113c>): ReturnType<typeof STATLIST_AddUnitStatMemPort113c> {
+  return STATLIST_AddUnitStatMemPort113c(...args)
+}
+function STATLIST_GetUnitMaxLife113c(...args: Parameters<typeof STATLIST_GetMaxLifeFromUnit113c>): ReturnType<typeof STATLIST_GetMaxLifeFromUnit113c> {
+  return STATLIST_GetMaxLifeFromUnit113c(...args)
+}
+function STATLIST_GetUnitMaxMana113c(...args: Parameters<typeof STATLIST_GetMaxManaFromUnit113c>): ReturnType<typeof STATLIST_GetMaxManaFromUnit113c> {
+  return STATLIST_GetMaxManaFromUnit113c(...args)
+}
+function ITEMS_GetFileIndex113c(...args: Parameters<typeof ITEMS_GetItemCell113c>): ReturnType<typeof ITEMS_GetItemCell113c> {
+  return ITEMS_GetItemCell113c(...args)
+}
+function ITEMS_GetCompactItemDataFromUnit113c(...args: Parameters<typeof ITEMS_GetItemCell113c>): ReturnType<typeof ITEMS_GetItemCell113c> {
+  return ITEMS_GetItemCell113c(...args)
+}
+function STATLIST_GetUnitAlignment113c(...args: Parameters<typeof ITEMS_GetCommandFlags113c>): ReturnType<typeof ITEMS_GetCommandFlags113c> {
+  return ITEMS_GetCommandFlags113c(...args)
+}
+function ITEMS_SetEarLevel113c(...args: Parameters<typeof ITEMS_SetMagicPrefix113c>): ReturnType<typeof ITEMS_SetMagicPrefix113c> {
+  return ITEMS_SetMagicPrefix113c(...args)
+}
+function STATLIST_GetStatListFromUnitAndState113c(...args: Parameters<typeof STATLIST_GetStatListFromUnitStateOrFlag113c>): ReturnType<typeof STATLIST_GetStatListFromUnitStateOrFlag113c> {
+  return STATLIST_GetStatListFromUnitStateOrFlag113c(...args)
+}
+function STATLIST_UnlinkStatList113c(...args: Parameters<typeof STATLIST_UnlinkSubList113c>): ReturnType<typeof STATLIST_UnlinkSubList113c> {
+  return STATLIST_UnlinkSubList113c(...args)
+}
+function STATLIST_FreeStatListEx113c(...args: Parameters<typeof STATLIST_FreeStatListIfNonExtended113c>): ReturnType<typeof STATLIST_FreeStatListIfNonExtended113c> {
+  return STATLIST_FreeStatListIfNonExtended113c(...args)
+}
+function ITEMS_AssignProperty113c(...args: Parameters<typeof ITEMS_ApplySinglePropAndEthereal113c>): ReturnType<typeof ITEMS_ApplySinglePropAndEthereal113c> {
+  return ITEMS_ApplySinglePropAndEthereal113c(...args)
+}
+function ITEMS_CheckIfStackable113c(...args: Parameters<typeof ITEMS_GetTwoHandedFlag113c>): ReturnType<typeof ITEMS_GetTwoHandedFlag113c> {
+  return ITEMS_GetTwoHandedFlag113c(...args)
+}
+function ITEMS_CanBeStacked113c(...args: Parameters<typeof ITEMS_GetTwoHandedFlag113c>): ReturnType<typeof ITEMS_GetTwoHandedFlag113c> {
+  return ITEMS_GetTwoHandedFlag113c(...args)
+}
+function ITEMS_GetMaxSockets113c(...args: Parameters<typeof ITEMS_GetMaxSocketsFromItemType113c>): ReturnType<typeof ITEMS_GetMaxSocketsFromItemType113c> {
+  return ITEMS_GetMaxSocketsFromItemType113c(...args)
+}
+function ITEMS_AddSockets113c(...args: Parameters<typeof ITEMS_GetMissileWeaponVelocity113c>): ReturnType<typeof ITEMS_GetMissileWeaponVelocity113c> {
+  return ITEMS_GetMissileWeaponVelocity113c(...args)
+}
+function UNITS_RefreshInventory113c(...args: Parameters<typeof UNITROOM_RefreshUnit113c>): ReturnType<typeof UNITROOM_RefreshUnit113c> {
+  return UNITROOM_RefreshUnit113c(...args)
+}
+function SUNIT_RemoveUnit113c(...args: Parameters<typeof SUNIT_FreeUnit113c>): ReturnType<typeof SUNIT_FreeUnit113c> {
+  return SUNIT_FreeUnit113c(...args)
+}
+function DATATBLS_GetItemsTxtRecord113c(...args: Parameters<typeof DATATBLS_GetItemsTxtRecordMemPort113c>): ReturnType<typeof DATATBLS_GetItemsTxtRecordMemPort113c> {
+  return DATATBLS_GetItemsTxtRecordMemPort113c(...args)
+}
+function ACT3Q2_OnKhalimFlailCreated113c(...args: Parameters<typeof ACT3Q3_OnKhalimsWillCubed113c>): ReturnType<typeof ACT3Q3_OnKhalimsWillCubed113c> {
+  return ACT3Q3_OnKhalimsWillCubed113c(...args)
+}
+function ITEMS_StopAllItemFunctions113c(...args: Parameters<typeof ITEMS_NoOpReturnZero113c>): ReturnType<typeof ITEMS_NoOpReturnZero113c> {
+  return ITEMS_NoOpReturnZero113c(...args)
+}
+function INVENTORY_UpdateWeaponGUIDOnRemove113c(...args: Parameters<typeof INVENTORY_UpdateWeaponGuidOnRemoval113c>): ReturnType<typeof INVENTORY_UpdateWeaponGuidOnRemoval113c> {
+  return INVENTORY_UpdateWeaponGuidOnRemoval113c(...args)
+}
+function ITEMS_GetItemType113c(...args: Parameters<typeof ITEMS_GetItemTypeFromItem113c>): ReturnType<typeof ITEMS_GetItemTypeFromItem113c> {
+  return ITEMS_GetItemTypeFromItem113c(...args)
+}
+function UNITS_AttachAndSync113c(...args: Parameters<typeof ITEMMODS_UpdateSetItemEquipmentState113c>): ReturnType<typeof ITEMMODS_UpdateSetItemEquipmentState113c> {
+  return ITEMMODS_UpdateSetItemEquipmentState113c(...args)
+}
+function DUNGEON_FindRoomBySubtileCoords113c(...args: Parameters<typeof ROOM_FindRoomContainingSubtile113c>): ReturnType<typeof ROOM_FindRoomContainingSubtile113c> {
+  return ROOM_FindRoomContainingSubtile113c(...args)
+}
+function MONSTER_SpawnFromSubpreset113c(...args: Parameters<typeof MONSTER_Create113c>): ReturnType<typeof MONSTER_Create113c> {
+  return MONSTER_Create113c(...args)
+}
+function AI_SetNextThinkDelay113c(...args: Parameters<typeof AI_Stall113c>): ReturnType<typeof AI_Stall113c> {
+  return AI_Stall113c(...args)
+}
+function AI_DelayNextThink113c(...args: Parameters<typeof AI_ScheduleAiThinkTimer_6FD120C0_113c>): ReturnType<typeof AI_ScheduleAiThinkTimer_6FD120C0_113c> {
+  return AI_ScheduleAiThinkTimer_6FD120C0_113c(...args)
+}
+function AI_UseSkillOrAttack113c(...args: Parameters<typeof AI_CastSkillWithMode113c>): ReturnType<typeof AI_CastSkillWithMode113c> {
+  return AI_CastSkillWithMode113c(...args)
+}
+function UNITS_GetDistanceToOtherUnit113c(...args: Parameters<typeof UNITS_GetApproximateDistance113c>): ReturnType<typeof UNITS_GetApproximateDistance113c> {
+  return UNITS_GetApproximateDistance113c(...args)
+}
+function SUNIT_GetXPos113c(...args: Parameters<typeof UNIT_GetPosX113c>): ReturnType<typeof UNIT_GetPosX113c> {
+  return UNIT_GetPosX113c(...args)
+}
+function SUNIT_GetYPos113c(...args: Parameters<typeof UNIT_GetPosY113c>): ReturnType<typeof UNIT_GetPosY113c> {
+  return UNIT_GetPosY113c(...args)
+}
+function DUNGEON_IsRoomInTown113c(...args: Parameters<typeof DUNGEON_CheckRoomIsTownMemPort113c>): ReturnType<typeof DUNGEON_CheckRoomIsTownMemPort113c> {
+  return DUNGEON_CheckRoomIsTownMemPort113c(...args)
+}
+function UNITS_CanAttackWithSkill113c(...args: Parameters<typeof UNITS_CanUnitMeleeAttackTarget113c>): ReturnType<typeof UNITS_CanUnitMeleeAttackTarget113c> {
+  return UNITS_CanUnitMeleeAttackTarget113c(...args)
+}
+function DUNGEON_CheckLineOfSight113c(...args: Parameters<typeof UNITS_CanUnitMeleeAttackTarget113c>): ReturnType<typeof UNITS_CanUnitMeleeAttackTarget113c> {
+  return UNITS_CanUnitMeleeAttackTarget113c(...args)
+}
+function DATATBLS_GetSkillsTxtRecord113c(...args: Parameters<typeof SKILLS_GetRecordPtrFast113c>): ReturnType<typeof SKILLS_GetRecordPtrFast113c> {
+  return SKILLS_GetRecordPtrFast113c(...args)
+}
+function SKILLS_GetSkillLevel113c(...args: Parameters<typeof SKILLS_EvaluateSkillLevel113c>): ReturnType<typeof SKILLS_EvaluateSkillLevel113c> {
+  return SKILLS_EvaluateSkillLevel113c(...args)
+}
+function SKILLS_EvaluateSkillFormula113c(...args: Parameters<typeof SKILLS_EvalCalcByOffset113c>): ReturnType<typeof SKILLS_EvalCalcByOffset113c> {
+  return SKILLS_EvalCalcByOffset113c(...args)
+}
+function MONSTER_GetSummonPet113c(...args: Parameters<typeof STATLIST_GetStatListFromUnitAndStateMemPort113c>): ReturnType<typeof STATLIST_GetStatListFromUnitAndStateMemPort113c> {
+  return STATLIST_GetStatListFromUnitAndStateMemPort113c(...args)
+}
+function DATATBLS_GetMissilesTxtRecord113c(...args: Parameters<typeof MISSILES_GetTxtRecordFast113c>): ReturnType<typeof MISSILES_GetTxtRecordFast113c> {
+  return MISSILES_GetTxtRecordFast113c(...args)
+}
+function UNITS_GetUsedSkill113c(...args: Parameters<typeof UNITS_GetLeftSkill113c>): ReturnType<typeof UNITS_GetLeftSkill113c> {
+  return UNITS_GetLeftSkill113c(...args)
+}
+function SKILLS_SetLeftActiveSkill113c(...args: Parameters<typeof SKILLS_SetLeftSkill113c>): ReturnType<typeof SKILLS_SetLeftSkill113c> {
+  return SKILLS_SetLeftSkill113c(...args)
+}
+function UNITS_GetSkillFromSkillId113c(...args: Parameters<typeof SKILLS_GetSkillById113c>): ReturnType<typeof SKILLS_GetSkillById113c> {
+  return SKILLS_GetSkillById113c(...args)
+}
+function SKILLS_CheckSkillDelay113c(...args: Parameters<typeof SKILLS_GetSkillNumTargetsOrShots113c>): ReturnType<typeof SKILLS_GetSkillNumTargetsOrShots113c> {
+  return SKILLS_GetSkillNumTargetsOrShots113c(...args)
+}
+function SKILLS_GetSkillModeFromSkill113c(...args: Parameters<typeof SKILLS_GetLeftSkillFromSkillList113c>): ReturnType<typeof SKILLS_GetLeftSkillFromSkillList113c> {
+  return SKILLS_GetLeftSkillFromSkillList113c(...args)
+}
+function MONSTERAI_GetLifePct113c(...args: Parameters<typeof STATLIST_GetUnitLifePercent113c>): ReturnType<typeof STATLIST_GetUnitLifePercent113c> {
+  return STATLIST_GetUnitLifePercent113c(...args)
+}
+function DUNGEON_CheckRoomFlags113c(...args: Parameters<typeof STATES_CheckStateMask4OnUnit113c>): ReturnType<typeof STATES_CheckStateMask4OnUnit113c> {
+  return STATES_CheckStateMask4OnUnit113c(...args)
+}
+function DUNGEON_CheckCollisionMask113c(...args: Parameters<typeof UNITS_HasCollisionBetweenUnits113c>): ReturnType<typeof UNITS_HasCollisionBetweenUnits113c> {
+  return UNITS_HasCollisionBetweenUnits113c(...args)
+}
+function SKILLS_AssignSkill113c(...args: Parameters<typeof SKILLS_SetSkillLevelOnUnit113c>): ReturnType<typeof SKILLS_SetSkillLevelOnUnit113c> {
+  return SKILLS_SetSkillLevelOnUnit113c(...args)
+}
+function DATATBLS_GetGambleRecord113c(...args: Parameters<typeof DATATBLS_GetGambleDataTables113c>): ReturnType<typeof DATATBLS_GetGambleDataTables113c> {
+  return DATATBLS_GetGambleDataTables113c(...args)
+}
+function DATATBLS_GetDifficultyLevelsTxtRecord113c(...args: Parameters<typeof DATATBLS_GetMonLvlTxtRecord113c>): ReturnType<typeof DATATBLS_GetMonLvlTxtRecord113c> {
+  return DATATBLS_GetMonLvlTxtRecord113c(...args)
+}
+function DATATBLS_GetItemIdFromItemCode113c(...args: Parameters<typeof DATATBLS_GetItemsTxtRecordByCode113c>): ReturnType<typeof DATATBLS_GetItemsTxtRecordByCode113c> {
+  return DATATBLS_GetItemsTxtRecordByCode113c(...args)
+}
+function ITEMS_CheckIfThrowable113c(...args: Parameters<typeof ITEMS_CheckIfThrowItemMemPort113c>): ReturnType<typeof ITEMS_CheckIfThrowItemMemPort113c> {
+  return ITEMS_CheckIfThrowItemMemPort113c(...args)
+}
+function ITEMS_CheckIfAutoStack113c(...args: Parameters<typeof ITEMS_IsAutoStack113c>): ReturnType<typeof ITEMS_IsAutoStack113c> {
+  return ITEMS_IsAutoStack113c(...args)
+}
+function ITEMS_GetMaxDurabilityFromUnit113c(...args: Parameters<typeof STATLIST_GetMaxDurabilityFromUnit113c>): ReturnType<typeof STATLIST_GetMaxDurabilityFromUnit113c> {
+  return STATLIST_GetMaxDurabilityFromUnit113c(...args)
+}
+function ITEMS_CheckItemTypeId113c(...args: Parameters<typeof ITEMS_CheckItemTypeIdMemPort113c>): ReturnType<typeof ITEMS_CheckItemTypeIdMemPort113c> {
+  return ITEMS_CheckItemTypeIdMemPort113c(...args)
+}
+function INVENTORY_CanItemBePlaced113c(...args: Parameters<typeof ITEMS_CanItemBeAutoBeltOrStacked113c>): ReturnType<typeof ITEMS_CanItemBeAutoBeltOrStacked113c> {
+  return ITEMS_CanItemBeAutoBeltOrStacked113c(...args)
+}
+function INVENTORY_GetBeltItem113c(...args: Parameters<typeof INVENTORY_GetCompositWeaponMemPort113c>): ReturnType<typeof INVENTORY_GetCompositWeaponMemPort113c> {
+  return INVENTORY_GetCompositWeaponMemPort113c(...args)
+}
+function UNITS_GetBeltType113c(...args: Parameters<typeof ITEMS_GetActiveWeaponClassCodeIdx113c>): ReturnType<typeof ITEMS_GetActiveWeaponClassCodeIdx113c> {
+  return ITEMS_GetActiveWeaponClassCodeIdx113c(...args)
+}
+function ITEMS_GetPrefixId113c(...args: Parameters<typeof ITEMS_GetMagicSuffix113c>): ReturnType<typeof ITEMS_GetMagicSuffix113c> {
+  return ITEMS_GetMagicSuffix113c(...args)
+}
+function ITEMS_CheckIfTradable113c(...args: Parameters<typeof ITEMS_CanItemBeShownInTradeOrStash113c>): ReturnType<typeof ITEMS_CanItemBeShownInTradeOrStash113c> {
+  return ITEMS_CanItemBeShownInTradeOrStash113c(...args)
+}
+function DATATBLS_GetHirelingTxtRecord113c(...args: Parameters<typeof DATATBLS_GetHirelingTxtRecordFromVendorAndDifficulty113c>): ReturnType<typeof DATATBLS_GetHirelingTxtRecordFromVendorAndDifficulty113c> {
+  return DATATBLS_GetHirelingTxtRecordFromVendorAndDifficulty113c(...args)
+}
+function RANDOM_RollBounded113c(...args: Parameters<typeof SEED_RollLimitedFast113c>): ReturnType<typeof SEED_RollLimitedFast113c> {
+  return SEED_RollLimitedFast113c(...args)
+}
 
 function SUNIT_SendUnitSpeech113c(m: D2KernMemory113c, pPlayer: number, wSpeech: number): void {
   SUNIT_SetUnitEventSound113c(m, pPlayer, wSpeech, pPlayer)
@@ -969,6 +1150,101 @@ function findItemDropPosition6FC2E930(
   ) >>> 0
 }
 
+function findTargetForPlayerOrPet6FCD1C90W13B1(
+  m: D2KernMemory113c,
+  pGame: number,
+  pOriginUnit: number,
+  pAiControl: number,
+  pnOutDist: number,
+  pbOutInMelee: number,
+): number {
+  if (pnOutDist !== 0) m.setU32(pnOutDist >>> 0, 0)
+  if (pbOutInMelee !== 0) m.setU32(pbOutInMelee >>> 0, 0)
+  if (pOriginUnit === 0) return 0
+  const uType = m.u32(pOriginUnit >>> 0) | 0
+  if (uType < 0 || uType > 1) return 0
+
+  const sp = k2W13B1StackPtr
+  k2W13B1StackPtr = (sp + 0x20) >>> 0
+  try {
+    const pScanCtx = sp >>> 0
+    const pRoom = UNITS_GetRoom113c(m, pOriginUnit) >>> 0
+    const posX = UNIT_GetPosX113c(m, pOriginUnit) | 0
+    const posY = UNIT_GetPosY113c(m, pOriginUnit) | 0
+    const coordIdx =
+      pRoom !== 0 ? (DUNGEON_GetRoomCoordListIndexAtSubtile113c(m, pRoom, posX, posY) | 0) : 0
+
+    let radius = 35
+    if (uType === 1) {
+      const pMonData = m.u32((pOriginUnit + 0x14) >>> 0) >>> 0
+      const pMonTxt = pMonData !== 0 ? (m.u32((pMonData + 0x00) >>> 0) >>> 0) : 0
+      if (pMonTxt !== 0) {
+        const diff = m.u8((pGame + 0x6d) >>> 0) % 3
+        const rawAidist = m.u8((pMonTxt + 0x6a + diff) >>> 0)
+        if (rawAidist > 0) radius = rawAidist
+      }
+    }
+
+    m.setU32(pScanCtx, 0)
+    m.setU32((pScanCtx + 0x04) >>> 0, 0x7fffffff)
+    m.setU32((pScanCtx + 0x08) >>> 0, 1)
+    m.setU32((pScanCtx + 0x0c) >>> 0, radius >>> 0)
+    m.setU32((pScanCtx + 0x10) >>> 0, coordIdx >>> 0)
+    m.setU32((pScanCtx + 0x14) >>> 0, 0)
+    m.setU32((pScanCtx + 0x18) >>> 0, 0x7fffffff)
+
+    MONAI_ForEachUnitInNonTownAdjacentRoomsWithPlayer_6FCD0CE0_113c(
+      m,
+      pOriginUnit,
+      0x6fcd1660,
+      pGame,
+      pScanCtx,
+      (mem, pg, pOrig, pCand, pCtx) =>
+        MONAI_EvaluateTargetCandidateCallback_6FCD1660_113c(mem, pg, pOrig, pCand, pCtx),
+    )
+
+    let pBest = 0
+    let bestDist = 0
+    const pBlockedTarget = m.u32((pScanCtx + 0x14) >>> 0) >>> 0
+    if (pBlockedTarget !== 0) {
+      const blockedDist = m.u32((pScanCtx + 0x18) >>> 0) | 0
+      const useBlocked = MONAI_CheckDirectPathOrFindNearestBlockingObstacle_6FCD1AB0_113c(
+        m,
+        pOriginUnit,
+        pScanCtx,
+        (pScanCtx + 0x04) >>> 0,
+        pBlockedTarget,
+        blockedDist,
+      )
+      if (useBlocked !== 0) {
+        pBest = m.u32((pScanCtx + 0x14) >>> 0) >>> 0
+        bestDist = m.u32((pScanCtx + 0x18) >>> 0) | 0
+      } else {
+        pBest = m.u32(pScanCtx) >>> 0
+        bestDist = m.u32((pScanCtx + 0x04) >>> 0) | 0
+      }
+    } else {
+      pBest = m.u32(pScanCtx) >>> 0
+      bestDist = m.u32((pScanCtx + 0x04) >>> 0) | 0
+    }
+    if (pBest === 0) return 0
+
+    if (pAiControl !== 0 && uType !== 0) {
+      const wFlags = m.u8((pAiControl + 0x08) >>> 0)
+      m.setU8((pAiControl + 0x08) >>> 0, (wFlags | 0x08) & 0xff)
+    }
+    if (pnOutDist !== 0) m.setU32(pnOutDist >>> 0, bestDist >>> 0)
+
+    if (pBest !== 0 && pbOutInMelee !== 0) {
+      const inMelee = UNITS_CanUnitMeleeAttackTarget113c(m, pOriginUnit, pBest, 0) !== 0 ? 1 : 0
+      m.setU32(pbOutInMelee >>> 0, inMelee)
+    }
+    return pBest
+  } finally {
+    k2W13B1StackPtr = sp
+  }
+}
+
 /**
  * @dll D2Game.dll
  * @va 0x6FC3E3D0
@@ -979,10 +1255,17 @@ export function D2Game_6FC3E3D0_113c(
   pAiTickArgs: number,
   pUnit: number,
   pGame: number,
+  ops?: PetMoveActionOps113c,
 ): void {
   hitD2GameVa113c(0x6FC3E3D0)
   const pMonStatsTxt = m.u32((pAiTickArgs + 0x1c) >>> 0) >>> 0
-  const pAiControl = m.u32(pAiTickArgs >>> 0) >>> 0
+  const pAiParam = m.u32(pAiTickArgs >>> 0) >>> 0
+  const pMonData =
+    pUnit !== 0 && (m.u32(pUnit >>> 0) >>> 0) === 1 ? (m.u32((pUnit + 0x14) >>> 0) >>> 0) : 0
+  const pAiControl =
+    pMonData !== 0 && m.u32((pMonData + 0x2c) >>> 0) !== 0
+      ? (m.u32((pMonData + 0x2c) >>> 0) >>> 0)
+      : pAiParam
 
   let pOwner = 0
   if (pUnit !== 0 && (m.u32(pUnit >>> 0) >>> 0) === 1) {
@@ -998,7 +1281,7 @@ export function D2Game_6FC3E3D0_113c(
   }
 
   if (pOwner === 0) {
-    const savedOwnerGuid = pAiControl !== 0 ? m.u32((pAiControl + 0x1c) >>> 0) >>> 0 : 0
+    const savedOwnerGuid = pAiParam !== 0 ? m.u32((pAiParam + 0x1c) >>> 0) >>> 0 : 0
     if (savedOwnerGuid !== 0) {
       if (pGame === 0) {
         FOG_Assertion113c(m, 0x2d3, 0x6fd19ff9)
@@ -1006,17 +1289,20 @@ export function D2Game_6FC3E3D0_113c(
       let pPlr = m.u32((pGame + 0x1120 + ((savedOwnerGuid & 0x7f) << 2)) >>> 0) >>> 0
       while (pPlr !== 0) {
         if ((m.u32((pPlr + 0x0c) >>> 0) >>> 0) === savedOwnerGuid) {
-          D2Game_6FC3CAE0_113c(m, pUnit, pGame, pPlr, 3, 0, 0, 0)
+          D2Game_6FC3CAE0_113c(m, pUnit, pGame, pPlr, 3, 0, 0, 0, ops)
           return
         }
         pPlr = m.u32((pPlr + 0xe4) >>> 0) >>> 0
       }
     }
-    AI_Stall113c(m, pGame, pUnit, 0x0a)
+    if (ops !== undefined) ops.stall(pUnit, 0x0a)
+    else AI_Stall113c(m, pGame, pUnit, 0x0a)
     return
   }
 
-  m.setU32((pAiControl + 0x1c) >>> 0, m.u32((pOwner + 0x0c) >>> 0))
+  if (pAiParam !== 0) {
+    m.setU32((pAiParam + 0x1c) >>> 0, m.u32((pOwner + 0x0c) >>> 0))
+  }
   AI_CalcApproxUnitDistSubtiles113c(m, pUnit, pOwner)
 
   const sp = k2W13B1StackPtr
@@ -1026,7 +1312,10 @@ export function D2Game_6FC3E3D0_113c(
   try {
     m.setU32(sp, 0)
     m.setU32((sp + 4) >>> 0, 0)
-    let pOwnerTarget = aiFindTarget6FCD1C90(m, pGame, pOwner, pAiControl, sp, (sp + 4) >>> 0)
+    let pOwnerTarget =
+      ops !== undefined
+        ? findTargetForPlayerOrPet6FCD1C90W13B1(m, pGame, pOwner, pAiControl, sp, (sp + 4) >>> 0)
+        : aiFindTarget6FCD1C90(m, pGame, pOwner, pAiControl, sp, (sp + 4) >>> 0)
     if (pOwnerTarget !== 0) {
       const deadFlag = (m.u32((pOwnerTarget + 0xc4) >>> 0) >>> 0x1e) & 1
       m.setU32((sp + 4) >>> 0, deadFlag)
@@ -1059,31 +1348,33 @@ export function D2Game_6FC3E3D0_113c(
   const leashRoll = (stepSeed64At113c(m, (pUnit + 0x20) >>> 0) >>> 0) % 100
   const followRc =
     leashRoll < 0x0f
-      ? D2Game_6FC3E140_113c(m, pOwner, pGame, pUnit, pTarget, bInMelee, 1, 8)
-      : D2Game_6FC3E140_113c(m, pOwner, pGame, pUnit, pTarget, bInMelee, 0, 7)
+      ? D2Game_6FC3E140_113c(m, pOwner, pGame, pUnit, pTarget, bInMelee, 1, 8, ops)
+      : D2Game_6FC3E140_113c(m, pOwner, pGame, pUnit, pTarget, bInMelee, 0, 7, ops)
   if (followRc !== 0) {
     return
   }
 
   if (pTarget === 0 || DUNGEON_CheckRoomIsTownMemPort113c(m, UNITS_GetRoom113c(m, pUnit)) !== 0) {
-    AI_WalkWanderAroundSelf_6FD129B0_113c(m, 4, pGame, pUnit)
-    return
-  }
-
-  if (DUNGEON_CheckRoomIsTownMemPort113c(m, UNITS_GetRoom113c(m, pUnit)) !== 0) {
-    AI_Stall113c(m, pGame, pUnit, 0x14)
+    AI_WalkWanderAroundSelf_6FD129B0_113c(
+      m,
+      4,
+      pGame,
+      pUnit,
+      ops !== undefined ? { world: ops.world } : undefined,
+    )
     return
   }
 
   const pSeed = (pUnit + 0x20) >>> 0
-  if ((SEED_RollLimitedFast113c(m, pSeed, 100) | 0) < 0x50) {
+  if ((SEED_RollLimitedFast113c(m, pSeed, 100) | 0) < 0x50 && pMonStatsTxt !== 0) {
     const nSkillId = i16(m, (pMonStatsTxt + 0x170) >>> 0)
     const nMode = m.u8((pMonStatsTxt + 0x180) >>> 0)
     AI_CastSkillWithMode113c(m, nMode, pUnit, pGame, nSkillId, pTarget, 0, 0)
     return
   }
   if ((SEED_RollLimitedFast113c(m, pSeed, 100) | 0) < 0x4b) {
-    AI_Stall113c(m, pGame, pUnit, 0x0a)
+    if (ops !== undefined) ops.stall(pUnit, 0x0a)
+    else AI_Stall113c(m, pGame, pUnit, 0x0a)
     return
   }
   AI_CircleStrafeTarget_6FD126B0_113c(m, pUnit, 0, pGame, pTarget, 3)
@@ -1099,9 +1390,16 @@ export function D2Game_6FC3E640_113c(
   pUnit: number,
   pAiTickArgs: number,
   pGame: number,
+  ops?: PetMoveActionOps113c,
 ): void {
   hitD2GameVa113c(0x6FC3E640)
-  const pAiControl = m.u32(pAiTickArgs >>> 0) >>> 0
+  const pAiParam = m.u32(pAiTickArgs >>> 0) >>> 0
+  const pMonData =
+    pUnit !== 0 && (m.u32(pUnit >>> 0) >>> 0) === 1 ? (m.u32((pUnit + 0x14) >>> 0) >>> 0) : 0
+  const pAiControl =
+    pMonData !== 0 && m.u32((pMonData + 0x2c) >>> 0) !== 0
+      ? (m.u32((pMonData + 0x2c) >>> 0) >>> 0)
+      : pAiParam
 
   let pOwner = 0
   if (pUnit !== 0 && (m.u32(pUnit >>> 0) >>> 0) === 1) {
@@ -1117,7 +1415,7 @@ export function D2Game_6FC3E640_113c(
   }
 
   if (pOwner === 0) {
-    const savedOwnerGuid = pAiControl !== 0 ? m.u32((pAiControl + 0x1c) >>> 0) >>> 0 : 0
+    const savedOwnerGuid = pAiParam !== 0 ? m.u32((pAiParam + 0x1c) >>> 0) >>> 0 : 0
     if (savedOwnerGuid !== 0) {
       if (pGame === 0) {
         FOG_Assertion113c(m, 0x2d3, 0x6fd19ff9)
@@ -1125,25 +1423,28 @@ export function D2Game_6FC3E640_113c(
       let pPlr = m.u32((pGame + 0x1120 + ((savedOwnerGuid & 0x7f) << 2)) >>> 0) >>> 0
       while (pPlr !== 0) {
         if ((m.u32((pPlr + 0x0c) >>> 0) >>> 0) === savedOwnerGuid) {
-          D2Game_6FC3CAE0_113c(m, pUnit, pGame, pPlr, 3, 0, 0, 0)
+          D2Game_6FC3CAE0_113c(m, pUnit, pGame, pPlr, 3, 0, 0, 0, ops)
           return
         }
         pPlr = m.u32((pPlr + 0xe4) >>> 0) >>> 0
       }
     }
-    AI_Stall113c(m, pGame, pUnit, 0x0a)
+    if (ops !== undefined) ops.stall(pUnit, 0x0a)
+    else AI_Stall113c(m, pGame, pUnit, 0x0a)
     return
   }
 
-  m.setU32((pAiControl + 0x1c) >>> 0, m.u32((pOwner + 0x0c) >>> 0))
+  if (pAiParam !== 0) {
+    m.setU32((pAiParam + 0x1c) >>> 0, m.u32((pOwner + 0x0c) >>> 0))
+  }
   const pMonStatsTxt = m.u32((pAiTickArgs + 0x1c) >>> 0) >>> 0
   const ownerDist = AI_CalcApproxUnitDistSubtiles113c(m, pUnit, pOwner) | 0
   if (ownerDist > 0x32) {
-    D2Game_6FC3CAE0_113c(m, pUnit, pGame, pOwner, 3, 0, 0, 0)
+    D2Game_6FC3CAE0_113c(m, pUnit, pGame, pOwner, 3, 0, 0, 0, ops)
     return
   }
 
-  const walkFrames = i16(m, (pMonStatsTxt + 0x32) >>> 0)
+  const walkFrames = pMonStatsTxt !== 0 ? i16(m, (pMonStatsTxt + 0x32) >>> 0) : 0
   let speedBonus = 100
   if (walkFrames > 0) {
     speedBonus = (Math.trunc(imul32(i16(m, (pMonStatsTxt + 0x34) >>> 0), 100) / walkFrames) - 100) | 0
@@ -1152,7 +1453,7 @@ export function D2Game_6FC3E640_113c(
     }
   }
   if (ownerDist > 0x1c) {
-    D2Game_6FC3CAE0_113c(m, pUnit, pGame, pOwner, 0, 0, speedBonus, 0)
+    D2Game_6FC3CAE0_113c(m, pUnit, pGame, pOwner, 0, 0, speedBonus, 0, ops)
     return
   }
 
@@ -1163,7 +1464,10 @@ export function D2Game_6FC3E640_113c(
   try {
     m.setU32(sp, 0)
     m.setU32((sp + 4) >>> 0, 0)
-    let pOwnerTarget = aiFindTarget6FCD1C90(m, pGame, pOwner, pAiControl, sp, (sp + 4) >>> 0)
+    let pOwnerTarget =
+      ops !== undefined
+        ? findTargetForPlayerOrPet6FCD1C90W13B1(m, pGame, pOwner, pAiControl, sp, (sp + 4) >>> 0)
+        : aiFindTarget6FCD1C90(m, pGame, pOwner, pAiControl, sp, (sp + 4) >>> 0)
     if (pOwnerTarget !== 0) {
       const deadFlag = (m.u32((pOwnerTarget + 0xc4) >>> 0) >>> 0x1e) & 1
       m.setU32((sp + 4) >>> 0, deadFlag)
@@ -1171,7 +1475,10 @@ export function D2Game_6FC3E640_113c(
         pOwnerTarget = 0
       }
     }
-    const pSelfTarget = aiFindTarget6FCD1C90(m, pGame, pUnit, pAiControl, sp, (sp + 4) >>> 0)
+    const pSelfTarget =
+      ops !== undefined
+        ? findTargetForPlayerOrPet6FCD1C90W13B1(m, pGame, pUnit, pAiControl, sp, (sp + 4) >>> 0)
+        : aiFindTarget6FCD1C90(m, pGame, pUnit, pAiControl, sp, (sp + 4) >>> 0)
     const selfDist = i32(m, sp)
     if (pSelfTarget !== 0 && selfDist <= 0x18 && selfDist <= 6) {
       pTarget = pSelfTarget
@@ -1181,48 +1488,72 @@ export function D2Game_6FC3E640_113c(
         pTarget = pOwnerTarget
       }
     }
-    bInMelee = m.u32((sp + 4) >>> 0) >>> 0
+    if (ops !== undefined) {
+      if (pTarget !== 0) {
+        bInMelee = UNITS_CanUnitMeleeAttackTarget113c(m, pUnit, pTarget, 0) !== 0 ? 1 : 0
+      }
+    } else {
+      bInMelee = m.u32((sp + 4) >>> 0) >>> 0
+    }
   } finally {
     k2W13B1StackPtr = sp
   }
 
-  if (MONAI_CheckLineOfWalkFreeCoordsBetweenUnits_6FCD0E90_113c(m, pTarget, pUnit) === 0) {
+  if (MONAI_CheckLineOfWalkFreeCoordsBetweenUnits_6FCD0E90_113c(m, pUnit, pTarget) === 0) {
     pTarget = 0
   }
 
   const leashRoll = (stepSeed64At113c(m, (pUnit + 0x20) >>> 0) >>> 0) % 100
   const followRc =
     leashRoll < 0x0f
-      ? D2Game_6FC3E140_113c(m, pOwner, pGame, pUnit, pTarget, bInMelee, 1, 8)
-      : D2Game_6FC3E140_113c(m, pOwner, pGame, pUnit, pTarget, bInMelee, 0, 7)
+      ? D2Game_6FC3E140_113c(m, pOwner, pGame, pUnit, pTarget, bInMelee, 1, 8, ops)
+      : D2Game_6FC3E140_113c(m, pOwner, pGame, pUnit, pTarget, bInMelee, 0, 7, ops)
   if (followRc !== 0) {
     return
   }
 
   if (pTarget === 0 || DUNGEON_CheckRoomIsTownMemPort113c(m, UNITS_GetRoom113c(m, pUnit)) !== 0) {
-    AI_WalkWanderAroundSelf_6FD129B0_113c(m, 4, pGame, pUnit)
-    return
-  }
-
-  if (DUNGEON_CheckRoomIsTownMemPort113c(m, UNITS_GetRoom113c(m, pUnit)) !== 0) {
-    AI_Stall113c(m, pGame, pUnit, 0x14)
+    AI_WalkWanderAroundSelf_6FD129B0_113c(
+      m,
+      4,
+      pGame,
+      pUnit,
+      ops !== undefined ? { world: ops.world } : undefined,
+    )
     return
   }
 
   if (bInMelee !== 0) {
     if ((SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0) < 0x50) {
-      AI_StartAttackMode113c(m, 4, pUnit, pGame, pTarget)
+      if (ops !== undefined) {
+        ops.startMode(pUnit, 4, pTarget, 0, 0)
+      } else {
+        AI_StartAttackMode113c(m, 4, pUnit, pGame, pTarget)
+      }
       return
     }
-    AI_Stall113c(m, pGame, pUnit, 0x0a)
+    if (ops !== undefined) ops.stall(pUnit, 0x0a)
+    else AI_Stall113c(m, pGame, pUnit, 0x0a)
+    return
+  }
+
+  if (ops !== undefined) {
+    AI_ApproachTargetPathType13_6FD13000_113c(m, pUnit, pTarget, pGame, 7, {
+      onMonsterStartMode: () => 1,
+    })
+    if (pAiControl !== 0) {
+      m.setU32((pAiControl + 0x18) >>> 0, 0x0d)
+      m.setU8((pAiControl + 0x20) >>> 0, 0x0c)
+    }
+    ops.approachTarget(pUnit, pTarget, 2, 0, 0, 1, 7)
     return
   }
 
   let pAiCtrlField2C = 0
   if ((m.u32(pUnit >>> 0) >>> 0) === 1) {
-    const pMonData = m.u32((pUnit + 0x14) >>> 0) >>> 0
-    if (pMonData !== 0) {
-      pAiCtrlField2C = m.u32((pMonData + 0x2c) >>> 0) >>> 0
+    const pMonData2 = m.u32((pUnit + 0x14) >>> 0) >>> 0
+    if (pMonData2 !== 0) {
+      pAiCtrlField2C = m.u32((pMonData2 + 0x2c) >>> 0) >>> 0
     }
   }
   if (pAiCtrlField2C !== 0) {

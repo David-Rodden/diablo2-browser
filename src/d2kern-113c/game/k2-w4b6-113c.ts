@@ -1866,7 +1866,7 @@ export function SKILLS_ApplyMeleeHitAuraStatesAndExecuteEvents_6FCC3220_113c(
   }
   const wMonStatIcon = sx16(m.u16(pSkillsTxt + 0x4e));
   if (wMonStatIcon > 0 && wMonStatIcon <= (m.u32(pDataTables + 0xbc0) | 0)) {
-    SUNIT_ValidatePathTargetUnit113c(m, pGame, pUnit);
+    SUNIT_ValidatePathTargetUnit113c(m, pUnit, pGame);
     const pTarget = PATH_GetTargetUnit113c(m, m.u32(pUnit + 0x2c));
     if (pTarget === pUnit || pTarget === 0) {
       return 0;
@@ -1883,7 +1883,7 @@ export function SKILLS_ApplyMeleeHitAuraStatesAndExecuteEvents_6FCC3220_113c(
   if (wAuraTargetState >= 0) {
     const pDt = getDataTablesPtr113c(m);
     if (wAuraTargetState < (m.u32(pDt + 0xc4) | 0)) {
-      SUNIT_ValidatePathTargetUnit113c(m, pGame, pUnit);
+      SUNIT_ValidatePathTargetUnit113c(m, pUnit, pGame);
       const pTarget = PATH_GetTargetUnit113c(m, m.u32(pUnit + 0x2c));
       if (pTarget === pUnit || pTarget === 0) {
         return 0;
@@ -1944,7 +1944,7 @@ export function SKILLS_ApplyMeleeHitAuraStatesAndExecuteEvents_6FCC3220_113c(
   if (pUnit !== 0) {
     m.setU32(pUnit + 0xc4, m.u32(pUnit + 0xc4) | 0x40);
   }
-  SUNIT_ValidatePathTargetUnit113c(m, pGame, pUnit);
+  SUNIT_ValidatePathTargetUnit113c(m, pUnit, pGame);
   const pFinalTarget = PATH_GetTargetUnit113c(m, m.u32(pUnit + 0x2c));
   if (pFinalTarget === pUnit || pFinalTarget === 0) {
     return 0;

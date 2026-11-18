@@ -497,3 +497,122 @@ export function tToolbar(key: ToolbarI18nKey, lang: GameLang = getGameLang()): s
   return lang === 'en' ? entry.en : entry.zh
 }
 
+export type QuestQolI18nKey =
+  | 'quest.orifice.wrongDifficulty'
+  | 'quest.orifice.uncombinedPieces'
+  | 'quest.orifice.missingStaff'
+  | 'quest.compellingOrb.wrongDifficulty'
+  | 'quest.compellingOrb.equipRequired'
+  | 'quest.compellingOrb.missingWill'
+  | 'quest.hellforge.alreadyCompleted'
+  | 'quest.hellforge.soulstoneWrongDifficulty'
+  | 'quest.hellforge.missingSoulstone'
+  | 'quest.hellforge.hammerWrongDifficulty'
+  | 'quest.hellforge.equipHammerRequired'
+  | 'quest.hellforge.missingHammer'
+  | 'quest.cairnStones.wrongDifficulty'
+  | 'quest.cairnStones.undecipheredScroll'
+  | 'quest.cairnStones.missingScroll'
+  | 'quest.cube.wrongDifficulty'
+  | 'quest.tooltip.difficulty.normal'
+  | 'quest.tooltip.difficulty.nightmare'
+  | 'quest.tooltip.difficulty.hell'
+
+const QUEST_QOL_I18N: Record<QuestQolI18nKey, { readonly zh: string; readonly en: string }> = {
+  'quest.orifice.wrongDifficulty': {
+    zh: '这根赫拉迪克法杖属于低难度，需在当前难度重新合成（国王之杖 + 蝮蛇护身符）。',
+    en: 'This Horadric Staff is from an earlier difficulty; transmute a new one here (Staff of Kings + Amulet of the Viper).',
+  },
+  'quest.orifice.uncombinedPieces': {
+    zh: '请先用赫拉迪克方块将国王之杖与蝮蛇护身符合成赫拉迪克法杖。',
+    en: 'Transmute the Staff of Kings and Amulet of the Viper in the Horadric Cube to create the Horadric Staff first.',
+  },
+  'quest.orifice.missingStaff': {
+    zh: '你需要携带赫拉迪克法杖（国王之杖 + 蝮蛇护身符合成）。',
+    en: 'You need the Horadric Staff (transmute Staff of Kings + Amulet of the Viper).',
+  },
+  'quest.compellingOrb.wrongDifficulty': {
+    zh: '这把克林姆的意志属于低难度，需在当前难度重新合成（连枷 + 眼球 + 心脏 + 大脑）。',
+    en: "This Khalim's Will is from an earlier difficulty; transmute a new one here (Flail + Eye + Heart + Brain).",
+  },
+  'quest.compellingOrb.equipRequired': {
+    zh: '请先将克林姆的意志装备在当前主手武器栏，再敲击强制之球。',
+    en: "Equip Khalim's Will in your active weapon slot before striking the Compelling Orb.",
+  },
+  'quest.compellingOrb.missingWill': {
+    zh: '你需要装备克林姆的意志才能摧毁强制之球（连枷 + 眼球 + 心脏 + 大脑合成）。',
+    en: "You must wield Khalim's Will to smash the Compelling Orb (transmute Flail + Eye + Heart + Brain).",
+  },
+  'quest.hellforge.alreadyCompleted': {
+    zh: '你已完成当前难度的地狱熔炉任务。',
+    en: "You have already completed the Hell's Forge quest in this difficulty.",
+  },
+  'quest.hellforge.soulstoneWrongDifficulty': {
+    zh: '这块墨菲斯托的灵魂之石属于低难度，请找凯恩领取当前难度的灵魂之石。',
+    en: "This Mephisto's Soulstone is from an earlier difficulty; speak to Cain for one from this difficulty.",
+  },
+  'quest.hellforge.missingSoulstone': {
+    zh: '你需要携带墨菲斯托的灵魂之石（若遗失可找凯恩重新领取）。',
+    en: "You need Mephisto's Soulstone (speak to Deckard Cain if you lost it).",
+  },
+  'quest.hellforge.hammerWrongDifficulty': {
+    zh: '这把地狱熔炉铁锤属于低难度，需击败当前难度的铁匠海法斯特获取。',
+    en: 'This Hellforge Hammer is from an earlier difficulty; defeat Hephasto the Armorer in this difficulty.',
+  },
+  'quest.hellforge.equipHammerRequired': {
+    zh: '请先将地狱熔炉铁锤装备在当前主手武器栏，再敲击地狱熔炉。',
+    en: 'Equip the Hellforge Hammer in your active weapon slot before striking the Hellforge.',
+  },
+  'quest.hellforge.missingHammer': {
+    zh: '你需要装备地狱熔炉铁锤才能敲碎灵魂之石。',
+    en: "You must wield the Hellforge Hammer to smash Mephisto's Soulstone.",
+  },
+  'quest.cairnStones.wrongDifficulty': {
+    zh: '这份凯恩之石卷轴属于低难度，需在当前难度获取艾尼弗斯卷轴并找阿卡拉解读。',
+    en: 'This Scroll of Inifuss is from an earlier difficulty; obtain a new one in the Dark Wood and have Akara decipher it.',
+  },
+  'quest.cairnStones.undecipheredScroll': {
+    zh: '请先回城找阿卡拉解读艾尼弗斯卷轴，再按卷轴顺序触碰凯恩之石。',
+    en: 'Have Akara decipher the Scroll of Inifuss first, then touch the Cairn Stones in order.',
+  },
+  'quest.cairnStones.missingScroll': {
+    zh: '你需要先在黑暗森林找到艾尼弗斯之树取得卷轴，并找阿卡拉解读。',
+    en: 'Find the Scroll of Inifuss at the Tree of Inifuss in the Dark Wood and have Akara decipher it first.',
+  },
+  'quest.cube.wrongDifficulty': {
+    zh: '赫拉迪克方块中的任务物品属于低难度，无法在当前难度合成。',
+    en: 'A quest item in the Horadric Cube is from an earlier difficulty and cannot be transmuted here.',
+  },
+  'quest.tooltip.difficulty.normal': { zh: '普通', en: 'Normal' },
+  'quest.tooltip.difficulty.nightmare': { zh: '噩梦', en: 'Nightmare' },
+  'quest.tooltip.difficulty.hell': { zh: '地狱', en: 'Hell' },
+}
+
+export function tQuestQol(key: QuestQolI18nKey, lang: GameLang = getGameLang()): string {
+  const entry = QUEST_QOL_I18N[key]
+  return lang === 'en' ? entry.en : entry.zh
+}
+
+export function formatQuestItemDifficultyTooltipLine(
+  itemDifficulty: 0 | 1 | 2,
+  mismatch: boolean,
+  lang: GameLang = getGameLang(),
+): string {
+  const diffKey: QuestQolI18nKey =
+    itemDifficulty === 2
+      ? 'quest.tooltip.difficulty.hell'
+      : itemDifficulty === 1
+        ? 'quest.tooltip.difficulty.nightmare'
+        : 'quest.tooltip.difficulty.normal'
+  const diffLabel = tQuestQol(diffKey, lang)
+  if (lang === 'en') {
+    return mismatch
+      ? `Quest Difficulty: ${diffLabel} (Unusable Here)`
+      : `Quest Difficulty: ${diffLabel}`
+  }
+  return mismatch
+    ? `任务难度: ${diffLabel} (当前难度不可用)`
+    : `任务难度: ${diffLabel}`
+}
+
+

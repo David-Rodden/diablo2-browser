@@ -68,6 +68,7 @@ import {
   STATLIST_GetUnitLifePercent113c,
   STATLIST_GetUnitStat113c,
   STATLIST_SetUnitStat113c,
+  registerStatListOnValueHandler113c,
 } from '../common/statlist.js'
 import {
   UNITS_GetAnimOrSeqMode113c,
@@ -75,9 +76,11 @@ import {
   UNITS_HasAnyGfxStateFlag113c,
   UNITS_SetUnitUpdateFlags113c,
 } from '../common/unit.js'
-import type { Memory113c } from '../mem/sparse-memory.ts'
+import type { Memory113c, SparseMemory113c } from '../mem/sparse-memory.ts'
 
 export type D2Ptr = number
+
+let bootGapBStackPtr = 0x7fb80000
 
 function i8(v: number): number {
   return (v << 24) >> 24
@@ -96,6 +99,26 @@ import {
   SUNITDMG_GetPlayerClientClassId113c,
 } from './combat-a1c-113c.js'
 import { SUNIT_GetServerUnit113c } from './game-strc.js'
+import {
+  ITEMS_ActivateEquippedItemStats113c,
+  ITEMS_DeactivateEquippedItemStats113c,
+  ITEMS_RegisterItemEventCallback113c,
+} from './k2-gap-itemdef-113c.js'
+import {
+  ITEMEVENT_RemoveByTypeAndState113c,
+  NET_SendPacket0x23_AssignSkill113c,
+  SKILLS_AssignHandSkillAndSyncAura113c,
+} from './k2-gap-melee-dot-113c.js'
+import { SUNIT_FindItemEventNode113c } from './k2-items-tc-w1-113c.js'
+import { SKILLS_RefreshPassiveSkillsAndIconsOnUnit_6FCBE370_113c } from './k2-w2b4-113c.js'
+import { ITEMS_OnInsertOrEquipUpdateStats_6FCF4FF0_113c } from './k2-w2b8-113c.js'
+import { NET_SendPacket21_UpdateUnitSkill_6FCAD5F0_113c } from './k2-w4b5-113c.js'
+import { STATES_ClearSameGroupStatesOnUnit_6FCBEA30_113c } from './k2-w4b6-113c.js'
+import {
+  SKILLS_RemoveAuraStateAndEvent9OnSkillChange_6FCCD050_113c,
+  SKILLS_RestartAuraEvent9AndTriggerOnSkillChange_6FCCDB30_113c,
+} from './k2-w4b7-113c.js'
+import { PETS_RecalcAndClampPlayerPetTypeForSkill_6FCBF600_113c } from './k2-w9b1-113c.js'
 import {
   SKILLS_GetRecordPtrFast113c,
   SUNIT_ValidatePathTargetUnit113c,
@@ -232,6 +255,7 @@ export interface BootInitGapBCallees113c {
   ) => void
   findMercPetType?: (mem: Memory113c, pGame: D2Ptr, pPlayer: D2Ptr, pMonster: D2Ptr) => number
   onMonsterSyncGfxStates?: (mem: Memory113c, pUnit: D2Ptr, pClient: D2Ptr) => void
+  onMonsterSyncFlag8000?: (mem: Memory113c, pUnit: D2Ptr, pClient: D2Ptr) => void
   onMonsterSyncStatFlag100?: (mem: Memory113c, pUnit: D2Ptr, pClient: D2Ptr) => void
   onMonsterSyncBossMods?: (mem: Memory113c, pUnit: D2Ptr, pClient: D2Ptr) => void
 }
@@ -1058,7 +1082,8 @@ export function D2GAME_SUNIT_SyncUnitStateToClient113c(
     return
   }
   const unitType = mem.u32(pUnit) >>> 0
-  const hasFlag10 = ((mem.u32(pUnit + 0xc4) >>> 4) & 1) !== 0
+  const unitFlags = mem.u32(pUnit + 0xc4) >>> 0
+  const hasFlag10 = (unitFlags & 0x10) !== 0 && (unitFlags & 0x800) === 0
   let bPreSynced = 0
   if (hasFlag10) {
     const pSpecial =
@@ -1601,8 +1626,14 @@ export function D2GAME_ITEMS_RestoreUnitSkillsFromSnapshot113c(
     const pSkill = SKILLS_GetSkillById113c(mem, pUnit, nLeftSkillId, dwLeftOwnerGuid)
     if (pSkill !== 0 && pSkill !== UNITS_GetLeftSkill113c(mem, pUnit)) {
       const failReason = SKILLS_GetSkillUseFailReason113c(mem, pUnit, pSkill)
-      if (failReason !== 2 && failReason !== 7 && callees && callees.assignUnitSkill) {
-        callees.assignUnitSkill(mem, pUnit, 1, nLeftSkillId, dwLeftOwnerGuid)
+      if (failReason !== 2 && failReason !== 7) {
+        if (callees !== undefined) {
+          if (callees.assignUnitSkill) {
+            callees.assignUnitSkill(mem, pUnit, 1, nLeftSkillId, dwLeftOwnerGuid)
+          }
+        } else {
+          SKILLS_AssignHandSkillAndSyncAura113c(mem, pUnit, 1, nLeftSkillId, dwLeftOwnerGuid)
+        }
       }
     }
   }
@@ -1612,8 +1643,14 @@ export function D2GAME_ITEMS_RestoreUnitSkillsFromSnapshot113c(
     const pSkill = SKILLS_GetSkillById113c(mem, pUnit, nRightSkillId, dwRightOwnerGuid)
     if (pSkill !== 0 && pSkill !== UNITS_GetRightSkill113c(mem, pUnit)) {
       const failReason = SKILLS_GetSkillUseFailReason113c(mem, pUnit, pSkill)
-      if (failReason !== 2 && failReason !== 7 && callees && callees.assignUnitSkill) {
-        callees.assignUnitSkill(mem, pUnit, 0, nRightSkillId, dwRightOwnerGuid)
+      if (failReason !== 2 && failReason !== 7) {
+        if (callees !== undefined) {
+          if (callees.assignUnitSkill) {
+            callees.assignUnitSkill(mem, pUnit, 0, nRightSkillId, dwRightOwnerGuid)
+          }
+        } else {
+          SKILLS_AssignHandSkillAndSyncAura113c(mem, pUnit, 0, nRightSkillId, dwRightOwnerGuid)
+        }
       }
     }
   }
@@ -1634,124 +1671,145 @@ export function D2GAME_ITEMS_UpdateAllInventoryAndEquipmentStats113c(
   if ((mem.u32(pUnit) >>> 0) !== 0 && ((mem.u32(pUnit + 0xc4) >>> 9) & 1) === 0) {
     return
   }
-  const pSnapshot = mem.alloc(0x1c)
-  D2GAME_ITEMS_SnapshotUnitStatsAndSkills113c(mem, pUnit, pSnapshot)
-  const pInventory = mem.u32(pUnit + 0x60) >>> 0
-  if (pInventory === 0) {
-    return
-  }
-  let pItemNode = INVENTORY_GetFirstItem113c(mem, pInventory)
-  while (pItemNode !== 0) {
-    const pItem = INVENTORY_UnitIsItem113c(mem, pItemNode)
-    if (
-      pItem !== 0 &&
-      INVENTORY_GetItemNodePositionOther113c(mem, pItemNode) === 1 &&
-      ITEMS_CanUseCharmInInventory113c(mem, pItem, pUnit) !== 0 &&
-      STATLIST_GetOwnerAndDynamicFlag113c(mem, pItem, 0) === 0 &&
-      D2GAME_ITEMS_CheckEquipAndAmmoRequirements113c(mem, pUnit, pItem) !== 0
-    ) {
-      ITEMS_SetOrClearCommandFlags113c(mem, pItem, 0x4000, 0)
-      if (callees && callees.applyCharmItemStats) {
-        callees.applyCharmItemStats(mem, pUnit, pItem, pGame)
-      }
+  const savedSp = bootGapBStackPtr
+  bootGapBStackPtr = (savedSp + 0x20) >>> 0
+  const pSnapshot = savedSp
+  try {
+    D2GAME_ITEMS_SnapshotUnitStatsAndSkills113c(mem, pUnit, pSnapshot)
+    const pInventory = mem.u32(pUnit + 0x60) >>> 0
+    if (pInventory === 0) {
+      return
     }
-    pItemNode = INVENTORY_GetNextItem113c(mem, pItemNode)
-  }
-
-  let bChanged = 1
-  while (bChanged !== 0) {
-    for (let bodyLoc = 1; bodyLoc < 11; bodyLoc += 1) {
-      const pItem = INVENTORY_GetItemFromBodyLocMemPort113c(mem, pInventory, bodyLoc)
-      if (pItem === 0) {
-        continue
-      }
+    let pItemNode = INVENTORY_GetFirstItem113c(mem, pInventory)
+    while (pItemNode !== 0) {
+      const pItem = INVENTORY_UnitIsItem113c(mem, pItemNode)
       if (
-        ITEMS_CheckCommandFlags113c(mem, pItem, 0x100) !== 0 &&
-        STATLIST_GetOwnerAndDynamicFlag113c(mem, pItem, 0) === 0
+        pItem !== 0 &&
+        INVENTORY_GetItemNodePositionOther113c(mem, pItemNode) === 1 &&
+        ITEMS_CanUseCharmInInventory113c(mem, pItem, pUnit) !== 0 &&
+        STATLIST_GetOwnerAndDynamicFlag113c(mem, pItem, 0) === 0 &&
+        D2GAME_ITEMS_CheckEquipAndAmmoRequirements113c(mem, pUnit, pItem) !== 0
       ) {
-        continue
-      }
-      if (
-        ITEMS_CheckCommandFlags113c(mem, pItem, 0x4000) !== 0 &&
-        STATLIST_GetOwnerAndDynamicFlag113c(mem, pItem, 0) === 0
-      ) {
-        continue
-      }
-      if (D2GAME_ITEMS_CheckEquipAndAmmoRequirements113c(mem, pUnit, pItem) === 0) {
-        ITEMS_SetOrClearCommandFlags113c(mem, pItem, 0x4000, 1)
-        const pCurInv = mem.u32(pUnit + 0x60) >>> 0
-        INVENTORY_UpdateWeaponGuidOnRemoval113c(mem, pCurInv, pItem)
-        if (
-          UNITS_GetAnimOrSeqMode113c(mem, pItem) === 1 &&
-          callees &&
-          callees.deactivateEquippedItemStats
-        ) {
-          callees.deactivateEquippedItemStats(mem, pUnit, pItem, pGame, 1, 1)
+        ITEMS_SetOrClearCommandFlags113c(mem, pItem, 0x4000, 0)
+        if (callees !== undefined) {
+          if (callees.applyCharmItemStats) {
+            callees.applyCharmItemStats(mem, pUnit, pItem, pGame)
+          }
+        } else {
+          ITEMS_OnInsertOrEquipUpdateStats_6FCF4FF0_113c(mem, pUnit, pItem, pGame)
         }
       }
+      pItemNode = INVENTORY_GetNextItem113c(mem, pItemNode)
     }
 
-    bChanged = 0
-    for (let bodyLoc = 1; bodyLoc < 11; bodyLoc += 1) {
-      const pItem = INVENTORY_GetItemFromBodyLocMemPort113c(mem, pInventory, bodyLoc)
-      if (pItem === 0) {
-        continue
-      }
-      if (ITEMS_CheckCommandFlags113c(mem, pItem, 0x100) !== 0) {
-        continue
-      }
-      if (
-        ITEMS_CheckCommandFlags113c(mem, pItem, 0x4000) === 0 &&
-        STATLIST_GetOwnerAndDynamicFlag113c(mem, pItem, 0) !== 0
-      ) {
-        continue
-      }
-      if (D2GAME_ITEMS_CheckEquipAndAmmoRequirements113c(mem, pUnit, pItem) === 0) {
-        continue
-      }
-      ITEMS_SetOrClearCommandFlags113c(mem, pItem, 0x4000, 0)
-      const pCurInv = mem.u32(pUnit + 0x60) >>> 0
-      if (pCurInv !== 0) {
-        const loc = ITEMS_GetBodyLocation113c(mem, pItem) & 0xff
-        if (loc !== 11 && loc !== 12) {
-          INVENTORY_UpdateWeaponGuidOnInsert113c(mem, pCurInv, pItem)
-          const itemMode = UNITS_GetAnimOrSeqMode113c(mem, pItem)
-          const canActivate =
-            itemMode === 1 ||
-            (itemMode === 0 && ITEMS_CanUseCharmInInventory113c(mem, pItem, pUnit) !== 0)
-          if (canActivate && callees && callees.activateEquippedItemStats) {
-            callees.activateEquippedItemStats(mem, pUnit, pItem, 1)
+    let bChanged = 1
+    while (bChanged !== 0) {
+      for (let bodyLoc = 1; bodyLoc < 11; bodyLoc += 1) {
+        const pItem = INVENTORY_GetItemFromBodyLocMemPort113c(mem, pInventory, bodyLoc)
+        if (pItem === 0) {
+          continue
+        }
+        if (
+          ITEMS_CheckCommandFlags113c(mem, pItem, 0x100) !== 0 &&
+          STATLIST_GetOwnerAndDynamicFlag113c(mem, pItem, 0) === 0
+        ) {
+          continue
+        }
+        if (
+          ITEMS_CheckCommandFlags113c(mem, pItem, 0x4000) !== 0 &&
+          STATLIST_GetOwnerAndDynamicFlag113c(mem, pItem, 0) === 0
+        ) {
+          continue
+        }
+        if (D2GAME_ITEMS_CheckEquipAndAmmoRequirements113c(mem, pUnit, pItem) === 0) {
+          ITEMS_SetOrClearCommandFlags113c(mem, pItem, 0x4000, 1)
+          const pCurInv = mem.u32(pUnit + 0x60) >>> 0
+          INVENTORY_UpdateWeaponGuidOnRemoval113c(mem, pCurInv, pItem)
+          if (UNITS_GetAnimOrSeqMode113c(mem, pItem) === 1) {
+            if (callees !== undefined) {
+              if (callees.deactivateEquippedItemStats) {
+                callees.deactivateEquippedItemStats(mem, pUnit, pItem, pGame, 1, 1)
+              }
+            } else {
+              ITEMS_DeactivateEquippedItemStats113c(mem, pUnit, pItem, pGame, 1, 1)
+            }
           }
         }
       }
-      bChanged = 1
-    }
-  }
 
-  for (let bodyLoc = 1; bodyLoc < 11; bodyLoc += 1) {
-    const pItem = INVENTORY_GetItemFromBodyLocMemPort113c(mem, pInventory, bodyLoc)
-    if (pItem === 0) {
-      continue
+      bChanged = 0
+      for (let bodyLoc = 1; bodyLoc < 11; bodyLoc += 1) {
+        const pItem = INVENTORY_GetItemFromBodyLocMemPort113c(mem, pInventory, bodyLoc)
+        if (pItem === 0) {
+          continue
+        }
+        if (ITEMS_CheckCommandFlags113c(mem, pItem, 0x100) !== 0) {
+          continue
+        }
+        if (
+          ITEMS_CheckCommandFlags113c(mem, pItem, 0x4000) === 0 &&
+          STATLIST_GetOwnerAndDynamicFlag113c(mem, pItem, 0) !== 0
+        ) {
+          continue
+        }
+        if (D2GAME_ITEMS_CheckEquipAndAmmoRequirements113c(mem, pUnit, pItem) === 0) {
+          continue
+        }
+        ITEMS_SetOrClearCommandFlags113c(mem, pItem, 0x4000, 0)
+        if (callees !== undefined) {
+          const pCurInv = mem.u32(pUnit + 0x60) >>> 0
+          if (pCurInv !== 0) {
+            const loc = ITEMS_GetBodyLocation113c(mem, pItem) & 0xff
+            if (loc !== 11 && loc !== 12) {
+              INVENTORY_UpdateWeaponGuidOnInsert113c(mem, pCurInv, pItem)
+              const itemMode = UNITS_GetAnimOrSeqMode113c(mem, pItem)
+              const canActivate =
+                itemMode === 1 ||
+                (itemMode === 0 && ITEMS_CanUseCharmInInventory113c(mem, pItem, pUnit) !== 0)
+              if (canActivate && callees.activateEquippedItemStats) {
+                callees.activateEquippedItemStats(mem, pUnit, pItem, 1)
+              }
+            }
+          }
+        } else {
+          ITEMS_OnInsertOrEquipUpdateStats_6FCF4FF0_113c(mem, pUnit, pItem, pGame)
+        }
+        bChanged = 1
+      }
     }
-    if (ITEMS_GetItemQuality113c(mem, pItem) !== 5) {
-      continue
-    }
-    if (
-      ITEMS_CheckCommandFlags113c(mem, pItem, 0x100) !== 0 ||
-      ITEMS_CheckCommandFlags113c(mem, pItem, 0x4000) !== 0
-    ) {
-      continue
-    }
-    if (callees && callees.deactivateEquippedItemStats) {
-      callees.deactivateEquippedItemStats(mem, pUnit, pItem, pGame, 1, 1)
-    }
-    if (callees && callees.activateEquippedItemStats) {
-      callees.activateEquippedItemStats(mem, pUnit, pItem, 1)
-    }
-  }
 
-  D2GAME_ITEMS_RestoreUnitSkillsFromSnapshot113c(mem, pUnit, pSnapshot, callees)
-  UNITS_SetUnitUpdateFlags113c(mem, pUnit, 1)
+    for (let bodyLoc = 1; bodyLoc < 11; bodyLoc += 1) {
+      const pItem = INVENTORY_GetItemFromBodyLocMemPort113c(mem, pInventory, bodyLoc)
+      if (pItem === 0) {
+        continue
+      }
+      if (ITEMS_GetItemQuality113c(mem, pItem) !== 5) {
+        continue
+      }
+      if (
+        ITEMS_CheckCommandFlags113c(mem, pItem, 0x100) !== 0 ||
+        ITEMS_CheckCommandFlags113c(mem, pItem, 0x4000) !== 0
+      ) {
+        continue
+      }
+      if (callees !== undefined) {
+        if (callees.deactivateEquippedItemStats) {
+          callees.deactivateEquippedItemStats(mem, pUnit, pItem, pGame, 1, 1)
+        }
+        if (callees.activateEquippedItemStats) {
+          callees.activateEquippedItemStats(mem, pUnit, pItem, 1)
+        }
+      } else {
+        ITEMS_DeactivateEquippedItemStats113c(mem, pUnit, pItem, pGame, 1, 1)
+        ITEMS_ActivateEquippedItemStats113c(mem, pUnit, pItem, 1)
+      }
+    }
+
+    D2GAME_ITEMS_RestoreUnitSkillsFromSnapshot113c(mem, pUnit, pSnapshot, callees)
+    UNITS_SetUnitUpdateFlags113c(mem, pUnit, 1)
+  } finally {
+    bootGapBStackPtr = savedSp
+  }
 
   if (bSendPacket === 0) {
     return
@@ -1809,11 +1867,11 @@ export function D2GAME_ITEMSTAT_OnStatChangedCallback113c(
   dwStatAndLayer: number,
   nOldValue: number,
   nNewValue: number,
-  sgptDataTablesPtr: D2Ptr,
+  sgptDataTablesPtr: D2Ptr = 0x6fd1829c,
   callees?: BootInitGapBCallees113c,
 ): void {
   hitD2GameVa113c(0x6FCF9470)
-  if (pGame === 0 || pUnit === 0 || sgptDataTablesPtr === 0) {
+  if (pGame === 0 || pUnit === 0) {
     return
   }
   const nStatId = (dwStatAndLayer >>> 16) | 0
@@ -1821,7 +1879,24 @@ export function D2GAME_ITEMSTAT_OnStatChangedCallback113c(
   if (nStatId < 0) {
     return
   }
-  const pDataTables = mem.u32(sgptDataTablesPtr) >>> 0
+  let pDataTables = 0
+  if (sgptDataTablesPtr !== 0) {
+    try {
+      const ptrVal = mem.u32(sgptDataTablesPtr) >>> 0
+      if (ptrVal !== 0) {
+        pDataTables = sgptDataTablesPtr === 0x6fd1829c ? (mem.u32(ptrVal) >>> 0) : ptrVal
+      }
+    } catch {
+      pDataTables = 0
+    }
+  }
+  if (pDataTables === 0 && callees === undefined) {
+    try {
+      pDataTables = mem.u32(0x6fde9e1c) >>> 0
+    } catch {
+      pDataTables = 0
+    }
+  }
   if (pDataTables === 0) {
     return
   }
@@ -1840,40 +1915,74 @@ export function D2GAME_ITEMSTAT_OnStatChangedCallback113c(
   if (wMonEv1 > 0) {
     if (nNewValue !== 0) {
       const alreadyHas =
-        callees && callees.hasMonEventEntry
-          ? callees.hasMonEventEntry(mem, pUnit, 2, dwStatAndLayer)
-          : 0
+        callees !== undefined
+          ? callees.hasMonEventEntry
+            ? callees.hasMonEventEntry(mem, pUnit, 2, dwStatAndLayer)
+            : 0
+          : SUNIT_FindItemEventNode113c(mem, pUnit, 2, dwStatAndLayer, dwStatAndLayer)
       if (alreadyHas === 0) {
         const wFunc1 = i16(mem.u16(pRecord + 0x4c))
-        if (callees && callees.registerMonEventEntry) {
-          callees.registerMonEventEntry(
-            mem,
-            pUnit,
-            2,
-            dwStatAndLayer,
-            wFunc1,
-            wMonEv1,
-            dwItemGuid,
-          )
-        }
-        const wMonEv2 = i16(mem.u16(pRecord + 0x4a))
-        if (wMonEv2 > 0) {
-          const wFunc2 = i16(mem.u16(pRecord + 0x4e))
-          if (callees && callees.registerMonEventEntry) {
+        if (callees !== undefined) {
+          if (callees.registerMonEventEntry) {
             callees.registerMonEventEntry(
               mem,
               pUnit,
               2,
               dwStatAndLayer,
-              wFunc2,
-              wMonEv2,
+              wFunc1,
+              wMonEv1,
               dwItemGuid,
+            )
+          }
+        } else {
+          ITEMS_RegisterItemEventCallback113c(
+            mem,
+            wFunc1,
+            dwStatAndLayer,
+            2,
+            pUnit,
+            pGame,
+            wMonEv1,
+            dwStatAndLayer,
+            0,
+          )
+        }
+        const wMonEv2 = i16(mem.u16(pRecord + 0x4a))
+        if (wMonEv2 > 0) {
+          const wFunc2 = i16(mem.u16(pRecord + 0x4e))
+          if (callees !== undefined) {
+            if (callees.registerMonEventEntry) {
+              callees.registerMonEventEntry(
+                mem,
+                pUnit,
+                2,
+                dwStatAndLayer,
+                wFunc2,
+                wMonEv2,
+                dwItemGuid,
+              )
+            }
+          } else {
+            ITEMS_RegisterItemEventCallback113c(
+              mem,
+              wFunc2,
+              dwStatAndLayer,
+              2,
+              pUnit,
+              pGame,
+              wMonEv2,
+              dwStatAndLayer,
+              0,
             )
           }
         }
       }
-    } else if (callees && callees.unregisterMonEventEntries) {
-      callees.unregisterMonEventEntries(mem, pUnit, 2, dwStatAndLayer, dwItemGuid)
+    } else if (callees !== undefined) {
+      if (callees.unregisterMonEventEntries) {
+        callees.unregisterMonEventEntries(mem, pUnit, 2, dwStatAndLayer, dwItemGuid)
+      }
+    } else {
+      ITEMEVENT_RemoveByTypeAndState113c(mem, pUnit, pGame, 2, dwStatAndLayer)
     }
   }
 
@@ -1946,13 +2055,33 @@ export function D2GAME_ITEMSTAT_OnStatChangedCallback113c(
             pClient = mem.u32(pPlayerData + 0x9c) >>> 0
           }
         }
-        if (callees && callees.sendSkillListPacket) {
-          callees.sendSkillListPacket(mem, pClient, pUnit)
+        if (callees !== undefined) {
+          if (callees.sendSkillListPacket) {
+            callees.sendSkillListPacket(mem, pClient, pUnit)
+          }
+        } else {
+          NET_SendPacket21_UpdateUnitSkill_6FCAD5F0_113c(
+            mem as SparseMemory113c,
+            pClient,
+            pUnit,
+            nSkillId,
+            0,
+            0,
+          )
         }
       }
       STATES_ApplyMonSkillIconToUnit113c(mem, pUnit, nSkillId)
-      if (callees && callees.refreshPassiveSkillStats) {
-        callees.refreshPassiveSkillStats(mem, pUnit, nSkillId, dwItemGuid)
+      if (callees !== undefined) {
+        if (callees.refreshPassiveSkillStats) {
+          callees.refreshPassiveSkillStats(mem, pUnit, nSkillId, dwItemGuid)
+        }
+      } else {
+        PETS_RecalcAndClampPlayerPetTypeForSkill_6FCBF600_113c(
+          mem as SparseMemory113c,
+          nSkillId,
+          pUnit,
+          pGame,
+        )
       }
       if ((nNewValue | 0) > 0) {
         return
@@ -1968,20 +2097,45 @@ export function D2GAME_ITEMSTAT_OnStatChangedCallback113c(
         const pDefaultLeft = SKILLS_GetSkillById113c(mem, pUnit, 0, -1)
         if (pDefaultLeft !== 0) {
           SKILLS_SetLeftSkill113c(mem, pUnit, 0, 0xffffffff)
-          const pOutGuid = mem.alloc(4)
-          mem.setU32(pOutGuid, 0xffffffff)
-          SKILLS_GetItemSkillInfo113c(mem, pDefaultLeft, pOutGuid, 0, 0, 0)
-          if ((mem.u32(pUnit) >>> 0) === 0 && callees && callees.assignUnitSkill) {
-            callees.assignUnitSkill(mem, pUnit, 1, 0, mem.u32(pOutGuid) >>> 0)
+          const savedGuidSp = bootGapBStackPtr
+          bootGapBStackPtr = (savedGuidSp + 8) >>> 0
+          const pOutGuid = savedGuidSp
+          try {
+            mem.setU32(pOutGuid, 0xffffffff)
+            SKILLS_GetItemSkillInfo113c(mem, pDefaultLeft, pOutGuid, 0, 0, 0)
+            const outGuidVal = mem.u32(pOutGuid) >>> 0
+            if ((mem.u32(pUnit) >>> 0) === 0) {
+              if (callees !== undefined) {
+                if (callees.assignUnitSkill) {
+                  callees.assignUnitSkill(mem, pUnit, 1, 0, outGuidVal)
+                }
+              } else {
+                const pPlayerData = UNITS_GetPlayerData113c(mem, pUnit)
+                const pClient = pPlayerData !== 0 ? (mem.u32(pPlayerData + 0x9c) >>> 0) : 0
+                NET_SendPacket0x23_AssignSkill113c(
+                  mem,
+                  0,
+                  mem.u32(pUnit + 0x0c) >>> 0,
+                  pClient,
+                  1,
+                  0,
+                  outGuidVal,
+                )
+              }
+            }
+          } finally {
+            bootGapBStackPtr = savedGuidSp
           }
         }
       }
-      if (
-        UNITS_GetRightSkill113c(mem, pUnit) === pSkill &&
-        callees &&
-        callees.assignUnitSkill
-      ) {
-        callees.assignUnitSkill(mem, pUnit, 0, 0, 0xffffffff)
+      if (UNITS_GetRightSkill113c(mem, pUnit) === pSkill) {
+        if (callees !== undefined) {
+          if (callees.assignUnitSkill) {
+            callees.assignUnitSkill(mem, pUnit, 0, 0, 0xffffffff)
+          }
+        } else {
+          SKILLS_AssignHandSkillAndSyncAura113c(mem, pUnit, 0, 0, 0xffffffff)
+        }
       }
       if (bRemoveSkill !== 0) {
         SKILLS_SetSkillLevelOnUnit113c(mem, pUnit, nSkillId, 0, 1, 0, 0)
@@ -1997,33 +2151,70 @@ export function D2GAME_ITEMSTAT_OnStatChangedCallback113c(
       } else if (MONSTERS_GetHirelingTypeId113c(mem, pUnit) !== 0) {
         matchesClass = true
       } else {
-        const pScratch = mem.alloc(12)
-        mem.setU32(pScratch, mem.u32(pUnit) >>> 0)
-        mem.setU32(pScratch + 4, mem.u32(pUnit + 4) >>> 0)
-        mem.setU32(pScratch + 8, mem.u32(pUnit + 0x10) >>> 0)
-        UNITS_GetTransformGfx113c(mem, pUnit, pScratch, pScratch + 4, pScratch + 8)
-        if (mem.u32(pScratch) === 0 && (mem.u32(pScratch + 4) >>> 0) === targetClass) {
-          matchesClass = true
+        const savedGfxSp = bootGapBStackPtr
+        bootGapBStackPtr = (savedGfxSp + 0x10) >>> 0
+        const pScratch = savedGfxSp
+        try {
+          mem.setU32(pScratch, mem.u32(pUnit) >>> 0)
+          mem.setU32(pScratch + 4, mem.u32(pUnit + 4) >>> 0)
+          mem.setU32(pScratch + 8, mem.u32(pUnit + 0x10) >>> 0)
+          UNITS_GetTransformGfx113c(mem, pUnit, pScratch, pScratch + 4, pScratch + 8)
+          if (mem.u32(pScratch) === 0 && (mem.u32(pScratch + 4) >>> 0) === targetClass) {
+            matchesClass = true
+          }
+        } finally {
+          bootGapBStackPtr = savedGfxSp
         }
       }
-      if (matchesClass && callees && callees.refreshAllUnitSkills) {
-        callees.refreshAllUnitSkills(mem, pGame, pUnit)
+      if (matchesClass) {
+        if (callees !== undefined) {
+          if (callees.refreshAllUnitSkills) {
+            callees.refreshAllUnitSkills(mem, pGame, pUnit)
+          }
+        } else {
+          SKILLS_RefreshPassiveSkillsAndIconsOnUnit_6FCBE370_113c(mem, pUnit)
+        }
       }
       return
     }
     case 126:
     case 127:
-      if (callees && callees.refreshAllUnitSkills) {
-        callees.refreshAllUnitSkills(mem, pGame, pUnit)
+      if (callees !== undefined) {
+        if (callees.refreshAllUnitSkills) {
+          callees.refreshAllUnitSkills(mem, pGame, pUnit)
+        }
+      } else {
+        SKILLS_RefreshPassiveSkillsAndIconsOnUnit_6FCBE370_113c(mem, pUnit)
       }
       return
     case 151:
       if (nNewValue !== 0) {
-        if (callees && callees.applyAuraStatChange) {
-          callees.applyAuraStatChange(mem, pGame, pUnit, dwItemGuid, nLayer, nNewValue)
+        if (callees !== undefined) {
+          if (callees.applyAuraStatChange) {
+            callees.applyAuraStatChange(mem, pGame, pUnit, dwItemGuid, nLayer, nNewValue)
+          }
+        } else {
+          SKILLS_RestartAuraEvent9AndTriggerOnSkillChange_6FCCDB30_113c(
+            mem as SparseMemory113c,
+            pUnit,
+            pGame,
+            dwItemGuid,
+            nLayer,
+            nNewValue,
+          )
         }
-      } else if (callees && callees.removeAuraStatChange) {
-        callees.removeAuraStatChange(mem, pGame, pUnit, dwItemGuid)
+      } else if (callees !== undefined) {
+        if (callees.removeAuraStatChange) {
+          callees.removeAuraStatChange(mem, pGame, pUnit, dwItemGuid)
+        }
+      } else {
+        SKILLS_RemoveAuraStateAndEvent9OnSkillChange_6FCCD050_113c(
+          mem as SparseMemory113c,
+          pUnit,
+          nLayer,
+          pGame,
+          dwItemGuid,
+        )
       }
       return
     case 204: {
@@ -2049,8 +2240,17 @@ export function D2GAME_ITEMSTAT_OnStatChangedCallback113c(
         return
       }
       SKILLS_AssignItemChargedSkillStdcall113c(mem, pUnit, dwItemGuid, nSkillId, nLevel, 0, 1)
-      if (callees && callees.refreshPassiveSkillStats) {
-        callees.refreshPassiveSkillStats(mem, pUnit, nSkillId, dwItemGuid)
+      if (callees !== undefined) {
+        if (callees.refreshPassiveSkillStats) {
+          callees.refreshPassiveSkillStats(mem, pUnit, nSkillId, dwItemGuid)
+        }
+      } else {
+        PETS_RecalcAndClampPlayerPetTypeForSkill_6FCBF600_113c(
+          mem as SparseMemory113c,
+          nSkillId,
+          pUnit,
+          pGame,
+        )
       }
       return
     }
@@ -2064,8 +2264,17 @@ export function D2GAME_ITEMSTAT_OnStatChangedCallback113c(
         if (STATES_CheckState113c(mem, pUnit, nStateId) !== 0) {
           return
         }
-        if (callees && callees.applyStateStatChange) {
-          callees.applyStateStatChange(mem, pGame, pUnit, nStateId, 0)
+        if (callees !== undefined) {
+          if (callees.applyStateStatChange) {
+            callees.applyStateStatChange(mem, pGame, pUnit, nStateId, 0)
+          }
+        } else {
+          STATES_ClearSameGroupStatesOnUnit_6FCBEA30_113c(
+            mem as SparseMemory113c,
+            pUnit,
+            nStateId,
+            0,
+          )
         }
         STATES_ToggleGfxStateFlag113c(mem, pUnit, nStateId, 1)
         STATES_ClearGfxStateFlag113c(mem, pUnit, nStateId, 1)
@@ -2073,8 +2282,17 @@ export function D2GAME_ITEMSTAT_OnStatChangedCallback113c(
         if (STATES_CheckState113c(mem, pUnit, nStateId) === 0) {
           return
         }
-        if (callees && callees.applyStateStatChange) {
-          callees.applyStateStatChange(mem, pGame, pUnit, nStateId, 1)
+        if (callees !== undefined) {
+          if (callees.applyStateStatChange) {
+            callees.applyStateStatChange(mem, pGame, pUnit, nStateId, 1)
+          }
+        } else {
+          STATES_ClearSameGroupStatesOnUnit_6FCBEA30_113c(
+            mem as SparseMemory113c,
+            pUnit,
+            nStateId,
+            1,
+          )
         }
         STATES_ToggleGfxStateFlag113c(mem, pUnit, nStateId, 0)
         STATES_ClearGfxStateFlag113c(mem, pUnit, nStateId, 1)
@@ -2085,6 +2303,22 @@ export function D2GAME_ITEMSTAT_OnStatChangedCallback113c(
       return
   }
 }
+
+registerStatListOnValueHandler113c(
+  0x6fcf9470,
+  (mem, pGame, pOwner, pItem, dwKey, oldVal, newVal) => {
+    D2GAME_ITEMSTAT_OnStatChangedCallback113c(
+      mem,
+      pGame,
+      pOwner,
+      pItem,
+      dwKey,
+      oldVal,
+      newVal,
+      0x6fd1829c,
+    )
+  },
+)
 
 // @va D2Game:0x6FCFF780
 export function D2GAME_SUNIT_GetGameFromUnit113c(mem: Memory113c, pUnit: D2Ptr): D2Ptr {
@@ -2500,13 +2734,13 @@ export function D2GAME_MONSTER_SyncMonsterUnitToClient113c(
         callees.onClearUnitReassignFlags(mem, pUnit, pGame)
       }
     }
-    if ((mem.u32(pUnit + 0xc4) & 1) !== 0) {
+    if (bPreSynced === 0 && (mem.u32(pUnit + 0xc4) & 1) !== 0) {
       D2GAME_MONSTER_SendMonsterMovementSync113c(mem, pUnit, pGame, pClient, callees)
     }
     mem.setU32(pUnit + 0xc4, (mem.u32(pUnit + 0xc4) & 0xfff7ffff) >>> 0)
   }
 
-  if (callees && callees.onMonsterPostSync) {
+  if (bPreSynced === 0 && callees && callees.onMonsterPostSync) {
     callees.onMonsterPostSync(mem, pUnit, pClient)
   }
 
@@ -2562,11 +2796,15 @@ export function D2GAME_MONSTER_SyncMonsterUnitToClient113c(
     }
 
     if (((mem.u32(pUnit + 0xc4) >>> 15) & 1) !== 0) {
-      const curHp = (STATLIST_GetUnitStat113c(mem, pUnit, 6, 0) | 0) >> 8
-      const maxHp = (STATLIST_GetUnitStat113c(mem, pUnit, 7, 0) | 0) >> 8
-      const lifePct =
-        maxHp > 0 && curHp < maxHp ? Math.trunc((curHp << 7) / maxHp) & 0xff : 0x80
-      STATLIST_SetUnitStat113c(mem, pUnit, 0x160, lifePct, 0)
+      if (callees && callees.onMonsterSyncFlag8000) {
+        callees.onMonsterSyncFlag8000(mem, pUnit, pClient)
+      } else {
+        const curHp = (STATLIST_GetUnitStat113c(mem, pUnit, 6, 0) | 0) >> 8
+        const maxHp = (STATLIST_GetUnitStat113c(mem, pUnit, 7, 0) | 0) >> 8
+        const lifePct =
+          maxHp > 0 && curHp < maxHp ? Math.trunc((curHp << 7) / maxHp) & 0xff : 0x80
+        STATLIST_SetUnitStat113c(mem, pUnit, 0x160, lifePct, 0)
+      }
     }
   }
 

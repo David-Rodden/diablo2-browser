@@ -94,6 +94,7 @@ import {
 } from './boot-init-gap-b-113c.js';
 import {
   AI_Stall113c,
+  ITEMS_FinalizeCreatedItem113c,
   MONSTER_BroadcastEventSoundToClients113c,
   MONSTER_StartMode113c,
   SUNITDMG_ApplyDamage113c,
@@ -2141,6 +2142,9 @@ export function MONSTER_SpawnAndEquipMonEquipRecordItem_6FCCFCE0_113c(
     0,
     0,
     0,
+    {
+      onCreateItemEx: (mem, pg, pDrop) => ITEMS_FinalizeCreatedItem113c(mem, pg, pDrop, 0),
+    },
   );
   if (pItem === 0) return;
   ITEMS_SetOrClearCommandFlags113c(m, pItem, 0x1000, 1);

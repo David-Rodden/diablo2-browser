@@ -5,8 +5,8 @@
     "name": "AI_InitHomeNode10",
     "kernFile": "src/d2kern-113c/game/town-npc-ai-113c.ts",
     "tsSymbol": "AI_InitHomeNode10_113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -14,8 +14,8 @@
     "name": "AI_CheckReturnHomeToNode10",
     "kernFile": "src/d2kern-113c/game/town-npc-ai-113c.ts",
     "tsSymbol": "AI_CheckReturnHomeToNode10_113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -23,8 +23,8 @@
     "name": "AI_MapAiAction1_WalkToWaypoint",
     "kernFile": "src/d2kern-113c/game/town-npc-ai-113c.ts",
     "tsSymbol": "AI_MapAiAction1_WalkToWaypoint113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -32,8 +32,8 @@
     "name": "AI_TickNodes4_5_7",
     "kernFile": "src/d2kern-113c/game/town-npc-ai-113c.ts",
     "tsSymbol": "AI_TickNodes4_5_7_113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -59,8 +59,8 @@
     "name": "AI_MapAiAction3_WalkToWaypoint",
     "kernFile": "src/d2kern-113c/game/town-npc-ai-113c.ts",
     "tsSymbol": "AI_MapAiAction3_WalkToWaypoint113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -68,8 +68,8 @@
     "name": "AI_MapAiAction2_WalkAndWait20",
     "kernFile": "src/d2kern-113c/game/town-npc-ai-113c.ts",
     "tsSymbol": "AI_MapAiAction2_WalkAndWait20_113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -77,8 +77,8 @@
     "name": "AI_WarrivGreet",
     "kernFile": "src/d2kern-113c/game/town-npc-ai-113c.ts",
     "tsSymbol": "AI_WarrivGreetMem113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified in tests/oracle/k2/real-c2s-spawn-town.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified in tests/oracle/k2/real-c2s-spawn-town.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -95,8 +95,8 @@
     "name": "AI_SimpleMapAiNpc",
     "kernFile": "src/d2kern-113c/game/town-npc-ai-113c.ts",
     "tsSymbol": "AI_SimpleMapAiNpc113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -104,8 +104,8 @@
     "name": "AI_TownNpcMem",
     "kernFile": "src/d2kern-113c/game/town-npc-ai-113c.ts",
     "tsSymbol": "AI_TownNpcMem113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -203,8 +203,8 @@
     "name": "ROOM_SpawnMonsterPreset",
     "kernFile": "src/d2kern-113c/game/room-presets-113c.ts",
     "tsSymbol": "ROOM_SpawnMonsterPreset113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/room-presets-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/room-presets-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -248,8 +248,8 @@
     "name": "AI_RogueTownMem",
     "kernFile": "src/d2kern-113c/game/town-npc-ai-113c.ts",
     "tsSymbol": "AI_RogueTownMem113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -626,8 +626,8 @@
     "name": "AI_StepRelativeToTargetUnit",
     "kernFile": "src/d2kern-113c/game/town-npc-ai-113c.ts",
     "tsSymbol": "AI_StepRelativeToTargetUnit113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -635,7 +635,7 @@
     "name": "AI_FindNearestPlayerTarget",
     "kernFile": "src/d2kern-113c/game/town-npc-ai-113c.ts",
     "tsSymbol": "AI_FindNearestPlayerTarget113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   }
 ]

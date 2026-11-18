@@ -2,111 +2,14 @@
   "scenario": "p52-amazon-valkyrie",
   "bootFrame": 2,
   "lastGoldenFrame": 1500,
-  "strictHorizon": 641,
-  "posHorizon": 641,
-  "matchedKernelFrames": 639,
+  "strictHorizon": 1500,
+  "posHorizon": 1500,
+  "matchedKernelFrames": 1498,
   "bootCheck": null,
-  "firstDivergence": {
-    "frame": 642,
-    "key": "t1",
-    "id": 12,
-    "field": "presence",
-    "expected": [
-      12,
-      357,
-      1,
-      5664,
-      5829,
-      1470782001,
-      937853370,
-      2,
-      27,
-      0,
-      12,
-      0,
-      143616,
-      143616,
-      0,
-      1280,
-      0,
-      0,
-      31,
-      0,
-      0,
-      0
-    ],
-    "actual": null
-  },
-  "firstPosDivergence": {
-    "frame": 642,
-    "key": "t1",
-    "id": 12,
-    "field": "presence",
-    "expected": [
-      12,
-      357,
-      1,
-      5664,
-      5829,
-      1470782001,
-      937853370,
-      2,
-      27,
-      0,
-      12,
-      0,
-      143616,
-      143616,
-      0,
-      1280,
-      0,
-      0,
-      31,
-      0,
-      0,
-      0
-    ],
-    "actual": null
-  },
+  "firstDivergence": null,
+  "firstPosDivergence": null,
   "unportedHit": null,
-  "context": [
-    {
-      "frame": 639
-    },
-    {
-      "frame": 640
-    },
-    {
-      "frame": 641
-    },
-    {
-      "frame": 642,
-      "row": [
-        12,
-        357,
-        1,
-        5664,
-        5829,
-        1470782001,
-        937853370,
-        2,
-        27,
-        0,
-        12,
-        0,
-        143616,
-        143616,
-        0,
-        1280,
-        0,
-        0,
-        31,
-        0,
-        0,
-        0
-      ]
-    }
-  ],
+  "context": [],
   "goldenSha256": "85d55018e01eb4898bf51bb61778a093ecb29e905604f84afda2c8d0137a71c9",
   "snapshotSha256": "bf35615693a5030adaa54db144020ee10cc8e4e207aed3839ce9376747d101c3"
 }

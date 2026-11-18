@@ -5,8 +5,8 @@
     "name": "AI_PetMoveActionDispatch_6FC3CAE0",
     "kernFile": "src/d2kern-113c/game/k2-w11b1-113c.ts",
     "tsSymbol": "AI_PetMoveActionDispatch_6FC3CAE0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w11b1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w11b1.test.ts; Diff-verified 1:1 in dll\u2229ts across full-horizon strict zero-divergence K3 summon/curse replays (p52-amazon-valkyrie F1500/1500, p52-necromancer-poison-golem F1800/1800, p52-necromancer-curses F2000/2000) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -14,8 +14,8 @@
     "name": "AI_MercMoveActionDispatch_6FC3D3C0",
     "kernFile": "src/d2kern-113c/game/k2-w11b1-113c.ts",
     "tsSymbol": "AI_MercMoveActionDispatch_6FC3D3C0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w11b1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w11b1.test.ts; K3 golden replay diff-verified (dll\u2229ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -86,8 +86,8 @@
     "name": "SKILLS_PostInitSummonedPetStatsAndAi_6FC70070",
     "kernFile": "src/d2kern-113c/game/k2-w11b1-113c.ts",
     "tsSymbol": "SKILLS_PostInitSummonedPetStatsAndAi_6FC70070_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w11b1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w11b1.test.ts; Diff-verified 1:1 in dll\u2229ts across full-horizon strict zero-divergence K3 summon/curse replays (p52-amazon-valkyrie F1500/1500, p52-necromancer-poison-golem F1800/1800, p52-necromancer-curses F2000/2000) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -104,8 +104,8 @@
     "name": "ACT5Q5_InitQuestData_6FC7FB50",
     "kernFile": "src/d2kern-113c/game/k2-w11b1-113c.ts",
     "tsSymbol": "ACT5Q5_InitQuestData_6FC7FB50_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w11b1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w11b1.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -167,8 +167,8 @@
     "name": "PETS_RegisterSummonPetAndClampCount_6FCB7F50",
     "kernFile": "src/d2kern-113c/game/k2-w11b1-113c.ts",
     "tsSymbol": "PETS_RegisterSummonPetAndClampCount_6FCB7F50_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w11b1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w11b1.test.ts; Diff-verified 1:1 in dll\u2229ts across full-horizon strict zero-divergence K3 summon/curse replays (p52-amazon-valkyrie F1500/1500, p52-necromancer-poison-golem F1800/1800, p52-necromancer-curses F2000/2000) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -221,8 +221,8 @@
     "name": "ACT2Q4_JerhynPalaceNpcAiOverride_6FCE8990",
     "kernFile": "src/d2kern-113c/game/k2-w11b1-113c.ts",
     "tsSymbol": "ACT2Q4_JerhynPalaceNpcAiOverride_6FCE8990_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w11b1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w11b1.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",

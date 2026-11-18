@@ -777,8 +777,8 @@ describe('Diablo II v1.13c Kernel Call Graph & Manifest ([K0] Track A)', () => {
     expect(fnByKey.get('D2Game:6FC96FE0')!.status).toBe('ported'); // MONSTER_StepRun (Fallen only walk in WL=2)
     expect(fnByKey.get('D2Common:6FD8A330')!.status).toBe('diff-verified'); // STATLIST_AddStat (real-DLL vectors in k1r13-i14d-1.ndjson)
     expect(fnByKey.get('D2Common:6FD88520')!.status).toBe('diff-verified'); // STATLIST_GetStatListFromUnitAndState (real-DLL vectors in k1r13-i14d-1.ndjson)
-    expect(fnByKey.get('D2Game:6FCBD160')!.status).toBe('ported'); // AI_DispatchTargetByAiFlag (remediated 1:1 in k2-real-s2c-combat-113c.ts)
-    expect(fnByKey.get('D2Game:6FD13220')!.status).toBe('ported'); // AI_GeneralFindTargetOrThrottle (remediated 1:1 in k2-real-s2c-combat-113c.ts)
+    expect(fnByKey.get('D2Game:6FCBD160')!.status).toBe('diff-verified'); // AI_DispatchTargetByAiFlag (remediated 1:1 in k2-real-s2c-combat-113c.ts)
+    expect(fnByKey.get('D2Game:6FD13220')!.status).toBe('diff-verified'); // AI_GeneralFindTargetOrThrottle (remediated 1:1 in k2-real-s2c-combat-113c.ts)
     expect(fnByKey.get('D2Game:6FCFE5A0')!.status).toBe('ported'); // SUNITDMG_CalcMonsterExperience (remediated 1:1 in k2-real-s2c-combat-113c.ts)
     for (const demotedKey of [
       'D2Game:6FC97CB0',
@@ -912,5 +912,64 @@ describe('Diablo II v1.13c Kernel Call Graph & Manifest ([K0] Track A)', () => {
       expect(fn.status).toBe('unported');
       expect(fn.kernFile).toBeUndefined();
     }
+  });
+
+  it('enforces single-definition rule for manifest-bound tsSymbols in src/d2kern-113c/** (monotonic <= 98 allowlist)', () => {
+    const allowlistPath = path.join(REPO_ROOT, 'tools', 'oracle', 'callgraph', 'duplicate-tssymbol-allowlist.json');
+    expect(fs.existsSync(allowlistPath)).toBe(true);
+    const allowCfg = JSON.parse(fs.readFileSync(allowlistPath, 'utf-8')) as {
+      description: string;
+      maxCount: number;
+      symbols: string[];
+    };
+    expect(allowCfg.maxCount).toBeGreaterThanOrEqual(0);
+    expect(allowCfg.maxCount).toBeLessThanOrEqual(98);
+    expect(Array.isArray(allowCfg.symbols)).toBe(true);
+    expect(allowCfg.symbols.length).toBeLessThanOrEqual(allowCfg.maxCount);
+
+    const sortedUnique = [...new Set(allowCfg.symbols)].sort();
+    expect(allowCfg.symbols, 'duplicate-tssymbol-allowlist.json symbols must be sorted and unique').toEqual(sortedUnique);
+    const allowSet = new Set(allowCfg.symbols);
+
+    const boundSymbols = new Set<string>();
+    for (const fn of manifest.functions) {
+      if (fn.tsSymbol) {
+        boundSymbols.add(fn.tsSymbol);
+      }
+    }
+
+    const defsBySymbol = new Map<string, string[]>();
+    const kernTsFiles = collectFilesRecursive(path.join(REPO_ROOT, 'src', 'd2kern-113c'), new Set(['.ts']));
+    const exportDefRe = /^export\s+(?:async\s+)?(?:function|const)\s+([A-Za-z0-9_$]+)\b/gm;
+    for (const absFile of kernTsFiles) {
+      const relFile = path.relative(REPO_ROOT, absFile).replace(/\\/g, '/');
+      const txt = fs.readFileSync(absFile, 'utf-8');
+      for (const m of txt.matchAll(exportDefRe)) {
+        const sym = m[1]!;
+        if (!boundSymbols.has(sym)) continue;
+        const list = defsBySymbol.get(sym) ?? [];
+        list.push(relFile);
+        defsBySymbol.set(sym, list);
+      }
+    }
+
+    const actualDuplicates = [...defsBySymbol.entries()]
+      .filter(([, files]) => files.length > 1)
+      .sort(([a], [b]) => a.localeCompare(b));
+
+    const unallowlisted = actualDuplicates
+      .filter(([sym]) => !allowSet.has(sym))
+      .map(([sym, files]) => `${sym}: ${files.join(', ')}`);
+    expect(
+      unallowlisted,
+      `New duplicate manifest-bound tsSymbol definitions detected in src/d2kern-113c/** (single-definition gate)`,
+    ).toEqual([]);
+
+    const actualDupSet = new Set(actualDuplicates.map(([sym]) => sym));
+    const staleAllowlisted = allowCfg.symbols.filter(sym => !actualDupSet.has(sym));
+    expect(
+      staleAllowlisted,
+      `Stale entries in duplicate-tssymbol-allowlist.json (already deduplicated to <= 1 definition; remove and lower maxCount)`,
+    ).toEqual([]);
   });
 });

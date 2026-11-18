@@ -41,8 +41,8 @@
     "name": "ITEMS_RemoveUnitInventoryOrCursorItem_6FC2E7E0",
     "kernFile": "src/d2kern-113c/game/k2-w2b1-113c.ts",
     "tsSymbol": "ITEMS_RemoveUnitInventoryOrCursorItem_6FC2E7E0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w2b1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w2b1.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",

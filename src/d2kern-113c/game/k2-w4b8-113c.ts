@@ -1744,8 +1744,8 @@ export function ACT4Q2_InitHadrielNpcDialog_6FCD8C00_113c(
   ) {
     QUESTS_AddNpcDialogTextNodes113c(
       m,
-      0,
       pQuestData,
+      0,
       m.u32((pNpcParams + 0x14) >>> 0),
       0x198,
     )
@@ -1769,8 +1769,8 @@ export function ACT4Q2_InitHadrielNpcDialog_6FCD8C00_113c(
 
   QUESTS_AddNpcDialogTextNodes113c(
     m,
-    1,
     pQuestData,
+    1,
     m.u32((pNpcParams + 0x14) >>> 0),
     0x198,
   )
@@ -1805,8 +1805,8 @@ export function ACT4Q2_InitHellforgeNpcDialog_6FCD8CE0_113c(
   if (bBit1 !== 0) {
     QUESTS_AddNpcDialogTextNodes113c(
       m,
-      2,
       pQuestData,
+      2,
       m.u32((pNpcParams + 0x14) >>> 0),
       nNpcClassId,
     )
@@ -1819,8 +1819,8 @@ export function ACT4Q2_InitHellforgeNpcDialog_6FCD8CE0_113c(
     if ((m.u32((pQuestData + 0x1c + i * 4) >>> 0) | 0) === playerGuid) {
       QUESTS_AddNpcDialogTextNodes113c(
         m,
-        3,
         pQuestData,
+        3,
         m.u32((pNpcParams + 0x14) >>> 0),
         nNpcClassId,
       )
@@ -1849,8 +1849,8 @@ export function ACT4Q2_InitHellforgeNpcDialog_6FCD8CE0_113c(
     if (ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, pPlayer2, pGame2, 0x2073736d) !== 0) {
       QUESTS_AddNpcDialogTextNodes113c(
         m,
-        0,
         pQuestData,
+        0,
         m.u32((pNpcParams + 0x14) >>> 0),
         nNpcClassId,
       )
@@ -1862,8 +1862,8 @@ export function ACT4Q2_InitHellforgeNpcDialog_6FCD8CE0_113c(
     }
     QUESTS_AddNpcDialogTextNodes113c(
       m,
-      1,
       pQuestData,
+      1,
       m.u32((pNpcParams + 0x14) >>> 0),
       nNpcClassId,
     )
@@ -1882,8 +1882,8 @@ export function ACT4Q2_InitHellforgeNpcDialog_6FCD8CE0_113c(
   }
   QUESTS_AddNpcDialogTextNodes113c(
     m,
-    1,
     pQuestData,
+    1,
     m.u32((pNpcParams + 0x14) >>> 0),
     nNpcClassId,
   )
@@ -2046,8 +2046,8 @@ export function ACT4Q3_InitNpcDialog_6FCD9070_113c(
     if (bBit1a_7 !== 0 && nNpcClassId === 0x16f) {
       QUESTS_AddNpcDialogTextNodes113c(
         m,
-        2,
         pQuestData,
+        2,
         m.u32((pNpcParams + 0x14) >>> 0),
         nNpcClassId,
       )
@@ -2056,8 +2056,8 @@ export function ACT4Q3_InitNpcDialog_6FCD9070_113c(
     if (bBit1a_6 !== 0 && nNpcClassId === 0xf6) {
       QUESTS_AddNpcDialogTextNodes113c(
         m,
-        2,
         pQuestData,
+        2,
         m.u32((pNpcParams + 0x14) >>> 0),
         nNpcClassId,
       )
@@ -2069,8 +2069,8 @@ export function ACT4Q3_InitNpcDialog_6FCD9070_113c(
       }
       QUESTS_AddNpcDialogTextNodes113c(
         m,
-        3,
         pQuestData,
+        3,
         m.u32((pNpcParams + 0x14) >>> 0),
         nNpcClassId,
       )
@@ -2082,8 +2082,8 @@ export function ACT4Q3_InitNpcDialog_6FCD9070_113c(
       }
       QUESTS_AddNpcDialogTextNodes113c(
         m,
-        3,
         pQuestData,
+        3,
         m.u32((pNpcParams + 0x14) >>> 0),
         nNpcClassId,
       )
@@ -2099,16 +2099,16 @@ export function ACT4Q3_InitNpcDialog_6FCD9070_113c(
       if (nNpcClassId === 0x16f) {
         QUESTS_AddNpcDialogTextNodes113c(
           m,
-          4,
           pQuestData,
+          4,
           m.u32((pNpcParams + 0x14) >>> 0),
           nNpcClassId,
         )
       } else if (nNpcClassId === 0xf6) {
         QUESTS_AddNpcDialogTextNodes113c(
           m,
-          5,
           pQuestData,
+          5,
           m.u32((pNpcParams + 0x14) >>> 0),
           nNpcClassId,
         )
@@ -2118,8 +2118,8 @@ export function ACT4Q3_InitNpcDialog_6FCD9070_113c(
       if (nNpcClassId === 0xf6) {
         QUESTS_AddNpcDialogTextNodes113c(
           m,
-          4,
           pQuestData,
+          4,
           m.u32((pNpcParams + 0x14) >>> 0),
           nNpcClassId,
         )
@@ -2128,8 +2128,8 @@ export function ACT4Q3_InitNpcDialog_6FCD9070_113c(
       if (nNpcClassId === 0x16f) {
         QUESTS_AddNpcDialogTextNodes113c(
           m,
-          5,
           pQuestData,
+          5,
           m.u32((pNpcParams + 0x14) >>> 0),
           nNpcClassId,
         )
@@ -2150,8 +2150,8 @@ export function ACT4Q3_InitNpcDialog_6FCD9070_113c(
   if (nSlot !== -1 && (nSlot >>> 0) < 7) {
     QUESTS_AddNpcDialogTextNodes113c(
       m,
-      nSlot,
       pQuestData,
+      nSlot,
       m.u32((pNpcParams + 0x14) >>> 0),
       nNpcClassId,
     )
@@ -2421,8 +2421,8 @@ export function ACT4Q1_InitNpcDialog_6FCD9560_113c(
       ) {
         QUESTS_AddNpcDialogTextNodes113c(
           m,
-          3,
           pQuestData,
+          3,
           m.u32((pNpcParams + 0x14) >>> 0),
           nNpcClassId,
         )
@@ -2441,8 +2441,8 @@ export function ACT4Q1_InitNpcDialog_6FCD9560_113c(
   ) {
     QUESTS_AddNpcDialogTextNodes113c(
       m,
-      3,
       pQuestData,
+      3,
       m.u32((pNpcParams + 0x14) >>> 0),
       nNpcClassId,
     )
@@ -2456,8 +2456,8 @@ export function ACT4Q1_InitNpcDialog_6FCD9560_113c(
     if ((m.u32((pQuestData + 0x1c + i * 4) >>> 0) | 0) === playerGuid) {
       QUESTS_AddNpcDialogTextNodes113c(
         m,
-        4,
         pQuestData,
+        4,
         m.u32((pNpcParams + 0x14) >>> 0),
         nNpcClassId,
       )
@@ -2479,8 +2479,8 @@ export function ACT4Q1_InitNpcDialog_6FCD9560_113c(
   if (nSlot !== -1 && (nSlot >>> 0) < 6) {
     QUESTS_AddNpcDialogTextNodes113c(
       m,
-      nSlot,
       pQuestData,
+      nSlot,
       m.u32((pNpcParams + 0x14) >>> 0),
       nNpcClassId,
     )
@@ -2568,8 +2568,8 @@ export function ACT4Q0_InitTyraelIntroDialog_6FCD9730_113c(
   const nNpcClassId = pNpcUnit2 === 0 ? -1 : m.u32((pNpcUnit2 + 0x04) >>> 0) | 0
   QUESTS_AddNpcDialogTextNodes113c(
     m,
-    0,
     pQuestData,
+    0,
     m.u32((pNpcParams + 0x14) >>> 0),
     nNpcClassId,
   )

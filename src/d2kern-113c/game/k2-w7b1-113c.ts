@@ -1477,15 +1477,33 @@ function QUESTS_Act3CheckBlackenedTempleActive_6FC5B5F0_113c(
 ): number {
   return MISSILE_SrvHit_RadialStatsDamageByAuraRange_6FC5B5F0_113c(m, pGame, 0, nArg)
 }
-const SUNIT_GetUnitPosX_6FC21100_113c = UNIT_GetPosX113c
-const SUNIT_GetUnitPosY_6FC21130_113c = UNIT_GetPosY113c
-const MISSILE_SetTotalFrames113c = MISSILE_SetTargetX113c
-const SKILLS_GetParam04113c = SKILLS_GetParam1113c
-const SKILLS_SetParam04113c = SKILLS_SetParam1113c
-const SKILLS_GetParam08113c = SKILLS_GetParam2113c
-const SKILLS_SetParam08113c = SKILLS_SetParam2113c
-const SKILLS_GetParam0C113c = SKILLS_GetParam3113c
-const SKILLS_LookupSkillPetTypeIndex_6FC21EF0_113c = SKILLS_GetParam7Fast_6FC21EF0_113c
+function SUNIT_GetUnitPosX_6FC21100_113c(...args: Parameters<typeof UNIT_GetPosX113c>): ReturnType<typeof UNIT_GetPosX113c> {
+  return UNIT_GetPosX113c(...args)
+}
+function SUNIT_GetUnitPosY_6FC21130_113c(...args: Parameters<typeof UNIT_GetPosY113c>): ReturnType<typeof UNIT_GetPosY113c> {
+  return UNIT_GetPosY113c(...args)
+}
+function MISSILE_SetTotalFrames113c(...args: Parameters<typeof MISSILE_SetTargetX113c>): ReturnType<typeof MISSILE_SetTargetX113c> {
+  return MISSILE_SetTargetX113c(...args)
+}
+function SKILLS_GetParam04113c(...args: Parameters<typeof SKILLS_GetParam1113c>): ReturnType<typeof SKILLS_GetParam1113c> {
+  return SKILLS_GetParam1113c(...args)
+}
+function SKILLS_SetParam04113c(...args: Parameters<typeof SKILLS_SetParam1113c>): ReturnType<typeof SKILLS_SetParam1113c> {
+  return SKILLS_SetParam1113c(...args)
+}
+function SKILLS_GetParam08113c(...args: Parameters<typeof SKILLS_GetParam2113c>): ReturnType<typeof SKILLS_GetParam2113c> {
+  return SKILLS_GetParam2113c(...args)
+}
+function SKILLS_SetParam08113c(...args: Parameters<typeof SKILLS_SetParam2113c>): ReturnType<typeof SKILLS_SetParam2113c> {
+  return SKILLS_SetParam2113c(...args)
+}
+function SKILLS_GetParam0C113c(...args: Parameters<typeof SKILLS_GetParam3113c>): ReturnType<typeof SKILLS_GetParam3113c> {
+  return SKILLS_GetParam3113c(...args)
+}
+function SKILLS_LookupSkillPetTypeIndex_6FC21EF0_113c(...args: Parameters<typeof SKILLS_GetParam7Fast_6FC21EF0_113c>): ReturnType<typeof SKILLS_GetParam7Fast_6FC21EF0_113c> {
+  return SKILLS_GetParam7Fast_6FC21EF0_113c(...args)
+}
 function PETS_FindOwnedUnitBySubIndex_6FCC0F40_113c(
   m: D2KernMemory113c,
   pGame: number,
@@ -1519,7 +1537,9 @@ function UNIT_DeleteObjectAndFreeEvents_6FC5EDE0_113c(
 ): number {
   return MISSILE_ProcessTargetCollisionHit113c(m, pPetUnit, pGame, 0, bForce)
 }
-const SUNIT_VerifyAndDeleteUnit_6FD020A0_113c = SUNIT_FreeUnit113c
+function SUNIT_VerifyAndDeleteUnit_6FD020A0_113c(...args: Parameters<typeof SUNIT_FreeUnit113c>): ReturnType<typeof SUNIT_FreeUnit113c> {
+  return SUNIT_FreeUnit113c(...args)
+}
 function MISSILE_SpawnLinearStreamFromSkill_6FC9A190_113c(
   m: D2KernMemory113c,
   _pGame: number,
@@ -1532,12 +1552,20 @@ function MISSILE_SpawnLinearStreamFromSkill_6FC9A190_113c(
 ): void {
   UNITMSG_QueuePacketA3AuraTargetFx_6FC9A190_113c(m, pPetUnit, 0, 0, nSkillId, nX, nY, nSkillLevel)
 }
-const AURA_ApplyTimerStatListWithSkillAndState_6FCC00B0_113c = STATES_CreateOrUpdateAuraStatList113c
-const STATLIST_SetStatIfListIsValid113c = STATLIST_SetStat113c
+function AURA_ApplyTimerStatListWithSkillAndState_6FCC00B0_113c(...args: Parameters<typeof STATES_CreateOrUpdateAuraStatList113c>): ReturnType<typeof STATES_CreateOrUpdateAuraStatList113c> {
+  return STATES_CreateOrUpdateAuraStatList113c(...args)
+}
+function STATLIST_SetStatIfListIsValid113c(...args: Parameters<typeof STATLIST_SetStat113c>): ReturnType<typeof STATLIST_SetStat113c> {
+  return STATLIST_SetStat113c(...args)
+}
 const SKILLS_SpawnMissileAtSkillTargetPos_6FC641C0_113c =
   SKILLS_SpawnChannelingProjectileAndAdvanceTick_6FC641C0_113c
-const UNITS_GetCurrentSkill113c = SKILLS_GetUsedSkill113c
-const STATLIST_GetStatListFromUnitAndState113c = STATLIST_GetStatListFromUnitAndStateMemPort113c
+function UNITS_GetCurrentSkill113c(...args: Parameters<typeof SKILLS_GetUsedSkill113c>): ReturnType<typeof SKILLS_GetUsedSkill113c> {
+  return SKILLS_GetUsedSkill113c(...args)
+}
+function STATLIST_GetStatListFromUnitAndState113c(...args: Parameters<typeof STATLIST_GetStatListFromUnitAndStateMemPort113c>): ReturnType<typeof STATLIST_GetStatListFromUnitAndStateMemPort113c> {
+  return STATLIST_GetStatListFromUnitAndStateMemPort113c(...args)
+}
 function STATLIST_AllocStatList113c(
   m: D2KernMemory113c,
   _pMemPool: number,
@@ -1558,20 +1586,40 @@ function STATLIST_SetStatRemoveCallback113c(
   }
   STATLIST_SetStatRemoveProc113c(m, pStatList, pfOnRemove)
 }
-const STATES_ToggleState113c = STATES_ToggleGfxStateFlag113c
+function STATES_ToggleState113c(...args: Parameters<typeof STATES_ToggleGfxStateFlag113c>): ReturnType<typeof STATES_ToggleGfxStateFlag113c> {
+  return STATES_ToggleGfxStateFlag113c(...args)
+}
 const SUNIT_AdvancePathAndBroadcast_6FD02480_113c =
   SUNIT_RewindAndRescheduleAnimEvents_6FD02480_113c
-const D2Common_10476_SetStatListExpireFrame113c = STATLIST_SetExpireFrameEx113c
+function D2Common_10476_SetStatListExpireFrame113c(...args: Parameters<typeof STATLIST_SetExpireFrameEx113c>): ReturnType<typeof STATLIST_SetExpireFrameEx113c> {
+  return STATLIST_SetExpireFrameEx113c(...args)
+}
 const SKILLS_GetTargetOrPathPosition_6FCBFA30_113c =
   SKILLS_GetUnitTargetOrFirstPathCoords_6FCBFA30_113c
-const MISSILE_InitAndSpawnCustom_6FC8F930_113c = MISSILE_CreateServerProjectile113c
-const SKILLS_GetBowOrCrossbowMissileId_6FCB1340_113c = SKILLS_ResolveChargedSrvMissileId113c
-const EVENT_CancelSkillEventsByTypeAndId_6FCAE900_113c = EVENT_DeleteEventByArg14_113c
-const DUNGEON_IsRoomInTown113c = DUNGEON_CheckRoomIsTownMemPort113c
-const D2Common_10474_UnlinkStatListFromUnit113c = STATLIST_UnlinkSubList113c
-const STATLIST_FreeStatListEx113c = STATLIST_FreeStatListIfNonExtended113c
-const SKILLS_GetPerDelay113c = SKILLS_GetParam4Fast_6FC21C20_113c
-const SKILLS_SetupPhysicalSkillDamage_6FCBF1A0_113c = SKILLS_RollAndAddSkillPhysDamage_6FCBF1A0_113c
+function MISSILE_InitAndSpawnCustom_6FC8F930_113c(...args: Parameters<typeof MISSILE_CreateServerProjectile113c>): ReturnType<typeof MISSILE_CreateServerProjectile113c> {
+  return MISSILE_CreateServerProjectile113c(...args)
+}
+function SKILLS_GetBowOrCrossbowMissileId_6FCB1340_113c(...args: Parameters<typeof SKILLS_ResolveChargedSrvMissileId113c>): ReturnType<typeof SKILLS_ResolveChargedSrvMissileId113c> {
+  return SKILLS_ResolveChargedSrvMissileId113c(...args)
+}
+function EVENT_CancelSkillEventsByTypeAndId_6FCAE900_113c(...args: Parameters<typeof EVENT_DeleteEventByArg14_113c>): ReturnType<typeof EVENT_DeleteEventByArg14_113c> {
+  return EVENT_DeleteEventByArg14_113c(...args)
+}
+function DUNGEON_IsRoomInTown113c(...args: Parameters<typeof DUNGEON_CheckRoomIsTownMemPort113c>): ReturnType<typeof DUNGEON_CheckRoomIsTownMemPort113c> {
+  return DUNGEON_CheckRoomIsTownMemPort113c(...args)
+}
+function D2Common_10474_UnlinkStatListFromUnit113c(...args: Parameters<typeof STATLIST_UnlinkSubList113c>): ReturnType<typeof STATLIST_UnlinkSubList113c> {
+  return STATLIST_UnlinkSubList113c(...args)
+}
+function STATLIST_FreeStatListEx113c(...args: Parameters<typeof STATLIST_FreeStatListIfNonExtended113c>): ReturnType<typeof STATLIST_FreeStatListIfNonExtended113c> {
+  return STATLIST_FreeStatListIfNonExtended113c(...args)
+}
+function SKILLS_GetPerDelay113c(...args: Parameters<typeof SKILLS_GetParam4Fast_6FC21C20_113c>): ReturnType<typeof SKILLS_GetParam4Fast_6FC21C20_113c> {
+  return SKILLS_GetParam4Fast_6FC21C20_113c(...args)
+}
+function SKILLS_SetupPhysicalSkillDamage_6FCBF1A0_113c(...args: Parameters<typeof SKILLS_RollAndAddSkillPhysDamage_6FCBF1A0_113c>): ReturnType<typeof SKILLS_RollAndAddSkillPhysDamage_6FCBF1A0_113c> {
+  return SKILLS_RollAndAddSkillPhysDamage_6FCBF1A0_113c(...args)
+}
 function SKILLS_FillElementalDamageStrc_6FCBF210_113c(
   m: D2KernMemory113c,
   pUnit: number,
@@ -1649,8 +1697,12 @@ function SKILLS_SpawnSubMissileAtCoords_6FD0F940_113c(
     0,
   )
 }
-const ACT1Q4_IsCainInTristram_6FC57680_113c = PLAYER_IsBusyWithCursorOrNpcInteract113c
-const MONSTERS_GetNpcVendorIndex_6FC215D0_113c = MONSTATS_CheckFlagBit113c
+function ACT1Q4_IsCainInTristram_6FC57680_113c(...args: Parameters<typeof PLAYER_IsBusyWithCursorOrNpcInteract113c>): ReturnType<typeof PLAYER_IsBusyWithCursorOrNpcInteract113c> {
+  return PLAYER_IsBusyWithCursorOrNpcInteract113c(...args)
+}
+function MONSTERS_GetNpcVendorIndex_6FC215D0_113c(...args: Parameters<typeof MONSTATS_CheckFlagBit113c>): ReturnType<typeof MONSTATS_CheckFlagBit113c> {
+  return MONSTATS_CheckFlagBit113c(...args)
+}
 function QUESTS_Act2JerhynCheckPalaceBlocked_6FC80390_113c(
   m: D2KernMemory113c,
   pGame: number,
@@ -1693,13 +1745,23 @@ function UNIT_SetInteractUnit_6FCFFAE0_113c(
   dwType: number,
   dwId: number,
 ): void {
-  SUNIT_SetLastKillerInfo_6FCFFAE0_113c(m, pUnit, dwId, dwType)
+  SUNIT_SetLastKillerInfo_6FCFFAE0_113c(m, pUnit, dwType, dwId)
 }
-const ITEMS_GetInventory2113c = TEXT_AllocTextList113c
-const QUESTS_OnNpcInteract_6FC54660_113c = QUESTS_TriggerCallback00_6FC54660_113c
-const ITEMS_SerializeInventoryPacket113c = TEXT_BuildMessageList113c
-const D2GS_SendPacket27_NpcQuestInfo_6FCAB3D0_113c = NET_SendPacketBuffer40B_6FCAB3D0_113c
-const ITEMS_FreeInventory113c = TEXT_FreeTextList113c
+function ITEMS_GetInventory2113c(...args: Parameters<typeof TEXT_AllocTextList113c>): ReturnType<typeof TEXT_AllocTextList113c> {
+  return TEXT_AllocTextList113c(...args)
+}
+function QUESTS_OnNpcInteract_6FC54660_113c(...args: Parameters<typeof QUESTS_TriggerCallback00_6FC54660_113c>): ReturnType<typeof QUESTS_TriggerCallback00_6FC54660_113c> {
+  return QUESTS_TriggerCallback00_6FC54660_113c(...args)
+}
+function ITEMS_SerializeInventoryPacket113c(...args: Parameters<typeof TEXT_BuildMessageList113c>): ReturnType<typeof TEXT_BuildMessageList113c> {
+  return TEXT_BuildMessageList113c(...args)
+}
+function D2GS_SendPacket27_NpcQuestInfo_6FCAB3D0_113c(...args: Parameters<typeof NET_SendPacketBuffer40B_6FCAB3D0_113c>): ReturnType<typeof NET_SendPacketBuffer40B_6FCAB3D0_113c> {
+  return NET_SendPacketBuffer40B_6FCAB3D0_113c(...args)
+}
+function ITEMS_FreeInventory113c(...args: Parameters<typeof TEXT_FreeTextList113c>): ReturnType<typeof TEXT_FreeTextList113c> {
+  return TEXT_FreeTextList113c(...args)
+}
 function QUESTS_CheckFirstNpcIntro_6FC55030_113c(
   m: D2KernMemory113c,
   pGame: number,
@@ -1765,8 +1827,12 @@ function SUNITDMG_CalcAdjustedPhysicalDamage_6FCFC530_113c(
 ): number {
   return SUNITDMG_ComputeWeaponBaseDamage113c(m, pUnit, 0, dmgBonus, 1, 0)
 }
-const INVENTORY_GetShieldItem_6FC572C0_113c = PLAYER_GetEquippedWeapon113c
-const ITEMS_CheckIfShield113c = ITEMS_CanItemLoseDurability113c
+function INVENTORY_GetShieldItem_6FC572C0_113c(...args: Parameters<typeof PLAYER_GetEquippedWeapon113c>): ReturnType<typeof PLAYER_GetEquippedWeapon113c> {
+  return PLAYER_GetEquippedWeapon113c(...args)
+}
+function ITEMS_CheckIfShield113c(...args: Parameters<typeof ITEMS_CanItemLoseDurability113c>): ReturnType<typeof ITEMS_CanItemLoseDurability113c> {
+  return ITEMS_CanItemLoseDurability113c(...args)
+}
 function PALADIN_AddShieldSmiteDamage_6FC6C9E0_113c(
   m: D2KernMemory113c,
   pShield: number,
@@ -1784,17 +1850,39 @@ function PALADIN_AddShieldSmiteDamage_6FC6C9E0_113c(
     maxBonus,
   )
 }
-const SUNITDMG_ExecuteEventsAndApplyDamage_6FCFDDE0_113c = SUNITDMG_AllocCombat113c
-const UNITS_GetAnimOrSeqFrame113c = UNITS_GetEquippedWeaponAdder113c
-const UNITS_IsUnitInRoomAndValid113c = UNITS_CanUnitMeleeAttackTarget113c
-const SUNITDMG_DrainItemDurability113c = SUNITDMG_ExecuteSingleHit113c
-const SKILLS_GetAnimActionFrame_6FC21BC0_113c = SKILLS_GetParam2Fast_6FC21BC0_113c
-const SKILLS_RollbackUnitAnimationFrame_6FCC35D0_113c = SKILLS_ScaleUnitAnimEventsBySlowPct_6FCC35D0_113c
-const D2Common_10419_GetUnitSeqCurrentFrame113c = ITEMS_GetActiveWeaponClassCodeIdx113c
-const SKILLS_GetSeqRollbackFrame_6FC21EC0_113c = SKILLS_GetParam6Fast_6FC21EC0_113c
-const DATATBLS_GetDifficultyLevelsTxtRecord113c = DATATBLS_GetMonLvlTxtRecord113c
-const SKILLS_IsCurseDurationDifficultyScaled_6FC6DF80_113c = SKILLS_IsDimVisionOrTerrorState113c
-const SKILLS_ScaleCurseDurationByDifficulty_6FC6DF60_113c = SKILLS_DivideValueByMonLvlHp113c
+function SUNITDMG_ExecuteEventsAndApplyDamage_6FCFDDE0_113c(...args: Parameters<typeof SUNITDMG_AllocCombat113c>): ReturnType<typeof SUNITDMG_AllocCombat113c> {
+  return SUNITDMG_AllocCombat113c(...args)
+}
+function UNITS_GetAnimOrSeqFrame113c(...args: Parameters<typeof UNITS_GetEquippedWeaponAdder113c>): ReturnType<typeof UNITS_GetEquippedWeaponAdder113c> {
+  return UNITS_GetEquippedWeaponAdder113c(...args)
+}
+function UNITS_IsUnitInRoomAndValid113c(...args: Parameters<typeof UNITS_CanUnitMeleeAttackTarget113c>): ReturnType<typeof UNITS_CanUnitMeleeAttackTarget113c> {
+  return UNITS_CanUnitMeleeAttackTarget113c(...args)
+}
+function SUNITDMG_DrainItemDurability113c(...args: Parameters<typeof SUNITDMG_ExecuteSingleHit113c>): ReturnType<typeof SUNITDMG_ExecuteSingleHit113c> {
+  return SUNITDMG_ExecuteSingleHit113c(...args)
+}
+function SKILLS_GetAnimActionFrame_6FC21BC0_113c(...args: Parameters<typeof SKILLS_GetParam2Fast_6FC21BC0_113c>): ReturnType<typeof SKILLS_GetParam2Fast_6FC21BC0_113c> {
+  return SKILLS_GetParam2Fast_6FC21BC0_113c(...args)
+}
+function SKILLS_RollbackUnitAnimationFrame_6FCC35D0_113c(...args: Parameters<typeof SKILLS_ScaleUnitAnimEventsBySlowPct_6FCC35D0_113c>): ReturnType<typeof SKILLS_ScaleUnitAnimEventsBySlowPct_6FCC35D0_113c> {
+  return SKILLS_ScaleUnitAnimEventsBySlowPct_6FCC35D0_113c(...args)
+}
+function D2Common_10419_GetUnitSeqCurrentFrame113c(...args: Parameters<typeof ITEMS_GetActiveWeaponClassCodeIdx113c>): ReturnType<typeof ITEMS_GetActiveWeaponClassCodeIdx113c> {
+  return ITEMS_GetActiveWeaponClassCodeIdx113c(...args)
+}
+function SKILLS_GetSeqRollbackFrame_6FC21EC0_113c(...args: Parameters<typeof SKILLS_GetParam6Fast_6FC21EC0_113c>): ReturnType<typeof SKILLS_GetParam6Fast_6FC21EC0_113c> {
+  return SKILLS_GetParam6Fast_6FC21EC0_113c(...args)
+}
+function DATATBLS_GetDifficultyLevelsTxtRecord113c(...args: Parameters<typeof DATATBLS_GetMonLvlTxtRecord113c>): ReturnType<typeof DATATBLS_GetMonLvlTxtRecord113c> {
+  return DATATBLS_GetMonLvlTxtRecord113c(...args)
+}
+function SKILLS_IsCurseDurationDifficultyScaled_6FC6DF80_113c(...args: Parameters<typeof SKILLS_IsDimVisionOrTerrorState113c>): ReturnType<typeof SKILLS_IsDimVisionOrTerrorState113c> {
+  return SKILLS_IsDimVisionOrTerrorState113c(...args)
+}
+function SKILLS_ScaleCurseDurationByDifficulty_6FC6DF60_113c(...args: Parameters<typeof SKILLS_DivideValueByMonLvlHp113c>): ReturnType<typeof SKILLS_DivideValueByMonLvlHp113c> {
+  return SKILLS_DivideValueByMonLvlHp113c(...args)
+}
 function AURA_ExecuteRadiusFilterAtTargetPos_6FCC0AD0_113c(
   m: D2KernMemory113c,
   pGame: number,
@@ -1852,7 +1940,9 @@ function SUNIT_IterateUnitsOfType113c(
     pArg,
   )
 }
-const QUESTS_BroadcastNpcQuestMessages_6FC53920_113c = QUESTS_SetGlobalQuestState_6FC53920_113c
+function QUESTS_BroadcastNpcQuestMessages_6FC53920_113c(...args: Parameters<typeof QUESTS_SetGlobalQuestState_6FC53920_113c>): ReturnType<typeof QUESTS_SetGlobalQuestState_6FC53920_113c> {
+  return QUESTS_SetGlobalQuestState_6FC53920_113c(...args)
+}
 function QUESTS_SetTimer_6FC53AF0_113c(
   m: D2KernMemory113c,
   nPeriodTicks: number,
@@ -1864,10 +1954,18 @@ function QUESTS_SetTimer_6FC53AF0_113c(
   }
   QUESTS_AppendQuestTimer_6FC53AF0_113c(m, nPeriodTicks, pQuest, pfnTimerCallback)
 }
-const QUESTS_RecordPlayerGUID_6FC54C00_113c = QUESTS_SendPlayerQuestLogPacket28_113c
-const DATATBLS_GetLevelThreshold113c = DATATBLS_GetStartExpForLevel113c
-const STATLIST_UnitGetStatValue113c = STATLIST_GetUnitBaseStat113c
-const QUESTS_Act5SpawnPrisonBarbarians_6FC7C2A0_113c = ACT5Q2_SpawnBarbarianSoldiersInPrison_6FC7C2A0_113c
+function QUESTS_RecordPlayerGUID_6FC54C00_113c(...args: Parameters<typeof QUESTS_SendPlayerQuestLogPacket28_113c>): ReturnType<typeof QUESTS_SendPlayerQuestLogPacket28_113c> {
+  return QUESTS_SendPlayerQuestLogPacket28_113c(...args)
+}
+function DATATBLS_GetLevelThreshold113c(...args: Parameters<typeof DATATBLS_GetStartExpForLevel113c>): ReturnType<typeof DATATBLS_GetStartExpForLevel113c> {
+  return DATATBLS_GetStartExpForLevel113c(...args)
+}
+function STATLIST_UnitGetStatValue113c(...args: Parameters<typeof STATLIST_GetUnitBaseStat113c>): ReturnType<typeof STATLIST_GetUnitBaseStat113c> {
+  return STATLIST_GetUnitBaseStat113c(...args)
+}
+function QUESTS_Act5SpawnPrisonBarbarians_6FC7C2A0_113c(...args: Parameters<typeof ACT5Q2_SpawnBarbarianSoldiersInPrison_6FC7C2A0_113c>): ReturnType<typeof ACT5Q2_SpawnBarbarianSoldiersInPrison_6FC7C2A0_113c> {
+  return ACT5Q2_SpawnBarbarianSoldiersInPrison_6FC7C2A0_113c(...args)
+}
 
 /**
  * @dll D2Game.dll
@@ -3434,9 +3532,13 @@ export function SKILLS_ApplyDimVisionToTarget_6FC70470_113c(
 ): void {
   hitD2GameVa113c(0x6FC70470)
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C));
-  if (i32(m, (pDataTables + 0xb98) >>> 0) <= 0x47) return;
-  const pSkillTxt = (m.u32((pDataTables + 0xb90) >>> 0) + 0x9ea4) >>> 0;
-  if (pSkillTxt === 0) return;
+  const has113cSkills =
+    m.u32((pDataTables + 0xb98) >>> 0) >= 0x1000 && i32(m, (pDataTables + 0xba0) >>> 0) > 0;
+  const nSkillsCnt = i32(m, (pDataTables + (has113cSkills ? 0xba0 : 0xb98)) >>> 0);
+  if (nSkillsCnt <= 0x47) return;
+  const pSkillsBase = m.u32((pDataTables + (has113cSkills ? 0xb98 : 0xb90)) >>> 0);
+  if (pSkillsBase === 0) return;
+  const pSkillTxt = (pSkillsBase + 0x9ea4) >>> 0;
 
   let len =
     SKILLS_EvalCalcByOffset113c(m, pUnit, m.u32((pSkillTxt + 0x60) >>> 0), 0x47, nSkillLevel) | 0;
@@ -3500,10 +3602,17 @@ export function SKILLS_SrvDo067_NecromancerCurseRadius_6FC705D0_113c(
   nSkillLevel: number,
 ): number {
   hitD2GameVa113c(0x6FC705D0)
-  const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C));
-  if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xb98) >>> 0)) return 0;
-  const pSkillTxt = (m.u32((pDataTables + 0xb90) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
-  if (pSkillTxt === 0) return 0;
+  const pIat = m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C) >>> 0;
+  const pDataTables = pIat !== 0 ? (m.u32(pIat) >>> 0) : (m.u32(0x6fde9e1c) >>> 0);
+  const has113cSkills =
+    pDataTables !== 0 &&
+    m.u32((pDataTables + 0xb98) >>> 0) >= 0x1000 &&
+    i32(m, (pDataTables + 0xba0) >>> 0) > 0;
+  const nSkillsCnt = pDataTables !== 0 ? i32(m, (pDataTables + (has113cSkills ? 0xba0 : 0xb98)) >>> 0) : 0;
+  if (pDataTables === 0 || nSkillId < 0 || nSkillId >= nSkillsCnt) return 0;
+  const pSkillsBase = m.u32((pDataTables + (has113cSkills ? 0xb98 : 0xb90)) >>> 0);
+  if (pSkillsBase === 0) return 0;
+  const pSkillTxt = (pSkillsBase + imul32(nSkillId, 0x23c)) >>> 0;
 
   const wAuraStat0 = i16(m, (pSkillTxt + 0x54) >>> 0);
   if (wAuraStat0 < -1 || wAuraStat0 >= i32(m, (pDataTables + 0xbd4) >>> 0)) return 0;

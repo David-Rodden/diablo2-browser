@@ -2526,10 +2526,13 @@ export function UNIT_SendFullUnitSyncToClient113c(
               }
             }
           }
-          UNIT_SendAllStatesBitstreamToClient113c(m, pUnit, pClient)
-          UNIT_FlushEventNotifyQueueToClient113c(m, pClient, pUnit, callees)
           if (callees !== undefined && callees.onUnitFullSyncPreSwitch !== undefined) {
             callees.onUnitFullSyncPreSwitch(m, dwUnitType, pClient, pUnit, dwFlags)
+          }
+          UNIT_SendAllStatesBitstreamToClient113c(m, pUnit, pClient)
+          UNIT_FlushEventNotifyQueueToClient113c(m, pClient, pUnit, callees)
+          if (callees !== undefined && callees.onUnitFullSyncPostSwitch !== undefined) {
+            callees.onUnitFullSyncPostSwitch(m, dwUnitType, pClient, pUnit, dwFlags)
           }
         }
         break
@@ -2570,7 +2573,7 @@ export function UNIT_SendFullUnitSyncToClient113c(
       UNIT_FlushEventNotifyQueueToClient113c(m, pClient, pUnit, callees)
     }
 
-    if (callees !== undefined && callees.onUnitFullSyncPostSwitch !== undefined) {
+    if (dwUnitType !== 1 && callees !== undefined && callees.onUnitFullSyncPostSwitch !== undefined) {
       callees.onUnitFullSyncPostSwitch(m, dwUnitType, pClient, pUnit, dwFlags)
     }
   } finally {

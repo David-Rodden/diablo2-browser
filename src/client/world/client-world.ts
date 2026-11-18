@@ -357,6 +357,13 @@ export class ClientWorld {
     cubeOpen: false,
   }
   private _awaitingArtisanConfirmNpcId: number | null = null
+  private _pendingQuestObjectInteract: {
+    readonly objectId: number
+    readonly classId: number
+    readonly mode: number
+    readonly sentAtMs: number
+  } | null = null
+  private _lastQuestQolHint: { readonly text: string; readonly atMs: number } | null = null
   private readonly _npcTalkFlagsByAct = new Map<number, Uint16Array>()
   private readonly _npcIntroPlayedKeys = new Set<string>()
   private readonly _npcInfoByUnitId = new Map<
@@ -2630,6 +2637,18 @@ export class ClientWorld {
     return this.addLocalSystemMessage(text, color, nowMs)
   }
 
+  emitQuestQolHint(text: string, nowMs?: number): boolean {
+    if (!text) return false
+    const tNow = (this as unknown as ClientWorldInternal).resolveEventNowMs(nowMs)
+    const prev = this._lastQuestQolHint
+    if (prev && prev.text === text && tNow >= prev.atMs && tNow - prev.atMs < 3000) {
+      return false
+    }
+    this._lastQuestQolHint = { text, atMs: tNow }
+    this.addLocalSystemMessage(text, 1, tNow)
+    return true
+  }
+
   setPlayerSquelched(unitId: number, squelched: boolean): void {
     setPlayerSquelchedImpl.call(this as unknown as ClientWorldInternal, unitId, squelched)
   }
@@ -3003,6 +3022,8 @@ export class ClientWorld {
     this._trade.acceptDisabled = false
     this._npcInteraction = { npcId: null, window: 'none', activeWindow: 'none', stashOpen: false, cubeOpen: false }
     this._awaitingArtisanConfirmNpcId = null
+    this._pendingQuestObjectInteract = null
+    this._lastQuestQolHint = null
     this._npcInfoByUnitId.clear()
     this._pendingWantsInteractUnitIds.clear()
     this._lastNpcTransaction = null

@@ -140,8 +140,8 @@
     "name": "ACT5Q3_Callback11_OnPlayerConnect_6FC77E80",
     "kernFile": "src/d2kern-113c/game/k2-w3b5-113c.ts",
     "tsSymbol": "ACT5Q3_Callback11_OnPlayerConnect_6FC77E80_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w3b5.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w3b5.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -275,8 +275,8 @@
     "name": "ACT5Intro_ActiveFilter_6FC79680",
     "kernFile": "src/d2kern-113c/game/k2-w3b5-113c.ts",
     "tsSymbol": "ACT5Intro_ActiveFilter_6FC79680_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w3b5.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w3b5.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -320,8 +320,8 @@
     "name": "ACT5Q3_GrantScrollOfResistanceStats_6FC7A000",
     "kernFile": "src/d2kern-113c/game/k2-w3b5-113c.ts",
     "tsSymbol": "ACT5Q3_GrantScrollOfResistanceStats_6FC7A000_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w3b5.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w3b5.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -383,8 +383,8 @@
     "name": "ACT5Q3_Callback00_NpcActivate_6FC7DA70",
     "kernFile": "src/d2kern-113c/game/k2-w3b5-113c.ts",
     "tsSymbol": "ACT5Q3_Callback00_NpcActivate_6FC7DA70_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w3b5.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w3b5.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",

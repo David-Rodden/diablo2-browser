@@ -1372,8 +1372,8 @@ export function ACT2Q6_OperateHoradricOrificeObject_6FCE6240_113c(
     pPrevTarget = SUNIT_GetServerUnit113c(
       m,
       pGame,
-      m.u32((pPlayer0 + 0x64) >>> 0) | 0,
-      m.u32((pPlayer0 + 0x68) >>> 0) >>> 0,
+      m.u32((pPlayer0 + 0x68) >>> 0) | 0,
+      m.u32((pPlayer0 + 0x64) >>> 0) >>> 0,
     ) >>> 0
   }
 
@@ -1398,7 +1398,7 @@ export function ACT2Q6_OperateHoradricOrificeObject_6FCE6240_113c(
     }
     const pObj0 = m.u32((op + 0x04) >>> 0) >>> 0
     const dwObjGuid0 = pObj0 !== 0 ? m.u32((pObj0 + 0x0c) >>> 0) >>> 0 : 0xffffffff
-    SUNIT_SetLastKillerInfo_6FCFFAE0_113c(m, m.u32((op + 0x08) >>> 0) >>> 0, dwObjGuid0, 2)
+    SUNIT_SetLastKillerInfo_6FCFFAE0_113c(m, m.u32((op + 0x08) >>> 0) >>> 0, 2, dwObjGuid0)
     UNITS_ChangeAnimMode113c(m, m.u32((op + 0x04) >>> 0) >>> 0, 1)
     const pObj1 = m.u32((op + 0x04) >>> 0) >>> 0
     const dwObjGuid1 = pObj1 !== 0 ? m.u32((pObj1 + 0x0c) >>> 0) >>> 0 : 0xffffffff

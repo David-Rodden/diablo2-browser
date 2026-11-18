@@ -692,6 +692,14 @@ export function SKILLS_ExecuteSkillStart113c(
   pUnit: number,
   nSkillLevel: number,
   bNoManaCost: number,
+  onSrvStFunc?: (
+    m: Memory113c,
+    wSrvStFunc: number,
+    pGame: number,
+    pUnit: number,
+    nSkillId: number,
+    nSkillLevel: number,
+  ) => number,
 ): number {
   hitD2GameVa113c(0x6FCBFD00);
   if (pGame === 0 || pUnit === 0) {
@@ -756,6 +764,8 @@ export function SKILLS_ExecuteSkillStart113c(
   if (wSrvStFunc > 0 && wSrvStFunc < 0x5b) {
     if (wSrvStFunc === 1) {
       stResult = SKILLS_StartPlayerSkillAnimOrCast113c(m, pGame, pUnit, nSkillId, nSkillLevel);
+    } else if (onSrvStFunc !== undefined) {
+      stResult = onSrvStFunc(m, wSrvStFunc, pGame, pUnit, nSkillId, nSkillLevel);
     }
   }
   if (stResult === 0) {
@@ -784,6 +794,14 @@ export function SKILLS_StartUsedSkill113c(
   m: Memory113c,
   pUnit: number,
   pGame: number,
+  onSrvStFunc?: (
+    m: Memory113c,
+    wSrvStFunc: number,
+    pGame: number,
+    pUnit: number,
+    nSkillId: number,
+    nSkillLevel: number,
+  ) => number,
 ): number {
   hitD2GameVa113c(0x6FCC0830);
   const pSkill = SKILLS_GetUsedSkillMemPort113c(m, pUnit);
@@ -854,7 +872,7 @@ export function SKILLS_StartUsedSkill113c(
       }
     }
   }
-  return SKILLS_ExecuteSkillStart113c(m, nSkillId, pGame, pUnit, nSkillLevel, bNoManaCost);
+  return SKILLS_ExecuteSkillStart113c(m, nSkillId, pGame, pUnit, nSkillLevel, bNoManaCost, onSrvStFunc);
 }
 
 // @va D2Game:0x6FCC1630

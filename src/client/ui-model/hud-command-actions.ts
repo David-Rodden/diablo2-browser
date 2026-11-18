@@ -22,6 +22,7 @@ import { resolveItemDropSoundId113c } from '../audio/item-drop-sound-113c.ts'
 import type { ClientCommand, Hand, ItemData } from '../../netproto/index.ts'
 import { lookupTbl, requireTbl } from '../i18n/lang.ts'
 import { townPortalSource } from '../input/town-portal.ts'
+import { resolveCubeQuestDifficultyMismatchHint113c } from '../world/quest-item-difficulty-qol.ts'
 import { BELT_COLS } from '../ui/belt.ts'
 import type { BaseStatKey } from '../ui/character-sheet.ts'
 import type { HudCommandSink } from '../ui/hud-manager.ts'
@@ -1658,6 +1659,18 @@ export function dropItemImpl(model: any, itemId: number): void {
 
 export function transmuteCubeImpl(model: any): void {
   model.emitCommand({ type: 'ClickButton', buttonId: ClickButtonId.Transmute, amount: 0 })
+  const cubeMap = model.world?.containers?.cube
+  if (cubeMap && typeof cubeMap.values === 'function') {
+    const hint = resolveCubeQuestDifficultyMismatchHint113c({
+      cubeItems: cubeMap.values(),
+      gameDifficulty: model.world?.difficulty ?? 0,
+      lang: model.hud?.lang ?? model.world?.lang,
+    })
+    if (hint !== null) {
+      model.world?.emitQuestQolHint?.(hint)
+      model.hud?.worldPanels?.showVendorStatus?.(hint, 'red')
+    }
+  }
 }
 
 export function buyFromNpcImpl(

@@ -608,14 +608,58 @@ export function MONSTER_Event1_ModeEnd113c(
   callbacks.onModeEnd?.(m, pGame, pUnit, entry, arg14, arg18)
 }
 
+let defaultMonsterAiThinkCallback113c:
+  | ((
+      m: Memory113c,
+      pGame: number,
+      pUnit: number,
+      pAiGeneral: number,
+      pfnThink: number,
+      arg14: number,
+      arg18: number,
+    ) => void)
+  | undefined
+
+export function setDefaultMonsterAiThinkCallback113c(
+  cb: (
+    m: Memory113c,
+    pGame: number,
+    pUnit: number,
+    pAiGeneral: number,
+    pfnThink: number,
+    arg14: number,
+    arg18: number,
+  ) => void,
+): void {
+  defaultMonsterAiThinkCallback113c = cb
+}
+
+let k2MonsterDropLootHook113c:
+  | ((m: Memory113c, pGame: number, pMonster: number, pKiller: number, allocateLootUnitInMem: boolean) => void)
+  | undefined
+
+export function setK2MonsterDropLootHook113c(
+  fn:
+    | ((m: Memory113c, pGame: number, pMonster: number, pKiller: number, allocateLootUnitInMem: boolean) => void)
+    | undefined,
+): void {
+  k2MonsterDropLootHook113c = fn
+}
+
+export function getK2MonsterDropLootHook113c():
+  | ((m: Memory113c, pGame: number, pMonster: number, pKiller: number, allocateLootUnitInMem: boolean) => void)
+  | undefined {
+  return k2MonsterDropLootHook113c
+}
+
 /** `@va D2Game:0x6FCBD3B0` (`AI_RunMonsterAI` -> `0x6FCBD160` -> `0x6FCBCC70`). */
 export function AI_RunMonsterAI113c(
   m: Memory113c,
   pGame: number,
   pUnit: number,
-  arg14: number,
-  arg18: number,
-  callbacks: MonsterEventCallbacks113c,
+  arg14 = 0,
+  arg18 = 0,
+  callbacks?: MonsterEventCallbacks113c,
 ): void {
   hitD2GameVa113c(0x6FCBD3B0)
   if (pUnit === 0 || m.get(pUnit, D2UnitStrc.dwUnitType) !== UNIT_MONSTER) return
@@ -638,7 +682,11 @@ export function AI_RunMonsterAI113c(
   const pAiGeneral = m.get(pMonsterData, D2MonsterDataStrc.pAiGeneral)
   if (pAiGeneral === 0) return
   const pfnThink = m.get(pAiGeneral, D2AiGeneralStrc.pfnThink)
-  callbacks.onAiThink?.(m, pGame, pUnit, pAiGeneral, pfnThink, arg14, arg18)
+  if (callbacks?.onAiThink !== undefined) {
+    callbacks.onAiThink(m, pGame, pUnit, pAiGeneral, pfnThink, arg14, arg18)
+  } else if (defaultMonsterAiThinkCallback113c !== undefined) {
+    defaultMonsterAiThinkCallback113c(m, pGame, pUnit, pAiGeneral, pfnThink, arg14, arg18)
+  }
 }
 
 /**

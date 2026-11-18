@@ -250,7 +250,7 @@ function aiApproachTargetMem113c(
   if ((flagsByte & 2) !== 0 && pUnit !== 0) {
     const roll = (stepSeed64At113c(m, (pUnit + 0x20) >>> 0) >>> 0) % 100;
     if (roll < 0x46) {
-      AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0);
+      AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0, 4);
       return 1;
     }
     AI_Stall113c(m, pGame >>> 0, pUnit >>> 0, 10);
@@ -867,7 +867,7 @@ export function AI_TickNodes4_5_7_113c(
     const step5 = mem.get(pCmd5, D2AiCmdStrc.dwParam1) | 0;
     if (step5 > 0) {
       if ((step5 & 1) !== 0) {
-        AI_IdleWander113c(mem, pGame >>> 0, pUnit >>> 0);
+        AI_IdleWander113c(mem, pGame >>> 0, pUnit >>> 0, mem.get(pCmd5, D2AiCmdStrc.dwParam2) & 0xff);
         mem.set(pCmd5, D2AiCmdStrc.dwParam1, ((step5 - 1) | 0) >>> 0);
         return 1;
       }

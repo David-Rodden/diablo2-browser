@@ -486,27 +486,27 @@ export function SUNIT_FreeCombatListAndChangeAnimMode_6FCFF980_113c(
 }
 
 /**
- * Records `dwKillerType` (`+0x64`), `dwKillerId` (`+0x68`), and `bHasKiller = 1` (`+0x6C`) on `pUnit`
- * if `pUnit->bHasKiller` (`+0x6C`) is currently `0`.
+ * Records `dwInteractUnitId` (`+0x64`), `nInteractUnitType` (`+0x68`), and `bInteracting = 1` (`+0x6C`) on `pUnit`
+ * if `pUnit->bInteracting` (`+0x6C`) is currently `0`.
  *
  * @va D2Game.dll@0x6fcffae0 (74B)
  */
 export function SUNIT_SetLastKillerInfo_6FCFFAE0_113c(
   m: Memory113c,
   pUnit: number,
-  dwKillerId: number,
-  dwKillerType: number,
+  nInteractUnitType: number,
+  dwInteractUnitId: number,
 ): void {
   hitD2GameVa113c(0x6FCFFAE0)
-  const bHasKiller = m.u8((pUnit + 0x6c) >>> 0)
-  if (bHasKiller !== 0) {
+  const bInteracting = m.u8((pUnit + 0x6c) >>> 0)
+  if (bInteracting !== 0) {
     if ((m.u32(pUnit >>> 0) | 0) === 0) {
       UNITS_GetPlayerData113c(m, pUnit >>> 0)
     }
     return
   }
-  m.setU32((pUnit + 0x64) >>> 0, dwKillerType >>> 0)
-  m.setU32((pUnit + 0x68) >>> 0, dwKillerId >>> 0)
+  m.setU32((pUnit + 0x64) >>> 0, dwInteractUnitId >>> 0)
+  m.setU32((pUnit + 0x68) >>> 0, nInteractUnitType >>> 0)
   m.setU8((pUnit + 0x6c) >>> 0, 1)
 }
 

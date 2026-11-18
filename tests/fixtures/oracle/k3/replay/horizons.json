@@ -6,8 +6,8 @@
   },
   "p52-amazon-valkyrie": {
     "bootFrame": 2,
-    "strict": 641,
-    "pos": 641
+    "strict": 1500,
+    "pos": 1500
   },
   "p52-barbarian-warcries": {
     "bootFrame": 2,
@@ -16,13 +16,13 @@
   },
   "p52-necromancer-curses": {
     "bootFrame": 2,
-    "strict": 629,
-    "pos": 629
+    "strict": 2000,
+    "pos": 2000
   },
   "p52-necromancer-poison-golem": {
     "bootFrame": 2,
-    "strict": 636,
-    "pos": 636
+    "strict": 1800,
+    "pos": 1800
   },
   "p52-paladin-auras": {
     "bootFrame": 2,
@@ -31,8 +31,8 @@
   },
   "p52-paladin-merc-aura": {
     "bootFrame": 2,
-    "strict": 2,
-    "pos": 2
+    "strict": 1700,
+    "pos": 1700
   },
   "p52-sorceress-elemental": {
     "bootFrame": 2,

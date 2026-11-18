@@ -3418,6 +3418,7 @@ export function MONSTER_EquipMonEquipItems113c(
   pDonorUnit = 0,
   nItemLevel = 0,
   bOnInit = 0,
+  nRowFilterLevel?: number,
 ): void {
   hitD2GameVa113c(0x6FCB2ED0)
   if (pUnit === 0) return
@@ -3450,8 +3451,9 @@ export function MONSTER_EquipMonEquipItems113c(
       ? (pEquipBase + Math.imul(nEquipCount, 0x1c)) >>> 0
       : 0xffffffff
 
+  const rowFilterLvl = nRowFilterLevel !== undefined ? (nRowFilterLevel | 0) : equipLvl
   if (sx16(m.u16(pEquipRow)) === nClassId) {
-    while (sx16(m.u16((pEquipRow + 0x02) >>> 0)) > equipLvl) {
+    while (sx16(m.u16((pEquipRow + 0x02) >>> 0)) > rowFilterLvl) {
       const pNext = (pEquipRow + 0x1c) >>> 0
       if (pNext >= pEquipEnd) break
       const nextMon = sx16(m.u16(pNext))

@@ -8033,25 +8033,35 @@ const ITEMMODS_FUNC_TABLE_6FDEB0C8: readonly (ItemModFuncById113c | null)[] = [
   ITEMMODS_ApplyPropertyResetAndSeedRoll113c as unknown as ItemModFuncById113c | null,
   ITEMMODS_ApplyPropertyCondResetAndRoll113c as unknown as ItemModFuncById113c | null,
   ITEMMODS_ApplyPropertyResetAndRoll113c as unknown as ItemModFuncById113c | null,
-  ITEMMODS_ApplyMinDamagePercentProperty113c as unknown as ItemModFuncById113c | null,
-  ITEMMODS_ApplyMaxDamagePercentProperty113c as unknown as ItemModFuncById113c | null,
-  ITEMMODS_ApplyEnhancedDamagePercentProperty113c as unknown as ItemModFuncById113c | null,
+  (m, _t, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8) =>
+    ITEMMODS_ApplyMinDamagePercentProperty113c(m, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8),
+  (m, _t, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8) =>
+    ITEMMODS_ApplyMaxDamagePercentProperty113c(m, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8),
+  (m, _t, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8) =>
+    ITEMMODS_ApplyEnhancedDamagePercentProperty113c(m, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8),
   ITEMMODS_ApplyPropertySimpleLayer0_113c as unknown as ItemModFuncById113c | null,
   ITEMMODS_ApplyPropertyOskill113c as unknown as ItemModFuncById113c | null,
   ITEMMODS_ApplyPropertyClassSkillTab113c as unknown as ItemModFuncById113c | null,
-  ITEMMODS_ApplyChargedSkillProperty113c as unknown as ItemModFuncById113c | null,
+  (m, _t, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8) =>
+    ITEMMODS_ApplyChargedSkillProperty113c(m, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8),
   ITEMMODS_ApplyPropertySkillOnHit113c as unknown as ItemModFuncById113c | null,
   ITEMMODS_ApplyPropertyCondResetRollDurability113c as unknown as ItemModFuncById113c | null,
-  ITEMS_CraftModRollSockets113c as unknown as ItemModFuncById113c | null,
-  ITEMMODS_ApplyStatMinProperty113c as unknown as ItemModFuncById113c | null,
-  ITEMMODS_ApplyStatMaxProperty113c as unknown as ItemModFuncById113c | null,
-  ITEMMODS_ApplyStatRolledProperty113c as unknown as ItemModFuncById113c | null,
+  (m, _t, _pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8) =>
+    ITEMS_CraftModRollSockets113c(m, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8),
+  (m, _t, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8) =>
+    ITEMMODS_ApplyStatMinProperty113c(m, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8),
+  (m, _t, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8) =>
+    ITEMMODS_ApplyStatMaxProperty113c(m, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8),
+  (m, _t, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8) =>
+    ITEMMODS_ApplyStatRolledProperty113c(m, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8),
   ITEMMODS_ApplyPropertyPackedDuration113c as unknown as ItemModFuncById113c | null,
-  ITEMMODS_ApplyCastSkillPropStat113c as unknown as ItemModFuncById113c | null,
+  (m, _t, pAlt, pIt, pPr, _bSet, wSt, _nLay, _nRol, nSt, fFl) =>
+    ITEMMODS_ApplyCastSkillPropStat113c(m, pAlt, pIt, pPr, wSt, nSt, fFl),
   ITEMMODS_ApplyPropertyIndestructible113c as unknown as ItemModFuncById113c | null,
   ITEMMODS_ApplyPropertySingleSkill113c as unknown as ItemModFuncById113c | null,
   ITEMMODS_ApplyPropertyAura113c as unknown as ItemModFuncById113c | null,
-  ITEMS_CraftModMakeEthereal113c as unknown as ItemModFuncById113c | null,
+  (m, _t, _pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8) =>
+    ITEMS_CraftModMakeEthereal113c(m, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8),
   ITEMMODS_ApplyPropertySimpleStat113c as unknown as ItemModFuncById113c | null,
   null as unknown as ItemModFuncById113c | null,
   null as unknown as ItemModFuncById113c | null,

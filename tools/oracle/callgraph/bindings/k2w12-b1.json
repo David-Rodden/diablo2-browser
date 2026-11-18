@@ -14,8 +14,8 @@
     "name": "AI_ThinkMercenaryMain_6FC3DD40",
     "kernFile": "src/d2kern-113c/game/k2-w12b1-113c.ts",
     "tsSymbol": "AI_ThinkMercenaryMain_6FC3DD40_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w12b1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w12b1.test.ts; K3 golden replay diff-verified (dll\u2229ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -23,8 +23,8 @@
     "name": "AI_FollowOwnerOrTeleportIfFar_6FC3E140",
     "kernFile": "src/d2kern-113c/game/k2-w12b1-113c.ts",
     "tsSymbol": "AI_FollowOwnerOrTeleportIfFar_6FC3E140_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w12b1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w12b1.test.ts; Diff-verified 1:1 in dll\u2229ts across full-horizon strict zero-divergence K3 summon/curse replays (p52-amazon-valkyrie F1500/1500, p52-necromancer-poison-golem F1800/1800, p52-necromancer-curses F2000/2000) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -212,8 +212,8 @@
     "name": "SKILLS_RegisterSummonedMonsterPet_6FCC3090",
     "kernFile": "src/d2kern-113c/game/k2-w12b1-113c.ts",
     "tsSymbol": "SKILLS_RegisterSummonedMonsterPet_6FCC3090_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w12b1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w12b1.test.ts; Diff-verified 1:1 in dll\u2229ts across full-horizon strict zero-divergence K3 summon/curse replays (p52-amazon-valkyrie F1500/1500, p52-necromancer-poison-golem F1800/1800, p52-necromancer-curses F2000/2000) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -257,8 +257,8 @@
     "name": "C2S_ExecuteEntityInteractionOrRunToTarget_6FCF01D0",
     "kernFile": "src/d2kern-113c/game/k2-w12b1-113c.ts",
     "tsSymbol": "C2S_ExecuteEntityInteractionOrRunToTarget_6FCF01D0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w12b1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w12b1.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -275,8 +275,8 @@
     "name": "ITEMS_PlaceItemInUnitInventoryGrid_6FCF76A0",
     "kernFile": "src/d2kern-113c/game/k2-w12b1-113c.ts",
     "tsSymbol": "ITEMS_PlaceItemInUnitInventoryGrid_6FCF76A0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w12b1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w12b1.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",

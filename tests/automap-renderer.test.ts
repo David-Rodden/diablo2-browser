@@ -10,6 +10,8 @@ import type { D2ColorCode, D2FontRenderer } from '../src/client/ui/font.ts'
 import {
   AUTOMAP_CROSSHAIR_COLORS,
   AUTOMAP_PAN_STEP_PX,
+  AUTOMAP_PORTAL_ICON_HEIGHT_FULL,
+  AUTOMAP_PORTAL_ICON_HEIGHT_MINI,
   AUTOMAP_REVEAL_DISTANCE_THRESHOLD,
   Minimap,
   type MinimapLevel,
@@ -544,27 +546,35 @@ describe('R3 Authentic 1.13c Isometric Sprite Automap & Minimap UI', () => {
         },
       )
 
-      // 3 entities (player + npc + boss) -> 3 crosshairs drawn (3 * 12 = 36 quad segments)
-      expect(minimap.crosshairsDrawnLastFrame.total).toBe(3)
+      // 3 entities (player + npc + boss) + 1 Town Portal -> 4 crosshairs drawn (4 * 12 = 48 quad segments)
+      expect(minimap.crosshairsDrawnLastFrame.total).toBe(4)
+      expect(minimap.crosshairsDrawnLastFrame.portals).toBe(1)
       expect(minimap.crosshairsDrawnLastFrame.player).toBe(1)
       expect(minimap.crosshairsDrawnLastFrame.npcs).toBe(1)
       expect(minimap.crosshairsDrawnLastFrame.bosses).toBe(1)
 
       const quadDraws = draws.filter((d): d is RecordedQuadDraw => d.kind === 'quad')
-      expect(quadDraws.length).toBe(3 * 12)
+      expect(quadDraws.length).toBe(4 * 12)
       expect(quadDraws.some(d => d.color[2] === AUTOMAP_CROSSHAIR_COLORS.player[2])).toBe(true)
       expect(quadDraws.some(d => d.color[1] === AUTOMAP_CROSSHAIR_COLORS.npc[1])).toBe(true)
       expect(quadDraws.some(d => d.color[0] === AUTOMAP_CROSSHAIR_COLORS.boss[0])).toBe(true)
 
-      // 4 static cell sprites + 1 blue portal sprite (cellNo 306)
-      expect(minimap.spritesDrawnLastFrame.total).toBe(5)
-      expect(minimap.spritesDrawnLastFrame.portals).toBe(1)
+      // D2Client.dll 0x6fb114b9 / 0x6fb11b2a: class 59 portals are a 0x218 RGB(244, 244, 0) crosshair,
+      // never a MaxiMap cell (306 is unused by 1.13c portals, 307 is the Waypoint cell) -> 4 static sprites only.
+      const portalQuads = quadDraws.filter(
+        (d) =>
+          d.color[0] === AUTOMAP_CROSSHAIR_COLORS.portal[0] &&
+          d.color[1] === AUTOMAP_CROSSHAIR_COLORS.portal[1] &&
+          d.color[2] === 0,
+      )
+      expect(portalQuads.length).toBe(12)
+      expect(minimap.spritesDrawnLastFrame.total).toBe(4)
       expect(minimap.warpLabelsLastFrame.some(l => l.text === '鲜血荒地' && l.kind === 'warp')).toBe(true)
       expect(minimap.warpLabelsLastFrame.some(l => l.text === '储物箱' && l.kind === 'stash')).toBe(true)
       expect(minimap.warpLabelsLastFrame.some(l => l.text === '传送门 -> 鲜血荒地' && l.kind === 'portal')).toBe(true)
     })
 
-    it('projects Town Portal icon and owner label at exact world coordinates without 2x offset in both full-map (divisor=10) and mini-map (divisor=20) modes (Issue #806)', () => {
+    it('projects Town Portal crosshair and owner label at exact world coordinates without 2x offset in both full-map (divisor=10) and mini-map (divisor=20) modes (Issue #806)', () => {
       const minimap = new Minimap()
       registerSyntheticAtlases(minimap)
       const level = makeAutomapTestLevel({
@@ -602,26 +612,148 @@ describe('R3 Authentic 1.13c Isometric Sprite Automap & Minimap UI', () => {
         )
 
         const vp = computeAutomapViewport(800, 600, isMini, false, false, 0, 0)
-        expect(minimap.spritesDrawnLastFrame.portals).toBe(1)
+        expect(minimap.crosshairsDrawnLastFrame.portals).toBe(1)
 
+        // D2Client.dll 0x6fb11a86 (`sub ebx, 8`) + stash/name label `ebx - 10` (0x6fb11b00).
         const portalLabel = minimap.warpLabelsLastFrame.find(
           (l) => l.kind === 'portal' && l.text === "ttSorceress's Town Portal",
         )
         expect(portalLabel).toBeDefined()
         expect(portalLabel!.x).toBe(vp.centerX)
-        expect(portalLabel!.y).toBe(vp.centerY - 8)
+        expect(portalLabel!.y).toBe(vp.centerY - 18)
 
-        const sheetKey = isMini ? 'MaxiMapS' : 'MaxiMap'
-        const frame306 = minimap.getSheetMeta(sheetKey).frames[306]!
-        const expectedDrawLeft = vp.centerX + frame306.offsetX - (isMini ? 4 : 8)
-        const expectedDrawTop = vp.centerY - frame306.height + frame306.offsetY
-        const spriteDraws = draws.filter((d): d is RecordedSpriteDraw => d.kind === 'sprite')
-        const portalSprite = spriteDraws.find(
-          (d) => d.frame.x === frame306.x && d.frame.y === frame306.y,
+        const expectedSegments = getCrosshairSegments(vp.centerX, vp.centerY - 8, isMini)
+        const quadDraws = draws.filter((d): d is RecordedQuadDraw => d.kind === 'quad')
+        const portalQuads = quadDraws.filter(
+          (d) =>
+            d.color[0] === AUTOMAP_CROSSHAIR_COLORS.portal[0] &&
+            d.color[1] === AUTOMAP_CROSSHAIR_COLORS.portal[1] &&
+            d.color[2] === 0,
         )
-        expect(portalSprite).toBeDefined()
-        expect(portalSprite!.x).toBe(5600 - 400 + expectedDrawLeft)
-        expect(portalSprite!.y).toBe(2800 - 300 + expectedDrawTop)
+        expect(portalQuads.length).toBe(12)
+        expect((portalQuads[0]!.x0 + portalQuads[0]!.x3) / 2).toBeCloseTo(
+          5600 - 400 + expectedSegments[0]!.x0,
+          5,
+        )
+        expect((portalQuads[0]!.y0 + portalQuads[0]!.y3) / 2).toBeCloseTo(
+          2800 - 300 + expectedSegments[0]!.y0,
+          5,
+        )
+
+        // No MaxiMap / MaxiMapS portal cell (306 / 307 / 300) is drawn for class 59.
+        const sheetKey = isMini ? 'MaxiMapS' : 'MaxiMap'
+        const sheetFrames = minimap.getSheetMeta(sheetKey).frames
+        const spriteDraws = draws.filter((d): d is RecordedSpriteDraw => d.kind === 'sprite')
+        for (const cellNo of [300, 306, 307]) {
+          const f = sheetFrames[cellNo]
+          if (!f) continue
+          expect(spriteDraws.some((d) => d.frame.x === f.x && d.frame.y === f.y)).toBe(false)
+        }
+      }
+    })
+
+    it('draws a miniature portal sprite instead of the crosshair when the portal art is supplied, in full-map and mini-map modes', () => {
+      const minimap = new Minimap()
+      registerSyntheticAtlases(minimap)
+      const level = makeAutomapTestLevel({ originX: 4000, originY: 2000 })
+      minimap.reveal(level, 4, 4, 5600, 2800, true)
+      const iconAtlas = { id: 'mock-portal-art' } as unknown as AtlasHandle
+      const iconFrame: AtlasFrame = { x: 3, y: 5, width: 60, height: 120 }
+
+      for (const mode of ['full', 'minimap'] as const) {
+        minimap.mode = mode
+        const isMini = mode === 'minimap'
+        const { renderer, draws } = createMockRenderer()
+        minimap.draw(
+          renderer,
+          level,
+          4,
+          4,
+          { x: 5600, y: 2800, zoom: 1 },
+          { width: 800, height: 600 },
+          {
+            playerWorldX: 5600,
+            playerWorldY: 2800,
+            levelId: 1,
+            portals: [
+              { x: 5600, y: 2800, kind: 'blue', label: 'blue', iconAtlas, iconFrame },
+              { x: 5600, y: 2800, kind: 'red', label: 'red', iconAtlas, iconFrame },
+            ],
+          },
+        )
+
+        const vp = computeAutomapViewport(800, 600, isMini, false, false, 0, 0)
+        const iconH = isMini ? AUTOMAP_PORTAL_ICON_HEIGHT_MINI : AUTOMAP_PORTAL_ICON_HEIGHT_FULL
+        const iconW = iconH / 2
+        expect(minimap.spritesDrawnLastFrame.portals).toBe(2)
+        expect(minimap.crosshairsDrawnLastFrame.portals).toBe(0)
+
+        const iconDraws = draws.filter(
+          (d): d is RecordedSpriteDraw => d.kind === 'sprite' && d.atlas === iconAtlas,
+        )
+        expect(iconDraws.length).toBe(2)
+        for (const d of iconDraws) {
+          expect(d.frame).toBe(iconFrame)
+          expect(d.width).toBe(iconW)
+          expect(d.height).toBe(iconH)
+          // Centred on the unit point, standing on the 1.13c unit baseline (y - 8) + 4.
+          expect(d.x).toBe(5600 - 400 + vp.centerX - Math.round(iconW / 2))
+          expect(d.y).toBe(2800 - 300 + vp.centerY - 8 + 4 - iconH)
+        }
+        expect(iconDraws[0]!.tint).toEqual([1, 1, 1, 1])
+        expect(iconDraws[1]!.tint![0]).toBe(1)
+        expect(iconDraws[1]!.tint![1]).toBeLessThan(0.5)
+        expect(iconDraws[1]!.tint![2]).toBeLessThan(0.5)
+
+        // No portal-colour crosshair quads when the sprite is drawn.
+        const quadDraws = draws.filter((d): d is RecordedQuadDraw => d.kind === 'quad')
+        expect(
+          quadDraws.some(
+            (d) =>
+              d.color[0] === AUTOMAP_CROSSHAIR_COLORS.portal[0] &&
+              d.color[1] === AUTOMAP_CROSSHAIR_COLORS.portal[1] &&
+              d.color[2] === 0,
+          ),
+        ).toBe(false)
+
+        const labels = minimap.warpLabelsLastFrame.filter((l) => l.kind === 'portal')
+        expect(labels.map((l) => l.text)).toEqual(['blue', 'red'])
+        for (const l of labels) {
+          expect(l.x).toBe(vp.centerX)
+          expect(l.y).toBe(vp.centerY - 8 + 4 - iconH - 4)
+        }
+      }
+    })
+
+    it('skips class 60 (red) portal crosshairs in levels 111 / 112 / 117 / 125..127 (D2Client.dll 0x6fb114f2..0x6fb11522)', () => {
+      const minimap = new Minimap()
+      registerSyntheticAtlases(minimap)
+      minimap.mode = 'full'
+      const level = makeAutomapTestLevel()
+      minimap.reveal(level, 4, 4, 0, 320, true)
+      for (let levelId = 1; levelId <= 136; levelId++) {
+        const { renderer } = createMockRenderer()
+        minimap.draw(
+          renderer,
+          level,
+          4,
+          4,
+          { x: 0, y: 320, zoom: 1 },
+          { width: 800, height: 600 },
+          {
+            playerWorldX: 0,
+            playerWorldY: 320,
+            levelId,
+            portals: [
+              { x: 16, y: 320, kind: 'red', label: 'red' },
+              { x: -16, y: 320, kind: 'blue', label: 'blue' },
+            ],
+          },
+        )
+        const gated = [111, 112, 117, 125, 126, 127].includes(levelId)
+        expect(minimap.crosshairsDrawnLastFrame.portals).toBe(gated ? 1 : 2)
+        expect(minimap.warpLabelsLastFrame.some((l) => l.kind === 'portal' && l.text === 'red')).toBe(!gated)
+        expect(minimap.warpLabelsLastFrame.some((l) => l.kind === 'portal' && l.text === 'blue')).toBe(true)
       }
     })
 

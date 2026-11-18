@@ -136,7 +136,10 @@ import {
   ITEMS_GetDropItemLevel_6FC2E5D0_113c,
 } from './k2-real-itemdrop-113c'
 import { SUNITDMG_GetPlayerClientClassId113c } from './k2-real-s2c-combat-113c'
-import { SKILLS_PostInitSummonedPetStatsAndAi_6FC70070_113c } from './k2-w11b1-113c'
+import {
+  type PetMoveActionOps113c,
+  SKILLS_PostInitSummonedPetStatsAndAi_6FC70070_113c,
+} from './k2-w11b1-113c'
 import {
   D2Game_6FC3E3D0_113c,
   D2Game_6FC3E640_113c,
@@ -313,7 +316,9 @@ import { CLIENTS_GetPlayerUnit113c, SUNIT_FreeUnit113c } from './replay-final11-
 import { EVENT_FreeNode113c, EVENT_SetEventFull113c } from './timer-wheel'
 import { hitD2GameVa113c } from '../va-trace-113c'
 
-const QUESTRECORD_GetQuestState113c = DRLGWARP_TestRoomTileBit113c
+function QUESTRECORD_GetQuestState113c(...args: Parameters<typeof DRLGWARP_TestRoomTileBit113c>): ReturnType<typeof DRLGWARP_TestRoomTileBit113c> {
+  return DRLGWARP_TestRoomTileBit113c(...args)
+}
 
 function FOG_FreeClientMemory113c(
   _m: SparseMemory113c,
@@ -352,7 +357,7 @@ function advanceSeed64_113c(m: SparseMemory113c, pSeed: number): number {
   return newLo
 }
 
-function dispatchQuestSeqFilterF0_113c(
+export function dispatchQuestSeqFilterF0_113c(
   m: SparseMemory113c,
   pQuest: number,
   onQuestCallbackF0?: (m: SparseMemory113c, pQuestData: number) => void,
@@ -377,9 +382,19 @@ function dispatchQuestSeqFilterF0_113c(
     case 0x6fc7afb0:
       return QUESTS_DefaultSequenceFilter_6FC7AFB0_113c(m, pQuest) & 0xff
     case 0x6fc801b0:
-      return QUESTS_CheckFirstTimeActiveOrChainRefresh_6FC801B0_113c(m, pQuest) & 0xff
+      return (
+        QUESTS_CheckFirstTimeActiveOrChainRefresh_6FC801B0_113c(m, pQuest, {
+          onChainQuestRefresh: (mem, pNext) =>
+            dispatchQuestSeqFilterF0_113c(mem as SparseMemory113c, pNext),
+        }) & 0xff
+      )
     case 0x6fc806e0:
-      return QUESTS_CheckActiveOrChainRefresh_6FC806E0_113c(m, pQuest) & 0xff
+      return (
+        QUESTS_CheckActiveOrChainRefresh_6FC806E0_113c(m, pQuest, {
+          onChainQuestRefresh: (mem, pNext) =>
+            dispatchQuestSeqFilterF0_113c(mem as SparseMemory113c, pNext),
+        }) & 0xff
+      )
     case 0x6fc83d20:
       return ACT1Q3_ActivateQuestState1_6FC83D20_113c(m, pQuest) & 0xff
     case 0x6fc846d0:
@@ -480,6 +495,7 @@ export function ITEMS_EvaluateMonsterDropTableEntry_6FC3E900_113c(
     pUnit: number,
     pGame: number,
   ) => void,
+  ops?: PetMoveActionOps113c,
 ): void {
   hitD2GameVa113c(0x6FC3E900)
   if (pUnit !== 0) {
@@ -498,12 +514,12 @@ export function ITEMS_EvaluateMonsterDropTableEntry_6FC3E900_113c(
     if (onEvalTable14 !== undefined) {
       onEvalTable14(m, pDropContext, pUnit, pGame)
     } else {
-      D2Game_6FC3E3D0_113c(m, pDropContext, pUnit, pGame)
+      D2Game_6FC3E3D0_113c(m, pDropContext, pUnit, pGame, ops)
     }
   } else if (onEvalTableDefault !== undefined) {
     onEvalTableDefault(m, pDropContext, pUnit, pGame)
   } else {
-    D2Game_6FC3E640_113c(m, pUnit, pDropContext, pGame)
+    D2Game_6FC3E640_113c(m, pUnit, pDropContext, pGame, ops)
   }
 }
 
@@ -2089,8 +2105,8 @@ export function SKILLS_SrvDo_RaiseSkeletonOrMage_6FC718B0_113c(
     SKILLS_ApplySummonLevelAcAndToHit_6FC6E2A0_113c(m, pUnit, 0, pGame, pSkeleton, nSkillLevel)
     SKILLS_InitNecroSkeletonPetComponents_6FC6EB50_113c(
       m,
-      pUnit,
       pSkeleton,
+      pUnit,
       nSkillId,
       nSkillLevel,
     )
@@ -2360,7 +2376,7 @@ export function ACT5Q3_OnMalahOrAnyaScrollCallback_6FC7F5E0_113c(
           freeW14B1Stack(sp)
         }
         if (QUESTRECORD_GetQuestState113c(m, pQuestFlags, 0x25, 9) !== 0) {
-          QUESTRECORD_ClearQuestStateBits2To11_113c(m, pQuestFlags, 0x25)
+          QUESTRECORD_ClearQuestState113c(m, pQuestFlags, 0x25, 1)
           QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x25, 0)
         } else if (m.u8((pQuestData + 0x09) >>> 0) !== 0 && m.u8((pQuestData + 0x0b) >>> 0) < 6) {
           m.setU8((pQuestData + 0x14) >>> 0, 0)
@@ -2469,7 +2485,7 @@ export function ACT5Q3_OnMalahOrAnyaScrollCallback_6FC7F5E0_113c(
     }
     QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x25, 9)
     if (QUESTRECORD_GetQuestState113c(m, pQuestFlags, 0x25, 8) !== 0) {
-      QUESTRECORD_ClearQuestStateBits2To11_113c(m, pQuestFlags, 0x25)
+      QUESTRECORD_ClearQuestState113c(m, pQuestFlags, 0x25, 1)
       QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x25, 0)
     }
     QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x25, 0x0a)

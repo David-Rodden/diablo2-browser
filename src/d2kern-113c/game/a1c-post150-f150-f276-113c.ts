@@ -553,11 +553,24 @@ function dispatchQuestCallbackByVa(
       ACT3Q8_Callback03_LevelChanged113c(m, pQuest, pArg, hooks)
       return
     default:
+      if (k4QuestCallbackDispatcher !== null && k4QuestCallbackDispatcher(m, pfnCallback, pQuest, pArg)) {
+        return
+      }
       if (hooks?.onQuestCallback !== undefined) {
         hooks.onQuestCallback(m, pfnCallback, pQuest, pArg)
       }
       return
   }
+}
+
+let k4QuestCallbackDispatcher:
+  | ((m: Memory113c, pfnCallback: number, pQuest: number, pArg: number) => boolean)
+  | null = null
+
+export function registerK4QuestCallbackDispatcher113c(
+  fn: (m: Memory113c, pfnCallback: number, pQuest: number, pArg: number) => boolean,
+): void {
+  k4QuestCallbackDispatcher = fn
 }
 
 /**
@@ -614,15 +627,15 @@ export function ACT4Q1_Callback03_LevelChanged113c(
       DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x19, 0) !== 1 &&
       DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x19, 1) !== 1
     ) {
-      const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
-      if (m.u8((pQuestData + 0x01) >>> 0) !== 1) {
+      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
+      if (pQuestData !== 0 && m.u8((pQuestData + 0x01) >>> 0) !== 1) {
         m.setU8((pQuest + 0x0b) >>> 0, 1)
         m.setU32((pQuest + 0x0c) >>> 0, 2)
       }
     }
   }
-  const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
-  if (m.u8((pQuestData + 0x02) >>> 0) === 1 && m.u32((pQuest + 0x14) >>> 0) === 2) {
+  const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
+  if (pQuestData !== 0 && m.u8((pQuestData + 0x02) >>> 0) === 1 && m.u32((pQuest + 0x14) >>> 0) === 2) {
     const nToLevel = m.u32((pArg + 0x18) >>> 0)
     if (nToLevel === 0x6e || nToLevel === 0x6f || nToLevel === 0x70) {
       const pGame = m.u32(pArg >>> 0) >>> 0
@@ -687,7 +700,7 @@ export function ACT4Q2_Callback03_LevelChanged113c(
       DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x1a, 1) !== 1 &&
       m.u8((pQuest + 0x0a) >>> 0) === 1
     ) {
-      const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
       if (m.u8((pQuestData + 0x20) >>> 0) !== 1) {
         m.setU8((pQuest + 0x0b) >>> 0, 1)
         m.setU32((pQuest + 0x0c) >>> 0, 1)
@@ -701,7 +714,7 @@ export function ACT4Q2_Callback03_LevelChanged113c(
       const bState = m.u8((pQuest + 0x0c) >>> 0)
       statusCyclerExDefault(m, pQuest, bState === 0 || bState > 3 ? 1 : 0, bState, hooks)
     }
-    const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
     if (m.u8((pQuestData + 0x0d) >>> 0) === 0) {
       const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
       const pPlayerData = UNITS_GetPlayerData113c(m, pUnit)
@@ -718,7 +731,7 @@ export function ACT4Q2_Callback03_LevelChanged113c(
       }
     }
   } else if (nToLevel === 0x6d) {
-    const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
     if (m.u8((pQuestData + 0x1d) >>> 0) !== 0) {
       const pPortal = m.u32((pQuestData + 0x90) >>> 0) >>> 0
       if (pPortal !== 0) {
@@ -730,7 +743,7 @@ export function ACT4Q2_Callback03_LevelChanged113c(
     }
   }
   if (nFromLevel === 0x6c) {
-    const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
     if (m.u8((pQuestData + 0x1e) >>> 0) === 0 && m.u32((pQuestData + 0x90) >>> 0) !== 0) {
       m.setU32((pQuestData + 0x5c) >>> 0, 0)
       iterateUnitsOfTypeDefault(
@@ -761,7 +774,7 @@ export function ACT4Q3_Callback03_LevelChanged113c(
 ): void {
   hitD2GameVa113c(0x6FC7AD50)
   if (m.u32((pArg + 0x14) >>> 0) === 0x6d) {
-    const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
     if (m.u8((pQuestData + 0x05) >>> 0) === 0 && m.u32((pQuestData + 0x10) >>> 0) !== 0) {
       m.setU32((pQuestData + 0x08) >>> 0, 0)
       iterateUnitsOfTypeDefault(
@@ -779,7 +792,7 @@ export function ACT4Q3_Callback03_LevelChanged113c(
   }
   if (m.u32((pArg + 0x18) >>> 0) === 0x6d) {
     m.setU32((pQuest + 0xa8) >>> 0, 0)
-    const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
     if (m.u8((pQuestData + 0x00) >>> 0) === 1 && m.u8((pQuestData + 0x01) >>> 0) === 0) {
       const pGame = m.u32(pArg >>> 0) >>> 0
       const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
@@ -818,7 +831,7 @@ export function ACT4Q1_Callback03_AltLevelChanged113c(
       DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x16, 1) !== 1 &&
       m.u8((pQuest + 0x0a) >>> 0) === 1
     ) {
-      const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
       if (m.u8((pQuestData + 0x04) >>> 0) !== 1) {
         m.setU8((pQuest + 0x0b) >>> 0, 1)
         m.setU32((pQuest + 0x0c) >>> 0, 1)
@@ -844,7 +857,7 @@ export function ACT4Q1_Callback03_AltLevelChanged113c(
         }
       }
     }
-    const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
     if (m.u8((pQuestData + 0x01) >>> 0) === 1) {
       m.setU32((pQuest + 0xb0) >>> 0, (D2GAME_IMAGE_BASE_113C + 0x58530) >>> 0)
       if (hooks?.onQuestHelperCall !== undefined) {
@@ -898,8 +911,8 @@ export function ACT4Q2_Callback03_AltLevelChanged113c(
       DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x18, 1) !== 1 &&
       m.u8((pQuest + 0x0a) >>> 0) === 1
     ) {
-      const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
-      if (m.u8((pQuestData + 0x01) >>> 0) !== 1) {
+      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
+      if (pQuestData !== 0 && m.u8((pQuestData + 0x01) >>> 0) !== 1) {
         m.setU8((pQuest + 0x0b) >>> 0, 1)
         m.setU32((pQuest + 0x0c) >>> 0, 1)
       }
@@ -947,7 +960,7 @@ export function ACT4Q2_Hellforge_Callback03_LevelChanged113c(
       DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x17, 1) !== 1 &&
       m.u8((pQuest + 0x0a) >>> 0) === 1
     ) {
-      const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
       if (m.u8((pQuestData + 0x04) >>> 0) !== 1) {
         m.setU8((pQuest + 0x0b) >>> 0, 1)
         m.setU32((pQuest + 0x0c) >>> 0, 1)
@@ -955,7 +968,7 @@ export function ACT4Q2_Hellforge_Callback03_LevelChanged113c(
     }
   }
   if (m.u32((pArg + 0x18) >>> 0) === 0x6b) {
-    const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
     if (m.u8((pQuestData + 0x01) >>> 0) !== 1) {
       m.setU32((pQuestData + 0x0c) >>> 0, 0)
       iterateUnitsOfTypeDefault(
@@ -1050,7 +1063,7 @@ export function ACT1Q1_Callback03_LevelChanged113c(
         }
       }
     }
-    const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
     if (m.u8((pQuestData + 0x00) >>> 0) === 1) return
     m.setU8((pQuestData + 0x00) >>> 0, 1)
     if (m.u8((pQuest + 0x0a) >>> 0) === 0 || m.u8((pQuest + 0x0c) >>> 0) >= 4) return
@@ -1085,7 +1098,7 @@ export function ACT1Q1_Callback03_LevelChanged113c(
       DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 1, 1) !== 1 &&
       m.u8((pQuest + 0x0a) >>> 0) === 1
     ) {
-      const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
       if (m.u8((pQuestData + 0x02) >>> 0) !== 1) {
         m.setU8((pQuest + 0x0b) >>> 0, 1)
         m.setU32((pQuest + 0x0c) >>> 0, 1)
@@ -1109,7 +1122,7 @@ export function ACT1Q2_Callback03_LevelChanged113c(
   if (m.u32((pArg + 0x14) >>> 0) === 1) {
     const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
     const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
-    const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
     if (m.u16((pQuestData + 0x80) >>> 0) > 0) {
       QUESTS_GuidListRemove113c(m, pQuestData, dwGuid)
     }
@@ -1128,7 +1141,7 @@ export function ACT1Q2_Callback03_LevelChanged113c(
     }
   }
   if (m.u32((pArg + 0x18) >>> 0) === 0x11) {
-    const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
     if (m.u8((pQuestData + 0x87) >>> 0) === 1) {
       m.setU32((pQuest + 0xb0) >>> 0, (D2GAME_IMAGE_BASE_113C + 0x61250) >>> 0)
       if (hooks?.onQuestHelperCall !== undefined) {
@@ -1222,7 +1235,7 @@ export function ACT1Q4_Callback03_LevelChanged113c(
     DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 5, 1) !== 1 &&
     m.u8((pQuest + 0x0a) >>> 0) === 1
   ) {
-    const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
     if (m.u8((pQuestData + 0x09) >>> 0) !== 1) {
       m.setU8((pQuest + 0x0b) >>> 0, 1)
       m.setU32((pQuest + 0x0c) >>> 0, 1)
@@ -1257,7 +1270,7 @@ export function ACT1Q5_Callback03_LevelChanged113c(
       DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 3, 1) !== 1 &&
       m.u8((pQuest + 0x0a) >>> 0) === 1
     ) {
-      const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
       if (m.u8((pQuestData + 0x04) >>> 0) !== 1) {
         m.setU8((pQuest + 0x0b) >>> 0, 1)
         m.setU32((pQuest + 0x0c) >>> 0, 1)
@@ -1311,7 +1324,7 @@ export function ACT1Q6_Callback03_LevelChanged113c(
       DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 6, 1) !== 1 &&
       m.u8((pQuest + 0x0a) >>> 0) === 1
     ) {
-      const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
       if (m.u8((pQuestData + 0x89) >>> 0) !== 1) {
         m.setU8((pQuest + 0x0b) >>> 0, 1)
         m.setU32((pQuest + 0x0c) >>> 0, 1)
@@ -1337,7 +1350,7 @@ export function ACT1Q6_Callback03_LevelChanged113c(
     }
   }
   if (nToLevel === 0x25) {
-    const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
     if (m.u8((pQuestData + 0x8c) >>> 0) === 0) {
       const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
       m.setU8((pQuestData + 0x8c) >>> 0, 1)
@@ -1405,18 +1418,18 @@ export function ACT1Q3_Callback03_LevelChanged113c(
       DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 4, 1) !== 1 &&
       m.u8((pQuest + 0x0a) >>> 0) === 1
     ) {
-      const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
       if (m.u8((pQuestData + 0x17) >>> 0) !== 1) {
         m.setU8((pQuest + 0x0b) >>> 0, 1)
         m.setU32((pQuest + 0x0c) >>> 0, 1)
       }
     }
-    if (m.u8((m.u32((pQuest + 0xf0) >>> 0) + 0x14) >>> 0) === 0) {
+    if (m.u8((m.u32((pQuest + 0x18) >>> 0) + 0x14) >>> 0) === 0) {
       iterateUnitsOfTypeDefault(
         m,
         m.u32(pArg >>> 0) >>> 0,
         0,
-        m.u32((pQuest + 0xf0) >>> 0) >>> 0,
+        m.u32((pQuest + 0x18) >>> 0) >>> 0,
         0x61910,
         hooks,
       )
@@ -1424,7 +1437,7 @@ export function ACT1Q3_Callback03_LevelChanged113c(
   }
   const nToLevel = m.u32((pArg + 0x18) >>> 0)
   if (nToLevel === 0x26) {
-    const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
     const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
     if (m.u8((pQuestData + 0x07) >>> 0) === 0) {
       const pRoom = UNITS_GetRoom113c(m, pUnit)
@@ -1454,7 +1467,7 @@ export function ACT1Q3_Callback03_LevelChanged113c(
       }
     }
   } else if (nFromLevel === 0x26) {
-    const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
     if (m.u8((pQuestData + 0x06) >>> 0) === 1 && m.u8((pQuestData + 0x09) >>> 0) === 0) {
       const pCainUnit = iterateUnitsOfTypeDefault(
         m,
@@ -1485,7 +1498,7 @@ export function ACT1Q3_Callback03_LevelChanged113c(
       DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 4, 0x0d) !== 1 &&
       DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 4, 0x0c) !== 1
     ) {
-      const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
       if (m.u8((pQuestData + 0x06) >>> 0) === 0) {
         m.setU8((pQuestData + 0x0c) >>> 0, 1)
         m.setU8((pQuestData + 0x06) >>> 0, 1)
@@ -1688,7 +1701,7 @@ export function ACT3Q1_Callback03_LevelChanged113c(
       DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x15, 1) !== 1 &&
       m.u8((pQuest + 0x0a) >>> 0) === 1
     ) {
-      const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
       if (m.u8((pQuestData + 0x02) >>> 0) !== 1) {
         m.setU8((pQuest + 0x0b) >>> 0, 1)
         m.setU32((pQuest + 0x0c) >>> 0, 1)
@@ -1729,7 +1742,7 @@ export function ACT3Q2_Callback03_LevelChanged113c(
         )
       }
     }
-    const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
     if (m.u8((pQuestData + 0x01) >>> 0) === 1) {
       m.setU32((pQuest + 0xb0) >>> 0, (D2GAME_IMAGE_BASE_113C + 0xb9290) >>> 0)
       if (hooks?.onQuestHelperCall !== undefined) {
@@ -1765,7 +1778,7 @@ export function ACT3Q3_Callback03_LevelChanged113c(
       DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x16, 0) !== 1 &&
       m.u8((pQuest + 0x0a) >>> 0) === 1
     ) {
-      const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
       if (m.u8((pQuestData + 0x00) >>> 0) !== 1) {
         m.setU8((pQuest + 0x0b) >>> 0, 1)
         m.setU32((pQuest + 0x0c) >>> 0, 1)
@@ -1793,7 +1806,7 @@ export function ACT2Q1_Callback03_LevelChanged113c(
     }
   }
   if (m.u32((pArg + 0x18) >>> 0) === 0x32) {
-    const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
     m.setU8((pQuestData + 0x01) >>> 0, 1)
   }
 }
@@ -1834,7 +1847,7 @@ export function ACT2Q3_Callback03_LevelChanged113c(
   if (nFromLevel === 0x28) {
     const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
     const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
-    const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
     if (m.u16((pQuestData + 0x9c) >>> 0) > 0) {
       QUESTS_GuidListRemove113c(m, (pQuestData + 0x1c) >>> 0, dwGuid)
     }
@@ -1936,7 +1949,7 @@ export function ACT2Q4_Callback03_LevelChanged113c(
       DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x0a, 1) !== 1 &&
       m.u8((pQuest + 0x0a) >>> 0) === 1
     ) {
-      const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
       if (m.u8((pQuestData + 0x03) >>> 0) !== 1) {
         m.setU8((pQuest + 0x0b) >>> 0, 1)
         m.setU32((pQuest + 0x0c) >>> 0, 1)
@@ -1966,7 +1979,7 @@ export function ACT2Q5_Callback03_LevelChanged113c(
   }
   const nToLevel = m.u32((pArg + 0x18) >>> 0)
   if (nToLevel === 0x4a) {
-    const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
     if (m.u8((pQuestData + 0x01) >>> 0) === 0) {
       const pGame = m.u32(pArg >>> 0) >>> 0
       const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
@@ -2024,7 +2037,7 @@ export function ACT2Q6_Callback03_LevelChanged113c(
       DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x0d, 1) !== 1 &&
       m.u8((pQuest + 0x0a) >>> 0) === 1
     ) {
-      const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
       if (m.u8((pQuestData + 0x02) >>> 0) !== 1 && m.u32((pQuest + 0x14) >>> 0) >= 2) {
         m.setU8((pQuest + 0x0b) >>> 0, 1)
         m.setU32((pQuest + 0x0c) >>> 0, 1)
@@ -2033,7 +2046,7 @@ export function ACT2Q6_Callback03_LevelChanged113c(
   }
   const nToLevel = m.u32((pArg + 0x18) >>> 0)
   if (nToLevel === 0x2e) {
-    const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
     if (m.u8((pQuestData + 0x0b) >>> 0) === 0) {
       const pGame = m.u32(pArg >>> 0) >>> 0
       const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
@@ -2053,7 +2066,7 @@ export function ACT2Q6_Callback03_LevelChanged113c(
       }
     }
   } else if (nFromLevel === 0x49 && nToLevel === 0x28) {
-    const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
     if (m.u8((pQuestData + 0x09) >>> 0) === 1) {
       m.setU8((pQuestData + 0x0a) >>> 0, 1)
       const pTyrael = m.u32((pQuestData + 0x5c) >>> 0) >>> 0
@@ -2077,7 +2090,7 @@ export function ACT2Q6_Callback03_LevelChanged113c(
       }
     }
   }
-  const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+  const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
   if (m.u8((pQuestData + 0x10) >>> 0) !== 0 && nToLevel === m.u32((pQuestData + 0x30) >>> 0)) {
     m.setU8((pQuestData + 0x10) >>> 0, 0)
     if (hooks?.onQuestHelperCall !== undefined) {
@@ -2150,7 +2163,7 @@ export function ACT3Q4_Callback03_LevelChanged113c(
       DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x11, 1) !== 1 &&
       m.u8((pQuest + 0x0a) >>> 0) === 1
     ) {
-      const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
       if (m.u8((pQuestData + 0x0b) >>> 0) !== 1) {
         m.setU8((pQuest + 0x0b) >>> 0, 1)
         m.setU32((pQuest + 0x0c) >>> 0, 1)
@@ -2197,7 +2210,7 @@ export function ACT3Q4_Callback03_LevelChanged113c(
         bTrigger = true
       }
       if (bTrigger && m.u8((pQuest + 0x0a) >>> 0) === 1 && m.u32((pQuest + 0x14) >>> 0) <= 2) {
-        const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+        const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
         m.setU32((pQuestData + 0x58) >>> 0, 0)
         iterateUnitsOfTypeDefault(
           m,
@@ -2250,7 +2263,7 @@ export function ACT3Q5_Callback03_LevelChanged113c(
       DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x12, 1) !== 1 &&
       m.u8((pQuest + 0x0a) >>> 0) === 1
     ) {
-      const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
       if (m.u8((pQuestData + 0x02) >>> 0) !== 1) {
         m.setU8((pQuest + 0x0b) >>> 0, 1)
         m.setU32((pQuest + 0x0c) >>> 0, 1)
@@ -2260,7 +2273,7 @@ export function ACT3Q5_Callback03_LevelChanged113c(
       m.u32((pQuest + 0x14) >>> 0) < 2 &&
       readGameQuestState(m, m.u32((pQuest + 0x04) >>> 0) >>> 0, 0x11, 0x0b) === 1
     ) {
-      const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
       m.setU8((pQuestData + 0x04) >>> 0, 0)
       iterateUnitsOfTypeDefault(
         m,
@@ -2305,7 +2318,7 @@ export function ACT3Q6_Callback03_LevelChanged113c(
       DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x10, 1) !== 1 &&
       m.u8((pQuest + 0x0a) >>> 0) === 1
     ) {
-      const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
       if (m.u8((pQuestData + 0x02) >>> 0) !== 1) {
         m.setU8((pQuest + 0x0b) >>> 0, 1)
         m.setU32((pQuest + 0x0c) >>> 0, 1)
@@ -2364,7 +2377,7 @@ export function ACT3Q8_Callback03_LevelChanged113c(
       DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x13, 1) !== 1 &&
       m.u8((pQuest + 0x0a) >>> 0) === 1
     ) {
-      const pQuestData = m.u32((pQuest + 0xf0) >>> 0) >>> 0
+      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
       if (m.u8((pQuestData + 0x00) >>> 0) !== 1) {
         m.setU8((pQuest + 0x0b) >>> 0, 1)
         m.setU32((pQuest + 0x0c) >>> 0, 1)

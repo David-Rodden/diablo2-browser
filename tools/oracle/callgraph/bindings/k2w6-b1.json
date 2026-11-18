@@ -320,8 +320,8 @@
     "name": "NPCS_ClosePlayerTradeAndFreeGamble_6FC685C0",
     "kernFile": "src/d2kern-113c/game/k2-w6b1-113c.ts",
     "tsSymbol": "NPCS_ClosePlayerTradeAndFreeGamble_6FC685C0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w6b1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w6b1.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -365,8 +365,8 @@
     "name": "SKILLS_ApplyCurseStateAndStatsCallback_6FC70250",
     "kernFile": "src/d2kern-113c/game/k2-w6b1-113c.ts",
     "tsSymbol": "SKILLS_ApplyCurseStateAndStatsCallback_6FC70250_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w6b1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w6b1.test.ts; Diff-verified 1:1 in dll\u2229ts across full-horizon strict zero-divergence K3 summon/curse replays (p52-amazon-valkyrie F1500/1500, p52-necromancer-poison-golem F1800/1800, p52-necromancer-curses F2000/2000) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",

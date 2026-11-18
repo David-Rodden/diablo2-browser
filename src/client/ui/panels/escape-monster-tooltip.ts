@@ -5,7 +5,8 @@ import { D2FontRenderer, type D2ColorCode } from '../font.ts'
 import { getEffectiveItemReqClass, isUiItemUnidentified, type UiInventoryItem } from '../inventory.ts'
 import type { WeaponDamageInfo } from '../../../common/items/inventory-model.ts'
 import type { CharacterClassCode } from '../../../common/units/classes.ts'
-import { requireTbl } from '../../i18n/lang.ts'
+import { formatQuestItemDifficultyTooltipLine, requireTbl } from '../../i18n/lang.ts'
+import { resolveQuestItemDifficulty113c } from '../../../common/items/quest-item-difficulty.ts'
 import { CANONICAL_CHI_TBL_DICT, CANONICAL_ENG_TBL_DICT } from '../../../common/data/canonical-tbl-strings.ts'
 import { CANONICAL_ELITE_MODIFIERS, FIXED_UNIQUE_BOSS_HCIDX_SET, monsterDisplayName, rollUniqueMonsterNameKeys } from '../../../common/units/monsters-data.ts'
 import {
@@ -1325,6 +1326,7 @@ export function drawItemTooltipImpl(
     dex: number
     level: number
     classCode?: CharacterClassCode | undefined
+    gameDifficulty?: 0 | 1 | 2 | undefined
   } =
     isMercOwnedItem && mercAny
       ? {
@@ -1332,6 +1334,7 @@ export function drawItemTooltipImpl(
           str: Math.trunc(Number(mercAny.str ?? mercAny.strength ?? 0) || 0),
           dex: Math.trunc(Number(mercAny.dex ?? mercAny.dexterity ?? 0) || 0),
           classCode: mercClassNum === 560 || mercClassNum === 561 ? 'bar' : undefined,
+          gameDifficulty: basePlayerCtx.gameDifficulty,
         }
       : basePlayerCtx
   const hasPerLevelProps =
@@ -1499,6 +1502,22 @@ export function drawItemTooltipImpl(
   }
   const itemLevel = this.showItemLevel && !item.rawItem?.flags?.simple ? item.rawItem?.ilvl : undefined
   if (itemLevel !== undefined) lines.push({ text: (isEn ? 'Item Level: ' : '物品等级: ') + itemLevel, color: 'white', font: 'font16' })
+
+  if (!unid && playerCtx.gameDifficulty !== undefined && playerCtx.gameDifficulty > 0) {
+    const questDiff =
+      item.questItemDifficulty ??
+      resolveQuestItemDifficulty113c(
+        rawItemForLive as { code?: string; questItemDifficulty?: unknown; stats?: unknown } | undefined,
+      )
+    if (questDiff !== undefined) {
+      const mismatch = questDiff < playerCtx.gameDifficulty
+      lines.push({
+        text: formatQuestItemDifficultyTooltipLine(questDiff, mismatch, isEn ? 'en' : 'zh'),
+        color: mismatch ? 'red' : 'gold',
+        font: 'font16',
+      })
+    }
+  }
 
   if (unid) {
     if (item.isGambleMystery) {

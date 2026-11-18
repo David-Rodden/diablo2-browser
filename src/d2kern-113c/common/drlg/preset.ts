@@ -1076,10 +1076,12 @@ export function DRLGPRESET_ParseDS1File113c(
     let nObjects = m.u32(pCur) | 0
     pCur = (pCur + 4) >>> 0
     while (nObjects > 0) {
-      const nObjType = m.u32(pCur) | 0
+      let curObjType = m.u32(pCur) | 0
       let nObjId = m.u32((pCur + 4) >>> 0) | 0
+      let nMode = 0
       pCur = (pCur + 8) >>> 0
-      if (nObjType === 1) {
+      if (curObjType === 1) {
+        nMode = 1
         if (nVersion > 4 && nAct >= 0 && nAct < 5 && m.u32(G_PRESET_OBJ_REMAP_FLAG_VA_6FDF0980) !== 0) {
           const pTbl = m.u32((G_PRESET_OBJ_REMAP_TBLS_VA_6FDF0984 + nAct * 4) >>> 0)
           const nCnt = m.u32((G_PRESET_OBJ_REMAP_CNTS_VA_6FDF0998 + nAct * 4) >>> 0) | 0
@@ -1106,18 +1108,32 @@ export function DRLGPRESET_ParseDS1File113c(
           if (nObjId < nMon) {
             const a = nMon > 0x129 ? 0x129 : -1
             const b = nMon > 0x16e ? 0x16e : -1
-            if (nObjId === a) nObjId = 0x17e
-            else if (nObjId === b) nObjId = 0x194
+            if (nObjId === a) {
+              nObjId = 0x17e
+              curObjType = 2
+              nMode = 0
+            } else if (nObjId === b) {
+              nObjId = 0x194
+              curObjType = 2
+              nMode = 0
+            }
           }
         } else if (nAct === 4) {
           const pTables = m.u32(SGPT_DATA_TABLES_VA_6FDE9E1C)
           const nMon = m.u32((pTables + 0xa80) >>> 0) | 0
           if (nObjId >= 0 && nObjId < nMon) {
-            if (nObjId === 0x202) nObjId = 0x1cd
-            else if (nObjId > 0x218 && nObjId <= 0x21b) nObjId = (0x3f5 - nObjId) | 0
+            if (nObjId === 0x202) {
+              nObjId = 0x1cd
+              curObjType = 2
+              nMode = 0
+            } else if (nObjId > 0x218 && nObjId <= 0x21b) {
+              nObjId = (0x3f5 - nObjId) | 0
+              curObjType = 2
+              nMode = 0
+            }
           }
         }
-      } else if (nObjType === 2) {
+      } else if (curObjType === 2) {
         if (nVersion > 5) {
           if (nObjId < 0x96) {
             nObjId = TABLE_6FDEE2C8[imul32(nAct, 0x96) + nObjId]!
@@ -1127,7 +1143,7 @@ export function DRLGPRESET_ParseDS1File113c(
         } else if (nObjId === 0x23d) {
           nObjId = -1
         }
-      } else if (nObjType === 4) {
+      } else if (curObjType === 4) {
         if (nVersion > 4) {
           // 0x6FD5B759: copies up to 3 chars of preset item code (default 'HDM'), uppercases, pads ' ', fogGetLinkIndex113c
           const c0 = nObjId === 0 ? 0x48 : (nObjId & 0xff)
@@ -1142,6 +1158,7 @@ export function DRLGPRESET_ParseDS1File113c(
           const idx = pLink !== 0 ? fogGetLinkIndex113c(m, pLink, dwCode) : -1
           nObjId = idx < 0 ? 0 : idx
         }
+        nMode = 3
       }
 
       const nX = m.u32(pCur) | 0
@@ -1152,13 +1169,13 @@ export function DRLGPRESET_ParseDS1File113c(
         dwFlags = m.u32(pCur) >>> 0
         pCur = (pCur + 4) >>> 0
       }
-      if (nObjId >= 0 && (nObjType !== 1 || nVersion > 4)) {
+      if (nObjId >= 0 && (curObjType !== 1 || nVersion > 4)) {
         const pUnit = m.alloc(0x20)
         m.fill(pUnit, 0x20, 0)
-        m.setU32((pUnit + 0x14) >>> 0, nObjType >>> 0)
+        m.setU32((pUnit + 0x14) >>> 0, curObjType >>> 0)
         m.setU32((pUnit + 0x18) >>> 0, nY >>> 0)
         m.setU32((pUnit + 0x04) >>> 0, nObjId >>> 0)
-        m.setU32(pUnit, 0)
+        m.setU32(pUnit, nMode >>> 0)
         m.setU32((pUnit + 0x08) >>> 0, nX >>> 0)
         m.setU32((pUnit + 0x0c) >>> 0, m.u32((file + 0x54) >>> 0))
         m.setU32((file + 0x54) >>> 0, pUnit)

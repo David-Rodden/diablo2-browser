@@ -167,8 +167,8 @@
     "name": "ACT4Q1_HasNpcQuestIndicator_6FCD8970",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "ACT4Q1_HasNpcQuestIndicator_6FCD8970_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -185,8 +185,8 @@
     "name": "ACT4Q1_HasActiveQuestNpcIndicator_6FCD8AE0",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "ACT4Q1_HasActiveQuestNpcIndicator_6FCD8AE0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -194,8 +194,8 @@
     "name": "ACT4Q2_HasHadrielQuestIndicator_6FCD8B90",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "ACT4Q2_HasHadrielQuestIndicator_6FCD8B90_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -257,8 +257,8 @@
     "name": "ACT4Q1_SyncQuestDataFromPlayerFlags_6FCD9320",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "ACT4Q1_SyncQuestDataFromPlayerFlags_6FCD9320_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -284,8 +284,8 @@
     "name": "ACT4Q1_InitNpcDialog_6FCD9560",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "ACT4Q1_InitNpcDialog_6FCD9560_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",

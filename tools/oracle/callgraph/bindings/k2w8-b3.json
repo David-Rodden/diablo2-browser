@@ -86,8 +86,8 @@
     "name": "ACT2Q5_InitQuestData_6FCE7080",
     "kernFile": "src/d2kern-113c/game/k2-w8b3-113c.ts",
     "tsSymbol": "ACT2Q5_InitQuestData_6FCE7080_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w8b3.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w8b3.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -194,8 +194,8 @@
     "name": "C2S_Packet20_UseInventoryItem_6FCEF730",
     "kernFile": "src/d2kern-113c/game/k2-w8b3-113c.ts",
     "tsSymbol": "C2S_Packet20_UseInventoryItem_6FCEF730_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w8b3.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w8b3.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",

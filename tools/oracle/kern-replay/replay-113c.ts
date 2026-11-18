@@ -29,6 +29,7 @@ import {
   hydrateSnapshotKernelTables113c,
   type ReplayHydrationAssets113c,
 } from '../../../src/d2kern-113c/game/replay-kernel-113c.ts'
+import { installK4QuestReplay113c } from '../../../src/d2kern-113c/game/k4-quest-replay-113c.ts'
 import {
   beginFrameS2CTrace113c,
   endFrameS2CTrace113c,
@@ -132,13 +133,18 @@ function ensureReplayHydrationAssetsLoaded113c(): void {
   const raw = JSON.parse(
     gunzipSync(readFileSync(join(REPO_ROOT_113C, 'tests/fixtures/oracle/k1/drlg-act1-ds1-dt1-113c.json.gz'))).toString('utf8'),
   ) as { ds1: Record<string, string>; dt1: Record<string, string> }
+  const rawAct2To5 = JSON.parse(
+    gunzipSync(readFileSync(join(REPO_ROOT_113C, 'tests/fixtures/oracle/k4/drlg-act2-5-ds1-dt1-113c.json.gz'))).toString('utf8'),
+  ) as { ds1: Record<string, string>; dt1: Record<string, string> }
   const ds1 = new Map<string, Uint8Array>()
   const dt1 = new Map<string, Uint8Array>()
-  for (const [k, b64] of Object.entries(raw.ds1)) {
-    ds1.set(k.replace(/\//g, '\\').toLowerCase(), new Uint8Array(Buffer.from(b64, 'base64')))
-  }
-  for (const [k, b64] of Object.entries(raw.dt1)) {
-    dt1.set(k.replace(/\//g, '\\').toLowerCase(), new Uint8Array(Buffer.from(b64, 'base64')))
+  for (const bundle of [raw, rawAct2To5]) {
+    for (const [k, b64] of Object.entries(bundle.ds1)) {
+      ds1.set(k.replace(/\//g, '\\').toLowerCase(), new Uint8Array(Buffer.from(b64, 'base64')))
+    }
+    for (const [k, b64] of Object.entries(bundle.dt1)) {
+      dt1.set(k.replace(/\//g, '\\').toLowerCase(), new Uint8Array(Buffer.from(b64, 'base64')))
+    }
   }
   loadedReplayHydrationAssets113c = {
     drlgDataTblsImg,
@@ -146,6 +152,7 @@ function ensureReplayHydrationAssetsLoaded113c(): void {
     animDataBytes,
     act1Ds1Dt1: { ds1, dt1 },
   }
+  installK4QuestReplay113c()
   configureReplayHydrationAssets113c(loadedReplayHydrationAssets113c)
 }
 

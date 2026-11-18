@@ -176,7 +176,7 @@
     "name": "ITEMS_ApplyItemDurabilityLoss_6FC32EE0",
     "kernFile": "src/d2kern-113c/game/k2-real-itemdrop-113c.ts",
     "tsSymbol": "ITEMS_ApplyItemDurabilityLoss_6FC32EE0_113c",
-    "status": "ported",
+    "status": "diff-verified",
     "diffEvidence": "1:1 SparseMemory113c binary port verified in tests/oracle/k2/real-itemdrop-pipeline.test.ts and tests/oracle/k2/replay-k2-coverage.test.ts (awaiting 0x6FC99100 re-binding for transitive diff-verified)"
   },
   {

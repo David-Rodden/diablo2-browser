@@ -68,8 +68,8 @@
     "name": "QUESTS_TriggerNpcInteractAndSendPacket27_6FC55910",
     "kernFile": "src/d2kern-113c/game/k2-w3b3-113c.ts",
     "tsSymbol": "QUESTS_TriggerNpcInteractAndSendPacket27_6FC55910_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w3b3.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w3b3.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -113,8 +113,8 @@
     "name": "MISSILES_ConvertPhysToElemDamageByCalc_6FC59CE0",
     "kernFile": "src/d2kern-113c/game/k2-w3b3-113c.ts",
     "tsSymbol": "MISSILES_ConvertPhysToElemDamageByCalc_6FC59CE0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w3b3.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w3b3.test.ts; K3 golden replay diff-verified (dll\u2229ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
