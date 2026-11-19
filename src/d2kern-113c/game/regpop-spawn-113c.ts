@@ -23,6 +23,7 @@ import { D2CMP_10051_GetTileFlags113c } from '../common/drlg/room-tile.ts'
 import {
   DUNGEON_FindFreeSpawnPositionInLevel113c,
   DUNGEON_FindLevelSpawnRoom113c,
+  DUNGEON_CountNonPresetRoomsInLevel113c,
   DUNGEON_GetAdjacentRoomsListFromRoom113c,
   DUNGEON_GetFloorTilesFromRoom113c,
   DUNGEON_GetLevelIdFromRoom113c,
@@ -113,7 +114,7 @@ import {
   UNIT_Alloc113c,
 } from '../common/unit.ts'
 import type { Memory113c, SparseMemory113c } from '../mem/sparse-memory.ts'
-import { SEED_InitLowSeed113c, SEED_InitSeed113c } from '../prng.ts'
+import { SEED_InitLowSeed113c, SEED_InitSeed113c, seedRoll, type D2SeedStrc } from '../prng.ts'
 import {
   DATATBLS_GetLevelMonsterLevel113c,
   DATATBLS_GetMonLvlTxtRecord113c,
@@ -134,6 +135,7 @@ import {
   MONSTER_InitModeChangeStrc113c,
   SUNITDMG_FreeAttackerCombatList113c,
 } from './ai-fallen-113c.ts'
+import { QUESTS_CountLivingUnitsInRoomCallback113c } from './a1c-post150-f150-f276-113c.ts'
 import {
   AIGENERAL_FlushAllAiCommands113c,
   UNIT_FreeEventNotifyList113c,
@@ -142,6 +144,7 @@ import {
   D2GAME_ARENA_ClearPlayerArenaFlags113c,
   D2GAME_ARENA_FindPlayerSlotByUnit113c,
   D2GAME_INVENTORY_DestroyUnitInventoryItems113c,
+  D2GAME_SUNIT_IterateAllLivingPlayers113c,
 } from './boot-init-gap-b-113c.ts'
 import { MONSTER_StartMode113c } from './combat-a1c-113c.ts'
 import { SUNIT_GetNewUnitId113c, SUNIT_GetServerUnit113c, SUNIT_InsertServerUnit113c } from './game-strc.ts'
@@ -154,6 +157,7 @@ import {
   AI_InitShadowMasterSkillSlot113c,
 } from './k2-items-tc-w1-113c.ts'
 import { QUESTS_AttachQuestToUnit_6FC53F80_113c } from './k2-laneJ-0x6fc4-w1-113c.ts'
+import { ITEMS_InitItemUnit_6FC30160_113c } from './k2-real-itemdrop-113c.ts'
 import { MONUMOD_AssignSpecificUModAndInit_6FC432B0_113c } from './k2-w2b1-113c.ts'
 import {
   MONAI_ClearAiControlParam0_6FCC3980_113c,
@@ -1251,7 +1255,9 @@ export function REGPOP_CanPopulateRoom113c(
     const nRooms =
       hooks !== undefined && hooks.getLevelRoomCountInAct !== undefined
         ? hooks.getLevelRoomCountInAct(m, pAct, visLevelId) | 0
-        : countRoomsInActLevelInline(m, pAct, visLevelId)
+        : pAct !== 0 && m.u32((pAct + 0x48) >>> 0) !== 0
+          ? DUNGEON_CountNonPresetRoomsInLevel113c(m, pAct, visLevelId) | 0
+          : countRoomsInActLevelInline(m, pAct, visLevelId)
     m.setU32((pMonReg + 0x0c) >>> 0, nRooms >>> 0)
   }
   if ((m.u32((pMonReg + 0x2b8) >>> 0) | 0) === 0) return 0
@@ -1600,7 +1606,8 @@ export function MONSTER_GetPlayerCountHpBonusPct113c(m: Memory113c, nPlayers: nu
   hitD2GameVa113c(0x6FCCF5D0)
   const n = nPlayers | 0
   if (n < 9) {
-    return m.u32((D2GAME_PLAYER_HP_BONUS_TABLE_VA_113C + n * 4) >>> 0) | 0
+    const tbl = m.u32((D2GAME_PLAYER_HP_BONUS_TABLE_VA_113C + n * 4) >>> 0) | 0
+    return tbl !== 0 || n <= 1 ? tbl : (PLAYER_BONUS_TABLE_9_113C[n]! | 0)
   }
   return ((Math.imul(n, 5) + 0x82) << 1) | 0
 }
@@ -1614,7 +1621,8 @@ export function MONSTER_GetPlayerCountExpBonusPct113c(m: Memory113c, nPlayers: n
   hitD2GameVa113c(0x6FCCF5F0)
   const n = nPlayers | 0
   if (n < 9) {
-    return m.u32((D2GAME_PLAYER_EXP_BONUS_TABLE_VA_113C + n * 4) >>> 0) | 0
+    const tbl = m.u32((D2GAME_PLAYER_EXP_BONUS_TABLE_VA_113C + n * 4) >>> 0) | 0
+    return tbl !== 0 || n <= 1 ? tbl : (PLAYER_BONUS_TABLE_9_113C[n]! | 0)
   }
   return Math.imul((n - 2) | 0, 50) | 0
 }
@@ -1896,6 +1904,17 @@ export function MONSTER_RollPackRarityType113c(
   return (typeRoll | 0) > 35 ? 2 : 1
 }
 
+function rollSeedLimitedAtMem113c(m: Memory113c, pSeed: number, nMax: number): number {
+  const s: D2SeedStrc = {
+    lo: m.u32(pSeed >>> 0) >>> 0,
+    hi: m.u32((pSeed + 4) >>> 0) >>> 0,
+  }
+  const out = seedRoll(s, nMax)
+  m.setU32(pSeed >>> 0, s.lo >>> 0)
+  m.setU32((pSeed + 4) >>> 0, s.hi >>> 0)
+  return out
+}
+
 /**
  * Generates up to `nMaxVariants` (`<= 3` total) distinct `16`-byte component outfit records in `pOutfitEntry` (`+0x04`).
  *
@@ -1939,7 +1958,7 @@ export function MONREG_GenerateOutfitVariants113c(
       if (cnt <= 1) {
         m.setU8((pFirst + c) >>> 0, 0)
       } else {
-        const val = SEED_RollLimitedFast113c(m, pSeed, cnt) & 0xff
+        const val = rollSeedLimitedAtMem113c(m, pSeed, cnt) & 0xff
         m.setU8((pFirst + c) >>> 0, val)
       }
     }
@@ -1965,11 +1984,11 @@ export function MONREG_GenerateOutfitVariants113c(
     compA = multiComps[0]!
     compB = compA
   } else {
-    const idxA = SEED_RollLimitedFast113c(m, pSeed, nMulti)
+    const idxA = rollSeedLimitedAtMem113c(m, pSeed, nMulti)
     compA = multiComps[idxA]!
     multiComps[idxA] = multiComps[nMulti - 1]!
     nMulti--
-    const idxB = SEED_RollLimitedFast113c(m, pSeed, nMulti)
+    const idxB = rollSeedLimitedAtMem113c(m, pSeed, nMulti)
     compB = multiComps[idxB]!
   }
 
@@ -3087,10 +3106,47 @@ export function SUNIT_PlaceServerUnitInRoom113c(
  */
 export function GAME_GetEffectivePlayerCount113c(m: Memory113c, pGame: number): number {
   hitD2GameVa113c(0x6FC579A0)
-  let count = m.u32((pGame + 0x1d20) >>> 0) | 0
-  const overrideCount = m.u32((pGame + 0x74) >>> 0) | 0
-  if (overrideCount > count) {
-    count = overrideCount
+  let count = 0
+  if (pGame !== 0) {
+    let hashLoaded = false
+    try {
+      m.u32((pGame + 0x131c) >>> 0)
+      hashLoaded = true
+    } catch {
+      hashLoaded = false
+    }
+    if (hashLoaded) {
+      const sp = regpopStackPtr
+      regpopStackPtr = (sp + 8) >>> 0
+      try {
+        m.setU32(sp, 0)
+        D2GAME_SUNIT_IterateAllLivingPlayers113c(
+          m,
+          pGame,
+          (mem, _g, pUnit, pCnt) => QUESTS_CountLivingUnitsInRoomCallback113c(mem, pUnit, pCnt),
+          sp,
+        )
+        count = m.u32(sp) | 0
+      } finally {
+        regpopStackPtr = sp
+      }
+      const gameType = m.u8((pGame + 0x6a) >>> 0)
+      if (gameType >= 1 && gameType <= 3) {
+        try {
+          const maxCount = m.u32(0x6fd31c1c) | 0
+          if (maxCount > count) count = maxCount
+        } catch {
+          // 0x6fd31c1c unmapped in standalone tests without global players override
+        }
+      }
+    }
+    if (count === 0) {
+      count = m.u32((pGame + 0x1d20) >>> 0) | 0
+      const overrideCount = m.u32((pGame + 0x74) >>> 0) | 0
+      if (overrideCount > count) {
+        count = overrideCount
+      }
+    }
   }
   if (count <= 1) {
     count = 1
@@ -3139,17 +3195,8 @@ export function MONSTER_GetDifficultyAndPlayerBonus113c(
   if (bNoMult === 0) {
     nPlayers = GAME_GetEffectivePlayerCount113c(m, pGame)
     if (nPlayers < 1) nPlayers = 1
-    if (nPlayers < 9) {
-      const tblHp = m.u32((D2GAME_PLAYER_HP_BONUS_TABLE_VA_113C + nPlayers * 4) >>> 0)
-      nHpBonus =
-        tblHp !== 0 || nPlayers <= 1 ? (tblHp | 0) : (PLAYER_BONUS_TABLE_9_113C[nPlayers]! | 0)
-      const tblExp = m.u32((D2GAME_PLAYER_EXP_BONUS_TABLE_VA_113C + nPlayers * 4) >>> 0)
-      nExpBonus =
-        tblExp !== 0 || nPlayers <= 1 ? (tblExp | 0) : (PLAYER_BONUS_TABLE_9_113C[nPlayers]! | 0)
-    } else {
-      nHpBonus = Math.imul((nPlayers - 2) | 0, 50) | 0
-      nExpBonus = ((nPlayers * 5 + 0x82) << 1) | 0
-    }
+    nExpBonus = MONSTER_GetPlayerCountExpBonusPct113c(m, nPlayers)
+    nHpBonus = MONSTER_GetPlayerCountHpBonusPct113c(m, nPlayers)
   }
 
   if (m.u8((pGame + 0x6d) >>> 0) >= 3) {
@@ -3158,6 +3205,9 @@ export function MONSTER_GetDifficultyAndPlayerBonus113c(
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
 
   let nSkillBonus = nDiff === 1 ? 3 : nDiff === 2 ? 5 : 0
+  if (m.u32(0x6fdf0b64) !== 0 && m.u32(0x6fdf0b60) !== 0) {
+    DATATBLS_GetMonLvlTxtRecord113c(m, nDiff)
+  }
   const pIat = m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C) >>> 0
   const pTables = pIat !== 0 ? m.u32(pIat) >>> 0 : 0
   if (pTables !== 0) {
@@ -3563,9 +3613,11 @@ export function MONSTER_InitStats113c(
   const pIat = m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C) >>> 0
   const pTables = pIat !== 0 ? m.u32(pIat) >>> 0 : 0
   const validCid =
-    nClassId >= 0 && (pTables === 0 || nClassId < (m.u32((pTables + 0xa80) >>> 0) | 0))
-      ? nClassId
-      : -1
+    pTables !== 0
+      ? MONSTATS_ValidateClassId113c(m, nClassId)
+      : nClassId >= 0
+        ? nClassId
+        : -1
   const pUnitSeed = (pUnit + 0x20) >>> 0
   if (validCid === 0x137) {
     const v = rollSeedModInline(m, pUnitSeed, 4) & 0xff
@@ -3631,7 +3683,7 @@ export function MONSTER_InitStats113c(
       }
     }
 
-    STATLIST_CreateEx113c(m, pUnit, 0, pGame)
+    STATLIST_CreateEx113c(m, pUnit, 0, pGame, 0x6fcf9470)
     STATLIST_SetUnitStat113c(m, pUnit, 0x0c, mlvl, 0)
     STATLIST_SetUnitStat113c(m, pUnit, 0x64, nPlayers, 0)
 
@@ -3729,11 +3781,11 @@ export function MONSTER_InitStats113c(
     const pModStatList =
       STATLIST_AllocList113c(
         m,
-        m.u32((pGame + 0x1c) >>> 0),
         1,
-        0,
         1,
         m.u32((pUnit + 0x0c) >>> 0),
+        0,
+        0,
       ) >>> 0
     if (pModStatList !== 0) {
       STATLIST_MergeStatLists113c(m, pUnit, pModStatList, 1)
@@ -3973,21 +4025,7 @@ export function SUNIT_AllocUnitData113c(
       SUNIT_InitExtraItemSeed113c(m, (pGame + 0xd0) >>> 0, pUnit)
       m.setU32((pUnit + 0x10) >>> 0, nMode >>> 0)
       UNITS_AllocStaticPath113c(m, pUnit)
-      m.setU32((pUnit + 0x0c) >>> 0, dwUnitId)
-      m.setU32((pUnit + 0xc4) >>> 0, ((m.u32((pUnit + 0xc4) >>> 0) & ~8) | 2) >>> 0)
-      ITEMS_SetOrClearCommandFlags113c(m, pUnit, 0x10, 1)
-      STATLIST_CreateEx113c(m, pUnit, 0, 0)
-      const pItemsTxt = DATATBLS_GetItemsTxtRecordMemPort113c(m, nClassId) >>> 0
-      if (pItemsTxt !== 0 && m.u8((pItemsTxt + 0x12a) >>> 0) !== 0) {
-        const pItemData = m.u32((pUnit + 0x14) >>> 0) >>> 0
-        if (pItemData !== 0) {
-          m.setU8((pItemData + 0x47) >>> 0, (m.u8((pItemsTxt + 0x12a) >>> 0) - 1) & 0xff)
-        }
-      }
-      if (m.u32((pUnit + 0xdc) >>> 0) !== 0) {
-        EVENT_RemoveUnitEvents113c(m, pGame, pUnit)
-      }
-      m.setU32((pUnit + 0xdc) >>> 0, 0)
+      ITEMS_InitItemUnit_6FC30160_113c(m, pGame, pUnit, dwUnitId)
       break
     }
     case 5:

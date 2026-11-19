@@ -126,6 +126,7 @@ import {
   MISSILE_SrvDo01_LinearProjectile113c,
   SKILLS_ResolveChargedSrvMissileId113c,
   STATES_OnTimedStateRemoved113c,
+  type K2GapMeleeDotHooks113c,
 } from './k2-gap-melee-dot-113c.ts'
 import {
   MONSTER_GetMonStatsTxtFromUnit_6FC21540_113c,
@@ -473,6 +474,7 @@ export function MISSILE_SrvDo_SpiralPath_6FC60BD0_113c(
   m: D2KernMemory113c,
   pGame: number,
   pMissile: number,
+  hooks?: K2GapMeleeDotHooks113c,
 ): number {
   hitD2GameVa113c(0x6FC60BD0)
   if (pMissile === 0) {
@@ -501,7 +503,7 @@ export function MISSILE_SrvDo_SpiralPath_6FC60BD0_113c(
     MISSILE_SetTargetX113c(m, pMissile, newTx)
     MISSILE_SetTargetY113c(m, pMissile, newTy)
   }
-  return MISSILE_SrvDo01_LinearProjectile113c(m, pMissile, pGame) | 0
+  return MISSILE_SrvDo01_LinearProjectile113c(m, pMissile, pGame, hooks) | 0
 }
 
 /**
@@ -514,6 +516,7 @@ export function MISSILE_SrvDo_RadialRingSubMissile_6FC60CA0_113c(
   m: D2KernMemory113c,
   pGame: number,
   pMissile: number,
+  hooks?: K2GapMeleeDotHooks113c,
 ): number {
   hitD2GameVa113c(0x6FC60CA0)
   if (pMissile === 0) {
@@ -541,7 +544,7 @@ export function MISSILE_SrvDo_RadialRingSubMissile_6FC60CA0_113c(
   }
   const nElapsed = MISSILE_GetElapsedFrames113c(m, pMissile) | 0
   if (smod32(nElapsed, nStep) > 0) {
-    return MISSILE_SrvDo01_LinearProjectile113c(m, pMissile, pGame) | 0
+    return MISSILE_SrvDo01_LinearProjectile113c(m, pMissile, pGame, hooks) | 0
   }
 
   const savedSp = k2W3B4StackPtr
@@ -568,11 +571,11 @@ export function MISSILE_SrvDo_RadialRingSubMissile_6FC60CA0_113c(
 
     const nextAngle = smod32((idx + i32(m, (pMissilesTxt + 0x3c) >>> 0)) | 0, 64)
     MISSILE_SetTargetX113c(m, pMissile, nextAngle)
-    MISSILE_CreateServerProjectile113c(m, pGame, pParams)
+    MISSILE_CreateServerProjectile113c(m, pGame, pParams, hooks)
   } finally {
     k2W3B4StackPtr = savedSp
   }
-  return MISSILE_SrvDo01_LinearProjectile113c(m, pMissile, pGame) | 0
+  return MISSILE_SrvDo01_LinearProjectile113c(m, pMissile, pGame, hooks) | 0
 }
 
 /**
@@ -883,17 +886,13 @@ export function MISSILE_SrvDo_TrailVerifiedOwnerSubMissile_6FC61850_113c(
   m: D2KernMemory113c,
   pGame: number,
   pMissile: number,
+  hooks?: K2GapMeleeDotHooks113c,
 ): number {
   hitD2GameVa113c(0x6FC61850)
   if (pMissile === 0 || ((m.u32((pMissile + 0xc8) >>> 0) >>> 10) & 1) === 0) {
     return 2
   }
-  const pOwner = SUNIT_GetServerUnit113c(
-    m,
-    pGame,
-    i32(m, (pMissile + 0x94) >>> 0),
-    i32(m, (pMissile + 0x98) >>> 0),
-  ) >>> 0
+  const pOwner = SUNIT_GetOwnerUnit113c(m, pMissile, pGame) >>> 0
   if (pOwner === 0) {
     return 2
   }
@@ -922,12 +921,12 @@ export function MISSILE_SrvDo_TrailVerifiedOwnerSubMissile_6FC61850_113c(
       m.setU32((pParams + 0x10) >>> 0, sx16(m.u16((pMissilesTxt + 0x18) >>> 0)) >>> 0)
       m.setU32((pParams + 0x1c) >>> 0, x >>> 0)
       m.setU32((pParams + 0x20) >>> 0, y >>> 0)
-      MISSILE_CreateServerProjectile113c(m, pGame, pParams)
+      MISSILE_CreateServerProjectile113c(m, pGame, pParams, hooks)
     } finally {
       k2W3B4StackPtr = savedSp
     }
   }
-  return MISSILE_SrvDo01_LinearProjectile113c(m, pMissile, pGame) | 0
+  return MISSILE_SrvDo01_LinearProjectile113c(m, pMissile, pGame, hooks) | 0
 }
 
 /**
@@ -940,14 +939,15 @@ export function MISSILE_SrvDo_CollisionPatternAndAnimFrame_6FC61980_113c(
   m: D2KernMemory113c,
   pGame: number,
   pMissile: number,
+  hooks?: K2GapMeleeDotHooks113c,
 ): number {
   hitD2GameVa113c(0x6FC61980)
   if (pMissile === 0) {
-    return MISSILE_SrvDo01_LinearProjectile113c(m, pMissile, pGame) | 0
+    return MISSILE_SrvDo01_LinearProjectile113c(m, pMissile, pGame, hooks) | 0
   }
   const pMissilesTxt = MISSILES_GetTxtRecordFast113c(m, i32(m, (pMissile + 0x04) >>> 0)) >>> 0
   if (pMissilesTxt === 0) {
-    return MISSILE_SrvDo01_LinearProjectile113c(m, pMissile, pGame) | 0
+    return MISSILE_SrvDo01_LinearProjectile113c(m, pMissile, pGame, hooks) | 0
   }
   const nFrame = i32(m, (pMissile + 0x44) >>> 0) >> 8
   const y = inlineUnitGetPosY113c(m, pMissile)
@@ -961,11 +961,11 @@ export function MISSILE_SrvDo_CollisionPatternAndAnimFrame_6FC61980_113c(
     const uEnd = m.u8((pMissilesTxt + 0x182) >>> 0)
     const roll = SEED_RollLimitedFast113c(m, (pMissile + 0x20) >>> 0, (uEnd - uStart) | 0) | 0
     m.setU32((pMissile + 0x44) >>> 0, (((roll + nFrame) | 0) << 8) >>> 0)
-    return MISSILE_SrvDo01_LinearProjectile113c(m, pMissile, pGame) | 0
+    return MISSILE_SrvDo01_LinearProjectile113c(m, pMissile, pGame, hooks) | 0
   }
   if ((MISSILE_GetRemainingFrames113c(m, pMissile) | 0) === uStart) {
     m.setU32((pMissile + 0x44) >>> 0, (((uStart - 3) | 0) << 8) >>> 0)
-    return MISSILE_SrvDo01_LinearProjectile113c(m, pMissile, pGame) | 0
+    return MISSILE_SrvDo01_LinearProjectile113c(m, pMissile, pGame, hooks) | 0
   }
   if ((MISSILE_GetRemainingFrames113c(m, pMissile) | 0) < m.u8((pMissilesTxt + 0x181) >>> 0)) {
     let nextFrame = (nFrame - 2) | 0
@@ -974,7 +974,7 @@ export function MISSILE_SrvDo_CollisionPatternAndAnimFrame_6FC61980_113c(
     }
     m.setU32((pMissile + 0x44) >>> 0, (nextFrame << 8) >>> 0)
   }
-  return MISSILE_SrvDo01_LinearProjectile113c(m, pMissile, pGame) | 0
+  return MISSILE_SrvDo01_LinearProjectile113c(m, pMissile, pGame, hooks) | 0
 }
 
 /**

@@ -23,6 +23,7 @@ import { DRLGPRESET_MovePointerAndClear113c } from '../common/drlg/preset.ts'
 import { DRLG_ResolveMonsterSubClassIdForRoom113c } from '../common/drlg/drlg-ver.ts'
 import type { Memory113c, SparseMemory113c } from '../mem/sparse-memory.ts'
 import { SEED_RollLimitedRandomNumber113c } from './combat-a1c-113c.ts'
+import { MONSTER_SpawnPresetOrEvilUrn113c } from './boot-init-gap-a-113c.ts'
 import { MONSTATS_FollowSubClassChain_6FC21D30_113c } from './k2-laneH-0x6fc2-w1-113c.ts'
 import { QUESTS_CheckNotIntro_6FC53970_113c } from './k2-laneJ-0x6fc4-w1-113c.ts'
 import { REGPOP_SpawnMonStatsGroupPackAtSubtile_6FC670F0_113c } from './k2-laneL-0x6fc6-w1-113c.ts'
@@ -303,45 +304,6 @@ function readSgptDataTablesForPresets113c(m: Memory113c): number {
   }
 }
 
-function spawnRegularPresetMonster6FC66F70(
-  m: Memory113c,
-  pTables: number,
-  resolvedId: number,
-  nLevelId: number,
-  nMode: number,
-  pGame: number,
-  pRoom: number,
-  x: number,
-  y: number,
-  spawnAtCoords: (
-    m: Memory113c,
-    nClassId: number,
-    nMode: number,
-    pGame: number,
-    pRoom: number,
-    x: number,
-    y: number,
-    nMaxRadius: number,
-    wFlags: number,
-  ) => number,
-): number {
-  if (resolvedId === 0x222 && nLevelId === 0x78) {
-    return spawnAtCoords(m, 0x222, nMode, pGame, pRoom, x, y, -1, 0x42)
-  }
-  if (MONSTATS2_CheckFlagBit113c(m, resolvedId, 0x0d) !== 0) {
-    return 0
-  }
-  const pMonStatsBase = pTables !== 0 ? m.u32((pTables + 0xa78) >>> 0) >>> 0 : 0
-  const pMonStatsRec =
-    pMonStatsBase !== 0 ? (pMonStatsBase + Math.imul(resolvedId, 0x1a8)) >>> 0 : 0
-  const wFlags = pMonStatsRec !== 0 && (m.u8((pMonStatsRec + 0x0e) >>> 0) & 4) !== 0 ? 8 : 0
-  let pUnit = spawnAtCoords(m, resolvedId, nMode, pGame, pRoom, x, y, -1, wFlags)
-  if (pUnit === 0 && (wFlags & 8) !== 0) {
-    pUnit = spawnAtCoords(m, resolvedId, nMode, pGame, pRoom, x, y, 4, wFlags)
-  }
-  return pUnit
-}
-
 /**
  * Spawns a monster preset unit (`ecx = pRoom, eax = nClassId`, stack `(pGame, x, y, nMode)`, `ret 0x10`).
  * Implements the full 1322-byte `D2Game:0x6FC67CF0` three-way dispatch:
@@ -447,16 +409,14 @@ export function ROOM_SpawnMonsterPreset113c(
         return 0
       }
     }
-    return spawnRegularPresetMonster6FC66F70(
+    return MONSTER_SpawnPresetOrEvilUrn113c(
       m,
-      pTables,
       cid,
-      nLevelId,
-      nMode,
       pGame,
       pRoom,
       x,
       y,
+      nMode,
       spawnAtCoords,
     )
   }

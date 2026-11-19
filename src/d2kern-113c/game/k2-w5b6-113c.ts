@@ -118,7 +118,7 @@ import {
   UNITFINDS_InitUnitFindData113c,
 } from '../common/unit-finds'
 import { WAYPOINT_GetWaypointNoFromLevelId113c, WAYPOINT_GetWaypointState113c } from '../common/waypoint'
-import { SEED_InitLowSeed113c, SEED_InitSeed113c } from '../prng'
+import { SEED_InitLowSeed113c, SEED_InitSeed113c, seedRoll } from '../prng'
 import {
   DATATBLS_AdjustMonsterPresetIndex113c,
   DATATBLS_GetItemsTxtRecordByCode113c,
@@ -147,7 +147,7 @@ import {
   D2GAME_PLRMODES_SendStatToClientOrParty113c,
   D2GAME_SUNIT_GetGameFromUnit113c,
 } from './boot-init-gap-b-113c'
-import { C2S_CheckCoordDeltaExceeded113c } from './c2s-packet-113c'
+import { C2S_CheckCoordDeltaExceeded113c, C2S_ValidateTargetUnitDistance113c } from './c2s-packet-113c'
 import {
   AI_FleeFrom113c,
   AI_IdleWander113c,
@@ -331,6 +331,32 @@ function stepSeed64At113c(m: D2KernMemory113c, pSeed: number): number {
   return newLo
 }
 
+function rollSeedInlineMod113c(m: D2KernMemory113c, pSeed: number, nMax: number): number {
+  const addr = pSeed >>> 0
+  const max = nMax | 0
+  if (max <= 0) return 0
+  const newLo = stepSeed64At113c(m, addr)
+  const uMax = max >>> 0
+  if (((uMax - 1) & uMax) === 0) {
+    return (newLo & (uMax - 1)) | 0
+  }
+  return (newLo % uMax) | 0
+}
+
+function rollSeedAt6FC21180(m: D2KernMemory113c, pSeed: number, nMax: number): number {
+  const addr = pSeed >>> 0
+  const max = nMax | 0
+  if (addr === 0 || max <= 0) {
+    hitD2GameVa113c(0x6FC21180)
+    return 0
+  }
+  const seed = { lo: m.u32(addr) >>> 0, hi: m.u32((addr + 4) >>> 0) >>> 0 }
+  const res = seedRoll(seed, max) | 0
+  m.setU32(addr, seed.lo >>> 0)
+  m.setU32((addr + 4) >>> 0, seed.hi >>> 0)
+  return res
+}
+
 function getUnitSubtileXInline(m: D2KernMemory113c, pUnit: number): number {
   const ut = rdI32(m, pUnit >>> 0)
   const pPath = m.u32((pUnit + 0x2c) >>> 0) >>> 0
@@ -395,7 +421,7 @@ function aiApproachTarget6FD12540(
   if ((flagsByte & 2) !== 0 && pUnit !== 0) {
     const roll = (stepSeed64At113c(m, (pUnit + 0x20) >>> 0) >>> 0) % 100
     if (roll < 0x46) {
-      AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0)
+      AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0, 4)
       return 1
     }
     AI_Stall113c(m, pGame >>> 0, pUnit >>> 0, 10)
@@ -735,7 +761,7 @@ export function MONAI_GloamPackLightningDanceThink_6FCA0F20_113c(
         (UNIT_CalcSqDistSubtiles113c(m, pUnit >>> 0, pTarget) | 0) < 0x400 &&
         rdI32(m, (pAiControl + 0x14) >>> 0) < 4
       ) {
-        const roll = SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 1000) | 0
+        const roll = rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 1000) | 0
         if (roll <= ((m.u8((pGame + 0x6d) >>> 0) + 2) | 0)) {
           m.setU32((pAiControl + 0x14) >>> 0, 4)
         }
@@ -810,8 +836,8 @@ export function MONAI_GloamPackLightningDanceThink_6FCA0F20_113c(
       const destX = (UNIT_GetPosX113c(m, pTarget) + rdI32(m, (S + idx * 8 + 0x98) >>> 0)) | 0
       const destY = (UNIT_GetPosY113c(m, pTarget) + rdI32(m, (S + idx * 8 + 0x9c) >>> 0)) | 0
       if ((UNITS_GetOctileDistanceToCoordinates113c(m, pUnit >>> 0, destX, destY) >>> 0) > 3) {
-        if ((SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0) < 0x22) {
-          AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0)
+        if ((rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0) < 0x22) {
+          AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0, 4)
           return
         }
         AI_StartModeAtCoordsStep0_6FD11FA0_113c(m, pUnit >>> 0, 2, pGame >>> 0, destX, destY)
@@ -882,8 +908,8 @@ export function MONAI_GloamPackLightningDanceThink_6FCA0F20_113c(
       const destX = (UNIT_GetPosX113c(m, pTarget) + rdI32(m, (S + slot * 8 + 0x14) >>> 0)) | 0
       const destY = (UNIT_GetPosY113c(m, pTarget) + rdI32(m, (S + slot * 8 + 0x18) >>> 0)) | 0
       if ((UNITS_GetOctileDistanceToCoordinates113c(m, pUnit >>> 0, destX, destY) >>> 0) > 3) {
-        if ((SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0) < 0x22) {
-          AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0)
+        if ((rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0) < 0x22) {
+          AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0, 4)
           return
         }
         AI_StartModeAtCoordsStep0_6FD11FA0_113c(m, pUnit >>> 0, 2, pGame >>> 0, destX, destY)
@@ -925,7 +951,7 @@ export function MONAI_GloamPackLightningDanceThink_6FCA0F20_113c(
           m.setU32((pAiControl + 0x14) >>> 0, 3)
           return
         }
-        const roll = SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0
+        const roll = rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0
         const aip1 = sx16(m.u16((pMonStatsTxt + diff * 2 + 0x56) >>> 0))
         if (roll < aip1) {
           AI_StartAttackMode113c(m, 8, pUnit >>> 0, pGame >>> 0, 0)
@@ -934,21 +960,21 @@ export function MONAI_GloamPackLightningDanceThink_6FCA0F20_113c(
         }
       }
       m.setU32((pAiControl + 0x18) >>> 0, (rdI32(m, (pAiControl + 0x18) >>> 0) - 1) >>> 0)
-      const chaseRoll = SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0
+      const chaseRoll = rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0
       const aip3 = sx16(m.u16((pMonStatsTxt + diff * 2 + 0x62) >>> 0))
       m.setU32((pAiControl + 0x14) >>> 0, 1)
       if (chaseRoll < aip3) {
         aiApproachTarget6FD12540(m, pGame >>> 0, pUnit >>> 0, pTarget, 2, 0, 0, 1, 0)
         return
       }
-      AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0)
+      AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0, 6)
       return
     }
 
     if (bInMeleeRange === 0) {
       if (
         aiState === 2 ||
-        (SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0) <
+        (rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0) <
           sx16(m.u16((pMonStatsTxt + diff * 2 + 0x56) >>> 0))
       ) {
         AI_StartAttackMode113c(m, 7, pUnit >>> 0, pGame >>> 0, pTarget)
@@ -958,7 +984,7 @@ export function MONAI_GloamPackLightningDanceThink_6FCA0F20_113c(
     } else {
       if (
         aiState === 3 ||
-        (SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0) <
+        (rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0) <
           sx16(m.u16((pMonStatsTxt + diff * 2 + 0x5c) >>> 0))
       ) {
         AI_StartAttackMode113c(m, 4, pUnit >>> 0, pGame >>> 0, pTarget)
@@ -966,13 +992,13 @@ export function MONAI_GloamPackLightningDanceThink_6FCA0F20_113c(
         return
       }
     }
-    const chaseRoll = SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0
+    const chaseRoll = rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0
     const aip3 = sx16(m.u16((pMonStatsTxt + diff * 2 + 0x62) >>> 0))
     m.setU32((pAiControl + 0x14) >>> 0, 1)
     if (chaseRoll < aip3) {
       aiApproachTarget6FD12540(m, pGame >>> 0, pUnit >>> 0, pTarget, 2, 0, 0, 1, 0)
     } else {
-      AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0)
+      AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0, 4)
     }
     m.setU32((pAiControl + 0x18) >>> 0, 3)
   } finally {
@@ -1067,7 +1093,7 @@ export function MONAI_SandMaggotThink_6FCA1C80_113c(
     if (pCtrl !== 0) {
       m.setU32((pCtrl + 0x1c) >>> 0, 0x32)
     }
-    AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0)
+    AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0, 4)
     const cnt = (rdI32(m, (pAiControl + 0x18) >>> 0) + 1) | 0
     m.setU32((pAiControl + 0x18) >>> 0, cnt >>> 0)
     const aip5 = sx16(m.u16((pMonStatsTxt + diff * 2 + 0x6e) >>> 0))
@@ -1146,7 +1172,7 @@ export function MONAI_CorruptRogueArcherThink_6FCA26B0_113c(
   const diff = m.u8((pGame + 0x6d) >>> 0)
   const aip1 = sx16(m.u16((pMonStatsTxt + diff * 2 + 0x56) >>> 0))
   if (nDistance < aip1) {
-    const roll = SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0
+    const roll = rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0
     const aip2 = sx16(m.u16((pMonStatsTxt + diff * 2 + 0x5c) >>> 0))
     if (roll < aip2) {
       AI_StartAttackMode113c(m, 5, pUnit >>> 0, pGame >>> 0, pTarget)
@@ -1162,7 +1188,10 @@ export function MONAI_CorruptRogueArcherThink_6FCA26B0_113c(
     }
   }
 
-  AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0)
+  const wanderDiff = m.u8((pGame + 0x6d) >>> 0)
+  const rawWander = sx16(m.u16((pMonStatsTxt + wanderDiff * 2 + 0x68) >>> 0))
+  const wanderSteps = rawWander < 3 ? 3 : rawWander & 0xff
+  AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0, wanderSteps)
 }
 
 function scanAdjacentRoomUnitsWithCb(
@@ -1310,7 +1339,7 @@ export function MONAI_CorpseSpitterThink_6FCA3FE0_113c(
       m.setU32((pAiControl + 0x14) >>> 0, 0)
       m.setU32((pAiControl + 0x18) >>> 0, 0)
       m.setU32((pAiControl + 0x1c) >>> 0, 0)
-      AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0)
+      AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0, 8)
       return
     }
     if ((UNIT_CalcSqDistSubtiles113c(m, pUnit >>> 0, pCorpse) | 0) > 4) {
@@ -1318,7 +1347,7 @@ export function MONAI_CorpseSpitterThink_6FCA3FE0_113c(
         m.setU32((pAiControl + 0x14) >>> 0, 0)
         m.setU32((pAiControl + 0x18) >>> 0, 0)
         m.setU32((pAiControl + 0x1c) >>> 0, 0)
-        AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0)
+        AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0, 8)
         return
       }
       aiApproachTarget6FD12540(m, pGame >>> 0, pUnit >>> 0, pCorpse, 2, 0, 0, 1, 0)
@@ -1342,7 +1371,7 @@ export function MONAI_CorpseSpitterThink_6FCA3FE0_113c(
     m.setU32((pAiControl + 0x14) >>> 0, 0)
     m.setU32((pAiControl + 0x18) >>> 0, 0)
     m.setU32((pAiControl + 0x1c) >>> 0, 0)
-    AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0)
+    AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0, 8)
     return
   }
   if (state === 4) {
@@ -1390,11 +1419,11 @@ export function MONAI_CorpseSpitterThink_6FCA3FE0_113c(
       m.setU32((pAiControl + 0x1c) >>> 0, 0)
       return
     }
-    if ((SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0) >= 0x14) {
+    if ((rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0) >= 0x14) {
       m.setU32((pAiControl + 0x14) >>> 0, 0)
       m.setU32((pAiControl + 0x18) >>> 0, 0)
       m.setU32((pAiControl + 0x1c) >>> 0, 0)
-      AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0)
+      AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0, 8)
       return
     }
     m.setU32((pAiControl + 0x14) >>> 0, 0)
@@ -1407,12 +1436,12 @@ export function MONAI_CorpseSpitterThink_6FCA3FE0_113c(
   if (pFoundCorpse !== 0) {
     if (
       (UNIT_CalcSqDistSubtiles113c(m, pUnit >>> 0, pFoundCorpse) | 0) < 9 &&
-      (SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0) <
+      (rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0) <
         sx16(m.u16((pMonStatsTxt + diff * 2 + 0x5c) >>> 0))
     ) {
       goEatCorpse = true
     } else if (
-      (SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0) <
+      (rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0) <
       sx16(m.u16((pMonStatsTxt + diff * 2 + 0x6e) >>> 0))
     ) {
       goEatCorpse = true
@@ -1421,7 +1450,7 @@ export function MONAI_CorpseSpitterThink_6FCA3FE0_113c(
   if (!goEatCorpse) {
     if (bInMeleeRange !== 0) {
       if (
-        (SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0) <
+        (rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0) <
         sx16(m.u16((pMonStatsTxt + diff * 2 + 0x56) >>> 0))
       ) {
         AI_StartAttackMode113c(m, 4, pUnit >>> 0, pGame >>> 0, pTarget)
@@ -1431,7 +1460,7 @@ export function MONAI_CorpseSpitterThink_6FCA3FE0_113c(
       return
     }
     if (
-      (SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0) <
+      (rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0) <
       sx16(m.u16((pMonStatsTxt + diff * 2 + 0x62) >>> 0))
     ) {
       aiApproachTarget6FD12540(m, pGame >>> 0, pUnit >>> 0, pTarget, 2, 0, 0, 1, 0)
@@ -1439,7 +1468,7 @@ export function MONAI_CorpseSpitterThink_6FCA3FE0_113c(
     }
     if (
       pFoundCorpse === 0 ||
-      (SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0) >=
+      (rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0) >=
         sx16(m.u16((pMonStatsTxt + diff * 2 + 0x68) >>> 0))
     ) {
       AI_Stall113c(m, pGame >>> 0, pUnit >>> 0, 8)
@@ -1650,7 +1679,7 @@ export function MONAI_OblivionKnightThink_6FCA7E60_113c(
       if (
         skill4 >= 0 &&
         rdI32(m, (pGame + 0xa8) >>> 0) > rdI32(m, (pAiControl + 0x18) >>> 0) &&
-        (SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0) <
+        (rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0) <
           sx16(m.u16((pMonStatsTxt + diff * 2 + 0x5c) >>> 0))
       ) {
         castSkill4 = true
@@ -1659,7 +1688,7 @@ export function MONAI_OblivionKnightThink_6FCA7E60_113c(
         if (
           skill2 >= 0 &&
           rdI32(m, (pGame + 0xa8) >>> 0) > rdI32(m, (pAiControl + 0x1c) >>> 0) &&
-          (SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0) <
+          (rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0) <
             sx16(m.u16((pMonStatsTxt + diff * 2 + 0x62) >>> 0))
         ) {
           const mode2 = m.u8((pMonStatsTxt + 0x181) >>> 0)
@@ -1677,7 +1706,7 @@ export function MONAI_OblivionKnightThink_6FCA7E60_113c(
       if (
         skill4 >= 0 &&
         rdI32(m, (pGame + 0xa8) >>> 0) > rdI32(m, (pAiControl + 0x18) >>> 0) &&
-        (SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0) <
+        (rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0) <
           sx16(m.u16((pMonStatsTxt + diff * 2 + 0x5c) >>> 0))
       ) {
         castSkill4 = true
@@ -1771,7 +1800,7 @@ export function MONAI_SuccubusThink_6FCA8A70_113c(
   if (
     skill1 >= 0 &&
     nDistance < aip2 &&
-    (SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0) <
+    (rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0) <
       sx16(m.u16((pMonStatsTxt + diff * 2 + 0x56) >>> 0))
   ) {
     const ty = UNIT_GetPosY113c(m, pTarget) | 0
@@ -2655,25 +2684,25 @@ export function AITARGET_EvaluateTargetThreatScore_6FCC3E80_113c(
   let rThreat = 0
   let lThreat = 0
 
-  const pRightSkill = UNITS_GetRightSkill113c(m, pCandidateUnit >>> 0) >>> 0
-  if (pRightSkill !== 0) {
-    rLvl = SKILLS_EvaluateSkillLevel113c(m, pCandidateUnit >>> 0, pRightSkill, 1) | 0
-    const skillId = SKILLS_GetSkillIdFromSkill113c(m, pRightSkill, 0x6fd1b6b0, 0x225) | 0
-    const pDataTables = getSgptDataTablesPtr(m)
-    if (skillId >= 0 && pDataTables !== 0 && skillId < rdI32(m, (pDataTables + 0xba0) >>> 0)) {
-      const pSkillsTxt = (m.u32((pDataTables + 0xb98) >>> 0) + imul32(skillId, 0x23c)) >>> 0
-      if (pSkillsTxt !== 0) rThreat = m.u8((pSkillsTxt + 0x18e) >>> 0)
-    }
-  }
-
   const pLeftSkill = UNITS_GetLeftSkill113c(m, pCandidateUnit >>> 0) >>> 0
   if (pLeftSkill !== 0) {
     lLvl = SKILLS_EvaluateSkillLevel113c(m, pCandidateUnit >>> 0, pLeftSkill, 1) | 0
-    const skillId = SKILLS_GetSkillIdFromSkill113c(m, pLeftSkill, 0x6fd1b6b0, 0x22b) | 0
+    const skillId = SKILLS_GetSkillIdFromSkill113c(m, pLeftSkill, 0x6fd1b6b0, 0x225) | 0
     const pDataTables = getSgptDataTablesPtr(m)
     if (skillId >= 0 && pDataTables !== 0 && skillId < rdI32(m, (pDataTables + 0xba0) >>> 0)) {
       const pSkillsTxt = (m.u32((pDataTables + 0xb98) >>> 0) + imul32(skillId, 0x23c)) >>> 0
       if (pSkillsTxt !== 0) lThreat = m.u8((pSkillsTxt + 0x18e) >>> 0)
+    }
+  }
+
+  const pRightSkill = UNITS_GetRightSkill113c(m, pCandidateUnit >>> 0) >>> 0
+  if (pRightSkill !== 0) {
+    rLvl = SKILLS_EvaluateSkillLevel113c(m, pCandidateUnit >>> 0, pRightSkill, 1) | 0
+    const skillId = SKILLS_GetSkillIdFromSkill113c(m, pRightSkill, 0x6fd1b6b0, 0x22b) | 0
+    const pDataTables = getSgptDataTablesPtr(m)
+    if (skillId >= 0 && pDataTables !== 0 && skillId < rdI32(m, (pDataTables + 0xba0) >>> 0)) {
+      const pSkillsTxt = (m.u32((pDataTables + 0xb98) >>> 0) + imul32(skillId, 0x23c)) >>> 0
+      if (pSkillsTxt !== 0) rThreat = m.u8((pSkillsTxt + 0x18e) >>> 0)
     }
   }
 
@@ -2956,7 +2985,7 @@ export function MONAI_BaalThroneThink_6FCC8430_113c(
             (STATES_CheckState113c(m, pTarget, targetState) | 0) !== 0
           )
         ) {
-          const roll = SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0
+          const roll = rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0
           const diff = m.u8((pGame + 0x6d) >>> 0)
           const aip1 = sx16(m.u16((pMonStatsTxt + diff * 2 + 0x56) >>> 0))
           if (roll < aip1) {
@@ -3052,10 +3081,10 @@ export function AIBAAL_SelectCombatAction_6FCC8E80_113c(
   }
 
   let bDangerSkill = 0
-  const pRight = UNITS_GetRightSkill113c(m, pTarget >>> 0) >>> 0
-  if (hasHighThreatAoESkill(m, pTarget, pRight, 0x27f)) bDangerSkill = 1
   const pLeft = UNITS_GetLeftSkill113c(m, pTarget >>> 0) >>> 0
-  if (hasHighThreatAoESkill(m, pTarget, pLeft, 0x286)) bDangerSkill = 1
+  if (hasHighThreatAoESkill(m, pTarget, pLeft, 0x27f)) bDangerSkill = 1
+  const pRight = UNITS_GetRightSkill113c(m, pTarget >>> 0) >>> 0
+  if (hasHighThreatAoESkill(m, pTarget, pRight, 0x286)) bDangerSkill = 1
 
   let bTether55 = 0
   let bTether69 = 0
@@ -3285,7 +3314,7 @@ function executePotionItemUseCommon(
         const vit = STATLIST_GetUnitStat113c(m, pUnit >>> 0, 3, 0) | 0
         if (vit > 0) {
           const halfRoll = (SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, vit) >>> 1) | 0
-          const critRoll = SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0
+          const critRoll = rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0
           if (critRoll < halfRoll) raw = (raw + raw) | 0
         }
       } else if (statId === 8 || statId === 0x1a) {
@@ -3294,7 +3323,7 @@ function executePotionItemUseCommon(
         const enr = STATLIST_GetUnitStat113c(m, pUnit >>> 0, 1, 0) | 0
         if (enr > 0) {
           const halfRoll = (SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, enr) >>> 1) | 0
-          const critRoll = SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0
+          const critRoll = rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0
           if (critRoll < halfRoll) raw = (raw + raw) | 0
         }
       }
@@ -3625,25 +3654,25 @@ export function AITARGET_EvaluateTargetThreatScoreTether75_6FCD6DA0_113c(
   let rThreat = 0
   let lThreat = 0
 
-  const pRightSkill = UNITS_GetRightSkill113c(m, pCandidateUnit >>> 0) >>> 0
-  if (pRightSkill !== 0) {
-    rLvl = SKILLS_EvaluateSkillLevel113c(m, pCandidateUnit >>> 0, pRightSkill, 1) | 0
-    const skillId = SKILLS_GetSkillIdFromSkill113c(m, pRightSkill, 0x6fd1b434, 0x75) | 0
-    const pDataTables = getSgptDataTablesPtr(m)
-    if (skillId >= 0 && pDataTables !== 0 && skillId < rdI32(m, (pDataTables + 0xba0) >>> 0)) {
-      const pSkillsTxt = (m.u32((pDataTables + 0xb98) >>> 0) + imul32(skillId, 0x23c)) >>> 0
-      if (pSkillsTxt !== 0) rThreat = m.u8((pSkillsTxt + 0x18e) >>> 0)
-    }
-  }
-
   const pLeftSkill = UNITS_GetLeftSkill113c(m, pCandidateUnit >>> 0) >>> 0
   if (pLeftSkill !== 0) {
     lLvl = SKILLS_EvaluateSkillLevel113c(m, pCandidateUnit >>> 0, pLeftSkill, 1) | 0
-    const skillId = SKILLS_GetSkillIdFromSkill113c(m, pLeftSkill, 0x6fd1b434, 0x7b) | 0
+    const skillId = SKILLS_GetSkillIdFromSkill113c(m, pLeftSkill, 0x6fd1b434, 0x75) | 0
     const pDataTables = getSgptDataTablesPtr(m)
     if (skillId >= 0 && pDataTables !== 0 && skillId < rdI32(m, (pDataTables + 0xba0) >>> 0)) {
       const pSkillsTxt = (m.u32((pDataTables + 0xb98) >>> 0) + imul32(skillId, 0x23c)) >>> 0
       if (pSkillsTxt !== 0) lThreat = m.u8((pSkillsTxt + 0x18e) >>> 0)
+    }
+  }
+
+  const pRightSkill = UNITS_GetRightSkill113c(m, pCandidateUnit >>> 0) >>> 0
+  if (pRightSkill !== 0) {
+    rLvl = SKILLS_EvaluateSkillLevel113c(m, pCandidateUnit >>> 0, pRightSkill, 1) | 0
+    const skillId = SKILLS_GetSkillIdFromSkill113c(m, pRightSkill, 0x6fd1b434, 0x7b) | 0
+    const pDataTables = getSgptDataTablesPtr(m)
+    if (skillId >= 0 && pDataTables !== 0 && skillId < rdI32(m, (pDataTables + 0xba0) >>> 0)) {
+      const pSkillsTxt = (m.u32((pDataTables + 0xb98) >>> 0) + imul32(skillId, 0x23c)) >>> 0
+      if (pSkillsTxt !== 0) rThreat = m.u8((pSkillsTxt + 0x18e) >>> 0)
     }
   }
 
@@ -4073,13 +4102,13 @@ export function MONREG_SelectRegionMonsterTypes_6FCEA760_113c(
 
   for (let pickIdx = 0; pickIdx < nToPick; pickIdx++) {
     if (nPoolCount <= 0) break
-    let chosenIdx = SEED_RollLimitedFast113c(m, pSeed >>> 0, nPoolCount) | 0
+    let chosenIdx = rollSeedInlineMod113c(m, pSeed >>> 0, nPoolCount) | 0
     let monId = pool[chosenIdx]! | 0
 
     if (pickIdx === 0 && m.u8((pLevelsTxt + 0x31) >>> 0) !== 0) {
       for (let attempt = 0; attempt < 20; attempt++) {
         if (monStatsHasRangedSpawnFlag0FBit4(m, monId)) break
-        chosenIdx = SEED_RollLimitedFast113c(m, pSeed >>> 0, nPoolCount) | 0
+        chosenIdx = rollSeedInlineMod113c(m, pSeed >>> 0, nPoolCount) | 0
         monId = pool[chosenIdx]! | 0
       }
     }
@@ -4442,6 +4471,7 @@ function sendPacket0DPlayerStop6FCEB950(
   nPlayerMode: number,
 ): void {
   const hitClass = m.u8((pUnit + 0xb0) >>> 0)
+  hitD2GameVa113c(0x6FCEB950)
   const modeIdx = nPlayerMode | 0
   let actionByte = 0
   const memVal = readOptionalGlobalU32(m, (0x6fd22ce4 + modeIdx * 12) >>> 0, 0)
@@ -4500,32 +4530,6 @@ export function PLRMODES_SendPlayerStop0DAndSyncStatAF_6FCED2C0_113c(
   }
 }
 
-function validateTargetUnitActAndDist6FCECFE0(
-  m: D2KernMemory113c,
-  pGame: number,
-  nUnitType: number,
-  dwUnitGuid: number,
-  pPlayer: number,
-  nMaxDelta: number,
-): number {
-  const pTarget = SUNIT_GetServerUnit113c(m, pGame >>> 0, nUnitType | 0, dwUnitGuid >>> 0) >>> 0
-  if (pTarget === 0) return 1
-  const plrAct =
-    DRLG_GetActNoFromLevelId113c(
-      m,
-      DUNGEON_GetLevelIdFromRoom113c(m, UNITS_GetRoom113c(m, pPlayer >>> 0)),
-    ) & 0xff
-  const tgtAct =
-    DRLG_GetActNoFromLevelId113c(
-      m,
-      DUNGEON_GetLevelIdFromRoom113c(m, UNITS_GetRoom113c(m, pTarget)),
-    ) & 0xff
-  if (plrAct !== tgtAct) return 2
-  const tx = getUnitSubtileXInline(m, pTarget)
-  const ty = getUnitSubtileYInline(m, pTarget)
-  return C2S_CheckCoordDeltaExceeded113c(m, pPlayer >>> 0, tx, ty, nMaxDelta | 0) | 0
-}
-
 /**
  * Handles 5-byte C2S object collision-sync packet (`0x6FCED440`): validates packet length `5`,
  * object existence, same Act, and `<= 10` subtile distance (`0x6FCECFE0`), then runs `0x6FC8A220`.
@@ -4542,7 +4546,7 @@ export function C2S_SyncObjectCollisionByGuid_6FCED440_113c(
   hitD2GameVa113c(0x6FCED440)
   if ((nPacketLen | 0) !== 5) return 3
   const objGuid = m.u32((pPacket + 1) >>> 0) >>> 0
-  const err = validateTargetUnitActAndDist6FCECFE0(m, pGame, 2, objGuid, pPlayer, 0x0a)
+  const err = C2S_ValidateTargetUnitDistance113c(m, 2, objGuid, pGame >>> 0, pPlayer >>> 0, 0x0a) | 0
   if (err !== 0) return err
   OBJ_SyncObjectMode2Or5ByCollision_6FC8A220_113c(m, pGame >>> 0, objGuid)
   return 0

@@ -279,8 +279,12 @@ function stepSeed64At113c(m: D2KernMemory113c, pSeed: number): number {
 function rollSeedAt6FC21180(m: D2KernMemory113c, pSeed: number, nMax: number): number {
   const addr = pSeed >>> 0
   const max = nMax | 0
-  if (addr === 0 || max <= 0) return 0
+  if (addr === 0 || max <= 0) {
+    hitD2GameVa113c(0x6FC21180)
+    return 0
+  }
   if (((max - 1) & max) === 0) {
+    hitD2GameVa113c(0x6FC21180)
     const raw = stepSeed64At113c(m, addr)
     return (raw & (max - 1)) >>> 0
   }
@@ -453,6 +457,7 @@ function aiIdleWander6FD11B10(
   if (hooks !== undefined && hooks.world !== undefined) {
     return AI_IdleWander113c(hooks.world, pUnit >>> 0, range | 0) ? 1 : 0
   }
+  hitD2GameVa113c(0x6FD11B10)
   const ok = AI_WalkWanderAroundSelf_6FD129B0_113c(m, range | 0, pGame >>> 0, pUnit >>> 0, hooks) | 0
   if (ok === 0) {
     aiStall6FD122C0(m, pGame >>> 0, pUnit >>> 0, 10, hooks)
@@ -487,6 +492,7 @@ function aiApproachTarget6FD12540(
       : 0
   }
 
+  hitD2GameVa113c(0x6FD12540)
   let mode = nMode | 0
   if (mode === 0x0f && (STATES_CheckState113c(m, pUnit >>> 0, 0x3c) | 0) !== 0) {
     const pAiControl = getMonsterAiControlPtr113c(m, pUnit)
@@ -556,6 +562,7 @@ function aiFleeFrom6FD12D80(
       ? 1
       : 0
   }
+  hitD2GameVa113c(0x6FD12D80)
   if ((pFromUnit >>> 0) === 0) return 0
   const unitX = getUnitXInline113c(m, pUnit)
   const unitY = getUnitYInline113c(m, pUnit)
@@ -3455,6 +3462,7 @@ function aiMaintainIdealDist6FD11D90(
       hooks.townNpc,
     )
   }
+  hitD2GameVa113c(0x6FD11D90)
   const tx = getUnitXInline113c(m, pTarget)
   const ty = getUnitYInline113c(m, pTarget)
   const ux = getUnitXInline113c(m, pUnit)
@@ -3741,7 +3749,7 @@ export function AI_ThinkGiantMosquito_6FCA6280_113c(
               m.setU32(sp, masked)
               if (masked !== 0) animSpeedFlag = 0x65
             }
-            m.setU8((modeSp + 0x1e) >>> 0, animSpeedFlag)
+            m.setU8((modeSp + 0x15) >>> 0, animSpeedFlag)
             m.setU32((modeSp + 0x08) >>> 0, pObsTarget)
             dispatchMonsterStartMode6FC95E10(m, game, modeSp, 1, hooks)
             return
@@ -3856,7 +3864,7 @@ export function AI_ThinkThornHulk_6FCA64A0_113c(
             const masked = (m.u8((pMonStats2 + 0x104) >>> 0) & readGdwBitMasks113c(m, 4)) >>> 0
             if (masked !== 0) animSpeedFlag = 0x65
           }
-          m.setU8((modeSp + 0x1e) >>> 0, animSpeedFlag)
+          m.setU8((modeSp + 0x15) >>> 0, animSpeedFlag)
           m.setU32((modeSp + 0x08) >>> 0, pFoundTarget)
           dispatchMonsterStartMode6FC95E10(m, game, modeSp, 1, hooks)
           return
@@ -4072,7 +4080,7 @@ export function AI_ThinkVampire_6FCA6900_113c(
               const masked = (m.u8((pMonStats2 + 0x104) >>> 0) & readGdwBitMasks113c(m, 4)) >>> 0
               if (masked !== 0) animSpeedFlag = 0x65
             }
-            m.setU8((modeSp + 0x1e) >>> 0, animSpeedFlag)
+            m.setU8((modeSp + 0x15) >>> 0, animSpeedFlag)
             m.setU32((modeSp + 0x08) >>> 0, pTarget)
             dispatchMonsterStartMode6FC95E10(m, game, modeSp, 1, hooks)
             return
@@ -4489,7 +4497,7 @@ export function AI_ThinkWillowisp_6FCA7010_113c(
             if (masked !== 0) animSpeedFlag = 0x65
           }
         }
-        m.setU8((modeSp + 0x1e) >>> 0, animSpeedFlag)
+        m.setU8((modeSp + 0x15) >>> 0, animSpeedFlag)
         m.setU32((modeSp + 0x08) >>> 0, pTarget)
         dispatchMonsterStartMode6FC95E10(m, game, modeSp, 1, hooks)
         return
@@ -4605,7 +4613,7 @@ export function AI_ThinkSlinger_6FCA74A0_113c(
             const masked = (m.u8((pMonStats2 + 0x104) >>> 0) & readGdwBitMasks113c(m, 5)) >>> 0
             if (masked !== 0) animSpeedFlag = 0x65
           }
-          m.setU8((modeSp + 0x1e) >>> 0, animSpeedFlag)
+          m.setU8((modeSp + 0x15) >>> 0, animSpeedFlag)
           m.setU32((modeSp + 0x08) >>> 0, pTarget)
           dispatchMonsterStartMode6FC95E10(m, game, modeSp, 1, hooks)
           return
@@ -4633,7 +4641,7 @@ export function AI_ThinkSlinger_6FCA74A0_113c(
             if (masked !== 0) animSpeedFlag = 0x65
           }
         }
-        m.setU8((modeSp + 0x1e) >>> 0, animSpeedFlag)
+        m.setU8((modeSp + 0x15) >>> 0, animSpeedFlag)
         m.setU32((modeSp + 0x08) >>> 0, pTarget)
         dispatchMonsterStartMode6FC95E10(m, game, modeSp, 1, hooks)
         return
@@ -4891,7 +4899,7 @@ export function AI_ThinkBloodLord_6FCA8810_113c(
           if (masked !== 0) animSpeedFlag = 0x65
         }
       }
-      m.setU8((sp + 0x1e) >>> 0, animSpeedFlag)
+      m.setU8((sp + 0x15) >>> 0, animSpeedFlag)
       m.setU32((sp + 0x08) >>> 0, pTarget)
       dispatchMonsterStartMode6FC95E10(m, game, sp, 1, hooks)
     } finally {
@@ -5018,7 +5026,7 @@ export function AI_ThinkBladeCreeper_6FCC6B70_113c(
       }
       m.setU32(sp, 0)
       m.setU32((sp + 0x04) >>> 0, u)
-      m.setU8((sp + 0x1e) >>> 0, 0x64)
+      m.setU8((sp + 0x15) >>> 0, 0x64)
       dispatchMonsterStartMode6FC95E10(m, game, sp, 1, hooks)
     } finally {
       k2W6B3StackPtr = (sp + 0x20) >>> 0

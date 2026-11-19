@@ -559,8 +559,16 @@ export function DRLGPRESET_LoadFileFromArchive113c(
         return 0
       }
       m.fill(pBuf, allocSize, 0)
-      for (let i = 0; i < dwSize; i++) {
-        m.setU8((pBuf + i) >>> 0, bytes[i]!)
+      if (dwSize > 0) {
+        const hSizeScratch = 0x7fb94100
+        m.setU32(hSizeScratch, dwSize)
+        m.setU32((hSizeScratch + 4) >>> 0, 0)
+        const verifiedSize = DRLGPRESET_GetFileSize113c(m, hSizeScratch, 0) >>> 0
+        const hDataScratch = 0x7fb98000
+        for (let i = 0; i < verifiedSize; i++) {
+          m.setU8((hDataScratch + i) >>> 0, bytes[i]!)
+        }
+        DRLGPRESET_ReadFileData113c(m, hDataScratch, verifiedSize, pBuf)
       }
       if (pdwSize !== 0) {
         m.setU32(pdwSize >>> 0, dwSize)
@@ -1670,21 +1678,46 @@ export function DRLGPRESET_BuildPresetRoomsFromMap113c(
   return pLastRoom >>> 0
 }
 
+export type PresetAutomapRoomCallback113c = (m: Memory113c, pRoom: number) => void
+
+export type PresetTownAutomapCallback113c = (
+  m: Memory113c,
+  nLevelId: number,
+  nPickedFile: number,
+  nCenterX: number,
+  nCenterY: number,
+) => void
+
 /**
  * `@va D2Common:0x6FD5CD10` (`DRLGPRESET_InitLevelPresetRooms113c`, not exported;
- * `__fastcall(pLevel)`, plain `ret`). `indirectUnknown: true` -> `status: "ported"`.
+ * `__fastcall(ecx = pLevel)`, plain `ret`).
+ *
+ * Binary verification (`0x6FD5CD10 .. 0x6FD5CE89`, 378 bytes):
+ * - Looks up `D2LvlPrestTxt*` for `pLevel->nLevelId (+0x1D0)` (`0x6FDBC950`), allocates `D2DrlgMapStrc` (`0x6FD5BC60`),
+ *   syncs `pInfo->nDirection (+0x04)` <-> `pMap->nPickedFile (+0x04)`, and calls `DRLGPRESET_BuildPresetRoomsFromMap113c` (`0x6FD5C690`).
+ * - Re-reads `curLevelId = pLevel->nLevelId (+0x1D0)` (`0x6FD5CD5D`):
+ *   - For `curLevelId` in `{0x28, 0x67, 0x6D}` (`0x6FD5CE49..0x6FD5CE84`), checks `pDrlg->pfTownAutomap (+0x488)` and
+ *     `pMap->pLvlPrestTxt->dwAutoMap (+0x30)`, computes `(nPosX + sdiv32(nWidth, 2), nPosY + sdiv32(nHeight, 2))`, and
+ *     invokes `pfTownAutomap(curLevelId, pMap->nPickedFile, centerX, centerY)`.
+ *   - Otherwise (`0x6FD5CD7E..0x6FD5CE48`), checks `pDrlg->pfAutomap (+0x454)` and `dwAutoMap (+0x30)`, initializes
+ *     unbuilt neighbor levels across `pDstAdj[0..7]` (`0x6FD94CE0`, `0x6FD7DD80`, `0x6FD7E360`), activates each room in
+ *     `pLevel->pFirstRoomEx (+0x10)` (`0x6FDB8400`, `0x6FD5BF70`, `0x6FDCC0E0` via `pRoomEx->pLevel->pDrlg->pMemPool`),
+ *     and invokes `pfAutomap(pRoomEx->pRoom (+0x30))`.
  */
 export function DRLGPRESET_InitLevelPresetRooms113c(
   m: Memory113c,
   pLevel: number,
+  pfAutomap?: PresetAutomapRoomCallback113c,
+  pfTownAutomap?: PresetTownAutomapCallback113c,
 ): void {
   hitD2CommonVa113c(0x6FD5CD10)
   const lvl = pLevel >>> 0
-  const nLevelId = m.get(lvl, D2DrlgLevelStrc.nLevelId) | 0
+  const nLevelId0 = m.get(lvl, D2DrlgLevelStrc.nLevelId) | 0
   const pInfo = m.get(lvl, D2DrlgLevelStrc.pOutdoors)
-  const pPrest = DATATBLS_GetLvlPrestTxtRecordFromLevelId113c(m, nLevelId)
+  const pPrest = DATATBLS_GetLvlPrestTxtRecordFromLevelId113c(m, nLevelId0)
   const nDef = m.u32(pPrest) | 0
-  const pMap = DRLGPRESET_AllocDrlgMap113c(m, (lvl + 0x1c4) >>> 0, lvl, nDef, (lvl + 0x1c) >>> 0) >>> 0
+  const pBox = (lvl + 0x1c) >>> 0
+  const pMap = DRLGPRESET_AllocDrlgMap113c(m, (lvl + 0x1c4) >>> 0, lvl, nDef, pBox) >>> 0
   const nFileIdx = m.u32((pInfo + 0x04) >>> 0) | 0
   m.setU32(pInfo, pMap)
   if (nFileIdx === -1) {
@@ -1694,11 +1727,21 @@ export function DRLGPRESET_InitLevelPresetRooms113c(
   }
   DRLGPRESET_BuildPresetRoomsFromMap113c(m, lvl, m.u32(pInfo), 0, 0)
 
-  if (nLevelId === 0x28 || nLevelId === 0x67 || nLevelId === 0x6d) {
+  const curLevelId = m.get(lvl, D2DrlgLevelStrc.nLevelId) | 0
+  if (curLevelId === 0x28 || curLevelId === 0x67 || curLevelId === 0x6d) {
     const pDrlg = m.get(lvl, D2DrlgLevelStrc.pDrlg)
-    const pfnErr = m.get(pDrlg, D2DrlgStrc.pfnErrorCallback)
-    if (pfnErr !== 0 && m.u32((m.u32((pMap + 0x08) >>> 0) + 0x30) >>> 0) !== 0) {
-      void pfnErr
+    const pfnTownAutomap = m.get(pDrlg, D2DrlgStrc.pfnErrorCallback)
+    if (pfnTownAutomap !== 0 && m.u32((m.u32((pMap + 0x08) >>> 0) + 0x30) >>> 0) !== 0) {
+      const nHeight = m.u32((lvl + 0x28) >>> 0) | 0
+      const nPosY = m.u32((lvl + 0x20) >>> 0) | 0
+      const centerY = (nPosY + sdiv32(nHeight, 2)) | 0
+      const nWidth = m.u32((lvl + 0x24) >>> 0) | 0
+      const nPosX = m.u32(pBox) | 0
+      const centerX = (nPosX + sdiv32(nWidth, 2)) | 0
+      const nPickedFile = m.u32((pMap + 0x04) >>> 0) | 0
+      if (pfTownAutomap !== undefined) {
+        pfTownAutomap(m, curLevelId, nPickedFile, centerX, centerY)
+      }
     }
     return
   }
@@ -1707,11 +1750,12 @@ export function DRLGPRESET_InitLevelPresetRooms113c(
   if (m.get(pDrlg, D2DrlgStrc.pfnAutomapInit) === 0) return
   if (m.u32((m.u32((pMap + 0x08) >>> 0) + 0x30) >>> 0) === 0) return
 
-  const pDstAdj = DRLGWARP_GetWarpDstAdjustData113c(m, pDrlg, nLevelId)
+  const pDstAdj = DRLGWARP_GetWarpDstAdjustData113c(m, pDrlg, curLevelId)
   for (let i = 0; i < 8; i++) {
     const targetLvl = m.u32((pDstAdj + i * 4) >>> 0) | 0
     if (targetLvl !== 0) {
-      const pTarget = DRLG_GetLevel113c(m, pDrlg, targetLvl)
+      const curDrlg = m.get(lvl, D2DrlgLevelStrc.pDrlg)
+      const pTarget = DRLG_GetLevel113c(m, curDrlg, targetLvl)
       if (pTarget !== 0 && m.get(pTarget, D2DrlgLevelStrc.pFirstRoomEx) === 0) {
         DRLG_InitLevelRooms113c(m, pTarget)
       }
@@ -1728,7 +1772,16 @@ export function DRLGPRESET_InitLevelPresetRooms113c(
       DRLGPRESET_LoadPresetRoomMap113c(m, pRoomEx)
     }
     if ((m.get(pRoomEx, D2RoomExStrc.dwFlags) & 0x100000) === 0) {
-      DRLGROOM_BuildRoomGridsAndTiles113c(m, pRoomEx, m.get(pDrlg, D2DrlgStrc.pMemPool))
+      const pRoomLvl = m.u32((pRoomEx + 0x58) >>> 0)
+      const pRoomDrlg = m.get(pRoomLvl, D2DrlgLevelStrc.pDrlg)
+      const pMemPool = m.get(pRoomDrlg, D2DrlgStrc.pMemPool)
+      DRLGROOM_BuildRoomGridsAndTiles113c(m, pRoomEx, pMemPool)
+    }
+    const pActiveRoom = m.u32((pRoomEx + 0x30) >>> 0)
+    const curDrlg = m.get(lvl, D2DrlgLevelStrc.pDrlg)
+    const pfnAutomap = m.get(curDrlg, D2DrlgStrc.pfnAutomapInit)
+    if (pfnAutomap !== 0 && pfAutomap !== undefined) {
+      pfAutomap(m, pActiveRoom)
     }
     pRoomEx = m.u32((pRoomEx + 0x24) >>> 0)
   }

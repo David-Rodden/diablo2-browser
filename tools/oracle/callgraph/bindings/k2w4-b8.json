@@ -203,8 +203,8 @@
     "name": "ACT4Q2_InitHadrielNpcDialog_6FCD8C00",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "ACT4Q2_InitHadrielNpcDialog_6FCD8C00_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/replay-act-quests.test.ts (0x6FCD8C00) across Act 1-5 K4 longitudinal quest & town NPC replay at 100% strict zero divergence"
   },
   {
     "module": "D2Game",
@@ -212,8 +212,8 @@
     "name": "ACT4Q2_InitHellforgeNpcDialog_6FCD8CE0",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "ACT4Q2_InitHellforgeNpcDialog_6FCD8CE0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/replay-act-quests.test.ts (0x6FCD8CE0) across Act 1-5 K4 longitudinal quest & town NPC replay at 100% strict zero divergence"
   },
   {
     "module": "D2Game",
@@ -230,8 +230,8 @@
     "name": "ACT4Q3_SyncQuestDataFromPlayerFlags_6FCD8F20",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "ACT4Q3_SyncQuestDataFromPlayerFlags_6FCD8F20_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/replay-act-quests.test.ts (0x6FCD8F20) across Act 1-5 K4 longitudinal quest & town NPC replay at 100% strict zero divergence"
   },
   {
     "module": "D2Game",
@@ -239,8 +239,8 @@
     "name": "ACT4Q3_InitNpcDialog_6FCD9070",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "ACT4Q3_InitNpcDialog_6FCD9070_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/replay-act-quests.test.ts (0x6FCD9070) across Act 1-5 K4 longitudinal quest & town NPC replay at 100% strict zero divergence"
   },
   {
     "module": "D2Game",
@@ -302,8 +302,8 @@
     "name": "ACT4Q0_InitTyraelIntroDialog_6FCD9730",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "ACT4Q0_InitTyraelIntroDialog_6FCD9730_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/replay-act-quests.test.ts (0x6FCD9730) across Act 1-5 K4 longitudinal quest & town NPC replay at 100% strict zero divergence"
   },
   {
     "module": "D2Game",
@@ -311,8 +311,8 @@
     "name": "ACT4Q2_SyncQuestDataFromPlayerInventoryAndFlags_6FCD9830",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "ACT4Q2_SyncQuestDataFromPlayerInventoryAndFlags_6FCD9830_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/replay-act-quests.test.ts (0x6FCD9830) across Act 1-5 K4 longitudinal quest & town NPC replay at 100% strict zero divergence"
   },
   {
     "module": "D2Game",

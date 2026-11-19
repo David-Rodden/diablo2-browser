@@ -131,8 +131,8 @@
     "name": "MONUMOD_DispatchOnKillEvent5",
     "kernFile": "src/d2kern-113c/game/k2-items-tc-w1-113c.ts",
     "tsSymbol": "MONUMOD_DispatchOnKillEvent5_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneA-items-tc-w1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/laneA-items-tc-w1.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -293,8 +293,8 @@
     "name": "QUESTS_HasPlayerGuidInQuest",
     "kernFile": "src/d2kern-113c/game/k2-items-tc-w1-113c.ts",
     "tsSymbol": "QUESTS_HasPlayerGuidInQuest113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneA-items-tc-w1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/replay-act-quests.test.ts (0x6FC537D0) across Act 1-5 K4 longitudinal quest & town NPC replay at 100% strict zero divergence"
   },
   {
     "module": "D2Game",

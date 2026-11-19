@@ -95,8 +95,8 @@
     "name": "NET_SendMonsterSkillCastPacket4COr4D_6FD134C0",
     "kernFile": "src/d2kern-113c/game/k2-w5b10-113c.ts",
     "tsSymbol": "NET_SendMonsterSkillCastPacket4COr4D_6FD134C0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w5b10.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w5b10.test.ts; Diff-verified 1:1 in dll∩ts across full-horizon strict zero-divergence K3 replay (p52-paladin-merc-aura F1700/1700) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",

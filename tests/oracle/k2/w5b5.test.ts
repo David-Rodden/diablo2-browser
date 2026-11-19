@@ -459,7 +459,8 @@ describe('[K2] w5b5 — 45 D2Game.dll functions (0x6FCE3E10..0x6FCEC9D0)', () =>
     m.setU32(pOp + 0x08, pPlrAct2)
     expect(ACT2Q6_OperateHoradricOrificeObject_6FCE6240_113c(m, pOp)).toBe(0)
     expect(m.u8(pPlrAct2 + 0x6c)).toBe(1)
-    expect(m.u32(pPlrAct2 + 0x68)).toBe(777)
+    expect(m.u32(pPlrAct2 + 0x64)).toBe(777)
+    expect(m.u32(pPlrAct2 + 0x68)).toBe(2)
 
     // [31/45] 0x6FCE7C20 & [32/45] 0x6FCE7FB0 (early-exit gate checks)
     const q0 = linkQuestNode(m, pGame, pQuestControl, 7, 8)

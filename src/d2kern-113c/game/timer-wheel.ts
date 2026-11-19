@@ -450,10 +450,19 @@ export function EVENT_GetNextEventFrame113c(m: Memory113c, pUnit: number, type: 
  * Walks partitions `[2, 0, 1, 3, 4]`; in each partition walks persistent events LIFO (`+0x1C` from head)
  * followed by current slot (`dwGameFrame & 63`) FIFO (`+0x1C` from tail where `dwFrame == dwGameFrame`).
  */
+export type EventPartitionExecutor113c = (
+  m: Memory113c,
+  pGame: number,
+  pTimer: number,
+  slotMod: number,
+  dispatch: EventDispatchCallback113c,
+) => number
+
 export function EVENT_UpdateTimers113c(
   m: Memory113c,
   pGame: number,
   dispatch: EventDispatchCallback113c,
+  partitionExecutors?: readonly EventPartitionExecutor113c[],
 ): number {
   hitD2GameVa113c(0x6FCAF070)
   const pTimer = m.get(pGame, D2GameStrc.pTimer)
@@ -461,6 +470,14 @@ export function EVENT_UpdateTimers113c(
   const frame = m.get(pGame, D2GameStrc.dwGameFrame) >>> 0
   const slotMod = frame & 63
   m.set(pTimer, D2TimerStrc.nCurrentSlot, slotMod)
+
+  if (partitionExecutors !== undefined && partitionExecutors.length === 5) {
+    let totalFired = 0
+    for (let i = 0; i < 5; i++) {
+      totalFired = (totalFired + partitionExecutors[i]!(m, pGame, pTimer, slotMod, dispatch)) | 0
+    }
+    return totalFired
+  }
 
   let firedCount = 0
 

@@ -11,7 +11,7 @@
  * are all required: the caller wires either the kernel port or an explicit unported stand-in, so there is
  * no silent default.
  */
-import { DRLG_GetActNoFromLevelId113c } from '../common/drlg/drlg.ts'
+import { DRLG_GetLevelDefField94_113c } from '../common/drlg/drlg.ts'
 import {
   DUNGEON_AddClientToRoom113c,
   DUNGEON_CanFreeActiveRoom113c,
@@ -19,6 +19,7 @@ import {
   DUNGEON_FreeActiveRoom113c,
   DUNGEON_GetAdjacentRoomsListFromRoom113c,
   DUNGEON_GetLevelIdFromRoom113c,
+  DUNGEON_GetPortalLevelBit113c,
   DUNGEON_GetRoomCoordinates113c,
   DUNGEON_GetRoomExFromRoom113c,
   DUNGEON_IsTownLevelId113c,
@@ -28,20 +29,15 @@ import {
   DUNGEON_UpdateRoomIdleCounter113c,
   DUNGEON_UpdateRoomLevelChange113c,
 } from '../common/dungeon.ts'
-import { D2COMMON_SGPT_DATATABLES_VA_113C } from '../common/inline-helpers.ts'
-import { STATLIST_GetStatListFromUnitAndStateMemPort113c } from '../common/k0-d2common-memports.ts'
-import { PATH_GetPosX113c, PATH_GetPosY113c } from '../common/path.ts'
 import {
-  STATES_CheckState113c,
-  STATLIST_FreeStatListIfNonExtended113c,
-  STATLIST_GetMaxLifeFromUnit113c,
-  STATLIST_GetUnitStat113c,
-  STATLIST_SetUnitStat113c,
-  STATLIST_UnlinkSubList113c,
-} from '../common/statlist.ts'
+  UNITS_GetPlayerActiveWeaponFlags113c,
+  UNITS_SetPlayerActiveWeaponFlags113c,
+} from '../common/composit.ts'
+import { D2COMMON_SGPT_DATATABLES_VA_113C } from '../common/inline-helpers.ts'
 import {
   DATATBLS_GetObjectsTxtRecord113c,
   UNIT_GetAlignment113c,
+  UNITROOM_ClearUnitRoom113c,
   UNITROOM_RefreshUnit113c,
   UNITS_GetRoom113c,
   UNITS_SetUnitAnimMode113c,
@@ -51,9 +47,18 @@ import { seedRoll } from '../prng.ts'
 import { DATATBLS_GetLevelsTxtRecord113c } from '../tables/lvl-tbls-113c.ts'
 import { NET_QueuePacketToClient113c } from '../net/packet-sink.ts'
 import {
+  MONSTER_SaveInactiveMonsterNode113c,
+  SUNIT_UnlinkFromRoomUpdateList113c,
+  UNIT_SaveInactiveUnitNode113c,
+} from './a1c-post150-f150-f276-113c.ts'
+import {
+  MONREG_FlushAndFreePendingSpawnNodes113c,
+  MONREG_RestoreRoomMonstersFromNode113c,
+  MONREG_UnlinkAndFreeActRoomNode113c,
+} from './boot-init-gap-a-113c.ts'
+import {
   SUNIT_GetServerUnit113c,
   SUNIT_InsertServerUnit113c,
-  SUNIT_RemoveServerUnit113c,
 } from './game-strc.ts'
 import {
   D2GAME_IAT_SGPT_DATATABLES_VA_113C,
@@ -63,14 +68,17 @@ import {
   REGPOP_PopulateRoomMonsters113c,
   SUNIT_AllocUnitData113c,
   SUNIT_PlaceServerUnitInRoom113c,
+  SUNIT_SetMonsterAlignmentState113c,
   type RegpopSpawnHooks113c,
 } from './regpop-spawn-113c.ts'
 import { OBJECTS_PopulateRoom113c, type ObjectsPopulateCallees113c } from './objects-populate-113c.ts'
+import {
+  ROOM_DeactivateAnyUnitInRoom113c,
+  SUNIT_FreeUnit113c,
+} from './replay-final11-113c.ts'
 import { ROOM_SpawnPresetUnits113c, type RoomPresetCallees113c } from './room-presets-113c.ts'
 import {
   EVENT_DeleteEventByType113c,
-  EVENT_GetNextEventFrame113c,
-  EVENT_RemoveUnitEvents113c,
   EVENT_SetEventFull113c,
 } from './timer-wheel.ts'
 import { hitD2GameVa113c } from '../va-trace-113c.ts'
@@ -428,180 +436,15 @@ function allocAndPlaceSavedUnit113c(
 }
 
 /**
- * Finds an inactive room node in `[pGame + 0xD8 + nAct * 4]` matching `(roomX, roomY)` (`0x6FC3E960(..., bAlloc=0)`).
- */
-function findInactiveRoomNodeInAct113c(
-  m: Memory113c,
-  pGame: number,
-  nAct: number,
-  roomX: number,
-  roomY: number,
-): { pNode: number; pPrev: number } {
-  if (pGame === 0 || (nAct >>> 0) >= 5) return { pNode: 0, pPrev: 0 }
-  let pPrev = 0
-  let pCur = m.u32((pGame + 0xd8 + nAct * 4) >>> 0) >>> 0
-  while (pCur !== 0) {
-    const curX = m.u32(pCur) | 0
-    if (roomX > curX) break
-    if (roomX === curX && roomY === (m.u32((pCur + 0x04) >>> 0) | 0)) {
-      return { pNode: pCur, pPrev }
-    }
-    pPrev = pCur
-    pCur = m.u32((pCur + 0x14) >>> 0) >>> 0
-  }
-  return { pNode: 0, pPrev: 0 }
-}
-
-/**
- * `@va D2Game:0x6FC3FB90` (`MONSTER_RestoreSavedMonstersInRoom`, `eax = pGame`, `[esp+4] = pRoom`).
- */
-function restoreSavedMonstersInRoom113c(m: Memory113c, pGame: number, pRoom: number): void {
-  if (pGame === 0 || pRoom === 0) return
-  const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom)
-  const nAct = DRLG_GetActNoFromLevelId113c(m, nLevelId) & 0xff
-  if (nAct >= 5) return
-
-  const sp = actRoomsStackPtr
-  actRoomsStackPtr = (sp + 0x20) >>> 0
-  try {
-    DUNGEON_GetRoomCoordinates113c(m, pRoom, sp)
-    const roomX = m.u32(sp) | 0
-    const roomY = m.u32((sp + 0x04) >>> 0) | 0
-    const { pNode: pRoomNode } = findInactiveRoomNodeInAct113c(m, pGame, nAct, roomX, roomY)
-    if (pRoomNode === 0) return
-
-    let pMon = m.u32((pRoomNode + 0x0c) >>> 0) >>> 0
-    m.setU32((pRoomNode + 0x0c) >>> 0, 0)
-    const bChaosSealsCleared =
-      nLevelId === 0x6c &&
-      m.u32((pGame + 0x10f4) >>> 0) !== 0 &&
-      (m.u8((m.u32((pGame + 0x10f4) >>> 0) + 0x14) >>> 0) & 1) !== 0
-        ? 1
-        : 0
-
-    while (pMon !== 0) {
-      const pNext = m.u32((pMon + 0x58) >>> 0) >>> 0
-      const posX = m.u32(pMon) | 0
-      const posY = m.u32((pMon + 0x04) >>> 0) | 0
-      const nClassId = m.u32((pMon + 0x08) >>> 0) | 0
-      const dwSavedGuid = m.u32((pMon + 0x0c) >>> 0) >>> 0
-      const dwFlags10 = m.u32((pMon + 0x10) >>> 0) >>> 0
-      const dwFlags14 = m.u32((pMon + 0x14) >>> 0) >>> 0
-      const dwFlags18 = m.u32((pMon + 0x18) >>> 0) >>> 0
-      const nAnimMode = (dwFlags18 & 0x04) !== 0 ? 0x0c : 1
-
-      if (nAnimMode !== 0x0c && bChaosSealsCleared !== 0 && nClassId !== 0xf3) {
-        const pCmdChain = m.u32((pMon + 0x24) >>> 0) >>> 0
-        if (pCmdChain !== 0) freeMemNodeAct113c(m, pCmdChain)
-        freeMemNodeAct113c(m, pMon)
-        pMon = pNext
-        continue
-      }
-
-      if ((dwFlags14 & 0x0100) !== 0) {
-        const pExisting = SUNIT_GetServerUnit113c(m, pGame, 1, dwSavedGuid)
-        if (pExisting !== 0) {
-          relocateSavedUnitToRoom113c(m, pGame, pExisting, pRoom, posX, posY)
-        }
-        let pExtra = m.u32((pMon + 0x20) >>> 0) >>> 0
-        while (pExtra !== 0) {
-          const pExtraNext = m.u32((pExtra + 0x04) >>> 0) >>> 0
-          freeMemNodeAct113c(m, pExtra)
-          pExtra = pExtraNext
-        }
-      } else {
-        const skipBoss =
-          (dwFlags18 & 0x0400) !== 0 && ((dwFlags18 & 0x0100) !== 0 || (dwFlags18 & 0x80) !== 0)
-        if (!skipBoss) {
-          const wSpawnFlags = (dwFlags18 & 0x40) !== 0 ? 0x6a : 0x62
-          let pSpawned = MONSTER_SpawnAtCoords113c(
-            m,
-            nClassId,
-            nAnimMode,
-            pGame,
-            pRoom,
-            posX,
-            posY,
-            -1,
-            wSpawnFlags,
-            {},
-          )
-          if (pSpawned === 0) {
-            pSpawned = MONSTER_SpawnAtCoords113c(
-              m,
-              nClassId,
-              nAnimMode,
-              pGame,
-              pRoom,
-              posX,
-              posY,
-              5,
-              wSpawnFlags,
-              {},
-            )
-          }
-          if (pSpawned !== 0) {
-            const savedExp = m.u32((pMon + 0x40) >>> 0) | 0
-            const savedMaxHp = m.u32((pMon + 0x44) >>> 0) | 0
-            const savedCurHp = m.u32((pMon + 0x48) >>> 0) | 0
-            const savedFrame = m.u32((pMon + 0x54) >>> 0) >>> 0
-            const curGameFrame = m.u32((pGame + 0xa8) >>> 0) >>> 0
-            STATLIST_SetUnitStat113c(m, pSpawned, 0x0d, savedExp, 0)
-            if (savedMaxHp > 0) {
-              STATLIST_SetUnitStat113c(m, pSpawned, 0x07, savedMaxHp, 0)
-              const restoredHp =
-                ((curGameFrame - savedFrame) >>> 0) >= 0x1d4c ? savedMaxHp : savedCurHp
-              STATLIST_SetUnitStat113c(m, pSpawned, 0x06, restoredHp, 0)
-            }
-            const pMonData = m.u32((pSpawned + 0x14) >>> 0) >>> 0
-            if (pMonData !== 0) {
-              for (let k = 0; k < 9; k++) {
-                m.setU8((pMonData + 0x1c + k) >>> 0, m.u8((pMon + 0x32 + k) >>> 0))
-              }
-            }
-            if ((dwFlags14 & 0x0200) !== 0) {
-              m.setU32((pSpawned + 0xc8) >>> 0, (m.u32((pSpawned + 0xc8) >>> 0) | 0x0200) >>> 0)
-            }
-            const curUnitFlags = m.u32((pSpawned + 0xc4) >>> 0) >>> 0
-            m.setU32(
-              (pSpawned + 0xc4) >>> 0,
-              (curUnitFlags | (dwFlags10 & 0x20000) | 0x03000000) >>> 0,
-            )
-          }
-        }
-      }
-
-      const pSaveDesc = m.u32((pMon + 0x24) >>> 0) >>> 0
-      if (pSaveDesc !== 0) {
-        freeMemNodeAct113c(m, pSaveDesc)
-      }
-      freeMemNodeAct113c(m, pMon)
-      pMon = pNext
-    }
-  } finally {
-    actRoomsStackPtr = sp
-  }
-}
-
-/**
  * `@va D2Game:0x6FC400E0` (`ROOM_RefreshUnitsAndLoadSaved`, `__stdcall(pGame, pRoom)`, `739B`).
  *
  * Exact binary sequence (`0x6FC400E0..0x6FC403C2`):
- * 1. Calls `0x6FC3FB90(pGame, pRoom)` to restore saved `0x5C`-byte monster nodes from `[pRoomNode + 0x0C]`.
- * 2. Calls `0x6FC3EA40(pRoom, pGame, &pSavedUnits, &pSavedItems)` to unlink the `0x18`-byte inactive room node
- *    from `[pGame + 0xD8 + nAct * 4]`, extracting `pSavedUnits = [pRoomNode + 0x10]` and `pSavedItems = [pRoomNode + 0x08]`.
- * 3. Calls `0x6FC3FB40(pSavedItems, pGame, pRoom)` to restore non-expired saved ground item nodes (`dwGameFrame <= dwExpire`)
- *    and free every node in `pSavedItems`.
- * 4. Walks `pSavedUnits` (`0x34`-byte nodes chained via `+0x30`):
- *    - `(flags1C & 0x100) != 0`: resolves existing server unit via `0x6FD003A0`, relocates via `0x6FD00D00`,
- *      sets `dwFlags |= 0x10`, sets player corpse `animMode = 0x11` (asserting line `0x157` if `!= 0x11`) or
- *      object `pObjData[+0x04] = node[+0x28]`, and frees `node`.
- *    - `(flags1C & 0x100) == 0`: allocates and places unit via `0x6FD012D0` when `unitType != 1`; for objects
- *      (`unitType == 2`, asserting line `0x171` if NULL): restores Shrine recharge `Event 5` + `pObjData[+0x04]`
- *      (`ObjectsTxt[+0x167] & 0x01`), Well offline charge regeneration + `Event 2` recharge ticks
- *      (`ObjectsTxt[+0x167] & 0x20`, asserting line `0x18C` if `dwParm[0] == 0`), or generic object state
- *      (`pObjData[+0x04] = node[+0x28]`, `pUnit[+0x78] = node[+0x24]`, optional `pUnit[+0xB8] = node[+0x2C]`),
- *      then frees `node`.
+ * 1. Calls `0x6FC3FB90(pGame, pRoom)` (`MONREG_RestoreRoomMonstersFromNode113c`) to restore saved `0x5C`-byte monster nodes.
+ * 2. Calls `0x6FC3EA40(pRoom, pGame, &pSavedUnits, &pSavedItems)` (`MONREG_UnlinkAndFreeActRoomNode113c`) to unlink the
+ *    `0x18`-byte inactive room node from `[pGame + 0xD8 + nAct * 4]`.
+ * 3. Calls `0x6FC3FB40(pSavedItems, pGame, pRoom)` (`MONREG_FlushAndFreePendingSpawnNodes113c`) to restore non-expired
+ *    saved ground item nodes and free every node in `pSavedItems`.
+ * 4. Walks `pSavedUnits` (`0x34`-byte nodes chained via `+0x30`) to relocate retained corpses/portals or respawn saved objects.
  */
 export function ROOM_RefreshUnitsAndLoadSaved113c(
   m: Memory113c,
@@ -612,56 +455,25 @@ export function ROOM_RefreshUnitsAndLoadSaved113c(
   if (pGame === 0 || pRoom === 0) return
 
   // 1. 0x6FC400F2: call 0x6FC3FB90 (restore saved monsters)
-  restoreSavedMonstersInRoom113c(m, pGame, pRoom)
+  MONREG_RestoreRoomMonstersFromNode113c(m, pGame, pRoom)
 
   // 2. 0x6FC4010F: call 0x6FC3EA40 (unlink inactive room node & extract +0x10 saved units / +0x08 saved items)
-  const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom)
-  const nAct = DRLG_GetActNoFromLevelId113c(m, nLevelId) & 0xff
-  if (nAct >= 5) return
-
   let pSavedUnits = 0
   let pSavedItems = 0
   const sp = actRoomsStackPtr
-  actRoomsStackPtr = (sp + 0x20) >>> 0
+  actRoomsStackPtr = (sp + 0x10) >>> 0
   try {
-    DUNGEON_GetRoomCoordinates113c(m, pRoom, sp)
-    const roomX = m.u32(sp) | 0
-    const roomY = m.u32((sp + 0x04) >>> 0) | 0
-    const { pNode: pRoomNode, pPrev } = findInactiveRoomNodeInAct113c(m, pGame, nAct, roomX, roomY)
-    if (pRoomNode !== 0) {
-      const pNextRoomNode = m.u32((pRoomNode + 0x14) >>> 0) >>> 0
-      if (pPrev !== 0) {
-        m.setU32((pPrev + 0x14) >>> 0, pNextRoomNode)
-      } else {
-        m.setU32((pGame + 0xd8 + nAct * 4) >>> 0, pNextRoomNode)
-      }
-      pSavedUnits = m.u32((pRoomNode + 0x10) >>> 0) >>> 0
-      pSavedItems = m.u32((pRoomNode + 0x08) >>> 0) >>> 0
-      freeMemNodeAct113c(m, pRoomNode)
-    }
+    const ppOutUnits = sp
+    const ppOutItems = (sp + 4) >>> 0
+    MONREG_UnlinkAndFreeActRoomNode113c(m, pRoom, pGame, ppOutUnits, ppOutItems)
+    pSavedUnits = m.u32(ppOutUnits) >>> 0
+    pSavedItems = m.u32(ppOutItems) >>> 0
   } finally {
     actRoomsStackPtr = sp
   }
 
   // 3. 0x6FC40119: call 0x6FC3FB40 (restore non-expired saved ground items & free item save nodes)
-  const curGameFrame = m.u32((pGame + 0xa8) >>> 0) | 0
-  while (pSavedItems !== 0) {
-    const pNextItem = m.u32(pSavedItems) >>> 0
-    const dwExpireFrame = m.u32((pSavedItems + 0x04) >>> 0) | 0
-    if (dwExpireFrame === 0 || curGameFrame <= dwExpireFrame) {
-      const savedItemGuid = m.u32((pSavedItems + 0x08) >>> 0) >>> 0
-      if (savedItemGuid !== 0) {
-        const pItem = SUNIT_GetServerUnit113c(m, pGame, 4, savedItemGuid)
-        if (pItem !== 0) {
-          const itemX = m.u16((pSavedItems + 0x0c) >>> 0)
-          const itemY = m.u16((pSavedItems + 0x0e) >>> 0)
-          relocateSavedUnitToRoom113c(m, pGame, pItem, pRoom, itemX, itemY)
-        }
-      }
-    }
-    freeMemNodeAct113c(m, pSavedItems)
-    pSavedItems = pNextItem
-  }
+  MONREG_FlushAndFreePendingSpawnNodes113c(m, pSavedItems, pGame, pRoom)
 
   // 4. 0x6FC4011E..0x6FC40385: walk 0x34-byte saved unit nodes along +0x30
   let pNode = pSavedUnits
@@ -1034,6 +846,19 @@ export function CLIENTS_SetPlayerCurrentRoom113c(
     }
 
     m.setU32((pClient + 0x1b4) >>> 0, pNewRoom >>> 0)
+    const pClientUnit174 = m.u32((pClient + 0x174) >>> 0) >>> 0
+    const pPortalPlayer = pClientUnit174 !== 0 ? pClientUnit174 : pPlayer
+    if (
+      pNewRoom !== 0 &&
+      pPortalPlayer !== 0 &&
+      m.u32(pPortalPlayer) === 0 &&
+      m.u32((pPortalPlayer + 0x14) >>> 0) !== 0
+    ) {
+      const newLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pNewRoom) | 0
+      const curWeaponFlags = UNITS_GetPlayerActiveWeaponFlags113c(m, pPortalPlayer) >>> 0
+      const portalBit = DUNGEON_GetPortalLevelBit113c(m, newLevelId) >>> 0
+      UNITS_SetPlayerActiveWeaponFlags113c(m, pPortalPlayer, (curWeaponFlags | portalBit) >>> 0)
+    }
   } finally {
     actRoomsStackPtr = sp
   }
@@ -1053,326 +878,26 @@ function resolveSgptDataTablesActRooms113c(m: Memory113c): number {
   return m.u32(D2COMMON_SGPT_DATATABLES_VA_113C) >>> 0
 }
 
-function getUnitCoordsActRooms113c(m: Memory113c, pUnit: number): { x: number; y: number } {
-  const uType = m.u32(pUnit) >>> 0
-  const pPath = m.u32((pUnit + 0x2c) >>> 0) >>> 0
-  if (pPath === 0) return { x: 0, y: 0 }
-  if (uType === 2 || uType === 4 || uType === 5) {
-    return {
-      x: m.u32((pPath + 0x0c) >>> 0) | 0,
-      y: m.u32((pPath + 0x10) >>> 0) | 0,
-    }
-  }
-  return {
-    x: PATH_GetPosX113c(m, pPath) | 0,
-    y: PATH_GetPosY113c(m, pPath) | 0,
-  }
-}
-
-function unlinkUnitFromRoomListActRooms113c(m: Memory113c, pRoom: number, pUnit: number): void {
-  if (pRoom === 0 || pUnit === 0) return
-  let prev = 0
-  let cur = m.u32((pRoom + 0x74) >>> 0) >>> 0
-  while (cur !== 0) {
-    const next = m.u32((cur + 0xe8) >>> 0) >>> 0
-    if (cur === (pUnit >>> 0)) {
-      if (prev === 0) {
-        m.setU32((pRoom + 0x74) >>> 0, next)
-      } else {
-        m.setU32((prev + 0xe8) >>> 0, next)
-      }
-      m.setU32((pUnit + 0xe8) >>> 0, 0)
-      break
-    }
-    prev = cur
-    cur = next
-  }
-  const pPath = m.u32((pUnit + 0x2c) >>> 0) >>> 0
-  if (pPath !== 0) {
-    const uType = m.u32(pUnit) >>> 0
-    if (uType === 2 || uType === 4 || uType === 5) {
-      m.setU32(pPath, 0)
-    } else {
-      m.setU32((pPath + 0x1c) >>> 0, 0)
-    }
-  }
-}
-
-function findOrAllocInactiveRoomNodeInAct113c(
-  m: Memory113c,
-  pGame: number,
-  nAct: number,
-  roomX: number,
-  roomY: number,
-): number {
-  if (pGame === 0 || (nAct >>> 0) >= 5) return 0
-  let pPrev = 0
-  let pCur = m.u32((pGame + 0xd8 + nAct * 4) >>> 0) >>> 0
-  while (pCur !== 0) {
-    const curX = m.u32(pCur) | 0
-    const curY = m.u32((pCur + 0x04) >>> 0) | 0
-    if (roomX === curX && roomY === curY) {
-      return pCur
-    }
-    if (roomX > curX) {
-      break
-    }
-    pPrev = pCur
-    pCur = m.u32((pCur + 0x14) >>> 0) >>> 0
-  }
-  const pNew = m.alloc(0x18) >>> 0
-  m.setU32(pNew, roomX >>> 0)
-  m.setU32((pNew + 0x04) >>> 0, roomY >>> 0)
-  m.setU32((pNew + 0x08) >>> 0, 0)
-  m.setU32((pNew + 0x0c) >>> 0, 0)
-  m.setU32((pNew + 0x10) >>> 0, 0)
-  m.setU32((pNew + 0x14) >>> 0, pCur)
-  if (pPrev !== 0) {
-    m.setU32((pPrev + 0x14) >>> 0, pNew)
-  } else {
-    m.setU32((pGame + 0xd8 + nAct * 4) >>> 0, pNew)
-  }
-  return pNew
-}
-
 /**
- * `@va D2Game:0x6FC3F600` (`ROOM_SaveInactiveMonsterNode`, `eax = pMonster`, `__stdcall(pGame)`).
- *
- * Purges aura/curse sub-statlists, removes AI event `2`, allocates a `0x5C`-byte monster save node
- * preserving coords, `dwClassId`, `dwUnitId`, `dwFlags`/`dwFlagsEx`, `MonUMod[0..8]`, `exp`, `maxHp`,
- * `curHp`, and `dwGameFrame`, and prepends it to `[pRoomNode + 0x0C]` in `[pGame + 0xD8 + nAct * 4]`.
+ * Compatibility delegate to canonical `MONSTER_SaveInactiveMonsterNode113c` (`0x6FC3F600`).
  */
 export function ROOM_SaveInactiveMonsterNode113c(
   m: Memory113c,
   pGame: number,
   pMonster: number,
 ): void {
-  if (pMonster === 0 || pGame === 0) return
-  const pRoom = UNITS_GetRoom113c(m, pMonster) >>> 0
-  if (pRoom === 0) return
-
-  const pDataTables = resolveSgptDataTablesActRooms113c(m)
-  if (pDataTables !== 0) {
-    const nAuraStates = (m.u16((pDataTables + 0x178) >>> 0) << 16) >> 16
-    const pAuraStateArr = m.u32((pDataTables + 0x174) >>> 0) >>> 0
-    if (pAuraStateArr !== 0) {
-      for (let i = 0; i < nAuraStates; i++) {
-        const stateId = (m.u16((pAuraStateArr + i * 2) >>> 0) << 16) >> 16
-        if (STATES_CheckState113c(m, pMonster, stateId) !== 0) {
-          const pSl = STATLIST_GetStatListFromUnitAndStateMemPort113c(m, pMonster, stateId) >>> 0
-          if (pSl !== 0) {
-            STATLIST_UnlinkSubList113c(m, pMonster, pSl)
-            STATLIST_FreeStatListIfNonExtended113c(m, pSl)
-          }
-        }
-      }
-    }
-  }
-
-  EVENT_DeleteEventByType113c(m, pGame, pMonster, 2)
-
-  const pNode = m.alloc(0x5c) >>> 0
-  m.setU32((pNode + 0x1c) >>> 0, 0xffffffff)
-  const coords = getUnitCoordsActRooms113c(m, pMonster)
-  m.setU32(pNode, coords.x >>> 0)
-  m.setU32((pNode + 0x04) >>> 0, coords.y >>> 0)
-  m.setU32((pNode + 0x08) >>> 0, m.u32((pMonster + 0x04) >>> 0) >>> 0)
-  m.setU32((pNode + 0x54) >>> 0, m.u32((pGame + 0xa8) >>> 0) >>> 0)
-
-  const uType = m.u32(pMonster) >>> 0
-  const pMonData = uType === 1 ? (m.u32((pMonster + 0x14) >>> 0) >>> 0) : 0
-  const pAiGen = pMonData !== 0 ? (m.u32((pMonData + 0x28) >>> 0) >>> 0) : 0
-  if (pAiGen !== 0) {
-    m.setU32((pNode + 0x28) >>> 0, m.u32(pAiGen) >>> 0)
-  }
-  const monField14 = pMonData !== 0 ? m.u16((pMonData + 0x14) >>> 0) : 0x1506
-  m.setU16((pNode + 0x30) >>> 0, monField14)
-
-  let flags18 = 0
-  if (pMonData !== 0) {
-    const monTypeFlags = m.u8((pMonData + 0x16) >>> 0)
-    if ((monTypeFlags & 0x04) !== 0) flags18 |= 0x02
-    if ((monTypeFlags & 0x02) !== 0) {
-      flags18 |= 0x0800
-      m.setU16((pNode + 0x3c) >>> 0, m.u16((pMonData + 0x26) >>> 0))
-    }
-    if ((monTypeFlags & 0x01) !== 0) flags18 |= 0x01
-    if ((monTypeFlags & 0x10) !== 0) flags18 |= 0x20
-    if ((m.u8((pMonData + 0x5c) >>> 0) & 0x02) !== 0) flags18 |= 0x40
-  }
-
-  const align = UNIT_GetAlignment113c(m, pMonster) | 0
-  if (align === 2) flags18 |= 0x0100
-  else if (align === 0) flags18 |= 0x0200
-  else if (align === 1) flags18 |= 0x80
-
-  const spawnType = m.u32((pMonster + 0xd0) >>> 0) >>> 0
-  if (spawnType !== 0x0b) {
-    flags18 |= 0x0400
-  }
-  const animMode = m.u32((pMonster + 0x10) >>> 0) | 0
-  if (animMode === 0 || animMode === 0x0c) {
-    flags18 |= 0x04
-  }
-  m.setU32((pNode + 0x18) >>> 0, flags18 >>> 0)
-
-  m.setU32((pNode + 0x40) >>> 0, STATLIST_GetUnitStat113c(m, pMonster, 0x0d, 0) >>> 0)
-  m.setU32((pNode + 0x44) >>> 0, STATLIST_GetMaxLifeFromUnit113c(m, pMonster) >>> 0)
-  m.setU32((pNode + 0x48) >>> 0, STATLIST_GetUnitStat113c(m, pMonster, 0x06, 0) >>> 0)
-
-  if (pMonData !== 0) {
-    m.setU32((pNode + 0x2c) >>> 0, m.u32((pMonData + 0x58) >>> 0) >>> 0)
-    for (let k = 0; k < 9; k++) {
-      m.setU8((pNode + 0x32 + k) >>> 0, m.u8((pMonData + 0x1c + k) >>> 0))
-    }
-  }
-  if (pAiGen !== 0 && m.u32((pAiGen + 0x30) >>> 0) === 1) {
-    const aiFlags = m.u16((pAiGen + 0x08) >>> 0)
-    const saved2C = m.u32((pAiGen + 0x2c) >>> 0) >>> 0
-    const saved34 = m.u32((pAiGen + 0x34) >>> 0) >>> 0
-    m.setU32((pAiGen + 0x2c) >>> 0, 0xffffffff)
-    m.setU32((pAiGen + 0x34) >>> 0, 0)
-    if (saved2C !== 0xffffffff) {
-      m.setU32((pNode + 0x1c) >>> 0, saved2C)
-      m.setU32((pNode + 0x20) >>> 0, saved34)
-      let f18 = m.u32((pNode + 0x18) >>> 0)
-      if ((aiFlags & 0x01) !== 0) f18 |= 0x08
-      if ((aiFlags & 0x02) !== 0) f18 |= 0x10
-      m.setU32((pNode + 0x18) >>> 0, f18 >>> 0)
-    }
-  }
-
-  m.setU32((pNode + 0x0c) >>> 0, m.u32((pMonster + 0x0c) >>> 0) >>> 0)
-  m.setU32((pNode + 0x10) >>> 0, m.u32((pMonster + 0xc4) >>> 0) >>> 0)
-  m.setU32((pNode + 0x14) >>> 0, m.u32((pMonster + 0xc8) >>> 0) >>> 0)
-
-  const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom)
-  const nAct = DRLG_GetActNoFromLevelId113c(m, nLevelId) & 0xff
-  if (nAct >= 5) {
-    freeMemNodeAct113c(m, pNode)
-    return
-  }
-  const sp = actRoomsStackPtr
-  actRoomsStackPtr = (sp + 0x20) >>> 0
-  try {
-    DUNGEON_GetRoomCoordinates113c(m, pRoom, sp)
-    const roomX = m.u32(sp) | 0
-    const roomY = m.u32((sp + 0x04) >>> 0) | 0
-    const pRoomNode = findOrAllocInactiveRoomNodeInAct113c(m, pGame, nAct, roomX, roomY)
-    if (pRoomNode !== 0) {
-      m.setU32((pNode + 0x58) >>> 0, m.u32((pRoomNode + 0x0c) >>> 0) >>> 0)
-      m.setU32((pRoomNode + 0x0c) >>> 0, pNode)
-    }
-  } finally {
-    actRoomsStackPtr = sp
-  }
+  MONSTER_SaveInactiveMonsterNode113c(m, pGame, pMonster)
 }
 
 /**
- * `@va D2Game:0x6FC404E0` (`ROOM_SaveInactiveUnitToActNode`, `eax = pUnit`, `__stdcall(pGame)`).
- *
- * Dispatches monsters (`uType == 1`) to `0x6FC3F600`, ground items (`uType == 4`) to `[pRoomNode + 0x08]`,
- * and objects/corpses/warps (`uType` `0`, `2`, `5`) into `0x34`-byte saved unit nodes at `[pRoomNode + 0x10]`.
+ * Compatibility delegate to canonical `UNIT_SaveInactiveUnitNode113c` (`0x6FC404E0`).
  */
 export function ROOM_SaveInactiveUnitToActNode113c(
   m: Memory113c,
   pGame: number,
   pUnit: number,
 ): void {
-  if (pUnit === 0 || pGame === 0) return
-  const uType = m.u32(pUnit) >>> 0
-  if (uType === 1) {
-    ROOM_SaveInactiveMonsterNode113c(m, pGame, pUnit)
-    return
-  }
-  const pRoom = UNITS_GetRoom113c(m, pUnit) >>> 0
-  if (pRoom === 0) return
-  const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom)
-  const nAct = DRLG_GetActNoFromLevelId113c(m, nLevelId) & 0xff
-  if (nAct >= 5) return
-
-  let pRoomNode = 0
-  const sp = actRoomsStackPtr
-  actRoomsStackPtr = (sp + 0x20) >>> 0
-  try {
-    DUNGEON_GetRoomCoordinates113c(m, pRoom, sp)
-    const roomX = m.u32(sp) | 0
-    const roomY = m.u32((sp + 0x04) >>> 0) | 0
-    pRoomNode = findOrAllocInactiveRoomNodeInAct113c(m, pGame, nAct, roomX, roomY)
-  } finally {
-    actRoomsStackPtr = sp
-  }
-  if (pRoomNode === 0) return
-
-  const coords = getUnitCoordsActRooms113c(m, pUnit)
-  if (uType === 4) {
-    hitD2GameVa113c(0x6fc403d0)
-    const pItemData = m.u32((pUnit + 0x14) >>> 0) >>> 0
-    const expireFrame =
-      pItemData !== 0 && m.u32((pItemData + 0x50) >>> 0) !== 0
-        ? (m.u32((pItemData + 0x50) >>> 0) >>> 0)
-        : ((m.u32((pGame + 0xa8) >>> 0) + 15000) >>> 0)
-    const pItemNode = m.alloc(0x18) >>> 0
-    m.setU32((pItemNode + 0x04) >>> 0, expireFrame)
-    m.setU16((pItemNode + 0x08) >>> 0, coords.x & 0xffff)
-    m.setU16((pItemNode + 0x0a) >>> 0, coords.y & 0xffff)
-    m.setU16((pItemNode + 0x0c) >>> 0, 0)
-    m.setU32((pItemNode + 0x0e) >>> 0, m.u32((pUnit + 0x04) >>> 0) >>> 0)
-    m.setU32(pItemNode, m.u32((pRoomNode + 0x08) >>> 0) >>> 0)
-    m.setU32((pRoomNode + 0x08) >>> 0, pItemNode)
-    EVENT_RemoveUnitEvents113c(m, pGame, pUnit)
-    SUNIT_RemoveServerUnit113c(m, pGame, pUnit)
-    unlinkUnitFromRoomListActRooms113c(m, pRoom, pUnit)
-    return
-  }
-
-  const pSavedNode = m.alloc(0x34) >>> 0
-  m.setU32(pSavedNode, coords.x >>> 0)
-  m.setU32((pSavedNode + 0x04) >>> 0, coords.y >>> 0)
-  m.setU32((pSavedNode + 0x08) >>> 0, uType)
-  const classId = m.u32((pUnit + 0x04) >>> 0) | 0
-  m.setU32((pSavedNode + 0x0c) >>> 0, classId >>> 0)
-
-  if (uType === 0) {
-    m.setU32((pSavedNode + 0x20) >>> 0, m.u32((pUnit + 0x0c) >>> 0) >>> 0)
-    m.setU32((pSavedNode + 0x10) >>> 0, m.u32((pUnit + 0x10) >>> 0) >>> 0)
-  } else if (uType === 2) {
-    const pObjTxt = DATATBLS_GetObjectsTxtRecord113c(m, classId) >>> 0
-    let animMode = m.u32((pUnit + 0x10) >>> 0) | 0
-    if (
-      animMode === 1 &&
-      pObjTxt !== 0 &&
-      m.u8((pObjTxt + 0x109) >>> 0) === 0 &&
-      m.u8((pObjTxt + 0x141) >>> 0) !== 0
-    ) {
-      animMode = 2
-      m.setU32((pUnit + 0x10) >>> 0, 2)
-    }
-    m.setU32((pSavedNode + 0x10) >>> 0, animMode >>> 0)
-    const subClass = pObjTxt !== 0 ? m.u8((pObjTxt + 0x167) >>> 0) : 0
-    if ((subClass & 0x01) !== 0) {
-      const nextEv5 = EVENT_GetNextEventFrame113c(m, pUnit, 5) >>> 0
-      m.setU32((pSavedNode + 0x20) >>> 0, (nextEv5 >>> 16) & 0xffff)
-      m.setU32((pSavedNode + 0x24) >>> 0, nextEv5 & 0xffff)
-    } else if (classId === 0x3b || classId === 0x3c || classId === 0x64) {
-      m.setU32((pSavedNode + 0x20) >>> 0, m.u32((pUnit + 0x0c) >>> 0) >>> 0)
-    } else {
-      m.setU32((pSavedNode + 0x24) >>> 0, m.u8((pUnit + 0x78) >>> 0))
-    }
-    m.setU32((pSavedNode + 0x2c) >>> 0, m.u32((pUnit + 0xb8) >>> 0) >>> 0)
-    const pObjData = m.u32((pUnit + 0x14) >>> 0) >>> 0
-    if (pObjData !== 0) {
-      m.setU8((pSavedNode + 0x28) >>> 0, m.u8((pObjData + 0x04) >>> 0))
-    }
-  } else {
-    m.setU32((pSavedNode + 0x10) >>> 0, m.u32((pUnit + 0x10) >>> 0) >>> 0)
-  }
-
-  m.setU32((pSavedNode + 0x14) >>> 0, m.u32((pGame + 0xa8) >>> 0) >>> 0)
-  m.setU32((pSavedNode + 0x18) >>> 0, m.u32((pUnit + 0xc4) >>> 0) >>> 0)
-  m.setU32((pSavedNode + 0x1c) >>> 0, m.u32((pUnit + 0xc8) >>> 0) >>> 0)
-  m.setU32((pSavedNode + 0x30) >>> 0, m.u32((pRoomNode + 0x10) >>> 0) >>> 0)
-  m.setU32((pRoomNode + 0x10) >>> 0, pSavedNode)
+  UNIT_SaveInactiveUnitNode113c(m, pGame, pUnit)
 }
 
 /**
@@ -1381,9 +906,10 @@ export function ROOM_SaveInactiveUnitToActNode113c(
  * Exact 1:1 port of `0x6FC40760..0x6FC409A1` (`580B`):
  * 1. Evaluates corpse 1-in-3 room-seed survival (`pRoom + 0x6C`), alignment (`!= 2`), summon/pet
  *    exclusion (`dwFlags >> 31`), `MonStats2Txt.nRestore (+0x130)`, and quest/preset persistence (`+0xD0 < 8`).
- * 2. When `bSave != 0`, serializes `pMonster` via `0x6FC404E0` -> `0x6FC3F600`.
- * 3. Either retains `pMonster` in server hash with `dwFlagsEx |= 0x100` (`bKeepUnit != 0`) or removes
- *    its events and server unit entry (`0x6FD020A0`).
+ * 2. When `bSave != 0`, serializes `pMonster` via `0x6FC404E0` (`UNIT_SaveInactiveUnitNode113c`) -> `0x6FC3F600`
+ *    (`MONSTER_SaveInactiveMonsterNode113c`).
+ * 3. Either retains `pMonster` in server hash with `dwFlagsEx |= 0x100` (`bKeepUnit != 0`, clearing room via `D2Common.#10650`)
+ *    or frees it via `0x6FD020A0` (`SUNIT_FreeUnit113c`).
  */
 export function ROOM_DeactivateMonsterInRoom113c(
   m: Memory113c,
@@ -1413,7 +939,7 @@ export function ROOM_DeactivateMonsterInRoom113c(
   let bSave = 0
   if (pRoom !== 0) {
     const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom)
-    if (!DUNGEON_IsTownLevelId113c(m, nLevelId)) {
+    if (DRLG_GetLevelDefField94_113c(m, nLevelId) !== 0 || !DUNGEON_IsTownLevelId113c(m, nLevelId)) {
       bSave = 1
     }
   }
@@ -1448,6 +974,8 @@ export function ROOM_DeactivateMonsterInRoom113c(
   if (spawnMode < 8) {
     if (isActive === 0) {
       bSave = 1
+      SUNIT_SetMonsterAlignmentState113c(m, pUnit, 0, 1)
+      SUNIT_UnlinkFromRoomUpdateList113c(m, pGame, pUnit)
     } else {
       bSave = 0
     }
@@ -1497,30 +1025,21 @@ export function ROOM_DeactivateMonsterInRoom113c(
   if (bKeepUnit !== 0) {
     m.setU32((pUnit + 0xc8) >>> 0, (m.u32((pUnit + 0xc8) >>> 0) | 0x100) >>> 0)
     if (bSave !== 0 && pGame !== 0) {
-      ROOM_SaveInactiveUnitToActNode113c(m, pGame, pUnit)
+      UNIT_SaveInactiveUnitNode113c(m, pGame, pUnit)
     }
-    unlinkUnitFromRoomListActRooms113c(m, pRoom, pUnit)
+    UNITROOM_ClearUnitRoom113c(m, pUnit)
     return
   }
 
   if (bSave !== 0 && pGame !== 0) {
-    ROOM_SaveInactiveUnitToActNode113c(m, pGame, pUnit)
+    UNIT_SaveInactiveUnitNode113c(m, pGame, pUnit)
   }
-  EVENT_RemoveUnitEvents113c(m, pGame, pUnit)
-  SUNIT_RemoveServerUnit113c(m, pGame, pUnit)
-  unlinkUnitFromRoomListActRooms113c(m, pRoom, pUnit)
+  SUNIT_FreeUnit113c(m, pGame, pUnit)
   onUnitRemoved?.(pUnit, uType, uId)
 }
 
 /**
- * `@va D2Game:0x6FC409B0` (`ROOM_DeactivateUnitInRoom`, `esi = pUnit`, `__stdcall(pGame)`).
- *
- * Exact 1:1 port of `0x6FC409B0..0x6FC40B15` (`368B`):
- * - `uType == 1`: tail-calls `0x6FC40760` (`ROOM_DeactivateMonsterInRoom113c`).
- * - `uType == 0`: preserves player corpses (`STATE_PLAYERBODY = 7`) with `dwFlagsEx |= 0x100` in `[pRoomNode + 0x10]`.
- * - `uType == 2`: preserves portals (`0x3B`/`0x3C`) in server unit hash with `dwFlagsEx |= 0x100`; saves stateful objects
- *   (Shrines, Wells, opened chests) into `[pRoomNode + 0x10]` and removes their active unit instances.
- * - `uType == 4`: saves ground items into `[pRoomNode + 0x08]` when `bSave != 0` or removes them.
+ * Compatibility delegate to canonical `ROOM_DeactivateAnyUnitInRoom113c` (`0x6FC409B0`).
  */
 export function ROOM_DeactivateUnitInRoom113c(
   m: Memory113c,
@@ -1529,91 +1048,7 @@ export function ROOM_DeactivateUnitInRoom113c(
   onUnitRemoved?: (pUnit: number, dwUnitType: number, dwUnitId: number) => void,
 ): void {
   if (pUnit === 0) return
-  const uType = m.u32(pUnit) >>> 0
-  if (uType === 1) {
-    ROOM_DeactivateMonsterInRoom113c(m, pGame, pUnit, onUnitRemoved)
-    return
-  }
-
-  const uId = m.u32((pUnit + 0x0c) >>> 0) >>> 0
-  const classId = m.u32((pUnit + 0x04) >>> 0) | 0
-  const pRoom = UNITS_GetRoom113c(m, pUnit) >>> 0
-
-  let bSave = 0
-  if (pRoom !== 0) {
-    const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom)
-    if (!DUNGEON_IsTownLevelId113c(m, nLevelId)) {
-      bSave = 1
-    }
-  }
-  if ((m.u32((pUnit + 0xc4) >>> 0) & 0x02000000) !== 0) {
-    bSave = 1
-  }
-
-  if (uType === 0) {
-    if (STATES_CheckState113c(m, pUnit, 7) !== 0) {
-      EVENT_DeleteEventByType113c(m, pGame, pUnit, 1)
-      m.setU32((pUnit + 0xc8) >>> 0, (m.u32((pUnit + 0xc8) >>> 0) | 0x100) >>> 0)
-      if (pGame !== 0) {
-        ROOM_SaveInactiveUnitToActNode113c(m, pGame, pUnit)
-      }
-      unlinkUnitFromRoomListActRooms113c(m, pRoom, pUnit)
-      return
-    }
-    if (bSave !== 0 && pGame !== 0) {
-      ROOM_SaveInactiveUnitToActNode113c(m, pGame, pUnit)
-    }
-    EVENT_RemoveUnitEvents113c(m, pGame, pUnit)
-    SUNIT_RemoveServerUnit113c(m, pGame, pUnit)
-    unlinkUnitFromRoomListActRooms113c(m, pRoom, pUnit)
-    onUnitRemoved?.(pUnit, uType, uId)
-    return
-  }
-
-  if (uType === 2) {
-    if (classId === 0x3b || classId === 0x3c) {
-      EVENT_DeleteEventByType113c(m, pGame, pUnit, 1)
-      m.setU32((pUnit + 0xc8) >>> 0, (m.u32((pUnit + 0xc8) >>> 0) | 0x100) >>> 0)
-      if (pGame !== 0) {
-        ROOM_SaveInactiveUnitToActNode113c(m, pGame, pUnit)
-      }
-      unlinkUnitFromRoomListActRooms113c(m, pRoom, pUnit)
-      return
-    }
-    const pObjTxt = DATATBLS_GetObjectsTxtRecord113c(m, classId) >>> 0
-    if (pObjTxt !== 0) {
-      if (m.u8((pObjTxt + 0x173) >>> 0) !== 0) {
-        const spawnFlag = m.u8((pUnit + 0xd0) >>> 0)
-        if ((spawnFlag & 0x02) === 0 && (m.u32((pUnit + 0xc4) >>> 0) & 0x02000000) === 0) {
-          bSave = 0
-        }
-      }
-      if (m.u8((pObjTxt + 0x174) >>> 0) !== 0 && m.u32((pUnit + 0x10) >>> 0) !== 0) {
-        bSave = 0
-      }
-    }
-    EVENT_DeleteEventByType113c(m, pGame, pUnit, 1)
-    if (bSave !== 0 && pGame !== 0) {
-      ROOM_SaveInactiveUnitToActNode113c(m, pGame, pUnit)
-    }
-    EVENT_RemoveUnitEvents113c(m, pGame, pUnit)
-    SUNIT_RemoveServerUnit113c(m, pGame, pUnit)
-    unlinkUnitFromRoomListActRooms113c(m, pRoom, pUnit)
-    onUnitRemoved?.(pUnit, uType, uId)
-    return
-  }
-
-  if (uType === 4) {
-    if (bSave !== 0 && pGame !== 0) {
-      ROOM_SaveInactiveUnitToActNode113c(m, pGame, pUnit)
-    }
-    return
-  }
-
-  EVENT_RemoveUnitEvents113c(m, pGame, pUnit)
-  SUNIT_RemoveServerUnit113c(m, pGame, pUnit)
-  unlinkUnitFromRoomListActRooms113c(m, pRoom, pUnit)
-  onUnitRemoved?.(pUnit, uType, uId)
+  ROOM_DeactivateAnyUnitInRoom113c(m, pUnit, pGame, onUnitRemoved)
 }
 
 /**
@@ -1622,9 +1057,9 @@ export function ROOM_DeactivateUnitInRoom113c(
  * Called every 12 frames (`dwGameFrame % 12 == 0` at `0x6FC4E106..0x6FC4E119`):
  * Walks `pGame->pAct[0..4]` and each active room `pRoom = DUNGEON_GetRoomExFromRoom113c(m, pAct)`:
  * 1. Calls `D2Common.#10557` (`DUNGEON_UpdateRoomIdleCounter113c(m, pRoom)`).
- * 2. If `idleCounter > 10` and `D2Common.#10163` (`DUNGEON_CanFreeActiveRoom113c(m, pAct, pRoom) != 0`):
+ * 2. If `idleCount > 10` and `D2Common.#10163` (`DUNGEON_CanFreeActiveRoom113c(m, pAct, pRoom) != 0`):
  *    - Walks `pUnit = pRoom->pUnitFirst (+0x74)` via `pRoomUnitNext (+0xE8)` and calls `0x6FC409B0`
- *      (`ROOM_DeactivateUnitInRoom113c`).
+ *      (`ROOM_DeactivateAnyUnitInRoom113c`).
  *    - Calls `D2Common.#10150` (`DUNGEON_FreeActiveRoom113c(m, pAct, pRoom)`).
  */
 export function GAME_DeactivateUnusedRoomsTick113c(
@@ -1645,7 +1080,7 @@ export function GAME_DeactivateUnusedRoomsTick113c(
         let pUnit = m.u32((pRoom + 0x74) >>> 0) >>> 0
         while (pUnit !== 0) {
           const pUnitNext = m.u32((pUnit + 0xe8) >>> 0) >>> 0
-          ROOM_DeactivateUnitInRoom113c(m, pGame, pUnit, onUnitRemoved)
+          ROOM_DeactivateAnyUnitInRoom113c(m, pUnit, pGame, onUnitRemoved)
           pUnit = pUnitNext
         }
         DUNGEON_FreeActiveRoom113c(m, pAct, pRoom)

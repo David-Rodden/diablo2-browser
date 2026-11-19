@@ -1104,8 +1104,9 @@ export function AI_CheckApproachTauntSound113c(
   let isSpecial250 = false
   if (pUnit !== 0) {
     const nClassId = m.u32((pUnit + 0x04) >>> 0) | 0
-    const pTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C))
-    if (nClassId >= 0 && nClassId < (m.u32((pTables + 0xa80) >>> 0) | 0) && nClassId === 0xfa) {
+    const pTablesHolder = m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C) >>> 0
+    const pTables = pTablesHolder !== 0 ? (m.u32(pTablesHolder) >>> 0) : 0
+    if (pTables !== 0 && nClassId >= 0 && nClassId < (m.u32((pTables + 0xa80) >>> 0) | 0) && nClassId === 0xfa) {
       isSpecial250 = true
     }
   }

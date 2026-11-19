@@ -94,6 +94,7 @@ function i32(v: number): number {
   return v | 0
 }
 import { MONSTER_CheckTypeFlagsMask113c } from './ai-fallen-113c.js'
+import { NET_SendFixed40BytePacketToClient113c } from './boot-init-gap-a-113c.ts'
 import {
   MONSTER_BroadcastEventSoundToClients113c,
   SUNITDMG_GetPlayerClientClassId113c,
@@ -222,7 +223,7 @@ export interface BootInitGapBCallees113c {
     nStateId: number,
     bRemove: number,
   ) => void
-  checkMonsterTargetValid?: (mem: Memory113c, pTargetUnit: D2Ptr) => number
+  checkMonsterTargetValid?: (mem: Memory113c, pTargetUnit: D2Ptr, pClient?: D2Ptr) => number
   syncMonsterSkillCast?: (
     mem: Memory113c,
     pUnit: D2Ptr,
@@ -745,10 +746,10 @@ export function D2GAME_PACKET_Send0x73MissileSync113c(
   pkt[7] = (wPosX >>> 8) & 0xff
   pkt[8] = wPosY & 0xff
   pkt[9] = (wPosY >>> 8) & 0xff
-  pkt[10] = bParam1 & 0xff
-  pkt[11] = bParam2 & 0xff
-  pkt[12] = (wTargetInfo >>> 8) & 0xff
-  pkt[13] = 0
+  pkt[10] = wTargetInfo & 0xff
+  pkt[11] = (wTargetInfo >>> 8) & 0xff
+  pkt[12] = bParam1 & 0xff
+  pkt[13] = bParam2 & 0xff
   enqueueClientPacket113c(mem, pClient, pkt, callees)
 }
 
@@ -970,7 +971,12 @@ export function D2GAME_INVENTORY_DestroyUnitInventoryItems113c(
     return
   }
   UNITS_SetUnitUpdateFlags113c(mem, pUnit, 0)
-  let pNode = INVENTORY_GetFirstNode113c(mem, pInventory)
+  let pNode = 0
+  try {
+    pNode = INVENTORY_GetFirstNode113c(mem, pInventory)
+  } catch {
+    return
+  }
   while (pNode !== 0) {
     const itemGuid = INVENTORY_GetNodeItemGuid113c(mem, pNode) >>> 0
     if (pGame === 0) {
@@ -1404,7 +1410,20 @@ export function D2GAME_PLRMODES_SendClientWhisperAdapter113c(
       break
     }
   }
-  enqueueClientPacket113c(mem, pClient, pkt, callees)
+  if (callees && callees.sendPacketToClient) {
+    callees.sendPacketToClient(mem, pClient, pkt)
+    return
+  }
+  const sp = bootGapBStackPtr
+  bootGapBStackPtr = (sp + 0x30) >>> 0
+  try {
+    for (let i = 0; i < 40; i += 1) {
+      mem.setU8((sp + i) >>> 0, pkt[i]!)
+    }
+    NET_SendFixed40BytePacketToClient113c(mem, pClient, sp)
+  } finally {
+    bootGapBStackPtr = sp
+  }
 }
 
 // @va D2Game:0x6FCEB8F0
@@ -2526,7 +2545,7 @@ export function D2GAME_MONSTER_SendMonsterMovementSync113c(
   if (pTargetUnit === pUnit) {
     pTargetUnit = 0
   } else if (pTargetUnit !== 0 && callees && callees.checkMonsterTargetValid) {
-    if (callees.checkMonsterTargetValid(mem, pTargetUnit) === 0) {
+    if (callees.checkMonsterTargetValid(mem, pTargetUnit, pClient) === 0) {
       pTargetUnit = 0
     }
   }
@@ -2792,7 +2811,7 @@ export function D2GAME_MONSTER_SyncMonsterUnitToClient113c(
     }
 
     if (((mem.u32(pUnit + 0xc4) >>> 10) & 1) !== 0) {
-      MONSTER_BroadcastEventSoundToClients113c(mem, pUnit, pClient)
+      MONSTER_BroadcastEventSoundToClients113c(mem, pUnit, mem.u16((pUnit + 0x6e) >>> 0), pClient)
     }
 
     if (((mem.u32(pUnit + 0xc4) >>> 15) & 1) !== 0) {

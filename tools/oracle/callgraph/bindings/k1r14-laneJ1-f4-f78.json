@@ -111,7 +111,8 @@
     "name": "PLAYER_RecalcTargetUnitPath",
     "kernFile": "src/d2kern-113c/game/town-runtime-gap-113c.ts",
     "tsSymbol": "PLAYER_RecalcTargetUnitPath113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll ∩ ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces"
   },
   {
     "module": "D2Game",
@@ -128,7 +129,8 @@
     "name": "PLAYER_SetNeutralOrTownNeutralMode",
     "kernFile": "src/d2kern-113c/game/town-runtime-gap-113c.ts",
     "tsSymbol": "PLAYER_SetNeutralOrTownNeutralMode113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll ∩ ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces"
   },
   {
     "module": "D2Game",
@@ -137,7 +139,7 @@
     "kernFile": "src/d2kern-113c/game/town-runtime-gap-113c.ts",
     "tsSymbol": "AITHINK_CanPlayerSwitchToMode113c",
     "status": "diff-verified",
-    "diffEvidence": "tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
+    "diffEvidence": "tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence); Runtime-executed in dllExecuted∩tsExecuted across K1/K2 5-scenario replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -154,7 +156,8 @@
     "name": "PLAYER_SetPathTargetCoordsAndWalk",
     "kernFile": "src/d2kern-113c/game/town-runtime-gap-113c.ts",
     "tsSymbol": "PLAYER_SetPathTargetCoordsAndWalk113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll ∩ ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces"
   },
   {
     "module": "D2Game",
@@ -162,7 +165,8 @@
     "name": "PLAYER_FinishModeAndResetToNeutral",
     "kernFile": "src/d2kern-113c/game/town-runtime-gap-113c.ts",
     "tsSymbol": "PLAYER_FinishModeAndResetToNeutral113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll ∩ ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces"
   },
   {
     "module": "D2Game",
@@ -187,7 +191,8 @@
     "name": "D2NET_SendUnitMovePacket0x10BytesToClient",
     "kernFile": "src/d2kern-113c/game/town-runtime-gap-113c.ts",
     "tsSymbol": "D2NET_SendUnitMovePacket0x10BytesToClient113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll ∩ ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces"
   },
   {
     "module": "D2Game",
@@ -195,7 +200,8 @@
     "name": "D2NET_SendUnitPosSync0x15ToClient",
     "kernFile": "src/d2kern-113c/game/town-runtime-gap-113c.ts",
     "tsSymbol": "D2NET_SendUnitPosSync0x15ToClient113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll ∩ ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces"
   },
   {
     "module": "D2Game",
@@ -203,7 +209,8 @@
     "name": "AI_FollowPackLeaderOrAttack",
     "kernFile": "src/d2kern-113c/game/town-runtime-gap-113c.ts",
     "tsSymbol": "AI_FollowPackLeaderOrAttack113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll ∩ ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces"
   },
   {
     "module": "D2Game",
@@ -211,7 +218,8 @@
     "name": "AI_TryOpenNearbyClosedDoor",
     "kernFile": "src/d2kern-113c/game/town-runtime-gap-113c.ts",
     "tsSymbol": "AI_TryOpenNearbyClosedDoor113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll ∩ ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces"
   },
   {
     "module": "D2Game",
@@ -219,7 +227,8 @@
     "name": "AI_HandleStunDoorOrLeaderFollow",
     "kernFile": "src/d2kern-113c/game/town-runtime-gap-113c.ts",
     "tsSymbol": "AI_HandleStunDoorOrLeaderFollow113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll ∩ ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces"
   },
   {
     "module": "D2Game",
@@ -227,7 +236,8 @@
     "name": "AI_AcquireOrValidateCombatTarget",
     "kernFile": "src/d2kern-113c/game/town-runtime-gap-113c.ts",
     "tsSymbol": "AI_AcquireOrValidateCombatTarget113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll ∩ ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces"
   },
   {
     "module": "D2Game",
@@ -244,7 +254,7 @@
     "kernFile": "src/d2kern-113c/game/town-runtime-gap-113c.ts",
     "tsSymbol": "AITARGET_ScanUnitsByModeTable113c",
     "status": "diff-verified",
-    "diffEvidence": "K3 golden replay diff-verified (dll\u2229ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
+    "diffEvidence": "K3 golden replay diff-verified (dll∩ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
   },
   {
     "module": "D2Game",
@@ -252,7 +262,8 @@
     "name": "SPLAYER_BroadcastUnitMovementToClient",
     "kernFile": "src/d2kern-113c/game/town-runtime-gap-113c.ts",
     "tsSymbol": "SPLAYER_BroadcastUnitMovementToClient113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll ∩ ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces"
   },
   {
     "module": "D2Game",
@@ -260,7 +271,8 @@
     "name": "SUNIT_FindValidNextRoomInAct",
     "kernFile": "src/d2kern-113c/game/town-runtime-gap-113c.ts",
     "tsSymbol": "SUNIT_FindValidNextRoomInAct113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "Runtime-executed in dllExecuted∩tsExecuted across K1/K2 5-scenario replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -268,7 +280,8 @@
     "name": "SUNIT_UpdateUnitPositionAndRoom",
     "kernFile": "src/d2kern-113c/game/town-runtime-gap-113c.ts",
     "tsSymbol": "SUNIT_UpdateUnitPositionAndRoom113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "Runtime-executed in dllExecuted∩tsExecuted across K1/K2 5-scenario replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",

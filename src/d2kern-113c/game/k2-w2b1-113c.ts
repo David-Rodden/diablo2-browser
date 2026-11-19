@@ -26,6 +26,7 @@ import { UNITROOM_RefreshUnit113c, UNITS_GetRoom113c } from '../common/unit.ts'
 import type { Memory113c } from '../mem/sparse-memory.ts'
 import { QUESTS_GuidListRemove113c } from './a1c-post150-f150-f276-113c.ts'
 import { AIGENERAL_InitBossGroup113c } from './ai-fallen-113c.ts'
+import { NET_QueuePacketToClientBuffer113c } from './boot-init-gap-a-113c.ts'
 import { D2GAME_SUNIT_IterateAllLivingPlayers113c } from './boot-init-gap-b-113c.ts'
 import {
   D2GAME_MONUMOD_TABLE_VA_113C,
@@ -67,7 +68,7 @@ export interface K2W2B1Hooks113c extends K2ItemsTcW1Hooks113c, LaneIHooks113c {
 }
 
 /** Reentrant scratch stack region for `w2b1` local packet/context structs. */
-let k2W2B1StackPtr = 0x7ef10000
+let k2W2B1StackPtr = 0x7e080000
 
 function getDataTablesPtr113c(m: Memory113c): number {
   return m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C) >>> 0) >>> 0
@@ -85,46 +86,6 @@ function findQuestNodeInChain113c(m: Memory113c, pGame: number, nQuestId: number
     pQuest = m.u32((pQuest + 0xf4) >>> 0) >>> 0
   }
   return 0
-}
-
-/**
- * Exact 1.13c `D2Game.dll@0x6FCAA3E0` (`eax = pClient`, `[esp+4] = pPacket`, `[esp+8] = nSize`, `ret 8`)
- * S2C `0x208`-byte `D2PacketDataStrc` queue append (`+0x1B8` head, `+0x1BC` tail, `+0x1C0` free list).
- */
-function queuePacketToClient6FCAA3E0(
-  m: Memory113c,
-  pClient: number,
-  pPacket: number,
-  nSize: number,
-): void {
-  if (pClient === 0) return
-  const len = nSize | 0
-  let pNode = m.u32((pClient + 0x1bc) >>> 0) >>> 0
-  let curLen = pNode !== 0 ? m.u32(pNode) | 0 : 0
-  if (((curLen + len) | 0) > 0x200 || pNode === 0) {
-    const pFree = m.u32((pClient + 0x1c0) >>> 0) >>> 0
-    if (pFree !== 0) {
-      const pNextFree = m.u32((pFree + 0x204) >>> 0) >>> 0
-      m.setU32((pClient + 0x1c0) >>> 0, pNextFree)
-      pNode = pFree
-    } else {
-      pNode = m.alloc(0x208) >>> 0
-    }
-    m.fill(pNode, 0x208, 0)
-    const pPrevTail = m.u32((pClient + 0x1bc) >>> 0) >>> 0
-    if (pPrevTail === 0) {
-      m.setU32((pClient + 0x1b8) >>> 0, pNode)
-    } else {
-      m.setU32((pPrevTail + 0x204) >>> 0, pNode)
-    }
-    m.setU32((pClient + 0x1bc) >>> 0, pNode)
-    curLen = 0
-  }
-  const dstBase = (pNode + 4 + curLen) >>> 0
-  for (let i = 0; i < len; i++) {
-    m.setU8((dstBase + i) >>> 0, m.u8((pPacket + i) >>> 0))
-  }
-  m.setU32(pNode, ((m.u32(pNode) | 0) + len) >>> 0)
 }
 
 function applySelfUnitEventSound113c(m: Memory113c, pUnit: number, wSoundId: number): void {
@@ -380,7 +341,7 @@ export function QUESTS_SyncPlayerQuestLogAndPacket89_6FC559C0_113c(
   try {
     m.setU8(sp, 0x89)
     m.setU8((sp + 0x01) >>> 0, bQuestByte)
-    queuePacketToClient6FCAA3E0(m, pClient, sp, 2)
+    NET_QueuePacketToClientBuffer113c(m, pClient, 1, sp, 2)
   } finally {
     k2W2B1StackPtr = sp
   }
@@ -792,7 +753,7 @@ export function ACT5Q3_SendQuest21State20Packet5D_6FC79180_113c(
   try {
     m.setU32(sp, 0x0020215d)
     m.setU16((sp + 0x04) >>> 0, 0)
-    queuePacketToClient6FCAA3E0(m, pClient, sp, 6)
+    NET_QueuePacketToClientBuffer113c(m, pClient, 1, sp, 6)
   } finally {
     k2W2B1StackPtr = sp
   }

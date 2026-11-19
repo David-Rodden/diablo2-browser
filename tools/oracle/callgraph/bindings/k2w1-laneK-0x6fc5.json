@@ -284,8 +284,8 @@
     "name": "MISSILES_SrvHit_RollKnockbackResult_6FC59670",
     "kernFile": "src/d2kern-113c/game/k2-laneK-0x6fc5-w1-113c.ts",
     "tsSymbol": "MISSILES_SrvHit_RollKnockbackResult_6FC59670_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneK-0x6fc5-w1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/laneK-0x6fc5-w1.test.ts; Diff-verified 1:1 in dll\u2229ts across full-horizon strict zero-divergence K3 replay (p52-sorceress-fire-dot F1800/1800) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",

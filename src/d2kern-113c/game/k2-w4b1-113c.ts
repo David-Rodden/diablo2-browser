@@ -202,7 +202,7 @@ export interface K2W4B1Hooks113c {
   readonly w3b2?: K2W3B2Hooks113c
 }
 
-let k2W4B1StackPtr = 0x7ef50000
+let k2W4B1StackPtr = 0x7e0b0000
 
 function sx16(v: number): number {
   return (v << 16) >> 16

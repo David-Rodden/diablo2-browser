@@ -62,7 +62,8 @@ import {
 } from './a1c-post150-f150-f276-113c.ts'
 import {
   CLIENTS_SetPlayerCurrentRoom113c,
-  ROOM_DeactivateUnitInRoom113c,
+  DUNGEON_IsTownLevelId113c,
+  ROOM_DeactivateMonsterInRoom113c,
 } from './act-rooms-113c.ts'
 import { SUNITDMG_FreeAttackerCombatList113c } from './ai-fallen-113c.ts'
 import {
@@ -74,8 +75,10 @@ import {
   D2GAME_ITEMS_UpdateAllInventoryAndEquipmentStats113c,
   D2GAME_PLRMODES_SendStatToClientOrParty113c,
   D2GAME_SUNIT_SyncRoomUnitsToClient113c,
+  type BootInitGapBCallees113c,
 } from './boot-init-gap-b-113c.ts'
-import { PLAYER_StartModeAttack113c } from './combat-a1c-113c.ts'
+import { PLAYER_StartModeAttack113c } from './k2-real-s2c-combat-113c.ts'
+import { MISSILE_DestroyDataAndEvents113c } from './k2-gap-melee-dot-113c.ts'
 import { SUNIT_GetServerUnit113c } from './game-strc.ts'
 import { MONSTER_ClearModeEvents113c, UNITS_ChangeAnimMode113c } from './monster-events.ts'
 import {
@@ -138,14 +141,17 @@ export function ROOM_DeactivateAnyUnitInRoom113c(
   m: Memory113c,
   pUnit: number,
   pGame: number,
+  onUnitRemoved?: (pUnit: number, dwUnitType: number, dwUnitId: number) => void,
 ): void {
   hitD2GameVa113c(0x6FC409B0)
+  if (pUnit === 0) return
   const pRoom = UNITS_GetRoom113c(m, pUnit) >>> 0
   const dwUnitType = m.u32(pUnit >>> 0) >>> 0
   const dwClassId = m.u32((pUnit + 0x04) >>> 0) >>> 0
+  const dwUnitId = m.u32((pUnit + 0x0c) >>> 0) >>> 0
 
   if (dwUnitType === 1) {
-    ROOM_DeactivateUnitInRoom113c(m, pGame, pUnit)
+    ROOM_DeactivateMonsterInRoom113c(m, pGame, pUnit, onUnitRemoved)
     return
   }
 
@@ -153,6 +159,7 @@ export function ROOM_DeactivateAnyUnitInRoom113c(
   const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom)
   if (
     DRLG_GetLevelDefField94_113c(m, nLevelId) !== 0 ||
+    (pRoom !== 0 && !DUNGEON_IsTownLevelId113c(m, nLevelId)) ||
     (m.u32((pUnit + 0xc4) >>> 0) & 0x02000000) !== 0
   ) {
     bSave = 1
@@ -178,6 +185,7 @@ export function ROOM_DeactivateAnyUnitInRoom113c(
         UNIT_SaveInactiveUnitNode113c(m, pGame, pUnit)
       }
       SUNIT_FreeUnit113c(m, pGame, pUnit)
+      onUnitRemoved?.(pUnit, dwUnitType, dwUnitId)
       return
     }
     case 2: {
@@ -222,19 +230,26 @@ export function ROOM_DeactivateAnyUnitInRoom113c(
         UNIT_SaveInactiveUnitNode113c(m, pGame, pUnit)
       }
       SUNIT_FreeUnit113c(m, pGame, pUnit)
+      onUnitRemoved?.(pUnit, dwUnitType, dwUnitId)
       return
     }
     case 4: {
-      UNIT_SaveInactiveUnitNode113c(m, pGame, pUnit)
+      if (bSave !== 0) {
+        UNIT_SaveInactiveUnitNode113c(m, pGame, pUnit)
+      }
       return
     }
     case 5: {
-      UNIT_SaveInactiveUnitNode113c(m, pGame, pUnit)
+      if (bSave !== 0) {
+        UNIT_SaveInactiveUnitNode113c(m, pGame, pUnit)
+      }
       SUNIT_FreeUnit113c(m, pGame, pUnit)
+      onUnitRemoved?.(pUnit, dwUnitType, dwUnitId)
       return
     }
     default: {
       SUNIT_FreeUnit113c(m, pGame, pUnit)
+      onUnitRemoved?.(pUnit, dwUnitType, dwUnitId)
       return
     }
   }
@@ -376,6 +391,15 @@ export function CLIENTS_GetPlayerUnit113c(
   return pFound
 }
 
+export interface ClientsUpdatePlayerRoomOpts113c {
+  readonly syncCallees?: BootInitGapBCallees113c
+  readonly ignoreActDirtyFlag?: boolean
+  readonly skipCopyListStats?: boolean
+  readonly skipArenaSync?: boolean
+  readonly skipRefreshUnit?: boolean
+  readonly onRoomChanged?: (m: Memory113c, pOldRoom: number, pNewRoom: number) => void
+}
+
 /**
  * Synchronizes `pClient`'s room, adjacent room units, portal removals, copy-list stats,
  * inventory/equipment stats (when `pPlayer->dwFlagsEx & 0x200000`), level change notifications,
@@ -387,6 +411,7 @@ export function CLIENTS_UpdatePlayerRoom113c(
   m: Memory113c,
   pClient: number,
   pGame: number,
+  opts?: ClientsUpdatePlayerRoomOpts113c,
 ): void {
   hitD2GameVa113c(0x6FC6B400)
   if (pGame === 0 || pClient === 0) {
@@ -398,21 +423,33 @@ export function CLIENTS_UpdatePlayerRoom113c(
     return
   }
   const pNewRoom = UNITS_GetRoom113c(m, pPlayer) >>> 0
-  SUNIT_SendRemovePortalsInAdjacentRooms113c(m, pOldRoom, pClient)
-  SUNIT_SyncAdjacentRoomUnitsToClient113c(m, pOldRoom, pClient, pGame)
-  STATLIST_EnumerateCopyListStats113c(
-    m,
-    pPlayer,
-    pPlayer,
-    0,
-    (mem, u, statId, val, arg) =>
-      D2GAME_PLRMODES_SendStatToClientOrParty113c(mem, u, statId, arg, val),
-  )
+  const pSyncRoom = pOldRoom !== 0 ? pOldRoom : pNewRoom
+  if (pSyncRoom !== 0) {
+    SUNIT_SendRemovePortalsInAdjacentRooms113c(m, pSyncRoom, pClient)
+    SUNIT_SyncAdjacentRoomUnitsToClient113c(
+      m,
+      pSyncRoom,
+      pClient,
+      pGame,
+      opts !== undefined ? opts.syncCallees : undefined,
+      opts !== undefined && opts.ignoreActDirtyFlag === true,
+    )
+  }
+  if (opts === undefined || opts.skipCopyListStats !== true) {
+    STATLIST_EnumerateCopyListStats113c(
+      m,
+      pPlayer,
+      pPlayer,
+      0,
+      (mem, u, statId, val, arg) =>
+        D2GAME_PLRMODES_SendStatToClientOrParty113c(mem, u, statId, arg, val),
+    )
+  }
   if (((m.u32((pPlayer + 0xc8) >>> 0) >>> 0x15) & 1) !== 0) {
     D2GAME_ITEMS_UpdateAllInventoryAndEquipmentStats113c(m, pGame, pPlayer, 1)
   }
   m.setU32((pClient + 0x1b0) >>> 0, (m.u32((pClient + 0x1b0) >>> 0) + 1) >>> 0)
-  if (pOldRoom !== pNewRoom) {
+  if (pOldRoom !== 0 && pNewRoom !== 0 && pOldRoom !== pNewRoom) {
     const nOldLvl = DUNGEON_GetLevelIdFromRoom113c(m, pOldRoom) | 0
     const nNewLvl = DUNGEON_GetLevelIdFromRoom113c(m, pNewRoom) | 0
     if (nOldLvl !== nNewLvl) {
@@ -420,10 +457,22 @@ export function CLIENTS_UpdatePlayerRoom113c(
       NPCS_OnPlayerLevelChange113c(m, pGame, nOldLvl, pPlayer, nNewLvl)
     }
     CLIENTS_SetPlayerCurrentRoom113c(m, pClient, pNewRoom)
+    if (opts !== undefined && opts.onRoomChanged !== undefined) {
+      opts.onRoomChanged(m, pOldRoom, pNewRoom)
+    }
   }
-  D2GAME_ARENA_SyncArenaJoinState113c(m, pGame, pClient)
-  if (UNITS_GetRoom113c(m, pPlayer) !== 0) {
-    UNITROOM_RefreshUnit113c(m, pPlayer)
+  if (opts === undefined || opts.skipArenaSync !== true) {
+    D2GAME_ARENA_SyncArenaJoinState113c(
+      m,
+      pGame,
+      pClient,
+      opts !== undefined ? opts.syncCallees : undefined,
+    )
+  }
+  if (opts === undefined || opts.skipRefreshUnit !== true) {
+    if (UNITS_GetRoom113c(m, pPlayer) !== 0) {
+      UNITROOM_RefreshUnit113c(m, pPlayer)
+    }
   }
 }
 
@@ -617,6 +666,9 @@ export function SUNIT_SendRemovePortalsInAdjacentRooms113c(
     m.setU32(pOutRooms, 0)
     DUNGEON_GetAdjacentRoomsListFromRoom113c(m, pRoom, pOutRooms, pOutCount)
     const pPlayer = CLIENTS_GetPlayerUnit113c(m, pClient, 0) >>> 0
+    if (pPlayer === 0) {
+      return
+    }
     const dwPlayerType = m.u32(pPlayer >>> 0) >>> 0
     const dwPlayerId = m.u32((pPlayer + 0x0c) >>> 0) >>> 0
     const nRooms = m.u32(pOutCount) >>> 0
@@ -688,11 +740,13 @@ export function SUNIT_SyncAdjacentRoomUnitsToClient113c(
   pRoom: number,
   pClient: number,
   pGame: number,
+  callees?: BootInitGapBCallees113c,
+  bIgnoreActDirtyFlag = false,
 ): void {
   hitD2GameVa113c(0x6FCBDEC0)
   const nAct = m.u8((pClient + 0x1ac) >>> 0)
   const pAct = m.u32((pGame + 0xbc + nAct * 4) >>> 0) >>> 0
-  if (m.u32(pAct) === 0) {
+  if (!bIgnoreActDirtyFlag && (pAct === 0 || m.u32(pAct) === 0)) {
     return
   }
   const sp = replayFinal11StackPtr
@@ -705,9 +759,13 @@ export function SUNIT_SyncAdjacentRoomUnitsToClient113c(
     DUNGEON_GetAdjacentRoomsListFromRoom113c(m, pRoom, pOutRooms, pOutCount)
     const nRooms = m.u32(pOutCount) >>> 0
     const pRoomsArr = m.u32(pOutRooms) >>> 0
-    for (let i = 0; i < nRooms; i++) {
-      const pAdjRoom = m.u32((pRoomsArr + i * 4) >>> 0) >>> 0
-      D2GAME_SUNIT_SyncRoomUnitsToClient113c(m, pAdjRoom, pClient, pGame)
+    if (nRooms > 0 && pRoomsArr !== 0 && nRooms <= 64) {
+      for (let i = 0; i < nRooms; i++) {
+        const pAdjRoom = m.u32((pRoomsArr + i * 4) >>> 0) >>> 0
+        D2GAME_SUNIT_SyncRoomUnitsToClient113c(m, pAdjRoom, pClient, pGame, callees)
+      }
+    } else if (bIgnoreActDirtyFlag && pRoom !== 0) {
+      D2GAME_SUNIT_SyncRoomUnitsToClient113c(m, pRoom, pClient, pGame, callees)
     }
   } finally {
     replayFinal11StackPtr = sp
@@ -785,7 +843,7 @@ export function SUNIT_FreeUnit113c(m: Memory113c, pGame: number, pUnit: number):
         PATH_FreeDynamicPath113c(m, pMemPool, pPath3)
         m.setU32((pUnit + 0x2c) >>> 0, 0)
       }
-      EVENT_RemoveUnitEvents113c(m, pGame, pUnit)
+      MISSILE_DestroyDataAndEvents113c(m, pGame, pUnit)
       break
     }
     case 4: {

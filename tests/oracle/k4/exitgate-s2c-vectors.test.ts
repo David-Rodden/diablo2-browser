@@ -3,6 +3,7 @@ import { readFileSync, statSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
+import { beginVaTrace113c, endVaTrace113c } from '../../../src/d2kern-113c/va-trace-113c.ts'
 import {
   parseS2CVectors,
   S2C_RECORD_SIZE,
@@ -13,6 +14,24 @@ import { D2TV_MAGIC } from '../../../tools/oracle/vectors/vector-format.ts'
 const REPO_ROOT = resolve(import.meta.dirname, '../../..')
 const FIXTURE_GZ_PATH = resolve(REPO_ROOT, 'tests/fixtures/oracle/k4/s2c-113c.d2tv.gz')
 const PINNED_RAW_SHA256 = '330ed2d430ae232a3b204c17dd83e0890abfafcf8d03d69cbc76104c8a31ebb2'
+
+const K4_S2C_PROMOTED_DIFF_VERIFIED_VAS: readonly string[] = [
+  'D2Game:0x6FCAADE0',
+  'D2Game:0x6FCAB0F0',
+  'D2Game:0x6FCAB750',
+  'D2Game:0x6FCAB7F0',
+  'D2Game:0x6FCAB8C0',
+  'D2Game:0x6FCABA90',
+  'D2Game:0x6FCABC20',
+  'D2Game:0x6FCABDA0',
+  'D2Game:0x6FCABE10',
+  'D2Game:0x6FCAD570',
+  'D2Game:0x6FCAD5F0',
+  'D2Game:0x6FCAD860',
+  'D2Game:0x6FCAD990',
+  'D2Game:0x6FCEBA20',
+  'D2Game:0x6FCEBB10',
+]
 
 describe('[K4] Exit-Gate S2C D2TV binary vector suite (v1.13c D2Game + D2Net + Fog DLL parity)', () => {
   const gzBytes = readFileSync(FIXTURE_GZ_PATH)
@@ -74,7 +93,14 @@ describe('[K4] Exit-Gate S2C D2TV binary vector suite (v1.13c D2Game + D2Net + F
   })
 
   it('achieves 100% bit-exact S2C payload, Fog.#10223/#10224 Huffman codec, and D2Net.#10002/#10033 framing parity (0 mismatches across 1,440 records)', () => {
-    const result = verifyS2CVectors(rawBytes)
+    beginVaTrace113c()
+    let s2cExecutedVas = new Set<string>()
+    let result: ReturnType<typeof verifyS2CVectors>
+    try {
+      result = verifyS2CVectors(rawBytes)
+    } finally {
+      s2cExecutedVas = new Set([...endVaTrace113c()].map(v => v.toUpperCase()))
+    }
     if (result.mismatches.length > 0) {
       const preview = result.mismatches
         .slice(0, 12)
@@ -87,5 +113,8 @@ describe('[K4] Exit-Gate S2C D2TV binary vector suite (v1.13c D2Game + D2Net + F
     }
     expect(result.mismatches.length).toBe(0)
     expect(result.totalRecords).toBeGreaterThanOrEqual(1200)
+    expect(K4_S2C_PROMOTED_DIFF_VERIFIED_VAS.length).toBe(15)
+    const missing = K4_S2C_PROMOTED_DIFF_VERIFIED_VAS.filter(va => !s2cExecutedVas.has(va.toUpperCase()))
+    expect(missing).toEqual([])
   })
 })

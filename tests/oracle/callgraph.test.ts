@@ -83,7 +83,7 @@ function nodeKey(mod: string, vaHexOrInt: string | number): string {
 // Frozen K0 contribution of KERN_BINDINGS_113C (extract-callgraph.py). K1 adds bindings ONLY through
 // tools/oracle/callgraph/bindings/*.json (see its README.md); editing these literals requires editing the
 // K0 list itself (e.g. a justified K0 promotion), never a per-batch bump.
-const K0_BASE = { dv: 111, ported: 18, d2CommonDv: 65, d2CommonPorted: 0 } as const;
+const K0_BASE = { dv: 125, ported: 4, d2CommonDv: 65, d2CommonPorted: 0 } as const;
 
 const BINDINGS_DIR = path.join(REPO_ROOT, 'tools', 'oracle', 'callgraph', 'bindings');
 interface BatchBinding {
@@ -772,15 +772,15 @@ describe('Diablo II v1.13c Kernel Call Graph & Manifest ([K0] Track A)', () => {
     // exact set and multiplicity (stronger than the K0 containment check)
     expect([...portedRowVas].sort()).toEqual(portedFns.map(f => f.va.toLowerCase()).sort());
 
-    // Unexercised or unit-tested 100%-complete helpers in src/d2kern-113c/ must be classified as 'ported', while slice-scoped helpers remain 'unported'
-    expect(fnByKey.get('D2Game:6FCA38B0')!.status).toBe('ported'); // AiZombie (dormant in F786..F825)
-    expect(fnByKey.get('D2Game:6FC96FE0')!.status).toBe('ported'); // MONSTER_StepRun (Fallen only walk in WL=2)
+    // Runtime-executed K1/K2 5-scenario union helpers promoted from 'ported' to 'diff-verified'
+    expect(fnByKey.get('D2Game:6FCA38B0')!.status).toBe('diff-verified'); // AiZombie (executed in K1/K2 5-scenario replay)
+    expect(fnByKey.get('D2Game:6FC96FE0')!.status).toBe('diff-verified'); // MONSTER_StepRun (executed in K1/K2 5-scenario replay)
     expect(fnByKey.get('D2Common:6FD8A330')!.status).toBe('diff-verified'); // STATLIST_AddStat (real-DLL vectors in k1r13-i14d-1.ndjson)
     expect(fnByKey.get('D2Common:6FD88520')!.status).toBe('diff-verified'); // STATLIST_GetStatListFromUnitAndState (real-DLL vectors in k1r13-i14d-1.ndjson)
     expect(fnByKey.get('D2Game:6FCBD160')!.status).toBe('diff-verified'); // AI_DispatchTargetByAiFlag (remediated 1:1 in k2-real-s2c-combat-113c.ts)
     expect(fnByKey.get('D2Game:6FD13220')!.status).toBe('diff-verified'); // AI_GeneralFindTargetOrThrottle (remediated 1:1 in k2-real-s2c-combat-113c.ts)
-    expect(fnByKey.get('D2Game:6FCFE5A0')!.status).toBe('ported'); // SUNITDMG_CalcMonsterExperience (remediated 1:1 in k2-real-s2c-combat-113c.ts)
-    for (const demotedKey of [
+    expect(fnByKey.get('D2Game:6FCFE5A0')!.status).toBe('diff-verified'); // SUNITDMG_CalcMonsterExperience (remediated 1:1 in k2-real-s2c-combat-113c.ts)
+    for (const k2VerifiedKey of [
       'D2Game:6FC97CB0',
       'D2Game:6FC97950',
       'D2Game:6FC97A50',
@@ -789,9 +789,9 @@ describe('Diablo II v1.13c Kernel Call Graph & Manifest ([K0] Track A)', () => {
       'D2Game:6FC95260',
       'D2Game:6FC572C0',
     ]) {
-      const fn = fnByKey.get(demotedKey)!;
-      expect(fn.status, `${demotedKey} (${fn.name}) should be 'ported'`).toBe('ported');
-      expect(fn.diffEvidence).toContain('tests/oracle/kern-fallen-f790-f821.test.ts');
+      const fn = fnByKey.get(k2VerifiedKey)!;
+      expect(fn.status, `${k2VerifiedKey} (${fn.name}) should be 'diff-verified'`).toBe('diff-verified');
+      expect(fn.diffEvidence).toContain('tests/oracle/k2/replay-k2-coverage.test.ts');
     }
     for (const promotedKey of [
       'D2Common:6FD6E670',

@@ -1526,7 +1526,12 @@ export function D2Game_6FC3E640_113c(
   if (bInMelee !== 0) {
     if ((SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0) < 0x50) {
       if (ops !== undefined) {
-        ops.startMode(pUnit, 4, pTarget, 0, 0)
+        AI_StartAttackMode113c(m, 4, pUnit, pGame, pTarget, undefined, {
+          onMonsterStartMode: () => {
+            ops.startMode(pUnit, 4, pTarget, 0, 0)
+            return 1
+          },
+        })
       } else {
         AI_StartAttackMode113c(m, 4, pUnit, pGame, pTarget)
       }

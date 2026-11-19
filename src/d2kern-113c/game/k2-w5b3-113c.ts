@@ -157,6 +157,7 @@ import {
   MISSILE_CreateServerProjectile113c,
   STATES_OnTimedStateRemoved113c,
 } from './k2-gap-melee-dot-113c'
+import { type SUnitDmgHooks113c } from './k2-real-s2c-combat-113c'
 import {
   CHARSTATS_GetRecordPtrFast_6FC210A0_113c,
   PETTYPE_GetRecordPtrFast_6FC21B60_113c,
@@ -216,6 +217,7 @@ import {
   MONAI_CanMonsterTeleportOrUseSkillInMode_6FCD0B20_113c,
   MONAI_CheckDirectPathOrFindNearestBlockingObstacle_6FCD1AB0_113c,
   MONAI_CheckLineOfWalkFreeCoordsBetweenUnits_6FCD0E90_113c,
+  MONAI_ForEachUnitInAdjacentRooms_6FCD0720_113c,
   MONAI_IsHostileAttackableTargetFilter_6FCD1400_113c,
   MONSTATS_EvalPiecewiseFiveTierLinear_6FCCC940_113c,
 } from './k2-w4b7-113c'
@@ -230,7 +232,10 @@ import {
   AIBAAL_ChooseMidRangeActionWeighted_6FCD75D0_113c,
   SKILLS_ScheduleUnitTimerEventType1_6FCD6720_113c,
 } from './k2-w4b8-113c'
-import { SUNIT_IsDeadOrDying113c } from './monster-events'
+import {
+  registerAiTargetModeCallback113c,
+  SUNIT_IsDeadOrDying113c,
+} from './monster-events'
 import {
   MONSTATS_GetRecordPtr113c,
   MONSTATS_ValidateClassId113c,
@@ -252,7 +257,6 @@ import {
 } from './timer-wheel'
 import {
   AITARGET_ScanUnitsByModeTable113c,
-  registerAiTargetModeCallback113c,
 } from './town-runtime-gap-113c'
 import { hitD2GameVa113c } from '../va-trace-113c'
 
@@ -1002,6 +1006,8 @@ export function AURA_FindClosestUnitInRadius_6FCC1000_113c(
   return m.u32(pClosestCtx) >>> 0
 }
 
+let k2W5B3StackPtr = 0x7ea00000
+
 /**
  * Radial aura callback (`ecx = pAuraCtx`, `edx = pTargetUnit`) that copies the `0x70`-byte `D2DamageStrc`
  * at `pAuraCtx+0x0C` onto the stack and applies it via `SKILLS_RollAvoidAndApplySkillDamage_6FCC10B0_113c`.
@@ -1012,23 +1018,31 @@ export function AURAS_ApplyRadialSkillDamageCallback_6FCC1210_113c(
   m: D2KernMemory113c,
   pAuraCtx: number,
   pTargetUnit: number,
+  combatHooks?: SUnitDmgHooks113c,
 ): number {
   hitD2GameVa113c(0x6FCC1210)
   const pDmgSrc = m.u32((pAuraCtx + 0x0c) >>> 0) >>> 0
-  const pDmgCopy = m.alloc(0x70) >>> 0
-  for (let i = 0; i < 0x1c; i += 1) {
-    m.setU32((pDmgCopy + i * 4) >>> 0, m.u32((pDmgSrc + i * 4) >>> 0))
+  const sp = k2W5B3StackPtr
+  k2W5B3StackPtr = (sp + 0x74) >>> 0
+  try {
+    const pDmgCopy = sp
+    for (let i = 0; i < 0x1c; i += 1) {
+      m.setU32((pDmgCopy + i * 4) >>> 0, m.u32((pDmgSrc + i * 4) >>> 0))
+    }
+    const pGame = m.u32(pAuraCtx >>> 0) >>> 0
+    const pAttacker = m.u32((pAuraCtx + 0x04) >>> 0) >>> 0
+    SKILLS_RollAvoidAndApplySkillDamage_6FCC10B0_113c(
+      m,
+      pAttacker,
+      pDmgCopy,
+      pGame,
+      pTargetUnit >>> 0,
+      combatHooks,
+    )
+    return 1
+  } finally {
+    k2W5B3StackPtr = sp
   }
-  const pGame = m.u32(pAuraCtx >>> 0) >>> 0
-  const pAttacker = m.u32((pAuraCtx + 0x04) >>> 0) >>> 0
-  SKILLS_RollAvoidAndApplySkillDamage_6FCC10B0_113c(
-    m,
-    pAttacker,
-    pDmgCopy,
-    pGame,
-    pTargetUnit >>> 0,
-  )
-  return 1
 }
 
 /**
@@ -1940,6 +1954,7 @@ export function MONAI_FindTargetOrNearestBlockingObstacle_6FCD1BC0_113c(
     writeI32(m, (pCtx + 0x04) >>> 0, 0x7fffffff)
     m.setU32((pCtx + 0x08) >>> 0, 0)
     writeI32(m, (pCtx + 0x0c) >>> 0, 0x7fffffff)
+    MONAI_ForEachUnitInAdjacentRooms_6FCD0720_113c(m, pUnit >>> 0, 0, pGame >>> 0, pCtx, () => 0)
     AITARGET_ScanUnitsByModeTable113c(m, 6, pCtx, pGame >>> 0, pUnit >>> 0, 0)
     const pRangedUnit = m.u32((pCtx + 0x08) >>> 0) >>> 0
     const nRangedDist = readI32(m, (pCtx + 0x0c) >>> 0)

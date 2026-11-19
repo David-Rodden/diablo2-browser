@@ -77,8 +77,8 @@
     "name": "ITEMS_ExpireGroundItemsInAct_6FC2FB70",
     "kernFile": "src/d2kern-113c/game/k2-real-itemdrop-113c.ts",
     "tsSymbol": "ITEMS_ExpireGroundItemsInAct_6FC2FB70_113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c binary port verified in tests/oracle/k2/real-itemdrop-pipeline.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "1:1 SparseMemory113c binary port verified in tests/oracle/k2/real-itemdrop-pipeline.test.ts; runtime-executed in dllExecuted∩tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -95,8 +95,8 @@
     "name": "ITEMS_InitItemUnit_6FC30160",
     "kernFile": "src/d2kern-113c/game/k2-real-itemdrop-113c.ts",
     "tsSymbol": "ITEMS_InitItemUnit_6FC30160_113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c binary port verified in tests/oracle/k2/real-itemdrop-pipeline.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "1:1 SparseMemory113c binary port verified in tests/oracle/k2/real-itemdrop-pipeline.test.ts; runtime-executed in dllExecuted∩tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",

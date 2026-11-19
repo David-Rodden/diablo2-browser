@@ -60,15 +60,22 @@ import { seedRoll } from '../prng.ts'
 import {
   AIGENERAL_ExpireMinionListsInAct113c,
   ITEMS_ExpireGroundItemsInAct113c,
+  SEED_RollLimitedRandomNumber113c,
 } from './combat-a1c-113c.ts'
 import {
   D2GAME_ITEMS_UpdateAllInventoryAndEquipmentStats113c,
+  D2GAME_MONSTER_ApplyMercStatsOnOwner113c,
   D2GAME_PARTY_SyncAllPlayerRelationsOnJoin113c,
   D2GAME_PLRMODES_BroadcastPlayerJoinNotification113c,
+  D2GAME_SUNIT_GetGameFromUnit113c,
   D2GAME_SUNIT_IterateAllLivingPlayers113c,
 } from './boot-init-gap-b-113c.ts'
 import { AIGENERAL_PopAiCommand113c } from './replay-kernel-113c.ts'
-import { CLIENTS_GetPlayerUnit113c, CLIENTS_UpdatePlayerRoom113c } from './replay-final11-113c.ts'
+import {
+  CLIENTS_GetPlayerUnit113c,
+  CLIENTS_UpdatePlayerRoom113c,
+  type ClientsUpdatePlayerRoomOpts113c,
+} from './replay-final11-113c.ts'
 import { SUNIT_GetServerUnit113c } from './game-strc.ts'
 import {
   MONUMOD_AddSecondaryDamageToBaseStats_6FC41B30_113c,
@@ -84,7 +91,9 @@ import {
   MONUMOD_GetHitForceDeathAndScheduleEvent7_6FC43390_113c,
   MONUMOD_RollSelfResurrectEvent7_6FC43570_113c,
   MONUMOD_ScheduleInitialAiAndEvent7_6FC43320_113c,
+  QUESTS_CheckNotIntro_6FC53970_113c,
 } from './k2-laneJ-0x6fc4-w1-113c.ts'
+import { SUNIT_PlaceUnitAtRoomAndCoords_6FD00D00_113c } from './k2-w5b7-113c.ts'
 import { PLAYERSAVE_SaveAllClientCharactersInGame_6FC4C830_113c } from './k2-w10b1-113c.ts'
 import {
   MONUMOD_ApplyChampionBaseStats_6FC418A0_113c,
@@ -132,13 +141,17 @@ import {
   UNITS_ChangeAnimMode113c,
   type MonsterEventCallbacks113c,
 } from './monster-events.ts'
+import { REGPOP_CanSpawnPresetMinionPack113c } from './k2-sunit-spawn-w1-113c.ts'
 import {
+  D2GAME_IAT_GDW_BITMASKS_VA_113C,
+  D2GAME_IAT_SGPT_DATATABLES_VA_113C,
   MONSTER_SpawnAtCoords113c,
   MONSTATS2_CheckFlagBit113c,
   MONSTATS_GetRecordPtr113c,
   MONSTATS_ValidateClassId113c,
   QUEST_Act4DiabloSealCheck113c,
   REGPOP_FindPackSpawnCoords113c,
+  SUNIT_AllocUnitData113c,
   UNIT_GetPosX113c,
   UNIT_GetPosY113c,
   type RegpopSpawnHooks113c,
@@ -299,6 +312,12 @@ export interface BootInitGapACallees113c {
     curMana: number,
     curStamina: number,
   ) => void
+  readonly syncPlayerMode?: (
+    m: Memory113c,
+    pGame: number,
+    pClient: number,
+    pUnit: number,
+  ) => void
   readonly sendUnitEventSound?: (
     m: Memory113c,
     pClient: number,
@@ -337,6 +356,8 @@ export interface BootInitGapACallees113c {
     pUnit: number,
     dwFlags: number,
   ) => void
+  readonly clientRoomOpts?: ClientsUpdatePlayerRoomOpts113c
+  readonly allowZeroHandler?: boolean
   readonly dispatchPlayerEvent?: (
     m: Memory113c,
     pGame: number,
@@ -344,6 +365,7 @@ export interface BootInitGapACallees113c {
     evType: number,
     arg14: number,
     arg18: number,
+    node?: number,
   ) => void
   readonly dispatchMonsterEvent?: (
     m: Memory113c,
@@ -352,6 +374,7 @@ export interface BootInitGapACallees113c {
     evType: number,
     arg14: number,
     arg18: number,
+    node?: number,
   ) => void
   readonly dispatchObjectEvent?: (
     m: Memory113c,
@@ -360,6 +383,7 @@ export interface BootInitGapACallees113c {
     evType: number,
     arg14: number,
     arg18: number,
+    node?: number,
   ) => void
   readonly dispatchMissileEvent?: (
     m: Memory113c,
@@ -369,6 +393,7 @@ export interface BootInitGapACallees113c {
     evType: number,
     arg14: number,
     arg18: number,
+    node?: number,
   ) => void
   readonly dispatchItemEvent?: (
     m: Memory113c,
@@ -378,6 +403,7 @@ export interface BootInitGapACallees113c {
     evType: number,
     arg14: number,
     arg18: number,
+    node?: number,
   ) => void
 }
 
@@ -536,339 +562,368 @@ export function OBJECT_CheckRespawnOrPortalInRoom113c(
   return pUnitRoom === (pRoom >>> 0) ? 0 : 1
 }
 
+function relocateRestoredServerUnit113c(
+  m: Memory113c,
+  pGame: number,
+  pUnit: number,
+  pRoom: number,
+  posX: number,
+  posY: number,
+): void {
+  if (pUnit === 0 || pRoom === 0) return
+  const uType = m.u32(pUnit >>> 0) >>> 0
+  const pPathExisting = m.u32((pUnit + 0x2c) >>> 0) >>> 0
+  const pUnitData = m.u32((pUnit + 0x14) >>> 0) >>> 0
+  if (
+    pGame !== 0 &&
+    pPathExisting !== 0 &&
+    pUnitData !== 0 &&
+    (uType !== 4 || m.u32((pUnit + 0x10) >>> 0) === 3) &&
+    m.u32((pGame + 0xbc) >>> 0) !== 0
+  ) {
+    SUNIT_PlaceUnitAtRoomAndCoords_6FD00D00_113c(
+      m as SparseMemory113c,
+      posY,
+      pRoom,
+      pUnit,
+      pGame,
+      posX,
+    )
+    if (m.u32((pRoom + 0x74) >>> 0) !== 0) return
+  }
+
+  let pPath = pPathExisting
+  if (uType === 0 || uType === 1 || uType === 3) {
+    if (pPath === 0) {
+      pPath = m.alloc(0x200) >>> 0
+      m.setU32((pUnit + 0x2c) >>> 0, pPath)
+      m.setU32((pPath + 0x50) >>> 0, pUnit >>> 0)
+    }
+    m.setU16((pPath + 0x02) >>> 0, posX & 0xffff)
+    m.setU16((pPath + 0x06) >>> 0, posY & 0xffff)
+    m.setU16((pPath + 0x10) >>> 0, posX & 0xffff)
+    m.setU16((pPath + 0x12) >>> 0, posY & 0xffff)
+    m.setU32((pPath + 0x1c) >>> 0, pRoom >>> 0)
+  } else {
+    if (pPath === 0) {
+      pPath = m.alloc(0x14) >>> 0
+      m.setU32((pUnit + 0x2c) >>> 0, pPath)
+    }
+    m.setU32(pPath, pRoom >>> 0)
+    m.setU32((pPath + 0x04) >>> 0, posX >>> 0)
+    m.setU32((pPath + 0x08) >>> 0, posY >>> 0)
+    m.setU32((pPath + 0x0c) >>> 0, posX >>> 0)
+    m.setU32((pPath + 0x10) >>> 0, posY >>> 0)
+  }
+  let inList = false
+  let cur = m.u32((pRoom + 0x74) >>> 0) >>> 0
+  while (cur !== 0) {
+    if (cur === (pUnit >>> 0)) {
+      inList = true
+      break
+    }
+    cur = m.u32((cur + 0xe8) >>> 0) >>> 0
+  }
+  if (!inList) {
+    m.setU32((pUnit + 0xe8) >>> 0, m.u32((pRoom + 0x74) >>> 0) >>> 0)
+    m.setU32((pRoom + 0x74) >>> 0, pUnit >>> 0)
+  }
+}
+
 /**
- * Finds or allocates an `ActMonRegRoomNodeStrc` (`0x1C` bytes) in `pActMonReg` for `pRoom`'s coordinates.
+ * Finds (or allocates when `bAlloc != 0`) the `0x18`-byte inactive room save node at
+ * `[pGame + (nAct & 0xFF) * 4 + 0xD8]` matching `(roomX, roomY)` (sorted descending by `roomX`).
  *
  * @va D2Game:0x6FC3E960
  */
 export function MONREG_FindOrAllocActRoomNode113c(
   m: Memory113c,
-  pActMonReg: number,
-  _pGame: number,
-  pRoom: number,
+  pGame: number,
+  nAct: number,
+  roomX: number,
+  roomY: number,
+  bAlloc: number,
 ): number {
   hitD2GameVa113c(0x6FC3E960)
-  if (pActMonReg === 0) return 0
-  const sp = bootInitGapStackPtr
-  bootInitGapStackPtr = (sp + 0x20) >>> 0
-  let x = 0
-  let y = 0
-  try {
-    DUNGEON_GetRoomCoordinates113c(m, pRoom, sp)
-    x = m.u32(sp) >>> 0
-    y = m.u32((sp + 4) >>> 0) >>> 0
-  } finally {
-    bootInitGapStackPtr = sp
-  }
-
-  const bucket = ((x + y) & 0xbf) >>> 0
-  let pNode = m.u32((pActMonReg + bucket * 4) >>> 0) >>> 0
-  while (pNode !== 0) {
-    if (m.u32((pNode + 0x04) >>> 0) === x && m.u32((pNode + 0x08) >>> 0) === y) {
-      return pNode
+  if (pGame === 0) return 0
+  const actIdx = nAct & 0xff
+  if (actIdx >= 5) return 0
+  const headAddr = (pGame + actIdx * 4 + 0xd8) >>> 0
+  let pCur = m.u32(headAddr) >>> 0
+  let pPrev = 0
+  let found = 0
+  const targetX = roomX | 0
+  const targetY = roomY | 0
+  while (pCur !== 0) {
+    const curX = m.u32(pCur) | 0
+    if (targetX === curX && targetY === (m.u32((pCur + 0x04) >>> 0) | 0)) {
+      found = 1
+      break
     }
-    pNode = m.u32((pNode + 0x0c) >>> 0) >>> 0
+    if (targetX > curX) {
+      break
+    }
+    pPrev = pCur
+    pCur = m.u32((pCur + 0x14) >>> 0) >>> 0
   }
 
-  pNode = m.alloc(0x1c) >>> 0
-  m.setU32(pNode, 0)
-  m.setU32((pNode + 0x04) >>> 0, x)
-  m.setU32((pNode + 0x08) >>> 0, y)
-  m.setU32((pNode + 0x0c) >>> 0, 0)
-  m.setU32((pNode + 0x10) >>> 0, 0)
-  const pOldTail = m.u32((pActMonReg + 0x304) >>> 0) >>> 0
-  m.setU32((pNode + 0x14) >>> 0, pOldTail)
-  m.setU32((pNode + 0x18) >>> 0, bucket)
+  if (bAlloc === 0) {
+    return found !== 0 ? pCur : 0
+  }
+  if (found !== 0) {
+    return pCur
+  }
 
-  const pOldBucketHead = m.u32((pActMonReg + bucket * 4) >>> 0) >>> 0
-  if (pOldBucketHead !== 0) {
-    m.setU32((pOldBucketHead + 0x10) >>> 0, pNode)
+  const pNew = m.alloc(0x18) >>> 0
+  m.setU32(pNew, targetX >>> 0)
+  m.setU32((pNew + 0x04) >>> 0, targetY >>> 0)
+  m.setU32((pNew + 0x08) >>> 0, 0)
+  m.setU32((pNew + 0x0c) >>> 0, 0)
+  m.setU32((pNew + 0x10) >>> 0, 0)
+  m.setU32((pNew + 0x14) >>> 0, pCur)
+  if (pPrev !== 0) {
+    m.setU32((pPrev + 0x14) >>> 0, pNew)
+  } else {
+    m.setU32(headAddr, pNew)
   }
-  m.setU32((pActMonReg + bucket * 4) >>> 0, pNode)
-
-  if (m.u32((pActMonReg + 0x300) >>> 0) === 0) {
-    m.setU32((pActMonReg + 0x300) >>> 0, pNode)
-  }
-  const pTail = m.u32((pActMonReg + 0x304) >>> 0) >>> 0
-  if (pTail !== 0) {
-    m.setU32((pTail + 0x0c) >>> 0, pNode)
-  }
-  m.setU32((pActMonReg + 0x304) >>> 0, pNode)
-  m.setU32((pActMonReg + 0x308) >>> 0, (m.u32((pActMonReg + 0x308) >>> 0) + 1) >>> 0)
-  return pNode
+  return pNew
 }
 
 /**
- * Frees all saved monster records on `pNode`, unlinks `pNode` from `pActMonReg`, and frees `pNode`.
+ * Unlinks the `0x18`-byte inactive room node for `pRoom` from `[pGame + nAct * 4 + 0xD8]`,
+ * writes `*ppOutUnits = [pNode + 0x10]` and `*ppOutItems = [pNode + 0x08]`, and frees `pNode`.
  *
  * @va D2Game:0x6FC3EA40
  */
 export function MONREG_UnlinkAndFreeActRoomNode113c(
   m: Memory113c,
-  pNode: number,
-  pActMonReg: number,
+  pRoom: number,
   pGame: number,
+  ppOutUnits: number,
+  ppOutItems: number,
 ): void {
   hitD2GameVa113c(0x6FC3EA40)
-  if (pActMonReg === 0 || pNode === 0) return
+  if (ppOutUnits !== 0) m.setU32(ppOutUnits >>> 0, 0)
+  if (ppOutItems !== 0) m.setU32(ppOutItems >>> 0, 0)
+  if (pRoom === 0 || pGame === 0) return
 
-  let pRec = m.u32(pNode >>> 0) >>> 0
-  const pMemPool = pGame !== 0 ? m.u32((pGame + 0x1c) >>> 0) : 0
-  while (pRec !== 0) {
-    const pNextRec = m.u32((pRec + 0x30) >>> 0) >>> 0
-    const pSaveBlock = m.u32((pRec + 0x2c) >>> 0) >>> 0
-    if (pSaveBlock !== 0) {
-      DRLGPRESET_FreeSaveHeaderBlock113c(m, pMemPool, pSaveBlock)
+  const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom)
+  const nAct = DRLG_GetActNoFromLevelId113c(m, nLevelId) & 0xff
+  if (nAct >= 5) return
+
+  const sp = bootInitGapStackPtr
+  bootInitGapStackPtr = (sp + 0x20) >>> 0
+  let roomX = 0
+  let roomY = 0
+  try {
+    DUNGEON_GetRoomCoordinates113c(m, pRoom, sp)
+    roomX = m.u32(sp) | 0
+    roomY = m.u32((sp + 0x04) >>> 0) | 0
+  } finally {
+    bootInitGapStackPtr = sp
+  }
+
+  const headAddr = (pGame + nAct * 4 + 0xd8) >>> 0
+  let pPrev = 0
+  let pCur = m.u32(headAddr) >>> 0
+  while (pCur !== 0) {
+    const curX = m.u32(pCur) | 0
+    if (roomX > curX) return
+    if (roomX === curX && roomY === (m.u32((pCur + 0x04) >>> 0) | 0)) {
+      const pNext = m.u32((pCur + 0x14) >>> 0) >>> 0
+      if (pPrev !== 0) {
+        m.setU32((pPrev + 0x14) >>> 0, pNext)
+      } else {
+        m.setU32(headAddr, pNext)
+      }
+      if (ppOutUnits !== 0) {
+        m.setU32(ppOutUnits >>> 0, m.u32((pCur + 0x10) >>> 0) >>> 0)
+      }
+      if (ppOutItems !== 0) {
+        m.setU32(ppOutItems >>> 0, m.u32((pCur + 0x08) >>> 0) >>> 0)
+      }
+      fogFreeMemPool113c(m, pCur)
+      return
     }
-    fogFreeMemPool113c(m, pRec)
-    pRec = pNextRec
+    pPrev = pCur
+    pCur = m.u32((pCur + 0x14) >>> 0) >>> 0
   }
-  m.setU32(pNode >>> 0, 0)
-
-  const bucket = m.u32((pNode + 0x18) >>> 0) >>> 0
-  const pNext0C = m.u32((pNode + 0x0c) >>> 0) >>> 0
-  if (m.u32((pActMonReg + bucket * 4) >>> 0) === (pNode >>> 0)) {
-    m.setU32((pActMonReg + bucket * 4) >>> 0, pNext0C)
-  }
-  if (m.u32((pActMonReg + 0x300) >>> 0) === (pNode >>> 0)) {
-    m.setU32((pActMonReg + 0x300) >>> 0, pNext0C)
-  }
-  const pPrev14 = m.u32((pNode + 0x14) >>> 0) >>> 0
-  if (m.u32((pActMonReg + 0x304) >>> 0) === (pNode >>> 0)) {
-    m.setU32((pActMonReg + 0x304) >>> 0, pPrev14)
-  }
-
-  const pPrev10 = m.u32((pNode + 0x10) >>> 0) >>> 0
-  if (pPrev10 !== 0) {
-    m.setU32((pPrev10 + 0x0c) >>> 0, pNext0C)
-  }
-  const pNext0C2 = m.u32((pNode + 0x0c) >>> 0) >>> 0
-  if (pNext0C2 !== 0) {
-    m.setU32((pNext0C2 + 0x10) >>> 0, m.u32((pNode + 0x10) >>> 0))
-  }
-  const pPrev14_2 = m.u32((pNode + 0x14) >>> 0) >>> 0
-  if (pPrev14_2 !== 0) {
-    m.setU32((pPrev14_2 + 0x0c) >>> 0, m.u32((pNode + 0x0c) >>> 0))
-  }
-  const pNext0C3 = m.u32((pNode + 0x0c) >>> 0) >>> 0
-  if (pNext0C3 !== 0) {
-    m.setU32((pNext0C3 + 0x14) >>> 0, m.u32((pNode + 0x14) >>> 0))
-  }
-
-  fogFreeMemPool113c(m, pNode)
-  m.setU32((pActMonReg + 0x308) >>> 0, (m.u32((pActMonReg + 0x308) >>> 0) - 1) >>> 0)
 }
 
 /**
- * Walks `*ppHead` (`+0x30` chain), frees each `+0x2C` save header block and record, and zeroes `*ppHead`.
+ * Walks saved ground-item nodes starting at `pSavedItems` (next at `+0x00`), restores non-expired
+ * items (`dwExpireFrame == 0 || dwGameFrame <= dwExpireFrame`) into `pRoom`, and frees each node.
  *
  * @va D2Game:0x6FC3FB40
  */
 export function MONREG_FlushAndFreePendingSpawnNodes113c(
   m: Memory113c,
+  pSavedItems: number,
   pGame: number,
-  ppHead: number,
+  pRoom: number,
 ): void {
   hitD2GameVa113c(0x6FC3FB40)
-  if (ppHead === 0) return
-  let pCur = m.u32(ppHead >>> 0) >>> 0
-  const pMemPool = pGame !== 0 ? m.u32((pGame + 0x1c) >>> 0) : 0
+  if (pSavedItems === 0) return
+  const curGameFrame = pGame !== 0 ? (m.u32((pGame + 0xa8) >>> 0) | 0) : 0
+  let pCur = pSavedItems >>> 0
   while (pCur !== 0) {
-    const pNext = m.u32((pCur + 0x30) >>> 0) >>> 0
-    const pSaveBlock = m.u32((pCur + 0x2c) >>> 0) >>> 0
-    if (pSaveBlock !== 0) {
-      DRLGPRESET_FreeSaveHeaderBlock113c(m, pMemPool, pSaveBlock)
+    const pNext = m.u32(pCur) >>> 0
+    const dwExpireFrame = m.u32((pCur + 0x04) >>> 0) | 0
+    if (dwExpireFrame === 0 || curGameFrame <= dwExpireFrame) {
+      const savedItemGuid = m.u32((pCur + 0x08) >>> 0) >>> 0
+      if (savedItemGuid !== 0 && pGame !== 0 && pRoom !== 0) {
+        const pItem = SUNIT_GetServerUnit113c(m, pGame, 4, savedItemGuid) >>> 0
+        if (pItem !== 0) {
+          const itemX = m.u16((pCur + 0x0c) >>> 0)
+          const itemY = m.u16((pCur + 0x0e) >>> 0)
+          relocateRestoredServerUnit113c(m, pGame, pItem, pRoom, itemX, itemY)
+        }
+      }
     }
     fogFreeMemPool113c(m, pCur)
     pCur = pNext
   }
-  m.setU32(ppHead >>> 0, 0)
 }
 
 /**
- * Restores saved room monsters from `pRoomNode`, unlinks/frees `pRoomNode`, and runs Act 4 Diablo seal check.
+ * Restores saved `0x5C`-byte monster nodes from `[pRoomNode + 0x0C]` for `(pGame, pRoom)` (`0x6FC3FB90`),
+ * querying `MONREG_FindOrAllocActRoomNode113c(m, pGame, nAct, roomX, roomY, 0)` and checking Chaos Sanctuary seals.
  *
  * @va D2Game:0x6FC3FB90
  */
 export function MONREG_RestoreRoomMonstersFromNode113c(
   m: Memory113c,
-  pRoom: number,
   pGame: number,
-  pRoomNode: number,
+  pRoom: number,
   callees?: BootInitGapACallees113c,
 ): void {
   hitD2GameVa113c(0x6FC3FB90)
-  let pRec = m.u32(pRoomNode >>> 0) >>> 0
-  if (pRec === 0) return
+  if (pGame === 0 || pRoom === 0) return
 
   const sp = bootInitGapStackPtr
   bootInitGapStackPtr = (sp + 0x30) >>> 0
-  const pRoomCoords = sp
-  const pCoordOut = (sp + 0x14) >>> 0
-  const ppRoomOut = (sp + 0x20) >>> 0
   try {
-    DUNGEON_GetRoomCoordinates113c(m, pRoom, pRoomCoords)
-    const pMemPool = pGame !== 0 ? m.u32((pGame + 0x1c) >>> 0) : 0
+    DUNGEON_GetRoomCoordinates113c(m, pRoom, sp)
+    const roomX = m.u32(sp) | 0
+    const roomY = m.u32((sp + 0x04) >>> 0) | 0
+    const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom)
+    const nAct = DRLG_GetActNoFromLevelId113c(m, nLevelId) & 0xff
+    const pRoomNode = MONREG_FindOrAllocActRoomNode113c(m, pGame, nAct, roomX, roomY, 0)
+    if (pRoomNode === 0) return
 
-    while (pRec !== 0) {
-      let bSkipSpawn = 0
-      const pNextRec = m.u32((pRec + 0x30) >>> 0) >>> 0
-      const nClassId = m.u32(pRec >>> 0) | 0
-      const pMonStatsTxt = MONSTATS_GetRecordPtr113c(m, nClassId) >>> 0
-      if (pMonStatsTxt === 0) break
+    let pMon = m.u32((pRoomNode + 0x0c) >>> 0) >>> 0
+    m.setU32((pRoomNode + 0x0c) >>> 0, 0)
+    let bChaosSealsCleared = 0
+    if (DUNGEON_GetLevelIdFromRoom113c(m, pRoom) === 0x6c) {
+      if (QUEST_Act4DiabloSealCheck113c(m, pGame) !== 0) {
+        bChaosSealsCleared = 1
+      }
+    }
+    if (pMon === 0) return
 
-      const wMonStatsFlags = m.u16((pMonStatsTxt + 0x1a0) >>> 0)
-      if ((wMonStatsFlags & 0x800) === 0) {
-        const dwFlags20 = m.u32((pRec + 0x20) >>> 0)
-        if ((dwFlags20 & 2) !== 0 && (dwFlags20 & 0x220) === 0) {
-          bSkipSpawn = 1
+    const pMemPool = m.u32((pGame + 0x1c) >>> 0) >>> 0
+    const hooks = callees !== undefined && callees.regpop !== undefined ? callees.regpop : {}
+    while (pMon !== 0) {
+      const pNext = m.u32((pMon + 0x58) >>> 0) >>> 0
+      const posX = m.u32(pMon) | 0
+      const posY = m.u32((pMon + 0x04) >>> 0) | 0
+      const nClassId = m.u32((pMon + 0x08) >>> 0) | 0
+      const dwSavedGuid = m.u32((pMon + 0x0c) >>> 0) >>> 0
+      const dwFlags10 = m.u32((pMon + 0x10) >>> 0) >>> 0
+      const dwFlags14 = m.u32((pMon + 0x14) >>> 0) >>> 0
+      const dwFlags18 = m.u32((pMon + 0x18) >>> 0) >>> 0
+      const nAnimMode = (dwFlags18 & 0x04) !== 0 ? 0x0c : 1
+
+      if (nAnimMode !== 0x0c && bChaosSealsCleared !== 0 && nClassId !== 0xf3) {
+        const pSaveBlockSkip = m.u32((pMon + 0x24) >>> 0) >>> 0
+        if (pSaveBlockSkip !== 0) {
+          DRLGPRESET_FreeSaveHeaderBlock113c(m, pMemPool, (pMon + 0x24) >>> 0)
         }
+        fogFreeMemPool113c(m, pMon)
+        pMon = pNext
+        continue
       }
 
-      if (m.u8((pRec + 0x27) >>> 0) !== 0 && bSkipSpawn === 0) {
-        if (callees !== undefined && callees.spawnRestoredBossOrMinion !== undefined) {
-          callees.spawnRestoredBossOrMinion(m, pGame, pRoom, pRec)
+      if ((dwFlags14 & 0x0100) !== 0) {
+        const pExisting = SUNIT_GetServerUnit113c(m, pGame, 1, dwSavedGuid) >>> 0
+        if (pExisting !== 0) {
+          relocateRestoredServerUnit113c(m, pGame, pExisting, pRoom, posX, posY)
+        }
+        let pExtra = m.u32((pMon + 0x20) >>> 0) >>> 0
+        while (pExtra !== 0) {
+          const pExtraNext = m.u32((pExtra + 0x04) >>> 0) >>> 0
+          fogFreeMemPool113c(m, pExtra)
+          pExtra = pExtraNext
         }
       } else {
-        let x = m.u32((pRec + 0x14) >>> 0) | 0
-        let y = m.u32((pRec + 0x18) >>> 0) | 0
-        const subX = m.u32(pRoomCoords) | 0
-        const subY = m.u32((pRoomCoords + 0x04) >>> 0) | 0
-        const subW = m.u32((pRoomCoords + 0x08) >>> 0) | 0
-        const subH = m.u32((pRoomCoords + 0x0c) >>> 0) | 0
-
-        if (x < subX) {
-          x = subX
-        } else if (x >= ((subX + subW) | 0)) {
-          x = (subX + subW - 1) | 0
-        }
-        m.setU32((pRec + 0x14) >>> 0, x >>> 0)
-
-        if (y < subY) {
-          y = subY
-        } else if (y >= ((subY + subH) | 0)) {
-          y = (subY + subH - 1) | 0
-        }
-        m.setU32((pRec + 0x18) >>> 0, y >>> 0)
-
-        if (bSkipSpawn === 0) {
-          const dwFlags20 = m.u32((pRec + 0x20) >>> 0)
-          const bDead = dwFlags20 & 2
-          const nAnimMode = bDead !== 0 ? 0x0c : 1
-          let wSpawnFlags = 1
-          if (bDead !== 0) {
-            wSpawnFlags = 0x28
-          } else if ((dwFlags20 & 0x400) !== 0) {
-            wSpawnFlags = 0x41
-          }
-          const nRadius = ((wMonStatsFlags >>> 11) & 1) !== 0 || (wSpawnFlags & 8) !== 0 ? -1 : 3
-          let pUnit = MONSTER_SpawnAtCoords113c(
+        const skipBoss =
+          (dwFlags18 & 0x0400) !== 0 && ((dwFlags18 & 0x0100) !== 0 || (dwFlags18 & 0x80) !== 0)
+        if (!skipBoss) {
+          const wSpawnFlags = (dwFlags18 & 0x40) !== 0 ? 0x6a : 0x62
+          let pSpawned = MONSTER_SpawnAtCoords113c(
             m,
             nClassId,
             nAnimMode,
             pGame,
             pRoom,
-            x,
-            y,
-            nRadius,
+            posX,
+            posY,
+            -1,
             wSpawnFlags,
-            callees !== undefined ? callees.regpop : undefined,
+            hooks,
           )
-          if (pUnit === 0 && bDead === 0 && (dwFlags20 & 0x400) === 0) {
-            pUnit = MONSTER_SpawnAtCoords113c(
+          if (pSpawned === 0) {
+            pSpawned = MONSTER_SpawnAtCoords113c(
               m,
               nClassId,
               nAnimMode,
               pGame,
               pRoom,
-              x,
-              y,
-              6,
-              9,
-              callees !== undefined ? callees.regpop : undefined,
+              posX,
+              posY,
+              5,
+              wSpawnFlags,
+              hooks,
             )
-            if (pUnit !== 0 && DUNGEON_CheckRoomIsTownMemPort113c(m, pRoom) !== 0) {
-              if (MONSTATS2_CheckFlagBit113c(m, m.u32((pUnit + 0x04) >>> 0) | 0, 0x1d) === 0) {
-                m.setU32(pCoordOut, UNIT_GetPosX113c(m, pUnit) >>> 0)
-                m.setU32((pCoordOut + 4) >>> 0, UNIT_GetPosY113c(m, pUnit) >>> 0)
-                m.setU32(ppRoomOut, 0)
-                COLLISION_FindFreeCoordsNear113c(m, pRoom, pCoordOut, 0x0d, 0x1c09, ppRoomOut)
-                const pOutRoom = m.u32(ppRoomOut) >>> 0
-                if (pOutRoom !== 0) {
-                  if (callees !== undefined && callees.relocateRestoredUnit !== undefined) {
-                    callees.relocateRestoredUnit(
-                      m,
-                      pGame,
-                      pUnit,
-                      m.u32(pCoordOut) | 0,
-                      m.u32((pCoordOut + 4) >>> 0) | 0,
-                      pOutRoom,
-                    )
-                  }
-                } else {
-                  if (callees !== undefined && callees.deleteRestoredUnit !== undefined) {
-                    callees.deleteRestoredUnit(m, pGame, pUnit)
-                  }
-                  pUnit = 0
-                }
-              }
-            }
           }
-
-          if (pUnit !== 0) {
-            STATLIST_SetUnitStat113c(m, pUnit, 6, m.u32((pRec + 0x08) >>> 0) | 0, 0)
-            STATLIST_SetUnitStat113c(m, pUnit, 7, m.u32((pRec + 0x0c) >>> 0) | 0, 0)
-            STATLIST_SetUnitStat113c(m, pUnit, 0x15, m.u32((pRec + 0x10) >>> 0) | 0, 0)
-            STATLIST_SetUnitStat113c(m, pUnit, 0x0c, m.u32((pRec + 0x04) >>> 0) | 0, 0)
-            STATLIST_SetUnitStat113c(m, pUnit, 0x24, (m.u8((pRec + 0x1c) >>> 0) << 24) >> 24, 0)
-            STATLIST_SetUnitStat113c(m, pUnit, 0x25, (m.u8((pRec + 0x1d) >>> 0) << 24) >> 24, 0)
-            STATLIST_SetUnitStat113c(m, pUnit, 0x27, (m.u8((pRec + 0x1e) >>> 0) << 24) >> 24, 0)
-            STATLIST_SetUnitStat113c(m, pUnit, 0x29, (m.u8((pRec + 0x1f) >>> 0) << 24) >> 24, 0)
-            STATLIST_SetUnitStat113c(m, pUnit, 0x2b, (m.u8((pRec + 0x25) >>> 0) << 24) >> 24, 0)
-            STATLIST_SetUnitStat113c(m, pUnit, 0x2d, (m.u8((pRec + 0x26) >>> 0) << 24) >> 24, 0)
-
-            const pMonData = m.u32((pUnit + 0x14) >>> 0) >>> 0
+          if (pSpawned !== 0) {
+            const savedExp = m.u32((pMon + 0x40) >>> 0) | 0
+            const savedMaxHp = m.u32((pMon + 0x44) >>> 0) | 0
+            const savedCurHp = m.u32((pMon + 0x48) >>> 0) | 0
+            const savedFrame = m.u32((pMon + 0x54) >>> 0) >>> 0
+            const curGameFrame = m.u32((pGame + 0xa8) >>> 0) >>> 0
+            STATLIST_SetUnitStat113c(m, pSpawned, 0x0d, savedExp, 0)
+            if (savedMaxHp > 0) {
+              STATLIST_SetUnitStat113c(m, pSpawned, 0x07, savedMaxHp, 0)
+              const restoredHp =
+                ((curGameFrame - savedFrame) >>> 0) >= 0x1d4c ? savedMaxHp : savedCurHp
+              STATLIST_SetUnitStat113c(m, pSpawned, 0x06, restoredHp, 0)
+            }
+            const pMonData = m.u32((pSpawned + 0x14) >>> 0) >>> 0
             if (pMonData !== 0) {
-              const bFlag20Bit0 = m.u8((pRec + 0x20) >>> 0) & 1
-              const cur16 = m.u8((pMonData + 0x16) >>> 0)
-              m.setU8(
-                (pMonData + 0x16) >>> 0,
-                bFlag20Bit0 !== 0 ? (cur16 | 1) & 0xff : cur16 & 0xfe,
-              )
-              if ((m.u32((pRec + 0x20) >>> 0) & 0x10) !== 0) {
-                m.setU8((pMonData + 0x16) >>> 0, (m.u8((pMonData + 0x16) >>> 0) | 8) & 0xff)
-                m.setU16((pMonData + 0x26) >>> 0, m.u16((pRec + 0x28) >>> 0))
+              for (let k = 0; k < 9; k++) {
+                m.setU8((pMonData + 0x1c + k) >>> 0, m.u8((pMon + 0x32 + k) >>> 0))
               }
-              m.setU32((pMonData + 0x34) >>> 0, m.u32((pRec + 0x38) >>> 0))
             }
-
-            if ((m.u32((pRec + 0x20) >>> 0) & 0x400) !== 0) {
-              m.setU32((pUnit + 0xc4) >>> 0, (m.u32((pUnit + 0xc4) >>> 0) & 0xfffffff9) >>> 0)
+            if ((dwFlags14 & 0x0200) !== 0) {
+              m.setU32((pSpawned + 0xc8) >>> 0, (m.u32((pSpawned + 0xc8) >>> 0) | 0x0200) >>> 0)
             }
-            if ((m.u32((pRec + 0x20) >>> 0) & 0x800) !== 0) {
-              m.setU32((pUnit + 0xc4) >>> 0, (m.u32((pUnit + 0xc4) >>> 0) & 0xffffffef) >>> 0)
-            }
-
-            if (callees !== undefined && callees.postRestoreMonsterHook !== undefined) {
-              callees.postRestoreMonsterHook(m, pGame, pUnit, pRec, bDead)
-            }
+            const curUnitFlags = m.u32((pSpawned + 0xc4) >>> 0) >>> 0
+            m.setU32(
+              (pSpawned + 0xc4) >>> 0,
+              (curUnitFlags | (dwFlags10 & 0x20000) | 0x03000000) >>> 0,
+            )
           }
         }
       }
 
-      const pSaveBlock = m.u32((pRec + 0x2c) >>> 0) >>> 0
-      if (pSaveBlock !== 0) {
-        DRLGPRESET_FreeSaveHeaderBlock113c(m, pMemPool, pSaveBlock)
+      const pSaveDesc = m.u32((pMon + 0x24) >>> 0) >>> 0
+      if (pSaveDesc !== 0) {
+        DRLGPRESET_FreeSaveHeaderBlock113c(m, pMemPool, (pMon + 0x24) >>> 0)
       }
-      fogFreeMemPool113c(m, pRec)
-      pRec = pNextRec
+      fogFreeMemPool113c(m, pMon)
+      pMon = pNext
     }
-
-    const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom)
-    const nAct = DRLG_GetActNoFromLevelId113c(m, nLevelId) & 0xff
-    const pActMonReg = m.u32((pGame + nAct * 4 + 0x1de0) >>> 0) >>> 0
-    MONREG_UnlinkAndFreeActRoomNode113c(m, pRoomNode, pActMonReg, pGame)
-    QUEST_Act4DiabloSealCheck113c(m, pGame)
   } finally {
     bootInitGapStackPtr = sp
   }
@@ -1218,12 +1273,30 @@ export function GAME_UpdateTickRateMetrics113c(
   callees?: BootInitGapACallees113c,
 ): void {
   hitD2GameVa113c(0x6FC49BE0)
-  const pPerfInfo = m.u32(D2GAME_PERF_TICK_ARRAY_PTR_VA_113C) >>> 0
+  let pPerfInfo = 0
+  try {
+    pPerfInfo = m.u32(D2GAME_PERF_TICK_ARRAY_PTR_VA_113C) >>> 0
+  } catch {
+    pPerfInfo = 0
+  }
   const pMemPool = m.u32((pGame + 0x1c) >>> 0) >>> 0
-  const poolBytes = pMemPool !== 0 ? m.u32((pMemPool + 0x17a8) >>> 0) : 0
+  let poolBytes = 0
+  if (pMemPool !== 0) {
+    try {
+      poolBytes = m.u32((pMemPool + 0x17a8) >>> 0)
+    } catch {
+      poolBytes = 0
+    }
+  }
+  let curTotalPool = 0
+  try {
+    curTotalPool = m.u32(D2GAME_TOTAL_MEMPOOL_BYTES_VA_113C) >>> 0
+  } catch {
+    curTotalPool = 0
+  }
   m.setU32(
     D2GAME_TOTAL_MEMPOOL_BYTES_VA_113C,
-    (m.u32(D2GAME_TOTAL_MEMPOOL_BYTES_VA_113C) + poolBytes) >>> 0,
+    (curTotalPool + poolBytes) >>> 0,
   )
 
   const dwTickMs =
@@ -1466,20 +1539,8 @@ export function GAME_CheckAndDisconnectTimedOutClients113c(
           callees.disconnectClient(m, pGame, pClient, 4)
         }
       } else {
-        const pPlayerData = m.u32((pUnit + 0x14) >>> 0) >>> 0
-        const dwTimer9C = pPlayerData !== 0 ? m.u32((pPlayerData + 0x9c) >>> 0) : 0
-        if (
-          dwTimer9C !== 0 &&
-          ((m.u32((pGame + 0xa8) >>> 0) - dwTimer9C) | 0) > 0x4e2
-        ) {
-          if (callees !== undefined && callees.disconnectClient !== undefined) {
-            callees.disconnectClient(m, pGame, pClient, 4)
-          }
-        } else {
-          if (callees !== undefined && callees.stepPlayerClientTick !== undefined) {
-            callees.stepPlayerClientTick(m, pGame, pUnit, pClient)
-          }
-          m.setU32((pClient + 0x1ac) >>> 0, 0)
+        if (callees !== undefined && callees.stepPlayerClientTick !== undefined) {
+          callees.stepPlayerClientTick(m, pGame, pUnit, pClient)
         }
       }
     }
@@ -1537,7 +1598,7 @@ export function GAME_StepClientJoinStatesAndTimeouts113c(
       const dwState = m.u32((pClient + 0x04) >>> 0) | 0
 
       if (dwState === 5) {
-        CLIENTS_UpdatePlayerRoom113c(m, pClient, pGame)
+        CLIENTS_UpdatePlayerRoom113c(m, pClient, pGame, callees?.clientRoomOpts)
         const pActRoom = m.u32((pClient + 0x1b4) >>> 0) >>> 0
         if (pActRoom !== 0 && DUNGEON_AreAllAdjacentRoomsActive113c(m, pActRoom) !== 0) {
           m.setU8(spPkt04, 4)
@@ -1549,9 +1610,9 @@ export function GAME_StepClientJoinStatesAndTimeouts113c(
           }
         }
       } else if (dwState === 4) {
-        CLIENTS_UpdatePlayerRoom113c(m, pClient, pGame)
+        CLIENTS_UpdatePlayerRoom113c(m, pClient, pGame, callees?.clientRoomOpts)
       } else if (dwState === 3) {
-        CLIENTS_UpdatePlayerRoom113c(m, pClient, pGame)
+        CLIENTS_UpdatePlayerRoom113c(m, pClient, pGame, callees?.clientRoomOpts)
         const pActRoom = m.u32((pClient + 0x1b4) >>> 0) >>> 0
         const roomsReady =
           callees !== undefined && callees.stepJoinState3Ready !== undefined
@@ -1621,84 +1682,144 @@ export function OBJECT_SetAnimMode2Wrapper113c(
 }
 
 /**
- * Spawns a preset superunique or Evil Urn monster pack in `pRoom`.
+ * Spawns a regular preset monster (`edi = nClassId`, `__stdcall(pGame, pRoom, x, y, nMode)`, `370B`):
+ * 1. Validates `0 <= nClassId < nMonStatsCount` (`[sgptDataTables + 0xA80]`) and `pMonStatsTxt != 0`.
+ * 2. Frozen Anya (`nClassId == 0x1B2`): decrements `y` and forces `nMode = 0x0C` when Quest `0x20` is intro.
+ * 3. Rejects `MONSTATS2_CheckFlagBit113c(m, nClassId, 0x0D) != 0`.
+ * 4. Computes `wFlags = (pMonStatsTxt[+0x0E] & 0x04) != 0 ? 8 : 0` and spawns via `0x6FD0F650`
+ *    (`MONSTER_SpawnAtCoords113c`) at radius `-1`, retrying at radius `4` when `REGPOP_CanSpawnPresetMinionPack113c != 0`.
+ * 5. When `MONSTATS2_CheckFlagBit113c(m, nClassId, 0x12) != 0`, allocates companion object `0x23B` (`0x1B0`)
+ *    or `0x23C` (`0x1B1`) via `0x6FD01D90` (`SUNIT_AllocUnitData113c`).
  *
  * @va D2Game:0x6FC66F70
  */
 export function MONSTER_SpawnPresetOrEvilUrn113c(
   m: Memory113c,
+  nClassId: number,
   pGame: number,
   pRoom: number,
-  bFlag1: number,
   x: number,
   y: number,
-  nSuperUniqueOrClassId: number,
-  bIsEvilUrn: number,
+  nMode: number,
+  spawnAtCoordsOverride?: (
+    m: Memory113c,
+    nClassId: number,
+    nMode: number,
+    pGame: number,
+    pRoom: number,
+    x: number,
+    y: number,
+    nMaxRadius: number,
+    wFlags: number,
+  ) => number,
   callees?: BootInitGapACallees113c,
 ): number {
   hitD2GameVa113c(0x6FC66F70)
-  if (bIsEvilUrn === 0 && (nSuperUniqueOrClassId | 0) >= 0) {
-    if (callees !== undefined && callees.spawnSuperUniqueById !== undefined) {
-      if (callees.spawnSuperUniqueById(m, pGame, pRoom, x, y, nSuperUniqueOrClassId) !== 0) {
-        return 1
-      }
+  const cid = nClassId | 0
+  if (cid < 0) return 0
+
+  let pTables = 0
+  try {
+    const pIat = m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C) >>> 0
+    if (pIat !== 0) {
+      pTables = m.u32(pIat) >>> 0
+      if (pTables === 0) pTables = pIat
+    }
+  } catch {
+    // Fall back to direct D2Common!sgptDataTables pointer if IAT page is unloaded in standalone tests.
+  }
+  if (pTables === 0) {
+    try {
+      pTables = m.u32(0x6fde9e1c) >>> 0
+    } catch {
+      pTables = 0
+    }
+  }
+  if (pTables === 0) return 0
+
+  const nMonStatsCount = m.u32((pTables + 0xa80) >>> 0) | 0
+  if (cid >= nMonStatsCount) return 0
+  const pMonStatsBase = m.u32((pTables + 0xa78) >>> 0) >>> 0
+  const pMonStatsTxt = (pMonStatsBase + imul32(cid, 0x1a8)) >>> 0
+  if (pMonStatsTxt === 0) return 0
+
+  let spawnY = y | 0
+  let spawnMode = nMode | 0
+  if (cid === 0x1b2) {
+    spawnY = (spawnY - 1) | 0
+    if (pGame !== 0 && QUESTS_CheckNotIntro_6FC53970_113c(m, pGame, 0x20) === 0) {
+      spawnMode = 0x0c
     }
   }
 
-  const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom)
-  const pMonReg = m.u32((pGame + 0xf0 + imul32(nLevelId, 4)) >>> 0) >>> 0
-  if (pMonReg === 0) return 0
-  if (m.u8((pMonReg + 0x0c) >>> 0) === 0 || m.u8((pMonReg + 0x08) >>> 0) === 0) return 0
+  if (MONSTATS2_CheckFlagBit113c(m, cid, 0x0d) !== 0) {
+    return 0
+  }
 
-  const nClassId =
-    callees !== undefined && callees.pickEvilUrnMonsterClassId !== undefined
-      ? callees.pickEvilUrnMonsterClassId(m, pGame, pRoom, pMonReg) | 0
-      : nSuperUniqueOrClassId | 0
-  if (MONSTATS_ValidateClassId113c(m, nClassId) === 0) return 0
-  if (bIsEvilUrn !== 0 && MONSTATS2_CheckFlagBit113c(m, nClassId, 2) === 0) return 0
-
-  const pMonStatsTxt = MONSTATS_GetRecordPtr113c(m, nClassId) >>> 0
-  if (pMonStatsTxt === 0) return 0
-  if ((m.u8((pMonStatsTxt + 0x1a0) >>> 0) & 0x10) === 0) return 0
-
-  const sp = bootInitGapStackPtr
-  bootInitGapStackPtr = (sp + 0x20) >>> 0
-  const pCoordNode = sp
-  const pOutX = (sp + 8) >>> 0
-  const pOutY = (sp + 12) >>> 0
+  let bitMask2 = 4
   try {
-    m.setU32(pCoordNode, x >>> 0)
-    m.setU32((pCoordNode + 4) >>> 0, y >>> 0)
-    if (
-      REGPOP_FindPackSpawnCoords113c(
-        m,
-        pRoom,
-        pGame,
-        pCoordNode,
-        nClassId,
-        pOutX,
-        pOutY,
-        0,
-        callees !== undefined ? callees.regpop : undefined,
-      ) === 0
-    ) {
+    const pBitMasks = m.u32(D2GAME_IAT_GDW_BITMASKS_VA_113C) >>> 0
+    if (pBitMasks !== 0) {
+      const b = m.u8((pBitMasks + 8) >>> 0)
+      if (b !== 0) bitMask2 = b
+    }
+  } catch {
+    // Default bit 2 = 0x04 when gdwBitMasks IAT is unloaded.
+  }
+  const wFlags = (m.u8((pMonStatsTxt + 0x0e) >>> 0) & bitMask2) !== 0 ? 8 : 0
+
+  const doSpawn =
+    spawnAtCoordsOverride !== undefined
+      ? spawnAtCoordsOverride
+      : (
+          mem: Memory113c,
+          c: number,
+          md: number,
+          pg: number,
+          pr: number,
+          px: number,
+          py: number,
+          maxR: number,
+          wf: number,
+        ): number =>
+          MONSTER_SpawnAtCoords113c(
+            mem,
+            c,
+            md,
+            pg,
+            pr,
+            px,
+            py,
+            maxR,
+            wf,
+            callees !== undefined ? callees.regpop : undefined,
+          )
+
+  let pUnit = doSpawn(m, cid, spawnMode, pGame, pRoom, x | 0, spawnY, -1, wFlags) >>> 0
+  if (pUnit === 0) {
+    if (REGPOP_CanSpawnPresetMinionPack113c(m, cid) === 0) {
       return 0
     }
-    if (callees !== undefined && callees.spawnPresetPack !== undefined) {
-      return callees.spawnPresetPack(
-        m,
-        pGame,
-        pRoom,
-        nClassId,
-        m.u32(pOutX) | 0,
-        m.u32(pOutY) | 0,
-        bFlag1,
-      )
+    pUnit = doSpawn(m, cid, spawnMode, pGame, pRoom, x | 0, spawnY, 4, wFlags) >>> 0
+    if (pUnit === 0) {
+      return 0
     }
-    return 1
-  } finally {
-    bootInitGapStackPtr = sp
   }
+
+  if (MONSTATS2_CheckFlagBit113c(m, cid, 0x12) !== 0) {
+    if (cid < nMonStatsCount && cid === 0x1b0) {
+      const ux = UNIT_GetPosX113c(m, pUnit)
+      const uy = UNIT_GetPosY113c(m, pUnit)
+      SUNIT_AllocUnitData113c(m, 2, 0x23b, ux, uy, pGame, pRoom, 1, 0, 0)
+      return pUnit
+    }
+    if (MONSTATS_ValidateClassId113c(m, cid) === 0x1b1) {
+      const ux = UNIT_GetPosX113c(m, pUnit)
+      const uy = UNIT_GetPosY113c(m, pUnit)
+      SUNIT_AllocUnitData113c(m, 2, 0x23c, ux, uy, pGame, pRoom, 1, 0, 0)
+    }
+  }
+  return pUnit
 }
 
 /**
@@ -1755,42 +1876,48 @@ export function OBJECT_SendUpdatePacketsToClient113c(
   const sp = bootInitGapStackPtr
   bootInitGapStackPtr = (sp + 0x30) >>> 0
   const pkt0E = sp
-  const pkt2C = (sp + 0x10) >>> 0
+  const pkt4D = (sp + 0x10) >>> 0
   try {
-    const dwFlags = m.u32((pObject + 0xc4) >>> 0)
-    if ((dwFlags & 0x40) !== 0) {
-      m.fill(pkt0E, 0x0c, 0)
-      m.setU8(pkt0E, 0x0e)
-      m.setU8((pkt0E + 1) >>> 0, m.u8(pObject >>> 0))
-      m.setU32((pkt0E + 2) >>> 0, m.u32((pObject + 0x0c) >>> 0))
-      m.setU8((pkt0E + 6) >>> 0, m.u8((pObject + 0x10) >>> 0))
-      m.setU8((pkt0E + 7) >>> 0, (m.u8((pObject + 0xc5) >>> 0) >>> 3) & 1)
-      const pObjData = m.u32((pObject + 0x14) >>> 0) >>> 0
-      const subType = pObjData !== 0 ? m.u8((pObjData + 0x04) >>> 0) : 0
-      m.setU8((pkt0E + 8) >>> 0, subType)
-      m.setU8((pkt0E + 11) >>> 0, subType)
-      NET_QueuePacketToClientBuffer113c(m, pClient, 1, pkt0E, 0x0c)
-    }
+    const dwFlags = pObject !== 0 ? m.u32((pObject + 0xc4) >>> 0) >>> 0 : 0
+    const dwUnitId = pObject !== 0 ? m.u32((pObject + 0x0c) >>> 0) >>> 0 : 0xffffffff
+    const wAnimMode = pObject !== 0 ? m.u16((pObject + 0x10) >>> 0) : 0
+    m.fill(pkt0E, 0x0c, 0)
+    m.setU8(pkt0E, 0x0e)
+    m.setU8((pkt0E + 1) >>> 0, 0x02)
+    m.setU32((pkt0E + 2) >>> 0, dwUnitId)
+    m.setU8((pkt0E + 6) >>> 0, 0x03)
+    m.setU8((pkt0E + 7) >>> 0, (dwFlags >>> 1) & 1)
+    m.setU32((pkt0E + 8) >>> 0, wAnimMode >>> 0)
+    NET_QueuePacketToClientBuffer113c(m, pClient, 1, pkt0E, 0x0c)
 
-    const dwFlags2 = m.u32((pObject + 0xc8) >>> 0)
-    if ((dwFlags2 & 0x200000) !== 0) {
-      const pShrineTxt = UNITS_GetObjectShrineTxt113c(m, pObject) >>> 0
-      const pObjData = m.u32((pObject + 0x14) >>> 0) >>> 0
-      m.fill(pkt2C, 8, 0)
-      m.setU8(pkt2C, 0x2c)
-      m.setU8((pkt2C + 1) >>> 0, m.u8(pObject >>> 0))
-      m.setU32((pkt2C + 2) >>> 0, m.u32((pObject + 0x0c) >>> 0))
-      const wSpeech =
-        pShrineTxt !== 0
-          ? m.u16((pShrineTxt + 0x0e) >>> 0)
-          : ((pObjData !== 0 ? m.u8((pObjData + 0x04) >>> 0) : 0) + 0x111) & 0xffff
-      m.setU16((pkt2C + 6) >>> 0, wSpeech)
-      NET_QueuePacketToClientBuffer113c(m, pClient, 1, pkt2C, 8)
-    }
-
-    if ((m.u32((pObject + 0xc8) >>> 0) & 0x100000) !== 0) {
+    if (pObject === 0) return
+    const pObjData = m.u32((pObject + 0x14) >>> 0) >>> 0
+    const pObjTxtRaw = pObjData !== 0 ? (m.u32(pObjData) >>> 0) : 0
+    const pObjTxt =
+      pObjTxtRaw !== 0
+        ? pObjTxtRaw
+        : (DATATBLS_GetObjectsTxtRecord113c(m, m.u32((pObject + 4) >>> 0) | 0) >>> 0)
+    if (pObjTxt === 0) return
+    const subClass = m.u8((pObjTxt + 0x167) >>> 0)
+    if (subClass === 0) return
+    if ((subClass & 0x04) !== 0) {
       if (callees !== undefined && callees.onObjectQuestSync !== undefined) {
         callees.onObjectQuestSync(m, m.u32((pObject + 0x80) >>> 0), pObject, pClient)
+      }
+      return
+    }
+    if (m.u32((pObject + 0x10) >>> 0) === 1 && (subClass & 0x01) !== 0) {
+      const pShrineTxt = UNITS_GetObjectShrineTxt113c(m, pObject) >>> 0
+      const shrineByte = pShrineTxt !== 0 ? m.u8(pShrineTxt) : 0
+      const shrineType = m.u32((pObjData + 0x0c) >>> 0) >>> 0
+      if (shrineType !== 0) {
+        m.fill(pkt4D, 0x11, 0)
+        m.setU8(pkt4D, 0x4d)
+        m.setU8((pkt4D + 1) >>> 0, 0x02)
+        m.setU32((pkt4D + 2) >>> 0, dwUnitId)
+        m.setU32((pkt4D + 6) >>> 0, (shrineType - 1) >>> 0)
+        m.setU8((pkt4D + 10) >>> 0, shrineByte)
+        NET_QueuePacketToClientBuffer113c(m, pClient, 1, pkt4D, 0x11)
       }
     }
   } finally {
@@ -1904,187 +2031,190 @@ export function MONSTER_ApplyElementalDamageAndResistStats113c(
   m: Memory113c,
   pGame: number,
   pMonster: number,
-  bFlag: number,
+  nMode: number,
 ): void {
   hitD2GameVa113c(0x6FC97240)
-  if (pMonster === 0 || m.u32(pMonster >>> 0) !== 1 || pGame === 0) return
+  if (pMonster === 0 || m.u32(pMonster >>> 0) !== 1) return
+  const pMonData = m.u32((pMonster + 0x14) >>> 0) >>> 0
+  if (pMonData === 0) return
   const nClassId = m.u32((pMonster + 0x04) >>> 0) | 0
-  const pMonStatsTxt = MONSTATS_GetRecordPtr113c(m, nClassId) >>> 0
+  const pMonStatsTxt = (m.u32(pMonData) || MONSTATS_GetRecordPtr113c(m, nClassId)) >>> 0
   if (pMonStatsTxt === 0) return
 
-  const pStatList = STATLIST_GetStatListFromUnitAndFlag113c(m, pMonster, 0) >>> 0
-  if (pStatList === 0) return
-
-  let nDifficulty = m.u8((pGame + 0x6d) >>> 0) | 0
-  if (nDifficulty < 0) {
-    nDifficulty = 0
-  } else if (nDifficulty > 2) {
-    nDifficulty = 2
-  }
-  const bIsExpansion = m.u16((pGame + 0x6a) >>> 0)
-  const nLevel = STATLIST_GetUnitStat113c(m, pMonster, 0x0c, 0) | 0
-  const isEvilAlign = UNIT_GetAlignment113c(m, pMonster) === 2
-
-  if (isEvilAlign) {
-    STATLIST_ClearBaseStats113c(m, pStatList)
-  }
-
   const sp = bootInitGapStackPtr
-  bootInitGapStackPtr = (sp + 0x40) >>> 0
-  const pMonLvlStats = sp
+  bootInitGapStackPtr = (sp + 0x60) >>> 0
+  const pBonusArr = sp
+  const pCalcBlock = (sp + 0x10) >>> 0
   try {
-    m.fill(pMonLvlStats, 0x2c, 0)
+    m.setU32(pBonusArr, 0)
+    m.setU32((pBonusArr + 0x04) >>> 0, 0)
+    m.setU32((pBonusArr + 0x08) >>> 0, 0)
+
+    // 0x6FC9728C: D2GAME_MONSTER_ApplyMercStatsOnOwner(pMonster, pBonusArr)
+    D2GAME_MONSTER_ApplyMercStatsOnOwner113c(
+      m,
+      pMonster,
+      pBonusArr,
+      m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C) >>> 0,
+    )
+
+    // 0x6FC97291..0x6FC972A9: get monster's flag=1 attack-mode statlist and clear it
+    const pStatList = STATLIST_GetStatListFromUnitAndFlag113c(m, pMonster, 1) >>> 0
+    if (pStatList === 0) return
+    STATLIST_ClearBaseStats113c(m, pStatList)
+
+    // 0x6FC972AA..0x6FC972DC: resolve pGame, nDiff, bExpansionFlag
+    const pGameResolved = (D2GAME_SUNIT_GetGameFromUnit113c(m, pMonster) || pGame) >>> 0
+    if (pGameResolved === 0) return
+    const rawDiff = m.u8((pGameResolved + 0x6d) >>> 0) | 0
+    const nDifficulty = rawDiff <= 0 ? 0 : rawDiff >= 2 ? 2 : 1
+    const dwExpansion = m.u32((pGameResolved + 0x70) >>> 0) >>> 0
+    const bIsExpansion =
+      m.u8((pGameResolved + 0x6a) >>> 0) !== 0 ||
+      m.u32((pGameResolved + 0x74) >>> 0) !== 0 ||
+      dwExpansion !== 0
+        ? 1
+        : 0
+
+    // 0x6FC972DD..0x6FC9730C: alignment == 0 -> MONSTER_GetHirelingLevelBonusFactor(pGame, max(1, stat 0x64))
+    let bonusFactor = 0
+    if (UNIT_GetAlignment113c(m, pMonster) === 0) {
+      let playerCount = STATLIST_GetUnitStat113c(m, pMonster, 0x64, 0) | 0
+      if (playerCount < 1) playerCount = 1
+      bonusFactor = MONSTER_GetHirelingLevelBonusFactor113c(m, pGameResolved, playerCount) | 0
+    }
+
+    // 0x6FC9730D..0x6FC97410: A1 / A2 / S1 base damage & toHit calculation
+    const mode = nMode | 0
+    const mlvl = STATLIST_GetUnitStat113c(m, pMonster, 0x0c, 0) | 0
+    m.fill(pCalcBlock, 0x38, 0)
+    let calcFlags = 0x08
+    let minOff = 0x14
+    let maxOff = 0x18
+    if (mode === 5) {
+      calcFlags = 0x10
+      minOff = 0x1c
+      maxOff = 0x20
+    } else if (mode === 7 || mode === 8) {
+      calcFlags = 0x20
+      minOff = 0x24
+      maxOff = 0x28
+    }
     DATATBLS_CalculateMonsterStatsByLevel113c(
       m,
       nClassId,
       bIsExpansion,
       nDifficulty,
-      nLevel,
-      0x3f,
-      pMonLvlStats,
+      mlvl,
+      calcFlags,
+      pCalcBlock,
     )
+    let minD = ((m.u32((pCalcBlock + minOff) >>> 0) | 0) + (m.u32(pBonusArr) | 0)) | 0
+    let maxD = ((m.u32((pCalcBlock + maxOff) >>> 0) | 0) + (m.u32((pBonusArr + 0x04) >>> 0) | 0)) | 0
+    let toHit = ((m.u32((pCalcBlock + 0x0c) >>> 0) | 0) + (m.u32((pBonusArr + 0x08) >>> 0) | 0)) | 0
 
-    const diffOff = imul32(nDifficulty, 0x2a)
-    if (bFlag !== 0) {
-      const min1 = Math.trunc(
-        imul32(readI16(m, (pMonStatsTxt + diffOff + 0xec) >>> 0), m.u32((pMonLvlStats + 0x0c) >>> 0) | 0) /
-          100,
-      )
-      STATLIST_SetStat113c(m, pStatList, 0x16, min1, 0)
-
-      const max1 = Math.trunc(
-        imul32(readI16(m, (pMonStatsTxt + diffOff + 0xee) >>> 0), m.u32((pMonLvlStats + 0x0c) >>> 0) | 0) /
-          100,
-      )
-      STATLIST_SetStat113c(m, pStatList, 0x17, max1, 0)
-
-      const th1 = Math.trunc(
-        imul32(readI16(m, (pMonStatsTxt + diffOff + 0xf4) >>> 0), m.u32((pMonLvlStats + 0x08) >>> 0) | 0) /
-          100,
-      )
-      STATLIST_SetStat113c(m, pStatList, 0x13, th1, 0)
-      STATLIST_SetStat113c(m, pStatList, 0x43, 0, 0)
-      STATLIST_SetStat113c(m, pStatList, 0x44, 0, 0)
-      STATLIST_SetStat113c(m, pStatList, 0x45, 0, 0)
-    } else {
-      const min1 = Math.trunc(
-        imul32(readI16(m, (pMonStatsTxt + diffOff + 0xec) >>> 0), m.u32((pMonLvlStats + 0x10) >>> 0) | 0) /
-          100,
-      )
-      STATLIST_SetStat113c(m, pStatList, 0x16, min1, 0)
-
-      const max1 = Math.trunc(
-        imul32(readI16(m, (pMonStatsTxt + diffOff + 0xee) >>> 0), m.u32((pMonLvlStats + 0x10) >>> 0) | 0) /
-          100,
-      )
-      STATLIST_SetStat113c(m, pStatList, 0x17, max1, 0)
-
-      const min2 = Math.trunc(
-        imul32(readI16(m, (pMonStatsTxt + diffOff + 0xf0) >>> 0), m.u32((pMonLvlStats + 0x10) >>> 0) | 0) /
-          100,
-      )
-      STATLIST_SetStat113c(m, pStatList, 0x18, min2, 0)
-
-      const max2 = Math.trunc(
-        imul32(readI16(m, (pMonStatsTxt + diffOff + 0xf2) >>> 0), m.u32((pMonLvlStats + 0x10) >>> 0) | 0) /
-          100,
-      )
-      STATLIST_SetStat113c(m, pStatList, 0x19, max2, 0)
-
-      const th1 = Math.trunc(
-        imul32(readI16(m, (pMonStatsTxt + diffOff + 0xf4) >>> 0), m.u32((pMonLvlStats + 0x08) >>> 0) | 0) /
-          100,
-      )
-      STATLIST_SetStat113c(m, pStatList, 0x13, th1, 0)
-
-      const th2 = Math.trunc(
-        imul32(readI16(m, (pMonStatsTxt + diffOff + 0xf6) >>> 0), m.u32((pMonLvlStats + 0x08) >>> 0) | 0) /
-          100,
-      )
-      STATLIST_SetStat113c(m, pStatList, 0x14, th2, 0)
-
-      const ac = Math.trunc(
-        imul32(readI16(m, (pMonStatsTxt + diffOff + 0xe4) >>> 0), m.u32((pMonLvlStats + 0x04) >>> 0) | 0) /
-          100,
-      )
-      STATLIST_SetStat113c(m, pStatList, 0x1f, ac, 0)
+    // 0x6FC97415..0x6FC97478: Classic NM/Hell scaling when bNoRatio (+0x4C) != 1
+    if (dwExpansion === 0) {
+      if (nDifficulty !== 0 && m.u8((pMonStatsTxt + 0x4c) >>> 0) !== 1) {
+        minD = Math.trunc((minD * 10) / 6) | 0
+        maxD = Math.trunc((maxD * 10) / 6) | 0
+        toHit = Math.trunc((toHit * 10) / 9) | 0
+      }
+    } else if (bonusFactor !== 0) {
+      // 0x6FC9747A..0x6FC974B5: Expansion player-count bonus (trunc(v * bonusFactor / 128))
+      minD = (minD + Math.trunc(imul32(minD, bonusFactor) / 128)) | 0
+      maxD = (maxD + Math.trunc(imul32(maxD, bonusFactor) / 128)) | 0
+      toHit = (toHit + Math.trunc(imul32(toHit, bonusFactor) / 128)) | 0
     }
 
+    // 0x6FC974B6..0x6FC974D6: STAT_MINDAMAGE (21), STAT_MAXDAMAGE (22), STAT_TOHIT (19) on flag=1 list
+    STATLIST_SetStat113c(m, pStatList, 0x15, minD, 0)
+    STATLIST_SetStat113c(m, pStatList, 0x16, maxD, 0)
+    STATLIST_SetStat113c(m, pStatList, 0x13, toHit, 0)
+
+    // 0x6FC974D7..0x6FC9774A: El1..El3 elemental mode-matched damage rolls
     const pSeed = (pMonster + 0x20) >>> 0
     for (let slot = 0; slot < 3; slot++) {
-      const pElem = (pMonStatsTxt + 0x154 + slot * 8) >>> 0
-      const nElemType = m.u8(pElem)
-      if (nElemType !== 0) {
-        const nChance = m.u8((pElem + nDifficulty + 2) >>> 0)
-        if (nChance > 0 && seedRollMem113c(m, pSeed, 100) < nChance) {
-          const elemDiffOff = (pElem + nDifficulty * 2) >>> 0
-          const scaleDmg = m.u32((pMonLvlStats + (bFlag !== 0 ? 0x0c : 0x10)) >>> 0) | 0
-          const edi = Math.trunc(imul32(readI16(m, (elemDiffOff + 5) >>> 0), scaleDmg) / 100)
-          const ebx = Math.trunc(imul32(readI16(m, (elemDiffOff + 0x0b) >>> 0), scaleDmg) / 100)
-          const ebp = readI16(m, (elemDiffOff + 0x11) >>> 0)
-
-          switch (nElemType) {
-            case 1:
-              STATLIST_SetStat113c(m, pStatList, 0x30, edi, 0)
-              STATLIST_SetStat113c(m, pStatList, 0x31, ebx, 0)
-              break
-            case 2:
-              STATLIST_SetStat113c(m, pStatList, 0x32, edi, 0)
-              STATLIST_SetStat113c(m, pStatList, 0x33, ebx, 0)
-              break
-            case 3:
-              STATLIST_SetStat113c(m, pStatList, 0x34, edi, 0)
-              STATLIST_SetStat113c(m, pStatList, 0x35, ebx, 0)
-              break
-            case 4:
-              STATLIST_SetStat113c(m, pStatList, 0x36, edi, 0)
-              STATLIST_SetStat113c(m, pStatList, 0x37, ebx, 0)
-              STATLIST_SetStat113c(m, pStatList, 0x38, ebp, 0)
-              break
-            case 5:
-              STATLIST_SetStat113c(m, pStatList, 0x39, imul32(edi, 10), 0)
-              STATLIST_SetStat113c(m, pStatList, 0x3a, imul32(ebx, 10), 0)
-              STATLIST_SetStat113c(m, pStatList, 0x3b, ebp * 2, 0)
-              break
-            case 6:
-              STATLIST_SetStat113c(m, pStatList, 0x3c, edi, 0)
-              STATLIST_SetStat113c(m, pStatList, 0x3d, ebx, 0)
-              break
-            case 7:
-              STATLIST_SetStat113c(m, pStatList, 0x3e, edi, 0)
-              STATLIST_SetStat113c(m, pStatList, 0x3f, ebx, 0)
-              break
-            case 8:
-              STATLIST_SetStat113c(m, pStatList, 0x40, edi, 0)
-              STATLIST_SetStat113c(m, pStatList, 0x41, ebx, 0)
-              break
-            case 9:
-              STATLIST_SetStat113c(m, pStatList, 0x42, ebp, 0)
-              break
-            case 10:
-              break
-            case 11:
-              STATLIST_SetStat113c(m, pStatList, 0x13c, edi, 0)
-              STATLIST_SetStat113c(m, pStatList, 0x13d, ebx, 0)
-              STATLIST_SetStat113c(m, pStatList, 0x13b, ebp, 0)
-              break
-            default:
-              break
-          }
-        }
+      const elMode = m.u8((pMonStatsTxt + 0xfe + slot) >>> 0)
+      if (elMode === 0 || elMode !== mode) continue
+      const elPct = m.u8((pMonStatsTxt + 0x104 + slot * 3 + nDifficulty) >>> 0)
+      if (elPct === 0) continue
+      if (elPct < 100) {
+        if ((SEED_RollLimitedRandomNumber113c(m, pSeed, 100) | 0) >= elPct) continue
       }
-    }
 
-    if (isEvilAlign) {
-      return
-    }
+      m.fill(pCalcBlock, 0x38, 0)
+      const curMlvl = STATLIST_GetUnitStat113c(m, pMonster, 0x0c, 0) | 0
+      DATATBLS_CalculateMonsterStatsByLevel113c(
+        m,
+        nClassId,
+        bIsExpansion,
+        nDifficulty,
+        curMlvl,
+        (0x40 + slot) | 0,
+        pCalcBlock,
+      )
+      let elMin = m.u32((pCalcBlock + 0x2c) >>> 0) | 0
+      let elMax = m.u32((pCalcBlock + 0x30) >>> 0) | 0
+      let elLen = m.u32((pCalcBlock + 0x34) >>> 0) | 0
+      if (dwExpansion !== 0 && bonusFactor !== 0) {
+        elMin = (elMin + Math.trunc(imul32(elMin, bonusFactor) / 128)) | 0
+        elMax = (elMax + Math.trunc(imul32(elMax, bonusFactor) / 128)) | 0
+        elLen = (elLen + Math.trunc(imul32(elLen, bonusFactor) / 128)) | 0
+      }
 
-    const resBase = (pMonStatsTxt + 0x10e + imul32(nDifficulty, 0x0c)) >>> 0
-    const resStatIds: readonly number[] = [0x24, 0x25, 0x27, 0x29, 0x2b, 0x2d]
-    for (let i = 0; i < 6; i++) {
-      const val = readI16(m, (resBase + i * 2) >>> 0)
-      const clamped = val <= 0 ? 0 : val
-      STATLIST_SetStat113c(m, pStatList, resStatIds[i]!, clamped, 0)
+      let elType = m.u8((pMonStatsTxt + 0x101 + slot) >>> 0)
+      if (elType === 10) {
+        elType = ((SEED_RollLimitedRandomNumber113c(m, pSeed, 5) | 0) + 1) & 0xff
+        if (elLen === 0) elLen = 0x19
+      }
+
+      switch (elType) {
+        case 1:
+          STATLIST_SetStat113c(m, pStatList, 0x30, elMin, 0)
+          STATLIST_SetStat113c(m, pStatList, 0x31, elMax, 0)
+          break
+        case 2:
+          STATLIST_SetStat113c(m, pStatList, 0x32, elMin, 0)
+          STATLIST_SetStat113c(m, pStatList, 0x33, elMax, 0)
+          break
+        case 3:
+          STATLIST_SetStat113c(m, pStatList, 0x34, elMin, 0)
+          STATLIST_SetStat113c(m, pStatList, 0x35, elMax, 0)
+          break
+        case 4:
+          STATLIST_SetStat113c(m, pStatList, 0x36, elMin, 0)
+          STATLIST_SetStat113c(m, pStatList, 0x37, elMax, 0)
+          STATLIST_SetStat113c(m, pStatList, 0x38, elLen, 0)
+          break
+        case 5:
+          STATLIST_SetStat113c(m, pStatList, 0x39, imul32(elMin, 10), 0)
+          STATLIST_SetStat113c(m, pStatList, 0x3a, imul32(elMax, 10), 0)
+          STATLIST_SetStat113c(m, pStatList, 0x3b, (elLen * 2) | 0, 0)
+          break
+        case 6:
+          STATLIST_SetStat113c(m, pStatList, 0x3c, elMin, 0)
+          STATLIST_SetStat113c(m, pStatList, 0x3d, elMax, 0)
+          break
+        case 7:
+          STATLIST_SetStat113c(m, pStatList, 0x3e, elMin, 0)
+          STATLIST_SetStat113c(m, pStatList, 0x3f, elMax, 0)
+          break
+        case 8:
+          STATLIST_SetStat113c(m, pStatList, 0x40, elMin, 0)
+          STATLIST_SetStat113c(m, pStatList, 0x41, elMax, 0)
+          break
+        case 9:
+          STATLIST_SetStat113c(m, pStatList, 0x42, elLen, 0)
+          break
+        case 11:
+          STATLIST_SetStat113c(m, pStatList, 0x13c, elMin, 0)
+          STATLIST_SetStat113c(m, pStatList, 0x13d, elMax, 0)
+          STATLIST_SetStat113c(m, pStatList, 0x13b, elLen, 0)
+          break
+        default:
+          break
+      }
     }
   } finally {
     bootInitGapStackPtr = sp
@@ -2104,65 +2234,79 @@ export function UNIT_SyncStateAndStatsToClient113c(
   callees?: BootInitGapACallees113c,
 ): void {
   hitD2GameVa113c(0x6FC988B0)
-  if (UNITS_HasAnyGfxStateFlag113c(m, pUnit) !== 0) {
-    UNIT_SendGfxStatesBitstreamToClient113c(m, pUnit, pClient)
-  }
+  if (pClient === 0) return
 
-  if (STATLIST_CheckUnitStatListFlag100113c(m, pUnit) !== 0) {
-    const uType = m.u32(pUnit >>> 0)
-    if (uType === 0 && m.u32((pClient + 0x174) >>> 0) === (pUnit >>> 0)) {
-      const cb =
-        callees !== undefined && callees.onStatModifiedNotify !== undefined
-          ? callees.onStatModifiedNotify
-          : undefined
-      for (let statId = 0; statId < 0x33; statId++) {
-        STATLIST_NotifyIfStatModified113c(m, pUnit, pClient, statId, 0, cb)
-      }
-      const curLife = STATLIST_GetUnitStat113c(m, pUnit, 6, 0) | 0
-      const curMana = STATLIST_GetUnitStat113c(m, pUnit, 8, 0) | 0
-      const curStamina = STATLIST_GetUnitStat113c(m, pUnit, 0x0a, 0) | 0
-      if (
-        curLife !== (m.u32((pClient + 0x48c) >>> 0) | 0) ||
-        curMana !== (m.u32((pClient + 0x490) >>> 0) | 0) ||
-        curStamina !== (m.u32((pClient + 0x494) >>> 0) | 0)
-      ) {
-        m.setU32((pClient + 0x48c) >>> 0, curLife >>> 0)
-        m.setU32((pClient + 0x490) >>> 0, curMana >>> 0)
-        m.setU32((pClient + 0x494) >>> 0, curStamina >>> 0)
-        if (callees !== undefined && callees.sendLifeManaStaminaPacket !== undefined) {
-          callees.sendLifeManaStaminaPacket(m, pClient, pUnit, curLife, curMana, curStamina)
-        }
-      }
-    } else if (uType === 1) {
-      const cb =
-        callees !== undefined && callees.onStatModifiedNotify !== undefined
-          ? callees.onStatModifiedNotify
-          : undefined
-      STATLIST_NotifyIfStatModified113c(m, pUnit, pClient, 0x1f, 0, cb)
-      STATLIST_NotifyIfStatModified113c(m, pUnit, pClient, 0x15, 0, cb)
+  const dwFlags = pUnit !== 0 ? (m.u32((pUnit + 0xc4) >>> 0) >>> 0) : 0
+
+  // 0x6FC989A0..0x6FC989B8: `dwFlags & 0x01` -> player mode sync
+  if (pUnit !== 0 && (dwFlags & 0x01) !== 0) {
+    if (callees !== undefined && callees.syncPlayerMode !== undefined) {
+      callees.syncPlayerMode(m, pGame, pClient, pUnit)
     }
   }
 
-  const dwFlags = m.u32((pUnit + 0xc4) >>> 0)
-  if ((dwFlags & 0x400) !== 0) {
+  // 0x6FC989B8..0x6FC989BA: flush event notify queue (`pUnit + 0xEC`)
+  if (pUnit !== 0 && m.u32((pUnit + 0xec) >>> 0) !== 0) {
+    UNIT_FlushEventNotifyQueueToClient113c(m, pClient, pUnit, callees)
+  }
+
+  // 0x6FC989C3..0x6FC989DE: `dwFlags & 0x400` -> unit event sound (`0x6FC9AC50`)
+  if (pUnit !== 0 && (dwFlags & 0x400) !== 0) {
     if (callees !== undefined && callees.sendUnitEventSound !== undefined) {
       callees.sendUnitEventSound(m, pClient, pUnit, m.u16((pUnit + 0xd8) >>> 0))
     }
   }
 
-  if (((m.u32((pUnit + 0xc4) >>> 0) >>> 15) & 1) !== 0) {
+  // 0x6FC989FC..0x6FC98A16: `dwFlags & 0x8000` -> hit/gethit stop sync (`0x6FCEBBB0`)
+  if (pUnit !== 0 && ((dwFlags >>> 15) & 1) !== 0) {
     if (callees !== undefined && callees.syncUnitFlag8000 !== undefined) {
       callees.syncUnitFlag8000(m, pGame, pClient, pUnit)
     }
   }
 
-  if (m.u32((pUnit + 0xec) >>> 0) !== 0) {
-    UNIT_FlushEventNotifyQueueToClient113c(m, pClient, pUnit, callees)
+  // 0x6FC98A16..0x6FC98A27: `UNITS_HasAnyGfxStateFlag` -> `UNIT_SendGfxStatesBitstreamToClient`
+  if (pUnit !== 0 && UNITS_HasAnyGfxStateFlag113c(m, pUnit) !== 0) {
+    UNIT_SendGfxStatesBitstreamToClient113c(m, pUnit, pClient)
   }
 
-  if ((m.u8((pUnit + 0xc6) >>> 0) & 1) !== 0 || (m.u8((pUnit + 0xc4) >>> 0) & 0x80) !== 0) {
-    if (callees !== undefined && callees.sendUnitUpdateFlagsPacket !== undefined) {
-      callees.sendUnitUpdateFlagsPacket(m, pClient, pUnit)
+  // 0x6FC98A27..0x6FC98A78: statlist flag 0x100 + modified stat notifications (0x43, 0x44, 0x0C, 0, 2)
+  if (pUnit !== 0 && STATLIST_CheckUnitStatListFlag100113c(m, pUnit) !== 0) {
+    const uType = m.u32(pUnit >>> 0)
+    if (uType === 0 && m.u32((pClient + 0x174) >>> 0) === (pUnit >>> 0)) {
+      if (callees !== undefined && callees.sendLifeManaStaminaPacket !== undefined) {
+        const curLife = STATLIST_GetUnitStat113c(m, pUnit, 6, 0) | 0
+        const curMana = STATLIST_GetUnitStat113c(m, pUnit, 8, 0) | 0
+        const curStamina = STATLIST_GetUnitStat113c(m, pUnit, 0x0a, 0) | 0
+        if (
+          curLife !== (m.u32((pClient + 0x48c) >>> 0) | 0) ||
+          curMana !== (m.u32((pClient + 0x490) >>> 0) | 0) ||
+          curStamina !== (m.u32((pClient + 0x494) >>> 0) | 0)
+        ) {
+          m.setU32((pClient + 0x48c) >>> 0, curLife >>> 0)
+          m.setU32((pClient + 0x490) >>> 0, curMana >>> 0)
+          m.setU32((pClient + 0x494) >>> 0, curStamina >>> 0)
+          callees.sendLifeManaStaminaPacket(m, pClient, pUnit, curLife, curMana, curStamina)
+        }
+      }
+    }
+  }
+
+  if (pUnit !== 0) {
+    const pClientPlayer = m.u32((pClient + 0x174) >>> 0) >>> 0
+    const cb =
+      callees !== undefined && callees.onStatModifiedNotify !== undefined
+        ? callees.onStatModifiedNotify
+        : undefined
+    STATLIST_NotifyIfStatModified113c(m, pUnit, pClientPlayer, 0x43, 0, cb)
+    STATLIST_NotifyIfStatModified113c(m, pUnit, pClientPlayer, 0x44, 0, cb)
+    STATLIST_NotifyIfStatModified113c(m, pUnit, pClientPlayer, 0x0c, 0, cb)
+    STATLIST_NotifyIfStatModified113c(m, pUnit, pClientPlayer, 0, 0, cb)
+    STATLIST_NotifyIfStatModified113c(m, pUnit, pClientPlayer, 2, 0, cb)
+
+    if ((m.u8((pUnit + 0xc6) >>> 0) & 1) !== 0 || (m.u8((pUnit + 0xc4) >>> 0) & 0x80) !== 0) {
+      if (callees !== undefined && callees.sendUnitUpdateFlagsPacket !== undefined) {
+        callees.sendUnitUpdateFlagsPacket(m, pClient, pUnit)
+      }
     }
   }
 }
@@ -2480,9 +2624,11 @@ export function UNIT_SendFullUnitSyncToClient113c(
   if (((m.u32((pUnit + 0xc4) >>> 0) >>> 11) & 1) !== 0) return
 
   const sp = bootInitGapStackPtr
-  bootInitGapStackPtr = (sp + 0x20) >>> 0
+  bootInitGapStackPtr = (sp + 0x30) >>> 0
   const pPkt09 = sp
+  const pTargetPos = (sp + 0x10) >>> 0
   try {
+    PATH_GetTargetTypeAndPosition113c(m, pUnit, pTargetPos)
     const dwUnitType = m.u32(pUnit >>> 0)
     switch (dwUnitType) {
       case 0:
@@ -2640,12 +2786,14 @@ export function EVENT_ExecutePlayerEvents113c(
   pTimer: number,
   nSlot: number,
   callees?: BootInitGapACallees113c,
-): void {
+): number {
   hitD2GameVa113c(0x6FCAE9A0)
+  let firedCount = 0
   let node = m.get(pTimer, D2TimerStrc.pPersistentHead, 0)
   while (node !== 0) {
     m.set(pTimer, D2TimerStrc.pSavedNext, m.get(node, D2EventStrc.pWheelNewer))
     m.set(node, D2EventStrc.fFlags, m.get(node, D2EventStrc.fFlags) | EVENT_FLAG_FIRING)
+    firedCount++
     if (callees !== undefined && callees.dispatchPlayerEvent !== undefined) {
       callees.dispatchPlayerEvent(
         m,
@@ -2654,6 +2802,7 @@ export function EVENT_ExecutePlayerEvents113c(
         m.get(node, D2EventStrc.nType),
         m.get(node, D2EventStrc.dwArg14),
         m.get(node, D2EventStrc.dwArg18),
+        node,
       )
     }
     const postFlags = m.get(node, D2EventStrc.fFlags) & ~EVENT_FLAG_FIRING
@@ -2671,6 +2820,7 @@ export function EVENT_ExecutePlayerEvents113c(
     m.set(pTimer, D2TimerStrc.pSavedNext, m.get(node, D2EventStrc.pWheelNewer))
     if ((m.get(node, D2EventStrc.dwFrame) >>> 0) === frame) {
       m.set(node, D2EventStrc.fFlags, m.get(node, D2EventStrc.fFlags) | EVENT_FLAG_FIRING)
+      firedCount++
       if (callees !== undefined && callees.dispatchPlayerEvent !== undefined) {
         callees.dispatchPlayerEvent(
           m,
@@ -2679,6 +2829,7 @@ export function EVENT_ExecutePlayerEvents113c(
           m.get(node, D2EventStrc.nType),
           m.get(node, D2EventStrc.dwArg14),
           m.get(node, D2EventStrc.dwArg18),
+          node,
         )
       }
       const postFlags = m.get(node, D2EventStrc.fFlags) & ~EVENT_FLAG_FIRING
@@ -2688,6 +2839,7 @@ export function EVENT_ExecutePlayerEvents113c(
     node = m.get(pTimer, D2TimerStrc.pSavedNext)
   }
   m.set(pTimer, D2TimerStrc.pSavedNext, 0)
+  return firedCount
 }
 
 /**
@@ -2701,8 +2853,9 @@ export function EVENT_ExecuteMonsterEvents113c(
   pTimer: number,
   nSlot: number,
   callees?: BootInitGapACallees113c,
-): void {
+): number {
   hitD2GameVa113c(0x6FCAEBC0)
+  let firedCount = 0
   let node = m.get(pTimer, D2TimerStrc.pPersistentHead, 1)
   while (node !== 0) {
     m.set(pTimer, D2TimerStrc.pSavedNext, m.get(node, D2EventStrc.pWheelNewer))
@@ -2711,8 +2864,9 @@ export function EVENT_ExecuteMonsterEvents113c(
     const evType = m.get(node, D2EventStrc.nType)
     const arg14 = m.get(node, D2EventStrc.dwArg14)
     const arg18 = m.get(node, D2EventStrc.dwArg18)
+    firedCount++
     if (callees !== undefined && callees.dispatchMonsterEvent !== undefined) {
-      callees.dispatchMonsterEvent(m, pGame, pUnit, evType, arg14, arg18)
+      callees.dispatchMonsterEvent(m, pGame, pUnit, evType, arg14, arg18, node)
     } else if (callees !== undefined && callees.monsterEvents !== undefined) {
       MONSTER_DispatchEvent113c(m, pGame, pUnit, evType, arg14, arg18, callees.monsterEvents)
     }
@@ -2735,8 +2889,9 @@ export function EVENT_ExecuteMonsterEvents113c(
       const evType = m.get(node, D2EventStrc.nType)
       const arg14 = m.get(node, D2EventStrc.dwArg14)
       const arg18 = m.get(node, D2EventStrc.dwArg18)
+      firedCount++
       if (callees !== undefined && callees.dispatchMonsterEvent !== undefined) {
-        callees.dispatchMonsterEvent(m, pGame, pUnit, evType, arg14, arg18)
+        callees.dispatchMonsterEvent(m, pGame, pUnit, evType, arg14, arg18, node)
       } else if (callees !== undefined && callees.monsterEvents !== undefined) {
         MONSTER_DispatchEvent113c(m, pGame, pUnit, evType, arg14, arg18, callees.monsterEvents)
       }
@@ -2747,6 +2902,7 @@ export function EVENT_ExecuteMonsterEvents113c(
     node = m.get(pTimer, D2TimerStrc.pSavedNext)
   }
   m.set(pTimer, D2TimerStrc.pSavedNext, 0)
+  return firedCount
 }
 
 /**
@@ -2760,8 +2916,9 @@ export function EVENT_ExecuteObjectEvents113c(
   pTimer: number,
   nSlot: number,
   callees?: BootInitGapACallees113c,
-): void {
+): number {
   hitD2GameVa113c(0x6FCAECC0)
+  let firedCount = 0
   let node = m.get(pTimer, D2TimerStrc.pPersistentHead, 3)
   while (node !== 0) {
     m.set(pTimer, D2TimerStrc.pSavedNext, m.get(node, D2EventStrc.pWheelNewer))
@@ -2772,6 +2929,7 @@ export function EVENT_ExecuteObjectEvents113c(
       EVENT_FreeNode113c(m, pGame, node)
     } else {
       m.set(node, D2EventStrc.fFlags, m.get(node, D2EventStrc.fFlags) | EVENT_FLAG_FIRING)
+      firedCount++
       if (callees !== undefined && callees.dispatchObjectEvent !== undefined) {
         callees.dispatchObjectEvent(
           m,
@@ -2780,6 +2938,7 @@ export function EVENT_ExecuteObjectEvents113c(
           m.get(node, D2EventStrc.nType),
           m.get(node, D2EventStrc.dwArg14),
           m.get(node, D2EventStrc.dwArg18),
+          node,
         )
       }
       const postFlags = m.get(node, D2EventStrc.fFlags) & ~EVENT_FLAG_FIRING
@@ -2804,6 +2963,7 @@ export function EVENT_ExecuteObjectEvents113c(
         EVENT_FreeNode113c(m, pGame, node)
       } else {
         m.set(node, D2EventStrc.fFlags, m.get(node, D2EventStrc.fFlags) | EVENT_FLAG_FIRING)
+        firedCount++
         if (callees !== undefined && callees.dispatchObjectEvent !== undefined) {
           callees.dispatchObjectEvent(
             m,
@@ -2812,6 +2972,7 @@ export function EVENT_ExecuteObjectEvents113c(
             m.get(node, D2EventStrc.nType),
             m.get(node, D2EventStrc.dwArg14),
             m.get(node, D2EventStrc.dwArg18),
+            node,
           )
         }
         const postFlags = m.get(node, D2EventStrc.fFlags) & ~EVENT_FLAG_FIRING
@@ -2822,6 +2983,7 @@ export function EVENT_ExecuteObjectEvents113c(
     node = m.get(pTimer, D2TimerStrc.pSavedNext)
   }
   m.set(pTimer, D2TimerStrc.pSavedNext, 0)
+  return firedCount
 }
 
 /**
@@ -2835,10 +2997,12 @@ export function EVENT_ExecuteMissileEvents113c(
   pTimer: number,
   nSlot: number,
   callees?: BootInitGapACallees113c,
-): void {
+): number {
   hitD2GameVa113c(0x6FCAEDD0)
   const sp = bootInitGapStackPtr
   bootInitGapStackPtr = (sp + 0x10) >>> 0
+  let firedCount = 0
+  const allowZero = callees !== undefined && callees.allowZeroHandler === true
   try {
     let node = m.get(pTimer, D2TimerStrc.pPersistentHead, 2)
     while (node !== 0) {
@@ -2854,7 +3018,8 @@ export function EVENT_ExecuteMissileEvents113c(
         }
         m.set(node, D2EventStrc.fFlags, m.get(node, D2EventStrc.fFlags) | EVENT_FLAG_FIRING)
         const pfn = m.get(node, D2EventStrc.pfnHandler)
-        if (pfn !== 0) {
+        if (pfn !== 0 || allowZero) {
+          firedCount++
           if (callees !== undefined && callees.dispatchMissileEvent !== undefined) {
             callees.dispatchMissileEvent(
               m,
@@ -2864,6 +3029,7 @@ export function EVENT_ExecuteMissileEvents113c(
               m.get(node, D2EventStrc.nType),
               m.get(node, D2EventStrc.dwArg14),
               m.get(node, D2EventStrc.dwArg18),
+              node,
             )
           }
         } else {
@@ -2899,7 +3065,8 @@ export function EVENT_ExecuteMissileEvents113c(
           }
           m.set(node, D2EventStrc.fFlags, m.get(node, D2EventStrc.fFlags) | EVENT_FLAG_FIRING)
           const pfn = m.get(node, D2EventStrc.pfnHandler)
-          if (pfn !== 0 && callees !== undefined && callees.dispatchMissileEvent !== undefined) {
+          if ((pfn !== 0 || allowZero) && callees !== undefined && callees.dispatchMissileEvent !== undefined) {
+            firedCount++
             callees.dispatchMissileEvent(
               m,
               pfn,
@@ -2908,6 +3075,7 @@ export function EVENT_ExecuteMissileEvents113c(
               m.get(node, D2EventStrc.nType),
               m.get(node, D2EventStrc.dwArg14),
               m.get(node, D2EventStrc.dwArg18),
+              node,
             )
           }
           const postFlags = m.get(node, D2EventStrc.fFlags) & ~EVENT_FLAG_FIRING
@@ -2921,6 +3089,7 @@ export function EVENT_ExecuteMissileEvents113c(
   } finally {
     bootInitGapStackPtr = sp
   }
+  return firedCount
 }
 
 /**
@@ -2934,14 +3103,17 @@ export function EVENT_ExecuteItemEvents113c(
   pTimer: number,
   nSlot: number,
   callees?: BootInitGapACallees113c,
-): void {
+): number {
   hitD2GameVa113c(0x6FCAEF20)
+  let firedCount = 0
+  const allowZero = callees !== undefined && callees.allowZeroHandler === true
   let node = m.get(pTimer, D2TimerStrc.pPersistentHead, 4)
   while (node !== 0) {
     m.set(pTimer, D2TimerStrc.pSavedNext, m.get(node, D2EventStrc.pWheelNewer))
     m.set(node, D2EventStrc.fFlags, m.get(node, D2EventStrc.fFlags) | EVENT_FLAG_FIRING)
     const pfn = m.get(node, D2EventStrc.pfnHandler)
-    if (pfn !== 0) {
+    if (pfn !== 0 || allowZero) {
+      firedCount++
       if (callees !== undefined && callees.dispatchItemEvent !== undefined) {
         callees.dispatchItemEvent(
           m,
@@ -2951,6 +3123,7 @@ export function EVENT_ExecuteItemEvents113c(
           m.get(node, D2EventStrc.nType),
           m.get(node, D2EventStrc.dwArg14),
           m.get(node, D2EventStrc.dwArg18),
+          node,
         )
       }
     } else {
@@ -2972,7 +3145,8 @@ export function EVENT_ExecuteItemEvents113c(
     if ((m.get(node, D2EventStrc.dwFrame) >>> 0) === frame) {
       m.set(node, D2EventStrc.fFlags, m.get(node, D2EventStrc.fFlags) | EVENT_FLAG_FIRING)
       const pfn = m.get(node, D2EventStrc.pfnHandler)
-      if (pfn !== 0 && callees !== undefined && callees.dispatchItemEvent !== undefined) {
+      if ((pfn !== 0 || allowZero) && callees !== undefined && callees.dispatchItemEvent !== undefined) {
+        firedCount++
         callees.dispatchItemEvent(
           m,
           pfn,
@@ -2981,6 +3155,7 @@ export function EVENT_ExecuteItemEvents113c(
           m.get(node, D2EventStrc.nType),
           m.get(node, D2EventStrc.dwArg14),
           m.get(node, D2EventStrc.dwArg18),
+          node,
         )
       }
       const postFlags = m.get(node, D2EventStrc.fFlags) & ~EVENT_FLAG_FIRING
@@ -2990,6 +3165,7 @@ export function EVENT_ExecuteItemEvents113c(
     node = m.get(pTimer, D2TimerStrc.pSavedNext)
   }
   m.set(pTimer, D2TimerStrc.pSavedNext, 0)
+  return firedCount
 }
 
 /**

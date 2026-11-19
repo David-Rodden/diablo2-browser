@@ -257,8 +257,8 @@
     "name": "ACT2Q2_OnNpcSpeechComplete_6FCE7DC0",
     "kernFile": "src/d2kern-113c/game/k2-w15b1-113c.ts",
     "tsSymbol": "ACT2Q2_OnNpcSpeechComplete_6FCE7DC0_113c",
-    "status": "ported",
-    "diffEvidence": "tests/oracle/k2/w15b1.test.ts + tests/oracle/k2/remed-r2.test.ts (1:1 D2Game.dll SparseMemory113c port, 0x6FCE7DC0)"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/replay-act-quests.test.ts (0x6FCE7DC0) across Act 1-5 K4 longitudinal quest & town NPC replay at 100% strict zero divergence"
   },
   {
     "module": "D2Game",

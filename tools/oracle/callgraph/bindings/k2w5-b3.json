@@ -59,8 +59,8 @@
     "name": "SKILLS_CanSpawnObjectAtTargetCoords_6FCC0630",
     "kernFile": "src/d2kern-113c/game/k2-w5b3-113c.ts",
     "tsSymbol": "SKILLS_CanSpawnObjectAtTargetCoords_6FCC0630_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w5b3.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w5b3.test.ts; Diff-verified 1:1 in dll\u2229ts across full-horizon strict zero-divergence K3 replay (p52-sorceress-fire-dot F1800/1800) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -104,8 +104,8 @@
     "name": "AURAS_ApplyRadialSkillDamageCallback_6FCC1210",
     "kernFile": "src/d2kern-113c/game/k2-w5b3-113c.ts",
     "tsSymbol": "AURAS_ApplyRadialSkillDamageCallback_6FCC1210_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w5b3.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w5b3.test.ts; Diff-verified 1:1 in dll\u2229ts across full-horizon strict zero-divergence K3 replay (p52-sorceress-elemental F1800/1800) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -122,8 +122,8 @@
     "name": "SKILLS_ConsumeThrowOrQuiverQuantityForPlayer_6FCC1790",
     "kernFile": "src/d2kern-113c/game/k2-w5b3-113c.ts",
     "tsSymbol": "SKILLS_ConsumeThrowOrQuiverQuantityForPlayer_6FCC1790_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w5b3.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w5b3.test.ts; Diff-verified 1:1 in dll\u2229ts across full-horizon strict zero-divergence K3 replay (p52-paladin-merc-aura F1700/1700) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",

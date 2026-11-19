@@ -167,8 +167,8 @@
     "name": "ACT4Q2_OnQuestTarget0F6Callback_6FCD9DE0",
     "kernFile": "src/d2kern-113c/game/k2-w6b5-113c.ts",
     "tsSymbol": "ACT4Q2_OnQuestTarget0F6Callback_6FCD9DE0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w6b5.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/replay-act-quests.test.ts (0x6FCD9DE0) across Act 1-5 K4 longitudinal quest & town NPC replay at 100% strict zero divergence"
   },
   {
     "module": "D2Game",
@@ -194,8 +194,8 @@
     "name": "ACT4Q1_OnTyraelTalkCallback_6FCDA100",
     "kernFile": "src/d2kern-113c/game/k2-w6b5-113c.ts",
     "tsSymbol": "ACT4Q1_OnTyraelTalkCallback_6FCDA100_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w6b5.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/replay-act-quests.test.ts (0x6FCDA100) across Act 1-5 K4 longitudinal quest & town NPC replay at 100% strict zero divergence"
   },
   {
     "module": "D2Game",
@@ -212,8 +212,8 @@
     "name": "ACT4Q3_OnTyraelTalkOpenHarrogathPortal_6FCDB1B0",
     "kernFile": "src/d2kern-113c/game/k2-w6b5-113c.ts",
     "tsSymbol": "ACT4Q3_OnTyraelTalkOpenHarrogathPortal_6FCDB1B0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w6b5.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/replay-act-quests.test.ts (0x6FCDB1B0) across Act 1-5 K4 longitudinal quest & town NPC replay at 100% strict zero divergence"
   },
   {
     "module": "D2Game",
@@ -257,8 +257,8 @@
     "name": "ACT2Q6_OnTyraelOrJerhynTalkCallback_6FCE5A60",
     "kernFile": "src/d2kern-113c/game/k2-w6b5-113c.ts",
     "tsSymbol": "ACT2Q6_OnTyraelOrJerhynTalkCallback_6FCE5A60_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w6b5.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/replay-act-quests.test.ts (0x6FCE5A60) across Act 1-5 K4 longitudinal quest & town NPC replay at 100% strict zero divergence"
   },
   {
     "module": "D2Game",
@@ -284,8 +284,8 @@
     "name": "ACT2Q4_OnDrognanTalkCallback_6FCE5DB0",
     "kernFile": "src/d2kern-113c/game/k2-w6b5-113c.ts",
     "tsSymbol": "ACT2Q4_OnDrognanTalkCallback_6FCE5DB0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w6b5.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/replay-act-quests.test.ts (0x6FCE5DB0) across Act 1-5 K4 longitudinal quest & town NPC replay at 100% strict zero divergence"
   },
   {
     "module": "D2Game",
@@ -320,8 +320,8 @@
     "name": "ACT2Q1_OnAtmaTalkCallback_6FCE61C0",
     "kernFile": "src/d2kern-113c/game/k2-w6b5-113c.ts",
     "tsSymbol": "ACT2Q1_OnAtmaTalkCallback_6FCE61C0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w6b5.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/replay-act-quests.test.ts (0x6FCE61C0) across Act 1-5 K4 longitudinal quest & town NPC replay at 100% strict zero divergence"
   },
   {
     "module": "D2Game",

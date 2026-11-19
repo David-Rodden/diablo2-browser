@@ -15,6 +15,6 @@
     "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
     "tsSymbol": "C2S_CheckCoordDeltaExceeded113c",
     "status": "diff-verified",
-    "diffEvidence": "tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
+    "diffEvidence": "tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence); Runtime-executed in dllExecuted\u2229tsExecuted across K1/K2 5-scenario replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   }
 ]

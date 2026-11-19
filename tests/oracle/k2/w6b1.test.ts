@@ -120,6 +120,8 @@ describe('K2 Wave 6 Batch 1 (45 D2Game VAs 0x6FC221D0..0x6FC85500)', () => {
 
     expect(SKILLS_SrvDo_RadialPhysAndElemDamage_6FC2C900_113c(m, pGame, 0, -1, 1)).toBe(0)
     const pUnit = m.alloc(0x100)
+    m.setU32(pUnit, 1)
+    m.setU32(pUnit + 0x10, 1)
     m.setU32(pUnit + 0x2c, m.alloc(0x100))
     const pTarget = m.alloc(0x100)
     const pMonStatsTxt = m.alloc(0x200)
@@ -145,6 +147,8 @@ describe('K2 Wave 6 Batch 1 (45 D2Game VAs 0x6FC221D0..0x6FC85500)', () => {
   it('[6..12] AI_ThinkCurseCaster, MONUMOD_OnHitApplyCursedAmplifyDamage, UnownedMonsterMode12, Fury, ProgressiveCharge, FalseTombSymbol, SpawnJerhyn', () => {
     const { m, pGame, pSkillsTxt } = setupTestMem()
     const pUnit = m.alloc(0x100)
+    m.setU32(pUnit, 1)
+    m.setU32(pUnit + 0x10, 1)
     m.setU32(pUnit + 0x2c, m.alloc(0x100))
     const pTarget = m.alloc(0x100)
     const pMonStatsTxt = m.alloc(0x200)

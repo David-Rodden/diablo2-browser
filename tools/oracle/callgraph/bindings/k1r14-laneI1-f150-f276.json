@@ -5,8 +5,8 @@
     "name": "MONSTER_PackPresetSaveData",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "MONSTER_PackPresetSaveData113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC3F600",
@@ -14,8 +14,8 @@
     "name": "MONSTER_SaveInactiveMonsterNode",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "MONSTER_SaveInactiveMonsterNode113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC404E0",
@@ -23,8 +23,8 @@
     "name": "UNIT_SaveInactiveUnitNode",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "UNIT_SaveInactiveUnitNode113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC40B60",
@@ -32,8 +32,8 @@
     "name": "MONSTER_FreeAiCmdCircularList",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "MONSTER_FreeAiCmdCircularList113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC40C00",
@@ -41,8 +41,8 @@
     "name": "MONSTER_FreeAiGeneral",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "MONSTER_FreeAiGeneral113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC4E790",
@@ -50,8 +50,8 @@
     "name": "OBJECT_FreeObjectRegionData",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "OBJECT_FreeObjectRegionData113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC4EE60",
@@ -59,8 +59,8 @@
     "name": "OBJECT_DestroyObjectUnit",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "OBJECT_DestroyObjectUnit113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC53830",
@@ -68,8 +68,8 @@
     "name": "QUESTS_GuidListRemove",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "QUESTS_GuidListRemove113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; runtime-executed in dllExecuted∩tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC53CE0",
@@ -86,8 +86,8 @@
     "name": "QUESTS_NotifyLevelChange",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "QUESTS_NotifyLevelChange113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC57220",
@@ -96,7 +96,7 @@
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "QUESTS_FreeUnitQuestChain113c",
     "status": "diff-verified",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence); runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC57810",
@@ -104,8 +104,8 @@
     "name": "QUESTS_CountLivingUnitsInRoomCallback",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "QUESTS_CountLivingUnitsInRoomCallback113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; runtime-executed in dllExecuted∩tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC683B0",
@@ -113,8 +113,8 @@
     "name": "MONSTER_FreeInteractData",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "MONSTER_FreeInteractData113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC7A9B0",
@@ -122,8 +122,8 @@
     "name": "ACT4Q1_Callback03_LevelChanged",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "ACT4Q1_Callback03_LevelChanged113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC7AB60",
@@ -131,8 +131,8 @@
     "name": "ACT4Q2_Callback03_LevelChanged",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "ACT4Q2_Callback03_LevelChanged113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC7AD50",
@@ -140,8 +140,8 @@
     "name": "ACT4Q3_Callback03_LevelChanged",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "ACT4Q3_Callback03_LevelChanged113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC7B1E0",
@@ -149,8 +149,8 @@
     "name": "ACT4Q1_Callback03_AltLevelChanged",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "ACT4Q1_Callback03_AltLevelChanged113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC7B380",
@@ -158,8 +158,8 @@
     "name": "ACT4Q2_Callback03_AltLevelChanged",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "ACT4Q2_Callback03_AltLevelChanged113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC7F3F0",
@@ -167,8 +167,8 @@
     "name": "ACT4Q2_Hellforge_Callback03_LevelChanged",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "ACT4Q2_Hellforge_Callback03_LevelChanged113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC83DD0",
@@ -176,8 +176,8 @@
     "name": "ACT1Q1_Callback03_LevelChanged",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "ACT1Q1_Callback03_LevelChanged113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC842D0",
@@ -185,8 +185,8 @@
     "name": "ACT1Q2_Callback03_LevelChanged",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "ACT1Q2_Callback03_LevelChanged113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC84D30",
@@ -194,8 +194,8 @@
     "name": "ACT1Q4_Callback03_LevelChanged",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "ACT1Q4_Callback03_LevelChanged113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC84ED0",
@@ -203,8 +203,8 @@
     "name": "ACT1Q5_Callback03_LevelChanged",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "ACT1Q5_Callback03_LevelChanged113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC85040",
@@ -212,8 +212,8 @@
     "name": "ACT1Q6_Callback03_LevelChanged",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "ACT1Q6_Callback03_LevelChanged113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC884B0",
@@ -221,8 +221,8 @@
     "name": "ACT1Q3_Callback03_LevelChanged",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "ACT1Q3_Callback03_LevelChanged113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FCAF410",
@@ -230,8 +230,8 @@
     "name": "ARENA_CountPlayersInLevelCallback",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "ARENA_CountPlayersInLevelCallback113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FCB0320",
@@ -239,8 +239,8 @@
     "name": "NPCS_UpdateMercenaryOrVendorSlots",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "NPCS_UpdateMercenaryOrVendorSlots113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FCB0C60",
@@ -248,8 +248,8 @@
     "name": "NPCS_OnPlayerLevelChange",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "NPCS_OnPlayerLevelChange113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FCB7D10",
@@ -257,8 +257,8 @@
     "name": "PLRINTRO_CleanInvalidMonsterMinions",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "PLRINTRO_CleanInvalidMonsterMinions113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FCB8250",
@@ -266,8 +266,8 @@
     "name": "PLRINTRO_SendAllPlayerPetsToClient",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "PLRINTRO_SendAllPlayerPetsToClient113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces; Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
   },
   {
     "va": "0x6FCBC620",
@@ -275,8 +275,8 @@
     "name": "PARTY_SendPartyPetsToClient",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "PARTY_SendPartyPetsToClient113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FCCFB90",
@@ -284,8 +284,8 @@
     "name": "MONSTER_DestroyMonsterUnit",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "MONSTER_DestroyMonsterUnit113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FCDA1E0",
@@ -293,8 +293,8 @@
     "name": "ACT3Q1_Callback03_LevelChanged",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "ACT3Q1_Callback03_LevelChanged113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FCDA3A0",
@@ -302,8 +302,8 @@
     "name": "ACT3Q2_Callback03_LevelChanged",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "ACT3Q2_Callback03_LevelChanged113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FCDA550",
@@ -311,8 +311,8 @@
     "name": "ACT3Q3_Callback03_LevelChanged",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "ACT3Q3_Callback03_LevelChanged113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FCE2E20",
@@ -320,8 +320,8 @@
     "name": "ACT2Q1_Callback03_LevelChanged",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "ACT2Q1_Callback03_LevelChanged113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FCE3EC0",
@@ -329,8 +329,8 @@
     "name": "ACT2Q2_Callback03_LevelChanged",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "ACT2Q2_Callback03_LevelChanged113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FCE6450",
@@ -338,8 +338,8 @@
     "name": "ACT2Q3_Callback03_LevelChanged",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "ACT2Q3_Callback03_LevelChanged113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FCE6E00",
@@ -347,8 +347,8 @@
     "name": "ACT2Q4_Callback03_LevelChanged",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "ACT2Q4_Callback03_LevelChanged113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FCE73A0",
@@ -356,8 +356,8 @@
     "name": "ACT2Q5_Callback03_LevelChanged",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "ACT2Q5_Callback03_LevelChanged113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FCE9190",
@@ -365,8 +365,8 @@
     "name": "ACT2Q6_Callback03_LevelChanged",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "ACT2Q6_Callback03_LevelChanged113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FCFF6C0",
@@ -374,8 +374,8 @@
     "name": "SUNIT_GetUnitField78",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "SUNIT_GetUnitField78_113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FD00C80",
@@ -384,7 +384,7 @@
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "SUNIT_DeactivateAndRemoveUnit113c",
     "status": "diff-verified",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence); runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FD01110",
@@ -392,8 +392,8 @@
     "name": "SUNIT_ClearUnitInventoryItems",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "SUNIT_ClearUnitInventoryItems113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FD03E00",
@@ -401,8 +401,8 @@
     "name": "ACT3Q0_Callback03_LevelChanged",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "ACT3Q0_Callback03_LevelChanged113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FD071D0",
@@ -410,8 +410,8 @@
     "name": "ACT3Q4_Callback03_LevelChanged",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "ACT3Q4_Callback03_LevelChanged113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FD07560",
@@ -419,8 +419,8 @@
     "name": "ACT3Q5_Callback03_LevelChanged",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "ACT3Q5_Callback03_LevelChanged113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FD07880",
@@ -428,8 +428,8 @@
     "name": "ACT3Q6_Callback03_LevelChanged",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "ACT3Q6_Callback03_LevelChanged113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FD07A10",
@@ -437,8 +437,8 @@
     "name": "ACT3Q7_Callback03_LevelChanged",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "ACT3Q7_Callback03_LevelChanged113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FD07BE0",
@@ -446,8 +446,8 @@
     "name": "ACT3Q8_Callback03_LevelChanged",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "ACT3Q8_Callback03_LevelChanged113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FD0FC60",
@@ -455,7 +455,7 @@
     "name": "SUNIT_UnlinkFromRoomUpdateList",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f150-f276-113c.ts",
     "tsSymbol": "SUNIT_UnlinkFromRoomUpdateList113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneI1-f150-f276.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   }
 ]

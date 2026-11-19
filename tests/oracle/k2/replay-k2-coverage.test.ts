@@ -43,7 +43,10 @@ interface ReplayCoverageRatchetSpec113c {
 }
 
 /** Monotonic ceiling on the 5-scenario union of `D2Game` `runtimeExecGap` (out of 560 DLL-executed `D2Game` VAs). */
-const MAX_K1_K2_UNION_D2GAME_RUNTIME_EXEC_GAP = 187
+const MAX_K1_K2_UNION_D2GAME_RUNTIME_EXEC_GAP = 0
+
+/** Monotonic ceiling on the 5-scenario union of `D2Common` `runtimeExecGap` (out of 679 DLL-executed `D2Common` VAs). */
+const MAX_K1_K2_UNION_D2COMMON_RUNTIME_EXEC_GAP = 0
 
 const K1_K2_COVERAGE_RATCHET_SPECS_113C: readonly ReplayCoverageRatchetSpec113c[] = [
   {
@@ -52,8 +55,8 @@ const K1_K2_COVERAGE_RATCHET_SPECS_113C: readonly ReplayCoverageRatchetSpec113c[
     totalHits: 599,
     d2CommonExecuted: 352,
     d2GameExecuted: 247,
-    maxD2GameRuntimeExecGap: 100,
-    maxD2CommonRuntimeExecGap: 58,
+    maxD2GameRuntimeExecGap: 0,
+    maxD2CommonRuntimeExecGap: 0,
   },
   {
     name: 'a1c-bloodmoor-fallen',
@@ -61,8 +64,8 @@ const K1_K2_COVERAGE_RATCHET_SPECS_113C: readonly ReplayCoverageRatchetSpec113c[
     totalHits: 1055,
     d2CommonExecuted: 579,
     d2GameExecuted: 476,
-    maxD2GameRuntimeExecGap: 203,
-    maxD2CommonRuntimeExecGap: 112,
+    maxD2GameRuntimeExecGap: 0,
+    maxD2CommonRuntimeExecGap: 0,
   },
   {
     name: 'a1-bloodmoor-melee',
@@ -70,8 +73,8 @@ const K1_K2_COVERAGE_RATCHET_SPECS_113C: readonly ReplayCoverageRatchetSpec113c[
     totalHits: 1045,
     d2CommonExecuted: 572,
     d2GameExecuted: 473,
-    maxD2GameRuntimeExecGap: 194,
-    maxD2CommonRuntimeExecGap: 113,
+    maxD2GameRuntimeExecGap: 0,
+    maxD2CommonRuntimeExecGap: 0,
     initialD2GameGapCount: 10,
     initialD2GameGapVas: [
       '0x6FC95210',
@@ -92,8 +95,8 @@ const K1_K2_COVERAGE_RATCHET_SPECS_113C: readonly ReplayCoverageRatchetSpec113c[
     totalHits: 1119,
     d2CommonExecuted: 620,
     d2GameExecuted: 499,
-    maxD2GameRuntimeExecGap: 181,
-    maxD2CommonRuntimeExecGap: 88,
+    maxD2GameRuntimeExecGap: 0,
+    maxD2CommonRuntimeExecGap: 0,
     initialD2GameGapCount: 39,
     initialD2GameGapVas: [
       '0x6FC95210',
@@ -143,8 +146,8 @@ const K1_K2_COVERAGE_RATCHET_SPECS_113C: readonly ReplayCoverageRatchetSpec113c[
     totalHits: 1039,
     d2CommonExecuted: 571,
     d2GameExecuted: 468,
-    maxD2GameRuntimeExecGap: 168,
-    maxD2CommonRuntimeExecGap: 77,
+    maxD2GameRuntimeExecGap: 0,
+    maxD2CommonRuntimeExecGap: 0,
     initialD2GameGapCount: 41,
     initialD2GameGapVas: [
       '0x6FC570E0',
@@ -480,6 +483,97 @@ const DIFF_VERIFIED_K2_REPLAY_SCENARIO_VAS_113C = [
   '0x6FD114F0',
   '0x6FD117E0',
   '0x6FD13A40',
+  // Batch 5B newly executed C2S, Player Mode/Movement, SUNIT, SUNITDMG & SKILLS VAs:
+  '0x6FC21480',
+  '0x6FC21D90',
+  '0x6FC21DB0',
+  '0x6FC57260',
+  '0x6FC58E60',
+  '0x6FC63AA0',
+  '0x6FC69A50',
+  '0x6FC6B400',
+  '0x6FC94D50',
+  '0x6FC95210',
+  '0x6FC977F0',
+  '0x6FC978A0',
+  '0x6FC97B20',
+  '0x6FC97E00',
+  '0x6FC981C0',
+  '0x6FC982F0',
+  '0x6FC98710',
+  '0x6FC98840',
+  '0x6FC988B0',
+  '0x6FC98A90',
+  '0x6FC98DD0',
+  '0x6FC99100',
+  '0x6FC99170',
+  '0x6FC99850',
+  '0x6FCAB710',
+  '0x6FCAC090',
+  '0x6FCAC100',
+  '0x6FCAC890',
+  '0x6FCAD3D0',
+  '0x6FCADB00',
+  '0x6FCADC30',
+  '0x6FCB0F30',
+  '0x6FCB1340',
+  '0x6FCB1B70',
+  '0x6FCB1E30',
+  '0x6FCB22A0',
+  '0x6FCB8250',
+  '0x6FCB8A70',
+  '0x6FCBB3B0',
+  '0x6FCBD780',
+  '0x6FCBDEC0',
+  '0x6FCC1630',
+  '0x6FCC2100',
+  '0x6FCC2800',
+  '0x6FCC2C40',
+  '0x6FCCF8D0',
+  '0x6FCEB1F0',
+  '0x6FCEBBB0',
+  '0x6FCEBF50',
+  '0x6FCECFE0',
+  '0x6FCED190',
+  '0x6FCED630',
+  '0x6FCEDF30',
+  '0x6FCEE040',
+  '0x6FCEE120',
+  '0x6FCEE150',
+  '0x6FCEE310',
+  '0x6FCEE520',
+  '0x6FCEE620',
+  '0x6FCEE9D0',
+  '0x6FCEF480',
+  '0x6FCF4550',
+  '0x6FCFA6D0',
+  '0x6FCFA750',
+  '0x6FCFA7B0',
+  '0x6FCFA930',
+  '0x6FCFA970',
+  '0x6FCFAA40',
+  '0x6FCFAA90',
+  '0x6FCFAB90',
+  '0x6FCFB570',
+  '0x6FCFC940',
+  '0x6FCFCAB0',
+  '0x6FCFCC20',
+  '0x6FCFDAC0',
+  '0x6FCFDDE0',
+  '0x6FCFE5A0',
+  '0x6FCFEA00',
+  '0x6FCFEEE0',
+  '0x6FCFF620',
+  '0x6FCFFA60',
+  '0x6FD00660',
+  '0x6FD00860',
+  '0x6FD01610',
+  '0x6FD13360',
+] as const
+
+const DIFF_VERIFIED_K1_TOWN_WALK_VAS_113C = [
+  '0x6FCAC010',
+  '0x6FCEE0D0',
 ] as const
 
 const DIFF_VERIFIED_K1_REPLAY_AI_MONSTER_VAS_113C = [
@@ -489,10 +583,196 @@ const DIFF_VERIFIED_K1_REPLAY_AI_MONSTER_VAS_113C = [
   '0x6FD0DDB0',
 ] as const
 
+const DIFF_VERIFIED_K2_BATCH3_ROOM_SPAWN_VAS_113C = [
+  '0x6FC21100',
+  '0x6FC21130',
+  '0x6FC211D0',
+  '0x6FC21280',
+  '0x6FC3E960',
+  '0x6FC3EA40',
+  '0x6FC3EF50',
+  '0x6FC3F600',
+  '0x6FC3FB40',
+  '0x6FC3FB90',
+  '0x6FC404E0',
+  '0x6FC409B0',
+  '0x6FC40B60',
+  '0x6FC40C00',
+  '0x6FC4CBE0',
+  '0x6FC4CF30',
+  '0x6FC4E790',
+  '0x6FC4E7D0',
+  '0x6FC4EA40',
+  '0x6FC4ECB0',
+  '0x6FC4ED70',
+  '0x6FC4EE60',
+  '0x6FC4EEA0',
+  '0x6FC4EF90',
+  '0x6FC51E20',
+  '0x6FC52CE0',
+  '0x6FC53260',
+  '0x6FC54860',
+  '0x6FC55E50',
+  '0x6FC57220',
+  '0x6FC57540',
+  '0x6FC579A0',
+  '0x6FC683B0',
+  '0x6FC6B1D0',
+  '0x6FC97790',
+  '0x6FC98340',
+  '0x6FC99FE0',
+  '0x6FC9A940',
+  '0x6FC9ADF0',
+  '0x6FCAA3E0',
+  '0x6FCABFC0',
+  '0x6FCAF410',
+  '0x6FCB0C60',
+  '0x6FCBD5B0',
+  '0x6FCBD850',
+  '0x6FCCFB90',
+  '0x6FCEB690',
+  '0x6FCFA750',
+  '0x6FCFF620',
+  '0x6FCFF6C0',
+  '0x6FCFF780',
+  '0x6FCFF9A0',
+  '0x6FCFFF10',
+  '0x6FD000C0',
+  '0x6FD00110',
+  '0x6FD007A0',
+  '0x6FD00C80',
+  '0x6FD00F40',
+  '0x6FD01110',
+  '0x6FD012D0',
+  '0x6FD013B0',
+  '0x6FD01430',
+  '0x6FD01610',
+  '0x6FD01D90',
+  '0x6FD020A0',
+  '0x6FD0FC60',
+] as const
+
+const DIFF_VERIFIED_K2_BATCH5C_MONSTER_AI_SYNC_VAS_113C = [
+  '0x6FC2FB70',
+  '0x6FC30160',
+  '0x6FC410D0',
+  '0x6FC412F0',
+  '0x6FC66F70',
+  '0x6FC94C30',
+  '0x6FC94C60',
+  '0x6FC94E60',
+  '0x6FC95210',
+  '0x6FC97240',
+  '0x6FC977F0',
+  '0x6FC97E00',
+  '0x6FC988B0',
+  '0x6FC9AC50',
+  '0x6FCAC890',
+  '0x6FCAD3D0',
+  '0x6FCB0320',
+  '0x6FCBB3B0',
+  '0x6FCBCA60',
+  '0x6FCBCB30',
+  '0x6FCBCCF0',
+  '0x6FCBCD90',
+  '0x6FCBCDE0',
+  '0x6FCBCFE0',
+  '0x6FCBF2B0',
+  '0x6FCCF5D0',
+  '0x6FCCF5F0',
+  '0x6FCCF8D0',
+  '0x6FCD0BE0',
+] as const
+
+const DIFF_VERIFIED_K2_BATCH5A_FRAME_EVENT_JOIN_VAS_113C = [
+  '0x6FC21560',
+  '0x6FC21850',
+  '0x6FC39AD0',
+  '0x6FC49BE0',
+  '0x6FC4C0F0',
+  '0x6FC4C120',
+  '0x6FC4CA20',
+  '0x6FC4D670',
+  '0x6FC55EF0',
+  '0x6FC7A9B0',
+  '0x6FC7AB60',
+  '0x6FC7AD50',
+  '0x6FC7B1E0',
+  '0x6FC7B380',
+  '0x6FC7F3F0',
+  '0x6FC842D0',
+  '0x6FC84D30',
+  '0x6FC84ED0',
+  '0x6FC85040',
+  '0x6FC86320',
+  '0x6FC884B0',
+  '0x6FC8A0D0',
+  '0x6FC8B200',
+  '0x6FCB7D10',
+  '0x6FCBC620',
+  '0x6FCD23D0',
+  '0x6FCD2940',
+  '0x6FCDA1E0',
+  '0x6FCDA3A0',
+  '0x6FCDA550',
+  '0x6FCE2E20',
+  '0x6FCE3EC0',
+  '0x6FCE6450',
+  '0x6FCE6E00',
+  '0x6FCE73A0',
+  '0x6FCE9190',
+  '0x6FD03E00',
+  '0x6FD071D0',
+  '0x6FD07560',
+  '0x6FD07880',
+  '0x6FD07A10',
+  '0x6FD07BE0',
+  '0x6FD12220',
+] as const
+
+const DIFF_VERIFIED_K2_FINAL_ZERO_VAS_113C = [
+  '0x6FC21180',
+  '0x6FC21850',
+  '0x6FC40EC0',
+  '0x6FC40F30',
+  '0x6FC41260',
+  '0x6FC41290',
+  '0x6FC41880',
+  '0x6FC4CF30',
+  '0x6FC53830',
+  '0x6FC572C0',
+  '0x6FC57810',
+  '0x6FC66F70',
+  '0x6FC67CF0',
+  '0x6FC94F20',
+  '0x6FC95260',
+  '0x6FC96FE0',
+  '0x6FC971D0',
+  '0x6FC97950',
+  '0x6FC97A50',
+  '0x6FC97BB0',
+  '0x6FC97CB0',
+  '0x6FCA38B0',
+  '0x6FCAD210',
+  '0x6FCEE310',
+  '0x6FCF40F0',
+  '0x6FCFB910',
+  '0x6FCFE6D0',
+  '0x6FCFF1A0',
+  '0x6FCFF7B0',
+  '0x6FD00A20',
+  '0x6FD0F650',
+  '0x6FD11B10',
+  '0x6FD12220',
+  '0x6FD12540',
+] as const
+
 describe('K1/K2 5-scenario union runtimeExecGap ratchet & gap-summary.md freshness', () => {
-  it('enforces 5-scenario D2Game union runtimeExecGap ratchet, diff-verified VA execution, and up-to-date gap-summary.md', () => {
+  it('enforces 5-scenario D2Game & D2Common union runtimeExecGap ratchets, diff-verified VA execution, and up-to-date gap-summary.md', () => {
     const dllD2GameUnion = new Set<string>()
     const tsD2GameUnion = new Set<string>()
+    const dllD2CommonUnion = new Set<string>()
+    const tsD2CommonUnion = new Set<string>()
     const allSummaries: ScenarioGap113c[] = []
 
     for (const spec of K1_K2_COVERAGE_RATCHET_SPECS_113C) {
@@ -500,9 +780,11 @@ describe('K1/K2 5-scenario union runtimeExecGap ratchet & gap-summary.md freshne
       allSummaries.push(gap)
       for (const k of gap.dllExecutedVas) {
         if (k.startsWith('D2Game:')) dllD2GameUnion.add(k)
+        else if (k.startsWith('D2Common:')) dllD2CommonUnion.add(k)
       }
       for (const k of replay.tsExecutedVas) {
         if (k.startsWith('D2Game:')) tsD2GameUnion.add(k)
+        else if (k.startsWith('D2Common:')) tsD2CommonUnion.add(k)
       }
     }
 
@@ -516,11 +798,30 @@ describe('K1/K2 5-scenario union runtimeExecGap ratchet & gap-summary.md freshne
       `5-scenario D2Game union runtimeExecGap (${unionGap}) exceeded monotonic ceiling (${MAX_K1_K2_UNION_D2GAME_RUNTIME_EXEC_GAP})`,
     ).toBeLessThanOrEqual(MAX_K1_K2_UNION_D2GAME_RUNTIME_EXEC_GAP)
 
+    expect(dllD2CommonUnion.size).toBe(679)
+    let d2CommonUnionGap = 0
+    for (const k of dllD2CommonUnion) {
+      if (!tsD2CommonUnion.has(k)) d2CommonUnionGap++
+    }
+    expect(
+      d2CommonUnionGap,
+      `5-scenario D2Common union runtimeExecGap (${d2CommonUnionGap}) exceeded monotonic ceiling (${MAX_K1_K2_UNION_D2COMMON_RUNTIME_EXEC_GAP})`,
+    ).toBeLessThanOrEqual(MAX_K1_K2_UNION_D2COMMON_RUNTIME_EXEC_GAP)
+
     const committedGapSummary = readFileSync(join(REPO_ROOT_113C, 'docs/oracle/k1-replay/gap-summary.md'), 'utf8')
     expect(
       committedGapSummary,
       'docs/oracle/k1-replay/gap-summary.md is stale; run `npx tsx tools/oracle/kern-replay/gap-report.ts`',
     ).toBe(renderCombinedGapMd113c(allSummaries))
+
+    const townRun = getCachedReplayAndGap('a1-town-walk')
+    const townDllSet = new Set(townRun.gap.dllExecutedVas)
+    const townTsSet = new Set(townRun.replay.tsExecutedVas)
+    for (const va of DIFF_VERIFIED_K1_TOWN_WALK_VAS_113C) {
+      const key = `D2Game:${va}`
+      expect(townDllSet.has(key), `a1-town-walk dllExecutedVas missing ${key}`).toBe(true)
+      expect(townTsSet.has(key), `a1-town-walk tsExecutedVas missing ${key}`).toBe(true)
+    }
 
     const fallenRun = getCachedReplayAndGap('a1c-bloodmoor-fallen')
     const fallenDllSet = new Set(fallenRun.gap.dllExecutedVas)
@@ -551,6 +852,24 @@ describe('K1/K2 5-scenario union runtimeExecGap ratchet & gap-summary.md freshne
     for (const va of DIFF_VERIFIED_K2_REPLAY_SCENARIO_VAS_113C) {
       const key = `D2Game:${va}`
       expect(k2UnionBoth.has(key), `K2 union dll∩ts missing ${key}`).toBe(true)
+    }
+
+    const all5UnionBoth = new Set<string>()
+    for (const spec of K1_K2_COVERAGE_RATCHET_SPECS_113C) {
+      const { replay, gap } = getCachedReplayAndGap(spec.name)
+      const dllSet = new Set(gap.dllExecutedVas)
+      for (const k of replay.tsExecutedVas) {
+        if (dllSet.has(k)) all5UnionBoth.add(k)
+      }
+    }
+    for (const va of [
+      ...DIFF_VERIFIED_K2_BATCH3_ROOM_SPAWN_VAS_113C,
+      ...DIFF_VERIFIED_K2_BATCH5C_MONSTER_AI_SYNC_VAS_113C,
+      ...DIFF_VERIFIED_K2_BATCH5A_FRAME_EVENT_JOIN_VAS_113C,
+      ...DIFF_VERIFIED_K2_FINAL_ZERO_VAS_113C,
+    ]) {
+      const key = `D2Game:${va}`
+      expect(all5UnionBoth.has(key), `5-scenario union dll∩ts missing ${key}`).toBe(true)
     }
   })
 })

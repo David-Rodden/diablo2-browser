@@ -141,7 +141,7 @@ const D2GAME_GLOBAL_GAME_CS_VA_113C = 0x6fd30be8
 /** `D2Game.dll` `.bss` `0x6FD30C04`: global game slot table (`uint32[1025]`, indices `1..0x400`). */
 const D2GAME_GLOBAL_GAME_SLOTS_VA_113C = 0x6fd30c04
 
-let k2LaneJStackPtr = 0x7ef80000
+let k2LaneJStackPtr = 0x7e020000
 
 function sx16(v: number): number {
   return (v << 16) >> 16

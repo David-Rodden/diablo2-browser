@@ -99,6 +99,7 @@ import {
   ITEMS_GetWeaponClassCodeIdx113c,
 } from './inventory.ts'
 import { STATLIST_GetStatsByIdFromList113c } from './missile.ts'
+import { ITEMS_CheckIfThrowItemMemPort113c } from './k0-d2common-memports.ts'
 import { STATES_CheckStateMaskOnUnitFast113c } from './skills.ts'
 import {
   ITEMMODS_GetOrCreateStatList113c,
@@ -106,6 +107,7 @@ import {
   ITEMS_ApplySkillBonusStat113c,
   STATLIST_AddStat113c,
   STATLIST_FindStatIndex113c,
+  STATLIST_GetMaxDurabilityFromUnit113c,
   STATLIST_GetStatValue113c,
   STATLIST_GetUnitBaseStat113c,
   STATLIST_GetUnitStat113c,
@@ -1374,15 +1376,7 @@ export function ITEMS_CheckItemTypeIdMem113c(m: Memory113c, pItem: number, nItem
 }
 
 export function checkIfThrowItemMem113c(m: Memory113c, pItem: number): number {
-  if (pItem === 0 || m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0
-  const wType1 = ITEMS_IsTome113c(m, m.get(pItem, D2UnitStrc.dwClassId)) | 0
-  if (wType1 < 0) return 0
-  const sgpt = m.u32(ITEMS_SGPT_DATATABLES_VA_113C)
-  const count = m.u32((sgpt + DATATABLES_OFF_113C.nItemTypesTxtRecordCount) >>> 0) | 0
-  if (wType1 >= count) return 0
-  const pTypeRec = (m.u32((sgpt + DATATABLES_OFF_113C.pItemTypesTxt) >>> 0) + imul32(wType1, D2ItemTypesTxt_SIZE)) >>> 0
-  if (pTypeRec === 0) return 0
-  return m.u8((pTypeRec + 0x10) >>> 0)
+  return ITEMS_CheckIfThrowItemMemPort113c(m, pItem)
 }
 
 function getUnitBaseStatWithIscCheck113c(m: Memory113c, pItem: number, nStatId: number, nLayer: number): number {
@@ -2073,17 +2067,7 @@ export function statListGetUnitBaseStatMem113c(
  * `__stdcall(pUnit) -> i32`, `ret 4`).
  */
 export function ITEMS_B043_GetMaxDurabilityFromUnit113c(m: Memory113c, pUnit: number): number {
-  const unitPtr = pUnit >>> 0
-  if (unitPtr === 0) return 0
-  const sgpt = m.u32(ITEMS_SGPT_DATATABLES_VA_113C)
-  if ((m.u32((sgpt + DATATABLES_OFF_113C.nItemStatCostTxtRecordCount) >>> 0) | 0) <= 0x49) return 0
-  const pIsc = (m.u32((sgpt + DATATABLES_OFF_113C.pItemStatCostTxt) >>> 0) + 0x5c64) >>> 0
-  if (pIsc === 0) return 0
-  const pStatList = m.get(unitPtr, D2UnitStrc.pStatListEx)
-  if (pStatList === 0) return 0
-  const baseDur = statListGetBaseStatWithMinMem113c(m, pStatList, 0x490000, pIsc)
-  if (baseDur === 0) return 0
-  return statListGetTotalStatWithMinMem113c(m, pStatList, 0x490000, pIsc) >>> 0
+  return STATLIST_GetMaxDurabilityFromUnit113c(m, pUnit) >>> 0
 }
 
 /**
@@ -4164,6 +4148,45 @@ export function ITEMS_CanBeEquipped113c(m: Memory113c, pItem: number): number {
   return m.get(rec, D2ItemTypesTxt.nBody)
 }
 
+const ITEMS_STACK_SCRATCH_BASE = 0x7fff0400
+const ITEMS_STACK_SCRATCH_SIZE = 0x10
+const _itemsScratchBuf = new ArrayBuffer(ITEMS_STACK_SCRATCH_SIZE)
+const _itemsScratchU8 = new Uint8Array(_itemsScratchBuf)
+const _itemsScratchDv = new DataView(_itemsScratchBuf)
+
+function withItemsStackScratch113c(m: Memory113c): Memory113c {
+  if ((m as { __hasItemsStackScratch?: boolean }).__hasItemsStackScratch) return m
+  const isScratch = (p: number): boolean => {
+    const u = p >>> 0
+    return u >= ITEMS_STACK_SCRATCH_BASE && u < ITEMS_STACK_SCRATCH_BASE + ITEMS_STACK_SCRATCH_SIZE
+  }
+  const wrapped: Memory113c & { __hasItemsStackScratch: boolean } = {
+    __hasItemsStackScratch: true,
+    alloc: (size) => m.alloc(size),
+    u8: (p) => (isScratch(p) ? _itemsScratchU8[(p >>> 0) - ITEMS_STACK_SCRATCH_BASE]! : m.u8(p)),
+    u16: (p) =>
+      isScratch(p) ? _itemsScratchDv.getUint16((p >>> 0) - ITEMS_STACK_SCRATCH_BASE, true) : m.u16(p),
+    u32: (p) =>
+      isScratch(p) ? _itemsScratchDv.getUint32((p >>> 0) - ITEMS_STACK_SCRATCH_BASE, true) : m.u32(p),
+    setU8: (p, v) => {
+      if (isScratch(p)) _itemsScratchU8[(p >>> 0) - ITEMS_STACK_SCRATCH_BASE] = v & 0xff
+      else m.setU8(p, v)
+    },
+    setU16: (p, v) => {
+      if (isScratch(p)) _itemsScratchDv.setUint16((p >>> 0) - ITEMS_STACK_SCRATCH_BASE, v & 0xffff, true)
+      else m.setU16(p, v)
+    },
+    setU32: (p, v) => {
+      if (isScratch(p)) _itemsScratchDv.setUint32((p >>> 0) - ITEMS_STACK_SCRATCH_BASE, v >>> 0, true)
+      else m.setU32(p, v)
+    },
+    get: (base, field, index = 0) => m.get(base, field, index),
+    set: (base, field, value, index = 0) => m.set(base, field, value, index),
+    fill: (p, len, v) => m.fill(p, len, v),
+  }
+  return wrapped
+}
+
 /**
  * `@va D2Common:0x6FD74C80` (`D2Common.#10217` `ITEMS_CheckBodyLocation`,
  * `__stdcall(pItem, nBodyLoc) -> u32`, `ret 8`).
@@ -4177,10 +4200,14 @@ export function ITEMS_CheckBodyLocation113c(
   const ptr = pItem >>> 0
   if (ptr === 0 || m.get(ptr, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0
   const loc = nBodyLoc >>> 0
-  const rec = lookupItemTypesTxtRecordFromItem113c(m, ptr)
-  if (rec === 0) return loc === 0 ? 1 : 0
-  const b1 = m.get(rec, D2ItemTypesTxt.nBodyLoc1)
-  const b2 = m.get(rec, D2ItemTypesTxt.nBodyLoc2)
+  const sm = withItemsStackScratch113c(m)
+  const pB1 = ITEMS_STACK_SCRATCH_BASE
+  const pB2 = (ITEMS_STACK_SCRATCH_BASE + 1) >>> 0
+  sm.setU8(pB1, 0)
+  sm.setU8(pB2, 0)
+  ITEMS_GetAllowedBodyLocations113c(sm, ptr, pB1, pB2)
+  const b1 = sm.u8(pB1)
+  const b2 = sm.u8(pB2)
   if (b1 === loc || b2 === loc) return 1
   if (loc === 0x0b || loc === 0x0c) {
     if (b1 === 4 || b2 === 4 || b1 === 5 || b2 === 5) return 1

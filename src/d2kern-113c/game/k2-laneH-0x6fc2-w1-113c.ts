@@ -77,7 +77,7 @@ export interface LaneH0x6fc2Hooks113c {
 const OBJRGN_CPP_VA_113C = 0x6fd1d174
 
 /** Reentrant scratch stack region for local structs (`D2UnitFindDataStrc`, `D2AiCmdStrc`). */
-let k2LaneHStackPtr = 0x7ef60000
+let k2LaneHStackPtr = 0x7e0c0000
 
 /**
  * Authoritative 256-entry IEEE 802.3 CRC-32 lookup table (`poly = 0xEDB88320`)

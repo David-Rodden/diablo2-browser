@@ -32,8 +32,8 @@
     "name": "ACT2Q1_Callback_PlayerEnterSyncRadamentQuestState_6FCE41D0",
     "kernFile": "src/d2kern-113c/game/k2-w5b5-113c.ts",
     "tsSymbol": "ACT2Q1_Callback_PlayerEnterSyncRadamentQuestState_6FCE41D0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w5b5.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/replay-act-quests.test.ts (0x6FCE41D0) across Act 1-5 K4 longitudinal quest & town NPC replay at 100% strict zero divergence"
   },
   {
     "module": "D2Game",
@@ -41,8 +41,8 @@
     "name": "ACT2Q1_Callback_NpcActivateDialog_6FCE4320",
     "kernFile": "src/d2kern-113c/game/k2-w5b5-113c.ts",
     "tsSymbol": "ACT2Q1_Callback_NpcActivateDialog_6FCE4320_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w5b5.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/replay-act-quests.test.ts (0x6FCE4320) across Act 1-5 K4 longitudinal quest & town NPC replay at 100% strict zero divergence"
   },
   {
     "module": "D2Game",
@@ -86,8 +86,8 @@
     "name": "ACT2Intro_Callback_NpcActivateDialog_6FCE4690",
     "kernFile": "src/d2kern-113c/game/k2-w5b5-113c.ts",
     "tsSymbol": "ACT2Intro_Callback_NpcActivateDialog_6FCE4690_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w5b5.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/replay-act-quests.test.ts (0x6FCE4690) across Act 1-5 K4 longitudinal quest & town NPC replay at 100% strict zero divergence"
   },
   {
     "module": "D2Game",
@@ -95,8 +95,8 @@
     "name": "ACT2Intro_Callback_ScrollMessageSetNpcIntro_6FCE4780",
     "kernFile": "src/d2kern-113c/game/k2-w5b5-113c.ts",
     "tsSymbol": "ACT2Intro_Callback_ScrollMessageSetNpcIntro_6FCE4780_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w5b5.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/replay-act-quests.test.ts (0x6FCE4780) across Act 1-5 K4 longitudinal quest & town NPC replay at 100% strict zero divergence"
   },
   {
     "module": "D2Game",
@@ -104,8 +104,8 @@
     "name": "ACT2Q7_Callback_NpcActivateGuardDialog_6FCE4900",
     "kernFile": "src/d2kern-113c/game/k2-w5b5-113c.ts",
     "tsSymbol": "ACT2Q7_Callback_NpcActivateGuardDialog_6FCE4900_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w5b5.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/replay-act-quests.test.ts (0x6FCE4900) across Act 1-5 K4 longitudinal quest & town NPC replay at 100% strict zero divergence"
   },
   {
     "module": "D2Game",
@@ -113,8 +113,8 @@
     "name": "ACT2Q7_Callback_ScrollMessageSetState_6FCE4A40",
     "kernFile": "src/d2kern-113c/game/k2-w5b5-113c.ts",
     "tsSymbol": "ACT2Q7_Callback_ScrollMessageSetState_6FCE4A40_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w5b5.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/replay-act-quests.test.ts (0x6FCE4A40) across Act 1-5 K4 longitudinal quest & town NPC replay at 100% strict zero divergence"
   },
   {
     "module": "D2Game",
@@ -176,8 +176,8 @@
     "name": "ACT2Q4_Callback_NpcActivateDialog_6FCE4EA0",
     "kernFile": "src/d2kern-113c/game/k2-w5b5-113c.ts",
     "tsSymbol": "ACT2Q4_Callback_NpcActivateDialog_6FCE4EA0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w5b5.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/replay-act-quests.test.ts (0x6FCE4EA0) across Act 1-5 K4 longitudinal quest & town NPC replay at 100% strict zero divergence"
   },
   {
     "module": "D2Game",

@@ -140,6 +140,31 @@ function readNdjsonGz<T>(filePath: string): T[] {
   return out
 }
 
+function hydrateCanonicalItemStatCostTable113c(m: SparseMemory113c, pSgpt: number): void {
+  const count = CANONICAL_ITEM_STAT_COST_113C.length
+  const pIsc = m.alloc(count * 0x144)
+  const opTargets = new Set<number>()
+  for (const row of CANONICAL_ITEM_STAT_COST_113C) {
+    if ((row.op ?? 0) !== 0 && row.opStats !== undefined) {
+      for (const dst of row.opStats) opTargets.add(dst)
+    }
+  }
+  for (const row of CANONICAL_ITEM_STAT_COST_113C) {
+    const rec = (pIsc + row.statId * 0x144) >>> 0
+    m.setU16(rec + 0x00, row.statId & 0xffff)
+    m.setU32(rec + 0x04, (row.flags ?? 0) >>> 0)
+    m.setU8(rec + 0x18, (row.valShift ?? 0) & 0xff)
+    m.setU32(rec + 0x2c, (row.minAccr ?? 0) >>> 0)
+    m.setU16(rec + 0x32, (row.maxStat ?? 0xffff) & 0xffff)
+    m.setU8(rec + 0x50, row.keepZero ? 1 : 0)
+    m.setU8(rec + 0x51, (row.op ?? 0) !== 0 && (row.opStats?.length ?? 0) > 0 ? 1 : 0)
+    m.setU8(rec + 0x52, opTargets.has(row.statId) ? 1 : 0)
+    m.setU8(rec + 0x53, row.op === 4 || row.op === 5 ? 1 : 0)
+  }
+  m.setU32((pSgpt + 0xbcc) >>> 0, pIsc)
+  m.setU32((pSgpt + 0xbd4) >>> 0, count >>> 0)
+}
+
 function createMinimalSliceWorld113c(m: SparseMemory113c): {
   world: FallenSliceWorld113c
   pRoom: number
@@ -567,6 +592,35 @@ describe('src/d2kern-113c B2/B3 binary parity unit suite', () => {
     m.setU32(pSkills + 0x10, pUsedSkill)
     m.set(pBarb, D2UnitStrc.pSkills, pSkills)
 
+    // Hydrate minimal D2Common ItemsTxt + WeaponClass + ItemTypes equiv matrix + Grid0 descriptor in `m` for canonical dual-wield `weapSel` dispatch:
+    m.fill(0x6fded378, 16, 0)
+    m.setU8(0x6fded378, 13) // D2COMMON_GRID0_INFO_VA_113C: bGridX = 13 (BODYLOC_COUNT_113C)
+    m.setU8(0x6fded379, 1) // bGridY = 1
+    const pBitMasksWeap = m.alloc(32 * 4)
+    for (let bi = 0; bi < 32; bi++) m.setU32(pBitMasksWeap + bi * 4, (1 << bi) >>> 0)
+    m.setU32(0x6fdd90b0, pBitMasksWeap)
+    const pSgptWeap = m.alloc(0xc40)
+    m.setU32(0x6fde9e1c, pSgptWeap)
+    hydrateCanonicalItemStatCostTable113c(m, pSgptWeap)
+    const pItemsTxtWeap = m.alloc(350 * 0x1a8)
+    m.setU32(pItemsTxtWeap + 0 * 0x1a8 + 0xc0, 0x20736831) // hax wclass = '1hs '
+    m.setU16(pItemsTxtWeap + 0 * 0x1a8 + 0x11e, 28) // hax wType[0] = 28 (axe)
+    m.setU32(pItemsTxtWeap + 10 * 0x1a8 + 0xc0, 0x20736831) // clb wclass = '1hs '
+    m.setU16(pItemsTxtWeap + 10 * 0x1a8 + 0x11e, 31) // clb wType[0] = 31 (club)
+    m.setU32(0x6fdefb94, 350)
+    m.setU32(0x6fdefb98, pItemsTxtWeap)
+    m.setU32(0x6fdd908c, 1)
+    m.setU32(0x6fdef020, 1)
+    m.setU32(0x6fdef028, 0x20736831) // '1hs ' -> code idx 2
+    m.setU16(0x6fdef02c, 2)
+    m.setU16(0x6fdef02e, 0)
+    const pEquivMat = m.alloc(64 * 16)
+    m.setU32(pEquivMat + (28 * 4 + 1) * 4, 1 << (45 - 32)) // axe -> ITYPE_WEAPON (45)
+    m.setU32(pEquivMat + (31 * 4 + 1) * 4, 1 << (45 - 32)) // club -> ITYPE_WEAPON (45)
+    m.setU32(pSgptWeap + 0xbfc, 64)
+    m.setU32(pSgptWeap + 0xc00, 4)
+    m.setU32(pSgptWeap + 0xc04, pEquivMat)
+
     // weapSel == 0 (default): picks slot 5 (`pLeftClub`)
     m.setU8(pSkillsTxt + 0x168, 0)
     expect(PLAYER_GetEquippedWeapon113c(m, pBarb)).toBe(pLeftClub)
@@ -590,6 +644,8 @@ describe('src/d2kern-113c B2/B3 binary parity unit suite', () => {
     // weapSel == 4: sets `pDefault = 0` and `pChosen = 0` -> returns `0`
     m.setU8(pSkillsTxt + 0x168, 4)
     expect(PLAYER_GetEquippedWeapon113c(m, pBarb)).toBe(0)
+    m.setU32(0x6fdd908c, 0)
+    m.setU32(0x6fdefb94, 0)
     m.setU32(pBarb + 0x38, 0)
     m.set(pBarb, D2UnitStrc.pSkills, 0)
     m.setU32(ppBodyItems + 5 * 4, 0)
@@ -635,6 +691,7 @@ describe('src/d2kern-113c B2/B3 binary parity unit suite', () => {
     expect(PLAYER_DrainRunStamina113c(m, pBarb)).toBe(0)
     expect(STATLIST_GetUnitStat113c(m, pBarb, 10, 0)).toBe(0)
     STATLIST_SetUnitStat113c(m, pBarb, 10, 970, 0)
+    m.setU32(0x6fde9e1c, 0)
 
     // `ITEMS_RollItemDurabilityLoss113c` (`0x6FC32EE0`) & `SUNITDMG_DrainItemDurability113c` (`0x6FCFEBA0`):
     // Seeding `pBarb->pSeed = {lo=0, hi=2}` forces `roll(100) == 2`:
@@ -751,6 +808,58 @@ describe('Pure src/d2kern-113c Fallen encounter slice (F785 -> F825, zero src/se
 
     const m = new SparseMemory113c()
     const world = hydrateFallenSliceFromMemdump113c(m, f785Snap, collRaw)
+    // Hydrate canonical `D2ItemStatCostTxt` onto `sgptDataTables` (`+0xBCC/+0xBD4`) and mirror D2Game IAT `Fog!gdwBitMasks`
+    // so `STATLIST_AddUnitStatMemPort113c` propagates run stamina and `AI_TryOpenNearbyClosedDoor113c` reads bitmasks cleanly.
+    const pSgptSlice = m.u32(0x6fde9e1c)
+    m.setU32(0x6fd18be0, m.u32(0x6fdd90b0))
+    hydrateCanonicalItemStatCostTable113c(m, pSgptSlice)
+    // Hydrate Fallen (`monStatsEx = 19`) `MonStats2.SHv = "nil,sml,buc,tch"` + `CompCode` table (`0x6FDEFF54`/`0x6FDEFF5C`)
+    // so `SUNITDMG_RollPassiveWeaponBlockOrShieldBlock113c` resolves `SH` (`compIdx = 7`) shield block rolls on Fallen 1:12.
+    const pCompCodes = m.alloc(4 * 4)
+    m.setU32(pCompCodes + 0 * 4, 0x206c696e) // 'nil '
+    m.setU32(pCompCodes + 1 * 4, 0x206c6d73) // 'sml '
+    m.setU32(pCompCodes + 2 * 4, 0x20637562) // 'buc '
+    m.setU32(pCompCodes + 3 * 4, 0x20686374) // 'tch '
+    m.setU32(0x6fdeff54, pCompCodes)
+    m.setU32(0x6fdeff5c, 4)
+    m.setU32(0x6fdeefdc, 0)
+    m.setU32(0x6fdeff6c, m.alloc(12))
+    const pFallenMon2 = (m.u32((pSgptSlice + 0xa90) >>> 0) + 19 * 308) >>> 0
+    m.setU8((pFallenMon2 + 0x15 + 7) >>> 0, 4)
+    for (let vi = 0; vi < 4; vi++) {
+      m.setU8((pFallenMon2 + 7 * 12 + 0x26 + vi) >>> 0, vi)
+    }
+    // Zero-pad truncated `0x200`-byte `D2ClientStrc` dump block (`+0x200..+0x51F`) and `pArenaUnit` (`pPlayerData+0x34`)
+    // read by canonical `CLIENTS_GetPlayerUnit113c` (`0x6FC6AD10`, `+0x3D4`) / `CLIENTS_UpdatePlayerRoom113c` (`0x6FC6B400`).
+    for (const pPlr of world.playerById.values()) {
+      const pPlrData = m.get(pPlr, D2UnitStrc.pUnitData) >>> 0
+      if (pPlrData !== 0) {
+        const pClient = m.u32((pPlrData + 0x9c) >>> 0) >>> 0
+        if (pClient !== 0) {
+          m.fill((pClient + 0x200) >>> 0, 0x320, 0)
+          for (let _nd = m.u32((pClient + 0x1c0) >>> 0) >>> 0; _nd !== 0; _nd = 0) { m.fill((_nd + 0x200) >>> 0, 8, 0) }
+          for (let _tl = m.u32((pClient + 0x1bc) >>> 0) >>> 0; _tl !== 0; _tl = 0) { m.fill((_tl + 0x200) >>> 0, 8, 0) }
+          for (const rPtr of world.roomByPtr.keys()) {
+            const nClients = m.u32((rPtr + 0x78) >>> 0) | 0
+            const pClientArr = m.u32((rPtr + 0x48) >>> 0) >>> 0
+            if (nClients > 0 && pClientArr !== 0) {
+              m.fill(pClientArr, nClients * 4, 0)
+              m.setU32(pClientArr, pClient)
+            }
+          }
+        }
+        const pArenaUnit = m.u32((pPlrData + 0x34) >>> 0) >>> 0
+        if (pArenaUnit !== 0) {
+          m.fill(pArenaUnit, 0x10, 0)
+        }
+      }
+    }
+    for (const pU of world.monsterById.values()) {
+      const pSkills = m.u32((pU + 0xa8) >>> 0) >>> 0
+      if (pSkills !== 0) {
+        m.fill((pSkills + 0x10) >>> 0, 0x10, 0)
+      }
+    }
 
     let f790PersistentIdsBefore: number[] = []
     let f821PersistentIdsBefore: number[] = []

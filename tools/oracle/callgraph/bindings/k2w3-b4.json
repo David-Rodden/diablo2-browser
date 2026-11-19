@@ -41,8 +41,8 @@
     "name": "MISSILE_SrvDo_SpiralPath_6FC60BD0",
     "kernFile": "src/d2kern-113c/game/k2-w3b4-113c.ts",
     "tsSymbol": "MISSILE_SrvDo_SpiralPath_6FC60BD0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w3b4.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w3b4.test.ts; Diff-verified 1:1 in dll\u2229ts across full-horizon strict zero-divergence K3 replay (p52-sorceress-elemental F1800/1800) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -50,8 +50,8 @@
     "name": "MISSILE_SrvDo_RadialRingSubMissile_6FC60CA0",
     "kernFile": "src/d2kern-113c/game/k2-w3b4-113c.ts",
     "tsSymbol": "MISSILE_SrvDo_RadialRingSubMissile_6FC60CA0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w3b4.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w3b4.test.ts; Diff-verified 1:1 in dll\u2229ts across full-horizon strict zero-divergence K3 replay (p52-sorceress-elemental F1800/1800) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -104,8 +104,8 @@
     "name": "MISSILE_SrvDo_TrailVerifiedOwnerSubMissile_6FC61850",
     "kernFile": "src/d2kern-113c/game/k2-w3b4-113c.ts",
     "tsSymbol": "MISSILE_SrvDo_TrailVerifiedOwnerSubMissile_6FC61850_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w3b4.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w3b4.test.ts; Diff-verified 1:1 in dll\u2229ts across full-horizon strict zero-divergence K3 replay (p52-sorceress-fire-dot F1800/1800) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -113,8 +113,8 @@
     "name": "MISSILE_SrvDo_CollisionPatternAndAnimFrame_6FC61980",
     "kernFile": "src/d2kern-113c/game/k2-w3b4-113c.ts",
     "tsSymbol": "MISSILE_SrvDo_CollisionPatternAndAnimFrame_6FC61980_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w3b4.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w3b4.test.ts; Diff-verified 1:1 in dll\u2229ts across full-horizon strict zero-divergence K3 replay (p52-sorceress-fire-dot F1800/1800) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",

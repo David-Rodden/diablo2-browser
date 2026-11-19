@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { EVENT_InitTimerQueue113c } from '../../../src/d2kern-113c/game/timer-wheel.js';
 import { SparseMemory113c } from '../../../src/d2kern-113c/mem/sparse-memory.js';
 import {
   CLIENT_SendLoadActAndEnvStatePackets_6FCBD610_113c,
@@ -405,15 +406,21 @@ describe('K2 Wave 4 Batch 6 (w4b6: 0x6FCBD610..0x6FCC58D0)', () => {
   it('37. AI_UpdateSummonOwnerTownAndChargeCounter_6FCC4A10_113c returns 1 when owner is missing', () => {
     const m = new SparseMemory113c();
     const pUnit = m.alloc(0x100);
-    const pGame = m.alloc(0x100);
+    const pGame = m.alloc(0x200);
+    EVENT_InitTimerQueue113c(m, pGame);
+    m.setU32(pUnit + 0x00, 1);
+    m.setU32(pUnit + 0x10, 1);
     const pAiArgs = m.alloc(0x40);
     expect(AI_UpdateSummonOwnerTownAndChargeCounter_6FCC4A10_113c(m, pUnit, pGame, pAiArgs, 1)).toBe(1);
   });
 
   it('38. AI_AttackWestOffsetThenDie_6FCC4B90_113c sets unit flag 0x20000 when stage is 1', () => {
     const m = new SparseMemory113c();
-    const pGame = m.alloc(0x100);
+    const pGame = m.alloc(0x200);
+    EVENT_InitTimerQueue113c(m, pGame);
     const pUnit = m.alloc(0x100);
+    m.setU32(pUnit + 0x00, 1);
+    m.setU32(pUnit + 0x10, 1);
     const pAiArgs = m.alloc(0x40);
     const pAiCmd = m.alloc(0x40);
     m.setU32(pAiArgs + 0x00, pAiCmd);
@@ -478,7 +485,10 @@ describe('K2 Wave 4 Batch 6 (w4b6: 0x6FCBD610..0x6FCC58D0)', () => {
   it('43. AI_TickEmergeQuadrantAttackAndSubmerge_6FCC5580_113c sets unit flag 0x20000 and emerges when close', () => {
     const m = new SparseMemory113c();
     const pGame = m.alloc(0x200);
+    EVENT_InitTimerQueue113c(m, pGame);
     const pUnit = m.alloc(0x100);
+    m.setU32(pUnit + 0x00, 1);
+    m.setU32(pUnit + 0x10, 1);
     const pTarget = m.alloc(0x100);
     const pAiArgs = m.alloc(0x40);
     const pAiCmd = m.alloc(0x40);
@@ -498,7 +508,10 @@ describe('K2 Wave 4 Batch 6 (w4b6: 0x6FCBD610..0x6FCC58D0)', () => {
   it('44. AI_TickTimedSkillCasterOrExpire_6FCC57E0_113c expires when current game frame exceeds timer', () => {
     const m = new SparseMemory113c();
     const pGame = m.alloc(0x200);
+    EVENT_InitTimerQueue113c(m, pGame);
     const pUnit = m.alloc(0x100);
+    m.setU32(pUnit + 0x00, 1);
+    m.setU32(pUnit + 0x10, 1);
     const pAiArgs = m.alloc(0x40);
     const pAiCmd = m.alloc(0x40);
     const pMonStats = m.alloc(0x200);

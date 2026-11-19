@@ -178,10 +178,8 @@ describe('K2 Wave 4 Batch 2 (w4b2): D2Game 0x6FC561E0..0x6FC82C00', () => {
     m.setU32((pCached + 4) >>> 0, pCachedSrc);
     m.setU32((pPlayerData + 0x5c) >>> 0, pCached);
     const pDstBuf = m.alloc(8);
-    const ppDstBuf = m.alloc(4);
-    m.setU32(ppDstBuf, pDstBuf);
     expect(
-      PLAYERSAVE_WriteInventoryOrCachedSaveBuffer_6FC73B40_113c(m, pPlayer, ppDstBuf, 0, 8, 1, 0, 0),
+      PLAYERSAVE_WriteInventoryOrCachedSaveBuffer_6FC73B40_113c(m, pPlayer, pDstBuf, 0, 8, 1, 0, 0),
     ).toBe(4);
     expect(m.u32(pDstBuf)).toBe(0xdeadbeef);
 

@@ -151,11 +151,14 @@ import {
   D2GAME_SUNIT_GetGameFromUnit113c,
 } from './boot-init-gap-b-113c.ts'
 import {
+  MONSTER_CheckSandLeaperMidAir113c,
   MONSTER_StartDeath113c,
   SUNITDMG_ApplyDamage113c,
   SUNITDMG_DistributeExperience113c,
 } from './combat-a1c-113c.ts'
 import { SUNIT_GetServerUnit113c } from './game-strc.ts'
+import { NET_SendPacket0x23_AssignSkill113c } from './k2-gap-melee-dot-113c.ts'
+import { SUNIT_GetOwnerUnit113c } from './k2-sunit-spawn-w1-113c.ts'
 import {
   SUNIT_IsDeadOrDying113c,
   UNITS_ChangeAnimMode113c,
@@ -297,12 +300,17 @@ function applyPostDamageHitReaction(
   pDmg: number,
 ): void {
   if (pDefender === 0 || pDmg === 0) return
-  const resultFlags = m.u16((pDmg + 0x04) >>> 0)
+  let resultFlags = m.u16((pDmg + 0x04) >>> 0)
   if ((resultFlags & 0x0001) !== 0) {
     const hitClass = m.u32((pDmg + 0x60) >>> 0)
     m.setU32((pDefender + 0xb0) >>> 0, hitClass)
   }
-  if ((resultFlags & 0x0002) !== 0 && (m.u32(pDefender >>> 0) >>> 0) === 1) {
+  const isMonster = (m.u32(pDefender >>> 0) >>> 0) === 1
+  if (isMonster) {
+    MONSTER_CheckSandLeaperMidAir113c(m, pDmg, pDefender)
+    resultFlags = m.u16((pDmg + 0x04) >>> 0)
+  }
+  if ((resultFlags & 0x0002) !== 0 && isMonster) {
     if (STATES_CheckState113c(m, pDefender, 0x36) !== 0) {
       STATES_ToggleGfxStateFlag113c(m, pDefender, 0x5c, 1)
       return
@@ -330,16 +338,6 @@ function getMissilesTxtRecordFast(m: Memory113c, nMissileId: number): number {
   const pBase = m.u32((pTables + 0xb64) >>> 0) >>> 0
   if (pBase === 0) return 0
   return (pBase + Math.imul(id, 0x1a4)) >>> 0
-}
-
-/** Resolves a missile unit's owner server unit when `(dwFlags2 & 0x400) != 0`. */
-function resolveMissileOwnerUnit(m: Memory113c, pMissile: number, pGame: number): number {
-  if (pMissile === 0) return 0
-  const flags2 = m.u32((pMissile + 0xc8) >>> 0)
-  if (((flags2 >>> 10) & 1) === 0) return 0
-  const ownerType = m.u32((pMissile + 0x94) >>> 0) | 0
-  const ownerId = m.u32((pMissile + 0x98) >>> 0) >>> 0
-  return SUNIT_GetServerUnit113c(m, pGame, ownerType, ownerId)
 }
 
 /** Reads `MonStatsTxt.nVelocity` minimum floor (`+0x168 + difficulty`, else `-50`). */
@@ -536,20 +534,7 @@ function sendPacket0x23AssignSkill(
   dwItemGuid: number,
 ): void {
   if (pClient === 0) return
-  const sp = itemdefGapStackPtr
-  itemdefGapStackPtr = (sp + 0x10) >>> 0
-  try {
-    m.fill(sp, 0x0d, 0)
-    m.setU8(sp, 0x23)
-    m.setU8((sp + 0x01) >>> 0, nUnitType & 0xff)
-    m.setU32((sp + 0x02) >>> 0, dwUnitId >>> 0)
-    m.setU8((sp + 0x06) >>> 0, bHand & 0xff)
-    m.setU16((sp + 0x07) >>> 0, wSkillId & 0xffff)
-    m.setU32((sp + 0x09) >>> 0, dwItemGuid >>> 0)
-    NET_QueuePacketToClientBuffer113c(m, pClient, 1, sp, 0x0d)
-  } finally {
-    itemdefGapStackPtr = sp
-  }
+  NET_SendPacket0x23_AssignSkill113c(m, nUnitType, dwUnitId, pClient, bHand, wSkillId, dwItemGuid)
 }
 
 /** Updates pet/summon max caps in `pPlayerData + 0x44` when present. */
@@ -2074,7 +2059,7 @@ export function AURA_CheckUnitMatchesFilterFlags113c(
   if ((flags & 0x10000) !== 0) {
     if (pSource !== 0 && (m.u32(pSource) | 0) === 3) {
       const pGame = D2GAME_SUNIT_GetGameFromUnit113c(m, pSource)
-      pSource = resolveMissileOwnerUnit(m, pSource, pGame)
+      pSource = SUNIT_GetOwnerUnit113c(m, pSource, pGame)
       if (pSource === 0) return 0
     }
     D2GAME_SUNIT_GetGameFromUnit113c(m, pSource)
@@ -2089,7 +2074,7 @@ export function AURA_CheckUnitMatchesFilterFlags113c(
   if ((flags & 0x8000) !== 0) {
     if (pSource !== 0 && (m.u32(pSource) | 0) === 3) {
       const pGame = D2GAME_SUNIT_GetGameFromUnit113c(m, pSource)
-      pSource = resolveMissileOwnerUnit(m, pSource, pGame)
+      pSource = SUNIT_GetOwnerUnit113c(m, pSource, pGame)
       if (pSource === 0) return 0
     }
     const pGame = D2GAME_SUNIT_GetGameFromUnit113c(m, pSource)
@@ -2099,7 +2084,7 @@ export function AURA_CheckUnitMatchesFilterFlags113c(
   if ((flags & 0x20000) !== 0) {
     if (pSource !== 0 && (m.u32(pSource) | 0) === 3) {
       const pGame = D2GAME_SUNIT_GetGameFromUnit113c(m, pSource)
-      pSource = resolveMissileOwnerUnit(m, pSource, pGame)
+      pSource = SUNIT_GetOwnerUnit113c(m, pSource, pGame)
       if (pSource === 0) return 0
     }
     if (UNITS_CanUnitMeleeAttackTarget113c(m, pSource, pTargetUnit, 0) === 0) return 0

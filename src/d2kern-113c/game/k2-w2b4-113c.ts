@@ -116,7 +116,7 @@ export interface K2W2B4Hooks113c {
 }
 
 /** Reentrant scratch stack region for local packet buffers and out-parameter dwords. */
-let k2W2B4StackPtr = 0x7ef80000
+let k2W2B4StackPtr = 0x7e040000
 
 function resolveDataTablesPtr113c(m: Memory113c): number {
   const iatPtr = m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C) >>> 0

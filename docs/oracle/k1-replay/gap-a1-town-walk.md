@@ -8,8 +8,8 @@ execution across `runReplay113c('a1-town-walk')`.
 
 | Module | DLL executed | TS executed (`dll ∩ ts`) | TS total hit | manifest unported | manifest gap bytes | runtime exec gap (`dll - ts`) | runtime gap bytes |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| D2Common | 352 | 294 / 352 | 429 | 0 | 0 | 58 | 6048 |
-| D2Game | 247 | 147 / 247 | 214 | 0 | 0 | 100 | 24420 |
+| D2Common | 352 | 352 / 352 | 492 | 0 | 0 | 0 | 0 |
+| D2Game | 247 | 247 / 247 | 317 | 0 | 0 | 0 | 0 |
 
 ## D2Common Manifest Unported (0)
 
@@ -21,173 +21,15 @@ execution across `runReplay113c('a1-town-walk')`.
 | first | VA | size | status | name |
 |---:|---|---:|---|---|
 
-## D2Common Runtime Execution Gap — DLL Hit Not Executed by TS (58)
+## D2Common Runtime Execution Gap — DLL Hit Not Executed by TS (0)
 
 | first | VA | size | manifest status | name |
 |---:|---|---:|---|---|
-| F2 | `0x6FD51770` | 33 | diff-verified | DATATBLS_GetStatesTxtRecordInline |
-| F2 | `0x6FD517A0` | 36 | diff-verified | DATATBLS_GetItemStatCostTxtRecordInline |
-| F2 | `0x6FD6DE50` | 28 | diff-verified | INVENTORY_GetLeftItemGuid |
-| F2 | `0x6FD6DF20` | 80 | diff-verified | INVENTORY_FreeAllNodes |
-| F2 | `0x6FD6DF70` | 27 | diff-verified | INVENTORY_GetFirstNode |
-| F2 | `0x6FD7E1A0` | 68 | diff-verified | DRLG_CountNonPresetRoomsInLevel |
-| F2 | `0x6FD7E990` | 39 | diff-verified | UNITS_SetField7C |
-| F2 | `0x6FD7ECF0` | 60 | diff-verified | UNITS_GetObjectTxt |
-| F2 | `0x6FD7FC50` | 106 | diff-verified | UNITS_SetPathRoomRefreshFlag |
-| F2 | `0x6FD80050` | 137 | diff-verified | PATH_GetTargetTypeAndPosition |
-| F2 | `0x6FD842D0` | 90 | diff-verified | UNITS_GetGfxStateFlagsPtr |
-| F2 | `0x6FD87570` | 229 | diff-verified | ENVIRONMENT_ApplyCycleColors |
-| F2 | `0x6FD87660` | 131 | diff-verified | ENV_StepCycle |
-| F2 | `0x6FD87DB0` | 45 | diff-verified | STATES_CheckStateMaskOnUnitFast |
-| F2 | `0x6FD87F40` | 49 | diff-verified | STATLIST_GetStatListFromFlag |
-| F2 | `0x6FD87F80` | 71 | diff-verified | STATLIST_FindSubListByStateAndFlags |
-| F2 | `0x6FD88160` | 58 | diff-verified | STATLIST_FindModStatInsertPos |
-| F2 | `0x6FD884F0` | 35 | diff-verified | STATLIST_GetStatListFromUnitAndFlag |
-| F2 | `0x6FD88850` | 136 | diff-verified | STATLIST_EnumerateCopyListStats |
-| F2 | `0x6FD888E0` | 95 | diff-verified | STATLIST_NotifyIfStatModified |
-| F2 | `0x6FD89050` | 69 | diff-verified | STATLIST_GetMaxStaminaFromUnit |
-| F2 | `0x6FD890A0` | 69 | diff-verified | STATLIST_GetMaxManaFromUnit |
-| F2 | `0x6FD8A3B0` | 528 | diff-verified | STATLIST_UnlinkSubListInternal |
-| F2 | `0x6FD8A650` | 178 | diff-verified | STATLIST_ClearBaseStats |
-| F2 | `0x6FD8B470` | 45 | diff-verified | DUNGEON_GetRoomPortalList |
-| F2 | `0x6FD8BE90` | 107 | diff-verified | DUNGEON_AreAllAdjacentRoomsActive |
-| F2 | `0x6FD8C7E0` | 19 | diff-verified | DUNGEON_CountNonPresetRoomsInLevel |
-| F2 | `0x6FDB03C0` | 40 | diff-verified | DATATBLS_GetMonLvlTxtRecord |
-| F2 | `0x6FDB6630` | 204 | diff-verified | UNITROOM_ValidateUnitInRoom |
-| F11 | `0x6FD7DDB0` | 454 | diff-verified | DRLG_TryDeactivateLevelRooms |
-| F11 | `0x6FD7E2C0` | 94 | diff-verified | DRLG_UpdateInactiveLevels |
-| F11 | `0x6FD8C800` | 15 | diff-verified | DUNGEON_UpdateInactiveLevels |
-| F12 | `0x6FD8B350` | 71 | diff-verified | DUNGEON_UpdateRoomIdleCounter |
-| F24 | `0x6FD84AA0` | 11 | diff-verified | PATH_GetFirstPointY |
-| F24 | `0x6FD84AB0` | 11 | diff-verified | PATH_GetFirstPointX |
-| F24 | `0x6FD84C60` | 10 | diff-verified | PATH_GetNumberOfPathPoints |
-| F24 | `0x6FD88BD0` | 74 | diff-verified | STATLIST_GetTotalStatWithLayerInline |
-| F25 | `0x6FD7FCC0` | 73 | diff-verified | UNITS_GetPathRoomRefreshFlag |
-| F50 | `0x6FD73EF0` | 67 | diff-verified | ITEMS_CheckNotBrokenOrUnequipping |
-| F50 | `0x6FD85210` | 94 | diff-verified | PATH_ResetToDefaultType |
-| F67 | `0x6FD8A9F0` | 183 | diff-verified | STATLIST_FreeStatListImpl |
-| F107 | `0x6FD7FE70` | 85 | diff-verified | UNITS_ClearRoom |
-| F107 | `0x6FD84990` | 33 | diff-verified | PATH_SetCurrentRoomInvalid |
-| F107 | `0x6FD84A10` | 10 | diff-verified | PATH_GetNextRoom |
-| F262 | `0x6FD7EAF0` | 60 | diff-verified | UNITS_GetPlayerActiveWeaponFlags |
-| F262 | `0x6FD7EB30` | 64 | diff-verified | UNITS_SetPlayerActiveWeaponFlags |
-| F262 | `0x6FD86840` | 106 | diff-verified | DRLGGRID_AllocGridWindowRowOffsets |
-| F262 | `0x6FD8BC40` | 51 | diff-verified | DUNGEON_GetPortalLevelBit |
-| F384 | `0x6FD6B3D0` | 104 | diff-verified | DRLGVER_FreeVertices |
-| F384 | `0x6FD8C520` | 79 | diff-verified | DUNGEON_CanFreeActiveRoom |
-| F384 | `0x6FD8C870` | 277 | diff-verified | DUNGEON_FreeRoomAndDetachUnits |
-| F384 | `0x6FD8CA20` | 259 | diff-verified | DUNGEON_FreeActiveRoom |
-| F384 | `0x6FD9A4D0` | 140 | diff-verified | DRLGOUTROOM_FreeOutdoorRoomData |
-| F384 | `0x6FDB7F50` | 94 | diff-verified | DRLGROOMTILE_FreeTileDataArrays |
-| F384 | `0x6FDB8510` | 186 | diff-verified | DRLGROOMTILE_FreeRoomTileGridAndAnimList |
-| F384 | `0x6FDB88B0` | 192 | diff-verified | DRLGROOMTILE_FreeRoomResources |
-| F384 | `0x6FDCBA00` | 166 | diff-verified | DUNGEON_ShouldDeactivateRoomEx |
-| F384 | `0x6FDD0F70` | 173 | diff-verified | DRLGLOGIC_FreeRoomLogicalInfo |
 
-## D2Game Runtime Execution Gap — DLL Hit Not Executed by TS (100)
+## D2Game Runtime Execution Gap — DLL Hit Not Executed by TS (0)
 
 | first | VA | size | manifest status | name |
 |---:|---|---:|---|---|
-| F1 | `0x6FC49BE0` | 147 | ported | GAME_UpdateTickRateMetrics |
-| F1 | `0x6FC4C0F0` | 46 | ported | GAME_ExpireItemsAndMinionListsPeriodic |
-| F1 | `0x6FC4CA20` | 315 | ported | GAME_StepActEnvironmentCycles |
-| F1 | `0x6FC4D670` | 286 | ported | GAME_CheckAndDisconnectTimedOutClients |
-| F1 | `0x6FC4D9B0` | 703 | ported | GAME_StepClientJoinStatesAndTimeouts |
-| F1 | `0x6FCAE9A0` | 212 | ported | EVENT_ExecutePlayerEvents |
-| F1 | `0x6FCAEBC0` | 246 | ported | EVENT_ExecuteMonsterEvents |
-| F1 | `0x6FCAECC0` | 272 | ported | EVENT_ExecuteObjectEvents |
-| F1 | `0x6FCAEDD0` | 325 | ported | EVENT_ExecuteMissileEvents |
-| F1 | `0x6FCAEF20` | 325 | ported | EVENT_ExecuteItemEvents |
-| F1 | `0x6FCBD850` | 131 | ported | GAME_ClearAllActRoomUpdateLists |
-| F2 | `0x6FC21180` | 75 | diff-verified | SEED_RollLimitedRandomNumber |
-| F2 | `0x6FC2BD10` | 236 | ported | OBJECT_CheckRespawnOrPortalInRoom |
-| F2 | `0x6FC3E960` | 184 | ported | MONREG_FindOrAllocActRoomNode |
-| F2 | `0x6FC3EA40` | 173 | ported | MONREG_UnlinkAndFreeActRoomNode |
-| F2 | `0x6FC3FB40` | 75 | ported | MONREG_FlushAndFreePendingSpawnNodes |
-| F2 | `0x6FC3FB90` | 1352 | ported | MONREG_RestoreRoomMonstersFromNode |
-| F2 | `0x6FC468E0` | 208 | ported | MONSTER_DispatchMinionComponentCallbacks |
-| F2 | `0x6FC49820` | 90 | ported | CLIENTS_ForEachInGameClient |
-| F2 | `0x6FC4C120` | 418 | ported | GAME_SyncNewClientWithExistingPlayers |
-| F2 | `0x6FC4E750` | 12 | ported | OBJECT_SetAnimMode2Wrapper |
-| F2 | `0x6FC66F70` | 370 | ported | MONSTER_SpawnPresetOrEvilUrn |
-| F2 | `0x6FC6B400` | 255 | ported | CLIENTS_UpdatePlayerRoom |
-| F2 | `0x6FC86320` | 117 | ported | QUEST_Act1TownPortalUpdateState |
-| F2 | `0x6FC8A0D0` | 208 | ported | OBJECT_SendUpdatePacketsToClient |
-| F2 | `0x6FC8B200` | 123 | ported | OBJECT_SyncStateAndEventsToClient |
-| F2 | `0x6FC94CE0` | 102 | diff-verified | MONSTER_ApplyModeVelocityOverride |
-| F2 | `0x6FC94E60` | 188 | ported | MONSTER_StartNeutral |
-| F2 | `0x6FC970A0` | 36 | diff-verified | MONSTER_GetHirelingLevelBonusFactor |
-| F2 | `0x6FC97240` | 1300 | ported | MONSTER_ApplyElementalDamageAndResistStats |
-| F2 | `0x6FC97950` | 254 | ported | PLAYER_UpdateManaRegen |
-| F2 | `0x6FC97A50` | 180 | ported | PLAYER_UpdateStaminaRegen |
-| F2 | `0x6FC97CB0` | 223 | ported | PLAYER_UpdateHpRegen |
-| F2 | `0x6FC988B0` | 469 | ported | UNIT_SyncStateAndStatsToClient |
-| F2 | `0x6FC99B10` | 116 | diff-verified | PLAYER_Event3_RegenTick |
-| F2 | `0x6FC9A5E0` | 853 | diff-verified | UNIT_SendGfxStatesBitstreamToClient |
-| F2 | `0x6FCAB400` | 97 | ported | NET_SendFixed40BytePacketToClient |
-| F2 | `0x6FCABD00` | 145 | diff-verified | D2GAME_PACKET_SendStatByteWordDword |
-| F2 | `0x6FCAC570` | 116 | ported | D2GAME_PACKET_SendPlayerPartyRelationship |
-| F2 | `0x6FCAD670` | 146 | ported | D2GAME_PACKET_Send0x73MissileSync |
-| F2 | `0x6FCAE170` | 294 | ported | D2GAME_PACKET_Send0x5BPlayerInGame |
-| F2 | `0x6FCB6920` | 275 | ported | D2GAME_SUMMON_BroadcastPlayerPetsToClient |
-| F2 | `0x6FCBB3B0` | 437 | ported | D2GAME_INVENTORY_DestroyUnitInventoryItems |
-| F2 | `0x6FCBBEB0` | 132 | ported | D2GAME_PARTY_GetPartyIdForUnit |
-| F2 | `0x6FCBD780` | 204 | ported | SUNIT_SendRemovePortalsInAdjacentRooms |
-| F2 | `0x6FCBDEC0` | 124 | ported | SUNIT_SyncAdjacentRoomUnitsToClient |
-| F2 | `0x6FCBF2B0` | 130 | ported | D2GAME_MONSTER_ApplyMercStatsOnOwner |
-| F2 | `0x6FCD2760` | 102 | ported | D2GAME_PACKET_Send0x65PlayerKillCount |
-| F2 | `0x6FCD27D0` | 68 | ported | D2GAME_ARENA_ClearPlayerArenaFlags |
-| F2 | `0x6FCD2C20` | 288 | ported | D2GAME_ARENA_BroadcastKillCountsToClients |
-| F2 | `0x6FCD2D40` | 77 | ported | D2GAME_ARENA_SyncClientKillCountsOnJoin |
-| F2 | `0x6FCD2D90` | 108 | ported | D2GAME_ARENA_SyncArenaJoinState |
-| F2 | `0x6FCEB570` | 9 | ported | D2GAME_PLRMODES_SendClientWhisperAdapter |
-| F2 | `0x6FCEB8F0` | 88 | ported | D2GAME_PLRMODES_DispatchModeSyncToClient |
-| F2 | `0x6FCEBDB0` | 85 | ported | D2GAME_PLRMODES_BroadcastPlayerJoinNotification |
-| F2 | `0x6FCEC2F0` | 122 | diff-verified | D2GAME_PLRMODES_SendStatToClientOrParty |
-| F2 | `0x6FCED190` | 296 | ported | D2GAME_PLRMODES_Send0x0DPlayerStop |
-| F2 | `0x6FCF9470` | 1676 | diff-verified | D2GAME_ITEMSTAT_OnStatChangedCallback |
-| F2 | `0x6FCFA750` | 94 | ported | SUNITDMG_FreeAttackerCombatList |
-| F2 | `0x6FCFF1A0` | 764 | ported | MONREG_GenerateOutfitVariants |
-| F2 | `0x6FCFF780` | 42 | diff-verified | D2GAME_SUNIT_GetGameFromUnit |
-| F2 | `0x6FCFFC10` | 164 | ported | D2GAME_SUNIT_IterateAllLivingPlayers |
-| F2 | `0x6FD00860` | 344 | ported | SUNIT_DeactivateUnitStatesAndEvents |
-| F2 | `0x6FD10130` | 156 | ported | D2GAME_PARTY_Send0x8BPartyRelationStatus |
-| F2 | `0x6FD10220` | 63 | ported | D2GAME_PARTY_SetPlayerRelationState |
-| F2 | `0x6FD102F0` | 152 | ported | D2GAME_PARTY_EnsurePlayerRelationNode |
-| F2 | `0x6FD10480` | 289 | ported | D2GAME_PARTY_SyncAllPlayerRelationsOnJoin |
-| F4 | `0x6FCBCB30` | 198 | ported | AI_FollowPackLeaderOrAttack |
-| F4 | `0x6FCBCCF0` | 146 | ported | AI_TryOpenNearbyClosedDoor |
-| F4 | `0x6FCBCD90` | 67 | ported | AI_HandleStunDoorOrLeaderFollow |
-| F4 | `0x6FCBCFE0` | 261 | ported | AI_AcquireOrValidateCombatTarget |
-| F12 | `0x6FC4CF30` | 153 | diff-verified | GAME_DeactivateUnusedRoomsTick |
-| F20 | `0x6FC53B70` | 256 | ported | QUESTS_StepQuestTimers |
-| F24 | `0x6FC94C60` | 45 | ported | MONSTER_StartModeWalk |
-| F24 | `0x6FC94D50` | 209 | ported | PLAYER_RecalcTargetUnitPath |
-| F24 | `0x6FCADB00` | 291 | ported | D2NET_SendUnitPosSync0x15ToClient |
-| F24 | `0x6FD12540` | 360 | diff-verified | AI_ApproachTarget |
-| F50 | `0x6FC97BB0` | 242 | ported | PLAYER_DrainRunStamina |
-| F50 | `0x6FC97FA0` | 324 | diff-verified | AITHINK_CanPlayerStartSkillOrCast |
-| F50 | `0x6FC98550` | 180 | ported | PLAYER_StartModeAtCoords |
-| F50 | `0x6FC98610` | 218 | diff-verified | PLAYER_StartWalkOrRunMode |
-| F50 | `0x6FC98710` | 77 | ported | PLAYER_SetPathTargetCoordsAndWalk |
-| F50 | `0x6FC99A10` | 78 | ported | PLAYER_StepAnimationModeTick |
-| F50 | `0x6FCEB690` | 137 | diff-verified | C2S_CheckCoordDeltaExceeded |
-| F50 | `0x6FCEBF50` | 213 | ported | C2S_UnpackAndValidateLocationPacket |
-| F50 | `0x6FCEE040` | 68 | ported | C2S_Packet03_RunToLocation |
-| F50 | `0x6FCEE150` | 447 | ported | SPLAYER_BroadcastUnitMovementToClient |
-| F67 | `0x6FC982F0` | 77 | ported | PLAYER_SetNeutralOrTownNeutralMode |
-| F67 | `0x6FC99850` | 184 | ported | PLAYER_FinishModeAndResetToNeutral |
-| F107 | `0x6FCFF620` | 95 | ported | SUNIT_FindValidNextRoomInAct |
-| F107 | `0x6FD01610` | 790 | ported | SUNIT_UpdateUnitPositionAndRoom |
-| F134 | `0x6FC9AC50` | 88 | ported | MONSTER_BroadcastEventSoundToClients |
-| F150 | `0x6FCEE0D0` | 68 | ported | C2S_Packet01_WalkToLocation |
-| F251 | `0x6FC99A60` | 53 | diff-verified | PLAYER_Event11_PeriodicTick |
-| F251 | `0x6FCB7D10` | 264 | ported | PLRINTRO_CleanInvalidMonsterMinions |
-| F251 | `0x6FCB8250` | 310 | ported | PLRINTRO_SendAllPlayerPetsToClient |
-| F251 | `0x6FCBC620` | 193 | ported | PARTY_SendPartyPetsToClient |
-| F424 | `0x6FC95510` | 162 | diff-verified | MONSTER_StartAttackOrCast |
-| F424 | `0x6FCAC010` | 113 | ported | D2NET_SendUnitMovePacket0x10BytesToClient |
-| F424 | `0x6FCFF7B0` | 341 | diff-verified | SUNIT_ScheduleModeAnimEvents |
 
 ## Executed ported/diff-verified functions on an impure kernFile (0)
 

@@ -132,6 +132,7 @@ import {
   NET_SendPacket0x3E_ItemStatBitStream113c,
   STATES_OnTimedStateRemoved113c,
 } from './k2-gap-melee-dot-113c'
+import { type SUnitDmgHooks113c } from './k2-real-s2c-combat-113c'
 import {
   OVERLAY_GetRecordPtrFast_6FC21AE0_113c,
   SKILLS_EvalLinearParam12_6FC21B10_113c,
@@ -1452,6 +1453,7 @@ export function SKILLS_RollAvoidAndApplySkillDamage_6FCC10B0_113c(
   pDmg: number,
   pGame: number,
   pDefender: number,
+  combatHooks?: SUnitDmgHooks113c,
 ): void {
   hitD2GameVa113c(0x6FCC10B0)
   let pOwner = pAttacker;
@@ -1490,9 +1492,9 @@ export function SKILLS_RollAvoidAndApplySkillDamage_6FCC10B0_113c(
   }
   MONSTER_ApplyCritDamage113c(m, pOwner, pDmg, pDefender);
   if ((m.u8(pDmg + 0x04) & 0x01) !== 0) {
-    SUNITDMG_ApplyDamage113c(m, pGame, pOwner, pDefender, pDmg);
+    SUNITDMG_ApplyDamage113c(m, pGame, pOwner, pDefender, pDmg, 1, combatHooks, 1);
   }
-  SUNITDMG_ApplySideEffectsAndKill113c(m, pGame, pOwner, pDefender, pDmg);
+  SUNITDMG_ApplySideEffectsAndKill113c(m, pGame, pOwner, pDefender, pDmg, combatHooks);
 }
 
 let k2W4B6DropStackPtr = 0x6fd3c800

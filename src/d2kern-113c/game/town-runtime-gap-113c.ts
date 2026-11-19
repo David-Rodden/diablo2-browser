@@ -65,11 +65,13 @@ import {
   UNITS_HasCollisionBetweenUnits113c,
   UNITS_IsDoor113c,
   UNITS_IsUnitInObjRectRange113c,
+  UNITS_UpdateAnimFrame113c,
   UNIT_GetAlignment113c,
 } from '../common/unit.ts';
 import type { Memory113c } from '../mem/sparse-memory.ts';
 import { MONSTERS_IsDead113c } from '../tables/datatbls-113c.ts';
 import { DATATBLS_GetLevelsTxtRecord113c } from '../tables/lvl-tbls-113c.ts';
+import { MONSTER_IsNextModeEndWithin5Frames113c } from './a1c-post150-f786-f1040-113c.ts';
 import {
   AIGENERAL_GetPackLeaderUnit113c,
   AI_CalcApproxUnitDistSubtiles113c,
@@ -78,21 +80,26 @@ import {
   SUNITDMG_FreeAttackerCombatList113c,
 } from './ai-fallen-113c.ts';
 import {
+  SEED_RollLimitedRandomNumber113c,
+} from './combat-a1c-113c.ts';
+import {
   AI_FleeFrom113c,
   AI_IdleWander113c,
   AI_Stall113c,
   MONSTER_StartMode113c,
   PLAYER_ScheduleSkillActionFrameEvents113c,
   PLAYER_StartModeCast113c,
-  SEED_RollLimitedRandomNumber113c,
-} from './combat-a1c-113c.ts';
+} from './k2-real-s2c-combat-113c.ts';
 import { SUNIT_GetServerUnit113c } from './game-strc.ts';
 import {
+  getRegisteredAiTargetModeCallback113c,
   MONSTER_ClearModeEvents113c,
   MONSTER_RegisterContinuousModeEvent113c,
+  registerAiTargetModeCallback113c,
   SKILLS_SetUsedSkill113c,
   SUNIT_IsDeadOrDying113c,
   UNITS_ChangeAnimMode113c,
+  type AiTargetModeCallback113c,
 } from './monster-events.ts';
 import {
   D2GAME_IAT_GDW_BITMASKS_VA_113C,
@@ -279,12 +286,6 @@ function checkObstacleClearanceBetweenUnits(m: Memory113c, pTarget: number, pOri
   return UNITS_HasCollisionBetweenUnits113c(m, pOrigin, pTarget, halfSize) === 0 ? 1 : 0;
 }
 
-function checkUnitNextEventWithinFiveFrames(m: Memory113c, pUnit: number, pGame: number): number {
-  const nextFrame = EVENT_GetNextEventFrame113c(m, pUnit, 1);
-  const gameFrame = i32(m, pGame + 0xa8);
-  return gameFrame <= ((nextFrame + 5) | 0) ? 1 : 0;
-}
-
 function checkSequenceSkillInterruptable(m: Memory113c, pUnit: number, pGame: number): number {
   const pSkill = SKILLS_GetUsedSkill113c(m, pUnit);
   if (pSkill !== 0) {
@@ -293,7 +294,7 @@ function checkSequenceSkillInterruptable(m: Memory113c, pUnit: number, pGame: nu
       return 1;
     }
   }
-  return checkUnitNextEventWithinFiveFrames(m, pUnit, pGame);
+  return MONSTER_IsNextModeEndWithin5Frames113c(m, pUnit, pGame);
 }
 
 function startUnitModeAtCoordsInternal(
@@ -356,13 +357,16 @@ export function AI_FollowPackLeaderOrAttack113c(
   pGame: number,
 ): number {
   hitD2GameVa113c(0x6FCBCB30);
-  const pAiControl = m.u32(pAiTickArgsPtr);
+  const pAiControl = m.u32(pAiTickArgsPtr) >>> 0;
+  if (pAiControl === 0) {
+    return 0;
+  }
   const leaderGuid = i32(m, pAiControl + 0xc);
   if (leaderGuid === -1) {
     return 0;
   }
   const classId = pUnit === 0 ? -1 : i32(m, pUnit + 4);
-  if (MONSTATS_CheckFlagBit113c(m, classId, 2) === 0) {
+  if (MONSTATS2_CheckModeBit113c(m, classId, 2) === 0) {
     m.setU32(pAiControl + 0xc, 0xffffffff);
     return 0;
   }
@@ -429,7 +433,10 @@ export function AI_TryOpenNearbyClosedDoor113c(
   pGame: number,
 ): number {
   hitD2GameVa113c(0x6FCBCCF0);
-  const pMonStats = m.u32(pAiTickArgs + 0x1c);
+  const pMonStats = m.u32((pAiTickArgs + 0x1c) >>> 0) >>> 0;
+  if (pMonStats === 0) {
+    return 0;
+  }
   const flagsByte = m.u8(pMonStats + 0xc);
   const gdwBitMasks = m.u32(D2GAME_IAT_GDW_BITMASKS_VA_113C);
   const mask3 = gdwBitMasks !== 0 ? m.u8(gdwBitMasks + 0xc) : 8;
@@ -481,6 +488,9 @@ export function AI_HandleStunDoorOrLeaderFollow113c(
   if (AI_TryOpenNearbyClosedDoor113c(m, pAiTickArgs, pUnit, pGame) !== 0) {
     return 1;
   }
+  if (pAiTickArgs !== 0 && m.u32(pAiTickArgs >>> 0) !== 0) {
+    return AI_FollowPackLeaderOrAttack113c(m, pAiTickArgs, pUnit, pGame) !== 0 ? 1 : 0;
+  }
   const pAiTickArgsPtr = m.alloc(4);
   m.setU32(pAiTickArgsPtr, pAiTickArgs);
   const res = AI_FollowPackLeaderOrAttack113c(m, pAiTickArgsPtr, pUnit, pGame);
@@ -510,7 +520,7 @@ export function AI_AcquireOrValidateCombatTarget113c(
   if (MONSTATS2_CheckModeBit113c(m, classId, 1) === 0) {
     return 0;
   }
-  if (MONSTATS_CheckFlagBit113c(m, classId, 2) === 0) {
+  if (MONSTATS2_CheckModeBit113c(m, classId, 2) === 0) {
     return 0;
   }
   const pRoom = UNITS_GetRoom113c(m, pUnit);
@@ -1035,28 +1045,29 @@ export function PLAYER_RecalcTargetUnitPath113c(
   nNewDist: number,
   pPathSyncState: number,
   pUnit: number,
-  _unusedArg: number,
+  nPathTypeArg: number,
 ): number {
   hitD2GameVa113c(0x6FC94D50);
   const pPath = m.u32(pUnit + 0x2c);
   PATH_SetNewDistance113c(m, pPath, nNewDist);
   const pTarget = PATH_GetTargetUnit113c(m, pPath);
-  const lastX = PATH_GetLastPointX113c(m, pPath);
-  const lastY = PATH_GetLastPointY113c(m, pPath);
+  const firstX = PATH_GetFirstPointX113c(m, pPath);
+  const firstY = PATH_GetFirstPointY113c(m, pPath);
   if (
     pTarget !== m.u32(pPathSyncState + 4) ||
-    lastX !== i32(m, pPathSyncState + 8) ||
-    lastY !== i32(m, pPathSyncState + 0xc)
+    firstX !== i32(m, pPathSyncState + 8) ||
+    firstY !== i32(m, pPathSyncState + 0xc)
   ) {
     m.setU32(pPathSyncState + 4, pTarget);
-    m.setU32(pPathSyncState + 8, lastX);
-    m.setU32(pPathSyncState + 0xc, lastY);
+    m.setU32(pPathSyncState + 8, firstX);
+    m.setU32(pPathSyncState + 0xc, firstY);
     m.setU8(pPathSyncState, 0);
     m.setU8(pPathSyncState + 1, 0);
   }
-  const pathType = PATH_GetType113c(m, pPath);
+  const pathType = (nPathTypeArg | 0) !== 0 ? (nPathTypeArg | 0) : PATH_GetType113c(m, pPath);
   PATH_SetType113c(m, pPath, pathType);
-  const nPoints = PATH_Compute113c(m, pPath, pUnit, 0);
+  PATH_Compute113c(m, pPath, pUnit, 0);
+  const nPoints = PATH_GetNumberOfPathPoints113c(m, pPath);
   if (nPoints !== 0) {
     UNITROOM_RefreshUnit113c(m, pUnit);
     m.setU32(pUnit + 0xc4, (m.u32(pUnit + 0xc4) | 1) >>> 0);
@@ -1094,6 +1105,9 @@ export function D2NET_SendUnitPosSync0x15ToClient113c(
   wPosX: number,
   wPosY: number,
   bUnkFlag: number,
+  bExtra11 = 0,
+  extraVelPct = 0,
+  maxDistOverride = -1,
 ): void {
   hitD2GameVa113c(0x6FCADB00);
   if (pClient === 0) {
@@ -1114,35 +1128,42 @@ export function D2NET_SendUnitPosSync0x15ToClient113c(
   if (pMonster === 0) {
     return;
   }
-  const pkt = m.alloc(0x10);
-  zeroMem(m, pkt, 0x10);
-  m.setU8(pkt, nUnitType & 0xff);
-  m.setU32(pkt + 1, dwUnitId >>> 0);
-  m.setU8(pkt + 5, bRealign & 0xff);
-  m.setU16(pkt + 6, wPosX & 0xffff);
-  m.setU16(pkt + 8, wPosY & 0xffff);
-  m.setU8(pkt + 0x0a, bUnkFlag & 0xff);
   const pPath = m.u32(pMonster + 0x2c);
-  const stepNum = PATH_GetNumberOfPathPoints113c(m, pPath) & 0xff;
-  m.setU8(pkt + 8, stepNum);
-  if (stepNum >= 5) {
-    if (stepNum <= 6) {
-      m.setU8(pkt + 0x0c, 1);
-      m.setU16(pkt + 6, PATH_GetFirstPointX113c(m, pPath) & 0xffff);
-      m.setU16(pkt + 4, PATH_GetFirstPointY113c(m, pPath) & 0xffff);
-    } else if (stepNum === 8) {
-      m.setU8(pkt + 8, 0x0b);
-    }
+  let rawPt = pPath !== 0 ? (PATH_GetType113c(m, pPath) & 0xff) : 0;
+  let outX = wPosX & 0xffff;
+  let outY = wPosY & 0xffff;
+  let outStep = bUnkFlag & 0xff;
+  if (rawPt === 5 || rawPt === 6) {
+    outStep = 1;
+    outX = pPath !== 0 ? (PATH_GetLastPointX113c(m, pPath) & 0xffff) : outX;
+    outY = pPath !== 0 ? (PATH_GetLastPointY113c(m, pPath) & 0xffff) : outY;
+  } else if (rawPt === 8) {
+    rawPt = 0x0b;
   }
-  let velPct = STATLIST_GetUnitStat113c(m, pMonster, 0x43, 0);
+  let velPct = ((STATLIST_GetUnitStat113c(m, pMonster, 0x43, 0) | 0) + (extraVelPct | 0)) | 0;
   if (velPct <= -32768) {
     velPct = -32768;
   } else if (velPct >= 32767) {
     velPct = 32767;
   }
+  const maxDist =
+    maxDistOverride >= 0
+      ? maxDistOverride & 0xff
+      : pPath !== 0
+        ? (PATH_GetMaxDistance113c(m, pPath) & 0xff)
+        : 0;
+  const pkt = m.alloc(0x10);
+  zeroMem(m, pkt, 0x10);
+  m.setU8(pkt, nUnitType & 0xff);
+  m.setU32(pkt + 1, dwUnitId >>> 0);
+  m.setU8(pkt + 5, bRealign & 0xff);
+  m.setU16(pkt + 6, outX & 0xffff);
+  m.setU16(pkt + 8, outY & 0xffff);
+  m.setU8(pkt + 0x0a, outStep & 0xff);
+  m.setU8(pkt + 0x0b, bExtra11 & 0xff);
+  m.setU8(pkt + 0x0c, rawPt & 0xff);
   m.setU16(pkt + 0x0d, velPct & 0xffff);
-  const maxDist = PATH_GetMaxDistance113c(m, pPath) & 0xff;
-  m.setU8(pkt + 0x0f, maxDist);
+  m.setU8(pkt + 0x0f, maxDist & 0xff);
   appendClientNetPacketNode(m, pClient, pkt, 0x10);
   freeMem(m, pkt);
 }
@@ -1200,22 +1221,7 @@ export function AITARGET_IterateRoomActiveClients113c(
   return 0;
 }
 
-export type AiTargetModeCallback113c = (
-  m: Memory113c,
-  pGame: number,
-  pOriginUnit: number,
-  pCandidateUnit: number,
-  pCtx: number,
-) => number;
-
-const registeredAiTargetModeCallbacks = new Map<number, AiTargetModeCallback113c>();
-
-export function registerAiTargetModeCallback113c(
-  cbId: number,
-  cb: AiTargetModeCallback113c,
-): void {
-  registeredAiTargetModeCallbacks.set(cbId >>> 0, cb);
-}
+export { registerAiTargetModeCallback113c, type AiTargetModeCallback113c };
 
 const CB_ID_MODE_4 = 4;
 const CB_ID_MODE_8 = 8;
@@ -1230,7 +1236,7 @@ function dispatchAiTargetCallback(
   pCandidateUnit: number,
   pCtx: number,
 ): number {
-  const regCb = registeredAiTargetModeCallbacks.get(pfnCallback >>> 0);
+  const regCb = getRegisteredAiTargetModeCallback113c(pfnCallback >>> 0);
   if (regCb !== undefined) {
     return regCb(m, pGame, pOriginUnit, pCandidateUnit, pCtx);
   }
@@ -1445,6 +1451,7 @@ export function AITHINK_CanPlayerStartSkillOrCast113c(
   nTargetMode: number,
   bCheckSkill: number,
   pTargetSkill: number,
+  onResetNeutralWhenMode1?: () => void,
 ): number {
   hitD2GameVa113c(0x6FC97FA0);
   if (STATES_CheckState113c(m, pUnit, 0x36) !== 0) {
@@ -1495,11 +1502,19 @@ export function AITHINK_CanPlayerStartSkillOrCast113c(
     if (m.u32(pUnit + 0x10) !== 1) {
       return 0;
     }
-    startUnitModeAtCoordsInternal(m, pGame, pUnit, 0, 1, 0, 0, 1);
+    if (onResetNeutralWhenMode1 !== undefined) {
+      onResetNeutralWhenMode1();
+    } else {
+      startUnitModeAtCoordsInternal(m, pGame, pUnit, 0, 1, 0, 0, 1);
+    }
     return 1;
   }
   if (m.u32(pUnit + 0x10) === 1) {
-    startUnitModeAtCoordsInternal(m, pGame, pUnit, 0, 1, 0, 0, 1);
+    if (onResetNeutralWhenMode1 !== undefined) {
+      onResetNeutralWhenMode1();
+    } else {
+      startUnitModeAtCoordsInternal(m, pGame, pUnit, 0, 1, 0, 0, 1);
+    }
     return 1;
   }
   if (
@@ -1510,7 +1525,7 @@ export function AITHINK_CanPlayerStartSkillOrCast113c(
     nTargetMode === 13 ||
     nTargetMode === 18
   ) {
-    return checkUnitNextEventWithinFiveFrames(m, pUnit, pGame) !== 0 ? 1 : 0;
+    return MONSTER_IsNextModeEndWithin5Frames113c(m, pUnit, pGame) !== 0 ? 1 : 0;
   }
   return 0;
 }
@@ -1554,12 +1569,12 @@ export function AITHINK_CanPlayerSwitchToMode113c(
     case 8:
     case 10:
     case 11:
-      if (checkUnitNextEventWithinFiveFrames(m, pUnit, pGame) !== 0) {
+      if (MONSTER_IsNextModeEndWithin5Frames113c(m, pUnit, pGame) !== 0) {
         return 1;
       }
       return nTargetMode === 4 || nTargetMode === 9 ? 1 : 0;
     case 12:
-      return checkUnitNextEventWithinFiveFrames(m, pUnit, pGame) !== 0 ? 1 : 0;
+      return MONSTER_IsNextModeEndWithin5Frames113c(m, pUnit, pGame) !== 0 ? 1 : 0;
     case 13:
       return m.u32(pUnit + 4) !== 0 ? 1 : 0;
     case 15:
@@ -1598,14 +1613,18 @@ export function PLAYER_StartWalkOrRunMode113c(
     PATH_SetDistance113c(m, pPath, 5);
   }
   const nPoints = PATH_Compute113c(m, pPath, pUnit, 0);
-  SUNIT_InitUnitAnimData113c(m, pUnit);
+  SKILLS_SetUsedSkill113c(m, pUnit, 0);
   if (PATH_GetNumberOfPathPoints113c(m, pPath) === 0 || nPoints === 0) {
     PLAYER_SetNeutralOrTownNeutralMode113c(m, pGame, pUnit, 1, 0, 0);
     return;
   }
-  MONSTER_ClearModeEvents113c(m, pGame, pUnit);
+  SUNITDMG_FreeAttackerCombatList113c(m, pUnit, pGame);
+  const prevMode = m.u32(pUnit + 0x10);
   UNITS_ChangeAnimMode113c(m, pUnit, resolvedMode);
-  SUNIT_ValidatePathTargetUnit113c(m, pUnit, pGame);
+  if (prevMode !== (resolvedMode >>> 0) && m.u32(0x6fde9e1c) !== 0 && m.u32(m.u32(0x6fde9e1c) + 0x0bc4) !== 0) {
+    UNITS_UpdateAnimFrame113c(m, pUnit);
+  }
+  MONSTER_ClearModeEvents113c(m, pGame, pUnit);
   MONSTER_RegisterContinuousModeEvent113c(m, pGame, pUnit);
 }
 
@@ -1634,6 +1653,7 @@ export function PLAYER_StepAnimationModeTick113c(
   pUnit: number,
   nArg1: number,
   nArg2: number,
+  onMoveStep?: (m: Memory113c, pGame: number, pUnit: number) => number,
 ): void {
   hitD2GameVa113c(0x6FC99A10);
   const mode = pUnit === 0 ? 0 : m.u32(pUnit + 0x10);
@@ -1642,7 +1662,7 @@ export function PLAYER_StepAnimationModeTick113c(
   }
   let res = 1;
   if (mode === 2 || mode === 3 || mode === 6 || mode === 19) {
-    res = stepPlayerMoveModeTick(m, pGame, pUnit);
+    res = onMoveStep !== undefined ? onMoveStep(m, pGame, pUnit) : stepPlayerMoveModeTick(m, pGame, pUnit);
   } else if (
     mode === 7 ||
     mode === 8 ||
@@ -1783,10 +1803,10 @@ export function PLAYER_SetNeutralOrTownNeutralMode113c(
     const bInTown = DUNGEON_CheckRoomIsTownMemPort113c(m, pRoom);
     mode = bInTown !== 0 ? 5 : 1;
   }
-  SUNIT_ValidatePathTargetUnit113c(m, pUnit, pGame);
   MONSTER_ClearModeEvents113c(m, pGame, pUnit);
+  SUNITDMG_FreeAttackerCombatList113c(m, pUnit, pGame);
   UNITS_ChangeAnimMode113c(m, pUnit, mode);
-  SUNIT_InitUnitAnimData113c(m, pUnit);
+  SKILLS_SetUsedSkill113c(m, pUnit, 0);
 }
 
 // @va D2Game:0x6FC99850
@@ -1823,7 +1843,8 @@ export function PLAYER_FinishModeAndResetToNeutral113c(
     }
   }
   if (bTriggerPostSkill !== 0) {
-    PLAYER_ScheduleSkillActionFrameEvents113c(m, pGame, pUnit, 0, 1);
+    PLAYER_ScheduleSkillActionFrameEvents113c(m, pGame, pUnit);
+    PLAYER_StartModeCast113c(m, pGame, pUnit, 0, '1HS', true);
   }
   if (curMode === 0) {
     UNITS_ChangeAnimMode113c(m, pUnit, 0x11);

@@ -29,6 +29,7 @@ import {
   MONSTERS_IsDead113c,
 } from '../tables/datatbls-113c.ts'
 import { QUESTS_GuidListRemove113c } from './a1c-post150-f150-f276-113c.ts'
+import { MONSTER_DispatchMinionComponentCallbacks113c } from './boot-init-gap-a-113c.ts'
 import {
   D2GAME_IAT_GDW_BITMASKS_VA_113C,
   D2GAME_IAT_SGPT_DATATABLES_VA_113C,
@@ -97,6 +98,16 @@ function dispatchMonUModMatrix6FC468E0(
   nSlot: number,
   hooks?: K2ItemsTcW1Hooks113c,
 ): void {
+  if (hooks === undefined || hooks.onMonUModMatrixCallback === undefined) {
+    MONSTER_DispatchMinionComponentCallbacks113c(
+      m,
+      pGame >>> 0,
+      pMonster >>> 0,
+      pTarget >>> 0,
+      nSlot | 0,
+    )
+    return
+  }
   let bBoss = 0
   if (pMonster !== 0 && (m.u32(pMonster >>> 0) >>> 0) === 1) {
     const pMonData0 = m.u32((pMonster + 0x14) >>> 0) >>> 0

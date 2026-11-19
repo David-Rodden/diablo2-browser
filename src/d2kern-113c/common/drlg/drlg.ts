@@ -368,11 +368,15 @@ export function DRLG_GetLevelDefField94_113c(
   hitD2CommonVa113c(0x6FD7D850);
   const id = nLevelId | 0;
   const sgptDataTables = m.u32(SGPT_DATA_TABLES_PTR_VA_6FDE9E1C);
-  const count = m.u32((sgptDataTables + 0xc5c) >>> 0) | 0;
-  const pLevelDef =
-    id < 0 || id >= count
-      ? 0
-      : (m.u32(SG_LEVEL_DEF_BIN_PTR_VA_6FDF0B38) + imul32(id, 0x9c)) >>> 0;
+  const count = sgptDataTables !== 0 ? (m.u32((sgptDataTables + 0xc5c) >>> 0) | 0) : 0;
+  if (id < 0 || id >= count) {
+    return 0;
+  }
+  const pLevelDefBase = m.u32(SG_LEVEL_DEF_BIN_PTR_VA_6FDF0B38) >>> 0;
+  if (pLevelDefBase === 0) {
+    return 0;
+  }
+  const pLevelDef = (pLevelDefBase + imul32(id, 0x9c)) >>> 0;
   return m.u32((pLevelDef + 0x94) >>> 0) | 0;
 }
 

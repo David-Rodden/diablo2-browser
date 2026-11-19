@@ -167,8 +167,8 @@
     "name": "NET_ShouldSyncTrackedStatDelta_6FCAA330",
     "kernFile": "src/d2kern-113c/game/k2-w2b3-113c.ts",
     "tsSymbol": "NET_ShouldSyncTrackedStatDelta_6FCAA330_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w2b3.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w2b3.test.ts; Diff-verified 1:1 in dll\u2229ts across full-horizon strict zero-divergence K3 replay (p52-necromancer-poison-golem F1800/1800) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -329,8 +329,8 @@
     "name": "NET_SendPacket81_AssignMerc_6FCAB220",
     "kernFile": "src/d2kern-113c/game/k2-w2b3-113c.ts",
     "tsSymbol": "NET_SendPacket81_AssignMerc_6FCAB220_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w2b3.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w2b3.test.ts; Diff-verified 1:1 in dll∩ts across full-horizon strict zero-divergence K3 replay (p52-paladin-merc-aura F1700/1700) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -392,8 +392,8 @@
     "name": "NET_SendPacket1A1B1C_StatUpdate_6FCABDA0",
     "kernFile": "src/d2kern-113c/game/k2-w2b3-113c.ts",
     "tsSymbol": "NET_SendPacket1A1B1C_StatUpdate_6FCABDA0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w2b3.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/exitgate-s2c-vectors.test.ts (0x6FCABDA0) across 1,440 real-DLL S2C D2TV binary vectors with 0 mismatches"
   },
   {
     "module": "D2Game",

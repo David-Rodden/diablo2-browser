@@ -220,7 +220,7 @@ function aiApproachTarget6FD12540(
     if ((flagsByte & 2) !== 0) {
       const roll = (stepSeed64At113c(m, (pUnit + 0x20) >>> 0) >>> 0) % 100
       if (roll < 0x46) {
-        AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0)
+        AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0, 4)
         return 1
       }
       AI_Stall113c(m, pGame >>> 0, pUnit >>> 0, 10)

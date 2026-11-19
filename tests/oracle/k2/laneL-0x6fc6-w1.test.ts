@@ -126,8 +126,16 @@ function createLaneLWorld(): LaneLTestWorld {
   m.setU32(pDataTables + 0xbc0, statesCount)
 
   const pCorpseStateMask = m.alloc(24)
+  m.setU32(pDataTables + 0xe4, pCorpseStateMask)
   m.setU32(pDataTables + 0x150, pCorpseStateMask)
 
+  const pLevelsTxt = m.alloc(16 * 0x220)
+  const pWarpData = m.alloc(0x80)
+  m.setU32(pDataTables + 0xbd8, pLevelsTxt)
+  m.setU32(pDataTables + 0xbe0, 16)
+  m.setU32(pDataTables + 0xc58, pLevelsTxt)
+  m.setU32(pDataTables + 0xc60, 16)
+  m.setU32(pDataTables + 0xc64, pWarpData)
   const monLvlCount = 110
   const pMonLvlTxt = m.alloc(monLvlCount * 0x78)
   m.setU32(pDataTables + 0xb70, pMonLvlTxt)
@@ -147,6 +155,7 @@ function createLaneLWorld(): LaneLTestWorld {
   m.setU32(pAnimDataTable + 0x404 + 0x08, 8)
   m.setU32(pAnimDataTable + 0x404 + 0x0c, 256)
   m.setU32(0x6fdf0b4c, pAnimDataTable)
+  m.setU32(0x6fdf0b50, 0)
   m.setU32(0x6fdf13c4, 7)
   m.setU32(0x6fdf13c8, 1)
   m.setU32(0x6fdf13cc, m.alloc(20 * 0x34))
@@ -616,10 +625,22 @@ describe('Milestone 33 [K2] Lane K2-L: 45 D2Game 0x6FC62C70..0x6FC73260 Function
     expect(() => CLIENTS_RecordActionRateLimitFrame_6FC6A6E0_113c(m, 0, pGame)).toThrow(D2CommonAssertError)
 
     // 0x6FC6B3C0 room update with self-near lists [pRoomA] and [pRoomB]
+    m.setU32(0x6fdf1420, 0)
+    m.setU32(0x6fdf1424, 0)
+    const pDrlg = m.alloc(0x500)
+    const pWarp = m.alloc(0x48)
+    m.setU32(pWarp, 1)
+    m.setU32(pDrlg + 0x90, pWarp)
+    const pLevel = m.alloc(0x200)
+    m.setU32(pLevel + 0x1b4, pDrlg)
+    m.setU32(pLevel + 0x1d0, 1)
+    const pRoom2 = m.alloc(0x100)
+    m.setU32(pRoom2 + 0x58, pLevel)
     const pRoomA = m.alloc(0x90)
     const pNearA = m.alloc(4)
     m.setU32(pNearA, pRoomA)
     m.setU32(pRoomA + 0x00, pNearA)
+    m.setU32(pRoomA + 0x10, pRoom2)
     m.setU32(pRoomA + 0x24, 1)
     m.setU32(pRoomA + 0x48, m.alloc(0x20))
     m.setU32(pRoomA + 0x74, 4)
@@ -628,6 +649,7 @@ describe('Milestone 33 [K2] Lane K2-L: 45 D2Game 0x6FC62C70..0x6FC73260 Function
     const pNearB = m.alloc(4)
     m.setU32(pNearB, pRoomB)
     m.setU32(pRoomB + 0x00, pNearB)
+    m.setU32(pRoomB + 0x10, pRoom2)
     m.setU32(pRoomB + 0x24, 1)
     m.setU32(pRoomB + 0x48, m.alloc(0x20))
     m.setU32(pRoomB + 0x74, 4)
@@ -846,10 +868,14 @@ describe('Milestone 33 [K2] Lane K2-L: 45 D2Game 0x6FC62C70..0x6FC73260 Function
     const w = createLaneLWorld()
     const { m, pSkillsTxt, pMonStatsTxt } = w
     const pGame = m.alloc(0x1df4)
+    EVENT_InitTimerQueue113c(m, pGame)
 
     const { pUnit: pAttacker } = allocDynamicUnit(m, 0, 2, 1, 100, 100)
     const { pUnit: pNearMon } = allocDynamicUnit(m, 1, 5, 2, 102, 100)
     const { pUnit: pFarMon } = allocDynamicUnit(m, 1, 5, 3, 110, 100)
+    m.setU32(pAttacker + 0x10, 1)
+    m.setU32(pNearMon + 0x10, 1)
+    m.setU32(pFarMon + 0x10, 1)
     STATLIST_SetUnitStat113c(m, pNearMon, 6, 1000, 0)
     STATLIST_SetUnitStat113c(m, pFarMon, 6, 1000, 0)
 
@@ -883,6 +909,7 @@ describe('Milestone 33 [K2] Lane K2-L: 45 D2Game 0x6FC62C70..0x6FC73260 Function
     expect(STATLIST_GetUnitStat113c(m, pAttacker, 6, 0)).toBe(800)
 
     const { pUnit: pPaladin } = allocDynamicUnit(m, 0, 3, 4)
+    m.setU32(pPaladin + 0x10, 1)
     STATLIST_SetUnitStat113c(m, pPaladin, 7, 800, 0)
     STATLIST_SetUnitStat113c(m, pPaladin, 6, 800, 0)
     SKILLS_ApplyPaladinEighthMaxLifeCost_6FC6F450_113c(m, pPaladin, pGame)

@@ -177,7 +177,7 @@ const NPC_INTRO_BIT_TABLE_6FD27E50: ReadonlyArray<readonly [number, number]> = [
 const D2GAME_CODE_START_VA_113C = 0x6fc20000
 const D2GAME_CODE_END_VA_113C = 0x6fd18000
 
-let k2LaneKStackPtr = 0x7ef80000
+let k2LaneKStackPtr = 0x7e030000
 
 function allocLaneKStackFrame(m: Memory113c, size: number): number {
   const ptr = k2LaneKStackPtr >>> 0

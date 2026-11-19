@@ -22,6 +22,7 @@
  */
 import type { Memory113c } from '../mem/sparse-memory.ts'
 import { D2CommonAssertError, PLAYER_SetPlayerData150Params113c } from '../common/inline-helpers.ts'
+import { DRLG_ComputeLevelRoomsBoundingBox113c } from '../common/drlg/drlg.ts'
 import { imul32, sar32, sdiv32 } from '../common/int-math.ts'
 import {
   ITEMS_CheckItemTypeRarityUnder7113c,
@@ -1400,22 +1401,15 @@ export function DRLG_ValidateAndRebaseLevelRooms113c(m: Memory113c, pLevel: numb
   }
   // 0x6FD7D3C0 seeds the box from the first room (0x6FD7D3C7..0x6FD7D3E2: min = pos, max = pos + size)
   // before widening it over every room (signed `jle`/`jge`).
-  const seedX = m.get(firstRoom, D2RoomExStrc.nTileXPos) | 0
-  const seedY = m.get(firstRoom, D2RoomExStrc.nTileYPos) | 0
-  let minX = seedX
-  let minY = seedY
-  let maxX = (seedX + (m.get(firstRoom, D2RoomExStrc.nTileWidth) | 0)) | 0
-  let maxY = (seedY + (m.get(firstRoom, D2RoomExStrc.nTileHeight) | 0)) | 0
-  for (let r = firstRoom; r !== 0; r = m.get(r, D2RoomExStrc.pRoomNext)) {
-    const rx = m.get(r, D2RoomExStrc.nTileXPos) | 0
-    if (rx < minX) minX = rx
-    const ry = m.get(r, D2RoomExStrc.nTileYPos) | 0
-    if (ry < minY) minY = ry
-    const rxEnd = (rx + (m.get(r, D2RoomExStrc.nTileWidth) | 0)) | 0
-    if (rxEnd > maxX) maxX = rxEnd
-    const ryEnd = (ry + (m.get(r, D2RoomExStrc.nTileHeight) | 0)) | 0
-    if (ryEnd > maxY) maxY = ryEnd
-  }
+  const pMinX = 0x7fb94200
+  const pMinY = 0x7fb94204
+  const pMaxX = 0x7fb94208
+  const pMaxY = 0x7fb9420c
+  DRLG_ComputeLevelRoomsBoundingBox113c(m, lvl, pMinX, pMinY, pMaxX, pMaxY)
+  const minX = m.u32(pMinX) | 0
+  const minY = m.u32(pMinY) | 0
+  const maxX = m.u32(pMaxX) | 0
+  const maxY = m.u32(pMaxY) | 0
   const spanX = (maxX - minX) | 0
   if ((m.get(lvl, D2DrlgLevelStrc.nWidth) | 0) < spanX) {
     throw new D2CommonAssertError('Drlg.cpp', 0x2eb)

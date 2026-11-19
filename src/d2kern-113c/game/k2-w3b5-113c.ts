@@ -132,7 +132,7 @@ export interface K2W3B5Hooks113c extends K2W2B1Hooks113c, K2GapMeleeDotHooks113c
 }
 
 /** Reentrant scratch stack pointer for `w3b5` local buffers. */
-let k2W3B5StackPtr = 0x7ef50000
+let k2W3B5StackPtr = 0x7e0a0000
 
 const ACT5Q6_STATE_MSG_TABLE_6FD2D8A4: readonly number[] = [
   0xffffffff,

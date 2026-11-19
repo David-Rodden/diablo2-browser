@@ -32,8 +32,8 @@
     "name": "QUESTS_AllocBitBufferPair_6FC89360",
     "kernFile": "src/d2kern-113c/game/k2-w3b7-113c.ts",
     "tsSymbol": "QUESTS_AllocBitBufferPair_6FC89360_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w3b7.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/replay-act-quests.test.ts (0x6FC89360) across Act 1-5 K4 longitudinal quest & town NPC replay at 100% strict zero divergence"
   },
   {
     "module": "D2Game",

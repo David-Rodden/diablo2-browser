@@ -38,9 +38,7 @@ import {
   STATLIST_SetUnitStat113c,
 } from '../common/statlist.ts'
 import {
-  UNITS_CanUnitMeleeAttackTarget113c,
   UNITS_GetApproximateDistance113c,
-  UNITS_GetEquippedWeaponAdder113c,
   UNITS_GetRoom113c,
   UNITS_GetSpawnedMonsterOrSkillSummonInfo113c,
   UNITS_IsDoor113c,
@@ -54,11 +52,9 @@ import {
 } from './ai-fallen-113c.ts'
 import {
   AI_Stall113c,
-  SUNITDMG_CalcMonsterExperience113c,
-  SUNITDMG_CheckToHit113c,
   SUNITDMG_ExecuteEvents113c,
-  SUNITDMG_RollPassiveWeaponBlockOrShieldBlock113c,
 } from './combat-a1c-113c.ts'
+import { SUNITDMG_RollMeleeToHitAndBlock_6FCFE5A0_113c } from './k2-real-s2c-combat-113c.ts'
 import { UNITS_GetDistanceToCoordinates113c } from './replay-kernel-113c.ts'
 import {
   SKILLS_ApplyBloodManaHealthCost_6FC2BE20_113c,
@@ -164,7 +160,6 @@ function rollMeleeToHitAndBlock6FCFE5A0(
   nWeaponRangePenalty: number,
   hooks?: K2W2B5Hooks113c,
 ): number {
-  void SUNITDMG_CalcMonsterExperience113c
   if (hooks !== undefined && hooks.onRollMeleeToHitFlags !== undefined) {
     return (
       hooks.onRollMeleeToHitFlags(
@@ -179,50 +174,26 @@ function rollMeleeToHitAndBlock6FCFE5A0(
   }
   const att = pAttacker >>> 0
   const def = pDefender >>> 0
-  if (att === 0 || def === 0) return 0
-  const attType = m.u32(att) | 0
-  if (attType !== 0 && attType !== 1) return 0
-  const defType = m.u32(def) | 0
-  if (defType !== 0 && defType !== 1) return 0
-  if ((SUNIT_AreUnitsHostileOrUnaligned113c(m, def, att, pGame >>> 0) | 0) === 0) return 0
-
-  let wFlags = 0
-  if (defType === 0 && (m.u32((def + 0x10) >>> 0) | 0) === 3) {
-    wFlags = 1
+  if (
+    att !== 0 &&
+    def !== 0 &&
+    ((m.u32(att) | 0) === 0 || (m.u32(att) | 0) === 1) &&
+    ((m.u32(def) | 0) === 0 || (m.u32(def) | 0) === 1) &&
+    (SUNIT_AreUnitsHostileOrUnaligned113c(m, def, att, pGame >>> 0) | 0) === 0
+  ) {
+    SUNITDMG_RollMeleeToHitAndBlock_6FCFE5A0_113c(m, 0, def, pGame >>> 0, 0, 0)
+    return 0
   }
-
-  let nAdder = attType === 1 ? 3 : 1
-  if ((nWeaponRangePenalty | 0) !== 0) {
-    const wpAdder = UNITS_GetEquippedWeaponAdder113c(m, att) | 0
-    nAdder = (nAdder - (wpAdder + (nWeaponRangePenalty | 0))) | 0
-  }
-  if ((UNITS_CanUnitMeleeAttackTarget113c(m, att, def, nAdder) | 0) === 0) return 0
-
-  if ((wFlags & 1) === 0) {
-    if ((SUNITDMG_CheckToHit113c(m, att, def, 0, nToHitBonus | 0) | 0) !== 0) {
-      wFlags |= 1
-    }
-  }
-
-  if ((wFlags & 1) !== 0) {
-    const blockMask = SUNITDMG_RollPassiveWeaponBlockOrShieldBlock113c(m, def) | 0
-    if ((blockMask & 2) !== 0) wFlags |= 0x100
-    if ((blockMask & 4) !== 0) wFlags |= 0x80
-    if ((blockMask & 0x10) !== 0) wFlags |= 0x8000
-    if ((blockMask & 1) !== 0) wFlags |= 0x10
-    if (blockMask !== 0) wFlags &= 0xfffe
-  }
-
-  if ((wFlags & 0x10) !== 0) {
-    wFlags &= 0xfffe
-  }
-
-  if ((wFlags & 1) !== 0) {
-    if ((STATES_CheckState113c(m, def, 0x36) | 0) === 0) {
-      wFlags |= 4
-    }
-  }
-  return wFlags & 0xffff
+  return (
+    SUNITDMG_RollMeleeToHitAndBlock_6FCFE5A0_113c(
+      m,
+      att,
+      def,
+      pGame >>> 0,
+      nToHitBonus | 0,
+      nWeaponRangePenalty | 0,
+    ) & 0xffff
+  )
 }
 
 /**
@@ -931,9 +902,7 @@ export function MONAI_AreUnitsInSameActWithin1020Subtiles_6FCC3E10_113c(
   }
   const y1 = UNIT_GetPosY113c(m, pUnit1 >>> 0) | 0
   const x1 = UNIT_GetPosX113c(m, pUnit1 >>> 0) | 0
-  const x2 = UNIT_GetPosX113c(m, pUnit2 >>> 0) | 0
-  const y2 = UNIT_GetPosY113c(m, pUnit2 >>> 0) | 0
-  const dist = UNITS_GetDistanceToCoordinates113c(x2, y2, x1, y1) >>> 0
+  const dist = UNITS_GetDistanceToCoordinates113c(m, pUnit2 >>> 0, x1, y1) >>> 0
   return dist < 0x3fc ? 1 : 0
 }
 

@@ -2567,13 +2567,17 @@ export function SKILLS_SrvDo043_SpawnSrvMissileWithRange_6FC63720_113c(
   nSkillLevel: number,
 ): number {
   hitD2GameVa113c(0x6FC63720)
-  const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C));
-  if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xb98) >>> 0)) return 0;
-  const pSkillTxt = (m.u32((pDataTables + 0xb90) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
+  if (nSkillId < 0) return 0;
+  const pDataTablesPtr = m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C) >>> 0;
+  const pDataTables = pDataTablesPtr !== 0 ? (m.u32(pDataTablesPtr) >>> 0) : 0;
+  if (pDataTables === 0 || nSkillId >= i32(m, (pDataTables + 0xba0) >>> 0)) return 0;
+  const pSkillsBase = m.u32((pDataTables + 0xb98) >>> 0) >>> 0;
+  if (pSkillsBase === 0) return 0;
+  const pSkillTxt = (pSkillsBase + imul32(nSkillId, 0x23c)) >>> 0;
   if (pSkillTxt === 0) return 0;
 
   const wSrvMissile = i16(m, (pSkillTxt + 0x48) >>> 0);
-  if (wSrvMissile < 0 || wSrvMissile >= i32(m, (pDataTables + 0xc58) >>> 0)) return 0;
+  if (wSrvMissile < 0 || wSrvMissile >= i32(m, (pDataTables + 0xb6c) >>> 0)) return 0;
 
   if (pUnit !== 0) {
     m.setU32((pUnit + 0xc4) >>> 0, (m.u32((pUnit + 0xc4) >>> 0) | 0x40) >>> 0);
@@ -2600,7 +2604,7 @@ export function SKILLS_SrvDo043_SpawnSrvMissileWithRange_6FC63720_113c(
     0,
   ) >>> 0;
   if (pMissile === 0) return 0;
-  MISSILE_SetTotalFrames113c(m, pMissile, range);
+  MISSILE_SetTargetX113c(m, pMissile, range);
   return 1;
 }
 

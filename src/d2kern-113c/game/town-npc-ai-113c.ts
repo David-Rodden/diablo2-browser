@@ -45,6 +45,7 @@ import {
   MONSTER_StartMode113c,
   SEED_RollLimitedRandomNumber113c,
 } from './combat-a1c-113c.ts';
+import { AI_ApproachTarget113c } from './k2-real-s2c-combat-113c.ts';
 import { AIGENERAL_CopyAiCommandParams113c } from './replay-kernel-113c.ts';
 import {
   ACT3Q1_GetHratliTargetCoords113c,
@@ -188,75 +189,6 @@ function stepSeed64At113c(m: Memory113c, pSeed: number): number {
   m.setU32(pSeed >>> 0, newLo);
   m.setU32((pSeed + 4) >>> 0, newHi);
   return newLo;
-}
-
-/**
- * Pure `Memory113c` port of `D2Game:0x6FD12540` (`AI_ApproachTarget`).
- */
-function aiApproachTargetMem113c(
-  m: Memory113c,
-  pGame: number,
-  pUnit: number,
-  pTarget: number,
-  nMode: number,
-  nX: number,
-  nY: number,
-  nStepNum: number,
-  dwFlags: number,
-): number {
-  let mode = nMode | 0;
-  if (mode === 0x0f && (STATES_CheckState113c(m, pUnit >>> 0, 0x3c) | 0) !== 0) {
-    let pAiParam = 0;
-    if (pUnit !== 0 && (m.u32(pUnit >>> 0) | 0) === 1) {
-      const pMonData = m.u32((pUnit + 0x14) >>> 0) >>> 0;
-      if (pMonData !== 0) {
-        pAiParam = m.u32((pMonData + 0x2c) >>> 0) >>> 0;
-      }
-    }
-    if (pAiParam !== 0) {
-      m.setU32((pAiParam + 0x18) >>> 0, 0);
-      m.setU32((pAiParam + 0x1c) >>> 0, 0);
-      m.setU8((pAiParam + 0x20) >>> 0, 0);
-    }
-    mode = 2;
-  }
-  const pPath = pUnit !== 0 ? m.u32((pUnit + 0x2c) >>> 0) >>> 0 : 0;
-  if (pPath !== 0) {
-    PATH_SetStepNum113c(m, pPath, nStepNum | 0);
-  }
-  const res =
-    MONSTER_StartMode113c(m, pGame >>> 0, pUnit >>> 0, mode, pTarget >>> 0, nX | 0, nY | 0) | 0;
-  if (res !== 0) {
-    return res;
-  }
-  const flagsByte = dwFlags & 0xff;
-  if ((flagsByte & 4) !== 0 && pUnit !== 0) {
-    let pEvent = m.u32((pUnit + 0xdc) >>> 0) >>> 0;
-    while (pEvent !== 0) {
-      const pNext = m.u32((pEvent + 0x24) >>> 0) >>> 0;
-      if (m.u8(pEvent) === 2) {
-        EVENT_FreeNode113c(m, pGame >>> 0, pEvent);
-      }
-      pEvent = pNext;
-    }
-  }
-  if ((flagsByte & 1) !== 0 && pUnit !== 0 && (m.u32(pUnit >>> 0) | 0) === 1) {
-    const pMonData = m.u32((pUnit + 0x14) >>> 0) >>> 0;
-    const pAiGen = pMonData !== 0 ? m.u32((pMonData + 0x28) >>> 0) >>> 0 : 0;
-    if (pAiGen !== 0) {
-      m.setU8((pAiGen + 0x08) >>> 0, (m.u8((pAiGen + 0x08) >>> 0) | 0x40) & 0xff);
-    }
-  }
-  if ((flagsByte & 2) !== 0 && pUnit !== 0) {
-    const roll = (stepSeed64At113c(m, (pUnit + 0x20) >>> 0) >>> 0) % 100;
-    if (roll < 0x46) {
-      AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0, 4);
-      return 1;
-    }
-    AI_Stall113c(m, pGame >>> 0, pUnit >>> 0, 10);
-    return 1;
-  }
-  return res;
 }
 
 function monsterStartModeFromArgs113c(
@@ -657,7 +589,7 @@ export function AI_MapAiAction1_WalkToWaypoint113c(
     return 0;
   }
   setMonsterAiParamState113c(mem, pUnit, 7);
-  aiApproachTargetMem113c(mem, pGame, pUnit, 0, 2, coords.nX, coords.nY, 0, 0);
+  AI_ApproachTarget113c(mem, pGame, pUnit, 0, 2, coords.nX, coords.nY, 0, 0);
 
   const pCmd4 = AIGENERAL_GetOrAllocAiCommandByType113c(mem, pGame, pUnit, 4, 0);
   if (pCmd4 !== 0) {
@@ -849,7 +781,7 @@ export function AI_TickNodes4_5_7_113c(
         const counter = readMapAiNode4Counter113c(mem);
         const mod4 = ((counter % 4) + 4) % 4;
         setMonsterAiParamState113c(mem, pUnit, mod4 === 0 ? 5 : 7);
-        aiApproachTargetMem113c(mem, pGame, pUnit, 0, 2, destX, destY, 0, 0);
+        AI_ApproachTarget113c(mem, pGame, pUnit, 0, 2, destX, destY, 0, 0);
         mem.setU32(D2GAME_MAPAI_NODE4_COUNTER_VA_6FD31F90, ((counter + 1) | 0) >>> 0);
         mem.set(pCmd4, D2AiCmdStrc.dwParam3, ((count4 - 1) | 0) >>> 0);
         return 1;
@@ -910,7 +842,7 @@ export function AI_TickNodes4_5_7_113c(
     const retries = mem.get(pCmd7, D2AiCmdStrc.dwParam4) | 0;
     if (retries > 0) {
       setMonsterAiParamState113c(mem, pUnit, 7);
-      const approached = aiApproachTargetMem113c(mem, pGame, pUnit, 0, 2, targetX7, targetY7, 0, 0);
+      const approached = AI_ApproachTarget113c(mem, pGame, pUnit, 0, 2, targetX7, targetY7, 0, 0);
       if (approached === 0) {
         AI_Stall113c(mem, pGame >>> 0, pUnit >>> 0, 0x19);
       }
@@ -1178,7 +1110,7 @@ export function AI_WarrivGreetMem113c(
       const holdY = mem.u32((pAiGeneral + 0x1c) >>> 0) | 0;
       const holdDist = UNITS_GetOctileDistanceToCoordinates113c(mem, pUnit, holdX, holdY) >>> 0;
       if (holdDist > 2 && holdTimer > 0x24) {
-        aiApproachTargetMem113c(mem, pGame, pUnit, 0, 2, holdX, holdY, 1, 0);
+        AI_ApproachTarget113c(mem, pGame, pUnit, 0, 2, holdX, holdY, 1, 0);
       } else if (holdTimer > 0) {
         const pPath = mem.get(pUnit, D2UnitStrc.pPath);
         if (pPath !== 0) {
@@ -1313,7 +1245,7 @@ export function AI_TownNpcMem113c(
         const ty = mem.u32((sp + 0x04) >>> 0) | 0;
         const dist = UNITS_GetOctileDistanceToCoordinates113c(mem, pUnit, tx, ty) >>> 0;
         if (dist > 3) {
-          aiApproachTargetMem113c(mem, pGame, pUnit, 0, 2, tx, ty, 1, 0);
+          AI_ApproachTarget113c(mem, pGame, pUnit, 0, 2, tx, ty, 1, 0);
           return;
         }
         AI_StartModeAtCoordsKeepSteps_6FD121E0_113c(mem, pUnit >>> 0, 8, pGame >>> 0, 0, 0, {
@@ -1330,7 +1262,7 @@ export function AI_TownNpcMem113c(
         const ty = mem.u32((sp + 0x04) >>> 0) | 0;
         const dist = UNITS_GetOctileDistanceToCoordinates113c(mem, pUnit, tx, ty) >>> 0;
         if (dist > 2) {
-          aiApproachTargetMem113c(mem, pGame, pUnit, 0, 2, tx, ty, 1, 0);
+          AI_ApproachTarget113c(mem, pGame, pUnit, 0, 2, tx, ty, 1, 0);
           return;
         }
         ACT1Q4_MarkPortalOpenedFlag92_6FC803D0_113c(mem, pGame >>> 0);

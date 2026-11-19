@@ -842,7 +842,7 @@ export function MISSILE_SrvDo_LinearWithSkillCalcSubMissileMask05_6FC613D0_113c(
       }
     }
   }
-  if (pMissilesTxt === 0 || sx16(m.u16((pMissilesTxt + 0x18) >>> 0)) < 0) return 2
+  if (pMissilesTxt === 0) return 2
 
   const nSkillId = MISSILE_GetSkill113c(m, pMissile)
   const pTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C))
@@ -915,7 +915,7 @@ export function MISSILE_SrvDo_LinearWithParamScaledSubMissileMask05_6FC61670_113
       }
     }
   }
-  if (pMissilesTxt === 0 || sx16(m.u16((pMissilesTxt + 0x18) >>> 0)) < 0) return 2
+  if (pMissilesTxt === 0) return 2
 
   const nLevel = MISSILE_GetLevel113c(m, pMissile)
   let par3 = m.u32((pMissilesTxt + 0x40) >>> 0) | 0
@@ -1152,8 +1152,8 @@ export function SKILLS_ApplySecondaryAuraAndSpawnChargedMissile_6FC663A0_113c(
       pUnit,
       pTarget,
       pGame,
+      nDuration,
       nChargeLevel,
-      nSkillLevel,
     )
   }
   return 1
@@ -1306,7 +1306,7 @@ export function CLIENTS_CollectAndRecordNearbyPlayerPositions_6FC6AD80_113c(
     const nRooms = m.u32(pCount) >>> 0;
     m.setU32(pMaxDist, 0);
     m.setU32((pClient + 0x3bc) >>> 0, 0);
-    m.setU32((pList + 0x0c) >>> 0, 0);
+    m.setU32((pList + 0x04) >>> 0, 0);
     m.setU32((pList + 0x08) >>> 0, 0);
     for (let i = 0; i < nRooms; i = (i + 1) >>> 0) {
       const pAdjRoom = m.u32((ppRooms + i * 4) >>> 0);
@@ -1493,7 +1493,7 @@ export function PLAYERSAVE_WriteInventoryOrCachedSaveBuffer_6FC73B40_113c(
       const nCachedLen = m.u32(pCached) | 0;
       if ((nMaxBytes | 0) >= nCachedLen) {
         const pSrc = m.u32((pCached + 4) >>> 0);
-        const pDst = m.u32(pBuffer);
+        const pDst = pBuffer >>> 0;
         const len = nCachedLen >>> 0;
         for (let i = 0; i < len; i = (i + 1) >>> 0) {
           m.setU8((pDst + i) >>> 0, m.u8((pSrc + i) >>> 0));
@@ -1520,7 +1520,7 @@ export function PLAYERSAVE_WriteInventoryOrCachedSaveBuffer_6FC73B40_113c(
 
 /**
  * Sends quest alert packet `0x5D` (`questId = 0x24`) if quest record `0x28`
- * has bit `0` or `0x0F` set and bit `0x0D` or `0x0E` set.
+ * has `(bit 0 == 0 && bit 0x0F == 0) || bit 0x0D != 0 || bit 0x0E != 0`.
  *
  * @va D2Game:0x6FC78D40
  */
@@ -1535,10 +1535,10 @@ export function ACT5Q6_SendAlert24IfQuest28Active_6FC78D40_113c(
   const nDiff = m.u8((pGame + 0x6d) >>> 0);
   const pFlags = m.u32((pPlayerData + 0x10 + nDiff * 4) >>> 0);
   if (
-    (DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x28, 0) !== 0 ||
-      DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x28, 0x0f) !== 0) &&
-    (DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x28, 0x0d) !== 0 ||
-      DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x28, 0x0e) !== 0)
+    (DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x28, 0) === 0 &&
+      DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x28, 0x0f) === 0) ||
+    DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x28, 0x0d) !== 0 ||
+    DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x28, 0x0e) !== 0
   ) {
     QUESTS_SendPlayerQuestAlert5D_6FC554F0_113c(m, 0x24, pPlayerUnit, pGame);
   }
@@ -1546,7 +1546,7 @@ export function ACT5Q6_SendAlert24IfQuest28Active_6FC78D40_113c(
 }
 /**
  * Sends quest alert packet `0x5D` (`questId = 0x23`) if quest record `0x27`
- * has bit `0` or `0x0F` set and bit `0x0D` or `0x0E` set.
+ * has `(bit 0 == 0 && bit 0x0F == 0) || bit 0x0D != 0 || bit 0x0E != 0`.
  *
  * @va D2Game:0x6FC78F90
  */
@@ -1561,10 +1561,10 @@ export function ACT5Q5_SendAlert23IfQuest27Active_6FC78F90_113c(
   const nDiff = m.u8((pGame + 0x6d) >>> 0);
   const pFlags = m.u32((pPlayerData + 0x10 + nDiff * 4) >>> 0);
   if (
-    (DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x27, 0) !== 0 ||
-      DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x27, 0x0f) !== 0) &&
-    (DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x27, 0x0d) !== 0 ||
-      DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x27, 0x0e) !== 0)
+    (DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x27, 0) === 0 &&
+      DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x27, 0x0f) === 0) ||
+    DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x27, 0x0d) !== 0 ||
+    DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x27, 0x0e) !== 0
   ) {
     QUESTS_SendPlayerQuestAlert5D_6FC554F0_113c(m, 0x23, pPlayerUnit, pGame);
   }
@@ -1573,7 +1573,7 @@ export function ACT5Q5_SendAlert23IfQuest27Active_6FC78F90_113c(
 
 /**
  * Sends quest alert packet `0x5D` (`questId = 0x22`) if quest record `0x26`
- * has bit `0` or `0x0F` set and bit `0x0D` or `0x0E` set.
+ * has `(bit 0 == 0 && bit 0x0F == 0) || bit 0x0D != 0 || bit 0x0E != 0`.
  *
  * @va D2Game:0x6FC790C0
  */
@@ -1588,10 +1588,10 @@ export function ACT5Q4_SendAlert22IfQuest26Active_6FC790C0_113c(
   const nDiff = m.u8((pGame + 0x6d) >>> 0);
   const pFlags = m.u32((pPlayerData + 0x10 + nDiff * 4) >>> 0);
   if (
-    (DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x26, 0) !== 0 ||
-      DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x26, 0x0f) !== 0) &&
-    (DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x26, 0x0d) !== 0 ||
-      DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x26, 0x0e) !== 0)
+    (DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x26, 0) === 0 &&
+      DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x26, 0x0f) === 0) ||
+    DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x26, 0x0d) !== 0 ||
+    DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x26, 0x0e) !== 0
   ) {
     QUESTS_SendPlayerQuestAlert5D_6FC554F0_113c(m, 0x22, pPlayerUnit, pGame);
   }
@@ -1600,7 +1600,7 @@ export function ACT5Q4_SendAlert22IfQuest26Active_6FC790C0_113c(
 
 /**
  * Sends quest alert packet `0x5D` (`questId = 0x21`) if quest record `0x25`
- * has bit `0` or `0x0F` set and bit `0x0D` or `0x0E` set.
+ * has `(bit 0 == 0 && bit 0x0F == 0) || bit 0x0D != 0 || bit 0x0E != 0`.
  *
  * @va D2Game:0x6FC791D0
  */
@@ -1615,10 +1615,10 @@ export function ACT5Q3_SendAlert21IfQuest25Active_6FC791D0_113c(
   const nDiff = m.u8((pGame + 0x6d) >>> 0);
   const pFlags = m.u32((pPlayerData + 0x10 + nDiff * 4) >>> 0);
   if (
-    (DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x25, 0) !== 0 ||
-      DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x25, 0x0f) !== 0) &&
-    (DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x25, 0x0d) !== 0 ||
-      DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x25, 0x0e) !== 0)
+    (DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x25, 0) === 0 &&
+      DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x25, 0x0f) === 0) ||
+    DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x25, 0x0d) !== 0 ||
+    DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x25, 0x0e) !== 0
   ) {
     QUESTS_SendPlayerQuestAlert5D_6FC554F0_113c(m, 0x21, pPlayerUnit, pGame);
   }
@@ -1627,7 +1627,7 @@ export function ACT5Q3_SendAlert21IfQuest25Active_6FC791D0_113c(
 
 /**
  * Sends quest alert packet `0x5D` (`questId = 0x20`) if quest record `0x24`
- * has bit `0` or `0x0F` set and bit `0x0D` or `0x0E` set.
+ * has `(bit 0 == 0 && bit 0x0F == 0) || bit 0x0D != 0 || bit 0x0E != 0`.
  *
  * @va D2Game:0x6FC793F0
  */
@@ -1642,10 +1642,10 @@ export function ACT5Q2_SendAlert20IfQuest24Active_6FC793F0_113c(
   const nDiff = m.u8((pGame + 0x6d) >>> 0);
   const pFlags = m.u32((pPlayerData + 0x10 + nDiff * 4) >>> 0);
   if (
-    (DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x24, 0) !== 0 ||
-      DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x24, 0x0f) !== 0) &&
-    (DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x24, 0x0d) !== 0 ||
-      DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x24, 0x0e) !== 0)
+    (DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x24, 0) === 0 &&
+      DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x24, 0x0f) === 0) ||
+    DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x24, 0x0d) !== 0 ||
+    DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x24, 0x0e) !== 0
   ) {
     QUESTS_SendPlayerQuestAlert5D_6FC554F0_113c(m, 0x20, pPlayerUnit, pGame);
   }
@@ -1654,7 +1654,7 @@ export function ACT5Q2_SendAlert20IfQuest24Active_6FC793F0_113c(
 
 /**
  * Sends quest alert packet `0x5D` (`questId = 0x1F`) if quest record `0x23`
- * has bit `0` or `0x0F` set and bit `0x0D` or `0x0E` set.
+ * has `(bit 0 == 0 && bit 0x0F == 0) || bit 0x0D != 0 || bit 0x0E != 0`.
  *
  * @va D2Game:0x6FC79620
  */
@@ -1669,10 +1669,10 @@ export function ACT5Q1_SendAlert1FIfQuest23Active_6FC79620_113c(
   const nDiff = m.u8((pGame + 0x6d) >>> 0);
   const pFlags = m.u32((pPlayerData + 0x10 + nDiff * 4) >>> 0);
   if (
-    (DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x23, 0) !== 0 ||
-      DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x23, 0x0f) !== 0) &&
-    (DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x23, 0x0d) !== 0 ||
-      DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x23, 0x0e) !== 0)
+    (DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x23, 0) === 0 &&
+      DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x23, 0x0f) === 0) ||
+    DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x23, 0x0d) !== 0 ||
+    DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x23, 0x0e) !== 0
   ) {
     QUESTS_SendPlayerQuestAlert5D_6FC554F0_113c(m, 0x1f, pPlayerUnit, pGame);
   }
@@ -2140,7 +2140,14 @@ export function ACT5Q3_CleanupFrozenAnyaAndTownNpcState_6FC7EC30_113c(
       pMon94 = m.u32((pMon94 + 0xe4) >>> 0);
     }
     if (pMon94 !== 0) {
-      if (MONSTER_HasAnyInteractingPlayer113c(m, pMon94) !== 0) {
+      let pInteract = 0;
+      if (m.u32(pMon94) === 1) {
+        const pMonData = m.u32((pMon94 + 0x14) >>> 0);
+        if (pMonData !== 0) {
+          pInteract = m.u32((pMonData + 0x30) >>> 0);
+        }
+      }
+      if (MONSTER_HasAnyInteractingPlayer113c(m, pInteract) !== 0) {
         MONSTER_CloseAllNpcInteractionsAndNotify_6FC68410_113c(m, pGame, pMon94, 0);
       }
       SKILLS_SetUsedSkillMemPort113c(m, pMon94, 0);
@@ -2152,8 +2159,8 @@ export function ACT5Q3_CleanupFrozenAnyaAndTownNpcState_6FC7EC30_113c(
         m.u32(pMon94),
         m.u32((pQuestData + 0x94) >>> 0),
       );
-      UNITROOM_RemoveUnitFromRoom113c(m, pMon94);
       UNITS_SetTargetUnitForDynamicUnitEx113c(m, pMon94);
+      UNITROOM_RemoveUnitFromRoom113c(m, pMon94);
     } else {
       MONREG_DeleteInactiveMonsterByClassId_6FC3EC40_113c(m, pGame, 4, 0x200);
     }
@@ -2200,7 +2207,7 @@ export function ACT5Q3_CleanupFrozenAnyaAndTownNpcState_6FC7EC30_113c(
 }
 /**
  * Sends quest alert packet `0x5D` (`questId = 0x06`) if quest record `0x06`
- * has bit `0` or `0x0F` set and bit `0x0D` or `0x0E` set.
+ * has `(bit 0 == 0 && bit 0x0F == 0) || bit 0x0D != 0 || bit 0x0E != 0`.
  *
  * @va D2Game:0x6FC82700
  */
@@ -2215,10 +2222,10 @@ export function ACT1Q6_SendAlert06IfQuest06Active_6FC82700_113c(
   const nDiff = m.u8((pGame + 0x6d) >>> 0);
   const pFlags = m.u32((pPlayerData + 0x10 + nDiff * 4) >>> 0);
   if (
-    (DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x06, 0) !== 0 ||
-      DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x06, 0x0f) !== 0) &&
-    (DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x06, 0x0d) !== 0 ||
-      DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x06, 0x0e) !== 0)
+    (DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x06, 0) === 0 &&
+      DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x06, 0x0f) === 0) ||
+    DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x06, 0x0d) !== 0 ||
+    DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x06, 0x0e) !== 0
   ) {
     QUESTS_SendPlayerQuestAlert5D_6FC554F0_113c(m, 0x06, pPlayerUnit, pGame);
   }
@@ -2227,7 +2234,7 @@ export function ACT1Q6_SendAlert06IfQuest06Active_6FC82700_113c(
 
 /**
  * Sends quest alert packet `0x5D` (`questId = 0x05`) if quest record `0x05`
- * has bit `0` set and bit `0x0D` or `0x0E` set.
+ * has `bit 0 == 0 || bit 0x0D != 0 || bit 0x0E != 0`.
  *
  * @va D2Game:0x6FC82870
  */
@@ -2242,9 +2249,9 @@ export function ACT1Q5_SendAlert05IfQuest05Active_6FC82870_113c(
   const nDiff = m.u8((pGame + 0x6d) >>> 0);
   const pFlags = m.u32((pPlayerData + 0x10 + nDiff * 4) >>> 0);
   if (
-    DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x05, 0) !== 0 &&
-    (DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x05, 0x0d) !== 0 ||
-      DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x05, 0x0e) !== 0)
+    DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x05, 0) === 0 ||
+    DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x05, 0x0d) !== 0 ||
+    DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x05, 0x0e) !== 0
   ) {
     QUESTS_SendPlayerQuestAlert5D_6FC554F0_113c(m, 0x05, pPlayerUnit, pGame);
   }
@@ -2253,7 +2260,7 @@ export function ACT1Q5_SendAlert05IfQuest05Active_6FC82870_113c(
 
 /**
  * Sends quest alert packet `0x5D` (`questId = 0x04`) if quest record `0x04`
- * has bit `0` or `0x0F` set and bit `0x0D` or `0x0E` set.
+ * has `(bit 0 == 0 && bit 0x0F == 0) || bit 0x0D != 0 || bit 0x0E != 0`.
  *
  * @va D2Game:0x6FC82A80
  */
@@ -2268,10 +2275,10 @@ export function ACT1Q4_SendAlert04IfQuest04Active_6FC82A80_113c(
   const nDiff = m.u8((pGame + 0x6d) >>> 0);
   const pFlags = m.u32((pPlayerData + 0x10 + nDiff * 4) >>> 0);
   if (
-    (DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x04, 0) !== 0 ||
-      DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x04, 0x0f) !== 0) &&
-    (DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x04, 0x0d) !== 0 ||
-      DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x04, 0x0e) !== 0)
+    (DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x04, 0) === 0 &&
+      DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x04, 0x0f) === 0) ||
+    DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x04, 0x0d) !== 0 ||
+    DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x04, 0x0e) !== 0
   ) {
     QUESTS_SendPlayerQuestAlert5D_6FC554F0_113c(m, 0x04, pPlayerUnit, pGame);
   }
@@ -2280,7 +2287,7 @@ export function ACT1Q4_SendAlert04IfQuest04Active_6FC82A80_113c(
 
 /**
  * Sends quest alert packet `0x5D` (`questId = 0x03`) if quest record `0x03`
- * has bit `0` or `0x0F` set and bit `0x0D` or `0x0E` set.
+ * has `(bit 0 == 0 && bit 0x0F == 0) || bit 0x0D != 0 || bit 0x0E != 0`.
  *
  * @va D2Game:0x6FC82AE0
  */
@@ -2295,10 +2302,10 @@ export function ACT1Q3_SendAlert03IfQuest03Active_6FC82AE0_113c(
   const nDiff = m.u8((pGame + 0x6d) >>> 0);
   const pFlags = m.u32((pPlayerData + 0x10 + nDiff * 4) >>> 0);
   if (
-    (DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x03, 0) !== 0 ||
-      DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x03, 0x0f) !== 0) &&
-    (DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x03, 0x0d) !== 0 ||
-      DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x03, 0x0e) !== 0)
+    (DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x03, 0) === 0 &&
+      DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x03, 0x0f) === 0) ||
+    DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x03, 0x0d) !== 0 ||
+    DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x03, 0x0e) !== 0
   ) {
     QUESTS_SendPlayerQuestAlert5D_6FC554F0_113c(m, 0x03, pPlayerUnit, pGame);
   }
@@ -2307,7 +2314,7 @@ export function ACT1Q3_SendAlert03IfQuest03Active_6FC82AE0_113c(
 
 /**
  * Sends quest alert packet `0x5D` (`questId = 0x02`) if quest record `0x02`
- * has bit `0` or `0x0F` set and bit `0x0D` or `0x0E` set.
+ * has `(bit 0 == 0 && bit 0x0F == 0) || bit 0x0D != 0 || bit 0x0E != 0`.
  *
  * @va D2Game:0x6FC82C00
  */
@@ -2322,10 +2329,10 @@ export function ACT1Q2_SendAlert02IfQuest02Active_6FC82C00_113c(
   const nDiff = m.u8((pGame + 0x6d) >>> 0);
   const pFlags = m.u32((pPlayerData + 0x10 + nDiff * 4) >>> 0);
   if (
-    (DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x02, 0) !== 0 ||
-      DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x02, 0x0f) !== 0) &&
-    (DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x02, 0x0d) !== 0 ||
-      DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x02, 0x0e) !== 0)
+    (DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x02, 0) === 0 &&
+      DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x02, 0x0f) === 0) ||
+    DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x02, 0x0d) !== 0 ||
+    DRLGWARP_TestRoomTileBit113c(m, pFlags, 0x02, 0x0e) !== 0
   ) {
     QUESTS_SendPlayerQuestAlert5D_6FC554F0_113c(m, 0x02, pPlayerUnit, pGame);
   }

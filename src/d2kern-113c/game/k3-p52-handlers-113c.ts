@@ -10,35 +10,21 @@ import {
   DUNGEON_CheckRoomIsTownMemPort113c,
   STATLIST_GetStatListFromUnitAndStateMemPort113c,
 } from '../common/k0-d2common-memports.ts'
-import { MISSILE_GetLevel113c, MISSILE_GetSkill113c } from '../common/missile.ts'
 import { PATH_GetPosX113c, PATH_GetPosY113c, PATH_SetTargetUnit113c } from '../common/path.ts'
 import { UNITS_GetLeftSkill113c, UNITS_GetRightSkill113c } from '../common/quest-record.ts'
 import {
-  SKILLS_EvalCalcByOffset113c,
-  SKILLS_GetFirstSkillFromSkillList113c,
-  SKILLS_GetNextSkill113c,
-  SKILLS_GetPassiveState113c,
+  SKILLS_GetHighestLevelSkillFromUnitAndIdFastcall113c,
   SKILLS_GetSkillById113c,
   SKILLS_GetSkillIdFromSkill113c,
   SKILLS_GetSkillSlotIndex113c,
   SKILLS_GetSkillUseFailReason113c,
-  SKILLS_GetUsedSkill113c,
   SKILLS_RefreshPassiveAuraSkills113c,
+  SKILLS_SetParam0C113c,
 } from '../common/skills.ts'
 import {
-  STATES_ApplyMonSkillIconToUnit113c,
-  STATES_CheckState113c,
-  STATES_ClearGfxStateFlag113c,
-  STATES_ToggleGfxStateFlag113c,
-  STATLIST_AllocList113c,
   STATLIST_ExpireStateListsOnModeChange113c,
   STATLIST_GetStatValue113c,
   STATLIST_GetUnitStat113c,
-  STATLIST_MergeStatLists113c,
-  STATLIST_SetExpireFrameEx113c,
-  STATLIST_SetStat113c,
-  STATLIST_SetStatRemoveProc113c,
-  STATLIST_SetState113c,
   STATLIST_SetUnitStat113c,
 } from '../common/statlist.ts'
 import {
@@ -47,20 +33,27 @@ import {
   UNITS_UpdateAnimFrame113c,
 } from '../common/unit.ts'
 import { D2GameStrc, D2SkillStrc, D2UnitStrc } from '../mem/layout.generated.ts'
-import type { Memory113c } from '../mem/sparse-memory.ts'
-import { SEED_RollLimitedRandomNumber113c } from './combat-a1c-113c.ts'
+import type { Memory113c, SparseMemory113c } from '../mem/sparse-memory.ts'
 import { SUNIT_GetServerUnit113c } from './game-strc.ts'
 import {
+  NET_SendUnitTargetedSkillAction113c,
   PLAYER_Event0C_ExpireTimedStats113c,
   SUNIT_AreUnitsInSamePartyOrAligned113c,
 } from './k2-gap-itemdef-113c.ts'
 import {
   MISSILES_GetTxtRecordFast113c,
-  MISSILE_SpawnNova64Directions113c,
   MONSTER_Event12_ExpireTimedStats113c,
-  SKILLS_ResolveChargedSrvMissileId113c,
   type K2GapMeleeDotHooks113c,
 } from './k2-gap-melee-dot-113c.ts'
+import { MONSTER_GetMonStatsTxtFromUnit_6FC21540_113c } from './k2-laneH-0x6fc2-w1-113c.ts'
+import { SKILLS_ApplyTimedSkillAuraToTarget_6FC49240_113c } from './k2-w10b1-113c.ts'
+import {
+  MISSILE_ApplyFriendlyOwnerTimedSkillAura_6FC5EA60_113c,
+  SKILLS_SrvDo045_NovaAndTimedAura_6FC49720_113c,
+} from './k2-w11b1-113c.ts'
+import { MISSILE_InitMissileRangeAndFrameFlag_6FC59600_113c } from './k2-w2b1-113c.ts'
+import { SKILLS_RefreshPassiveSkillsAndIconsOnUnit_6FCBE370_113c } from './k2-w2b4-113c.ts'
+import { PETS_RecalcAndClampAllPlayerPetCountsFromSkills_6FCB6FA0_113c } from './k2-w9b1-113c.ts'
 import {
   MONSTER_ClearModeEvents113c,
   SKILLS_SetUsedSkill113c,
@@ -68,35 +61,17 @@ import {
 import {
   D2GAME_IAT_GDW_BITMASKS_VA_113C,
   D2GAME_IAT_SGPT_DATATABLES_VA_113C,
-  SKILLS_GetRecordPtrFast113c,
 } from './regpop-spawn-113c.ts'
-import { EVENT_GetNextEventFrame113c, EVENT_SetEventFull113c } from './timer-wheel.ts'
-import { AITHINK_CanPlayerSwitchToMode113c } from './town-runtime-gap-113c.ts'
-
-/**
- * `@va D2Game:0x6FC97E00` (`checkUnitNextEventWithinFiveFrames`):
- * `EVENT_GetNextEventFrame(pUnit, 1) + 5 >= pGame->dwGameFrame`.
- */
-function checkUnitNextEventWithinFiveFramesK3_113c(
-  m: Memory113c,
-  pUnit: number,
-  pGame: number,
-): number {
-  const nextFrame = EVENT_GetNextEventFrame113c(m, pUnit, 1) | 0
-  const gameFrame = m.u32((pGame + 0xa8) >>> 0) | 0
-  return gameFrame <= ((nextFrame + 5) | 0) ? 1 : 0
-}
+import {
+  AITHINK_CanPlayerStartSkillOrCast113c,
+  AITHINK_CanPlayerSwitchToMode113c,
+} from './town-runtime-gap-113c.ts'
 
 /**
  * `@va D2Game:0x6FC98340` + `@va D2Game:0x6FC97FA0`:
  * Combined `AITHINK_CanPlayerSwitchToMode` + `AITHINK_CanPlayerStartSkillOrCast` guard
  * invoked by `PLAYER_StartModeOnUnit` (`0x6FC98430`) and `PLAYER_StartModeAtCoords` (`0x6FC98550`)
  * when `bForce == 0` (all C2S movement/attack/cast packets).
- *
- * Preserves `pUsedSkill` when `curMode === 1` (`0x6FC985DC: test eax, eax; je skip` skips
- * `SKILLS_SetUsedSkill` when `pSkill == 0`) and rolls `STATE_CONCENTRATION` (`0x2A = 42`)
- * `stat 0xA4` (`item_uninterruptable`) on `pPlayer->dwSeed (+0x20)` when `pUsedSkill` has
- * `Skills.txt` `Interrupt` (`byte +0x07 & 0x80`).
  */
 export function PLAYER_CanStartModeAndSkillK3_113c(
   m: Memory113c,
@@ -109,77 +84,15 @@ export function PLAYER_CanStartModeAndSkillK3_113c(
   if (AITHINK_CanPlayerSwitchToMode113c(m, pPlayer, pGame, nTargetMode) === 0) {
     return 0
   }
-  // 0x6FC97FA0: AITHINK_CanPlayerStartSkillOrCast(pGame, pPlayer, nTargetMode, bCheckSkill=1, pTargetSkill)
-  if (STATES_CheckState113c(m, pPlayer, 0x36) !== 0) {
-    return 0
-  }
-  if (pPlayer === 0) {
-    return 0
-  }
-  const curMode = m.u32((pPlayer + 0x10) >>> 0)
-  if (curMode === 0 || curMode === 0x11) {
-    return 0
-  }
-  if (nTargetMode === 0) {
-    return 1
-  }
-  const pUsedSkill = SKILLS_GetUsedSkill113c(m, pPlayer) >>> 0
-  if (pUsedSkill === 0) {
-    return 1
-  }
-  const skillId = SKILLS_GetSkillIdFromSkill113c(m, pUsedSkill, 0, 0xba)
-  const pSkillsTxt = SKILLS_GetRecordPtrFast113c(m, skillId)
-  if (pSkillsTxt === 0) {
-    return 1
-  }
-  if ((pTargetSkill >>> 0) === pUsedSkill) {
-    const wSrvDoFunc = m.u16((pSkillsTxt + 0x2e) >>> 0)
-    if (wSrvDoFunc === 0x43 || wSrvDoFunc === 0x4c) {
-      return 1
-    }
-  }
-  const gdwBitMasks = m.u32(D2GAME_IAT_GDW_BITMASKS_VA_113C)
-  const mask7 = gdwBitMasks !== 0 ? m.u8((gdwBitMasks + 0x1c) >>> 0) : 0x80
-  if ((m.u8((pSkillsTxt + 7) >>> 0) & mask7) !== 0) {
-    let bUninterruptable = 0
-    if (STATES_CheckState113c(m, pPlayer, 0x2a) !== 0) {
-      const pStatList = STATLIST_GetStatListFromUnitAndStateMemPort113c(m, pPlayer, 0x2a)
-      const concPct = STATLIST_GetStatValue113c(m, pStatList, 0xa4, 0) | 0
-      const roll = SEED_RollLimitedRandomNumber113c(m, (pPlayer + 0x20) >>> 0, 100) | 0
-      if (roll < concPct) {
-        bUninterruptable = 1
-      }
-    }
-    if (bUninterruptable === 0) {
-      if (STATES_CheckState113c(m, pPlayer, 0x0f) === 0) {
-        return 1
-      }
-    }
-    if (m.u32((pPlayer + 0x10) >>> 0) !== 1) {
-      return 0
-    }
-    if (onResetNeutralWhenMode1 !== undefined) {
-      onResetNeutralWhenMode1()
-    }
-    return 1
-  }
-  if (m.u32((pPlayer + 0x10) >>> 0) === 1) {
-    if (onResetNeutralWhenMode1 !== undefined) {
-      onResetNeutralWhenMode1()
-    }
-    return 1
-  }
-  if (
-    nTargetMode === 7 ||
-    nTargetMode === 8 ||
-    nTargetMode === 10 ||
-    nTargetMode === 11 ||
-    nTargetMode === 13 ||
-    nTargetMode === 18
-  ) {
-    return checkUnitNextEventWithinFiveFramesK3_113c(m, pPlayer, pGame) !== 0 ? 1 : 0
-  }
-  return 0
+  return AITHINK_CanPlayerStartSkillOrCast113c(
+    m,
+    pPlayer,
+    pGame,
+    nTargetMode,
+    1,
+    pTargetSkill >>> 0,
+    onResetNeutralWhenMode1 !== undefined ? onResetNeutralWhenMode1 : () => {},
+  )
 }
 
 /**
@@ -212,9 +125,9 @@ export function PLAYER_TryStartDodgeOrAvoidModeK3_113c(
   const pStatList = STATLIST_GetStatListFromUnitAndStateMemPort113c(m, pDefender, stateId)
   if (pStatList === 0) return 0
   const nSkillId = STATLIST_GetStatValue113c(m, pStatList, 0x15e, 0) | 0
-  const pSkill = SKILLS_GetSkillById113c(m, pDefender, nSkillId, -1) >>> 0
+  const pSkill = SKILLS_GetHighestLevelSkillFromUnitAndIdFastcall113c(m, pDefender, nSkillId) >>> 0
   if (pSkill === 0) return 0
-  m.set(pSkill, D2SkillStrc.dwFlags, (m.get(pSkill, D2SkillStrc.dwFlags) | 4) >>> 0)
+  SKILLS_SetParam0C113c(m, pSkill, (m.get(pSkill, D2SkillStrc.dwParam0C) | 4) >>> 0)
 
   if (PLAYER_CanStartModeAndSkillK3_113c(m, pDefender, pGame, 13, pSkill) === 0) {
     return 0
@@ -244,29 +157,35 @@ export function PLAYER_TryStartDodgeOrAvoidModeK3_113c(
   scheduleAnimEvents(m, pGame, pDefender)
   const nextFlags = (m.get(pDefender, D2UnitStrc.dwFlags) & ~0x40) >>> 0
   m.set(pDefender, D2UnitStrc.dwFlags, nextFlags)
+  const rawClient = pPlayerData !== 0 ? (m.u32((pPlayerData + 0x9c) >>> 0) >>> 0) : 0
+  const pClient = rawClient !== 0 ? rawClient : (m.u32((pGame + 0x88) >>> 0) >>> 0)
+  if (pClient !== 0) {
+    const defId = m.u32((pDefender + 0x0c) >>> 0) >>> 0
+    if (m.u32((pClient + 0x174) >>> 0) === 0) {
+      m.setU32((pClient + 0x16c) >>> 0, 0)
+      m.setU32((pClient + 0x170) >>> 0, defId)
+      m.setU32((pClient + 0x174) >>> 0, pDefender >>> 0)
+    }
+    if (m.u32((pClient + 0x1a8) >>> 0) === 0) {
+      m.setU32((pClient + 0x1a8) >>> 0, pGame >>> 0)
+    }
+    NET_SendUnitTargetedSkillAction113c(
+      m,
+      pClient,
+      0,
+      0,
+      defId,
+      pAttacker !== 0 ? m.u32(pAttacker) & 0xff : 1,
+      pAttacker !== 0 ? m.u32((pAttacker + 0x0c) >>> 0) : 0xffffffff,
+      nSkillId & 0xffff,
+      0,
+      1,
+    )
+  }
   if (syncPathUnit !== undefined) {
     syncPathUnit(13, nextFlags)
   }
   return 1
-}
-
-/**
- * `@va D2Game:0x6FCBE370` (`SKILLS_RefreshPassiveSkillsAndIconsOnUnit`):
- * Refreshes passive state flags and monster skill icons across `pUnit->pSkills`.
- */
-function refreshPassiveSkillsAndIconsK3_113c(m: Memory113c, pUnit: number): void {
-  const pSkillList = m.u32((pUnit + 0xa8) >>> 0) >>> 0
-  if (pSkillList === 0) return
-  let pSkill = SKILLS_GetFirstSkillFromSkillList113c(m, pSkillList) >>> 0
-  while (pSkill !== 0) {
-    const nSkillId = SKILLS_GetSkillIdFromSkill113c(m, pSkill, 0x6fd1b980, 0x1153) | 0
-    const nState = SKILLS_GetPassiveState113c(m, nSkillId) | 0
-    if (nState > 0) {
-      STATES_ToggleGfxStateFlag113c(m, pUnit >>> 0, nState, 1)
-      STATES_ApplyMonSkillIconToUnit113c(m, pUnit >>> 0, nSkillId)
-    }
-    pSkill = SKILLS_GetNextSkill113c(m, pSkill) >>> 0
-  }
 }
 
 /**
@@ -289,11 +208,16 @@ function scaleResourceOnMaxChangedK3_113c(
   if (scaled >= newMax) scaled = newMax
   STATLIST_SetUnitStat113c(m, pUnit, curStatId, scaled, 0)
   if (curStatId === 6 && m.u32(pUnit >>> 0) === 1) {
-    const classId = m.u32((pUnit + 0x04) >>> 0) | 0
-    const pSgptPtr = m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C) >>> 0
-    const pDataTables = pSgptPtr !== 0 ? (m.u32(pSgptPtr) >>> 0) : 0
-    if (classId >= 0 && pDataTables !== 0 && classId < (m.u32((pDataTables + 0xa80) >>> 0) | 0)) {
-      const pMonTxt = (m.u32((pDataTables + 0xa78) >>> 0) + Math.imul(classId, 0x1a8)) >>> 0
+    let pMonTxt = MONSTER_GetMonStatsTxtFromUnit_6FC21540_113c(m, pUnit) >>> 0
+    if (pMonTxt === 0) {
+      const classId = m.u32((pUnit + 0x04) >>> 0) | 0
+      const pSgptPtr = m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C) >>> 0
+      const pDataTables = pSgptPtr !== 0 ? (m.u32(pSgptPtr) >>> 0) : 0
+      if (classId >= 0 && pDataTables !== 0 && classId < (m.u32((pDataTables + 0xa80) >>> 0) | 0)) {
+        pMonTxt = (m.u32((pDataTables + 0xa78) >>> 0) + Math.imul(classId, 0x1a8)) >>> 0
+      }
+    }
+    if (pMonTxt !== 0) {
       const nLifeRegen = m.u32((pMonTxt + 0x1a0) >>> 0) | 0
       if (nLifeRegen !== 0) {
         const regenVal = (Math.imul(newMax >> 8, nLifeRegen) >> 4) | 0
@@ -327,46 +251,22 @@ function syncDerivedMaxAndSkillStatsK3_113c(
   }
   const newAllSkills = STATLIST_GetUnitStat113c(m, pUnit, 127, 0) | 0
   if (newAllSkills !== oldAllSkills) {
-    refreshPassiveSkillsAndIconsK3_113c(m, pUnit)
+    SKILLS_RefreshPassiveSkillsAndIconsOnUnit_6FCBE370_113c(m, pUnit)
     SKILLS_RefreshPassiveAuraSkills113c(m, pUnit)
   }
 }
 
-/**
- * `@va D2Game:0x6FC648E0` (`SKILLS_ApplySkillAuraStatCalcs`):
- * Evaluates `aurastat1..6 (+0x54)` / `aurastatcalc1..6 (+0x68)` and writes non-zero stats into `pStatList`.
- */
-function applySkillAuraStatCalcsK3_113c(
-  m: Memory113c,
-  pSkillsTxt: number,
-  pCasterUnit: number,
-  pStatList: number,
-  nSkillId: number,
-  nSkillLevel: number,
-): void {
-  if (pCasterUnit === 0 || pStatList === 0 || pSkillsTxt === 0) return
-  const pSgptPtr = m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C) >>> 0
-  const pDataTables = pSgptPtr !== 0 ? (m.u32(pSgptPtr) >>> 0) : 0
-  const nIscCount = pDataTables !== 0 ? (m.u32((pDataTables + 0xbd4) >>> 0) | 0) : 0
-  for (let i = 0; i < 6; i++) {
-    const statId = (m.u16((pSkillsTxt + 0x54 + i * 2) >>> 0) << 16) >> 16
-    if (statId < 0 || statId >= nIscCount) continue
-    const dwCalc = m.u32((pSkillsTxt + 0x68 + i * 4) >>> 0) >>> 0
-    const val = SKILLS_EvalCalcByOffset113c(m, pCasterUnit, dwCalc, nSkillId | 0, nSkillLevel | 0) | 0
-    if (val === 0) continue
-    STATLIST_SetStat113c(m, pStatList, statId, val, 0)
-    if (statId === 0x44) {
-      STATLIST_SetStat113c(m, pStatList, 0x45, val, 0)
-    }
+function ensureUnitGamePtrBoundK3_113c(m: Memory113c, pUnit: number, pGame: number): void {
+  if (pUnit !== 0 && pGame !== 0 && m.u32((pUnit + 0x80) >>> 0) === 0) {
+    m.setU32((pUnit + 0x80) >>> 0, pGame >>> 0)
   }
-  UNITS_SetUnitAnimMode113c(m, pCasterUnit, 0, 0xf8)
 }
 
 /**
  * `@va D2Game:0x6FC49240` (`SKILLS_ApplyTimedSkillAuraToTarget`) + `@va D2Game:0x6FCF9470`:
- * Applies a timed skill buff (`Battle Orders` `#149` state `32`, `Battle Command` `#155` state `51`,
- * `Shout` `#138` state `26`) to `pTargetUnit` and fires `D2StatListEx.fpStatChanged` (`0x6FCF9470`)
- * when `maxhp (7)`, `maxmana (9)`, `maxstamina (11)`, or `item_allskills (127)` changes.
+ * Routes timed skill buffs (`Battle Orders` `#149`, `Battle Command` `#155`, `Shout` `#138`)
+ * directly through canonical `SKILLS_ApplyTimedSkillAuraToTarget_6FC49240_113c` (`0x6FC49240` ->
+ * `0x6FC648E0` + `0x6FCB6FA0`) and fires `D2StatListEx.fpStatChanged` (`0x6FCF9470`).
  */
 export function SKILLS_ApplyTimedSkillAuraWithStatSyncK3_113c(
   m: Memory113c,
@@ -376,75 +276,39 @@ export function SKILLS_ApplyTimedSkillAuraWithStatSyncK3_113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
-  const skId = nSkillId | 0
-  if (pTargetUnit === 0 || pGame === 0 || skId < 0) return 0
-  const pSgptPtr = m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C) >>> 0
-  const pDataTables = pSgptPtr !== 0 ? (m.u32(pSgptPtr) >>> 0) : 0
-  if (pDataTables === 0 || skId >= (m.u32((pDataTables + 0xba0) >>> 0) | 0)) return 0
-  const pSkillsTxt = (m.u32((pDataTables + 0xb98) >>> 0) + Math.imul(skId, 0x23c)) >>> 0
-  if (pSkillsTxt === 0) return 0
-
-  const nAuraState = (m.u16((pSkillsTxt + 0x80) >>> 0) << 16) >> 16
-  if (nAuraState < 0 || nAuraState >= (m.u32((pDataTables + 0xc4) >>> 0) | 0)) return 0
-
+  if (pTargetUnit === 0 || pGame === 0 || (nSkillId | 0) < 0) return 0
+  ensureUnitGamePtrBoundK3_113c(m, pTargetUnit, pGame)
   const oldMaxHp = STATLIST_GetUnitStat113c(m, pTargetUnit, 7, 0) | 0
   const oldMaxMana = STATLIST_GetUnitStat113c(m, pTargetUnit, 9, 0) | 0
   const oldMaxStam = STATLIST_GetUnitStat113c(m, pTargetUnit, 11, 0) | 0
   const oldAllSkills = STATLIST_GetUnitStat113c(m, pTargetUnit, 127, 0) | 0
 
-  const dwAuraLenCalc = m.u32((pSkillsTxt + 0x60) >>> 0) >>> 0
-  const nDuration = SKILLS_EvalCalcByOffset113c(
-    m,
-    pCasterUnit >>> 0,
-    dwAuraLenCalc,
-    skId,
-    nSkillLevel | 0,
-  )
-  const nExpireFrame = ((nDuration | 0) + (m.u32(((pGame >>> 0) + 0xa8) >>> 0) | 0)) >>> 0
-  const target = pTargetUnit >>> 0
-  let pStatList = STATLIST_GetStatListFromUnitAndStateMemPort113c(m, target, nAuraState)
-  if (pStatList === 0) {
-    let ownerType = 6
-    let ownerId = 0xffffffff
-    if ((pCasterUnit >>> 0) !== 0) {
-      ownerId = m.u32(((pCasterUnit >>> 0) + 0x0c) >>> 0) >>> 0
-      ownerType = m.u32(pCasterUnit >>> 0) >>> 0
-    }
-    pStatList = STATLIST_AllocList113c(m, 2, ownerType, ownerId, 0, nExpireFrame)
-    if (pStatList === 0) return 0
-    STATLIST_SetState113c(m, pStatList, nAuraState)
-    STATLIST_SetStatRemoveProc113c(m, pStatList, 0x6fcbf7a0)
-    STATLIST_MergeStatLists113c(m, target, pStatList, 1)
-    STATES_ToggleGfxStateFlag113c(m, target, nAuraState, 1)
-  }
-  STATES_ClearGfxStateFlag113c(m, target, nAuraState, 1)
-  STATLIST_SetExpireFrameEx113c(m, pStatList, nExpireFrame)
-  EVENT_SetEventFull113c(m, pGame >>> 0, target, 0x0c, nExpireFrame, 0, 0, 0)
-  applySkillAuraStatCalcsK3_113c(
-    m,
-    pSkillsTxt,
-    pCasterUnit >>> 0,
-    pStatList,
-    skId,
-    nSkillLevel | 0,
-  )
-  SKILLS_RefreshPassiveAuraSkills113c(m, target)
-  syncDerivedMaxAndSkillStatsK3_113c(
-    m,
+  const rc = SKILLS_ApplyTimedSkillAuraToTarget_6FC49240_113c(
+    m as SparseMemory113c,
+    pTargetUnit,
     pGame,
-    target,
-    oldMaxHp,
-    oldMaxMana,
-    oldMaxStam,
-    oldAllSkills,
+    pCasterUnit,
+    nSkillId,
+    nSkillLevel,
   )
-  return 1
+  if (rc !== 0) {
+    syncDerivedMaxAndSkillStatsK3_113c(
+      m,
+      pGame,
+      pTargetUnit,
+      oldMaxHp,
+      oldMaxMana,
+      oldMaxStam,
+      oldAllSkills,
+    )
+  }
+  return rc
 }
 
 /**
  * `@va D2Game:0x6FC97820` + `@va D2Game:0x6FCF9470`:
- * Runs `PLAYER_Event0C_ExpireTimedStats113c` and triggers `0x6FCF9470` resource/skill scaling
- * if any expired timed state modified `maxhp`, `maxmana`, `maxstamina`, or `item_allskills`.
+ * Runs `PLAYER_Event0C_ExpireTimedStats113c`, invokes canonical `0x6FCB6FA0` when any player
+ * timed state with `fpRemove === 0x6FCBF7A0` expires, and triggers `0x6FCF9470` resource/skill scaling.
  */
 export function PLAYER_Event0C_ExpireTimedStatsWithSyncK3_113c(
   m: Memory113c,
@@ -455,12 +319,44 @@ export function PLAYER_Event0C_ExpireTimedStatsWithSyncK3_113c(
   hooks?: K2GapMeleeDotHooks113c,
 ): void {
   if (pUnit === 0 || pGame === 0) return
+  ensureUnitGamePtrBoundK3_113c(m, pUnit, pGame)
   const oldMaxHp = STATLIST_GetUnitStat113c(m, pUnit, 7, 0) | 0
   const oldMaxMana = STATLIST_GetUnitStat113c(m, pUnit, 9, 0) | 0
   const oldMaxStam = STATLIST_GetUnitStat113c(m, pUnit, 11, 0) | 0
   const oldAllSkills = STATLIST_GetUnitStat113c(m, pUnit, 127, 0) | 0
+
+  let hadTimedStateRemove0x6FCBF7A0 = false
+  if (m.u32(pUnit >>> 0) === 0) {
+    const nFrame = m.u32(((pGame >>> 0) + 0xa8) >>> 0) | 0
+    const pEx = m.u32((pUnit + 0x5c) >>> 0) >>> 0
+    if (pEx !== 0 && (m.u32((pEx + 0x10) >>> 0) | 0) < 0) {
+      for (let listOff = 0x3c; listOff <= 0x40 && !hadTimedStateRemove0x6FCBF7A0; listOff += 4) {
+        let sub = m.u32((pEx + listOff) >>> 0) >>> 0
+        while (sub !== 0) {
+          const flags = m.u32((sub + 0x10) >>> 0)
+          if (
+            (flags & 0x02) !== 0 &&
+            (nFrame === 0 || (m.u32((sub + 0x18) >>> 0) | 0) <= nFrame) &&
+            m.u32((sub + 0x38) >>> 0) === 0x6fcbf7a0
+          ) {
+            hadTimedStateRemove0x6FCBF7A0 = true
+            break
+          }
+          sub = m.u32((sub + 0x2c) >>> 0) >>> 0
+        }
+      }
+    }
+  }
+
   MONSTER_Event12_ExpireTimedStats113c(m, pGame, pUnit, arg14, arg18, hooks)
   PLAYER_Event0C_ExpireTimedStats113c(m, pGame, pUnit, arg14, arg18)
+  if (hadTimedStateRemove0x6FCBF7A0) {
+    PETS_RecalcAndClampAllPlayerPetCountsFromSkills_6FCB6FA0_113c(
+      m as SparseMemory113c,
+      pGame,
+      pUnit,
+    )
+  }
   syncDerivedMaxAndSkillStatsK3_113c(
     m,
     pGame,
@@ -474,9 +370,7 @@ export function PLAYER_Event0C_ExpireTimedStatsWithSyncK3_113c(
 
 /**
  * `@va D2Game:0x6FC49720` (`SKILLS_SrvDo068_BasicShout`, `wSrvDoFunc = 68`):
- * Sets `UNITFLAG_SKSRVDO (0x40)` on `pUnit`, resolves `nMissileId` via `0x6FCB1340` against
- * `sgptDataTables->nMissilesTxtRecordCount (+0xB6C)`, spawns 64 radial missiles (`0x6FCC2800`),
- * applies self timed buff (`0x6FC49240`), and unconditionally returns `1` (`0x6FC497A1`).
+ * Delegates directly to canonical `SKILLS_SrvDo045_NovaAndTimedAura_6FC49720_113c` + `0x6FCF9470` stat sync.
  */
 export function SKILLS_SrvDo068_BasicShoutK3_113c(
   m: Memory113c,
@@ -486,30 +380,38 @@ export function SKILLS_SrvDo068_BasicShoutK3_113c(
   nSkillLevel: number,
   hooks?: K2GapMeleeDotHooks113c,
 ): number {
-  if (pUnit !== 0) {
-    m.setU32((pUnit + 0xc4) >>> 0, (m.u32((pUnit + 0xc4) >>> 0) | 0x40) >>> 0)
-  }
-  if ((nSkillId | 0) < 0) return 0
-  const pSkillsTxt = SKILLS_GetRecordPtrFast113c(m, nSkillId)
-  if (pSkillsTxt === 0) return 0
+  if (pUnit === 0 || pGame === 0) return 0
+  ensureUnitGamePtrBoundK3_113c(m, pUnit, pGame)
+  const oldMaxHp = STATLIST_GetUnitStat113c(m, pUnit, 7, 0) | 0
+  const oldMaxMana = STATLIST_GetUnitStat113c(m, pUnit, 9, 0) | 0
+  const oldMaxStam = STATLIST_GetUnitStat113c(m, pUnit, 11, 0) | 0
+  const oldAllSkills = STATLIST_GetUnitStat113c(m, pUnit, 127, 0) | 0
 
-  const nMissileId = SKILLS_ResolveChargedSrvMissileId113c(m, nSkillId, pUnit) | 0
-  const pSgptPtr = m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C) >>> 0
-  const pDataTables = pSgptPtr !== 0 ? (m.u32(pSgptPtr) >>> 0) : 0
-  if (nMissileId < 0 || pDataTables === 0 || nMissileId >= (m.u32((pDataTables + 0xb6c) >>> 0) | 0)) {
-    return 0
+  const rc = SKILLS_SrvDo045_NovaAndTimedAura_6FC49720_113c(
+    m as SparseMemory113c,
+    pGame,
+    pUnit,
+    nSkillId,
+    nSkillLevel,
+    hooks,
+  )
+  if (rc !== 0) {
+    syncDerivedMaxAndSkillStatsK3_113c(
+      m,
+      pGame,
+      pUnit,
+      oldMaxHp,
+      oldMaxMana,
+      oldMaxStam,
+      oldAllSkills,
+    )
   }
-
-  MISSILE_SpawnNova64Directions113c(m, pUnit, 0, pGame, pUnit, nMissileId, nSkillId, nSkillLevel, hooks)
-  SKILLS_ApplyTimedSkillAuraWithStatSyncK3_113c(m, pUnit, pGame, pUnit, nSkillId, nSkillLevel)
-  return 1
+  return rc
 }
 
 /**
  * `@va D2Game:0x6FC5EA60` (`MISSMODE_SrvHit18_Shout_BattleCommand_BattleOrders`, `wSrvHit = 18`):
- * Returns `1` (destroy) if `pMissile` has no live server owner; otherwise applies timed buff
- * `0x6FC49240` onto aligned `pTargetUnit` and returns `0` (`0x6FC5EACF: xor eax, eax`) so the
- * shout/battleorders/battlecommand ring pierces allies until range expiry.
+ * Delegates directly to canonical `MISSILE_ApplyFriendlyOwnerTimedSkillAura_6FC5EA60_113c` + `0x6FCF9470` stat sync.
  */
 export function MISSMODE_SrvHit18_ShoutBattleOrdersCommandK3_113c(
   m: Memory113c,
@@ -517,52 +419,63 @@ export function MISSMODE_SrvHit18_ShoutBattleOrdersCommandK3_113c(
   pMissile: number,
   pTargetUnit: number,
 ): number {
-  if (pMissile === 0) return 1
-  if (((m.u32((pMissile + 0xc8) >>> 0) >>> 10) & 1) === 0) return 1
-  const pOwner = SUNIT_GetServerUnit113c(
-    m,
-    pGame,
-    m.u32((pMissile + 0x94) >>> 0),
-    m.u32((pMissile + 0x98) >>> 0),
-  )
-  if (pOwner === 0) return 1
-  if (pTargetUnit !== 0 && SUNIT_AreUnitsInSamePartyOrAligned113c(m, pTargetUnit, pOwner) !== 0) {
-    const nSkillLevel = MISSILE_GetLevel113c(m, pMissile) | 0
-    const nSkillId = MISSILE_GetSkill113c(m, pMissile) | 0
-    SKILLS_ApplyTimedSkillAuraWithStatSyncK3_113c(m, pTargetUnit, pGame, pOwner, nSkillId, nSkillLevel)
+  let alignedTarget = false
+  let oldMaxHp = 0
+  let oldMaxMana = 0
+  let oldMaxStam = 0
+  let oldAllSkills = 0
+  if (
+    pMissile !== 0 &&
+    pTargetUnit !== 0 &&
+    pGame !== 0 &&
+    ((m.u32((pMissile + 0xc8) >>> 0) >>> 10) & 1) !== 0
+  ) {
+    const pOwner = SUNIT_GetServerUnit113c(
+      m,
+      pGame,
+      m.u32((pMissile + 0x94) >>> 0),
+      m.u32((pMissile + 0x98) >>> 0),
+    )
+    if (pOwner !== 0 && SUNIT_AreUnitsInSamePartyOrAligned113c(m, pTargetUnit, pOwner) !== 0) {
+      alignedTarget = true
+      ensureUnitGamePtrBoundK3_113c(m, pTargetUnit, pGame)
+      oldMaxHp = STATLIST_GetUnitStat113c(m, pTargetUnit, 7, 0) | 0
+      oldMaxMana = STATLIST_GetUnitStat113c(m, pTargetUnit, 9, 0) | 0
+      oldMaxStam = STATLIST_GetUnitStat113c(m, pTargetUnit, 11, 0) | 0
+      oldAllSkills = STATLIST_GetUnitStat113c(m, pTargetUnit, 127, 0) | 0
+    }
   }
-  return 0
+  const rc = MISSILE_ApplyFriendlyOwnerTimedSkillAura_6FC5EA60_113c(
+    m as SparseMemory113c,
+    pGame,
+    pMissile,
+    pTargetUnit,
+  )
+  if (alignedTarget) {
+    syncDerivedMaxAndSkillStatsK3_113c(
+      m,
+      pGame,
+      pTargetUnit,
+      oldMaxHp,
+      oldMaxMana,
+      oldMaxStam,
+      oldAllSkills,
+    )
+  }
+  return rc
 }
 
 /**
  * `@va D2Game:0x6FC59600` (`MISSMODE_SrvDmg07_Warcry_ShockWave`, `wSrvDmg = 7`):
- * Populates `pDamage->dwStunLen (+0x44)` and `pDamage->dwHitClass (+0x60 = 0x60)` for `War Cry` (`#154`).
+ * Delegates directly to canonical `MISSILE_InitMissileRangeAndFrameFlag_6FC59600_113c`.
  */
 export function MISSMODE_SrvDmg07_WarcryShockWaveK3_113c(
   m: Memory113c,
-  _pGame: number,
+  pGame: number,
   pMissile: number,
   pDamage: number,
 ): void {
-  const missile = pMissile >>> 0
-  if (missile === 0 || pDamage === 0) return
-  const pRec = MISSILES_GetTxtRecordFast113c(m, m.u32((missile + 0x04) >>> 0) | 0)
-  if (pRec === 0) return
-  const nSkillId = MISSILE_GetSkill113c(m, missile) | 0
-  const nLevel = MISSILE_GetLevel113c(m, missile) | 0
-  let nRange = m.u32((pRec + 0x78) >>> 0) | 0
-  if (nRange <= 0 && nSkillId >= 0 && nLevel > 0) {
-    const pSkillsTxt = SKILLS_GetRecordPtrFast113c(m, nSkillId)
-    if (pSkillsTxt !== 0) {
-      nRange =
-        ((m.u32((pSkillsTxt + 0x148) >>> 0) | 0) +
-          Math.imul((nLevel - 1) | 0, m.u32((pSkillsTxt + 0x14c) >>> 0) | 0)) |
-        0
-    }
-  }
-  const out = pDamage >>> 0
-  m.setU32((out + 0x44) >>> 0, nRange >>> 0)
-  m.setU32((out + 0x60) >>> 0, 0x60)
+  MISSILE_InitMissileRangeAndFrameFlag_6FC59600_113c(m, pMissile, pGame, pDamage)
 }
 
 /**

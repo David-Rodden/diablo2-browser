@@ -140,6 +140,13 @@ import {
   MONSTER_SetDeathPathAndAnim113c,
   MONSTER_StartDeath113c,
   MONSTER_StartMode113c,
+  PLAYER_AdvanceSkillModeFrame113c,
+  PLAYER_ScheduleAttackActionFrameEvents113c,
+  PLAYER_ScheduleSkillActionFrameEvents113c,
+  PLAYER_StartBlockMode113c,
+  PLAYER_StartModeCast113c,
+  PLAYER_StartModeDispatch113c,
+  PLAYER_StartModeSkill113c,
   ROOM_RecordMonsterDeath113c,
   SUNITDMG_AddDemonDamageBonus113c,
   SUNITDMG_AddLeechedLifeToUnit113c,
@@ -1266,99 +1273,6 @@ export function ITEMS_ApplyItemDurabilityLoss113c(
 // ============================================================================
 
 /**
- * `@va D2Game:0x6FC98760` (`PLAYER_ScheduleAttackActionFrameEvents`):
- * Deletes existing player `Event 6` (`MODE_STEP`) and `Event 7` (`MODE_END`) nodes and schedules new
- * `Event 6` (at `dwGameFrame + actionTicks`) and `Event 7` (at `dwGameFrame + endTicks`).
- */
-export function PLAYER_ScheduleAttackActionFrameEvents113c(
-  m: Memory113c,
-  pGame: number,
-  pPlayer: number,
-  actionTicks: number,
-  endTicks: number,
-): void {
-  if (pGame === 0 || pPlayer === 0) return
-  EVENT_DeleteEventByArg14_113c(m, pGame, pPlayer, PLR_EVENT_MODE_STEP_113C, 0)
-  EVENT_DeleteEventByArg14_113c(m, pGame, pPlayer, PLR_EVENT_MODE_END_113C, 0)
-  const gameFrame = m.get(pGame, D2GameStrc.dwGameFrame) >>> 0
-  if ((actionTicks | 0) > 0) {
-    EVENT_SetEventFull113c(
-      m,
-      pGame,
-      pPlayer,
-      PLR_EVENT_MODE_STEP_113C,
-      (gameFrame + (actionTicks >>> 0)) >>> 0,
-      0,
-      0,
-      0,
-    )
-  }
-  if ((endTicks | 0) > 0) {
-    EVENT_SetEventFull113c(
-      m,
-      pGame,
-      pPlayer,
-      PLR_EVENT_MODE_END_113C,
-      (gameFrame + (endTicks >>> 0)) >>> 0,
-      0,
-      0,
-      0,
-    )
-  }
-}
-
-/**
- * `@va D2Game:0x6FC99100` (`PLAYER_ScheduleSkillActionFrameEvents`):
- * Schedules `Event 6` (`MODE_STEP`) and `Event 7` (`MODE_END`) for player cast/skill modes (`SC`, `S1..S4`).
- */
-export function PLAYER_ScheduleSkillActionFrameEvents113c(
-  m: Memory113c,
-  pGame: number,
-  pPlayer: number,
-  actionTicks: number,
-  endTicks: number,
-): void {
-  PLAYER_ScheduleAttackActionFrameEvents113c(m, pGame, pPlayer, actionTicks, endTicks)
-}
-
-/**
- * `@va D2Game:0x6FC981C0` (`PLAYER_StartBlockMode`):
- * Transitions `pPlayer` into `PLRMODE_BLOCK (9)` (`BL`), computes block animation speed from
- * `AnimData.d2` (`BA` + `BL` + weapon class `1HS`) and `STAT_ITEM_FASTERBLOCKRATE (102)`, and schedules
- * `Event 7` (`PLR_EVENT_MODE_END`) (`6` frames for level-1 Hand Axe + Buckler Barbarian at `F1542..F1548` & `F1603..F1609`).
- */
-export function PLAYER_StartBlockMode113c(
-  m: Memory113c,
-  pGame: number,
-  pPlayer: number,
-  weaponClassCode = '1HS',
-): number {
-  if (pGame === 0 || pPlayer === 0) return 0
-  UNITS_ChangeAnimMode113c(m, pPlayer, 9)
-  const classId = m.get(pPlayer, D2UnitStrc.dwClassId) >>> 0
-  const clip = getCharAnimClipPure113c(classId, 9, weaponClassCode)
-  const fbr = STATLIST_GetUnitStat113c(m, pPlayer, STAT_ITEM_FASTERBLOCKRATE_113C, 0) | 0
-  const effFbr = computeFrwDiminishingPure113c(fbr)
-  const speed = computeRawPlayerAnimSpeedPure113c({
-    mode: 9,
-    classId,
-    statAcc: effFbr,
-    stat68Acc: 0,
-    stat67Acc: 0,
-    weaponClass: weaponClassCode,
-  })
-  const frameCountPrecise = (clip.frames << 8) >>> 0
-  m.set(pPlayer, D2UnitStrc.dwFramePrecise, 0)
-  m.set(pPlayer, D2UnitStrc.dwFrameCountPrecise, frameCountPrecise)
-  m.set(pPlayer, D2UnitStrc.wAnimSpeed, speed & 0xffff)
-  m.set(pPlayer, D2UnitStrc.wActionFrame, 0)
-
-  const endTicks = speed > 0 ? Math.max(1, Math.floor((frameCountPrecise - 1) / speed)) : 6
-  PLAYER_ScheduleAttackActionFrameEvents113c(m, pGame, pPlayer, 0, endTicks)
-  return 1
-}
-
-/**
  * `@va D2Game:0x6FC98430` (`PLAYER_StartModeAttack`):
  * Transitions `pPlayer` into `PLRMODE_ATTACK1 (7)` (`A1`) or `PLRMODE_ATTACK2 (8)` (`A2`), initializes
  * `dwFramePrecise` (`playerAnimStartFramePure113c << 8`), `dwFrameCountPrecise`, `wAnimSpeed`, and
@@ -1438,116 +1352,6 @@ export function PLAYER_StartModeAttackWithTarget113c(
 }
 
 /**
- * `@va D2Game:0x6FC98A90` (`PLAYER_StartModeCast`):
- * Starts player `PLRMODE_CAST (10)` (`SC`) and schedules cast action/end events.
- */
-export function PLAYER_StartModeCast113c(
-  m: Memory113c,
-  pGame: number,
-  pPlayer: number,
-  pTarget = 0,
-  weaponClassCode = '1HS',
-): number {
-  if (pGame === 0 || pPlayer === 0) return 0
-  UNITS_ChangeAnimMode113c(m, pPlayer, 10)
-  const pPath = m.get(pPlayer, D2UnitStrc.pPath)
-  if (pPath !== 0 && pTarget !== 0) {
-    PATH_SetTargetUnit113c(m, pPath, pTarget)
-  }
-  const classId = m.get(pPlayer, D2UnitStrc.dwClassId) >>> 0
-  const clip = getCharAnimClipPure113c(classId, 10, weaponClassCode)
-  const speed = computeRawPlayerAnimSpeedPure113c({
-    mode: 10,
-    classId,
-    statAcc: 0,
-    stat68Acc: 0,
-    stat67Acc: 0,
-    weaponClass: weaponClassCode,
-  })
-  const countPrecise = (clip.frames << 8) >>> 0
-  m.set(pPlayer, D2UnitStrc.dwFramePrecise, 0)
-  m.set(pPlayer, D2UnitStrc.dwFrameCountPrecise, countPrecise)
-  m.set(pPlayer, D2UnitStrc.wAnimSpeed, speed & 0xffff)
-  const endTicks = speed > 0 ? Math.max(1, Math.floor(countPrecise / speed)) : 10
-  PLAYER_ScheduleSkillActionFrameEvents113c(m, pGame, pPlayer, Math.max(1, endTicks >> 1), endTicks)
-  return 1
-}
-
-/**
- * `@va D2Game:0x6FC98DD0` (`PLAYER_StartModeSkill`):
- * Starts player skill mode (`11..14` `S1..S4` or `18` `SQ`).
- */
-export function PLAYER_StartModeSkill113c(
-  m: Memory113c,
-  pGame: number,
-  pPlayer: number,
-  mode = 11,
-  pTarget = 0,
-  weaponClassCode = '1HS',
-): number {
-  return PLAYER_StartModeAttack113c(m, pGame, pPlayer, mode, pTarget, weaponClassCode)
-}
-
-/**
- * `@va D2Game:0x6FC99170` (`PLAYER_StartModeDispatch`):
- * Dispatches player mode transitions (`0..19`) to `PLAYER_StartModeAttack113c`, `PLAYER_StartBlockMode113c`,
- * `PLAYER_StartModeCast113c`, `PLAYER_StartModeSkill113c`, or `UNITS_ChangeAnimMode113c`.
- */
-export function PLAYER_StartModeDispatch113c(
-  m: Memory113c,
-  pGame: number,
-  pPlayer: number,
-  mode: number,
-  pTarget = 0,
-  weaponClassCode = '1HS',
-): number {
-  if (pGame === 0 || pPlayer === 0) return 0
-  if (mode === 7 || mode === 8) {
-    return PLAYER_StartModeAttackWithTarget113c(m, pGame, pPlayer, mode, pTarget, weaponClassCode)
-  }
-  if (mode === 9) {
-    return PLAYER_StartBlockMode113c(m, pGame, pPlayer, weaponClassCode)
-  }
-  if (mode === 10) {
-    return PLAYER_StartModeCast113c(m, pGame, pPlayer, pTarget, weaponClassCode)
-  }
-  if (mode >= 11 && mode <= 14) {
-    return PLAYER_StartModeSkill113c(m, pGame, pPlayer, mode, pTarget, weaponClassCode)
-  }
-  return UNITS_ChangeAnimMode113c(m, pPlayer, mode)
-}
-
-/**
- * `@va D2Game:0x6FC97B20` (`PLAYER_AdvanceSkillModeFrame`):
- * Fires on player `Event 6` (`PLR_EVENT_MODE_STEP`) at the melee/skill action frame (`wActionFrame != 0`):
- * clears `wActionFrame` and executes the attack hit against `pPath->pTargetUnit` via
- * `SUNITDMG_AllocCombat113c` -> `SUNITDMG_ExecuteEvents113c` -> `SUNITDMG_DistributeExperience113c`.
- */
-export function PLAYER_AdvanceSkillModeFrame113c(
-  m: Memory113c,
-  pGame: number,
-  pPlayer: number,
-  pTargetOverride = 0,
-): number {
-  if (pGame === 0 || pPlayer === 0) return 0
-  m.set(pPlayer, D2UnitStrc.wActionFrame, 0)
-  let pTarget = pTargetOverride
-  if (pTarget === 0) {
-    const pPath = m.get(pPlayer, D2UnitStrc.pPath)
-    if (pPath !== 0) {
-      pTarget = m.get(pPath, D2DynamicPathStrc.pTargetUnit)
-    }
-  }
-  if (pTarget === 0 || SUNIT_IsDeadOrDying113c(m, pTarget) !== 0) return 0
-  const pDmg = m.alloc(D2DamageStrc_SIZE)
-  m.fill(pDmg, D2DamageStrc_SIZE, 0)
-  SUNITDMG_FillDamageValues113c(m, pGame, pPlayer, pTarget, pDmg, 0, 128)
-  SUNITDMG_AllocCombat113c(m, pGame, pPlayer, pTarget, pDmg, 128)
-  SUNITDMG_ExecuteEvents113c(m, pGame, pPlayer, pTarget, 1, 0)
-  return 1
-}
-
-/**
  * `@va D2Game:0x6FC978A0` (`PLAYER_EndAttackOrBlockAnim`):
  * Fires on player `Event 7` (`PLR_EVENT_MODE_END`) when an attack (`mode 7/8`) or block (`mode 9`)
  * animation finishes: deletes `Event 6`/`Event 7` and returns `pPlayer` to `PLRMODE_TNEUTRAL (1)`.
@@ -1597,6 +1401,13 @@ export {
   MONSTER_SetDeathPathAndAnim113c,
   MONSTER_StartDeath113c,
   MONSTER_StartMode113c,
+  PLAYER_AdvanceSkillModeFrame113c,
+  PLAYER_ScheduleAttackActionFrameEvents113c,
+  PLAYER_ScheduleSkillActionFrameEvents113c,
+  PLAYER_StartBlockMode113c,
+  PLAYER_StartModeCast113c,
+  PLAYER_StartModeDispatch113c,
+  PLAYER_StartModeSkill113c,
   ROOM_RecordMonsterDeath113c,
   SUNITDMG_AddDemonDamageBonus113c,
   SUNITDMG_AddLeechedLifeToUnit113c,

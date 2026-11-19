@@ -122,8 +122,8 @@
     "name": "ACT2Q4_Callback01_NpcDeactivate_6FCE85A0",
     "kernFile": "src/d2kern-113c/game/k2-w8b3-113c.ts",
     "tsSymbol": "ACT2Q4_Callback01_NpcDeactivate_6FCE85A0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w8b3.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/replay-act-quests.test.ts (0x6FCE85A0) across Act 1-5 K4 longitudinal quest & town NPC replay at 100% strict zero divergence"
   },
   {
     "module": "D2Game",
@@ -257,8 +257,8 @@
     "name": "ITEMS_ProcessReplenishStatTick_6FCFA350",
     "kernFile": "src/d2kern-113c/game/k2-w8b3-113c.ts",
     "tsSymbol": "ITEMS_ProcessReplenishStatTick_6FCFA350_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w8b3.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w8b3.test.ts; Diff-verified 1:1 in dll\u2229ts across full-horizon strict zero-divergence K3 replay (p52-amazon-valkyrie F1500/1500) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -266,7 +266,7 @@
     "name": "ACT3Q7_Callback00_NpcActivate_6FD07080",
     "kernFile": "src/d2kern-113c/game/k2-w8b3-113c.ts",
     "tsSymbol": "ACT3Q7_Callback00_NpcActivate_6FD07080_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w8b3.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/replay-act-quests.test.ts (0x6FD07080) across Act 1-5 K4 longitudinal quest & town NPC replay at 100% strict zero divergence"
   }
 ]

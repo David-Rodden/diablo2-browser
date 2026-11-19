@@ -802,3 +802,26 @@ export function EVENT_UpdatePartition113c(
   m.set(pTimer, D2TimerStrc.pSavedNext, 0)
   return firedCount
 }
+
+export type AiTargetModeCallback113c = (
+  m: Memory113c,
+  pGame: number,
+  pOriginUnit: number,
+  pCandidateUnit: number,
+  pCtx: number,
+) => number
+
+const registeredAiTargetModeCallbacks = new Map<number, AiTargetModeCallback113c>()
+
+export function registerAiTargetModeCallback113c(
+  cbId: number,
+  cb: AiTargetModeCallback113c,
+): void {
+  registeredAiTargetModeCallbacks.set(cbId >>> 0, cb)
+}
+
+export function getRegisteredAiTargetModeCallback113c(
+  cbId: number,
+): AiTargetModeCallback113c | undefined {
+  return registeredAiTargetModeCallbacks.get(cbId >>> 0)
+}

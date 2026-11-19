@@ -46,7 +46,10 @@ import {
 import { imul32 } from './int-math.ts'
 import { COMPOSIT_GetUnitWeaponClassCode113c } from './composit.ts'
 import { DUNGEON_AddRoomPortalNode113c } from './dungeon.ts'
-import { INVENTORY_GetWeaponByHandSlotMemPort113c } from './k0-d2common-memports.ts'
+import {
+  INVENTORY_GetActiveWeaponMemPort113c,
+  INVENTORY_GetWeaponByHandSlotMemPort113c,
+} from './k0-d2common-memports.ts'
 import {
   ITEMS_AreStackableWeaponsCompatible113c,
   ITEMS_CheckBodyLocation113c,
@@ -1639,11 +1642,22 @@ export function getItemsTxtRecordInvMem113c(m: Memory113c, nItemId: number): num
   return (base + imul32(nItemId | 0, ITEMS_TXT_STRIDE_113C)) >>> 0
 }
 
+let checkNotBrokenOrUnequippingHook113c: ((m: Memory113c, pItem: number) => number) | null = null
+
+export function registerInventoryCheckNotBrokenHook113c(
+  fn: (m: Memory113c, pItem: number) => number,
+): void {
+  checkNotBrokenOrUnequippingHook113c = fn
+}
+
 /**
  * Memory port of `D2Common 0x6FD73EF0` (`#11006` `ITEMS_CheckNotBrokenOrUnequipping`): `0` for a null
  * item, `1` for non-items, and for items `0` iff `pItemData != 0` and `dwFlags & 0x100` or `& 0x4000`.
  */
 export function isItemNotBrokenInvMem113c(m: Memory113c, pItem: number): number {
+  if (checkNotBrokenOrUnequippingHook113c !== null) {
+    return checkNotBrokenOrUnequippingHook113c(m, pItem)
+  }
   const u = pItem >>> 0
   if (u === 0) return 0
   if (m.u32(u) === UNIT_ITEM) {
@@ -1734,29 +1748,15 @@ export function INVENTORY_GetCompositWeaponMem113c(m: Memory113c, pInventory: nu
 export function INVENTORY_GetActiveWeaponMem113c(m: Memory113c, pInventory: number): number {
   const inv = pInventory >>> 0
   if (inv === 0) return 0
-  INVENTORY_GetCompositWeaponMem113c(m, inv)
-  if (m.u32(inv) === INVENTORY_SIGNATURE_113C) {
-    const pGridA = INVENTORY_GetOrInitGridMem113c(m, inv, 0, D2COMMON_GRID0_INFO_VA_113C)
-    if (pGridA !== 0) {
-      const pRight = m.u32((m.u32((pGridA + 0x0c) >>> 0) + 0x10) >>> 0)
-      if (
-        pRight !== 0 &&
-        isItemNotBrokenInvMem113c(m, pRight) !== 0 &&
-        ITEMS_CheckItemTypeIdMem113c(m, pRight, 0x2d) !== 0
-      ) {
-        return pRight
-      }
-    }
-  }
-  let pLeft = 0
-  if (m.u32(inv) === INVENTORY_SIGNATURE_113C) {
-    const pGridB = INVENTORY_GetOrInitGridMem113c(m, inv, 0, D2COMMON_GRID0_INFO_VA_113C)
-    if (pGridB !== 0) pLeft = m.u32((m.u32((pGridB + 0x0c) >>> 0) + 0x14) >>> 0)
-  }
-  if (isItemNotBrokenInvMem113c(m, pLeft) !== 0 && ITEMS_CheckItemTypeIdMem113c(m, pLeft, 0x2d) !== 0) {
-    return pLeft
-  }
-  return 0
+  const sm = withInvStackScratch113c(m)
+  const pOutWeapon = (INV_STACK_SCRATCH_BASE + 0x20) >>> 0
+  const pOutBodyLoc = (INV_STACK_SCRATCH_BASE + 0x24) >>> 0
+  const pOutActive = (INV_STACK_SCRATCH_BASE + 0x28) >>> 0
+  sm.setU32(pOutWeapon, 0)
+  sm.setU32(pOutBodyLoc, 0)
+  sm.setU32(pOutActive, 0)
+  const ok = INVENTORY_GetActiveWeaponMemPort113c(sm, inv, pOutWeapon, pOutBodyLoc, pOutActive)
+  return ok !== 0 ? sm.u32(pOutWeapon) >>> 0 : 0
 }
 
 /**

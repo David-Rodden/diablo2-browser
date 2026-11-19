@@ -167,8 +167,8 @@
     "name": "MISSILE_SrvHit_RadialETypeDamageByCalc1_6FC5B990",
     "kernFile": "src/d2kern-113c/game/k2-w6b1-113c.ts",
     "tsSymbol": "MISSILE_SrvHit_RadialETypeDamageByCalc1_6FC5B990_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w6b1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w6b1.test.ts; Diff-verified 1:1 in dll\u2229ts across full-horizon strict zero-divergence K3 replay (p52-sorceress-elemental F1800/1800) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -275,8 +275,8 @@
     "name": "SKILLS_SrvDo_FireWallPerpendicularControllers_6FC637D0",
     "kernFile": "src/d2kern-113c/game/k2-w6b1-113c.ts",
     "tsSymbol": "SKILLS_SrvDo_FireWallPerpendicularControllers_6FC637D0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w6b1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w6b1.test.ts; Diff-verified 1:1 in dll\u2229ts across full-horizon strict zero-divergence K3 replay (p52-sorceress-fire-dot F1800/1800) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",

@@ -32,8 +32,8 @@
     "name": "SKILLS_ClampLifeManaStaminaToMaxAndRefreshAnim_6FCBE6B0",
     "kernFile": "src/d2kern-113c/game/k2-w4b6-113c.ts",
     "tsSymbol": "SKILLS_ClampLifeManaStaminaToMaxAndRefreshAnim_6FCBE6B0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b6.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w4b6.test.ts; Diff-verified 1:1 in dll∩ts across full-horizon strict zero-divergence K3 replay (p52-paladin-auras F1700/1700, p52-paladin-merc-aura F1700/1700) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -77,8 +77,8 @@
     "name": "SKILLS_EnsurePlayerWeaponOrQuiverQuantity_6FCBEB80",
     "kernFile": "src/d2kern-113c/game/k2-w4b6-113c.ts",
     "tsSymbol": "SKILLS_EnsurePlayerWeaponOrQuiverQuantity_6FCBEB80_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b6.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w4b6.test.ts; Diff-verified 1:1 in dll\u2229ts across full-horizon strict zero-divergence K3 replay (p52-paladin-merc-aura F1700/1700) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -140,8 +140,8 @@
     "name": "SKILLS_ApplySkillDelayState121OnPlayer_6FCBFF70",
     "kernFile": "src/d2kern-113c/game/k2-w4b6-113c.ts",
     "tsSymbol": "SKILLS_ApplySkillDelayState121OnPlayer_6FCBFF70_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b6.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w4b6.test.ts; Diff-verified 1:1 in dll\u2229ts across full-horizon strict zero-divergence K3 replay (p52-amazon-valkyrie F1500/1500, p52-sorceress-elemental F1800/1800, p52-sorceress-fire-dot F1800/1800) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -185,8 +185,8 @@
     "name": "SKILLS_RollAvoidAndApplySkillDamage_6FCC10B0",
     "kernFile": "src/d2kern-113c/game/k2-w4b6-113c.ts",
     "tsSymbol": "SKILLS_RollAvoidAndApplySkillDamage_6FCC10B0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b6.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w4b6.test.ts; Diff-verified 1:1 in dll\u2229ts across full-horizon strict zero-divergence K3 replay (p52-sorceress-elemental F1800/1800) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",

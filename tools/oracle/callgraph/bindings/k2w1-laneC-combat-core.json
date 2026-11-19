@@ -275,8 +275,8 @@
     "name": "NET_SendUnitMovePacket0F113c_6FCEBA20",
     "kernFile": "src/d2kern-113c/game/k2-combat-core-w1-113c.ts",
     "tsSymbol": "NET_SendUnitMovePacket0F113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneC-combat-core-w1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/exitgate-s2c-vectors.test.ts (0x6FCEBA20) across 1,440 real-DLL S2C D2TV binary vectors with 0 mismatches"
   },
   {
     "module": "D2Game",
@@ -284,8 +284,8 @@
     "name": "NET_SendReassignUnitPacket15_6FCEBB10",
     "kernFile": "src/d2kern-113c/game/k2-combat-core-w1-113c.ts",
     "tsSymbol": "NET_SendReassignUnitPacket15_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneC-combat-core-w1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/exitgate-s2c-vectors.test.ts (0x6FCEBB10) across 1,440 real-DLL S2C D2TV binary vectors with 0 mismatches"
   },
   {
     "module": "D2Game",
@@ -302,8 +302,8 @@
     "name": "NET_SendEventMessage5A_Type0E_6FCEBED0",
     "kernFile": "src/d2kern-113c/game/k2-combat-core-w1-113c.ts",
     "tsSymbol": "NET_SendEventMessage5A_Type0E_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneC-combat-core-w1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/laneC-combat-core-w1.test.ts; Diff-verified 1:1 in dll\u2229ts across full-horizon strict zero-divergence K3 replay (p52-barbarian-warcries F1600/1600, p52-sorceress-elemental F1800/1800) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
