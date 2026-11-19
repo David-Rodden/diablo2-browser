@@ -6,7 +6,7 @@
     "kernFile": "src/d2kern-113c/game/k2-gap-itemdef-113c.ts",
     "tsSymbol": "DATATBLS_GetItemStatCostRecordFast113c",
     "status": "diff-verified",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneF-gap-itemdef.test.ts; K3 golden replay diff-verified (dll\u2229ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
+    "diffEvidence": "Unit verification in tests/oracle/k2/laneF-gap-itemdef.test.ts; K3 golden replay diff-verified (dll∩ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -33,7 +33,7 @@
     "kernFile": "src/d2kern-113c/game/k2-gap-itemdef-113c.ts",
     "tsSymbol": "CURSES_ScaleImmuneMonsterResistPenalty113c",
     "status": "diff-verified",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneF-gap-itemdef.test.ts; Diff-verified 1:1 in dll\u2229ts across full-horizon strict zero-divergence K3 summon/curse replays (p52-amazon-valkyrie F1500/1500, p52-necromancer-poison-golem F1800/1800, p52-necromancer-curses F2000/2000) in tests/oracle/k3/replay-k3-p52-suite.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
+    "diffEvidence": "Unit verification in tests/oracle/k2/laneF-gap-itemdef.test.ts; Diff-verified 1:1 in dll∩ts across full-horizon strict zero-divergence K3 summon/curse replays (p52-amazon-valkyrie F1500/1500, p52-necromancer-poison-golem F1800/1800, p52-necromancer-curses F2000/2000) in tests/oracle/k3/replay-k3-p52-suite.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -41,8 +41,8 @@
     "name": "MONSTER_StartModeRun",
     "kernFile": "src/d2kern-113c/game/k2-gap-itemdef-113c.ts",
     "tsSymbol": "MONSTER_StartModeRun113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneF-gap-itemdef.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/laneF-gap-itemdef.test.ts; runtime-executed in dllExecuted∩tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -51,7 +51,7 @@
     "kernFile": "src/d2kern-113c/game/k2-gap-itemdef-113c.ts",
     "tsSymbol": "PLAYER_Event0C_ExpireTimedStats113c",
     "status": "diff-verified",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneF-gap-itemdef.test.ts; K3 golden replay diff-verified (dll\u2229ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
+    "diffEvidence": "Unit verification in tests/oracle/k2/laneF-gap-itemdef.test.ts; K3 golden replay diff-verified (dll∩ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -68,8 +68,8 @@
     "name": "NET_SendUnitTargetedSkillAction",
     "kernFile": "src/d2kern-113c/game/k2-gap-itemdef-113c.ts",
     "tsSymbol": "NET_SendUnitTargetedSkillAction113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneF-gap-itemdef.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/laneF-gap-itemdef.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -78,7 +78,7 @@
     "kernFile": "src/d2kern-113c/game/k2-gap-itemdef-113c.ts",
     "tsSymbol": "AURAS_ApplyRadialStatBuffCallback113c",
     "status": "diff-verified",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneF-gap-itemdef.test.ts; K3 golden replay diff-verified (dll\u2229ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
+    "diffEvidence": "Unit verification in tests/oracle/k2/laneF-gap-itemdef.test.ts; K3 golden replay diff-verified (dll∩ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -87,7 +87,7 @@
     "kernFile": "src/d2kern-113c/game/k2-gap-itemdef-113c.ts",
     "tsSymbol": "SrvDoFunc_065_AuraRadialStatBuff113c",
     "status": "diff-verified",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneF-gap-itemdef.test.ts; K3 golden replay diff-verified (dll\u2229ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
+    "diffEvidence": "Unit verification in tests/oracle/k2/laneF-gap-itemdef.test.ts; K3 golden replay diff-verified (dll∩ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -105,7 +105,7 @@
     "kernFile": "src/d2kern-113c/game/k2-gap-itemdef-113c.ts",
     "tsSymbol": "AURA_CheckCircleIntersectsRoom113c",
     "status": "diff-verified",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneF-gap-itemdef.test.ts; K3 golden replay diff-verified (dll\u2229ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
+    "diffEvidence": "Unit verification in tests/oracle/k2/laneF-gap-itemdef.test.ts; K3 golden replay diff-verified (dll∩ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -123,7 +123,7 @@
     "kernFile": "src/d2kern-113c/game/k2-gap-itemdef-113c.ts",
     "tsSymbol": "STATES_CreateOrUpdateAuraStatList113c",
     "status": "diff-verified",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneF-gap-itemdef.test.ts; K3 golden replay diff-verified (dll\u2229ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
+    "diffEvidence": "Unit verification in tests/oracle/k2/laneF-gap-itemdef.test.ts; K3 golden replay diff-verified (dll∩ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -132,7 +132,7 @@
     "kernFile": "src/d2kern-113c/game/k2-gap-itemdef-113c.ts",
     "tsSymbol": "AURA_CheckUnitMatchesFilterFlags113c",
     "status": "diff-verified",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneF-gap-itemdef.test.ts; K3 golden replay diff-verified (dll\u2229ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
+    "diffEvidence": "Unit verification in tests/oracle/k2/laneF-gap-itemdef.test.ts; K3 golden replay diff-verified (dll∩ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -150,7 +150,7 @@
     "kernFile": "src/d2kern-113c/game/k2-gap-itemdef-113c.ts",
     "tsSymbol": "SKILLS_ActivateAuraSkillOnUnit113c",
     "status": "diff-verified",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneF-gap-itemdef.test.ts; K3 golden replay diff-verified (dll\u2229ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
+    "diffEvidence": "Unit verification in tests/oracle/k2/laneF-gap-itemdef.test.ts; K3 golden replay diff-verified (dll∩ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -159,7 +159,7 @@
     "kernFile": "src/d2kern-113c/game/k2-gap-itemdef-113c.ts",
     "tsSymbol": "SKILLS_Event08_AuraPulseTick113c",
     "status": "diff-verified",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneF-gap-itemdef.test.ts; K3 golden replay diff-verified (dll\u2229ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
+    "diffEvidence": "Unit verification in tests/oracle/k2/laneF-gap-itemdef.test.ts; K3 golden replay diff-verified (dll∩ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -168,7 +168,7 @@
     "kernFile": "src/d2kern-113c/game/k2-gap-itemdef-113c.ts",
     "tsSymbol": "MONSTER_SetLastHitModeField54_113c",
     "status": "diff-verified",
-    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across (p52-item-defense) against real D2Game.dll 1.13c golden traces"
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll ∩ ts replay-executed with 0 strict divergence across (p52-item-defense) against real D2Game.dll 1.13c golden traces"
   },
   {
     "module": "D2Game",
@@ -231,7 +231,7 @@
     "kernFile": "src/d2kern-113c/game/k2-gap-itemdef-113c.ts",
     "tsSymbol": "SUNIT_AreUnitsInSamePartyOrAligned113c",
     "status": "diff-verified",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneF-gap-itemdef.test.ts; K3 golden replay diff-verified (dll\u2229ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
+    "diffEvidence": "Unit verification in tests/oracle/k2/laneF-gap-itemdef.test.ts; K3 golden replay diff-verified (dll∩ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",

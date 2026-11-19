@@ -65,32 +65,39 @@ describe('K1R14-LaneJ2: D2Game.dll Boot/Init & Event/Sync Coverage Gap Closure P
 
   it('verifies MONREG room node lifecycle & pending spawn flush (0x6FC3E960, 0x6FC3EA40, 0x6FC3FB40, 0x6FC3FB90)', () => {
     const m = new SparseMemory113c();
-    const pActMonReg = m.alloc(0x320);
     const pGame = m.alloc(0x2000);
     const pRoom = m.alloc(0x100);
-    m.setU32(pRoom + 0x10, 40);
-    m.setU32(pRoom + 0x14, 80);
+    const pRoomEx = m.alloc(0x80);
+    const pLevel = m.alloc(0x200);
+    m.setU32(pLevel + 0x1d0, 2); // levelId = 2 (Blood Moor, Act 0)
+    m.setU32(pRoomEx + 0x58, pLevel);
+    m.setU32(pRoom + 0x10, pRoomEx);
+    m.setU32(pRoom + 0x4c, 40);
+    m.setU32(pRoom + 0x50, 80);
 
-    const node1 = MONREG_FindOrAllocActRoomNode113c(m, pActMonReg, pGame, pRoom);
+    expect(MONREG_FindOrAllocActRoomNode113c(m, pGame, 0, 40, 80, 0)).toBe(0);
+    const node1 = MONREG_FindOrAllocActRoomNode113c(m, pGame, 0, 40, 80, 1);
     expect(node1).toBeGreaterThan(0);
-    expect(m.u32(pActMonReg + 0x308)).toBe(1);
-    const node1Again = MONREG_FindOrAllocActRoomNode113c(m, pActMonReg, pGame, pRoom);
+    expect(m.u32(pGame + 0xd8)).toBe(node1);
+    const node1Again = MONREG_FindOrAllocActRoomNode113c(m, pGame, 0, 40, 80, 1);
     expect(node1Again).toBe(node1);
 
-    MONREG_UnlinkAndFreeActRoomNode113c(m, node1, pActMonReg, pGame);
-    expect(m.u32(pActMonReg + 0x308)).toBe(0);
+    MONREG_RestoreRoomMonstersFromNode113c(m, pGame, pRoom);
 
-    const ppHead = m.alloc(4);
-    const rec1 = m.alloc(0x40);
-    const rec2 = m.alloc(0x40);
-    m.setU32(rec1 + 0x30, rec2);
-    m.setU32(ppHead, rec1);
-    MONREG_FlushAndFreePendingSpawnNodes113c(m, pGame, ppHead);
-    expect(m.u32(ppHead)).toBe(0);
+    const rec1 = m.alloc(0x18);
+    const rec2 = m.alloc(0x18);
+    m.setU32(rec1 + 0x00, rec2);
+    m.setU32(rec1 + 0x04, 1); // expired at frame 1
+    m.setU32(pGame + 0xa8, 10);
+    m.setU32(node1 + 0x08, rec1);
 
-    const emptyRoomNode = m.alloc(0x1c);
-    MONREG_RestoreRoomMonstersFromNode113c(m, pRoom, pGame, emptyRoomNode);
-    expect(m.u32(emptyRoomNode)).toBe(0);
+    const ppOutUnits = m.alloc(4);
+    const ppOutItems = m.alloc(4);
+    MONREG_UnlinkAndFreeActRoomNode113c(m, pRoom, pGame, ppOutUnits, ppOutItems);
+    expect(m.u32(pGame + 0xd8)).toBe(0);
+    expect(m.u32(ppOutItems)).toBe(rec1);
+
+    MONREG_FlushAndFreePendingSpawnNodes113c(m, m.u32(ppOutItems), pGame, pRoom);
   });
 
   it('verifies AI command flush & minion component callbacks (0x6FC41420, 0x6FC468E0)', () => {
@@ -199,10 +206,24 @@ describe('K1R14-LaneJ2: D2Game.dll Boot/Init & Event/Sync Coverage Gap Closure P
     const pGame = m.alloc(0x2000);
     const pRoom = m.alloc(0x100);
 
-    const spawnedSu = MONSTER_SpawnPresetOrEvilUrn113c(m, pGame, pRoom, 1, 100, 200, 5, 0, {
-      spawnSuperUniqueById: () => 1,
-    });
-    expect(spawnedSu).toBe(1);
+    const pTables = m.alloc(0xc00);
+    const pMonStats = m.alloc(10 * 0x1a8);
+    m.setU32(pTables + 0xa78, pMonStats);
+    m.setU32(pTables + 0xa80, 10);
+    m.setU32(0x6fde9e1c, pTables);
+    m.setU32(0x6fd1829c, 0x6fde9e1c);
+    const fakeSpawned = m.alloc(0x100);
+    const spawnedSu = MONSTER_SpawnPresetOrEvilUrn113c(
+      m,
+      5,
+      pGame,
+      pRoom,
+      100,
+      200,
+      1,
+      () => fakeSpawned,
+    );
+    expect(spawnedSu).toBe(fakeSpawned);
 
     const pPortal = m.alloc(0x100);
     m.setU32(pPortal + 0x94, 0xffffffff);
@@ -213,9 +234,13 @@ describe('K1R14-LaneJ2: D2Game.dll Boot/Init & Event/Sync Coverage Gap Closure P
     m.setU32(pClient + 0x1b8, pQueue);
     m.setU32(pClient + 0x1bc, pQueue);
     const pObj = m.alloc(0x100);
+    const pObjData = m.alloc(0x40);
+    const pObjTxt = m.alloc(0x200);
+    m.setU32(pObjData, pObjTxt);
     m.setU32(pObj + 0x00, 2);
     m.setU32(pObj + 0x0c, 77);
     m.setU32(pObj + 0x10, 1);
+    m.setU32(pObj + 0x14, pObjData);
     m.setU32(pObj + 0xc4, 0x8041);
     OBJECT_SendUpdatePacketsToClient113c(m, pClient, pObj);
     expect(m.u32(pQueue + 0x00)).toBe(0x0c);

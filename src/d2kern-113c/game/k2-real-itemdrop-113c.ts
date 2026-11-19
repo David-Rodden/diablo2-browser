@@ -766,12 +766,9 @@ export function ITEMS_ApplyGoldFindBonus_6FC2F260_113c(
   if (item === 0 || killer === 0) return
   if ((ITEMS_GetItemTypeFromItem113c(m, item) | 0) !== 4) return
 
-  let pLeader = 0
-  if (m.u32(killer) === 1) {
-    pLeader = AIGENERAL_GetPackLeaderUnit113c(m, killer) >>> 0
-    if (pLeader === killer) {
-      pLeader = 0
-    }
+  let pLeader = AIGENERAL_GetPackLeaderUnit113c(m, killer) >>> 0
+  if (pLeader === killer) {
+    pLeader = 0
   }
   const leaderGf = pLeader !== 0 ? STATLIST_GetUnitStatWithLayer113c(m, pLeader, 0x4f, 0) | 0 : 0
   const killerGf = STATLIST_GetUnitStatWithLayer113c(m, killer, 0x4f, 0) | 0

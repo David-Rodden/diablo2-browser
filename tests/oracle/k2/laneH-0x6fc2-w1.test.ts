@@ -166,6 +166,11 @@ function createTestWorld(): TestWorld {
   m.setU32(pDataTables + 0x40, pSkillCode)
   m.setU32(pDataTables + 0x44, 0x100)
 
+  // D2Common SGPT_EXPERIENCE_TXT_PTR_VA_113C (0x6FDF0B50): max level table (used by evalSkillCalcRpnMem113c)
+  const pExpTxt = m.alloc(0x10)
+  m.setU32(pExpTxt, 99)
+  m.setU32(0x6fdf0b50, pExpTxt)
+
   return {
     m,
     pDataTables,

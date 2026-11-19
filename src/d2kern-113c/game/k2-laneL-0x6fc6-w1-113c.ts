@@ -1466,7 +1466,8 @@ export function SKILLS_ApplyPaladinEighthMaxLifeCost_6FC6F450_113c(
     m.setU8((sp + 0x04) >>> 0, 0x04)
     m.setU32((sp + 0x08) >>> 0, dmg >>> 0)
     m.setU32((sp + 0x4c) >>> 0, dmg >>> 0)
-    SUNITDMG_ApplyDamage113c(m, pGame, pUnit, pUnit, sp)
+    // 0x6fc6f499: push 0x0 (bApplyResists = 0), call 0x6fcfe0c0; 0x6fc6f4b7: call 0x6fcfcf20
+    SUNITDMG_ApplyDamage113c(m, pGame, pUnit, pUnit, sp, 0, undefined, 1)
     SUNITDMG_ApplySideEffectsAndKill113c(m, pGame, pUnit, pUnit, sp)
   } finally {
     k2LaneLStackPtr = sp

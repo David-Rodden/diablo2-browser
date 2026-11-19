@@ -14,7 +14,8 @@
     "name": "QUESTS_OnMonsterKill113c",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
     "tsSymbol": "QUESTS_OnMonsterKill113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -22,7 +23,8 @@
     "name": "PLAYER_SetActiveDualWeaponStatLists113c",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
     "tsSymbol": "PLAYER_SetActiveDualWeaponStatLists113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces"
   },
   {
     "module": "D2Game",
@@ -31,7 +33,7 @@
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
     "tsSymbol": "PLAYER_UpdateDualWieldWeaponStatLists113c",
     "status": "diff-verified",
-    "diffEvidence": "K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
+    "diffEvidence": "K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts); Runtime-executed in dllExecuted\u2229tsExecuted across K1/K2 5-scenario replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -39,7 +41,8 @@
     "name": "UNITROOM_IsClientInUnitRoom113c",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
     "tsSymbol": "UNITROOM_IsClientInUnitRoom113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces"
   },
   {
     "module": "D2Game",
@@ -47,7 +50,8 @@
     "name": "MONSTER_IsNextModeEndWithin5Frames113c",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
     "tsSymbol": "MONSTER_IsNextModeEndWithin5Frames113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces"
   },
   {
     "module": "D2Game",
@@ -55,7 +59,8 @@
     "name": "S2C_SendPacket0D_UnitStop113c",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
     "tsSymbol": "S2C_SendPacket0D_UnitStop113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces"
   },
   {
     "module": "D2Game",
@@ -63,7 +68,8 @@
     "name": "S2C_SendPacket0E_UnitCorpseState113c",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
     "tsSymbol": "S2C_SendPacket0E_UnitCorpseState113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces"
   },
   {
     "module": "D2Game",
@@ -71,7 +77,8 @@
     "name": "ITEMS_SyncSocketedSubItemsToClient113c",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
     "tsSymbol": "ITEMS_SyncSocketedSubItemsToClient113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces"
   },
   {
     "module": "D2Game",
@@ -79,7 +86,8 @@
     "name": "S2C_SendPacket9C_ItemActionWorld113c",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
     "tsSymbol": "S2C_SendPacket9C_ItemActionWorld113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces"
   },
   {
     "module": "D2Game",
@@ -87,7 +95,8 @@
     "name": "S2C_SendPacket0F_UnitWalkToTarget113c",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
     "tsSymbol": "S2C_SendPacket0F_UnitWalkToTarget113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces"
   },
   {
     "module": "D2Game",
@@ -95,7 +104,8 @@
     "name": "SKILLS_ConsumeProgressiveChargesOnHit113c",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
     "tsSymbol": "SKILLS_ConsumeProgressiveChargesOnHit113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces"
   },
   {
     "module": "D2Game",
@@ -103,7 +113,8 @@
     "name": "SKILLS_ApplyProgressiveChargesToDamage113c",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
     "tsSymbol": "SKILLS_ApplyProgressiveChargesToDamage113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces"
   },
   {
     "module": "D2Game",
@@ -111,7 +122,8 @@
     "name": "SKILLS_ApplyProgressiveAttackRatingAndPhysBonuses113c",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
     "tsSymbol": "SKILLS_ApplyProgressiveAttackRatingAndPhysBonuses113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces"
   },
   {
     "module": "D2Game",
@@ -119,7 +131,8 @@
     "name": "SUNITDMG_ApplyOpenWoundsAndCrushingBlowSideEffects113c",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
     "tsSymbol": "SUNITDMG_ApplyOpenWoundsAndCrushingBlowSideEffects113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces"
   },
   {
     "module": "D2Game",
@@ -216,7 +229,8 @@
     "name": "MONSTER_DeleteAiAndRegenEvents113c",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
     "tsSymbol": "MONSTER_DeleteAiAndRegenEvents113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces"
   },
   {
     "module": "D2Game",
@@ -224,7 +238,8 @@
     "name": "ARENA_GetPlayerArenaFlags113c",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
     "tsSymbol": "ARENA_GetPlayerArenaFlags113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -232,7 +247,8 @@
     "name": "ARENA_ProcessKillScoreUpdate113c",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
     "tsSymbol": "ARENA_ProcessKillScoreUpdate113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -240,7 +256,8 @@
     "name": "C2S_BroadcastPlayerSkillOrAttackAction113c",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
     "tsSymbol": "C2S_BroadcastPlayerSkillOrAttackAction113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces"
   },
   {
     "module": "D2Game",
@@ -248,7 +265,8 @@
     "name": "UNITROOM_SendDroppedGroundItemToClient113c",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
     "tsSymbol": "UNITROOM_SendDroppedGroundItemToClient113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "Runtime-executed in dllExecuted∩tsExecuted across K1/K2 combat scenarios (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -256,7 +274,8 @@
     "name": "UNITROOM_BroadcastGroundItemIfUpdated113c",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
     "tsSymbol": "UNITROOM_BroadcastGroundItemIfUpdated113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces"
   },
   {
     "module": "D2Game",
@@ -264,7 +283,8 @@
     "name": "SUNIT_CanPlayerTargetUnitWithSkill113c",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
     "tsSymbol": "SUNIT_CanPlayerTargetUnitWithSkill113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces"
   },
   {
     "module": "D2Game",

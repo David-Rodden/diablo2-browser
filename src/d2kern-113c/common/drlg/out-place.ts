@@ -1873,6 +1873,15 @@ function resolveOutPlacePostArg113c(
 
 /**
  * `@va D2Common:0x6FD66E10` (`DRLGOUTPLACE_PlaceActLevelsByList`, custom LTCG `esi = pDrlg`, stack `(pList, pfnValidate, pfnPost)`, `ret 0xc`, void).
+ *
+ * Binary verification (`0x6FD66E10 .. 0x6FD6717D`, 878 bytes):
+ * - Zeroes `0x7D` dwords (`0x1F4` bytes) of stack `D2DrlgLevelLinkDataStrc`, sets `nRand[0..3][0..14] = -1`,
+ *   copies 64-bit `pDrlg->pSeed` (`+0x00, +0x04`) and `pLink (+0xF8) = pList`.
+ * - Populates `pCoord[i].nWidth / nHeight` from `sgptDataTables->pLevelDefBin[nLevelId].dwSizeX/Y[pDrlg->nDifficulty (+0x450)]`.
+ * - Runs backtracking linker loop (`pList[idx].pfLinker(ecx = &linkData)` + optional `pfnValidate(ecx = &linkData, edx = idx)`).
+ * - Commits `pCoord[idx]` to `DRLG_GetLevel(pDrlg, nLevelId)`, propagates `nRand[0]` direction to `pPreset + 0x04` for
+ *   levels `1` (`nRand[0][idx]`), `0x28` (`nRand[0][idx + 1]`), and `6 -> 0x1B` (`pDrlg->pSeed` LCG roll when `nRand[0][idx]` is `1` or `3`),
+ *   invokes optional `pfnPost(ecx = pLevel, edx = idx, &nRand[0][0])`, and links bidirectional warps when `pDrlg->nAct (+0x480) != 4`.
  */
 export function DRLGOUTPLACE_PlaceActLevelsByList113c(
   m: Memory113c,
@@ -1897,56 +1906,61 @@ export function DRLGOUTPLACE_PlaceActLevelsByList113c(
     sm.setU32((frameBase + 0x1b0 + (i << 2)) >>> 0, 0xffffffff);
   }
 
+  const firstLvlId = sm.u32((listPtr + 4) >>> 0) | 0;
   sm.setU32(frameBase, m.u32(drlg));
   sm.setU32((frameBase + 4) >>> 0, m.u32((drlg + 4) >>> 0));
   sm.setU32((frameBase + 0xf8) >>> 0, listPtr);
 
-  if ((sm.u32((listPtr + 4) >>> 0) | 0) !== 0) {
+  if (firstLvlId !== 0) {
     const nDiff = m.u8((drlg + 0x450) >>> 0);
-    const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C);
-    const lvlDefCount = m.u32((sgpt + 0xc5c) >>> 0) | 0;
-    const lvlDefBase = m.u32(SGPT_LEVELDEF_BIN_VA);
-
     let idx = 0;
+    let nLevelId = firstLvlId;
     for (;;) {
-      const nLevelId = sm.u32((listPtr + (idx << 4) + 4) >>> 0) | 0;
-      if (nLevelId === 0) break;
       let recBase = 0;
-      if (nLevelId >= 0 && nLevelId < lvlDefCount) {
-        recBase = (lvlDefBase + Math.imul(nLevelId, 0x9c)) >>> 0;
+      if (nLevelId >= 0) {
+        const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C);
+        const lvlDefCount = m.u32((sgpt + 0xc5c) >>> 0) | 0;
+        if (nLevelId < lvlDefCount) {
+          const lvlDefBase = m.u32(SGPT_LEVELDEF_BIN_VA);
+          recBase = (lvlDefBase + Math.imul(nLevelId, 0x9c)) >>> 0;
+        }
       }
       const w = m.u32((recBase + (nDiff << 2) + D2LevelDefBin.dwSizeX0.off) >>> 0);
       const h = m.u32((recBase + (nDiff << 2) + D2LevelDefBin.dwSizeY0.off) >>> 0);
       sm.setU32((frameBase + 0x10 + (idx << 4)) >>> 0, w);
       sm.setU32((frameBase + 0x14 + (idx << 4)) >>> 0, h);
       idx = (idx + 1) | 0;
+      nLevelId = sm.u32((listPtr + (idx << 4) + 4) >>> 0) | 0;
+      if (nLevelId === 0) break;
     }
+  }
+
+  if (firstLvlId !== 0) {
+    let idx = 0;
+    do {
+      const entryPtr = (listPtr + (idx << 4)) >>> 0;
+      const nLevelId = sm.u32((entryPtr + 4) >>> 0) | 0;
+      sm.setU32((frameBase + 0x1f0) >>> 0, nLevelId >>> 0);
+      sm.setU32((frameBase + 0x1ec) >>> 0, idx >>> 0);
+      const placed =
+        pfnPlace !== undefined
+          ? pfnPlace(sm, frameBase, idx, nLevelId) | 0
+          : dispatchOutPlaceLinkerVa113c(sm, sm.u32(entryPtr), frameBase) | 0;
+      if (placed === 0) {
+        sm.setU32((frameBase + 0xfc + (idx << 2)) >>> 0, 0xffffffff);
+        sm.setU32((frameBase + 0x138 + (idx << 2)) >>> 0, 0xffffffff);
+        sm.setU32((frameBase + 0x174 + (idx << 2)) >>> 0, 0xffffffff);
+        sm.setU32((frameBase + 0x1b0 + (idx << 2)) >>> 0, 0xffffffff);
+        idx = (idx - 1) | 0;
+      } else if (validateFn !== undefined && (validateFn(sm, frameBase, idx) | 0) === 0) {
+        // Retry current entry
+      } else {
+        idx = (idx + 1) | 0;
+      }
+    } while ((sm.u32((listPtr + (idx << 4) + 4) >>> 0) | 0) !== 0);
   }
 
   let idx = 0;
-  while ((sm.u32((listPtr + (idx << 4) + 4) >>> 0) | 0) !== 0) {
-    const entryPtr = (listPtr + (idx << 4)) >>> 0;
-    const nLevelId = sm.u32((entryPtr + 4) >>> 0) | 0;
-    sm.setU32((frameBase + 0x1f0) >>> 0, nLevelId >>> 0);
-    sm.setU32((frameBase + 0x1ec) >>> 0, idx >>> 0);
-    const placed =
-      pfnPlace !== undefined
-        ? pfnPlace(sm, frameBase, idx, nLevelId) | 0
-        : dispatchOutPlaceLinkerVa113c(sm, sm.u32(entryPtr), frameBase) | 0;
-    if (placed === 0) {
-      sm.setU32((frameBase + 0xfc + (idx << 2)) >>> 0, 0xffffffff);
-      sm.setU32((frameBase + 0x138 + (idx << 2)) >>> 0, 0xffffffff);
-      sm.setU32((frameBase + 0x174 + (idx << 2)) >>> 0, 0xffffffff);
-      sm.setU32((frameBase + 0x1b0 + (idx << 2)) >>> 0, 0xffffffff);
-      idx = (idx - 1) | 0;
-    } else if (validateFn !== undefined && (validateFn(sm, frameBase, idx) | 0) === 0) {
-      // Retry current entry
-    } else {
-      idx = (idx + 1) | 0;
-    }
-  }
-
-  idx = 0;
   for (;;) {
     const entryPtr = (listPtr + (idx << 4)) >>> 0;
     const nLevelId = sm.u32((entryPtr + 4) >>> 0) | 0;
@@ -1965,16 +1979,16 @@ export function DRLGOUTPLACE_PlaceActLevelsByList113c(
     m.setU32((pTarget + D2DrlgLevelStrc.nHeight.off) >>> 0, sm.u32((rectOff + 12) >>> 0));
 
     if ((m.u32(pTarget) | 0) === 2) {
-      if (nLevelId === 1) {
-        const pRoomEx = m.u32((pTarget + 0x14) >>> 0);
-        m.setU32((pRoomEx + 4) >>> 0, sm.u32((frameBase + 0xfc + (idx << 2)) >>> 0));
-      } else if (nLevelId === 0x28) {
-        const pRoomEx = m.u32((pTarget + 0x14) >>> 0);
-        m.setU32((pRoomEx + 4) >>> 0, sm.u32((frameBase + 0xfc + (idx << 2) + 4) >>> 0));
+      const targetLevelId = m.u32((pTarget + D2DrlgLevelStrc.nLevelId.off) >>> 0) | 0;
+      const pPresetInfo = m.u32((pTarget + 0x14) >>> 0);
+      if (targetLevelId === 1) {
+        m.setU32((pPresetInfo + 4) >>> 0, sm.u32((frameBase + 0xfc + (idx << 2)) >>> 0));
+      } else if (targetLevelId === 0x28) {
+        m.setU32((pPresetInfo + 4) >>> 0, sm.u32((frameBase + 0xfc + (idx << 2) + 4) >>> 0));
       }
     }
 
-    if (nLevelId === 6) {
+    if ((m.u32((pTarget + D2DrlgLevelStrc.nLevelId.off) >>> 0) | 0) === 6) {
       const pLvl1b = findOrAllocLevel113c(m, drlg, 0x1b);
       const pRoomEx = m.u32((pLvl1b + 0x14) >>> 0);
       const stateVal = sm.u32((frameBase + 0xfc + (idx << 2)) >>> 0) | 0;

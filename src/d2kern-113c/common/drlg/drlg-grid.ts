@@ -1327,6 +1327,9 @@ export function DRLGLOGIC_FreeRoomLogicalInfo113c(
   m.setU32((roomEx + 0x64) >>> 0, 0);
 }
 
+const DRLG_GRID_WINDOW_BOX_SCRATCH_VA = 0x7fb94000;
+let drlgGridWindowBoxScratchDepth = 0;
+
 function allocGridWindowRowOffsetsFromCoords(
   m: Memory113c,
   pOutGrid: number,
@@ -1337,25 +1340,17 @@ function allocGridWindowRowOffsetsFromCoords(
   nRowStride: number,
   pBaseCells: number,
 ): void {
-  const grid = pOutGrid >>> 0;
-  const stride = nRowStride | 0;
-  const w = boxW | 0;
-  const h = boxH | 0;
-  m.set(grid, D2DrlgGridStrc.nWidth, w >>> 0);
-  m.set(grid, D2DrlgGridStrc.nHeight, h >>> 0);
-  const startIdx = (imul32(boxY | 0, stride) + (boxX | 0)) | 0;
-  m.set(grid, D2DrlgGridStrc.pCells, (pBaseCells + (startIdx << 2)) >>> 0);
-  const pRowOffsets = m.alloc((h << 2) >>> 0);
-  m.set(grid, D2DrlgGridStrc.pRowOffsets, pRowOffsets);
-  if (h > 0) {
-    let curOff = 0;
-    for (let i = 0; i < h; i++) {
-      const pRow = m.get(grid, D2DrlgGridStrc.pRowOffsets);
-      m.setU32((pRow + i * 4) >>> 0, curOff >>> 0);
-      curOff = (curOff + stride) | 0;
-    }
+  const pBox = (DRLG_GRID_WINDOW_BOX_SCRATCH_VA + drlgGridWindowBoxScratchDepth * 16) >>> 0;
+  drlgGridWindowBoxScratchDepth = (drlgGridWindowBoxScratchDepth + 1) | 0;
+  try {
+    m.set(pBox, D2DrlgCoordStrc.nPosX, (boxX | 0) >>> 0);
+    m.set(pBox, D2DrlgCoordStrc.nPosY, (boxY | 0) >>> 0);
+    m.set(pBox, D2DrlgCoordStrc.nWidth, (boxW | 0) >>> 0);
+    m.set(pBox, D2DrlgCoordStrc.nHeight, (boxH | 0) >>> 0);
+    DRLGGRID_AllocGridWindowRowOffsets113c(m, pOutGrid, pBox, nRowStride, 0, pBaseCells);
+  } finally {
+    drlgGridWindowBoxScratchDepth = (drlgGridWindowBoxScratchDepth - 1) | 0;
   }
-  m.set(grid, D2DrlgGridStrc.bInitialized, 1);
 }
 
 /**

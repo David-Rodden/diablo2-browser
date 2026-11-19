@@ -23,8 +23,8 @@
     "name": "MONSTER_ShouldSyncBossLifeBarDelta_6FCAD500",
     "kernFile": "src/d2kern-113c/game/k2-w4b5-113c.ts",
     "tsSymbol": "MONSTER_ShouldSyncBossLifeBarDelta_6FCAD500_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b5.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w4b5.test.ts; Diff-verified 1:1 in dll\u2229ts across full-horizon strict zero-divergence K3 replay (p52-necromancer-poison-golem F1800/1800) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -32,8 +32,8 @@
     "name": "NET_SendPacket22_UnitSkillAmmoCount_6FCAD570",
     "kernFile": "src/d2kern-113c/game/k2-w4b5-113c.ts",
     "tsSymbol": "NET_SendPacket22_UnitSkillAmmoCount_6FCAD570_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b5.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/exitgate-s2c-vectors.test.ts (0x6FCAD570) across 1,440 real-DLL S2C D2TV binary vectors with 0 mismatches"
   },
   {
     "module": "D2Game",
@@ -41,8 +41,8 @@
     "name": "NET_SendPacket21_UpdateUnitSkill_6FCAD5F0",
     "kernFile": "src/d2kern-113c/game/k2-w4b5-113c.ts",
     "tsSymbol": "NET_SendPacket21_UpdateUnitSkill_6FCAD5F0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b5.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/exitgate-s2c-vectors.test.ts (0x6FCAD5F0) across 1,440 real-DLL S2C D2TV binary vectors with 0 mismatches"
   },
   {
     "module": "D2Game",
@@ -50,8 +50,8 @@
     "name": "NET_SendPacketMonsterMoveCoord_6FCAD860",
     "kernFile": "src/d2kern-113c/game/k2-w4b5-113c.ts",
     "tsSymbol": "NET_SendPacketMonsterMoveCoord_6FCAD860_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b5.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/exitgate-s2c-vectors.test.ts (0x6FCAD860) across 1,440 real-DLL S2C D2TV binary vectors with 0 mismatches"
   },
   {
     "module": "D2Game",
@@ -59,8 +59,8 @@
     "name": "NET_SendPacketMonsterTargetUnit_6FCAD990",
     "kernFile": "src/d2kern-113c/game/k2-w4b5-113c.ts",
     "tsSymbol": "NET_SendPacketMonsterTargetUnit_6FCAD990_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b5.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/exitgate-s2c-vectors.test.ts (0x6FCAD990) across 1,440 real-DLL S2C D2TV binary vectors with 0 mismatches"
   },
   {
     "module": "D2Game",

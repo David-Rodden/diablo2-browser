@@ -59,8 +59,8 @@
     "name": "ACT5Q4_Callback01_NpcDeactivate_6FC7B7A0",
     "kernFile": "src/d2kern-113c/game/k2-w9b1-113c.ts",
     "tsSymbol": "ACT5Q4_Callback01_NpcDeactivate_6FC7B7A0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w9b1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/replay-act-quests.test.ts (0x6FC7B7A0) across Act 1-5 K4 longitudinal quest & town NPC replay at 100% strict zero divergence"
   },
   {
     "module": "D2Game",
@@ -176,8 +176,8 @@
     "name": "PETS_RecalcAndClampAllPlayerPetCountsFromSkills_6FCB6FA0",
     "kernFile": "src/d2kern-113c/game/k2-w9b1-113c.ts",
     "tsSymbol": "PETS_RecalcAndClampAllPlayerPetCountsFromSkills_6FCB6FA0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w9b1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w9b1.test.ts; Diff-verified 1:1 in dll\u2229ts across full-horizon strict zero-divergence K3 replay (p52-amazon-valkyrie F1500/1500, p52-barbarian-warcries F1600/1600, p52-sorceress-elemental F1800/1800, p52-sorceress-fire-dot F1800/1800) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",

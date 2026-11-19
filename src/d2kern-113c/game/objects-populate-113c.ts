@@ -11,6 +11,7 @@
  * Callees without a kernel port yet are reached through `ObjectsPopulateCallees113c` (all members required).
  */
 import { COLLISION_CheckMaskWithSizeXY113c } from '../common/collision.ts'
+import { UNITS_GetObjectTxt113c, UNITS_SetField7C_113c } from '../common/composit.ts'
 import { DRLG_GetActNoFromLevelId113c } from '../common/drlg/drlg.ts'
 import {
   DUNGEON_CheckPresetRoomFlag80_113c,
@@ -483,7 +484,11 @@ export function OBJECTS_InitObjectUnit113c(
   hitD2GameVa113c(0x6FC4F300)
   if (pUnit === 0) return
   const nClassId = m.u32((pUnit + 0x04) >>> 0) | 0
-  const pObjectsTxt = DATATBLS_GetObjectsTxtRecord113c(m, nClassId) >>> 0
+  const pInitObjData = m.u32((pUnit + 0x14) >>> 0) >>> 0
+  const pObjectsTxt =
+    m.u32(pUnit) === 2 && pInitObjData !== 0 && m.u32(pInitObjData) !== 0
+      ? (UNITS_GetObjectTxt113c(m, pUnit) >>> 0)
+      : (DATATBLS_GetObjectsTxtRecord113c(m, nClassId) >>> 0)
   if (pObjectsTxt === 0) return
 
   const savedMode = m.u32((pUnit + 0x10) >>> 0) | 0
@@ -568,5 +573,6 @@ export function OBJECTS_InitObjectUnit113c(
   }
 
   OBJECTS_AllocInteractStrc113c(m, pUnit, pObjectsTxt)
+  UNITS_SetField7C_113c(m, pUnit, m.u32((pUnit + 0x7c) >>> 0))
 }
 

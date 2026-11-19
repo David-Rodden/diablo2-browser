@@ -7,6 +7,7 @@ import {
   UNITS_IsShapeshifted113c,
   UNITS_CanUnitMeleeAttackTarget113c,
   UNITS_GetEquippedWeaponAdder113c,
+  UNITS_SyncDualWieldWeaponStatLists113c,
 } from '../common/unit.ts';
 import {
   DUNGEON_CheckRoomIsTownMemPort113c,
@@ -100,6 +101,9 @@ import {
   PLAYER_StartModeAtCoords113c,
 } from './c2s-packet-113c.ts';
 import {
+  stepSeedInMem113c,
+} from './combat-a1c-113c.ts';
+import {
   PLAYER_StartModeCast113c,
   PLAYER_ScheduleSkillActionFrameEvents113c,
   SUNITDMG_FindCombatDamageData113c,
@@ -107,12 +111,11 @@ import {
   SUNITDMG_FillDamageValues113c,
   SUNITDMG_AllocCombat113c,
   SUNITDMG_ApplyDamage113c,
-  SUNITDMG_CheckToHit113c,
   SUNITDMG_ExecuteEvents113c,
   SUNITDMG_GetPlayerClientClassId113c,
-  SUNITDMG_RollPassiveWeaponBlockOrShieldBlock113c,
-  stepSeedInMem113c,
-} from './combat-a1c-113c.ts';
+  SUNITDMG_RollMeleeToHitAndBlock_6FCFE5A0_113c,
+  type SUnitDmgHooks113c,
+} from './k2-real-s2c-combat-113c.ts';
 import {
   EVENT_GetNextEventFrame113c,
   EVENT_FreeNode113c,
@@ -429,6 +432,9 @@ export function S2C_SendPacket0F_UnitWalkToTarget113c(
   bMoveType: number,
   dwTargetXY: number,
   bArg30: number,
+  extraVelPct = 0,
+  bArg31 = 0,
+  maxDistOverride = -1,
 ): void {
   hitD2GameVa113c(0x6FCADC30);
   if (pClient === 0) {
@@ -440,7 +446,7 @@ export function S2C_SendPacket0F_UnitWalkToTarget113c(
   }
   let pUnit = m.u32(pGame + 0x1320 + ((dwUnitId & 0x7f) << 2));
   while (pUnit !== 0 && m.u32(pUnit + 0x0c) !== (dwUnitId >>> 0)) {
-    pUnit = m.u32(pUnit + 0xdf);
+    pUnit = m.u32(pUnit + 0xe4);
   }
   let wCurX = 0;
   let wCurY = 0;
@@ -449,21 +455,17 @@ export function S2C_SendPacket0F_UnitWalkToTarget113c(
   let bMaxDist = 0;
   if (pUnit !== 0) {
     const unitType = m.u32(pUnit);
+    const pPath = m.u32(pUnit + 0x2c);
     if (unitType <= 1 || unitType === 3) {
-      const pPath = m.u32(pUnit + 0x2c);
       if (pPath !== 0) {
         wCurX = PATH_GetPosX113c(m, pPath) & 0xffff;
         wCurY = PATH_GetPosY113c(m, pPath) & 0xffff;
       }
-    } else {
-      const pPath = m.u32(pUnit + 0x2c);
-      if (pPath !== 0) {
-        wCurX = m.u16(pPath + 0x04);
-        wCurY = m.u16(pPath + 0x06);
-      }
+    } else if (pPath !== 0) {
+      wCurX = m.u16(pPath + 0x04);
+      wCurY = m.u16(pPath + 0x06);
     }
-    const pPath = m.u32(pUnit + 0x2c);
-    const rawPathType = PATH_GetType113c(m, pPath);
+    const rawPathType = pPath !== 0 ? PATH_GetType113c(m, pPath) : 0;
     if (rawPathType === 5 || rawPathType === 6) {
       bPathType = 2;
     } else if (rawPathType === 8) {
@@ -471,14 +473,19 @@ export function S2C_SendPacket0F_UnitWalkToTarget113c(
     } else {
       bPathType = rawPathType & 0xff;
     }
-    let velStat = STATLIST_GetUnitStat113c(m, pUnit, 0x43, 0) | 0;
+    let velStat = ((STATLIST_GetUnitStat113c(m, pUnit, 0x43, 0) | 0) + (extraVelPct | 0)) | 0;
     if (velStat >= 0x7fff) {
       velStat = 0x7fff;
     } else if (velStat <= -32768) {
       velStat = -32768;
     }
     wVelocityPct = velStat & 0xffff;
-    bMaxDist = PATH_GetMaxDistance113c(m, pPath) & 0xff;
+    bMaxDist =
+      maxDistOverride >= 0
+        ? maxDistOverride & 0xff
+        : pPath !== 0
+          ? PATH_GetMaxDistance113c(m, pPath) & 0xff
+          : 0;
   }
   const pkt = new Uint8Array(0x15);
   pkt[0x00] = bOpcode & 0xff;
@@ -497,7 +504,7 @@ export function S2C_SendPacket0F_UnitWalkToTarget113c(
   pkt[0x0d] = (dwTargetXY >>> 16) & 0xff;
   pkt[0x0e] = (dwTargetXY >>> 24) & 0xff;
   pkt[0x0f] = bArg30 & 0xff;
-  pkt[0x10] = 0;
+  pkt[0x10] = bArg31 & 0xff;
   pkt[0x11] = bPathType & 0xff;
   pkt[0x12] = wVelocityPct & 0xff;
   pkt[0x13] = (wVelocityPct >>> 8) & 0xff;
@@ -672,14 +679,13 @@ export function SKILLS_ValidateSkillTargetAlignment113c(
   const targetFlags = m.u32(pTarget + 0xc4);
   if (((targetFlags >>> 1) & 1) === 0) {
     UNITS_SetTargetUnitForDynamicUnit113c(m, pUnit, 0);
+    return 1;
   }
-  if (m.u32(pTarget) === 1) {
-    const monMode = m.u32(pTarget + 0x10);
-    const isDeadMon = monMode === 0 || monMode === 12;
-    const isCorpseSkill = (m.u8(pSkillsTxt + 0x07) & 0x01) !== 0;
-    if ((isCorpseSkill && !isDeadMon) || (!isCorpseSkill && isDeadMon)) {
-      UNITS_SetTargetUnitForDynamicUnit113c(m, pUnit, 0);
-    }
+  const isCorpseSkill = (m.u8(pSkillsTxt + 0x07) & 0x01) !== 0;
+  // 0x6FCBFCB3..0x6FCBFCDE: `cmp dword ptr [edi], 1; jne not_corpse; cmp dword ptr [edi + 0x10], 0xc` (`MONMODE_DEAD` only, NOT `MONMODE_DEATH = 0`!)
+  const isDeadMonCorpse = m.u32(pTarget) === 1 && m.u32(pTarget + 0x10) === 0x0c;
+  if (isDeadMonCorpse ? !isCorpseSkill : isCorpseSkill) {
+    UNITS_SetTargetUnitForDynamicUnit113c(m, pUnit, 0);
   }
   return 1;
 }
@@ -725,7 +731,7 @@ export function SKILLS_ExecuteSkillStart113c(
       return 0;
     }
   }
-  const bLineOfSight = m.u8(pSkillsTxt + 0x183);
+  const bLineOfSight = m.u8(pSkillsTxt + 0x18f);
   if (bLineOfSight !== 0) {
     const pPath = m.u32(pUnit + 0x2c);
     const pTarget = pPath !== 0 ? PATH_GetTargetUnit113c(m, pPath) : 0;
@@ -741,20 +747,19 @@ export function SKILLS_ExecuteSkillStart113c(
     if (targetX !== 0 && targetY !== 0) {
       let losMask = 0;
       if (bLineOfSight === 1) {
-        losMask = 0x0c01;
+        losMask = 0x0004;
       } else if (bLineOfSight === 2) {
-        losMask = 0x0405;
+        losMask = 0x1c09;
       } else if (bLineOfSight === 3) {
-        losMask = 0x0104;
+        losMask = 0x0180;
       } else if (bLineOfSight === 4) {
-        losMask = 0x0800;
+        losMask = 0x0804;
       } else if (bLineOfSight === 5) {
-        losMask = 0x0c05;
+        losMask = 0x0805;
+      } else {
+        return 0;
       }
-      if (
-        losMask !== 0 &&
-        SKILLS_TestLineOfSightFromUnitToTarget113c(m, targetX, targetY, pUnit, losMask) === 0
-      ) {
+      if (SKILLS_TestLineOfSightFromUnitToTarget113c(m, targetX, targetY, pUnit, losMask) === 0) {
         return 0;
       }
     }
@@ -840,25 +845,11 @@ export function SKILLS_StartUsedSkill113c(
   const pPath = m.u32(pUnit + 0x2c);
   if (pPath !== 0) {
     const pTarget = PATH_GetTargetUnit113c(m, pPath);
-    if (pTarget !== 0) {
-      if ((m.u8(pSkillsTxt + 0x06) & 0x10) !== 0) {
-        if (SUNIT_AreUnitsHostileOrUnaligned113c(m, pUnit, pTarget, pGame) === 0) {
-          const owner = getMonsterAiOwnerIdAndType113c(m, pTarget);
-          let isOwnMinion = 0;
-          if (
-            owner.ownerId !== -1 &&
-            owner.ownerType === (m.u32(pUnit) | 0) &&
-            (owner.ownerId >>> 0) === m.u32(pUnit + 0x0c) &&
-            (m.u8(pSkillsTxt + 0x07) & 0x02) !== 0
-          ) {
-            isOwnMinion = 1;
-          }
-          if (
-            isOwnMinion === 0 &&
-            SUNIT_CanPlayerTargetUnitWithSkill113c(m, pTarget, pGame, pUnit, nSkillId) === 0
-          ) {
-            return 0;
-          }
+    if (pTarget !== 0 && pTarget !== pUnit) {
+      // 0x6FCC0907..0x6FCC091F: if `!(pSkillsTxt[+7] & 0x04)` and `SUNIT_CanPlayerTargetUnitWithSkill(pTarget, pGame, pUnit, nSkillId) != 0` -> abort.
+      if ((m.u8(pSkillsTxt + 0x07) & 0x04) === 0) {
+        if (SUNIT_CanPlayerTargetUnitWithSkill113c(m, pTarget, pGame, pUnit, nSkillId) !== 0) {
+          return 0;
         }
       }
       const pTargetRoom = UNITS_GetRoom113c(m, pTarget);
@@ -1507,6 +1498,9 @@ export function PLAYER_UpdateDualWieldWeaponStatLists113c(
   if (UNITS_CanDualWield113c(m, pPlayer) === 0) {
     return;
   }
+  if (m.u32(0x6fde9e1c) !== 0) {
+    UNITS_SyncDualWieldWeaponStatLists113c(m, pPlayer, bResetFirst);
+  }
   const pActiveWeapon = PLAYER_GetEquippedWeapon113c(m, pPlayer);
   const pInv = m.u32(pPlayer + 0x60);
   let pItem = INVENTORY_GetFirstItem113c(m, pInv);
@@ -1535,7 +1529,7 @@ export function S2C_SendPacket0E_UnitCorpseState113c(
   bOpcode: number,
   dwUnitId: number,
   pClient: number,
-  bUnitType: number,
+  bAction: number,
   wCoordX: number,
   wCoordY: number,
   bFlag1: number,
@@ -1545,19 +1539,20 @@ export function S2C_SendPacket0E_UnitCorpseState113c(
   if (pClient === 0) {
     return;
   }
+  // 0x6FCAC100..0x6FCAC156: exact 12-byte S2C `0x69` (`[op, dwUnitId(4), bAction, wX(2), wY(2), bFlag1, bFlag2]`).
   const pkt = new Uint8Array(0x0c);
   pkt[0x00] = bOpcode & 0xff;
-  pkt[0x01] = bUnitType & 0xff;
-  pkt[0x02] = dwUnitId & 0xff;
-  pkt[0x03] = (dwUnitId >>> 8) & 0xff;
-  pkt[0x04] = (dwUnitId >>> 16) & 0xff;
-  pkt[0x05] = (dwUnitId >>> 24) & 0xff;
-  pkt[0x06] = bFlag1 & 0xff;
-  pkt[0x07] = bFlag2 & 0xff;
-  pkt[0x08] = wCoordX & 0xff;
-  pkt[0x09] = (wCoordX >>> 8) & 0xff;
-  pkt[0x0a] = wCoordY & 0xff;
-  pkt[0x0b] = (wCoordY >>> 8) & 0xff;
+  pkt[0x01] = dwUnitId & 0xff;
+  pkt[0x02] = (dwUnitId >>> 8) & 0xff;
+  pkt[0x03] = (dwUnitId >>> 16) & 0xff;
+  pkt[0x04] = (dwUnitId >>> 24) & 0xff;
+  pkt[0x05] = bAction & 0xff;
+  pkt[0x06] = wCoordX & 0xff;
+  pkt[0x07] = (wCoordX >>> 8) & 0xff;
+  pkt[0x08] = wCoordY & 0xff;
+  pkt[0x09] = (wCoordY >>> 8) & 0xff;
+  pkt[0x0a] = bFlag1 & 0xff;
+  pkt[0x0b] = bFlag2 & 0xff;
   enqueueClientPacketBytes113c(m, pClient, pkt, 0x0c);
 }
 
@@ -1591,35 +1586,30 @@ export function SKILLS_ConsumeProgressiveChargesOnHit113c(
   if (pDmg === 0 || (m.u32(pDmg + 0x04) & 0x01) === 0) {
     return;
   }
-  if (STATES_CheckStateMaskByIndexOnUnit113c(m, pUnit, 0x19) === 0) {
-    return;
-  }
-  const pDataTables = m.u32(0x6fd1829c);
-  if (pDataTables === 0) {
-    return;
-  }
-  const nProgCount = (m.u32(pDataTables + 0x170) | 0);
-  const pProgStates = m.u32(pDataTables + 0x16c);
-  if (nProgCount <= 0 || pProgStates === 0) {
-    return;
-  }
-  let removedAny = 0;
-  for (let i = 0; i < nProgCount; i = (i + 1) | 0) {
-    const stateId = (m.u16(pProgStates + ((i * 2) | 0)) << 16) >> 16;
-    if (STATES_CheckState113c(m, pUnit, stateId) !== 0) {
-      const pStatList = STATLIST_GetStatListFromUnitAndStateMemPort113c(m, pUnit, stateId);
-      if (pStatList !== 0) {
-        const skillId = STATLIST_GetStatValue113c(m, pStatList, 0x144, 0);
-        const charges = STATLIST_GetStatValue113c(m, pStatList, 0x156, skillId);
-        if (charges > 0 && skillId >= 0) {
-          STATLIST_UnlinkSubList113c(m, pUnit, pStatList);
-          STATLIST_FreeStatListIfNonExtended113c(m, pStatList);
-          removedAny = 1;
+  const pDataTablesPtr = m.u32(0x6fd1829c);
+  const pDataTables = pDataTablesPtr !== 0 ? m.u32(pDataTablesPtr) : 0;
+  if (pDataTables !== 0 && STATES_CheckStateMaskByIndexOnUnit113c(m, pUnit, 0x19) !== 0) {
+    const nProgCount = (m.u32(pDataTables + 0x170) | 0);
+    const pProgStates = m.u32(pDataTables + 0x16c);
+    if (nProgCount > 0 && pProgStates !== 0) {
+      for (let i = 0; i < nProgCount; i = (i + 1) | 0) {
+        const stateId = (m.u16(pProgStates + ((i * 2) | 0)) << 16) >> 16;
+        if (STATES_CheckState113c(m, pUnit, stateId) !== 0) {
+          const pStatList = STATLIST_GetStatListFromUnitAndStateMemPort113c(m, pUnit, stateId);
+          if (pStatList !== 0) {
+            const skillId = STATLIST_GetStatValue113c(m, pStatList, 0x144, 0);
+            const charges = STATLIST_GetStatValue113c(m, pStatList, 0x156, skillId);
+            if (charges > 0 && skillId >= 0) {
+              STATLIST_UnlinkSubList113c(m, pUnit, pStatList);
+              STATLIST_FreeStatListIfNonExtended113c(m, pStatList);
+            }
+          }
         }
       }
     }
   }
-  if (removedAny !== 0) {
+  // 0x6FCB1E0C: unconditionally transfers state mask +0xDC to removed on melee hit (`D2Common.#10620`).
+  if (pDataTables !== 0) {
     UNITS_TransferStateMaskDCToRemoved113c(m, pUnit);
   }
 }
@@ -1637,7 +1627,8 @@ export function SKILLS_ApplyProgressiveChargesToDamage113c(
   if (STATES_CheckStateMaskByIndexOnUnit113c(m, pUnit, 0x19) === 0) {
     return;
   }
-  const pDataTables = m.u32(0x6fd1829c);
+  const pDataTablesPtr = m.u32(0x6fd1829c);
+  const pDataTables = pDataTablesPtr !== 0 ? m.u32(pDataTablesPtr) : 0;
   if (pDataTables === 0) {
     return;
   }
@@ -1692,7 +1683,8 @@ export function SKILLS_ApplyProgressiveAttackRatingAndPhysBonuses113c(
   if (STATES_CheckStateMaskByIndexOnUnit113c(m, pUnit, 0x19) === 0) {
     return;
   }
-  const pDataTables = m.u32(0x6fd1829c);
+  const pDataTablesPtr = m.u32(0x6fd1829c);
+  const pDataTables = pDataTablesPtr !== 0 ? m.u32(pDataTablesPtr) : 0;
   if (pDataTables === 0) {
     return;
   }
@@ -1912,6 +1904,7 @@ export function SKILLS_ExecuteSkillDoFunc113c(
   bCheckItem: number,
   bUseAltFunc: number,
   onSrvDoFunc?: (wDoFuncIdx: number, nSkillId: number, effLevel: number) => number,
+  combatHooks?: SUnitDmgHooks113c,
 ): number {
   hitD2GameVa113c(0x6FCC19A0);
   if (pGame === 0 || pUnit === 0) {
@@ -1979,7 +1972,7 @@ export function SKILLS_ExecuteSkillDoFunc113c(
   let doResult = 1;
   if (wDoFuncIdx > 0 && wDoFuncIdx < 0xbf) {
     if (wDoFuncIdx === 1) {
-      doResult = SrvDoFunc_001_Attack113c(m, pGame, pUnit, nSkillId, effLevel);
+      doResult = SrvDoFunc_001_Attack113c(m, pGame, pUnit, nSkillId, effLevel, combatHooks);
     } else if (wDoFuncIdx === 20) {
       doResult = SrvDoFunc_020_StaticField113c(m, pGame, pUnit, nSkillId, effLevel);
     } else if (wDoFuncIdx === 65) {
@@ -2030,6 +2023,7 @@ export function SKILLS_DoUsedSkillAction113c(
   pUnit: number,
   pGame: number,
   onSrvDoFunc?: (wDoFuncIdx: number, nSkillId: number, effLevel: number) => number,
+  combatHooks?: SUnitDmgHooks113c,
 ): number {
   hitD2GameVa113c(0x6FCC2060);
   const pSkill = SKILLS_GetUsedSkillMemPort113c(m, pUnit);
@@ -2041,78 +2035,23 @@ export function SKILLS_DoUsedSkillAction113c(
     return 0;
   }
   const nSkillLevel = SKILLS_EvaluateSkillLevel113c(m, pUnit, pSkill, 1);
-  const res = SKILLS_ExecuteSkillDoFunc113c(m, pUnit, pGame, nSkillId, nSkillLevel, 1, 1, 0, onSrvDoFunc);
+  const res = SKILLS_ExecuteSkillDoFunc113c(
+    m,
+    pUnit,
+    pGame,
+    nSkillId,
+    nSkillLevel,
+    1,
+    1,
+    0,
+    onSrvDoFunc,
+    combatHooks,
+  );
   SKILLS_SetSkillDelayTimer113c(m, nSkillId, pGame, pUnit, nSkillLevel, 0);
   return res;
 }
 
-let a1cPost150AttackStackPtr = 0x7fd80000;
-
-function rollMeleeToHitAndBlock_6FCFE5A0(
-  m: Memory113c,
-  pAttacker: number,
-  pDefender: number,
-  pGame: number,
-  nToHitBonus: number,
-  nWeaponRangePenalty: number,
-): number {
-  const att = pAttacker >>> 0;
-  const def = pDefender >>> 0;
-  if (att === 0 || def === 0) {
-    return 0;
-  }
-  const attType = m.u32(att) | 0;
-  if (attType !== 0 && attType !== 1) {
-    return 0;
-  }
-  const defType = m.u32(def) | 0;
-  if (defType !== 0 && defType !== 1) {
-    return 0;
-  }
-  if ((SUNIT_AreUnitsHostileOrUnaligned113c(m, def, att, pGame >>> 0) | 0) === 0) {
-    return 0;
-  }
-
-  let wFlags = 0;
-  if (defType === 0 && (m.u32((def + 0x10) >>> 0) | 0) === 3) {
-    wFlags = 1;
-  }
-
-  let nAdder = attType === 1 ? 3 : 1;
-  if ((nWeaponRangePenalty | 0) !== 0) {
-    const wpAdder = UNITS_GetEquippedWeaponAdder113c(m, att) | 0;
-    nAdder = (nAdder - (wpAdder + (nWeaponRangePenalty | 0))) | 0;
-  }
-  if ((UNITS_CanUnitMeleeAttackTarget113c(m, att, def, nAdder) | 0) === 0) {
-    return 0;
-  }
-
-  if ((wFlags & 1) === 0) {
-    if ((SUNITDMG_CheckToHit113c(m, att, def, 0, nToHitBonus | 0) | 0) !== 0) {
-      wFlags |= 1;
-    }
-  }
-
-  if ((wFlags & 1) !== 0) {
-    const blockMask = SUNITDMG_RollPassiveWeaponBlockOrShieldBlock113c(m, def) | 0;
-    if ((blockMask & 2) !== 0) wFlags |= 0x100;
-    if ((blockMask & 4) !== 0) wFlags |= 0x80;
-    if ((blockMask & 0x10) !== 0) wFlags |= 0x8000;
-    if ((blockMask & 1) !== 0) wFlags |= 0x10;
-    if (blockMask !== 0) wFlags &= 0xfffe;
-  }
-
-  if ((wFlags & 0x10) !== 0) {
-    wFlags &= 0xfffe;
-  }
-
-  if ((wFlags & 1) !== 0) {
-    if ((STATES_CheckState113c(m, def, 0x36) | 0) === 0) {
-      wFlags |= 4;
-    }
-  }
-  return wFlags & 0xffff;
-}
+let a1cPost150AttackStackPtr = 0x7fd40000;
 
 // @va D2Game:0x6FCC2C40
 export function SrvDoFunc_001_Attack113c(
@@ -2121,6 +2060,7 @@ export function SrvDoFunc_001_Attack113c(
   pAttacker: number,
   nSkillId: number,
   nSkillLevel: number,
+  hooks?: SUnitDmgHooks113c,
 ): number {
   hitD2GameVa113c(0x6FCC2C40);
   if (pAttacker === 0) return 0;
@@ -2184,18 +2124,19 @@ export function SrvDoFunc_001_Attack113c(
   try {
     m.fill(spDmg, 0x70, 0);
     const toHitBonus = STATLIST_GetUnitStat113c(m, pAttacker, 0x145, 0) | 0;
-    const wResultFlags = rollMeleeToHitAndBlock_6FCFE5A0(
+    const wResultFlags = SUNITDMG_RollMeleeToHitAndBlock_6FCFE5A0_113c(
       m,
       pAttacker,
       pDefender,
       pGame,
       toHitBonus,
       0,
+      spDmg,
     );
     m.setU16((spDmg + 0x04) >>> 0, wResultFlags & 0xffff);
     m.setU32(spDmg, (m.u32(spDmg) | 0x02) >>> 0);
     SKILLS_ApplyProgressiveAttackRatingAndPhysBonuses113c(m, pAttacker, spDmg);
-    SUNITDMG_FillDamageValues113c(m, pGame, pAttacker, pDefender, spDmg, 0, 0x80);
+    SUNITDMG_FillDamageValues113c(m, pGame, pAttacker, pDefender, spDmg, 0, 0x80, 1);
     SKILLS_ApplyProgressiveChargesToDamage113c(m, pAttacker, spDmg);
     SUNITDMG_AllocCombat113c(m, pGame, pAttacker, pDefender, spDmg, 0x80);
     if (STATES_CheckStateMaskByIndexOnUnit113c(m, pAttacker, 0x26) !== 0) {
@@ -2205,7 +2146,7 @@ export function SrvDoFunc_001_Attack113c(
     if (SUNITDMG_FindCombatDamageData113c(m, pAttacker, pDefender) !== 0) {
       SKILLS_ConsumeProgressiveChargesOnHit113c(m, 0, pAttacker, pGame);
     }
-    SUNITDMG_ExecuteEvents113c(m, pGame, pAttacker, pDefender, 1, 0);
+    SUNITDMG_ExecuteEvents113c(m, pGame, pAttacker, pDefender, 1, 0, hooks);
     return 1;
   } finally {
     a1cPost150AttackStackPtr = spDmg;
@@ -2222,18 +2163,18 @@ export function MONSTER_DeleteAiAndRegenEvents113c(
   if (pUnit === 0) {
     return;
   }
-  let pEv = m.u32(pUnit + 0xdc);
+  let pEv = m.u32((pUnit + 0xdc) >>> 0) >>> 0;
   while (pEv !== 0) {
-    const pNext = m.u32(pEv + 0x1c);
-    if (m.u32(pEv) === 2) {
+    const pNext = m.u32((pEv + 0x24) >>> 0) >>> 0;
+    if (m.u8(pEv) === 2) {
       EVENT_FreeNode113c(m, pGame, pEv);
     }
     pEv = pNext;
   }
-  pEv = m.u32(pUnit + 0xdc);
+  pEv = m.u32((pUnit + 0xdc) >>> 0) >>> 0;
   while (pEv !== 0) {
-    const pNext = m.u32(pEv + 0x1c);
-    if (m.u32(pEv) === 3) {
+    const pNext = m.u32((pEv + 0x24) >>> 0) >>> 0;
+    if (m.u8(pEv) === 3) {
       EVENT_FreeNode113c(m, pGame, pEv);
     }
     pEv = pNext;
@@ -2354,34 +2295,35 @@ export function S2C_SendPacket0D_UnitStop113c(
   bOpcode: number,
   dwUnitId: number,
   pClient: number,
-  bUnitType: number,
-  bHitClass: number,
-  dwCoordXY: number,
-  bLifePct: number,
-  wAnimSpeed: number,
-  wFlags: number,
+  bAction: number,
+  bTargetType: number,
+  dwTargetId: number,
+  bExtra11: number,
+  wPosX: number,
+  wPosY: number,
 ): void {
   hitD2GameVa113c(0x6FCAC090);
   if (pClient === 0) {
     return;
   }
+  // 0x6FCAC090..0x6FCAC0F2: exact 16-byte S2C `0x6C` (`[op, dwUnitId(4), bAction, bTargetType, dwTargetId(4), bExtra11, wPosX(2), wPosY(2)]`).
   const pkt = new Uint8Array(0x10);
   pkt[0x00] = bOpcode & 0xff;
-  pkt[0x01] = bUnitType & 0xff;
-  pkt[0x02] = dwUnitId & 0xff;
-  pkt[0x03] = (dwUnitId >>> 8) & 0xff;
-  pkt[0x04] = (dwUnitId >>> 16) & 0xff;
-  pkt[0x05] = (dwUnitId >>> 24) & 0xff;
-  pkt[0x06] = bHitClass & 0xff;
-  pkt[0x07] = dwCoordXY & 0xff;
-  pkt[0x08] = (dwCoordXY >>> 8) & 0xff;
-  pkt[0x09] = (dwCoordXY >>> 16) & 0xff;
-  pkt[0x0a] = (dwCoordXY >>> 24) & 0xff;
-  pkt[0x0b] = bLifePct & 0xff;
-  pkt[0x0c] = wAnimSpeed & 0xff;
-  pkt[0x0d] = (wAnimSpeed >>> 8) & 0xff;
-  pkt[0x0e] = wFlags & 0xff;
-  pkt[0x0f] = (wFlags >>> 8) & 0xff;
+  pkt[0x01] = dwUnitId & 0xff;
+  pkt[0x02] = (dwUnitId >>> 8) & 0xff;
+  pkt[0x03] = (dwUnitId >>> 16) & 0xff;
+  pkt[0x04] = (dwUnitId >>> 24) & 0xff;
+  pkt[0x05] = bAction & 0xff;
+  pkt[0x06] = bTargetType & 0xff;
+  pkt[0x07] = dwTargetId & 0xff;
+  pkt[0x08] = (dwTargetId >>> 8) & 0xff;
+  pkt[0x09] = (dwTargetId >>> 16) & 0xff;
+  pkt[0x0a] = (dwTargetId >>> 24) & 0xff;
+  pkt[0x0b] = bExtra11 & 0xff;
+  pkt[0x0c] = wPosX & 0xff;
+  pkt[0x0d] = (wPosX >>> 8) & 0xff;
+  pkt[0x0e] = wPosY & 0xff;
+  pkt[0x0f] = (wPosY >>> 8) & 0xff;
   enqueueClientPacketBytes113c(m, pClient, pkt, 0x10);
 }
 

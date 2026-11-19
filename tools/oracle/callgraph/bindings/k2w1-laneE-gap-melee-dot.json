@@ -14,8 +14,8 @@
     "name": "SEED_RollRangeWithMinFast113c_6FC21480",
     "kernFile": "src/d2kern-113c/game/k2-gap-melee-dot-113c.ts",
     "tsSymbol": "SEED_RollRangeWithMinFast113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts; tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces; Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts"
   },
   {
     "module": "D2Game",
@@ -59,8 +59,8 @@
     "name": "MISSILE_ClearStateGfxRemoveProc113c_6FC58E60",
     "kernFile": "src/d2kern-113c/game/k2-gap-melee-dot-113c.ts",
     "tsSymbol": "MISSILE_ClearStateGfxRemoveProc113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts; tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces; Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts"
   },
   {
     "module": "D2Game",
@@ -176,8 +176,8 @@
     "name": "SKILLS_SrvDo_NovaRing113c_6FC63AA0",
     "kernFile": "src/d2kern-113c/game/k2-gap-melee-dot-113c.ts",
     "tsSymbol": "SKILLS_SrvDo_NovaRing113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts; tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces; Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts"
   },
   {
     "module": "D2Game",
@@ -203,8 +203,8 @@
     "name": "MISSILE_DestroyDataAndEvents113c_6FC8F880",
     "kernFile": "src/d2kern-113c/game/k2-gap-melee-dot-113c.ts",
     "tsSymbol": "MISSILE_DestroyDataAndEvents113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -239,8 +239,8 @@
     "name": "MONSTER_StartGetHitMode113c_6FC95210",
     "kernFile": "src/d2kern-113c/game/k2-gap-melee-dot-113c.ts",
     "tsSymbol": "MONSTER_StartGetHitMode113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -257,8 +257,8 @@
     "name": "PLAYER_StartCastSkillAtCoords113c_6FC98840",
     "kernFile": "src/d2kern-113c/game/k2-gap-melee-dot-113c.ts",
     "tsSymbol": "PLAYER_StartCastSkillAtCoords113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts; tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces; Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts"
   },
   {
     "module": "D2Game",
@@ -284,8 +284,8 @@
     "name": "NET_SendPacket0x23_AssignSkill113c_6FCAB710",
     "kernFile": "src/d2kern-113c/game/k2-gap-melee-dot-113c.ts",
     "tsSymbol": "NET_SendPacket0x23_AssignSkill113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts; tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces; Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts"
   },
   {
     "module": "D2Game",
@@ -302,8 +302,8 @@
     "name": "STATES_ClearCurseStatesOnUnit113c_6FCB0F30",
     "kernFile": "src/d2kern-113c/game/k2-gap-melee-dot-113c.ts",
     "tsSymbol": "STATES_ClearCurseStatesOnUnit113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts; tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces; Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts"
   },
   {
     "module": "D2Game",
@@ -311,8 +311,8 @@
     "name": "SKILLS_ResolveChargedSrvMissileId113c_6FCB1340",
     "kernFile": "src/d2kern-113c/game/k2-gap-melee-dot-113c.ts",
     "tsSymbol": "SKILLS_ResolveChargedSrvMissileId113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts; tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces; Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts"
   },
   {
     "module": "D2Game",
@@ -329,8 +329,8 @@
     "name": "SKILLS_AssignHandSkillAndSyncAura113c_6FCC2100",
     "kernFile": "src/d2kern-113c/game/k2-gap-melee-dot-113c.ts",
     "tsSymbol": "SKILLS_AssignHandSkillAndSyncAura113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts; tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces; Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts"
   },
   {
     "module": "D2Game",
@@ -338,8 +338,8 @@
     "name": "MISSILE_SpawnNova64Directions113c_6FCC2800",
     "kernFile": "src/d2kern-113c/game/k2-gap-melee-dot-113c.ts",
     "tsSymbol": "MISSILE_SpawnNova64Directions113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts; tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces; Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts"
   },
   {
     "module": "D2Game",
@@ -347,7 +347,7 @@
     "name": "MONSTER_SendPacket0x0C_LifeSync113c_6FD13360",
     "kernFile": "src/d2kern-113c/game/k2-gap-melee-dot-113c.ts",
     "tsSymbol": "MONSTER_SendPacket0x0C_LifeSync113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts; tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces; Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts"
   }
 ]

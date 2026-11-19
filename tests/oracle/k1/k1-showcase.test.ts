@@ -73,8 +73,8 @@ describe('[K1] Interactive Visual Showcase Backend, Browser PATH Engine & Route 
     const data = (await resp.json()) as ShowcaseOverviewResponse
     expect(data.ok).toBe(true)
     expect(data.d2Common.total).toBe(1479)
-    expect(data.d2Common.diffVerified).toBe(1476)
-    expect(data.d2Common.ported).toBe(3)
+    expect(data.d2Common.diffVerified).toBe(1479)
+    expect(data.d2Common.ported).toBe(0)
     expect(data.d2Common.unported).toBe(0)
     expect(data.d2Common.completionPct).toBe(100)
     expect(data.d2Game.total).toBe(3331)
@@ -270,8 +270,8 @@ describe('[K1] Interactive Visual Showcase Backend, Browser PATH Engine & Route 
     const cg = (await cgResp.json()) as ShowcaseCallgraphResponse
     expect(cg.summary.totalReachable).toBe(4810)
     expect(cg.summary.d2Common.total).toBe(1479)
-    expect(cg.summary.d2Common.diffVerified).toBe(1476)
-    expect(cg.summary.d2Common.ported).toBe(3)
+    expect(cg.summary.d2Common.diffVerified).toBe(1479)
+    expect(cg.summary.d2Common.ported).toBe(0)
     expect(cg.summary.d2Common.unported).toBe(0)
     expect(cg.summary.d2Common.completionPct).toBe(100)
     expect(cg.summary.d2Game.total).toBe(3331)

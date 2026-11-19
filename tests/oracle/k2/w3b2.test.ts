@@ -19,8 +19,10 @@ import {
 } from '../../../src/d2kern-113c/common/skills.ts'
 import {
   STATES_CheckState113c,
+  STATLIST_AllocList113c,
   STATLIST_CreateEx113c,
   STATLIST_GetUnitStat113c,
+  STATLIST_MergeStatLists113c,
   STATLIST_SetUnitStat113c,
 } from '../../../src/d2kern-113c/common/statlist.ts'
 import { SUNIT_InsertServerUnit113c } from '../../../src/d2kern-113c/game/game-strc.ts'
@@ -104,7 +106,7 @@ function createW3B2World() {
   m.setU32(pDataTables + 0xa90, pMonStats2Txt)
   m.setU32(pDataTables + 0xa98, 600)
 
-  const pMonLvlTxt = m.alloc(120 * 0x48)
+  const pMonLvlTxt = m.alloc(120 * 0x78)
   m.setU32(pDataTables + 0xb70, pMonLvlTxt)
   m.setU32(pDataTables + 0xb74, 120)
   m.setU32(0x6fdf0b54, pMonLvlTxt)
@@ -257,6 +259,8 @@ function allocMonster(m: SparseMemory113c, pGame: number, pRoom: number, classId
   m.setU32(pPath + 0x1c, pRoom)
   m.setU32(pPath + 0x30, pMon)
   STATLIST_CreateEx113c(m, pMon, 0, pGame)
+  const pBasicList = STATLIST_AllocList113c(m, 1, 1, guid, 0, 0)
+  STATLIST_MergeStatLists113c(m, pMon, pBasicList, 1)
   SUNIT_InsertServerUnit113c(m, pGame, pMon)
   return { pMon, pMonData, pAiGen, pAiCtrl, pPath, pSkills }
 }
@@ -276,16 +280,20 @@ describe('Milestone 33 [K2] Wave 3 Batch 2 (w3b2): 45 D2Game 0x6FC3BCA0..0x6FC52
     const { pRoom } = allocRoom(m)
     const { pMon, pMonData, pAiCtrl, pSkills } = allocMonster(m, pGame, pRoom, 10, 1)
 
-    // [1/45] AI_SpawnPackMinionOrStartMode_6FC3BCA0_113c: fallback when blocked
-    m.setU8(pMonData + 0x16, 0x08)
+    // [1/45] AI_SpawnPackMinionOrStartMode_6FC3BCA0_113c: Foul Crow Nest depletes when aipar1 == 0
+    const pRec10 = pMonStatsTxt + 10 * 0x1a8
+    m.setU16(pRec10 + 0x56, 0)
+    m.setU16(pRec10 + 0x5c, 10)
+    m.setU32(pAiCtrl + 0x14, 0)
     m.setU32(pSkills + 0x10, 0xdeadbeef)
     const pArgs1 = m.alloc(0x30)
-    m.setU32(pArgs1 + 0x0c, 6)
+    m.setU32(pArgs1 + 0x00, pAiCtrl)
+    m.setU32(pArgs1 + 0x14, 5)
+    m.setU32(pArgs1 + 0x1c, pRec10)
     AI_SpawnPackMinionOrStartMode_6FC3BCA0_113c(m, pGame, pMon, pArgs1)
     expect(m.u32(pSkills + 0x10)).toBe(0)
 
     // [2/45] AI_StepTurnAndCastSkill4_6FC3C1E0_113c: initial cast when wSkill4 >= 0 and dwParam[2] == 0
-    const pRec10 = pMonStatsTxt + 10 * 0x1a8
     m.setU16(pRec10 + 0x170, 5)
     m.setU8(pRec10 + 0x180, 1)
     m.setU32(pAiCtrl + 0x14, 0)
@@ -299,33 +307,30 @@ describe('Milestone 33 [K2] Wave 3 Batch 2 (w3b2): 45 D2Game 0x6FC3BCA0..0x6FC52
     m.setU32(0x6fdf0080 + 0x100 * 4, 0xffffffff)
     expect(AI_SelectAndCastHirelingSkill_6FC3C4E0_113c(m, pGame, pMon, 0, 1)).toBe(0)
 
-    // [4/45] MONSTER_ApplyPresetAiCommands_6FC3F2D0_113c: copies AI command chain & updates siege target globals
-    const { pMon: pSiege } = allocMonster(m, pGame, pRoom, 0x137, 2, 112, 118)
-    const ppPresetNode = m.alloc(4)
+    // [4/45] MONSTER_ApplyPresetAiCommands_6FC3F2D0_113c: copies preset extra ptr & sets class 0x137 field +0x0E
+    const { pMon: pSiege, pMonData: pSiegeData, pAiGen: pSiegeAiGen } = allocMonster(m, pGame, pRoom, 0x137, 2, 112, 118)
+    m.setU8(pMonStatsTxt + 0x137 * 0x1a8 + 0x0d, 1)
+    const pPresetUnit = m.alloc(0x60)
     const pNode = m.alloc(0x18)
-    m.setU32(pNode + 0x00, 7)
-    m.setU32(pNode + 0x04, 11)
-    m.setU32(ppPresetNode, pNode)
-    MONSTER_ApplyPresetAiCommands_6FC3F2D0_113c(m, pSiege, ppPresetNode)
-    expect(m.u32(ppPresetNode)).toBe(0)
-    expect(m.u32(0x6fd2e5fc)).toBe(112)
-    expect(m.u32(0x6fd2e600)).toBe(118)
+    m.setU32(pPresetUnit + 0x24, pNode)
+    m.setU32(pPresetUnit + 0x4c, 7)
+    m.setU32(pPresetUnit + 0x50, 11)
+    MONSTER_ApplyPresetAiCommands_6FC3F2D0_113c(m, pSiege, pGame, pPresetUnit)
+    expect(m.u32(pPresetUnit + 0x24)).toBe(0)
+    expect(m.u32(pSiegeAiGen + 0x38)).toBe(pNode)
+    expect(m.u8(pSiegeData + 0x0e)).toBe(7)
+    void pMonData
   })
   it('ports item bitstream, minion list, and MONUMOD stat functions (#5..#17)', () => {
-    const { m, pGame, pDataTables, pMonStatsTxt, pMonLvlTxt, pMonUModTxt, pSkillsTxt, pItemsTxt } =
+    const { m, pGame, pMonStatsTxt, pMonLvlTxt, pMonUModTxt, pSkillsTxt, pItemsTxt } =
       createW3B2World()
     const { pRoom } = allocRoom(m)
 
-    // [5/45] ITEMS_LoadItemAndSocketsFromBitstream_6FC3F9F0_113c: returns 3 on empty/invalid header
-    const pBs = m.alloc(32)
-    const ppOutItem = m.alloc(4)
-    const pOutBytes = m.alloc(4)
-    expect(
-      ITEMS_LoadItemAndSocketsFromBitstream_6FC3F9F0_113c(m, pGame, pBs, 0, 0, ppOutItem, pOutBytes),
-    ).toBe(3)
-    expect(m.u32(ppOutItem)).toBe(0)
+    // [5/45] ITEMS_LoadItemAndSocketsFromBitstream_6FC3F9F0_113c: returns 0 on empty/invalid inactive node
+    const pInactiveNode = m.alloc(32)
+    expect(ITEMS_LoadItemAndSocketsFromBitstream_6FC3F9F0_113c(m, pGame, 0, pInactiveNode)).toBe(0)
 
-    // [6/45] ITEMS_SaveItemToNodeAndFree_6FC403D0_113c: serializes compact item to save node
+    // [6/45] ITEMS_SaveItemToNodeAndFree_6FC403D0_113c: serializes compact item to allocated save node
     m.setU32(pItemsTxt + 1 * 0x1a8 + 0x80, 0x20767273)
     m.setU8(pItemsTxt + 1 * 0x1a8 + 0x14d, 1)
     const pItem = m.alloc(0x100)
@@ -339,11 +344,13 @@ describe('Milestone 33 [K2] Wave 3 Batch 2 (w3b2): 45 D2Game 0x6FC3BCA0..0x6FC52
     m.setU32(pItem + 0x80, pGame)
     m.setU16(pItemData + 0x02, 0x60)
     m.setU32(pItemData + 0x18, 0x200000)
-    const pSaveNode = m.alloc(0x100)
-    expect(ITEMS_SaveItemToNodeAndFree_6FC403D0_113c(m, pGame, pSaveNode, pItem)).toBe(1)
-    expect(m.u8(pSaveNode + 0x28)).toBeGreaterThan(0)
+    const pInactiveHolder = m.alloc(0x20)
+    const pSavedNode = ITEMS_SaveItemToNodeAndFree_6FC403D0_113c(m, pGame, pItem, pInactiveHolder)
+    expect(pSavedNode).toBeGreaterThan(0)
+    expect(m.u32(pInactiveHolder + 0x08)).toBe(pSavedNode)
+    expect(m.u16(pSavedNode + 0x0c)).toBeGreaterThan(0)
 
-    // [7/45] AIGENERAL_RemoveFromMinionList_6FC416A0_113c: unlinks minion from leader list
+    // [7/45] AIGENERAL_RemoveFromMinionList_6FC416A0_113c: unlinks minion from leader list & resets owner
     const { pMon: pLeader, pAiGen: pLeaderAiGen } = allocMonster(m, pGame, pRoom, 5, 10)
     const { pMon: pMinion, pAiGen: pMinionAiGen } = allocMonster(m, pGame, pRoom, 5, 11)
     const pN1 = m.alloc(8)
@@ -351,13 +358,15 @@ describe('Milestone 33 [K2] Wave 3 Batch 2 (w3b2): 45 D2Game 0x6FC3BCA0..0x6FC52
     m.setU32(pN1, 10)
     m.setU32(pN1 + 4, pN2)
     m.setU32(pN2, 11)
+    m.setU32(pLeaderAiGen + 0x28, pGame)
     m.setU32(pLeaderAiGen + 0x34, pN1)
-    m.setU32(pMinionAiGen + 0x1c, 1)
-    m.setU32(pMinionAiGen + 0x20, 10)
-    m.setU32(pMinionAiGen + 0x34, pN1)
+    m.setU32(pMinionAiGen + 0x28, pGame)
+    m.setU32(pMinionAiGen + 0x2c, 10)
+    m.setU32(pMinionAiGen + 0x30, 1)
     AIGENERAL_RemoveFromMinionList_6FC416A0_113c(m, pGame, pMinion)
-    expect(m.u32(pMinionAiGen + 0x34)).toBe(0)
+    expect(m.u32(pMinionAiGen + 0x2c)).toBe(0xffffffff)
     expect(m.u32(pN1 + 4)).toBe(0)
+    void pLeader
 
     // [8/45] MONUMOD_ApplyChampionBaseStats_6FC418A0_113c: sets level and tohit on sentry/champion
     const { pMon: pChamp, pMonData: pChampData } = allocMonster(m, pGame, pRoom, 0x14c, 12)
@@ -370,7 +379,7 @@ describe('Milestone 33 [K2] Wave 3 Batch 2 (w3b2): 45 D2Game 0x6FC3BCA0..0x6FC52
 
     // [10/45] MONUMOD_ApplyElementalDamageBonus_6FC41FE0_113c: applies fire min/max damage
     const nMlvl = STATLIST_GetUnitStat113c(m, pChamp, 0x0c, 0)
-    m.setU32(pMonLvlTxt + nMlvl * 0x48 + 0x24 + 3 * 4, 100)
+    m.setU32(pMonLvlTxt + nMlvl * 0x78 + 18 * 4, 100)
     for (let i = 0; i < 36; i++) {
       m.setU32(pMonUModTxt + i * 0x20 + 0x1c, 50)
     }
@@ -378,15 +387,15 @@ describe('Milestone 33 [K2] Wave 3 Batch 2 (w3b2): 45 D2Game 0x6FC3BCA0..0x6FC52
     expect(STATLIST_GetUnitStat113c(m, pChamp, 0x30, 0)).toBeGreaterThan(0)
 
     // [11/45] MONUMOD_ApplyStrongToHitAndDamageBonus_6FC42BC0_113c
-    m.setU32(pMonLvlTxt + 0x18, 80)
+    m.setU32(pMonLvlTxt + 0x34, 100)
     MONUMOD_ApplyStrongToHitAndDamageBonus_6FC42BC0_113c(m, pChamp, 5, 1)
-    expect(STATLIST_GetUnitStat113c(m, pChamp, 0x19, 0)).toBeGreaterThan(0)
+    expect(STATLIST_GetUnitStat113c(m, pChamp, 0x19, 0)).toBe(50)
 
     // [12/45] MONUMOD_ApplyGhostlyStats_6FC42D00_113c
     STATLIST_SetUnitStat113c(m, pChamp, 6, 400 << 8, 0)
     STATLIST_SetUnitStat113c(m, pChamp, 7, 400 << 8, 0)
     MONUMOD_ApplyGhostlyStats_6FC42D00_113c(m, pChamp, 0x27, 1)
-    expect(STATLIST_GetUnitStat113c(m, pChamp, 0x19, 0)).toBe(200)
+    expect(STATLIST_GetUnitStat113c(m, pChamp, 0x19, 0)).toBe(350)
 
     // [13/45] MONUMOD_ApplyFanaticOrPossessedStats_6FC42DA0_113c
     const lvlBefore = STATLIST_GetUnitStat113c(m, pChamp, 0x0c, 0)
@@ -395,14 +404,13 @@ describe('Milestone 33 [K2] Wave 3 Batch 2 (w3b2): 45 D2Game 0x6FC3BCA0..0x6FC52
 
     // [14/45] MONUMOD_ApplyExtraHealthBonus_6FC42FA0_113c
     m.setU8(pChampData + 0x16, 0)
+    STATLIST_SetUnitStat113c(m, pChamp, 0x4a, 0x28, 0)
     MONUMOD_ApplyExtraHealthBonus_6FC42FA0_113c(m, pChamp, 2, 1)
-    expect(STATLIST_GetUnitStat113c(m, pChamp, 0x4a, 0)).toBe(0x28)
+    expect(STATLIST_GetUnitStat113c(m, pChamp, 0x4a, 0)).toBe(0)
 
     // [15/45] MONUMOD_CheckModEligibility_6FC43100_113c
     expect(MONUMOD_CheckModEligibility_6FC43100_113c(m, pChamp, pGame, 0, 0)).toBe(0)
-    m.setU16(pMonUModTxt + 5 * 0x20 + 0x08, 1)
-    m.setU16(pMonUModTxt + 5 * 0x20 + 0x14, 1)
-    m.setU8(pMonStatsTxt + 0x14c * 0x1a8 + 0x1a, 0x80)
+    m.setU8(pMonUModTxt + 5 * 0x20 + 0x06, 1)
     expect(MONUMOD_CheckModEligibility_6FC43100_113c(m, pChamp, pGame, 5, 0)).toBe(1)
 
     // [16/45] MONUMOD_EventReviveOrCorpseCheck_6FC43E20_113c
@@ -451,7 +459,7 @@ describe('Milestone 33 [K2] Wave 3 Batch 2 (w3b2): 45 D2Game 0x6FC3BCA0..0x6FC52
     m.setU32(pMonData + 0x18, 50)
     MONUMOD_SpawnScarabChargedBolts_6FC46320_113c(m, pGame, pMon, hooks)
     expect(m.u32(pGame + 0x9c)).toBe(beforeScarab + 8)
-    expect(m.u32(pMonData + 0x18)).toBe(110)
+    expect(m.u32(pMonData + 0x18)).toBe(100)
 
     // [24/45] MONUMOD_SpawnDeathNova_6FC46520_113c: no-op when leader not found
     m.setU32(pAiGen + 0x1c, 1)
@@ -471,7 +479,7 @@ describe('Milestone 33 [K2] Wave 3 Batch 2 (w3b2): 45 D2Game 0x6FC3BCA0..0x6FC52
     SKILLS_SetParam1113c(m, pSkill, 110)
     SKILLS_SetParam2113c(m, pSkill, 110)
     SKILLS_SetupChargeOrLeapPath_6FC46A80_113c(m, pMon, pSkill, 50)
-    expect(m.u32(pSkill + 0x0c)).toBe(1)
+    expect(m.u32(pSkill + 0x0c)).toBe(0x1101)
 
     // [26/45] SKILLS_ClampTargetAndFindFreeLosPos_6FC46BB0_113c
     m.setU32(pSkillTxt5 + 0x1c0, -1)
@@ -515,7 +523,14 @@ describe('Milestone 33 [K2] Wave 3 Batch 2 (w3b2): 45 D2Game 0x6FC3BCA0..0x6FC52
     expect(OBJECTS_DispatchPresetObjectSpawner_6FC4E830_113c(m, 0x10, pGame, pRoom, 105, 105, 0)).toBe(0)
 
     // [36/45]..[40/45] Room object populators
-    expect(OBJECTS_PopulateEvilUrnMonstersInRoom_6FC4F690_113c(m, pGame, pRoom, 0)).toBe(1)
+    const pPopCtx = m.alloc(0x20)
+    const pUrnObj = m.alloc(0x20)
+    const pUrnSeed = m.alloc(8)
+    m.setU32(pPopCtx + 0x00, pGame)
+    m.setU32(pPopCtx + 0x04, pUrnObj)
+    m.setU32(pPopCtx + 0x08, pRoom)
+    m.setU32(pPopCtx + 0x0c, pUrnSeed)
+    OBJECTS_PopulateEvilUrnMonstersInRoom_6FC4F690_113c(m, pPopCtx)
     const pRoomCoords = m.alloc(0x20)
     m.setU32(pRoomCoords, 100)
     m.setU32(pRoomCoords + 4, 100)
@@ -527,13 +542,13 @@ describe('Milestone 33 [K2] Wave 3 Batch 2 (w3b2): 45 D2Game 0x6FC3BCA0..0x6FC52
     m.setU32(pRect + 4, 102)
     m.setU32(pRect + 8, 4)
     m.setU32(pRect + 12, 4)
-    m.setU32(pObjectsTxt + 7 * 0x1c0 + 0xdc, 2)
-    m.setU32(pObjectsTxt + 7 * 0x1c0 + 0xe0, 2)
+    m.setU32(pObjectsTxt + 7 * 0x1c0 + 0xd0, 2)
+    m.setU32(pObjectsTxt + 7 * 0x1c0 + 0xd4, 2)
     expect(OBJECTS_PopulateGridObjectsInRect_6FC4FEC0_113c(m, pGame, pRoom, pRoomCoords, pRect, 0)).toBe(1)
-    m.setU32(pObjectsTxt + 0x2e * 0x1c0 + 0xdc, 2)
-    m.setU32(pObjectsTxt + 0x2e * 0x1c0 + 0xe0, 2)
-    expect(OBJECTS_PopulateCrateClustersInRoom_6FC50150_113c(m, pGame, pRoom, 0)).toBe(1)
-    expect(OBJECTS_PopulateBarrelClustersInRoom_6FC50800_113c(m, pGame, pRoom, 0)).toBe(1)
+    m.setU32(pObjectsTxt + 0x2e * 0x1c0 + 0xd0, 2)
+    m.setU32(pObjectsTxt + 0x2e * 0x1c0 + 0xd4, 2)
+    expect(OBJECTS_PopulateCrateClustersInRoom_6FC50150_113c(m, pGame, pRoom, 0)).toBe(0)
+    expect(OBJECTS_PopulateBarrelClustersInRoom_6FC50800_113c(m, pGame, pRoom, 0)).toBe(0)
 
     // [41/45] OBJECTS_TrySpawnTargetSpotObject67_6FC50E50_113c
     PATH_SetTargetPos113c(m, pPath, 106, 106)

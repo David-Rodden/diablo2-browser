@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { D2CommonAssertError } from '../../../src/d2kern-113c/common/inline-helpers.ts'
+import {
+  D2COMMON_GDWBITMASKS_IAT_VA_113C,
+  D2COMMON_SGPT_DATATABLES_VA_113C,
+  D2CommonAssertError,
+} from '../../../src/d2kern-113c/common/inline-helpers.ts'
+import { EVENT_InitTimerQueue113c } from '../../../src/d2kern-113c/game/timer-wheel.ts'
 import {
   STATLIST_CreateEx113c,
   STATLIST_GetUnitStat113c,
@@ -349,8 +354,21 @@ describe('K2 Wave 6 Batch 7 (w6b7: 0x6FCEDBB0..0x6FD142D0)', () => {
 
   it('OBJECTS_ApplyTrapDamageToTarget_6FD142D0_113c skips town rooms, asserts non-null target, and applies scaled trap damage', () => {
     const m = new SparseMemory113c()
+    const pBitMasks = m.alloc(128) >>> 0
+    for (let i = 0; i < 32; i++) {
+      m.setU32((pBitMasks + i * 4) >>> 0, (1 << i) >>> 0)
+    }
+    m.setU32(D2COMMON_GDWBITMASKS_IAT_VA_113C, pBitMasks)
+    const pDataTables = m.alloc(0x1000) >>> 0
+    m.setU32(D2COMMON_SGPT_DATATABLES_VA_113C, pDataTables)
+    m.setU32((pDataTables + 0xbc) >>> 0, m.alloc(185 * 0x40) >>> 0)
+    m.setU32((pDataTables + 0xc4) >>> 0, 185)
+    m.setU32((pDataTables + 0xbcc) >>> 0, m.alloc(359 * 0x144) >>> 0)
+    m.setU32((pDataTables + 0xbd4) >>> 0, 359)
     const pGame = m.alloc(0x2000) >>> 0
+    EVENT_InitTimerQueue113c(m, pGame)
     const target = allocPlayerUnit(m, pGame, 701, 'TrapVictim')
+    m.setU32((target.pPlayer + 0x10) >>> 0, 1) // PLRMODE_NEUTRAL (alive)
     STATLIST_SetUnitStat113c(m, target.pPlayer, 6, 200 << 8, 0) // STAT_HITPOINTS
     STATLIST_SetUnitStat113c(m, target.pPlayer, 7, 200 << 8, 0) // STAT_MAXHP
     STATLIST_SetUnitStat113c(m, target.pPlayer, 2, 10, 0) // STAT_DEXTERITY

@@ -59,8 +59,8 @@
     "name": "MONSTER_IsPlayerInteractInTradeState",
     "kernFile": "src/d2kern-113c/game/k2-sunit-spawn-w1-113c.ts",
     "tsSymbol": "MONSTER_IsPlayerInteractInTradeState113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneB-sunit-spawn-w1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/laneB-sunit-spawn-w1.test.ts; Diff-verified 1:1 in dll∩ts across full-horizon strict zero-divergence K3 replay (p52-amazon-valkyrie F1500/1500, p52-paladin-merc-aura F1700/1700) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -140,8 +140,8 @@
     "name": "SUNIT_GetOwnerUnit",
     "kernFile": "src/d2kern-113c/game/k2-sunit-spawn-w1-113c.ts",
     "tsSymbol": "SUNIT_GetOwnerUnit113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneB-sunit-spawn-w1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/laneB-sunit-spawn-w1.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -338,8 +338,8 @@
     "name": "ACT3Q7_Callback14_PlayerJoined",
     "kernFile": "src/d2kern-113c/game/k2-sunit-spawn-w1-113c.ts",
     "tsSymbol": "ACT3Q7_Callback14_PlayerJoined113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneB-sunit-spawn-w1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/replay-act-quests.test.ts (0x6FD049E0) across Act 1-5 K4 longitudinal quest & town NPC replay at 100% strict zero divergence"
   },
   {
     "module": "D2Game",

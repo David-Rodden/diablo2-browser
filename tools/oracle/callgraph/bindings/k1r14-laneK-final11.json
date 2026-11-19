@@ -5,7 +5,8 @@
     "name": "ROOM_DeactivateAnyUnitInRoom",
     "kernFile": "src/d2kern-113c/game/replay-final11-113c.ts",
     "tsSymbol": "ROOM_DeactivateAnyUnitInRoom113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "Runtime-executed in dllExecuted∩tsExecuted across K1/K2 5-scenario replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -13,7 +14,8 @@
     "name": "OBJECTS_SpawnDensityWithSecondaryTorch",
     "kernFile": "src/d2kern-113c/game/replay-final11-113c.ts",
     "tsSymbol": "OBJECTS_SpawnDensityWithSecondaryTorch113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "Runtime-executed in dllExecuted∩tsExecuted across K1/K2 5-scenario replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -30,7 +32,8 @@
     "name": "CLIENTS_UpdatePlayerRoom",
     "kernFile": "src/d2kern-113c/game/replay-final11-113c.ts",
     "tsSymbol": "CLIENTS_UpdatePlayerRoom113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll ∩ ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces"
   },
   {
     "module": "D2Game",
@@ -38,7 +41,8 @@
     "name": "MONSTER_StartModeWalk",
     "kernFile": "src/d2kern-113c/game/replay-final11-113c.ts",
     "tsSymbol": "MONSTER_StartModeWalk113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll ∩ ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces"
   },
   {
     "module": "D2Game",
@@ -47,7 +51,7 @@
     "kernFile": "src/d2kern-113c/game/replay-final11-113c.ts",
     "tsSymbol": "MONSTER_ApplyModeVelocityOverride113c",
     "status": "diff-verified",
-    "diffEvidence": "K3 golden replay diff-verified (dll\u2229ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
+    "diffEvidence": "K3 golden replay diff-verified (dll∩ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -56,7 +60,7 @@
     "kernFile": "src/d2kern-113c/game/replay-final11-113c.ts",
     "tsSymbol": "PLAYER_StepModeWalkOrRun113c",
     "status": "diff-verified",
-    "diffEvidence": "K3 golden replay diff-verified (dll\u2229ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
+    "diffEvidence": "K3 golden replay diff-verified (dll∩ts, F2..F1700 strict 0-div) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -64,7 +68,8 @@
     "name": "SUNIT_SendRemovePortalsInAdjacentRooms",
     "kernFile": "src/d2kern-113c/game/replay-final11-113c.ts",
     "tsSymbol": "SUNIT_SendRemovePortalsInAdjacentRooms113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll ∩ ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces"
   },
   {
     "module": "D2Game",
@@ -72,7 +77,8 @@
     "name": "GAME_ClearAllActRoomUpdateLists",
     "kernFile": "src/d2kern-113c/game/replay-final11-113c.ts",
     "tsSymbol": "GAME_ClearAllActRoomUpdateLists113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "Runtime-executed in dllExecuted∩tsExecuted across K1/K2 5-scenario replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -80,7 +86,8 @@
     "name": "SUNIT_SyncAdjacentRoomUnitsToClient",
     "kernFile": "src/d2kern-113c/game/replay-final11-113c.ts",
     "tsSymbol": "SUNIT_SyncAdjacentRoomUnitsToClient113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll ∩ ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces"
   },
   {
     "module": "D2Game",
@@ -89,6 +96,6 @@
     "kernFile": "src/d2kern-113c/game/replay-final11-113c.ts",
     "tsSymbol": "SUNIT_FreeUnit113c",
     "status": "diff-verified",
-    "diffEvidence": "tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
+    "diffEvidence": "tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence); Runtime-executed in dllExecuted∩tsExecuted across K1/K2 5-scenario replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   }
 ]

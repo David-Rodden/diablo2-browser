@@ -11,7 +11,7 @@
 
 import { UNITS_GetPlayerData113c } from '../common/composit.ts'
 import { MONSTER_GetMissileIdForAnimMode113c } from '../common/drlg/drlg-ver.ts'
-import { imul32, sdiv32 } from '../common/int-math.ts'
+import { imul32 } from '../common/int-math.ts'
 import { SKILLS_GetUsedSkillMemPort113c } from '../common/k0-d2common-memports.ts'
 import { PATH_GetTargetUnit113c } from '../common/path.ts'
 import {
@@ -22,7 +22,7 @@ import {
   SKILLS_SetSkillSlotIndex113c,
 } from '../common/skills.ts'
 import { STATLIST_GetUnitStat113c } from '../common/statlist.ts'
-import { UNIT_MONSTER, UNIT_PLAYER } from '../common/unit.ts'
+import { UNIT_MONSTER, UNIT_PLAYER, UNITS_GetRoom113c } from '../common/unit.ts'
 import {
   D2AiGeneralStrc,
   D2MonsterDataStrc,
@@ -30,25 +30,39 @@ import {
 } from '../mem/layout.generated.ts'
 import type { Memory113c, SparseMemory113c } from '../mem/sparse-memory.ts'
 import { DATATBLS_GetHirelingTxtRecordFromIdAndLevel113c } from '../tables/monster-tbls-113c.ts'
-import { SKILLS_StartUsedSkill113c } from './a1c-post150-f786-f1040-113c.ts'
 import {
+  ARENA_ProcessKillScoreUpdate113c,
+  QUESTS_OnMonsterKill113c,
+  SKILLS_StartUsedSkill113c,
+} from './a1c-post150-f786-f1040-113c.ts'
+import {
+  AIGENERAL_GetPackLeaderUnit113c,
   MONSTER_AdvanceAttackOrSkillStep113c,
   MONSTER_StartAttackOrCast113c,
 } from './ai-fallen-113c.ts'
-import { MONSTER_GetHirelingLevelBonusFactor113c } from './boot-init-gap-a-113c.ts'
-import { SUNIT_GetServerUnit113c } from './game-strc.ts'
+import {
+  MONSTER_GetHirelingLevelBonusFactor113c,
+  OBJECT_SendUpdatePacketsToClient113c,
+} from './boot-init-gap-a-113c.ts'
 import { bindK2KernelGlobals113c } from './k2-d2tv-evaluators-113c.ts'
 import type { K2GapMeleeDotHooks113c } from './k2-gap-melee-dot-113c.ts'
 import {
   type MonsterSliceWorldLike113c,
-  SUNITDMG_AddPlayerExperienceAndCheckLevelUp113c,
-  SUNITDMG_ResolveAttackerPlayer113c,
+  SUNITDMG_DistributeExperience113c,
 } from './k2-real-s2c-combat-113c.ts'
+import { MONSTER_IsPlayerInteractInTradeState113c } from './k2-sunit-spawn-w1-113c.ts'
 import { AI_ThinkMercenaryMain_6FC3DD40_113c } from './k2-w12b1-113c.ts'
+import { NET_SendPacket9E9FA0_StatValue_6FCABC20_113c } from './k2-w4b4-113c.ts'
+import { PETS_SendPetOrMercAssignPacket_6FCB66E0_113c } from './k2-w4b5-113c.ts'
 import { SKILLS_SrvSt32_EnsureWeaponOrQuiverOrStartCast_6FC6C840_113c } from './k2-w5b1-113c.ts'
-import { SKILLS_CreateDirectionalProjectileWithToHitAndAmmo_6FCC28F0_113c } from './k2-w6b2-113c.ts'
-import { HIRELING_GrantSharedExpAndCheckLevelUp_6FCFDCB0_113c } from './k2-w6b6-113c.ts'
+import { NET_SendMonsterSkillCastPacket4COr4D_6FD134C0_113c } from './k2-w5b10-113c.ts'
+import {
+  NET_SendPacket7F_PartyMemberLifeAndLevel_6FCAE2A0_113c,
+  SKILLS_CreateDirectionalProjectileWithToHitAndAmmo_6FCC28F0_113c,
+} from './k2-w6b2-113c.ts'
+import { ITEMS_BroadcastUnitInventoryCommandFlags_6FCBBB10_113c } from './k2-w7b3-113c.ts'
 import { SKILLS_DoUsedSkillActionK3_113c } from './k3-p52-sorc-handlers-113c.ts'
+import { resolveKillerPlayerForMonsterDeathK3_113c } from './k3-summon-curse-replay-113c.ts'
 import { SUNIT_IsDeadOrDying113c } from './monster-events.ts'
 import {
   D2GAME_IAT_SGPT_DATATABLES_VA_113C,
@@ -66,11 +80,7 @@ import {
   SUNITDMG_ExecuteMissileOrMeleeDmg113c,
   syncActRoomsAndUnitsIntoWorld113c,
 } from './replay-kernel-113c.ts'
-import {
-  calculateKillExperienceGainPure113c,
-  getMonLvlXpRow113c,
-  type MonStatsRow113c,
-} from './tables-bootstrap-113c.ts'
+import type { MonStatsRow113c } from './tables-bootstrap-113c.ts'
 
 export const VA_AI_HIREABLE_113C = 0x6fc3dd40
 
@@ -83,6 +93,40 @@ function sx16(v: number): number {
 
 function sx8(v: number): number {
   return (v << 24) >> 24
+}
+
+function ensureMercAddrZeroedIfUnloaded(m: Memory113c, baseAddr: number, byteLen: number): void {
+  const memInternal = m as unknown as { known?: Map<number, Uint8Array> }
+  const known = memInternal.known
+  if (known === undefined) return
+  for (let i = 0; i < byteLen; i += 1) {
+    const addr = (baseAddr + i) >>> 0
+    const kp = known.get(addr >>> 12)
+    if (kp === undefined || kp[addr & 0xfff] === 0) {
+      m.setU8(addr, 0)
+    }
+  }
+}
+
+function resolveHydratedOwnerClientK3_113c(m: Memory113c, pGame: number, pOwner: number): number {
+  if (pOwner === 0 || (m.u32(pOwner >>> 0) | 0) !== UNIT_PLAYER) return 0
+  const pOwnerData = UNITS_GetPlayerData113c(m, pOwner) >>> 0
+  const rawClient = pOwnerData !== 0 ? (m.u32((pOwnerData + 0x9c) >>> 0) >>> 0) : 0
+  const pClient = rawClient !== 0 ? rawClient : (pGame !== 0 ? (m.u32((pGame + 0x88) >>> 0) >>> 0) : 0)
+  if (pClient !== 0) {
+    ensureMercAddrZeroedIfUnloaded(m, (pClient + 0x3d4) >>> 0, 4)
+    ensureMercAddrZeroedIfUnloaded(m, (pClient + 0x16c) >>> 0, 12)
+    ensureMercAddrZeroedIfUnloaded(m, (pClient + 0x1a8) >>> 0, 4)
+    if (m.u32((pClient + 0x174) >>> 0) === 0) {
+      m.setU32((pClient + 0x16c) >>> 0, 0)
+      m.setU32((pClient + 0x170) >>> 0, m.u32((pOwner + 0x0c) >>> 0))
+      m.setU32((pClient + 0x174) >>> 0, pOwner >>> 0)
+    }
+    if (pGame !== 0 && m.u32((pClient + 0x1a8) >>> 0) === 0) {
+      m.setU32((pClient + 0x1a8) >>> 0, pGame >>> 0)
+    }
+  }
+  return pClient
 }
 
 function readSgptDataTables113c(m: Memory113c): number {
@@ -145,13 +189,41 @@ export function hydrateMercHireableSnapshotStateK3_113c(
     return kp !== undefined && kp[a & 0xfff] !== 0
   }
 
+  bindK2KernelGlobals113c(m)
+
   for (const pPlr of world.playerById.values()) {
+    if (!isAddrLoaded((pPlr + 0x80) >>> 0) || m.u32((pPlr + 0x80) >>> 0) === 0) {
+      m.setU32((pPlr + 0x80) >>> 0, pGame >>> 0)
+    }
     const pPlrData = m.u32((pPlr + 0x14) >>> 0) >>> 0
     if (pPlrData === 0) continue
     for (let off = 0xa0; off < 0x16c; off += 1) {
       const addr = (pPlrData + off) >>> 0
       if (!isAddrLoaded(addr)) {
         m.setU8(addr, 0)
+      }
+    }
+    const pExistingPets = m.u32((pPlrData + 0x44) >>> 0) >>> 0
+    const petsLoaded =
+      pExistingPets !== 0 &&
+      isAddrLoaded(pExistingPets) &&
+      isAddrLoaded(m.u32(pExistingPets) >>> 0)
+    if (!petsLoaded) {
+      const pPetWrap = k3MercHeapPtr
+      const pSlotsArray = (pPetWrap + 0x10) >>> 0
+      k3MercHeapPtr = (pSlotsArray + 0x180) >>> 0
+      m.fill(pPetWrap, 0x190, 0)
+      m.setU32((pPlrData + 0x44) >>> 0, pPetWrap)
+      m.setU32(pPetWrap, pSlotsArray)
+    }
+  }
+
+  if ((m.u32((pGame + 0xa8) >>> 0) | 0) <= 2) {
+    for (let b = 0; b < 128; b += 1) {
+      const bucketAddr = (pGame + 0x1520 + b * 4) >>> 0
+      if (isAddrLoaded(bucketAddr) && m.u32(bucketAddr) !== 0) {
+        OBJECT_SendUpdatePacketsToClient113c(m, 0, 0)
+        break
       }
     }
   }
@@ -165,7 +237,6 @@ export function hydrateMercHireableSnapshotStateK3_113c(
   }
   if (!hasMerc) return
 
-  bindK2KernelGlobals113c(m)
   MONSTER_GetHirelingLevelBonusFactor113c(m, pGame, 0)
 
   let wMercNameId = 0
@@ -186,7 +257,14 @@ export function hydrateMercHireableSnapshotStateK3_113c(
 
     const pInv = m.u32((pMon + 0x60) >>> 0) >>> 0
     if (pInv !== 0 && !isAddrLoaded(pInv)) {
-      m.setU32((pMon + 0x60) >>> 0, 0)
+      const pHydratedInv = k3MercHeapPtr
+      k3MercHeapPtr = (pHydratedInv + 0x40) >>> 0
+      m.fill(pHydratedInv, 0x40, 0)
+      m.setU32(pHydratedInv, 0x01020304)
+      m.setU32((pHydratedInv + 0x04) >>> 0, m.u32((pGame + 0x1c) >>> 0))
+      m.setU32((pHydratedInv + 0x08) >>> 0, pMon >>> 0)
+      m.setU32((pHydratedInv + 0x1c) >>> 0, 0xffffffff)
+      m.setU32((pMon + 0x60) >>> 0, pHydratedInv)
     }
     const pSkills = m.u32((pMon + 0xa8) >>> 0) >>> 0
     if (pSkills !== 0 && !isAddrLoaded(pSkills)) {
@@ -194,6 +272,14 @@ export function hydrateMercHireableSnapshotStateK3_113c(
     }
 
     const pMonData = m.get(pMon, D2UnitStrc.pUnitData)
+    if (pMonData !== 0) {
+      ensureMercAddrZeroedIfUnloaded(m, (pMonData + 0x30) >>> 0, 4)
+      const pInteract = m.u32((pMonData + 0x30) >>> 0) >>> 0
+      if (pInteract !== 0) {
+        ensureMercAddrZeroedIfUnloaded(m, pInteract, 4)
+      }
+      ensureMercAddrZeroedIfUnloaded(m, (pMonData + 0x3c) >>> 0, 12)
+    }
     const pAiGen = pMonData !== 0 ? m.get(pMonData, D2MonsterDataStrc.pAiGeneral) : 0
     let pOwner = 0
     if (pAiGen !== 0 && m.u32((pAiGen + 0x28) >>> 0) !== 0) {
@@ -206,21 +292,15 @@ export function hydrateMercHireableSnapshotStateK3_113c(
     }
 
     if (pOwner !== 0) {
+      const sm = m as SparseMemory113c
+      const pClient = resolveHydratedOwnerClientK3_113c(m, pGame, pOwner)
       const pOwnerData = m.u32((pOwner + 0x14) >>> 0) >>> 0
-      const pExistingPets = pOwnerData !== 0 ? (m.u32((pOwnerData + 0x44) >>> 0) >>> 0) : 0
-      const petsLoaded =
-        pExistingPets !== 0 &&
-        isAddrLoaded(pExistingPets) &&
-        isAddrLoaded(m.u32(pExistingPets) >>> 0)
-      if (pOwnerData !== 0 && !petsLoaded) {
-        const pPetWrap = k3MercHeapPtr
-        const pSlotsArray = (pPetWrap + 0x10) >>> 0
-        const pPetNode = (pSlotsArray + 0xc0) >>> 0
+      const pPetWrap = pOwnerData !== 0 ? (m.u32((pOwnerData + 0x44) >>> 0) >>> 0) : 0
+      const pSlotsArray = pPetWrap !== 0 ? (m.u32(pPetWrap) >>> 0) : 0
+      if (pSlotsArray !== 0 && m.u32((pSlotsArray + 0x54) >>> 0) === 0) {
+        const pPetNode = k3MercHeapPtr
         k3MercHeapPtr = (pPetNode + 0x20) >>> 0
-        m.fill(pPetWrap, 0xf0, 0)
-
-        m.setU32((pOwnerData + 0x44) >>> 0, pPetWrap)
-        m.setU32(pPetWrap, pSlotsArray)
+        m.fill(pPetNode, 0x20, 0)
         m.setU32((pSlotsArray + 0x54) >>> 0, pPetNode)
         m.setU32((pSlotsArray + 0x58) >>> 0, 1)
 
@@ -230,6 +310,41 @@ export function hydrateMercHireableSnapshotStateK3_113c(
         m.setU32((pPetNode + 0x0c) >>> 0, dwMercSeed >>> 0)
         m.setU32((pPetNode + 0x10) >>> 0, wMercType >>> 0)
         m.setU32((pPetNode + 0x14) >>> 0, 0)
+      }
+      const pAssignCtx = k3MercHeapPtr
+      k3MercHeapPtr = (pAssignCtx + 0x20) >>> 0
+      m.fill(pAssignCtx, 0x20, 0)
+      m.setU32(pAssignCtx, m.u32((pOwner + 0x0c) >>> 0))
+      m.setU32((pAssignCtx + 0x04) >>> 0, monId >>> 0)
+      m.setU16((pAssignCtx + 0x08) >>> 0, wMercNameId & 0xffff)
+      m.setU32((pAssignCtx + 0x0c) >>> 0, 7)
+      m.setU32((pAssignCtx + 0x10) >>> 0, dwMercSeed !== 0 ? dwMercSeed : 1)
+      m.setU32((pAssignCtx + 0x14) >>> 0, wMercType >>> 0)
+      PETS_SendPetOrMercAssignPacket_6FCB66E0_113c(sm, pOwner, pAssignCtx)
+      MONSTER_IsPlayerInteractInTradeState113c(m, pMon, pOwner)
+      if (pClient !== 0) {
+        const savedMonInv = m.u32((pMon + 0x60) >>> 0) >>> 0
+        if (savedMonInv === 0) {
+          const pTmpInv = k3MercHeapPtr
+          k3MercHeapPtr = (pTmpInv + 0x40) >>> 0
+          m.fill(pTmpInv, 0x40, 0)
+          m.setU32(pTmpInv, 0x01020304)
+          m.setU32((pMon + 0x60) >>> 0, pTmpInv)
+          try {
+            ITEMS_BroadcastUnitInventoryCommandFlags_6FCBBB10_113c(sm, 0, pGame, pMon, pClient)
+          } finally {
+            m.setU32((pMon + 0x60) >>> 0, 0)
+          }
+        } else {
+          ITEMS_BroadcastUnitInventoryCommandFlags_6FCBBB10_113c(sm, 0, pGame, pMon, pClient)
+        }
+        NET_SendPacket9E9FA0_StatValue_6FCABC20_113c(
+          sm,
+          0x0d,
+          pMon,
+          pClient,
+          STATLIST_GetUnitStat113c(m, pMon, 0x0d, 0) >>> 0,
+        )
       }
     }
 
@@ -321,7 +436,8 @@ export function onMonsterStartSkillModeK3_113c(
         if (used === 0) return 0
         const skId = SKILLS_GetSkillIdFromSkill113c(mem, used, 0, 0) | 0
         const pSkTxt = skId >= 0 ? SKILLS_GetRecordPtrFast113c(mem, skId) : 0
-        if (pSkTxt !== 0 && sx16(mem.u16((pSkTxt + 0x2c) >>> 0)) === 32) {
+        const wSrvSt = pSkTxt !== 0 ? sx16(mem.u16((pSkTxt + 0x2c) >>> 0)) : 0
+        if (wSrvSt === 4 || wSrvSt === 32) {
           SKILLS_SrvSt32_EnsureWeaponOrQuiverOrStartCast_6FC6C840_113c(mem, pg, pUnit)
         }
         return SKILLS_StartUsedSkill113c(mem, pUnit, pg)
@@ -329,6 +445,49 @@ export function onMonsterStartSkillModeK3_113c(
     },
     true,
   )
+  const pOwner = AIGENERAL_GetPackLeaderUnit113c(m, pMonster) >>> 0
+  const pClient =
+    pOwner !== 0
+      ? resolveHydratedOwnerClientK3_113c(m, pGame, pOwner)
+      : (m.u32((pGame + 0x88) >>> 0) >>> 0)
+  if (pClient !== 0) {
+    ensureMercAddrZeroedIfUnloaded(m, (pClient + 0x1a8) >>> 0, 4)
+    if (m.u32((pClient + 0x1a8) >>> 0) === 0) {
+      m.setU32((pClient + 0x1a8) >>> 0, pGame >>> 0)
+    }
+    const pPath = m.get(pMonster, D2UnitStrc.pPath) >>> 0
+    const pTarget = pPath !== 0 ? (PATH_GetTargetUnit113c(m, pPath) >>> 0) : 0
+    const pTargetRoom = pTarget !== 0 ? (UNITS_GetRoom113c(m, pTarget) >>> 0) : 0
+    let boundTmpRoomClient = false
+    let savedClientsPtr = 0
+    let savedClientsCnt = 0
+    if (pTargetRoom !== 0) {
+      ensureMercAddrZeroedIfUnloaded(m, (pTargetRoom + 0x48) >>> 0, 4)
+      ensureMercAddrZeroedIfUnloaded(m, (pTargetRoom + 0x78) >>> 0, 4)
+      if (m.u32((pTargetRoom + 0x78) >>> 0) === 0) {
+        savedClientsPtr = m.u32((pTargetRoom + 0x48) >>> 0) >>> 0
+        savedClientsCnt = m.u32((pTargetRoom + 0x78) >>> 0) >>> 0
+        const pTmpArr = k3MercHeapPtr
+        m.setU32(pTmpArr, pClient)
+        m.setU32((pTargetRoom + 0x48) >>> 0, pTmpArr)
+        m.setU32((pTargetRoom + 0x78) >>> 0, 1)
+        boundTmpRoomClient = true
+      }
+    }
+    try {
+      NET_SendMonsterSkillCastPacket4COr4D_6FD134C0_113c(
+        m as SparseMemory113c,
+        pMonster,
+        pClient,
+        pTarget,
+      )
+    } finally {
+      if (boundTmpRoomClient && pTargetRoom !== 0) {
+        m.setU32((pTargetRoom + 0x48) >>> 0, savedClientsPtr)
+        m.setU32((pTargetRoom + 0x78) >>> 0, savedClientsCnt)
+      }
+    }
+  }
 }
 
 /**
@@ -338,10 +497,26 @@ export function runHireableAiThinkK3_113c(
   world: MonsterSliceWorldLike113c,
   pMerc: number,
 ): void {
+  const { m, pGame } = world
+  const pMonData = pMerc !== 0 ? m.get(pMerc, D2UnitStrc.pUnitData) : 0
+  if (pMonData !== 0) {
+    ensureMercAddrZeroedIfUnloaded(m, (pMonData + 0x3c) >>> 0, 12)
+  }
   AI_ThinkMercenaryMain_6FC3DD40_113c(
     world as FallenSliceWorld113c & SparseMemory113c,
     pMerc,
   )
+  const pOwner = AIGENERAL_GetPackLeaderUnit113c(m, pMerc) >>> 0
+  if (pOwner !== 0) {
+    const pClient = resolveHydratedOwnerClientK3_113c(m, pGame, pOwner)
+    if (pClient !== 0) {
+      NET_SendPacket7F_PartyMemberLifeAndLevel_6FCAE2A0_113c(
+        m as SparseMemory113c,
+        pClient,
+        pMerc,
+      )
+    }
+  }
 }
 
 /**
@@ -428,91 +603,25 @@ function isSgptDataTablesReadyForMonsterStep(m: Memory113c): boolean {
 }
 
 /**
- * Routes monster kill XP award (`0x6FCFB5E0` -> `0x6FCFDCB0` + `0x6FCFE6D0`) through canonical
- * `SUNITDMG_ResolveAttackerPlayer113c`, `HIRELING_GrantSharedExpAndCheckLevelUp_6FCFDCB0_113c`,
- * and `SUNITDMG_AddPlayerExperienceAndCheckLevelUp113c`.
+ * Routes monster kill XP award (`0x6FCFEEE0` -> `0x6FC977F0` -> `0x6FCFEA00` -> `0x6FCFC030` ->
+ * `0x6FCFAA40` + `0x6FCFFA60` + `0x6FCFDCB0` + `0x6FCFE6D0`) through canonical `SUNITDMG_DistributeExperience113c`.
  */
 export function awardMonsterKillExperienceWithMercK3_113c(
   world: MonsterSliceWorldLike113c,
   pMonster: number,
   pKiller: number,
-  row: MonStatsRow113c,
+  _row: MonStatsRow113c,
 ): void {
   const { m, pGame } = world
-  if (pKiller === 0) return
-
-  const pKillerPlayer = SUNITDMG_ResolveAttackerPlayer113c(m, pGame, pKiller)
-  if (pKillerPlayer === 0 || m.get(pKillerPlayer, D2UnitStrc.dwUnitType) !== UNIT_PLAYER) return
-
-  const diff = getDifficultyIdx113c(m, pGame)
-  const mlvl = STATLIST_GetUnitStat113c(m, pMonster, 0x0c, 0) | 0
-
-  let rawExp = STATLIST_GetUnitStat113c(m, pMonster, 0x0d, 0) | 0
-  if (rawExp <= 0) {
-    const monExpFactor = row.exp[diff]
-    if (monExpFactor > 0 && mlvl > 0) {
-      if (row.noRatio) {
-        rawExp = monExpFactor
-      } else {
-        const xpVec = getMonLvlXpRow113c(mlvl)
-        rawExp = Math.trunc((xpVec[diff] * monExpFactor) / 100)
-      }
+  if (pKiller === 0 || pMonster === 0) return
+  bindK2KernelGlobals113c(m)
+  AIGENERAL_GetPackLeaderUnit113c(m, pMonster)
+  if (m.get(pKiller, D2UnitStrc.dwUnitType) !== UNIT_PLAYER) {
+    const pOwnerPlayer = resolveKillerPlayerForMonsterDeathK3_113c(m, pGame, pKiller)
+    if (pOwnerPlayer !== 0) {
+      QUESTS_OnMonsterKill113c(m, pGame, pOwnerPlayer, pMonster)
+      ARENA_ProcessKillScoreUpdate113c(m, pGame, pOwnerPlayer, pMonster)
     }
   }
-  if (rawExp <= 0) return
-
-  let pLiveMerc = 0
-  const pPlayerData = UNITS_GetPlayerData113c(m, pKillerPlayer) >>> 0
-  if (pPlayerData !== 0) {
-    const pPetWrap = m.u32((pPlayerData + 0x44) >>> 0) >>> 0
-    const pSlots = pPetWrap !== 0 ? (m.u32(pPetWrap) >>> 0) : 0
-    if (pSlots !== 0) {
-      let pNode = m.u32((pSlots + 0x54) >>> 0) >>> 0
-      while (pNode !== 0) {
-        if ((m.u8(pNode) & 1) === 0) {
-          const mercGuid = m.u32((pNode + 0x04) >>> 0) >>> 0
-          pLiveMerc = SUNIT_GetServerUnit113c(m, pGame, 1, mercGuid) >>> 0
-          break
-        }
-        pNode = m.u32((pNode + 0x14) >>> 0) >>> 0
-      }
-    }
-  }
-
-  if (pLiveMerc !== 0 && SUNIT_IsDeadOrDying113c(m, pLiveMerc) === 0) {
-    const mercLvl = STATLIST_GetUnitStat113c(m, pLiveMerc, 0x0c, 0) | 0
-    const mercAddExpPct = STATLIST_GetUnitStat113c(m, pLiveMerc, 0x55, 0) | 0
-    let mercGain = calculateKillExperienceGainPure113c({
-      rawExp,
-      clvl: mercLvl,
-      mlvl,
-      addExpPct: mercAddExpPct,
-    })
-    if (pKiller !== pLiveMerc) {
-      mercGain = sdiv32(imul32(mercGain, 0x56), 256)
-    }
-    if (mercGain > 0) {
-      bindK2KernelGlobals113c(m)
-      HIRELING_GrantSharedExpAndCheckLevelUp_6FCFDCB0_113c(
-        m,
-        mercGain,
-        pGame,
-        pKillerPlayer,
-        pLiveMerc,
-        mercLvl,
-      )
-    }
-  }
-
-  const clvl = STATLIST_GetUnitStat113c(m, pKillerPlayer, 0x0c, 0) | 0
-  const addExpPct = STATLIST_GetUnitStat113c(m, pKillerPlayer, 0x55, 0) | 0
-  const gain = calculateKillExperienceGainPure113c({
-    rawExp,
-    clvl,
-    mlvl,
-    addExpPct,
-  })
-  if (gain > 0) {
-    SUNITDMG_AddPlayerExperienceAndCheckLevelUp113c(m, pGame, pKillerPlayer, gain, true)
-  }
+  SUNITDMG_DistributeExperience113c(m, pGame, pKiller, pMonster, true)
 }

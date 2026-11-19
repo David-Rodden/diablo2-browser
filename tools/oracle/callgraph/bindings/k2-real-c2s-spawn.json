@@ -50,8 +50,8 @@
     "name": "AI_MapAiAction4_WalkAndMode8",
     "kernFile": "src/d2kern-113c/game/town-npc-ai-113c.ts",
     "tsSymbol": "AI_MapAiAction4_WalkAndMode8_113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -212,8 +212,8 @@
     "name": "OBJECT_SyncStateAndEventsToClient",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-a-113c.ts",
     "tsSymbol": "OBJECT_SyncStateAndEventsToClient113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/boot-init-gap-a-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/boot-init-gap-a-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -302,8 +302,8 @@
     "name": "SKILLS_StartPlayerSkillAnimOrCast",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
     "tsSymbol": "SKILLS_StartPlayerSkillAnimOrCast113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces; 1:1 SparseMemory113c port in src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
   },
   {
     "module": "D2Game",
@@ -311,8 +311,8 @@
     "name": "SrvDoFunc_001_Attack",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
     "tsSymbol": "SrvDoFunc_001_Attack113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces; 1:1 SparseMemory113c port in src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
   },
   {
     "module": "D2Game",
@@ -356,8 +356,8 @@
     "name": "C2S_ResolveDualWieldThrowSkill",
     "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
     "tsSymbol": "C2S_ResolveDualWieldThrowSkill113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces; 1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
   },
   {
     "module": "D2Game",
@@ -374,8 +374,8 @@
     "name": "C2S_UnpackAndValidateLocationPacket",
     "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
     "tsSymbol": "C2S_UnpackAndValidateLocationPacket113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces; 1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
   },
   {
     "module": "D2Game",
@@ -383,8 +383,8 @@
     "name": "C2S_ValidateTargetUnitDistance",
     "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
     "tsSymbol": "C2S_ValidateTargetUnitDistance113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces; 1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
   },
   {
     "module": "D2Game",
@@ -392,8 +392,8 @@
     "name": "C2S_UnpackAndValidateUnitPacket",
     "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
     "tsSymbol": "C2S_UnpackAndValidateUnitPacket113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces; 1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
   },
   {
     "module": "D2Game",
@@ -401,8 +401,8 @@
     "name": "C2S_ExecuteSkillOnLocation",
     "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
     "tsSymbol": "C2S_ExecuteSkillOnLocation113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces; 1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
   },
   {
     "module": "D2Game",
@@ -419,8 +419,8 @@
     "name": "C2S_Packet03_RunToLocation",
     "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
     "tsSymbol": "C2S_Packet03_RunToLocation113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces; 1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
   },
   {
     "module": "D2Game",
@@ -437,8 +437,8 @@
     "name": "C2S_Packet01_WalkToLocation",
     "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
     "tsSymbol": "C2S_Packet01_WalkToLocation113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces; 1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
   },
   {
     "module": "D2Game",
@@ -446,8 +446,8 @@
     "name": "C2S_RunToTargetAndSetQueuedSkill",
     "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
     "tsSymbol": "C2S_RunToTargetAndSetQueuedSkill113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces; 1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
   },
   {
     "module": "D2Game",
@@ -455,8 +455,8 @@
     "name": "C2S_Packet0C_RightSkillOnLocation",
     "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
     "tsSymbol": "C2S_Packet0C_RightSkillOnLocation113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces; 1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
   },
   {
     "module": "D2Game",
@@ -473,8 +473,8 @@
     "name": "C2S_ExecuteSkillOnUnit",
     "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
     "tsSymbol": "C2S_ExecuteSkillOnUnit113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces; 1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
   },
   {
     "module": "D2Game",
@@ -500,8 +500,8 @@
     "name": "C2S_Packet0D_RightSkillOnUnit",
     "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
     "tsSymbol": "C2S_Packet0D_RightSkillOnUnit113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay; Diff-verified 1:1 in dll\u2229ts across full-horizon strict zero-divergence K3 replay (p52-necromancer-curses F2000/2000, p52-sorceress-elemental F1800/1800, p52-sorceress-fire-dot F1800/1800) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -527,8 +527,8 @@
     "name": "C2S_Packet06_LeftSkillOnUnit",
     "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
     "tsSymbol": "C2S_Packet06_LeftSkillOnUnit113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces; 1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
   },
   {
     "module": "D2Game",
@@ -572,8 +572,8 @@
     "name": "C2S_Packet3C_SelectSkill",
     "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
     "tsSymbol": "C2S_Packet3C_SelectSkill113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces; 1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
   },
   {
     "module": "D2Game",
@@ -599,8 +599,8 @@
     "name": "SUNIT_DeactivateUnitStatesAndEvents",
     "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
     "tsSymbol": "SUNIT_DeactivateUnitStatesAndEvents113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/regpop-spawn-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces; 1:1 SparseMemory113c port in src/d2kern-113c/game/regpop-spawn-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
   },
   {
     "module": "D2Game",

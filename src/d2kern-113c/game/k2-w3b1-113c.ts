@@ -83,7 +83,6 @@ import {
   STATES_ToggleGfxStateFlag113c,
   STATLIST_AllocList113c,
   STATLIST_GetMaxLifeFromUnit113c,
-  STATLIST_GetStatListFromUnitAndFlag113c,
   STATLIST_GetStatListFromUnitStateAndFlag113c,
   STATLIST_GetUnitBaseStat113c,
   STATLIST_GetUnitLifePercent113c,
@@ -127,19 +126,19 @@ import {
   AIGENERAL_GetPackLeaderUnit113c,
   AI_CastSkillMode14_113c,
   AI_CastSkillWithMode113c,
-  AI_LookupDispatchTableRow113c,
   AI_StartAttackMode113c,
   SUNITDMG_FreeAttackerCombatList113c,
 } from './ai-fallen-113c.ts'
-import { AIGENERAL_FlushAllAiCommands113c } from './boot-init-gap-a-113c.ts'
 import { D2GAME_SUNIT_IterateAllLivingPlayers113c } from './boot-init-gap-b-113c.ts'
 import {
-  ITEMS_SpawnDroppedItemAtCoords113c,
   SUNITDMG_DistributeExperience113c,
   SUNITDMG_ExecuteEvents113c,
   SUNITDMG_FindCombatDamageData113c,
 } from './combat-a1c-113c.ts'
-import { D2GAME_CreateItemEx_6FC31490_113c } from './k2-real-itemdrop-113c.ts'
+import {
+  D2GAME_CreateItemEx_6FC31490_113c,
+  ITEMS_RollStaffModsOnItem_6FC33DE0_113c,
+} from './k2-real-itemdrop-113c.ts'
 import { SUNIT_GetServerUnit113c } from './game-strc.ts'
 import { STATES_CreateOrUpdateAuraStatList113c } from './k2-gap-itemdef-113c.ts'
 import {
@@ -239,7 +238,7 @@ export interface K2W3B1Hooks113c
 const OBJRGN_CPP_VA_113C = 0x6fd1d174
 const D2GAME_GDW_GOLD_CLASS_ID_VA_113C = 0x6fd31f94
 
-let k2W3B1StackPtr = 0x7efb0000
+let k2W3B1StackPtr = 0x7e0e0000
 
 function sx8(v: number): number {
   return (v << 24) >> 24
@@ -371,48 +370,6 @@ function copyCStringToMem113c(m: D2KernMemory113c, pDst: number, pSrc: number): 
     dst = (dst + 1) >>> 0
     if (ch === 0) break
   }
-}
-
-function transitionMonsterSpecialAiState6FCBD230(
-  m: D2KernMemory113c,
-  pGame: number,
-  pMonster: number,
-  pAiGeneral: number,
-  nSpecAi: number,
-): void {
-  if (STATES_CheckState113c(m, pMonster, 0x36) !== 0) {
-    throw new D2CommonAssertError('MonsterAI.cpp', 0x1a6)
-  }
-  if (pGame === 0 || pMonster === 0 || pAiGeneral === 0) return
-  if (m.u32(pMonster >>> 0) !== 1) return
-
-  const pDataTables = getDataTablesPtr113c(m)
-  const nMonStatsCount = pDataTables !== 0 ? m.u32((pDataTables + 0xa80) >>> 0) | 0 : 0
-  const monClassId = m.u32((pMonster + 0x04) >>> 0) | 0
-  let effSpecAi = nSpecAi | 0
-  if (nMonStatsCount > 0 && monClassId >= nMonStatsCount) {
-    effSpecAi = 1
-  }
-
-  const curThinkFn = m.u32((pAiGeneral + 0x04) >>> 0) >>> 0
-  if (curThinkFn !== 0) {
-    const pCurRow = AI_LookupDispatchTableRow113c(m, pMonster, m.u32(pAiGeneral) | 0) >>> 0
-    if (pCurRow !== 0 && curThinkFn === (m.u32((pCurRow + 0x08) >>> 0) >>> 0)) {
-      const altThinkFn = m.u32((pCurRow + 0x0c) >>> 0) >>> 0
-      if (altThinkFn !== 0) {
-        m.setU32(pAiGeneral, effSpecAi >>> 0)
-        m.setU32((pAiGeneral + 0x04) >>> 0, altThinkFn)
-        return
-      }
-    }
-  }
-
-  m.setU32((pAiGeneral + 0x14) >>> 0, 0)
-  m.setU32((pAiGeneral + 0x18) >>> 0, 0)
-  m.setU32((pAiGeneral + 0x1c) >>> 0, 0)
-  AIGENERAL_FlushAllAiCommands113c(m, pGame, pMonster)
-  m.setU32(pAiGeneral, effSpecAi >>> 0)
-  AI_InitMonsterAiThinkFn113c(m, pMonster)
 }
 
 /**
@@ -1088,7 +1045,7 @@ export function SKILLS_MountImpOnSiegeBeast_6FC2D040_113c(
       pAiGeneral = m.u32((pMonData + 0x28) >>> 0) >>> 0
     }
   }
-  transitionMonsterSpecialAiState6FCBD230(m, game, beast, pAiGeneral, 0x10)
+  AI_InitMonsterAiThinkFn113c(m, beast, game, pAiGeneral, 0x10)
 }
 
 /**
@@ -1161,7 +1118,7 @@ export function SKILLS_DismountImpFromSiegeBeast_6FC2DB00_113c(
   m.setU32((beast + 0xc4) >>> 0, (m.u32((beast + 0xc4) >>> 0) | 0x0e) >>> 0)
   EVENT_DeleteEventByArg14_113c(m, game, beast, 5, 0)
   const pAiGen = MONSTER_GetAiGeneralPtr_6FC218E0_113c(m, beast) >>> 0
-  transitionMonsterSpecialAiState6FCBD230(m, game, beast, pAiGen, 0)
+  AI_InitMonsterAiThinkFn113c(m, beast, game, pAiGen, 0)
 }
 
 /**
@@ -1311,15 +1268,15 @@ export function ITEMS_PopulateItemDropStruct_6FC2E410_113c(
   const animMode = item !== 0 ? m.u32((item + 0x10) >>> 0) >>> 0 : 0
   m.setU32((drop + 0x18) >>> 0, animMode)
 
-  m.setU32((drop + 0x30) >>> 0, ITEMS_GetItemTypeFromItem113c(m, item) >>> 0)
+  m.setU32((drop + 0x30) >>> 0, ITEMS_GetItemQuality113c(m, item) >>> 0)
   m.setU32((drop + 0x1c) >>> 0, readUnitPosXInline113c(m, item) >>> 0)
   m.setU32((drop + 0x20) >>> 0, readUnitPosYInline113c(m, item) >>> 0)
 
-  const nQuality = ITEMS_GetItemQuality113c(m, item) | 0
-  if (nQuality === 4) {
+  const nItemType = ITEMS_GetItemTypeFromItem113c(m, item) | 0
+  if (nItemType === 4) {
     const goldQty = STATLIST_GetUnitStat113c(m, item, 0x0e, 0) | 0
     m.setU32((drop + 0x34) >>> 0, goldQty >>> 0)
-  } else if (ITEMS_GetCommandFlags113c(m, item) !== 0) {
+  } else if (ITEMS_GetTwoHandedFlag113c(m, item) !== 0) {
     const qty = STATLIST_GetUnitStat113c(m, item, 0x46, 0) | 0
     if (qty < 0) {
       throw new D2CommonAssertError('', 0xca9)
@@ -1332,14 +1289,14 @@ export function ITEMS_PopulateItemDropStruct_6FC2E410_113c(
   m.setU32((drop + 0x48) >>> 0, m.u32((item + 0x28) >>> 0))
   m.setU32((drop + 0x4c) >>> 0, ITEMS_GetOwnerGuid113c(m, item) >>> 0)
   m.setU32((drop + 0x40) >>> 0, ITEMS_GetItemCell113c(m, item) >>> 0)
-  m.setU32((drop + 0x44) >>> 0, ITEMS_GetTwoHandedFlag113c(m, item) >>> 0)
+  m.setU32((drop + 0x44) >>> 0, ITEMS_GetCommandFlags113c(m, item) >>> 0)
   m.setU32((drop + 0x38) >>> 0, STATLIST_GetUnitStat113c(m, item, 0x48, 0) >>> 0)
   m.setU32((drop + 0x3c) >>> 0, STATLIST_GetUnitBaseStat113c(m, item, 0x49, 0) >>> 0)
   m.setU32((drop + 0x40) >>> 0, ITEMS_GetItemCell113c(m, item) >>> 0)
   m.setU32((drop + 0x2c) >>> 0, 0)
 
-  const nQuality2 = ITEMS_GetItemQuality113c(m, item) | 0
-  if (nQuality2 === 7) {
+  const nItemType2 = ITEMS_GetItemTypeFromItem113c(m, item) | 0
+  if (nItemType2 === 7) {
     const pEarName = ITEMS_GetEarName113c(m, item) >>> 0
     copyCStringToMem113c(m, (drop + 0x58) >>> 0, pEarName)
     const earLvl = ITEMS_GetEarLevel113c(m, item) & 0xff
@@ -1749,39 +1706,29 @@ export function ITEMS_AddClassSpecificAutoModSkills_6FC33320_113c(
   if (pItem === 0) {
     return
   }
-  const pItemSeed = ITEMS_GetItemSeed113c(m, pItem) >>> 0
-  let pStatList = STATLIST_GetStatListFromUnitAndFlag113c(m, pItem, 0x40) >>> 0
-  if (pStatList === 0) {
-    const dwUnitType = m.u32(pItem)
-    const dwUnitId = m.u32(pItem + 0x0c)
-    const hPool = m.u32(pItem + 0x80)
-    pStatList = STATLIST_AllocStatList113c(m, hPool, 0x40, 0, dwUnitType, dwUnitId) >>> 0
-    if (pStatList === 0) {
-      return
-    }
-    STATLIST_MergeStatLists113c(m, pItem, pStatList, 1)
-  }
-
-  let baseTier = 1
-  if (nItemLevel >= 0x25) {
-    baseTier = 5
-  } else if (nItemLevel >= 0x19) {
-    baseTier = 4
-  } else if (nItemLevel >= 0x13) {
-    baseTier = 3
-  } else if (nItemLevel >= 0x0c) {
-    baseTier = 2
-  }
-
-  const chosenSkills = new Int32Array(3)
-  let countRoll = ((stepSeed64At113c(m, pItemSeed) % 100) + nBonus) | 0
+  const chosenSkills = new Int32Array([-1, -1, -1])
+  const pItemSeed0 = ITEMS_GetItemSeed113c(m, pItem) >>> 0
+  const countRoll = (((stepSeed64At113c(m, pItemSeed0) >>> 0) % 100) + (nBonus | 0)) | 0
   let numSkills = 0
   if (countRoll > 0x5a) {
     numSkills = 3
   } else if (countRoll > 0x46) {
     numSkills = 2
-  } else if (countRoll > 0x1e || nBonus !== 0) {
+  } else if (countRoll > 0x1e || (nBonus | 0) !== 0) {
     numSkills = 1
+  } else {
+    return
+  }
+
+  let baseTier = 1
+  if ((nItemLevel | 0) > 0x24 && (ITEMS_GetItemFormat113c(m, pItem) & 0xffff) >= 0x64) {
+    baseTier = 5
+  } else if ((nItemLevel | 0) > 0x18) {
+    baseTier = 4
+  } else if ((nItemLevel | 0) > 0x12) {
+    baseTier = 3
+  } else if ((nItemLevel | 0) > 0x0b) {
+    baseTier = 2
   }
 
   if (numSkills <= 0) {
@@ -1790,76 +1737,74 @@ export function ITEMS_AddClassSpecificAutoModSkills_6FC33320_113c(
 
   for (let slot = 0; slot < numSkills; slot = (slot + 1) | 0) {
     let tier = baseTier
-    const tierRoll = (stepSeed64At113c(m, pItemSeed) % 100) | 0
+    const pItemSeed1 = ITEMS_GetItemSeed113c(m, pItem) >>> 0
+    const tierRoll = ((stepSeed64At113c(m, pItemSeed1) >>> 0) % 100) | 0
     if (tierRoll > 0x50) {
-      tier = (baseTier + 1) | 0
+      tier = (tier + 1) | 0
     } else if (tierRoll <= 0x1e) {
       if (tierRoll > 0x0a) {
-        tier = (baseTier - 1) | 0
+        tier = (tier - 1) | 0
       } else {
-        tier = (baseTier - 2) | 0
+        tier = (tier - 2) | 0
       }
     }
-    if (tier > 6) {
-      tier = 6
-    } else if (tier < 1) {
+    if (tier < 1) {
       tier = 1
     }
-
-    const tierBaseSkill = (nBaseSkillId + imul32((tier - 1) | 0, 5)) | 0
-    let attempts = 0
-    let skillId = 0
-    while (attempts < 6) {
-      const pick = (stepSeed64At113c(m, pItemSeed) % 5) | 0
-      const candidate = (tierBaseSkill + pick) | 0
-      let duplicate = false
-      for (let prev = 0; prev < slot; prev = (prev + 1) | 0) {
-        if (chosenSkills[prev] === candidate) {
-          duplicate = true
-          break
-        }
-      }
-      if (!duplicate) {
-        const pSkillTxt = DATATBLS_GetSkillsTxtRecord113c(m, candidate) >>> 0
-        if (pSkillTxt !== 0) {
-          let usable = true
-          for (let iTypeIdx = 0; iTypeIdx < 3; iTypeIdx = (iTypeIdx + 1) | 0) {
-            const wIType = sx16(m.u16(pSkillTxt + 0x26 + iTypeIdx * 2))
-            if (wIType > 0) {
-              usable = false
-              if (ITEMS_CheckItemTypeIdMemPort113c(m, pItem, wIType) !== 0) {
-                usable = true
-                break
-              }
-            }
-          }
-          if (usable) {
-            for (let eTypeIdx = 0; eTypeIdx < 2; eTypeIdx = (eTypeIdx + 1) | 0) {
-              const wEType = sx16(m.u16(pSkillTxt + 0x2c + eTypeIdx * 2))
-              if (wEType > 0 && ITEMS_CheckItemTypeIdMemPort113c(m, pItem, wEType) !== 0) {
-                usable = false
-                break
-              }
-            }
-          }
-          if (usable) {
-            skillId = candidate
-            break
-          }
-        }
-      }
-      attempts = (attempts + 1) | 0
+    if ((ITEMS_GetItemQuality113c(m, pItem) | 0) === 1 && tier >= 4) {
+      tier = 4
     }
 
-    if (skillId !== 0) {
-      chosenSkills[slot] = skillId
-      const lvlRoll = ((stepSeed64At113c(m, pItemSeed) % 100) + (nBonus >> 1)) | 0
-      let sLvl = 1
+    const tierBaseSkill = ((nBaseSkillId | 0) + imul32(tier, 5) - 5) | 0
+    let attempts = 6
+    let skillId = tierBaseSkill
+    while (attempts > 0) {
+      const pItemSeed2 = ITEMS_GetItemSeed113c(m, pItem) >>> 0
+      const pick = ((stepSeed64At113c(m, pItemSeed2) >>> 0) % 5) | 0
+      const candidate = (tierBaseSkill + pick) | 0
+      skillId = candidate
+
+      let rejectedByType = false
+      const pSkillTxt = DATATBLS_GetSkillsTxtRecord113c(m, candidate) >>> 0
+      if (pSkillTxt !== 0) {
+        const wITypeA1 = sx16(m.u16((pSkillTxt + 0x18) >>> 0))
+        if (wITypeA1 > 0 && ITEMS_CheckItemTypeIdMemPort113c(m, pItem, wITypeA1) === 0) {
+          rejectedByType = true
+        }
+      }
+
+      if (
+        !rejectedByType &&
+        candidate !== chosenSkills[0] &&
+        candidate !== chosenSkills[1] &&
+        candidate !== chosenSkills[2]
+      ) {
+        chosenSkills[slot] = candidate
+        break
+      }
+      attempts = (attempts - 1) | 0
+    }
+
+    let sLvl = 1
+    const wFmt = ITEMS_GetItemFormat113c(m, pItem) & 0xffff
+    if (wFmt < 0x64 || (ITEMS_GetItemQuality113c(m, pItem) | 0) !== 1) {
+      const pItemSeed3 = ITEMS_GetItemSeed113c(m, pItem) >>> 0
+      const lvlRoll = (((stepSeed64At113c(m, pItemSeed3) >>> 0) % 100) + sdiv32(nBonus | 0, 2)) | 0
       if (lvlRoll >= 0x5a) {
         sLvl = 3
       } else if (lvlRoll >= 0x3c) {
         sLvl = 2
       }
+    }
+
+    let pStatList = STATLIST_GetStatListFromUnitStateAndFlag113c(m, pItem, 0, 0x40) >>> 0
+    if (pStatList === 0) {
+      const dwUnitId = pItem !== 0 ? m.u32((pItem + 0x0c) >>> 0) : 0xffffffff
+      const hPool = pItem !== 0 ? m.u32((pItem + 0x08) >>> 0) : 0
+      pStatList = STATLIST_AllocStatList113c(m, hPool, 0x40, 0, 4, dwUnitId) >>> 0
+      STATLIST_MergeStatLists113c(m, pItem, pStatList, 1)
+    }
+    if (pStatList !== 0) {
       STATLIST_SetStatIfListIsValid113c(m, pStatList, 0x6b, sLvl, skillId)
     }
   }
@@ -1878,30 +1823,9 @@ export function ITEMS_AddStaffModSkillsByTier_6FC335E0_113c(
   if (pItem === 0) {
     return
   }
-  const pItemSeed = ITEMS_GetItemSeed113c(m, pItem) >>> 0
-  let pStatList = STATLIST_GetStatListFromUnitAndFlag113c(m, pItem, 0x40) >>> 0
-  if (pStatList === 0) {
-    const dwUnitType = m.u32(pItem)
-    const dwUnitId = m.u32(pItem + 0x0c)
-    const hPool = m.u32(pItem + 0x80)
-    pStatList = STATLIST_AllocStatList113c(m, hPool, 0x40, 0, dwUnitType, dwUnitId) >>> 0
-    if (pStatList === 0) {
-      return
-    }
-    STATLIST_MergeStatLists113c(m, pItem, pStatList, 1)
-  }
-
-  let baseTier = 1
-  if (nItemLevel >= 0x19) {
-    baseTier = 4
-  } else if (nItemLevel >= 0x13) {
-    baseTier = 3
-  } else if (nItemLevel >= 0x0c) {
-    baseTier = 2
-  }
-
-  const chosenSkills = new Int32Array(3)
-  const countRoll = (stepSeed64At113c(m, pItemSeed) % 100) | 0
+  const chosenSkills = new Int32Array([-1, -1, -1])
+  const pItemSeed0 = ITEMS_GetItemSeed113c(m, pItem) >>> 0
+  const countRoll = ((stepSeed64At113c(m, pItemSeed0) >>> 0) % 100) | 0
   let numSkills = 0
   if (countRoll > 0x5a) {
     numSkills = 3
@@ -1909,6 +1833,17 @@ export function ITEMS_AddStaffModSkillsByTier_6FC335E0_113c(
     numSkills = 2
   } else if (countRoll > 0x1e) {
     numSkills = 1
+  } else {
+    return
+  }
+
+  let baseTier = 1
+  if ((nItemLevel | 0) > 0x18) {
+    baseTier = 4
+  } else if ((nItemLevel | 0) > 0x12) {
+    baseTier = 3
+  } else if ((nItemLevel | 0) > 0x0b) {
+    baseTier = 2
   }
 
   if (numSkills <= 0) {
@@ -1917,7 +1852,8 @@ export function ITEMS_AddStaffModSkillsByTier_6FC335E0_113c(
 
   for (let slot = 0; slot < numSkills; slot = (slot + 1) | 0) {
     let tier = baseTier
-    const tierRoll = (stepSeed64At113c(m, pItemSeed) % 100) | 0
+    const pItemSeed1 = ITEMS_GetItemSeed113c(m, pItem) >>> 0
+    const tierRoll = ((stepSeed64At113c(m, pItemSeed1) >>> 0) % 100) | 0
     if (tierRoll > 0x50) {
       tier = (baseTier + 1) | 0
     } else if (tierRoll <= 0x1e) {
@@ -1927,43 +1863,45 @@ export function ITEMS_AddStaffModSkillsByTier_6FC335E0_113c(
         tier = (baseTier - 2) | 0
       }
     }
-    if (tier > 4) {
-      tier = 4
-    } else if (tier < 1) {
+    if (tier < 1) {
       tier = 1
     }
 
-    const tierBaseSkill = (nBaseSkillId + imul32((tier - 1) | 0, 5)) | 0
-    let attempts = 0
-    let skillId = 0
-    while (attempts < 6) {
-      const pick = (stepSeed64At113c(m, pItemSeed) % 5) | 0
+    const tierBaseSkill = ((nBaseSkillId | 0) + imul32(tier, 5) - 5) | 0
+    let skillId = tierBaseSkill
+    for (let guard = 0; guard < 1024; guard = (guard + 1) | 0) {
+      const pItemSeed2 = ITEMS_GetItemSeed113c(m, pItem) >>> 0
+      const pick = ((stepSeed64At113c(m, pItemSeed2) >>> 0) % 5) | 0
       const candidate = (tierBaseSkill + pick) | 0
-      if (candidate !== 0x49) {
-        let duplicate = false
-        for (let prev = 0; prev < slot; prev = (prev + 1) | 0) {
-          if (chosenSkills[prev] === candidate) {
-            duplicate = true
-            break
-          }
-        }
-        if (!duplicate) {
-          skillId = candidate
-          break
-        }
+      skillId = candidate
+      if (
+        candidate !== 0x49 &&
+        candidate !== chosenSkills[0] &&
+        candidate !== chosenSkills[1] &&
+        candidate !== chosenSkills[2]
+      ) {
+        break
       }
-      attempts = (attempts + 1) | 0
+    }
+    chosenSkills[slot] = skillId
+
+    const pItemSeed3 = ITEMS_GetItemSeed113c(m, pItem) >>> 0
+    const lvlRoll = ((stepSeed64At113c(m, pItemSeed3) >>> 0) % 100) | 0
+    let sLvl = 1
+    if (lvlRoll >= 0x5a) {
+      sLvl = 3
+    } else if (lvlRoll >= 0x3c) {
+      sLvl = 2
     }
 
-    if (skillId !== 0) {
-      chosenSkills[slot] = skillId
-      const lvlRoll = (stepSeed64At113c(m, pItemSeed) % 100) | 0
-      let sLvl = 1
-      if (lvlRoll >= 0x5a) {
-        sLvl = 3
-      } else if (lvlRoll >= 0x3c) {
-        sLvl = 2
-      }
+    let pStatList = STATLIST_GetStatListFromUnitStateAndFlag113c(m, pItem, 0, 0x40) >>> 0
+    if (pStatList === 0) {
+      const dwUnitId = pItem !== 0 ? m.u32((pItem + 0x0c) >>> 0) : 0xffffffff
+      const hPool = pItem !== 0 ? m.u32((pItem + 0x08) >>> 0) : 0
+      pStatList = STATLIST_AllocStatList113c(m, hPool, 0x40, 0, 4, dwUnitId) >>> 0
+      STATLIST_MergeStatLists113c(m, pItem, pStatList, 1)
+    }
+    if (pStatList !== 0) {
       STATLIST_SetStatIfListIsValid113c(m, pStatList, 0x6b, sLvl, skillId)
     }
   }
@@ -1998,7 +1936,7 @@ export function ITEMS_ApplyLowQualityItemMods_6FC337F0_113c(
         maxDur = 1
       }
       const halfDur = maxDur >>> 1
-      let curDur = (halfDur + SEED_RollLimitedFast113c(m, (pItem + 0x20) >>> 0, maxDur)) | 0
+      let curDur = (halfDur + SEED_RollLimitedFast113c(m, (pItem + 0x20) >>> 0, halfDur)) | 0
       if (curDur === 0) {
         curDur = 1
       }
@@ -2068,50 +2006,55 @@ export function ITEMS_ApplyCraftedOrSetItemCell_6FC33A30_113c(
     return 0
   }
 
-  if (ITEMS_CanItemLoseDurability113c(m, pItem) !== 0) {
-    let curDur = ((STATLIST_GetUnitBaseStat113c(m, pItem, 0x48, 0) | 0) * 2) | 0
-    if (curDur > 0xff) curDur = 0xff
-    let maxDur = ((STATLIST_GetUnitBaseStat113c(m, pItem, 0x49, 0) | 0) * 2) | 0
-    if (maxDur > 0xff) maxDur = 0xff
-    STATLIST_SetUnitStat113c(m, pItem, 0x48, curDur, 0)
-    STATLIST_SetUnitStat113c(m, pItem, 0x49, maxDur, 0)
-  }
-
   const pItemSeed = ITEMS_GetItemSeed113c(m, pItem) >>> 0
-  const savedSeedLo = m.u32(pItemSeed)
-  const pDataTables = readSgptDataTables113c(m)
-  const nSetsCount = pDataTables !== 0 ? m.u32(pDataTables + 0xc10) | 0 : 0
-  const pSetsTxt = pDataTables !== 0 ? m.u32(pDataTables + 0xc0c) : 0
-  const dwItemCode = m.u32(pItemsTxt + 0x80)
+  const savedSeedLo = m.u32(pItemSeed) >>> 0
   const wItemFormat = ITEMS_GetItemFormat113c(m, pItem) & 0xffff
 
+  let curDur = ((STATLIST_GetUnitStat113c(m, pItem, 0x48, 0) | 0) * 2) | 0
+  if (curDur >= 0xff) curDur = 0xff
+  let maxDur = ((STATLIST_GetUnitBaseStat113c(m, pItem, 0x49, 0) | 0) * 2) | 0
+  if (maxDur >= 0xff) maxDur = 0xff
+  STATLIST_SetUnitStat113c(m, pItem, 0x48, curDur, 0)
+  STATLIST_SetUnitStat113c(m, pItem, 0x49, maxDur, 0)
+
+  const pDataTables = readSgptDataTables113c(m)
+  const nSetsTotal = pDataTables !== 0 ? m.u32(pDataTables + 0xc10) | 0 : 0
+  const pSetsTxt = pDataTables !== 0 ? m.u32(pDataTables + 0xc0c) >>> 0 : 0
+  let nClassicSets = 0
+  if (nSetsTotal > 0 && pSetsTxt !== 0) {
+    while (nClassicSets < nSetsTotal) {
+      if (m.u16((pSetsTxt + imul32(nClassicSets, 0x128) + 0x04) >>> 0) >= 0x64) {
+        break
+      }
+      nClassicSets = (nClassicSets + 1) | 0
+    }
+  }
+
+  const pItemSeed2 = ITEMS_GetItemSeed113c(m, pItem) >>> 0
+  const startIdx = nClassicSets > 0 ? rollSeedPtrViaSeedRoll113c(m, pItemSeed2, nClassicSets) | 0 : 0
   let chosenSetItemId = -1
-  let attempts = 0
-  if (nSetsCount > 0 && pSetsTxt !== 0) {
-    while (attempts < 10) {
-      const setIdx = SEED_RollLimitedFast113c(m, pItemSeed, nSetsCount) | 0
-      if (setIdx >= 0 && setIdx < nSetsCount) {
-        const pSetRec = (pSetsTxt + imul32(setIdx, 0x128)) >>> 0
-        if (m.u16(pSetRec + 0x02) < 0x64 || wItemFormat >= 0x64) {
-          const numItemsInSet = m.u32(pSetRec + 0x0c) | 0
-          for (let j = 0; j < numItemsInSet; j = (j + 1) | 0) {
-            const pSetItemPtr = m.u32(pSetRec + 0x110 + j * 4) >>> 0
-            if (pSetItemPtr !== 0 && m.u32(pSetItemPtr + 0x28) === dwItemCode) {
-              chosenSetItemId = sx16(m.u16(pSetItemPtr))
-              break
-            }
-          }
-          if (chosenSetItemId !== -1) {
-            break
-          }
+  if (nClassicSets > 0 && pSetsTxt !== 0) {
+    const dwItemCode = m.u32((pItemsTxt + 0x80) >>> 0) >>> 0
+    for (let i = 0; i < nClassicSets; i = (i + 1) | 0) {
+      const setIdx = (((i + startIdx) >>> 0) % (nClassicSets >>> 0)) | 0
+      const pSetRec = (pSetsTxt + imul32(setIdx, 0x128)) >>> 0
+      if (m.u16((pSetRec + 0x04) >>> 0) >= 0x64 && wItemFormat < 0x64) {
+        continue
+      }
+      const numItemsInSet = m.u32((pSetRec + 0x0c) >>> 0) | 0
+      for (let j = 0; j < numItemsInSet; j = (j + 1) | 0) {
+        const pSetItemPtr = m.u32((pSetRec + 0x110 + (j << 2)) >>> 0) >>> 0
+        if (pSetItemPtr !== 0 && (m.u32((pSetItemPtr + 0x28) >>> 0) >>> 0) === dwItemCode) {
+          chosenSetItemId = sx16(m.u16(pSetItemPtr))
+          break
         }
       }
-      attempts = (attempts + 1) | 0
     }
   }
 
   if (chosenSetItemId === -1) {
-    SEED_InitLowSeed113c(m, pItemSeed, savedSeedLo)
+    const pItemSeed3 = ITEMS_GetItemSeed113c(m, pItem) >>> 0
+    SEED_InitLowSeed113c(m, pItemSeed3, savedSeedLo)
     return 0
   }
 
@@ -2136,118 +2079,77 @@ export function ITEMS_RollAndApplyUniqueItem_6FC33C20_113c(
     return 0
   }
 
-  if (ITEMS_CanItemLoseDurability113c(m, pItem) !== 0) {
-    let curDur = ((STATLIST_GetUnitBaseStat113c(m, pItem, 0x48, 0) | 0) * 2) | 0
-    if (curDur > 0xff) curDur = 0xff
-    let maxDur = ((STATLIST_GetUnitBaseStat113c(m, pItem, 0x49, 0) | 0) * 2) | 0
-    if (maxDur > 0xff) maxDur = 0xff
-    STATLIST_SetUnitStat113c(m, pItem, 0x48, curDur, 0)
-    STATLIST_SetUnitStat113c(m, pItem, 0x49, maxDur, 0)
-  }
-
+  const wItemFormat = ITEMS_GetItemFormat113c(m, pItem) & 0xffff
+  const dwItemCode = m.u32((pItemsTxt + 0x80) >>> 0) >>> 0
+  const nItemLvl = ITEMS_GetItemLevel113c(m, pItem) | 0
   const pDataTables = readSgptDataTables113c(m)
   const nSetItemsCount = pDataTables !== 0 ? m.u32(pDataTables + 0xc1c) | 0 : 0
-  const pSetItemsTxt = pDataTables !== 0 ? m.u32(pDataTables + 0xc18) : 0
-  const dwItemCode = m.u32(pItemsTxt + 0x80)
-  const wItemFormat = ITEMS_GetItemFormat113c(m, pItem) & 0xffff
-  const nItemLvl = ITEMS_GetItemLevel113c(m, pItem) | 0
+  const pSetItemsTxt = pDataTables !== 0 ? m.u32(pDataTables + 0xc18) >>> 0 : 0
+  if (nSetItemsCount <= 0 || pSetItemsTxt === 0) {
+    return 0
+  }
 
-  const matchIndices = new Int32Array(0x40)
-  const matchRecs = new Uint32Array(0x40)
+  const matchIndices = new Int32Array(0x100)
+  const matchWeights = new Int32Array(0x100)
   let matchCount = 0
   let totalWeight = 0
   let chosenIdx = -1
 
   for (let i = 0; i < nSetItemsCount; i = (i + 1) | 0) {
     const pRec = (pSetItemsTxt + imul32(i, 0x1b8)) >>> 0
-    if (m.u16(pRec + 0x22) >= 0x64 && wItemFormat < 0x64) {
+    if (m.u16((pRec + 0x22) >>> 0) >= 0x64 && wItemFormat < 0x64) {
       continue
     }
-    const forcedIdPlusOne = pItemDrop !== 0 ? m.u32(pItemDrop + 0x40) | 0 : 0
-    let bForced = false
-    if (forcedIdPlusOne > 0 && (forcedIdPlusOne - 1) === i) {
-      bForced = true
-    } else if (sx16(m.u16(pRec + 0x30)) > nItemLvl) {
+    if (sx16(m.u16((pRec + 0x30) >>> 0)) > nItemLvl) {
       continue
     }
-    if (m.u32(pRec + 0x28) !== dwItemCode) {
+    if ((m.u32((pRec + 0x28) >>> 0) >>> 0) !== dwItemCode) {
       continue
     }
-    if (m.u16(pRec + 0x2c) === 0x1d && (pItemDrop === 0 || (m.u8(pItemDrop + 0x80) & 1) === 0)) {
+    if (m.u16((pRec + 0x2c) >>> 0) === 0x1d && (pItemDrop === 0 || (m.u8((pItemDrop + 0x80) >>> 0) & 1) === 0)) {
       continue
     }
-    if (bForced) {
+    const forcedIdPlusOne = pItemDrop !== 0 ? m.u32((pItemDrop + 0x40) >>> 0) >>> 0 : 0
+    if (forcedIdPlusOne > 0 && ((forcedIdPlusOne - 1) >>> 0) === (i >>> 0)) {
       chosenIdx = i
-      break
     }
-    const rarity = m.u32(pRec + 0x34) | 0
-    const weight = rarity !== 0 ? rarity : 1
-    if (matchCount < 0x40) {
+    const rawRarity = m.u32((pRec + 0x34) >>> 0) | 0
+    const weight = rawRarity !== 0 ? rawRarity : 1
+    if (matchCount < 0x100) {
       matchIndices[matchCount] = i
-      matchRecs[matchCount] = pRec
+      matchWeights[matchCount] = weight
       matchCount = (matchCount + 1) | 0
     }
     totalWeight = (totalWeight + weight) | 0
   }
 
   if (chosenIdx < 0) {
-    if (matchCount <= 0) {
+    if (totalWeight === 0) {
       return 0
     }
     const pItemSeed = ITEMS_GetItemSeed113c(m, pItem) >>> 0
-    let roll = SEED_RollRangeWithMinFast113c(m, pItemSeed, 0, (totalWeight + 1) | 0) | 0
+    let roll = totalWeight > 0 ? rollSeedPtrViaSeedRoll113c(m, pItemSeed, totalWeight) | 0 : 0
     let pos = 0
+    let found = false
     while (pos < matchCount) {
-      const pRec = matchRecs[pos]!
-      const rarity = m.u32(pRec + 0x34) | 0
-      const weight = rarity !== 0 ? rarity : 1
-      roll = (roll - weight) | 0
-      if (roll <= 0) {
+      const weight = matchWeights[pos]!
+      if (roll < weight) {
+        found = true
         break
       }
+      roll = (roll - weight) | 0
       pos = (pos + 1) | 0
     }
-    if (pos >= matchCount) {
-      pos = (matchCount - 1) | 0
-    }
-    chosenIdx = matchIndices[pos]! | 0
-    if (chosenIdx < 0) {
+    if (!found) {
       return 0
     }
+    chosenIdx = matchIndices[pos]! | 0
   }
 
   ITEMS_SetItemCell113c(m, pItem, chosenIdx)
   ITEMS_SetOrClearCommandFlags113c(m, pItem, 0x10, 0)
   ITEMS_ApplyItemQualityMods113c(m, 4, 0, pItem, 0, 0, 0)
   return 1
-}
-
-function rollStaffModsOnItemDrop6FC33DE0_113c(
-  m: D2KernMemory113c,
-  pItem: number,
-  pItemDrop: number,
-): void {
-  ITEMS_SpawnDroppedItemAtCoords113c(m, pItemDrop, 0, 0, 0, 0)
-  if (pItem === 0 || pItemDrop === 0) {
-    return
-  }
-  const nItemId = m.u32(pItem + 0x04) | 0
-  const pItemsTxt = DATATBLS_GetItemsTxtRecordMemPort113c(m, nItemId) >>> 0
-  if (pItemsTxt === 0) {
-    return
-  }
-  const nStaffModClass = (m.u8(pItemsTxt + 0x124) - 1) | 0
-  if (nStaffModClass < 0 || nStaffModClass >= 7) {
-    return
-  }
-  const nBaseSkillId = (6 + imul32(nStaffModClass, 30)) | 0
-  const nItemLevel = m.u32(pItemDrop + 0x0c) | 0
-  if ((ITEMS_GetItemFormat113c(m, pItem) & 0xffff) === 0) {
-    ITEMS_AddStaffModSkillsByTier_6FC335E0_113c(m, nItemLevel, pItem, nBaseSkillId)
-    return
-  }
-  const nBonus = (m.u8(pItemDrop + 0x80) & 0x20) !== 0 ? nItemLevel : 0
-  ITEMS_AddClassSpecificAutoModSkills_6FC33320_113c(m, pItem, nItemLevel, nBaseSkillId, nBonus)
 }
 
 /**
@@ -2281,7 +2183,7 @@ export function ITEMS_ApplyLowQualityAndSpawnMods_6FC33E60_113c(
         maxDur = 1
       }
       const halfDur = maxDur >>> 1
-      let curDur = (halfDur + SEED_RollLimitedFast113c(m, (pItem + 0x20) >>> 0, maxDur)) | 0
+      let curDur = (halfDur + SEED_RollLimitedFast113c(m, (pItem + 0x20) >>> 0, halfDur)) | 0
       if (curDur === 0) {
         curDur = 1
       }
@@ -2332,7 +2234,7 @@ export function ITEMS_ApplyLowQualityAndSpawnMods_6FC33E60_113c(
     bApplied = 1
   }
 
-  rollStaffModsOnItemDrop6FC33DE0_113c(m, pItem, pItemDrop)
+  ITEMS_RollStaffModsOnItem_6FC33DE0_113c(m, pItem, pItemDrop)
   return bApplied
 }
 
@@ -2379,7 +2281,7 @@ export function ITEMS_ApplyHighQualitySuperiorMods_6FC340B0_113c(
     if (ITEMS_CheckQualityItemMatch113c(m, pItem, pQualityTxt) !== 0) {
       ITEMS_SetItemCell113c(m, pItem, pick)
       ITEMS_ApplyItemQualityMods113c(m, 1, 0, pItem, pQualityTxt, 0, 0)
-      rollStaffModsOnItemDrop6FC33DE0_113c(m, pItem, pItemDrop)
+      ITEMS_RollStaffModsOnItem_6FC33DE0_113c(m, pItem, pItemDrop)
       return 1
     }
     tried[pick] = 1
@@ -2993,8 +2895,8 @@ export function AI_InitBaalThroneTentaclePositionDelta_6FC359B0_113c(
       if (pAiGeneral !== 0) {
         const pGame = m.u32(pAiGeneral + 0x28) >>> 0
         if (pGame !== 0) {
-          const dwOwnerType = m.u32(pAiGeneral + 0x2c)
-          const dwOwnerGuid = m.u32(pAiGeneral + 0x30)
+          const dwOwnerGuid = m.u32(pAiGeneral + 0x2c)
+          const dwOwnerType = m.u32(pAiGeneral + 0x30)
           pOwner = SUNIT_GetServerUnit113c(m, pGame, dwOwnerType, dwOwnerGuid) >>> 0
         }
       }
@@ -3051,7 +2953,7 @@ export function AI_CheckTargetIsUnboundPutridDefiler_6FC35B00_113c(
   if (UNIT_GetAlignment113c(m, pCandidate) !== 0) {
     return 0
   }
-  if (SUNIT_GetOwnerUnit113c(m, pGame, pUnit) !== 0) {
+  if (SUNIT_GetOwnerUnit113c(m, pUnit, pGame) !== 0) {
     return 0
   }
 

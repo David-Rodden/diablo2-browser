@@ -194,11 +194,15 @@ PENDING_LANE_BC_VAS = {
     "0X6FDCBC20",
 }
 
-# Caller-supplied callback functions in D2Common (pfnCallback / pSearch->pfnCallback / pfOnValue / pfnActCall)
-# whose indirect call is an external callback pointer verified with real-DLL machine-code stubs in k1r13-laneD-ported29-emitter.c.
+# Caller-supplied callback & link-list dispatch functions in D2Common (pfAutomap/pfTownAutomap, pfnCallback,
+# pSearch->pfnCallback, pList->pfLinker/pfnValidate/pfnPost, pfOnValue, pfnActCall) whose indirect calls are
+# external callback pointers or verified diff-verified link tables (see d2common-final3-diff-verified.test.ts & laneD-ported29.test.ts).
 VERIFIED_CALLER_CALLBACK_VAS = {
+    "0X6FD5CD10",
     "0X6FD62330",
     "0X6FD624E0",
+    "0X6FD62720",
+    "0X6FD66E10",
     "0X6FD7A210",
     "0X6FD88850",
     "0X6FD888E0",

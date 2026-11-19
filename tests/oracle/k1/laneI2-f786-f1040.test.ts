@@ -135,11 +135,11 @@ describe('K1R14-LaneI2: D2Game.dll Post-F150 F786..F1040 (37 VAs)', () => {
     PLAYER_UpdateDualWieldWeaponStatLists113c(m, 0, 0);
 
     const pClient = 0x31000;
-    S2C_SendPacket0E_UnitCorpseState113c(m, 0x0e, 0x1234, pClient, 1, 100, 200, 1, 0);
+    S2C_SendPacket0E_UnitCorpseState113c(m, 0x69, 0x1234, pClient, 1, 100, 200, 1, 0);
     const pNode0e = m.u32(pClient + 0x1b8);
     expect(m.u32(pNode0e)).toBe(0x0c);
-    expect(m.u8(pNode0e + 0x04)).toBe(0x0e);
-    expect(m.u32(pNode0e + 0x04 + 2)).toBe(0x1234);
+    expect(m.u8(pNode0e + 0x04)).toBe(0x69);
+    expect(m.u32(pNode0e + 0x04 + 1)).toBe(0x1234);
 
     SKILLS_ConsumeProgressiveChargesOnHit113c(m, 0, 0, 0);
     SKILLS_ApplyProgressiveChargesToDamage113c(m, 0, 0);
@@ -190,11 +190,11 @@ describe('K1R14-LaneI2: D2Game.dll Post-F150 F786..F1040 (37 VAs)', () => {
     expect(MONSTER_IsNextModeEndWithin5Frames113c(m, pUnit, pGame)).toBe(0);
 
     const pClient = 0x41000;
-    S2C_SendPacket0D_UnitStop113c(m, 0x0d, 99, pClient, 1, 2, 0x006400c8, 80, 0x100, 0);
+    S2C_SendPacket0D_UnitStop113c(m, 0x6c, 99, pClient, 1, 2, 0x006400c8, 80, 0x100, 0);
     const pNode0d = m.u32(pClient + 0x1b8);
     expect(m.u32(pNode0d)).toBe(0x10);
-    expect(m.u8(pNode0d + 0x04 + 0x00)).toBe(0x0d);
-    expect(m.u32(pNode0d + 0x04 + 0x02)).toBe(99);
+    expect(m.u8(pNode0d + 0x04 + 0x00)).toBe(0x6c);
+    expect(m.u32(pNode0d + 0x04 + 0x01)).toBe(99);
     expect(m.u8(pNode0d + 0x04 + 0x0b)).toBe(80);
 
     expect(ITEMS_SyncSocketedSubItemsToClient113c(m, pClient, 0, 0)).toBe(1);

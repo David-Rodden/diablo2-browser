@@ -80,10 +80,6 @@ import {
   MONSTER_StepRun113c,
   MONSTER_StepWalk113c,
   NET_QueuePacketToClient113c,
-  PLAYER_DrainRunStamina113c,
-  PLAYER_Event11_PeriodicTick113c,
-  PLAYER_Event3_RegenTick113c,
-  PLAYER_GetEquippedWeapon113c,
   PLAYER_RestoreHandSkillsFromSnapshot113c,
   PLAYER_ScheduleSkillActionFrameEvents113c,
   PLAYER_SnapshotHandSkillsToStruct113c,
@@ -91,9 +87,6 @@ import {
   PLAYER_StartModeDispatch113c,
   PLAYER_StartModeSkill113c,
   PLAYER_SyncLifeManaStaminaGoldExp113c,
-  PLAYER_UpdateHpRegen113c,
-  PLAYER_UpdateManaRegen113c,
-  PLAYER_UpdateStaminaRegen113c,
   ROOM_ActivateRoomForClient113c,
   ROOM_DeactivateMonsterInRoom113c,
   ROOM_DeactivateRoomForClient113c,
@@ -162,6 +155,15 @@ import {
   drainClientS2CPackets113c,
   drainFrameS2CPackets113c,
 } from '../../../src/d2kern-113c/game/k2-real-s2c-combat-113c.ts'
+import {
+  PLAYER_DrainRunStamina113c,
+  PLAYER_Event11_PeriodicTick113c,
+  PLAYER_Event3_RegenTick113c,
+  PLAYER_GetEquippedWeapon113c,
+  PLAYER_UpdateHpRegen113c,
+  PLAYER_UpdateManaRegen113c,
+  PLAYER_UpdateStaminaRegen113c,
+} from '../../../src/d2kern-113c/game/replay-kernel-113c.ts'
 
 const D2COMMON_SGPT_DATATABLES_VA = 0x6fde9e1c
 const D2COMMON_GDW_BITMASKS_IAT_VA = 0x6fdd90b0
@@ -199,6 +201,7 @@ function createRealK2World(levelId = 2): RealK2World {
   const pDataTables = m.alloc(0x1000)
   initD2GameGlobalsInMem113c(m, pDataTables)
   m.fill(0x6fd2e000, 0x2000, 0)
+  m.fill(0x6fddd458, 8, 0)
   m.setU32(D2COMMON_SGPT_DATATABLES_VA, pDataTables)
   m.setU32(SGPT_DATATABLES_VA_113C, pDataTables)
   m.setU32(D2GAME_IAT_GDW_BITMASKS_VA_K2E_113C, pBitMasks)
@@ -508,6 +511,20 @@ function equipTestItem(
   const prevHead = m.u32((pInv + 0x0c) >>> 0) >>> 0
   m.setU32((pItemData + 0x5c + 0x08) >>> 0, prevHead)
   m.setU32((pInv + 0x0c) >>> 0, pItem)
+  let pGrids = m.u32((pInv + 0x14) >>> 0) >>> 0
+  if (pGrids === 0) {
+    pGrids = m.alloc(16)
+    const ppItems = m.alloc(13 * 4)
+    m.setU8((pGrids + 0x08) >>> 0, 13)
+    m.setU8((pGrids + 0x09) >>> 0, 1)
+    m.setU32((pGrids + 0x0c) >>> 0, ppItems)
+    m.setU32((pInv + 0x14) >>> 0, pGrids)
+    m.setU32((pInv + 0x18) >>> 0, 1)
+  }
+  const ppBodyItems = m.u32((pGrids + 0x0c) >>> 0) >>> 0
+  if (ppBodyItems !== 0 && bodyLoc >= 0 && bodyLoc < 13) {
+    m.setU32((ppBodyItems + bodyLoc * 4) >>> 0, pItem)
+  }
   if (bodyLoc === 4) {
     m.setU32((pInv + 0x24) >>> 0, itemId >>> 0)
   }

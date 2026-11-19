@@ -103,6 +103,7 @@ import {
   MISSILE_SrvDo01_LinearProjectile113c,
   SKILLS_ResolveChargedSrvMissileId113c,
 } from './k2-gap-melee-dot-113c'
+import { type SUnitDmgHooks113c } from './k2-real-s2c-combat-113c'
 import {
   SKILLS_EvalLinearParam34_6FC21A40_113c,
   SKILLS_GetParam4Fast_6FC21C20_113c,
@@ -1809,6 +1810,7 @@ export function MISSILE_SrvHit_RadialETypeDamageByCalc1_6FC5B990_113c(
   pGame: number,
   pMissile: number,
   pHitUnit: number,
+  combatHooks?: SUnitDmgHooks113c,
 ): number {
   hitD2GameVa113c(0x6FC5B990)
   const game = pGame >>> 0
@@ -1864,7 +1866,8 @@ export function MISSILE_SrvHit_RadialETypeDamageByCalc1_6FC5B990_113c(
       0x6fcc1210,
       pDmg,
       0,
-      AURAS_ApplyRadialSkillDamageCallback_6FCC1210_113c,
+      (mem, pAuraCtx, pTarget) =>
+        AURAS_ApplyRadialSkillDamageCallback_6FCC1210_113c(mem, pAuraCtx, pTarget, combatHooks),
     )
     return 1
   } finally {

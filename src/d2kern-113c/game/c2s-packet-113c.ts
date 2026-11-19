@@ -67,7 +67,10 @@ import { PLAYER_SetPlayerData150ParamsExport113c } from '../tables/datatbls-113c
 import { hitD2GameVa113c } from '../va-trace-113c.ts';
 import { SKILLS_StartUsedSkill113c } from './a1c-post150-f786-f1040-113c.ts';
 import { SUNITDMG_FreeAttackerCombatList113c } from './ai-fallen-113c.ts';
-import { PLAYER_StartBlockMode113c } from './combat-a1c-113c.ts';
+import {
+  PLAYER_ScheduleAttackActionFrameEvents113c,
+  PLAYER_StartBlockMode113c,
+} from './k2-real-s2c-combat-113c.ts';
 import { SUNIT_GetServerUnit113c } from './game-strc.ts';
 import {
   PLAYER_StartCastSkillAtCoords113c,
@@ -336,6 +339,26 @@ export interface C2SPacketCallees113c {
     pPacket: number,
     nPacketLen: number,
   ) => number;
+  /** Optional post-gate hook for walk/run mode transitions (`2`/`3`/`6`/`19`). */
+  onStartWalkOrRun?: (
+    mem: Memory113c,
+    pGame: number,
+    pPlayer: number,
+    nPlrMode: number,
+    nX: number,
+    nY: number,
+    pTargetUnit: number,
+  ) => void;
+  /** Optional post-gate hook for `0x6FC987C0` attack/cast-on-unit transitions (`7`,`8`,`10..16`,`18`). */
+  onStartAttackOnUnit?: (
+    mem: Memory113c,
+    pGame: number,
+    pPlayer: number,
+    pTargetUnit: number,
+    nPlrMode: number,
+  ) => void;
+  /** Optional callback after a player mode transition completes to sync runtime mirrors. */
+  onAfterModeStarted?: (mem: Memory113c, pPlayer: number) => void;
 }
 
 function resolveTargetUnitFromMemory113c(
@@ -434,8 +457,15 @@ export function PLAYER_StartModeAtCoords113c(
     return 0;
   }
   if ((bForce | 0) === 0) {
-    if (AITHINK_CanPlayerStartSkillOrCast113c(mem, pPlayer, pGame, mode, 1, pSkill) === 0) {
+    if (AITHINK_CanPlayerStartSkillOrCast113c(mem, pPlayer, pGame, mode, 1, pSkill, () => {}) === 0) {
       return 0;
+    }
+  }
+  if (mem.u32(pPlayer >>> 0) === 0) {
+    const pPlrData = mem.u32((pPlayer + 0x14) >>> 0);
+    if (pPlrData !== 0) {
+      mem.setU32((pPlrData + 0x154) >>> 0, 0);
+      mem.setU32((pPlrData + 0x150) >>> 0, 0);
     }
   }
   if (pSkill !== 0) {
@@ -454,12 +484,15 @@ export function PLAYER_StartModeAtCoords113c(
     case 1:
     case 5:
       PLAYER_SetNeutralOrTownNeutralMode113c(mem, pGame, pPlayer, mode, nX | 0, nY | 0);
+      callees?.onAfterModeStarted?.(mem, pPlayer);
       return 1;
     case 2:
     case 3:
     case 6:
     case 19:
-      if (hasHydratedPathGrid) {
+      if (callees?.onStartWalkOrRun !== undefined) {
+        callees.onStartWalkOrRun(mem, pGame, pPlayer, mode, nX | 0, nY | 0, 0);
+      } else if (hasHydratedPathGrid) {
         PLAYER_SetPathTargetCoordsAndWalk113c(mem, pGame, pPlayer, mode, nX | 0, nY | 0);
       } else {
         if (pPath !== 0) {
@@ -472,6 +505,7 @@ export function PLAYER_StartModeAtCoords113c(
           MONSTER_RegisterContinuousModeEvent113c(mem, pGame, pPlayer);
         }
       }
+      callees?.onAfterModeStarted?.(mem, pPlayer);
       return 1;
     case 4:
       if (mem.get(pGame, D2GameStrc.pTimer) !== 0) {
@@ -486,9 +520,13 @@ export function PLAYER_StartModeAtCoords113c(
       } else {
         mem.set(pPlayer, D2UnitStrc.dwAnimMode, mode >>> 0);
       }
+      callees?.onAfterModeStarted?.(mem, pPlayer);
       return 1;
-    case 9:
-      return PLAYER_StartBlockMode113c(mem, pGame, pPlayer);
+    case 9: {
+      const ok = PLAYER_StartBlockMode113c(mem, pGame, pPlayer);
+      callees?.onAfterModeStarted?.(mem, pPlayer);
+      return ok;
+    }
     case 17:
       PLAYER_HandleDeathCorpseAndSave_6FC99730_113c(
         mem as SparseMemory113c,
@@ -498,6 +536,7 @@ export function PLAYER_StartModeAtCoords113c(
         nX | 0,
         nY | 0,
       );
+      callees?.onAfterModeStarted?.(mem, pPlayer);
       return 1;
     default:
       // Modes 7, 8, 10..16, 18 -> 0x6FC98840 (`PLAYER_StartCastSkillAtCoords113c`)
@@ -511,6 +550,7 @@ export function PLAYER_StartModeAtCoords113c(
         }
         mem.set(pPlayer, D2UnitStrc.dwAnimMode, mode >>> 0);
       }
+      callees?.onAfterModeStarted?.(mem, pPlayer);
       return 1;
   }
 }
@@ -566,7 +606,7 @@ export function PLAYER_StartModeOnUnit113c(
     return 0;
   }
   if ((bForce | 0) === 0) {
-    if (AITHINK_CanPlayerStartSkillOrCast113c(mem, pPlayer, pGame, mode, 1, pSkill) === 0) {
+    if (AITHINK_CanPlayerStartSkillOrCast113c(mem, pPlayer, pGame, mode, 1, pSkill, () => {}) === 0) {
       return 0;
     }
   }
@@ -591,6 +631,7 @@ export function PLAYER_StartModeOnUnit113c(
       0,
       pTargetUnit,
     );
+    callees?.onAfterModeStarted?.(mem, pPlayer);
     return 1;
   }
   if (mode === 1 || mode === 4 || mode === 5 || mode === 9 || mode === 17) {
@@ -607,14 +648,14 @@ export function PLAYER_StartModeOnUnit113c(
 
   if (mode === 2 || mode === 3 || mode === 6 || mode === 19) {
     // 0x6FC98760 (`PLAYER_SetPathTargetUnitAndWalk`)
-    hitD2GameVa113c(0x6fc98760);
-    if (mode === 19 && mem.get(pPlayer, D2UnitStrc.dwAnimMode) === 19) {
-      return 1;
-    }
-    if (hasHydratedPathGrid) {
-      PATH_SetTargetUnit113c(mem, pPath, pTargetUnit);
-      PLAYER_StartWalkOrRunMode113c(mem, mode, pPlayer, pGame);
+    if (callees?.onStartWalkOrRun !== undefined) {
+      callees.onStartWalkOrRun(mem, pGame, pPlayer, mode, 0, 0, pTargetUnit);
+    } else if (hasHydratedPathGrid) {
+      PLAYER_ScheduleAttackActionFrameEvents113c(mem, pGame, pPlayer, -2, mode, pTargetUnit);
     } else {
+      if (mode === 19 && mem.get(pPlayer, D2UnitStrc.dwAnimMode) === 19) {
+        return 1;
+      }
       if (pPath !== 0) {
         const targetX = getUnitPosXByType113c(mem, pTargetUnit);
         const targetY = getUnitPosYByType113c(mem, pTargetUnit);
@@ -627,10 +668,16 @@ export function PLAYER_StartModeOnUnit113c(
         MONSTER_RegisterContinuousModeEvent113c(mem, pGame, pPlayer);
       }
     }
+    callees?.onAfterModeStarted?.(mem, pPlayer);
     return 1;
   }
 
   // Modes 7, 8, 10..16, 18 -> 0x6FC987C0 (`PLAYER_StartModeAttackWithTarget`)
+  if (callees?.onStartAttackOnUnit !== undefined) {
+    callees.onStartAttackOnUnit(mem, pGame, pPlayer, pTargetUnit, mode);
+    callees.onAfterModeStarted?.(mem, pPlayer);
+    return 1;
+  }
   hitD2GameVa113c(0x6fc987c0);
   if (mem.get(pGame, D2GameStrc.pTimer) !== 0 && getSgptDataTablesPtr113c(mem) !== 0) {
     SUNITDMG_FreeAttackerCombatList113c(mem, pPlayer, pGame);
@@ -650,6 +697,7 @@ export function PLAYER_StartModeOnUnit113c(
     }
     mem.set(pPlayer, D2UnitStrc.dwAnimMode, mode >>> 0);
   }
+  callees?.onAfterModeStarted?.(mem, pPlayer);
   return 1;
 }
 

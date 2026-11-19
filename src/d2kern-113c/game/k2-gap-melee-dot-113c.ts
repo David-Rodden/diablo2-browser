@@ -5,7 +5,7 @@
  * Strictly 100% `Memory113c`-native with zero JS gameplay caches, zero array ordering helpers,
  * and zero permissive fallbacks.
  */
-import type { Memory113c } from '../mem/sparse-memory.ts'
+import type { Memory113c, SparseMemory113c } from '../mem/sparse-memory.ts'
 import {
   D2DamageStrc,
   D2EventStrc,
@@ -94,6 +94,8 @@ import {
   STATES_ToggleGfxStateFlag113c,
   STATLIST_AllocList113c,
   STATLIST_CreateEx113c,
+  STATLIST_ExpireOrphanStateSubLists113c,
+  STATLIST_ExpireTimedSubLists113c,
   STATLIST_FreeStatListIfNonExtended113c,
   STATLIST_GetExtendedUnitStatsById113c,
   STATLIST_GetMaxLifeFromUnit113c,
@@ -149,6 +151,11 @@ import {
 } from './ai-fallen-113c.ts'
 import { MONSTER_DispatchMinionComponentCallbacks113c } from './boot-init-gap-a-113c.ts'
 import { D2GAME_SUNIT_GetGameFromUnit113c } from './boot-init-gap-b-113c.ts'
+import { SUNITDMG_GetDefenderColdEffect113c } from './k2-combat-core-w1-113c.ts'
+import { SKILLS_ActivateAuraSkillOnUnit113c } from './k2-gap-itemdef-113c.ts'
+import { MONUMOD_DispatchOnKillEvent5_113c } from './k2-items-tc-w1-113c.ts'
+import { SUNIT_GetOwnerUnit113c } from './k2-sunit-spawn-w1-113c.ts'
+import { STATES_RemoveMorphStateAndClampVitals_6FCB8450_113c } from './k2-w5b2-113c.ts'
 import { SUNIT_GetServerUnit113c } from './game-strc.ts'
 import {
   MONSTER_ClearModeEvents113c,
@@ -496,17 +503,6 @@ function checkMonTypeSubFlag0x6FC21620(
   return (word & readGdwBitMaskU32_113c(m, ecx & 0x1f)) >>> 0
 }
 
-/** Internal `0x6FC41880` (`eax = pMissile`, `edx = pOwner`, `[esp+4] = pGame`): notifies owner minion components of event `5`. */
-function notifyMinionComponents0x6FC41880(
-  m: Memory113c,
-  pMissile: number,
-  pOwner: number,
-  pGame: number,
-): void {
-  if (pOwner === 0 || m.u32(pOwner >>> 0) !== 1 || pMissile === 0) return
-  MONSTER_DispatchMinionComponentCallbacks113c(m, pGame, pMissile, 5)
-}
-
 /** Internal `0x6FC58F40` (`esi = pMissile` -> `2` if pierce charge consumed, else `3`). */
 function consumeMissilePierce0x6FC58F40(m: Memory113c, pMissile: number): number {
   const pMisTxt = pMissile !== 0 ? MISSILES_GetTxtRecordFast113c(m, m.u32((pMissile + 4) >>> 0) | 0) : 0
@@ -517,16 +513,6 @@ function consumeMissilePierce0x6FC58F40(m: Memory113c, pMissile: number): number
   if (count === 0) return 3
   STATLIST_SetUnitStat113c(m, pMissile, 0x148, (count - 1) | 0, 0)
   return 2
-}
-
-/** Internal `0x6FD00A20` (`eax = pMissile`, `[esp+4] = pGame` -> `pOwnerUnit` or `0`). */
-function getMissileOwner0x6FD00A20(m: Memory113c, pMissile: number, pGame: number): number {
-  const u = pMissile >>> 0
-  if (u === 0) return 0
-  if (((m.u32((u + 0xc8) >>> 0) >>> 10) & 1) === 0) return 0
-  const ownerId = m.u32((u + 0x98) >>> 0)
-  const ownerType = m.u32((u + 0x94) >>> 0)
-  return SUNIT_GetServerUnit113c(m, pGame, ownerType, ownerId)
 }
 
 /** Internal `0x6FC5AD70`: collide filter for `nCollideType == 1` (players + alignment-2 monsters). */
@@ -754,55 +740,6 @@ function syncPlayerPetCaps0x6FCB6FA0(
   } finally {
     freeStackScratch113c(0x400)
   }
-}
-
-/** Internal `0x6FCC1D10` (`edi = pUnit`, `[esp+4] = pGame`, `[esp+8] = nSkillId`): activates right-hand aura state & statlist. */
-function applyAuraStateOrSkill0x6FCC1D10(
-  m: Memory113c,
-  pUnit: number,
-  pGame: number,
-  nSkillId: number,
-): void {
-  const skillId = nSkillId | 0
-  if (skillId < 0) return
-  const pSkillsTxt = SKILLS_GetRecordPtrFast113c(m, skillId)
-  if (pSkillsTxt === 0) return
-  if ((readGdwBitMaskU8_113c(m, 0x14) & m.u8((pSkillsTxt + 0x04) >>> 0)) === 0) return
-  const auraState = s16SignExt113c(m.u16((pSkillsTxt + 0x80) >>> 0))
-  const pTables = readSgptDataTables113c(m)
-  if (auraState < 0 || auraState >= (m.u32((pTables + 0xc4) >>> 0) | 0)) return
-
-  const pSkill = SKILLS_GetHighestLevelSkillFromUnitAndIdFastcall113c(m, pUnit, skillId)
-  if (pSkill === 0) return
-  const lvl = SKILLS_EvaluateSkillLevel113c(m, pUnit, pSkill, 1) | 0
-  if (lvl <= 0) return
-
-  if ((readGdwBitMaskU8_113c(m, 0x1c) & m.u8((pSkillsTxt + 0x05) >>> 0)) !== 0) {
-    SKILLS_ExecuteSkillDoFunc113c(m, pUnit, pGame, skillId, lvl, 1, 0, 0)
-    SKILLS_SetSkillDelayTimer113c(m, skillId, pGame, pUnit, lvl, 1)
-    return
-  }
-
-  STATES_ToggleGfxStateFlag113c(m, pUnit, auraState, 1)
-  let pSub = STATLIST_GetStatListFromUnitAndStateMemPort113c(m, pUnit, auraState)
-  if (pSub === 0) {
-    const ownerType = pUnit !== 0 ? m.u32(pUnit >>> 0) : 6
-    const ownerId = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
-    const pPool = pUnit !== 0 ? m.u32((pUnit + 0x08) >>> 0) : 0
-    pSub = STATLIST_AllocList113c(m, 0, ownerType, ownerId, 0, 0)
-    if (pSub !== 0) {
-      m.setU32(pSub, pPool)
-    }
-  }
-  if (pSub !== 0) {
-    STATLIST_SetState113c(m, pSub, auraState)
-    STATLIST_SetSkillId113c(m, pSub, skillId)
-    STATLIST_SetSkillLevel113c(m, pSub, lvl)
-    STATLIST_MergeStatLists113c(m, pUnit, pSub, 1)
-    STATLIST_SetStat113c(m, pSub, 0x15e, skillId, 0)
-    STATLIST_SetStat113c(m, pSub, 0x15f, lvl, 0)
-  }
-  SKILLS_SetSkillDelayTimer113c(m, skillId, pGame, pUnit, lvl, 1)
 }
 
 /** Internal `0x6FCFB030` (`eax = pDefender`, `edi = pAttacker`, `[esp+4] = bAllowWeaponBlock`): Amazon evade/dodge/avoid + weapon block. */
@@ -1148,6 +1085,13 @@ function unlinkSubListWithRemoveProc113c(
       MISSILE_ClearStateGfxRemoveProc113c(m, savedUnit, dwStateNo, s)
     } else if (fpRemove === D2GAME_FP_REMOVE_TIMED_STATE_VA_113C) {
       STATES_OnTimedStateRemoved113c(m, savedUnit, dwStateNo, s, hooks)
+    } else if (fpRemove === 0x6fcb8450) {
+      STATES_RemoveMorphStateAndClampVitals_6FCB8450_113c(
+        m as SparseMemory113c,
+        savedUnit,
+        dwStateNo,
+        s,
+      )
     } else if (hooks !== undefined && hooks.onStatRemoveProc !== undefined) {
       hooks.onStatRemoveProc(m, fpRemove, savedUnit, dwStateNo, s)
     }
@@ -1185,6 +1129,9 @@ export function MONSTER_ExpireDeathStateSubLists113c(
       }
     }
     sub = next
+  }
+  if (m.u32(0x6fde9e1c) !== 0 && m.u32(0x6fdd90b0) !== 0) {
+    STATLIST_ExpireOrphanStateSubLists113c(m, u)
   }
 }
 
@@ -1745,7 +1692,7 @@ export function MISSILE_DispatchFrameTick113c(
   }
 
   const ediGame = pGame >>> 0
-  const pOwner = getMissileOwner0x6FD00A20(m, esi, ediGame)
+  const pOwner = SUNIT_GetOwnerUnit113c(m, esi, ediGame)
   const flags05 = m.u8((ebpMisTxt + 0x05) >>> 0)
 
   if ((flags05 & readGdwBitMaskU8_113c(m, 0x0c)) !== 0) {
@@ -2003,7 +1950,7 @@ export function MISSILE_SrvDo01_LinearProjectile113c(
   const modeEntry = colMode >= 0 && colMode < 8 ? D2GAME_MISSILE_COLLIDE_MODES_113C[colMode]! : { pfn: 0, mask: 0 }
   if (modeEntry.pfn === 0) return 2
 
-  const pOwner = getMissileOwner0x6FD00A20(m, ebx, ediGame)
+  const pOwner = SUNIT_GetOwnerUnit113c(m, ebx, ediGame)
   const sizeX = UNITS_GetUnitSizeX113c(m, ebx)
 
   const pScratch = allocStackScratch113c(m, 0x20)
@@ -2487,7 +2434,7 @@ export function MISSILE_CreateServerProjectile113c(
     MISSILE_SetStreamFlags113c(m, ebxMissile, (MISSILE_GetStreamFlags113c(m, ebxMissile) | 0x02) >>> 0)
   }
 
-  notifyMinionComponents0x6FC41880(m, ebxMissile, pOwner, game)
+  MONUMOD_DispatchOnKillEvent5_113c(m, ebxMissile, pOwner, game)
   STATLIST_SetUnitStat113c(m, ebxMissile, 0x147, m.u32((pMisTxt + 0x19c) >>> 0) | 0, 0)
   return ebxMissile
 }
@@ -2525,6 +2472,9 @@ export function MONSTER_Event12_ExpireTimedStats113c(
         next = m.u32((pEx + 0x3c) >>> 0)
       }
       sub = next
+    }
+    if (m.u32(0x6fde9e1c) !== 0) {
+      STATLIST_ExpireTimedSubLists113c(m, u, nFrame)
     }
   } else {
     while (sub !== 0) {
@@ -3082,7 +3032,27 @@ export function SKILLS_AssignHandSkillAndSyncAura113c(
   const pNewTxt = SKILLS_GetRecordPtrFast113c(m, ebxSkillId)
   if (pNewTxt !== 0 && (readGdwBitMaskU8_113c(m, 0x14) & m.u8((pNewTxt + 0x04) >>> 0)) !== 0) {
     const pGame = D2GAME_SUNIT_GetGameFromUnit113c(m, esi)
-    applyAuraStateOrSkill0x6FCC1D10(m, esi, pGame, ebxSkillId)
+    SKILLS_ActivateAuraSkillOnUnit113c(m, esi, pGame, ebxSkillId)
+    let hasVelOrIasAuraStat = false
+    for (let s = 0; s < 6; s++) {
+      const aStat = s16SignExt113c(m.u16((pNewTxt + 0x54 + s * 2) >>> 0))
+      if (aStat >= 0x43 && aStat <= 0x44) {
+        hasVelOrIasAuraStat = true
+        break
+      }
+    }
+    if (!hasVelOrIasAuraStat) {
+      for (let p = 0; p < 5; p++) {
+        const pStat = s16SignExt113c(m.u16((pNewTxt + 0x98 + p * 2) >>> 0))
+        if (pStat >= 0x43 && pStat <= 0x44) {
+          hasVelOrIasAuraStat = true
+          break
+        }
+      }
+    }
+    if (hasVelOrIasAuraStat) {
+      SUNITDMG_GetDefenderColdEffect113c(m, esi, pGame)
+    }
   }
 }
 

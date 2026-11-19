@@ -150,7 +150,7 @@ const VENDOR_HEALTH_POTION_CODES: readonly number[] = [
   0x20347068,
 ]
 
-let k2LaneIStackPtr = 0x7ef80000
+let k2LaneIStackPtr = 0x7e010000
 
 export type PackMemberCallbackFn113c = (
   m: Memory113c,
@@ -1641,23 +1641,7 @@ export function MONREG_IsMonsterDeadAtCoords_6FC3EE50_113c(
     }
   }
 
-  let pNode = 0
-  if (hooks !== undefined && hooks.pActMonReg !== undefined && pRoom !== 0) {
-    pNode = MONREG_FindOrAllocActRoomNode113c(m, hooks.pActMonReg, game, pRoom) >>> 0
-  } else {
-    let cur = m.u32((game + nAct * 4 + 0xd8) >>> 0) >>> 0
-    while (cur !== 0) {
-      const nodeX = m.u32(cur) | 0
-      if (x === nodeX && y === (m.u32((cur + 0x04) >>> 0) | 0)) {
-        pNode = cur
-        break
-      }
-      if (x > nodeX) {
-        break
-      }
-      cur = m.u32((cur + 0x14) >>> 0) >>> 0
-    }
-  }
+  const pNode = MONREG_FindOrAllocActRoomNode113c(m, game, nAct, x, y, 0) >>> 0
 
   if (pNode !== 0) {
     let pMon = m.u32((pNode + 0x0c) >>> 0) >>> 0

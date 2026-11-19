@@ -32,8 +32,8 @@
     "name": "ITEMS_BroadcastUnitInventoryCommandFlags_6FCBBB10",
     "kernFile": "src/d2kern-113c/game/k2-w7b3-113c.ts",
     "tsSymbol": "ITEMS_BroadcastUnitInventoryCommandFlags_6FCBBB10_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w7b3.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w7b3.test.ts; Diff-verified 1:1 in dll∩ts across full-horizon strict zero-divergence K3 replay (p52-paladin-merc-aura F1700/1700) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -284,8 +284,8 @@
     "name": "ACT4Q3_OnScrollMessage_6FCDB250",
     "kernFile": "src/d2kern-113c/game/k2-w7b3-113c.ts",
     "tsSymbol": "ACT4Q3_OnScrollMessage_6FCDB250_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w7b3.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/replay-act-quests.test.ts (0x6FCDB250) across Act 1-5 K4 longitudinal quest & town NPC replay at 100% strict zero divergence"
   },
   {
     "module": "D2Game",
@@ -329,8 +329,8 @@
     "name": "ACT2Q5_OnScrollMessage_6FCE67C0",
     "kernFile": "src/d2kern-113c/game/k2-w7b3-113c.ts",
     "tsSymbol": "ACT2Q5_OnScrollMessage_6FCE67C0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w7b3.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/replay-act-quests.test.ts (0x6FCE67C0) across Act 1-5 K4 longitudinal quest & town NPC replay at 100% strict zero divergence"
   },
   {
     "module": "D2Game",

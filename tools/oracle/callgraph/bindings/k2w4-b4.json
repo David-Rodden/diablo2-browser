@@ -140,8 +140,8 @@
     "name": "NET_SendPacket7D_SetItemFlags_6FCAADE0",
     "kernFile": "src/d2kern-113c/game/k2-w4b4-113c.ts",
     "tsSymbol": "NET_SendPacket7D_SetItemFlags_6FCAADE0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/exitgate-s2c-vectors.test.ts (0x6FCAADE0) across 1,440 real-DLL S2C D2TV binary vectors with 0 mismatches"
   },
   {
     "module": "D2Game",
@@ -149,8 +149,8 @@
     "name": "NET_SendPacket9D_ItemActionOwned_6FCAB0F0",
     "kernFile": "src/d2kern-113c/game/k2-w4b4-113c.ts",
     "tsSymbol": "NET_SendPacket9D_ItemActionOwned_6FCAB0F0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/exitgate-s2c-vectors.test.ts (0x6FCAB0F0) across 1,440 real-DLL S2C D2TV binary vectors with 0 mismatches"
   },
   {
     "module": "D2Game",
@@ -167,8 +167,8 @@
     "name": "NET_SendPacket96_WalkVerify_6FCAB750",
     "kernFile": "src/d2kern-113c/game/k2-w4b4-113c.ts",
     "tsSymbol": "NET_SendPacket96_WalkVerify_6FCAB750_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/exitgate-s2c-vectors.test.ts (0x6FCAB750) across 1,440 real-DLL S2C D2TV binary vectors with 0 mismatches"
   },
   {
     "module": "D2Game",
@@ -176,8 +176,8 @@
     "name": "NET_SendPacket95_LifeManaStamina_6FCAB7F0",
     "kernFile": "src/d2kern-113c/game/k2-w4b4-113c.ts",
     "tsSymbol": "NET_SendPacket95_LifeManaStamina_6FCAB7F0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/exitgate-s2c-vectors.test.ts (0x6FCAB7F0) across 1,440 real-DLL S2C D2TV binary vectors with 0 mismatches"
   },
   {
     "module": "D2Game",
@@ -185,8 +185,8 @@
     "name": "NET_SendPacket18_HpManaPot_6FCAB8C0",
     "kernFile": "src/d2kern-113c/game/k2-w4b4-113c.ts",
     "tsSymbol": "NET_SendPacket18_HpManaPot_6FCAB8C0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/exitgate-s2c-vectors.test.ts (0x6FCAB8C0) across 1,440 real-DLL S2C D2TV binary vectors with 0 mismatches"
   },
   {
     "module": "D2Game",
@@ -194,8 +194,8 @@
     "name": "NET_SendPacketA3_AuraTargetSkill_6FCABA90",
     "kernFile": "src/d2kern-113c/game/k2-w4b4-113c.ts",
     "tsSymbol": "NET_SendPacketA3_AuraTargetSkill_6FCABA90_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/exitgate-s2c-vectors.test.ts (0x6FCABA90) across 1,440 real-DLL S2C D2TV binary vectors with 0 mismatches"
   },
   {
     "module": "D2Game",
@@ -203,8 +203,8 @@
     "name": "NET_SendPacketA0A1A2_StatDelta_6FCABB10",
     "kernFile": "src/d2kern-113c/game/k2-w4b4-113c.ts",
     "tsSymbol": "NET_SendPacketA0A1A2_StatDelta_6FCABB10_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts; Diff-verified 1:1 in dll\u2229ts across full-horizon strict zero-divergence K3 replay (p52-paladin-merc-aura F1700/1700) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",
@@ -212,8 +212,8 @@
     "name": "NET_SendPacket9E9FA0_StatValue_6FCABC20",
     "kernFile": "src/d2kern-113c/game/k2-w4b4-113c.ts",
     "tsSymbol": "NET_SendPacket9E9FA0_StatValue_6FCABC20_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/exitgate-s2c-vectors.test.ts (0x6FCABC20) across 1,440 real-DLL S2C D2TV binary vectors with 0 mismatches"
   },
   {
     "module": "D2Game",
@@ -221,8 +221,8 @@
     "name": "NET_SendPacket19_1D1E1F_GoldUpdate_6FCABE10",
     "kernFile": "src/d2kern-113c/game/k2-w4b4-113c.ts",
     "tsSymbol": "NET_SendPacket19_1D1E1F_GoldUpdate_6FCABE10_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b4.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/exitgate-s2c-vectors.test.ts (0x6FCABE10) across 1,440 real-DLL S2C D2TV binary vectors with 0 mismatches"
   },
   {
     "module": "D2Game",

@@ -39,10 +39,13 @@ import {
   D2COMMON_SGPT_DATATABLES_VA_113C,
   D2CommonAssertError,
   DATATABLES_OFF_113C,
+  DATATBLS_GetCharStatsTxtRecordInline113c,
+  DATATBLS_GetItemStatCostTxtRecordInline113c,
   DATATBLS_GetSetItemsTxtRecordInline113c,
   DATATBLS_GetSetsTxtRecordInline113c,
   DATATBLS_GetSkillsTxtMaxLvlInline113c,
   DATATBLS_GetSkillsTxtRecordInline113c,
+  DATATBLS_GetStatesTxtRecordInline113c,
   DATATBLS_GetUniqueItemsTxtRecordInline113c,
   DATATBLS_HasValidSkillDescInline113c,
   SEED_RollRandomNumberInline113c,
@@ -96,7 +99,9 @@ import {
   SKILLS_GetHighestLevelSkillFromUnitAndId113c,
   SKILLS_GetOrCreateSkillStatList113c,
   SKILLS_GetReqLevel113c,
+  STATES_CheckStateMaskOnUnitFast113c,
 } from './skills.ts'
+import { STATLIST_ExpireStateListsOnModeChangeMemPort113c } from './k0-d2common-memports.ts'
 import { DATATBLS_GetHirelingTxtRecordFromActAndDifficulty113c } from '../tables/monster-tbls-113c.ts'
 import { UNITROOM_RefreshUnit113c, UNITS_UpdateAnimFrame113c } from './unit.ts'
 import {
@@ -721,6 +726,18 @@ export function STATLIST_SumDirectAndSubLists113c(
  * `D2Common 0x6FD89530` (`EvalStatWithOps`): exact implementation of the 13-entry jump table
  * at `0x6FD89AF0` (`op 1..13`).
  */
+function hasLoadedU32PtrStatlist113c(m: Memory113c, addr: number): boolean {
+  const a = addr >>> 0
+  const known = (m as unknown as { known?: Map<number, Uint8Array> }).known
+  if (known !== undefined) {
+    const k0 = known.get(a >>> 12)
+    const k3 = known.get(((a + 3) >>> 0) >>> 12)
+    if (k0 === undefined || k0[a & 0xfff] === 0) return false
+    if (k3 === undefined || k3[((a + 3) >>> 0) & 0xfff] === 0) return false
+  }
+  return m.u32(a) !== 0
+}
+
 export function EvalStatWithOps113c(
   m: Memory113c,
   pList: number,
@@ -729,6 +746,10 @@ export function EvalStatWithOps113c(
 ): number {
   hitD2CommonVa113c(0x6FD89530)
   const statId = (dwKey >>> 16) & 0xffff
+  const hasSgpt = hasLoadedU32PtrStatlist113c(m, D2COMMON_SGPT_DATATABLES_VA_113C)
+  if (hasSgpt) {
+    DATATBLS_GetItemStatCostTxtRecordInline113c(m, statId)
+  }
   const rawBaseSum = STATLIST_SumDirectAndSubLists113c(m, pList, dwKey, registry)
   const revOps = registry.getReverseOps(statId)
   if (revOps.length === 0) {
@@ -834,7 +855,11 @@ export function EvalStatWithOps113c(
       case 8: {
         // 0x6FD89947: non-base energy -> maxmana (`(fullEnergy - baseEnergy) * ManaPerMagic << 6`)
         if (pOwner === 0 || m.get(pOwner, D2UnitStrc.dwUnitType) !== 0) break
-        const growth = registry.getCharGrowth(m.get(pOwner, D2UnitStrc.dwClassId))
+        const ownerClassId = m.get(pOwner, D2UnitStrc.dwClassId)
+        if (hasSgpt) {
+          DATATBLS_GetCharStatsTxtRecordInline113c(m, ownerClassId)
+        }
+        const growth = registry.getCharGrowth(ownerClassId)
         if (!growth) break
         const baseEne = readStatFromArray(m, pList + D2StatListStrc.pStat.off, srcKey)
         const fullEne = EvalStatWithOps113c(m, pList, srcKey, registry)
@@ -847,7 +872,11 @@ export function EvalStatWithOps113c(
       case 9: {
         // 0x6FD899C3: non-base vitality -> maxstamina (statId==11) or maxhp (`<< 6`)
         if (pOwner === 0 || m.get(pOwner, D2UnitStrc.dwUnitType) !== 0) break
-        const growth = registry.getCharGrowth(m.get(pOwner, D2UnitStrc.dwClassId))
+        const ownerClassId = m.get(pOwner, D2UnitStrc.dwClassId)
+        if (hasSgpt) {
+          DATATBLS_GetCharStatsTxtRecordInline113c(m, ownerClassId)
+        }
+        const growth = registry.getCharGrowth(ownerClassId)
         if (!growth) break
         const baseVit = readStatFromArray(m, pList + D2StatListStrc.pStat.off, srcKey)
         const fullVit = EvalStatWithOps113c(m, pList, srcKey, registry)
@@ -1632,11 +1661,24 @@ export function STATLIST_RemoveSubList113c(
  * otherwise walks `pMyLastList (+0x3C)` then `pMyStats (+0x40)` via `pPrevLink (+0x2C)` and returns the first
  * sublist with `dwStateNo (+0x14) == stateId` (`0` if not found).
  */
+let findSubListByStateAndFlagsHook113c:
+  | ((m: Memory113c, pStatListEx: number, stateId: number) => number)
+  | null = null
+
+export function registerStatListFindSubListHook113c(
+  fn: (m: Memory113c, pStatListEx: number, stateId: number) => number,
+): void {
+  findSubListByStateAndFlagsHook113c = fn
+}
+
 function findSubListByStateAndFlags113c(
   m: Memory113c,
   pStatListEx: number,
   stateId: number,
 ): number {
+  if (findSubListByStateAndFlagsHook113c !== null) {
+    return findSubListByStateAndFlagsHook113c(m, pStatListEx, stateId)
+  }
   if (pStatListEx === 0 || stateId === 0) return 0
   if ((m.get(pStatListEx, D2StatListStrc.dwFlags) & STATLIST_FLAG_EXTENDED) === 0) {
     return 0
@@ -1690,6 +1732,9 @@ export function STATES_CheckState113c(m: Memory113c, pUnit: number, stateId: num
   }
   const pStateFlags = m.get(pListEx, D2StatListExStrc.pStateFlags)
   if (pStateFlags === 0) return 0
+  if (hasLoadedU32PtrStatlist113c(m, D2COMMON_GDWBITMASKS_IAT_VA_113C)) {
+    return STATES_CheckStateMaskOnUnitFast113c(m, pUnit, stateId)
+  }
   const wordIdx = stateId >> 5
   const mask = (1 << (stateId & 31)) >>> 0
   return (m.u32(pStateFlags + wordIdx * 4) & mask) >>> 0
@@ -1819,6 +1864,10 @@ export function STATES_ToggleState113c(
   const dirtyAddr = pStateFlags + (wordIdx + STATE_DWORDS_113C) * 4
   m.setU32(dirtyAddr, (m.u32(dirtyAddr) | mask) >>> 0)
 
+  if (hasLoadedU32PtrStatlist113c(m, D2COMMON_SGPT_DATATABLES_VA_113C)) {
+    DATATBLS_GetStatesTxtRecordInline113c(m, stateId)
+  }
+
   // `0x6FD887E8..0x6FD88838`: `States.bin + 0x12` bit 0 (`disguise`) -> `pUnit->dwFlags2 (+0xC8)` bit `0x08`
   if (((DISGUISE_STATE_MASK_WORDS_113C[wordIdx] as number) & mask) !== 0) {
     const flags2 = m.get(pUnit, D2UnitStrc.dwFlags2)
@@ -1907,6 +1956,15 @@ export function STATLIST_ExpireStateListsOnModeChange113c(
   registry: StatTableRegistry113c = DEFAULT_STAT_REGISTRY_113C,
 ): void {
   if (pUnit === 0) return
+  if (
+    registry === DEFAULT_STAT_REGISTRY_113C &&
+    hasLoadedU32PtrStatlist113c(m, D2COMMON_SGPT_DATATABLES_VA_113C) &&
+    hasLoadedU32PtrStatlist113c(m, D2COMMON_GDWBITMASKS_IAT_VA_113C) &&
+    hasLoadedU32PtrStatlist113c(m, 0x6fdd9078)
+  ) {
+    STATLIST_ExpireStateListsOnModeChangeMemPort113c(m, pUnit)
+    return
+  }
   const pListEx = m.get(pUnit, D2UnitStrc.pStatListEx)
   if (pListEx === 0 || (m.get(pListEx, D2StatListStrc.dwFlags) & 0x02) === 0) return
 
@@ -2525,7 +2583,11 @@ export function STATLIST_FreeModStats113c(m: Memory113c, pUnit: number): void {
 export function STATLIST_FreeStatListImpl113c(m: Memory113c, pStatList: number): void {
   hitD2CommonVa113c(0x6FD8A9F0)
   const esi = pStatList >>> 0
-  STATLIST_RemoveSubList113c(m, esi)
+  if (hasLoadedU32PtrStatlist113c(m, D2COMMON_SGPT_DATATABLES_VA_113C)) {
+    STATLIST_RemoveSubList113c(m, esi)
+  } else {
+    unlinkSubListMem113c(m, esi)
+  }
   const pStat = m.get(esi, D2StatListStrc.pStat)
   if (pStat !== 0) {
     const pMemPool = m.get(esi, D2StatListStrc.pMemPool)
@@ -3740,47 +3802,7 @@ function setUnitStatMem113c(
 }
 
 function freeStatListMem113c(m: Memory113c, pStatList: number): void {
-  const esi = pStatList >>> 0
-  unlinkSubListMem113c(m, esi)
-  const pStat = m.u32((esi + 0x24) >>> 0)
-  if (pStat !== 0) {
-    m.u32(esi)
-    ;(m as { free?: (p: number) => void }).free?.(pStat)
-  }
-  if ((m.u32((esi + 0x10) >>> 0) | 0) < 0) {
-    let ecx = m.u32((esi + 0x3c) >>> 0)
-    while (ecx !== 0) {
-      const edx = m.u32((ecx + 0x10) >>> 0) | 0
-      let eax = m.u32((ecx + 0x2c) >>> 0)
-      m.setU32((ecx + 0x34) >>> 0, 0)
-      m.setU32((ecx + 0x04) >>> 0, 0)
-      if (edx >= 0) {
-        if (m.u32((esi + 0x3c) >>> 0) === ecx) {
-          m.setU32((esi + 0x3c) >>> 0, eax)
-        }
-        freeStatListMem113c(m, ecx)
-        eax = m.u32((esi + 0x3c) >>> 0)
-      }
-      ecx = eax
-    }
-    const pFullStat = m.u32((esi + 0x48) >>> 0)
-    if (pFullStat !== 0) {
-      m.u32(esi)
-      ;(m as { free?: (p: number) => void }).free?.(pFullStat)
-    }
-    const pModStat = m.u32((esi + 0x50) >>> 0)
-    if (pModStat !== 0) {
-      m.u32(esi)
-      ;(m as { free?: (p: number) => void }).free?.(pModStat)
-    }
-    const pStateFlags = m.u32((esi + 0x58) >>> 0)
-    m.u32(esi)
-    if (pStateFlags !== 0) {
-      ;(m as { free?: (p: number) => void }).free?.(pStateFlags)
-    }
-  }
-  m.u32(esi)
-  ;(m as { free?: (p: number) => void }).free?.(esi)
+  STATLIST_FreeStatListImpl113c(m, pStatList)
 }
 
 function getStatsByIdFromListMem113c(

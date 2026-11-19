@@ -119,15 +119,14 @@ import {
 import {
   PLAYER_ScheduleSkillActionFrameEvents113c,
   PLAYER_StartModeCast113c,
-  SEED_RollLimitedRandomNumber113c,
   SUNITDMG_AllocCombat113c,
   SUNITDMG_ApplyDamage113c,
   SUNITDMG_ApplySideEffectsAndKill113c,
-  SUNITDMG_CalcMonsterExperience113c,
   SUNITDMG_ExecuteEvents113c,
   SUNITDMG_FillDamageValues113c,
   SUNITDMG_FindCombatDamageData113c,
 } from './combat-a1c-113c'
+import { SUNITDMG_RollMeleeToHitAndBlock_6FCFE5A0_113c } from './k2-real-s2c-combat-113c'
 import {
   D2GAME_CreateItemEx_6FC31490_113c,
   ITEMS_FindFreeGroundDropCoords_6FC2E930_113c,
@@ -270,7 +269,7 @@ import { hitD2GameVa113c } from '../va-trace-113c'
 
 export type D2KernMemory113c = Memory113c
 
-let k2W5B1StackPtr = 0x7efb0000
+let k2W5B1StackPtr = 0x7e0f0000
 
 const CHARGED_BOLT_FAN_DX_113C = [0, 0, 1, -1] as const
 const CHARGED_BOLT_FAN_DY_113C = [1, -1, 0, 0] as const
@@ -692,7 +691,7 @@ export function SKILLS_SrvDo005_PerpendicularLineMissiles_6FC2D370_113c(
       m.setU32((pParams + 0x10) >>> 0, nMissileId >>> 0)
       m.setU32((pParams + 0x2c) >>> 0, skillId >>> 0)
       m.setU32((pParams + 0x30) >>> 0, nSkillLevel >>> 0)
-      m.setU32((pParams + 0x3c) >>> 0, nSubFrames >>> 0)
+      m.setU32((pParams + 0x4c) >>> 0, nSubFrames >>> 0)
 
       for (let i = 0; i < esiCount; i++) {
         m.setU32((pParams + 0x1c) >>> 0, curX >>> 0)
@@ -972,8 +971,8 @@ export function SKILLS_SrvDo006_SpawnChargedSkillMissile_6FC2D680_113c(
 
     const ebxMissile = MISSILE_CreateServerProjectile113c(m, pGame >>> 0, pParams) >>> 0
     if (ebxMissile === 0) return 0
-    MISSILE_SetTargetY113c(m, ebxMissile, (-esiDy) | 0)
-    MISSILE_SetTargetX113c(m, ebxMissile, ediDx)
+    MISSILE_SetTargetX113c(m, ebxMissile, (-esiDy) | 0)
+    MISSILE_SetTargetY113c(m, ebxMissile, ediDx)
     return 1
   } finally {
     k2W5B1StackPtr = sp
@@ -1006,7 +1005,7 @@ export function SKILLS_MorphMonsterAndApplyState142_6FC2D850_113c(
   nSkillId: number,
   pMonster: number,
   pGame: number,
-  nMode: number,
+  nSkillLevel: number,
   pSourceUnit: number,
 ): void {
   hitD2GameVa113c(0x6FC2D850)
@@ -1020,20 +1019,22 @@ export function SKILLS_MorphMonsterAndApplyState142_6FC2D850_113c(
   if (pSkillsTxt === 0) return
 
   const sp = k2W5B1StackPtr
-  k2W5B1StackPtr = (sp + 0x28) >>> 0
+  k2W5B1StackPtr = (sp + 0x30) >>> 0
   try {
-    const pSubIdx = sp
+    const pOutMode = sp
+    const pSubIdx = (sp + 0x04) >>> 0
+    m.setU32(pOutMode, 0)
     m.setU32(pSubIdx, 0)
     const esiBaseMonId =
       SKILLS_ResolveSummonMonsterId_6FCBEE50_113c(
         m,
-        pSubIdx,
         0,
         0,
+        pOutMode,
         pSourceUnit >>> 0,
         0,
         skillId,
-        pSourceUnit >>> 0,
+        nSkillLevel | 0,
       ) | 0
     const edi = pMonster >>> 0
     if (esiBaseMonId < 0 || edi === 0 || (m.u32(edi) | 0) !== 1) return
@@ -1042,13 +1043,21 @@ export function SKILLS_MorphMonsterAndApplyState142_6FC2D850_113c(
     const ebxNewClassId =
       MONSTATS_FollowSubClassChain_6FC21D30_113c(m, esiBaseMonId, i32(m, pSubIdx)) | 0
 
+    const nResolvedMode = i32(m, pOutMode)
     const ebpGame = pGame >>> 0
-    monsterMorphClassId_6FCCFC50(m, edi, ebpGame, ebxNewClassId, nMode | 0)
-    AI_InitMonsterAiThinkFn113c(m, edi)
+    monsterMorphClassId_6FCCFC50(m, edi, ebpGame, ebxNewClassId, nResolvedMode)
+    let pAiGeneral = 0
+    if ((m.u32(edi) | 0) === 1) {
+      const pMonData = m.u32((edi + 0x14) >>> 0) >>> 0
+      if (pMonData !== 0) {
+        pAiGeneral = m.u32((pMonData + 0x28) >>> 0) >>> 0
+      }
+    }
+    AI_InitMonsterAiThinkFn113c(m, edi, ebpGame, pAiGeneral, 0x0f)
 
-    const pModeArgs = (sp + 0x04) >>> 0
-    MONSTER_InitModeChangeStrc113c(m, edi, pModeArgs, nMode | 0)
-    invokeMonsterStartMode113c(m, ebpGame, edi, nMode | 0, 0, 0)
+    const pModeArgs = (sp + 0x08) >>> 0
+    MONSTER_InitModeChangeStrc113c(m, edi, pModeArgs, nResolvedMode)
+    invokeMonsterStartMode113c(m, ebpGame, edi, nResolvedMode, 0, 0)
     STATES_ToggleGfxStateFlag113c(m, edi, 0x8e, 1)
 
     const src = pSourceUnit >>> 0
@@ -1158,14 +1167,12 @@ export function AI_Thinker_PutridDefiler_6FC38730_113c(
         ) >>> 0
     }
   }
-  void pBoundUnit
-
   if ((MONSTERS_IsDead113c(m, esi) | 0) !== 0) return
 
   const sp = k2W5B1StackPtr
   k2W5B1StackPtr = (sp + 0x20) >>> 0
   try {
-    if (bHasField94 === 0 && (UNIT_GetAlignment113c(m, esi) | 0) === 0 && edi !== 0) {
+    if (pBoundUnit === 0 && (UNIT_GetAlignment113c(m, esi) | 0) === 0 && edi !== 0) {
       const diff = m.u8((ebx + 0x6d) >>> 0)
       const aip1 = sx16(m.u16((edi + diff * 2 + 0x56) >>> 0))
       const maxDistSq = imul32(aip1, aip1)
@@ -1174,7 +1181,7 @@ export function AI_Thinker_PutridDefiler_6FC38730_113c(
         AITARGET_ScanUnitsByModeTable113c(m, 1, sp, ebx, esi, 0x6fc35b00) >>> 0
       void AI_CheckTargetIsUnboundPutridDefiler_6FC35B00_113c
       if (pFound !== 0) {
-        AI_UpdateCloserTrackedTargetGuid_6FC358F0_113c(m, esi, pFound)
+        AI_UpdateCloserTrackedTargetGuid_6FC358F0_113c(m, pFound, esi)
       }
     }
 
@@ -1261,9 +1268,9 @@ export function AI_Thinker_PutridDefiler_6FC38730_113c(
         if (ecxVel !== 0 && pAiControl !== 0) {
           m.setU32((pAiControl + 0x1c) >>> 0, ecxVel >>> 0)
         }
-        AI_StepRelativeToTargetUnit113c(m, ebx, esi, pTarget, 12, 2)
       }
     }
+    AI_StepRelativeToTargetUnit113c(m, ebx, esi, pTarget, 12, 2)
   } finally {
     k2W5B1StackPtr = sp
   }
@@ -1419,34 +1426,20 @@ function rollToHitFlags_6FCFE5A0(
   pDefender: number,
   pGame: number,
   nToHitBonus: number,
-  _nWeaponRangePenalty: number,
+  nWeaponRangePenalty: number,
+  pDmg = 0,
 ): number {
-  SUNITDMG_CalcMonsterExperience113c(m, pGame >>> 0, pDefender >>> 0)
-  const att = pAttacker >>> 0
-  const def = pDefender >>> 0
-  if (att === 0 || def === 0) return 0
-  const attType = i32(m, att)
-  if (attType !== 0 && attType !== 1) return 0
-  const defType = i32(m, def)
-  if (defType !== 0 && defType !== 1) return 0
-  if ((SUNIT_AreUnitsHostileOrUnaligned113c(m, def, att, pGame >>> 0) | 0) === 0) return 0
-  let wFlags = 0
-  if (defType === 0 && i32(m, (def + 0x10) >>> 0) === 3) {
-    wFlags = 1
-  }
-  if ((wFlags & 1) === 0) {
-    const ar = (STATLIST_GetUnitStat113c(m, att, 19, 0) | 0) + (nToHitBonus | 0)
-    const ac = STATLIST_GetUnitStat113c(m, def, 31, 0) | 0
-    const roll = SEED_RollLimitedRandomNumber113c(m, (att + 0x20) >>> 0, 100) | 0
-    const hitChance = ar > ac ? 95 : 50
-    if (roll < hitChance) {
-      wFlags |= 1
-    }
-  }
-  if ((wFlags & 1) !== 0 && (STATES_CheckState113c(m, def, 0x36) | 0) === 0) {
-    wFlags |= 4
-  }
-  return wFlags & 0xffff
+  return (
+    SUNITDMG_RollMeleeToHitAndBlock_6FCFE5A0_113c(
+      m,
+      pAttacker >>> 0,
+      pDefender >>> 0,
+      pGame >>> 0,
+      nToHitBonus | 0,
+      nWeaponRangePenalty | 0,
+      pDmg >>> 0,
+    ) & 0xffff
+  )
 }
 
 /**
@@ -1589,7 +1582,7 @@ export function SKILLS_SrvDo017_FeralRageOrMaulHit_6FC473C0_113c(
     const pDmg = sp
     m.fill(pDmg, 0x70, 0)
     const toHitBonus = SKILLS_GetSkillToHitBonus113c(m, esi, ebpSkillId, lvl) | 0
-    let wResultFlags = rollToHitFlags_6FCFE5A0(m, esi, pTarget, game, toHitBonus, 0) & 0xffff
+    let wResultFlags = rollToHitFlags_6FCFE5A0(m, esi, pTarget, game, toHitBonus, 0, pDmg) & 0xffff
     m.setU16((pDmg + 0x04) >>> 0, wResultFlags)
     if ((wResultFlags & 1) !== 0) {
       wResultFlags = (wResultFlags | m.u16((ebxSkillsTxt + 0x12e) >>> 0)) & 0xffff
@@ -1765,7 +1758,7 @@ export function SKILLS_ExecuteRadiusMeleeHitAndClearStun_6FC47820_113c(
     m.fill(pDmg, 0x70, 0)
     const lvl = nSkillLevel | 0
     const toHitBonus = SKILLS_GetSkillToHitBonus113c(m, esi, ebpSkillId, lvl) | 0
-    let wResultFlags = rollToHitFlags_6FCFE5A0(m, esi, pTarget, game, toHitBonus, 0) & 0xffff
+    let wResultFlags = rollToHitFlags_6FCFE5A0(m, esi, pTarget, game, toHitBonus, 0, pDmg) & 0xffff
     m.setU16((pDmg + 0x04) >>> 0, wResultFlags)
     if ((wResultFlags & 1) !== 0) {
       wResultFlags = (wResultFlags | 0x08) & 0xffff
@@ -1859,7 +1852,7 @@ export function SKILLS_ExecuteTargetedMeleeSkillHit_6FC47A10_113c(
     const pDmg = sp
     m.fill(pDmg, 0x70, 0)
     const toHitBonus = SKILLS_GetSkillToHitBonus113c(m, ebp, ebxSkillId, lvl) | 0
-    let wResultFlags = rollToHitFlags_6FCFE5A0(m, ebp, target, game, toHitBonus, 0) & 0xffff
+    let wResultFlags = rollToHitFlags_6FCFE5A0(m, ebp, target, game, toHitBonus, 0, pDmg) & 0xffff
     m.setU16((pDmg + 0x04) >>> 0, wResultFlags)
     if ((wResultFlags & 1) !== 0) {
       wResultFlags = (wResultFlags | m.u16((esiSkillsTxt + 0x12e) >>> 0)) & 0xffff
@@ -2158,7 +2151,7 @@ export function SKILLS_SrvDo021_MeleeHitWithTimedAuraState_6FC489A0_113c(
     const pDmg = sp
     m.fill(pDmg, 0x70, 0)
     const toHitBonus = SKILLS_GetSkillToHitBonus113c(m, esi, ebpSkillId, lvl) | 0
-    let wResultFlags = rollToHitFlags_6FCFE5A0(m, esi, pTarget, game, toHitBonus, 0) & 0xffff
+    let wResultFlags = rollToHitFlags_6FCFE5A0(m, esi, pTarget, game, toHitBonus, 0, pDmg) & 0xffff
     m.setU16((pDmg + 0x04) >>> 0, wResultFlags)
     if ((wResultFlags & 1) !== 0) {
       wResultFlags = (wResultFlags | m.u16((ebxSkillsTxt + 0x12e) >>> 0)) & 0xffff
@@ -2411,16 +2404,19 @@ export function PLAYER_ApplyDeathGoldAndExpPenalties_6FC583A0_113c(
       const pMonData = m.u32((ediAttacker + 0x14) >>> 0) >>> 0
       if (pMonData !== 0) {
         const pAiGeneral = m.u32((pMonData + 0x28) >>> 0) >>> 0
-        if (pAiGeneral !== 0 && m.u32((pAiGeneral + 0x28) >>> 0) !== 0) {
-          const pOwner =
-            SUNIT_GetServerUnit113c(
-              m,
-              ebxGame,
-              i32(m, (pAiGeneral + 0x30) >>> 0),
-              i32(m, (pAiGeneral + 0x2c) >>> 0),
-            ) >>> 0
-          if (pOwner !== 0 && i32(m, pOwner) === 0) {
-            return
+        if (pAiGeneral !== 0) {
+          const pOwnerGame = m.u32((pAiGeneral + 0x28) >>> 0) >>> 0
+          if (pOwnerGame !== 0) {
+            const pOwner =
+              SUNIT_GetServerUnit113c(
+                m,
+                pOwnerGame,
+                i32(m, (pAiGeneral + 0x30) >>> 0),
+                i32(m, (pAiGeneral + 0x2c) >>> 0),
+              ) >>> 0
+            if (pOwner !== 0 && i32(m, pOwner) === 0) {
+              return
+            }
           }
         }
       }
@@ -3436,7 +3432,7 @@ export function SKILLS_ApplySkillDamageWithElemDuration_6FC651B0_113c(
     let wFlags = ebpSkillsTxt !== 0 ? m.u16((ebpSkillsTxt + 0x12e) >>> 0) : 0
     if ((wFlags & 1) === 0) {
       const toHitBonus = SKILLS_GetSkillToHitBonus113c(m, ebxAttacker, esiSkillId, lvl) | 0
-      wFlags = rollToHitFlags_6FCFE5A0(m, ebxAttacker, def, game, toHitBonus, 0) & 0xffff
+      wFlags = rollToHitFlags_6FCFE5A0(m, ebxAttacker, def, game, toHitBonus, 0, pDmg) & 0xffff
       m.setU16((pDmg + 0x04) >>> 0, wFlags)
       if ((wFlags & 1) !== 0 && ebpSkillsTxt !== 0) {
         wFlags = (wFlags | m.u16((ebpSkillsTxt + 0x12e) >>> 0)) & 0xffff
@@ -3662,7 +3658,7 @@ export function SKILLS_SrvDo054_MeleeHitZeroBonus_6FC6C720_113c(
   try {
     const pDmg = sp
     m.fill(pDmg, 0x70, 0)
-    const wFlags = rollToHitFlags_6FCFE5A0(m, ebxUnit, pTarget, game, 0, 0) & 0xffff
+    const wFlags = rollToHitFlags_6FCFE5A0(m, ebxUnit, pTarget, game, 0, 0, pDmg) & 0xffff
     m.setU16((pDmg + 0x04) >>> 0, wFlags)
     if ((wFlags & 1) !== 0) {
       const dmgPct =
@@ -3767,7 +3763,7 @@ export function SKILLS_SrvDo055_MeleeHitWithMonsterElemStatsAndEvents_6FC6CB00_1
     if (uType === 1) {
       MONSTER_ApplyElementalDamageAndResistStats113c(m, game, esi, 8)
     }
-    const wFlags = rollToHitFlags_6FCFE5A0(m, esi, pTarget, game, toHitBonus, 0) & 0xffff
+    const wFlags = rollToHitFlags_6FCFE5A0(m, esi, pTarget, game, toHitBonus, 0, pDmg) & 0xffff
     m.setU16((pDmg + 0x04) >>> 0, wFlags)
     if ((wFlags & 1) !== 0) {
       const dmgPct =
@@ -3953,7 +3949,7 @@ export function SKILLS_SrvDo064_NonTownMeleeHitWithElemConversion_6FC6F7D0_113c(
     const pDmg = sp
     m.fill(pDmg, 0x70, 0)
     const toHitBonus = SKILLS_GetSkillToHitBonus113c(m, esi, ebpSkillId, lvl) | 0
-    const wFlags = rollToHitFlags_6FCFE5A0(m, esi, pTarget, game, toHitBonus, 0) & 0xffff
+    const wFlags = rollToHitFlags_6FCFE5A0(m, esi, pTarget, game, toHitBonus, 0, pDmg) & 0xffff
     m.setU16((pDmg + 0x04) >>> 0, wFlags)
     if ((wFlags & 1) !== 0) {
       const dmgPct =

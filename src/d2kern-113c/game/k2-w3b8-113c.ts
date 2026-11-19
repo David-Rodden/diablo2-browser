@@ -115,6 +115,26 @@ export const D2GAME_MON_ALIGN_TABLE_PTR_VA_113C = 0x6fd18be0
 /** Isolated reentrant scratch stack pointer for `w3b8` stack frames. */
 let k2W3B8StackPtr = 0x7ea90000
 
+function rollSeedAt6FC21180(m: D2KernMemory113c, pSeed: number, nMax: number): number {
+  const addr = pSeed >>> 0
+  const max = nMax | 0
+  if (addr === 0 || max <= 0) {
+    return 0
+  }
+  const lo = m.u32(addr) >>> 0
+  const hi = m.u32((addr + 4) >>> 0) >>> 0
+  const prod = BigInt(lo) * 0x6ac690c5n + BigInt(hi)
+  const newLo = Number(prod & 0xffffffffn) >>> 0
+  const newHi = Number((prod >> 32n) & 0xffffffffn) >>> 0
+  m.setU32((addr + 4) >>> 0, newHi)
+  m.setU32(addr, newLo)
+  const uMax = max >>> 0
+  if (((uMax - 1) & uMax) === 0) {
+    return (newLo & (uMax - 1)) | 0
+  }
+  return (newLo % uMax) | 0
+}
+
 function appendUnitEventMsgNode113c(
   m: D2KernMemory113c,
   pUnit: number,
@@ -985,8 +1005,8 @@ export function AI_StationaryMeleeTrap_6FC9BF50_113c(
         }
       }
     }
-    m.setU8((sp + 0x1d) >>> 0, bAnimRate)
-    m.setU32((sp + 0x10) >>> 0, pTarget)
+    m.setU8((sp + 0x15) >>> 0, bAnimRate)
+    m.setU32((sp + 0x08) >>> 0, pTarget)
     MONSTER_StartMode113c(m, pGame >>> 0, pUnit >>> 0, 4, pTarget, 0, 0)
   } finally {
     k2W3B8StackPtr = (sp + 0x20) >>> 0
@@ -1321,7 +1341,7 @@ export function AI_CardinalBeamTurret_6FC9C910_113c(
     if (wSkill0 >= 0) {
       const aip1 = (m.u16((pMonStatsTxt + diff * 2 + 0x56) >>> 0) << 16) >> 16
       if (nDist < aip1) {
-        const roll = SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0
+        const roll = rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0
         const aip2 = (m.u16((pMonStatsTxt + diff * 2 + 0x5c) >>> 0) << 16) >> 16
         if (roll < aip2) {
           const bSeqMode = (m.u8((pMonStatsTxt + 0x180) >>> 0) << 24) >> 24
@@ -1407,14 +1427,14 @@ export function AI_LinkedOwnerTurretCycle_6FC9CB10_113c(
       const aip6 = (m.u16((pMonStatsTxt + diff * 2 + 0x74) >>> 0) << 16) >> 16
       let doCast0 = false
       if (nDist <= aip6 && bInMeleeRange === 0) {
-        const roll = SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0
+        const roll = rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0
         const aip2 = (m.u16((pMonStatsTxt + diff * 2 + 0x5c) >>> 0) << 16) >> 16
         if (roll < aip2) {
           doCast0 = true
         }
       }
       if (!doCast0 && ownerMode === 0x0e) {
-        const roll = SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0
+        const roll = rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0
         if (roll < 0x32) {
           doCast0 = true
         }
@@ -1436,7 +1456,7 @@ export function AI_LinkedOwnerTurretCycle_6FC9CB10_113c(
   if (wSkill1 >= 0) {
     if ((m.u32((pAiControl + 0x1c) >>> 0) | 0) !== 1) {
       if (bInMeleeRange !== 0) {
-        const roll = SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0
+        const roll = rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0
         const aip1 = (m.u16((pMonStatsTxt + diff * 2 + 0x56) >>> 0) << 16) >> 16
         if (roll < aip1) {
           AI_StartAttackMode113c(m, 4, pUnit >>> 0, pGame >>> 0, pTarget)
@@ -1451,7 +1471,7 @@ export function AI_LinkedOwnerTurretCycle_6FC9CB10_113c(
       const aip6 = (m.u16((pMonStatsTxt + diff * 2 + 0x74) >>> 0) << 16) >> 16
       let doCast1 = bInMeleeRange !== 0 || nDist < aip6
       if (!doCast1 && ownerMode !== 0x0e) {
-        const roll = SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0
+        const roll = rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0
         if (roll < 5) {
           doCast1 = true
         }
@@ -1484,7 +1504,7 @@ export function AI_LinkedOwnerTurretCycle_6FC9CB10_113c(
   }
 
   if (bInMeleeRange !== 0) {
-    const roll = SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0
+    const roll = rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0
     const aip1 = (m.u16((pMonStatsTxt + diff * 2 + 0x56) >>> 0) << 16) >> 16
     if (roll < aip1) {
       AI_StartAttackMode113c(m, 4, pUnit >>> 0, pGame >>> 0, pTarget)
@@ -1781,7 +1801,7 @@ function aiApproachTarget6FD12540(
     if ((flagsByte & 2) !== 0) {
       const roll = (stepUnitSeed64113c(m, pUnit >>> 0) >>> 0) % 100
       if (roll < 0x46) {
-        AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0)
+        AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0, 4)
         return 1
       }
       AI_Stall113c(m, pGame >>> 0, pUnit >>> 0, 10)
@@ -1893,7 +1913,7 @@ export function AI_SubmergedOrStuckTransition_6FC9D550_113c(
           }
         }
       }
-      m.setU8((sp + 0x1d) >>> 0, bAnimRate)
+      m.setU8((sp + 0x15) >>> 0, bAnimRate)
       MONSTER_StartMode113c(m, pGame >>> 0, pUnit >>> 0, 0x0a, 0, 0, 0)
     } finally {
       k2W3B8StackPtr = (sp + 0x20) >>> 0
@@ -1951,8 +1971,8 @@ export function AI_BasicMeleeOrStepApproach_6FC9D7C0_113c(
           }
         }
       }
-      m.setU8((sp + 0x1d) >>> 0, bAnimRate)
-      m.setU32((sp + 0x10) >>> 0, pTarget)
+      m.setU8((sp + 0x15) >>> 0, bAnimRate)
+      m.setU32((sp + 0x08) >>> 0, pTarget)
       MONSTER_StartMode113c(m, pGame >>> 0, pUnit >>> 0, 4, pTarget, 0, 0)
     } finally {
       k2W3B8StackPtr = (sp + 0x20) >>> 0
@@ -1961,7 +1981,7 @@ export function AI_BasicMeleeOrStepApproach_6FC9D7C0_113c(
   }
   const aip1 = (m.u16((pMonStatsTxt + diff * 2 + 0x56) >>> 0) << 16) >> 16
   if ((roll | 0) < aip1) {
-    AI_StepRelativeToTargetUnit113c(m, pGame >>> 0, pUnit >>> 0, pTarget, 0x0c, 2)
+    AI_StepRelativeToTargetUnit113c(m, pGame >>> 0, pUnit >>> 0, pTarget, 0x0c, 2, 0)
     return
   }
   const aip2 = (m.u16((pMonStatsTxt + diff * 2 + 0x5c) >>> 0) << 16) >> 16
@@ -2021,8 +2041,8 @@ export function AI_PackBroadcastOrMeleeApproach_6FC9D910_113c(
             bAnimRate = 0x65
           }
         }
-        m.setU8((sp + 0x1d) >>> 0, bAnimRate)
-        m.setU32((sp + 0x10) >>> 0, pTarget)
+        m.setU8((sp + 0x15) >>> 0, bAnimRate)
+        m.setU32((sp + 0x08) >>> 0, pTarget)
         MONSTER_StartMode113c(m, pGame >>> 0, pUnit >>> 0, 4, pTarget, 0, 0)
         return
       }
@@ -2063,8 +2083,8 @@ export function AI_PackBroadcastOrMeleeApproach_6FC9D910_113c(
           }
         }
       }
-      m.setU8((sp + 0x1d) >>> 0, bAnimRate)
-      m.setU32((sp + 0x10) >>> 0, pTarget)
+      m.setU8((sp + 0x15) >>> 0, bAnimRate)
+      m.setU32((sp + 0x08) >>> 0, pTarget)
       MONSTER_StartMode113c(m, pGame >>> 0, pUnit >>> 0, 4, pTarget, 0, 0)
     } finally {
       k2W3B8StackPtr = (sp + 0x20) >>> 0
@@ -2118,7 +2138,7 @@ export function AI_SelfBuffOrSkillAndStrafe_6FC9DB70_113c(
           const diff0 = m.u8((pGame + 0x6d) >>> 0)
           const aip1 = (m.u16((pMonStatsTxt + diff0 * 2 + 0x56) >>> 0) << 16) >> 16
           if (lifePct < aip1) {
-            const roll = SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0
+            const roll = rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0
             const diff1 = m.u8((pGame + 0x6d) >>> 0)
             const aip2 = (m.u16((pMonStatsTxt + diff1 * 2 + 0x5c) >>> 0) << 16) >> 16
             if (roll < aip2) {
@@ -2163,8 +2183,8 @@ export function AI_SelfBuffOrSkillAndStrafe_6FC9DB70_113c(
           }
         }
       }
-      m.setU8((sp + 0x1d) >>> 0, bAnimRate)
-      m.setU32((sp + 0x10) >>> 0, pTarget)
+      m.setU8((sp + 0x15) >>> 0, bAnimRate)
+      m.setU32((sp + 0x08) >>> 0, pTarget)
       MONSTER_StartMode113c(m, pGame >>> 0, pUnit >>> 0, 4, pTarget, 0, 0)
     } finally {
       k2W3B8StackPtr = (sp + 0x20) >>> 0
@@ -2300,8 +2320,8 @@ export function AI_MeleeOrPathType13Approach_6FC9DF00_113c(
           }
         }
       }
-      m.setU8((sp + 0x1d) >>> 0, bAnimRate)
-      m.setU32((sp + 0x10) >>> 0, pTarget)
+      m.setU8((sp + 0x15) >>> 0, bAnimRate)
+      m.setU32((sp + 0x08) >>> 0, pTarget)
       MONSTER_StartMode113c(m, pGame >>> 0, pUnit >>> 0, 4, pTarget, 0, 0)
     } finally {
       k2W3B8StackPtr = (sp + 0x20) >>> 0
@@ -2379,8 +2399,8 @@ export function AI_InitialStall5ThenMeleeApproach_6FC9E4D0_113c(
           }
         }
       }
-      m.setU8((sp + 0x1d) >>> 0, bAnimRate)
-      m.setU32((sp + 0x10) >>> 0, pTarget)
+      m.setU8((sp + 0x15) >>> 0, bAnimRate)
+      m.setU32((sp + 0x08) >>> 0, pTarget)
       MONSTER_StartMode113c(m, pGame >>> 0, pUnit >>> 0, 4, pTarget, 0, 0)
     } finally {
       k2W3B8StackPtr = (sp + 0x20) >>> 0
@@ -2461,7 +2481,7 @@ export function AI_AuraBuffAndLineOfSightSkillCaster_6FC9E640_113c(
         aiApproachTarget6FD12540(m, pGame >>> 0, pUnit >>> 0, pTarget, 2, 0, 0, 1, 7)
         return
       }
-      const roll0 = SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0
+      const roll0 = rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0
       const diff0 = m.u8((pGame + 0x6d) >>> 0)
       const aip3 = (m.u16((pMonStatsTxt + diff0 * 2 + 0x62) >>> 0) << 16) >> 16
       if (roll0 < aip3) {
@@ -2492,14 +2512,14 @@ export function AI_AuraBuffAndLineOfSightSkillCaster_6FC9E640_113c(
       return
     }
     const diff = m.u8((pGame + 0x6d) >>> 0)
-    const rollMove = SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0
+    const rollMove = rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0
     const aip2 = (m.u16((pMonStatsTxt + diff * 2 + 0x5c) >>> 0) << 16) >> 16
     if (rollMove < aip2) {
       aiApproachTarget6FD12540(m, pGame >>> 0, pUnit >>> 0, pTarget, 2, 0, 0, 1, 7)
       return
     }
     if (nDist > 10) {
-      AI_StepRelativeToTargetUnit113c(m, pGame >>> 0, pUnit >>> 0, pTarget, 6, 2)
+      AI_StepRelativeToTargetUnit113c(m, pGame >>> 0, pUnit >>> 0, pTarget, 6, 2, 9)
       return
     }
     const bAiDelay = m.u8((pMonStatsTxt + diff + 0x4f) >>> 0)
@@ -2508,14 +2528,14 @@ export function AI_AuraBuffAndLineOfSightSkillCaster_6FC9E640_113c(
   }
 
   if ((m.u32((pAiControl + 0x1c) >>> 0) | 0) <= 0) {
-    const roll1 = SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0
+    const roll1 = rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0
     const diff0 = m.u8((pGame + 0x6d) >>> 0)
     const aip1 = (m.u16((pMonStatsTxt + diff0 * 2 + 0x56) >>> 0) << 16) >> 16
     if (roll1 >= aip1) {
       m.setU32((pAiControl + 0x1c) >>> 0, 0)
       const wSkill0 = (m.u16((pMonStatsTxt + 0x170) >>> 0) << 16) >> 16
       if (wSkill0 >= 0) {
-        const roll2 = SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0
+        const roll2 = rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0
         const diff1 = m.u8((pGame + 0x6d) >>> 0)
         const aip4 = (m.u16((pMonStatsTxt + diff1 * 2 + 0x68) >>> 0) << 16) >> 16
         if (roll2 < aip4) {
@@ -2571,8 +2591,8 @@ export function AI_AuraBuffAndLineOfSightSkillCaster_6FC9E640_113c(
         }
       }
     }
-    m.setU8((sp + 0x1d) >>> 0, bAnimRate)
-    m.setU32((sp + 0x10) >>> 0, pTarget)
+    m.setU8((sp + 0x15) >>> 0, bAnimRate)
+    m.setU32((sp + 0x08) >>> 0, pTarget)
     MONSTER_StartMode113c(m, pGame >>> 0, pUnit >>> 0, 4, pTarget, 0, 0)
   } finally {
     k2W3B8StackPtr = (sp + 0x20) >>> 0
@@ -2623,8 +2643,8 @@ export function AI_MeleeStrafeOrStepApproach_6FC9F370_113c(
             }
           }
         }
-        m.setU8((sp + 0x1d) >>> 0, bAnimRate)
-        m.setU32((sp + 0x10) >>> 0, pTarget)
+        m.setU8((sp + 0x15) >>> 0, bAnimRate)
+        m.setU32((sp + 0x08) >>> 0, pTarget)
         MONSTER_StartMode113c(m, pGame >>> 0, pUnit >>> 0, 4, pTarget, 0, 0)
       } finally {
         k2W3B8StackPtr = (sp + 0x20) >>> 0
@@ -2667,7 +2687,7 @@ export function AI_MeleeStrafeOrStepApproach_6FC9F370_113c(
   const diff0 = m.u8((pGame + 0x6d) >>> 0)
   const aip1 = (m.u16((pMonStatsTxt + diff0 * 2 + 0x56) >>> 0) << 16) >> 16
   if ((roll1 | 0) < aip1) {
-    AI_StepRelativeToTargetUnit113c(m, pGame >>> 0, pUnit >>> 0, pTarget, 8, 2)
+    AI_StepRelativeToTargetUnit113c(m, pGame >>> 0, pUnit >>> 0, pTarget, 8, 2, 1)
     return
   }
 
@@ -2735,8 +2755,8 @@ export function AI_ThreeStageSuicideMinion_6FC9F5A0_113c(
             }
           }
         }
-        m.setU8((sp + 0x1d) >>> 0, bAnimRate)
-        m.setU32((sp + 0x10) >>> 0, pTarget)
+        m.setU8((sp + 0x15) >>> 0, bAnimRate)
+        m.setU32((sp + 0x08) >>> 0, pTarget)
         MONSTER_StartMode113c(m, pGame >>> 0, pUnit >>> 0, 8, pTarget, 0, 0)
       } finally {
         k2W3B8StackPtr = (sp + 0x20) >>> 0
@@ -2747,14 +2767,14 @@ export function AI_ThreeStageSuicideMinion_6FC9F5A0_113c(
   }
   if (nStage === 1) {
     if (bInMeleeRange === 0) {
-      const roll = SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0
+      const roll = rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0
       const diff = m.u8((pGame + 0x6d) >>> 0)
       const aip1 = (m.u16((pMonStatsTxt + diff * 2 + 0x56) >>> 0) << 16) >> 16
       if (roll < aip1) {
         aiApproachTarget6FD12540(m, pGame >>> 0, pUnit >>> 0, pTarget, 2, 0, 0, 1, 0)
         return
       }
-      AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0)
+      AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0, 8)
       return
     }
     AI_StartAttackMode113c(m, 8, pUnit >>> 0, pGame >>> 0, pTarget)
@@ -2846,8 +2866,8 @@ export function AI_ComboMeleeAndDualSkill_6FC9F760_113c(
           }
         }
       }
-      m.setU8((sp + 0x1d) >>> 0, bAnimRate)
-      m.setU32((sp + 0x10) >>> 0, pTarget)
+      m.setU8((sp + 0x15) >>> 0, bAnimRate)
+      m.setU32((sp + 0x08) >>> 0, pTarget)
       MONSTER_StartMode113c(m, pGame >>> 0, pUnit >>> 0, 4, pTarget, 0, 0)
     } finally {
       k2W3B8StackPtr = (sp + 0x20) >>> 0
@@ -2916,8 +2936,8 @@ export function AI_AlternatingMeleeOrApproach_6FC9F9A0_113c(
               }
             }
           }
-          m.setU8((sp + 0x1d) >>> 0, bAnimRate)
-          m.setU32((sp + 0x10) >>> 0, pTarget)
+          m.setU8((sp + 0x15) >>> 0, bAnimRate)
+          m.setU32((sp + 0x08) >>> 0, pTarget)
           MONSTER_StartMode113c(m, pGame >>> 0, pUnit >>> 0, 4, pTarget, 0, 0)
         } finally {
           k2W3B8StackPtr = (sp + 0x20) >>> 0
@@ -3013,7 +3033,7 @@ export function AI_ChargeRunOrTripleSkillMelee_6FC9FB30_113c(
     m.setU32((pAiControl + 0x14) >>> 0, 0)
     const wSkill0 = (m.u16((pMonStatsTxt + 0x170) >>> 0) << 16) >> 16
     if (wSkill0 >= 0) {
-      const roll0 = SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0
+      const roll0 = rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0
       const diff = m.u8((pGame + 0x6d) >>> 0)
       const aip6 = (m.u16((pMonStatsTxt + diff * 2 + 0x74) >>> 0) << 16) >> 16
       if (roll0 < aip6) {
@@ -3024,7 +3044,7 @@ export function AI_ChargeRunOrTripleSkillMelee_6FC9FB30_113c(
     }
     const wSkill1 = (m.u16((pMonStatsTxt + 0x172) >>> 0) << 16) >> 16
     if (wSkill1 >= 0) {
-      const roll1 = SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0
+      const roll1 = rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0
       const diff = m.u8((pGame + 0x6d) >>> 0)
       const aip7 = (m.u16((pMonStatsTxt + diff * 2 + 0x7a) >>> 0) << 16) >> 16
       if (roll1 < aip7) {
@@ -3035,7 +3055,7 @@ export function AI_ChargeRunOrTripleSkillMelee_6FC9FB30_113c(
     }
     const wSkill2 = (m.u16((pMonStatsTxt + 0x174) >>> 0) << 16) >> 16
     if (wSkill2 >= 0) {
-      const roll2 = SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0
+      const roll2 = rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0
       const diff = m.u8((pGame + 0x6d) >>> 0)
       const aip8 = (m.u16((pMonStatsTxt + diff * 2 + 0x80) >>> 0) << 16) >> 16
       if (roll2 < aip8) {
@@ -3132,8 +3152,8 @@ export function AI_MeleeOrDualSkillPathType7_6FC9FE60_113c(
           }
         }
       }
-      m.setU8((sp + 0x1d) >>> 0, bAnimRate)
-      m.setU32((sp + 0x10) >>> 0, pTarget)
+      m.setU8((sp + 0x15) >>> 0, bAnimRate)
+      m.setU32((sp + 0x08) >>> 0, pTarget)
       MONSTER_StartMode113c(m, pGame >>> 0, pUnit >>> 0, 4, pTarget, 0, 0)
     } finally {
       k2W3B8StackPtr = (sp + 0x20) >>> 0
@@ -3157,7 +3177,7 @@ export function AI_MeleeOrDualSkillPathType7_6FC9FE60_113c(
   if ((roll2 | 0) < aip3) {
     const wSkill0 = (m.u16((pMonStatsTxt + 0x170) >>> 0) << 16) >> 16
     if (wSkill0 >= 0) {
-      const rollSkill0 = SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0
+      const rollSkill0 = rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0
       const diff2 = m.u8((pGame + 0x6d) >>> 0)
       const aip4 = (m.u16((pMonStatsTxt + diff2 * 2 + 0x68) >>> 0) << 16) >> 16
       if (rollSkill0 < aip4) {
@@ -3234,8 +3254,8 @@ export function AI_RegeneratingMultiStateMonster_6FCA0450_113c(
           }
         }
       }
-      m.setU8((sp + 0x1d) >>> 0, bAnimRate)
-      m.setU32((sp + 0x10) >>> 0, 0)
+      m.setU8((sp + 0x15) >>> 0, bAnimRate)
+      m.setU32((sp + 0x08) >>> 0, 0)
       MONSTER_StartMode113c(m, pGame >>> 0, pUnit >>> 0, 0x0a, 0, 0, 0)
     } finally {
       k2W3B8StackPtr = (sp + 0x20) >>> 0
@@ -3308,16 +3328,16 @@ export function AI_RegeneratingMultiStateMonster_6FCA0450_113c(
         return
       }
     }
-    if ((SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0) < 0x21) {
+    if ((rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0) < 0x21) {
       aiApproachTarget6FD12540(m, pGame >>> 0, pUnit >>> 0, pTarget, 2, 0, 0, 1, 0)
       m.setU32((pAiControl + 0x14) >>> 0, 3)
       return
     }
-    if ((SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0) >= 0x0f) {
+    if ((rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0) >= 0x0f) {
       AI_Stall113c(m, pGame >>> 0, pUnit >>> 0, 10)
       return
     }
-    AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0)
+    AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0, 6)
     return
   }
 
@@ -3340,7 +3360,7 @@ export function AI_RegeneratingMultiStateMonster_6FCA0450_113c(
       return
     }
     if ((MONSTER_HasAlwaysChaseFlag113c(m, pUnit >>> 0) | 0) !== 0) {
-      const rollChase = SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0
+      const rollChase = rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0
       const diff1 = m.u8((pGame + 0x6d) >>> 0)
       const aip2 = (m.u16((pMonStatsTxt + diff1 * 2 + 0x5c) >>> 0) << 16) >> 16
       if (rollChase < aip2) {
@@ -3350,11 +3370,11 @@ export function AI_RegeneratingMultiStateMonster_6FCA0450_113c(
         }
       }
     }
-    const rollAtk = SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0
+    const rollAtk = rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0
     const diff2 = m.u8((pGame + 0x6d) >>> 0)
     const aip3 = (m.u16((pMonStatsTxt + diff2 * 2 + 0x62) >>> 0) << 16) >> 16
     if (rollAtk < aip3) {
-      const rollMode = SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, 100) | 0
+      const rollMode = rollSeedAt6FC21180(m, (pUnit + 0x20) >>> 0, 100) | 0
       const diff3 = m.u8((pGame + 0x6d) >>> 0)
       const aip4 = (m.u16((pMonStatsTxt + diff3 * 2 + 0x68) >>> 0) << 16) >> 16
       AI_StartAttackMode113c(m, rollMode < aip4 ? 5 : 4, pUnit >>> 0, pGame >>> 0, pTarget)

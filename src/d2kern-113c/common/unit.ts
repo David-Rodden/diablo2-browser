@@ -60,6 +60,7 @@ import {
 } from './inline-helpers.ts'
 import { imul32, sar32, sdiv32 } from './int-math.ts'
 import { MONSTERS_GetCompCode113c } from './monsters.ts'
+import { STATLIST_GetStatListFromUnitAndStateMemPort113c } from './k0-d2common-memports.ts'
 import { fogGetLinkIndex113c } from './inventory.ts'
 import {
   STATES_CheckState113c,
@@ -68,6 +69,7 @@ import {
   STATLIST_FreeStatListImpl113c,
   STATLIST_GetStatListFromUnitAndState113c,
   STATLIST_GetTotalStatValueLayer0_113c,
+  STATLIST_GetTotalStatWithLayerInline113c,
   STATLIST_GetUnitStat113c,
   STATLIST_GetUnitStatWithLayer113c,
   STATLIST_SetWeaponStatListActive113c,
@@ -109,6 +111,7 @@ import {
   COLLISION_SetMaskWithSizeXY113c,
 } from './collision.ts'
 import {
+  ANIMSEQ_EvaluateSequenceFrame113c,
   compositGetWeaponClassCodeAndId113c,
   COMPOSIT_GetUnitWeaponClassCode113c,
   COMPOSIT_GetWeaponClassCode113c,
@@ -268,6 +271,18 @@ export function UNITROOM_RefreshUnit113c(m: Memory113c, pUnit: number): void {
  * is active (`0x6FD8920F`) or `pStatListEx->dwFlags` has bit `0x200` set (`0x6FD8B685`);
  * returns `1` when bit `0x400` is set; otherwise `0` (evil).
  */
+function hasLoadedU32Unit113c(m: Memory113c, addr: number): boolean {
+  const a = addr >>> 0
+  const known = (m as unknown as { known?: Map<number, Uint8Array> }).known
+  if (known !== undefined) {
+    const k0 = known.get(a >>> 12)
+    const k3 = known.get(((a + 3) >>> 0) >>> 12)
+    if (k0 === undefined || k0[a & 0xfff] === 0) return false
+    if (k3 === undefined || k3[((a + 3) >>> 0) & 0xfff] === 0) return false
+  }
+  return true
+}
+
 export function UNIT_GetAlignment113c(m: Memory113c, pUnit: number): number {
   hitD2CommonVa113c(0x6FD891F0)
   hitD2CommonVa113c(0x6FD8B650)
@@ -279,6 +294,14 @@ export function UNIT_GetAlignment113c(m: Memory113c, pUnit: number): number {
   if (pListEx === 0) return 0
   const fl = m.get(pListEx, D2StatListStrc.dwFlags)
   if ((fl & STATLIST_FLAG_EXTENDED) === 0) return 0
+  const pAlignSub = STATLIST_GetStatListFromUnitAndStateMemPort113c(m, pUnit, 0x69)
+  if (
+    pAlignSub !== 0 &&
+    hasLoadedU32Unit113c(m, D2COMMON_SGPT_DATATABLES_VA_113C) &&
+    m.u32(D2COMMON_SGPT_DATATABLES_VA_113C) !== 0
+  ) {
+    STATLIST_GetTotalStatWithLayerInline113c(m, pAlignSub, 0xac, 0)
+  }
   if ((fl & 0x0700) === 0) return 0
   if ((fl & 0x0100) !== 0) return 0
   if ((fl & 0x0400) !== 0) return 1
@@ -307,6 +330,32 @@ export function UNITROOM_ClearUpdateQueue113c(m: Memory113c, pRoom: number): voi
 export function UNITROOM_AddUnitToRoom113c(m: Memory113c, pUnit: number, pRoom: number): void {
   hitD2CommonVa113c(0x6FDB6800)
   if (pUnit === 0 || pRoom === 0) return
+  if (
+    hasLoadedU32Unit113c(m, (pRoom + 0x4c) >>> 0) &&
+    hasLoadedU32Unit113c(m, (pRoom + 0x68) >>> 0) &&
+    (m.u32((pRoom + 0x54) >>> 0) | 0) > 0 &&
+    (m.u32((pRoom + 0x58) >>> 0) | 0) > 0
+  ) {
+    const u = pUnit >>> 0
+    const uTypeCheck = m.u32(u) | 0
+    const pPathCheck = m.u32((u + 0x2c) >>> 0)
+    let ux: number
+    let uy: number
+    if (uTypeCheck === 2 || (uTypeCheck > 3 && uTypeCheck <= 5)) {
+      ux = pPathCheck !== 0 ? (m.u32((pPathCheck + 0x0c) >>> 0) | 0) : -1
+      uy = pPathCheck !== 0 ? (m.u32((pPathCheck + 0x10) >>> 0) | 0) : -1
+    } else {
+      ux = pPathCheck !== 0 ? m.u16((pPathCheck + 0x02) >>> 0) : -1
+      uy = pPathCheck !== 0 ? m.u16((pPathCheck + 0x06) >>> 0) : -1
+    }
+    const rx = m.u32((pRoom + 0x4c) >>> 0) | 0
+    const ry = m.u32((pRoom + 0x50) >>> 0) | 0
+    const rw = m.u32((pRoom + 0x54) >>> 0) | 0
+    const rh = m.u32((pRoom + 0x58) >>> 0) | 0
+    if (ux >= rx && ux < ((rx + rw) | 0) && uy >= ry && uy < ((ry + rh) | 0)) {
+      UNITROOM_ValidateUnitInRoom113c(m, pRoom, pUnit, 1)
+    }
+  }
   const prevFirst = m.get(pRoom, D2ActiveRoomStrc.pUnitFirst)
   m.set(pUnit, D2UnitStrc.pRoomUnitNext, prevFirst)
   m.set(pRoom, D2ActiveRoomStrc.pUnitFirst, pUnit)
@@ -365,15 +414,7 @@ export function UNITROOM_RemoveUnitFromRoom113c(m: Memory113c, pUnit: number): v
   UNITROOM_UnlinkUnitFromUpdateList113c(m, pUnit)
   m.set(pUnit, D2UnitStrc.dwFlags, (m.get(pUnit, D2UnitStrc.dwFlags) & ~UNITFLAG_ISUPDATE) >>> 0)
   if (bFound) {
-    // 0x6FD7FE70 (`pUnit != 0` here): static paths `[pPath+0x00] = 0` with no path null test, dynamic
-    // paths `[pPath+0x1C] = 0` only when `pPath != 0`.
-    const pPath = m.get(pUnit, D2UnitStrc.pPath)
-    const unitType = m.get(pUnit, D2UnitStrc.dwUnitType)
-    if (unitType === UNIT_OBJECT || unitType === UNIT_ITEM || unitType === UNIT_TILE) {
-      m.setU32(pPath, 0)
-    } else if (pPath !== 0) {
-      m.setU32(pPath + 0x1c, 0)
-    }
+    UNITS_ClearRoom113c(m, pUnit)
   }
 }
 
@@ -1675,32 +1716,24 @@ export function UNITS_StepAnimSeqFrame113c(
   const pSeq = m.u32((u + 0x30) >>> 0)
   const currFp8 = m.u32((u + 0x38) >>> 0) | 0
   const prevFp8 = dwPrevFrameFp8 | 0
-
-  let modeOut = 0
-  let frameOut = 0
-  let eventOut = 0
-  if (pSeq !== 0) {
-    const currIdx = currFp8 >> 8
-    const recAddr = (pSeq + imul32(currIdx, 6)) >>> 0
-    modeOut = m.u8((recAddr + 2) >>> 0)
-    frameOut = m.u8((recAddr + 3) >>> 0)
-    m.u8((recAddr + 4) >>> 0)
-    if (currFp8 === prevFp8) {
-      eventOut = m.u8((recAddr + 5) >>> 0)
-    } else {
-      const startIdx = ((prevFp8 >> 8) + 1) | 0
-      if (startIdx <= currIdx) {
-        let pEv = (pSeq + imul32(startIdx, 6) + 5) >>> 0
-        for (let rem = (currIdx - startIdx + 1) | 0; rem !== 0; rem = (rem - 1) | 0) {
-          const ev = m.u8(pEv)
-          if (ev !== 0) {
-            eventOut = ev
-          }
-          pEv = (pEv + 6) >>> 0
-        }
-      }
-    }
-  }
+  const sm = withUnitStackScratch113c(m)
+  const pModeOut = (UNIT_STACK_SCRATCH_BASE + 0x18) >>> 0
+  const pFrameOut = (UNIT_STACK_SCRATCH_BASE + 0x1c) >>> 0
+  const pDirOut = (UNIT_STACK_SCRATCH_BASE + 0x20) >>> 0
+  const pEventOut = (UNIT_STACK_SCRATCH_BASE + 0x24) >>> 0
+  ANIMSEQ_EvaluateSequenceFrame113c(
+    sm,
+    pSeq,
+    currFp8,
+    prevFp8,
+    pModeOut,
+    pFrameOut,
+    pDirOut,
+    pEventOut,
+  )
+  const modeOut = sm.u32(pModeOut)
+  const frameOut = sm.u32(pFrameOut)
+  const eventOut = sm.u8(pEventOut)
 
   m.setU32((u + 0x44) >>> 0, (frameOut << 8) >>> 0)
   const changed = modeOut !== oldSeqMode ? 1 : 0

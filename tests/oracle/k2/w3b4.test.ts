@@ -160,11 +160,9 @@ function createW3B4World(): W3B4World {
   m.setU32(pDataTables + 0xbc0, statesCount)
 
   const pCorpseStateMask = m.alloc(64)
-  m.setU32(pDataTables + 0xdc, pCorpseStateMask)
-  m.setU32(pDataTables + 0xf8, pCorpseStateMask)
-  m.setU32(pDataTables + 0xfc, pCorpseStateMask)
-  m.setU32(pDataTables + 0x144, pCorpseStateMask)
-  m.setU32(pDataTables + 0x150, pCorpseStateMask)
+  for (let off = 0xc8; off <= 0x178; off += 4) {
+    m.setU32(pDataTables + off, pCorpseStateMask)
+  }
 
   const pCharStatsTxt = m.alloc(8 * 0xc4)
   m.setU32(pDataTables + 0xbc4, pCharStatsTxt)

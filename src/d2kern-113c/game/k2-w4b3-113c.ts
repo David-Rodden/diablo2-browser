@@ -270,7 +270,7 @@ export interface K2W4B3Hooks113c {
   ) => number
 }
 
-let k2W4B3StackPtr = 0x7ef10000
+let k2W4B3StackPtr = 0x7e090000
 
 function allocStackFrame113c(size: number, m?: D2KernMemory113c): number {
   const aligned = (size + 0x0f) & ~0x0f

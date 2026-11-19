@@ -32,8 +32,8 @@
     "name": "SKILLS_ApplySkillAuraStatCalcs_6FC648E0",
     "kernFile": "src/d2kern-113c/game/k2-laneL-0x6fc6-w1-113c.ts",
     "tsSymbol": "SKILLS_ApplySkillAuraStatCalcs_6FC648E0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneL-0x6fc6-w1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/laneL-0x6fc6-w1.test.ts; Diff-verified 1:1 in dll\u2229ts across full-horizon strict zero-divergence K3 replay (p52-barbarian-warcries F1600/1600) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",

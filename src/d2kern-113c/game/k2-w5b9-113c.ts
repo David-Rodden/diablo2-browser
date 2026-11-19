@@ -49,7 +49,7 @@ import { hitD2GameVa113c } from '../va-trace-113c'
 
 export type { D2KernMemory113c }
 
-let k2W5B9StackPtr = 0x7ef90000
+let k2W5B9StackPtr = 0x7e0d0000
 
 /**
  * [1/45] Act 3 Quest 4 (`Lam Esen's Tome`) quest status filter callback.
@@ -996,9 +996,11 @@ function w5b9BitWrite113c(m: D2KernMemory113c, pBs: number, nValue: number, nBit
     m.setU32((bs + 0x0c) >>> 0, 0)
     return
   }
-  if (curBit0 === 0) m.setU8(m.u32(bs), 0)
+  if (curBit0 === 0 && ((curByte0 << 3) | 0) < maxBits) {
+    m.setU8(m.u32(bs), 0)
+  }
   if (rem <= 0) return
-  let val = nValue >>> 0
+  let val = nValue | 0
   while (rem > 0) {
     const curBit = m.u32((bs + 0x0c) >>> 0) | 0
     let chunk = (8 - curBit) | 0
@@ -1009,11 +1011,16 @@ function w5b9BitWrite113c(m: D2KernMemory113c, pBs: number, nValue: number, nBit
     const nextBit = (curBit + chunk) | 0
     m.setU32((bs + 0x0c) >>> 0, nextBit >>> 0)
     if (nextBit === 8) {
-      m.setU32(bs, (pOut + 1) >>> 0)
-      m.setU32((bs + 0x08) >>> 0, (m.u32((bs + 0x08) >>> 0) + 1) >>> 0)
+      const nextByte = ((m.u32((bs + 0x08) >>> 0) | 0) + 1) | 0
+      const nextOut = (pOut + 1) >>> 0
+      m.setU32(bs, nextOut)
+      m.setU32((bs + 0x08) >>> 0, nextByte >>> 0)
       m.setU32((bs + 0x0c) >>> 0, 0)
+      if (((nextByte << 3) | 0) < maxBits) {
+        m.setU8(nextOut, 0)
+      }
     }
-    val = val >>> chunk
+    val = val >> chunk
     rem = (rem - chunk) | 0
   }
 }

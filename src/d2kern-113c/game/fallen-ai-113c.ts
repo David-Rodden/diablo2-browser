@@ -112,7 +112,6 @@ import {
   type PureCharAnimClip113c,
   type PureItemTypeClosure113c,
 } from './tables-bootstrap-113c.ts'
-import { hitD2CommonVa113c, hitD2GameVa113c } from '../va-trace-113c.ts'
 import {
   AIGENERAL_AllocAiCommand113c,
   AIGENERAL_CopyAiCommandParams113c,
@@ -134,8 +133,26 @@ import {
   MONSTER_StepRun113c,
   MONSTER_StepWalk113c,
   ROOM_RecordMonsterDeath113c,
+  SUNITDMG_CheckToHit113c,
+  SUNITDMG_ExecuteEvents113c,
   UNITS_GetDistanceToCoordinates113c,
 } from './k2-real-s2c-combat-113c.ts'
+import {
+  ITEMS_CheckNotBrokenOrUnequipping113c,
+  PLAYER_DrainRunStamina113c,
+  PLAYER_Event11_PeriodicTick113c,
+  PLAYER_Event3_RegenTick113c,
+  PLAYER_GetEquippedWeapon113c,
+  PLAYER_UpdateHpRegen113c,
+  PLAYER_UpdateManaRegen113c,
+  PLAYER_UpdateStaminaRegen113c,
+  SKILLS_GetFlags113c,
+  STATLIST_FindSubListByStateAndFlags113c,
+  SUNIT_ScheduleModeAnimEvents113c,
+  UNITS_CanDualWield113c,
+  applyPlayerPacket113c,
+  stepFallenSliceFrame113c,
+} from './replay-kernel-113c.ts'
 
 export {
   AIGENERAL_AllocAiCommand113c,
@@ -148,6 +165,7 @@ export {
   AI_Stall113c,
   AiFallen113c,
   AiZombie113c,
+  ITEMS_CheckNotBrokenOrUnequipping113c,
   MONSTER_EndDeath113c,
   MONSTER_EndToAiOrNeutral113c,
   MONSTER_SavePrevMode113c,
@@ -157,7 +175,22 @@ export {
   MONSTER_StepPath113c,
   MONSTER_StepRun113c,
   MONSTER_StepWalk113c,
+  PLAYER_DrainRunStamina113c,
+  PLAYER_Event11_PeriodicTick113c,
+  PLAYER_Event3_RegenTick113c,
+  PLAYER_GetEquippedWeapon113c,
+  PLAYER_UpdateHpRegen113c,
+  PLAYER_UpdateManaRegen113c,
+  PLAYER_UpdateStaminaRegen113c,
   ROOM_RecordMonsterDeath113c,
+  SKILLS_GetFlags113c,
+  STATLIST_FindSubListByStateAndFlags113c,
+  SUNITDMG_CheckToHit113c,
+  SUNITDMG_ExecuteEvents113c,
+  SUNIT_ScheduleModeAnimEvents113c,
+  UNITS_CanDualWield113c,
+  applyPlayerPacket113c,
+  stepFallenSliceFrame113c,
   UNITS_GetDistanceToCoordinates113c,
 }
 
@@ -319,23 +352,6 @@ export function ITEMS_CheckItemTypeId113c(
     if (set2 !== undefined && set2.has(targetType)) return 1
   }
   return 0
-}
-
-/**
- * `@va D2Common:0x6FD73EF0` (`D2Common.#11006` `ITEMS_CheckNotBrokenOrUnequipping`):
- * Returns `0` if `pItem == 0`, `1` if `pItem->dwUnitType != UNIT_ITEM` (`0x6FD73EFD: jne 0x6FD73F26`),
- * and for `UNIT_ITEM` returns `1` iff `pItemData == 0` or `(pItemData->dwFlags (+0x18) & 0x4100) == 0`.
- */
-export function ITEMS_CheckNotBrokenOrUnequipping113c(m: Memory113c, pItem: number): number {
-  hitD2CommonVa113c(0x6FD73EF0)
-  if (pItem === 0) return 0
-  if (m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 1
-  const pItemData = m.get(pItem, D2UnitStrc.pUnitData)
-  if (pItemData !== 0) {
-    const flags = m.u32(pItemData + ITEMDATA_OFF_DWFLAGS)
-    if ((flags & (ITEMFLAG_BROKEN_113C | ITEMFLAG_UNEQUIPPING_113C)) !== 0) return 0
-  }
-  return 1
 }
 
 /**
@@ -566,135 +582,6 @@ export function INVENTORY_GetWeaponByHandSlot113c(
 
 export const DATATABLES_OFF_MONSTATS_COUNT_113C = 0x0a80
 export const STATLIST_FLAG_EXTENDED_113C = 0x80000000
-
-/**
- * `@va D2Common:0x6FD80530` (`D2Common.#10747` `UNITS_CanDualWield`):
- * Returns `1` for Player Barbarian (`4`) / Assassin (`6`) or Monster Shadow Warrior (`417`) / Shadow Master (`418`)
- * when `0 <= classId < sgptDataTables->nMonStatsCount` (`0x6FDE9E1C` -> `+0xA80`).
- */
-export function UNITS_CanDualWield113c(m: Memory113c, pUnit: number): number {
-  hitD2CommonVa113c(0x6FD80530)
-  if (pUnit === 0) return 0
-  const uType = m.get(pUnit, D2UnitStrc.dwUnitType)
-  const classId = m.get(pUnit, D2UnitStrc.dwClassId) | 0
-  if (uType === UNIT_PLAYER) {
-    return classId === 4 || classId === 6 ? 1 : 0
-  }
-  if (uType === UNIT_MONSTER) {
-    if (classId < 0) return 0
-    const pDataTables = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
-    const monStatsCount = m.u32(pDataTables + DATATABLES_OFF_MONSTATS_COUNT_113C) | 0
-    if (classId >= monStatsCount) return 0
-    return classId >= 417 && classId <= 418 ? 1 : 0
-  }
-  return 0
-}
-
-/**
- * `@va D2Common:0x6FD9DE40` (`D2Common.#10397` `SKILLS_GetFlags`):
- * Returns `pSkill->dwFlags (+0x0C)` (`0` if `pSkill == 0`).
- */
-export function SKILLS_GetFlags113c(m: Memory113c, pSkill: number): number {
-  hitD2CommonVa113c(0x6FD9DE40)
-  if (pSkill === 0) return 0
-  return m.u32(pSkill + 0x0c)
-}
-
-/**
- * `@va D2Common:0x6FD87F80` (`STATLIST_FindSubListByStateAndFlags`, `__fastcall (ecx = pStatListEx, edx = stateId)`):
- * Returns `0` if `pStatListEx == 0`, `stateId == 0`, or `(pStatListEx->dwFlags (+0x10) & 0x80000000) == 0`;
- * otherwise walks `pMyLastList (+0x3C)` then `pMyStats (+0x40)` via `pPrevLink (+0x2C)` and returns the first
- * sublist with `dwStateNo (+0x14) == stateId` (`0` if not found).
- */
-export function STATLIST_FindSubListByStateAndFlags113c(
-  m: Memory113c,
-  pStatListEx: number,
-  stateId: number,
-): number {
-  hitD2CommonVa113c(0x6FD87F80)
-  if (pStatListEx === 0 || stateId === 0) return 0
-  if ((m.get(pStatListEx, D2StatListStrc.dwFlags) & STATLIST_FLAG_EXTENDED_113C) === 0) {
-    return 0
-  }
-  const target = stateId >>> 0
-  for (
-    let sub = m.get(pStatListEx, D2StatListExStrc.pMyLastList);
-    sub !== 0;
-    sub = m.get(sub, D2StatListStrc.pPrevLink)
-  ) {
-    if (m.get(sub, D2StatListStrc.dwStateNo) === target) return sub
-  }
-  for (
-    let sub = m.get(pStatListEx, D2StatListExStrc.pMyStats);
-    sub !== 0;
-    sub = m.get(sub, D2StatListStrc.pPrevLink)
-  ) {
-    if (m.get(sub, D2StatListStrc.dwStateNo) === target) return sub
-  }
-  return 0
-}
-
-/**
- * `@va D2Game:0x6FC572C0` (`PLAYER_GetEquippedWeapon`):
- * 1. Calls `D2Common.#10101(pInventory)` (`0x6FD70700` `INVENTORY_GetActiveWeapon`) for `pDefault` (`0x6FC572F1`).
- * 2. Calls `D2Common.#10747(pUnit)` (`0x6FD80530` `UNITS_CanDualWield`); returns `pDefault` if `0` (`0x6FC572FD..0x6FC57308`).
- * 3. Calls `D2Common.#10511(pUnit)` (`0x6FD803A0` `SKILLS_GetUsedSkill`); returns `pDefault` if `pSkill == 0` or `pSkillsTxt == 0` (`0x6FC5730A..0x6FC57322`).
- * 4. Switches on `bWeapSel - 1` (`pSkillsTxt + 0x168`, jump table `0x6FC57414 = [0x6FC573CC, 0x6FC57346, 0x6FC57390, 0x6FC573A8]`):
- *    - `weapSel == 1` (`0x6FC573CC`): `pChosen = #10062(pInventory, 6)`.
- *    - `weapSel == 2` (`0x6FC57346..0x6FC5738E`): checks `(#10397(pSkill) & 0x2000) != 0` (`useRight`), fetches `pLeft = #10062(pInv, 5)` and `pRight = #10062(pInv, 6)`; if `pLeft` is not a weapon (`#10744(pLeft, 45) == 0`), picks `pRight`; else if `pRight` is not a weapon, picks `pLeft`; else picks `useRight ? pRight : pLeft`.
- *    - `weapSel == 3` (`0x6FC57390..0x6FC573A6`): computes signed `frameIdx = (pUnit->dwActionFrame (+0x38) | 0) >> 8`; if `(frameIdx & 1) != 0`, picks `#10062(pInv, 6)`, else `#10062(pInv, 5)`.
- *    - `weapSel == 4` (`0x6FC573A8..0x6FC573B0`): sets `pDefault = 0` and `pChosen = 0` (returns `0`).
- *    - `default` (`weapSel == 0` or `weapSel > 4`, `0x6FC573B2..0x6FC573D4`): tries `pChosen = #10062(pInv, 5)`; if `pChosen == 0` or `#10744(pChosen, 45) == 0`, falls back to `#10062(pInv, 6)`.
- * 5. Shared tail (`0x6FC573D6..0x6FC57403`): if `#10744(pChosen, 45) != 0` and `#11006(pChosen) != 0`, returns `pChosen`; else returns `pDefault`.
- */
-export function PLAYER_GetEquippedWeapon113c(m: Memory113c, pUnit: number): number {
-  hitD2GameVa113c(0x6FC572C0)
-  if (pUnit === 0) return 0
-  const pInv = m.get(pUnit, D2UnitStrc.pInventory)
-  if (pInv === 0) return 0
-  let pDefault = INVENTORY_GetActiveWeapon113c(m, pInv)
-  if (UNITS_CanDualWield113c(m, pUnit) === 0) return pDefault
-  const pUsedSkill = SKILLS_GetUsedSkill113c(m, pUnit)
-  if (pUsedSkill === 0) return pDefault
-  const pSkillsTxt = m.u32(pUsedSkill)
-  if (pSkillsTxt === 0) return pDefault
-
-  const weapSel = m.u8(pSkillsTxt + 0x168)
-  let pChosen = 0
-  if (weapSel === 1) {
-    pChosen = INVENTORY_GetWeaponByHandSlot113c(m, pInv, 6)
-  } else if (weapSel === 2) {
-    const useRight = (SKILLS_GetFlags113c(m, pUsedSkill) & 0x2000) !== 0
-    const pLeft = INVENTORY_GetWeaponByHandSlot113c(m, pInv, 5)
-    const pRight = INVENTORY_GetWeaponByHandSlot113c(m, pInv, 6)
-    if (pLeft === 0 || ITEMS_CheckItemTypeId113c(m, pLeft, ITYPE_WEAPON_113C) === 0) {
-      pChosen = pRight
-    } else if (pRight === 0 || ITEMS_CheckItemTypeId113c(m, pRight, ITYPE_WEAPON_113C) === 0) {
-      pChosen = pLeft
-    } else {
-      pChosen = useRight ? pRight : pLeft
-    }
-  } else if (weapSel === 3) {
-    const frameIdx = (m.u32(pUnit + 0x38) | 0) >> 8
-    pChosen = INVENTORY_GetWeaponByHandSlot113c(m, pInv, (frameIdx & 1) !== 0 ? 6 : 5)
-  } else if (weapSel === 4) {
-    pDefault = 0
-    pChosen = 0
-  } else {
-    pChosen = INVENTORY_GetWeaponByHandSlot113c(m, pInv, 5)
-    if (pChosen === 0 || ITEMS_CheckItemTypeId113c(m, pChosen, ITYPE_WEAPON_113C) === 0) {
-      pChosen = INVENTORY_GetWeaponByHandSlot113c(m, pInv, 6)
-    }
-  }
-
-  if (
-    ITEMS_CheckItemTypeId113c(m, pChosen, ITYPE_WEAPON_113C) !== 0 &&
-    ITEMS_CheckNotBrokenOrUnequipping113c(m, pChosen) !== 0
-  ) {
-    return pChosen
-  }
-  return pDefault
-}
 
 /**
  * `@va D2Common:0x6FD9F640` (`D2Common.#10804` `SKILLS_GetWeaponMasteryBonus`):
@@ -1049,24 +936,6 @@ export function SUNITDMG_ComputeHitChance113c(
   return rawChance < 5 ? 5 : rawChance > 95 ? 95 : rawChance
 }
 
-/**
- * `@va D2Game:0x6FCFDE90` (`SUNITDMG_CheckToHit`):
- * Computes hit chance (`[5, 95]`) and rolls `SEED_RollLimited(pAttacker->pSeed, 100) < hitChance` (`0x6FCFE08B`).
- * Note: the running-defender auto-hit check is in caller `0x6FCFE5F1` (`SUNITDMG_ExecuteMissileOrMeleeDmg113c`).
- */
-export function SUNITDMG_CheckToHit113c(
-  m: Memory113c,
-  pGame: number,
-  pAttacker: number,
-  pDefender: number,
-  arBonus = 0,
-): boolean {
-  hitD2GameVa113c(0x6FCFDE90)
-  const hitChance = SUNITDMG_ComputeHitChance113c(m, pGame, pAttacker, pDefender, arBonus)
-  const toHitRoll = rollUnitLimited(m, pAttacker, 100)
-  return toHitRoll < hitChance
-}
-
 export interface D2DamageData113c {
   wResultFlags: number
   dwHitFlags: number
@@ -1248,13 +1117,7 @@ export function SUNITDMG_ApplyResistancesAndBlock113c(
   }
 }
 
-/**
- * Slice helper for `D2Game:0x6FCFE0C0` (`SUNITDMG_ExecuteEvents`):
- * Applies total damage to `STAT_HITPOINTS (6)`, enforces the `0x6FCFE255` `< 0x100` (`256`) -> `0`
- * fixed-point death clamp, sets `HITFLAG_DEATH (0x02)` or `HITFLAG_GETHIT (0x04)`, and reschedules
- * monster `Event 3` (`STAT_REGEN`) when `STAT_HPREGEN (74) != 0` (`0x6FCFE2E2..0x6FCFE336`).
- */
-export function SUNITDMG_ExecuteEvents113c(
+function executeSliceDamageEvents113c(
   world: FallenSliceWorld113c,
   pAttacker: number,
   pDefender: number,
@@ -1434,7 +1297,7 @@ export function SUNITDMG_ExecuteMissileOrMeleeDmg113c(
   const defType = m.get(pDefender, D2UnitStrc.dwUnitType)
   const isRunningPlayer =
     defType === UNIT_PLAYER && m.get(pDefender, D2UnitStrc.dwAnimMode) === PLRMODE_RUN
-  if (!isRunningPlayer && !SUNITDMG_CheckToHit113c(m, pGame, pAttacker, pDefender, arBonus)) {
+  if (!isRunningPlayer && SUNITDMG_CheckToHit113c(m, pGame, pAttacker, pDefender, arBonus) === 0) {
     return false
   }
 
@@ -1448,7 +1311,7 @@ export function SUNITDMG_ExecuteMissileOrMeleeDmg113c(
   }
   SUNITDMG_RollDamageValues113c(world, pAttacker, pDefender, dmgData)
   SUNITDMG_ApplyResistancesAndBlock113c(world, pDefender, dmgData)
-  SUNITDMG_ExecuteEvents113c(world, pAttacker, pDefender, dmgData)
+  executeSliceDamageEvents113c(world, pAttacker, pDefender, dmgData)
   SUNITDMG_DrainItemDurability113c(world, pAttacker, pDefender)
   SUNITDMG_ExecuteDamageResult113c(world, pAttacker, pDefender, dmgData)
   return true
@@ -1463,342 +1326,6 @@ function resolvePlayerWeaponClass113c(world: FallenSliceWorld113c, pPlayer: numb
   }
   const classId = m.get(pPlayer, D2UnitStrc.dwClassId) >>> 0
   return getCharStatsByClassId113c(classId).baseWClass
-}
-
-/**
- * `@va D2Game:0x6FC97BB0` (`PLAYER_DrainRunStamina`):
- * Checks room town flag (`#10057` `0x6FD8C390` at `0x6FC97BBB`, returns `1` if town), requires
- * `pPlayer->pInventory != 0` (`0x6FC97BFE`), multiplies `(CharStats.runDrain << 1)` by torso
- * armor `dwSpeed/10 + 1` (`#11139` `bodyLoc = 3` at `0x6FC97C08..0x6FC97C3A`), scales by
- * `STAT_STAMINADRAINPCT (154)` (`drain += Math.trunc((drainPct * drain) / -100)` at
- * `0x6FC97C4E..0x6FC97C64`), clamps `if (drain < 1) drain = 1` (`0x6FC97C6B`), applies
- * `STATLIST_AddUnitStat(pPlayer, 10, -drain, 0)` (`0x6FC97C78`), and returns `1` if remaining
- * stamina `> 0`, else clamps `STAT_STAMINA = 0` (`0x6FC97C92`) and returns `0`.
- */
-export function PLAYER_DrainRunStamina113c(m: Memory113c, pPlayer: number): number {
-  hitD2GameVa113c(0x6FC97BB0)
-  if (pPlayer === 0 || m.get(pPlayer, D2UnitStrc.dwUnitType) !== UNIT_PLAYER) return 0
-  if (DUNGEON_CheckRoomIsTown113c(m, UNITS_GetRoom113c(m, pPlayer)) !== 0) return 1
-  const pInventory = m.get(pPlayer, D2UnitStrc.pInventory)
-  if (pInventory === 0) return 0
-
-  const classId = m.get(pPlayer, D2UnitStrc.dwClassId) >>> 0
-  const charStats = getCharStatsByClassId113c(classId)
-  let drain = charStats.runDrain << 1
-  const pTorso = INVENTORY_GetItemFromBodyLoc113c(m, pInventory, BODYLOC_TORSO)
-  if (pTorso !== 0 && m.get(pTorso, D2UnitStrc.dwUnitType) === UNIT_ITEM) {
-    const rec = DATATBLS_GetItemsTxtRecord113c(m.get(pTorso, D2UnitStrc.dwClassId))
-    if (rec !== null) {
-      drain = Math.imul(drain, (Math.trunc(rec.dwSpeed / 10) + 1) | 0)
-    }
-  }
-  const drainPct = STATLIST_GetUnitStat113c(m, pPlayer, STAT_STAMINADRAINPCT, 0) | 0
-  if (drainPct !== 0) {
-    drain = (drain + Math.trunc(Math.imul(drainPct, drain) / -100)) | 0
-  }
-  if (drain < 1) drain = 1
-
-  STATLIST_AddUnitStat113c(m, pPlayer, STAT_STAMINA, -drain, 0)
-  if ((STATLIST_GetUnitStat113c(m, pPlayer, STAT_STAMINA, 0) | 0) > 0) {
-    return 1
-  }
-  STATLIST_SetUnitStat113c(m, pPlayer, STAT_STAMINA, 0, 0)
-  return 0
-}
-
-/**
- * `@va D2Game:0x6FC97CB0` (`PLAYER_UpdateHpRegen`):
- * Adds `STAT_HPREGEN (74)` to `STAT_HITPOINTS (6)`, removes `STATE_HEALTHPOT (100)` when `nextHp > maxHp`
- * (`0x6FC97CE2..0x6FC97CFA`), clamps `if (nextHp < 0x100) nextHp = 0x100` (`0x6FC97CFE`), and updates
- * `stat 352` (`0x6FC97D17..0x6FC97D80`).
- */
-export function PLAYER_UpdateHpRegen113c(m: Memory113c, pPlayer: number): void {
-  hitD2GameVa113c(0x6FC97CB0)
-  if (pPlayer === 0 || m.get(pPlayer, D2UnitStrc.dwUnitType) !== UNIT_PLAYER) return
-  const curHp = STATLIST_GetUnitStat113c(m, pPlayer, STAT_HITPOINTS, 0) | 0
-  if (curHp <= 0) return
-  const maxHp = STATLIST_GetUnitStat113c(m, pPlayer, STAT_MAXHP, 0) | 0
-  const hpRegen = STATLIST_GetUnitStat113c(m, pPlayer, STAT_HPREGEN, 0) | 0
-  let nextHp = (curHp + hpRegen) | 0
-  if (nextHp > maxHp) {
-    nextHp = maxHp
-    if (STATES_CheckState113c(m, pPlayer, 100) !== 0) {
-      const pPotList = STATLIST_GetStatListFromUnitAndState113c(m, pPlayer, 100)
-      if (pPotList !== 0) {
-        STATLIST_RemoveStatListFromUnit113c(m, pPlayer, pPotList)
-      }
-      STATES_ToggleState113c(m, pPlayer, 100, false)
-    }
-  }
-  if (nextHp < 0x100) nextHp = 0x100
-  if (nextHp !== curHp) {
-    STATLIST_SetUnitStat113c(m, pPlayer, STAT_HITPOINTS, nextHp, 0)
-    const hpPct = maxHp > 0 ? mulDiv113c(nextHp, 100, maxHp) : 0
-    const hpTier = hpPct > 8 ? 3 : hpPct > 4 ? 2 : 1
-    if (STATLIST_GetUnitStat113c(m, pPlayer, STAT_HP_TIER_ICON, 0) !== hpTier) {
-      STATLIST_SetUnitStat113c(m, pPlayer, STAT_HP_TIER_ICON, hpTier, 0)
-      UNITROOM_RefreshUnit113c(m, pPlayer)
-    }
-  }
-}
-
-/**
- * `@va D2Game:0x6FC97950` (`PLAYER_UpdateManaRegen`):
- * Skips when `STATE_INFERNO (85)` is active (`0x6FC97972`), uses `7500` (`0x1D4C`) default divisor,
- * scales `maxMana / (25 * manaRegenSeconds)` by `100 + stat 27` (`manarecoverybonus`), adds `stat 26`
- * (`manarecovery`), removes `STATE_MANAPOT (106)` when reaching `maxMana` (`0x6FC97A00..0x6FC97A27`),
- * and clamps `delta` to `[-curMana, maxMana - curMana]`.
- */
-export function PLAYER_UpdateManaRegen113c(m: Memory113c, pPlayer: number): void {
-  hitD2GameVa113c(0x6FC97950)
-  if (pPlayer === 0 || m.get(pPlayer, D2UnitStrc.dwUnitType) !== UNIT_PLAYER) return
-  if (STATES_CheckState113c(m, pPlayer, 85) !== 0) return
-  const maxMana = STATLIST_GetUnitStat113c(m, pPlayer, STAT_MAXMANA, 0) | 0
-  if (maxMana <= 0) return
-
-  const classId = m.get(pPlayer, D2UnitStrc.dwClassId) >>> 0
-  const charStats = getCharStatsByClassId113c(classId)
-  const regenFrames =
-    charStats.manaRegenSeconds > 0 ? Math.imul(charStats.manaRegenSeconds, 25) : 7500
-  const baseRate = Math.trunc(maxMana / regenFrames) | 0
-  const manaBonusPct = STATLIST_GetUnitStat113c(m, pPlayer, STAT_MANARECOVERYBONUS, 0) | 0
-  const scaledRate = Math.trunc(Math.imul(baseRate, 100 + manaBonusPct) / 100) | 0
-  const flatManaRec = STATLIST_GetUnitStat113c(m, pPlayer, STAT_MANARECOVERY, 0) | 0
-  let delta = (scaledRate + flatManaRec) | 0
-  if (delta === 0) return
-
-  const curMana = STATLIST_GetUnitStat113c(m, pPlayer, STAT_MANA, 0) | 0
-  const maxAdd = (maxMana - curMana) | 0
-  if (delta >= maxAdd) {
-    if (STATES_CheckState113c(m, pPlayer, 106) !== 0) {
-      const pPotList = STATLIST_GetStatListFromUnitAndState113c(m, pPlayer, 106)
-      if (pPotList !== 0) {
-        STATLIST_RemoveStatListFromUnit113c(m, pPlayer, pPotList)
-      }
-      STATES_ToggleState113c(m, pPlayer, 106, false)
-    }
-    delta = maxAdd
-  }
-  const minSub = -curMana | 0
-  if (delta < minSub) {
-    delta = minSub
-  }
-  if (delta !== 0) {
-    STATLIST_SetUnitStat113c(m, pPlayer, STAT_MANA, (curMana + delta) | 0, 0)
-  }
-}
-
-/**
- * `@va D2Game:0x6FC97A50` (`PLAYER_UpdateStaminaRegen`):
- * Jump-table `0x6FC97B04[mode]` (`mode <= 19`):
- * - `mode 1 (NU)` / `mode 5 (TN)` (`0x6FC97A6E`): `baseDelta = maxStam >> 8`
- * - `mode 2 (WL)` (`0x6FC97A7C`): if `curStam < 256` (`0x100`) return, else `baseDelta = maxStam >> 9`
- * - `mode 6 (TW)` (`0x6FC97AA7`): `baseDelta = maxStam >> 9`
- * - `mode 0 (DT)` / `mode 17 (DD)` (`0x6FC97B03`): return
- * - `mode 3 (RN)` / `mode 4 (GH)` / `7..16` / `18..19` (`0x6FC97A92`): if `stat 28 < 1000` (`0x3E8`) return, else `baseDelta = maxStam >> 8`.
- */
-export function PLAYER_UpdateStaminaRegen113c(m: Memory113c, pPlayer: number): void {
-  hitD2GameVa113c(0x6FC97A50)
-  if (pPlayer === 0 || m.get(pPlayer, D2UnitStrc.dwUnitType) !== UNIT_PLAYER) return
-  const mode = m.get(pPlayer, D2UnitStrc.dwAnimMode) >>> 0
-  if (mode > 19 || mode === 0 || mode === 17) return
-
-  const curStam = STATLIST_GetUnitStat113c(m, pPlayer, STAT_STAMINA, 0) | 0
-  const maxStam = STATLIST_GetUnitStat113c(m, pPlayer, STAT_MAXSTAMINA, 0) | 0
-  const stamBonusPct = STATLIST_GetUnitStat113c(m, pPlayer, STAT_STAMINARECOVERYBONUS, 0) | 0
-
-  let baseDelta: number
-  if (mode === PLRMODE_NEUTRAL || mode === PLRMODE_TOWN_NEUTRAL) {
-    baseDelta = maxStam >> 8
-  } else if (mode === PLRMODE_WALK) {
-    if (curStam < 0x100) return
-    baseDelta = maxStam >> 9
-  } else if (mode === PLRMODE_TOWN_WALK) {
-    baseDelta = maxStam >> 9
-  } else {
-    if (stamBonusPct < 1000) return
-    baseDelta = maxStam >> 8
-  }
-
-  const delta =
-    stamBonusPct !== 0
-      ? (baseDelta + Math.trunc(Math.imul(baseDelta, stamBonusPct) / 100)) | 0
-      : baseDelta
-  if (delta <= 0) return
-
-  if (curStam < maxStam) {
-    let nextStam = (curStam + delta) | 0
-    if (nextStam > maxStam) nextStam = maxStam
-    STATLIST_SetUnitStat113c(m, pPlayer, STAT_STAMINA, nextStam, 0)
-  }
-}
-
-/**
- * `@va D2Game:0x6FC99B10` (`PLAYER_Event3_RegenTick`):
- * Reschedules `Event 3` (`+1` frame) BEFORE the dead check (`0x6FC99B18..0x6FC99B26`), then
- * executes `HP -> Stamina -> Mana` in exact binary order (`0x6FC99B47..0x6FC99B58`).
- */
-export function PLAYER_Event3_RegenTick113c(
-  m: Memory113c,
-  pGame: number,
-  pPlayer: number,
-): void {
-  hitD2GameVa113c(0x6FC99B10)
-  const frame = m.get(pGame, D2GameStrc.dwGameFrame) >>> 0
-  EVENT_SetEventFull113c(m, pGame, pPlayer, PLR_EVENT_STAMINA, (frame + 1) >>> 0, 0, 0, 0)
-  if (SUNIT_IsDeadOrDying113c(m, pPlayer) !== 0) return
-  PLAYER_UpdateHpRegen113c(m, pPlayer)
-  PLAYER_UpdateStaminaRegen113c(m, pPlayer)
-  PLAYER_UpdateManaRegen113c(m, pPlayer)
-}
-
-/** `@va D2Game:0x6FC99A60` (`PLAYER_Event11_PeriodicTick`): reschedules `Event 11` (`+30` frames, `0x1E`). */
-export function PLAYER_Event11_PeriodicTick113c(
-  m: Memory113c,
-  pGame: number,
-  pPlayer: number,
-): void {
-  hitD2GameVa113c(0x6FC99A60)
-  if (SUNIT_IsDeadOrDying113c(m, pPlayer) !== 0) return
-  const frame = m.get(pGame, D2GameStrc.dwGameFrame) >>> 0
-  EVENT_SetEventFull113c(m, pGame, pPlayer, PLR_EVENT_IDLE, (frame + 30) >>> 0, 0, 0, 0)
-}
-
-function transitionPlayerToNeutral113c(world: FallenSliceWorld113c, pPlayer: number): void {
-  const { m, pGame } = world
-  MONSTER_ClearModeEvents113c(m, pGame, pPlayer)
-  m.set(pPlayer, D2UnitStrc.dwAnimMode, PLRMODE_NEUTRAL)
-  const nextFlags = (m.get(pPlayer, D2UnitStrc.dwFlags) & ~UNITFLAG_IN_SKILL_ACTION) >>> 0
-  m.set(pPlayer, D2UnitStrc.dwFlags, nextFlags)
-  const pu = world.pathUnitByPtr.get(pPlayer)
-  if (pu !== undefined) {
-    pu.dwAnimMode = PLRMODE_NEUTRAL
-    pu.dwFlags = nextFlags
-  }
-  const classId = m.get(pPlayer, D2UnitStrc.dwClassId) >>> 0
-  const weaponClass = resolvePlayerWeaponClass113c(world, pPlayer)
-  const nuClip = getCharAnimClipPure113c(classId, PLRMODE_NEUTRAL, weaponClass)
-  writeUnitAnimState113c(m, pPlayer, 0, 0, nuClip.frames << 8, nuClip.speed, 0)
-}
-
-/**
- * `@va D2Game:0x6FCFF7B0` (`SUNIT_ScheduleModeAnimEvents`):
- * Exact x86 fixed-point animation event scheduler (`0x6FCFF7B9..0x6FCFF8F0`):
- * steps `acc = (startFrame << 8) + stepSpeed` while `acc < (clip.frames << 8)`, scanning
- * `AnimData.d2` event bytes `edi <= (acc >> 8)` (`edi < 0x90`) to register `Event 0`
- * (`arg14 = evCode`, `arg18 = hitIdx` for codes `1..2`) and finally `Event 1` (`MODE_END`)
- * at `ebx + 1`.
- */
-export function SUNIT_ScheduleModeAnimEvents113c(
-  m: Memory113c,
-  pGame: number,
-  pUnit: number,
-  clip: PureCharAnimClip113c,
-  startFrame: number,
-  stepSpeed: number,
-): void {
-  hitD2GameVa113c(0x6FCFF7B0)
-  const gameFrame = m.get(pGame, D2GameStrc.dwGameFrame) >>> 0
-  if (stepSpeed <= 0) {
-    EVENT_SetEventFull113c(m, pGame, pUnit, PLR_EVENT_MODE_END, (gameFrame + 1) >>> 0, 0, 0, 0)
-    return
-  }
-  const frameCount256 = clip.frames << 8
-  let edi = startFrame | 0
-  let acc = ((edi << 8) + stepSpeed) | 0
-  let ebx = gameFrame
-  let hitIdx = 0
-
-  while (acc < frameCount256) {
-    const frameIdx = acc >> 8
-    ebx = (ebx + 1) >>> 0
-    while (edi <= frameIdx && edi < 0x90) {
-      let evCode = 0
-      for (const ev of clip.events) {
-        if (ev.f === edi) {
-          evCode = ev.c
-          break
-        }
-      }
-      if (evCode >= 1 && evCode <= 4) {
-        const arg18 = evCode === 1 || evCode === 2 ? hitIdx++ : 0
-        EVENT_SetEventFull113c(m, pGame, pUnit, PLR_EVENT_MODE_STEP, ebx, 0, evCode, arg18)
-      }
-      edi++
-    }
-    acc = (acc + stepSpeed) | 0
-  }
-
-  if (ebx === gameFrame) {
-    ebx = (ebx + 1) >>> 0
-  }
-  EVENT_SetEventFull113c(m, pGame, pUnit, PLR_EVENT_MODE_END, (ebx + 1) >>> 0, 0, 0, 0)
-}
-
-/**
- * `@va D2Game:0x6FC987C0` (`PLAYER_StartModeAttackWithTarget`) + `D2Common.#11129` (`0x6FD80E80`) +
- * `D2Common.#10031` (`0x6FD82220`) + `D2Common.#10819` (`0x6FD83180`):
- * Handle C2S `0x06` (`AttackUnit`: `06 [unitType:u32] [unitId:u32]`) on `pPlayer` during
- * `D2Game.#10040` (`0x6FC4E460`, before `pGame->dwGameFrame++` in `0x6FC4E050`).
- */
-export function applyPlayerPacket113c(
-  world: FallenSliceWorld113c,
-  pPlayer: number,
-  packetBytes: Uint8Array,
-): void {
-  hitD2GameVa113c(0x6FC987C0)
-  if (packetBytes.length < 9 || packetBytes[0] !== 0x06) return
-  const { m, pGame } = world
-  const view = new DataView(packetBytes.buffer, packetBytes.byteOffset, packetBytes.byteLength)
-  const targetType = view.getUint32(1, true)
-  const targetId = view.getUint32(5, true)
-
-  let pTarget = 0
-  if (targetType === UNIT_MONSTER) {
-    const foundMon = world.monsterById.get(targetId)
-    pTarget = foundMon !== undefined ? foundMon : 0
-  } else {
-    const foundAny = world.unitsByKey.get(unitKey(targetType, targetId))
-    pTarget = foundAny !== undefined ? foundAny : 0
-  }
-  if (pTarget === 0) return
-
-  // D2Common.#11129 (0x6FD80E80): bind target unit into pPlayer->pPath (+0x58/+0x5C/+0x60)
-  const pPath = m.get(pPlayer, D2UnitStrc.pPath)
-  if (pPath !== 0) {
-    PATH_SetTargetUnit113c(m, pPath, pTarget)
-  }
-  const pu = world.pathUnitByPtr.get(pPlayer)
-
-  m.set(pPlayer, D2UnitStrc.dwAnimMode, PLRMODE_ATTACK1)
-  const nextFlags = (m.get(pPlayer, D2UnitStrc.dwFlags) | UNITFLAG_IN_SKILL_ACTION) >>> 0
-  m.set(pPlayer, D2UnitStrc.dwFlags, nextFlags)
-  if (pu !== undefined) {
-    pu.dwAnimMode = PLRMODE_ATTACK1
-    pu.dwFlags = nextFlags
-  }
-
-  const classId = m.get(pPlayer, D2UnitStrc.dwClassId) >>> 0
-  const weaponClass = resolvePlayerWeaponClass113c(world, pPlayer)
-  const clip = getCharAnimClipPure113c(classId, PLRMODE_ATTACK1, weaponClass)
-  const stat93 = STATLIST_GetUnitStat113c(m, pPlayer, STAT_FASTERATTACKRATE, 0) | 0
-  const stat68 = STATLIST_GetUnitStat113c(m, pPlayer, STAT_ATTACKRATE, 0) | 0
-  const stat67 = STATLIST_GetUnitStat113c(m, pPlayer, STAT_VELOCITYPERCENT, 0) | 0
-  const stepSpeed = computeRawPlayerAnimSpeedPure113c({
-    mode: PLRMODE_ATTACK1,
-    classId,
-    statAcc: stat93,
-    stat68Acc: stat68,
-    stat67Acc: stat67,
-    weaponClass,
-  })
-  const startFrame = playerAnimStartFramePure113c(classId, PLRMODE_ATTACK1, weaponClass)
-
-  writeUnitAnimState113c(m, pPlayer, 0, 0, clip.frames << 8, stepSpeed, 0)
-
-  // 0x6FC98812: MONSTER_ClearModeEvents (0x6FD00750) followed by 0x6FCFF7B0
-  MONSTER_ClearModeEvents113c(m, pGame, pPlayer)
-  SUNIT_ScheduleModeAnimEvents113c(m, pGame, pPlayer, clip, startFrame, stepSpeed)
 }
 
 /**
@@ -1854,6 +1381,11 @@ export function hydrateFallenSliceFromMemdump113c(
   }
 
   m.set(pGame, D2GameStrc.dwGameFrame, snapshot.frame >>> 0)
+  // `a1c-memdump-f785` does not dump `D2ActStrc`, `pMonRegRoomNodes`, `pQuestCtrl`, or tail controllers.
+  m.fill((pGame + 0xbc) >>> 0, 20, 0)
+  m.fill((pGame + 0xd8) >>> 0, 20, 0)
+  m.setU32((pGame + 0x10f4) >>> 0, 0)
+  m.fill((pGame + 0x1d00) >>> 0, 0x38, 0)
   // Populate `pGame->pUnitHash` (`+0x1120`) player hash buckets and `clientById` (`pPlayerData+0x9C -> pClient+0x00`)
   const clientById = new Map<number, number>()
   for (const pUnit of playerById.values()) {
@@ -1861,6 +1393,7 @@ export function hydrateFallenSliceFromMemdump113c(
     m.set(pGame, D2GameStrc.pUnitHash, pUnit, uId & 0x7f)
     const pPlrData = m.get(pUnit, D2UnitStrc.pUnitData) >>> 0
     if (pPlrData !== 0) {
+      m.setU32((pPlrData + 0x44) >>> 0, 0)
       const pClient = m.u32(pPlrData + 0x9c) >>> 0
       if (pClient !== 0) {
         const dwClientId = m.u32(pClient) >>> 0
@@ -1994,127 +1527,4 @@ export function hydrateFallenSliceFromMemdump113c(
     lastFrameDmg: [],
   }
   return world
-}
-
-/**
- * `@va D2Game:0x6FC4E460` (`D2Game.#10040`) + `@va D2Game:0x6FC4E050` (`D2Game.#10008` per-frame step):
- * 1. Drain incoming C2S packets (`0x6FC4E485..0x6FC4E4A3`) while `pGame->dwGameFrame` is still at `N`.
- * 2. Increment `pGame->dwGameFrame` to `N + 1` (`0x6FC4E053..0x6FC4E063`).
- * 3. Execute `EVENT_UpdateTimers113c` (`0x6FCAF070`) across partitions `[2, 0, 1, 3, 4]`.
- * 4. Clear per-tick room-sync dirty flags (`dwFlags &= ~0x80001`).
- */
-export function stepFallenSliceFrame113c(
-  world: FallenSliceWorld113c,
-  c2sPackets: ReadonlyArray<readonly [clientId: number, hexPayload: string]> = [],
-): number {
-  hitD2GameVa113c(0x6FC4E050)
-  const { m, pGame } = world
-  world.lastFrameOrd.length = 0
-  world.lastFrameDmg.length = 0
-  ensureSliceWorldPathMemory113c(world)
-
-  for (const [clientId, hexPayload] of c2sPackets) {
-    const pPlayer = world.clientById?.get(clientId >>> 0)
-    if (pPlayer === undefined || pPlayer === 0) {
-      throw new Error(`Unmapped C2S clientId ${clientId}`)
-    }
-    applyPlayerPacket113c(world, pPlayer, decodeHexBytes113c(hexPayload))
-  }
-
-  const nextFrame = ((m.get(pGame, D2GameStrc.dwGameFrame) >>> 0) + 1) >>> 0
-  m.set(pGame, D2GameStrc.dwGameFrame, nextFrame)
-
-  const fired = EVENT_UpdateTimers113c(m, pGame, (_mem, _g, pUnit, evType, arg14, arg18, _fn, pNode) => {
-    if (pUnit === 0) return
-    const uType = m.get(pUnit, D2UnitStrc.dwUnitType)
-    const uId = m.get(pUnit, D2UnitStrc.dwUnitId)
-
-    if (uType === UNIT_PLAYER) {
-      if (evType === PLR_EVENT_MODE_STEP) {
-        const mode = m.get(pUnit, D2UnitStrc.dwAnimMode)
-        if (
-          mode === PLRMODE_WALK ||
-          mode === PLRMODE_RUN ||
-          mode === PLRMODE_TOWN_WALK ||
-          mode === 19
-        ) {
-          // 0x6FD279D0[mode] = 0x6FC99B90 (locomotion step)
-          const pPath = m.get(pUnit, D2UnitStrc.pPath)
-          if (pPath !== 0) {
-            if (mode === PLRMODE_RUN) {
-              PLAYER_DrainRunStamina113c(m, pUnit)
-            }
-            const stepped = PATH_Step113c(m, pUnit, 0)
-            if (stepped === 0) {
-              transitionPlayerToNeutral113c(world, pUnit)
-            }
-          }
-        } else if (mode >= PLRMODE_ATTACK1 && mode <= 18 && mode !== 17 && mode !== 9) {
-          // 0x6FD279D0[mode] = 0x6FC99170 (skill action keyframe)
-          if (arg14 === 1) {
-            const pPath = m.get(pUnit, D2UnitStrc.pPath)
-            const pDef = pPath !== 0 ? m.get(pPath, D2DynamicPathStrc.pTargetUnit) : 0
-            if (pDef !== 0) {
-              SUNITDMG_ExecuteMissileOrMeleeDmg113c(world, pUnit, pDef)
-            }
-          }
-        }
-      } else if (evType === PLR_EVENT_MODE_END) {
-        if (m.get(pUnit, D2UnitStrc.dwAnimMode) === PLRMODE_ATTACK1) {
-          transitionPlayerToNeutral113c(world, pUnit)
-        }
-      } else if (evType === PLR_EVENT_STAMINA) {
-        PLAYER_Event3_RegenTick113c(m, pGame, pUnit)
-      } else if (evType === PLR_EVENT_IDLE) {
-        PLAYER_Event11_PeriodicTick113c(m, pGame, pUnit)
-      }
-      return
-    }
-
-    if (uType === UNIT_MONSTER) {
-      const isPersistent = (m.get(pNode, D2EventStrc.fFlags) & 0x04) !== 0
-      const phase = isPersistent ? 2 : 1
-      const preMode = m.get(pUnit, D2UnitStrc.dwAnimMode)
-      world.lastFrameOrd.push([phase, evType, uType, uId, preMode])
-
-      MONSTER_DispatchEvent113c(m, pGame, pUnit, evType, arg14, arg18, {
-        onModeStep(_m, _pg, pMon, entry) {
-          if (entry.pfnStep === VA_MONSTER_STEP_WALK_113C) {
-            MONSTER_StepWalk113c(world, pMon)
-          } else if (entry.pfnStep === VA_MONSTER_STEP_RUN_113C) {
-            MONSTER_StepRun113c(world, pMon)
-          } else if (entry.pfnStep === VA_MONSTER_CLEAR_STEP_113C) {
-            MONSTER_ClearStepEvents113c(m, pGame, pMon)
-          }
-        },
-        onModeEnd(_m, _pg, pMon, entry) {
-          if (entry.pfnEnd === VA_MONSTER_END_DEATH_113C) {
-            MONSTER_EndDeath113c(world, pMon)
-          } else if (entry.pfnEnd === VA_MONSTER_END_TO_AI_113C) {
-            MONSTER_EndToAiOrNeutral113c(world, pMon)
-          }
-        },
-        onAiThink(_m, _pg, pMon, _pAiGen, pfnThink) {
-          runMonsterAiDriver113c(world, pMon, pfnThink)
-        },
-      })
-    }
-  })
-
-  // 0x6FCBD850 + 0x6FC48BE0 end-of-frame room update sweep: clears `pRoom->pUpdateList` (`UNITFLAG_ISUPDATE` `0x2000`)
-  // via `D2Common.#10796` (`UNITROOM_ClearUpdateQueue113c`) and per-tick mode/coord dirty bits (`0x80001`).
-  for (const rPtr of world.roomByPtr.keys()) {
-    UNITROOM_ClearUpdateQueue113c(m, rPtr)
-  }
-  for (const pUnit of world.unitsByKey.values()) {
-    const curFlags = m.get(pUnit, D2UnitStrc.dwFlags)
-    if ((curFlags & UNITFLAG_PER_TICK_SYNC_MASK) !== 0) {
-      const cleared = (curFlags & ~UNITFLAG_PER_TICK_SYNC_MASK) >>> 0
-      m.set(pUnit, D2UnitStrc.dwFlags, cleared)
-      const pu = world.pathUnitByPtr.get(pUnit)
-      if (pu !== undefined) pu.dwFlags = cleared
-    }
-  }
-
-  return fired
 }

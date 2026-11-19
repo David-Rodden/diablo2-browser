@@ -2621,7 +2621,15 @@ export function SKILLS_TestLineOfSightFromUnitToTarget113c(
   const edi = isStatic ? m.u32((pPath + 0x10) >>> 0) : pPath !== 0 ? m.u16((pPath + 0x06) >>> 0) : 0
   const esi = isStatic ? m.u32((pPath + 0x0c) >>> 0) : pPath !== 0 ? m.u16((pPath + 0x02) >>> 0) : 0
   const pRoom = UNITS_GetRoom113c(m, u) >>> 0
-  return SKILLS_CheckLineOfSight113c(m, nTargetX >>> 0, nTargetY >>> 0, esi, edi, pRoom, dwMask >>> 0)
+  const sm = withSkillsStackScratch113c(m)
+  const pt1 = (SKILLS_STACK_BASE + 0x3e0) >>> 0
+  const pt2 = (SKILLS_STACK_BASE + 0x3e8) >>> 0
+  sm.setU32(pt1, nTargetX >>> 0)
+  sm.setU32((pt1 + 4) >>> 0, nTargetY >>> 0)
+  sm.setU32(pt2, esi >>> 0)
+  sm.setU32((pt2 + 4) >>> 0, edi >>> 0)
+  const hit = COLLISION_RayTrace113c(sm, pRoom, pt1, pt2, dwMask >>> 0)
+  return hit === 0 ? 1 : 0
 }
 export const SKILLS_CheckLineOfSightToUnit113c = SKILLS_TestLineOfSightFromUnitToTarget113c
 
@@ -2874,7 +2882,7 @@ export function SKILLS_GetSkillElemMinDamage113c(
     0
   const calcOff = m.u32((pSkTxt + 0x210) >>> 0) >>> 0
   if (calcOff !== 0xffffffff && (val > 0x100 || m.u32((pSkTxt + 0x1e8) >>> 0) !== 0)) {
-    const pct = evalSkillCalcRpnMem113c(m, calcOff, pOwner, nSkillId, lvl) | 0
+    const pct = SKILLS_EvalCalcByOffset113c(m, pOwner, calcOff, nSkillId, lvl) | 0
     if (pct !== 0) {
       val = (val + mulDiv113c(pct, val, 100)) | 0
     }
@@ -2908,7 +2916,7 @@ export function SKILLS_GetSkillElemMaxDamage113c(
     0
   const calcOff = m.u32((pSkTxt + 0x210) >>> 0) >>> 0
   if (calcOff !== 0xffffffff) {
-    const pct = evalSkillCalcRpnMem113c(m, calcOff, pOwner, nSkillId, lvl) | 0
+    const pct = SKILLS_EvalCalcByOffset113c(m, pOwner, calcOff, nSkillId, lvl) | 0
     if (pct !== 0) {
       val = (val + mulDiv113c(pct, val, 100)) | 0
     }
@@ -2956,6 +2964,8 @@ function evalSkillElemMaxForCalc113c(
   return SKILLS_GetSkillElemMaxDamage113c(m, pOwner, nSkillId, nLevel, bApplyMastery)
 }
 
+let _skillCalcRpnDepth113c = 0
+
 function evalSkillCalcRpnMem113c(
   m: Memory113c,
   dwCalcOffset: number,
@@ -2976,58 +2986,69 @@ function evalSkillCalcRpnMem113c(
   const push = (v: number): void => {
     if (sp < 64) stack[sp++] = v | 0
   }
-  let cur = base
-  while (((cur - base) | 0) < size) {
-    const op = m.u8(cur)
-    cur = (cur + 1) >>> 0
-    if (op === 0 || op > 22 || op === 2 || op === 3) {
-      return sp > 0 ? stack[sp - 1]! | 0 : 0
-    }
-    if (op === 1) {
-      const fnIdx = m.u8(cur)
+  const hasExpBin = m.u32(SGPT_EXPERIENCE_TXT_PTR_VA_113C) !== 0
+  const sm = withSkillsStackScratch113c(m)
+  const ctxAddr = (SKILLS_STACK_BASE + 0x40 + _skillCalcRpnDepth113c * 16) >>> 0
+  _skillCalcRpnDepth113c = (_skillCalcRpnDepth113c + 1) | 0
+  sm.setU32(ctxAddr, pOwner >>> 0)
+  sm.setU32((ctxAddr + 4) >>> 0, nSkillId >>> 0)
+  sm.setU32((ctxAddr + 8) >>> 0, nLevel >>> 0)
+  try {
+    let cur = base
+    while (((cur - base) | 0) < size) {
+      const op = m.u8(cur)
       cur = (cur + 1) >>> 0
-      if (fnIdx >= 7) {
-        push(0)
-      } else if (fnIdx === 6) {
-        const a3 = pop()
-        const a2 = pop()
-        const a1 = pop()
-        const lvl = evalSkillCalcFieldMem113c(m, pOwner, a2, nSkillId, nLevel)
-        push(evalSkillCalcFieldMem113c(m, pOwner, a3, a1, lvl))
-      } else {
-        const a2 = pop()
-        const a1 = pop()
-        if (fnIdx === 0) {
-          push(a1 < a2 ? a1 : a2)
-        } else if (fnIdx === 1) {
-          push(a1 > a2 ? a1 : a2)
-        } else if (fnIdx === 2) {
-          push(pOwner !== 0 ? SEED_RollLimitedRandomNumberInline113c(m, (pOwner + 0x20) >>> 0, a1, a2) : 0)
-        } else if (fnIdx === 3) {
-          const effLvl = pOwner !== 0 ? SKILLS_GetSkillLevelByIdWithBonus113c(m, pOwner, a1) : 0
-          push(evalSkillCalcFieldMem113c(m, pOwner, a2, a1, effLvl))
-        } else if (fnIdx === 4) {
-          push(MISSILE_EvaluateMissCalcFormula113c(m, 0, pOwner, a2, a1, nLevel))
+      if (op === 0 || op > 22 || op === 2 || op === 3) {
+        return sp > 0 ? stack[sp - 1]! | 0 : 0
+      }
+      if (op === 1) {
+        const fnIdx = m.u8(cur)
+        cur = (cur + 1) >>> 0
+        if (fnIdx >= 7) {
+          push(0)
+        } else if (fnIdx === 6) {
+          const a3 = pop()
+          const a2 = pop()
+          const a1 = pop()
+          push(SKILLS_EvalCalcSkillFieldPair113c(sm, a1, a2, a3, ctxAddr))
         } else {
-          const sc = m.u32((sgpt + DATATABLES_ISC_COUNT_OFF_113C) >>> 0) | 0
-          if (pOwner === 0 || a1 < 0 || a1 >= sc) {
-            push(0)
-          } else if (a1 === 0x13) {
-            push(UNITS_GetPlayerBaseToHit113c(m, pOwner))
-          } else if (a2 === 1) {
-            push(statListGetUnitBaseStatMem113c(m, pOwner, a1, 0) | 0)
-          } else if (a2 === 2) {
-            push(STATLIST_GetUnitStatWithLayer113c(m, pOwner, a1, 0) | 0)
+          const a2 = pop()
+          const a1 = pop()
+          if (fnIdx === 0) {
+            push(SKILLS_CalcMinCallback113c(sm, a1, a2, 0, ctxAddr) | 0)
+          } else if (fnIdx === 1) {
+            push(SKILLS_CalcMaxCallback113c(sm, a1, a2, 0, ctxAddr) | 0)
+          } else if (fnIdx === 2) {
+            push(pOwner !== 0 ? SEED_RollLimitedRandomNumberInline113c(m, (pOwner + 0x20) >>> 0, a1, a2) : 0)
+          } else if (fnIdx === 3) {
+            if (hasExpBin) {
+              push(SKILLS_EvalCalcUnitSkillFieldByCtx113c(sm, a1, a2, 0, ctxAddr))
+            } else {
+              const effLvl = pOwner !== 0 ? SKILLS_GetSkillLevelByIdWithBonus113c(m, pOwner, a1) : 0
+              push(evalSkillCalcFieldMem113c(m, pOwner, a2, a1, effLvl))
+            }
+          } else if (fnIdx === 4) {
+            push(MISSILE_EvaluateMissCalcFormula113c(m, 0, pOwner, a2, a1, nLevel))
           } else {
-            push(statListGetUnitStatMem113c(m, pOwner, a1, 0) | 0)
+            const sc = m.u32((sgpt + DATATABLES_ISC_COUNT_OFF_113C) >>> 0) | 0
+            if (pOwner === 0 || a1 < 0 || a1 >= sc) {
+              push(0)
+            } else if (a1 === 0x13) {
+              push(UNITS_GetPlayerBaseToHit113c(m, pOwner))
+            } else if (a2 === 1) {
+              push(statListGetUnitBaseStatMem113c(m, pOwner, a1, 0) | 0)
+            } else if (a2 === 2) {
+              push(STATLIST_GetUnitStatWithLayer113c(m, pOwner, a1, 0) | 0)
+            } else {
+              push(statListGetUnitStatMem113c(m, pOwner, a1, 0) | 0)
+            }
           }
         }
-      }
-    } else if (op >= 4 && op <= 6) {
-      const varId = op === 4 ? m.u8(cur) : op === 5 ? i16(m.u16(cur)) : m.u32(cur) | 0
-      cur = (cur + (1 << (op - 4))) >>> 0
-      push(evalSkillCalcFieldMem113c(m, pOwner, varId, nSkillId, nLevel))
-    } else if (op >= 7 && op <= 9) {
+      } else if (op >= 4 && op <= 6) {
+        const varId = op === 4 ? m.u8(cur) : op === 5 ? i16(m.u16(cur)) : m.u32(cur) | 0
+        cur = (cur + (1 << (op - 4))) >>> 0
+        push(SKILLS_SkillCalcVarCallback113c(sm, varId, ctxAddr))
+      } else if (op >= 7 && op <= 9) {
       const imm = op === 7 ? (m.u8(cur) << 24) >> 24 : op === 8 ? i16(m.u16(cur)) : m.u32(cur) | 0
       cur = (cur + (1 << (op - 7))) >>> 0
       push(imm)
@@ -3090,6 +3111,9 @@ function evalSkillCalcRpnMem113c(
     }
   }
   return 0
+  } finally {
+    _skillCalcRpnDepth113c = (_skillCalcRpnDepth113c - 1) | 0
+  }
 }
 
 /**
@@ -3389,6 +3413,8 @@ function evalSkillCalcFieldMem113c(
   return SKILLS_GetSkillCalcFieldById113c(m, pOwner, nFieldCode & 0xff, nSkillId, nLevel)
 }
 
+let _missileCalcRpnDepth113c = 0
+
 function fogEvalMissilePostFix113c(
   m: Memory113c,
   pBuf: number,
@@ -3409,102 +3435,113 @@ function fogEvalMissilePostFix113c(
   }
   const randSeed: [number, number] = [rawMissileIdArg >>> 0, rawLevelArg >>> 0]
   const base = pBuf >>> 0
-  let cur = base
-  while (((cur - base) | 0) < size) {
-    const op = m.u8(cur)
-    cur = (cur + 1) >>> 0
-    if (op === 0 || op > 22 || op === 2 || op === 3) {
-      return sp > 0 ? stack[sp - 1]! | 0 : 0
-    }
-    if (op === 1) {
-      const fnIdx = m.u8(cur)
+  const sm = withSkillsStackScratch113c(m)
+  const ctxAddr = (SKILLS_STACK_BASE + 0x200 + _missileCalcRpnDepth113c * 16) >>> 0
+  _missileCalcRpnDepth113c = (_missileCalcRpnDepth113c + 1) | 0
+  sm.setU32(ctxAddr, pMissile >>> 0)
+  sm.setU32((ctxAddr + 4) >>> 0, pOwner >>> 0)
+  sm.setU32((ctxAddr + 8) >>> 0, nMissileId >>> 0)
+  sm.setU32((ctxAddr + 0x0c) >>> 0, nLevel >>> 0)
+  try {
+    let cur = base
+    while (((cur - base) | 0) < size) {
+      const op = m.u8(cur)
       cur = (cur + 1) >>> 0
-      if (fnIdx >= 4) {
-        push(0)
-      } else {
-        const a2 = pop()
-        const a1 = pop()
-        if (fnIdx === 0) {
-          push(a1 < a2 ? a1 : a2)
-        } else if (fnIdx === 1) {
-          push(a1 > a2 ? a1 : a2)
-        } else if (fnIdx === 2) {
-          push(rollLimitedSeedPair113c(randSeed, a1, a2))
+      if (op === 0 || op > 22 || op === 2 || op === 3) {
+        return sp > 0 ? stack[sp - 1]! | 0 : 0
+      }
+      if (op === 1) {
+        const fnIdx = m.u8(cur)
+        cur = (cur + 1) >>> 0
+        if (fnIdx >= 4) {
+          push(0)
         } else {
-          const owner = pOwner >>> 0
-          const effLvl = owner !== 0 ? SKILLS_GetSkillLevelByIdWithBonus113c(m, owner, a1) : 0
-          push(evalSkillCalcFieldMem113c(m, owner, a2, a1, effLvl))
+          const a2 = pop()
+          const a1 = pop()
+          if (fnIdx === 0) {
+            push(a1 < a2 ? a1 : a2)
+          } else if (fnIdx === 1) {
+            push(a1 > a2 ? a1 : a2)
+          } else if (fnIdx === 2) {
+            push(rollLimitedSeedPair113c(randSeed, a1, a2))
+          } else {
+            const owner = pOwner >>> 0
+            const effLvl = owner !== 0 ? SKILLS_GetSkillLevelByIdWithBonus113c(m, owner, a1) : 0
+            push(evalSkillCalcFieldMem113c(m, owner, a2, a1, effLvl))
+          }
         }
-      }
-    } else if (op >= 4 && op <= 6) {
-      const varId =
-        op === 4 ? m.u8(cur) : op === 5 ? i16(m.u16(cur)) : m.u32(cur) | 0
-      cur = (cur + (1 << (op - 4))) >>> 0
-      push(MISSILE_EvaluateMissCalcFormula113c(m, pMissile, pOwner, varId, nMissileId, nLevel))
-    } else if (op >= 7 && op <= 9) {
-      const imm =
-        op === 7 ? (m.u8(cur) << 24) >> 24 : op === 8 ? i16(m.u16(cur)) : m.u32(cur) | 0
-      cur = (cur + (1 << (op - 7))) >>> 0
-      push(imm)
-    } else if (op === 20) {
-      const exp = pop()
-      const baseVal = pop()
-      if (exp <= 0) {
-        push(1)
+      } else if (op >= 4 && op <= 6) {
+        const varId =
+          op === 4 ? m.u8(cur) : op === 5 ? i16(m.u16(cur)) : m.u32(cur) | 0
+        cur = (cur + (1 << (op - 4))) >>> 0
+        push(MISSILE_EvalMissCalcParamCallback113c(sm, varId, ctxAddr) | 0)
+      } else if (op >= 7 && op <= 9) {
+        const imm =
+          op === 7 ? (m.u8(cur) << 24) >> 24 : op === 8 ? i16(m.u16(cur)) : m.u32(cur) | 0
+        cur = (cur + (1 << (op - 7))) >>> 0
+        push(imm)
+      } else if (op === 20) {
+        const exp = pop()
+        const baseVal = pop()
+        if (exp <= 0) {
+          push(1)
+        } else {
+          let acc = baseVal | 0
+          for (let k = (exp - 1) | 0; k > 0; k--) {
+            acc = imul32(acc, baseVal)
+          }
+          push(acc)
+        }
+      } else if (op === 21) {
+        push((-pop()) | 0)
+      } else if (op === 22) {
+        const fVal = pop()
+        const tVal = pop()
+        push(pop() !== 0 ? tVal : fVal)
       } else {
-        let acc = baseVal | 0
-        for (let k = (exp - 1) | 0; k > 0; k--) {
-          acc = imul32(acc, baseVal)
-        }
-        push(acc)
-      }
-    } else if (op === 21) {
-      push((-pop()) | 0)
-    } else if (op === 22) {
-      const fVal = pop()
-      const tVal = pop()
-      push(pop() !== 0 ? tVal : fVal)
-    } else {
-      const rhs = pop()
-      const lhs = pop()
-      const res =
-        op === 16
-          ? (lhs + rhs) | 0
-          : op === 17
-            ? (lhs - rhs) | 0
-            : op === 18
-              ? imul32(lhs, rhs)
-              : op === 19
-                ? rhs === 0
-                  ? 0
-                  : Math.trunc(lhs / rhs) | 0
-                : op === 10
-                  ? lhs < rhs
-                    ? 1
-                    : 0
-                  : op === 11
-                    ? lhs > rhs
+        const rhs = pop()
+        const lhs = pop()
+        const res =
+          op === 16
+            ? (lhs + rhs) | 0
+            : op === 17
+              ? (lhs - rhs) | 0
+              : op === 18
+                ? imul32(lhs, rhs)
+                : op === 19
+                  ? rhs === 0
+                    ? 0
+                    : Math.trunc(lhs / rhs) | 0
+                  : op === 10
+                    ? lhs < rhs
                       ? 1
                       : 0
-                    : op === 12
-                      ? lhs <= rhs
+                    : op === 11
+                      ? lhs > rhs
                         ? 1
                         : 0
-                      : op === 13
-                        ? lhs >= rhs
+                      : op === 12
+                        ? lhs <= rhs
                           ? 1
                           : 0
-                        : op === 14
-                          ? lhs === rhs
+                        : op === 13
+                          ? lhs >= rhs
                             ? 1
                             : 0
-                          : lhs !== rhs
-                            ? 1
-                            : 0
-      push(res)
+                          : op === 14
+                            ? lhs === rhs
+                              ? 1
+                              : 0
+                            : lhs !== rhs
+                              ? 1
+                              : 0
+        push(res)
+      }
     }
+    return 0
+  } finally {
+    _missileCalcRpnDepth113c = (_missileCalcRpnDepth113c - 1) | 0
   }
-  return 0
 }
 
 /**
@@ -4211,7 +4248,7 @@ export function SKILLS_GetSkillUseFailReason113c(
 }
 
 const SKILLS_STACK_BASE = 0x7ff70000
-const SKILLS_STACK_SIZE = 0x40
+const SKILLS_STACK_SIZE = 0x400
 const _skillsStackBuf = new ArrayBuffer(SKILLS_STACK_SIZE)
 const _skillsStackU8 = new Uint8Array(_skillsStackBuf)
 const _skillsStackDV = new DataView(_skillsStackBuf)

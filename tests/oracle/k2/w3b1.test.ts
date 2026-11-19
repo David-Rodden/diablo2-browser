@@ -109,6 +109,11 @@ function createW3B1Mem(): {
   const pSkillsTxt = m.alloc(256 * 0x23c)
   m.setU32(pDataTables + 0xb98, pSkillsTxt)
   m.setU32(pDataTables + 0xba0, 256)
+  const pClassSkillCounts = m.alloc(7 * 4)
+  const pClassSkillLists = m.alloc(7 * 30 * 2)
+  m.setU32(pDataTables + 0xba4, pClassSkillCounts)
+  m.setU32(pDataTables + 0xba8, 30)
+  m.setU32(pDataTables + 0xbac, pClassSkillLists)
 
   const pMissilesTxt = m.alloc(64 * 0x1a4)
   m.setU32(pDataTables + 0xb64, pMissilesTxt)
@@ -186,12 +191,15 @@ function createW3B1Mem(): {
   const pMonStats2Txt = m.alloc(600 * 0x134)
   m.setU32(pDataTables + 0xa84, pMonStats2Txt)
   m.setU32(pDataTables + 0xa8c, 600)
+  m.setU32(pDataTables + 0xa90, pMonStats2Txt)
+  m.setU32(pDataTables + 0xa98, 600)
 
   for (let id = 0; id < 600; id++) {
     const rec = pMonStatsTxt + id * 0x1a8
     m.setU16(rec, id)
     m.setU16(rec + 0x02, id)
     m.setU16(rec + 0x06, id)
+    m.setU16(rec + 0x18, id)
   }
 
   const pUniqueItemsTxt = m.alloc(16 * 0x14c)
@@ -369,6 +377,7 @@ describe('K2 Wave 3 Batch 1 (w3b1: 45 functions across 0x6FC21FE0..0x6FC38CE0)',
     m.set(pItemData, D2ItemDataStrc.dwItemLevel, 25)
     m.set(pItemData, D2ItemDataStrc.dwQuality, 4)
     m.set(pItemData, D2ItemDataStrc.dwItemCell, 2)
+    m.setU16(pItemsTxt + 1 * D2ItemsTxt_SIZE + 0x11e, 4) // wType1 = ITEMTYPE_GOLD (4)
     STATLIST_SetUnitStat113c(m, pItem, 0x0e, 500, 0)
 
     const pDrop = m.alloc(0x90)
@@ -538,8 +547,8 @@ describe('K2 Wave 3 Batch 1 (w3b1: 45 functions across 0x6FC21FE0..0x6FC38CE0)',
 
     SUNIT_InsertServerUnit113c(m, pGame, pUnit)
     m.setU32(pAiGen + 0x28, pGame)
-    m.setU32(pAiGen + 0x2c, 1)
-    m.setU32(pAiGen + 0x30, 7)
+    m.setU32(pAiGen + 0x2c, 7) // dwLeaderId
+    m.setU32(pAiGen + 0x30, 1) // dwLeaderType
 
     const pAiThinkArg = m.alloc(0x30)
     const pAiParam = m.alloc(0x50)

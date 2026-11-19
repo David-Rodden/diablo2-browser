@@ -13,6 +13,7 @@
  */
 
 import { UNITS_GetPlayerData113c } from '../common/composit.ts'
+import { INVENTORY_GetFirstItem113c, INVENTORY_GetNextItem113c } from '../common/inventory.ts'
 import { D2COMMON_SGPT_DATATABLES_VA_113C } from '../common/inline-helpers.ts'
 import { imul32 } from '../common/int-math.ts'
 import { DUNGEON_CheckRoomIsTownMemPort113c } from '../common/k0-d2common-memports.ts'
@@ -37,11 +38,23 @@ import {
 import { D2MonsterDataStrc, D2UnitStrc } from '../mem/layout.generated.ts'
 import type { Memory113c, SparseMemory113c } from '../mem/sparse-memory.ts'
 import { SUNIT_DispatchItemEventCallbacks113c } from './a1c-post150-f786-f1040-113c.ts'
+import {
+  AIGENERAL_GetPackLeaderUnit113c,
+  MONSTER_ApplyCritDamage113c,
+} from './ai-fallen-113c.ts'
 import { D2GAME_SUNIT_IterateAllLivingPlayers113c } from './boot-init-gap-b-113c.ts'
 import { SUNIT_GetServerUnit113c } from './game-strc.ts'
 import { bindK2KernelGlobals113c } from './k2-d2tv-evaluators-113c.ts'
-import { MONSTER_GetAiGeneralPtr_6FC218E0_113c } from './k2-laneH-0x6fc2-w1-113c.ts'
-import { SUNITDMG_ResolveAttackerPlayer113c } from './k2-real-s2c-combat-113c.ts'
+import { SEED_RollRangeWithMinFast113c } from './k2-gap-melee-dot-113c.ts'
+import {
+  MONSTER_GetAiGeneralPtr_6FC218E0_113c,
+  MONSTER_GetMonStatsTxtFromUnit_6FC21540_113c,
+} from './k2-laneH-0x6fc2-w1-113c.ts'
+import {
+  SUNITDMG_ResolveAttackerPlayer113c,
+  SUNITDMG_TriggerAttackerBlindOrFlee113c,
+} from './k2-real-s2c-combat-113c.ts'
+import { MONSTER_IsPlayerInteractInTradeState113c } from './k2-sunit-spawn-w1-113c.ts'
 import { PETS_InsertPetIntoPlayerPetSlot_6FCB7A20_113c } from './k2-w10b1-113c.ts'
 import {
   type PetMoveActionOps113c,
@@ -54,8 +67,13 @@ import {
   SKILLS_SrvDo_RaiseSkeletonOrMage_6FC718B0_113c,
   SKILLS_SrvDo_SummonDecoy_6FC6D710_113c,
 } from './k2-w14b1-113c.ts'
-import { SUMMON_GetPetTypeBucketPtr_6FCB6540_113c } from './k2-w2b4-113c.ts'
+import {
+  ITEMS_ClearAllDupeAndCommandFlags_6FCBB340_113c,
+  SUMMON_GetPetTypeBucketPtr_6FCB6540_113c,
+} from './k2-w2b4-113c.ts'
 import { PETS_SendPetOrMercAssignPacket_6FCB66E0_113c } from './k2-w4b5-113c.ts'
+import { PLAYER_SendInventoryItemsSyncPackets_6FC57C90_113c } from './k2-w5b1-113c.ts'
+import { NET_SendPacket7F_PartyMemberLifeAndLevel_6FCAE2A0_113c } from './k2-w6b2-113c.ts'
 import { SKILLS_SrvDo067_NecromancerCurseRadius_6FC705D0_113c } from './k2-w7b1-113c.ts'
 import {
   PETS_ClampPlayerPetTypeMaxAndUnsummonExcess_6FCB6EA0_113c,
@@ -182,7 +200,8 @@ export function ensurePlayerPetTableAllocatedK3_113c(
   }
   const pPlrData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
   if (pPlrData === 0) return
-  const pClient = m.u32((pPlrData + 0x9c) >>> 0) >>> 0
+  const rawClient = m.u32((pPlrData + 0x9c) >>> 0) >>> 0
+  const pClient = rawClient !== 0 ? rawClient : (pGame !== 0 ? (m.u32((pGame + 0x88) >>> 0) >>> 0) : 0)
   if (pClient !== 0) {
     ensureZeroedIfUnloaded(m, (pClient + 0x3d4) >>> 0, 4)
     if (!isAddrByteLoaded(m, (pClient + 0x16c) >>> 0)) {
@@ -191,7 +210,10 @@ export function ensurePlayerPetTableAllocatedK3_113c(
     if (!isAddrByteLoaded(m, (pClient + 0x170) >>> 0)) {
       m.setU32((pClient + 0x170) >>> 0, m.u32((pPlayer + 0x0c) >>> 0))
     }
-    if (pGame !== 0 && !isAddrByteLoaded(m, (pClient + 0x1a8) >>> 0)) {
+    if (!isAddrByteLoaded(m, (pClient + 0x174) >>> 0) || m.u32((pClient + 0x174) >>> 0) === 0) {
+      m.setU32((pClient + 0x174) >>> 0, pPlayer >>> 0)
+    }
+    if (pGame !== 0 && (!isAddrByteLoaded(m, (pClient + 0x1a8) >>> 0) || m.u32((pClient + 0x1a8) >>> 0) === 0)) {
       m.setU32((pClient + 0x1a8) >>> 0, pGame >>> 0)
     }
   }
@@ -327,6 +349,13 @@ function fixSummonStatsAfter6FC6F970_K3(
   const finalMaxLife = (preMaxLife + bonusLife) | 0
   STATLIST_SetUnitStat113c(m, pPet, 7, finalMaxLife, 0)
   STATLIST_SetUnitStat113c(m, pPet, 6, finalMaxLife, 0)
+  const pMonTxt = MONSTER_GetMonStatsTxtFromUnit_6FC21540_113c(m, pPet) >>> 0
+  if (pMonTxt !== 0) {
+    const nLifeRegen = m.u32((pMonTxt + 0x1a0) >>> 0) | 0
+    if (nLifeRegen !== 0) {
+      STATLIST_SetUnitStat113c(m, pPet, 0x4a, (imul32(finalMaxLife >> 8, nLifeRegen) >> 4) | 0, 0)
+    }
+  }
 }
 
 function ensureSummonRegisteredInPetSlotK3_113c(
@@ -508,6 +537,29 @@ export function dispatchSummonOrCurseDoFuncK3_113c(
       }
       ensureItemsLinkerHydratedK3_113c(m)
       MONSTER_EquipMonEquipItems113c(m, spawnedPet, pGame, pUnit, nCalc13C, 0, effLvl)
+      const pPetMonData = m.get(spawnedPet, D2UnitStrc.pUnitData) >>> 0
+      if (pPetMonData !== 0) {
+        ensureZeroedIfUnloaded(m, (pPetMonData + 0x30) >>> 0, 4)
+        const pInteract = m.u32((pPetMonData + 0x30) >>> 0) >>> 0
+        if (pInteract !== 0) {
+          ensureZeroedIfUnloaded(m, pInteract, 4)
+        }
+      }
+      const pOwnerPlrData = UNITS_GetPlayerData113c(m, pUnit) >>> 0
+      const rawOwnerClient = pOwnerPlrData !== 0 ? (m.u32((pOwnerPlrData + 0x9c) >>> 0) >>> 0) : 0
+      const pOwnerClient =
+        rawOwnerClient !== 0 ? rawOwnerClient : (m.u32((pGame + 0x88) >>> 0) >>> 0)
+      if (pOwnerClient !== 0) {
+        PLAYER_SendInventoryItemsSyncPackets_6FC57C90_113c(sm, pOwnerClient, spawnedPet)
+      }
+      MONSTER_IsPlayerInteractInTradeState113c(m, spawnedPet, pUnit)
+      for (
+        let pEqItem = INVENTORY_GetFirstItem113c(m, savedPetInv) >>> 0;
+        pEqItem !== 0;
+        pEqItem = INVENTORY_GetNextItem113c(m, pEqItem) >>> 0
+      ) {
+        ITEMS_ClearAllDupeAndCommandFlags_6FCBB340_113c(m, pEqItem)
+      }
       const fullMaxHp = STATLIST_GetMaxLifeFromUnit113c(m, spawnedPet) | 0
       STATLIST_SetUnitStat113c(m, spawnedPet, 6, fullMaxHp, 0)
     }
@@ -583,6 +635,7 @@ export function runNecroPetAiK3_113c(
   bindK2KernelGlobals113c(m)
   const pMonData = m.get(pMonster, D2UnitStrc.pUnitData) >>> 0
   if (pMonData === 0) return
+  ensureZeroedIfUnloaded(m, (pMonData + 0x3c) >>> 0, 12)
   let pAiParam = isAddrByteLoaded(m, (pMonData + 0x18) >>> 0)
     ? (m.u32((pMonData + 0x18) >>> 0) >>> 0)
     : 0
@@ -597,7 +650,9 @@ export function runNecroPetAiK3_113c(
   } else {
     ensureZeroedIfUnloaded(m, pAiParam, 0x24)
   }
-  const pMonStatsTxt = m.get(pMonData, D2MonsterDataStrc.pMonStatsTxt) >>> 0
+  const pUnitMonStatsTxt = MONSTER_GetMonStatsTxtFromUnit_6FC21540_113c(m, pMonster) >>> 0
+  const pMonStatsTxt =
+    pUnitMonStatsTxt !== 0 ? pUnitMonStatsTxt : (m.get(pMonData, D2MonsterDataStrc.pMonStatsTxt) >>> 0)
 
   const pAiTickArgs = allocK3Scratch(m, 0x24)
   try {
@@ -614,6 +669,21 @@ export function runNecroPetAiK3_113c(
     )
   } finally {
     freeK3Scratch(pAiTickArgs)
+  }
+
+  const pOwner = AIGENERAL_GetPackLeaderUnit113c(m, pMonster) >>> 0
+  if (pOwner !== 0 && (m.u32(pOwner) | 0) === UNIT_PLAYER) {
+    ensurePlayerPetTableAllocatedK3_113c(m, pOwner, pGame)
+    const pPlrData = UNITS_GetPlayerData113c(m, pOwner) >>> 0
+    const rawClient = pPlrData !== 0 ? (m.u32((pPlrData + 0x9c) >>> 0) >>> 0) : 0
+    const pClient = rawClient !== 0 ? rawClient : (m.u32((pGame + 0x88) >>> 0) >>> 0)
+    if (pClient !== 0) {
+      NET_SendPacket7F_PartyMemberLifeAndLevel_6FCAE2A0_113c(
+        m as SparseMemory113c,
+        pClient,
+        pMonster,
+      )
+    }
   }
 }
 
@@ -657,6 +727,15 @@ export function dispatchAttackerMeleeHitItemEventsK3_113c(
   pDefender: number,
   pDmgScratch: number,
 ): void {
+  SUNITDMG_TriggerAttackerBlindOrFlee113c(m, pGame, pAttacker, 0, pDmgScratch)
+  MONSTER_ApplyCritDamage113c(m, 0, pDmgScratch, pDefender)
+  if (
+    pAttacker !== 0 &&
+    (m.u32(pAttacker >>> 0) | 0) === UNIT_PLAYER &&
+    (m.u32((pAttacker + 0x04) >>> 0) | 0) === 0
+  ) {
+    SEED_RollRangeWithMinFast113c(m, 0, 0, 0)
+  }
   if (pAttacker === 0 || !isAddrByteLoaded(m, (pAttacker + 0x90) >>> 0)) return
   const head = m.u32((pAttacker + 0x90) >>> 0) >>> 0
   if (head < 0x40000000) return
@@ -794,7 +873,7 @@ export function dispatchItemTimerEventK3_113c(
   evType: number,
 ): void {
   if (pItem === 0 || m.get(pItem, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return
-  if (evType === 0) {
+  if (evType === 0 || evType === 3) {
     bindK2KernelGlobals113c(m)
     ITEMS_ProcessItemDurabilityAndStackReplenish_6FCFA480_113c(
       m as SparseMemory113c,

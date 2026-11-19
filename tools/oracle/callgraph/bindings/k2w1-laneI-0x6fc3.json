@@ -356,8 +356,8 @@
     "name": "MONUMOD_AddSecondaryDamageToBaseStats_6FC41B30",
     "kernFile": "src/d2kern-113c/game/k2-laneI-0x6fc3-w1-113c.ts",
     "tsSymbol": "MONUMOD_AddSecondaryDamageToBaseStats_6FC41B30_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneI-0x6fc3-w1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/laneI-0x6fc3-w1.test.ts; Diff-verified 1:1 in dll\u2229ts across full-horizon strict zero-divergence K3 replay (p52-paladin-merc-aura F1700/1700) in tests/oracle/k3/replay-k3-p52-suite.test.ts"
   },
   {
     "module": "D2Game",

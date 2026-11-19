@@ -13,6 +13,7 @@ import {
 import { createSidecarAssetHttpMiddleware } from './src/baker/io/sidecar-compression.ts'
 import type { AssetManifest } from './src/common/pack-contract/index.ts'
 import { createK1ShowcaseHttpMiddleware } from './tools/oracle/k1-showcase-server.ts'
+import { createK2ShowcaseHttpMiddleware } from './tools/oracle/k2-showcase-server.ts'
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
 const PUBLIC_DIR = process.env.D2_VITE_PUBLIC_DIR
@@ -36,7 +37,7 @@ function discoverPluginHtmlEntries(rootDir: string): Record<string, string> {
 
 /**
  * Vite configuration for the Diablo II web client (`play.html`, `plugins/<id>/index.html`) and the
- * standalone kernel showcase page (`showcase/k1/index.html`, which is not a game plugin).
+ * standalone kernel showcase pages (`showcase/k1/index.html`, `showcase/k2/index.html`, which are not game plugins).
  */
 export default defineConfig({
   publicDir: PUBLIC_DIR,
@@ -106,6 +107,15 @@ export default defineConfig({
       },
     },
     {
+      name: 'd2-k2-showcase-api',
+      configureServer(server) {
+        server.middlewares.use(createK2ShowcaseHttpMiddleware({ rootDir: __dirname }))
+      },
+      configurePreviewServer(server) {
+        server.middlewares.use(createK2ShowcaseHttpMiddleware({ rootDir: __dirname }))
+      },
+    },
+    {
       name: 'd2web-sw-dev-alias',
       configureServer(server) {
         server.middlewares.use((req, res, next) => {
@@ -156,6 +166,8 @@ export default defineConfig({
             req.url = `/plugins/trade-hall/index.html${req.url.slice('/trade.html'.length)}`
           } else if (req.url === '/k1-showcase.html' || req.url?.startsWith('/k1-showcase.html?')) {
             req.url = `/showcase/k1/index.html${req.url.slice('/k1-showcase.html'.length)}`
+          } else if (req.url === '/k2-showcase.html' || req.url?.startsWith('/k2-showcase.html?')) {
+            req.url = `/showcase/k2/index.html${req.url.slice('/k2-showcase.html'.length)}`
           } else if (req.url === '/ui/fonts/D2Exocet.ttf' || req.url?.startsWith('/ui/fonts/D2Exocet.ttf?')) {
             req.url = '/ui/fonts/ExocetBlizzardMedium.otf'
           } else if (req.url === '/ui/fonts/D2Formal436.ttf' || req.url?.startsWith('/ui/fonts/D2Formal436.ttf?')) {
@@ -175,6 +187,8 @@ export default defineConfig({
             req.url = `/plugins/trade-hall/index.html${req.url.slice('/trade.html'.length)}`
           } else if (req.url === '/k1-showcase.html' || req.url?.startsWith('/k1-showcase.html?')) {
             req.url = `/showcase/k1/index.html${req.url.slice('/k1-showcase.html'.length)}`
+          } else if (req.url === '/k2-showcase.html' || req.url?.startsWith('/k2-showcase.html?')) {
+            req.url = `/showcase/k2/index.html${req.url.slice('/k2-showcase.html'.length)}`
           } else if (req.url === '/ui/fonts/D2Exocet.ttf' || req.url?.startsWith('/ui/fonts/D2Exocet.ttf?')) {
             req.url = '/ui/fonts/ExocetBlizzardMedium.otf'
           } else if (req.url === '/ui/fonts/D2Formal436.ttf' || req.url?.startsWith('/ui/fonts/D2Formal436.ttf?')) {
@@ -210,6 +224,14 @@ export default defineConfig({
             type: 'asset',
             fileName: 'k1-showcase.html',
             source: k1ShowcaseHtmlAsset.source,
+          })
+        }
+        const k2ShowcaseHtmlAsset = bundle['showcase/k2/index.html']
+        if (k2ShowcaseHtmlAsset && k2ShowcaseHtmlAsset.type === 'asset') {
+          this.emitFile({
+            type: 'asset',
+            fileName: 'k2-showcase.html',
+            source: k2ShowcaseHtmlAsset.source,
           })
         }
       },
@@ -256,6 +278,7 @@ export default defineConfig({
         play: resolve(__dirname, 'play.html'),
         ...discoverPluginHtmlEntries(__dirname),
         'showcase-k1': resolve(__dirname, 'showcase/k1/index.html'),
+        'showcase-k2': resolve(__dirname, 'showcase/k2/index.html'),
         sw: resolve(__dirname, 'src/client/sw/sw.ts'),
       },
       output: {

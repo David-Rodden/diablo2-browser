@@ -6,7 +6,7 @@
     "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
     "tsSymbol": "UNIT_GetPosX113c",
     "status": "diff-verified",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence); runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -15,7 +15,7 @@
     "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
     "tsSymbol": "UNIT_GetPosY113c",
     "status": "diff-verified",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence); runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -24,7 +24,7 @@
     "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
     "tsSymbol": "SEED_RollLimitedFast113c",
     "status": "diff-verified",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence); runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -41,8 +41,8 @@
     "name": "ROOM_FindRoomContainingSubtile",
     "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
     "tsSymbol": "ROOM_FindRoomContainingSubtile113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -95,8 +95,8 @@
     "name": "MONSTATS2_CheckModeBit",
     "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
     "tsSymbol": "MONSTATS2_CheckModeBit113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -122,8 +122,8 @@
     "name": "MONSTATS_ValidateClassId",
     "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
     "tsSymbol": "MONSTATS_ValidateClassId113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -176,8 +176,8 @@
     "name": "PLAYER_GetParam158",
     "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
     "tsSymbol": "PLAYER_GetParam158_113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces; Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
   },
   {
     "module": "D2Game",
@@ -185,8 +185,8 @@
     "name": "PLAYER_GetParam15C",
     "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
     "tsSymbol": "PLAYER_GetParam15C_113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; tests/oracle/k2/replay-k2-coverage.test.ts: dll \u2229 ts replay-executed with 0 strict divergence across K1/K2 scenarios against real D2Game.dll 1.13c golden traces; Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
   },
   {
     "module": "D2Game",
@@ -212,8 +212,8 @@
     "name": "AIGENERAL_ReassignPackOnBossDeath",
     "kernFile": "src/d2kern-113c/game/ai-fallen-113c.ts",
     "tsSymbol": "AIGENERAL_ReassignPackOnBossDeath113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -230,8 +230,8 @@
     "name": "AIGENERAL_BroadcastCmdToMinions",
     "kernFile": "src/d2kern-113c/game/ai-fallen-113c.ts",
     "tsSymbol": "AIGENERAL_BroadcastCmdToMinions113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -248,8 +248,8 @@
     "name": "OBJECTS_RollChestTrapType",
     "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
     "tsSymbol": "OBJECTS_RollChestTrapType113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -257,8 +257,8 @@
     "name": "OBJECTS_InitChestLockAndSeed",
     "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
     "tsSymbol": "OBJECTS_InitChestLockAndSeed113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -266,8 +266,8 @@
     "name": "OBJECTS_PickShrineIdFromControlGroup",
     "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
     "tsSymbol": "OBJECTS_PickShrineIdFromControlGroup113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -275,8 +275,8 @@
     "name": "OBJECTS_InitShrineType",
     "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
     "tsSymbol": "OBJECTS_InitShrineType113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -284,8 +284,8 @@
     "name": "OBJECTS_SpawnDensityObjectsInRoom",
     "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
     "tsSymbol": "OBJECTS_SpawnDensityObjectsInRoom113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -293,8 +293,8 @@
     "name": "GAME_GetEffectivePlayerCount",
     "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
     "tsSymbol": "GAME_GetEffectivePlayerCount113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -419,8 +419,8 @@
     "name": "MONSTER_ExecuteMeleeSwing",
     "kernFile": "src/d2kern-113c/game/ai-fallen-113c.ts",
     "tsSymbol": "MONSTER_ExecuteMeleeSwing113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -455,8 +455,8 @@
     "name": "AI_CheckApproachTauntSound",
     "kernFile": "src/d2kern-113c/game/ai-fallen-113c.ts",
     "tsSymbol": "AI_CheckApproachTauntSound113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -464,8 +464,8 @@
     "name": "AI_TryMonsterTeleportEscape",
     "kernFile": "src/d2kern-113c/game/ai-fallen-113c.ts",
     "tsSymbol": "AI_TryMonsterTeleportEscape113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -482,8 +482,8 @@
     "name": "MONSTER_GetPlayerCountHpBonusPct",
     "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
     "tsSymbol": "MONSTER_GetPlayerCountHpBonusPct113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -491,8 +491,8 @@
     "name": "MONSTER_GetPlayerCountExpBonusPct",
     "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
     "tsSymbol": "MONSTER_GetPlayerCountExpBonusPct113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -554,8 +554,8 @@
     "name": "MONSTER_HasAlwaysChaseFlag",
     "kernFile": "src/d2kern-113c/game/ai-fallen-113c.ts",
     "tsSymbol": "MONSTER_HasAlwaysChaseFlag113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -599,8 +599,8 @@
     "name": "SUNITDMG_FreeAttackerCombatList",
     "kernFile": "src/d2kern-113c/game/ai-fallen-113c.ts",
     "tsSymbol": "SUNITDMG_FreeAttackerCombatList113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -617,8 +617,8 @@
     "name": "MONREG_GenerateOutfitVariants",
     "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
     "tsSymbol": "MONREG_GenerateOutfitVariants113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; runtime-executed in dllExecuted∩tsExecuted across all 5 K1/K2 scenarios (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -636,7 +636,7 @@
     "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
     "tsSymbol": "SUNIT_IsUnitInActiveClientRoom113c",
     "status": "diff-verified",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence); runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -645,7 +645,7 @@
     "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
     "tsSymbol": "SUNIT_InitUnitAnimData113c",
     "status": "diff-verified",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence); runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -663,7 +663,7 @@
     "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
     "tsSymbol": "SUNIT_InitExtraItemSeed113c",
     "status": "diff-verified",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence); runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -672,7 +672,7 @@
     "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
     "tsSymbol": "SUNIT_InitUnitSeed113c",
     "status": "diff-verified",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence); runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -690,7 +690,7 @@
     "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
     "tsSymbol": "SUNIT_ValidatePathTargetUnit113c",
     "status": "diff-verified",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence); runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -699,7 +699,7 @@
     "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
     "tsSymbol": "SUNIT_PlaceServerUnitInRoom113c",
     "status": "diff-verified",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence); runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -708,7 +708,7 @@
     "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
     "tsSymbol": "SUNIT_AllocUnitData113c",
     "status": "diff-verified",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence); runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -806,8 +806,8 @@
     "name": "AI_StartAttackMode",
     "kernFile": "src/d2kern-113c/game/ai-fallen-113c.ts",
     "tsSymbol": "AI_StartAttackMode113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",

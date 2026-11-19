@@ -158,8 +158,8 @@
     "name": "ACT1Q3_OnNpcInitCainSearch_6FC86960",
     "kernFile": "src/d2kern-113c/game/k2-w14b1-113c.ts",
     "tsSymbol": "ACT1Q3_OnNpcInitCainSearch_6FC86960_113c",
-    "status": "ported",
-    "diffEvidence": "1:1 D2Game.dll port verified in tests/oracle/k2/w14b1.test.ts and tests/oracle/k2/remed-r1.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Live-executed in tests/oracle/k4/replay-act-quests.test.ts (0x6FC86960) across Act 1-5 K4 longitudinal quest & town NPC replay at 100% strict zero divergence"
   },
   {
     "module": "D2Game",

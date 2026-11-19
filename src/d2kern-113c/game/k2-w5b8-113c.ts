@@ -1808,7 +1808,7 @@ export function ACT3Q5_SendTravincalQuestAlertCallback_6FD05D20_113c(
   return 0
 }
 
-let k2W5B8ScratchSp = 0x7ef80000
+let k2W5B8ScratchSp = 0x7e050000
 
 /**
  * [36/45] Player callback (`ecx = pGame`, `edx = pPlayer`, `ret 0x04`): checks whether `pPlayer`

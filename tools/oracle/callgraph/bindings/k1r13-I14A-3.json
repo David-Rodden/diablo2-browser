@@ -5,8 +5,8 @@
     "name": "UNITFINDS_FindAllMatchingUnitsInAdjacentRooms",
     "kernFile": "src/d2kern-113c/common/unit-finds.ts",
     "tsSymbol": "UNITFINDS_FindAllMatchingUnitsInAdjacentRooms113c",
-    "status": "ported",
-    "diffEvidence": "tests/oracle/k1/laneA-I14A-3.test.ts (real-DLL vectors via k1r13-laneA-it14-emitter.c -> i14a-3-vectors.ndjson)"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k0/d2common-final3-diff-verified.test.ts (1.13c D2Common.dll disassembly audit + interior/adjacent/town-skip/callback/grow-array branch verification); tests/oracle/k1/laneA-I14A-3.test.ts (real-DLL vectors via k1r13-laneA-it14-emitter.c -> i14a-3-vectors.ndjson)"
   },
   {
     "module": "D2Common",
@@ -50,7 +50,7 @@
     "name": "DRLGOUTPLACE_PlaceActLevelsByList",
     "kernFile": "src/d2kern-113c/common/drlg/out-place.ts",
     "tsSymbol": "DRLGOUTPLACE_PlaceActLevelsByList113c",
-    "status": "ported",
-    "diffEvidence": "tests/oracle/k1/laneA-I14A-3.test.ts (real-DLL vectors via k1r13-laneA-it14-emitter.c -> i14a-3-vectors.ndjson)"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k0/d2common-final3-diff-verified.test.ts (1.13c D2Common.dll disassembly audit + all 9 .data D2DrlgLinkStrc tables, backtracking, Black Marsh RNG & warp verification); tests/oracle/k1/laneA-I14A-3.test.ts (real-DLL vectors via k1r13-laneA-it14-emitter.c -> i14a-3-vectors.ndjson)"
   }
 ]

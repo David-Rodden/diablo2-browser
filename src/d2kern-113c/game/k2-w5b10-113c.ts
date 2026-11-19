@@ -65,7 +65,7 @@ import { hitD2GameVa113c } from '../va-trace-113c.ts'
 export type { D2KernMemory113c }
 
 /** Reentrant scratch stack pointer for `w5b10` stack structs (`D2ModeChangeStrc`, packet buffers, etc.). */
-let k2W5B10StackPtr = 0x7eb80000
+let k2W5B10StackPtr = 0x7e070000
 
 /** Optional host/world hooks for `w5b10` routines. */
 export interface K2W5B10Hooks113c extends AiFallenHooks113c {

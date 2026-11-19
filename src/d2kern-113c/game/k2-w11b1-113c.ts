@@ -157,8 +157,10 @@ import {
   MISSILE_SpawnNova64Directions113c,
   SKILLS_ResolveChargedSrvMissileId113c,
   STATES_OnTimedStateRemoved113c,
+  type K2GapMeleeDotHooks113c,
 } from './k2-gap-melee-dot-113c'
 import { MONUMOD_MarkBossAndIncrementUniqueCount113c } from './k2-items-tc-w1-113c'
+import { SUNIT_GetOwnerUnit113c } from './k2-sunit-spawn-w1-113c'
 import {
   MONSTER_GetMonsterDataField2C_6FC21DD0_113c,
   PLAYER_GetQuestRecordForDifficulty_6FC21020_113c,
@@ -472,13 +474,9 @@ export function AI_PetMoveActionDispatch_6FC3CAE0_113c(
   if (pOwnerUnit === 0 || pPetUnit === 0) return 0
   if (nActionCase >>> 0 > 5) return 0
 
+  const pField2C = MONSTER_GetMonsterDataField2C_6FC21DD0_113c(m, pPetUnit) >>> 0
   const pMonData = u32(m, pPetUnit) === 1 ? u32(m, pPetUnit + 0x14) : 0
-  const pAiCtrl =
-    pMonData !== 0
-      ? u32(m, pMonData + 0x2c) !== 0
-        ? u32(m, pMonData + 0x2c)
-        : u32(m, pMonData + 0x28)
-      : 0
+  const pAiCtrl = pField2C !== 0 ? pField2C : pMonData !== 0 ? u32(m, pMonData + 0x28) : 0
   if (ops === undefined && pAiCtrl === 0) return 0
 
   const doApproach = (
@@ -1635,10 +1633,11 @@ export function SKILLS_SrvDo045_NovaAndTimedAura_6FC49720_113c(
   pUnit: number,
   nSkillId: number,
   nSkillLevel: number,
+  hooks?: K2GapMeleeDotHooks113c,
 ): number {
   hitD2GameVa113c(0x6FC49720)
   if (pUnit !== 0) {
-    w32(m, pUnit + 0xc4, (u32(m, pUnit + 0xc4) | 0x20) >>> 0)
+    w32(m, pUnit + 0xc4, (u32(m, pUnit + 0xc4) | 0x40) >>> 0)
   }
   const sgpt = readSgptDataTablesPtr(m)
   if (sgpt === 0 || nSkillId < 0 || nSkillId >= i32(m, sgpt + 0xba0)) return 0
@@ -1649,10 +1648,21 @@ export function SKILLS_SrvDo045_NovaAndTimedAura_6FC49720_113c(
 
   const nMissileId = SKILLS_ResolveChargedSrvMissileId113c(m, nSkillId, pUnit)
   const sgptNow = readSgptDataTablesPtr(m)
-  if (nMissileId >= 0 && sgptNow !== 0 && nMissileId < i32(m, sgptNow + 0xc44)) {
-    MISSILE_SpawnNova64Directions113c(m, pUnit, 0, pGame, pUnit, nMissileId, nSkillId, nSkillLevel)
+  if (nMissileId < 0 || sgptNow === 0 || nMissileId >= i32(m, sgptNow + 0xb6c)) {
+    return 0
   }
-  return SKILLS_ApplyTimedSkillAuraToTarget_6FC49240_113c(
+  MISSILE_SpawnNova64Directions113c(
+    m,
+    pUnit,
+    0,
+    pGame,
+    pUnit,
+    nMissileId,
+    nSkillId,
+    nSkillLevel,
+    hooks,
+  )
+  SKILLS_ApplyTimedSkillAuraToTarget_6FC49240_113c(
     m,
     pUnit,
     pGame,
@@ -1660,6 +1670,7 @@ export function SKILLS_SrvDo045_NovaAndTimedAura_6FC49720_113c(
     nSkillId,
     nSkillLevel,
   )
+  return 1
 }
 
 /**
@@ -1711,27 +1722,23 @@ export function MISSILE_ApplyFriendlyOwnerTimedSkillAura_6FC5EA60_113c(
   pTargetUnit: number,
 ): number {
   hitD2GameVa113c(0x6FC5EA60)
-  if (pMissile === 0 || pTargetUnit === 0) return 0
-  if (u32(m, pMissile) !== 3) return 0
-  if (((u32(m, pMissile + 0xc8) >>> 10) & 1) === 0) return 0
-  const pOwner = SUNIT_GetServerUnit113c(
-    m,
-    pGame,
-    u32(m, pMissile + 0x94),
-    u32(m, pMissile + 0x98),
-  )
-  if (pOwner === 0) return 0
-  if (SUNIT_AreUnitsInSamePartyOrAligned113c(m, pTargetUnit, pOwner) === 0) return 0
-  const nSkillLevel = MISSILE_GetLevel113c(m, pMissile)
-  const nSkillId = MISSILE_GetSkill113c(m, pMissile)
-  return SKILLS_ApplyTimedSkillAuraToTarget_6FC49240_113c(
-    m,
-    pTargetUnit,
-    pGame,
-    pOwner,
-    nSkillId,
-    nSkillLevel,
-  )
+  if (pMissile === 0) return 1
+  if (((u32(m, pMissile + 0xc8) >>> 10) & 1) === 0) return 1
+  const pOwner = SUNIT_GetOwnerUnit113c(m, pMissile, pGame) >>> 0
+  if (pOwner === 0) return 1
+  if (pTargetUnit !== 0 && SUNIT_AreUnitsInSamePartyOrAligned113c(m, pTargetUnit, pOwner) !== 0) {
+    const nSkillLevel = MISSILE_GetLevel113c(m, pMissile)
+    const nSkillId = MISSILE_GetSkill113c(m, pMissile)
+    SKILLS_ApplyTimedSkillAuraToTarget_6FC49240_113c(
+      m,
+      pTargetUnit,
+      pGame,
+      pOwner,
+      nSkillId,
+      nSkillLevel,
+    )
+  }
+  return 0
 }
 
 /**

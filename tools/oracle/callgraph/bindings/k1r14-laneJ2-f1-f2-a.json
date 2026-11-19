@@ -5,8 +5,8 @@
     "name": "OBJECT_CheckRespawnOrPortalInRoom",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-a-113c.ts",
     "tsSymbol": "OBJECT_CheckRespawnOrPortalInRoom113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC3E960",
@@ -14,8 +14,8 @@
     "name": "MONREG_FindOrAllocActRoomNode",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-a-113c.ts",
     "tsSymbol": "MONREG_FindOrAllocActRoomNode113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC3EA40",
@@ -23,8 +23,8 @@
     "name": "MONREG_UnlinkAndFreeActRoomNode",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-a-113c.ts",
     "tsSymbol": "MONREG_UnlinkAndFreeActRoomNode113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC3FB40",
@@ -32,8 +32,8 @@
     "name": "MONREG_FlushAndFreePendingSpawnNodes",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-a-113c.ts",
     "tsSymbol": "MONREG_FlushAndFreePendingSpawnNodes113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC3FB90",
@@ -41,8 +41,8 @@
     "name": "MONREG_RestoreRoomMonstersFromNode",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-a-113c.ts",
     "tsSymbol": "MONREG_RestoreRoomMonstersFromNode113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC41420",
@@ -68,8 +68,8 @@
     "name": "GAME_UpdateTickRateMetrics",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-a-113c.ts",
     "tsSymbol": "GAME_UpdateTickRateMetrics113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC4C0F0",
@@ -77,8 +77,8 @@
     "name": "GAME_ExpireItemsAndMinionListsPeriodic",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-a-113c.ts",
     "tsSymbol": "GAME_ExpireItemsAndMinionListsPeriodic113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC4C120",
@@ -86,8 +86,8 @@
     "name": "GAME_SyncNewClientWithExistingPlayers",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-a-113c.ts",
     "tsSymbol": "GAME_SyncNewClientWithExistingPlayers113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC4CA20",
@@ -95,8 +95,8 @@
     "name": "GAME_StepActEnvironmentCycles",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-a-113c.ts",
     "tsSymbol": "GAME_StepActEnvironmentCycles113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC4D670",
@@ -104,8 +104,8 @@
     "name": "GAME_CheckAndDisconnectTimedOutClients",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-a-113c.ts",
     "tsSymbol": "GAME_CheckAndDisconnectTimedOutClients113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC4E750",
@@ -113,8 +113,8 @@
     "name": "OBJECT_SetAnimMode2Wrapper",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-a-113c.ts",
     "tsSymbol": "OBJECT_SetAnimMode2Wrapper113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC66F70",
@@ -122,8 +122,8 @@
     "name": "MONSTER_SpawnPresetOrEvilUrn",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-a-113c.ts",
     "tsSymbol": "MONSTER_SpawnPresetOrEvilUrn113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC86320",
@@ -131,8 +131,8 @@
     "name": "QUEST_Act1TownPortalUpdateState",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-a-113c.ts",
     "tsSymbol": "QUEST_Act1TownPortalUpdateState113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC8A0D0",
@@ -140,8 +140,8 @@
     "name": "OBJECT_SendUpdatePacketsToClient",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-a-113c.ts",
     "tsSymbol": "OBJECT_SendUpdatePacketsToClient113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC97060",
@@ -167,8 +167,8 @@
     "name": "MONSTER_ApplyElementalDamageAndResistStats",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-a-113c.ts",
     "tsSymbol": "MONSTER_ApplyElementalDamageAndResistStats113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC988B0",
@@ -176,8 +176,8 @@
     "name": "UNIT_SyncStateAndStatsToClient",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-a-113c.ts",
     "tsSymbol": "UNIT_SyncStateAndStatsToClient113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC99FE0",
@@ -186,7 +186,7 @@
     "kernFile": "src/d2kern-113c/game/boot-init-gap-a-113c.ts",
     "tsSymbol": "UNIT_FreeEventNotifyList113c",
     "status": "diff-verified",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence); runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC9A5E0",
@@ -204,7 +204,7 @@
     "kernFile": "src/d2kern-113c/game/boot-init-gap-a-113c.ts",
     "tsSymbol": "UNIT_SendAllStatesBitstreamToClient113c",
     "status": "diff-verified",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence); runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC9ADF0",
@@ -213,7 +213,7 @@
     "kernFile": "src/d2kern-113c/game/boot-init-gap-a-113c.ts",
     "tsSymbol": "UNIT_FlushEventNotifyQueueToClient113c",
     "status": "diff-verified",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence); runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FC9B0A0",
@@ -231,7 +231,7 @@
     "kernFile": "src/d2kern-113c/game/boot-init-gap-a-113c.ts",
     "tsSymbol": "NET_QueuePacketToClientBuffer113c",
     "status": "diff-verified",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence)"
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts; tests/oracle/k4/replay-act-quests.test.ts (K4 Act 1-5 quest full-frame strict zero divergence); runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FCAB400",
@@ -239,8 +239,8 @@
     "name": "NET_SendFixed40BytePacketToClient",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-a-113c.ts",
     "tsSymbol": "NET_SendFixed40BytePacketToClient113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "va": "0x6FCAE9A0",
@@ -294,6 +294,6 @@
     "kernFile": "src/d2kern-113c/game/boot-init-gap-a-113c.ts",
     "tsSymbol": "ACT_FreeAllActRoomPortalLists113c",
     "status": "diff-verified",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts)"
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts; K1/K2 5-scenario zero-divergence Wine replay (tests/oracle/k2/replay-k2-coverage.test.ts); runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   }
 ]

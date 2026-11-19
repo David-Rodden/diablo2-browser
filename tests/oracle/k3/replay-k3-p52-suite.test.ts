@@ -44,10 +44,19 @@ interface K3CoverageBaseline113c {
   readonly totalHits: number
   readonly d2CommonExecuted: number
   readonly d2GameExecuted: number
+  /** Monotonic ceiling on `D2Game` `runtimeExecGap` (`dllExecuted - tsExecuted`): only decreases toward 0. */
+  readonly maxD2GameRuntimeExecGap: number
+  /** Monotonic ceiling on `D2Common` `runtimeExecGap` (`dllExecuted - tsExecuted`): only decreases toward 0. */
+  readonly maxD2CommonRuntimeExecGap: number
   readonly initialD2GameGapCount: number
   readonly initialD2GameGapBytes: number
   readonly initialD2GameGapVas: readonly string[]
 }
+
+/** Monotonic ceiling on the 9-scenario union of `D2Game` `runtimeExecGap` (out of 652 DLL-executed `D2Game` VAs). */
+const MAX_K3_UNION_D2GAME_RUNTIME_EXEC_GAP = 0
+/** Monotonic ceiling on the 9-scenario union of `D2Common` `runtimeExecGap` (out of 780 DLL-executed `D2Common` VAs). */
+const MAX_K3_UNION_D2COMMON_RUNTIME_EXEC_GAP = 0
 
 const K3_COVERAGE_BASELINES_113C: readonly K3CoverageBaseline113c[] = [
   {
@@ -56,6 +65,8 @@ const K3_COVERAGE_BASELINES_113C: readonly K3CoverageBaseline113c[] = [
     totalHits: 958,
     d2CommonExecuted: 520,
     d2GameExecuted: 438,
+    maxD2GameRuntimeExecGap: 0,
+    maxD2CommonRuntimeExecGap: 0,
     initialD2GameGapCount: 102,
     initialD2GameGapBytes: 33612,
     initialD2GameGapVas: [
@@ -169,6 +180,8 @@ const K3_COVERAGE_BASELINES_113C: readonly K3CoverageBaseline113c[] = [
     totalHits: 1132,
     d2CommonExecuted: 641,
     d2GameExecuted: 491,
+    maxD2GameRuntimeExecGap: 0,
+    maxD2CommonRuntimeExecGap: 0,
     initialD2GameGapCount: 91,
     initialD2GameGapBytes: 31269,
     initialD2GameGapVas: [
@@ -271,6 +284,8 @@ const K3_COVERAGE_BASELINES_113C: readonly K3CoverageBaseline113c[] = [
     totalHits: 1072,
     d2CommonExecuted: 587,
     d2GameExecuted: 485,
+    maxD2GameRuntimeExecGap: 0,
+    maxD2CommonRuntimeExecGap: 0,
     initialD2GameGapCount: 108,
     initialD2GameGapBytes: 34558,
     initialD2GameGapVas: [
@@ -390,6 +405,8 @@ const K3_COVERAGE_BASELINES_113C: readonly K3CoverageBaseline113c[] = [
     totalHits: 1141,
     d2CommonExecuted: 617,
     d2GameExecuted: 524,
+    maxD2GameRuntimeExecGap: 0,
+    maxD2CommonRuntimeExecGap: 0,
     initialD2GameGapCount: 107,
     initialD2GameGapBytes: 34595,
     initialD2GameGapVas: [
@@ -508,6 +525,8 @@ const K3_COVERAGE_BASELINES_113C: readonly K3CoverageBaseline113c[] = [
     totalHits: 1131,
     d2CommonExecuted: 615,
     d2GameExecuted: 516,
+    maxD2GameRuntimeExecGap: 0,
+    maxD2CommonRuntimeExecGap: 0,
     initialD2GameGapCount: 92,
     initialD2GameGapBytes: 31434,
     initialD2GameGapVas: [
@@ -611,6 +630,8 @@ const K3_COVERAGE_BASELINES_113C: readonly K3CoverageBaseline113c[] = [
     totalHits: 1083,
     d2CommonExecuted: 601,
     d2GameExecuted: 482,
+    maxD2GameRuntimeExecGap: 0,
+    maxD2CommonRuntimeExecGap: 0,
     initialD2GameGapCount: 105,
     initialD2GameGapBytes: 34001,
     initialD2GameGapVas: [
@@ -727,6 +748,8 @@ const K3_COVERAGE_BASELINES_113C: readonly K3CoverageBaseline113c[] = [
     totalHits: 1210,
     d2CommonExecuted: 666,
     d2GameExecuted: 544,
+    maxD2GameRuntimeExecGap: 0,
+    maxD2CommonRuntimeExecGap: 0,
     initialD2GameGapCount: 104,
     initialD2GameGapBytes: 33583,
     initialD2GameGapVas: [
@@ -842,6 +865,8 @@ const K3_COVERAGE_BASELINES_113C: readonly K3CoverageBaseline113c[] = [
     totalHits: 986,
     d2CommonExecuted: 552,
     d2GameExecuted: 434,
+    maxD2GameRuntimeExecGap: 0,
+    maxD2CommonRuntimeExecGap: 0,
     initialD2GameGapCount: 79,
     initialD2GameGapBytes: 26985,
     initialD2GameGapVas: [
@@ -932,6 +957,8 @@ const K3_COVERAGE_BASELINES_113C: readonly K3CoverageBaseline113c[] = [
     totalHits: 969,
     d2CommonExecuted: 543,
     d2GameExecuted: 426,
+    maxD2GameRuntimeExecGap: 0,
+    maxD2CommonRuntimeExecGap: 0,
     initialD2GameGapCount: 77,
     initialD2GameGapBytes: 26453,
     initialD2GameGapVas: [
@@ -1353,6 +1380,30 @@ for (const spec of K3_COVERAGE_BASELINES_113C) {
       expect(s.executed.D2Game!.gap).toBe(expectedRemainingD2GameVas.length)
       expect(s.executed.D2Game!.done).toBe(spec.d2GameExecuted - expectedRemainingD2GameVas.length)
       expect(actualD2GameGapVas).toEqual(expectedRemainingD2GameVas)
+
+      // Monotonic runtimeExecGap ratchet (`dllExecuted - tsExecuted` on D2Game and D2Common)
+      expect(r.tsExecutedVas.length).toBeGreaterThan(0)
+      expect(r.tsExecutedVas).toContain('D2Game:0x6FC4E050')
+      const tsSet = new Set(r.tsExecutedVas)
+      let d2GameTsExec = 0
+      let d2CommonTsExec = 0
+      for (const h of cov.hits) {
+        const k = manifestKey113c(h.module, h.va)
+        if (h.module === 'D2Game' && tsSet.has(k)) d2GameTsExec++
+        if (h.module === 'D2Common' && tsSet.has(k)) d2CommonTsExec++
+      }
+      const d2GameRuntimeGap = spec.d2GameExecuted - d2GameTsExec
+      const d2CommonRuntimeGap = spec.d2CommonExecuted - d2CommonTsExec
+      expect(d2GameTsExec).toBeGreaterThan(0)
+      expect(
+        d2GameRuntimeGap,
+        `${name} D2Game runtimeExecGap (${d2GameRuntimeGap}) exceeded monotonic ratchet ceiling (${spec.maxD2GameRuntimeExecGap})`,
+      ).toBeLessThanOrEqual(spec.maxD2GameRuntimeExecGap)
+      expect(d2CommonTsExec).toBeGreaterThan(0)
+      expect(
+        d2CommonRuntimeGap,
+        `${name} D2Common runtimeExecGap (${d2CommonRuntimeGap}) exceeded monotonic ratchet ceiling (${spec.maxD2CommonRuntimeExecGap})`,
+      ).toBeLessThanOrEqual(spec.maxD2CommonRuntimeExecGap)
     })
 
     if (name === 'p52-paladin-merc-aura') {
@@ -1406,6 +1457,119 @@ describe('K3 summon/pet/curse diff-verified dll∩ts execution gate', () => {
       expect(fn!.status, `${key} (${fn!.name}) expected diff-verified`).toBe('diff-verified')
       expect(dllUnion.has(key), `K3 summon/curse DLL coverage union missing ${key}`).toBe(true)
       expect(tsUnion.has(key), `K3 summon/curse TS trace union missing ${key}`).toBe(true)
+    }
+  })
+})
+
+const DIFF_VERIFIED_K3_RUNTIME_CLOSURE_VAS_113C = [
+  '0x6FC21540',
+  '0x6FC21B60',
+  '0x6FC21DD0',
+  '0x6FC41B30',
+  '0x6FC49240',
+  '0x6FC49720',
+  '0x6FC57C90',
+  '0x6FC59670',
+  '0x6FC5A280',
+  '0x6FC5B990',
+  '0x6FC5C850',
+  '0x6FC5D020',
+  '0x6FC5EA60',
+  '0x6FC60BD0',
+  '0x6FC60CA0',
+  '0x6FC61850',
+  '0x6FC61980',
+  '0x6FC63720',
+  '0x6FC637D0',
+  '0x6FC648E0',
+  '0x6FC686D0',
+  '0x6FC6C840',
+  '0x6FCAA330',
+  '0x6FCAB0F0',
+  '0x6FCAB220',
+  '0x6FCABB10',
+  '0x6FCABC20',
+  '0x6FCAD500',
+  '0x6FCAE110',
+  '0x6FCAE2A0',
+  '0x6FCB6FA0',
+  '0x6FCB8450',
+  '0x6FCBB340',
+  '0x6FCBBB10',
+  '0x6FCBE370',
+  '0x6FCBE6B0',
+  '0x6FCBEB80',
+  '0x6FCBFF70',
+  '0x6FCC0630',
+  '0x6FCC10B0',
+  '0x6FCC1210',
+  '0x6FCC1790',
+  '0x6FCCCBA0',
+  '0x6FCEBED0',
+  '0x6FCEE870',
+  '0x6FCFA350',
+  '0x6FCFA480',
+  '0x6FD134C0',
+] as const
+
+describe('K3 9-scenario union D2Game & D2Common runtimeExecGap ratchets & diff-verified dll∩ts gate', () => {
+  it('enforces 9-scenario union D2Game (652/652) & D2Common (780/780) runtimeExecGap == 0 and executes all 48 promoted K3 VAs in dll∩ts', () => {
+    const manifest = loadManifest113c()
+    const dllD2GameUnion = new Set<string>()
+    const tsD2GameUnion = new Set<string>()
+    const dllD2CommonUnion = new Set<string>()
+    const tsD2CommonUnion = new Set<string>()
+    const k3UnionBoth = new Set<string>()
+
+    for (const spec of K3_COVERAGE_BASELINES_113C) {
+      const scen = spec.name
+      const r = cachedReplayByScenario.get(scen) ?? runK3Replay113c(scen, horizonsByScenario[scen]!.bootFrame)
+      const cov = cachedCovByScenario.get(scen) ?? loadK3Coverage113c(scen)
+      expect(r.strictHorizon).toBe(r.lastGoldenFrame)
+      expect(r.firstStrictDivergence).toBeNull()
+
+      const dllSet = new Set<string>()
+      for (const h of cov.hits) {
+        const k = manifestKey113c(h.module, h.va)
+        dllSet.add(k)
+        if (h.module === 'D2Game') dllD2GameUnion.add(k)
+        if (h.module === 'D2Common') dllD2CommonUnion.add(k)
+      }
+      for (const k of r.tsExecutedVas) {
+        if (k.startsWith('D2Game:')) tsD2GameUnion.add(k)
+        if (k.startsWith('D2Common:')) tsD2CommonUnion.add(k)
+        if (dllSet.has(k)) k3UnionBoth.add(k)
+      }
+    }
+
+    expect(dllD2GameUnion.size).toBe(652)
+    let unionD2GameGap = 0
+    for (const k of dllD2GameUnion) {
+      if (!tsD2GameUnion.has(k)) unionD2GameGap++
+    }
+    expect(
+      unionD2GameGap,
+      `9-scenario K3 D2Game union runtimeExecGap (${unionD2GameGap}) exceeded monotonic ceiling (${MAX_K3_UNION_D2GAME_RUNTIME_EXEC_GAP})`,
+    ).toBeLessThanOrEqual(MAX_K3_UNION_D2GAME_RUNTIME_EXEC_GAP)
+
+    expect(dllD2CommonUnion.size).toBe(780)
+    let unionD2CommonGap = 0
+    for (const k of dllD2CommonUnion) {
+      if (!tsD2CommonUnion.has(k)) unionD2CommonGap++
+    }
+    expect(
+      unionD2CommonGap,
+      `9-scenario K3 D2Common union runtimeExecGap (${unionD2CommonGap}) exceeded monotonic ceiling (${MAX_K3_UNION_D2COMMON_RUNTIME_EXEC_GAP})`,
+    ).toBeLessThanOrEqual(MAX_K3_UNION_D2COMMON_RUNTIME_EXEC_GAP)
+
+    for (const va of DIFF_VERIFIED_K3_RUNTIME_CLOSURE_VAS_113C) {
+      const key = `D2Game:${va}`
+      const fn = manifest.get(key)
+      expect(fn, `${key} missing from manifest-113c.json`).toBeDefined()
+      expect(fn!.status, `${key} (${fn!.name}) expected diff-verified`).toBe('diff-verified')
+      expect(dllD2GameUnion.has(key), `K3 9-scenario DLL coverage union missing ${key}`).toBe(true)
+      expect(tsD2GameUnion.has(key), `K3 9-scenario TS trace union missing ${key}`).toBe(true)
+      expect(k3UnionBoth.has(key), `K3 9-scenario dll∩ts union missing ${key}`).toBe(true)
     }
   })
 })
