@@ -167,8 +167,8 @@
     "name": "MONUMOD_SpawnSuperUniqueOrBoss_6FC446D0",
     "kernFile": "src/d2kern-113c/game/k2-w3b2-113c.ts",
     "tsSymbol": "MONUMOD_SpawnSuperUniqueOrBoss_6FC446D0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w3b2.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w3b2.test.ts; Wave 19 1:1 PE32 indirect-call audit (static_table; tools/oracle/callgraph/indirect-audit-batchA.json) verified in tests/oracle/k2/k2-disasm-verified-wave19-indA.test.ts"
   },
   {
     "module": "D2Game",
@@ -311,8 +311,8 @@
     "name": "OBJECTS_DispatchPresetObjectSpawner_6FC4E830",
     "kernFile": "src/d2kern-113c/game/k2-w3b2-113c.ts",
     "tsSymbol": "OBJECTS_DispatchPresetObjectSpawner_6FC4E830_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w3b2.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w3b2.test.ts; Wave 19 1:1 PE32 indirect-call audit (static_table; tools/oracle/callgraph/indirect-audit-batchA.json) verified in tests/oracle/k2/k2-disasm-verified-wave19-indA.test.ts"
   },
   {
     "module": "D2Game",
@@ -374,8 +374,8 @@
     "name": "OBJECTS_SpawnWallAlignedObjectWithCallback_6FC517F0",
     "kernFile": "src/d2kern-113c/game/k2-w3b2-113c.ts",
     "tsSymbol": "OBJECTS_SpawnWallAlignedObjectWithCallback_6FC517F0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w3b2.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w3b2.test.ts; Wave 19 1:1 PE32 indirect-call audit (caller_callback; tools/oracle/callgraph/indirect-audit-batchA.json) verified in tests/oracle/k2/k2-disasm-verified-wave19-indA.test.ts"
   },
   {
     "module": "D2Game",
@@ -383,8 +383,8 @@
     "name": "OBJECTS_SpawnRandomObjectWithCallback_6FC51B40",
     "kernFile": "src/d2kern-113c/game/k2-w3b2-113c.ts",
     "tsSymbol": "OBJECTS_SpawnRandomObjectWithCallback_6FC51B40_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w3b2.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w3b2.test.ts; Wave 19 1:1 PE32 indirect-call audit (caller_callback; tools/oracle/callgraph/indirect-audit-batchA.json) verified in tests/oracle/k2/k2-disasm-verified-wave19-indA.test.ts"
   },
   {
     "module": "D2Game",

@@ -131,6 +131,7 @@ import {
   UNITS_GetBlockChance113c,
   UNITS_GetDistanceToOtherUnit113c,
   UNITS_GetEquippedWeaponAdder113c,
+  UNITS_GetPathRoomRefreshFlag113c,
   UNITS_GetPlayerBaseToHit113c,
   UNITS_GetRoom113c,
   UNITS_GetSeed113c,
@@ -244,6 +245,7 @@ import {
 } from './k2-real-itemdrop-113c.ts'
 import {
   MONSTER_DeleteAiAndRegenEvents113c,
+  PARTY_ForEachPartyMemberInSameLevel113c,
   PLAYER_SetActiveDualWeaponStatLists113c,
   PLAYER_UpdateDualWieldWeaponStatLists113c,
   SKILLS_DoUsedSkillAction113c,
@@ -251,11 +253,13 @@ import {
   SUNIT_DispatchItemEventCallbacks113c,
   SUNITDMG_ApplyOpenWoundsAndCrushingBlowSideEffects113c,
 } from './a1c-post150-f786-f1040-113c.ts'
+import { SUNITDMG_CollectPartyExpMemberCallback_6FCFAED0_113c } from './k2-w5b7-113c.ts'
 import {
   AI_AcquireOrValidateCombatTarget113c,
   AI_HandleStunDoorOrLeaderFollow113c,
   PLAYER_RecalcTargetUnitPath113c,
   PLAYER_StartWalkOrRunMode113c,
+  SUNIT_UpdateUnitPositionAndRoom113c,
 } from './town-runtime-gap-113c.ts'
 import { HIRELING_GrantSharedExpAndCheckLevelUp_6FCFDCB0_113c } from './k2-w6b6-113c.ts'
 import {
@@ -264,6 +268,7 @@ import {
 } from './boot-init-gap-a-113c.ts'
 import {
   D2GAME_PACKET_SendMonsterAssign113c,
+  D2GAME_PARTY_GetPartyIdForUnit113c,
 } from './boot-init-gap-b-113c.ts'
 import {
   EXP_RATIOS_113C,
@@ -2420,9 +2425,17 @@ export function SUNITDMG_AddPlayerExperienceAndCheckLevelUp113c(
 }
 
 /**
- * `@va D2Game:0x6FCFE8F0` (`SUNITDMG_ComputeExperienceGain`, `261B`):
- * Exact 1.13c level-difference curve (`clvl < 25` table, `clvl >= 25` `clvl/mlvl` ratio when `mlvl > clvl`,
- * high-level `70..98` penalty divisors `[1024, 976, ..., 6]`, and `STAT_ITEM_ADDEXPERIENCE = 85` bonus %).
+ * `@va D2Game:0x6FCFE8F0` (`SUNITDMG_DistributePartyExperience` / `SUNITDMG_ComputeExperienceGain`, `261B`):
+ * Exact 1.13c party experience distribution:
+ * - Allocates 19-dword `D2PartyExpStrc` (`+0x00=pMonster`, `+0x04..+0x20=pMembers[8]`, `+0x24..+0x40=nLevels[8]`,
+ *   `+0x44=nCount`, `+0x48=nTotalLevel`), collects same-level party members within `0x1900` dist² via
+ *   `PARTY_ForEachPartyMemberInSameLevel113c` (`0x6FCBC070`) + `SUNITDMG_CollectPartyExpMemberCallback_6FCFAED0_113c` (`0x6FCFAED0`).
+ * - `nCount <= 0 || nTotalLevel <= 0`: returns `0`.
+ * - `nCount == 1`: scales via `SUNITDMG_GetTotalSkillDamageBonus113c` (`0x6FCFC030`) and grants via
+ *   `SUNITDMG_AddPlayerExperienceAndCheckLevelUp113c` (`0x6FCFE6D0`).
+ * - `nCount > 1`: applies `+((nCount - 1) * baseExp * 0x59) / 256` party bonus (`sar 8` with negative bias),
+ *   computes `float32(totalExp / nTotalLevel)`, and grants each collected member `trunc(nLevels[i] * expPerLevel)`.
+ * - Legacy 5-arg pure-compute call (omitting `pMonster`) preserves scalar return for existing unit callers.
  */
 export function SUNITDMG_ComputeExperienceGain113c(
   m: Memory113c,
@@ -2430,18 +2443,85 @@ export function SUNITDMG_ComputeExperienceGain113c(
   pPlayer: number,
   mlvl: number,
   baseExp: number,
+  pMonster?: number,
+  bSuppressS2c = false,
 ): number {
   hitD2GameVa113c(0x6FCFE8F0)
-  void pGame
   if (pPlayer === 0 || (baseExp | 0) <= 0) return 0
-  const clvl = STATLIST_GetUnitStat113c(m, pPlayer, 12, 0) | 0
-  const addExpPct = STATLIST_GetUnitStat113c(m, pPlayer, 85, 0) | 0
-  return calculateKillExperienceGainPure113c({
-    rawExp: baseExp | 0,
-    clvl: clvl > 0 ? clvl : 1,
-    mlvl: mlvl > 0 ? mlvl : 1,
-    addExpPct,
-  })
+  if (pMonster === undefined) {
+    const clvl = STATLIST_GetUnitStat113c(m, pPlayer, 12, 0) | 0
+    const addExpPct = STATLIST_GetUnitStat113c(m, pPlayer, 85, 0) | 0
+    return calculateKillExperienceGainPure113c({
+      rawExp: baseExp | 0,
+      clvl: clvl > 0 ? clvl : 1,
+      mlvl: mlvl > 0 ? mlvl : 1,
+      addExpPct,
+    })
+  }
+  const savedSp = k2RealStackPtr
+  const pExpCtx = k2RealStackPtr
+  k2RealStackPtr = (savedSp + 0x50) >>> 0
+  try {
+    for (let i = 0; i < 0x13; i++) {
+      m.setU32((pExpCtx + i * 4) >>> 0, 0)
+    }
+    m.setU32(pExpCtx, pMonster >>> 0)
+    PARTY_ForEachPartyMemberInSameLevel113c(
+      m,
+      pPlayer >>> 0,
+      pGame >>> 0,
+      (mem, cbGame, cbMember, cbArg) => {
+        SUNITDMG_CollectPartyExpMemberCallback_6FCFAED0_113c(
+          mem,
+          cbGame,
+          cbMember,
+          cbArg,
+        )
+      },
+      pExpCtx,
+    )
+    const nCount = m.u32((pExpCtx + 0x44) >>> 0) | 0
+    const nTotalLevel = m.u32((pExpCtx + 0x48) >>> 0) | 0
+    if (nCount <= 0 || nTotalLevel <= 0) {
+      return 0
+    }
+    const rawBase = baseExp | 0
+    if (nCount === 1) {
+      const killerLvl = STATLIST_GetUnitStat113c(m, pPlayer, 12, 0) | 0
+      const addExpPct = STATLIST_GetUnitStat113c(m, pPlayer, 85, 0) | 0
+      const gain = SUNITDMG_GetTotalSkillDamageBonus113c(m, pPlayer, 0, {
+        rawExp: rawBase,
+        clvl: killerLvl > 0 ? killerLvl : 1,
+        mlvl,
+        addExpPct,
+      })
+      SUNITDMG_AddPlayerExperienceAndCheckLevelUp113c(m, pGame, pPlayer, gain, bSuppressS2c)
+      return gain
+    }
+    const bonusNum = Math.imul(Math.imul(nCount - 1, rawBase), 0x59)
+    const totalExp = (sdiv32(bonusNum, 256) + rawBase) | 0
+    const expPerLevel = Math.fround(totalExp / nTotalLevel)
+    let killerGain = 0
+    for (let i = 0; i < nCount; i++) {
+      const pMember = m.u32((pExpCtx + 0x04 + i * 4) >>> 0) >>> 0
+      const memberLvl = m.u32((pExpCtx + 0x24 + i * 4) >>> 0) | 0
+      const share = Math.trunc(memberLvl * expPerLevel) | 0
+      const addExpPct = STATLIST_GetUnitStat113c(m, pMember, 85, 0) | 0
+      const gain = SUNITDMG_GetTotalSkillDamageBonus113c(m, pMember, 0, {
+        rawExp: share,
+        clvl: memberLvl > 0 ? memberLvl : 1,
+        mlvl,
+        addExpPct,
+      })
+      SUNITDMG_AddPlayerExperienceAndCheckLevelUp113c(m, pGame, pMember, gain, bSuppressS2c)
+      if (pMember === (pPlayer >>> 0)) {
+        killerGain = gain
+      }
+    }
+    return killerGain
+  } finally {
+    k2RealStackPtr = savedSp
+  }
 }
 
 /**
@@ -2966,8 +3046,20 @@ export function SUNITDMG_TriggerPostCombatEvents113c(
       }
     }
 
-    // 0x6FCFEB4C..0x6FCFEB8D: check party (`0x6FCFFA60`) + solo XP scale (`0x6FCFC030` -> `0x6FCFAA40`) + grant (`0x6FCFE6D0`)
-    void SUNITDMG_GetPlayerClientClassId113c(m, pKillerPlayer)
+    // 0x6FCFEB4C..0x6FCFEB8D: check party (`0x6FCFFA60`): if partied (!= 0xFFFF) distribute via `0x6FCFE8F0`,
+    // else solo XP scale (`0x6FCFC030` -> `0x6FCFAA40`) + grant (`0x6FCFE6D0`).
+    const wPartyId = SUNITDMG_GetPlayerClientClassId113c(m, pKillerPlayer) & 0xffff
+    if (wPartyId !== 0xffff) {
+      return SUNITDMG_ComputeExperienceGain113c(
+        m,
+        pGame,
+        pKillerPlayer,
+        mlvl,
+        rawExp,
+        pDefender,
+        bSuppressS2c,
+      )
+    }
     const clvl = STATLIST_GetUnitStat113c(m, pKillerPlayer, 12, 0) | 0
     const addExpPct = STATLIST_GetUnitStat113c(m, pKillerPlayer, 85, 0) | 0
     const gain = SUNITDMG_GetTotalSkillDamageBonus113c(m, pKillerPlayer, 0, {
@@ -4262,7 +4354,14 @@ export function AI_DispatchTargetByAiFlag113c(
       return
     }
     const aiBridge = KERNEL_MONSTER_AI_BRIDGE_BY_MEM_113C.get(m)
-    if (aiBridge?.tryRunTownNpcThink !== undefined) {
+    if (
+      aiBridge?.tryRunTownNpcThink !== undefined &&
+      (pfnThink === 0x6fc3db40 ||
+        pfnThink === 0x6fc3bc60 ||
+        pfnThink === 0x6fcbcb00 ||
+        pfnThink === 0x6fc39880 ||
+        pfnThink === 0x6fcca4d0)
+    ) {
       validateNoTarget()
       if (aiBridge.tryRunTownNpcThink(pMonster, pfnThink)) {
         return
@@ -4317,14 +4416,17 @@ setDefaultMonsterAiThinkCallback113c((m, pGame, pUnit) => {
 })
 
 /**
- * `@va D2Game:0x6FCFFA60` (`SUNITDMG_GetPlayerClientClassId`, `30B`):
- * Checks `pUnit != 0 && u32[pUnit] == 0 && u32[pUnit + 0x80] != 0` and returns `dwClassId & 0xFFFF`,
- * or `0xFFFF` (`-1` as `u16`) when invalid (preserving `0` fallback when `pUnit` has `pGame == 0` for `dwUnitType == 0`).
+ * `@va D2Game:0x6FCFFA60` (`SUNIT_GetPartyId` / legacy symbol `SUNITDMG_GetPlayerClientClassId`, `33B`):
+ * Exact 1.13c port: if `pUnit != 0 && (pGame = u32[pUnit + 0x80]) != 0 && dwUnitType == UNIT_PLAYER (0)`,
+ * returns `D2GAME_PARTY_GetPartyIdForUnit113c(m, pUnit, pGame) & 0xFFFF` (`0x6FCBBEB0`); otherwise returns `0xFFFF`.
  */
 export function SUNITDMG_GetPlayerClientClassId113c(m: Memory113c, pUnit: number): number {
   hitD2GameVa113c(0x6FCFFA60)
-  if (pUnit === 0 || m.get(pUnit, D2UnitStrc.dwUnitType) !== UNIT_PLAYER) return 0xffff
-  return m.get(pUnit, D2UnitStrc.dwClassId) & 0xffff
+  if (pUnit === 0) return 0xffff
+  const pGame = m.u32((pUnit + 0x80) >>> 0) >>> 0
+  if (pGame === 0) return 0xffff
+  if (m.get(pUnit, D2UnitStrc.dwUnitType) !== UNIT_PLAYER) return 0xffff
+  return D2GAME_PARTY_GetPartyIdForUnit113c(m, pUnit, pGame) & 0xffff
 }
 
 /**
@@ -5204,9 +5306,32 @@ export function SUNITDMG_ComputeWeaponBaseDamage113c(
   strBonusWeight = 90,
   dexBonusWeight = 0,
   bUseAttack2 = 0,
+  skillPhysOverride?: { min256: number; max256: number; nSrcDamage?: number },
 ): number {
   hitD2GameVa113c(0x6FCFC530)
   if (pAttacker === 0 || pDmg === 0) return 0
+  if (skillPhysOverride !== undefined) {
+    // 1.13c D2Game:0x6FCFC530 bUseWeapon == 0 path (0x6FCFC545: je 0x6fcfc5d3):
+    // uses caller-supplied 256-fixed-point skill phys min/max directly, skips weapon/STR/DEX,
+    // adds stat 111 (normal damage) << 8, clamps min < 1 -> 0x100 and max <= min -> min + 0x100,
+    // applies stat 25 (clamped >= -90) + stat 18/17, rolls via 0x6FCFBED0, and scales by nSrcDamage.
+    const normDmg256 = (STATLIST_GetUnitStat113c(m, pAttacker, 111, 0) | 0) << 8
+    let min256 = ((skillPhysOverride.min256 | 0) + normDmg256) | 0
+    let max256 = ((skillPhysOverride.max256 | 0) + normDmg256) | 0
+    if (min256 < 1) min256 = 0x100
+    if (max256 <= min256) max256 = (min256 + 0x100) | 0
+    let edBase = STATLIST_GetUnitStat113c(m, pAttacker, 25, 0) | 0
+    const minEd = STATLIST_GetUnitStat113c(m, pAttacker, 18, 0) | 0
+    const maxEd = STATLIST_GetUnitStat113c(m, pAttacker, 17, 0) | 0
+    if (edBase <= -90) edBase = -90
+    let phys = SUNITDMG_RollDamageValue113c(m, pAttacker, min256, max256, 0, 0, edBase, minEd, maxEd)
+    const srcDmg = skillPhysOverride.nSrcDamage !== undefined ? (skillPhysOverride.nSrcDamage & 0xff) : 0x80
+    if (srcDmg !== 0x80) {
+      phys = Math.trunc((phys * srcDmg) / 0x80) | 0
+    }
+    m.set(pDmg, D2DamageStrc.dwPhysDamage, phys >>> 0)
+    return phys
+  }
   const attType = m.get(pAttacker, D2UnitStrc.dwUnitType)
   const pWeapon = getEquippedWeaponK2(m, pAttacker)
 
@@ -6449,7 +6574,39 @@ export function ROOM_RecordMonsterDeath113c(m: Memory113c, pRoom: number, unitOr
 }
 
 /**
- * `@va D2Game:0x6FC40D50` (`AIGENERAL_PromoteNextPackLeader`):
+ * `@va D2Game:0x6FC40D50` (`AIGENERAL_GetOwnerData`, `58B`):
+ * Exact 1.13c port (`eax = pUnit`, `edx = pOutOwnerId`, `[esp+4] = pOutOwnerType`):
+ * If `pUnit != 0 && dwUnitType == UNIT_MONSTER (1)` and `pMonData->pAiGeneral->pOwner (+0x28) != 0`,
+ * writes `dwOwnerId (+0x2C)` to `*pOutOwnerId` and `dwOwnerType (+0x30)` to `*pOutOwnerType`;
+ * otherwise writes `0xFFFFFFFF` (`-1`) to `*pOutOwnerId`.
+ */
+export function AIGENERAL_GetOwnerData_6FC40D50_113c(
+  m: Memory113c,
+  pUnit: number,
+  pOutOwnerId: number,
+  pOutOwnerType: number,
+): void {
+  hitD2GameVa113c(0x6FC40D50)
+  const unit = pUnit >>> 0
+  if (unit !== 0 && (m.u32(unit) | 0) === UNIT_MONSTER) {
+    const pMonData = m.u32((unit + 0x14) >>> 0) >>> 0
+    const pAiGen = pMonData !== 0 ? (m.u32((pMonData + 0x28) >>> 0) >>> 0) : 0
+    if (pAiGen !== 0 && m.u32((pAiGen + 0x28) >>> 0) !== 0) {
+      if (pOutOwnerId !== 0) {
+        m.setU32(pOutOwnerId >>> 0, m.u32((pAiGen + 0x2c) >>> 0) >>> 0)
+      }
+      if (pOutOwnerType !== 0) {
+        m.setU32(pOutOwnerType >>> 0, m.u32((pAiGen + 0x30) >>> 0) >>> 0)
+      }
+      return
+    }
+  }
+  if (pOutOwnerId !== 0) {
+    m.setU32(pOutOwnerId >>> 0, 0xffffffff)
+  }
+}
+
+/**
  * Promotes the head living minion in `minionIdsByLeaderId` when a pack leader dies and updates
  * `D2AiGeneralStrc.dwLeaderId (+0x2C)` across the dying leader and all pack members.
  */
@@ -6457,7 +6614,6 @@ export function promotePackLeaderOnDeath113c(
   world: MonsterSliceWorldLike113c,
   pMonster: number,
 ): void {
-  hitD2GameVa113c(0x6FC40D50)
   const { m } = world
   const pMonData = m.get(pMonster, D2UnitStrc.pUnitData)
   if (pMonData === 0) return
@@ -7684,7 +7840,11 @@ export function MONSTER_StepPath113c(
     const pPath = m.get(pMonster, D2UnitStrc.pPath)
     if (pPath === 0) return 0
     ensureSliceWorldPathMemoryK2(world)
-    return PATH_Step113c(m, pMonster, 0x400)
+    const stepped = PATH_Step113c(m, pMonster, 0x400)
+    if (world.hasFullDrlg === true && world.pGame !== 0 && UNITS_GetPathRoomRefreshFlag113c(m, pMonster) !== 0) {
+      SUNIT_UpdateUnitPositionAndRoom113c(m, 0, pMonster, world.pGame)
+    }
+    return stepped
   }
 
   const m = arg0

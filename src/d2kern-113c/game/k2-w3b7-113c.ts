@@ -130,16 +130,17 @@ import {
   WAYPOINT_CopyAndValidateWaypointData113c,
   WAYPOINT_GetWaypointNoFromLevelId113c,
 } from '../common/waypoint.js'
-import type { Memory113c } from '../mem/sparse-memory.js'
+import type { Memory113c, SparseMemory113c } from '../mem/sparse-memory.js'
 import {
   DATATBLS_GetChestTreasureClass113c,
   DATATBLS_GetLevelMonsterLevel113c,
   MONSTERS_CheckMonStatsFlagBit6_113c,
   MONSTERS_IsDead113c,
+  fogGetRowFromTxt113c,
 } from '../tables/datatbls-113c.js'
+import { DATATBLS_GetItemIdFromItemCode113c } from '../tables/item-tbls-113c.js'
 import {
   DATATBLS_GetItemDataTables113c,
-  DATATBLS_GetItemIdFromItemCode113c,
 } from '../tables/item-tbls-113c.js'
 import { SKILLS_DoUsedSkillAction113c } from './a1c-post150-f786-f1040-113c.js'
 import {
@@ -153,7 +154,6 @@ import {
   NET_SendFixed40BytePacketToClient113c,
 } from './boot-init-gap-a-113c.js'
 import {
-  ITEMS_ChooseTreasureClassItem113c,
   ITEMS_DropGoldPileAtUnit113c,
   ITEMS_GetDropItemLevel113c,
   MONSTER_SetDeathPathAndAnim113c,
@@ -161,11 +161,11 @@ import {
   SUNITDMG_ApplyDamage113c,
   SUNITDMG_ApplyResistancesAndAbsorb113c,
   SUNITDMG_ApplySideEffectsAndKill113c,
-  SUNITDMG_DistributeExperience113c,
 } from './combat-a1c-113c.js'
 import { SUNIT_GetServerUnit113c } from './game-strc.js'
 import {
   D2GAME_CreateItemEx_6FC31490_113c,
+  ITEMS_ChooseTreasureClassAndDrop_6FC32380_113c,
   ITEMS_FindFreeGroundDropCoords_6FC2E930_113c,
   ITEMS_GetDropItemLevel_6FC2E5D0_113c,
 } from './k2-real-itemdrop-113c.js'
@@ -181,8 +181,27 @@ import {
 import { MONSTER_GetMonStatsTxtFromUnit_6FC21540_113c } from './k2-laneH-0x6fc2-w1-113c.js'
 import { MONSTER_CloseAllNpcInteractionsAndNotify_6FC68410_113c } from './k2-laneL-0x6fc6-w1-113c.js'
 import {
+  ACT5Q4_OnObjectOperateApplySkillState13A_6FC79A60_113c,
+  ACT5Q4_OnObjectOperateApplySkillState13B_6FC79AB0_113c,
+  ACT5Q4_OnObjectOperateApplySkillState13C_6FC79B00_113c,
+  ACT5Q5_OnAncientsObjectOperateCompletedMsg_6FC78DA0_113c,
+} from './k2-w2b1-113c.js'
+import {
   ACT1Q5_SendTowerTomeQuestAlert5D_6FC82A30_113c,
+  OBJECTS_AddUnitMaxAndCurrentLifeFixed8_6FC89670_113c,
+  OBJECTS_AddUnitMaxAndCurrentManaFixed8_6FC89730_113c,
+  OBJECTS_GrantUnitDexterity_6FC896F0_113c,
+  OBJECTS_GrantUnitEnergy_6FC89710_113c,
+  OBJECTS_GrantUnitSkillPoints_6FC89650_113c,
+  OBJECTS_GrantUnitStrength_6FC896B0_113c,
+  OBJECTS_GrantUnitVitality_6FC896D0_113c,
   OBJECTS_HasItemOfTypeInInventory_6FC898E0_113c,
+  OBJECTS_OperateToggleObjectMode012_6FC89A80_113c,
+  SHRINES_ApplyEnirhsReversePlayerName_6FC89770_113c,
+  SHRINES_ApplyHealthExchangeEffect_6FC89800_113c,
+  SHRINES_ApplyHealthRechargeEffect_6FC898A0_113c,
+  SHRINES_ApplyManaExchangeEffect_6FC897A0_113c,
+  SHRINES_ApplyManaRechargeEffect_6FC89860_113c,
 } from './k2-w2b2-113c.js'
 import {
   NET_SendPacketBuffer21B_6FCAAA70_113c,
@@ -190,6 +209,7 @@ import {
   NET_SendPacketBuffer7B_6FCAAB20_113c,
   OBJ_IsPlayerOrMonsterAlive_6FC89C60_113c,
   OBJ_RestoreUnitLifeAndManaToMax_6FC89C00_113c,
+  OBJ_ToggleNeutralAndOperatingMode_6FC89AD0_113c,
 } from './k2-w2b3-113c.js'
 import { STATES_PurgeExpStateStatLists_6FCDC920_113c } from './k2-w2b6-113c.js'
 import {
@@ -197,6 +217,101 @@ import {
   SUNIT_SetLastKillerInfo_6FCFFAE0_113c,
 } from './k2-w2b8-113c.js'
 import {
+  OBJ_OperateFn19_ArmorStand_6FC8B2E0_113c,
+  OBJ_OperateFn20_WeaponRack_6FC8B280_113c,
+  OBJ_OperateFn28_Urn_6FC8D7B0_113c,
+  OBJ_OperateFn48_TrappedSoul_6FC8CE10_113c,
+} from './k2-w4b3-113c.js'
+import {
+  OBJ_OperateAuraStatShrine_6FC8ABB0_113c,
+  OBJ_OperateCombatShrine_6FC8ACE0_113c,
+  OBJ_OperateStaminaShrine_6FC8AC30_113c,
+  OBJ_OperateTomeOrScrollStand_6FC8B340_113c,
+  OBJ_OperateWirtsBody_6FC8D960_113c,
+} from './k2-w4b4-113c.js'
+import {
+  ACT1Q4_OperateCainGibbetCageObject_6FC88FC0_113c,
+  OBJ_OperateChestAndDropTreasure_6FC8EC20_113c,
+  OBJ_OperateEvilUrnOrChestWithMonsterRoll_6FC8EF40_113c,
+  OBJ_OperateTrappedChestOrUrn_6FC8EB40_113c,
+  OBJ_OperateUrnRoll21PercentTreasure_6FC8ECD0_113c,
+  OBJ_ShrineMonster_PromoteNearestMonster_6FC8B8A0_113c,
+} from './k2-w5b2-113c.js'
+import { ACT2Q6_OperateHoradricOrificeObject_6FCE6240_113c } from './k2-w5b5-113c.js'
+import { OBJ_OperateWell_6FC8CEE0_113c } from './k2-w6b2-113c.js'
+import {
+  ACT2Q2_OperateHoradricCubeChest_6FCEA050_113c,
+  ACT2Q2_OperateHoradricScrollChest_6FCEA290_113c,
+  ACT2Q2_OperateStaffOfKingsChest_6FCEA170_113c,
+} from './k2-w6b5-113c.js'
+import {
+  ACT3Q3_OperateKhalimBrainChest_6FD0A390_113c,
+  ACT3Q3_OperateKhalimEyeChest_6FD0A4C0_113c,
+  ACT3Q3_OperateKhalimHeartChest_6FD0A5F0_113c,
+  ACT3Q3_OperateSewerLeverObject_6FD09F60_113c,
+} from './k2-w6b6-113c.js'
+import {
+  OBJECTS_OperateBankStash_6FC91290_113c,
+  OBJECTS_OperateFireAndLightningTrap_6FC8E0E0_113c,
+  OBJECTS_OperateGemShrine_6FC8B430_113c,
+  OBJECTS_OperatePortalShrine_6FC8B9B0_113c,
+} from './k2-w7b2-113c.js'
+import { OBJECTS_OperateEvilUrnSporeTrap_6FC8D740_113c } from './k2-w7b4-113c.js'
+import {
+  ACT1Q5_OnForgottenTowerTomeOperated_6FC88D70_113c,
+  ACT1Q5_OnTreeOfInifussOperated_6FC85D40_113c,
+  OBJ_OperateChestAndSparkyChest_6FC8F040_113c,
+  OBJ_OperateDoorWithLockCheck_6FC8A9D0_113c,
+} from './k2-w8b2-113c.js'
+import {
+  ACT2Q3_OperateTaintedSunAltar_6FCE76B0_113c,
+  ACT2Q4_OperateHorazonsJournal_6FCE9A80_113c,
+} from './k2-w8b3-113c.js'
+import {
+  ACT1Q4_OperateInifussTree_6FC85B40_113c,
+  ACT5Q5_OperateAncientsAltar_6FC7D0A0_113c,
+} from './k2-w9b1-113c.js'
+import {
+  OBJ_OperateFn_CowAndSpecialPortal_6FC8BB60_113c,
+  OBJ_OperateFn_SkillShrine_6FC8AB60_113c,
+  OBJ_OperateFn_TownAndPermanentPortal_6FC8D0F0_113c,
+} from './k2-w11b1-113c.js'
+import {
+  OBJ_OperateFn_DungeonStairOrTileWarp_6FC8BCB0_113c,
+  OBJ_OperateFn_FindPairedObjectAndTeleportPad_6FC8BE40_113c,
+  OBJ_OperateFn_SparklyChestOrTrapSpawner_6FC8EDB0_113c,
+  OBJ_OperateFn_TrapDoorOrDelayedTileWarp_6FC8DFC0_113c,
+} from './k2-w12b1-113c.js'
+import {
+  D2Game_6FC7D690_113c,
+  D2Game_6FC7DF70_113c,
+  D2Game_6FC7E2A0_113c,
+  D2Game_6FC8D620_113c,
+  D2Game_6FC8F4F0_113c,
+  D2Game_6FD095E0_113c,
+} from './k2-w13b1-113c.js'
+import {
+  ACT3Q2_OperateGidbinnAltar_6FD09C80_113c,
+  ACT4Q3_OnDiabloDeathPortalWarpToAct5_6FCDB550_113c,
+} from './k2-w14b1-113c.js'
+import {
+  ACT1Q4_Callback02_OnCairnStoneActivate_6FC864F0_113c,
+  ACT3Q5_OnCompellingOrbOperate_6FD0A140_113c,
+  ACT5Q3_Callback02_OnFrozenAnyaObjectActivate_6FC7CD50_113c,
+  OBJ_OperateDuranceStairs_6FC8CD40_113c,
+} from './k2-w15b1-113c.js'
+import {
+  ACT3Q4_OnLamEsensTomeStandOperate_6FD094C0_113c,
+  ACT4Q2_OnHellforgeObjectOperate_6FCDB8D0_113c,
+  ACT4Q3_OnDiabloSealOperate_6FCDBF30_113c,
+  ACT4Q3_OnSeal1Operate_6FCDC580_113c,
+  ACT4Q3_OnSeal3Operate_6FCDC510_113c,
+  ACT4Q3_OnSeal5Operate_6FCDC4A0_113c,
+  ACT5Q6_OnTyraelPortalEnteredTriggerEndgame_6FC7FD00_113c,
+} from './k2-w16b1-113c.js'
+import {
+  AI_RunMonsterAI113c,
+  MONSTER_ClearModeEvents113c,
   SUNIT_IsDeadOrDying113c,
   UNITS_ChangeAnimMode113c,
 } from './monster-events.js'
@@ -205,6 +320,7 @@ import {
   D2GAME_IAT_SGPT_DATATABLES_VA_113C,
   MONSTATS2_CheckModeBit113c,
   MONSTATS2_GetRecordPtr113c,
+  MONSTATS_CheckFlagBit113c,
   MONSTER_Create113c,
   MONSTER_GetBaseIdFromUnit113c,
   MONSTER_SpawnAtCoords113c,
@@ -219,7 +335,6 @@ import {
 } from './regpop-spawn-113c.js'
 import {
   MONSTER_EndToAiOrNeutral113c,
-  MONSTER_StepPath113c,
   SKILLS_GetFlags113c,
 } from './replay-kernel-113c.js'
 import { EVENT_FreeNode113c, EVENT_SetEventFull113c } from './timer-wheel.js'
@@ -237,7 +352,6 @@ void COLLISION_FindFreeCoordsNear113c
 void COLLISION_FindFreePositionBasic113c
 void COLLISION_FindFreePositionSimple113c
 void DATATBLS_GetChestTreasureClass113c
-void DATATBLS_GetItemIdFromItemCode113c
 void DATATBLS_GetItemStatCostRecordFast113c
 void DATATBLS_GetItemsTxtRecordMemPort113c
 void DATATBLS_GetLevelMonsterLevel113c
@@ -253,7 +367,6 @@ void INVENTORY_UnitIsItem113c
 void ITEMS_CheckEtherealFlag113c
 void ITEMS_CheckItemIdMatchesItemType113c
 void ITEMS_CheckItemTypeIdMemPort113c
-void ITEMS_ChooseTreasureClassItem113c
 void ITEMS_DropGoldPileAtUnit113c
 void ITEMS_GetBaseCode113c
 void ITEMS_GetCommandFlags113c
@@ -271,11 +384,9 @@ void MISSILE_GetClassId113c
 void MISSILE_GetLevel113c
 void MISSILE_GetRemainingFrames113c
 void MONSTER_Create113c
-void MONSTER_EndToAiOrNeutral113c
 void MONSTER_GetBaseIdFromUnit113c
 void MONSTER_SetDeathPathAndAnim113c
 void MONSTER_SpawnAtCoords113c
-void MONSTER_StepPath113c
 void NET_QueuePacketToClientBuffer113c
 void NET_SendFixed40BytePacketToClient113c
 void NET_SendPacketBuffer21B_6FCAAA70_113c
@@ -308,7 +419,6 @@ void STATLIST_GetUnitStatBonus113c
 void SUNITDMG_ApplyDamage113c
 void SUNITDMG_ApplyResistancesAndAbsorb113c
 void SUNITDMG_ApplySideEffectsAndKill113c
-void SUNITDMG_DistributeExperience113c
 void SUNITDMG_FreeAttackerCombatList113c
 void SUNIT_InitUnitSeed113c
 void SUNIT_IsDeadOrDying113c
@@ -352,6 +462,15 @@ function freeStackFrame113c(ptr: number): void {
   k2W3B7StackPtr = ptr >>> 0
 }
 
+// Exact D2Game.dll .rdata table at 0x6FD1BD8C (5 acts x [startLevelId, endLevelId])
+const ACT_CHEST_LEVEL_RANGE_113C = [
+  [2, 37],
+  [41, 73],
+  [76, 102],
+  [104, 108],
+  [109, 136],
+] as const
+
 function resolveSgptDataTables113c(m: D2KernMemory113c): number {
   const pSgptSlot = m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C) >>> 0
   if (pSgptSlot !== 0) {
@@ -360,7 +479,61 @@ function resolveSgptDataTables113c(m: D2KernMemory113c): number {
       return pTables
     }
   }
-  return DATATBLS_GetItemDataTables113c(m) >>> 0
+  return 0
+}
+
+/** Exact internal `0x6FCFEEE0` (`SUNITDMG_KillMonster`) path for `pAttacker == 0, bAwardExp == 1`. */
+function sunitdmgKillUnit_6FCFEEE0(
+  m: D2KernMemory113c,
+  pGame: number,
+  pDefender: number,
+): void {
+  const def = pDefender >>> 0
+  const game = pGame >>> 0
+  hitD2GameVa113c(0x6FCFEEE0)
+  if (def === 0) return
+  const defType = m.u32(def) | 0
+  if (defType === 1) {
+    const curMode = m.u32((def + 0x10) >>> 0) | 0
+    if (curMode === 0 || curMode === 0x0c) return
+    if ((MONSTATS_CheckFlagBit113c(m, m.u32((def + 4) >>> 0) | 0, 0x0f) | 0) === 0) return
+    SUNITDMG_FreeAttackerCombatList113c(m, def, game)
+    MONSTER_ClearModeEvents113c(m, game, def)
+    UNITS_ChangeAnimMode113c(m, def, 0)
+    m.setU32((def + 0xc4) >>> 0, (m.u32((def + 0xc4) >>> 0) | 0x10000) >>> 0)
+    if (game !== 0) {
+      const nextFrame = ((m.u32((game + 0xa8) >>> 0) | 0) + 1) | 0
+      EVENT_SetEventFull113c(m, game, def, 1, nextFrame, 0, 0, 0)
+    }
+  } else if (defType === 0) {
+    const curMode = m.u32((def + 0x10) >>> 0) | 0
+    if (curMode === 0 || curMode === 0x11) return
+    SUNITDMG_FreeAttackerCombatList113c(m, def, game)
+    MONSTER_ClearModeEvents113c(m, game, def)
+    UNITS_ChangeAnimMode113c(m, def, 0)
+    m.setU32((def + 0xc4) >>> 0, (m.u32((def + 0xc4) >>> 0) | 0x10000) >>> 0)
+  }
+}
+
+/** Exact internal `0x6FD01930` (`MONSTER_StepPath`): returns `1` (moving) or `2` (arrived). */
+function stepMonsterPathRaw_6FD01930(
+  m: D2KernMemory113c,
+  pGame: number,
+  pMonster: number,
+): number {
+  const game = pGame >>> 0
+  const mon = pMonster >>> 0
+  if (game === 0) {
+    throw new D2CommonAssertError('SUnitMove.cpp', 0x72f)
+  }
+  hitD2GameVa113c(0x6FD01930)
+  SUNIT_ValidatePathTargetUnit113c(m, mon, game)
+  const nStepped = PATH_Step113c(m, mon, 0x400) | 0
+  const nRes = nStepped !== 0 ? 1 : 2
+  if ((UNITS_GetPathRoomRefreshFlag113c(m, mon) | 0) !== 0) {
+    SUNIT_UpdateUnitPositionAndRoom113c(m, 0, mon, game)
+  }
+  return nRes
 }
 
 function stepSeed64InPlace113c(m: D2KernMemory113c, pSeed: number): number {
@@ -771,7 +944,36 @@ export function OBJ_RollAndDispatchObjectEffectTable_6FC89E50_113c(
   if (onDispatchEffect !== undefined) {
     return onDispatchEffect(m, pfnHandler, pGame >>> 0, pObject >>> 0, dwArg) | 0
   }
-  return dwArg | 0
+  switch (pfnHandler) {
+    case 0x6fc89730:
+      return OBJECTS_AddUnitMaxAndCurrentManaFixed8_6FC89730_113c(
+        m,
+        pGame >>> 0,
+        pObject >>> 0,
+        dwArg | 0,
+      ) | 0
+    case 0x6fc89710:
+      return OBJECTS_GrantUnitEnergy_6FC89710_113c(m, pGame >>> 0, pObject >>> 0, dwArg | 0) | 0
+    case 0x6fc896f0:
+      return OBJECTS_GrantUnitDexterity_6FC896F0_113c(m, pGame >>> 0, pObject >>> 0, dwArg | 0) | 0
+    case 0x6fc896d0:
+      return OBJECTS_GrantUnitVitality_6FC896D0_113c(m, pGame >>> 0, pObject >>> 0, dwArg | 0) | 0
+    case 0x6fc896b0:
+      return OBJECTS_GrantUnitStrength_6FC896B0_113c(m, pGame >>> 0, pObject >>> 0, dwArg | 0) | 0
+    case 0x6fc89670:
+      return OBJECTS_AddUnitMaxAndCurrentLifeFixed8_6FC89670_113c(
+        m,
+        pGame >>> 0,
+        pObject >>> 0,
+        dwArg | 0,
+      ) | 0
+    case 0x6fc89650:
+      return (
+        OBJECTS_GrantUnitSkillPoints_6FC89650_113c(m, pGame >>> 0, pObject >>> 0, dwArg | 0) | 0
+      )
+    default:
+      return 0
+  }
 }
 
 /**
@@ -960,6 +1162,156 @@ export function OBJ_SyncObjectMode2Or5ByCollision_6FC8A220_113c(
   }
 }
 
+function dispatchObjectOperateFnByVa113c(
+  m: D2KernMemory113c,
+  pfnOperate: number,
+  pOperateArgs: number,
+): number {
+  const sm = m as SparseMemory113c
+  switch (pfnOperate) {
+    case 0x6fc8ef40:
+      return OBJ_OperateEvilUrnOrChestWithMonsterRoll_6FC8EF40_113c(m, pOperateArgs) | 0
+    case 0x6fc8da00:
+      return OBJ_OperateShrine_6FC8DA00_113c(m, pOperateArgs) | 0
+    case 0x6fc8ecd0:
+      return OBJ_OperateUrnRoll21PercentTreasure_6FC8ECD0_113c(m, pOperateArgs) | 0
+    case 0x6fc8f040:
+      return OBJ_OperateChestAndSparkyChest_6FC8F040_113c(sm, pOperateArgs) | 0
+    case 0x6fc8d7b0:
+      return OBJ_OperateFn28_Urn_6FC8D7B0_113c(m, pOperateArgs) | 0
+    case 0x6fc88d70:
+      return ACT1Q5_OnForgottenTowerTomeOperated_6FC88D70_113c(sm, pOperateArgs) | 0
+    case 0x6fc8d740:
+      return OBJECTS_OperateEvilUrnSporeTrap_6FC8D740_113c(m, pOperateArgs) | 0
+    case 0x6fc8a9d0:
+      return OBJ_OperateDoorWithLockCheck_6FC8A9D0_113c(sm, pOperateArgs) | 0
+    case 0x6fc864f0:
+      ACT1Q4_Callback02_OnCairnStoneActivate_6FC864F0_113c(m, pOperateArgs)
+      return 0
+    case 0x6fc88fc0:
+      return ACT1Q4_OperateCainGibbetCageObject_6FC88FC0_113c(m, pOperateArgs) | 0
+    case 0x6fc89a80:
+      return OBJECTS_OperateToggleObjectMode012_6FC89A80_113c(m, pOperateArgs) | 0
+    case 0x6fc85b40:
+      return ACT1Q4_OperateInifussTree_6FC85B40_113c(sm, pOperateArgs) | 0
+    case 0x6fc89ad0:
+      return OBJ_ToggleNeutralAndOperatingMode_6FC89AD0_113c(m, pOperateArgs) | 0
+    case 0x6fc8ec20:
+      return OBJ_OperateChestAndDropTreasure_6FC8EC20_113c(m, pOperateArgs) | 0
+    case 0x6fc8d0f0:
+      return OBJ_OperateFn_TownAndPermanentPortal_6FC8D0F0_113c(sm, pOperateArgs) | 0
+    case 0x6fc8bcb0:
+      return OBJ_OperateFn_DungeonStairOrTileWarp_6FC8BCB0_113c(sm, pOperateArgs) | 0
+    case 0x6fc8a7a0:
+      return OBJ_OperateBookOrSpecialContainer_6FC8A7A0_113c(m, pOperateArgs) | 0
+    case 0x6fc8d8f0:
+      return OBJ_OperateBreakawayObject_6FC8D8F0_113c(m, pOperateArgs) | 0
+    case 0x6fc8b2e0:
+      return OBJ_OperateFn19_ArmorStand_6FC8B2E0_113c(m, pOperateArgs) | 0
+    case 0x6fc8b280:
+      return OBJ_OperateFn20_WeaponRack_6FC8B280_113c(m, pOperateArgs) | 0
+    case 0x6fc85d40:
+      return ACT1Q5_OnTreeOfInifussOperated_6FC85D40_113c(sm, pOperateArgs) | 0
+    case 0x6fc8cee0:
+      return OBJ_OperateWell_6FC8CEE0_113c(m, pOperateArgs) | 0
+    case 0x6fc8cf90:
+      return OBJ_OperateWaypoint_6FC8CF90_113c(m, pOperateArgs) | 0
+    case 0x6fce76b0:
+      return ACT2Q3_OperateTaintedSunAltar_6FCE76B0_113c(sm, pOperateArgs) | 0
+    case 0x6fce6240:
+      return ACT2Q6_OperateHoradricOrificeObject_6FCE6240_113c(m, pOperateArgs) | 0
+    case 0x6fc8b340:
+      return OBJ_OperateTomeOrScrollStand_6FC8B340_113c(m, pOperateArgs) | 0
+    case 0x6fc8be40:
+      return OBJ_OperateFn_FindPairedObjectAndTeleportPad_6FC8BE40_113c(sm, pOperateArgs) | 0
+    case 0x6fd094c0:
+      return ACT3Q4_OnLamEsensTomeStandOperate_6FD094C0_113c(sm, pOperateArgs) | 0
+    case 0x6fc8de00:
+      return OBJ_OperateGenericMode0To1_6FC8DE00_113c(m, pOperateArgs) | 0
+    case 0x6fc8e0e0:
+      return OBJECTS_OperateFireAndLightningTrap_6FC8E0E0_113c(sm, pOperateArgs) | 0
+    case 0x6fd09c80:
+      return ACT3Q2_OperateGidbinnAltar_6FD09C80_113c(sm, pOperateArgs) | 0
+    case 0x6fc91290:
+      return OBJECTS_OperateBankStash_6FC91290_113c(sm, pOperateArgs) | 0
+    case 0x6fc8d960:
+      return OBJ_OperateWirtsBody_6FC8D960_113c(m, pOperateArgs) | 0
+    case 0x6fc8d620:
+      return D2Game_6FC8D620_113c(sm, pOperateArgs) | 0
+    case 0x6fcea050:
+      return ACT2Q2_OperateHoradricCubeChest_6FCEA050_113c(m, pOperateArgs) | 0
+    case 0x6fcea290:
+      return ACT2Q2_OperateHoradricScrollChest_6FCEA290_113c(m, pOperateArgs) | 0
+    case 0x6fcea170:
+      return ACT2Q2_OperateStaffOfKingsChest_6FCEA170_113c(m, pOperateArgs) | 0
+    case 0x6fce9a80:
+      return ACT2Q4_OperateHorazonsJournal_6FCE9A80_113c(sm, pOperateArgs) | 0
+    case 0x6fc8bb60:
+      return OBJ_OperateFn_CowAndSpecialPortal_6FC8BB60_113c(sm, pOperateArgs) | 0
+    case 0x6fd095e0:
+      return D2Game_6FD095E0_113c(sm, pOperateArgs) | 0
+    case 0x6fd09f60:
+      return ACT3Q3_OperateSewerLeverObject_6FD09F60_113c(m, pOperateArgs) | 0
+    case 0x6fc8cd40:
+      return OBJ_OperateDuranceStairs_6FC8CD40_113c(m, pOperateArgs) | 0
+    case 0x6fc8dfc0:
+      return OBJ_OperateFn_TrapDoorOrDelayedTileWarp_6FC8DFC0_113c(sm, pOperateArgs) | 0
+    case 0x6fc8ce10:
+      return OBJ_OperateFn48_TrappedSoul_6FC8CE10_113c(m, pOperateArgs) | 0
+    case 0x6fcdb8d0:
+      return ACT4Q2_OnHellforgeObjectOperate_6FCDB8D0_113c(sm, pOperateArgs) | 0
+    case 0x6fc8f4f0:
+      return D2Game_6FC8F4F0_113c(sm, pOperateArgs) | 0
+    case 0x6fc8eb40:
+      return OBJ_OperateTrappedChestOrUrn_6FC8EB40_113c(m, pOperateArgs) | 0
+    case 0x6fcdbf30:
+      return ACT4Q3_OnDiabloSealOperate_6FCDBF30_113c(sm, pOperateArgs) | 0
+    case 0x6fd0a140:
+      return ACT3Q5_OnCompellingOrbOperate_6FD0A140_113c(m, pOperateArgs) | 0
+    case 0x6fcdc580:
+      return ACT4Q3_OnSeal1Operate_6FCDC580_113c(sm, pOperateArgs) | 0
+    case 0x6fcdc510:
+      return ACT4Q3_OnSeal3Operate_6FCDC510_113c(sm, pOperateArgs) | 0
+    case 0x6fcdc4a0:
+      return ACT4Q3_OnSeal5Operate_6FCDC4A0_113c(sm, pOperateArgs) | 0
+    case 0x6fd0a5f0:
+      return ACT3Q3_OperateKhalimHeartChest_6FD0A5F0_113c(m, pOperateArgs) | 0
+    case 0x6fd0a4c0:
+      return ACT3Q3_OperateKhalimEyeChest_6FD0A4C0_113c(m, pOperateArgs) | 0
+    case 0x6fd0a390:
+      return ACT3Q3_OperateKhalimBrainChest_6FD0A390_113c(m, pOperateArgs) | 0
+    case 0x6fc8dec0:
+      return OBJ_OperateToggleDoorWithCooldown_6FC8DEC0_113c(m, pOperateArgs) | 0
+    case 0x6fc79b00:
+      return ACT5Q4_OnObjectOperateApplySkillState13C_6FC79B00_113c(m, pOperateArgs) | 0
+    case 0x6fc79ab0:
+      return ACT5Q4_OnObjectOperateApplySkillState13B_6FC79AB0_113c(m, pOperateArgs) | 0
+    case 0x6fc79a60:
+      return ACT5Q4_OnObjectOperateApplySkillState13A_6FC79A60_113c(m, pOperateArgs) | 0
+    case 0x6fc7d0a0:
+      return ACT5Q5_OperateAncientsAltar_6FC7D0A0_113c(sm, pOperateArgs) | 0
+    case 0x6fc7e2a0:
+      return D2Game_6FC7E2A0_113c(sm, pOperateArgs) | 0
+    case 0x6fc7cd50:
+      ACT5Q3_Callback02_OnFrozenAnyaObjectActivate_6FC7CD50_113c(m, pOperateArgs)
+      return 0
+    case 0x6fc8edb0:
+      return OBJ_OperateFn_SparklyChestOrTrapSpawner_6FC8EDB0_113c(sm, pOperateArgs) | 0
+    case 0x6fc78da0:
+      return ACT5Q5_OnAncientsObjectOperateCompletedMsg_6FC78DA0_113c(m, pOperateArgs) | 0
+    case 0x6fc7df70:
+      return D2Game_6FC7DF70_113c(sm, pOperateArgs) | 0
+    case 0x6fc7d690:
+      return D2Game_6FC7D690_113c(sm, pOperateArgs) | 0
+    case 0x6fc7fd00:
+      return ACT5Q6_OnTyraelPortalEnteredTriggerEndgame_6FC7FD00_113c(sm, pOperateArgs) | 0
+    case 0x6fcdb550:
+      return ACT4Q3_OnDiabloDeathPortalWarpToAct5_6FCDB550_113c(sm, pOperateArgs) | 0
+    default:
+      return 0
+  }
+}
+
 /**
  * [12/45] Validates and dispatches an object operation from `pPlayer` on `(wUnitType, dwObjectId)`:
  * sets `*pOutFlag = 1`, verifies player trade/cursor state (allowing cursor items only on Stash `0x10B`),
@@ -1017,8 +1369,9 @@ export function OBJ_ValidateAndDispatchOperateFn_6FC8A330_113c(
     return 0
   }
 
-  const pfnOperate = m.u32((D2GAME_OBJECT_OPERATE_TABLE_VA_113C + (bOperateFn << 2)) >>> 0) >>> 0
-  if (pfnOperate === 0) {
+  const pfnOperateCheck =
+    m.u32((D2GAME_OBJECT_OPERATE_TABLE_VA_113C + (bOperateFn << 2)) >>> 0) >>> 0
+  if (pfnOperateCheck === 0) {
     return 0
   }
 
@@ -1030,10 +1383,13 @@ export function OBJ_ValidateAndDispatchOperateFn_6FC8A330_113c(
     UNITS_GetRoom113c(m, pObject)
     m.setU32((pOperateArgs + 0x0c) >>> 0, m.u32((pGame + 0x10f0) >>> 0) >>> 0)
     m.setU32((pOperateArgs + 0x10) >>> 0, nClassId >>> 0)
+    const bOperateFnCall = m.u8((pObjectsTxt + 0x1b3) >>> 0)
+    const pfnOperate =
+      m.u32((D2GAME_OBJECT_OPERATE_TABLE_VA_113C + (bOperateFnCall << 2)) >>> 0) >>> 0
     if (onDispatchOperate !== undefined) {
       return onDispatchOperate(m, pfnOperate, pOperateArgs) | 0
     }
-    return pfnOperate | 0
+    return dispatchObjectOperateFnByVa113c(m, pfnOperate, pOperateArgs) | 0
   } finally {
     freeStackFrame113c(pOperateArgs)
   }
@@ -1058,8 +1414,8 @@ export function OBJ_IsEligibleMonsterForShrineUpgrade_6FC8A440_113c(
   if ((pCandidateUnit >>> 0) === (pSourceUnit >>> 0) || pCandidateUnit === 0) return 0
   if ((m.u32(pCandidateUnit >>> 0) | 0) !== 1) return 0
   if ((UNITS_AreUnitsAligned113c(m, pSourceUnit >>> 0, pCandidateUnit >>> 0) | 0) === 1) return 0
-  if ((MONSTERS_IsDead113c(m, pCandidateUnit >>> 0) | 0) !== 0) return 0
   if ((UNIT_GetAlignment113c(m, pCandidateUnit >>> 0) | 0) !== 0) return 0
+  if ((MONSTERS_IsDead113c(m, pCandidateUnit >>> 0) | 0) !== 0) return 0
 
   const nMode = m.u32((pCandidateUnit + 0x10) >>> 0) | 0
   if (nMode !== 1 && nMode !== 2) return 0
@@ -1344,9 +1700,13 @@ export function OBJ_DropChestTreasureByActLevelTier_6FC8B570_113c(
   const bExpansion = m.u32((pGame + 0x70) >>> 0) >>> 0
   const nCurMlvl = DATATBLS_GetLevelMonsterLevel113c(m, nLevelId, nDifficulty, bExpansion) | 0
 
-  const nActStartLvl = m.u32((0x6fd1bd8c + (nAct << 3)) >>> 0) | 0
+  const nActStartMem = m.u32((0x6fd1bd8c + (nAct << 3)) >>> 0) | 0
+  const nActStartLvl =
+    nActStartMem !== 0 ? nActStartMem : nAct < 5 ? ACT_CHEST_LEVEL_RANGE_113C[nAct]![0] : 0
   const nMinMlvl = DATATBLS_GetLevelMonsterLevel113c(m, nActStartLvl, nDifficulty, bExpansion) | 0
-  const nActEndLvl = m.u32((0x6fd1bd90 + (nAct << 3)) >>> 0) | 0
+  const nActEndMem = m.u32((0x6fd1bd90 + (nAct << 3)) >>> 0) | 0
+  const nActEndLvl =
+    nActEndMem !== 0 ? nActEndMem : nAct < 5 ? ACT_CHEST_LEVEL_RANGE_113C[nAct]![1] : 0
   const nMaxMlvl = DATATBLS_GetLevelMonsterLevel113c(m, nActEndLvl, nDifficulty, bExpansion) | 0
 
   let nSpan = (nMaxMlvl - nMinMlvl) | 0
@@ -1363,9 +1723,30 @@ export function OBJ_DropChestTreasureByActLevelTier_6FC8B570_113c(
   }
 
   const pKiller = m.u32((pOperateArgs + 0x08) >>> 0) >>> 0
-  const nPicked = ITEMS_ChooseTreasureClassItem113c(m, pGame, pObject, pKiller, pTc | 0) | 0
-  void nDropArg
-  return nPicked
+  const pOutBuf = allocStackFrame113c(0x1c)
+  try {
+    for (let i = 0; i < 7; i++) {
+      m.setU32((pOutBuf + (i << 2)) >>> 0, 0)
+    }
+    const pnItemsDropped = pOutBuf
+    const ppOutItems = (pOutBuf + 0x04) >>> 0
+    ITEMS_ChooseTreasureClassAndDrop_6FC32380_113c(
+      m,
+      pGame,
+      pObject,
+      pKiller,
+      pTc,
+      nDropArg | 0,
+      nTier | 0,
+      0,
+      ppOutItems,
+      pnItemsDropped,
+      6,
+    )
+    return m.u32(ppOutItems) >>> 0
+  } finally {
+    freeStackFrame113c(pOutBuf)
+  }
 }
 
 /**
@@ -1411,7 +1792,7 @@ export function OBJ_SpawnSingleMonsterFromObject_6FC8B7A0_113c(
     if (pMonster === 0) {
       const pRoomRetry = UNITS_GetRoom113c(m, pObject >>> 0) >>> 0
       m.setU32(ppRoomOut, 0)
-      COLLISION_FindFreeCoordsNear113c(m, pRoomRetry, (pSpawnArgs + 0x04) >>> 0, 0, 0x3f11, ppRoomOut)
+      COLLISION_FindFreeCoordsNear113c(m, pRoomRetry, pCoords, 0, 0x3f11, ppRoomOut)
       const pFreeRoom = m.u32(ppRoomOut) >>> 0
       if (pFreeRoom !== 0) {
         pMonster =
@@ -1577,8 +1958,17 @@ function runExplodingOrPoisonShrine113c(
     const nMax = m.u32((pShrineTxt + 0x08) >>> 0) | 0
     const pObject0 = m.u32((pOperateArgs + 0x04) >>> 0) >>> 0
     const nSpan = (nMax - nMin) | 0
-    const nRoll =
-      nSpan > 0 ? SEED_RollLimitedFast113c(m, (pObject0 + 0x20) >>> 0, nSpan) | 0 : 0
+    let nRoll = 0
+    if (nSpan > 0) {
+      const pSeed = (pObject0 + 0x20) >>> 0
+      const prod =
+        BigInt(m.u32(pSeed) >>> 0) * 0x6ac690c5n + BigInt(m.u32((pSeed + 4) >>> 0) >>> 0)
+      const lo = Number(prod & 0xffffffffn) >>> 0
+      const hi = Number((prod >> 32n) & 0xffffffffn) >>> 0
+      m.setU32((pSeed + 4) >>> 0, hi)
+      m.setU32(pSeed, lo)
+      nRoll = (nSpan & (nSpan - 1)) === 0 ? (lo & (nSpan - 1)) | 0 : (lo % (nSpan >>> 0)) | 0
+    }
     const nDropCount = (nMin + nRoll) | 0
 
     for (let i = 0; i < nDropCount; i++) {
@@ -1676,13 +2066,13 @@ function runExplodingOrPoisonShrine113c(
       m.setU32(pMissileParams, 0x520)
       m.setU32((pMissileParams + 0x04) >>> 0, pPlayer)
       m.setU32((pMissileParams + 0x08) >>> 0, pObject)
-      m.setU32((pMissileParams + 0x10) >>> 0, nObjX >>> 0)
-      m.setU32((pMissileParams + 0x14) >>> 0, nObjY >>> 0)
-      m.setU32((pMissileParams + 0x18) >>> 0, ((nObjX + dxTable[idx]!) | 0) >>> 0)
-      m.setU32((pMissileParams + 0x1c) >>> 0, ((nObjY + dyTable[idx]!) | 0) >>> 0)
-      m.setU32((pMissileParams + 0x20) >>> 0, 1)
-      m.setU32((pMissileParams + 0x24) >>> 0, nMissileId >>> 0)
-      m.setU32((pMissileParams + 0x28) >>> 0, nSkillLvl >>> 0)
+      m.setU32((pMissileParams + 0x10) >>> 0, nMissileId >>> 0)
+      m.setU32((pMissileParams + 0x14) >>> 0, nObjX >>> 0)
+      m.setU32((pMissileParams + 0x18) >>> 0, nObjY >>> 0)
+      m.setU32((pMissileParams + 0x1c) >>> 0, ((nObjX + dxTable[idx]!) | 0) >>> 0)
+      m.setU32((pMissileParams + 0x20) >>> 0, ((nObjY + dyTable[idx]!) | 0) >>> 0)
+      m.setU32((pMissileParams + 0x24) >>> 0, 1)
+      m.setU32((pMissileParams + 0x30) >>> 0, nSkillLvl >>> 0)
       MISSILE_CreateServerProjectile113c(m, m.u32(pOperateArgs >>> 0) >>> 0, pMissileParams)
     }
   } finally {
@@ -1818,12 +2208,12 @@ export function OBJ_ShrineEffectFireNovaAndHpDamage_6FC8C900_113c(
 
         m.setU32(pMissileParams, 3)
         m.setU32((pMissileParams + 0x04) >>> 0, pPlayer)
+        m.setU32((pMissileParams + 0x10) >>> 0, 0x3e)
         m.setU32((pMissileParams + 0x14) >>> 0, nObjX >>> 0)
         m.setU32((pMissileParams + 0x18) >>> 0, nObjY >>> 0)
         m.setU32((pMissileParams + 0x1c) >>> 0, nDx >>> 0)
         m.setU32((pMissileParams + 0x20) >>> 0, nDy >>> 0)
-        m.setU32((pMissileParams + 0x24) >>> 0, 0x3e)
-        m.setU32((pMissileParams + 0x28) >>> 0, nSkillLvl >>> 0)
+        m.setU32((pMissileParams + 0x30) >>> 0, nSkillLvl >>> 0)
         MISSILE_CreateServerProjectile113c(m, m.u32(pOperateArgs >>> 0) >>> 0, pMissileParams)
       }
     }
@@ -1968,9 +2358,70 @@ export function OBJ_OperateBreakawayObject_6FC8D8F0_113c(
 }
 
 
+function dispatchShrineEffectByVa113c(
+  m: D2KernMemory113c,
+  pfnEffect: number,
+  pOperateArgs: number,
+  pShrineTxt: number,
+): void {
+  const sm = m as SparseMemory113c
+  switch (pfnEffect) {
+    case 0x6fc89c00:
+      OBJ_RestoreUnitLifeAndManaToMax_6FC89C00_113c(m, pOperateArgs)
+      return
+    case 0x6fc898a0:
+      SHRINES_ApplyHealthRechargeEffect_6FC898A0_113c(m, pOperateArgs)
+      return
+    case 0x6fc89860:
+      SHRINES_ApplyManaRechargeEffect_6FC89860_113c(m, pOperateArgs)
+      return
+    case 0x6fc89800:
+      SHRINES_ApplyHealthExchangeEffect_6FC89800_113c(m, pOperateArgs, pShrineTxt)
+      return
+    case 0x6fc897a0:
+      SHRINES_ApplyManaExchangeEffect_6FC897A0_113c(m, pOperateArgs, pShrineTxt)
+      return
+    case 0x6fc8abb0:
+      OBJ_OperateAuraStatShrine_6FC8ABB0_113c(m, pOperateArgs, pShrineTxt)
+      return
+    case 0x6fc8ace0:
+      OBJ_OperateCombatShrine_6FC8ACE0_113c(m, pOperateArgs, pShrineTxt)
+      return
+    case 0x6fc8ab60:
+      OBJ_OperateFn_SkillShrine_6FC8AB60_113c(sm, pOperateArgs, pShrineTxt)
+      return
+    case 0x6fc8ac30:
+      OBJ_OperateStaminaShrine_6FC8AC30_113c(m, pOperateArgs, pShrineTxt)
+      return
+    case 0x6fc89770:
+      SHRINES_ApplyEnirhsReversePlayerName_6FC89770_113c(m, pOperateArgs, pShrineTxt)
+      return
+    case 0x6fc8b9b0:
+      OBJECTS_OperatePortalShrine_6FC8B9B0_113c(sm, pOperateArgs)
+      return
+    case 0x6fc8b430:
+      OBJECTS_OperateGemShrine_6FC8B430_113c(sm, pOperateArgs)
+      return
+    case 0x6fc8c900:
+      OBJ_ShrineEffectFireNovaAndHpDamage_6FC8C900_113c(m, pOperateArgs, pShrineTxt)
+      return
+    case 0x6fc8b8a0:
+      OBJ_ShrineMonster_PromoteNearestMonster_6FC8B8A0_113c(m, pOperateArgs)
+      return
+    case 0x6fc8c580:
+      OBJ_ShrineEffectExplodingPotionsAndMissiles_6FC8C580_113c(m, pOperateArgs, pShrineTxt)
+      return
+    case 0x6fc8c200:
+      OBJ_ShrineEffectPoisonPotionsAndClouds_6FC8C200_113c(m, pOperateArgs, pShrineTxt)
+      return
+    default:
+      return
+  }
+}
+
 /**
  * [26/45] Shrine object operate handler (`0x6FC8DA00`): claims the shrine for `pPlayer`, transitions
- * the object to mode `1`, creates the shrine hover message (`"0x%x"` with `bShrineIdx + 0xE63`) and
+ * the object to mode `1`, creates the shrine hover message (`"%d"` with `bShrineIdx + 0xE63`) and
  * schedules event `6` (`+0x12C` frames), dispatches the shrine effect from `gpShrineEffectTable[nCode]`
  * (`0x6FD1A5F8`, defaulting to `0x6FC89C00`), and schedules shrine recharge event `5` (`nResetMin * 0x4B0 + 1`)
  * and optional animation event `1`.
@@ -2018,7 +2469,7 @@ export function OBJ_OperateShrine_6FC8DA00_113c(
     const pObject2 = m.u32((pOperateArgs + 0x04) >>> 0) >>> 0
     const pObjData2 = m.u32((pObject2 + 0x14) >>> 0) >>> 0
     const wStrId = (m.u8((pObjData2 + 0x04) >>> 0) + 0x0e63) & 0xffff
-    const hoverStr = `0x${wStrId.toString(16)}`
+    const hoverStr = String(wStrId)
     for (let i = 0; i < hoverStr.length; i++) {
       m.setU8((pHoverBuf + i) >>> 0, hoverStr.charCodeAt(i) & 0xff)
     }
@@ -2062,15 +2513,20 @@ export function OBJ_OperateShrine_6FC8DA00_113c(
   const nCode = m.u8(pShrineTxt) | 0
   const nMaxCode = m.u32(0x6fd27d4c) | 0
   let pfnEffect = 0
-  if (nCode >= 0 && (nMaxCode === 0 ? nCode < 23 : nCode < nMaxCode)) {
+  if (nCode >= 0 && nCode < nMaxCode) {
     pfnEffect = m.u32((0x6fd1a5f8 + imul32(nCode, 12)) >>> 0) >>> 0
   }
   if (pfnEffect !== 0) {
-    if (onIsBadCodePtr !== undefined && onIsBadCodePtr(pfnEffect)) {
+    const bBadCodePtr =
+      (onIsBadCodePtr !== undefined && onIsBadCodePtr(pfnEffect)) ||
+      m.u32(D2GAME_IAT_IS_BAD_CODE_PTR_VA_113C) !== 0
+    if (bBadCodePtr) {
       throw new D2CommonAssertError('Objects.cpp', 0xa5d)
     }
     if (onShrineEffect !== undefined) {
       onShrineEffect(m, pfnEffect, pOperateArgs, pShrineTxt)
+    } else {
+      dispatchShrineEffectByVa113c(m, pfnEffect, pOperateArgs, pShrineTxt)
     }
   } else {
     OBJ_RestoreUnitLifeAndManaToMax_6FC89C00_113c(m, pOperateArgs)
@@ -2288,7 +2744,7 @@ export function OBJ_EventPeriodicOrTimeOfDaySync_6FC8E4E0_113c(
       if (wMode === 0 || wMode === 2) {
         UNITS_GetRoom113c(m, pObject >>> 0)
         const pGameSeed = m.u32((pGame + 0x10f0) >>> 0) >>> 0
-        const nRoll = SEED_RollLimitedFast113c(m, pGameSeed, 0xfa) >>> 0
+        const nRoll = ((stepSeed64InPlace113c(m, pGameSeed) >>> 0) % 0xfa) >>> 0
         const dwCurFrame = m.u32((pGame + 0xa8) >>> 0) >>> 0
         EVENT_SetEventFull113c(
           m,
@@ -2431,7 +2887,8 @@ export function MISSILE_SendSyncPacket73_6FC8F740_113c(
   if (pMissilesTxt === 0) return
 
   const bMissileFlags = m.u8((pMissilesTxt + 0x04) >>> 0)
-  const bMaskBit5 = m.u8(0x6fd18bf4) || 0x20
+  const pBitMasks = m.u32(0x6fd18be0) >>> 0
+  const bMaskBit5 = pBitMasks !== 0 ? m.u8((pBitMasks + 0x14) >>> 0) : 0x20
   if ((bMissileFlags & bMaskBit5) === 0) return
 
   const pPkt = allocStackFrame113c(0x20)
@@ -2440,19 +2897,19 @@ export function MISSILE_SendSyncPacket73_6FC8F740_113c(
       m.setU32((pPkt + (i << 2)) >>> 0, 0)
     }
     m.setU8(pPkt, 0x73)
-    m.setU16((pPkt + 0x01) >>> 0, MISSILE_GetClassId113c(m, pMissile >>> 0) & 0xffff)
-    m.setU32((pPkt + 0x03) >>> 0, UNIT_GetPosX113c(m, pMissile >>> 0) >>> 0)
-    m.setU32((pPkt + 0x07) >>> 0, UNIT_GetPosY113c(m, pMissile >>> 0) >>> 0)
+    m.setU16((pPkt + 0x05) >>> 0, MISSILE_GetClassId113c(m, pMissile >>> 0) & 0xffff)
+    m.setU32((pPkt + 0x07) >>> 0, UNIT_GetPosX113c(m, pMissile >>> 0) >>> 0)
+    m.setU32((pPkt + 0x0b) >>> 0, UNIT_GetPosY113c(m, pMissile >>> 0) >>> 0)
     if (bIncludeTargetPos !== 0) {
       const pPath = m.u32((pMissile + 0x2c) >>> 0) >>> 0
-      m.setU32((pPkt + 0x0b) >>> 0, PATH_GetFirstPointX113c(m, pPath) >>> 0)
-      m.setU32((pPkt + 0x0f) >>> 0, PATH_GetFirstPointY113c(m, pPath) >>> 0)
+      m.setU32((pPkt + 0x0f) >>> 0, PATH_GetFirstPointX113c(m, pPath) >>> 0)
+      m.setU32((pPkt + 0x13) >>> 0, PATH_GetFirstPointY113c(m, pPath) >>> 0)
     }
-    m.setU16((pPkt + 0x13) >>> 0, MISSILE_GetRemainingFrames113c(m, pMissile >>> 0) & 0xffff)
-    m.setU8((pPkt + 0x15) >>> 0, m.u32(pOwner) & 0xff)
-    m.setU32((pPkt + 0x16) >>> 0, m.u32((pOwner + 0x0c) >>> 0) >>> 0)
-    m.setU8((pPkt + 0x1a) >>> 0, MISSILE_GetLevel113c(m, pMissile >>> 0) & 0xff)
-    m.setU8((pPkt + 0x1b) >>> 0, STATLIST_GetUnitStat113c(m, pMissile >>> 0, 0x148, 0) & 0xff)
+    m.setU16((pPkt + 0x17) >>> 0, MISSILE_GetRemainingFrames113c(m, pMissile >>> 0) & 0xffff)
+    m.setU8((pPkt + 0x19) >>> 0, m.u32(pOwner) & 0xff)
+    m.setU32((pPkt + 0x1a) >>> 0, m.u32((pOwner + 0x0c) >>> 0) >>> 0)
+    m.setU8((pPkt + 0x1e) >>> 0, MISSILE_GetLevel113c(m, pMissile >>> 0) & 0xff)
+    m.setU8((pPkt + 0x1f) >>> 0, STATLIST_GetUnitStat113c(m, pMissile >>> 0, 0x148, 0) & 0xff)
     NET_SendPacketBuffer32B_6FCAAA10_113c(m, pPkt, pClient >>> 0)
   } finally {
     freeStackFrame113c(pPkt)
@@ -2702,7 +3159,11 @@ export function CUBE_ValidateRecipeInputSlot_6FC90240_113c(
             dwUpgradeCode = m.u32((pItemTxt + 0x8c) >>> 0) >>> 0
           }
           if (dwUpgradeCode !== 0x20202020) {
-            const nUpgradedId = DATATBLS_GetItemIdFromItemCode113c(m, dwUpgradeCode) | 0
+            const pDtSlot = m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C) >>> 0
+            const pDt = pDtSlot !== 0 ? m.u32(pDtSlot) >>> 0 : 0
+            const pItemsLinker = pDt !== 0 ? m.u32((pDt + 0x94) >>> 0) >>> 0 : 0
+            const nUpgradedId =
+              pItemsLinker !== 0 ? fogGetRowFromTxt113c(m, pItemsLinker, dwUpgradeCode, 0) | 0 : -1
             if (nUpgradedId >= 0) {
               const pUpgradedTxt = DATATBLS_GetItemsTxtRecordMemPort113c(m, nUpgradedId) >>> 0
               if (
@@ -2975,7 +3436,7 @@ export function MONSTER_ApplyRoomCrushDamageToNearbyPlayers_6FC955C0_113c(
           m.setU8((pDmg + 0x04) >>> 0, (m.u8((pDmg + 0x04) >>> 0) | 4) & 0xff)
         }
         SUNITDMG_ApplyResistancesAndAbsorb113c(m, pMonster >>> 0, pUnit, pDmg)
-        SUNITDMG_ApplyDamage113c(m, pGame >>> 0, pMonster >>> 0, pUnit, pDmg)
+        SUNITDMG_ApplyDamage113c(m, pGame >>> 0, pMonster >>> 0, pUnit, pDmg, 1, undefined, 1)
         SUNITDMG_ApplySideEffectsAndKill113c(m, pGame >>> 0, pMonster >>> 0, pUnit, pDmg)
       }
       pUnit = m.u32((pUnit + 0xe8) >>> 0) >>> 0
@@ -3059,7 +3520,7 @@ export function MONSTER_NotifyOwnerOrDistributeExpOnDeath_6FC960F0_113c(
       }
     }
 
-    SUNITDMG_DistributeExperience113c(m, pGame >>> 0, pOwner, pMonster >>> 0)
+    sunitdmgKillUnit_6FCFEEE0(m, pGame >>> 0, pOwner)
   } finally {
     freeStackFrame113c(pCoords)
   }
@@ -3217,7 +3678,14 @@ function startMonsterMode8WithTargetValidation113c(
 
     const bHasState1 = STATES_CheckState113c(m, mon, 1) | 0
     if (bHasState1 === 0 || (SUNIT_IsDeadOrDying113c(m, mon) | 0) !== 0) {
-      if (onPostModeCallback !== undefined) {
+      const pfnAiRun = m.u32(0x6fd1bc1c) >>> 0
+      if (pfnAiRun !== 0) {
+        if (onPostModeCallback !== undefined) {
+          onPostModeCallback(m, game, mon)
+        } else if (pfnAiRun === 0x6fcbd3b0) {
+          AI_RunMonsterAI113c(m, game, mon, 0, 0)
+        }
+      } else if (onPostModeCallback !== undefined) {
         onPostModeCallback(m, game, mon)
       }
     }
@@ -3282,7 +3750,7 @@ export function MONSTER_StepSkillCastAnim_6FC96F20_113c(
 ): number {
   hitD2GameVa113c(0x6FC96F20)
   if ((UNITS_HasAnimFinished113c(m, pMonster >>> 0) | 0) !== 0) {
-    UNITS_ChangeAnimMode113c(m, pMonster >>> 0, 1)
+    MONSTER_EndToAiOrNeutral113c(m, pGame >>> 0, pMonster >>> 0)
     return 2
   }
 
@@ -3293,7 +3761,9 @@ export function MONSTER_StepSkillCastAnim_6FC96F20_113c(
   if ((dwSkillFlags & 1) !== 0) {
     SUNIT_ValidatePathTargetUnit113c(m, pMonster >>> 0, pGame >>> 0)
     const nStepRes =
-      stepPathOverride !== undefined ? stepPathOverride(m, pMonster >>> 0) | 0 : 0
+      stepPathOverride !== undefined
+        ? stepPathOverride(m, pMonster >>> 0) | 0
+        : stepMonsterPathRaw_6FD01930(m, pGame >>> 0, pMonster >>> 0)
     if (nStepRes === 2) {
       SKILLS_SetParam0C113c(m, pSkill, (dwSkillFlags | 2) >>> 0)
       SKILLS_DoUsedSkillAction113c(m, pMonster >>> 0, pGame >>> 0)

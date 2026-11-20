@@ -246,10 +246,7 @@ export function STATES_OnStateRemovedResetMonsterAi_6FC70130_113c(
   if ((m.u32(unit) >>> 0) === 1) {
     const pMonData = m.u32((unit + 0x14) >>> 0) >>> 0
     const pAiGen = pMonData !== 0 ? (m.u32((pMonData + 0x28) >>> 0) >>> 0) : 0
-    if (pAiGen !== 0) {
-      m.setU32(pAiGen, 0)
-    }
-    AI_InitMonsterAiThinkFn113c(m, unit)
+    AI_InitMonsterAiThinkFn113c(m, unit, m.u32((unit + 0x80) >>> 0) >>> 0, pAiGen, 0)
   }
   STATES_OnTimedStateRemoved113c(m, unit, nState | 0, pStatList >>> 0, hooks)
 }
@@ -287,7 +284,7 @@ export function SKILLS_ConvertMonsterAndScheduleExpire_6FC709E0_113c(
       }
     }
   }
-  if (skillId === 0 || pSkillsTxt === 0) {
+  if (skillId === 0) {
     return
   }
 
@@ -472,7 +469,7 @@ export function PLAYERSAVE_ComputeHeaderChecksum_6FC73170_113c(
     m.setU32((base + 0x34) >>> 0, 0)
     m.setU32((base + 0xab) >>> 0, 0)
   }
-  const crc = CHECKSUM_ComputeCrc32_6FC2B470_113c(m, base, nByteLen >>> 0) | 0
+  const crc = CHECKSUM_ComputeCrc32_6FC2B470_113c(m, base, nByteLen >>> 0) >>> 0
   if (dwVersion > 0x5b) {
     m.setU32((base + 0x0c) >>> 0, saved0c)
     m.setU32((base + 0x30) >>> 0, saved30)
@@ -2134,7 +2131,15 @@ function invokeMonsterStartModeW3B5_113c(
     MONSTER_StartMode113c(hooks.world, pMonster, mode, pTarget, targetX, targetY)
     return
   }
-  m.setU32((pMonster + 0x10) >>> 0, mode >>> 0)
+  MONSTER_StartMode113c(
+    m,
+    pGame >>> 0,
+    pMonster >>> 0,
+    mode | 0,
+    pTarget >>> 0,
+    targetX | 0,
+    targetY | 0,
+  )
 }
 
 function defaultSpawnMonsterAtCoordsW3B5_113c(

@@ -79,6 +79,8 @@ import {
 } from './boot-init-gap-b-113c.ts'
 import { PLAYER_StartModeAttack113c } from './k2-real-s2c-combat-113c.ts'
 import { MISSILE_DestroyDataAndEvents113c } from './k2-gap-melee-dot-113c.ts'
+import { ITEMS_DestroyItemEventsAndSubInventory_6FC30700_113c } from './k2-laneI-0x6fc3-w1-113c.ts'
+import { QUESTS_FreeUnitQuestChain_6FC53FF0_113c } from './k2-laneJ-0x6fc4-w1-113c.ts'
 import { SUNIT_GetServerUnit113c } from './game-strc.ts'
 import { MONSTER_ClearModeEvents113c, UNITS_ChangeAnimMode113c } from './monster-events.ts'
 import {
@@ -787,11 +789,9 @@ export function SUNIT_SyncAdjacentRoomUnitsToClient113c(
 export function SUNIT_FreeUnit113c(m: Memory113c, pGame: number, pUnit: number): void {
   hitD2GameVa113c(0x6FD020A0)
   SUNIT_DeactivateAndRemoveUnit113c(m, pGame, pUnit, 0)
-  let pNode74 = m.u32((pUnit + 0x74) >>> 0) >>> 0
+  const pNode74 = m.u32((pUnit + 0x74) >>> 0) >>> 0
   if (pNode74 !== 0) {
-    while (pNode74 !== 0) {
-      pNode74 = m.u32((pNode74 + 0x04) >>> 0) >>> 0
-    }
+    QUESTS_FreeUnitQuestChain_6FC53FF0_113c(m, pGame, pNode74)
     m.setU32((pUnit + 0x74) >>> 0, 0)
   }
 
@@ -847,10 +847,14 @@ export function SUNIT_FreeUnit113c(m: Memory113c, pGame: number, pUnit: number):
       break
     }
     case 4: {
-      if (m.u32((pUnit + 0x60) >>> 0) !== 0) {
-        SUNIT_ClearUnitInventoryItems113c(m, pGame, pUnit)
+      if (m.u32(0x6fde9e1c) !== 0) {
+        ITEMS_DestroyItemEventsAndSubInventory_6FC30700_113c(m, pGame, pUnit)
+      } else {
+        if (m.u32((pUnit + 0x60) >>> 0) !== 0) {
+          SUNIT_ClearUnitInventoryItems113c(m, pGame, pUnit)
+        }
+        EVENT_RemoveUnitEvents113c(m, pGame, pUnit)
       }
-      EVENT_RemoveUnitEvents113c(m, pGame, pUnit)
       ITEMS_RemoveFromSocketedOwner113c(m, pMemPool, pUnit)
       UNITS_FreeStaticPath113c(m, pUnit)
       break

@@ -231,7 +231,7 @@ export interface K2W3B2Hooks113c {
   ) => number
   readonly onObjectPosValidate?: (
     m: Memory113c,
-    nObjectId: number,
+    pGame: number,
     pCtx: number,
     x: number,
     y: number,
@@ -2329,15 +2329,22 @@ function invokeMonUModCallback113c(
 function getMonUModFnFromTable113c(m: Memory113c, nIdx: number): number {
   const idx = nIdx | 0
   if (idx < 0 || idx >= 43) return 0
-  const inMem = m.u32((D2GAME_MONUMOD_TABLE_VA_113C + idx * 4) >>> 0) >>> 0
+  let inMem = 0
+  try {
+    inMem = m.u32((D2GAME_MONUMOD_TABLE_VA_113C + idx * 4) >>> 0) >>> 0
+  } catch {
+    inMem = 0
+  }
   if (inMem !== 0) return inMem
   return DEFAULT_MONUMOD_TABLE_6FD2E550[idx]! >>> 0
 }
 
 /**
- * [19/45] Spawns a unique/superunique boss monster via `MONSTER_Create113c` or
- * `MONSTER_SpawnAtCoords_6FD0F450_113c` and invokes its base (`1..4`) and UMod (`0..8`)
- * initialization callbacks in `0x6FD2E550`.
+ * [19/45] Spawns a pack minion monster (`0x6FC446D0`) using 3-stage fallback placement
+ * (`MONSTER_Create` radius `-1` -> `MONSTER_Create` radius `4` -> `REGPOP_FindPackSpawnCoords`
+ * + `MONSTER_SpawnAtCoords_6FD0F450` radius `-1`, `wFlags = 0x62`), copies all 9 UMod bytes into
+ * `pMonData + 0x1C`, marks `byte [pMonData + 0x16] |= 0x10` (minion), and invokes base (`1..4`)
+ * plus all 9 UMod (`0..8`) callbacks in `0x6FD2E550` with `bBoss = 0`.
  *
  * @va D2Game:0x6FC446D0
  */
@@ -2345,130 +2352,119 @@ export function MONUMOD_SpawnSuperUniqueOrBoss_6FC446D0_113c(
   m: D2KernMemory113c,
   pGame: number,
   pRoom: number,
-  pCoordNode: number,
+  _pCoordNode: number,
   nX: number,
   nY: number,
-  nMaxRadius: number,
+  _nMaxRadius: number,
   nClassId: number,
-  wFlags: number,
+  _wFlags: number,
   pUModBytes: number,
-  wSuperUniqueId: number,
+  dwAiArg: number,
   hooks?: K2W3B2Hooks113c,
 ): number {
   hitD2GameVa113c(0x6FC446D0)
   const sp = w3b2ScratchSp
   w3b2ScratchSp = (sp + 0x50) >>> 0
-  let pBoss = 0
+  let pMinion = 0
+  const regpopHooks = hooks !== undefined ? hooks.regpop : undefined
   try {
     m.fill(sp, 0x50, 0)
-    if (pCoordNode === 0) {
-      if ((wFlags & 0x02) !== 0) {
-        m.setU32((sp + 0x08) >>> 0, pGame >>> 0)
-        m.setU32((sp + 0x0c) >>> 0, pRoom >>> 0)
-        m.setU32((sp + 0x10) >>> 0, 0)
-        m.setU32((sp + 0x14) >>> 0, nClassId >>> 0)
-        m.setU32((sp + 0x18) >>> 0, 1)
-        m.setU32((sp + 0x1c) >>> 0, 0x2a)
-        m.setU32((sp + 0x20) >>> 0, nX >>> 0)
-        m.setU32((sp + 0x24) >>> 0, nY >>> 0)
-        m.setU32((sp + 0x28) >>> 0, nMaxRadius >>> 0)
-        m.setU16((sp + 0x2c) >>> 0, wFlags & 0xffff)
-        for (let i = 0; i < 9; i++) {
-          m.setU8((sp + 0x30 + i) >>> 0, m.u8((pUModBytes + i) >>> 0))
-        }
-        pBoss = MONSTER_Create113c(
-          m,
-          (sp + 0x08) >>> 0,
-          hooks !== undefined ? hooks.regpop : undefined,
-        ) >>> 0
-      } else {
-        pBoss = MONSTER_SpawnAtCoords_6FD0F450_113c(
-          m,
-          0x2a,
-          nClassId,
-          1,
-          pGame,
-          pRoom,
-          nX,
-          nY,
-          nMaxRadius,
-          wFlags,
-          hooks !== undefined ? hooks.regpop : undefined,
-        ) >>> 0
-      }
-    } else {
-      const pOutY = sp
-      const pOutX = (sp + 0x04) >>> 0
+    // Stage 1: MONSTER_Create with nMaxRadius = -1, wFlags = 0x62
+    m.setU32((sp + 0x08) >>> 0, pGame >>> 0)
+    m.setU32((sp + 0x0c) >>> 0, pRoom >>> 0)
+    m.setU32((sp + 0x10) >>> 0, 0)
+    m.setU32((sp + 0x14) >>> 0, nClassId >>> 0)
+    m.setU32((sp + 0x18) >>> 0, 1)
+    m.setU32((sp + 0x1c) >>> 0, dwAiArg >>> 0)
+    m.setU32((sp + 0x20) >>> 0, nX >>> 0)
+    m.setU32((sp + 0x24) >>> 0, nY >>> 0)
+    m.setU32((sp + 0x28) >>> 0, 0xffffffff)
+    m.setU16((sp + 0x2c) >>> 0, 0x62)
+    pMinion = MONSTER_Create113c(m, (sp + 0x08) >>> 0, regpopHooks) >>> 0
+
+    // Stage 2: retry MONSTER_Create with nMaxRadius = 4, wFlags = 0x62
+    if (pMinion === 0) {
+      m.setU32((sp + 0x08) >>> 0, pGame >>> 0)
+      m.setU32((sp + 0x0c) >>> 0, pRoom >>> 0)
+      m.setU32((sp + 0x10) >>> 0, 0)
+      m.setU32((sp + 0x14) >>> 0, nClassId >>> 0)
+      m.setU32((sp + 0x18) >>> 0, 1)
+      m.setU32((sp + 0x1c) >>> 0, dwAiArg >>> 0)
+      m.setU32((sp + 0x20) >>> 0, nX >>> 0)
+      m.setU32((sp + 0x24) >>> 0, nY >>> 0)
+      m.setU32((sp + 0x28) >>> 0, 4)
+      m.setU16((sp + 0x2c) >>> 0, 0x62)
+      pMinion = MONSTER_Create113c(m, (sp + 0x08) >>> 0, regpopHooks) >>> 0
+    }
+
+    // Stage 3: REGPOP_FindPackSpawnCoords(..., pCoordNode=0, ..., 1) + MONSTER_SpawnAtCoords_6FD0F450
+    if (pMinion === 0) {
+      const pOutX = sp
+      const pOutY = (sp + 0x04) >>> 0
+      m.setU32(pOutX, nX >>> 0)
+      m.setU32(pOutY, nY >>> 0)
       const bFound = REGPOP_FindPackSpawnCoords113c(
         m,
         pRoom,
         pGame,
-        pCoordNode,
+        0,
         nClassId,
         pOutX,
         pOutY,
         1,
-        hooks !== undefined ? hooks.regpop : undefined,
+        regpopHooks,
       )
       if (bFound === 0) return 0
-      pBoss = MONSTER_SpawnAtCoords_6FD0F450_113c(
+      pMinion = MONSTER_SpawnAtCoords_6FD0F450_113c(
         m,
-        0x2a,
+        dwAiArg,
         nClassId,
         1,
         pGame,
         pRoom,
         m.u32(pOutX) | 0,
         m.u32(pOutY) | 0,
-        1,
-        wFlags,
-        hooks !== undefined ? hooks.regpop : undefined,
+        -1,
+        0x62,
+        regpopHooks,
       ) >>> 0
     }
   } finally {
     w3b2ScratchSp = sp
   }
 
-  if (pBoss === 0) return 0
+  if (pMinion === 0) return 0
 
-  let pMonData = 0
-  if ((m.u32(pBoss) >>> 0) === 1) {
-    pMonData = m.u32((pBoss + 0x14) >>> 0) >>> 0
+  let pUModsDst = 0
+  if ((m.u32(pMinion) >>> 0) === 1) {
+    const pMonData = m.u32((pMinion + 0x14) >>> 0) >>> 0
     if (pMonData !== 0) {
-      m.setU8((pMonData + 0x16) >>> 0, (m.u8((pMonData + 0x16) >>> 0) | 0x08) & 0xff)
+      pUModsDst = (pMonData + 0x1c) >>> 0
+      if (pUModBytes !== 0) {
+        for (let i = 0; i < 9; i++) {
+          m.setU8((pUModsDst + i) >>> 0, m.u8((pUModBytes + i) >>> 0))
+        }
+      }
+      m.setU8((pMonData + 0x16) >>> 0, (m.u8((pMonData + 0x16) >>> 0) | 0x10) & 0xff)
     }
-  }
-  const wNextBossCnt = (m.u16((pGame + 0x10f6) >>> 0) + 1) & 0xffff
-  m.setU16((pGame + 0x10f6) >>> 0, wNextBossCnt)
-
-  if ((m.u32(pBoss) >>> 0) === 1) {
-    pMonData = m.u32((pBoss + 0x14) >>> 0) >>> 0
-    if (pMonData !== 0) {
-      m.setU16((pMonData + 0x26) >>> 0, wSuperUniqueId & 0xffff)
-    }
-  }
-
-  for (let i = 0; i < 9; i++) {
-    m.setU8((pMonData + 0x1c + i) >>> 0, m.u8((pUModBytes + i) >>> 0))
   }
 
   for (let baseIdx = 1; baseIdx <= 4; baseIdx++) {
     const pfn = getMonUModFnFromTable113c(m, baseIdx)
     if (pfn !== 0) {
-      invokeMonUModCallback113c(m, pfn, pBoss, baseIdx, 1, hooks)
+      invokeMonUModCallback113c(m, pfn, pMinion, baseIdx, 0, hooks)
     }
   }
 
   for (let i = 0; i < 9; i++) {
-    const nModId = m.u8((pMonData + 0x1c + i) >>> 0)
-    if (nModId === 0) break
+    const nModId = pUModsDst !== 0 ? m.u8((pUModsDst + i) >>> 0) : 0
     const pfn = getMonUModFnFromTable113c(m, nModId)
     if (pfn !== 0) {
-      invokeMonUModCallback113c(m, pfn, pBoss, nModId, 1, hooks)
+      invokeMonUModCallback113c(m, pfn, pMinion, nModId, 0, hooks)
     }
   }
 
-  return pBoss
+  return pMinion
 }
 
 /**
@@ -4059,7 +4055,7 @@ export function OBJECTS_SpawnWallAlignedObjectWithCallback_6FC517F0_113c(
     if (wHit === 0) {
       const bOk =
         hooks !== undefined && hooks.onObjectPosValidate !== undefined
-          ? hooks.onObjectPosValidate(m, nObjectId, pCallbackCtx, x, y) & 0xff
+          ? hooks.onObjectPosValidate(m, pGame >>> 0, pCallbackCtx, x, y) & 0xff
           : 1
       if (bOk !== 0) break
     }
@@ -4145,7 +4141,7 @@ export function OBJECTS_SpawnRandomObjectWithCallback_6FC51B40_113c(
     if (wHit === 0) {
       const bOk =
         hooks !== undefined && hooks.onObjectPosValidate !== undefined
-          ? hooks.onObjectPosValidate(m, nObjectId, pCallbackCtx, x, y) & 0xff
+          ? hooks.onObjectPosValidate(m, pGame >>> 0, pCallbackCtx, x, y) & 0xff
           : 1
       if (bOk !== 0) break
     }

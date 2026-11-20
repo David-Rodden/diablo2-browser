@@ -618,7 +618,7 @@ export function ACT3Q7_OnMephistoPortalWarpToAct4_6FC566C0_113c(
     try {
       m.setU8(sp, 0x61)
       m.setU8((sp + 1) >>> 0, 0x04)
-      NET_QueuePacketToClientBuffer113c(m, pClient, 0, sp, 2)
+      NET_QueuePacketToClientBuffer113c(m, pClient, 1, sp, 2)
     } finally {
       freeW14B1Stack(sp)
     }
@@ -662,8 +662,8 @@ export function MISSILE_SrvDo_MonsterCarrierSubSpawn_6FC60EB0_113c(
       SKILLS_ResolveSummonMonsterId_6FCBEE50_113c(
         m,
         0,
-        spSummonMode,
         0,
+        spSummonMode,
         pOwner,
         0,
         nSkillId,
@@ -694,7 +694,7 @@ export function MISSILE_SrvDo_MonsterCarrierSubSpawn_6FC60EB0_113c(
     m.setU32((pSummonArg + 0x04) >>> 0, pOwner)
     m.setU32((pSummonArg + 0x08) >>> 0, nSummonId >>> 0)
     m.setU32((pSummonArg + 0x0c) >>> 0, 0)
-    m.setU32((pSummonArg + 0x10) >>> 0, dwBit10 >>> 0)
+    m.setU32((pSummonArg + 0x10) >>> 0, m.u32(spSummonMode))
     m.setU32((pSummonArg + 0x14) >>> 0, UNIT_GetPosX113c(m, pMissile) >>> 0)
     m.setU32((pSummonArg + 0x18) >>> 0, UNIT_GetPosY113c(m, pMissile) >>> 0)
     m.setU32((pSummonArg + 0x1c) >>> 0, bPetType >>> 0)
@@ -765,8 +765,8 @@ export function SKILLS_SrvDo_Summon3TrapsInTriangle_6FC63D40_113c(
       SKILLS_ResolveSummonMonsterId_6FCBEE50_113c(
         m,
         0,
-        spSummonMode,
         0,
+        spSummonMode,
         pUnit,
         0,
         nSkillId,
@@ -882,8 +882,8 @@ export function SKILLS_SrvDo_SummonPetAtTarget_6FC66560_113c(
       SKILLS_ResolveSummonMonsterId_6FCBEE50_113c(
         m,
         0,
-        spSummonMode,
         0,
+        spSummonMode,
         pUnit,
         0,
         nSkillId,
@@ -912,8 +912,8 @@ export function SKILLS_SrvDo_SummonPetAtTarget_6FC66560_113c(
     m.setU32((pSummonArg + 0x08) >>> 0, nSummonId >>> 0)
     m.setU32((pSummonArg + 0x0c) >>> 0, 0)
     m.setU32((pSummonArg + 0x10) >>> 0, m.u32(spSummonMode))
-    m.setU32((pSummonArg + 0x14) >>> 0, m.u32(spX))
-    m.setU32((pSummonArg + 0x18) >>> 0, m.u32(spY))
+    m.setU32((pSummonArg + 0x14) >>> 0, 0)
+    m.setU32((pSummonArg + 0x18) >>> 0, 0)
     m.setU32((pSummonArg + 0x1c) >>> 0, nPetType >>> 0)
     m.setU32((pSummonArg + 0x20) >>> 0, nPetMax >>> 0)
     const pSpawned =
@@ -988,8 +988,8 @@ export function SKILLS_SrvDo_SummonDruidSpirit_6FC66720_113c(
       SKILLS_ResolveSummonMonsterId_6FCBEE50_113c(
         m,
         0,
-        spSummonMode,
         0,
+        spSummonMode,
         pUnit,
         0,
         nSkillId,
@@ -998,6 +998,9 @@ export function SKILLS_SrvDo_SummonDruidSpirit_6FC66720_113c(
     if (nSummonId < 0) return 0
     const nPetType = ((m.u8((pSkillsTxt + 0xbe) >>> 0) << 24) >> 24)
     if (nPetType < 0 || nPetType >= (m.u32((pDataTables + 0xbf0) >>> 0) | 0)) return 0
+    if (pUnit !== 0) {
+      m.setU32((pUnit + 0xc4) >>> 0, (m.u32((pUnit + 0xc4) >>> 0) | 0x40) >>> 0)
+    }
     const pSummonArg = (sp + 0x10) >>> 0
     const nPetMax =
       SKILLS_EvalCalcByOffset113c(
@@ -1007,11 +1010,11 @@ export function SKILLS_SrvDo_SummonDruidSpirit_6FC66720_113c(
         nSkillId,
         nSkillLevel,
       ) | 0
-    m.setU32(pSummonArg, 8)
+    m.setU32(pSummonArg, 0)
     m.setU32((pSummonArg + 0x04) >>> 0, pUnit)
     m.setU32((pSummonArg + 0x08) >>> 0, nSummonId >>> 0)
     m.setU32((pSummonArg + 0x0c) >>> 0, 0)
-    m.setU32((pSummonArg + 0x10) >>> 0, m.u32(spSummonMode))
+    m.setU32((pSummonArg + 0x10) >>> 0, 8)
     m.setU32((pSummonArg + 0x14) >>> 0, 0)
     m.setU32((pSummonArg + 0x18) >>> 0, 0)
     m.setU32((pSummonArg + 0x1c) >>> 0, nPetType >>> 0)
@@ -1082,8 +1085,8 @@ export function SKILLS_SrvDo_SummonVineOrCreeper_6FC668A0_113c(
       SKILLS_ResolveSummonMonsterId_6FCBEE50_113c(
         m,
         0,
-        spSummonMode,
         0,
+        spSummonMode,
         pUnit,
         0,
         nSkillId,
@@ -1092,6 +1095,9 @@ export function SKILLS_SrvDo_SummonVineOrCreeper_6FC668A0_113c(
     if (nSummonId < 0) return 0
     const nPetType = ((m.u8((pSkillsTxt + 0xbe) >>> 0) << 24) >> 24)
     if (nPetType < 0 || nPetType >= (m.u32((pDataTables + 0xbf0) >>> 0) | 0)) return 0
+    if (pUnit !== 0) {
+      m.setU32((pUnit + 0xc4) >>> 0, (m.u32((pUnit + 0xc4) >>> 0) | 0x40) >>> 0)
+    }
     const pSummonArg = (sp + 0x10) >>> 0
     const nPetMax =
       SKILLS_EvalCalcByOffset113c(
@@ -1196,6 +1202,23 @@ export function CLIENTS_RemoveClientFromGameAndFree_6FC6B7F0_113c(
   pGame: number,
   bSendSave: number,
   onCancelPlayerTrade_6FC93AA0?: (m: SparseMemory113c, pGame: number, pPlayerUnit: number) => void,
+  onServerLeaveGameCallback?: (
+    m: SparseMemory113c,
+    pfnLeaveGame: number,
+    pField68: number,
+    wGameId: number,
+    dwClassId: number,
+    dwBaseLevel: number,
+    dwBaseExpLo: number,
+    dwBaseExpHi: number,
+    wClientFlags0A: number,
+    szCharName: number,
+    szPortraitDesc: number,
+    dwField178: number,
+    szAccountName: number,
+    dwField60: number,
+    pField190: number,
+  ) => void,
 ): void {
   hitD2GameVa113c(0x6FC6B7F0)
   if (pGame === 0) {
@@ -1299,8 +1322,10 @@ export function CLIENTS_RemoveClientFromGameAndFree_6FC6B7F0_113c(
     CLIENT_BroadcastPlayerLeftPacket5C_6FC4BED0_113c(m, pRemoved, pGame)
     const pPlayer = CLIENTS_GetPlayerUnit113c(m, pRemoved, 0) >>> 0
     if (pPlayer !== 0) {
-      STATLIST_GetUnitStat113c(m, pPlayer, 0x0d, 0)
-      STATLIST_GetUnitStat113c(m, pPlayer, 0x0c, 0)
+      const dwBaseExpLo = STATLIST_GetUnitBaseStat113c(m, pPlayer, 0x0d, 0) | 0
+      const dwBaseExpHi = dwBaseExpLo < 0 ? -1 : 0
+      const dwClassId = m.u32((pPlayer + 0x04) >>> 0) >>> 0
+      const dwBaseLevel = STATLIST_GetUnitBaseStat113c(m, pPlayer, 0x0c, 0) | 0
       PARTY_LeavePartyForPlayer_6FCBC840_113c(m, pPlayer, pGame)
       PETS_FreePlayerPetTable_6FCB7640_113c(m, pGame, pPlayer)
       NPCS_UpdateTownVendorSlotsOnPlayerLeave_6FCB0560_113c(m, pGame, pPlayer)
@@ -1315,10 +1340,66 @@ export function CLIENTS_RemoveClientFromGameAndFree_6FC6B7F0_113c(
         DUNGEON_AddRoomPortalNode113c(m, pRoom, m.u32(pPlayer), m.u32((pPlayer + 0x0c) >>> 0))
       }
       SUNIT_FreeUnit113c(m, m.u32((pRemoved + 0x1a8) >>> 0), pPlayer)
-      DUNGEON_UpdateRoomLevelChange113c(m, pRoom, 0)
       DUNGEON_SyncActiveRoomStatusChange113c(m, pRoom, 0)
-    } else if (m.u32(0x6fd31c3c) !== 0) {
-      m.setU8((pRemoved + 0x6c) >>> 0, 0)
+      DUNGEON_UpdateRoomLevelChange113c(m, pRoom, 0)
+      const pCbTable = m.u32(0x6fd31c3c) >>> 0
+      if (pCbTable !== 0) {
+        const pfnLeave = m.u32((pCbTable + 0x04) >>> 0) >>> 0
+        if (pfnLeave === 0) {
+          throw new D2CommonAssertError('0x6fd19ff9', 0x592)
+        }
+        const pCbTable2 = m.u32(0x6fd31c3c) >>> 0
+        const pfnLeave2 = pCbTable2 !== 0 ? (m.u32((pCbTable2 + 0x04) >>> 0) >>> 0) : 0
+        if (pfnLeave2 !== 0 && onServerLeaveGameCallback !== undefined) {
+          onServerLeaveGameCallback(
+            m,
+            pfnLeave2,
+            (pRemoved + 0x68) >>> 0,
+            m.u16((pGame + 0x28) >>> 0),
+            dwClassId,
+            dwBaseLevel,
+            dwBaseExpLo,
+            dwBaseExpHi,
+            m.u16((pRemoved + 0x0a) >>> 0),
+            (pRemoved + 0x0d) >>> 0,
+            (pRemoved + 0x6c) >>> 0,
+            m.u32((pRemoved + 0x178) >>> 0),
+            (pRemoved + 0x1d) >>> 0,
+            m.u32((pRemoved + 0x60) >>> 0),
+            (pRemoved + 0x190) >>> 0,
+          )
+        }
+      }
+    } else {
+      const pCbTable = m.u32(0x6fd31c3c) >>> 0
+      if (pCbTable !== 0) {
+        m.setU8((pRemoved + 0x6c) >>> 0, 0)
+        const pfnLeave = m.u32((pCbTable + 0x04) >>> 0) >>> 0
+        if (pfnLeave === 0) {
+          throw new D2CommonAssertError('0x6fd19ff9', 0x5ba)
+        }
+        const pCbTable2 = m.u32(0x6fd31c3c) >>> 0
+        const pfnLeave2 = pCbTable2 !== 0 ? (m.u32((pCbTable2 + 0x04) >>> 0) >>> 0) : 0
+        if (pfnLeave2 !== 0 && onServerLeaveGameCallback !== undefined) {
+          onServerLeaveGameCallback(
+            m,
+            pfnLeave2,
+            (pRemoved + 0x68) >>> 0,
+            m.u16((pGame + 0x28) >>> 0),
+            0,
+            0,
+            0,
+            0,
+            0,
+            (pRemoved + 0x0d) >>> 0,
+            (pRemoved + 0x6c) >>> 0,
+            m.u32((pRemoved + 0x178) >>> 0),
+            (pRemoved + 0x1d) >>> 0,
+            m.u32((pRemoved + 0x60) >>> 0),
+            (pRemoved + 0x190) >>> 0,
+          )
+        }
+      }
     }
     const pAdjRoom = m.u32((pRemoved + 0x1b4) >>> 0)
     if (pAdjRoom !== 0) {
@@ -1381,8 +1462,8 @@ export function SKILLS_SrvDo_SummonDecoy_6FC6D710_113c(
     const nMonId = SKILLS_ResolveSummonMonsterId_6FCBEE50_113c(
       m,
       0,
-      pOutSpawnMode,
       0,
+      pOutSpawnMode,
       pUnit,
       0,
       nSkillId,
@@ -1481,8 +1562,8 @@ export function SKILLS_SrvDo_SummonShadowWarriorOrMaster_6FC6D8C0_113c(
     const nMonId = SKILLS_ResolveSummonMonsterId_6FCBEE50_113c(
       m,
       0,
-      pOutSpawnMode,
       0,
+      pOutSpawnMode,
       pUnit,
       0,
       nSkillId,
@@ -1530,7 +1611,7 @@ export function SKILLS_SrvDo_SummonShadowWarriorOrMaster_6FC6D8C0_113c(
     const nShadowLife = mulDiv113c(nOwnerMaxLife, nCalc140, 100) | 0
     STATLIST_SetUnitStat113c(m, pSpawned, 6, nShadowLife, 0)
     STATLIST_SetUnitStat113c(m, pSpawned, 7, nShadowLife, 0)
-    const nBaseLvl = STATLIST_GetUnitBaseStat113c(m, pUnit, 0x0c, 0) | 0
+    const nBaseLvl = STATLIST_GetUnitStat113c(m, pUnit, 0x0c, 0) | 0
     STATLIST_SetUnitStat113c(m, pSpawned, 0x0c, nBaseLvl, 0)
     SKILLS_ApplySummonLevelAcAndToHit_6FC6E2A0_113c(m, pUnit, 0, pGame, pSpawned, nSkillLevel)
     SKILLS_ApplySummonStatsPassivesAndEquip_6FC6F970_113c(
@@ -1593,8 +1674,8 @@ export function SKILLS_SpawnBoneWallSegment_6FC70E60_113c(
     const nMonId = SKILLS_ResolveSummonMonsterId_6FCBEE50_113c(
       m,
       0,
-      pOutSpawnMode,
       0,
+      pOutSpawnMode,
       pUnit,
       0,
       nSkillId,
@@ -1690,8 +1771,8 @@ export function SKILLS_SrvDo_BoneWall_6FC70FE0_113c(
     const nMonId = SKILLS_ResolveSummonMonsterId_6FCBEE50_113c(
       m,
       0,
-      pOutSpawnMode,
       0,
+      pOutSpawnMode,
       pUnit,
       0,
       nSkillId,
@@ -1844,8 +1925,8 @@ export function SKILLS_SrvDo_IronGolem_6FC71540_113c(
     const nMonId = SKILLS_ResolveSummonMonsterId_6FCBEE50_113c(
       m,
       0,
-      pOutSpawnMode,
       0,
+      pOutSpawnMode,
       pUnit,
       0,
       nSkillId,
@@ -1895,8 +1976,8 @@ export function SKILLS_SrvDo_IronGolem_6FC71540_113c(
         m.u32(pTargetItem),
         m.u32((pTargetItem + 0x0c) >>> 0),
       )
+      UNITS_SetTargetUnitForDynamicUnitEx113c(m, pTargetItem)
       UNITROOM_RemoveUnitFromRoom113c(m, pTargetItem)
-      INVENTORY_UnitIsItem113c(m, pTargetItem)
       ITEMS_GetAllowedBodyLocations113c(m, pTargetItem, pOutBodyLoc1, pOutBodyLoc2)
       UNITS_ChangeAnimMode113c(m, pTargetItem, 4)
       const dwItemGuid = m.u32((pTargetItem + 0x0c) >>> 0)
@@ -2059,8 +2140,8 @@ export function SKILLS_SrvDo_RaiseSkeletonOrMage_6FC718B0_113c(
     const nMonId = SKILLS_ResolveSummonMonsterId_6FCBEE50_113c(
       m,
       0,
-      pOutSpawnMode,
       0,
+      pOutSpawnMode,
       pUnit,
       0,
       nSkillId,
@@ -2152,6 +2233,7 @@ export function ACT5Q2_OnQualKehkScrollCallback_6FC7C9E0_113c(
     nQuality: number,
     bDropIfFull: number,
   ) => number,
+  onQuestCallbackF0?: (m: SparseMemory113c, pQuestData: number) => void,
 ): void {
   hitD2GameVa113c(0x6FC7C9E0)
   const wNpcClassId = m.u16((pQuestArg + 0x14) >>> 0)
@@ -2169,7 +2251,7 @@ export function ACT5Q2_OnQualKehkScrollCallback_6FC7C9E0_113c(
     if (m.u32(0x6fd31c20) !== 0) {
       const sp = allocW14B1Stack(m, 0x80)
       try {
-        writeAsciiStr113c(m, sp, 'quest state = 2')
+        writeAsciiStr113c(m, sp, 'changing state to 2\n')
         NET_BroadcastSystemChatMessage_6FCEBE70_113c(m, sp, m.u32((pQuestData + 0x04) >>> 0), 4)
       } finally {
         freeW14B1Stack(sp)
@@ -2197,11 +2279,11 @@ export function ACT5Q2_OnQualKehkScrollCallback_6FC7C9E0_113c(
   let bCreatedAny = 0
   if (QUESTRECORD_GetQuestState113c(m, pQuestFlags, dwQuestId, 0x0d) !== 0) {
     if (m.u8((pQuestData + 0x0c) >>> 0) !== 5) {
-      QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, 5, pQuestData)
+      QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuestData, 5)
       if (m.u32((pQuestData + 0xf0) >>> 0) === 0) {
         throw new D2CommonAssertError('0x6fd19ff9', 0x129)
       }
-      dispatchQuestSeqFilterF0_113c(m, pQuestData)
+      dispatchQuestSeqFilterF0_113c(m, pQuestData, onQuestCallbackF0)
       m.setU8((pQuestData + 0x14) >>> 0, 0)
       m.setU8((pQuestData + 0x0b) >>> 0, 0x0d)
     }
@@ -2226,8 +2308,8 @@ export function ACT5Q2_OnQualKehkScrollCallback_6FC7C9E0_113c(
   }
   if (bCreatedAny !== 0) {
     QUESTRECORD_SetQuestState113c(m, pQuestFlags, dwQuestId, 0)
-    QUESTRECORD_ClearQuestStateBits2To11_113c(m, pQuestFlags, dwQuestId)
     QUESTRECORD_ClearQuestState113c(m, pQuestFlags, dwQuestId, 1)
+    QUESTRECORD_ClearQuestStateBits2To11_113c(m, pQuestFlags, dwQuestId)
     const dwPlayerGuid = pPlayer !== 0 ? m.u32((pPlayer + 0x0c) >>> 0) : 0xffffffff
     QUESTS_GuidListAdd113c(m, (pQuestData + 0x1c) >>> 0, dwPlayerGuid)
     const sp = allocW14B1Stack(m, 0x10)
@@ -2241,7 +2323,7 @@ export function ACT5Q2_OnQualKehkScrollCallback_6FC7C9E0_113c(
       m.setU8((sp + 2) >>> 0, 2)
       m.setU8((sp + 3) >>> 0, 0)
       m.setU16((sp + 4) >>> 0, 0)
-      NET_QueuePacketToClientBuffer113c(m, pClient, 0, sp, 6)
+      NET_QueuePacketToClientBuffer113c(m, pClient, 1, sp, 6)
     } finally {
       freeW14B1Stack(sp)
     }
@@ -2299,7 +2381,7 @@ export function ACT5Q3_OnMalahOrAnyaScrollCallback_6FC7F5E0_113c(
       if (m.u32(0x6fd31c20) !== 0) {
         const sp = allocW14B1Stack(m, 0x80)
         try {
-          writeAsciiStr113c(m, sp, 'quest state = 2')
+          writeAsciiStr113c(m, sp, 'changing state to 2\n')
           NET_BroadcastSystemChatMessage_6FCEBE70_113c(
             m,
             sp,
@@ -2493,7 +2575,7 @@ export function ACT5Q3_OnMalahOrAnyaScrollCallback_6FC7F5E0_113c(
   }
   if (wScrollId === 0x4ea3 && m.u8((pQuestData + 0x09) >>> 0) !== 0) {
     if (m.u8((pQuestData + 0x0c) >>> 0) <= 3) {
-      QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, 4, pQuestData)
+      QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuestData, 4)
       ACT5Q3_CleanupFrozenAnyaAndTownNpcState_6FC7EC30_113c(m, pQuestData)
     }
     if (m.u8((pQuestData + 0x0b) >>> 0) < 3) {
@@ -2673,6 +2755,7 @@ export function ACT1Q3_OnScrollMessageCainSearch_6FC86CE0_113c(
     nQuality: number,
     bDropIfFull: number,
   ) => number,
+  onQuestCallbackF0?: (m: SparseMemory113c, pQuestData: number) => void,
 ): void {
   hitD2GameVa113c(0x6FC86CE0)
   const wNpcClassId = m.u16((pQuestArg + 0x14) >>> 0)
@@ -2690,7 +2773,7 @@ export function ACT1Q3_OnScrollMessageCainSearch_6FC86CE0_113c(
       if (m.u32(0x6fd31c20) !== 0) {
         const sp = allocW14B1Stack(m, 0x80)
         try {
-          writeAsciiStr113c(m, sp, 'quest state = 2')
+          writeAsciiStr113c(m, sp, 'changing state to 2\n')
           NET_BroadcastSystemChatMessage_6FCEBE70_113c(
             m,
             sp,
@@ -2740,7 +2823,7 @@ export function ACT1Q3_OnScrollMessageCainSearch_6FC86CE0_113c(
             4,
           )
         }
-        QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, 5, pQuestData)
+        QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuestData, 5)
         m.setU8((pQuestData + 0x14) >>> 0, 0)
         m.setU8((pQuestData + 0x0b) >>> 0, 3)
       } else {
@@ -2783,14 +2866,14 @@ export function ACT1Q3_OnScrollMessageCainSearch_6FC86CE0_113c(
           m.setU8((pQuestData + 0x0b) >>> 0, 0x0d)
         }
         if (m.u8((pQuestData + 0x0c) >>> 0) !== 6) {
-          QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, 6, pQuestData)
+          QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuestData, 6)
         }
         if (QUESTS_CheckGlobalQuestState_6FC538D0_113c(m, m.u32(pQuestArg), 4, 0x0d) === 0) {
           QUESTS_SetGlobalQuestState_6FC53920_113c(m, m.u32((pQuestData + 0x04) >>> 0), 4, 0x0d)
           if (m.u32((pQuestData + 0xf0) >>> 0) === 0) {
             throw new D2CommonAssertError('0x6fd19ff9', 0x194)
           }
-          dispatchQuestSeqFilterF0_113c(m, pQuestData)
+          dispatchQuestSeqFilterF0_113c(m, pQuestData, onQuestCallbackF0)
         }
       }
       if (m.u8((pExt + 0x63) >>> 0) === 1) {
@@ -2893,7 +2976,7 @@ export function ACT1Q5_OnScrollMessageCharsiMalus_6FC87000_113c(
       }
       if (m.u8((pQuestData + 0x09) >>> 0) !== 0) {
         if (m.u8((pQuestData + 0x0c) >>> 0) === 4) {
-          QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, 5, pQuestData)
+          QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuestData, 5)
           m.setU8((pExt + 0x03) >>> 0, 1)
           QUESTS_SetGlobalQuestState_6FC53920_113c(m, m.u32((pQuestData + 0x04) >>> 0), 3, 0x0d)
           if (m.u32((pQuestData + 0xf0) >>> 0) === 0) {
@@ -2926,7 +3009,7 @@ export function ACT1Q5_OnScrollMessageCharsiMalus_6FC87000_113c(
     if (m.u32(0x6fd31c20) !== 0) {
       const sp = allocW14B1Stack(m, 0x80)
       try {
-        writeAsciiStr113c(m, sp, 'quest state = 2')
+        writeAsciiStr113c(m, sp, 'changing state to 2\n')
         NET_BroadcastSystemChatMessage_6FCEBE70_113c(m, sp, m.u32((pQuestData + 0x04) >>> 0), 4)
       } finally {
         freeW14B1Stack(sp)
@@ -2978,7 +3061,7 @@ export function ACT1Q2_OnScrollMessageBloodRaven_6FC88920_113c(
     if (m.u32(0x6fd31c20) !== 0) {
       const sp = allocW14B1Stack(m, 0x80)
       try {
-        writeAsciiStr113c(m, sp, 'quest state = 2')
+        writeAsciiStr113c(m, sp, 'changing state to 2\n')
         NET_BroadcastSystemChatMessage_6FCEBE70_113c(m, sp, m.u32((pQuestData + 0x04) >>> 0), 4)
       } finally {
         freeW14B1Stack(sp)
@@ -3008,7 +3091,7 @@ export function ACT1Q2_OnScrollMessageBloodRaven_6FC88920_113c(
     ) {
       m.setU8((pQuestData + 0x14) >>> 0, 0)
       m.setU8((pQuestData + 0x0b) >>> 0, 0x0d)
-      QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, 5, pQuestData)
+      QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuestData, 5)
       if (m.u32((pQuestData + 0xf0) >>> 0) === 0) {
         throw new D2CommonAssertError('0x6fd19ff9', 0xce)
       }
@@ -3119,9 +3202,9 @@ export function CUBE_TransmuteHoradricCubeItems_6FC92FC0_113c(
             const nTargetVal = (m.u32((pRecipeTxt + 0x0c) >>> 0) | 0) >> nShift
             let nActualVal = 0
             if (nOp >= 2 && nOp <= 5) {
-              nActualVal = STATLIST_GetUnitBaseStat113c(m, pPlayer, nStatId, 0) | 0
-            } else if (nOp >= 6 && nOp <= 9) {
               nActualVal = STATLIST_GetUnitStat113c(m, pPlayer, nStatId, 0) | 0
+            } else if (nOp >= 6 && nOp <= 9) {
+              nActualVal = STATLIST_GetUnitBaseStat113c(m, pPlayer, nStatId, 0) | 0
             } else {
               nActualVal = STATLIST_GetUnitStatBonus113c(m, pPlayer, nStatId, 0) | 0
             }
@@ -3195,7 +3278,7 @@ export function PLRTRADE_ExecutePlayerTradeSwap_6FC93D90_113c(
     try {
       m.setU8(spPkt, 0x77)
       m.setU8((spPkt + 1) >>> 0, bSubType & 0xff)
-      NET_QueuePacketToClientBuffer113c(m, pClient, 0, spPkt, 2)
+      NET_QueuePacketToClientBuffer113c(m, pClient, 1, spPkt, 2)
     } finally {
       freeW14B1Stack(spPkt)
     }
@@ -3212,11 +3295,11 @@ export function PLRTRADE_ExecutePlayerTradeSwap_6FC93D90_113c(
   const pTrade1 = m.u32((pPlayerData1 + 0x5c) >>> 0)
   const nGold1 = (m.u32((pTrade1 + 0x0c) >>> 0) | 0)
   if (nGold1 !== 0) {
-    if ((STATLIST_GetUnitBaseStat113c(m, pPlayer1, 0x0e, 0) | 0) < nGold1) {
+    if ((STATLIST_GetUnitStat113c(m, pPlayer1, 0x0e, 0) | 0) < nGold1) {
       cancelTrade()
       return
     }
-    const nPartnerTotal1 = (STATLIST_GetUnitBaseStat113c(m, pPlayer2, 0x0e, 0) + nGold1) >>> 0
+    const nPartnerTotal1 = (STATLIST_GetUnitStat113c(m, pPlayer2, 0x0e, 0) + nGold1) >>> 0
     if (nPartnerTotal1 > STATLIST_GetUnitGoldBankLimit113c(m, pPlayer2) >>> 0) {
       cancelTrade()
       sendTradePacket77(pPlayer1, 0x0a)
@@ -3228,11 +3311,11 @@ export function PLRTRADE_ExecutePlayerTradeSwap_6FC93D90_113c(
   const pTrade2 = m.u32((pPlayerData2 + 0x5c) >>> 0)
   const nGold2 = (m.u32((pTrade2 + 0x0c) >>> 0) | 0)
   if (nGold2 !== 0) {
-    if ((STATLIST_GetUnitBaseStat113c(m, pPlayer2, 0x0e, 0) | 0) < nGold2) {
+    if ((STATLIST_GetUnitStat113c(m, pPlayer2, 0x0e, 0) | 0) < nGold2) {
       cancelTrade()
       return
     }
-    const nPartnerTotal2 = (STATLIST_GetUnitBaseStat113c(m, pPlayer1, 0x0e, 0) + nGold2) >>> 0
+    const nPartnerTotal2 = (STATLIST_GetUnitStat113c(m, pPlayer1, 0x0e, 0) + nGold2) >>> 0
     if (nPartnerTotal2 > STATLIST_GetUnitGoldBankLimit113c(m, pPlayer1) >>> 0) {
       cancelTrade()
       sendTradePacket77(pPlayer1, 0x09)
@@ -3274,8 +3357,8 @@ export function PLRTRADE_ExecutePlayerTradeSwap_6FC93D90_113c(
   }
 
   if (
-    CUBE_CanPlayerPickupAllCubeItems_6FC91170_113c(m, pPlayer1, pGame) === 0 ||
-    CUBE_CanPlayerPickupAllCubeItems_6FC91170_113c(m, pPlayer2, pGame) === 0
+    CUBE_CanPlayerPickupAllCubeItems_6FC91170_113c(m, pPlayer1, pGame, pPlayer2) === 0 ||
+    CUBE_CanPlayerPickupAllCubeItems_6FC91170_113c(m, pPlayer2, pGame, pPlayer1) === 0
   ) {
     cancelTrade()
     return
@@ -3313,8 +3396,8 @@ export function PLRTRADE_ExecutePlayerTradeSwap_6FC93D90_113c(
   const pTradePost1 = m.u32((pPlayerData1 + 0x5c) >>> 0)
   const nGoldPost1 = (m.u32((pTradePost1 + 0x0c) >>> 0) | 0)
   if (nGoldPost1 !== 0) {
-    if ((STATLIST_GetUnitBaseStat113c(m, pPlayer1, 0x0e, 0) | 0) >= nGoldPost1) {
-      STATLIST_AddUnitStatGoldGuarded_6FC21670_113c(m, 0x0e, pPlayer1, -nGoldPost1)
+    if ((STATLIST_GetUnitStat113c(m, pPlayer1, 0x0e, 0) | 0) >= nGoldPost1) {
+      STATLIST_AddUnitStatGoldGuarded_6FC21670_113c(m, pPlayer1, 0x0e, -nGoldPost1)
     }
     ITEMS_AddPlayerGoldOrDropOverflow_6FC32DF0_113c(
       m,
@@ -3327,8 +3410,8 @@ export function PLRTRADE_ExecutePlayerTradeSwap_6FC93D90_113c(
   const pTradePost2 = m.u32((pPlayerData2 + 0x5c) >>> 0)
   const nGoldPost2 = (m.u32((pTradePost2 + 0x0c) >>> 0) | 0)
   if (nGoldPost2 !== 0) {
-    if ((STATLIST_GetUnitBaseStat113c(m, pPlayer2, 0x0e, 0) | 0) >= nGoldPost2) {
-      STATLIST_AddUnitStatGoldGuarded_6FC21670_113c(m, 0x0e, pPlayer2, -nGoldPost2)
+    if ((STATLIST_GetUnitStat113c(m, pPlayer2, 0x0e, 0) | 0) >= nGoldPost2) {
+      STATLIST_AddUnitStatGoldGuarded_6FC21670_113c(m, pPlayer2, 0x0e, -nGoldPost2)
     }
     ITEMS_AddPlayerGoldOrDropOverflow_6FC32DF0_113c(
       m,
@@ -3559,7 +3642,15 @@ export function SKILLS_SrvDo_Valkyrie_6FCB5980_113c(
     if (nEquipLevel >= nMaxLvl) {
       nEquipLevel = nMaxLvl
     }
-    MONSTER_EquipMonEquipItems113c(m, pValkyrie, pGame)
+    MONSTER_EquipMonEquipItems113c(
+      m,
+      pValkyrie,
+      pGame,
+      pOwnerUnit,
+      nEquipLevel,
+      0,
+      nSkillLevel,
+    )
 
     let pEvt = m.u32((pValkyrie + 0xdc) >>> 0)
     while (pEvt !== 0) {
@@ -3649,12 +3740,13 @@ export function SKILLS_SummonMonsterFromSkillOrMissile_6FCB5D50_113c(
     const spSummonArg = (sp + 0x0c) >>> 0
     const spModeChange = (sp + 0x30) >>> 0
 
+    const nSkillId = bUpdateStatsFlag | 0
     let nHcIdx =
       UNITS_GetSpawnedMonsterOrSkillSummonInfo113c(
         m,
         pOwnerUnit,
         0,
-        pSkillTxt,
+        nSkillId,
         nSkillLevel,
         spSummonMode,
         0,
@@ -3665,82 +3757,100 @@ export function SKILLS_SummonMonsterFromSkillOrMissile_6FCB5D50_113c(
     const nMonStatsCount = pSgpt !== 0 ? (m.u32((pSgpt + 0xa80) >>> 0) | 0) : 0
 
     if (nHcIdx < 0 || nHcIdx >= nMonStatsCount) {
-      if (pOwnerUnit === 0 || m.u32(pOwnerUnit) !== 1) {
+      let pAiCtrl = 0
+      if (pOwnerUnit !== 0 && m.u32(pOwnerUnit) === 1) {
+        const pMonData = m.u32((pOwnerUnit + 0x14) >>> 0)
+        if (pMonData !== 0) {
+          pAiCtrl = m.u32((pMonData + 0x28) >>> 0)
+        }
+      }
+      if (pAiCtrl === 0) {
         return 0
       }
-      const pMonData = m.u32((pOwnerUnit + 0x14) >>> 0)
-      if (pMonData === 0) {
-        return 0
-      }
-      const pMonStatsTxt = m.u32((pMonData + 0x28) >>> 0)
-      if (pMonStatsTxt === 0) {
-        return 0
-      }
-      nHcIdx = ((m.u16((pMonStatsTxt + 0x3c) >>> 0) << 16) >> 16)
-      if (nHcIdx < 0 || nHcIdx >= nMonStatsCount) {
+      nHcIdx = m.u32((pAiCtrl + 0x3c) >>> 0) | 0
+      if (nHcIdx <= 0 || nHcIdx >= nMonStatsCount) {
         return 0
       }
     }
 
+    if (nHcIdx < 0 || nHcIdx >= nMonStatsCount) {
+      return 0
+    }
+
+    let nPetType = (m.u8((pSkillTxt + 0xbe) >>> 0) << 24) >> 24
+    if (nPetType < 0 || pSgpt === 0 || nPetType >= (m.u32((pSgpt + 0xbf0) >>> 0) | 0)) {
+      nPetType = 0
+    }
+    const nMaxPets =
+      SKILLS_EvalCalcByOffset113c(
+        m,
+        pOwnerUnit,
+        m.u32((pSkillTxt + 0xc0) >>> 0) | 0,
+        nSkillId,
+        nSkillLevel,
+      ) | 0
+
     let curX = nX | 0
     let curY = nY | 0
-    m.setU32(spOutX, (curX) >>> 0)
-    m.setU32(spOutY, (curY) >>> 0)
+    m.setU32(spOutX, curX >>> 0)
+    m.setU32(spOutY, curY >>> 0)
 
-    let bUseTargetCoords = false
     if (curX === 0 || curY === 0) {
-      if (pOwnerUnit === 0) {
-        bUseTargetCoords = true
-      } else {
+      if (pOwnerUnit !== 0) {
         const dwType = m.u32(pOwnerUnit)
         const pPathOrPos = m.u32((pOwnerUnit + 0x2c) >>> 0)
-        if (dwType === 0 || dwType === 1 || dwType === 3) {
-          if (pPathOrPos !== 0) {
-            curX = PATH_GetPosX113c(m, pPathOrPos) | 0
-            curY = PATH_GetPosY113c(m, pPathOrPos) | 0
-          } else {
-            curX = 0
-            curY = 0
-          }
-        } else {
+        if (dwType === 2 || (dwType > 3 && dwType <= 5)) {
           curX = pPathOrPos !== 0 ? (m.u32((pPathOrPos + 0x0c) >>> 0) | 0) : 0
           curY = pPathOrPos !== 0 ? (m.u32((pPathOrPos + 0x10) >>> 0) | 0) : 0
+        } else if (pPathOrPos !== 0) {
+          curX = PATH_GetPosX113c(m, pPathOrPos) | 0
+          curY = PATH_GetPosY113c(m, pPathOrPos) | 0
+        } else {
+          curX = 0
+          curY = 0
         }
-        m.setU32(spOutX, (curX) >>> 0)
-        m.setU32(spOutY, (curY) >>> 0)
-        if (curX === 0 || curY === 0) {
-          bUseTargetCoords = true
-        }
+        m.setU32(spOutX, curX >>> 0)
+        m.setU32(spOutY, curY >>> 0)
       }
     }
 
     let pResolvedOwner = pOwnerUnit >>> 0
     while (pResolvedOwner !== 0 && m.u32(pResolvedOwner) === 1) {
       const pMonData = m.u32((pResolvedOwner + 0x14) >>> 0)
-      const pAiCtrl = pMonData !== 0 ? m.u32((pMonData + 0x28) >>> 0) : 0
+      if (pMonData === 0) {
+        return 0
+      }
+      const pAiCtrl = m.u32((pMonData + 0x28) >>> 0)
       if (pAiCtrl === 0) {
-        break
+        return 0
+      }
+      const pOwnerGame = m.u32((pAiCtrl + 0x28) >>> 0)
+      if (pOwnerGame === 0) {
+        return 0
       }
       const pNextOwner =
         SUNIT_GetServerUnit113c(
           m,
-          m.u32((pAiCtrl + 0x28) >>> 0),
-          (m.u32((pAiCtrl + 0x30) >>> 0) | 0),
+          pOwnerGame,
+          m.u32((pAiCtrl + 0x30) >>> 0) | 0,
           m.u32((pAiCtrl + 0x2c) >>> 0),
         ) >>> 0
-      if (pNextOwner === 0 || pNextOwner === pResolvedOwner) {
+      if (pNextOwner === 0) {
+        return 0
+      }
+      if (pNextOwner === pResolvedOwner) {
         break
       }
       pResolvedOwner = pNextOwner
     }
-    if (pResolvedOwner !== 0) {
-      pOwnerUnit = pResolvedOwner
-    }
+    pOwnerUnit = pResolvedOwner
 
-    if (bUseTargetCoords) {
-      SKILLS_GetUnitTargetOrFirstPathCoords_6FCBFA30_113c(m, pOwnerUnit, pGame, spOutX, spOutY)
-      curX = (m.u32(spOutX) | 0)
-      curY = (m.u32(spOutY) | 0)
+    if (curX === 0 || curY === 0) {
+      if (SKILLS_GetUnitTargetOrFirstPathCoords_6FCBFA30_113c(m, pOwnerUnit, pGame, spOutX, spOutY) === 0) {
+        return 0
+      }
+      curX = m.u32(spOutX) | 0
+      curY = m.u32(spOutY) | 0
     }
 
     const pOwnerRoom = UNITS_GetRoom113c(m, pOwnerUnit) >>> 0
@@ -3757,20 +3867,6 @@ export function SKILLS_SummonMonsterFromSkillOrMissile_6FCB5D50_113c(
     ) {
       return 0
     }
-
-    let nPetType = m.u8((pSkillTxt + 0xbe) >>> 0)
-    if (pSgpt === 0 || nPetType >= (m.u32((pSgpt + 0xbf0) >>> 0) | 0)) {
-      nPetType = 0
-    }
-    const wSkillId = m.u16(pSkillTxt)
-    const nMaxPets =
-      SKILLS_EvalCalcByOffset113c(
-        m,
-        pOwnerUnit,
-        (m.u32((pSkillTxt + 0xc0) >>> 0) | 0),
-        wSkillId,
-        nSkillLevel,
-      ) | 0
 
     m.setU32(spSummonArg, 1)
     m.setU32((spSummonArg + 0x04) >>> 0, pOwnerUnit >>> 0)
@@ -3904,7 +4000,7 @@ export function ACT3Q3_OnScrollMessageOrmusGidbinn_6FCDAA50_113c(
     if (m.u32(0x6fd31c20) !== 0) {
       const sp = allocW14B1Stack(m, 0x80)
       try {
-        writeAsciiStr113c(m, sp, 'quest state = 2')
+        writeAsciiStr113c(m, sp, 'changing state to 2\n')
         NET_BroadcastSystemChatMessage_6FCEBE70_113c(m, sp, m.u32((pQuestData + 0x04) >>> 0), 4)
       } finally {
         freeW14B1Stack(sp)
@@ -3925,7 +4021,7 @@ export function ACT3Q3_OnScrollMessageOrmusGidbinn_6FCDAA50_113c(
     if (pCreated !== 0) {
       m.setU8((pExt + 0x02) >>> 0, 1)
       if (m.u8((pQuestData + 0x0c) >>> 0) < 2) {
-        QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, 2, pQuestData)
+        QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuestData, 2)
       }
       m.setU8((pExt + 0x1c) >>> 0, 1)
       QUESTS_TriggerNpcInteractAndSendPacket27_6FC55910_113c(
@@ -3946,7 +4042,7 @@ export function ACT3Q3_OnScrollMessageOrmusGidbinn_6FCDAA50_113c(
     ) {
       m.setU8((pQuestData + 0x14) >>> 0, 0)
       m.setU8((pQuestData + 0x0b) >>> 0, 0x0d)
-      QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, 5, pQuestData)
+      QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuestData, 5)
       if (m.u32((pQuestData + 0xf0) >>> 0) === 0) {
         throw new D2CommonAssertError('0x6fd19ff9', 0x213)
       }
@@ -4163,10 +4259,10 @@ export function NPCTRADE_InteractBuyItem_6FCDF200_113c(
     try {
       m.setU8(sp, 0x2a)
       m.setU8((sp + 1) >>> 0, 0)
-      m.setU16((sp + 2) >>> 0, 9)
+      m.setU8((sp + 2) >>> 0, 9)
       m.setU32((sp + 7) >>> 0, 0xffffffff)
       m.setU32((sp + 0x0b) >>> 0, dwGold)
-      NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 0, sp, 0x0f)
+      NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, sp, 0x0f)
     } finally {
       freeW14B1Stack(sp)
     }
@@ -4324,10 +4420,8 @@ export function NPCTRADE_PopulateVendorItemsFromTable_6FCDF2E0_113c(
           } else if (roll100 >= 0x4b) {
             nQual = 3
           }
-          const pMinMaxCodeBase = m.u32((pShop + 0x0c) >>> 0)
           const pMinMaxRecOff = m.u32((pNpcRecord + 0x2c) >>> 0)
-          void pMinMaxRecOff
-          const dwSpawnCode = m.u32((pMinMaxCodeBase + byteOff + 0x04) >>> 0)
+          const dwSpawnCode = m.u32((pMinMaxRecOff + byteOff + 0x04) >>> 0)
           if (spawnVendorItem(dwSpawnCode, nQual, 0) === 0) {
             nFailedCount = (nFailedCount + 1) | 0
           }
@@ -4367,7 +4461,7 @@ export function NPCTRADE_PopulateVendorItemsFromTable_6FCDF2E0_113c(
         nMagicCount = (nMagicMin + rem) >>> 0
       }
       for (let mIdx = 0; (mIdx >>> 0) < nMagicCount; mIdx = (mIdx + 1) | 0) {
-        const dwCurMagicCode = m.u32((m.u32((pShop + 0x0c) >>> 0) + byteOff + 0x04) >>> 0)
+        const dwCurMagicCode = m.u32((m.u32((pNpcRecord + 0x2c) >>> 0) + byteOff + 0x04) >>> 0)
         if (spawnVendorItem(dwCurMagicCode, 4, 0) === 0) {
           nFailedCount = (nFailedCount + 1) | 0
         }
@@ -4453,10 +4547,10 @@ export function NPCTRADE_InteractRepairItem_6FCE1890_113c(
     try {
       m.setU8(sp, 0x2a)
       m.setU8((sp + 1) >>> 0, 0)
-      m.setU16((sp + 2) >>> 0, 9)
+      m.setU8((sp + 2) >>> 0, 9)
       m.setU32((sp + 7) >>> 0, 0xffffffff)
       m.setU32((sp + 0x0b) >>> 0, dwGold)
-      NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 0, sp, 0x0f)
+      NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, sp, 0x0f)
     } finally {
       freeW14B1Stack(sp)
     }
@@ -5150,6 +5244,9 @@ export function ACT3Q2_OperateGidbinnAltar_6FD09C80_113c(
     return 0;
   }
   const pQuestControl = m.u32((pGame + 0x10f4) >>> 0);
+  if (pQuestControl === 0) {
+    return 0;
+  }
   let pQuest = m.u32(pQuestControl >>> 0);
   while (pQuest !== 0 && m.u32(pQuest >>> 0) !== 0x11) {
     pQuest = m.u32((pQuest + 0xf4) >>> 0);

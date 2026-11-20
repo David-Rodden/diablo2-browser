@@ -103,7 +103,10 @@ import {
   MISSILE_SrvDo01_LinearProjectile113c,
   SKILLS_ResolveChargedSrvMissileId113c,
 } from './k2-gap-melee-dot-113c'
-import { type SUnitDmgHooks113c } from './k2-real-s2c-combat-113c'
+import {
+  AIGENERAL_GetOwnerData_6FC40D50_113c,
+  type SUnitDmgHooks113c,
+} from './k2-real-s2c-combat-113c'
 import {
   SKILLS_EvalLinearParam34_6FC21A40_113c,
   SKILLS_GetParam4Fast_6FC21C20_113c,
@@ -1038,25 +1041,6 @@ export function MONUMOD_OnHitApplyCursedAmplifyDamage_6FC44250_113c(
   )
 }
 
-function aiGeneralGetOwnerInfo_6FC40D50(
-  m: D2KernMemory113c,
-  pMonster: number,
-  pOutOwnerGuid: number,
-  pOutOwnerType: number,
-): void {
-  const mon = pMonster >>> 0
-  if (mon !== 0 && i32(m, mon) === 1) {
-    const pMonData = m.u32((mon + 0x14) >>> 0) >>> 0
-    const pAiGen = pMonData !== 0 ? m.u32((pMonData + 0x28) >>> 0) >>> 0 : 0
-    if (pAiGen !== 0 && m.u32((pAiGen + 0x28) >>> 0) !== 0) {
-      m.setU32(pOutOwnerGuid >>> 0, m.u32((pAiGen + 0x2c) >>> 0))
-      m.setU32(pOutOwnerType >>> 0, m.u32((pAiGen + 0x30) >>> 0))
-      return
-    }
-  }
-  m.setU32(pOutOwnerGuid >>> 0, 0xffffffff)
-}
-
 /**
  * [8/45] Returns `1` iff `pUnit` is a living monster (`dwUnitType == 1`), can use a skill in
  * mode `12` (`0x6FCBF120`), and is not owned by a player (`ownerGuid == -1 || ownerType != 0`).
@@ -1079,7 +1063,7 @@ export function SKILLS_CanUnownedMonsterUseSkillInMode12_6FC47130_113c(
   try {
     m.setU32(sp, 0)
     m.setU32((sp + 0x04) >>> 0, 0)
-    aiGeneralGetOwnerInfo_6FC40D50(m, unit, sp, (sp + 0x04) >>> 0)
+    AIGENERAL_GetOwnerData_6FC40D50_113c(m, unit, sp, (sp + 0x04) >>> 0)
     if (i32(m, sp) === -1 || m.u32((sp + 0x04) >>> 0) !== 0) {
       return 1
     }
@@ -3044,7 +3028,7 @@ export function SKILLS_SrvDo_ReleaseChargedMeleeHitWithSecondaryAura_6FC66A20_11
     nDuration,
     skillId,
     lvl,
-    nDuration,
+    lvl,
     pTarget,
   )
   SKILLS_ApplySkillDamageWithElemDuration_6FC651B0_113c(
@@ -3670,7 +3654,7 @@ export function ACT1Q4_RandomizeCairnStonesOrder_6FC833C0_113c(
             m.setU32((sp + 0x04) >>> 0, 0)
             m.setU8((sp + 0x08) >>> 0, 4)
             m.setU8((sp + 0x0a) >>> 0, 0)
-            const msg = `Stone ${slotIdx} = ${stoneId}`
+            const msg = `stone ${slotIdx} is class ${stoneId}`
             for (let i = 0; i < msg.length; i++) {
               m.setU8((sp + 0x1a + i) >>> 0, msg.charCodeAt(i) & 0xff)
             }

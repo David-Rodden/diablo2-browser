@@ -415,7 +415,14 @@ describe('K2 Wave 4 Batch 7 (w4b7): D2Game.dll 0x6FCC59B0..0x6FCD36A0', () => {
     m.setU32(pCtx, 0);
     expect(MONAI_CheckDirectPathOrFindNearestBlockingObstacle_6FCD1AB0_113c(m, pUnit, pCtx, pCtx + 4, 1, 1)).toBe(1);
     MONAI_ApplyTauntOrAttractTarget_6FCD2120_113c(m, pTarget, pGame, pUnit, 50);
+    const pTargetData = m.u32(pTarget + 0x14);
+    const pArenaUnit = m.alloc(0x10);
+    m.setU32(pTargetData + 0x34, pArenaUnit);
+    const pArenaTxt = m.alloc(0x1c);
+    m.setU32(pArenaTxt, 25);
+    m.setU32(0x6fdf1400, pArenaTxt);
     ARENA_UpdatePlayerArenaScore_6FCD2820_113c(m, pTarget, 0, pGame, pTarget);
+    expect(m.u32(pArenaUnit)).toBe(25);
     expect(MONSTER_FindNextAnimEventInRemainingFrames_6FCD2E00_113c(m, pUnit)).toBe(0);
 
     const pSkillList = m.alloc(0x40);

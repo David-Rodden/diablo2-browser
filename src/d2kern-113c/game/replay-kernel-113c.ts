@@ -246,6 +246,7 @@ import {
   SUNIT_DeactivateUnitStatesAndEvents113c,
   SUNIT_IsUnitInActiveClientRoom113c,
   SUNIT_PlaceServerUnitInRoom113c,
+  SUNIT_ValidatePathTargetUnit113c,
   type RegpopSpawnHooks113c,
 } from './regpop-spawn-113c.ts'
 import {
@@ -1242,12 +1243,6 @@ export function runMonsterAiDriver113c(
   pfnThink: number,
 ): void {
   if (SUNIT_IsDeadOrDying113c(world.m, pMonster) !== 0) return
-  if (
-    k4ReplayBridge !== null &&
-    k4ReplayBridge.tryRunTownNpcThink(world.m, world.pGame, pMonster, pfnThink)
-  ) {
-    return
-  }
   attachSliceWorldCallbacks113c(world)
   AI_DispatchTargetByAiFlag113c(world, pMonster, pfnThink)
 }
@@ -2474,6 +2469,9 @@ export function stepFallenSliceFrame113c(
             if (mode === PLRMODE_RUN) {
               PLAYER_DrainRunStamina113c(mem, plr)
             }
+            if (pg !== 0 && isSgptDataTablesLoaded113c(mem)) {
+              SUNIT_ValidatePathTargetUnit113c(mem, plr, pg)
+            }
             const stepped = PATH_Step113c(mem, plr, 0)
             if (UNITS_GetPathRoomRefreshFlag113c(mem, plr) !== 0) {
               SUNIT_UpdateUnitPositionAndRoom113c(mem, 0, plr, pg)
@@ -2486,7 +2484,9 @@ export function stepFallenSliceFrame113c(
                 const targetType = PLAYER_GetParam158_113c(mem, plr) >>> 0
                 const targetId = PLAYER_GetParam15C_113c(mem, plr) >>> 0
                 if (interactAction < 0 && k4ReplayBridge !== null) {
-                  transitionPlayerToNeutral113c(world, plr)
+                  mem.setU32((pPlayerData + 0x150) >>> 0, 0)
+                  PLAYER_FinishModeAndResetToNeutral113c(mem, pg, plr, arg14, arg18)
+                  syncPlayerNeutralAnimAfterReset113c(world, plr)
                   k4ReplayBridge.executeQueuedPlayerEntityInteract(
                     mem,
                     pg,
@@ -2496,7 +2496,6 @@ export function stepFallenSliceFrame113c(
                     targetId,
                   )
                   syncActRoomsAndUnitsIntoWorld113c(world)
-                  mem.setU32((pPlayerData + 0x150) >>> 0, 0)
                   return 1
                 }
                 mem.setU32((pPlayerData + 0x150) >>> 0, 0)
@@ -2679,11 +2678,7 @@ export function stepFallenSliceFrame113c(
           dispatchMonsterEvent: (m2, g2, u, ev, a14, a18, node) =>
             disp(m2, g2, u, ev, a14, a18, 0, node !== undefined ? node : 0),
         }),
-      (mem, pg, pt, slot, disp) =>
-        EVENT_ExecuteObjectEvents113c(mem, pg, pt, slot, {
-          dispatchObjectEvent: (m2, g2, u, ev, a14, a18, node) =>
-            disp(m2, g2, u, ev, a14, a18, 0, node !== undefined ? node : 0),
-        }),
+      (mem, pg, pt, slot) => EVENT_ExecuteObjectEvents113c(mem, pg, pt, slot),
       (mem, pg, pt, slot, disp) =>
         EVENT_ExecuteItemEvents113c(mem, pg, pt, slot, {
           allowZeroHandler: true,
@@ -5343,6 +5338,10 @@ export function hydrateSnapshotKernelTables113c(
   return world
 }
 
+const C2S_NULL_OPCODES_6FD1A078 = new Set<number>([
+  0x00, 0x2b, 0x4a, 0x4e, 0x55, 0x56, 0x57, 0x5a, 0x5b, 0x5c, 0x64, 0x65,
+])
+
 // 0x6FCEC550
 export function C2S_Dispatch113c(
   m: Memory113c,
@@ -5351,6 +5350,28 @@ export function C2S_Dispatch113c(
   packet: Uint8Array,
 ): number {
   hitD2GameVa113c(0x6FCEC550)
+  if (packet.length === 0) return 3
+  const op = packet[0]! & 0xff
+  if (op === 0 || op >= 0x67 || C2S_NULL_OPCODES_6FD1A078.has(op)) {
+    return 3
+  }
+  const bypassAliveGate =
+    op === 0x14 || op === 0x15 || op === 0x3c || op === 0x43 || op === 0x66
+  if (!bypassAliveGate) {
+    if (op === 0x41) {
+      if (pPlayer === 0 || (m.u32((pPlayer + 0x10) >>> 0) >>> 0) !== 0x11) {
+        return 0
+      }
+    } else {
+      if (pPlayer === 0 || STATES_CheckState113c(m, pPlayer, 0x36) !== 0) {
+        return 0
+      }
+      const mode = m.u32((pPlayer + 0x10) >>> 0) >>> 0
+      if (mode === 0 || mode === 0x11) {
+        return 0
+      }
+    }
+  }
   let world = SLICE_WORLD_BY_MEM.get(m)
   if (world === undefined) {
     world = hydrateSnapshotKernelTables113c(m, pGame, 0)

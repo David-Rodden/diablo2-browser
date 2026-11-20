@@ -131,8 +131,8 @@
     "name": "MISSILE_DispatchFrameTick113c_6FC5E3F0",
     "kernFile": "src/d2kern-113c/game/k2-gap-melee-dot-113c.ts",
     "tsSymbol": "MISSILE_DispatchFrameTick113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts; Wave 19 1:1 PE32 indirect-call audit (static_table; tools/oracle/callgraph/indirect-audit-batchA.json) verified in tests/oracle/k2/k2-disasm-verified-wave19-indA.test.ts"
   },
   {
     "module": "D2Game",
@@ -149,8 +149,8 @@
     "name": "MISSILE_ProcessTargetCollisionHit113c_6FC5EDE0",
     "kernFile": "src/d2kern-113c/game/k2-gap-melee-dot-113c.ts",
     "tsSymbol": "MISSILE_ProcessTargetCollisionHit113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts; Wave 19 1:1 PE32 indirect-call audit (static_table; tools/oracle/callgraph/indirect-audit-batchA.json) verified in tests/oracle/k2/k2-disasm-verified-wave19-indA.test.ts"
   },
   {
     "module": "D2Game",
@@ -221,8 +221,8 @@
     "name": "MISSILE_CreateServerProjectile113c_6FC8F930",
     "kernFile": "src/d2kern-113c/game/k2-gap-melee-dot-113c.ts",
     "tsSymbol": "MISSILE_CreateServerProjectile113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/laneE-gap-melee-dot.test.ts; Wave 19 1:1 PE32 indirect-call audit (vtable_or_struct_table; tools/oracle/callgraph/indirect-audit-batchA.json) verified in tests/oracle/k2/k2-disasm-verified-wave19-indA.test.ts"
   },
   {
     "module": "D2Game",

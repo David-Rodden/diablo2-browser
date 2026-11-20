@@ -83,10 +83,10 @@ describe('K2 Wave 11 Batch 1 (w11b1): 30 D2Game.dll 1.13c functions (0x6FC3CAE0.
     expect(fn(m, 0x10000, 0x12000, -1, 1)).toBe(0);
   });
 
-  it('6. 0x6FC58620 executes safely on zeroed/valid structures', () => {
+  it('6. 0x6FC58620 asserts on null pPlayerUnit per D2Game.dll (line 0x47)', () => {
     const m = createTestMem();
     const fn = resolveExportByVa('0x6FC58620');
-    expect(() => fn(m, 0, 0, 0)).not.toThrow();
+    expect(() => fn(m, 0, 0, 0)).toThrow();
   });
 
   it('7. 0x6FC5EA60 executes safely on zeroed/valid structures', () => {
@@ -119,11 +119,15 @@ describe('K2 Wave 11 Batch 1 (w11b1): 30 D2Game.dll 1.13c functions (0x6FC3CAE0.
     expect(() => fn(m, pPet, pOwner, 1, 0x10000, -1)).not.toThrow();
   });
 
-  it('11. 0x6FC70800 executes safely on zeroed/valid structures', () => {
+  it('11. 0x6FC70800 executes safely on valid room without free coords', () => {
     const m = createTestMem();
     const fn = resolveExportByVa('0x6FC70800');
     const pMonster = 0x12000;
+    const pPath = 0x12200;
+    const pRoom = 0x12400;
     m.setU32(pMonster + 0x00, 1);
+    m.setU32(pMonster + 0x2c, pPath);
+    m.setU32(pPath + 0x1c, pRoom);
     expect(() => fn(m, pMonster, 0x10000)).not.toThrow();
   });
 
@@ -155,7 +159,7 @@ describe('K2 Wave 11 Batch 1 (w11b1): 30 D2Game.dll 1.13c functions (0x6FC3CAE0.
     expect(fn(m, pOperateArgs, pShrineRecord)).toBe(1);
   });
 
-  it('14. 0x6FC8BB60 executes safely on zeroed/valid structures', () => {
+  it('14. 0x6FC8BB60 asserts line 0xfcd when target level has no spawn room', () => {
     const m = createTestMem();
     const fn = resolveExportByVa('0x6FC8BB60');
     const pGame = 0x10000;
@@ -186,7 +190,7 @@ describe('K2 Wave 11 Batch 1 (w11b1): 30 D2Game.dll 1.13c functions (0x6FC3CAE0.
     m.setU32(pRoomEx + 0x38, 100);
     m.setU32(pRoomEx + 0x3c, 10);
     m.setU32(pRoomEx + 0x40, 10);
-    expect(fn(m, pOperateArgs)).toBe(0);
+    expect(() => fn(m, pOperateArgs)).toThrow();
   });
 
   it('15. 0x6FC8BD60 executes safely on zeroed/valid structures', () => {
@@ -195,10 +199,18 @@ describe('K2 Wave 11 Batch 1 (w11b1): 30 D2Game.dll 1.13c functions (0x6FC3CAE0.
     expect(() => fn(m, 0x10000, 0x12000)).not.toThrow();
   });
 
-  it('16. 0x6FC8D0F0 executes safely on zeroed/valid structures', () => {
+  it('16. 0x6FC8D0F0 returns 0 cleanly when player is interacting', () => {
     const m = createTestMem();
     const fn = resolveExportByVa('0x6FC8D0F0');
-    expect(() => fn(m, 0x10000, 0)).not.toThrow();
+    const pOperateArgs = 0x12000;
+    const pPlayer = 0x14000;
+    const pPlrData = 0x14200;
+    m.setU32(pPlayer + 0x00, 0);
+    m.setU32(pPlayer + 0x14, pPlrData);
+    m.setU8(pPlayer + 0x6c, 1);
+    m.setU32(pOperateArgs + 0x00, 0x10000);
+    m.setU32(pOperateArgs + 0x08, pPlayer);
+    expect(fn(m, pOperateArgs, 0)).toBe(0);
   });
 
   it('17. 0x6FCA9730 executes safely when pMonsterUnit is 0', () => {

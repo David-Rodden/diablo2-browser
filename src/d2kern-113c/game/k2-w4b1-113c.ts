@@ -72,7 +72,7 @@ import {
   UNIT_Alloc113c,
 } from '../common/unit.js'
 import { UNITS_SetTargetUnitForDynamicUnit113c } from '../common/waypoint.js'
-import type { Memory113c } from '../mem/sparse-memory.js'
+import type { Memory113c, SparseMemory113c } from '../mem/sparse-memory.js'
 import { SEED_InitLowSeed113c, seedRoll } from '../prng.js'
 import {
   DATATBLS_GetItemsTxtRecordByCode113c,
@@ -87,13 +87,10 @@ import {
   AIGENERAL_GetPackLeaderUnit113c,
 } from './ai-fallen-113c.js'
 import {
-  ITEMS_ApplySocketAndEtherealBonuses113c,
-  ITEMS_DropGoldPileAtUnit113c,
-  ITEMS_SpawnDroppedItemAtCoords113c,
-} from './combat-a1c-113c.js'
-import {
   D2GAME_CreateItemEx_6FC31490_113c,
   ITEMS_FindFreeGroundDropCoords_6FC2E930_113c,
+  ITEMS_RollItemQualityOnCreatedItem_6FC2EE90_113c,
+  ITEMS_RollStaffModsOnItem_6FC33DE0_113c,
 } from './k2-real-itemdrop-113c.js'
 import { SUNIT_GetServerUnit113c } from './game-strc.js'
 import {
@@ -106,6 +103,7 @@ import {
   type K2ItemsTcW1Hooks113c,
   MONUMOD_ApplyToMinionCallback113c,
   MONUMOD_GetConstantValue113c,
+  MONUMOD_RollBossOrMinionNameSeed113c,
   OBJECTS_SubstituteObjectClassIdFromParm0_113c,
 } from './k2-items-tc-w1-113c.js'
 import {
@@ -120,10 +118,19 @@ import {
   ITEMS_SpawnItemWithParams_6FC31980_113c,
   ITEMS_TestUniqueSpawnedBit_6FC2E250_113c,
   type LaneIHooks113c,
+  MONUMOD_ApplyBossLevelAndExpBonus_6FC41E80_113c,
+  MONUMOD_ApplyExtraFastVelocity_6FC42880_113c,
   MONUMOD_ScaleMonsterMaxAndCurLife_6FC41EC0_113c,
   type PackMemberCallbackFn113c,
 } from './k2-laneI-0x6fc3-w1-113c.js'
-import { OBJECTS_CheckSpawnSpotClearMargin7_6FC4E660_113c } from './k2-laneJ-0x6fc4-w1-113c.js'
+import {
+  MONUMOD_InitUMod41ScheduleEvent7_6FC469F0_113c,
+  OBJECTS_CheckSpawnSpotClearMargin7_6FC4E660_113c,
+} from './k2-laneJ-0x6fc4-w1-113c.js'
+import {
+  MONSTER_AssignAuraEnchantedSkill_6FC44CD0_113c,
+  MONSTER_AssignTeleportSkill_6FC441B0_113c,
+} from './k2-w10b1-113c.js'
 import { SUNIT_GetValidatedPathTargetUnit_6FD00BD0_113c } from './k2-w2b8-113c.js'
 import {
   AI_CheckTargetIsUnboundPutridDefiler_6FC35B00_113c,
@@ -150,8 +157,11 @@ import {
   GAME_LookupAndLockGameByKey_6FC4AAE0_113c,
   type K2W3B2Hooks113c,
   MONUMOD_ApplyElementalDamageBonus_6FC41FE0_113c,
+  MONUMOD_ApplyExtraHealthBonus_6FC42FA0_113c,
   MONUMOD_ApplyFanaticOrPossessedStats_6FC42DA0_113c,
+  MONUMOD_ApplyGhostlyStats_6FC42D00_113c,
   MONUMOD_ApplyResistanceBonus_6FC41BE0_113c,
+  MONUMOD_ApplyStrongToHitAndDamageBonus_6FC42BC0_113c,
   MONUMOD_CheckModEligibility_6FC43100_113c,
   MONUMOD_SpawnBossMinionPack_6FC445A0_113c,
   MONUMOD_SpawnScarabChargedBolts_6FC46320_113c,
@@ -741,7 +751,7 @@ export function ITEMS_InitAndApplySuperiorQualityMods_6FC301E0_113c(
   ITEMS_SetOwnerGuid113c(m, m.u32(pp), m.u32(pSeedVar))
   const pSeed1 = ITEMS_GetItemSeed113c(m, m.u32(pp)) >>> 0
   SEED_InitLowSeed113c(m, pSeed1, m.u32(pSeedVar))
-  ITEMS_ApplySocketAndEtherealBonuses113c(m, drop, m.u32(pp))
+  ITEMS_RollItemQualityOnCreatedItem_6FC2EE90_113c(m, m.u32(pp), drop)
   ITEMS_SetItemQuality113c(m, m.u32(pp), 3)
   m.setU32((drop + 0x30) >>> 0, 3)
   const pSeed2 = ITEMS_GetItemSeed113c(m, m.u32(pp)) >>> 0
@@ -949,7 +959,7 @@ export function ITEMS_TryRollAndApplyMagicAffixes_6FC303C0_113c(
   }
 
   ITEMS_SetOrClearCommandFlags113c(m, m.u32(pp), 0x10, 0)
-  ITEMS_SpawnDroppedItemAtCoords113c(m, drop, 0, 0, 0, 0)
+  ITEMS_RollStaffModsOnItem_6FC33DE0_113c(m, m.u32(pp), drop)
   return 1
 }
 
@@ -1249,13 +1259,12 @@ export function ITEMS_SpawnAndDropPlayerEar_6FC32AF0_113c(
   }
 
   const sp = k2W4B1StackPtr
-  k2W4B1StackPtr = (sp + 0x28) >>> 0
+  k2W4B1StackPtr = (sp + 0x18) >>> 0
   try {
     const pEarClassId = sp
     const pInCoords = (sp + 0x04) >>> 0
     const pOutCoords = (sp + 0x0c) >>> 0
-    const pBoxCoords = (sp + 0x14) >>> 0
-    m.fill(sp, 0x28, 0)
+    m.fill(sp, 0x18, 0)
 
     if (DATATBLS_GetItemsTxtRecordByCode113c(m, 0x20726165, pEarClassId) === 0) {
       return
@@ -1263,22 +1272,8 @@ export function ITEMS_SpawnAndDropPlayerEar_6FC32AF0_113c(
 
     PATH_GetTargetTypeAndPosition113c(m, player, pInCoords)
     const pRoom = UNITS_GetRoom113c(m, player) >>> 0
-
-    ITEMS_DropGoldPileAtUnit113c(m, 0, 0, 0, false)
-    const x0 = m.u32(pInCoords) | 0
-    const y0 = m.u32((pInCoords + 0x04) >>> 0) | 0
-    const xOff = (x0 + 2) | 0
-    const yOff = (y0 + 3) | 0
-    const pFoundRoom = ROOM_FindRoomContainingSubtile113c(m, pRoom, xOff, yOff) >>> 0
-    if (pFoundRoom !== 0) {
-      m.setU32(pBoxCoords, xOff >>> 0)
-      m.setU32((pBoxCoords + 0x04) >>> 0, yOff >>> 0)
-    } else {
-      m.setU32(pBoxCoords, x0 >>> 0)
-      m.setU32((pBoxCoords + 0x04) >>> 0, y0 >>> 0)
-    }
     const pTargetRoom =
-      COLLISION_FindFreePositionBasic113c(m, pRoom, pOutCoords, pBoxCoords, 1, 0x3e01, 0x801, 1) >>> 0
+      ITEMS_FindFreeGroundDropCoords_6FC2E930_113c(m, pRoom, pInCoords, pOutCoords, 1) >>> 0
     if (pTargetRoom === 0) {
       return
     }
@@ -1365,8 +1360,26 @@ export function ITEMS_SpawnGoldPilesAtUnit_6FC32B90_113c(
       droppedSoFar = (droppedSoFar + chunk) >>> 0
 
       PATH_GetTargetTypeAndPosition113c(m, unit, pUnitCoords)
+      const nTryX = ((m.u32(pUnitCoords) | 0) + 2) | 0
+      const nTryY = ((m.u32((pUnitCoords + 0x04) >>> 0) | 0) + 3) | 0
+      if (ROOM_FindRoomContainingSubtile113c(m, pRoom, nTryX, nTryY) !== 0) {
+        m.setU32(pOutCoords, nTryX >>> 0)
+        m.setU32((pOutCoords + 0x04) >>> 0, nTryY >>> 0)
+      } else {
+        m.setU32(pOutCoords, m.u32(pUnitCoords) >>> 0)
+        m.setU32((pOutCoords + 0x04) >>> 0, m.u32((pUnitCoords + 0x04) >>> 0) >>> 0)
+      }
       const pTargetRoom =
-        ITEMS_FindFreeGroundDropCoords_6FC2E930_113c(m, pRoom, pUnitCoords, pOutCoords, 1) >>> 0
+        COLLISION_FindFreePositionBasic113c(
+          m,
+          pRoom,
+          pOutCoords,
+          pUnitCoords,
+          1,
+          0x3e01,
+          0x801,
+          1,
+        ) >>> 0
       pRoom = pTargetRoom
       if (pTargetRoom !== 0) {
         const nGoldClassId = m.u32(pGoldClassId)
@@ -1655,7 +1668,7 @@ export function ITEMS_RollAndApplyCraftedItemAffixes_6FC34BF0_113c(
       ITEMS_ApplyItemQualityMods113c(m, 0, 0, item, pSufTxt, 0, 0)
     }
   }
-  ITEMS_SpawnDroppedItemAtCoords113c(m, drop, 0, 0, 0, 0)
+  ITEMS_RollStaffModsOnItem_6FC33DE0_113c(m, item, drop)
   return 1
 }
 
@@ -1803,7 +1816,7 @@ export function ITEMS_RollAndApplyTemperedOrRareItemAffixes_6FC34F20_113c(
       ITEMS_ApplyItemQualityMods113c(m, 0, 0, item, pSufTxt, 0, 0)
     }
   }
-  ITEMS_SpawnDroppedItemAtCoords113c(m, drop, 0, 0, 0, 0)
+  ITEMS_RollStaffModsOnItem_6FC33DE0_113c(m, item, drop)
   return 1
 }
 
@@ -1927,7 +1940,7 @@ export function ITEMS_RollAndApplyRareItemAffixes_6FC35240_113c(
       ITEMS_ApplyItemQualityMods113c(m, 0, 0, item, pSufTxt, 0, 0)
     }
   }
-  ITEMS_SpawnDroppedItemAtCoords113c(m, drop, 0, 0, 0, 0)
+  ITEMS_RollStaffModsOnItem_6FC33DE0_113c(m, item, drop)
   return 1
 }
 
@@ -1953,7 +1966,7 @@ export function AI_ThinkPackIdlePatrol_6FC373D0_113c(
         pAiCmd = m.u32((pAiGeneral + 0x20) >>> 0) >>> 0
         if (pAiCmd !== 0 && m.u32((pAiCmd + 0x08) >>> 0) === 8) {
           AIGENERAL_RemoveFromMinionList_6FC416A0_113c(m, pGame, pUnit)
-          AI_InitMonsterAiThinkFn113c(m, pUnit)
+          AI_InitMonsterAiThinkFn113c(m, pUnit, pGame, pAiControl, 0)
           invokeAiStall113c(m, pGame, pUnit, 0x0a)
           return
         }
@@ -1961,122 +1974,128 @@ export function AI_ThinkPackIdlePatrol_6FC373D0_113c(
     }
   }
 
-  const pAnyDeadBox = 0x00f0_b150
-  const pCmdBuf = 0x00f0_b160
-  m.setU32(pAnyDeadBox, 0)
-  AIGENERAL_ForEachPackMember_6FC41490_113c(
-    m,
-    pUnit,
-    (mem: D2KernMemory113c, pMember: number, pCtx1: number) => {
-      AI_CheckAnyMinionDeadCallback113c(mem, pMember, pCtx1)
-    },
-    pAnyDeadBox,
-    0,
-  )
+  const sp = k2W4B1StackPtr
+  k2W4B1StackPtr = (sp + 0x28) >>> 0
+  try {
+    const pAnyDeadBox = sp
+    const pCmdBuf = (sp + 0x04) >>> 0
+    m.setU32(pAnyDeadBox, 0)
+    AIGENERAL_ForEachPackMember_6FC41490_113c(
+      m,
+      pUnit,
+      (mem: D2KernMemory113c, pMember: number, pCtx1: number) => {
+        AI_CheckAnyMinionDeadCallback113c(mem, pMember, pCtx1)
+      },
+      pAnyDeadBox,
+      0,
+    )
 
-  let bBreakPack = false
-  if (pUnit !== 0 && m.u32(pUnit >>> 0) === 1) {
-    const pMonsterData = m.u32((pUnit + 0x14) >>> 0) >>> 0
-    if (pMonsterData !== 0) {
-      const nAiState = m.u32((pMonsterData + 0x54) >>> 0) | 0
-      if (nAiState === 3 || nAiState === 0x13) {
-        bBreakPack = true
+    let bBreakPack = false
+    if (pUnit !== 0 && m.u32(pUnit >>> 0) === 1) {
+      const pMonsterData = m.u32((pUnit + 0x14) >>> 0) >>> 0
+      if (pMonsterData !== 0) {
+        const nAiState = m.u32((pMonsterData + 0x54) >>> 0) | 0
+        if (nAiState === 3 || nAiState === 0x13) {
+          bBreakPack = true
+        }
       }
     }
-  }
-  if (!bBreakPack && (m.u32(pAnyDeadBox) | 0) !== 0) {
-    bBreakPack = true
-  }
-  if (bBreakPack) {
-    m.fill(pCmdBuf, 20, 0)
-    m.setU32(pCmdBuf + 0x00, 8)
-    AIGENERAL_BroadcastCmdToMinions113c(m, pUnit, pGame, pCmdBuf)
-    AIGENERAL_RemoveFromMinionList_6FC416A0_113c(m, pGame, pUnit)
-    AI_InitMonsterAiThinkFn113c(m, pUnit)
-    invokeAiStall113c(m, pGame, pUnit, 0x0a)
-    return
-  }
-
-  let pLeader = 0
-  if (pUnit !== 0 && m.u32(pUnit >>> 0) === 1) {
-    const pMonsterData = m.u32((pUnit + 0x14) >>> 0) >>> 0
-    if (pMonsterData !== 0) {
-      const pAiGeneral = m.u32((pMonsterData + 0x28) >>> 0) >>> 0
-      if (pAiGeneral !== 0 && m.u32((pAiGeneral + 0x28) >>> 0) !== 0) {
-        pLeader = SUNIT_GetServerUnit113c(
-          m,
-          m.u32((pAiGeneral + 0x28) >>> 0),
-          m.u32((pAiGeneral + 0x30) >>> 0),
-          m.u32((pAiGeneral + 0x2c) >>> 0),
-        ) >>> 0
-      }
+    if (!bBreakPack && (m.u32(pAnyDeadBox) | 0) !== 0) {
+      bBreakPack = true
     }
-  }
-
-  if (pLeader !== (pUnit >>> 0)) {
-    if (pAiCmd === 0) {
-      invokeAiStall113c(m, pGame, pUnit, 0x0f)
+    if (bBreakPack) {
+      m.fill(pCmdBuf, 0x1c, 0)
+      m.setU32((pCmdBuf + 0x08) >>> 0, 8)
+      AIGENERAL_BroadcastCmdToMinions113c(m, pUnit, pGame, pCmdBuf)
+      AIGENERAL_RemoveFromMinionList_6FC416A0_113c(m, pGame, pUnit)
+      AI_InitMonsterAiThinkFn113c(m, pUnit, pGame, pAiControl, 0)
+      invokeAiStall113c(m, pGame, pUnit, 0x0a)
       return
     }
-    const targetX = ((m.u32((pAiCmd + 0x0c) >>> 0) | 0) + (m.u32((pAiControl + 0x14) >>> 0) | 0)) | 0
-    const targetY = ((m.u32((pAiCmd + 0x10) >>> 0) | 0) + (m.u32((pAiControl + 0x18) >>> 0) | 0)) | 0
-    AIGENERAL_PopAiCommand113c(m, pUnit)
-    invokeAiApproachTarget113c(m, pGame, pUnit, 0, 2, targetX, targetY, 1, 0)
-    return
-  }
 
-  if ((rollSeedPtrViaSeedRoll113c(m, (pUnit + 0x20) >>> 0, 100) | 0) < 30) {
-    invokeAiStall113c(m, pGame, pUnit, 0x0a)
-    return
-  }
+    let pLeader = 0
+    if (pUnit !== 0 && m.u32(pUnit >>> 0) === 1) {
+      const pMonsterData = m.u32((pUnit + 0x14) >>> 0) >>> 0
+      if (pMonsterData !== 0) {
+        const pAiGeneral = m.u32((pMonsterData + 0x28) >>> 0) >>> 0
+        if (pAiGeneral !== 0 && m.u32((pAiGeneral + 0x28) >>> 0) !== 0) {
+          pLeader = SUNIT_GetServerUnit113c(
+            m,
+            m.u32((pAiGeneral + 0x28) >>> 0),
+            m.u32((pAiGeneral + 0x30) >>> 0),
+            m.u32((pAiGeneral + 0x2c) >>> 0),
+          ) >>> 0
+        }
+      }
+    }
 
-  let nStep = ((m.u32((pAiControl + 0x1c) >>> 0) | 0) + 1) | 0
-  if (nStep >= 100) {
-    nStep = 0
-  }
-  let x = UNIT_GetPosX113c(m, pUnit) | 0
-  let y = UNIT_GetPosY113c(m, pUnit) | 0
-  let delta = rollSeedPtrViaSeedRoll113c(m, (pUnit + 0x20) >>> 0, 10) | 0
+    if (pLeader !== (pUnit >>> 0)) {
+      if (pAiCmd === 0) {
+        invokeAiStall113c(m, pGame, pUnit, 0x0f)
+        return
+      }
+      const targetX = ((m.u32((pAiCmd + 0x0c) >>> 0) | 0) + (m.u32((pAiControl + 0x14) >>> 0) | 0)) | 0
+      const targetY = ((m.u32((pAiCmd + 0x10) >>> 0) | 0) + (m.u32((pAiControl + 0x18) >>> 0) | 0)) | 0
+      AIGENERAL_PopAiCommand113c(m, pUnit)
+      invokeAiApproachTarget113c(m, pGame, pUnit, 0, 2, targetX, targetY, 1, 0)
+      return
+    }
 
-  if (nStep < 25) {
-    if (SEED_RollMaskFast113c(m, (pUnit + 0x20) >>> 0, 2) !== 0) {
-      delta = (-delta) | 0
+    if ((rollSeedPtrViaSeedRoll113c(m, (pUnit + 0x20) >>> 0, 100) | 0) < 30) {
+      invokeAiStall113c(m, pGame, pUnit, 0x0a)
+      return
     }
-    x = (x + delta) | 0
-    y = (y - 5) | 0
-  } else if (nStep < 50) {
-    if (SEED_RollMaskFast113c(m, (pUnit + 0x20) >>> 0, 2) !== 0) {
-      delta = (-delta) | 0
-    }
-    x = (x + 5) | 0
-    y = (y + delta) | 0
-  }
-  if (nStep >= 50 && nStep < 75) {
-    if (SEED_RollMaskFast113c(m, (pUnit + 0x20) >>> 0, 2) !== 0) {
-      delta = (-delta) | 0
-    }
-    x = (x + delta) | 0
-    y = (y + 5) | 0
-  }
-  if (nStep >= 75) {
-    let dy = delta
-    if (SEED_RollMaskFast113c(m, (pUnit + 0x20) >>> 0, 2) !== 0) {
-      dy = (-dy) | 0
-    }
-    x = (x - 5) | 0
-    y = (y + dy) | 0
-  }
 
-  if (invokeAiApproachTarget113c(m, pGame, pUnit, 0, 2, x, y, 1, 4) !== 0) {
-    m.fill(pCmdBuf, 20, 0)
-    m.setU32(pCmdBuf + 0x00, 2)
-    m.setU32(pCmdBuf + 0x04, x >>> 0)
-    m.setU32(pCmdBuf + 0x08, y >>> 0)
-    AIGENERAL_BroadcastCmdToMinions113c(m, pUnit, pGame, pCmdBuf)
-    m.setU32((pAiControl + 0x1c) >>> 0, nStep >>> 0)
-    return
+    let nStep = ((m.u32((pAiControl + 0x1c) >>> 0) | 0) + 1) | 0
+    if (nStep >= 100) {
+      nStep = 0
+    }
+    let x = UNIT_GetPosX113c(m, pUnit) | 0
+    let y = UNIT_GetPosY113c(m, pUnit) | 0
+    let delta = rollSeedPtrViaSeedRoll113c(m, (pUnit + 0x20) >>> 0, 10) | 0
+
+    if (nStep < 25) {
+      if (SEED_RollMaskFast113c(m, (pUnit + 0x20) >>> 0, 2) !== 0) {
+        delta = (-delta) | 0
+      }
+      x = (x + delta) | 0
+      y = (y - 5) | 0
+    } else if (nStep < 50) {
+      if (SEED_RollMaskFast113c(m, (pUnit + 0x20) >>> 0, 2) !== 0) {
+        delta = (-delta) | 0
+      }
+      x = (x + 5) | 0
+      y = (y + delta) | 0
+    }
+    if (nStep >= 50 && nStep < 75) {
+      if (SEED_RollMaskFast113c(m, (pUnit + 0x20) >>> 0, 2) !== 0) {
+        delta = (-delta) | 0
+      }
+      x = (x + delta) | 0
+      y = (y + 5) | 0
+    }
+    if (nStep >= 75) {
+      let dy = delta
+      if (SEED_RollMaskFast113c(m, (pUnit + 0x20) >>> 0, 2) !== 0) {
+        dy = (-dy) | 0
+      }
+      x = (x - 5) | 0
+      y = (y + dy) | 0
+    }
+
+    if (invokeAiApproachTarget113c(m, pGame, pUnit, 0, 2, x, y, 1, 4) !== 0) {
+      m.fill(pCmdBuf, 0x1c, 0)
+      m.setU32((pCmdBuf + 0x08) >>> 0, 2)
+      m.setU32((pCmdBuf + 0x0c) >>> 0, x >>> 0)
+      m.setU32((pCmdBuf + 0x10) >>> 0, y >>> 0)
+      AIGENERAL_BroadcastCmdToMinions113c(m, pUnit, pGame, pCmdBuf)
+      m.setU32((pAiControl + 0x1c) >>> 0, nStep >>> 0)
+      return
+    }
+    m.setU32((pAiControl + 0x1c) >>> 0, ((nStep + 25) | 0) >>> 0)
+  } finally {
+    k2W4B1StackPtr = sp
   }
-  m.setU32((pAiControl + 0x1c) >>> 0, ((nStep + 25) | 0) >>> 0)
 }
 
 /**
@@ -2545,29 +2564,68 @@ function dispatchMonUModTableEntry113c(
   nUModId: number,
   bBoss: number,
 ): void {
-  const pfn = m.u32((0x6fd2e550 + ((nUModId & 0xff) << 2)) >>> 0) >>> 0
-  if (pfn === 0x6fc421d0) {
-    MONUMOD_ApplyPoisonEnchantedStats_6FC421D0_113c(m, pUnit, nUModId, bBoss)
-  } else if (pfn === 0x6fc42320) {
-    MONUMOD_ApplyColdEnchantedStats_6FC42320_113c(m, pUnit, nUModId, bBoss)
-  } else if (pfn === 0x6fc42490) {
-    MONUMOD_ApplyColdDamageAndLengthStats_6FC42490_113c(m, pUnit, nUModId, bBoss)
-  } else if (pfn === 0x6fc42600) {
-    MONUMOD_ApplyLightningEnchantedStats_6FC42600_113c(m, pUnit, nUModId, bBoss)
-  } else if (pfn === 0x6fc42740) {
-    MONUMOD_ApplyFireEnchantedStats_6FC42740_113c(m, pUnit, nUModId, bBoss)
-  } else if (pfn === 0x6fc437c0) {
-    MONUMOD_ApplyChampionBerserkerStats_6FC437C0_113c(m, pUnit, nUModId, bBoss)
-  } else if (pfn === 0x6fc43810) {
-    MONUMOD_ApplyChampionFanaticStats_6FC43810_113c(m, pUnit, nUModId, bBoss)
-  } else if (pfn === 0x6fc43850) {
-    MONUMOD_ApplyChampionGhostlyStats_6FC43850_113c(m, pUnit, nUModId, bBoss)
-  } else if (pfn === 0x6fc41be0) {
-    MONUMOD_ApplyResistanceBonus_6FC41BE0_113c(m, pUnit, nUModId, bBoss)
-  } else if (pfn === 0x6fc42da0) {
-    MONUMOD_ApplyFanaticOrPossessedStats_6FC42DA0_113c(m, pUnit, nUModId, bBoss)
-  } else {
-    MONUMOD_ApplyToMinionCallback113c(m, pUnit, nUModId, bBoss)
+  const pfn = m.u32((0x6fd2e550 + imul32(nUModId | 0, 4)) >>> 0) >>> 0
+  if (pfn === 0) return
+  switch (pfn) {
+    case 0x6fc43020:
+      MONUMOD_RollBossOrMinionNameSeed113c(m, pUnit, nUModId, bBoss)
+      return
+    case 0x6fc42fa0:
+      MONUMOD_ApplyExtraHealthBonus_6FC42FA0_113c(m, pUnit, nUModId, bBoss)
+      return
+    case 0x6fc41e80:
+      MONUMOD_ApplyBossLevelAndExpBonus_6FC41E80_113c(m, pUnit, nUModId, bBoss)
+      return
+    case 0x6fc42bc0:
+      MONUMOD_ApplyStrongToHitAndDamageBonus_6FC42BC0_113c(m, pUnit, nUModId, bBoss)
+      return
+    case 0x6fc42880:
+      MONUMOD_ApplyExtraFastVelocity_6FC42880_113c(m, pUnit, nUModId, bBoss)
+      return
+    case 0x6fc41be0:
+      MONUMOD_ApplyResistanceBonus_6FC41BE0_113c(m, pUnit, nUModId, bBoss)
+      return
+    case 0x6fc42740:
+      MONUMOD_ApplyFireEnchantedStats_6FC42740_113c(m, pUnit, nUModId, bBoss)
+      return
+    case 0x6fc42da0:
+      MONUMOD_ApplyFanaticOrPossessedStats_6FC42DA0_113c(m, pUnit, nUModId, bBoss)
+      return
+    case 0x6fc42600:
+      MONUMOD_ApplyLightningEnchantedStats_6FC42600_113c(m, pUnit, nUModId, bBoss)
+      return
+    case 0x6fc42490:
+      MONUMOD_ApplyColdDamageAndLengthStats_6FC42490_113c(m, pUnit, nUModId, bBoss)
+      return
+    case 0x6fc42320:
+      MONUMOD_ApplyColdEnchantedStats_6FC42320_113c(m, pUnit, nUModId, bBoss)
+      return
+    case 0x6fc421d0:
+      MONUMOD_ApplyPoisonEnchantedStats_6FC421D0_113c(m, pUnit, nUModId, bBoss)
+      return
+    case 0x6fc441b0:
+      MONSTER_AssignTeleportSkill_6FC441B0_113c(m as SparseMemory113c, pUnit, bBoss)
+      return
+    case 0x6fc44cd0:
+      MONSTER_AssignAuraEnchantedSkill_6FC44CD0_113c(m as SparseMemory113c, pUnit, bBoss)
+      return
+    case 0x6fc43850:
+      MONUMOD_ApplyChampionGhostlyStats_6FC43850_113c(m, pUnit, nUModId, bBoss)
+      return
+    case 0x6fc43810:
+      MONUMOD_ApplyChampionFanaticStats_6FC43810_113c(m, pUnit, nUModId, bBoss)
+      return
+    case 0x6fc437c0:
+      MONUMOD_ApplyChampionBerserkerStats_6FC437C0_113c(m, pUnit, nUModId, bBoss)
+      return
+    case 0x6fc42d00:
+      MONUMOD_ApplyGhostlyStats_6FC42D00_113c(m, pUnit, nUModId, bBoss)
+      return
+    case 0x6fc469f0:
+      MONUMOD_InitUMod41ScheduleEvent7_6FC469F0_113c(m, pUnit, bBoss)
+      return
+    default:
+      return
   }
 }
 
@@ -2585,10 +2643,27 @@ export function MONUMOD_InitBossAndMinionPackUMods_6FC448A0_113c(
   pGame: number,
   pBoss: number,
   pCoordNode = 0,
+  nMinMinions?: number,
+  nMaxMinions?: number,
 ): void {
   hitD2GameVa113c(0x6FC448A0)
   if (bSpawnMinions !== 0) {
-    MONUMOD_SpawnBossMinionPack_6FC445A0_113c(m, pGame, pRoom, pCoordNode, pBoss)
+    MONUMOD_SpawnBossMinionPack_6FC445A0_113c(
+      m,
+      pGame,
+      pRoom,
+      pCoordNode,
+      pBoss,
+      undefined,
+      nMinMinions,
+      nMaxMinions,
+    )
+  }
+
+  const minionHooks: K2ItemsTcW1Hooks113c = {
+    onMonUMod: (mem, _pfn, pMember, modId, isBoss) => {
+      dispatchMonUModTableEntry113c(mem, pMember, modId, isBoss)
+    },
   }
 
   for (let i = 0; i < 4; i = (i + 1) | 0) {
@@ -2599,7 +2674,7 @@ export function MONUMOD_InitBossAndMinionPackUMods_6FC448A0_113c(
       m,
       pBoss,
       (mem: D2KernMemory113c, pMember: number, modId: number, isBoss: number) => {
-        MONUMOD_ApplyToMinionCallback113c(mem, pMember, modId, isBoss)
+        MONUMOD_ApplyToMinionCallback113c(mem, pMember, modId, isBoss, minionHooks)
       },
       nBaseModId,
       0,
@@ -2620,7 +2695,7 @@ export function MONUMOD_InitBossAndMinionPackUMods_6FC448A0_113c(
       m,
       pBoss,
       (mem: D2KernMemory113c, pMember: number, modId: number, isBoss: number) => {
-        MONUMOD_ApplyToMinionCallback113c(mem, pMember, modId, isBoss)
+        MONUMOD_ApplyToMinionCallback113c(mem, pMember, modId, isBoss, minionHooks)
       },
       nUModId,
       0,
@@ -2775,39 +2850,46 @@ export function OBJECTS_OperateGoldChestOrPile_6FC4F580_113c(
 
   UNITS_ChangeAnimMode113c(m, pObject, 2)
   const baseY = m.u32((pOperateArgs + 0x18) >>> 0) | 0
-  const baseX = m.u32((pOperateArgs + 0x14) >>> 0) | 0
+  let checkBaseX = m.u32((pOperateArgs + 0x14) >>> 0) | 0
   let pSeed = m.u32((pOperateArgs + 0x0c) >>> 0) >>> 0
   const roll0 = stepSeed64At113c(m, pSeed) >>> 0
   const nPiles = ((roll0 % 9) + 1) | 0
-  const pCoords = 0x00f0_b1a0
 
-  for (let rem = nPiles; rem > 0; rem = (rem - 1) | 0) {
-    pSeed = m.u32((pOperateArgs + 0x0c) >>> 0) >>> 0
-    const dx = stepSeed64At113c(m, pSeed) & 3
-    pSeed = m.u32((pOperateArgs + 0x0c) >>> 0) >>> 0
-    const dy = stepSeed64At113c(m, pSeed) & 3
+  const sp = k2W4B1StackPtr
+  k2W4B1StackPtr = (sp + 0x08) >>> 0
+  try {
+    const pCoords = sp
+    for (let rem = nPiles; rem > 0; rem = (rem - 1) | 0) {
+      pSeed = m.u32((pOperateArgs + 0x0c) >>> 0) >>> 0
+      const dx = stepSeed64At113c(m, pSeed) & 3
+      pSeed = m.u32((pOperateArgs + 0x0c) >>> 0) >>> 0
+      const dy = stepSeed64At113c(m, pSeed) & 3
 
-    const pRoom = m.u32((pOperateArgs + 0x08) >>> 0) >>> 0
-    const pFoundRoom = ROOM_FindRoomContainingSubtile113c(
-      m,
-      pRoom,
-      (baseX + dx) | 0,
-      (baseY + dy) | 0,
-    ) >>> 0
-    if (pFoundRoom === pRoom) {
-      const targetX = ((m.u32((pOperateArgs + 0x14) >>> 0) | 0) + dx) | 0
-      const targetY = ((m.u32((pOperateArgs + 0x18) >>> 0) | 0) + dy) | 0
-      if ((COLLISION_CheckMaskWithSizeXY113c(m, pFoundRoom, targetX, targetY, 1, 1, 0x3f11) & 0xffff) === 0) {
-        m.setU32(pCoords + 0x00, targetX >>> 0)
-        m.setU32(pCoords + 0x04, targetY >>> 0)
-        ITEMS_CreateGoldPileInRoomAtCoords_6FC320E0_113c(
-          m,
-          pCoords,
-          m.u32((pOperateArgs + 0x00) >>> 0) >>> 0,
-          m.u32((pOperateArgs + 0x08) >>> 0) >>> 0,
-        )
+      const pRoom = m.u32((pOperateArgs + 0x08) >>> 0) >>> 0
+      const checkX = (checkBaseX + dx) | 0
+      const pFoundRoom = ROOM_FindRoomContainingSubtile113c(
+        m,
+        pRoom,
+        checkX,
+        (baseY + dy) | 0,
+      ) >>> 0
+      if (pFoundRoom === pRoom) {
+        checkBaseX = ((m.u32((pOperateArgs + 0x14) >>> 0) | 0) + dx) | 0
+        const targetY = ((m.u32((pOperateArgs + 0x18) >>> 0) | 0) + dy) | 0
+        if ((COLLISION_CheckMaskWithSizeXY113c(m, pFoundRoom, checkBaseX, targetY, 1, 1, 0x3f11) & 0xffff) === 0) {
+          m.setU32(pCoords + 0x00, checkBaseX >>> 0)
+          m.setU32(pCoords + 0x04, targetY >>> 0)
+          ITEMS_CreateGoldPileInRoomAtCoords_6FC320E0_113c(
+            m,
+            pCoords,
+            m.u32((pOperateArgs + 0x00) >>> 0) >>> 0,
+            m.u32((pOperateArgs + 0x08) >>> 0) >>> 0,
+          )
+        }
       }
     }
+  } finally {
+    k2W4B1StackPtr = sp
   }
 }
 
@@ -2879,15 +2961,20 @@ export function OBJECTS_SpawnShrineFromGroupEntry_6FC527D0_113c(
   pGame: number,
   pRoom: number,
   nObjectId: number,
-  nWallSide: number,
+  _nWallSide: number,
   wDensity: number,
 ): number {
   hitD2GameVa113c(0x6FC527D0)
   const pObjTxt = DATATBLS_GetObjectsTxtRecord113c(m, nObjectId) >>> 0
   const nSizeX = m.u32((pObjTxt + 0xd0) >>> 0) | 0
   const nSizeY = m.u32((pObjTxt + 0xd4) >>> 0) | 0
-  const pRoomRect = 0x00f0_b1d0
-  DUNGEON_GetRoomCoordinates113c(m, pRoom, pRoomRect)
+  const sp = k2W4B1StackPtr
+  k2W4B1StackPtr = (sp + 0x20) >>> 0
+  try {
+    DUNGEON_GetRoomCoordinates113c(m, pRoom, sp)
+  } finally {
+    k2W4B1StackPtr = sp
+  }
   const nLevelId = DUNGEON_GetLevelIdIfNotHidden113c(m, pRoom) | 0
 
   const pRoomSeed = pRoom !== 0 ? (pRoom + 0x6c) >>> 0 : 0
@@ -2925,7 +3012,7 @@ export function OBJECTS_SpawnShrineFromGroupEntry_6FC527D0_113c(
       nSizeX,
       nSizeY,
       pRoom,
-      m.u8((pObjTxt + 0x13c) >>> 0) || nWallSide,
+      m.u8((pObjTxt + 0x13c) >>> 0),
       nLevelId,
       0x6fc2b670,
       {

@@ -5,7 +5,8 @@
     "name": "QUESTS_StepQuestTimers",
     "kernFile": "src/d2kern-113c/game/town-runtime-gap-113c.ts",
     "tsSymbol": "QUESTS_StepQuestTimers113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 19 1:1 PE32 indirect-call audit (vtable_or_struct_table; tools/oracle/callgraph/indirect-audit-batchA.json) verified in tests/oracle/k2/k2-disasm-verified-wave19-indA.test.ts"
   },
   {
     "module": "D2Game",
@@ -13,7 +14,8 @@
     "name": "QUESTS_CheckNpcQuestInteractAlert",
     "kernFile": "src/d2kern-113c/game/town-runtime-gap-113c.ts",
     "tsSymbol": "QUESTS_CheckNpcQuestInteractAlert113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 19 1:1 PE32 indirect-call audit (vtable_or_struct_table; tools/oracle/callgraph/indirect-audit-batchA.json) verified in tests/oracle/k2/k2-disasm-verified-wave19-indA.test.ts"
   },
   {
     "module": "D2Game",
@@ -174,7 +176,8 @@
     "name": "PLAYER_StepAnimationModeTick",
     "kernFile": "src/d2kern-113c/game/town-runtime-gap-113c.ts",
     "tsSymbol": "PLAYER_StepAnimationModeTick113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 19 1:1 PE32 indirect-call audit (static_table; tools/oracle/callgraph/indirect-audit-batchA.json) verified in tests/oracle/k2/k2-disasm-verified-wave19-indA.test.ts"
   },
   {
     "module": "D2Game",
@@ -245,7 +248,8 @@
     "name": "AITARGET_IterateRoomActiveClients",
     "kernFile": "src/d2kern-113c/game/town-runtime-gap-113c.ts",
     "tsSymbol": "AITARGET_IterateRoomActiveClients113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 19 1:1 PE32 indirect-call audit (caller_callback; tools/oracle/callgraph/indirect-audit-batchA.json) verified in tests/oracle/k2/k2-disasm-verified-wave19-indA.test.ts"
   },
   {
     "module": "D2Game",

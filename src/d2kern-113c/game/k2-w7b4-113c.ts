@@ -1585,10 +1585,10 @@ export function ITEMS_UseBeltItem_6FCF8BA0_113c(
   if (
     (ITEMS_UseSpellIconOrScrollItem_6FCCD0F0_113c(
       m,
-      ebp,
+      pTargetUnit,
       pItem,
       ebx,
-      pTargetUnit,
+      pItem,
       nX | 0,
       nY | 0,
     ) |
@@ -2572,7 +2572,7 @@ export function ACT3Q2_OnGidbinnBossKilled_6FD08140_113c(
       }
     }
     if (!isSpecialMon) {
-      if (MONSTERS_CheckMonStatsFlagBit6_113c(m, pTarget, 0) === 0) {
+      if (MONSTERS_CheckMonStatsFlagBit6_113c(m, 0, pTarget) === 0) {
         return;
       }
     }
@@ -2882,7 +2882,7 @@ export function PARTY_DeclareHostility_6FD10CD0_113c(
   if (dst === src) {
     return;
   }
-  if ((STATLIST_GetUnitStat113c(m, src, 0x0c, 0) | 0) < 9) {
+  if ((STATLIST_GetUnitBaseStat113c(m, src, 0x0c, 0) | 0) < 9) {
     return;
   }
   PARTY_EnableHostilityFlag08_6FD141C0_113c(m, src, game, dst);
@@ -3290,7 +3290,7 @@ export function ITEMS_RemoveStoredItemToCursor_6FCF62E0_113c(
     m,
     0x6fd1b14c,
     0x966,
-    pOutError >>> 0,
+    dwPageArg,
     nPosX,
     nPosY,
     nInvRecId,
@@ -3300,7 +3300,7 @@ export function ITEMS_RemoveStoredItemToCursor_6FCF62E0_113c(
   ITEMS_SetNodePage113c(m, pItem, dwPageArg);
   ITEMS_SetInvPage113c(m, pItem, 0xff);
   if (bDoRemoveFromStore !== 0) {
-    INVENTORY_AppendItemGuidNode113c(m, pInventory, pItem);
+    INVENTORY_SetCursorItem113c(m, pInventory, pItem);
   }
   UNITS_ChangeAnimMode113c(m, pItem, 4);
   if ((bSetCursorAndFlags >>> 0) === 1) {
@@ -3317,7 +3317,7 @@ export function ITEMS_RemoveStoredItemToCursor_6FCF62E0_113c(
     if (ITEMS_CheckCommandFlags113c(m, pItem, 0x4000, 0x979, 0x6fd1b14c) !== 0) {
       ITEMS_SetOrClearCommandFlags113c(m, pItem, 0x4000, 0);
     }
-    INVENTORY_SetCursorItem113c(m, pInventory, pItem);
+    INVENTORY_AppendItemGuidNode113c(m, pInventory, pItem);
     UNITS_SetUnitUpdateFlags113c(m, pUnit, 1);
   }
   return 1;

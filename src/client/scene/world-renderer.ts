@@ -10,6 +10,7 @@ import {
 } from '../../common/units/char-anim-speed.ts'
 import { getMonsterPathRecord } from '../../common/path/units.ts'
 import {
+  getMonsterModeBaseFrameCount113c,
   resolveMonsterSequenceFrame113c,
   type ResolvedMonsterSequenceFrame113c,
 } from '../../common/path/monster-anim-metrics-113c.ts'
@@ -21,6 +22,19 @@ import {
   type PlayerClassToken,
   type SorceressAppearanceSpec,
 } from '../../common/units/char-appearance.ts'
+import {
+  resolveMinionClipKey,
+  resolveNecromageElementGlowTint,
+  resolvePlayerClassTokenForUnit,
+  resolveRgbaPaletteRowTint,
+  resolveSkinClipKey,
+  shouldMinionSkinApply,
+  shouldSkinOverrideMorph,
+} from '../../common/units/character-skin.ts'
+import {
+  getGlobalCharacterSkinService,
+  type CharacterSkinService,
+} from '../render/character-skin-cache.ts'
 import { getSharedClassLayerCompositor } from '../frontend/avatar-compositor.ts'
 import { dir64ToClipDirection } from '../../common/units/direction.ts'
 import { PLR_MODES } from '../../common/units/plr-mode.ts'
@@ -620,6 +634,10 @@ export interface SceneSourceRenderContext {
   readonly renderer?: SpriteRenderer | null | undefined
   readonly tileGpuCache?: TileAtlasGpuCache | null | undefined
   readonly paperdollGpuCache?: PlayerPaperdollGpuCache | null | undefined
+  readonly characterSkinService?: CharacterSkinService | null | undefined
+  readonly activePlayerUnitId?: number | undefined
+  readonly localPlayerClassToken?: PlayerClassToken | null | undefined
+  readonly playerClassByUnitId?: ReadonlyMap<number, PlayerClassToken> | undefined
   readonly entityArtCache?: EntityArtCache | null | undefined
   readonly characterArt?: LoadedCharacter | null | undefined
   readonly characterArtByToken?: ReadonlyMap<string, LoadedCharacter> | undefined
@@ -751,10 +769,14 @@ export function drawUnitPerspectiveShadow(
   drawX: number,
   drawY: number,
   atlas?: AtlasHandle,
+  overrideWidth?: number,
+  overrideHeight?: number,
 ): void {
   if (typeof renderer.drawQuad !== 'function') return
-  if (frame.width <= 0 || frame.height <= 0 || (frame.width <= 1 && frame.height <= 1)) return
-  const q = computeUnitShadowQuad(drawX, drawY, frame.width, frame.height)
+  const w = overrideWidth ?? frame.width
+  const h = overrideHeight ?? frame.height
+  if (w <= 0 || h <= 0 || (frame.width <= 1 && frame.height <= 1)) return
+  const q = computeUnitShadowQuad(drawX, drawY, w, h)
   renderer.drawQuad(frame, q.x0, q.y0, q.x1, q.y1, q.x2, q.y2, q.x3, q.y3, {
     ...(atlas !== undefined ? { atlas } : {}),
     tint: SHADOW_TINT,
@@ -1045,6 +1067,235 @@ export function drawSceneUnitDrawable(
     const tokenLower = unit.token.toLowerCase()
     const isTransformedMorph =
       tokenLower === '40' || tokenLower === 'tg' || tokenLower === 'va' || tokenLower === 'fk'
+
+    // Character Skin Override (non-1.13c opt-in capability; zero work when disabled)
+    const skinService = ctx.characterSkinService ?? getGlobalCharacterSkinService()
+    const skinCfg = skinService.getConfig()
+    if (skinCfg.enabled) {
+      const isSelfPlayer =
+        unit.isLocalPlayer === true ||
+        (unit.isLocalPlayer !== false &&
+          (ctx.activePlayerUnitId === undefined || unit.unitId === ctx.activePlayerUnitId))
+      const skinApplies = skinCfg.scope === 'class' || isSelfPlayer
+      const skinClassToken = skinApplies
+        ? resolvePlayerClassTokenForUnit(unit.classId, unit.token)
+        : null
+      if (skinClassToken !== null && skinService.getSelectedSkinId(skinClassToken) !== null) {
+        const skinArt = skinService.getCharacterSkinArt(renderer, skinClassToken)
+        if (
+          skinArt !== null &&
+          skinArt !== 'loading' &&
+          (!isTransformedMorph || shouldSkinOverrideMorph(skinArt.manifest, skinCfg.morphPolicy))
+        ) {
+          const modeToken = PLR_MODES[unit.mode]?.token.toLowerCase() ?? 'nu'
+          const unitKey = `player:${unit.unitId}`
+          let resolvedSeq: ReturnType<typeof resolveSkillSequenceFrame> = null
+          let rawRequestedKey = unit.isCorpse && modeToken !== 'dt' ? 'dd' : modeToken
+          if (!unit.isCorpse && modeToken === 'sq') {
+            const seqSkillId = unit.castState?.skillId ?? (unit.classId === 1 ? 49 : 0)
+            const seqWClass = unit.equipmentAppearance?.wclass ?? 'hth'
+            const prelimStepSpeed256 =
+              unit.animStepSpeed256 ?? unit.castState?.stepSpeed256 ?? 256
+            const seqStartedAtMs = resolveOneShotStartMs(
+              unitKey,
+              `sq:${seqSkillId}`,
+              unit.animStartedAtMs ?? unit.castState?.startedAtMs,
+              nowMs,
+            )
+            const elapsedTicks = Math.floor(Math.max(0, nowMs - seqStartedAtMs) / 40)
+            resolvedSeq = resolveSkillSequenceFrame(
+              seqSkillId,
+              seqWClass,
+              elapsedTicks,
+              prelimStepSpeed256,
+            )
+            rawRequestedKey = resolvedSeq?.clipKey ?? (unit.classId === 1 ? 's1' : 'a1')
+          }
+
+          const resolvedClipKey = resolveSkinClipKey(skinClassToken, rawRequestedKey, skinArt.clips)
+          const clip = resolvedClipKey ? skinArt.clips[resolvedClipKey] : undefined
+          if (clip) {
+            const canonicalClip = getCharAnimClip113c(
+              unit.classId,
+              resolvedClipKey ?? rawRequestedKey,
+            )
+            const baseSpeed = resolvePlayerLocomotionBaseSpeed256(
+              rawRequestedKey,
+              (clip.speed > 0 ? clip.speed : canonicalClip?.speed) ?? 256,
+            )
+            const dirCount = Math.max(1, clip.directions || skinArt.manifest.directions)
+            const direction = dir64ToClipDirection(unit.direction, dirCount)
+            const groupIndex = clip.group + direction
+            const group = skinArt.groups[groupIndex] ?? skinArt.groups[0]
+            const frameCount = Math.max(1, group?.length ?? 1)
+            let frameIndex = 0
+
+            if ((unit.isCorpse && modeToken !== 'dt') || rawRequestedKey === 'dd') {
+              oneShotStartMsByUnitKey.delete(unitKey)
+              frameIndex = frameCount - 1
+            } else if (resolvedSeq) {
+              frameIndex = Math.max(0, Math.min(frameCount - 1, resolvedSeq.frameIndex))
+            } else {
+              const shouldLoop =
+                !unit.isCorpse &&
+                rawRequestedKey !== 'dd' &&
+                rawRequestedKey !== 'dt' &&
+                (clip.loop !== undefined
+                  ? clip.loop
+                  : (canonicalClip?.loop ??
+                    (rawRequestedKey === 'nu' ||
+                      rawRequestedKey === 'tn' ||
+                      rawRequestedKey === 'wl' ||
+                      rawRequestedKey === 'tw' ||
+                      rawRequestedKey === 'rn')))
+              const isLocomotionClip =
+                rawRequestedKey === 'wl' || rawRequestedKey === 'tw' || rawRequestedKey === 'rn'
+              const fallbackStepSpeed256 = isLocomotionClip
+                ? computeLocomotionStepSpeed256(
+                    baseSpeed > 0 ? baseSpeed : 213,
+                    computeMoveVelocityPercent113c({
+                      stat67: unit.velocityPercent,
+                      running: rawRequestedKey === 'rn',
+                    }),
+                  )
+                : computeStepSpeed256(
+                    baseSpeed > 0 ? baseSpeed : 256,
+                    unit.animEffRate ?? unit.castState?.effRate ?? 0,
+                  )
+              const stepSpeed256 =
+                unit.animStepSpeed256 ?? unit.castState?.stepSpeed256 ?? fallbackStepSpeed256
+              if (shouldLoop) {
+                oneShotStartMsByUnitKey.delete(unitKey)
+                frameIndex = computeAnimFrameIndex({
+                  frameCount,
+                  stepSpeed256,
+                  loop: true,
+                  nowMs,
+                  minStepSpeed256: isLocomotionClip ? 0 : 32,
+                })
+              } else {
+                const startedAtMs = resolveOneShotStartMs(
+                  unitKey,
+                  rawRequestedKey,
+                  unit.animStartedAtMs ?? unit.castState?.startedAtMs,
+                  nowMs,
+                )
+                frameIndex = computeAnimFrameIndex({
+                  frameCount,
+                  stepSpeed256,
+                  loop: false,
+                  nowMs,
+                  startedAtMs,
+                  skillId: unit.castState?.skillId,
+                  actionFrame: canonicalClip?.actionFrame,
+                })
+              }
+            }
+
+            const frame = group?.[frameIndex] ?? group?.[0]
+            if (frame !== undefined) {
+              const scale = skinArt.renderScale
+              const drawW = Math.max(1, Math.round(frame.width * scale))
+              const drawH = Math.max(1, Math.round(frame.height * scale))
+              const altitude = unit.altitude ?? 0
+              const drawX =
+                frame.anchorX !== undefined
+                  ? unit.worldX + Math.round(frame.anchorX * scale)
+                  : unit.worldX - drawW / 2
+              const groundDrawY =
+                frame.anchorY !== undefined
+                  ? unit.worldY + Math.round(frame.anchorY * scale)
+                  : unit.worldY - drawH + FEET_HEIGHT / 2
+              const drawY = groundDrawY - altitude
+              const isFaded =
+                Boolean(unit.isFaded) ||
+                unit.blendMode === 'trans50' ||
+                unit.overlays.some((o) => o.token.toLowerCase() === 'fade')
+              const baseAlpha = isFaded ? 0.55 : 1.0
+
+              const rgbaRowTint = resolveRgbaPaletteRowTint(unit.paletteRow)
+              let rMul = 1.0
+              let gMul = 1.0
+              let bMul = 1.0
+              let hasRgbTint = false
+              if (rgbaRowTint !== null) {
+                rMul *= rgbaRowTint[0]
+                gMul *= rgbaRowTint[1]
+                bMul *= rgbaRowTint[2]
+                hasRgbTint = true
+              } else if (unit.tintColor) {
+                rMul *= unit.tintColor[0] / 255
+                gMul *= unit.tintColor[1] / 255
+                bMul *= unit.tintColor[2] / 255
+                hasRgbTint = true
+              }
+              const tint =
+                hasRgbTint || isFaded
+                  ? ([rMul, gMul, bMul, baseAlpha] as const)
+                  : undefined
+
+              if (shouldDrawUnitShadow113c(unit) && skinArt.shadowScale > 0) {
+                const shW = Math.max(1, Math.round(drawW * skinArt.shadowScale))
+                const shH = Math.max(1, Math.round(drawH * skinArt.shadowScale))
+                const shX = Math.round(drawX + (drawW - shW) * 0.5)
+                const shY = Math.round(groundDrawY + skinArt.shadowOffsetY + (drawH - shH))
+                drawUnitPerspectiveShadow(
+                  renderer,
+                  frame,
+                  shX,
+                  shY,
+                  frame.atlas ?? skinArt.handle,
+                  shW,
+                  shH,
+                )
+              }
+
+              renderer.draw(frame, drawX, drawY, {
+                atlas: frame.atlas ?? skinArt.handle,
+                width: drawW,
+                height: drawH,
+                elevationY: Math.max(0, drawH - 16),
+                ...(tint ? { tint } : {}),
+                ...(isFaded ? { blendMode: 'trans50' } : {}),
+              })
+
+              if (skinArt.glowGroups !== undefined) {
+                const glowClipKey =
+                  skinArt.glowClips && resolvedClipKey
+                    ? resolveSkinClipKey(skinClassToken, resolvedClipKey, skinArt.glowClips)
+                    : null
+                const glowClip =
+                  glowClipKey && skinArt.glowClips ? skinArt.glowClips[glowClipKey] : undefined
+                const glowGroupIdx = (glowClip ? glowClip.group : clip.group) + direction
+                const glowGroup = skinArt.glowGroups[glowGroupIdx] ?? skinArt.glowGroups[groupIndex]
+                const glowFrame = glowGroup?.[frameIndex] ?? glowGroup?.[0]
+                if (glowFrame !== undefined && (glowFrame.width > 1 || glowFrame.height > 1)) {
+                  const gw = Math.max(1, Math.round(glowFrame.width * scale))
+                  const gh = Math.max(1, Math.round(glowFrame.height * scale))
+                  const gx =
+                    glowFrame.anchorX !== undefined
+                      ? unit.worldX + Math.round(glowFrame.anchorX * scale)
+                      : drawX
+                  const gy =
+                    (glowFrame.anchorY !== undefined
+                      ? unit.worldY + Math.round(glowFrame.anchorY * scale)
+                      : groundDrawY) - altitude
+                  renderer.draw(glowFrame, gx, gy, {
+                    atlas: glowFrame.atlas ?? skinArt.glowPageHandles?.[0] ?? skinArt.handle,
+                    width: gw,
+                    height: gh,
+                    blendMode: 'additive',
+                    ...(isFaded ? { tint: [1, 1, 1, baseAlpha] } : {}),
+                  })
+                }
+              }
+              return
+            }
+          }
+        }
+      }
+    }
+
     if (isTransformedMorph) {
       const morphClassId =
         tokenLower === '40' ? 430 : tokenLower === 'tg' ? 431 : tokenLower === 'fk' ? 212 : 135
@@ -1406,18 +1657,25 @@ export function drawSceneUnitDrawable(
           unit.blendMode === 'trans50' ||
           unit.overlays.some((o) => o.token.toLowerCase() === 'fade')
         const baseAlpha = isFaded ? 0.55 : 1.0
-        // Issue #1369: Do not multiply RGB tintColor on top of an active palette row shift (double tinting)
-        const hasActivePaletteShift = unit.paletteRow !== undefined && unit.paletteRow > 0
-        const tint = (unit.tintColor && !hasActivePaletteShift)
-          ? ([
-              unit.tintColor[0] / 255,
-              unit.tintColor[1] / 255,
-              unit.tintColor[2] / 255,
-              baseAlpha,
-            ] as const)
-          : isFaded
-            ? ([1.0, 1.0, 1.0, baseAlpha] as const)
-            : undefined
+        // Issue #1369: Do not multiply RGB tintColor on top of an active hardware palette row shift (double tinting)
+        const isIndexedCharAtlas = charArt.handle.indexed === true
+        const hasActivePaletteShift =
+          isIndexedCharAtlas && unit.paletteRow !== undefined && unit.paletteRow > 0
+        const rgbaFallbackTint = !isIndexedCharAtlas
+          ? resolveRgbaPaletteRowTint(unit.paletteRow)
+          : null
+        const tint = rgbaFallbackTint
+          ? ([rgbaFallbackTint[0], rgbaFallbackTint[1], rgbaFallbackTint[2], baseAlpha] as const)
+          : unit.tintColor && !hasActivePaletteShift
+            ? ([
+                unit.tintColor[0] / 255,
+                unit.tintColor[1] / 255,
+                unit.tintColor[2] / 255,
+                baseAlpha,
+              ] as const)
+            : isFaded
+              ? ([1.0, 1.0, 1.0, baseAlpha] as const)
+              : undefined
         if (shouldDrawUnitShadow113c(unit)) {
           drawUnitPerspectiveShadow(renderer, frame, drawX, groundDrawY, charArt.handle)
         }
@@ -1569,6 +1827,255 @@ export function drawSceneUnitDrawable(
               ...(tint ? { tint } : {}),
             })
             return
+          }
+        }
+      }
+    }
+
+    //Bundled Summon Minion Skin Override (opt-in cosmetic, preserves 1.13c AI/hitbox/timing)
+    const skinService = ctx.characterSkinService ?? getGlobalCharacterSkinService()
+    const skinCfg = skinService.getConfig()
+    if (skinCfg.enabled && skinCfg.minionsEnabled && unit.ownerType === 'player' && typeof unit.ownerId === 'number' && unit.ownerId > 0) {
+      const hasReviveState =
+        unit.states === undefined
+          ? false
+          : unit.states instanceof Set
+            ? unit.states.has(96)
+            : Array.isArray(unit.states)
+              ? unit.states.includes(96)
+              : [...unit.states].includes(96)
+      const ownerClassToken =
+        ctx.playerClassByUnitId?.get(unit.ownerId) ??
+        (ctx.activePlayerUnitId !== undefined && unit.ownerId === ctx.activePlayerUnitId
+          ? (ctx.localPlayerClassToken ?? null)
+          : null)
+      const minionMatch = shouldMinionSkinApply({
+        config: skinCfg,
+        monsterClassId: unit.classId,
+        ownerType: unit.ownerType,
+        ownerId: unit.ownerId,
+        localPlayerId: ctx.activePlayerUnitId,
+        ownerClassToken,
+        isRevive: hasReviveState,
+      })
+      if (minionMatch !== null) {
+        const minionArt = skinService.getMinionSkinArt(
+          renderer,
+          minionMatch.ownerClassToken,
+          minionMatch.minionKey,
+        )
+        if (minionArt !== null && minionArt !== 'loading') {
+          const unitKey = `monster:${unit.unitId}`
+          const isMoving = unit.mode === 2 || unit.mode === 15
+          let sequenceStep: ResolvedMonsterSequenceFrame113c | undefined
+          if (!unit.isCorpse && unit.mode === 14) {
+            const seqStartedAtMs = resolveOneShotStartMs(
+              unitKey,
+              'sq',
+              unit.animStartedAtMs ?? unit.castState?.startedAtMs,
+              nowMs,
+            )
+            const seqSpeed256 =
+              unit.animStepSpeed256 ??
+              unit.castState?.stepSpeed256 ??
+              minionArt.clips.a1?.speed ??
+              minionArt.clips.nu?.speed ??
+              256
+            sequenceStep = resolveMonsterSequenceFrame113c(
+              unit.classId,
+              Math.max(0, nowMs - seqStartedAtMs),
+              seqSpeed256,
+              unit.castState?.skillId ?? unit.lastSkillId,
+            )
+          }
+          const rawRequestedKey = unit.isCorpse
+            ? unit.mode === 0
+              ? 'dt'
+              : 'dd'
+            : (sequenceStep?.clipKey ?? MONSTER_MODE_TO_CLIP[unit.mode] ?? (isMoving ? 'wl' : 'nu'))
+          const resolvedClipKey = resolveMinionClipKey(rawRequestedKey, minionArt.clips)
+          const clip = resolvedClipKey ? minionArt.clips[resolvedClipKey] : undefined
+          if (clip && clip.speed > 0) {
+            const dirCount = Math.max(1, clip.directions || minionArt.spec.directions)
+            const direction = dir64ToClipDirection(unit.direction, dirCount)
+            const groupIndex = clip.group + direction
+            const group = minionArt.groups[groupIndex] ?? minionArt.groups[0]
+            const frameCount = Math.max(1, group?.length ?? 1)
+            let frameIndex = 0
+            if (
+              (unit.isCorpse && rawRequestedKey !== 'dt') ||
+              rawRequestedKey === 'dd' ||
+              resolvedClipKey === 'dd'
+            ) {
+              oneShotStartMsByUnitKey.delete(unitKey)
+              frameIndex = frameCount - 1
+            } else if (sequenceStep !== undefined) {
+              const baseCount = Math.max(
+                1,
+                getMonsterModeBaseFrameCount113c(
+                  unit.classId,
+                  14,
+                  unit.castState?.skillId ?? unit.lastSkillId,
+                ),
+              )
+              frameIndex = Math.max(
+                0,
+                Math.min(
+                  frameCount - 1,
+                  Math.floor((sequenceStep.frameIndex * frameCount) / baseCount),
+                ),
+              )
+            } else {
+              const shouldLoop =
+                !unit.isCorpse &&
+                rawRequestedKey !== 'dd' &&
+                rawRequestedKey !== 'dt' &&
+                (clip.loop !== undefined
+                  ? clip.loop
+                  : resolvedClipKey === 'nu' || resolvedClipKey === 'wl' || resolvedClipKey === 'rn')
+              const rawSpeed256 =
+                unit.animStepSpeed256 ?? unit.castState?.stepSpeed256 ?? clip.speed
+              if (shouldLoop) {
+                oneShotStartMsByUnitKey.delete(unitKey)
+                frameIndex = computeAnimFrameIndex({
+                  frameCount,
+                  stepSpeed256: rawSpeed256,
+                  loop: true,
+                  nowMs,
+                })
+              } else {
+                const canonicalFrames = Math.max(
+                  1,
+                  getMonsterModeBaseFrameCount113c(
+                    unit.classId,
+                    unit.mode,
+                    unit.castState?.skillId ?? unit.lastSkillId,
+                  ),
+                )
+                const scaledSpeed256 =
+                  unit.animStepSpeed256 !== undefined || unit.castState?.stepSpeed256 !== undefined
+                    ? Math.max(1, Math.round((rawSpeed256 * frameCount) / canonicalFrames))
+                    : rawSpeed256
+                const startedAtMs = resolveOneShotStartMs(
+                  unitKey,
+                  resolvedClipKey!,
+                  unit.animStartedAtMs ?? unit.castState?.startedAtMs,
+                  nowMs,
+                )
+                frameIndex = computeAnimFrameIndex({
+                  frameCount,
+                  stepSpeed256: scaledSpeed256,
+                  loop: false,
+                  nowMs,
+                  startedAtMs,
+                })
+              }
+            }
+            const frame = group?.[frameIndex] ?? group?.[0]
+            if (frame !== undefined) {
+              const scale = minionArt.renderScale
+              const drawW = Math.max(1, Math.round(frame.width * scale))
+              const drawH = Math.max(1, Math.round(frame.height * scale))
+              const altitude = unit.altitude ?? 0
+              const drawX =
+                frame.anchorX !== undefined
+                  ? unit.worldX + Math.round(frame.anchorX * scale)
+                  : unit.worldX - drawW / 2
+              const groundDrawY =
+                frame.anchorY !== undefined
+                  ? unit.worldY + Math.round(frame.anchorY * scale)
+                  : unit.worldY - drawH + FEET_HEIGHT / 2
+              const drawY = groundDrawY - altitude
+              const isFaded =
+                Boolean(unit.isFaded) ||
+                unit.overlays.some((o) => o.token.toLowerCase() === 'fade')
+              const baseAlpha = isFaded ? 0.55 : 1.0
+
+              const rgbaRowTint = resolveRgbaPaletteRowTint(unit.paletteRow)
+              let rMul = 1.0
+              let gMul = 1.0
+              let bMul = 1.0
+              let hasRgbTint = false
+              if (rgbaRowTint !== null) {
+                rMul *= rgbaRowTint[0]
+                gMul *= rgbaRowTint[1]
+                bMul *= rgbaRowTint[2]
+                hasRgbTint = true
+              } else if (unit.tintColor) {
+                rMul *= unit.tintColor[0] / 255
+                gMul *= unit.tintColor[1] / 255
+                bMul *= unit.tintColor[2] / 255
+                hasRgbTint = true
+              }
+              const tint =
+                hasRgbTint || isFaded ? ([rMul, gMul, bMul, baseAlpha] as const) : undefined
+
+              if (shouldDrawUnitShadow113c(unit) && minionArt.shadowScale > 0) {
+                const shW = Math.max(1, Math.round(drawW * minionArt.shadowScale))
+                const shH = Math.max(1, Math.round(drawH * minionArt.shadowScale))
+                const shX = Math.round(drawX + (drawW - shW) * 0.5)
+                const shY = Math.round(groundDrawY + minionArt.shadowOffsetY + (drawH - shH))
+                drawUnitPerspectiveShadow(
+                  renderer,
+                  frame,
+                  shX,
+                  shY,
+                  frame.atlas ?? minionArt.handle,
+                  shW,
+                  shH,
+                )
+              }
+
+              renderer.draw(frame, drawX, drawY, {
+                atlas: frame.atlas ?? minionArt.handle,
+                width: drawW,
+                height: drawH,
+                elevationY: Math.max(0, drawH - 16),
+                ...(tint ? { tint } : {}),
+                ...(isFaded ? { blendMode: 'trans50' } : {}),
+              })
+
+              if (minionArt.glowGroups !== undefined) {
+                const glowClipKey =
+                  minionArt.glowClips && resolvedClipKey
+                    ? resolveMinionClipKey(resolvedClipKey, minionArt.glowClips)
+                    : null
+                const glowClip =
+                  glowClipKey && minionArt.glowClips ? minionArt.glowClips[glowClipKey] : undefined
+                const glowGroupIdx = (glowClip ? glowClip.group : clip.group) + direction
+                const glowGroup = minionArt.glowGroups[glowGroupIdx] ?? minionArt.glowGroups[groupIndex]
+                const glowFrame = glowGroup?.[frameIndex] ?? glowGroup?.[0]
+                if (glowFrame !== undefined && (glowFrame.width > 1 || glowFrame.height > 1)) {
+                  const gw = Math.max(1, Math.round(glowFrame.width * scale))
+                  const gh = Math.max(1, Math.round(glowFrame.height * scale))
+                  const gx =
+                    glowFrame.anchorX !== undefined
+                      ? unit.worldX + Math.round(glowFrame.anchorX * scale)
+                      : drawX
+                  const gy =
+                    (glowFrame.anchorY !== undefined
+                      ? unit.worldY + Math.round(glowFrame.anchorY * scale)
+                      : groundDrawY) - altitude
+                  const mageElemTint =
+                    minionMatch.minionKey === 'necromage'
+                      ? resolveNecromageElementGlowTint(unit.compVariants)
+                      : null
+                  const glowTint: readonly [number, number, number, number] | undefined = mageElemTint
+                    ? [mageElemTint[0], mageElemTint[1], mageElemTint[2], baseAlpha]
+                    : isFaded
+                      ? [1, 1, 1, baseAlpha]
+                      : undefined
+                  renderer.draw(glowFrame, gx, gy, {
+                    atlas: glowFrame.atlas ?? minionArt.glowPageHandles?.[0] ?? minionArt.handle,
+                    width: gw,
+                    height: gh,
+                    blendMode: 'additive',
+                    ...(glowTint ? { tint: glowTint } : {}),
+                  })
+                }
+              }
+              return
+            }
           }
         }
       }
@@ -2921,6 +3428,36 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
       // within the same cell row by intra-cell isometric depth (`w.sortY <= entity.sortY`, #1330).
       const sortedWalls = snapshot.upperWallQuads
       const sortedEntities = snapshot.entities.sortedDrawables
+      let detectedLocalPlayerId = ctx.activePlayerUnitId
+      let detectedLocalPlayerClass = ctx.localPlayerClassToken ?? null
+      const framePlayerClasses = new Map<number, PlayerClassToken>()
+      if (ctx.playerClassByUnitId) {
+        for (const [uid, tok] of ctx.playerClassByUnitId.entries()) {
+          framePlayerClasses.set(uid, tok)
+        }
+      }
+      for (const ent of sortedEntities) {
+        if (ent.drawableKind === 'unit' && ent.unitKind === 'player') {
+          const tok = resolvePlayerClassTokenForUnit(ent.classId, ent.token)
+          if (tok) framePlayerClasses.set(ent.unitId, tok)
+          if (ent.isLocalPlayer === true) {
+            if (detectedLocalPlayerId === undefined) detectedLocalPlayerId = ent.unitId
+            if (detectedLocalPlayerClass === null && tok) detectedLocalPlayerClass = tok
+          }
+        }
+      }
+      const entityRenderCtx: SceneSourceRenderContext =
+        detectedLocalPlayerId !== ctx.activePlayerUnitId ||
+        detectedLocalPlayerClass !== (ctx.localPlayerClassToken ?? null) ||
+        framePlayerClasses.size > 0
+          ? {
+              ...ctx,
+              ...(detectedLocalPlayerId !== undefined ? { activePlayerUnitId: detectedLocalPlayerId } : {}),
+              ...(detectedLocalPlayerClass !== null ? { localPlayerClassToken: detectedLocalPlayerClass } : {}),
+              playerClassByUnitId: framePlayerClasses,
+            }
+          : ctx
+
       let wallIdx = 0
       const drawWallsBeforeEntity = (maxCellDepth: number, maxSortY: number): void => {
         while (wallIdx < sortedWalls.length) {
@@ -2946,7 +3483,7 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
             const dynamic = entity.unitKind === 'player' || entity.unitKind === 'monster'
             renderer.setUnitLight(unitFlatLightInto(litGrid, entity.lightSubX ?? entity.subX, entity.lightSubY ?? entity.subY, dynamic, scratchUnitLight))
           }
-          drawSceneUnitDrawable(renderer, entity, ctx, nowMs, snapshot.actId)
+          drawSceneUnitDrawable(renderer, entity, entityRenderCtx, nowMs, snapshot.actId)
           if (litGrid !== null) renderer.setUnitLight(null)
         } else if (entity.drawableKind === 'missile') {
           if (litGrid !== null) {
@@ -3297,6 +3834,55 @@ export function renderSceneSourceFrame(ctx: SceneSourceRenderContext): SceneFram
               const screenX = Math.round(u.worldX - camX + vpW / 2)
               const screenY = Math.round(u.worldY - 72 - camY + vpH / 2)
               hoveredNpcLabel = { text: npcText, screenX, screenY }
+            }
+          } else if (
+            u.unitKind === 'monster' &&
+            !u.isCorpse &&
+            u.ownerType === 'player' &&
+            typeof u.ownerId === 'number' &&
+            u.ownerId > 0
+          ) {
+            const skinService = ctx.characterSkinService ?? getGlobalCharacterSkinService()
+            const skinCfg = skinService.getConfig()
+            const hasRevive =
+              u.states === undefined
+                ? false
+                : u.states instanceof Set
+                  ? u.states.has(96)
+                  : Array.isArray(u.states)
+                    ? u.states.includes(96)
+                    : [...u.states].includes(96)
+            const localPlayerEnt = snapshot.entities.unitDrawables.find(
+              (p) => p.unitKind === 'player' && p.isLocalPlayer === true,
+            )
+            const resolvedLocalPlayerId = ctx.activePlayerUnitId ?? localPlayerEnt?.unitId
+            const ownerPlayerEnt = snapshot.entities.unitDrawables.find(
+              (p) => p.unitKind === 'player' && p.unitId === u.ownerId,
+            )
+            const ownerCls =
+              (ownerPlayerEnt
+                ? resolvePlayerClassTokenForUnit(ownerPlayerEnt.classId, ownerPlayerEnt.token)
+                : null) ??
+              ctx.playerClassByUnitId?.get(u.ownerId) ??
+              (resolvedLocalPlayerId !== undefined && u.ownerId === resolvedLocalPlayerId
+                ? (ctx.localPlayerClassToken ?? null)
+                : null)
+            const mMatch = shouldMinionSkinApply({
+              config: skinCfg,
+              monsterClassId: u.classId,
+              ownerType: u.ownerType,
+              ownerId: u.ownerId,
+              localPlayerId: resolvedLocalPlayerId,
+              ownerClassToken: ownerCls,
+              isRevive: hasRevive,
+            })
+            if (mMatch) {
+              const mSpec = skinService.getSelectedMinionSpec(mMatch.ownerClassToken, mMatch.minionKey)
+              if (mSpec) {
+                const screenX = Math.round(u.worldX - camX + vpW / 2)
+                const screenY = Math.round(u.worldY - 72 - camY + vpH / 2)
+                hoveredNpcLabel = { text: isEn ? mSpec.name.en : mSpec.name.zh, screenX, screenY }
+              }
             }
           } else if (
             u.unitKind === 'object' &&

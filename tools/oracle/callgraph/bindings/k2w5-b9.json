@@ -356,8 +356,8 @@
     "name": "PARTY_DispatchRelationAction_6FD10A70",
     "kernFile": "src/d2kern-113c/game/k2-w5b9-113c.ts",
     "tsSymbol": "PARTY_DispatchRelationAction_6FD10A70_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w5b9.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w5b9.test.ts; Wave 19 1:1 PE32 indirect-call audit (static_table; tools/oracle/callgraph/indirect-audit-batchA.json) verified in tests/oracle/k2/k2-disasm-verified-wave19-indA.test.ts"
   },
   {
     "module": "D2Game",

@@ -49,6 +49,7 @@ import {
 import {
   DATATBLS_GetObjectsTxtRecord113c,
   UNITS_GetGfxStateFlagsPtr113c,
+  UNITS_GetRoom113c,
   UNITS_GetStateFlagsPtr113c,
   UNITS_HasAnyGfxStateFlag113c,
   UNITS_SetUnitUpdateFlags113c,
@@ -70,7 +71,51 @@ import {
   D2GAME_SUNIT_GetGameFromUnit113c,
   D2GAME_SUNIT_IterateAllLivingPlayers113c,
 } from './boot-init-gap-b-113c.ts'
-import { AIGENERAL_PopAiCommand113c } from './replay-kernel-113c.ts'
+import {
+  AIGENERAL_PopAiCommand113c,
+  PLAYER_Event11_PeriodicTick113c,
+  PLAYER_Event3_RegenTick113c,
+} from './replay-kernel-113c.ts'
+import { ITEMMODE_UnitTimerNoop113c } from './k2-combat-core-w1-113c.ts'
+import {
+  PLAYER_Event0C_ExpireTimedStats113c,
+  SKILLS_Event08_AuraPulseTick113c,
+} from './k2-gap-itemdef-113c.ts'
+import { MISSILE_DispatchFrameTick113c } from './k2-gap-melee-dot-113c.ts'
+import { D2COMMON_SGPT_DATATABLES_VA_113C } from '../common/inline-helpers.ts'
+import {
+  NET_SendPacket47_UnitRelator1_6FCAAEC0_113c,
+  NET_SendPacket48_UnitRequestStatus_6FCAAE60_113c,
+  OBJ_FinishOperatingToOpenedMode_6FC89DA0_113c,
+  OBJ_ResetSubClassBit0ObjectToNeutral_6FC89D60_113c,
+} from './k2-w2b3-113c.ts'
+import {
+  ITEMS_ExpireTimedStatSubListsEvent_6FCF1780_113c,
+  SUNIT_ClearPlayerTimeoutEvent_6FD00410_113c,
+} from './k2-w2b8-113c.ts'
+import {
+  OBJ_EventHoverMsgTimeout_6FC8E470_113c,
+  OBJ_EventPeriodicOrTimeOfDaySync_6FC8E4E0_113c,
+  OBJ_IncrementWellChargesAndRefresh_6FC89CA0_113c,
+} from './k2-w3b7-113c.ts'
+import { EVENT_HandleFreeHoverMsg_6FC99AA0_113c } from './k2-w3b8-113c.ts'
+import { OBJ_DispatchObjectTrapOrMonsterSpawn_6FC89970_113c } from './k2-w4b4-113c.ts'
+import { SKILLS_DispatchStateOnSrvDoFuncForSkill_6FCBE8E0_113c } from './k2-w4b6-113c.ts'
+import { SKILLS_OnPeriodicItemAuraEvent9_6FCC37D0_113c } from './k2-w5b3-113c.ts'
+import {
+  OBJECTS_FloorSpikesEventTick_6FC8E270_113c,
+  OBJECTS_LinkHellPortalToDestinationLevel_6FC8B930_113c,
+} from './k2-w7b2-113c.ts'
+import {
+  OBJ_ThinkEventLightningSpire_6FC8E400_113c,
+  OBJ_ThinkEventSparkyChest_6FC8E150_113c,
+} from './k2-w8b2-113c.ts'
+import { ITEMS_ProcessItemDurabilityAndStackReplenish_6FCFA480_113c } from './k2-w9b2-113c.ts'
+import { D2Game_6FC93570_113c } from './k2-w13b1-113c.ts'
+import {
+  PLAYER_FinishModeAndResetToNeutral113c,
+  PLAYER_StepAnimationModeTick113c,
+} from './town-runtime-gap-113c.ts'
 import {
   CLIENTS_GetPlayerUnit113c,
   CLIENTS_UpdatePlayerRoom113c,
@@ -94,7 +139,10 @@ import {
   QUESTS_CheckNotIntro_6FC53970_113c,
 } from './k2-laneJ-0x6fc4-w1-113c.ts'
 import { SUNIT_PlaceUnitAtRoomAndCoords_6FD00D00_113c } from './k2-w5b7-113c.ts'
-import { PLAYERSAVE_SaveAllClientCharactersInGame_6FC4C830_113c } from './k2-w10b1-113c.ts'
+import {
+  PLAYERSAVE_SaveAllClientCharactersInGame_6FC4C830_113c,
+  QUESTS_ObjectEvent07_FastcallThunk_6FC8F510_113c,
+} from './k2-w10b1-113c.ts'
 import {
   MONUMOD_ApplyChampionBaseStats_6FC418A0_113c,
   MONUMOD_EventReviveOrCorpseCheck_6FC43E20_113c,
@@ -111,6 +159,7 @@ import {
 import {
   MONUMOD_PropagatePackDeathToBoss_6FC43BF0_113c,
   MONUMOD_SpectralHitMissileDamage_6FC43650_113c,
+  OBJ_DropChestLootFromObjectUnit_6FC8B6F0_113c,
 } from './k2-w4b3-113c.ts'
 import { SUNIT_SendHoverMsgOrClearPacketToClient_6FC9ACB0_113c } from './k2-w5b2-113c.ts'
 import { MONUMOD_OnHitApplyCursedAmplifyDamage_6FC44250_113c } from './k2-w6b1-113c.ts'
@@ -267,6 +316,14 @@ export interface BootInitGapACallees113c {
     pClient: number,
     dwTickMs: number,
   ) => number
+  readonly onEnterGame?: (
+    m: Memory113c,
+    wGameId: number,
+    szCharName: number,
+    dwClassId: number,
+    dwLevel: number,
+    wClientFlag0A: number,
+  ) => void
   readonly spawnSuperUniqueById?: (
     m: Memory113c,
     pGame: number,
@@ -1462,7 +1519,29 @@ export function GAME_StepActEnvironmentCycles113c(
       const pAct = m.u32((pGame + 0xbc + nAct * 4) >>> 0) >>> 0
       if (pAct !== 0) {
         if (ENV_StepCycle113c(m, pAct, nAct) !== 0) {
+          ENV_GetCycleState113c(m, pAct, pCycleIdx, pTicks, pEclipse)
           bBroadcast53 = 1
+          if (m.u32(D2COMMON_SGPT_DATATABLES_VA_113C) !== 0) {
+            let pClAct = m.u32((pGame + 0x88) >>> 0) >>> 0
+            while (pClAct !== 0) {
+              let pPlrAct = 0
+              if ((m.u8((pClAct + 0x3d4) >>> 0) & 1) !== 0) {
+                pPlrAct = m.u32((pClAct + 0x174) >>> 0) >>> 0
+              } else if (m.u32((pClAct + 0x174) >>> 0) !== 0) {
+                pPlrAct = SUNIT_GetServerUnit113c(
+                  m,
+                  m.u32((pClAct + 0x1a8) >>> 0),
+                  m.u32((pClAct + 0x16c) >>> 0) | 0,
+                  m.u32((pClAct + 0x170) >>> 0) | 0,
+                ) >>> 0
+              }
+              if (pPlrAct !== 0) {
+                D2GAME_ITEMS_UpdateAllInventoryAndEquipmentStats113c(m, pGame, pPlrAct, 0)
+                UNITS_SetUnitUpdateFlags113c(m, pPlrAct, 1)
+              }
+              pClAct = m.u32((pClAct + 0x4a8) >>> 0) >>> 0
+            }
+          }
         }
         if (nAct === 1) {
           ENV_GetCycleState113c(m, pAct, pCycleIdx, pTicks, pEclipse)
@@ -1641,6 +1720,29 @@ export function GAME_StepClientJoinStatesAndTimeouts113c(
               D2GAME_PARTY_SyncAllPlayerRelationsOnJoin113c,
               pJoinUnit,
             )
+
+            let pCbTbl = 0
+            try {
+              pCbTbl = m.u32(0x6fd31c3c) >>> 0
+            } catch {
+              pCbTbl = 0
+            }
+            if (pCbTbl !== 0) {
+              const pEnterUnit = CLIENTS_GetPlayerUnit113c(m, pClient, 0) >>> 0
+              if (pEnterUnit !== 0) {
+                const pfnEnterGame = m.u32((pCbTbl + 0x14) >>> 0) >>> 0
+                if (pfnEnterGame !== 0) {
+                  const dwClassId = m.u32((pEnterUnit + 0x04) >>> 0) >>> 0
+                  const wFlag0A = m.u16((pClient + 0x0a) >>> 0) & 0xffff
+                  const dwLevel = STATLIST_GetUnitStat113c(m, pEnterUnit, 0x0c, 0) | 0
+                  const wGameId = m.u16((pGame + 0x28) >>> 0) & 0xffff
+                  const szCharName = (pClient + 0x0d) >>> 0
+                  if (callees !== undefined && callees.onEnterGame !== undefined) {
+                    callees.onEnterGame(m, wGameId, szCharName, dwClassId, dwLevel, wFlag0A)
+                  }
+                }
+              }
+            }
 
             m.fill(spPkt5A, 0x28, 0)
             m.fill(spAcct, 0x34, 0)
@@ -2238,6 +2340,19 @@ export function UNIT_SyncStateAndStatsToClient113c(
 
   const dwFlags = pUnit !== 0 ? (m.u32((pUnit + 0xc4) >>> 0) >>> 0) : 0
 
+  // 0x6FC98966..0x6FC9899C: `bPreSynced == 0 && (dwFlagsEx & 0x01) != 0` -> broadcast inventory command flags + packets 0x47 / 0x48
+  if (pUnit !== 0 && (m.u32((pUnit + 0xc8) >>> 0) & 0x01) !== 0) {
+    ITEMS_BroadcastUnitInventoryCommandFlags_6FCBBB10_113c(
+      m as SparseMemory113c,
+      0,
+      pGame,
+      pUnit,
+      pClient,
+    )
+    NET_SendPacket47_UnitRelator1_6FCAAEC0_113c(m, pUnit, pClient)
+    NET_SendPacket48_UnitRequestStatus_6FCAAE60_113c(m, pUnit, pClient, 0)
+  }
+
   // 0x6FC989A0..0x6FC989B8: `dwFlags & 0x01` -> player mode sync
   if (pUnit !== 0 && (dwFlags & 0x01) !== 0) {
     if (callees !== undefined && callees.syncPlayerMode !== undefined) {
@@ -2775,6 +2890,122 @@ export function NET_SendFixed40BytePacketToClient113c(
   }
 }
 
+function dispatchDefaultPlayerTimerEvent113c(
+  m: Memory113c,
+  pGame: number,
+  pUnit: number,
+  evType: number,
+  arg14: number,
+  arg18: number,
+): void {
+  const sm = m as SparseMemory113c
+  switch (evType | 0) {
+    case 0:
+      PLAYER_StepAnimationModeTick113c(m, pGame, pUnit, arg14, arg18)
+      break
+    case 1:
+      PLAYER_FinishModeAndResetToNeutral113c(m, pGame, pUnit, arg14, arg18)
+      break
+    case 3:
+      PLAYER_Event3_RegenTick113c(m, pGame, pUnit)
+      break
+    case 5:
+      SKILLS_DispatchStateOnSrvDoFuncForSkill_6FCBE8E0_113c(sm, pGame, pUnit, arg14, arg18)
+      break
+    case 6:
+      EVENT_HandleFreeHoverMsg_6FC99AA0_113c(sm, pGame, pUnit, arg14, arg18)
+      break
+    case 8:
+      SKILLS_Event08_AuraPulseTick113c(m, pGame, pUnit, arg14, arg18)
+      break
+    case 9:
+      SKILLS_OnPeriodicItemAuraEvent9_6FCC37D0_113c(sm, pGame, pUnit, arg14, arg18)
+      break
+    case 11:
+      PLAYER_Event11_PeriodicTick113c(m, pGame, pUnit)
+      break
+    case 12:
+      PLAYER_Event0C_ExpireTimedStats113c(m, pGame, pUnit, arg14, arg18)
+      break
+    case 13:
+      D2Game_6FC93570_113c(sm, pGame, pUnit, arg14, arg18)
+      break
+    default:
+      break
+  }
+}
+
+function dispatchDefaultObjectTimerEvent113c(
+  m: Memory113c,
+  pGame: number,
+  pUnit: number,
+  evType: number,
+): void {
+  const sm = m as SparseMemory113c
+  switch (evType | 0) {
+    case 0:
+      OBJ_ThinkEventLightningSpire_6FC8E400_113c(sm, pGame, pUnit)
+      break
+    case 1:
+      OBJ_FinishOperatingToOpenedMode_6FC89DA0_113c(m, pGame, pUnit)
+      break
+    case 2:
+      OBJ_IncrementWellChargesAndRefresh_6FC89CA0_113c(sm, pGame, pUnit)
+      break
+    case 3:
+      OBJECTS_FloorSpikesEventTick_6FC8E270_113c(sm, pGame, pUnit)
+      break
+    case 4:
+      OBJ_DispatchObjectTrapOrMonsterSpawn_6FC89970_113c(sm, pGame, pUnit)
+      break
+    case 5:
+      OBJ_ResetSubClassBit0ObjectToNeutral_6FC89D60_113c(m, pGame, pUnit)
+      break
+    case 6:
+      OBJ_EventHoverMsgTimeout_6FC8E470_113c(sm, pGame, pUnit)
+      break
+    case 7:
+      QUESTS_ObjectEvent07_FastcallThunk_6FC8F510_113c(sm, pGame, pUnit)
+      break
+    case 8:
+      OBJ_EventPeriodicOrTimeOfDaySync_6FC8E4E0_113c(sm, pGame, pUnit)
+      break
+    case 9:
+      OBJ_ThinkEventSparkyChest_6FC8E150_113c(sm, pGame, pUnit)
+      break
+    case 10:
+      OBJ_DropChestLootFromObjectUnit_6FC8B6F0_113c(sm, pGame, pUnit)
+      break
+    case 11:
+      OBJECTS_LinkHellPortalToDestinationLevel_6FC8B930_113c(sm, pGame, pUnit)
+      break
+    default:
+      break
+  }
+}
+
+function dispatchDefaultItemTimerEvent113c(
+  m: Memory113c,
+  pGame: number,
+  pUnit: number,
+  evType: number,
+): void {
+  const sm = m as SparseMemory113c
+  switch (evType | 0) {
+    case 3:
+      ITEMS_ProcessItemDurabilityAndStackReplenish_6FCFA480_113c(sm, pGame, pUnit)
+      break
+    case 4:
+      ITEMMODE_UnitTimerNoop113c(m, pGame, pUnit)
+      break
+    case 12:
+      ITEMS_ExpireTimedStatSubListsEvent_6FCF1780_113c(m, pGame, pUnit)
+      break
+    default:
+      break
+  }
+}
+
 /**
  * Executes persistent and timed slot events for Partition 0 (`UNIT_PLAYER`).
  *
@@ -2793,17 +3024,18 @@ export function EVENT_ExecutePlayerEvents113c(
   while (node !== 0) {
     m.set(pTimer, D2TimerStrc.pSavedNext, m.get(node, D2EventStrc.pWheelNewer))
     m.set(node, D2EventStrc.fFlags, m.get(node, D2EventStrc.fFlags) | EVENT_FLAG_FIRING)
+    const pUnit = m.get(node, D2EventStrc.pUnit)
+    const evType = m.get(node, D2EventStrc.nType)
+    const arg14 = m.get(node, D2EventStrc.dwArg14)
+    const arg18 = m.get(node, D2EventStrc.dwArg18)
+    const pfn = m.get(node, D2EventStrc.pfnHandler) >>> 0
     firedCount++
     if (callees !== undefined && callees.dispatchPlayerEvent !== undefined) {
-      callees.dispatchPlayerEvent(
-        m,
-        pGame,
-        m.get(node, D2EventStrc.pUnit),
-        m.get(node, D2EventStrc.nType),
-        m.get(node, D2EventStrc.dwArg14),
-        m.get(node, D2EventStrc.dwArg18),
-        node,
-      )
+      callees.dispatchPlayerEvent(m, pGame, pUnit, evType, arg14, arg18, node)
+    } else if (pfn === 0x6fd00410) {
+      SUNIT_ClearPlayerTimeoutEvent_6FD00410_113c(m, pGame, pUnit, evType, arg14, arg18)
+    } else if (pfn === 0) {
+      dispatchDefaultPlayerTimerEvent113c(m, pGame, pUnit, evType, arg14, arg18)
     }
     const postFlags = m.get(node, D2EventStrc.fFlags) & ~EVENT_FLAG_FIRING
     m.set(node, D2EventStrc.fFlags, postFlags)
@@ -2820,17 +3052,18 @@ export function EVENT_ExecutePlayerEvents113c(
     m.set(pTimer, D2TimerStrc.pSavedNext, m.get(node, D2EventStrc.pWheelNewer))
     if ((m.get(node, D2EventStrc.dwFrame) >>> 0) === frame) {
       m.set(node, D2EventStrc.fFlags, m.get(node, D2EventStrc.fFlags) | EVENT_FLAG_FIRING)
+      const pUnit = m.get(node, D2EventStrc.pUnit)
+      const evType = m.get(node, D2EventStrc.nType)
+      const arg14 = m.get(node, D2EventStrc.dwArg14)
+      const arg18 = m.get(node, D2EventStrc.dwArg18)
+      const pfn = m.get(node, D2EventStrc.pfnHandler) >>> 0
       firedCount++
       if (callees !== undefined && callees.dispatchPlayerEvent !== undefined) {
-        callees.dispatchPlayerEvent(
-          m,
-          pGame,
-          m.get(node, D2EventStrc.pUnit),
-          m.get(node, D2EventStrc.nType),
-          m.get(node, D2EventStrc.dwArg14),
-          m.get(node, D2EventStrc.dwArg18),
-          node,
-        )
+        callees.dispatchPlayerEvent(m, pGame, pUnit, evType, arg14, arg18, node)
+      } else if (pfn === 0x6fd00410) {
+        SUNIT_ClearPlayerTimeoutEvent_6FD00410_113c(m, pGame, pUnit, evType, arg14, arg18)
+      } else if (pfn === 0) {
+        dispatchDefaultPlayerTimerEvent113c(m, pGame, pUnit, evType, arg14, arg18)
       }
       const postFlags = m.get(node, D2EventStrc.fFlags) & ~EVENT_FLAG_FIRING
       m.set(node, D2EventStrc.fFlags, postFlags)
@@ -2864,9 +3097,12 @@ export function EVENT_ExecuteMonsterEvents113c(
     const evType = m.get(node, D2EventStrc.nType)
     const arg14 = m.get(node, D2EventStrc.dwArg14)
     const arg18 = m.get(node, D2EventStrc.dwArg18)
+    const pfn = m.get(node, D2EventStrc.pfnHandler) >>> 0
     firedCount++
     if (callees !== undefined && callees.dispatchMonsterEvent !== undefined) {
       callees.dispatchMonsterEvent(m, pGame, pUnit, evType, arg14, arg18, node)
+    } else if (pfn === 0x6fd00410) {
+      SUNIT_ClearPlayerTimeoutEvent_6FD00410_113c(m, pGame, pUnit, evType, arg14, arg18)
     } else if (callees !== undefined && callees.monsterEvents !== undefined) {
       MONSTER_DispatchEvent113c(m, pGame, pUnit, evType, arg14, arg18, callees.monsterEvents)
     }
@@ -2889,9 +3125,12 @@ export function EVENT_ExecuteMonsterEvents113c(
       const evType = m.get(node, D2EventStrc.nType)
       const arg14 = m.get(node, D2EventStrc.dwArg14)
       const arg18 = m.get(node, D2EventStrc.dwArg18)
+      const pfn = m.get(node, D2EventStrc.pfnHandler) >>> 0
       firedCount++
       if (callees !== undefined && callees.dispatchMonsterEvent !== undefined) {
         callees.dispatchMonsterEvent(m, pGame, pUnit, evType, arg14, arg18, node)
+      } else if (pfn === 0x6fd00410) {
+        SUNIT_ClearPlayerTimeoutEvent_6FD00410_113c(m, pGame, pUnit, evType, arg14, arg18)
       } else if (callees !== undefined && callees.monsterEvents !== undefined) {
         MONSTER_DispatchEvent113c(m, pGame, pUnit, evType, arg14, arg18, callees.monsterEvents)
       }
@@ -2924,22 +3163,22 @@ export function EVENT_ExecuteObjectEvents113c(
     m.set(pTimer, D2TimerStrc.pSavedNext, m.get(node, D2EventStrc.pWheelNewer))
     const pUnit = m.get(node, D2EventStrc.pUnit)
     const pPath = pUnit !== 0 ? m.u32((pUnit + 0x2c) >>> 0) >>> 0 : 0
-    const pRoom = pPath !== 0 ? m.u32((pPath + 0x1c) >>> 0) >>> 0 : 0
+    const pRoom = (UNITS_GetRoom113c(m, pUnit) || (pPath !== 0 ? m.u32((pPath + 0x1c) >>> 0) : 0)) >>> 0
     if (pRoom === 0) {
       EVENT_FreeNode113c(m, pGame, node)
     } else {
       m.set(node, D2EventStrc.fFlags, m.get(node, D2EventStrc.fFlags) | EVENT_FLAG_FIRING)
+      const evType = m.get(node, D2EventStrc.nType)
+      const arg14 = m.get(node, D2EventStrc.dwArg14)
+      const arg18 = m.get(node, D2EventStrc.dwArg18)
+      const pfn = m.get(node, D2EventStrc.pfnHandler) >>> 0
       firedCount++
       if (callees !== undefined && callees.dispatchObjectEvent !== undefined) {
-        callees.dispatchObjectEvent(
-          m,
-          pGame,
-          pUnit,
-          m.get(node, D2EventStrc.nType),
-          m.get(node, D2EventStrc.dwArg14),
-          m.get(node, D2EventStrc.dwArg18),
-          node,
-        )
+        callees.dispatchObjectEvent(m, pGame, pUnit, evType, arg14, arg18, node)
+      } else if (pfn === 0x6fd00410) {
+        SUNIT_ClearPlayerTimeoutEvent_6FD00410_113c(m, pGame, pUnit, evType, arg14, arg18)
+      } else if (pfn === 0) {
+        dispatchDefaultObjectTimerEvent113c(m, pGame, pUnit, evType)
       }
       const postFlags = m.get(node, D2EventStrc.fFlags) & ~EVENT_FLAG_FIRING
       m.set(node, D2EventStrc.fFlags, postFlags)
@@ -2958,22 +3197,22 @@ export function EVENT_ExecuteObjectEvents113c(
     if ((m.get(node, D2EventStrc.dwFrame) >>> 0) === frame) {
       const pUnit = m.get(node, D2EventStrc.pUnit)
       const pPath = pUnit !== 0 ? m.u32((pUnit + 0x2c) >>> 0) >>> 0 : 0
-      const pRoom = pPath !== 0 ? m.u32((pPath + 0x1c) >>> 0) >>> 0 : 0
+      const pRoom = (UNITS_GetRoom113c(m, pUnit) || (pPath !== 0 ? m.u32((pPath + 0x1c) >>> 0) : 0)) >>> 0
       if (pRoom === 0) {
         EVENT_FreeNode113c(m, pGame, node)
       } else {
         m.set(node, D2EventStrc.fFlags, m.get(node, D2EventStrc.fFlags) | EVENT_FLAG_FIRING)
+        const evType = m.get(node, D2EventStrc.nType)
+        const arg14 = m.get(node, D2EventStrc.dwArg14)
+        const arg18 = m.get(node, D2EventStrc.dwArg18)
+        const pfn = m.get(node, D2EventStrc.pfnHandler) >>> 0
         firedCount++
         if (callees !== undefined && callees.dispatchObjectEvent !== undefined) {
-          callees.dispatchObjectEvent(
-            m,
-            pGame,
-            pUnit,
-            m.get(node, D2EventStrc.nType),
-            m.get(node, D2EventStrc.dwArg14),
-            m.get(node, D2EventStrc.dwArg18),
-            node,
-          )
+          callees.dispatchObjectEvent(m, pGame, pUnit, evType, arg14, arg18, node)
+        } else if (pfn === 0x6fd00410) {
+          SUNIT_ClearPlayerTimeoutEvent_6FD00410_113c(m, pGame, pUnit, evType, arg14, arg18)
+        } else if (pfn === 0) {
+          dispatchDefaultObjectTimerEvent113c(m, pGame, pUnit, evType)
         }
         const postFlags = m.get(node, D2EventStrc.fFlags) & ~EVENT_FLAG_FIRING
         m.set(node, D2EventStrc.fFlags, postFlags)
@@ -3017,27 +3256,27 @@ export function EVENT_ExecuteMissileEvents113c(
           PATH_GetTargetTypeAndPosition113c(m, pUnit, sp)
         }
         m.set(node, D2EventStrc.fFlags, m.get(node, D2EventStrc.fFlags) | EVENT_FLAG_FIRING)
-        const pfn = m.get(node, D2EventStrc.pfnHandler)
-        if (pfn !== 0 || allowZero) {
-          firedCount++
-          if (callees !== undefined && callees.dispatchMissileEvent !== undefined) {
-            callees.dispatchMissileEvent(
-              m,
-              pfn,
-              pGame,
-              pUnit,
-              m.get(node, D2EventStrc.nType),
-              m.get(node, D2EventStrc.dwArg14),
-              m.get(node, D2EventStrc.dwArg18),
+        const pfn = m.get(node, D2EventStrc.pfnHandler) >>> 0
+        const evType = m.get(node, D2EventStrc.nType)
+        const arg14 = m.get(node, D2EventStrc.dwArg14)
+        const arg18 = m.get(node, D2EventStrc.dwArg18)
+        if (callees !== undefined && callees.dispatchMissileEvent !== undefined) {
+          if (pfn !== 0 || allowZero) {
+            firedCount++
+            callees.dispatchMissileEvent(m, pfn, pGame, pUnit, evType, arg14, arg18, node)
+          } else {
+            m.set(
               node,
+              D2EventStrc.fFlags,
+              m.get(node, D2EventStrc.fFlags) | EVENT_FLAG_DEFERRED_FREE,
             )
           }
-        } else {
-          m.set(
-            node,
-            D2EventStrc.fFlags,
-            m.get(node, D2EventStrc.fFlags) | EVENT_FLAG_DEFERRED_FREE,
-          )
+        } else if (pfn === 0x6fd00410) {
+          firedCount++
+          SUNIT_ClearPlayerTimeoutEvent_6FD00410_113c(m, pGame, pUnit, evType, arg14, arg18)
+        } else if (pfn === 0) {
+          firedCount++
+          MISSILE_DispatchFrameTick113c(m, pGame, pUnit)
         }
         const postFlags = m.get(node, D2EventStrc.fFlags) & ~EVENT_FLAG_FIRING
         m.set(node, D2EventStrc.fFlags, postFlags)
@@ -3064,19 +3303,21 @@ export function EVENT_ExecuteMissileEvents113c(
             PATH_GetTargetTypeAndPosition113c(m, pUnit, sp)
           }
           m.set(node, D2EventStrc.fFlags, m.get(node, D2EventStrc.fFlags) | EVENT_FLAG_FIRING)
-          const pfn = m.get(node, D2EventStrc.pfnHandler)
-          if ((pfn !== 0 || allowZero) && callees !== undefined && callees.dispatchMissileEvent !== undefined) {
+          const pfn = m.get(node, D2EventStrc.pfnHandler) >>> 0
+          const evType = m.get(node, D2EventStrc.nType)
+          const arg14 = m.get(node, D2EventStrc.dwArg14)
+          const arg18 = m.get(node, D2EventStrc.dwArg18)
+          if (callees !== undefined && callees.dispatchMissileEvent !== undefined) {
+            if (pfn !== 0 || allowZero) {
+              firedCount++
+              callees.dispatchMissileEvent(m, pfn, pGame, pUnit, evType, arg14, arg18, node)
+            }
+          } else if (pfn === 0x6fd00410) {
             firedCount++
-            callees.dispatchMissileEvent(
-              m,
-              pfn,
-              pGame,
-              pUnit,
-              m.get(node, D2EventStrc.nType),
-              m.get(node, D2EventStrc.dwArg14),
-              m.get(node, D2EventStrc.dwArg18),
-              node,
-            )
+            SUNIT_ClearPlayerTimeoutEvent_6FD00410_113c(m, pGame, pUnit, evType, arg14, arg18)
+          } else if (pfn === 0) {
+            firedCount++
+            MISSILE_DispatchFrameTick113c(m, pGame, pUnit)
           }
           const postFlags = m.get(node, D2EventStrc.fFlags) & ~EVENT_FLAG_FIRING
           m.set(node, D2EventStrc.fFlags, postFlags)
@@ -3111,23 +3352,24 @@ export function EVENT_ExecuteItemEvents113c(
   while (node !== 0) {
     m.set(pTimer, D2TimerStrc.pSavedNext, m.get(node, D2EventStrc.pWheelNewer))
     m.set(node, D2EventStrc.fFlags, m.get(node, D2EventStrc.fFlags) | EVENT_FLAG_FIRING)
-    const pfn = m.get(node, D2EventStrc.pfnHandler)
-    if (pfn !== 0 || allowZero) {
-      firedCount++
-      if (callees !== undefined && callees.dispatchItemEvent !== undefined) {
-        callees.dispatchItemEvent(
-          m,
-          pfn,
-          pGame,
-          m.get(node, D2EventStrc.pUnit),
-          m.get(node, D2EventStrc.nType),
-          m.get(node, D2EventStrc.dwArg14),
-          m.get(node, D2EventStrc.dwArg18),
-          node,
-        )
+    const pfn = m.get(node, D2EventStrc.pfnHandler) >>> 0
+    const pUnit = m.get(node, D2EventStrc.pUnit)
+    const evType = m.get(node, D2EventStrc.nType)
+    const arg14 = m.get(node, D2EventStrc.dwArg14)
+    const arg18 = m.get(node, D2EventStrc.dwArg18)
+    if (callees !== undefined && callees.dispatchItemEvent !== undefined) {
+      if (pfn !== 0 || allowZero) {
+        firedCount++
+        callees.dispatchItemEvent(m, pfn, pGame, pUnit, evType, arg14, arg18, node)
+      } else {
+        m.set(node, D2EventStrc.fFlags, m.get(node, D2EventStrc.fFlags) | EVENT_FLAG_DEFERRED_FREE)
       }
-    } else {
-      m.set(node, D2EventStrc.fFlags, m.get(node, D2EventStrc.fFlags) | EVENT_FLAG_DEFERRED_FREE)
+    } else if (pfn === 0x6fd00410) {
+      firedCount++
+      SUNIT_ClearPlayerTimeoutEvent_6FD00410_113c(m, pGame, pUnit, evType, arg14, arg18)
+    } else if (pfn === 0) {
+      firedCount++
+      dispatchDefaultItemTimerEvent113c(m, pGame, pUnit, evType)
     }
     const postFlags = m.get(node, D2EventStrc.fFlags) & ~EVENT_FLAG_FIRING
     m.set(node, D2EventStrc.fFlags, postFlags)
@@ -3144,19 +3386,22 @@ export function EVENT_ExecuteItemEvents113c(
     m.set(pTimer, D2TimerStrc.pSavedNext, m.get(node, D2EventStrc.pWheelNewer))
     if ((m.get(node, D2EventStrc.dwFrame) >>> 0) === frame) {
       m.set(node, D2EventStrc.fFlags, m.get(node, D2EventStrc.fFlags) | EVENT_FLAG_FIRING)
-      const pfn = m.get(node, D2EventStrc.pfnHandler)
-      if ((pfn !== 0 || allowZero) && callees !== undefined && callees.dispatchItemEvent !== undefined) {
+      const pfn = m.get(node, D2EventStrc.pfnHandler) >>> 0
+      const pUnit = m.get(node, D2EventStrc.pUnit)
+      const evType = m.get(node, D2EventStrc.nType)
+      const arg14 = m.get(node, D2EventStrc.dwArg14)
+      const arg18 = m.get(node, D2EventStrc.dwArg18)
+      if (callees !== undefined && callees.dispatchItemEvent !== undefined) {
+        if (pfn !== 0 || allowZero) {
+          firedCount++
+          callees.dispatchItemEvent(m, pfn, pGame, pUnit, evType, arg14, arg18, node)
+        }
+      } else if (pfn === 0x6fd00410) {
         firedCount++
-        callees.dispatchItemEvent(
-          m,
-          pfn,
-          pGame,
-          m.get(node, D2EventStrc.pUnit),
-          m.get(node, D2EventStrc.nType),
-          m.get(node, D2EventStrc.dwArg14),
-          m.get(node, D2EventStrc.dwArg18),
-          node,
-        )
+        SUNIT_ClearPlayerTimeoutEvent_6FD00410_113c(m, pGame, pUnit, evType, arg14, arg18)
+      } else if (pfn === 0) {
+        firedCount++
+        dispatchDefaultItemTimerEvent113c(m, pGame, pUnit, evType)
       }
       const postFlags = m.get(node, D2EventStrc.fFlags) & ~EVENT_FLAG_FIRING
       m.set(node, D2EventStrc.fFlags, postFlags)

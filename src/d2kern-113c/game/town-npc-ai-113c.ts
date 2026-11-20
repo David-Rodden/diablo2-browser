@@ -1149,7 +1149,7 @@ export function AI_WarrivGreetMem113c(
     if (soundCooldown === 0) {
       mem.setU32((pAiGeneral + 0x18) >>> 0, 0x3c);
       if (mem.get(pTarget, D2UnitStrc.dwUnitType) === UNIT_PLAYER) {
-        SUNIT_SetUnitEventSound113c(mem, pTarget, 0x12, pTarget);
+        SUNIT_SetUnitEventSound113c(mem, pUnit >>> 0, 0x12, pTarget);
         AI_Stall113c(mem, pGame >>> 0, pUnit >>> 0, 0x14);
         return 1;
       }
@@ -1217,8 +1217,8 @@ export function AI_TownNpcMem113c(
         mem as SparseMemory113c,
         pGame >>> 0,
         pUnit >>> 0,
-        (sp + 0x04) >>> 0,
         sp,
+        (sp + 0x04) >>> 0,
       );
       if (mem.u32(sp) !== 0) {
         AI_Stall113c(mem, pGame >>> 0, pUnit >>> 0, 0x14);

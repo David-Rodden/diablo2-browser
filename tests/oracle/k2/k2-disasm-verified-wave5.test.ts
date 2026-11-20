@@ -809,7 +809,7 @@ describe('K2 Wave 5 Disassembly-Verified Differential Suite (+160 D2Game VAs)', 
     expect(MONUMOD_CheckModEligibility_6FC43100_113c(m, pChamp, pMonUModTxt + 5 * 0x20, 1)).toBe(1)
 
     // 0x6FC43E20..0x6FC46520: revive event, cursed amp, minion pack, enchanted/scarab/death nova
-    expect(MONUMOD_EventReviveOrCorpseCheck_6FC43E20_113c(m, pGame, 0)).toBe(1)
+    expect(MONUMOD_EventReviveOrCorpseCheck_6FC43E20_113c(m, pGame, pMon)).toBe(1)
     m.setU16(pSkillsTxt + 0x42 * 0x23c + 0x54, 0x24)
     m.setU16(pSkillsTxt + 0x42 * 0x23c + 0x82, 9)
     MONUMOD_ApplyCursedAmplifyDamage_6FC44030_113c(m, pGame, pMon, pChamp, 2)

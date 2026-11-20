@@ -4263,9 +4263,11 @@ function withSkillsStackScratch113c(m: Memory113c): Memory113c {
     realloc?: (p: number, sz: number) => number
   }
   const self: Memory113c & {
+    inner: Memory113c
     free?: ((p: number) => void) | undefined
     realloc?: ((p: number, sz: number) => number) | undefined
   } = {
+    inner: m,
     alloc: size => m.alloc(size),
     free: p => mExt.free?.(p),
     realloc: mExt.realloc ? (p, sz) => mExt.realloc!(p, sz) : undefined,

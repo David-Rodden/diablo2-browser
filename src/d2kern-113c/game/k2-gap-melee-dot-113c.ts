@@ -1664,6 +1664,56 @@ export function MISSILE_ApplyDamageAndArmorShred113c(
   STATLIST_SetUnitStat113c(m, esi, 0x1f, nextAc, 0)
 }
 
+// Exact PE32 v1.13c missile dispatch tables in `D2Game.dll` `.data`:
+// `0x6FD2D970` (count `[0x6FD2DA44] = 53`), `0x6FD2DA48` (count `[0x6FD2DB64] = 71`), `0x6FD2DB68` (count `[0x6FD2DBE4] = 31`).
+const DEFAULT_MISSILE_SRVDO_TABLE_6FD2D970: readonly number[] = [
+  0, 0x6fc5f540, 0x6fc61b80, 0x6fc61ae0, 0, 0x6fc61980, 0x6fc61850, 0x6fc61710,
+  0x6fc61670, 0x6fc61520, 0x6fc613d0, 0x6fc61240, 0x6fc61110, 0x6fc60eb0, 0x6fc60e10, 0x6fc60ca0,
+  0x6fc60bd0, 0x6fc60b20, 0x6fc608d0, 0x6fc5f6d0, 0x6fc60860, 0x6fc61eb0, 0x6fc606d0, 0x6fc605e0,
+  0x6fc605e0, 0x6fc604d0, 0x6fc60420, 0x6fc60280, 0x6fc60070, 0x6fc5fed0, 0x6fc5fb40, 0x6fc5f9f0,
+  0x6fc61de0, 0x6fc5fd30, 0x6fc61c30, 0x6fc5f890, 0x6fc5f670, 0x6fc5f550, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0,
+]
+
+const DEFAULT_MISSILE_SRVHIT_TABLE_6FD2DA48: readonly number[] = [
+  0, 0x6fc5b990, 0x6fc5e330, 0x6fc5bb60, 0x6fc5f220, 0x6fc5c700, 0x6fc5bd10, 0x6fc59fd0,
+  0x6fc59f70, 0x6fc5e0b0, 0x6fc5b140, 0x6fc5f120, 0x6fc5d020, 0x6fc5b3e0, 0x6fc5def0, 0x6fc5cdd0,
+  0x6fc5ec10, 0x6fc5eae0, 0x6fc5ea60, 0x6fc5e8a0, 0x6fc5dd60, 0x6fc5abd0, 0x6fc5db30, 0x6fc59da0,
+  0x6fc5b7c0, 0x6fc5da60, 0x6fc5c990, 0x6fc58ec0, 0x6fc5e740, 0x6fc5c850, 0, 0x6fc5a920,
+  0x6fc5be70, 0x6fc58ea0, 0, 0x6fc5e670, 0x6fc5ab30, 0x6fc58e90, 0x6fc5c5b0, 0x6fc5bc00,
+  0x6fc5c490, 0, 0, 0x6fc59e30, 0x6fc5b5f0, 0x6fc5c3b0, 0, 0x6fc5d8c0,
+  0x6fc5c260, 0, 0x6fc591a0, 0x6fc5c160, 0x6fc5c030, 0x6fc5f7d0, 0x6fc5bc80, 0x6fc596e0,
+  0x6fc5b210, 0x6fc5bbb0, 0x6fc5bed0, 0x6fc5d800, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0,
+]
+
+const DEFAULT_MISSILE_SRVDMG_TABLE_6FD2DB68: readonly number[] = [
+  0, 0x6fc59ce0, 0x6fc59080, 0x6fc59670, 0x6fc58e70, 0x6fc5a790, 0x6fc59c80, 0x6fc59600,
+  0x6fc58ff0, 0x6fc59560, 0x6fc59040, 0x6fc59bd0, 0x6fc5a850, 0x6fc5aaa0, 0x6fc59a40, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0,
+]
+
+function tryReadStaticU32_113c(m: Memory113c, addr: number): number {
+  try {
+    return m.u32(addr >>> 0) >>> 0
+  } catch {
+    return 0
+  }
+}
+
+function resolveMissileTableFnVa113c(
+  m: Memory113c,
+  tableBase: number,
+  defaults: readonly number[],
+  idx: number,
+): number {
+  const inMem = tryReadStaticU32_113c(m, (tableBase + idx * 4) >>> 0)
+  if (inMem !== 0) return inMem
+  return idx >= 0 && idx < defaults.length ? defaults[idx]! >>> 0 : 0
+}
+
 /**
  * Per-frame server missile tick (`0x6FC5E3F0`): enforces town-kill rules, dispatches `MissilesTxt.wSrvDoFunc`, and frees `pMissile` on result `2`.
  *
@@ -1682,7 +1732,9 @@ export function MISSILE_DispatchFrameTick113c(
   if (ebpMisTxt === 0) return
 
   const wSrvDoFunc = s16SignExt113c(m.u16((ebpMisTxt + 0x0c) >>> 0))
-  if (wSrvDoFunc <= 0 || wSrvDoFunc >= 53) return
+  const srvDoLimit = tryReadStaticU32_113c(m, 0x6fd2da44) | 0
+  const maxSrvDo = srvDoLimit > 0 ? srvDoLimit : 53
+  if (wSrvDoFunc <= 0 || wSrvDoFunc >= maxSrvDo) return
 
   let ebxRoom = UNITS_GetRoom113c(m, esi)
   if (ebxRoom === 0) {
@@ -1721,10 +1773,10 @@ export function MISSILE_DispatchFrameTick113c(
   }
 
   let doRes = 1
+  const fnVa = resolveMissileTableFnVa113c(m, 0x6fd2d970, DEFAULT_MISSILE_SRVDO_TABLE_6FD2D970, wSrvDoFunc)
   if (hooks !== undefined && hooks.srvDoMissile !== undefined) {
-    const fnVa = wSrvDoFunc === 1 ? 0x6fc5f540 : 0
     doRes = hooks.srvDoMissile(m, wSrvDoFunc, fnVa, ediGame, esi) | 0
-  } else if (wSrvDoFunc === 1) {
+  } else if (fnVa === 0x6fc5f540) {
     doRes = MISSILE_SrvDo01_FastcallThunk113c(m, ediGame, esi, hooks) | 0
   }
 
@@ -1845,8 +1897,16 @@ export function MISSILE_ProcessTargetCollisionHit113c(
         SUNIT_DispatchItemEventCallbacks113c(m, ebp, g, 0, edi, 0)
         if (m.u8((pMisTxt + 0x18c) >>> 0) !== 0) {
           const wSrvHit = s16SignExt113c(m.u16((pMisTxt + 0x0e) >>> 0))
-          if (wSrvHit > 0 && wSrvHit < 71 && hooks !== undefined && hooks.srvHitMissile !== undefined) {
-            const hRes = hooks.srvHitMissile(m, wSrvHit, 0, g, edi, ebp) | 0
+          const hitLimit = tryReadStaticU32_113c(m, 0x6fd2db64) | 0
+          const maxSrvHit = hitLimit > 0 ? hitLimit : 71
+          if (wSrvHit > 0 && wSrvHit < maxSrvHit && hooks !== undefined && hooks.srvHitMissile !== undefined) {
+            const hitFnVa = resolveMissileTableFnVa113c(
+              m,
+              0x6fd2da48,
+              DEFAULT_MISSILE_SRVHIT_TABLE_6FD2DA48,
+              wSrvHit,
+            )
+            const hRes = hooks.srvHitMissile(m, wSrvHit, hitFnVa, g, edi, ebp) | 0
             if ((hRes & 0x04) !== 0) return 1
           }
         }
@@ -1862,8 +1922,16 @@ export function MISSILE_ProcessTargetCollisionHit113c(
       MISSILE_ApplyNextHitDelayState113c(m, edi, ebp)
       SUNIT_DispatchItemEventCallbacks113c(m, ebp, g, 0, edi, 0)
       const wSrvHit = s16SignExt113c(m.u16((pMisTxt + 0x0e) >>> 0))
-      if (wSrvHit > 0 && wSrvHit < 71 && hooks !== undefined && hooks.srvHitMissile !== undefined) {
-        hitFlags = hooks.srvHitMissile(m, wSrvHit, 0, g, edi, ebp) | 0
+      const hitLimit = tryReadStaticU32_113c(m, 0x6fd2db64) | 0
+      const maxSrvHit = hitLimit > 0 ? hitLimit : 71
+      if (wSrvHit > 0 && wSrvHit < maxSrvHit && hooks !== undefined && hooks.srvHitMissile !== undefined) {
+        const hitFnVa = resolveMissileTableFnVa113c(
+          m,
+          0x6fd2da48,
+          DEFAULT_MISSILE_SRVHIT_TABLE_6FD2DA48,
+          wSrvHit,
+        )
+        hitFlags = hooks.srvHitMissile(m, wSrvHit, hitFnVa, g, edi, ebp) | 0
         if ((hitFlags & 0x04) !== 0) return 1
       }
     }
@@ -1873,8 +1941,16 @@ export function MISSILE_ProcessTargetCollisionHit113c(
       try {
         MISSILE_BuildDamageStrcFromStats113c(m, edi, ebp, pDmgScratch)
         const wSrvDmg = s16SignExt113c(m.u16((pMisTxt + 0x10) >>> 0))
-        if (wSrvDmg > 0 && wSrvDmg < 31 && hooks !== undefined && hooks.srvDmgMissile !== undefined) {
-          hooks.srvDmgMissile(m, wSrvDmg, 0, g, edi, ebp, pDmgScratch)
+        const dmgLimit = tryReadStaticU32_113c(m, 0x6fd2dbe4) | 0
+        const maxSrvDmg = dmgLimit > 0 ? dmgLimit : 31
+        if (wSrvDmg > 0 && wSrvDmg < maxSrvDmg && hooks !== undefined && hooks.srvDmgMissile !== undefined) {
+          const dmgFnVa = resolveMissileTableFnVa113c(
+            m,
+            0x6fd2db68,
+            DEFAULT_MISSILE_SRVDMG_TABLE_6FD2DB68,
+            wSrvDmg,
+          )
+          hooks.srvDmgMissile(m, wSrvDmg, dmgFnVa, g, edi, ebp, pDmgScratch)
         }
         MISSILE_ApplyDamageAndArmorShred113c(m, g, pDmgScratch, edi, ebp, hooks)
       } finally {
@@ -2407,7 +2483,8 @@ export function MISSILE_CreateServerProjectile113c(
     let dist = UNITS_GetUnitDistanceToCoordinates113c(m, ebxMissile, targetX, targetY) | 0
     if (dist === 0) dist = 1
     const velShl4 = (vel << 4) >>> 0
-    const remDistFrames = velShl4 !== 0 ? Math.floor(((dist >>> 0) * 65536) / velShl4) | 0 : 0
+    const distShl16 = (dist << 16) >>> 0
+    const remDistFrames = velShl4 !== 0 ? Math.trunc(distShl16 / velShl4) | 0 : 0
     MISSILE_SetRemainingFrames113c(m, ebxMissile, remDistFrames)
   }
 

@@ -41,8 +41,8 @@
     "name": "AI_MapAiAction5_WalkAndMode9",
     "kernFile": "src/d2kern-113c/game/town-npc-ai-113c.ts",
     "tsSymbol": "AI_MapAiAction5_WalkAndMode9_113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FC39A00 (195B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts."
   },
   {
     "module": "D2Game",
@@ -86,8 +86,8 @@
     "name": "AI_FollowDs1NpcPathMem",
     "kernFile": "src/d2kern-113c/game/town-npc-ai-113c.ts",
     "tsSymbol": "AI_FollowDs1NpcPathMem113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/town-npc-ai-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay; Wave 22 1:1 PE32 indirect-call audit (static_table; tools/oracle/callgraph/indirect-audit-batchD.json) verified in tests/oracle/k2/k2-disasm-verified-wave22-indD.test.ts"
   },
   {
     "module": "D2Game",
@@ -149,8 +149,8 @@
     "name": "MONSTER_DispatchMinionComponentCallbacks",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-a-113c.ts",
     "tsSymbol": "MONSTER_DispatchMinionComponentCallbacks113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/boot-init-gap-a-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/boot-init-gap-a-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay; Wave 22 1:1 PE32 indirect-call audit (static_table; tools/oracle/callgraph/indirect-audit-batchD.json) verified in tests/oracle/k2/k2-disasm-verified-wave22-indD.test.ts"
   },
   {
     "module": "D2Game",
@@ -158,8 +158,8 @@
     "name": "GAME_StepClientJoinStatesAndTimeouts",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-a-113c.ts",
     "tsSymbol": "GAME_StepClientJoinStatesAndTimeouts113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/boot-init-gap-a-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/boot-init-gap-a-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay; Wave 22 1:1 PE32 indirect-call audit (caller_callback; tools/oracle/callgraph/indirect-audit-batchD.json) verified in tests/oracle/k2/k2-disasm-verified-wave22-indD.test.ts"
   },
   {
     "module": "D2Game",
@@ -167,8 +167,8 @@
     "name": "OBJECTS_CheckLevelObjectHook",
     "kernFile": "src/d2kern-113c/game/objects-populate-113c.ts",
     "tsSymbol": "OBJECTS_CheckLevelObjectHook113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/objects-populate-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/objects-populate-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay; Wave 22 1:1 PE32 indirect-call audit (static_table; tools/oracle/callgraph/indirect-audit-batchD.json) verified in tests/oracle/k2/k2-disasm-verified-wave22-indD.test.ts"
   },
   {
     "module": "D2Game",
@@ -176,8 +176,8 @@
     "name": "OBJECTS_SpawnSingleDensityObjectInRoom_6FC52BC0",
     "kernFile": "src/d2kern-113c/game/k2-laneJ-0x6fc4-w1-113c.ts",
     "tsSymbol": "OBJECTS_SpawnSingleDensityObjectInRoom_6FC52BC0_113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/k2-laneJ-0x6fc4-w1-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FC52BC0 (280B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts."
   },
   {
     "module": "D2Game",
@@ -185,8 +185,8 @@
     "name": "SUNIT_DispatchItemEventCallbacks",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
     "tsSymbol": "SUNIT_DispatchItemEventCallbacks113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay; Wave 22 1:1 PE32 indirect-call audit (vtable_or_struct_table; tools/oracle/callgraph/indirect-audit-batchD.json) verified in tests/oracle/k2/k2-disasm-verified-wave22-indD.test.ts"
   },
   {
     "module": "D2Game",
@@ -221,8 +221,8 @@
     "name": "PLAYER_StartModeOnUnit",
     "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
     "tsSymbol": "PLAYER_StartModeOnUnit113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay; Wave 22 1:1 PE32 indirect-call audit (static_table; tools/oracle/callgraph/indirect-audit-batchD.json) verified in tests/oracle/k2/k2-disasm-verified-wave22-indD.test.ts"
   },
   {
     "module": "D2Game",
@@ -230,8 +230,8 @@
     "name": "PLAYER_StartModeAtCoords",
     "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
     "tsSymbol": "PLAYER_StartModeAtCoords113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay; Wave 22 1:1 PE32 indirect-call audit (static_table; tools/oracle/callgraph/indirect-audit-batchD.json) verified in tests/oracle/k2/k2-disasm-verified-wave22-indD.test.ts"
   },
   {
     "module": "D2Game",
@@ -257,8 +257,8 @@
     "name": "AI_InitMonsterAiThinkFn",
     "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
     "tsSymbol": "AI_InitMonsterAiThinkFn113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/regpop-spawn-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/regpop-spawn-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay; Wave 22 1:1 PE32 indirect-call audit (static_table; tools/oracle/callgraph/indirect-audit-batchD.json) verified in tests/oracle/k2/k2-disasm-verified-wave22-indD.test.ts"
   },
   {
     "module": "D2Game",
@@ -293,8 +293,8 @@
     "name": "MONSTER_AddSkillToUnit",
     "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
     "tsSymbol": "MONSTER_AddSkillToUnit113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/regpop-spawn-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FCBF9A0 (84B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts."
   },
   {
     "module": "D2Game",
@@ -365,8 +365,8 @@
     "name": "C2S_Packet0B_Noop1Byte",
     "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
     "tsSymbol": "C2S_Packet0B_Noop1Byte113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FCEB5B0 (15B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts."
   },
   {
     "module": "D2Game",
@@ -410,8 +410,8 @@
     "name": "C2S_Packet04_RunToUnit",
     "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
     "tsSymbol": "C2S_Packet04_RunToUnit113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FCEE000 (64B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts."
   },
   {
     "module": "D2Game",
@@ -428,8 +428,8 @@
     "name": "C2S_Packet02_WalkToUnit",
     "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
     "tsSymbol": "C2S_Packet02_WalkToUnit113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FCEE090 (64B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts."
   },
   {
     "module": "D2Game",
@@ -464,8 +464,8 @@
     "name": "C2S_Packet05_LeftSkillOnLocation",
     "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
     "tsSymbol": "C2S_Packet05_LeftSkillOnLocation113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FCEE5A0 (116B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts."
   },
   {
     "module": "D2Game",
@@ -482,8 +482,8 @@
     "name": "C2S_Packet0F_RepeatRightSkillOnLocation",
     "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
     "tsSymbol": "C2S_Packet0F_RepeatRightSkillOnLocation113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FCEE790 (81B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts."
   },
   {
     "module": "D2Game",
@@ -491,8 +491,8 @@
     "name": "C2S_Packet0E_ShiftRightSkillOnUnit",
     "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
     "tsSymbol": "C2S_Packet0E_ShiftRightSkillOnUnit113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FCEE7F0 (118B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts."
   },
   {
     "module": "D2Game",
@@ -509,8 +509,8 @@
     "name": "C2S_Packet08_RepeatLeftSkillOnLocation",
     "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
     "tsSymbol": "C2S_Packet08_RepeatLeftSkillOnLocation113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FCEE8F0 (81B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts."
   },
   {
     "module": "D2Game",
@@ -518,8 +518,8 @@
     "name": "C2S_Packet07_ShiftLeftSkillOnUnit",
     "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
     "tsSymbol": "C2S_Packet07_ShiftLeftSkillOnUnit113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FCEE950 (118B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts."
   },
   {
     "module": "D2Game",
@@ -536,8 +536,8 @@
     "name": "C2S_Packet11_RepeatShiftRightSkillOnUnit",
     "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
     "tsSymbol": "C2S_Packet11_RepeatShiftRightSkillOnUnit113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FCEEA50 (87B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts."
   },
   {
     "module": "D2Game",
@@ -545,8 +545,8 @@
     "name": "C2S_Packet10_RepeatRightSkillOnUnit",
     "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
     "tsSymbol": "C2S_Packet10_RepeatRightSkillOnUnit113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FCEEAB0 (87B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts."
   },
   {
     "module": "D2Game",
@@ -554,8 +554,8 @@
     "name": "C2S_Packet0A_RepeatShiftLeftSkillOnUnit",
     "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
     "tsSymbol": "C2S_Packet0A_RepeatShiftLeftSkillOnUnit113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FCEEB10 (87B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts."
   },
   {
     "module": "D2Game",
@@ -563,8 +563,8 @@
     "name": "C2S_Packet09_RepeatLeftSkillOnUnit",
     "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
     "tsSymbol": "C2S_Packet09_RepeatLeftSkillOnUnit113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FCEEB70 (87B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts."
   },
   {
     "module": "D2Game",
@@ -581,8 +581,8 @@
     "name": "C2S_Packet5F_UpdatePlayerPos",
     "kernFile": "src/d2kern-113c/game/c2s-packet-113c.ts",
     "tsSymbol": "C2S_Packet5F_UpdatePlayerPos113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c port in src/d2kern-113c/game/c2s-packet-113c.ts verified against D2Game.dll disassembly and K2 t4+s2c replay"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FCF0790 (278B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts."
   },
   {
     "module": "D2Game",

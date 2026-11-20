@@ -28,7 +28,6 @@ import {
   PATH_GetPosY113c,
   PATH_GetTargetTypeAndPosition113c,
   PATH_GetTargetUnit113c,
-  PATH_SetStepNum113c,
 } from '../common/path'
 import {
   DATATBLS_GetItemsTxtRecordMemPort113c,
@@ -69,9 +68,7 @@ import {
   STATLIST_UnlinkSubList113c,
 } from '../common/statlist'
 import {
-  UNITS_CanUnitMeleeAttackTarget113c,
   UNITS_GetApproximateDistance113c,
-  UNITS_GetEquippedWeaponAdder113c,
   UNITS_GetRoom113c,
   UNIT_GetAlignment113c,
 } from '../common/unit'
@@ -82,7 +79,6 @@ import {
   S2C_SendPacket9C_ItemActionWorld113c,
   SKILLS_ConsumeProgressiveChargesOnHit113c,
   SKILLS_ExecuteSkillStart113c,
-  SUNIT_AreUnitsHostileOrUnaligned113c,
 } from './a1c-post150-f786-f1040-113c'
 import {
   AI_CastSkillWithMode113c,
@@ -101,17 +97,17 @@ import {
 } from './boot-init-gap-b-113c'
 import {
   AI_FleeFrom113c,
-  AI_IdleWander113c,
   AI_Stall113c,
   MONSTER_StartMode113c,
   SUNITDMG_AllocCombat113c,
-  SUNITDMG_CalcMonsterExperience113c,
-  SUNITDMG_CheckToHit113c,
   SUNITDMG_ExecuteEvents113c,
   SUNITDMG_FindCombatDamageData113c,
   SUNITDMG_RemoveCombatNode113c,
-  SUNITDMG_RollPassiveWeaponBlockOrShieldBlock113c,
 } from './combat-a1c-113c'
+import {
+  AI_ApproachTarget113c,
+  SUNITDMG_RollMeleeToHitAndBlock_6FCFE5A0_113c,
+} from './k2-real-s2c-combat-113c'
 import { ITEMS_CheckNotBrokenOrUnequipping113c } from './replay-kernel-113c.ts'
 import { SUNIT_GetServerUnit113c } from './game-strc'
 import {
@@ -278,57 +274,6 @@ function getMonsterAiControl113c(m: D2KernMemory113c, pUnit: number): number {
     }
   }
   return 0
-}
-
-function aiApproachTarget6FD12540(
-  m: D2KernMemory113c,
-  pGame: number,
-  pUnit: number,
-  pTarget: number,
-  nMode: number,
-  nX: number,
-  nY: number,
-  nStepNum: number,
-  dwFlags: number,
-): number {
-  let mode = nMode | 0
-  if (mode === 0x0f && (STATES_CheckState113c(m, pUnit >>> 0, 0x3c) | 0) !== 0) {
-    const pAiCtrl = getMonsterAiControl113c(m, pUnit)
-    if (pAiCtrl !== 0) {
-      m.setU32((pAiCtrl + 0x18) >>> 0, 0)
-      m.setU32((pAiCtrl + 0x1c) >>> 0, 0)
-      m.setU8((pAiCtrl + 0x20) >>> 0, 0)
-    }
-    mode = 2
-  }
-  const pPath = pUnit !== 0 ? m.u32((pUnit + 0x2c) >>> 0) >>> 0 : 0
-  if (pPath !== 0) PATH_SetStepNum113c(m, pPath, nStepNum | 0)
-  const res = MONSTER_StartMode113c(m, pGame >>> 0, pUnit >>> 0, mode, pTarget >>> 0, nX | 0, nY | 0) | 0
-  if (res !== 0) return res
-  const flagsByte = dwFlags & 0xff
-  if ((flagsByte & 4) !== 0 && pUnit !== 0) {
-    let pEvent = m.u32((pUnit + 0xdc) >>> 0) >>> 0
-    while (pEvent !== 0) {
-      const pNext = m.u32((pEvent + 0x24) >>> 0) >>> 0
-      if (m.u8(pEvent) === 2) EVENT_FreeNode113c(m, pGame >>> 0, pEvent)
-      pEvent = pNext
-    }
-  }
-  if ((flagsByte & 1) !== 0 && pUnit !== 0 && (m.u32(pUnit >>> 0) | 0) === 1) {
-    const pMonData = m.u32((pUnit + 0x14) >>> 0) >>> 0
-    const pAiGen = pMonData !== 0 ? m.u32((pMonData + 0x28) >>> 0) >>> 0 : 0
-    if (pAiGen !== 0) m.setU8((pAiGen + 8) >>> 0, (m.u8((pAiGen + 8) >>> 0) | 0x40) & 0xff)
-  }
-  if ((flagsByte & 2) !== 0 && pUnit !== 0) {
-    const roll = stepUnitSeedMod100(m, (pUnit + 0x20) >>> 0)
-    if (roll < 0x46) {
-      AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0)
-      return 1
-    }
-    AI_Stall113c(m, pGame >>> 0, pUnit >>> 0, 10)
-    return 1
-  }
-  return res
 }
 
 /**
@@ -538,7 +483,7 @@ export function MONAI_SkirmishApproachFleeAttackThink_6FCA51E0_113c(
           const diffStep = m.u8((game + 0x6d) >>> 0)
           let stepByte = m.u8((pMonStatsTxt + diffStep * 2 + 0x5c) >>> 0)
           if (stepByte === 0) stepByte = 1
-          aiApproachTarget6FD12540(
+          AI_ApproachTarget113c(
             m,
             game,
             unit,
@@ -592,7 +537,7 @@ export function MONAI_SkirmishApproachFleeAttackThink_6FCA51E0_113c(
         const diffStep = m.u8((game + 0x6d) >>> 0)
         let stepByte = m.u8((pMonStatsTxt + diffStep * 2 + 0x5c) >>> 0)
         if (stepByte === 0) stepByte = 1
-        aiApproachTarget6FD12540(m, game, unit, pOrigTarget, 2, 0, 0, (nDist & ~0xff) | stepByte, 0)
+        AI_ApproachTarget113c(m, game, unit, pOrigTarget, 2, 0, 0, (nDist & ~0xff) | stepByte, 0)
         return
       }
     }
@@ -607,7 +552,7 @@ export function MONAI_SkirmishApproachFleeAttackThink_6FCA51E0_113c(
       const pAiCtrl = getMonsterAiControl113c(m, unit)
       if (pathType !== 0) m.setU32((pAiCtrl + 0x18) >>> 0, pathType >>> 0)
       m.setU8((pAiCtrl + 0x20) >>> 0, 4)
-      aiApproachTarget6FD12540(m, game, unit, pOrigTarget, 2, 0, 0, 1, 0)
+      AI_ApproachTarget113c(m, game, unit, pOrigTarget, 2, 0, 0, 1, 0)
       return
     }
 
@@ -849,8 +794,8 @@ export function SKILLS_RollMonsterConversionChance_6FCB1610_113c(
   hitD2GameVa113c(0x6FCB1610)
   const mon = pMonster >>> 0
   if (mon === 0 || (m.u32(mon) | 0) !== 1) return 0
-  if ((UNIT_GetAlignment113c(m, mon) | 0) !== 0) return 0
   if ((MONSTERS_GetHirelingTypeId113c(m, mon) | 0) !== 0) return 0
+  if ((UNIT_GetAlignment113c(m, mon) | 0) !== 0) return 0
   if (SKILLS_CanMonsterUseSkillInMode_6FCBF120_113c(m, mon, 0x0b) === 0) return 0
   const attacker = pAttacker >>> 0
   const s: D2SeedStrc = {
@@ -1012,7 +957,7 @@ export function SKILLS_SrvDo_DragonTailFireSplash_6FCB3110_113c(
     for (let off = 0; off < 0x70; off += 4) {
       m.setU32((pSavedDmg + off) >>> 0, m.u32((pFoundDmg + off) >>> 0))
     }
-    SKILLS_ConsumeProgressiveChargesOnHit113c(m, pSkillsTxt, attacker, game)
+    SKILLS_ConsumeProgressiveChargesOnHit113c(m, 0, attacker, game)
     SUNITDMG_ExecuteEvents113c(m, game, attacker, pTarget, 1, 0)
     if (SUNIT_IsDeadOrDying113c(m, attacker) === 0) {
       m.fill(pSplashDmg, 0x70, 0)
@@ -1265,11 +1210,7 @@ export function SKILLS_ApplyRadialAuraStatsAndBlindAiCallback_6FCB3850_113c(
             pAiGen = m.u32((pMonData + 0x28) >>> 0) >>> 0
           }
         }
-        void m.u32(ctx)
-        if (pAiGen !== 0) {
-          m.setU32(pAiGen, 0x0a)
-        }
-        AI_InitMonsterAiThinkFn113c(m, target)
+        AI_InitMonsterAiThinkFn113c(m, target, m.u32(ctx) >>> 0, pAiGen, 0x0a)
       }
     }
     return 1
@@ -1620,9 +1561,9 @@ export function SKILLS_CanConvertMonsterAndRollChance_6FCB88B0_113c(
   const pSkillsTxt = (m.u32((pTables + 0xb98) >>> 0) + Math.imul(skillId, 0x23c)) >>> 0
   if (pSkillsTxt === 0) return 0
 
-  if ((UNIT_GetAlignment113c(m, target) | 0) !== 0) return 0
-  if (target === 0 || (m.u32(target) | 0) !== 1) return 0
   if ((MONSTERS_GetHirelingTypeId113c(m, target) | 0) !== 0) return 0
+  if (target === 0 || (m.u32(target) | 0) !== 1) return 0
+  if ((UNIT_GetAlignment113c(m, target) | 0) !== 0) return 0
   if (SKILLS_CanMonsterUseSkillInMode_6FCBF120_113c(m, target, 0x0b) === 0) return 0
 
   const nChance =
@@ -1713,103 +1654,103 @@ export function ITEMS_DispatchCommandFlagPacketsToClient_6FCBB630_113c(
     }
   }
 
-  if (ITEMS_CheckCommandFlags113c(m, item, 0x40) !== 0 && owner === pClientPlayer) {
+  if (ITEMS_CheckItemFlag113c(m, item, 0x40) !== 0 && owner === pClientPlayer) {
     ITEMS_ZeroStaticPosAndSendPickupPacket01_6FCAE090_113c(m, owner, item, client, 0)
     return 1
   }
-  if (ITEMS_CheckCommandFlags113c(m, item, 0x80000) !== 0 && owner === pClientPlayer) {
+  if (ITEMS_CheckItemFlag113c(m, item, 0x80000) !== 0 && owner === pClientPlayer) {
     NET_SendPacket9D_ItemActionOwned_6FCAB0F0_113c(m, 0x16, owner, item, client, 0, 0)
     return 1
   }
   if (
-    (ITEMS_CheckCommandFlags113c(m, item, 0x02) !== 0 || ITEMS_CheckCommandFlags113c(m, item, 0x80) !== 0) &&
+    (ITEMS_CheckItemFlag113c(m, item, 0x02) !== 0 || ITEMS_CheckItemFlag113c(m, item, 0x80) !== 0) &&
     owner === pClientPlayer
   ) {
     ITEMS_SendCursorPutItemPacket04_6FCADF70_113c(m, owner, client, item, 0)
     return 1
   }
-  if (ITEMS_CheckCommandFlags113c(m, item, 0x04) !== 0 && owner === pClientPlayer) {
+  if (ITEMS_CheckItemFlag113c(m, item, 0x04) !== 0 && owner === pClientPlayer) {
     NET_SendPacket9D_ItemAction05WithNodePage_6FCAC810_113c(m, item, owner, client, 0)
     return 1
   }
-  if (ITEMS_CheckCommandFlags113c(m, item, 0x08) !== 0 || ITEMS_CheckCommandFlags113c(m, item, 0x200) !== 0) {
+  if (ITEMS_CheckItemFlag113c(m, item, 0x08) !== 0 || ITEMS_CheckItemFlag113c(m, item, 0x200) !== 0) {
     NET_SendPacket9D_ItemActionOwned_6FCAB0F0_113c(m, 0x06, owner, item, client, 0, 0)
     return 1
   }
-  if (ITEMS_CheckCommandFlags113c(m, item, 0x10000) !== 0) {
+  if (ITEMS_CheckItemFlag113c(m, item, 0x10000) !== 0) {
     NET_SendPacket9D_ItemActionOwned_6FCAB0F0_113c(m, 0x07, owner, item, client, 0, 0)
     return 1
   }
-  if (ITEMS_CheckCommandFlags113c(m, item, 0x10) !== 0) {
+  if (ITEMS_CheckItemFlag113c(m, item, 0x10) !== 0) {
     NET_SendPacket9D_ItemActionOwned_6FCAB0F0_113c(m, 0x08, owner, item, client, 0, 0)
     return 1
   }
-  if (ITEMS_CheckCommandFlags113c(m, item, 0x20) !== 0) {
+  if (ITEMS_CheckItemFlag113c(m, item, 0x20) !== 0) {
     NET_SendPacket9D_ItemActionOwned_6FCAB0F0_113c(m, 0x09, owner, item, client, 0, 0)
     return 1
   }
-  if (ITEMS_CheckCommandFlags113c(m, item, 0x100) !== 0 && owner === pClientPlayer) {
+  if (ITEMS_CheckItemFlag113c(m, item, 0x100) !== 0 && owner === pClientPlayer) {
     ITEMS_SendRemoveContainerItemPacket0A_6FCADF10_113c(m, owner, client, item, 0)
     return 1
   }
-  if (ITEMS_CheckCommandFlags113c(m, item, 0x40000) !== 0 && owner === pClientPlayer) {
+  if (ITEMS_CheckItemFlag113c(m, item, 0x40000) !== 0 && owner === pClientPlayer) {
     ITEMS_SendSwapContainerItemPacket0D_6FCADEB0_113c(m, owner, client, item, 0)
     return 1
   }
   if (
-    (ITEMS_CheckCommandFlags113c(m, item, 0x400) !== 0 || ITEMS_CheckCommandFlags113c(m, item, 0x2000) !== 0) &&
+    (ITEMS_CheckItemFlag113c(m, item, 0x400) !== 0 || ITEMS_CheckItemFlag113c(m, item, 0x2000) !== 0) &&
     owner === pClientPlayer
   ) {
     ITEMS_SendBeltRemoveItemPacket0E_6FCADE50_113c(m, owner, client, item, 0)
     return 1
   }
-  if (ITEMS_CheckCommandFlags113c(m, item, 0x800) !== 0 && owner === pClientPlayer) {
+  if (ITEMS_CheckItemFlag113c(m, item, 0x800) !== 0 && owner === pClientPlayer) {
     S2C_SendPacket9C_ItemActionWorld113c(m, client, item, 0x0f, 0, 0)
     return 1
   }
-  if (ITEMS_CheckCommandFlags113c(m, item, 0x1000) !== 0 && owner === pClientPlayer) {
+  if (ITEMS_CheckItemFlag113c(m, item, 0x1000) !== 0 && owner === pClientPlayer) {
     S2C_SendPacket9C_ItemActionWorld113c(m, client, item, 0x10, 0, 0)
     return 1
   }
-  if (ITEMS_CheckCommandFlags113c(m, item, 0x100000) !== 0 && owner === pClientPlayer) {
+  if (ITEMS_CheckItemFlag113c(m, item, 0x100000) !== 0 && owner === pClientPlayer) {
     S2C_SendPacket9C_ItemActionWorld113c(m, client, item, 0x12, 0, 0)
     return 1
   }
-  if (ITEMS_CheckCommandFlags113c(m, item, 0x200000) !== 0) {
+  if (ITEMS_CheckItemFlag113c(m, item, 0x200000) !== 0) {
     NET_SendPacket9D_ItemActionOwned_6FCAB0F0_113c(m, 0x17, owner, item, client, 0, 0)
     return 1
   }
-  if (ITEMS_CheckCommandFlags113c(m, item, 0x4000) !== 0) {
+  if (ITEMS_CheckItemFlag113c(m, item, 0x4000) !== 0) {
     NET_SendPacket9D_ItemActionOwned_6FCAB0F0_113c(m, 0x11, owner, item, client, 0, 0)
     return 1
   }
-  if (ITEMS_CheckCommandFlags113c(m, item, 0x8000) !== 0) {
+  if (ITEMS_CheckItemFlag113c(m, item, 0x8000) !== 0) {
     NET_SendPacket9D_ItemActionOwned_6FCAB0F0_113c(m, 0x14, owner, item, client, 0, 0)
     return 1
   }
 
-  if (ITEMS_CheckItemFlag113c(m, item, 0x100) !== 0) {
+  if (ITEMS_CheckCommandFlags113c(m, item, 0x100) !== 0) {
     if (owner !== pClientPlayer && (item === 0 || (m.u32((item + 0x10) >>> 0) | 0) !== 1)) {
       return 0
     }
-    const hasBroken = ITEMS_CheckItemFlag113c(m, item, 0x100) >>> 0
+    const hasBroken = ITEMS_CheckCommandFlags113c(m, item, 0x100) >>> 0
     NET_SendPacket7D_SetItemFlags_6FCAADE0_113c(m, owner, item, client, 0x100, hasBroken)
     return 1
   }
-  if (ITEMS_CheckItemFlag113c(m, item, 0x200) !== 0) {
+  if (ITEMS_CheckCommandFlags113c(m, item, 0x200) !== 0) {
     if (owner !== pClientPlayer && (item === 0 || (m.u32((item + 0x10) >>> 0) | 0) !== 1)) {
       return 0
     }
-    const hasRepaired = ITEMS_CheckItemFlag113c(m, item, 0x200) >>> 0
+    const hasRepaired = ITEMS_CheckCommandFlags113c(m, item, 0x200) >>> 0
     NET_SendPacket7D_SetItemFlags_6FCAADE0_113c(m, owner, item, client, 0x200, hasRepaired)
     return 1
   }
 
-  if (ITEMS_CheckItemFlag113c(m, item, 0x01) === 0) return 0
+  if (ITEMS_CheckCommandFlags113c(m, item, 0x01) === 0) return 0
   const itemMode = item !== 0 ? m.u32((item + 0x10) >>> 0) | 0 : 0
   if (owner !== pClientPlayer && (itemMode === 0 || itemMode === 2)) return 0
   if (itemMode !== 0 && itemMode !== 1 && itemMode !== 2) return 0
-  if (owner === pClientPlayer && ITEMS_CheckItemFlag113c(m, item, 0x40000) !== 0) return 0
+  if (owner === pClientPlayer && ITEMS_CheckCommandFlags113c(m, item, 0x40000) !== 0) return 0
   NET_SendPacket9D_ItemActionOwned_6FCAB0F0_113c(m, 0x15, owner, item, client, 0, 0)
   return 1
 }
@@ -2056,8 +1997,8 @@ export function MONAI_InitShadowMasterClassSkills_6FCC4320_113c(
   if (SKILLS_GetSkillById113c(m, summon, 0, -1) === 0) {
     SKILLS_SetSkillLevelOnUnit113c(m, summon, 0, 1, 0, 0x6fd1b6b0, 0xbee)
   }
-  SKILLS_SetRightSkill113c(m, summon, 0, -1)
   SKILLS_SetLeftSkill113c(m, summon, 0, -1)
+  SKILLS_SetRightSkill113c(m, summon, 0, -1)
 
   let idx = 0
   while (idx < (SKILLS_GetClassSkillCount113c(m, m.u32((pOwner + 0x04) >>> 0) | 0) | 0)) {
@@ -2196,7 +2137,7 @@ export function MONAI_DeathSentryTrapThink_6FCC7C20_113c(
     }
 
     const nTargetDist = m.u32(pnOutDist) | 0
-    const pCorpse = SKILLS_FindFirstCorpseInRadius10_6FCBE810_113c(m, unit, unit, nSkillLvl1) >>> 0
+    const pCorpse = SKILLS_FindFirstCorpseInRadius10_6FCBE810_113c(m, pTarget, unit, nSkillLvl1) >>> 0
     const pAiCtrl = m.u32(param) >>> 0
     const dwLastCorpseGuid = m.u32((pAiCtrl + 0x14) >>> 0) >>> 0
     const ceRadius = Math.trunc((SKILLS_EvalLinearParam34_6FC21A40_113c(m, wSkill1, nSkillLvl1) | 0) / 2) | 0
@@ -2364,11 +2305,16 @@ export function MONAI_BarricadeTauntAndAttackThink_6FCC80C0_113c(
     pInteractNode = m.u32((pInteractNode + 0x08) >>> 0) >>> 0
   }
 
-  const pNear = AI_FindNearestPlayerTarget113c(m, game, unit) >>> 0
-  const bWithin4 =
-    pNear !== 0 && pNear !== unit && (UNITS_GetApproximateDistance113c(m, unit, pNear) | 0) < 4
-      ? 1
-      : 0
+  const pOutClose = allocScratch(4)
+  let pNear = 0
+  let bWithin4 = 0
+  try {
+    m.setU32(pOutClose, 0)
+    pNear = AI_FindNearestPlayerTarget113c(m, game, unit, pOutClose) >>> 0
+    bWithin4 = m.u32(pOutClose) | 0
+  } finally {
+    freeScratch(4)
+  }
   if (
     pNear !== 0 &&
     (m.u32(pNear) | 0) === 0 &&
@@ -2561,66 +2507,9 @@ export function ITEMS_UseAntidoteOrThawingCurePotion_6FCCF370_113c(
 }
 
 
-function sunitdmgRollMeleeToHitAndBlock_6FCFE5A0(
-  m: D2KernMemory113c,
-  pDefender: number,
-  pAttacker: number,
-  pGame: number,
-  nToHitBonus: number,
-  nWeaponRangePenalty: number,
-): number {
-  void SUNITDMG_CalcMonsterExperience113c(m, pGame >>> 0, pDefender >>> 0)
-  const att = pAttacker >>> 0
-  const def = pDefender >>> 0
-  if (att === 0 || def === 0) return 0
-  const attType = m.u32(att) | 0
-  if (attType !== 0 && attType !== 1) return 0
-  const defType = m.u32(def) | 0
-  if (defType !== 0 && defType !== 1) return 0
-  if ((SUNIT_AreUnitsHostileOrUnaligned113c(m, def, att, pGame >>> 0) | 0) === 0) return 0
-
-  let wFlags = 0
-  if (defType === 0 && (m.u32((def + 0x10) >>> 0) | 0) === 3) {
-    wFlags = 1
-  }
-
-  let nAdder = attType === 1 ? 3 : 1
-  if ((nWeaponRangePenalty | 0) !== 0) {
-    const wpAdder = UNITS_GetEquippedWeaponAdder113c(m, att) | 0
-    nAdder = (nAdder - (wpAdder + (nWeaponRangePenalty | 0))) | 0
-  }
-  if ((UNITS_CanUnitMeleeAttackTarget113c(m, att, def, nAdder) | 0) === 0) return 0
-
-  if ((wFlags & 1) === 0) {
-    if ((SUNITDMG_CheckToHit113c(m, att, def, 0, nToHitBonus | 0) | 0) !== 0) {
-      wFlags |= 1
-    }
-  }
-
-  if ((wFlags & 1) !== 0) {
-    const blockMask = SUNITDMG_RollPassiveWeaponBlockOrShieldBlock113c(m, def) | 0
-    if ((blockMask & 2) !== 0) wFlags |= 0x100
-    if ((blockMask & 4) !== 0) wFlags |= 0x80
-    if ((blockMask & 0x10) !== 0) wFlags |= 0x8000
-    if ((blockMask & 1) !== 0) wFlags |= 0x10
-    if (blockMask !== 0) wFlags &= 0xfffe
-  }
-
-  if ((wFlags & 0x10) !== 0) {
-    wFlags &= 0xfffe
-  }
-
-  if ((wFlags & 1) !== 0) {
-    if ((STATES_CheckState113c(m, def, 0x36) | 0) === 0) {
-      wFlags |= 4
-    }
-  }
-  return wFlags & 0xffff
-}
-
 /**
  * [33/45] Executes Feral Rage / Maul (`0x6FC473C0`) for player casters or rolls monster melee skill hit (`0x6FCFE5A0`),
- * applies `MONSTER_ApplyElementalDamageAndResistStats113c(pUnit, pDmg, 8)`, and allocates combat (`0x6FCFDDE0`).
+ * applies `MONSTER_ApplyElementalDamageAndResistStats113c(pGame, pUnit, 8)`, and allocates combat (`0x6FCFDDE0`).
  *
  * @dll D2Game.dll
  * @va 0x6FCD41B0
@@ -2659,7 +2548,7 @@ export function SKILLS_SrvDo_MonsterOrFeralRageMeleeHit_6FCD41B0_113c(
     m.fill(pDmg, 0x70, 0)
     const nToHitBonus = SKILLS_GetSkillToHitBonus113c(m, unit, skillId, skillLvl) | 0
     let wResultFlags =
-      sunitdmgRollMeleeToHitAndBlock_6FCFE5A0(m, pTarget, unit, game, nToHitBonus, 0) & 0xffff
+      SUNITDMG_RollMeleeToHitAndBlock_6FCFE5A0_113c(m, unit, pTarget, game, nToHitBonus, 0) & 0xffff
     m.setU16((pDmg + 0x04) >>> 0, wResultFlags)
     if ((wResultFlags & 1) !== 0) {
       wResultFlags = (wResultFlags | m.u16((pSkillsTxt + 0x12e) >>> 0)) & 0xffff
@@ -2670,7 +2559,7 @@ export function SKILLS_SrvDo_MonsterOrFeralRageMeleeHit_6FCD41B0_113c(
       if (dwHitClass !== 0) {
         m.setU32((pDmg + 0x60) >>> 0, dwHitClass)
       }
-      MONSTER_ApplyElementalDamageAndResistStats113c(m, pDmg, unit, 8)
+      MONSTER_ApplyElementalDamageAndResistStats113c(m, game, unit, 8)
     }
     SUNITDMG_AllocCombat113c(m, game, unit, pTarget, pDmg, 0x80)
     return 1

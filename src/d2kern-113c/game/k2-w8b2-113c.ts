@@ -10,7 +10,6 @@ import {
 import { UNITS_GetPlayerData113c } from '../common/composit.js';
 import { DRLG_GetActNoFromLevelId113c } from '../common/drlg/drlg.js';
 import {
-  DRLG_IsTownLevel113c,
   DUNGEON_CountNonPresetRoomsInLevel113c,
   DUNGEON_GetLevelIdFromRoom113c,
 } from '../common/dungeon.js';
@@ -34,7 +33,11 @@ import {
   ITEMS_SetBodyLocation113c,
   ITEMS_SetOrClearCommandFlags113c,
 } from '../common/items.js';
-import { INVENTORY_GetItemFromBodyLocMemPort113c } from '../common/k0-d2common-memports.js';
+import {
+  DUNGEON_CheckRoomIsTownMemPort113c,
+  INVENTORY_GetItemFromBodyLocMemPort113c,
+  SKILLS_SetUsedSkillMemPort113c,
+} from '../common/k0-d2common-memports.js';
 import {
   PATH_ComputeSquaredDistance113c,
   PATH_GetFirstPointX113c,
@@ -159,6 +162,7 @@ import {
   PETS_SendPacket7A_UnsummonPet_6FCB6810_113c,
 } from './k2-w4b5-113c.js';
 import {
+  ACT4Q1_EnsureStartedOrInvokeLinkedQuestCallback_6FCD8A70_113c,
   ACT4Q1_SendQuestAlertIfEligible_6FCD9D20_113c,
   ACT4Q1_SyncPlayerQuest19State_6FCD96A0_113c,
 } from './k2-w4b8-113c.js';
@@ -372,7 +376,8 @@ export function ACT1Q5_OnTreeOfInifussOperated_6FC85D40_113c(
   const nObjMode = pObjectUnit !== 0 ? m.u32((pObjectUnit + 0x10) >>> 0) : 0;
   if (m.u8((pQuestData + 0x09) >>> 0) === 0) {
     UNITS_ChangeAnimMode113c(m, pObjectUnit, 2);
-    SUNIT_SetUnitEventSound113c(m, m.u32((pOperateArgs + 0x08) >>> 0), 0x13, 0);
+    const pPlayer = m.u32((pOperateArgs + 0x08) >>> 0);
+    SUNIT_SetUnitEventSound113c(m, pPlayer, 0x13, pPlayer);
     return 0;
   }
   if (nObjMode !== 0) return 0;
@@ -388,7 +393,8 @@ export function ACT1Q5_OnTreeOfInifussOperated_6FC85D40_113c(
     STATLIST_GetUnitBaseStat113c(m, m.u32((pOperateArgs + 0x08) >>> 0), 0x0c, 0) <
     8
   ) {
-    SUNIT_SetUnitEventSound113c(m, m.u32((pOperateArgs + 0x08) >>> 0), 0x13, 0);
+    const pPlayer = m.u32((pOperateArgs + 0x08) >>> 0);
+    SUNIT_SetUnitEventSound113c(m, pPlayer, 0x13, pPlayer);
     return 0;
   }
   const pObj = m.u32((pOperateArgs + 0x04) >>> 0);
@@ -697,12 +703,8 @@ export function OBJ_OperateDoorWithLockCheck_6FC8A9D0_113c(
           m.u32(pOperateArgs >>> 0),
         ) === 0
       ) {
-        SUNIT_SetUnitEventSound113c(
-          m,
-          m.u32((pOperateArgs + 0x08) >>> 0),
-          0x16,
-          0,
-        );
+        const pPlayer = m.u32((pOperateArgs + 0x08) >>> 0);
+        SUNIT_SetUnitEventSound113c(m, pPlayer, 0x16, pPlayer);
         return 1;
       }
       UNITS_SetTargetUnitForDynamicUnitEx113c(
@@ -925,31 +927,22 @@ export function OBJ_OperateChestAndSparkyChest_6FC8F040_113c(
           m.u32(pOperateArgs >>> 0),
         ) === 0
       ) {
-        SUNIT_SetUnitEventSound113c(
-          m,
-          m.u32((pOperateArgs + 0x08) >>> 0),
-          0x16,
-          0,
-        );
+        const pPlayer = m.u32((pOperateArgs + 0x08) >>> 0);
+        SUNIT_SetUnitEventSound113c(m, pPlayer, 0x16, pPlayer);
         return 1;
       }
     }
-    SUNIT_SetUnitEventSound113c(
-      m,
-      m.u32((pOperateArgs + 0x08) >>> 0),
-      0x0b,
-      0,
-    );
+    const pPlayerUnlock = m.u32((pOperateArgs + 0x08) >>> 0);
+    SUNIT_SetUnitEventSound113c(m, pPlayerUnlock, 0x0b, pPlayerUnlock);
     const pPlayer2 = m.u32((pOperateArgs + 0x08) >>> 0);
+    let pClient = 0;
     if (pPlayer2 !== 0 && m.u32(pPlayer2 >>> 0) === 0) {
       const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer2);
-      void m.u32((pPlayerData + 0x9c) >>> 0);
+      pClient = m.u32((pPlayerData + 0x9c) >>> 0);
     }
-    MONSTER_BroadcastEventSoundToClients113c(
-      m,
-      m.u32((pOperateArgs + 0x08) >>> 0),
-      0x0b,
-    );
+    if (pClient !== 0) {
+      MONSTER_BroadcastEventSoundToClients113c(m, pPlayer2, pClient);
+    }
     nBaseDrops = 1;
   }
   const nDropAttempts = (nBaseDrops + 1) >>> 0;
@@ -1315,13 +1308,13 @@ export function AURA_ApplyRadialDamageCallback_6FCB54F0_113c(
     m: SparseMemory113c,
     pAuraDamageCtx: number,
     pDefender: number,
-    pAttacker: number,
     pGame: number,
+    pAttacker: number,
   ) => number,
 ): number {
   hitD2GameVa113c(0x6FCB54F0);
-  const pGame = m.u32((pAuraIterArgs + 0x04) >>> 0);
-  const pAttacker = m.u32(pAuraIterArgs >>> 0);
+  const pGame = m.u32(pAuraIterArgs >>> 0);
+  const pAttacker = m.u32((pAuraIterArgs + 0x04) >>> 0);
   const pAuraDamageCtx = m.u32((pAuraIterArgs + 0x0c) >>> 0);
   const nFilterResult =
     pfnApplyAuraStatFilter !== undefined
@@ -1329,8 +1322,8 @@ export function AURA_ApplyRadialDamageCallback_6FCB54F0_113c(
           m,
           pAuraDamageCtx,
           pDefender,
-          pAttacker,
           pGame,
+          pAttacker,
         )
       : SKILLS_TryConvertMonsterOnHit_6FCB5120_113c(
           m,
@@ -1350,15 +1343,18 @@ export function AURA_ApplyRadialDamageCallback_6FCB54F0_113c(
     }
     SUNITDMG_ApplyDamage113c(
       m,
-      m.u32((pAuraIterArgs + 0x04) >>> 0),
       m.u32(pAuraIterArgs >>> 0),
+      m.u32((pAuraIterArgs + 0x04) >>> 0),
       pDefender,
       pScratchDmg,
+      1,
+      undefined,
+      1,
     );
     SUNITDMG_ApplySideEffectsAndKill113c(
       m,
-      m.u32((pAuraIterArgs + 0x04) >>> 0),
       m.u32(pAuraIterArgs >>> 0),
+      m.u32((pAuraIterArgs + 0x04) >>> 0),
       pDefender,
       pScratchDmg,
     );
@@ -1430,7 +1426,7 @@ export function PETS_UnsummonPetsBeyondDistanceSq_6FCB6C00_113c(
           nPetX,
           nPetY,
         );
-        if (nDistSq > nMaxDistSq) {
+        if ((nDistSq | 0) > (nMaxDistSq | 0)) {
           PETS_UnsummonPlayerPetByGuid_6FCB7B50_113c(
             m,
             pGame,
@@ -2024,7 +2020,7 @@ export function SKILLS_SrvDo_BookOrScrollOfTownPortal_6FCCF450_113c(
   const bAct = DRLG_GetActNoFromLevelId113c(m, nRoomLevelId) & 0xff;
   const nTownLevelId = DUNGEON_GetActLevelId113c(m, bAct);
   if (
-    DRLG_IsTownLevel113c(DUNGEON_GetLevelIdFromRoom113c(m, pRoom)) !== 0 ||
+    DUNGEON_CheckRoomIsTownMemPort113c(m, pRoom) !== 0 ||
     DUNGEON_GetLevelIdFromRoom113c(m, pRoom) === 0x88
   ) {
     SUNIT_SetUnitEventSound113c(m, pUnit, 0x18, pUnit);
@@ -2198,10 +2194,10 @@ export function SKILLS_SrvDo_SummonFallenShamanPack_6FCD4410_113c(
   const nMonClassId =
     SKILLS_ResolveSummonMonsterId_6FCBEE50_113c(
       m,
-      pUnit,
+      0,
       0,
       pScratchMode,
-      0,
+      pUnit,
       0,
       nSkill,
       nSkillLevel,
@@ -2212,8 +2208,8 @@ export function SKILLS_SrvDo_SummonFallenShamanPack_6FCD4410_113c(
   let pTarget = PATH_GetTargetUnit113c(m, pPath);
   if (pTarget === pUnit || pTarget === 0) {
     if (pPath === 0) return 0;
-    if (PATH_GetFirstPointX113c(m, pPath) !== 2) return 0;
-    const dwObjGuid = PATH_GetFirstPointY113c(m, pPath) >>> 0;
+    if (PATH_GetFirstPointY113c(m, pPath) !== 2) return 0;
+    const dwObjGuid = PATH_GetFirstPointX113c(m, pPath) >>> 0;
     if (pGame === 0) {
       throw new D2CommonAssertError('0x6FD19FF9', 0x2d3);
     }
@@ -2225,7 +2221,7 @@ export function SKILLS_SrvDo_SummonFallenShamanPack_6FCD4410_113c(
     pTarget = pObj;
   }
   const pTargetRoom = UNITS_GetRoom113c(m, pTarget);
-  if (pTargetRoom === 0 || DRLG_IsTownLevel113c(DUNGEON_GetLevelIdFromRoom113c(m, pTargetRoom)) !== 0) {
+  if (pTargetRoom === 0 || DUNGEON_CheckRoomIsTownMemPort113c(m, pTargetRoom) !== 0) {
     return 0;
   }
   const pTargetRoom2 = UNITS_GetRoom113c(m, pTarget);
@@ -2294,20 +2290,29 @@ export function SKILLS_SrvDo_MonResurrectCorpse_6FCD5BD0_113c(
     const nResMode = AI_SelectMonsterResurrectSkillAndMode_6FD13CB0_113c(
       m,
       pTarget,
-      0,
+      1,
     );
     const pModeStrc = (0x7fff0000 - 0x5c0) >>> 0;
     MONSTER_InitModeChangeStrc113c(m, pTarget, pModeStrc, nResMode);
     AI_SelectMonsterResurrectSkillAndMode_6FD13CB0_113c(m, pTarget, 1);
+    const pModeUnit = m.u32((pModeStrc + 0x04) >>> 0);
+    const nReqMode = m.u32(pModeStrc) | 0;
     MONSTER_StartMode113c(
       m,
       pGame,
-      m.u32((pModeStrc + 0x04) >>> 0),
-      (m.u32(pModeStrc) | 0),
+      pModeUnit,
+      nReqMode,
       m.u32((pModeStrc + 0x08) >>> 0),
-      (m.u32((pModeStrc + 0x0c) >>> 0) | 0),
-      (m.u32((pModeStrc + 0x10) >>> 0) | 0),
+      m.u32((pModeStrc + 0x0c) >>> 0) | 0,
+      m.u32((pModeStrc + 0x10) >>> 0) | 0,
     );
+    if (
+      (nResMode | 0) !== 0x0e &&
+      pModeUnit !== 0 &&
+      (m.u32((pModeUnit + 0x10) >>> 0) | 0) === nReqMode
+    ) {
+      SKILLS_SetUsedSkillMemPort113c(m, pModeUnit, 0);
+    }
   }
   const nAuraState = (m.u16((pSkillsTxt + 0x4e) >>> 0) << 16) >> 16;
   if (nAuraState >= 0) {
@@ -2373,11 +2378,10 @@ export function ACT4Q1_OnNpcMessage_6FCDA5E0_113c(
       m.setU8((pQuestData + 0x0c) >>> 0, 2);
       if (m.u32(0x6fd31c20) !== 0) {
         const pScratchMsg = (0x7fff0000 - 0x660) >>> 0;
-        const msg = 'tyrael quest state 2';
-        for (let i = 0; i < msg.length; i++) {
-          m.setU8((pScratchMsg + i) >>> 0, msg.charCodeAt(i));
+        const msg = 'changing state to 2\n';
+        for (let i = 0; i < 0x100; i++) {
+          m.setU8((pScratchMsg + i) >>> 0, i < msg.length ? msg.charCodeAt(i) : 0);
         }
-        m.setU8((pScratchMsg + msg.length) >>> 0, 0);
         NET_BroadcastSystemChatMessage_6FCEBE70_113c(
           m,
           pScratchMsg,
@@ -2425,11 +2429,14 @@ export function ACT4Q1_OnNpcMessage_6FCDA5E0_113c(
           pQuestData,
           5,
         );
-        if (m.u32((pQuestData + 0xf0) >>> 0) === 0) {
+        const pfnF0 = m.u32((pQuestData + 0xf0) >>> 0) >>> 0;
+        if (pfnF0 === 0 || m.u32(0x6fd18d14) !== 0) {
           throw new D2CommonAssertError('0x6FD19FF9', 0xdf);
         }
         if (pfnQuestCallbackF0 !== undefined) {
           pfnQuestCallbackF0(m, pQuestData);
+        } else if (pfnF0 === 0x6fcd8a70) {
+          ACT4Q1_EnsureStartedOrInvokeLinkedQuestCallback_6FCD8A70_113c(m, pQuestData);
         }
         m.setU8((pQuestData + 0x14) >>> 0, 0);
         m.setU8((pQuestData + 0x0b) >>> 0, 0x0d);

@@ -42,6 +42,10 @@ import { SKILLS_StartUsedSkill113c } from './a1c-post150-f786-f1040-113c.js'
 import { SUNITDMG_FreeAttackerCombatList113c } from './ai-fallen-113c.js'
 import { NET_QueuePacketToClientBuffer113c } from './boot-init-gap-a-113c.js'
 import { AI_Stall113c, MONSTER_DropTreasureOnDeath113c } from './combat-a1c-113c.js'
+import {
+  isSgptDataTablesLoaded113c,
+  MONSTER_DropTreasureOnDeath_6FC95680_113c,
+} from './k2-real-itemdrop-113c.js'
 import { MONSTER_ClearModeEvents113c, UNITS_ChangeAnimMode113c } from './monster-events.js'
 import {
   AI_InitMonsterAiThinkFn113c,
@@ -428,6 +432,18 @@ export function MONMODE_DropTreasureOnDeathWrapper_6FC958D0_113c(
   allocateUnitInMem = false,
 ): number {
   hitD2GameVa113c(0x6FC958D0)
+  // 0x6FC958D7: `push 1` passes bNoUpgrade = 1 to MONSTER_DropTreasureOnDeath_6FC95680
+  if (isSgptDataTablesLoaded113c(m)) {
+    return (
+      MONSTER_DropTreasureOnDeath_6FC95680_113c(
+        m,
+        pGame >>> 0,
+        pMonster >>> 0,
+        pKiller >>> 0,
+        1,
+      ) | 0
+    )
+  }
   return (
     MONSTER_DropTreasureOnDeath113c(
       m,
@@ -639,10 +655,14 @@ export function AI_ClearState12InitThinkFnAndStall1_6FC9C8C0_113c(
   if ((STATES_CheckState113c(m, pUnit >>> 0, 0x0c) | 0) !== 0) {
     STATES_ToggleGfxStateFlag113c(m, pUnit >>> 0, 0x0c, 0)
   }
-  if (pAiEntry !== 0) {
-    m.u32(pAiEntry)
-  }
-  AI_InitMonsterAiThinkFn113c(m, pUnit >>> 0)
+  const nAiIdx = pAiEntry !== 0 ? m.u32(pAiEntry) | 0 : 0
+  AI_InitMonsterAiThinkFn113c(
+    m,
+    pUnit >>> 0,
+    pGame >>> 0,
+    pAiEntry !== 0 ? pAiEntry : undefined,
+    pAiEntry !== 0 ? nAiIdx : undefined,
+  )
   AI_Stall113c(m, pGame >>> 0, pUnit >>> 0, 1)
 }
 

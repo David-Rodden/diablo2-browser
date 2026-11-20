@@ -186,6 +186,7 @@ import {
 } from './k2-w6b2-113c'
 import {
   ACT1Q6_Callback00_NpcActivateCain_6FC83190_113c,
+  ACT5Q6_PromoteQuest24ToState1AndSync_6FC79930_113c,
   PLAYER_DestroyPlayerTownPortalPair_6FC586F0_113c,
 } from './k2-w6b4-113c'
 import { PARTY_ClearHostilityFlag08_6FD14210_113c } from './k2-w6b7-113c'
@@ -760,7 +761,7 @@ export function QUESTS_OnBossMonsterSpawnedCheckAct3GoldenBird_6FC56140_113c(
   }
   const pBitMasks = m.u32(0x6fd18be0) >>> 0
   const bMonFlag0D = m.u8((pMonStatsTxt + 0xd) >>> 0)
-  const bMask18 = pBitMasks !== 0 ? m.u8((pBitMasks + 0x18) >>> 0) : 0x08
+  const bMask18 = pBitMasks !== 0 ? m.u8((pBitMasks + 0x18) >>> 0) : 0x40
   if ((bMask18 & bMonFlag0D) !== 0) {
     return
   }
@@ -1518,8 +1519,19 @@ export function ACT5Q5_Callback02_OnAncientKilled_6FC7EED0_113c(
     m.u32((edi + 0x4) >>> 0),
     m.u32((edi + 0x10) >>> 0),
   )
-  if (pChainedQuest !== 0 && onChainedSeqFilter !== undefined) {
-    onChainedSeqFilter(m, pChainedQuest)
+  if (pChainedQuest !== 0) {
+    if (onChainedSeqFilter !== undefined) {
+      onChainedSeqFilter(m, pChainedQuest)
+    } else {
+      const pfnSelfF0 = m.u32((edi + 0xf0) >>> 0) >>> 0
+      if (pfnSelfF0 === 0 || pfnSelfF0 === 0xffffffff) {
+        throw new Error('ACT5Q5_Callback02_OnAncientKilled_6FC7EED0_113c: IsBadCodePtr(pQuestData->pfSeqFilter) (line 855)')
+      }
+      const pfnChainedF0 = m.u32((pChainedQuest + 0xf0) >>> 0) >>> 0
+      if (pfnChainedF0 === 0x6fc79930) {
+        ACT5Q6_PromoteQuest24ToState1AndSync_6FC79930_113c(m, pChainedQuest)
+      }
+    }
   }
   if (m.u8((edi + 0xb) >>> 0) !== 0xd) {
     m.setU8((edi + 0x14) >>> 0, 0)
@@ -1896,8 +1908,8 @@ export function NPCS_RepairPlayerItemOrAllItems_6FCDDE60_113c(
       m,
       0x2a,
       0x9,
-      pClient,
       nGold,
+      pClient,
       0xffffffff,
       0,
     )
@@ -1928,8 +1940,8 @@ export function NPCS_RepairPlayerItemOrAllItems_6FCDDE60_113c(
           m,
           0x2a,
           0xc,
-          pClient,
           nGold,
+          pClient,
           0xffffffff,
           0,
         )
@@ -1964,8 +1976,8 @@ export function NPCS_RepairPlayerItemOrAllItems_6FCDDE60_113c(
       m,
       0x2a,
       0x2,
-      pClient,
       nGold,
+      pClient,
       0xffffffff,
       1,
     )
@@ -1976,7 +1988,7 @@ export function NPCS_RepairPlayerItemOrAllItems_6FCDDE60_113c(
   while (pItem !== 0 && m.u32((pItem + 0xc) >>> 0) !== (dwItemGuid >>> 0)) {
     pItem = m.u32((pItem + 0xe4) >>> 0)
   }
-  if (pItem === 0 || ITEMS_IsItemInUnitInventoryOrCursor_6FC2E150_113c(m, pPlayerUnit, 0) === 0) {
+  if (pItem === 0 || ITEMS_IsItemInUnitInventoryOrCursor_6FC2E150_113c(m, pPlayerUnit, pItem, 0) === 0) {
     const pClient =
       m.u32(pPlayerUnit) === 0
         ? m.u32((UNITS_GetPlayerData113c(m, pPlayerUnit) + 0x9c) >>> 0)
@@ -1986,8 +1998,8 @@ export function NPCS_RepairPlayerItemOrAllItems_6FCDDE60_113c(
       m,
       0x2a,
       0x9,
-      pClient,
       nGold,
+      pClient,
       0xffffffff,
       0,
     )
@@ -1999,9 +2011,9 @@ export function NPCS_RepairPlayerItemOrAllItems_6FCDDE60_113c(
   let bNeedsRepair = false
   if (ITEMS_CanItemBeRepairedByNpc113c(m, pItem) !== 0) {
     if (
+      ITEMS_GetTwoHandedFlag113c(m, pItem) !== 0 &&
       ITEMS_CheckIfThrowItemMemPort113c(m, pItem) !== 0 &&
-      ITEMS_CheckEtherealFlag113c(m, pItem) !== 0 &&
-      ITEMS_GetTwoHandedFlag113c(m, pItem) === 0
+      ITEMS_CheckEtherealFlag113c(m, pItem) === 0
     ) {
       const nQty = STATLIST_GetUnitStat113c(m, pItem, 0x46, 0)
       const nMaxStack = ITEMS_GetTotalMaxStack113c(m, pItem)
@@ -2033,8 +2045,8 @@ export function NPCS_RepairPlayerItemOrAllItems_6FCDDE60_113c(
       m,
       0x2a,
       0x9,
-      pClient,
       nGold,
+      pClient,
       0xffffffff,
       0,
     )
@@ -2057,7 +2069,7 @@ export function NPCS_RepairPlayerItemOrAllItems_6FCDDE60_113c(
     3,
   )
   if (NPC_DeductPlayerGoldAndStash_6FCDCC60_113c(m, pPlayerUnit, nRepairCost) !== 0) {
-    NPCS_RepairAndRechargeUnitItem_6FCDD9B0_113c(m, pItem, pPlayerUnit, pGame)
+    NPCS_RepairAndRechargeUnitItem_6FCDD9B0_113c(m, pPlayerUnit, pItem, pGame)
     const pClient =
       m.u32(pPlayerUnit) === 0
         ? m.u32((UNITS_GetPlayerData113c(m, pPlayerUnit) + 0x9c) >>> 0)
@@ -2067,8 +2079,8 @@ export function NPCS_RepairPlayerItemOrAllItems_6FCDDE60_113c(
       m,
       0x2a,
       0x2,
-      pClient,
       nGold,
+      pClient,
       0xffffffff,
       1,
     )
@@ -2102,8 +2114,8 @@ export function NPCS_RepairPlayerItemOrAllItems_6FCDDE60_113c(
         m,
         0x2a,
         0x2,
-        pClient,
         nRemGold,
+        pClient,
         0xffffffff,
         1,
       )
@@ -2120,8 +2132,8 @@ export function NPCS_RepairPlayerItemOrAllItems_6FCDDE60_113c(
     m,
     0x2a,
     0xc,
-    pClient,
     nGold,
+    pClient,
     0xffffffff,
     0,
   )
@@ -2229,7 +2241,7 @@ export function NPCS_ResurrectOrReplacePlayerMerc_6FCE0B90_113c(
     nTargetX = PATH_GetPosX113c(m, pPath)
   }
   PETS_WarpOrUnsummonPlayerPets_6FCB7340_113c(m, pGame, pPlayerUnit, nTargetX, nTargetY)
-  MONSTER_SendMercStatPackets9EForPlayer_6FC68950_113c(m, pGame, pPlayerUnit)
+  MONSTER_SendMercStatPackets9EForPlayer_6FC68950_113c(m, pPlayerUnit, pGame)
 }
 
 /**
@@ -2379,8 +2391,8 @@ export function PACKETS_SrvMercItemAction_6FCF0BC0_113c(
     if (wBodyLoc > 0) {
       return ITEMS_UnequipMercBodyLocItemToPlayerCursor_6FCEECE0_113c(
         m,
-        pMercUnit,
         wBodyLoc,
+        pMercUnit,
         pGame,
         pPlayerUnit,
       )
@@ -2472,8 +2484,8 @@ export function DUNGEON_TeleportUnitToRoomAndCoords_6FD019C0_113c(
     const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pResolvedRoom)
     NET_SendPacket07_RoomTileCoords_6FCABF50_113c(
       m,
-      m.u32((pRoomCoords + 0xc) >>> 0),
       m.u32((pRoomCoords + 0x10) >>> 0),
+      m.u32((pRoomCoords + 0x14) >>> 0),
       pClient,
       nLevelId,
     )
@@ -2568,8 +2580,8 @@ export function PARTY_SetOrClearPlayerHostility_6FD11130_113c(
       PARTY_DeclareHostilityBetweenPlayers_6FD10FF0_113c(
         m,
         pTargetPlayer,
-        pGame,
         pSourcePlayer,
+        pGame,
       )
       PLAYER_DestroyPlayerTownPortalPair_6FC586F0_113c(m, pSourcePlayer, pGame)
       const wSourceParty = SUNITDMG_GetPlayerClientClassId113c(m, pSourcePlayer) & 0xffff

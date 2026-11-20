@@ -22,7 +22,7 @@ import {
 } from '../common/dungeon.ts'
 import { DUNGEON_CheckRoomIsTownMemPort113c } from '../common/k0-d2common-memports.ts'
 import { DATATBLS_GetObjectsTxtRecord113c, UNITS_AllocStaticPath113c, UNIT_Alloc113c } from '../common/unit.ts'
-import type { Memory113c } from '../mem/sparse-memory.ts'
+import type { Memory113c, SparseMemory113c } from '../mem/sparse-memory.ts'
 import { seedRoll, type D2SeedStrc } from '../prng.ts'
 import { DATATBLS_GetShrinesTxtRecord113c } from '../tables/datatbls-113c.ts'
 import { DATATBLS_GetLevelsTxtRecord113c } from '../tables/lvl-tbls-113c.ts'
@@ -41,12 +41,114 @@ import {
   OBJECTS_InitFn27_RollSubType3_113c,
   OBJECTS_LevelHookAlwaysTrue113c,
 } from './k2-items-tc-w1-113c.ts'
-import { OBJECTS_PopulateGridObjectsInRect_6FC4FEC0_113c } from './k2-w3b2-113c.ts'
 import {
+  OBJECT_CheckRespawnOrPortalInRoom113c,
+  OBJECT_SetAnimMode2Wrapper113c,
+  QUEST_Act1TownPortalUpdateState113c,
+} from './boot-init-gap-a-113c.ts'
+import {
+  OBJECTS_InitFn10_InitRogueFireAndScheduleEvent_6FC53740_113c,
+  OBJECTS_InitFn11_InitTownPortal_6FC53330_113c,
+  OBJECTS_InitFn14_SetAnimMode1_6FC4E740_113c,
+  OBJECTS_InitFn22_InitBrazierAndScheduleEvent0_6FC536F0_113c,
+  OBJECTS_InitFn23_SyncQuest0FObjectAnimMode_6FC54370_113c,
+  OBJECTS_InitFn24_ScheduleEvent3_6FC536D0_113c,
+  OBJECTS_InitFn26_SetAnimMode1_6FC4E730_113c,
+  OBJECTS_InitFn34_RandomSetAnimMode1_6FC4EC70_113c,
+  OBJECTS_InitFn51_ScheduleEvent9IfOperatingOrOpened_6FC532F0_113c,
+  OBJECTS_InitFn57_InitSpecialChest_6FC4EF50_113c,
+  OBJECTS_InitFn58_ScheduleRandomEvent8_6FC53680_113c,
+  OBJECTS_InitFn59_ActivateAndScheduleEvents7And1_6FC53620_113c,
+} from './k2-laneJ-0x6fc4-w1-113c.ts'
+import {
+  QUESTS_InitAct1Quest3Object_6FC54E10_113c,
+  QUESTS_InitAct1Quest4Object_6FC54DA0_113c,
+} from './k2-laneK-0x6fc5-w1-113c.ts'
+import {
+  ACT5Q5_InitAncientsAltarObject_6FC773D0_113c,
+  ACT5Q5_InitSummitDoorObject_6FC765B0_113c,
+  ACT5Q5_InitWorldstoneKeepEntranceObject_6FC774A0_113c,
+  ACT5Q6_InitWorldstoneChamberObject94_6FC76520_113c,
+  ACT5Q6_InitWorldstoneChamberObject9C_6FC764D0_113c,
+  ACT5_InitObjectNoop_6FC76CE0_113c,
+} from './k2-laneM-0x6fc7-w1-113c.ts'
+import {
+  ACT5Q5_InitAncientStatueObject14_6FC78EF0_113c,
+  ACT5Q5_InitAncientStatueObject18_6FC78EA0_113c,
+  ACT5Q5_InitAncientStatueObject1C_6FC78E50_113c,
+} from './k2-w2b1-113c.ts'
+import {
+  ACT1Q4_InitCainGibbetObject_6FC814A0_113c,
+  ACT1Q5_InitHoradricMalusStandObject_6FC80DA0_113c,
+  OBJECTS_InitOperatingObjectWithTimer25_6FC88F90_113c,
+} from './k2-w2b2-113c.ts'
+import {
+  ACT4Q2_InitHellforgeObject_6FCD8870_113c,
+  ACT4_InitObjectNoop_6FCD8930_113c,
+} from './k2-w2b6-113c.ts'
+import {
+  ACT2Q3_NoOpA_6FCE2350_113c,
+  ACT2Q3_NoOpB_6FCE2360_113c,
+  ACT2Q3_NoOpC_6FCE2370_113c,
+  ACT2Q4_InitArcanePortalObject_6FCE32C0_113c,
+  ACT2Q6_ActivateHoradricOrifice_6FCE27F0_113c,
+} from './k2-w2b7-113c.ts'
+import {
+  ACT3Q2_InitGidbinnAltarObject_6FD04120_113c,
+  ACT3Q3_InitSewerLeverObject_6FD04980_113c,
+  ACT3Q3_InitSewerStairsObject_6FD02E00_113c,
+  ACT3Q5_InitCompellingOrbObject_6FD02A00_113c,
+} from './k2-w2b8-113c.ts'
+import {
+  OBJECTS_PopulateEvilUrnMonstersInRoom_6FC4F690_113c,
+  OBJECTS_PopulateGridObjectsInRect_6FC4FEC0_113c,
+} from './k2-w3b2-113c.ts'
+import { OBJECTS_InitFn05_InitPortalDestLevel_6FC533D0_113c } from './k2-w3b3-113c.ts'
+import { ACT5Q3_SpawnFrozenAnyaMonsterIfNeeded_6FC7CF70_113c } from './k2-w3b5-113c.ts'
+import {
+  ACT1Q4_InitInifussTreeObject_6FC828D0_113c,
+  ACT5Q3_InitFrozenAnyaObject_6FC7E8D0_113c,
+} from './k2-w3b6-113c.ts'
+import {
+  OBJECTS_OperateGoldChestOrPile_6FC4F580_113c,
   OBJECTS_PopulateRoomEdgeObjectsMode0_6FC527B0_113c,
   OBJECTS_PopulateRoomEdgeObjectsMode1_6FC52790_113c,
 } from './k2-w4b1-113c.ts'
+import { ACT5Q1_SpawnShenkAndAttachQuestData_6FC7C3A0_113c } from './k2-w4b2-113c.ts'
+import {
+  ACT5Q3_RegisterAnyaObjectAndSpawnMonster200_6FC7EB30_113c,
+  ACT5Q3_SpawnMonster202AndAttachQuestData_6FC7C5C0_113c,
+} from './k2-w4b3-113c.ts'
 import { OBJRGN_PopulateRoomRandomItemDropsGrid_6FC4F4B0_113c } from './k2-w4b4-113c.ts'
+import { ACT2Q5_InitArcanePortalObject_6FCE2850_113c } from './k2-w5b4-113c.ts'
+import { ACT2Q4_InitArcanePortalObjectMode_6FCE99B0_113c } from './k2-w5b5-113c.ts'
+import { ACT3Q7_InitMephistoPortalObject_6FD03290_113c } from './k2-w5b8-113c.ts'
+import {
+  ACT3Q0_InitDarkWandererPreset_6FD08290_113c,
+  ACT3Q2_InitGidbinnBossActivePreset_6FD08560_113c,
+  ACT3Q2_InitGidbinnBossDefaultPreset_6FD086A0_113c,
+  ACT3Q3_InitCompellingOrbPreset_6FD084A0_113c,
+  ACT3Q5_InitCouncilBossPreset_6FD08310_113c,
+  ACT3Q5_InitStairsObject_6FD098E0_113c,
+} from './k2-w5b9-113c.ts'
+import { QUESTS_TriggerAct2Q0SpawnJerhyn_6FC565B0_113c } from './k2-w6b1-113c.ts'
+import {
+  ACT5Q3_OnFrozenAnyaSpawnedPromoteState2_6FC79EF0_113c,
+  ACT5Q6_RollBaalTauntMonsterIdAndBroadcastPacket50_6FC7A820_113c,
+} from './k2-w6b4-113c.ts'
+import {
+  ACT4Q2_InitHellforgeObject_6FCD9E80_113c,
+  QUEST0D_InitTemplePortalObject_6FCE9ED0_113c,
+} from './k2-w6b5-113c.ts'
+import {
+  QUESTS_Act2TaintedSunTriggerAltarDarkness_6FC56C20_113c,
+  QUESTS_Act5RescueBarbsOnPrisonDoorOpen_6FC7C850_113c,
+} from './k2-w7b1-113c.ts'
+import { ACT1Q5_RecordPlayerInMalusRoomAndSpawnLightning_6FC88AB0_113c } from './k2-w7b2-113c.ts'
+import { ACT1Q4_OnCairnStoneInit_6FC87D20_113c } from './k2-w8b2-113c.ts'
+import { QUESTS_OnTaintedSunAltarInitOrFallbackMode2_6FC56100_113c } from './k2-w9b1-113c.ts'
+import { D2Game_6FD08EB0_113c } from './k2-w13b1-113c.ts'
+import { ACT4Q3_OnSealObjectActivatedTriggerCheck_6FCDC220_113c } from './k2-w16b1-113c.ts'
 import { UNITS_ChangeAnimMode113c } from './monster-events.ts'
 import { EVENT_RemoveUnitEvents113c } from './timer-wheel.ts'
 import { hitD2GameVa113c } from '../va-trace-113c.ts'
@@ -528,22 +630,238 @@ export function OBJECTS_InitObjectUnit113c(
       m.setU32((sp + 0x10) >>> 0, pObjectsTxt >>> 0)
       m.setU32((sp + 0x14) >>> 0, x >>> 0)
       m.setU32((sp + 0x18) >>> 0, y >>> 0)
-      if (nInitFn === 1) {
-        OBJECTS_InitShrineType113c(m, sp)
-      } else if (nInitFn === 2) {
-        OBJECTS_RollChestTrapType113c(m, sp)
-      } else if (nInitFn === 3) {
-        OBJECTS_InitChestLockAndSeed113c(m, sp)
-      } else if (nInitFn === 5) {
-        OBJECTS_InitFn05_NoOp113c(m, sp)
-      } else if (nInitFn === 8) {
-        UNITS_ChangeAnimMode113c(m, pUnit, 2)
-      } else if (nInitFn === 14 || nInitFn === 26) {
-        UNITS_ChangeAnimMode113c(m, pUnit, 1)
-      } else if (nInitFn === 16) {
-        OBJECTS_InitFn16_DoubleActToSubType113c(m, sp)
-      } else if (nInitFn === 27) {
-        OBJECTS_InitFn27_RollSubType3_113c(m, sp)
+      const sm = m as SparseMemory113c
+      switch (nInitFn) {
+        case 1:
+          OBJECTS_InitShrineType113c(m, sp)
+          break
+        case 2:
+          OBJECTS_RollChestTrapType113c(m, sp)
+          break
+        case 3:
+          OBJECTS_InitChestLockAndSeed113c(m, sp)
+          break
+        case 4:
+          ACT1Q5_InitHoradricMalusStandObject_6FC80DA0_113c(m, sp)
+          break
+        case 5:
+          OBJECTS_InitFn05_NoOp113c(m, sp)
+          break
+        case 6:
+          ACT1Q4_OnCairnStoneInit_6FC87D20_113c(sm, sp)
+          break
+        case 7:
+          QUESTS_InitAct1Quest4Object_6FC54DA0_113c(m, sp)
+          break
+        case 8:
+          OBJECT_SetAnimMode2Wrapper113c(m, pGame, pUnit)
+          break
+        case 9:
+          ACT1Q4_InitCainGibbetObject_6FC814A0_113c(m, sp)
+          break
+        case 10:
+          OBJECTS_InitFn10_InitRogueFireAndScheduleEvent_6FC53740_113c(m, sp)
+          break
+        case 11:
+          OBJECTS_InitFn11_InitTownPortal_6FC53330_113c(m, sp)
+          break
+        case 12:
+          OBJECTS_InitFn05_InitPortalDestLevel_6FC533D0_113c(sm, sp)
+          break
+        case 13:
+          ACT1Q4_InitInifussTreeObject_6FC828D0_113c(sm, sp)
+          break
+        case 14:
+          OBJECTS_InitFn14_SetAnimMode1_6FC4E740_113c(m, sp)
+          break
+        case 15:
+          QUESTS_InitAct1Quest3Object_6FC54E10_113c(m, sp)
+          break
+        case 16:
+          OBJECTS_InitFn16_DoubleActToSubType113c(m, sp)
+          break
+        case 17:
+          OBJECT_CheckRespawnOrPortalInRoom113c(m, pUnit, pRoom)
+          break
+        case 18:
+          QUESTS_TriggerAct2Q0SpawnJerhyn_6FC565B0_113c(sm, sp)
+          break
+        case 19:
+          QUESTS_Act2TaintedSunTriggerAltarDarkness_6FC56C20_113c(sm, sp)
+          break
+        case 20:
+          QUESTS_OnTaintedSunAltarInitOrFallbackMode2_6FC56100_113c(sm, sp)
+          break
+        case 21:
+          QUEST0D_InitTemplePortalObject_6FCE9ED0_113c(sm, sp)
+          break
+        case 22:
+          OBJECTS_InitFn22_InitBrazierAndScheduleEvent0_6FC536F0_113c(m, sp)
+          break
+        case 23:
+          OBJECTS_InitFn23_SyncQuest0FObjectAnimMode_6FC54370_113c(m, sp)
+          break
+        case 24:
+          OBJECTS_InitFn24_ScheduleEvent3_6FC536D0_113c(m, sp)
+          break
+        case 25:
+          D2Game_6FD08EB0_113c(sm, sp)
+          break
+        case 26:
+          OBJECTS_InitFn26_SetAnimMode1_6FC4E730_113c(m, sp)
+          break
+        case 27:
+          OBJECTS_InitFn27_RollSubType3_113c(m, sp)
+          break
+        case 28:
+          OBJECTS_OperateGoldChestOrPile_6FC4F580_113c(sm, sp)
+          break
+        case 29:
+          ACT2Q4_InitArcanePortalObjectMode_6FCE99B0_113c(sm, sp)
+          break
+        case 30:
+          ACT2Q4_InitArcanePortalObject_6FCE32C0_113c(m, sp)
+          break
+        case 31:
+          ACT2Q3_NoOpC_6FCE2370_113c(m)
+          break
+        case 32:
+          ACT2Q3_NoOpA_6FCE2350_113c(m)
+          break
+        case 33:
+          ACT2Q3_NoOpB_6FCE2360_113c(m)
+          break
+        case 34:
+          OBJECTS_InitFn34_RandomSetAnimMode1_6FC4EC70_113c(m, sp)
+          break
+        case 37:
+          ACT2Q5_InitArcanePortalObject_6FCE2850_113c(sm, sp)
+          break
+        case 38:
+          ACT2Q6_ActivateHoradricOrifice_6FCE27F0_113c(m, sp)
+          break
+        case 39:
+          ACT3Q2_InitGidbinnAltarObject_6FD04120_113c(m, sp)
+          break
+        case 41:
+          ACT3Q3_InitSewerLeverObject_6FD04980_113c(m, sp)
+          break
+        case 42:
+          ACT3Q3_InitSewerStairsObject_6FD02E00_113c(m, sp)
+          break
+        case 43:
+          ACT3Q0_InitDarkWandererPreset_6FD08290_113c(sm, sp)
+          break
+        case 44:
+          ACT3Q7_InitMephistoPortalObject_6FD03290_113c(sm, sp)
+          break
+        case 45:
+          ACT3Q5_InitStairsObject_6FD098E0_113c(sm, sp)
+          break
+        case 46:
+          OBJECTS_PopulateEvilUrnMonstersInRoom_6FC4F690_113c(sm, sp)
+          break
+        case 47:
+          ACT1Q5_RecordPlayerInMalusRoomAndSpawnLightning_6FC88AB0_113c(sm, sp)
+          break
+        case 48:
+          ACT4Q2_InitHellforgeObject_6FCD9E80_113c(sm, sp)
+          break
+        case 49:
+          ACT3Q2_InitGidbinnBossDefaultPreset_6FD086A0_113c(sm, sp)
+          break
+        case 50:
+          ACT3Q2_InitGidbinnBossActivePreset_6FD08560_113c(sm, sp)
+          break
+        case 51:
+          OBJECTS_InitFn51_ScheduleEvent9IfOperatingOrOpened_6FC532F0_113c(m, sp)
+          break
+        case 52:
+          ACT3Q5_InitCouncilBossPreset_6FD08310_113c(sm, sp)
+          break
+        case 53:
+          ACT3Q5_InitCompellingOrbObject_6FD02A00_113c(m, sp)
+          break
+        case 54:
+          QUEST_Act1TownPortalUpdateState113c(m, pUnit, pGame)
+          break
+        case 55:
+          ACT4Q3_OnSealObjectActivatedTriggerCheck_6FCDC220_113c(sm, sp)
+          break
+        case 56:
+          ACT4_InitObjectNoop_6FCD8930_113c(m, sp)
+          break
+        case 57:
+          OBJECTS_InitFn57_InitSpecialChest_6FC4EF50_113c(m, sp)
+          break
+        case 58:
+          OBJECTS_InitFn58_ScheduleRandomEvent8_6FC53680_113c(m, sp)
+          break
+        case 59:
+          OBJECTS_InitFn59_ActivateAndScheduleEvents7And1_6FC53620_113c(m, sp)
+          break
+        case 60:
+          ACT3Q3_InitCompellingOrbPreset_6FD084A0_113c(sm, sp)
+          break
+        case 61:
+          OBJECTS_InitOperatingObjectWithTimer25_6FC88F90_113c(m, sp)
+          break
+        case 62:
+          QUESTS_Act5RescueBarbsOnPrisonDoorOpen_6FC7C850_113c(sm, sp)
+          break
+        case 63:
+          ACT5Q5_InitAncientStatueObject18_6FC78EA0_113c(m, sp)
+          break
+        case 64:
+          ACT5Q5_InitAncientStatueObject1C_6FC78E50_113c(m, sp)
+          break
+        case 65:
+          ACT5Q5_InitAncientStatueObject14_6FC78EF0_113c(m, sp)
+          break
+        case 66:
+          ACT5Q3_RegisterAnyaObjectAndSpawnMonster200_6FC7EB30_113c(sm, sp)
+          break
+        case 67:
+          ACT5Q3_InitFrozenAnyaObject_6FC7E8D0_113c(sm, sp)
+          break
+        case 68:
+          ACT5Q3_SpawnMonster202AndAttachQuestData_6FC7C5C0_113c(sm, sp)
+          break
+        case 69:
+          ACT5Q3_SpawnFrozenAnyaMonsterIfNeeded_6FC7CF70_113c(sm, sp)
+          break
+        case 70:
+          ACT5_InitObjectNoop_6FC76CE0_113c(m, sp)
+          break
+        case 71:
+          ACT5Q1_SpawnShenkAndAttachQuestData_6FC7C3A0_113c(sm, sp)
+          break
+        case 72:
+          ACT5Q5_InitWorldstoneKeepEntranceObject_6FC774A0_113c(m, sp)
+          break
+        case 73:
+          ACT5Q5_InitSummitDoorObject_6FC765B0_113c(m, sp)
+          break
+        case 74:
+          ACT5Q3_OnFrozenAnyaSpawnedPromoteState2_6FC79EF0_113c(sm, sp)
+          break
+        case 75:
+          ACT5Q6_InitWorldstoneChamberObject94_6FC76520_113c(m, sp)
+          break
+        case 76:
+          ACT5Q5_InitAncientsAltarObject_6FC773D0_113c(m, sp)
+          break
+        case 77:
+          ACT5Q6_InitWorldstoneChamberObject9C_6FC764D0_113c(m, sp)
+          break
+        case 78:
+          ACT4Q2_InitHellforgeObject_6FCD8870_113c(m, sp)
+          break
+        case 79:
+          ACT5Q6_RollBaalTauntMonsterIdAndBroadcastPacket50_6FC7A820_113c(sm, sp)
+          break
+        default:
+          break
       }
     } finally {
       objSpawnStackPtr = sp

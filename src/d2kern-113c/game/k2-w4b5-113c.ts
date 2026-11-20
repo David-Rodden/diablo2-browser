@@ -119,12 +119,12 @@ import {
   SUNITDMG_AllocCombat113c,
   SUNITDMG_ApplyDamage113c,
   SUNITDMG_ApplySideEffectsAndKill113c,
-  SUNITDMG_CalcMonsterExperience113c,
   SUNITDMG_ExecuteEvents113c,
   SUNITDMG_FillDamageValues113c,
   SUNITDMG_FindCombatDamageData113c,
 } from './combat-a1c-113c.js'
-import { PLAYER_GetEquippedWeapon113c } from './replay-kernel-113c.ts'
+import { SUNITDMG_RollMeleeToHitAndBlock_6FCFE5A0_113c } from './k2-real-s2c-combat-113c.js'
+import { PLAYER_GetEquippedWeapon113c } from './replay-kernel-113c.js'
 import { SUNIT_GetServerUnit113c } from './game-strc.js'
 import {
   AURAS_ApplyRadialStatBuffCallback113c,
@@ -135,7 +135,10 @@ import {
   MISSILE_SpawnNova64Directions113c,
   SKILLS_ResolveChargedSrvMissileId113c,
 } from './k2-gap-melee-dot-113c.js'
-import { MONUMOD_MarkBossAndIncrementUniqueCount113c } from './k2-items-tc-w1-113c.js'
+import {
+  MONUMOD_MarkBossAndIncrementUniqueCount113c,
+  MONUMOD_RollBossOrMinionNameSeed113c,
+} from './k2-items-tc-w1-113c.js'
 import {
   SKILLS_EvalLinearParam12_6FC21B10_113c,
   STATLIST_AddUnitStatGoldGuarded_6FC21670_113c,
@@ -1006,7 +1009,9 @@ export function SKILLS_RestoreConvertedMonsterAlignmentAndStats_6FCB14F0_113c(
   hitD2GameVa113c(0x6FCB14F0)
   SUNIT_SetMonsterAlignmentState113c(m, pUnit >>> 0, 0, 1)
   STATES_ToggleGfxStateFlag113c(m, pUnit >>> 0, nState | 0, 0)
-  if (pUnit === 0) return
+  if (pUnit === 0) {
+    throw new D2CommonAssertError('SUnit.cpp', 0xa2a)
+  }
 
   const pGame = m.u32((pUnit + 0x80) >>> 0) >>> 0
   SUNIT_UnlinkFromRoomUpdateList113c(m, pGame, pUnit >>> 0)
@@ -1047,6 +1052,15 @@ export function SKILLS_RestoreConvertedMonsterAlignmentAndStats_6FCB14F0_113c(
  *
  * @va D2Game:0x6FCB1660
  */
+const DEFAULT_MONUMOD_TABLE_W4B5_6FD2E550: readonly number[] = [
+  0, 0x6fc43020, 0x6fc42fa0, 0, 0x6fc41e80, 0x6fc42bc0, 0x6fc42880, 0,
+  0x6fc41be0, 0x6fc42740, 0, 0, 0, 0, 0, 0,
+  0x6fc42da0, 0x6fc42600, 0x6fc42490, 0, 0, 0, 0, 0x6fc42320,
+  0, 0x6fc421d0, 0x6fc441b0, 0x6fc41be0, 0x6fc41be0, 0, 0x6fc44cd0, 0,
+  0, 0, 0, 0, 0x6fc43850, 0x6fc43810, 0x6fc437c0, 0x6fc42d00,
+  0, 0x6fc469f0, 0,
+]
+
 export function SKILLS_ApplyMonsterSkillBuffAndUMod_6FCB1660_113c(
   m: D2KernMemory113c,
   pSkillsTxt: number,
@@ -1054,6 +1068,13 @@ export function SKILLS_ApplyMonsterSkillBuffAndUMod_6FCB1660_113c(
   pMonster: number,
   nSkillId: number,
   nLevel: number,
+  onMonUMod?: (
+    m: D2KernMemory113c,
+    pfn: number,
+    pMonster: number,
+    nMonUMod: number,
+    bBoss: number,
+  ) => void,
 ): void {
   hitD2GameVa113c(0x6FCB1660)
   const lvl = nLevel | 0
@@ -1134,7 +1155,22 @@ export function SKILLS_ApplyMonsterSkillBuffAndUMod_6FCB1660_113c(
         for (let slot = 0; slot < 9; slot = (slot + 1) | 0) {
           if (m.u8((pUModArr + slot) >>> 0) === 0) {
             m.setU8((pUModArr + slot) >>> 0, nMonUMod & 0xff)
-            void m.u32((0x6fd2e550 + nMonUMod * 4) >>> 0)
+            let pfnUMod = 0
+            try {
+              pfnUMod = m.u32((0x6fd2e550 + nMonUMod * 4) >>> 0) >>> 0
+            } catch {
+              pfnUMod = 0
+            }
+            if (pfnUMod === 0 && nMonUMod < DEFAULT_MONUMOD_TABLE_W4B5_6FD2E550.length) {
+              pfnUMod = DEFAULT_MONUMOD_TABLE_W4B5_6FD2E550[nMonUMod]! >>> 0
+            }
+            if (pfnUMod !== 0) {
+              if (onMonUMod !== undefined) {
+                onMonUMod(m, pfnUMod, pMonster >>> 0, nMonUMod, 1)
+              } else if (pfnUMod === 0x6fc43020) {
+                MONUMOD_RollBossOrMinionNameSeed113c(m, pMonster >>> 0, nMonUMod, 1)
+              }
+            }
             break
           }
         }
@@ -1214,7 +1250,6 @@ export function SKILLS_ApplyRadialDamageCallback_6FCB3040_113c(
   pTargetUnit: number,
 ): number {
   hitD2GameVa113c(0x6FCB3040)
-  void SUNITDMG_CalcMonsterExperience113c
   const pSub = m.u32((pAuraCtx + 0x0c) >>> 0) >>> 0
   const pSrcDmg = m.u32(pSub) >>> 0
   const pDmg = m.alloc(0x70) >>> 0
@@ -1228,15 +1263,21 @@ export function SKILLS_ApplyRadialDamageCallback_6FCB3040_113c(
   const wPresetResult = m.u16((pSub + 0x08) >>> 0)
 
   if ((wPresetResult & 1) === 0) {
-    let wRolled = 0x21
-    if (pAttacker !== 0 && pTargetUnit !== 0) {
-      void nToHitBonus
-      wRolled = (0x21 | wPresetResult) & 0xffff
-    }
+    const wRolled =
+      SUNITDMG_RollMeleeToHitAndBlock_6FCFE5A0_113c(
+        m,
+        pAttacker,
+        pTargetUnit >>> 0,
+        pGame,
+        nToHitBonus,
+        1,
+        0,
+      ) & 0xffff
     m.setU16((pDmg + 0x04) >>> 0, wRolled)
     if ((wRolled & 1) === 0) {
       return 1
     }
+    m.setU16((pDmg + 0x04) >>> 0, (wRolled | wPresetResult) & 0xffff)
   } else {
     m.setU16((pDmg + 0x04) >>> 0, wPresetResult)
   }
@@ -1256,7 +1297,7 @@ export function SKILLS_ApplyRadialDamageCallback_6FCB3040_113c(
       )
     }
     SUNITDMG_AllocCombat113c(m, pGame, pAttacker, pTargetUnit >>> 0, pDmg, 0x80)
-    SUNITDMG_ExecuteEvents113c(m, pGame, pAttacker, pTargetUnit >>> 0, 1, pDmg)
+    SUNITDMG_ExecuteEvents113c(m, pGame, pAttacker, pTargetUnit >>> 0, 1, 0)
   }
   return 1
 }
@@ -1461,7 +1502,9 @@ export function PETS_FindPetTypeByGuid_6FCB6600_113c(
 ): number {
   hitD2GameVa113c(0x6FCB6600)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer >>> 0) >>> 0
-  if (pPlayerData === 0) return 0
+  if (pPlayerData === 0) {
+    throw new D2CommonAssertError('SUnitProxy.cpp', 0x3dc)
+  }
   const pPlayerPets = m.u32((pPlayerData + 0x44) >>> 0) >>> 0
   if (pPlayerPets === 0) return 0
 
@@ -1565,7 +1608,7 @@ export function PETS_SendPacket7A_UnsummonPet_6FCB6810_113c(
   m.setU16((pPkt + 0x03) >>> 0, m.u16((pPetNode + 0x08) >>> 0))
   m.setU32((pPkt + 0x05) >>> 0, m.u32((pPetNode + 0x04) >>> 0) >>> 0)
   m.setU32((pPkt + 0x09) >>> 0, m.u32(pPetNode >>> 0) >>> 0)
-  return NET_QueuePacketToClientBuffer113c(m, pClient, 4, pPkt, 0x0d)
+  return NET_QueuePacketToClientBuffer113c(m, pClient, 1, pPkt, 0x0d) | 0
 }
 
 /**
@@ -1606,7 +1649,10 @@ export function PETS_GetFirstPetUnitByType_6FCB6A40_113c(
     if (pNode === 0) return 0
   }
 
-  if (pNode === 0 || pGame === 0) return 0
+  if (pNode === 0) return 0
+  if (pGame === 0) {
+    throw new D2CommonAssertError('SUnit.cpp', 0x2d3)
+  }
   const dwPetGuid = m.u32((pNode + 0x04) >>> 0) >>> 0
   let pUnit = m.u32((pGame + (dwPetGuid & 0x7f) * 4 + 0x1320) >>> 0) >>> 0
   while (pUnit !== 0) {
@@ -1760,7 +1806,6 @@ export function SKILLS_TryRedeemCorpseHealLifeAndMana_6FCB8490_113c(
   bSkipRoll: number,
 ): number {
   hitD2GameVa113c(0x6FCB8490)
-  void seedRoll
   const skillId = nSkillId | 0
   if (skillId < 0) return 0
   const pDataTablesPtr = m.u32(0x6fd1829c) >>> 0
@@ -1786,13 +1831,10 @@ export function SKILLS_TryRedeemCorpseHealLifeAndMana_6FCB8490_113c(
         lvl,
       ) | 0
     const pSeed = (pCasterUnit + 0x20) >>> 0
-    const prod =
-      BigInt(m.u32(pSeed) >>> 0) * 0x6ac690c5n + BigInt(m.u32((pSeed + 0x04) >>> 0) >>> 0)
-    const lo = Number(prod & 0xffffffffn) >>> 0
-    const hi = Number((prod >> 32n) & 0xffffffffn) >>> 0
-    m.setU32(pSeed, lo)
-    m.setU32((pSeed + 0x04) >>> 0, hi)
-    const nRoll = (lo % 100) | 0
+    const seed = { lo: m.u32(pSeed) >>> 0, hi: m.u32((pSeed + 0x04) >>> 0) >>> 0 }
+    const nRoll = seedRoll(seed, 0x64) | 0
+    m.setU32(pSeed, seed.lo >>> 0)
+    m.setU32((pSeed + 0x04) >>> 0, seed.hi >>> 0)
     if (nRoll >= nChance) return 0
   }
 
@@ -1899,7 +1941,6 @@ export function AURAS_RedemptionCorpseCallback_6FCB8680_113c(
   pCorpseUnit: number,
 ): number {
   hitD2GameVa113c(0x6FCB8680)
-  void seedRoll
   const pSub = m.u32((pAuraCtx + 0x0c) >>> 0) >>> 0
   const nSkillId = i32(m, pSub)
   const nLevel = i32(m, (pSub + 0x04) >>> 0)
@@ -1927,13 +1968,10 @@ export function AURAS_RedemptionCorpseCallback_6FCB8680_113c(
       nLevel,
     ) | 0
   const pSeed = (pCasterUnit + 0x20) >>> 0
-  const prod =
-    BigInt(m.u32(pSeed) >>> 0) * 0x6ac690c5n + BigInt(m.u32((pSeed + 0x04) >>> 0) >>> 0)
-  const lo = Number(prod & 0xffffffffn) >>> 0
-  const hi = Number((prod >> 32n) & 0xffffffffn) >>> 0
-  m.setU32(pSeed, lo)
-  m.setU32((pSeed + 0x04) >>> 0, hi)
-  const nRoll = (lo % 100) | 0
+  const seed = { lo: m.u32(pSeed) >>> 0, hi: m.u32((pSeed + 0x04) >>> 0) >>> 0 }
+  const nRoll = seedRoll(seed, 0x64) | 0
+  m.setU32(pSeed, seed.lo >>> 0)
+  m.setU32((pSeed + 0x04) >>> 0, seed.hi >>> 0)
   if (nRoll >= nChance) return 0
 
   const nLifeGain =
@@ -2058,7 +2096,9 @@ export function SKILLS_RestoreMindBlastConvertedMonster_6FCB8950_113c(
   hitD2GameVa113c(0x6FCB8950)
   STATES_ToggleGfxStateFlag113c(m, pUnit >>> 0, nState | 0, 0)
   SUNIT_SetMonsterAlignmentState113c(m, pUnit >>> 0, 0, 1)
-  if (pUnit === 0) return
+  if (pUnit === 0) {
+    throw new D2CommonAssertError('SUnit.cpp', 0xa2a)
+  }
 
   const pGame = m.u32((pUnit + 0x80) >>> 0) >>> 0
   SUNIT_UnlinkFromRoomUpdateList113c(m, pGame, pUnit >>> 0)
@@ -2078,18 +2118,18 @@ export function SKILLS_RestoreMindBlastConvertedMonster_6FCB8950_113c(
     STATLIST_SetUnitStat113c(m, pUnit >>> 0, 0x07, nSavedMaxHp, 0)
     STATLIST_UnlinkSubList113c(m, pUnit >>> 0, pSaveList)
     STATLIST_FreeStatListIfNonExtended113c(m, pSaveList)
-  }
 
-  let pFlag8List = STATLIST_GetStatListFromUnitAndFlag113c(m, pUnit >>> 0, 0x08) >>> 0
-  while (pFlag8List !== 0) {
-    STATLIST_UnlinkSubList113c(m, pUnit >>> 0, pFlag8List)
-    STATLIST_FreeStatListIfNonExtended113c(m, pFlag8List)
-    pFlag8List = STATLIST_GetStatListFromUnitAndFlag113c(m, pUnit >>> 0, 0x08) >>> 0
+    let pFlag8List = STATLIST_GetStatListFromUnitAndFlag113c(m, pUnit >>> 0, 0x08) >>> 0
+    while (pFlag8List !== 0) {
+      STATLIST_UnlinkSubList113c(m, pUnit >>> 0, pFlag8List)
+      STATLIST_FreeStatListIfNonExtended113c(m, pFlag8List)
+      pFlag8List = STATLIST_GetStatListFromUnitAndFlag113c(m, pUnit >>> 0, 0x08) >>> 0
+    }
   }
 }
 
 /**
- * [35/45] Scans a radius of `3` around `pCenterUnit` (`[esp+4]`) in `pGame` (`ecx`) with filter `0xA783`
+ * [35/45] Scans a radius of `3` around `pCenterUnit` (`ecx`) in `pGame` (`[esp+4]`) with filter `0xA783`
  * and `SKILLS_TargetRingScanCallback_6FCBED70_113c`, returning the closest primary target (`+0x00`) or fallback (`+0x08`).
  *
  * @va D2Game:0x6FCB8E30
@@ -2184,7 +2224,13 @@ export function SKILLS_SrvDo_ApplySacrificeSelfDamage_6FCB9290_113c(
     m.setU32((pSelfDmg + 0x08) >>> 0, nSelfAmount >>> 0)
     m.setU32((pSelfDmg + 0x4c) >>> 0, nSelfAmount >>> 0)
 
-    SUNITDMG_ApplyDamage113c(m, pGame >>> 0, pUnit >>> 0, pUnit >>> 0, pSelfDmg)
+    SUNITDMG_ApplyDamage113c(m, pGame >>> 0, pUnit >>> 0, pUnit >>> 0, pSelfDmg, 0, undefined, 1)
+    if (m.u16((pSelfDmg + 0x04) >>> 0) === 0) {
+      // SUNITDMG_ApplyDamage113c already subtracted nSelfAmount and did not set RESULTFLAG_DEATH (0x02);
+      // clear dwDmgTotal so SUNITDMG_ApplySideEffectsAndKill113c's legacy (flags==0 && dmgTotal>0) shim
+      // does not subtract HP a second time (real D2Game:0x6FCFCF20 never subtracts HP).
+      m.setU32((pSelfDmg + 0x4c) >>> 0, 0)
+    }
     SUNITDMG_ApplySideEffectsAndKill113c(m, pGame >>> 0, pUnit >>> 0, pUnit >>> 0, pSelfDmg)
     SUNITDMG_ExecuteEvents113c(m, pGame >>> 0, pUnit >>> 0, pTarget, 1, 0)
   }
@@ -2289,21 +2335,23 @@ export function SKILLS_ScalePoisonAndCurseDurations_6FCB9B60_113c(
     if (STATES_CheckState113c(m, pUnit >>> 0, nState) !== 0) {
       const pStateList =
         STATLIST_GetStatListFromUnitAndStateMemPort113c(m, pUnit >>> 0, nState) >>> 0
-      if (pStateList !== 0 && UNITS_CheckStateMaskExp113c(m, nState) !== 0) {
-        const nCurFrame = i32(m, (pGame + 0xa8) >>> 0)
-        const nExpire = STATLIST_GetExpireFrameEx113c(m, pStateList) | 0
-        const nRem = (nExpire - nCurFrame) | 0
-        let nScaledRem: number
-        if (nRem > 0x100000) {
-          nScaledRem = Math.imul((nRem / 100) | 0, nPct) | 0
-        } else if (nPct > 0x10000) {
-          nScaledRem = Math.imul((nPct / 100) | 0, nRem) | 0
-        } else {
-          nScaledRem = (Math.imul(nRem, nPct) / 100) | 0
+      if (pStateList !== 0) {
+        if (UNITS_CheckStateMaskExp113c(m, nState) !== 0) {
+          const nCurFrame = i32(m, (pGame + 0xa8) >>> 0)
+          const nExpire = STATLIST_GetExpireFrameEx113c(m, pStateList) | 0
+          const nRem = (nExpire - nCurFrame) | 0
+          let nScaledRem: number
+          if (nRem > 0x100000) {
+            nScaledRem = Math.imul((nRem / 100) | 0, nPct) | 0
+          } else if (nPct > 0x10000) {
+            nScaledRem = Math.imul((nPct / 100) | 0, nRem) | 0
+          } else {
+            nScaledRem = (Math.imul(nRem, nPct) / 100) | 0
+          }
+          const nNewExpire = (nCurFrame + nScaledRem) | 0
+          STATLIST_SetExpireFrameEx113c(m, pStateList, nNewExpire)
+          EVENT_SetEventFull113c(m, pGame >>> 0, pUnit >>> 0, 0x0c, nNewExpire, 0, 0, 0)
         }
-        const nNewExpire = (nCurFrame + nScaledRem) | 0
-        STATLIST_SetExpireFrameEx113c(m, pStateList, nNewExpire)
-        EVENT_SetEventFull113c(m, pGame >>> 0, pUnit >>> 0, 0x0c, nNewExpire, 0, 0, 0)
         bModified = 1
       }
     }
@@ -2367,7 +2415,7 @@ export function AURAS_ApplyUndeadPulseBuffAndDamageCallback_6FCBA630_113c(
     for (let i = 0; i < 0x70; i += 4) {
       m.setU32((pDmg + i) >>> 0, m.u32((pSrcDmg + i) >>> 0) >>> 0)
     }
-    SUNITDMG_ApplyDamage113c(m, pGame, pAttacker, pTargetUnit >>> 0, pDmg)
+    SUNITDMG_ApplyDamage113c(m, pGame, pAttacker, pTargetUnit >>> 0, pDmg, 1, undefined, 1)
     SUNITDMG_ApplySideEffectsAndKill113c(m, pGame, pAttacker, pTargetUnit >>> 0, pDmg)
   }
 
@@ -2422,7 +2470,7 @@ export function AURAS_ApplyPulseBuffAndDamageCallback_6FCBA7C0_113c(
     for (let i = 0; i < 0x70; i += 4) {
       m.setU32((pDmg + i) >>> 0, m.u32((pSrcDmg + i) >>> 0) >>> 0)
     }
-    SUNITDMG_ApplyDamage113c(m, pGame, pAttacker, pTargetUnit >>> 0, pDmg)
+    SUNITDMG_ApplyDamage113c(m, pGame, pAttacker, pTargetUnit >>> 0, pDmg, 1, undefined, 1)
     SUNITDMG_ApplySideEffectsAndKill113c(m, pGame, pAttacker, pTargetUnit >>> 0, pDmg)
   }
   return 1
@@ -2452,16 +2500,17 @@ export function ITEMS_HasUnitFlagOrLiveInventoryNodeItem_6FCBB570_113c(
   let pNode = INVENTORY_GetFirstNode113c(m, pInventory) >>> 0
   while (pNode !== 0) {
     const dwItemGuid = INVENTORY_GetNodeItemGuid113c(m, pNode) >>> 0
+    if (pGame === 0) {
+      throw new D2CommonAssertError('SUnit.cpp', 0x2d3)
+    }
     let pFoundItem = 0
-    if (pGame !== 0) {
-      let pItem = m.u32((pGame + (dwItemGuid & 0x7f) * 4 + 0x1720) >>> 0) >>> 0
-      while (pItem !== 0) {
-        if (m.u32((pItem + 0x0c) >>> 0) === dwItemGuid) {
-          pFoundItem = pItem
-          break
-        }
-        pItem = m.u32((pItem + 0xe4) >>> 0) >>> 0
+    let pItem = m.u32((pGame + (dwItemGuid & 0x7f) * 4 + 0x1720) >>> 0) >>> 0
+    while (pItem !== 0) {
+      if (m.u32((pItem + 0x0c) >>> 0) === dwItemGuid) {
+        pFoundItem = pItem
+        break
       }
+      pItem = m.u32((pItem + 0xe4) >>> 0) >>> 0
     }
     const pNext = INVENTORY_GetNextNode113c(m, pNode) >>> 0
     if (pFoundItem !== 0) return 1
@@ -2507,7 +2556,9 @@ export function PARTY_CreateAndLinkSubParty_6FCBBF70_113c(
 ): number {
   hitD2GameVa113c(0x6FCBBF70)
   const pPartyControl = m.u32((pGame + 0x1d2c) >>> 0) >>> 0
-  if (pPartyControl === 0) return 0
+  if (pPartyControl === 0) {
+    throw new D2CommonAssertError('Party.cpp', 0x7f)
+  }
 
   void m.u32((pGame + 0x1c) >>> 0)
   const pSubParty = m.alloc(0x0c) >>> 0
@@ -2604,43 +2655,44 @@ export function PARTY_DistributeGoldPickupAndReturnRemainder_6FCBC270_113c(
         const pOutToAdd = m.alloc(4) >>> 0
         const pOutRem = m.alloc(4) >>> 0
         while (pNode !== 0) {
-          if (pGame !== 0) {
-            const dwGuid = m.u32(pNode) >>> 0
-            let pMember = m.u32((pGame + (dwGuid & 0x7f) * 4 + 0x1120) >>> 0) >>> 0
-            while (pMember !== 0) {
-              if (m.u32((pMember + 0x0c) >>> 0) === dwGuid) {
-                if (pMember !== (pPlayer >>> 0)) {
-                  const pMemberRoom = UNITS_GetRoom113c(m, pMember) >>> 0
-                  if (
-                    pMemberRoom !== 0 &&
-                    (DUNGEON_GetLevelIdFromRoom113c(m, pMemberRoom) | 0) === nPickerLevel &&
-                    pPlayer !== 0
-                  ) {
-                    const dwPickerMode = m.u32((pPlayer + 0x10) >>> 0)
-                    if (dwPickerMode !== 0 && dwPickerMode !== 0x11) {
-                      m.setU32(pOutToAdd, 0)
-                      m.setU32(pOutRem, 0)
-                      PARTY_SplitGoldPickupByCap_6FCBBC70_113c(
-                        m,
-                        nShare,
-                        pMember,
-                        pOutToAdd,
-                        pOutRem,
-                      )
-                      STATLIST_AddUnitStatGoldGuarded_6FC21670_113c(
-                        m,
-                        pMember,
-                        0x0e,
-                        i32(m, pOutToAdd),
-                      )
-                      nPool = (nPool + ((i32(m, pOutRem) - nShare) | 0)) | 0
-                    }
+          if (pGame === 0) {
+            throw new D2CommonAssertError('SUnit.cpp', 0x2d3)
+          }
+          const dwGuid = m.u32(pNode) >>> 0
+          let pMember = m.u32((pGame + (dwGuid & 0x7f) * 4 + 0x1120) >>> 0) >>> 0
+          while (pMember !== 0) {
+            if (m.u32((pMember + 0x0c) >>> 0) === dwGuid) {
+              if (pMember !== (pPlayer >>> 0)) {
+                const pMemberRoom = UNITS_GetRoom113c(m, pMember) >>> 0
+                if (
+                  pMemberRoom !== 0 &&
+                  (DUNGEON_GetLevelIdFromRoom113c(m, pMemberRoom) | 0) === nPickerLevel &&
+                  pPlayer !== 0
+                ) {
+                  const dwPickerMode = m.u32((pPlayer + 0x10) >>> 0)
+                  if (dwPickerMode !== 0 && dwPickerMode !== 0x11) {
+                    m.setU32(pOutToAdd, 0)
+                    m.setU32(pOutRem, 0)
+                    PARTY_SplitGoldPickupByCap_6FCBBC70_113c(
+                      m,
+                      nShare,
+                      pMember,
+                      pOutToAdd,
+                      pOutRem,
+                    )
+                    STATLIST_AddUnitStatGoldGuarded_6FC21670_113c(
+                      m,
+                      pMember,
+                      0x0e,
+                      i32(m, pOutToAdd),
+                    )
+                    nPool = (nPool + ((i32(m, pOutRem) - nShare) | 0)) | 0
                   }
                 }
-                break
               }
-              pMember = m.u32((pMember + 0xe4) >>> 0) >>> 0
+              break
             }
+            pMember = m.u32((pMember + 0xe4) >>> 0) >>> 0
           }
           pNode = m.u32((pNode + 0x04) >>> 0) >>> 0
         }

@@ -420,17 +420,21 @@ export function QUESTS_TriggerCallback113c(
   if (pQuestCtrl === 0) return
   let pQuest = m.u32(pQuestCtrl >>> 0) >>> 0
   let actNo = 0xff
-  if (bFilterAct === 1) {
+  const filterActByte = bFilterAct & 0xff
+  const checkActiveByte = bCheckActive & 0xff
+  if (filterActByte === 1) {
     const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
-    const pRoom = UNITS_GetRoom113c(m, pUnit)
-    const nLevel = DUNGEON_GetLevelIdFromRoom113c(m, pRoom)
-    actNo = DRLG_GetActNoFromLevelId113c(m, nLevel) & 0xff
+    const pRoom = UNITS_GetRoom113c(m, pUnit) >>> 0
+    if (pRoom !== 0) {
+      const nLevel = DUNGEON_GetLevelIdFromRoom113c(m, pRoom)
+      actNo = DRLG_GetActNoFromLevelId113c(m, nLevel) & 0xff
+    }
   }
   while (pQuest !== 0) {
     const cbIdx = m.u32((pArg + 0x04) >>> 0) >>> 0
     const pfnCallback = m.u32((pQuest + cbIdx * 4 + 0xa0) >>> 0) >>> 0
     if (pfnCallback !== 0) {
-      if (bCheckActive !== 0 || m.u8((pQuest + 0x0a) >>> 0) === 1) {
+      if (checkActiveByte !== 0 || m.u8((pQuest + 0x0a) >>> 0) === 1) {
         if (actNo === 0xff || actNo === m.u8((pQuest + 0x08) >>> 0)) {
           dispatchQuestCallbackByVa(m, pfnCallback, pQuest, pArg, hooks)
         }

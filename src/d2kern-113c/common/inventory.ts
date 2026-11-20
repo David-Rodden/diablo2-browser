@@ -41,6 +41,7 @@ import {
 import {
   SGPT_INVENTORY_TXT_MAX_VA,
   SGPT_INVENTORY_TXT_PTR_VA,
+  DATATBLS_GetInventoryGridInfo113c,
   DATATBLS_GetItemsTxtRecordByCode113c,
 } from '../tables/datatbls-113c.ts'
 import { imul32 } from './int-math.ts'
@@ -2016,25 +2017,10 @@ export function INVENTORY_GetItemDimensionsCallback113c(
 // ============================================================================
 
 function readInvTxtGridDims113c(m: Memory113c, nIndex: number): readonly [number, number] {
-  const idx = nIndex >>> 0
-  const pBase = m.u32(SGPT_INVENTORY_TXT_PTR_VA)
-  if (pBase === 0) {
-    throw new D2CommonAssertError('..\\Source\\D2Common\\DATATBLS\\InvTbls.cpp', 0x7f)
-  }
-  if (idx > m.u32(SGPT_INVENTORY_TXT_MAX_VA)) {
-    throw new D2CommonAssertError('..\\Source\\D2Common\\DATATBLS\\InvTbls.cpp', 0x97)
-  }
-  const pRec = (pBase + imul32(idx | 0, 0xf0)) >>> 0
-  if (pRec === 0) {
-    throw new D2CommonAssertError('..\\Source\\D2Common\\DATATBLS\\InvTbls.cpp', 0x97)
-  }
-  const src = (pRec + 0x10) >>> 0
-  const d0 = m.u32(src)
-  m.u32((src + 0x04) >>> 0)
-  m.u32((src + 0x08) >>> 0)
-  m.u32((src + 0x0c) >>> 0)
-  m.u32((src + 0x10) >>> 0)
-  m.u32((src + 0x14) >>> 0)
+  const sm = withInvStackScratch113c(m)
+  const pGridInfo = (INV_STACK_SCRATCH_BASE + 0x40) >>> 0
+  DATATBLS_GetInventoryGridInfo113c(sm, nIndex >>> 0, 0, pGridInfo)
+  const d0 = sm.u32(pGridInfo)
   return [d0 & 0xff, (d0 >>> 8) & 0xff]
 }
 
@@ -2847,7 +2833,17 @@ export function INVENTORY_RemoveItemFromInventory113c(
 // ============================================================================
 
 function readItemGridDimsMem113c(m: Memory113c, pItem: number): readonly [number, number] {
-  const pTxt = getItemsTxtRecordInvMem113c(m, m.u32(((pItem >>> 0) + 4) >>> 0))
+  const itm = pItem >>> 0
+  if (itm !== 0 && m.u32(itm) === UNIT_ITEM) {
+    const sm = withInvStackScratch113c(m)
+    const pOutW = (INV_STACK_SCRATCH_BASE + 0x60) >>> 0
+    const pOutH = (INV_STACK_SCRATCH_BASE + 0x64) >>> 0
+    sm.setU8(pOutW, 0)
+    sm.setU8(pOutH, 0)
+    INVENTORY_GetItemDimensionsCallback113c(sm, itm, pOutW, pOutH, 0x6fde486c, 0x5ad)
+    return [sm.u8(pOutW), sm.u8(pOutH)]
+  }
+  const pTxt = getItemsTxtRecordInvMem113c(m, m.u32((itm + 4) >>> 0))
   if (pTxt === 0) return [0, 0]
   return [m.u8((pTxt + 0x10f) >>> 0), m.u8((pTxt + 0x110) >>> 0)]
 }
@@ -3235,7 +3231,7 @@ export function INVENTORY_FreeInventory113c(m: Memory113c, pInventory: number): 
 // ============================================================================
 
 const INV_STACK_SCRATCH_BASE = 0x7fff0000
-const INV_STACK_SCRATCH_SIZE = 0x40
+const INV_STACK_SCRATCH_SIZE = 0x80
 const _invStackBuf = new ArrayBuffer(INV_STACK_SCRATCH_SIZE)
 const _invStackU8 = new Uint8Array(_invStackBuf)
 const _invStackDV = new DataView(_invStackBuf)

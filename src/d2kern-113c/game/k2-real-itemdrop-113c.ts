@@ -1038,7 +1038,7 @@ export function ITEMS_InitItemUnit_6FC30160_113c(
     if (pItemsTxt !== 0) {
       const bQuest = m.u8((pItemsTxt + 0x12a) >>> 0)
       if (bQuest !== 0 && pGame !== 0) {
-        QUESTS_AttachUnitToQuest_6FC55890_113c(m, (bQuest - 1) | 0, item, pGame >>> 0)
+        QUESTS_AttachUnitToQuest_6FC55890_113c(m, item, (bQuest - 1) | 0, pGame >>> 0)
       }
     }
   }
@@ -2816,8 +2816,8 @@ export function OBJECTS_FindFreeDropCoordsAndSpawnItem_6FC51000_113c(
           if (pSeedObj !== 0) {
             m.setU32((pSeedObj + 0xc4) >>> 0, (m.u32((pSeedObj + 0xc4) >>> 0) | 0x10) >>> 0)
             m.setU32((pSeedObj + 0xd0) >>> 0, 0x0b)
-            lastSpawnedObj = 0
           }
+          lastSpawnedObj = 0
 
           let clusterCount = 1
           let canGrow = 1
@@ -2887,8 +2887,8 @@ export function OBJECTS_FindFreeDropCoordsAndSpawnItem_6FC51000_113c(
             if (pExtraObj !== 0) {
               m.setU32((pExtraObj + 0xc4) >>> 0, (m.u32((pExtraObj + 0xc4) >>> 0) | 0x10) >>> 0)
               m.setU32((pExtraObj + 0xd0) >>> 0, 0x0b)
-              lastSpawnedObj = pExtraObj
             }
+            lastSpawnedObj = pExtraObj
             clusterCount = (clusterCount + 1) | 0
           }
           remClusters = (remClusters - 1) | 0

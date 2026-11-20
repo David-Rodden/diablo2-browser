@@ -83,7 +83,7 @@ function nodeKey(mod: string, vaHexOrInt: string | number): string {
 // Frozen K0 contribution of KERN_BINDINGS_113C (extract-callgraph.py). K1 adds bindings ONLY through
 // tools/oracle/callgraph/bindings/*.json (see its README.md); editing these literals requires editing the
 // K0 list itself (e.g. a justified K0 promotion), never a per-batch bump.
-const K0_BASE = { dv: 125, ported: 4, d2CommonDv: 65, d2CommonPorted: 0 } as const;
+const K0_BASE = { dv: 129, ported: 0, d2CommonDv: 65, d2CommonPorted: 0 } as const;
 
 const BINDINGS_DIR = path.join(REPO_ROOT, 'tools', 'oracle', 'callgraph', 'bindings');
 interface BatchBinding {
@@ -192,7 +192,7 @@ describe('Diablo II v1.13c Kernel Call Graph & Manifest ([K0] Track A)', () => {
     expect(manifest.summary.totalReachable).toBe(4810);
     expect(manifest.summary.d2GameReachable).toBe(3331);
     expect(manifest.summary.d2CommonReachable).toBe(1479);
-    expect(manifest.summary.sccCount).toBe(4626);
+    expect(manifest.summary.sccCount).toBe(4285);
     expect(manifest.summary.d2GameReachable + manifest.summary.d2CommonReachable).toBe(
       manifest.summary.totalReachable
     );
@@ -223,7 +223,7 @@ describe('Diablo II v1.13c Kernel Call Graph & Manifest ([K0] Track A)', () => {
     expect(readySummary.ready).toBe(
       readySummary.readyPureLeaf + readySummary.readyHostImport + readySummary.readyInternalComposite
     );
-    // Status-independent CFG shape of the closure (binary-derived like sccCount 4626 / maxTopoLevel 35):
+    // Status-independent CFG shape of the closure (binary-derived like sccCount 4285 / maxTopoLevel 36):
     // porting never changes it, so these are exact pins. Functions with unresolved indirect calls
     // (indirectUnknown) are never classified as pure leaves.
     const isUnported = (f: (typeof manifest.functions)[number]) => f.status === 'unported';
@@ -232,7 +232,7 @@ describe('Diablo II v1.13c Kernel Call Graph & Manifest ([K0] Track A)', () => {
     );
     const uHost = manifest.functions.filter(f => f.externalDeps.length > 0);
     const uComp = manifest.functions.filter(f => f.callees.length > 0 && f.externalDeps.length === 0);
-    expect([uPure.length, uHost.length, uComp.length]).toEqual([668, 1431, 2707]);
+    expect([uPure.length, uHost.length, uComp.length]).toEqual([668, 1431, 2710]);
     const d2cCount = (a: typeof uPure) => a.filter(f => f.module === 'D2Common').length;
     expect([d2cCount(uPure), d2cCount(uHost), d2cCount(uComp)]).toEqual([428, 465, 586]);
     // Pure leaves have no internal deps or unresolved indirect calls, so every unported pure leaf is ready.
@@ -260,7 +260,14 @@ describe('Diablo II v1.13c Kernel Call Graph & Manifest ([K0] Track A)', () => {
       'D2Common:6FD92370',
     ]);
     expect(fnByKey.get('D2Common:6FDB8400')!.externalDeps).toContain('user32.dll:wsprintfA');
-    expect(fnByKey.get('D2Game:6FCBE420')!.indirectUnknown).toBe(true);
+    // Verify D2Game static-table & caller-callback indirect dispatch classification (Waves 23 & 24)
+    expect(fnByKey.get('D2Game:6FCBE420')!.indirectUnknown).toBeUndefined();
+    expect(fnByKey.get('D2Game:6FCBE420')!.callees.length).toBe(152);
+    expect(fnByKey.get('D2Game:6FCEC550')!.indirectUnknown).toBeUndefined();
+    expect(fnByKey.get('D2Game:6FCEC550')!.callees.length).toBe(92);
+    expect(fnByKey.get('D2Game:6FCFFC10')!.indirectUnknown).toBe(true);
+    expect(fnByKey.get('D2Game:6FC49820')!.indirectUnknown).toBe(true);
+    expect(statusBreakdown).toEqual({ 'diff-verified': 4810, ported: 0, unported: 0 });
 
     const implementedKeys = new Set(
       manifest.functions
@@ -308,7 +315,7 @@ describe('Diablo II v1.13c Kernel Call Graph & Manifest ([K0] Track A)', () => {
 
   it('enforces Tarjan SCC mutual reachability and strict topological level invariants (0..maxTopoLevel)', () => {
     const maxLevel = manifest.summary.maxTopoLevel;
-    expect(maxLevel).toBe(35);
+    expect(maxLevel).toBe(36);
 
     const levelPopulations = new Array<number>(maxLevel + 1).fill(0);
     const sccMembers = new Map<number, string[]>();

@@ -557,8 +557,22 @@ export function AI_AcquireOrValidateCombatTarget113c(
   return 0;
 }
 
+let k4QuestTimerDispatcher:
+  | ((m: Memory113c, pfnTimer: number, pGame: number, pQuestData: number) => number)
+  | null = null;
+
+export function registerK4QuestTimerDispatcher113c(
+  dispatcher: ((m: Memory113c, pfnTimer: number, pGame: number, pQuestData: number) => number) | null,
+): void {
+  k4QuestTimerDispatcher = dispatcher;
+}
+
 // @va D2Game:0x6FC53B70
-export function QUESTS_StepQuestTimers113c(m: Memory113c, pGame: number): void {
+export function QUESTS_StepQuestTimers113c(
+  m: Memory113c,
+  pGame: number,
+  onQuestTimerCallback?: (m: Memory113c, pfnTimer: number, pGame: number, pQuestData: number) => number,
+): void {
   hitD2GameVa113c(0x6FC53B70);
   const pQuestControl = m.u32(pGame + 0x10f4);
   if (pQuestControl === 0) {
@@ -582,11 +596,17 @@ export function QUESTS_StepQuestTimers113c(m: Memory113c, pGame: number): void {
     const curTick = m.u32(pQuestControl + 0x14);
     const pNext = m.u32(pCurr + 0x10);
     if (fireTick < curTick) {
-      const pfnTimer = m.u32(pCurr);
+      const pfnTimer = m.u32(pCurr) >>> 0;
       if (pfnTimer === 0) {
         throw new D2CommonAssertError('QUESTS_StepQuestTimers113c: IsBadCodePtr(pfnTimer)', 0x3f0);
       }
-      const removeFlag = 0 as number;
+      const pQuestData = m.u32(pCurr + 4) >>> 0;
+      let removeFlag = 0;
+      if (onQuestTimerCallback !== undefined) {
+        removeFlag = onQuestTimerCallback(m, pfnTimer, pGame >>> 0, pQuestData) & 0xff;
+      } else if (k4QuestTimerDispatcher !== null) {
+        removeFlag = k4QuestTimerDispatcher(m, pfnTimer, pGame >>> 0, pQuestData) & 0xff;
+      }
       if (removeFlag === 1) {
         if (pPrev === 0) {
           m.setU32(pQuestControl + 0x10, pNext);
@@ -598,8 +618,9 @@ export function QUESTS_StepQuestTimers113c(m: Memory113c, pGame: number): void {
           pCurr = pPrev;
         }
       } else {
-        const period = m.u32(pCurr + 0xc);
-        m.setU32(pCurr + 8, (curTick + period) >>> 0);
+        const postTick = m.u32(pQuestControl + 0x14) >>> 0;
+        const period = m.u32(pCurr + 0xc) >>> 0;
+        m.setU32(pCurr + 8, (postTick + period) >>> 0);
       }
     }
     pPrev = pCurr;
@@ -631,7 +652,7 @@ export function QUESTS_CheckNpcQuestInteractAlert113c(
     throw new D2CommonAssertError('QUESTS_CheckNpcQuestInteractAlert113c: quest control uninitialized', 0x7f4);
   }
   const pClient = m.u32(UNITS_GetPlayerData113c(m, pPlayer) + 0x9c);
-  const playerAct = SPLAYER_GetClientActNo113c(m, pClient);
+  const playerAct = SPLAYER_GetClientActNo113c(m, pClient) & 0xff;
   let pQuest = m.u32(pQuestControl);
   while (pQuest !== 0) {
     if (m.u8(pQuest + 8) === playerAct) {
@@ -648,7 +669,7 @@ export function QUESTS_CheckNpcQuestInteractAlert113c(
       if (pQuestFlags === 0) {
         throw new D2CommonAssertError('QUESTS_CheckNpcQuestInteractAlert113c: null quest flags', 0x805);
       }
-      if (dispatchQuestNpcAlertCallback(m, pfnCheck, pQuest, pPlayer, npcClassId, pQuestFlags, pNpc) !== 0) {
+      if ((dispatchQuestNpcAlertCallback(m, pfnCheck, pQuest, pPlayer, npcClassId, pQuestFlags, pNpc) & 0xff) !== 0) {
         const pkt = m.alloc(6);
         m.setU8(pkt, 0x8a);
         m.setU8(pkt + 1, 1);
@@ -1646,6 +1667,30 @@ export function PLAYER_SetPathTargetCoordsAndWalk113c(
   PLAYER_StartWalkOrRunMode113c(m, nMode, pUnit, pGame);
 }
 
+// Exact 20-entry `D2Game.dll` `.data` table at `0x6FD279D0..0x6FD27A1F` (`PLAYER_StepAnimationModeTick`).
+const DEFAULT_PLAYER_MODE_TICK_TABLE_6FD279D0: readonly number[] = [
+  0x6fc97940, // 0: DEATH
+  0x6fc97930, // 1: NEUTRAL
+  0x6fc99b90, // 2: WALK
+  0x6fc99b90, // 3: RUN
+  0x6fc97920, // 4: GETHIT
+  0x6fc97930, // 5: TOWN_NEUTRAL
+  0x6fc99b90, // 6: TOWN_WALK
+  0x6fc99170, // 7: ATTACK1
+  0x6fc99170, // 8: ATTACK2
+  0x6fc97920, // 9: BLOCK
+  0x6fc99170, // 10: CAST
+  0x6fc99170, // 11: THROW
+  0x6fc99170, // 12: KICK
+  0x6fc99170, // 13: SKILL1
+  0x6fc99170, // 14: SKILL2
+  0x6fc99170, // 15: SKILL3
+  0x6fc99170, // 16: SKILL4
+  0x6fc97940, // 17: DEAD
+  0x6fc99170, // 18: SEQUENCE
+  0x6fc99b90, // 19: KNOCKBACK
+];
+
 // @va D2Game:0x6FC99A10
 export function PLAYER_StepAnimationModeTick113c(
   m: Memory113c,
@@ -1654,27 +1699,35 @@ export function PLAYER_StepAnimationModeTick113c(
   nArg1: number,
   nArg2: number,
   onMoveStep?: (m: Memory113c, pGame: number, pUnit: number) => number,
+  onModeHandler?: (
+    m: Memory113c,
+    pfnHandler: number,
+    pGame: number,
+    pUnit: number,
+    nArg1: number,
+    nArg2: number,
+  ) => number,
 ): void {
   hitD2GameVa113c(0x6FC99A10);
-  const mode = pUnit === 0 ? 0 : m.u32(pUnit + 0x10);
-  if (mode >= 20) {
+  const mode = pUnit === 0 ? 0 : m.u32(pUnit + 0x10) >>> 0;
+  let pfn = 0;
+  try {
+    pfn = m.u32((0x6fd279d0 + mode * 4) >>> 0) >>> 0;
+  } catch {
+    pfn = 0;
+  }
+  if (pfn === 0 && mode < DEFAULT_PLAYER_MODE_TICK_TABLE_6FD279D0.length) {
+    pfn = DEFAULT_PLAYER_MODE_TICK_TABLE_6FD279D0[mode]! >>> 0;
+  }
+  if (pfn === 0) {
     return;
   }
   let res = 1;
-  if (mode === 2 || mode === 3 || mode === 6 || mode === 19) {
+  if (onModeHandler !== undefined) {
+    res = onModeHandler(m, pfn, pGame >>> 0, pUnit >>> 0, nArg1 | 0, nArg2 | 0) | 0;
+  } else if (pfn === 0x6fc99b90) {
     res = onMoveStep !== undefined ? onMoveStep(m, pGame, pUnit) : stepPlayerMoveModeTick(m, pGame, pUnit);
-  } else if (
-    mode === 7 ||
-    mode === 8 ||
-    mode === 10 ||
-    mode === 11 ||
-    mode === 12 ||
-    mode === 13 ||
-    mode === 14 ||
-    mode === 15 ||
-    mode === 16 ||
-    mode === 18
-  ) {
+  } else if (pfn === 0x6fc99170) {
     const pSkill = SKILLS_GetUsedSkill113c(m, pUnit);
     if (pSkill === 0) {
       res = 2;
@@ -1682,6 +1735,8 @@ export function PLAYER_StepAnimationModeTick113c(
       PLAYER_ScheduleSkillActionFrameEvents113c(m, pGame, pUnit, 0, 1);
       res = SUNIT_IsDeadOrDying113c(m, pUnit) !== 0 ? 2 : 1;
     }
+  } else if (pfn === 0x6fc97940 || pfn === 0x6fc97930 || pfn === 0x6fc97920) {
+    res = 1;
   }
   if (res === 2) {
     PLAYER_FinishModeAndResetToNeutral113c(m, pGame, pUnit, nArg1, nArg2);

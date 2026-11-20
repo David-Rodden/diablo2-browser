@@ -111,7 +111,10 @@ import {
   SKILLS_AssignHandSkillAndSyncAura113c,
 } from './k2-gap-melee-dot-113c.js'
 import { SUNIT_FindItemEventNode113c } from './k2-items-tc-w1-113c.js'
-import { SKILLS_RefreshPassiveSkillsAndIconsOnUnit_6FCBE370_113c } from './k2-w2b4-113c.js'
+import {
+  ITEMS_ClearAllDupeAndCommandFlags_6FCBB340_113c,
+  SKILLS_RefreshPassiveSkillsAndIconsOnUnit_6FCBE370_113c,
+} from './k2-w2b4-113c.js'
 import { ITEMS_OnInsertOrEquipUpdateStats_6FCF4FF0_113c } from './k2-w2b8-113c.js'
 import { NET_SendPacket21_UpdateUnitSkill_6FCAD5F0_113c } from './k2-w4b5-113c.js'
 import { STATES_ClearSameGroupStatesOnUnit_6FCBEA30_113c } from './k2-w4b6-113c.js'
@@ -1005,6 +1008,8 @@ export function D2GAME_INVENTORY_DestroyUnitInventoryItems113c(
       }
       if (callees && callees.clearItemHoverAndSocketState) {
         callees.clearItemHoverAndSocketState(mem, pItem)
+      } else {
+        ITEMS_ClearAllDupeAndCommandFlags_6FCBB340_113c(mem, pItem)
       }
       if ((mem.u32(pItem + 0xc8) & 1) !== 0) {
         UNITS_SetUnitUpdateFlags113c(mem, pItem, 0)
@@ -1018,6 +1023,8 @@ export function D2GAME_INVENTORY_DestroyUnitInventoryItems113c(
               if ((mem.u32(pChildItem + 0x0c) >>> 0) === childGuid) {
                 if (callees && callees.clearItemHoverAndSocketState) {
                   callees.clearItemHoverAndSocketState(mem, pChildItem)
+                } else {
+                  ITEMS_ClearAllDupeAndCommandFlags_6FCBB340_113c(mem, pChildItem)
                 }
                 break
               }

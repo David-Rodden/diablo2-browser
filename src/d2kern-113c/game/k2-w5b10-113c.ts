@@ -141,7 +141,7 @@ function aiIdleWander6FD11B10(
   if (hooks !== undefined && hooks.world !== undefined) {
     return AI_IdleWander113c(hooks.world, pUnit >>> 0, range | 0) ? 1 : 0
   }
-  return AI_WalkWanderAroundSelf_6FD129B0_113c(m, range | 0, pGame >>> 0, pUnit >>> 0, hooks)
+  return AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0, range | 0) | 0
 }
 
 function aiApproachTarget6FD12540(
@@ -169,6 +169,21 @@ function aiApproachTarget6FD12540(
     )
       ? 1
       : 0
+  }
+  if (hooks === undefined || hooks.onMonsterStartMode === undefined) {
+    return (
+      AI_ApproachTarget113c(
+        m,
+        pGame >>> 0,
+        pUnit >>> 0,
+        pTarget >>> 0,
+        nMode | 0,
+        nX | 0,
+        nY | 0,
+        nStepNum | 0,
+        dwFlags | 0,
+      ) | 0
+    )
   }
 
   let mode = nMode | 0

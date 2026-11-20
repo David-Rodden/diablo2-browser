@@ -91,11 +91,15 @@ function setupDataTablesForStatsAndStates(m: Memory113c): number {
     m.setU32((pBitMasks + i * 4) >>> 0, (1 << i) >>> 0)
   }
   m.setU32(D2COMMON_GDWBITMASKS_IAT_VA_113C, pBitMasks)
-  m.setU32(0x6fd27c30, pBitMasks) // D2GAME_IAT_GDW_BITMASKS_VA_113C
+  m.setU32(0x6fd27c30, pBitMasks)
+  m.setU32(0x6fd18be0, pBitMasks) // D2GAME_IAT_GDW_BITMASKS_VA_113C
 
   const pDataTables = m.alloc(0x1000) >>> 0
+  const pDataTablesSlot = m.alloc(4) >>> 0
+  m.setU32(pDataTablesSlot, pDataTables)
   m.setU32(D2COMMON_SGPT_DATATABLES_VA_113C, pDataTables)
-  m.setU32(0x6fd27d08, pDataTables) // D2GAME_IAT_SGPT_DATATABLES_VA_113C
+  m.setU32(0x6fd27d08, pDataTables)
+  m.setU32(0x6fd1829c, pDataTablesSlot) // D2GAME_IAT_SGPT_DATATABLES_VA_113C
 
   const pItemStatCost = m.alloc(20 * 0x144) >>> 0
   m.setU32((pDataTables + DATATABLES_OFF_113C.pItemStatCostTxt) >>> 0, pItemStatCost)

@@ -213,6 +213,25 @@ export const ACT_TOWN_AREA: Record<number, number> = {
 
 export const TOWN_AREAS = new Set<number>([1, 40, 75, 103, 109])
 
+/**
+ * 1.13c `Levels.txt` `Teleport` column (`Levels.bin` byte `+0x04`, read by `D2Game.dll`
+ * `SKILLS_SrvDo027_Teleport` @ `0x6FC63484..0x6FC634A7`, #2024):
+ * - `0`: Teleport forbidden (`Id = 0` `Null`, or out-of-range level IDs `< 1` / `> 136`).
+ * - `1`: Teleport allowed through walls (`135` levels: `1..72` and `74..136`; Towns `1, 40, 75, 103, 109`
+ *   separately forbid `#54 Teleport` via `Skills.txt` `InTown = 0` + `DUNGEON_IsRoomInTown`).
+ * - `2`: Teleport requires `0x804` (`COLLIDE_MISSILE_BARRIER | COLLIDE_DOOR`) line-of-sight between
+ *   origin and destination (`Id = 73` `Duriel's Lair` — the sole `Teleport = 2` row across all 136 levels).
+ */
+export type LevelTeleportMode113c = 0 | 1 | 2
+
+export const LEVEL_TELEPORT_LOS_REQUIRED_IDS_113C: ReadonlySet<number> = new Set<number>([73])
+
+export function getLevelTeleportMode113c(areaId: number): LevelTeleportMode113c {
+  if (!Number.isInteger(areaId) || areaId < 1 || areaId > 136) return 0
+  if (LEVEL_TELEPORT_LOS_REQUIRED_IDS_113C.has(areaId)) return 2
+  return 1
+}
+
 /** Act town area per 0-based act index (Rogue Encampment, Lut Gholein, Kurast, Pandemonium, Harrogath). */
 export const ACT_TOWN_AREAS: readonly number[] = [1, 40, 75, 103, 109]
 

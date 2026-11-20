@@ -1476,11 +1476,6 @@ export function AI_HandleSpecialQuestNpcCmd3_6FC3BDF0_113c(
       }
     }
     if (!hasCmd3) {
-      m.setU32(sp, 3)
-      m.setU32((sp + 0x04) >>> 0, 0)
-      m.setU32((sp + 0x08) >>> 0, 0)
-      m.setU32((sp + 0x0c) >>> 0, 0)
-      m.setU32((sp + 0x10) >>> 0, 0)
       AIGENERAL_CopyAiCommandParams113c(m, esi, 3, 0, 0, 0, 0)
     }
 
@@ -1529,7 +1524,7 @@ export function AI_HandleSpecialQuestNpcCmd3_6FC3BDF0_113c(
 
     m.setU32((ebxCmd + 0x14) >>> 0, 1)
     m.setU32((ebxCmd + 0x18) >>> 0, 0)
-    invokeAiStall113c(m, game, esi, 1)
+    AI_Stall113c(m, game, esi, 1)
     return 1
   } finally {
     k2W5B1StackPtr = sp

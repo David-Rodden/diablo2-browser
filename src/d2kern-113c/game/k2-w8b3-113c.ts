@@ -88,9 +88,9 @@ import {
 } from './boot-init-gap-b-113c'
 import { C2S_CheckCoordDeltaExceeded113c } from './c2s-packet-113c'
 import {
-  ITEMS_GetQualityBonusDivisor113c,
-  ITEMS_GetQualityMinValue113c,
-} from './combat-a1c-113c'
+  ITEMS_ScheduleReplenishDurabilityEvent_6FC2EA70_113c,
+  ITEMS_ScheduleReplenishQuantityEvent_6FC2EA10_113c,
+} from './k2-real-itemdrop-113c'
 import {
   ITEMS_GetOppositeHandOrRingBodyLoc113c,
   NET_SendEventMessage5A_Type0E_113c,
@@ -254,7 +254,7 @@ export function NPCS_ReturnSoldOrGambledItemToPlayerInventoryOrFree_6FCDD880_113
   pItem: number,
   pGame: number,
   pPlayer: number,
-  _uUnused = 0,
+  bKeepItem = 0,
 ): number {
   hitD2GameVa113c(0x6FCDD880)
   if (pGame === 0) throw new D2CommonAssertError('0x6fd19ff9', 0x1a2)
@@ -274,7 +274,7 @@ export function NPCS_ReturnSoldOrGambledItemToPlayerInventoryOrFree_6FCDD880_113
       0,
       0,
     )
-    if (m.u32(sp) !== 0) {
+    if ((bKeepItem | 0) !== 0) {
       m.setU32((pItem + 0xc8) >>> 0, (m.u32((pItem + 0xc8) >>> 0) | 0x10) >>> 0)
       UNITS_SetUnitUpdateFlags113c(m, pPlayer, 1)
       INVENTORY_AppendItemGuidNode113c(m, m.u32((pPlayer + 0x60) >>> 0), pItem)
@@ -301,7 +301,7 @@ export function NPCS_PlaceGambledOrBoughtItemIntoNpcTabOrFree_6FCDD920_113c(
   pPlayerUnit: number,
   pItem: number,
   pGame: number,
-  _uUnused = 0,
+  bKeepItem = 0,
 ): number {
   hitD2GameVa113c(0x6FCDD920)
   if (pItem === 0 || pNpcUnit === 0) return 0
@@ -326,7 +326,7 @@ export function NPCS_PlaceGambledOrBoughtItemIntoNpcTabOrFree_6FCDD920_113c(
       0,
       0,
     )
-    if (m.u32(sp) !== 0) {
+    if ((bKeepItem | 0) !== 0) {
       m.setU32((pItem + 0xc8) >>> 0, (m.u32((pItem + 0xc8) >>> 0) | 0x10) >>> 0)
       UNITS_SetUnitUpdateFlags113c(m, pNpcUnit, 1)
       INVENTORY_AppendItemGuidNode113c(m, pNpcInv, pItem)
@@ -675,9 +675,9 @@ export function ACT2Q1_Callback01_NpcDeactivate_6FCE6E90_113c(
     m.setU8((pQuestState + 0x08) >>> 0, 1)
     m.setU8((pQuest + 0x0c) >>> 0, 2)
     if (m.u32(0x6fd31c20) !== 0) {
-      const sp = allocW8B3Stack(m, 0x80)
+      const sp = allocW8B3Stack(m, 0x100)
       try {
-        const msg = 'quest state = 2'
+        const msg = 'changing state to 2\n'
         for (let i = 0; i < msg.length; i++) m.setU8((sp + i) >>> 0, msg.charCodeAt(i))
         m.setU8((sp + msg.length) >>> 0, 0)
         NET_BroadcastSystemChatMessage_6FCEBE70_113c(m, sp, m.u32((pQuest + 0x04) >>> 0), 4)
@@ -823,7 +823,7 @@ export function ACT2Q3_TryActivateTaintedSunOrSendPacket5D_6FCE7130_113c(
       const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
       pClient = m.u32((pPlayerData + 0x9c) >>> 0) >>> 0
     }
-    NET_QueuePacketToClientBuffer113c(m, pClient, 4, sp, 6)
+    NET_QueuePacketToClientBuffer113c(m, pClient, 1, sp, 6)
   } finally {
     freeW8B3Stack(sp)
   }
@@ -1557,12 +1557,12 @@ export function C2S_Packet26_UseBeltItem_6FCEF5B0_113c(
     const used = ITEMS_UseBeltConsumableOrScroll_6FCF8BA0_113c(
       m,
       sp,
-      bShiftToMerc,
+      dwItemGuid,
       pGame,
       pPlayer,
       nPosX,
       nPosY,
-      dwItemGuid,
+      bShiftToMerc,
     )
     if (used !== 0) return 0
     return m.u32(sp) !== 0 ? 3 : 0
@@ -1848,7 +1848,7 @@ export function C2S_Packet1B_SwapTwoHandedOrDualWeaponBodyLoc_6FCF1140_113c(
     nBodyLoc,
   )
   if (pEquipped === 0) {
-    return 0
+    return 1
   }
   if (
     PLAYER_CanManipulateItemDuringInteractOrTrade_6FC588C0_113c(
@@ -1931,7 +1931,6 @@ export function C2S_Packet19_PickupBufferOrStorageItemToCursor_6FCF1370_113c(
   const sp = allocW8B3Stack(m, 16)
   try {
     m.setU32(sp, 0)
-    m.setU32((sp + 4) >>> 0, 0)
     const ok = ITEMS_RemoveItemFromInventoryGridOrCursor_6FCF62E0_113c(
       m,
       0,
@@ -1939,14 +1938,14 @@ export function C2S_Packet19_PickupBufferOrStorageItemToCursor_6FCF1370_113c(
       pGame,
       dwItemGuid,
       sp,
-      (sp + 4) >>> 0,
       1,
+      0,
       0,
     )
     if (ok !== 0) {
       return 0
     }
-    return m.u32((sp + 4) >>> 0) !== 0 ? 3 : 0
+    return m.u32(sp) !== 0 ? 3 : 0
   } finally {
     freeW8B3Stack(sp)
   }
@@ -1964,7 +1963,7 @@ export function ITEMS_AutoStackGroundItemOrScroll_6FCF4360_113c(
   pItem: number,
 ): number {
   hitD2GameVa113c(0x6FCF4360)
-  if (pUnit === 0) {
+  if (pGame === 0) {
     throw new D2CommonAssertError('0x6fd19ff9', 0x660)
   }
   if (ITEMS_CheckItemTypeId113c(m, pItem, 0x16) !== 0) {
@@ -2078,30 +2077,6 @@ export function ITEMS_DuplicateAndSocketAllSubItems_6FCF5080_113c(
   }
 }
 
-function scheduleReplenishStatEventOnItem(
-  m: SparseMemory113c,
-  pItem: number,
-  pGame: number,
-  nStatId: number,
-): void {
-  void ITEMS_GetQualityBonusDivisor113c
-  void ITEMS_GetQualityMinValue113c
-  const nVal = STATLIST_GetUnitStat113c(m, pItem, nStatId, 0) | 0
-  if (nVal === 0) {
-    return
-  }
-  let pEv = m.u32(pItem + 0xdc)
-  while (pEv !== 0) {
-    if (m.u8(pEv) === 3) {
-      return
-    }
-    pEv = m.u32(pEv + 0x24)
-  }
-  const nFrame =
-    (m.u32(pGame + 0xa8) + Math.trunc(0x9c4 / nVal) + 1) >>> 0
-  EVENT_SetEventFull113c(m, pGame, pItem, 3, nFrame, 0, 0, 0)
-}
-
 /**
  * @dll D2Game.dll
  * @va 0x6FCF6760
@@ -2174,9 +2149,9 @@ export function ITEMS_TransferCorpseItemsToPlayer_6FCF6760_113c(
             m,
             pInOutBodyLoc,
             pCorpseItem,
-            ppPrimaryItem,
-            pPlayerUnit,
             ppSecondaryItem,
+            pPlayerUnit,
+            ppPrimaryItem,
           ) !== 0
         ) {
           const nEquipLoc = m.u32(pInOutBodyLoc)
@@ -2263,8 +2238,8 @@ export function ITEMS_TransferCorpseItemsToPlayer_6FCF6760_113c(
           bTransferred = 1
         }
         if (bTransferred !== 0) {
-          scheduleReplenishStatEventOnItem(m, pCorpseItem, pGame, 0xfc)
-          scheduleReplenishStatEventOnItem(m, pCorpseItem, pGame, 0xfd)
+          ITEMS_ScheduleReplenishDurabilityEvent_6FC2EA70_113c(m, pGame, pCorpseItem)
+          ITEMS_ScheduleReplenishQuantityEvent_6FC2EA10_113c(m, pGame, pCorpseItem)
           ITEMS_SetOrClearCommandFlags113c(m, pCorpseItem, 1, 1)
           INVENTORY_RemoveItemFromInventory113c(m, pCorpseInv, pCorpseItem)
           INVENTORY_NoOpRet8B113c(m, pCorpseInv, nBodyLoc)

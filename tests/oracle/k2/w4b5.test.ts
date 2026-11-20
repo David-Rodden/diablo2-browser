@@ -152,11 +152,11 @@ describe('K2 Wave 4 Batch 5 (w4b5: 45 D2Game.dll 1.13c VAs 0x6FCAD040..0x6FCBC27
     const pItemData = m.alloc(0x80)
     m.setU32(pItem + 0x00, 4)
     m.setU32(pItem + 0x14, pItemData)
-    ITEMS_SendPacket9C_Cmd38Or39_6FCADDA0_113c(m, pClient, pPlayer, pItem)
+    ITEMS_SendPacket9C_Cmd38Or39_6FCADDA0_113c(m, 0x00, pItem, pClient)
     expect(m.u32(pItemData + 0x18) & 0x38).toBe(0)
 
     const pInv = m.alloc(0x40)
-    INVENTORY_FreeAllItems_6FCAF470_113c(m, pGame, pInv)
+    INVENTORY_FreeAllItems_6FCAF470_113c(m, pInv, pGame)
 
     const pSrc1 = m.alloc(12)
     const pSrc2 = m.alloc(4)
@@ -262,7 +262,7 @@ describe('K2 Wave 4 Batch 5 (w4b5: 45 D2Game.dll 1.13c VAs 0x6FCAD040..0x6FCBC27
     m.setU32(pPetUnit + 0x2c, pPetPath)
     m.setU32(pPetUnit + 0x80, pGame)
     PETS_SendPetOrMercAssignPacket_6FCB66E0_113c(m, pPlayer, pPetEntry)
-    PETS_SendPacket7A_UnsummonPet_6FCB6810_113c(m, pPlayer, pPetEntry)
+    expect(PETS_SendPacket7A_UnsummonPet_6FCB6810_113c(m, pPlayer, pPetEntry)).toBe(1)
 
     m.setU32(pGame + 0x1320 + (999 & 0x7f) * 4, pPetUnit)
     expect(PETS_GetFirstPetUnitByType_6FCB6A40_113c(m, pPlayer, 3, 0, pGame)).toBe(pPetUnit)
@@ -311,7 +311,8 @@ describe('K2 Wave 4 Batch 5 (w4b5: 45 D2Game.dll 1.13c VAs 0x6FCAD040..0x6FCBC27
     expect(
       SKILLS_RollUnitWeaponBasePhysicalDamage256ths_6FCB87D0_113c(m, pOwner),
     ).toBeGreaterThanOrEqual(256)
-    SKILLS_RestoreMindBlastConvertedMonster_6FCB8950_113c(m, 0, -1, 0)
+    expect(() => SKILLS_RestoreMindBlastConvertedMonster_6FCB8950_113c(m, 0, -1, 0)).toThrow()
+    SKILLS_RestoreMindBlastConvertedMonster_6FCB8950_113c(m, pCorpse, -1, 0)
     expect(SKILLS_FindClosestTargetInRadius3_6FCB8E30_113c(m, pGame, 0, pOwner)).toBe(0)
     expect(SKILLS_SrvDo_ApplySacrificeSelfDamage_6FCB9290_113c(m, pGame, pOwner, 1, 1)).toBe(0)
     expect(

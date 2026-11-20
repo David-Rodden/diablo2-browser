@@ -324,6 +324,7 @@ describe('K2 Wave 15 Batch 1 (w15b1) — 30 D2Game 1.13c functions (0x6FC4D090..
     m.setU32(pQuest, 4);
     m.setU32(pQuest + 0x04, pGame);
     ACT1Q4_InitQuestData_6FC887D0_113c(m, pQuest);
+    m.setU8(pQuest + 0x09, 1);
     m.setU32(pQuestCtrl, pQuest);
     const pState = m.u32(pQuest + 0x18);
     m.setU8(pState + 0x4a, 1);
@@ -593,11 +594,14 @@ describe('K2 Wave 15 Batch 1 (w15b1) — 30 D2Game 1.13c functions (0x6FC4D090..
   it('20. ACT2Q6_OnNpcSpeechComplete_6FCE8050_113c handles Meshif (0xD2, 0x1C2) and town messages', () => {
     const { m, pGame, pQuestCtrl, pPlayer, pQuestFlags } = createTestEnv();
     const pQuest = m.alloc(0x100);
-    m.setU32(pQuest, 0x0e);
+    m.setU32(pQuest, 0x0d);
     m.setU32(pQuest + 0x04, pGame);
     const pState = m.alloc(0x80);
     m.setU32(pQuest + 0x18, pState);
     m.setU32(pQuestCtrl, pQuest);
+
+    QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x0e, 4);
+    QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x0e, 0x0d);
 
     const pQuestArg = m.alloc(0x20);
     m.setU32(pQuestArg, pGame);
@@ -607,8 +611,9 @@ describe('K2 Wave 15 Batch 1 (w15b1) — 30 D2Game 1.13c functions (0x6FC4D090..
 
     ACT2Q6_OnNpcSpeechComplete_6FCE8050_113c(m, pQuest, pQuestArg);
     expect(DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x0e, 0)).toBe(1);
-    expect(DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x0e, 0x0d)).toBe(1);
-    expect(m.u8(pState)).toBe(1);
+    expect(DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x0e, 4)).toBe(0);
+    expect(m.u8(pQuest + 0x0b)).toBe(0x0d);
+    expect(m.u8(pQuest + 0x0c)).toBe(5);
   });
 
   it('21. ACT2Q2_OnHoradricStaffOrificeActivate_6FCE9CB0_113c completes quest 0x0A and activates quest 0x0D timer', () => {
@@ -694,11 +699,13 @@ describe('K2 Wave 15 Batch 1 (w15b1) — 30 D2Game 1.13c functions (0x6FC4D090..
     expect(ITEMS_SplitOrTransmuteStackedItem_6FCF8440_113c(m, pGame, pPlayer, pItem)).toBe(0);
   });
 
-  it('26. ACT3Q5_OnNpcSpeechComplete_6FD089A0_113c sets quest 0x15 state 2 on Ormus (0xFF, 0x252)', () => {
-    const { m, pGame, pQuestCtrl, pPlayer, pQuestFlags } = createTestEnv();
+  it('26. ACT3Q5_OnNpcSpeechComplete_6FD089A0_113c sets quest state on Ormus (0xFF, 0x252)', () => {
+    const { m, pGame, pQuestCtrl, pPlayer } = createTestEnv();
     const pQuest = m.alloc(0x100);
     m.setU32(pQuest, 0x13);
     m.setU32(pQuest + 0x04, pGame);
+    const pState = m.alloc(0x40);
+    m.setU32(pQuest + 0x18, pState);
     m.setU32(pQuestCtrl, pQuest);
 
     const pQuestArg = m.alloc(0x20);
@@ -708,14 +715,14 @@ describe('K2 Wave 15 Batch 1 (w15b1) — 30 D2Game 1.13c functions (0x6FC4D090..
     m.setU16(pQuestArg + 0x18, 0x252);
 
     ACT3Q5_OnNpcSpeechComplete_6FD089A0_113c(m, pQuest, pQuestArg);
-    expect(DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x15, 2)).toBe(1);
-    expect(m.u8(pQuest + 0x0b)).toBe(2);
+    expect(m.u8(pQuest + 0x0c)).toBe(3);
+    expect(m.u8(pState + 0x04)).toBe(1);
   });
 
   it('27. ACT3Q1_OnNpcSpeechComplete_6FD08B60_113c handles Cain and Alkor Golden Bird speech', () => {
     const { m, pGame, pQuestCtrl, pPlayer, pQuestFlags } = createTestEnv();
     const pQuest = m.alloc(0x100);
-    m.setU32(pQuest, 0x11);
+    m.setU32(pQuest, 0x12);
     m.setU32(pQuest + 0x04, pGame);
     const pState = m.alloc(0x40);
     m.setU32(pQuest + 0x18, pState);
@@ -728,11 +735,12 @@ describe('K2 Wave 15 Batch 1 (w15b1) — 30 D2Game 1.13c functions (0x6FC4D090..
     m.setU16(pQuestArg + 0x18, 0x20f);
 
     ACT3Q1_OnNpcSpeechComplete_6FD08B60_113c(m, pQuest, pQuestArg);
-    expect(DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x14, 3)).toBe(1);
+    expect(DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x14, 2)).toBe(1);
+    expect(m.u32(pState + 0x18)).toBe(2);
   });
 
-  it('28. ACT3Q4_OnNpcSpeechComplete_6FD08FE0_113c sets quest 0x11 state 2 on Alkor (0xFE, 0x225)', () => {
-    const { m, pGame, pQuestCtrl, pPlayer, pQuestFlags } = createTestEnv();
+  it('28. ACT3Q4_OnNpcSpeechComplete_6FD08FE0_113c sets quest state on Alkor (0xFE, 0x225)', () => {
+    const { m, pGame, pQuestCtrl, pPlayer } = createTestEnv();
     const pQuest = m.alloc(0x100);
     m.setU32(pQuest, 0x0f);
     m.setU32(pQuest + 0x04, pGame);
@@ -747,14 +755,14 @@ describe('K2 Wave 15 Batch 1 (w15b1) — 30 D2Game 1.13c functions (0x6FC4D090..
     m.setU16(pQuestArg + 0x18, 0x225);
 
     ACT3Q4_OnNpcSpeechComplete_6FD08FE0_113c(m, pQuest, pQuestArg);
-    expect(DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x11, 2)).toBe(1);
-    expect(m.u8(pQuest + 0x0b)).toBe(2);
+    expect(m.u8(pQuest + 0x0c)).toBe(2);
+    expect(m.u8(pQuest + 0x0b)).toBe(1);
   });
 
   it('29. ACT3Q2_OnNpcSpeechComplete_6FD09600_113c handles Hratli (0xFD, 0x23B) and Asheara (0xFC, 0x24D)', () => {
     const { m, pGame, pQuestCtrl, pPlayer, pQuestFlags } = createTestEnv();
     const pQuest = m.alloc(0x100);
-    m.setU32(pQuest, 0x10);
+    m.setU32(pQuest, 0x11);
     m.setU32(pQuest + 0x04, pGame);
     const pState = m.alloc(0x40);
     m.setU32(pQuest + 0x18, pState);
@@ -766,21 +774,23 @@ describe('K2 Wave 15 Batch 1 (w15b1) — 30 D2Game 1.13c functions (0x6FC4D090..
     m.setU16(pQuestArg + 0x14, 0xfc);
     m.setU16(pQuestArg + 0x18, 0x24d);
 
-    let freeMercAct = -1;
+    let freeMercSeller = -1;
     ACT3Q2_OnNpcSpeechComplete_6FD09600_113c(m, pQuest, pQuestArg, {
-      hireAct3FreeMercenary: (_mem, _g, _p, act) => {
-        freeMercAct = act;
+      hireAct3FreeMercenary: (_mem, _g, _p, sellerClassId) => {
+        freeMercSeller = sellerClassId;
       },
     });
-    expect(DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x13, 0x0c)).toBe(1);
-    expect(freeMercAct).toBe(2);
+    expect(DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x13, 7)).toBe(1);
+    expect(freeMercSeller).toBe(0xfc);
   });
 
   it('30. ACT3Q5_OnCompellingOrbOperate_6FD0A140_113c increments orb hit count to 2 when wielding Khalim Will (qf2)', () => {
     const { m, pItemsTxt, pGame, pQuestCtrl, pPlayer, pQuestFlags, pInv } = createTestEnv();
+    m.setU32(pGame + 0x1d2c, m.alloc(0x20));
     const pQuest = m.alloc(0x100);
     m.setU32(pQuest, 0x13);
     m.setU32(pQuest + 0x04, pGame);
+    m.setU32(pQuest + 0xf0, 0x6fd02a40);
     const pState = m.alloc(0x60);
     m.setU32(pQuest + 0x18, pState);
     m.setU32(pQuestCtrl, pQuest);

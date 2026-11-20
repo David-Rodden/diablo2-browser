@@ -93,11 +93,16 @@ import {
   AI_Stall113c,
   ITEMS_FinalizeCreatedItem113c,
   ITEMS_GetDropItemLevel113c,
-  ITEMS_GetQualityBonusDivisor113c,
-  ITEMS_GetQualityMinValue113c,
   MONSTER_StartMode113c,
 } from './combat-a1c-113c.ts'
 import { SUNIT_GetServerUnit113c } from './game-strc.ts'
+import {
+  D2GAME_CreateItemEx_6FC31490_113c,
+  ITEMS_ScheduleReplenishDurabilityEvent_6FC2EA70_113c,
+  ITEMS_ScheduleReplenishQuantityEvent_6FC2EA10_113c,
+  isItemRatioTableLoaded113c,
+  isSgptDataTablesLoaded113c,
+} from './k2-real-itemdrop-113c.ts'
 import { SUNIT_IsDeadOrDying113c } from './monster-events.ts'
 import {
   AI_InitMonsterAiThinkFn113c,
@@ -358,6 +363,9 @@ function createItemFromDropRecord(
 ): number {
   if (hooks !== undefined && hooks.onCreateItemEx !== undefined) {
     return hooks.onCreateItemEx(m, pGame, pDrop, bSendClient) >>> 0
+  }
+  if (isSgptDataTablesLoaded113c(m) && isItemRatioTableLoaded113c(m)) {
+    return D2GAME_CreateItemEx_6FC31490_113c(m, pGame, pDrop, bSendClient) >>> 0
   }
   const nClassId = m.u32((pDrop + 0x14) >>> 0) | 0
   if (m.u32((pGame + 0x70) >>> 0) === 0) {
@@ -880,10 +888,8 @@ export function ITEMS_AllocAndLoadFromBitstream_6FC2EAE0_113c(
 
   ITEMS_SetOrClearCommandFlags113c(m, pItem, 0x80000, 1)
   ITEMS_SetOrClearCommandFlags113c(m, pItem, 0x2000, 0)
-  void ITEMS_GetQualityMinValue113c(m, 0, 0)
-  void ITEMS_GetQualityBonusDivisor113c(m, 0, 0)
-  scheduleReplenishStatEvent(m, game, pItem, 0xfc)
-  scheduleReplenishStatEvent(m, game, pItem, 0xfd)
+  ITEMS_ScheduleReplenishDurabilityEvent_6FC2EA70_113c(m, game, pItem)
+  ITEMS_ScheduleReplenishQuantityEvent_6FC2EA10_113c(m, game, pItem)
   return pItem
 }
 
@@ -1325,8 +1331,14 @@ export function AI_InitClearFreezeAndStall_6FC36060_113c(
   if (STATES_CheckState113c(m, mon, 0x0c) !== 0) {
     STATES_ToggleGfxStateFlag113c(m, mon, 0x0c, 0)
   }
-  void m.u32(pAiGen)
-  AI_InitMonsterAiThinkFn113c(m, mon)
+  const nAiIdx = pAiGen !== 0 ? m.u32(pAiGen) | 0 : 0
+  AI_InitMonsterAiThinkFn113c(
+    m,
+    mon,
+    pGame >>> 0,
+    pAiGen !== 0 ? pAiGen : undefined,
+    pAiGen !== 0 ? nAiIdx : undefined,
+  )
   executeAiStall(m, pGame >>> 0, mon, 1, world)
 }
 
@@ -1521,7 +1533,7 @@ export function AI_ThinkSpecialGuard_6FC39640_113c(
     if (world !== undefined) {
       AI_IdleWanderWorld113c(world, mon, 5)
     } else {
-      AI_IdleWander113c(m, game, mon)
+      AI_IdleWander113c(m, game, mon, 5)
     }
     return
   }

@@ -388,6 +388,7 @@ export class CommandMapper {
   /** 1.13c D2Client.dll 0x6fad34ba..0x6fad34f6 (`[0x6fbcc4cc]`): 75-tick (3000ms) duplicate error speech cooldown. */
   private lastNeedManaSpeechAtMs = -Infinity
   private lastImpossibleSpeechAtMs = -Infinity
+  private lastNotInTownSpeechAtMs = -Infinity
   private leftMouseDown = false
   private rightMouseDown = false
   private hasPointerMoved = false
@@ -944,6 +945,36 @@ export class CommandMapper {
   }
 
   /**
+   * 1.13c `D2Client.dll` `0x6fac938d..0x6fac93a4` -> `0x6fad3200(pPlayer, 24)` (Issue #2024):
+   * Plays the local player's class `<class>_not_in_town_1` speech (`eventCode = 24` / `0x18` in
+   * `PLAYER_SOUND_TABLE_0x6FBA7694`) with the 75-tick (`3000ms`) duplicate suppression cooldown
+   * (`0x6fad34ba..0x6fad34f6`).
+   */
+  private triggerNotInTownSpeech(
+    nowMs = performance.now(),
+    skillId = 0,
+    world: ClientWorld = this.world,
+  ): void {
+    const resolvedNow = Number.isFinite(nowMs) ? nowMs : 0
+    if (resolvedNow - this.lastNotInTownSpeechAtMs < 3000) {
+      return
+    }
+    this.lastNotInTownSpeechAtMs = resolvedNow
+    const classId = this.resolveSelfClassId(skillId, world)
+    const entry = PLAYER_SOUND_TABLE_0x6FBA7694[classId] ?? PLAYER_SOUND_TABLE_0x6FBA7694[1]!
+    const soundId = entry.notInTown1
+    world?.pushSoundRequest?.({
+      soundId,
+      speechSoundId: soundId,
+      eventCode: 24,
+      local: true,
+    })
+    if (!this.hudModel) {
+      this.hudManager?.onPlayUiSound?.(soundId)
+    }
+  }
+
+  /**
    * 1.13c `D2Common.#10061` (`INVENTORY_GetLeftHandWeapon`) + `D2Common.#10802` (`ITEMS_GetItemCode`):
    * Checks whether the local player's active wielded weapon (slot 4 / 5) matches `requiredCode`.
    */
@@ -1441,6 +1472,9 @@ export class CommandMapper {
 
     if (isRight) {
       if (!canCastSkillHere) {
+        if (!isHold && this.isTownArea(activeWorld) && !isSkillAllowedInTown(skillId)) {
+          this.triggerNotInTownSpeech(nowMs, skillId, activeWorld)
+        }
         return null
       }
       // 1.13c TargetCorpse=1 skills require a valid corpse target and never cast on empty ground or live monsters.
@@ -1475,7 +1509,7 @@ export class CommandMapper {
         }
       }
       const targetAt =
-        isRightItemOrObject && hoveredUnit
+        isRightItemOrObject && hoveredUnit && canRightSkillTargetObjectOrItem(skillId)
           ? { x: Math.round(hoveredUnit.x), y: Math.round(hoveredUnit.y) }
           : { x: ev.worldX, y: ev.worldY }
       return {
@@ -2002,8 +2036,8 @@ export class CommandMapper {
           const itemUnit = this.world.getUnit('item', box.id)
           if (itemUnit && itemUnit.mode !== 5) {
             return {
-              subtileX: itemUnit.x,
-              subtileY: itemUnit.y,
+              subtileX: subtile.x,
+              subtileY: subtile.y,
               hoveredUnit: itemUnit,
             }
           }
@@ -3530,6 +3564,9 @@ export class CommandMapper {
       return null
     }
     if (this.isTownArea() && !isSkillAllowedInTown(rightSkillId)) {
+      if (!isHold) {
+        this.triggerNotInTownSpeech(nowMs, rightSkillId, this.world)
+      }
       return null
     }
     if (!this.isSkillWeaponUsable(rightSkillId)) {
@@ -3654,7 +3691,7 @@ export class CommandMapper {
     }
 
     const targetAt =
-      isRightItemOrObject && hoveredUnit
+      isRightItemOrObject && hoveredUnit && canRightSkillTargetObjectOrItem(rightSkillId)
         ? { x: Math.round(hoveredUnit.x), y: Math.round(hoveredUnit.y) }
         : { x: subtileX, y: subtileY }
     this.world.cancelPendingMeleeAttack()
@@ -3695,7 +3732,10 @@ export class CommandMapper {
     if (!this.isSkillSelectable113c(skillId, itemId)) return false
     if (this.hudManager.goldDialog) return false
     // Pre-gate before the swap so a blocked cast never emits the SelectSkill round-trip.
-    if (this.isTownArea() && !isSkillAllowedInTown(skillId)) return false
+    if (this.isTownArea() && !isSkillAllowedInTown(skillId)) {
+      this.triggerNotInTownSpeech(nowMs, skillId, this.world)
+      return false
+    }
     if (!this.isSkillWeaponUsable(skillId)) return false
     if (this.isPlayerBusyCasting(nowMs, skillId) || this.world.isSkillOnCooldown?.(skillId, nowMs)) {
       return false

@@ -65,7 +65,10 @@ import {
   ACT2Q3_InitQuestData_6FCE7480_113c,
   ACT5Q4_InitQuestData_6FC7D5C0_113c,
 } from './k2-w10b1-113c.ts'
-import { ACT5Q5_InitQuestData_6FC7FB50_113c } from './k2-w11b1-113c.ts'
+import {
+  ACT5Q5_InitQuestData_6FC7FB50_113c,
+  C2S_Packet3B_SpendSkillPoint_6FCEDA20_113c,
+} from './k2-w11b1-113c.ts'
 import { C2S_ExecuteEntityInteractionOrRunToTarget_6FCF01D0_113c } from './k2-w12b1-113c.ts'
 import {
   D2Game_6FCCA4D0_113c,
@@ -119,7 +122,10 @@ import {
   ACT2Q8_ActiveFilter_6FCE25D0_113c,
 } from './k2-w2b7-113c.ts'
 import { ACT3Q4_CheckAlkorQuestAlert_6FD053F0_113c } from './k2-w2b8-113c.ts'
-import { QUESTS_AllocAndInitGameQuests_6FC548A0_113c } from './k2-w3b3-113c.ts'
+import {
+  QUESTS_AllocAndInitGameQuests_6FC548A0_113c,
+  registerK4QuestStatusFilterDispatcher113c,
+} from './k2-w3b3-113c.ts'
 import {
   ACT5Intro_ActiveFilter_6FC79680_113c,
   ACT5Intro_Callback00_NpcActivate_6FC796B0_113c,
@@ -207,6 +213,8 @@ import {
   ACT2Q7_Callback_NpcActivateGuardDialog_6FCE4900_113c,
   ACT2Q7_Callback_ScrollMessageSetState_6FCE4A40_113c,
   PACKET_Srv2F_NpcQuestMessage_6FCEC9D0_113c,
+  PACKET_Srv3C_SetSkillHotkey_6FCEBC70_113c,
+  PACKET_Srv40_RequestQuestLog_6FCEBD30_113c,
 } from './k2-w5b5-113c.ts'
 import {
   ACT3Q0_AddHratliIntroDialogNodes_6FD054C0_113c,
@@ -214,6 +222,7 @@ import {
   ACT3Q0_SyncHratliIntroQuestFromPlayer_6FD05450_113c,
   ACT3Q1_AddGoldenBirdNpcDialogNodes_6FD03E30_113c,
   ACT3Q1_GoldenBirdActiveFilter_6FD04030_113c,
+  ACT3Q1_GoldenBirdStatusFilter_6FD03CE0_113c,
   ACT3Q1_SyncGoldenBirdQuestStateFromPlayer_6FD03B40_113c,
   ACT3Q2_AddGidbinnNpcDialogNodes_6FD042F0_113c,
   ACT3Q2_GidbinnActiveFilter_6FD04500_113c,
@@ -262,6 +271,7 @@ import {
 } from './k2-w6b5-113c.ts'
 import {
   ACT3Q0_InitHratliIntroQuestTable_6FD06660_113c,
+  ACT3Q1_OnNpcActivatedSendGoldenBirdAlert_6FD06BD0_113c,
   ACT3Q2_InitPlayerGidbinnQuestState_6FD06000_113c,
   ACT3Q2_OnNpcActivatedSendGidbinnAlert_6FD06CF0_113c,
   ACT3_InitKurastNpcIntroQuestTable_6FD06700_113c,
@@ -270,7 +280,10 @@ import {
   ACT2Q5_OnScrollMessage_6FCE67C0_113c,
   ACT4Q3_OnScrollMessage_6FCDB250_113c,
 } from './k2-w7b3-113c.ts'
-import { C2S_Packet30_CancelNpcInteract_6FCED480_113c } from './k2-w7b4-113c.ts'
+import {
+  C2S_Packet30_CancelNpcInteract_6FCED480_113c,
+  C2S_Packet3A_AddStatPoint_6FCEC960_113c,
+} from './k2-w7b4-113c.ts'
 import {
   ACT1Q1_NpcIntroAndRewardAkaraDenOfEvil_6FC85260_113c,
   ACT1Q5_NpcIntroAndRewardCharsiImbue_6FC84430_113c,
@@ -738,6 +751,9 @@ export function dispatchK4QuestCallback113c(
       return true
     case 0x6fce61c0:
       ACT2Q1_OnAtmaTalkCallback_6FCE61C0_113c(sm, pQuest, pArg)
+      return true
+    case 0x6fd06bd0:
+      ACT3Q1_OnNpcActivatedSendGoldenBirdAlert_6FD06BD0_113c(sm, pQuest, pArg)
       return true
     case 0x6fd06cf0:
       ACT3Q2_OnNpcActivatedSendGidbinnAlert_6FD06CF0_113c(sm, pQuest, pArg)
@@ -1519,7 +1535,17 @@ export function tryApplyQuestAndNpcC2SPacketK4_113c(
 ): boolean {
   if (packetBytes.length === 0) return false
   const op = packetBytes[0]!
-  if (op !== 0x13 && op !== 0x2f && op !== 0x31 && op !== 0x30 && op !== 0x20) {
+  if (
+    op !== 0x13 &&
+    op !== 0x2f &&
+    op !== 0x31 &&
+    op !== 0x30 &&
+    op !== 0x20 &&
+    op !== 0x3a &&
+    op !== 0x3b &&
+    op !== 0x40 &&
+    op !== 0x51
+  ) {
     return false
   }
   const pPkt = K4_PACKET_SCRATCH_VA
@@ -1538,6 +1564,14 @@ export function tryApplyQuestAndNpcC2SPacketK4_113c(
     C2S_Packet30_CancelNpcInteract_6FCED480_113c(sm, pGame, pPlayer, pPkt, nLen)
   } else if (op === 0x20) {
     C2S_Packet20_UseInventoryItem_6FCEF730_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x3a) {
+    C2S_Packet3A_AddStatPoint_6FCEC960_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x3b) {
+    C2S_Packet3B_SpendSkillPoint_6FCEDA20_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x40) {
+    PACKET_Srv40_RequestQuestLog_6FCEBD30_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x51) {
+    PACKET_Srv3C_SetSkillHotkey_6FCEBC70_113c(sm, pGame, pPlayer, pPkt, nLen)
   }
   syncWorld()
   return true
@@ -1561,6 +1595,29 @@ export function executeQueuedPlayerEntityInteractK4_113c(
   )
 }
 
+export function dispatchK4QuestStatusFilter113c(
+  m: Memory113c,
+  pfnStatus: number,
+  pQuest: number,
+  pPlayerUnit: number,
+  pGameQuestFlags: number,
+  pPlayerQuestFlags: number,
+  pOutByte: number,
+): number {
+  const sm = m as SparseMemory113c
+  if ((pfnStatus >>> 0) === 0x6fd03ce0) {
+    return ACT3Q1_GoldenBirdStatusFilter_6FD03CE0_113c(
+      sm,
+      pQuest,
+      pPlayerUnit,
+      pGameQuestFlags,
+      pPlayerQuestFlags,
+      pOutByte,
+    )
+  }
+  return 0
+}
+
 let k4Installed = false
 
 export function installK4QuestReplay113c(): void {
@@ -1568,6 +1625,7 @@ export function installK4QuestReplay113c(): void {
   k4Installed = true
   registerK4QuestCallbackDispatcher113c(dispatchK4QuestCallback113c)
   registerK4QuestNpcAlertDispatcher113c(dispatchK4QuestNpcAlert113c)
+  registerK4QuestStatusFilterDispatcher113c(dispatchK4QuestStatusFilter113c)
   registerK4ReplayKernelBridge113c({
     hydrateQuestAndNpcState: hydrateK4QuestAndNpcState113c,
     tryRunTownNpcThink: tryRunTownNpcThinkK4_113c,

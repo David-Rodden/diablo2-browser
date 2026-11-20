@@ -76,6 +76,7 @@ import {
 import {
   ensureAvatarComposite,
   getReadyAvatarComposite,
+  hasActiveCharacterSkinAvatar,
 } from './avatar-compositor.ts'
 import {
   formatCharacterActionError,
@@ -1156,7 +1157,7 @@ export class FrontendRenderer {
     // (same `/chars/<class>` layer packs as in-game). While it loads — or when
     // it is unavailable (no packs / node) — the baked naked TN strip remains
     // the fallback, replacing the never-implemented avatar-layers sprites.
-    if (avatarDesc.hasEquippedComponents) {
+    if (avatarDesc.hasEquippedComponents || hasActiveCharacterSkinAvatar(char.heroToken)) {
       const composite = getReadyAvatarComposite(char.heroToken, avatarDesc)
       if (composite && composite.frames.length > 0) {
         const safeIdx2 =
@@ -1171,8 +1172,8 @@ export class FrontendRenderer {
           cf.h,
           controlX + cf.anchorX,
           controlY + cf.anchorY,
-          cf.w,
-          cf.h,
+          cf.drawW ?? cf.w,
+          cf.drawH ?? cf.h,
         )
         return
       }

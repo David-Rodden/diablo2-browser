@@ -86,8 +86,8 @@
     "name": "SEED_RollMaskFast",
     "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
     "tsSymbol": "SEED_RollMaskFast113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FC21450 (37B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts."
   },
   {
     "module": "D2Game",
@@ -113,8 +113,8 @@
     "name": "SEED_RollRangeHalfOpen",
     "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
     "tsSymbol": "SEED_RollRangeHalfOpen113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FC21780 (81B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts."
   },
   {
     "module": "D2Game",
@@ -149,8 +149,8 @@
     "name": "UNIT_CalcSqDistSubtiles",
     "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
     "tsSymbol": "UNIT_CalcSqDistSubtiles113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FC21900 (225B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts."
   },
   {
     "module": "D2Game",
@@ -365,8 +365,8 @@
     "name": "MONSTER_GetBossMinionField34",
     "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
     "tsSymbol": "MONSTER_GetBossMinionField34_113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FC68560 (25B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts."
   },
   {
     "module": "D2Game",
@@ -428,8 +428,8 @@
     "name": "AI_FallenShamanCorpseFilter",
     "kernFile": "src/d2kern-113c/game/ai-fallen-113c.ts",
     "tsSymbol": "AI_FallenShamanCorpseFilter113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FC9BD50 (177B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts."
   },
   {
     "module": "D2Game",
@@ -437,8 +437,8 @@
     "name": "AI_Skeleton",
     "kernFile": "src/d2kern-113c/game/ai-fallen-113c.ts",
     "tsSymbol": "AI_Skeleton113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FCA3550 (856B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts. Fixed 0x6FC21180 SEED_RollLimitedRandomNumber call (was 0x6FC211D0) and pure-memory AI fallbacks."
   },
   {
     "module": "D2Game",
@@ -446,8 +446,8 @@
     "name": "AI_FallenShaman",
     "kernFile": "src/d2kern-113c/game/ai-fallen-113c.ts",
     "tsSymbol": "AI_FallenShaman113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FCA90A0 (906B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts. Wired canonical AITARGET_ScanUnitsByModeTable (0x6FCD17B0) and MONAI_FindTargetOrNearestBlockingObstacle (0x6FCD1BC0) fallbacks."
   },
   {
     "module": "D2Game",
@@ -563,8 +563,8 @@
     "name": "QUEST_Act4DiabloSealCheck",
     "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
     "tsSymbol": "QUEST_Act4DiabloSealCheck113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FCD8940 (42B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts."
   },
   {
     "module": "D2Game",
@@ -618,7 +618,7 @@
     "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
     "tsSymbol": "MONREG_GenerateOutfitVariants113c",
     "status": "diff-verified",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; runtime-executed in dllExecuted∩tsExecuted across all 5 K1/K2 scenarios (tests/oracle/k2/replay-k2-coverage.test.ts)"
+    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts; runtime-executed in dllExecuted\u2229tsExecuted across all 5 K1/K2 scenarios (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -725,8 +725,8 @@
     "name": "MONSTER_FindValidFloorSpawnCoords",
     "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
     "tsSymbol": "MONSTER_FindValidFloorSpawnCoords113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FD0DF60 (316B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts."
   },
   {
     "module": "D2Game",
@@ -734,8 +734,8 @@
     "name": "MONSTER_SpawnFetishPartyMinions",
     "kernFile": "src/d2kern-113c/game/regpop-spawn-113c.ts",
     "tsSymbol": "MONSTER_SpawnFetishPartyMinions113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FD0E0A0 (441B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts."
   },
   {
     "module": "D2Game",
@@ -788,8 +788,8 @@
     "name": "AI_SetAiControlOverrides",
     "kernFile": "src/d2kern-113c/game/ai-fallen-113c.ts",
     "tsSymbol": "AI_SetAiControlOverrides113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FD11A20 (104B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts."
   },
   {
     "module": "D2Game",
@@ -797,8 +797,8 @@
     "name": "AI_CastSkillMode14",
     "kernFile": "src/d2kern-113c/game/ai-fallen-113c.ts",
     "tsSymbol": "AI_CastSkillMode14_113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FD12120 (184B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts."
   },
   {
     "module": "D2Game",
@@ -833,7 +833,7 @@
     "name": "SKILLS_CanMonsterCastAtTarget",
     "kernFile": "src/d2kern-113c/game/ai-fallen-113c.ts",
     "tsSymbol": "SKILLS_CanMonsterCastAtTarget113c",
-    "status": "ported",
-    "diffEvidence": "Unit and golden seed/trace verification in tests/oracle/k1/laneG-a1c-monsters.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FD13E30 (801B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts. Wired canonical MONSTER_SpawnFallenShamanPack (0x6FD0FB80) on skill 0xC7 passing pGame per 0x6FD13F18."
   }
 ]

@@ -25,7 +25,7 @@ import {
   DUNGEON_GetRoomExFromRoom113c,
 } from '../common/dungeon'
 import { D2CommonAssertError } from '../common/inline-helpers'
-import { imul32, mulDiv113c } from '../common/int-math'
+import { imul32 } from '../common/int-math'
 import {
   INVENTORY_GetFirstItem113c,
   INVENTORY_GetItemNodePositionOther113c,
@@ -90,7 +90,6 @@ import {
   ANIMSEQ_GetUnitSeqRecordPtr113c,
   UNITS_CanUnitMeleeAttackTarget113c,
   UNITS_GetApproximateDistance113c,
-  UNITS_GetEquippedWeaponAdder113c,
   UNITS_GetRoom113c,
   UNITS_SetTargetUnitForDynamicUnitEx113c,
   UNITS_SetUnitUpdateFlags113c,
@@ -99,7 +98,6 @@ import {
 import { SEED_InitLowSeed113c } from '../prng'
 import { DATATBLS_GetMonLvlTxtRecord113c } from '../tables/datatbls-113c'
 import { DATATBLS_GetLevelsTxtRecord113c } from '../tables/lvl-tbls-113c'
-import { SUNIT_AreUnitsHostileOrUnaligned113c } from './a1c-post150-f786-f1040-113c'
 import {
   AI_CastSkillWithMode113c,
   AI_StartAttackMode113c,
@@ -120,16 +118,13 @@ import {
   AI_Stall113c as AI_StallMem113c,
   MONSTER_StartMode113c as MONSTER_StartModeMem113c,
   SUNITDMG_AllocCombat113c,
-  SUNITDMG_CalcMonsterExperience113c,
-  SUNITDMG_CheckToHit113c,
   SUNITDMG_ExecuteEvents113c,
-  SUNITDMG_RollPassiveWeaponBlockOrShieldBlock113c,
 } from './combat-a1c-113c'
 import {
   AI_ApproachTarget113c,
-  AI_IdleWander113c,
-  AI_Stall113c,
-  MONSTER_StartMode113c,
+  SUNITDMG_RollMeleeToHitAndBlock_6FCFE5A0_113c,
+} from './k2-real-s2c-combat-113c'
+import {
   SKILLS_GetFlags113c,
   UNITS_GetDistanceToCoordinates113c,
 } from './replay-kernel-113c'
@@ -296,45 +291,6 @@ function stepSeed64At113c(m: D2KernMemory113c, pSeed: number): number {
   return newLo
 }
 
-function rollMeleeToHitAndBlock_6FCFE5A0(
-  m: D2KernMemory113c,
-  pDefender: number,
-  pAttacker: number,
-  pGame: number,
-  nToHitBonus: number,
-  nWeaponRangePenalty: number,
-): number {
-  void SUNITDMG_CalcMonsterExperience113c
-  const att = pAttacker >>> 0
-  const def = pDefender >>> 0
-  if (att === 0 || def === 0) return 0
-  const attType = m.u32(att) | 0
-  if (attType !== 0 && attType !== 1) return 0
-  const defType = m.u32(def) | 0
-  if (defType !== 0 && defType !== 1) return 0
-  if ((SUNIT_AreUnitsHostileOrUnaligned113c(m, def, att, pGame >>> 0) | 0) === 0) return 0
-  let wFlags = defType === 0 && (m.u32((def + 0x10) >>> 0) | 0) === 3 ? 1 : 0
-  let nAdder = attType === 1 ? 3 : 1
-  if ((nWeaponRangePenalty | 0) !== 0) {
-    nAdder = (nAdder - ((UNITS_GetEquippedWeaponAdder113c(m, att) | 0) + (nWeaponRangePenalty | 0))) | 0
-  }
-  if ((UNITS_CanUnitMeleeAttackTarget113c(m, att, def, nAdder) | 0) === 0) return 0
-  if ((wFlags & 1) === 0 && (SUNITDMG_CheckToHit113c(m, att, def, 0, nToHitBonus | 0) | 0) !== 0) {
-    wFlags |= 1
-  }
-  if ((wFlags & 1) !== 0) {
-    const bm = SUNITDMG_RollPassiveWeaponBlockOrShieldBlock113c(m, def) | 0
-    if ((bm & 2) !== 0) wFlags |= 0x100
-    if ((bm & 4) !== 0) wFlags |= 0x80
-    if ((bm & 0x10) !== 0) wFlags |= 0x8000
-    if ((bm & 1) !== 0) wFlags |= 0x10
-    if (bm !== 0) wFlags &= 0xfffe
-  }
-  if ((wFlags & 0x10) !== 0) wFlags &= 0xfffe
-  if ((wFlags & 1) !== 0 && (STATES_CheckState113c(m, def, 0x36) | 0) === 0) wFlags |= 4
-  return wFlags & 0xffff
-}
-
 /**
  * [1/45] Rolls melee hit and allocates kick + progressive charge finish combat.
  * @va D2Game:0x6FCB2BB0
@@ -365,7 +321,7 @@ export function SKILLS_RollHitAndAllocKickProgressiveCombat_6FCB2BB0_113c(
   const pDmg = allocScratch(0x70)
   try {
     for (let i = 0; i < 0x1c; i += 1) m.setU32((pDmg + i * 4) >>> 0, 0)
-    let wFlags = rollMeleeToHitAndBlock_6FCFE5A0(m, def, att, game, nToHit, 0) & 0xffff
+    let wFlags = SUNITDMG_RollMeleeToHitAndBlock_6FCFE5A0_113c(m, att, def, game, nToHit, 0) & 0xffff
     m.setU16((pDmg + 0x04) >>> 0, wFlags)
     if ((wFlags & 1) !== 0) {
       if ((bForceKnockbackFlags | 0) !== 0) {
@@ -696,7 +652,7 @@ export function SKILLS_SrvDo_ExecuteMultiStrikeMelee_6FCB9D20_113c(
       for (let i = 0; i < 0x1c; i += 1) m.setU32((pDmg + i * 4) >>> 0, 0)
       if (unit !== 0 && m.u32(unit) === 0) {
         const toHit = SKILLS_GetSkillToHitBonus113c(m, unit, skillId, slvl) | 0
-        const wHit = (rollMeleeToHitAndBlock_6FCFE5A0(m, pTarget, unit, game, toHit, 0) | 8) & 0xffff
+        const wHit = (SUNITDMG_RollMeleeToHitAndBlock_6FCFE5A0_113c(m, unit, pTarget, game, toHit, 0) | 8) & 0xffff
         m.setU16((pDmg + 0x04) >>> 0, wHit)
       } else {
         m.setU16((pDmg + 0x04) >>> 0, 9)
@@ -816,7 +772,7 @@ export function SKILLS_RespecPlayerClassSkills_6FCC1280_113c(
     if (pSkill !== 0) {
       const nBase = SKILLS_EvaluateSkillLevel113c(m, unit, pSkill, 0) | 0
       nRefundPts = (nRefundPts + nBase) | 0
-      MONSTER_AddSkillToUnit113c(m, 0, nSkillId, unit, 0)
+      MONSTER_AddSkillToUnit113c(m, 0, nSkillId, unit, 1)
       let pClient = 0
       if (m.u32(unit) === 0) {
         const pPlrData = UNITS_GetPlayerData113c(m, unit) >>> 0
@@ -1263,76 +1219,6 @@ function sx16(v: number): number {
   return (v << 16) >> 16
 }
 
-function aiApproachTarget6FD12540(
-  m: D2KernMemory113c,
-  pGame: number,
-  pUnit: number,
-  pTarget: number,
-  nMode: number,
-  nX: number,
-  nY: number,
-  nStepNum: number,
-  dwFlags: number,
-): number {
-  void AI_ApproachTarget113c
-  void MONSTER_StartMode113c
-  const unit = pUnit >>> 0
-  const game = pGame >>> 0
-  let mode = nMode | 0
-  if (mode === 0x0f && (STATES_CheckState113c(m, unit, 0x3c) | 0) !== 0) {
-    let pAiCtrl = 0
-    if (unit !== 0 && m.u32(unit) === 1) {
-      const pMonData = m.u32((unit + 0x14) >>> 0) >>> 0
-      if (pMonData !== 0) pAiCtrl = m.u32((pMonData + 0x2c) >>> 0) >>> 0
-    }
-    m.setU32((pAiCtrl + 0x18) >>> 0, 0)
-    m.setU32((pAiCtrl + 0x1c) >>> 0, 0)
-    m.setU8((pAiCtrl + 0x20) >>> 0, 0)
-    mode = 2
-  }
-  PATH_SetStepNum113c(m, m.u32((unit + 0x2c) >>> 0) >>> 0, nStepNum | 0)
-  const sp = allocScratch(0x20)
-  try {
-    MONSTER_InitModeChangeStrc113c(m, unit, sp, mode)
-    if ((pTarget >>> 0) !== 0) {
-      m.setU32((sp + 0x08) >>> 0, pTarget >>> 0)
-    } else {
-      m.setU32((sp + 0x0c) >>> 0, nX | 0)
-      m.setU32((sp + 0x10) >>> 0, nY | 0)
-    }
-    const res =
-      MONSTER_StartModeMem113c(
-        m,
-        game,
-        m.u32((sp + 0x04) >>> 0) >>> 0,
-        (m.u32(sp) | 0),
-        m.u32((sp + 0x08) >>> 0) >>> 0,
-        (m.u32((sp + 0x0c) >>> 0) | 0),
-        (m.u32((sp + 0x10) >>> 0) | 0),
-      ) | 0
-    if (res !== 0) return res
-    const fb = dwFlags & 0xff
-    if ((fb & 4) !== 0) {
-      let pEv = m.u32((unit + 0xdc) >>> 0) >>> 0
-      while (pEv !== 0) {
-        const pNext = m.u32((pEv + 0x24) >>> 0) >>> 0
-        if (m.u8(pEv) === 2) EVENT_FreeNode113c(m, game, pEv)
-        pEv = pNext
-      }
-    }
-    if ((fb & 1) !== 0 && m.u32(unit) === 1) {
-      const pMonData = m.u32((unit + 0x14) >>> 0) >>> 0
-      if (pMonData !== 0) {
-        const pAiGen = m.u32((pMonData + 0x28) >>> 0) >>> 0
-        if (pAiGen !== 0) m.setU8((pAiGen + 8) >>> 0, (m.u8((pAiGen + 8) >>> 0) | 0x40) & 0xff)
-      }
-    }
-    return 0
-  } finally {
-    freeScratch(0x20)
-  }
-}
-
 /**
  * [16/45] Reanimates `pCorpseUnit` as friendly monster `nMonClassId` bound to player `dwOwnerPlayerGuid`.
  * @va D2Game:0x6FCCE200
@@ -1387,8 +1273,8 @@ export function ITEMEVENT_ReanimateCorpseAsReturned_6FCCE200_113c(
   if (pSpawned === 0) return 0
 
   m.setU32((pSpawned + 0xc4) >>> 0, (m.u32((pSpawned + 0xc4) >>> 0) | 0x0402000e) >>> 0)
-  MONSTER_GetAiGeneralPtr_6FC218E0_113c(m, pSpawned)
-  AI_InitMonsterAiThinkFn113c(m, pSpawned)
+  const pSpawnAiGen = MONSTER_GetAiGeneralPtr_6FC218E0_113c(m, pSpawned) >>> 0
+  AI_InitMonsterAiThinkFn113c(m, pSpawned, game, pSpawnAiGen, 0)
   MONSTER_ScheduleInitialAiEvent113c(m, game, pSpawned)
 
   const ownerType = m.u32(pOwner) >>> 0
@@ -1571,8 +1457,6 @@ export function AIBAAL_ExecuteCommandAction_6FCD8070_113c(
   pApproachCoords: number,
 ): void {
   hitD2GameVa113c(0x6FCD8070)
-  void AI_IdleWander113c
-  void AI_Stall113c
   const mon = pMonster >>> 0
   const target = pTargetUnit >>> 0
   const game = pGame >>> 0
@@ -1596,7 +1480,7 @@ export function AIBAAL_ExecuteCommandAction_6FCD8070_113c(
       }
       case 2:
       case 6: {
-        AI_StepRelativeToTargetUnit113c(m, game, mon, target, 0x0c, 0)
+        AI_StepRelativeToTargetUnit113c(m, game, mon, target, 0x0c, 2, 0)
         return
       }
       case 3: {
@@ -1604,7 +1488,7 @@ export function AIBAAL_ExecuteCommandAction_6FCD8070_113c(
         return
       }
       case 4: {
-        AI_IdleWanderMem113c(m, game, mon)
+        AI_IdleWanderMem113c(m, game, mon, 0x10)
         return
       }
       case 5: {
@@ -1613,7 +1497,7 @@ export function AIBAAL_ExecuteCommandAction_6FCD8070_113c(
           AI_StallMem113c(m, game, mon, 5)
           return
         }
-        aiApproachTarget6FD12540(
+        AI_ApproachTarget113c(
           m,
           game,
           mon,

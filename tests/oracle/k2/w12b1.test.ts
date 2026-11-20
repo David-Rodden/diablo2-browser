@@ -112,7 +112,20 @@ describe('K2 Wave 12 Batch 1 (w12b1) - 34 D2Game.dll v1.13c functions', () => {
   it('[7/34] 0x6FC679B0 MONSTER_SpawnUniqueBossWithChampionMinionPack returns 0 on invalid monster index', () => {
     const m = createMem();
     const fn = fnByVa('6FC679B0');
-    expect(fn(m, 1, 0x20000, 0x10000, -1)).toBe(0);
+    const pGame = 0x10000;
+    const pRoom = 0x20000;
+    const pRoomEx = 0x25000;
+    const pLevel = 0x26000;
+    m.setU32(pRoom + 0x10, pRoomEx);
+    m.setU32(pRoom + 0x4c, 100);
+    m.setU32(pRoom + 0x50, 100);
+    m.setU32(pRoom + 0x54, 16);
+    m.setU32(pRoom + 0x58, 16);
+    m.setU32(pRoom + 0x6c, 0x12345678);
+    m.setU32(pRoom + 0x70, 0x0000029a);
+    m.setU32(pRoomEx + 0x58, pLevel);
+    m.setU32(pLevel + 0x1d0, 2);
+    expect(fn(m, 0, pRoom, pGame, -1)).toBe(0);
   });
 
   it('[8/34] 0x6FC68FC0 HIRELING_AssignMercenaryToPlayer returns early on null player', () => {
@@ -421,9 +434,22 @@ describe('K2 Wave 12 Batch 1 (w12b1) - 34 D2Game.dll v1.13c functions', () => {
   it('[34/34] 0x6FD08780 Radament boss pack spawner clears active spawn flag 0x04 on completion', () => {
     const m = createMem();
     const fn = fnByVa('6FD08780');
-    const pBuf = 0x20000;
-    m.setU8(pBuf + 0x04, 1);
-    fn(m, pBuf, pBuf, pBuf);
-    expect(m.u8(pBuf + 0x04)).toBe(0);
+    const pGame = 0x10000;
+    const pQuestState = 0x20000;
+    const pRoom = 0x21000;
+    const pRoomEx = 0x25000;
+    const pLevel = 0x26000;
+    m.setU32(pRoom + 0x10, pRoomEx);
+    m.setU32(pRoom + 0x4c, 100);
+    m.setU32(pRoom + 0x50, 100);
+    m.setU32(pRoom + 0x54, 16);
+    m.setU32(pRoom + 0x58, 16);
+    m.setU32(pRoom + 0x6c, 0x12345678);
+    m.setU32(pRoom + 0x70, 0x0000029a);
+    m.setU32(pRoomEx + 0x58, pLevel);
+    m.setU32(pLevel + 0x1d0, 28);
+    m.setU8(pQuestState + 0x04, 1);
+    fn(m, pQuestState, pRoom, pGame);
+    expect(m.u8(pQuestState + 0x04)).toBe(0);
   });
 });

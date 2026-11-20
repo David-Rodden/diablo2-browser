@@ -191,7 +191,7 @@ export function hudRepaintUnchanged(hud: HudManager, nowMs: number): boolean {
       ? `${hud.hoveredNpcLabel.text}@${Math.round(hud.hoveredNpcLabel.screenX)},${Math.round(hud.hoveredNpcLabel.screenY)}`
       : '',
     hud.targetMonster
-      ? `${hud.targetMonster.unitId ?? ''}:${hud.targetMonster.name}:${hud.targetMonster.hp}:${hud.targetMonster.maxHp}:${hud.targetMonster.rank ?? ''}`
+      ? `${hud.targetMonster.unitId ?? ''}:${hud.targetMonster.name}:${hud.targetMonster.customDisplayName?.zh ?? ''}:${hud.targetMonster.hp}:${hud.targetMonster.maxHp}:${hud.targetMonster.rank ?? ''}`
       : '',
     hud.showGroundLabels ? 1 : 0,
     internal.groundItemEnhancements.alwaysShowUniqueSetLabels ? 1 : 0,
@@ -241,7 +241,9 @@ export function hudRepaintUnchanged(hud: HudManager, nowMs: number): boolean {
       : '',
     hud.merc && !hud.merc.isDead ? `${hud.merc.hp}/${hud.merc.maxHp}/${hud.merc.lifePct}` : 'nomerc',
     hud.summonPortraits && hud.summonPortraits.length > 0
-      ? hud.summonPortraits.map((s) => `${s.petType}:${s.count}:${s.lifePct}`).join(',')
+      ? hud.summonPortraits
+          .map((s) => `${s.petType}:${s.count}:${s.lifePct}:${s.label ?? ''}:${s.customSkinKey ?? ''}`)
+          .join(',')
       : '',
     hud.partyMembers && hud.partyMembers.length > 0
       ? hud.partyMembers.map((p) => `${p.unitId}:${p.lifePct}:${p.partyState}`).join(',')
@@ -464,11 +466,25 @@ export function renderHudFrame(
         ctx.strokeStyle = '#6c5838'
         ctx.strokeRect(slotX + 0.5, 16.5, 47, sFrameH - 1)
 
-        const sRect =
-          internal.portraitRects[summon.iconKey] ||
-          internal.portraitRects[String(summon.iconKey).toLowerCase()]
-        if (sRect && atlasImg) {
-          ctx.drawImage(atlasImg, sRect.x, sRect.y, sRect.w, sRect.h, slotX + 1, 17, 46, 41)
+        if (summon.customPortrait) {
+          ctx.drawImage(
+            summon.customPortrait,
+            0,
+            0,
+            summon.customPortrait.width,
+            summon.customPortrait.height,
+            slotX + 1,
+            17,
+            46,
+            41,
+          )
+        } else {
+          const sRect =
+            internal.portraitRects[summon.iconKey] ||
+            internal.portraitRects[String(summon.iconKey).toLowerCase()]
+          if (sRect && atlasImg) {
+            ctx.drawImage(atlasImg, sRect.x, sRect.y, sRect.w, sRect.h, slotX + 1, 17, 46, 41)
+          }
         }
 
         if (summon.drawHp) {

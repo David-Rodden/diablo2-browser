@@ -632,19 +632,34 @@ export function STATLIST_CreateEx113c(
 /**
  * `D2Common 0x6FD87470` (`ENVIRONMENT_GetTimeOfDayAndAngle`):
  * Reads `pEnv = pAct->pEnvironment` (`+0x04`), returns `nTimeOfDay` (`+0x04`) and `nAngle`
- * (`pEnv->dwCyclePeriod != 0 ? trunc(pEnv->dwTicks / pEnv->dwCyclePeriod) : 0`).
+ * (`pEnv->dwCyclePeriod != 0 ? trunc(pEnv->dwTicks / pEnv->dwCyclePeriod) : 0`), writing
+ * `*pOutAngle` (`[esp+8]`) when non-zero (`Fog.#10024` line `0x547` on `pAct == 0`).
  */
 export function ENVIRONMENT_GetTimeOfDayAndAngle113c(
   m: Memory113c,
   pAct: number,
+  pOutAngle = 0,
 ): { readonly timeOfDay: number; readonly angle: number } {
   hitD2CommonVa113c(0x6FD87470)
-  if (pAct === 0) return { timeOfDay: 0, angle: 0 }
+  if (pAct === 0) {
+    if (pOutAngle !== 0) {
+      throw new D2CommonAssertError('Environment.cpp', 0x547)
+    }
+    return { timeOfDay: 0, angle: 0 }
+  }
   const pEnv = m.get(pAct, D2ActStrc.pEnvironment)
-  if (pEnv === 0) return { timeOfDay: 0, angle: 0 }
+  if (pEnv === 0) {
+    if (pOutAngle !== 0) {
+      m.setU32(pOutAngle >>> 0, 0)
+    }
+    return { timeOfDay: 0, angle: 0 }
+  }
   const period = m.get(pEnv, D2EnvironmentStrc.dwCyclePeriod) | 0
   const ticks = m.get(pEnv, D2EnvironmentStrc.dwTicks) | 0
   const angle = period !== 0 ? Math.trunc(ticks / period) | 0 : 0
+  if (pOutAngle !== 0) {
+    m.setU32(pOutAngle >>> 0, angle >>> 0)
+  }
   const timeOfDay = m.get(pEnv, D2EnvironmentStrc.nTimeOfDay) | 0
   return { timeOfDay, angle }
 }
@@ -652,6 +667,7 @@ export function ENVIRONMENT_GetTimeOfDayAndAngle113c(
 /**
  * `D2Common.#10449` (`0x6FD96330` `ITEMS_CalcByTimeStat`):
  * Unpacks packed `(period:2, min:10, max:10)` signed `[-256, 767]` range from `rawValue`,
+ * writes optional `*pOutPeriod`, `*pOutMin`, `*pOutMax` (`[esp+0x10..0x18]`),
  * snaps `|nAngle - period * 90|` to 15-degree steps (`(delta + 7) / 15 * 15`), clamps to `[0, 359]`,
  * folds `(180, 359]` via `360 - step`, and interpolates `max - trunc(((max - min) * step) / 180)`.
  */
@@ -659,12 +675,21 @@ export function ITEMS_CalcByTimeStat113c(
   rawValue: number,
   _nTimeOfDay: number,
   nAngle: number,
+  m?: Memory113c,
+  pOutPeriod = 0,
+  pOutMin = 0,
+  pOutMax = 0,
 ): number {
   hitD2CommonVa113c(0x6FD96330)
   const raw = rawValue | 0
   const period = raw & 3
   const minVal = (((raw >> 2) & 0x3ff) - 0x100) | 0
   const maxVal = (((raw >> 12) & 0x3ff) - 0x100) | 0
+  if (m !== undefined) {
+    if (pOutPeriod !== 0) m.setU32(pOutPeriod >>> 0, period >>> 0)
+    if (pOutMin !== 0) m.setU32(pOutMin >>> 0, minVal >>> 0)
+    if (pOutMax !== 0) m.setU32(pOutMax >>> 0, maxVal >>> 0)
+  }
   let delta = ((nAngle | 0) - imul32(period, 90)) | 0
   if (delta < 0) delta = (-delta) | 0
   const plus7 = (delta + 7) | 0
@@ -728,14 +753,25 @@ export function STATLIST_SumDirectAndSubLists113c(
  */
 function hasLoadedU32PtrStatlist113c(m: Memory113c, addr: number): boolean {
   const a = addr >>> 0
-  const known = (m as unknown as { known?: Map<number, Uint8Array> }).known
-  if (known !== undefined) {
-    const k0 = known.get(a >>> 12)
-    const k3 = known.get(((a + 3) >>> 0) >>> 12)
-    if (k0 === undefined || k0[a & 0xfff] === 0) return false
-    if (k3 === undefined || k3[((a + 3) >>> 0) & 0xfff] === 0) return false
+  let cur: unknown = m
+  while (cur !== null && typeof cur === 'object' && 'inner' in cur) {
+    cur = (cur as { inner: unknown }).inner
   }
-  return m.u32(a) !== 0
+  const known = (cur as { known?: Map<number, Uint8Array> } | null)?.known
+  if (known !== undefined) {
+    for (let i = 0; i < 4; i++) {
+      const b = (a + i) >>> 0
+      const page = known.get(b >>> 12)
+      if (page === undefined || page[b & 0xfff] === 0) return false
+    }
+    return m.u32(a) !== 0
+  }
+  const size = (cur as { size?: number } | null)?.size
+  if (typeof size === 'number') {
+    if (a === 0 || a + 4 > size) return false
+    return m.u32(a) !== 0
+  }
+  return false
 }
 
 export function EvalStatWithOps113c(
@@ -1360,10 +1396,12 @@ export function STATLIST_AddStat113c(
   layer = 0,
   registry: StatTableRegistry113c = DEFAULT_STAT_REGISTRY_113C,
 ): number {
-  if (pList === 0 || (delta | 0) === 0) return 0
+  const d = delta | 0
+  hitD2CommonVa113c(0x6FD8A330)
+  if (pList === 0 || d === 0) return 0
   const key = statKey113c(statId, layer)
   const cur = readStatFromArray(m, pList + D2StatListStrc.pStat.off, key)
-  const changed = STATLIST_SetStat113c(m, pList, statId, (cur + (delta | 0)) | 0, layer, registry)
+  const changed = STATLIST_SetStat113c(m, pList, statId, (cur + d) | 0, layer, registry)
   if (changed !== 0 && m.get(pList, D2StatListStrc.eOwnerType) === 0) {
     STATLIST_RecordModStat113c(m, pList, key, registry)
   }
@@ -1404,10 +1442,12 @@ export function STATLIST_AddUnitStat113c(
   layer = 0,
   registry: StatTableRegistry113c = DEFAULT_STAT_REGISTRY_113C,
 ): number {
-  if (pUnit === 0 || (delta | 0) === 0) return 0
+  const d = delta | 0
+  hitD2CommonVa113c(0x6FD8A710)
+  if (pUnit === 0 || d === 0) return 0
   const pList = m.get(pUnit, D2UnitStrc.pStatListEx)
   if (pList === 0) return 0
-  return STATLIST_AddStat113c(m, pList, statId, delta, layer, registry)
+  return STATLIST_AddStat113c(m, pList, statId, d, layer, registry)
 }
 
 /**
@@ -6610,8 +6650,9 @@ function withBitStreamScratch113c(m: Memory113c): Memory113c {
     const u = p >>> 0
     return u >= BITSTREAM_STACK_BASE && u < BITSTREAM_STACK_BASE + BITSTREAM_STACK_SIZE
   }
-  const wrapped: Memory113c & { __hasBsScratch: boolean } = {
+  const wrapped: Memory113c & { __hasBsScratch: boolean; inner: Memory113c } = {
     __hasBsScratch: true,
+    inner: m,
     alloc: (size) => m.alloc(size),
     u8: (p) => (isScratch(p) ? _bsDv.getUint8((p >>> 0) - BITSTREAM_STACK_BASE) : m.u8(p)),
     u16: (p) => (isScratch(p) ? _bsDv.getUint16((p >>> 0) - BITSTREAM_STACK_BASE, true) : m.u16(p)),

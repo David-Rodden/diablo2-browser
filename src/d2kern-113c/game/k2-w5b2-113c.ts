@@ -221,6 +221,7 @@ import { ACT1Q6_SyncCompletionForPlayerOutsideAct1_6FC83000_113c } from './k2-w4
 import {
   MONUMOD_PromoteToRandomBossOrChampion_6FC44B70_113c,
   NET_CheckPartyMemberStatSyncDelta_6FCAC910_113c,
+  NET_SendPacket9D_ItemActionOwned_6FCAB0F0_113c,
 } from './k2-w4b4-113c'
 import { MONSTER_ShouldSyncBossLifeBarDelta_6FCAD500_113c } from './k2-w4b5-113c'
 import { SKILLS_ClampLifeManaStaminaToMaxAndRefreshAnim_6FCBE6B0_113c } from './k2-w4b6-113c'
@@ -1668,15 +1669,27 @@ export function NET_SendPacket9D_ItemAction05WithNodePage_6FCAC810_113c(
   const bSavedInvPage = ITEMS_GetInvPage113c(m, item) & 0xff
   const bNodePage = ITEMS_GetNodePage113c(m, item) & 0xff
   ITEMS_SetInvPage113c(m, item, bNodePage)
-  netSendPacket9D_ItemActionOwned_6FCAB0F0(
-    m,
-    0x05,
-    owner,
-    item,
-    client,
-    nCommandFlagsMask >>> 0,
-    0,
-  )
+  if (m.u32(0x6fde9e1c) !== 0) {
+    NET_SendPacket9D_ItemActionOwned_6FCAB0F0_113c(
+      m,
+      0x05,
+      owner,
+      item,
+      client,
+      nCommandFlagsMask >>> 0,
+      0,
+    )
+  } else {
+    netSendPacket9D_ItemActionOwned_6FCAB0F0(
+      m,
+      0x05,
+      owner,
+      item,
+      client,
+      nCommandFlagsMask >>> 0,
+      0,
+    )
+  }
   ITEMS_SetInvPage113c(m, item, bSavedInvPage)
 }
 

@@ -286,7 +286,7 @@ function hasLoadedU32Unit113c(m: Memory113c, addr: number): boolean {
 export function UNIT_GetAlignment113c(m: Memory113c, pUnit: number): number {
   hitD2CommonVa113c(0x6FD891F0)
   hitD2CommonVa113c(0x6FD8B650)
-  if (pUnit === 0) return 2
+  if (pUnit === 0) return 0
   const uType = m.get(pUnit, D2UnitStrc.dwUnitType)
   if (uType !== UNIT_MONSTER) return 2
   if (STATES_CheckState113c(m, pUnit, 17) !== 0) return 2

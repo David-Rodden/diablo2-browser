@@ -93,6 +93,7 @@ describe('K2 Wave 8 Batch 3 (30 D2Game VAs 0x6FCDD880..0x6FD07080)', () => {
         pItem,
         pGame,
         pPlayer,
+        1,
       ),
     ).toBe(1)
 
@@ -110,7 +111,7 @@ describe('K2 Wave 8 Batch 3 (30 D2Game VAs 0x6FCDD880..0x6FD07080)', () => {
     // [3/30] NPCS_RepairAndRechargeUnitItem_6FCDD9B0_113c (non-repairable item early return)
     m.setU32(pItem, 4)
     m.setU32(pItem + 0x14, 0x204200)
-    NPCS_RepairAndRechargeUnitItem_6FCDD9B0_113c(m, pGame, pItem, pPlayer)
+    NPCS_RepairAndRechargeUnitItem_6FCDD9B0_113c(m, pPlayer, pItem, pGame)
 
     // [4/30] ACT2Q5_ActivateSummonerQuestAndSyncPlayers_6FCE6600_113c
     m.setU32(pGame + 0x10f4, pQuestCtrl)

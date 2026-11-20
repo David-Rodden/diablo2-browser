@@ -15,9 +15,11 @@ import {
   type SorceressComponent,
   type LayerAppearance,
   type LayerTintSpec,
+  type PlayerClassToken,
 } from '../../common/units/char-appearance.ts'
 import { decodePaletteBin } from '../../common/formats/pl2.ts'
 import { getEmbeddedDropTables } from '../../common/items/embedded-drop-tables.ts'
+import { getGlobalCharacterSkinService } from '../render/character-skin-cache.ts'
 import type { ParsedMcpAvatarStatstring } from './statstring-avatar.ts'
 
 export interface AvatarCompositeFrame {
@@ -25,6 +27,8 @@ export interface AvatarCompositeFrame {
   readonly y: number
   readonly w: number
   readonly h: number
+  readonly drawW?: number | undefined
+  readonly drawH?: number | undefined
   readonly anchorX: number
   readonly anchorY: number
 }
@@ -249,6 +253,11 @@ function cacheKey(heroToken: string, desc: ParsedMcpAvatarStatstring): string {
   return `${heroToken}:${desc.cofSignature}`
 }
 
+export function hasActiveCharacterSkinAvatar(heroToken: string): boolean {
+  const skinSvc = getGlobalCharacterSkinService()
+  return skinSvc.getSelectedSkinId(heroToken.trim().toLowerCase() as PlayerClassToken) !== null
+}
+
 /**
  * Kick (and cache by class + statstring signature) the composite for a roster
  * character. Resolves to `null` outside the browser or when the layer packs /
@@ -258,6 +267,11 @@ export function ensureAvatarComposite(
   heroToken: string,
   desc: ParsedMcpAvatarStatstring,
 ): Promise<AvatarComposite | null> {
+  const classTok = heroToken.trim().toLowerCase() as PlayerClassToken
+  const skinSvc = getGlobalCharacterSkinService()
+  if (skinSvc.getSelectedSkinId(classTok) !== null) {
+    return skinSvc.ensureSkinAvatar(classTok)
+  }
   const key = cacheKey(heroToken, desc)
   const done = ready.get(key)
   if (done) return Promise.resolve(done)
@@ -286,6 +300,11 @@ export function getReadyAvatarComposite(
   heroToken: string,
   desc: ParsedMcpAvatarStatstring,
 ): AvatarComposite | undefined {
+  const classTok = heroToken.trim().toLowerCase() as PlayerClassToken
+  const skinSvc = getGlobalCharacterSkinService()
+  if (skinSvc.getSelectedSkinId(classTok) !== null) {
+    return skinSvc.getReadySkinAvatar(classTok)
+  }
   return ready.get(cacheKey(heroToken, desc))
 }
 

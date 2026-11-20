@@ -228,11 +228,17 @@ describe('K2 Wave 7 Batch 2 (w7b2) — 40 D2Game.dll v1.13c functions', () => {
     m.setU8((pQuest + 0x0c) >>> 0, 4);
     expect(ACT1Q2_ActivateOrChainQuest_6FC84E10_113c(m, pQuest)).toBe(1);
 
+    m.setU32(pQuest, 2);
+    m.setU32(m.u32((pGame + 0x10f4) >>> 0), pQuest);
     const pArg = m.alloc(0x20);
     const pMon = m.alloc(0x100);
+    const pMonPath = m.alloc(0x40);
     m.setU32(pMon, 1);
+    m.setU32((pMon + 0x0c) >>> 0, 10);
+    m.setU32((pMon + 0x2c) >>> 0, pMonPath);
+    m.setU32((pGame + 0x1320 + (10 & 0x7f) * 4) >>> 0, pMon);
     m.setU32(pArg, pGame);
-    m.setU32((pArg + 4) >>> 0, pMon);
+    m.setU32((pArg + 8) >>> 0, pMon);
     ACT1Q2_OnBloodRavenKilled_6FC85620_113c(m, pQuest, pArg);
     expect(m.u8((pQuest + 0x0c) >>> 0)).toBe(4);
   });

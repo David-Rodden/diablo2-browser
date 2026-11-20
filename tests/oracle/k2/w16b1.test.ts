@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { INVENTORY_AllocInventory113c } from '../../../src/d2kern-113c/common/inventory';
+import { initD2GameGlobalsInMem113c } from '../../../src/d2kern-113c/game/regpop-spawn-113c';
 import {
   ACT2Q2_InitQuestTableRecord_6FCE7ED0_113c,
   ACT2Q6_InitQuestTableRecord_6FCE9F60_113c,
@@ -48,13 +50,7 @@ import { SparseMemory113c } from '../../../src/d2kern-113c/mem/sparse-memory';
 function createMem(): SparseMemory113c {
   const m = new SparseMemory113c();
   m.fill(0, 0x80000, 0);
-  m.fill(0x6fd18d00, 0x200, 0);
-  m.fill(0x6fd27d00, 0x200, 0);
-  m.fill(0x6fd31000, 0x2000, 0);
-  m.fill(0x6fd44e00, 0x400, 0);
-  m.fill(0x6fddc000, 0x2000, 0);
-  m.fill(0x6fde9e00, 0x200, 0);
-  m.fill(0x6fdf0000, 0x2000, 0);
+  m.fill(0x6fd00000, 0x100000, 0);
   m.setU32(0x6fdf0b98, 0x300);
   m.setU32(0x6fdf0b4c, 0x50000);
   for (let i = 0; i < 256; i += 1) {
@@ -247,8 +243,22 @@ describe('K2 Wave 16 Batch 1 (w16b1) - 42 D2Game.dll v1.13c functions', () => {
     const pPlayer = 0x20000;
     const pData = 0x30000;
     const pClient = 0x40000;
+    m.fill(0x6fd40000, 0x4000, 0);
+    initD2GameGlobalsInMem113c(m, m.alloc(0x2000));
+    m.setU32(pGame + 0x90, 10);
+    m.setU32(pPlayer + 0x0c, 1);
     m.setU32(pPlayer + 0x14, pData);
+    INVENTORY_AllocInventory113c(m, 0, pPlayer);
     m.setU32(pPlayer + 0x2c, 0x25000);
+    m.setU32(0x25000 + 0x1c, 0x26000);
+    m.setU32(0x26100, 0x26000);
+    m.setU32(0x26000, 0x26100);
+    m.setU32(0x26000 + 0x10, 0x26200);
+    m.setU32(0x26000 + 0x24, 1);
+    m.setU32(0x26000 + 0x54, 100);
+    m.setU32(0x26000 + 0x58, 100);
+    m.setU32(0x26200 + 0x58, 0x26300);
+    m.setU32(0x26300 + 0x1d0, 1);
     m.setU32(pData + 0x9c, pClient);
     m.setU32(0x6fd31c3c, 1);
     PLAYER_HandleDeathCorpseAndSave_6FC99730_113c(m, pGame, pPlayer);
@@ -350,6 +360,7 @@ describe('K2 Wave 16 Batch 1 (w16b1) - 42 D2Game.dll v1.13c functions', () => {
     m.setU32(pQuest + 0x18, pState);
     m.setU32(pQuestArg, pGame);
     m.setU32(pQuestArg + 0x04, pObj);
+    m.setU32(pObj + 0x04, 0x188);
     m.setU32(pQuestArg + 0x10, 0x188);
     expect(ACT4Q3_OnDiabloSealOperate_6FCDBF30_113c(m, pQuestArg)).toBe(0);
     expect(m.u8(pState + 0x0c)).toBe(1);

@@ -29,7 +29,10 @@ import {
   MONSTERS_IsDead113c,
 } from '../tables/datatbls-113c.ts'
 import { QUESTS_GuidListRemove113c } from './a1c-post150-f150-f276-113c.ts'
-import { MONSTER_DispatchMinionComponentCallbacks113c } from './boot-init-gap-a-113c.ts'
+import {
+  MONSTER_DispatchMinionComponentCallbacks113c,
+  NET_QueuePacketToClientBuffer113c,
+} from './boot-init-gap-a-113c.ts'
 import {
   D2GAME_IAT_GDW_BITMASKS_VA_113C,
   D2GAME_IAT_SGPT_DATATABLES_VA_113C,
@@ -108,6 +111,7 @@ function dispatchMonUModMatrix6FC468E0(
     )
     return
   }
+  hitD2GameVa113c(0x6FC468E0)
   let bBoss = 0
   if (pMonster !== 0 && (m.u32(pMonster >>> 0) >>> 0) === 1) {
     const pMonData0 = m.u32((pMonster + 0x14) >>> 0) >>> 0
@@ -147,6 +151,8 @@ function dispatchMonUModMatrix6FC468E0(
 /**
  * Exact 1.13c `D2Game 0x6FCAA3E0` (`eax = pClient`, `[esp+4] = pPacket`, `[esp+8] = nSize`, `ret 8`)
  * S2C `0x208`-byte `D2PacketDataStrc` queue append (`+0x1B8` head, `+0x1BC` tail, `+0x1C0` free list).
+ * Delegates to canonical `NET_QueuePacketToClientBuffer113c` so `0x6FCAA3E0` VA traces and
+ * `activeFrameS2CTrace113c` captures stay 1:1 with `D2Game.dll`.
  */
 function queuePacketToClient6FCAA3E0(
   m: Memory113c,
@@ -154,34 +160,7 @@ function queuePacketToClient6FCAA3E0(
   pPacket: number,
   nSize: number,
 ): void {
-  if (pClient === 0) return
-  const len = nSize | 0
-  let pNode = m.u32((pClient + 0x1bc) >>> 0) >>> 0
-  let curLen = pNode !== 0 ? (m.u32(pNode) | 0) : 0
-  if (((curLen + len) | 0) > 0x200 || pNode === 0) {
-    const pFree = m.u32((pClient + 0x1c0) >>> 0) >>> 0
-    if (pFree !== 0) {
-      const pNextFree = m.u32((pFree + 0x204) >>> 0) >>> 0
-      m.setU32((pClient + 0x1c0) >>> 0, pNextFree)
-      pNode = pFree
-    } else {
-      pNode = m.alloc(0x208) >>> 0
-    }
-    m.fill(pNode, 0x208, 0)
-    const pPrevTail = m.u32((pClient + 0x1bc) >>> 0) >>> 0
-    if (pPrevTail === 0) {
-      m.setU32((pClient + 0x1b8) >>> 0, pNode)
-    } else {
-      m.setU32((pPrevTail + 0x204) >>> 0, pNode)
-    }
-    m.setU32((pClient + 0x1bc) >>> 0, pNode)
-    curLen = 0
-  }
-  const dstBase = (pNode + 4 + curLen) >>> 0
-  for (let i = 0; i < len; i++) {
-    m.setU8((dstBase + i) >>> 0, m.u8((pPacket + i) >>> 0))
-  }
-  m.setU32(pNode, ((m.u32(pNode) | 0) + len) >>> 0)
+  NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPacket >>> 0, nSize | 0)
 }
 
 // ============================================================================

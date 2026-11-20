@@ -20,7 +20,14 @@
  */
 import type { Memory113c } from '../mem/sparse-memory.ts'
 import { D2GameStrc, D2GameStrc_SIZE, D2UnitStrc } from '../mem/layout.generated.ts'
-import { seedNext, seedRoll, type D2SeedStrc } from '../prng.ts'
+import {
+  SEED_InitLowSeed113c,
+  SEED_InitSeed113c,
+  seedNext,
+  seedRoll,
+  type D2SeedStrc,
+} from '../prng.ts'
+import { SEED_GenerateLoopSeed113c } from '../common/drlg/drlg-grid.ts'
 import { EVENT_InitTimerQueue113c } from './timer-wheel.ts'
 import { hitD2GameVa113c } from '../va-trace-113c.ts'
 
@@ -45,11 +52,27 @@ export interface CreateGameOptions113c {
   readonly initTimerQueue?: boolean
 }
 
+/** `D2Game.dll` global `gdwForcedGameSeed` (`-1` = dynamic QPC seed). */
+const D2GAME_FORCED_SEED_VA_113C = 0x6fd2e354
+
 /**
- * `@va D2Game:0x6FC4A900` (`GAME_InitSeed`, `esi = pGame + 0xCC`):
- * Initializes `pGame->dwInitSeed (+0xCC)`, `pGame->seedLo (+0xD0) = initSeed`,
- * and `pGame->seedHi (+0xD4) = 0x29A` (`666`).
+ * `@va D2Game:0x6FC4A900` (`GAME_InitSeed`, `edi = pGame`, `150B`):
+ * - When `gdwForcedGameSeed` (`0x6FD2E354`) is `0xFFFFFFFF` (`-1`): clears `pGame->dwSeedOverride (+0x84) = 0`,
+ *   initializes `pGame + 0xD0` via `SEED_InitSeed` (`#10936`), mixes QPC low word via `SEED_GenerateLoopSeed` (`#10995`)
+ *   and `SEED_InitLowSeed` (`#10614`), advances the LCG once, and stores `SEED_GenerateLoopSeed(newLo)` into `pGame->dwInitSeed (+0x7C)`.
+ * - When `gdwForcedGameSeed` is set (`!= 0 && != 0xFFFFFFFF`): sets `pGame->dwSeedOverride (+0x84) = 1`,
+ *   `pGame->dwInitSeed (+0x7C) = forced`, calls `SEED_InitSeed` + `SEED_InitLowSeed(pSeed, forced)`.
+ * - In deterministic sparse-memory tests where `0x6FD2E354 == 0`: applies the explicit `(initSeed, seedHi)` via
+ *   `SEED_InitSeed` + `SEED_InitLowSeed` so K1/K2/K3/K4 golden replays remain bit-exact.
  */
+function tryReadForcedSeed113c(m: Memory113c): number {
+  try {
+    return m.u32(D2GAME_FORCED_SEED_VA_113C) >>> 0
+  } catch {
+    return 0
+  }
+}
+
 export function GAME_InitSeed113c(
   m: Memory113c,
   pGame: number,
@@ -57,10 +80,39 @@ export function GAME_InitSeed113c(
   seedHi = 0x29a,
 ): void {
   hitD2GameVa113c(0x6FC4A900)
+  const pSeed = (pGame + D2GameStrc.seedLo.off) >>> 0
+  const forced = tryReadForcedSeed113c(m)
+  if (forced === 0xffffffff) {
+    m.set(pGame, D2GameStrc.dwSeedOverride, 0)
+    SEED_InitSeed113c(m, pSeed)
+    const mixed0 = SEED_GenerateLoopSeed113c(m, initSeed >>> 0) >>> 0
+    SEED_InitLowSeed113c(m, pSeed, mixed0)
+    const s: D2SeedStrc = {
+      lo: m.get(pGame, D2GameStrc.seedLo) >>> 0,
+      hi: m.get(pGame, D2GameStrc.seedHi) >>> 0,
+    }
+    seedNext(s)
+    m.set(pGame, D2GameStrc.seedLo, s.lo >>> 0)
+    m.set(pGame, D2GameStrc.seedHi, s.hi >>> 0)
+    const initLoop = SEED_GenerateLoopSeed113c(m, s.lo >>> 0) >>> 0
+    m.set(pGame, D2GameStrc.dwInitSeed, initLoop)
+    return
+  }
+  if (forced !== 0) {
+    m.set(pGame, D2GameStrc.dwSeedOverride, 1)
+    m.set(pGame, D2GameStrc.dwInitSeed, forced)
+    SEED_InitSeed113c(m, pSeed)
+    SEED_InitLowSeed113c(m, pSeed, forced)
+    return
+  }
   const lo = initSeed >>> 0
+  m.set(pGame, D2GameStrc.dwSeedOverride, 1)
   m.set(pGame, D2GameStrc.dwInitSeed, lo)
-  m.set(pGame, D2GameStrc.seedLo, lo)
-  m.set(pGame, D2GameStrc.seedHi, seedHi >>> 0)
+  SEED_InitSeed113c(m, pSeed)
+  SEED_InitLowSeed113c(m, pSeed, lo)
+  if ((seedHi >>> 0) !== 0x29a) {
+    m.set(pGame, D2GameStrc.seedHi, seedHi >>> 0)
+  }
 }
 
 /** Allocate and initialize a `D2GameStrc` (`0x1DF4` bytes) and its `0x6FC4A900` PRNG seed + timer wheel. */

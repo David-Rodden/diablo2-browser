@@ -91,6 +91,10 @@ import {
   SUNITDMG_ExecuteMissileOrMeleeDmg113c,
   type FallenSliceWorld113c,
 } from './replay-kernel-113c.ts'
+import { SEED_RollLimitedRandomNumber113c } from './combat-a1c-113c.ts'
+import { AITARGET_ScanUnitsByModeTable113c } from './town-runtime-gap-113c.ts'
+import { MONAI_FindTargetOrNearestBlockingObstacle_6FCD1BC0_113c } from './k2-w5b3-113c.ts'
+import { MONSTER_SpawnFallenShamanPack_6FD0FB80_113c } from './k2-w7b4-113c.ts'
 import { hitD2GameVa113c } from '../va-trace-113c.ts'
 
 /** `D2Game.dll` `.data` `0x6FD2E668`: special AI dispatch table (`16` bytes/row). */
@@ -836,12 +840,14 @@ export function AI_Skeleton113c(
     m.setU32((pAiControl + 0x14) >>> 0, 1)
     if (world !== undefined) {
       AI_ApproachTarget113c(world, pUnit, pTarget, 2, 0, 0, 1, 0)
+    } else {
+      AI_ApproachTarget113c(m, pGame, pUnit, pTarget, 2, 0, 0, 1, 0)
     }
     return
   }
 
   if (nDist > 3) {
-    const wanderRoll = SEED_RollLimitedFast113c(m, pUnitSeed, 100)
+    const wanderRoll = SEED_RollLimitedRandomNumber113c(m, pUnitSeed, 100)
     const bDiffNow = m.u8((pGame + 0x6d) >>> 0)
     const aip2 = sx16(m.u16((pMonStatsTxt + 0x5c + bDiffNow * 2) >>> 0))
     if (wanderRoll < aip2) {
@@ -851,11 +857,15 @@ export function AI_Skeleton113c(
       m.setU32((pAiParam + 0x1c) >>> 0, 0xffffffce)
       if (world !== undefined) {
         AI_IdleWander113c(world, pUnit, 4)
+      } else {
+        AI_IdleWander113c(m, pGame, pUnit, 4)
       }
       return
     }
     if (world !== undefined) {
       AI_IdleWander113c(world, pUnit, 3)
+    } else {
+      AI_IdleWander113c(m, pGame, pUnit, 3)
     }
     return
   }
@@ -870,7 +880,10 @@ export function AI_Skeleton113c(
   if (aip4Close !== 0) {
     m.setU32((pAiParamClose + 0x1c) >>> 0, aip4Close >>> 0)
   }
-  const fledClose = world !== undefined ? AI_FleeFrom113c(world, pTarget, pUnit, 4, true) : 0
+  const fledClose =
+    world !== undefined
+      ? AI_FleeFrom113c(world, pTarget, pUnit, 4, true)
+      : AI_FleeFrom113c(m, pGame, pUnit, pTarget, 4, 0)
   if (!fledClose) {
     AI_StartAttackMode113c(m, 4, pUnit, pGame, pTarget, world, hooks)
   }
@@ -966,6 +979,15 @@ export function AI_FallenShaman113c(
         useCustomCorpseFilter ? 1 : 9,
         useCustomCorpseFilter,
       )
+    } else {
+      AITARGET_ScanUnitsByModeTable113c(
+        m,
+        useCustomCorpseFilter ? 1 : 9,
+        pScanCtx,
+        pGame,
+        pUnit,
+        useCustomCorpseFilter ? 0x6fc9bd50 : 0,
+      )
     }
 
     const rallyRoll = (stepSeed64Inline(m, pUnitSeed) >>> 0) % 100
@@ -1011,7 +1033,13 @@ export function AI_FallenShaman113c(
       const pAltTarget =
         hooks !== undefined && hooks.onFindNearestPlayer !== undefined
           ? hooks.onFindNearestPlayer(m, pGame, pUnit, pNearDist) >>> 0
-          : 0
+          : MONAI_FindTargetOrNearestBlockingObstacle_6FCD1BC0_113c(
+              m,
+              pUnit,
+              pGame,
+              0,
+              pNearDist,
+            ) >>> 0
       curDist = m.u32(pNearDist) | 0
       if (pAltTarget !== 0) {
         const bDiff6 = m.u8((pGame + 0x6d) >>> 0)
@@ -1537,6 +1565,7 @@ export function SKILLS_CanMonsterCastAtTarget113c(
   nSkillId: number,
   x: number,
   hooks?: AiFallenHooks113c,
+  pGameArg = 0,
 ): number {
   hitD2GameVa113c(0x6FD13E30)
   const id = nSkillId | 0
@@ -1595,10 +1624,34 @@ export function SKILLS_CanMonsterCastAtTarget113c(
 
   if (id === 0xc7) {
     const tRoom = UNITS_GetRoom113c(m, pTarget)
+    const resolvedGame =
+      (pGameArg >>> 0) !== 0
+        ? (pGameArg >>> 0)
+        : pTarget !== 0
+          ? (m.u32((pTarget + 0x80) >>> 0) >>> 0)
+          : pCaster !== 0
+            ? (m.u32((pCaster + 0x80) >>> 0) >>> 0)
+            : 0
     if (hooks !== undefined && hooks.onSpawnBonePrison !== undefined) {
-      return hooks.onSpawnBonePrison(m, pTarget, 0x154, pCaster, tRoom, 1) | 0
+      return hooks.onSpawnBonePrison(
+        m,
+        pTarget,
+        0x154,
+        resolvedGame !== 0 ? resolvedGame : pCaster,
+        tRoom,
+        1,
+      ) | 0
     }
-    return 0
+    return MONSTER_SpawnFallenShamanPack_6FD0FB80_113c(
+      m,
+      pTarget,
+      0x154,
+      resolvedGame,
+      tRoom,
+      0,
+      0,
+      1,
+    ) | 0
   }
 
   if (id === 0xb8) {

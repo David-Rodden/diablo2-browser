@@ -13,12 +13,15 @@ import { gunzipSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
 import { D2GameStrc, D2UnitStrc } from '../../../src/d2kern-113c/mem/layout.generated.ts'
 import { beginVaTrace113c, endVaTrace113c } from '../../../src/d2kern-113c/va-trace-113c.ts'
+import { collectImportGraph, legacyReachable } from '../../../tools/oracle/kern-replay/import-graph.ts'
+import type { Coverage113c } from '../../../tools/oracle/kern-replay/gap-report.ts'
 import { parseTrace, type Trace, type TraceHeader, type UnitRow } from '../../../tools/oracle/lib/trace-diff.ts'
 import {
   REPO_ROOT_113C,
   UnportedFunction113c,
   bootFromSnapshot113c,
   diffFrame113c,
+  loadManifest113c,
   loadScenario113c,
   loadSnapshotFile113c,
   manifestKey113c,
@@ -47,6 +50,41 @@ function k4GoldenPath(name: string): string {
 
 function k4SnapshotPath(name: string, bootFrame: number): string {
   return join(K4_FIXTURES_DIR, `${name}.snap-f${String(bootFrame).padStart(3, '0')}.ndjson.gz`)
+}
+
+function k4CoveragePath(name: string): string {
+  return join(K4_FIXTURES_DIR, `${name}.coverage.ndjson.gz`)
+}
+
+function loadK4Coverage113c(name: string): Coverage113c {
+  const lines = gunzipSync(readFileSync(k4CoveragePath(name)))
+    .toString('utf8')
+    .split('\n')
+    .filter((l) => l.trim().length > 0)
+  const hdr = JSON.parse(lines[0] as string) as {
+    k: string
+    from: number
+    to: number
+    entries: number
+    hit: number
+    otherThreadHits: number
+  }
+  if (hdr.k !== 'hdr') throw new Error(`${name}: coverage has no header`)
+  const hits = lines.slice(1).map((l) => {
+    const o = JSON.parse(l) as { m: string; va: string; f: number }
+    return { module: o.m, va: parseInt(o.va, 16), firstFrame: o.f }
+  })
+  if (hits.length !== hdr.hit) {
+    throw new Error(`${name}: coverage header says ${hdr.hit} hits, file has ${hits.length}`)
+  }
+  return {
+    from: hdr.from,
+    to: hdr.to,
+    entries: hdr.entries,
+    hit: hdr.hit,
+    otherThreadHits: hdr.otherThreadHits,
+    hits,
+  }
 }
 
 function loadK4Golden(name: string): Trace {
@@ -176,13 +214,50 @@ function runK4QuestReplay113c(name: string, bootFrame = 2): { result: ReplayResu
 interface K4QuestSpec {
   readonly name: string
   readonly expectedTownLevelId: number
+  readonly frames: number
+  readonly totalHits: number
+  readonly d2CommonExecuted: number
+  readonly d2GameExecuted: number
+  /** Pre-boot (`firstFrame <= bootFrame`, i.e. `F1..F2`) `D2Common` gap ceiling before `snap-f002` capture. */
+  readonly maxD2CommonPreBootGap: number
+  /** Pre-boot (`firstFrame <= bootFrame`, i.e. `F1..F2`) `D2Game` gap ceiling before `snap-f002` capture. */
+  readonly maxD2GamePreBootGap: number
+  /** Stepped (`firstFrame >= bootFrame + 1`, i.e. `F3..FN`) `D2Common` runtime execution gap ceiling. */
+  readonly maxD2CommonSteppedRuntimeExecGap: number
+  /** Stepped (`firstFrame >= bootFrame + 1`, i.e. `F3..FN`) `D2Game` runtime execution gap ceiling. */
+  readonly maxD2GameSteppedRuntimeExecGap: number
+  readonly maxD2CommonRuntimeExecGap: number
+  readonly maxD2GameRuntimeExecGap: number
+  readonly expectedCoverageSha256: string
   readonly verifyGoldenQuestOutcome: (golden: Trace, lastFrame: number) => void
 }
+
+/** Monotonic ceiling on the 5-scenario K4 union of `D2Common` total `runtimeExecGap` (`444 / 445` hit in TS). */
+const MAX_K4_UNION_D2COMMON_RUNTIME_EXEC_GAP = 1
+/** Monotonic ceiling on the 5-scenario K4 union of `D2Game` total `runtimeExecGap` (`459 / 475` hit in TS). */
+const MAX_K4_UNION_D2GAME_RUNTIME_EXEC_GAP = 16
+/** Monotonic ceiling on the 5-scenario K4 union of `D2Common` stepped `F3+` `runtimeExecGap` (`0`). */
+const MAX_K4_UNION_D2COMMON_STEPPED_RUNTIME_EXEC_GAP = 0
+/** Monotonic ceiling on the 5-scenario K4 union of `D2Game` stepped `F3+` `runtimeExecGap` (`0`). */
+const MAX_K4_UNION_D2GAME_STEPPED_RUNTIME_EXEC_GAP = 0
+
+const DONE_STATUSES_113C = new Set(['ported', 'diff-verified'])
 
 const K4_QUEST_SPECS: readonly K4QuestSpec[] = [
   {
     name: 'k4-act1-quest',
     expectedTownLevelId: 1, // Rogue Encampment
+    frames: 160,
+    totalHits: 620,
+    d2CommonExecuted: 347,
+    d2GameExecuted: 273,
+    maxD2CommonPreBootGap: 1,
+    maxD2GamePreBootGap: 0,
+    maxD2CommonSteppedRuntimeExecGap: 0,
+    maxD2GameSteppedRuntimeExecGap: 0,
+    maxD2CommonRuntimeExecGap: 1,
+    maxD2GameRuntimeExecGap: 0,
+    expectedCoverageSha256: 'ea0e4c11e3814b3642e676a3c76ce55ddde4b03fb7e22a8751292e0c10ee9b6d',
     verifyGoldenQuestOutcome: (golden, lastFrame) => {
       const f2 = golden.frames.get(2)!.t0![0]!
       const end = golden.frames.get(lastFrame)!.t0![0]!
@@ -193,6 +268,17 @@ const K4_QUEST_SPECS: readonly K4QuestSpec[] = [
   {
     name: 'k4-act2-quest',
     expectedTownLevelId: 40, // Lut Gholein
+    frames: 140,
+    totalHits: 671,
+    d2CommonExecuted: 366,
+    d2GameExecuted: 305,
+    maxD2CommonPreBootGap: 3,
+    maxD2GamePreBootGap: 6,
+    maxD2CommonSteppedRuntimeExecGap: 0,
+    maxD2GameSteppedRuntimeExecGap: 0,
+    maxD2CommonRuntimeExecGap: 3,
+    maxD2GameRuntimeExecGap: 6,
+    expectedCoverageSha256: 'a0853ff409ef51fe4f6021c0227d3baa418cbd20babbe5c39c72f07c1db46e87',
     verifyGoldenQuestOutcome: (golden, lastFrame) => {
       const f2 = golden.frames.get(2)!.t0![0]!
       const end = golden.frames.get(lastFrame)!.t0![0]!
@@ -203,6 +289,17 @@ const K4_QUEST_SPECS: readonly K4QuestSpec[] = [
   {
     name: 'k4-act3-quest',
     expectedTownLevelId: 75, // Kurast Docks
+    frames: 130,
+    totalHits: 648,
+    d2CommonExecuted: 329,
+    d2GameExecuted: 319,
+    maxD2CommonPreBootGap: 16,
+    maxD2GamePreBootGap: 22,
+    maxD2CommonSteppedRuntimeExecGap: 0,
+    maxD2GameSteppedRuntimeExecGap: 0,
+    maxD2CommonRuntimeExecGap: 16,
+    maxD2GameRuntimeExecGap: 22,
+    expectedCoverageSha256: '1d25006045304249b98a40287b87f2d3e3a94b107ef7032c834f8bf7071b25c0',
     verifyGoldenQuestOutcome: (golden) => {
       // A3Q1 Meshif (wScrollId 0x0211 at F42) deletes 'j34 ' and mints 'g34 ' via QUESTS_CreateItem,
       // advancing pGame->pGameSeed (gs) deterministically on F42.
@@ -215,6 +312,17 @@ const K4_QUEST_SPECS: readonly K4QuestSpec[] = [
   {
     name: 'k4-act4-quest',
     expectedTownLevelId: 103, // Pandemonium Fortress
+    frames: 140,
+    totalHits: 547,
+    d2CommonExecuted: 281,
+    d2GameExecuted: 266,
+    maxD2CommonPreBootGap: 19,
+    maxD2GamePreBootGap: 24,
+    maxD2CommonSteppedRuntimeExecGap: 0,
+    maxD2GameSteppedRuntimeExecGap: 0,
+    maxD2CommonRuntimeExecGap: 19,
+    maxD2GameRuntimeExecGap: 24,
+    expectedCoverageSha256: '76112783e0560d1eef61f6e3fc93357170bc505cbe03e82ffe3bd5889ab6dead',
     verifyGoldenQuestOutcome: (golden, lastFrame) => {
       const f2 = golden.frames.get(2)!.t0![0]!
       const end = golden.frames.get(lastFrame)!.t0![0]!
@@ -225,6 +333,17 @@ const K4_QUEST_SPECS: readonly K4QuestSpec[] = [
   {
     name: 'k4-act5-quest',
     expectedTownLevelId: 109, // Harrogath
+    frames: 140,
+    totalHits: 652,
+    d2CommonExecuted: 329,
+    d2GameExecuted: 323,
+    maxD2CommonPreBootGap: 20,
+    maxD2GamePreBootGap: 31,
+    maxD2CommonSteppedRuntimeExecGap: 0,
+    maxD2GameSteppedRuntimeExecGap: 0,
+    maxD2CommonRuntimeExecGap: 20,
+    maxD2GameRuntimeExecGap: 31,
+    expectedCoverageSha256: '1accd1305a73a78f0d0e7b282539b25f754c12d9f7c4f7fc19c765fb2b05d7f3',
     verifyGoldenQuestOutcome: (golden, lastFrame) => {
       const f2 = golden.frames.get(2)!.t0![0]!
       const end = golden.frames.get(lastFrame)!.t0![0]!
@@ -238,12 +357,27 @@ const K4_QUEST_SPECS: readonly K4QuestSpec[] = [
 
 const horizons = loadK4Horizons()
 const k4ExecutedVaUnion = new Set<string>()
+const cachedK4ReplayByScenario = new Map<string, ReplayResult113c>()
+const cachedK4CoverageByScenario = new Map<string, Coverage113c>()
+const k4PurityCache = new Map<string, boolean>()
+
+function isPureKernFile113c(kf: string): boolean {
+  let v = k4PurityCache.get(kf)
+  if (v === undefined) {
+    v = legacyReachable(collectImportGraph(REPO_ROOT_113C, [kf]), [kf]).length === 0
+    k4PurityCache.set(kf, v)
+  }
+  return v
+}
 
 for (const spec of K4_QUEST_SPECS) {
   const { name, expectedTownLevelId } = spec
   const H = horizons[name]
   if (H === undefined) throw new Error(`k4/horizons.json has no entry for ${name}`)
   const { result: r, golden } = runK4QuestReplay113c(name, H.bootFrame)
+  const cov = loadK4Coverage113c(name)
+  cachedK4ReplayByScenario.set(name, r)
+  cachedK4CoverageByScenario.set(name, cov)
   for (const va of r.tsExecutedVas) k4ExecutedVaUnion.add(va.toUpperCase())
 
   describe(`K4 quest replay ${name} (boot F${H.bootFrame}, strict F${H.strict}, pos F${H.pos})`, () => {
@@ -299,6 +433,90 @@ for (const spec of K4_QUEST_SPECS) {
       }
       expect(r.firstStrictDivergence).not.toBeNull()
       expect(r.firstStrictDivergence!.frame).toBe(r.strictHorizon + 1)
+    })
+
+    it('verifies real 1.13c DLL coverage (.coverage.ndjson.gz), 0 manifest unported/impure VAs, and monotonic runtimeExecGap bounds', () => {
+      const scenario = loadScenario113c(name)
+      const manifest = loadManifest113c()
+      expect(sha256(k4CoveragePath(name))).toBe(spec.expectedCoverageSha256)
+      expect(cov.from).toBe(1)
+      expect(cov.to).toBe(spec.frames)
+      expect(cov.to).toBe(scenario.frames)
+      expect(cov.entries).toBe(manifest.size)
+      expect(cov.otherThreadHits).toBe(0)
+      expect(cov.hit).toBe(spec.totalHits)
+      expect(cov.hits.length).toBe(spec.totalHits)
+
+      const byKey = new Map(cov.hits.map((h) => [manifestKey113c(h.module, h.va), h.firstFrame]))
+      expect(byKey.get('D2Game:0x6FC4E050')).toBe(1)
+      const firstInput = Math.min(...scenario.inputs.map((i) => i.frame))
+      expect(byKey.get('D2Game:0x6FCEC550')).toBe(firstInput)
+
+      const tsSet = new Set(r.tsExecutedVas)
+      let d2CommonDll = 0
+      let d2GameDll = 0
+      let d2CommonTsExec = 0
+      let d2GameTsExec = 0
+      const d2CommonPreBootGapVas: string[] = []
+      const d2CommonSteppedGapVas: string[] = []
+      const d2GamePreBootGapVas: string[] = []
+      const d2GameSteppedGapVas: string[] = []
+      const unportedVas: string[] = []
+      const impureVas: string[] = []
+
+      for (const h of cov.hits) {
+        const key = manifestKey113c(h.module, h.va)
+        const fn = manifest.get(key)
+        expect(fn, `${name}: covered ${key} must exist in manifest-113c.json`).toBeDefined()
+        if (!DONE_STATUSES_113C.has(fn!.status)) unportedVas.push(key)
+        if (typeof fn!.kernFile === 'string' && !isPureKernFile113c(fn!.kernFile)) impureVas.push(key)
+        if (h.module === 'D2Common') {
+          d2CommonDll++
+          if (tsSet.has(key)) d2CommonTsExec++
+          else if (h.firstFrame <= H.bootFrame) d2CommonPreBootGapVas.push(key)
+          else d2CommonSteppedGapVas.push(`${key}@F${h.firstFrame}`)
+        } else if (h.module === 'D2Game') {
+          d2GameDll++
+          if (tsSet.has(key)) d2GameTsExec++
+          else if (h.firstFrame <= H.bootFrame) d2GamePreBootGapVas.push(key)
+          else d2GameSteppedGapVas.push(`${key}@F${h.firstFrame}`)
+        }
+      }
+
+      expect(unportedVas).toEqual([])
+      expect(impureVas).toEqual([])
+      expect(d2CommonDll).toBe(spec.d2CommonExecuted)
+      expect(d2GameDll).toBe(spec.d2GameExecuted)
+      expect(d2CommonTsExec).toBeGreaterThan(0)
+      expect(d2GameTsExec).toBeGreaterThan(0)
+
+      expect(
+        d2CommonSteppedGapVas,
+        `${name} D2Common steppedRuntimeExecGap (F${H.bootFrame + 1}+) must stay <= ${spec.maxD2CommonSteppedRuntimeExecGap}`,
+      ).toHaveLength(spec.maxD2CommonSteppedRuntimeExecGap)
+      expect(
+        d2GameSteppedGapVas,
+        `${name} D2Game steppedRuntimeExecGap (F${H.bootFrame + 1}+) must stay <= ${spec.maxD2GameSteppedRuntimeExecGap}`,
+      ).toHaveLength(spec.maxD2GameSteppedRuntimeExecGap)
+      expect(
+        d2CommonPreBootGapVas.length,
+        `${name} D2Common preBootGap (F1..F${H.bootFrame}) exceeded ceiling (${spec.maxD2CommonPreBootGap})`,
+      ).toBeLessThanOrEqual(spec.maxD2CommonPreBootGap)
+      expect(
+        d2GamePreBootGapVas.length,
+        `${name} D2Game preBootGap (F1..F${H.bootFrame}) exceeded ceiling (${spec.maxD2GamePreBootGap})`,
+      ).toBeLessThanOrEqual(spec.maxD2GamePreBootGap)
+
+      const d2CommonRuntimeGap = d2CommonDll - d2CommonTsExec
+      const d2GameRuntimeGap = d2GameDll - d2GameTsExec
+      expect(
+        d2CommonRuntimeGap,
+        `${name} D2Common runtimeExecGap (${d2CommonRuntimeGap}) exceeded monotonic ratchet ceiling (${spec.maxD2CommonRuntimeExecGap})`,
+      ).toBeLessThanOrEqual(spec.maxD2CommonRuntimeExecGap)
+      expect(
+        d2GameRuntimeGap,
+        `${name} D2Game runtimeExecGap (${d2GameRuntimeGap}) exceeded monotonic ratchet ceiling (${spec.maxD2GameRuntimeExecGap})`,
+      ).toBeLessThanOrEqual(spec.maxD2GameRuntimeExecGap)
     })
 
     if (H.strict >= r.lastGoldenFrame) {
@@ -622,5 +840,69 @@ describe('K4 Act 1-5 quest & town NPC diff-verified VA execution gate', () => {
     expect(K4_PROMOTED_DIFF_VERIFIED_VAS.length).toBe(301)
     const missing = K4_PROMOTED_DIFF_VERIFIED_VAS.filter((va) => !k4ExecutedVaUnion.has(va.toUpperCase()))
     expect(missing).toEqual([])
+  })
+
+  it('enforces 5-scenario union 0 stepped F3+ runtimeExecGap and D2Game (<= 16) / D2Common (<= 1) total runtimeExecGap ratchets', () => {
+    const dllD2CommonUnion = new Set<string>()
+    const dllD2GameUnion = new Set<string>()
+    const dllSteppedD2CommonUnion = new Set<string>()
+    const dllSteppedD2GameUnion = new Set<string>()
+    const tsD2CommonUnion = new Set<string>()
+    const tsD2GameUnion = new Set<string>()
+
+    for (const spec of K4_QUEST_SPECS) {
+      const r = cachedK4ReplayByScenario.get(spec.name)!
+      const cov = cachedK4CoverageByScenario.get(spec.name)!
+      expect(r.strictHorizon).toBe(r.lastGoldenFrame)
+      expect(r.firstStrictDivergence).toBeNull()
+
+      for (const h of cov.hits) {
+        const key = manifestKey113c(h.module, h.va)
+        if (h.module === 'D2Common') {
+          dllD2CommonUnion.add(key)
+          if (h.firstFrame > r.bootFrame) dllSteppedD2CommonUnion.add(key)
+        }
+        if (h.module === 'D2Game') {
+          dllD2GameUnion.add(key)
+          if (h.firstFrame > r.bootFrame) dllSteppedD2GameUnion.add(key)
+        }
+      }
+      for (const key of r.tsExecutedVas) {
+        if (key.startsWith('D2Common:')) tsD2CommonUnion.add(key)
+        if (key.startsWith('D2Game:')) tsD2GameUnion.add(key)
+      }
+    }
+
+    expect(dllD2CommonUnion.size).toBe(445)
+    expect(dllD2GameUnion.size).toBe(475)
+
+    const unionSteppedD2CommonGap: string[] = []
+    for (const key of dllSteppedD2CommonUnion) {
+      if (!tsD2CommonUnion.has(key)) unionSteppedD2CommonGap.push(key)
+    }
+    const unionSteppedD2GameGap: string[] = []
+    for (const key of dllSteppedD2GameUnion) {
+      if (!tsD2GameUnion.has(key)) unionSteppedD2GameGap.push(key)
+    }
+    expect(unionSteppedD2CommonGap).toHaveLength(MAX_K4_UNION_D2COMMON_STEPPED_RUNTIME_EXEC_GAP)
+    expect(unionSteppedD2GameGap).toHaveLength(MAX_K4_UNION_D2GAME_STEPPED_RUNTIME_EXEC_GAP)
+
+    let unionD2CommonGap = 0
+    for (const key of dllD2CommonUnion) {
+      if (!tsD2CommonUnion.has(key)) unionD2CommonGap++
+    }
+    let unionD2GameGap = 0
+    for (const key of dllD2GameUnion) {
+      if (!tsD2GameUnion.has(key)) unionD2GameGap++
+    }
+
+    expect(
+      unionD2CommonGap,
+      `5-scenario K4 D2Common union runtimeExecGap (${unionD2CommonGap}) exceeded monotonic ceiling (${MAX_K4_UNION_D2COMMON_RUNTIME_EXEC_GAP})`,
+    ).toBeLessThanOrEqual(MAX_K4_UNION_D2COMMON_RUNTIME_EXEC_GAP)
+    expect(
+      unionD2GameGap,
+      `5-scenario K4 D2Game union runtimeExecGap (${unionD2GameGap}) exceeded monotonic ceiling (${MAX_K4_UNION_D2GAME_RUNTIME_EXEC_GAP})`,
+    ).toBeLessThanOrEqual(MAX_K4_UNION_D2GAME_RUNTIME_EXEC_GAP)
   })
 })

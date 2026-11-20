@@ -419,6 +419,19 @@ export function initD2GameGlobalsInMem113c(m: Memory113c, pDataTables: number): 
   // Hydrate D2Game MonUMod init table (0x6FD2E550, 44 dwords) and default Experience.bin maxLvl = 99
   m.fill(0x6fd2e550, 0xc0, 0)
   m.setU32(0x6fd2e550 + 1 * 4, 0x6fc43020)
+  const itemClearFlags = [0x20, 0x02, 0x08, 0x80, 0x40, 0x01, 0x200, 0x40000]
+  m.setU32(0x6fd2f0c8, itemClearFlags.length)
+  for (let i = 0; i < itemClearFlags.length; i++) {
+    m.setU32((0x6fd2f0cc + i * 4) >>> 0, itemClearFlags[i]! >>> 0)
+  }
+  const itemClearCmdFlags = [
+    0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x100, 0x40000, 0x400, 0x800,
+    0x1000, 0x2000, 0x200, 0x4000, 0x8000, 0x10000, 0x20000, 0x80000, 0x100000, 0x200000,
+  ]
+  m.setU32(0x6fd2f0ec, itemClearCmdFlags.length)
+  for (let i = 0; i < itemClearCmdFlags.length; i++) {
+    m.setU32((0x6fd2f0f0 + i * 4) >>> 0, itemClearCmdFlags[i]! >>> 0)
+  }
   m.setU32(0x6fdf1480, 99)
   m.setU32(0x6fdf1474, 0x6fdf1480)
   for (let i = 0; i < 9; i++) {
@@ -3205,7 +3218,13 @@ export function MONSTER_GetDifficultyAndPlayerBonus113c(
   const nDiff = m.u8((pGame + 0x6d) >>> 0)
 
   let nSkillBonus = nDiff === 1 ? 3 : nDiff === 2 ? 5 : 0
-  if (m.u32(0x6fdf0b64) !== 0 && m.u32(0x6fdf0b60) !== 0) {
+  let hasMonLvlTable = false
+  try {
+    hasMonLvlTable = m.u32(0x6fdf0b64) !== 0 && m.u32(0x6fdf0b60) !== 0
+  } catch {
+    hasMonLvlTable = false
+  }
+  if (hasMonLvlTable) {
     DATATBLS_GetMonLvlTxtRecord113c(m, nDiff)
   }
   const pIat = m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C) >>> 0

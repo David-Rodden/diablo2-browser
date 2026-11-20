@@ -163,8 +163,8 @@ describe('K2 Wave 8 Batch 2 (w8b2): 30 D2Game VAs 0x6FC85760..0x6FCDA5E0', () =>
     m.setU32((pTemplateDmg + 0x04) >>> 0, 0x20);
     m.setU32(pAuraDamageCtx, pTemplateDmg);
     m.setU32((pAuraDamageCtx + 0x08) >>> 0, 1);
-    m.setU32(pAuraIterArgs, pAttacker);
-    m.setU32((pAuraIterArgs + 0x04) >>> 0, pGame);
+    m.setU32(pAuraIterArgs, pGame);
+    m.setU32((pAuraIterArgs + 0x04) >>> 0, pAttacker);
     m.setU32((pAuraIterArgs + 0x0c) >>> 0, pAuraDamageCtx);
     expect(AURA_ApplyRadialDamageCallback_6FCB54F0_113c(m, pAuraIterArgs, pDefender, () => 0)).toBe(1);
 

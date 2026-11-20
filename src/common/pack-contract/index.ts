@@ -701,7 +701,9 @@ export const CACHEABLE_PREFIXES = [
  * or {@link INTENTIONALLY_UNCACHED_PUBLIC_DIRS}; otherwise `validatePublicAssetRoots`
  * fails fast so new asset roots can never be silently omitted (#1314).
  */
-export const INTENTIONALLY_UNCACHED_PUBLIC_DIRS: readonly string[] = [] as const
+export const INTENTIONALLY_UNCACHED_PUBLIC_DIRS: readonly string[] = [
+  'skins/',
+] as const
 
 /**
  * Explicit allowlist for top-level files directly under `public/` that are

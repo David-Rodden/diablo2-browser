@@ -95,7 +95,6 @@ import {
 import {
   UNITS_AreUnitsAligned113c,
   UNITS_CanUnitMeleeAttackTarget113c,
-  UNITS_GetEquippedWeaponAdder113c,
   UNITS_GetRoom113c,
   UNITS_GetShiftedFrameMetrics113c,
   UNITS_HasCollisionBetweenUnits113c,
@@ -138,10 +137,7 @@ import {
   SUNITDMG_AllocCombat113c,
   SUNITDMG_ApplyDamage113c,
   SUNITDMG_ApplySideEffectsAndKill113c,
-  SUNITDMG_CalcMonsterExperience113c,
-  SUNITDMG_CheckToHit113c,
   SUNITDMG_ExecuteEvents113c,
-  SUNITDMG_RollPassiveWeaponBlockOrShieldBlock113c,
 } from './combat-a1c-113c'
 import { SUNIT_GetServerUnit113c } from './game-strc'
 import {
@@ -157,7 +153,10 @@ import {
   MISSILE_CreateServerProjectile113c,
   STATES_OnTimedStateRemoved113c,
 } from './k2-gap-melee-dot-113c'
-import { type SUnitDmgHooks113c } from './k2-real-s2c-combat-113c'
+import {
+  SUNITDMG_RollMeleeToHitAndBlock_6FCFE5A0_113c,
+  type SUnitDmgHooks113c,
+} from './k2-real-s2c-combat-113c'
 import {
   CHARSTATS_GetRecordPtrFast_6FC210A0_113c,
   PETTYPE_GetRecordPtrFast_6FC21B60_113c,
@@ -281,61 +280,16 @@ function writeI32(m: D2KernMemory113c, addr: number, val: number): void {
   m.setU32(addr >>> 0, val >>> 0)
 }
 
-function rollMeleeToHitAndBlock6FCFE5A0(
-  m: D2KernMemory113c,
-  pAttacker: number,
-  pDefender: number,
-  pGame: number,
-  nToHitBonus: number,
-  nWeaponRangePenalty: number,
-): number {
-  void SUNITDMG_CalcMonsterExperience113c
-  const att = pAttacker >>> 0
-  const def = pDefender >>> 0
-  if (att === 0 || def === 0) return 0
-  const attType = m.u32(att) | 0
-  if (attType !== 0 && attType !== 1) return 0
-  const defType = m.u32(def) | 0
-  if (defType !== 0 && defType !== 1) return 0
-  if ((SUNIT_AreUnitsHostileOrUnaligned113c(m, def, att, pGame >>> 0) | 0) === 0) return 0
+// Exact D2Game.dll .rdata Catapult skill table at 0x6FD1B69C
+const CATAPULT_SKILLS_6FD1B69C = [0x11f, 0x120, 0x12f, 0x130, 0x131] as const
 
-  let wFlags = 0
-  if (defType === 0 && (m.u32((def + 0x10) >>> 0) | 0) === 3) {
-    wFlags = 1
-  }
-
-  let nAdder = attType === 1 ? 3 : 1
-  if ((nWeaponRangePenalty | 0) !== 0) {
-    const wpAdder = UNITS_GetEquippedWeaponAdder113c(m, att) | 0
-    nAdder = (nAdder - (wpAdder + (nWeaponRangePenalty | 0))) | 0
-  }
-  if ((UNITS_CanUnitMeleeAttackTarget113c(m, att, def, nAdder) | 0) === 0) return 0
-
-  if ((wFlags & 1) === 0) {
-    if ((SUNITDMG_CheckToHit113c(m, att, def, 0, nToHitBonus | 0) | 0) !== 0) {
-      wFlags |= 1
-    }
-  }
-
-  if ((wFlags & 1) !== 0) {
-    const blockMask = SUNITDMG_RollPassiveWeaponBlockOrShieldBlock113c(m, def) | 0
-    if ((blockMask & 2) !== 0) wFlags |= 0x100
-    if ((blockMask & 4) !== 0) wFlags |= 0x80
-    if ((blockMask & 0x10) !== 0) wFlags |= 0x8000
-    if ((blockMask & 1) !== 0) wFlags |= 0x10
-    if (blockMask !== 0) wFlags &= 0xfffe
-  }
-
-  if ((wFlags & 0x10) !== 0) {
-    wFlags &= 0xfffe
-  }
-
-  if ((wFlags & 1) !== 0) {
-    if ((STATES_CheckState113c(m, def, 0x36) | 0) === 0) {
-      wFlags |= 4
-    }
-  }
-  return wFlags & 0xffff
+function rollSeedLimited6FC21180(m: D2KernMemory113c, pSeed: number, nRange: number): number {
+  const ptr = pSeed >>> 0
+  const seed = { lo: m.u32(ptr) >>> 0, hi: m.u32((ptr + 4) >>> 0) >>> 0 }
+  const roll = seedRoll(seed, nRange | 0) | 0
+  m.setU32(ptr, seed.lo >>> 0)
+  m.setU32((ptr + 4) >>> 0, seed.hi >>> 0)
+  return roll
 }
 
 /**
@@ -403,7 +357,7 @@ export function SKILLS_DoChargeStart_6FCB9620_113c(
     SKILLS_SetParam2113c(m, pSkill, 0)
   }
 
-  SKILLS_SetParam0C113c(m, pSkill, 7)
+  SKILLS_SetParam4113c(m, pSkill, 7)
   let nBaseVel = 0x100
   if (m.u32(pUnit >>> 0) === 0) {
     const pCharStats = CHARSTATS_GetRecordPtrFast_6FC210A0_113c(
@@ -419,7 +373,7 @@ export function SKILLS_DoChargeStart_6FCB9620_113c(
     if (pMonStats !== 0) {
       nBaseVel = (readI16(m, (pMonStats + 0x34) >>> 0) << 8) | 0
       if (nClassId === 0xd3) {
-        SKILLS_SetParam0C113c(m, pSkill, 0x0f)
+        SKILLS_SetParam4113c(m, pSkill, 0x0f)
       }
       PATH_ClearPrevTargetCoord113c(m, pPath)
       PATH_SetNewDistance113c(m, pPath, 0x14)
@@ -431,10 +385,10 @@ export function SKILLS_DoChargeStart_6FCB9620_113c(
     nVelPct = 0x32
   }
   const nParam1 = SKILLS_GetParam1Fast_6FC21B90_113c(m, skillId) | 0
-  const nScaledVel = mulDiv113c(nBaseVel, (nParam1 + nVelPct) | 0, 100) | 0
+  const nScaledVel = mulDiv113c((nParam1 + nVelPct) | 0, nBaseVel, 100) | 0
   PATH_SetVelocity113c(m, pPath, nScaledVel, 0x6fd1ba14, 0x330)
   PATH_Compute113c(m, pPath, pUnit >>> 0, 0)
-  SKILLS_SetParam4113c(m, pSkill, 0x1001)
+  SKILLS_SetParam0C113c(m, pSkill, 0x1001)
   STATES_ToggleGfxStateFlag113c(m, pUnit >>> 0, 0x12, 1)
   return 1
 }
@@ -483,8 +437,11 @@ export function SKILLS_DoRedemptionAuraPulse_6FCBA400_113c(
     ) | 0
   const nDuration = (1 - readI32(m, (pGame + 0xa8) >>> 0) + nNextTrigger) | 0
 
-  const sp = m.alloc(0x80) >>> 0
+  const sp = m.alloc(0x90) >>> 0
   const pAuraSpec = (sp + 0x40) >>> 0
+  for (let z = 0; z < 0x50; z += 4) {
+    m.setU32((pAuraSpec + z) >>> 0, 0)
+  }
   writeI32(m, pAuraSpec, wAuraState)
   writeI32(m, (pAuraSpec + 0x04) >>> 0, skillId)
   writeI32(m, (pAuraSpec + 0x08) >>> 0, lvl)
@@ -1062,8 +1019,8 @@ export function SKILLS_EnsureWeaponOrQuiverElseStartModeCast_6FCC1600_113c(
   if (SKILLS_EnsurePlayerWeaponOrQuiverQuantity_6FCBEB80_113c(m, pUnit >>> 0) !== 0) {
     return 1
   }
-  PLAYER_ScheduleSkillActionFrameEvents113c(m, pGame >>> 0, pUnit >>> 0, 0, 0)
-  PLAYER_StartModeCast113c(m, pGame >>> 0, pUnit >>> 0)
+  PLAYER_ScheduleSkillActionFrameEvents113c(m, pGame >>> 0, pUnit >>> 0)
+  PLAYER_StartModeCast113c(m, pGame >>> 0, pUnit >>> 0, 0, '1HS', true)
   return 0
 }
 
@@ -1305,7 +1262,7 @@ export function AI_ReverseCheckAndCastRandomPosSkill_6FCC4FD0_113c(
   let nCountRem = readI32(m, (pAiControl + 0x18) >>> 0)
   let nSkillIdx: number
   if (nCountRem <= 0) {
-    nSkillIdx = SEED_RollLimitedFast113c(m, pSeed, 5) | 0
+    nSkillIdx = rollSeedLimited6FC21180(m, pSeed, 5) | 0
     writeI32(m, (pAiControl + 0x14) >>> 0, nSkillIdx)
     nCountRem = readI16(m, (pMonStats + m.u8((pGame + 0x6d) >>> 0) * 2 + 0x6e) >>> 0)
   } else {
@@ -1315,11 +1272,11 @@ export function AI_ReverseCheckAndCastRandomPosSkill_6FCC4FD0_113c(
   writeI32(m, (pAiControl + 0x18) >>> 0, nCountRem)
 
   const wSpreadX = readI16(m, (pMonStats + m.u8((pGame + 0x6d) >>> 0) * 2 + 0x68) >>> 0)
-  const rollX = (SEED_RollLimitedFast113c(m, pSeed, wSpreadX << 1) - wSpreadX) | 0
+  const rollX = (rollSeedLimited6FC21180(m, pSeed, wSpreadX << 1) - wSpreadX) | 0
   const targetX = (UNIT_GetPosX113c(m, pTarget) + rollX) | 0
 
   const wSpreadY = readI16(m, (pMonStats + m.u8((pGame + 0x6d) >>> 0) * 2 + 0x68) >>> 0)
-  const rollY = (SEED_RollLimitedFast113c(m, pSeed, wSpreadY << 1) - wSpreadY) | 0
+  const rollY = (rollSeedLimited6FC21180(m, pSeed, wSpreadY << 1) - wSpreadY) | 0
   const targetY = (UNIT_GetPosY113c(m, pTarget) + rollY) | 0
 
   const spCoord = m.alloc(8) >>> 0
@@ -1327,7 +1284,9 @@ export function AI_ReverseCheckAndCastRandomPosSkill_6FCC4FD0_113c(
   writeI32(m, (spCoord + 4) >>> 0, targetY)
   const pRoom = UNITS_GetRoom113c(m, pUnit >>> 0) >>> 0
   if (COLLISION_FindFreePositionWithStep113c(m, pRoom, spCoord, 2, 0x805, 3) !== 0) {
-    const nSkillId = readI32(m, (0x6fd1b69c + nSkillIdx * 4) >>> 0)
+    const nMemSkill = readI32(m, (0x6fd1b69c + nSkillIdx * 4) >>> 0)
+    const nSkillId =
+      nMemSkill !== 0 ? nMemSkill : nSkillIdx >= 0 && nSkillIdx < 5 ? CATAPULT_SKILLS_6FD1B69C[nSkillIdx]! : 0
     AI_CastSkillWithMode113c(
       m,
       4,
@@ -1679,8 +1638,7 @@ export function ITEMS_UseTimedStateBuffPotion_6FCCE4D0_113c(
   if (pStatList === 0) {
     const nOwnerType = pUnit !== 0 ? m.u32(pUnit >>> 0) : 6
     const nOwnerId = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : -1
-    const pMemPool = pGame !== 0 ? m.u32((pGame + 0x1c) >>> 0) : 0
-    pStatList = STATLIST_AllocList113c(m, pMemPool, 2, 0, nOwnerType, nOwnerId) >>> 0
+    pStatList = STATLIST_AllocList113c(m, 2, nOwnerType, nOwnerId, 0, 0) >>> 0
     if (pStatList === 0) return 0
     STATLIST_SetState113c(m, pStatList, wState)
     STATES_ToggleGfxStateFlag113c(m, pUnit >>> 0, wState, 1)
@@ -1802,8 +1760,8 @@ export function MONAI_FindClosestWalkableHostileMeleeTargetCallback_6FCD1520_113
         if (
           MONAI_CheckLineOfWalkFreeCoordsBetweenUnits_6FCD0E90_113c(
             m,
-            pCandidateUnit >>> 0,
             pOriginUnit >>> 0,
+            pCandidateUnit >>> 0,
           ) !== 0
         ) {
           m.setU32(pBestCtx >>> 0, pCandidateUnit >>> 0)
@@ -2137,7 +2095,7 @@ export function SKILLS_DoFeralRageOrHungerHit_6FCD3B20_113c(
   if (newLife >= maxLife) newLife = maxLife
   STATLIST_SetUnitStat113c(m, pUnit >>> 0, 6, newLife, 0)
 
-  SUNITDMG_ApplyDamage113c(m, pGame >>> 0, pUnit >>> 0, pTarget, pDmg)
+  SUNITDMG_ApplyDamage113c(m, pGame >>> 0, pUnit >>> 0, pTarget, pDmg, 1, undefined, 1)
   if (STATLIST_GetUnitStat113c(m, pTarget, 6, 0) === 0) {
     m.setU8((pDmg + 0x04) >>> 0, (m.u8((pDmg + 0x04) >>> 0) | 2) & 0xff)
   }
@@ -2193,7 +2151,7 @@ export function SKILLS_DoElemMeleeHitAndSetSkillIcon_6FCD3D60_113c(
     const poisLen = SKILLS_GetSkillPeriodicDelayOrLength113c(m, pUnit >>> 0, skillId, nSkillLevel | 0, 1) | 0
     writeI32(m, (pDmg + 0x34) >>> 0, poisLen)
     SKILLS_RollAndAddSkillElemDamage_6FCBF210_113c(m, skillId, pUnit >>> 0, pDmg, nSkillLevel | 0)
-    SUNITDMG_ApplyDamage113c(m, pGame >>> 0, pUnit >>> 0, pTarget, pDmg)
+    SUNITDMG_ApplyDamage113c(m, pGame >>> 0, pUnit >>> 0, pTarget, pDmg, 1, undefined, 1)
     if (STATLIST_GetUnitStat113c(m, pTarget, 6, 0) === 0) {
       m.setU8((pDmg + 0x04) >>> 0, (m.u8((pDmg + 0x04) >>> 0) | 2) & 0xff)
     }
@@ -2302,7 +2260,7 @@ export function SKILLS_DoImpaleOrRabiesStep_6FCD3F10_113c(
       }
       SKILLS_RollAndAddSkillPhysDamage_6FCBF1A0_113c(m, pUnit >>> 0, skillId, pDmg, nSkillLevel | 0)
       SKILLS_RollAndAddSkillElemDamage_6FCBF210_113c(m, skillId, pUnit >>> 0, pDmg, nSkillLevel | 0)
-      SUNITDMG_ApplyDamage113c(m, pGame >>> 0, pUnit >>> 0, pTarget, pDmg)
+      SUNITDMG_ApplyDamage113c(m, pGame >>> 0, pUnit >>> 0, pTarget, pDmg, 1, undefined, 1)
       if (STATLIST_GetUnitStat113c(m, pTarget, 6, 0) === 0) {
         m.setU8((pDmg + 0x04) >>> 0, (m.u8((pDmg + 0x04) >>> 0) | 2) & 0xff)
       }
@@ -2340,7 +2298,8 @@ export function SKILLS_DoSmiteOrTelekinesisCombatHit_6FCD4520_113c(
   const pDmg = m.alloc(0x70)
   const toHit = SKILLS_GetSkillToHitBonus113c(m, pUnit >>> 0, skillId, nSkillLevel | 0) | 0
   const wHitRes =
-    rollMeleeToHitAndBlock6FCFE5A0(m, pUnit >>> 0, pTarget >>> 0, pGame >>> 0, toHit, 0) & 0xffff
+    SUNITDMG_RollMeleeToHitAndBlock_6FCFE5A0_113c(m, pUnit >>> 0, pTarget >>> 0, pGame >>> 0, toHit, 0) &
+    0xffff
   m.setU16((pDmg + 0x04) >>> 0, wHitRes)
 
   if ((wHitRes & 1) !== 0) {
@@ -2351,19 +2310,19 @@ export function SKILLS_DoSmiteOrTelekinesisCombatHit_6FCD4520_113c(
     if (dwHitClass !== 0) {
       m.setU32((pDmg + 0x60) >>> 0, dwHitClass)
     }
-    const physDmg = SKILLS_EvalCalcByOffset113c(
+    const enDmgPct = SKILLS_EvalCalcByOffset113c(
       m,
       pUnit >>> 0,
       readI32(m, (pSkillsTxt + 0x13c) >>> 0),
       skillId,
       nSkillLevel | 0,
     ) | 0
-    writeI32(m, (pDmg + 0x08) >>> 0, physDmg)
+    writeI32(m, (pDmg + 0x0c) >>> 0, enDmgPct)
     SKILLS_RollAndAddSkillElemDamage_6FCBF210_113c(m, skillId, pUnit >>> 0, pDmg, nSkillLevel | 0)
   }
 
   SUNITDMG_AllocCombat113c(m, pGame >>> 0, pUnit >>> 0, pTarget >>> 0, pDmg, 0x80)
-  SUNITDMG_ExecuteEvents113c(m, pGame >>> 0, pUnit >>> 0, pTarget >>> 0, 1, pDmg)
+  SUNITDMG_ExecuteEvents113c(m, pGame >>> 0, pUnit >>> 0, pTarget >>> 0, 1, 0)
   const pSkill = SKILLS_GetUsedSkillMemPort113c(m, pUnit >>> 0) >>> 0
   if (pSkill !== 0) {
     SKILLS_SetParam1113c(m, pSkill, (m.u8((pDmg + 0x04) >>> 0) & 1) !== 0 ? 1 : 0)
@@ -2533,10 +2492,11 @@ export function SKILLS_DoChargedBoltOrSpiderWebFan_6FCD4FF0_113c(
 
   for (let i = 0; i < count; i++) {
     writeI32(m, (pMisParams + 0x58) >>> 0, i)
-    const pMissile = MISSILE_CreateServerProjectile113c(m, pGame >>> 0, pMisParams) >>> 0
-    if (pMissile !== 0) {
-      MISSILE_InitSpiderWebOrChargedBoltPath_6FCD31D0_113c(m, pMissile, i)
-    }
+    MISSILE_CreateServerProjectile113c(m, pGame >>> 0, pMisParams, {
+      missileInitCallback: (mem, _fnVa, pMis, arg) => {
+        MISSILE_InitSpiderWebOrChargedBoltPath_6FCD31D0_113c(mem, pMis, arg)
+      },
+    })
   }
   return 1
 }
@@ -2675,7 +2635,7 @@ export function SKILLS_DoChargeOrSmiteKnockbackStart_6FCD6380_113c(
   if (pTarget === 0) {
     destX = PATH_GetFirstPointX113c(m, pPath) | 0
     destY = PATH_GetFirstPointY113c(m, pPath) | 0
-    SKILLS_SetParam3113c(m, pSkill, -1)
+    SKILLS_SetParam4113c(m, pSkill, -1)
   } else {
     const tX = UNIT_GetPosX113c(m, pTarget) | 0
     const tY = UNIT_GetPosY113c(m, pTarget) | 0
@@ -2693,28 +2653,29 @@ export function SKILLS_DoChargeOrSmiteKnockbackStart_6FCD6380_113c(
     const pDmg = m.alloc(0x70)
     const toHit = SKILLS_GetSkillToHitBonus113c(m, pUnit >>> 0, skillId, nSkillLevel | 0) | 0
     const wHitRes =
-      rollMeleeToHitAndBlock6FCFE5A0(m, pUnit >>> 0, pTarget, pGame >>> 0, toHit, 0) & 0xffff
+      SUNITDMG_RollMeleeToHitAndBlock_6FCFE5A0_113c(m, pUnit >>> 0, pTarget, pGame >>> 0, toHit, 0) &
+      0xffff
     m.setU16((pDmg + 0x04) >>> 0, wHitRes)
     if ((wHitRes & 1) !== 0) {
       m.setU16((pDmg + 0x04) >>> 0, (wHitRes | m.u16((pSkillsTxt + 0x12e) >>> 0)) & 0xffff)
       m.setU32(pDmg, (m.u32(pDmg) | m.u32((pSkillsTxt + 0x130) >>> 0)) >>> 0)
       const dwHitClass = m.u32((pSkillsTxt + 0x134) >>> 0) >>> 0
       if (dwHitClass !== 0) m.setU32((pDmg + 0x60) >>> 0, dwHitClass)
-      const physDmg = SKILLS_EvalCalcByOffset113c(
+      const enDmgPct = SKILLS_EvalCalcByOffset113c(
         m,
         pUnit >>> 0,
         readI32(m, (pSkillsTxt + 0x138) >>> 0),
         skillId,
         nSkillLevel | 0,
       ) | 0
-      writeI32(m, (pDmg + 0x08) >>> 0, physDmg)
+      writeI32(m, (pDmg + 0x0c) >>> 0, enDmgPct)
       SKILLS_RollAndAddSkillElemDamage_6FCBF210_113c(m, skillId, pUnit >>> 0, pDmg, nSkillLevel | 0)
     }
     SUNITDMG_AllocCombat113c(m, pGame >>> 0, pUnit >>> 0, pTarget, pDmg, 0x80)
-    SKILLS_SetParam4113c(m, pSkill, readI32(m, pTarget))
-    SKILLS_SetParam3113c(m, pSkill, readI32(m, (pTarget + 0x0c) >>> 0))
+    SKILLS_SetParam3113c(m, pSkill, readI32(m, pTarget))
+    SKILLS_SetParam4113c(m, pSkill, readI32(m, (pTarget + 0x0c) >>> 0))
   } else {
-    SKILLS_SetParam3113c(m, pSkill, -1)
+    SKILLS_SetParam4113c(m, pSkill, -1)
   }
 
   const pattern = PATH_GetUnitCollisionPattern113c(m, pUnit >>> 0) | 0
@@ -3028,14 +2989,14 @@ export function AIBAAL_SelectAction_6FCD79B0_113c(
   if ((pAnchorStaticPath >>> 0) !== 0) {
     const anchorX = m.u32((pAnchorStaticPath + 0x0c) >>> 0) | 0
     const anchorY = m.u32((pAnchorStaticPath + 0x10) >>> 0) | 0
-    const distUnit = AI_CalcApproxDistFromUnitToCoords_6FCD0980_113c(
+    const distTarget = AI_CalcApproxDistFromUnitToCoords_6FCD0980_113c(
       m,
-      pUnit >>> 0,
+      pTarget >>> 0,
       anchorX,
       anchorY,
     ) | 0
-    if (distUnit > 0x4b) bAnchorDistGt75 = 1
-    if (distUnit > 0x64) bAnchorDistGt100 = 1
+    if (distTarget > 0x4b) bAnchorDistGt75 = 1
+    if (distTarget > 0x64) bAnchorDistGt100 = 1
   }
 
   const bInMelee = UNITS_CanUnitMeleeAttackTarget113c(m, pUnit >>> 0, pTarget >>> 0, 0) | 0

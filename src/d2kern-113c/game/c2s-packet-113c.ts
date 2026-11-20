@@ -461,13 +461,6 @@ export function PLAYER_StartModeAtCoords113c(
       return 0;
     }
   }
-  if (mem.u32(pPlayer >>> 0) === 0) {
-    const pPlrData = mem.u32((pPlayer + 0x14) >>> 0);
-    if (pPlrData !== 0) {
-      mem.setU32((pPlrData + 0x154) >>> 0, 0);
-      mem.setU32((pPlrData + 0x150) >>> 0, 0);
-    }
-  }
   if (pSkill !== 0) {
     SKILLS_SetUsedSkillMemPort113c(mem, pPlayer, pSkill);
   }

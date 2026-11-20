@@ -9,6 +9,16 @@
  * - Zero DOM globals, zero Node built-ins, zero ambient RNG or wall-clock calls.
  */
 
+import { SKILLS_CATALOG } from '../../common/data/skills-catalog.ts'
+import type { CharacterClassCode } from '../../common/units/classes.ts'
+import { MONSTATS_113C_ROWS } from '../../common/units/monsters-data.ts'
+import { hasMonStats2Flag, MONSTATS2_FLAGINDEX } from '../../common/units/monstats2-flags.ts'
+import { getTownNpcDescriptorByHcIdx } from '../../common/units/npc-table.ts'
+import {
+  collisionGetFreeCoordinates,
+  isBlockedWithUnitSize,
+} from '../../common/world/act-spawn-location.ts'
+import { WAYPOINT_CLASS_IDS_113C } from '../../common/world/objects-meta.ts'
 import {
   DUNGEON_AddClientToRoom113c,
   DUNGEON_GetLevelIdFromRoom113c,
@@ -16,8 +26,32 @@ import {
 } from '../../d2kern-113c/common/dungeon.ts'
 import { D2COMMON_SGPT_DATATABLES_VA_113C } from '../../d2kern-113c/common/inline-helpers.ts'
 import {
+  PLAYER_StoreLeftSkill113c,
+  PLAYER_StoreRightSkill113c,
+  QUESTRECORD_AllocRecord113c,
+  QUESTRECORD_CopyRecordToBuffer113c,
+} from '../../d2kern-113c/common/quest-record.ts'
+import {
+  DATATABLES_LEVELS_TXT_COUNT_OFF_113C,
+  DATATABLES_LEVELS_TXT_PTR_OFF_113C,
+  GDW_WAYPOINT_TABLE_COUNT_VA_113C,
+  GW_WAYPOINT_TABLE_BASE_VA_113C,
+  WAYPOINT_ActivateWaypoint113c,
+  WAYPOINT_CopyAndValidateWaypointData113c,
+  WAYPOINT_GetWaypointNoFromLevelId113c,
+  WAYPOINT_GetWaypointState113c,
+} from '../../d2kern-113c/common/waypoint.ts'
+import {
   SKILLS_AllocSkillList113c,
+  SKILLS_GetFirstSkillFromSkillList113c,
+  SKILLS_GetLeftSkillFromSkillList113c,
+  SKILLS_GetNextSkill113c,
+  SKILLS_GetOwnerItemGuid113c,
   SKILLS_GetSkillById113c,
+  SKILLS_GetSkillIdFromSkill113c,
+  SKILLS_GetSkillLevel113c,
+  SKILLS_SetLeftSkill113c,
+  SKILLS_SetRightSkill113c,
   SKILLS_SetSkillLevelOnUnit113c,
 } from '../../d2kern-113c/common/skills.ts'
 import {
@@ -59,7 +93,20 @@ import {
   NET_SendUnitMovePacket0F113c,
 } from '../../d2kern-113c/game/k2-combat-core-w1-113c.ts'
 import { NET_SendPacket0x23_AssignSkill113c } from '../../d2kern-113c/game/k2-gap-melee-dot-113c.ts'
-import { NET_SendPacket07_RoomTileCoords_6FCABF50_113c } from '../../d2kern-113c/game/k2-w2b3-113c.ts'
+import {
+  PLAYER_SetClientSkillHotkeySlot113c,
+  QUESTS_SendPlayerQuestLogPacket28_113c,
+} from '../../d2kern-113c/game/k2-items-tc-w1-113c.ts'
+import {
+  PLAYER_GetQuestRecordForDifficulty_6FC21020_113c,
+  PLAYER_GetWaypointDataForDifficulty_6FC21720_113c,
+} from '../../d2kern-113c/game/k2-laneH-0x6fc2-w1-113c.ts'
+import { C2S_Packet3B_SpendSkillPoint_6FCEDA20_113c } from '../../d2kern-113c/game/k2-w11b1-113c.ts'
+import {
+  NET_SendPacket07_RoomTileCoords_6FCABF50_113c,
+  NET_SendPacket103B_QuestRecord_6FCAAD40_113c,
+  NET_SendPacketBuffer21B_Alt_6FCAB2F0_113c,
+} from '../../d2kern-113c/game/k2-w2b3-113c.ts'
 import {
   NET_SendPacket95_LifeManaStamina_6FCAB7F0_113c,
   NET_SendPacket96_WalkVerify_6FCAB750_113c,
@@ -67,6 +114,7 @@ import {
 import { CLIENT_SendLoadActAndEnvStatePackets_6FCBD610_113c } from '../../d2kern-113c/game/k2-w4b6-113c.ts'
 import { CLIENTS_SendHandshakeAndSetInitState1_6FC4AC60_113c } from '../../d2kern-113c/game/k2-w5b1-113c.ts'
 import { NET_SendPacket59_AssignPlayerAndPartyRoster_6FCAD710_113c } from '../../d2kern-113c/game/k2-w5b2-113c.ts'
+import { PACKET_Srv3C_SetSkillHotkey_6FCEBC70_113c } from '../../d2kern-113c/game/k2-w5b5-113c.ts'
 import {
   DUNGEON_CheckRoomIsTown113c,
   applyPlayerPacket113c,
@@ -95,12 +143,15 @@ import {
   D2GameStrc_SIZE,
   D2InventoryStrc,
   D2InventoryStrc_SIZE,
+  D2LevelsTxt,
+  D2LevelsTxt_SIZE,
   D2MonsterDataStrc,
   D2MonsterDataStrc_SIZE,
   D2PlayerDataStrc_SIZE,
   D2RoomCollisionGridStrc,
   D2RoomExStrc_SIZE,
   D2SkillListStrc,
+  D2SkillsTxt_SIZE,
   D2UnitStrc,
 } from '../../d2kern-113c/mem/layout.generated.ts'
 import { SparseMemory113c, type Memory113c } from '../../d2kern-113c/mem/sparse-memory.ts'
@@ -117,13 +168,17 @@ import {
   createMemoryStreamPair,
   getDefault113cItemDataTables,
   resolveS2cPacketSize,
+  serverEventToS2cPackets,
   validateC2sPacket,
   type ByteStream,
   type CharClassId,
   type Clock,
   type D2gsGameLogonParams,
+  type ItemData,
   type ItemDataTables,
   type ItemStat,
+  type LocalAreaBootstrap,
+  type LocalAreaBootstrapResolver,
   type MemoryStream,
   type ServerEvent,
 } from '../../netproto/index.ts'
@@ -148,8 +203,32 @@ export const D2GAME_NET_IAT_VA_113C = {
 
 const D2GAME_IAT_SGPT_DATATABLES_VA = 0x6fd1829c
 const D2GAME_IAT_GDW_BITMASKS_VA = 0x6fd18be0
+const D2GAME_GDW_DIFFICULTY_PLAYERS_VA_113C = 0x6fd31c1c
+const D2COMMON_SGPT_EXPERIENCE_TXT_VA_113C = 0x6fdf0b50
 const D2CLIENT_STRC_SIZE_113C = 0x510
 const D2PACKET_DATA_MAX_BATCH_113C = 0x200
+const SKILLS_TXT_COUNT_113C = 357
+const SKILLDESC_TXT_STRIDE_113C = 0x120
+
+const CLASS_CODE_TO_INDEX_113C: Readonly<Record<CharacterClassCode, number>> = {
+  ama: 0,
+  sor: 1,
+  nec: 2,
+  pal: 3,
+  bar: 4,
+  dru: 5,
+  ass: 6,
+}
+
+export const CLASS_SKILL_BASE_113C: Readonly<Record<number, number>> = {
+  0: 6,
+  1: 36,
+  2: 66,
+  3: 96,
+  4: 126,
+  5: 221,
+  6: 251,
+}
 
 const STAT_STRENGTH = 0
 const STAT_ENERGY = 1
@@ -169,11 +248,152 @@ const STAT_GOLD = 14
 const STAT_GOLDBANK = 15
 const STAT_VELOCITYPERCENT = 67
 const STAT_ATTACKRATE = 68
+const STAT_ITEM_ADDCLASSSKILLS = 83
+const STAT_ITEM_NONCLASSSKILL = 97
+const STAT_ITEM_SINGLESKILL = 107
+const STAT_ITEM_ALLSKILLS = 127
+const STAT_ITEM_ADDSKILL_TAB = 188
 
 const PLRMODE_WALK = 2
 const PLRMODE_RUN = 3
 const PLRMODE_TOWN_NEUTRAL = 5
 const PLRMODE_TOWN_WALK = 6
+
+const UNIT_OBJECT_113C = 2
+const INTERACT_IMMEDIATE_RANGE_SUBTILES_113C = 8
+const INTERACT_ARRIVAL_RANGE_SUBTILES_113C = 5
+const NPC_TETHER_RANGE_SUBTILES_113C = 10
+
+/** Canonical 1.13c town healers (`NPC.txt` / `D2Game.dll` `0x6FCDD810` -> `0x6FCDD490`). */
+export const TOWN_HEALER_CLASS_IDS_113C: ReadonlySet<number> = new Set([
+  148, // Akara (Act 1)
+  176, // Atma (Act 2)
+  178, // Fara (Act 2)
+  255, // Ormus (Act 3)
+  405, // Jamella (Act 4)
+  513, // Malah (Act 5)
+])
+
+/** Canonical 39 waypoint `Levels.txt` area IDs (`waypointIndex 0..38`, `D2Common.dll` `0x6FDB7E50`). */
+export const WAYPOINT_AREA_IDS_113C: readonly number[] = [
+  // Act 1 (0..8)
+  1, 3, 4, 5, 6, 27, 29, 32, 35,
+  // Act 2 (9..17)
+  40, 48, 42, 57, 43, 44, 52, 74, 46,
+  // Act 3 (18..26)
+  75, 76, 77, 78, 79, 80, 81, 83, 101,
+  // Act 4 (27..29)
+  103, 106, 107,
+  // Act 5 (30..38)
+  109, 111, 112, 113, 115, 123, 117, 118, 129,
+]
+
+/** Canonical 5 town area IDs in 1.13c (`Levels.txt`). */
+export const TOWN_AREA_IDS_113C: ReadonlySet<number> = new Set([1, 40, 75, 103, 109])
+
+/** Server-only invisible NPC spawner marker objects in 1.13c DS1 presets (`Objects.txt`). */
+export const SERVER_ONLY_NPC_SPAWNER_OBJECT_IDS_113C: ReadonlySet<number> = new Set([
+  382, 385, 459, 460, 461, 462, 542, 543, 567,
+])
+
+export function areaIdToActIdx113c(areaId: number): 0 | 1 | 2 | 3 | 4 {
+  if (areaId >= 109) return 4
+  if (areaId >= 103) return 3
+  if (areaId >= 75) return 2
+  if (areaId >= 40) return 1
+  return 0
+}
+
+function isInteractiveNpcClassId113c(classId: number): boolean {
+  if (getTownNpcDescriptorByHcIdx(classId) !== undefined) return true
+  const row = MONSTATS_113C_ROWS[classId]
+  return Boolean(row !== undefined && (row.npc || row.interact))
+}
+
+function normalizeInitialQuestBuffers113c(
+  raw: Uint8Array | readonly Uint8Array[] | undefined,
+  activeDiff: 0 | 1 | 2,
+): readonly [Uint8Array, Uint8Array, Uint8Array] {
+  const b0 = new Uint8Array(96)
+  const b1 = new Uint8Array(96)
+  const b2 = new Uint8Array(96)
+  const slots: readonly [Uint8Array, Uint8Array, Uint8Array] = [b0, b1, b2]
+  if (raw instanceof Uint8Array) {
+    if (
+      raw.byteLength >= 298 &&
+      raw[0] === 0x57 &&
+      raw[1] === 0x6f &&
+      raw[2] === 0x6f &&
+      raw[3] === 0x21
+    ) {
+      b0.set(raw.subarray(10, 106))
+      b1.set(raw.subarray(106, 202))
+      b2.set(raw.subarray(202, 298))
+    } else {
+      slots[activeDiff].set(raw.subarray(0, Math.min(96, raw.byteLength)))
+    }
+  } else if (Array.isArray(raw)) {
+    for (let d = 0; d < 3; d++) {
+      const item = raw[d]
+      if (item instanceof Uint8Array) {
+        slots[d as 0 | 1 | 2].set(item.subarray(0, Math.min(96, item.byteLength)))
+      }
+    }
+  }
+  return slots
+}
+
+function makeDefaultWaypointSlice16(): Uint8Array {
+  const out = new Uint8Array(16)
+  out[0] = 0x02
+  out[1] = 0x01
+  out[2] = 0x01 // Bit 0 = Rogue Encampment (Area 1) unlocked by default in 1.13c
+  return out
+}
+
+function copyWaypointSliceInto16(dst: Uint8Array, src: Uint8Array): void {
+  dst.fill(0)
+  if (src.byteLength === 14) {
+    dst[0] = 0x02
+    dst[1] = 0x01
+    dst.set(src, 2)
+    return
+  }
+  dst.set(src.subarray(0, Math.min(16, src.byteLength)))
+  const wMagic = ((dst[1]! << 8) | dst[0]!) & 0xffff
+  if (wMagic !== 0x0102 && wMagic !== 0x0101 && wMagic !== 0x0000) {
+    dst[0] = 0x02
+    dst[1] = 0x01
+  }
+}
+
+function normalizeInitialWaypointBuffers113c(
+  raw: Uint8Array | readonly Uint8Array[] | undefined,
+  activeDiff: 0 | 1 | 2,
+): readonly [Uint8Array, Uint8Array, Uint8Array] {
+  const slots: readonly [Uint8Array, Uint8Array, Uint8Array] = [
+    makeDefaultWaypointSlice16(),
+    makeDefaultWaypointSlice16(),
+    makeDefaultWaypointSlice16(),
+  ]
+  if (raw instanceof Uint8Array) {
+    if (raw.byteLength >= 80 && raw[0] === 0x57 && raw[1] === 0x53) {
+      copyWaypointSliceInto16(slots[0], raw.subarray(8, 24))
+      copyWaypointSliceInto16(slots[1], raw.subarray(32, 48))
+      copyWaypointSliceInto16(slots[2], raw.subarray(56, 72))
+    } else {
+      copyWaypointSliceInto16(slots[activeDiff], raw)
+    }
+  } else if (Array.isArray(raw)) {
+    for (let d = 0; d < 3; d++) {
+      const item = raw[d]
+      if (item instanceof Uint8Array) {
+        copyWaypointSliceInto16(slots[d as 0 | 1 | 2], item)
+      }
+    }
+  }
+  return slots
+}
 
 export interface D2gsKernelBridgeOptions113c {
   /** Pre-initialized `SparseMemory113c` instance (allocates a fresh arena if omitted). */
@@ -216,6 +436,30 @@ export interface D2gsKernelBridgeOptions113c {
     | undefined
   /** Optional initial player base stats (`statId -> rawValue`) hydrated before room-entry bootstrap. */
   readonly initialPlayerStats?: Readonly<Record<number, number>> | undefined
+  /** Optional initial player base skill levels (`skillId -> baseLevel`, `.d2s` `if` 30-byte section). */
+  readonly initialSkillLevels?: Readonly<Record<number, number>> | undefined
+  /** Optional initial 16 skill hotkey words (`.d2s` `0x38..0x77`). */
+  readonly initialHotkeys?: readonly number[] | undefined
+  /** Optional initial `/players 1..8` count stored in `D2GameStrc` (`+0x1D20` & `0x6FD31C1C`). */
+  readonly initialPlayersX?: number | undefined
+  /** Optional callback fired when `/players 1..8` changes via `setPlayersX` or C2S `0x15` chat. */
+  readonly onPlayersXChange?: ((playersX: number) => void) | undefined
+  /** Optional initial player items (`.d2s` `JM` item list) streamed as `0x9C`/`0x9D` on game entry. */
+  readonly initialItems?: readonly ItemData[] | undefined
+  /**
+   * Optional `.d2s` quest buffers (`298`-byte `"Woo!"` section, `[norm96, nm96, hell96]`, or active-difficulty `96`-byte buffer)
+   * hydrated into `pPlayerData->pQuestData[0..2]` (`+0x10..+0x18`) via `D2BitBufferStrc`.
+   */
+  readonly initialQuestData?: Uint8Array | readonly Uint8Array[] | undefined
+  /**
+   * Optional `.d2s` waypoint buffers (`80`-byte `"WS"` section, `[norm, nm, hell]`, or active-difficulty `16`/`24`-byte buffer)
+   * hydrated into `pPlayerData->pWaypointData[0..2]` (`+0x1C..+0x24`).
+   */
+  readonly initialWaypointData?: Uint8Array | readonly Uint8Array[] | undefined
+  /** Optional area bootstrap resolver used by `C2S 0x49` multi-area waypoint travel. */
+  readonly resolveAreaBootstrap?: LocalAreaBootstrapResolver | undefined
+  /** Optional callback fired whenever the active area / Act changes (e.g. via `C2S 0x49` waypoint travel). */
+  readonly onAreaChange?: ((areaId: number, act: 0 | 1 | 2 | 3 | 4) => void) | undefined
   /** Optional initial left-hand skill ID (`default 0`). */
   readonly initialLeftSkill?: number | undefined
   /** Optional initial right-hand skill ID (`default 0`). */
@@ -312,6 +556,11 @@ export interface SpawnBridgeObjectOptions113c {
   readonly flags?: number | undefined
 }
 
+interface PendingBridgeInteraction113c {
+  readonly kind: 'npc' | 'waypoint'
+  readonly unitId: number
+}
+
 interface InternalClientEntry113c {
   readonly clientId: number
   pClient: number
@@ -323,6 +572,10 @@ interface InternalClientEntry113c {
   readonly framer: D2gsC2sFramer
   readonly wireFormat: 'compressed' | 'uncompressed'
   readonly unsubs: Array<() => void>
+  activeNpcUnitId: number
+  lastNpcHandshakeUnitId: number
+  activeWaypointUnitId: number
+  pendingInteraction: PendingBridgeInteraction113c | null
   closed: boolean
 }
 
@@ -377,21 +630,37 @@ export class D2gsKernelBridge113c {
   readonly packetSink: D2NetPacketSink113c
   readonly tables: ItemDataTables
 
-  private readonly actIdx: number
-  private readonly areaId: number
-  private readonly defaultRoomPtr: number
+  private actIdx: 0 | 1 | 2 | 3 | 4
+  private areaId: number
+  private defaultRoomPtr: number
+  private readonly difficultyValue: 0 | 1 | 2
+  private readonly initSeedValue: number
   private readonly spawnX: number
   private readonly spawnY: number
   private readonly wGameId: number
   private readonly autoProcessSystemPackets: boolean
-  private readonly extraRevealedRooms: readonly {
+  private extraRevealedRooms: readonly {
     readonly areaId: number
     readonly tileX: number
     readonly tileY: number
   }[]
+  private activeRevealedRooms: Array<{
+    readonly areaId: number
+    readonly tileX: number
+    readonly tileY: number
+  }>
   private readonly initialPlayerStats: Readonly<Record<number, number>> | undefined
+  private readonly initialSkillLevels: Readonly<Record<number, number>> | undefined
+  private readonly initialHotkeys: readonly number[] | undefined
+  private readonly initialItems: readonly ItemData[] | undefined
+  private readonly initialQuestBuffers: readonly [Uint8Array, Uint8Array, Uint8Array]
+  private readonly initialWaypointBuffers: readonly [Uint8Array, Uint8Array, Uint8Array]
+  private readonly resolveAreaBootstrap: LocalAreaBootstrapResolver | undefined
+  private readonly onAreaChange: ((areaId: number, act: 0 | 1 | 2 | 3 | 4) => void) | undefined
+  private readonly onPlayersXChange: ((playersX: number) => void) | undefined
   private readonly initialLeftSkill: number
   private readonly initialRightSkill: number
+  private playersXValue: number
 
   private readonly pRecvScratch: number
   private readonly pSendScratch: number
@@ -416,13 +685,39 @@ export class D2gsKernelBridge113c {
     this.m = options.memory !== undefined ? options.memory : new SparseMemory113c()
     this.tables = options.tables !== undefined ? options.tables : getDefault113cItemDataTables()
     this.autoProcessSystemPackets = options.autoProcessSystemPackets !== false
-    this.actIdx = options.act !== undefined ? options.act : 0
+    this.difficultyValue = options.difficulty !== undefined ? options.difficulty : 0
+    this.initSeedValue = options.initSeed !== undefined ? options.initSeed >>> 0 : 0x12345678
+    this.actIdx =
+      options.act !== undefined
+        ? options.act
+        : options.areaId !== undefined
+          ? areaIdToActIdx113c(options.areaId)
+          : 0
     this.areaId = options.areaId !== undefined ? options.areaId : 1
     this.extraRevealedRooms =
       options.extraRevealedRooms !== undefined ? options.extraRevealedRooms : []
+    this.activeRevealedRooms = []
     this.initialPlayerStats = options.initialPlayerStats
+    this.initialSkillLevels = options.initialSkillLevels
+    this.initialHotkeys = options.initialHotkeys
+    this.initialItems = options.initialItems
+    this.initialQuestBuffers = normalizeInitialQuestBuffers113c(
+      options.initialQuestData,
+      this.difficultyValue,
+    )
+    this.initialWaypointBuffers = normalizeInitialWaypointBuffers113c(
+      options.initialWaypointData,
+      this.difficultyValue,
+    )
+    this.resolveAreaBootstrap = options.resolveAreaBootstrap
+    this.onAreaChange = options.onAreaChange
+    this.onPlayersXChange = options.onPlayersXChange
     this.initialLeftSkill = options.initialLeftSkill !== undefined ? options.initialLeftSkill : 0
     this.initialRightSkill = options.initialRightSkill !== undefined ? options.initialRightSkill : 0
+    this.playersXValue =
+      options.initialPlayersX !== undefined
+        ? Math.max(1, Math.min(8, Math.floor(Number(options.initialPlayersX) || 1)))
+        : 1
 
     this.packetSink = new D2NetPacketSink113c({ netMode: D2NET_MODE_SERVER_113C })
 
@@ -435,7 +730,7 @@ export class D2gsKernelBridge113c {
     const roomSubW = options.roomSubtileWidth !== undefined ? options.roomSubtileWidth : 80
     const roomSubH = options.roomSubtileHeight !== undefined ? options.roomSubtileHeight : 80
     this.spawnX = options.spawnX !== undefined ? options.spawnX : roomSubX + (roomSubW >> 1)
-    this.spawnY = options.spawnY !== undefined ? options.spawnY : roomSubY + (roomSubH >> 1)
+    this.spawnY = options.spawnY !== undefined ? options.spawnY : roomSubY + (roomSubW > 0 ? roomSubH >> 1 : 40)
 
     if (options.pGame !== undefined && options.pGame !== 0) {
       this.pGame = options.pGame >>> 0
@@ -463,7 +758,10 @@ export class D2gsKernelBridge113c {
       this.wGameId = booted.wGameId
     }
 
+    this.applyPlayersXToKernelMemory(this.playersXValue)
+
     this.sliceWorld = this.buildSliceWorld()
+    this.activeRevealedRooms = this.collectActiveRevealedRooms(this.defaultRoomPtr)
 
     this.pRecvScratch = this.m.alloc(0x600) >>> 0
     this.pSendScratch = this.m.alloc(0x210) >>> 0
@@ -492,6 +790,151 @@ export class D2gsKernelBridge113c {
     return this.defaultRoomPtr >>> 0
   }
 
+  /** Active Act index (`0..4`). */
+  get currentAct(): 0 | 1 | 2 | 3 | 4 {
+    return this.actIdx
+  }
+
+  /** Active `Levels.txt` area ID (`1..136`). */
+  get currentAreaId(): number {
+    return this.areaId
+  }
+
+  /** Game difficulty (`0` Normal, `1` Nightmare, `2` Hell). */
+  get difficulty(): 0 | 1 | 2 {
+    return this.difficultyValue
+  }
+
+  /**
+   * Resolve `pPlayerData->pQuestData[difficulty]` (`D2BitBufferStrc*`) in `SparseMemory113c`
+   * via `PLAYER_GetQuestRecordForDifficulty_6FC21020_113c`.
+   */
+  getPlayerQuestRecordPtr(clientId: number, difficulty: 0 | 1 | 2 = this.difficultyValue): number {
+    const entry = this.clients.get(clientId >>> 0)
+    if (entry === undefined || entry.pPlayer === 0) return 0
+    if (difficulty === this.difficultyValue && this.pGame !== 0) {
+      return PLAYER_GetQuestRecordForDifficulty_6FC21020_113c(this.m, entry.pPlayer, this.pGame) >>> 0
+    }
+    const pPlayerData = this.m.get(entry.pPlayer, D2UnitStrc.pUnitData) >>> 0
+    if (pPlayerData === 0) return 0
+    return this.m.u32((pPlayerData + (difficulty << 2) + 0x10) >>> 0) >>> 0
+  }
+
+  /**
+   * Copy the live `96`-byte (`0x60`) `D2QuestRecordStrc` buffer for `difficulty` out of
+   * `SparseMemory113c` via `QUESTRECORD_CopyRecordToBuffer113c`.
+   */
+  getPlayerQuestDataBytes(
+    clientId: number,
+    difficulty: 0 | 1 | 2 = this.difficultyValue,
+  ): Uint8Array {
+    const out = new Uint8Array(96)
+    const pQuestRec = this.getPlayerQuestRecordPtr(clientId, difficulty)
+    if (pQuestRec === 0) {
+      out.set(this.initialQuestBuffers[difficulty])
+      return out
+    }
+    QUESTRECORD_CopyRecordToBuffer113c(this.m, pQuestRec, this.pSmallScratch, 0x60, 0)
+    for (let i = 0; i < 96; i++) {
+      out[i] = this.m.u8((this.pSmallScratch + i) >>> 0)
+    }
+    return out
+  }
+
+  /**
+   * Resolve `pPlayerData->pWaypointData[difficulty]` (`D2WaypointDataStrc*`, `16` bytes) in
+   * `SparseMemory113c` via `PLAYER_GetWaypointDataForDifficulty_6FC21720_113c`.
+   */
+  getPlayerWaypointDataPtr(
+    clientId: number,
+    difficulty: 0 | 1 | 2 = this.difficultyValue,
+  ): number {
+    const entry = this.clients.get(clientId >>> 0)
+    if (entry === undefined || entry.pPlayer === 0) return 0
+    if (difficulty === this.difficultyValue && this.pGame !== 0) {
+      return (
+        PLAYER_GetWaypointDataForDifficulty_6FC21720_113c(this.m, entry.pPlayer, this.pGame) >>> 0
+      )
+    }
+    const pPlayerData = this.m.get(entry.pPlayer, D2UnitStrc.pUnitData) >>> 0
+    if (pPlayerData === 0) return 0
+    return this.m.u32((pPlayerData + (difficulty << 2) + 0x1c) >>> 0) >>> 0
+  }
+
+  /**
+   * Read the live `16`-byte (`0x10`) `D2WaypointDataStrc` (`[0x02, 0x01, ...14B bitfield]`)
+   * for `difficulty` out of `SparseMemory113c`.
+   */
+  getPlayerWaypointDataBytes(
+    clientId: number,
+    difficulty: 0 | 1 | 2 = this.difficultyValue,
+  ): Uint8Array {
+    const out = new Uint8Array(16)
+    const pWpData = this.getPlayerWaypointDataPtr(clientId, difficulty)
+    if (pWpData === 0) {
+      out.set(this.initialWaypointBuffers[difficulty])
+      return out
+    }
+    WAYPOINT_CopyAndValidateWaypointData113c(this.m, pWpData, this.pSmallScratch)
+    for (let i = 0; i < 16; i++) {
+      out[i] = this.m.u8((this.pSmallScratch + i) >>> 0)
+    }
+    return out
+  }
+
+  /**
+   * Check whether `areaId` has an unlocked 1.13c waypoint bit for `difficulty`.
+   */
+  isAreaWaypointUnlocked(
+    clientId: number,
+    areaId: number,
+    difficulty: 0 | 1 | 2 = this.difficultyValue,
+  ): boolean {
+    if (WAYPOINT_GetWaypointNoFromLevelId113c(this.m, areaId, this.pSmallScratch) === 0) {
+      return false
+    }
+    const wpIdx = this.m.u16(this.pSmallScratch) & 0xffff
+    const pWpData = this.getPlayerWaypointDataPtr(clientId, difficulty)
+    if (pWpData !== 0) {
+      return WAYPOINT_GetWaypointState113c(this.m, pWpData, wpIdx) !== 0
+    }
+    const initSlice = this.initialWaypointBuffers[difficulty]
+    const byteIdx = 2 + (wpIdx >> 3)
+    const bitMask = 1 << (wpIdx & 7)
+    return byteIdx < initSlice.byteLength && (initSlice[byteIdx]! & bitMask) !== 0
+  }
+
+  /** Current `/players 1..8` override stored in `D2GameStrc` (`+0x1D20` & `0x6FD31C1C`). */
+  getPlayersX(): number {
+    return this.playersXValue
+  }
+
+  /**
+   * Update `/players 1..8` in `SparseMemory113c` (`pGame + 0x1D20` and `0x6FD31C1C`
+   * `gdwDifficultyPlayers`, read by `GAME_GetEffectivePlayerCount113c` at `0x6FC579A0`).
+   */
+  setPlayersX(value: number): number {
+    const clamped = Math.max(1, Math.min(8, Math.floor(Number(value) || 1)))
+    this.playersXValue = clamped
+    this.applyPlayersXToKernelMemory(clamped)
+    if (this.onPlayersXChange !== undefined) {
+      this.onPlayersXChange(clamped)
+    }
+    return clamped
+  }
+
+  private applyPlayersXToKernelMemory(playersX: number): void {
+    const next = Math.max(1, Math.min(8, playersX | 0))
+    if (this.pGame !== 0) {
+      const gameType = this.m.u8((this.pGame + 0x6a) >>> 0)
+      if (gameType < 1 || gameType > 3) {
+        this.m.setU8((this.pGame + 0x6a) >>> 0, 3)
+      }
+      this.m.setU32((this.pGame + 0x1d20) >>> 0, next >>> 0)
+    }
+    this.m.setU32(D2GAME_GDW_DIFFICULTY_PLAYERS_VA_113C, next >>> 0)
+  }
+
   private ensureD2GameBitMasksGlobal(): void {
     let existing = 0
     try {
@@ -505,6 +948,34 @@ export class D2gsKernelBridge113c {
         this.m.setU32((pMasks + i * 4) >>> 0, (1 << i) >>> 0)
       }
       this.m.setU32(D2GAME_IAT_GDW_BITMASKS_VA, pMasks)
+    }
+
+    let pExpTxt = 0
+    try {
+      pExpTxt = this.m.u32(D2COMMON_SGPT_EXPERIENCE_TXT_VA_113C) >>> 0
+    } catch {
+      pExpTxt = 0
+    }
+    if (pExpTxt === 0) {
+      pExpTxt = this.m.alloc(0x40) >>> 0
+      for (let c = 0; c < 8; c++) {
+        this.m.setU32((pExpTxt + c * 4) >>> 0, 99)
+      }
+      this.m.setU32(D2COMMON_SGPT_EXPERIENCE_TXT_VA_113C, pExpTxt)
+    }
+
+    let wpTableCount = 0
+    try {
+      wpTableCount = this.m.u32(GDW_WAYPOINT_TABLE_COUNT_VA_113C) >>> 0
+    } catch {
+      wpTableCount = 0
+    }
+    if (wpTableCount !== 0x70) {
+      for (let i = 0; i < 0x70; i++) {
+        this.m.setU16((GW_WAYPOINT_TABLE_BASE_VA_113C + i * 4) >>> 0, (1 + (i >> 4)) & 0xffff)
+        this.m.setU16((GW_WAYPOINT_TABLE_BASE_VA_113C + 2 + i * 4) >>> 0, (1 << (i & 15)) & 0xffff)
+      }
+      this.m.setU32(GDW_WAYPOINT_TABLE_COUNT_VA_113C, 0x70)
     }
 
     let sgptIat = 0
@@ -531,10 +1002,32 @@ export class D2gsKernelBridge113c {
         statesCount = 0
       }
       if (statesCount === 0) {
+        // `ensureD2CommonPathGlobals113c` allocates a `0xC40`-byte `sgptDataTables` block;
+        // expand to `0xD00` bytes so `pLevelsTxt` (`+0xC58`) & `nLevelsTxtRecordCount` (`+0xC5C`)
+        // read by `WAYPOINT_GetWaypointNoFromLevelId113c` (`0x6FDB7E50`) never overlap adjacent tables.
+        const expandedSgpt = this.m.alloc(0xd00) >>> 0
+        for (let off = 0; off < 0xc40; off += 4) {
+          this.m.setU32((expandedSgpt + off) >>> 0, this.m.u32((sgpt + off) >>> 0))
+        }
+        this.m.setU32(D2COMMON_SGPT_DATATABLES_VA_113C, expandedSgpt)
+        sgpt = expandedSgpt
+
         const nStates = 184
         const pStatesTxt = this.m.alloc(nStates * 0x3c) >>> 0
         this.m.setU32((sgpt + 0xbc) >>> 0, pStatesTxt)
         this.m.setU32((sgpt + 0xc4) >>> 0, nStates)
+
+        const nLevels = 137
+        const pLevelsBase = this.m.alloc(nLevels * D2LevelsTxt_SIZE) >>> 0
+        for (let lvl = 0; lvl < nLevels; lvl++) {
+          const pRec = (pLevelsBase + lvl * D2LevelsTxt_SIZE) >>> 0
+          this.m.setU16(pRec, lvl & 0xffff)
+          this.m.set(pRec, D2LevelsTxt.nAct, lvl > 0 ? areaIdToActIdx113c(lvl) : 0)
+          const wpIdx = WAYPOINT_AREA_IDS_113C.indexOf(lvl)
+          this.m.set(pRec, D2LevelsTxt.nWaypoint, wpIdx >= 0 ? wpIdx : 0xff)
+        }
+        this.m.setU32((sgpt + DATATABLES_LEVELS_TXT_PTR_OFF_113C) >>> 0, pLevelsBase)
+        this.m.setU32((sgpt + DATATABLES_LEVELS_TXT_COUNT_OFF_113C) >>> 0, nLevels)
       }
 
       let iscCount = 0
@@ -559,7 +1052,152 @@ export class D2gsKernelBridge113c {
         this.m.setU32((sgpt + 0xbcc) >>> 0, pIscBase)
         this.m.setU32((sgpt + 0xbd4) >>> 0, nIsc)
       }
+
+      let skillsCount = 0
+      try {
+        skillsCount = this.m.u32((sgpt + 0xba0) >>> 0) >>> 0
+      } catch {
+        skillsCount = 0
+      }
+      if (skillsCount === 0) {
+        const nSkillDesc = SKILLS_CATALOG.length + 1
+        const pSkillDescBase = this.m.alloc(nSkillDesc * SKILLDESC_TXT_STRIDE_113C) >>> 0
+        const catalogById = new Map<number, (typeof SKILLS_CATALOG)[number]>()
+        const descIdxById = new Map<number, number>()
+        for (let idx = 0; idx < SKILLS_CATALOG.length; idx++) {
+          const entry = SKILLS_CATALOG[idx]!
+          const descIdx = idx + 1
+          catalogById.set(entry.id, entry)
+          descIdxById.set(entry.id, descIdx)
+          const pDesc = (pSkillDescBase + descIdx * SKILLDESC_TXT_STRIDE_113C) >>> 0
+          this.m.setU16(pDesc, descIdx & 0xffff)
+          this.m.setU8((pDesc + 0x02) >>> 0, (entry.tabIndex + 1) & 0xff)
+        }
+        this.m.setU32((sgpt + 0xb8c) >>> 0, pSkillDescBase)
+        this.m.setU32((sgpt + 0xb94) >>> 0, nSkillDesc)
+
+        const pSkillsBase = this.m.alloc(SKILLS_TXT_COUNT_113C * D2SkillsTxt_SIZE) >>> 0
+        for (let id = 0; id < SKILLS_TXT_COUNT_113C; id++) {
+          const rec = (pSkillsBase + id * D2SkillsTxt_SIZE) >>> 0
+          const cat = catalogById.get(id)
+          this.m.setU16(rec, id & 0xffff)
+          this.m.setU8((rec + 0x05) >>> 0, 0x04) // bFlags1 bit 2 (`inGame = 1`)
+          this.m.setU8(
+            (rec + 0x0c) >>> 0,
+            cat !== undefined ? CLASS_CODE_TO_INDEX_113C[cat.classCode]! & 0xff : 0xff,
+          )
+          this.m.setU16((rec + 0x80) >>> 0, 0xffff) // wAuraStatState = -1
+          this.m.setU16((rec + 0x94) >>> 0, 0xffff) // wPassiveState = -1
+          this.m.setU8((rec + 0xbe) >>> 0, 0xff) // nPetType = -1
+          this.m.setU16((rec + 0x12c) >>> 0, 20) // wMaxLvl = 20
+          this.m.setU32((rec + 0x170) >>> 0, 0xffffffff) // dwSkPoints = -1 (1 point per rank)
+          this.m.setU16((rec + 0x174) >>> 0, cat !== undefined ? cat.reqlevel & 0xffff : 0)
+          const req0 = cat?.reqskills[0]
+          const req1 = cat?.reqskills[1]
+          const req2 = cat?.reqskills[2]
+          this.m.setU16((rec + 0x17e) >>> 0, req0 !== undefined ? req0 & 0xffff : 0xffff)
+          this.m.setU16((rec + 0x180) >>> 0, req1 !== undefined ? req1 & 0xffff : 0xffff)
+          this.m.setU16((rec + 0x182) >>> 0, req2 !== undefined ? req2 & 0xffff : 0xffff)
+          this.m.setU16((rec + 0x186) >>> 0, cat !== undefined ? cat.minmana & 0xffff : 0)
+          this.m.setU8((rec + 0x188) >>> 0, cat !== undefined ? cat.manashift & 0xff : 8)
+          this.m.setU16((rec + 0x18a) >>> 0, cat !== undefined ? cat.mana & 0xffff : 0)
+          this.m.setU16((rec + 0x18c) >>> 0, cat !== undefined ? cat.lvlmana & 0xffff : 0)
+          const descIdx = descIdxById.get(id)
+          this.m.setU16((rec + 0x194) >>> 0, descIdx !== undefined ? descIdx & 0xffff : 0)
+        }
+        this.m.setU32((sgpt + 0xb98) >>> 0, pSkillsBase)
+        this.m.setU32((sgpt + 0xba0) >>> 0, SKILLS_TXT_COUNT_113C)
+
+        const pClassSkillCounts = this.m.alloc(7 * 4) >>> 0
+        const pClassSkillList = this.m.alloc(7 * 30 * 2) >>> 0
+        for (let cls = 0; cls < 7; cls++) {
+          this.m.setU32((pClassSkillCounts + cls * 4) >>> 0, 30)
+          const baseSk = CLASS_SKILL_BASE_113C[cls]!
+          for (let idx = 0; idx < 30; idx++) {
+            this.m.setU16((pClassSkillList + (cls * 30 + idx) * 2) >>> 0, (baseSk + idx) & 0xffff)
+          }
+        }
+        this.m.setU32((sgpt + 0xba4) >>> 0, pClassSkillCounts)
+        this.m.setU32((sgpt + 0xba8) >>> 0, 30)
+        this.m.setU32((sgpt + 0xbac) >>> 0, pClassSkillList)
+      }
+
+      let charStatsCount = 0
+      try {
+        charStatsCount = this.m.u32((sgpt + 0xbc8) >>> 0) >>> 0
+      } catch {
+        charStatsCount = 0
+      }
+      if (charStatsCount === 0) {
+        const pCharStatsTxt = this.m.alloc(7 * 0xc4) >>> 0
+        this.m.setU32((sgpt + 0xbc4) >>> 0, pCharStatsTxt)
+        this.m.setU32((sgpt + 0xbc8) >>> 0, 7)
+      }
     }
+  }
+
+  private registerRoomInSliceMap(
+    rPtr: number,
+    roomByPtr: Map<number, MutablePathRoom113c> = this.sliceWorld.roomByPtr,
+  ): void {
+    if (rPtr === 0 || roomByPtr.has(rPtr)) return
+    const m = this.m
+    const subX = m.get(rPtr, D2ActiveRoomStrc.nSubtileX) | 0
+    const subY = m.get(rPtr, D2ActiveRoomStrc.nSubtileY) | 0
+    const subW = m.get(rPtr, D2ActiveRoomStrc.nSubtileWidth) | 0
+    const subH = m.get(rPtr, D2ActiveRoomStrc.nSubtileHeight) | 0
+    const pColl = m.get(rPtr, D2ActiveRoomStrc.pCollisionGrid) >>> 0
+    const pMap = pColl !== 0 ? (m.get(pColl, D2RoomCollisionGridStrc.pMapStart) >>> 0) : 0
+    const grid: SlicePathCollisionGrid113c = {
+      get: (x: number, y: number): number => {
+        const rx = (x | 0) - subX
+        const ry = (y | 0) - subY
+        if (rx < 0 || ry < 0 || rx >= subW || ry >= subH || pMap === 0) return 0xffff
+        return m.u16((pMap + (ry * subW + rx) * 2) >>> 0)
+      },
+      set: (x: number, y: number, val: number): void => {
+        const rx = (x | 0) - subX
+        const ry = (y | 0) - subY
+        if (rx < 0 || ry < 0 || rx >= subW || ry >= subH || pMap === 0) return
+        m.setU16((pMap + (ry * subW + rx) * 2) >>> 0, val & 0xffff)
+      },
+    }
+    roomByPtr.set(rPtr, {
+      ptr: rPtr,
+      subX,
+      subY,
+      subW,
+      subH,
+      isTown: DUNGEON_CheckRoomIsTown113c(m, rPtr) !== 0,
+      adjacentRooms: [],
+      grid,
+    })
+  }
+
+  private collectActiveRevealedRooms(pRoom: number): Array<{
+    readonly areaId: number
+    readonly tileX: number
+    readonly tileY: number
+  }> {
+    const out: Array<{ readonly areaId: number; readonly tileX: number; readonly tileY: number }> = []
+    const seen = new Set<string>()
+    if (pRoom !== 0) {
+      const tileX = this.m.get(pRoom, D2ActiveRoomStrc.nTileX) & 0xffff
+      const tileY = this.m.get(pRoom, D2ActiveRoomStrc.nTileY) & 0xffff
+      const levelId = DUNGEON_GetLevelIdFromRoom113c(this.m, pRoom) || this.areaId
+      seen.add(`${levelId}:${tileX}:${tileY}`)
+      out.push({ areaId: levelId, tileX, tileY })
+    }
+    for (let i = 0; i < this.extraRevealedRooms.length; i++) {
+      const rm = this.extraRevealedRooms[i]!
+      const tileX = rm.tileX & 0xffff
+      const tileY = rm.tileY & 0xffff
+      const key = `${rm.areaId}:${tileX}:${tileY}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      out.push({ areaId: rm.areaId, tileX, tileY })
+    }
+    return out
   }
 
   private buildSliceWorld(): FallenSliceWorld113c {
@@ -575,47 +1213,13 @@ export class D2gsKernelBridge113c {
     const roomByPtr = new Map<number, MutablePathRoom113c>()
     const minionIdsByLeaderId = new Map<number, number[]>()
 
-    const registerRoom = (rPtr: number): void => {
-      if (rPtr === 0 || roomByPtr.has(rPtr)) return
-      const subX = m.get(rPtr, D2ActiveRoomStrc.nSubtileX) | 0
-      const subY = m.get(rPtr, D2ActiveRoomStrc.nSubtileY) | 0
-      const subW = m.get(rPtr, D2ActiveRoomStrc.nSubtileWidth) | 0
-      const subH = m.get(rPtr, D2ActiveRoomStrc.nSubtileHeight) | 0
-      const pColl = m.get(rPtr, D2ActiveRoomStrc.pCollisionGrid) >>> 0
-      const pMap = pColl !== 0 ? (m.get(pColl, D2RoomCollisionGridStrc.pMapStart) >>> 0) : 0
-      const grid: SlicePathCollisionGrid113c = {
-        get: (x: number, y: number): number => {
-          const rx = (x | 0) - subX
-          const ry = (y | 0) - subY
-          if (rx < 0 || ry < 0 || rx >= subW || ry >= subH || pMap === 0) return 0xffff
-          return m.u16((pMap + (ry * subW + rx) * 2) >>> 0)
-        },
-        set: (x: number, y: number, val: number): void => {
-          const rx = (x | 0) - subX
-          const ry = (y | 0) - subY
-          if (rx < 0 || ry < 0 || rx >= subW || ry >= subH || pMap === 0) return
-          m.setU16((pMap + (ry * subW + rx) * 2) >>> 0, val & 0xffff)
-        },
-      }
-      roomByPtr.set(rPtr, {
-        ptr: rPtr,
-        subX,
-        subY,
-        subW,
-        subH,
-        isTown: DUNGEON_CheckRoomIsTown113c(m, rPtr) !== 0,
-        adjacentRooms: [],
-        grid,
-      })
-    }
-
     for (let act = 0; act < 5; act++) {
       const pAct = m.u32((this.pGame + 0xbc + act * 4) >>> 0) >>> 0
       if (pAct === 0) continue
       let rPtr = m.u32((pAct + 0x10) >>> 0) >>> 0
       let guard = 0
       while (rPtr !== 0 && guard++ < 256) {
-        registerRoom(rPtr)
+        this.registerRoomInSliceMap(rPtr, roomByPtr)
         rPtr = m.get(rPtr, D2ActiveRoomStrc.pRoomNext) >>> 0
       }
     }
@@ -719,7 +1323,7 @@ export class D2gsKernelBridge113c {
     const tileW = Math.trunc(cfg.roomSubW / 5)
     const tileH = Math.trunc(cfg.roomSubH / 5)
     m.setU32((pRoomEx + 0x08) >>> 0, pAct)
-    m.setU32((pRoomEx + 0x24) >>> 0, 2)
+    m.setU32((pRoomEx + 0x24) >>> 0, TOWN_AREA_IDS_113C.has(cfg.areaId) ? 2 : 0)
     m.setU32((pRoomEx + 0x34) >>> 0, tileX >>> 0)
     m.setU32((pRoomEx + 0x38) >>> 0, tileY >>> 0)
     m.setU32((pRoomEx + 0x3c) >>> 0, tileW >>> 0)
@@ -1103,6 +1707,10 @@ export class D2gsKernelBridge113c {
           (curY - pre.y) & 0xff,
         )
       }
+
+      if (entry.pendingInteraction !== null) {
+        this.checkPendingInteractionArrival(entry, curX, curY, isNeutral)
+      }
     }
 
     this.flushAllClientQueuesToSink()
@@ -1437,6 +2045,10 @@ export class D2gsKernelBridge113c {
       framer: new D2gsC2sFramer(),
       wireFormat: cfg.wireFormat,
       unsubs: [],
+      activeNpcUnitId: 0,
+      lastNpcHandshakeUnitId: 0,
+      activeWaypointUnitId: 0,
+      pendingInteraction: null,
       closed: false,
     }
     this.clients.set(clientId, entry)
@@ -1493,6 +2105,12 @@ export class D2gsKernelBridge113c {
 
     m.setU32((pClient + 0x3d4) >>> 0, 0x01)
     m.setU32((pClient + 0x3d8) >>> 0, this.virtualTickMs >>> 0)
+    for (let slot = 0; slot < 16; slot++) {
+      const slotAddr = (pClient + slot * 8) >>> 0
+      m.setU16((slotAddr + 0x3dc) >>> 0, 0xffff)
+      m.setU8((slotAddr + 0x3de) >>> 0, 0)
+      m.setU32((slotAddr + 0x3e0) >>> 0, 0xffffffff)
+    }
 
     const prevHead = m.u32((this.pGame + 0x88) >>> 0) >>> 0
     m.setU32((pClient + 0x4a8) >>> 0, prevHead)
@@ -1509,6 +2127,36 @@ export class D2gsKernelBridge113c {
     const prev = this.m.get(this.pGame, D2GameStrc.pUnitHash, bucketIdx) >>> 0
     this.m.set(pUnit, D2UnitStrc.pGameHashNext, prev)
     this.m.set(this.pGame, D2GameStrc.pUnitHash, pUnit >>> 0, bucketIdx)
+  }
+
+  private removeUnitFromGameHash(pUnit: number, unitType: number, unitId: number): void {
+    const target = pUnit >>> 0
+    if (target === 0) return
+    const bucketIdx = (((unitType & 7) << 7) + (unitId & 0x7f)) | 0
+    let cur = this.m.get(this.pGame, D2GameStrc.pUnitHash, bucketIdx) >>> 0
+    let prev = 0
+    let guard = 0
+    while (cur !== 0 && guard++ < 256) {
+      const next = this.m.get(cur, D2UnitStrc.pGameHashNext) >>> 0
+      if (cur === target) {
+        if (prev === 0) {
+          this.m.set(this.pGame, D2GameStrc.pUnitHash, next, bucketIdx)
+        } else {
+          this.m.set(prev, D2UnitStrc.pGameHashNext, next)
+        }
+        this.m.set(cur, D2UnitStrc.pGameHashNext, 0)
+        break
+      }
+      prev = cur
+      cur = next
+    }
+    this.sliceWorld.unitsByKey.delete(`${unitType}:${unitId}`)
+    if (unitType === UNIT_MONSTER) {
+      this.sliceWorld.monsterById.delete(unitId)
+    } else if (unitType === UNIT_PLAYER) {
+      this.sliceWorld.playerById.delete(unitId)
+    }
+    this.sliceWorld.pathUnitByPtr.delete(target)
   }
 
   private queueBytesToClientBuffer(m: Memory113c, pClient: number, bytes: Uint8Array): void {
@@ -1734,19 +2382,9 @@ export class D2gsKernelBridge113c {
     CLIENT_SendLoadActAndEnvStatePackets_6FCBD610_113c(m, entry.pClient, this.pGame)
 
     // 3. `0x07 RoomReveal` (`MapAdd`, 6B) (`0x6FCABF50`)
-    const seenRooms = new Set<string>()
-    if (pRoom !== 0) {
-      const tileX = m.get(pRoom, D2ActiveRoomStrc.nTileX) & 0xffff
-      const tileY = m.get(pRoom, D2ActiveRoomStrc.nTileY) & 0xffff
-      const levelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom) || this.areaId
-      seenRooms.add(`${levelId}:${tileX}:${tileY}`)
-      NET_SendPacket07_RoomTileCoords_6FCABF50_113c(m, tileX, tileY, entry.pClient, levelId)
-    }
-    for (let i = 0; i < this.extraRevealedRooms.length; i++) {
-      const rm = this.extraRevealedRooms[i]!
-      const key = `${rm.areaId}:${rm.tileX & 0xffff}:${rm.tileY & 0xffff}`
-      if (seenRooms.has(key)) continue
-      seenRooms.add(key)
+    this.activeRevealedRooms = this.collectActiveRevealedRooms(pRoom)
+    for (let i = 0; i < this.activeRevealedRooms.length; i++) {
+      const rm = this.activeRevealedRooms[i]!
       NET_SendPacket07_RoomTileCoords_6FCABF50_113c(
         m,
         rm.tileX & 0xffff,
@@ -1760,14 +2398,85 @@ export class D2gsKernelBridge113c {
     // 4. `0x15 ReassignPlayer` (11B, `bFlash = 1`) (`0x6FCEBB10`)
     NET_SendReassignUnitPacket15_113c(m, pPlayer, entry.pClient, 1)
 
-    // 5. Initial skill assignment (`0x23 AssignSkill`)
+    // 5a. Owned items (`0x9D` equipped/socket + `0x9C` inventory/belt/stash/cube)
+    this.emitInitialItemsToClient(entry, flushIfNearCapacity)
+
+    // 5b. Base skill levels (`0x94 BaseSkillLevels`, emitted when >= 1 learned skill has baseLevel > 0)
+    const pSkillsList = m.get(pPlayer, D2UnitStrc.pSkills) >>> 0
+    if (pSkillsList !== 0) {
+      const learnedBaseSkills: Array<{ readonly skillId: number; readonly baseLevel: number }> = []
+      let pSk = SKILLS_GetFirstSkillFromSkillList113c(m, pSkillsList) >>> 0
+      let skGuard = 0
+      while (pSk !== 0 && skGuard++ < 512) {
+        if ((SKILLS_GetOwnerItemGuid113c(m, pSk) >>> 0) === 0xffffffff) {
+          const skId = SKILLS_GetSkillIdFromSkill113c(m, pSk, 0, 0) | 0
+          const baseLvl = SKILLS_GetSkillLevel113c(m, pPlayer, pSk, 0) | 0
+          if (skId > 0 && baseLvl > 0) {
+            learnedBaseSkills.push({ skillId: skId, baseLevel: Math.min(255, baseLvl) })
+          }
+        }
+        pSk = SKILLS_GetNextSkill113c(m, pSk) >>> 0
+      }
+      if (learnedBaseSkills.length > 0) {
+        learnedBaseSkills.sort((a, b) => a.skillId - b.skillId)
+        for (let start = 0; start < learnedBaseSkills.length; start += 160) {
+          const chunk = learnedBaseSkills.slice(start, start + 160)
+          const pkt94 = new Uint8Array(6 + chunk.length * 3)
+          const dv94 = new DataView(pkt94.buffer)
+          pkt94[0] = 0x94
+          pkt94[1] = chunk.length & 0xff
+          dv94.setUint32(2, entry.playerUnitId >>> 0, true)
+          for (let k = 0; k < chunk.length; k++) {
+            const item = chunk[k]!
+            dv94.setUint16(6 + k * 3, item.skillId & 0xffff, true)
+            pkt94[6 + k * 3 + 2] = item.baseLevel & 0xff
+          }
+          this.queueBytesToClientBuffer(m, entry.pClient, pkt94)
+          flushIfNearCapacity()
+        }
+      }
+    }
+
+    // 5c. Bound skill hotkeys (`0x7B AssignSkillHotkey`, 8B per bound slot `0..15`)
+    for (let slot = 0; slot < 16; slot++) {
+      const slotAddr = (entry.pClient + slot * 8) >>> 0
+      const wSkillId = m.u16((slotAddr + 0x3dc) >>> 0) & 0xffff
+      if (wSkillId === 0xffff) continue
+      const bLeft = m.u8((slotAddr + 0x3de) >>> 0) & 0x01
+      const dwItemGuid = m.u32((slotAddr + 0x3e0) >>> 0) >>> 0
+      const word = ((wSkillId & 0x0fff) | (bLeft !== 0 ? 0x8000 : 0)) & 0xffff
+      const pkt7b = new Uint8Array(8)
+      const dv7b = new DataView(pkt7b.buffer)
+      pkt7b[0] = 0x7b
+      pkt7b[1] = slot & 0xff
+      dv7b.setUint16(2, word, true)
+      dv7b.setUint32(4, dwItemGuid, true)
+      this.queueBytesToClientBuffer(m, entry.pClient, pkt7b)
+      flushIfNearCapacity()
+    }
+
+    // 5d. Initial left & right hand skill assignment (`0x23 AssignSkill`)
+    let liveLeftSkill = this.initialLeftSkill
+    let liveRightSkill = this.initialRightSkill
+    if (pSkillsList !== 0) {
+      const pLeft = SKILLS_GetLeftSkillFromSkillList113c(m, pSkillsList) >>> 0
+      if (pLeft !== 0) {
+        const leftId = SKILLS_GetSkillIdFromSkill113c(m, pLeft, 0, 0) | 0
+        if (leftId >= 0) liveLeftSkill = leftId
+      }
+      const pRight = m.get(pSkillsList, D2SkillListStrc.pRightSkill) >>> 0
+      if (pRight !== 0) {
+        const rightId = SKILLS_GetSkillIdFromSkill113c(m, pRight, 0, 0) | 0
+        if (rightId >= 0) liveRightSkill = rightId
+      }
+    }
     NET_SendPacket0x23_AssignSkill113c(
       m,
       UNIT_PLAYER,
       entry.playerUnitId,
       entry.pClient,
       1,
-      this.initialLeftSkill,
+      liveLeftSkill,
       -1,
       {
         queuePacket: (mem, cli, pktPtr, pktSize) => {
@@ -1781,7 +2490,7 @@ export class D2gsKernelBridge113c {
       entry.playerUnitId,
       entry.pClient,
       0,
-      this.initialRightSkill,
+      liveRightSkill,
       -1,
       {
         queuePacket: (mem, cli, pktPtr, pktSize) => {
@@ -1840,6 +2549,165 @@ export class D2gsKernelBridge113c {
     m.setU32((entry.pClient + D2ClientStrcOffsets.dwClientState) >>> 0, 4)
   }
 
+  private emitInitialItemsToClient(
+    entry: InternalClientEntry113c,
+    flushIfNearCapacity: () => void,
+  ): void {
+    const items = this.initialItems
+    if (items === undefined || items.length === 0) return
+
+    const m = this.m
+    let currentHostItemId = 0
+
+    const emitSingleItem = (rawItem: ItemData, ownerId: number, isSocketChild: boolean): number => {
+      const assignedId =
+        rawItem.id !== undefined && rawItem.id > 0
+          ? rawItem.id >>> 0
+          : rawItem.itemId !== undefined && rawItem.itemId > 0
+            ? rawItem.itemId >>> 0
+            : this.allocUnitId()
+      if (assignedId >= this.nextUnitId) {
+        this.nextUnitId = (assignedId + 1) >>> 0
+      }
+      const loc = isSocketChild ? 6 : (rawItem.location ?? 0)
+      const container =
+        loc === 6
+          ? 'socket'
+          : loc === 1
+            ? 'equipment'
+            : loc === 2
+              ? 'belt'
+              : loc === 4
+                ? 'cursor'
+                : (rawItem.storePage ?? rawItem.storagePage) === 5
+                  ? 'stash'
+                  : (rawItem.storePage ?? rawItem.storagePage) === 4
+                    ? 'cube'
+                    : 'inventory'
+      const itemWithId: ItemData = {
+        ...rawItem,
+        id: assignedId,
+        itemId: assignedId,
+        location: loc,
+        ownerType: isSocketChild ? 4 : 0,
+        ownerId,
+      }
+      const pkts = serverEventToS2cPackets(
+        {
+          type: 'ItemEvent',
+          action: loc === 1 ? 'equip' : 'add',
+          container,
+          ownerId,
+          itemId: assignedId,
+          item: itemWithId,
+        },
+        this.tables,
+      )
+      for (let p = 0; p < pkts.length; p++) {
+        this.queueBytesToClientBuffer(m, entry.pClient, pkts[p]!)
+        flushIfNearCapacity()
+      }
+      return assignedId
+    }
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]!
+      const isFlatChild = item.location === 6 || Boolean(item.inSocket)
+      if (isFlatChild) {
+        if (currentHostItemId !== 0) {
+          emitSingleItem(item, currentHostItemId, true)
+        }
+        continue
+      }
+      currentHostItemId = emitSingleItem(item, entry.playerUnitId, false)
+      const nested = item.socketedItems
+      if (nested !== undefined && nested.length > 0) {
+        const nextIsFlat =
+          i + 1 < items.length &&
+          (items[i + 1]!.location === 6 || Boolean(items[i + 1]!.inSocket))
+        if (!nextIsFlat) {
+          for (let c = 0; c < nested.length; c++) {
+            emitSingleItem(nested[c]! as ItemData, currentHostItemId, true)
+          }
+        }
+      }
+    }
+  }
+
+  private applyEquippedItemSkillBonuses(pPlayer: number): void {
+    const items = this.initialItems
+    if (items === undefined || items.length === 0) return
+
+    const m = this.m
+    const applyStats = (stats: readonly ItemStat[] | undefined): void => {
+      if (stats === undefined) return
+      for (let s = 0; s < stats.length; s++) {
+        const st = stats[s]!
+        const val = st.value | 0
+        if (val === 0) continue
+        const param = (st.param ?? 0) | 0
+        switch (st.statId) {
+          case STAT_ITEM_SINGLESKILL:
+          case STAT_ITEM_NONCLASSSKILL: {
+            if (param > 0 && param < SKILLS_TXT_COUNT_113C) {
+              const prev = STATLIST_GetUnitStat113c(m, pPlayer, st.statId, param) | 0
+              STATLIST_SetUnitStat113c(m, pPlayer, st.statId, (prev + val) | 0, param)
+              if (SKILLS_GetSkillById113c(m, pPlayer, param, -1) === 0) {
+                SKILLS_SetSkillLevelOnUnit113c(m, pPlayer, param, 0, 0, 0, 0)
+              }
+            }
+            break
+          }
+          case STAT_ITEM_ADDCLASSSKILLS:
+          case STAT_ITEM_ADDSKILL_TAB: {
+            const prev = STATLIST_GetUnitStat113c(m, pPlayer, st.statId, param) | 0
+            STATLIST_SetUnitStat113c(m, pPlayer, st.statId, (prev + val) | 0, param)
+            break
+          }
+          case STAT_ITEM_ALLSKILLS: {
+            const prev = STATLIST_GetUnitStat113c(m, pPlayer, STAT_ITEM_ALLSKILLS, 0) | 0
+            STATLIST_SetUnitStat113c(m, pPlayer, STAT_ITEM_ALLSKILLS, (prev + val) | 0, 0)
+            break
+          }
+          default:
+            break
+        }
+      }
+    }
+
+    let currentHostEquipped = false
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]!
+      const isFlatChild = item.location === 6 || Boolean(item.inSocket)
+      if (isFlatChild) {
+        if (currentHostEquipped) {
+          applyStats(item.stats)
+        }
+        continue
+      }
+      currentHostEquipped = item.location === 1 || Boolean(item.equipped)
+      if (!currentHostEquipped) continue
+      applyStats(item.stats)
+      applyStats(item.runewordStats)
+      if (item.setBonusStats !== undefined) {
+        for (let sb = 0; sb < item.setBonusStats.length; sb++) {
+          applyStats(item.setBonusStats[sb]!.stats)
+        }
+      }
+      const nested = item.socketedItems
+      if (nested !== undefined && nested.length > 0) {
+        const nextIsFlat =
+          i + 1 < items.length &&
+          (items[i + 1]!.location === 6 || Boolean(items[i + 1]!.inSocket))
+        if (!nextIsFlat) {
+          for (let c = 0; c < nested.length; c++) {
+            applyStats((nested[c]! as ItemData).stats)
+          }
+        }
+      }
+    }
+  }
+
   private initDynamicPathOnUnit(
     pUnit: number,
     x: number,
@@ -1878,6 +2746,23 @@ export class D2gsKernelBridge113c {
     const pPlayerData = m.alloc(D2PlayerDataStrc_SIZE) >>> 0
     writeFixedAscii16(m, pPlayerData, entry.charName)
     m.setU32((pPlayerData + 0x9c) >>> 0, entry.pClient)
+    for (let d = 0; d < 3; d++) {
+      const pQuestRec = QUESTRECORD_AllocRecord113c(m, 0) >>> 0
+      const pQuestBuf = m.u32(pQuestRec) >>> 0
+      const initQuest = this.initialQuestBuffers[d as 0 | 1 | 2]
+      for (let b = 0; b < 96; b++) {
+        m.setU8((pQuestBuf + b) >>> 0, initQuest[b]!)
+      }
+      m.setU32((pPlayerData + 0x10 + d * 4) >>> 0, pQuestRec)
+
+      const initWp = this.initialWaypointBuffers[d as 0 | 1 | 2]
+      for (let b = 0; b < 16; b++) {
+        m.setU8((this.pSmallScratch + b) >>> 0, initWp[b]!)
+      }
+      const pWpData = m.alloc(0x10) >>> 0
+      WAYPOINT_CopyAndValidateWaypointData113c(m, this.pSmallScratch, pWpData)
+      m.setU32((pPlayerData + 0x1c + d * 4) >>> 0, pWpData)
+    }
     m.set(pPlayer, D2UnitStrc.pUnitData, pPlayerData)
 
     const pInventory = m.alloc(D2InventoryStrc_SIZE) >>> 0
@@ -1934,18 +2819,80 @@ export class D2gsKernelBridge113c {
     const pSkills = SKILLS_AllocSkillList113c(m, 0) >>> 0
     m.set(pPlayer, D2UnitStrc.pSkills, pSkills)
     SKILLS_SetSkillLevelOnUnit113c(m, pPlayer, 0, 1, 1, 0, 0)
-    if (this.initialLeftSkill > 0) {
-      SKILLS_SetSkillLevelOnUnit113c(m, pPlayer, this.initialLeftSkill, 1, 1, 0, 0)
+    this.applyEquippedItemSkillBonuses(pPlayer)
+
+    if (this.initialSkillLevels !== undefined) {
+      for (const [rawKey, rawLvl] of Object.entries(this.initialSkillLevels)) {
+        const skillId = Number(rawKey)
+        const baseLvl = Math.max(0, Math.min(255, Math.floor(Number(rawLvl) || 0)))
+        if (
+          Number.isInteger(skillId) &&
+          skillId > 0 &&
+          skillId < SKILLS_TXT_COUNT_113C &&
+          baseLvl > 0
+        ) {
+          SKILLS_SetSkillLevelOnUnit113c(m, pPlayer, skillId, baseLvl, 1, 0, 0)
+        }
+      }
+      if (
+        this.initialLeftSkill > 0 &&
+        this.initialLeftSkill < SKILLS_TXT_COUNT_113C &&
+        SKILLS_GetSkillById113c(m, pPlayer, this.initialLeftSkill, -1) === 0
+      ) {
+        SKILLS_SetSkillLevelOnUnit113c(m, pPlayer, this.initialLeftSkill, 0, 0, 0, 0)
+      }
+      if (
+        this.initialRightSkill > 0 &&
+        this.initialRightSkill < SKILLS_TXT_COUNT_113C &&
+        SKILLS_GetSkillById113c(m, pPlayer, this.initialRightSkill, -1) === 0
+      ) {
+        SKILLS_SetSkillLevelOnUnit113c(m, pPlayer, this.initialRightSkill, 0, 0, 0, 0)
+      }
+    } else {
+      if (this.initialLeftSkill > 0 && this.initialLeftSkill < SKILLS_TXT_COUNT_113C) {
+        SKILLS_SetSkillLevelOnUnit113c(m, pPlayer, this.initialLeftSkill, 1, 1, 0, 0)
+      }
+      if (
+        this.initialRightSkill > 0 &&
+        this.initialRightSkill < SKILLS_TXT_COUNT_113C &&
+        this.initialRightSkill !== this.initialLeftSkill
+      ) {
+        SKILLS_SetSkillLevelOnUnit113c(m, pPlayer, this.initialRightSkill, 1, 1, 0, 0)
+      }
     }
-    if (this.initialRightSkill > 0 && this.initialRightSkill !== this.initialLeftSkill) {
-      SKILLS_SetSkillLevelOnUnit113c(m, pPlayer, this.initialRightSkill, 1, 1, 0, 0)
-    }
-    const pLeftSkill = SKILLS_GetSkillById113c(m, pPlayer, this.initialLeftSkill, -1) >>> 0
-    const pRightSkill = SKILLS_GetSkillById113c(m, pPlayer, this.initialRightSkill, -1) >>> 0
-    const pBasicAtk = SKILLS_GetSkillById113c(m, pPlayer, 0, -1) >>> 0
-    if (pSkills !== 0) {
-      m.set(pSkills, D2SkillListStrc.pLeftSkill, pLeftSkill !== 0 ? pLeftSkill : pBasicAtk)
-      m.set(pSkills, D2SkillListStrc.pRightSkill, pRightSkill !== 0 ? pRightSkill : pBasicAtk)
+
+    const leftId =
+      this.initialLeftSkill >= 0 &&
+      this.initialLeftSkill < SKILLS_TXT_COUNT_113C &&
+      SKILLS_GetSkillById113c(m, pPlayer, this.initialLeftSkill, -1) !== 0
+        ? this.initialLeftSkill
+        : 0
+    const rightId =
+      this.initialRightSkill >= 0 &&
+      this.initialRightSkill < SKILLS_TXT_COUNT_113C &&
+      SKILLS_GetSkillById113c(m, pPlayer, this.initialRightSkill, -1) !== 0
+        ? this.initialRightSkill
+        : 0
+    SKILLS_SetLeftSkill113c(m, pPlayer, leftId, -1)
+    SKILLS_SetRightSkill113c(m, pPlayer, rightId, -1)
+    PLAYER_StoreLeftSkill113c(m, pPlayer)
+    PLAYER_StoreRightSkill113c(m, pPlayer)
+
+    if (this.initialHotkeys !== undefined) {
+      const count = Math.min(16, this.initialHotkeys.length)
+      for (let slot = 0; slot < count; slot++) {
+        const raw = this.initialHotkeys[slot]! >>> 0
+        const word = raw & 0xffff
+        if (word === 0xffff || (word & 0x7fff) === 0x7fff) continue
+        const skId = word & 0x7fff
+        const bLeft = (word & 0x8000) !== 0 ? 1 : 0
+        if (skId >= 0 && skId < SKILLS_TXT_COUNT_113C) {
+          if (SKILLS_GetSkillById113c(m, pPlayer, skId, -1) === 0) {
+            SKILLS_SetSkillLevelOnUnit113c(m, pPlayer, skId, 0, 0, 0, 0)
+          }
+          PLAYER_SetClientSkillHotkeySlot113c(m, pPlayer, slot, skId, bLeft, 0xffffffff)
+        }
+      }
     }
 
     return pPlayer
@@ -1964,6 +2911,8 @@ export class D2gsKernelBridge113c {
 
     const callees: C2SPacketCallees113c = {
       startPlayerModeAtCoords: (mem, _pGame, pPlayer, _nPlrMode, _nX, _nY, _bRunOrShift) => {
+        entry.pendingInteraction = null
+        entry.activeWaypointUnitId = 0
         applyPlayerPacket113c(this.sliceWorld, pPlayer, rawBytes)
         const activeMode = mem.get(pPlayer, D2UnitStrc.dwAnimMode) >>> 0
         if (
@@ -1985,6 +2934,8 @@ export class D2gsKernelBridge113c {
         _nY,
         _bRunOrShift,
       ) => {
+        entry.pendingInteraction = null
+        entry.activeWaypointUnitId = 0
         applyPlayerPacket113c(this.sliceWorld, pPlayer, rawBytes)
         const activeMode = mem.get(pPlayer, D2UnitStrc.dwAnimMode) >>> 0
         if (
@@ -1997,6 +2948,69 @@ export class D2gsKernelBridge113c {
         return 1
       },
       onUnhandledOpcode: (mem, _pGame, pPlayer, opcode, pktPtr, len) => {
+        if (opcode === 0x13 && len >= 9) {
+          const targetType = mem.u32((pktPtr + 1) >>> 0) >>> 0
+          const targetId = mem.u32((pktPtr + 5) >>> 0) >>> 0
+          this.handleC2SUnitInteract(entry, targetType, targetId)
+          return 9
+        }
+        if (opcode === 0x2f && len >= 9) {
+          const targetType = mem.u32((pktPtr + 1) >>> 0) >>> 0
+          const npcUnitId = mem.u32((pktPtr + 5) >>> 0) >>> 0
+          if (targetType === UNIT_MONSTER) {
+            const pNpc = this.findUnitInActiveRoom(UNIT_MONSTER, npcUnitId)
+            if (pNpc !== 0) {
+              const npcClassId = mem.get(pNpc, D2UnitStrc.dwClassId) >>> 0
+              if (isInteractiveNpcClassId113c(npcClassId)) {
+                const plrX = UNITS_GetX113c(mem, pPlayer) & 0xffff
+                const plrY = UNITS_GetY113c(mem, pPlayer) & 0xffff
+                const npcX = UNITS_GetX113c(mem, pNpc) & 0xffff
+                const npcY = UNITS_GetY113c(mem, pNpc) & 0xffff
+                if (Math.hypot(plrX - npcX, plrY - npcY) <= NPC_TETHER_RANGE_SUBTILES_113C) {
+                  this.executeNpcInteractHandshake(entry, pNpc, false)
+                }
+              }
+            }
+          }
+          return 9
+        }
+        if (opcode === 0x30 && len >= 9) {
+          const npcUnitId = mem.u32((pktPtr + 5) >>> 0) >>> 0
+          if (entry.activeNpcUnitId === 0 || entry.activeNpcUnitId === npcUnitId) {
+            entry.activeNpcUnitId = 0
+          }
+          if (entry.lastNpcHandshakeUnitId === npcUnitId) {
+            entry.lastNpcHandshakeUnitId = 0
+          }
+          if (
+            entry.pendingInteraction !== null &&
+            entry.pendingInteraction.kind === 'npc' &&
+            entry.pendingInteraction.unitId === npcUnitId
+          ) {
+            entry.pendingInteraction = null
+          }
+          return 9
+        }
+        if (opcode === 0x40 && len >= 1) {
+          QUESTS_SendPlayerQuestLogPacket28_113c(this.m, pPlayer, this.pGame)
+          return 1
+        }
+        if (opcode === 0x49 && len >= 9) {
+          const waypointUnitId = mem.u32((pktPtr + 1) >>> 0) >>> 0
+          const destAreaId = mem.u32((pktPtr + 5) >>> 0) >>> 0
+          this.handleC2SWaypointTravel(entry, waypointUnitId, destAreaId)
+          return 9
+        }
+        if (opcode === 0x5f && len >= 5) {
+          const clientX = mem.u16((pktPtr + 1) >>> 0) & 0xffff
+          const clientY = mem.u16((pktPtr + 3) >>> 0) & 0xffff
+          const srvX = UNITS_GetX113c(mem, pPlayer) & 0xffff
+          const srvY = UNITS_GetY113c(mem, pPlayer) & 0xffff
+          if (Math.hypot(clientX - srvX, clientY - srvY) > 5 && entry.pClient !== 0) {
+            NET_SendReassignUnitPacket15_113c(mem, pPlayer, entry.pClient, 1)
+          }
+          return 5
+        }
         if (opcode === 0x3a && len >= 3) {
           const statId = mem.u8((pktPtr + 1) >>> 0) & 0xff
           const spendCount = (mem.u8((pktPtr + 2) >>> 0) + 1) | 0
@@ -2023,11 +3037,85 @@ export class D2gsKernelBridge113c {
           }
           return 3
         }
+        if (opcode === 0x3b && len >= 3) {
+          const prevSkillPts = STATLIST_GetUnitStat113c(mem, pPlayer, STAT_NEWSKILLS, 0) | 0
+          C2S_Packet3B_SpendSkillPoint_6FCEDA20_113c(this.m, this.pGame, pPlayer, pktPtr, 3)
+          const nextSkillPts = STATLIST_GetUnitStat113c(mem, pPlayer, STAT_NEWSKILLS, 0) | 0
+          if (nextSkillPts !== prevSkillPts) {
+            D2GAME_PACKET_SendStatByteWordDword113c(
+              mem,
+              entry.pClient,
+              STAT_NEWSKILLS,
+              nextSkillPts,
+              this.gapBCallees,
+            )
+          }
+          return 3
+        }
+        if (opcode === 0x51 && len >= 9) {
+          const rc = PACKET_Srv3C_SetSkillHotkey_6FCEBC70_113c(mem, this.pGame, pPlayer, pktPtr, 9)
+          if (rc === 0) {
+            const dwRaw = mem.u32((pktPtr + 1) >>> 0) >>> 0
+            const slot = (dwRaw >>> 16) & 0x0f
+            const slotAddr = (entry.pClient + slot * 8) >>> 0
+            const wSkillId = mem.u16((slotAddr + 0x3dc) >>> 0) & 0xffff
+            const bLeft = mem.u8((slotAddr + 0x3de) >>> 0) & 0x01
+            const dwItemGuid = mem.u32((slotAddr + 0x3e0) >>> 0) >>> 0
+            const word =
+              wSkillId === 0xffff
+                ? 0xffff
+                : (((wSkillId & 0x0fff) | (bLeft !== 0 ? 0x8000 : 0)) & 0xffff)
+            const pkt7b = new Uint8Array(8)
+            const dv7b = new DataView(pkt7b.buffer)
+            pkt7b[0] = 0x7b
+            pkt7b[1] = slot & 0xff
+            dv7b.setUint16(2, word, true)
+            dv7b.setUint32(4, dwItemGuid, true)
+            this.queueBytesToClientBuffer(mem, entry.pClient, pkt7b)
+          }
+          return 9
+        }
         if (opcode === 0x15 && len >= 4) {
-          // `0x15 ChatMessage`: echo `0x26 ChatMessage` (`[0x26, chatType=1, locale=0, unitType=0, id=0, color=0, subType=0, charName\0, msg\0]`)
           let s1End = 3
           while (s1End < len && rawBytes[s1End] !== 0) s1End++
           const msgBytes = rawBytes.subarray(3, s1End)
+          let msgText = ''
+          for (let i = 0; i < msgBytes.byteLength; i++) {
+            msgText += String.fromCharCode(msgBytes[i]!)
+          }
+          const trimmed = msgText.trim()
+          const playersSetMatch = /^players set to (-?\d+)$/i.exec(trimmed)
+          const slashPlayersMatch = /^\/players(.*)$/i.exec(trimmed)
+          const barePlayersMatch = /^players(?:\s+(?:set\s+)?|\s*:\s*)(-?\d+)$/i.exec(trimmed)
+          if (playersSetMatch || slashPlayersMatch || barePlayersMatch) {
+            let parsedVal: number
+            if (playersSetMatch) {
+              parsedVal = Number(playersSetMatch[1])
+            } else if (slashPlayersMatch) {
+              const atoiMatch = /^[\t\n\v\f\r :]*([+-]?\d+)/.exec(slashPlayersMatch[1] ?? '')
+              parsedVal = atoiMatch ? Number.parseInt(atoiMatch[1]!, 10) : 1
+            } else {
+              parsedVal = Number(barePlayersMatch![1])
+            }
+            const applied = this.setPlayersX(parsedVal)
+            const sysReply = `players set to ${applied}`
+            const srvName = 'Server'
+            const s2cSys = new Uint8Array(10 + srvName.length + 1 + sysReply.length + 1)
+            s2cSys[0] = 0x26
+            s2cSys[1] = 0x04
+            for (let i = 0; i < srvName.length; i++) {
+              s2cSys[10 + i] = srvName.charCodeAt(i) & 0x7f
+            }
+            s2cSys[10 + srvName.length] = 0
+            for (let i = 0; i < sysReply.length; i++) {
+              s2cSys[10 + srvName.length + 1 + i] = sysReply.charCodeAt(i) & 0x7f
+            }
+            s2cSys[s2cSys.byteLength - 1] = 0
+            this.queueBytesToClientBuffer(mem, entry.pClient, s2cSys)
+            return len
+          }
+
+          // Standard `0x15 ChatMessage`: echo `0x26 ChatMessage` (`chatType=1`)
           const nameLen = entry.charName.length
           const s2c26 = new Uint8Array(10 + nameLen + 1 + msgBytes.byteLength + 1)
           s2c26[0] = 0x26
@@ -2051,7 +3139,7 @@ export class D2gsKernelBridge113c {
       },
     }
 
-    const res = C2S_DispatchPacketMem113c(
+    return C2S_DispatchPacketMem113c(
       this.m,
       this.pGame,
       entry.pClient,
@@ -2059,27 +3147,715 @@ export class D2gsKernelBridge113c {
       pktLen,
       callees,
     )
-    if (rawBytes[0] === 0x3c && pktLen >= 9 && entry.pPlayer !== 0) {
-      const wSkillId = rawBytes[1]! | (rawBytes[2]! << 8)
-      const bLeft = rawBytes[4]! !== 0 ? 1 : 0
-      const dwItemGuid =
-        (rawBytes[5]! | (rawBytes[6]! << 8) | (rawBytes[7]! << 16) | (rawBytes[8]! << 24)) | 0
-      NET_SendPacket0x23_AssignSkill113c(
-        this.m,
-        UNIT_PLAYER,
-        entry.playerUnitId,
+  }
+
+  private findUnitInActiveRoom(unitType: number, unitId: number): number {
+    const pRoom = this.defaultRoomPtr >>> 0
+    if (pRoom === 0) return 0
+    let pUnit = this.m.get(pRoom, D2ActiveRoomStrc.pUnitFirst) >>> 0
+    let guard = 0
+    while (pUnit !== 0 && guard++ < 2048) {
+      if (
+        (this.m.get(pUnit, D2UnitStrc.dwUnitType) >>> 0) === (unitType >>> 0) &&
+        (this.m.get(pUnit, D2UnitStrc.dwUnitId) >>> 0) === (unitId >>> 0)
+      ) {
+        return pUnit
+      }
+      pUnit = this.m.get(pUnit, D2UnitStrc.pRoomUnitNext) >>> 0
+    }
+    return 0
+  }
+
+  private stopPlayerMovementInPlace(entry: InternalClientEntry113c): void {
+    const pPlayer = entry.pPlayer >>> 0
+    if (pPlayer === 0) return
+    const isTown = DUNGEON_CheckRoomIsTown113c(this.m, this.defaultRoomPtr) !== 0
+    const neutralMode = isTown ? PLRMODE_TOWN_NEUTRAL : PLRMODE_NEUTRAL
+    this.m.set(pPlayer, D2UnitStrc.dwAnimMode, neutralMode)
+    const pPath = this.m.get(pPlayer, D2UnitStrc.pPath) >>> 0
+    if (pPath !== 0) {
+      const curX = this.m.get(pPath, D2DynamicPathStrc.wPosX) & 0xffff
+      const curY = this.m.get(pPath, D2DynamicPathStrc.wPosY) & 0xffff
+      this.m.set(pPath, D2DynamicPathStrc.wTargetX, curX)
+      this.m.set(pPath, D2DynamicPathStrc.wTargetY, curY)
+      this.m.set(pPath, D2DynamicPathStrc.pTargetUnit, 0)
+      this.m.set(pPath, D2DynamicPathStrc.nDist, 0)
+      this.m.set(pPath, D2DynamicPathStrc.nStepNum, 0)
+      this.m.set(pPath, D2DynamicPathStrc.nDistance, 0)
+    }
+    const pu = this.sliceWorld.pathUnitByPtr.get(pPlayer)
+    if (pu !== undefined) {
+      pu.dwAnimMode = neutralMode
+    }
+  }
+
+  private walkPlayerTowardTarget(
+    entry: InternalClientEntry113c,
+    targetX: number,
+    targetY: number,
+  ): void {
+    const pPlayer = entry.pPlayer >>> 0
+    if (pPlayer === 0) return
+    let goalX = targetX & 0xffff
+    let goalY = targetY & 0xffff
+    const room = this.sliceWorld.roomByPtr.get(this.defaultRoomPtr)
+    if (room !== undefined) {
+      const free = collisionGetFreeCoordinates(
+        (x, y) =>
+          (x !== targetX || y !== targetY) &&
+          !isBlockedWithUnitSize((cx, cy) => (room.grid.get(cx, cy) & 0x1c09) !== 0, x, y, 2),
+        targetX,
+        targetY,
+        16,
+        1,
+      )
+      if (free !== null) {
+        goalX = free.x & 0xffff
+        goalY = free.y & 0xffff
+      }
+    }
+    const movePkt = new Uint8Array(5)
+    movePkt[0] = 0x03 // RunToLocation (downgraded to town walk automatically if needed)
+    movePkt[1] = goalX & 0xff
+    movePkt[2] = (goalX >>> 8) & 0xff
+    movePkt[3] = goalY & 0xff
+    movePkt[4] = (goalY >>> 8) & 0xff
+    applyPlayerPacket113c(this.sliceWorld, pPlayer, movePkt)
+    const activeMode = this.m.get(pPlayer, D2UnitStrc.dwAnimMode) >>> 0
+    if (
+      activeMode === PLRMODE_WALK ||
+      activeMode === PLRMODE_RUN ||
+      activeMode === PLRMODE_TOWN_WALK
+    ) {
+      this.broadcastPlayerMove0F(pPlayer, activeMode)
+    }
+  }
+
+  private checkPendingInteractionArrival(
+    entry: InternalClientEntry113c,
+    curX: number,
+    curY: number,
+    isNeutral: boolean,
+  ): void {
+    const pending = entry.pendingInteraction
+    if (pending === null) return
+    if (pending.kind === 'npc') {
+      const pNpc = this.findUnitInActiveRoom(UNIT_MONSTER, pending.unitId)
+      if (pNpc === 0) {
+        entry.pendingInteraction = null
+        return
+      }
+      const npcX = UNITS_GetX113c(this.m, pNpc) & 0xffff
+      const npcY = UNITS_GetY113c(this.m, pNpc) & 0xffff
+      const dist = Math.hypot(curX - npcX, curY - npcY)
+      if (
+        dist <= INTERACT_ARRIVAL_RANGE_SUBTILES_113C ||
+        (isNeutral && dist <= INTERACT_IMMEDIATE_RANGE_SUBTILES_113C)
+      ) {
+        entry.pendingInteraction = null
+        if (entry.pPlayer !== 0 && entry.pClient !== 0) {
+          NET_SendReassignUnitPacket15_113c(this.m, entry.pPlayer, entry.pClient, 1)
+        }
+        this.executeNpcInteractHandshake(entry, pNpc, true)
+      } else if (isNeutral) {
+        entry.pendingInteraction = null
+      }
+      return
+    }
+    const pObj = this.findUnitInActiveRoom(UNIT_OBJECT_113C, pending.unitId)
+    if (pObj === 0) {
+      entry.pendingInteraction = null
+      return
+    }
+    const objX = UNITS_GetX113c(this.m, pObj) & 0xffff
+    const objY = UNITS_GetY113c(this.m, pObj) & 0xffff
+    const dist = Math.hypot(curX - objX, curY - objY)
+    if (
+      dist <= INTERACT_ARRIVAL_RANGE_SUBTILES_113C ||
+      (isNeutral && dist <= INTERACT_IMMEDIATE_RANGE_SUBTILES_113C)
+    ) {
+      entry.pendingInteraction = null
+      if (entry.pPlayer !== 0 && entry.pClient !== 0) {
+        NET_SendReassignUnitPacket15_113c(this.m, entry.pPlayer, entry.pClient, 1)
+      }
+      this.executeWaypointOpen(entry, pObj)
+    } else if (isNeutral) {
+      entry.pendingInteraction = null
+    }
+  }
+
+  private handleC2SUnitInteract(
+    entry: InternalClientEntry113c,
+    targetType: number,
+    targetId: number,
+  ): void {
+    const pPlayer = entry.pPlayer >>> 0
+    if (pPlayer === 0) return
+    const plrX = UNITS_GetX113c(this.m, pPlayer) & 0xffff
+    const plrY = UNITS_GetY113c(this.m, pPlayer) & 0xffff
+
+    if (targetType === UNIT_MONSTER) {
+      const pNpc = this.findUnitInActiveRoom(UNIT_MONSTER, targetId)
+      if (pNpc === 0) return
+      const npcClassId = this.m.get(pNpc, D2UnitStrc.dwClassId) >>> 0
+      if (!isInteractiveNpcClassId113c(npcClassId)) return
+      const npcX = UNITS_GetX113c(this.m, pNpc) & 0xffff
+      const npcY = UNITS_GetY113c(this.m, pNpc) & 0xffff
+      if (Math.hypot(plrX - npcX, plrY - npcY) <= INTERACT_IMMEDIATE_RANGE_SUBTILES_113C) {
+        entry.pendingInteraction = null
+        this.executeNpcInteractHandshake(entry, pNpc, true)
+      } else {
+        entry.pendingInteraction = { kind: 'npc', unitId: targetId }
+        this.walkPlayerTowardTarget(entry, npcX, npcY)
+      }
+      return
+    }
+
+    if (targetType === UNIT_OBJECT_113C) {
+      const pObj = this.findUnitInActiveRoom(UNIT_OBJECT_113C, targetId)
+      if (pObj === 0) return
+      const objClassId = this.m.get(pObj, D2UnitStrc.dwClassId) >>> 0
+      if (!WAYPOINT_CLASS_IDS_113C.has(objClassId)) return
+      const objX = UNITS_GetX113c(this.m, pObj) & 0xffff
+      const objY = UNITS_GetY113c(this.m, pObj) & 0xffff
+      if (Math.hypot(plrX - objX, plrY - objY) <= INTERACT_IMMEDIATE_RANGE_SUBTILES_113C) {
+        entry.pendingInteraction = null
+        this.executeWaypointOpen(entry, pObj)
+      } else {
+        entry.pendingInteraction = { kind: 'waypoint', unitId: targetId }
+        this.walkPlayerTowardTarget(entry, objX, objY)
+      }
+    }
+  }
+
+  private healPlayerAtTownHealer(entry: InternalClientEntry113c): void {
+    const pPlayer = entry.pPlayer >>> 0
+    if (pPlayer === 0 || entry.pClient === 0) return
+    const m = this.m
+    const maxHp = STATLIST_GetUnitStat113c(m, pPlayer, STAT_MAXHP, 0) | 0
+    const maxMana = STATLIST_GetUnitStat113c(m, pPlayer, STAT_MAXMANA, 0) | 0
+    const maxStamina = STATLIST_GetUnitStat113c(m, pPlayer, STAT_MAXSTAMINA, 0) | 0
+
+    if (maxHp > 0) {
+      STATLIST_SetUnitStat113c(m, pPlayer, STAT_HITPOINTS, maxHp, 0)
+      D2GAME_PACKET_SendStatByteWordDword113c(
+        m,
         entry.pClient,
-        bLeft,
-        wSkillId,
-        dwItemGuid,
-        {
-          queuePacket: (mem, cli, pktPtr, pktSize) => {
-            NET_QueuePacketToClientBuffer113c(mem, cli, 1, pktPtr, pktSize)
-          },
-        },
+        STAT_HITPOINTS,
+        maxHp,
+        this.gapBCallees,
       )
     }
-    return res
+    if (maxMana >= 0) {
+      STATLIST_SetUnitStat113c(m, pPlayer, STAT_MANA, maxMana, 0)
+      D2GAME_PACKET_SendStatByteWordDword113c(
+        m,
+        entry.pClient,
+        STAT_MANA,
+        maxMana,
+        this.gapBCallees,
+      )
+    }
+    if (maxStamina >= 0) {
+      STATLIST_SetUnitStat113c(m, pPlayer, STAT_STAMINA, maxStamina, 0)
+      D2GAME_PACKET_SendStatByteWordDword113c(
+        m,
+        entry.pClient,
+        STAT_STAMINA,
+        maxStamina,
+        this.gapBCallees,
+      )
+    }
+
+    const curX = UNITS_GetX113c(m, pPlayer) & 0xffff
+    const curY = UNITS_GetY113c(m, pPlayer) & 0xffff
+    NET_SendPacket95_LifeManaStamina_6FCAB7F0_113c(
+      m,
+      entry.pClient,
+      (maxHp >> 8) & 0x7fff,
+      (maxMana >> 8) & 0x7fff,
+      (maxStamina >> 8) & 0x7fff,
+      curX,
+      curY,
+      0,
+      0,
+    )
+  }
+
+  private executeNpcInteractHandshake(
+    entry: InternalClientEntry113c,
+    pNpc: number,
+    fromInteractPacket: boolean,
+  ): void {
+    const pPlayer = entry.pPlayer >>> 0
+    if (pPlayer === 0 || entry.pClient === 0 || pNpc === 0) return
+    const npcUnitId = this.m.get(pNpc, D2UnitStrc.dwUnitId) >>> 0
+    const npcClassId = this.m.get(pNpc, D2UnitStrc.dwClassId) >>> 0
+
+    this.stopPlayerMovementInPlace(entry)
+    entry.activeNpcUnitId = npcUnitId
+    entry.activeWaypointUnitId = 0
+
+    if (TOWN_HEALER_CLASS_IDS_113C.has(npcClassId)) {
+      this.healPlayerAtTownHealer(entry)
+    }
+
+    const pQuestRec =
+      PLAYER_GetQuestRecordForDifficulty_6FC21020_113c(this.m, pPlayer, this.pGame) >>> 0
+    if (pQuestRec === 0) return
+
+    if (fromInteractPacket) {
+      entry.lastNpcHandshakeUnitId = npcUnitId
+      NET_SendPacket103B_QuestRecord_6FCAAD40_113c(
+        this.m,
+        0x28,
+        UNIT_MONSTER,
+        npcUnitId,
+        entry.pClient,
+        pQuestRec,
+        0,
+      )
+    } else if (entry.lastNpcHandshakeUnitId === npcUnitId) {
+      entry.lastNpcHandshakeUnitId = 0
+    } else {
+      entry.lastNpcHandshakeUnitId = npcUnitId
+      NET_SendPacket103B_QuestRecord_6FCAAD40_113c(
+        this.m,
+        0x28,
+        UNIT_MONSTER,
+        npcUnitId,
+        entry.pClient,
+        pQuestRec,
+        0,
+      )
+    }
+  }
+
+  private executeWaypointOpen(entry: InternalClientEntry113c, pObject: number): void {
+    const pPlayer = entry.pPlayer >>> 0
+    if (pPlayer === 0 || entry.pClient === 0 || pObject === 0) return
+    const objUnitId = this.m.get(pObject, D2UnitStrc.dwUnitId) >>> 0
+
+    this.stopPlayerMovementInPlace(entry)
+    entry.activeWaypointUnitId = objUnitId
+    entry.activeNpcUnitId = 0
+    entry.lastNpcHandshakeUnitId = 0
+
+    const pWpData =
+      PLAYER_GetWaypointDataForDifficulty_6FC21720_113c(this.m, pPlayer, this.pGame) >>> 0
+    if (pWpData === 0) return
+
+    if (WAYPOINT_GetWaypointNoFromLevelId113c(this.m, this.areaId, this.pSmallScratch) !== 0) {
+      const wpIdx = this.m.u16(this.pSmallScratch) & 0xffff
+      WAYPOINT_ActivateWaypoint113c(this.m, pWpData, wpIdx)
+    }
+
+    if ((this.m.get(pObject, D2UnitStrc.dwAnimMode) >>> 0) === 0) {
+      this.m.set(pObject, D2UnitStrc.dwAnimMode, 2)
+      const pkt0e = new Uint8Array(12)
+      const dv0e = new DataView(pkt0e.buffer)
+      pkt0e[0] = 0x0e
+      pkt0e[1] = UNIT_OBJECT_113C
+      dv0e.setUint32(2, objUnitId >>> 0, true)
+      pkt0e[6] = 0x03 // ObjectEvent 3 = set mode (`D2Client.dll` `0x6FAD59F0`)
+      pkt0e[7] = 0x00
+      dv0e.setUint32(8, 2, true)
+      for (const recipient of this.clients.values()) {
+        if (recipient.closed || recipient.pClient === 0) continue
+        if (this.m.u32((recipient.pClient + D2ClientStrcOffsets.dwClientState) >>> 0) !== 4) {
+          continue
+        }
+        this.queueBytesToClientBuffer(this.m, recipient.pClient, pkt0e)
+      }
+    }
+
+    this.m.setU8(this.pSmallScratch, 0x63)
+    this.m.setU32((this.pSmallScratch + 1) >>> 0, objUnitId >>> 0)
+    WAYPOINT_CopyAndValidateWaypointData113c(
+      this.m,
+      pWpData,
+      (this.pSmallScratch + 5) >>> 0,
+    )
+    NET_SendPacketBuffer21B_Alt_6FCAB2F0_113c(this.m, this.pSmallScratch, entry.pClient)
+  }
+
+  private handleC2SWaypointTravel(
+    entry: InternalClientEntry113c,
+    waypointUnitId: number,
+    destAreaId: number,
+  ): void {
+    const pPlayer = entry.pPlayer >>> 0
+    if (pPlayer === 0 || entry.pClient === 0) return
+
+    if (destAreaId === 0 || destAreaId === this.areaId) {
+      entry.activeWaypointUnitId = 0
+      entry.pendingInteraction = null
+      return
+    }
+
+    if (destAreaId < 1 || destAreaId > 136) {
+      entry.activeWaypointUnitId = 0
+      return
+    }
+
+    if (WAYPOINT_GetWaypointNoFromLevelId113c(this.m, destAreaId, this.pSmallScratch) === 0) {
+      entry.activeWaypointUnitId = 0
+      return
+    }
+    const destWpIdx = this.m.u16(this.pSmallScratch) & 0xffff
+
+    const pWpData =
+      PLAYER_GetWaypointDataForDifficulty_6FC21720_113c(this.m, pPlayer, this.pGame) >>> 0
+    if (pWpData === 0 || WAYPOINT_GetWaypointState113c(this.m, pWpData, destWpIdx) === 0) {
+      entry.activeWaypointUnitId = 0
+      return
+    }
+
+    const candidateWpId =
+      entry.activeWaypointUnitId !== 0 ? entry.activeWaypointUnitId : waypointUnitId
+    if (candidateWpId === 0) return
+    const pWpObj = this.findUnitInActiveRoom(UNIT_OBJECT_113C, candidateWpId)
+    if (pWpObj === 0) {
+      entry.activeWaypointUnitId = 0
+      return
+    }
+    const wpObjClass = this.m.get(pWpObj, D2UnitStrc.dwClassId) >>> 0
+    if (!WAYPOINT_CLASS_IDS_113C.has(wpObjClass)) {
+      entry.activeWaypointUnitId = 0
+      return
+    }
+    const plrX = UNITS_GetX113c(this.m, pPlayer) & 0xffff
+    const plrY = UNITS_GetY113c(this.m, pPlayer) & 0xffff
+    const wpX = UNITS_GetX113c(this.m, pWpObj) & 0xffff
+    const wpY = UNITS_GetY113c(this.m, pWpObj) & 0xffff
+    if (Math.hypot(plrX - wpX, plrY - wpY) > NPC_TETHER_RANGE_SUBTILES_113C) {
+      entry.activeWaypointUnitId = 0
+      return
+    }
+
+    this.warpClientToArea(entry, destAreaId)
+  }
+
+  /**
+   * Bootstrap `destAreaId` in `SparseMemory113c` via `resolveAreaBootstrap`, warp `entry`'s player
+   * to the destination waypoint/entry coordinates, update Act/room/collision state, and stream the
+   * 1.13c S2C area transition sequence (`0x0A`, `0x08`, `0x03`/`0x53`, `0x07`, `0x15`, `0xAC`, `0x51`).
+   */
+  private warpClientToArea(entry: InternalClientEntry113c, destAreaId: number): boolean {
+    const m = this.m
+    const pPlayer = entry.pPlayer >>> 0
+    if (pPlayer === 0 || entry.pClient === 0) return false
+
+    const prevActIdx = this.actIdx
+    const destActIdx = areaIdToActIdx113c(destAreaId)
+    const rawBootstrap: LocalAreaBootstrap | null | undefined =
+      this.resolveAreaBootstrap !== undefined
+        ? this.resolveAreaBootstrap({
+            act: destActIdx + 1,
+            areaId: destAreaId,
+            mapSeed: this.initSeedValue,
+            difficulty: this.difficultyValue,
+          })
+        : null
+    const bootstrap: LocalAreaBootstrap | null =
+      rawBootstrap !== undefined && rawBootstrap !== null ? rawBootstrap : null
+
+    const roomSubW =
+      bootstrap !== null && bootstrap.subWidth !== undefined && bootstrap.subWidth > 0
+        ? bootstrap.subWidth
+        : 80
+    const roomSubH =
+      bootstrap !== null && bootstrap.subHeight !== undefined && bootstrap.subHeight > 0
+        ? bootstrap.subHeight
+        : 80
+    const roomSubX =
+      bootstrap !== null
+        ? bootstrap.originX !== undefined
+          ? bootstrap.originX
+          : Math.max(0, bootstrap.spawnX - 20)
+        : 5520 + destAreaId * 160
+    const roomSubY =
+      bootstrap !== null
+        ? bootstrap.originY !== undefined
+          ? bootstrap.originY
+          : Math.max(0, bootstrap.spawnY - 20)
+        : 5880
+
+    let destX = bootstrap !== null ? bootstrap.spawnX : roomSubX + 20
+    let destY = bootstrap !== null ? bootstrap.spawnY : roomSubY + 20
+    if (bootstrap !== null) {
+      const wpPreset = bootstrap.objects.find(
+        (o) => o.isWaypoint === true || WAYPOINT_CLASS_IDS_113C.has(o.classId),
+      )
+      if (wpPreset !== undefined) {
+        const free2 = collisionGetFreeCoordinates(
+          (x, y) =>
+            !isBlockedWithUnitSize(
+              (cx, cy) => !bootstrap.isWalkable(destAreaId, cx, cy),
+              x,
+              y,
+              2,
+            ),
+          wpPreset.x,
+          wpPreset.y,
+          50,
+          1,
+        )
+        const free1 =
+          free2 !== null
+            ? free2
+            : collisionGetFreeCoordinates(
+                (x, y) => bootstrap.isWalkable(destAreaId, x, y),
+                wpPreset.x,
+                wpPreset.y,
+                50,
+                1,
+              )
+        destX = free1 !== null ? free1.x : wpPreset.x
+        destY = free1 !== null ? free1.y : wpPreset.y
+      }
+    }
+
+    entry.activeWaypointUnitId = 0
+    entry.activeNpcUnitId = 0
+    entry.lastNpcHandshakeUnitId = 0
+    entry.pendingInteraction = null
+
+    const flushIfNearCapacity = (): void => {
+      if (this.getQueuedByteCount(entry.pClient) >= 0x280) {
+        this.flushClientQueueToSink(entry)
+      }
+    }
+
+    // 1. Remove old room non-player units (`0x0A RemoveGroundUnit`) and unlink from `SparseMemory113c`
+    const pOldRoom = this.defaultRoomPtr >>> 0
+    if (pOldRoom !== 0) {
+      const oldUnits: Array<{ readonly pUnit: number; readonly uType: number; readonly uId: number }> = []
+      let pWalk = m.get(pOldRoom, D2ActiveRoomStrc.pUnitFirst) >>> 0
+      let guard = 0
+      while (pWalk !== 0 && guard++ < 2048) {
+        const uType = m.get(pWalk, D2UnitStrc.dwUnitType) >>> 0
+        const uId = m.get(pWalk, D2UnitStrc.dwUnitId) >>> 0
+        if (uType !== UNIT_PLAYER) {
+          oldUnits.push({ pUnit: pWalk, uType, uId })
+        }
+        pWalk = m.get(pWalk, D2UnitStrc.pRoomUnitNext) >>> 0
+      }
+      for (let i = 0; i < oldUnits.length; i++) {
+        const item = oldUnits[i]!
+        UNITROOM_RemoveUnitFromRoom113c(m, item.pUnit)
+        this.removeUnitFromGameHash(item.pUnit, item.uType, item.uId)
+        if (item.uType === UNIT_MONSTER || item.uType === UNIT_OBJECT_113C) {
+          const pkt0a = new Uint8Array(6)
+          const dv0a = new DataView(pkt0a.buffer)
+          pkt0a[0] = 0x0a
+          pkt0a[1] = item.uType & 0xff
+          dv0a.setUint32(2, item.uId >>> 0, true)
+          this.queueBytesToClientBuffer(m, entry.pClient, pkt0a)
+          flushIfNearCapacity()
+        }
+      }
+
+      UNITROOM_RemoveUnitFromRoom113c(m, pPlayer)
+      DUNGEON_RemoveClientFromRoom113c(m, pOldRoom, entry.pClient)
+      this.sliceWorld.roomByPtr.delete(pOldRoom)
+    }
+
+    // 2. Emit `0x08 RoomHide` (`MapRemove`) for all previously revealed rooms
+    for (let i = 0; i < this.activeRevealedRooms.length; i++) {
+      const rm = this.activeRevealedRooms[i]!
+      const pkt08 = new Uint8Array(6)
+      pkt08[0] = 0x08
+      pkt08[1] = rm.tileX & 0xff
+      pkt08[2] = (rm.tileX >>> 8) & 0xff
+      pkt08[3] = rm.tileY & 0xff
+      pkt08[4] = (rm.tileY >>> 8) & 0xff
+      pkt08[5] = rm.areaId & 0xff
+      this.queueBytesToClientBuffer(m, entry.pClient, pkt08)
+      flushIfNearCapacity()
+    }
+
+    // 3. Allocate/bind destination `D2ActStrc` + `D2ActiveRoomStrc` + collision grid in `SparseMemory113c`
+    this.actIdx = destActIdx
+    this.areaId = destAreaId
+    this.extraRevealedRooms = bootstrap !== null ? bootstrap.rooms : []
+
+    const pArena = m.u32((this.pGame + 0x1d28) >>> 0) >>> 0
+    if (pArena !== 0) {
+      m.setU32(pArena, destAreaId >>> 0)
+    }
+
+    let pAct = m.u32((this.pGame + 0xbc + destActIdx * 4) >>> 0) >>> 0
+    if (pAct === 0) {
+      pAct = m.alloc(D2ActStrc_SIZE) >>> 0
+      const pActMisc = m.alloc(0x4c0) >>> 0
+      const pEnv = m.alloc(0x40) >>> 0
+      m.set(pAct, D2ActStrc.dwMapSeed, this.initSeedValue >>> 0)
+      m.set(pAct, D2ActStrc.nAct, destActIdx >>> 0)
+      m.set(pAct, D2ActStrc.pEnvironment, pEnv)
+      m.set(pAct, D2ActStrc.pActMisc, pActMisc)
+      m.setU32((this.pGame + 0xbc + destActIdx * 4) >>> 0, pAct)
+    }
+    m.set(pAct, D2ActStrc.dwTownId, destAreaId >>> 0)
+
+    const pLevel = m.alloc(0x240) >>> 0
+    m.setU32((pLevel + 0x1d0) >>> 0, destAreaId >>> 0)
+
+    const pRoomEx = m.alloc(D2RoomExStrc_SIZE) >>> 0
+    const tileX = Math.trunc(roomSubX / 5)
+    const tileY = Math.trunc(roomSubY / 5)
+    const tileW = Math.trunc(roomSubW / 5)
+    const tileH = Math.trunc(roomSubH / 5)
+    const isDestTown = TOWN_AREA_IDS_113C.has(destAreaId)
+    m.setU32((pRoomEx + 0x08) >>> 0, pAct)
+    m.setU32((pRoomEx + 0x24) >>> 0, isDestTown ? 2 : 0)
+    m.setU32((pRoomEx + 0x34) >>> 0, tileX >>> 0)
+    m.setU32((pRoomEx + 0x38) >>> 0, tileY >>> 0)
+    m.setU32((pRoomEx + 0x3c) >>> 0, tileW >>> 0)
+    m.setU32((pRoomEx + 0x40) >>> 0, tileH >>> 0)
+    m.setU32((pRoomEx + 0x58) >>> 0, pLevel)
+
+    const pNewRoom = m.alloc(D2ActiveRoomStrc_SIZE) >>> 0
+    m.set(pNewRoom, D2ActiveRoomStrc.pRoomEx, pRoomEx)
+    m.set(pNewRoom, D2ActiveRoomStrc.pAct, pAct)
+    m.set(pNewRoom, D2ActiveRoomStrc.nSubtileX, roomSubX >>> 0)
+    m.set(pNewRoom, D2ActiveRoomStrc.nSubtileY, roomSubY >>> 0)
+    m.set(pNewRoom, D2ActiveRoomStrc.nSubtileWidth, roomSubW >>> 0)
+    m.set(pNewRoom, D2ActiveRoomStrc.nSubtileHeight, roomSubH >>> 0)
+    m.set(pNewRoom, D2ActiveRoomStrc.nTileX, tileX >>> 0)
+    m.set(pNewRoom, D2ActiveRoomStrc.nTileY, tileY >>> 0)
+    m.set(pNewRoom, D2ActiveRoomStrc.nTileWidth, tileW >>> 0)
+    m.set(pNewRoom, D2ActiveRoomStrc.nTileHeight, tileH >>> 0)
+    m.setU32((pRoomEx + 0x28) >>> 0, pNewRoom)
+
+    const ppRoomsNear = m.alloc(16) >>> 0
+    m.setU32(ppRoomsNear, pNewRoom)
+    m.set(pNewRoom, D2ActiveRoomStrc.ppRoomsNear, ppRoomsNear)
+    m.set(pNewRoom, D2ActiveRoomStrc.nRoomsNear, 1)
+
+    const maskFn =
+      bootstrap !== null
+        ? (sx: number, sy: number): number => {
+            const lx = (sx | 0) - roomSubX
+            const ly = (sy | 0) - roomSubY
+            if (lx < 0 || ly < 0 || lx >= roomSubW || ly >= roomSubH) {
+              return 0x0001
+            }
+            if (
+              bootstrap.collision !== undefined &&
+              bootstrap.originX !== undefined &&
+              bootstrap.originY !== undefined
+            ) {
+              return bootstrap.collision[ly * roomSubW + lx]! & 0xffff
+            }
+            return bootstrap.isWalkable(destAreaId, sx, sy) ? 0x0000 : 0x0001
+          }
+        : (sx: number, sy: number): number => {
+            if (
+              sx <= roomSubX ||
+              sy <= roomSubY ||
+              sx >= roomSubX + roomSubW - 1 ||
+              sy >= roomSubY + roomSubH - 1
+            ) {
+              return 0x0001
+            }
+            return 0x0000
+          }
+    bindRoomCollisionGrid113c(m, pNewRoom, roomSubX, roomSubY, roomSubW, roomSubH, maskFn)
+
+    m.set(pAct, D2ActStrc.pRoom1, pNewRoom)
+    this.defaultRoomPtr = pNewRoom
+    this.registerRoomInSliceMap(pNewRoom, this.sliceWorld.roomByPtr)
+
+    // 4. Reposition `pPlayer` and bind `entry.pClient` to `pNewRoom`
+    m.setU8((entry.pClient + 0x1ac) >>> 0, destActIdx & 0xff)
+    m.setU32((entry.pClient + 0x1b4) >>> 0, pNewRoom)
+
+    const nextMode = isDestTown ? PLRMODE_TOWN_NEUTRAL : PLRMODE_NEUTRAL
+    m.set(pPlayer, D2UnitStrc.dwAnimMode, nextMode)
+    const pPath = m.get(pPlayer, D2UnitStrc.pPath) >>> 0
+    if (pPath !== 0) {
+      m.set(pPath, D2DynamicPathStrc.wOffsetX, 0x8000)
+      m.set(pPath, D2DynamicPathStrc.wPosX, destX & 0xffff)
+      m.set(pPath, D2DynamicPathStrc.wOffsetY, 0x8000)
+      m.set(pPath, D2DynamicPathStrc.wPosY, destY & 0xffff)
+      m.set(pPath, D2DynamicPathStrc.wTargetX, destX & 0xffff)
+      m.set(pPath, D2DynamicPathStrc.wTargetY, destY & 0xffff)
+      m.set(pPath, D2DynamicPathStrc.pTargetUnit, 0)
+      m.set(pPath, D2DynamicPathStrc.nDist, 0)
+      m.set(pPath, D2DynamicPathStrc.nStepNum, 0)
+      m.set(pPath, D2DynamicPathStrc.nDistance, 0)
+      m.set(pPath, D2DynamicPathStrc.pRoom, pNewRoom)
+    }
+    const pu = this.sliceWorld.pathUnitByPtr.get(pPlayer)
+    if (pu !== undefined) {
+      pu.dwAnimMode = nextMode
+    }
+    UNITROOM_AddUnitToRoom113c(m, pPlayer, pNewRoom)
+    DUNGEON_AddClientToRoom113c(m, pNewRoom, entry.pClient)
+
+    // 5. Stream S2C transition sequence (`0x03` + `0x53` on Act change, else `0x53`; `0x07`; `0x15`)
+    if (destActIdx !== prevActIdx) {
+      CLIENT_SendLoadActAndEnvStatePackets_6FCBD610_113c(m, entry.pClient, this.pGame)
+    } else {
+      const pkt53 = new Uint8Array(10)
+      pkt53[0] = 0x53
+      this.queueBytesToClientBuffer(m, entry.pClient, pkt53)
+    }
+
+    this.activeRevealedRooms = this.collectActiveRevealedRooms(pNewRoom)
+    for (let i = 0; i < this.activeRevealedRooms.length; i++) {
+      const rm = this.activeRevealedRooms[i]!
+      NET_SendPacket07_RoomTileCoords_6FCABF50_113c(
+        m,
+        rm.tileX & 0xffff,
+        rm.tileY & 0xffff,
+        entry.pClient,
+        rm.areaId & 0xff,
+      )
+      flushIfNearCapacity()
+    }
+
+    NET_SendReassignUnitPacket15_113c(m, pPlayer, entry.pClient, 1)
+    flushIfNearCapacity()
+
+    // 6. Populate destination area preset NPCs/monsters (`0xAC`) and objects/waypoint (`0x51`)
+    if (bootstrap !== null) {
+      for (let i = 0; i < bootstrap.monsters.length; i++) {
+        const mon = bootstrap.monsters[i]!
+        if (hasMonStats2Flag(mon.classId, MONSTATS2_FLAGINDEX.CRITTER)) continue
+        this.spawnMonsterInRoom({
+          classId: mon.classId,
+          x: mon.x,
+          y: mon.y,
+          animMode: 1,
+        })
+      }
+      const isDestWpUnlocked = this.isAreaWaypointUnlocked(entry.clientId, destAreaId)
+      for (let i = 0; i < bootstrap.objects.length; i++) {
+        const obj = bootstrap.objects[i]!
+        if (SERVER_ONLY_NPC_SPAWNER_OBJECT_IDS_113C.has(obj.classId)) continue
+        const isWp = obj.isWaypoint === true || WAYPOINT_CLASS_IDS_113C.has(obj.classId)
+        const mode = isWp
+          ? isDestWpUnlocked
+            ? 2
+            : 0
+          : obj.mode !== undefined
+            ? obj.mode
+            : 0
+        this.spawnObjectInRoom({
+          classId: obj.classId,
+          x: obj.x,
+          y: obj.y,
+          mode,
+        })
+      }
+    }
+
+    if (this.onAreaChange !== undefined) {
+      this.onAreaChange(destAreaId, destActIdx)
+    }
+    return true
   }
 
   private broadcastPlayerMove0F(pPlayer: number, animMode: number): void {

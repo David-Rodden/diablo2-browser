@@ -16,6 +16,10 @@ import {
 } from '../common/items.ts'
 import {
   DUNGEON_CheckRoomIsTownMemPort113c,
+  ITEMS_CheckItemTypeIdMemPort113c,
+  SKILLS_GetUsedSkillMemPort113c,
+  SKILLS_SetUsedSkillMemPort113c,
+  STATLIST_AddUnitStatMemPort113c,
   STATLIST_GetStatListFromUnitAndStateMemPort113c,
 } from '../common/k0-d2common-memports.ts'
 import {
@@ -31,6 +35,7 @@ import {
   PATH_GetPosY113c,
   PATH_GetTargetUnit113c,
   PATH_SetStepNum113c,
+  PATH_SetType113c,
 } from '../common/path.ts'
 import {
   SKILLS_EvalCalcByOffset113c,
@@ -39,7 +44,6 @@ import {
   SKILLS_GetParam2113c,
   SKILLS_GetParam3113c,
   SKILLS_GetSkillToHitBonus113c,
-  SKILLS_GetUsedSkill113c,
   SKILLS_SetParam0C113c,
   SKILLS_SetParam1113c,
   SKILLS_SetParam2113c,
@@ -49,7 +53,6 @@ import {
   DATATBLS_CalculateMonsterStatsByLevel113c,
   STATES_CheckState113c,
   STATES_ToggleGfxStateFlag113c,
-  STATLIST_AddUnitStat113c,
   STATLIST_AllocList113c,
   STATLIST_FreeStatListIfNonExtended113c,
   STATLIST_GetUnitBaseStat113c,
@@ -87,14 +90,16 @@ import { AI_CastSkillWithMode113c, MONSTER_CheckTypeFlagsMask113c } from './ai-f
 import {
   AI_IdleWander113c,
   AI_Stall113c,
-  ITEMS_GetQualityBonusDivisor113c,
-  ITEMS_GetQualityMinValue113c,
   MONSTER_StartMode113c,
   SUNITDMG_AllocCombat113c,
-  SUNITDMG_CalcMonsterExperience113c,
   SUNITDMG_ComputeWeaponBaseDamage113c,
-  SUNITDMG_ExecuteSingleHit113c,
+  SUNITDMG_ExecuteEvents113c,
 } from './combat-a1c-113c.ts'
+import {
+  ITEMS_ScheduleReplenishDurabilityEvent_6FC2EA70_113c,
+  ITEMS_ScheduleReplenishQuantityEvent_6FC2EA10_113c,
+} from './k2-real-itemdrop-113c.ts'
+import { SUNITDMG_RollMeleeToHitAndBlock_6FCFE5A0_113c } from './k2-real-s2c-combat-113c.ts'
 import { SUNIT_GetServerUnit113c } from './game-strc.ts'
 import {
   AURA_ForEachUnitInRadius113c,
@@ -230,7 +235,6 @@ import {
 import {
   ACT5Q1_OnShenkSpottedPromoteState2_6FC7A690_113c,
   ACT5Q3_OnFrozenRiverEnteredPromoteState2_6FC79F80_113c,
-  ACT5Q4_TimerPromoteState4_6FC79CD0_113c,
   ITEMS_RollAndApplyWeaponDurabilityOrQuantityLoss_6FC6C9E0_113c,
   SKILLS_SpawnChannelingProjectileAndAdvanceTick_6FC641C0_113c,
   SKILLS_UpdateLeapMovementStep_6FC48740_113c,
@@ -243,27 +247,28 @@ import {
   PLAYER_LevelUp_6FD0B090_113c,
   QUESTS_OnUberTristramBossKilledDropTorchAndStandards_6FD0AA30_113c,
 } from './k2-w6b6-113c.ts'
-import { SKILLS_SetUsedSkill113c, UNITS_ChangeAnimMode113c } from './monster-events.ts'
+import {
+  registerAiTargetModeCallback113c,
+  UNITS_ChangeAnimMode113c,
+} from './monster-events.ts'
 import {
   D2GAME_IAT_GDW_BITMASKS_VA_113C,
   D2GAME_IAT_SGPT_DATATABLES_VA_113C,
   MONSTATS2_GetRecordPtr113c,
   MONSTATS_CheckFlagBit113c,
   SEED_RollLimitedFast113c,
-   SUNIT_ValidatePathTargetUnit113c,
+  SUNIT_ValidatePathTargetUnit113c,
   UNIT_GetPosX113c,
   UNIT_GetPosY113c,
 } from './regpop-spawn-113c.ts'
 import { SUNIT_FreeUnit113c } from './replay-final11-113c.ts'
 import {
-  ITEMS_CheckItemTypeId113c,
   PLAYER_GetEquippedWeapon113c,
   SKILLS_GetFlags113c,
 } from './replay-kernel-113c.ts'
 import {
   EVENT_DeleteEventByArg14_113c,
   EVENT_FreeNode113c,
-  EVENT_GetNextEventFrame113c,
   EVENT_SetEventFull113c,
   SUNIT_GetLastAttacker113c,
 } from './timer-wheel.ts'
@@ -311,6 +316,7 @@ function stepSeed64At113c(m: D2KernMemory113c, pSeed: number): number {
 function rollSeedPtr113c(m: D2KernMemory113c, pSeed: number, nMax: number): number {
   const addr = pSeed >>> 0
   const max = nMax | 0
+  hitD2GameVa113c(0x6FC21180)
   if (addr === 0 || max <= 0) return 0
   const seed = { lo: m.u32(addr), hi: m.u32((addr + 0x04) >>> 0) }
   if (((max - 1) & max) === 0) {
@@ -356,6 +362,7 @@ function aiApproachTarget6FD12540(
   dwFlags: number,
 ): number {
   let mode = nMode | 0
+  hitD2GameVa113c(0x6FD12540)
   if (mode === 0x0f && (STATES_CheckState113c(m, pUnit >>> 0, 0x3c) | 0) !== 0) {
     let pAiControl = 0
     if (pUnit !== 0 && i32(m, pUnit >>> 0) === 1) {
@@ -391,7 +398,7 @@ function aiApproachTarget6FD12540(
   if ((flagsByte & 2) !== 0 && pUnit !== 0) {
     const roll = (stepSeed64At113c(m, (pUnit + 0x20) >>> 0) >>> 0) % 100
     if (roll < 0x46) {
-      AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0)
+      AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0, 4)
       return 1
     }
     AI_Stall113c(m, pGame >>> 0, pUnit >>> 0, 10)
@@ -410,6 +417,7 @@ function aiFleeFrom6FD12D80(
 ): number {
   const unit = pUnit >>> 0
   const from = pFrom >>> 0
+  hitD2GameVa113c(0x6FD12D80)
   if (unit === 0 || from === 0) return 0
   const mx = readUnitPosXInline113c(m, unit)
   const my = readUnitPosYInline113c(m, unit)
@@ -438,20 +446,6 @@ function aiFleeFrom6FD12D80(
     1,
     bClearThinkOnFail !== 0 ? 4 : 0,
   )
-}
-
-function scheduleReplenishStatEvent113c(
-  m: D2KernMemory113c,
-  pGame: number,
-  pItem: number,
-  statId: number,
-): void {
-  const rate = STATLIST_GetUnitStat113c(m, pItem, statId, 0) | 0
-  if (rate === 0) return
-  if (EVENT_GetNextEventFrame113c(m, pItem, 3) !== 0) return
-  const period = sdiv32(0x9c4, rate)
-  const nextFrame = (m.u32((pGame + 0xa8) >>> 0) + period + 1) >>> 0
-  EVENT_SetEventFull113c(m, pGame, pItem, 3, nextFrame, 0, 0, 0)
 }
 
 /**
@@ -488,8 +482,11 @@ export function STORM_TSHashTableInsertOrCreateNode_6FC22090_113c(
     pNode = onInternalNew(m, tbl, pBucketHead, nExtraBytes >>> 0, dwFlags >>> 0) >>> 0
   } else {
     const pVtable = m.u32(tbl) >>> 0
-    if (pVtable !== 0) {
-      pNode = m.u32((pVtable + 0x04) >>> 0) >>> 0
+    const pfnInternalNew = pVtable !== 0 ? m.u32((pVtable + 0x04) >>> 0) >>> 0 : 0
+    if (pfnInternalNew !== 0) {
+      const allocBytes = Math.max(0x1d80, ((nExtraBytes >>> 0) + 0x40) >>> 0)
+      pNode = m.alloc(allocBytes) >>> 0
+      m.fill(pNode, allocBytes, 0)
     }
   }
   const pLink =
@@ -575,8 +572,8 @@ export function SKILLS_SrvDo004_SpawnMissileWithDeltaTargetXY_6FC2D290_113c(
         0,
       ) >>> 0
     if (pMissile === 0) return 0
-    MISSILE_SetTargetY113c(m, pMissile, (-dy) | 0)
-    MISSILE_SetTargetX113c(m, pMissile, dx)
+    MISSILE_SetTargetX113c(m, pMissile, (-dy) | 0)
+    MISSILE_SetTargetY113c(m, pMissile, dx)
     return 1
   } finally {
     k2W7B1StackPtr = savedSp
@@ -681,10 +678,10 @@ export function ITEMS_DuplicateItemWithSocketFillers_6FC307E0_113c(
     const rootBytesRead = m.u32(pOutBytesRead) | 0
     let pCurStream = (pBuf + rootBytesRead) >>> 0
     let remBytes = (nTotalBytes - rootBytesRead) | 0
-    ITEMS_SetItemFlag113c(m, pNewItem, 0x80000, 1)
-    ITEMS_SetItemFlag113c(m, pNewItem, 0x2000, 0)
+    ITEMS_SetOrClearCommandFlags113c(m, pNewItem, 0x80000, 1)
+    ITEMS_SetOrClearCommandFlags113c(m, pNewItem, 0x2000, 0)
     if (bCloneSockets !== 0) {
-      const nSocketCount = i32(m, (pHeader + 0x18) >>> 0)
+      const nSocketCount = i32(m, (pHeader + 0x14) >>> 0)
       if (nSocketCount > 0) {
         for (let i = 0; i < nSocketCount; i = (i + 1) | 0) {
           ITEMS_DecodeItemCompactBitstreamV96_113c(m, pCurStream, remBytes, 1, pHeader)
@@ -723,19 +720,17 @@ export function ITEMS_DuplicateItemWithSocketFillers_6FC307E0_113c(
           if (ok === 0) {
             throw new D2CommonAssertError('Items.cpp', 0xdb7)
           }
-          ITEMS_SetItemFlag113c(m, pFiller, 0x80000, 1)
-          ITEMS_SetItemFlag113c(m, pFiller, 0x2000, 0)
-          ITEMS_SetOrClearCommandFlags113c(m, pFiller, 1, 0)
+          ITEMS_SetOrClearCommandFlags113c(m, pFiller, 0x80000, 1)
+          ITEMS_SetOrClearCommandFlags113c(m, pFiller, 0x2000, 0)
+          ITEMS_SetItemFlag113c(m, pFiller, 1, 0)
         }
       }
     }
-    ITEMS_SetItemFlag113c(m, srcItem, 0x8000000, 1)
-    void ITEMS_GetQualityMinValue113c(m, 0, 0)
-    void ITEMS_GetQualityBonusDivisor113c(m, 0, 0)
-    scheduleReplenishStatEvent113c(m, game, pNewItem, 0xfc)
-    scheduleReplenishStatEvent113c(m, game, pNewItem, 0xfd)
+    ITEMS_SetOrClearCommandFlags113c(m, srcItem, 0x8000000, 1)
+    ITEMS_ScheduleReplenishDurabilityEvent_6FC2EA70_113c(m, game, pNewItem)
+    ITEMS_ScheduleReplenishQuantityEvent_6FC2EA10_113c(m, game, pNewItem)
     ITEMS_ClearAllDupeAndCommandFlags_6FCBB340_113c(m, pNewItem)
-    ITEMS_SetOrClearCommandFlags113c(m, pNewItem, 1, 0)
+    ITEMS_SetItemFlag113c(m, pNewItem, 1, 0)
     return pNewItem
   } finally {
     k2W7B1StackPtr = savedSp
@@ -810,17 +805,39 @@ export function AI_Think_Overlord_6FC37CB0_113c(
       const rollMode = (stepSeed64At113c(m, pSeed) >>> 0) % 100
       const nDiffM = m.u8((game + 0x6d) >>> 0)
       const useMode5 = (rollMode | 0) < sx16(m.u16((pMonStatsTxt + nDiffM * 2 + 0x7a) >>> 0))
-      SKILLS_SetUsedSkill113c(m, unit, 0)
+      SKILLS_SetUsedSkillMemPort113c(m, unit, 0)
       const mode = useMode5 ? 5 : 4
-      if (unit !== 0) {
-        const pMonStats2 = MONSTATS2_GetRecordPtr113c(m, i32(m, (unit + 0x04) >>> 0)) >>> 0
-        if (pMonStats2 !== 0) {
-          const pMasks = m.u32(D2GAME_IAT_GDW_BITMASKS_VA_113C) >>> 0
-          const maskOff = useMode5 ? 0x14 : 0x10
-          void (m.u8((pMonStats2 + 0x104) >>> 0) & (pMasks !== 0 ? m.u32((pMasks + maskOff) >>> 0) : 0))
+      const savedModeSp = k2W7B1StackPtr
+      const pModeChange = (savedModeSp - 0x20) >>> 0
+      k2W7B1StackPtr = pModeChange
+      try {
+        for (let i = 0; i < 0x20; i += 4) {
+          m.setU32((pModeChange + i) >>> 0, 0)
         }
+        m.setU32(pModeChange, mode >>> 0)
+        m.setU32((pModeChange + 0x04) >>> 0, unit)
+        m.setU32((pModeChange + 0x08) >>> 0, pTarget)
+        let bPathMode = 0x64
+        if (unit !== 0) {
+          const pMonStats2 = MONSTATS2_GetRecordPtr113c(m, i32(m, (unit + 0x04) >>> 0)) >>> 0
+          if (pMonStats2 !== 0) {
+            const pMasks = m.u32(D2GAME_IAT_GDW_BITMASKS_VA_113C) >>> 0
+            const maskOff = useMode5 ? 0x14 : 0x10
+            const bitMask = pMasks !== 0 ? m.u32((pMasks + maskOff) >>> 0) : 0
+            if ((m.u8((pMonStats2 + 0x104) >>> 0) & bitMask) !== 0) {
+              bPathMode = 0x65
+            }
+          }
+        }
+        m.setU8((pModeChange + 0x15) >>> 0, bPathMode)
+        if (bPathMode === 0x65 && unit !== 0) {
+          const pPath = m.u32((unit + 0x2c) >>> 0) >>> 0
+          if (pPath !== 0) PATH_SetType113c(m, pPath, 0x0d)
+        }
+        MONSTER_StartMode113c(m, game, unit, mode, pTarget, 0, 0)
+      } finally {
+        k2W7B1StackPtr = savedModeSp
       }
-      MONSTER_StartMode113c(m, game, unit, mode, pTarget, 0, 0)
       return
     }
   }
@@ -837,7 +854,7 @@ export function AI_Think_Overlord_6FC37CB0_113c(
     m.setU32((sp + 0x0c) >>> 0, 0)
     m.setU32((sp + 0x10) >>> 0, 0)
     m.setU32((sp + 0x14) >>> 0, 0)
-    void AI_ScanOverlordMinionTargetsCallback_6FC35C40_113c
+    registerAiTargetModeCallback113c(0x6fc35c40, AI_ScanOverlordMinionTargetsCallback_6FC35C40_113c)
     AITARGET_ScanUnitsByModeTable113c(m, 1, sp, game, unit, 0x6fc35c40)
     pScanTarget0C = m.u32((sp + 0x0c) >>> 0) >>> 0
     pScanTarget10 = m.u32((sp + 0x10) >>> 0) >>> 0
@@ -1188,7 +1205,7 @@ export function MISSILE_SplitForkedProjectilesOnTarget_6FC45AD0_113c(
   }
   if (MONSTER_CheckTypeFlagsMask113c(m, pOwner, 0x80) !== 0) return
   const pPath = m.u32((missile + 0x2c) >>> 0) >>> 0
-  const pTargetUnit = SUNIT_GetValidatedPathTargetUnit_6FD00BD0_113c(m, missile, game) >>> 0
+  const pTargetUnit = SUNIT_GetValidatedPathTargetUnit_6FD00BD0_113c(m, pOwner, game) >>> 0
   let targetX = 0
   let targetY = 0
   if (pTargetUnit === 0) {
@@ -1388,7 +1405,7 @@ function EVENT_FreeEventQueueNodesByType_6FC35570_113c(
   if (pUnit === 0) return
   let cur = m.u32((pUnit + 0xdc) >>> 0)
   while (cur !== 0) {
-    const next = m.u32((cur + 0x20) >>> 0)
+    const next = m.u32((cur + 0x24) >>> 0)
     if (m.u8(cur) === (evType & 0xff)) {
       EVENT_FreeNode113c(m, pGame, cur)
     }
@@ -1426,11 +1443,8 @@ function AURA_ForEachHostileTargetInRadius_6FCC0C70_113c(
     pfnCallback,
     pCallbackArg,
     bSkipMonFlag1B,
-    (mm, pTarget, pArg) => AURAS_ApplyRadialSkillDamageCallback_6FCC1210_113c(mm, pArg, pTarget),
+    (mm, pAuraCtx, pTarget) => AURAS_ApplyRadialSkillDamageCallback_6FCC1210_113c(mm, pAuraCtx, pTarget),
   )
-}
-function SKILLS_SetFlags113c(m: D2KernMemory113c, pSkill: number, flags: number): void {
-  if (pSkill !== 0) m.setU32((pSkill + 0x04) >>> 0, flags >>> 0)
 }
 function FOG_GetErrorLocation113c(_m: D2KernMemory113c, line: number): number {
   return line | 0
@@ -1439,22 +1453,39 @@ function FOG_DisplayAssert113c(_m: D2KernMemory113c, _msgPtr: number, _loc: numb
 function msvc_exit113c(_m: D2KernMemory113c, code: number): never {
   throw new D2CommonAssertError("exit " + code)
 }
-function CLIENTS_SaveAndSendPlayerData_6FCEC030_113c(
-  m: D2KernMemory113c,
-  pUnit: number,
-  pPlayer: number,
-): number {
-  return PLAYER_SyncClientLifeManaStaminaGoldAndCoords_6FCEC030_113c(m, pPlayer, pUnit, 0)
-}
 function user32_wsprintfA113c(
   m: D2KernMemory113c,
   pBuf: number,
-  _pFmt: number,
+  pFmt: number,
   nVal: number,
 ): number {
-  m.setU8(pBuf >>> 0, (0x30 + (nVal & 0x0f)) & 0xff)
-  m.setU8((pBuf + 1) >>> 0, 0)
-  return 1
+  const dst = pBuf >>> 0
+  for (let i = 0; i < 0x100; i += 4) {
+    m.setU32((dst + i) >>> 0, 0)
+  }
+  const fmtAddr = pFmt >>> 0
+  let fmt = ''
+  if (fmtAddr !== 0) {
+    try {
+      for (let i = 0; i < 128; i += 1) {
+        const ch = m.u8((fmtAddr + i) >>> 0)
+        if (ch === 0) break
+        fmt += String.fromCharCode(ch)
+      }
+    } catch {
+      fmt = ''
+    }
+  }
+  if (fmt.length === 0 && fmtAddr === 0x6fd1cc2c) {
+    fmt = 'changing state to %d\n'
+  }
+  const out = fmt.replace('%d', String(nVal | 0))
+  const len = out.length < 255 ? out.length : 255
+  for (let i = 0; i < len; i += 1) {
+    m.setU8((dst + i) >>> 0, out.charCodeAt(i) & 0xff)
+  }
+  m.setU8((dst + len) >>> 0, 0)
+  return len
 }
 function QUESTS_DebugOutput_6FCEBE70_113c(
   m: D2KernMemory113c,
@@ -1463,19 +1494,6 @@ function QUESTS_DebugOutput_6FCEBE70_113c(
   nColor: number,
 ): void {
   NET_BroadcastSystemChatMessage_6FCEBE70_113c(m, pBuf, pGame, nColor)
-}
-function QUESTS_Act2TaintedSunOnAltarActivated_6FCE9B70_113c(
-  m: D2KernMemory113c,
-  pQuest: number,
-): void {
-  ACT2Q0_PresetSpawnJerhynAndRelocate_6FCE9B70_113c(m, 0, pQuest)
-}
-function QUESTS_Act3CheckBlackenedTempleActive_6FC5B5F0_113c(
-  m: D2KernMemory113c,
-  pGame: number,
-  nArg: number,
-): number {
-  return MISSILE_SrvHit_RadialStatsDamageByAuraRange_6FC5B5F0_113c(m, pGame, 0, nArg)
 }
 function SUNIT_GetUnitPosX_6FC21100_113c(...args: Parameters<typeof UNIT_GetPosX113c>): ReturnType<typeof UNIT_GetPosX113c> {
   return UNIT_GetPosX113c(...args)
@@ -1527,30 +1545,13 @@ function PETS_FindOwnedUnitBySubIndex_6FCC0F40_113c(
     0,
   )
 }
-const SKILLS_SpawnPetFromObjectOrCorpse_6FC62510_113c =
-  SKILLS_SpawnProjectileAtTargetUnitIfBothOutsideTown_6FC62510_113c
-function UNIT_DeleteObjectAndFreeEvents_6FC5EDE0_113c(
-  m: D2KernMemory113c,
-  pGame: number,
-  pPetUnit: number,
-  bForce: number,
-): number {
-  return MISSILE_ProcessTargetCollisionHit113c(m, pPetUnit, pGame, 0, bForce)
+function SKILLS_SpawnPetFromObjectOrCorpse_6FC62510_113c(
+  ...args: Parameters<typeof SKILLS_SpawnProjectileAtTargetUnitIfBothOutsideTown_6FC62510_113c>
+): ReturnType<typeof SKILLS_SpawnProjectileAtTargetUnitIfBothOutsideTown_6FC62510_113c> {
+  return SKILLS_SpawnProjectileAtTargetUnitIfBothOutsideTown_6FC62510_113c(...args)
 }
 function SUNIT_VerifyAndDeleteUnit_6FD020A0_113c(...args: Parameters<typeof SUNIT_FreeUnit113c>): ReturnType<typeof SUNIT_FreeUnit113c> {
   return SUNIT_FreeUnit113c(...args)
-}
-function MISSILE_SpawnLinearStreamFromSkill_6FC9A190_113c(
-  m: D2KernMemory113c,
-  _pGame: number,
-  pPetUnit: number,
-  nSkillId: number,
-  nSkillLevel: number,
-  nX: number,
-  nY: number,
-  _bLvl: number,
-): void {
-  UNITMSG_QueuePacketA3AuraTargetFx_6FC9A190_113c(m, pPetUnit, 0, 0, nSkillId, nX, nY, nSkillLevel)
 }
 function AURA_ApplyTimerStatListWithSkillAndState_6FCC00B0_113c(...args: Parameters<typeof STATES_CreateOrUpdateAuraStatList113c>): ReturnType<typeof STATES_CreateOrUpdateAuraStatList113c> {
   return STATES_CreateOrUpdateAuraStatList113c(...args)
@@ -1558,10 +1559,13 @@ function AURA_ApplyTimerStatListWithSkillAndState_6FCC00B0_113c(...args: Paramet
 function STATLIST_SetStatIfListIsValid113c(...args: Parameters<typeof STATLIST_SetStat113c>): ReturnType<typeof STATLIST_SetStat113c> {
   return STATLIST_SetStat113c(...args)
 }
-const SKILLS_SpawnMissileAtSkillTargetPos_6FC641C0_113c =
-  SKILLS_SpawnChannelingProjectileAndAdvanceTick_6FC641C0_113c
-function UNITS_GetCurrentSkill113c(...args: Parameters<typeof SKILLS_GetUsedSkill113c>): ReturnType<typeof SKILLS_GetUsedSkill113c> {
-  return SKILLS_GetUsedSkill113c(...args)
+function SKILLS_SpawnMissileAtSkillTargetPos_6FC641C0_113c(
+  ...args: Parameters<typeof SKILLS_SpawnChannelingProjectileAndAdvanceTick_6FC641C0_113c>
+): ReturnType<typeof SKILLS_SpawnChannelingProjectileAndAdvanceTick_6FC641C0_113c> {
+  return SKILLS_SpawnChannelingProjectileAndAdvanceTick_6FC641C0_113c(...args)
+}
+function UNITS_GetCurrentSkill113c(...args: Parameters<typeof SKILLS_GetUsedSkillMemPort113c>): ReturnType<typeof SKILLS_GetUsedSkillMemPort113c> {
+  return SKILLS_GetUsedSkillMemPort113c(...args)
 }
 function STATLIST_GetStatListFromUnitAndState113c(...args: Parameters<typeof STATLIST_GetStatListFromUnitAndStateMemPort113c>): ReturnType<typeof STATLIST_GetStatListFromUnitAndStateMemPort113c> {
   return STATLIST_GetStatListFromUnitAndStateMemPort113c(...args)
@@ -1589,15 +1593,34 @@ function STATLIST_SetStatRemoveCallback113c(
 function STATES_ToggleState113c(...args: Parameters<typeof STATES_ToggleGfxStateFlag113c>): ReturnType<typeof STATES_ToggleGfxStateFlag113c> {
   return STATES_ToggleGfxStateFlag113c(...args)
 }
-const SUNIT_AdvancePathAndBroadcast_6FD02480_113c =
-  SUNIT_RewindAndRescheduleAnimEvents_6FD02480_113c
+function SUNIT_AdvancePathAndBroadcast_6FD02480_113c(
+  ...args: Parameters<typeof SUNIT_RewindAndRescheduleAnimEvents_6FD02480_113c>
+): ReturnType<typeof SUNIT_RewindAndRescheduleAnimEvents_6FD02480_113c> {
+  return SUNIT_RewindAndRescheduleAnimEvents_6FD02480_113c(...args)
+}
 function D2Common_10476_SetStatListExpireFrame113c(...args: Parameters<typeof STATLIST_SetExpireFrameEx113c>): ReturnType<typeof STATLIST_SetExpireFrameEx113c> {
   return STATLIST_SetExpireFrameEx113c(...args)
 }
-const SKILLS_GetTargetOrPathPosition_6FCBFA30_113c =
-  SKILLS_GetUnitTargetOrFirstPathCoords_6FCBFA30_113c
-function MISSILE_InitAndSpawnCustom_6FC8F930_113c(...args: Parameters<typeof MISSILE_CreateServerProjectile113c>): ReturnType<typeof MISSILE_CreateServerProjectile113c> {
-  return MISSILE_CreateServerProjectile113c(...args)
+function SKILLS_GetTargetOrPathPosition_6FCBFA30_113c(
+  ...args: Parameters<typeof SKILLS_GetUnitTargetOrFirstPathCoords_6FCBFA30_113c>
+): ReturnType<typeof SKILLS_GetUnitTargetOrFirstPathCoords_6FCBFA30_113c> {
+  return SKILLS_GetUnitTargetOrFirstPathCoords_6FCBFA30_113c(...args)
+}
+function MISSILE_InitAndSpawnCustom_6FC8F930_113c(
+  m: D2KernMemory113c,
+  pGame: number,
+  pParams: number,
+): number {
+  return MISSILE_CreateServerProjectile113c(m, pGame, pParams, {
+    missileInitCallback: (mm, fnVa, pMis, dwParam) => {
+      const va = fnVa >>> 0
+      if (va === 0x6fc61f50) {
+        MISSILES_InitChargedBoltPath_6FC61F50_113c(mm, pMis, dwParam)
+      } else if (va === 0x6fc6c190) {
+        SKILLS_AddDamagePercentStat_6FC6C190_113c(mm, pMis, dwParam)
+      }
+    },
+  })
 }
 function SKILLS_GetBowOrCrossbowMissileId_6FCB1340_113c(...args: Parameters<typeof SKILLS_ResolveChargedSrvMissileId113c>): ReturnType<typeof SKILLS_ResolveChargedSrvMissileId113c> {
   return SKILLS_ResolveChargedSrvMissileId113c(...args)
@@ -1670,31 +1693,6 @@ function SKILLS_FindBlessedHammerSpawnCoords_6FC671E0_113c(
     pFormation,
     pOutX,
     pOutY,
-  )
-}
-function SKILLS_SpawnSubMissileAtCoords_6FD0F940_113c(
-  m: D2KernMemory113c,
-  pGame: number,
-  nSubMissileIdx: number,
-  bCheckCollision: number,
-  pUnit: number,
-  x: number,
-  y: number,
-  _zero: number,
-  nLevel: number,
-  _zero2: number,
-): number {
-  return MONSTER_SpawnPresetPackTable_6FD0F940_113c(
-    m,
-    nSubMissileIdx,
-    bCheckCollision,
-    pGame,
-    x,
-    y,
-    0,
-    pUnit,
-    nLevel,
-    0,
   )
 }
 function ACT1Q4_IsCainInTristram_6FC57680_113c(...args: Parameters<typeof PLAYER_IsBusyWithCursorOrNpcInteract113c>): ReturnType<typeof PLAYER_IsBusyWithCursorOrNpcInteract113c> {
@@ -1796,37 +1794,6 @@ function NET_SendPacketToClient9Bytes_6FCAAD40_113c(
     0,
   )
 }
-function SUNIT_CheckCanAttackAndConsumeAmmo_6FD00A60_113c(
-  m: D2KernMemory113c,
-  pUnit: number,
-  pGame: number,
-): number {
-  return SUNIT_AreUnitsHostileOrUnaligned113c(m, pUnit, 0, pGame)
-}
-function SUNITDMG_FillDamageValues_6FCFE5A0_113c(
-  m: D2KernMemory113c,
-  pTarget: number,
-  _pUnit: number,
-  pGame: number,
-  _pDmg: number,
-  _toHitBonus: number,
-  _bFlag: number,
-): number {
-  return SUNITDMG_CalcMonsterExperience113c(m, pGame, pTarget).exp
-}
-function SUNITDMG_CalcAdjustedPhysicalDamage_6FCFC530_113c(
-  m: D2KernMemory113c,
-  pUnit: number,
-  dmgBonus: number,
-  _one: number,
-  _zero: number,
-  _zero2: number,
-  _zero3: number,
-  _zero4 = 0,
-  _srcDam = 0,
-): number {
-  return SUNITDMG_ComputeWeaponBaseDamage113c(m, pUnit, 0, dmgBonus, 1, 0)
-}
 function INVENTORY_GetShieldItem_6FC572C0_113c(...args: Parameters<typeof PLAYER_GetEquippedWeapon113c>): ReturnType<typeof PLAYER_GetEquippedWeapon113c> {
   return PLAYER_GetEquippedWeapon113c(...args)
 }
@@ -1858,9 +1825,6 @@ function UNITS_GetAnimOrSeqFrame113c(...args: Parameters<typeof UNITS_GetEquippe
 }
 function UNITS_IsUnitInRoomAndValid113c(...args: Parameters<typeof UNITS_CanUnitMeleeAttackTarget113c>): ReturnType<typeof UNITS_CanUnitMeleeAttackTarget113c> {
   return UNITS_CanUnitMeleeAttackTarget113c(...args)
-}
-function SUNITDMG_DrainItemDurability113c(...args: Parameters<typeof SUNITDMG_ExecuteSingleHit113c>): ReturnType<typeof SUNITDMG_ExecuteSingleHit113c> {
-  return SUNITDMG_ExecuteSingleHit113c(...args)
 }
 function SKILLS_GetAnimActionFrame_6FC21BC0_113c(...args: Parameters<typeof SKILLS_GetParam2Fast_6FC21BC0_113c>): ReturnType<typeof SKILLS_GetParam2Fast_6FC21BC0_113c> {
   return SKILLS_GetParam2Fast_6FC21BC0_113c(...args)
@@ -1949,9 +1913,6 @@ function QUESTS_SetTimer_6FC53AF0_113c(
   pQuest: number,
   pfnTimerCallback: number,
 ): void {
-  if (pfnTimerCallback === 0x6fc79cd0) {
-    ACT5Q4_TimerPromoteState4_6FC79CD0_113c(m, pQuest)
-  }
   QUESTS_AppendQuestTimer_6FC53AF0_113c(m, nPeriodTicks, pQuest, pfnTimerCallback)
 }
 function QUESTS_RecordPlayerGUID_6FC54C00_113c(...args: Parameters<typeof QUESTS_SendPlayerQuestLogPacket28_113c>): ReturnType<typeof QUESTS_SendPlayerQuestLogPacket28_113c> {
@@ -1997,25 +1958,31 @@ export function MONSTER_OnDeathSpawnFireExplosion75_6FC465E0_113c(
   ) >>> 0;
   if (pMissile === 0) return;
 
-  const pDmg = 0x7ffdf400;
-  for (let i = 0; i < 0x70; i += 4) {
-    m.setU32((pDmg + i) >>> 0, 0);
+  const savedSp = k2W7B1StackPtr;
+  const pDmg = (savedSp - 0x70) >>> 0;
+  k2W7B1StackPtr = pDmg;
+  try {
+    for (let i = 0; i < 0x70; i += 4) {
+      m.setU32((pDmg + i) >>> 0, 0);
+    }
+    m.setU32((pDmg + 0x08) >>> 0, 0x6400);
+    m.setU32((pDmg + 0x10) >>> 0, 0x6400);
+    SUNITDMG_ApplyRadialMissileSplashDamage_6FCFE380_113c(
+      m,
+      pGame,
+      pMissile,
+      posX,
+      posY,
+      6,
+      pDmg,
+      0,
+      0,
+      0,
+      0x583,
+    );
+  } finally {
+    k2W7B1StackPtr = savedSp;
   }
-  m.setU32((pDmg + 0x08) >>> 0, 0x6400);
-  m.setU32((pDmg + 0x10) >>> 0, 0x6400);
-  SUNITDMG_ApplyRadialMissileSplashDamage_6FCFE380_113c(
-    m,
-    pGame,
-    pMissile,
-    posX,
-    posY,
-    6,
-    pDmg,
-    0,
-    0,
-    0,
-    0x583,
-  );
 }
 
 /**
@@ -2048,68 +2015,74 @@ export function MONSTER_OnDeathCorpseExplosionScaledByMonLvl_6FC466B0_113c(
   ) >>> 0;
   if (pMissile === 0) return;
 
-  const pDmg = 0x7ffdf400;
-  for (let i = 0; i < 0x70; i += 4) {
-    m.setU32((pDmg + i) >>> 0, 0);
-  }
-  const pCalcStats = 0x7ffdf480;
-  for (let i = 0; i < 0x38; i += 4) {
-    m.setU32((pCalcStats + i) >>> 0, 0);
-  }
-  const nMonLevel = STATLIST_GetUnitStat113c(m, pUnit, 0x0c, 0) | 0;
-  const bDiff = m.u8((pGame + 0x6d) >>> 0);
-  const nGameType = m.u8((pGame + 0x6a) >>> 0) !== 0 || m.u32((pGame + 0x74) >>> 0) !== 0 ? 1 : 0;
-  DATATBLS_CalculateMonsterStatsByLevel113c(
-    m,
-    i32(m, (pUnit + 0x04) >>> 0),
-    nGameType,
-    bDiff,
-    nMonLevel,
-    1,
-    pCalcStats,
-  );
-  const pMonLvlRec = DATATBLS_GetMonLvlTxtRecord113c(m, bDiff) >>> 0;
-  if (pMonLvlRec === 0) return;
-
-  let esi = mulDiv113c(i32(m, (pMonLvlRec + 0x3c) >>> 0), i32(m, (pCalcStats + 0x04) >>> 0), 100);
-  if (bDiff === 0) {
-    esi = (esi - sdiv32(esi, 4)) | 0;
-  } else if (bDiff === 1) {
-    esi = (esi - sdiv32(esi, 3)) | 0;
-  } else if (bDiff === 2) {
-    esi = sdiv32(esi, 8);
-  }
-
-  let edi = 0;
-  if (esi > 0x100000) {
-    const eaxMask = (esi & -16) | 0;
-    if (eaxMask < 0x640) {
-      edi = Number((BigInt(esi) * 60n) / 100n) | 0;
-    } else {
-      edi = imul32(sdiv32(esi, 100), 60);
+  const savedSp = k2W7B1StackPtr;
+  const pDmg = (savedSp - 0xc0) >>> 0;
+  const pCalcStats = (pDmg + 0x80) >>> 0;
+  k2W7B1StackPtr = pDmg;
+  try {
+    for (let i = 0; i < 0x70; i += 4) {
+      m.setU32((pDmg + i) >>> 0, 0);
     }
-  } else {
-    edi = sdiv32(imul32(esi, 60), 100);
-  }
+    for (let i = 0; i < 0x38; i += 4) {
+      m.setU32((pCalcStats + i) >>> 0, 0);
+    }
+    const nMonLevel = STATLIST_GetUnitStat113c(m, pUnit, 0x0c, 0) | 0;
+    const bDiff = m.u8((pGame + 0x6d) >>> 0);
+    const nGameType = m.u8((pGame + 0x6a) >>> 0) !== 0 || m.u32((pGame + 0x74) >>> 0) !== 0 ? 1 : 0;
+    DATATBLS_CalculateMonsterStatsByLevel113c(
+      m,
+      i32(m, (pUnit + 0x04) >>> 0),
+      nGameType,
+      bDiff,
+      nMonLevel,
+      1,
+      pCalcStats,
+    );
+    const pMonLvlRec = DATATBLS_GetMonLvlTxtRecord113c(m, bDiff) >>> 0;
+    if (pMonLvlRec === 0) return;
 
-  const roll = SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, (esi - edi) | 0) | 0;
-  const dmg = (((roll + edi) | 0) << 6) >>> 0;
-  m.setU32((pDmg + 0x08) >>> 0, dmg);
-  m.setU32((pDmg + 0x10) >>> 0, dmg);
-  const radius = (m.u8((pGame + 0x6d) >>> 0) + 4) | 0;
-  SUNITDMG_ApplyRadialMissileSplashDamage_6FCFE380_113c(
-    m,
-    pGame,
-    pMissile,
-    posX,
-    posY,
-    radius,
-    pDmg,
-    0,
-    0,
-    0,
-    0x581,
-  );
+    let esi = mulDiv113c(i32(m, (pMonLvlRec + 0x3c) >>> 0), i32(m, (pCalcStats + 0x04) >>> 0), 100);
+    if (bDiff === 0) {
+      esi = (esi - sdiv32(esi, 4)) | 0;
+    } else if (bDiff === 1) {
+      esi = (esi - sdiv32(esi, 3)) | 0;
+    } else if (bDiff === 2) {
+      esi = sdiv32(esi, 8);
+    }
+
+    let edi = 0;
+    if (esi > 0x100000) {
+      const eaxMask = (esi & -16) | 0;
+      if (eaxMask < 0x640) {
+        edi = Number((BigInt(esi) * 60n) / 100n) | 0;
+      } else {
+        edi = imul32(sdiv32(esi, 100), 60);
+      }
+    } else {
+      edi = sdiv32(imul32(esi, 60), 100);
+    }
+
+    const roll = SEED_RollLimitedFast113c(m, (pUnit + 0x20) >>> 0, (esi - edi) | 0) | 0;
+    const dmg = (((roll + edi) | 0) << 6) >>> 0;
+    m.setU32((pDmg + 0x08) >>> 0, dmg);
+    m.setU32((pDmg + 0x10) >>> 0, dmg);
+    const radius = (m.u8((pGame + 0x6d) >>> 0) + 4) | 0;
+    SUNITDMG_ApplyRadialMissileSplashDamage_6FCFE380_113c(
+      m,
+      pGame,
+      pMissile,
+      posX,
+      posY,
+      radius,
+      pDmg,
+      0,
+      0,
+      0,
+      0x581,
+    );
+  } finally {
+    k2W7B1StackPtr = savedSp;
+  }
 }
 
 /**
@@ -2127,17 +2100,17 @@ export function SKILLS_SrvDo024_SpawnWeaponMissileWithToHitAndBonusDmg_6FC47E30_
   hitD2GameVa113c(0x6FC47E30)
   if (pUnit === 0) return 0;
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C));
-  if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xb98) >>> 0)) return 0;
-  const pSkillTxt = (m.u32((pDataTables + 0xb90) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
+  if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xba0) >>> 0)) return 0;
+  const pSkillTxt = (m.u32((pDataTables + 0xb98) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
   if (pSkillTxt === 0) return 0;
 
   const pWeapon = PLAYER_GetEquippedWeapon113c(m, pUnit) >>> 0;
   if (pWeapon === 0) return 0;
   const missileId = ITEMS_GetMissileType113c(m, pWeapon) | 0;
-  if (missileId <= 0 || missileId >= i32(m, (pDataTables + 0xc58) >>> 0)) return 0;
+  if (missileId <= 0 || missileId >= i32(m, (pDataTables + 0xb6c) >>> 0)) return 0;
 
   let pMissile = 0;
-  if (ITEMS_CheckItemTypeId113c(m, pWeapon, 0x26) !== 0) {
+  if (ITEMS_CheckItemTypeIdMemPort113c(m, pWeapon, 0x26) !== 0) {
     pMissile = SKILLS_CreateProjectileAtOffsetWithAmmoCheck_6FCC1880_113c(
       m,
       0,
@@ -2169,7 +2142,7 @@ export function SKILLS_SrvDo024_SpawnWeaponMissileWithToHitAndBonusDmg_6FC47E30_
 
   if (pMissile !== 0) {
     const toHit = SKILLS_GetSkillToHitBonus113c(m, pUnit, nSkillId, nSkillLevel) | 0;
-    STATLIST_AddUnitStat113c(m, pMissile, 0x13, toHit, 0);
+    STATLIST_AddUnitStatMemPort113c(m, pMissile, 0x13, toHit, 0);
     const bonusDmg = SKILLS_EvalCalcByOffset113c(
       m,
       pUnit,
@@ -2177,7 +2150,7 @@ export function SKILLS_SrvDo024_SpawnWeaponMissileWithToHitAndBonusDmg_6FC47E30_
       nSkillId,
       nSkillLevel,
     ) | 0;
-    STATLIST_AddUnitStat113c(m, pMissile, 0x19, bonusDmg, 0);
+    STATLIST_AddUnitStatMemPort113c(m, pMissile, 0x19, bonusDmg, 0);
   }
   return 1;
 }
@@ -2196,8 +2169,8 @@ export function SKILLS_SrvDo029_ApplySingleTargetMonsterCurse_6FC49000_113c(
 ): number {
   hitD2GameVa113c(0x6FC49000)
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C));
-  if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xb98) >>> 0)) return 0;
-  const pSkillTxt = (m.u32((pDataTables + 0xb90) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
+  if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xba0) >>> 0)) return 0;
+  const pSkillTxt = (m.u32((pDataTables + 0xb98) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
   if (pSkillTxt === 0) return 0;
 
   const wAuraTargetState = i16(m, (pSkillTxt + 0x82) >>> 0);
@@ -2212,53 +2185,73 @@ export function SKILLS_SrvDo029_ApplySingleTargetMonsterCurse_6FC49000_113c(
     SKILLS_CanUnownedMonsterUseSkillInMode12_6FC47130_113c(m, pGame, pTarget) === 0 ||
     SUNIT_AreUnitsHostileOrUnaligned113c(m, pUnit, pTarget, pGame) === 0
   ) {
-    pTarget = AURA_FindClosestUnitInRadius_6FCC1000_113c(m, pUnit, pGame, 0x14, 0x6fc47130) >>> 0;
+    pTarget = AURA_FindClosestUnitInRadius_6FCC1000_113c(
+      m,
+      pUnit,
+      pGame,
+      0x14,
+      0x6fc47130,
+      {
+        onUnitFindFilter: (mm, _cb, g, t) =>
+          SKILLS_CanUnownedMonsterUseSkillInMode12_6FC47130_113c(mm, g, t),
+      },
+    ) >>> 0;
     if (pTarget === 0) return 0;
   }
 
-  const pCurseCtx = 0x7ffdf400;
-  m.setU32(pCurseCtx, pGame >>> 0);
-  m.setU32((pCurseCtx + 0x04) >>> 0, pUnit >>> 0);
-  m.setU32((pCurseCtx + 0x08) >>> 0, 1);
-  m.setU32((pCurseCtx + 0x0c) >>> 0, 0);
-  m.setU32((pCurseCtx + 0x10) >>> 0, nSkillId >>> 0);
-  m.setU32((pCurseCtx + 0x14) >>> 0, nSkillLevel >>> 0);
-  const len = SKILLS_EvalCalcByOffset113c(
-    m,
-    pUnit,
-    m.u32((pSkillTxt + 0x60) >>> 0),
-    nSkillId,
-    nSkillLevel,
-  ) >>> 0;
-  m.setU32((pCurseCtx + 0x18) >>> 0, len);
-
-  const bitMask1 = m.u32((m.u32(D2GAME_IAT_GDW_BITMASKS_VA_113C) + 0x04) >>> 0) & 0xff;
-  for (let idx = 0; idx < 6; idx++) {
-    const statId = i16(m, (pSkillTxt + 0x54 + idx * 2) >>> 0);
-    if (statId < 0 || statId >= i32(m, (pDataTables + 0xbd4) >>> 0)) {
-      m.setU32((pCurseCtx + 0x1c + idx * 4) >>> 0, 0xffffffff);
-      break;
+  const savedSp = k2W7B1StackPtr;
+  const pCurseCtx = (savedSp - 0x70) >>> 0;
+  k2W7B1StackPtr = pCurseCtx;
+  try {
+    for (let i = 0; i < 0x68; i += 4) {
+      m.setU32((pCurseCtx + i) >>> 0, 0);
     }
-    const pStatRec = DATATBLS_GetItemStatCostRecordFast113c(m, statId) >>> 0;
-    if (pStatRec !== 0 && (m.u8((pStatRec + 0x05) >>> 0) & bitMask1) !== 0) {
-      m.setU32((pCurseCtx + 0x0c) >>> 0, 1);
-    }
-    m.setU32((pCurseCtx + 0x1c + idx * 4) >>> 0, statId >>> 0);
-    const statVal = SKILLS_EvalCalcByOffset113c(
+    m.setU32(pCurseCtx, pGame >>> 0);
+    m.setU32((pCurseCtx + 0x04) >>> 0, pUnit >>> 0);
+    m.setU32((pCurseCtx + 0x08) >>> 0, 1);
+    m.setU32((pCurseCtx + 0x0c) >>> 0, 0);
+    m.setU32((pCurseCtx + 0x10) >>> 0, nSkillId >>> 0);
+    m.setU32((pCurseCtx + 0x14) >>> 0, nSkillLevel >>> 0);
+    const len = SKILLS_EvalCalcByOffset113c(
       m,
       pUnit,
-      m.u32((pSkillTxt + 0x68 + idx * 4) >>> 0),
+      m.u32((pSkillTxt + 0x60) >>> 0),
       nSkillId,
       nSkillLevel,
     ) >>> 0;
-    m.setU32((pCurseCtx + 0x34 + idx * 4) >>> 0, statVal);
-  }
-  m.setU32((pCurseCtx + 0x4c) >>> 0, wAuraTargetState >>> 0);
+    m.setU32((pCurseCtx + 0x18) >>> 0, len);
 
-  SKILLS_ApplyCurseStateAndStatsCallback_6FC70250_113c(m, pTarget, pCurseCtx);
+    const bitMask1 = m.u32((m.u32(D2GAME_IAT_GDW_BITMASKS_VA_113C) + 0x04) >>> 0) & 0xff;
+    for (let idx = 0; idx < 6; idx++) {
+      const statId = i16(m, (pSkillTxt + 0x54 + idx * 2) >>> 0);
+      if (statId < 0 || statId >= i32(m, (pDataTables + 0xbd4) >>> 0)) {
+        m.setU32((pCurseCtx + 0x1c + idx * 4) >>> 0, 0xffffffff);
+        break;
+      }
+      const pStatRec = DATATBLS_GetItemStatCostRecordFast113c(m, statId) >>> 0;
+      if (pStatRec === 0) break;
+      if ((m.u8((pStatRec + 0x05) >>> 0) & bitMask1) !== 0) {
+        m.setU32((pCurseCtx + 0x0c) >>> 0, 1);
+      }
+      m.setU32((pCurseCtx + 0x1c + idx * 4) >>> 0, statId >>> 0);
+      const statVal = SKILLS_EvalCalcByOffset113c(
+        m,
+        pUnit,
+        m.u32((pSkillTxt + 0x68 + idx * 4) >>> 0),
+        nSkillId,
+        nSkillLevel,
+      ) >>> 0;
+      m.setU32((pCurseCtx + 0x34 + idx * 4) >>> 0, statVal);
+    }
+    m.setU32((pCurseCtx + 0x4c) >>> 0, wAuraTargetState >>> 0);
+
+    SKILLS_ApplyCurseStateAndStatsCallback_6FC70250_113c(m, pTarget, pCurseCtx);
+  } finally {
+    k2W7B1StackPtr = savedSp;
+  }
   const pAiGeneral =
     m.u32(pTarget) === 1 && m.u32((pTarget + 0x14) >>> 0) !== 0
-      ? m.u32((m.u32((pTarget + 0x14) >>> 0) + 0x30) >>> 0)
+      ? m.u32((m.u32((pTarget + 0x14) >>> 0) + 0x28) >>> 0)
       : 0;
   if (pAiGeneral !== 0) {
     m.setU32((pAiGeneral + 0x0c) >>> 0, 0xffffffff);
@@ -2322,8 +2315,8 @@ export function SKILLS_SrvDo031_LeapLandingAndKnockback_6FC494A0_113c(
 ): number {
   hitD2GameVa113c(0x6FC494A0)
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C));
-  if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xb98) >>> 0)) return 0;
-  const pSkillTxt = (m.u32((pDataTables + 0xb90) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
+  if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xba0) >>> 0)) return 0;
+  const pSkillTxt = (m.u32((pDataTables + 0xb98) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
   if (pSkillTxt === 0) return 0;
 
   const pSkill = SKILLS_GetHighestLevelSkillFromUnitAndIdFastcall113c(m, pUnit, nSkillId) >>> 0;
@@ -2351,31 +2344,37 @@ export function SKILLS_SrvDo031_LeapLandingAndKnockback_6FC494A0_113c(
     if (bIsMonster !== 0) {
       return 1;
     }
-    const pDmg = 0x7ffdf400;
-    for (let i = 0; i < 0x70; i += 4) {
-      m.setU32((pDmg + i) >>> 0, 0);
-    }
-    m.setU16((pDmg + 0x04) >>> 0, 9);
-    const radius = SKILLS_EvalCalcByOffset113c(
-      m,
-      pUnit,
-      m.u32((pSkillTxt + 0x138) >>> 0),
-      nSkillId,
-      nSkillLevel,
-    ) | 0;
-    if (pUnit !== 0) {
-      AURA_ForEachHostileTargetInRadius_6FCC0C70_113c(
+    const savedSp = k2W7B1StackPtr;
+    const pDmg = (savedSp - 0x70) >>> 0;
+    k2W7B1StackPtr = pDmg;
+    try {
+      for (let i = 0; i < 0x70; i += 4) {
+        m.setU32((pDmg + i) >>> 0, 0);
+      }
+      m.setU16((pDmg + 0x04) >>> 0, 9);
+      const radius = SKILLS_EvalCalcByOffset113c(
         m,
-        pGame,
         pUnit,
-        0,
-        0,
-        radius,
-        0x8583,
-        0x6fcc1210,
-        pDmg,
-        bIsMonster,
-      );
+        m.u32((pSkillTxt + 0x138) >>> 0),
+        nSkillId,
+        nSkillLevel,
+      ) | 0;
+      if (pUnit !== 0) {
+        AURA_ForEachHostileTargetInRadius_6FCC0C70_113c(
+          m,
+          pGame,
+          pUnit,
+          0,
+          0,
+          radius,
+          0x8583,
+          0x6fcc1210,
+          pDmg,
+          bIsMonster,
+        );
+      }
+    } finally {
+      k2W7B1StackPtr = savedSp;
     }
     return 1;
   }
@@ -2384,7 +2383,7 @@ export function SKILLS_SrvDo031_LeapLandingAndKnockback_6FC494A0_113c(
     return SKILLS_SetupChargeOrLeapPath_6FC46A80_113c(m, pUnit, pSkill, flags) | 0;
   }
   if (bIsMonster === 0) {
-    SKILLS_SetFlags113c(m, pSkill, 0);
+    SKILLS_SetParam0C113c(m, pSkill, 0);
   }
   return 1;
 }
@@ -2431,7 +2430,7 @@ export function PLAYER_CheckAndSendCharSaveToClient_6FC4BE20_113c(
     FOG_DisplayAssert113c(m, 0x6fd19ff9, loc);
     msvc_exit113c(m, -1);
   }
-  if (CLIENTS_SaveAndSendPlayerData_6FCEC030_113c(m, pUnit, edi) !== 0) {
+  if (PLAYER_SyncClientLifeManaStaminaGoldAndCoords_6FCEC030_113c(m, pUnit, pUnit, edi) !== 0) {
     m.setU32((pClient + 0x1b0) >>> 0, 0);
   }
 }
@@ -2447,11 +2446,17 @@ export function QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(
   nState: number,
 ): void {
   hitD2GameVa113c(0x6FC55EB0)
-  const pBuf = 0x7ffdf400;
-  m.setU8((pQuestArg + 0x0c) >>> 0, nState & 0xff);
-  user32_wsprintfA113c(m, pBuf, 0x6fd1cc2c, nState);
-  if (m.u32(0x6fd31c20) !== 0) {
-    QUESTS_DebugOutput_6FCEBE70_113c(m, m.u32((pQuestArg + 0x04) >>> 0), pBuf, 4);
+  const savedSp = k2W7B1StackPtr;
+  const pBuf = (savedSp - 0x100) >>> 0;
+  k2W7B1StackPtr = pBuf;
+  try {
+    m.setU8((pQuestArg + 0x0c) >>> 0, nState & 0xff);
+    user32_wsprintfA113c(m, pBuf, 0x6fd1cc2c, nState);
+    if (m.u32(0x6fd31c20) !== 0) {
+      QUESTS_DebugOutput_6FCEBE70_113c(m, m.u32((pQuestArg + 0x04) >>> 0), pBuf, 4);
+    }
+  } finally {
+    k2W7B1StackPtr = savedSp;
   }
 }
 
@@ -2471,7 +2476,7 @@ export function QUESTS_Act2TaintedSunTriggerAltarDarkness_6FC56C20_113c(
   let pQuest = m.u32(pAct2Quests);
   while (pQuest !== 0) {
     if (m.u32(pQuest) === 0x0b) {
-      QUESTS_Act2TaintedSunOnAltarActivated_6FCE9B70_113c(m, pQuest);
+      ACT2Q0_PresetSpawnJerhynAndRelocate_6FCE9B70_113c(m, pArgs >>> 0, pQuest >>> 0);
       return;
     }
     pQuest = m.u32((pQuest + 0xf4) >>> 0);
@@ -2486,13 +2491,12 @@ export function QUESTS_Act2TaintedSunTriggerAltarDarkness_6FC56C20_113c(
 export function QUESTS_Act3KurastTemplesSequenceFilter_6FC5BB60_113c(
   m: D2KernMemory113c,
   pGame: number,
-  nArg = 0,
+  pMissile: number,
+  pHitUnit = 0,
 ): number {
   hitD2GameVa113c(0x6FC5BB60)
-  if (nArg === 0) {
-    return QUESTS_Act3CheckBlackenedTempleActive_6FC5B5F0_113c(m, pGame, 0) | 0;
-  }
-  return 0;
+  if ((pHitUnit | 0) !== 0) return 0;
+  return MISSILE_SrvHit_RadialStatsDamageByAuraRange_6FC5B5F0_113c(m, pGame, pMissile, 0) | 0;
 }
 /**
  * @dll D2Game.dll
@@ -2508,12 +2512,12 @@ export function SKILLS_SrvDo042_SpawnSrvMissileWithDeltaAndRange_6FC63610_113c(
 ): number {
   hitD2GameVa113c(0x6FC63610)
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C));
-  if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xb98) >>> 0)) return 0;
-  const pSkillTxt = (m.u32((pDataTables + 0xb90) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
+  if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xba0) >>> 0)) return 0;
+  const pSkillTxt = (m.u32((pDataTables + 0xb98) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
   if (pSkillTxt === 0) return 0;
 
   const wSrvMissile = i16(m, (pSkillTxt + 0x48) >>> 0);
-  if (wSrvMissile < 0 || wSrvMissile >= i32(m, (pDataTables + 0xc58) >>> 0)) return 0;
+  if (wSrvMissile < 0 || wSrvMissile >= i32(m, (pDataTables + 0xb6c) >>> 0)) return 0;
 
   if (pUnit !== 0) {
     m.setU32((pUnit + 0xc4) >>> 0, (m.u32((pUnit + 0xc4) >>> 0) | 0x40) >>> 0);
@@ -2622,12 +2626,12 @@ export function SKILLS_SrvDo046_EnchantOrRevivePetWithAuraState_6FC63FA0_113c(
 ): number {
   hitD2GameVa113c(0x6FC63FA0)
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C));
-  if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xb98) >>> 0)) return 0;
-  const pSkillTxt = (m.u32((pDataTables + 0xb90) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
+  if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xba0) >>> 0)) return 0;
+  const pSkillTxt = (m.u32((pDataTables + 0xb98) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
   if (pSkillTxt === 0) return 0;
 
   const wSrvMissile = i16(m, (pSkillTxt + 0x48) >>> 0);
-  if (wSrvMissile < 0 || wSrvMissile >= i32(m, (pDataTables + 0xc58) >>> 0)) return 0;
+  if (wSrvMissile < 0 || wSrvMissile >= i32(m, (pDataTables + 0xb6c) >>> 0)) return 0;
   const wAuraState = i16(m, (pSkillTxt + 0x80) >>> 0);
   if (wAuraState < 0 || wAuraState >= i32(m, (pDataTables + 0xc4) >>> 0)) return 0;
 
@@ -2646,8 +2650,8 @@ export function SKILLS_SrvDo046_EnchantOrRevivePetWithAuraState_6FC63FA0_113c(
       pUnit,
       0,
       3,
-      targetId,
       petType,
+      targetId,
       0,
       0,
     ) >>> 0;
@@ -2662,11 +2666,11 @@ export function SKILLS_SrvDo046_EnchantOrRevivePetWithAuraState_6FC63FA0_113c(
         nSkillLevel,
       ) >>> 0;
       if (pSpawned !== 0) {
-        UNIT_DeleteObjectAndFreeEvents_6FC5EDE0_113c(m, pGame, pPetUnit, 1);
+        MISSILE_ProcessTargetCollisionHit113c(m, pSpawned, pGame, pPetUnit, 1);
         SUNIT_VerifyAndDeleteUnit_6FD020A0_113c(m, pGame, pSpawned);
-        MISSILE_SpawnLinearStreamFromSkill_6FC9A190_113c(
+        UNITMSG_QueuePacketA3AuraTargetFx_6FC9A190_113c(
           m,
-          pGame,
+          pUnit,
           pPetUnit,
           nSkillId,
           nSkillLevel,
@@ -2680,30 +2684,36 @@ export function SKILLS_SrvDo046_EnchantOrRevivePetWithAuraState_6FC63FA0_113c(
       SKILLS_SetParam04113c(m, pSkill, 0xffffffff);
     }
   } else {
-    const pSummonArg = 0x7ffdf400;
-    for (let i = 0; i < 0x28; i += 4) {
-      m.setU32((pSummonArg + i) >>> 0, 0);
-    }
-    m.setU32(pSummonArg, pUnit >>> 0);
-    m.setU32((pSummonArg + 0x04) >>> 0, pUnit >>> 0);
-    m.setU32((pSummonArg + 0x08) >>> 0, nSkillId >>> 0);
-    m.setU32((pSummonArg + 0x0c) >>> 0, nSkillLevel >>> 0);
-    const duration = SKILLS_EvalCalcByOffset113c(
-      m,
-      pUnit,
-      m.u32((pSkillTxt + 0x60) >>> 0),
-      nSkillId,
-      nSkillLevel,
-    ) >>> 0;
-    m.setU32((pSummonArg + 0x10) >>> 0, duration);
-    m.setU32((pSummonArg + 0x14) >>> 0, 0xffffffff);
-    m.setU32((pSummonArg + 0x18) >>> 0, 0);
-    m.setU32((pSummonArg + 0x1c) >>> 0, wAuraState >>> 0);
+    const savedSp = k2W7B1StackPtr;
+    const pSummonArg = (savedSp - 0x30) >>> 0;
+    k2W7B1StackPtr = pSummonArg;
+    try {
+      for (let i = 0; i < 0x28; i += 4) {
+        m.setU32((pSummonArg + i) >>> 0, 0);
+      }
+      m.setU32(pSummonArg, pUnit >>> 0);
+      m.setU32((pSummonArg + 0x04) >>> 0, pUnit >>> 0);
+      m.setU32((pSummonArg + 0x08) >>> 0, nSkillId >>> 0);
+      m.setU32((pSummonArg + 0x0c) >>> 0, nSkillLevel >>> 0);
+      const duration = SKILLS_EvalCalcByOffset113c(
+        m,
+        pUnit,
+        m.u32((pSkillTxt + 0x60) >>> 0),
+        nSkillId,
+        nSkillLevel,
+      ) >>> 0;
+      m.setU32((pSummonArg + 0x10) >>> 0, duration);
+      m.setU32((pSummonArg + 0x14) >>> 0, 0xffffffff);
+      m.setU32((pSummonArg + 0x18) >>> 0, 0);
+      m.setU32((pSummonArg + 0x1c) >>> 0, wAuraState >>> 0);
 
-    const pStatList = AURA_ApplyTimerStatListWithSkillAndState_6FCC00B0_113c(m, pSummonArg) >>> 0;
-    if (pStatList !== 0) {
-      STATLIST_SetStatIfListIsValid113c(m, pStatList, 0x15e, nSkillId, 0);
-      STATLIST_SetStatIfListIsValid113c(m, pStatList, 0x15f, nSkillLevel, 0);
+      const pStatList = AURA_ApplyTimerStatListWithSkillAndState_6FCC00B0_113c(m, pSummonArg) >>> 0;
+      if (pStatList !== 0) {
+        STATLIST_SetStatIfListIsValid113c(m, pStatList, 0x15e, nSkillId, 0);
+        STATLIST_SetStatIfListIsValid113c(m, pStatList, 0x15f, nSkillLevel, 0);
+      }
+    } finally {
+      k2W7B1StackPtr = savedSp;
     }
   }
   SKILLS_SetParam08113c(m, pSkill, 0);
@@ -2724,12 +2734,12 @@ export function SKILLS_SrvDo047_SpawnSkillMissileAtTargetPos_6FC64390_113c(
 ): number {
   hitD2GameVa113c(0x6FC64390)
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C));
-  if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xb98) >>> 0)) return 0;
-  const pSkillTxt = (m.u32((pDataTables + 0xb90) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
+  if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xba0) >>> 0)) return 0;
+  const pSkillTxt = (m.u32((pDataTables + 0xb98) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
   if (pSkillTxt === 0) return 0;
 
   const wSrvMissile = i16(m, (pSkillTxt + 0x48) >>> 0);
-  if (wSrvMissile < 0 || wSrvMissile >= i32(m, (pDataTables + 0xc58) >>> 0)) return 0;
+  if (wSrvMissile < 0 || wSrvMissile >= i32(m, (pDataTables + 0xb6c) >>> 0)) return 0;
 
   return (
     SKILLS_SpawnMissileAtSkillTargetPos_6FC641C0_113c(
@@ -2758,8 +2768,8 @@ export function SKILLS_StartOrUpdateDelayedChannelSkillState_6FC643F0_113c(
 ): number {
   hitD2GameVa113c(0x6FC643F0)
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C));
-  if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xb98) >>> 0)) return 0;
-  const pSkillTxt = (m.u32((pDataTables + 0xb90) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
+  if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xba0) >>> 0)) return 0;
+  const pSkillTxt = (m.u32((pDataTables + 0xb98) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
   if (pSkillTxt === 0) return 0;
 
   if (pUnit !== 0 && m.u32(pUnit) === 1) {
@@ -2851,33 +2861,39 @@ export function SKILLS_SpawnSpreadProjectilesAtTargetOrPath_6FC654E0_113c(
     if (rem <= 0) return 1;
   }
 
-  const pParam = 0x7ffdf400;
-  for (let i = 0; i < 0x5c; i += 4) {
-    m.setU32((pParam + i) >>> 0, 0);
-  }
-  m.setU32(pParam, 0x21);
-  m.setU32((pParam + 0x04) >>> 0, pUnit >>> 0);
-  m.setU32((pParam + 0x10) >>> 0, nMissileId >>> 0);
-  m.setU32((pParam + 0x14) >>> 0, readUnitPosXInline113c(m, pUnit) >>> 0);
-  m.setU32((pParam + 0x18) >>> 0, readUnitPosYInline113c(m, pUnit) >>> 0);
-  m.setU32((pParam + 0x2c) >>> 0, nSkillId >>> 0);
-  m.setU32((pParam + 0x30) >>> 0, nSkillLevel >>> 0);
-  m.setU32((pParam + 0x54) >>> 0, 0x6fc61f50);
-
-  if (
-    SKILLS_GetTargetOrPathPosition_6FCBFA30_113c(
-      m,
-      pUnit,
-      pGame,
-      (pParam + 0x1c) >>> 0,
-      (pParam + 0x20) >>> 0,
-    ) !== 0 &&
-    rem > 0
-  ) {
-    for (let i = 0; i < rem; i++) {
-      m.setU32((pParam + 0x58) >>> 0, i >>> 0);
-      MISSILE_InitAndSpawnCustom_6FC8F930_113c(m, pGame, pParam);
+  const savedSp = k2W7B1StackPtr;
+  const pParam = (savedSp - 0x60) >>> 0;
+  k2W7B1StackPtr = pParam;
+  try {
+    for (let i = 0; i < 0x5c; i += 4) {
+      m.setU32((pParam + i) >>> 0, 0);
     }
+    m.setU32(pParam, 0x21);
+    m.setU32((pParam + 0x04) >>> 0, pUnit >>> 0);
+    m.setU32((pParam + 0x10) >>> 0, nMissileId >>> 0);
+    m.setU32((pParam + 0x14) >>> 0, readUnitPosXInline113c(m, pUnit) >>> 0);
+    m.setU32((pParam + 0x18) >>> 0, readUnitPosYInline113c(m, pUnit) >>> 0);
+    m.setU32((pParam + 0x2c) >>> 0, nSkillId >>> 0);
+    m.setU32((pParam + 0x30) >>> 0, nSkillLevel >>> 0);
+    m.setU32((pParam + 0x54) >>> 0, 0x6fc61f50);
+
+    if (
+      SKILLS_GetTargetOrPathPosition_6FCBFA30_113c(
+        m,
+        pUnit,
+        pGame,
+        (pParam + 0x1c) >>> 0,
+        (pParam + 0x20) >>> 0,
+      ) !== 0 &&
+      rem > 0
+    ) {
+      for (let i = 0; i < rem; i++) {
+        m.setU32((pParam + 0x58) >>> 0, i >>> 0);
+        MISSILE_InitAndSpawnCustom_6FC8F930_113c(m, pGame, pParam);
+      }
+    }
+  } finally {
+    k2W7B1StackPtr = savedSp;
   }
   return 1;
 }
@@ -2896,12 +2912,12 @@ export function SKILLS_SrvDo051_SpawnMultipleBowOrCrossbowProjectiles_6FC656B0_1
 ): number {
   hitD2GameVa113c(0x6FC656B0)
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C));
-  if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xb98) >>> 0)) return 0;
-  const pSkillTxt = (m.u32((pDataTables + 0xb90) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
+  if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xba0) >>> 0)) return 0;
+  const pSkillTxt = (m.u32((pDataTables + 0xb98) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
   if (pSkillTxt === 0) return 0;
 
   const missileId = SKILLS_GetBowOrCrossbowMissileId_6FCB1340_113c(m, nSkillId, pUnit) | 0;
-  if (missileId < 0 || missileId >= i32(m, (pDataTables + 0xc58) >>> 0)) return 0;
+  if (missileId < 0 || missileId >= i32(m, (pDataTables + 0xb6c) >>> 0)) return 0;
 
   if (pUnit !== 0) {
     m.setU32((pUnit + 0xc4) >>> 0, (m.u32((pUnit + 0xc4) >>> 0) | 0x40) >>> 0);
@@ -2931,32 +2947,38 @@ export function SKILLS_SrvDo051_SpawnMultipleBowOrCrossbowProjectiles_6FC656B0_1
   );
   const rem = (count - 1) | 0;
   if (rem > 0) {
-    const pParam = 0x7ffdf400;
-    for (let i = 0; i < 0x5c; i += 4) {
-      m.setU32((pParam + i) >>> 0, 0);
-    }
-    m.setU32(pParam, 0x21);
-    m.setU32((pParam + 0x04) >>> 0, pUnit >>> 0);
-    m.setU32((pParam + 0x10) >>> 0, missileId >>> 0);
-    m.setU32((pParam + 0x14) >>> 0, readUnitPosXInline113c(m, pUnit) >>> 0);
-    m.setU32((pParam + 0x18) >>> 0, readUnitPosYInline113c(m, pUnit) >>> 0);
-    m.setU32((pParam + 0x2c) >>> 0, nSkillId >>> 0);
-    m.setU32((pParam + 0x30) >>> 0, nSkillLevel >>> 0);
-    m.setU32((pParam + 0x54) >>> 0, 0x6fc61f50);
-
-    if (
-      SKILLS_GetTargetOrPathPosition_6FCBFA30_113c(
-        m,
-        pUnit,
-        pGame,
-        (pParam + 0x1c) >>> 0,
-        (pParam + 0x20) >>> 0,
-      ) !== 0
-    ) {
-      for (let i = 0; i < rem; i++) {
-        m.setU32((pParam + 0x58) >>> 0, i >>> 0);
-        MISSILE_InitAndSpawnCustom_6FC8F930_113c(m, pGame, pParam);
+    const savedSp = k2W7B1StackPtr;
+    const pParam = (savedSp - 0x60) >>> 0;
+    k2W7B1StackPtr = pParam;
+    try {
+      for (let i = 0; i < 0x5c; i += 4) {
+        m.setU32((pParam + i) >>> 0, 0);
       }
+      m.setU32(pParam, 0x21);
+      m.setU32((pParam + 0x04) >>> 0, pUnit >>> 0);
+      m.setU32((pParam + 0x10) >>> 0, missileId >>> 0);
+      m.setU32((pParam + 0x14) >>> 0, readUnitPosXInline113c(m, pUnit) >>> 0);
+      m.setU32((pParam + 0x18) >>> 0, readUnitPosYInline113c(m, pUnit) >>> 0);
+      m.setU32((pParam + 0x2c) >>> 0, nSkillId >>> 0);
+      m.setU32((pParam + 0x30) >>> 0, nSkillLevel >>> 0);
+      m.setU32((pParam + 0x54) >>> 0, 0x6fc61f50);
+
+      if (
+        SKILLS_GetTargetOrPathPosition_6FCBFA30_113c(
+          m,
+          pUnit,
+          pGame,
+          (pParam + 0x1c) >>> 0,
+          (pParam + 0x20) >>> 0,
+        ) !== 0
+      ) {
+        for (let i = 0; i < rem; i++) {
+          m.setU32((pParam + 0x58) >>> 0, i >>> 0);
+          MISSILE_InitAndSpawnCustom_6FC8F930_113c(m, pGame, pParam);
+        }
+      }
+    } finally {
+      k2W7B1StackPtr = savedSp;
     }
   }
   return 1;
@@ -2976,11 +2998,11 @@ export function SKILLS_EventFunc05_MoltenBoulderOrPerFrameAura_6FC65AF0_113c(
 ): number {
   hitD2GameVa113c(0x6FC65AF0)
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C));
-  if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xb98) >>> 0)) {
+  if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xba0) >>> 0)) {
     EVENT_CancelSkillEventsByTypeAndId_6FCAE900_113c(m, pGame, pUnit, 5, nSkillId);
     return 0;
   }
-  const pSkillTxt = (m.u32((pDataTables + 0xb90) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
+  const pSkillTxt = (m.u32((pDataTables + 0xb98) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
   if (pSkillTxt === 0 || nSkillLevel <= 0) {
     EVENT_CancelSkillEventsByTypeAndId_6FCAE900_113c(m, pGame, pUnit, 5, nSkillId);
     return 0;
@@ -3033,27 +3055,33 @@ export function SKILLS_EventFunc05_MoltenBoulderOrPerFrameAura_6FC65AF0_113c(
     return 0;
   }
 
-  const pDmg = 0x7ffdf400;
-  for (let i = 0; i < 0x70; i += 4) {
-    m.setU32((pDmg + i) >>> 0, 0);
+  const savedSp = k2W7B1StackPtr;
+  const pDmg = (savedSp - 0x70) >>> 0;
+  k2W7B1StackPtr = pDmg;
+  try {
+    for (let i = 0; i < 0x70; i += 4) {
+      m.setU32((pDmg + i) >>> 0, 0);
+    }
+    SKILLS_SetupPhysicalSkillDamage_6FCBF1A0_113c(m, pUnit, nSkillId, pDmg, nSkillLevel);
+    SKILLS_FillElementalDamageStrc_6FCBF210_113c(m, pUnit, nSkillId, pDmg, nSkillLevel);
+    m.setU16(
+      (pDmg + 0x04) >>> 0,
+      (m.u16((pDmg + 0x04) >>> 0) | m.u16((pSkillTxt + 0x12e) >>> 0)) & 0xffff,
+    );
+    m.setU32(pDmg, (m.u32(pDmg) | m.u32((pSkillTxt + 0x130) >>> 0)) >>> 0);
+    AURA_ApplyRadialDamageToEnemies_6FCC1240_113c(
+      m,
+      pGame,
+      pUnit,
+      pDmg,
+      m.u32((pSkillTxt + 0x50) >>> 0),
+      0,
+      0,
+      radius,
+    );
+  } finally {
+    k2W7B1StackPtr = savedSp;
   }
-  SKILLS_SetupPhysicalSkillDamage_6FCBF1A0_113c(m, pUnit, nSkillId, pDmg, nSkillLevel);
-  SKILLS_FillElementalDamageStrc_6FCBF210_113c(m, pUnit, nSkillId, pDmg, nSkillLevel);
-  m.setU16(
-    (pDmg + 0x04) >>> 0,
-    (m.u16((pDmg + 0x04) >>> 0) | m.u16((pSkillTxt + 0x12e) >>> 0)) & 0xffff,
-  );
-  m.setU32(pDmg, (m.u32(pDmg) | m.u32((pSkillTxt + 0x130) >>> 0)) >>> 0);
-  AURA_ApplyRadialDamageToEnemies_6FCC1240_113c(
-    m,
-    pGame,
-    pUnit,
-    pDmg,
-    m.u32((pSkillTxt + 0x50) >>> 0),
-    0,
-    0,
-    radius,
-  );
   return 1;
 }
 
@@ -3068,36 +3096,46 @@ export function PALADIN_FindAndSpawnBlessedHammerOrAuraSubMissile_6FC67900_113c(
   pUnit: number,
   nSubMissileIdx: number,
   nLevel: number,
-): void {
+): number {
   hitD2GameVa113c(0x6FC67900)
-  const pOutX = 0x7ffdf400;
-  const pOutY = 0x7ffdf404;
-  if (
-    SKILLS_FindBlessedHammerSpawnCoords_6FC671E0_113c(
-      m,
-      pGame,
-      pUnit,
-      0,
-      nLevel,
-      nSubMissileIdx,
-      pOutX,
-      pOutY,
-    ) === 0
-  ) {
-    return;
+  const savedSp = k2W7B1StackPtr;
+  const pOutX = (savedSp - 0x10) >>> 0;
+  const pOutY = (pOutX + 0x04) >>> 0;
+  k2W7B1StackPtr = pOutX;
+  try {
+    m.setU32(pOutX, 0);
+    m.setU32(pOutY, 0);
+    if (
+      SKILLS_FindBlessedHammerSpawnCoords_6FC671E0_113c(
+        m,
+        pGame,
+        pUnit,
+        0,
+        nLevel,
+        nSubMissileIdx,
+        pOutX,
+        pOutY,
+      ) === 0
+    ) {
+      return 0;
+    }
+    return (
+      MONSTER_SpawnPresetPackTable_6FD0F940_113c(
+        m,
+        nSubMissileIdx,
+        pUnit,
+        pGame,
+        m.u32(pOutX),
+        m.u32(pOutY),
+        nLevel,
+        0,
+        1,
+        0,
+      ) | 0
+    );
+  } finally {
+    k2W7B1StackPtr = savedSp;
   }
-  SKILLS_SpawnSubMissileAtCoords_6FD0F940_113c(
-    m,
-    pGame,
-    nSubMissileIdx,
-    1,
-    pUnit,
-    m.u32(pOutX),
-    m.u32(pOutY),
-    0,
-    nLevel,
-    0,
-  );
 }
 
 /**
@@ -3213,89 +3251,94 @@ export function SKILLS_SrvDo060_PaladinSmite_6FC6CC50_113c(
 ): number {
   hitD2GameVa113c(0x6FC6CC50)
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C));
-  if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xb98) >>> 0)) return 0;
-  const pSkillTxt = (m.u32((pDataTables + 0xb90) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
+  if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xba0) >>> 0)) return 0;
+  const pSkillTxt = (m.u32((pDataTables + 0xb98) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
   if (pSkillTxt === 0) return 0;
 
   SUNIT_ValidatePathTargetUnit113c(m, pUnit, pGame);
   const pPath = m.u32((pUnit + 0x2c) >>> 0);
   const pTarget = (pPath !== 0 ? PATH_GetTargetUnit113c(m, pPath) : 0) >>> 0;
   if (pTarget === pUnit || pTarget === 0) return 0;
-  if (SUNIT_CheckCanAttackAndConsumeAmmo_6FD00A60_113c(m, pUnit, pGame) === 0) return 0;
+  if (SUNIT_AreUnitsHostileOrUnaligned113c(m, pUnit, pTarget, pGame) === 0) return 0;
 
-  const pDmg = 0x7ffdf400;
-  for (let i = 0; i < 0x70; i += 4) {
-    m.setU32((pDmg + i) >>> 0, 0);
-  }
-  const toHitBonus = SKILLS_GetSkillToHitBonus113c(m, pUnit, nSkillId, nSkillLevel) | 0;
-  const resultFlags =
-    SUNITDMG_FillDamageValues_6FCFE5A0_113c(m, pTarget, pUnit, pGame, pDmg, toHitBonus, 0) & 0xffff;
-  m.setU16((pDmg + 0x04) >>> 0, resultFlags);
+  const savedSp = k2W7B1StackPtr;
+  const pDmg = (savedSp - 0xe0) >>> 0;
+  const pTmpDmg = (pDmg + 0x70) >>> 0;
+  k2W7B1StackPtr = pDmg;
+  try {
+    for (let i = 0; i < 0xe0; i += 4) {
+      m.setU32((pDmg + i) >>> 0, 0);
+    }
+    const toHitBonus = SKILLS_GetSkillToHitBonus113c(m, pUnit, nSkillId, nSkillLevel) | 0;
+    const resultFlags =
+      SUNITDMG_RollMeleeToHitAndBlock_6FCFE5A0_113c(m, pUnit, pTarget, pGame, toHitBonus, 0, pDmg) & 0xffff;
+    m.setU16((pDmg + 0x04) >>> 0, resultFlags);
 
-  if ((resultFlags & 1) !== 0) {
-    const dmgBonus =
-      SKILLS_EvalCalcByOffset113c(
-        m,
-        pUnit,
-        m.u32((pSkillTxt + 0x138) >>> 0),
-        nSkillId,
-        nSkillLevel,
-      ) | 0;
-    const srcDam = m.u8((pSkillTxt + 0x1a5) >>> 0);
-    const physDmg =
-      SUNITDMG_CalcAdjustedPhysicalDamage_6FCFC530_113c(
-        m,
-        pUnit,
-        dmgBonus,
-        0,
-        1,
-        0,
-        0,
-        0,
-        srcDam,
-      ) >>> 0;
-    m.setU32((pDmg + 0x08) >>> 0, physDmg);
-
-    const elemType = m.u8((pSkillTxt + 0x1dc) >>> 0);
-    if (elemType !== 0) {
-      const convPct =
+    if ((resultFlags & 1) !== 0) {
+      const dmgBonus =
         SKILLS_EvalCalcByOffset113c(
           m,
           pUnit,
-          m.u32((pSkillTxt + 0x144) >>> 0),
+          m.u32((pSkillTxt + 0x138) >>> 0),
           nSkillId,
           nSkillLevel,
         ) | 0;
-      m.setU32((pDmg + 0x68) >>> 0, convPct >>> 0);
-      if (convPct > 0) {
-        m.setU8((pDmg + 0x65) >>> 0, elemType);
+      const srcDam = m.u8((pSkillTxt + 0x1a5) >>> 0);
+      m.setU32((pTmpDmg + 0x0c) >>> 0, dmgBonus >>> 0);
+      const physRaw = SUNITDMG_ComputeWeaponBaseDamage113c(m, pUnit, 0, pTmpDmg, 90, 0) | 0;
+      let physDmg = physRaw;
+      if (srcDam !== 0x80) {
+        if (physRaw > 0x100000) {
+          physDmg = imul32(sdiv32(physRaw, 0x80), srcDam);
+        } else {
+          physDmg = sdiv32(imul32(srcDam, physRaw), 0x80);
+        }
+      }
+      m.setU32((pDmg + 0x08) >>> 0, physDmg >>> 0);
+
+      const elemType = m.u8((pSkillTxt + 0x1dc) >>> 0);
+      if (elemType !== 0) {
+        const convPct =
+          SKILLS_EvalCalcByOffset113c(
+            m,
+            pUnit,
+            m.u32((pSkillTxt + 0x144) >>> 0),
+            nSkillId,
+            nSkillLevel,
+          ) | 0;
+        m.setU32((pDmg + 0x68) >>> 0, convPct >>> 0);
+        if (convPct > 0) {
+          m.setU8((pDmg + 0x65) >>> 0, elemType);
+        }
+      }
+      SKILLS_FillElementalDamageStrc_6FCBF210_113c(m, pUnit, nSkillId, pDmg, nSkillLevel);
+      m.setU32(pDmg, 1);
+
+      const pShield = INVENTORY_GetShieldItem_6FC572C0_113c(m, pUnit) >>> 0;
+      if (pShield !== 0 && ITEMS_CheckIfShield113c(m, pShield) !== 0) {
+        const minBonus =
+          SKILLS_EvalCalcByOffset113c(
+            m,
+            pUnit,
+            m.u32((pSkillTxt + 0x13c) >>> 0),
+            nSkillId,
+            nSkillLevel,
+          ) | 0;
+        const maxBonus =
+          SKILLS_EvalCalcByOffset113c(
+            m,
+            pUnit,
+            m.u32((pSkillTxt + 0x140) >>> 0),
+            nSkillId,
+            nSkillLevel,
+          ) | 0;
+        PALADIN_AddShieldSmiteDamage_6FC6C9E0_113c(m, pShield, pUnit, minBonus, pGame, maxBonus);
       }
     }
-    SKILLS_FillElementalDamageStrc_6FCBF210_113c(m, pUnit, nSkillId, pDmg, nSkillLevel);
-    m.setU32(pDmg, 1);
-
-    const pShield = INVENTORY_GetShieldItem_6FC572C0_113c(m, pUnit) >>> 0;
-    if (pShield !== 0 && ITEMS_CheckIfShield113c(m, pShield) !== 0) {
-      const minBonus =
-        SKILLS_EvalCalcByOffset113c(
-          m,
-          pUnit,
-          m.u32((pSkillTxt + 0x13c) >>> 0),
-          nSkillId,
-          nSkillLevel,
-        ) | 0;
-      const maxBonus =
-        SKILLS_EvalCalcByOffset113c(
-          m,
-          pUnit,
-          m.u32((pSkillTxt + 0x140) >>> 0),
-          nSkillId,
-          nSkillLevel,
-        ) | 0;
-      PALADIN_AddShieldSmiteDamage_6FC6C9E0_113c(m, pShield, pUnit, minBonus, pGame, maxBonus);
-    }
+    SUNITDMG_ExecuteEventsAndApplyDamage_6FCFDDE0_113c(m, pGame, pUnit, pTarget, pDmg, 0x80);
+  } finally {
+    k2W7B1StackPtr = savedSp;
   }
-  SUNITDMG_ExecuteEventsAndApplyDamage_6FCFDDE0_113c(m, pGame, pUnit, pTarget, pDmg, 0x80);
   return 1;
 }
 
@@ -3313,8 +3356,8 @@ export function SKILLS_SrvDo062_StrikeTrackedPetTargetAndAdvanceChain_6FC6DAC0_1
 ): number {
   hitD2GameVa113c(0x6FC6DAC0)
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C));
-  if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xb98) >>> 0)) return 0;
-  const pSkillTxt = (m.u32((pDataTables + 0xb90) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
+  if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xba0) >>> 0)) return 0;
+  const pSkillTxt = (m.u32((pDataTables + 0xb98) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
   if (pSkillTxt === 0) return 0;
 
   const pSkill = UNITS_GetCurrentSkill113c(m, pUnit) >>> 0;
@@ -3331,55 +3374,61 @@ export function SKILLS_SrvDo062_StrikeTrackedPetTargetAndAdvanceChain_6FC6DAC0_1
       pUnit,
       0,
       0x20003,
-      targetId,
       subIdx,
+      targetId,
       0,
       0,
     ) >>> 0;
     if (pTarget === 0) return 0;
   }
 
-  const pDmg = 0x7ffdf400;
-  for (let i = 0; i < 0x70; i += 4) {
-    m.setU32((pDmg + i) >>> 0, 0);
-  }
-  const toHitBonus = SKILLS_GetSkillToHitBonus113c(m, pUnit, nSkillId, nSkillLevel) | 0;
-  const resultFlags =
-    SUNITDMG_FillDamageValues_6FCFE5A0_113c(m, pTarget, pUnit, pGame, pDmg, toHitBonus, 0) & 0xffff;
-  m.setU16((pDmg + 0x04) >>> 0, resultFlags);
+  const savedSp = k2W7B1StackPtr;
+  const pDmg = (savedSp - 0x70) >>> 0;
+  k2W7B1StackPtr = pDmg;
+  try {
+    for (let i = 0; i < 0x70; i += 4) {
+      m.setU32((pDmg + i) >>> 0, 0);
+    }
+    const toHitBonus = SKILLS_GetSkillToHitBonus113c(m, pUnit, nSkillId, nSkillLevel) | 0;
+    const resultFlags =
+      SUNITDMG_RollMeleeToHitAndBlock_6FCFE5A0_113c(m, pUnit, pTarget, pGame, toHitBonus, 0, pDmg) & 0xffff;
+    m.setU16((pDmg + 0x04) >>> 0, resultFlags);
 
-  if ((resultFlags & 1) !== 0) {
-    const physBonus =
-      SKILLS_EvalCalcByOffset113c(
-        m,
-        pUnit,
-        m.u32((pSkillTxt + 0x13c) >>> 0),
-        nSkillId,
-        nSkillLevel,
-      ) >>> 0;
-    m.setU32((pDmg + 0x0c) >>> 0, physBonus);
-    const elemType = m.u8((pSkillTxt + 0x1dc) >>> 0);
-    if (elemType !== 0) {
-      const convPct =
+    if ((resultFlags & 1) !== 0) {
+      const physBonus =
         SKILLS_EvalCalcByOffset113c(
           m,
           pUnit,
-          m.u32((pSkillTxt + 0x144) >>> 0),
+          m.u32((pSkillTxt + 0x13c) >>> 0),
           nSkillId,
           nSkillLevel,
-        ) | 0;
-      m.setU32((pDmg + 0x68) >>> 0, convPct >>> 0);
-      if (convPct > 0) {
-        m.setU8((pDmg + 0x65) >>> 0, elemType);
+        ) >>> 0;
+      m.setU32((pDmg + 0x0c) >>> 0, physBonus);
+      const elemType = m.u8((pSkillTxt + 0x1dc) >>> 0);
+      if (elemType !== 0) {
+        const convPct =
+          SKILLS_EvalCalcByOffset113c(
+            m,
+            pUnit,
+            m.u32((pSkillTxt + 0x144) >>> 0),
+            nSkillId,
+            nSkillLevel,
+          ) | 0;
+        m.setU32((pDmg + 0x68) >>> 0, convPct >>> 0);
+        if (convPct > 0) {
+          m.setU8((pDmg + 0x65) >>> 0, elemType);
+        }
+        SKILLS_FillElementalDamageStrc_6FCBF210_113c(m, pUnit, nSkillId, pDmg, nSkillLevel);
       }
-      SKILLS_FillElementalDamageStrc_6FCBF210_113c(m, pUnit, nSkillId, pDmg, nSkillLevel);
     }
-  }
 
-  let srcDam = m.u8((pSkillTxt + 0x1a5) >>> 0);
-  if (srcDam === 0) srcDam = 0x80;
-  SUNITDMG_ExecuteEventsAndApplyDamage_6FCFDDE0_113c(m, pGame, pUnit, pTarget, pDmg, srcDam);
-  SUNITDMG_DrainItemDurability113c(m, pGame, pUnit, pTarget);
+    let srcDam = m.u8((pSkillTxt + 0x1a5) >>> 0);
+    if (srcDam === 0) srcDam = 0x80;
+    SUNITDMG_ExecuteEventsAndApplyDamage_6FCFDDE0_113c(m, pGame, pUnit, pTarget, pDmg, srcDam);
+    SUNITDMG_ExecuteEvents113c(m, pGame, pUnit, pTarget, 1, 0);
+  } finally {
+    k2W7B1StackPtr = savedSp;
+  }
 
   const remCount = (SKILLS_GetParam04113c(m, pSkill) - 1) | 0;
   SKILLS_SetParam04113c(m, pSkill, remCount);
@@ -3391,8 +3440,8 @@ export function SKILLS_SrvDo062_StrikeTrackedPetTargetAndAdvanceChain_6FC6DAC0_1
       pUnit,
       0,
       0x20003,
-      skipId,
       subIdx,
+      skipId,
       0,
       0,
     ) >>> 0;
@@ -3420,8 +3469,8 @@ export function SKILLS_SrvDo063_RangedMultiShotAtTrackedPetTargets_6FC6DCD0_113c
 ): number {
   hitD2GameVa113c(0x6FC6DCD0)
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C));
-  if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xb98) >>> 0)) return 0;
-  const pSkillTxt = (m.u32((pDataTables + 0xb90) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
+  if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xba0) >>> 0)) return 0;
+  const pSkillTxt = (m.u32((pDataTables + 0xb98) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
   if (pSkillTxt === 0) return 0;
 
   const pSkill = UNITS_GetCurrentSkill113c(m, pUnit) >>> 0;
@@ -3448,8 +3497,8 @@ export function SKILLS_SrvDo063_RangedMultiShotAtTrackedPetTargets_6FC6DCD0_113c
       pUnit,
       0,
       3,
-      targetId,
       subIdx,
+      targetId,
       0,
       0,
     ) >>> 0;
@@ -3457,45 +3506,51 @@ export function SKILLS_SrvDo063_RangedMultiShotAtTrackedPetTargets_6FC6DCD0_113c
   }
 
   UNITS_SetTargetUnitForDynamicUnit113c(m, pUnit, pTarget);
-  const pOutX = 0x7ffdf460;
-  const pOutY = 0x7ffdf464;
-  m.setU32(pOutX, 0);
-  m.setU32(pOutY, 0);
-  SKILLS_GetTargetOrPathPosition_6FCBFA30_113c(m, pUnit, pGame, pOutX, pOutY);
+  const savedSp = k2W7B1StackPtr;
+  const pParam = (savedSp - 0x70) >>> 0;
+  const pOutX = (pParam + 0x60) >>> 0;
+  const pOutY = (pParam + 0x64) >>> 0;
+  k2W7B1StackPtr = pParam;
+  try {
+    m.setU32(pOutX, 0);
+    m.setU32(pOutY, 0);
+    SKILLS_GetTargetOrPathPosition_6FCBFA30_113c(m, pUnit, pGame, pOutX, pOutY);
 
-  let missileId = i16(m, (pSkillTxt + 0x48) >>> 0);
-  if (D2Common_10419_GetUnitSeqCurrentFrame113c(m, pUnit) !== 1) {
-    const missileA = i16(m, (pSkillTxt + 0x4a) >>> 0);
-    if (missileA >= 0) {
-      missileId = missileA;
+    let missileId = i16(m, (pSkillTxt + 0x48) >>> 0);
+    if (D2Common_10419_GetUnitSeqCurrentFrame113c(m, pUnit) !== 1) {
+      const missileA = i16(m, (pSkillTxt + 0x4a) >>> 0);
+      if (missileA >= 0) {
+        missileId = missileA;
+      }
     }
-  }
-  if (missileId < 0 || missileId >= i32(m, (pDataTables + 0xc58) >>> 0)) return 0;
+    if (missileId < 0 || missileId >= i32(m, (pDataTables + 0xb6c) >>> 0)) return 0;
 
-  const range =
-    SKILLS_EvalCalcByOffset113c(
-      m,
-      pUnit,
-      m.u32((pSkillTxt + 0x13c) >>> 0),
-      nSkillId,
-      nSkillLevel,
-    ) | 0;
-  const pParam = 0x7ffdf400;
-  for (let i = 0; i < 0x5c; i += 4) {
-    m.setU32((pParam + i) >>> 0, 0);
+    const range =
+      SKILLS_EvalCalcByOffset113c(
+        m,
+        pUnit,
+        m.u32((pSkillTxt + 0x13c) >>> 0),
+        nSkillId,
+        nSkillLevel,
+      ) | 0;
+    for (let i = 0; i < 0x5c; i += 4) {
+      m.setU32((pParam + i) >>> 0, 0);
+    }
+    m.setU32(pParam, 0x21);
+    m.setU32((pParam + 0x04) >>> 0, pUnit >>> 0);
+    m.setU32((pParam + 0x10) >>> 0, missileId >>> 0);
+    m.setU32((pParam + 0x14) >>> 0, SUNIT_GetUnitPosX_6FC21100_113c(m, pUnit) >>> 0);
+    m.setU32((pParam + 0x18) >>> 0, SUNIT_GetUnitPosY_6FC21130_113c(m, pUnit) >>> 0);
+    m.setU32((pParam + 0x1c) >>> 0, m.u32(pOutX));
+    m.setU32((pParam + 0x20) >>> 0, m.u32(pOutY));
+    m.setU32((pParam + 0x2c) >>> 0, nSkillId >>> 0);
+    m.setU32((pParam + 0x30) >>> 0, nSkillLevel >>> 0);
+    m.setU32((pParam + 0x54) >>> 0, 0x6fc6c190);
+    m.setU32((pParam + 0x58) >>> 0, range >>> 0);
+    MISSILE_InitAndSpawnCustom_6FC8F930_113c(m, pGame, pParam);
+  } finally {
+    k2W7B1StackPtr = savedSp;
   }
-  m.setU32(pParam, 0x21);
-  m.setU32((pParam + 0x04) >>> 0, pUnit >>> 0);
-  m.setU32((pParam + 0x10) >>> 0, missileId >>> 0);
-  m.setU32((pParam + 0x14) >>> 0, SUNIT_GetUnitPosX_6FC21100_113c(m, pUnit) >>> 0);
-  m.setU32((pParam + 0x18) >>> 0, SUNIT_GetUnitPosY_6FC21130_113c(m, pUnit) >>> 0);
-  m.setU32((pParam + 0x1c) >>> 0, m.u32(pOutX));
-  m.setU32((pParam + 0x20) >>> 0, m.u32(pOutY));
-  m.setU32((pParam + 0x2c) >>> 0, nSkillId >>> 0);
-  m.setU32((pParam + 0x30) >>> 0, nSkillLevel >>> 0);
-  m.setU32((pParam + 0x54) >>> 0, 0x6fc6c190);
-  m.setU32((pParam + 0x58) >>> 0, range >>> 0);
-  MISSILE_InitAndSpawnCustom_6FC8F930_113c(m, pGame, pParam);
 
   remCount = (remCount - 1) | 0;
   SKILLS_SetParam04113c(m, pSkill, remCount);
@@ -3508,8 +3563,8 @@ export function SKILLS_SrvDo063_RangedMultiShotAtTrackedPetTargets_6FC6DCD0_113c
     pUnit,
     0,
     3,
-    skipId,
     subIdx,
+    skipId,
     0,
     0,
   ) >>> 0;
@@ -3536,11 +3591,9 @@ export function SKILLS_ApplyDimVisionToTarget_6FC70470_113c(
 ): void {
   hitD2GameVa113c(0x6FC70470)
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C));
-  const has113cSkills =
-    m.u32((pDataTables + 0xb98) >>> 0) >= 0x1000 && i32(m, (pDataTables + 0xba0) >>> 0) > 0;
-  const nSkillsCnt = i32(m, (pDataTables + (has113cSkills ? 0xba0 : 0xb98)) >>> 0);
+  const nSkillsCnt = i32(m, (pDataTables + 0xba0) >>> 0);
   if (nSkillsCnt <= 0x47) return;
-  const pSkillsBase = m.u32((pDataTables + (has113cSkills ? 0xb98 : 0xb90)) >>> 0);
+  const pSkillsBase = m.u32((pDataTables + 0xb98) >>> 0);
   if (pSkillsBase === 0) return;
   const pSkillTxt = (pSkillsBase + 0x9ea4) >>> 0;
 
@@ -3554,43 +3607,49 @@ export function SKILLS_ApplyDimVisionToTarget_6FC70470_113c(
     }
   }
 
-  const pCurseCtx = 0x7ffdf400;
-  for (let i = 0; i < 0x68; i += 4) {
-    m.setU32((pCurseCtx + i) >>> 0, 0);
-  }
-  m.setU32(pCurseCtx, pGame >>> 0);
-  m.setU32((pCurseCtx + 0x04) >>> 0, pUnit >>> 0);
-  m.setU32((pCurseCtx + 0x08) >>> 0, 1);
-  m.setU32((pCurseCtx + 0x0c) >>> 0, 0);
-  m.setU32((pCurseCtx + 0x10) >>> 0, 0x47);
-  m.setU32((pCurseCtx + 0x14) >>> 0, nSkillLevel >>> 0);
-  m.setU32((pCurseCtx + 0x18) >>> 0, len >>> 0);
+  const savedSp = k2W7B1StackPtr;
+  const pCurseCtx = (savedSp - 0x70) >>> 0;
+  k2W7B1StackPtr = pCurseCtx;
+  try {
+    for (let i = 0; i < 0x68; i += 4) {
+      m.setU32((pCurseCtx + i) >>> 0, 0);
+    }
+    m.setU32(pCurseCtx, pGame >>> 0);
+    m.setU32((pCurseCtx + 0x04) >>> 0, pUnit >>> 0);
+    m.setU32((pCurseCtx + 0x08) >>> 0, 1);
+    m.setU32((pCurseCtx + 0x0c) >>> 0, 0);
+    m.setU32((pCurseCtx + 0x10) >>> 0, 0x47);
+    m.setU32((pCurseCtx + 0x14) >>> 0, nSkillLevel >>> 0);
+    m.setU32((pCurseCtx + 0x18) >>> 0, len >>> 0);
 
-  const bitMask1 = m.u8((m.u32(D2GAME_IAT_GDW_BITMASKS_VA_113C) + 0x04) >>> 0);
-  for (let idx = 0; idx < 6; idx++) {
-    const statId = i16(m, (pSkillTxt + 0x54 + idx * 2) >>> 0);
-    if (statId < 0 || statId >= i32(m, (pDataTables + 0xbd4) >>> 0)) {
-      m.setU32((pCurseCtx + 0x1c + idx * 4) >>> 0, 0xffffffff);
-      break;
+    const bitMask1 = m.u8((m.u32(D2GAME_IAT_GDW_BITMASKS_VA_113C) + 0x04) >>> 0);
+    for (let idx = 0; idx < 6; idx++) {
+      const statId = i16(m, (pSkillTxt + 0x54 + idx * 2) >>> 0);
+      if (statId < 0 || statId >= i32(m, (pDataTables + 0xbd4) >>> 0)) {
+        m.setU32((pCurseCtx + 0x1c + idx * 4) >>> 0, 0xffffffff);
+        break;
+      }
+      const pStatRec = (m.u32((pDataTables + 0xbcc) >>> 0) + imul32(statId, 0x144)) >>> 0;
+      if (pStatRec === 0) break;
+      if ((m.u8((pStatRec + 0x05) >>> 0) & bitMask1) !== 0) {
+        m.setU32((pCurseCtx + 0x0c) >>> 0, 1);
+      }
+      m.setU32((pCurseCtx + 0x1c + idx * 4) >>> 0, statId >>> 0);
+      const val =
+        SKILLS_EvalCalcByOffset113c(
+          m,
+          pUnit,
+          m.u32((pSkillTxt + 0x68 + idx * 4) >>> 0),
+          0x47,
+          nSkillLevel,
+        ) >>> 0;
+      m.setU32((pCurseCtx + 0x34 + idx * 4) >>> 0, val);
     }
-    const pStatRec = (m.u32((pDataTables + 0xbcc) >>> 0) + imul32(statId, 0x144)) >>> 0;
-    if (pStatRec === 0) break;
-    if ((m.u8((pStatRec + 0x05) >>> 0) & bitMask1) !== 0) {
-      m.setU32((pCurseCtx + 0x0c) >>> 0, 1);
-    }
-    m.setU32((pCurseCtx + 0x1c + idx * 4) >>> 0, statId >>> 0);
-    const val =
-      SKILLS_EvalCalcByOffset113c(
-        m,
-        pUnit,
-        m.u32((pSkillTxt + 0x68 + idx * 4) >>> 0),
-        0x47,
-        nSkillLevel,
-      ) >>> 0;
-    m.setU32((pCurseCtx + 0x34 + idx * 4) >>> 0, val);
+    m.setU32((pCurseCtx + 0x4c) >>> 0, i16(m, (pSkillTxt + 0x82) >>> 0) >>> 0);
+    SKILLS_ApplyCurseStateAndStatsCallback_6FC70250_113c(m, pTarget, pCurseCtx);
+  } finally {
+    k2W7B1StackPtr = savedSp;
   }
-  m.setU32((pCurseCtx + 0x4c) >>> 0, i16(m, (pSkillTxt + 0x82) >>> 0) >>> 0);
-  SKILLS_ApplyCurseStateAndStatsCallback_6FC70250_113c(m, pTarget, pCurseCtx);
 }
 
 /**
@@ -3775,8 +3834,8 @@ export function SKILLS_SrvDo070_NecromancerWeakenOrDecrepify_6FC71A90_113c(
 ): number {
   hitD2GameVa113c(0x6FC71A90)
   const pDataTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C));
-  if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xb98) >>> 0)) return 0;
-  const pSkillTxt = (m.u32((pDataTables + 0xb90) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
+  if (nSkillId < 0 || nSkillId >= i32(m, (pDataTables + 0xba0) >>> 0)) return 0;
+  const pSkillTxt = (m.u32((pDataTables + 0xb98) >>> 0) + imul32(nSkillId, 0x23c)) >>> 0;
   if (pSkillTxt === 0) return 0;
 
   const wAuraStat0 = i16(m, (pSkillTxt + 0x54) >>> 0);
@@ -3809,55 +3868,61 @@ export function SKILLS_SrvDo070_NecromancerWeakenOrDecrepify_6FC71A90_113c(
     rawLen,
   ) | 0;
 
-  const pCurseCtx = 0x7ffdf400;
-  for (let i = 0; i < 0x68; i += 4) {
-    m.setU32((pCurseCtx + i) >>> 0, 0);
-  }
-  m.setU32(pCurseCtx, pGame >>> 0);
-  m.setU32((pCurseCtx + 0x04) >>> 0, pUnit >>> 0);
-  m.setU32((pCurseCtx + 0x08) >>> 0, 0);
-  m.setU32((pCurseCtx + 0x0c) >>> 0, 0);
-  m.setU32((pCurseCtx + 0x10) >>> 0, nSkillId >>> 0);
-  m.setU32((pCurseCtx + 0x14) >>> 0, nSkillLevel >>> 0);
-  m.setU32((pCurseCtx + 0x18) >>> 0, len >>> 0);
+  const savedSp = k2W7B1StackPtr;
+  const pCurseCtx = (savedSp - 0x70) >>> 0;
+  k2W7B1StackPtr = pCurseCtx;
+  try {
+    for (let i = 0; i < 0x68; i += 4) {
+      m.setU32((pCurseCtx + i) >>> 0, 0);
+    }
+    m.setU32(pCurseCtx, pGame >>> 0);
+    m.setU32((pCurseCtx + 0x04) >>> 0, pUnit >>> 0);
+    m.setU32((pCurseCtx + 0x08) >>> 0, 0);
+    m.setU32((pCurseCtx + 0x0c) >>> 0, 0);
+    m.setU32((pCurseCtx + 0x10) >>> 0, nSkillId >>> 0);
+    m.setU32((pCurseCtx + 0x14) >>> 0, nSkillLevel >>> 0);
+    m.setU32((pCurseCtx + 0x18) >>> 0, len >>> 0);
 
-  const bitMask1 = m.u8((m.u32(D2GAME_IAT_GDW_BITMASKS_VA_113C) + 0x04) >>> 0);
-  for (let idx = 1; idx < 6; idx++) {
-    const statId = i16(m, (pSkillTxt + 0x54 + idx * 2) >>> 0);
-    if (statId < 0 || statId >= i32(m, (pDataTables + 0xbd4) >>> 0)) {
-      m.setU32((pCurseCtx + 0x1c + idx * 4) >>> 0, 0xffffffff);
-      break;
+    const bitMask1 = m.u8((m.u32(D2GAME_IAT_GDW_BITMASKS_VA_113C) + 0x04) >>> 0);
+    for (let idx = 1; idx < 6; idx++) {
+      const statId = i16(m, (pSkillTxt + 0x54 + idx * 2) >>> 0);
+      if (statId < 0 || statId >= i32(m, (pDataTables + 0xbd4) >>> 0)) {
+        m.setU32((pCurseCtx + 0x1c + idx * 4) >>> 0, 0xffffffff);
+        break;
+      }
+      const pStatRec = DATATBLS_GetItemStatCostRecordFast113c(m, statId) >>> 0;
+      if (pStatRec === 0) break;
+      if ((m.u8((pStatRec + 0x05) >>> 0) & bitMask1) !== 0) {
+        m.setU32((pCurseCtx + 0x0c) >>> 0, 1);
+      }
+      m.setU32((pCurseCtx + 0x1c + idx * 4) >>> 0, statId >>> 0);
+      const val =
+        SKILLS_EvalCalcByOffset113c(
+          m,
+          pUnit,
+          m.u32((pSkillTxt + 0x68 + idx * 4) >>> 0),
+          nSkillId,
+          nSkillLevel,
+        ) >>> 0;
+      m.setU32((pCurseCtx + 0x34 + idx * 4) >>> 0, val);
     }
-    const pStatRec = DATATBLS_GetItemStatCostRecordFast113c(m, statId) >>> 0;
-    if (pStatRec === 0) break;
-    if ((m.u8((pStatRec + 0x05) >>> 0) & bitMask1) !== 0) {
-      m.setU32((pCurseCtx + 0x0c) >>> 0, 1);
-    }
-    m.setU32((pCurseCtx + 0x1c + idx * 4) >>> 0, statId >>> 0);
-    const val =
-      SKILLS_EvalCalcByOffset113c(
+    m.setU32((pCurseCtx + 0x4c) >>> 0, wAuraTargetState >>> 0);
+
+    return (
+      AURA_ExecuteRadiusFilterAtTargetPos_6FCC0AD0_113c(
         m,
+        pGame,
         pUnit,
-        m.u32((pSkillTxt + 0x68 + idx * 4) >>> 0),
         nSkillId,
-        nSkillLevel,
-      ) >>> 0;
-    m.setU32((pCurseCtx + 0x34 + idx * 4) >>> 0, val);
+        m.u32((pSkillTxt + 0x50) >>> 0),
+        radius,
+        0x6fc70b70,
+        pCurseCtx,
+      ) | 0
+    );
+  } finally {
+    k2W7B1StackPtr = savedSp;
   }
-  m.setU32((pCurseCtx + 0x4c) >>> 0, wAuraTargetState >>> 0);
-
-  return (
-    AURA_ExecuteRadiusFilterAtTargetPos_6FCC0AD0_113c(
-      m,
-      pGame,
-      pUnit,
-      nSkillId,
-      m.u32((pSkillTxt + 0x50) >>> 0),
-      radius,
-      0x6fc70b70,
-      pCurseCtx,
-    ) | 0
-  );
 }
 
 /**
@@ -3908,10 +3973,16 @@ export function QUESTS_Act1AndarielOnDeath_6FC7B690_113c(
   SUNIT_IterateUnitsOfType113c(m, pGame, 0, 0, 0x6fc559c0);
 
   m.setU8((pQuestData + 0x0c) >>> 0, 4);
-  const pBuf = 0x7ffdf400;
-  user32_wsprintfA113c(m, pBuf, 0x6fd1cc2c, 4);
-  if (m.u32(0x6fd31c20) !== 0) {
-    QUESTS_DebugOutput_6FCEBE70_113c(m, m.u32((pQuestData + 0x04) >>> 0), pBuf, 4);
+  const savedSp = k2W7B1StackPtr;
+  const pBuf = (savedSp - 0x100) >>> 0;
+  k2W7B1StackPtr = pBuf;
+  try {
+    user32_wsprintfA113c(m, pBuf, 0x6fd1cc2c, 4);
+    if (m.u32(0x6fd31c20) !== 0) {
+      QUESTS_DebugOutput_6FCEBE70_113c(m, m.u32((pQuestData + 0x04) >>> 0), pBuf, 4);
+    }
+  } finally {
+    k2W7B1StackPtr = savedSp;
   }
   if (m.u8((pQuestExt + 0x85) >>> 0) === 0) {
     m.setU8((pQuestExt + 0x85) >>> 0, 1);
@@ -3941,7 +4012,7 @@ export function QUESTS_Act5AncientsGrantExperienceReward_6FC7BF70_113c(
 
   const classId = pUnit !== 0 ? m.u32((pUnit + 0x04) >>> 0) : 0xffffffff;
   const maxLvl = DATATBLS_GetMaxLevel113c(m, classId) | 0;
-  let curLvl = STATLIST_GetUnitBaseStat113c(m, pUnit, 0x0c, 0) | 0;
+  let curLvl = STATLIST_GetUnitStat113c(m, pUnit, 0x0c, 0) | 0;
   if (curLvl >= maxLvl) return;
 
   const nextLvlExp =
@@ -3961,7 +4032,7 @@ export function QUESTS_Act5AncientsGrantExperienceReward_6FC7BF70_113c(
       STATLIST_SetUnitStat113c(m, pUnit, 0x1d, remToLevel, 0);
       PLAYER_LevelUp_6FD0B090_113c(m, pUnit, pGame);
       expReward = (expReward - remToLevel) >>> 0;
-      curLvl = STATLIST_GetUnitBaseStat113c(m, pUnit, 0x0c, 0) | 0;
+      curLvl = STATLIST_GetUnitStat113c(m, pUnit, 0x0c, 0) | 0;
     } else {
       const curExp2 = STATLIST_UnitGetStatValue113c(m, pUnit, 0x0d, 0) >>> 0;
       STATLIST_SetUnitStat113c(m, pUnit, 0x0d, (curExp2 + expReward) >>> 0, 0);
@@ -3999,10 +4070,16 @@ export function QUESTS_Act5RescueBarbsOnPrisonDoorOpen_6FC7C850_113c(
   const pQuestExt = m.u32((pQuest + 0x18) >>> 0);
   if (m.u8((pQuest + 0x0c) >>> 0) < 2) {
     m.setU8((pQuest + 0x0c) >>> 0, 2);
-    const pBuf = 0x7ffdf400;
-    user32_wsprintfA113c(m, pBuf, 0x6fd1cc2c, 2);
-    if (m.u32(0x6fd31c20) !== 0) {
-      QUESTS_DebugOutput_6FCEBE70_113c(m, m.u32((pQuest + 0x04) >>> 0), pBuf, 4);
+    const savedSp = k2W7B1StackPtr;
+    const pBuf = (savedSp - 0x100) >>> 0;
+    k2W7B1StackPtr = pBuf;
+    try {
+      user32_wsprintfA113c(m, pBuf, 0x6fd1cc2c, 2);
+      if (m.u32(0x6fd31c20) !== 0) {
+        QUESTS_DebugOutput_6FCEBE70_113c(m, m.u32((pQuest + 0x04) >>> 0), pBuf, 4);
+      }
+    } finally {
+      k2W7B1StackPtr = savedSp;
     }
   }
 

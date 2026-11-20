@@ -4,6 +4,7 @@
  */
 
 import type { Memory113c } from '../mem/sparse-memory.ts'
+import { D2CommonAssertError } from '../common/inline-helpers.ts'
 import {
   AIGENERAL_BroadcastCmdToMinions113c,
   AI_CalcApproxUnitDistSubtiles113c,
@@ -21,6 +22,7 @@ import {
   SUNITDMG_ApplyDamage113c,
   SUNITDMG_ApplySideEffectsAndKill113c,
 } from './combat-a1c-113c.ts'
+import { AI_ApproachTarget113c } from './k2-real-s2c-combat-113c.ts'
 import {
   AIGENERAL_ForEachPackMember_6FC41490_113c,
 } from './k2-laneI-0x6fc3-w1-113c.ts'
@@ -80,7 +82,6 @@ import {
   PATH_GetTargetUnit113c,
   PATH_GetType113c,
   PATH_SetNewDistance113c,
-  PATH_SetStepNum113c,
   PATH_SetTargetPos113c,
   PATH_SetTargetUnit113c,
   PATH_SetType113c,
@@ -181,6 +182,7 @@ import {
 import {
   SEED_InitLowSeed113c,
   SEED_InitSeed113c,
+  seedRoll,
 } from '../prng.ts'
 import {
   SKILLS_CanMonsterReviveOrTeleportInMode_6FCBC9A0_113c,
@@ -245,59 +247,15 @@ function stepUnitSeedMod(m: D2KernMemory113c, pSeed: number, mod: number): numbe
   return mod > 0 ? (nextLo % (mod >>> 0)) | 0 : 0
 }
 
-function aiApproachTarget6FD12540(
-  m: D2KernMemory113c,
-  pGame: number,
-  pUnit: number,
-  pTarget: number,
-  nMode: number,
-  nX: number,
-  nY: number,
-  nStepNum: number,
-  dwFlags: number,
-): number {
-  let mode = nMode | 0
-  if (mode === 0x0f && (STATES_CheckState113c(m, pUnit >>> 0, 0x3c) | 0) !== 0) {
-    let pAiControl = 0
-    if (pUnit !== 0 && (m.u32(pUnit >>> 0) | 0) === 1) {
-      const pMonData = m.u32((pUnit + 0x14) >>> 0) >>> 0
-      if (pMonData !== 0) pAiControl = m.u32((pMonData + 0x2c) >>> 0) >>> 0
-    }
-    if (pAiControl !== 0) {
-      m.setU32((pAiControl + 0x18) >>> 0, 0)
-      m.setU32((pAiControl + 0x1c) >>> 0, 0)
-      m.setU8((pAiControl + 0x20) >>> 0, 0)
-    }
-    mode = 2
+function rollLimitedSeed6FC21180(m: D2KernMemory113c, pSeed: number, nMax: number): number {
+  const seed = {
+    lo: m.u32(pSeed >>> 0) >>> 0,
+    hi: m.u32((pSeed + 4) >>> 0) >>> 0,
   }
-  const pPath = pUnit !== 0 ? m.u32((pUnit + 0x2c) >>> 0) : 0
-  if (pPath !== 0) PATH_SetStepNum113c(m, pPath, nStepNum | 0)
-  const res = MONSTER_StartMode113c(m, pGame >>> 0, pUnit >>> 0, mode, pTarget >>> 0, nX | 0, nY | 0) | 0
-  if (res !== 0) return res
-  const flagsByte = dwFlags & 0xff
-  if ((flagsByte & 4) !== 0 && pUnit !== 0) {
-    let pEvent = m.u32((pUnit + 0xdc) >>> 0) >>> 0
-    while (pEvent !== 0) {
-      const pNext = m.u32((pEvent + 0x24) >>> 0) >>> 0
-      if (m.u8(pEvent) === 2) EVENT_FreeNode113c(m, pGame >>> 0, pEvent)
-      pEvent = pNext
-    }
-  }
-  if ((flagsByte & 1) !== 0 && pUnit !== 0 && (m.u32(pUnit >>> 0) | 0) === 1) {
-    const pMonData = m.u32((pUnit + 0x14) >>> 0) >>> 0
-    const pAiGen = pMonData !== 0 ? m.u32((pMonData + 0x28) >>> 0) >>> 0 : 0
-    if (pAiGen !== 0) m.setU8((pAiGen + 8) >>> 0, (m.u8((pAiGen + 8) >>> 0) | 0x40) & 0xff)
-  }
-  if ((flagsByte & 2) !== 0 && pUnit !== 0) {
-    const roll = (stepSeed64At113c(m, (pUnit + 0x20) >>> 0) >>> 0) % 100
-    if (roll < 0x46) {
-      AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0)
-      return 1
-    }
-    AI_Stall113c(m, pGame >>> 0, pUnit >>> 0, 10)
-    return 1
-  }
-  return res
+  const rolled = seedRoll(seed, nMax | 0) | 0
+  m.setU32(pSeed >>> 0, seed.lo >>> 0)
+  m.setU32((pSeed + 4) >>> 0, seed.hi >>> 0)
+  return rolled
 }
 
 /**
@@ -342,13 +300,8 @@ export function MONAI_UnburrowThink_6FCC59B0_113c(
   if (STATES_CheckState113c(m, pUnit >>> 0, 0x0c) !== 0) {
     STATES_ToggleGfxStateFlag113c(m, pUnit >>> 0, 0x0c, 0)
   }
-  const nSpecAi = pAiCtrl !== 0 ? m.u32(pAiCtrl) >>> 0 : 0
-  if (pUnit !== 0 && (m.u32(pUnit >>> 0) | 0) === 1) {
-    const pMonData = m.u32((pUnit + 0x14) >>> 0) >>> 0
-    const pAiGen = pMonData !== 0 ? m.u32((pMonData + 0x28) >>> 0) >>> 0 : 0
-    if (pAiGen !== 0) m.setU32(pAiGen, nSpecAi)
-  }
-  AI_InitMonsterAiThinkFn113c(m, pUnit >>> 0)
+  const nSpecAi = pAiCtrl !== 0 ? (m.u32(pAiCtrl) | 0) : 0
+  AI_InitMonsterAiThinkFn113c(m, pUnit >>> 0, pGame >>> 0, pAiCtrl, nSpecAi)
 
   let hasCmd10 = false
   if (pUnit !== 0 && (m.u32(pUnit >>> 0) | 0) === 1) {
@@ -419,7 +372,7 @@ export function MONAI_NestOrMeleeWanderThink_6FCC5B30_113c(
   }
   const roll = (stepSeed64At113c(m, (pUnit + 0x20) >>> 0) >>> 0) % 100
   if ((roll | 0) < 0x14) {
-    AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0)
+    AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0, 3)
     return
   }
   AI_Stall113c(m, pGame >>> 0, pUnit >>> 0, 10)
@@ -481,13 +434,7 @@ export function MONAI_MinionSwitchToBaseAiThink_6FCC5C80_113c(
     }
     AIGENERAL_RemoveFromMinionList_6FC416A0_113c(m, pGame >>> 0, pUnit >>> 0)
     const pAiCtrl = m.u32(pAiParam >>> 0) >>> 0
-    if (pAiCtrl !== 0) m.setU32(pAiCtrl, 0)
-    if (pUnit !== 0 && (m.u32(pUnit >>> 0) | 0) === 1) {
-      const pMonData = m.u32((pUnit + 0x14) >>> 0) >>> 0
-      const pAiGen = pMonData !== 0 ? m.u32((pMonData + 0x28) >>> 0) >>> 0 : 0
-      if (pAiGen !== 0) m.setU32(pAiGen, 0)
-    }
-    AI_InitMonsterAiThinkFn113c(m, pUnit >>> 0)
+    AI_InitMonsterAiThinkFn113c(m, pUnit >>> 0, pGame >>> 0, pAiCtrl, 0)
     AI_Stall113c(m, pGame >>> 0, pUnit >>> 0, 10)
   } finally {
     k2W4B7StackPtr = (sp + 0x28) >>> 0
@@ -519,7 +466,7 @@ export function MONAI_MeleeSkillOrApproachWithTimerThink_6FCC5D70_113c(
       const wSkill1 = sx16(m.u16((pMonStatsTxt + 0x170) >>> 0))
       let didCast = false
       if (wSkill1 >= 0) {
-        const roll2 = SEED_RollLimitedFast113c(m, pSeed, 100) | 0
+        const roll2 = rollLimitedSeed6FC21180(m, pSeed, 100)
         const bDiff2 = m.u8((pGame + 0x6d) >>> 0)
         const aip3 = sx16(m.u16((pMonStatsTxt + bDiff2 * 2 + 0x62) >>> 0))
         if (roll2 < aip3) {
@@ -540,7 +487,7 @@ export function MONAI_MeleeSkillOrApproachWithTimerThink_6FCC5D70_113c(
     const bDiff = m.u8((pGame + 0x6d) >>> 0)
     const aip2 = sx16(m.u16((pMonStatsTxt + bDiff * 2 + 0x5c) >>> 0))
     if ((rollMove | 0) < aip2) {
-      aiApproachTarget6FD12540(m, pGame >>> 0, pUnit >>> 0, pTarget, 2, 0, 0, 1, 0)
+      AI_ApproachTarget113c(m, pGame >>> 0, pUnit >>> 0, pTarget, 2, 0, 0, 1, 0)
     }
   }
   const bDiffEnd = m.u8((pGame + 0x6d) >>> 0)
@@ -602,7 +549,7 @@ export function MONAI_MeleeAndRangedSkillThink_6FCC6530_113c(
   const bDiffMove = m.u8((pGame + 0x6d) >>> 0)
   const aip2 = sx16(m.u16((pMonStatsTxt + bDiffMove * 2 + 0x5c) >>> 0))
   if ((rollMove | 0) < aip2) {
-    aiApproachTarget6FD12540(m, pGame >>> 0, pUnit >>> 0, pTarget, 2, 0, 0, 1, 0)
+    AI_ApproachTarget113c(m, pGame >>> 0, pUnit >>> 0, pTarget, 2, 0, 0, 1, 0)
     return
   }
   AI_Stall113c(m, pGame >>> 0, pUnit >>> 0, 15)
@@ -641,7 +588,7 @@ export function MONAI_TryCastLeftSkillOrRunTowardTarget_6FCC6AB0_113c(
   }
   if ((SKILLS_GetSkillNumTargetsOrShots113c(m, pCaster >>> 0, pSkill) | 0) === 1) {
     if ((bForceCast | 0) === 0) {
-      return aiApproachTarget6FD12540(m, pGame >>> 0, pCaster >>> 0, pTarget >>> 0, 0x0f, 0, 0, 1, 4)
+      return AI_ApproachTarget113c(m, pGame >>> 0, pCaster >>> 0, pTarget >>> 0, 0x0f, 0, 0, 1, 4) | 0
     }
   }
   const mode = SKILLS_GetLeftSkillFromSkillList113c(m, pSkill) & 0xff
@@ -699,7 +646,7 @@ export function MONAI_PutridDefilerThink_6FCC7290_113c(
       AI_CastSkillWithMode113c(m, 8, pUnit >>> 0, pGame >>> 0, 0x12c, pCandidate, 0, 0)
       return
     }
-    aiApproachTarget6FD12540(m, pGame >>> 0, pUnit >>> 0, pCandidate, 2, 0, 0, 1, 0)
+    AI_ApproachTarget113c(m, pGame >>> 0, pUnit >>> 0, pCandidate, 2, 0, 0, 1, 0)
     return
   }
   const bDiff = m.u8((pGame + 0x6d) >>> 0)
@@ -766,12 +713,12 @@ export function MONAI_ImpregnateChaseThink_6FCC7F60_113c(
       return
     }
   }
+  let pAiGen = 0
   if ((m.u32(pUnit >>> 0) | 0) === 1) {
     const pMonData = m.u32((pUnit + 0x14) >>> 0) >>> 0
-    const pAiGen = pMonData !== 0 ? m.u32((pMonData + 0x28) >>> 0) >>> 0 : 0
-    if (pAiGen !== 0) m.setU32(pAiGen, 0)
+    if (pMonData !== 0) pAiGen = m.u32((pMonData + 0x28) >>> 0) >>> 0
   }
-  AI_InitMonsterAiThinkFn113c(m, pUnit >>> 0)
+  AI_InitMonsterAiThinkFn113c(m, pUnit >>> 0, pGame >>> 0, pAiGen, 0)
   let pEvent = m.u32((pUnit + 0xdc) >>> 0) >>> 0
   while (pEvent !== 0) {
     const pNext = m.u32((pEvent + 0x24) >>> 0) >>> 0
@@ -1082,7 +1029,7 @@ export function ITEMS_SendInventoryItemCmdFlag4Updates3F_6FCCCF10_113c(
         m.setU8((sp + 1) >>> 0, 0xff)
         m.setU32((sp + 2) >>> 0, pItem !== 0 ? m.u32((pItem + 0x0c) >>> 0) : 0)
         m.setU16((sp + 6) >>> 0, 0xffff)
-        NET_QueuePacketToClientBuffer113c(m, pClient, 4, sp, 8)
+        NET_QueuePacketToClientBuffer113c(m, pClient, 1, sp, 8)
       }
       pNode = INVENTORY_GetNextItem113c(m, pNode) >>> 0
     }
@@ -1116,7 +1063,7 @@ export function ITEMS_SendUseScrollOrTomePacket3F_6FCCCFD0_113c(
       m.setU8((sp + 1) >>> 0, magicLvl & 0xff);
       m.setU32((sp + 2) >>> 0, pItem !== 0 ? m.u32((pItem + 0x0c) >>> 0) : 0);
       m.setU16((sp + 6) >>> 0, wSkillId & 0xffff);
-      NET_QueuePacketToClientBuffer113c(m, pClient, 4, sp, 8);
+      NET_QueuePacketToClientBuffer113c(m, pClient, 1, sp, 8);
     } finally {
       freeScratch(m, 8);
     }
@@ -1777,22 +1724,24 @@ export function MONAI_ForEachPackMemberWithFilter_6FCD1320_113c(
   if (pAiGeneral === 0) return 0;
   const pAiGame = m.u32((pAiGeneral + 0x28) >>> 0);
   if (pAiGame === 0) return 0;
-  const dwBossType = m.u32((pAiGeneral + 0x2c) >>> 0) | 0;
-  const dwBossId = m.u32((pAiGeneral + 0x30) >>> 0) | 0;
+  const dwBossId = m.u32((pAiGeneral + 0x2c) >>> 0) | 0;
+  const dwBossType = m.u32((pAiGeneral + 0x30) >>> 0) | 0;
   const pBoss = SUNIT_GetServerUnit113c(m, pAiGame, dwBossType, dwBossId) >>> 0;
   if (pBoss === 0 || m.u32(pBoss >>> 0) !== 1) return 0;
 
   const sp = allocScratch(m, 0x14);
   try {
     m.setU32(sp, 0);
-    m.setU32((sp + 0x04) >>> 0, pUserParam >>> 0);
+    m.setU32((sp + 0x04) >>> 0, pfnFilter >>> 0);
     m.setU32((sp + 0x08) >>> 0, pGame >>> 0);
     m.setU32((sp + 0x0c) >>> 0, pUnit >>> 0);
-    m.setU32((sp + 0x10) >>> 0, pfnFilter >>> 0);
+    m.setU32((sp + 0x10) >>> 0, pUserParam >>> 0);
     AIGENERAL_ForEachPackMember_6FC41490_113c(
       m,
       pBoss,
-      0x6fcd06f0,
+      (m2, pMember, pArg1, pArg2) => {
+        MONAI_InvokeUnitFindFilterIfUnmatched_6FCD06F0_113c(m2, pMember, pArg1, pArg2);
+      },
       (sp + 0x04) >>> 0,
       sp,
     );
@@ -2061,10 +2010,7 @@ export function MONAI_ApplyTauntOrAttractTarget_6FCD2120_113c(
       pAiGeneral = m.u32((pMonsterData + 0x28) >>> 0);
     }
   }
-  if (pAiGeneral !== 0) {
-    m.setU32(pAiGeneral >>> 0, 0x0b);
-  }
-  AI_InitMonsterAiThinkFn113c(m, pTargetMonster);
+  AI_InitMonsterAiThinkFn113c(m, pTargetMonster >>> 0, pGame >>> 0, pAiGeneral, 0x0b);
 
   let pEvent = m.u32((pTargetMonster + 0xdc) >>> 0);
   while (pEvent !== 0) {
@@ -2091,26 +2037,32 @@ export function ARENA_UpdatePlayerArenaScore_6FCD2820_113c(
   pTargetUnit: number,
 ): void {
   hitD2GameVa113c(0x6FCD2820)
-  if (pPlayerUnit === 0 || m.u32(pPlayerUnit >>> 0) !== 0) return;
+  if (pPlayerUnit === 0 || m.u32(pPlayerUnit >>> 0) !== 0) {
+    throw new D2CommonAssertError('Arena.cpp', 0x73);
+  }
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayerUnit) >>> 0;
-  if (pPlayerData === 0) return;
-  const pArenaUnit = m.u32((pPlayerData + 0x34) >>> 0);
-  if (pArenaUnit === 0) return;
-  if (pGame === 0) return;
-  const pGameArena = m.u32((pGame + 0x1d28) >>> 0);
-  if (pGameArena === 0) return;
+  const pArenaUnit = pPlayerData !== 0 ? m.u32((pPlayerData + 0x34) >>> 0) : 0;
+  if (pArenaUnit === 0) {
+    throw new D2CommonAssertError('Arena.cpp', 0x77);
+  }
+  const pGameArena = pGame !== 0 ? m.u32((pGame + 0x1d28) >>> 0) : 0;
+  if (pGameArena === 0) {
+    throw new D2CommonAssertError('Arena.cpp', 0x6c);
+  }
 
   const nArenaId = i32(m, (pGameArena + 0x04) >>> 0);
   const pArenaTxt = DATATBLS_GetArenaTxtRecord113c(m, nArenaId) >>> 0;
-  if (pArenaTxt === 0) return;
-  if ((nScoreType | 0) >= 7) return;
+  if ((nScoreType | 0) >= 7) {
+    throw new D2CommonAssertError('Arena.cpp', 0x7d);
+  }
 
   if ((nScoreType >>> 0) <= 6) {
     if (nScoreType === 2 || nScoreType === 5) {
       const pTargetPlayerData = UNITS_GetPlayerData113c(m, pTargetUnit) >>> 0;
-      if (pTargetPlayerData === 0) return;
-      const pTargetArenaUnit = m.u32((pTargetPlayerData + 0x34) >>> 0);
-      if (pTargetArenaUnit === 0) return;
+      const pTargetArenaUnit = pTargetPlayerData !== 0 ? m.u32((pTargetPlayerData + 0x34) >>> 0) : 0;
+      if (pTargetArenaUnit === 0) {
+        throw new D2CommonAssertError('Arena.cpp', 0x8c);
+      }
       const pct = i32(m, (pArenaTxt + ((nScoreType & 7) << 2)) >>> 0);
       const prod = Math.imul(pct, i32(m, pTargetArenaUnit >>> 0)) | 0;
       const delta = Math.trunc(prod / 100) | 0;
@@ -2123,7 +2075,9 @@ export function ARENA_UpdatePlayerArenaScore_6FCD2820_113c(
 
   m.setU32((pArenaUnit + 0x04) >>> 0, 1);
   const pGameArenaAfter = m.u32((pGame + 0x1d28) >>> 0);
-  if (pGameArenaAfter === 0) return;
+  if (pGameArenaAfter === 0) {
+    throw new D2CommonAssertError('Arena.cpp', 0x94);
+  }
   m.setU32(
     (pGameArenaAfter + 0x08) >>> 0,
     (m.u32((pGameArenaAfter + 0x08) >>> 0) | 0x400) >>> 0,

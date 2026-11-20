@@ -57,21 +57,19 @@ import {
   PARTY_RefreshInviteRelationNodes_6FD103E0_113c,
   PARTY_SetOrClearRelationFlagAndBroadcast8C_6FD10640_113c,
 } from './k2-w5b9-113c'
-import {
-  ACT3Q7_UnitIterate_CompleteInAct3ForParty_6FD05B60_113c,
-  NET_BroadcastSystemChatMessage_6FCEBE70_113c,
-} from './k2-w6b3-113c'
+import { NET_BroadcastSystemChatMessage_6FCEBE70_113c } from './k2-w6b3-113c'
 import {
   ACT3Q3_OnCainActivatedSendKhalimsWillAlert_6FD06D90_113c,
   ACT3Q7_CheckPlayerInDurance3AndAdvanceActCallback_6FD05C40_113c,
   ACT3Q7_SendMephistoQuestState4Timer_6FD068B0_113c,
 } from './k2-w6b6-113c'
-import {
-  PARTY_EnableHostilityFlag08_6FD141C0_113c,
-  PARTY_SyncJoinedPartyRelationsCallback_6FD10B90_113c,
-} from './k2-w6b7-113c'
+import { PARTY_SyncJoinedPartyRelationsCallback_6FD10B90_113c } from './k2-w6b7-113c'
 import { QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c } from './k2-w7b1-113c'
 import { PARTY_AddPlayerToSubParty_6FCBC4F0_113c } from './k2-w7b3-113c'
+import {
+  ACT3Q7_PropagateMephistoCompletionToPartyCallback_6FD06850_113c,
+  PARTY_DeclareHostility_6FD10CD0_113c,
+} from './k2-w7b4-113c'
 import { UNITS_ChangeAnimMode113c } from './monster-events'
 import { EVENT_SetEventFull113c } from './timer-wheel'
 import { hitD2GameVa113c } from '../va-trace-113c'
@@ -580,64 +578,6 @@ export function ACT3Q1_OnBossKilledDropJadeFigurine_6FD08010_113c(
   }
 }
 
-function act3Q7PropagatePartyCompletionCallback_6FD06850_113c(
-  m: D2KernMemory113c,
-  pGame: number,
-  pPlayer: number,
-  _pArg: number = 0,
-): number {
-  const esi = pGame >>> 0
-  const ebx = pPlayer >>> 0
-  const pPlayerData = UNITS_GetPlayerData113c(m, ebx) >>> 0
-  const nDiff = m.u8((esi + 0x6d) >>> 0)
-  const pQuestFlags = m.u32((pPlayerData + nDiff * 4 + 0x10) >>> 0) >>> 0
-  if ((DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x16, 0x0d) | 0) !== 0 && ebx !== 0) {
-    const pUnitGame = m.u32((ebx + 0x80) >>> 0) >>> 0
-    if (pUnitGame !== 0 && (m.u32(ebx) >>> 0) === 0) {
-      const wPartyId = D2GAME_PARTY_GetPartyIdForUnit113c(m, ebx, pUnitGame) & 0xffff
-      if (wPartyId !== 0xffff) {
-        PARTY_ForEachSubPartyPlayerUnit_6FCBC160_113c(
-          m,
-          esi,
-          wPartyId,
-          (mem, g, u, a) => {
-            ACT3Q7_UnitIterate_CompleteInAct3ForParty_6FD05B60_113c(mem, g, u, a)
-          },
-          0,
-        )
-      }
-    }
-  }
-  return 0
-}
-
-function partyHostilitySubPartyMemberCallback_6FD10CD0_113c(
-  m: D2KernMemory113c,
-  pGame: number,
-  pMemberUnit: number,
-  pAttackerUnit: number,
-): void {
-  const ebx = pGame >>> 0
-  const esi = pMemberUnit >>> 0
-  const ebp = pAttackerUnit >>> 0
-  if (ebp === esi) {
-    return
-  }
-  if ((STATLIST_GetUnitBaseStat113c(m, esi, 0x0c, 0) | 0) < 9) {
-    return
-  }
-  PARTY_EnableHostilityFlag08_6FD141C0_113c(m, esi, ebx, ebp)
-  PARTY_EnableHostilityFlag08_6FD141C0_113c(m, ebp, ebx, esi)
-  const dwAttackerGuid = ebp !== 0 ? m.u32((ebp + 0x0c) >>> 0) >>> 0 : 0xffffffff
-  if (esi !== 0 && (m.u32(esi) >>> 0) === 0) {
-    const pMemberData = UNITS_GetPlayerData113c(m, esi) >>> 0
-    const pClient = m.u32((pMemberData + 0x9c) >>> 0) >>> 0
-    NET_SendPacket5A_PartyRelationEvent_6FD10720_113c(m, dwAttackerGuid, pClient, 3)
-    return
-  }
-  NET_SendPacket5A_PartyRelationEvent_6FD10720_113c(m, dwAttackerGuid, 0, 3)
-}
-
 /**
  * [6/8] Act 3 Quest 7 (`0x16` The Guardian) Mephisto death callback (`0x6FD09A10`): sets quest state `6`,
  * updates killer and party/Durance quest states, schedules timer `0x6FD068B0`, opens portal object, and drops Mephisto's Soulstone (`'mss '`).
@@ -727,7 +667,7 @@ export function ACT3Q7_OnMephistoKilled_6FD09A10_113c(
       SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
         m,
         m.u32(esi) >>> 0,
-        act3Q7PropagatePartyCompletionCallback_6FD06850_113c,
+        ACT3Q7_PropagateMephistoCompletionToPartyCallback_6FD06850_113c,
         0,
         m.u32((esi + 0x08) >>> 0) >>> 0,
       )
@@ -929,7 +869,7 @@ export function PARTY_DeclareHostilityBetweenPlayers_6FD10FF0_113c(
             m,
             edi,
             wPartyId,
-            partyHostilitySubPartyMemberCallback_6FD10CD0_113c,
+            PARTY_DeclareHostility_6FD10CD0_113c,
             ebp,
           )
         }

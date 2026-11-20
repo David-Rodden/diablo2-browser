@@ -93,6 +93,8 @@ describe('[K2] Interactive Visual Showcase Backend, Browser SUNITDMG Engine & Ro
         res.end('Not Found')
       })
     })
+    server.keepAliveTimeout = 60_000
+    server.headersTimeout = 65_000
     await new Promise<void>((resolveListen) => {
       server.listen(0, '127.0.0.1', () => resolveListen())
     })

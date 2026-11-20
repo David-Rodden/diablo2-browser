@@ -13,7 +13,11 @@ import {
   D2RoomExStrc,
 } from '../../mem/layout.generated.ts';
 import type { Memory113c } from '../../mem/sparse-memory.ts';
-import { D2CommonAssertError, SEED_RollRandomNumberInline113c } from '../inline-helpers.ts';
+import {
+  D2CommonAssertError,
+  SEED_RollRandomNumberInline113c,
+  withDrlgStackScratch113c,
+} from '../inline-helpers.ts';
 import { imul32, sdiv32, smod32 } from '../int-math.ts';
 import {
   DRLGOUTDOORS_ClearOutdoorCellFlag200_113c,
@@ -1340,14 +1344,15 @@ function allocGridWindowRowOffsetsFromCoords(
   nRowStride: number,
   pBaseCells: number,
 ): void {
+  const sm = withDrlgStackScratch113c(m);
   const pBox = (DRLG_GRID_WINDOW_BOX_SCRATCH_VA + drlgGridWindowBoxScratchDepth * 16) >>> 0;
   drlgGridWindowBoxScratchDepth = (drlgGridWindowBoxScratchDepth + 1) | 0;
   try {
-    m.set(pBox, D2DrlgCoordStrc.nPosX, (boxX | 0) >>> 0);
-    m.set(pBox, D2DrlgCoordStrc.nPosY, (boxY | 0) >>> 0);
-    m.set(pBox, D2DrlgCoordStrc.nWidth, (boxW | 0) >>> 0);
-    m.set(pBox, D2DrlgCoordStrc.nHeight, (boxH | 0) >>> 0);
-    DRLGGRID_AllocGridWindowRowOffsets113c(m, pOutGrid, pBox, nRowStride, 0, pBaseCells);
+    sm.set(pBox, D2DrlgCoordStrc.nPosX, (boxX | 0) >>> 0);
+    sm.set(pBox, D2DrlgCoordStrc.nPosY, (boxY | 0) >>> 0);
+    sm.set(pBox, D2DrlgCoordStrc.nWidth, (boxW | 0) >>> 0);
+    sm.set(pBox, D2DrlgCoordStrc.nHeight, (boxH | 0) >>> 0);
+    DRLGGRID_AllocGridWindowRowOffsets113c(sm, pOutGrid, pBox, nRowStride, 0, pBaseCells);
   } finally {
     drlgGridWindowBoxScratchDepth = (drlgGridWindowBoxScratchDepth - 1) | 0;
   }

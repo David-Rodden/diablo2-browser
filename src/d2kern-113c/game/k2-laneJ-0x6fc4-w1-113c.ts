@@ -64,7 +64,7 @@ import {
   UNITS_SetSeqFrameFromLowByte113c,
   UNIT_GetAlignment113c,
 } from '../common/unit.ts'
-import type { Memory113c } from '../mem/sparse-memory.ts'
+import type { Memory113c, SparseMemory113c } from '../mem/sparse-memory.ts'
 import {
   ROOM_RefreshUnitsAndLoadSaved113c,
   ROOM_TickSeedAndAmbientSpawn113c,
@@ -128,6 +128,55 @@ import {
   OBJECTS_SpawnDensityWithSecondaryTorch113c,
   SUNIT_FreeUnit113c,
 } from './replay-final11-113c.ts'
+import { ACT4_IntroCallback08Noop_6FC80180_113c } from './k2-w2b1-113c.ts'
+import { ACT2Q4_Callback00_Noop_6FCE1980_113c } from './k2-w2b6-113c.ts'
+import { ACT2Q2_NoOp_6FCE2450_113c } from './k2-w2b7-113c.ts'
+import { ACT4Q2_DropHellforgeHammerAtUnit_6FCDA810_113c } from './k2-w4b8-113c.ts'
+import {
+  ACT2Q2_Callback_ClearDroppedStaffItemQuestFlags_6FCE3E10_113c,
+  ACT2Q2_Callback_ItemPickedUpUpdateStaffQuest_6FCE5F30_113c,
+} from './k2-w5b5-113c.ts'
+import { ACT3Q3_OnKhalimRelicPickedUp_6FD06190_113c } from './k2-w5b8-113c.ts'
+import {
+  ACT1Q4_Callback02_OnGriswoldDeath_6FC85A70_113c,
+  ACT1Q5_OnMoldyTomeActivated_6FC83730_113c,
+  ACT5Q1_OnShenkKilledCompleteQuest_6FC7BDB0_113c,
+  ACT5Q2_Callback02_MonsterKilled_6FC7A310_113c,
+} from './k2-w6b4-113c.ts'
+import { QUESTS_Act1AndarielOnDeath_6FC7B690_113c } from './k2-w7b1-113c.ts'
+import {
+  ACT1Q2_OnBloodRavenKilled_6FC85620_113c,
+  ACT1Q4_OnQuestActivatedUpdatePlayers_6FC83570_113c,
+  ACT1Q5_OnAndarielKilled_6FC88B90_113c,
+} from './k2-w7b2-113c.ts'
+import {
+  ACT2Q5_OnSummonerKilled_6FCE66B0_113c,
+  ACT4Q1_OnIzualKilled_6FCDABF0_113c,
+} from './k2-w7b3-113c.ts'
+import {
+  ACT2Q1_OnRadamentKilled_6FCE7540_113c,
+  ACT2Q6_OnDurielKilled_6FCE97D0_113c,
+  ACT3Q2_OnGidbinnBossKilled_6FD08140_113c,
+  ACT3Q4_OnLamEsensTomeDropped_6FD07A40_113c,
+  ACT3Q4_OnLamEsensTomePickedUp_6FD07AF0_113c,
+} from './k2-w7b4-113c.ts'
+import {
+  ACT1Q1_OnMonsterKilled_6FC85760_113c,
+  ACT4Q1_OnPlayerChangeLevel_6FCDA330_113c,
+} from './k2-w8b2-113c.ts'
+import {
+  ACT3Q1_OnBossKilledDropJadeFigurine_6FD08010_113c,
+  ACT3Q1_OnQuestItemPickedUp_6FD07640_113c,
+  ACT3Q2_OnGidbinnPickedUp_6FD07770_113c,
+  ACT3Q5_OnCouncilMemberKilled_6FD07DB0_113c,
+  ACT3Q7_OnMephistoKilled_6FD09A10_113c,
+} from './k2-w8b4-113c.ts'
+import { ACT1Q6_OnAndarielKilled_6FC87E00_113c } from './k2-w9b1-113c.ts'
+import { ACT5Q5_Callback02_OnAncientKilled_6FC7EED0_113c } from './k2-w10b1-113c.ts'
+import {
+  ACT4Q3_OnSealBossOrDiabloKilled_6FCDC2C0_113c,
+  ACT5Q6_OnBaalKilledCompleteQuestAndSpawnPortal_6FC7FE30_113c,
+} from './k2-w16b1-113c.ts'
 import { ROOM_SpawnMonsterPreset113c, ROOM_SpawnPresetUnits113c } from './room-presets-113c.ts'
 import { EVENT_FreeNode113c, EVENT_SetEventFull113c } from './timer-wheel.ts'
 import { hitD2GameVa113c } from '../va-trace-113c.ts'
@@ -360,16 +409,118 @@ function dispatchQuestCallback113c(
   hooks?: LaneJKernHooks113c,
 ): void {
   const fnVa = pfnCallback >>> 0
-  if (fnVa === 0x6fd02ef0) {
-    ACT3Q7_Callback11_Noop113c(m, pQuest, pQuestArg)
-    return
-  }
-  if (fnVa === 0x6fd049e0) {
-    ACT3Q7_Callback14_PlayerJoined113c(m, pQuest, pQuestArg)
-    return
-  }
-  if (hooks !== undefined && hooks.onQuestCallback !== undefined) {
-    hooks.onQuestCallback(m, fnVa, pQuest, pQuestArg)
+  const sm = m as SparseMemory113c
+  switch (fnVa) {
+    case 0x6fc7a310:
+      ACT5Q2_Callback02_MonsterKilled_6FC7A310_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fc7b690:
+      QUESTS_Act1AndarielOnDeath_6FC7B690_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fc7bdb0:
+      ACT5Q1_OnShenkKilledCompleteQuest_6FC7BDB0_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fc7eed0:
+      ACT5Q5_Callback02_OnAncientKilled_6FC7EED0_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fc7fe30:
+      ACT5Q6_OnBaalKilledCompleteQuestAndSpawnPortal_6FC7FE30_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fc80180:
+      ACT4_IntroCallback08Noop_6FC80180_113c(m, pQuest, pQuestArg)
+      return
+    case 0x6fc83570:
+      ACT1Q4_OnQuestActivatedUpdatePlayers_6FC83570_113c(sm, pQuest)
+      return
+    case 0x6fc83730:
+      ACT1Q5_OnMoldyTomeActivated_6FC83730_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fc85620:
+      ACT1Q2_OnBloodRavenKilled_6FC85620_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fc85760:
+      ACT1Q1_OnMonsterKilled_6FC85760_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fc85a70:
+      ACT1Q4_Callback02_OnGriswoldDeath_6FC85A70_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fc87e00:
+      ACT1Q6_OnAndarielKilled_6FC87E00_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fc88b90:
+      ACT1Q5_OnAndarielKilled_6FC88B90_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fcda330:
+      ACT4Q1_OnPlayerChangeLevel_6FCDA330_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fcda810:
+      ACT4Q2_DropHellforgeHammerAtUnit_6FCDA810_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fcdabf0:
+      ACT4Q1_OnIzualKilled_6FCDABF0_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fcdc2c0:
+      ACT4Q3_OnSealBossOrDiabloKilled_6FCDC2C0_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fce1980:
+      ACT2Q4_Callback00_Noop_6FCE1980_113c(m, pQuest, pQuestArg)
+      return
+    case 0x6fce2450:
+      ACT2Q2_NoOp_6FCE2450_113c(m)
+      return
+    case 0x6fce3e10:
+      ACT2Q2_Callback_ClearDroppedStaffItemQuestFlags_6FCE3E10_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fce5f30:
+      ACT2Q2_Callback_ItemPickedUpUpdateStaffQuest_6FCE5F30_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fce66b0:
+      ACT2Q5_OnSummonerKilled_6FCE66B0_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fce7540:
+      ACT2Q1_OnRadamentKilled_6FCE7540_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fce97d0:
+      ACT2Q6_OnDurielKilled_6FCE97D0_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fd02ef0:
+      ACT3Q7_Callback11_Noop113c(m, pQuest, pQuestArg)
+      return
+    case 0x6fd049e0:
+      ACT3Q7_Callback14_PlayerJoined113c(m, pQuest, pQuestArg)
+      return
+    case 0x6fd06190:
+      ACT3Q3_OnKhalimRelicPickedUp_6FD06190_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fd07640:
+      ACT3Q1_OnQuestItemPickedUp_6FD07640_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fd07770:
+      ACT3Q2_OnGidbinnPickedUp_6FD07770_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fd07a40:
+      ACT3Q4_OnLamEsensTomeDropped_6FD07A40_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fd07af0:
+      ACT3Q4_OnLamEsensTomePickedUp_6FD07AF0_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fd07db0:
+      ACT3Q5_OnCouncilMemberKilled_6FD07DB0_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fd08010:
+      ACT3Q1_OnBossKilledDropJadeFigurine_6FD08010_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fd08140:
+      ACT3Q2_OnGidbinnBossKilled_6FD08140_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fd09a10:
+      ACT3Q7_OnMephistoKilled_6FD09A10_113c(sm, pQuest, pQuestArg)
+      return
+    default:
+      if (hooks !== undefined && hooks.onQuestCallback !== undefined) {
+        hooks.onQuestCallback(m, fnVa, pQuest, pQuestArg)
+      }
+      return
   }
 }
 

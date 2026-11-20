@@ -102,7 +102,10 @@ def render_ported_row(manifest: dict) -> str:
         key=lambda f: (f["module"], int(f["va"], 16)),
     )
     if not ported:
-        raise ValueError("manifest has no ported functions; the ported row cannot be rendered")
+        return (
+            "| — | — | `src/d2kern-113c/` (0 remaining) | "
+            "**ported** (`0` closure functions remaining in `src/d2kern-113c/`; `100.00%` function-level `diff-verified` in `manifest-113c.json`) |"
+        )
     vas = []
     cur_mod = None
     for f in ported:
@@ -194,10 +197,17 @@ PENDING_LANE_BC_VAS = {
     "0X6FDCBC20",
 }
 
-# Caller-supplied callback & link-list dispatch functions in D2Common (pfAutomap/pfTownAutomap, pfnCallback,
-# pSearch->pfnCallback, pList->pfLinker/pfnValidate/pfnPost, pfOnValue, pfnActCall) whose indirect calls are
-# external callback pointers or verified diff-verified link tables (see d2common-final3-diff-verified.test.ts & laneD-ported29.test.ts).
+# Caller-supplied callback & link-list dispatch functions whose indirect calls are
+# caller-passed pfnCallback / host-registered server callbacks that cannot be statically
+# enumerated in PE32:
+#   - D2Common (11 VAs): pfAutomap/pfTownAutomap, pfnCallback, pSearch->pfnCallback,
+#     pList->pfLinker/pfnValidate/pfnPost, pfOnValue, pfnActCall
+#     (see d2common-final3-diff-verified.test.ts & laneD-ported29.test.ts).
+#   - D2Game (31 VAs): caller-supplied visitor/filter/placement/party/client callbacks &
+#     host-injected Storm/server callbacks audited in tools/oracle/callgraph/indirect-audit-batch{A,B,C,D}.json
+#     and verified in tests/oracle/k2/k2-disasm-verified-wave{19-indA,20-indB,21-indC,22-indD}.test.ts.
 VERIFIED_CALLER_CALLBACK_VAS = {
+    # D2Common (11)
     "0X6FD5CD10",
     "0X6FD62330",
     "0X6FD624E0",
@@ -209,6 +219,41 @@ VERIFIED_CALLER_CALLBACK_VAS = {
     "0X6FD88940",
     "0X6FD8C720",
     "0X6FDCF6A0",
+    # D2Game Batch A (20: indirect-audit-batchA.json / k2-disasm-verified-wave19-indA.test.ts)
+    "0X6FC22090",
+    "0X6FC41490",
+    "0X6FC517F0",
+    "0X6FC51B40",
+    "0X6FC68410",
+    "0X6FCB6AF0",
+    "0X6FCBC160",
+    "0X6FCC06F0",
+    "0X6FCC0AD0",
+    "0X6FCC0C70",
+    "0X6FCC4610",
+    "0X6FCD06F0",
+    "0X6FCD0720",
+    "0X6FCD0CE0",
+    "0X6FCD11A0",
+    "0X6FCD7090",
+    "0X6FCFE380",
+    "0X6FCFFC10",
+    "0X6FCFFCC0",
+    "0X6FD0B090",
+    # D2Game Batch B (2: indirect-audit-batchB.json / k2-disasm-verified-wave20-indB.test.ts)
+    "0X6FCBEDB0",
+    "0X6FCBEEB0",
+    # D2Game Batch C (1: indirect-audit-batchC.json / k2-disasm-verified-wave21-indC.test.ts)
+    "0X6FC6B7F0",
+    # D2Game Batch D (8: indirect-audit-batchD.json / k2-disasm-verified-wave22-indD.test.ts)
+    "0X6FC49820",
+    "0X6FC4C2D0",
+    "0X6FC4C570",
+    "0X6FC4C830",
+    "0X6FC4C910",
+    "0X6FC4D9B0",
+    "0X6FC74000",
+    "0X6FCBC070",
 }
 
 _PRIVATE_FN_DEF_RE = re.compile(
@@ -644,6 +689,20 @@ def self_test() -> int:
     _check("**`90` `diff-verified` (`1.87%`) + `1` `ported` (`0.02%`) =\n> `91` implemented" in new, new)
     _check("**`1,200` unblocked `ready`** = `700`" in new and new.endswith(row + "\n"), new)
     _check(rewrite_function_map(new, man) == new, "rewrite must be idempotent")
+    man_zero = {
+        "summary": {
+            "totalReachable": 4810,
+            "statusBreakdown": {"diff-verified": 4810, "ported": 0, "unported": 0},
+            "readySummary": {"ready": 0, "readyPureLeaf": 0, "readyHostImport": 0, "readyInternalComposite": 0},
+        },
+        "functions": [fn("D2Common", "0x6FD00010", "diff-verified", "A_A")],
+    }
+    row_zero = render_ported_row(man_zero)
+    _check("src/d2kern-113c/" in row_zero.split(" | ")[2], row_zero)
+    _check("| **ported** (`0` closure functions" in row_zero, row_zero)
+    new_zero = rewrite_function_map(new, man_zero)
+    _check("**`4,810` `diff-verified` (`100.00%`) + `0` `ported` (`0.00%`)" in new_zero, new_zero)
+    _check(rewrite_function_map(new_zero, man_zero) == new_zero, "0-ported rewrite must be idempotent")
     try:
         rewrite_function_map(doc + "| a | b | c | **ported** (`2` dup) |\n", man)
         raise AssertionError("two ported rows must be rejected")

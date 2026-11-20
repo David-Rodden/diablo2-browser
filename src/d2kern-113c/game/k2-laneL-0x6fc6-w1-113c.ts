@@ -60,11 +60,7 @@ import { seedNext, type D2SeedStrc } from '../prng.ts'
 import { SUNIT_UnlinkFromRoomUpdateList113c } from './a1c-post150-f150-f276-113c.ts'
 import { SUNIT_AreUnitsHostileOrUnaligned113c } from './a1c-post150-f786-f1040-113c.ts'
 import { CLIENTS_SetPlayerCurrentRoom113c } from './act-rooms-113c.ts'
-import { AI_LookupDispatchTableRow113c } from './ai-fallen-113c.ts'
-import {
-  AIGENERAL_FlushAllAiCommands113c,
-  NET_QueuePacketToClientBuffer113c,
-} from './boot-init-gap-a-113c.ts'
+import { NET_QueuePacketToClientBuffer113c } from './boot-init-gap-a-113c.ts'
 import {
   SUNITDMG_ApplyDamage113c,
   SUNITDMG_ApplySideEffectsAndKill113c,
@@ -213,7 +209,8 @@ export function SKILLS_SrvEvent02_ApplyCalcFreezeAndState_6FC62C70_113c(
     const dwCalc1 = m.u32((pSkillsTxt + 0x138) >>> 0) >>> 0
     const frzLen = SKILLS_EvalCalcByOffset113c(m, pUnit, dwCalc1, nSkillId | 0, slvl)
     m.setU32((sp + 0x34) >>> 0, frzLen >>> 0)
-    SUNITDMG_ApplyDamage113c(m, pGame, pUnit, pTarget, sp)
+    // 0x6fc62d2f: push 0x1 (bApplyResists = 1), call 0x6fcfe0c0 only (does NOT call 0x6fcfcf20)
+    SUNITDMG_ApplyDamage113c(m, pGame, pUnit, pTarget, sp, 1, undefined, 1)
   } finally {
     k2LaneLStackPtr = sp
   }
@@ -1428,7 +1425,8 @@ export function SKILLS_ApplyCorpseExplosionAreaDamageCallback_6FC6F370_113c(
 
     const pGame1 = m.u32(pAuraCtx >>> 0) >>> 0
     const pAttacker1 = m.u32((pAuraCtx + 0x04) >>> 0) >>> 0
-    SUNITDMG_ApplyDamage113c(m, pGame1, pAttacker1, pTarget, sp)
+    // 0x6fc6f41a: push 0x1 (bApplyResists = 1), call 0x6fcfe0c0; 0x6fc6f433: call 0x6fcfcf20 once
+    SUNITDMG_ApplyDamage113c(m, pGame1, pAttacker1, pTarget, sp, 1, undefined, 1)
 
     const pGame2 = m.u32(pAuraCtx >>> 0) >>> 0
     const pAttacker2 = m.u32((pAuraCtx + 0x04) >>> 0) >>> 0
@@ -1538,40 +1536,8 @@ export function SKILLS_ApplyCurseSpecialMonsterAiState_6FC700A0_113c(
     }
   }
 
-  if (STATES_CheckState113c(m, pMonster, 0x36) !== 0) {
-    throw new D2CommonAssertError('MonsterAI.cpp', 0x1a6)
-  }
-  if (pGame === 0 || pMonster === 0 || pAiGeneral === 0) return
-  if (m.u32(pMonster >>> 0) !== 1) return
-
-  const pSgptPtr = m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C) >>> 0
-  const pDataTables = m.u32(pSgptPtr) >>> 0
-  const nMonStatsCount = m.u32((pDataTables + 0xa80) >>> 0) | 0
-  const monClassId = m.u32((pMonster + 0x04) >>> 0) | 0
-  let effSpecAi = nSpecAi
-  if (monClassId >= nMonStatsCount) {
-    effSpecAi = 1
-  }
-
-  const curThinkFn = m.u32((pAiGeneral + 0x04) >>> 0) >>> 0
-  if (curThinkFn !== 0) {
-    const pCurRow = AI_LookupDispatchTableRow113c(m, pMonster, m.u32(pAiGeneral) | 0) >>> 0
-    if (pCurRow !== 0 && curThinkFn === (m.u32((pCurRow + 0x08) >>> 0) >>> 0)) {
-      const altThinkFn = m.u32((pCurRow + 0x0c) >>> 0) >>> 0
-      if (altThinkFn !== 0) {
-        m.setU32(pAiGeneral, effSpecAi >>> 0)
-        m.setU32((pAiGeneral + 0x04) >>> 0, altThinkFn)
-        return
-      }
-    }
-  }
-
-  m.setU32((pAiGeneral + 0x14) >>> 0, 0)
-  m.setU32((pAiGeneral + 0x18) >>> 0, 0)
-  m.setU32((pAiGeneral + 0x1c) >>> 0, 0)
-  AIGENERAL_FlushAllAiCommands113c(m, pGame, pMonster)
-  m.setU32(pAiGeneral, effSpecAi >>> 0)
-  AI_InitMonsterAiThinkFn113c(m, pMonster)
+  // 0x6fc7010b / 0x6fc7011c: call 0x6fcbd230 (AI_InitMonsterAiThinkFn(pGame, pMonster, pAiGeneral, nSpecAi))
+  AI_InitMonsterAiThinkFn113c(m, pMonster, pGame >>> 0, pAiGeneral, nSpecAi)
 }
 
 /**

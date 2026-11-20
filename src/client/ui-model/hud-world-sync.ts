@@ -51,6 +51,15 @@ import {
   resolvePetPortraitInfo,
   resolvePlayerClassPortraitIcon,
 } from '../../common/units/pet-type-table.ts'
+import {
+  resolveMinionKeyForMonsterClassId,
+  resolvePlayerClassTokenForUnit,
+  shouldMinionSkinApply,
+} from '../../common/units/character-skin.ts'
+import {
+  getGlobalCharacterSkinService,
+  type MinionPortraitDrawable,
+} from '../render/character-skin-cache.ts'
 import { resolveOverheadBubbleText113c } from '../../common/chat/chat-113c.ts'
 import type { ItemData } from '../../netproto/index.ts'
 import { lookupTbl, requireTbl } from '../i18n/lang.ts'
@@ -2577,6 +2586,8 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
     readonly lifePct: number
     readonly drawHp: boolean
     readonly iconType: number
+    readonly customPortrait?: MinionPortraitDrawable | undefined
+    readonly customSkinKey?: string | undefined
   }> = []
 
   if (model.world.pets && model.world.pets.size > 0) {
@@ -2590,9 +2601,25 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
       arr.push(p)
       byType.set(p.petType, arr)
     }
+    const selfClassTok =
+      typeof model.world.self?.charClass === 'number'
+        ? resolvePlayerClassTokenForUnit(model.world.self.charClass, '')
+        : null
+    const skinService = getGlobalCharacterSkinService()
+    const isChi = (hud as any).lang === 'CHI' || (hud as any)._lang === 'CHI'
     for (const [petTypeIdx, pets] of byType.entries()) {
       const first = pets[0]!
-      const portInfo = resolvePetPortraitInfo(petTypeIdx, first.classId)
+      const effectiveMonClassId =
+        typeof first.classId === 'number' && first.classId > 0
+          ? first.classId
+          : petTypeIdx === 4
+            ? 363
+            : petTypeIdx === 5
+              ? 364
+              : petTypeIdx === 3
+                ? 289
+                : undefined
+      const portInfo = resolvePetPortraitInfo(petTypeIdx, effectiveMonClassId)
       if (!portInfo) continue
       const count = pets.length
       const avgLifePct = Math.round(
@@ -2608,14 +2635,30 @@ export function syncFromWorldImpl(model: any, hud: HudManager): void {
           return sum + pct100
         }, 0) / count,
       )
+      const minionKey =
+        petTypeIdx !== 6 && selfClassTok !== null && effectiveMonClassId !== undefined
+          ? resolveMinionKeyForMonsterClassId(selfClassTok, effectiveMonClassId)
+          : null
+      const minionSpec =
+        minionKey && selfClassTok ? skinService.getSelectedMinionSpec(selfClassTok, minionKey) : null
+      const customPortrait =
+        minionKey && selfClassTok ? skinService.getMinionPortraitImage(selfClassTok, minionKey) : null
+      const selectedSkinId = selfClassTok ? skinService.getSelectedSkinId(selfClassTok) : null
+      const label = minionSpec
+        ? (isChi ? minionSpec.name.zh : minionSpec.name.en)
+        : (isChi ? portInfo.nameZh : portInfo.nameEn)
       summonPortraits.push({
         petType: petTypeIdx,
         iconKey: portInfo.iconKey,
-        label: ((hud as any).lang === 'CHI' || (hud as any)._lang === 'CHI') ? portInfo.nameZh : portInfo.nameEn,
+        label,
         count,
         lifePct: avgLifePct,
         drawHp: portInfo.meta.drawHp,
         iconType: portInfo.meta.iconType,
+        ...(customPortrait ? { customPortrait } : {}),
+        ...(minionSpec || customPortrait
+          ? { customSkinKey: `${selectedSkinId ?? ''}:${minionKey ?? ''}:${customPortrait ? 1 : 0}` }
+          : {}),
       })
     }
   }
@@ -3748,13 +3791,63 @@ export function syncHoveredMonsterTargetImpl(model: any): void {
     hud.worldPanels.hoveredMonster = null
     return
   }
+  let customMinionName: { readonly zh: string; readonly en: string } | undefined
+  const skinService = getGlobalCharacterSkinService()
+  const skinCfg = skinService.getConfig()
+  if (skinCfg.enabled && skinCfg.minionsEnabled && !unit.states.has(96)) {
+    const petState = model.world.pets?.get?.(unit.id)
+    const resolvedOwnerType = unit.ownerType ?? (petState ? 'player' : undefined)
+    const resolvedOwnerId = unit.ownerId ?? petState?.ownerId
+    const selfId: number | undefined =
+      model.world.selfId > 0 ? model.world.selfId : petState?.ownerId
+    let ownerClassTok = null
+    if (resolvedOwnerType === 'player' && typeof resolvedOwnerId === 'number' && resolvedOwnerId > 0) {
+      if (selfId !== undefined && resolvedOwnerId === selfId && typeof model.world.self?.charClass === 'number') {
+        ownerClassTok = resolvePlayerClassTokenForUnit(model.world.self.charClass, '')
+      } else {
+        const ownerPlayer = model.world.getUnit?.('player', resolvedOwnerId)
+        if (ownerPlayer) {
+          ownerClassTok = resolvePlayerClassTokenForUnit(ownerPlayer.classId, '')
+        }
+      }
+    }
+    const match = shouldMinionSkinApply({
+      config: skinCfg,
+      monsterClassId: unit.classId,
+      ownerType: resolvedOwnerType,
+      ownerId: resolvedOwnerId,
+      localPlayerId: selfId,
+      ownerClassToken: ownerClassTok,
+      isRevive: false,
+    })
+    if (match) {
+      const minionSpec = skinService.getSelectedMinionSpec(match.ownerClassToken, match.minionKey)
+      if (minionSpec) {
+        customMinionName = minionSpec.name
+      }
+    }
+  }
+
   // D2Client.dll 0x6fb708a3..0x6fb708c4: skip town NPCs, non-killable units, and empty NameStr
+  // (Skinned player summons have `MonStats.inTown = 1` so they can walk in town; allow them when skinned.)
   const kind = getMonsterKindByHcIdx(unit.classId, model.world.difficulty)
-  if (kind && (kind.inTown || kind.npc || kind.interact || !kind.killable || !kind.nameKey)) {
+  if (
+    kind &&
+    ((kind.inTown && !customMinionName) || kind.npc || kind.interact || !kind.killable || !kind.nameKey)
+  ) {
     hud.targetMonster = null
     hud.worldPanels.hoveredMonster = null
     return
   }
-  hud.targetMonster = clientUnitToMonsterTargetInfo(unit, model.world.difficulty)
+  let targetInfo = clientUnitToMonsterTargetInfo(unit, model.world.difficulty)
+  if (customMinionName) {
+    const isChi = (hud as any).lang === 'CHI' || (hud as any)._lang === 'CHI'
+    targetInfo = {
+      ...targetInfo,
+      name: isChi ? customMinionName.zh : customMinionName.en,
+      customDisplayName: customMinionName,
+    }
+  }
+  hud.targetMonster = targetInfo
   hud.worldPanels.hoveredMonster = hud.targetMonster
 }

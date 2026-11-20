@@ -12,7 +12,16 @@
  */
 
 import { CANONICAL_CHARSTATS, type CharacterClassCode } from '../../common/units/classes.ts'
+import { hasMonStats2Flag, MONSTATS2_FLAGINDEX } from '../../common/units/monstats2-flags.ts'
+import { WAYPOINT_CLASS_IDS_113C } from '../../common/world/objects-meta.ts'
+import {
+  SKILLS_GetLeftSkillFromSkillList113c,
+  SKILLS_GetSkillById113c,
+  SKILLS_GetSkillIdFromSkill113c,
+  SKILLS_GetSkillLevel113c,
+} from '../../d2kern-113c/common/skills.ts'
 import { STATLIST_GetUnitStat113c } from '../../d2kern-113c/common/statlist.ts'
+import { D2SkillListStrc, D2UnitStrc } from '../../d2kern-113c/mem/layout.generated.ts'
 import {
   TypedEmitter,
   type CharClassId,
@@ -42,8 +51,12 @@ import {
 } from '../save/d2s-writer.ts'
 import { createAreaBootstrapResolver } from '../world/area-bootstrap.ts'
 import {
+  CLASS_SKILL_BASE_113C,
   D2GS_KERNEL_FRAME_MS_113C,
   D2gsKernelBridge113c,
+  SERVER_ONLY_NPC_SPAWNER_OBJECT_IDS_113C,
+  WAYPOINT_AREA_IDS_113C,
+  areaIdToActIdx113c,
   type D2gsBridgeClientHandle113c,
 } from './d2gs-kernel-bridge-113c.ts'
 
@@ -101,12 +114,19 @@ function resolveCharClassId113c(
   return 0
 }
 
-function areaIdToActIdx113c(areaId: number): 0 | 1 | 2 | 3 | 4 {
-  if (areaId >= 109) return 4
-  if (areaId >= 103) return 3
-  if (areaId >= 75) return 2
-  if (areaId >= 40) return 1
-  return 0
+function isWaypointUnlockedInRawD2s(
+  waypointsRaw: Uint8Array | undefined,
+  difficulty: 0 | 1 | 2,
+  areaId: number,
+): boolean {
+  const wpIdx = WAYPOINT_AREA_IDS_113C.indexOf(areaId)
+  if (wpIdx < 0) return false
+  if (waypointsRaw === undefined || waypointsRaw.byteLength < 80) {
+    return wpIdx === 0
+  }
+  const byteIdx = 8 + difficulty * 24 + 2 + (wpIdx >> 3)
+  const bitMask = 1 << (wpIdx & 7)
+  return byteIdx < waypointsRaw.byteLength && (waypointsRaw[byteIdx]! & bitMask) !== 0
 }
 
 export interface LocalKernelD2gsAdapterOptions113c {
@@ -156,7 +176,7 @@ export class LocalKernelD2gsAdapter113c implements GameServerAdapter {
   private readonly charClass: CharClassId
   private readonly difficulty: 0 | 1 | 2
   private readonly mapSeed: number
-  private readonly activeAct: 0 | 1 | 2 | 3 | 4
+  private activeAct: 0 | 1 | 2 | 3 | 4
 
   private closed = false
   private paused = false
@@ -330,6 +350,16 @@ export class LocalKernelD2gsAdapter113c implements GameServerAdapter {
     const rightSkill =
       parsedD2s !== null && parsedD2s.rightSkill !== undefined ? parsedD2s.rightSkill : 0
 
+    let initialSkillLevels: Record<number, number> | undefined
+    if (parsedD2s !== null) {
+      const classBase = CLASS_SKILL_BASE_113C[this.charClass] ?? 6
+      initialSkillLevels = {}
+      const count = Math.min(30, parsedD2s.skillLevels.length)
+      for (let i = 0; i < count; i++) {
+        initialSkillLevels[classBase + i] = parsedD2s.skillLevels[i]!
+      }
+    }
+
     this.bridge = new D2gsKernelBridge113c({
       initSeed: this.mapSeed,
       objectSeed: ((this.mapSeed ^ 0x9e3779b9) >>> 0) || 1,
@@ -348,6 +378,26 @@ export class LocalKernelD2gsAdapter113c implements GameServerAdapter {
       collisionMaskAt,
       ...(bootstrap !== null ? { extraRevealedRooms: bootstrap.rooms } : {}),
       ...(initialPlayerStats !== undefined ? { initialPlayerStats } : {}),
+      ...(initialSkillLevels !== undefined ? { initialSkillLevels } : {}),
+      ...(parsedD2s !== null ? { initialHotkeys: parsedD2s.hotkeys } : {}),
+      ...(parsedD2s !== null ? { initialItems: parsedD2s.items } : {}),
+      ...(parsedD2s !== null && parsedD2s.questsRaw !== undefined
+        ? { initialQuestData: parsedD2s.questsRaw }
+        : {}),
+      ...(parsedD2s !== null && parsedD2s.waypointsRaw !== undefined
+        ? { initialWaypointData: parsedD2s.waypointsRaw }
+        : {}),
+      ...(resolver !== undefined ? { resolveAreaBootstrap: resolver } : {}),
+      onAreaChange: (_nextAreaId, nextAct) => {
+        this.activeAct = nextAct
+      },
+      initialPlayersX,
+      onPlayersXChange: (next) => {
+        this.playersXValue = next
+        if (this.onPlayersXChange !== undefined) {
+          this.onPlayersXChange(next)
+        }
+      },
       initialLeftSkill: leftSkill,
       initialRightSkill: rightSkill,
       tables: options.tables !== undefined ? options.tables : getServerItemDataTables(),
@@ -358,6 +408,7 @@ export class LocalKernelD2gsAdapter113c implements GameServerAdapter {
     if (bootstrap !== null) {
       for (let i = 0; i < bootstrap.monsters.length; i++) {
         const mon = bootstrap.monsters[i]!
+        if (hasMonStats2Flag(mon.classId, MONSTATS2_FLAGINDEX.CRITTER)) continue
         this.bridge.spawnMonsterInRoom({
           classId: mon.classId,
           x: mon.x,
@@ -365,13 +416,27 @@ export class LocalKernelD2gsAdapter113c implements GameServerAdapter {
           animMode: 1,
         })
       }
+      const isInitialWpUnlocked = isWaypointUnlockedInRawD2s(
+        parsedD2s?.waypointsRaw,
+        this.difficulty,
+        targetAreaId,
+      )
       for (let i = 0; i < bootstrap.objects.length; i++) {
         const obj = bootstrap.objects[i]!
+        if (SERVER_ONLY_NPC_SPAWNER_OBJECT_IDS_113C.has(obj.classId)) continue
+        const isWp = obj.isWaypoint === true || WAYPOINT_CLASS_IDS_113C.has(obj.classId)
+        const mode = isWp
+          ? isInitialWpUnlocked
+            ? 2
+            : 0
+          : obj.mode !== undefined
+            ? obj.mode
+            : 0
         this.bridge.spawnObjectInRoom({
           classId: obj.classId,
           x: obj.x,
           y: obj.y,
-          mode: obj.mode !== undefined ? obj.mode : 0,
+          mode,
         })
       }
     }
@@ -509,16 +574,11 @@ export class LocalKernelD2gsAdapter113c implements GameServerAdapter {
   }
 
   getPlayersX(): number {
-    return this.playersXValue
+    return this.bridge.getPlayersX()
   }
 
   setPlayersX(value: number): number {
-    const next = Math.max(1, Math.min(8, Math.floor(Number(value) || 1)))
-    this.playersXValue = next
-    if (this.onPlayersXChange !== undefined) {
-      this.onPlayersXChange(next)
-    }
-    return next
+    return this.bridge.setPlayersX(value)
   }
 
   exportD2s(): Uint8Array {
@@ -526,6 +586,7 @@ export class LocalKernelD2gsAdapter113c implements GameServerAdapter {
       return this.savedD2sBytes
     }
     const pPlayer = this.handle.getPlayerPtr()
+    const pClient = this.handle.pClient >>> 0
     const m = this.bridge.m
     const classCode =
       CLASS_ID_TO_CODE_113C[this.charClass] !== undefined
@@ -537,6 +598,97 @@ export class LocalKernelD2gsAdapter113c implements GameServerAdapter {
       pPlayer !== 0 ? STATLIST_GetUnitStat113c(m, pPlayer, statId, 0) | 0 : fallback
 
     const base = this.baseD2sParsed
+
+    let liveLeftSkill = base !== null && base.leftSkill !== undefined ? base.leftSkill : 0
+    let liveRightSkill = base !== null && base.rightSkill !== undefined ? base.rightSkill : 0
+    if (pPlayer !== 0) {
+      const pSkillsList = m.get(pPlayer, D2UnitStrc.pSkills) >>> 0
+      if (pSkillsList !== 0) {
+        const pLeft = SKILLS_GetLeftSkillFromSkillList113c(m, pSkillsList) >>> 0
+        if (pLeft !== 0) {
+          const skId = SKILLS_GetSkillIdFromSkill113c(m, pLeft, 0, 0) | 0
+          if (skId >= 0) liveLeftSkill = skId
+        }
+        const pRight = m.get(pSkillsList, D2SkillListStrc.pRightSkill) >>> 0
+        if (pRight !== 0) {
+          const skId = SKILLS_GetSkillIdFromSkill113c(m, pRight, 0, 0) | 0
+          if (skId >= 0) liveRightSkill = skId
+        }
+      }
+    }
+
+    const classSkillBase = CLASS_SKILL_BASE_113C[this.charClass] ?? 6
+    const liveSkills = new Uint8Array(30)
+    for (let i = 0; i < 30; i++) {
+      if (pPlayer !== 0) {
+        const pSk = SKILLS_GetSkillById113c(m, pPlayer, classSkillBase + i, -1) >>> 0
+        liveSkills[i] =
+          pSk !== 0
+            ? Math.max(0, Math.min(255, SKILLS_GetSkillLevel113c(m, pPlayer, pSk, 0) | 0))
+            : 0
+      } else if (base !== null && i < base.skillLevels.length) {
+        liveSkills[i] = base.skillLevels[i]!
+      }
+    }
+
+    const liveHotkeys: number[] = []
+    for (let slot = 0; slot < 16; slot++) {
+      if (pClient !== 0) {
+        const slotAddr = (pClient + slot * 8) >>> 0
+        const wSkillId = m.u16((slotAddr + 0x3dc) >>> 0) & 0xffff
+        const bLeft = m.u8((slotAddr + 0x3de) >>> 0) & 0x01
+        liveHotkeys.push(
+          wSkillId === 0xffff
+            ? 0xffff
+            : (((wSkillId & 0x7fff) | (bLeft !== 0 ? 0x8000 : 0)) >>> 0),
+        )
+      } else {
+        liveHotkeys.push(
+          base !== null && slot < base.hotkeys.length ? base.hotkeys[slot]! >>> 0 : 0xffff,
+        )
+      }
+    }
+
+    const liveAct = this.bridge.currentAct
+    this.activeAct = liveAct
+
+    const baseQuests =
+      base !== null && base.questsRaw !== undefined && base.questsRaw.byteLength >= 298
+        ? base.questsRaw
+        : createDefaultQuestData()
+    const liveQuestsRaw = new Uint8Array(298)
+    liveQuestsRaw.set(baseQuests.subarray(0, 298))
+    if (pPlayer !== 0) {
+      const liveQuestSlice = this.bridge.getPlayerQuestDataBytes(
+        this.handle.clientId,
+        this.difficulty,
+      )
+      liveQuestsRaw.set(liveQuestSlice, 10 + this.difficulty * 96)
+    }
+
+    const baseWaypoints =
+      base !== null && base.waypointsRaw !== undefined && base.waypointsRaw.byteLength >= 80
+        ? base.waypointsRaw
+        : createDefaultWaypointData()
+    const liveWaypointsRaw = new Uint8Array(80)
+    liveWaypointsRaw.set(baseWaypoints.subarray(0, 80))
+    if (pPlayer !== 0) {
+      const liveWpSlice = this.bridge.getPlayerWaypointDataBytes(
+        this.handle.clientId,
+        this.difficulty,
+      )
+      liveWaypointsRaw.set(liveWpSlice, 8 + this.difficulty * 24)
+    }
+
+    let liveDifficultyLocation: Uint8Array | undefined
+    if (base !== null && base.difficultyLocation !== undefined && base.difficultyLocation.byteLength >= 3) {
+      liveDifficultyLocation = new Uint8Array(3)
+      for (let d = 0; d < 3; d++) {
+        liveDifficultyLocation[d] = base.difficultyLocation[d]! & 0x7f
+      }
+      liveDifficultyLocation[this.difficulty] = 0x80 | (liveAct & 0x07)
+    }
+
     const bytes = writeD2sSave113c(
       {
         name: this.charName,
@@ -546,19 +698,21 @@ export class LocalKernelD2gsAdapter113c implements GameServerAdapter {
         progression: base !== null ? base.progression : 0,
         activeWeapon: base !== null ? base.activeWeapon : 0,
         timestampSec: base !== null ? base.timestampSec : 0,
-        leftSkill: base !== null && base.leftSkill !== undefined ? base.leftSkill : 0,
-        rightSkill: base !== null && base.rightSkill !== undefined ? base.rightSkill : 0,
+        ...(base !== null ? { createdTimestamp: base.createdTimestamp } : {}),
+        ...(base !== null ? { lastPlayedTimestamp: base.lastPlayedTimestamp } : {}),
+        hotkeys: liveHotkeys,
+        leftSkill: liveLeftSkill,
+        rightSkill: liveRightSkill,
         altLeftSkill: base !== null && base.altLeftSkill !== undefined ? base.altLeftSkill : 0,
         altRightSkill: base !== null && base.altRightSkill !== undefined ? base.altRightSkill : 0,
+        ...(base !== null ? { appearance: base.appearance } : {}),
+        ...(liveDifficultyLocation !== undefined ? { difficultyLocation: liveDifficultyLocation } : {}),
         activeDifficulty: this.difficulty,
-        activeAct: this.activeAct,
+        activeAct: liveAct,
         mapSeed: this.mapSeed,
-        questsRaw:
-          base !== null && base.questsRaw !== undefined ? base.questsRaw : createDefaultQuestData(),
-        waypointsRaw:
-          base !== null && base.waypointsRaw !== undefined
-            ? base.waypointsRaw
-            : createDefaultWaypointData(),
+        ...(base !== null ? { merc: base.merc, mercItems: base.mercItems } : {}),
+        questsRaw: liveQuestsRaw,
+        waypointsRaw: liveWaypointsRaw,
         npcIntro:
           base !== null && base.npcIntro !== undefined
             ? base.npcIntro
@@ -593,9 +747,11 @@ export class LocalKernelD2gsAdapter113c implements GameServerAdapter {
           gold: Math.max(0, readStat(14, 0)),
           goldBank: Math.max(0, readStat(15, 0)),
         },
-        skills: base !== null ? base.skillLevels : new Uint8Array(30),
+        skills: liveSkills,
         items: base !== null ? base.items : [],
         corpseItems: base !== null && base.corpseItems !== undefined ? base.corpseItems : [],
+        ...(base !== null && base.corpseX !== undefined ? { corpseX: base.corpseX } : {}),
+        ...(base !== null && base.corpseY !== undefined ? { corpseY: base.corpseY } : {}),
         ironGolem: base !== null && base.ironGolem !== undefined ? base.ironGolem : null,
       },
       getServerItemDataTables(),

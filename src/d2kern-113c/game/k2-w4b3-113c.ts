@@ -78,12 +78,7 @@ import { SEED_InitLowSeed113c, seedRoll } from '../prng'
 import { DATATBLS_GetLevelMonsterLevel113c } from '../tables/datatbls-113c'
 import { DATATBLS_GetItemIdFromItemCode113c } from '../tables/item-tbls-113c'
 import { MONSTER_InitModeChangeStrc113c } from './ai-fallen-113c'
-import {
-  ITEMS_ApplySocketAndEtherealBonuses113c,
-  ITEMS_RollQualityThreshold113c,
-  ITEMS_SpawnDroppedItemAtCoords113c,
-  PLAYER_StartModeAttack113c,
-} from './combat-a1c-113c'
+import { PLAYER_StartModeOnUnit113c } from './c2s-packet-113c'
 import { SUNIT_GetServerUnit113c } from './game-strc'
 import {
   type K2GapMeleeDotHooks113c,
@@ -97,10 +92,7 @@ import {
   MONUMOD_MarkBossAndIncrementUniqueCount113c,
   QUESTS_GuidListAdd113c,
 } from './k2-items-tc-w1-113c'
-import {
-  STATLIST_SetUnitStatGoldGuarded_6FC21040_113c,
-  STORM_TSListUnlinkAll_6FC22180_113c,
-} from './k2-laneH-0x6fc2-w1-113c'
+import { STATLIST_SetUnitStatGoldGuarded_6FC21040_113c } from './k2-laneH-0x6fc2-w1-113c'
 import {
   AIGENERAL_ForEachPackMember_6FC41490_113c,
   ITEMS_ClearAffixesAndItemCell_6FC2E210_113c,
@@ -169,6 +161,7 @@ import {
   MONUMOD_RollRandomChampionMod_6FC43AE0_113c,
   MONUMOD_RollRandomUniqueBossMod_6FC43980_113c,
   MONUMOD_UnlinkMinionAndStopSkill_6FC43730_113c,
+  STORM_TSListDestroySehWrapper_6FC21F60_113c,
 } from './k2-w4b1-113c'
 import {
   ACT5Q2_SpawnMonster209NearUnitOffsetMinus5_6FC7C1F0_113c,
@@ -308,7 +301,7 @@ export function STORM_TSListArrayResize_6FC22630_113c(
   if (ebx < nOldAlloc) {
     for (let edi = ebx; edi < (m.u32((esi + 0x04) >>> 0) >>> 0); edi = (edi + 1) >>> 0) {
       const pEntry = (pOldLists + imul32(edi, 12)) >>> 0
-      STORM_TSListUnlinkAll_6FC22180_113c(m, pEntry)
+      STORM_TSListDestroySehWrapper_6FC21F60_113c(m, pEntry)
     }
   }
 
@@ -341,7 +334,7 @@ export function STORM_TSListArrayResize_6FC22630_113c(
         const pDst = (m.u32((esi + 0x08) >>> 0) + offset) >>> 0
         const pSrc = (pOldLists + offset) >>> 0
         STORM_TSListPlacementNewCopy_6FC226F0_113c(m, pDst, pSrc)
-        STORM_TSListUnlinkAll_6FC22180_113c(m, pSrc)
+        STORM_TSListDestroySehWrapper_6FC21F60_113c(m, pSrc)
         offset = (offset + 12) >>> 0
       }
     }
@@ -351,7 +344,7 @@ export function STORM_TSListArrayResize_6FC22630_113c(
 
 /**
  * Re-initializes an item candidate to Magic quality (`4`), restores its low seed from `*pdwSeed`,
- * applies socket/ethereal rolls, updates `*pdwSeed`, and rolls magic affixes (`0x6FC303C0`).
+ * invokes `ITEMS_RollItemQualityOnCreatedItem_6FC2EE90_113c`, updates `*pdwSeed`, and rolls magic affixes (`0x6FC303C0`).
  *
  * @va D2Game:0x6FC304F0
  */
@@ -374,7 +367,7 @@ export function ITEMS_FallbackToMagicQualityAndRollAffixes_6FC304F0_113c(
   const pItemSeed0 = ITEMS_GetItemSeed113c(m, m.u32(edi) >>> 0) >>> 0
   SEED_InitLowSeed113c(m, pItemSeed0, m.u32(esi) >>> 0)
 
-  ITEMS_ApplySocketAndEtherealBonuses113c(m, ebx, m.u32(edi) >>> 0, 0)
+  ITEMS_RollItemQualityOnCreatedItem_6FC2EE90_113c(m, m.u32(edi) >>> 0, ebx)
   ITEMS_SetItemQuality113c(m, m.u32(edi) >>> 0, 4)
   m.setU32((ebx + 0x30) >>> 0, 4)
 
@@ -448,16 +441,8 @@ export function ITEMS_ApplyTypeSpecificCreatedItemMods_6FC30600_113c(
       return
     }
     default: {
-      if (isSgptDataTablesLoaded113c(m)) {
-        ITEMS_RollStaffModsOnItem_6FC33DE0_113c(m, esi, ebx)
-        ITEMS_RollAndApplySockets_6FC2EC90_113c(m, esi, ebx, nSpellArg | 0)
-      } else {
-        ITEMS_SpawnDroppedItemAtCoords113c(m, ebx, 0, esi, 0, 0)
-        const pSeed = ITEMS_GetItemSeed113c(m, esi) >>> 0
-        if (pSeed !== 0) {
-          ITEMS_RollQualityThreshold113c(m, pSeed, nSpellArg | 0, 1, 0, 0, 0, 0)
-        }
-      }
+      ITEMS_RollStaffModsOnItem_6FC33DE0_113c(m, esi, ebx)
+      ITEMS_RollAndApplySockets_6FC2EC90_113c(m, esi, ebx, nSpellArg | 0)
       return
     }
   }
@@ -488,11 +473,7 @@ export function ITEMS_FallbackToRareQualityAndRollAffixes_6FC30730_113c(
   const pItemSeed0 = ITEMS_GetItemSeed113c(m, m.u32(edi) >>> 0) >>> 0
   SEED_InitLowSeed113c(m, pItemSeed0, m.u32(esi) >>> 0)
 
-  if (isSgptDataTablesLoaded113c(m)) {
-    ITEMS_RollItemQualityOnCreatedItem_6FC2EE90_113c(m, m.u32(edi) >>> 0, ebx)
-  } else {
-    ITEMS_ApplySocketAndEtherealBonuses113c(m, ebx, m.u32(edi) >>> 0, 0)
-  }
+  ITEMS_RollItemQualityOnCreatedItem_6FC2EE90_113c(m, m.u32(edi) >>> 0, ebx)
   ITEMS_SetItemQuality113c(m, m.u32(edi) >>> 0, 6)
   m.setU32((ebx + 0x30) >>> 0, 6)
 
@@ -541,7 +522,7 @@ export function ITEMS_RollAndDropItemByTypeAtUnit_6FC31A70_113c(
   hitD2GameVa113c(0x6FC31A70)
   const ebx = pGame >>> 0
   if (ebx === 0) {
-    throw new D2CommonAssertError('pGame != NULL', 2495)
+    throw new D2CommonAssertError('pGame != NULL', 2503)
   }
 
   const edi = pUnit >>> 0
@@ -1309,7 +1290,7 @@ export function GAME_AssignUniqueGameName_6FC4BC90_113c(
 
   const pCandidate = allocStackFrame113c(0x20, m)
   try {
-    writeCString113c(m, pCandidate, `${truncatedBase}0`)
+    writeCString113c(m, pCandidate, `${truncatedBase}~0`)
     let esiSuffix = 1
     let bAvail =
       hooks !== undefined && hooks.onIsGameNameAvailable_6FC4ABD0 !== undefined
@@ -1320,7 +1301,7 @@ export function GAME_AssignUniqueGameName_6FC4BC90_113c(
       if (esiSuffix >= 100) {
         throw new D2CommonAssertError('i < 100', 604)
       }
-      writeCString113c(m, pCandidate, `${truncatedBase}${esiSuffix}`)
+      writeCString113c(m, pCandidate, `${truncatedBase}~${esiSuffix}`)
       esiSuffix = (esiSuffix + 1) | 0
       bAvail =
         hooks !== undefined && hooks.onIsGameNameAvailable_6FC4ABD0 !== undefined
@@ -2291,7 +2272,7 @@ export function ACT1Q1_SendAlert01IfQuest01Active_6FC82D30_113c(
   }
 
   if (
-    DRLGWARP_TestRoomTileBit113c(m, esiQuestFlags, 1, 0x0d) === 0 &&
+    DRLGWARP_TestRoomTileBit113c(m, esiQuestFlags, 1, 0x0d) !== 0 ||
     DRLGWARP_TestRoomTileBit113c(m, esiQuestFlags, 1, 0x0e) !== 0
   ) {
     QUESTS_SendPlayerQuestAlert5D_6FC554F0_113c(
@@ -2376,7 +2357,7 @@ export function ACT1_InitCainIntroQuestDescriptor_6FC82FA0_113c(
 }
 
 /**
- * Records Act 1 Quest 6 (`Andariel`) completion and GUID lists when a player in an Act > 0
+ * Records Act 1 Quest 6 (`Andariel`) completion and GUID lists when a player in Act 1 (`bAct == 0`)
  * does not yet have quest `6` bits `0` or `1` set (`0x6FC83000`).
  *
  * @va D2Game:0x6FC83000
@@ -2410,7 +2391,7 @@ export function ACT1Q6_SyncCompletionForPlayerOutsideAct1_6FC83000_113c(
     return
   }
   const bAct = DRLG_GetActNoFromLevelId113c(m, nLevelId) & 0xff
-  if (bAct === 0) {
+  if (bAct !== 0) {
     return
   }
 
@@ -2578,8 +2559,8 @@ export function ACT1Q4_SpawnGriswoldInTristram_6FC860D0_113c(
 
     const roomX = m.u32(pRoomCoords) | 0
     const roomY = m.u32((pRoomCoords + 0x04) >>> 0) | 0
-    const roomW = m.u32((pRoomCoords + 0x0c) >>> 0) | 0
-    const roomH = m.u32((pRoomCoords + 0x10) >>> 0) | 0
+    const roomW = m.u32((pRoomCoords + 0x08) >>> 0) | 0
+    const roomH = m.u32((pRoomCoords + 0x0c) >>> 0) | 0
 
     let curX = nX | 0
     let curY = nY | 0
@@ -2598,7 +2579,7 @@ export function ACT1Q4_SpawnGriswoldInTristram_6FC860D0_113c(
       step = (step + 1) | 0
     }
     if (step > 20) {
-      curY = nY | 0
+      curX = nY | 0
     }
 
     m.setU32(pIoCoord, curX >>> 0)
@@ -2867,15 +2848,15 @@ export function OBJ_TryOperateObjectIfInRange_6FC8A720_113c(
   m: D2KernMemory113c,
   wUnitType: number,
   pPlayerUnit: number,
-  dwObjectId: number,
   pGame: number,
+  dwObjectId: number,
   hooks?: K2W4B3Hooks113c,
 ): number {
   hitD2GameVa113c(0x6FC8A720)
   const ebxType = wUnitType & 0xffff
   const ediUnit = pPlayerUnit >>> 0
-  const ebpObjId = dwObjectId >>> 0
   const ecxGame = pGame >>> 0
+  const ebpObjId = dwObjectId >>> 0
 
   const esiObj = SUNIT_GetServerUnit113c(m, ecxGame, ebxType, ebpObjId) >>> 0
   if (esiObj === 0) {
@@ -3288,14 +3269,19 @@ export function OBJ_OperateFn28_Urn_6FC8D7B0_113c(
     const ediKickSkill = SKILLS_GetSkillById113c(m, pPlayer, 1, -1) >>> 0
     if (ediKickSkill !== 0) {
       const pObjTarget = m.u32((esiOp + 0x04) >>> 0) >>> 0
-      UNITS_SetTargetUnitForDynamicUnit113c(m, m.u32((esiOp + 0x08) >>> 0) >>> 0, pObjTarget)
-      SKILLS_GetLeftSkillFromSkillList113c(m, ediKickSkill)
-      PLAYER_StartModeAttack113c(
+      const pPlr = m.u32((esiOp + 0x08) >>> 0) >>> 0
+      UNITS_SetTargetUnitForDynamicUnit113c(m, pPlr, pObjTarget)
+      const nKickMode = SKILLS_GetLeftSkillFromSkillList113c(m, ediKickSkill) | 0
+      PLAYER_StartModeOnUnit113c(
         m,
         m.u32(esiOp) >>> 0,
-        m.u32((esiOp + 0x08) >>> 0) >>> 0,
-        7,
+        pPlr,
         pObjTarget,
+        nKickMode,
+        0,
+        0,
+        0,
+        ediKickSkill,
       )
     }
   }
@@ -3353,15 +3339,15 @@ export function OBJ_OperateFn28_Urn_6FC8D7B0_113c(
  */
 export function CUBE_ValidateAllRecipeInputSlots_6FC90CF0_113c(
   m: D2KernMemory113c,
-  pGame: number,
-  pInventory: number,
   pCubeMainTxt: number,
+  pInventory: number,
+  pGame: number,
   pCubeOutputCtx: number,
 ): number {
   hitD2GameVa113c(0x6FC90CF0)
-  const ebxGame = pGame >>> 0
-  const esiInv = pInventory >>> 0
-  if (ebxGame === 0 || esiInv === 0) {
+  const esiCubeMainTxt = pCubeMainTxt >>> 0
+  const ebxInv = pInventory >>> 0
+  if (ebxInv === 0 || esiCubeMainTxt === 0) {
     return 0
   }
 
@@ -3373,9 +3359,9 @@ export function CUBE_ValidateAllRecipeInputSlots_6FC90CF0_113c(
     for (let ediSlot = 0; ediSlot < 7; ediSlot++) {
       const ok = CUBE_ValidateRecipeInputSlot_6FC90240_113c(
         m,
-        pCubeMainTxt >>> 0,
-        ebxGame,
-        esiInv,
+        esiCubeMainTxt,
+        pGame >>> 0,
+        ebxInv,
         ediSlot,
         pCubeOutputCtx >>> 0,
         pUsedItemFlags,

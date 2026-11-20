@@ -19,6 +19,7 @@ import {
   STATES_CheckState113c,
 } from '../common/statlist.ts'
 import { UNIT_MONSTER, UNIT_PLAYER, UNITROOM_RefreshUnit113c } from '../common/unit.ts'
+import { SKILLS_SetUsedSkillMemPort113c } from '../common/k0-d2common-memports.ts'
 import {
   EVENT_DeleteEventByArg14_113c,
   EVENT_FLAG_DEFERRED_FREE,
@@ -497,8 +498,7 @@ export function MONSTER_NullModeEventFallback113c(
   mode: number,
 ): number {
   hitD2GameVa113c(0x6FC950F0)
-  if (pUnit === 0) return 0
-  SKILLS_SetUsedSkill113c(m, pUnit, 0)
+  SKILLS_SetUsedSkillMemPort113c(m, pUnit, 0)
   if (mode !== 0 && mode !== 12 && SUNIT_IsDeadOrDying113c(m, pUnit) !== 0) {
     return 1
   }

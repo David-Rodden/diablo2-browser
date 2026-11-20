@@ -611,8 +611,8 @@ export function ITEMS_PickupGroundItemToInventoryOrEquip_6FCF6E30_113c(
           m.u32(pItem >>> 0),
           m.u32((pItem + 0x0c) >>> 0),
         )
-        UNITROOM_RemoveUnitFromRoom113c(m, pItem)
         UNITS_SetTargetUnitForDynamicUnitEx113c(m, pItem)
+        UNITROOM_RemoveUnitFromRoom113c(m, pItem)
       }
       if (ITEMS_AutoEquipItemToBodyLoc_6FCF4960_113c(m, pItem, pPlayer, 0, pGame) === 0) {
         return 0
@@ -634,8 +634,8 @@ export function ITEMS_PickupGroundItemToInventoryOrEquip_6FCF6E30_113c(
           m.u32(pItem >>> 0),
           m.u32((pItem + 0x0c) >>> 0),
         )
-        UNITROOM_RemoveUnitFromRoom113c(m, pItem)
         UNITS_SetTargetUnitForDynamicUnitEx113c(m, pItem)
+        UNITROOM_RemoveUnitFromRoom113c(m, pItem)
       }
       if (INVENTORY_PlaceItemInSocket113c(m, pInventory, pItem, 2) === 0) {
         throw new D2CommonAssertError('0x6fd19ff9', 0x7ee)
@@ -851,6 +851,31 @@ export function SKILLS_EquipSummonedPetItems_6FD0E6F0_113c(
   const nClassId = m.u32((pMonsterUnit + 0x04) >>> 0) | 0
   const pGame = m.u32((pMonsterUnit + 0x80) >>> 0) >>> 0
   const nUnitLevel = STATLIST_GetUnitStat113c(m, pMonsterUnit, 0x0c, 0)
+  // D2Game.dll 1.13c `.rdata` 0x6FD1C2F8..0x6FD1C357: 4x3 Ancient (cid 540..542) equip table
+  // indexed by `0x6FD1B218 + nClassId * 8` with row stride `0x18` (`3 * 8` bytes).
+  if (nClassId >= 540 && nClassId <= 542 && m.u32(0x6fd1c2f8) === 0) {
+    const ancientEquipWords = [
+      // Row 0 (540 Talic, 541 Madawc, 542 Korlic)
+      0x20647362, 0x00000104, // 'bsd ', body=4, qual=1
+      0x20786174, 0x00000104, // 'tax ', body=4, qual=1
+      0x20756f76, 0x00000104, // 'vou ', body=4, qual=1
+      // Row 1
+      0x20776f74, 0x00000105, // 'tow ', body=5, qual=1
+      0x20786174, 0x00000105, // 'tax ', body=5, qual=1
+      0x206e6972, 0x00000106, // 'rin ', body=6, qual=1
+      // Row 2
+      0x20646c66, 0x00000103, // 'fld ', body=3, qual=1
+      0x206c6768, 0x0000010a, // 'hgl ', body=10, qual=1
+      0x20646c66, 0x00000103, // 'fld ', body=3, qual=1
+      // Row 3
+      0x20746268, 0x00000109, // 'hbt ', body=9, qual=1
+      0x20746268, 0x00000109, // 'hbt ', body=9, qual=1
+      0x206e7263, 0x00000101, // 'crn ', body=1, qual=1
+    ]
+    for (let k = 0; k < ancientEquipWords.length; k++) {
+      m.setU32((0x6fd1c2f8 + k * 4) >>> 0, ancientEquipWords[k]!)
+    }
+  }
   const sp = allocW9B2Stack(m, 0x10)
   try {
     const pOutIndex = (sp + 0x04) >>> 0

@@ -245,8 +245,16 @@ function div100SignedMagic113c(val: number): number {
   return ((edx >> 5) + (edx >>> 31)) | 0
 }
 
+function readSeededU32OrZero113c(m: Memory113c, addr: number): number {
+  try {
+    return m.u32(addr >>> 0)
+  } catch {
+    return 0
+  }
+}
+
 function ensureActNpcIntroArraysSeeded113c(m: Memory113c): void {
-  if (m.u32(D2GAME_ACT1_NPC_INTRO_IDS_VA_113C) === 0) {
+  if (readSeededU32OrZero113c(m, D2GAME_ACT1_NPC_INTRO_IDS_VA_113C) === 0) {
     for (let i = 0; i < DEFAULT_ACT1_NPC_INTRO_IDS_113C.length; i = (i + 1) | 0) {
       const id = DEFAULT_ACT1_NPC_INTRO_IDS_113C[i]
       if (id !== undefined) {
@@ -254,7 +262,7 @@ function ensureActNpcIntroArraysSeeded113c(m: Memory113c): void {
       }
     }
   }
-  if (m.u32(D2GAME_ACT2_NPC_INTRO_IDS_VA_113C) === 0) {
+  if (readSeededU32OrZero113c(m, D2GAME_ACT2_NPC_INTRO_IDS_VA_113C) === 0) {
     for (let i = 0; i < DEFAULT_ACT2_NPC_INTRO_IDS_113C.length; i = (i + 1) | 0) {
       const id = DEFAULT_ACT2_NPC_INTRO_IDS_113C[i]
       if (id !== undefined) {
@@ -262,7 +270,7 @@ function ensureActNpcIntroArraysSeeded113c(m: Memory113c): void {
       }
     }
   }
-  if (m.u32(D2GAME_ACT3_NPC_INTRO_IDS_VA_113C) === 0) {
+  if (readSeededU32OrZero113c(m, D2GAME_ACT3_NPC_INTRO_IDS_VA_113C) === 0) {
     for (let i = 0; i < DEFAULT_ACT3_NPC_INTRO_IDS_113C.length; i = (i + 1) | 0) {
       const id = DEFAULT_ACT3_NPC_INTRO_IDS_113C[i]
       if (id !== undefined) {
@@ -270,7 +278,7 @@ function ensureActNpcIntroArraysSeeded113c(m: Memory113c): void {
       }
     }
   }
-  if (m.u32(D2GAME_ACT5_NPC_INTRO_IDS_VA_113C) === 0) {
+  if (readSeededU32OrZero113c(m, D2GAME_ACT5_NPC_INTRO_IDS_VA_113C) === 0) {
     for (let i = 0; i < DEFAULT_ACT5_NPC_INTRO_IDS_113C.length; i = (i + 1) | 0) {
       const id = DEFAULT_ACT5_NPC_INTRO_IDS_113C[i]
       if (id !== undefined) {
@@ -326,51 +334,53 @@ export function OBJECTS_InitFn05_InitPortalDestLevel_6FC533D0_113c(
   const pGame = m.u32(initPtr) >>> 0
   const pAct = m.u32((pGame + 0xc0) >>> 0) >>> 0
   const nBossTombLevel = DRLGLOGIC_GetBossTombLevel113c(m, pAct) | 0
-  const pObj = m.u32((initPtr + 0x04) >>> 0) >>> 0
-  const pObjData = m.u32((pObj + 0x14) >>> 0) >>> 0
+  const getObjData = (): number => {
+    const pObj = m.u32((initPtr + 0x04) >>> 0) >>> 0
+    return m.u32((pObj + 0x14) >>> 0) >>> 0
+  }
 
   switch (nLevelId) {
     case 1:
-      m.setU8((pObjData + 0x04) >>> 0, 0x27)
+      m.setU8((getObjData() + 0x04) >>> 0, 0x27)
       return
     case 39:
-      m.setU8((pObjData + 0x04) >>> 0, 0x01)
+      m.setU8((getObjData() + 0x04) >>> 0, 0x01)
       return
     case 38:
-      m.setU8((pObjData + 0x04) >>> 0, 0x04)
+      m.setU8((getObjData() + 0x04) >>> 0, 0x04)
       return
     case 4:
-      m.setU8((pObjData + 0x04) >>> 0, 0x26)
+      m.setU8((getObjData() + 0x04) >>> 0, 0x26)
       return
     case 74:
-      m.setU8((pObjData + 0x04) >>> 0, 0x2e)
+      m.setU8((getObjData() + 0x04) >>> 0, 0x2e)
       return
     case 46:
-      m.setU8((pObjData + 0x04) >>> 0, 0x4a)
+      m.setU8((getObjData() + 0x04) >>> 0, 0x4a)
       return
     case 73:
-      m.setU8((pObjData + 0x04) >>> 0, nBossTombLevel & 0xff)
+      m.setU8((getObjData() + 0x04) >>> 0, nBossTombLevel & 0xff)
       return
     case 121:
-      m.setU8((pObjData + 0x04) >>> 0, 0x6d)
+      m.setU8((getObjData() + 0x04) >>> 0, 0x6d)
       return
     case 109:
-      m.setU8((pObjData + 0x04) >>> 0, 0x79)
+      m.setU8((getObjData() + 0x04) >>> 0, 0x79)
       return
     case 125:
-      m.setU8((pObjData + 0x04) >>> 0, 0x6f)
+      m.setU8((getObjData() + 0x04) >>> 0, 0x6f)
       return
     case 126:
-      m.setU8((pObjData + 0x04) >>> 0, 0x70)
+      m.setU8((getObjData() + 0x04) >>> 0, 0x70)
       return
     case 127:
-      m.setU8((pObjData + 0x04) >>> 0, 0x75)
+      m.setU8((getObjData() + 0x04) >>> 0, 0x75)
       return
     case 111:
     case 112:
     case 117: {
       const targetLevel = nLevelId === 111 ? 0x7d : nLevelId === 112 ? 0x7e : 0x7f
-      if (m.u8((pObjData + 0x04) >>> 0) === targetLevel) {
+      if (m.u8((getObjData() + 0x04) >>> 0) === targetLevel) {
         return
       }
       const pObj2 = m.u32((initPtr + 0x04) >>> 0) >>> 0
@@ -393,7 +403,7 @@ export function OBJECTS_InitFn05_InitPortalDestLevel_6FC533D0_113c(
     }
     default:
       if (nLevelId === nBossTombLevel) {
-        m.setU8((pObjData + 0x04) >>> 0, 0x49)
+        m.setU8((getObjData() + 0x04) >>> 0, 0x49)
       }
       return
   }
@@ -645,6 +655,32 @@ export function QUESTS_AllocAndInitGameQuests_6FC548A0_113c(
   m.setU32((game + 0x10f4) >>> 0, pQuestCtrl)
 }
 
+let k4QuestStatusFilterDispatcher:
+  | ((
+      m: Memory113c,
+      pfnStatus: number,
+      pQuest: number,
+      pPlayerUnit: number,
+      pGameQuestFlags: number,
+      pPlayerQuestFlags: number,
+      pOutByte: number,
+    ) => number)
+  | null = null
+
+export function registerK4QuestStatusFilterDispatcher113c(
+  fn: (
+    m: Memory113c,
+    pfnStatus: number,
+    pQuest: number,
+    pPlayerUnit: number,
+    pGameQuestFlags: number,
+    pPlayerQuestFlags: number,
+    pOutByte: number,
+  ) => number,
+): void {
+  k4QuestStatusFilterDispatcher = fn
+}
+
 /**
  * Builds and sends a 6-byte `0x5D` quest state alert packet for `nQuestId` (`al`) to `pPlayerUnit`
  * (`ecx`) in `pGame` (`[esp+4]`) when the player is in the same act as `pQuest->bAct (+0x08)` (`ret 4`).
@@ -714,6 +750,17 @@ export function QUESTS_SendPlayerQuestAlert5D_6FC554F0_113c(
         statusHandled =
           hooks.onQuestStatus(m, pfnStatus, pQuest, player, pGameQuestFlags, pPlayerQuestFlags, pOutByte) &
           0xff
+      } else if (k4QuestStatusFilterDispatcher !== null) {
+        statusHandled =
+          k4QuestStatusFilterDispatcher(
+            m,
+            pfnStatus,
+            pQuest,
+            player,
+            pGameQuestFlags,
+            pPlayerQuestFlags,
+            pOutByte,
+          ) & 0xff
       }
       if (statusHandled === 1) {
         m.setU8((pPacket + 0x03) >>> 0, m.u8(pOutByte))
@@ -861,10 +908,10 @@ export function QUESTS_SendQuestLogPackets50And52_6FC55640_113c(
     if (bSend50 !== 0) {
       m.setU8(pPacket50, 0x50)
       m.setU16((pPacket50 + 0x01) >>> 0, 1)
-      NET_QueuePacketToClientBuffer113c(m, pClient, 4, pPacket50, 0x0f)
+      NET_QueuePacketToClientBuffer113c(m, pClient, 1, pPacket50, 0x0f)
     }
 
-    NET_QueuePacketToClientBuffer113c(m, pClient, 4, pPacket52, 0x2a)
+    NET_QueuePacketToClientBuffer113c(m, pClient, 1, pPacket52, 0x2a)
   } finally {
     k2W3B3StackPtr = savedSp
   }
@@ -946,7 +993,7 @@ export function QUESTS_TriggerNpcInteractAndSendPacket27_6FC55910_113c(
     const nNpcType = npc !== 0 ? m.u32(npc) & 0xff : 6
     m.setU8((pPacket27 + 0x01) >>> 0, nNpcType)
     TEXT_BuildMessageList113c(m, pTextHeader, (pPacket27 + 0x06) >>> 0)
-    NET_QueuePacketToClientBuffer113c(m, pClient, 4, pPacket27, 0x28)
+    NET_QueuePacketToClientBuffer113c(m, pClient, 1, pPacket27, 0x28)
   } finally {
     k2W3B3StackPtr = savedSp
   }
@@ -999,9 +1046,10 @@ export function QUESTS_SendNpcIntroPacket91_6FC55B60_113c(
   k2W3B3StackPtr = (savedSp + 0x20) >>> 0
   try {
     m.fill(pPacket91, 0x1a, 0)
+    // 0x6FC55BA9 passes pPacket91 (+0x00); QUESTS_PackNpcIntroFlags_6FC54C70 adds +2 internally (0x6FC54C73).
     const packed = QUESTS_PackNpcIntroFlags_6FC54C70_113c(
       m,
-      (pPacket91 + 0x02) >>> 0,
+      pPacket91,
       pNpcIds,
       pQuestIntro,
       nCount,
@@ -1015,7 +1063,7 @@ export function QUESTS_SendNpcIntroPacket91_6FC55B60_113c(
       const pPlayerData2 = UNITS_GetPlayerData113c(m, player) >>> 0
       pClient = m.u32((pPlayerData2 + 0x9c) >>> 0) >>> 0
     }
-    NET_QueuePacketToClientBuffer113c(m, pClient, 4, pPacket91, 0x1a)
+    NET_QueuePacketToClientBuffer113c(m, pClient, 1, pPacket91, 0x1a)
   } finally {
     k2W3B3StackPtr = savedSp
   }
@@ -2675,7 +2723,8 @@ export function MISSILES_SpawnRing16WithOptionalInnerRingSubMissiles_6FC5D680_11
   const pMissilesTxt = getMissilesTxtRecord113c(m, subId)
   if (pMissilesTxt === 0) return 0
   const game = pGame >>> 0
-  if (game === 0) return 0
+  const owner = pOwnerUnit >>> 0
+  if (owner === 0) return 0
   const origin = pOriginUnit >>> 0
   if (origin === 0) return 0
 
@@ -2774,15 +2823,16 @@ export function MISSILES_SrvDmg29_ApplySkillStateAndAuraStatsCalc1_6FC5E8A0_113c
   if (duration < 5) duration = 5
   const expireFrame = ((m.u32((game + 0xa8) >>> 0) >>> 0) + (duration >>> 0)) >>> 0
 
-  let pStatList = STATLIST_GetStatListFromUnitAndStateMemPort113c(m, target, nState) >>> 0
+  const pStatList = STATLIST_GetStatListFromUnitAndStateMemPort113c(m, target, nState) >>> 0
   if (pStatList === 0) {
     const uOwnerType = m.u32(pOwner) >>> 0
     const uOwnerId = m.u32((pOwner + 0x0c) >>> 0) >>> 0
-    pStatList = STATLIST_AllocList113c(m, 2, uOwnerType, uOwnerId, 0, expireFrame) >>> 0
-    if (pStatList === 0) return 1
-    STATLIST_SetState113c(m, pStatList, nState)
-    STATLIST_SetStatRemoveProc113c(m, pStatList, 0x6fcbf7a0)
-    STATLIST_MergeStatLists113c(m, target, pStatList, 1)
+    // 1.13c native 0x6FC5E9BF stores newly allocated statlist in [esp+0x24] without updating ebp (pStatList).
+    const pNewStatList = STATLIST_AllocList113c(m, 2, uOwnerType, uOwnerId, 0, expireFrame) >>> 0
+    if (pNewStatList === 0) return 1
+    STATLIST_SetState113c(m, pNewStatList, nState)
+    STATLIST_SetStatRemoveProc113c(m, pNewStatList, 0x6fcbf7a0)
+    STATLIST_MergeStatLists113c(m, target, pNewStatList, 1)
     STATES_ToggleGfxStateFlag113c(m, target, nState, 1)
   }
 
@@ -2836,16 +2886,17 @@ export function MISSILES_SrvDmg30_ApplySkillStateAndAuraStatsCalc4_6FC5EC10_113c
   let duration = SKILLS_EvalCalcByOffset113c(m, pOwner, dwCalc4, nSkillId, nLevel) | 0
   if (duration < 5) duration = 5
 
-  let pStatList = STATLIST_GetStatListFromUnitAndStateMemPort113c(m, target, nState) >>> 0
+  const pStatList = STATLIST_GetStatListFromUnitAndStateMemPort113c(m, target, nState) >>> 0
   if (pStatList === 0) {
     const uOwnerType = m.u32(pOwner) >>> 0
     const uOwnerId = m.u32((pOwner + 0x0c) >>> 0) >>> 0
     const initExpire = ((m.u32((game + 0xa8) >>> 0) >>> 0) + (duration >>> 0)) >>> 0
-    pStatList = STATLIST_AllocList113c(m, 2, uOwnerType, uOwnerId, 0, initExpire) >>> 0
-    if (pStatList === 0) return 1
-    STATLIST_SetState113c(m, pStatList, nState)
-    STATLIST_SetStatRemoveProc113c(m, pStatList, 0x6fcbf7a0)
-    STATLIST_MergeStatLists113c(m, target, pStatList, 1)
+    // 1.13c native 0x6FC5ED28 stores newly allocated statlist in [esp+0x24] without updating [esp+0x14] (pStatList).
+    const pNewStatList = STATLIST_AllocList113c(m, 2, uOwnerType, uOwnerId, 0, initExpire) >>> 0
+    if (pNewStatList === 0) return 1
+    STATLIST_SetState113c(m, pNewStatList, nState)
+    STATLIST_SetStatRemoveProc113c(m, pNewStatList, 0x6fcbf7a0)
+    STATLIST_MergeStatLists113c(m, target, pNewStatList, 1)
     STATES_ToggleGfxStateFlag113c(m, target, nState, 1)
   }
 
@@ -3145,7 +3196,7 @@ export function MISSILES_SrvDo15_FollowOwnerAndSpawnRandomSubMissile_6FC5FB40_11
   if (
     pFollowUnit === 0 ||
     pOwner === 0 ||
-    (SUNIT_IsDeadOrDying113c(m, pFollowUnit) | 0) !== 0 ||
+    (SUNIT_IsDeadOrDying113c(m, pOwner) | 0) !== 0 ||
     (MISSILE_GetRemainingFrames113c(m, missile) | 0) < 0
   ) {
     MISSILE_ProcessTargetCollisionHit113c(m, missile, game, 0, 1, hooks)

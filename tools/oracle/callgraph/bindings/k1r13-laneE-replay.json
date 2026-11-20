@@ -41,8 +41,8 @@
     "name": "OBJECTS_PopulateRoom",
     "kernFile": "src/d2kern-113c/game/objects-populate-113c.ts",
     "tsSymbol": "OBJECTS_PopulateRoom113c",
-    "status": "ported",
-    "diffEvidence": "tests/oracle/k1/laneE-objects-populate.test.ts (control-flow vectors from the D2Game.dll disassembly)"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k1/laneE-objects-populate.test.ts (control-flow vectors from the D2Game.dll disassembly); Wave 22 1:1 PE32 indirect-call audit (static_table; tools/oracle/callgraph/indirect-audit-batchD.json) verified in tests/oracle/k2/k2-disasm-verified-wave22-indD.test.ts"
   },
   {
     "module": "D2Game",
@@ -50,8 +50,8 @@
     "name": "OBJECTS_InitObjectUnit",
     "kernFile": "src/d2kern-113c/game/objects-populate-113c.ts",
     "tsSymbol": "OBJECTS_InitObjectUnit113c",
-    "status": "ported",
-    "diffEvidence": "tests/oracle/k1/laneE-objects-populate.test.ts (control-flow vectors from the D2Game.dll disassembly)"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k1/laneE-objects-populate.test.ts (control-flow vectors from the D2Game.dll disassembly); Wave 22 1:1 PE32 indirect-call audit (static_table; tools/oracle/callgraph/indirect-audit-batchD.json) verified in tests/oracle/k2/k2-disasm-verified-wave22-indD.test.ts"
   },
   {
     "module": "D2Game",
@@ -77,8 +77,8 @@
     "name": "REGPOP_SpawnAmbientPack",
     "kernFile": "src/d2kern-113c/game/act-rooms-113c.ts",
     "tsSymbol": "REGPOP_SpawnAmbientPack113c",
-    "status": "ported",
-    "diffEvidence": "tests/oracle/k1/laneE-act-rooms.test.ts (control-flow vectors from the D2Game.dll disassembly)"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FC67660 (153B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts."
   },
   {
     "module": "D2Game",
@@ -86,8 +86,8 @@
     "name": "REGPOP_RollAmbientSpawn",
     "kernFile": "src/d2kern-113c/game/act-rooms-113c.ts",
     "tsSymbol": "REGPOP_RollAmbientSpawn113c",
-    "status": "ported",
-    "diffEvidence": "tests/oracle/k1/laneE-act-rooms.test.ts (control-flow vectors from the D2Game.dll disassembly)"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FC67820 (89B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts."
   },
   {
     "module": "D2Game",
@@ -95,8 +95,8 @@
     "name": "ROOM_TickSeedAndAmbientSpawn",
     "kernFile": "src/d2kern-113c/game/act-rooms-113c.ts",
     "tsSymbol": "ROOM_TickSeedAndAmbientSpawn113c",
-    "status": "ported",
-    "diffEvidence": "tests/oracle/k1/laneE-act-rooms.test.ts (control-flow vectors from the D2Game.dll disassembly)"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FC67950 (96B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts."
   },
   {
     "module": "D2Game",
@@ -131,7 +131,8 @@
     "name": "C2S_Dispatch",
     "kernFile": "src/d2kern-113c/game/replay-kernel-113c.ts",
     "tsSymbol": "C2S_Dispatch113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 22 1:1 PE32 indirect-call audit (static_table; tools/oracle/callgraph/indirect-audit-batchD.json) verified in tests/oracle/k2/k2-disasm-verified-wave22-indD.test.ts"
   },
   {
     "module": "D2Game",
